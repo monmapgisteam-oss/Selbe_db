@@ -2,35 +2,6 @@
 
 /**
  * ОЛОН ОБЪЕКТЫН АТРИБУТЫГ НЭГ ДОР ЗАСАХ — маягт (2026-09-16).
- *
- * ⚠️ Хэрэглэгчийн хүсэлт: «нэг мэдээллийн олон мөрийг select хийгээд нэг
- * бөглөхөд тэр select хийсэн мэдээлэлүүд бүгд бөглөгддөг — ArcGIS Pro-гийн
- * Calculate Field шиг, гэхдээ илүү амар». Сонголт: (1) зураг дээр товшиж
- * нэмэх/хасах, (2) тэгш өнцөгт татаж дотор нь орсныг авах — хоёулаа
- * `DedButets`-д; энэ файл зөвхөн МАЯГТ.
- *
- * ⚠️ МАЯГТ ОДООГИЙН УТГААР БӨГЛӨГДӨНӨ (2026-09-16-ны засвар: хэрэглэгч
- * «мэдээлэл нь бөглөгдөхгүй байна» гэсэн — бүх талбар хоосон эхэлж байсныг
- * дан маягттай зөрүүтэй гэж уншсан). Pro-гийн attribute pane-ийн олон
- * сонголтын зан: сонгосон БҮХ мөрд ИЖИЛ утгатай талбар тэр утгаараа, ЗӨРҮҮТЭЙ
- * талбар хоосон «— олон утга —» гэж гарна. Хэрэглэгч ямар ч талбарыг
- * өөрчлөвөл тэр талбар л сонгосон бүх мөрөнд бичигдэнэ; хөндөөгүй талбар
- * (ижил ч бай, зөрүүтэй ч бай) ХЭВЭЭР үлдэнэ.
- *
- * ⚠️ ХООСЛОХ: ижил утгатай талбарыг хоослоход `null` бичигдэнэ (дан маягтын
- * `diffRow` дүрэм). Зөрүүтэй талбарыг хоосон орхих нь «бүү хөндө» — түүнийг
- * хоослох боломж энэ маягтад ЗОРИУДААР байхгүй (санамсаргүй олон мөр
- * хоослохоос сэргийлнэ); мөр бүрээр дан маягтаар хийнэ.
- *
- * ⚠️ ОРОЛТ нь дан маягттай ЯГ ИЖИЛ (`FieldInput`) — домэйн, тоон оролт,
- * уртын хязгаар хоёр газарт зөрөхгүй.
- *
- * ⚠️ БУЦААЛТ нь мөр бүрийн ӨӨРИЙН хуучин утга: мөрүүд аль хэдийн татагдсан
- * (`rows`) тул бичихээс өмнө дахин татахгүй — өөрчлөгдсөн талбар бүрийн
- * урьдын утгыг мөр тус бүрээр хадгална.
- *
- * ⚠️ БАТАЛГААЖУУЛАЛТ ЗААВАЛ: нэг товшилтоор олон мөр өөрчлөгдөнө, ArcGIS-д
- * гүйлгээний түүх байхгүй. Тоо, талбарын тоог ил хэлж асууна.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -62,9 +33,6 @@ const baseOf = (meta: LayerMeta, rows: Row[]): Base => {
       if (v === undefined) v = s;
       else if (v !== s) { v = null; break; }
     }
-    /* ⚠️ `v ?? ''' БИШ: `null` нь «мөрүүд ЗӨРҮҮТЭЙ» гэсэн тэмдэг бөгөөд
-       хоосон мөр рүү хувиргавал «— олон утга —» тайлбар ХЭЗЭЭ Ч гарахгүй.
-       Зөвхөн МӨР ОГТ БАЙХГҮЙ үед (`undefined`) хоосон болно. */
     b[f.name] = v === undefined ? '' : v;
   }
   return b;
@@ -79,21 +47,12 @@ export function DedButetsBatch({
   canEdit: boolean;
   /**
    * Амжилттай бичсэний дараа: хэдэн МӨР бичигдсэн, хэдэн ТАЛБАР, буцаалт.
-   * ⚠️ `undo.rows` нь зөвхөн бодитоор бичигдсэн мөрүүд (багц дундаа унавал
-   * өмнөх багцууд бичигдсэн байдаг — `saveRows`-ийн тайлбар).
    */
   onDone: (rows: number, fields: number, undo: UndoInfo | null) => void;
   /**
    * ХЭСЭГЧИЛСЭН бичилт — зарим багц бичигдээд дараагийнх унасан (2026-09-25).
-   * ⚠️ `undo` нь зөвхөн БИЧИГДСЭН мөрүүдийнх. Маягт хаагдахгүй (дахин
-   *    «Хадгалах» боломжтой) — дуудагч давхаргаа дахин уншуулж, буцаалт тавина.
    */
   onPartial?: (undo: UndoInfo | null) => void;
-  /**
-   * ⚠️ 2026-09-30: ХАДГАЛААГҮЙ бичсэн утга байгаа эсэх — эцэг тал хаах/горим солих
-   *    замдаа асууна (`DedButets.askDropUnsaved`) ба `navGuard`-д тэмдэглэнэ.
-   *    Салахад `false`.
-   */
   onDirty?: (dirty: boolean) => void;
 }) {
   const [meta, setMeta] = useState<LayerMeta | null>(null);
@@ -105,26 +64,15 @@ export function DedButetsBatch({
   const [err, setErr] = useState<Record<string, string>>({});
   const [fail, setFail] = useState('');
 
-  /* ⚠️ `oids` нь дуудагч талд шинэ массив ирж болно — агуулгаар харьцуулна */
   const oidKey = useMemo(() => [...oids].sort((a, b) => a - b).join(','), [oids]);
 
   /**
    * БИЧИХИЙН ӨМНӨХ АСУУЛТ — маягт дотор мөр («Тийм»/«Үгүй»).
-   *
-   * ⚠️ 2026-09-23: `window.confirm` хөтчид хаагдсан үед («энэ хуудас дахин
-   * харилцах цонх гаргахыг хориглох») үргэлж `false` буцаан ОЛНООР ХАДГАЛАХ
-   * ЧИМЭЭГҮЙ зогсдог байв. Асуултыг самбарт гаргана; талбар засвал арилна.
    */
   const [ask, setAsk] = useState(false);
 
   /**
    * СҮҮЛД АМЖИЛТТАЙ УНШСАН сонголтын түлхүүр (`layerId|oidKey`).
-   *
-   * ⚠️ 2026-09-25: `write()` нь ОДООГИЙН `oids`-ийг СҮҮЛД уншсан `meta`/`rows`/
-   *    `base`-тэй хольдог байв. Асуулт нээлттэй байхад сонголт солигдож дахин
-   *    уншиж байх зуур (эсвэл уншилт унасны дараа) «Тийм» дарвал өмнөх
-   *    давхаргын схемээр шинэ OID-д бичиж (өөр объект засагдана), шинэ
-   *    объектууд буцаалтгүй үлддэг байв. Одоо түлхүүр таарахгүй бол бичихгүй.
    */
   const [loadedKey, setLoadedKey] = useState('');
   const curKey = `${layerId}|${oidKey}`;
@@ -132,16 +80,10 @@ export function DedButetsBatch({
 
   /**
    * СХЕМ + СОНГОСОН МӨРҮҮД — сонголт солигдох бүрд.
-   *
-   * ⚠️ Хэрэглэгчийн БИЧСЭН зүйлийг ХАДГАЛНА: объект нэмж/хасахад маягт
-   * тэглэгдвэл олон объект түүж явах зуур бичсэн утга алга болно. Зөвхөн
-   * хөндөөгүй талбарууд шинэ ижил утгаараа шинэчлэгдэнэ.
    */
   useEffect(() => {
     let alive = true;
-    /* ⚠️ Хуучин сонголтын асуулт ХААГДАНА — «Тийм» нь шинэ сонголтын тоогоор биш
-       хуучин асуултаар бичилт явуулах байв (`loadedKey`-ийн тайлбар) */
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoad(true); setFail(''); setErr({}); setAsk(false);
     (async () => {
       const m = await loadLayerMeta(layerId);
@@ -153,10 +95,6 @@ export function DedButetsBatch({
         const b = baseOf(m, rs);
         setMeta(m); setRows(rs); setBase(b);
         setLoadedKey(`${layerId}|${oidKey}`);
-        /* ⚠️ ӨӨР ДАВХАРГА (2026-09-25) — өмнөх давхаргад бичсэн утга ижил нэртэй
-           талбараар энд «өөрчилсөн» болж орохгүй: хуучин `base` нь өөр схемийнх.
-           (Дуудагч `key={layerId}`-ээр аль хэдийн шинэ инстанц үүсгэдэг — энэ нь
-           нөөц хамгаалалт.) `loadedKey` нь өмнөх амжилттай уншилтынх. */
         const sameLayer = loadedKey.split('|')[0] === layerId;
         setP((prev) => {
           const next: Patch = {};
@@ -172,10 +110,6 @@ export function DedButetsBatch({
       .catch((e) => alive && setFail(userError(e)))
       .finally(() => alive && setLoad(false));
     return () => { alive = false; };
-    // ⚠️ `base` нь энд ЗӨВХӨН хуучин эхлэлийг харьцуулахад — deps-д авбал
-    //    өөрөө өөрийгөө сэргээж гогцоо үүснэ. `oidKey` нь `oids`-ийг орлоно.
-    //    `loadedKey` мөн адил (өмнөх уншилтын давхаргыг л уншина).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layerId, oidKey]);
 
   const set = (name: string, v: string) => {
@@ -193,7 +127,6 @@ export function DedButetsBatch({
       .filter((k) => (p[k] ?? '') !== (base[k] ?? ''));
   }, [meta, p, base]);
 
-  /* ⚠️ 2026-09-30: бичсэн эсэхийг эцэгт мэдэгдэнэ (`onDirty`-ийн тайлбар) */
   const isDirty = changed.length > 0;
   const onDirtyRef = useRef(onDirty);
   useSyncRef(onDirtyRef, onDirty);
@@ -207,7 +140,6 @@ export function DedButetsBatch({
   const submit = () => {
     if (!meta || !rows || !oids.length) return;
     if (stale) { setFail(staleMsg()); return; }
-    /* ⚠️ 2026-10-09: нэг ч OID уншигдаагүй бол бичих мөр АЛГА — урьд нь 0 мөрөөр «хадгалагдлаа» гардаг байв */
     if (nRead === 0) { setFail(staleMsg()); return; }
     if (!changed.length) { setFail(tr('Өөрчилсөн талбар алга.')); return; }
     /* Шалгуур — зөвхөн өөрчилсөн талбарт (`validateRow`-ийн дүрэм) */
@@ -219,11 +151,6 @@ export function DedButetsBatch({
     setAsk(true);
   };
 
-  /**
-   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): УНШИГДСАН ↔ СОНГОСОН тоо. Сонголтын зарим
-   *    объект (устсан, өөр хэрэглэгч хасагдсан) уншигдахгүй бол бичилт нь ЗӨВХӨН уншигдсанд
-   *    явдаг (`writeOids`) атал товч ба асуулт сонгосон тоог хэлдэг байв.
-   */
   const nRead = rows ? rows.filter((r) => Number.isFinite(Number(r[meta?.oidField ?? '']))).length : 0;
   const missing = rows && !stale ? Math.max(0, oids.length - nRead) : 0;
   /** Уртын талбарууд (`butetsLen.lenFieldUnit`) — олон объектод ИЖИЛ урт бичих нь ихэвчлэн алдаа */
@@ -240,20 +167,15 @@ export function DedButetsBatch({
   const write = async () => {
     if (!meta || !rows || !oids.length) return;
     setAsk(false);
-    /* ⚠️ Уншсан сонголт ОДООГИЙНХТОЙ таарахгүй бол бичихгүй (`loadedKey`) */
     if (stale) { setFail(staleMsg()); return; }
     const fieldOf = new Map(meta.fields.map((f) => [f.name, f]));
     const attrs: Record<string, unknown> = {};
     for (const k of changed) {
       const v = p[k] ?? '';
-      /* ⚠️ Хоосон → `null` (`diffRow`-ийн дүрэм) — ижил утгыг хоослох зам */
-      /* ⚠️ 2026-10-05: `validateRow` одоо «12,5»-ыг зөвшөөрдөг тул ижил задлагчаар
-         (`parseNum`) хөрвүүлнэ — `Number('12,5')` нь NaN. */
       attrs[k] = v === '' ? null : fieldOf.get(k)?.kind === 'number' ? (parseNum(v) ?? Number(v)) : v;
     }
 
-    /* Буцаалт — мөр бүрийн өөрийн хуучин утга (аль хэдийн татагдсан `rows`).
-       ⚠️ `try`-ийн ГАДНА — хэсэгчилсэн алдааны `catch`-д ч хэрэгтэй. */
+    /* Буцаалт — мөр бүрийн өөрийн хуучин утга (аль хэдийн татагдсан `rows`). */
     const undoRows = rows.map((row) => {
       const oid = Number(row[meta.oidField]);
       const back: Record<string, unknown> = {};
@@ -264,27 +186,18 @@ export function DedButetsBatch({
       }
       return { oid, attrs: back };
     });
-    /* ⚠️ 2026-10-09: мөр бүрт манай бичсэн утгыг (`wrote`) хавсарна: `revertRows` буцаахын ӨМНӨ дахин уншиж,
-       одоогийн утга нь манай шинэ ч, хуучин ч биш (хооронд нь өөр хэрэглэгч зассан) бол АЛГАСЧ мэдээлнэ
-       (`butetsEdit.RevertRow`-ийн ⚠️). */
     const undoOf = (written: number[]): UndoInfo | null => {
       const doneSet = new Set(written);
       const u = undoRows
         .filter((r) => doneSet.has(r.oid) && Object.keys(r.attrs).length)
         .map((r) => {
-          /* ⚠️ 2026-10-21 (кодын аудит): `wrote`-ийг ҮРГЭЛЖ хавсарна — урьд нь зөвхөн хариу алдагдсан мөрт; амжилттай
-             бичигдсэн мөрийн буцаалт серверийг дахин уншдаггүй тул хооронд нь өөр хэрэглэгчийн хийсэн засварыг
-             хуучин утгаар ЧИМЭЭГҮЙ дардаг байв. */
           const wrote: Record<string, unknown> = {};
           for (const k of Object.keys(r.attrs)) wrote[k] = attrs[k];
           return { ...r, wrote };
         });
       return u.length ? { kind: 'batch', rows: u } : null;
     };
-    /* ⚠️ Бичих OID нь УНШСАН мөрүүдийнх (2026-09-25) — буцаалт (`undoRows`) ч
-       яг тэднээс бэлтгэгддэг тул буцаалтгүй бичигдэх мөр үлдэхгүй. */
     const writeOids = undoRows.map((r) => r.oid).filter((n) => Number.isFinite(n));
-    /* ⚠️ 2026-10-09: 0 мөр — `saveRows` `[]` буцааж «0 объект хадгалагдлаа» гэх ХУДАЛ мэдэгдэл гарна */
     if (!writeOids.length) { setFail(staleMsg()); return; }
 
     setBusy(true); setFail('');
@@ -295,26 +208,14 @@ export function DedButetsBatch({
       const nb: Base = { ...base };
       for (const k of changed) nb[k] = p[k] ?? '';
       setBase(nb);
-      /* ⚠️ Амжилтын мэдэгдлийг ЭНД гаргахгүй: дуудагч тал хадгалсны дараа
-         сонголтыг цэвэрлэдэг тул энэ бүрэлдэхүүн тэр агшинд САЛНА. Мэдэгдэл
-         нь самбарын түвшинд (`DedButets` §mselOk) амьдарна. */
       onDone(done.length, changed.length, undo);
     } catch (x) {
-      /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
       const partial = (x as { done?: number[] }).done;
       const msg = userError(x);
-      /* ⚠️ 2026-10-09: хариу АЛДАГДСАН мөрүүд (`unknown`) бичигдсэн байж магадгүй тул буцаалтад
-         оруулна (хуучин утгаа дахин бичих нь идемпотент). */
       const unknownRows = (x as { unknown?: number[] }).unknown ?? [];
       const undoable = [...(partial ?? []), ...unknownRows];
-      /* ⚠️ Бичигдсэн багцуудыг дуудагчид мэдэгдэнэ (2026-09-25, `onPartial`) —
-         давхарга дахин уншигдаж, бичигдсэн мөрүүдэд буцаалт тавигдана. */
       if (undoable.length) onPartial?.(undoOf(undoable));
-      /* ⚠️ 2026-10-01: АТОМ БУС давхарга (`supportsRollbackOnFailureParameter: false`) — мөр бүрийн
-         үр дүн (`failed`) ирнэ: аль нь бичигдээгүйг тоогоор хэлнэ («эхний N» биш — дунд нь ч унаж болно). */
       const failedRows = (x as { failed?: { oid: number }[] }).failed;
-      /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН (timeout · сүлжээ · 5xx) — «алдаа» биш «үр дүн тодорхойгүй».
-         Урьд нь түүхий алдаа гарч, хэрэглэгч юу ч бичигдээгүй гэж ойлгодог байв. */
       if (isLostResponse(x) || unknownRows.length) {
         setFail(tr('Серверийн хариу алдагдсан — үр дүн тодорхойгүй: {0}/{1} мөр бичигдсэн нь баталгаатай, {2} мөрийнх тодорхойгүй. Давхаргыг дахин ачаалж шалгана уу; дахин «Хадгалах» дарвал бүгдэд ижил утгыг дахин бичнэ.',
           num(partial?.length ?? 0), num(writeOids.length), num(unknownRows.length || Math.max(0, writeOids.length - (partial?.length ?? 0)))));
@@ -324,8 +225,6 @@ export function DedButetsBatch({
         ? tr('{0}/{1} мөр бичигдсэн, {2} мөрөнд алдаа: {3}. Дахин «Хадгалах» дарвал бүгдэд дахин бичнэ.',
           num(partial?.length ?? 0), num(writeOids.length), num(failedRows.length), msg)
         : partial?.length
-          /* ⚠️ 2026-10-07: «үлдсэнийг бичнэ» гэдэг нь ХУДАЛ байв — `writeOids` бүх уншсан мөр тул
-             дахин дарахад бүгдэд бичнэ (ижил утга — хор хөнөөлгүй). */
           ? tr('Эхний {0} мөр бичигдсэн, дараа нь алдаа: {1}. Дахин «Хадгалах» дарвал бүгдэд дахин бичнэ.', partial.length, msg)
           : msg);
     } finally {
@@ -347,7 +246,6 @@ export function DedButetsBatch({
               ? tr('Сонгосон объектуудын утгыг уншиж байна…')
               : tr('Ижил утгатай талбар утгаараа, зөрүүтэй нь «— олон утга —» гэж гарна. Өөрчилсөн талбар л бүгдэд бичигдэнэ.')}
           </p>
-          {/* ⚠️ 2026-10-01: уншигдаагүй объект — бичилт зөвхөн уншигдсанд */}
           {missing > 0 && (
             <p className={d.fWarn} role="alert">
               {tr('{0}/{1} объект уншигдсан — {2} нь олдсонгүй (устсан эсвэл хүрээнээс гарсан); зөвхөн уншигдсанд бичигдэнэ.',
@@ -371,8 +269,6 @@ export function DedButetsBatch({
                     <span className={d.fHint}>
                       {tr('{0} объектод бичигдэнэ', num(nRead))}
                     </span>
-                    {/* ⚠️ 2026-10-01: УРТ нь объект бүрд өөр — олноор ижил урт бичих нь ихэвчлэн
-                        алдаа (km KPI бүхэлдээ худал болно). Хориглохгүй, ил анхааруулна. */}
                     {isLen(f.name) && (
                       <span className={d.fWarn}>
                         {tr('Урт нь объект бүрд өөр — бүгдэд ИЖИЛ урт бичигдэнэ. Объект бүрийн уртыг дан маягтын «Урт ← геометр»-ээр бөглөнө үү.')}
@@ -391,14 +287,12 @@ export function DedButetsBatch({
       {fail && <div className={d.formErr} role="alert">{fail}</div>}
       {/* Самбарын асуулт — `ask`-ийн тайлбар */}
       {ask && (
-        /* ⚠️ 2026-10-09: `alertdialog` БИШ — модал биш, фокус барихгүй мөрийн асуулт */
         <div className={d.askRow} role="group" aria-live="assertive">
           <span className={d.askMsg}>
             {tr(
               '{0} объектын {1} талбарыг бичих үү? Бүх сонгосон объектод ижил утга орно.',
               num(nRead), num(changed.length),
             )}
-            {/* ⚠️ 2026-10-01: ХУУЧИН → ШИНЭ — юу өөрчлөгдөхийг бичихээс ӨМНӨ ил харуулна */}
             <ul className={d.diffList}>
               {changed.map((k) => (
                 <li key={k}>
@@ -409,7 +303,6 @@ export function DedButetsBatch({
               ))}
             </ul>
           </span>
-          {/* ⚠️ Дахин уншиж байх зуур / уншилт таараагүй үед хаалттай (`loadedKey`) */}
           <button type="button" className={d.primary} onClick={() => { void write(); }}
             disabled={busy || load || stale}>
             {tr('Тийм')}
@@ -425,7 +318,6 @@ export function DedButetsBatch({
           type="button"
           className={d.primary}
           onClick={submit}
-          /* ⚠️ 2026-10-09: `nRead === 0` — уншигдсан объект алга (бичих мөр алга) */
           disabled={busy || load || !canEdit || !meta.canUpdate || !oids.length || nRead === 0 || !changed.length}
           title={!load && nRead === 0 ? staleMsg() : !changed.length ? tr('Эхлээд өөрчлөх талбараа бөглөнө үү') : undefined}
         >

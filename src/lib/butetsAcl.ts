@@ -7,23 +7,6 @@
  * давхаргыг засаж болохыг аккаунт бүрд заана. НЭГ үүрэг — Засварлагч
  * (`editor`): засвар ArcGIS-д ШУУД бичигдэнэ, батлах шат байхгүй (хэрэглэгчийн
  * 2026-09-23-ны шийдвэр: обьёмынх шиг батлагч ХЭРЭГГҮЙ).
- *
- * ⚠️ ҮҮРЭГ → ЭРХ: `editor` нь БАЙГАА `butets` эрхийг дахин ашиглана
- *    (`CAP_HOST_VIEW.butets = ['dedButets']` — хуудас нь өөрөө нээгдэнэ).
- *    Урьд нь `butets` эрх БҮХ 74 давхаргыг засах эрх байв; одоо хүрээ нь
- *    ЭНЭ хуваарилалтаас гарна.
- *
- * ⚠️ FAIL-CLOSED (хэрэглэгчийн шийдвэр): `butets` эрхтэй ч багц хуваарилагдаагүй
- *    бол НЭГ Ч давхарга засахгүй. Зөвхөн хатуу `super` хязгааргүй. Панелаас
- *    багц олгоход эрх нь өөрөө асна (`scopedAcl.syncCaps`).
- *
- * ⚠️ БАГЦЫН НЭГЖ нь `butetsPacks.BUTETS_PACKS` (25 багц: 5.1…5.4, 6.1…6.8,
- *    7, 8.2, 10…15, 18, Холбоо 1–3) — `PKG_GROUPS` (Бөглөх хуудасны 1…10)
- *    БИШ. `grants[].bagts`-д `bagtsKey()` хэлбэрийн түлхүүр («БАГЦ51»)
- *    хадгалагдана.
- *
- * ⚠️ ХАДГАЛАЛТ: эрхийн ижил ArcGIS хүснэгтэд `__butets__:` угтвартай мөрөнд
- *    (`__obyem__:` / `__chanar__:`-ийн адил). Логик нь `scopedAcl.ts`-д.
  */
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
@@ -43,15 +26,10 @@ export type ButetsAssign = Assign<ButetsRole>;
 const acl = makeAcl<ButetsRole>({
   storeKey: 'selbe-butets-acl-v1',
   event: 'selbe-butets-acl-change',
-  /* ⚠️ Зураглал нь `aclRoleCaps.ts`-д НЭГ газар (2026-09-25) */
   roleCaps: ROLE_CAPS.butets,
   push: (user, roles, bagts, grants) => butetsUpsert(user, roles, bagts, grants),
   remove: butetsRemove,
-  /* ⚠️ 2026-10-04: бичихийн өмнө шинээр уншиж нэгтгэнэ (`scopedAcl.pushRow`) */
   read: (user) => scopedRead('butets', user),
-  /* ⚠️ 2026-10-09 (аудит №6): GETTER — `qaqcAcl`-ийн 2026-09-25-ны загвар. Урьд нь энгийн мөр байсан тул
-     `tr()`-гүй, англи хэлээр ч монголоор гарч, i18n гаргагчид ч ороогүй байв. `tr()`-ийг мессеж
-     уншигдах агшинд дуудна (модуль ачаалахад биш) — хэл солиход зөв хувилбар. */
   msg: {
     get noUser() { return tr('Аккаунтын нэрээ бичнэ үү'); },
     get superUser() { return tr('Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй'); },
@@ -95,13 +73,8 @@ export const hasButetsRole = (user: string | null | undefined): boolean =>
 
 /**
  * Энэ ДАВХАРГЫГ засаж болох уу — багцын хүрээгээр.
- * ⚠️ Багцад хамаарахгүй давхарга (`PACK_OF_LAYER`-т байхгүй) нь зөвхөн
- *    хязгааргүй хүнд нээлттэй — «эзэнгүй» давхаргыг хэн ч засахгүй.
  */
 export const canEditButetsLayer = (user: string | null | undefined, layerId: string): boolean => {
-  /* ⚠️ НЭВТРЭЛТ УНТРААЛТТАЙ (2026-09-24): `hasCap` ба UI нь `AUTH.appId` хоосон үед
-     бүгдийг нээдэг атал энд хэрэглэгч `null` → хүрээ `[]` болж, lib-ийн
-     `requireLayer` хадгалалт бүрийг «эрхгүй» гэж ТАТГАЛЗДАГ байв. */
   if (!AUTH.appId) return true;
   const sc = butetsScope(user);
   if (sc === null) return true;

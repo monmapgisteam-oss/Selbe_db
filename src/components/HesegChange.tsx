@@ -44,14 +44,9 @@ const fmt = (key: ChangeKey, v: number) => {
 const deltaText = (key: ChangeKey, value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${fmt(key, Math.abs(value))}`;
 /** Тоон зөрүү — «+3» · «−2» (ASCII «-» биш) */
 const signed = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${num(Math.abs(v))}`;
-/** Талбайн зөрүү (га) — ⚠️ 2026-10-19 (аудит): сөрөг тэмдэг нь ASCII «-» биш «−» (`deltaText`-тэй ижил) */
+/** Талбайн зөрүү (га) — 2026-10-19 (аудит): сөрөг тэмдэг нь ASCII «-» биш «−» (`deltaText`-тэй ижил) */
 const haDelta = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${ha(Math.abs(value), 2)}`;
 
-/**
- * ⚠️ 2026-10-23 (UX аудит E7): ХҮЛЭЭСЭН ХУГАЦАА (сек). Тооцоо ~30 с үргэлжилдэг ч явцын дохиогүй «Тооцоолж байна…»
- *    нь гацсан мэт уншигддаг байв. Тооцооны lib (`hesegChange.computeChange`) алхмын мэдээ өгдөггүй тул секунд + хэвийн
- *    хугацааг хэлнэ. Тоолуурыг ЗӨВХӨН таймерын callback-аас шинэчилнэ (`Tailan.useElapsed`-ийн eslint-ийн ⚠️).
- */
 export function useElapsed(active: boolean): number {
   const [secs, setSecs] = useState(0);
   useEffect(() => {
@@ -70,9 +65,6 @@ const REFRESH_DEBOUNCE_MS = 400;
 
 export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: ChangePick) => void }) {
   const [st, setSt] = useState<{ res: ChangeResult | null; err: string | null }>({ res: null, err: null });
-  /* ⚠️ 2026-10-19 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) кэшийг хаяна — дахин бодуулна; хуучин үр дүн үлдэнэ.
-     ⚠️ 2026-10-19 (review): `dataVersion` (хүснэгт бүрийн бичилт) биш `refreshEpoch` — кэш нь зөвхөн `invalidateAll`-д
-     хаягддаг; дахин бодолтыг сааруулна (`REFRESH_DEBOUNCE_MS`), өмнөх үеийн хариуг `alive`-аар үл тооно. */
   const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
   const mountEpoch = useRef(epoch);
   const secs = useElapsed(!st.res && !st.err);
@@ -83,7 +75,6 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
       computeChange()
         .then((res) => { if (alive) setSt({ res, err: null }); })
         .catch((e: unknown) => {
-          /* ⚠️ 2026-10-23 (UX аудит X3): түүхий серверийн мөр биш — `userError` (монгол мессеж хэвээр, англи нь ойлгомжтой) */
           console.error('[selbe] хэсэгчилсэн ЕТ — өөрчлөлт:', e);
           if (alive) setSt({ res: null, err: userError(e) });
         });
@@ -108,14 +99,12 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
       <ul className={s.list}>
         {CHANGE_ITEMS.map((it) => {
           const r = st.res!.rows.find((x) => x.key === it.key)!;
-          /* Харьцуулалт — хуучин тал мөр бүрийн хүрээгээр, шинэ тал бүтнээрээ (`lib/hesegChange.ts`-ийн ⚠️) */
+          /* Харьцуулалт — хуучин тал мөр бүрийн хүрээгээр, шинэ тал бүтнээрээ (`lib/hesegChange.ts`) */
           const { delta, percent: pctD } = compareChangeQuantity(r);
           const cmp = delta != null;
           const d = delta ?? 0;
           const open = pick?.key === it.key;
-          /* ⚠️ 2026-10-14: автозамд ч «Өөрчлөлт» харуулна (хэрэглэгч: «автозам дээр өөрчлөлт гэсэн хэсэг байхгүй юу»); ногоон — харьцуулахгүй */
           const showChange = it.key !== 'green';
-          /* ⚠️ 2026-10-13: 01-д зөвхөн ШИНЭ хэсэгчилсэн ЕТ (хэрэглэгч: «шинэ хэсэгчилсэн ЕТ мэдээллийг л харуул») */
           return (
             <li key={it.key} className={`${s.item} ${open ? s.itemOn : ''}`}>
               <button
@@ -160,7 +149,6 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                           <span className={s.rowName}>{g.label ?? tr('Бүсээс гадуур')}</span>
                           <span className={s.rowVal}>
                             {fmt(it.key, g.value)}
-                            {/* ⚠️ 2026-10-19 (аудит): талбай нэгтгэсэн полигоноор (`hesegChange.areaOf`) — 100%-иас давахгүй; бутархайн зөрүүг шахна */}
                             {r.next > 0 && <small> · {num(Math.min(100, (g.value / r.next) * 100), 0)}%</small>}
                           </span>
                         </button>
@@ -192,7 +180,6 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
               const r = st.res!.rows.find((x) => x.key === it.key)!;
               const { delta: d, percent } = compareChangeQuantity(r);
               const sourceCmp = r.oldSourceComplete && r.nextSourceComplete;
-              /* ⚠️ 2026-10-14: автозамд ч «Өөрчлөлт» харуулна (хэрэглэгч: «автозам дээр өөрчлөлт гэсэн хэсэг байхгүй юу»); ногоон — харьцуулахгүй */
           const showChange = it.key !== 'green';
               return (
                 <tr key={it.key}>
@@ -249,12 +236,10 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
 /**
  * «Сэлбэ 1 хил»-ээр ЗАДАРГАА — хил дотор · хилээс гадуур (2026-10-14, хэрэглэгчийн заавар; «нийт» нь
  * дээрх гол тоо тул давтахгүй — хэрэглэгч хасуулсан).
- * ⚠️ Гадуур = нийт − дотор (тэнхлэгийг хилээр тайрсан урт; `lib/hesegChange.ts` §boundary).
  */
 function BoundarySplit({ inside, total }: { inside: number; total: number }) {
   const outside = Math.max(0, total - inside);
   return (
-    /* ⚠️ 2026-10-14 (хэрэглэгч: «2 row bullets харуул») — «·»-ээр нэг мөрөнд биш, тусдаа 2 мөр */
     <ul className={c.split}>
       <li>{tr('Хил дотор {0}', fmtLen(inside))}</li>
       <li>{tr('Хилээс гадуур {0}', fmtLen(outside))}</li>

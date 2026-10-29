@@ -24,10 +24,6 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
-/*
- * ⚠️ ХҮСЭЛТ ГАРАХГҮЙ БАЙХ ЁСТОЙ: `decideObyem`-ийн дүрмүүд `tableUrl`-ээс
- *    ӨМНӨ шалгагддаг гэдгийг ЭНД барина. `fetch` дуудагдвал тест унана.
- */
 let fetched = 0;
 globalThis.fetch = () => { fetched += 1; throw new Error('fetch дуудагдав'); };
 
@@ -41,7 +37,6 @@ assert.equal(parsePayload('[]'), null, 'массив нь объект БИШ');
 assert.equal(parsePayload('{"v":1}'), null, '`cells` алга');
 assert.equal(parsePayload('{"v":1,"cells":"x"}'), null, '`cells` массив биш');
 
-/* ⚠️ ЭЛЕМЕНТ БҮРИЙГ шалгана — нэг нь эвдэрсэн бол БҮТНЭЭР татгалзана */
 assert.equal(parsePayload('{"v":1,"cells":[[1]]}'), null, 'хос биш (урт 1)');
 assert.equal(parsePayload('{"v":1,"cells":[[1,2,3]]}'), null, 'хос биш (урт 3)');
 assert.equal(parsePayload('{"v":1,"cells":[["a",5]]}'), null, 'oid нь тоо биш');
@@ -103,13 +98,11 @@ console.log('✅ буцаахад шалтгаан заавал');
 assert.equal(OBYEM_STATUS.pending, 'Хүлээгдэж буй');
 assert.equal(OBYEM_STATUS.approved, 'Батлагдсан');
 assert.equal(OBYEM_STATUS.returned, 'Буцаагдсан');
-/* ⚠️ Гурвуулаа ЯЛГААТАЙ байх ёстой — нийлбэл урсгал таних боломжгүй болно */
-/* ⚠️ 2026-10-04: `withdrawn` нэмэгдэв — дөрвүүлээ ялгаатай */
 assert.equal(OBYEM_STATUS.withdrawn, 'Татаж авсан');
 assert.equal(new Set(Object.values(OBYEM_STATUS)).size, 4, 'төлвүүд давхардав');
 console.log('✅ төлвийн утгууд');
 
-/* ══════════════ 6. ⚠️ 2026-09-30: ҮНДСЭН ӨГӨГДӨЛД БИЧИХЭЭС ӨМНӨ ДҮРЭМ ШАЛГАНА ══════════════
+/* ══════════════ 6. 2026-09-30: ҮНДСЭН ӨГӨГДӨЛД БИЧИХЭЭС ӨМНӨ ДҮРЭМ ШАЛГАНА ══════════════
  * Урьд нь `useObyem.decideObyemHere` нь `applyUpdates`-аар `Инженерийн_төлөвлөсөн_обьём`-д
  * ЭХЛЭЭД бичиж, дараа нь л `decideObyem` өөрийгөө батлах · хүрээ · «аль хэдийн
  * шийдвэрлэсэн» дүрмийг шалгадаг байв — татгалзсан ч утга нь үндсэн өгөгдөлд үлдэнэ. */
@@ -127,9 +120,7 @@ assert.equal(fetched, 0, 'урьдчилсан шалгалтын дүрэм с�
   assert.ok(pre > 0, 'useObyem: `decideObyem({ dryRun: true })` урьдчилсан шалгалт АЛГА');
   assert.ok(write > 0, 'useObyem: `applyUpdates` дуудлага олдсонгүй (шалгуурыг шинэчилнэ үү)');
   assert.ok(pre < write, 'useObyem: урьдчилсан шалгалт `applyUpdates`-ээс ӨМНӨ байх ёстой');
-  /* ⚠️ Бичилтийн ДАРААХ жинхэнэ шийдвэр хэвээр (дараалал: бичээд → тэмдэглэх) */
   assert.ok(fn.indexOf('const r = await decideObyem(') > write, 'useObyem: шийдвэрийн бичилт `applyUpdates`-ийн ДАРАА');
-  /* ⚠️ 2026-09-30: өдөр солигдоход хүлээгдэж буй илгээлт дахин уншигдана; батлагдсан утга мөрт тусна */
   assert.ok(/useEffect\(\(\) => \{ void refreshObyem\(\); \}, \[refreshObyem, todayFillMs\]\)/.test(src),
     'useObyem: өдөр солигдоход (`todayFillMs`) хүлээгдэж буй илгээлтийг дахин уншина');
   assert.ok(fn.indexOf('setRows((rs) =>') > write, 'useObyem: батлагдсан утга хуудасны мөрт тусна');
@@ -138,7 +129,7 @@ assert.equal(fetched, 0, 'урьдчилсан шалгалтын дүрэм с�
 }
 console.log('✅ үндсэн өгөгдөлд бичихээс ӨМНӨ дүрэм шалгагдана · өдөр солигдоход баннер хэвээр');
 
-/* ══════════════ 7. ⚠️ 2026-10-04: ТАТАН АВАХ — зөвхөн зохиогч, зөвхөн pending ══════════════ */
+/* ══════════════ 7. 2026-10-04: ТАТАН АВАХ — зөвхөн зохиогч, зөвхөн pending ══════════════ */
 assert.equal(withdrawDeny({ status: OBYEM_STATUS.pending, author: 'Injener' }, 'injener'), null, 'зохиогч pending-ээ татна');
 assert.match(withdrawDeny({ status: OBYEM_STATUS.pending, author: 'injener' }, 'batlagch'), /Зөвхөн илгээсэн инженер/);
 for (const st of [OBYEM_STATUS.approved, OBYEM_STATUS.returned, OBYEM_STATUS.withdrawn]) {
@@ -155,7 +146,7 @@ assert.ok(withdrawDeny({ status: OBYEM_STATUS.pending, author: 'injener' }, '  '
 }
 console.log('✅ татан авах дүрэм · батлах баталгаа · бичилтийн дараах алдааны мессеж');
 
-/* ══════════════ 8. ⚠️ 2026-10-09: жааз солигдсон · алгассан нүд · хоёр таб ══════════════ */
+/* ══════════════ 8. 2026-10-09: жааз солигдсон · алгассан нүд · хоёр таб ══════════════ */
 {
   const fs = await import('node:fs');
   const src = fs.readFileSync(new URL('../modules/sheet/fill/useObyem.ts', import.meta.url), 'utf8');
@@ -176,16 +167,12 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   const L = fs.readFileSync(new URL('./obyemBatlah.ts', import.meta.url), 'utf8');
   assert.ok(/export async function obyemBusyFor\(/.test(L), 'obyemBatlah: `obyemBusyFor` алга');
   assert.ok(/export async function loadHead\(/.test(L), 'obyemBatlah: `loadHead` алга');
-  /* ⚠️ 2026-10-09: гацсаныг буцаах (CAS-аар) · завгүй шалгалт fail-closed · хариу алдагдвал тэмдэг/түгжээ үлдэнэ · refresh seq */
   const rs = L.slice(L.indexOf('export async function returnStuckObyem('), L.indexOf('export function withdrawDeny('));
   assert.ok(rs.length > 0 && rs.indexOf('casObyemClaim(') > 0 && rs.indexOf('casObyemClaim(') < rs.indexOf('[F.status]: OBYEM_STATUS.returned'), 'returnStuckObyem: бичихээс өмнө CAS түгжээ алга');
-  /* ⚠️ 2026-10-26 (аудит): угтвар нь ЭХ текстээр (хэлнээс үл хамаарах) бичигдэнэ — дэлгэцэнд `displayObyemReason` */
   assert.ok(rs.includes('partialBy(curStatus') && rs.includes('${OBYEM_STUCK_PREFIX_SRC}\\n${why}') && !rs.includes('OBYEM_STUCK_PREFIX()'),
     'returnStuckObyem: зөвхөн хагас бичигдсэнд · эх текстийн угтвартай шалтгаан');
   const bz = L.slice(L.indexOf('export async function obyemBusyFor('), L.indexOf('export async function releaseObyemClaim('));
   assert.ok(/HEAD_FIELDS|CLAIM_FIELDS/.test(bz) && /,\s*true,\s*\)/.test(bz), 'obyemBusyFor: strict query биш (fail-open)');
-  /* ⚠️ 2026-10-11 (аудит №7): markObyemPartial — CAS (унш → pending · түгжээ = би → бич → дахин уншиж тэмдэг суусныг тулга),
-     `huvaariBatlah.markPlanPartial`-ийн ижил дүрэм; урьд нь шууд бичдэг тул «татсан»/бусдын мөрөнд тэмдэг суудаг байв */
   const mp = L.slice(L.indexOf('export async function markObyemPartial('), L.indexOf('export async function clearObyemPartial('));
   const mpRead = mp.indexOf('await query(');
   const mpWrite = mp.indexOf('await arcgisPost(');
@@ -193,7 +180,6 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   assert.ok(/st !== OBYEM_STATUS\.pending\) return \{ ok: false/.test(mp.slice(0, mpWrite)), 'markObyemPartial: pending биш мөрөнд тэмдэг бичиж байна');
   assert.ok(/claimHolder\(cur\);\s*if \(h !== me\)/.test(mp.slice(0, mpWrite)), 'markObyemPartial: өөрийн түгжээгүй мөрөнд тэмдэг бичиж байна');
   assert.ok(mp.indexOf('await query(', mpWrite) > 0 && /claimHolder\(back\) !== me \|\| \(s\(back\[F\.reason\]\) \?\? ''\)\.trim\(\) !== mark/.test(mp), 'markObyemPartial: бичсэний дараа тэмдэг суусныг тулгахгүй байна');
-  /* ⚠️ 2026-10-21 (аудит): claimObyem · markObyemPartial — decideObyem-ийн ХҮРЭЭ ба ЗОХИОГЧ шалгуур (`obyemAuthzDeny`) */
   const cl = L.slice(L.indexOf('export async function claimObyem('), L.indexOf('export async function obyemApproveGuard('));
   assert.ok(cl.indexOf('obyemAuthzDeny(') > 0 && cl.indexOf('obyemAuthzDeny(') < cl.indexOf('casObyemClaim('), 'claimObyem: хүрээ/зохиогч шалгалгүй түгжиж байна');
   assert.ok(mp.indexOf('obyemAuthzDeny(') > 0 && mp.indexOf('obyemAuthzDeny(') < mp.indexOf('claimHolder(cur)'), 'markObyemPartial: хүрээ/зохиогч шалгалгүй тэмдэг тавьж байна');
@@ -201,7 +187,6 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   assert.ok(/obyemScope\(meNow \?\? me, 'approver'\)/.test(az) && /me === author/.test(az), 'obyemAuthzDeny: хүрээ ба зохиогч дүрэм дутуу');
   assert.ok(/written === 0 && !isLostWrite\(e\)/.test(fn), 'useObyem: хариу алдагдсан үед хагас бичилтийн тэмдгийг арилгаж байна');
   assert.ok(/refreshSeq\.current !== seq/.test(src), 'useObyem: refreshObyem-д дуудлагын дараалал алга');
-  /* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт — түгжихийн ӨМНӨ ба `applyUpdates`-ийн ЯГ ӨМНӨ (fail-closed) */
   const a0 = fn.indexOf('const ab0 = await archBusy()');
   const a1 = fn.indexOf('const ab1 = await archBusy()');
   assert.ok(a0 > 0 && a0 < fn.indexOf('await claimObyem('), 'useObyem: архивлалтын шалгалт түгжихээс ӨМНӨ алга');
@@ -210,7 +195,7 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
   const ab = fn.slice(fn.indexOf('const archBusy'), a0);
   assert.ok(/catch \(e\) \{\s*return tr\(/.test(ab), 'useObyem: архивлалтын төлөв уншигдахгүй бол хаахгүй (fail-open)');
 }
-/* ── ⚠️ 2026-10-09: `isLostWrite` = `butetsEdit.isLostResponse` (тодорхой татгалзал ≠ хариу алдагдсан) ── */
+/* ── 2026-10-09: `isLostWrite` = `butetsEdit.isLostResponse` (тодорхой татгалзал ≠ хариу алдагдсан) ── */
 {
   const { isLostWrite } = await import('@/lib/lostWrite.ts');
   const { isLostResponse } = await import('@/lib/butetsEdit.ts');
@@ -233,7 +218,7 @@ console.log('✅ татан авах дүрэм · батлах баталгаа
 console.log('✅ жааз солигдсон бол батлахгүй · алгассан нүд асууна/хадгална · хоёр таб');
 console.log('✅ архивлалтын хаалт · isLostWrite = isLostResponse');
 
-/* ══ ⚠️ 2026-10-12 (дарааллын аудит): хуваарийн загвар обьёмд — serverNow · claimAt · existing · эзэнтэй clear · withdraw CAS ══ */
+/* ══ 2026-10-12 (дарааллын аудит): хуваарийн загвар обьёмд — serverNow · claimAt · existing · эзэнтэй clear · withdraw CAS ══ */
 {
   const fs = await import('node:fs');
   const L = fs.readFileSync(new URL('./obyemBatlah.ts', import.meta.url), 'utf8');

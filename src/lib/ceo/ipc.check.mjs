@@ -1,13 +1,7 @@
 /**
  * IPC ҮЗҮҮЛЭЛТИЙН ШАЛГУУР — сүлжээгүй, жинхэнэ `computeIpc`-ийг импортолно.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/ipc.check.mjs
- *
- * ⚠️ 2026-09-09: эх сурвалж `IPC_LOG` (`ipc_0813/172`, тест өгөгдөл) →
- *    `HO_IPC` (`HO_guitsetgel_arcgis_csv/196`). СУУТГАЛ · «төлөх ёстой
- *    огноо» · «ХЯНАГДАЖ БАЙНА» төлөв гурав шинэ эхэд ОГТ БАЙХГҮЙ тул
- *    тэдгээрийн тест (хугацаа хэтэрсэн · хянагдаж буй акт · сөрөг олгох
- *    дүн) БҮРЭН ХАСАГДСАН — байхгүй ойлголтыг тестлэх нь худал итгэл.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/ipc.check.mjs
  *
  * Ямар БОДИТ алдаанаас хамгаалж байгаа вэ:
  *  1. ГРЕЙН — мөр = НЭГ ГҮЙЛГЭЭ, гэрээний талбар `geree_kod` бүрд
@@ -39,7 +33,6 @@ const C = HO_IPC.contractFields;
 const P = HO_IPC.payFields;
 const { advance, work } = HO_IPC.kinds;
 
-/* ⚠️ Өдрийн ДУНД (12:00Z) — локал өдөр нь UTC−12…UTC+11 бүсэд 2026-09-06 */
 const NOW = Date.UTC(2026, 8, 6, 12, 0, 0);
 assert.equal(todayOf(NOW), '2026-09-06');
 
@@ -103,7 +96,6 @@ assert.equal(epochOf(null), null);
   assert.equal(s.paid, 60, 'төлбөр нь мөр бүрээр НИЙЛҮҮЛНЭ');
   assert.equal(s.paidPct, (60 / 90) * 100, 'хувь нь 0–100, pct() 100-аар үржүүлдэггүй');
 
-  /* ⚠️ 2026-10-09: `ref.pct` өгсөн бол дахин бодохгүй; `null` → «—» (0% биш) */
   const rp = computeIpc(rows, NOW, { contract: 200, paidContracted: 0, pct: null });
   assert.ok(rp.facts.includes('гэрээнд эзлэх —'), rp.facts.join(' | '));
   const rq = computeIpc(rows, NOW, { contract: 200, paidContracted: 50, pct: 12.5 });
@@ -123,7 +115,6 @@ assert.equal(epochOf(null), null);
   const r = computeIpc([pay({ amount: null }), pay({ amount: '' })], NOW);
   assert.equal(r.value, '—', 'бүгд дүнгүй бол «—», 0 ₮ БИШ');
   assert.equal(r.level, 'warn', 'дүнгүй мөр нь өгөгдлийн цоорхойн дохио');
-  /* ⚠️ 2026-10-26 (аудит): «N төлбөр» нь ЗӨВХӨН dun-тай мөр (`ipcTable.payCount`) — дүнгүй AUTO мөр тоологдохгүй */
   const auto = { ...pay({ amount: null }), [P.id]: 'AUTO|Багц-1|2026-09-01' };
   const sa = summarize([pay({ amount: 10 }), pay({ amount: 20 }), auto]);
   assert.equal(sa.pays, 2, 'AUTO мөр төлбөрт тоологдов');
@@ -194,8 +185,6 @@ assert.equal(epochOf(null), null);
   const r = computeIpc(rows, NOW);
   assert.equal(r.value, '530 ₮');
   assert.equal(r.unit, 'олгосон санхүүжилт');
-  /* ⚠️ 2026-09-22: `ref` (Cashflow CONTRACTED) өгөөгүй тул HO-ийн хувь «HO
-     хүснэгтээр» гэж ИЛ нэрлэгдэнэ; `ref`-тэй үед Cashflow-гийн гэрээ ба хувь. */
   assert.deepEqual(r.facts, [
     '1 гэрээ · 2 төлбөр', 'урьдчилгаа 314 ₮', 'гүйцэтгэл 216 ₮',
     'гэрээнд эзлэх 588.9% (HO хүснэгтээр)', 'хэмнэлт 10 ₮',

@@ -17,13 +17,6 @@ import { loadRows, computeAll, childIndexes } from './bagtsSheet.ts';
 import { TREES } from './bagts.trees.ts';
 import { findKomissRow } from '@/lib/ulsiinKomiss.ts';
 
-/* ⚠️ Org-only үйлчилгээ, токенгүй → АМЬД хэсгүүд (2–4) алгасна (`tools/ts-alias.mjs`, 2026-09-17).
-   ⚠️ 2026-09-25: 1-р хэсэг СҮЛЖЭЭГҮЙ тул алгасалтад ОРОХГҮЙ. Урьд нь файлын эхэн дэх
-   гаралт (ба loader-ийн бүтэн файлын stub) түүнийг хамт алгасдаг байсан тул токенгүй/
-   хугацаа дууссан токентой CI дээр эвдэрсэн TREES `npm test`-ийг давдаг байв. Тиймээс:
-     · тэмдгийн нэрийг ЗАЛГАЖ бичнэ — `ts-alias-hooks.mjs` эх кодод тэр нэр ШУУД
-       бичигдсэн `.check.mjs`-ийг бүхэлд нь stub болгодог (1-р хэсэг ч ажиллахгүй);
-     · `process.exit()` ДУУДАХГҮЙ (Windows-д libuv assertion) — амьд хэсгүүд `if` дотор. */
 const LIVE_SKIP_ENV = ['SELBE', 'LIVE', 'SKIP'].join('_');
 const liveSkip = !!process.env[LIVE_SKIP_ENV];
 
@@ -45,10 +38,6 @@ for (const [key, t] of Object.entries(TREES)) {
 console.log(`✅ «бүлэг эсэх» дүрэм ${checked} мөр дээр TREES-тэй таарлаа`);
 
 if (liveSkip) {
-  /* ⚠️ 2026-10-22 (аудит): шалтгааныг loader-оос (`…_REASON`, нэрийг дээрх шиг ЗАЛГАЖ) авна — урьд «Organization-only»
-     гэж хатуу бичигдсэн тул Enterprise хүрэгдээгүй CI дээр ч тэгж хэлдэг байв. `SELBE_LIVE_REQUIRED=1` бол бусад амьд
-     шалгуурын адил (`ts-alias-hooks.mjs`) алгасахын оронд УНАНА — энэ файл бүхэлдээ stub болдоггүй тул урьд тэр тугийг
-     тойрдог байв. «⏭ амьд шалгуур (2–4) алгасав — …» мөрийг `test-all.mjs`-ийн `SKIP_RE` тоолно. */
   const why = process.env[`${LIVE_SKIP_ENV}_REASON`] || 'үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга';
   if (process.env.SELBE_LIVE_REQUIRED === '1') {
     throw new Error(`⛔ SELBE_LIVE_REQUIRED=1: амьд шалгуур (2–4) алгасагдах байсан — ${why}`);
@@ -62,9 +51,6 @@ if (liveSkip) {
     if (!sc) { console.log(`${pkg.key.padEnd(9)} ⚠ схем уншигдсангүй`); continue; }
 
     if (!sc.f.gun) {
-      /* ⚠️ Багана хараахан нэмэгдээгүй нь АЛДАА БИШ: `tools/bagts-gun.mjs`
-         ажиллах хүртэл код `TREES`-ээ хэвийн хэрэглэсээр байна. Зөвхөн мэдээлнэ —
-         эс бөгөөс байршуулалтын завсарт CI улаан болно. */
       console.log(`${pkg.key.padEnd(9)} — «gun» багана алга (TREES-ээр ажиллана)`);
       continue;
     }
@@ -75,9 +61,6 @@ if (liveSkip) {
     if (!filled) { console.log(`${pkg.key.padEnd(9)} — «gun» хоосон (нийтлэгдээгүй)`); continue; }
 
     // Мөрийн тоо TREES-тэй тэнцүү үед л тулгах утгатай (мөр нэмэгдсэн бол зөрнө).
-    /* ⚠️ 2026-09-29: «Улсын комисс» мөр (2026-09-28, автомат) нь TREES-д БАЙХГҮЙ. Амьд хуудсанд
-       нэмэгдсэний дараа мөрийн тоо TREES-тэй САНАМСАРГҮЙ тэнцэж (b31_9f: 1470 + 1 = 1471),
-       сүүлийн мөр гүн 0 ≠ 2 гэж унадаг байв — тэр багцыг «мөр нэмэгдсэн» гэж үзнэ. */
     if (rows.length === tree.length && !findKomissRow(rows)) {
       for (let i = 0; i < rows.length; i++) {
         const ch = tree[i];
@@ -104,9 +87,6 @@ if (liveSkip) {
 
   const before = computeAll(base, nBld, asOf ?? Date.now());
 
-  /* ⚠️ МӨНГӨТЭЙ бүлгийг сонгоно. Мөнгөн дүнгүй бүлэгт шинэ мөр нэмэхэд түүний
-     жин автоматаар 100% болох тул «жин ДАХИН тарав уу» гэсэн гол шалгуур
-     утгагүй өнгөрнө — сул шалгуур нь шалгуургүйтэй адил. */
   const kids0 = childIndexes(base);
   const gi = base.findIndex((r, i) =>
     r.group && (before[i].H ?? 0) > 0
@@ -184,9 +164,6 @@ if (liveSkip) {
     const ref = r.rows.map((x) => `${x.no} ¦ ${x.work}`);
 
     // Хамгийн гүн бүлгийг олж, СҮҮЛИЙН удмынх нь ард шинэ мөр хийнэ
-    /* ⚠️ Блокгүй 8 багц 3 түвшинтэй (бүлэг ≤ 2) тул «3» олдохгүй бол ХАМГИЙН ГҮН
-       бүлгийг авна — үндэс рүү унавал шинэ мөр хуудасны төгсгөлд орж, «өмнөх
-       мөрийн гүн» дүрэм зориудаар унана (2026-09-17). */
     let g = r.rows.findIndex((x) => x.group && x.depth === 3);
     if (g < 0) {
       const md = Math.max(-1, ...r.rows.filter((x) => x.group).map((x) => x.depth));
@@ -204,8 +181,6 @@ if (liveSkip) {
     for (let i = 0; i < cur.length; i += 1) {
       d[i] = map[i] >= 0 ? dep(map[i]) : (i > 0 ? d[i - 1] : 0);
     }
-    /* ⚠️ 2026-09-29: «Улсын комисс» мөр TREES-д байхгүй (автоматаар нэмэгдсэн, гүн 0) —
-       TREES-ийн тэр индексийн тэмдэгттэй тулгахгүй (b31_9f-д индекс нь TREES дотор таардаг). */
     const kr = findKomissRow(r.rows);
     for (let i = 0; i < cur.length; i += 1) {
       if (map[i] >= 0 && r.rows[map[i]] !== kr) {

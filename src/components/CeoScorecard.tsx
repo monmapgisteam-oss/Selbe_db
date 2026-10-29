@@ -2,20 +2,6 @@
 
 /**
  * БАГЦ АЖЛЫН ОНОО — нүүрний удирдлагын самбар (2026-09-17, CEO схем самбарыг сольсон).
- *
- * ⚠️ Хэрэглэгчийн шаардлага: Cashflow-ийн 74 багц ажлыг «Төсөв, гэрээлсэн дүн»
- *    чартын ажлын төрлөөр бүлэглэж, багц бүрд 6 бүлгийн оноо —
- *    Гүйцэтгэл · Санхүүжилт · Газар чөлөөлөлт · Зөвшөөрөл · ХАБЭА
- *    (⚠️ «Чанар» 2026-10-23, «Ерөнхий төлөвлөгөө» 2026-10-27 ХАСАГДСАН — `scorecard.ts`-ийн ⚠️).
- *
- * ⚠️ ТООЦОО ЭНД БАЙХГҮЙ: оноо `src/lib/ceo/scorecard.ts` (цэвэр), өгөгдөл
- *    `scorecardLoad.ts`. Дэлгэрэнгүйн доорх үзүүлэлтүүд нь хуучин 13 CEO
- *    үзүүлэлт (`registry.ts`) — 6 бүлэгт хуваарилагдан, сонгосон багцаар
- *    шүүгдэнэ (`CeoBoard.KpiDetail`).
- *
- * ⚠️ ХҮНД бүлгүүд (газар · төлөвлөгөө · чанар) суурь оноо гарсны ДАРАА шатлан
- *    ачаална — ArcGIS «Too many requests»-ээс сэргийлнэ (`useKpis`-ийн дүрэм).
- *    Ирээгүй бүлэг «…», өгөгдөлгүй бүлэг «—»; аль нь ч нийт дунджид ордоггүй.
  */
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { dataVersion, subscribeData } from '@/lib/dataBus';
@@ -67,13 +53,6 @@ const STATUS_RULE = (st: WorkStatus): string => ({
 
 /**
  * ТӨЛӨВИЙН ХЭСЭГ — 4 төлөвийн нягт карт (2026-09-17, гурав дахь хувилбар).
- *
- * ⚠️ Ажлын төрөл бүрийн тархалт ЭНДЭЭС «Багц ажил» жагсаалтын бүлгийн мөр рүү
- *    ШИЛЖСЭН (хэрэглэгч): бүлгийн нэрийн ард нь тархалт байвал аль төрөлд
- *    асуудал төвлөрсөн нь жагсаалттайгаа шууд холбогдоно. Карт нь бага
- *    өндөртэй — өмнө нь хажуугийн жагсаалтын өндрөөр сунаж хоосон зай үүсгэдэг байв.
- *
- * ⚠️ Дарахад шүүнэ, ДАХИН дарахад цуцална; сонгосон нь ✓ + өнгөт дэвсгэр.
  */
 function StatusPanel({
   counts, selected, onStatus,
@@ -83,8 +62,6 @@ function StatusPanel({
   onStatus: (st: WorkStatus) => void;
 }) {
   const total = STATUSES.reduce((acc, st) => acc + counts[st], 0);
-  /* ⚠️ 2026-10-09 (аудит №6): төлөв бүрийг тусад нь `num()` тойруулахад 4 хувь нийлээд 99/101%
-     гардаг байв → их үлдэгдлийн арга (`chartStyle.roundPctsTo100`, Donut/Stack-тай нэг). */
   const pcts = roundPctsTo100(STATUSES.map((st) => counts[st]), total);
   const pctOf = (st: WorkStatus): string => {
     if (!total) return '—';
@@ -134,8 +111,6 @@ function StatusPanel({
 
 /**
  * Бүлгийн мөрийн төлөвийн тархалт — «Багц ажил» жагсаалтад.
- * ⚠️ Хэсэг дарвал «тэр төрлийн тэр төлөв»-өөр шүүнэ; дахин дарвал цуцална.
- *    Мөрийн дарлага (бүлэг задлах) руу ДАМЖИХГҮЙ (`stopPropagation`).
  */
 function GroupStatusBar({
   type, counts, filter, onCell,
@@ -146,9 +121,6 @@ function GroupStatusBar({
   onCell: (type: string, st: WorkStatus) => void;
 }) {
   const typeOn = filter.types.includes(type);
-  /* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): `title` (≈1 с хүлээлттэй, мэдрэгч
-     дэлгэцэд гардаггүй) → порталын `useTip`. Өндөр 18px ХЭВЭЭР — энэ бол шүүлтийн товч
-     (тоо нь дотроо бичигдэнэ); зай/радиус/өнгө нь `Stack`-тай ижил (ceoScorecard.module.css). */
   const tip = useTip();
   return (
     <>
@@ -199,15 +171,10 @@ const never = <T,>() => new Promise<T>(() => {});
  *   · `pending` → «хүлээгдэж» (бүртгэл бий, дата хараахан ороогүй — 0 БИШ)
  *   · null → «—» (энэ багцад хамаарах өгөгдөл алга)
  */
-/* ⚠️ 2026-10-28: самбарын дээд сэрэмжлүүлгийн өнгө (`scoreAlerts`) — асуудлын зэрэгтэй (`IssueTone`) ижил */
 const ALERT_TONE: Record<IssueTone, string> = { bad: LEVEL_TONE.bad, warn: LEVEL_TONE.warn, info: 'var(--data)' };
 
-/** `caveat` — оноон дээрх ⚠ (`DimScore.caveat.text`, hover-оор шалтгаан) — 2026-10-28 */
+/** `caveat` — оноон дээрх (`DimScore.caveat.text`, hover-оор шалтгаан) — 2026-10-28 */
 function Score({ v, loading, pending, big, dim, level, caveat }: { v: number | null; loading?: boolean; pending?: boolean; big?: boolean; dim?: Dim; level?: Level; caveat?: string }) {
-  /* ⚠️ ХАБЭА өөрийн босготой (90/70) — `dimLevel` */
-  /* ⚠️ 2026-10-09: `DimScore.level` (газар — давхцлын тоогоор, `overlapLevel`) оноонос ДАВАМГАЙЛНА.
-     Урьд нь чип нь `dimLevel`-ээр (оноо 95 → good) будагдаж, 1 давхцалтай ажил ногоон харагдаж,
-     хажуугийн карт улаан байв. */
   const lv = loading ? 'loading' : v == null ? dimLevel(dim, v) : level ?? dimLevel(dim, v);
   if (!loading && v == null && pending) {
     return (
@@ -222,9 +189,6 @@ function Score({ v, loading, pending, big, dim, level, caveat }: { v: number | n
       style={{ ['--h']: LEVEL_TONE[lv] } as CSSProperties}
       title={loading ? tr('Ачаалж байна…') : caveat ?? (v == null ? tr('Энэ багцад хамаарах өгөгдөл алга') : levelLabel(lv))}
     >
-      {/* ⚠️ 2026-09-29 (аудит 10): 1 оронтой — `num(v)` 79.6-г «80» гэж бүхэлддэг атал
-          өнгө/түвшин нь бүхэлдээгүй утгаар (`scoreLevel(79.9) → warn`, check.mjs)
-          → «80» шар харагдаж, домог «≥80 хэвийн» гэдэгтэй зөрдөг байв. */}
       {loading ? '…' : v == null ? '—' : num(v, 1)}
       {!loading && caveat ? <i className={s.cav} aria-hidden>⚠</i> : null}
     </span>
@@ -235,10 +199,6 @@ function Score({ v, loading, pending, big, dim, level, caveat }: { v: number | n
 function useDimKpis(dim: Dim | null): { slots: Record<string, Slot>; retry: (key: string) => void } {
   const [slots, setSlots] = useState<Record<string, Slot>>({});
   const [nonce, setNonce] = useState(0);
-  /* ⚠️ 2026-09-30: ӨГӨГДЛИЙН АВТОБУС deps-д — `CeoBoard.useKpis`-тэй ижил. Урьд нь
-     зөвхөн `[dim, nonce]` тул порталаас бичсэний дараа (`invalidate`) хүснэгт/хавтан
-     шинэчлэгдэж, сонгосон ажлын «эх үзүүлэлтүүд» карт ХУУЧИН тоогоо барьдаг байв.
-     Хуучин утга дэлгэц дээр үлдэж, шинэ нь ирэхэд солигдоно (анивчихгүй). */
   const bus = useSyncExternalStore(subscribeData, dataVersion, () => 0);
   useEffect(() => {
     if (!dim) return;
@@ -266,7 +226,6 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
   const defs = dimDefs();
   const baseQ = useAsync(loadScoreBase, []);
   const baseReady = baseQ.state === 'ready';
-  /* ⚠️ Хүнд бүлгүүд суурийн ДАРАА, нэг нэгээр шатлана */
   const landQ = useAsync(() => (baseReady ? loadScoreLand() : never<Awaited<ReturnType<typeof loadScoreLand>>>()), [baseReady]);
 
   const loadingDims = useMemo(() => new Set<Dim>(
@@ -287,24 +246,11 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
     ...(baseQ.data?.failed ?? []),
     ...(landQ.state === 'ready' && landQ.data.failed ? [tr('Газрын давхцал (хэсэгчлэн)')] : []),
   ];
-  /**
-   * ⚠️ 2026-09-21: ЖАГСААЛТ · ТООЛОЛ · ШҮҮЛТ = ЗӨВХӨН «багц ажил» (74). Газар
-   * чөлөөлөлтийн 4 мөр (`isLandWork`, 6-р хэсэг) «78 биш 74» дүрмээр багц ажил
-   * биш тул «Нийт N багц ажил», `statusCounts`, бүлгийн жагсаалтад ОРОХГҮЙ —
-   * урьд нь 78 гарч, санхүүжилтийн тоололд «Өгөгдөлгүй» 4 мөр нэмэгддэг байв.
-   * Төслийн нийт (`projectDims`) нь `allWorks` — газрын мөрийн `land` оноо
-   * (газар чөлөөлөлтийн явц) тэнд л хэрэглэгдэнэ.
-   */
   const works = useMemo(() => (allWorks ? allWorks.filter((w) => !w.isLandWork) : null), [allWorks]);
 
   const groups = useMemo(() => (works ? groupByType(works) : []), [works]);
   const project = useMemo(() => (allWorks ? projectDims(allWorks) : null), [allWorks]);
 
-  /**
-   * ⚠️ 2026-09-17 (хэрэглэгч): ажлын төрлийн бүлгүүд АНХДАГЧААР ХУМИГДСАН —
-   *    «Орон сууц», «Инженерийн дэд бүтэц» мэт бүлгийн оноо л харагдаж,
-   *    сонгоход доторх багц ажлууд задарна.
-   */
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggleGroup = (type: string) => setOpen((c) => {
     const n = new Set(c);
@@ -342,9 +288,8 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
     applyFilter({ ...filter, problemDim: filter.problemDim === d ? null : d });
   };
   const active = filterActive(filter);
-  /* ⚠️ Анхдагч сонголт БАЙХГҮЙ — «Сонгосон багц ажил» хэсэг зөвхөн сонгосон үед гарна */
   const sel = pick == null ? null : (works ?? []).find((w) => w.oid === pick) ?? null;
-  /** Задаргааны самбар — нарийн дэлгэцэд сонголтын дараа тийш гүйлгэнэ (`togglePick`-ийн ⚠️) */
+  /** Задаргааны самбар — нарийн дэлгэцэд сонголтын дараа тийш гүйлгэнэ (`togglePick`) */
   const asideRef = useRef<HTMLElement>(null);
   const focusReq = useRef(false);
   /** Сонгосон ажлыг ДАХИН дарвал сонголт цуцлагдана (2026-09-17, «deselect») */
@@ -352,13 +297,6 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
     focusReq.current = pick !== oid;
     setPick((p) => (p === oid ? null : oid));
   };
-  /*
-   * ⚠️ 2026-10-06 (аудит): НАРИЙН дэлгэцэнд (≤1100px, `.stage` нэг багана) задаргаа нь хүснэгтийн
-   *    ДООР гардаг тул мөр сонгоход юу ч өөрчлөгдөөгүй мэт харагддаг байв (урт хүснэгтийн доор).
-   *    Сонгомогц задаргаа руу гүйлгэж, фокусыг тийш шилжүүлнэ (гараар/дэлгэц уншигчаар ч).
-   *    Өргөн дэлгэцэд задаргаа хажууд нь тул гүйлгэхгүй. Зөвхөн ХЭРЭГЛЭГЧ сонгоход
-   *    (`focusReq`) — Esc/цуцлалт, өгөгдөл шинэчлэгдэх үед үсрэхгүй.
-   */
   useEffect(() => {
     if (pick == null || !focusReq.current) return;
     focusReq.current = false;
@@ -368,7 +306,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     el.focus({ preventScroll: true });
   }, [pick]);
-  /* Esc — сонголт цуцлах. ⚠️ Зөвхөн сонголттой үед сонсоно; setState нь callback-д (эффектийн биед биш) */
+  /* Esc — сонголт цуцлах. Зөвхөн сонголттой үед сонсоно; setState нь callback-д (эффектийн биед биш) */
   useEffect(() => {
     if (pick == null) return undefined;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPick(null); };
@@ -379,7 +317,6 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
   const { slots, retry } = useDimKpis(sel ? dim : null);
 
   const counts = useMemo(() => statusCounts(works ?? []), [works]);
-  /* ⚠️ 2026-10-28 (хэрэглэгч: «асуудалтай зүйл дээр alert»): самбарын дээд сэрэмжлүүлэг — `scoreAlerts` (цэвэр, тестлэгдсэн) */
   const alerts = useMemo(() => (works ? scoreAlerts(works) : []), [works]);
   const dimCounts = useMemo(
     () => Object.fromEntries(DIMS.map((d) => [d, dimStatusCounts(works ?? [], d)])) as Record<Dim, Record<DimStatus, number>>,
@@ -409,11 +346,6 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
         <h2 className={s.title}>{tr('Багц ажлын оноо')}</h2>
         <span className={s.legend}>
           {tr('≥{0} хэвийн · {1}–{2} анхааруулга · <{1} эрсдэлтэй (ХАБЭА: ≥{3} · {4}–{5} · <{4}) · «хүлээгдэж» дата ороогүй · «—» хамааралгүй', SCORE_GOOD, SCORE_WARN, SCORE_GOOD - 1, HSE_GOOD, HSE_WARN, HSE_GOOD - 1)}
-          {/* ⚠️ 2026-10-06: газар (`pctLevel` 95/80) ба ерөнхий төлөвлөгөө (`scoreLevel` 65/45)
-              CEO карттай ижил босготой болсон (`scorecard.ts` `dimLevel`) — тайлбарт ил бичнэ */}
-          {/* ⚠️ 2026-10-09: газрын түвшин 2 дүрэмтэй — газар чөлөөлөлтийн өөрийн ажилд хувиар (95/80),
-              бусад ажилд давхцлын ТООГООР (`overlapLevel`: 0 = хэвийн, ≥1 = эрсдэлтэй; дунд түвшингүй).
-              Урьд тайлбар нь зөвхөн 95/80-г бичдэг тул 95 оноотой улаан чип ойлгомжгүй байв. */}
           {' · '}{tr('Газар: чөлөөлөлтийн ажилд ≥{0} · {1}–{2}; бусад ажилд давхцал 0 хэвийн · ≥1 эрсдэлтэй · Ерөнхий төлөвлөгөө: ≥{3} · {4}–{5}', 95, 80, 94, 65, 45, 64)}
         </span>
       </header>
@@ -425,11 +357,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
       {/* ── Төслийн нийт — 6 бүлэг + нийт; хавтан дарахад тухайн бүлэгт АСУУДАЛТАЙ ажлууд шүүгдэнэ ── */}
       <div className={s.summary}>
         <div className={`${s.sumTile} ${s.sumTotal}`}>
-          {/* ⚠️ 2026-09-30: арга нь ИЛ — бүлгийн дундаж ТӨСВӨӨР жигнэсэн, нийт =
-              хажуугийн бүлгүүдийн дундаж (`scorecard.projectDims`) */}
           <span className={s.sumLabel} title={tr('Бүлэг бүрийн оноо багц ажлын урьдчилсан төсөвт өртгөөр жигнэсэн. Нийт оноо = оноотой бүлгүүдийн дундаж.')}>{tr('Нийт оноо')}</span>
-          {/* ⚠️ 2026-09-29 (аудит 10): хүнд хэмжээс татагдаж байхад нийт оноог хэсэгчилсэн
-              дундажаар харуулахгүй — хүснэгтийн нүдтэй (`loadingDims.size > 0`) нэг дүрэм */}
           <Score v={project?.total ?? null} loading={!project || loadingDims.size > 0} big />
           <span className={s.sumSub}>{works ? tr('{0} багц ажил', num(works.filter((w) => !w.cancelled).length)) : '…'}</span>
           <span className={s.sumSub}>{tr('Төсвөөр жигнэсэн')}</span>
@@ -457,13 +385,11 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
           </button>
         ))}
       </div>
-      {/* ⚠️ 2026-09-25: хэсэгчилсэн уналтыг ч ил — QAQC хуудас ба газрын давхцал (`scorecardLoad`-ийн `failed`) */}
       {(partFailed.length || failedDims.length) ? (
         <p className={s.warnLine}>
           {tr('Татагдсангүй: {0}', [...partFailed, ...failedDims].join(', '))}
         </p>
       ) : null}
-      {/* ⚠️ 2026-10-28: оноонд хэр итгэхийг САМБАР ӨӨРӨӨ хэлнэ — урьд нь зөвхөн багц сонгосны дараа доор гардаг байв */}
       {alerts.length > 0 && (
         <ul className={s.alerts} role="status" aria-label={tr('Анхааруулга')}>
           {alerts.map((a) => (
@@ -523,12 +449,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
               )}
               {groups.map((g) => {
                 const shown = active ? g.works.filter((w) => passFilter(w, filter)) : g.works;
-                /* ⚠️ Шүүлт идэвхтэй үед тэнцэх ажилгүй бүлэг НУУГДАНА */
                 if (active && shown.length === 0) return null;
-                /* ⚠️ 2026-09-21: бүлгийн «N» = `statusCounts`-тай НЭГ дүрэм — ХАСАГДСАН ажил
-                   ТООЛОГДОХГҮЙ. Урьд нь `g.works.length` хасагдсаныг ч тоолдог тул
-                   бүлгүүдийн нийлбэр дээрх «Нийт N багц ажил» (`statusCounts`-ийн
-                   нийлбэр)-тэй зөрдөг байв. Хасагдсан мөр жагсаалтад ХЭВЭЭР харагдана. */
                 const liveN = g.works.filter((w) => !w.cancelled).length;
                 const shownN = shown.filter((w) => !w.cancelled).length;
                 const cancelledN = g.works.length - liveN;
@@ -555,7 +476,6 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                         <GroupStatusBar type={g.type} counts={statusCounts(g.works)} filter={filter} onCell={toggleCell} />
                       </td>
                       {DIMS.map((d) => <td key={d} className={s.cell}><Score v={g.dims[d]} pending={g.pending[d]} loading={loadingDims.has(d)} dim={d} /></td>)}
-                      {/* ⚠️ Хүнд хэмжээсүүд ирээгүй байхад НИЙТ оноог бэлэн мэт харуулахгүй */}
                       <td className={s.cell}><Score v={g.total} loading={loadingDims.size > 0} /></td>
                     </tr>
                     {!isClosed && shown.map((w) => (
@@ -609,14 +529,12 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                   <b className={s.dTitle}>{sel.name}</b>
                 </div>
                 <div className={s.dTotal}>
-                  {/* ⚠️ 2026-09-29 (аудит 10): хүснэгтийн мөртэй ижил — хүнд хэмжээс ирээгүй бол «…» */}
                   <Score v={sel.total} loading={!sel.cancelled && loadingDims.size > 0} big />
                   <span>{tr('Нийт оноо')}</span>
                 </div>
                 <button type="button" className={s.dClose} onClick={() => setPick(null)} aria-label={tr('Сонголт цуцлах')} title={tr('Сонголт цуцлах (Esc)')}>×</button>
               </header>
 
-              {/* ⚠️ Мөнгөн дүн бүр НЭРТЭЙ — нэргүй «313,688,227,084 ₮» ойлгомжгүй байв */}
               <dl className={s.meta}>
                 <div><dt>{tr('Ажлын төрөл')}</dt><dd>{sel.type || '—'}</dd></div>
                 <div><dt>{tr('Багц')}</dt><dd>{sel.pkgLabel || '—'}</dd></div>
@@ -661,7 +579,6 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                 {DIMS.map((d) => {
                   const sc = sel.dims[d];
                   const loading = !sel.cancelled && loadingDims.has(d);
-                  /* ⚠️ 2026-10-09: ажлын бүлгийн өөрийн түвшин (газар — давхцлын тоо) оноонос давамгайлна */
                   const lv = loading ? 'loading' : sc.level ?? dimLevel(d, sc.score);
                   return (
                     <li key={d}>

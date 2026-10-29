@@ -1,14 +1,13 @@
 /**
  * «ТОХИРОМЖТОЙ БАЙДАЛ» / ЗАМЫН СИМУЛЯЦЫН РЕГРЕСС (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/analysis/suitUi.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/analysis/suitUi.check.mjs
  *
- * Хамгаалж буй алдаанууд (засвар бүр `⚠️ 2026-09-30`):
+ * Хамгаалж буй алдаанууд (засвар бүр ` 2026-09-30`):
  *   1. «Урсгал» = Σv / (N·V_MAX) — машины чөлөөт хурд 25–50 км/ц тул ЧӨЛӨӨТ сүлжээ 78%.
  *   2. Трафикийн хураангуй (машин, хурд, урсгал) 3D/горим/сүлжээ солиход хуучнаараа «амьд».
  *   3. Гэрлэн дохио унахад дохиогүй сүлжээ сесс дуустал кэшлэгдэж, UI юу ч хэлдэггүй.
  *   4. Автобус/LRT/инженерийн эх унахад `[]` → хүртээмж «өгөгдөл алга»/хэт хол, хагас дүн кэшлэгдэнэ.
  *   5. Симуляцаас гарахад цаг 10 Гц-ээр тоолсоор бүх харагдацыг дахин зурна.
- * ⚠️ Канвас/rAF/ArcGIS тул ЭХ КОДООР шалгана; 1-ийн томьёог тооцоогоор давхар баталгаажуулна.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -55,13 +54,10 @@ assert.ok(suit.includes('data && data.failed.length > 0 && ('));
 /* 5 */
 assert.ok(suit.includes('if (!roadMode && clock.playing) clock.setPlaying(false);'));
 
-/* ⚠️ 2026-10-21 (аудит): талбайгүй барилгын попап «0 м²» биш — мөр орохгүй (null ≠ 0) */
 assert.ok(suit.includes("const area = Number.isFinite(areaM2) && areaM2 > 0 ? tr('{0} м²', nf(areaM2)) : null;"));
 assert.ok(suit.includes("dt(tr('Нийт талбай'), area)"));
 assert.ok(!suit.includes("nf(Number(a['Барилгын_нийт_талбай_m2'] ?? 0))"), '«0 м²» бичдэг хуучин зам үлдсэн');
 
-/* ⚠️ 2026-10-21 (аудит): BIM сонгогч · `manageBim` кэшийн ОДООГИЙН инстанцыг ФУНКЦЭЭР (`bimLive`) авч,
-   багц/горим солигдоход `rebind` — MapCanvas-тай ижил; нэг удаагийн `bimAll` массив үлдээгүй */
 {
   const suitMap = read('./SuitMap.tsx');
   assert.ok(suitMap.includes('const bimLive = (map: Map): BuildingSceneLayer[] => BIM.layers.flatMap((b) => {'), '`bimLive` алга');

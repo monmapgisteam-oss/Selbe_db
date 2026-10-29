@@ -2,15 +2,9 @@
  * UI SMOKE — `next/dynamic`-ийн СТУБ (`ts-alias-hooks.mjs`, ui горим).
  *
  * `dynamic(loader, { loading })` нь Node-д синхрон компонент буцаана:
- *   · `preloadDynamic()`-ээс ӨМНӨ — `loading()` (байвал) эсвэл placeholder `<div>`;
+ *   · `preloadDynamic`-ээс ӨМНӨ — `loading` (байвал) эсвэл placeholder `<div>`;
  *   · дараа нь — loader-ийн шийдсэн ЖИНХЭНЭ компонент (`m.default` эсвэл
  *     `.then((m) => m.X)`-ийн шууд функц).
- *
- * ⚠️ `preloadDynamic` нь бүртгэгдсэн loader-уудыг дараалан await хийнэ; loader
- *    дотроос шинэ `dynamic()` бүртгэгдвэл (Portal → ViewPanel г.м.) давталт
- *    тэднийг ч барина (`for` нь массивын уртыг дахин уншдаг).
- * ⚠️ `ssr:false` гэсэн тохиргоог үл тоомсорлоно — smoke тест нь яг тэр
- *    «клиент дээр л зурагддаг» модулиудыг Node-д зурах зорилготой.
  */
 import { createElement } from 'react';
 

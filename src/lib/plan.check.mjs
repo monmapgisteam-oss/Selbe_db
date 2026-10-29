@@ -1,6 +1,6 @@
 /**
  * ХУВААРИЙН ЗАГВАРЫН ШАЛГУУР — цэвэр функц тул сүлжээгүй, шуурхай.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/plan.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/plan.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. ХОНОГИЙН КОНВЕНЦ. «10-01 → 10-01» нь 1 хоног (0 БИШ). Хэрэв хаа нэгтээ
@@ -11,12 +11,6 @@
  *      «хоцорсон» гэвэл хуваарь улаанаар дүүрнэ.
  *   3. ХАМРАЛТ. Шүүлтийн «Хуваарьтай / Хуваарьгүй / Дутуу» табуудын тоо ЭНДЭЭС
  *      гардаг тул бүлгийн мөр ажилд тооцогдвол тоо худал өснө.
- *
- * ⚠️ 2026-09-06: такт (`rhythmOf`/`applyRhythm`), эцгийн муж (`parentSpan`/
- *    `inside`/`spread`), шалгалт (`validate`/`MAX_DAYS`) гурвын тест
- *    ХАСАГДСАН — тэдгээр функц өөрсдөө дуудагчаа алдаж устсан (`plan.ts`-ийн
- *    толгойг үзнэ үү). Фикстур угсрахад `applyRhythm` хэрэглэдэг байсныг
- *    шууд бичсэн мужаар сольсон.
  */
 import assert from 'node:assert/strict';
 import { DAY, spanDays, endOf, statusOf, coverageOf } from './plan.ts';
@@ -88,10 +82,7 @@ assert.equal(c0.tasks, 0);
 assert.equal(c0.from, null);
 
 
-/* ══════════ planAt — ХОЁР ЗАХЫГ ОРУУЛСАН муж (2026-09-30) ══════════
-   ⚠️ `spanDays`-ийн конвенцтой нэг: ажил [эхлэх 00:00, дуусах+1 хоног 00:00)
-   хооронд шугаман; `asOf` нь ТЭР ӨДРИЙН төгсгөлөөр үнэлэгдэнэ. Урьд нь
-   эхлэх өдөр бүхэлдээ 0%, 1 хоногийн ажил тэр өдөртөө 0% байв. */
+/* ══════════ planAt — ХОЁР ЗАХЫГ ОРУУЛСАН муж (2026-09-30) ══════════ */
 {
   /* 1 хоногийн ажил — тэр өдрийн тайланд 100%, өмнөх өдөр 0% */
   assert.equal(planAt(d('2026-10-01'), d('2026-10-01'), d('2026-10-01')), 1, '1 хоногийн ажил тэр өдөртөө 100%');
@@ -115,8 +106,7 @@ assert.equal(c0.from, null);
 console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓ planAt ✓');
 
 /* ── spanFrac — ГАНЦ томъёо (2026-10-01, хэрэглэгчийн шийдвэр «бүгдийг зас») ──
- * ⚠️ `bagtsSheet.planAt` ба `huvaariObyem.planPctFromMonths` (сарын цонх = сар ∩ ажлын
- *    муж) хоёулаа үүнийг дууддаг. Хоёр захыг оруулсан, `asOf` өдрийн төгсгөлөөр. */
+ */
 {
   const { spanFrac } = await import('./plan.ts');
   const sp = span('2026-03-20', '2026-03-29');
@@ -129,7 +119,6 @@ console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓
   for (const at of ['2026-03-01', '2026-03-20', '2026-03-24', '2026-03-29', '2026-04-10']) {
     assert.equal(planAt(d(at), sp.start, sp.end), spanFrac(sp, d(at)), `planAt ≡ spanFrac (${at})`);
   }
-  /* ⚠️ 2026-10-04: урвуу муж — төлөвлөгөөний замд ХУВААРЬГҮЙ (null), «100% алхам» БИШ */
   assert.equal(planAt(d('2026-03-25'), d('2026-03-29'), d('2026-03-20')), null, 'урвуу муж хуваарьгүй биш');
   const rev = coverageOf([
     row(0, [span('2026-03-29', '2026-03-20'), span('2026-03-01', '2026-03-05'), null, null]),
@@ -137,7 +126,6 @@ console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓
     row(2, [span('2026-04-09', '2026-04-01'), null, null, null], { group: true, depth: 4 }),
   ]);
   assert.equal(rev.reversed, 1, 'урвуу огноотой АЖЛЫН тоо (бүлэг тоологдохгүй)');
-  /* ⚠️ 2026-10-21: урвуу муж `filled`-д орохгүй, `from`/`to`-г тогтоохгүй */
   assert.equal(rev.filled, 2, 'урвуу муж бөглөсөнд тоологдов');
   assert.equal(rev.from, d('2026-03-01'));
   assert.equal(rev.to, d('2026-03-05'), 'урвуу мужийн end (03-20) нь to-г сунгав');
@@ -145,7 +133,6 @@ console.log('plan.check: ok — хоног ✓ төлөв ✓ хамралт ✓
   assert.equal(onlyRev.filled, 0);
   assert.equal(onlyRev.from, null);
   assert.equal(onlyRev.to, null);
-  /* ⚠️ 2026-10-21 (аудит №2): зөвхөн урвуу мужтай ажил «хуваарьтай» (`planned`) ч, хэв шинж (`patterns`) ч биш */
   assert.equal(onlyRev.planned, 0, 'урвуу муж planned-д тоологдов');
   assert.equal(onlyRev.patterns, 0, 'урвуу муж хэв шинжид тоологдов');
   assert.equal(onlyRev.reversed, 1);

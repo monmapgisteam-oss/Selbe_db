@@ -1,21 +1,6 @@
 /**
  * БАГЦЫН ТҮЛХҮҮРИЙН ХОЛБООС ба ОЛОН БАГЦ ХАМАРСАН ТӨЛБӨР — «Багцын санхүү» (PkgFin) ба
  * «ТУХ» (`tuhData.assignHo`) хоёрын НЭГ эх (2026-10-04).
- *
- * ⚠️ ЯАГААД: HO-ийн «Багц-8.1» (зураг төслийн олголт 323,040,989 ₮) нь Cashflow-ийн «Багц 8»
- *    -ын зураг төслийн гэрээтэй ЯГ ижил дүн (2026-09-15-ны нотолгоо, PkgFin-ийн ⚠️). Урьд нь
- *    PkgFin «БАГЦ81 → БАГЦ82» гэж ӨӨРИЙН хүснэгтээр, ТУХ «эцэг код» таамгаар («Багц 8» ←
- *    «Багц-8.1») холбодог тул нэг гэрээ хоёр дэлгэцэд ӨӨР түлхүүрт очих эрсдэлтэй байв.
- *    Одоо: HO түлхүүр → Cashflow түлхүүр (`HO_PKG_ALIAS`) НЭГ хүснэгт; PkgFin нь үүн дээр
- *    Cashflow → газрын зургийн багц (`MAP_PKG_ALIAS`)-ыг давхарлана.
- *
- * ⚠️ Багц 7-ийн ХУВААРЬ (2026-10-04, нэг дүрэм — ГЭРЭЭНИЙ ТҮВШНИЙ таарал):
- *    HO «Багц-7» = Cashflow «БАГЦ-7.1» (барилга, 22.87 тэрбум) — гэрээ бүр ӨӨРИЙН дүнгээр
- *    (ТУХ-ийн мөр = нэг гэрээ → 1.87 ÷ 22.87). «Багцын санхүү» нь газрын зургийн БАГЦ (7)
- *    тул тэр багцын БҮХ гэрээлсэн гэрээ (барилга 22.87 + зураг төсөл «Багц 7.1» 0.51 =
- *    23.37) хуваарьт орно — порталын «олгосон ÷ гэрээлсэн» (`paidShare`)-ийн хүрээтэй нэг
- *    (зураг төслийн гэрээ олголтгүй ч гэрээлсэн дүнд бий). Хоёр тоо ЗӨРӨХ нь алдаа биш:
- *    нэг нь гэрээ, нөгөө нь багц. Гэрээний дүн хоёр эх сурвалжид ижил (22.868 = 22.868).
  */
 import type { Row } from '@/lib/query';
 import { HO_IPC, PKG_BY_BAGTS, bagtsKey, hoAmount, isPkgRange, pkgKeyOf } from '@/lib/services';
@@ -30,7 +15,7 @@ export const hoPkgKey = (k: string): string => HO_PKG_ALIAS[k] ?? k;
 
 /**
  * Cashflow-ийн багц → ГАЗРЫН ЗУРГИЙН багц (зөвхөн «Багцын санхүү» — газрын зургийн багцаар
- * жагсаадаг). Нотолгоо нь `PkgFin`-ийн `FIN_PKG_ALIAS`-ийн ⚠️.
+ * жагсаадаг). Нотолгоо нь `PkgFin`-ийн `FIN_PKG_ALIAS`.
  */
 export const MAP_PKG_ALIAS: Readonly<Record<string, { key: string; label: string }>> = {
   'БАГЦ71': { key: 'БАГЦ7', label: 'Багц 7' },
@@ -40,10 +25,6 @@ export const MAP_PKG_ALIAS: Readonly<Record<string, { key: string; label: string
 /**
  * САНХҮҮГИЙН НЭГДСЭН ХОЛБООС — HO ба Cashflow-ийн түлхүүр → газрын зургийн багцын түлхүүр/нэр.
  * HO «Багц-8.1» → (`HO_PKG_ALIAS`) «Багц 8» → (`MAP_PKG_ALIAS`) «Багц 8.2».
- * ⚠️ 2026-10-09: урьд нь энэ хүснэгт ЗӨВХӨН `PkgFin`-ийн дотор байсан тул «Багцын санхүү»-гийн
- *    БАГЦ БҮРИЙН мөр холбоостой багцыг (Багц-7 1.87 · Багц-8.1 0.32 тэрбум) гэрээлсэн гэж тоолдог
- *    атлаа ТӨСЛИЙН «олгосон ÷ гэрээлсэн» (`paidShare`) тэднийг `paidOther`-д хаядаг байв — нэг
- *    олголт хоёр түвшинд өөр ангилалтай. Одоо хоёулаа ЭНЭ хүснэгт.
  */
 export const FIN_PKG_ALIAS: Readonly<Record<string, { key: string; label: string }>> = {
   ...MAP_PKG_ALIAS,
@@ -52,17 +33,12 @@ export const FIN_PKG_ALIAS: Readonly<Record<string, { key: string; label: string
 
 /**
  * Cashflow-ийн багцын түлхүүрийн ГАЗРЫН ЗУРГИЙН `pkg:*` давхаргууд (`MAP_PKG_ALIAS`-аар унана).
- * ⚠️ 2026-10-26 (аудит): Ерөнхий дашбоард (`PkgWorkList` · `xsPick` · `loadSubPkgLayers`) `PKG_BY_BAGTS[pkgKeyOf]`-ийг
- *    ШУУД уншдаг тул БАГЦ71 (зурагт БАГЦ7) · БАГЦ8 (зурагт БАГЦ82) «давхаргагүй» гардаг байв. `pkgKeyOf`-ийг ӨӨРЧЛӨХГҮЙ.
- *    БАГЦ72 санаатай холбоогүй (PkgFin-ийн ⚠️ — өөр ажил).
  */
 export const mapPkgLayers = (k: string): string[] | undefined =>
   PKG_BY_BAGTS[k] ?? (MAP_PKG_ALIAS[k] ? PKG_BY_BAGTS[MAP_PKG_ALIAS[k].key] : undefined);
 
 /**
  * Cashflow-ийн багцын түлхүүрүүд → ГАЗРЫН ЗУРГИЙН багцын түлхүүрүүд (`loadPkgOverlaps`-ийн `key`).
- * ⚠️ 2026-10-26 (аудит): «Тулгамдаж буй асуудал» хугацааны шүүлттэй үед Cashflow-ийн түлхүүрээр шүүдэг тул БАГЦ7 ·
- *    БАГЦ21 · БАГЦNХОЛБОО (6 багц) ҮРГЭЛЖ хасагддаг байв. Өөрөө + `MAP_PKG_ALIAS` + БАГЦ6N → БАГЦNХОЛБОО.
  */
 export function mapPkgKeySet(keys: Iterable<string>): Set<string> {
   const out = new Set<string>();
@@ -82,7 +58,6 @@ export const finPkgKey = (k: string): string => FIN_PKG_ALIAS[k]?.key ?? k;
 /**
  * ОЛОН БАГЦ ХАМАРСАН мөрийн гишүүн багцууд (`bagtsKey`) — «БАГЦ-10,  БАГЦ-11, БАГЦ-13, БАГЦ-15»
  * → [БАГЦ10, БАГЦ11, БАГЦ13, БАГЦ15]; «Багц-1-4» → [БАГЦ1 … БАГЦ4]. Диапазон биш бол [].
- * ⚠️ ДҮНГ ХУВААХГҮЙ — зөвхөн «аль багцууд хамаарах вэ» гэдгийг хэлнэ (хуваарилах эх алга).
  */
 export function rangeMembers(v: unknown): string[] {
   const s = String(v ?? '').trim();
@@ -115,7 +90,6 @@ export type RangePay = {
 
 /**
  * HO төлбөрийн мөрүүдээс ОЛОН БАГЦ ХАМАРСАН (`pkgKeyOf` хоосон) олголтыг бүлэглэнэ.
- * ⚠️ `dun` хоосон мөр алгасна (null ≠ 0); `bagts` огт хоосон мөр энд ОРОХГҮЙ (гишүүнгүй).
  */
 export function rangePaysOf(pays: ReadonlyArray<Record<string, unknown>>): RangePay[] {
   const by = new Map<string, RangePay>();

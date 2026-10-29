@@ -4,18 +4,6 @@
  * «Үлдсэн нэгж талбар» гэдэг нь чөлөөлөгдөөгүй, БАРИЛГА ЭХЛҮҮЛЭХЭД СААД болж буй
  * газар. Багцын мөрөн дээр ийм талбар байвал тэр ажил эхлэх боломжгүй тул багц
  * сонгоход ЭНЭ ТОО хамгийн эхэнд хэрэгтэй.
- *
- * ⚠️ Багц нь ЗӨВХӨН барилгын блок БИШ: дэд бүтцийн 48 багц нь өөрсдийн
- *    давхаргатай (шугам хоолой, зам, цахилгаан). Тиймээс эх сурвалжийг ЖАГСААЛТ
- *    хэлбэрээр авна — сонгосон нэг багц ч, бүх багц ч ижил замаар тоологдоно.
- *
- * ⚠️ Геометрийн ТӨРӨЛ гурав (талбай · шугам · цэг) бөгөөд ArcGIS-ийн нэг асуулга
- *    НЭГ төрөл хүлээж авдаг. Тиймээс төрөл тус бүрд нэг асуулга явуулж, гарсан
- *    ObjectID-уудыг НЭГТГЭНЭ (давхардлыг Set арилгана).
- *
- * ⚠️ Хоёр давхарга ХОЁУЛАА UTM 32648 боловч үүнд НАЙДАХГҮЙ: эх геометрийг
- *    парселийн давхаргын проекцоор ЗААЖ авна (`outSR`). Проекц зөрвөл огтлолцол
- *    чимээгүй ХООСОН гарч, «саадгүй» гэсэн ХУДАЛ дүгнэлт өгнө.
  */
 
 import { PARCEL_LEFT, LAYER_BY_ID, parcelLeftWhere } from './services';
@@ -27,11 +15,6 @@ import { isClearedStatus } from './land';
 
 /**
  * Барилга эхлүүлэхэд саад болж буй нэгж талбарын SQL нөхцөл.
- *
- * ⚠️ 2026-09-06: урьд нь `LEFT_STATUS = 'Үлдсэн нэгж талбар'` гэсэн ГАНЦ утга
- * байв. Шинэ эхэд тэр ангилал БАЙХГҮЙ — «Бүрэн чөлөөлсөн»-өөс бусад БҮХ утга
- * (зөвшилцөх · татгалзсан · маргаантай …) нь шийдвэрлэгдээгүй гэсэн үг тул
- * нөхцөл нь ТЭНЦҮҮ БИШ болов (`parcelLeftWhere`).
  */
 
 /** Огтлолцуулах эх сурвалж — давхарга + (сонголтоор) түүний шүүлт. */
@@ -42,27 +25,10 @@ export type Overlap = {
   oids: number[];
   /**
    * ТАТАГДААГҮЙ эх сурвалжуудын `layerId` — хоосон бол бүрэн тоологдсон.
-   *
-   * ⚠️ 2026-09-11: `Promise.allSettled` нь унасан давхаргыг ЧИМЭЭГҮЙ алгасдаг
-   * тул 48 давхаргын хэд нь татагдаагүй ч үлдсэнээр тооцоод үр дүн АМЖИЛТТАЙ
-   * шийдэгддэг байв. Хоосон `oids` нь «саад алга» ГЭСЭН УТГАТАЙ учир энэ нь
-   * файлын толгойд анхааруулсан «чимээгүй ХООСОН гарч "саадгүй" гэсэн ХУДАЛ
-   * дүгнэлт» — яг тэр ангиллын алдаа.
-   *
-   * ⚠️ Талбар нь СОНГОЛТОТ (`?`): `execTriage.ts`-ийн `.catch(() => ({ oids: [] }))`
-   * зэрэг байгаа объект литералуудыг эвдэхгүй. Дуудагч `failed?.length`-ээр
-   * шалгана; `pkgSaad.ts` нь өөрийн `failed: boolean` тугтай (тэр нь БҮХ
-   * багц унасныг тэмдэглэдэг) — хоёр нь ӨӨР түвшний мэдээлэл.
    */
   failed?: string[];
 };
 
-/* ⚠️ withSlot (2026-08-21 гүйцэтгэлийн аудит): энэ модулийн fetch нь query.ts-ийн
-   6 слотын хязгаарлагчийг ТОЙРЧ гардаг байсан тул нүүр хуудасны ~53 давхцлын
-   ажил зэрэг бууж ArcGIS «Too many requests» өдөөж, бусад картын асуулгыг
-   хардаг байв. Одоо бүх хүсэлт нэг дарааллаар шатлан явна.
-   ⚠️ 2026-09-30: слотыг `query.arcgisPost` өөрөө авна (мөн timeout · 429 backoff ·
-   498 шинэчлэлт) — гаднаас `withSlot`-оор ДАВХАР ороохгүй (слот дуусахад гацна). */
 const post = (url: string, params: Record<string, string>) =>
   arcgisPost<{ features?: unknown[]; exceededTransferLimit?: boolean; objectIds?: number[] }>(`${url}/query`, params);
 
@@ -70,14 +36,11 @@ const post = (url: string, params: Record<string, string>) =>
 let srCache: Promise<number> | null = null;
 function parcelSR(): Promise<number> {
   if (!srCache)
-    /* ⚠️ 2026-09-30: GET + токен query string → `arcgisPost` (`?f=json` метаг POST-оор) */
     srCache = arcgisPost<{ extent?: { spatialReference?: { wkid?: number; latestWkid?: number } } }>(PARCEL_LEFT.url, {})
       .then((m) => {
         const sr = m?.extent?.spatialReference;
         return Number(sr?.wkid ?? sr?.latestWkid) || 32648;
       })
-      /* ⚠️ 2026-10-09: түр зуурын уналтын нөөц утгыг КЭШЛЭХГҮЙ — урьд нь 32648 сесс дуустал
-         үлдэж, метадата сэргэсэн ч дахин асуудаггүй байв. Энэ дуудлагад л нөөцийг буцаана. */
       .catch(() => {
         srCache = null;
         return 32648;
@@ -93,14 +56,6 @@ function parcelSR(): Promise<number> {
  */
 type Feat = { oid: number | null; rings?: number[][][]; paths?: number[][][]; pt?: number[] };
 
-/* ⚠️ 2026-09-25: хуудаслалтын `orderByFields`-д давхаргын ЖИНХЭНЭ OID талбар
-   хэрэгтэй (`objectid`/`FID` байж болно — `ceo/workforce.ts`-ийн сургамж).
-   Метадата унавал `OBJECTID` — буруу нэр бол сервер алдаа буцааж давхарга
-   `failed`-д орно (чимээгүй дутуу үр дүн биш). */
-/* ⚠️ 2026-09-25 (аудит 8): `paging` — давхарга `resultOffset`-ийг ДЭМЖДЭГ эсэх
-   (`advancedQueryCapabilities.supportsPagination`). Дэмжихгүй үйлчилгээ offset-ийг
-   үл тоож ИЖИЛ хуудсыг буцаадаг тул `exceededTransferLimit` хэвээр → 200 хуудас
-   давтаад л унадаг байв. Мэдэгдэхгүй (метадата унасан) бол `true` — хуучин зан. */
 type LayerMeta = { oid: string; paging: boolean };
 const oidCache = new Map<string, Promise<LayerMeta>>();
 function oidFieldOf(url: string): Promise<LayerMeta> {
@@ -116,10 +71,6 @@ function oidFieldOf(url: string): Promise<LayerMeta> {
         paging: m?.advancedQueryCapabilities?.supportsPagination !== false,
       }))
       .catch(() => {
-        /* ⚠️ 2026-10-09: унасан метадатаг КЭШЛЭХГҮЙ — урьд нь түр зуурын уналтын fallback
-           (`OBJECTID`) хуудас дахин ачаалтал үлдэж, OID нь `objectid`/`FID` давхарга байнга
-           `failed` болдог байв. Энэ амлалт өөрөө кэшэд байгаа үед л устгана (дараагийн
-           дуудлага шинээр асууна); энэ удаад fallback-аар үргэлжилнэ. */
         if (oidCache.get(url) === p) oidCache.delete(url);
         return { oid: 'objectid', paging: true };
       });
@@ -132,16 +83,12 @@ function oidFieldOf(url: string): Promise<LayerMeta> {
 const MAX_PAGES = 200;
 
 /**
- * ЭХ ГЕОМЕТРИЙН ЕРӨНХИЙЛӨЛТ (м) — `maxAllowableOffset`. ⚠️ 2026-10-22 (аудит): 1 → 0.1 м. 1 м-ийн ерөнхийлөлт ирмэгийг
+ * ЭХ ГЕОМЕТРИЙН ЕРӨНХИЙЛӨЛТ (м) — `maxAllowableOffset`. 2026-10-22 (аудит): 1 → 0.1 м. 1 м-ийн ерөнхийлөлт ирмэгийг
  * 1 м хүртэл шилжүүлж хөрш нэгж талбарыг «огтлолцсон» болгодог байв (БАГЦ164 · БАГЦ174: 6 саадын 3 нь бүтэн нарийвчлалд
  * огт огтлолцдоггүй). Мөн энэ нь «зөвхөн хүрэлцсэн»-ийг ялгах хүлцэл (`TOUCH_TOL`) — үүнээс нимгэн давхцал нь шуугиан.
  */
 const GEN_M = 0.1;
 
-/* ⚠️ ДАВХАРГА БҮРИЙН ГЕОМЕТРИЙН КЭШ (2026-08-21 гүйцэтгэлийн аудит):
-   нүүр (53 ажил) ба Tsogts (3 эффект) ИЖИЛ давхаргуудын геометрийг олон
-   дахин татдаг байв — МБ-аар хэмжигдэх JSON бүрийг нэг л удаа татна.
-   Амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ). */
 const geomCache = new Map<string, Promise<Feat[]>>();
 
 const srcWhere = (src: Src): string => src.where ?? LAYER_BY_ID[src.layerId]?.where ?? '1=1';
@@ -149,17 +96,6 @@ const geomKey = (layerId: string, where: string, wkid: number) => `${layerId}|${
 
 /**
  * Нэг давхаргын геометрийг ХУУДАСЛАН татна.
- *
- * ⚠️ `maxAllowableOffset` — геометрийг ЕРӨНХИЙЛНӨ (payload багасгах). ⚠️ 2026-10-22 (аудит): 1 м → 0.1 м (`GEN_M`) —
- *    «нэгж талбарын хэмжээнд үр дүн өөрчлөгдөхгүй» гэсэн таамаг БУРУУ байв: хөрш талбарын хил дээр 1 м шилжилт
- *    худал огтлолцол үүсгэдэг (БАГЦ164/174-ийн 6 саадын 3).
- * ⚠️ 2026-09-25 аудит: ХУУДАСЛАЛТ. `orderByFields` ЗААВАЛ (CLAUDE.md: эрэмбэгүй offset
- *    давхардал/алдагдал үүсгэнэ). Хуудас хоосон атлаа `exceededTransferLimit` бол —
- *    хуудаслалт дэмжигдэхгүй — ДУТУУ үр дүн буцаахгүй, шидэж давхаргыг `failed`-д оруулна.
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас», CEO «Газар» 295 хүсэлт): МЕТАДАТА ЗӨВХӨН
- *    ХЭРЭГТЭЙ ҮЕД. Эхний хуудас нь offset-гүй (эрэмбэ хамаагүй) — давхарга нэг хуудсанд
- *    багтвал (ихэнх нь) метадатын хүсэлт ОГТ явахгүй. Хязгаарт хүрвэл OID-ийг асууж
- *    ЭХНЭЭС нь эрэмбэтэй хуудаслана (хуучин дүрэм) — үр дүн ижил, хүсэлт ~2 дахин цөөн.
  */
 async function fetchFeats(url: string, where: string, wkid: number, layerId: string, withOid: boolean): Promise<Feat[]> {
   let meta: LayerMeta | null = withOid ? await oidFieldOf(url) : null;
@@ -172,7 +108,6 @@ async function fetchFeats(url: string, where: string, wkid: number, layerId: str
       where,
       returnGeometry: 'true',
       outSR: String(wkid),
-      /* ⚠️ 2026-10-22 (аудит): 0.1 м (`GEN_M`-ийн ⚠️) — урьд 1 м */
       maxAllowableOffset: String(GEN_M),
     };
     if (meta) {
@@ -199,7 +134,6 @@ async function fetchFeats(url: string, where: string, wkid: number, layerId: str
       off = 0;
       continue;
     }
-    /* ⚠️ Хуудаслалтгүй давхарга дээр offset давтахгүй — шууд `failed` (дутуу үр дүн биш) */
     if (!fs.length || !meta.paging) throw new Error(tr('ArcGIS: {0} давхарга бүрэн татагдсангүй', layerId));
     off += fs.length;
   }
@@ -225,14 +159,6 @@ const OID_IN = /^\s*\(?\s*([A-Za-z_]\w*)\s+IN\s*\(([\d\s,]+)\)\s*\)?\s*$/i;
 
 /**
  * НЭГ давхаргын ОЛОН `OID IN (…)` шүүлтийг НЭГ татлагаас задална (2026-10-01).
- * ⚠️ Урьд нь барилгын багц бүр (`execTriage.loadOverlaps`) `mon:building`-ийг өөрийн
- *    `OID IN` шүүлтээр ТУСДАА татдаг байв; дараа нь бүтэн давхаргыг (`where: null`)
- *    ДАХИН татдаг. Одоо бүтэн давхаргыг OID-тайгаар НЭГ удаа татаж, дэд олонлогуудыг
- *    OID-оор таслана — ижил объект, ижил ерөнхийлөлт (`maxAllowableOffset`) тул үр дүн ижил;
- *    бүтэн давхаргын кэш (`where: null`-ийн түлхүүр) мөн бөглөгдөнө.
- * ⚠️ Зөвхөн давхаргын өөрийн шүүлт (`d.where`) ХООСОН үед — эс бөгөөс бүтэн татлага
- *    нь `OID IN`-ээс өөр олонлог. Шүүлтийн талбар нь жинхэнэ OID биш бол алгасна.
- *    Алдаа гарвал юу ч хийхгүй — ердийн замаар тус тусдаа татагдана.
  */
 async function prefetchOidSubsets(asks: readonly Ask[], wkid: number): Promise<void> {
   const byLayer = new Map<string, Set<string>>();
@@ -283,15 +209,6 @@ export async function overlapLeftParcels(sources: Src[]): Promise<Overlap> {
   if (hit) return hit;
   const run = overlapUncached(sources);
   run.catch(() => resultCache.delete(rKey));
-  /*
-   * ⚠️ 2026-09-11: ХЭСЭГЧИЛСЭН үр дүнг КЭШЛЭХГҮЙ. Урьд нь `run.catch()` нь
-   * ЗӨВХӨН reject-ийг кэшнээс хасдаг байсан тул давхарга нь унасан ч
-   * `allSettled` дээр «амжилттай» шийдэгдсэн ХАГАС үр дүн кэшэд баталгаатай
-   * хариу мэт үлдэж, сесс дуустал «саад алга» гэж харагддаг байв (дахин
-   * оролдох ч боломжгүй — кэш нь буцаагаад тэр хагасаа өгнө). Одоо
-   * `failed` тугтай хариуг кэшнээс ХАСНА: дараагийн дуудлага дахин оролдож,
-   * сүлжээ сэргэмэгц БҮРЭН тоо гарна.
-   */
   void run.then((r) => {
     if (r.failed?.length) resultCache.delete(rKey);
   }).catch(() => {});
@@ -301,42 +218,11 @@ export async function overlapLeftParcels(sources: Src[]): Promise<Overlap> {
 
 const resultCache = new Map<string, Promise<Overlap>>();
 
-/**
- * ⚠️ КЭШИЙГ ӨГӨГДЛИЙН АВТОБУСАД ХОЛБОВ (2026-08-31). Хоёулаа модулийн
- * түвшний Map тул `invalidate('PARCEL_LEFT')` тэднийг хөнддөггүй байв.
- * Нэгж талбарын `Tuluv`-ыг «Үлдсэн»-ээс өөр болгомогц тэр талбар давхцлын
- * тооцооноос ГАРАХ ёстой; кэш цэвэрлэгдэхгүй бол «Саад — багцаар» зурвас
- * сешн дуустал хуучин OID-уудаа харуулж, зассан ажил хийгдээгүй мэт харагдана.
- */
-/* ⚠️ 2026-10-21 (гүйцэтгэлийн аудит): `PARCEL_LEFT`-д ЗӨВХӨН `resultCache` хаягдана. `geomCache` нь ЭХ давхаргуудын
-   (барилгын блок · дэд бүтцийн 98 давхарга, 1.2 МБ) геометр — нэгж талбарын давхарга энд хэзээ ч ордоггүй (тэр нь
-   огтлолцлын НӨГӨӨ тал, `askLeft`/`parcelRings` бүр шинээр асуудаг), талбарын төлөв засагдахад эх геометр
-   өөрчлөгдөхгүй. Урьд нь «Газар чөлөөлөлт»-ийн нэг талбарын хадгалалт бүрд 98 давхаргыг дахин татдаг байв (хэмжилт:
-   `loadPkgOverlaps` дахин 127 давхар хүсэлт). Огтлолцол (`resultCache` · `pkgSaad.ovCache`) урьдын адил дахин бодогдоно —
-   үр дүн ижил; эх геометрийн засвар (`DedButets`) доорх `subscribeTotals`-аар хоёуланг хаяна. */
 register(() => { resultCache.clear(); }, ['PARCEL_LEFT']);
-/* ⚠️ 2026-09-30: ДЭД БҮТЦИЙН давхаргын геометр ч энд кэшлэгддэг (57 давхарга) — нэмэх ·
-   устгах · хэлбэр засахад сесс дуустал хуучирдаг байв. `DedButets`-ийн бичих зам бүр
-   `dropTotalsCache()`-аар дуусдаг (автобусын таг байхгүй) тул тэр эрийг сонсоно. */
 subscribeTotals(() => { geomCache.clear(); resultCache.clear(); });
 
 /* ══════════════════════ БАГЦЛАЛТ (2026-10-01) ══════════════════════ */
 
-/**
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): CEO «Газар» KPI нь 295 хүсэлт / 9.3 сек байв —
- *    `execTriage.loadOverlaps` ~50 багц бүрд `overlapLeftParcels`-ийг ЗЭРЭГ дууддаг бөгөөд
- *    тус бүр (а) давхаргын метадата, (б) геометр, (в) нэгж талбартай огтлолцлын 1+ асуулга
- *    явуулдаг байв. Одоо НЭГ мөчид (нэг tick-д) ирсэн дуудлагууд НЭГ БАГЦ болно:
- *      1. геометр — давхарга бүрд нэг удаа (кэш), метадатагүй (`fetchFeats`-ийн ⚠️),
- *         барилгын багцууд нэг татлагаас (`prefetchOidSubsets`);
- *      2. огтлолцол — БҮХ багцын геометрийн НЭГДЛЭЭР серверт (400-аар хэсэглэсэн) → нэр
- *         дэвшигч талбарууд (огтлолцлуудын нэгдэл = нэгдлийн огтлолцол — НИЙТ тоо серверийнх);
- *      3. дэвшигчдийн геометр НЭГ асуулгаар (`objectIds`), багц бүрийн хуваарилалт клиент
- *         талд (`interiorHit` — ⚠️ 2026-10-22: ДОТООД огтлолцол; зөвхөн хүрэлцсэн нь саад БИШ, `GEN_M` хүлцэл).
- *    Ганц дуудлага (Bagts, PkgProg …) ХУУЧИН замаар — серверийн огтлолцол шууд.
- * ⚠️ Багцын аль ч шатанд алдаа гарвал дуудлага бүрийг ХУУЧИН замаар (тус тусад нь)
- *    дахин ажиллуулна — хурд алдагдана, үр дүн/уналтын зан хэвээр.
- */
 type Ask = { sources: Src[]; resolve: (o: Overlap) => void; reject: (e: unknown) => void };
 let queue: Ask[] = [];
 
@@ -362,7 +248,6 @@ async function runBatch(b: Ask[]): Promise<void> {
   try {
     out = await overlapBatch(b);
   } catch {
-    /* ⚠️ Багцын зам унасан — тус бүрд хуучин замаар (үр дүн, уналтын зан ижил) */
     for (const a of b) overlapSingle(a.sources).then(a.resolve, a.reject);
     return;
   }
@@ -370,25 +255,13 @@ async function runBatch(b: Ask[]): Promise<void> {
 }
 
 const withFailed = (oids: number[], failed: string[]): Overlap =>
-  /* ⚠️ `failed` нь ХООСОН үед талбарыг ОГТ нэмэхгүй — бүрэн тоологдсон үр дүн
-     нь өмнөх хэлбэрээрээ үлдэж, дуудагчийн `failed?.length` шалгуур зөв
-     ажиллана (кэшлэх эсэхийг `overlapLeftParcels` мөн үүгээр шийднэ). */
   (failed.length ? { oids, failed } : { oids });
 
 const allFailed = (n: number) => new Error(tr('ArcGIS: {0} эх сурвалж бүгд татагдсангүй', n));
 
 /** Эх сурвалжуудын геометр — `parts` нь [кэшийн түлхүүр, объектууд] (нэгдэлд давхардал арилгана) */
 async function gather(sources: Src[], wkid: number): Promise<{ parts: Array<[string, Feat[]]>; failed: string[] }> {
-  // ⚠️ Зэрэг татна — 57 дэд бүтцийн давхаргыг дараалуулбал секунд хүлээнэ.
-  //    Нэг давхарга унасан ч бусад нь үргэлжлэх ёстой (`allSettled`).
   const settled = await Promise.allSettled(sources.map((s) => layerFeats(s, wkid)));
-  /*
-   * ⚠️ 2026-09-11: УНАСАН ЭХ СУРВАЛЖИЙГ ТООЛНО. `allSettled` дангаараа
-   * уналтыг ЧИМЭЭГҮЙ залгидаг тул хагас татагдсан геометрээр бодсон үр дүн
-   * «бүрэн» мэт буцдаг байв — файлын толгойн анхааруулга (проекц зөрвөл
-   * «саадгүй» гэсэн ХУДАЛ дүгнэлт) яг энэ ангилалд хамаарна. Аль давхарга
-   * унасныг НЭРЭЭР нь дамжуулж, дуудагч тал ил хэлэх боломжтой болгоно.
-   */
   const parts: Array<[string, Feat[]]> = [];
   const failed: string[] = [];
   settled.forEach((r, i) => {
@@ -400,8 +273,6 @@ async function gather(sources: Src[], wkid: number): Promise<{ parts: Array<[str
 }
 
 /**
- * ⚠️ ХЭСЭГЧИЛСЭН АСУУЛГА — гүйцэтгэлийн ГОЛ хүчин зүйл.
- *
  * Бүх багцын геометр нь ~8,000 хэсэгтэй (голдуу шугам хоолой). Түүнийг НЭГ
  * асуулгаар илгээхэд сервер 2,119 нэгж талбарыг тэр асар том геометртэй
  * тулгаж **57 секунд** боддог байв. 400-аар хувааж ЗЭРЭГ асуухад ижил үр дүн
@@ -409,11 +280,6 @@ async function gather(sources: Src[], wkid: number): Promise<{ parts: Array<[str
  * нь ЗӨВХӨН энд байсан.
  */
 const CHUNK = 400;
-/* ⚠️ 2026-10-09: ОБЪЕКТООР хэсэглэнэ — нэг объектын БҮХ цагираг/хэсэг НЭГ хэсэгт. Урьд нь
-   хавтгай цагиргуудыг 400-аар таслахад нүхтэй полигоны гадна хүрээ ба нүх нь хоёр хэсэгт
-   салж, нүх нь бие даасан «полигон» болж (цагийн зүүний эсрэг → сервер өөрөөр тайлбарлана)
-   нүхэн доторх нэгж талбарыг давхцалтай гэж худал гаргах боломжтой байв. 400-аас олон
-   цагирагтай ганц объект өөрөө нэг хэсэг болно (таслахгүй). */
 const cutByFeat = (parts: number[][][][]): number[][][][] => {
   const out: number[][][][] = [];
   let cur: number[][][] = [];
@@ -431,11 +297,6 @@ function shapesOf(fs: readonly Feat[], wkid: number): Array<[string, string]> {
   const ringFeats: number[][][][] = [];
   const pathFeats: number[][][][] = [];
   const pts: number[][] = [];
-  /* ⚠️ 2026-10-21: ДОГОЛДСОН ХЭСЭГ — Enterprise-ийн PostgreSQL (PostGIS) нь урт нь ТЭГ шугам (хоёр ижил цэгтэй
-     `[[x,y],[x,y]]`) эсвэл 3-аас цөөн ялгаатай оройтой цагирагтай НЭГ ч хэсэг байвал асуулгыг бүхэлд нь
-     500 «Database error has occurred» гэж унагадаг (AGOL-ын SQL Server зөвшөөрдөг байсан). Дэд бүтцийн шугамд
-     ийм 2 хэсэг байснаас «Газар чөлөөлөлт» · дашбоардын давхцал «татагдсангүй» болж байв. Хасахгүй — тэр цэгийг
-     multipoint-оор асууна (цэг нэгж талбартай огтлолцож болно → үр дүн алдагдахгүй). */
   const distinct = (p: number[][]) => new Set(p.map((c) => `${c[0]},${c[1]}`)).size;
   for (const f of fs) {
     if (f.rings) {
@@ -463,13 +324,9 @@ function shapesOf(fs: readonly Feat[], wkid: number): Array<[string, string]> {
   ];
 }
 
-/* ⚠️ 2026-10-22 (аудит): `dropCleared` хасагдсан — ганц зам ч одоо дэвшигчдийн геометрийг (`parcelRings`) татаж
-   «Бүрэн чөлөөлсөн»-ийн хувилбарыг ТҮҮГЭЭР хасна (2026-10-09-ний дүрэм хэвээр), дотоод огтлолцлыг клиентээр шалгана. */
 
 /** Серверийн огтлолцол — хэлбэр бүртэй огтлолцох ҮЛДСЭН нэгж талбарын OID-ууд */
 async function askLeft(shapes: Array<[string, string]>, wkid: number): Promise<Set<number>> {
-  // ⚠️ `N'…'` угтвар — талбар нь Unicode (nvarchar); зарим үйлчилгээнд
-  //    угтваргүй кирилл харьцуулалт ХООСОН буцаадаг.
   const leftWhere = parcelLeftWhere();
   const res = await Promise.all(shapes.map(([geometryType, geometry]) => post(PARCEL_LEFT.url, {
     geometry,
@@ -479,8 +336,6 @@ async function askLeft(shapes: Array<[string, string]>, wkid: number): Promise<S
     where: leftWhere,
     returnIdsOnly: 'true',
   })));
-  /* ⚠️ 2026-09-25: ID-ийн асуулга ч хязгаарт хүрвэл ДУТУУ жагсаалт буцна —
-     «саад цөөн» гэсэн худал тоо өгөхийн оронд алдаа (кэшлэгдэхгүй). */
   if (res.some((r) => r?.exceededTransferLimit)) {
     throw new Error(tr('ArcGIS: нэгж талбарын давхцлын жагсаалт бүрэн ирсэнгүй'));
   }
@@ -491,23 +346,16 @@ async function askLeft(shapes: Array<[string, string]>, wkid: number): Promise<S
 
 /**
  * ХУУЧИН ЗАМ — нэг дуудлага: серверийн огтлолцол (дэвшигч) → дэвшигчдийн геометр → ДОТООД огтлолцол (клиент).
- * ⚠️ 2026-10-22 (аудит): серверийн «intersects» нь ЗӨВХӨН ХҮРЭЛЦСЭН (хил/орой дээр) талбарыг ч саад гэж тоолдог байв —
- *    одоо талбайтай (дотоод) огтлолцол л саад (`hitParcels`); багцын замтай ЯГ нэг дүрэм.
  */
 async function overlapSingle(sources: Src[]): Promise<Overlap> {
   const wkid = await parcelSR();
   const { parts, failed } = await gather(sources, wkid);
-  /* ⚠️ БҮГД унасан бол энэ нь үр дүн БИШ, АЛДАА — хоосон `oids` нь «саад
-     алга» гэж уншигдах тул шидэж, дуудагчийн `catch` замд оруулна. */
   if (failed.length === sources.length) throw allFailed(failed.length);
   const feats = parts.flatMap(([, fs]) => fs);
   const shapes = shapesOf(feats, wkid);
-  /* ⚠️ Геометр огт гараагүй ч УНАСАН давхарга байвал түүнийг дамжуулна —
-     эс бөгөөс «хэлбэр алга» нь «саад алга» гэж ХУДАЛ уншигдана. */
   if (!shapes.length) return withFailed([], failed);
   const cand = await askLeft(shapes, wkid);
   if (!cand.size) return withFailed([], failed);
-  /* ⚠️ 2026-10-09: чөлөөлсөн-ий хувилбар бичиглэлийг хасна (`parcelRings`) */
   const parcels = await parcelRings([...cand], wkid);
   return withFailed(hitParcels(parcels, feats), failed);
 }
@@ -534,8 +382,6 @@ function tolOf(rings: number[][][]): { eps: number; tol: number } {
 
 /**
  * Дэвшигч нэгж талбаруудын БҮТЭН геометр (ерөнхийлөлтгүй — сервер ч бүтнээр тулгадаг).
- * ⚠️ 2026-10-09: төлөвийг ХАМТ авч «Бүрэн чөлөөлсөн»-ий хувилбар бичиглэлтэйг ХАСНА
- *    (`dropCleared`-ийн дүрэм — багцын зам нэмэлт хүсэлтгүй).
  */
 async function parcelRings(ids: number[], wkid: number): Promise<Map<number, number[][][]>> {
   const oidF = PARCEL_LEFT.oid;
@@ -559,7 +405,6 @@ async function parcelRings(ids: number[], wkid: number): Promise<Map<number, num
       else if (f.geometry?.rings?.length) out.set(id, f.geometry.rings);
     }
   }
-  /* ⚠️ Дэвшигч дутвал хуваарилалт ДУТУУ болно — алдаа (дуудагч хуучин зам руу шилжинэ) */
   if (ids.some((id) => !out.has(id) && !cleared.has(id))) throw new Error(tr('ArcGIS: нэгж талбарын давхцлын жагсаалт бүрэн ирсэнгүй'));
   return out;
 }
@@ -577,7 +422,6 @@ async function overlapBatch(b: Ask[]): Promise<Array<{ ok: Overlap } | { err: un
   return b.map((a, i) => {
     const p = per[i];
     if (p.failed.length === a.sources.length) return { err: allFailed(p.failed.length) };
-    /* ⚠️ 2026-10-22 (аудит): ДОТООД огтлолцол (`interiorHit`) — ганц замтай ижил `hitParcels` */
     return { ok: withFailed(hitParcels(parcels, p.parts.flatMap(([, fs]) => fs)), p.failed) };
   });
 }
@@ -709,13 +553,6 @@ const distinctN = (p: number[][]) => new Set(p.map((c) => `${c[0]},${c[1]}`)).si
 
 /**
  * ДОТООД ОГТЛОЛЦОЛ — эх объект нэгж талбарын ДОТОР ТАЛТАЙ (хилээс `tol`-оос гүн) огтлолцох уу.
- * ⚠️ 2026-10-22 (аудит): урьд нь ArcGIS-ийн «intersects»-тэй ижил (хил/оройгоор ХҮРЭЛЦЭХ ч «тийм») тул зөвхөн
- *    хүрэлцсэн хөрш талбар «саад» болдог байв (БАГЦ164/174: 6 саадын 1 нь зөвхөн хүрэлцдэг). Одоо:
- *      · цэг — талбар дотор (хил дээр биш);
- *      · шугам/полигоны ирмэг — нэгж талбарын хилээр таслагдсан дэд хэрчмийн дунд цэг талбар ДОТОР;
- *      · полигон — эсрэгээр нэгж талбарын ирмэгийн дэд хэрчим эх полигон ДОТОР, эсвэл хил нь давхцсан (ижил дүрс)
- *        үед нэгж талбарын дотоод цэг эх полигон дотор (нүхэн дотор бол «үгүй» — X-13/K-6 мэт).
- *    Доголдсон хэсэг (тэг урт шугам, < 3 оройтой цагираг) нь `shapesOf`-ийн дүрмээр ЦЭГ гэж тооцогдоно.
  */
 function interiorHit(parcel: number[][][], pbb: Box, f: Feat, e: number, tol: number): boolean {
   if (f.pt) return strictlyIn(parcel, f.pt, tol);

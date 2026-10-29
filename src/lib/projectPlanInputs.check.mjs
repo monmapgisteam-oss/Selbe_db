@@ -120,7 +120,6 @@ const srow = (o) => ({
   /* сарын задаргаа (monthly) нь `planPct`-ийн үүрэгтэй */
   const withM = makeSchedules([{ ...nine, monthly: (des, blok) => (blok === '5/1' ? 0.5 : null) }]);
   near(withM.at('Багц 4-2', '5/1', D('2026-01-05')), 50, 1e-9, 'сарын задаргаа огнооноос давамгайлна');
-  /* ⚠️ 2026-10-26 (хяналтын олдвор): задаргаатай УРВУУ мөр «бүрэн төлөвлөгдсөн» болохгүй — callback ЭХ огноо авна */
   {
     const rows = [
       srow({ oid: 1, no: 'Б.', depth: 0, group: true, start: [null], end: [null] }),
@@ -213,7 +212,6 @@ const srow = (o) => ({
   const e = emptyPlan(today);
   assert.equal(e.empty, true);
   assert.equal(e.tree.nodes.length, 0);
-  /* ⚠️ 2026-10-26: анхдагч өнөөдөр = УБ-ын хуанлийн өдөр (UTC-ээр тасалбал УБ-ын 00:00–08:00-д өчигдөр) */
   { const a = ubToday(); const t0 = emptyPlan().result.today; assert.ok([a, ubToday()].includes(t0), 'emptyPlan today = ubToday()'); }
   assert.equal(assemblePlan([], { actual: { blocks: null, universe: null, infra: null }, sched: null, land: new Map() }, today).empty, true,
     'Excel мөр алга → хоосон төлөв (алдаа биш)');
@@ -226,8 +224,6 @@ const srow = (o) => ({
     objectid: i + 1, dd_kod: r[0], etseg_kod: r[1], uy_shat: r[2], bagts: s(r[3]), blok: r[4], ajil_uilchilgee: s(r[5]),
     ho_dun_geree: r[6], heseg_ezleh_huvi: r[7], tusul_ezleh_huvi: r[8],
     geree_ehleh: fromSerial(r[9]), geree_duusah: fromSerial(r[10]),
-    /* ⚠️ 2026-10-26: фикстурын r[11]/r[12] = Excel J/K «Гүйцэтгэгч» → guits_*, r[13]/r[14] = L/M «Газар
-       чөлөөлөлт/бодит» → gazar_* (cf-wave2-ийн тохиролцоо; өмнө нь эсрэгээр байв) */
     guits_ehleh: fromSerial(r[11]), guits_duusah: fromSerial(r[12]),
     gazar_ehleh: fromSerial(r[13]), gazar_duusah: fromSerial(r[14]),
   }));

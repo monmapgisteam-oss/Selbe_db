@@ -2,38 +2,6 @@
 
 /**
  * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМЫН БАТЛАХ УРСГАЛ — инженер засна, батлагч батална.
- *
- * ⚠️ ЯАГААД ЭНЭ ХЭРЭГТЭЙ БОЛОВ (2026-09-08, хэрэглэгчийн шийдвэр): AGOL-д
- * `Инженерийн_төлөвлөсөн_обьём` талбар 10/10 багцад нэмэгдсэн. Хэрэв түүнийг
- * «Гүйцэтгэл бөглөх» хуудаснаас ШУУД бичдэг болговол нэг хүн зорилтоо дур
- * мэдэн буулгаж, өөрийн гүйцэтгэлийн хувийг өсгөх зам нээгдэнэ. Тиймээс
- * инженер ЗАСНА → «Батлуулах» дарна → БАТЛАГЧ хараад батална → тэр үед л
- * үндсэн өгөгдөлд бичигдэнэ.
- *
- * ⚠️ БАТЛАГДТАЛ ЭХ ӨГӨГДӨЛ ХӨДЛӨХГҮЙ. Засварууд нь ЭНЭ хүснэгтэд хүлээнэ.
- * Батлагдаагүй саналууд дашбоард, тайлан, тооцоонд ОГТ нөлөөлөхгүй —
- * хянагч «юу байсан → юу болох» хоёрыг зэрэг харна.
- *
- * ⚠️ ГҮЙЦЭТГЭЛИЙН УРСГАЛААС (`hyanalt.ts`) ТУСДАА. Тэр нь БОДИТ гүйцэтгэлийн
- * 6 шатат урсгал (компани → инженер → менежер → захирал → хэлтсийн дарга →
- * газрын дарга; `REVIEW_STAGES`, 2026-10-09 аудит №6), энэ нь ТӨЛӨВЛӨСӨН
- * ОБЬЁМЫН 2 шатат урсгал. Хольвол «обьёмыг зөвшөөрсөн» нь «гүйцэтгэлийг
- * зөвшөөрсөн» гэж уншигдаж, хариуцлага замхарна. Мөн `hyanalt` үйлчилгээний
- * талбарууд гүйцэтгэлийн 60 баганын загварт хатуу уягдсан (2026-09-17-ноос
- * ижил оргод ч тусдаа үйлчилгээ).
- *
- * ⚠️ ХУВААРИЙН УРСГАЛААС (`huvaariBatlah.ts`) МӨН ТУСДАА. Тэр нь ОГНОО
- * («хэзээ»), энэ нь ОБЬЁМ («хэр их»). `huvaariBatlah` нь багц бүрд ЗӨВХӨН НЭГ
- * хүлээгдэж буй илгээлт зөвшөөрдөг тул хоёрыг нийлүүлбэл огноо буцаагдахад
- * обьём ч гацна — хоёр өөр шийдвэрийг нэг батламжид уяхгүй.
- *
- * ⚠️ ХАДГАЛАЛТ: ӨӨРИЙН ArcGIS хүснэгт (`Selbe_Obyem_Batlah`).
- * `Selbe_Permissions`-ийн `__cap__:` мөрийн загварыг АШИГЛААГҮЙ: тэнд `views`
- * талбар 2048 тэмдэгттэй бөгөөд нэг илгээлт нь хэдэн зуун мөрийн обьём
- * агуулж болно. Хүснэгтийг эхний хэрэгцээнд super админы токеноор ӨӨРӨӨ
- * үүсгэнэ — гар ажиллагаа шаардахгүй.
- *
- * ⚠️ FAIL-CLOSED: хүснэгт уншигдахгүй бол «батлагдсан» гэж ҮЗЭХГҮЙ.
  */
 
 import { GUITS } from '@/lib/services/env';
@@ -41,17 +9,10 @@ import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { obyemAclReady, obyemScope } from './obyemAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
-/* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — хүснэгт
-   Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
-   хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно (2026-09-29). */
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser } from './who';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
-/* ⚠️ 2026-10-12 (дарааллын аудит): `serverNow` — түгжээний агшин ба TTL-ийн шүүлт СЕРВЕРИЙН цагаар
-   (`huvaariBatlah.serverNow`-ийн ⚠️: хоёр машины цаг зөрвөл амьд түгжээг «дууссан» гэж дардаг байв);
-   `sameClaimAt` — нэг батлагчийн ХОЁР цонхны түгжээг ялгах ±1 с тулгалт. `huvaariBatlah` энэ модулийг
-   импортолдоггүй тул тойрог импорт үүсэхгүй. */
 import { REASON_MAX, sameClaimAt, serverNow, syncServerClock } from './huvaariBatlah';
 
 /** Илгээлтийн төлөв */
@@ -60,31 +21,18 @@ export const OBYEM_STATUS = {
   pending: 'Хүлээгдэж буй',
   approved: 'Батлагдсан',
   returned: 'Буцаагдсан',
-  /** ⚠️ 2026-10-04: зохиогч өөрөө ТАТАЖ АВСАН (`withdrawObyem`) — батлагч хүлээж гацахгүй */
   withdrawn: 'Татаж авсан',
 } as const;
 export type ObyemStatus = (typeof OBYEM_STATUS)[keyof typeof OBYEM_STATUS];
 
 /**
- * Буцаах шалтгааны дээд урт (тэмдэгт) — ⚠️ 2026-10-06. Талбар (`butsaasan_shaltgaan`) 2048;
+ * Буцаах шалтгааны дээд урт (тэмдэгт) — 2026-10-06. Талбар (`butsaasan_shaltgaan`) 2048;
  * `huvaariBatlah.REASON_MAX`-тай ижил 2000. Урьд нь таслагдаагүй тул урт шалтгаан
  * `applyEdits`-ийг бүхэлд нь унагаж, батлагч БУЦААЖ ЧАДАХГҮЙ байв. UI (`toolbar`) ч үүгээр шалгана.
- * ⚠️ merge 2026-10-06: утга нь `huvaariBatlah.REASON_MAX`-аас (дээрх импорт) — хоёр газар тогтмол байхгүй.
  */
 
 /**
- * ХАГАС БИЧИГДСЭН БАТЛАЛТЫН СЕРВЕРИЙН ТЭМДЭГ — ⚠️ 2026-10-06, `huvaariBatlah.PARTIAL_MARK`-ийн загвар.
- *
- * ⚠️ ЯАГААД: батлагч `useObyem.decideObyemHere`-д ЭХЛЭЭД `Инженерийн_төлөвлөсөн_обьём`-д бичээд
- *    (`applyUpdates`), ДАРАА нь `decideObyem`-аар `approved` болгодог. Завсарт унавал утга нь
- *    үндсэн өгөгдөлд орсон атлаа илгээлт `pending` хэвээр; хамгаалалт нь зөвхөн `CLAIM_TTL`
- *    (10 мин) түгжээ байсан тул түүний дараа зохиогч ТАТАХ, өөр батлагч БУЦААХ боломжтой —
- *    батлагдаагүй обьём үндсэн өгөгдөлд үлдэж, илгээлт хэзээ ч батлагдахгүй байв.
- * ⚠️ ХЭЛБЭР: ШИНЭ ТАЛБАР НЭМЭЭГҮЙ — `pending` мөрийн `butsaasan_shaltgaan` талбарт (`pending`-д
- *    хэзээ ч уншигддаггүй) `${PARTIAL_MARK}:${батлагч}`. Хугацаагүй: зөвхөн
- *    `decideObyem(approve:true)` амжилттай болоход (`reason: null`) арилна.
- * ⚠️ Тэмдэгтэй үед: `withdrawObyem` ба `decideObyem(approve:false)` ТАТГАЛЗАНА; батлах (бичилтийг
- *    гүйцээх) ЗӨВШӨӨРӨГДӨНӨ. Өгөгдөл тул ОРЧУУЛАГДАХГҮЙ.
+ * ХАГАС БИЧИГДСЭН БАТЛАЛТЫН СЕРВЕРИЙН ТЭМДЭГ — 2026-10-06, `huvaariBatlah.PARTIAL_MARK`-ийн загвар.
  */
 export const PARTIAL_MARK = '__hagas_bichigdsen__';
 /** Хагас бичсэн батлагчийн нэр (`''` = нэргүй тэмдэг), тэмдэггүй бол `null`. Зөвхөн `pending` мөрд. */
@@ -96,7 +44,7 @@ export function partialBy(status: string | null | undefined, reason: string | nu
 }
 
 /**
- * ДАВХАР ИЛГЭЭЛТИЙН ЦУЦЛАЛТЫН ТЭМДЭГ — ⚠️ 2026-10-06, `huvaariBatlah.DUP_MARK`-ийн загвар.
+ * ДАВХАР ИЛГЭЭЛТИЙН ЦУЦЛАЛТЫН ТЭМДЭГ — 2026-10-06, `huvaariBatlah.DUP_MARK`-ийн загвар.
  * `submitObyem`-ийн давхардал арилгах зам устгал унахад ялагдсан мөрийг `withdrawn` болгохдоо
  * `butsaasan_shaltgaan`-д бичнэ. Урьд нь тэмдэггүй тул тэр мөр `loadHistory`-д багцын «сүүлийн
  * шийдвэр» болж, жинхэнэ буцаалтын шалтгааныг (`useObyem.pvReturned`) инженерээс нуудаг байв.
@@ -110,12 +58,6 @@ export function isDupCancel(x: Pick<ObyemSubmission, 'status' | 'reason' | 'appr
 
 /**
  * НЭГ ИЛГЭЭЛТИЙН АГУУЛГА.
- *
- * ⚠️ `cells` нь `[oid, утга]` хосуудын массив: `null` = НҮДИЙГ ЦЭВЭРЛЭ.
- *    `undefined` ба `null` хоёрыг ЯЛГАНА — эхнийх нь «хөндөөгүй», хоёр дахь
- *    нь «зориуд хоослов» (`null ≠ 0` дүрмийн үргэлжлэл).
- * ⚠️ Блокоор задлаагүй: талбар нь мөрд ГАНЦ скаляр тул түлхүүр нь `oid`
- *    дангаараа (гүйцэтгэлийн `${oid}:${b}` хэлбэр ЭНД хэрэггүй).
  */
 export type ObyemPayload = {
   v: 1;
@@ -124,7 +66,6 @@ export type ObyemPayload = {
   /**
    * Мөрийн танигч `[oid, «№ ¦ Ажил»]` (хуудасны дарааллаар) — илгээснээс
    * хойш архивт шинэ жааз орвол батлагч oid-ийг шинэ мөр рүү ЗӨӨХ ганц зам.
-   * ⚠️ Заавал биш: хуучин илгээлтэд байхгүй.
    */
   rowKeys?: [number, string][];
 };
@@ -144,7 +85,7 @@ export type ObyemSubmission = {
   approverAt: number | null;
   reason: string | null;
   note: string | null;
-  /** Хэдэн нүд өөрчлөгдсөн — жагсаалтад харуулах. ⚠️ 2026-10-23: хоосон `nud_too` = мэдэгдэхгүй (`null`), 0 биш */
+  /** Хэдэн нүд өөрчлөгдсөн — жагсаалтад харуулах. 2026-10-23: хоосон `nud_too` = мэдэгдэхгүй (`null`), 0 биш */
   cellCount: number | null;
   /** Түүхий JSON — `parsePayload`-аар задарна */
   payload: string;
@@ -192,13 +133,6 @@ const SUPER_OWNERS = new Set(
 /**
  * ХУУЧИН ЭЗЭД — `ROLE_BY_USER`-ээс хасагдсан ч хүснэгтийг үүсгэсэн байж
  * болох аккаунтууд (2026-09-11, `permsRemote.FORMER_TABLE_OWNERS`-ийн загвар).
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ: хүснэгтийг үүсгэсэн хүн дараа нь super жагсаалтаас
- *    хасагдвал `findTableUrl` нь БАЙГАА хүснэгтээ «эзэн танигдахгүй» гэж
- *    няцааж, шинээр үүсгэхийг ч хориглоно (`ownerMismatch`). Тэр үед
- *    батлах урсгал бүхэлдээ зогсоно — 2026-09-11-нд яг ийм байдал үүсэв.
- * ⚠️ Энд нэмэх нь ЗӨВХӨН УНШИХ эрхийг нээнэ: хүснэгт өөрөө AGOL дээр
- *    хуваалцагдсан хэвээр, бичих эрх нь тэндээс хамаарна.
  */
 const FORMER_TABLE_OWNERS: string[] = [];
 const TABLE_OWNERS = new Set([
@@ -210,28 +144,15 @@ let tableUrlCache: string | undefined;
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — шинээр үүсгэхийг хориглоно */
 let ownerMismatch = false;
 
-/**
- * ⚠️ ЭЗНИЙГ ШАЛГАНА: title хайлт нь org доторх ХЭНИЙ Ч үүсгэсэн ижил нэртэй
- * item-ыг буцааж болно. Хуурамч хүснэгт үүсгэсэн хүн бүх багцын обьёмыг
- * батлах зам нээх байлаа.
- */
 async function findTableUrl(token: string): Promise<string | null> {
   const search = await arcgisPost(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
-    /*
-     * ⚠️ 100 (2026-09-11, `permsRemote.ts:176-181`-ийн засварыг тараав):
-     * хайлт нь org доторх ХЭНИЙ Ч ижил нэртэй item-ыг буцаадаг тул хэн
-     * нэгэн 10+ хуурамч item үүсгэвэл ЖИНХЭНЭ хүснэгт эхний 10-т багтахаа
-     * больж, `ownerMismatch` асаад бүх клиентийн урсгал УНТАРНА.
-     */
     num: '100',
   });
   const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);
   const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
-  /* ⚠️ Нийтэд нээлттэй эсэхийг ЭНД барина — `access` нь хайлтын хариунд
-     хамт ирдэг тул нэмэлт хүсэлт хэрэггүй (`permsRemote`-ийн загвар). */
   if (String(hit?.access ?? '') === 'public') {
     console.error(
       `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч`,
@@ -250,8 +171,6 @@ async function findTableUrl(token: string): Promise<string | null> {
 
 /**
  * Хүснэгт үүсгэх (publish эрхтэй super admin).
- *
- * ⚠️ `aguulga` нь 1,048,576 тэмдэгт — нэг багцын бүх мөрийн обьём багтана.
  */
 async function createTable(token: string, user: string): Promise<string | null> {
   const createParameters = {
@@ -304,13 +223,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
 
 /**
  * Хүснэгтийн URL — олох, эс бөгөөс (super) үүсгэх.
- * ⚠️ Зөвхөн ОЛДСОН URL-ыг кэшлэнэ: `null`-ыг кэшлэвэл порталын search-ийн
- *    түр зуурын алдаа сешн даяар тогтмолжино.
  */
 async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
-  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (Guitsetgel_talbe/193) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
-     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
   const direct: string | null = `${GUITS}/193`;
   if (direct) {
     tableUrlCache = direct;
@@ -319,7 +234,6 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
-  /* ⚠️ ЗӨВХӨН ЭЗЭН ҮҮСГЭНЭ (`permsRemote`-ийн 2026-09-15-ны дүрэм, энд 2026-09-17). */
   if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase()))
     url = await createTable(auth.token, auth.user);
   if (url) tableUrlCache = url;
@@ -366,7 +280,6 @@ function toSubmission(a: Attrs): ObyemSubmission | null {
     approverAt: n(a[F.approverAt]),
     reason: s(a[F.reason]),
     note: s(a[F.note]),
-    /* ⚠️ 2026-10-23: null ≠ 0 (`huvaariBatlah.toSubmission`-тэй ижил) */
     cellCount: a[F.cellCount] == null || a[F.cellCount] === '' || !Number.isFinite(Number(a[F.cellCount])) ? null : Number(a[F.cellCount]),
     payload: String(a[F.payload] ?? ''),
   };
@@ -374,10 +287,6 @@ function toSubmission(a: Attrs): ObyemSubmission | null {
 
 /**
  * Дуудагчийн өгсөн нэр НЭВТЭРСЭН хэрэглэгчтэй ижил үү (хөтөчид, `AUTH.appId` үед) —
- * ⚠️ 2026-10-06, `huvaariBatlah.sameAsLogin`-ийн хуулбар. Урьд нь `submitObyem` зохиогчийг,
- * `decideObyem` батлагчийг args-аас ШАЛГАЛТГҮЙ бичдэг байсан тул консолоос өөр нэр дамжуулж
- * өөрийн илгээлтээ батлах (зохиогч ≠ батлагч дүрмийг тойрох) боломжтой байв.
- * Зөрвөл алдаа, эс бөгөөс `null`.
  */
 function sameAsLogin(name: string): { ok: false; error: string } | null {
   if (typeof window === 'undefined' || !AUTH.appId) return null;
@@ -387,12 +296,6 @@ function sameAsLogin(name: string): { ok: false; error: string } | null {
   return null;
 }
 
-/**
- * ⚠️ 2026-10-09: `strict` — ЗАВГҮЙ ЭСЭХИЙН шалгалтад (`obyemBusyFor` → `ajilApply`) хүснэгт ОЛДОХГҮЙ ба
- *    «шалгаж ЧАДАХГҮЙ» хоёрыг ялгана (fail-closed, `huvaariBatlah.query`-ийн ижил дүрэм). Эзэн танигдахгүй
- *    (`ownerMismatch`) эсвэл нэвтрэлттэй горимд токен алга бол ШИДНЭ; токентой, эзэн танигдсан атлаа
- *    хүснэгт ҮНЭХЭЭР алга (хэн ч илгээгээгүй) бол `[]` — эс бөгөөс шинэ орчинд нэмэлт ажил буухгүй.
- */
 async function query(where: string, outFields: string, strict = false): Promise<Attrs[]> {
   const url = await tableUrl(false);
   if (!url) {
@@ -400,21 +303,13 @@ async function query(where: string, outFields: string, strict = false): Promise<
       throw new Error(tr('Батлах хүснэгт олдсонгүй — админд хандана уу.'));
     return [];
   }
-  /* ⚠️ 2026-10-26 (A3): түгжээний TTL-ийн шүүлт серверийн цагаар — урьд нь энд синк БАЙГААГҮЙ тул `serverNow` нь
-     хуваарь/ажлын query өмнө нь явсан үед л залруулагддаг, эс бөгөөс хөтчийн цаг байв (`huvaariBatlah.query`-тай
-     ижил; ихэвчлэн кэшээс шууд буцна, алдааг залгина). */
   await syncServerClock(url);
   const out: Attrs[] = [];
-  /* ⚠️ 2026-10-06 аудит: `off += 1000` · `fs.length < 1000` нь серверийн `maxRecordCount` 1000-аас
-     бага үед эхний хуудсаар зогсож, үлдсэн мөрийг ЧИМЭЭГҮЙ хаядаг байв — `ajilBatlah`-ийн загвар:
-     ирсэн тоогоор шилжиж, `exceededTransferLimit`-ээр зогсоно. */
   for (let off = 0; ; ) {
     const j = await arcgisPost(`${url}/query`, {
       where,
       outFields,
       returnGeometry: 'false',
-      /* ⚠️ Хуудаслалтад `orderByFields` ЗААВАЛ — эс бөгөөс ArcGIS хуудас
-         хооронд мөр давхардуулах/алгасах эрхтэй. */
       orderByFields: `${F.oid} ASC`,
       resultOffset: String(off),
       resultRecordCount: '1000',
@@ -435,9 +330,6 @@ const HEAD_FIELDS = [
 
 /**
  * Багцын хүлээгдэж буй илгээлт.
- *
- * ⚠️ Зөвхөн `pending` нь баганыг ТҮГЖИНЭ. `approved`/`returned` нь түүх тул
- *    инженер дахин засаж болно.
  */
 export async function loadPending(pkgKey: string): Promise<ObyemSubmission | null> {
   const esc = pkgKey.replace(/'/g, "''");
@@ -446,10 +338,6 @@ export async function loadPending(pkgKey: string): Promise<ObyemSubmission | nul
     HEAD_FIELDS,
   );
   const list = rows.map(toSubmission).filter((x): x is ObyemSubmission => x != null);
-  /* ⚠️ Хэд хэдэн pending үүссэн бол (зэрэгцээ илгээлтийн race) ЭХНИЙХ (бага OBJECTID) ялна —
-     ⚠️ 2026-10-06: `submitObyem`-ийн давхардал арилгах дүрэмтэй ИЖИЛ (тэнд бага нь үлдэж, их нь
-     цуцлагддаг). Урьд «СҮҮЛИЙНХ ялна» байсан тул цуцлагдах ёстой илгээлт хүлээгдэж буй мэт
-     харагдаж, батлагч түүнийг батлах байв (`huvaariBatlah.loadPending`-ийн 2026-10-01 засвар). */
   list.sort((a, b) => a.oid - b.oid);
   return list[0] ?? null;
 }
@@ -467,16 +355,14 @@ export async function loadHistory(pkgKey: string, limit = 20): Promise<ObyemSubm
     `${F.pkgKey} = '${esc}' AND ${F.status} <> N'${OBYEM_STATUS.pending}'`,
     HEAD_FIELDS,
   );
-  /* ⚠️ 2026-10-06: давхардлын цуцлалтыг хасна (`isDupCancel`) — шийдвэр биш; `limit` хасалтын ДАРАА */
   const list = rows.map(toSubmission).filter((x): x is ObyemSubmission => x != null && !isDupCancel(x));
   return list.slice(-limit).reverse();
 }
 
 /**
- * НЭГ ИЛГЭЭЛТИЙН ТОЛГОЙ — ⚠️ 2026-10-09 (`useObyem.decideObyemHere`): нэг батлагч хоёр табаас зэрэг
+ * НЭГ ИЛГЭЭЛТИЙН ТОЛГОЙ — 2026-10-09 (`useObyem.decideObyemHere`): нэг батлагч хоёр табаас зэрэг
  * баталбал хоёр дахь таб «аль хэдийн шийдвэрлэсэн»-ээр унадаг байв — утга нь аль хэдийн бичигдсэн, илгээлт
  * ӨӨРӨӨ баталсан. Дахин уншиж `approved` && `approver === би` бол амжилт гэж үзнэ.
- * ⚠️ Уншилт унавал ШИДНЭ — дуудагч «амжилт» гэж таамаглахгүй.
  */
 export async function loadHead(oid: number): Promise<ObyemSubmission | null> {
   const rows = await query(`${F.oid} = ${Number(oid)}`, HEAD_FIELDS);
@@ -492,12 +378,6 @@ export async function loadPayload(oid: number): Promise<ObyemPayload | null> {
 
 /**
  * Агуулгыг задлах — эвдэрсэн бол `null`.
- *
- * ⚠️ Хагас задарсан агуулга хэрэглэвэл обьём ЧИМЭЭГҮЙ устана. Тиймээс бүтэн
- *    эсэхийг шалгаж, эргэлзвэл ТАТГАЛЗАНА.
- * ⚠️ `cells`-ийн элемент бүрийг ШАЛГАНА: `oid` нь бүхэл тоо, утга нь тоо
- *    эсвэл `null`. Танигдахгүй элементийг ХАЯХГҮЙ, харин БҮТЭН агуулгыг
- *    татгалзана — хагас батлагдсан засвар нь батлагдаагүйгээс дор.
  */
 export function parsePayload(raw: string): ObyemPayload | null {
   try {
@@ -512,10 +392,6 @@ export function parsePayload(raw: string): ObyemPayload | null {
       if (v !== null && !(typeof v === 'number' && Number.isFinite(v))) return null;
       cells.push([oid as number, v as number | null]);
     }
-    /* ⚠️ `rowKeys`-ийг ХАДГАЛНА (2026-09-25 аудит): урьд нь энд хаягдаж,
-       шинэ жааз руу дахин ачаалсан батлагч «мөрүүд олдсонгүй»-д гацдаг байв.
-       `cells`-ээс ялгаатай нь буруу элементийг ХАЯЖ, агуулгыг татгалзахгүй —
-       танигч нь зөвхөн зөөх туслах, дутвал тэр нүд алгасагдаж ил тоологдоно. */
     const rowKeys: [number, string][] = [];
     if (Array.isArray(j.rowKeys)) {
       for (const e of j.rowKeys as unknown[]) {
@@ -537,11 +413,6 @@ const editOk = (res: unknown): boolean => {
 
 /**
  * ИЛГЭЭХ — инженерийн «Батлуулах».
- *
- * ⚠️ Эх өгөгдөлд ЮУ Ч бичихгүй. Зөвхөн энэ хүснэгтэд хүлээнэ.
- * ⚠️ Тухайн багцад хүлээгдэж буй илгээлт БАЙВАЛ татгалзана — хоёр санал
- *    зэрэг хүлээвэл батлагч алийг нь батлахаа мэдэхгүй, мөн хоёулаа
- *    батлагдвал сүүлийнх нь өмнөхийг чимээгүй дарна.
  */
 export async function submitObyem(args: {
   pkgKey: string;
@@ -553,15 +424,9 @@ export async function submitObyem(args: {
   if (!args.payload.cells.length) {
     return { ok: false, error: tr('Өөрчлөгдсөн нүд алга.') };
   }
-  /* ⚠️ ХҮРЭЭГ lib-д ШАЛГАНА (2026-09-17): урьд нь зөвхөн UI. `null` = хязгааргүй. */
   if (AUTH.appId) {
-    /* ⚠️ НЭВТЭРСЭН хэрэглэгчээр (дуудагчийн `author` БИШ) — консолоос super-ийн
-       нэр дамжуулж алгасахаас (2026-09-17). Хөтөчид нэвтрээгүй бол хаана. */
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
-    /* ⚠️ 2026-10-06: хадгалагдах ЗОХИОГЧ = нэвтэрсэн хүн (`sameAsLogin`-ийн ⚠️). Урьд нь хүрээг
-       `meNow`-оор шалгаад нэрийг `args.author`-оос бичдэг тул өөр нэрээр илгээгээд ӨӨРӨӨ батлах
-       боломжтой байв. */
     const own = sameAsLogin(args.author);
     if (own) return own;
     const sc = obyemScope(meNow ?? args.author, 'editor');
@@ -589,18 +454,8 @@ export async function submitObyem(args: {
       adds: JSON.stringify([{ attributes: attrs }]),
       rollbackOnFailure: 'true',
     });
-    /* ⚠️ 2026-10-23 (UX аудит X4): «ArcGIS-т хадгалагдсангүй.» нь дараагийн алхмыг хэлдэггүй байв — энэ файлын
-       бүх бичилтийн уналтад ижил мессеж (холболт шалгаад дахин). */
     if (!editOk(j.addResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') };
     invalidate('OBYEM_BATLAH');
-    /*
-     * ⚠️ 2026-10-05: ДАВХАР ИЛГЭЭЛТ АРИЛГАХ (`huvaariBatlah.submitPlan`-ийн загвар). Дээрх
-     *    `loadPending` шалгалт ба `adds` хоёрын завсарт хоёр инженер зэрэг дарвал хоёулаа
-     *    шалгалтыг давж, нэг багцад хоёр `pending` үүсдэг байв. Бичсэний ДАРАА дахин уншиж,
-     *    БАГА OBJECTID-тай (түрүүлж бичигдсэн) илгээлт байвал ӨӨРИЙНХӨӨ мөрийг устгана — хоёр
-     *    тал ижил дүрмээр шийддэг тул яг нэг нь үлдэнэ. Устгал унавал `withdrawn` болгоно.
-     * ⚠️ Давхардлын шалгалт өөрөө унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — 2026-10-21-нээс `ok:false` + «шинэчилнэ үү».
-     */
     const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
     if (Number.isFinite(mine)) try {
       const rows = await query(
@@ -612,15 +467,9 @@ export async function submitObyem(args: {
         const del = await arcgisPost(`${url}/applyEdits`, { deletes: String(mine) }).catch(() => null);
         const who = s(rows.find((a) => Number(a[F.oid]) === first)?.[F.author]);
         if (!editOk(del?.deleteResults)) {
-          /* ⚠️ 2026-10-06: `DUP_MARK`-аар ялгана, `approverAt` ХООСОН — «сүүлийн шийдвэр» болохгүй
-             (`isDupCancel`); урьд нь тэмдэггүй, `approverAt`-тай бичигдэж жинхэнэ татсантай ялгагдахгүй байв. */
           const upd = await arcgisPost(`${url}/applyEdits`, {
             updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: OBYEM_STATUS.withdrawn, [F.reason]: DUP_MARK, [F.approverAt]: null } }]),
           }).catch(() => null);
-          /* ⚠️ 2026-10-21 (кодын аудит): нөөц `updates`-ийн ҮР ДҮНГ шалгана (алдаа HTTP 200-аар ирдэг) —
-             `huvaariBatlah.submitPlan`-д 2026-10-12-нд хийсэн засварын хуулбар энд хоцорсон байв: устгал ч, цуцлалт ч
-             унахад «цуцлагдлаа» гэж ХУДАЛ хэлж, илүүдэл `pending` мөр батлагчийн жагсаалтад үлдэн ХОЁР УДАА батлагдах
-             эрсдэлтэй байлаа. */
           if (!editOk(upd?.updateResults)) {
             invalidate('OBYEM_BATLAH');
             return { ok: false, error: tr('{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.', who || tr('Өөр хэрэглэгч')) };
@@ -630,8 +479,6 @@ export async function submitObyem(args: {
         return { ok: false, error: tr('{0} энэ багцын обьёмыг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
       }
     } catch {
-      /* ⚠️ 2026-10-21 (кодын аудит): `huvaariBatlah.submitPlan`-тай ИЖИЛ — давхардал шалгагдаагүй тул энэ мөр
-         цуцлагдах ёстой илүүдэл байж болно; «илгээгдлээ» биш «шинэчилнэ үү» (хадгалагдсан илгээлт түгжээгээ барина). */
       return { ok: false, error: tr('Илгээлт хадгалагдсан боловч давхардлыг шалгаж чадсангүй — хуудсыг шинэчилнэ үү.') };
     }
     return { ok: true };
@@ -641,22 +488,11 @@ export async function submitObyem(args: {
 }
 
 /**
- * БАТЛАХ ТҮГЖЭЭ (claim) — ⚠️ 2026-10-05, `huvaariBatlah`-ийн `claimPlan`/`casClaim`-ийн загвар.
- *
- * ⚠️ ЯАГААД: батлах гинж нь ЭХЛЭЭД үндсэн өгөгдөлд бичээд (`applyUpdates`), ДАРАА нь төлөвийг
- *    `approved` болгодог (`decideObyem`-ийн ⚠️). Урьдчилсан шалгалт (`dryRun`) ба бичилтийн
- *    завсарт зохиогч ТАТАХ, өөр батлагч БУЦААХ боломжтой байсан — утга нь үндсэн өгөгдөлд
- *    орсон атлаа «батлагдсан» бичлэг үүсэхгүй, «дахин батлах» хэзээ ч амжилтгүй.
- * ⚠️ ХЭЛБЭР: ШИНЭ ТӨЛӨВ НЭМЭЭГҮЙ — `pending` хэвээр, `approver` = түгжигч, `approverAt` =
- *    түгжсэн агшин. `pending` мөрийн `approver`-ийг өөр хаана ч уншдаггүй.
- * ⚠️ ХУГАЦААТАЙ (`CLAIM_TTL`): хөтөч батлах явцад хаагдвал түгжээ мөнхөд үлдэхгүй.
- * ⚠️ ArcGIS-д нөхцөлт update БАЙХГҮЙ — бичсэний дараа дахин уншиж өөрийнх эсэхийг шалгана.
- *    Зэрэг хоёр түгжилтийн завсар маш богино болно, тэг биш.
+ * БАТЛАХ ТҮГЖЭЭ (claim) — 2026-10-05, `huvaariBatlah`-ийн `claimPlan`/`casClaim`-ийн загвар.
  */
 const CLAIM_TTL = 10 * 60_000;
 const CLAIM_FIELDS = `${F.oid},${F.status},${F.approver},${F.approverAt}`;
-/** `pending` мөрийг хугацаа нь дуусаагүй түгжээтэй байлгаж буй хүн (жижиг үсгээр), эсвэл `null`.
-    ⚠️ 2026-10-12 (дарааллын аудит): `now` анхдагч нь СЕРВЕРИЙН цаг (`serverNow`) — `huvaariBatlah.claimHolder`-тай ижил */
+/** `pending` мөрийг хугацаа нь дуусаагүй түгжээтэй байлгаж буй хүн (жижиг үсгээр), эсвэл `null`. */
 function claimHolder(a: Attrs, now = serverNow()): string | null {
   if (s(a[F.status]) !== OBYEM_STATUS.pending) return null;
   const who = s(a[F.approver])?.toLowerCase() ?? null;
@@ -665,7 +501,7 @@ function claimHolder(a: Attrs, now = serverNow()): string | null {
   return now - at < CLAIM_TTL ? who : null;
 }
 /**
- * Жагсаалтын мөрөөс түгжигчийг уншина (`claimHolder`-тай ИЖИЛ дүрэм) — ⚠️ 2026-10-12 (дарааллын аудит),
+ * Жагсаалтын мөрөөс түгжигчийг уншина (`claimHolder`-тай ИЖИЛ дүрэм) — 2026-10-12 (дарааллын аудит),
  * `huvaariBatlah.claimHolderOf`-ийн хуулбар: `aclOps.pendingHeldBy` (аккаунт устгах/үүрэг хасахын өмнөх тоолол).
  */
 export function claimHolderOf(sub: Pick<ObyemSubmission, 'status' | 'approver' | 'approverAt'>, now = serverNow()): string | null {
@@ -690,7 +526,6 @@ export async function casObyemClaim(
   io: { read: () => Promise<Attrs | null>; write: (at: number) => Promise<boolean>; now?: () => number },
   me: string,
 ): Promise<string | null> {
-  /* ⚠️ 2026-10-12 (дарааллын аудит): анхдагч нь СЕРВЕРИЙН цаг (`serverNow`) — бичих агшин ба хугацааны шүүлт хоёулаа */
   const now = io.now ?? serverNow;
   const row = await io.read();
   if (!row) return tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.');
@@ -714,12 +549,7 @@ export async function casObyemClaim(
 
 /**
  * БАТЛАГЧИЙН ХҮРЭЭ ба ЗОХИОГЧ ≠ БАТЛАГЧ — `decideObyem`-ийн дүрмийг `claimObyem` · `markObyemPartial`-д ч НЭГ газраас
- * (⚠️ 2026-10-21, аудит). Серверийн мөрөөр (`F.author` · `F.pkgGroup`); `null` = зөвшөөрнө.
- * ⚠️ Хүрээ: `AUTH.appId` үед нэвтэрсэн хэрэглэгчээр (`obyemScope(…, 'approver')`, `null` = хязгааргүй); хөтөчид
- *    нэвтрээгүй бол хаана. Зохиогч: `me === author` бол татгалзана (`decideObyem`-ийн 2-р шалгуур).
- * ⚠️ ЯАГААД: түгжээ (`claimObyem`) ба хагас бичилтийн тэмдэг (`markObyemPartial`) урьд нь ЗӨВХӨН түгжээний эзэн/төлөв
- *    шалгадаг тул хүрээний гаднах батлагч эсвэл зохиогч өөрөө `pending` мөрөө 10 минут түгжиж бусдын батлалтыг хаах,
- *    `useObyem`-ийн `dryRun`-ийг тойрсон дуудлагаар хагас бичилтийн тэмдэг тавих (буцаалтыг хаах) боломжтой байв.
+ * (2026-10-21, аудит). Серверийн мөрөөр (`F.author` · `F.pkgGroup`); `null` = зөвшөөрнө.
  */
 function obyemAuthzDeny(cur: Attrs, me: string): string | null {
   if (AUTH.appId) {
@@ -734,24 +564,16 @@ function obyemAuthzDeny(cur: Attrs, me: string): string | null {
 }
 
 /**
- * БАТЛАХААР ТҮГЖИХ — үндсэн өгөгдөлд бичихээс ӨМНӨ (`useObyem.decideObyemHere`), ⚠️ 2026-10-05.
- * ⚠️ Дүрмүүд (өөрийгөө биш · хүрээ · `pending`)-ийг дуудагч ЯГ ӨМНӨ нь `decideObyem({ dryRun })`-аар
- *    шалгасан байх ёстой — энд зөвхөн түгжээ. Амжилттай бол `withdrawObyem` ба өөр батлагчийн
- *    `decideObyem` татгалзана.
- * ⚠️ 2026-10-12 (дарааллын аудит): түгжээний агшныг (`at`) дуудагчид буцаана (`huvaariBatlah.claimPlan`-ийн
- *    2026-10-08-ны загвар) — `useObyem` үүнийг `claimAt` болгон `obyemApproveGuard`/`markObyemPartial`/
- *    `decideObyem`-д дамжуулж нэг батлагчийн ӨӨР цонхны түгжээг «минийх» гэхгүй.
+ * БАТЛАХААР ТҮГЖИХ — үндсэн өгөгдөлд бичихээс ӨМНӨ (`useObyem.decideObyemHere`), 2026-10-05.
  */
 export async function claimObyem(args: { oid: number; approver: string }): Promise<{ ok: boolean; error?: string; at?: number }> {
   const me = args.approver.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
-  /* ⚠️ 2026-10-06: түгжигч = нэвтэрсэн хүн (`sameAsLogin`-ийн ⚠️) — өөр нэрээр түгжихгүй */
   const own = sameAsLogin(me);
   if (own) return own;
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   try {
-    /* ⚠️ 2026-10-21 (аудит): `decideObyem`-ийн ХҮРЭЭ ба ЗОХИОГЧ шалгуур ЭНД Ч (`obyemAuthzDeny`-ийн ⚠️) — түгжихээс ӨМНӨ */
     const cur0 = (await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.pkgGroup}`))[0];
     if (!cur0) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
     const deny0 = obyemAuthzDeny(cur0, me);
@@ -768,7 +590,6 @@ export async function claimObyem(args: { oid: number; approver: string }): Promi
         return editOk(j.updateResults);
       },
     }, me);
-    /* ⚠️ Түгжээ бичигдсэн бол кэш хуучирна (`dataBus.invariant`) */
     if (!err) invalidate('OBYEM_BATLAH');
     return err ? { ok: false, error: err } : { ok: true, at: at0 };
   } catch (e) {
@@ -777,13 +598,8 @@ export async function claimObyem(args: { oid: number; approver: string }): Promi
 }
 
 /**
- * ҮНДСЭН ӨГӨГДӨЛД БИЧИХИЙН ЯГ ӨМНӨХ ХАМГААЛАЛТ (⚠️ 2026-10-05, `huvaariBatlah.approveGuard`-ийн
+ * ҮНДСЭН ӨГӨГДӨЛД БИЧИХИЙН ЯГ ӨМНӨХ ХАМГААЛАЛТ (2026-10-05, `huvaariBatlah.approveGuard`-ийн
  * загвар): төлвийг ДАХИН уншина — `pending` хэвээр, түгжээ ӨӨРИЙНХ (хугацаа нь дуусаагүй) байх ёстой.
- * ⚠️ Уншилт унавал ШИДНЭ (throw) — дуудагч бичихгүй (fail-closed).
- * @returns `null` = бичиж болно; мөр = яагаад зогссон (үндсэн өгөгдөлд юу ч бичигдээгүй)
- * ⚠️ 2026-10-12 (дарааллын аудит): `claimAt` — `claimObyem`-ийн буцаасан агшин. Өгвөл түгжээ ӨӨРИЙНХ байсан ч
- *    `approverAt` ±1 с дотор таарахыг шаардана (`huvaariBatlah.approveGuard`-ийн ижил дүрэм): нэг батлагчийн
- *    хоёр цонх зэрэг батлахад хоёулаа «holder === me» тул урьд нь хоёулаа үндсэн өгөгдөлд бичдэг байв.
  */
 const otherWindowMsg = () => tr('Энэ илгээлтийг таны өөр цонх түгжсэн байна — тэр цонхноос үргэлжлүүлнэ үү, эсвэл хуудсаа шинэчилнэ үү.');
 export async function obyemApproveGuard(args: { oid: number; approver: string; claimAt?: number }): Promise<string | null> {
@@ -803,16 +619,7 @@ export async function obyemApproveGuard(args: { oid: number; approver: string; c
 }
 
 /**
- * БАГЦЫН ОБЬЁМЫН БАТЛАЛТ ЯГ ОДОО ЯВЖ БАЙНА УУ — ⚠️ 2026-10-09 (`ajilApply.materializeInner`).
- *
- * ⚠️ ЯАГААД: обьёмын батлагч үндсэн өгөгдлийн ОДООГИЙН жаазын мөрүүдэд OID-оор бичдэг
- *    (`useObyem.decideObyemHere` → `applyUpdates`). Тэр хооронд нэмэлт ажил буулгавал хуудас ШИНЭ
- *    жаазаар солигдож, обьём ХУУЧИН (архивласан) жаазад бууна — «батлагдсан» атлаа хуудсанд харагдахгүй.
- *    Тиймээс батлагч түгжсэн (`claimHolder`) эсвэл ХЭСЭГЧЛЭН бичсэн (`PARTIAL_MARK`) үед буулгалтыг хаана.
- * ⚠️ Уншилт унавал ШИДНЭ — дуудагч бичихгүй (fail-closed). Хүснэгт ҮНЭХЭЭР алга бол `null` (урсгал байхгүй).
- * ⚠️ 2026-10-09: хүснэгтийн URL олдоогүй нь «шалгаж чадахгүй» (эзэн танигдахгүй / токен алга) бол ч ШИДНЭ
- *    (`query(…, strict)`) — урьд нь `[]` буцааж «чөлөөтэй» гэж үздэг байв.
- * @returns `{ who, partial }` — хэн, хэсэгчлэн бичсэн эсэх; эсвэл `null` = чөлөөтэй
+ * БАГЦЫН ОБЬЁМЫН БАТЛАЛТ ЯГ ОДОО ЯВЖ БАЙНА УУ — 2026-10-09 (`ajilApply.materializeInner`).
  */
 export async function obyemBusyFor(pkgKey: string): Promise<{ who: string; partial: boolean } | null> {
   const esc = pkgKey.replace(/'/g, "''");
@@ -833,7 +640,7 @@ export async function obyemBusyFor(pkgKey: string): Promise<{ who: string; parti
 }
 
 /**
- * ТҮГЖЭЭГ ТАЙЛАХ — бичилт эхлээгүй/унасан үед (⚠️ 2026-10-05). Зөвхөн ӨӨРИЙН, `pending` хэвээр
+ * ТҮГЖЭЭГ ТАЙЛАХ — бичилт эхлээгүй/унасан үед (2026-10-05). Зөвхөн ӨӨРИЙН, `pending` хэвээр
  * мөрийг. Алдааг залгина: ямар ч байсан `CLAIM_TTL`-ээр тайлагдана.
  */
 export async function releaseObyemClaim(args: { oid: number; approver: string }): Promise<void> {
@@ -853,20 +660,8 @@ export async function releaseObyemClaim(args: { oid: number; approver: string })
 }
 
 /**
- * ХАГАС БИЧИЛТИЙН ТЭМДЭГ ТАВИХ — батлагч үндсэн өгөгдөлд бичихээс ӨМНӨ (⚠️ 2026-10-06,
- * `PARTIAL_MARK`-ийн ⚠️, `huvaariBatlah.markPlanPartial`-ийн загвар).
- * ⚠️ Түгжээ ӨӨРИЙНХ эсэхийг дуудагч (`useObyem` → `obyemApproveGuard`) сая шалгасан — энд
- *    зөвхөн `butsaasan_shaltgaan`-д тэмдэг бичнэ (`approver`/`approverAt` хөндөхгүй → түгжээ хэвээр).
- * ⚠️ 2026-10-11 (аудит №7): ГЭХДЭЭ CAS хамгаалалттай (`huvaariBatlah.markPlanPartial`-ийн 2026-10-08-ны ижил дүрэм) —
- *    `obyemApproveGuard` ба энэ бичилтийн ЗАВСАРТ зохиогч татах / өөр батлагч түгжих боломжтой тул тэмдэг
- *    «татсан»/бусдын мөрөнд суудаг байв. Одоо: төлөв/түгжээг дахин уншиж (`pending` ба түгжээ = би, хугацаа
- *    дуусаагүй), бичээд, ДАХИН уншиж тэмдэг суусныг баталгаажуулна; зөрвөл тодорхой алдаа.
- * ⚠️ FAIL-CLOSED: бичигдээгүй бол дуудагч үндсэн өгөгдөлд ЮУ Ч бичихгүй.
- * ⚠️ 2026-10-12 (дарааллын аудит, `huvaariBatlah.markPlanPartial`-ийн ижил дүрэм): (1) `claimAt` — өөрийн ӨӨР
- *    цонхны түгжээтэй бол тэмдэг тавихгүй (тэр цонх үндсэн өгөгдөлд бичиж эхэлсэн байж болно). (2) ТЭМДЭГ АЛЬ
- *    ХЭДИЙН БАЙВАЛ (хэний ч) ДАРЖ БИЧИХГҮЙ — `{ ok: true, existing: <эзэн> }`. Урьд нь өмнөх батлагчийн (түгжээ
- *    нь дууссан, бичилт нь хагас суусан) тэмдгийг өөрийн нэрээр дардаг тул «хэн хагас бичсэн» алдагдаж, эзэнтэй
- *    `clearObyemPartial(oid, owner)` ажиллах боломжгүй байв. Тэмдэг хэвээр тул хамгаалалт хэвээр — бичиж болно.
+ * ХАГАС БИЧИЛТИЙН ТЭМДЭГ ТАВИХ — батлагч үндсэн өгөгдөлд бичихээс ӨМНӨ (2026-10-06,
+ * `PARTIAL_MARK`, `huvaariBatlah.markPlanPartial`-ийн загвар).
  */
 export async function markObyemPartial(args: { oid: number; approver: string; claimAt?: number }): Promise<{ ok: boolean; error?: string; existing?: string }> {
   const me = args.approver.trim().toLowerCase();
@@ -874,7 +669,6 @@ export async function markObyemPartial(args: { oid: number; approver: string; cl
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const mark = `${PARTIAL_MARK}:${me}`;
-  /* ⚠️ 2026-10-21 (аудит): `author` · `pkgGroup` — хүрээ/зохиогчийн шалгуурт (`obyemAuthzDeny`) */
   const fields = `${CLAIM_FIELDS},${F.reason},${F.author},${F.pkgGroup}`;
   try {
     const cur = (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
@@ -882,7 +676,6 @@ export async function markObyemPartial(args: { oid: number; approver: string; cl
     const st = s(cur[F.status]);
     if (st === OBYEM_STATUS.withdrawn) return { ok: false, error: tr('Зохиогч илгээлтээ татсан байна — эх хуудсанд юу ч бичигдсэнгүй. Хуудсаа шинэчилнэ үү.') };
     if (st !== OBYEM_STATUS.pending) return { ok: false, error: decidedMsg(s(cur[F.approver]), st) };
-    /* ⚠️ 2026-10-21 (аудит): хүрээ ба зохиогч — `claimObyem`-тэй ижил (`obyemAuthzDeny`-ийн ⚠️) */
     const deny = obyemAuthzDeny(cur, me);
     if (deny) return { ok: false, error: deny };
     const h = claimHolder(cur);
@@ -892,7 +685,6 @@ export async function markObyemPartial(args: { oid: number; approver: string; cl
         : tr('Таны батлах түгжээний хугацаа дууссан — эх хуудсанд юу ч бичигдсэнгүй. «Батлах»-ыг дахин дарна уу.') };
     }
     if (args.claimAt != null && !sameClaimAt(cur[F.approverAt], args.claimAt)) return { ok: false, error: otherWindowMsg() };
-    /* ⚠️ 2026-10-12: байгаа тэмдгийг ДАРАХГҮЙ (дээрх ⚠️ (2)) */
     const had = partialBy(st, s(cur[F.reason]));
     if (had != null) return { ok: true, existing: had };
     const j = await arcgisPost(`${url}/applyEdits`, {
@@ -913,13 +705,7 @@ export async function markObyemPartial(args: { oid: number; approver: string; cl
 }
 
 /**
- * ХАГАС БИЧИЛТИЙН ТЭМДЭГ АРИЛГАХ — үндсэн өгөгдөлд НЭГ Ч мөр бичигдээгүй унасан үед (⚠️ 2026-10-06).
- * ⚠️ Зөвхөн тэмдэг байгаа үед (`partialBy`) — бодит шалтгааныг дарахгүй. Унавал чимээгүй: тэмдэг
- *    үлдэх нь аюулгүй тал (буцаах/татах хаагдсан ч дахин батлаж болно).
- * ⚠️ 2026-10-12 (дарааллын аудит): `owner` өгвөл ЗӨВХӨН тэмдгийн эзэн нь тэр (жижиг үсгээр) бол арилгана,
- *    эс бөгөөс бичихгүй `false` (`huvaariBatlah.clearPlanPartial`-ийн ижил дүрэм). Урьд нь «миний оролдлого
- *    0 мөр бичсэн» гэдгээр ӨӨР батлагчийн (эсвэл өөрийн өмнөх оролдлогын) тэмдгийг арилгаж, хагас суусан обьёмыг
- *    татах/буцаах боломжтой болгодог байв. `owner`-гүй дуудлага — хуучин зан (зөвхөн аврах замууд).
+ * ХАГАС БИЧИЛТИЙН ТЭМДЭГ АРИЛГАХ — үндсэн өгөгдөлд НЭГ Ч мөр бичигдээгүй унасан үед (2026-10-06).
  */
 export async function clearObyemPartial(oid: number, owner?: string): Promise<boolean> {
   const url = await tableUrl(false);
@@ -943,15 +729,6 @@ export async function clearObyemPartial(oid: number, owner?: string): Promise<bo
 
 /**
  * ШИЙДВЭР — батлах эсвэл буцаах.
- *
- * ⚠️ ҮНДСЭН ӨГӨГДӨЛД БИЧИХ нь ЭНД БИШ, дуудагч талд (`FillNew`) — учир нь тэр
- *    ажил нь схем, мөрийн зураглал, агшин солигдох зэрэг эх хуудасны бүх
- *    нарийн ширийнийг мэддэг `applyUpdates`-ыг шаарддаг. Энэ модуль зөвхөн
- *    урсгалын ТӨЛӨВИЙГ хөтөлнө.
- *
- * ⚠️ Дараалал: үндсэн өгөгдөлд АМЖИЛТТАЙ бичигдсэний ДАРАА л энэ мөрийг
- *    `approved` болгоно. Эсрэгээр хийвэл бичилт унасан үед «батлагдсан» гэж
- *    харагдах атлаа обьём хуучин хэвээр үлдэнэ.
  */
 export async function decideObyem(args: {
   oid: number;
@@ -959,53 +736,13 @@ export async function decideObyem(args: {
   approver: string;
   /**
    * Илгээсэн хүн — ЗӨВХӨН нөөц (fallback).
-   *
-   * ⚠️ 2026-09-15-ны аудит: дүрмийн ЖИНХЭНЭ эх нь ЭНЭ БИШ, СЕРВЕРИЙН мөрийн
-   *    `F.author` (доор `cur`-аас уншина). Дуудагчийн өгсөн утгад найдвал
-   *    консолоос `author: ''` дамжуулаад хамгаалалтыг бүрэн алгасаж болно.
    */
   author?: string;
   reason?: string;
-  /**
-   * ⚠️ 2026-09-30: ЗӨВХӨН ШАЛГАНА, БИЧИХГҮЙ. Дуудагч (`useObyem.decideObyemHere`)
-   *    үндсэн өгөгдөлд (`applyUpdates`) бичихээс ӨМНӨ дуудна: урьд нь бүх дүрэм
-   *    (өөрийгөө батлах · хүрээ · аль хэдийн шийдвэрлэсэн) ЗӨВХӨН энд, бичилтийн
-   *    ДАРАА ажилладаг тул зохиогч өөрийн засвараа (эсвэл хуучирсан дэлгэцээс
-   *    буцаагдсан утгыг) `Инженерийн_төлөвлөсөн_обьём`-д бичээд дараа нь л
-   *    «өөрөө батлах боломжгүй» гэж татгалзагддаг байв (05 §6 зөрчил). «Бичээд
-   *    дараа нь тэмдэглэх» дараалал (дээрх ⚠️) хэвээр — энэ нь нэмэлт урьдчилсан шалгалт.
-   */
   dryRun?: boolean;
-  /**
-   * ⚠️ 2026-10-09: АЛГАССАН НҮДНИЙ ТЭМДЭГЛЭЛ — батлагч сүүлийн жаазад тулгагдаагүй нүдтэйгээр
-   *    санаатайгаар баталсан бол (`useObyem`-ийн баталгаажуулалт) илгээлтийн `tailbar`-д нэмж
-   *    хадгална. Урьд нь зөвхөн мэдэгдэлд харагдаад алга болдог тул «батлагдсан» илгээлтийн аль
-   *    нүд үндсэн өгөгдөлд ОРООГҮЙГ хэн ч мэдэхгүй байв. Зөвхөн батлахад.
-   */
   skipped?: string;
-  /**
-   * ⚠️ 2026-10-12 (дарааллын аудит): `claimObyem`-ийн буцаасан түгжээний агшин (`huvaariBatlah.decidePlan`-ийн
-   *    2026-10-08-ны ижил дүрэм). Өгвөл түгжээ ӨӨРИЙНХ байсан ч `approverAt` ±1 с дотор таарахгүй бол шийдвэр
-   *    гаргахгүй — нэг батлагчийн өөр цонх дахин түгжиж бичиж байгаа. Өгөөгүй бол хуучин зан.
-   */
   claimAt?: number;
 }): Promise<{ ok: boolean; error?: string }> {
-  /*
-   * ⚠️ ДҮРМҮҮДИЙГ СҮЛЖЭЭНЭЭС ӨМНӨ шалгана. `tableUrl`-ийн ДАРАА байрлуулбал
-   *    ArcGIS уншигдахгүй орчинд «хүснэгт олдсонгүй» гэсэн буруу шалтгаан
-   *    буцааж, дүрэм нь чимээгүй алга болно.
-   *
-   * ⚠️ ЗОХИОГЧ ӨӨРИЙГӨӨ БАТЛАХГҮЙ. Энэ шалгуур UI-д БИШ, ЭНД байх ёстой:
-   *    товч нуух нь харагдацын асуудал, харин дүрэм нь өгөгдлийнх. Хоёр эрх
-   *    (`obyemEdit` + `obyemApprove`) нэг хүнд олгогдвол товч нь идэвхтэй
-   *    болох тул ганц хамгаалалт нь энэ.
-   *
-   * ⚠️ ХОЁР ДАВХАР ШАЛГУУР (2026-09-15-ны аудит):
-   *      (1) ЭНД — дуудагчийн өгсөн `author`-оор, СҮЛЖЭЭНЭЭС ӨМНӨ. ArcGIS
-   *          уншигдахгүй орчинд дүрэм чимээгүй алга болохоос сэргийлнэ.
-   *      (2) `cur`-ийн ДАРАА — СЕРВЕРИЙН мөрийн `F.author`-оор, учир нь (1)
-   *          нь дуудагчийн утгад найддаг тул хуурамчлах боломжтой.
-   */
   const me = args.approver.trim().toLowerCase();
   const claimed = (args.author ?? '').trim().toLowerCase();
   if (me && claimed && me === claimed) {
@@ -1014,28 +751,16 @@ export async function decideObyem(args: {
   if (!args.approve && !args.reason?.trim()) {
     return { ok: false, error: tr('Буцаах шалтгааныг бичнэ үү.') };
   }
-  /* ⚠️ 2026-10-06 аудит: талбар 2048 — урт шалтгаан `applyEdits`-ийг бүхэлд нь унагадаг байв
-     (UI нь `maxLength={REASON_MAX}`-тэй ч энэ функцийг өөр замаас дуудаж болно). СҮЛЖЭЭНЭЭС ӨМНӨ. */
   if (!args.approve && (args.reason?.trim().length ?? 0) > REASON_MAX) {
     return { ok: false, error: tr('Шалтгаан хэт урт ({0} тэмдэгтээс ихгүй).', String(REASON_MAX)) };
   }
-  /* ⚠️ 2026-10-06: нэргүй шийдвэр түгжээ авч чадахгүй (`casObyemClaim` нэрээр баталгаажуулдаг) */
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
-  /* ⚠️ 2026-10-06: хадгалагдах БАТЛАГЧ = нэвтэрсэн хүн (`sameAsLogin`-ийн ⚠️) — `args.approver`-т
-     өөр нэр дамжуулж «өөрийгөө батлахгүй» дүрмийг тойрдог байв. */
   const own = sameAsLogin(me);
   if (own) return own;
   const url = await tableUrl(false);
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  /*
-   * ⚠️ ШИЙДВЭР ГАРСАН ЭСЭХИЙГ ДАХИН ШАЛГАНА. Хоёр батлагч хуудсаа зэрэг
-   *    нээгээд нэг нь баталчихвал нөгөөгийн дэлгэц ХУУЧИН хэвээр үлдэнэ.
-   *    Түүнийг дарахад шийдвэр гаргасан хүний нэр чимээгүй дарагдана. Мөр нь
-   *    ганц тул `applyEdits` алдаа өгөхгүй — ЗӨВХӨН энэ шалгуур л барина.
-   */
   const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup},${F.reason},${F.note}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
-  /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (2026-09-17): урьд нь зөвхөн UI. */
   if (AUTH.appId) {
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
@@ -1043,11 +768,6 @@ export async function decideObyem(args: {
     if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын обьёмыг батлах эрхгүй.') };
   }
-  /*
-   * ⚠️ ХОЁР ДАХЬ ШАЛГУУР — ЗОХИОГЧ СЕРВЕРЭЭС (2026-09-15-ны аудит),
-   *    `huvaariBatlah`-тай ижил дүрэм. Дээрх эрт шалгуур нь дуудагчийн утгад
-   *    найддаг тул хоосон утга дамжуулаад алгасах боломжтой байв.
-   */
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
   if (me && author && me === author) {
     return { ok: false, error: tr('Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
@@ -1062,30 +782,18 @@ export async function decideObyem(args: {
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
   }
-  /* ⚠️ 2026-10-05: ӨӨР батлагч түгжсэн (үндсэн өгөгдөлд бичиж буй — `claimObyem`) бол шийдвэр
-     гаргахгүй: хоёр дахь батлагчийн буцаалт/батлалт эхнийхийн бичилтийн дундуур орж, утга нь
-     бичигдсэн атлаа «буцаагдсан» болдог байв. Хугацаа нь дууссан түгжээ саад болохгүй. */
   const holder = claimHolder(cur[0]);
   if (holder && holder !== me) return { ok: false, error: heldMsg(holder) };
-  /* ⚠️ 2026-10-12 (дарааллын аудит): өөрийн түгжээ ч ӨӨР ЦОНХНЫХ байж болно — `claimAt` зөрвөл зогсоно */
   if (holder === me && args.claimAt != null && !sameClaimAt(cur[0][F.approverAt], args.claimAt)) {
     return { ok: false, error: otherWindowMsg() };
   }
-  /* ⚠️ 2026-10-06: ХАГАС БИЧИГДСЭН илгээлтийг БУЦААХГҮЙ (`PARTIAL_MARK`-ийн ⚠️) — утга нь үндсэн
-     өгөгдөлд аль хэдийн орсон; буцаавал «буцаагдсан» обьём үндсэн өгөгдөлд үлдэнэ. Батлах нь
-     (бичилтийг гүйцээх) зөвшөөрөгдөнө. Хугацаагүй, сервер дээр — TTL/сэргээлтээр алга болохгүй. */
   if (!args.approve) {
     const pb = partialBy(curStatus, s(cur[0][F.reason]));
     if (pb != null) {
       return { ok: false, error: tr('Энэ илгээлтийн обьёмыг батлагч ({0}) үндсэн өгөгдөлд ХЭСЭГЧЛЭН бичсэн — буцаах боломжгүй. «Обьём батлах»-ыг дахин дарж бичилтийг гүйцээнэ үү.', pb || '—') };
     }
   }
-  /* ⚠️ 2026-09-30: урьдчилсан шалгалт — бүх дүрэм давсан, юу ч бичихгүй (`dryRun`-ийн ⚠️) */
   if (args.dryRun) return { ok: true };
-  /* ⚠️ 2026-10-06: түгжээ ӨӨРИЙНХ биш бол (буцаалт — `claimObyem`-гүй ирдэг; эсвэл батлах түгжээ
-     хугацаа нь дууссан) шийдвэрийн ӨМНӨ `casObyemClaim`-аар АТОМААР авна. Урьд нь буцаалт
-     түгжээгүйгээр бичигддэг тул яг тэр агшинд түгжиж бичиж эхэлсэн батлагчийн утга үндсэн
-     өгөгдөлд орсон атлаа илгээлт «буцаагдсан» болох завсар үлддэг байв. */
   let tookClaim = false;
   if (holder !== me) {
     try {
@@ -1106,19 +814,14 @@ export async function decideObyem(args: {
     tookClaim = true;
     invalidate('OBYEM_BATLAH');
   }
-  /* ⚠️ 2026-10-06: ӨӨРӨӨ авсан түгжээг шийдвэр бичигдээгүй үед тайлна — эс бөгөөс `CLAIM_TTL`
-     дуустал зохиогч татаж, өөр батлагч шийдэж чадахгүй. */
   const undo = () => { if (tookClaim) void releaseObyemClaim({ oid: args.oid, approver: me }); };
   const attrs: Attrs = {
     [F.oid]: args.oid,
     [F.status]: args.approve ? OBYEM_STATUS.approved : OBYEM_STATUS.returned,
     [F.approver]: me,
-    /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цагаар (`serverNow`-ийн ⚠️) */
     [F.approverAt]: serverNow(),
-    /* ⚠️ 2026-10-06: `REASON_MAX`-аар таслана (талбар 2048) — батлахад `null` нь `PARTIAL_MARK`-ийг ч арилгана */
     [F.reason]: args.approve ? null : (args.reason?.trim()?.slice(0, REASON_MAX) ?? null),
   };
-  /* ⚠️ 2026-10-09: алгассан нүд — зохиогчийн тайлбарын АРД залгана (дарахгүй), талбар 2048 */
   const skip = args.approve ? (args.skipped ?? '').trim() : '';
   if (skip) {
     const prev = s(cur[0][F.note]);
@@ -1141,11 +844,6 @@ export async function decideObyem(args: {
 
 /** `returnStuckObyem`-ийн шалтгааны угтвар — инженер «бичигдсэн обьём хэвээр» гэдгийг харна (2026-10-09) */
 export const OBYEM_STUCK_PREFIX = (): string => tr('Хагас бичигдсэн батлалт буцаагдав — үндсэн өгөгдөлд аль хэдийн бичигдсэн обьём хэвээр.');
-/**
- * ⚠️ 2026-10-26 (аудит): ArcGIS-д ХЭЛНЭЭС ҮЛ ХАМААРАХ МОНГОЛ ЭХ ТЕКСТ бичигдэнэ (`huvaariBatlah.STUCK_PREFIX_SRC`-ийн
- *    2026-10-12-ны засвартай НЭГ загвар). Урьд нь `OBYEM_STUCK_PREFIX()` (орчуулсан) бичигдэж, англи горимын батлагчийн
- *    буцаалт монгол инженерт англиар харагддаг байв. Дэлгэцэнд `displayObyemReason`-оор орчуулна.
- */
 export const OBYEM_STUCK_PREFIX_SRC = 'Хагас бичигдсэн батлалт буцаагдав — үндсэн өгөгдөлд аль хэдийн бичигдсэн обьём хэвээр.';
 /** Хадгалсан шалтгааныг дэлгэцэнд — системийн тогтмол мөрийг идэвхтэй хэлээр, хэрэглэгчийн текст ХЭВЭЭР (2026-10-26) */
 export function displayObyemReason(raw: string | null | undefined): string {
@@ -1154,18 +852,8 @@ export function displayObyemReason(raw: string | null | undefined): string {
 }
 
 /**
- * ГАЦСАН (ХАГАС БИЧИГДСЭН) ОБЬЁМЫН ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл super (⚠️ 2026-10-09,
+ * ГАЦСАН (ХАГАС БИЧИГДСЭН) ОБЬЁМЫН ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл super (2026-10-09,
  * `huvaariBatlah.returnStuckPlan`-ийн ЯГ загвар).
- * ⚠️ ЯАГААД: `PARTIAL_MARK`-тай `pending` мөрийг `decideObyem(approve:false)` ч, `withdrawObyem` ч
- *    татгалздаг — батлагч бичилтийг гүйцээж чадахгүй бол (жааз солигдсон, мөр алга, эрх хасагдсан)
- *    илгээлт МӨНХӨД `pending` үлдэж, багцын обьём (ба `ajilApply`-ийн нэмэлт ажил — `obyemBusyFor`)
- *    түгжигддэг байв. Одоо тэмдэгтэй ч `returned` болж, шалтгаан нь `OBYEM_STUCK_PREFIX`-ээр
- *    угтуулагдана: инженер үндсэн өгөгдөлд ОРСОН утгыг мэдэж засна. `reason` дарагдах тул
- *    `PARTIAL_MARK` арилна; түгжээ (`approver`/`approverAt`) шийдвэрийн утгаар дарагдана.
- * ⚠️ Үндсэн өгөгдөлд ЮУ Ч бичихгүй (суусан хэсгийг буцааж татахгүй — мэдэхгүй). Хүрээ — серверийн
- *    багцаар; зохиогч өөрөө буцаахгүй. Тэмдэггүй `pending`-д ЭНЭ зам хаалттай — жирийн «Буцаах».
- * ⚠️ ӨӨР батлагчийн ХҮЧИНТЭЙ түгжээтэй бол буцаахгүй (бичилтээ гүйцээж байж магадгүй); бичихийн ӨМНӨ
- *    `casObyemClaim`-аар түгжээг АТОМААР авна (унш-шалга-бич завсаргүй).
  */
 export async function returnStuckObyem(args: { oid: number; approver: string; reason: string }): Promise<{ ok: boolean; error?: string }> {
   const me = args.approver.trim().toLowerCase();
@@ -1225,7 +913,6 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
     return { ok: false, error: String((e as Error).message || e) };
   }
   invalidate('OBYEM_BATLAH');
-  /* ⚠️ 2026-10-26: эх текстээр (`OBYEM_STUCK_PREFIX_SRC`) — дэлгэцэнд `displayObyemReason` */
   const reason = `${OBYEM_STUCK_PREFIX_SRC}\n${why}`.slice(0, REASON_MAX);
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
@@ -1233,7 +920,6 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
         [F.oid]: args.oid,
         [F.status]: OBYEM_STATUS.returned,
         [F.approver]: me,
-        /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цагаар (`serverNow`-ийн ⚠️) */
         [F.approverAt]: serverNow(),
         [F.reason]: reason,
       } }]),
@@ -1254,10 +940,6 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
 
 /**
  * ТАТАН АВАХ ДҮРЭМ — цэвэр (`obyemBatlah.check.mjs`, 2026-10-04).
- * ⚠️ ЗӨВХӨН зохиогч (серверийн `F.author`), ЗӨВХӨН `pending`. Багцад нэг л хүлээгдэж буй
- *    илгээлт зөвшөөрөгддөг тул батлагч ирэхгүй бол инженер шинэ засвар ч илгээж чадахгүй
- *    гацдаг байв.
- * @returns `null` = зөвшөөрнө, эс бөгөөс хэрэглэгчид харуулах шалтгаан
  */
 export function withdrawDeny(cur: { status: string | null; author: string | null }, me: string): string | null {
   const u = me.trim().toLowerCase();
@@ -1269,11 +951,8 @@ export function withdrawDeny(cur: { status: string | null; author: string | null
 
 /**
  * ТАТАН АВАХ — зохиогч өөрийн хүлээгдэж буй обьёмын илгээлтийг цуцална (2026-10-04).
- * ⚠️ Үндсэн өгөгдөлд ЮУ Ч бичихгүй (илгээлт нь угаас бичээгүй). Төлөв `withdrawn`;
- *    мөр устгахгүй — түүх үлдэнэ. Дүрэм нь СЕРВЕРИЙН мөрөөр (`withdrawDeny`).
  */
 export async function withdrawObyem(args: { oid: number; me: string }): Promise<{ ok: boolean; error?: string }> {
-  /* ⚠️ НЭВТЭРСЭН хэрэглэгчээр — дуудагчийн `me`-д итгэхгүй (`submitObyem`-ийн адил) */
   const meNow = AUTH.appId && typeof window !== 'undefined' ? currentUser() : null;
   if (AUTH.appId && typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   const me = (meNow ?? args.me).trim().toLowerCase();
@@ -1285,30 +964,13 @@ export async function withdrawObyem(args: { oid: number; me: string }): Promise<
     if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
     const deny = withdrawDeny({ status: s(cur[0][F.status]), author: s(cur[0][F.author]) }, me);
     if (deny) return { ok: false, error: deny };
-    /* ⚠️ 2026-10-06: ХАГАС БИЧИГДСЭН бол ТАТАХГҮЙ (`PARTIAL_MARK`-ийн ⚠️) — түгжээний хугацаа
-       (`CLAIM_TTL`) дууссан ч сервер дээрх тэмдэг хэвээр. Урьд нь 10 минутын дараа татаж,
-       батлагдаагүй обьём үндсэн өгөгдөлд үлддэг байв. */
     const pb = partialBy(s(cur[0][F.status]), s(cur[0][F.reason]));
     if (pb != null) return { ok: false, error: tr('Батлагч ({0}) энэ илгээлтийн обьёмыг үндсэн өгөгдөлд ХЭСЭГЧЛЭН бичсэн — татах боломжгүй. Батлагч батлалтыг гүйцээнэ.', pb || '—') };
-    /* ⚠️ 2026-10-05: батлагч түгжсэн (үндсэн өгөгдөлд бичиж буй — `claimObyem`) үед татахгүй — эс
-       бөгөөс утга нь бичигдсэн атлаа илгээлт «татаж авсан» болж, батлагдсан бичлэг үүсэхгүй. */
-    /* ⚠️ 2026-10-12 (дарааллын аудит): өөрийн (зохиогчийн) үлдсэн түгжээ саад биш — доорх CAS-ийн тасарсан оролдлогоос үлдсэн байж болно */
     const holder = claimHolder(cur[0]);
     if (holder && holder !== me) return { ok: false, error: tr('{0} энэ илгээлтийг яг одоо батлаж байна — татах боломжгүй. Хэсэг хугацааны дараа дахин оролдоно уу.', holder) };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
-  /*
-   * ⚠️ 2026-10-12 (дарааллын аудит): ТАТАХЫН ӨМНӨ ТҮГЖЭЭГ ЗОХИОГЧ АТОМААР АВНА (`casObyemClaim`,
-   *    `huvaariBatlah.withdrawPlan`-ийн 2026-10-12-ны ЯГ загвар). Урьд нь «уншаад-шалгаад-бичих» байсан тул
-   *    дээрх шалгалт ба бичилтийн ЗАВСАРТ батлагч `claimObyem`-аар түгжиж үндсэн өгөгдөлд бичиж эхэлж болох байв —
-   *    тэр бичилт «татсан» илгээлтийн обьёмыг үндсэн өгөгдөлд суулгана. Одоо: (1) `casObyemClaim` (өөр хүний
-   *    амьд түгжээтэй бол татгалзана; хугацаа нь дууссаныг авч болно); (2) ДАХИН уншиж `pending` · хагас бичилтийн
-   *    тэмдэггүй · түгжээ МИНИЙХ (агшин нь таарна) гэдгийг шалгана — батлагч түгжээ авахаас өмнө `markObyemPartial`
-   *    тавьсан байж болно; (3) `withdrawn` бичнэ; (4) ДАХИН уншиж баталгаажуулна. Татгалзах/унах бүрд өөрийн
-   *    түгжээг тайлна (`releaseObyemClaim` зөвхөн `pending` + өөрийн амьд түгжээг тайлдаг тул хариу алдагдсан
-   *    бичилтэд ч аюулгүй). Түгжээ нь `approver` баганад зохиогчийн нэрээр хэдхэн хором харагдана.
-   */
   const readHead = async (fields: string) => (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
   let at0: number | undefined;
   try {
@@ -1350,7 +1012,6 @@ export async function withdrawObyem(args: { oid: number; me: string }): Promise<
   }
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
-      /* ⚠️ Түгжээний үлдэгдэл (зохиогчийн CAS түгжээ) «батлагч» баганад үлдэхгүй; агшин серверийн цагаар */
       updates: JSON.stringify([{ attributes: { [F.oid]: args.oid, [F.status]: OBYEM_STATUS.withdrawn, [F.approver]: null, [F.approverAt]: serverNow() } }]),
       rollbackOnFailure: 'true',
     });
@@ -1375,14 +1036,6 @@ export async function withdrawObyem(args: { oid: number; me: string }): Promise<
  *
  * `decideObyem`-ийн дүрэм: `pending` · батлагчийн хүрээнд (`obyemScope(…,
  * 'approver')`, super/нэвтрэлтгүй бол хязгааргүй) · ӨӨРИЙН илгээлт БИШ.
- *
- * ⚠️ 2026-09-30: `null` ≠ 0 — `null` нь «мэдэхгүй» (нэвтрээгүй, эрх/хуваарилалт
- *    уншигдаагүй, хүснэгт алга, сүлжээ унасан). ⚠️ Хүснэгт ҮҮСГЭХГҮЙ.
- */
-/**
- * ⚠️ 2026-09-30: ТЭМДГИЙН ТООЛУУРЫН ӨГӨГДӨЛ — автобусад `OBYEM_BATLAH` тагтай богино
- *    кэш (`huvaariBatlah.loadBadgePending`-тэй ижил шалтгаан). Бичих зам бүр
- *    `invalidate('OBYEM_BATLAH')` дууддаг; `loadAllPending` өөрөө кэшлэгдэхгүй.
  */
 const BADGE_TTL = 60_000;
 const loadBadgePending = cached(loadAllPending, BADGE_TTL, ['OBYEM_BATLAH']);

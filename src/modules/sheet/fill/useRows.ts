@@ -1,19 +1,6 @@
-/*
- * ⚠️ 2026-09-30: `FillNew.tsx` (6.9k мөр) задарсан — МӨРИЙН харагдац — нэмэлт мөрийн улаан тэмдэг · бүлэг/хуваарийн шүүлт · виртуаль гүйлгээ · багцын хувь.
- *    Код ЯГ хэвээр зөөгдсөн, зан төлөв өөрчлөгдөөгүй; `draft.check.mjs` ·
- *    `shareDraft.check.mjs` эх кодын шалгуураа FillNew.tsx + fill/* нийлбэрээс уншина.
- */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadSchema, pkgFloors, type Pkg, type Schema } from "../bagts.pkg";
 import { computeAll, parentIndexes, type SheetRow } from "../bagtsSheet";
-/*
- * ⚠️ НЭМЭЛТ АЖИЛ ЭНД НЭМЭГДЭХГҮЙ (2026-09-24, хэрэглэгчийн шийдвэр): бүлэгт «+»
- *    мөр нэмэх, «Нэмэлт ажил батлуулах», илгээлтээ татах — бүгд «Хуваарь»
- *    (`Huvaari.tsx`) руу шилжсэн; батлагдсан мөр `ajilApply.materializeAdds`-аар
- *    ШУУД үндсэн хүснэгтэд бичигдэж, энд ердийн (эерэг oid) мөр болж ирнэ.
- *    Энд зөвхөн батлагдсан нэмэлт мөрийн УЛААН тэмдэглэгээ (`loadAddedKeys`/
- *    `addedKeyOf`) үлдэнэ. `submitAjil`/`withdrawAjil`/`decideAjil` импортлохгүй.
- */
 import { loadAddedKeys as loadAjilAddedKeys, addedKeyOf, type AddedKey } from '@/lib/ajilBatlah';
 import { loadBlockProgress, loadBlockUniverse, pkgProgressOf } from "@/lib/blockProgress";
 import { useAsync } from "@/lib/useAsync";
@@ -29,10 +16,7 @@ export function useAddedOids(pkg: Pkg, rowsAll: SheetRow[]) {
    * (2026-09-22, хэрэглэгч: «шинэ ажил текст нь улаан байх … батлагдсан ч улаан»).
    * Нийтлэгдсэн мөр серверийн oid-той тул `oid < 0` шалгуур хүрэхгүй — нэмэлт
    * ажлын батлах хүснэгтээс (`loadAddedKeys`) эцэг+№+нэрээр тулгана.
-   * ⚠️ Бүх хэрэглэгчид (эрх шаардахгүй) — тэмдэглэгээ л; уншигдахгүй бол хоосон.
    */
-  /* ⚠️ 2026-09-30: БАГЦААР ТҮЛХҮҮРЛЭСЭН төлөв — багц солиход шууд хоосон, эффект доторх
-     `setAddedKeys([])` хасагдав (setState зөвхөн уншилт буусны дараа). Утга ижил. */
   const [addedSt, setAddedSt] = useState<{ pkgKey: string; keys: AddedKey[] }>({ pkgKey: '', keys: [] });
   useEffect(() => {
     let alive = true;
@@ -42,14 +26,6 @@ export function useAddedOids(pkg: Pkg, rowsAll: SheetRow[]) {
   const addedKeys = addedSt.pkgKey === pkg.key ? addedSt.keys : NO_KEYS;
   /**
    * oid → «сүүлд нэмэгдсэн» (нэмэлт ажлын хүснэгтээр тулгасан).
-   *
-   * ⚠️ НЭР + ОЙРХНЫ ДҮРЭМ (2026-09-23, аудитын #17): (эцгийн № + нэр) хос
-   *    ДАВХАРДДАГ — Багц 1-д «10 · БУСАД АЖИЛ» блок бүрт нэг. Зөвхөн нэрээр
-   *    тулгавал ӨӨР БЛОКИЙН ижил нэртэй мөр ч улаан болдог байв. Одоо
-   *    `sheetFrame.parentOf`-той ИЖИЛ дүрэм: нэрээр таарах бүх нэрийдлээс
-   *    нэмсэн үеийн эцгийн байрлалд (`parentIdx`) ХАМГИЙН ОЙРХОНЫГ нэг л
-   *    удаа сонгоно (сонгогдсон нэрийдэл дараагийн тэмдэглэгээнд дахин
-   *    орохгүй).
    */
   const addedOids = useMemo(() => {
     const out = new Set<number>();
@@ -87,39 +63,15 @@ export function useAddedOids(pkg: Pkg, rowsAll: SheetRow[]) {
 export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan, asOf }: {
   rowsAll: SheetRow[]; calc: Calc; nBld: number; today: string;
   grpA: number; grpB: number; collapsed: Set<number>; byPlan: boolean;
-  /**
-   * ⚠️ 2026-10-09: тайлангийн огноо — ЗӨВХӨН «алга» (`null`) эсэхийг шалгана. Дамжуулаагүй
-   *    (`undefined`) бол «мэдэгдэхгүй» гэж үзэж шүүлтийг хаахгүй (доорх `planOff`-ийн ⚠️).
-   */
   asOf?: number | null;
 }) {
   /**
    * ӨНӨӨДӨР (UTC шөнө дунд) — хуваарийн шүүлтийн лавлах цэг.
-   *
-   * ⚠️ `asOf` БИШ. `asOf` нь ТАЙЛАНГИЙН огноо — тухайн хуудсыг сүүлд хэзээ
-   * бөглөснийг заана (Багц 1-д 2026-07-20, зургаан долоо хоногийн өмнөх).
-   * Түүгээр шүүвэл «өнөөдөр юу бөглөх вэ» гэдэгт биш «сүүлийн тайлангийн
-   * өдөр юу явж байсан бэ» гэдэгт хариулна — хэрэглэгч 2026-07-20 гэсэн
-   * тоог хараад эргэлзсэн (2026-09-01). Тайлангийн огноог хөндөхгүй:
-   * тэр нь хадгалагддаг утга, шүүлт нь зөвхөн ХАРАГДАЦ.
    */
   const todayMs = useMemo(() => inputToMs(today) ?? 0, [today]);
 
   /**
    * ХУВААРИЙН ДАГУУ — мөр бүр ӨНӨӨДРИЙН (`todayMs`) огноонд ИДЭВХТЭЙ эсэх.
-   *
-   * ⚠️ ЗӨВХӨН НАВЧ мөрийг шалгана, бүлгийг ДАГУУЛНА. `calc[i].start` нь
-   * бүлэгт хүүхдүүдийнхээ MIN/MAX (`startSrc: "agg"`) тул хоёр хүүхдийн
-   * ХООРОНДОХ ЦООРХОЙД огноо таарвал бүлэг «идэвхтэй» болж, доор нь нэг ч
-   * ажилгүй ХООСОН бүлэг гарна. Тиймээс навчаар шийдээд эцгүүдийг нь дээш
-   * нь тэмдэглэнэ — ингэснээр үлдсэн ажлын бүх эцэг харагдаж, мод бүтэн үлдэнэ.
-   *
-   * ⚠️ Блокоор нэгтгэхдээ АЛЬ НЭГ блокт идэвхтэй бол хангалттай: энэ хуудас
-   * блок бүрийг ЗЭРЭГ (багана болгож) харуулдаг тул нэг блокт явж байгаа
-   * ажлыг нуувал тэр багана бөглөгдөх газаргүй болно.
-   *
-   * ⚠️ `asOf` алга бол шүүлт ОГТ ажиллахгүй — огноогүй үед бүх мөрийг нуувал
-   * хуудас шалтгаангүй хоосон харагдана.
    */
   const planKeep = useMemo(() => {
     const keep = new Array<boolean>(rowsAll.length).fill(false);
@@ -158,17 +110,6 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
     return { on, all };
   }, [rowsAll, planKeep]);
 
-  /**
-   * ⚠️ 2026-10-09: ХУВААРИЙН ШҮҮЛТ ХААГДАХ нөхцөл — дээрх «`asOf` алга бол шүүлт ОГТ
-   *    ажиллахгүй» гэсэн тайлбар кодод ХЭРЭГЖЭЭГҮЙ байв. `byPlan` анхдагчаар асаалттай тул
-   *    хуваарийн огноо НЭГ Ч мөрд байхгүй хуудас (блокгүй 14 багц — 0 хуваарьтай мөр,
-   *    `asOf = null`) «Бөглөх»-д бүтэн ХООСОН хүснэгт нээгддэг байв. Одоо БҮХ багцад:
-   *    тайлангийн огноо алга (`asOf === null`) ЭСВЭЛ хуваарьтай навч мөр 0 (`planCount.on`)
-   *    бол шүүлтийг алгасна. Бусад үед товч хэвээр ажиллана.
-   */
-  /* ⚠️ 2026-10-23 (хэрэглэгчийн шийдвэр, дээрх 2026-10-09-ний дүрмийг ДАРНА): товч асаалттай бол шүүлт ҮРГЭЛЖ ажиллана —
-     хуваарьтай мөр 0 үед хүснэгт хоосон болж «Өнөөдөр (…) хуваарьтай ажил алга … унтраа» мэдэгдэл гарна (`FillNew`).
-     Урьд нь 0 үед шүүлт чимээгүй алгасагдаж, товч асаалттай атлаа юу ч шүүгдэхгүй тул «ажиллахгүй байна» гэж уншигддаг байв. */
   const planOff = false;
   void asOf;
 
@@ -228,8 +169,6 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
 
   /**
    * Эцэг солигдоход түүнд харьяалагдахгүй дэд сонголт хүчингүй болно.
-   * ⚠️ Үүнийг эффектээр «цэвэрлэвэл» нэмэлт render давалгаа үүсгэнэ —
-   *    жагсаалтад байхгүй бол ЗҮГЭЭР Л «Бүгд» гэж үзнэ.
    */
   const grpBEff = grpBOpts.some((o) => o.oid === grpB) ? grpB : 0;
 
@@ -257,11 +196,6 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
       depth = -1;
       if (r.group && collapsed.has(r.oid)) depth = r.depth;
     }
-    /**
-     * ⚠️ ХУВААРИЙН ШҮҮЛТ нь дээрх гогцооны ДАРАА, ТУСДАА дамжилтаар.
-     * Гогцоо дотор нөхцөл нэмбэл `continue` нь эвхэлтийн ГҮНИЙ СТЕКийг
-     * алгасаж, эвхээстэй бүлгийн доорх мөрүүд гэнэт гарч ирнэ.
-     */
     if (byPlan && !planOff) {
       for (let i = 0; i < h.length; i++) if (!planKeep[i]) h[i] = true;
     }
@@ -280,10 +214,8 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
 /** Виртуаль гүйлгээний цонх ба «өөрчлөгдсөн нүд рүү үсрэх». */
 export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
   vis: number[]; edit: { i: number } | null; view?: SheetView;
-  /** ⚠️ 2026-10-09: ГҮЙЦЭТГЭГЧИЙН үсрэлт (буцаагдсан нүдний жагсаалт, `FillNew.backList`) — `view.jump`-тай ижил хэлбэр */
   jump?: SheetView['jump'];
 }) {
-  /* ⚠️ 2026-10-09: хянагчийнх (`view.jump`) эсвэл гүйцэтгэгчийнх — нэг үед нэг л эх (`view` байвал жагсаалт гардаггүй) */
   const jumpReq = view?.jump ?? ownJump ?? null;
   /* ── ВИРТУАЛЬ ГҮЙЛГЭЭ ──────────────────────────────────────────────────
    * 1,400 мөр × 60–100 багана = 137 мянган нүд. Бүгдийг DOM-д барьвал төлөв
@@ -293,10 +225,6 @@ export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
    * Тиймээс ЗӨВХӨН харагдах мөрүүдийг (+ дээш/доош 25 мөрийн нөөц) зурж,
    * үлдсэнийг нь өндөртэй ХООСОН мөрөөр орлуулна. Гүйлгэх зурвасны урт ба
    * байрлал яг хэвээр үлдэнэ.
-   *
-   * ⚠️ Багана бүр CSS-д ТОГТМОЛ өргөнтэй (`--w-*`) тул хэсэг мөр зурсан ч
-   *    багана нарийсаж/өргөсөхгүй. Хэрэв ямар нэг баганад тогтмол өргөн
-   *    өгөхгүй бол гүйлгэх үед багана үсэрч эхэлнэ.
    */
   const scrollRef = useRef<HTMLDivElement>(null);
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
@@ -331,10 +259,6 @@ export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
   // Мөр/шүүлтүүр солигдоход цонхыг шинэчилнэ.
   useEffect(() => {
     recalcWin();
-    /* ⚠️ 2026-10-07: гүйлгэгчийн ХЭМЖЭЭ солигдоход (цонх томруулах · бүтэн дэлгэц · dev-tools) ч
-       дахин бодно — урьд нь зөвхөн гүйлгэх/мөр солигдоход тул өндөрссөн дэлгэцийн доод хэсэг
-       хоосон чигжээс хэвээр үлддэг байв. `vis`-тэй нэг эффектэд: хүснэгт хожуу зурагддаг
-       (`rows.length > 0 && sc && calc.length > 0`) тул ref нь эхний render-д хоосон байж болно. */
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return undefined;
     const ro = new ResizeObserver(() => recalcWin());
@@ -348,25 +272,14 @@ export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
    */
   /**
    * ӨӨРЧЛӨГДСӨН НҮД РҮҮ ҮСРЭХ — жагсаалтаас дарахад.
-   * ⚠️ 1,370 мөрийн ЗӨВХӨН харагдах хэсэг л DOM-д байдаг тул `scrollIntoView`
-   *    ажиллахгүй: мөр нь хараахан зурагдаагүй байна. Тиймээс мөрийн
-   *    ИНДЕКСЭЭР байрлалыг тооцож гүйлгэнэ.
    */
   const [hitKey, setHitKey] = useState<string | null>(null);
   const jumpN = jumpReq?.n ?? -1;
   /**
    * СҮҮЛД БИЕЛСЭН үсрэлтийн дугаар.
-   *
-   * ⚠️ Хамаарлын жагсаалтад `vis` байх ЁСТОЙ: үсрэх мөр хараахан зурагдаагүй
-   *    (эвхээстэй бүлэг, шүүлтүүрийн гадна) байвал жагсаалт шинэчлэгдэхэд л
-   *    байрлалыг олно. Гэвч тэр нь `collapsed`/`grpRange`/`pending` хөдлөх
-   *    БҮРД ХУУЧИН үсрэлтийг дахин биелүүлж, хэрэглэгчийн явсан газраас
-   *    хуудсыг буцааж гүйлгэдэг байв. Тиймээс биелсэн үсрэлтийг тэмдэглэж,
-   *    нэг хүсэлтийг НЭГ л удаа биелүүлнэ.
    */
   const doneJumpRef = useRef(-1);
   const hitT = useRef<number | null>(null);
-  /** ⚠️ 2026-10-07: үсрэлтийн БОСОО зорилт — хөндлөн гүйлгэхэд хамт дамжуулна (доорх эффектийн ⚠️) */
   const jumpTopRef = useRef<number | null>(null);
   useEffect(() => {
     const j = jumpReq;
@@ -375,23 +288,14 @@ export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
     if (!j || !el || !tb || !vis.length) return;
     if (doneJumpRef.current === jumpN) return;
     const at = vis.indexOf(j.row);
-    // ⚠️ Олдоогүй бол ТЭМДЭГЛЭХГҮЙ — мөр зурагдмагц үсрэлт биелэх ёстой.
     if (at < 0) return;
     doneJumpRef.current = jumpN;
-    /* ⚠️ 2026-10-07: гүйлгэгч ӨӨРӨӨ дэлгэцийн гадна байж болно — Гүйцэтгэл (хяналт)-д хүснэгт
-       (`.subSheet`) урт өөрчлөлтийн жагсаалтын ДООР тул дотоод гүйлгээ биелсэн ч хэрэглэгч юу ч
-       харахгүй байв. Эцэг гүйлгэгчдийг «хамгийн ойр» (`nearest`) зарчмаар л хөдөлгөнө. */
     el.scrollIntoView({ block: "nearest" });
     const top = Math.max(0, tb.offsetTop + at * rowHRef.current - el.clientHeight / 2);
     jumpTopRef.current = top;
     el.scrollTo({ top, behavior: "smooth" });
-    /* ⚠️ 2026-10-07: түлхүүрт үсрэлтийн ДУГААР (`jumpN`) орно — нэг нүд рүү 1.8 секундийн дотор
-       ДАХИН дарахад `setHitKey` ижил утгаар дуудагдаж доорх `[hitKey]` эффект ажиллахгүй,
-       хөндлөн гүйлгээ ч, анивчилт ч гардаггүй байв. FillRows `${i}:${b}:` угтвараар тулгана.
-       Анивчилтыг арилгах 1.8 с таймер нүд ОЛДСОНЫ дараа (доорх эффектэд) эхэлнэ — урьд нь эндээс
-       эхэлдэг тул нүдийг хүлээх (2 с хүртэл) хугацаанд дуусч тэмдэглэгээ зурагдахаас өмнө арилдаг байв. */
     const key = `${j.row}:${j.block}:${jumpN}`;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `view.jump` нь ГАДНЫ нэг удаагийн хүсэлт (үйл явдал) — гүйлгээд анивчих тэмдэглэгээг ЭНД л асаана; төлөв болгож задлах нь зан төлөв өөрчилнө
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHitKey(key);
     if (hitT.current) window.clearTimeout(hitT.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -402,14 +306,9 @@ export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
     if (hitT.current) window.clearTimeout(hitT.current);
   }, []);
   /**
-   * ХӨНДЛӨН ГҮЙЛГЭЛТ — үссэн нүд рүү (⚠️ 2026-10-06, хэрэглэгч: «өөрчлөгдсөн нүд дээр дарахад
+   * ХӨНДЛӨН ГҮЙЛГЭЛТ — үссэн нүд рүү (2026-10-06, хэрэглэгч: «өөрчлөгдсөн нүд дээр дарахад
    * zoom to хийхгүй»). Дээрх эффект зөвхөн БОСОО гүйлгэдэг байв: 14 блоктой хуудсанд 5/8-аас
    * хойших багана дэлгэцийн гадна тул мөр нь харагдаад нүд нь харагдахгүй, анивчилт ч алга.
-   * ⚠️ Нүд нь цонхлолтоор (`winFrom/winTo`) ЗУРАГДСАНЫ дараа л DOM-д байна — зөөлөн гүйлгэлт
-   *    дуустал `onScroll` цонхыг шинэчлэхгүй тул `td.chgHit`-ийг богино давтамжаар хүлээнэ.
-   * ⚠️ Царцаасан (`.fz`) баганууд зүүн/баруун талд дарж байдаг тул «харагдах зурвас» нь
-   *    тэдгээрийн өргөнөөр нарийсна — нүдийг тэр зурвасын ДУНД тавина. Аль хэдийн зурваст
-   *    бүтэн байвал хөдөлгөхгүй (хэрэглэгчийн хөндлөн байрлалыг дэмий алдахгүй).
    */
   useEffect(() => {
     if (!hitKey) return;
@@ -418,7 +317,6 @@ export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
     if (!el || !tb) return;
     let tries = 0;
     let t: number | null = null;
-    /* ⚠️ 2026-10-07: анивчилтыг арилгах таймер — нүд олдсон (эсвэл хүлээлт дууссан) үед л */
     const armClear = () => {
       if (hitT.current) window.clearTimeout(hitT.current);
       hitT.current = window.setTimeout(() => setHitKey((h) => (h === hitKey ? null : h)), 1800);
@@ -441,9 +339,6 @@ export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
       const bandR = er.right - fzR;
       if (tr.left >= bandL && tr.right <= bandR) return;
       const target = bandL + (bandR - bandL) / 2 - tr.width / 2;
-      /* ⚠️ 2026-10-07: БОСОО зорилтыг (`jumpTopRef`) хамт өгнө — `scrollTo({ left })` ганцаараа
-         дуудагдвал дээрх эффектийн явж буй зөөлөн босоо гүйлгээг ТАСАЛЖ, мөр нь дэлгэцийн
-         дунд хүрэлгүй зогсдог байв. Хоёр тэнхлэг нэг дуудлагаар. */
       el.scrollTo({
         top: jumpTopRef.current ?? el.scrollTop,
         left: Math.max(0, el.scrollLeft + (tr.left - target)),
@@ -464,7 +359,6 @@ export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
 export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount, ovBase }: {
   pkg: Pkg; sc: Schema | null; nBld: number; rowsAll: SheetRow[]; calc: Calc; asOf: number | null;
   hasObyem: boolean[]; planPct: (row: SheetRow, b: number) => number | null; dirtyCount: number;
-  /** ⚠️ 2026-09-30: илгээлтийг давхарлахаас ӨМНӨХ архивын мөрүүд (FillNew-ийн `ovBase`) — `saved`-ийн эх */
   ovBase?: Map<number, SheetRow>;
 }) {
   /**
@@ -472,52 +366,15 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
    *
    *   `saved`   — БАТЛАГДСАН: одоо үндсэн өгөгдөлд байгаа хувь.
    *   `draft`   — ноорог/илгээлтээ НЭМСЭН үеийн хувь.
-   *
-   * ⚠️ ЯАГААД ХОЁУЛАА: бөглөгч «би өнөөдөр хэдэн хувь нэмэв» гэдгээ
-   *    мэдэх ёстой. Ганц тоо харуулбал (ямар нь ч бай) нөгөө нь алга
-   *    болж, «миний бичсэн зүйл тоологдсон уу» гэсэн эргэлзээ үлдэнэ.
-   *
-   * ⚠️ `saved` нь ноорог, огнооны засвар ХОЁУЛАНГ хассан цэвэр тооцоо
-   *    (`computeAll`-д хоосон засвар өгнө) — хадгалагдсан баганыг шууд
-   *    уншвал бүлгийн нүд нь excel-ийн `#REF!`-ээс болж эвдэрсэн байдаг
-   *    (файлын толгойн ⚠️).
-   *
-   * ⚠️ БЛОКУУДЫН ДУНДАЖ — «Багцын гүйцэтгэл» дэлгэцийн дүрэмтэй ИЖИЛ
-   *    (`blockProgress`), тиймээс хоёр дэлгэц нэг тоо харуулна.
-   * ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): ХУВААРЬ = хуудасны
-   *    БҮХ блок (`nBld`), хэмжигдээгүй блок 0%. Урьд нь «Хэмжигдээгүй блок тоологдохгүй» байсан
-   *    тул 12 блокийн 1-д 100% бөглөхөд хуудас «100%» гэж харагдаж, «Багцын гүйцэтгэл»
-   *    (`pkgProgressOf` — бүх блокоор) дэлгэцээс зөрдөг байв. `blocks` нь шошгонд хэмжигдсэн тоо.
    */
   /**
    * НӨГӨӨ ХУВИЛБАРЫН (9F ↔ 12F) БАТЛАГДСАН ГҮЙЦЭТГЭЛ.
-   *
-   * ⚠️ ЯАГААД (2026-09-09, хэрэглэгч: «9F 12F гүйцэтгэлийн бодит хувь
-   *    тусад нь харагдахгүй юм уу»): багц бүр 9 ба 12 давхрын ТУСДАА
-   *    хуудастай (Багц 1: 9F=12 блок, 12F=8 блок). Нээлттэй хуудасны тоо
-   *    ганцаараа харагдвал «Багцын гүйцэтгэл» дэлгэцийн багцын тоотой
-   *    (бүх блокийн дундаж) зөрж, шалтгаан нь ойлгогдохгүй.
-   *
-   * ⚠️ НӨГӨӨ ХУУДСЫГ ДАХИН ТАТАХГҮЙ: `blockProgress` нь БҮХ багцын бүх
-   *    блокийг аль хэдийн уншсан (газрын зураг, дашбоард түүнийг
-   *    хуваалцдаг) тул тэндээс блокийн нэрээр нь шүүнэ. Бүтэн хуудас
-   *    (13MB) татах шаардлагагүй.
-   *
-   * ⚠️ Зөвхөн БАТЛАГДСАН тоо: нөгөө хуудасны ноорог энэ хуудсанд
-   *    байхгүй тул «батлагдаагүй» гэж харуулах зүйл ч байхгүй.
    */
-  /* ⚠️ Кэшлэгдсэн: газрын зураг, дашбоард ижил дуудлагыг хуваалцана. */
   const bpQ = useAsync(loadBlockProgress, []);
   const bp = bpQ.state === 'ready' ? bpQ.data : null;
-  /* ⚠️ 2026-10-04: нөгөө хувилбарын БҮХ блок (тайлангүй 0%) — `pkgProgressOf`-ийн хуваарь */
   const uniQ = useAsync(loadBlockUniverse, []);
   const uni = uniQ.state === 'ready' ? uniQ.data : null;
 
-  /*
-   * ⚠️ 2026-10-26 (аудит): НӨГӨӨ ХУВИЛБАРЫН ӨӨРИЙН блокийн шошго (`Schema.bld`, кэштэй `loadSchema`). Урьд нь нөгөө
-   *    хувилбарыг «багцын түлхүүрээс ЭНЭ хуудасны шошгыг хассан үлдэгдэл» гэж тоолдог байсан тул ИЖИЛ шошготой Багц 4-2-ийн
-   *    12F хуудсанд (6/1…6/8 — 9F-ийн F6_x-тэй нэг түлхүүр) «9F гүйцэтгэл» нь зөвхөн 5/1…5/6-аар (14 биш 6 блок) бодогддог байв.
-   */
   const otherPkg = useMemo(() => pkgFloors(pkg.group).find((x) => x.key !== pkg.key) ?? null, [pkg.group, pkg.key]);
   const otherScQ = useAsync(
     () => (otherPkg ? loadSchema(otherPkg) : Promise.resolve(null)),
@@ -527,14 +384,12 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
 
   const otherPct = useMemo(() => {
     const others = pkgFloors(pkg.group).filter((x) => x.key !== pkg.key);
-    /* ⚠️ 2026-10-26: нөгөө хувилбарын бүдүүвч ирээгүй/унасан — «—» (буруу хуваарьтай тоо биш, null ≠ 0) */
     if (!others.length || !bp || !otherBld) return null;
     const g = bagtsKey(pkg.group);
     /* нөгөө хувилбарын ӨӨРИЙН блокууд — давхардсан шошго (4-2: 6/x) ч ОРНО */
     const theirs = new Set(otherBld.map((x) => buildingKey(pkg.group, x)));
     /* ЗӨВХӨН ЭНЭ хуудсанд байгаа блокууд — нөгөөгийнхөөс хасна */
     const onlyMine = new Set((sc?.bld ?? []).map((x) => buildingKey(pkg.group, x)).filter((k) => !theirs.has(k)));
-    /* ⚠️ 2026-10-04: хуваарь = нөгөө хувилбарын БҮХ блок (бүдүүвч ∪ хэмжилт), тайлангүй 0% */
     const keys = new Set<string>(theirs);
     for (const k of uni?.get(g) ?? []) if (k.startsWith(`${g}|`)) keys.add(k);
     for (const key of bp.keys()) if (key.startsWith(`${g}|`)) keys.add(key);
@@ -549,16 +404,9 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
       sum += cell.overall; n += 1;
     }
     if (!all) return null;
-    /* ⚠️ 2026-10-23: `total` — нөгөө хувилбарын БҮХ блок (хуваарь) — «Багцын гүйцэтгэл» (хоёр хувилбарын блокийн дундаж)-д */
     return { pct: sum / all, blocks: n, total: all, floors: others[0].floors, label: `${others[0].floors}F` };
   }, [bp, uni, pkg.group, pkg.key, sc, otherBld]);
 
-  /*
-   * ⚠️ 2026-10-26 (аудит): ОЛОН хувилбартай багцын «Багцын гүйцэтгэл» = `pkgProgressOf` — «Багцын гүйцэтгэл» дэлгэцтэй ЯГ
-   *    нэг тоо (давхардсан шошго нэг түлхүүр, бүрэн давхардсан 4-2·12F жин 0). Урьд нь хайрцгуудыг блокийн тоогоор жигнэдэг
-   *    байсан тул 4-2-д 6/x хоёр хуудсанд хуваагдаж дэлгэцээс зөрдөг байв. `undefined` = ганц хуудастай багц (энэ хуудасных),
-   *    `null` = ачаалж буй/унасан («—»).
-   */
   const pkgAll = useMemo((): number | null | undefined => {
     if (!otherPkg) return undefined;
     if (!bp || uniQ.state === 'loading') return null;
@@ -575,28 +423,18 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
         const v = c[bi]?.act[b];
         if (v != null) s += v;
       }
-      /* ⚠️ 2026-10-04: хуваарь = БҮХ блок (`nBld`) — тайлангүй блок 0% (дээрх ⚠️) */
       return (s / nBld) * 100;
     };
     /** Хэмжигдсэн блокийн тоо — шошгонд «12 блок» гэж бичнэ */
     let blocks = 0;
     for (let b = 0; b < nBld; b += 1) if (calc[bi]?.act[b] != null) blocks += 1;
     const draft = avg(calc);
-    /* ⚠️ 2026-09-30: «БАТЛАГДСАН» нь ИЛГЭЭЛТГҮЙ архивын мөрөөс (`ovBase`) — `saved`-ийн
-       тодорхойлолт («одоо үндсэн өгөгдөлд байгаа»). Урьд нь `rowsAll` нь архив + ИЛГЭЭСЭН
-       (хяналтад буй) нэмэлтийн давхарлалт тул «Илгээх» дармагц хараахан батлагдаагүй хувь
-       «батлагдсан гүйцэтгэл» гэсэн тайлбартай гол тоо болж харагддаг байв. */
     const base = ovBase && ovBase.size ? rowsAll.map((r) => ovBase.get(r.oid) ?? r) : null;
-    /* ⚠️ Ноороггүй тооцоо — ЗӨВХӨН ноорог (эсвэл илгээлтийн давхарлалт) байгаа үед бодно (хүнд). */
     const saved = dirtyCount > 0 || base
-      /* ⚠️ 2026-10-09: `synthetic` — блокгүй багцын J = L (`computeAll`-ийн ⚠️); энд `act` уншдаг тул тоо ижил */
       ? avg(computeAll(base ?? rowsAll, nBld, asOf, {}, {}, hasObyem, planPct, "abs", !!sc?.synthetic))
       : draft;
-    /* ⚠️ 2026-10-23: `total` — энэ хуудасны БҮХ блок (хуваарь) — «Багцын гүйцэтгэл»-ийн жин */
     return { saved, draft, blocks, total: nBld };
   }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount, ovBase, sc]);
-  /* ⚠️ 2026-10-23: нөгөө хувилбартай багцад `blockProgress` ачаалагдаж байгаа/унасан — «Багцын гүйцэтгэл»-ийг ЭНЭ хуудасны
-     дунджаар орлуулахгүй (`PkgPctBadge`, null ≠ буруу тоо) */
   const otherPending = !bp && pkgFloors(pkg.group).some((x) => x.key !== pkg.key);
   return { otherPct, pkgPct, otherPending, pkgAll };
 }

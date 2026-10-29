@@ -35,16 +35,12 @@ assert.deepEqual(
   STATUS_LIST, Object.keys(PARCEL_STATUS_HUES),
   'маягтын төлөв нь газрын зургийн будалттай ЯГ таарах ёстой',
 );
-/* ⚠️ 2026-09-06: ДӨРӨВ → ЕС. `Selbe_parcel_20260906` нь төлөв ба шалтгааныг
-   НЭГ талбарт (`явцы_1`) нийлүүлсэн тул «Бүрэн чөлөөлсөн» + 8 шалтгаан болов;
-   «Цэвэрлэсэн нэгж талбар», «Үлдсэн нэгж талбар», «Гэрээлсэн» ангилал АЛГА. */
 assert.equal(STATUS_LIST.length, 9, 'есөн төлөв — шинэ нэмэгдвэл зураг шалга');
 assert.ok(STATUS_LIST.includes(PARCEL_CLEARED), `төлөв алга: ${PARCEL_CLEARED}`);
 for (const s of ['зөвшилцөх', 'гэрээлсэн', 'татгалзсан', 'үлдэх саналтай',
   'үнийн дүн зөвшөөрөөгүй', 'маргаантай', 'дүйцүүлсэн', 'АТД']) {
   assert.ok(STATUS_LIST.includes(s), `шалтгаан алга: ${s}`);
 }
-/* ⚠️ Хуучин ангилал БУЦАЖ ОРВОЛ барина — эх өгөгдөл эргэж хуучирсан гэсэн үг */
 for (const s of ['Цэвэрлэсэн нэгж талбар', 'Үлдсэн нэгж талбар']) {
   assert.ok(!STATUS_LIST.includes(s), `хуучин ангилал буцаж ирэв: ${s}`);
 }
@@ -72,7 +68,6 @@ assert.equal(p.areaM2, 475);
 const alt = rowToParcel({ ...row, [F.area]: null, [F.areaAlt]: 312 });
 assert.equal(alt.areaM2, 312, 'area_m2 хоосон бол Талбай нөхнө');
 
-/* ⚠️ ХОЁУЛАА хоосон бол `null` — 0 БИШ */
 const noArea = rowToParcel({ ...row, [F.area]: null, [F.areaAlt]: null });
 assert.equal(noArea.areaM2, null, 'талбайгүй нь null байх ёстой, 0 биш');
 assert.notEqual(noArea.areaM2, 0);
@@ -98,7 +93,6 @@ assert.deepEqual(diffParcel(p, patchOf({})), {}, 'өөрчлөлтгүй бол 
 const d1 = diffParcel(p, patchOf({ status: 'Бүрэн чөлөөлсөн' }));
 assert.deepEqual(Object.keys(d1), [F.status], 'зөвхөн өөрчлөгдсөн талбар илгээгдэнэ');
 assert.equal(d1[F.status], 'Бүрэн чөлөөлсөн');
-/* ⚠️ Эзэмшигч, тайлбар ОРОХГҮЙ — өөр хүний зэрэг зассан баганыг дарахгүй */
 assert.ok(!(F.owner in d1), 'хөндөөгүй талбар илгээгдэж болохгүй');
 assert.ok(!(F.note in d1));
 
@@ -148,20 +142,15 @@ assert.deepEqual(validateParcel(patchOf({ owner: '', note: '', address: '' })), 
 
 /* ══════════════ 7. SQL ══════════════ */
 
-/* ⚠️ OID нэрийг ХАТУУ бичихгүй — `PARCEL_OID` нь `services.ts`-ээс гарна
-   (2026-09-06-нд `OBJECTID` → `FID` болов). */
 assert.equal(parcelWhere(4), `${PARCEL_OID} = 4`);
 assert.equal(parcelWhere(4.9), `${PARCEL_OID} = 4`, 'бутархай OID таслагдана');
-/* ⚠️ Кадастрын дугаар нь ТЕКСТ талбар — хашилтад орох ёстой */
 assert.equal(parcelNoWhere('1461802715'), `${F.parcelNo} = N'1461802715'`);
 assert.equal(
   parcelNoWhere("a'b"), `${F.parcelNo} = N'a''b'`,
   'нэг хашилт давхарлагдаж SQL тайрагдахаас хамгаална',
 );
 
-/* ══════════════ 8. ЗӨВХӨН ӨӨРЧЛӨГДСӨН талбарыг шалгана (2026-10-01) ══════════════
-   ⚠️ Хуучин/танигдахгүй төлөвтэй мөрийн эзэмшигчийг засахад хөндөөгүй төлөвөөс
-   болж хадгалалт ХААГДДАГ байв. */
+/* ══════════════ 8. ЗӨВХӨН ӨӨРЧЛӨГДСӨН талбарыг шалгана (2026-10-01) ══════════════ */
 {
   const legacy = { ...p, status: 'Үлдсэн нэгж талбар', progress: 'Үлдсэн нэгж талбар' };
   const edit = { ...patchOf({}), status: legacy.status, progress: legacy.progress, owner: 'Шинэ эзэмшигч' };
@@ -213,8 +202,6 @@ console.log('✅ хэсэгчилсэн хайлтын SQL');
 /* ══════════════ 11. saveParcel — НЭГЖ ТАЛБАРЫН тоо (2026-10-01) ══════════════ */
 /* өөрчлөлтгүй бол 0, сүлжээнд залгахгүй (эрх ч шаардахгүй) */
 assert.equal(await saveParcel(p, patchOf({})), 0);
-/* ⚠️ Амжилтын зам сүлжээ шаарддаг тул ЭХ КОДООР: баганын тоо (`Object.keys(d).length`)
-   БИШ, 1 буцаана — «3 талбар хадгалагдлаа» гэсэн төөрөгдөл буцаж ирэхгүй. */
 {
   const src = fs.readFileSync('src/lib/parcelEdit.ts', 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');

@@ -9,11 +9,6 @@ import s from './entSignIn.module.css';
 /**
  * ENTERPRISE НЭВТРЭЛТИЙН МАЯГТ — нэг бүрэлдэхүүн, хоёр газар («ТЭЗҮ» цонхны Enterprise PDF ·
  * «MA» харагдацын хавсралт). 2026-10-09: `EntDocs.tsx`-ээс салгав.
- *
- * ⚠️ Enterprise нь ArcGIS Online-оос ТУСДАА нэвтрэлт (`lib/entDocs.ts`-ийн толгой): нууц үг
- *    хадгалагдахгүй, токен зөвхөн санах ойд. OAuth апп геопорталд бүртгэгдмэгц энэ маягт
- *    нэг товч болно.
- * ⚠️ `ENT_PORTAL` хоосон бол юу ч зурахгүй.
  */
 export function useEntSession() {
   return useSyncExternalStore(subscribeEnt, entSession, () => null);
@@ -32,8 +27,6 @@ export function EntSignIn({ compact = false, onSignedOut }: { compact?: boolean;
     return (
       <div className={`${s.row} ${compact ? s.compact : ''}`}>
         <span className={s.user}>{sess.user}</span>
-        {/* ⚠️ 2026-10-26 (аудит): нэг порталын горимд сешн нь үндсэн нэвтрэлтийнх — «Гарах» юу ч хийдэггүй, харин
-            `onSignedOut` жагсаалтыг хоослож Enterprise PDF-үүдийг нуудаг байв. Гарах нь толгойн хэрэглэгчийн цэснээс. */}
         {!entIsShared() && <button type="button" className={s.link} onClick={() => { entSignOut(); onSignedOut?.(); }}>{tr('Гарах')}</button>}
       </div>
     );
@@ -49,7 +42,6 @@ export function EntSignIn({ compact = false, onSignedOut }: { compact?: boolean;
   return (
     <form className={`${s.form} ${compact ? s.compact : ''}`} onSubmit={signIn}>
       <input className={s.input} value={user} onChange={(e) => setUser(e.target.value)}
-        /* ⚠️ 2026-10-23 (UX аудит Q7): товч горимд урт placeholder тасардаг байв («…хэрэглэгчийн нэ») — богино бичиг, бүтэн нэр `aria-label`-д */
         placeholder={tr('Геопорталын нэр')} aria-label={tr('Геопорталын нэр')} autoComplete="username" disabled={busy} />
       <input className={s.input} type="password" value={pass} onChange={(e) => setPass(e.target.value)}
         placeholder={tr('Нууц үг')} autoComplete="current-password" disabled={busy} />

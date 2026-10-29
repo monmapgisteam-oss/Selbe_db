@@ -1,9 +1,6 @@
 /**
  * «ТУХ» ЗАГВАРЫН (`buildModel`) ХОЛБОЛТЫН ШАЛГУУР — сүлжээгүй, хуурамч өгөгдлөөр.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/tuh/model.ui.check.mjs
- *
- * ⚠️ `*.ui.check.mjs` нэр ЗААВАЛ — `model.ts` нь `Finance.tsx` (JSX, CSS) импортлодог тул
- *    `tools/ts-alias.mjs`-ийн UI стубууд хэрэгтэй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/tuh/model.ui.check.mjs
  *
  * Хамгаалж буй алдаанууд (2026-09-30):
  *   1. Барилгын давхарга ирээгүй/унасан үед «0 айл · 0 блок» (null ≠ 0).
@@ -19,7 +16,6 @@
  */
 import assert from 'node:assert/strict';
 
-/* ⚠️ Орон нутгийн сар/өдөр — УБ (импортоос ӨМНӨ) */
 process.env.TZ = 'Asia/Ulaanbaatar';
 
 /* ══ Хөтөчийн глобалууд (импортоос ӨМНӨ) — smoke.ui.check.mjs-ийн дэд олонлог ══ */
@@ -63,7 +59,6 @@ const CR = (o) => ({
   objectid: o.oid, bagts: o.pkg, bagts_tuvshin1: o.code ?? '2',
   ajil_tuvshin1: '', ajil_tuvshin2: o.t2 ?? '', ajil_tuvshin3: o.t3 ?? '',
   ajil_uilchilgee: o.name ?? '', ho_dun_geree: o.cost ?? null, ho_dungiin_tailbar: o.note ?? '',
-  /* ⚠️ 2026-10-01: гэрээлсэн дүн — `paidShare.paidShareOf`-ийн хуваарь (Cashflow, CONTRACTED) */
   geree_dun: o.contract ?? null,
   guitsetgegch: '', guitsetgel_huvi: o.prog ?? null, ehleh_ognoo: null, duusah_ognoo: null, cashflow_id: o.cf ?? null,
 });
@@ -80,7 +75,6 @@ const HC = (o) => ({
   contractNo: '', budgetTotal: null, contractTotal: o.total, saving: null, pays: o.pays,
   advanceTotal: null, workTotal: null, paidTotal: o.paid, paidPct: null,
 });
-/* ⚠️ 2026-10-01: AUTO мөр (гүйцэтгэлээс үүссэн, `dun` хоосон) — «Хянагдаж буй IPC» */
 const AUTO1 = { murun_id: 'AUTO|БАГЦ1|2026-09-09', geree_kod: 'Багц-1', bagts: 'Багц-1', dun: null, guits_une: 500, guilgee_ognoo: '2026-09-09', ipc_dugaar: null, tulult_turul: 'Гүйцэтгэл' };
 const p1 = [PAY('Багц-1', 'Багц-1', 200, '2026-08-10', 1), AUTO1];
 const p71 = [PAY('Багц-7.1', 'Багц-7.1', 100, '2026-08-01', 1)];
@@ -269,7 +263,6 @@ console.log('\n8. Зурагдах (SSR)');
     assert.ok(/<details[^>]*>\s*<summary><h2>Зураг<\/h2>/.test(hd));
   });
 
-  /* ⚠️ 2026-10-22 (аудит): гүйцэтгэгчийн хуваарийн ХАМРАЛТ — муруй 70%-д дуусдаг (огноогүй ажлын жин 30%) */
   console.log('\n15. Хуваарь < 95% хамарсан — гүйцэтгэгчийн хуваариар ДҮГНЭХГҮЙ');
   ok('БАГЦ1: хамралт 70 → төлөв гэрээний төлөвлөгөөгөөр, SPI (гүйцэтгэгч) «—», hero-д «хуваарь 70.0% хамарсан»', () => {
     assert.equal(h1.planCoverage, 70);

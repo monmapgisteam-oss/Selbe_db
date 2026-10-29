@@ -1,7 +1,7 @@
 /**
- * AI ТУСЛАХЫН `compute` — ДЭЛГЭЦИЙН ТУСЛАХТАЙ ЯГ ТЭНЦҮҮ (⚠️ 2026-10-19, сүлжээгүй).
+ * AI ТУСЛАХЫН `compute` — ДЭЛГЭЦИЙН ТУСЛАХТАЙ ЯГ ТЭНЦҮҮ (2026-10-19, сүлжээгүй).
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/agent/screenCompute.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/agent/screenCompute.check.mjs
  *
  * Хамгаалах алдаа: агент санхүүгийн нийт дүн / олгосон хувь / багцын хоцрогдлыг түүхий мөрөөс өөрөө бодож
  * дэлгэцээс зөрдөг байв. `finance_summary` · `pkg_plan` нь дэлгэцийн функцүүдийг (`paidShareOf`,
@@ -92,7 +92,6 @@ console.log('\n2. pkg_plan = дэлгэцийн функцүүд (lagOf / physLa
     physLatest: (ms) => ms.at(-1).phys,
     lagLevel: (gap) => (gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null),
     planAt: (key) => (key === 'Багц 4' || key === 'Багц 5' ? 16 : null),
-    /* ⚠️ 2026-10-19: fallback зөвхөн орон сууцанд (ТУХ-ийн дүрэм) — «Багц 5» орон сууц биш */
     isHousing: (key) => key !== 'Багц 5',
   };
   const rows = pkgPlanOf(months, deps);
@@ -114,7 +113,6 @@ console.log('\n2. pkg_plan = дэлгэцийн функцүүд (lagOf / physLa
     assert.equal(by['Багц 5'].gap, null);
     assert.equal(by['Багц 5'].actual, 10);
   });
-  /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцрогдлыг дүгнэхгүй — gap/level null, хамралтыг буцаана */
   ok('хамралт < 95% → gap/level null, coverage буцаана; ≥ 95% → хэвийн', () => {
     const ms = new Map([['Б', [{ label: '2026-09', phys: 20, physAt: '2026-09-10' }]], ['В', [{ label: '2026-09', phys: 20, physAt: '2026-09-10' }]]]);
     const lg = { 'Б': { month: '2026-09', planned: 8.6, actual: 20, gap: -11.4, coverage: 8.6 }, 'В': { month: '2026-09', planned: 40, actual: 20, gap: 20, coverage: 100 } };

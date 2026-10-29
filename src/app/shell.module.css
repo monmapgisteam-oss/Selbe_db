@@ -1,24 +1,15 @@
 /**
- * ХҮРЭЭ — ⚠️ 2026-10-23: Environment (`workspace.css` §dock/header, `shell/{sidebar,header}.tsx`,
+ * ХҮРЭЭ — 2026-10-23: Environment (`workspace.css` §dock/header, `shell/{sidebar,header}.tsx`,
  * `layers/portal-dashboard.tsx`-ийн байрлал):
  *   · зүүн  = DOCK (`--nav` 104px, fixed) — харагдацын жагсаалт (`ViewRail`, `tree.module.css`)
  *   · дээд  = толгой (`--head` 80px, sticky, blur 16) — брэнд · зам заагч · хэрэгслүүд · хэрэглэгч
  *   · агуулга (12px зай):
  *       бүтэн дэлгэцийн харагдац (`viewRegistry`) — `.suit` дотор өөрийн бүтцээрээ;
  *       газрын зурагтай харагдац — `.work`: KPI зурвас + `ResizableColumns` (каталог · зураг · самбар).
- *
- * ⚠️ Урьдын grid-area хүрээ (`head/nav/map/panel/foot`), хураагдсан 54px цэс (`.shellNavMin`), доод
- *    хүрээ (`.dashFoot`), зурган дээрх хөвөгч каталог (`.catPop`), самбарын бариул (`.grip`) ХАСАГДАВ.
- * ⚠️ z-index: толгой 20 · dock 15 — модулиудын бүтэн дэлгэцийн overlay (30–40) эдгээрээс ДЭЭР байхаар
- *    тооцогдсон (`dedButets.module.css`, `finance.module.css`-ийн ⚠️). Environment-ийн 40/60-г АВААГҮЙ.
- * ⚠️ Хүрээнд `transform`/`filter` хэрэглэхгүй — модулиудын `position: fixed` overlay-ийн эх хүрээг өөрчилнө.
  */
 .shell { min-height: 100dvh; }
 
-/* ── ЗҮҮН НАВИГАЦИ ──
-   ⚠️ 2026-10-23 (хэрэглэгч: «menu хэсэгт хийсэн бүх засварыг буцаа»): Environment-ийн dock (104px, брэнд
-   дугуй, өргөсгөх товч) ХАСАГДАЖ урьдын цэс буцав — толгойн ДООР, `--nav` 244px (`.shellNavMin` 54px),
-   `--surface-2` дэвсгэр, баруун hairline, дотроо гүйнэ (`ViewRail` + `tree.module.css` урьдынх). */
+/* ── ЗҮҮН НАВИГАЦИ ── */
 .dock {
   position: fixed;
   top: var(--head);
@@ -85,8 +76,6 @@
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   min-width: 0;
-  /* ⚠️ Толгой хэзээ ч page-ыг ХЭВТЭЭ гүйлгэхгүй — гэхдээ доош унжих зүйлс (хэрэглэгчийн цэс, хэлний
-     толийн алдаа) харагдах ёстой тул `hidden` БИШ `clip` зөвхөн x тэнхлэгт. */
   overflow-x: clip;
 }
 /* Брэнд — 60px лого (зүүн талд, хоёр мөрийг дамжина) + нэр, доор нь зам заагч */
@@ -98,8 +87,6 @@
   flex: 0 1 auto;
   min-width: 0;
   min-height: 60px;
-  /* ⚠️ 2026-10-23 (хэрэглэгч: «лого хэт жижиг»): лого 1494×287 (≈5.2:1) — 60px ӨРГӨНД ердөө 11px өндөр
-     болдог байв. Одоо 44px ӨНДӨР (≈230px өргөн), бичвэр түүний баруун талаас. */
   padding-left: 242px;
 }
 /* Брэнд — button (нүүр рүү буцах). onHome-гүй бол disabled, цэвэр текст шиг. */
@@ -193,9 +180,7 @@
 }
 .filterClear:hover { background: color-mix(in oklab, var(--tone) 20%, transparent); color: var(--ink); }
 
-/* Толгойн БАРУУН талын хэрэгслүүд.
-   ⚠️ `margin-left: auto` нь `.head` (flex)-ийн үлдсэн зайг идэж бүлгийг баруун ирмэг рүү түлхэнэ —
-   `ActiveFilterChip` шүүлтгүй үед `null` буцаадаг тул түүнд найдахгүй. */
+/* Толгойн БАРУУН талын хэрэгслүүд. */
 .headTools {
   margin-left: auto;
   display: flex;
@@ -225,7 +210,6 @@
 /* Зааг — товчнууд ба хэрэглэгчийн чипийн хооронд */
 .headDiv { width: 1px; height: 28px; flex: none; background: var(--line); }
 
-/* ⚠️ 2026-10-05: толгойн «Өгөгдөл: HH:MM» — шинэчлэх товчны өмнө, бүдэг жижиг бичвэр */
 .dataAt {
   font-size: 11px;
   color: var(--ink-3);
@@ -308,8 +292,6 @@
 }
 .userMenuItem:hover { background: var(--paper-hi); color: var(--ink); }
 
-/* ⚠️ 2026-10-05: «Сүлжээний холболт тасарсан» тууз — дэлгэцийн дээд төвд хөвнө, товшилтыг
-   хаахгүй (pointer-events: none). Ачаалалтын бүрхүүл (z 4000)-ээс доор. */
 .offline {
   position: fixed;
   top: 8px;
@@ -327,9 +309,7 @@
   pointer-events: none;
 }
 
-/* ── Бүтэн дэлгэцийн харагдац (дашбоард, анализ, хуваарь …) ──
-   ⚠️ 2026-08-18: `overflow: auto` — дашбоард/IoT нь картаа агуулгаараа өрдөг тул хүрээнээсээ ХАЛЬДАГ.
-   ⚠️ 2026-10-23: Environment — 12px дотор зай; модулийн дотоод бүтэц хөндөгдөөгүй. */
+/* ── Бүтэн дэлгэцийн харагдац (дашбоард, анализ, хуваарь …) ── */
 .suit {
   flex: 1;
   min-width: 0;
@@ -401,7 +381,6 @@
 /* Бүсийн нэр (текст) — тооноос жижиг */
 .statValueText { font-size: 15px; letter-spacing: 0; }
 
-/* ⚠️ 2026-10-05: нэгтгэлийн зурвасын алдааны «Дахин оролдох» — ghost товч */
 .sumRetry {
   flex: none;
   height: 32px;
@@ -425,9 +404,6 @@
   overflow: hidden;
 }
 .catCol > * { flex: 1; min-width: 0; }
-/* ⚠️ `mapTools.module.css` §(а) нь `.mapCatalog`-ийн эх хавтанд (`*:not(:has(> .tabDock)) > *:has(> .mapCatalog)`,
-   өвөрмөц чанар 0,2,0) хөвөгч каталогийн `max-width: 340px` · `min-width` тавьдаг — энэ багана хөвөгч БИШ тул
-   (0,3,0)-ээр буцаана, эс бөгөөс чирсэн өргөн 340px-ээс давахгүй. */
 .work .cols > .catCol { min-width: 0; max-width: none; width: auto; }
 
 /* Төв — газрын зургийн карт */
@@ -442,9 +418,7 @@
   overflow: hidden;
 }
 
-/* Баруун багана — толгойн карт + самбарын картууд (`ui.module.css` §section) босоо цуваа.
-   ⚠️ Багана өөрөө гүйнэ (`.panelBody`); карт бүрийн өндөр агуулгаараа — дотор нь чарт тул картыг
-      хумьж дотор нь гүйлгэхгүй. */
+/* Баруун багана — толгойн карт + самбарын картууд (`ui.module.css` §section) босоо цуваа. */
 .panel {
   display: flex;
   flex-direction: column;
@@ -480,7 +454,6 @@
   font-weight: 600;
   line-height: 1.35;
 }
-/* ⚠️ 2026-09-30: 10.5px → 12px — тайлбар уншигдахуйц байх доод хэмжээ */
 .panelDesc { margin-top: 2px; font-size: 12px; line-height: 1.4; color: var(--ink-3); }
 .panelBody {
   flex: 1;
@@ -550,18 +523,11 @@
 @media (max-width: 420px) {
   .brandName { display: none; }
 }
-/* ⚠️ 2026-10-23 (UX аудит S1): УТАС (≤620px) — 390px өргөнд толгойн «?» ба гэрэлтүүлгийн товч дэлгэцээс
-   ГАДАГШ гарч тайрагддаг байв. tezu-bonu-гийн толгойд (≤640px дүрэм дээр) нэгтгэв: товч 40→32px, завсар 4px.
-   ⚠️ Хэвтээ гүйлгэх сав (`overflow-x: auto`) БИШ — хэрэглэгчийн чипийн унжих цэс (`.user`) тайрагдана. */
 @media (max-width: 620px) {
   .headTools { gap: 4px; }
   .iconBtn { width: 32px; height: 32px; }
-  /* ⚠️ 2026-10-26 (аудит): идэвхтэй шүүлтийн чип (≈63px) нэмэгдэхэд 375–414px-д хэрэглэгчийн чип ба «?» баруун
-     ирмэгээс тайрагддаг байв (`.head` overflow-x: clip, юу ч шахагдахгүй). Утсанд шүүлт самбарынхаа мөрөнд харагдана. */
   .filterChip { display: none; }
 }
-/* ⚠️ 2026-10-26 (аудит): брэндийн нэр нуугдсан (≤420px) үед лого/зай 136→96px — super-ийн «Тайлан» товчтой үед
-   375/390px-д хэрэглэгчийн чип тайрагддаг байв (136 + 10 + 222 > 351). */
 @media (max-width: 420px) {
   .identity { padding-left: 96px; }
   .logo { width: 90px; }

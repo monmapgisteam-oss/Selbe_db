@@ -2,50 +2,8 @@
  * CEO KPI — ГЭРЭЭЛСЭН ба УРЬДЧИЛСАН ТӨСӨВТ ӨРТГИЙН ЗӨРҮҮ, гэрээ бүрээр.
  *
  * Эх сурвалж: `Cashflow_0909` (`CASHFLOW_NEW`) — мөр бүр НЭГ гэрээ (76).
- * `loadFinData().contracts`-аас уншина: санхүүгийн бусад карт (IPC, олголт)
+ * `loadFinData.contracts`-аас уншина: санхүүгийн бусад карт (IPC, олголт)
  * ижил татаалтыг хуваалцдаг тул энд шинэ ArcGIS хүсэлт ҮҮСЭХГҮЙ.
- *
- * ⚠️ ЗӨРҮҮНИЙ ТЭМДЭГ: `diff = гэрээ − төсөв`. ЭЕРЭГ = гэрээ төсвөөс ДАВСАН
- *    (асуудал), СӨРӨГ = хэмнэлт. Урвуулбал улаан/ногоон солигдоно.
- *
- * ⚠️ ГЭРЭЭГҮЙ мөр нь «гэрээ хараахан байгуулагдаагүй» — зөрүү нь `null`, 0 БИШ.
- *    ⚠️ 2026-09-25: ГЭРЭЭТЭЙ = ЗӨВХӨН `ho_dungiin_tailbar === CONTRACTED`
- *    (порталын НЭГ дүрэм — `gdash`, `scorecardLoad`, ExecReport). Урьд нь
- *    `geree_dun` бөглөгдсөн эсэхээр ялгадаг тул гэрээлэгдээгүй (магадласан г.м.)
- *    мөр «гэрээ» болж, картын «гэрээлсэн» нийт бусад дэлгэцээс зөрдөг байв.
- *    CONTRACTED боловч дүнгүй мөр жагсаалтад ОРНО (гэрээ `null`, зөрүү `null`),
- *    нийлбэрт орохгүй. Амьд өгөгдөлд (2026-09-06)
- *    76 мөрийн 43 нь ийм: тэднийг 0 зөрүүтэй гэж тоолбол «43 гэрээ яг
- *    төсөвтөө таарсан» гэсэн худал дүр гарна.
- *
- * ⚠️ ТӨСӨВГҮЙ (null/0) мөрөнд ГЭРЭЭ байвал зөрүүг БОДОХГҮЙ (`null`):
- *    `гэрээ − 0` нь «гэрээ бүхэлдээ төсвөөс давсан» гэсэн хуурамч улаан
- *    үүсгэнэ. Ийм мөрийг `noBudget`-д тоолж, тоо нь 0-ээс их бол баримтад
- *    ил гаргана. `mnt(0)` нь угаасаа «—» тул 0 ба null-ыг нэг адил үзэв.
- *
- * ⚠️ Нийлбэр нь ХООСОН орцоос `null` — тэг биш. «Давсан гэрээ алга» үед
- *    `mnt(null)` → «—» гарна; энэ нь зориудынх (null ≠ 0 дүрэм).
- *
- * ⚠️ `contractTotal` ба `budgetTotal` НЭГ СУУРЬТАЙ — хоёулаа ЗӨВХӨН ГЭРЭЭТЭЙ
- *    мөрөөс. Төсвийг БҮХ мөрөөс (гэрээгүй 43-ыг оруулаад) нийлбэрлэвэл
- *    «гэрээлсэн X / төсөв Y» баримт ~1.5 их наядын «хэмнэлт» мэт уншигдана —
- *    үнэндээ тэр нь гэрээ БАЙГУУЛААГҮЙ ажил (өөр картын сэдэв). Гэрээгүй
- *    ажлын төсөв энэ картад ХАМААРАХГҮЙ.
- *    ⚠️ 2026-10-21 (аудит): хоёулаа ЯГ НЭГ олонлог — төсөв ч, гэрээ ч бөглөгдсөн мөр.
- *    Урьд нь `contractTotal`-д төсөвгүй гэрээний дүн ч ордог тул «гэрээлсэн X / төсөв Y»
- *    нь Σ diff-ээс тэр дүнгээр зөрж, хуурамч давалт мэт уншигдаж байв. Одоо
- *    contract − budget = Σ over + Σ under; төсөвгүй гэрээний Σ дүн ТУСДАА
- *    (`noBudgetSum`, «N гэрээ төсөвт өртөггүй (Σ)» баримтад ил).
- *
- * ⚠️ 2026-10-04 · ТӨСВИЙН ТАЛБАР СОЛИГДОВ (KPI ҮРГЭЛЖ 0 байв): урьд нь төсөв = `ho_dun_geree`
- *    (`F.budget`). Тэр талбар нь «ХО дүн (ГЭРЭЭ болон урьдчилсан тооцоолол)» — ГЭРЭЭТЭЙ мөрд
- *    `geree_dun`-тэй ЯГ тэнцүү (амьд 2026-10-04: 27/27 дүнтэй мөр), тиймээс зөрүү бүр 0 байв.
- *    Одоо төсөв = `ho_dun_zahiramj` (`F.budgetOrder` — ЗАХИРАМЖИЙН ХО төсөв), гэрээ =
- *    `geree_dun`; CEO IPC картын «хэмнэлт» (HO `tosov_niit − gereet_tosov_niit`, 84.49 тэрбум)
- *    -тай НЭГ утга (Cashflow-оор 2,094.53 − 2,009.77 = 84.76 тэрбум).
- *    · Хүрээ = Excel-ийн НИЙТ мөр (`finXlInTotal` — 5·6·7-р хэсэг орохгүй), «Гэрээлсэн дүн»
- *      (`gdash.contractedScope`)-тэй нэг.
- *    · `geree_dun` хоосон (БАГЦ-5.3/5.4) = ДУТУУ (жагсаалтад «—», нийлбэрт орохгүй), 0 БИШ.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -58,12 +16,6 @@ import { cell, table, type KpiIssue, type KpiResult, type Level } from './kpi';
 
 /**
  * Төсвөөс давсан гэрээний НИЙТ дүнгийн босго, ₮ — үүнээс дээш бол улаан.
- *
- * ⚠️ САНАЛ (2026-09-06): хэрэглэгч тогтоогоогүй, `kpiLevels.ts`-д ч байхгүй.
- *    1 тэрбум ₮ = төслийн 2.66 их наядын ~0.04% — «нэг гэрээний хэмжээний
- *    давалт» гэсэн уншилт. Ямар ч давалт (1₮ ч гэсэн) шар: төсөвт өртгөөс
- *    давсан гэрээ бүр захирамжийн зөвшөөрөл шаарддаг тул «бага зэрэг» гэж
- *    үл тоох дунд түвшин байхгүй.
  */
 export const CONTRACT_OVER_BAD_MNT = 1_000_000_000;
 
@@ -71,8 +23,6 @@ export const CONTRACT_OVER_BAD_MNT = 1_000_000_000;
 
 /**
  * Түүхий cashflow мөр.
- * ⚠️ `Record<string, unknown>` — `Finance.tsx`-ийн `Row` ба `query.ts`-ийн `Row`
- *    хоёр ӨӨР төрөл (unknown vs string|number|null); хоёулаа энд багтана.
  */
 export type RawRow = Record<string, unknown>;
 
@@ -85,7 +35,7 @@ export type ContractGapRow = {
   contractNo: string;
   /** Гэрээний огноо — мөр (`Geree_ognoo` нь String талбар) */
   contractDate: string;
-  /** Захирамжийн ХО төсөв (`ho_dun_zahiramj`), ₮ — null = бөглөөгүй/0 (2026-10-04, толгойн ⚠️) */
+  /** Захирамжийн ХО төсөв (`ho_dun_zahiramj`), ₮ — null = бөглөөгүй/0 (2026-10-04, толгой) */
   budget: number | null;
   /** Гэрээний дүн (`geree_dun`), ₮ — null = гэрээтэй (CONTRACTED) боловч дүн бөглөөгүй */
   contract: number | null;
@@ -106,14 +56,14 @@ export type ContractGap = {
   contractTotal: number | null;
   /**
    * Σ төсөвт өртөг — ЗӨВХӨН ГЭРЭЭТЭЙ мөрүүд (`contractTotal`-тай нэг суурь,
-   * толгойн ⚠️); нэг ч байхгүй бол null
+   * толгой); нэг ч байхгүй бол null
    */
   budgetTotal: number | null;
   /** Гэрээгүй мөрийн тоо */
   noContract: number;
   /** Гэрээтэй боловч төсөвгүй мөр — зөрүү бодогдоогүй */
   noBudget: number;
-  /** Төсөвгүй гэрээний Σ дүн — `contractTotal`-д ОРОХГҮЙ (2026-10-21, толгойн ⚠️); нэг ч байхгүй бол null */
+  /** Төсөвгүй гэрээний Σ дүн — `contractTotal`-д ОРОХГҮЙ (2026-10-21, толгой); нэг ч байхгүй бол null */
   noBudgetSum: number | null;
   /** Эх хүснэгтийн нийт мөр */
   total: number;
@@ -121,7 +71,7 @@ export type ContractGap = {
 
 /* ══════════════ Цэвэр тооцоо ══════════════ */
 
-/** Мөнгөн талбар → тоо; null/''/NaN/0 → null (0 нь «бөглөөгүй», дээрх ⚠️) */
+/** Мөнгөн талбар → тоо; null/''/NaN/0 → null (0 нь «бөглөөгүй», дээрх) */
 const money = (v: unknown): number | null => {
   if (v == null || v === '') return null;
   const x = Number(v);
@@ -145,13 +95,9 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
   let noBudget = 0;
 
   for (const r of raw) {
-    /* ⚠️ 2026-10-04: Excel-ийн НИЙТ хүрээ (5·6·7-р хэсэг орохгүй) — «Гэрээлсэн дүн»-тэй нэг */
     if (!finXlInTotal(r)) continue;
-    /* ⚠️ 2026-10-04: ЗАХИРАМЖИЙН төсөв — `ho_dun_geree` гэрээтэй мөрд гэрээний дүнтэй ижил (толгойн ⚠️) */
     const budget = money(r[F.budgetOrder]);
     const contract = money(r[F.contractAmount]);
-    /* ⚠️ Гэрээгүй мөрийн төсөв ЭНД ХАЯГДАНА — `budgetTotal`-д орохгүй (толгойн ⚠️).
-       ⚠️ 2026-09-25: гэрээтэй эсэх нь `note === CONTRACTED`-ээр (дүнгээр БИШ). */
     if (!isContracted(r)) { noContract += 1; continue; }
     if (budget == null) noBudget += 1;
     const diff = budget == null || contract == null ? null : contract - budget;
@@ -164,7 +110,6 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
       budget,
       contract,
       diff,
-      /* ⚠️ 0–100 масштаб — `pct()` 100-аар үржүүлдэггүй */
       diffPct: diff == null || budget == null ? null : (diff / budget) * 100,
     });
   }
@@ -183,8 +128,6 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
     rows,
     over: { count: overDiffs.length, sum: sumOrNull(overDiffs) },
     under: { count: underDiffs.length, sum: sumOrNull(underDiffs) },
-    /* ⚠️ 2026-10-21 (аудит): ТӨСӨВ ч, ГЭРЭЭ ч бөглөгдсөн мөр — `budgetTotal`-тай ЯГ нэг популяци
-       (толгойн ⚠️); төсөвгүй гэрээний дүн `noBudgetSum`-д тусдаа */
     contractTotal: sumOrNull(rows.flatMap((r) => (r.budget != null && r.contract != null ? [r.contract] : []))),
     /* Зөвхөн гэрээтэй, ДҮНТЭЙ мөр — `contractTotal`-тай нэг популяци (дүнгүй
        CONTRACTED мөрийн төсөв орвол тааруулалт эвдэрнэ) */
@@ -192,7 +135,6 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
     noContract,
     noBudget,
     noBudgetSum: sumOrNull(rows.flatMap((r) => (r.budget == null && r.contract != null ? [r.contract] : []))),
-    /* ⚠️ 2026-10-04: НИЙТ хүрээний мөр (`finXlInTotal`) */
     total: raw.filter((r) => finXlInTotal(r)).length,
   };
 }
@@ -230,8 +172,6 @@ export function buildContractGapKpi(g: ContractGap): Omit<KpiResult, 'failedSour
       : tr('{0} гэрээ төсвөөс бага', 0),
     tr('гэрээлсэн {0} / төсөв {1}', mnt(g.contractTotal), mnt(g.budgetTotal)),
   ];
-  /* ⚠️ Зөвхөн БАЙГАА үед — «0 гэрээ төсөвгүй» гэсэн хоосон баримт хэрэггүй */
-  /* ⚠️ 2026-10-21: тэдгээрийн Σ дүн ИЛ — `contractTotal`-аас хасагдсан тул хэрэглэгч хаана байгааг харна */
   if (g.noBudget > 0) {
     facts.push(g.noBudgetSum == null
       ? tr('{0} гэрээ төсөвт өртөггүй', g.noBudget)
@@ -258,7 +198,6 @@ export function buildContractGapKpi(g: ContractGap): Omit<KpiResult, 'failedSour
       table(tr('Бүх гэрээ — зөрүүгээр'), cols, g.rows.map(gapCells)),
     ],
     issues,
-    /* ⚠️ `Geree_ognoo` нь гэрээ БАЙГУУЛСАН огноо — өгөгдлийн агшин биш */
     asOf: null,
   };
 }
@@ -269,22 +208,11 @@ export function buildContractGapKpi(g: ContractGap): Omit<KpiResult, 'failedSour
 const TTL_MS = 60_000;
 
 export const loadContractGapKpi = cached<KpiResult>(async () => {
-  /*
-   * ⚠️ ДИНАМИК импорт: `Finance.tsx` нь React модуль — модулийн түвшинд
-   *    импортловол нүүр хуудасны chunk-д орж, `contractGap.check.mjs`
-   *    Node-д JSX-ийг ачаалж чадахгүй унана.
-   */
   const { loadFinData } = await import('@/modules/Finance');
   let rows: RawRow[];
   try {
     rows = (await loadFinData()).contracts;
   } catch (e) {
-    /*
-     * ⚠️ `loadFinData` нь IPC · блокийн түүх · хуваарийн муруйг ХАМТ татдаг —
-     *    тэдгээрийн аль нэг унавал гэрээний мөр уншигдах боломжтой байсан ч
-     *    бүхэлдээ унана. Ганц хүснэгтийг ШУУД дахин асууна; тэр ч унавал
-     *    ЮУ Ч ачаалагдаагүй тул throw.
-     */
     const { queryFeatures } = await import('@/lib/query');
     const F = CASHFLOW_NEW.fields;
     rows = await queryFeatures(CASHFLOW_NEW.url, {

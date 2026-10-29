@@ -1,37 +1,7 @@
 /**
  * САРЫН МӨНГӨ — «Гараар» (сарын мөр) ба «Хуваарь» (тооцоолсон) эхийн НЭГДСЭН цуваа.
  *
- * ⚠️ 2026-10-26 (тохирсон тодорхойлолт, `cf-spec.md` «Сарын мөнгө»): мөнгөний мөр (гэрээ) бүр `sar_mongo_eh`-тэй:
- *    · 'garaar' (анхдагч; ХООСОН/null ч мөн) → CASHFLOW_NEW-ийн гараар оруулсан САРЫН мөрүүд (`CF_MONTH_WHERE`) ХЭВЭЭР;
- *    · 'huvaari' → Хуваарийн сарын обьём (`huvaari_obyem`, `loadPkgPlan`) × бөглөх хуудасны НЭГЖ ӨРТӨГ (`Нэгж_өртөг`,
- *      `SheetRow.unit`) — тухайн гэрээний гараар оруулсан сарын мөрийг ҮЛ ТООНО (шилжүүлэхэд устгагддаг ч үлдсэн бол ч).
- *
- * НЭГЖ: бүх дүн ₮ (төгрөг). Сарын түлхүүр «YYYY-MM». Хувь (`pct`) 0–100 (`pct()` 100-аар үржүүлдэггүй).
- *
- * ⚠️ null ≠ 0:
- *    · Хуваарьт тухайн сард обьём БАЙХГҮЙ бол тэр сар Map-д ОГТ БАЙХГҮЙ (0 ₮ биш). Хуваарьт ИЛ 0 бичсэн сар → 0 ₮ (бодит
- *      «тэр сард ажил төлөвлөөгүй»).
- *    · Нэгж өртөггүй мөрийн обьём ₮ болж ЧАДАХГҮЙ — нийлбэрт 0-ээр ОРОХГҮЙ, `noUnit`-д тоологдоно (`ipcLink.snapshotOf`-ийн
- *      дүрэм). Хуудсанд олдоогүй ажлын код → `noRow`.
- *    · Хуудас уншигдаагүй (`failed`) багцын 'huvaari' гэрээ ХООСОН цуваатай, төлөв нь `failed` — «0 ₮ төлөвлөгөө» гэж
- *      харагдахгүй; ДУТУУ нэгтгэл гаргахгүй (`planProgress.PlanCurve.failed`-ийн дүрэм).
- *
- * ⚠️ БАГЦ ↔ ГЭРЭЭ: `pkgKeyOf(гэрээний bagts) === bagtsKey(Pkg.group)` (`tuhData` · `PkgFin`-ийн нэг түлхүүр). Диапазон
- *    («БАГЦ 1-4») мөр түлхүүргүй → «Хуваарь» эх ажиллахгүй (`noKey`). Нэг багц (9F + 12F хуудас) нэг цуваа.
- * ⚠️ НЭГ БАГЦАД ОЛОН 'huvaari' ГЭРЭЭ (жиш. «Багц 7.1» зураг төсөл + «БАГЦ-7.1» барилга): багцын цуваа НЭГ л удаа
- *    тоологдоно — гэрээнүүдэд ХО дүнгийн (`ho_dun_geree`) харьцаагаар хуваагдана, ХО дүнгүй гэрээ хувьгүй
- *    (`sharedNoCost`), `issues`-д бичигдэнэ. Давхар тоолохоос хуваах нь дээр (нийт S-муруй хөөрөхгүй).
- *    ⚠️ 2026-10-26 (хяналт): хуваах нь гэрээ тус бүрийн дүнг БУРУУ болгодог (зураг төсөл барилгын мөнгө авна) тул
- *    `switchToHuvaari` ийм байдлыг ҮҮСГЭХГҮЙ: зөвхөн «Барилга угсралт» үе шат, багцад өөр 'huvaari' гэрээ байвал татгалзана.
- *    Энэ хуваалт нь зөвхөн хуучин/гараар засагдсан өгөгдлийн хамгаалалт.
- * ⚠️ БҮРЭН/ХЭСЭГЧЛЭН ДАВХАРДСАН БЛОК (Багц 4-2·12F-ийн «6/1…6/8» = 9F-ийн F6_x): PKGS-ийн дараалал дахь ЭХНИЙ хуудасны
- *    блок давамгайлна — дараагийн хуудасны ижил блокийн обьём ОРОХГҮЙ (`blockProgress.uniqueBlockCounts` · IPC
- *    `ipcAutoWrite`-ийн 2026-10-26-ны дүрэм, блокийн түвшинд).
- * ⚠️ ТООЦООЛСОН САРЫН `pct` = дүн ÷ ГЭРЭЭНИЙ ХО дүн × 100 (гараар мөрийн `Cashflow_dun = pct × ho_dun_geree / 100`-тэй НЭГ
- *    харьцаа) — хуваарийн өөрийн нийлбэрт хувааХГҮЙ: задаргаа дутуу бол нийлбэр нь 100%-д хүрэхгүй нь ЗӨВ дохио
- *    (`Huvaari.monPct`-ийн «дутууг нуухгүй»). ХО дүнгүй бол `pct` null, `amount` хэвээр.
- *
- * ⚠️ React импортлохгүй — `monthlyMoney.check.mjs` шууд Node дээр ачаална.
+ * НЭГЖ: бүх дүн ₮ (төгрөг). Сарын түлхүүр «YYYY-MM». Хувь (`pct`) 0–100 (`pct` 100-аар үржүүлдэггүй).
  */
 import { t as tr } from '@/lib/i18nCore';
 import {
@@ -57,11 +27,10 @@ export const SRC_HUVAARI: MonthSource = 'huvaari';
 
 /**
  * ШИЛЖҮҮЛЭХ ЭРХ — «Гараар → Хуваарь» (шинэ cap, «Эрх» хэсгээс «Төлөвлөлтийн ахлах инженер»-т).
- * ⚠️ 2026-10-26: `caps.ts`-ийн `CapKey`-д төв бүртгэл нэмэгдтэл `string`-ээр дамжуулна (бүртгэгдсэний дараа ч зөв).
  */
 export const CF_SWITCH_CAP: CapKey = 'cfSwitch';
 
-/** `sar_mongo_eh`-ийн утга → эх. ⚠️ Хоосон/null/танихгүй → 'garaar' (талбарын анхдагч — одоогийн 78 мөр бүгд null). */
+/** `sar_mongo_eh`-ийн утга → эх. Хоосон/null/танихгүй → 'garaar' (талбарын анхдагч — одоогийн 78 мөр бүгд null). */
 export const monthSourceOf = (v: unknown): MonthSource =>
   String(v ?? '').trim().toLowerCase() === SRC_HUVAARI ? SRC_HUVAARI : SRC_MANUAL;
 
@@ -82,7 +51,7 @@ const numOrNull = (v: unknown): number | null => {
   return Number.isFinite(x) ? x : null;
 };
 
-/** Мөнгөний мөр → `MoneyRow`. ⚠️ `Cashflow_ID`-гүй мөр (бүтцийн) → null (`Number(null) = 0` занга). */
+/** Мөнгөний мөр → `MoneyRow`. `Cashflow_ID`-гүй мөр (бүтцийн) → null (`Number(null) = 0` занга). */
 export function moneyRowOf(r: Readonly<Record<string, unknown>>): MoneyRow | null {
   const F = CASHFLOW_NEW.fields;
   const id = numOrNull(r[CF_MONTH.id]);
@@ -112,8 +81,7 @@ export type SheetMoney = {
 
 /**
  * НЭГ ХУУДАСНЫ сарын мөнгө = Σ (ажил · блок · сарын обьём × тухайн ажлын нэгж өртөг).
- * @param skipBlok — тооцохгүй блок (давхардсан, толгойн ⚠️) — `blockKey`-ээр тулгана
- * ⚠️ Зөвхөн НАВЧ мөр (`group` биш) — бүлгийн мөрд нэгж өртөг байдаггүй, байсан ч хүүхдүүдээ давхар тоолно.
+ * @param skipBlok — тооцохгүй блок (давхардсан, толгой) — `blockKey`-ээр тулгана
  */
 export function sheetMonthMoney(
   rows: readonly UnitRow[],
@@ -193,7 +161,6 @@ export type ContractMoney = {
   share: number | null;
   /**
    * 'huvaari' — багцын хуудсанд НЭГЖ ӨРТӨГГҮЙ тул ₮ болоогүй нүдний тоо (`PkgMoney.noUnit`); 'garaar' үед 0.
-   * ⚠️ 2026-10-26 (хяналт): > 0 бол НИЙТ нь ДУТУУ — харагдац анхааруулах ёстой (null ≠ 0; «ok» хүснэгт дутууг нуухгүй).
    */
   noUnit: number;
   /** 'huvaari' — хуудсанд олдоогүй ажлын кодтой нүдний тоо (`PkgMoney.noRow`); 'garaar' үед 0 */
@@ -202,8 +169,6 @@ export type ContractMoney = {
 
 /**
  * ЦУВААНЫ ЦООРХОЙ — S-муруй (ерөнхий дашбоард · ТУХ) аль гэрээгүйгээр зурагдсаныг хэлнэ (null ≠ 0).
- * ⚠️ 2026-10-26 (хяналт): урьд нь `isPartialMoney` зөвхөн кэшлэхгүй байхад л ашиглагдаж, 'huvaari' гэрээний дутуу
- *    нь муруйд «бодит 0» шиг харагддаг байв — `moneyGapsOf` / `gdash.cfPlanGaps`-аар харагдацад дамжина.
  */
 export type MoneyGaps = {
   /** Мөнгөний мөр эсвэл аль нэг хуудас уншигдсангүй — цуваа ДУТУУ (дахин ачаалбал засагдаж магадгүй) */
@@ -229,9 +194,6 @@ export type MonthlyMoney = {
   pkgs: Map<string, Map<string, number>>;
   /**
    * ҮР ДҮНТЭЙ САРЫН МӨРҮҮД — `gdash.loadCfPlan`-ын хэлбэр (`cashflowCurve` · `tuhData.cfPlanPctAt`).
-   * ⚠️ 'garaar' гэрээний (мөн мөнгөний мөр олдоогүй `id`-ийн) мөр нь ОРОЛТЫН ОБЪЕКТ, ДАРААЛАЛ хэвээр — зан төлөв ИЖИЛ.
-   * 'huvaari' гэрээний мөр нь сар бүрд нэг синтетик мөр (`start` = тэр сарын 1-ний UTC үд дунд — `Finance.publish`-ийн
-   * бичилтийн конвенц, `cfStartKeyOf` бүх бүсэд ижил сар).
    */
   rows: CfPlanRow[];
   /** Хүнд ойлгомжтой анхааруулга (багц хуваалцсан, нэгжгүй обьём, уншигдаагүй хуудас) */
@@ -260,7 +222,6 @@ export function buildMonthlyMoney(
 ): MonthlyMoney {
   const issues: string[] = [];
   const contracts = new Map<number, ContractMoney>();
-  /* ⚠️ Давхардсан `Cashflow_ID` — эхнийх нь (импортын max+1 дүрмээр гарахгүй ёстой) */
   for (const m of money) {
     if (contracts.has(m.id)) { issues.push(tr('Cashflow_ID давхардсан: {0}', m.id)); continue; }
     contracts.set(m.id, {
@@ -296,9 +257,8 @@ export function buildMonthlyMoney(
     }
     if (pm && pm.noUnit) issues.push(tr('{0}: нэгж өртөггүй {1} нүдний обьём ₮-д тооцогдсонгүй', key, pm.noUnit));
     if (pm && pm.noRow) issues.push(tr('{0}: хуудсанд олдоогүй ажлын кодтой {1} нүд алгасагдав', key, pm.noRow));
-    /* ⚠️ 2026-10-26 (хяналт): гэрээ бүрт — хүснэгт «ok» байсан ч НИЙТ дутуу гэдгийг харагдац хэлнэ */
     for (const c of list) { c.noUnit = pm?.noUnit ?? 0; c.noRow = pm?.noRow ?? 0; }
-    /* Хувь: ганц бол 1; олон бол ХО дүнгээр (толгойн ⚠️) */
+    /* Хувь: ганц бол 1; олон бол ХО дүнгээр (толгой) */
     let shares: Map<ContractMoney, number>;
     if (list.length === 1) shares = new Map([[list[0], 1]]);
     else {
@@ -374,9 +334,6 @@ export const loadMoneyRows = cached<MoneyRow[]>(async () => {
 
 /**
  * Багцуудын ТООЦООЛСОН сарын мөнгө (зөвхөн `keys`-д байгаа багц — 'huvaari' гэрээтэй нь).
- * ⚠️ Задаргааны хүснэгт ХООСОН (`countPlanRows() === 0`, одоогийн байдал) бол хуудас уншихгүй — бүх багц хоосон цуваа.
- * ⚠️ Хуудасны мөрийг `planProgress.planFields`-аар (`unit` · `des` орсон) — төлөвлөгөөт муруйн хөтчийн кэштэй (`persist`)
- *    НЭГ түлхүүр, дахин татахгүй.
  */
 export async function loadSheetMoney(keys: ReadonlySet<string>): Promise<Map<string, PkgMoney>> {
   const out = new Map<string, PkgMoney>();
@@ -439,7 +396,6 @@ function loadSheetMoneyCached(keys: ReadonlySet<string>): Promise<Map<string, Pk
 
 /**
  * Уншилт бүхэлдээ унасан үеийн цуваа — хуудастай багц бүр `failed` (тэр багцын хуудсуудыг нэрлэнэ), цуваагүй.
- * ⚠️ PKGS-д хуудасгүй түлхүүрийг оруулахгүй — `buildMonthlyMoney` түүнийг `noSheet` гэж өөрөө ялгана.
  */
 export function failedSheets(keys: ReadonlySet<string>): Map<string, PkgMoney> {
   const out = new Map<string, PkgMoney>();
@@ -460,8 +416,6 @@ export const moneyGapsOf = (v: object): MoneyGaps | null => gapsOf.get(v) ?? nul
 
 /**
  * НЭГДСЭН ЦУВАА — гараар сарын мөр (`manual`) + мөнгөний мөр + Хуваарь.
- * ⚠️ 'huvaari' гэрээ НЭГ Ч БАЙХГҮЙ бол хуудас огт уншихгүй — `rows` нь `manual`-ийн ЯГ ТЭР массив (зан төлөв ИЖИЛ).
- * ⚠️ Мөнгөний мөр уншигдаагүй бол (сүлжээ, талбар алга) гараар цуваа ХЭВЭЭР буцаана, `partial` тэмдэгтэй.
  */
 export async function loadMonthlyMoney(manual: readonly CfPlanRow[]): Promise<MonthlyMoney> {
   let money: MoneyRow[];
@@ -475,9 +429,6 @@ export async function loadMonthlyMoney(manual: readonly CfPlanRow[]): Promise<Mo
     return r;
   }
   const keys = huvaariPkgKeys(money);
-  /* ⚠️ 2026-10-26 (хяналт №2): хуудасны уншилт (`countPlanRows` г.м.) ШИДВЭЛ бүх `loadCfPlan` унаж, 'garaar' гэрээний
-     S-муруй ч зурагдахгүй байв. Барьж аваад хүссэн багц бүрийг `failed` (цуваагүй, 0 ₮ БИШ) болгоно — `partial`
-     тэмдэг доор тавигдана (кэшлэхгүй, `gaps.failed`-ээр харагдана). */
   let sheets: Map<string, PkgMoney>;
   try {
     sheets = keys.size ? await loadSheetMoneyCached(keys) : new Map<string, PkgMoney>();
@@ -491,13 +442,12 @@ export async function loadMonthlyMoney(manual: readonly CfPlanRow[]): Promise<Mo
 }
 
 /**
- * `gdash.loadCfPlan`-ын үр дүнтэй мөрүүд. ⚠️ 'huvaari' гэрээгүй бол `manual`-ийг ӨӨРИЙГ нь буцаана.
+ * `gdash.loadCfPlan`-ын үр дүнтэй мөрүүд. 'huvaari' гэрээгүй бол `manual`-ийг ӨӨРИЙГ нь буцаана.
  */
 export async function withHuvaari(manual: CfPlanRow[]): Promise<CfPlanRow[]> {
   const r = await loadMonthlyMoney(manual);
   const anyHuv = [...r.contracts.values()].some((c) => c.source === SRC_HUVAARI);
   if (!anyHuv) {
-    /* ⚠️ Дутуу бол ХУУЛБАР тэмдэглэнэ — `loadCfPlanManual`-ийн кэшлэгдсэн массивыг мөнхөд «дутуу» болгохгүй */
     if (partial.has(r.rows)) { const out = manual.slice(); partial.add(out); gapsOf.set(out, r.gaps); return out; }
     return manual;
   }
@@ -507,21 +457,11 @@ export async function withHuvaari(manual: CfPlanRow[]): Promise<CfPlanRow[]> {
 
 /* ══════════════════ Шилжүүлэлт — «Гараар → Хуваарь» ══════════════════ */
 
-/**
- * ⚠️ 2026-10-26 (хяналт): «Хуваарь» эх ЗӨВХӨН «Барилга угсралт» үе шатын гэрээнд — багцын бөглөх хуудас (обьём ×
- *    нэгж өртөг) нь барилгын ажлынх; зураг төслийн гэрээнд оноовол ХО дүнгийн харьцаагаар барилгын мөнгө авч, барилгын
- *    гэрээ дутуу гарна (толгойн «НЭГ БАГЦАД ОЛОН 'huvaari' ГЭРЭЭ»).
- * ⚠️ 2026-10-26 (хяналт №2): `uy_shat` ХООСОН / танихгүй бол ТАТГАЛЗАНА. Урьд нь хоосныг «Барилга угсралт» гэж
- *    зөвшөөрдөг байсан ч импорт хийгдээгүй тул 78 мөнгөний мөр БҮГД хоосон — шалгуур юу ч хамгаалдаггүй, олон гэрээтэй
- *    багцын зураг төсөл/хяналтын гэрээг шилжүүлж гараар сарын мөрийг нь буцаагдахгүй устгах боломжтой байв
- *    («багцад өөр 'huvaari' гэрээ» шалгуур ЭХНИЙ гэрээг барихгүй). Үе шат ИЛ таарсан гэрээнд л.
- */
 export const SWITCH_PHASE = 'Барилга угсралт';
 export const isSwitchPhase = (v: unknown): boolean => /^барилга\s+угсралт$/i.test(String(v ?? '').trim());
 
 /**
  * Үе шатын шалгуурын ТАТГАЛЗЛЫН шалтгаан (товчны `title` · алдаа) — таарсан бол null.
- * ⚠️ Хоосон ба өөр үе шатыг ЯЛГАЖ хэлнэ: хоосон нь «импорт хийгдээгүй», өөр нь «энэ гэрээ барилгынх биш».
  */
 export function switchPhaseWhy(v: unknown): string | null {
   if (isSwitchPhase(v)) return null;
@@ -537,8 +477,6 @@ export function switchPhaseWhy(v: unknown): string | null {
  *   'incomplete' — сартай ч нэгж өртөггүй / хуудсанд олдоогүй нүдтэй (`total` ДУТУУ);
  *   'empty'      — ₮ болох сарын обьём алга (`huvaari_obyem` хоосон г.м.) — шилжүүлбэл гэрээ S-муруйгаас ГАРНА;
  *   'failed'     — хуудас/задаргаа уншигдсангүй — юу гарахыг мэдэхгүй тул ХЭЗЭЭ Ч шилжүүлэхгүй.
- * ⚠️ 2026-10-26 (хяналт): урьд нь шилжүүлэлт зөвхөн «багц хуудастай» эсэхийг шалгаж, задаргаа 0 мөртэй үед гараар
- *    сарын мөрийг устгаад оронд нь юу ч өгдөггүй байв (гэрээ 'empty', ерөнхий S-муруйд 0, ТУХ-аас гарна).
  */
 export type SwitchPreview = {
   pkg: string;
@@ -566,7 +504,6 @@ export function judgePreview(pkg: string, pm: PkgMoney | undefined): SwitchPrevi
 
 /**
  * Багцын тооцоог ШИНЭЭР (кэшгүй) уншина — батлуулах цонхонд «тооцоолсон нийт» харуулах ба `switchToHuvaari`-ийн шалгуур.
- * ⚠️ Уншилтын алдаа → 'failed' (шидэхгүй) — дуудагч нэг замаар татгалзана.
  */
 export async function previewSwitch(pkg: string): Promise<SwitchPreview> {
   try {
@@ -593,7 +530,7 @@ const defaultIo: SwitchIo = {
   preview: previewSwitch,
 };
 
-/** Нэг хүсэлтээр устгах сарын мөрийн дээд хязгаар — хуудаславал атом алдагдана (`tableWrite.applyAll`-ийн ⚠️) */
+/** Нэг хүсэлтээр устгах сарын мөрийн дээд хязгаар — хуудаславал атом алдагдана (`tableWrite.applyAll`) */
 export const SWITCH_MAX_DELETES = 1000;
 
 /**
@@ -640,14 +577,11 @@ export type SwitchResult = {
 export type SwitchOpts = {
   /**
    * 'empty' / 'incomplete' тооцоотой ч шилжүүлнэ — дуудагч ХОЁР ДАХЬ, тооцоолсон нийтийг нэрлэсэн батлуулах цонх
-   * харуулсны дараа л `true` өгнө. ⚠️ 'failed'-ийг энэ ч зөвшөөрөхгүй.
+   * харуулсны дараа л `true` өгнө. 'failed'-ийг энэ ч зөвшөөрөхгүй.
    */
   allowIncomplete?: boolean;
   /**
    * Хэрэглэгчийн БАТЛАСАН тооцоо (батлуулах цонхонд харуулсан `SwitchPreview`-ийн дүгнэлт ба нийт).
-   * ⚠️ 2026-10-26 (хяналт №2): `allowIncomplete` нь 'empty'-г ч, 'incomplete'-г ч зөвшөөрдөг тул «дутуу, X ₮» гэж
-   *    батласны дараа серверийн дахин тооцоо 'empty' буцаавал гараар мөр устаад ХООСОН цуваа үлддэг байв. Шилжүүлэлт
-   *    дахин тооцоог үүнтэй тулгаж, дүгнэлт эсвэл нийт (±1 ₮) зөрвөл ТАТГАЛЗАНА. `allowIncomplete` үед ЗААВАЛ.
    */
   expect?: { verdict: SwitchPreview['verdict']; total: number | null };
 };
@@ -688,7 +622,6 @@ export function previewText(p: SwitchPreview): string {
  * татгалзана) → НЭГ атом `applyEdits` → хариуг мөр бүрээр (`success === true`)
  * шалгах. Хариу алдагдсан (`isLostWrite`) / тодорхойгүй бол ДАХИН УНШИЖ: `sar_mongo_eh` = 'huvaari' ба ИЛГЭЭСЭН сарын
  * мөрүүд алга бол амжилт (`verified`), эс бөгөөс `lost` алдаа.
- * ⚠️ Бичигдсэн байж болох бүх замд `invalidate('CASHFLOW_NEW')`.
  */
 export async function switchToHuvaari(cashflowId: number, io: SwitchIo = defaultIo, opts: SwitchOpts = {}): Promise<SwitchResult> {
   requireCap(CF_SWITCH_CAP);
@@ -725,8 +658,6 @@ export async function switchToHuvaari(cashflowId: number, io: SwitchIo = default
   if (monthSourceOf(p[F.monthSource]) === SRC_HUVAARI && monthOids.length === 0) return { deleted: 0, already: true, verified: false, preview: null };
   if (monthOids.length > SWITCH_MAX_DELETES) throw new Error(tr('Сарын мөр хэт олон ({0}) — нэг атом хүсэлтээр устгах боломжгүй', monthOids.length));
 
-  /* ⚠️ 2026-10-26 (хяналт): НЭГ багцын хуудас = НЭГ 'huvaari' гэрээ (дээрх `SWITCH_PHASE`-ийн ⚠️) — 78 мөр тул
-     бүгдийг уншаад `pkgKeyOf`-оор тулгана («Багц 7.1» ба «БАГЦ-7.1» нэг түлхүүр; SQL-ийн тэнцүүгээр барихгүй). */
   const all = await io.query(CF_WORK_WHERE, [CF_MONTH.id, F.pkg, F.monthSource]);
   const rival = all.find((r) => Number(r[CF_MONTH.id]) !== cashflowId
     && monthSourceOf(r[F.monthSource]) === SRC_HUVAARI && pkgKeyOf(r[F.pkg]) === pkg);
@@ -736,8 +667,6 @@ export async function switchToHuvaari(cashflowId: number, io: SwitchIo = default
 
   const preview = await io.preview(pkg);
   if (preview.verdict === 'failed') throw new Error(`${previewText(preview)} — ${tr('шилжүүлэхгүй')}`);
-  /* ⚠️ 2026-10-26 (хяналт №2): батласан тооцоо өгөгдсөн бол ЯГ тулгана (`SwitchOpts.expect`-ийн ⚠️); 'ok' биш
-     тооцоог `allowIncomplete` + ТААРСАН `expect`-гүйгээр хэзээ ч бичихгүй. */
   if (opts.expect && !sameVerdict(opts.expect, preview)) {
     throw new Error(tr('Хуваарийн тооцоо батлуулсны дараа өөрчлөгдсөн: {0} — шилжүүлэхгүй, дахин шалгана уу', previewText(preview)));
   }
@@ -751,9 +680,6 @@ export async function switchToHuvaari(cashflowId: number, io: SwitchIo = default
   const body = buildSwitchEdits(oid, monthOids);
   const sent = new Set(monthOids);
   let touched = false;
-  /* ⚠️ 2026-10-26 (хяналт): ИЛГЭЭСЭН OID-ууд алга эсэхийг шалгана — «Cashflow_ID-ийн сарын мөр 0» биш. Хуучин
-     'garaar' хуудаснаас өөр хэрэглэгч тэр хооронд шинэ сарын мөр хадгалбал амжилттай шилжүүлэлт «тодорхойгүй» гэж
-     худал мэдэгддэг байв; 'huvaari' гэрээнд гараар мөр ҮЛ ТООГДОНО (толгойн ⚠️). */
   const verify = async (): Promise<SwitchResult> => {
     let after: Awaited<ReturnType<typeof read>>;
     try {
@@ -819,11 +745,6 @@ export type SwitchFlowResult =
 
 /**
  * «ГАРААР → ХУВААРЬ» — ХОЁР харагдацын (`CashflowPlan` · Санхүүжилтийн «Төсөл төлөвлөгөө биелэлт») НЭГ урсгал.
- * ⚠️ 2026-10-26 (хяналт №2): урьд нь «Төсөл төлөвлөгөө»-ний товч `previewSwitch`-гүй, нэг цонхоор шууд
- *    `switchToHuvaari` дууддаг байв — устах ₮ ба гарах тооцоог хэлдэггүй, хоосон/дутуу тооцоог ялгадаггүй. Одоо:
- *    үе шат → ШИНЭ тооцоо ('failed' бол татгалзана) → 1-р цонх (устах мөр, гараар нийт, тооцоолсон нийт) → 'ok' биш бол
- *    2-р тусгай цонх → `switchToHuvaari(…, { allowIncomplete, expect })` — батласан дүгнэлт/нийт зөрвөл татгалзана.
- * ⚠️ `switchToHuvaari`-ийн алдаа ШИДЭГДЭНЭ (дуудагч `userError`-оор харуулна).
  */
 export async function confirmAndSwitch(a: SwitchFlowArgs): Promise<SwitchFlowResult> {
   const phaseWhy = switchPhaseWhy(a.phase);
@@ -832,7 +753,6 @@ export async function confirmAndSwitch(a: SwitchFlowArgs): Promise<SwitchFlowRes
   a.onBusy?.(true);
   let pv: SwitchPreview;
   try {
-    /* ⚠️ `previewSwitch` шиддэггүй ч солигдсон `io` шидэж магадгүй — 'failed' болгоно */
     pv = await io.preview(a.pkg).catch(() => judgePreview(a.pkg, undefined));
   } finally {
     a.onBusy?.(false);

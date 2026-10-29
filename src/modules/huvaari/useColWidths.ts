@@ -8,53 +8,16 @@ import { TL_MIN } from './useSideExtra';
  * Багана бүрийн өргөн нь `huvaari.module.css`-ийн CSS хувьсагч (`--des-w`, `--work-min`,
  * `--date-w`, `--days-w`, `--res-w`, `--ham-w`) — толгой ба мөр НЭГ хувьсагчаас уншдаг тул
  * хувьсагчийг `.gSide` дээр солиход бүх мөр зэрэг дагана.
- *
- * ⚠️ 2026-10-08 (хэрэглэгч: «нэг нэгээр нь өргөн бүдүүн тааруулах ёстой»): БАГАНА БҮР ТУСДАА.
- *    Урьд нь нэг төрлийн багана (огнооны 4–6, хоногийн 2, нөөцийн 2) НЭГ хувьсагчтай байж аль
- *    нэгийг чирэхэд бүгд зэрэг өргөсдөг байв. Одоо багана бүр өөрийн `--w-*` хувьсагчтай
- *    (`gs` гэрээ эхлэх · `ge` гэрээ дуусах · `gd` гэрээний хоног · `ps`/`pe`/`pd` төлөвлөгөөт ·
- *    `as`/`ae` бодит · `rh` хүн хүч · `rm` машин механизм). CSS-д баганын класс (`.cGs` г.м.)
- *    өөрийн элемент дээр `--date-w`/`--days-w`/`--res-w`-ийг тэр хувьсагчаар дарна — `.rowDate`
- *    г.м. өргөний дүрэм хөдлөөгүй. Хуучин хадгалсан `date`/`days`/`res` утгыг ачаалахад тухайн
- *    төрлийн бүх баганад тараана (`load`).
- * ⚠️ Чирэх явцад React төлөв ХӨДЛӨХГҮЙ (`useSideExtra`-ийн ижил шалтгаан: 1,400 мөр дахин
- *    зурвал чирэлт гацна) — хувьсагчийг элемент дээр шууд бичээд `pointerup`-д л хадгална.
- * ⚠️ «Ажил» багана нь `flex: 1` — түүний утга нь ДООД өргөн (`--work-min`); нэмэлт зай
- *    гарвал урьдын адил сунана. Жагсаалт бүхэлдээ багтахгүй болвол `useSideExtra`-ийн
- *    баруун бариулаар жагсаалтаа өргөсгөнө.
- * ⚠️ localStorage хаалттай/хоосон бол анхдагч — хуудас хэвийн зурагдана.
- * ⚠️ 2026-10-09: ЖАГСААЛТ ДАГАЖ ӨРГӨСНӨ — багана өргөсгөхөд `.gSide`-ийн өргөн (`flex-basis`) тогтмол
- *    байсан тул нийлбэр самбараас хальж, нүднүүд хуанли дээр давхарладаг байв; «Ажил» (`flex: 1`)-ын
- *    `--work-min`-ийг чирэхэд ч самбар хангалттай өргөн үед ЮУ Ч өөрчлөгддөггүй байв. Одоо анхдагчаас
- *    ЗӨРСӨН нийлбэр (давтагдах баганыг тоогоор нь үржүүлсэн, `mult`) нь `--col-extra`
- *    (нарийн дэлгэцийн дүрэмд — зөвхөн код · нэр · уялдаа: `--col-extra-n`) болж `.gSide`-ийн
- *    өргөнд НЭМЭГДЭНЭ: багана өргөсөхөд бусад нь агшихгүй, «Ажил»-ын бариул нэрийн баганыг шууд
- *    өргөсгөнө.
- * ⚠️ 2026-10-09 (засвар): урьд энд «хуанлид үлдэх зайг `useSideExtra`-ийн хязгаар барина» гэж ХУДАЛ бичигдсэн
- *    байв — тэр нь зөвхөн `--side-extra`-г хязгаарладаг тул `--col-extra` хязгааргүй өсч, жагсаалт хуанлийг
- *    бүхэлд нь таглаж болдог байв. Одоо чирэлтийн эхэнд (гараар — товчлуур бүрд) хуанлид `TL_MIN`
- *    (`useSideExtra`-тай НЭГ тогтмол) үлдэх зайг (`roomOf`: `.gWrap` − `.gSide`-ийн бодит өргөн − `TL_MIN`)
- *    хэмжиж, баганын ӨСӨЛТИЙГ түүгээр хавчина; нарийсгах үргэлж нээлттэй. Хадгалсан өргөн нь өргөн
- *    дэлгэцээс нарийн руу шилжихэд хавчигдахгүй (хүсэл) — дахин чирэхэд л хязгаарлагдана.
- * ⚠️ 2026-10-09: ГАР — сум ±8 · Home/End = доод/дээд (дээд нь `roomOf`-оор) · Enter/Delete = анхдагч.
- *    Товчлуурын давталтад React төлөв ХӨДЛӨХГҮЙ (хувьсагчийг шууд бичнэ), `keyup`/`blur`-д нэг удаа хадгална.
- * ⚠️ 2026-10-09: ХОЁР ТАБ — хадгалахдаа localStorage-ийн ШИНЭ утгатай нийлүүлнэ (`loadOr`), `storage`
- *    үйл явдлаар бусад табын өөрчлөлтийг авна; урьд нь сүүлд хадгалсан таб нөгөөгийнхийг бүтнээр дардаг байв.
  */
 export type ColKey = 'des' | 'work' | 'gs' | 'ge' | 'gd' | 'ps' | 'pe' | 'pd' | 'as' | 'ae' | 'rh' | 'rm' | 'ham';
 
 const LS = 'selbe-huvaari-colw';
 /** CSS хувьсагч · анхдагч · доод · дээд (px) — `huvaari.module.css`-ийн `.gSide`-тэй ИЖИЛ анхдагч */
-/* ⚠️ 2026-10-08: ДООД хязгаар нь агуулга ТАСРАХГҮЙ өргөн — огноо 72 («2026-04-18» 10 тэмдэгт, CSS-ийн ⚠️),
-   хоног 34 (3 орон + дүүргэлт), код 44 (3–4 орон + 8px). Урьд нь 56/28/36 байж чирэхэд огноо «2026-04-»
-   гэж тасарч, толгой/мөр уншигдахгүй болдог байв. */
-/* ⚠️ Анхдагч/хязгаар нь `huvaari.module.css`-ийн `.cGs` г.м. fallback-тай ИЖИЛ (72 · 40 · 44) */
 const DATE = { def: 72, min: 72, max: 140 };
 const DAYS = { def: 40, min: 34, max: 90 };
 const RES = { def: 44, min: 28, max: 100 };
 const SPEC: Record<ColKey, { v: string; def: number; min: number; max: number }> = {
   des: { v: '--des-w', def: 60, min: 44, max: 160 },
-  /* ⚠️ 2026-10-23 (UX аудит P5): 140 → 170 — `huvaari.module.css`-ийн `.gSide --work-min` ба `clamp(1020px…)`-тэй ИЖИЛ */
   work: { v: '--work-min', def: 170, min: 80, max: 600 },
   gs: { v: '--w-gs', ...DATE },
   ge: { v: '--w-ge', ...DATE },
@@ -79,7 +42,6 @@ const LEGACY: Record<string, ColKey[]> = {
 
 const clampW = (k: ColKey, v: number) => Math.max(SPEC[k].min, Math.min(SPEC[k].max, Math.round(v)));
 
-/** ⚠️ 2026-10-09: localStorage уншигдахгүй (хаалттай орчин/эвдэрсэн) бол `fallback` — нийлүүлэлтэд одоогийн утга алдагдахгүй */
 function loadOr(fallback: Widths): Widths {
   try {
     const raw = localStorage.getItem(LS);
@@ -99,20 +61,16 @@ const load = (): Widths => loadOr({});
 /** Багана бүрийн ХАРАГДАХ тоо (2026-10-09) — `--col-extra`-д үржигдэхүүн; 0 = нуугдсан */
 export type ColMult = Record<ColKey, number>;
 /** Нарийн дэлгэцэд (≤1180px) огноо · хоног · нөөц нуугддаг — `--col-extra-n` */
-/* ⚠️ 2026-10-08: багана бүр тусдаа тул үржигдэхүүн нь 0 (нуугдсан) эсвэл 1 */
 const NARROW_KEYS: ColKey[] = ['des', 'work', 'ham'];
 const extraOf = (w: Widths, mult: ColMult, keys: readonly ColKey[] = KEYS): number =>
   keys.reduce((a, k) => a + (mult[k] ?? 0) * ((w[k] ?? SPEC[k].def) - SPEC[k].def), 0);
-/** ⚠️ 2026-10-09: `--col-extra` ба мөрийн өргөн 1:1 тул багана `room`-оос илүү ӨСӨХГҮЙ (толгойн ⚠️); нуугдсан (`m = 0`) багана хязгааргүй */
 const capOf = (k: ColKey, base: number, room: number, m: number): number =>
   (m > 0 && Number.isFinite(room) ? Math.min(SPEC[k].max, base + Math.max(0, room) / m) : SPEC[k].max);
 
 export function useColWidths(mult: ColMult) {
   const [w, setW] = useState<Widths>(load);
-  /* ⚠️ 2026-10-09: чирэх явцад (`mv`) хамгийн сүүлийн үржигдэхүүнээр — React төлөв хөдөлгөхгүйн тулд ref */
   const multRef = useRef(mult);
   useEffect(() => { multRef.current = mult; });
-  /* ⚠️ 2026-10-09: сүүлийн хадгалсан өргөн — бариулын хаалт (closure) хуучирахгүй, `w`-ээс deps-гүй */
   const wRef = useRef(w);
   useEffect(() => { wRef.current = w; });
   const [dragging, setDragging] = useState<ColKey | null>(null);
@@ -120,16 +78,12 @@ export function useColWidths(mult: ColMult) {
   /** Гарын хадгалагдаагүй утга (товчлуурын давталт) — `keyup`/`blur`-д `commit` */
   const kb = useRef<{ k: ColKey; v: number } | null>(null);
 
-  /* ⚠️ 2026-10-21: ИДЭВХТЭЙ ЧИРЭЛТИЙН цонхны сонсогчдыг салгагч — урьд нь зөвхөн `up` дотор салгадаг тул чирэх
-     зуур харагдац солигдож (unmount) бол сонсогчид үлдэж, салсан зангилаанд бичиж, унтарсан hook-д
-     `setDragging`/`commit` дуудагддаг байв. Unmount-д салгана (хадгалахгүй — чирэлт дуусаагүй). */
   const dragOff = useRef<(() => void) | null>(null);
   useEffect(() => () => dragOff.current?.(), []);
 
   /** Хувьсагчийг тавих элемент (`.gSide`) — callback ref */
   const elRef = useCallback((node: HTMLElement | null) => { el.current = node; }, []);
 
-  /* ⚠️ 2026-10-09: ХОЁР ТАБ (толгойн ⚠️) — бусад табын хадгалалтыг авна */
   useEffect(() => {
     const on = (e: StorageEvent) => { if (e.key === LS || e.key === null) setW((prev) => loadOr(prev)); };
     window.addEventListener('storage', on);
@@ -138,7 +92,6 @@ export function useColWidths(mult: ColMult) {
 
   const commit = useCallback((k: ColKey, v: number | null) => {
     setW((prev) => {
-      /* ⚠️ 2026-10-09: localStorage-ийн ШИНЭ утга дээр зөвхөн ЭНЭ баганыг өөрчилнө (толгойн ⚠️) */
       const next = { ...loadOr(prev) };
       if (v == null) delete next[k]; else next[k] = clampW(k, v);
       try { localStorage.setItem(LS, JSON.stringify(next)); } catch { /* хаалттай орчин */ }
@@ -148,7 +101,7 @@ export function useColWidths(mult: ColMult) {
 
   const widthOf = useCallback((k: ColKey) => w[k] ?? SPEC[k].def, [w]);
 
-  /** Хуанлид `TL_MIN`-ээс илүү үлдэх зай (px) — хэмжих боломжгүй бол хязгааргүй (толгойн ⚠️) */
+  /** Хуанлид `TL_MIN`-ээс илүү үлдэх зай (px) — хэмжих боломжгүй бол хязгааргүй (толгой) */
   const roomOf = useCallback((): number => {
     const side = el.current;
     const wrap = side?.parentElement;
@@ -161,7 +114,6 @@ export function useColWidths(mult: ColMult) {
     const st = el.current?.style;
     if (!st) return;
     st.setProperty(SPEC[k].v, `${v}px`);
-    /* ⚠️ 2026-10-09: самбар ч ЗЭРЭГ өргөснө (толгойн ⚠️) */
     const w2 = { ...wRef.current, [k]: v };
     st.setProperty('--col-extra', `${extraOf(w2, multRef.current)}px`);
     st.setProperty('--col-extra-n', `${extraOf(w2, multRef.current, NARROW_KEYS)}px`);
@@ -173,7 +125,6 @@ export function useColWidths(mult: ColMult) {
     e.stopPropagation();
     const x0 = e.clientX;
     const base = wRef.current[k] ?? SPEC[k].def;
-    /* ⚠️ 2026-10-09: хязгаарыг чирэлтийн ЭХЭНД нэг удаа хэмжинэ (чирэх явцад layout хэмжихгүй) */
     const cap = capOf(k, base, roomOf(), multRef.current[k] ?? 0);
     let cur = base;
     dragOff.current?.();
@@ -243,13 +194,11 @@ export function useColWidths(mult: ColMult) {
     grip: (k: ColKey) => ({
       onPointerDown: (e: PointerEvent<HTMLElement>) => onPointerDown(k, e),
       onKeyDown: (e: KeyboardEvent<HTMLElement>) => onKeyDown(k, e),
-      /* ⚠️ 2026-10-09: гарын давталтын утгыг нэг удаа хадгална (толгойн ⚠️) */
       onKeyUp: flushKb,
       onBlur: flushKb,
       onDoubleClick: () => commit(k, null),
       on: dragging === k,
       value: w[k] ?? SPEC[k].def,
-      /* ⚠️ 2026-10-09 (a11y): `aria-valuemin/max` — `ColGrip` */
       min: SPEC[k].min,
       max: SPEC[k].max,
     }),

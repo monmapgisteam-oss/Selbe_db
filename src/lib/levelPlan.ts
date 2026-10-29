@@ -9,16 +9,6 @@
  *   L4 Сарын heatmap       — багц × блок, сар бүрт төлөвлөсөн гүйцэтгэл (хуримтлагдсан цувааны өсөлт)
  *   L5 7 хоногийн          — блокийн мөр = L4-ийн сарын хувийг өдөрт тэнцүү хувааж 7 хоногоор; 15 дэд бүлэг шугаман
  *   L6 Өдөр тутмын         — блокийн мөр = сарын хувь ÷ сарын өдрийн тоо; дэд бүлэг шугаман
- *
- * ⚠️ 2026-10-26: БҮХ ХУВЬ 0–100 (`pct()` 100-аар үржүүлдэггүй); null ≠ 0 — хуваарьгүй/уншигдаагүй нүд `null`
- *    («—»), харин тухайн хугацаанд ажилгүй нь 0 (хоосон нүд). Хоёрыг НЭГТГЭХГҮЙ.
- * ⚠️ 2026-10-26: ОГНОО = UTC шөнө дунд (ms) — импорт (`tools/cashflow-import.mjs`) ба Хуваарь ийм. «Өнөөдөр»-ийг
- *    ОРОН НУТГИЙН хуанлийн өдрөөр авч UTC шөнө дунд болгоно (`dayOfLocal`) — эс бөгөөс УБ-д 00–08 цагийн хооронд
- *    өдөр нэгээр хоцорно.
- * ⚠️ 2026-10-26: L5/L6-ийн БЛОКИЙН мөр ба ДЭД БҮЛЭГ ӨӨР эхтэй (PDF-ийн тайлбарын дагуу): блок = Хуваарийн сарын
- *    төлөвлөгөө (`monthlySeries`) өдөрт жигд хуваагдсан, дэд бүлэг = бөглөх хуудасны төлөвлөгөөт эхлэх/дуусах
- *    хооронд ШУГАМАН. Тиймээс дэд бүлгийн нийлбэр блокийн мөртэй ЯГ тэнцэхгүй байж болно — САНААТАЙ, «засах» гэж бүү
- *    оролд (PDF ч ийм).
  */
 import {
   saneDate, type PhaseKind, type PlanNode, type PlanTree, type PlanValues,
@@ -36,7 +26,7 @@ import { t as tr } from './i18nCore';
 
 export const DAY = 86_400_000;
 
-/** Орон нутгийн хуанлийн өдөр → тэр өдрийн UTC шөнө дунд (ms) — файлын толгойн ⚠️ */
+/** Орон нутгийн хуанлийн өдөр → тэр өдрийн UTC шөнө дунд (ms) — файлын толгой */
 export function dayOfLocal(ms: number): number {
   const d = new Date(ms);
   return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
@@ -95,12 +85,6 @@ export type BarStatus = 'done' | 'late' | 'behind' | 'run' | 'todo' | 'none';
 /** «Хоцорсон» гэх төлөвлөгөө − гүйцэтгэлийн зөрүү (хувийн пункт) */
 export const BEHIND_PP = 10;
 
-/**
- * ⚠️ 2026-10-26: `actual == null`-ийг «хугацаа хэтэрсэн»-ээс ӨМНӨ шалгана — гүйцэтгэл МЭДЭГДЭХГҮЙ мөрийг (газрын эх
- *    унасан, `guitsetgel_huvi` хадгалаагүй навч) дуусах огноо өнгөрсөн гээд улаан «late» болговол null-ыг 0 гэж үзсэнтэй
- *    адил (null ≠ 0; `plan.statusOf`-ийн конвенц). «late» = мэдэгдэж буй гүйцэтгэл < 100.
- * @param lateOk false → огноо нь төлөвлөгөөт хувийн суурь БИШ (`barRow`-ийн `alt`) тул «late» тавихгүй
- */
 export function barStatus(
   start: number | null, end: number | null, actual: number | null, planned: number | null, today: number,
   lateOk = true,
@@ -121,8 +105,6 @@ export type MsStatus = 'done' | 'late' | 'upcoming' | 'missing' | 'none';
 
 /**
  * @param done true/false — дууссан эсэх мэдэгдэж байна; null — гүйцэтгэл мэдэгдэхгүй.
- * ⚠️ 2026-10-26: Мэдэгдэхгүй (null) + огноо өнгөрсөн → `none`, «late» БИШ (null ≠ 0 — `barStatus`-ийн ⚠️).
- *    Огноо алга бол гүйцэтгэлээс үл хамааран `missing` (PDF: огноо дутуу = шийдвэр шаардлагатай).
  */
 export function milestoneStatus(at: number | null, done: boolean | null, today: number): MsStatus {
   if (done === true) return 'done';
@@ -146,11 +128,6 @@ const SPAN_COLS: Record<SpanKey, [keyof PlanValues, keyof PlanValues]> = {
   land: ['J', 'K'],
   contractor: ['L', 'M'],
 };
-/**
- * ⚠️ 2026-10-26: Үе шат бүрийн ЗУРВАСЫН огноо — тухайн үе шатын «өөрийн» хуваарь эхэлж, байхгүй бол бусад:
- *    барилга → гүйцэтгэгч (PDF: «барилга ажлын эхлэх огноо = бодит талбайн ажил эхэлсэн огноо»),
- *    газар чөлөөлөлт → газрын, бусад → гэрээ. Төслийн нийт (`other`) нь гүйцэтгэгчийн (PDF L1.1 = 2025.07–2028.01).
- */
 const SPAN_ORDER: Record<PhaseKind, SpanKey[]> = {
   barilga: ['contractor', 'contract', 'land'],
   other: ['contractor', 'contract', 'land'],
@@ -214,9 +191,6 @@ export type PkgInfo = {
 
 /**
  * Барилга угсралт ажлын БАГЦУУД (модны дараалал).
- * ⚠️ 2026-10-26: Багц = өөрийн багцын түлхүүртэй, ХҮҮХДҮҮД нь өөр багц биш (блок · ижил багц · «Бүгд» г.м.) мөр.
- *    «Багц-16» (хүүхдүүд нь БАГЦ-16.1…) нь бүлэг — түүний хүүхдүүд багц. Олон багцын мөр («БАГЦ 1- 4») түлхүүргүй
- *    (`pkgKeyOf`-ийн ⚠️ — Багц 14 руу хуурамч наалдалт) тул багц болохгүй.
  */
 export function packagesOf(tree: PlanTree): PkgInfo[] {
   const works = worksNode(tree);
@@ -333,11 +307,6 @@ export const sumAll = (xs: readonly (number | null)[]): number | null => {
 /** Баганын хугацаа */
 export type Col = { from: number; days: number };
 
-/**
- * ⚠️ 2026-10-26: `today` нь АЛЬ ХЭДИЙН `dayOfLocal`-оор хэвийн болсон UTC шөнө дунд (харагдац нэг удаа хөрвүүлнэ).
- *    Энд ДАХИН `dayOfLocal` хийвэл UTC-ээс хойшх бүсэд (UTC−x) UTC шөнө дунд нь өмнөх орон нутгийн өдөр тул
- *    багана нэг өдрөөр (Даваа гарагт бүтэн 7 хоногоор) хойшилно. Зөвхөн UTC өдрөөр тайрна.
- */
 const utcDay = (ms: number): number => Math.floor(ms / DAY) * DAY;
 
 /** Өнөөдрийг агуулсан 7 хоногийн Даваа гарагаас `n` долоо хоног (Да–Ня). `today` — UTC шөнө дунд (`dayOfLocal`) */
@@ -418,10 +387,6 @@ const isB1 = (no: unknown): boolean => String(no ?? '').replace(/[.\s]/g, '').to
 
 /**
  * Нэг хуудасны `b`-р блокийн дэд бүлгүүд (цэвэр). «Б.» мөр алга бол null.
- * ⚠️ 2026-10-26: ЖИН = `Calc.D` (үе шатын — «Б.»-ийн — H-д эзлэх хувь, мөнгөөр; `computeAll`-ийн дүрэм), «Б.»-ийн өөрийн D-д
- *    хувааж 0–100 болгоно. Огноо = `Calc.start/end` (өөрийн эсвэл дэд мөрүүдийн MIN/MAX), алдаатай бол хос нь null.
- *    Гүйцэтгэл = `Calc.actAgg` (100%-иас ихийг тасалсан нэгтгэлийн утга — `Calc.actAgg`-ийн ⚠️).
- * ⚠️ 15 дэд бүлэг = Б1-ийн хүүхдүүд (11) + Б2…Б5 (4) — PDF L5-ийн задаргаа. Б1 хүүхэдгүй бол өөрөө.
  */
 export function blockDetail(rows: readonly SheetRow[], calc: readonly Calc[], b: number): BlockDetail | null {
   const bi = rows.findIndex((r) => isConstructionNo(r.no));
@@ -456,11 +421,6 @@ export type DetailSheet = { group: string; bld: readonly string[]; rows: readonl
 
 /**
  * Хуудсуудаас блок бүрийн дэд бүлэг — түлхүүр `buildingKey(group, блок)` (цэвэр).
- * ⚠️ НЭГ ТҮЛХҮҮР ХОЁР ХУУДАСТ (Багц 4-2: 9F ба 12F-ийн «6/x» — `uniqueBlockCounts`-ийн ⚠️) бол ӨМНӨХ хуудас
- *    (PKGS-ийн дараалал) ДАВАМГАЙЛНА — `projectPlanInputs.makeSchedules`-тэй нэг дүрэм.
- * ⚠️ 2026-10-26: «Давамгайлах» нь ЗӨВ ОГНООНЫ ХОСТОЙ хуудас (makeSchedules ч «Б.»-ийн доор хостой хуудсыг сонгодог).
- *    Эс бөгөөс 9F-д огноогүй блокийн мөр (L4–L6) 12F-ийн хуваариар, харин дэд бүлэг нь 9F-ийн огноогүй мөрөөр
- *    («—») зурагдана. Аль ч хуудсанд огноо алга бол ЭХНИЙ хуудасных (жин ба гүйцэтгэл нь харагдана).
  */
 export function sheetDetails(sheets: readonly DetailSheet[]): Map<string, BlockDetail> {
   const out = new Map<string, BlockDetail>();
@@ -556,12 +516,6 @@ function barRow(
 ): GRow {
   const v = res.values.get(n);
   const phase = opts.phase ?? n.phase;
-  /* ⚠️ 2026-10-26: Огнооны эх 3 шатлалтай — ТӨЛӨВЛӨГӨӨТ ХУВЬТАЙ (N/O/P) НЭГ СУУРЬТАЙ байхаар:
-       1) мөрийн өөрийн/үр удмын ҮНДСЭН баганын хос (`PlanValues`, барилга/нийт → L/M, газар → J/K, бусад → H/I);
-       2) байхгүй бол хамгийн ойрын ӨВӨГ мөрийн ӨӨРИЙН ХАДГАЛСАН ижил баганын хос — `projectPlan.spanOf`-ийн навчны
-          дүрэм яг (өвгийн БОДОГДСОН H–M биш: тэр нь ах дүүсийн үр удмын MIN/MAX тул навчны хувьтай зөрнө) → `inh`;
-       3) байхгүй бол өөрийн бусад баганын хос (`SPAN_ORDER`) — зөвхөн ХАРУУЛАХ огноо (`alt`): төлөвлөгөөт хувь үүнээс
-          бодогдоогүй тул «late» ТАВИХГҮЙ. Өвөг/өөр баганын зурвас тасархай хүрээтэй — «өөрийн хуваарь биш». */
   const key = SPAN_ORDER[phase][0];
   const [ca, cb] = SPAN_COLS[key];
   let [s, e] = cleanSpan(v?.[ca] as number | null | undefined, v?.[cb] as number | null | undefined);
@@ -618,9 +572,6 @@ export function buildL1(plan: ProjectPlan, today: number): GRow[] {
 /**
  * L2 — ҮЕ ШАТ / MILESTONE: төслийн ерөнхий (ТЭЗҮ · хүлээлгэн өгөх · зүгшрүүлэлт) + багц бүрийн 8 мөр
  * (захирамж · зураг төсөл · газар · сонгон · зөвшөөрөл · барилга · гэрээ дуусах · ашиглалт).
- * ⚠️ 2026-10-26: Үе шатын мөр ОЛДООГҮЙ бол тэр мөр гарахгүй (дэд бүтцийн багцад зураг/газар/сонгоны мөр Excel-д
- *    алга); харин «Захирамж», барилгын мөр ба «Гэрээний дуусах» · «Ашиглалтад оруулах» milestone ҮРГЭЛЖ — огноо алга бол УЛААН
- *    «огноо алга» (PDF: улаан = дутуу, шийдвэр шаардлагатай).
  */
 export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Marks | null, today: number): GRow[] {
   const { tree, result: res } = plan;
@@ -641,10 +592,6 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     const next = () => `${id}.${++k}`;
     const son = idx.get('songon')?.get(pk.key);
     const mk = (n: PlanNode | undefined) => (n ? marks?.get(n.code) : undefined);
-    /* ⚠️ 2026-10-26: PDF-ийн багц бүр «Захирамж»-аар эхэлнэ (2025.06.27 А/736 г.м.) — мөнгөний мөрийн
-       `zahiramj_ognoo`/`zahiramj_dugaar` (импорт ХАДГАЛДАГ талбар): барилгын багцын мөр › сонгон шалгаруулалтын мөр.
-       Огноотой бол гарсан (✓), ирээдүйд бол хүлээгдэж буй, алга бол УЛААН «огноо алга»; milestone огноо уншигдаагүй
-       (`marks` = null) бол «мэдээлэл байхгүй» — «алга» гэж худал хэлэхгүй. */
     const ord = [mk(pk.node), mk(son)].find((m) => m?.order != null) ?? mk(pk.node) ?? mk(son);
     const ordAt = ord?.order ?? null;
     const ordNo = String(ord?.orderNo ?? '').trim();
@@ -659,7 +606,6 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     if (son) {
       const v = res.values.get(son);
       const at = mk(son)?.tender ?? mk(pk.node)?.tender ?? v?.I ?? null;
-      /* ⚠️ 2026-10-26 (аудит): milestone уншигдаагүй (`marks` = null) ба огноо алга бол «мэдээлэл байхгүй» — Захирамжийн дүрэм */
       rows.push({
         t: 'ms', id: next(), name: tr('Сонгон шалгаруулалт (гэрээ байгуулсан)'), depth: 1, at,
         status: marks == null && at == null ? 'none' : milestoneStatus(at, doneOf(v?.S), today),
@@ -676,7 +622,6 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     rows.push(barRow(res, pk.node, next(), tr('Барилга ажил'), 1, today, { strong: true }));
     rows.push({ t: 'ms', id: next(), name: tr('Гэрээний дуусах огноо'), depth: 1, at: cv?.I ?? null, status: milestoneStatus(cv?.I ?? null, built, today) });
     const ho = mk(pk.node)?.handover ?? null;
-    /* ⚠️ 2026-10-26 (аудит): уншилтын алдааг улаан «Огноо алга» гэж худал хэлэхгүй (дээрх Захирамжийн дүрэм) */
     rows.push({
       t: 'ms', id: next(), name: tr('Ашиглалтад оруулах'), depth: 1, at: ho,
       status: marks == null && ho == null ? 'none' : milestoneStatus(ho, built, today),
@@ -701,8 +646,6 @@ export function buildL3(
     const zur = idx.get('zurag')?.get(pk.key);
     rows.push({ t: 'section', id: `${id}.1`, name: tr('Зураг төсөл'), depth: 1 });
     if (!zur) rows.push({ t: 'note', id: `${id}.1.0`, name: tr('Зураг төслийн мөр алга'), depth: 2 });
-    /* ⚠️ 2026-10-26: Дэд шатгүй бол ганц зурвас — «Зураг төсөл» нэрээр (мөрийн нэр нь багцын барилгын ажлын нэр,
-       «Орон сууцны хороолол барилга угсралт» — «Зураг төсөл» гарчгийн доор төөрөгдүүлнэ). */
     else if (!zur.children.length) rows.push(barRow(res, zur, `${id}.1.1`, tr('Зураг төсөл'), 2, today));
     else zur.children.forEach((c, k) => rows.push(barRow(res, c, `${id}.1.${k + 1}`, nameOf(c), 2, today)));
     rows.push({ t: 'section', id: `${id}.2`, name: tr('Барилга угсралт'), depth: 1 });
@@ -854,8 +797,6 @@ export type LevelData = {
 /** Харагдацын үндсэн өгөгдөл — төслийн төлөвлөгөө + milestone огноо */
 export async function loadLevelData(): Promise<LevelData> {
   const at = Date.now();
-  /* ⚠️ 2026-10-26: Төлөвлөгөөт хувь (P/Q/R) ОРОН НУТГИЙН өдрөөр — `spanFrac` UTC өдрөөр тайрдаг тул түүхий `at`
-     өгвөл УБ-д 00–08 цагт өчигдрийн хувь гарна (файлын толгойн ⚠️). `at` нь зөвхөн «ачаалсан агшин». */
   const plan = await loadProjectPlan(dayOfLocal(at));
   if (plan.empty) return { plan, marks: null, at, failed: plan.failed };
   let marks: Marks | null = null;
@@ -869,10 +810,6 @@ export async function loadLevelData(): Promise<LevelData> {
 
 /**
  * Унасан эхийн ДОТООД КОД → хүнд ойлгогдох нэр (анхааруулгын мөрөнд).
- * ⚠️ 2026-10-26: Код нь `projectPlanInputs.loadProjectPlan` (`blockProgress` · `schedule:b41_9f` · `land:<pk>` …),
- *    `loadLevelData` (`milestones`), `fetchSheetDetail` (`sheet:b1_9f`)-ээс ирнэ — түүхийгээр нь харуулбал англи
- *    ч, монгол ч хэрэглэгчид утгагүй. Танигдаагүй код ХАЯГДАХГҮЙ — түүхийгээр нь үлдэнэ (уналт нуугдахгүй).
- * ⚠️ i18n-extract статик `tr()`-ийг л олдог тул нэр бүрийг тусад нь бичнэ.
  */
 const FAIL_TEXT: Record<string, () => string> = {
   milestones: () => tr('Чухал үе шатын огноо'),
@@ -905,10 +842,6 @@ export type SheetDetail = {
 
 /**
  * Бөглөх хуудсуудын дэд бүлэг (L3 · L5 · L6) — L1/L2/L4 нээхэд ТАТАХГҮЙ (харагдац тэр табыг нээхэд л дуудна).
- * ⚠️ 2026-10-26: `planProgress.planFields` + блокийн бодит (`act`) ба обьём (`obyem`) талбар — `computeAll`-ийн
- *    гүйцэтгэл эдгээрээс бодогдоно. `persist` (хөтчийн кэш) — уншдаг самбарын дүрэм.
- * ⚠️ Хуудас нь УНАСАН багцын БҮХ блок дэд бүлэггүй (12F уншигдаад 9F унасан үед 12F-ийн давхардсан «6/x» 9F-ийн оронд
- *    ялж болохгүй — `projectPlanInputs.fetchSchedules`-тэй нэг дүрэм).
  */
 async function fetchSheetDetail(): Promise<SheetDetail> {
   const today = Date.now();

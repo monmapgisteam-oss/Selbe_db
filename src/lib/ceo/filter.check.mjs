@@ -116,13 +116,9 @@ assert.equal(filterTable(summary, ALL_PKG), summary, 'шүүлтгүй үед х
   assert.equal(out.issues.length, 1, 'зөвхөн тэр багцын анхааруулга');
   assert.match(out.issues[0].text, /Багц 4-1/);
 
-  /* ⚠️ Багц дурдаагүй анхааруулга ҮЛДЭНЭ */
   const out2 = filterResult({ ...r, issues: [{ text: 'Үйлчилгээ татагдсангүй', tone: 'warn' }] }, 'Багц 2');
   assert.equal(out2.issues.length, 1, 'багц дурдаагүй анхааруулга хасагдахгүй');
 
-  /* ⚠️ 2026-09-08: SUBSTRING МӨРГӨЛДӨӨН. «Багц 1» сонгоход «БАГЦ-10»,
-     «БАГЦ-16.7»-ийн анхааруулга ОРОХГҮЙ — урьд нь бүтэн өгүүлбэрийг нэг мөр
-     болгож `.includes` хийдэг тул «БАГЦ10ДУЛААН…» нь «БАГЦ1»-ийг агуулдаг байв. */
   const out3 = filterResult({
     ...r,
     tables: [],

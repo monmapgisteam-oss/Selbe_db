@@ -7,22 +7,6 @@
  * Хаалттай үедээ ХАБЭА-гийн өмнөх капсултай ЯГ ижил харагдана: зүүн талд
  * жижиг том үсгийн шошго, баруун талд одоогийн сонголт. Дарахад доор нь
  * тэмдэглэх нүдтэй жагсаалт нээгдэнэ.
- *
- * ⚠️ ЯАГААД НАТИВ `<select multiple>` БИШ ВЭ: тэр нь хаалттай үедээ жагсаалт
- * хэлбэрээр ӨНДӨР зай эзэлж капсул болж чаддаггүй, Ctrl дарж олон сонгодог нь
- * ихэнх хэрэглэгчид ил биш, мөн хүрэлтээр (таблет) бараг ашиглагдахгүй.
- *
- * ⚠️ ЖАГСААЛТ `position: fixed` — ПОРТАЛ БИШ. Капсул нь `.filters`
- * (`overflow-x: auto`) болон газрын зургийн `.map` (`overflow: hidden`) дотор
- * суудаг тул `absolute` нь тайрагдана. `ui.tsx`-ийн tooltip-тэй ИЖИЛ шийдэл:
- * эцгүүдэд `transform/filter/contain/backdrop-filter` байхгүй бол `fixed` нь
- * бүх тайралтаас гарна. ⚠️ Тиймээс энэ капсулыг агуулах элементэд
- * `backdrop-filter` БҮҮ тавь — тэр нь `fixed`-ийн агуулах блок болж жагсаалтыг
- * дахин тайрна.
- *
- * ⚠️ БАЙРЛАЛЫГ РЕНДЕРТ БИШ, ҮЙЛ ЯВДАЛД бодно (дарах, цонхны хэмжээ, гүйлгэлт).
- * Рендерийн үеэр ref уншвал React-ийн дүрэм зөрчигдөж, мөн нээхээс өмнөх
- * хуучин координат ашиглагдана.
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
@@ -93,8 +77,6 @@ export function MultiSelect({
       close(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(true); };
-    /* ⚠️ capture: эцгийн гүйлгэгч (шүүлтүүрийн мөр, баганууд) гүйхэд ч
-       координатыг шинэчилнэ — эс бөгөөс жагсаалт товчноосоо салж хөвнө. */
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', place);
@@ -117,8 +99,6 @@ export function MultiSelect({
     onChange(value.includes(k) ? value.filter((x) => x !== k) : [...value, k]);
   };
 
-  /* ⚠️ Сонгосон нь жагсаалтаас ГАРСАН (өгөгдөл шинэчлэгдэж тэр багц алга
-     болсон) байж болно — тэр үед түлхүүр нь өөрөө харагдана, алга болохгүй. */
   const summary = value.length === 0
     ? allLabel
     : value.length === 1

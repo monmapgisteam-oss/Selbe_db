@@ -1,20 +1,5 @@
 /**
  * ТУХ — «ХУВААРЬ»-ИЙН БӨГЛӨХ ХУУДСААС (Bagts_*) УНШИХ ЗАМ.
- *
- * ⚠️ ЯАГААД ТУСДАА: «Хуваарь» нь 18 бөглөх хуудсыг бүтнээр (~1,400 мөр × архивын
- *    агшин) уншдаг. ТУХ-ын ТОЙМ нь зөвхөн «Улсын комисс» мөрийн огноо хэрэгтэй
- *    тул хуудас бүрээс ЗӨВХӨН тэр мөрийг асууна (`loadCommissionDates`); бүтэн
- *    мөрүүд нь зөвхөн багц СОНГОХОД, тэр багцын 1–2 хуудсаар (`loadPkgSchedule`).
- *
- * ⚠️ АРХИВ: нийтлэх бүрд хуудас доор нь хуулбарлагддаг (`buglusun_ognoo`) тул
- *    «Улсын комисс» мөр агшин бүрд давтагдана. ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас):
- *    урьд нь ХАМГИЙН ИХ ObjectID-тай мөрийг авдаг байв; одоо «Хуваарь»-тай ЯГ ижил —
- *    СҮҮЛИЙН агшны (`latestWhere`-ийн өдөр) № «УК» · «Улсын комисс» мөр
- *    (`tuhData.pickCommission`-ийн ⚠️). Батлагдаагүй санал хуудсанд ордоггүй тул энэ нь
- *    батлагдсан хуваарь.
- *
- * ⚠️ Огноо нь «Хуваарь»-ийн ТӨЛӨВЛӨГӨӨТ (`start`/`end`) — гэрээний (`gStart`/`gEnd`)
- *    эсвэл бодит биш. Хоосон бол `null` (хэрэглэгч «Хуваарь»-т оруулна).
  */
 import { PKGS, loadSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
 import { agsFetch } from '@/modules/sheet/ags';
@@ -48,7 +33,6 @@ async function commissionOfSheet(pkg: Pkg): Promise<number | null> {
       returnGeometry: 'false',
       f: 'json',
     }),
-    /* ⚠️ Сүүлийн агшны өдөр — `bagtsSheet.latestWhere`-ийн ЯГ тэр статистик */
     fill
       ? agsFetch(`${pkg.url}/query`, {
         where: `${fill} IS NOT NULL`,
@@ -71,7 +55,6 @@ async function commissionOfSheet(pkg: Pkg): Promise<number | null> {
     cands.push({
       oid: Number(a[sc.f.oid]),
       fill: fill ? toMs(a[fill]) : null,
-      /* ⚠️ `ulsiinKomiss.findKomissRow`-ийн таних дүрэм — «Хуваарь» ЭНЭ мөрийг харуулдаг */
       exact: String(a[sc.f.no] ?? '').trim() === KOMISS_NO && work.toLowerCase() === KOMISS_WORK.toLowerCase(),
       end,
     });
@@ -82,12 +65,7 @@ async function commissionOfSheet(pkg: Pkg): Promise<number | null> {
 
 /**
  * Багц бүрийн УЛСЫН КОМИССЫН ОГНОО — `bagtsKey(Pkg.group)` → мс.
- * ⚠️ Нэг багц хоёр хуудастай (9F/12F) бол ХАМГИЙН ХОЖУУ нь (бүх блок дууссан агшин).
- * ⚠️ Уншигдаагүй хуудас `failed`-д — огноо нь «—» болж, «хоцролтгүй» гэж ХУДАЛ уншигдахгүй.
- * ⚠️ 2026-09-30: нэгтгэл нь `tuhData.mergeCommission` (шалгагдсан цэвэр функц) — урьд нь
- *    хоёр хуудасны НЭГ нь унахад нөгөөгийн (дутуу) огноо «—»-гийн оронд үлддэг байв.
  */
-/* ⚠️ 2026-10-09: `partial` — олон хуудасны зарим нь огноогүй (`mergeCommission`-ийн ⚠️); огноо нь `null` */
 export type CommissionDates = { dates: Map<string, number | null>; failed: string[]; partial: Map<string, CommissionPartial> };
 export const loadCommissionDates = cached<CommissionDates>(async () => {
   const res = await Promise.all(PKGS.map(async (pkg) => {
@@ -100,8 +78,6 @@ export const loadCommissionDates = cached<CommissionDates>(async () => {
     }
   }));
   return mergeCommission(res);
-  /* ⚠️ 2026-10-07: ХАГАС үр дүн (`failed.length`) КЭШЛЭГДЭХГҮЙ — урьд нь `keep` байхгүй тул
-     «Дахин оролдох» 5 минутын турш тэр л дутуу хуулбарыг буцаадаг байв. */
 }, 5 * 60_000, ['BAGTS_SHEET'], (v) => v.failed.length === 0);
 
 /** Сонгосон багцын хуваарийн хуудсууд (9F/12F) */
@@ -109,10 +85,6 @@ export const sheetsOf = (pkgKey: string): Pkg[] => PKGS.filter((p) => bagtsKey(p
 
 /**
  * ХУУДАС ТУС БҮРИЙН МӨРИЙН КЭШ (2026-10-01, хэрэглэгч: бүгдийг зас).
- * ⚠️ Урьд нь багц нээх БҮРД тэр багцын 1–2 бүтэн хуудсыг (`outFields: *`) дахин татдаг
- *    байв — тойм ↔ багц хооронд Back/Forward хийхэд ч. Одоо хуудасны түлхүүрээр 5 мин
- *    кэшлэнэ; бөглөх хуудсанд бичилт болмогц (`bagtsSheet` → `invalidate('BAGTS_SHEET')`)
- *    шууд хаягдана — `loadCommissionDates`-тэй ижил таг, ижил TTL (өөр хэрэглэгчийн бичилт).
  */
 const SHEET_TTL = 5 * 60_000;
 const sheetRows = keyedCache<PlanLikeRow[]>(SHEET_TTL);
@@ -120,8 +92,8 @@ register(() => sheetRows.clear(), ['BAGTS_SHEET']);
 
 /**
  * Дэлгэрэнгүйд хэрэгтэй БАГАНУУД л — гүн/жааз (`oid`, №, ажил, `gun`, тамга) ба
- * төлөвлөгөөт огноо, гүйцэтгэл, нөөц. ⚠️ 2026-10-01: урьд нь `*` (~60+ багана); дутуу
- * талбар `loadRows`-д `null` болж уншигдана (`loadRows`-ийн `fields` ⚠️) — энд хэрэглэдэггүй.
+ * төлөвлөгөөт огноо, гүйцэтгэл, нөөц. 2026-10-01: урьд нь `*` (~60+ багана); дутуу
+ * талбар `loadRows`-д `null` болж уншигдана (`loadRows`-ийн `fields`) — энд хэрэглэдэггүй.
  */
 const schedFields = (sc: Schema): string[] => [...new Set([
   sc.f.oid, sc.f.no, sc.f.work, sc.f.gun, sc.f.fillDate, sc.f.asOf, sc.f.hunHuch, sc.f.mashin,
@@ -139,8 +111,6 @@ async function readSheet(sheet: Pkg): Promise<PlanLikeRow[]> {
 
 /**
  * Сонгосон багцын ХУВААРИЙН МӨРҮҮД — хуудас бүрээр.
- * ⚠️ `synthetic: true` — блокгүй багцын (5.x · 6.x · 10) мөрийн огноо нэг блок
- *    болж орно («Хуваарь» модультай ижил).
  */
 export async function loadPkgSchedule(pkgKey: string): Promise<{ sheet: Pkg; rows: PlanLikeRow[] }[]> {
   return Promise.all(sheetsOf(pkgKey).map(async (sheet) => ({

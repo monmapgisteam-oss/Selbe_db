@@ -1,11 +1,5 @@
 /**
  * CSV ба ТЕКСТ ФАЙЛ ТАТАХ — жижиг, хамааралгүй туслах (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- *
- * ⚠️ `emailReport.download`-ыг импортлохгүй: тэр модуль pdfmake-ийг чирдэг тул
- *    эрсдэл/анализын багцад хэдэн зуун КБ дэмий орно.
- * ⚠️ CSV нь UTF-8 + BOM (`﻿`) — BOM-гүй бол Excel кирилл бичвэрийг
- *    «ÐÐ°…» болгож нээдэг. Тусгаарлагч нь таслал, аравтын цэг нь «.» (машинд
- *    уншигдах; мянгатын бүлэглэлгүй).
  */
 
 /** Нэг нүд — `null`/`undefined` → ХООСОН (0 БИШ — null ≠ 0) */
@@ -13,9 +7,6 @@ export function csvCell(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
   let s = String(v);
-  /* ⚠️ 2026-10-06: CSV ТОМЬЁОНЫ ТАРИЛГА — «=», «+», «-», «@», таб, CR-ээр эхэлсэн текстийг Excel томьёо
-     болгож ажиллуулдаг (`=HYPERLINK(…)` г.м.). Урд нь «'» залгаж текст болгоно. ЦЭВЭР ТОО («-12.5»,
-     «+3») хэвээр — сөрөг дүн текст болж эвдрэхгүй. Тоон төрлийн утга дээр огт хүрэхгүй. */
   if (/^[=+\-@\t\r]/.test(s) && !/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
@@ -27,7 +18,6 @@ export function toCsv(header: string[], rows: unknown[][]): string {
 
 /**
  * Бичвэрийг файл болгон татна (хөтөчид л ажиллана).
- * ⚠️ `text/csv` бол BOM-ыг ӨӨРӨӨ нэмнэ — дуудагч нэмэх шаардлагагүй.
  */
 export function downloadText(filename: string, text: string, mime: string): void {
   const body = mime.startsWith('text/csv') ? `﻿${text}` : text;

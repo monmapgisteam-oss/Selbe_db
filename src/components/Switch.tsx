@@ -80,15 +80,10 @@ export function Segmented<T extends string>({ value, onChange, options, label, d
   /** Дэлгэц уншигчийн бүлгийн нэр */
   label?: string;
   disabled?: boolean;
-  /** Олон/урт сонголттой үед (жиш. ТУХ-ын 9 бүлэг) мөр шилжинэ — ⚠️ 2026-10-26: эс бөгөөс капсул дэлгэцээс халина */
+  /** Олон/урт сонголттой үед (жиш. ТУХ-ын 9 бүлэг) мөр шилжинэ — 2026-10-26: эс бөгөөс капсул дэлгэцээс халина */
   wrap?: boolean;
 }) {
   const i = Math.max(0, options.findIndex((o) => o.value === value));
-  /*
-   * ⚠️ 2026-10-26 (a11y): `role="radiogroup"` зарласан тул ARIA APG-ийн radio group-ийн гарын дүрэм — roving tabindex
-   *    (сонгогдсон нь 0, бусад −1 → бүлэг НЭГ Tab-ын зогсоол) ба ←/→/↑/↓ (тойрно) · Home · End нь СОНГОЖ фокусыг шилжүүлнэ.
-   *    Урьд нь сум юу ч хийдэггүй, сонголт бүр тусдаа Tab-ын зогсоол байв (merge-ээр aria-pressed бүлгүүд Segmented болов).
-   */
   const onKey = (e: React.KeyboardEvent<HTMLSpanElement>) => {
     if (disabled || !options.length) return;
     let next = -1;

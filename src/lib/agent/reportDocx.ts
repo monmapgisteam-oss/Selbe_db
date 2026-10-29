@@ -1,19 +1,5 @@
 /**
  * AI ТУСЛАХЫН ТАЙЛАН — Word (.docx).
- *
- * ⚠️ ШИНЭ САН НЭМЭХГҮЙ (төслийн дүрэм — `xlsx.ts`-ийн ⚠️): WordprocessingML-ийг
- * гараар угсарч, `xlsx.ts`-ийн ZIP бичигчээр (`zipStore`, STORE арга) багцална.
- * `docx`/`docxtemplater` зэрэг сан нь хэдэн зуун КБ + аюулгүй байдлын гадаргуу.
- *
- * ⚠️ ХАМГИЙН БАГА БҮРЭЛДЭХҮҮН: Word нээхийн тулд `[Content_Types].xml`,
- * `_rels/.rels`, `word/document.xml` ба `word/styles.xml` (+ түүний холбоос)
- * ХАНГАЛТТАЙ. Нэмэх бүрд Word-ийн «агуулга уншигдахгүй байна» эрсдэл өснө.
- *
- * ⚠️ ЖАГСААЛТЫГ `numbering.xml`-ГҮЙ бичнэ — тэмдэг (•) ба догол мөрийн зайгаар.
- *    Жинхэнэ дугаарлалт нь бүхэл нэг XML хэсэг нэмдэг бөгөөд уншигчид ялгаа
- *    өгөхгүй; оронд нь файлын эвдрэх эрсдэл буурна.
- *
- * ⚠️ ₮ тэмдэг Word-д ХЭВЭЭР (PDF-ийн Roboto-гийн асуудал энд байхгүй).
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -77,7 +63,6 @@ function table(head: string[], rows: string[][]): string {
     + line(head, true)
     + rows.map((r) => line(r, false)).join('')
     + '</w:tbl>'
-    /* ⚠️ Хүснэгтийн ДАРАА хоосон догол мөр — хоёр хүснэгт зэрэгцвэл Word нэгтгэчихдэг */
     + '<w:p/>';
 }
 
@@ -97,8 +82,6 @@ function blockXml(b: MdBlock): string {
 
   if (b.kind === 'chart' && b.spec) {
     const s = b.spec;
-    /* ⚠️ Word-д диаграм зурахгүй — ӨГӨГДЛИЙН ХҮСНЭГТ (хэрэглэгч өөрөө диаграм
-       хийх боломжтой). PDF-д график зурагддаг. */
     return (s.title ? para(run(s.title, true), { style: 'Heading3' }) : '')
       + table(
         [tr('Шошго'), s.unit ? `${tr('Утга')}, ${s.unit}` : tr('Утга')],

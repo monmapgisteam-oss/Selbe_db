@@ -12,15 +12,6 @@ import { currentUser } from '@/lib/who';
  * «New item → файл оруулах»-тай яг ижил (`content/users/{u}/addItem`). Хавсралт
  * (feature service `addAttachment`) БИШ — хэрэглэгчийн шийдвэр: «attach-аар feature
  * service-д оруулах нь огт таалагдахгүй».
- *
- * ⚠️ ТУСДАА НЭВТРЭЛТ: портал одоо ArcGIS Online-оор нэвтэрдэг (`AUTH`); Enterprise-ийн
- *    токен түүнээс хамаарахгүй. Туршилтад `generateToken` (нэр · нууц үг, `client=referer`)
- *    ашиглана — геопорталд OAuth апп бүртгэгдсэний дараа OAuth руу солино.
- *    Нууц үгийг ХАДГАЛАХГҮЙ; токен зөвхөн санах ойд (хуудас дахин ачаалахад дахин нэвтэрнэ).
- * ⚠️ Токен ЗӨВХӨН POST-ын биеэр (`tools/tokenInUrl.check.mjs`) — `/data`-г ч POST-оор татна.
- * ⚠️ ArcGIS алдаа HTTP 200-аар `{ error }` биед ирнэ — биеийг заавал шалгана.
- * ⚠️ `NEXT_PUBLIC_ENT_PORTAL_URL` хоосон бол энэ боломж бүхэлдээ нуугдана
- *    (`tools/envParity.check.mjs`-ийн OPTIONAL_LOCAL — зөвхөн локал туршилт).
  */
 export const ENT_PORTAL = (process.env.NEXT_PUBLIC_ENT_PORTAL_URL ?? '').trim().replace(/\/+$/, '');
 
@@ -35,12 +26,6 @@ const subs = new Set<() => void>();
 const emit = () => { for (const f of subs) f(); };
 
 const norm = (u: string) => u.trim().replace(/\/+$/, '').toLowerCase();
-/**
- * ⚠️ 2026-10-20 (Enterprise руу БҮРЭН шилжилт): үндсэн нэвтрэлт (`AUTH.portalUrl`) ОДОО Enterprise геопортал
- *    дээр тул энэ модулийн тусдаа нэр/нууц үгийн сешн ШААРДЛАГАГҮЙ — ижил портал бол нэвтэрсэн хэрэглэгчийн
- *    OAuth токен (`authToken`) ба нэр (`who.currentUser`) нь Enterprise сешн мөн. `EntSignIn` маягт ийм үед
- *    өөрөө нуугдана (`entSession()` null биш). Портал ӨӨР тохируулагдсан бол (туршилт) хуучин зам хэвээр.
- */
 const samePortal = (): boolean => !!ENT_PORTAL && norm(ENT_PORTAL) === norm(AUTH.portalUrl);
 
 /** Хүчинтэй сешн (дуусахаас 1 минутын өмнө хүчингүйд тооцно) */
@@ -49,10 +34,6 @@ export function entSession(): Sess | null {
   if (samePortal()) {
     const token = authToken();
     const user = currentUser();
-    /* ⚠️ Хугацааг JS API өөрөө шинэчилдэг (`ensureFreshToken`) — энд зөвхөн «одоо хүчинтэй» гэсэн утга */
-    /* ⚠️ 2026-10-21: ИЖИЛ объект буцаана (token/user өөрчлөгдөөгүй бол). `useSyncExternalStore`-ийн getSnapshot
-       (`EntSignIn.useEntSession`) тогтвортой утга шаарддаг — урьд нь дуудалт бүрд шинэ объект үүсгэж React #185
-       (төгсгөлгүй дахин зурах) өгч MA · ХАБЭА «Нэмэх» · ТЭЗҮ баримтын цонх нэвтэрсэн бүх хэрэглэгчид унадаг байв. */
     if (token && user) {
       if (!shared || shared.token !== token || shared.user !== user) shared = { user, token, expires: Date.now() + 10 * 60_000 };
       return shared;
@@ -61,19 +42,12 @@ export function entSession(): Sess | null {
   return null;
 }
 let shared: Sess | null = null;
-/**
- * ⚠️ 2026-10-26 (аудит): идэвхтэй сешн нь ҮНДСЭН нэвтрэлтийн OAuth-оос (нэг портал) бол true — энэ үед
- *    `entSignOut` юу ч хийхгүй (`entSession` дахин ижил `shared`-ийг буцаана) тул «Гарах» товчийг зурахгүй.
- */
 export function entIsShared(): boolean {
   const cur = entSession();
   return !!cur && cur === shared && samePortal();
 }
 /**
  * ТОКЕН ШИНЭЧЛЭЭД БИЕД ДАХИН ДАРНА — Enterprise рүү ШУУД fetch хийдэг замууд (ma · mir · ficMakt · энэ модуль).
- * ⚠️ 2026-10-21 (аудит): эдгээр зам `query.ts`-ийн хамгаалалтыг (`ensureFreshToken` + 498 → шинэчлэх) тойрдог тул таб
- *    унтсаны дараа хугацаа нь дууссан токеноор явж эхний оролдлого 498-аар унадаг байв. Илгээхийн ӨМНӨ шинэчилж,
- *    биеийн `token`-ыг одоогийнхоор солино (бие токенгүй бол хөндөхгүй).
  */
 export async function entStamp(body: URLSearchParams | FormData): Promise<void> {
   await ensureFreshToken();
@@ -114,16 +88,6 @@ async function post<T>(path: string, body: FormData | URLSearchParams): Promise<
   return j;
 }
 
-/**
- * ⚠️ 2026-10-20: Enterprise ӨГӨГДЛИЙН үйлчилгээ (`services/env.ENT_HOSTED`) org-only хуваалцсан бол JS API-ийн
- *    давхарга (газрын зураг · ноорог/эрхийн FeatureLayer) ч энэ токеноор уншина — IdentityManager-т
- *    бүртгэнэ. REST зам (`query.ts`) нь `entSession()`-ийг өөрөө ашигладаг тул үүнээс хамаарахгүй.
- * ⚠️ 2026-10-22 (гүйцэтгэл, `AuthGate`-ийн замтай ИЖИЛ): серверийн үндэс нь `entInterceptor.ENT_SERVER` — interceptor
- *    түүнийг «нэвтэрсэн» гэж таньж (`sessionUrls`) үйлчилгээ бүрийн ЭХНИЙ хүсэлтийн өмнө итгэмжлэлийг бүртгэнэ (урьд
- *    `findCredential` үйлчилгээ бүрийг тусад нь шаарддаг тул эхний хүсэлт бүр 499 → дахин илгээгддэг байв).
- *    `userId` — итгэмжлэлд хэрэглэгч тодорхой (метагийн кэшийн түлхүүр, `findCredential(url, userId)`).
- *    Нэвтрэлт солигдсон тул давхаргын метагийн кэш хаягдана.
- */
 async function registerEntToken(s: Sess): Promise<void> {
   if (!ENT_SERVER) return;
   clearMetaCache();
@@ -141,8 +105,6 @@ export async function entSignIn(username: string, password: string): Promise<voi
     username: username.trim(), password, client: 'referer', referer: window.location.origin, expiration: '120', f: 'json',
   }));
   if (!g.token) throw new Error(tr('Enterprise токен олгосонгүй.'));
-  /* ⚠️ Хэрэглэгчийн нэрийг порталаас (`community/self`) авна — оруулсан бичвэр том/жижиг
-     үсгээр зөрж болох бөгөөд `addItem`-ийн зам яг порталын нэрийг шаарддаг. */
   const me = await post<{ username?: string }>('community/self', new URLSearchParams({ token: g.token, f: 'json' }));
   if (!me.username) throw new Error(tr('Enterprise хэрэглэгч тодорхойгүй.'));
   sess = { user: me.username, token: g.token, expires: g.expires ?? Date.now() + 110 * 60_000 };
@@ -152,15 +114,12 @@ export async function entSignIn(username: string, password: string): Promise<voi
 
 export function entSignOut(): void {
   sess = null;
-  /* ⚠️ 2026-10-22: нэвтрэлт солигдсон — давхаргын метагийн кэш (`metaCache`) хуучин хэрэглэгчийн эрхээр үлдэхгүй */
   clearMetaCache();
   emit();
 }
 
-/** `access`: порталын хуваалцалт ('private' · 'shared' · 'org' · 'public'); `null` = тодорхойгүй.
- * ⚠️ 2026-10-09 (аудит): `pending` — item ҮҮССЭН ч дэлгэрэнгүйг татаж чадаагүй (одоо `warn`-аар мэдэгддэг; хуучин дуудагчид). */
+/** `access`: порталын хуваалцалт ('private' · 'shared' · 'org' · 'public'); `null` = тодорхойгүй. */
 export type EntPdf = { id: string; title: string; owner: string; modified: number; size: number | null; access: string | null; pending?: boolean;
-  /** ⚠️ 2026-10-23: item-ийн тагууд — баримтын сангийн бүлэг (`docLib.GROUP_TAG`) эндээс */
   tags?: string[] };
 
 type ItemJson = { id: string; title?: string; owner?: string; modified?: number; size?: number; access?: string; tags?: string[] };
@@ -178,9 +137,6 @@ export const ENT_LIST_MAX = 2000;
 
 /**
  * Энэ системийн тагтай, хэрэглэгчид харагдах бүх PDF item (сүүлд өөрчлөгдсөн нь эхэнд).
- * ⚠️ 2026-10-09 (аудит): `nextStart`-аар ХУУДАСЛАНА — урьд нь ганц `num: 100` хүсэлт тул 100-аас
- *    олон PDF-тэй үед хуучнууд нь чимээгүй алга болдог байв. `nextStart` ≤ 0 (−1 = төгсгөл),
- *    хоосон хуудас эсвэл `ENT_LIST_MAX` хүрвэл зогсоно.
  */
 export async function entListPdfs(): Promise<EntPdf[]> {
   const s = need();
@@ -202,20 +158,6 @@ export async function entListPdfs(): Promise<EntPdf[]> {
 /**
  * PDF-ийг шинэ item болгон оруулж БАЙГУУЛЛАГАД хуваалцана. Буцаах: шинэ item +
  * (хуваалцаж чадаагүй бол) анхааруулга.
- * ⚠️ Хайлтын индекс шинэ item-ийг хэдэн секундын дараа л олдог тул дуудагч
- *    буцаасан item-ийг жагсаалтын эхэнд өөрөө нэмнэ.
- * ⚠️ 2026-10-09 (хэрэглэгч: «organization тохиргоотой item болох»): `addItem` нь item-ийг
- *    ЗӨВХӨН эзэнд (private) үүсгэдэг тул дараа нь `share` (org=true, everyone=false) —
- *    байгууллагын бүх хэрэглэгч харна, нийтэд (public) БИШ.
- * ⚠️ `addItem` АМЖИЛТТАЙ болсны дараах алхмууд (хуваалцах · мэдээлэл унших) унавал
- *    АЛДАА ШИДЭХГҮЙ — item аль хэдийн үүссэн тул хэрэглэгч «болсонгүй» гэж бодоод дахин
- *    оруулбал ижил PDF хоёр item болно. Оронд нь анхааруулга буцаана.
- */
-/**
- * ⚠️ 2026-10-21: ПОРТАЛЫН ЯГ ХЭРЭГЛЭГЧИЙН НЭР — `content/users/{u}/…` замд. Ижил порталын горимд `s.user` нь
- *    `who.currentUser()` (trim + жижиг үсэг) тул том үсэгтэй нэртэй хэрэглэгчийн `addItem`/`share` зөрдөг байв
- *    (дээрх `entSignIn`-ий ⚠️ — зам яг порталын нэрийг шаарддаг). `community/self`-ээс нэг удаа (токен тутамд) уншина;
- *    тусдаа нэвтрэлтийн сешн (`sess`) аль хэдийн яг нэртэй.
  */
 let exact: { token: string; user: string } | null = null;
 async function exactUser(s: Sess): Promise<string> {
@@ -231,7 +173,7 @@ async function exactUser(s: Sess): Promise<string> {
 export const entExactUser = (): Promise<string> => exactUser(need());
 
 /**
- * ЭЗНИЙ ГЕОПОРТАЛЫН ХАВТАС (⚠️ 2026-10-23, хэрэглэгч: «PDF оруулах Enterprise-ийн folder-ууд») — нэрээр нь (том/жижиг
+ * ЭЗНИЙ ГЕОПОРТАЛЫН ХАВТАС (2026-10-23, хэрэглэгч: «PDF оруулах Enterprise-ийн folder-ууд») — нэрээр нь (том/жижиг
  * үсэг үл хамаарна) олно, байхгүй бол ҮҮСГЭНЭ. Хавтас нь хэрэглэгч тус бүрийнх (порталын дүрэм) — оруулагч бүр өөрийн
  * ижил нэртэй хавтсанд хадгална. Сешн тутамд кэшлэнэ.
  */
@@ -253,8 +195,6 @@ async function folderId(s: Sess, owner: string, title: string): Promise<string> 
   return id;
 }
 
-/* ⚠️ 2026-10-23: `extraTags` — баримтын сангийн бүлгийн таг (`docLib.GROUP_TAG + id`); `folder` — эзний геопорталын хавтасны
-   НЭР (байхгүй бол үүснэ, `folderId`); хоосон бол үндсэн (root) хавтас — хуучин дуудагчид хэвээр. */
 export async function entUploadPdf(file: File, title?: string, extraTags: readonly string[] = [], folder = ''): Promise<{ item: EntPdf; warn?: string }> {
   const s = need();
   if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw new Error(tr('Зөвхөн PDF файл оруулна.'));
@@ -285,7 +225,6 @@ export async function entUploadPdf(file: File, title?: string, extraTags: readon
     const it = await post<ItemJson>(`content/items/${encodeURIComponent(id)}`, new URLSearchParams({ f: 'json', token: s.token }));
     return { item: toPdf({ ...it, id }), warn };
   } catch {
-    /* ⚠️ Item бий — мэдээллийг файлаас бүрдүүлнэ (дээрх «алдаа шидэхгүй» ⚠️) */
     return {
       item: { id, title: (title ?? '').trim() || file.name.replace(/\.pdf$/i, ''), owner, modified: Date.now(), size: file.size, access: warn ? null : 'org' },
       warn,
@@ -307,7 +246,6 @@ export async function entPdfBlob(id: string): Promise<Blob> {
     throw new Error(tr('Enterprise геопорталтай холбогдож чадсангүй — сүлжээгээ шалгана уу.'));
   }
   if (!r.ok) throw new Error(tr('Enterprise алдаа (HTTP {0})', r.status));
-  /* ⚠️ Алдаа PDF-ийн оронд JSON-оор (HTTP 200) ирнэ */
   if ((r.headers.get('content-type') ?? '').includes('json')) {
     let j: ArcErr = {};
     try { j = await r.json(); } catch { /* доорх ерөнхий мессеж */ }
@@ -321,7 +259,7 @@ export async function entPdfBlob(id: string): Promise<Blob> {
 export const entItemPage = (id: string) => `${ENT_PORTAL}/home/item.html?id=${encodeURIComponent(id)}`;
 
 /**
- * PDF ITEM-ИЙГ УСТГАНА (⚠️ 2026-10-23, баримт бичгийн сан). `content/users/{эзэн}/items/{id}/delete` — порталд ЗӨВХӨН
+ * PDF ITEM-ИЙГ УСТГАНА (2026-10-23, баримт бичгийн сан). `content/users/{эзэн}/items/{id}/delete` — порталд ЗӨВХӨН
  * эзэн эсвэл порталын админ устгаж чадна; бусдад портал өөрөө татгалзана (алдаа ил гарна). Буцаах боломжгүй.
  */
 export async function entDeletePdf(id: string, owner: string): Promise<void> {
@@ -332,7 +270,7 @@ export async function entDeletePdf(id: string, owner: string): Promise<void> {
 }
 
 /**
- * ITEM-ИЙН ТАГИЙГ СОЛИНО (⚠️ 2026-10-23, баримтыг өөр бүлэгт шилжүүлэх). Зөвхөн эзэн/порталын админ.
+ * ITEM-ИЙН ТАГИЙГ СОЛИНО (2026-10-23, баримтыг өөр бүлэгт шилжүүлэх). Зөвхөн эзэн/порталын админ.
  */
 export async function entSetTags(id: string, owner: string, tags: readonly string[]): Promise<void> {
   const s = need();

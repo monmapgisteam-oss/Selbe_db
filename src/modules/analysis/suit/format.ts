@@ -1,11 +1,5 @@
 /**
  * АНАЛИЗ модулийн форматлагчид — mn-MN, эх аппын хэлбэрээр.
- *
- * ⚠️ 2026-09-01: МӨНГӨН дүн портал даяар НЭГ дүрэмтэй боллоо — бүтэн, мянгатын
- * ТАСЛАЛТАЙ (хэрэглэгчийн шийдвэр). Урьд нь энэ модуль mn-MN бүлэглэл ба
- * «тэрбум₮/сая₮» товчлолтой, САНААТАЙ ялгаатай байв; тэр ялгаа ЦУЦЛАГДСАН.
- * Тоон (мөнгө БИШ) `nf` нь mn-MN хэвээр — эх Suitability аппын харагдац.
- * Suitability/SuitDetail хоёул эндээс уншина.
  */
 
 import { DENSITY_BY_TYPE, type Indicator } from '@/lib/analysis/config';
@@ -20,8 +14,6 @@ export const nf = (v: number | null | undefined, d = 0) =>
 
 /**
  * Мөнгөн дүн — БҮТНЭЭР, мянгатын таслалтай. Хасах утгыг `−` (U+2212) тэмдгээр.
- * ⚠️ Товчлолгүй: `lib/format.ts`-ийн `mnt`-тэй ижил дүрэм. Ялгаа нь зөвхөн
- *    хасах тэмдгийн боловсруулалт ба `₮`-г зайгүй наадаг эх аппын хэлбэр.
  */
 export function money(v: number | null | undefined) {
   if (v == null || !Number.isFinite(v)) return '—';
@@ -31,11 +23,6 @@ export function money(v: number | null | undefined) {
 
 /**
  * БҮСИЙН АНГИЛЛЫН ДЭЛГЭЦИЙН НЭР.
- *
- * ⚠️ 2026-10-22 (аудит): `Row.type` · `DENSITY_BY_TYPE`-ийн түлхүүр нь ОРЧУУЛГАГҮЙ каноник нэр (`zoneType`; `config.ts`-ийн
- *    «`tr()` ХЭРЭГЛЭХГҮЙ» ⚠️ — шүүлт/харьцуулалт түүхий утгаар) тул легенд, жагсаалт, hover, дэлгэрэнгүйд англи горимд
- *    монголоор үлддэг байв. ZoneFilter (`tr(g.type)`) · каталогийн facet (`tr(f.canon(…))`)-тэй НЭГ зам: каноник нэр →
- *    толь (en.ts / enData.ts). Зөвхөн ДЭЛГЭЦЭД — `catOff` · `scoreOn` · `LOCATION_ZONE_TYPES` түүхий `type`-аараа хэвээр.
  */
 export const zoneTypeLabel = (t: string): string => tr(zoneType(t));
 

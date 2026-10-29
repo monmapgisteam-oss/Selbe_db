@@ -8,18 +8,6 @@
  * хэвтээ гүйлгүүр дээр сарууд хайхад хүргэдэг. Энэ панель нь ЯГ ТЭР НЭГ
  * ажилдаа төвлөрнө: зүүн талд ажлаа сонгоно, баруун талд түүний сарууд
  * босоо жагсаалтаар — өөр юу ч байхгүй.
- *
- * ⚠️ ӨГӨГДЛИЙН ХЭЛБЭР: сарын мөрүүд нь `Cashflow_final` хүснэгтийн ДОТОРХ
- * нэмэлт мөрүүд (тусдаа хүснэгт БИШ) бөгөөд `Cashflow_start` бөглөгдсөнөөр
- * ажлын мөрөөс ялгагдана. Дэлгэрэнгүйг `services.ts` → `CF_WORK_WHERE`.
- *
- * ⚠️ `Cashflow_dun` ГАРААР БИЧИГДЭХГҮЙ — хувиас бодогдоно. Хоёуланг нь гараар
- * бөглөвөл хэзээ нэгэн цагт зөрөх нь тодорхой.
- *
- * ⚠️ 2026-10-26: САРЫН МӨНГӨНИЙ ЭХ (`sar_mongo_eh`, `monthlyMoney`-ийн толгой). 'huvaari' гэрээний сарууд нь
- *    Хуваарийн сарын обьём × нэгж өртгөөр ТООЦООЛОГДОНО — энд ЗӨВХӨН УНШИХ хүснэгтээр харагдана, засагдахгүй,
- *    «Цэвэрлэх» алга. 'garaar' гэрээний зам ӨӨРЧЛӨГДӨӨГҮЙ. «Хуваарь руу шилжүүлэх» товч (`canSwitch`, `cfSwitch` эрх)
- *    гараар сарын мөрийг УСТГАЖ эхийг солино — буцаахгүй, батлуулах цонхтой (`monthlyMoney.switchToHuvaari`).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -46,7 +34,6 @@ type Row = Record<string, unknown>;
 
 const sOf = (v: unknown) => String(v ?? '').trim();
 const nOf = (v: unknown): number | null => {
-  /* ⚠️ Аравтын таслал («12,5») зөвшөөрнө — Excel-ээс хуулсан утга */
   const t = String(v ?? '').trim().replace(',', '.');
   if (t === '') return null;
   const x = Number(t);
@@ -54,9 +41,6 @@ const nOf = (v: unknown): number | null => {
 };
 /**
  * `Cashflow_ID` — хоосон бол `null`.
- * ⚠️ 2026-09-29 (аудит 10): `Number(null)` = 0 тул дугааргүй ажил `0` түлхүүртэй
- *    болж, ийм хоёр ажил нэг сарын жагсаалт ба нэг `w0` React түлхүүр
- *    хуваалцдаг байв (`Finance.cfIdOf`-тэй ижил дүрэм).
  */
 const idOf = (v: unknown): number | null => {
   if (v == null || String(v).trim() === '') return null;
@@ -79,8 +63,6 @@ const badNum = (v: unknown) => String(v ?? '').trim() !== '' && nOf(v) == null;
 
 /**
  * ЗАДАРГААНЫ КОДООР ЭРЭМБЭЛЭХ — «4.2» нь «4.10»-аас ӨМНӨ.
- * ⚠️ Гэрээний бүртгэлийн эрэмбэтэй ЯГ ИЖИЛ дүрэм: хоёр газарт өөр дараалал
- * гарвал «хэддэх ажил» гэж ярихад ойлголцохгүй.
  */
 const seg = (v: unknown): number[] => sOf(v).split('.').map((t) => {
   const n = Number(t);
@@ -96,45 +78,26 @@ const cmpSeg = (a: number[], b: number[]): number => {
 
 /**
  * «2026-03» — ОРОН НУТГИЙН (УБ) сараар.
- * ⚠️ 2026-09-29 (аудит 10): `Finance.publish`-ийн сарын мужтай НЭГ дүрэм (тэндхийн
- *    `keyOf`-ийн ⚠️). УБ-ын шөнө дунд (өмнөх өдрийн 16:00Z) UTC-ээр өмнөх сар болдог байв.
  */
-/* ⚠️ 2026-10-09: дүрэм `gdash.cfStartKeyOf`-д нэгтгэгдсэн (Finance.publish · gdash · tuhData ижил) —
-   ХУУЧИН UTC шөнө дундын мөр UTC сараар, бусад нь орон нутгийн сараар. */
 const monthKey = (ms: unknown): string => cfStartKeyOf(ms);
 
 /** Бөглөлтийн төлөв — өнгө ба шошго нь эндээс */
 type Fill = 'none' | 'part' | 'done' | 'over';
 
-/**
- * ⚠️ ГУРВАН төлөв, хоёр биш. Даалгаварт «бөглөсөн ногоон, бөглөөгүй улаан»
- * гэсэн ч 30% бөглөсөн ажил «бөглөсөн» гэж ногоон болбол дутуу ажил дууссан
- * мэт харагдана. Тиймээс ДУНД төлөв (шар) нэмэв: ногоон = ЯГ 100%.
- */
 const fillOf = (sum: number | null): Fill => {
   if (sum == null) return 'none';
-  /* ⚠️ Хөвөгч таслалын алдааг тэвчинэ — 33.33×3 нь 99.99 гардаг */
   if (Math.abs(sum - 100) < 0.01) return 'done';
-  /* ⚠️ 2026-09-25: 100%-иас ИЛҮҮ нь «дутуу» БИШ — тусдаа төлөв. Урьд нь 130%
-     бөглөсөн ажил шар «дутуу» гэж харагдаж, хэрэглэгч улам нэмэх гэж оролддог байв.
-     ⚠️ ИЛ БИЧСЭН 0 нь «хоосон» БИШ (null ≠ 0): `sum` нь зөвхөн бөглөсөн сартай
-     үед тоо байна (`sumOf`) — 0% гэж бичсэн ажил «бөглөсөн боловч 100% биш». */
   if (sum > 100) return 'over';
   return 'part';
 };
 /**
- * Төлвийн CSS класс. ⚠️ `.over` класс `cfplan.module.css`-д хараахан
+ * Төлвийн CSS класс. `.over` класс `cfplan.module.css`-д хараахан
  * байхгүй бол шар (`.part`) өнгөөр — төлөв нь шошго/анхааруулгаараа ялгарна.
  */
 const fillCls = (st: Fill): string => (st === 'over' ? (c.over || c.part) : c[st]);
 
 /**
  * ГЭРЭЭНИЙ ДҮН — `ho_dun_geree`; байхгүй/0/NaN бол `null`.
- *
- * ⚠️ 2026-09-23: урьд нь `Number(...) || 0` тул гэрээний дүнгүй ажилд сар
- *    бүрийн ₮ «0 ₮» гэж бодогдож, хадгалахад `amount = 0` БИЧИГДДЭГ байв —
- *    «мэдээлэлгүй» нь «тэг» болж хувирдаг (null ≠ 0). Одоо `null` → дэлгэцэнд
- *    «—», хадгалахад дүн `null`.
  */
 const costOf = (r: Row | null | undefined): number | null => {
   const v = Number(r?.ho_dun_geree);
@@ -188,13 +151,6 @@ export function CashflowPlan({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  /**
-   * ⚠️ 2026-10-21: ХАДГАЛСНЫ АГШИН ДАХЬ `months` — шинэ мөрүүд (өөр лавлагаа) ирэх хүртэл `pend`-ийг
-   *    ХАДГАЛНА (`finEdit.awaitingReload`, «Гэрээний бүртгэл»-ийн загвар). Урьд нь `setPend({})` тэр
-   *    дороо ажиллаж, `months` хуучин хэвээр тул нүд хуучин утга руу үсэрч, хэрэглэгч тэр хуучин утгыг
-   *    дахин бичихэд «өөрчлөгдөөгүй» гэж хаягддаг байв. Дахин ачаалалт унавал `Data` алдаанд орж энэ
-   *    бүрэлдэхүүн unmount болно — хаалт мөнхөд үлдэхгүй.
-   */
   const [pubFrom, setPubFrom] = useState<Row[] | null>(null);
   const reloading = awaitingReload(pubFrom, months);
   /* Шинэ мөрүүд ирэв — хадгалсан засварыг одоо л арилгана (render үеийн төлөв тохируулалт) */
@@ -207,7 +163,7 @@ export function CashflowPlan({
   const byWork = useMemo(() => {
     const m = new Map<number, Row[]>();
     for (const r of months) {
-      const id = idOf(r[CF_MONTH.id]); // ⚠️ 2026-09-29 (аудит 10): хоосон → 0 БИШ
+      const id = idOf(r[CF_MONTH.id]);
       if (id == null) continue;
       const arr = m.get(id) ?? [];
       arr.push(r);
@@ -219,7 +175,6 @@ export function CashflowPlan({
     return m;
   }, [months]);
 
-  /* ⚠️ 2026-10-26: САРЫН МӨНГӨНИЙ ЭХ — 'huvaari' гэрээ (толгойн ⚠️). Тийм гэрээ НЭГ Ч БАЙХГҮЙ бол юу ч ачаалахгүй. */
   const srcField = CASHFLOW_NEW.fields.monthSource;
   const huvIds = useMemo(() => {
     const s = new Set<number>();
@@ -263,8 +218,6 @@ export function CashflowPlan({
       const oid = Number(r[oidField]);
       const raw = oid in pend ? pend[oid] : r[CF_MONTH.pct];
       const v = nOf(raw);
-      /* ⚠️ `null` ≠ 0: бөглөөгүй сар нийлбэрт ОРОХГҮЙ, гэхдээ ажил өөрөө
-         «бөглөөгүй» эсэхийг тодорхойлоход хэрэгтэй. */
       if (v != null) { any = true; s += v; }
     }
     return any ? s : null;
@@ -279,8 +232,6 @@ export function CashflowPlan({
     const NF = [FIN_XL_SECTION, FIN_XL_GROUP_FIELD, FIN_XL_GROUP3_FIELD];
     let prev: string[] = [];
     for (const r of sorted) {
-      /* ⚠️ 2026-09-29 (аудит 10): дугааргүй ажил жагсаалтад ОРОХГҮЙ — сарын мөр
-         түүнд холбогдох түлхүүргүй; `0` гэж оруулбал давхар `w0` түлхүүр үүснэ. */
       const wid = idOf(r[CF_MONTH.id]);
       if (wid == null) continue;
       const chain: string[] = [];
@@ -310,9 +261,6 @@ export function CashflowPlan({
   const [switching, setSwitching] = useState(false);
   /** Шилжүүлж болох уу — багц нь Хуваарийн хуудастай (`PKG_KEYS`); эс бөгөөс сарын мөнгө тооцоологдохгүй */
   const curPkgOk = cur != null && PKG_KEYS.has(pkgKeyOf(cur[CASHFLOW_NEW.fields.pkg]));
-  /* ⚠️ 2026-10-26 (хяналт): зөвхөн «Барилга угсралт» үе шатын гэрээ (`monthlyMoney.SWITCH_PHASE`-ийн ⚠️).
-     ⚠️ 2026-10-26 (хяналт №2): `uy_shat` ХООСОН бол ч хаалттай (`switchPhaseWhy`). Хуудасны тооцоо хоосон/дутуу
-     эсэхийг товч дарахад ШИНЭЭР уншина. */
   const curPhaseWhy = cur == null ? null : switchPhaseWhy(cur[CASHFLOW_NEW.fields.phase]);
   const curPhaseOk = cur != null && curPhaseWhy == null;
   const curSwitchable = cur != null && !curHuv && curPkgOk && curPhaseOk;
@@ -323,13 +271,10 @@ export function CashflowPlan({
     for (const r of curMonths) { const v = nOf(r[CF_MONTH.amount]); if (v != null) { any = true; t += v; } }
     return any ? t : null;
   })();
-  /* ⚠️ 2026-10-21: дахин ачаалалт хүлээж буй `pend` нь ХАДГАЛАГДСАН — засвар биш */
   const dirty = reloading ? 0 : Object.keys(pend).length;
   /** Хадгалж буй эсвэл хадгалсны дараах дахин ачаалалт — нүд/товч хаалттай */
   const locked = busy || reloading || switching;
 
-  /* ⚠️ Хадгалаагүй засвартай байхад таб хаахад хөтөч анхааруулна — `Finance`-ийн
-     IPC бөглөлттэй ижил зан (2026-09-23). Мөн эцэгт `onDirty` мэдэгдэнэ. */
   useEffect(() => {
     onDirty?.(dirty > 0);
     if (!dirty) return undefined;
@@ -345,13 +290,11 @@ export function CashflowPlan({
     setErr(null);
     setMsg(null);
     try {
-      /* Хувь → эцгийн ХО дүнгээр үржүүлж мөнгөн дүн — ⚠️ 2026-10-23: доор ШИНЭ уншилтаар (`recomputeFinanceAmounts`;
+      /* Хувь → эцгийн ХО дүнгээр үржүүлж мөнгөн дүн — 2026-10-23: доор ШИНЭ уншилтаар (`recomputeFinanceAmounts`;
          дугааргүй эцэг `Cashflow_ID`-гүй тул ХО дүн бичигдэхгүй — 2026-09-29-ний дүрэм хэвээр) */
       const mById = new Map<number, Row>();
       for (const r of months) mById.set(Number(r[oidField]), r);
 
-      /* ⚠️ 2026-09-24: тоо биш оролт («abc») урьд нь `null` болж ЧИМЭЭГҮЙ
-         арилдаг байв — хадгалахгүй, саруудыг нэрлэж алдаа заана. */
       const bad = Object.entries(pend)
         .filter(([, v]) => badNum(v))
         .map(([k]) => monthKey(mById.get(Number(k))?.[CF_MONTH.start]));
@@ -360,9 +303,6 @@ export function CashflowPlan({
         return;
       }
 
-      /* ⚠️ 2026-10-05: СӨРӨГ эсвэл 100-аас ИХ сарын хувь хадгалагдахгүй — урьд нь «-20» /
-         «250» шууд бичигдэж, `Cashflow_dun` сөрөг эсвэл гэрээний дүнгээс их болон S-муруйд
-         ордог байв. (ХО дүн `costOf`-оор > 0 тул хувь ≥ 0 бол дүн сөрөг гарахгүй.) */
       const outOfRange = Object.entries(pend)
         .filter(([, v]) => { const x = nOf(v); return x != null && (x < 0 || x > 100); })
         .map(([k]) => monthKey(mById.get(Number(k))?.[CF_MONTH.start]));
@@ -371,10 +311,6 @@ export function CashflowPlan({
         return;
       }
 
-      /* ⚠️ 2026-10-05: засагдсан ажлын нийлбэр 100% БИШ бол хадгалахын өмнө АСУУНА.
-         Дэлгэцийн анхааруулга (доорх `c.warn`) ХЭВЭЭР — гэхдээ тэр нь зөвхөн СОНГОСОН
-         ажлынхыг харуулдаг тул өөр ажлын дутуу/илүү нийлбэр чимээгүй хадгалагддаг байв.
-         Бүх сарыг цэвэрлэсэн (нийлбэр `null`) ажил асуухгүй — «бөглөөгүй» нь зөв төлөв. */
       const offIds = new Set<number>();
       for (const k of Object.keys(pend)) {
         const wid = idOf(mById.get(Number(k))?.[CF_MONTH.id]);
@@ -388,22 +324,12 @@ export function CashflowPlan({
           return `${sOf(w?.ajil_uilchilgee) || wid} — ${num(sumOf(wid) ?? 0, 2)}%`;
         });
         if (offIds.size > names.length) names.push('…');
-        /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх `askConfirm` — `window.confirm` «дахин бүү асуу»-гийн дараа
-           чимээгүй false буцааж «Хадгалах» юу ч хийхгүй болдог байв. */
         if (!(await askConfirm(
           tr('Сарын хувийн нийлбэр 100% биш ажил: {0}. Ийм хэвээр хадгалах уу?', names.join('; ')),
           { ok: tr('Ийм хэвээр хадгалах') },
         ))) return;
       }
 
-      /*
-       * ⚠️ 2026-10-23: «Cashflow» хүснэгтийн нийтлэлтэй (`Finance` FullTable) НЭГ зам — эцэг ба сарыг серверээс ШИНЭЭР
-       *    уншиж (`loadFinancePublishInputs`), өөр хэрэглэгчийн засвартай зөрвөл татгалзана (`FinancePublishConflict`),
-       *    `Cashflow_dun`-г ШИНЭ `ho_dun_geree`-ээр бодно (`recomputeFinanceAmounts`), бичихийн өмнө дахин шалгана
-       *    (`publishFinanceBatch`). Урьд нь хуудас нээх үеийн `works`/`months`-оор шууд `applyAll` хийдэг тул нөгөө
-       *    хэрэглэгчийн хувийг чимээгүй дарж, хуучин ХО дүнгээр мөнгөн дүн бичдэг байв.
-       * ⚠️ Хувийг АРИЛГАВАЛ дүн ч арилна (`null`), 0 болохгүй; гэрээний дүнгүй бол ч `null` — `amountOf`-ийн дүрэм.
-       */
       const upd = new Map<number, Row>(Object.entries(pend).map(([k, v]) => {
         const oid = Number(k);
         return [oid, { [oidField]: oid, [CF_MONTH.pct]: nOf(v) }];
@@ -439,7 +365,6 @@ export function CashflowPlan({
       const { n } = await publishFinanceBatch(financeInputs, () =>
         applyAll(CASHFLOW_NEW.url, oidField, { updates: [...upd.values()] }, { cap: 'finEdit' }));
       invalidate('CASHFLOW_NEW');
-      /* ⚠️ 2026-10-21: `setPend({})` БИШ — шинэ `months` ирэх хүртэл бичсэн утга харагдана (`pubFrom`) */
       setPubFrom(months);
       setMsg(noCost
         ? tr('{0} сар хадгалагдав · {1} сар гэрээний дүнгүй тул ₮ бичигдсэнгүй', n, noCost)
@@ -454,24 +379,12 @@ export function CashflowPlan({
 
   /**
    * «ГАРААР → ХУВААРЬ» ШИЛЖҮҮЛЭХ (2026-10-26) — гараар сарын мөрүүд УСТАНА, буцаахгүй → `askConfirm` (danger).
-   * ⚠️ Хадгалаагүй засвартай үед хаалттай: устгах мөрийн засвар илгээгдэлгүй алга болно.
-   * ⚠️ Хариу алдагдсан бол `switchToHuvaari` дахин уншиж баталдаг; батлагдаагүй бол алдаа нь «дахин ачаалж шалга».
-   */
-  /*
-   * ⚠️ 2026-10-26 (хяналт): ШИЛЖҮҮЛЭХИЙН ӨМНӨ багцын тооцоог ШИНЭЭР уншина (`previewSwitch`) — батлуулах цонх устах
-   *    гараар нийт ба гарах тооцоолсон нийтийг ХОЁУЛАНГ нь нэрлэнэ. Уншигдаагүй бол татгалзана; хоосон/дутуу бол ХОЁР
-   *    ДАХЬ тусгай анхааруулга асууж, зөвшөөрвөл л `allowIncomplete`. Урьд нь задаргаа 0 мөртэй үед гараар мөр
-   *    устаж, оронд нь юу ч гарахгүй байсан ч цонх энэ тухай хэлдэггүй байв.
    */
   const doSwitch = async () => {
-    /* ⚠️ 2026-10-26: сарын задаргаа уншигдаагүй (`monthsError`) бол ШИЛЖҮҮЛЭХГҮЙ — `curMonths` хоосон тул цонх «0 мөр (нийт —)
-       устана» гэж худал асууж, `switchToHuvaari` серверээс дахин уншаад БҮХ гараар мөрийг буцаалтгүй устгадаг байв
-       («Төсөл төлөвлөгөө биелэлт»-ийн ижил товч `ProjectPlanTable` үүгээр аль хэдийн хаагддаг) */
     if (!cur || sel == null || locked || dirty || !canSwitch || !curSwitchable || monthsError) return;
     const name = sOf(cur.ajil_uilchilgee) || String(sel);
     setErr(null);
     setMsg(null);
-    /* ⚠️ 2026-10-26 (хяналт №2): урсгал нь `monthlyMoney.confirmAndSwitch`-д — «Төсөл төлөвлөгөө биелэлт»-ийн товчтой НЭГ */
     try {
       const fl = await confirmAndSwitch({
         cashflowId: sel, name, pkg: pkgKeyOf(cur[CASHFLOW_NEW.fields.pkg]), phase: cur[CASHFLOW_NEW.fields.phase],
@@ -528,7 +441,6 @@ export function CashflowPlan({
                 {dot(it.id)}
                 <span className={c.pkg}>{sOf(it.row.bagts) || '—'}</span>
                 <span className={c.nm}>{sOf(it.row.ajil_uilchilgee)}</span>
-                {/* ⚠️ 2026-10-26: тооцоолсон эхтэй гэрээ — сарууд засагдахгүй */}
                 {huvIds.has(it.id) && <span className={c.pkg} title={tr('Сарын мөнгө Хуваарь-аас тооцоологдоно')}>{tr('Хуваарь')}</span>}
               </button>
             </li>
@@ -556,8 +468,6 @@ export function CashflowPlan({
             </div>
 
             {curHuv ? (
-              /* ⚠️ 2026-10-26: ТООЦООЛСОН сарууд — ЗӨВХӨН УНШИНА (толгойн ⚠️). Гараар мөр (үлдсэн бол ч) харагдахгүй,
-                 засагдахгүй. Хувь = дүн ÷ ХО дүн × 100 (`monthlyMoney`-ийн ⚠️); null ≠ 0 — сар алга бол шалтгааныг хэлнэ. */
               mm == null ? (
                 moneyQ.state === 'error'
                   ? <p className={c.warn}>{tr('Тооцоолсон сарын мөнгө уншигдсангүй. Хуудсыг дахин ачаална уу.')}</p>
@@ -594,7 +504,6 @@ export function CashflowPlan({
                       </tr>
                     </tfoot>
                   </table>
-                  {/* ⚠️ 2026-10-26 (хяналт): нэгжгүй/олдоогүй нүдтэй бол НИЙТ ДУТУУ — «ok» хүснэгт дутууг нуухгүй (null ≠ 0) */}
                   {(curMoney.noUnit > 0 || curMoney.noRow > 0) && (
                     <p className={c.warn}>
                       {tr('⚠ НИЙТ дутуу: багцын Хуваарийн {0} нүд нэгж өртөггүй, {1} нүд бөглөх хуудсанд олдоогүй тул ₮-д тооцогдсонгүй.', curMoney.noUnit, curMoney.noRow)}
@@ -607,12 +516,6 @@ export function CashflowPlan({
                 </>
               )
             ) : curMonths.length === 0 ? (
-              /* ⚠️ Огноогүй ажилд сарын мөр үүсдэггүй — шалтгааныг ХЭЛНЭ,
-                 эс бөгөөс хүн хоосон дэлгэц хараад алдаа гэж бодно.
-                 ⚠️ 2026-09-29 (аудит 10): ГУРВАН шалтгаан ялгана. Урьд нь үргэлж
-                 «хугацаа бөглөгдөөгүй» гэдэг байв — (1) сарын задаргаа УНШИГДААГҮЙ
-                 (`monthsError`) үед ч, (2) огноо БӨГЛӨГДСӨН атлаа сар үүсээгүй
-                 (огноотой нэмсэн мөр / порталаас огноо засаагүй) үед ч. */
               monthsError ? (
                 <p className={c.warn}>
                   {tr('Сарын задаргаа уншигдсангүй. Хуудсыг дахин ачаална уу.')}
@@ -645,26 +548,15 @@ export function CashflowPlan({
                         <tr key={oid} className={pct == null ? c.rowNone : c.rowDone}>
                           <td>{monthKey(r[CF_MONTH.start])}</td>
                           <td className={c.r}>
-                            {/* ⚠️ 2026-09-25: `finEdit`-гүй хүнд `readOnly` — урьд нь зөвхөн
-                                «Хадгалах» хаалттай байж, нүд засагдан `pend` өсөж, хэзээ ч
-                                хадгалж чадахгүй засварт beforeunload/таб солих баталгаа гардаг байв. */}
                             <input
                               className={c.inp}
                               value={raw}
                               inputMode="decimal"
-                              /* ⚠️ 2026-09-29 (аудит 10): хадгалж байх үед (`busy`) ч `readOnly` —
-                                 `save` нь `await applyAll`-ийн дараа `pend`-ийг бүхэлд нь
-                                 цэвэрлэдэг тул тэр хооронд бичсэн хувь илгээгдэлгүй арилж,
-                                 «хадгалагдав» гэж худал мэдэгддэг байв. */
-                              /* ⚠️ 2026-10-21: дахин ачаалалт хүлээх үед ч (`locked`) */
                               readOnly={!canEdit || locked}
                               aria-label={tr('{0}-ны хувь', monthKey(r[CF_MONTH.start]))}
                               onChange={(e) => {
                                 if (!canEdit || locked) return;
                                 const v = e.target.value;
-                                /* ⚠️ 2026-09-25: анхны утга руугаа БУЦВАЛ засвар биш — `pend`-ээс
-                                   хасна. Урьд нь үлдэж, «Хадгалах (N)» ба таб солих баталгаа
-                                   өөрчлөлтгүй ажилд ч гардаг байв (Finance-ийн `onEdit`-тэй ижил). */
                                 const orig = r[CF_MONTH.pct] == null ? '' : String(r[CF_MONTH.pct]);
                                 setPend((p) => {
                                   const nx = { ...p };
@@ -675,7 +567,6 @@ export function CashflowPlan({
                               }}
                             />
                           </td>
-                          {/* ⚠️ Дүн нь ЗӨВХӨН харагдац — хадгалахдаа дахин бодогдоно */}
                           <td className={c.r}>{pct == null ? '' : curCost == null ? '—' : mnt((curCost * pct) / 100)}</td>
                         </tr>
                       );
@@ -691,8 +582,6 @@ export function CashflowPlan({
                     </tr>
                   </tfoot>
                 </table>
-                {/* ⚠️ 100%-иас зөрсөн бол ЗААВАЛ хэлнэ: дутуу төлөвлөгөө нь
-                    S-муруйг чимээгүй тэгшитгэдэг. */}
                 {curSum != null && fillOf(curSum) === 'part' && (
                   <p className={c.warn}>
                     {tr('⚠ Нийлбэр 100% биш ({0}%) — үлдэгдэл нь S-муруйд орохгүй.', num(curSum, 2))}
@@ -708,8 +597,6 @@ export function CashflowPlan({
           </>
         )}
 
-        {/* ⚠️ 2026-10-26 (хяналт): `MonthlyMoney.issues` (нэгжгүй/олдоогүй нүд, хуваалцсан багц, уншигдаагүй хуудас) — урьд
-            нь хаана ч харагддаггүй байв. 'huvaari' гэрээ сонгосон үед л (гараар замын дэлгэц ӨӨРЧЛӨГДӨХГҮЙ). */}
         {curHuv && mm != null && mm.issues.length > 0 && (
           <details className={c.warn}>
             <summary>{tr('Тооцоолсон сарын мөнгөний анхааруулга: {0}', mm.issues.length)}</summary>
@@ -718,19 +605,11 @@ export function CashflowPlan({
         )}
 
         <div className={c.bar}>
-          {/* ⚠️ 2026-10-26 (аудит): дэлгэц уншигч хадгалалтын амжилт/алдааг зарлана (бусад модультай ижил) */}
           {err && <span className={c.err} role="alert">{err}</span>}
           {msg && <span className={c.ok} role="status">{msg}</span>}
           {/*
             * ЦЭВЭРЛЭХ — сонгосон ажлын БҮХ сарын хувийг хоослоно.
-            *
-            * ⚠️ ШУУД БИЧИХГҮЙ: «Хадгалах» дармагц л үйлчилнэ. Ингэснээр буруу
-            * дарсан хүн зүгээр л табаа солиод буцаж чадна — нэг товшилтоор
-            * 28 сарын ажил алга болохгүй.
-            * ⚠️ `null` бичнэ, 0 БИШ: «бөглөөгүй» ба «энэ сард гүйцэтгэл
-            * байхгүй» хоёр ӨӨР мэдэгдэл.
             */}
-          {/* ⚠️ 2026-10-26: «Хуваарь руу шилжүүлэх» — `cfSwitch` эрхтэй, 'garaar' гэрээ, багц нь хуудастай үед л */}
           {canSwitch && cur != null && !curHuv && (
             <button
               type="button"
@@ -755,9 +634,6 @@ export function CashflowPlan({
               title={tr('Энэ ажлын бүх сарын хувийг хоослоно')}
               onClick={() => setPend((p) => {
                 const nx = { ...p };
-                /* ⚠️ 2026-09-25: АЛЬ ХЭДИЙН хоосон сарыг «засвар» гэж тэмдэглэхгүй —
-                   урьд нь бүгдийг `''` болгож, өөрчлөгдөөгүй сарууд ч «Хадгалах (N)»-д
-                   тоологдож, илгээгддэг байв. */
                 for (const r of curMonths) {
                   const oid = Number(r[oidField]);
                   const orig = r[CF_MONTH.pct] == null ? '' : String(r[CF_MONTH.pct]);

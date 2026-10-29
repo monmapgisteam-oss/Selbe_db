@@ -3,7 +3,6 @@
 Сэлбэ төслийн орон зайн хяналтын систем (Next.js 15, `output: 'export'` статик сайт → GitHub Pages).
 
 - Систем хэрхэн ажилладаг (өгөгдөл, эрх, харагдац): [`docs/SYSTEM.md`](docs/SYSTEM.md)
-- Ажлын дүрэм, байнгын занга (ArcGIS, Enterprise, i18n): [`CLAUDE.md`](CLAUDE.md)
 
 ## Хөгжүүлэлтийн орчин
 

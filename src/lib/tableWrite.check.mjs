@@ -1,9 +1,6 @@
 /**
  * ХҮСНЭГТ РҮҮ БИЧИХ (`tableWrite.applyAll`) — ЗАН ТӨЛВИЙН ШАЛГУУР, хиймэл `fetch`-тэй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/tableWrite.check.mjs
- *
- * ⚠️ 2026-10-09: ЖИНХЭНЭ модуль (`tableWrite.ts` → `query.arcgisPost`) — хуулбар логик биш.
- *    Сүлжээ огт хэрэглэхгүй: `globalThis.fetch`-ийг түр сольж, явсан биеийг барина.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/tableWrite.check.mjs
  *
  * Хамгаалж буй алдаа:
  *   1. «Хадгалагдлаа» гэж ХУДЛАА хэлэх — ArcGIS мөр бүрийн үр дүнг тусад нь буцаадаг;

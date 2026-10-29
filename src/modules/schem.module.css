@@ -1,16 +1,10 @@
 /* «Үйл ажиллагааны схем» — төслийн мөчлөгийн зураглал.
- *
- * ⚠️ ХАРАГДАЦ БҮР СТАЙЛАА ТУСДАА барина (2026-08-25-ны шийдвэр). Дизайны хэл
- * нь бусадтай нэг: хавтгай гадаргуу, 1px hairline, өнгө нь ЗӨВХӨН утга заана.
- * Чимэглэлийн градиент, сүүдэр байхгүй.
  */
 
 .frame {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* ⚠️ `height: 100%` БИШ — эцэг (`shell .suit`) нь `overflow: auto` тул
-     100% нь өөрөө өөрийгөө заасан дугуй хамаарал болж хүрээ агшина. */
   height: calc(100dvh - var(--head, 56px));
   min-height: 0;
   padding: 12px;
@@ -28,7 +22,6 @@
   padding: 8px 12px;
   background: var(--surface);
   border: 1px solid var(--line);
-  /* ⚠️ 2026-10-23: Environment — карт/самбар 12px булан, --line, --surface, сүүдэргүй */
   border-radius: var(--r-lg);
 }
 .title { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -41,7 +34,6 @@
   font-size: 12px;
   color: var(--ink-2);
 }
-/* ⚠️ 2026-10-23: Environment `.pe-field` — 32px · булан 7px · --line-strong · bg --bg · 12.5px */
 .select {
   font: inherit;
   font-size: 12.5px;
@@ -58,8 +50,6 @@
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent);
 }
 
-/* ⚠️ УНАСАН ЭХ СУРВАЛЖИЙГ НЭРЛЭЖ ХЭЛНЭ. Гурван зураастай схем тайлбаргүй бол
-   «төсөлд өгөгдөл алга» гэж уншигдана — буруу тооноос ч дор. */
 .warnBar {
   flex: none;
   margin: 0;
@@ -86,11 +76,6 @@
 .legBack { border-top-color: var(--bad); border-top-style: dashed; }
 .legDot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 
-/**
- * ⚠️ ЗУРГИЙГ ТӨВД БАЙРЛУУЛНА. Урсгалын схем нь өргөн (6 багана), намхан
- * (4 мөр) тул өргөнөөрөө багтахад доор нь зай үлддэг. Дээд зүүн буланд
- * наавал «хагас ачаалагдсан» мэт харагдана.
- */
 .canvas {
   flex: 1;
   min-height: 0;
@@ -132,9 +117,6 @@
   stroke-dasharray: 5 4;
   vector-effect: non-scaling-stroke;
 }
-/* ⚠️ 2026-10-01: шошго замынхаа дээр/хажууд (`schem.edgeLabelAt`) — дэвсгэрийн өнгөтэй
-   хүрээ (halo) нь шугамтай давхцахад үсгийг уншигдахуйц үлдээнэ. `text-anchor` нь
-   JSX-ийн style-оор ирнэ (энэ анхдагчийг дарна). */
 .edgeLab {
   font-size: 11px;
   fill: var(--bad-ink);
@@ -162,10 +144,6 @@
   border-left-color: var(--line);
   border-radius: var(--r);
   cursor: pointer;
-  /* ⚠️ `overflow: hidden` ХАСАВ: тэмдэглэл бүхий зангилаанд доод мөр тасарч,
-     «Төсвийн жингийн 58% л бүртгэгдсэн» гэсэн чухал анхааруулга нүднээс
-     алга болж байв. Өндөр нь агуулгаар тэлнэ (`min-height`) — торны `gapY`
-     нь 44px тул хэдэн пиксел илүү гарсан ч дараагийн мөртэй давхарлахгүй. */
 }
 .node:disabled { cursor: default; opacity: 0.75; }
 .node:enabled:hover { border-color: var(--line-strong); border-left-color: inherit; }
@@ -197,12 +175,6 @@
 .mNone { color: var(--ink-3); font-style: italic; }
 
 .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-/**
- * ⚠️ ЭРҮҮЛ БАЙДАЛ нь ӨНГӨ + ҮГ хоёулаа. Зөвхөн өнгөөр өгвөл өнгө сохор хүн
- * ба хар цагаан хэвлэлтэд бүрэн алдагдана. Ялангуяа «Мэдээлэлгүй» нь ногоонтой
- * андуурагдвал БҮРЭН тасалдал «эрүүл төсөл» мэт харагдана.
- */
-/* ⚠️ 2026-10-23: Environment badge — булан 6px */
 .tag {
   padding: 1px 6px;
   font-size: 11px;
@@ -250,13 +222,7 @@
 .railOn i { background: var(--hue); }
 .railSep { color: var(--ink-3); font-size: 11px; }
 
-/* ══ Анхааруулгатай карт — БҮХЭЛДЭЭ ялгарна ══
-   ⚠️ 2026-09-02, хэрэглэгч: «анхааруулгатай нь ялгагдахгүй байна». Карт бүр
-   үр дүнгийн өнгөт мөртэй болсноор зүүн ирмэгийн 2px зураас ганцаараа
-   анхааруулгыг ялгахаа больсон. Одоо warn/bad карт бүтэн өнгөт хүрээ + бүдэг
-   өнгөт дэвсгэртэй — зурган дээр нэг харцаар «хаана асуудал байна» уншигдана.
-   ⚠️ hover-ийн `border-color: var(--line-strong)` (156-р мөр) эдгээрийг
-   дарж болохгүй тул hover-т өнгөө хадгална. */
+/* ══ Анхааруулгатай карт — БҮХЭЛДЭЭ ялгарна ══ */
 .aWarn {
   border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
   border-left-color: var(--warn);
@@ -267,10 +233,6 @@
   border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
   border-left-color: var(--bad);
   background: color-mix(in srgb, var(--bad) 9%, var(--surface));
-  /* ⚠️ УЛААН нь БАГА ЗЭРЭГ АНИВЧИНА (2026-09-02, хэрэглэгчийн хүсэлт) — улаан
-     туяа аажим тэлж замхарна. Зөөлөн, 2.4с — эрч ихэсгэвэл 24 картын дунд
-     тасралтгүй гялалзаад уншихад саад болно. Шар (warn) анивчихгүй: анивчилт
-     нь ЗӨВХӨН хамгийн ноцтойг дуудах ёстой, бүгд анивчвал юу ч ялгарахгүй. */
   animation: schemPulse 2.4s ease-out infinite;
 }
 .aBad:enabled:hover { border-color: var(--bad); }
@@ -279,13 +241,11 @@
   60% { box-shadow: 0 0 0 7px transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
-/* ⚠️ Хөдөлгөөн багасгах тохиргоотой хэрэглэгчид анивчилт таагүй — зогсооно.
-   Өнгөт хүрээ, дэвсгэр, «⚠ N» шошго нь дуудлагыг хэвээр хэлнэ. */
 @media (prefers-reduced-motion: reduce) {
   .aBad { animation: none; }
 }
 
-/* Толгойн «⚠ N» — өнгө нь `.hWarn`/`.hBad`-аас (хүрээ + бэх) ирнэ */
+/* Толгойн « N» — өнгө нь `.hWarn`/`.hBad`-аас (хүрээ + бэх) ирнэ */
 .aBadge {
   margin-left: auto;
   flex: none;
@@ -298,11 +258,7 @@
   white-space: nowrap;
 }
 
-/* ══ Картын ҮР ДҮН ══
-   ⚠️ КАРТ БҮРД гарна — асуудалгүй ч гэсэн. Урьд нь зөвхөн асуудалтай картад
-   дохио гардаг байсан тул «шалгаад хэвийн» ба «огт тооцоологдоогүй» хоёр
-   ижилхэн хоосон харагддаг байв (2026-09-02). Өнгө нь `.hGood/.hWarn/.hBad/
-   .hNone`-оос ирнэ — тэдгээр нь ХҮРЭЭ ба БЭХИЙГ өгдөг. */
+/* ══ Картын ҮР ДҮН ══ */
 .stat {
   display: flex;
   align-items: baseline;
@@ -329,10 +285,7 @@
   flex: none;
 }
 
-/* ══ Процессын анхааруулга (карт дээр) ══
-   ⚠️ ӨНГӨ + ҮГ хоёулаа. Зөвхөн улаан хүрээ өгвөл «энд ямар нэг юм болжээ»
-   гэдгийг л хэлнэ; юу болсныг мэдэхийн тулд картыг дарах шаардлагатай байв
-   (2026-09-02-ны хүсэлт: «процессын үед ямар alert байгааг харуулна»). */
+/* ══ Процессын анхааруулга (карт дээр) ══ */
 .alerts {
   display: flex;
   flex-direction: column;
@@ -340,9 +293,6 @@
   margin-top: 3px;
   padding-top: 3px;
   border-top: 1px dashed var(--line);
-  /* ⚠️ Картыг торноосоо хальгахаас сэргийлнэ — хальсан карт нь ДООРХ эгнээтэй
-     давхцаж, хоёр процессын текст бие бие дээрээ буудаг (2026-09-02). Урт
-     жагсаалт нь картыг дарахад нээгдэх самбарт бүтнээрээ байна. */
   max-height: 46px;
   overflow: hidden;
 }
@@ -352,8 +302,6 @@
   gap: 4px;
   font-size: 11px;
   line-height: 1.28;
-  /* ⚠️ Өнгө нь `.hWarn`/`.hBad`-аас ирнэ — тэдгээр нь хүрээ ба БЭХИЙГ өгдөг
-     тул энд хүрээг нь буцааж хасна (карт дотор хайрцаг үүсгэхгүй). */
   border: 0;
 }
 /* Цэг нь ӨНГИЙГ давхар кодлоно — текст саарал болж уншигдвал ч ялгарна */
@@ -365,14 +313,12 @@
   border-radius: 50%;
   background: currentColor;
 }
-/* ⚠️ ХОЁР МӨРӨӨР тайрна — бүтэн текст нь hover-ийн бичээст ба самбарт */
 .alertText {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-/* ⚠️ Тасалсан тоог ИЛ үлдээнэ — эс бөгөөс хоёрыг «бүгд» гэж уншина */
 .alertMore { font-size: 11px; color: var(--ink-3); }
 
 /* Толгойн нийт тоо — «схемд анхаарах зүйл байна уу» гэдгийн нэг харцын хариу */
@@ -387,9 +333,7 @@
   border-radius: var(--r);
 }
 
-/* ── Тэмдэглэл ──
-   ⚠️ ХОЁР МӨР ЗӨВШӨӨРНӨ. Нэг мөрөнд тайрахад «Төсвийн жингийн 58% л
-   бүртгэгдс…» гэж таслагдаж, тоо нь яагаад бүрэн бус болохыг хэлэхээ болино. */
+/* ── Тэмдэглэл ── */
 .note {
   margin: 1px 0 0;
   font-size: 11px;
@@ -397,9 +341,7 @@
   color: var(--warn-ink);
 }
 
-/* ── Босоо жагсаалт (нарийн дэлгэц) ──
-   ⚠️ 40% масштабтай уншигдахгүй зураг үзүүлэхийн оронд бүтцээ хадгалсан
-   жагсаалт болно. Товчнууд ЯГ ижил, сум нь «↓». */
+/* ── Босоо жагсаалт (нарийн дэлгэц) ── */
 .stack { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
 .stackNode { position: static; width: 100%; }
 .stackArrow { text-align: center; color: var(--ink-3); font-size: 12px; line-height: 1; }
@@ -417,10 +359,7 @@
   border: 0;
 }
 
-/* ══════════════ Дэлгэрэнгүй самбар ══════════════
-   ⚠️ 2026-09-01: зангилаа дарахад ХАРАГДАЦ РУУ ҮСРЭХИЙН оронд энэ самбар
-   нээгдэнэ. Зорилго нь «системийг нэг бүрчлэн хянах» — тоо «—» болоход
-   шалтгааныг нь тэндээ харах. Шилжих товч самбарын ЁРООЛД. */
+/* ══════════════ Дэлгэрэнгүй самбар ══════════════ */
 
 /* Зураг ба самбар — НЭГ мөрөнд. `.canvas` нь `flex: 1` тул самбар нэмэгдэхэд
    зураг агшиж, масштаб нь `ResizeObserver`-оор өөрөө тохирно. */
@@ -439,7 +378,6 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px 12px;
-  /* ⚠️ Самбар нь БИЕДЭЭ гүйнэ, хуудсыг гүйлгэхгүй — схем үргэлж харагдана */
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -460,7 +398,6 @@
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
 }
-/* ⚠️ 2026-10-23: Environment — жижиг дүрсэн товч 28px дөрвөлжин, булан 6px */
 .xBtn {
   display: inline-grid;
   place-items: center;
@@ -478,8 +415,6 @@
 }
 .xBtn:hover { color: var(--ink); background: var(--surface-2); }
 
-/* ⚠️ ЭХ СУРВАЛЖИЙН ТӨЛӨВ. «—» гэсэн тоо нь үйлчилгээ унаснаас уу, эсвэл
-   үнэхээр өгөгдөл байхгүйгээс үү — үүнгүйгээр хоёул ЯГ адилхан харагдана. */
 .pSrc { display: flex; flex-wrap: wrap; gap: 4px; }
 .srcTag {
   padding: 1px 6px;
@@ -520,8 +455,6 @@
   border-bottom: 1px solid var(--line);
 }
 
-/* ⚠️ Хүснэгт бүр ӨӨРИЙН гүйлтийн савтай — эс тэгвээс өргөн хүснэгт самбарыг
-   тэлж, БҮХ хуудсанд хэвтээ гүйлт үүсгэнэ. */
 .pTableWrap { overflow-x: auto; max-width: 100%; }
 .pTable {
   border-collapse: collapse;
@@ -534,7 +467,6 @@
   text-align: left;
   border-bottom: 1px solid var(--line);
 }
-/* ⚠️ 2026-10-23: Environment `.pe-table` толгой — 10px uppercase ink-3 */
 .pTable th {
   color: var(--ink-3);
   font-size: 11px;
@@ -547,8 +479,6 @@
 .pTable td { color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
 .pIssues { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-/* ⚠️ Өнгө ГАНЦААРАА биш — хүрээ + текстийн өнгө хоёулаа. Хар цагаан хэвлэлт
-   ба өнгө сохор хэрэглэгчид мөр нь өөрөө утгаа хэлнэ. */
 .pIssue {
   padding: 4px 8px;
   font-size: 11px;
@@ -559,7 +489,6 @@
   border-radius: var(--r-sm);
 }
 
-/* ⚠️ 2026-10-23: Environment `.pe-primary` — 32px · булан 8px · 12px/600 · --workspace-accent */
 .goBtn {
   margin-top: auto;
   flex: none;
@@ -580,51 +509,28 @@
 /* Сонгогдсон зангилаа — самбар алийг нь үзүүлж байгаа нь тодорхой байна */
 .sel { outline: 2px solid var(--hue); outline-offset: 1px; }
 
-/* ⚠️ НАРИЙН ДЭЛГЭЦ: самбар нь зурган ДООР бүтэн өргөнөөр. 340px багана нь
-   700px цонхонд зургийг уншигдахааргүй болтол шахна. */
 @media (max-width: 900px) {
   .body { flex-direction: column; }
   .panel { width: auto; max-height: 55%; }
 }
 
-/* ══════════════ «Дэлгэрэнгүй» горим — дэд алхмууд ══════════════
-   ⚠️ 2026-09-01, хэрэглэгч: «схем хэт ерөнхий байна». Зангилаа бүр өөрийн
-   ЖИНХЭНЭ дэд алхмуудыг ил гаргана.
+/* ══════════════ «Дэлгэрэнгүй» горим — дэд алхмууд ══════════════ */
 
-   ⚠️ ЭНД ТОГТООСОН ӨНДРҮҮД `schemDetail.ts`-ийн `STEP_H`/`STEP_HEAD_H`/
-   `STEP_NOTE_H`-ТЭЙ ЯГ ТЭНЦҮҮ БАЙХ ЁСТОЙ. `layout()` мөрийн өндрийг тэдгээр
-   тоогоор урьдчилан тооцдог — зөрвөл задарсан зангилаа доод мөрөө ДАРНА. */
 
-/* ⚠️ 2026-10-26: «Дэлгэрэнгүй / Ерөнхий» сэлгэгч нь нийтлэг `Segmented` (components/Switch.tsx) болсон */
-
-/* ── Нарийн схемийн карт ──
-   ⚠️ 24 карт нэг дэлгэцэнд багтах ёстой тул үсэг жижиг, зай нягт. Гэхдээ
-   11px-ээс доош БУУЛГААГҮЙ — тэрнээс жижиг бол масштаб 0.8 болоход
-   уншигдахаа болино. */
+/* ── Нарийн схемийн карт ── */
 .fineNode { gap: 4px; padding: 8px 10px 9px; }
 .fineNode .nodeTitle { font-size: 11px; }
 .fineNode .metric { font-size: 11px; }
 .fineNode .tag { font-size: 11px; padding: 0 5px; }
 .fineNode .note { font-size: 11px; }
-/* ⚠️ Нарийн картад тодорхойлолт аль хэдийн 5 мөр эзэлдэг тул анхааруулгыг
-   НЭГ мөрөөр тайрна — эс бөгөөс карт торны өндрөөс хоёр дахин тэлж, доорх
-   эгнээ рүү дүрэгдэнэ. Бүтэн текст нь hover ба самбарт хэвээр. */
 .fineNode .alertText { -webkit-line-clamp: 1; }
 .fineNode .alert { font-size: 11px; }
 
-/* ⚠️ ТОДОРХОЙЛОЛТ КАРТ ДЭЭР. Урьд нь зөвхөн hover-ийн бичээст байсан тул
-   «Тайлагнасан блок гэж юу вэ» гэсэн асуулт хариултгүй үлддэг байв — хулгана
-   аваачихгүй бол мэдэх арга байхгүй, хүрэлтийн дэлгэц дээр огт харагдахгүй.
-   Гурван мөрөөр тайрна; бүтэн текст нь hover-т хэвээр. */
 .nodeDesc {
   font-size: 11px;
   line-height: 1.32;
   color: var(--ink-3);
   display: -webkit-box;
-  /* ⚠️ ГУРВАН мөр (5 байсныг 2026-09-02-нд бууруулав): карт бүр үр дүн +
-     анхааруулгатай болсноор 5 мөрт тодорхойлолт картыг торны алхмаас
-     хэтрүүлж, доорх карттай давхцуулж байв. `GEO_FINE`-ийн өндрийн тооцоо
-     ЭНЭ гурван мөр дээр тогтдог — өөрчилбөл хамт шинэчил. */
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;

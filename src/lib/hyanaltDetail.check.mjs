@@ -1,11 +1,6 @@
 /**
  * ХЯНАГЧИЙН ХАРАГДАЦ = БАТЛАЛТ — хуучин илгээлтийн давтамжийг ижил дүрмээр нөхнө (2026-10-04).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/hyanaltDetail.check.mjs
- *
- * ⚠️ REGRESSION: `hyanaltStore.archiveSubmission` (батлалт) нь `rowOcc`-гүй илгээлтэд
- *    `needsFrameOcc → withFrameOcc`-оор давтамжийг СУУРЬ жаазаас нөхөж архивт бичдэг болсон
- *    атлаа хянагчийн харагдац (`hyanaltDetail.loadStaged`) ба бөглөх хуудасны тодруулга
- *    (`useFlow`) нөхдөггүй байв — хянагч ХАРААГҮЙ нүд батлагдана. Эх кодын шалгуур (сүлжээгүй).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/hyanaltDetail.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -34,7 +29,7 @@ const g = src('../modules/Guitsetgel.tsx');
 assert.ok(g.includes('data.unmoved'), 'Guitsetgel: тулгагдаагүй нүдний тоог харуулна');
 console.log('✅ hyanaltDetail · useFlow — батлалттай ижил withFrameOcc · unmoved харагдана');
 
-/* ── ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ НЭМЭЛТ (`Submission.negative`) — хянагч БҮХ шатанд ИЛ харж, батлах/дээш илгээх
+/* ── 2026-10-22 (аудит): НИЙТ СӨРӨГ НЭМЭЛТ (`Submission.negative`) — хянагч БҮХ шатанд ИЛ харж, батлах/дээш илгээх
       товч хаагдана (урьд нь зөвхөн 6-р шатны архивлалт татгалздаг байв); гүйцэтгэгчээс илгээхээс ӨМНӨ асууна.
       `unmoved`-ийн тайлбар ХОЁР шалтгааныг (тулгалт · тоо биш нэмэлт) нэрлэнэ. Эх кодын шалгуур (сүлжээгүй). ── */
 {
@@ -45,7 +40,6 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
   assert.ok(G.includes('(data.negative ?? 0) > 0 && ('), 'Submitted: сөрөг нүдийг ИЛ анхааруулна');
   assert.ok(G.includes('onNegative={(n, cells) => { setNegative(n); setNegCells(cells ?? []); }}'), 'Item: Submitted-ээс negative ба нэр авна');
   assert.ok(G.includes('const negBlocks = (negative ?? 0) > 0;'), 'Item: negBlocks');
-  /* ⚠️ 2026-10-23 (UX аудит R1): `selfBlocked` (өөрийгөө батлах хориг) урьдчилсан хаалт нэмэгдэж болно */
   const gates = G.match(/disabled=\{busy \|\| (?:selfBlocked \|\| )?lackBlocks \|\| changes == null \|\| unmovedBlocks \|\| negBlocks \|\| \(changes\.length > 0 && !allOk\)\}/g) ?? [];
   assert.equal(gates.length, 2, 'батлах ба «дээш илгээх» ХОЁУЛАА negBlocks-оор хаагдана');
   assert.ok(!/unmovedBlocks \|\| \(changes\.length/.test(G), 'negBlocks-гүй батлах товч үлдсэн');
@@ -66,25 +60,20 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
   assert.ok(neg > 0, 'FillNew.publish: сөрөг нийтийн шалгалт алга');
   assert.ok(neg > pub.indexOf('payload.rowOcc = rowOccOf('), 'нэгтгэсэн (эцсийн) payload-ыг шалгана');
   assert.ok(neg < pub.indexOf('saveInflight(pkg.key') && neg < pub.indexOf('await saveSubmission('), 'хадгалалтаас ӨМНӨ');
-  /* ⚠️ 2026-10-22 (хэрэглэгч): асуухгүй — ХААНА (сөрөг нүдтэй илгээлт хянагчид хүрэхгүй) */
-  /* ⚠️ 2026-10-23 (UX аудит F4): мессеж наалддаг (`stick…`) болж болно — хаалт хэвээр эсэхийг л шалгана */
   assert.match(pub, /if \(ovNeg\.negative > 0\) \{\s*(?:\/\*[\s\S]*?\*\/\s*)?(?:warn|stick\w*)\(tr\(/, 'сөрөг нүдтэй бол илгээхгүй (хаана)');
   {
     const blk = pub.slice(neg, pub.indexOf('return;', neg));
     assert.ok(!blk.includes('window.confirm') && !blk.includes('askConfirm('), '«Тэгсэн ч илгээх үү» асуулт үлдсэн — хаах ёстой');
   }
   const rowsSrc = src('../modules/sheet/fill/FillRows.tsx');
-  /* ⚠️ 2026-10-22 (аудит): илгээсэн (буцаагдсан) сөрөг нүд ч (`negSent`) улаан */
   assert.ok(rowsSrc.includes('const negNow = dirty && negTot != null') && rowsSrc.includes('(negNow || negSent ? " negTot" : "")'),
     'FillRows: бичих агшинд ба илгээсэн сөрөг нийтийг улаанаар тэмдэглэнэ');
-  /* ⚠️ 2026-10-22: эцэг бүлгийн №-ээр зам + илгээсэн утга (`describeNegCells`) — `describeUnmoved` (rowKeys шошго) биш;
-     аудит: нүд бүрт ЯГ бичих утга (`describeNegFixes` — нэрийг `describeNegCells`-ээс) */
   assert.ok(pub.includes('describeNegFixes(ovNeg, sc, pend2, fillMode)'), 'сөрөг нүдийг замаар нэрлэж, ЯГ бичих утгыг хэлнэ');
   assert.ok(det.includes('describeNegCells(ov.negKeys, ov.rows, sc.bld, ov.negInc)'), 'hyanaltDetail: negCells');
   assert.ok(G.includes('data.negCells!.join') && G.includes("negCells.join('; ')"), 'Guitsetgel: сөрөг нүдний нэр анхааруулга ба товчны шалтгаанд');
   console.log('✅ Guitsetgel · FillNew — сөрөг нийт бүх шатанд хаагдана, нүдийг нэрлэнэ; илгээлт ХААГДАНА, бичих агшинд улаан; unmoved хоёр шалтгаантай');
 
-  /* ── ⚠️ 2026-10-22 (аудит, гүйцэтгэлийн урсгал): №2 «Өөрчлөлтгүй дахин илгээх» ЯГ ижил шалгалттай · №3 ЯГ бичих утга
+  /* ── 2026-10-22 (аудит, гүйцэтгэлийн урсгал): №2 «Өөрчлөлтгүй дахин илгээх» ЯГ ижил шалгалттай · №3 ЯГ бичих утга
         («хоосон үлдээ» БИШ) · №4 «Шинэчлэгдсэн огноо» ухрахгүй. Эх кодын гэрээ — цэвэр логик нь `sheetFrame.check` 9f-3/9f-4. ── */
   {
     /* №2 — `resendAsIs`: давхарлалт (сөрөг · тулгагдаагүй) `submitForReview`-ээс ӨМНӨ, асуултаас ч ӨМНӨ */
@@ -97,7 +86,6 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
     const negAt = rs.indexOf('if (ovChk.negative > 0) {');
     const unmAt = rs.indexOf('if (ovChk.unmoved > 0) {');
     assert.ok(negAt > chk && unmAt > chk && negAt < rsEnd && unmAt < rsEnd, 'сөрөг ба тулгагдаагүй нүдээр хаана');
-    /* ⚠️ 2026-10-23 (UX аудит X1): асуулт апп доторх `askConfirm` болж болно (`window.confirm` хуучин) — аль нь ч шалгалтын ДАРАА */
     const cfAt = rs.indexOf('askConfirm(') >= 0 ? rs.indexOf('askConfirm(') : rs.indexOf('window.confirm(');
     assert.ok(cfAt > unmAt && cfAt < rsEnd, 'асуулт шалгалтын ДАРАА');
     assert.ok(rs.slice(0, rsEnd).includes('describeNegFixes(ovChk, sc, {}, fillMode)'), 'ноорог алга — илгээсний эсрэг тоо');
@@ -144,7 +132,6 @@ Object.assign(process.env, {
 });
 register('../../tools/ts-alias-hooks.mjs', import.meta.url);
 
-/* ⚠️ 2026-10-26: нооргийн хүснэгт Enterprise-ийн БОДИТ хаягаар шууд (`${GUITS}/191`, порталын хайлтгүй) */
 const TABLE_TAIL = '/Guitsetgel_talbe/FeatureServer/191';
 const state = { sub: null, failRead: false, sheets: new Map(), reads: [], unexpected: [] };
 globalThis.__hyanaltDetailFeatureLayer = class {
@@ -281,8 +268,6 @@ try {
   assert.equal(staged.pkgKey, 'b1_12f');
   assert.equal(staged.filled[0].cells[0], 37);
 
-  /* ⚠️ 2026-10-22 (аудит): НИЙТ СӨРӨГ нүд — `Change.neg` (хянагч ногоон болгохгүй, `Guitsetgel.toggleOk`);
-     «Шинэчлэгдсэн огноо» нь архивт бичигдэх огноогоор (`laterAsOf`) — хуучин өдрийн илгээлт ухраахгүй */
   submission({ mode: 'inc', cells: [['44:0', '-20']] }, false);
   const negSub = await loadSubmission('Багц 1', 44);
   assert.equal(negSub.negative, 1, '12 − 20 сөрөг');

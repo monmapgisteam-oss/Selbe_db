@@ -1,5 +1,4 @@
-/* ENTERPRISE НЭВТРЭЛТИЙН МАЯГТ (2026-10-09) — `EntSignIn.tsx`. Өнгө бүгд глобал токен.
-   ⚠️ 2026-10-23: Environment — оролт .pe-field (32px, 7px), товч .pe-primary (32px, 8px, 12px/600). */
+/* ENTERPRISE НЭВТРЭЛТИЙН МАЯГТ (2026-10-09) — `EntSignIn.tsx`. Өнгө бүгд глобал токен. */
 
 .form { display: flex; flex-direction: column; gap: 6px; }
 .form.compact { flex-direction: row; flex-wrap: wrap; align-items: center; }

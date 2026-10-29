@@ -1,21 +1,6 @@
 /**
  * ЭРХИЙН E2E ШАЛГУУРЫН ХУУРАМЧ ArcGIS — `aclE2E*.check.mjs`-ийн нийтлэг орчин (2026-09-30).
  *
- * ⚠️ ЭНЭ ФАЙЛЫГ АППЫН МОДУЛИАС ӨМНӨ (статик импортоор) ачаална: глобалууд
- *    (`window` · `localStorage` · `confirm` · `fetch`) ба модулийн шийдвэрлэгчийн
- *    дэгээг ЭХЭЛЖ тавина.
- *
- * ⚠️ ЯАГААД `fetch` ДАНГААРАА ХАНГАЛТГҮЙ: `permsRemote.ts` нь мөрийг ArcGIS JS
- *    SDK-ийн `FeatureLayer` (`queryFeatures` · `applyEdits`) ба `IdentityManager`-
- *    ээр уншиж/бичдэг — зөвхөн `search` нь `query.arcgisPost` (`fetch`). Тиймээс
- *    энд `module.register()`-ээр хоёр SDK модулийг санах ойн хүснэгт рүү заана.
- *    Бусад `@arcgis/core` импорт хөндөгдөхгүй.
- *
- * ⚠️ АМЬД ArcGIS РУУ НЭГ Ч БИЧИЛТ ЯВАХГҮЙ: `fetch` нь зөвхөн `…/sharing/rest/search`-д
- *    хуурамч хариу өгч, бусад бүх URL-д ШИДНЭ (`fake.unexpected`-д тэмдэглэнэ —
- *    шалгуурын төгсгөлд хоосон байх ёстой). `ts-alias.mjs`-ийн admin токены
- *    `fetch` бүрхүүл нь энд БҮРЭН солигдоно.
- *
  * ХҮСНЭГТ: `Selbe_Permissions/0`-ийн дөрвөн талбар (`OBJECTID · username · role ·
  *    views · docs`) — `permsRemote.createTable`-ийн тодорхойлолттой ижил.
  */
@@ -25,7 +10,6 @@ import { setMaxListeners } from 'node:events';
 /* ══════════ 1. Хөтөчийн глобалууд ══════════ */
 const g = globalThis;
 const et = new EventTarget();
-/* ⚠️ Олон хуудас/самбар зэрэг захиална — анхааруулгыг хаана (алдагдал биш) */
 setMaxListeners(0, et);
 const mem = new Map();
 g.window = g;
@@ -50,8 +34,6 @@ g.confirm = (msg) => { confirms.push(String(msg)); return answer; };
 export const takeConfirms = () => confirms.splice(0, confirms.length);
 
 /* ══════════ 2. Хуурамч хүснэгт ══════════ */
-/* ⚠️ 2026-10-26: `permsRemote` хүснэгтийг Enterprise-ийн БОДИТ хаягаар шууд нээдэг (`${SYS_PERMS}/230`, порталын хайлтгүй) —
-   хуурамч FeatureLayer тэр хаягийг хүлээн авна (сүлжээ рүү юу ч явахгүй). */
 const TABLE = `${String(process.env.NEXT_PUBLIC_ENT_DATA ?? '').replace(/\/+$/, '')}/SYS_Selbe_Permissions/FeatureServer`;
 
 export const fake = {
@@ -72,11 +54,10 @@ export const fake = {
   owner: '',
   /**
    * `true` бол хүснэгтийн хайлт ХООСОН, уншилт ШИДНЭ (2026-10-26: хүснэгт шууд хаягаар нээгддэг тул) — remote нэг ч удаа уншигдаагүй сешнийг
-   * дуурайна (`initRemote` → false). ⚠️ `permsRemote` зөвхөн ОЛДСОН URL-ыг кэшилдэг тул
+   * дуурайна (`initRemote` → false). `permsRemote` зөвхөн ОЛДСОН URL-ыг кэшилдэг тул
    * анхны амжилттай уншилтаас ӨМНӨ л утгатай (2026-09-30).
    */
   searchDown: false,
-  /** ⚠️ 2026-10-19: `true` бол `queryFeatures` бүр ШИДНЭ — хүснэгт олдсоны ДАРААХ уншилтын уналт (`initRemote` → false; «Систем түр хаах»-ын fail-open §11) */
   failReads: false,
   seed(rows) {
     for (const r of rows) this.rows.push({ objectid: this.oid++, role: null, docs: 0, ...r });
@@ -94,7 +75,7 @@ export const fake = {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const wait = async () => { if (fake.latency) await sleep(Math.random() * fake.latency); };
 
-/** `where` задлах — `permsRemote`-ийн хэлбэрүүд (⚠️ 2026-10-19: + `OBJECTID = n` — `removeMalformedRow`) */
+/** `where` задлах — `permsRemote`-ийн хэлбэрүүд (2026-10-19: + `OBJECTID = n` — `removeMalformedRow`) */
 function match(where) {
   if (where === '1=1') return () => true;
   const o = /^objectid = (\d+)$/.exec(where);
@@ -166,8 +147,7 @@ g.__aclE2E_esriId = {
   findCredential: () => ({ token: 'fake-token', userId: fake.owner }),
 };
 
-/* ══════════ 3. SDK модулийг хуурамч руу заах ══════════
- * ⚠️ Хожим бүртгэсэн дэгээ ЭХЭЛЖ ажиллана — `ts-alias-hooks.mjs`-ийн UI стубаас ч түрүүлнэ. */
+/* ══════════ 3. SDK модулийг хуурамч руу заах ══════════ */
 const hooks = `
 const MAP = {
   '@arcgis/core/layers/FeatureLayer': 'export default globalThis.__aclE2E_FeatureLayer;',
@@ -189,10 +169,6 @@ g.fetch = async (input, init) => {
     };
     return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
-  /* ⚠️ 2026-10-26: хүснэгтүүд Enterprise-ийн БОДИТ хаягаар шууд нээгддэг (порталын хайлтгүй) — урьд нэгж тестэд
-     зураглал унтраалттай байхад (`SELBE_ENT_OFF`) тэдгээр нь «хүснэгт олдсонгүй» замаар сүлжээнд хүрдэггүй байв.
-     Одоо: эрхийн хүснэгтийн мета (`permsRemote.probeEntExposure` — хөтчийн орчинд) ба батлах хүснэгтүүдийн
-     (`Guitsetgel_talbe/189·191·192·193`) асуулгад ХООСОН хариу — амьд сүлжээ рүү юу ч явахгүй. */
   const json = (b) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } });
   if (url === `${TABLE}/230` || url === TABLE) return json({ type: 'Table', fields: [] });
   if (/\/Guitsetgel_talbe\/FeatureServer\/(189|191|192|193)\/query$/.test(url) && url.startsWith(TABLE.replace(/\/SYS_Selbe_Permissions\/FeatureServer$/, ''))) {
@@ -205,15 +181,7 @@ g.fetch = async (input, init) => {
 /** Бүх бичилт/уншилт ба ACL-ийн дараалал дуустал хүлээнэ */
 export async function settle(extra = () => false) {
   let idle = 0;
-  /* ⚠️ 2026-10-01: давталтын тоогоор биш ХУГАЦААГААР хязгаарлана (≤10 с) — GitHub runner дээр
-     2000 удаагийн 0мс хүлээлт бичилт дуусахаас ӨМНӨ дуусаж, тест л CI-д унадаг байв. */
   const until = Date.now() + 10_000;
-  /* ⚠️ 2026-10-26 (аудит T6): `latency === 0` үед сул тойрог `setImmediate` — Windows дээр `setTimeout(0)` ~15 мс
-     (цагийн нарийвчлал) тул settle бүр ≥90 мс, `aclE2E.check` ~500 settle-ээр ~49 с идэж байв. `setImmediate` тойрог
-     бүр microtask дарааллыг бүрэн шавхаж event loop-ийн бүтэн эргэлт (timers фаз ч) хийнэ — promise гинжээр явдаг
-     бичилт/уншилтыг өмнөхтэй адил хүлээнэ. Апп өөрөө `setTimeout(…, 0)` тавьсан бол тэр нь ~1–15 мс-ийн дараа л
-     боловсорно — тиймээс 6 сул тойргийн ДАРАА НЭГ `setTimeout(0)` хүлээж ДАХИН шалгана; тэр зуур ажил гарвал
-     тоолуур тэглэгдэж үргэлжилнэ (утга нь өмнөхтэй ижил: «0 мс-ийн таймер ч дуусав»). Хоцролттой (`latency`) горим хэвээр. */
   const tick = () => new Promise((r) => (fake.latency ? setTimeout(r, 2) : setImmediate(r)));
   for (let i = 0; i < 2000 || Date.now() < until; i += 1) {
     await tick();

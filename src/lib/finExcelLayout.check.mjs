@@ -1,17 +1,6 @@
 /**
  * САНХҮҮЖИЛТИЙН EXCEL ЗОХИОМЖ — хувийн ХЭМЖЭЭС (0–100 · 0–1) ба хасагдсан багана (2026-10-21).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/finExcelLayout.check.mjs
- *
- * ⚠️ Хамгаалж буй алдаа (аудит 2026-10-21):
- *   · `urdchilgaa_huvi` амьд өгөгдөлд 0–1 БУТАРХАЙ (58 мөр, max 0.2 — `urdchilgaa_batalgaa_dun ÷ geree_dun`)
- *     атал `FIN_XL_PCT` (0–100)-д байсан тул «Хувь» багана «0.2», зурваст «0.18», засварт «20» зөвшөөрөгдөж
- *     0.2 ба 20 холилддог байв. Одоо `FIN_XL_FRACTION` — үнэт цаасны хувьтай ижил зам (×100 харагдац, ÷100 засвар).
- *   · `tusuld_ezleh_huvi` (текст) нь тоон ихрээсээ 0.715 дахин бага ХУУЧИРСАН хуулбар — нуусан биш, багана биш
- *     (`FIN_XL_DROP`).
- * ⚠️ `Finance.tsx` нь React тул ажиллуулж шалгахгүй — холболтыг ЭХ КОДООР тулгана (`finEdit.check.mjs`-ийн арга).
- * ⚠️ 2026-10-22 (аудит): ×100 · жигнэсэн дундажийн ДҮРМИЙГ бүтээгдэхүүний цэвэр функцээр (`finXl*`, `finExcelLayout.ts`)
- *    амьд хэлбэрийн 0–1 утгаар шалгана (§2). Урьд энд дунджийг ТЕСТ ӨӨРӨӨ дахин бодож, `Finance.tsx`-ийн мөрийг
- *    regex-ээр тулгадаг байв — бүтээгдэхүүний дүрэм өөрчлөгдсөн ч ногоон хэвээр үлдэнэ. §4 нь зөвхөн холболт.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/finExcelLayout.check.mjs
  */
 import assert from 'node:assert/strict';
 import {
@@ -82,6 +71,5 @@ check('FIN_XL_ORDER-т ХЭВЭЭР (эрэмбийн хувилбар хөдл�
 check('urdchilgaa_huvi анхдагчаар нуугдсан хэвээр', FIN_XL_HIDE.includes('urdchilgaa_huvi') && FIN_XL_HIDE.includes('cashflow_id'));
 check('тоон ихэр нуугдахгүй', !FIN_XL_HIDE.includes('tusuld_ezleh_huvi_dun') && !FIN_XL_DROP.includes('tusuld_ezleh_huvi_dun'));
 
-/* ⚠️ 2026-10-27: «Гэрээ (Cashflow)» таб (`FullTable`) устгагдсан — түүний эх кодын шалгуур хасагдав */
 
 console.log(`\n✅ finExcelLayout.check: ${ok} шалгуур давлаа`);

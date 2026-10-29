@@ -49,23 +49,13 @@ export type RoadState = {
   net?: NetSel;
   /** Гэрлэн дохионы зохицуулалтын сонголт */
   signal?: SignalSel;
-  /**
-   * ⚠️ 2026-09-30: гэрлэн дохионы үйлчилгээ УНАСАН — сүлжээ ДОХИОГҮЙ угсрагдсан
-   * (`Network.signalsFailed`). Урьд нь зөвхөн console-д бичигддэг байв.
-   */
   signalsFailed?: boolean;
   /** Сүлжээг (дохиотой нь) дахин татах */
   onRetry?: () => void;
-  /**
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЭРЭЛТ → ТАГ. Эрэлт нь бүсийн хүн
-   *    амаас (`peakVehicles`), таг нь машинтай БҮХ сүлжээний хамгийн бага
-   *    багтаамж (`commonCarCap`) — хоёр сүлжээ ИЖИЛ тооны машинтай гүйнэ.
-   */
   demand?: number;
   cap?: number;
   /** Бусад сүлжээний багтаамж хараахан ачаалагдаагүй — таг түр зуурын */
   capPending?: boolean;
-  /** ⚠️ 2026-10-04: аль нэг сүлжээний багтаамж УНАСАН — «ачаалж байна» гэж мөнхөд бичихгүй */
   capFailed?: boolean;
   /** Сүлжээнд наалдсан гэрлэн дохиотой уулзварын тоо (`signalLines`-ийн нэрээр) */
   signalJunctions?: number;
@@ -73,9 +63,6 @@ export type RoadState = {
 
 /**
  * Гэрлэн дохионы зохицуулалт (эцгээс) — ЭЭЛЖ сонгоно.
- * ⚠️ `stage = null` бол хуваарь АВТОМАТААР эргэлдэнэ; тоо өгвөл тэр ээлжийг
- * газрын зураг дээр БАРЬЖ асаана (кодууд нь байнга ногоон, бусад нь улаан) —
- * ээлж бүрийн үйлчлэлийг нүдээр шалгах горим.
  */
 export type SignalSel = {
   /** Идэвхтэй хөтөлбөр (ээлжүүдийн жагсаалтыг эндээс уншина) */
@@ -107,9 +94,6 @@ const nf0 = (v: number) => Math.round(v).toLocaleString('mn-MN');
  *   сонгогч → гарчиг → тоон уншилт → [цагийн консол] → эрэмбэ.
  * Таб сэлгэхэд байрлал нь хэвээр, зөвхөн АГУУЛГА нь солигдоно — ингэснээр
  * хэрэглэгч бүр удаа шинээр уншихгүй.
- *
- * ⚠️ Газрын зургийн будалт нь эцэг компонент дахь `colorOf`-той НЭГ эх сурвалж
- * (`simulation.ts`) ашигладаг тул зураг ↔ жагсаалт ↔ легенд гурав ижил өнгөтэй.
  */
 export function Simulation({
   kind,
@@ -155,8 +139,6 @@ export function Simulation({
   const def = simDef(kind);
 
   /**
-   * ⚠️ ЛЕГЕНД = ЗУРГИЙН НОРМЧИЛОЛТОЙ НЭГ МУЖ (2026-09-21).
-   *
    * Урьд нь легендийн доод утга нь `ranked` (value > 0 шүүсэн)-ийн сүүлийнх,
    * харин зураг (`Suitability.tsx` §colorOf → `simNorm(v, simRange(simRows))`)
    * нь 0 утгатай бүсийг ч мужид оруулдаг тул `min = 0` болж, легендийн
@@ -171,38 +153,19 @@ export function Simulation({
         const m = simMetric(r, kind, popBasis);
         return { r, value: m.value, text: m.text, t: simNorm(m.value, range) };
       })
-      /* ⚠️ ТЭЭВЭРТ 0 = ХАМГИЙН САЙН (2026-09-25 аудит): буудал бүсийн ДОТОР бол
-         `geometryEngine.distance` 0 буцаадаг — урьд нь `> 0` шүүлт хамгийн сайн
-         үйлчлэгдсэн бүсүүдийг «Дундаж зай», «500 м дотор %», бүсийн тооноос
-         хасдаг байв (зураг `simRange` 0-ийг оруулж бүгдийг будна). `> 0` нь
-         зөвхөн нягтшил/ачааллын «утга алга»-г л шүүнэ. */
       .filter((x): x is Ranked => x.value != null && Number.isFinite(x.value) && (kind === 'transit' ? x.value >= 0 : x.value > 0))
       .sort((a, b) => b.value - a.value);
   }, [rows, kind, popBasis, def.ready, range]);
 
   const cells = readout(kind, ranked, road);
 
-  // ⚠️ Картын гарчигт pill ТАВИХГҮЙ: доорх сегмент сонгогч нь идэвхтэй симуляцыг
-  //    аль хэдийн тод харуулдаг тул давхардал болно.
-  // `--sim` акцент: идэвхтэй бол идэвхтэй төрлийнх, эс бөгөөс энэ самбарын
-  // эхний төрлийнх (идэвхгүй самбар өөр самбарын өнгөөр будагдахгүй).
   const localHue = activeHere ? def.hue : simDef(shownKinds[0]).hue;
 
-  // ⚠️ Картын гарчигт pill ТАВИХГҮЙ: доорх сегмент сонгогч нь идэвхтэй симуляцыг
-  //    аль хэдийн тод харуулдаг тул давхардал болно.
   return (
     <Card title={title}>
-      {/* ⚠️ `--sim` нь ЭНД тавигдана — доорх бүх дүрэм (сонгогч, гулсуур,
-          эрэмбийн баар) үүнээс уншина. Симуляц солиход бүхэл панелийн акцент
-          нэг дор өөрчлөгдөнө. */}
       <div className={c.root} style={{ '--sim': localHue } as CSSProperties}>
         {/* ── Симуляц сонгох (энэ самбарт хамаарах төрлүүд) ── */}
-        {/* ⚠️ 2026-10-26 (UX U8): ←/→ · Home · End нь фокусыг л шилжүүлнэ (`tabFocusNav`) — сонголт симуляц асаадаг
-            тул Enter/Space-ээр; `muted` үед эхний таб Tab-аар орно (`rovingTab`) */}
         <div className={c.seg} role="tablist" aria-label={tr('Симуляцын төрөл')} onKeyDown={(e) => tabFocusNav(e)}>
-          {/* ⚠️ Табын ДАРААЛАЛ нь дуудагчийн `kinds`-ээс — `SIM_KINDS`-ийн
-              бүртгэлийн дарааллаас БИШ. Самбар бүр өөрийн эрэмбээ тогтоох
-              боломжтой (жиш. «Ачаалал» эхэнд). */}
           {shownKinds
             .map((key) => SIM_KINDS.find((k) => k.key === key))
             .filter((k): k is (typeof SIM_KINDS)[number] => !!k)
@@ -230,10 +193,7 @@ export function Simulation({
           </p>
         ) : (
         <>
-        {/* ── Гарчиг ──
-            ⚠️ Тайлбарын догол мөр (`def.desc`) ЗОРИУДААР БАЙХГҮЙ: сонгогчийн
-            товч ба доорх тоон уншилт нь юу харагдаж байгааг аль хэдийн хэлдэг
-            тул 2-3 мөрийн давхардсан текст самбарыг л уртасгаж байв. */}
+        {/* ── Гарчиг ── */}
         <div className={c.head}>
           <span className={c.headTitle}>{def.label}</span>
           {def.unit && <span className={c.headUnit}>{def.unit}</span>}
@@ -264,9 +224,6 @@ export function Simulation({
         {cells.length > 0 && (
           <div className={c.readout}>
             {cells.map((x) => (
-              /* ⚠️ `title` нь ЗӨВХӨН hover — мэдрэгч дэлгэцэд хүрэхгүй. Тиймээс
-                 тайлбартай нүдний шошгонд «*» тэмдэг нэмж, доор нь ил тайлбар
-                 мөр гаргана (2026-09-15-ны хэрэглээний аудит). */
               <div key={x.k} className={c.cell} title={x.title}>
                 <div className={c.cellV} style={x.color ? { color: x.color } : undefined}>
                   {x.v}
@@ -277,7 +234,6 @@ export function Simulation({
             ))}
           </div>
         )}
-        {/* ⚠️ «*»-тай нүдний тайлбар ИЛ — hover нь мэдрэгч дэлгэцэд хүрэхгүй */}
         {cells.some((x) => x.title) && (
           <p className={c.assume}>
             {cells.filter((x) => x.title).map((x) => `* ${x.k}: ${x.title}`).join(' · ')}
@@ -294,12 +250,7 @@ export function Simulation({
           </>
         )}
 
-        {/* ── Легенд ──
-            ⚠️ Эрэмбийн ЖАГСААЛТ ЗОРИУДААР ХАСАГДСАН: 13 мөр бүсийн код бичсэн
-            хүснэгт нь газрын зурагтай холбогдохгүй тул уншихад хүнд байсан.
-            Бүс бүрийн утгыг ГАЗРЫН ЗУРАГ дээр хулганаа аваачиж уншина.
-            ⚠️ «Ачаалал» табд ХАРАГДАХГҮЙ: тэр нь амьд трафикийн симуляц тул бүсийн
-            аялалын эрэмбэ (аялал/ц) утгагүй — уншилт нь машин/хурд/урсгал дээр. */}
+        {/* ── Легенд ── */}
         {kind === 'road' ? null : !def.ready ? (
           <p className={c.empty}>{tr('Энэ симуляц удахгүй нэмэгдэнэ.')}</p>
         ) : ranked.length === 0 ? (
@@ -311,9 +262,7 @@ export function Simulation({
               <b>{ranked.length} {tr('бүс')}</b>
             </div>
 
-            {/* Дулааны легенд — «бага/их» биш, БОДИТ хязгаараар.
-                ⚠️ Зургийн нормчилолтой ИЖИЛ муж (`range`, дээрх §), `ranked`-ийн
-                зах БИШ (2026-09-21). */}
+            {/* Дулааны легенд — «бага/их» биш, БОДИТ хязгаараар. */}
             <div className={c.legend}>
               <span className={c.legendEnd}>{nf0(range.min)}</span>
               <span className={c.legendBar} />
@@ -338,21 +287,12 @@ type Cell = {
   color?: string;
   /**
    * Тоо ЮУНААС гарсныг тайлбарлах hover текст.
-   *
-   * ⚠️ 2026-09-15-ны хэрэглээний аудит: «Машин: 2,847» гэсэн эрх мэдэлтэй
-   *    тоо нь ГУРВАН таамгийн үржвэр (TRIP_PER_RESIDENT=0.35,
-   *    TRIP_DURATION_H=0.05, DEMAND_SCALE=2.8) атлаа дэлгэцэд ямар ч эх
-   *    сурвалж, эргэлзээний тэмдэггүй гарч байв. Эргэлзэгчийн өмнө тоогоо
-   *    хамгаалах боломжгүй байсан.
    */
   title?: string;
 };
 
 /**
  * Симуляц бүрийн ГУРВАН гол тоо.
- *
- * ⚠️ Гурвуулаа ижил бүтэцтэй байх нь санаатай: хамгийн онцлох утга → дундаж →
- * норм/чанарын үзүүлэлт. Ингэснээр таб сэлгэхэд нүд ижил байрлалаас уншина.
  */
 function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
   if (kind === 'road') {
@@ -362,7 +302,6 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
       {
         k: tr('Машин'),
         v: st ? nf0(st.cars) : '—',
-        /* ⚠️ Томьёог ИЛ хэлнэ — дээрх `Cell.title`-ийн ⚠️ */
         title: tr('Σ аялал × 0.05 ц × 2.8 — аялалын судалгаа байхгүй тул таамаг (Little-ийн хууль)'),
       },
       { k: tr('Дундаж хурд'), v: st ? String(Math.round(st.kmh)) : '—', unit: st ? tr('км/ц') : undefined },
@@ -378,8 +317,6 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
   const avg = ranked.reduce((a, x) => a + x.value, 0) / ranked.length;
 
   if (kind === 'transit') {
-    // ⚠️ Хүртээмжид БАГА нь сайн — тиймээс «хамгийн их» биш «хамгийн хол»,
-    //    норм нь БНБД-ийн 500 м.
     const ok = ranked.filter((x) => x.value <= TRANSIT_NORM_M).length;
     const pct = Math.round((ok / ranked.length) * 100);
     return [
@@ -404,10 +341,7 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
 
 /**
  * ХАРЬЦУУЛАХ замын сүлжээ сонгох — Бодит / Төлөвлөгөө / Шинэ зам / Тест.
- * ⚠️ Line ирээгүй сүлжээ (`ready=false`) идэвхгүй харагдана; tooltip нь юу
- * хийвэл идэвхжихийг (`note`) хэлнэ.
  */
-/* ⚠️ 2026-10-01: export — «Тээвэр-идэвх» самбар ч замын эрэлтийн сүлжээгээ сонгоно */
 export function NetSelector({ net }: { net?: NetSel }) {
   if (!net) return null;
   return (
@@ -474,9 +408,6 @@ function SignalControl({ sig }: { sig?: SignalSel }) {
           ))}
         </div>
       </div>
-      {/* ⚠️ «Авто» горимд тайлбар догол мөр ЗОРИУДААР БАЙХГҮЙ: товчны tooltip
-          хуваарийг аль хэдийн хэлдэг тул самбарыг л уртасгаж байв. Ээлж
-          БАРИГДСАН үед л юу болоод буйг нэг мөрөөр сануулна. */}
       {sig.stage != null && (
         <p className={c.desc} style={{ marginTop: 8 }}>
           {tr('{0}-р ээлж баригдав: {1} кодын гэрэл ногоон, бусад нь улаан.', sig.stage + 1, sig.plan.stages[sig.stage].join(', '))}
@@ -490,14 +421,11 @@ function SignalControl({ sig }: { sig?: SignalSel }) {
 
 /**
  * Сүлжээ ачаалагдсан эсэх ба симуляцын таамгийн тайлбар.
- * ⚠️ Тоон уншилт (машин/хурд/урсгал) нь ДЭЭР `readout`-д гарсан тул энд
- * давтахгүй — зөвхөн контекст ба анхааруулга.
  */
 function RoadStatus({ road }: { road?: RoadState }) {
   if (!road) return null;
 
   if (road.error) {
-    /* ⚠️ 2026-10-04: «Дахин оролдох» — урьд нь алдааны дараа самбарыг хааж нээхээс өөр зам байгаагүй */
     return (
       <p className={c.err} role="alert">
         {tr('Замын сүлжээ ачаалж чадсангүй:')} {road.error}
@@ -505,8 +433,6 @@ function RoadStatus({ road }: { road?: RoadState }) {
       </p>
     );
   }
-  /* ⚠️ Машингүй сүлжээ: line нь одоогийн замтай холбогдоогүй тул хөдөлгөөн
-     үүсгэхгүй — үүнийг ХЭЛЖ өгнө, эс бөгөөс «эвдэрсэн» гэж ойлгогдоно. */
   if (road.carsOff) {
     return (
       <p className={c.warn}>
@@ -518,8 +444,6 @@ function RoadStatus({ road }: { road?: RoadState }) {
       </p>
     );
   }
-  /* ⚠️ null ба 0-ыг ЯЛГАНА: null = ачаалж байна, 0 = амжилттай татагдсан ч
-     хоосон сүлжээ — falsy-гээр нэгтгэвэл хоосон үед loading үүрд эргэлдэнэ. */
   if (road.edges === null) {
     return (
       <p className={c.loading}>
@@ -536,11 +460,8 @@ function RoadStatus({ road }: { road?: RoadState }) {
     );
   }
 
-  // ⚠️ Тайлбарын догол мөр ЗОРИУДААР БАЙХГҮЙ — зөвхөн 3D-ийн анхааруулга үлдэв.
   return (
     <>
-      {/* ⚠️ 2026-10-01: ЭРЭЛТ → ТАГ ба ДОХИО — сүлжээ харьцуулахад хоёулаа хэрэгтэй:
-          таг нь эрэлтээс бага бол «түгжрэл бага» нь сүлжээний биш, тагийн үр дүн. */}
       {road.demand != null && road.cap != null && (
         <p
           className={c.desc}

@@ -4,12 +4,6 @@
  * САР БҮРИЙН IPC БАРИМТ ТАТАХ (2026-09-29, хэрэглэгч: «ipc баримтуудыг загвар гэж бодоод
  * бодит утгууд нь системээс гараад яг ийм форматаар pdf татаж авна · гүйцэтгэлийг сард
  * нэг удаа бөглөнө гэж тооцоод тухайн сард нэг ийм баримт гарна»).
- *
- * ⚠️ Тоо бүр системээс (`ipcDocLoad` → `ipcDoc`). Цонхонд зөвхөн системд БАЙХГҮЙ зүйл:
- *    тухайн онд батлагдсан санхүүжилт · IPC дугаар · эргэн төлөлтийн эхлэл/хувь ·
- *    хүчин чадал · гарын үсэг зурах хүмүүс. Эдгээр нь энэ хөтчид багц бүрээр санагдана
- *    (localStorage — зөвхөн тухтай байдал; баримт өөрөө хадгалагдахгүй).
- * ⚠️ ЗӨВХӨН УНШИНА — ArcGIS-т юу ч бичихгүй.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -58,10 +52,6 @@ const SIGNER_LABELS = (): [keyof IpcSigners, string][] => [
   ['cEng', tr('Гүйцэтгэгч — инженер')],
 ];
 
-/**
- * ⚠️ 2026-10-06 (аудит): `finEdit.parseCell`-ийн алдааны текст — `Finance.PARSE_MSG`-тэй ИЖИЛ
- *    түлхүүр (`Finance`-ийг импортлохгүй: dynamic ачаалалттай том модуль).
- */
 const PARSE_MSG: ParseMsg = {
   dateFmt: (l, v) => tr('«{0}» — огноо ЖЖЖЖ-СС-ӨӨ хэлбэрээр байх ёстой: {1}', l, v),
   dateBad: (l, v) => tr('«{0}» — огноо буруу: {1}', l, v),
@@ -83,11 +73,6 @@ const parseNum = (raw: string, label: string, pct = false): NumField => {
 /** Бөглөх хуудастай (барилгын) багц мөн үү — IPC баримт зөвхөн эдгээрт */
 export const hasIpcDoc = (packKey: string): boolean => !!packKey && sheetsOf(packKey).length > 0;
 
-/**
- * ⚠️ 2026-09-29 (хэрэглэгч: «Санхүүжилт → IPC хэсэгт ийм IPC-ууд үүсээд үүн дээрээ дарж
- *    татаж авмаар байна»): нээгч нь `IpcTable`-ийн гүйцэтгэлээс үүссэн (AUTO) карт.
- *    `month` · `ipcNo` нь тэр картаас — хэрэглэгч цонхонд сольж болно.
- */
 export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, onClose }: {
   packKey: string;
   packName: string;
@@ -134,11 +119,6 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
     return () => window.removeEventListener('keydown', k);
   }, [busy, onClose]);
 
-  /* ⚠️ 2026-10-06 (аудит): урьд нь бүх таслалыг хасаж, буруу/хязгаараас гарсан утгыг ЧИМЭЭГҮЙ
-     анхдагч руу унагадаг байв («12,5»% → 125 → анхдагч 25%; тоо биш IPC дугаар → 1), буруу утга
-     localStorage-д ч хадгалагддаг. Одоо `finEdit.parseCell`-ийн дүрэм (тодорхойгүй таслал →
-     алдаа; хувь 0–100, нэг таслал аравтын) — алдаатай бол талбарын доор хэлж «PDF татах» хаалттай.
-     Хоосон хувь → `buildIpcDoc`-ийн анхдагч (хуучнаараа); хоосон санхүүжилт → «системд алга». */
   const rateF = useMemo(() => parseNum(rate, tr('Эргэн төлөлтийн хувь (%)'), true), [rate]);
   const annualF = useMemo((): NumField => {
     const label = tr('Тухайн онд батлагдсан санхүүжилт');
@@ -169,7 +149,6 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
   }, [src, month, recoveryFrom, rateF, annualF, ipcNoF, invalid]);
 
   const download = async () => {
-    /* ⚠️ 2026-10-06: алдаатай утгыг localStorage-д ХАДГАЛАХГҮЙ (`invalid` үед `doc` нь null) */
     if (!doc || busy || invalid) return;
     setBusy(true); setErr('');
     try {
@@ -212,10 +191,6 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
               <select value={month} onChange={(e) => {
                 setMonth(e.target.value);
                 const i = src.months.findIndex((m) => m.month === e.target.value);
-                /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): картаас ирсэн дугаар (`ipcNo0`) нь
-                   картын сартай уялдсан — өөр сар сонгоход ДАРААЛЛЫГ хадгалж шилжүүлнэ
-                   (`ipcNo0 + (i − картын сарын индекс)`). Урьд `i + 1` нь архивын эхний
-                   сараас тоолж, картын дугаартай зөрдөг байв. */
                 const base = month0 ? src.months.findIndex((m) => m.month === month0) : -1;
                 const n0 = Number(ipcNo0);
                 if (i >= 0) setIpcNo(String(base >= 0 && Number.isFinite(n0) && n0 > 0 ? Math.max(1, n0 + (i - base)) : i + 1));
@@ -258,14 +233,12 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
 
         {doc && (
           <div className={s.sum}>
-            {/* ⚠️ 2026-10-06 (аудит): null ≠ 0 — мэдээлэлгүй дүнг «0» биш «—» */}
             <span>{tr('Тайлант үеийн гүйцэтгэл')}<b>{gross == null ? '—' : num(gross, 0)}</b></span>
             <span>{tr('Одоо санхүүжих')}<b>{fundNow == null ? '—' : num(fundNow, 0)}</b></span>
             <span>{tr('Гүйцэтгэгчид төлөх')}<b>{nowRow?.now == null ? '—' : num(nowRow.now, 0)}</b></span>
           </div>
         )}
         {doc?.notes.map((n) => <p key={n} className={s.note}>⚠ {NOTE_UI(n)}</p>)}
-        {/* ⚠️ 2026-10-01: энэ сард АНХ агшинтай болсон хуудас — IPC хүснэгтийн картын анхааруулгатай ижил */}
         {doc && doc.lateSheets.length > 0 && (
           <p className={s.note}>
             {tr('⚠ {0} хуудасны анхны батлагдсан гүйцэтгэл энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул энэ IPC-ийн тайлант гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.', doc.lateSheets.join(', '))}

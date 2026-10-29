@@ -1,12 +1,5 @@
 /**
  * ТЭЭВЭР-ИДЭВХИЙН ДҮРСЛЭЛҮҮД — «Симуляц» табын зүүн талын самбарын цөм.
- *
- * ⚠️ Одоо байгаа `simulation.ts` нь БҮСЭЭР (`Zone`) тооцдог; энэ модуль
- * БАРИЛГА БҮРЭЭР ажиллана. Тиймээс `simMetric`-ийг өргөтгөхгүй, тусад нь
- * бичив — хоёр өөр нэгжийг нэг функцэд шахвал аль аль нь ойлгомжгүй болно.
- *
- * ⚠️ «Замын ачаалал» (`simKind === 'road'`) симуляцыг ЭНД ОГТ ХӨНДӨХГҮЙ —
- * тэр нь машин агентын микросимуляц, энэ нь статик эрэлтийн шинжилгээ.
  */
 
 import {
@@ -36,11 +29,6 @@ export type TModeDef = {
   target: TTarget;
   /**
    * Дулааны гадаргуу утгатай эсэх.
-   *
-   * ⚠️ Heatmap нь цөмүүдийг НЭМДЭГ тул зөвхөн ХУРИМТЛАГДАХ хэмжигдэхүүнд
-   * (хүн, багтаамж, зорчилт, машин/ц) утгатай. ЗАЙД (буудал хүртэлх метр)
-   * утгагүй: зайг нэмэх нь ямар ч физик утгагүй бөгөөд «улаан = хол = муу»
-   * болж бусад дүрслэлийн «улаан = их» гэсэнтэй зөрчилдөнө.
    */
   heatable: boolean;
 };
@@ -80,7 +68,6 @@ export const T_MODES: TModeDef[] = [
     key: 'busAccess',
     get label() { return tr('Автобусны хүртээмж'); },
     get short() { return tr('Автобус'); },
-    // ⚠️ `heatable: false` — жин нь ЗАЙ; дулаан гадаргуу зайг нэмэх нь утгагүй
     get unit() { return tr('м'); }, icon: 'bus', hue: '#38bdf8', target: 'stop', heatable: false,
   },
 ];
@@ -100,19 +87,12 @@ export type TransportCtx = {
 
 /**
  * Дүрслэлд ОРОЛЦОХ барилгын утга; оролцохгүй бол `null`.
- *
- * ⚠️ `null` ба `0` нь ӨӨР: `null` = «энэ дүрслэлд хамаарахгүй» (орон сууц бус
- * барилга «Хүн ам» дүрслэлд) → газрын зурагт бүдэг саарал; `0` = «хамаарна ч
- * утга нь тэг» → шатлалын хамгийн доод өнгө.
  */
 export function buildingValue(b: BuildingPt, mode: TMode, ctx: TransportCtx, i: number): number | null {
   switch (mode) {
     case 'population':
       return b.cat === 'residential' ? b.population : null;
     case 'capacity':
-      // ⚠️ «Бусад» (зогсоол, дэд станц, УДДП…) нь ҮЙЛЧИЛГЭЭНИЙ барилга БИШ —
-      //    багтаамж нь 0 тул шатлалын хамгийн доод өнгөөр будвал жинхэнэ
-      //    үйлчилгээний барилгуудтай нэг зэрэгт орж, дүрслэл бохирдоно.
       return b.cat === 'residential' || b.cat === 'other' ? null : b.capacity;
     case 'trips':
       return b.trips > 0 ? b.trips : null;
@@ -147,13 +127,6 @@ export function tRange(mode: TMode, ctx: TransportCtx): TRange {
 export function tNorm(v: number | null, r: TRange): number | null {
   if (v == null || !Number.isFinite(v)) return null;
   const span = r.max - r.min;
-  /*
-   * ⚠️ БҮХ УТГА ТЭНЦҮҮ бол ДУНД (0.5), тогтмол `0` БИШ (2026-09-15-ны аудит).
-   *    Урьд нь `0` буцаадаг байсан тул шатлалын ХАМГИЙН ЦАЙВАР өнгө гарч,
-   *    зураг «хаана ч төвлөрөл алга» гэж уншигддаг байв — үнэндээ «бүгд
-   *    ИЖИЛХЭН». Жишээ: `capacity` дүрслэлд ганцхан төрлийн барилга үлдэх
-   *    шүүлт хийхэд хамгийн ИХ багтаамжтай нь хамгийн бага мэт харагдана.
-   */
   if (span <= 0) return 0.5;
   return Math.max(0, Math.min(1, (v - r.min) / span));
 }
@@ -162,8 +135,6 @@ export function tNorm(v: number | null, r: TRange): number | null {
 
 /**
  * Хүртээмжийн шатлалын тулгуур өнгө — 0 м, 400 м (`BUS_GOOD_M`), 800 м (`BUS_OK_M`).
- * ⚠️ Тулгуур цэгүүд нь НОРМ дээр суусан тул өнгө нь «хэр хол вэ» гэдгийг ч,
- * «нормын аль зурваст байна вэ» гэдгийг ч нэгэн зэрэг хэлнэ.
  */
 export const BUS_RAMP = ['#15803d', '#f59e0b', '#ef4444'] as const;
 
@@ -186,14 +157,6 @@ function rampColor(t: number, stops: readonly string[]): string {
 
 /**
  * Утгыг өнгө болгоно.
- *
- * ⚠️ ХҮРТЭЭМЖ нь бусдаас ЭСРЭГ утгатай: бага зай = САЙН. Тиймээс YlOrRd дулааны
- * шатлал БИШ, ногоон→шар→улаан.
- *
- * ⚠️ Урьд нь 3 ДИСКРЕТ зурвас байсныг ТАСРАЛТГҮЙ шатлал болгов: живэ өгөгдөл
- * дээр 363 барилгын 361 нь ≤400 м-т байдаг тул дискрет өнгөөр зураг БҮХЭЛДЭЭ
- * нэг ногоон болж, ямар ч мэдээлэл өгөхгүй байв. Тасралтгүй шатлал нь 0–400 м
- * дотор ч ялгааг харуулна (50 м vs 380 м).
  */
 export function tColor(mode: TMode, t: number | null): string {
   if (t == null) return T_NO_DATA;
@@ -203,12 +166,6 @@ export function tColor(mode: TMode, t: number | null): string {
 
 /**
  * Дүрслэлийн утгыг 0..1 болгоно.
- *
- * ⚠️ ХҮРТЭЭМЖ нь өгөгдлийн min..max-аар БИШ, НОРМООР нормчилогдоно
- * (0 м → 0, `BUS_OK_M` = 800 м → 1). Шалтгаан: өгөгдлийн хамгийн холыг «1.0»
- * гэвэл хамгийн хол барилга ҮРГЭЛЖ улаан болно — бүх барилга буудлын дэргэд
- * байсан ч. Нормоор бэхэлснээр өнгө нь өөрөө «энэ 800 м-ийн хэдэн хувь вэ»
- * гэсэн ТОГТМОЛ утгатай болно.
  */
 export function tNormFor(mode: TMode, v: number | null, r: TRange): number | null {
   if (v == null || !Number.isFinite(v)) return null;
@@ -223,7 +180,7 @@ export type TItem = {
   key: string;
   /**
    * Эх массив дахь ИНДЕКС — барилгын дүрслэлд `buildings[]`-ийн, замынхад
-   * `net.edges[]`-ийн. ⚠️ Газрын зургийн hover нь ЭНЭ индексээр эрэмбийг хайдаг
+   * `net.edges[]`-ийн. Газрын зургийн hover нь ЭНЭ индексээр эрэмбийг хайдаг
    * тул `tPaint`-ийн индекстэй ЗААВАЛ ижил утгатай байх ёстой.
    */
   idx: number;
@@ -252,9 +209,6 @@ export function tItems(mode: TMode, ctx: TransportCtx): TItem[] {
         key: `e${i}`,
         idx: i,
         name: tr('Хэрчим #{0}', i),
-        /* ⚠️ `|| 1` — `unitsPerMeter` 0/undefined ирвэл `Infinity м` эсвэл
-           «NaN м» гэж хэвлэгддэг байв (2026-09-15-ны аудит). `roadDemand.ts`,
-           `traffic.ts`, `busAccess.ts` бүгд энэ хамгаалалттай. */
         sub: tr('{0} м', Math.round(ctx.net.edges[i].length / (ctx.net.unitsPerMeter || 1))),
         value: v,
         text: tr('{0} машин/ц', nf0(v)),
@@ -283,7 +237,6 @@ export function tItems(mode: TMode, ctx: TransportCtx): TItem[] {
       color: tColor(mode, t),
     });
   }
-  // ⚠️ Хүртээмжид ч ИХ→БАГА: хамгийн ХОЛ (муу хүртээмжтэй) барилга дээр гарна
   return out.sort((a, b) => b.value - a.value);
 }
 
@@ -291,16 +244,10 @@ export function tItems(mode: TMode, ctx: TransportCtx): TItem[] {
 
 /**
  * Газрын зурагт зурах бэлэн өгөгдөл.
- * ⚠️ `SuitMap` нь ArcGIS-ийн Graphic болгож л хөрвүүлнэ — ЯМАР өнгө, ЯМАР
- * өргөн болохыг ЭНД шийднэ. Ингэснээр самбарын жагсаалт ба зураг хоёр НЭГ
- * эх сурвалжтай болж, өнгө нь хэзээ ч зөрөхгүй.
  */
 export type TPaint = {
-  /** ⚠️ `idx` нь `TransportCtx.buildings`-ийн индекс — hover нь үүгээр хайна */
   buildings: { idx: number; rings: number[][][]; color: string; on: boolean }[];
-  /** ⚠️ `idx` нь `TransportCtx.net.edges`-ийн индекс */
   roads: { idx: number; pts: [number, number][]; color: string; width: number }[];
-  /** ⚠️ `idx` нь `TransportCtx.stops`-ийн индекс */
   stops: { idx: number; x: number; y: number; size: number }[];
 };
 
@@ -393,8 +340,6 @@ export function tReadout(mode: TMode, ctx: TransportCtx): TCell[] {
 
   if (mode === 'busAccess') {
     const resPop = buildings.reduce((a, b) => a + (b.cat === 'residential' ? b.population : 0), 0);
-    /* ⚠️ 2026-09-25: оршин суугчгүй (resPop 0) үед `null` — «0%» нь «хэн ч
-       хүртээмжгүй» гэж худал уншигдана (null ≠ 0). */
     const pct = (v: number): number | null => (resPop > 0 ? Math.round((v / resPop) * 100) : null);
     const good = pct(bus.popByBand.good);
     return [

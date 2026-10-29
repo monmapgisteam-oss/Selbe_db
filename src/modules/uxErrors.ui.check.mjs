@@ -1,6 +1,6 @@
 /**
- * Хөтчийн аялалаар илэрсэн UX алдаанууд (⚠️ 2026-10-01, «хэрэглэгч: бүгдийг зас»).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/uxErrors.ui.check.mjs
+ * Хөтчийн аялалаар илэрсэн UX алдаанууд (2026-10-01, «хэрэглэгч: бүгдийг зас»).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/uxErrors.ui.check.mjs
  *
  * §1 Схем: бүх эх сурвалж унавал шалтгаан нь ангилагдана (эрх ≠ сүлжээ ≠ хугацаа).
  * §2 Системийн баримт: дотоод код (`__flow__`, `planApprove`) зөвхөн «Техникийн дэлгэрэнгүй»-д.
@@ -71,12 +71,9 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   assert.ok(!hv.includes(".catch((e) => alive && setErr(String((e as Error).message || e)))"), 'Huvaari: түүхий ачаалах алдаа');
   assert.match(hv, /setLoadErr\(e instanceof Error/);
   assert.match(hv, /\}, \[pkg, reloadN\]\);/, 'Huvaari: «Дахин оролдох» эффектийг дахин ажиллуулна');
-  /* ⚠️ 2026-10-12: урсгалын алдааг БАТЛАГЧ ч харна (урьд нь зөвхөн зохиогч — батлагчид «хуваарь алга» гэж худал гардаг байв) */
-  /* ⚠️ 2026-10-23: ЭРХ (`canEditRole`) — «Батлагдсан» харагдацад ч мэдэгдэл хэвээр */
   assert.match(hv, /flowReady === false && \(canEditRole \|\| canApprove\) && !loadErr/, 'Huvaari: алдаа ГАНЦ удаа');
   assert.match(hv, /friendlyError\(\{ message: st\.detail/);
 
-  /* ⚠️ 2026-10-23: QAQC хасагдсан (Qaqc.tsx) */
 
   assert.match(src('modules/Gazar.tsx'), /err \? <Data q=\{q\}>/, 'Gazar: шалтгаан + дахин оролдох');
   assert.ok(!src('modules/Gazar.tsx').includes("<Empty label={tr('Алдаа гарлаа')} />"));

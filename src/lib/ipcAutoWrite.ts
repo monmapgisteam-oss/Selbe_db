@@ -1,15 +1,5 @@
 /**
  * ГҮЙЦЭТГЭЛЭЭС IPC МӨР БИЧИХ — сүлжээний тал. Цэвэр логик нь `ipcAuto.ts`-д.
- *
- * ⚠️ ДУУДАГДАХ ЦОРЫН ГАНЦ ГАЗАР: `hyanaltStore`-ийн батлах зам, 6 шатын
- * (`REVIEW_STAGES`; 2026-10-09 аудит №6 — урьд «4 шат» гэж бичигдсэн байв)
- * хяналт дуусаж архивт бичигдсэний ДАРАА (`registerApproved`-ийн хажууд).
- * Батлагдаагүй бөглөлтөөс IPC үүсгэвэл хянагч буцаахад ХУДАЛ IPC үлдэнэ.
- *
- * ⚠️ АЛДАА ГАРВАЛ БАТАЛГААГ УНАГААХГҮЙ. `registerApproved`-ийн ЯГ ижил
- * зарчим: хяналтын шийдвэр аль хэдийн хадгалагдсан байхад «болсонгүй» гэж
- * харуулбал менежер дахин дарж давхардал үүсгэнэ. Алдааг буцааж, дуудагч
- * тал зөвхөн бүртгэнэ.
  */
 import { PKGS, loadSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
@@ -29,7 +19,6 @@ const C = HO_IPC.contractFields;
 const P = HO_IPC.payFields;
 
 export type AutoResult =
-  /** ⚠️ 2026-10-09 (F6): `warn` — гэрээний сонголтын анхааруулга (`autoContractFor`); дуудагч ил харуулна */
   | { ok: true; op: AutoPlan['op']; why?: string; warn?: string }
   | { ok: false; error: string };
 
@@ -38,43 +27,21 @@ export type AutoResult =
  *
  * @param bagts тухайн багцын нэр (`Pkg.group` — «Багц 3.3»)
  * @param day   архивт орсон агшны огноо `YYYY-MM-DD`
- *
- * ⚠️ ТЭР АГШНЫ дүнг бодно. Бөглөх хуудасны обьём нь ХУРИМТЛАГДСАН (өссөн
- * дүн) тул агшин бүр өөрөө тухайн үеийн НИЙТ байдлыг илэрхийлнэ — агшнуудыг
- * нэмэх нь ДАВХАРДУУЛНА.
  */
 export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoResult> {
   const at = dayOf(day);
   if (!at) return { ok: false, error: tr('Огноо танигдсангүй: {0}', day) };
 
-  /* ⚠️ 2026-10-09: БИЧИХ ОРОЛДЛОГО хийгдсэн үү — хариу алдагдсан (throw) ч сервер бичсэн байж магадгүй тул
-     `finally` дотор HO_IPC-ийг хүчингүй болгоно (`refreshAutoZoruu`-гийн `tried`-тэй ижил дүрэм). */
   let tried = false;
   try {
-    /* ── 1. Тухайн багцын БҮХ хуудасны тэр өдрийн дүнг нийлүүлнэ ──
-       ⚠️ Багц бүр 1–2 хуудастай (9F + 12F) бөгөөд гэрээ нь НЭГ. */
+    /* ── 1. Тухайн багцын БҮХ хуудасны тэр өдрийн дүнг нийлүүлнэ ── */
     const wanted: Pkg[] = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
     if (!wanted.length) return { ok: false, error: tr('Багц олдсонгүй: {0}', bagts) };
-    /* ⚠️ 2026-10-09 (F2): БЛОКГҮЙ багц (5.x · 6.x · 10) — IPC-д бичих тоо байхгүй нь ХЭВИЙН. Урьд нь доорх
-       `missing`-ээр `ok:false` болж илгээлт «бүртгэл хүлээгдэж буй» хэвээр мөнхөд дахин оролддог байв.
-       ⚠️ 2026-10-09 (дахин): блокгүй багц одоо `obyem_sum`-аар бөглөгддөг (`fillSchema`) ч энд SKIP
-       ХЭВЭЭР — `loadSchema(pkg)` (опт-ингүй) нь блокийн обьёмгүй тул доорх `snapshotOf` (блокийн
-       обьём × нэгж өртөг) хоосон; IPC-ийн AUTO мөр нь барилгын гэрээний (`autoContractFor`) загвартай
-       бөгөөд дэд бүтцийн багцын гэрээ/төлбөрийн хуваарь IPC хүснэгтэд байгаа эсэх нь
-       баталгаажаагүй. Буруу гэрээнд мөнгөн дүн бичихээс алгасах нь аюулгүй (хэрэглэгч шийднэ). */
     if (isBlocklessBagts(bagts)) return { ok: true, op: 'skip', why: 'no-data' };
 
     let obyem: number | null = null;
     let une: number | null = null;
-    /* ⚠️ ХУУДАС ДУТУУ эсэхийг ТУСАД НЬ тоолно (2026-09-15-ны аудит) — `missing`.
-       ⚠️ 2026-10-09 (F2): обьёмын баганагүй хуудас — «дутуу» биш, IPC-д оролцох тоо байхгүй — `no-obyem`.
-       ⚠️ 2026-10-09 (аудит №6): хуудас бүрийн төлвийг цуглуулж шийдвэрийг цэвэр `sheetsVerdict`-д
-       (`ipcAuto.ts`) өгнө — огт нийтлэгдээгүй хуудас (`unpublished`) тусдаа төлөв, дэлгэрэнгүй тэнд. */
     const reads: SheetRead[] = [];
-    /* ⚠️ 2026-10-26 (аудит): БҮРЭН ДАВХАРДСАН хуудас (Багц 4-2·12F — блок нь 9F-ийн F6_x-тэй ижил «6/1…6/8») IPC-д
-       ОРОХГҮЙ — нэгтгэл (`negtgelWrite` → `sumObyemParts`) ба дашбоардын (`loadPkgObyem`) НЭГ дүрэм: жин нь
-       `uniqueBlockCounts` (PKGS-ийн дараалал, эхнийх давамгайлна), 0 бол алгасна. Урьд нь 12F-ийн анхны батлагдсан
-       жаазаас хойш F6 блокийн обьём · мөнгө `obyem` · `guits_une`-д ДАВХАР орж, худал `guits_zoruu` HO_IPC-д бичигдэх байв. */
     const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p).catch(() => null)));
     const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));
 
@@ -84,41 +51,10 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
       if (!sc?.f.fillDate) { reads.push('missing'); continue; }
       const cols = sc.obyem.filter((x): x is string => !!x);
       if (!cols.length) { reads.push('no-obyem'); continue; }
-      /*
-       * ⚠️ `work` ба `gun` ЗААВАЛ (2026-09-25-ны аудит). Урьд нь орхигдсон тул
-       *    `loadRows` дотор мөр бүрийн түлхүүр «№ ¦ » болж суурь агшны «№ ¦ Ажил»-тай
-       *    хэзээ ч таардаггүй (`alignInsertions` → null), `hasGun` үргэлж худал,
-       *    № хоосон мөр ч `!work && !no`-оор хасагддаг байв. Мөр нэмэгдсэн багцад
-       *    (Багц 2·9F: 1,388 ↔ TREES 1,386) энэ нь «… мөр ирлээ» гэж унаж IPC
-       *    хэзээ ч бичигдэхгүй, тоо санамсаргүй тэнцвэл гүн гулсаж бүлэг/навч
-       *    солигдон `guits_une` ХУДАЛ бичигддэг. `ceo/qaqc.loadTreeRows`-той ижил
-       *    шатлалын талбарууд.
-       */
       const need = [sc.f.oid, sc.f.no, sc.f.work, sc.f.gun, sc.f.wC, sc.f.vol, sc.f.unit, ...cols]
         .filter((x): x is string => !!x);
-      /*
-       * ⚠️ 2026-09-29 (аудит 10): хуудас бүрийн ТЭР ӨДӨР БУЮУ ӨМНӨХ хамгийн
-       *    сүүлийн жааз (`negtgelWrite.summaryOf`-ийн `<= at`-тай ижил дүрэм —
-       *    обьём ХУРИМТЛАГДСАН тул сүүлийн агшин нь тэр өдрийн нийт байдал).
-       *    Урьд нь ЯГ `day`-ээр татдаг байсан бөгөөд `loadRows` 0 мөрд ШИДДЭГ
-       *    тул доорх `missing` салбар үхсэн код байв: хоёр хуудастай багцын
-       *    (1 · 2 · 4-2) 9F-ийг D өдөр батлахад 12F-д D огноотой жааз байхгүй
-       *    бол батлалт бүрд алдаа гарч, хоёр хуудсыг өөр өдөр батлавал IPC
-       *    AUTO мөр ХЭЗЭЭ Ч үүсдэггүй байв.
-       * ⚠️ 2026-10-09 (аудит №6): ХЭЗЭЭ Ч НИЙТЛЭГДЭЭГҮЙ хуудас (`upTo == null` — жааз огт байхгүй)
-       *    урьд нь `missing` (09-15-ны «дутуу дүнгээр бичихгүй») байсан тул нөгөө хуудас нь хэзээ ч
-       *    нийтлэгдээгүй багцад `ok:false` → `markRegistered` дуудагдахгүй → `regPending` мөнхөд,
-       *    `retryPendingRegistrations` сешн бүрд унадаг байв. Нэгтгэл (`negtgelWrite.summaryOf`)
-       *    яг энэ тохиолдлыг «тайлагнаагүй хуудас 0%» гэж амжилттай бичдэг тул НЭГ дүрэм: 0 оролцоотой
-       *    (`unpublished` — нийлбэрт юу ч нэмэхгүй), дуудагчид анхааруулга. `agsFetch` алдаанд ШИДДЭГ тул
-       *    `null` нь зөвхөн «жааз байхгүй» гэсэн үг — уншилтын алдаа энд нуугдахгүй.
-       */
       const upTo = await latestDayUpTo(pkg.url, sc.f.fillDate, at);
       if (!upTo) { reads.push('unpublished'); continue; }
-      /* ⚠️ 2026-10-09: `strict` — ЭНЭ ЗАМ IPC-д МӨНГӨН ДҮН БИЧДЭГ. Анхдагч (уншдаг самбарын) горимд жаазны
-         бүтэн эсэхийг шалгаж чадаагүй (лавлах татагдаагүй) үед ДУТУУ жааз хүлээн авагдаж, тасарсан мөрийн
-         обьёмгүй `guits_une` бичигддэг байв — шалгаж чадахгүй бол THROW → `ok:false` (батлалт `regPending`-ээр
-         дахин оролдоно). */
       const { rows } = await loadRows(pkg, sc, upTo, need, { strict: true });
       if (!rows.length) { reads.push('missing'); continue; }
       reads.push('read');
@@ -127,19 +63,6 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
       if (s.une != null) une = (une ?? 0) + s.une;
     }
 
-    /* ⚠️ НЭГ Ч ХУУДАС УНШИГДААГҮЙ бол «гүйцэтгэл 0» ГЭЖ БҮҮ БИЧ — энэ нь
-       сүлжээний/бүдүүвчийн асуудал байж болно. Алдаа буцаана. */
-    /* ⚠️ 2026-10-09 (F2): БҮХ хуудас обьёмын баганагүй (уншигдах ч зүйлгүй) — бичих тоо байхгүй, алдаа биш */
-    /*
-     * ⚠️ БАГЦЫН ХУУДАС ДУТУУ бол ч БИЧИХГҮЙ (2026-09-15-ны аудит). Урьд нь
-     *    `read >= 1` хангалттай гэж үздэг байсан тул хоёр хуудастай багцын
-     *    (9F + 12F) нэг нь тэр өдөр бөглөгдөөгүй бол `guits_une` нь зөвхөн
-     *    нөгөөгийнх болж, `guits_zoruu` тэр багцад тогтмол эерэг («илүү
-     *    олгосон») гардаг байв. Тэр зөрүү ArcGIS руу БУЦААЖ БИЧИГДДЭГ тул
-     *    худал тоо эх өгөгдөлд үлдэнэ.
-     * ⚠️ 2026-10-09 (аудит №6): дээрх гурван дүрэм + «огт нийтлэгдээгүй хуудас 0 оролцоотой»
-     *    бүгд `sheetsVerdict`-д (цэвэр, шалгууртай); анхааруулгыг `warn`-д нэгтгэж буцаана.
-     */
     const verdict = sheetsVerdict(reads);
     if (!verdict.go) return verdict.result;
 
@@ -150,19 +73,10 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     })) as Row[];
 
     /* ── 3. Шийдвэр ── */
-    /* ⚠️ Гэрээний кодыг БАЙГАА мөрөөс авна — таамаглавал мөр буруу
-       бүлэгт очно (2026-09-10-ний бодит алдаа). */
-    /* ⚠️ 2026-10-09 (F6): `autoContractFor` — өмнөх AUTO мөрийн гэрээг хадгалж (түүх хуваагдахгүй),
-       олон гэрээний анхааруулгыг (`warn`) ХАЯХГҮЙ буцаана. `ipcDocLoad` ЯГ энэ функцээр сонгоно. */
     const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));
-    /* ⚠️ 2026-10-09 (аудит №6): гэрээний ба «огт нийтлэгдээгүй хуудас» анхааруулгыг нэг `warn`-д */
     const warns = [cw, verdict.warn].filter((x): x is string => !!x);
     const wx = warns.length ? { warn: warns.join(' · ') } : {};
     const plan = planAuto(rows, { pkg: bagts, day: at, code, obyem, une });
-    /* ⚠️ 2026-09-25: ЗӨВХӨН `no-data` (хэмжилтгүй бөглөлт — хэвийн) нь амжилт.
-       Бусад шалтгаан (гэрээний код олдоогүй, багц/огноо танигдаагүй) нь IPC мөр
-       ҮҮСЭЭГҮЙ гэсэн үг — урьд нь `ok: true` буцааж, дуудагч «бүртгэгдсэн» гэж
-       тэмдэглэдэг тул мөр нь хэзээ ч нөхөгдөхгүй, алдаа ч харагддаггүй байв. */
     if (plan.op === 'skip') {
       if (plan.why === 'no-data') return { ok: true, op: 'skip', why: plan.why, ...wx };
       const error = plan.why === 'no-code'
@@ -173,8 +87,7 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
       return { ok: false, error };
     }
 
-    /* ── 4. Бичих ──
-       ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг — мөр БҮРИЙН үр дүнг шалгана. */
+    /* ── 4. Бичих ── */
     const key = plan.op === 'insert' ? 'adds' : 'updates';
     tried = true;
     const j = await agsFetch(`${HO_IPC.url}/applyEdits`, {
@@ -182,15 +95,10 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
       rollbackOnFailure: 'true',
     });
     const res = (j[plan.op === 'insert' ? 'addResults' : 'updateResults'] ?? []) as EditRes[];
-    /* ⚠️ ХООСОН ХАРИУГ АМЖИЛТ ГЭЖ ҮЗЭХГҮЙ (2026-09-17) — `submission.ts`,
-       `zovshoorol.deleteZov`-той ижил: нэг мөр илгээсэн тул яг нэг үр дүн ирнэ. */
     if (res.length !== 1) return { ok: false, error: tr('Сервер үр дүн буцаасангүй — IPC мөр бичигдээгүй гэж үзнэ') };
-    /* ⚠️ 2026-10-21 (аудит): `success !== true` — талбаргүй/`undefined` үр дүн ч амжилт БИШ (ArcGIS-ийн 200-гийн занга) */
     const bad = res.find((r) => r.success !== true);
     if (bad) return { ok: false, error: bad.error?.description || tr('Бичих амжилтгүй') };
 
-    /* ⚠️ Кэшийг хүчингүй болгоно — эс бөгөөс «Санхүүжилт» хуудас шинэ
-       мөрийг харахгүй (dataBus.invariant.check.mjs энэ дүрмийг барина). */
     invalidate('HO_IPC');
 
     /* ── 5. Зэрэг батлалтын ДАВХАР мөр (2026-09-25-ны аудит) ── */
@@ -201,8 +109,7 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
       if (dd.why === 'dedup') return { ...dd, ...wx };
     }
 
-    /* ── 6. Гэрээний AUTO мөрүүдийн зөрүүг шинэчилнэ (`refreshAutoZoruu`) ──
-       ⚠️ Унавал IPC мөр аль хэдийн бичигдсэн тул `ok` хэвээр — зөвхөн бүртгэнэ. */
+    /* ── 6. Гэрээний AUTO мөрүүдийн зөрүүг шинэчилнэ (`refreshAutoZoruu`) ── */
     const rz = await refreshAutoZoruu(code);
     if (!rz.ok) {
       console.warn('[selbe] IPC зөрүүг дахин бодож чадсангүй:', rz.error);
@@ -212,8 +119,6 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
   } finally {
-    /* ⚠️ 2026-10-09: бичих оролдлого хийгдсэн бол ҮРГЭЛЖ (алдаа · хариу алдагдсан ч) — дээрх `tried`-ийн ⚠️.
-       Амжилтын замын `invalidate` (дээр) хэвээр — `dedupeAuto`/`refreshAutoZoruu` шинэ мөрийг уншина. */
     if (tried) invalidate('HO_IPC');
   }
 }
@@ -221,9 +126,6 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
 /**
  * Хуудасны `day`-ээс ХОЙШГҮЙ хамгийн сүүлийн жаазны огноо (`YYYY-MM-DD`,
  * UTC — `bagtsSheet.dayFilter`/`msToDay`-тай ижил). Жааз байхгүй бол `null`.
- *
- * ⚠️ 2026-09-29 (аудит 10): `syncIpcFromFill`-ийн хоёр хуудастай багцын
- *    засвар — дэлгэрэнгүйг дуудагчийн ⚠️-ээс.
  */
 async function latestDayUpTo(url: string, fld: string, day: string): Promise<string | null> {
   const j = await agsFetch(`${url}/query`, {
@@ -243,22 +145,11 @@ type EditRes = { success?: boolean; objectId?: number; error?: { description?: s
 /**
  * ЗЭРЭГ БАТЛАЛТЫН ДАВХАР AUTO МӨРИЙГ ЦЭВЭРЛЭНЭ — ЗӨВХӨН ӨӨРИЙН нэмсэн мөрийг.
  *
- * ⚠️ ЯАГААД (2026-09-25-ны аудит): `planAuto` нь унших → `findAutoRow` →
- *    нэмэх гэсэн дараалалтай, ArcGIS-д давтагдашгүй хязгаар (`murun_id`)
- *    байхгүй. Нэг багцын 9F ба 12F-ийг секундын зайтай батлавал (хоёр таб)
- *    хоёулаа мөр олохгүй өнгөрч ХОЁР `AUTO|…|D` мөр үүснэ; дараагийн
- *    шинэчлэлт зөвхөн эхнийхийг (`rows.find`, OID өсөхөөр) засаж, хоёр дахь
- *    нь хуучирсан `une`-тэй үлдэн IpcTable нэг өдөрт хоёр карт харуулна.
- *
  * ДҮРЭМ: нэмсний ДАРАА тэр ID-тай мөрүүдийг сервероос ДАХИН уншина (`agsFetch`
  *    — `queryFeatures`-ийн in-flight хуваалцалт нэмэхээс ӨМНӨХ хариуг өгч
  *    болно). ХАМГИЙН БАГА OID-той нь үлдэнэ (`findAutoRow`-той ижил сонголт).
  *    Манайх түүнээс их бол: үлдэх мөрийг МАНАЙ утгаар шинэчилж, манайхыг
  *    устгана. Хоёр тал ижил дүрмээр явдаг тул үргэлж НЭГ мөр үлдэнэ.
- *
- * ⚠️ БУСДЫН мөрийг ХЭЗЭЭ Ч УСТГАХГҮЙ: хуучин давхардсан мөрд санхүүгийн газар
- *    `dun` бичсэн байж болно — тэр нь бодит гүйлгээний баримт. Зөвхөн сая
- *    ӨӨРСДИЙН нэмсэн (`dun`-гүй) мөр л устгагдана.
  */
 async function dedupeAuto(
   before: Row[],
@@ -307,18 +198,9 @@ async function dedupeAuto(
 /**
  * ГЭРЭЭНИЙ AUTO МӨРҮҮДИЙН ЗӨРҮҮГ ДАХИН БОДНО (`guits_zoruu`).
  *
- * ⚠️ ЯАГААД (2026-09-25-ны аудит): `autoInsert` нь зөрүүг `null` бичээд
- *    «санхүүгийн газар `dun` бичихэд `ipcLink` дахин боддог» гэж амласан атлаа
- *    `linkContract`/`linkUpdates`-ийн production дуудагч БАЙГААГҮЙ — `dun`
- *    нөхөгдсөн AUTO мөр бүр «Зөрүү —» хэвээр мөнхөрдөг байв.
- *
  * ДҮРЭМ: `ipcAuto.autoZoruu` (олгосон ХУРИМТЛАЛ − хадгалсан `guits_une`).
  *    ЗӨВХӨН AUTO мөр — гараар оруулсан мөрийн `une` бодогдоогүй (агшингүй)
  *    тул тэдгээрийг ХӨНДӨХГҮЙ. Утга нь ӨӨРЧЛӨГДСӨН мөрийг л бичнэ.
- *
- * ⚠️ `dun` засах UI энэ функцийг засварын дараа дуудвал зөрүү ШУУД шинэчлэгдэнэ;
- *    эс бөгөөс тухайн багцын дараагийн батлалтаар (`syncIpcFromFill`).
- * ⚠️ 500 мөрийн багцаар, мөр бүрийн үр дүнг шалгана (HTTP 200 алдаа).
  *
  * @param code гэрээний код (`geree_kod`). `undefined` бол БҮХ гэрээний AUTO
  *   мөр (санхүүгийн хүснэгтийг хадгалсны дараа — аль гэрээ засагдсаныг
@@ -332,9 +214,6 @@ export async function refreshAutoZoruu(
   let n = 0;
   let tried = false;
   try {
-    /* ⚠️ `queryFeatures` БИШ: түүний in-flight хуваалцалт нь бидний бичилтээс
-       ӨМНӨ эхэлсэн ижил асуулгын хариуг өгч болох ба тэр хуучин `une`-ээр
-       сая бичсэн зөв зөрүүг ДАРЖ бичнэ. Шууд, OID-оор эрэмбэлж хуудаслана. */
     const rows: Row[] = [];
     for (let offset = 0; ; ) {
       const q = await agsFetch(`${HO_IPC.url}/query`, {
@@ -364,7 +243,6 @@ export async function refreshAutoZoruu(
     }
     for (let i = 0; i < upd.length; i += 500) {
       const part = upd.slice(i, i + 500);
-      /* ⚠️ 2026-10-09 (R6): ОРОЛДЛОГО — хариу алдагдсан ч бичигдсэн байж магадгүй (`finally`) */
       tried = true;
       const j = await agsFetch(`${HO_IPC.url}/applyEdits`, {
         updates: JSON.stringify(part.map((attributes) => ({ attributes }))),
@@ -382,7 +260,6 @@ export async function refreshAutoZoruu(
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
   } finally {
-    /* ⚠️ 2026-10-09 (R6): `finally` — урьд нь дунд нь шидсэн (сүлжээ) үед бичигдсэн багцын зарлал явдаггүй байв */
     if (tried) invalidate('HO_IPC');
   }
 }

@@ -3,25 +3,9 @@
 /**
  * CEO ҮЗҮҮЛЭЛТ — «ЗӨВШӨӨРӨЛ: хүлээгдэж буй / зөвшөөрөөгүй».
  *
- * Эх сурвалж: `loadZov()` (`bagts_ajliin_zovshoorliin_burtgel/171`) — багц
+ * Эх сурвалж: `loadZov` (`bagts_ajliin_zovshoorliin_burtgel/171`) — багц
  * бүрийн шат дараалсан зөвшөөрлийн бүртгэл. Гол тоо нь ШИЙДЭГДЭЭГҮЙ
  * зөвшөөрлийн тоо = хүлээгдэж буй + зөвшөөрөөгүй + танигдаагүй төлөв.
- *
- * ⚠️ `loadZov()` нь унасан/холбогдоогүй үед `null` буцаана, ХООСОН МАССИВ
- *    БИШ. Хоёрыг нэгтгэхгүй: `null` → `unknown` түвшин, «—» утга,
- *    `failedSources`-д нэр; `[]` → `neutral` (бүртгэл хоосон, гэхдээ уншигдсан).
- *
- * ⚠️ ТАНИГДААГҮЙ төлөв нь `bad` — `zovshoorol.ts`-ийн баримтжуулсан занга:
- *    толинд байхгүй утга ногооноор чимээгүй «зөвшөөрөгдсөн» мэт харагдах
- *    ёсгүй. Тэдгээр мөрийг нэрээр нь `issues`-д гаргана — засах хүн аль мөр
- *    болохыг мэдэх ёстой.
- *
- * ⚠️ Кэш `ZOVSHOOROL` тагтай — `saveZov`/`deleteZov` нь `invalidate` дуудахад
- *    энэ карт дараагийн уншилтад шинээр татна. Тагийг мартвал зөвшөөрөл
- *    хадгалсны дараа CEO самбар 5 минут хуучин тоо барина.
- *
- * ⚠️ Тооцоо (`computePermits`) ба татах (`loadPermitsKpi`) ТУСДАА —
- *    `permits.check.mjs` нь сүлжээгүйгээр эхнийхийг шалгана.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -57,18 +41,13 @@ export const tolovLabel = (t: Tolov): string => {
   }
 };
 
-/** Мөрийн эрэмбэ: төлөв (муу нь эхэнд) → багц → шат
- *  ⚠️ 2026-10-09 (аудит №2): `numeric` — «Багц 10» нь «Багц 2»-оос ӨМНӨ эрэмбэлэгддэг байв */
+/** Мөрийн эрэмбэ: төлөв (муу нь эхэнд) → багц → шат */
 export const compareZov = (a: Zov, b: Zov): number => (
   TOLOV_RANK[a.tolov] - TOLOV_RANK[b.tolov]
   || a.bagts.localeCompare(b.bagts, 'mn', { numeric: true })
   || a.shat - b.shat
 );
 
-/**
- * ⚠️ Хоосон мөр → `null` → «—». `cell('')` нь хоосон нүд зурна, «мэдээлэлгүй»
- *    гэдгийг хэлдэггүй.
- */
 const txt = (s: string) => cell(s || null);
 
 /**
@@ -93,8 +72,6 @@ export function computePermits(rows: Zov[] | null): KpiResult {
   const s = summarize(rows);
   const pending = s.wait + s.no + s.unknown;
 
-  /* ⚠️ Дохионы дараалал: зөвшөөрөөгүй/танигдаагүй ганц ч байвал bad —
-     цөөнх нь эрсдэл (`summarize`-ийн `alert`-тэй ижил санаа). */
   let level: Level;
   if (s.no > 0 || s.unknown > 0) level = 'bad';
   else if (s.wait > 0) level = 'warn';
@@ -119,7 +96,6 @@ export function computePermits(rows: Zov[] | null): KpiResult {
       [tr('Багц'), tr('Шат'), tr('Нэр'), tr('Төлөв'), tr('Байгууллага'), tr('Хариуцагч'), tr('Тайлбар')],
       open.map((z) => [
         txt(z.bagts),
-        /* ⚠️ `shat = 0` нь «уншигдаагүй» (`Number(x) || 0`) — 0-р шат гэж зурахгүй */
         cell(z.shat > 0 ? z.shat : null, 'count'),
         txt(z.ner),
         cell(tolovLabel(z.tolov)),
@@ -136,7 +112,6 @@ export function computePermits(rows: Zov[] | null): KpiResult {
     .map(([bagts, list]) => ({ bagts, ...summarize(list) }))
     .sort((a, b) => (
       b.no - a.no || b.unknown - a.unknown || b.wait - a.wait
-      /* ⚠️ 2026-10-09 (аудит №2): `numeric` — «Багц 2» < «Багц 10» */
       || a.bagts.localeCompare(b.bagts, 'mn', { numeric: true })
     ));
   tables.push(table(
@@ -179,14 +154,6 @@ export function computePermits(rows: Zov[] | null): KpiResult {
 
 /**
  * АЧААЛАГЧ — кэштэй, `ZOVSHOOROL` бичилтээр хүчингүй болно.
- *
- * ⚠️ 2026-09-30: УНАЛТЫГ КЭШЛЭХГҮЙ (`iot.loadIotKpiSafe`-ийн загвар). `loadZov`
- *    ӨӨРӨӨ шиддэггүй (`null` буцаана) тул урьд нь `computePermits(null)` (unknown
- *    карт) АМЖИЛТТАЙ амлалт болж `cached`-д 5 минут үлддэг байв — нэг удаагийн
- *    429/timeout-ын дараа сүлжээ сэргэсэн ч «Зөвшөөрөл» карт «—» хэвээр, CeoBoard-ийн
- *    «Дахин оролдох» зөвхөн `error` төлөвт гардаг тул сэргээх зам ч байгаагүй.
- *    Одоо дотоод ачаалагч ШИДНЭ (`cached` унасан амлалтыг хаядаг), unknown картыг
- *    гадна талын `loadPermitsKpiSafe` (registry-ийн дуудагч) зурна.
  */
 export const loadPermitsKpi = cached(
   async (): Promise<KpiResult> => {

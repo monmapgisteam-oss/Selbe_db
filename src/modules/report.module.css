@@ -3,22 +3,11 @@
 
      ┌──────────────── агуулга (гүйлгэнэ) ─────────────┬── ЗУРАГ ──┐
      │ горим · hero · KPI · хэсгүүд · хүснэгт           │  байнга   │
-     └─────────────────────────────────────────────────┴───────────┘
-
-   ⚠️ ЯАГААД: хэрэглэгч «тайлан хэсгийг ТУХ хэсэгтэй бүрэн адилхан болгон
-      загварчил» гэсэн. Доорх утгууд нь `tuh.module.css`-ийн ХУУЛБАР — тэр
-      файлыг ИМПОРТЛОХГҮЙ (`layout.tsx`-ийн ⚠️: харагдацууд стайл хуваалцахгүй).
-      ТУХ-ын хэв маяг өөрчлөгдвөл энд ч дагуулж засна.
-   ⚠️ Урьдын «цаас» (1080px голлосон карт, 48/64px дотор зай) ДЭЛГЭЦЭЭС
-      хасагдсан; ХЭВЛЭХ үед (@media print) цагаан цаас, хар текст хэвээр,
-      газрын зураг ба багажны мөр нуугдана.
-   ⚠️ Зөвшөөрөгдсөн breakpoint л: 1400 · 1180 · 900 · 620 (ТУХ-тай ижил).
-   ══════════════════════════════════════════════════════════ */
+     └─────────────────────────────────────────────────┴───────────┘ */
 
 .tailan {
   height: 100%;
   display: grid;
-  /* ⚠️ px-ээр (хувь биш): `SplitGrip` эхлэх өргөнөө `parseFloat`-аар уншдаг */
   --side-r: 560px;
   position: relative;
   grid-template-columns: minmax(0, 1fr) var(--side-r);
@@ -48,7 +37,6 @@
 
 /* ── Горим сэлгэгч — ТУХ-ын шүүлтүүрийн сегмент ── */
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-/* ⚠️ 2026-10-26: сегмент нь нийтлэг `Segmented` (components/Switch.tsx) — ТУХ-ын шүүлтүүртэй ижил */
 
 /* ── Багажны мөр — хэвлэхэд нуугдана ── */
 .toolbar {
@@ -59,8 +47,6 @@
   margin: 0 0 4px;
 }
 .tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-/* ⚠️ ТУХ-ын `ghostBtn` — урьдын өнгөт дүүргэлттэй товч БИШ.
-   ⚠️ 2026-10-23: Environment `.pe-ghost` — 32px · булан 8px · 12px/500 · hover --surface-2 */
 .btn {
   all: unset;
   display: inline-flex;
@@ -94,7 +80,6 @@
   align-items: end;
   padding: 12px 4px 16px;
 }
-/* ⚠️ 2026-10-23: Environment `.eyebrow` — 11px/600/0.15em, line-height ≥1.3 */
 .eyebrow {
   margin: 0 0 6px;
   font-size: 11px;
@@ -129,7 +114,6 @@
 }
 
 /* ── Хүснэгт (ТУХ) ── */
-/* ⚠️ 2026-10-23: Environment `.pe-table` — 11.5px; sticky th 10px uppercase --surface дээр; мөр 6/10px, 1px зураас */
 .table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
 .table th {
   position: sticky;
@@ -198,9 +182,7 @@
 
 .note { margin: 6px 0 0; font-size: 0.72rem; line-height: 1.5; color: var(--ink-3); }
 
-/* Тайлан үүсгэхэд гарсан алдаа — ТУХ-ын `failNote`.
-   ⚠️ `alert()`-ийн оронд (2026-09-11). `.toolbar` нь хэвлэхэд нуугддаг тул
-   энэ мэдэгдэл цаасан дээр гарахгүй — зөвхөн дэлгэцийн үйлдлийн эргэх холбоо. */
+/* Тайлан үүсгэхэд гарсан алдаа — ТУХ-ын `failNote`. */
 .fail {
   margin: 4px 0 0;
   padding: 8px 10px;
@@ -257,8 +239,6 @@
   .tailan { padding: 4px; }
   .content { padding: 4px 4px 24px; }
 }
-/* ⚠️ 2026-10-09: зөөлөн гүйлгэлт ЗӨВХӨН хэрэглэгч хөдөлгөөнөөс татгалзаагүй үед (opt-in) —
-   урьд үндсэн дүрэмд `smooth`, reduce-д буцаан `auto` байв. Сонгогч нь локал `.content` (pure). */
 @media (prefers-reduced-motion: no-preference) { .content { scroll-behavior: smooth; } }
 
 /* ══════════════ ХЭВЛЭХ ══════════════ */
@@ -271,14 +251,10 @@
   .paper { color: #000; background: #fff; }
   .hero h1, .h2, .caption, .summaryTitle, .heroNum { color: #000; }
   .lead strong, .findings strong { color: #000; }
-  /* ⚠️ 2026-09-08 — .sub/.note/.findings нь --ink-2/--ink-3 дээр үлдсэн байв:
-     харанхуй горимд хэвлэхэд цагаан цаасан дээр цагаанаар гарч алга болдог. */
   .findings, .intro, .heroSub, .heroNote, .caption span { color: #222; }
   .sub, .note, .eyebrow { color: #555; }
   /* Тэргүү хэсэг — цаасан дээр цагаан дэвсгэр, хар зааг (өнгө хэвлэгдэхгүй) */
   .lead { background: #fff; border-color: #999; border-left-color: #000; color: #000; }
-  /* ⚠️ 2026-10-09: толгойн `ui.Meter wide` — зам/төлөвлөгөөний зураасны ТОКЕНЫГ цаасны утгаар
-     (харанхуй горимд --ink бараг цагаан тул цагаан цаасан дээр зураас алга болно). */
   .heroFig { --ink: #000; --chart-track: #e5e7eb; }
   .table th, .table td { border-color: #999; }
   .table th { position: static; background: #eee; color: #000; }

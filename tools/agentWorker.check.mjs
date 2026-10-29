@@ -1,21 +1,7 @@
 /**
  * AI релейн Cloudflare Worker хувилбар (`agent-proxy/worker.mjs`) — `export default.fetch`-ийг
  * хуурамч `env` (KV stub) ба хуурамч `fetch`-ээр дуудаж шалгана (2026-10-09, аудит №6).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs tools/agentWorker.check.mjs
- *
- * ⚠️ Урьд `worker.mjs` нэг ч шалгуургүй байв — `server.mjs`-ийн толин хувилбар гэдэг ч гар аргаар
- *    л тааруулдаг. Энд хаалтууд: (а) буруу Origin → 403; (б) `x-bot-secret` буруу (ArcGIS
- *    токенгүй) → 401; (в) дээд үйлчилгээ (Anthropic) 401 → 502 `upstream_auth`.
- * ⚠️ 2026-10-21 (аудит): + (г) `ARCGIS_ORG_ID` хоосон → ботоос бусдад 503 (урьд нээлттэй);
- *    (д) токен хүчинтэй ч порталын эрхийн хүснэгтэд МӨРГҮЙ → 403, устгагдсан (`views: 'removed'`) → 403,
- *    хүснэгт уншигдахгүй → 503 retryable; баталгаажсан хэрэглэгч кэшлэгдэж `community/self` · хүснэгт дахин асуугдахгүй;
- *    (е) `RL_KV` холбоогүй → isolate бүрд НЭГ чанга анхааруулга.
- * ⚠️ 2026-10-22 (аудит): (е) нь зөвхөн анхааруулгыг тоолж, модулийн түвшний `warnedNoKv`-ээс болж хэсгүүдийн ДАРААЛЛААС
- *    хамаардаг байв — одоо ШИНЭ модулийн хувь дээр, ½ төсвийг (`budgetCapFor`) зан төлөвөөр нь батална;
- *    + (ё) `server.mjs`-ийн `hasPortalRow`/`checkArcGIS` толин хуулбар (урьд огт шалгагддаггүй байв).
- * ⚠️ `worker.mjs` нь `fetch`-ийг ГЛОБАЛААС дууддаг (Worker орчинд өөр зам байхгүй) — тестэд
- *    `globalThis.fetch`-ийг түр сольж, дууссаны дараа буцаана. Refactor хэрэггүй.
- * ⚠️ Worker-ийн минутын тоолуур модулийн түвшинд — нэг процесст цөөн хүсэлт тул хүрэхгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs tools/agentWorker.check.mjs
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -53,8 +39,6 @@ const post = (env, headers, body = chatBody()) =>
     body,
   }), env, ctx);
 
-/* ⚠️ 2026-10-21: ArcGIS-ийн хоёр дуудлага (`community/self` · эрхийн хүснэгт) ба Anthropic-ийг замаар нь ялгана.
-   Токен URL-д хэзээ ч орохгүй (POST биед) — `tools/tokenInUrl.check.mjs`-ийн дүрэм энд ч шалгагдана. */
 const SELF = 'https://gis.selbecity.mn/geoportal/sharing/rest/community/self';
 const PERMS = /SYS_Selbe_Permissions\/FeatureServer\/230\/query$/;
 const jsonRes = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } });
@@ -149,7 +133,6 @@ try {
       upstream: (url, init) => {
         assert.match(String(url), /api\.anthropic\.com\/v1\/messages/);
         assert.equal(init.headers['x-api-key'], 'sk-test');
-        /* ⚠️ 2026-10-19: анхдагч Opus 5.5 — явцын тэмдэглэл (`display: 'updates'`) + beta толгой */
         assert.equal(init.headers['anthropic-beta'], 'thinking-display-updates-2026-08-18');
         assert.deepEqual(JSON.parse(init.body).thinking, { type: 'adaptive', display: 'updates' });
         return jsonRes({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }, 401);
@@ -181,7 +164,6 @@ try {
     assert.deepEqual(Object.keys(j).sort(), ['content', 'stop_reason', 'usage']);
     assert.equal(j.content[0].text, 'Сайн байна уу');
     assert.equal(calls.lastWhere, "username = 'dorj_selbe' OR username = 'Dorj_Selbe'", 'том үсэгтэй нэр — жижиг + эх үсгээр хоёулаа');
-    /* ⚠️ 2026-10-21: баталгаажсан хэрэглэгч кэшлэгдэнэ — дараагийн хүсэлт ArcGIS/хүснэгт рүү явахгүй */
     const res2 = await post(env, { Origin: ORIGIN, 'x-arcgis-token': 'tok-ok' });
     assert.equal(res2.status, 200);
     assert.equal(calls.self, 1, 'community/self дахин асуугдахгүй (кэш)');
@@ -223,11 +205,7 @@ try {
     console.log('✅ worker: эрхийн мөргүй/устгагдсан → 403 · хүснэгт уншигдахгүй → 503 retryable');
   }
 
-  /* ── (е) 2026-10-21: `RL_KV` холбоогүй → isolate бүрд НЭГ чанга анхааруулга, isolate доторх төсөв ½, реле ажилласаар ──
-     ⚠️ 2026-10-22 (аудит): ШИНЭ модулийн хувь (`?…` — шинэ isolate-ийн оронд) дээр: `warnedNoKv` модулийн түвшинд тул урьд
-     нь дээрх хэсгүүдийн аль нэг нь KV-гүй хүсэлт эрт явуулбал анхааруулга 0 болж шалгуур ДАРААЛЛААС хамаардаг байв.
-     ½ төсвийг (`budgetCapFor`) зан төлөвөөр: 300k төсөвт 200k зарцуулсны дараа KV-гүй бол 429 `daily_budget` (таг 150k),
-     KV-тэй бол бүтэн 300k (2-р хүсэлт 200, 3-р нь 429 — KV тоолдог). */
+  /* ── (е) 2026-10-21: `RL_KV` холбоогүй → isolate бүрд НЭГ чанга анхааруулга, isolate доторх төсөв ½, реле ажилласаар ── */
   {
     const fresh = async (tag) => (await import(new URL(`../agent-proxy/worker.mjs?${tag}`, import.meta.url).href)).default;
     const postTo = (w, env) => w.fetch(new Request('https://relay.test/chat', {

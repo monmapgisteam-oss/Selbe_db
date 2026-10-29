@@ -14,11 +14,6 @@
  *     <SplitGrip {...side.left} />
  *     <SplitGrip {...side.right} />
  *   </div>
- *
- * ⚠️ Чирэх явцад React-ийн төлөв ХӨДӨЛӨХГҮЙ — зөвхөн CSS хувьсагчийг шууд
- *    бичнэ. Дашбоард дээр газрын зураг (ArcGIS) байдаг бөгөөд хөдөлгөөн бүрд
- *    дахин зурвал зураг анивчиж, чирэлт гацна. Төлөв ба localStorage-д
- *    `pointerup` дээр л нэг удаа буулгана.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -56,9 +51,6 @@ export function SplitGrip({
       className={`${st.grip} ${side === 'left' ? st.left : st.right}${
         dragging ? ` ${st.gripOn}` : ''
       }`}
-      /* ⚠️ 2026-10-09: `data-split-grip` — модулиудын CSS энэ товчийг webpack-ийн класс НЭРЭЭР
-         (`[class*='splitGrip_grip']`) барьдаг байв; хэш/нэрлэх дүрэм солигдвол чимээгүй тасарна.
-         Одоо тогтвортой атрибутаар (`button[data-split-grip='left']`). */
       data-split-grip={side}
       role="separator"
       aria-orientation="vertical"
@@ -76,18 +68,6 @@ type Sides = { l?: number; r?: number };
 
 /**
  * localStorage-оос уншсан утгын ХЭЛБЭРИЙГ шалгана.
- *
- * ⚠️ 2026-09-11: урьд нь `JSON.parse(raw) as Sides` гэж ШУУД хөрвүүлдэг байв.
- * `try/catch` нь зөвхөн ШИДЭЛТИЙГ (эвдэрсэн JSON) барьдаг — хүчинтэй JSON
- * боловч БУРУУ хэлбэр (`"abc"`, `[1,2]`, `{"l":"x"}`, `{"l":null}`) чимээгүй
- * нэвтэрч, доор `--side-l: ${w.l}px` гэж бичигдэхэд `abcpx`/`nullpx` гэсэн
- * хүчингүй CSS гарч тал бүхэлдээ задардаг байв (хэрэглэгч зөвхөн «эвдэрсэн
- * байрлал» хардаг, шалтгаан нь харагдахгүй). Өөр эх (өөр хувилбар, гараар
- * засварласан, өөр апп-ийн ижил түлхүүр) утга бичих боломжтой тул итгэж
- * болохгүй.
- *
- * ⚠️ Хязгаарыг чирэлттэй ИЖИЛ (`MIN`…`MAX`) байлгана — эс бөгөөс хадгалагдсан
- * утга чирэлтээр хүрэх боломжгүй өргөнийг сэргээж, тал уншигдахаа болино.
  */
 function parseSides(v: unknown): Sides {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return {};
@@ -95,8 +75,6 @@ function parseSides(v: unknown): Sides {
   const out: Sides = {};
   for (const k of ['l', 'r'] as const) {
     const n = src[k];
-    // ⚠️ `Number(x)` БИШ, `typeof === 'number'`: `Number(null)`/`Number('')` нь
-    //    0 өгдөг тул хог утга «хүчинтэй 0» болж хувирна. NaN/Infinity-г мөн хаяна.
     if (typeof n === 'number' && Number.isFinite(n) && n >= MIN && n <= MAX) {
       out[k] = Math.round(n);
     }
@@ -113,12 +91,10 @@ export function useSideResize(key: string, hasRight = true) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<'l' | 'r' | null>(null);
 
-  // ⚠️ localStorage-ийг ЭФФЕКТЭД уншина — эхний зурагт серверийнхтэй ижил
-  // байхгүй бол hydration зөрнө.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS + key);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — серверийн зурагтай ижил эхлээд, localStorage-ийн утгыг mount-ын ДАРАА л тавина
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setW(parseSides(JSON.parse(raw)));
     } catch {
       /* хадгалалт байхгүй/эвдэрсэн — анхны өргөнөөр */
@@ -139,17 +115,10 @@ export function useSideResize(key: string, hasRight = true) {
     [key],
   );
 
-  // ⚠️ Чирэлтийн ДУНДУУР компонент unmount болбол цэвэрлэгээ хийгдэхгүй,
-  //    body-ийн класс үлдэж апп даяар курсор эвдэрнэ.
   useEffect(() => () => document.body.classList.remove('resizing'), []);
 
   const drag = useRef<{ s: 'l' | 'r'; x: number; w: number; px?: number } | null>(null);
 
-  /* ⚠️ 2026-09-30: урьд нь `start('l')` гэх мэт КАРРИЛСАН үйлдвэр render дунд
-     дуудагдаж closure буцаадаг байв — React Compiler тэр closure доторх
-     `ref.current` уншилтыг «render үеийн ref хандалт» гэж үзэж, буцаасан
-     обьектыг бүхэлд нь (хэрэглэгч бүрийн `side.hostRef`, `side.left`…) ref
-     мэт тэмдэглэдэг байв. Одоо `useCallback` + талыг аргументаар. */
   const start = useCallback(
     (s: 'l' | 'r', e: React.PointerEvent<HTMLButtonElement>) => {
       e.preventDefault();
@@ -163,8 +132,6 @@ export function useSideResize(key: string, hasRight = true) {
         Math.round(
           parseFloat(getComputedStyle(host).getPropertyValue(varName)) || MIN,
         );
-      // ⚠️ Элементийг ЭНД барина: React-ийн synthetic event дуусмагц
-      //    `currentTarget` нь null болдог тул `up()` дотор ашиглаж болохгүй.
       const grip = e.currentTarget;
       drag.current = { s, x: e.clientX, w: w0 };
       grip.setPointerCapture(e.pointerId);
@@ -202,8 +169,6 @@ export function useSideResize(key: string, hasRight = true) {
       grip.addEventListener('pointermove', move);
       grip.addEventListener('pointerup', up);
       grip.addEventListener('pointercancel', up);
-      /* ⚠️ capture ямар ч шалтгаанаар алдагдахад (цонхны гадна тавих,
-         alt-tab, iframe) up ЗААВАЛ ажиллана — эс бөгөөс dragging гацна */
       grip.addEventListener('lostpointercapture', up);
     },
     [save],

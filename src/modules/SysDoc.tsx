@@ -2,21 +2,6 @@
 
 /**
  * СИСТЕМИЙН БАРИМТ — ӨГӨГДЛИЙН КАТАЛОГ.
- *
- * ⚠️ 2026-09-25 (хэрэглэгчийн хүсэлт): урьдын markdown баримт (`sysDocs.ts`) ба
- *    схем (`SysSchemView`)-ийн ОРОНД порталын БҮХ эх сурвалжийг давхарга/хүснэгт
- *    тус бүрээр жагсаана: зориулалт, ШИНЭЧЛЭГДЭХ ШАТЛАЛ (хэн бөглөж, хэн
- *    батлаад, хаашаа урсдаг), уншдаг харагдац, засах эрх, хаалттай эсэх.
- *    Өгөгдөл нь `lib/dataCatalog.ts`-д — энд зөвхөн харуулна.
- * ⚠️ 2026-10-09 (аудит №3): импортлогчгүй үлдсэн хуучин файлууд (`sysDocs.ts`,
- *    `tools/sysdocs-build.mjs` · `docs:build`, `SysSchemView.tsx`, `sysSchem.ts`,
- *    `sysSchem.module.css`) УСТГАГДСАН. `docs/docs.invariant.check.mjs` хэвээр.
- *
- * ⚠️ СҮЛЖЭЭНД ОГТ ХАНДАХГҮЙ — каталог нь кодын регистрээс бүтээх үед гарна.
- *
- * ⚠️ ШАТЛАЛЫН АЛХАМ ДАРАХАД ТЭР МӨР РҮҮ ҮСЭРНЭ. Зорилтот мөр одоогийн
- *    шүүлтэд нуугдсан бол шүүлтийг ЦЭВЭРЛЭЖ байж үсэрнэ — эс бөгөөс дархад
- *    «юу ч болсонгүй» мэт харагдана.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -30,7 +15,6 @@ import s from './sysDoc.module.css';
 
 type Jump = (id: string) => void;
 
-/** ⚠️ 2026-10-01: «Техникийн дэлгэрэнгүй» эвхмэл хэсэгт харуулах код байгаа эсэх */
 export function hasTech(e: Pick<CatEntry, 'aliases' | 'styleSrc'>, editors: { cap?: string }[], rows: unknown[]): boolean {
   return editors.some((x) => !!x.cap) || rows.length > 0 || e.aliases.length > 0 || e.styleSrc.length > 0;
 }
@@ -107,9 +91,6 @@ function Entry({ e, domId, on, onJump, nameOf, go, canOpen }: {
             {!e.allMaps && !e.views.length && <span className={`${s.chip} ${s.dim}`}>{tr('Харагдац шууд уншдаггүй')}</span>}
           </dd>
         </div>
-        {/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ДОТООД КОДЫГ (`__flow__`, `planApprove` …)
-            энгийн хэрэглэгчид ил гаргахгүй — зөвхөн хүний хэлээрх тайлбар. Кодууд нь доорх
-            «Техникийн дэлгэрэнгүй» эвхмэл хэсэгт (админ/хөгжүүлэгчид) хэвээр. */}
         <div className={s.metaRow}>
           <dt>{tr('Засах эрх')}</dt>
           <dd className={s.chips}>
@@ -190,11 +171,6 @@ export default function SysDoc({ setView, navScope = 'all' }: {
   /** Хэрэглэгчийн эрхэд байгаа харагдацууд; `'all'` бол хязгааргүй (`Schem`-тэй ижил) */
   navScope?: 'all' | ViewKey[];
 }) {
-  /**
-   * ⚠️ 2026-09-25: ЭРХИЙН ХҮРЭЭНЭЭС ГАДУУРХ харагдац руу ШИЛЖИХГҮЙ — Portal-ын
-   * хамгаалалт `navScope[0]` руу шидэж энэ хуудаснаас ГАРГАДАГ. Хүрээнээс
-   * гадуурх харагдац нь товч биш, энгийн шошго болж зурагдана.
-   */
   const canOpen = useMemo(
     () => (v: ViewKey) => navScope === 'all' || navScope.includes(v),
     [navScope],
@@ -206,7 +182,6 @@ export default function SysDoc({ setView, navScope = 'all' }: {
 
   const all = useMemo(() => dataCatalog(), []);
   const hay = useMemo(() => new Map(all.map((e) => [e.id, searchText(e)])), [all]);
-  /* ⚠️ DOM id нь индексээр — BIM-ийн кирилл нэрийг id болгох шаардлагагүй */
   const domOf = useMemo(() => new Map(all.map((e, i) => [e.id, `cat-${i}`])), [all]);
   const nameOf = useMemo(() => {
     const m = new Map(all.map((e) => [e.id, e.name]));
@@ -221,8 +196,6 @@ export default function SysDoc({ setView, navScope = 'all' }: {
   const [q, setQ] = useState('');
   const [grp, setGrp] = useState<CatGroup | 'all'>('all');
   const [hl, setHl] = useState<string | null>(null);
-  /* ⚠️ 2026-09-29 (аудит 10): тодруулга асаалттай (2.4 с) байхад ИЖИЛ мөр рүү дахин
-     үсрэхэд `setHl(id)` өөрчлөлтгүй тул эффект дахин ажилладаггүй байв — тоолуураар. */
   const [hlNonce, setHlNonce] = useState(0);
 
   const shown = useMemo(() => {

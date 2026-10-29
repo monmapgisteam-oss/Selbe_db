@@ -10,10 +10,6 @@
 //     ХАБЭА-д газрын зураг байгаа тул хөдөлгөөн бүрд дахин зурвал бариул гацна;
 //   • React state + `localStorage`-д `pointerup` дээр НЭГ удаа буулгана.
 //
-// ⚠️ ХЭМЖИЛТ нь `getComputedStyle(...).gridTemplate*`-аас: тэр нь ТРЕК бүрийн
-// БОДИТ px-ийг буцаадаг тул `fr`-ээр тодорхойлсон, хувьсагч нь хараахан
-// тавигдаагүй трекийг ч зөв хэмжинэ. Ингэснээр бариул бүр зөвхөн ЭЭЖИЙНХЭЭ
-// (`el.parentElement`) трекийг мэдэхэд хангалттай — тусдаа `data-*` хэрэггүй.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
@@ -27,30 +23,15 @@ import { t as tr } from '@/lib/i18nCore';
  */
 const PANE = {
   // `.shell` — багана ба доод зурвасын өндөр
-  /* ⚠️ 2026-10-07: `l`·`r` холбоо ХАСАГДСАН (`LINKED`-ийн тайлбар). Хязгаар нь ИЖИЛ хэвээр — урьд нь
-     нэг нь хязгаартаа тулахад нөгөө нь цааш явж өргөн зөрнө. */
   l: { css: '--col-l', axis: 'x', track: 0, min: 240, max: 560, sign: 1 },
   r: { css: '--col-r', axis: 'x', track: 2, min: 240, max: 560, sign: -1 },
-  /* ⚠️ 2026-09-21: `track: 3` → `2`. `.shell`-ийн мөр 2026-09-17-нд 4 → 3 болсон
-     (`habea.module.css` `grid-template-rows: auto minmax(0,1fr) var(--row-fin)`)
-     тул `list[3]` undefined → хэмжилт `min` (120px) руу үсэрч, чирэх бүрд
-     доод зурвас 120px-ээс эхэлдэг байв. Индекс нь css-ийн мөрийн дараалал. */
-  /* ⚠️ 2026-10-26: доод хязгаар 120 → 200 — үүнээс бага өндөрт цуваа чартын огнооны мөр тасардаг байв
-     (хэрэглэгч: «чарт бүтэн харагддаг байх»). */
   fin: { css: '--row-fin', axis: 'y', track: 2, min: 200, max: 560, sign: -1 },
   // `.fin` — доод зурвасын дөрвөн картын хоорондох гурван зааг
   fin1: { css: '--fin-1', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
   fin2: { css: '--fin-2', axis: 'x', track: 1, min: 150, max: 900, sign: 1 },
   fin3: { css: '--fin-3', axis: 'x', track: 2, min: 200, max: 1100, sign: 1 },
-  /* ⚠️ 2026-10-06: ХОЁР МАЯГТЫН горимд (захиалагчийн үзлэг) хагас бүрийн ДОТОРХ хоёр
-     картын зааг. Хагас бүр БИЕ ДААСАН (2026-10-07, `LINKED`-ийн тайлбар). Хувьсагч
-     нь тус тусын `.finHalfGrid` дээр (`--fh`), трек 0 = эхний карт. */
   fhL: { css: '--fh', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
   fhR: { css: '--fh', axis: 'x', track: 0, min: 150, max: 900, sign: 1 },
-  /* ⚠️ `rp1` (донатын хосын зааг) ХАСАГДЛАА 2026-09-06-нд: «Монгол,
-     гадаад» донат зургийн зүүн талд гарч, `.rPair` хос задарсан.
-     Хэрэглэгчийн хадгалсан хуучин утга үлдсэн ч ямар ч элементэд
-     хамаарахгүй тул хор хөнөөлгүй. */
 } as const;
 export type PaneKey = keyof typeof PANE;
 
@@ -60,20 +41,8 @@ export type PaneKey = keyof typeof PANE;
  * зэрэгцэх горимд зүүн (V1.1) ба баруун (захиалагч) ИЖИЛ чартуудтай тул
  * өргөн зөрвөл ижил тоо өөр хэлбэртэй харагдаж харьцуулалт гажна.
  */
-/* ⚠️ 2026-10-07 (хэрэглэгч: «resize нь тухайн панел дээрээ үйлчилнэ, өөр газар үйлчлэхгүй»):
-   ХОЛБООС ХАСАГДАВ. Урьд нь зүүн баганыг чирэхэд баруун нь, нэг хагасыг чирэхэд нөгөө
-   хагас дагадаг байв. Одоо бариул бүр ЗӨВХӨН өөрийн трекийг өөрчилнө. Хоосон map-ийг
-   хадгалсан нь доорх `LINKED[k]` дуудлагууд хэвээр ажиллахын тулд. */
 const LINKED: Partial<Record<PaneKey, PaneKey>> = {};
 
-/* ⚠️ 2026-10-07: `.v2` — өмнө чирж хадгалсан ЗӨРҮҮТЭЙ хэмжээнүүдийг хаяж, бүх панел ТЭНЦҮҮ
-   хуваалттай эхэлнэ (хэрэглэгч: «картын хэмжээ зөрүүтэй байна, тэнцүүл»). */
-/* ⚠️ 2026-10-07: `.v3` — хэрэглэгч «дэлгэцээ тэнцүү хуваа»: доод зурвасын КАРТЫН хуваалтыг
-   (`fin1` · `fhL` · `fhR`) тэглэж бүх карт ТЭНЦҮҮ эхэлнэ. Баганын өргөн (`l`/`r`) ба зурвасын
-   өндөр (`fin`) нь `.v2`-оос ШИЛЖИНЭ (`LS_PREV`) — тэдгээрийг хэрэглэгч санаатай тохируулсан. */
-/* ⚠️ 2026-10-26: `.v4` — хэрэглэгч «анхны харагдацад чарт бүтэн, 2 чарт бол дэлгэцээ тэнцүү хуваа»: доод
-   зурвасын карт хуваалт (`fin1` …) ба зурвасын ӨНДӨР (`fin`)-ийг тэглэнэ — өндөр нь агуулгаараа (`auto`) эхэлж
-   чарт бүтэн, хоёр карт 1fr/1fr. Баганын өргөн (`l`/`r`) нь `.v3`-аас шилжинэ. */
 const LS = 'selbe.habea.panes.v4';
 const LS_PREV = 'selbe.habea.panes.v3';
 const EQUALISE: PaneKey[] = ['fin', 'fin1', 'fin2', 'fin3', 'fhL', 'fhR'];
@@ -85,8 +54,6 @@ type Sizes = Partial<Record<PaneKey, number>>;
 export function usePanes() {
   const [size, setSize] = useState<Sizes>({});
 
-  // ⚠️ localStorage-ийг ЭФФЕКТЭД уншина — эхний зурагт серверийнхтэй ижил
-  //    байхгүй бол hydration зөрнө.
   useEffect(() => {
     try {
       let raw = localStorage.getItem(LS);
@@ -101,8 +68,7 @@ export function usePanes() {
       }
       if (raw) {
         const s = JSON.parse(raw) as Sizes;
-        /* ⚠️ 2026-10-07: l/r-ийг албадан тэнцүүлэхээ больсон — бариул бүр бие даасан */
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSize(s);
       }
     } catch {
@@ -118,8 +84,6 @@ export function usePanes() {
     }
   }, []);
 
-  // ⚠️ Хадгалахдаа ЭНД-ээс уншина: `setSize(p => { save(p); … })` гэвэл
-  //    шинэчлэгч цэвэр биш болж StrictMode-д хоёр дахин ажиллана.
   const cur = useRef<Sizes>({});
   useSyncRef(cur, size);
 
@@ -196,9 +160,6 @@ export function usePanes() {
         if (ln) d.grid?.style.setProperty(PANE[ln].css, `${px}px`);
       },
       onPointerUp: finish,
-      /* ⚠️ 2026-09-21: чирэлт ЦУЦЛАГДАХ (хөтөч жест таслах, alt-tab, capture
-         алдах) үед ч ижил цэвэрлэгээ — урьд нь `drag.current` ба `data-drag`
-         үлдэж, бариул «дарагдсан» хэвээр, дараагийн хөдөлгөөн чирэлт болдог байв. */
       onPointerCancel: finish,
       onLostPointerCapture: finish,
       // Гар хандалт: сум товчоор ±12px, Enter/Home нь анхны хэмжээ
@@ -208,10 +169,6 @@ export function usePanes() {
           if (cur.current[k] != null) commit(k, null);
           return;
         }
-        /* ⚠️ 2026-09-25: сум нь БАРИУЛЫГ дэлгэц дээр тэр зүгт хөдөлгөнө — чирэлтийн
-           томьёотой ИЖИЛ (`(now − start) × sign`, доош = +). Урьд нь y тэнхлэгт
-           ↑/↓ урвуу байсан тул `sign −1` (доод хавтан) дээр ↑ дарахад бариул
-           доошилж, хулганын чирэлтийн эсрэг ажилладаг байв. */
         const [less, more] = p.axis === 'y' ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
         const d = e.key === less ? -STEP : e.key === more ? STEP : 0;
         if (!d) return;

@@ -35,21 +35,14 @@ const { WORKFLOW_VIEWS } = await import('@/lib/caps.ts');
   const ids = settingGroups().flatMap((g) => g.rows.map((r) => r.id));
   const bad = ids.filter((id) => /^(cap|chanar|flow):/.test(id));
   assert.deepEqual(bad, [], `засах эрхийн мөр загварт буцаж ирэв: ${bad.join(', ')}`);
-  /* ⚠️ 2026-09-30: урсгалтай 6 харагдац загварт ОРОХГҮЙ — урсгалын хуваарилалтаар нээгдэнэ */
-  /* ⚠️ 2026-10-09: + «ma» (MA — чанарын эрхийн гэр харагдац, «chanar»-тай адил урсгалтай) */
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.deepEqual([...WORKFLOW_VIEWS].sort(), ['ajilBatlah', 'guitsetgel', 'huvaari', 'huvaariBatlah', 'ma'],
     'WORKFLOW_VIEWS ≠ урсгалтай 5 харагдац (2026-10-20: «Чанарын баримт», 2026-10-23: «Чанар (QAQC)» хасагдсан)');
-  /* ⚠️ 2026-09-30 (merge irgediin-hurteemj): «ТУХ» нэмэгдэж 24 болсон — тоог хатуу бичихгүй.
-     Шалгуурын утга: урсгалтай харагдац VIEWS-ээс ХАСАГДААГҮЙ (зөвхөн унтраалгаас шүүгдэнэ). */
   for (const k of WORKFLOW_VIEWS) assert.ok(VIEWS.some((v) => v.key === k), `VIEWS-ээс урсгалтай харагдац хасагдсан: ${k}`);
   for (const v of VIEWS) {
     if (WORKFLOW_VIEWS.includes(v.key)) assert.ok(!ids.includes(`view:${v.key}`), `view:${v.key} — урсгалтай харагдац загварт буцаж ирэв`);
     else assert.ok(ids.includes(`view:${v.key}`), `view:${v.key} каталогт алга`);
   }
-  /* ⚠️ 2026-10-23: `docs` мөр хасагдсан — баримтын сан бүх хэрэглэгчид нээлттэй (roleTypes.settingGroups-ийн ⚠️) */
   assert.ok(!ids.includes('docs') && ids.includes('admin'), 'docs мөр буцаж ирэв эсвэл admin мөр алга');
-  /* ⚠️ 2026-10-26: + «ХУВААРЬ» хэсгийн 3 мөр (харах сонгогч · зохиох · батлах мэдээлэл) */
   assert.equal(ids.length, VIEWS.length - WORKFLOW_VIEWS.length + 1 + 3, 'каталог = харагдац − урсгалтай 5 + admin + хуваарийн 3');
   const hvRows = settingGroups().flatMap((g) => g.rows).filter((r) => r.id.startsWith('huvaari:'));
   assert.deepEqual(hvRows.map((r) => [r.id, !!r.select, r.info ?? null]),
@@ -93,7 +86,6 @@ console.log('✅ cleanTpl — cap:* · chanar:* · flow:* · scope хаягда�
   assert.equal(roleAccess('super').views, 'all', 'super үргэлж бүх харагдац');
   for (const r of TYPE_ORDER) {
     const t = tplOf(r);
-    /* ⚠️ 2026-10-26: + «Хуваарь харах» (`huvaari:all` · `huvaari:own`) — зөвхөн харах хүрээ */
     assert.ok(t.on.every((id) => /^view:|^docs$|^admin$|^huvaari:(all|own)$/.test(id)), `${r}: анхдагч загварт харахаас өөр id байна`);
   }
 }
@@ -107,9 +99,6 @@ console.log('✅ roleAccess — зөвхөн views · docs · home; анхдаг
     assert.ok(!src.includes(banned), `roleTypeApply: «${banned}» буцаж ирэв — загвар засах эрх/хуваарилалт бичих ёсгүй`);
   }
   assert.ok(src.includes('setUser(u, { views, docs: acc.docs }, role)'), 'roleTypeApply: харагдацын бичилт setUser-ээр байх ёстой');
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урсгалтай харагдац ЗӨВХӨН хуваарилалтаар
-     (`permissions.workflowViewsOf`) — «Төрлөөр тохируулах» тэдгээрийг БИЧИХГҮЙ (2026-09-30-ны
-     «хэвээр үлдээх» шийдвэрийг сольсон). */
   assert.ok(!src.includes('cur.filter((v) => WORKFLOW_VIEWS.includes(v))'), 'roleTypeApply: урсгалтай харагдацыг хадгалж үлдээх замыг буцааж нэмэв');
   assert.ok(src.includes('acc.views.filter((v) => !WORKFLOW_VIEWS.includes(v))'), 'roleTypeApply: урсгалтай харагдацыг хадгалахгүй байх ёстой');
   const ui = fs.readFileSync('src/modules/ErhTypes.tsx', 'utf8');
@@ -117,10 +106,7 @@ console.log('✅ roleAccess — зөвхөн views · docs · home; анхдаг
 }
 console.log('✅ roleTypeApply — зөвхөн setUser; ErhTypes-д scope мөр алга');
 
-/* ── 5. «Шинэ хуудас — загварт тохируулаагүй» (2026-10-01, «хэрэглэгч: бүгдийг зас») ──
-   ⚠️ `on` нь чеклэснийг л хадгалдаг тул загвар хадгалсны ДАРАА нэмэгдсэн хуудас («ТУХ»)
-      чимээгүй «хаалттай» болдог байв. `seen` (хадгалах агшны каталог) ба хуучин мөрийн
-      `LEGACY_SEEN` (ТУХ-аас бусад) нь тэр хуудсыг ялгана. */
+/* ── 5. «Шинэ хуудас — загварт тохируулаагүй» (2026-10-01, «хэрэглэгч: бүгдийг зас») ── */
 {
   const { unseenViews, tplViewKeys, saveTpl, isStoredTpl, NEW_ACCOUNT_ROLE, isTypeRole } = await import('@/lib/roleTypes.ts');
   /* cleanTpl — `seen` хадгалагдана, танигдахгүй түлхүүр хаягдана; массивгүй бол undefined (хуучин мөр) */
@@ -143,7 +129,6 @@ console.log('✅ roleTypeApply — зөвхөн setUser; ErhTypes-д scope мө�
   /* saveTpl — сүлжээгүй тул унана (false), гэхдээ seen-ийг ЗААВАЛ бичих ёстой — эх кодоор */
   assert.equal(await saveTpl('injener', { on: ['view:gdash'], home: 'gdash' }), false, 'сүлжээгүй — false');
   const rt = fs.readFileSync('src/lib/roleTypes.ts', 'utf8');
-  /* ⚠️ 2026-10-26: + «Хуваарь харах» шийдсэн тэмдэг (`tplSeenKeys`) */
   assert.ok(rt.includes('const clean: TypeTpl = { ...cleaned, seen: tplSeenKeys() };'), 'saveTpl: seen = одоогийн каталог + хуваарийн тэмдэг');
   /* ErhTypes — баганын/мөрийн тэмдэг */
   const ui = fs.readFileSync('src/modules/ErhTypes.tsx', 'utf8');

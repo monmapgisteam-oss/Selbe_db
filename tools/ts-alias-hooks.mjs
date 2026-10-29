@@ -1,28 +1,5 @@
 /**
  * Node-д TypeScript эх кодыг ШУУД импортлох тусламж (зөвхөн ТЕСТЭД).
- *
- * ⚠️ Node 24 нь `.ts` файлын төрлийн тэмдэглэгээг өөрөө хуулж хаядаг боловч
- * ХОЁР зүйлийг мэдэхгүй: (1) `@/…` alias (tsconfig-ийн зохиомол зам),
- * (2) өргөтгөлгүй импорт (`./plan2d`). Хоёуланг нь энд нөхнө.
- *
- * ⚠️ Энэ нь build-д ОГТ ОРОХГҮЙ — зөвхөн `node --import` дамжуулж тест
- * ажиллуулахад хэрэглэгдэнэ. Порталын webpack өөрийн resolver-той.
- *
- * ⚠️ 2026-09-30: `.tsx` (JSX) — Node-ийн type stripping JSX-ийг ОГТ ойлгохгүй
- *    («Unknown file extension .tsx») тул `.tsx`-ийг devDependency `typescript`-ээр
- *    `transpileModule` хийнэ (`jsx: react-jsx`). Урьд `.tsx` импорт ямагт унадаг
- *    байсан тул одоо байгаа шалгууруудад нөлөөгүй.
- *
- * ⚠️ 2026-09-30: UI SMOKE ГОРИМ (`initialize({ ui: true })` — `ts-alias.mjs` нь
- *    `*.ui.check.mjs` оролтын цэгт л асаана). Тэр үед:
- *      · `*.css` / `*.module.css` → `tools/ui-stub-css.mjs` (класс нэрээ буцаадаг Proxy);
- *      · `next/dynamic`            → `tools/ui-stub-next-dynamic.mjs` (синхрон;
- *                                    `preloadDynamic()`-ийн дараа жинхэнэ компонент);
- *      · `@arcgis/core/**`         → зохиомол модуль: жинхэнэ файлын export нэрсийг
- *                                    уншиж, нэр бүрд `mkStub()` (tools/ui-stub-arcgis.mjs).
- *    Зохиомол модулиудын URL нь `tools/.ui-stubs/…` доорх БАЙХГҮЙ файл — `resolve`
- *    `shortCircuit` тул Node диск рүү хандахгүй; харин `react` зэрэг bare импорт
- *    тэр замаас `node_modules` руу зөв шийдвэрлэгдэнэ (data:/custom scheme бол чадахгүй).
  */
 
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -38,11 +15,6 @@ const STUB_ARCGIS_LIB = pathToFileURL(resolvePath(TOOLS, 'ui-stub-arcgis.mjs')).
 
 /**
  * Өргөтгөлгүй бол туршиж үзэх дараалал.
- *
- * ⚠️ «Цэг байвал өргөтгөлтэй» гэж үзэж БОЛОХГҮЙ: модулийн нэр өөрөө цэгтэй
- *    байдаг (./bagts.trees, ./bagts.pkg) бөгөөд тэднийг өргөтгөлтэй гэж
- *    андуурвал .ts хувилбар нь огт туршигдахгүй, тест ERR_MODULE_NOT_FOUND-
- *    оор унана. Тиймээс ЖИНХЭНЭ өргөтгөлүүдийг нэрээр нь жагсаав.
  */
 const candidates = (spec) =>
   /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|json)$/i.test(spec)
@@ -58,11 +30,6 @@ export async function resolve(specifier, context, next) {
 
   if (spec.startsWith('@/')) spec = SRC + spec.slice(2);
 
-  /* ⚠️ CSS-ийг файл байгаа эсэхээс үл хамааран стубална (`import './x.css'`
-     хажуугийн импорт ч, `import s from './x.module.css'` ч).
-     ⚠️ 2026-10-26 (аудит): UI горимоос ГАДНА ч — Node CSS-ийг хэзээ ч ачаалж чадахгүй (ERR_UNKNOWN_FILE_EXTENSION). Telegram
-     ботын (`npm run bot`) `compute` finance_summary/pkg_plan нь `@/modules/Finance`-ийг (→ `ui.module.css`) импортлоход ҮРГЭЛЖ
-     унаж, серверийн файлын зам загвар руу дамждаг байв. Зөвхөн CSS — arcgis/next/dynamic стуб UI горимд л. */
   if (/\.css$/i.test(spec)) return { url: STUB_CSS, shortCircuit: true };
 
   if (ui) {
@@ -78,12 +45,6 @@ export async function resolve(specifier, context, next) {
 
   /**
    * Зөвхөн ФАЙЛ руу заасан импортод л өргөтгөл нөхнө — `node:*`-ыг хөндөхгүй.
-   *
-   * ⚠️ БАГЦЫН нэр нь үл хамаарах зүйлтэй: `@arcgis/core/**` нь webpack-д
-   * өргөтгөлгүй бичигддэг (`@arcgis/core/geometry/geometryEngine`) ч Node-ийн
-   * ESM нь `.js`-гүйгээр олохгүй. Багцын нэрийг ЭХЛЭЭД хэвээр нь туршиж, зөвхөн
-   * УНАСАН тохиолдолд `.js` нэмж дахин үзнэ — бусад багцын шийдвэрлэлт
-   * өөрчлөгдөхгүй.
    */
   const isFile = spec.startsWith('.') || spec.startsWith('file:');
   if (!isFile) {
@@ -120,7 +81,6 @@ async function transpileTsx(url) {
       jsx: tsMod.JsxEmit.ReactJSX,
       isolatedModules: true,
       esModuleInterop: true,
-      /* ⚠️ `import.meta`, top-level await хэвээр — ESNext */
     },
   });
   return out.outputText;
@@ -172,23 +132,10 @@ export async function load(url, context, next) {
     return { format: 'module', source: await transpileTsx(url), shortCircuit: true };
   }
   const r = await next(url, context);
-  /*
-   * ⚠️ АМЬД ШАЛГУУРЫГ АЛГАСАХ (2026-09-17): `ts-alias.mjs` org-only үйлчилгээг
-   *    тандаад `liveSkip` дамжуулна. `SELBE_LIVE_SKIP` тэмдэгтэй `.check.mjs`
-   *    файлыг ажиллуулахгүй, оронд нь ⏭ мэдэгдэл хэвлэдэг хоосон модуль өгнө.
-   *    Файл дотроос `process.exit()` дуудвал Windows дээр libuv assertion-оор
-   *    унадаг тул ЭНД (эх код ачаалахаас өмнө) шийднэ.
-   */
   if (liveSkip && /\.check\.mjs$/.test(url) && r.source != null) {
     const src = typeof r.source === 'string' ? r.source : Buffer.from(r.source).toString('utf8');
     if (src.includes('SELBE_LIVE_SKIP')) {
-      /* ⚠️ 2026-10-21 (аудит): шалтгаан `ts-alias.mjs`-ээс (`SELBE_LIVE_SKIP_REASON`); `SELBE_LIVE_REQUIRED=1` бол
-         алгасахын оронд УНАНА (GitHub Actions-д `::error::` тэмдэглэлтэй) — амьд шалгуурыг заавал гэж шийдсэн CI-д.
-         Анхдагч: ⏭ мөр (`test-all.mjs` тоолж `::warning::` нэгтгэнэ). */
       const why = process.env.SELBE_LIVE_SKIP_REASON || 'үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга';
-      /* ⚠️ 2026-10-22 (аудит): `::error file=` — репогийн ҮНДСЭЭС харьцангуй, `/`-тэй зам. Урьд `file:///`-ийг хайчилдаг
-         тул Linux runner дээр эхний `/` алдагдаж («home/runner/…»), %-кодлогдсон, бүтэн зам гардаг — GitHub тэмдэглэлийг
-         файлд холбож чаддаггүй байв. */
       let file = url;
       try { file = relative(process.cwd(), fileURLToPath(url)).split(sep).join('/'); } catch { /* file: биш — URL-ээрээ */ }
       if (process.env.SELBE_LIVE_REQUIRED === '1') {

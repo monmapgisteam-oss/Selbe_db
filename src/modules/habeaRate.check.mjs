@@ -134,14 +134,12 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
   ];
   assert.deepEqual(ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Эд хөрөнгийн хохирол' }], ub),
     { hours: 1800, since: null, undatedLti: false, futureLti: 0 }, 'LTI алга — бүх хүн-цаг');
-  /* ⚠️ 2026-10-11 (аудит №7): огноогүй / ≤0 цагтай мөр LTI байгаа эсэхээс үл хамааран ОРОХГҮЙ (`hoursByDay`-тай нэг дүрэм) */
   assert.equal(ltiFreeHours([...lab, { ognoo: null, hun_tsag: 400 }, { ognoo: day('2026-08-14'), hun_tsag: -5 }], [], ub).hours, 1800,
     'LTI-гүй үед ч огноогүй/сөрөг мөр хасагдана');
   const r = ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Ноцтой осол' }], ub);
   assert.equal(r.hours, 300, 'LTI-ийн ӨДРИЙН дараах хүн-цаг л (тэр өдөр ороогүй, null 0 биш алгасна)');
   assert.equal(r.since, day('2026-08-11'));
   assert.equal(ltiFreeHours(lab, [{ d: 0, type: 'Ноцтой осол' }], ub).hours, null, 'огноогүй LTI — мэдэгдэхгүй (0 биш)');
-  /* ⚠️ 2026-10-09: ирээдүйн огноотой LTI хил болохгүй — тоолж ил буцаана */
   {
     const now = day('2026-08-20');
     const f = ltiFreeHours(lab, [{ d: day('2026-08-11'), type: 'Ноцтой осол' }, { d: day('2027-08-11'), type: 'Ноцтой осол' }], ub, now);
@@ -151,9 +149,7 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
   }
 }
 
-/* ══════════ 6. Амьд ослын төрлүүд — ангилал (2026-10-09) ══════════
-   ⚠️ Амьд `field_7` домэйн + бодит утгуудаас (кодын тайлбар, enData-аас сэргээсэн; давхарга токен
-   шаарддаг тул шалгуур нь сүлжээгүй). LTI ЗӨВХӨН «Ноцтой осол», «Үйлдвэрлэлийн осол». */
+/* ══════════ 6. Амьд ослын төрлүүд — ангилал (2026-10-09) ══════════ */
 {
   const LIVE = [
     'Ноцтой осол',
@@ -179,8 +175,7 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
   assert.equal(isLtiType('Осол дөхсөн тохиолдол (ноцтой осол болох байсан)'), false, 'LTI үг зөвхөн дагалдах хэсэгт');
 }
 
-/* ══════════ 7. Ослын компани → гүйцэтгэгч (2026-10-22, аудит) ══════════
-   ⚠️ Амьд `field_5` домэйны 6 КОД (хуудас `clean()`-ээр хашилтыг хасна) — урьд нь 3 нь ямар ч гүйцэтгэгчтэй таардаггүй байв. */
+/* ══════════ 7. Ослын компани → гүйцэтгэгч (2026-10-22, аудит) ══════════ */
 {
   const { incCompanySfx } = await import('./habeaRate.ts');
   const one = (s) => [...incCompanySfx([s])];

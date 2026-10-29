@@ -2,21 +2,6 @@
 
 /**
  * ТУХ — ГРАФИКИЙН ЖИЖИГ БҮРЭЛДЭХҮҮН.
- *
- * ⚠️ ЗАГВАР НЬ ҮНДСЭН СИСТЕМИЙНХ (2026-10-01, хэрэглэгч: «ТУХ хэсгийн бүх
- *    чартуудын дизайныг зас, үндсэн системээс зөрж байна»):
- *      · Хэмжигч — 2026-10-09-нөөс `ui.Meter` ШУУД (энэ файлын хуулбар хасагдсан);
- *      · Тайлбар — «Гүйцэтгэлийн явц»-ийн легенд (`pkgProg.progLegend`): 11px, 18px шугам;
- *      · Гантт — «Хуваарь»-ийн зурвас (`huvaari.plBar` · `tlDone/Run/Late/Todo/None`):
- *        төлвөөр БҮРЭН будагдсан 3px булантай зурвас, дотроо цагаан шошго,
- *        сарын толгой, ээлжилсэн мөр.
- * ⚠️ 2026-10-23: Environment — тайлбар нь `.stacked-chart-legend` (8px дөрвөлжин, 10.5px
- *    `--ink-2`); Гантт зурвас нь `RowChart`-ын зам (5px, булан 4, `--chart-track` дэвсгэр),
- *    хувь нь зурвасын ГАДНА. Төлвийн `--gantt-*` өнгө (хэрэглэгчийн шаардлага) ХЭВЭЭР.
- *    S-муруй, санхүүжилтийн муруй, хүн хүч — системийн `ProgChart` · `ComboChart` ·
- *    `ui.Series` ШУУД (ТУХ өөрийн хувилбар зурахгүй).
- * ⚠️ Хэв маягийг CSS-ээр ХУУЛБАРЛАСАН (`tuh.module.css`) — харагдацууд CSS
- *    хуваалцдаггүй (`layout.tsx`-ийн ⚠️). Тэдгээрийг өөрчилбөл ЭНДЭЭ ч өөрчил.
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -24,13 +9,10 @@ import { dayKey, pct } from '@/lib/format';
 import { useTip } from '@/components/ui';
 import s from '../tuh.module.css';
 
-/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): ЛОКАЛ `Meter` ХАСАГДСАН — `tailanChart.Meter`-тэй
-   хамт `components/ui.Meter` болж нэгдэв (2px зам, төлөвлөгөөний 2px `--ink` зураас ±4px,
-   null → хоосон зам). Дуудагчид `@/components/ui`-аас шууд импортлоно. */
 
 /* ══════════════════════ Тайлбар ══════════════════════ */
 
-/** Графикийн тайлбар — Environment `.stacked-chart-legend` хэлбэр (⚠️ 2026-10-23) */
+/** Графикийн тайлбар — Environment `.stacked-chart-legend` хэлбэр (2026-10-23) */
 export function Legend({ items }: {
   items: { key: string; label: string; color: string; kind?: 'line' | 'dash' | 'box' | 'hatch' | 'diamond' }[];
 }) {
@@ -70,15 +52,10 @@ export type GanttRow = {
 };
 
 const MS_DAY = 86_400_000;
-/* ⚠️ 2026-09-30: ОРОН НУТГИЙН өдөр (`format.dayKey`-ийн ⚠️) — урьд нь `toISOString` (UTC)
-   тул УБ-ын шөнө дундын огноо (AGOL/Excel) гантын тайлбарт ӨМНӨХ өдөр болж, хажуугийн
-   хүснэгтийн `date()`-ээс нэг өдрөөр зөрдөг байв. */
 const ymd = (ms: number) => dayKey(ms);
 
 /**
  * Гантт-ын тайлбар — «Хуваарь»-ийн өнгөөр.
- * ⚠️ 2026-10-09: `globals.css`-ийн `--gantt-*` токен (Хуваарь ба ТУХ НЭГ эх) — урьд нь
- *    энд ба `tuh.module.css`-д гараар хуулсан өнгө байв.
  */
 export const GANTT_LEGEND = () => [
   { key: 'done', label: tr('Дууссан'), color: 'var(--gantt-done)', kind: 'box' as const },
@@ -90,7 +67,6 @@ export const GANTT_LEGEND = () => [
 
 /**
  * Хугацааны гантт — «Хуваарь»-ийн зурвасын хэлээр (HTML мөр + хувьт байрлал).
- * ⚠️ Огноогүй мөр ЗУРВАС ЗУРАХГҮЙ — «огноогүй» гэж бичнэ (өнөөдөр гэж таамаглахгүй).
  */
 export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number; to: number; now: number }) {
   const tip = useTip();
@@ -100,13 +76,7 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
   const months: { at: number; left: number; label: string; year: boolean }[] = [];
   const a = new Date(from);
   const stepM = span / MS_DAY > 900 ? 3 : 1;
-  /* ⚠️ 2026-10-09: ОРОН НУТГИЙН сар — огноонууд орон нутгийн шөнө дунд (+08) тул UTC-ийн сарын
-     хил 8 цагаар зөрж, сарын 1-ний огноо өмнөх сард буудаг байв (`Overview.ganttDomain`-тэй нэг дүрэм). */
   const y0 = a.getFullYear();
-  /* ⚠️ 2026-10-06 (аудит): алхам 3 сар үед эхлэлийг 1·4·7·10-р сард ТЭГШЛЭНЭ.
-     Урьд нь домэйны эхний сараас (жишээ нь 2-р сар) 3-аар алхдаг тул 1-р сар
-     ХЭЗЭЭ Ч таарахгүй — оны шошго, оны зураас огт гардаггүй байв. Тэгшилсэн
-     эхлэл `from`-оос өмнө байж болно — доорх `at >= from` шүүлт түүнийг алгасна. */
   const m0 = a.getMonth();
   for (let m = m0 - (m0 % stepM); ; m += stepM) {
     const at = new Date(y0, m, 1).getTime();
@@ -148,21 +118,16 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
                 <span
                   className={`${s.ganttBar} ${s[`st_${r.st ?? 'run'}`]}`}
                   style={{ left: `${pos(r.start!)}%`, width: `${w}%` } as CSSProperties}
-                  /* ⚠️ 2026-10-09: `title`-ийн оронд дундын tooltip (графикийн загварыг жигдлэх) */
                   {...tip.bind({
                     label: typeof r.label === 'string' ? r.label : '',
                     value: `${ymd(r.start!)} – ${ymd(r.end!)}`,
                     hint: r.progress != null ? `${tr('Гүйцэтгэл')}: ${pct(r.progress, 1)}` : undefined,
                     color: `var(--gantt-${r.st === 'done' ? 'done' : r.st === 'late' ? 'late' : r.st === 'todo' || r.st === 'none' ? 'todo' : 'run'})`,
                   })}
-                  /* ⚠️ 2026-10-06 (аудит): огноо нь ЗӨВХӨН `title`-д байсан тул гараар /
-                     дэлгэц уншигчаар хүрэх аргагүй байв — `role="img"` + `aria-label`. */
                   role="img"
                   aria-label={`${ymd(r.start!)} – ${ymd(r.end!)}${r.progress != null ? ` · ${pct(r.progress, 1)}` : ''}`}
                 />
               )}
-              {/* ⚠️ 2026-10-23: Environment `RowChart` — 5px зурваст бичиг багтахгүй тул хувь ҮРГЭЛЖ
-                  зурвасын ГАДНА: төгсгөлийн баруунд, баруун ирмэгт (>88%) ойр бол эхлэлийн зүүнд. */}
               {!r.heading && has && r.progress != null && (
                 pos(r.end!) > 88 && pos(r.start!) > 12
                   ? (

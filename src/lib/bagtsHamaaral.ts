@@ -1,23 +1,11 @@
 /**
  * ХУУЧИН БАГЦ ХООРОНДЫН ХАМААРАЛ (2026-10-04) — ЗӨВХӨН ШИЛЖҮҮЛЭЛТЭД.
- *
- * ⚠️ 2026-10-22 (хэрэглэгчийн шийдвэр): «Багцын хамаарал» нь АЖИЛ ↔ АЖИЛ болов (`workDeps.ts` ·
- *    `workDepsRemote.ts`, хадгалалт нь бөглөх хуудасны `bagts_hamaaral` талбар). Энэ файл ЗӨВХӨН хуучин
- *    багц ↔ багц холбоосыг уншиж («ажлыг нь сонгож шилжүүлнэ үү») ба ажлын түвшинд шилжсэн хосыг УСТГАНА.
- *    Шинэ холбоо ЭНД НЭМЭГДЭХГҮЙ; ТУХ г.м. уншигчид ажлын графаас (`loadPkgDeps`) уншина.
- *
- * ⚠️ УТГА: `{ from: A, to: B }` = «Б багц А багцаас хамаарна» (А урд, Б ард). Түлхүүр нь `TuhPkg.key`
- *    (орон сууц «БАГЦ1», бусад «energy:БАГЦ61»; `workDeps.legacyPkgKey`).
- * ⚠️ ХАДГАЛАЛТ: `Selbe_Guitsetgel_Draft` (`draftRemote.ts`)-ийн НЭГ мөр (`dkey = HAMAARAL_KEY`), `payload` = JSON
- *    массив. Түлхүүрт `|` ОРУУЛАХГҮЙ (`draftRemote.legacyLike`). Устгал нь optimistic lock-той (`expectAt`) —
- *    зөрвөл дахин уншаад давтана.
- * ⚠️ Энэ файл React-гүй; алсын IO нь ДИНАМИК import — `bagtsHamaaral.check.mjs` ArcGIS-гүйгээр шалгана.
  */
 import { t as tr } from '@/lib/i18nCore';
 
 export type Dep = { from: string; to: string };
 
-/** `Selbe_Guitsetgel_Draft.dkey` — ⚠️ `|` оруулахгүй (дээрх ⚠️) */
+/** `Selbe_Guitsetgel_Draft.dkey` — `|` оруулахгүй (дээрх) */
 export const HAMAARAL_KEY = 'bagtsHamaaral';
 
 const isDep = (x: unknown): x is Dep =>
@@ -40,11 +28,9 @@ export const depsJson = (deps: readonly Dep[]): string => JSON.stringify(deps.ma
 
 export type DepState = { deps: Dep[]; at: number | null };
 
-/** Хуучин холбоосууд. ⚠️ Уншилт унавал ШИДНЭ (хоосон гэж худал харуулахгүй) */
+/** Хуучин холбоосууд. Уншилт унавал ШИДНЭ (хоосон гэж худал харуулахгүй) */
 export async function loadLegacyDeps(): Promise<DepState> {
   const { readRemoteDraft, getAuth, tableUrl } = await import('./draftRemote');
-  /* ⚠️ 2026-10-06: `readRemoteDraft` нь нэвтрээгүй · хүснэгт олдоогүй үед `{ ok: true, draft: null }` буцаадаг —
-     энд «холбоо БАЙХГҮЙ» гэж ХУДАЛ харагдах тул АЛДАА болгоно. `tableUrl(false)` — уншилт хүснэгт ҮҮСГЭХГҮЙ. */
   if (!(await getAuth())) throw new Error(tr('нэвтрээгүй эсвэл токен дууссан'));
   if (!(await tableUrl(false))) {
     throw new Error(tr('«{0}» хүснэгт олдсонгүй эсвэл эзэн нь танигдсангүй — багцын хамаарлыг уншиж чадсангүй', 'Selbe_Guitsetgel_Draft'));
@@ -57,7 +43,6 @@ export async function loadLegacyDeps(): Promise<DepState> {
 /**
  * Хуучин хосуудыг УСТГАНА (ажлын түвшинд шилжсэн, эсвэл шилжих хуудасгүй) — ШИНЭЭР уншина → хасна →
  * `expectAt`-тай бичнэ; завсарт өөр хүн бичсэн бол дахин уншиж давтана (3 удаа).
- * ⚠️ `requireCap('hamaaral')` — `who.ts`-ийн ⚠️.
  */
 export async function removeLegacyDeps(rm: readonly Dep[]): Promise<{ ok: true; state: DepState } | { ok: false; error: string }> {
   const { requireCap } = await import('./who');
@@ -67,7 +52,6 @@ export async function removeLegacyDeps(rm: readonly Dep[]): Promise<{ ok: true; 
     let cur: DepState;
     try { cur = await loadLegacyDeps(); } catch (e) { return { ok: false, error: (e as Error).message }; }
     const next = cur.deps.filter((d) => !rm.some((x) => sameDep(x, d)));
-    /* ⚠️ Өөрчлөлтгүй (өөр хүн аль хэдийн устгасан) — бичихгүй (дэмий conflict үүсгэхгүй) */
     if (next.length === cur.deps.length) return { ok: true, state: cur };
     const at = Math.max(Date.now(), (cur.at ?? 0) + 1);
     const res = await saveRemoteDraft(HAMAARAL_KEY, at, depsJson(next), { expectAt: cur.at });

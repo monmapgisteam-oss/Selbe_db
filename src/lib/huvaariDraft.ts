@@ -1,32 +1,5 @@
 /**
  * «ХУВААРЬ»-ИЙН ХУВААЛЦСАН НООРОГ — цэвэр туслахууд (2026-09-23).
- *
- * ⚠️ ЯАГААД (хэрэглэгчийн шаардлага): хуваарийн ноорог (`draft` · `ham` ·
- * `aDraft` · `resDraft` · `obDraft`) зөвхөн React санах ойд байсан тул таб
- * хаах, өөр компьютерт орох, хамт ажиллагч нээхэд ЮУ Ч харагддаггүй байв.
- * «Гүйцэтгэл бөглөх»-ийн (`draftRemote.ts`) ХҮСНЭГТИЙГ ДАХИН АШИГЛАНА:
- * нэг (багц · төрөл) = нэг мөр, бүгд нэг нооргийг уншиж, нүд тус бүрээр
- * нийлүүлж, буцааж бичнэ.
- *
- * ⚠️ ТҮЛХҮҮР `plan:<төрөл>:<багц>` — `|` ОРОХГҮЙ. `draftRemote.readLegacyDrafts`
- *    нь `dkey LIKE '%|<багц>'`-ээр ХУУЧИН гүйцэтгэлийн мөрийг хайдаг; түлхүүрт
- *    `|` оруулбал (ж: `plan|b32|geree`) тэр хайлт `%|geree`-д... таарахгүй ч,
- *    `plan|geree|b32` хэлбэрт `%|b32` ТААРЧ, гүйцэтгэлийн шилжүүлэлт хуваарийн
- *    нооргийг гүйцэтгэлийн ноорог гэж уншаад УСТГАХ байв. `:`-ээр ямар ч
- *    багцын түлхүүрт таарах боломжгүй.
- *
- * ⚠️ ЗӨВХӨН ӨӨРЧЛӨГДСӨН нүд хадгалагдана — мөрийн бүтэн агшин БИШ. Нүд бүр
- *    `{val, at, user, bv}`: `at`/`user` нь «хэн хэзээ» (нийлүүлэхэд шинэ нь
- *    ялна), `bv` нь тэр үеийн СЕРВЕРИЙН утга — сэргээхэд сервер өөрчлөгдсөн
- *    бол нүд ХУУЧИРСАН гэж хасагдана (`applyPayloadToDraft`-ийн ижил зарчим).
- *
- * ⚠️ TOMBSTONE (`del`): хэрэглэгч нүдээ буцаахад (ноорогоос хасахад) түүнийг
- *    «байхгүй» гэж илэрхийлдэг тул нийлүүлэхэд нөгөө талын хуучин хуулбар
- *    дахин сэргээх байв. Хассан агшныг 7 хоног хадгална: хассанаас ХУУЧИН
- *    нүд ирвэл хаяна, ШИНЭ нүд ирвэл (дахин зассан) нүд ялна.
- *    `FillNew`-ийн `del`-ийн хялбаршуулсан хувилбар.
- *
- * ⚠️ Энэ файл React-ГҮЙ, ArcGIS-ГҮЙ — `huvaariDraft.check.mjs` ажиллуулна.
  */
 
 export type HDKind = 'plan' | 'geree';
@@ -48,29 +21,18 @@ export type HDDraft = {
   /**
    * ЦЭВЭРЛЭСЭН АГШИН (2026-09-24). Илгээсэн/цуцалсан үед мөрийг УСТГАДАГГҮЙ,
    * хоосон ноорог + бүх нүдний tombstone + энэ агшныг бичнэ.
-   * ⚠️ Мөрийг устгавал tombstone ч устаж, өөр төхөөрөмжийн localStorage
-   *    хуулбар (`t` < энэ агшин) илгээгдсэн нооргийг дахин амилуулдаг байв.
-   *    Сэргээхэд `t < cleared` локал хуулбарыг үл тоомсорлоно.
-   * ⚠️ 2026-10-04 аудит: НҮД ТУС БҮРЭЭР (`dropCleared`) — локал хуулбарыг БҮХЛЭЭР нь
-   *    хаяхаа болив: цэвэрлэлтээс ХОЙШ бичсэн нүд (`at > cleared`) нь хуулбарын `t`
-   *    хуучин ч хэвээр үлдэнэ. Зөвхөн илгээх/«Ноорог хаях» тавина (`applyClear`),
-   *    энгийн буцаалтаар хоосорсон ноорог ТАВИХГҮЙ.
    */
   cleared?: number;
   /**
    * МӨРИЙН ТАНИХ ТҮЛХҮҮР (2026-10-09) — `oid` → {ажлын код · № · нэр}. Нүдний `oid` нь жаазынх тул
    * «Гүйцэтгэл бөглөх» нийтлэл/нэмэлт ажил шинэ жааз бичихэд бүх oid солигдож ноорог «мөр алга»
    * болдог байв. Үүгээр сэргээх/нийлүүлэхэд шинэ мөр рүү зөөнө (`identityRemap`).
-   * ⚠️ `sig`-д ОРОХГҮЙ (нүдний агуулга биш) — хэт том үед бичигдэхгүй байж болно (`serialize`-ийн `max`).
    */
   rk?: Map<number, HDRowKey>;
 };
 
 /**
  * Мөрийн таних түлхүүр — жааз солигдоход хадгалагддаг талбарууд (2026-10-09).
- * ⚠️ 2026-10-26: `path` (эцэг бүлгийн зам › № ¦ нэр — `rowIdentity`), `top` (дээд бүлэг), `occ`/`occN` (ижил «№ ¦ нэр»-ийн
- *    дэс дугаар / нийт) — 191-ийн мөрийн ноорогт (`draftRows.ts`: `etseg_zam` · `mur_dav` · `mur_dav_n`) ҮРГЭЛЖ хадгалагдаж, `identityRemap` кодгүй/давхардсан
- *    мөрийг ч зөөнө. JSON ноорогт (`serialize`) бичигдэхгүй (хэмжээ) — сонголттой.
  */
 export type HDRowKey = { des: number | null; no: string; work: string; path?: string; top?: string; occ?: number; occN?: number };
 
@@ -78,7 +40,7 @@ export const HD_VERSION = 1;
 /** Tombstone-ийн амьдрах хугацаа */
 export const HD_DEL_TTL = 7 * 24 * 3600 * 1000;
 
-/** Алсын мөрийн түлхүүр — `|`-ГҮЙ (толгойн ⚠️) */
+/** Алсын мөрийн түлхүүр — `|`-ГҮЙ (толгой) */
 export const hdKey = (kind: HDKind, pkgKey: string) => `plan:${kind}:${pkgKey}`;
 /** Локал хуулбарын түлхүүр (localStorage) */
 export const hdLocalKey = (key: string) => `selbe-huvaari-draft:${key}`;
@@ -150,7 +112,6 @@ export const resOfVal = (v: unknown): Map<string, HDMonthRes> => {
   if (!Array.isArray(v)) return m;
   for (const p of v) {
     if (!Array.isArray(p) || typeof p[0] !== 'string') continue;
-    /* ⚠️ БҮХЭЛ тоо (2026-09-24) — мөрийн нийлбэр Integer талбарт очдог */
     const hun0 = numOrNull(p[1]);
     const mashin0 = numOrNull(p[2]);
     const hun = hun0 == null ? null : Math.floor(hun0);
@@ -163,12 +124,6 @@ export const resOfVal = (v: unknown): Map<string, HDMonthRes> => {
 const spanVal = (s: HDSpan | undefined): HDSpan =>
   (s && Number.isFinite(s.start) && Number.isFinite(s.end) ? { start: s.start, end: s.end } : null);
 const hamVal = (s: string | null | undefined): string => s ?? '';
-/**
- * ⚠️ 2026-10-08: ХАДГАЛАГДСАН НҮДНИЙ ОГНООГ UTC ӨДӨРТ ТЭГШИТГЭНЭ — `bagtsSheet.normDayMs`-ийн
- *    ХУУЛБАР (энэ файл импортгүй — React-гүй, ArcGIS-гүй). Мөрүүд одоо уншихдаа тэгшлэгддэг
- *    тул 2026-10-08-аас ӨМНӨ бичигдсэн нүдний `bv` (түүхий 16:00Z) нь серверийн тэгшлэгдсэн
- *    утгаас зөрж, `cellsToMaps` нооргийг «хуучирсан» гэж ХУДЛАА хаядаг байв. `val` ч тэгшлэгдэнэ.
- */
 const DAY = 86_400_000;
 const normDay = (ms: number | null): number | null =>
   (ms == null || !Number.isFinite(ms) ? null : Math.round(ms / DAY) * DAY);
@@ -190,11 +145,9 @@ export type HDRowBase = {
   aEnd: readonly (number | null)[];
   hun: number | null;
   mashin: number | null;
-  /** ⚠️ 2026-10-09: мөрийн танихуун (`HDRowKey`) — шинэ жаазад зөөхөд; байхгүй бол зөөлт алгасна */
   des?: number | null;
   no?: string;
   work?: string;
-  /** ⚠️ 2026-10-26: эцэг бүлгийн зам · дээд бүлэг · ижил «№ ¦ нэр»-ийн дэс дугаар/нийт (`rowIdentity`) */
   path?: string;
   top?: string;
   occ?: number;
@@ -207,7 +160,6 @@ export type HDCtx = {
   months: (key: string) => ReadonlyMap<string, number> | undefined;
   /** `${код}|${блок}` → серверийн сарын НӨӨЦ (2026-09-24); `undefined` = мэдэгдэхгүй */
   monthsRes: (key: string) => ReadonlyMap<string, HDMonthRes> | undefined;
-  /** ⚠️ 2026-10-26: блокийн нэрс (`Schema.bld`) — 191-ийн мөрийн ноорогийн `blok` (блокийг НЭРЭЭР тааруулна); байхгүй бол нэргүй */
   bld?: readonly string[];
 };
 export type HDMaps = {
@@ -224,7 +176,6 @@ export type HDCell = { val: unknown; bv: unknown };
 /**
  * 5 Map → ӨӨРЧЛӨГДСӨН нүдүүд (серверээс зөрсөн нь л). `at`/`user`-ГҮЙ —
  * тэдгээрийг дуудагч өөрийн мета-гаас нэмнэ.
- * ⚠️ Серверт БАЙХГҮЙ мөрийн нүд орохгүй: суурьгүй тул тулгах аргагүй.
  */
 export function mapsToCells(m: HDMaps, ctx: HDCtx): Map<string, HDCell> {
   const out = new Map<string, HDCell>();
@@ -263,8 +214,6 @@ export function mapsToCells(m: HDMaps, ctx: HDCtx): Map<string, HDCell> {
   for (const [key, months] of m.obDraft) {
     const v = monthsVal(months);
     const srv = ctx.months(key);
-    /* ⚠️ Сервер МЭДЭГДЭХГҮЙ (`undefined` — задаргаа ачаалагдаагүй/унасан) бол
-       суурьгүй нүд: тулгах зүйлгүй тул `bv`-гүй хадгална, хаяхгүй (2026-09-24). */
     if (srv === undefined) { out.set(kM(key), { val: v, bv: undefined }); continue; }
     const bv = monthsVal(srv);
     if (!sameVal(v, bv)) out.set(kM(key), { val: v, bv });
@@ -290,16 +239,10 @@ export type HDApply = {
   dropped: string[];
   /**
    * `dropped`-ийн ХУУЧИРСАН хэсэг (`bv` ≠ ЭНЭ клиентийн сервер, мөр алга).
-   * ⚠️ Дуудагч ЭДГЭЭРТ tombstone ТАВИХГҮЙ (2026-09-24): хуучин суурьтай
-   *    (мөрөө шинэчлээгүй) клиент бусдын хүчинтэй нүдийг бүгдэд нь устгадаг
-   *    байв. Хуучирсан нүд зөвхөн ЭНД орохгүй — алсад хэвээр.
-   *    Tombstone зөвхөн «серверийнхтэй ижил болсон» (`dropped − staleKeys`).
    */
   staleKeys: string[];
   /**
    * `staleKeys`-ийн `bv` ЗӨРСӨН хэсэг (мөр байгаа ч сервер бичигчийн суурийг өөрчилсөн).
-   * ⚠️ 2026-09-25: «Мөр алга» (шинэ жааз) нүдийг бусдын нүд бол tombstone хийхгүй —
-   *    хуучин жаазтай клиентэд хүчинтэй хэвээр; дуудагч үүгээр ялгана.
    */
   bvKeys: string[];
   /** Хөндөгдсөн ялгаатай мөр (oid эсвэл обьёмын түлхүүр) */
@@ -308,12 +251,6 @@ export type HDApply = {
 
 /**
  * Нүдүүд → 5 Map. Сэргээх ба нийлүүлэх хоёулаа үүгээр.
- * ⚠️ `bv` байгаа ч серверийн ОДООГИЙН утгаас зөрвөл ХУУЧИРСАН → хасна
- *    (`stale`). `bv`-гүй (эвдэрсэн/хуучин) нүд шууд орно.
- * ⚠️ Утга нь серверийнхтэй ИЖИЛ болсон нүд ноорогт ОРОХГҮЙ (бичих зүйлгүй) —
- *    `dropped`-д орж, дараагийн бичилтээр алсаас ч арилна.
- * ⚠️ Муж/бодит огнооны мөр нь СЕРВЕРИЙН массиваас эхэлж, зөвхөн ноорогийн
- *    блокийг сольно — `Draft`/`ADraft` нь мөрийн бүтэн массив хадгалдаг.
  */
 export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx: HDCtx): HDApply {
   const maps: HDMaps = {
@@ -331,9 +268,6 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
     if (p.type === 'm') {
       const srv = ctx.months(p.key);
       const v = monthsVal(monthsOfVal(e.val));
-      /* ⚠️ Сервер МЭДЭГДЭХГҮЙ бол тулгахгүй, ХАЯХГҮЙ — шууд орно (2026-09-24).
-         Урьд нь `undefined` → `[]` болж, задаргаа ачаалагдаагүй агшинд алсын
-         бүх сарын нүд «хуучирсан» гэж хасагддаг байв. */
       if (srv !== undefined) {
         const cur = monthsVal(srv);
         if (e.bv !== undefined && !sameVal(e.bv, cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
@@ -360,7 +294,6 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
     if (p.type === 's') {
       if (p.blk >= ctx.n) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
       const cur = spanVal(r.spans[p.blk]);
-      /* ⚠️ 2026-10-08: `bv`/`val`-ыг тэгшлээд тулгана (`normSpanVal`-ын ⚠️) — сервер тал аль хэдийн тэгшлэгдсэн */
       if (e.bv !== undefined && !sameVal(normSpanVal(e.bv), cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
       const v = normSpanVal(e.val);
       if (sameVal(v, cur)) { dropped.push(k); continue; }
@@ -371,7 +304,6 @@ export function cellsToMaps(entries: ReadonlyMap<string, HDEntry | HDCell>, ctx:
     } else if (p.type === 'a') {
       if (p.blk >= ctx.n) { stale += 1; staleKeys.push(k); dropped.push(k); continue; }
       const cur = [numOrNull(r.aStart[p.blk]), numOrNull(r.aEnd[p.blk])];
-      /* ⚠️ 2026-10-08: бодит огноо ч тэгшлэгдсэн тулгалт (`normPair`) */
       if (e.bv !== undefined && !sameVal(normPair(e.bv), cur)) { stale += 1; staleKeys.push(k); bvKeys.push(k); dropped.push(k); continue; }
       const v = normPair(e.val);
       if (sameVal(v, cur)) { dropped.push(k); continue; }
@@ -408,7 +340,7 @@ type Wire = {
   spans: unknown[]; ham: unknown[]; actual: unknown[]; res: unknown[]; months: unknown[];
   /** Сарын нөөц (2026-09-24) — хуучин ноорогт байхгүй, `parse` тэсвэрлэнэ */
   mres?: unknown[];
-  /** ХУУЧИН tombstone `[түлхүүр, агшин][]` — 2026-10-22-оос бичигдэхгүй, уншигдсаар (`dz`-ийн ⚠️) */
+  /** ХУУЧИН tombstone `[түлхүүр, агшин][]` — 2026-10-22-оос бичигдэхгүй, уншигдсаар (`dz`) */
   del?: unknown[];
   /** НЯГТ tombstone (2026-10-22, аудит №1) — `encodeDel` */
   dz?: unknown[];
@@ -420,16 +352,6 @@ type Wire = {
 /** Танихуун нэрийн дээд урт — ачааллыг хязгаарлана (зөөлт кодоор, нэр нь нөөц/мэдэгдэлд) */
 const RK_NAME_MAX = 40;
 
-/**
- * ⚠️ 2026-10-08: НЯГТ БИЧИГЛЭЛ — `REMOTE_MAX` (80 000) нь 1,266 мөр × 22 блокийн багцад ~600
- *    мужийн нүдэнд л хүрч, түүнээс хойш ноорог алсад ОГТ очдоггүй байв. Нэг мужийн нүд
- *    `{"start":1760000000000,"end":1760500000000}` × 2 (val + bv) + нэр = ~130 тэмдэгт.
- *      · Муж → `[эхлэх, дуусах]` ХОНОГООР (ms / DAY, хоёулаа бүхэл хоног бол), эс бөгөөс ms-ээр
- *        (гаднаас орсон цагтай огноо нарийвчлал алдахгүй). Хоног < 1e8, ms > 1e12 — ялгагдана.
- *      · Хэрэглэгчийн нэр → `u` хүснэгтийн индекс.
- *      · `val === bv` нүд (серверийнхтэй ижил — бичих зүйлгүй, `cellsToMaps` ямар ч байсан хаядаг) орохгүй.
- *    Нэг нүд ~55 тэмдэгт. `parse` ХУУЧИН хэлбэрийг (объект муж, нэр мөрөөр) хэвээр уншина.
- */
 const DAY_MS = 86_400_000;
 const spanWire = (s: HDSpan): [number, number] | null => {
   if (!s) return null;
@@ -446,25 +368,7 @@ const spanOfWire = (x: unknown): HDSpan => {
   return x && typeof x === 'object' ? spanVal(x as HDSpan) : null;
 };
 
-/* ══════════════ НЯГТ TOMBSTONE (⚠️ 2026-10-22, аудит №1) ══════════════
- *
- * ⚠️ ЯАГААД: илгээсний дараах цэвэрлэлт (`applyClear`) илгээгдсэн НҮД БҮРТ tombstone тавьдаг бөгөөд хуучин бичиглэл
- *    `["s:1234:0",1790842404020]` нь нэг нүдэнд ~28 тэмдэгт — ~2,800-аас олон нүдтэй илгээлтийн цэвэрлэлт `REMOTE_MAX`
- *    (80,000)-аас хэтэрч «ноорог хэт том» гэж 8 удаа оролдоод зогсдог тул алсын ноорог ХЭЗЭЭ Ч цэвэрлэгддэггүй байв
- *    (b54: илгээлт №11 — 3,239 нүд — дараа нь 1,632 нүд хэвээр). Талбарыг (100,000) эндээс өргөтгөх боломжгүй.
- * ⚠️ ШИЙДЭЛ — САНАХ ОЙН ХЭЛБЭР (`HDDraft.del`) ӨӨРЧЛӨГДӨХГҮЙ, зөвхөн ДАМЖУУЛАХ бичиглэл: tombstone-уудыг АГШИН → нүдний
- *    загвар (`s::0` = «s:<oid>:0») → oid-ийн МУЖ (`[эхний, нэмэлт тоо, зай, нэмэлт тоо, …]`) болгож бүлэглэнэ; агшин
- *    нь өмнөхөөсөө зөрүүгээр. Нэг цэвэрлэлтийн нүднүүд ихэвчлэн цөөн агшинтай, жаазны oid дараалсан тул 3,239 нүд хэдэн
- *    зуун тэмдэгт болно. Нэгтгэл · `applyClear` · `coversMark`-ийн бүх ⚠️ баталгаа (зөвхөн илгээгдсэн утга цэвэрлэгдэнэ,
- *    шинэ засвар үлдэнэ, хуучин хуулбар амилахгүй) НЯГТ ХЭЛБЭРТ ч ЯГ хэвээр — тэмдэг бүр өөрийн агшинтайгаа.
- * ⚠️ ХЯЗГААР (`serialize`-ийн `max`): нягт ч хэтэрвэл (маш олон ЯЛГААТАЙ агшин) tombstone-ийн агшныг ойрын хүрээнд
- *    (1 с → 1 мин → 1 цаг → 1 өдөр → бүгд) тухайн бүлгийн ХАМГИЙН ИХ агшин хүртэл ДЭЭШ нь бөөрөнхийлнө
- *    (`coarsenDel`) — «цэвэрлэгдсэн ≤ T» тэмдэг. Эрсдэл: тэр хүрээнд ЭНЭ клиентийн хараагүй (хамтрагчийн нийлүүлээгүй,
- *    офлайн) ижил нүдний шинэ хувилбар хаагдаж болно — урьдын «огт цэвэрлэгдэхгүй» байдлаас хамаагүй бага; нүд нь
- *    ноорогт байгаа tombstone (`entries`-тэй) хэзээ ч бөөрөнхийлөгдөхгүй. Нарийн хүрээнээс эхэлдэг тул ердийн хэмжээнд
- *    ажиллахгүй.
- * ⚠️ ХУУЧИН `del` уншигдсаар (буцаж нийцтэй); ХУУЧИН клиент `dz`-г үл тоох тул шилжилтийн үед tombstone-оо алдаж болно
- *    (хуудсаа шинэчлэхэд шийдэгдэнэ) — цэвэрлэлт огт буухгүйгээс бага хор.
+/* ══════════════ НЯГТ TOMBSTONE (2026-10-22, аудит №1) ══════════════
  */
 /** Нүдний түлхүүр → [загвар, бүхэл id] (`s:12:3` → [`s::3`, 12]); id-гүй/каноник бус бол `null` */
 function splitKey(k: string): [string, number] | null {
@@ -581,7 +485,6 @@ function decodeDel(x: unknown, into: Map<string, number>): void {
     const g = x[i];
     if (!Array.isArray(g)) continue;
     const dt = Number(g[0]);
-    /* ⚠️ Зөрүү эвдэрвэл цаашдын бүх агшин буруу болно — тэндээс зогсоно (хагас уншилт нь tombstone дутуу, нүд устахгүй) */
     if (!Number.isFinite(dt) || dt < 0) return;
     t += dt;
     const a = ms(t);
@@ -596,7 +499,7 @@ function decodeDel(x: unknown, into: Map<string, number>): void {
 const COARSE_MS = [1_000, 60_000, 3_600_000, 86_400_000, Number.POSITIVE_INFINITY];
 /**
  * Tombstone-ийн агшныг `g` мс-ийн хүрээгээр бүлэглэж, бүлэг бүрийн ХАМГИЙН ИХ агшин руу ДЭЭШ нь тэгшилнэ (толгойн
- * «ХЯЗГААР» ⚠️). Ноорогт НҮД нь байгаа түлхүүрийн tombstone хөндөгдөхгүй (тэр нүдийг хүлээн авагч хаахгүйн тулд).
+ * «ХЯЗГААР»). Ноорогт НҮД нь байгаа түлхүүрийн tombstone хөндөгдөхгүй (тэр нүдийг хүлээн авагч хаахгүйн тулд).
  * Агшин хэзээ ч бүлгийнхээ анхны дээд утгаас ДЭЭШ гарахгүй — ирээдүйн засвар хаагдахгүй.
  */
 function coarsenDel(d: Pick<HDDraft, 'del' | 'entries'>, g: number): Map<string, number> {
@@ -614,15 +517,7 @@ function coarsenDel(d: Pick<HDDraft, 'del' | 'entries'>, g: number): Map<string,
 
 /**
  * HDDraft → JSON мөр (алсын `payload`). Нүд бүр `[…, at, user, bv]`.
- * ⚠️ 2026-10-09: `max` өгвөл танихуун (`rk`) нь хэмжээг ХЭТРҮҮЛЭХ үед нэргүй (`[oid, код]`) болно.
- *    ⚠️ 2026-10-26: бүрмөсөн хасахаа БОЛИВ (доорх ⚠️).
- * ⚠️ 2026-10-22 (аудит №1): tombstone нь ҮРГЭЛЖ нягт (`dz`); тэгээд ч хэтэрвэл танихуунгүй хувилбар дээр tombstone-ийн
- *    агшныг нарийнаас бүдүүн хүрээгээр бөөрөнхийлнө (`coarsenDel` — толгойн ⚠️). Санах ойн `d` ХӨНДӨГДӨХГҮЙ.
  */
-/* ⚠️ 2026-10-26 (аудит): танихууныг (`rk`) КОДЫН түвшинд (lvl 1, мөрд ~10 тэмдэгт) ХЭЗЭЭ Ч хасахгүй. Амьдаар b71 · b41_9f
- *    ноорог хязгаарт хүрч rk-гүй хадгалагдсан; дараа нь шинэ агшинд жааз солигдоход (OBJECTID шинэ) локал хуулбаргүй
- *    машин `identityRemap`-аар нүдийг шинэ мөрд зурж чадахгүй — 807 мужийн нүд өнчирсөн. Багтахгүй бол tombstone-ийг
- *    бөөрөнхийлнэ; тэгээд ч хэтэрвэл хэтэрсэн мөр буцна → дуудагч алсад илгээхгүй («хэт том», локалд үлдэнэ). */
 export function serialize(d: HDDraft, max?: number): string {
   const full = serializeRk(d, 2);
   if (max == null || full.length <= max) return full;
@@ -651,9 +546,6 @@ function serializeRk(d: HDDraft, lvl: 0 | 1 | 2, del: ReadonlyMap<string, number
   const ui = new Map(u.map((name, i) => [name, i]));
   const usr = (e: HDEntry) => ui.get(e.user) ?? 0;
   const bv = (e: HDEntry) => (e.bv === undefined ? [] : [e.bv]);
-  /* ⚠️ ТҮЛХҮҮРЭЭР ЭРЭМБЭЛНЭ: `merge`-ийн Map дараалал а/б-ийн эрэмбээс хамаардаг
-     тул ижил агуулга өөр мөр болж, `sig` зөрж, хоёр клиент ээлжлэн дахин
-     бичээд мөнхийн тойрог үүсгэх байв. */
   const keys = [...d.entries.keys()].sort();
   /** Нүдтэй мөрийн oid — танихуунд (2026-10-09) */
   const rowOids = new Set<number>();
@@ -661,7 +553,6 @@ function serializeRk(d: HDDraft, lvl: 0 | 1 | 2, del: ReadonlyMap<string, number
     const e = d.entries.get(k)!;
     const p = parseKey(k);
     if (!p) continue;
-    /* ⚠️ 2026-10-08: серверийнхтэй ижил нүд бичигдэхгүй (дээрх ⚠️) */
     if (e.bv !== undefined && sameVal(e.val, e.bv)) continue;
     if (p.type !== 'm' && p.type !== 'n') rowOids.add(p.oid);
     if (p.type === 's') {
@@ -677,7 +568,6 @@ function serializeRk(d: HDDraft, lvl: 0 | 1 | 2, del: ReadonlyMap<string, number
     } else if (p.type === 'm') months.push([p.key, e.val ?? [], e.at, usr(e), ...bv(e)]);
     else if (p.type === 'n') mres.push([p.key, e.val ?? [], e.at, usr(e), ...bv(e)]);
   }
-  /* ⚠️ 2026-10-09: танихуун — oid-оор эрэмбэлсэн (детерминист), зөвхөн нүдтэй мөрд */
   const rk: unknown[] = [];
   if (lvl > 0 && d.rk) {
     for (const o of [...rowOids].sort((x, y) => x - y)) {
@@ -691,7 +581,6 @@ function serializeRk(d: HDDraft, lvl: 0 | 1 | 2, del: ReadonlyMap<string, number
     ...(u.length ? { u } : {}),
     spans, ham, actual, res, months,
     ...(mres.length ? { mres } : {}),
-    /* ⚠️ 2026-10-22 (аудит №1): нягт tombstone (`encodeDel`) — хуучин `del` массив бичигдэхгүй */
     ...(del.size ? { dz: encodeDel(del) } : {}),
     base: d.base,
     ...(d.cleared ? { cleared: d.cleared } : {}),
@@ -704,11 +593,7 @@ function serializeRk(d: HDDraft, lvl: 0 | 1 | 2, del: ReadonlyMap<string, number
  * ХАРЬЦУУЛАХ ГАРЫН ҮСЭГ — `t`/`by`/`base`-ГҮЙ, зөвхөн нүд ба tombstone.
  * Агуулга өөрчлөгдөөгүй бол дахин бичихгүй (`saveRemoteDraft` нь query +
  * applyEdits хоёр дуудлага).
- * ⚠️ `by` ОРОХГҮЙ: Б нь А-гийн бичсэнийг нийлүүлээд дахин бичихэд `by` нь
- *    Б болно; А түүнийг уншаад «өөр» гэж дахин бичвэл тойрог үүснэ.
  */
-/* ⚠️ 2026-10-09: `rk` ОРОХГҮЙ — хэт том үед танихуунгүй бичигдсэн алсын мөртэй тулгахад гарын үсэг
-   зөрж мөчлөг бүрд дахин бичих тойрог үүсэх байв. */
 export const sig = (d: HDDraft): string =>
   serialize({ ...d, t: 0, by: { user: '', at: 0 }, base: { at: 0, n: d.base.n }, cleared: undefined, rk: undefined });
 
@@ -727,7 +612,6 @@ export function parse(s: string | null | undefined): HDDraft | null {
   const kind: HDKind = w.kind === 'geree' ? 'geree' : 'plan';
   const t = ms(w.t) ?? 0;
   const entries: HDEntries = new Map();
-  /* ⚠️ 2026-10-08: нэр — хүснэгтийн индекс (шинэ) эсвэл мөр (хуучин) хоёуланг уншина */
   const uTab = Array.isArray(w.u) ? w.u.map(str) : [];
   const usr = (x: unknown): string => (typeof x === 'number' ? uTab[x] ?? '' : str(x));
   const put = (k: string, val: unknown, at: unknown, user: unknown, bv: unknown[]) => {
@@ -739,7 +623,6 @@ export function parse(s: string | null | undefined): HDDraft | null {
   };
   for (const x of Array.isArray(w.spans) ? w.spans : []) {
     if (!Array.isArray(x) || !Number.isInteger(x[0]) || !Number.isInteger(x[1])) continue;
-    /* ⚠️ 2026-10-08: муж `[хоног, хоног]` / `[ms, ms]` (шинэ) эсвэл `{start,end}` (хуучин) — `bv` ч мөн */
     put(kS(x[0] as number, x[1] as number), spanOfWire(x[2]), x[3], x[4], x.length > 5 ? [spanOfWire(x[5])] : []);
   }
   for (const x of Array.isArray(w.ham) ? w.ham : []) {
@@ -768,7 +651,6 @@ export function parse(s: string | null | undefined): HDDraft | null {
     const a = ms(x[1]);
     if (a != null && parseKey(x[0])) del.set(x[0], a);
   }
-  /* ⚠️ 2026-10-22 (аудит №1): нягт tombstone (`dz`) — хуучин `del`-тэй хамт байвал түлхүүр бүрт ИХ агшин */
   decodeDel(w.dz, del);
   const by = w.by && typeof w.by === 'object'
     ? { user: str(w.by.user).toLowerCase(), at: ms(w.by.at) ?? t }
@@ -777,7 +659,6 @@ export function parse(s: string | null | undefined): HDDraft | null {
     ? { at: ms(w.base.at) ?? 0, n: Number.isInteger(w.base.n) ? (w.base.n as number) : 0 }
     : { at: 0, n: 0 };
   const cleared = ms(w.cleared);
-  /* ⚠️ 2026-10-09: танихуун — эвдэрсэн мөрийг л орхино; хуучин ноорогт байхгүй */
   const rk = new Map<number, HDRowKey>();
   for (const x of Array.isArray(w.rk) ? w.rk : []) {
     if (!Array.isArray(x) || !Number.isInteger(x[0])) continue;
@@ -794,7 +675,6 @@ export function parse(s: string | null | undefined): HDDraft | null {
  * `a`-д өгнө). Tombstone: хассан агшин нүднийхээс ХОЖУУ бол нүд хаягдана,
  * эрт бол tombstone хаягдана (нүд дахин бичигдсэн). 7 хоногоос хуучин
  * tombstone арилна.
- * ⚠️ `now` параметр — тест дээр цагийг тогтооход.
  */
 export function merge(a: HDDraft | null, b: HDDraft | null, now = Date.now()): HDDraft | null {
   if (!a) return b ? prune(b, now) : null;
@@ -818,7 +698,6 @@ export function merge(a: HDDraft | null, b: HDDraft | null, now = Date.now()): H
   }
   const newer = b.t > a.t ? b : a;
   const cleared = Math.max(a.cleared ?? 0, b.cleared ?? 0);
-  /* ⚠️ 2026-10-09: танихуун — хоёулангийнх нийлнэ, ШИНЭ ноорогийнх давамгайлна */
   const older = newer === a ? b : a;
   const rk = new Map<number, HDRowKey>([...(older.rk ?? []), ...(newer.rk ?? [])]);
   return {
@@ -851,13 +730,6 @@ function prune(d: HDDraft, now: number): HDDraft {
  * жаазтай клиентийн хуулбар түүнийг дахин амилуулахгүй. `bv` хэвээр: шинэ жааз нь
  * хуучныг хуулсан тул суурь утга ижил. Зураглалд БАЙХГҮЙ oid-той нүд хэвээр
  * (дараа нь `cellsToMaps` «мөр алга» гэж шийднэ). Оролтыг өөрчлөхгүй.
- */
-/*
- * ⚠️ 2026-10-09 (`keep`): ӨӨР жааз нь шинэчлэгдээгүй хамтрагчийн нүдийг (`keep` → true) хуучин түлхүүрт
- *    tombstone-ГҮЙ ҮЛДЭЭНЭ — 2026-09-25-ны «мөр алга нүдийг бусдынх бол tombstone хийхгүй» дүрэм; шинэ
- *    түлхүүрт хуулбар л үүснэ. Шинэ түлхүүрт аль хэдийн ШИНЭ (`at` их) нүд эсвэл ШИНЭ tombstone (буцаасан)
- *    байвал зөөхгүй — урьд нь зөөлт шинэ түлхүүрийн tombstone-ыг арилгаж буцаасан нүдийг амилуулдаг байв.
- *    Хуучин түлхүүрийн tombstone ҮЛДЭНЭ (хуучин жаазтай клиентийн хуулбар амилахгүй), шинэд MAX-аар.
  */
 export function remapDraft(
   d: HDDraft, map: ReadonlyMap<number, number>, now = Date.now(), keep?: (k: string, e: HDEntry) => boolean,
@@ -953,7 +825,6 @@ export function identityRemap(d: HDDraft, ctx: HDCtx): { map: Map<number, number
   };
   const byDes = new Map<number, number | null>();
   const byNw = new Map<string, number | null>();
-  /* ⚠️ 2026-10-26: эцэг бүлгийн зам (давтагдашгүй бол) ба «№ ¦ нэр» + дэс дугаар (нийт тоо ИЖИЛ үед л) */
   const byPath = new Map<string, number | null>();
   const byOcc = new Map<string, number>();
   for (const [oid, r] of ctx.rows) {
@@ -963,9 +834,6 @@ export function identityRemap(d: HDDraft, ctx: HDCtx): { map: Map<number, number
     if (r.path) byPath.set(r.path, byPath.has(r.path) ? null : oid);
     if (k && r.occ != null && r.occN != null) byOcc.set(`${k}#${r.occ}/${r.occN}`, oid);
   }
-  /* ⚠️ 2026-10-09 (аудит): НЭГ-НЭГЭЭР ТАСАЛБАРЛАЛТ. Урьд нь `remapRowsFull`-ийн `used`-тэй адил шалгалтгүй тул
-     хоёр хуучин oid (жиш. давхардсан код/№ + нэртэй хуучин мөрүүд) НЭГ одоогийн мөр рүү зөөгдөж, ноорог нь
-     хоорондоо дарагддаг байв. Одоо нэг зорилтот мөр рүү 2+ хуучин oid таарвал ТОДОРХОЙГҮЙ — бүгд зөөгдөхгүй (`lost`). */
   const cand = new Map<number, number>();
   const label = new Map<number, string>();
   const hits = new Map<number, number>();
@@ -974,7 +842,6 @@ export function identityRemap(d: HDDraft, ctx: HDCtx): { map: Map<number, number
     if (!id) { unknown += 1; continue; }
     label.set(oid, `${id.no} ${id.work}`.trim() || (id.des != null ? String(id.des) : String(oid)));
     let to: number | null | undefined = id.des != null ? byDes.get(id.des) : undefined;
-    /* ⚠️ 2026-10-26: код → эцэг бүлгийн зам → «№ ¦ нэр» (ганц) → «№ ¦ нэр» + дэс дугаар (нийт ижил) → олдсонгүй */
     if (to == null && id.path) to = byPath.get(id.path);
     if (to == null) {
       const k = nw(id.no, id.work);
@@ -995,9 +862,6 @@ export function identityRemap(d: HDDraft, ctx: HDCtx): { map: Map<number, number
 
 /**
  * НООРОГТ ХАРАГДСАН ХАМГИЙН ИХ АГШИН — `t` · `cleared` · нүдний `at` · tombstone.
- * ⚠️ HLC-ийн «харсан дээд» (`hlcNext`): бичигчийн `Date.now()` цагийн зөрүүтэй (хоцорсон)
- *    машинд бусдын нүднээс БАГА `at` авч, нийлүүлэлтэд (шинэ `at` ялна) шинэ засвар нь
- *    хуучинд ялагдаж, tombstone нь хуучин нүдийг хаяж чаддаггүй байв.
  */
 export function maxStamp(d: HDDraft | null | undefined): number {
   if (!d) return 0;
@@ -1009,20 +873,11 @@ export function maxStamp(d: HDDraft | null | undefined): number {
 
 /**
  * ГИБРИД ЛОГИК ЦАГ (HLC) — дараагийн агшин = max(одоо, харсан дээд + 1).
- * ⚠️ Үр дүн нь харсан бүх агшнаас ХАТУУ ИХ — tombstone (`d > e.at`) харсан нүдээ заавал
- *    хаана, шинэ засвар харсан нүднээс заавал ялна. Цаг нь урагшаа зөрсөн машины `at`
- *    бусдыг өөрийн дээр «чирнэ» — HLC-ийн хүлээн зөвшөөрсөн зан (дараалал хадгалагдана).
  */
 export const hlcNext = (seen: number, now = Date.now()): number => Math.max(now, Math.floor(seen) + 1);
 
 /**
  * `cleared`-ЭЭС ӨМНӨХ НҮДИЙГ ХАСНА — нүд тус бүрээр (`at <= cleared`). Tombstone хэвээр.
- * ⚠️ Сэргээхэд ЛОКАЛ хуулбарт л хэрэглэнэ — алсын мөр өөрөө эх сурвалж (2026-10-04).
- * ⚠️ 2026-10-21 (кодын аудит): `HD_DEL_TTL`-ээс ШИНЭ нүдийг ХАСАХГҮЙ. `applyClear` нь ЗӨВХӨН илгээлтэд орсон
- *    нүдэнд tombstone тавьдаг атал `cleared` агшин нь нэг л тоо — урьд нь Б илгээхэд (t2) А-гийн алс руу ХҮРЧ
- *    АМЖААГҮЙ (t1 < t2) өөр нүднүүд дахин ачаалахад бүгд чимээгүй устдаг байв. Шинэ нүдийг цэвэрлэлт хамарсан
- *    бол түүний tombstone (`at` > нүдний `at` > `now − TTL`) алсад хэвээр байгаа тул дуудагчийн `merge` хаана;
- *    tombstone нь хугацаагаар арилсан байж болох ХУУЧИН нүдийг л `cleared`-ээр хаана (амилахаас сэргийлнэ).
  */
 export function dropCleared(d: HDDraft, cleared: number, now = Date.now()): HDDraft {
   if (!cleared) return d;
@@ -1035,10 +890,6 @@ export function dropCleared(d: HDDraft, cleared: number, now = Date.now()): HDDr
  * ХЭСЭГЧИЛСЭН ЦЭВЭРЛЭЛТ (2026-10-04 аудит) — ЗӨВХӨН `keys`-ийн нүдэнд tombstone (`түлхүүр →
  * агшин`), `cleared` = `ts`. Илгээх (`keys` = илгээлтэд ОРСОН нүд) ба «Ноорог хаях» (`keys` =
  * дэлгэц дээрх нүд) хоёулаа үүгээр.
- * ⚠️ Урьд нь бүх нүдийг tombstone болгож алсыг blind overwrite хийдэг байсан тул илгээлтэд
- *    ОРООГҮЙ (сүүлийн 3 с-д хамтрагчийн нэмсэн) нүд устдаг байв. Одоо tombstone-оос ШИНЭ
- *    `at`-тай нүд (`at >= tombstone`) ба жагсаалтад ороогүй нүд хэвээр үлдэнэ.
- * ⚠️ Оролтыг өөрчлөхгүй; давтан хэрэглэхэд идемпотент.
  */
 export function applyClear(d: HDDraft, keys: ReadonlyMap<string, number>, ts: number): HDDraft {
   const del = new Map(d.del);
@@ -1056,13 +907,9 @@ export function applyClear(d: HDDraft, keys: ReadonlyMap<string, number>, ts: nu
 /**
  * ХҮЛЭЭГДЭЖ БУЙ ЦЭВЭРЛЭЛТИЙН ТЭМДЭГ (2026-10-04 аудит, localStorage) — илгээсний/хаясны
  * дараах алсын цэвэрлэлт унасан бол дахин оролдох хүртэл хадгална.
- * ⚠️ Урьд нь унасан цэвэрлэлт ДАХИН оролдогддоггүй тул буцаагдахад хуучин ноорог алсаас
- *    сэргэж, буцаагдсан саналын автомат буулгалтыг (`dirtyN > 0`) хаадаг байв.
  */
 export type HDClearMark = { ts: number; keys: Map<string, number> };
 export const hdClearMarkKey = (key: string) => `selbe-huvaari-clear:${key}`;
-/* ⚠️ 2026-10-22 (аудит №1): тэмдэг ч НЯГТ (`kz` — `encodeDel`, ЯГ агшинтай) — том илгээлтийн тэмдэг localStorage-ийн
-   багтаамжийг (≈5 MB) дүүргэхгүй. Хуучин `keys` хэлбэр уншигдсаар. */
 export const serializeMark = (m: HDClearMark): string => JSON.stringify({ ts: m.ts, kz: encodeDel(m.keys) });
 export function parseMark(s: string | null | undefined): HDClearMark | null {
   if (!s) return null;
@@ -1090,7 +937,6 @@ export function mergeMark(a: HDClearMark | null, b: HDClearMark | null): HDClear
 }
 /**
  * Ноорог тэмдгийг БҮРЭН агуулсан эсэх — алсад бичигдсэн бол тэмдгийг арилгаж болно.
- * ⚠️ Нүд АЛГА бол хангалттай (tombstone 7 хоногт арилдаг; хуучин хуулбарыг `cleared` хаана).
  */
 export function coversMark(d: HDDraft | null, m: HDClearMark): boolean {
   if (!d || (d.cleared ?? 0) < m.ts) return false;

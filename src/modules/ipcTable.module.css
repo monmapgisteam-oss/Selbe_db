@@ -1,15 +1,5 @@
 /*
  * IPC — гэрээгээр бүлэглэсэн, ТӨЛБӨР БҮР КАРТ.
- *
- * ⚠️ Өнгө бүгд `var(--…)` токеноор — порталын гэрлийн/харанхуйн загвар
- * автоматаар дагана. Хатуу hex бичвэл харанхуй горимд уншигдахгүй болно.
- *
- * ⚠️ 2026-10-23: Environment — карт 12px/8px булан, --line хүрээ, сүүдэргүй; товч .pe-ghost /
- * .pe-primary, сонгогч .pe-field, шошго 6px badge; жин ≤600.
- *
- * ⚠️ ХҮСНЭГТ БИШ (2026-09-09, хэрэглэгчийн шийдвэр: «нэг ipc нэг нүдэн бүх
- * мэдээлэл агуулна»). Урьд нь `<table>` байсан бөгөөд 11 багана нь толгойгоо
- * алдмагц уншигдахаа больдог байв.
  */
 
 .wrap { display: flex; flex-direction: column; gap: 10px; }
@@ -49,12 +39,6 @@
 
 /* ── Гэрээний толгой (дэлгэх товч) ── */
 .gBtn {
-  /* ⚠️ Бүтэн өргөнд дарагдах ёстой — товч нь мөр шиг ажиллана */
-  /* ⚠️ `flex-wrap: wrap` (2026-09-16): элементүүдийн хамгийн бага өргөн ≈970px
-     (нэр + гүйцэтгэгч 260 + тэмдэглэгээ + гэрээт/олгосон дүн ×2 + тууз 118).
-     Урьд нь нэг мөрөнд хүчээр багтаж, 1180px-ээс доош `body{overflow-x:hidden}`
-     идэвхжихэд «олгосон» дүн ба хувийн тууз ТАЙРАГДАЖ, хүрэх арга үлддэггүй
-     байв. Эвхэгдэхэд хоёр мөр болж бүгд уншигдана. */
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%;
   padding: 9px 12px; font: inherit; text-align: left;
   background: var(--surface-2);
@@ -63,8 +47,6 @@
 .gBtn:hover { background: var(--paper-hi); }
 
 .caret { font-size: 11px; color: var(--ink-3); width: 10px; flex-shrink: 0; }
-/* ⚠️ Гэрээний нэр нь мөрийн ЦОРЫН ГАНЦ уян элемент — `min-width: 0` (flex-ийн
-   анхдагч `auto`-г цуцална) ба ellipsis-гүйгээр агшихгүй тул бусдыг түлхэнэ. */
 .gTitle {
   font-weight: 600; white-space: nowrap;
   flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
@@ -79,8 +61,6 @@
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--r-sm); padding: 1px 6px; white-space: nowrap;
 }
-/* ⚠️ Түлхэгч нь эвхэгдсэн үед мөр ЭЗЛЭХГҮЙ (`flex-basis: 0`) — эс тэгвээс
-   хоёр дахь мөрийг дангаар нь эзэлж хоосон зурвас үлдээнэ. */
 .gSpacer { flex: 1 1 0; min-width: 0; }
 
 .gSum {
@@ -89,9 +69,7 @@
 }
 .gSumLbl { font-size: 11px; color: var(--ink-3); }
 
-/* Хувийн тууз
-   ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): порталын `Bars` мөр — хувь ДЭЭР
-   (`--ink-2`), доор 2px зам (`--chart-track`, радиус 1px). Урьд нь 6px тууз | хувь. */
+/* Хувийн тууз */
 .gPct { display: inline-flex; flex-direction: column; align-items: stretch; gap: 3px; width: 118px; flex-shrink: 0; }
 .bar {
   display: block; width: 100%; height: 2px; border-radius: 1px;
@@ -103,7 +81,6 @@
   font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ink-2);
   text-align: right;
 }
-/* ⚠️ Хэмжигдээгүй — тууз ОГТ зурагдахгүй, зөвхөн зураас */
 .gPctNone { width: 100%; text-align: right; color: var(--ink-3); }
 
 /* ── Гэрээний дэлгэрэнгүй ── */
@@ -113,18 +90,7 @@
   border-top: 1px solid var(--line);
 }
 
-/*
- * ⚠️ `columns` (grid БИШ): бүлгүүд өөр өөр өндөртэй (ЭРХ ЗҮЙ нь урт
- * хуулийн үндэслэлтэй, ОЛГОЛТ нь ердөө 2 мөр). Grid-д богино бүлэг
- * дангаараа шинэ ЭГНЭЭ эзэлж, хажуудаа том ХООСОН зай үлдээдэг.
- * `columns` нь тэднийг дараалуулан УРСГАЖ эгнээг дүүргэнэ.
- *
- * ⚠️ Хэрэглэгчийн шийдвэр (2026-09-09): 6 баганат нэг сүлжээ «ойлгомжгүй»
- * байв. Нарийн дэлгэцэд өөрөө 2, дараа нь 1 багана болж буурна.
- */
 .dCols { columns: 3 340px; column-gap: 28px; }
-/* ⚠️ Бүлэг багана дундуур ТАСРАХГҮЙ — гарчиг нэг баганад, утга нөгөөд
-   гарвал уншигдахаа болино. */
 .dGrp { break-inside: avoid; page-break-inside: avoid; margin-bottom: 14px; }
 
 .dGrpTitle {
@@ -134,21 +100,12 @@
   border-bottom: 1px solid var(--line);
 }
 
-/* ⚠️ Бүлэг дотор нэг багана — талбарууд ДЭЭРЭЭС ДООШ уншигдана */
 .dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
-/* ⚠️ 2026-10-09: `flex-start` (`start` биш) — autoprefixer «mixed support» сануулга dev/build-д гардаг байв; flex-д утга ижил */
 .dItem { display: flex; gap: 8px; align-items: flex-start; min-width: 0; }
 .dt {
-  /* ⚠️ ТОГТМОЛ өргөн — утгууд нэг босоо шугамаас эхэлж, нүд доош
-     гүйлгэхэд мөр бүрд шинэ байрлал хайхгүй. */
   flex: 0 0 128px; width: 128px;
   font-size: 11px; color: var(--ink-3); line-height: 1.45;
 }
-/*
- * ⚠️ ТАСЛАХГҮЙ (хэрэглэгчийн шийдвэр 2026-09-09: «бүтнээр нь харуулна»).
- * `huuliin_undeslel` нь 300+ тэмдэгттэй ч ТУСДАА бүлэгт, өөрийн баганад
- * байгаа тул хажуугийнхаа талбаруудыг сунгахгүй.
- */
 .dd {
   margin: 0; flex: 1 1 auto; min-width: 0;
   font-size: 11.5px; color: var(--ink); line-height: 1.45;
@@ -156,7 +113,6 @@
 }
 .ddNum { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* ⚠️ Эх сурвалж эвдэрсний дохио — нүдэнд ил байх ёстой */
 .warn {
   margin: 8px 0 0; padding: 6px 9px; border-radius: var(--r-sm);
   font-size: 11px; line-height: 1.45;
@@ -167,10 +123,6 @@
 
 /* ═══════════════ ТӨЛБӨРИЙН КАРТУУД ═══════════════ */
 
-/*
- * ⚠️ Карт бүр ӨӨРӨӨ БҮРЭН — «нэг ipc нэг нүдэн бүх мэдээлэл». Өргөн нь
- * агуулгаас хамаарч 1–4 багана болно; жижиг дэлгэцэд өөрөө нэг багана.
- */
 .cards {
   display: grid; gap: 10px;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -182,7 +134,6 @@
   border: 1px solid var(--line); border-radius: 8px;
   background: var(--surface); overflow: hidden;
 }
-/* ⚠️ Урьдчилгаа нь гүйцэтгэлийн төлбөр БИШ — картаар нь ялгарна */
 .cardAdv { background: var(--surface-2); }
 
 .cardHd {
@@ -202,8 +153,6 @@
 
 .cardBody { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
 
-/* ⚠️ ОЛГОСОН нь картын ГОЛ тоо — бусдаас ТОМООР. Хүн эхлээд «хэдэн
-   төгрөг олгосон» гэдгийг хардаг. */
 .big { display: flex; flex-direction: column; gap: 1px; margin-bottom: 2px; }
 .bigLbl { font-size: 11px; color: var(--ink-3); }
 .bigNum {
@@ -211,9 +160,6 @@
   font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
 }
 
-/* ⚠️ Хэсэг тусгаарлагч — баримт / гүйцэтгэл / олголт гурвыг нүдээр
-   зааглана. Зураас нь картыг ХЭСЭГТЭЙ болгож, 8 мөр нэг овоо болохоос
-   сэргийлнэ. */
 .sep { height: 1px; background: var(--line); margin: 5px 0 4px; }
 
 .kv { display: flex; align-items: baseline; gap: 8px; }
@@ -256,7 +202,6 @@
   margin: 0; font-size: 11.5px; color: var(--ink-3); line-height: 1.5;
 }
 
-/* ⚠️ Картын доторх хэсгийн гарчиг — «Бодит гүйцэтгэл» г.м. */
 .sect {
   margin: 0 0 1px; font-size: 11px; font-weight: 600; line-height: 1.3;
   letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3);
@@ -265,7 +210,6 @@
 /* ── IPC БАРИМТ ТАТАХ — гүйцэтгэлээс үүссэн (AUTO) картад (2026-09-29) ── */
 .docBtn {
   font: inherit; font-size: 12px; font-weight: 600;
-  /* ⚠️ 2026-10-23: Environment — .pe-primary (32px, 8px булан, --workspace-accent / -ink) */
   margin: 0 10px 10px;
   height: 32px;
   padding: 0 14px;
@@ -278,9 +222,6 @@
 .docBtn:hover { background: var(--workspace-accent-hover); }
 .docBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): орой эхэлсэн хуудас — тайлант үед
-   гэрээний эхнээс хуримтлагдсан ажил орсон IPC (`ipcDoc.lateSheetsOf`). Улаан биш,
-   анхаарах (warn) өнгө: алдаа биш, тайлбар шаардлагатай тохиолдол. */
 .lateNote {
   margin: 0 10px 8px; padding: 5px 8px; border-radius: var(--r-sm);
   font-size: 11px; line-height: 1.45;

@@ -8,12 +8,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-/**
- * ⚠️ 2026-10-23: Environment — өөрийн SVG багцыг (2026-08-18-ны «smart-city» геометр) lucide-react-ээр
- *    СОЛИВ. Экспортын API (`Icon({ name, size })` · нэрс) ХЭВЭЭР — дуудагч 25 файл, `services`/`caps`/`schem`-ийн
- *    `icon: '…'` түлхүүрүүд өөрчлөгдөхгүй. Нэр бүр хамгийн ойр утгатай lucide дүрс рүү зурагдана; шинэ нэр
- *    нэмэхдээ ЭНД нэг мөр нэмнэ (байхгүй нэр → `null`, урьдын адил чимээгүй).
- */
 const I: Record<string, LucideIcon> = {
   /* Хүрээ / бүс */
   frame: Frame,
@@ -53,10 +47,6 @@ const I: Record<string, LucideIcon> = {
   plus: Plus,
   calendar: CalendarDays,
 
-  /* ⚠️ 2026-10-23 (UX аудит S4): ЦЭСНИЙ ДҮРС ДАВХЦАЛ — зүүн цэс хураагдсан үед зөвхөн дүрс үлддэг атлаа
-     6 харагдац `shield`, 3 нь `layers`, 3 нь `network`, 2 нь `grid`/`chart` хуваалцаж, хэрэглэгч аль нь
-     аль болохыг ялгаж чадахгүй байв. Харагдац бүр ӨӨРИЙН дүрстэй (`services/views.ts`). tezu-bonu-гийн
-     lucide-react шилжилттэй нэгтгэхэд (2026-10-23) ижил утгатай lucide дүрс рүү зурагдав. */
   info: Info,
   sections: LayoutPanelLeft,
   briefcase: Briefcase,
@@ -74,6 +64,5 @@ const I: Record<string, LucideIcon> = {
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const C = I[name];
   if (!C) return null;
-  /* ⚠️ strokeWidth 1.6 — Environment-ийн 1.5–1.75 муж; жижиг хэмжээнд (14px) зураас бөөгнөрөхгүй */
   return <C size={size} strokeWidth={1.6} aria-hidden />;
 }

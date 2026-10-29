@@ -1,6 +1,6 @@
 /**
- * «ТАЙЛАН ТАТАХ» — тайрсан/виртуал хүснэгтийн ТЭМДЭГЛЭЛ (⚠️ 2026-10-19, цэвэр).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/viewReportNote.check.mjs
+ * «ТАЙЛАН ТАТАХ» — тайрсан/виртуал хүснэгтийн ТЭМДЭГЛЭЛ (2026-10-19, цэвэр).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/viewReportNote.check.mjs
  * Хамгаалах алдаа: `MAX_TABLE_ROWS`-оор тайрсан эсвэл виртуал хүснэгтийн зөвхөн дэлгэцийн мөрүүдийг авсан
  * тайлан БҮТЭН мэт харагддаг байв.
  */
@@ -15,13 +15,11 @@ assert.match(tableNote(1500, 2300, true), /2,300 мөрөөс эхний 1,500/,
 assert.match(tableNote(1500, null, true), /эхний 1,500 мөр/, 'хязгаараар тайрсан, нийт мэдэгдэхгүй');
 const fill = readFileSync(new URL('../modules/sheet/FillNew.tsx', import.meta.url), 'utf8');
 assert.ok(fill.includes('data-rep-total={vis.length}'), 'бөглөх хуудасны виртуал хүснэгт нийт мөрөө зарлана');
-/* ⚠️ 2026-10-19: `aria-rowcount` толгойг тоолдог — уншихгүй; `capped` нь хязгаараас цааш мөр үлдсэн үед л */
 const vr = readFileSync(new URL('./viewReport.ts', import.meta.url), 'utf8');
 assert.ok(!vr.includes("getAttribute('aria-rowcount')"), 'aria-rowcount-ыг нийт тоо гэж уншихгүй');
 assert.ok(!/push\(cells\);\s*if \(rows\.length >= MAX_TABLE_ROWS\)/.test(vr), 'яг хязгаар дээр capped болохгүй (push-ийн ӨМНӨ шалгана)');
 console.log('✅ viewReport — тайрсан/виртуал хүснэгтийн тэмдэглэл');
 
-/* ⚠️ 2026-10-26: нийтлэг `Segmented` (role=radio + aria-checked) шүүлт тайланд бичигдэнэ — хамгийн бага хуурамч DOM */
 {
   globalThis.getComputedStyle = () => ({ display: 'block' });
   const mk = (tag, attrs = {}, kids = [], text = '') => {

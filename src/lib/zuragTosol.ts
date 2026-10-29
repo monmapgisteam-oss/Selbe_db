@@ -6,13 +6,6 @@
  * мөрийн төлөвлөгөөт огноо (`geree_ehleh`/`geree_duusah`) ба явцыг (`guitsetgel_huvi`, 0–100) засна;
  * багцын зураг төслийн мөрийн доор 4 дэд шатны (А-даалгавар · Загвар зураг · Техникийн нөхцөл ·
  * Магадлал) БҮТЦИЙН мөр нэмнэ. Эцгийн утгыг `projectPlan.computePlan` бодно — энд бичихгүй.
- *
- * ⚠️ 2026-10-26: ЗӨВХӨН ӨӨРЧЛӨГДСӨН ТАЛБАР илгээгдэнэ (`tableWrite.applyAll`-ийн ⚠️ — бүтэн мөрийг
- *    буцааж бичвэл өөр хүний зэрэг зассан баганыг дарна). Анхны утга руугаа буцсан оролт засвар биш.
- * ⚠️ 2026-10-26: ОГНОО = UTC шөнө дунд (ms). Импорт (`tools/cashflow-import.mjs`) exceljs-ийн UTC огноог
- *    `getTime()`-ээр бичдэг тул харуулах/харьцуулах нь UTC өдрөөр — орон нутгийн цагаар бол УБ-д
- *    (UTC+8) өдөр нэгээр гулсаж, өөрчлөгдөөгүй огноо «өөрчлөгдсөн» гэж илгээгдэнэ.
- * ⚠️ 2026-10-26: null ≠ 0. Хоосон оролт → `null` («мэдээлэлгүй»), 0 БИШ. Явц 0–100 (`pct()` үржүүлдэггүй).
  */
 import { parseDayInput } from './dateInput';
 import { orderPlanRows, phaseKind, saneDate, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
@@ -24,18 +17,11 @@ export const ZURAG_PHASES: readonly PhaseKind[] = ['tezu', 'zurag'];
 
 /**
  * Ажлын зураг төслийн 4 ДЭД ШАТ — тохирсон тодорхойлолт (cf-spec «Бусад»).
- * ⚠️ Нэр нь мөрийн `ajil_uilchilgee` болж хадгалагдана — дэлгэцэнд `tr()`-ээр орчуулна (харагдац).
  */
 export const DESIGN_SUBSTAGES = ['А-даалгавар', 'Загвар зураг', 'Техникийн нөхцөл', 'Магадлал'] as const;
 
 /**
  * Шинэ дэд шатны «Хэсэгт эзлэх» жин — БУТАРХАЙ 0–1 (`projectPlan.STORED_WEIGHT`).
- * ⚠️ 2026-10-26: ЖИГД, гэхдээ ТОГТМОЛ 1/4 БИШ — эцэг бүрийн ХАДГАЛАГДАХ дэд шатуудын жингийн нийлбэр 1 байх
- *    ёстой (projectPlan жинг дахин хэвийн болгодоггүй, Σ F·X). Шинэ мөр бүр = (1 − байгаа ах дүүсийн F) /
- *    шинэ мөрийн тоо. ✕-ээр нэгийг хасвал үлдсэн нь дахин хуваагдана (`weighAdds` урьдчилсан мод ба ачаанд
- *    хоёуланд нь) — эс бөгөөс 3 дэд шат бүгд 100% байхад эцэг 75%-д гацна.
- * ⚠️ Жингүй бол хүүхдийн F нь `twin`-ээр (Барилга угсралтын ижил багц) хуулагдаж эсвэл null болж, эцгийн
- *    явц буруу/хоосон гарна. Өөр жин хэрэгтэй бол Excel-ээр оруулна.
  */
 export function substageWeight(siblingF: readonly (number | null | undefined)[], newCount: number): number {
   let used = 0;
@@ -45,16 +31,13 @@ export function substageWeight(siblingF: readonly (number | null | undefined)[],
 
 /**
  * Шинэ дэд шатны жин 0 эсэх — Excel-ийн ах дүүс аль хэдийн 100% (эсвэл түүнээс их) эзэлсэн тул ҮЛДЭГДЭЛ алга.
- * ⚠️ 2026-10-26: Ийм мөрийн явц эцэгт ОГТ нөлөөлөхгүй (Σ F·X). Байгаа ах дүүсийн жинг энд ДАХИН ХУВААХГҮЙ —
- *    хэрэглэгчийн хөндөөгүй мөрийг бичих болно (`buildEdits`-ийн «зөвхөн өөрчлөгдсөн талбар» дүрэм); оронд нь
- *    хадгалахын өмнө ба мөрөн дээр анхааруулж, жинг Excel-ээр засуулна (`substageWeight`-ийн ⚠️).
  */
 export const zeroWeight = (r: Pick<PlanStoredRow, 'heseg_ezleh_huvi'>): boolean =>
   typeof r.heseg_ezleh_huvi === 'number' && r.heseg_ezleh_huvi <= 1e-9;
 
 /**
  * Шинэ мөрүүдийн жинг ДАХИН хуваарилна — эцэг (`etseg_kod`) бүрээр, `base`-ийн байгаа ах дүүсийн F-ийг
- * хасаад үлдсэнийг шинэ мөрүүдэд жигд. ⚠️ Хадгалах ачаа ба урьдчилсан мод ИЖИЛ жинг ашиглана.
+ * хасаад үлдсэнийг шинэ мөрүүдэд жигд. Хадгалах ачаа ба урьдчилсан мод ИЖИЛ жинг ашиглана.
  */
 export function weighAdds(base: readonly PlanStoredRow[], adds: readonly PlanStoredRow[]): PlanStoredRow[] {
   const byParent = new Map<string, number>();
@@ -79,10 +62,6 @@ export type RowEdit = Partial<Record<FieldKey, string>>;
 
 /**
  * МӨНГӨНИЙ мөрийн (`cashflow_id` бий) явцыг ШАТНЫ талбарт ДАВХАР бичнэ — ТЭЗҮ → `tezu`, Ажлын зураг төсөл → `ajliin_zurag_tusul`.
- * ⚠️ 2026-10-26 (аудит): ТУХ-ын «Зураг төсөл» (`projectPlanInputs.liveProgressOf`) ба Нэгтгэл (`negtgel.loadCfStages`) мөнгөний мөрийн эдгээр
- *    шатны талбарыг уншдаг тул энд явц шинэчлэхэд тэнд юу ч өөрчлөгддөггүй, нэг гэрээ хоёр дэлгэцэд өөр % (55 ↔ 100) байв.
- *    Уншигчдыг `guitsetgel_huvi` руу шилжүүлэх нь хэрэглэгчийн 10-01-ний шийдвэрийг өөрчлөх тул бичилтийг давхарлав.
- *    БҮТЦИЙН мөрд (cashflow_id null) хамаарахгүй.
  */
 export const STAGE_FIELD_OF: Partial<Record<PhaseKind, string>> = { tezu: 'tezu', zurag: 'ajliin_zurag_tusul' };
 
@@ -121,8 +100,8 @@ const msOfDay = (d: string): number => {
 };
 
 /**
- * Үйлчилгээний огноо → ms. ⚠️ Date талбар epoch ms-ээр ирнэ; DateOnly бол «2025-09-25» мөр
- * (`fields.ts`-ийн HO-гийн ⚠️) — хоёуланг хүлээнэ.
+ * Үйлчилгээний огноо → ms. Date талбар epoch ms-ээр ирнэ; DateOnly бол «2025-09-25» мөр
+ * (`fields.ts`-ийн HO) — хоёуланг хүлээнэ.
  */
 export function dateIn(v: unknown): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
@@ -172,8 +151,6 @@ const cmpSeg = (a: string, b: string): number => a.localeCompare(b, 'en', { nume
 
 /**
  * dd_kod-ын ЭРЭМБЭ — «2.10» нь «2.9»-ийн ДАРАА, эцэг хүүхдээсээ ӨМНӨ.
- * ⚠️ Серверийн `orderByFields=dd_kod` нь ҮСГЭН эрэмбэ («2.10» < «2.2») — buildTree ах дүүсийг ОРОЛТЫН
- *    дарааллаар тавьдаг тул Excel-ийн дараалал эвдэрнэ. Клиент дээр энэ функцээр эрэмбэлнэ.
  */
 export function cmpKod(a: string | null | undefined, b: string | null | undefined): number {
   const x = String(a ?? '').split('.');
@@ -187,8 +164,6 @@ export function cmpKod(a: string | null | undefined, b: string | null | undefine
 
 /**
  * Тогтвортой эрэмбэ — ижил кодтой мөр objectid-ээр (`projectPlan.orderPlanRows`).
- * ⚠️ 2026-10-27: `dd_kod` ДАВХАРДВАЛ (импорт `--kod=excel`) БҮХЭЛДЭЭ objectid-ийн дарааллаар (= Excel-ийн дараалал);
- *    хадгалаагүй шинэ мөр (objectid-гүй) төгсгөлд — эцгээ `etseg_kod`+`tuvshin`-ээр хамгийн ойрын өмнөхөөс олно.
  */
 export function sortByKod(rows: readonly PlanStoredRow[]): PlanStoredRow[] {
   return orderPlanRows(rows, cmpKod);
@@ -198,15 +173,12 @@ export function sortByKod(rows: readonly PlanStoredRow[]): PlanStoredRow[] {
 
 /**
  * Мөрийн түлхүүр — байгаа мөр `o<objectid>`, шинэ (нэмэх) мөр `n<dd_kod>`.
- * ⚠️ dd_kod-оор БИШ: импорт `--kod=excel` бол код давхардаж (cf-wave2) хоёр мөр нэг засвар хуваалцана.
  */
 export const rowKey = (r: PlanStoredRow): string =>
   (r.objectid != null ? `o${r.objectid}` : `n${r.dd_kod ?? ''}`);
 
 /**
  * Талбарын хадгалсан утга → оролтын текст.
- * ⚠️ 2026-10-26: Явцыг 1e-6 хүртэл бөөрөнхийлнө — импорт `S × 100`-ийг хөвөгч цэгийн алдаатай бичдэг
- *    («7.000000000000001», «57.99999999999999»). Харьцуулалт `same` хүлцэлтэй тул бөөрөнхийлсөн текст засвар биш.
  */
 export function origText(r: PlanStoredRow, f: FieldKey): string {
   if (f === 'pct') return r.guitsetgel_huvi == null ? '' : String(Math.round(r.guitsetgel_huvi * 1e6) / 1e6);
@@ -217,9 +189,6 @@ type Parsed = { ok: true; v: number | null } | { ok: false };
 
 /**
  * Огнооны оролт — `parseDayInput`-ийн олон хэлбэр; хоосон → null.
- * ⚠️ 2026-10-26: `saneDate`-ийн хүрээнээс (2000–2100) гадуурх огноо БУРУУ — `parseDayInput` 1900–2100-г
- *    хүлээдэг ч `dayOf`/`computePlan` 2000-аас өмнөхийг үл тоодог тул «1999-05-01» хадгалагдаад дахин
- *    ачаалахад нүд хоосон харагдаж, огноо чимээгүй алга болно (хадгалсан нь null бол засвар бүр хаягдана).
  */
 export function parseDay(text: string): Parsed {
   const d = parseDayInput(text);
@@ -242,7 +211,6 @@ const parseOf = (f: FieldKey, text: string): Parsed => (f === 'pct' ? parsePct(t
 
 /**
  * Засвар тавина — анхны утга руугаа БУЦВАЛ засвараас хасна (хоосон `RowEdit` үлдэхгүй).
- * ⚠️ Шинэ мөрийн «анхны» утга нь `adds` доторх утга (нэмэх агшинд хоосон).
  */
 export function setEdit(p: Pending, r: PlanStoredRow, f: FieldKey, text: string): Pending {
   const k = rowKey(r);
@@ -320,7 +288,6 @@ export type EditPayload = {
 
 /**
  * Хадгалсан утга ба шинэ утга ижил үү — огноо UTC өдрөөр, тоо утгаар (null ≠ 0).
- * ⚠️ Явц ХҮЛЦЭЛТЭЙ (1e-9) — хадгалсан 57.99999999999999 ба бичсэн 58 нь засвар биш (`origText`-ийн ⚠️).
  */
 const same = (f: FieldKey, a: number | null | undefined, b: number | null): boolean => {
   if (f !== 'pct') return dayOf(a) === dayOf(b);
@@ -330,11 +297,6 @@ const same = (f: FieldKey, a: number | null | undefined, b: number | null): bool
 
 /**
  * ЗАСВАРЫН АЧАА угсарна.
- *
- * ⚠️ Байгаа мөрд ЗӨВХӨН өөрчлөгдсөн талбар (oid-той). Шинэ мөр бүтэн атрибуттай — `cashflow_id` ИЛ null
- *    (мөрийн 3 төрлийн дүрэм: БҮТЦИЙН = `cashflow_start` null + `cashflow_id` null; `CF_WORK_WHERE`-д орохгүй
- *    тул 33 мөнгөний хэрэглэгчид хүрэхгүй).
- * ⚠️ Нэг ч алдаа (`issues`) байвал дуудагч ИЛГЭЭХГҮЙ — хагас засвар бичигдэхгүй.
  */
 export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Names): EditPayload {
   const updates: Record<string, unknown>[] = [];
@@ -357,15 +319,12 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
       if (!same(f, r[FIELD_OF[f]], ps.v)) out[f] = ps.v;
     }
     if (bad) return null;
-    /* ⚠️ Дараалал — ҮР ДҮНГИЙН (шинэ ?? хадгалсан) хос огноогоор: зөвхөн нэгийг нь зассан ч шалгана */
     const s = 'start' in out ? out.start ?? null : saneDate(r.geree_ehleh);
     const en = 'end' in out ? out.end ?? null : saneDate(r.geree_duusah);
     if (s != null && en != null && s > en && ('start' in out || 'end' in out)) {
       issues.push({ key, code: r.dd_kod, name: r.ajil_uilchilgee ?? null, kind: 'order' });
       return null;
     }
-    /* ⚠️ 2026-10-26: ГАНЦ ОГНОО хадгалахгүй — `projectPlan.spanOf` хоёулаа байгаа мөрийг л авдаг тул ганц огноо
-       төлөвлөгөөт %-д (N) огт нөлөөлөхгүй, өвгийн огноогоор бодогдоно (хэрэглэгч мэдэхгүй үлдэнэ). */
     if ((s == null) !== (en == null) && ('start' in out || 'end' in out)) {
       issues.push({ key, code: r.dd_kod, name: r.ajil_uilchilgee ?? null, kind: 'pair' });
       return null;
@@ -384,7 +343,6 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
     if (!ch || !Object.keys(ch).length) continue;
     const u: Record<string, unknown> = { [names.oid]: r.objectid };
     for (const f of Object.keys(ch) as FieldKey[]) u[FIELD_OF[f]] = ch[f];
-    /* ⚠️ 2026-10-26 (аудит): мөнгөний мөрийн явцыг шатны талбарт ч (`STAGE_FIELD_OF`-ийн ⚠️) */
     const stage = 'pct' in ch && r.cashflow_id != null ? STAGE_FIELD_OF[rowPhase(base, r)] : undefined;
     if (stage) u[stage] = ch.pct ?? null;
     updates.push(u);
@@ -471,8 +429,6 @@ export function substageInfo(n: PlanNode): { can: boolean; missing: string[] } {
 /**
  * ДУТУУ ДЭД ШАТНЫ ШИНЭ МӨРҮҮД (бичихгүй — `Pending.adds`-д орно).
  * Код = «<эцэг>.<n>» — модонд (засвартай мөрүүд оролцсон) АШИГЛАГДААГҮЙ дараагийн дугаар.
- * ⚠️ `tuvshin` = эцгийнх + 1 (импорт: модны гүн − 1); `uy_shat`, `bagts`, `blok` эцгээс.
- * ⚠️ Жин = `substageWeight` (байгаа ах дүүсийн F-ийг хасаад) — эцсийн жинг `weighAdds` дахин хуваарилна.
  */
 export function substageAdds(n: PlanNode, tree: PlanTree): PlanStoredRow[] {
   const { can, missing } = substageInfo(n);
@@ -504,7 +460,7 @@ export function substageAdds(n: PlanNode, tree: PlanTree): PlanStoredRow[] {
 }
 
 /**
- * ХАРУУЛАХ Д/Д — модны байрлалаас («2.3.1»). ⚠️ Excel-ийн Д/Д давхардах тул dd_kod-ыг шууд харуулахгүй
+ * ХАРУУЛАХ Д/Д — модны байрлалаас («2.3.1»). Excel-ийн Д/Д давхардах тул dd_kod-ыг шууд харуулахгүй
  * (cf-wave2 «dd_kod … харуулахдаа модны байрлалаас үүсгэнэ»).
  */
 export function displayCodes(tree: PlanTree): Map<PlanNode, string> {

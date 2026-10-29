@@ -22,9 +22,6 @@ import n from './hesegNeed.module.css';
 /**
  * «ХЭСЭГЧИЛСЭН ЕТ» → 03 НЭМЭЛТ ХЭРЭГЦЭЭ — самбар (`NeedPanel`) ба зургийн давхарга (`NeedLayer`).
  * Тооцоо: `lib/hesegNeed.ts`.
- *
- * ⚠️ Самбар ба давхарга нь ӨӨР газар зурагддаг (Portal-ын самбар / зураг) — хоёулаа нэг жижиг
- *    store-оос (`maxM` — хүртээмжийн зай, `type` — төрлийн шүүлт) уншина; Portal-д төлөв нэмэхгүй.
  */
 
 const TYPE_BY_KEY = new Map(OVERLAP_TYPES.map((x) => [x.key, x]));
@@ -68,10 +65,6 @@ type State = { res: NeedResult | null; step: string; err: string | null };
 const REFRESH_DEBOUNCE_MS = 400;
 function useNeed(): State {
   const [st, setSt] = useState<State>({ res: null, step: '', err: null });
-  /* ⚠️ 2026-10-19 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) кэшийг хаяна (`hesegNeed`) — дахин бодуулна;
-     хуучин үр дүн шинэ нь иртэл үлдэнэ. */
-  /* ⚠️ 2026-10-19 (review): `dataVersion` биш `refreshEpoch` (кэш зөвхөн `invalidateAll`-д хаягдана); дахин бодолтыг
-     сааруулна; өмнөх үеийн хариу ба явцыг (`onNeedStep(fn, p)` — ЗӨВХӨН энэ тооцооных) үл тооно. */
   const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
   const mountEpoch = useRef(epoch);
   useEffect(() => {
@@ -79,8 +72,6 @@ function useNeed(): State {
     let off = () => {};
     const t = setTimeout(() => {
       const p = computeNeed();
-      /* ⚠️ 2026-10-19 (аудит): явцын текст БҮХ хүлээгчид (`onNeedStep`) — урьд нь зөвхөн эхлүүлсэн дуудагчид (зургийн
-         давхарга) очдог тул самбар явцгүй байв; unmount-д цуцална. */
       off = onNeedStep((step) => { if (alive) setSt((prev) => ({ ...prev, step })); }, p);
       p.then((res) => {
         if (!alive) return;
@@ -88,7 +79,6 @@ function useNeed(): State {
         setSt({ res, step: '', err: null });
       })
         .catch((e: unknown) => {
-          /* ⚠️ 2026-10-23 (UX аудит X3): түүхий серверийн мөр биш — `userError` */
           console.error('[selbe] хэсэгчилсэн ЕТ — хэрэгцээ:', e);
           if (alive) setSt({ res: null, step: '', err: userError(e) });
         });
@@ -105,7 +95,6 @@ export function NeedPanel() {
   const u = useUi();
 
   const stats = useMemo(() => res ? summarizeNeed(res, u) : null, [res, u]);
-  /* ⚠️ 2026-10-23 (UX аудит E7): алхмын бичиг удаан нэг дээр зогсоход ч хөдөлгөөн харагдана — хүлээсэн секунд */
   const secs = useElapsed(!res && !err);
 
   if (err) return <p className={s.err}>{tr('Тооцоолж чадсангүй')}: {err}</p>;
@@ -180,7 +169,7 @@ export function NeedPanel() {
           })}
         </div>
       )}
-      {/* Жагсаалтын хэлбэр — төрлөөр / бүсээр. ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` */}
+      {/* Жагсаалтын хэлбэр — төрлөөр / бүсээр. 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` */}
       <div className={s.modes}>
         <Segmented value={u.mode} onChange={(m) => setUi({ mode: m })} label={tr('Харах хэлбэр')}
           options={[{ value: 'type', label: tr('Төрлөөр') }, { value: 'zone', label: tr('Бүсээр') }]} />
@@ -312,7 +301,7 @@ export function NeedLayer() {
       links: new GraphicsLayer({ id: LAYER_ID, listMode: 'hide' }),
     };
     map.addMany(Object.values(current));
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ ArcGIS давхаргыг view-д НЭМСНИЙ дараа л график/hover эффектүүд ажиллах ёстой (гаднын Map-ийн төлөв)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLayers(current);
     return () => {
       for (const layer of Object.values(current)) { map.remove(layer); layer.destroy(); }
@@ -350,8 +339,6 @@ export function NeedLayer() {
 
   /*
    * Сонголтоор хүрээг томруулна; шийдэгдээгүй барилгыг ч хамруулна.
-   * ⚠️ 2026-10-19 (аудит): ЗӨВХӨН сонголт (төрөл · бүс) СОЛИГДОХОД — урьд нь босгын (`maxM`) талбарт товч дарах бүрд
-   *    `segments` өөрчлөгдөж зураг дахин ойртдог тул хэрэглэгчийн гүйлгэсэн/томруулсан байдал алга болдог байв.
    */
   const zoomedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -389,7 +376,6 @@ export function NeedLayer() {
         const d = document.createElement('span');
         d.textContent = a.unresolved ? a.reasons ?? '' : a.type ? `${fmtLen(a.len ?? 0)} · ${tr('{0} барилга', num(a.buildings ?? 1))}` : tr('Урьдчилсан трасс');
         tip.append(t, d);
-        /* ⚠️ 2026-10-19 (аудит): зургийн хүрээнд шахна (`PlanOverlap.placeTip`-ийн ⚠️) */
         placeTip(tip, mv, e.x, e.y);
       }).catch(() => {});
     });

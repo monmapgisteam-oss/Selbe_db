@@ -57,7 +57,6 @@ const { AJIL_STATUS } = B;
     'retry',
     'энэ цонхонд оролдлого дууссан — хүлээхгүй',
   );
-  /* ⚠️ 2026-10-04: «эцэг бүлэг олдсонгүй»-ээр унасан нь `retry` БИШ `orphan` (дахин буулгах нь бүтэхгүй) */
   const np = A.classifyStuck(list, { now: NOW, scope: ['Багц 1'], knownPkg, noParent: new Set([1, 2]) });
   assert.equal(np.find((x) => x.sub.oid === 1).kind, 'orphan', 'no-parent retry → orphan');
   assert.equal(np.find((x) => x.sub.oid === 2).kind, 'orphan', 'no-parent fresh → orphan');
@@ -115,19 +114,16 @@ A._io.writeFrame = async (pkgKey, adds) => {
   c.active -= 1;
   return writeImpl(pkgKey, adds);
 };
-/* ⚠️ 2026-10-09: шинэ сүлжээний хамаарлууд — хуваарь/обьём чөлөөтэй, серверийн түгжээ амжилттай */
 let planImpl = async () => null;
 let obyemImpl = async () => null;
 let claimImpl = async () => null;
 const rel = { n: 0 };
 A._io.loadPlanPending = (k) => planImpl(k);
 A._io.obyemBusy = (k) => obyemImpl(k);
-/* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт — анхдагчаар чөлөөтэй */
 let archImpl = async () => null;
 A._io.archivingBusy = (k) => archImpl(k);
 A._io.claimApply = (oid, me) => claimImpl(oid, me);
 A._io.releaseApply = async () => { rel.n += 1; };
-/* ⚠️ 2026-10-09: `markApplied`-ийн өмнөх түгжээний дахин уншилт — анхдагчаар минийх */
 let otherImpl = async () => null;
 A._io.claimOther = (oid, me) => otherImpl(oid, me);
 const go = (oid) => A.materializeAdds({ pkgKey: 'b1', ajilOid: oid });
@@ -197,8 +193,6 @@ console.log('✅ идемпотент: applied → бичилтгүй · дав�
 
 /* 3з. Өөр табын түгжээ удаан суллагдахгүй бол хүлээлгүй алдаа (Web Locks байгаа орчинд) */
 if (globalThis.navigator?.locks?.request) {
-  /* ⚠️ Node-д `AbortSignal.timeout`-ийн таймер unref — event loop хоосорч түгжээний
-     хүсэлт «unsettled» болно. Хөтөчид энэ асуудал байхгүй; тестэд л амьд байлгана. */
   const keep = setInterval(() => {}, 1_000);
   let release;
   const held = new Promise((ok) => {
@@ -236,7 +230,7 @@ if (globalThis.navigator?.locks?.request) {
   console.log('✅ Web Locks-гүй орчин — дараалал хэвээр');
 }
 
-/* ── 3к. ⚠️ 2026-10-09: хуваарь/обьёмын төлөв уншигдахгүй бол бичихгүй (fail-closed) ── */
+/* ── 3к. 2026-10-09: хуваарь/обьёмын төлөв уншигдахгүй бол бичихгүй (fail-closed) ── */
 {
   put(30, AJIL_STATUS.approved); reset();
   planImpl = async () => { throw new Error('сүлжээ'); };
@@ -258,7 +252,6 @@ if (globalThis.navigator?.locks?.request) {
   assert.equal(r.ok, false); assert.match(r.error, /яг одоо батлаж байна/);
   assert.equal(c.write, 0, 'обьём батлагдаж байхад жааз солив');
   obyemImpl = async () => null;
-  /* ⚠️ 2026-10-09: гүйцэтгэлийн АРХИВЛАЛТ явж байхад ба төлөв уншигдахгүй бол хаана (fail-closed) */
   archImpl = async () => ({ who: 'arhivlagch', at: 1 });
   r = await go(30);
   assert.equal(r.ok, false); assert.match(r.error, /arhivlagch гүйцэтгэлийг яг одоо архивлаж байна/, r.error);
@@ -268,7 +261,6 @@ if (globalThis.navigator?.locks?.request) {
   assert.equal(r.ok, false); assert.match(r.error, /архивлалтын төлөв уншигдсангүй/, r.error);
   assert.equal(c.write, 0, 'архивлалтын төлөв уншигдаагүй атлаа бичив');
   archImpl = async () => null;
-  /* ⚠️ 2026-10-09: хоёр төрөл — жагсаалтын ХОЁР ДАХЬ (гэрээ тэмдэггүй, төлөвлөгөө хагас) ч хаана */
   const PS = (o) => ({ oid: o.oid, pkgKey: 'b1', pkgGroup: 'Багц 1', status: 'Хүлээгдэж буй', author: 'z', authorSent: 1, approver: o.approver ?? null, approverAt: o.approverAt ?? null, reason: o.reason ?? null, note: null, rowCount: 1, payload: '', okRows: null });
   planImpl = async () => [PS({ oid: 5 }), PS({ oid: 6, reason: '__hagas_bichigdsen__:hbatlagch' })];
   r = await go(30);
@@ -283,7 +275,7 @@ if (globalThis.navigator?.locks?.request) {
   console.log('✅ хуваарь/обьёмын төлөв уншигдахгүй эсвэл батлалт явж байвал бичихгүй');
 }
 
-/* ── 3л. ⚠️ 2026-10-09: серверийн түгжээ — авч чадаагүй бол бичихгүй; бусдын дуусгасныг амжилт гэж үзнэ ── */
+/* ── 3л. 2026-10-09: серверийн түгжээ — авч чадаагүй бол бичихгүй; бусдын дуусгасныг амжилт гэж үзнэ ── */
 {
   put(31, AJIL_STATUS.approved); reset(); rel.n = 0;
   claimImpl = async () => 'batlagch2 энэ илгээлтийг яг одоо шийдвэрлэж/буулгаж байна';
@@ -306,7 +298,6 @@ if (globalThis.navigator?.locks?.request) {
   rel.n = 0;
   r = await go(32);
   assert.deepEqual(r, { ok: true, added: 1 }); assert.equal(rel.n, 0, 'амжилттай буулгалтын дараа дахин тайлав');
-  /* ⚠️ 2026-10-09: бичсэний дараа түгжээ ӨӨР хүнд шилжсэн — тэмдэглэхгүй (бусдын тэмдгийг арчихгүй) */
   put(33, AJIL_STATUS.approved); reset();
   otherImpl = async () => 'dorj';
   r = await go(33);
@@ -319,7 +310,7 @@ if (globalThis.navigator?.locks?.request) {
   console.log('✅ серверийн түгжээ — авч чадаагүй бол бичихгүй, бусад нь дуусгасан бол амжилт, унавал тайлна');
 }
 
-/* ── 3м. ⚠️ 2026-10-09: `casAjilClaim` / `ajilClaimOf` — цэвэр ── */
+/* ── 3м. 2026-10-09: `casAjilClaim` / `ajilClaimOf` — цэвэр ── */
 {
   const { casAjilClaim, ajilClaimOf, AJIL_CLAIM_MARK, AJIL_CLAIM_TTL, F } = B;
   const T0 = 1_760_000_000_000;
@@ -361,7 +352,6 @@ if (globalThis.navigator?.locks?.request) {
   /* Зэрэг бичсэн хүн ялсан — түүний нэр */
   m = mk({ [F.status]: AJIL_STATUS.pending, [F.reason]: null });
   assert.match(await casAjilClaim(m.io({ steal: `${AJIL_CLAIM_MARK}:${T0}:tabC:dorj` }), 'bat', AJIL_STATUS.pending), /dorj/);
-  /* ⚠️ 2026-10-09: ижил хэрэглэгч, өөр таб — ЗӨВШӨӨРВӨЛ (takeover) шилжүүлнэ; өөр хүнийхийг хэзээ ч */
   m = mk({ [F.status]: AJIL_STATUS.approved, [F.reason]: `${AJIL_CLAIM_MARK}:${T0 - 1000}:tabB:bat` });
   let asked = 0;
   assert.equal(await casAjilClaim({ ...m.io(), takeover: () => { asked += 1; return true; } }, 'bat', AJIL_STATUS.approved), null);
@@ -373,7 +363,6 @@ if (globalThis.navigator?.locks?.request) {
   asked = 0;
   assert.match(await casAjilClaim({ ...m.io(), takeover: () => { asked += 1; return true; } }, 'bat', AJIL_STATUS.approved), /dorj/);
   assert.equal(asked, 0, 'өөр хүний түгжээг шилжүүлэхийг асуув'); assert.equal(m.s0.writes, 0);
-  /* ⚠️ 2026-10-09: тэмдгийн ХАРИУ АЛДАГДСАН — суусан бол амжилт; суугаагүй бол тайлж (release) алдаа; тодорхой татгалзал шиднэ */
   const lostIo = (m0, land, rel) => ({ ...m0.io(), release: async () => { rel.n += 1; },
     write: async (mark) => { m0.s0.writes += 1; if (land) m0.s0.row[F.reason] = mark; throw new TypeError('Failed to fetch'); } });
   let relN = { n: 0 };
@@ -391,20 +380,17 @@ if (globalThis.navigator?.locks?.request) {
   console.log('✅ casAjilClaim — CAS, TTL, өөр таб, уралдаа');
 }
 
-/* ── 3н. ⚠️ 2026-10-09: эх код — A.10/A.10б бичсэнээ буцаана; шийдвэр түгжээтэй ── */
+/* ── 3н. 2026-10-09: эх код — A.10/A.10б бичсэнээ буцаана; шийдвэр түгжээтэй ── */
 {
   const L = readFileSync(new URL('./ajilApply.ts', import.meta.url), 'utf8');
   const body = L.slice(L.indexOf('async function writeFrameLive'));
   const a10 = body.indexOf('/* A.10 —');
   assert.ok(a10 > 0 && body.indexOf('undoWritten(', a10) > a10, 'A.10 илрүүлсэн алдаанд бичсэнээ буцаахгүй байна');
   assert.ok((body.match(/return await undoWritten\(/g) ?? []).length >= 2, 'A.10 ба A.10б хоёулаа бичсэнээ буцаах ёстой');
-  /* ⚠️ 2026-10-09: хоосон мөрөөр нөхөхгүй (дараагийн жааз «тасарсан» болно) — хоосон бус мөрийн тоогоор батална */
   assert.ok(!body.includes('frame.push('), 'жаазыг хоосон мөрөөр нөхөж байна');
   assert.ok(body.indexOf('frame.length < loaded.frameLen') > 0 && body.indexOf('frame.length < loaded.frameLen') < body.indexOf('applyAdds(pkg'), 'шинэ жааз ачаалснаас богино эсэхийг бичихээс ӨМНӨ шалгахгүй байна');
-  /* ⚠️ 2026-10-09: хуваарь/обьёмын хаалт A.8-ийн ДАРАА, `applyAdds`-ийн ЯГ ӨМНӨ дахин */
   const iG = body.indexOf('await busyGate(pkgKey)');
   assert.ok(iG > body.indexOf('sameFrame(loaded, now)') && iG < body.indexOf('applyAdds(pkg'), 'busyGate applyAdds-ийн өмнө дахин дуудагдахгүй байна');
-  /* ⚠️ 2026-10-09: `applyAdds`-ийн хариу АЛДАГДСАН бол `maxOid0`-оос хойшхи тэр өдрийн БҮХ мөрийг устгана */
   const aCatch = body.slice(body.indexOf('await applyAdds(pkg, frame, written)'), body.indexOf('/* A.10 —'));
   assert.ok(/lost === true/.test(aCatch) && aCatch.includes('> ${maxOid0} AND ${dayFilter(sc.f.fillDate'), 'хариу алдагдсан applyAdds-ийн үлдэгдлийг OID > maxOid0 · өдрөөр цэвэрлэхгүй байна');
   assert.ok(aCatch.includes("tr('Бичилтийн хариу алдагдсан — үр дүн тодорхойгүй')"), '«үр дүн тодорхойгүй» мессеж алга');

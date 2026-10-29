@@ -1,14 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   НЭЭЛТИЙН ХУУДАС.
-
-   ⚠️ БҮХ ЗҮЙЛ ГОЛДОО БИШ — сонгодог байрлал:
-      зүүн дээд  · лого
-      зүүн дунд  · төслийн нэр, тайлбар, үндсэн товч
-      зүүн доод  · эзэмшигч
-
-   ⚠️ 2026-10-23: Environment нүүр (`workspace.css` §workspace-header · §intro-copy ·
-   §action-primary · §workspace-footer) — токен нь порталынх (`--bg`/`--ink`/`--moss`).
-   ═══════════════════════════════════════════════════════════ */
+   НЭЭЛТИЙН ХУУДАС. */
 
 .wrap {
   position: relative;
@@ -20,12 +11,6 @@
   overflow: hidden;
 }
 
-/*
- * ⚠️ 2026-09-06: агаарын зураг (`/home-bg.webp`) ХАСАГДАВ — нүүр самбартай
- * ижил шалтгаан (`home.module.css`-ийн ⚠️-г үз). Нээлтийн хуудас нь
- * порталтай НЭГ гадаргуутай болсноор нэвтрэх → портал шилжилт үсрэхээ болино.
- * ⚠️ 2026-10-23: Environment — радиал толбо ч ХАСАГДАВ (брифийн «радиал градиент ХАСНА»).
- */
 .bg {
   position: absolute;
   inset: 0;
@@ -59,7 +44,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;      /* ⚠️ ЗҮҮН эгнээ — голд БИШ */
+  align-items: flex-start;
   justify-content: center;
   gap: 0;
   width: 100%;
@@ -92,7 +77,6 @@
 /*
  * HERO ГАРЧИГ — Environment `.intro-copy h1`: Manrope clamp(34–64px)/600/−0.055em, мөр 1.18;
  * 2 дахь мөр (`.titleSub`) moss.
- * ⚠️ 2026-10-23: урьдын 9.5rem UPPERCASE градиент бичиг (`background-clip: text`) хасагдав.
  */
 .title {
   margin: 28px 0 0;
@@ -105,7 +89,6 @@
 }
 .titleSub { color: var(--data-ink); }
 
-/* ⚠️ 2026-09-30: порталын нэг өгүүлбэрийн тайлбар — гарчгийн доор, энгийн бичвэр */
 .lede {
   margin: 20px 0 0;
   max-width: 560px;

@@ -73,7 +73,6 @@ const c = computeSuitability(Z);
   assert.ok(c.fails.every((f) => f.zone !== 'G-1'), 'хасагдсан бүс зөрчилд орохгүй');
   assert.ok(c.fails.every((f) => f.indId !== 'engineering'));
 
-  /* ⚠️ 2026-10-22 (аудит): Багц-2.1 зөвхөн ногоонтой (16/92 хэмжсэн жин) — урьд таамгийн 100-тай нийлж оноотой байв */
   assert.equal(c.scoredZones, 2, 'G-1 (raw хоосон) ба Багц-2.1 (хэмжсэн жин 17%) оноогүй');
   assert.equal(c.lowCoverage, 1, 'Багц-2.1 — өгөгдөл хангалтгүй (G-1 оноололд ордоггүй тул тоологдохгүй)');
   assert.equal(c.zones[0].zone, 'A-1', 'хамгийн муу оноо эхэнд');
@@ -153,7 +152,6 @@ const c = computeSuitability(Z);
 
 /* 6. ROW_CAP таслалт — тасалсан тоо ил мөр болно */
 {
-  /* ⚠️ 2026-10-22: бүрэн хэмжигдсэн бүс (зөвхөн ногоонтой бүс одоо оноогүй — хэмжсэн жингийн босго) */
   const many = Array.from({ length: ROW_CAP + 50 }, (_, i) => zone(`M-${i}`, RES, { green: 1, density: 350, far: 1, bcr: 30, parking: 100 }));
   const k = buildSuitabilityKpi(computeSuitability(many));
   assert.equal(k.tables[1].rows.length, ROW_CAP + 1);

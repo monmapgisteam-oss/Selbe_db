@@ -2,20 +2,6 @@
 
 /**
  * «БАГЦЫН ХАМААРАЛ» — БАГЦ ХООРОНДЫН АЖЛЫН ХАМААРАЛ (2026-10-22, дахин бүтээв).
- *
- * ⚠️ Хэрэглэгчийн шийдвэр (2026-10-22): багц ↔ багц биш, АЖИЛ ↔ АЖИЛ — А багцын нэг ажил Б, В … багцуудын
- *    олон ажлаас хамаарна. ЗӨВХӨН ХАРУУЛНА (хуваарийн огноонд нөлөөгүй). Логик нь `lib/workDeps.ts`, алсын
- *    уншилт/бичилт нь `lib/workDepsRemote.ts`; хадгалалт нь хамаарах ажлын мөрийн `bagts_hamaaral` талбар.
- * ⚠️ Урсгал: А хуудас → ажлаа сонгох (хэсгээр бүлэглэсэн, хайлттай) → Б хуудас → Б-гийн ажлуудыг сонгох
- *    (checkbox, хэсгийн «бүгдийг», хайлт) → Хадгалах. Сонгосон ажлын урьдчилагчид (багцаар, ✕-тэй) ба түүнээс
- *    хамаардаг ажлууд харагдана. Дээр нь багцын түвшний тойм («А → Б: N холбоо», дарахад шүүнэ).
- * ⚠️ Эрх нь `hamaaral` (`capText`) — эрхгүй хүн БҮГДИЙГ харна, засах товчгүй («харах ≠ засах», `viewEdit.check`).
- * ⚠️ Талбар хараахан нэмэгдээгүй хуудсанд зөвхөн харах горим — аль хуудсанд дутуу байгааг ИЛ жагсаана; админ
- *    талбарыг нэмэнгүүт (мета) өөрөө идэвхжинэ.
- * ⚠️ Талбартай хуудас уншигдаагүй бол дугуйн шалгалт бүрэн биш тул БИЧИХИЙГ ХААНА (шалтгааныг хэлнэ).
- * ⚠️ ХУУЧИН багц ↔ багц холбоос (`bagtsHamaaral.ts`) — «Шилжүүлэх» нь засварлагчид А, Б-г урьдчилан сонгоно;
- *    тэр хосын ажлын холбоос хадгалагдмагц хуучин хос автоматаар устна.
- * ⚠️ Загвар нь `bagtsHamaaral.module.css` (ТУХ-ын хуулбар — харагдацууд стайл хуваалцахгүй).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -32,15 +18,12 @@ import { dropWorkCache, loadWorkData, saveWorkLinks, sheetsOfPkgKey } from '@/li
 import { loadLegacyDeps, removeLegacyDeps, type Dep } from '@/lib/bagtsHamaaral';
 import { useAuth } from '@/components/AuthGate';
 import { friendlyError, userError, Loading } from '@/components/ui';
-/* ⚠️ 2026-10-23 (UX аудит X1/P7/P8): аппын дотоод асуулт · «↶ Буцаах» · харагдацаас гарахад асуух */
 import { askConfirm, toastUndo } from '@/lib/confirm';
 import { setNavDirty } from '@/lib/navGuard';
 import s from './bagtsHamaaral.module.css';
 
 /**
  * Хуучин холбооны түлхүүрийн дэлгэцийн нэр — бөглөх хуудасны багцын бүлэг (`PKGS.group`), орчуулсан.
- * ⚠️ 2026-10-26 (аудит): `legacyPkgKey`-ийн түүхий түлхүүр («БАГЦ1 → БАГЦ31») — «БАГЦ31» нь «Багц 3.1» атлаа байхгүй
- *    «Багц 31» мэт уншигдаж, англи горимд кириллээр үлддэг байв. Тулгалт/хадгалалт түүхий түлхүүрээр хэвээр.
  */
 const legacyLabel = (k: string): string => {
   const key = legacyPkgKey(k);
@@ -49,8 +32,6 @@ const legacyLabel = (k: string): string => {
 };
 
 const pkgLabel = (p: string): string => PKGS.find((x) => x.key === p)?.label ?? p;
-/* ⚠️ 2026-10-23 (UX аудит P6): хоосон нэр «» болж харагддаг байв (жиш. «А. Бэлтгэл ажил «» (8)») — бүлэгт «(нэргүй бүлэг)»,
-   ажилд «(нэргүй ажил)»; замын хоосон хэсэгт «(нэргүй бүлэг)». Зөвхөн харуулна — түлхүүрт (`refOf`) хөндөхгүй. */
 const nodeLabel = (n: Pick<WNode, 'path' | 'work'> & { group?: boolean }): string =>
   `${n.path.map((x) => x.trim() || tr('(нэргүй бүлэг)')).join(' → ')} «${n.work.trim() || (n.group ? tr('(нэргүй бүлэг)') : tr('(нэргүй ажил)'))}»`;
 /** Урьдчилагчийн хуудас — тулгагдаагүй бол холбоосын `p` */
@@ -81,11 +62,6 @@ export function BagtsHamaaral() {
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const editorRef = useRef<HTMLDivElement | null>(null);
-  /**
-   * ⚠️ 2026-10-23 (UX аудит P8): ХАДГАЛААГҮЙ УРЬДЧИЛАГЧИЙН СОНГОЛТ (`PrereqPicker`) — урьд нь өөр ажил/багц сонгоход
-   *    чимээгүй хаягддаг байв. Тоо нь энд (`onPickDirty`); сонголт солих бүр `guard`-аар асууна, харагдацаас гарах/F5-д
-   *    `navGuard` (`Portal` · `beforeunload`) асууна.
-   */
   const pickDirtyRef = useRef(0);
   const onPickDirty = useCallback((n: number) => {
     pickDirtyRef.current = n;
@@ -104,18 +80,14 @@ export function BagtsHamaaral() {
   const total = useMemo(() => (g ? [...g.pre.values()].reduce((a, e) => a + e.length, 0) : 0), [g]);
   const failed = useMemo(() => (data?.sheets ?? []).filter((x) => x.error), [data]);
   const missing = useMemo(() => (data?.sheets ?? []).filter((x) => !x.error && !x.field), [data]);
-  /* ⚠️ Талбартай (эсвэл мета нь уншигдаагүй) хуудас дутуу бол дугуйн шалгалт бүрэн биш — бичихгүй */
   const blocked = failed.length > 0;
   const canWriteA = canEdit && !blocked && !!sheetOf.get(pA)?.field;
   const selNode = g && sel ? g.nodes.get(sel) ?? null : null;
-  /* ⚠️ Өнчин холбоос (урьдчилагч нь олдохгүй/хоёрдмол/уншигдаагүй) — ЧИМЭЭГҮЙ хаяхгүй, нэгдсэн жагсаалтаар ил */
   const orphans = useMemo(() => (g ? [...g.pre].flatMap(([id, es]) => es.filter((e) => !e.to).map((e) => ({ id, e }))) : []), [g]);
 
   /* ── Хуучин багц ↔ багц холбоос (шилжүүлэлт) ── */
   const legacy = useMemo<Dep[]>(() => (legacyQ.state === 'ready' ? legacyQ.data.deps : []), [legacyQ]);
   const retryLegacy = legacyQ.retry;
-  /* ⚠️ Ажлын түвшинд ШИЛЖСЭН хосыг (Y-ийн ажил X-ийн ажлаас хамаарсан холбоос бий) хуучин бүртгэлээс устгана —
-     зөвхөн засах эрхтэй хүнд, хос бүрийг НЭГ удаа оролдоно (уналт гогцоо үүсгэхгүй). */
   const tried = useRef(new Set<string>());
   useEffect(() => {
     if (!canEdit || !g || legacyQ.state !== 'ready') return;
@@ -129,7 +101,6 @@ export function BagtsHamaaral() {
   }, [canEdit, g, legacyQ.state, legacy, pairs, retryLegacy]);
 
   const removeLegacy = useCallback(async (d: Dep) => {
-    /* ⚠️ 2026-10-23 (UX аудит X1/X7): аппын дотоод асуулт; «холбоос» → «холбоо» (товчны нэртэй нэг) */
     if (!(await askConfirm(tr('Хуучин «{0}» → «{1}» холбоог устгах уу?', d.from, d.to), { danger: true, ok: tr('Устгах') }))) return;
     setBusy(true);
     setErr('');
@@ -148,7 +119,7 @@ export function BagtsHamaaral() {
     const pre = sheetsOfPkgKey(legacyPkgKey(d.from));
     const post = sheetsOfPkgKey(legacyPkgKey(d.to));
     if (!pre.length || !post.length) return;
-    if (!(await guard())) return; // ⚠️ 2026-10-23 (P8)
+    if (!(await guard())) return;
     setPA(post[0]);
     setPB(pre[0]);
     setSel(null);
@@ -158,12 +129,8 @@ export function BagtsHamaaral() {
   }, [guard]);
 
   /* ── Хадгалах ── */
-  /* ⚠️ 2026-10-23 (засвар): завгүй эсэхийг ref-ээр — «↶ Буцаах» мэдэгдэл ✕ дарсан үеийн `save`-ийн хаалтыг (тэр
-     зурагдалтын `busy === false`) барьдаг тул 6 с-д өөр хадгалалт эхэлсэн үед буцаахад `saveWorkLinks`-ийн хоёр
-     уншиж-бичих дуудлага зэрэг явж нэг өөрчлөлт чимээгүй алдагдах байв. */
   const busyRef = useRef(false);
   const save = useCallback(async (dep: WNode, change: RefChange, undo = false): Promise<boolean> => {
-    /* ⚠️ 2026-10-23: «↶ Буцаах» (`undo`) завгүй үед ЧИМЭЭГҮЙ бүтэлгүйтдэг байв — товч идэвхгүй биш (мэдэгдэл) тул ил хэлнэ */
     if (!g || busyRef.current) {
       if (undo) setErr(tr('Буцааж чадсангүй — дахин нэмнэ үү'));
       return false;
@@ -173,8 +140,6 @@ export function BagtsHamaaral() {
     setErr('');
     setMsg('');
     try {
-      /* ⚠️ 2026-10-22 (аудит): дугуйн шалгалт нь СҮҮЛИЙН өгөгдөл дээр (`saveWorkLinks` бусад хуудсыг дахин уншина) —
-         харагдацын граф хэдэн цагаар хуучирч болно */
       const r = await saveWorkLinks(refOf(dep), change);
       if (!r.ok) { setErr(userError(r.error)); return false; }
       setMsg(r.wrote ? tr('Хадгалагдлаа') : tr('Өөрчлөлт алга — сервер аль хэдийн энэ төлөвт байна'));
@@ -190,11 +155,9 @@ export function BagtsHamaaral() {
 
   const reload = useCallback(() => { dropWorkCache(); dataQ.retry?.(); }, [dataQ]);
 
-  /* ⚠️ 2026-10-22 (аудит): ≤900px-д (`.grid` нэг багана) дэлгэрэнгүй нь 60vh жагсаалтын ДООР — сонгоход юу ч өөрчлөгдсөнгүй
-     мэт харагддаг байв; нарийн дэлгэцэд түүн рүү гүйлгэнэ */
   const detailRef = useRef<HTMLElement | null>(null);
   const pickWork = useCallback(async (id: NodeId) => {
-    if (id !== sel && !(await guard())) return; // ⚠️ 2026-10-23 (P8)
+    if (id !== sel && !(await guard())) return;
     setSel(id);
     if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 900px)').matches) {
       requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -204,7 +167,7 @@ export function BagtsHamaaral() {
   const openNode = useCallback(async (id: NodeId) => {
     const n = g?.nodes.get(id);
     if (!n) return;
-    if (id !== sel && !(await guard())) return; // ⚠️ 2026-10-23 (P8)
+    if (id !== sel && !(await guard())) return;
     setPA(n.p);
     setSel(id);
     setFlt(null);
@@ -254,7 +217,6 @@ export function BagtsHamaaral() {
             g.bad.slice(0, 5).map((b) => { const n = g.nodes.get(b.id); return n ? `${pkgLabel(n.p)} · ${nodeLabel(n)}` : b.id; }).join('; '))}
         </p>
       )}
-      {/* ⚠️ 2026-10-22 (аудит): алдаа ихэвчлэн «дахин ачаална уу» — товч нь ЭНД (урьд нь зөвхөн хуудас уншигдаагүй үед) */}
       {err && (
         <p className={s.failNote} role="alert">
           {err}{' '}<button type="button" className={s.retryBtn} disabled={busy} onClick={() => { setErr(''); reload(); }}>{tr('Дахин ачаалах')}</button>
@@ -329,7 +291,7 @@ export function BagtsHamaaral() {
                   title={tr('«{0}»-ийн ажлууд «{1}»-ийн ажлаас хамаарна', pkgLabel(x.to), pkgLabel(x.from))}
                   onClick={async () => {
                     if (on) { setFlt(null); return; }
-                    if (!(await guard())) return; // ⚠️ 2026-10-23 (P8)
+                    if (!(await guard())) return;
                     setPA(x.to); setPB(x.from); setFlt(x.from); setSel(null); setQA('');
                   }}>
                   {pkgLabel(x.from)} → {pkgLabel(x.to)}: <b>{tr('{0} холбоо', num(x.n))}</b>
@@ -347,7 +309,6 @@ export function BagtsHamaaral() {
           <div className={s.filters}>
             <select className={s.select} value={pA} aria-label={tr('Багц (А)')}
               onChange={(e) => {
-                /* ⚠️ 2026-10-23 (P8): хадгалаагүй сонголттой бол асууна — болих үед утга хэвээр (удирдлагатай select) */
                 const v = e.target.value;
                 void guard().then((ok) => { if (ok) { setPA(v); setSel(null); setFlt(null); } });
               }}>
@@ -400,7 +361,6 @@ function WorkPicker({ g, p, q, sel, onSel, flt }: {
     }),
   })).filter((sec) => sec.items.length), [g, p, q, flt]);
   const narrow = !!q.trim() || !!flt;
-  /* ⚠️ 2026-10-23 (UX аудит X6): хайлт/шүүлтээс болсон эсэхийг ИЛ хэлнэ */
   if (!secs.length) return <p className={s.note}>{narrow ? tr('Хайлт эсвэл шүүлтэд тохирох ажил алга — хайлтаа өөрчилнө үү.') : tr('Ажил олдсонгүй')}</p>;
   return (
     <div className={s.listBox}>
@@ -443,7 +403,6 @@ function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen, onDirty }
   pB: string; setPB: (p: string) => void;
   onSave: (dep: WNode, c: RefChange, undo?: boolean) => Promise<boolean>;
   onOpen: (id: NodeId) => void;
-  /** ⚠️ 2026-10-23 (P8): хадгалаагүй сонголтын тоо — эцэг асуулт/`navGuard`-д */
   onDirty: (n: number) => void;
 }) {
   const edges = useMemo(() => g.pre.get(n.id) ?? [], [g, n.id]);
@@ -484,9 +443,6 @@ function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen, onDirty }
                   {canWrite && (
                     <button type="button" className={s.chipX} disabled={busy} title={tr('Холбоо устгах')} aria-label={tr('Холбоо устгах')}
                       onClick={async () => {
-                        /* ⚠️ Жижиг ✕ дээр андуурч дарахаас хамгаална (хуучин модулийн 2026-10-05 ⚠️).
-                           ⚠️ 2026-10-23 (UX аудит P7): асуултын ОРОНД «↶ Буцаах» мэдэгдэл — устгаад, буцаавал ИЖИЛ холбоог
-                              (`e.ref`) дахин нэмнэ. Хамгаалалтын зорилго хэвээр, нэг товшилт илүү. */
                         if (!(await onSave(n, { add: [], remove: [e.ref] }))) return;
                         void toastUndo(tr('«{0}» холбоо устгагдлаа.', label), () => { void onSave(n, { add: [e.ref], remove: [] }, true); });
                       }}>✕</button>
@@ -552,7 +508,6 @@ function PrereqPicker({ g, n, p, busy, onSave, onDirty }: {
     for (const id of ids) { if (on) next.add(id); else next.delete(id); }
     setPick({ base: g, set: next });
   };
-  /* ⚠️ Дугуйн шалгалт НЭГ давалтаар (`dependentsOf` ≡ `linkError`-ийн дугуй) — 1,500 мөрд мөр бүрээр DFS хийхгүй */
   const loop = useMemo(() => dependentsOf(g, n.id), [g, n.id]);
   const errOf = useCallback((id: NodeId) => (cur.has(id) || !loop.has(id) ? null
     : tr('Дугуй хамаарал үүснэ — тэр ажил энэ ажлаас (дамжуулан) хамаардаг')), [cur, loop]);
@@ -563,7 +518,6 @@ function PrereqPicker({ g, n, p, busy, onSave, onDirty }: {
   const rm = [...cur.keys()].filter((id) => !chosen.has(id));
   const dirty = add.length + rm.length > 0;
   const narrow = !!q.trim();
-  /* ⚠️ 2026-10-23 (UX аудит P8): хадгалаагүй тоог эцэгт мэдэгдэнэ; салахад (өөр ажил/багц) 0 */
   const dirtyN = add.length + rm.length;
   useEffect(() => { onDirty(dirtyN); }, [dirtyN, onDirty]);
   useEffect(() => () => onDirty(0), [onDirty]);

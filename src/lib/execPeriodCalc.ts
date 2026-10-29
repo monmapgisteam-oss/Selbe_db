@@ -1,18 +1,5 @@
 /**
  * УДИРДЛАГЫН ТАЙЛАН — ХУГАЦААНЫ ӨӨРЧЛӨЛТ (өсөлт · бууралт), ЦЭВЭР тооцоо (сүлжээгүй, React-гүй — `execPeriodCalc.check.mjs`).
- *
- * ⚠️ 2026-10-28 (хэрэглэгч: «цаг хугацаагаар харах боломж алга, өсөлт/бууралт гэж харах боломж алга»): тайлан нь
- *    «өнөөдрийн байдал» (`loadExecReport`) — энд сонгосон хугацааны [from, to] ЭХЭНД ямар байсныг ТҮҮХТЭЙ эх сурвалжаас
- *    бодож, төгсгөлийнхтэй харьцуулна. Тайлангийн нийт тоо ӨӨРЧЛӨГДӨХГҮЙ (дэлгэц · PDF · PNG нэг мөр).
- *      · биет гүйцэтгэл (орон сууц, багц бүр) — өдрийн хэмжилт (`execPeriodProgress`):
- *        хугацааны эхнээс ӨМНӨХ сүүлийн хэмжилт ↔ хугацааны төгсгөл хүртэлх сүүлийн хэмжилт;
- *      · олголт — IPC төлбөрийн `guilgee_ognoo` хугацаанд багтсан нийлбэр (огноогүй төлбөр тоологдохгүй — тоог нь хэлнэ);
- *      · ХАБ хүн хүч · техник — өдрийн бүртгэл (`workforce.detail.days`), ижил «эхнээс өмнөх ↔ төгсгөл хүртэлх» дүрэм;
- *      · зөвшөөрөл — шийдвэрийн огноо (`ognoo`) хугацаанд багтсан тоо.
- *    ТҮҮХГҮЙ (энд ОРОХГҮЙ, «—»): нийт төсөв · гэрээлсэн дүн · нэгтгэл гүйцэтгэл · газар чөлөөлөлт — зөвхөн одоогийн төлөв
- *    хадгалагддаг; `last_edited_date` нь 2026-10-20-ны импортын агшин тул огноо гэж хэрэглэж болохгүй (`editTrack`-ийн ⚠️).
- * ⚠️ null ≠ 0: эхнээс өмнө цэг алга бол хугацааны эхний цэгтэй харьцуулна; ганц цэгтэй бол `delta` null.
- * ⚠️ Огноо = локал хуанлийн өдөр (`format.dayKey`) — портал бүх өдрийг локалаар түлхүүрлэдэг (`Finance.measureDayOf`-той нэг).
  */
 import { t as tr } from '@/lib/i18nCore';
 import { dayKey, num, pct } from '@/lib/format';
@@ -30,7 +17,6 @@ const isDay = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}
 
 /**
  * Хугацааг тооцно. `custom` буруу/хоосон бол 30 хоног (түлхүүр нь `custom` хэвээр — оролт харагдана).
- * ⚠️ «Энэ сар» = сарын 1-нээс өнөөдөр; «Өмнөх сар» = бүтэн сар.
  */
 export function periodOf(key: ExecPeriodKey, now: number, custom?: { from?: string; to?: string }): ExecPeriod {
   const today = dayKey(now);
@@ -125,7 +111,6 @@ export type ExecSeries = {
 
 /**
  * Сарын цуваа — тэнхлэг нь `months`-ийн эхний ӨГӨГДӨЛТЭЙ (хэмжилт · олголт · төлөвлөгөө) сараас `nowYm` хүртэл.
- * ⚠️ null ≠ 0: хэмжилтгүй сар null — график дээр шугам ТАСАРНА (0 руу унахгүй).
  */
 export function computeSeries(i: SeriesInput): ExecSeries {
   const planBy = new Map(i.plan.map((p) => [p.label, p.pct]));
@@ -174,8 +159,6 @@ export function seriesDelta(points: readonly { at: string; v: number | null }[],
     else if (p.at <= to && !first) first = { at: p.at, v: p.v };
     if (p.at <= to) now = { at: p.at, v: p.v };
   }
-  /* ⚠️ Эхнээс өмнө цэг алга бол хугацааны ЭХНИЙ цэгтэй харьцуулна (тайлбарт нэрлэнэ) — сарын хэмжилтийн хооронд
-     «30 хоног» сонгоход харьцуулалт ҮРГЭЛЖ «—» болдог байв. Ганц цэг (эхнийх = сүүлийнх) бол өөрчлөлт null (0 биш). */
   const base = prev ?? first;
   const fresh = !!now && !!base && now.at !== base.at;
   return {
@@ -206,7 +189,6 @@ export function computeExecDeltas(i: ExecDeltaInput, period: ExecPeriod): ExecDe
       if (p.key) givenByKey[p.key] = (givenByKey[p.key] ?? 0) + p.amount;
     }
   }
-  /* ⚠️ Өмнөх сар сонгосон ч өнөөдрийн нийтээс хасахгүй: огноотой төлбөрөөс хоёр хилийг бодно. */
   const givenNow = i.givenTotal == null ? null : beforePeriod + inPeriod;
   const dayPts = (sel: (d: ExecDeltaInput['days'][number]) => number | null) => i.days.map((d) => ({ at: d.key, v: sel(d) }));
   let zov: ExecDeltas['zov'] = null;
@@ -248,7 +230,6 @@ export type Trend = { text: string; tone: 'good' | 'bad' | 'mute' };
 
 /**
  * Зөрүүний текст — `pp` нэгж хувь · `n` тоо · `mnt` ₮. `upGood` өгвөл өнгө (өсөлт сайн/муу), өгөхгүй бол саарал.
- * ⚠️ `arrows: false` — PDF (фонтод ▲▼ байхгүй): «+»/«−» тэмдгээр.
  */
 export function deltaText(delta: number | null, unit: 'pp' | 'n' | 'mnt', o: { upGood?: boolean; arrows?: boolean } = {}): Trend | null {
   if (delta == null || !Number.isFinite(delta)) return null;

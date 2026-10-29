@@ -1,11 +1,6 @@
 /**
  * «БАГЦ × ШАТ» ХҮСНЭГТИЙН НҮДНИЙ ДҮРЭМ — цэвэр функц (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/guitsetgelGrid.check.mjs
- *
- * ⚠️ Хадгалалт аккаунтаар хэвээр тул нүдний нэмэх/хасах бүр аккаунтын мөрийн
- *    өөрчлөлт болно. Эндээс алдвал: өөр шатны хүнийг асуулгагүй шилжүүлэх,
- *    «бүх багц»-ыг нэг багц руу хумих, сүүлийн багцыг хасахад «бүх багц» руу
- *    тэлэх (fail-open) зэрэг чимээгүй эрхийн алдаа гарна.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/guitsetgelGrid.check.mjs
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -55,7 +50,6 @@ assert.deepEqual(planCellRemove(all, 'manager', GRID_ALL, PK), { kind: 'drop', s
 assert.deepEqual(planCellRemove(eng, 'engineer', GRID_ALL, PK), { kind: 'none' });
 
 /* ── 7. GRID_ALL = guitsetgelAcl.ALL_BAGTS ── */
-/* ⚠️ Модулийг импортлохгүй (window/ArcGIS шаардана) — эх кодоос уншина */
 const m = fs.readFileSync('src/lib/guitsetgelAcl.ts', 'utf8').match(/export const ALL_BAGTS = '([^']*)'/);
 assert.ok(m, 'ALL_BAGTS олдсонгүй');
 assert.equal(GRID_ALL, m[1], 'GRID_ALL нь ALL_BAGTS-тай ижил байх ёстой');

@@ -8,55 +8,6 @@ import { t as tr } from '@/lib/i18nCore';
 
 /**
  * ХАРАГДАЦЫН БҮРТГЭЛ — `ViewKey` → бүтэн дэлгэцийн (`standalone`) модуль.
- *
- * ⚠️ 2026-09-30: урьд нь шинэ харагдац нэмэхэд `Portal.tsx`-д ГУРВАН газар
- *    засдаг байв (dynamic импортын жагсаалт · `isX` тугууд · 20 давхар
- *    гурвалсан операторын гинж). Одоо ЭНЭ файлын нэг мөр + `services/views.ts`.
- *    `VIEW_REGISTRY`-ийн төрөл нь `Record<…>` тул `ViewKey`-д шинэ түлхүүр
- *    нэмээд энд бүртгэхгүй бол `tsc` унана (`viewRegistry.check.mjs` мөн).
- *
- * ⚠️ `MapOnlyViewKey` — газрын зураг + баруун самбараар (`ViewPanel`)
- *    зурагддаг, `standalone` БИШ харагдацууд. Тэдгээр энд бүртгэгдэхгүй;
- *    `Portal` нь `isFull` салбарт л бүртгэлээс уншина.
- *
- * ⚠️ `Dashboard` СТАТИК импорт. Анх `DEFAULT_VIEW` байсан тул «нэмэлт спиннергүй
- *    байх» үүднээс статик болгосон; 2026-09-ээс `DEFAULT_VIEW = "gdash"`
- *    (`GeneralDash`, доор dynamic) болсон ч Dashboard-ыг статик үлдээв —
- *    `MapCanvas` (+ `@arcgis/core`) нь түүний дамжсан хамаарал бөгөөд бүх
- *    зурагтай харагдацад ямар ч байсан татагдана; Dashboard өөрөө жижиг тул
- *    chunk болгох ашиггүй.
- *
- * ⚠️ ТОМ, ховор-эхний харагдацууд dynamic chunk (2026-08-21 гүйцэтгэлийн
- *    аудит): Suitability (analysis стек), Sheet/Pivot, Tailan (+reportPdf),
- *    Guitsetgel, Finance нийлээд Portal chunk-ийн parse хугацааг ~30-40%
- *    нэмдэг байв. Portal нөхцөлт рендэрлэдэг тул unmount үеийн зан
- *    өөрчлөгдөхгүй; эхний нээлтэд Booting-той ижил түр төлөв харагдана.
- *
- * ⚠️ 2026-09-03-ны хэрэглэгч талын аудит: газрын зурагтай ҮЛДСЭН харагдацууд
- *    (PkgFin · PkgProg · Gazar · Habea · Irged · Iot · Ersdel) МӨН статик байсан
- *    тул тэдгээрийн ~474 KB эх код нь `?v=huvaari` гэж шууд орсон хүнд ч
- *    татагддаг байв. Тэдгээр нь `MapCanvas`-ыг ХУВААЛЦДАГ (Dashboard-той нэг
- *    chunk) тул динамик болгоход ArcGIS давхардахгүй — зөвхөн өөрсдийнх нь код
- *    хойшилно.
- *
- * ⚠️ Шинэ «Ерөнхий дашбоард» нь `Dashboard`-аас ЯЛГААТАЙ dynamic: тэр нь
- *    `DEFAULT_VIEW` тул статик хэвээр (эхний ачаалалтад заавал хэрэгтэй), энэ
- *    нь нээх үедээ л татагдана.
- */
-/**
- * ⚠️ 2026-10-04 (ачааллын аудит): `Dashboard` МӨН dynamic болов. Дээрх «Dashboard
- *    өөрөө жижиг» гэсэн таамаг ХЭМЖИЛТЭЭР НЯЦААГДАВ: `Dashboard.tsx` нь 314 КБ
- *    бөгөөд `Finance` (`loadFinData` …), `PkgProg` (`aggregateMonths` …),
- *    `execData`, `gdash`-ийг СТАТИК дагуулдаг тул нийт ~1.8 МБ эх код Portal-ын
- *    үндсэн chunk-д орж, `DEFAULT_VIEW = "gdash"` (Ерөнхий дашбоард) эсвэл
- *    `?v=huvaari` гэж орсон хүн ч татаж parse хийдэг байв (Portal chunk-ийн эх
- *    кодын ~48%). `MapCanvas` (+ ArcGIS) нь `Portal`-ын өөрийн статик импорт
- *    тул Portal chunk-д ХЭВЭЭР — давхардахгүй.
- *
- * ⚠️ 2026-10-04: ачаалагчид НЭГ газарт (`LOAD`) — `dynamic()` ба `prefetchView`
- *    (нүүр хуудаснаас «Орох»-ын өмнө дэвсгэрт татах, `Root`) ИЖИЛ `import()`-ийг
- *    хуваалцана (webpack-д нэг chunk, давхар хүсэлтгүй). `Record<…>` тул шинэ
- *    харагдацын ачаалагчийг мартвал `tsc` унана.
  */
 type Loader = () => Promise<unknown>;
 const LOAD = {
@@ -69,51 +20,26 @@ const LOAD = {
   irged: () => import('@/modules/Irged').then((m) => m.Irged),
   iot: () => import('@/modules/Iot').then((m) => m.Iot),
   ersdel: () => import('@/modules/Ersdel').then((m) => m.Ersdel),
-  /* ⚠️ «Дэд бүтэц» нь бусад газрын зурагтай харагдацтай ИЖИЛ dynamic: модуль
-     нь DedButetsEdit ба butetsEdit.ts-ийг дагуулдаг (~92 KB эх код) бөгөөд
-     `MapCanvas`-ыг тэдэнтэй ХУВААЛЦДАГ тул ArcGIS давхардахгүй. Статик
-     импорт бол `?v=huvaari` гэж орсон хүнд ч татагдана. */
   dedButets: () => import('@/modules/DedButets').then((m) => m.DedButets),
   analysis: () => import('@/modules/analysis/Suitability').then((m) => m.Suitability),
   finance: () => import('@/modules/Finance').then((m) => m.Finance),
   guitsetgel: () => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel),
   zovshoorol: () => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol),
   tailan: () => import('@/modules/Tailan').then((m) => m.Tailan),
-  /* ⚠️ ТУХ нь санхүү · хуваарь · чанар · ХАБЭА-гийн ачаалагчдыг дагуулдаг тул зөвхөн нээгдэх үедээ. */
   tuh: () => import('@/modules/Tuh').then((m) => m.Tuh),
-  /* ⚠️ Багцын хамаарал — санхүүгийн ачаалагчийг (`loadFinData`) дагуулдаг тул нээгдэх үедээ (tezu-bonu). */
   bagtsHamaaral: () => import('@/modules/BagtsHamaaral').then((m) => m.BagtsHamaaral),
-  /* ⚠️ 2026-10-26: ТЭЗҮ/зураг төсөл ба 6 түвшний хуваарь — cashflow + Хуваарь татдаг тул нээгдэх үедээ */
   zuragTosol: () => import('@/modules/ZuragTosol').then((m) => m.ZuragTosol),
   tuvshin6: () => import('@/modules/LevelPlan').then((m) => m.LevelPlan),
-  /* ⚠️ Хуваарь нь 10 бөглөх хуудсын схем + 1,400 мөрийг татдаг тул зөвхөн
-     нээгдэх үедээ ачаалагдана (`dynamic`) — бусад харагдацыг хүндрүүлэхгүй. */
   huvaari: () => import('@/modules/Huvaari').then((m) => m.Huvaari),
-  /* ⚠️ Батлах дараалал нь `loadAllPending`-ээр БҮХ багцын pending мөрийг татдаг
-     тул зөвхөн нээгдэх үедээ (`Huvaari`-тай ижил шалтгаан). */
   huvaariBatlah: () => import('@/modules/HuvaariBatlah').then((m) => m.HuvaariBatlah),
   ajilBatlah: () => import('@/modules/AjilBatlah').then((m) => m.AjilBatlah),
-  /* ⚠️ Схем нь зургаан эх сурвалжийн ачаалагчийг дагуулдаг тул порталын үндсэн
-     багцад ОРУУЛАХГҮЙ — зөвхөн нээгдэх үедээ. */
   schem: () => import('@/modules/Schem').then((m) => m.Schem),
-  /* ⚠️ Системийн баримт — 54 КБ бичвэр агуулдаг тул ЗААВАЛ dynamic: нээгээгүй
-     хэрэглэгч тэр жинг ачаалахгүй. */
   sysdoc: () => import('@/modules/SysDoc').then((m) => m.default),
-  /* ⚠️ 2026-10-09: MA (материал баталгаажуулалт) — Survey123 · Enterprise; нээгдэх үедээ л */
   ma: () => import('@/modules/Ma').then((m) => m.Ma),
 };
 /* Шинэ харагдацын ачаалагчийг мартвал энд `tsc` унана (`satisfies` БИШ — тэр нь `.then`-ий төрлийн дүгнэлтийг эвддэг) */
 const LOAD_ALL: Record<Exclude<ViewKey, MapOnlyViewKey>, Loader> = LOAD;
 
-/**
- * ⚠️ 2026-10-05: харагдацын chunk ТАТАГДАЖ байх үеийн төлөв. Урьд нь `dynamic()`-ууд
- *    `loading`-гүй тул chunk ирэх хүртэл (удаан сүлжээнд хэдэн секунд) талбай ХООСОН цагаан
- *    байж, «гацсан» мэт харагддаг байв. `Root`-ын Portal ачаалалтын мөртэй ижил дүр төрх.
- * ⚠️ Chunk УНАВАЛ (шинэ хувилбар байршсан — хуучин hash устсан) алдаа нь харагдацын
- *    `ErrorBoundary`-д хүрч «шинэ хувилбар гарсан — дахин ачаална уу» гарна (`isChunkLoadError`).
- * ⚠️ Сонголтыг дуудлага бүрд ИЛ объектоор бичнэ — `next/dynamic` нь хувьсагчаар дамжуулсан
- *    сонголтыг хүлээж авдаггүй (хөрвүүлэлтийн шаардлага).
- */
 function ViewLoading() {
   return (
     <div
@@ -153,18 +79,18 @@ const SysDoc = dynamic(() => LOAD.sysdoc(), { ssr: false, loading: ViewLoading }
 const Ma = dynamic(() => LOAD.ma(), { ssr: false, loading: ViewLoading });
 
 /**
- * Харагдацын chunk-ийг ДЭВСГЭРТ урьдчилан татах (⚠️ 2026-10-04) — `Root` нүүр
+ * Харагдацын chunk-ийг ДЭВСГЭРТ урьдчилан татах (2026-10-04) — `Root` нүүр
  * хуудсан дээр байхад орох магадлалтай харагдацад дуудна; «Орох» дарахад
  * Portal → харагдацын chunk гэсэн ДАРААЛСАН хүлээлт арилна. Зураг+самбарын
  * (`MapOnlyViewKey`) харагдацын код Portal-д аль хэдийн байгаа тул юу ч хийхгүй.
- * Алдааг залгина — жинхэнэ нээлтэд `dynamic()` өөрөө дахин оролдож, алдаагаа харуулна.
+ * Алдааг залгина — жинхэнэ нээлтэд `dynamic` өөрөө дахин оролдож, алдаагаа харуулна.
  */
 export function prefetchView(view: ViewKey): void {
   const l = (LOAD_ALL as Partial<Record<ViewKey, Loader>>)[view];
   if (l) l().catch(() => { /* жинхэнэ нээлтэд dynamic() дахин оролдоно */ });
 }
 
-/** «Хуваарь батлах» → «Хуваарь» санах ойн дамжуулалт (`Portal`-ын `planJump`-ын ⚠️) */
+/** «Хуваарь батлах» → «Хуваарь» санах ойн дамжуулалт (`Portal`-ын `planJump`) */
 export type PlanJump = { pkgKey: string; oid: number };
 
 /**
@@ -185,7 +111,6 @@ export type ViewCtx = {
 };
 
 /** Газрын зураг + самбараар зурагддаг (`standalone` биш) харагдацууд — бүртгэлд ОРОХГҮЙ */
-/* ⚠️ 2026-10-13: «Хэсэгчилсэн ЕТ» (`hesegET`) мөн Portal-ын зураг + самбараар (`HesegPanel`) */
 export type MapOnlyViewKey = 'plan' | 'hesegET';
 
 export type RenderView = (ctx: ViewCtx) => ReactElement;
@@ -199,22 +124,14 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   huvaariBatlah: ({ navScope, setPlanJump, setView }) => (
     <HuvaariBatlah
       navScope={navScope}
-      /* ⚠️ `setView`-ЭЭР шилжинэ, URL-аар БИШ (`Schem`-ийн доорх дүрэмтэй
-         ижил): тэр функц шүүлт, сонголт, давхаргыг цэвэрлэдэг. */
       onApprove={(pkgKey, oid) => {
         setPlanJump({ pkgKey, oid });
         setView('huvaari');
       }}
     />
   ),
-  /* ⚠️ `onApprove`-ГҮЙ (`HuvaariBatlah`-аас ЯЛГААТАЙ): батлах нь тэр хуудсандаа
-     бүрэн дуусна — эх өгөгдөлд хүрдэггүй тул шилжих шаардлагагүй. Батлагдсан
-     мөр нь «Гүйцэтгэл бөглөх» нээгдэхэд тэнд өөрөө буудаг (`FillNew`-ийн
-     `loadApproved` эффект). */
   ajilBatlah: () => <AjilBatlah />,
-  /* ⚠️ 2026-10-04: ТУХ-ын бүтэц — баруун талд газрын зураг тул `dim` хэрэгтэй */
   tailan: ({ dim, setDim }) => <Tailan dim={dim} setDim={setDim} />,
-  /* ⚠️ 2026-10-06: «Багцын хамаарал →» холбоос — эрхгүй хэрэглэгчид харагдахгүй */
   tuh: ({ dim, setDim, setView, navScope }) => (
     <Tuh
       dim={dim}
@@ -235,8 +152,6 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   zovshoorol: () => <Zovshoorol />,
   guitsetgel: () => <Guitsetgel />,
   ma: () => <Ma />,
-  /* ⚠️ `setView` нь ЗАНГИЛАА ДАРАХАД шилжихэд хэрэгтэй. URL-аар тойрч
-     болохгүй — энэ функц шүүлт, сонголт, давхаргыг ч цэвэрлэдэг. */
   schem: ({ setView, navScope }) => <Schem setView={setView} navScope={navScope} />,
   sysdoc: ({ setView, navScope }) => <SysDoc setView={setView} navScope={navScope} />,
   analysis: ({ dim, setDim }) => <Suitability dim={dim} setDim={setDim} />,
@@ -250,17 +165,7 @@ export function renderView(view: ViewKey, ctx: ViewCtx): ReactElement | null {
 
 /**
  * `Portal`-ын `isFull` салбарын НЭГ цэг.
- *
- * ⚠️ Компонент (энгийн функц дуудалт биш): `Portal`-д `renderView(view, {…setView})`
- *    гэж рендер дотор шууд дуудвал eslint `react-hooks/refs` нь `setView`
- *    (дотроо ref уншдаг callback) рендерийн үед дуудагдаж магадгүй гэж
- *    тэмдэглэдэг. JSX проп нь үйл явдлын зам гэж тооцогдоно — урьдын
- *    `setView={setView}` хэлбэртэй ижил.
  */
-/* ⚠️ 2026-10-26 (гүйцэтгэл P8): `memo` — `ctx` нь Portal-д `useMemo`-тэй (`slotCtx`) ч ЭНЭ нь memo-гүй байсан тул
-   Portal-ын рендер бүр (3 мин тутмын тэмдэг · сүлжээ · цонх нээх/хаах) бүтэн дэлгэцийн модулийг дээрээс доош дахин
-   зурдаг байв. ⚠️ Сэдэв (theme) солиход дахин зурагдах ёстой (JS-ээр `getComputedStyle` уншдаг модуль — Layout ·
-   habeaPanes · useRows) — тиймээс Portal `slotCtx`-ийн deps-д `theme`-ийг оруулсан. Хэл солих нь remount (key). */
 export const ViewSlot = memo(function ViewSlot({ view, ctx }: { view: ViewKey; ctx: ViewCtx }) {
   return renderView(view, ctx);
 });

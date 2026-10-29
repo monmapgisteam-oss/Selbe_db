@@ -2,73 +2,13 @@
  * CEO ҮЗҮҮЛЭЛТ — «ХУВААРИЙН ХОЦРОГДОЛ»: багц бүрийн ТӨЛӨВЛӨСӨН vs БОДИТ биет
  * гүйцэтгэл (пункт) ба цаг хугацааны хоцрогдол (сар).
  *
- * ⚠️ ХОЁР үзүүлэлт НЭГ картад (`registry.ts`-ийн шийдвэр, 2026-09-06):
- *    «гүйцэтгэлийн зөрүү» (пп) ба «төлөвлөгөө/гүйцэтгэлийн хоцрогдол» (сар)
- *    хоёул НЭГ эх сурвалжаас (`lagOf`) гардаг тул тусдаа карт болговол нэг
- *    зүйлийн тухай хоёр өөр тоо зэрэгцэн зогсоно.
- *
  * Эх сурвалж (бүгд бэлэн, багцын түвшинд) — ГАНЦ ачаалагч `loadFinData`:
  *   · гэрээний мөрүүд (Cashflow_0909) + IPC + биет гүйцэтгэл
  *   · `contractMonths` / `lagOf` / `lagLevel` (`Finance.tsx`) — сар бүрийн
  *     цэг, хоцрогдол (төл. − бодит, пп), 10/5 босго
  *   · хуваарийн муруй (`planProgress.loadPlanCurve`) — `loadFinData` ДОТОР
  *     татагдаж Finance-ийн модуль-түвшний `planCurveCache`-д хадгалагдана;
- *     энэ файл түүнийг `lagOf`-оор УНШИНА (доорх ⚠️), ӨӨРӨӨ ДАХИН ТАТАХГҮЙ.
- *
- * ⚠️ `Finance.tsx`-ийг ДИНАМИК импортлоно (`await import`). Тэр файл .tsx
- *    (React) тул Node-ийн `--experimental-transform-types` ачаалж чадахгүй —
- *    статик импортлбол `schedule.check.mjs` энэ файлыг огт нээж чадахгүй.
- *    Ачаалагчийн бие л Finance-ыг дуудна; цэвэр тооцоо (`computeSchedule`)
- *    түүнээс хамаарахгүй. `lagLevel` босгыг ЭНД ХУУЛБАРЛАХГҮЙ — функцээр
- *    дамжуулна (`kpiLevels.ts`: «`lagLevel` нь Finance.tsx-д үлдэнэ»).
- *
- * ⚠️ `lagOf` нь `Finance.tsx`-ийн МОДУЛЬ-ТҮВШНИЙ `planCurveCache`-ээс уншдаг
- *    бөгөөд тэр кэш `loadFinData()` дотор бөглөгддөг. Тиймээс `lagOf`-ыг
- *    ЗААВАЛ `loadFinData()` амжилттай дууссаны ДАРАА дуудна — эс тэгвээс
- *    бүх багц «хэмжилтгүй» болно (Finance.tsx-ийн тайлбар).
- *
- * ⚠️ МУРУЙГ `lagOf`-ООР УНШИХ (2026-09-06, хяналтын олдвор): урьд нь энэ
- *    файл `loadPlanCurve`-ийг ӨӨРӨӨ ДАХИН татдаг байв (10 хуудас ×
- *    (loadSchema + query) — `loadFinData` дотор аль хэдийн татагдсаныг
- *    давхардуулж), мөн хоёр тусдаа татсан муруй хооронд засвар орвол
- *    зөрж, доорх сорил худал «унасан» гэж дүгнэх байв. `planCurveCache` нь
- *    экспортлогдоогүй (Finance.tsx энэ агентын эзэмшилд биш) тул муруйг
- *    `lagOf`-ийн НИЙТИЙН гэрээгээр уншина: `[{label, phys: 0, pkg}]` гэсэн
- *    зохиомол нэг цэг өгвөл `planned` = тэр сар, тэр багцын хуваарийн % —
- *    хэмжилтийн сараас сар сараар УХАРЧ `null` болтол (муруйн эхлэл, `pct
- *    ≤ 0`) уншвал багцын муруйн эхлэлээс хэмжилтийн сар хүртэлх ХЭСЭГ
- *    гарна (`curveViaLag`). Сарын хоцрогдолд яг энэ хэсэг л хэрэгтэй:
- *    лавлах сар нь хэмжилтийн сараас хойш байвал хоцрогдол 0 угаасаа.
- *    Ингэснээр муруй ГАНЦ эх сурвалжтай (Finance-ийн кэш) — пп-ийн зөрүү ба
- *    сарын хоцрогдол нэг муруйнаас, давхар сүлжээний дуудлагагүй.
- *    Хуваарийн муруй ӨССӨН (монотон) — ухарч `null` таарвал түүнээс өмнөх
- *    сарууд ч 0 гэж үзнэ; `planProgress.planAt` шугаман интерполяци тул
- *    энэ таамаг баталгаатай.
- *
- * ⚠️ FINANCE-ИЙН МУРУЙ ДУУГҮЙ УНАДАГ: `loadFinDataRaw` нь `loadPlanCurve`-ийн
- *    алдааг ЗАЛГИЖ `planCurveCache = null` үлдээдэг (санаатай — санхүүгийн
- *    бүх дата хуваарийн улмаас унах ёсгүй). Тэр үед `lagOf` БҮХ багцад
- *    `null` буцаана: карт «—» / unknown / бүх багц «хэмжилтгүй» болох ч
- *    `loadFinData` өөрөө амжилттай тул `failedSources` ХООСОН үлдэх байв —
- *    `kpi.ts` хэсэгчилсэн уналтыг нуухыг хориглодог. Кэшийн төлөвийг
- *    СОРИЛООР илрүүлнэ (`curveProbe`): ӨНӨӨДРИЙН сар, `phys = 0`, `pkg`
- *    байхгүй (→ төслийн нийт муруй) гэсэн нэг цэгийг `lagOf`-д өгнө; `null`
- *    ирвэл кэш хоосон ЭСВЭЛ төслийн хуваарь өнөөдрийг хүртэл огт эхлээгүй —
- *    аль ч тохиолдолд ЯМАР Ч багцын хоцрогдол бодогдох боломжгүй (муруй
- *    өссөн тул өнөөдөр 0 бол өмнөх сар бүр 0) тул хоёуланг нь «муруй
- *    уншигдсангүй» гэж НЭГ шалтгаанд нэгтгэнэ — `failedSources`-д
- *    «Хуваарийн муруй (Санхүүжилт)» нэрлэгдэж, биет бичилттэй багцуудын
- *    шалтгаан «хоцрогдлын муруй уншигдсангүй» болно. Нуухаас илүү нэрлэх нь
- *    дээр гэсэн санаатай сонголт.
- *
- * ⚠️ `null` ≠ 0: `lagOf` `null` буцаасан багц нь «хэмжилтгүй» — хоцрогдол 0
- *    БИШ. Тэднийг тусдаа хүснэгтэд НЭРЭЭР нь жагсаана, тоолуурт оруулахгүй.
- *    Зөвхөн 7 барилга угсралтын багц биет гүйцэтгэлтэй; дэд бүтцийн гэрээнүүд
- *    «хэмжилтгүй» гарах нь ХҮЛЭЭГДСЭН зан.
- *
- * ⚠️ Хувийн масштаб: `lag.planned` / `lag.actual` хоёул 0–100 (`PlanPoint.pct`
- *    ба `MonthPt.phys` — `(sum/cnt)*100`). `pct()` 100-аар үржүүлдэггүй тул
- *    шууд дамжуулна.
+ *     энэ файл түүнийг `lagOf`-оор УНШИНА (доорх), ӨӨРӨӨ ДАХИН ТАТАХГҮЙ.
  */
 import { t as tr } from '@/lib/i18nCore';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
@@ -79,16 +19,12 @@ import { coverageOk, type PlanPoint } from '@/lib/planProgress';
 import { levelLabel, type Level } from '@/lib/kpiLevels';
 import type { MonthPt } from '@/modules/Finance';
 import { cell, table, kpiComplete, type Cell, type KpiIssue, type KpiResult } from './kpi';
-/* ⚠️ 2026-10-09 (аудит №2): хуваарийн зөрүүний НЭГ хэлбэр (н.х) — `gdash.gapPts` */
 import { gapPts } from '@/lib/gdash';
 
 /* ══════════════ Төрөл ══════════════ */
 
 /**
  * `lagOf`-ийн үр дүн — сар · төлөвлөсөн % · бодит % · зөрүү (төл. − бодит, пп).
- * ⚠️ 2026-10-22 (аудит): `coverage` — тухайн муруйн хуваарийн хамралт (`planProgress.planCoverage`, 0–100).
- *    `coverageOk` биш (< 95% эсвэл мэдэгдэхгүй) бол хоцорсон/хэвийн гэж ДҮГНЭХГҮЙ (`computeSchedule`), оноо
- *    тавихгүй (`scorecard.scorePerf`) — огноогүй ажлын жин төлөвлөгөөнд 0-ээр орж «Хэвийн» гэж худал гардаг байв.
  */
 export type Lag = { month: string; planned: number; actual: number; gap: number; coverage?: number | null };
 
@@ -107,9 +43,6 @@ export type PkgLag = {
   key: string;
   /**
    * Хуваарийн муруйг ХАЙХ түлхүүр — `MonthPt.pkg` (`lagOf` яг үүгээр хайдаг).
-   * ⚠️ `key`-ээс ЯЛГААТАЙ байж болно: `contractMonths` нь биет гүйцэтгэл
-   *    ОЛДСОН багцын түлхүүрийг тавьдаг (`phys.has(k2) ? k2 : k3`). Сарын
-   *    хоцрогдлыг `lagOf`-ийн хэрэглэсэн муруйгаас л бодох ёстой.
    */
   curveKey: string;
   /** Дэлгэцийн нэр — `pkg2 || pkg` текст */
@@ -132,7 +65,6 @@ export type SchedulePkg = {
   /** Сарын хоцрогдол — муруй байхгүй бол null */
   slipMonths: number | null;
   tone: LagTone;
-  /** ⚠️ 2026-10-22 (аудит): хуваарийн хамралт (0–100) — `null` = мэдэгдэхгүй */
   coverage: number | null;
 };
 
@@ -162,18 +94,15 @@ export function prevYm(label: string): string | null {
 
 /**
  * 1 орны нарийвчлал.
- * ⚠️ `|| 0` нь `-0`-ийг арилгана — `num(-0)` нь «-0» гэж хэвлэдэг.
  */
 const r1 = (v: number): number => (Math.round(v * 10) / 10) || 0;
 
-/* ⚠️ 2026-10-09 (аудит №2): локал `pp` («−12.3 пп») ХАСАГДСАН — порталын нэг хэлбэр `gdash.gapPts`
-   («−12.3 н.х», тэг «0.0 н.х», U+2212) */
 
 /**
  * САРЫН ХОЦРОГДОЛ — бодит гүйцэтгэлийн хувьд хуваариар ХЭЗЭЭ хүрэх ёстой
  * байсныг олж, хэмжилтийн сартай зөрүүлнэ.
  *
- * ДҮРЭМ (⚠️ санаатай шийдвэрүүд, 2026-09-06):
+ * ДҮРЭМ (санаатай шийдвэрүүд, 2026-09-06):
  *   1. Муруйн ЭХЛЭЛ = `pct > 0` болсон эхний сар. Тэнхлэг нь төслийн бүх
  *      хуваарийн хамгийн эрт огнооноос эхэлдэг тул хожуу эхлэх багцын муруй
  *      урд талдаа 0-үүдтэй (`planAt` эхлэхээс өмнө 0 буцаадаг). Тэднийг
@@ -184,8 +113,6 @@ const r1 = (v: number): number => (Math.round(v * 10) / 10) || 0;
  *      эхлэл өөрөө → хоцрогдол = хуваарь эхэлснээс хойшхи сарууд
  *      («хуваарь эхэлсэн, юу ч хийгдээгүй»). Энэ нь 2-р дүрмээс өөрөө гарна.
  *   4. Бодит нь муруйн БҮХ цэгээс дээш → 0 (бүхэл хуваариасаа түрүүлсэн).
- *      ⚠️ `curveViaLag`-ийн ХЭСЭГ муруй (хэмжилтийн сар хүртэл) дээр ч энэ
- *      дүрэм зөв: лавлах сар хэмжилтийн сараас хойш байвал зөрүү сөрөг → 0.
  *   5. Муруй байхгүй / бүхэлдээ 0 / шошго эвдэрсэн → `null` (0 БИШ).
  */
 export function slipMonthsOf(
@@ -210,11 +137,8 @@ export function slipMonthsOf(
 const toneLevel = (t: LagTone): Level => (t === 'red' ? 'bad' : t === 'yellow' ? 'warn' : 'good');
 
 /**
- * epoch ms → «YYYY-MM» ОРОН НУТГИЙН сар — `Finance.lagOf`-ийн `nowYm` (`monthKey()`)-тэй
+ * epoch ms → «YYYY-MM» ОРОН НУТГИЙН сар — `Finance.lagOf`-ийн `nowYm` (`monthKey`)-тэй
  * ЯГ ИЖИЛ дүрэм.
- * ⚠️ 2026-09-21: урьд нь `toISOString().slice(0,7)` (UTC) байсан тул +08 бүсэд
- *    сарын 1-ний 00:00–07:59-д ӨМНӨХ сар буцааж, `lagOf` (орон нутгийн сар)-той
- *    зөрж «энэ сар хүртэл» шүүлт нэг сараар гулсдаг байв (`format.ts`-ийн ⚠️).
  */
 export const ymOf = (ms: number): string => monthKey(ms);
 
@@ -222,17 +146,13 @@ export const ymOf = (ms: number): string => monthKey(ms);
  * `lagOf`-оор муруйг УНШИХ зохиомол цэг: `phys = 0` (хэмжилт, null биш —
  * `lagOf` тэр сарыг сонгоно), `planned` = тухайн сар, тухайн багцын хуваарийн
  * %. `pkg` байхгүй бол төслийн нийт муруй.
- * ⚠️ `given: 0` нь зөвхөн төрлийн шаардлага — `lagOf` мөнгийг огт уншдаггүй.
- * ⚠️ `label ≤ өнөөдөр` байх ёстой — `lagOf` ирээдүйн сарыг үл тоодог.
  */
-/* ⚠️ 2026-10-04: `physAt: '<сар>-31'` ИЛ өгнө — `lagOf` одоо `physAt`-гүй ОДООГИЙН сарын цэгийг
-   ӨНӨӨДРӨӨР жишдэг болсон (`planProgress.measureDayOf`); муруйг уншихад САРЫН ЭЦСИЙН % хэрэгтэй. */
 export const lagPoint = (label: string, pkg?: string): MonthPt[] => (
   pkg == null ? [{ label, given: 0, phys: 0, physAt: `${label}-31` }] : [{ label, given: 0, phys: 0, physAt: `${label}-31`, pkg }]
 );
 
 /**
- * FINANCE-ИЙН МУРУЙН КЭШИЙГ СОРИХ ЦЭГ (толгойн ⚠️-г унш) — өнөөдрийн сар,
+ * FINANCE-ИЙН МУРУЙН КЭШИЙГ СОРИХ ЦЭГ (толгой-г унш) — өнөөдрийн сар,
  * төслийн нийт муруй. `lagOf` `null` буцаавал кэш хоосон (эсвэл хуваарь
  * өнөөдрийг хүртэл эхлээгүй — аль ч үед хоцрогдол бодогдохгүй).
  */
@@ -246,10 +166,7 @@ export const CURVE_CAP = 120;
  * `month`-оос сар сараар ухарч, `lagOf` `null` (муруй эхлээгүй / багцад
  * хуваарь алга / кэш хоосон) болтол. Үр дүн нь [эхлэл … `month`], бүх
  * цэг `pct > 0`; юу ч уншигдаагүй бол `undefined` (хоосон массив БИШ — «муруй
- * алга»-г ялгахад). Толгойн ⚠️ «МУРУЙГ lagOf-ООР УНШИХ»-ийг унш.
- *
- * ⚠️ `month` нь өнөөдрөөс хойш байж болохгүй (`lagOf` ирээдүйг үл тоодог) —
- *    дуудагч `lag.month` (үргэлж ≤ өнөөдөр) эсвэл `ymOf(now)` өгнө.
+ * алга»-г ялгахад). Толгой «МУРУЙГ lagOf-ООР УНШИХ»-ийг унш.
  */
 export function curveViaLag(
   lagOfFn: LagOfFn,
@@ -262,7 +179,6 @@ export function curveViaLag(
   for (let i = 0; i < cap && label != null; i += 1) {
     const r = lagOfFn(lagPoint(label, curveKey));
     if (!r) break;
-    /* ⚠️ `vol` нь ЭНД хамаарахгүй — KPI зөвхөн хувийг хардаг */
     pts.unshift({ label, pct: r.planned, vol: null });
     label = prevYm(label);
   }
@@ -271,23 +187,6 @@ export function curveViaLag(
 
 /**
  * Гэрээний мөрүүд → багц бүрийн хоцрогдол (дедупласан).
- *
- * ⚠️ `execMetrics`-ийн хуучин гогцоотой ИЖИЛ дүрэм: түлхүүр нь
- *    `pkgKeyOf(pkg2) || pkgKeyOf(pkg)`; `pkgKeyOf` (bagtsKey БИШ) — «БАГЦ 1-4»
- *    мэт диапазон мөр хоосон түлхүүртэй болж алгасагдана (эс тэгвээс
- *    «БАГЦ14» болж бодит Багц 14-ийн оронд тоологддог байв). Нэг багцад олон
- *    гэрээ (зураг төсөл + ажил) → НЭГ мөр л үлдэнэ.
- *
- * ⚠️ `prefer` (2026-09-21): багцын ТӨЛӨӨЛӨГЧ мөрийг сонгох шалгуур — өгвөл
- *    тэнцсэн мөр (барилга угсралтын мөр) эхэнд байсан ТЭЗҮ/зураг төслийн
- *    мөрийг ОРЛОНО; тэнцэх мөргүй бол урьдын адил эхнийх. Хоцрогдол нь
- *    багцын БЛОКИЙН хэмжилтээс гардаг тул угсралтын мөрд л хамаатай — нэр нь
- *    зураг төслийн гэрээгээр гарвал уншигч «зураг төсөл хоцорчээ» гэж эндүүрнэ.
- *    Тоо (`lag`) мөрөөс ХАМААРАХГҮЙ — `contractMonths` багцаар боддог.
- *
- * ⚠️ `monthsOf`/`lagOfFn`-ийг ГАДНААС авна (Finance.tsx динамик импорт) —
- *    тиймээс энэ функц Node дээр туршигдана. Мөрийн төрөл нь Finance-ийн
- *    `Record<string, unknown>` (`query.Row`-оос өргөн) тул генерик.
  */
 export function collectPkgLags<R extends Record<string, unknown>>(
   contracts: readonly R[],
@@ -322,9 +221,6 @@ export function collectPkgLags<R extends Record<string, unknown>>(
 
 /**
  * БАРИЛГА УГСРАЛТЫН МӨР МӨН ҮҮ — Excel-ийн 1-р түвшний код «2» (`bagts_tuvshin1`).
- * ⚠️ КОДООР, нэрээр БИШ (`finExcelLayout`-ийн дүрэм). Блокийн биет хэмжилт
- *    (`phys`) нь ЭНЭ мөрийн ажлыг хэмждэг; «1» (ТЭЗҮ, зураг төсөл) мөрд тэр
- *    хоцрогдол хамаарахгүй.
  */
 export const FIN_XL_BUILD_CODE = '2';
 export const isBuildRow = (r: Record<string, unknown>): boolean =>
@@ -348,7 +244,7 @@ export function collectCurves(pkgs: readonly PkgLag[], lagOfFn: LagOfFn, nowYm: 
 /* ══════════════ Цэвэр тооцоо ══════════════ */
 
 /**
- * Багцуудын хоцрогдол → картын бүтэн үр дүн. Сүлжээгүй, `Date.now()`-гүй.
+ * Багцуудын хоцрогдол → картын бүтэн үр дүн. Сүлжээгүй, `Date.now`-гүй.
  *
  * @param curves багцын түлхүүр → муруйн хэсэг (`collectCurves`); байхгүй
  *   түлхүүр = муруй алга → сарын хоцрогдол `null`.
@@ -356,7 +252,7 @@ export function collectCurves(pkgs: readonly PkgLag[], lagOfFn: LagOfFn, nowYm: 
  *   тулд функцээр авна (дээрх тайлбар).
  * @param now зөвхөн `asOf`-ыг ирээдүй рүү гаргахгүйн тулд.
  * @param finCurveMissing Finance-ийн `planCurveCache` хоосон гэж сорилоор
- *   тогтоогдсон (толгойн ⚠️) — биет бичилттэй багцын шалтгааныг ялгахад.
+ *   тогтоогдсон (толгой) — биет бичилттэй багцын шалтгааныг ялгахад.
  */
 export function computeSchedule(
   pkgs: readonly PkgLag[],
@@ -367,8 +263,6 @@ export function computeSchedule(
   finCurveMissing = false,
 ): KpiResult {
   const measured: SchedulePkg[] = [];
-  /* ⚠️ 2026-10-22 (аудит): ХУВААРЬ ДУТУУ (хамралт < 95%) багц — тоо нь (төл./бодит/зөрүү) ил, харин түвшин · тоолуур ·
-     «Хэвийн» · сарын хоцрогдолд ОРОХГҮЙ. Урьд нь Багц 3.3 (хамралт 8.6%)-ын «төлөвлөсөн» хэт бага тул «Хэвийн» гардаг байв. */
   const partial: SchedulePkg[] = [];
   const noData: PkgLag[] = [];
   for (const p of pkgs) {
@@ -391,7 +285,6 @@ export function computeSchedule(
 
   const red = measured.filter((m) => m.tone === 'red').length;
   const yellow = measured.filter((m) => m.tone === 'yellow').length;
-  /* ⚠️ Хэмжилтгүй бол null — 0 гэж «хоцрогдолгүй» гэсэн худал дүгнэлт болно */
   const worstGap = measured.length ? Math.max(...measured.map((m) => m.gap)) : null;
   const avgGap = measured.length
     ? measured.reduce((s, m) => s + m.gap, 0) / measured.length
@@ -425,7 +318,7 @@ export function computeSchedule(
   /* ── Хүснэгт 2: хэмжилтгүй багц бүр НЭРЭЭР, шалтгаантай ── */
   const reasonOf = (p: PkgLag): string => {
     if (!p.hasPhys) return tr('гүйцэтгэлийн бичилт алга');
-    /* Бичилт бий, гэвч Finance-ийн муруй ирээгүй → `lagOf` бүгдэд null (толгойн ⚠️) */
+    /* Бичилт бий, гэвч Finance-ийн муруй ирээгүй → `lagOf` бүгдэд null (толгой) */
     if (finCurveMissing) return tr('хоцрогдлын муруй уншигдсангүй');
     /* Бичилт бий, өнөөдрийг хүртэл энэ багцад хуваарийн % уншигдсангүй */
     if (!curves.get(p.curveKey)?.length) return tr('хуваарь алга');
@@ -443,7 +336,6 @@ export function computeSchedule(
     ),
     table(tr('Хэмжилтгүй багц'), [tr('Багц'), tr('Шалтгаан')], noRows),
   ];
-  /* ⚠️ 2026-10-22 (аудит): 3-р хүснэгт — хуваарь дутуу (дүгнээгүй) багц, хамралт багаас нь; зөвхөн байвал */
   if (partial.length) {
     tables.push(table(
       tr('Хуваарь дутуу — дүгнээгүй'),
@@ -458,14 +350,12 @@ export function computeSchedule(
   const issues: KpiIssue[] = measured
     .filter((m) => m.tone === 'red')
     .map((m) => ({
-      /* ⚠️ 2026-10-09 (аудит №2): «−{3} пп» тогтмол тэмдэг → `gapPts` (н.х, тэмдэг зөв) */
       text: tr('{0} — төл. {1}% / бодит {2}% · {3}', m.label, num(m.planned, 1), num(m.actual, 1), gapPts(m.gap)),
       tone: 'bad' as const,
     }));
 
   /* ── asOf: хамгийн сүүлийн хэмжилтийн сарын эцэс, ирээдүй рүү гаргахгүй ── */
   let asOf: number | null = null;
-  /* ⚠️ 2026-10-22: хуваарь дутуу багц ч ХЭМЖИГДСЭН — өгөгдлийн агшинд орно */
   for (const m of [...measured, ...partial]) {
     const ms = monthEndMs(m.month);
     if (ms != null && (asOf == null || ms > asOf)) asOf = ms;
@@ -473,7 +363,6 @@ export function computeSchedule(
   if (asOf != null && asOf > now) asOf = now;
 
   return {
-    /* ⚠️ Хэмжигдсэн багц огт байхгүй бол «—» — «0 багц хоцорсон» гэж худал хэлэхгүй */
     value: measured.length ? num(red + yellow) : '—',
     unit: tr('багц хоцорсон'),
     facts,
@@ -488,21 +377,10 @@ export function computeSchedule(
 /* ══════════════ Ачаалагч ══════════════ */
 
 const SRC_FIN = () => tr('Санхүүжилт (Cashflow · IPC · гүйцэтгэл)');
-/** Finance.tsx-ийн ДОТООД муруйн кэш — сорилоор илэрдэг (толгойн ⚠️) */
+/** Finance.tsx-ийн ДОТООД муруйн кэш — сорилоор илэрдэг (толгой) */
 const SRC_FIN_CURVE = () => tr('Хуваарийн муруй (Санхүүжилт)');
 
-/**
- * ⚠️ Санхүүжилт (гэрээ + биет гүйцэтгэл + муруй) нь ГАНЦ ачаалагч
- *    (`loadFinData`) — уншигдахгүй бол ШИДНЭ, тооцох зүйл огт үлдэхгүй.
- *    Finance-ийн ДОТООД муруй унавал (алдаа нь залгигддаг) `loadFinData`
- *    амжилттай ч пп-ийн зөрүү, сарын хоцрогдол хоёул гарахгүй — сорилоор
- *    илрүүлж `failedSources`-д нэрлэнэ, карт «—»/unknown гарна.
- * ⚠️ Таг: `loadFinData`-ийнхтай ИЖИЛ (IPC · Cashflow · бөглөх хуудас) —
- *    муруй нь бөглөх хуудасны хуваариас тул `BAGTS_SHEET` бичилт үүнийг ч
- *    хүчингүй болгоно.
- */
 export const loadScheduleKpi = cached(async (): Promise<KpiResult> => {
-  /* ⚠️ Динамик — толгойн тайлбарыг унш (Finance.tsx нь .tsx) */
   const F = await import('@/modules/Finance');
   let fin: Awaited<ReturnType<typeof F.loadFinData>>;
   try {
@@ -512,16 +390,9 @@ export const loadScheduleKpi = cached(async (): Promise<KpiResult> => {
   }
   const now = Date.now();
   const nowYm = ymOf(now);
-  /* ⚠️ `lagOf`-ыг `loadFinData` ДУУССАНЫ дараа — planCurveCache бөглөгдсөн */
   const finCurveMissing = F.lagOf(curveProbe(nowYm)) == null;
   const failed = finCurveMissing ? [SRC_FIN_CURVE()] : [];
-  /* ⚠️ `isBuildRow` (2026-09-21) — багцын нэрийг угсралтын мөрөөс авна (§collectPkgLags) */
   const pkgs = collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf, isBuildRow);
   const curves = collectCurves(pkgs, F.lagOf, nowYm);
   return computeSchedule(pkgs, curves, F.lagLevel, now, failed, finCurveMissing);
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `HUVAARI_OBYEM` — хуваарийн муруй (`loadFinData` дотор)
-     сарын обьёмын батлалтаар өөрчлөгдөнө. Муруй унасан (`failedSources`) картыг КЭШЛЭХГҮЙ (`kpiComplete`).
-     ⚠️ 2026-10-12 (дарааллын аудит): 60 с → `SESSION_TTL_MS` (5 мин). 60 с нь ЗӨВХӨН санхүүгийн
-     (`HO_IPC`/`CASHFLOW`) ачаалагчдын «амьд» хугацаа (`docs/system/03 §3.5`); хуваарийн карт
-     санхүүгийн биш — эх нь `loadFinData` (60 с) тул энэ карт түүнээс хамгийн ихдээ 5 мин хоцорч болно. */
 }, SESSION_TTL_MS, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'HUVAARI_OBYEM'], kpiComplete);

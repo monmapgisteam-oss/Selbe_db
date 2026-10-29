@@ -1,37 +1,24 @@
 /**
  * БЛОКГҮЙ БАГЦЫН ГЭРЭЭ (2026-09-16).
  *
- * ⚠️ ЯАГААД ЭНЭ ШАЛГУУР БАЙХ ЁСТОЙ ВЭ. 2026-09-16-нд нэмэгдсэн 8 багц
- * (5.1 · 5.2 · 5.3 · 5.4 · 6.1 · 6.2 · 6.4 · 10) нь БАРИЛГА БИШ тул
- * блокоор задардаггүй — `resolveSchema` нь `bld`/`act`/`plan`/`obyem`/
- * `start`/`end` БҮГДИЙГ хоосон массив болгож буцаана.
- *
  * Гүн шалгалтаар ХОЁР чимээгүй эвдрэл илэрсэн:
  *
- *   1. `FillNew.tsx`-д `!nBld ? [] : computeAll(...)` гэсэн товчлол байв.
+ *   1. `FillNew.tsx`-д `!nBld ? []: computeAll(...)` гэсэн товчлол байв.
  *      `calc` хоосон массив болж, `vis` нь `calc[i]`-ээр шүүдэг тул БҮХ
  *      мөр хасагдаж, хуудас ТАЙЛБАРГҮЙ цагаан харагддаг байлаа. Хэрэглэгч
  *      «хүснэгт эвдэрсэн» гэж уншина. Амьдаар: Багц 5.1-ийн 331 мөр,
  *      Багц 10-ын 850 мөрийн НЭГ Ч зурагдахгүй.
  *
- *   2. `avg` нь `n = 0` үед `0/0 = NaN` буцаана. `pct()` нь NaN-г «—» гэж
+ *   2. `avg` нь `n = 0` үед `0/0 = NaN` буцаана. `pct` нь NaN-г «—» гэж
  *      зурдаг тул дэлгэцэнд буруу ТОО гарахгүй ч, `NaN` нь I · J · E · K
  *      дамжин нэгтгэл, S-муруй, CEO самбар руу тархаж хаана ч баригдахгүй
  *      өнгөрнө. Амьдаар: Багц 5.1-д 1,324 · Багц 10-д 3,400 NaN.
- *
- * ⚠️ БЛОКТОЙ 10 БАГЦАД НӨЛӨӨЛӨХГҮЙ гэдгийг мөн ЭНД бэхэлнэ — `n > 0` үед
- * зан төлөв ЯГ ХЭВЭЭР байх ёстой.
- *
- * ⚠️ Сүлжээгүй, цэвэр функцээр: `computeAll` нь мөрийн массив + блокийн тоо
- * хоёроос л хамаардаг тул амьд ArcGIS хэрэггүй.
  */
 import assert from 'node:assert/strict';
 import { computeAll } from './bagtsSheet.ts';
 
 /**
  * Нэг `SheetRow` бүтээх.
- * ⚠️ Талбарын нэр нь БОДИТ бүтцийнх: `depth`/`group` (`gun` биш);
- *    `unit` нь «Объём_шинэ2» — ямар ч томьёонд ОРОХГҮЙ; мөнгө нь `money`.
  */
 const mkRow = (o = {}) => ({
   oid: 1,
@@ -65,8 +52,6 @@ const mkRow = (o = {}) => ({
 /* ══════════ 1. БЛОКГҮЙ (n = 0) — унахгүй, NaN гаргахгүй ══════════ */
 {
   const rows = [
-    /* ⚠️ ШАТЛАЛТАЙ: depth 0 = бүлэг (`group: true`), depth 1 = навч.
-       Навчийн H нь `money`-оос, бүлгийнх нь хүүхдүүдийн НИЙЛБЭРЭЭС. */
     mkRow({ oid: 1, no: 'Б', work: 'БАГЦ 5.1 ГАДНА ДУЛААН', depth: 0, group: true }),
     mkRow({ oid: 2, no: '1', work: 'ТӨЛӨВЛӨЖ БУЙ ШУГАМ', depth: 1, vol: 25, money: 300000 }),
     mkRow({ oid: 3, no: '2', work: 'ХУДАГ', depth: 1, vol: 4, money: 3200000 }),
@@ -79,7 +64,6 @@ const mkRow = (o = {}) => ({
   assert.equal(calc.length, rows.length,
     'блокгүй үед мөр бүрд элемент буцаах ёстой — эс бөгөөс `vis` нь БҮХ мөрийг нуух');
 
-  /* ⚠️ `vis` нь `calc[i]`-ээр шүүдэг: элемент бүр ҮНЭН утга байх ЁСТОЙ */
   for (let i = 0; i < rows.length; i += 1) {
     assert.ok(calc[i], `calc[${i}] нь falsy — тэр мөр хуудсанд ОГТ зурагдахгүй`);
   }
@@ -115,11 +99,6 @@ console.log('✅ блокгүй (n=0) — унахгүй · NaN алга · мө
 
 /* ══════════ 2. БЛОКТОЙ (n > 0) — зан төлөв ӨӨРЧЛӨГДӨӨГҮЙ ══════════ */
 {
-  /**
-   * ⚠️ Энэ бүлэг нь «блокгүйг зассан нь блоктойг эвдээгүй» гэдгийг барина.
-   *    `avg` нь `n > 0` үед ЯГ хуучин томьёогоороо ажиллах ёстой:
-   *    хоосныг 0 гэж үзэн блокийн ТООНД хуваана (`AVERAGE(IF(range="",0,range))`).
-   */
   const rows = [mkRow({
     oid: 1, no: '1', work: 'ажил', depth: 1, vol: 10, money: 10000,
     act: [0.5, 0.8, null, 1],
@@ -128,16 +107,11 @@ console.log('✅ блокгүй (n=0) — унахгүй · NaN алга · мө
     start: [null, null, null, null],
     end: [null, null, null, null],
   })];
-  /* ⚠️ 2026-10-08: `asOf` ТАВЬСАН — I/K-ийн «блок байхад null биш» дүрэм нь ЗӨВХӨН лавлах
-     огноотой хуудсанд (Excel `IF(range="",0,…)`: огноогүй блок = 0). `asOf == null` бол
-     I/K `null` — доорх §2б. */
   const asOf = Date.parse('2026-01-01T00:00:00Z');
   const calc = computeAll(rows, 4, asOf, {}, {}, [], undefined);
 
   /* J = (0.5 + 0.8 + 0 + 1) / 4 = 0.575 — ГОЛ шалгуур: блокийн ТООНД хуваана */
   assert.equal(calc[0].J, 0.575, 'J нь блокийн ТООНД хуваагдах ёстой (хоосон = 0)');
-  /* ⚠️ I нь оролтын `plan` БИШ — огноо/интерполяциас БОДОГДДОГ. `asOf` БАЙХАД огноогүй
-     бэлдэцэд 0 гарах нь зөв (Excel хоосон = 0); энд чухал нь `null` БИШ гэдэг (блок БАЙГАА). */
   assert.equal(calc[0].I, 0, 'asOf байхад огноогүй блокийн I = 0 (Excel хоосон = 0)');
   assert.notEqual(calc[0].I, null, 'блок байхад (asOf-той) I нь `null` байх ЁСГҮЙ');
   assert.notEqual(calc[0].K, null, 'блок байхад (asOf-той) K нь `null` байх ЁСГҮЙ');
@@ -145,7 +119,7 @@ console.log('✅ блокгүй (n=0) — унахгүй · NaN алга · мө
 
   /* ── 2б. `asOf == null` → I · K · бүлгийн plan `null` (0 БИШ) — 2026-10-08 ──
      Лавлах огноо ОГТ тохируулаагүй хуудсанд төлөвлөгөөт хувь «мэдээлэлгүй»; урьд нь
-     `avg` null-уудыг 0 гэж нэгтгээд I = 0 → K = 0 архивлагдаж байв (`hyanaltStore` ⚠️). */
+     `avg` null-уудыг 0 гэж нэгтгээд I = 0 → K = 0 архивлагдаж байв (`hyanaltStore`). */
   const noAsOf = computeAll([
     mkRow({ oid: 10, no: '1', work: 'бүлэг', depth: 0, group: true, act: [null, null], plan: [null, null], obyem: [null, null], start: [null, null], end: [null, null] }),
     mkRow({ oid: 11, no: '1.1', depth: 1, vol: 10, money: 1000, act: [0.5, 1], plan: [null, null], obyem: [5, 10],
@@ -182,7 +156,6 @@ console.log('✅ блоктой (n>0) — J·I·K томьёо ХЭВЭЭР, б�
 
 /* ══════════ 3. n = 0 ба n > 0 хоёрын ЗААГ ══════════ */
 {
-  /* ⚠️ `n = 1` нь хамгийн эмзэг зааг — `null` руу унах ёсгүй */
   const one = computeAll(
     [mkRow({ act: [0.25], plan: [1], obyem: [2.5], start: [null], end: [null] })],
     1, null, {}, {}, [], undefined,
@@ -193,12 +166,7 @@ console.log('✅ блоктой (n>0) — J·I·K томьёо ХЭВЭЭР, б�
 console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `null`');
 
 /* ══════════ 4. СИНТЕТИК НЭГ БЛОК — `resolveSchema(fields, { synthetic })` (2026-09-23) ══════════
- * ⚠️ Блокгүй 8 багцад мөрийн түвшний огноо (`Төлөвлөгөөт_хуваарь__Эхлэх/Дуусах`
- *    · `geree_*` · `bodit_*`) «Хуваарь»-д харагдахын тулд ЗӨВХӨН опт-ин үед нэг
- *    блок болж ордог. Гурван гэрээ: (а) анхдагч дуудалт ХЭВЭЭР хоосон;
- *    (б) опт-ин үед нэрүүд яг мөрийн баганад буудаг (`applyUpdates`-ийн бичих
- *    нэр); (в) блоктой багцад опт-ин ч ЮУ Ч өөрчлөхгүй. Хиймэл талбарын
- *    жагсаалт — амьд `Bagts_5_1`-ийн 2026-09-23-ны бүтцээс. */
+ */
 {
   const { resolveSchema, SYNTHETIC_BLOCK } = await import('./bagts.pkg.ts');
   const F = (name, type) => ({ name, type });
@@ -217,8 +185,7 @@ console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `nu
     F('buglusun_ognoo', 'esriFieldTypeDate'), F('шинэчлэгдсэн_огноо', 'esriFieldTypeDate'),
   ];
 
-  /* (а) анхдагч — ХООСОН хэвээр (sheetRows · planProgress · negtgel · ipc зам).
-     ⚠️ 2026-10-09: FillNew · hyanalt* · ajilApply · ulsiinKomiss нь `fillSchema` (§5) */
+  /* (а) анхдагч — ХООСОН хэвээр (sheetRows · planProgress · negtgel · ipc зам). */
   const plain = resolveSchema(blokgui);
   assert.equal(plain.synthetic, false, 'анхдагч дуудалтад synthetic = false');
   assert.equal(plain.bld.length, 0, 'анхдагч дуудалтад блок ХООСОН — FillNew блокийн багана зурах ёсгүй');
@@ -267,13 +234,7 @@ console.log('✅ зааг — n=1 нь утгатай, зөвхөн n=0 нь `nu
 console.log('✅ синтетик блок — анхдагч хоосон · опт-ин мөрийн нэрээр · блоктойд нөлөөгүй');
 
 /* ══════════ 5. БӨГЛӨХ БҮДҮҮВЧ — `fillSchema` / `{ fill: true }` (2026-10-09) ══════════
- * ⚠️ 2026-10-09: блокгүй 14 багц бөглөгддөг болов — синтетик НЭГ блокийн оролт нь барилгын
- *    блоктой ижил ОБЬЁМЫН НЭМЭЛТ (`incCell`), хуримтлал нь `obyem_sum`, гүйцэтгэл нь
- *    `Ажил_гүйцэтгэл` = obyem_sum ÷ Обьём. Excel-ийн (`Багц_6_1_final.xlsx` · `*_publish`)
- *    томъёо: навч E = C×J, J = L, I = M; бүлэг L/M = SUMPRODUCT(C, хүүхэд), E = C×ΣE;
- *    K = IF(I=0,0,J/I). Энэ хэсэг нь (а) талбарын зураглал, (б) жижиг мод дээрх roll-up,
- *    (в) нэмэлт/түгжээ, (г) архивын жааз (`buildFrame`) ба илгээлтийн давхарлалт
- *    (`overlaySubmission`), (д) блоктой багц ХӨНДӨГДӨӨГҮЙ гэдгийг барина. Сүлжээгүй. */
+ */
 {
   const { resolveSchema, SYNTHETIC_BLOCK } = await import('./bagts.pkg.ts');
   const { planAt, synNoVol } = await import('./bagtsSheet.ts');
@@ -433,11 +394,7 @@ console.log('✅ синтетик блок — анхдагч хоосон · о
 console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act→Ажил_гүйцэтгэл · Excel roll-up · түгжээ · жааз · илгээлт · блоктойд нөлөөгүй');
 
 /* ══════════ 6. «БУСАД ТАЛБАР» (2026-10-09) — мөрийн түвшний бүх талбар ил ══════════
- * ⚠️ Хэрэглэгч: «table fieldудыг бүгдийг шалгаж бүх баганыг ил гарга». Бөглөх хүснэгтэд урьд нь
- *    зурагддаггүй талбарууд (`Des_dugaar` · `Hamaaral` · `gun` · `hun_huch` · `mashin_mehanizm` ·
- *    `geree_*` · `bodit_*` · `buglusun_ognoo` · хадгалсан L/M · Editor Tracking) ЗӨВХӨН УНШИХ баганаар.
- *    Гэрээ: (а) `Schema.f` мөрийн түвшний ЯГ нэрийг олно, барилгын блокийн `F…_geree_*`-д ТААРАХГҮЙ;
- *    (б) талбаргүй үйлчилгээнд багана гарахгүй; (в) утга `raw`-аас, null ≠ 0, хувь 0–1. */
+ */
 {
   const { resolveSchema } = await import('./bagts.pkg.ts');
   const { extraCols, extraVal, readExtraPref, writeExtraPref, extraPrefKey } = await import('./fill/extraCols.ts');
@@ -456,10 +413,8 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   assert.deepEqual([sc.f.rowGS, sc.f.rowGE, sc.f.rowAS, sc.f.rowAE], ['geree_ehleh', 'geree_duusah', 'bodit_ehleh', 'bodit_duusah']);
   assert.deepEqual([sc.f.created, sc.f.creator, sc.f.edited, sc.f.editor], ['created_date', 'created_user', 'last_edited_date', 'last_edited_user']);
   const cols = extraCols(sc);
-  /* ⚠️ 2026-10-08: 14 шаардлагагүй багана хасагдав (`extraCols.DEFS`-ийн ⚠️) — зөвхөн бодит огноо */
   assert.deepEqual(cols.map((c) => c.field), ['bodit_ehleh', 'bodit_duusah'], 'зөвхөн Бодит эхэлсэн/дууссан, ObjectID/GlobalID-гүй');
   assert.ok(cols.every((c) => typeof c.label() === 'string' && c.label().length > 0), 'шошго бүр tr()-ээр');
-  /* ⚠️ 2026-10-09: БАГАНА ТУС БҮРИЙН өргөний түлхүүр, төрлийн анхдагч руу унана */
   assert.equal(new Set(cols.map((c) => c.wKey)).size, cols.length, 'өргөний түлхүүр багана бүрд ӨӨР');
   const aSc = cols.find((c) => c.key === 'aS');
   assert.equal(aSc.wKey, 'x-aS');
@@ -474,7 +429,6 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   assert.deepEqual(extraCols(null), []);
 
   /* (в) утга — `raw`-аас, null ≠ 0 */
-  /* ⚠️ 2026-10-08: хасагдсан баганын хэлбэржүүлэлтийг (`extraVal`-ийн төрөл бүр) шууд баганаар шалгана */
   const KIND = { hun: ['hun_huch', 'int'], des: ['des_dugaar', 'int'], L: ['ажил_гүйцэтгэл', 'pct'], M: ['төлөвлөгөөт_гүйцэтгэл1', 'pct'],
     gS: ['geree_ehleh', 'day'], fill: ['buglusun_ognoo', 'day'], ham: ['hamaaral', 'text'], edBy: ['last_edited_user', 'user'], cre: ['created_date', 'stamp'] };
   const col = (k) => cols.find((c) => c.key === k) ?? { key: k, field: KIND[k][0], kind: KIND[k][1], label: () => k };

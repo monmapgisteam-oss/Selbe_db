@@ -1,12 +1,6 @@
 /**
  * САР ДОТОРХ ТӨЛӨВЛӨГӨӨТ ХУВЬ — ДУУДАГЧ БҮР АЖЛЫН ЭХЛЭХ–ДУУСАХ ӨДРИЙГ ДАМЖУУЛНА (2026-10-01).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/planSpanCallers.check.mjs
- *
- * ⚠️ Хэрэглэгчийн шийдвэр («бүгдийг зас»): `planPctFromMonths(m, asOf, { start, end })` —
- *    сарын цонх нь ажлын мужтай огтлолцол. Бөглөх хуудас (FillNew), хянагчийн харагдац
- *    (hyanaltDetail), архивлалт (hyanaltStore), нэмэлт ажлын буулгалт (ajilApply), улсын
- *    комисс (ulsiinKomiss) НЭГ дүрэмтэй байх ёстой — нэг нь хоцорвол тэр дэлгэц сарын
- *    эхэнд ХУДАЛ «хоцорсон» харуулна.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/planSpanCallers.check.mjs
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

@@ -1,14 +1,6 @@
 /**
  * ХАРИУ АЛДАГДСАН БИЧИЛТИЙН АНГИЛЛЫН ШАЛГУУР — цэвэр функц, сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/lostWrite.check.mjs
- *
- * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): ArcGIS JS API (`@arcgis/core/request`) алдааг `esri/core/Error`
- *    (`name: 'request:server'`, `details.httpStatus`) болгодог тул урьд нь `isLostWrite` JS API-ийн алдаанд
- *    хэзээ ч `true` буцаадаггүй байв (`saveSubmission.lost` үхмэл). Хамгаалж буй дүрэм:
- *   1. `request:server` + 5xx / статусгүй (сүлжээ · timeout · JSON биш) → алдагдсан.
- *   2. `request:server` + 400/401/403/404/498/499 → тодорхой татгалзал (юу ч бичигдээгүй).
- *   3. `TypeError` (fetch унасан) · `request:timeout` · `{ lost: true }` ороосон алдаа → алдагдсан.
- *   4. `ArcGISError` HTTP 403 (REST зам) → тодорхой; `isLostResponse` = `isLostWrite` (нэг эх).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/lostWrite.check.mjs
  */
 import assert from 'node:assert/strict';
 import { isLostWrite } from './lostWrite.ts';

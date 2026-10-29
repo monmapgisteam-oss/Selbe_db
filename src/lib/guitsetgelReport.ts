@@ -1,16 +1,5 @@
 /**
  * «Гүйцэтгэл» харагдацын ТАЙЛАН — шат бүрээр задалсан ажлын жагсаалт (.docx).
- *
- * ⚠️ 2026-10-19 (хэрэглэгч): ерөнхий DOM цуглуулагч (`viewReport.collect`) энэ хуудсаас
- *    «27 · 3 · 4 · 5 · 6 · Шилжүүлсэн» гэх мэт тасархай мөрүүд гаргаж байсан — тайлан уншигдахгүй.
- *    Хэрэглэгчийн шаардлага:
- *      1. Гүйцэтгэгч компани — батлагдсан · илгээсэн боловч хянагдаж буй · буцаагдсан (засах) ажил;
- *      2. Хяналтын инженер — менежерт шилжүүлсэн · хүлээгдэж буй гэх мэт үе шатаар задлах.
- *    Тиймээс өгөгдлөөс (`Work[]`) шууд угсарна; дээд шатууд (менежер → газрын дарга) инженертэй
- *    ИЖИЛ дөрвөн хэсэгтэй (хүлээгдэж буй · буцаагдаж ирсэн · дээш шилжүүлсэн · доош буцаасан).
- *
- * ⚠️ ЦЭВЭР функц — `now`-ыг гаднаас авна (`pendingAging`-тай ижил), тестлэх боломжтой.
- * ⚠️ Ажлын ОДООГИЙН тойрог (`Work.current`) л тооцогдоно — хуучин тойргийн шийдвэр нь түүх.
  */
 
 import { t as tr } from './i18nCore';
@@ -33,7 +22,6 @@ const txt = (v: unknown): string => String(v ?? '').trim();
 const rank = (w: Work) => STAGE_ORDER.indexOf(OWNER[w.status] ?? 'company');
 
 /** Шатны хэсгийн ГАРЧИГ — монгол хэлний тийн ялгалын улмаас параметрээр биш, шууд бичнэ */
-/* ⚠️ 2026-10-27 (main-тай тэнцүүлэв): 7 шат — `planner` (төлөвлөлтийн инженер) нэмэгдэж, шатны нэр солигдсон (`STAGE_LABEL`) */
 const UP_TITLE: Record<ReviewStage, () => string> = {
   engineer: () => tr('Багцын ахлах инженерт шилжүүлсэн ажил'),
   manager: () => tr('Төлөвлөлтийн инженерт шилжүүлсэн ажил'),
@@ -59,7 +47,7 @@ const arrived = (r: Row, s: ReviewStage): string | null => {
 
 type Col = { head: string; cell: (w: Work, i: number) => string };
 
-/** Нэг хэсэг: H2 гарчиг (тоотой) + хүснэгт, ажилгүй бол «ажил алга» (⚠️ 2026-10-19: 0 бол тоо бичихгүй — хэрэглэгч) */
+/** Нэг хэсэг: H2 гарчиг (тоотой) + хүснэгт, ажилгүй бол «ажил алга» (2026-10-19: 0 бол тоо бичихгүй — хэрэглэгч) */
 function section(out: DocBlock[], title: string, list: Work[], cols: Col[]): void {
   out.push({ kind: 'h', level: 2, text: list.length ? `${title}: ${list.length}` : title });
   if (!list.length) {
@@ -100,8 +88,6 @@ export function guitsetgelBlocks(works: Work[], now: number): DocBlock[] {
       next,
       pending: works.filter((w) => w.status === REVIEW_STATUS[s]),
       back: next ? works.filter((w) => w.status === RETURNED_STATUS[next]) : [],
-      /* ⚠️ Одоогийн тойрогт зөвшөөрсөн БА ажил дээд шатанд (эсвэл батлагдсан) — дээд шат буцаавал
-         ажил энэ шатны «буцаагдаж ирсэн» хэсэгт шилжинэ, энд давхар тоологдохгүй. */
       up: works.filter((w) => w.current[SF[s].decision as keyof Row] === DECISION.approve
         && (w.status === STATUS.transferred || rank(w) > me)),
       down: works.filter((w) => w.status === RETURNED_STATUS[s]),

@@ -1,14 +1,6 @@
 /**
  * «Багцын гүйцэтгэл» (PkgProg) ба «Багцын санхүү» (PkgFin) хоёрын НИЙТЛЭГ
  * цэвэр логик — ГАНЦ эх сурвалж.
- *
- * ⚠️ ЯАГААД (2026-09-17-ны аудит): хоёр харагдац нэг загвараас салаалсан тул
- *    ангилал (`catOf`), блокийн өнгө (`HUE`), сарын нэгтгэл (`aggregateMonths`)
- *    хоёр файлд ЯГ ИЖИЛ хуулбарлагдсан байв (~245 мөр давхардал). Нэг талд
- *    засаад нөгөөг мартвал хоёр дэлгэц зөрж, хэрэглэгч санхүүгийн тоог
- *    гүйцэтгэл гэж уншина. Хуулбар нь дараа гарвал ЭНД нэмнэ.
- *
- * ⚠️ Зөвхөн хуучин-биш, сүлжээгүй, React-гүй логик — hook/JSX энд орохгүй.
  */
 import { LAYER_BY_ID, PKG_FAMILY_BY_BAGTS } from '@/lib/services';
 import { BLOCK_LAYER, type Pack } from '@/modules/Bagts';
@@ -20,9 +12,6 @@ import { dayKey, num } from '@/lib/format';
  * «ГҮЙЦЭТГЭЛИЙН ЯВЦ» ГРАФИКИЙН ЦЭГҮҮД — хуваарийн төлөвлөгөө (`PlanCurve`) + БИЕТ
  * гүйцэтгэл (`FinData.phys` → `MonthPt`). PkgProg ба «ТУХ» ХОЁУЛАА энэ ГАНЦ
  * функцээр (2026-09-30) — хоёр дэлгэц нэг багцад өөр муруй харуулахгүй.
- *
- * ⚠️ Хуваарь байхгүй бол `null` — cashflow руу буцаж унахгүй (PkgProg-ийн ⚠️).
- * ⚠️ Хэмжилтгүй сар `act: null` (0 биш); `planM` нь хэмжилтийн ӨДРӨӨР завсарласан.
  */
 export function progMonthsOf(
   base: readonly { label: string; phys: number | null; physAt?: string | null }[] | null,
@@ -39,8 +28,6 @@ export function progMonthsOf(
       plan: p.pct,
       vol: p.vol,
       act,
-      /* ⚠️ 2026-10-04: хэмжилтийн өдөр — `lagOf`-тэй НЭГ дүрэм (`measureDayOf`: physAt алга бол
-         одоогийн сард ӨНӨӨДӨР, сарын эцэс биш — ОГТ тайлагнаагүй багцын 0% цэг) */
       planM: act == null ? null : planPctAt(series, measureDayOf(p.label, m?.physAt, today)),
     };
   });
@@ -65,32 +52,17 @@ export const catOf = (p: Pack): PackCat => {
 
 /**
  * ТӨСЛИЙН НЭГДСЭН сарын цэгүүд (`aggregateMonths`) ба биет гүйцэтгэл «ОДОО» (`physNow`).
- *
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): хэрэгжилт нь `Finance.tsx`-д ШИЛЖИВ —
- *    «Багцын мэдээлэл» (`Bagts.tsx`) ч энэ тоог харуулах болсон, харин энэ файл
- *    `Bagts`-ээс утга (`BLOCK_LAYER`) импортолдог тул `Bagts → pkgShared` нь модулийн
- *    мөчлөг үүсгэнэ. Дуудагчид (PkgProg · PkgFin · ТУХ · Дашбоард) хөндөгдөөгүй — эндээс
- *    дахин экспортлоно. Дүрмүүдийн тайлбар `Finance.aggregateMonths`-д.
  */
 export { aggregateMonths, physNow } from '@/modules/Finance';
 
 /**
  * ХУВИЙН НЭГЖИЙН ЗӨРҮҮ (pp) — «бодит − төлөвлөгөө»; сөрөг = хоцорсон («-5.0 pp»).
- *
- * ⚠️ 2026-10-06 (аудит): ижил хэмжигдэхүүнийг «Гүйцэтгэл» (PkgProg) «−5.0%» / «хоцрогдол
- *    5.0%» (`toFixed`), ТУХ «-5.0 pp» (`num`) гэж ӨӨР хэлбэрээр бичдэг байв. Хувь (%) нь
- *    «төлөвлөгөөний 5%» гэж буруу уншигдах тул нэгж нь pp; тоо нь `num()` (хэлний формат).
- *    ТУХ (`tuh/Overview.pp`) ба PkgProg ХОЁУЛАА ЭНЭ функцээр.
- * ⚠️ 2026-10-09 (аудит №6): PkgProg одоо `gdash.gapPts`/`gapPtsWord` («н.х», порталын нэг хэлбэр,
- *    `gdash.ts`-ийн ⚠️ аудит №2) — энэ `pp` зөвхөн ТУХ-д үлдэв; `ppAbs` хэрэглээгүй болж ХАСАГДАВ.
- * @param v бодит − төлөвлөгөө, нэгж хувь (0–100 хуваарьтай); `null` → «—» (0 биш)
  */
 export const pp = (v: number | null | undefined): string =>
   v == null || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${num(v, 1)} pp`;
 
 /**
  * Дэлгэц уншигчид л харагдах (нүдэнд нуугдсан) хэв — графикийн `aria-live` уншилтад.
- * ⚠️ 2026-10-06: порталд нийтлэг `.srOnly` класс алга (харагдацууд CSS хуваалцдаггүй).
  */
 export const SR_ONLY = {
   position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,

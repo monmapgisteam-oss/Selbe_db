@@ -7,33 +7,20 @@
  *        → [бодит бүртгэл: LAYERS/DATASETS]     ← заавар зөв угсрагдсан эсэх
  *        → [бодит tools.ts → бодит ArcGIS]      ← тоо үнэхээр татагдаж байна уу
  *
- * ⚠️ ЮУГ ШАЛГАХГҮЙ ВЭ: загвар ЗӨВ эх сурвалж/талбар сонгож байгаа эсэхийг.
- * Тэр нь зөвхөн жинхэнэ загвартай шалгагдана — энэ тест түүнийг НОТЛОХГҮЙ.
- *
  * Ажиллуулах:  npm run test:agent
  */
 
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
-/* ⚠️ OID-ийн бичиглэлийг ХАТУУ БИЧИХГҮЙ — шинэ үйлчилгээ «OBJECTID», хуучин нь
-   «ObjectID» байсан. Агентын хэрэгсэл талбарын нэрийг амьд схемтэй тулгадаг тул
-   зөрвөл «Ийм талбар алга» гэж унана. */
 import { CASHFLOW_NEW } from '@/lib/services.ts';
 
-/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
 if (process.env.SELBE_LIVE_SKIP) {
   console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
   process.exit(0);
 }
 
 /**
- * ⚠️ ПОРТЫГ ХАТУУ БИЧИХГҮЙ. Урьд нь 8799/8788 гэж тогтоосон байсан бөгөөд
- * өмнөх ажиллалтын үлдэгдэл процесс (эсвэл зэрэг явж буй өөр session) портыг
- * барьсан бол тест `EADDRINUSE`-ээр УНАДАГ — кодод алдаа байхгүй атал.
- * Тест унасан шалтгаан нь орчны зөрчил байхад «код эвдэрсэн» гэж уншигдах нь
- * хамгийн үнэтэй төрлийн худал дохио.
- *
  * Хуурамч сервер нь `listen(0)`-оор өөрөө сул порт олно. Реле нь ТУСДАА
  * процесс тул портоо УРЬДЧИЛАН мэдэх ёстой: сул портыг эзэлж аваад шууд
  * сулласны дараа хүүхэд процесст дамжуулна.
@@ -132,7 +119,6 @@ async function main() {
   MOCK_PORT = mock.address().port;
   RELAY_PORT = await freePort();
 
-  // ⚠️ Модуль ачаалагдахаас ӨМНӨ — `AGENT_API` нь импортын үед тогтдог
   process.env.NEXT_PUBLIC_AGENT_API = `http://127.0.0.1:${RELAY_PORT}`;
 
   const { buildSystemPrompt, allowedLayers, allowedDatasets } = await import('./registry.ts');
@@ -154,22 +140,15 @@ async function main() {
     prompt.includes('total_population') && prompt.includes('АШИГЛАХГҮЙ'),
   );
   check('эх сурвалж заах дүрэм бий', prompt.includes('ЭХ СУРВАЛЖИЙГ'));
-  // ⚠️ Удирдлагад `GUITS_HV` гэдэг утгагүй — хариултын биед техникийн нэр гарах ёсгүй
   check('техникийн нэр хориглосон дүрэм бий', prompt.includes('ТЕХНИКИЙН НЭР ХЭРЭГЛЭГЧИД ХАРАГДАХГҮЙ'));
   check('хоёр баганат хүснэгтийн дүрэм бий', prompt.includes('| Үзүүлэлт | Утга |'));
   check('албан ёсны найруулгын дүрэм бий', prompt.includes('АЛБАН ЁСНЫ'));
   check('бүлэглэсэн жагсаалтын дүрэм бий', prompt.includes('бүлэглэсэн жагсаалтаар'));
 
-  /**
-   * ⚠️ ЗӨВХӨН ТОО шар өнгөтэй. Бүх тод бичвэрийг шар болговол бүлгийн гарчиг,
-   * нэр ч шар болж, хэрэглэгчийн нүд гол тоог ялгахаа болино.
-   */
   const { isNumeric } = await import('./format.ts');
   const numCases = [
     ['21.6%', true], ['3.0%', true], ['0%', true], ['1,788', true], ['20', true],
     ['115.1 тэрбум ₮', true], ['1.86 их наяд ₮', true], ['9.1 нэгж', true],
-    // ⚠️ 2026-09-01: портал мөнгөн дүнг БҮТНЭЭР үзүүлдэг боллоо. Товчилсон
-    //    хэлбэрийг ч таних ёстой (хуучин яриа, хэрэглэгчийн бичсэн текст).
     ['2,660,000,000,000 ₮', true], ['76,000 ₮', true],
     ['15.2 км', true], ['9,082 м²', true], ['4.6 га', true], ['5/7', true],
     ['113 блок', true], ['8,575 айл', true],
@@ -183,13 +162,8 @@ async function main() {
     numBad.length === 0,
     numBad.map(([s]) => s).join(' · '),
   );
-  // ⚠️ Санхүүгийн ганц зөв эх нь ds:cashflow2 (Cashflow /106). BUS_cashflow
-  //    (ds:cashflow) ба INVEST (ds:invest) хасагдсан — буцаж ороогүйг барина.
   check('санхүүгийн эх сурвалж каталогт бий', prompt.includes('ds:cashflow2'));
   check('ХАСАГДСАН `ds:invest` каталогт БУЦАЖ ОРООГҮЙ', !prompt.includes('ds:invest'));
-  // ⚠️ 2026-08-27: `ds:progress` (`Төсөл_Гүйцэтгэл_` тест хүснэгт) төслөөс
-  //    хасагдаж `ds:pkg_progress` (амьд `selbe_bagts_guitsetgel_negtgel`) орлов.
-  //    Агент гүйцэтгэлийн мэдлэггүй үлдэхийг барих нь энэ шалгуурын зорилго.
   check('багцын гүйцэтгэл каталогт бий', prompt.includes('ds:pkg_progress'));
   check('ХАСАГДСАН `ds:progress` каталогт БУЦАЖ ОРООГҮЙ', !prompt.includes('ds:progress'));
 
@@ -202,7 +176,6 @@ async function main() {
     '`ds:habea` нь `habea` эрхгүй бол хаалттай',
     (await runTool('query_feature', { id: 'ds:habea' }, ['plan'])).isError,
   );
-  // ⚠️ Санхүү нээгдсэн ч ЭРХЭЭР хамгаалагдсан хэвээр — энэ бол гол шалгуур
   check(
     'санхүү `finance` эрхтэй хүнд НЭЭЛТТЭЙ',
     !(await runTool('query_feature', { id: 'ds:cashflow2', stats: [{ op: 'count', field: CASHFLOW_NEW.oid, as: 'n' }] }, 'all')).isError,
@@ -273,8 +246,6 @@ async function main() {
   check('тойм амжилттай', !ov.isError, ov.text.slice(0, 140));
   const o = ov.isError ? {} : JSON.parse(ov.text);
   check('олон эх сурвалжаас өгөгдөл олов', (o.sources?.length ?? 0) >= 5, `${o.sources?.length}`);
-  // ⚠️ 2026-08-24: «өртөг тооцоологдов» шалгуур ХАСАГДАВ — `negj_une` дээр
-  //    тогтсон өртгийн загвар зохиомол өгөгдөлтэй байсан тул бүрмөсөн устсан.
   check('давхарга БА өгөгдлийн эх сурвалж хоёулаа орсон', o.sources?.some((x) => x.id.startsWith('ds:')) ?? false);
   check('хэмжээ хүний нэгжээр гарав', o.sources?.some((x) => /га|км|м²|м$/.test(x.qty ?? '')) ?? false);
   console.log(`     → ${o.sources?.length} эх сурвалж · ${((Date.now() - t0) / 1000).toFixed(1)}с`);
@@ -284,11 +255,6 @@ async function main() {
     !(await runTool('zone_overview', { zone: 'Багц 1' }, 'all')).isError,
   );
 
-  /**
-   * ⚠️ АЖЛЫН БАГЦ (Багц 5–21) — эдгээрийн давхарга нь бүсийн атрибутаар
-   * шүүгдэхгүй, БҮХЭЛДЭЭ тэр багцынх. Энэ шалгуургүй байхад «Багц 5.1» гэж
-   * асуухад 0 эх сурвалж гарч байсан.
-   */
   for (const wp of ['Багц 5.1', 'Багц 6.1', 'Багц 17.1']) {
     const r = await runTool('zone_overview', { zone: wp }, 'all');
     const j = r.isError ? {} : JSON.parse(r.text);
@@ -299,11 +265,6 @@ async function main() {
       r.isError ? r.text.slice(0, 60) : `${whole.length} бүтэн`,
     );
   }
-  /**
-   * ⚠️ ЛАТИН БИЧИГЛЭЛ — хэрэглэгч монголоо латинаар бичих нь энэ порталд түгээмэл.
-   * Хөрвүүлэлтгүй бол `bagtsKey('bagts 1')` = «BAGTS1» болж «БАГЦ1»-тэй таарахгүй,
-   * тойм ЧИМЭЭГҮЙ хоосон буцна.
-   */
   for (const lat of ['bagts 1', 'bagts-3.2', 'BAGTS 5.1', 'bus 2']) {
     const r = await runTool('zone_overview', { zone: lat }, 'all');
     check(
@@ -327,17 +288,8 @@ async function main() {
   const p = bp.isError ? {} : JSON.parse(bp.text);
   check('113 блок', p.blocks === 113, `${p.blocks}`);
   check('8,575 айл', p.ail === 8575, `${p.ail}`);
-  /* ⚠️ 2026-08-27: урьд нь «18.2–18.4%» гэсэн ХАТУУ хүрээ байв — тэр тоо
-     `Selbe_guitsetgel_consolidated` (одоо хаагдсан) дээр тогтсон байсан. Эх
-     сурвалж `Bagts_*` бөглөх хуудсууд руу шилжсэн бөгөөд гүйцэтгэл тэнд
-     дөнгөж орж эхэлж байгаа тул хатуу хүрээ тавибал тест байнга улаан байж,
-     ЖИНХЭНЭ эвдрэлийг далдална. Тоо БОДОГДОЖ байгаа эсэхийг л барина —
-     хэрэглэгчийн харах тоог `blockProgress.check` ба `monitor.check`
-     (цагираг ↔ муруйн төгсгөл) баталгаажуулна. */
   check('нийт гүйцэтгэл бодогдов', Number.isFinite(p.overall) && p.overall >= 0 && p.overall <= 100, `${p.overall}%`);
   check('багц бүрээр задарсан', (p.byBagts?.length ?? 0) === 7, `${p.byBagts?.length}`);
-  // ⚠️ 2026-08-24: 'recorded' (давхаргын хуучирсан GUITS_HV) эх өгөгдлөөс гарсан —
-  //    нэгтгэсэн data/112-т тэр талбар байхгүй тул зөвхөн 'actual' үлдэв.
   check('бодит хувь бий', p.byBagts?.every((b) => 'actual' in b));
   check('хамгийн хоцорсон блокууд гарав', (p.slowest?.length ?? 0) > 0);
   check('эрхгүй бол тооцоолол ч хаалттай', (await runTool('compute', { kind: 'building_progress' }, [])).isError);
@@ -380,11 +332,7 @@ async function main() {
   /* ── Тест 6: реле рүү явсан хүсэлтийн бүтэц ── */
   console.log('\n6. Реле рүү явсан хүсэлт');
   const first = seen[0] ?? {};
-  /* ⚠️ 2026-10-19: релегийн загварыг ТЕСТИЙН процессын `AGENT_MODEL`-той ЖИШИХГҮЙ — реле өөрийн орчноо
-     (`.env.development.local`, хостын тохиргоо) уншдаг тул хоёр процесс өөр утгатай байж болно. Зөвхөн
-     Claude-ийн загварын id мөн эсэх. */
   check('загвар нь Claude-ийн id', typeof first.model === 'string' && /^claude-[a-z0-9.-]+$/i.test(first.model), first.model);
-  /* ⚠️ 2026-10-19: Opus 5.5 дээр явцын тэмдэглэл (`display: 'updates'`), бусад загварт `thinking` ОГТ илгээхгүй */
   check(
     'thinking — зөвхөн Opus 5.5-д display: updates',
     /^claude-opus-5-5(?![0-9])/i.test(first.model ?? '')
@@ -392,8 +340,6 @@ async function main() {
       : first.thinking === undefined,
     JSON.stringify(first.thinking),
   );
-  /* ⚠️ 2026-10-15: анхдагч 'low' → 'medium' (`server.mjs`-ийн ⚠️). Тогтмолыг хатуу
-     бичихгүй — `AGENT_EFFORT`-оор солигддог; зөвхөн ЗӨВШӨӨРӨГДСӨН утга эсэхийг шалгана. */
   check('effort тохируулагдсан', ['low', 'medium', 'high'].includes(first.output_config?.effort));
   check('заавар КЭШЛЭГДЭХЭЭР явсан', first.system?.[0]?.cache_control?.type === 'ephemeral');
   check('4 хэрэгсэл дамжсан', first.tools?.length === 4, `${first.tools?.length}`);

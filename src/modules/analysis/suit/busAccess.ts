@@ -1,13 +1,5 @@
 /**
  * АВТОБУСНЫ ХҮРТЭЭМЖ — буудал хүртэлх зай, үйлчилгээ дутмаг хүн ам, буудлын эрэлт.
- *
- * ⚠️ Зай нь ШУУД (Евклид) зай — гудамжаар алхах БОДИТ зам БИШ. Бодит алхалт
- * блокоор тойрдог тул энэ нь ҮРГЭЛЖ өөдрөг тал руугаа алдана; 400/800 м-ийн
- * босго (`transport.ts`) нь салбарын жишиг тул харьцуулалт хэвээр утгатай.
- *
- * ⚠️ `PopulationUnserved` нь ЗӨВХӨН ОРОН СУУЦНЫ хүн амыг тоолно — сургууль,
- * оффисын багтаамжийг «үйлчилгээгүй үлдсэн оршин суугч» гэж нэрлэх нь буруу
- * (тэд тэнд амьдардаггүй). `[[capacity-vs-population-fields]]`-ийн дүрэм.
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
@@ -24,7 +16,6 @@ export type BusStop = { oid: number; x: number; y: number };
 
 type QueryResp = {
   features?: { attributes?: Record<string, unknown>; geometry?: { x: number; y: number } }[];
-  /** ⚠️ Хуудаслалтын ТӨГСГӨЛИЙГ энэ шийднэ — мөрийн тоог 2000-тай жишихээр БИШ */
   exceededTransferLimit?: boolean;
   error?: { message?: string };
 };
@@ -35,24 +26,12 @@ export async function loadBusStops(signal?: AbortSignal): Promise<BusStop[]> {
   if (!def) throw new Error(tr('Автобусны давхарга каталогт алга: {0}', BUS_LAYER_ID));
 
   const out: BusStop[] = [];
-  /*
-   * ⚠️ ХУУДАСЛАНА (2026-09-15-ны аудит). Урьд нь ганц хүсэлтээр татаж,
-   *    `exceededTransferLimit`-ыг шалгадаггүй байв: давхарга 2,000 буудлаас
-   *    хэтрэх (эсвэл үйлчилгээний `maxRecordCount` 1,000 байх) тохиолдолд
-   *    илүүдэл буудал ЧИМЭЭГҮЙ унаж, `busAccess()` нь барилгуудыг байхгүй
-   *    буудал руу оноон `distM`-ийг хэтрүүлж, «>800 м дутмаг» KPI ба
-   *    `popUnserved` худал өсдөг байв. Алдаа гардаггүй тул илрэхгүй.
-   *
-   * ⚠️ `orderByFields` ЗААВАЛ — эрэмбэгүй хуудаслалт нь заагийн мөрийг
-   *    давхардуулах/унагаах бөгөөд мөн чимээгүй (`buildings.ts`-ийн дүрэм).
-   */
   for (let off = 0; ; ) {
     const q = new URLSearchParams({
       where: '1=1', outFields: 'objectid', returnGeometry: 'true',
       outSR: '3857', orderByFields: 'objectid ASC',
       resultOffset: String(off), resultRecordCount: '2000', f: 'json',
     });
-    /* ⚠️ 2026-09-30: GET + `tokenQs` → `query.arcgisPost` (токен биеэр; timeout · слот · 429 backoff) */
     const r = await arcgisPost<QueryResp>(`${layerUrl(def)}/query`, Object.fromEntries(q), { signal });
     if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
 
@@ -94,7 +73,6 @@ export type BusAccess = {
   access: BuildingAccess[];
   /** Зурвас бүрд ногдох ОРОН СУУЦНЫ хүн ам (good / ok / poor) */
   popByBand: Record<BusBand, number>;
-  /** ⚠️ 800 м-ээс ХОЛ орон сууцны хүн ам — `popByBand.poor`-ын нэр томьёо */
   popUnserved: number;
   /** Буудал бүрийн эрэлт — ойрын барилгуудын зорчилт × нийтийн тээврийн хувь */
   stopDemand: Float64Array;
@@ -104,10 +82,6 @@ export type BusAccess = {
 
 /**
  * Барилга бүрийг ХАМГИЙН ОЙРЫН буудалд оноож, хүртээмж ба эрэлтийг бодно.
- *
- * ⚠️ Буудлын эрэлтэд ЗАЙН босго тавихгүй: 800 м-ээс хол барилга ч тухайн буудлыг
- * л ашиглана (өөр сонголт байхгүй). Босго нь ХҮРТЭЭМЖИЙН чанарыг ангилахад л
- * хэрэглэгдэнэ — эрэлтийг таславал нийт зорчигчийн тоо алдагдана.
  */
 export function busAccess(
   buildings: BuildingPt[],
@@ -138,7 +112,6 @@ export function busAccess(
     const distM = bestD / upm;
     const band = busBand(distM);
     access[b] = { stop: bestI, distM, band };
-    // ⚠️ ЗӨВХӨН орон сууц — багтаамжийг хүн ам гэж тоолохгүй
     if (bld.cat === 'residential') popByBand[band] += bld.population;
     stopDemand[bestI] += bld.trips * MODE_SPLIT.transit;
   }

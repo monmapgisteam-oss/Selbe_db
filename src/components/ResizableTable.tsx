@@ -10,20 +10,6 @@
  * `<table>`-ыг ингэж солиход л хангалттай — нүд бүрийг гар аргаар өөрчлөх
  * шаардлагагүй. Өргөн нь баганын ДУГААРААР (`--cw-1`, `--cw-2`…) бүрхүүл дээр
  * бичигдэж, CSS-ийн `nth-child` дүрэм түүнийг уншина.
- *
- * ⚠️ Бариулуудыг `<th>` дотор БИШ, ТУСДАА давхаргад байрлуулав. React-ийн
- *    удирддаг элемент рүү DOM хүүхэд шургуулбал дараагийн зурагт алга болно.
- *    Давхарга нь толгойн нүдний ирмэгүүдийг ХЭМЖИЖ байрлана.
- *
- * ⚠️ Чирэх явцад React-ийн төлөв ХӨДӨЛӨХГҮЙ — зөвхөн CSS хувьсагчийг шууд
- *    бичнэ. Тайлангийн зарим хүснэгт хэдэн зуун мөртэй тул хөдөлгөөн бүрд
- *    дахин зурвал бариул гацна. Төлөв ба localStorage-д `pointerup` дээр л
- *    нэг удаа буулгана.
- *
- * ⚠️ `sheet` модулийн `useColWidths`-ээс ЯЛГААТАЙ: тэр нь баганын СЕМАНТИК
- *    ангиллаар (`--w-ajil`) ажилладаг бөгөөд давтагдах барилгын багануудыг нэг
- *    дор өөрчилдөг — тэр хуудасны бүтцэд зориулагдсан. Энэ нь дурын хүснэгтэд
- *    наалддаг ерөнхий хувилбар.
  */
 
 import {
@@ -39,11 +25,6 @@ import st from './resizableTable.module.css';
 
 /**
  * Чирэх бариулын tooltip/aria бичвэр — НЭГ эхээс.
- *
- * ⚠️ Урьд нь яг ижил мөр ResizableTable, SplitGrip, sheet/colWidths гурван
- * файлд тус тусдаа хатуу бичигдсэн байв: нэгийг нь засахад бусад нь хоцорч,
- * дээр нь tr()-гүй тул EN горимд монголоор үлддэг байв. Хэл нь модуль ачаалах
- * үед тогтдог (i18nCore) тул модулийн түвшний tr() аюулгүй.
  */
 export const GRIP_TITLE = () => tr('Чирж өргөнийг тохируулна · давхар товшвол анхны хэмжээ');
 export const GRIP_ARIA = () => tr('Баганы өргөн');
@@ -59,16 +40,6 @@ const MAX_W = 2000;
 
 /**
  * localStorage-оос уншсан утгын ХЭЛБЭРИЙГ шалгана.
- *
- * ⚠️ 2026-09-11: урьд нь `JSON.parse(raw) as Widths` гэж ШУУД хөрвүүлдэг байв.
- * `try/catch` нь зөвхөн ШИДЭЛТИЙГ (эвдэрсэн JSON) барьдаг — хүчинтэй JSON
- * боловч БУРУУ хэлбэр (`"abc"`, `[1,2]`, `{"0":"x"}`) чимээгүй нэвтэрч, доор
- * `--cw-1: ${v}px` гэж бичигдэхэд `abcpx` гэсэн хүчингүй CSS гарч хүснэгтийн
- * баганууд задардаг байв. `SplitGrip.tsx`-ийн `parseSides`-тэй ИЖИЛ дүрэм.
- *
- * ⚠️ ТҮЛХҮҮРийг ч шалгана: `Number(k)` нь `__proto__` мэтийн түлхүүрт `NaN`
- * өгдөг бөгөөд `--cw-NaNpx` болж гарах, эсвэл прототипийн талбарт хүрэх зам
- * нээгддэг. Зөвхөн БҮХЭЛ, сөрөг бус индекс зөвшөөрнө.
  */
 function parseWidths(v: unknown): Widths {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return {};
@@ -76,8 +47,6 @@ function parseWidths(v: unknown): Widths {
   for (const [k, n] of Object.entries(v as Record<string, unknown>)) {
     const i = Number(k);
     if (!Number.isInteger(i) || i < 0) continue;
-    // ⚠️ `Number(n)` БИШ, `typeof === 'number'`: `Number(null)` нь 0 өгдөг тул
-    //    хог утга «хүчинтэй 0 өргөн» болж, багана бүрмөсөн алга болно.
     if (typeof n === 'number' && Number.isFinite(n) && n >= MIN_W && n <= MAX_W) {
       out[i] = Math.round(n);
     }
@@ -99,16 +68,12 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   const [edges, setEdges] = useState<number[]>([]);
   /** Толгойн өндөр — бариул зөвхөн түүгээр сунана (мөрийн доогуур биш). */
   const [headH, setHeadH] = useState(0);
-  /** ⚠️ 2026-09-25: бариул бүрийн баганын нэр — дэлгэц уншигчид `GRIP_ARIA` л
-      давтагдаж, аль баганын бариул болохыг ялгах аргагүй байв. */
   const [labels, setLabels] = useState<string[]>([]);
 
-  // ⚠️ localStorage-ийг ЭФФЕКТЭД уншина — эхний зурагт серверийнхтэй ижил
-  // байхгүй бол hydration зөрнө.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS + storeKey);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setW(parseWidths(JSON.parse(raw)));
     } catch {
       /* хадгалалт байхгүй/эвдэрсэн — анхны өргөнөөр */
@@ -126,8 +91,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     [storeKey],
   );
 
-  // ⚠️ Хадгалахдаа ЭНД-ээс уншина: `setW(p => { save(p); … })` гэвэл state-ийн
-  // шинэчлэгч цэвэр биш болж StrictMode-д хоёр дахин ажиллана.
   const cur = useRef<Widths>({});
   useSyncRef(cur, w);
 
@@ -136,11 +99,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     const wrap = wrapRef.current;
     const ths = wrap?.querySelectorAll<HTMLTableCellElement>('thead tr:last-child > th');
     if (!wrap || !ths?.length) return;
-    /* ⚠️ 2026-10-09 (a11y, WCAG 1.3.1): `<th>`-д `scope` — толгой `col`, биеийн мөрийн
-       толгой `row`. Хүснэгтийн агуулгыг дуудагч (`children`) зурдаг тул энд DOM-оор
-       нөхнө; дуудагч өөрөө `scope` өгсөн бол ХҮНДЭТГЭНЭ (дарахгүй). React нь өөрийн
-       мэдэхгүй атрибутыг арилгадаггүй тул дараагийн зурагт үлдэнэ; шинээр үүссэн нүдийг
-       `children`-ийн өөрчлөлтөөр дахин дуудагдах энэ хэмжилт барина. */
     wrap.querySelectorAll<HTMLTableCellElement>('th:not([scope])').forEach((th) => {
       th.setAttribute('scope', th.closest('thead') ? 'col' : 'row');
     });
@@ -163,10 +121,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     setHeadH((p) => (p === h ? p : h));
   }, []);
 
-  /* ⚠️ 2026-09-25 (аудит 8): баганын өргөн (`w`) солигдсоны ДАРАА хэмжинэ — урьд нь
-     `bump`/`finish`/`reset` нь `setW`-ийн дараа шууд `measure()` дууддаг тул DOM
-     хараахан шинэ `--cw-*`-ээр зурагдаагүй, бариулын байрлал НЭГ алхам хоцордог
-     байв (гарын товчлуураар өргөсгөхөд ил). Layout effect нь commit-ийн дараа. */
   useLayoutEffect(() => { measure(); }, [measure, w]);
 
   // Агуулга/өргөн өөрчлөгдөхөд ирмэгүүд шилжинэ — ажиглаж дагана.
@@ -182,8 +136,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   /** `snap` — `onDown`-д ТҮР тогтоосон баганын индексүүд (хөдөлгөөнгүй бол буцаана). */
   const drag = useRef<{ i: number; x: number; w: number; px?: number; snap: number[] } | null>(null);
 
-  /* ⚠️ 2026-09-29 (аудит 10): чирэлтийн ДУНДУУР unmount болбол `finish` ажиллахгүй,
-     body-ийн класс үлдэнэ — unmount дээр заавал цэвэрлэнэ (`Portal.useColumnResize`). */
   useEffect(() => () => { document.body.classList.remove(st.dragging); }, []);
 
   const onDown = (i: number) => (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -199,9 +151,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     e.currentTarget.setPointerCapture(e.pointerId);
     e.currentTarget.dataset.drag = '1';
     document.body.classList.add(st.dragging);
-    // ⚠️ Чирч эхлэх мөчид БҮХ баганын одоогийн өргөнийг тогтооно. `fixed`
-    //    байрлуулалт руу шилжихэд бусад багана нь агуулгаараа биш, харагдаж
-    //    байсан өргөнөөрөө үлдэх ёстой — эс бөгөөс хүснэгт бүхэлдээ үсэрнэ.
     if (wrap && !wrap.style.getPropertyValue('--cw-1')) {
       wrap
         .querySelectorAll<HTMLTableCellElement>('thead tr:last-child > th')
@@ -234,11 +183,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     document.body.classList.remove(st.dragging);
     /**
      * Хөдөлгөөнгүй товшилт — өөрчлөлт алга.
-     *
-     * ⚠️ 2026-09-25: `onDown`-ий ТҮР тогтоолтыг БУЦААНА. Урьд нь энд шууд
-     *    буцдаг тул бүх баганын `--cw-k` нь React-ийн мэдэлгүй inline утга болж
-     *    үлдэж, `<col>`-оор хүснэгтийг хадгалаагүй өргөнд нь хөлдөөдөг байв
-     *    (давхар товшилтын `reset` ч эхлээд ийм товшилт хоёр үүсгэнэ).
      */
     if (d.px == null) {
       const wrap = wrapRef.current;
@@ -263,10 +207,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   /** Бүх баганыг анхны өргөнд нь буцаана (бариул дээр давхар товшилт). */
   const reset = () => {
     const wrap = wrapRef.current;
-    /* ⚠️ 2026-09-25: `k <= 24` тогтмол БАЙСАН — хүснэгт 256 багана хүрдэг
-       (доорх `<col>`-ийн ⚠️) тул 25-аас хойших багана хуучин өргөндөө
-       хөлдөж үлддэг байв. Бүрхүүл дээрх БҮХ `--cw-*`-ийг арилгана
-       (хуулбар дээр гүйнэ — `removeProperty` жагсаалтыг өөрчилдөг). */
     if (wrap) {
       for (const p of Array.from(wrap.style)) {
         if (p.startsWith('--cw-')) wrap.style.removeProperty(p);
@@ -283,9 +223,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
     const base =
       cur.current[i] ?? (th ? Math.round(th.getBoundingClientRect().width) : MIN_W);
     const next: Widths = { ...cur.current, [i]: Math.max(MIN_W, base + delta) };
-    /* ⚠️ 2026-09-25: БУСАД БАГАНЫГ ТОГТООНО (`finish`-ийн ижил). Урьд нь зөвхөн
-       энэ баганыг бичдэг тул эхний товчлуураар хүснэгт `fixed` байрлалд шилжиж,
-       өргөнгүй бусад багана тэгш хуваагдан бүх хүснэгт үсэрдэг байв. */
     ths?.forEach((cell, k) => {
       if (next[k] == null) next[k] = Math.round(cell.getBoundingClientRect().width);
     });
@@ -308,11 +245,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
       style={style}
     >
       <table className={className}>
-        {/* ⚠️ Өргөнийг `<col>`-оор өгнө, CSS-ийн `nth-child` жагсаалтаар БИШ:
-            Санхүүжилтийн хүснэгт баганаа ӨГӨГДЛӨӨС үүсгэдэг тул 256 багана
-            хүрч болно. Жагсаалт нь зайлшгүй хязгаартай бөгөөд хэтэрсэн
-            багана нь чирэгдэх мэт харагдаад ҮНЭНДЭЭ хөдөлдөггүй байв.
-            `<col>` нь хүснэгтийн стандарт механизм — хязгааргүй. */}
         {cols > 0 && (
           <colgroup>
             {Array.from({ length: cols }, (_, i) => (
@@ -339,10 +271,6 @@ export function ResizableTable({ storeKey, className, children }: Props) {
             onPointerMove={onMove}
             onPointerUp={finish}
             onPointerCancel={finish}
-            /* ⚠️ 2026-09-29 (аудит 10): барилт өөр шалтгаанаар алдагдвал `pointerup`
-               ирэхгүй — `body.dragging` курсор гацдаг (`Portal.useColumnResize`-ийн
-               2026-09-25-ны засвартай ижил). `finish` нь `drag.current`-оор давхар
-               дуудлагаас хамгаалагдсан. */
             onLostPointerCapture={finish}
             onDoubleClick={reset}
             onKeyDown={(e) => {

@@ -1,27 +1,5 @@
 /**
  * БӨГЛӨХ ХУУДАСНЫ ЖААЗНЫ ХӨТЧИЙН КЭШ (IndexedDB) — `loadRows(..., { persist: true })` (2026-10-22, гүйцэтгэлийн аудит).
- *
- * ⚠️ ЯАГААД: төлөвлөгөөт муруй (`planProgress.loadPlanCurve`) 10 хуудасны сүүлийн жаазыг бүтнээр уншдаг — 54 хүсэлт ·
- *    22.5 МБ JSON (gzip ~3 МБ); `loadFinData` · `loadExecReport` · `loadScoreBase` түүгээр, `loadVarianceKpi` 24 хуудсаар
- *    (10.7 МБ). Санах ойн кэш (`curveP` · `sheetShared`) хуудас дахин ачаалахад үхдэг тул НЭЭЛТ БҮРД бүгд дахин татагдаж,
- *    хөтөч ~22 МБ JSON задалдаг байв. Одоо мөрүүд хөтчид БАГАНААР (~5 МБ, задлах ~16 мс) хадгалагдана.
- * ⚠️ ЗӨВ БАЙДАЛ ЭХЭНД: кэшийг хэрэглэхийн ӨМНӨ хуудас бүрд НЭГ хямд тандалт (`probeStats` — count/min/max(objectid) ·
- *    max(last_edited_date) · max(buglusun_ognoo), ~50 мс). Тэмдэг ЯГ таарвал л хадгалсан мөрийг авна: нэмэх/устгах →
- *    count/max(oid), газар дээрх засвар (Хуваарийн `applyUpdates` г.м.) → max(last_edited_date). 24/24 хуудсанд editor
- *    tracking асаалттай, Enterprise энэ статистикийг хүлээн авдаг — 2026-10-22-нд амьдаар (зөвхөн уншиж) шалгав.
- *    `CURRENT_TIMESTAMP` г.м. илэрхийлэл `outStatistics`-д 500 тул ЗӨВХӨН энгийн талбар.
- * ⚠️ ТАНДАЛТ ЖААЗ ТАТАХААС ӨМНӨ: хооронд нь засвар орвол хадгалсан тэмдэг хуучин, өгөгдөл шинэ болно — дараагийн
- *    тандалт зөрж дахин татна (аюулгүй чиглэл). Эсрэг дараалал хуучин өгөгдлийг шинэ тэмдэгтэй хадгалж мөнхөд хуучруулна.
- * ⚠️ Тандалтын max(buglusun_ognoo) нь `latestWhere`-ийн max асуулгыг ОРЛОНО — кэш хоосон үед ч хүсэлтийн тоо өсөхгүй.
- * ⚠️ ХЭРЭГЛЭГЧЭЭР ТҮЛХҮҮРЛЭХГҮЙ: тандалт ОДООГИЙН хэрэглэгчийн токеноор явдаг — эрхгүй бол унаж кэш ашиглагдахгүй,
- *    эрхтэй бол сервер дээрх ЯГ тэр өгөгдөл (хуудсанд мөрийн түвшний эрх байхгүй; байсан ч count зөрж дахин татна).
- * ⚠️ ЗӨВХӨН УНШИХ самбарууд (`persist`) — бичих (`strict`) · засварлах харагдац (FillNew · Huvaari · хянагч) ҮРГЭЛЖ
- *    серверээс. Аппын өөрийн бичилт (`BAGTS_SHEET`) кэшийг бүхэлд нь хаяна; «↻ Шинэчлэх» / таб руу буцах
- *    (`invalidateAll`) хаяхгүй — тандалт өөрөө шинэлэг эсэхийг шалгана (эс бөгөөс таб буцах бүрд 22 МБ).
- * ⚠️ 24 цагаас хуучин бичлэг тандалт таарсан ч ДАХИН татагдана — тандалтын хамрахгүй онцгой тохиолдлын (серверийн цаг
- *    ухрах г.м.) хамгийн их хоцрогдол.
- * ⚠️ IndexedDB алга (Node тест · хувийн горим · хаалттай storage) эсвэл аливаа алдаа → кэшгүй хуучин зам (no-op).
- * ⚠️ React импортлохгүй — `sheetCache.check.mjs` Node дээр ачаална.
  */
 import { register, refreshEpoch } from './dataBus';
 
@@ -60,11 +38,9 @@ export type FrameStore = {
 
 /**
  * Бичлэгийн хувилбар — өөрчилбөл хуучин бичлэг таарахгүй (дахин татна).
- * ⚠️ `bagtsSheet.latestWhere` · `fetchFrame`-ийн ЖААЗ СОНГОХ дүрэм өөрчлөгдвөл ЗААВАЛ өсгөнө — хадгалсан `where` нь
- *    хуучин кодын шийдвэр (24 цагийн `MAX_AGE_MS` л хязгаарладаг).
  */
 export const FRAME_VER = 1;
-/** Хамгийн их нас — тандалт таарсан ч үүнээс хуучин бол дахин татна (дээрх ⚠️) */
+/** Хамгийн их нас — тандалт таарсан ч үүнээс хуучин бол дахин татна (дээрх) */
 export const MAX_AGE_MS = 24 * 3600_000;
 /** Editor tracking-ийн огнооны талбар — Enterprise hosted давхаргын `editFieldsInfo.editDateField` (24/24) */
 export const EDIT_DATE_FIELD = 'last_edited_date';
@@ -84,7 +60,6 @@ const fin = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 
 /**
  * Тандалтын хариу → тэмдэг. Танихгүй/дутуу бол `null` (кэш ашиглахгүй).
- * ⚠️ Мөртэй атлаа `le` хоосон (editor tracking бөглөгдөөгүй) бол `null` — газар дээрх засварыг таньж чадахгүй.
  */
 export function sigFrom(a: Record<string, unknown> | null | undefined, hasFill: boolean): Sig | null {
   if (!a) return null;
@@ -150,9 +125,6 @@ export function decodeFeats(e: Enc | null | undefined): Feature[] | null {
 /* ══════════════════ Сан ══════════════════ */
 
 const DB_NAME = 'selbe-sheet-frames';
-/* ⚠️ 2026-10-26: 1 → 2 — хөрвүүлэх хүснэгт (`entMap`) хасагдаж мөрийн түлхүүр Enterprise-ийн БОДИТ (жижиг үсэгтэй) нэр
-   болсон; хуучин хувилбарын жааз AGOL үсгээр (`Ажил_гүйцэтгэл`) хадгалагдсан тул тэмдэг таарсан ч уншигдахгүй —
-   `onupgradeneeded` санг устгаж дахин үүсгэнэ (нэг удаагийн бүтэн ачаалал). */
 const DB_VER = 2;
 const OS = 'frames';
 
@@ -166,7 +138,6 @@ function idbStore(): FrameStore | null {
   const open = (): Promise<IDBDatabase | null> => (dbP ??= new Promise<IDBDatabase | null>((resolve) => {
     let done = false;
     const end = (db: IDBDatabase | null) => { if (!done) { done = true; resolve(db); } };
-    /* ⚠️ Зарим хөтөч (хувийн горим) `open`-ийг хариугүй орхидог — 3 с-ээс хойш кэшгүй үргэлжилнэ */
     const timer = setTimeout(() => end(null), 3000);
     try {
       const rq = factory.open(DB_NAME, DB_VER);
@@ -216,7 +187,6 @@ function idbStore(): FrameStore | null {
     get: (key) => run<FrameRec>('readonly', (os) => os.get(key) as IDBRequest<FrameRec>),
     put: async (key, rec) => {
       const ok = await run('readwrite', (os) => os.put(rec, key));
-      /* ⚠️ Квот дүүрсэн г.м. — бүх кэшийг хаяж зай гаргана (дараагийн нээлт дахин дүүргэнэ) */
       if (ok == null) { await run('readwrite', (os) => os.clear()); return; }
       if (!pruned) { pruned = true; await prune(); }
     },
@@ -242,12 +212,6 @@ export function setFrameStore(s: FrameStore | null): void {
  */
 let gen = 0;
 
-/**
- * ⚠️ 2026-10-22: аппын ӨӨРИЙН бөглөх хуудасны бичилт (`bagtsSheet.applyAdds/Updates/Deletes` → `BAGTS_SHEET`) кэшийг
- *    бүхэлд нь хаяна — тандалт хүрэлцэх ёстой ч (editor tracking) өөрийн бичилтэд найдах шаардлагагүй. `invalidateAll`
- *    («↻ Шинэчлэх» · таб буцах · хэл/нэвтрэлт) мөн слотыг дууддаг тул ЯЛГАНА: тэр нь `refreshEpoch`-ийг слотын
- *    ДАРАА синхрон өсгөдөг — microtask-д өссөн бол бүтэн шинэчлэл (хадгална, тандалт шалгана).
- */
 register(() => {
   const r0 = refreshEpoch();
   queueMicrotask(() => {

@@ -1,14 +1,7 @@
 /**
  * `CATALOG_LAYER_IDS` (ТАТАХ жагсаалт) нь НИЙЛБЭР/каталогийн бүх id-ийн ДЭЭД ОЛОНЛОГ.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/services/groups.check.mjs
- *
- * ⚠️ 2026-10-09 (аудит №6): ЯАГААД. `groups.ts`-ийн `CATALOG_LAYER_IDS`-ийн ⚠️-д бичсэн
- *    2026-09-04-ний регресс: `catalogIdsOf`-оор каталогоос нуусан 9 id ТАТАХ жагсаалтаас
- *    ч унаж, `ViewPanel` (`PLAN_LAYER_IDS`-ээр нийлбэрлэдэг) `map.get(id)?.n ?? 0` →
- *    3,564 объект ЧИМЭЭГҮЙ 0 болж, «Барилга» бүлэг самбараас алга болсон. Тэр дүрэм
- *    («НИЙЛБЭРт орохгүй ч ТАТАГДСААР байх ёстой») зөвхөн тайлбарт байсан — энэ шалгуур
- *    кодоор барина. Сүлжээ ХЭРЭГГҮЙ — статик жагсаалтууд.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/services/groups.check.mjs
  *
  * Дүрэм:
  *   1. `PLAN_LAYER_IDS` (нийлбэр) ⊆ `CATALOG_LAYER_IDS` — `auth` давхаргаас бусад.

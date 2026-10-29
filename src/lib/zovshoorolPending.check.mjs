@@ -1,11 +1,7 @@
 /**
  * ЗӨВШӨӨРӨЛ — ХООСОН ТӨЛӨВ · ТӨЛӨВИЙН ШҮҮЛТ · УДАЖ БУЙ «ХҮЛЭЭГДЭЖ БУЙ» (сүлжээгүй).
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/zovshoorolPending.check.mjs
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас). `zovshoorol.check.mjs` нь АМЬД
- * үйлчилгээ шаарддаг (токенгүй бол бүхэлдээ алгасагдана) тул цэвэр логикийг
- * ЭНД тусад нь — токенгүй машин дээр ч ажиллана.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/zovshoorolPending.check.mjs
  *
  * Хамгаалж буй алдаа:
  *  1. Хүлээлтийн насыг `ognoo`-оор тоолох — тэр нь ШИЙДВЭРЛЭСЭН огноо тул
@@ -68,7 +64,6 @@ assert.equal(sm.stale, 1);
 assert.equal(sm.wait, 3, '`stale` нь `wait`-ийн дэд олонлог — давхар тоолохгүй');
 assert.equal(sm.ok + sm.wait + sm.no + sm.unknown, sm.total);
 assert.equal(summarize(rows).stale, 0, '`now`-гүй дуудагчид (CEO, тайлан) өөрчлөгдөхгүй');
-/* ⚠️ Хүлээлт нь хэвийн явц — `alert`-ийг (улаан багц) өдөөхгүй */
 assert.equal(summarize([rows[0]], NOW).alert, false);
 console.log('✅ хураангуй: удаж буй тоо, alert өөрчлөгдөөгүй');
 
@@ -94,10 +89,8 @@ console.log('✅ бүртгэгдсэн цаг: CreationDate → EditDate → nu
   assert.match(src, /tr\('Зөвшөөрөл бүртгэгдээгүй'\)/, 'Зөвшөөрөл: хоосон төлөвийн бичвэр');
   assert.match(src, /filterZov\(rows, flt, now\)/, 'Зөвшөөрөл: төлөвийн шүүлт алга');
   assert.match(src, /isStalePending\(z, now\)/, 'Зөвшөөрөл: удаж буй тэмдэглэгээ алга');
-  /* ⚠️ `Date.now()` render дотор БИШ — ачаалалтын агшинд */
   assert.doesNotMatch(src.replace(/setNow\(Date\.now\(\)\)/g, ''), /Date\.now\(\)/,
     'Зөвшөөрөл: render доторх Date.now() цэвэр бус');
-  /* ⚠️ анивчих нь ЗӨВХӨН «Зөвшөөрөөгүй» */
   const css = fs.readFileSync('src/modules/zovshoorol.module.css', 'utf8');
   const stale = /\.stale\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
   assert.ok(stale, '.stale класс алга');

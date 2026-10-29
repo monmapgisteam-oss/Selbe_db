@@ -14,12 +14,6 @@ import compareStyle from './hesegCompare.module.css';
  * «Ерөнхий төлөвлөгөө» → «Detail»: ДАВХАРГЫН ТОВЧ (2026-10-13, хэрэглэгчийн заавар:
  * «detail дээр basemap-ийн доор layer-ийн icon үүсгээд дотор нь одоо, detail гэж
  * ангилаад унтрааж асаадаг болго»).
- *
- * ⚠️ ArcGIS-ийн `view.ui` (баруун дээд булан) руу ШУУД нэмнэ — суурь зургийн
- *    галерейн (`MapCanvas` §bmExpand, `expandIcon: 'basemap'`) ЯГ ДООР (индекс нь тэр Expand-ийнхаас +1). Агуулгыг
- *    React portal-аар зурна.
- * ⚠️ Зөвхөн ХАРАГДАХ эсэхийг удирдана (`hidden` → Portal `visible`-ээс хасна);
- *    давхцлын тооцоо (`planOverlap.ts`) давхаргыг унтраасан ч ХЭВЭЭР.
  */
 
 /**
@@ -32,7 +26,6 @@ export type DetailGroup = { key: string; title: string; items: DetailItem[] };
 /**
  * ХАРЬЦУУЛАХ (SWIPE) ТОВЧ — «Хэсэгчилсэн ЕТ»-ийн зургийн баруун дээд буланд, FULLSCREEN-ий ДООР
  * (2026-10-13, хэрэглэгч: «Swipe button дарахад compare хийдэг байх, Fullscreen доор байршуул»).
- * ⚠️ `view.ui`-д ТӨГСГӨЛД нь нэмнэ — `MapCanvas` суурь зураг, fullscreen-ийг өмнө нь нэмдэг.
  */
 export function SwipeToggle({ on, setOn }: { on: boolean; setOn: (f: (v: boolean) => boolean) => void }) {
   const { view } = useMap();
@@ -43,7 +36,7 @@ export function SwipeToggle({ on, setOn }: { on: boolean; setOn: (f: (v: boolean
     const controls = view.ui.getComponents('top-right');
     const fullscreen = controls.findIndex((x) => x instanceof HTMLElement && x.dataset.mapControl === 'fullscreen');
     view.ui.add(el, { position: 'top-right', index: fullscreen < 0 ? 3 : fullscreen + 1 });
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ portal-ын сав нь ArcGIS-ийн `view.ui`-д НЭМЭГДСЭНИЙ дараа л бий болно (гаднын DOM)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHost(el);
     return () => { view.ui.remove(el); setHost(null); };
   }, [view]);
@@ -98,9 +91,6 @@ export function DetailLayerMenu({
   const [host, setHost] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
-  /* ⚠️ 2026-10-23 (UX аудит S12): `role="dialog"` атлаа Esc ба фокусын урхигүй байв — гараар нээсэн хүн
-     жагсаалт руу орж чадахгүй, хаах аргагүй. Нээхэд фокус эхний чагт руу, Tab дотроо эргэлдэнэ, Esc/хаахад
-     фокус «Давхарга» товч руу буцна (`useFocusTrap`). Гадна товшиход хаагдах зан хэвээр. */
   const panelRef = useRef<HTMLDivElement | null>(null);
   useFocusTrap(panelRef, open);
 
@@ -108,13 +98,10 @@ export function DetailLayerMenu({
     if (!view) return;
     const el = document.createElement('div');
     el.className = s.lyrHost;
-    /* ⚠️ 2026-10-23: индексийг ОДООГИЙН бүрэлдэхүүнээс — суурь зургийн галерейн ЯГ ДООР. Тогтмол `index: 1` нь `zoom`
-       баруун дээд 0-д шилжсэнээс хойш ойртуулах ба галерейн ХООРОНД орж, бүлгийн зай (`globals.css` `.esri-zoom:has(+ .esri-expand)`)
-       алга болдог байв */
     const controls = view.ui.getComponents('top-right');
     const bm = controls.findIndex((x) => (x as { expandIcon?: string }).expandIcon === 'basemap');
     view.ui.add(el, { position: 'top-right', index: bm < 0 ? controls.length : bm + 1 });
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ portal-ын сав нь ArcGIS-ийн `view.ui`-д НЭМЭГДСЭНИЙ дараа л бий болно (гаднын DOM)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHost(el);
     return () => {
       view.ui.remove(el);

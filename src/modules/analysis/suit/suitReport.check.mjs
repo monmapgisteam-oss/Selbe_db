@@ -9,8 +9,6 @@ import { urbanScore } from '../../../lib/analysis/score.ts';
 
 const ind = INDICATORS.map((i) => ({ ...i }));
 const zone = (id, type, green, extra = {}) => {
-  /* ⚠️ 2026-10-27 (main): хэмжсэн жин `MIN_MEASURED_SHARE`-ээс бага бол оноо null — бусад үзүүлэлтийг нормд тааруулж бөглөнө.
-     `green` null бол бүсийг бүхэлд нь хэмжилтгүй (оноогүй) гэж үзнэ. */
   const pass = (i) => (i.mode === 'higher' ? i.target ?? 0 : i.mode === 'band' ? i.optMin ?? 0 : i.best ?? 0);
   const raw = Object.fromEntries(ind.map((i) => [i.id, green == null ? null : pass(i)]));
   raw.green = green;

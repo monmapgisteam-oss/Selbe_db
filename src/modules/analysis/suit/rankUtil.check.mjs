@@ -42,7 +42,6 @@ assert.deepEqual(competitionRanks([null, NaN]), [null, null]);
   assert.ok(csv[1].includes(',410,'), csv[1]);
   /* null үзүүлэлт — хоосон нүд (0 БИШ) */
   assert.ok(csv[1].endsWith(',,'), csv[1]);
-  /* ⚠️ 2026-10-22 (аудит): «Хэмжсэн жин (%)» багана — хамралтгүй мөрд хоосон, байвал бүхэл хувь */
   assert.ok(csv[0].includes('Хэмжсэн жин (%)'), csv[0]);
   const withCov = zoneCsv([{ ...row('D-4', 60, 300, 300), coverage: 77 / 92 }], 'urban', ind, [ind]).split('\r\n');
   assert.ok(withCov[1].includes(',84,'), withCov[1]);

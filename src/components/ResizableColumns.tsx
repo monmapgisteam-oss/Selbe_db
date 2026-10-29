@@ -9,7 +9,7 @@ import { GRIP_TITLE } from './ResizableTable';
 import st from './resizableColumns.module.css';
 
 /* --------------------------------------------------------------------------
-   ЧИРЖ ӨРГӨСГӨДӨГ 3 БАГАНА (⚠️ 2026-10-23: Environment — `ui/resizable-columns.tsx`-ийн хуулбар)
+   ЧИРЖ ӨРГӨСГӨДӨГ 3 БАГАНА (2026-10-23: Environment — `ui/resizable-columns.tsx`-ийн хуулбар)
 
    Газрын зурагтай харагдац: зүүн (давхаргын жагсаалт) · төв (газрын зураг) · баруун (самбар).
    Хүүхдүүдийг ДАРААЛЛААР нь grid-ийн нүдэнд тавина — `left` өгвөл эхний хүүхэд зүүн багана,
@@ -20,17 +20,11 @@ import st from './resizableColumns.module.css';
      · `localStorage`-д (`selbe.cols.<id>`) хадгална — бүх хандалт try/catch (хувийн горимд ШИДДЭГ).
      · Давхар товшилт анхны өргөнд буцаана; сум (Shift — 4×) · Home/End — гараар.
      · Хувьсагчийг ЗУРАГДАЛТААС ӨМНӨ (`useLayoutEffect`) тавина — эхний кадр үсрэхгүй.
-     · ⚠️ Багана СҮҮЛД нэмэгдэж/алга болж болно (каталог хаагдах/нээгдэх): `def`-ээс дутуу талыг
+     · Багана СҮҮЛД нэмэгдэж/алга болж болно (каталог хаагдах/нээгдэх): `def`-ээс дутуу талыг
        нөхнө, алга болсон талыг цэвэрлэнэ — эс бөгөөс grid-ийн загвар хүчингүй болж нурна.
      · `--col-r-floor` (дуудагч өгнө) — баруун баганын ДООД хязгаар (жиш. «Ерөнхий төлөвлөгөө»-нд
-       2+ багц сонгоход самбар автоматаар өргөсдөг — `Portal.planGroups`-ийн ⚠️).
-     · Баганууд ЗӨВХӨН 1180px-ээс өргөн дэлгэцэд зэрэгцэнэ; нарийнд нэг багана, бариулгүй.
-
-   ⚠️ Хадгалсан утга нь ХҮССЭН өргөн — дэлгэц нарийсахад зөвхөн CSS-д багтааж бичнэ, хадгалсныг
-      хумихгүй (урьд нь Environment-ийн хувилбар хумисан утгыг буцааж санадаг байв).
-   ⚠️ `Portal.useColumnResize`-ийн сургамжууд энд шилжив: `lostpointercapture` (барилт алдагдвал
-      body-ийн `resizing` класс гацдаг байв), unmount дээр цэвэрлэгээ, гараар тохируулах.
-   -------------------------------------------------------------------------- */
+       2+ багц сонгоход самбар автоматаар өргөсдөг — `Portal.planGroups`).
+     · Баганууд ЗӨВХӨН 1180px-ээс өргөн дэлгэцэд зэрэгцэнэ; нарийнд нэг багана, бариулгүй. */
 
 /** Багана хэтэрхий нарийсвал доторх нэр, диаграм уншигдахаа болино */
 const MIN = 180;
@@ -104,7 +98,6 @@ export function ResizableColumns({
     const node = el.current;
     let other = 0;
     if (side === 'left' && def.right != null && node && gripR.current) {
-      /* ⚠️ Баруун баганын БОДИТ өргөн (`--col-r-floor` давамгайлж болно) — бариулын байрлалаас */
       other = node.getBoundingClientRect().right - gripR.current.getBoundingClientRect().right;
     } else if (side === 'right' && def.left != null) {
       other = shown.current.left ?? def.left;
@@ -143,7 +136,7 @@ export function ResizableColumns({
     try { localStorage.setItem(LS + id, JSON.stringify(size.current)); } catch { /* хувийн горим */ }
   }, [id]);
 
-  /* Зурагдалтаас өмнө: дутуу талыг сэргээх, алга болсныг цэвэрлэх (толгойн ⚠️) */
+  /* Зурагдалтаас өмнө: дутуу талыг сэргээх, алга болсныг цэвэрлэх (толгой) */
   useLayoutEffect(() => {
     let saved: Sizes | null = null;
     for (const side of ['left', 'right'] as const) {
@@ -163,11 +156,8 @@ export function ResizableColumns({
     return () => window.removeEventListener('resize', on);
   }, [apply]);
 
-  /* ⚠️ Чирэлтийн ДУНДУУР unmount болбол body-ийн класс үлдэж апп даяар курсор эвдэрнэ */
   useEffect(() => () => document.body.classList.remove('resizing'), []);
 
-  /* ⚠️ Үйлдлүүд ТОГТМОЛ callback (талыг аргументаар) — render дунд каррилсан үйлдвэр дуудвал React
-     Compiler доторх ref-ийн уншилтыг «render үеийн ref хандалт» гэж тэмдэглэдэг (`SplitGrip`-ийн ⚠️). */
   const down = useCallback((side: Side, e: RPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();

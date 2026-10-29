@@ -1,21 +1,6 @@
 /**
  * ДЭД БҮТЦИЙН БАГЦУУД — «Инженерийн дэд бүтэц» хуудасны ба түүний ЭРХИЙН
  * панелийн ГАНЦ эх сурвалж (2026-09-23).
- *
- * ⚠️ ЯАГААД ТУСДАА ФАЙЛ ВЭ: багцын жагсаалт урьд нь `modules/Bagts.tsx`-ийн
- *    `buildPacks(null)` дотор угсрагддаг байв. Тэр файл нь React бүрэлдэхүүн
- *    (MapCanvas, CSS модуль) импортолдог тул `lib/butetsAcl.ts` ба түүний
- *    node тест (`butetsAcl.check.mjs`) түүнийг ачаалж чадахгүй. Энд ЦЭВЭР
- *    тооцоо л байна — `services.ts`-ийн хүснэгтээс.
- *
- * ⚠️ ГАРААР ЖАГСААХГҮЙ — `PKG_BY_BAGTS`-ээс угсарна (`DedButets.INFRA_PACKS`-ийн
- *    ижил дүрэм): блокгүй багцаас нийгмийн барилга (`soc`) ба өндөржилт
- *    (`site`)-ийг хасна. Хуулбарлавал «Дэд бүтэц» хуудсанд 25, эрхийн
- *    панелд 24 багц харагдах өдөр ирнэ.
- *
- * ⚠️ ТҮЛХҮҮР нь `bagtsKey()` хэлбэр («БАГЦ51») — эрхийн `grants[].bagts`-д
- *    ЭНЭ хадгалагдана, дэлгэцийн нэр биш. Нэр нь `tr()`-ээр орчуулагддаг тул
- *    хэл солиход өөрчлөгдөнө; түлхүүр тогтмол.
  */
 
 import { LAYER_BY_ID, PKG_BY_BAGTS, PKG_FAMILY_BY_BAGTS } from './services';
@@ -53,8 +38,6 @@ export const BUTETS_PACKS: ButetsPack[] = Object.keys(PKG_BY_BAGTS)
   })
   .map((key) => {
     const layerIds = PKG_BY_BAGTS[key] ?? [];
-    /* ⚠️ 2026-09-30: нэр нь getter — давхаргын нэр (`tr()`) хэл солиход өөрчлөгдөнө.
-       Эрэмбэ нь ачаалах үеийн хэлээр (нэрс нь «Багц N.N» угтвартай тул хэлээс үл хамаарна). */
     const titles = () => layerIds.map((id) => LAYER_BY_ID[id]?.title ?? id);
     return { key, get name() { const t = titles(); return t.length ? commonName(t) : key; }, layerIds };
   })

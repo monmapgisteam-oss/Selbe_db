@@ -1,9 +1,6 @@
 /**
  * MIR (материалын үзлэг) — цэвэр логик: Survey123 мөр → `MirRow`, хавсралтын туг, MA-гийн шат.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/mir.check.mjs
- *
- * ⚠️ 2026-10-09 (аудит №6): `att_flags` нь `/[s,]+/`-ээр (`\s` биш `s` ҮСЭГ) тасарч «lab cert photo» НЭГ туг
- *    болж, «photos» мэт утга «photo»+«» болж байв. Одоо `ma.splitMulti` (зай · таслал, давхардалгүй).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/mir.check.mjs
  */
 import assert from 'node:assert/strict';
 import { mirRowOf, mirsByMa, mirVerdictFor } from '@/lib/mir.ts';
@@ -36,7 +33,7 @@ console.log('✅ mirRowOf — att_flags зай · таслал · давхард
 }
 console.log('✅ mirsByMa · mirVerdictFor');
 
-/* 3. ⚠️ 2026-10-22 (аудит): эцгийн түлхүүр `uniquerowid || globalid`, GUID талбарын бичиглэл `{ТОМ}` */
+/* 3. 2026-10-22 (аудит): эцгийн түлхүүр `uniquerowid || globalid`, GUID талбарын бичиглэл `{ТОМ}` */
 {
   const { guidBraced } = await import('@/lib/mir.ts');
   assert.equal(guidBraced('2d70dc7c-7bec-4fd6-bfd3-1bf1b1135c85'), '{2D70DC7C-7BEC-4FD6-BFD3-1BF1B1135C85}');

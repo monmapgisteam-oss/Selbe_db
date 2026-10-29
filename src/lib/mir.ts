@@ -8,12 +8,6 @@ import { splitMulti, type StageState, type Verdict } from '@/lib/ma';
  * MIR — МАТЕРИАЛЫН ҮЗЛЭГ ШАЛГАЛТ (2026-10-09). Чанарын 2-р шат. Survey123 → Enterprise hosted:
  *   `/0` form — MIR бичлэг (MA-тай `ma_no`-оор холбогдоно),
  *   `/1` photos — талбайн зураг (`parentrowid` → form.`uniquerowid || globalid`, зураг нь энэ хүснэгтийн attachment).
- *
- * ⚠️ ХЭРЭГЛЭГЧИЙН ШИЙДВЭР (`memory/chanar-redesign`): MA-гүй бол MIR-гүй. MIR нь талбайд ирсэн НЭГ
- *    АЧААНЫ үзлэг — нэг MA-д олон MIR (олон ачаа) байна.
- * ⚠️ MIR-ийн дүн (`verdict`) маягт өөрөө бодно: захиалагчийн 8 шалгалтын аль нэг нь «X» бол R, эс бөгөөс A.
- * ⚠️ Уншилт нэргүй (`queryFeatures`, AGOL токен Enterprise руу явахгүй); зураг татахад Enterprise
- *    токен байвал залгана (POST биеэр — `tools/tokenInUrl.check.mjs`).
  */
 export const MIR_URL = CHANAR_MIR_SVC ? `${CHANAR_MIR_SVC}/FeatureServer/0` : '';
 export const MIR_PHOTOS_URL = CHANAR_MIR_SVC ? `${CHANAR_MIR_SVC}/FeatureServer/1` : '';
@@ -52,8 +46,6 @@ const str = (v: unknown): string => (v == null ? '' : String(v).trim());
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 /**
  * GUID → Enterprise-ийн GUID талбарын БИЧИГЛЭЛ `{XXXXXXXX-…}` (хаалттай, том үсэг); хоосон бол ''.
- * ⚠️ 2026-10-22 (аудит): `parentrowid` нь GUID төрөл — `where`-д ЯГ энэ бичиглэл л таарна (амьдаар: хаалтгүй эсвэл
- *    жижиг үсэг → 0 мөр). `uzlegReport.guidKey`-ийн ижил хэвийншүүлэлт (тэр модулийг импортлохгүй — PDF/xlsx хамаарал).
  */
 export const guidBraced = (v: unknown): string => {
   const k = str(v).replace(/[{}\s]/g, '').toUpperCase();
@@ -65,9 +57,6 @@ export function mirRowOf(a: Record<string, unknown>): MirRow {
   const v = str(a.verdict).toUpperCase();
   return {
     oid: Number(a.objectid),
-    /* ⚠️ 2026-10-22 (аудит): `uniquerowid || globalid` — Enterprise руу шилжүүлсэн Survey123 маягтад `uniquerowid` NULL
-       болж хүүхэд хүснэгт эцгийн `globalid`-ийг заадаг («Аюулыг илрүүлэх үзлэг» 61/61, `uzlegReport.parentKeys`).
-       Урьд нь ийм MIR-ийн зураг ОГТ олдохгүй, нөөцийн бүртгэлд (`materialNoots`, rowId-гүй) ч орохгүй байв. */
     rowId: guidBraced(a.uniquerowid) || guidBraced(a.globalid),
     docNo: str(a.doc_no),
     date: num(a.insp_date),
@@ -89,8 +78,6 @@ export function mirRowOf(a: Record<string, unknown>): MirRow {
     cliSupPos: str(a.cli_sup_pos),
     cliQ: str(a.cli_q_name),
     cliQPos: str(a.cli_q_pos),
-    /* ⚠️ 2026-10-09 (аудит №6): `splitMulti` (ma.ts) — урьд нь `/[s,]+/` (`\s` биш `s` үсэг) тул «lab cert photo»
-       нэг туг болж, «s» үсэгтэй утга («photos») тасардаг байв. Тест: `mir.check.mjs`. */
     attFlags: splitMulti(a.att_flags),
     attOther: str(a.att_other),
   };
@@ -120,7 +107,6 @@ export function mirsByMa(rows: readonly MirRow[]): Map<string, MirRow[]> {
  *   · MIR огт байхгүй → `undefined` (хүлээгдэж буй);
  *   · аль нэг ачаа A/AN → 'A' (материал талбайд хүлээн авагдсан — дараагийн R ачаа нь тэр ачааны асуудал);
  *   · бүгд R → 'R'.
- * ⚠️ Олон ачаа (олон MIR) — НЭГ батлагдсан ачаа шатыг нээнэ; татгалзсан ачааг MA картад тусад нь харуулна.
  */
 export function mirVerdictFor(mirs: readonly MirRow[] | undefined): Verdict | null | undefined {
   if (!mirs?.length) return undefined;
@@ -130,7 +116,6 @@ export function mirVerdictFor(mirs: readonly MirRow[] | undefined): Verdict | nu
 }
 
 export const markLabel = (m: CheckMark): string => (m === 'NA' ? 'N/A' : m ?? '—');
-/* ⚠️ Шалгалтын нэрс — `tr()` ЛИТЕРАЛААР (i18n-extract динамик `tr(x)`-ийг танихгүй) */
 const MIR_CHECKS: (() => string)[] = [
   () => tr('Зураг төсөлтэй таарч буй эсэх'), () => tr('Материал баталгаажуулалт хийгдсэн эсэх'),
   () => tr('Баталгаажуулсан нийлүүлэгч байгууллага зөрөөгүй'), () => tr('Цэвэрхэн / хэвийн эсэх'),
@@ -144,10 +129,6 @@ export const mirCheckLabel = (i: number): string => MIR_CHECKS[i]?.() ?? String(
 export type MirPhoto = { rowOid: number; attId: number; name: string; note: string };
 
 type ArcErr = { error?: { code?: number; message?: string; details?: string[] } };
-/* ⚠️ 2026-10-26 (A5): `ma.arc` · `ficMakt.post` · `entDocs.post`-той ИЖИЛ загвар — урьд нь 60 с, хугацаа/сүлжээний
-   алдааг барьдаггүй (хөтчийн түүхий «Failed to fetch» / AbortError), JSON биш хариуд `r.json()` унаж, `details`-ийг
-   хаядаг байв. 498/499 (токен хүчингүй/шаардлагатай) — `entStamp` илгээхийн өмнө шинэчилсэн ч дунд нь дуусвал
-   ойлгомжтой «дахин нэвтэрнэ үү» мессеж. */
 const TIMEOUT = 120_000;
 async function postJson<T>(url: string, body: URLSearchParams): Promise<T> {
   const s = entSession(); if (s) body.set('token', s.token);
@@ -170,8 +151,6 @@ async function postJson<T>(url: string, body: URLSearchParams): Promise<T> {
 
 /** MIR-ийн зургууд — photos хүснэгтийн мөр бүрийн attachment */
 export async function loadMirPhotos(rowId: string): Promise<MirPhoto[]> {
-  /* ⚠️ 2026-10-22 (аудит): GUID-ийн бичиглэлийг хэвийншүүлнэ (`guidBraced`) — хаалтгүй/жижиг үсгээр ирсэн түлхүүр
-     GUID талбарт 0 мөр буцааж «Зураг алга» гэж худал хэлдэг байв. `'`-г хасдаг тул SQL-д аюулгүй. */
   const id = guidBraced(rowId).replace(/'/g, '');
   if (!MIR_PHOTOS_URL || !id) return [];
   const rows = await queryFeatures(MIR_PHOTOS_URL, { where: `parentrowid='${id}'`, outFields: ['objectid', 'photo_note'], orderBy: 'objectid' });

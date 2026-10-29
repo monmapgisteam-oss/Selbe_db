@@ -1,11 +1,7 @@
 /**
  * MA (материал баталгаажуулалт) — цэвэр логик: Survey123 мөр → `MaRow`, ажлын хаалга,
  * сүүлийн хувилбар, хавсралтын мета (`keywords`).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ma.check.mjs
- *
- * ⚠️ «Нэг ажил олон MA-д» — БҮГД батлагдсан байх ёстой (2026-10-09, хэрэглэгч): бетоны MA
- *    батлагдсан ч арматурынх R бол ажил хаалттай. Энэ дүрмийг тестгүй орхивол «нэг нь
- *    болсон» гэж хаалга нээгдэх алдаа чимээгүй орно.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ma.check.mjs
  */
 import assert from 'node:assert/strict';
 import {
@@ -62,7 +58,7 @@ console.log('✅ maGateOf — none · ok · олон MA-гийн нэг нь R/�
 }
 console.log('✅ latestPerRespNo — сүүлийн хувилбар ялна · дугааргүй мөр тус бүр');
 
-/* 3б. ⚠️ 2026-10-23 (UX аудит Q10): буцаасан (R) MA-г шинэ дугаартай дахин ирүүлбэл холбоно — нэг багц + материал */
+/* 3б. 2026-10-23 (UX аудит Q10): буцаасан (R) MA-г шинэ дугаартай дахин ирүүлбэл холбоно — нэг багц + материал */
 {
   const r1 = rowOf(attrs({ objectid: 10, resp_no: 'X1', material_name: 'Арматур', verdict: 'R' }));
   const r2 = rowOf(attrs({ objectid: 12, resp_no: 'X2', material_name: '  арматур ', verdict: 'A' }));
@@ -156,13 +152,12 @@ console.log('✅ MIR — мөр · MA-аар бүлэглэх · олон ача
 }
 console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · бүтэн гинж = IPC');
 
-/* ── ⚠️ 2026-10-12 (дарааллын аудит): `decideFm` — гинжийн шат `locked` бол шийдвэр гаргахгүй (`addFm`-ийн ижил `chainOf`) ── */
+/* ── 2026-10-12 (дарааллын аудит): `decideFm` — гинжийн шат `locked` бол шийдвэр гаргахгүй (`addFm`-ийн ижил `chainOf`) ── */
 {
   const { readFileSync } = await import('node:fs');
   const L = readFileSync(new URL('./ficMakt.ts', import.meta.url), 'utf8');
   const fn = L.slice(L.indexOf('export async function decideFm('));
   const chain = fn.indexOf('chainOf(ma.verdict');
-  /* ⚠️ 2026-10-21: Enterprise-ийн OID жижиг үсгээр (`objectid`) — `ficMakt.ts`-ийн ⚠️ */
   const fresh = fn.indexOf("queryFm(url, `objectid = ${Number(row.oid)}`)");
   const write = fn.indexOf('await post<');
   assert.ok(chain > 0 && fresh > chain && write > fresh, 'decideFm: гинжийн шалгалт `pending` уншилт ба бичилтийн ӨМНӨ байх ёстой');
@@ -230,7 +225,6 @@ console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · б
     const dependencies = {
       '@/lib/i18nCore': { t: tr },
       '@/lib/entDocs': { ENT_PORTAL: 'https://fm.test/portal', entSession: () => ({ token: user, user }), entStamp: async () => {}, entExactUser: async () => user },
-      /* ⚠️ 2026-10-21: Enterprise суурь хоосон — шууд хаягаар хайхгүй, хайлтаар (энэ хуурамч сервер) олно */
       '@/lib/services/env': { ENT_HOSTED: '' },
       '@/lib/ma': { ...ma, loadMa: async () => [rowOf(attrs({ resp_no: 'M1' }))] },
       '@/lib/mir': { ...mir, loadMir: async () => [{ oid: 1, maNo: 'M1', verdict: 'A' }] },

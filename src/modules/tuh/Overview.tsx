@@ -4,12 +4,6 @@
  * ТУХ — ТОЙМ ХУУДАС. Жишээ HTML-ийн ДАРААЛАЛ (бүтэц алдагдуулахгүй):
  *   hero → KPI → Улсын комисст бэлэн байдал → IPC-ийн явц → Багцууд →
  *   S-curve → Level 1 мастер хуваарь → Материал → ТУХ-ын арга хэмжээ → Журмууд.
- *
- * ⚠️ Бүх тоо `TuhModel`-оос (системийн эх сурвалж). Эх сурвалжгүй багана/хэсэг
- *    бүтцээрээ үлдэж «—» харуулна (хэрэглэгчийн сонголт, 2026-09-30).
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БҮХЭЛДЭЭ хоосон хэсэг (ТУХ-ын арга хэмжээ,
- *    захирамжгүй журам, MA/MIR-гүй материал) ХУРААГДСАН (`Section empty`) — бүтэц нь
- *    `<details>` дотор хэвээр, дарахад нээгдэнэ. Ачаалж буй тоо «…» (`model.lz`).
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -22,15 +16,10 @@ import {
 import { lz, depRows, commissionText, type TuhModel, type TuhRow } from './model';
 import { Legend, Gantt, GANTT_LEGEND, type GanttRow, type BarSt } from './charts';
 /* Системийн карт — график бүр `ui.Section`-д (бусад харагдацтай ижил хүрээ) */
-/* ⚠️ 2026-10-09: хэмжигч — `ui.Meter` (ТУХ-ын локал хуулбар хасагдсан) */
 import { Section as Card, Meter } from '@/components/ui';
-/* ⚠️ Системийн «Гүйцэтгэлийн явц» график — ТУХ өөрийн график зурахгүй (2026-09-30,
-   хэрэглэгч: «чартуудыг үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
 import { planScopeNote } from '@/modules/Finance';
-/* ⚠️ 2026-10-22 (аудит): «хуваарь X% хамарсан» — гүйцэтгэгчийн төлөвлөгөөний хажууд */
 import { coverageNote } from '@/lib/planProgress';
-/* ⚠️ 2026-10-06 (аудит): pp-ийн хэлбэр нь «Гүйцэтгэл» (PkgProg)-тэй НЭГ функц — `pkgShared.pp` */
 import { pp } from '@/modules/pkgShared';
 import { Segmented } from '@/components/Switch';
 import s from '../tuh.module.css';
@@ -39,11 +28,6 @@ import s from '../tuh.module.css';
 const mnt0 = (v: number | null | undefined): string =>
   v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`;
 
-/**
- * ⚠️ 2026-10-23 (UX аудит E4): урт мөнгөн дүнг ЗӨВХӨН мянгатын таслалын ДАРАА шилжүүлнэ (`<wbr>`).
- *    `.statValue`-ийн `overflow-wrap: anywhere` нь «2,009,768,762,9 / 35 ₮» гэж цифрийн дундуур тасалдаг байв.
- *    ТООГ богиносгохгүй (`format.mnt`-ийн ⚠️ — бүх мөнгөн дүн бүтэн).
- */
 const wrapNum = (txt: string): ReactNode => txt.split(',').map((part, i, a) => (
   i < a.length - 1 ? <span key={i}>{part},<wbr /></span> : <span key={i}>{part}</span>
 ));
@@ -56,7 +40,6 @@ export function StatusChip({ st }: { st: TuhStatus }) {
 /**
  * Хэсэг. `empty` — агуулга нь БҮХЭЛДЭЭ эх сурвалжгүй/хоосон: гарчиг + «Мэдээлэл алга» мөр
  * болж ХУРААГДАНА; бүтэц (хүснэгтийн толгой) нь `<details>` дотор, дарахад нээгдэнэ.
- * ⚠️ 2026-10-01: урьд нь хоосон хүснэгт бүтнээрээ зурагдаж хуудсыг уртасгадаг байв.
  */
 export function Section({ id, title, lead, actions, empty, children }: {
   id: string; title: string; lead?: string; actions?: ReactNode; empty?: boolean; children: ReactNode;
@@ -111,11 +94,7 @@ export function ReportAge({ r }: { r: Pick<TuhRow, 'lastReport' | 'reportAge'> }
  * БОГИНО бол хоцорч байна — тайлбаргүйгээр нэг хараад уншигдана.
  *   · Хугацаа — гэрээт эхлэх/дуусах огнооноос өнгөрсөн хувь (`elapsedPct`);
  *   · Гүйцэтгэл — биет гүйцэтгэл; хугацаанаас доогуур бол улаан, эс бөгөөс ногоон.
- * ⚠️ Аль нэг нь `null` бол тэр мөр «—» (0 гэж зурахгүй); өнгө зөвхөн хоёулаа байхад.
  */
-/* ⚠️ 2026-10-09 («графикийн жигдрэл»): хоёр `ui.Meter` мөр — нэр + утга дээр, 2px зам доор
-   (`Bars`-ийн мөр). Урьд нь 8px өөрийн зурвас, хугацаа нь бүхэл хувь (`pct(.., 0)`) байв —
-   одоо хоёулаа 1 оронтой (`pct()`; 2026-09-09-ний «бутархайгаар» дүрэм). */
 export function DuoBars({ elapsed, progress }: { elapsed: number | null; progress: number | null }) {
   const tone = elapsed != null && progress != null ? (progress < elapsed ? 'bad' : 'good') : 'data';
   return (
@@ -133,17 +112,11 @@ export function DuoBars({ elapsed, progress }: { elapsed: number | null; progres
 
 /**
  * ХУАНЛИЙН ӨДРИЙН ЗӨРҮҮ (b − a) — хоёр агшны ЛОКАЛ огноогоор (цагийг үл тооно); аль нэг нь `null` бол `null`.
- * ⚠️ 2026-10-09 (аудит): урьд нь `tuhData.daysBetween` (`Math.round` мс-ийн зөрүү) — өчигдөр 08:00-д
- *    илгээсэн IPC өнөөдөр 21:00-д «2 хоног», гэрээ маргааш дуусахад үдээс хойш «0 хоног» гэж гардаг
- *    байв. Энд хуанлийн өдрийн тоо (Date.UTC-ээр — DST/цагийн бүсийн шилжилтэд бүхэл тоо).
  */
-/* ⚠️ 2026-10-09 (аудит №6): тодорхойлолт `tuhData.calDaysBetween` руу НЭГТГЭГДСЭН (Node тест компонентын
-   файлыг импортлохгүй) — энд зөвхөн дахин экспорт, `PkgDetail`-ийн импорт эвдрэхгүй. */
 export { calDaysBetween };
 
 /**
  * ТУХ-ын төлөв → «Хуваарь»-ийн зурвасын өнгө.
- * ⚠️ «Зогссон» оноогддоггүй; оноогдвол улаан. «Мэдээлэлгүй» — зураасан (огноогүйтэй ижил).
  */
 export const barSt = (st: TuhStatus): BarSt => (st === 'stopped' ? 'late' : st === 'unknown' ? 'none' : st);
 
@@ -181,9 +154,6 @@ export function ganttDomain(rows: { start: number | null; end: number | null; ex
       if (v > to) to = v;
     }
   }
-  /* ⚠️ 2026-10-09: ОРОН НУТГИЙН сар (`charts.Gantt`-ийн сарын толгойтой нэг дүрэм). Огноонууд нь орон
-     нутгийн шөнө дунд (+08) тул UTC-ээр бол «3-р сарын 1» нь 2-р сарын 28 болж, домэйн илүү сараар
-     эхэлж, сарын хил 8 цагаар зөрдөг байв. */
   const a = new Date(from);
   const b = new Date(to);
   return { from: new Date(a.getFullYear(), a.getMonth(), 1).getTime(), to: new Date(b.getFullYear(), b.getMonth() + 1, 1).getTime() };
@@ -191,8 +161,6 @@ export function ganttDomain(rows: { start: number | null; end: number | null; ex
 
 /**
  * «Улсын комисст бэлэн байдал»-ын урьдчилсан нөхцөлийн 4 эгнээ — ТУХ-ын бүлэг.
- * ⚠️ 2026-10-06 (аудит): эгнээ бүр = тэр бүлгийн, орон сууцны багцын УРД талын (`depRows(…, 'up')`)
- *    багцууд — «Багцын хамаарал»-д бүртгэсэн холбоосоос. Урьд нь хатуу «—» байв.
  */
 export const PREREQ_LANES: { group: TuhGroup; label: () => string }[] = [
   { group: 'networks', label: () => tr('Инженерийн шугам сүлжээ') },
@@ -235,23 +203,17 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
   /** «Гэрээний нийт дүн» — `loadBudget().contract` (бусад харагдацтай ижил эх) */
   contractTotal: number | null;
   onOpen: (key: string) => void;
-  /** ⚠️ 2026-10-01: уншигдаагүй эх сурвалжийг дахин татах (`Tuh.retryFailed`) */
   onRetry?: () => void;
-  /** ⚠️ 2026-10-06: «Багцын хамаарал» харагдац руу (`Tuh.onOpenDeps`) — өгөөгүй бол холбоосгүй */
   onOpenDeps?: () => void;
 }) {
   const [grp, setGrp] = useState<TuhGroup | 'all'>('all');
   const [q, setQ] = useState('');
-  /* ⚠️ 2026-10-01: төлвийн шүүлт — KPI-ийн «Багцын төлөв»-ийн тоон дээр дарж тавина */
   const [st, setSt] = useState<TuhStatus | null>(null);
   const now = m.now;
   const housing = m.rows.filter((r) => r.p.group === 'housing');
-  /* ⚠️ 2026-09-30: барилгын давхарга ирээгүй/унасан бол «—» (0 биш) — `TuhRow.blocks`-ийн ⚠️ */
   const households = housing.some((r) => r.households == null) ? null : housing.reduce((a, r) => a + (r.households ?? 0), 0);
   const blocks = housing.some((r) => r.blocks == null) ? null : housing.reduce((a, r) => a + (r.blocks ?? 0), 0);
 
-  /* ⚠️ 2026-10-01: хайлт нормалчилсан (`tuhData.matchesSearch` — «багц 5.1» = «БАГЦ-5.1» =
-     «bagts 5.1»), төлвөөр шүүнэ, «Хоцорсон» ЭХЭНД (`lateFirst`) */
   const shown = useMemo(() => lateFirst(m.rows.filter((r) => (grp === 'all' || r.p.group === grp)
     && (st == null || r.status === st)
     && matchesSearch(q, r.p.code, [r.p.name, r.p.contractor]))), [m.rows, grp, st, q]);
@@ -292,9 +254,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           <span className={s.meterGap}><Meter value={m.hero.actual} plan={m.hero.planContract} /></span>
           <span className={s.heroNote}>
             {tr('Гэрээний төлөвлөгөө {0} · Гүйцэтгэгчийн төлөвлөгөө {1} · гэрээний дүнгээр жигнэсэн', lz(m, 'cfPlan')(pct(m.hero.planContract)), lz(m, 'plan')(pct(m.hero.planContractor)))}
-            {/* ⚠️ 2026-10-22 (аудит): гүйцэтгэгчийн хуваарийн хамралт — дутуу бол төлөвлөгөө хэт бага (`coverageNote`) */}
             {coverageNote(m.hero.planCoverage) ? ` · ${coverageNote(m.hero.planCoverage)}` : ''}
-            {/* ⚠️ 2026-10-09 (аудит №2): гүйцэтгэгчийн төлөвлөгөө хуваарьтай багцаар — хасагдсаныг нэрлэнэ */}
             {m.hero.planExcluded.length ? ` · ${planScopeNote(m.hero.planExcluded)}` : ''}
           </span>
         </div>
@@ -305,12 +265,9 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээний нийт дүн')}</span>
           <span className={s.statValue}>{wrapNum(lz(m, 'budget')(mnt(contractTotal)))}</span>
-          {/* ⚠️ 2026-10-23 (UX аудит E6): ЮУГ тоолсныг tooltip-ээр — бусад харагдацын багцын тоотой (55/50) зөрдөг байв */}
           <span className={s.statNote} title={tr('Гэрээний бүртгэлийн бүх мөр — зураг төсөл, олон багцын нэгдсэн гэрээ ч орно')}>{tr('{0} багц', num(m.rows.length))}</span>
         </div>
         <div className={s.stat}>
-          {/* ⚠️ 2026-10-06 (аудит): утга нь ЗӨРҮҮ (pp) тул шошго ч тийм — урьд нь «Орон сууцны
-              гүйцэтгэл» гэж бичээд хувь биш зөрүү харуулдаг байв. Хоёр тал нэг жинтэй (`model.hero`-ийн ⚠️). */}
           <span className={s.statLabel}>{tr('Орон сууцны гүйцэтгэл төлөвлөгөөнөөс (pp)')}</span>
           {(() => {
             const d = m.hero.actual != null && m.hero.planContract != null ? m.hero.actual - m.hero.planContract : null;
@@ -324,7 +281,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           <span className={s.statNote}>{tr('{0} блок', lz(m, 'packs')(num(blocks)))}</span>
         </div>
         <div className={s.stat}>
-          {/* ⚠️ 2026-10-01: он нь ӨНӨӨДРӨӨС (`heatWinterYear`) — урьд нь «2026» хатуу бичигдсэн байв */}
           <span className={s.statLabel}>{tr('{0} оны өвөл дулаан авах', heatYear == null ? '—' : String(heatYear))}</span>
           <span className={s.statValue}>—</span>
           <span className={s.statNote}>{tr('блок')}</span>
@@ -334,13 +290,11 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           <span className={s.statValue}>{wrapNum(mnt(m.paid.total))}</span>
           <span className={s.statNote}>
             {tr('{0} IPC · {1} гэрээний', num(m.paid.ipcCount), pct(m.paid.pct))}
-            {/* ⚠️ 2026-10-01: хувьд ороогүй олголт — `paidShare.paidOther` (олгосон − гэрээлсэн багцын олголт; 2026-10-04: удирдлагын тайлангийн `givenOther`-той нэг тодорхойлолт, нэг шошго) */}
             {m.paid.other != null && m.paid.other !== 0 && <> · {tr('гэрээлсэн багцаас гадуур олгосон {0} (хувьд ороогүй)', mnt(m.paid.other))}</>}
           </span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Багцын төлөв')}</span>
-          {/* ⚠️ 2026-10-01: тоон дээр дарахад «Багцууд» тэр төлвөөр шүүгдэнэ (дахин дарвал арилна) */}
           <span className={s.stateCounts}>
             {TUH_STATUS.map((x) => {
               const n = m.statusCount.get(x.key) ?? 0;
@@ -353,7 +307,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           </span>
         </div>
       </div>
-      {/* ⚠️ 2026-10-26 (хяналт №2): гэрээний сарын төлөвлөгөөний цоорхой (`TuhModel.cfGaps`) */}
       {m.cfGaps && <p className={s.failNote} role="status">{m.cfGaps}</p>}
       {m.failed.length > 0 && (
         <p className={s.failNote} role="alert">
@@ -397,7 +350,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                     {lz(m, 'commission')(r.delay == null ? '—' : tr('{0} хоног', `${r.delay > 0 ? '+' : ''}${num(r.delay)}`))}
                   </td>
                   {(() => {
-                    /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-аас (`PREREQ_LANES`-ийн ⚠️) */
                     const up = depRows(m, r.p.key, 'up');
                     return PREREQ_LANES.map((l) => (
                       <td key={l.group}>
@@ -411,8 +363,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
             </tbody>
           </table>
         </div>
-        {/* ⚠️ 2026-10-06 (аудит): урьд нь «хамаарал системд бүртгэгдээгүй» гэж ХУДАЛ бичдэг байв —
-            одоо «Багцын хамаарал»-ын бүртгэлээс; «—» = холбоо бүртгээгүй. */}
         <p className={s.note}>
           {tr('Салбар багцууд «Багцын хамаарал» хэсэгт бүртгэсэн холбоосоос; «—» — холбоо бүртгээгүй. Код дээр дарж дэлгэрэнгүйг нээнэ.')}
           {onOpenDeps && (
@@ -445,10 +395,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
             <tbody>
               {ipcRows.map((r) => {
                 const ipc = r.ipc!;
-                /* ⚠️ 2026-10-01: хянагдаж буй IPC — гүйцэтгэлээс үүссэн, олгоогүй AUTO мөр
-                   (`tuhData.pendingAutoOf`); «хоног» — хамгийн эртнийх нь хүлээгдсэн хугацаа */
                 const rv = ipc.review;
-                /* ⚠️ 2026-10-09: хуанлийн өдрөөр (`calDaysBetween`) — `Math.round` биш */
                 const wait = rv?.oldest ? calDaysBetween(Date.parse(`${rv.oldest}T00:00:00`), now) : null;
                 return (
                   <tr key={r.p.key}>
@@ -461,7 +408,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                       {ipc.paidOther != null && ipc.paidOther !== 0 && (
                         <small>{tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', mnt(ipc.paidOther))}</small>
                       )}
-                      {/* ⚠️ 2026-10-26 (аудит): EV жинхэнэ 0 ₮ (гүйцэтгэл 0%) нь «—» биш — PkgDetail-ийн `mnt0`-тэй ижил (null ≠ 0) */}
                       <small>{tr('PV (гэрээ) {0} · EV {1}', lz(m, 'cfPlan')(mnt(r.ev.pvContract)), mnt0(r.ev.ev))}</small>
                     </td>
                     <td className={s.num}>{num(ipc.ipcNos.length)}</td>
@@ -488,7 +434,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       {/* ── Багцууд ── */}
       <Section id="packages" title={tr('Багцууд')} lead={tr('Багц дээр «Энд нээх» дарж дэлгэрэнгүйг нээнэ; газрын зураг тэр багц руу томорно.')}>
         <div className={s.filters}>
-          {/* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` (9 бүлэг — мөр шилжинэ) */}
           <Segmented wrap value={grp} onChange={setGrp} label={tr('Бүлэг')}
             options={[{ value: 'all' as const, label: tr('Бүгд') }, ...TUH_GROUPS.map((g) => ({ value: g.key, label: g.label() }))]} />
           <input
@@ -513,7 +458,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
             <div key={g.key}>
               <h3 className={s.groupTitle}>{g.label()}</h3>
               <div className={s.cards}>
-                {/* ⚠️ 2026-10-01: `TUH_STALE_DAYS`+ хоног тайлангүй багц тодорно (`data-stale`) */}
                 {mine.map((r) => (
                   <article
                     key={r.p.key}
@@ -526,9 +470,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                       <StatusChip st={r.status} />
                     </div>
                     <h4 className={s.cardTitle}>{r.p.name || '—'}</h4>
-                    {/* ⚠️ 2026-10-01 (хэрэглэгч: «жижиг картын чартыг ойлгомжтой болго»):
-                        том хувь + ХОЦРОГДОЛ ТООГООР (гэрээний төлөвлөгөөнөөс, улаан/ногоон);
-                        «7 хоногт» нь зөвхөн ахиц 0-ээс ялгаатай үед (0.0 pp давтагдаж чимээ болдог байв). */}
                     <div className={s.cardProg}>
                       <span className={s.cardPct}>{pct(r.progress)}</span>
                       {r.gapContract != null ? (
@@ -537,9 +478,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                         </span>
                       ) : lz(m, 'cfPlan')('—') === '…' && <span className={s.cardGap}>…</span>}
                     </div>
-                    {/* ⚠️ 2026-10-06 (аудит): төлөв (чип) нь гүйцэтгэгчийн хуваариар тогтсон бол ТЭР
-                        зөрүүг ч харуулна — урьд нь чип «Хоцорсон» атал карт зөвхөн гэрээний зөрүүг
-                        (ногоон байж болно) харуулж, хоёр нь зөрдөг байв (`TuhRow.statusBasis`). */}
                     {r.statusBasis === 'contractor' && r.gapContractor != null && (
                       <span className={s.cardWeek}>
                         {tr('Гүйцэтгэгчийн хуваариас')} <b className={r.gapContractor < 0 ? s.bad : s.good}>{pp(r.gapContractor)}</b>
@@ -576,7 +514,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
         <div className={s.multiples}>
           {housing.map((r) => (
             <div key={r.p.key} className={s.progCell}>
-              {/* ⚠️ 2026-10-09: ачаалж/унасан муруй «дата алга» биш (`TuhRow.planFailed` — ЗӨВХӨН энэ багцынх) */}
               <ProgChart months={r.prog} title={`${r.p.code} · ${tr('Гүйцэтгэлийн явц')}`} loading={m.loading.has('plan')} planFailed={r.planFailed} />
               <button type="button" className={s.ghostBtn} onClick={() => onOpen(r.p.key)}>{tr('Энд нээх')}</button>
             </div>
@@ -624,7 +561,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                   <td className={s.num}>{r.ma ? num(r.ma.total - r.ma.approved) : '—'}</td>
                   <td className={s.num}>{r.mir ? num(r.mir.total - r.mir.approved) : '—'}</td>
                   <td className={s.num}>—</td>
-                  {/* ⚠️ 2026-10-06 (аудит): MA, MIR хоёулаа `null` (бүртгэлгүй) бол «0» биш «—» — null ≠ 0 */}
                   <td className={s.num}>{r.ma || r.mir ? num((r.ma?.approved ?? 0) + (r.mir?.approved ?? 0)) : '—'}</td>
                   <td className={s.num}>{r.ma || r.mir ? num((r.ma?.review ?? 0) + (r.mir?.review ?? 0)) : '—'}</td>
                   <td className={s.num}>—</td>
@@ -637,7 +573,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       </Section>
 
       {/* ── ТУХ-ын арга хэмжээ ── */}
-      {/* ⚠️ Эх сурвалжгүй — үргэлж хураагдсан (2026-10-01) */}
       <Section id="pmo" title={tr('ТУХ-ын төсөл дамнасан арга хэмжээ')} empty>
         <div className={s.tableWrap}>
           <table className={s.table}>
@@ -660,7 +595,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       {/* ── Журмууд ── */}
       <Section id="regulations" title={tr('Хүчин төгөлдөр мөрдөгдөж буй журмууд')} empty={!orders.length}>
         <div className={s.filters}>
-          {/* ⚠️ 2026-10-26: нийтлэг `Segmented` (5 урт сонголт — мөр шилжинэ) */}
           <Segmented wrap value={regType} onChange={setRegType} label={tr('Төрөл')}
             options={[
               { value: 'all', label: tr('Бүгд ({0})', num(orders.length)) },

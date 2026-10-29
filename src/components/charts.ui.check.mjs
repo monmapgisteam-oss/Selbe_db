@@ -1,12 +1,6 @@
 /**
  * `ui.tsx`-ийн графикийн бүрэлдэхүүн — нэгдсэн стандарт (2026-10-09, «бүх графикийн загварыг жигдлэх»).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/charts.ui.check.mjs
- *
- * ⚠️ Барьдаг дүрмүүд: `Meter` null → «—» + aria-valuenow-гүй (null ≠ 0), role="meter", pct() 1 орон;
- *    `Bars` display-гүй утга num(), null → дүүргэлтгүй «—»; `Series` null → баганагүй, 0 → 0 өндөр,
- *    items[].color; `Donut`/`Ring` хэмжээний стандарт (chartStyle).
- * ⚠️ 2026-10-23: Environment — уугуул `title` (багана/мөр/зүсмэг), «Дээд: X» pill-гүй, дүрсгүй хоосон
- *    төлөв, Donut-ын тайлбар 1 оронтой хувь, `BarChart` тэнхлэг/тор.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/charts.ui.check.mjs
  */
 import assert from 'node:assert/strict';
 import { createElement as h } from 'react';
@@ -34,7 +28,6 @@ const b = renderToStaticMarkup(h(Bars, { items: [
 assert.ok(b.includes('20,162,536,361'), 'түүхий тоо биш num()');
 assert.match(b, />—</);
 assert.equal((b.match(/chartFill/g) || []).length, 1, 'null мөрд дүүргэлт зурахгүй');
-/* ⚠️ 2026-10-23: Environment RowChart — уугуул title, шүүх заавар хэвээр */
 const bSel = renderToStaticMarkup(h(Bars, { items: [{ key: 'a', label: 'A', value: 3 }], onSelect: () => {} }));
 assert.match(bSel, /title="A · 3\nДарж газрын зурагт шүүнэ"/, 'Bars: title = нэр · утга + заавар');
 assert.ok(renderToStaticMarkup(h(Bars, { items: [] })).includes('Үзүүлэлт байхгүй'), 'Bars: хоосон → .chart-empty');
@@ -45,7 +38,6 @@ const sr = renderToStaticMarkup(h(Series, { items: [
   { key: '2', label: '2', value: null },
   { key: '3', label: '3', value: 5, color: 'var(--c2)' },
 ] }));
-/* ⚠️ 2026-10-23: хэмжсэн 0 → 2px суурь зураас (>8 баганад шошго нуугдах тул null-аас ялгагдана) */
 assert.equal((sr.match(/height:0%/g) || []).length, 0, '0 → 0% өндөр биш');
 assert.equal((sr.match(/height:2px/g) || []).length, 1, '0 → 2px суурь зураас');
 {
@@ -57,7 +49,7 @@ assert.match(sr, />0</, '0 утга баганын дээр бичигдэнэ (
 assert.equal((sr.match(/seriesBar/g) || []).length, 2, 'null → баганагүй');
 assert.ok(sr.includes('--tone:var(--c2)'), 'items[].color хүндэтгэнэ');
 
-/* ── ⚠️ 2026-10-09 (аудит №3): олон цувааны муруй — шугам БҮР өөрийн талбайтай
+/* ── 2026-10-09 (аудит №3): олон цувааны муруй — шугам БҮР өөрийн талбайтай
    (2026-10-06 хэрэглэгчийн «доод талын fill»; жигдрэл хассан байсныг сэргээв) ── */
 const ml = renderToStaticMarkup(h(Series, {
   line: true,
@@ -71,14 +63,13 @@ const areas = ml.match(/fill:url\(#seriesArea[^)]*\)/g) || [];
 assert.equal(areas.length, 2, `шугам бүрд талбай (ганц цэгтэй хэсэгт биш): ${areas.length}`);
 assert.equal(new Set(areas).size, 2, 'шугам бүр өөрийн градиенттай');
 
-/* ── ⚠️ 2026-10-09 (аудит №3): Trend анхдагч smooth=false (хэмжилтийн цуваа — хугарсан шугам) ── */
+/* ── 2026-10-09 (аудит №3): Trend анхдагч smooth=false (хэмжилтийн цуваа — хугарсан шугам) ── */
 const tp = [{ label: '1', value: 1 }, { label: '2', value: 5 }, { label: '3', value: 2 }];
 const pathDs = (html) => [...html.matchAll(/<path[^>]* d="([^"]+)"/g)].map((m) => m[1]);
 assert.ok(pathDs(renderToStaticMarkup(h(Trend, { points: tp }))).every((d) => !d.includes('C')), 'анхдагч Trend зөөлрүүлэхгүй');
 assert.ok(pathDs(renderToStaticMarkup(h(Trend, { points: tp, smooth: true }))).some((d) => d.includes('C')), 'smooth ил дамжуулбал муруй');
 
-/* ── ui.tsx: Donut / Ring — хэмжээний стандарт ──
-   ⚠️ 2026-10-23: Environment — өнгөгүй зүсмэг `cat(i)` БИШ, НЭГ `--data` + тунгалгийн шат (.92, .7) */
+/* ── ui.tsx: Donut / Ring — хэмжээний стандарт ── */
 const dn = renderToStaticMarkup(h(Donut, { items: [{ key: 'x', label: 'X', value: 3 }, { key: 'y', label: 'Y', value: 1 }], size: 'sm' }));
 assert.match(dn, /width="82"/, 'sm = 82 (Environment 112-ын харьцаа)');
 assert.ok(dn.includes('fill:var(--data)') && !dn.includes('var(--c1)'), 'өнгөгүй зүсмэг → --data');
@@ -88,7 +79,6 @@ assert.match(rg, /width="120"/);
 assert.match(rg, /stroke-width="15\.6\d*"/, 'зузаан = R − .72R (Environment PieChart)');
 
 /* ── 2026-10-09 (лавлах CRM загвар — өнгө хэвээр) ── */
-/* ⚠️ 2026-10-23: Environment BarChart — тор + 34px тэнхлэг; масштаб = өгөгдлийн max (дээр нь утгын зай) */
 assert.ok(sr.includes('gridLine') && sr.includes('barAxis'), 'Series: тор + тэнхлэг');
 assert.ok(/height:84\.6\d*%/.test(sr), 'Series: 5 / 5 × (100 − 15.4) ≈ 84.6%');
 assert.match(sr, /title="3 · 5"/, 'Series: уугуул title');
@@ -113,7 +103,7 @@ assert.ok(dn.includes('НИЙТ'), 'голын шошго «НИЙТ»');
 assert.match(rg, /ringTrack[^>]*stroke-width="15\.6\d*"/, 'Ring-ийн зам = нумын зузаан');
 assert.ok(!rg.includes('stroke-linecap'), 'Ring: шулуун үзүүр (Environment)');
 
-/* ── ⚠️ 2026-10-09 (аудит №6): хувийн нийлбэр ЯГ 100 — Stack · Donut (тайлбар + aria) нэг арга ── */
+/* ── 2026-10-09 (аудит №6): хувийн нийлбэр ЯГ 100 — Stack · Donut (тайлбар + aria) нэг арга ── */
 const three = [{ key: 'a', label: 'A', value: 1 }, { key: 'b', label: 'B', value: 1 }, { key: 'c', label: 'C', value: 1 }];
 const stk = renderToStaticMarkup(h(Stack, { items: three, legend: true }));
 const stkPcts = [...stk.matchAll(/legendPct[^>]*>(\d+)%</g)].map((m) => Number(m[1]));
@@ -123,17 +113,16 @@ assert.match(dn3, /A 33\.4%, B 33\.3%, C 33\.3%/, 'Donut aria тойм тайл�
 const stkT = renderToStaticMarkup(h(Stack, { items: [{ key: 'a', label: 'A', value: 25 }, { key: 'b', label: 'B', value: 25 }], total: 100, legend: true }));
 assert.deepEqual([...stkT.matchAll(/legendPct[^>]*>(\d+)%</g)].map((m) => m[1]), ['25', '25'], '`total` өгвөл 100 болгож сунгахгүй');
 
-/* ── ⚠️ 2026-10-09 (аудит №6): Trend анхдагч fmt = autoNum — мянгатын таслал, хувь «26.3» хэвээр ── */
+/* ── 2026-10-09 (аудит №6): Trend анхдагч fmt = autoNum — мянгатын таслал, хувь «26.3» хэвээр ── */
 const tMoney = renderToStaticMarkup(h(Trend, { points: [{ label: '1', value: 2660000000000 }, { label: '2', value: 1500000000000 }], unit: ' ₮', alert: { value: 2000000000000 } }));
 assert.ok(tMoney.includes('2,660,000,000,000 ₮'), 'мөнгөн цуваа таслалтай (урьд «2660000000000.0 ₮»)');
-/* ⚠️ 2026-10-19: `data-report-chart` (тайлангийн Word графикийн JSON, дэлгэцэнд харагдахгүй) түүхий тоо агуулна — хасаж шалгана */
 assert.ok(!tMoney.replace(/ data-report-chart="[^"]*"/g, '').includes('2660000000000'), 'түүхий тоо үлдэхгүй');
 assert.ok(/data-report-chart="[^"]*2660000000000/.test(tMoney), 'тайлангийн графикт түүхий утга (Word форматлана)');
 assert.ok(tMoney.includes('2,000,000,000,000 ₮'), 'босгын шошго ч форматлагдана');
 const tPct = renderToStaticMarkup(h(Trend, { points: [{ label: '1', value: 26.3 }, { label: '2', value: 20 }], unit: '%' }));
 assert.ok(tPct.includes('26.3%'), 'хувийн дуудагч «26.3%» хэвээр');
 
-/* ── ⚠️ 2026-10-23: Environment — хоосон төлөв дүрсгүй; Stack (legend) = Composition; Meter уугуул title ── */
+/* ── 2026-10-23: Environment — хоосон төлөв дүрсгүй; Stack (legend) = Composition; Meter уугуул title ── */
 const em = renderToStaticMarkup(h(Empty, { label: 'Хоосон', icon: 'chart' }));
 assert.ok(!em.includes('<svg') && em.includes('Хоосон'), 'Empty: дүрсгүй');
 assert.ok(stk.includes('compBar'), 'Stack legend → Composition зурвас');

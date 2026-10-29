@@ -1,10 +1,10 @@
 /**
  * ЭРСДЭЛИЙН ЗАГВАРЫН шалгуур.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ersdel.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ersdel.check.mjs
  *
  * ЮУГ хамгаалж байна вэ:
  *
- *  1. ДЕТЕРМИНИЗМ. Цуваа нь `Math.random()`-гүй байх ёстой — эс бөгөөс график
+ *  1. ДЕТЕРМИНИЗМ. Цуваа нь `Math.random`-гүй байх ёстой — эс бөгөөс график
  *     render бүрд өөрчлөгдөж, «амьд өгөгдөл» мэт хуурамч сэтгэгдэл төрүүлнэ.
  *     Хоёр удаа дуудахад ЯГ ижил тоо гарахыг шалгана.
  *
@@ -21,9 +21,6 @@
  *  5. ТҮВШНИЙ ДАРААЛАЛ: 3 нь ХАМГИЙН ХҮНД (1 = хөнгөн, 5 жил → 3 = хүнд,
  *     100 жил). Хэрэв хэн нэгэн `FLOOD_LEVELS`-ийг эргүүлбэл бүх UI худал
  *     болно.
- *     ⚠️ 2026-09-21: энэ толгой урьд нь «1 нь хамгийн хүнд» гэж хуучин
- *     дарааллаар бичигдсэн хэвээр байсан ба доорх assert (3 > 2 > 1)-тай
- *     ЗӨРДӨГ байв — assert нь зөв, толгойг түүнд нийцүүлэв.
  */
 import assert from 'node:assert/strict';
 import {
@@ -107,11 +104,7 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
 }
 
 /* 5. ТҮВШНИЙ ДАРААЛАЛ — 3 нь ХАМГИЙН ХҮНД
- *
- * ⚠️ 2026-08-29-нд түвшний шаталбар УРВУУЛАГДСАН (feat: түвшний шаталбар):
- * урьд нь 1 = 100 жилийн үер байсныг 1 = хөнгөн (5 жил) → 3 = хүнд (100 жил)
- * болгов — «Анхааруулах» хувилбар 100 жилийн үерээр тооцдог алдааны засвар.
- * Энэ бүлэг тэр ШИНЭ дарааллыг хамгаална: дахин урвуулбал улаан болно. */
+ */
 {
   assert.ok(FLOOD_LEVELS[3].period > FLOOD_LEVELS[2].period && FLOOD_LEVELS[2].period > FLOOD_LEVELS[1].period, 'үер: 3-р түвшин ховор давтагдана');
   assert.ok(FLOOD_LEVELS[3].peak > FLOOD_LEVELS[2].peak && FLOOD_LEVELS[2].peak > FLOOD_LEVELS[1].peak);
@@ -136,7 +129,6 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
   const nh4 = get(down, 'nh4');
   assert.equal(gradeOf(nh4, 0.1), 'ok');
   assert.equal(gradeOf(nh4, 1.5), 'bad');
-  /* ⚠️ 2026-10-21: pH — ХОЁР ТАЛТ муж (6.5–8.5); урьд нь pH 5.0 «хэвийн» гардаг байв */
   const ph = get(down, 'ph');
   assert.equal(gradeOf(ph, 7.2), 'ok');
   assert.equal(gradeOf(ph, 5.0), 'bad', 'хүчиллэг pH 5.0 — хэтэрсэн');
@@ -146,11 +138,7 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
 }
 
 /* 7. ХОХИРЛЫН АНГИЛАЛ — нэгж үнэ объектын төрөлд тохирч байх
- *
- * ⚠️ Энэ бүлэг нь 2026-08-27-ны БОДИТ алдааг хамгаална: нэгж үнэ зөвхөн
- * геометрийн төрлөөр (талбай/шугам/цэг) тодорхойлогддог байсан тул 1-р
- * түвшний үерийн зурваст орох 2,018 модонд «худаг, тулгуур»-ын 3.4 сая ₮
- * тавигдаж, дан модны хохирол 6.9 ТЭРБУМ ₮ гарч байлаа. */
+ */
 {
   assert.equal(classOf('et:24', 'area'), 'building', 'Барилга → building');
   assert.equal(classOf('sb:4', 'area'), 'building');
@@ -179,7 +167,7 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
   assert.ok(FLOOD_SKIP_IDS.has('sb:16'), 'гол үерийн тооцооноос хасагдана');
 }
 
-/* 8. ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗАМЫН ШУГАМ 0 ₮ БИШ.
+/* 8. 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗАМЫН ШУГАМ 0 ₮ БИШ.
  *    «Авто зам»/«Одоо байгаа зам» (ирмэгийн шугам) `paved` (₮/м²)-д орж талбай 0
  *    тул ЧИМЭЭГҮЙ 0 ₮ гардаг байв. Одоо: тэнхлэг (`et:5`) → ЕТ-ийн 2.5 тэрбум ₮/км,
  *    ирмэг → `null` («тодорхойгүй», нийтэд орохгүй); нэгж-геометр зөрвөл `null`. */
@@ -202,7 +190,6 @@ const get = (st, key) => buildMetrics(st, NOW).find((m) => m.key === key);
   assert.equal(damageCost('tree', 'area', { area: 9, length: 0, n: 4 }, 1), 4 * DAMAGE_RATE.tree.rate, '«ширхэг» нь геометрээс үл хамаарна');
 }
 
-/* ⚠️ 2026-10-22 (аудит): өртсөн хүн — барилгын хүн амаас, хөлийн талбай ÷ 35 БИШ */
 {
   const { buildingPeople, EXPOSURE } = await import('@/lib/ersdel');
   assert.equal(buildingPeople(960, 5000, 1, 1200), 960, 'бүтэн орсон сургууль — хүн ам бүтнээрээ (хөл÷35 = 34 байв)');

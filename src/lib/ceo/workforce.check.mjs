@@ -1,9 +1,7 @@
 /**
  * «ХҮН · ЦАГ · ТЕХНИК» KPI-ийн шалгуур.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/workforce.check.mjs
- *
- * ⚠️ ЛОГИК ХУУЛБАРЛААГҮЙ — жинхэнэ `computeWorkforce`-ыг импортлоно, сүлжээгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/workforce.check.mjs
  *
  * Ямар БОДИТ алдаанаас хамгаалж байгаа вэ:
  *  1. UTC-ээр өдөр огтлох — УБ-ын шөнийн тайлан өмнөх өдөрт унах.
@@ -181,8 +179,6 @@ const ROWS = [
   const days2 = groupDays([late, early]);
   assert.equal(days2[0].workers, 120);
 
-  // ⚠️ Амьд хэв маяг: ЯГ ИЖИЛ Ognoo (04:00Z), өөр EditDate — засварласан (EditDate их)
-  //    нь үлдэнэ, оролтын дараалал ХАМААРАХГҮЙ (2026-08-21: oid255 247 ↔ oid256 389)
   const day = Date.UTC(2026, 7, 21, 4);
   const first = row(day, { MK: { w: 247, t: 3 } }, { workers: 247 }, false,
     { oid: 255, edit: Date.UTC(2026, 7, 21, 2, 54) });
@@ -276,7 +272,6 @@ const ROWS = [
   assert.equal(drop.issues.length, 1);
   assert.equal(drop.issues[0].text, 'Монкон констракшн ХХК — 100 → 60 хүн');
 
-  // ⚠️ 2026-10-21: өмнөх өдөр нэг ч компани тайлангүй → зөрүү null (урьд нь +30 «0-ээс»)
   const fromZero = computeWorkforce([
     row(D3, { MK: { w: 30 } }),
     row(D2, {}),
@@ -293,7 +288,6 @@ const ROWS = [
   assert.equal(zeroW.detail.delta, 30);
   assert.equal(zeroW.detail.deltaPct, null);
 
-  // ⚠️ 2026-10-21: маягтаа бөглөөгүй компани (өнөөдөр 0, өчигдөр 250) нийт зөрүүнд ОРОХГҮЙ — 'bad' биш
   const missed = computeWorkforce([
     row(D3, { MK: { w: 0 }, NBG: { w: 100 } }),
     row(D2, { MK: { w: 250 }, NBG: { w: 96 } }),
@@ -393,8 +387,6 @@ const ROWS = [
 }
 
 /* ══════════ 11. «Тайлан өгсөн» дүрэм ба хуучирсан тайлан (2026-10-01) ══════════ */
-/* ⚠️ `Niit_ajiltan_<SFX>` нь репитэд ороогүй үед ч 0 — «0 ажилтан + 0 техник» = ТАЙЛАНГҮЙ.
-   ХАБЭА хуудасны өдрийн цуваа үүгээр тайлангүй өдрийг цоорхой үлдээнэ (худал 0 цэг биш). */
 {
   assert.equal(isReported({ workers: 0, technik: 0 }), false);
   assert.equal(isReported({ workers: 5, technik: 0 }), true);
@@ -415,8 +407,6 @@ const ROWS = [
   const src = readFileSync(new URL('../../modules/Habea.tsx', import.meta.url), 'utf8');
   const body = src.slice(src.indexOf('function byDaySeries'), src.indexOf('const pkgOrder'));
   assert.ok(body.includes('if (!companyReported(r, sfx)) continue;'), 'byDaySeries — тайлангүй гүйцэтгэгч алгасна');
-  /* ⚠️ 2026-10-21 (хэрэглэгч): ХАБЭА KPI-ийн «Сүүлийн тайлан … хоног шинэчлэгдээгүй» мөр ХАСАГДСАН — `laborStaleness`
-     одоо зөвхөн CEO самбарт; Habea.tsx-д байхыг шаардахгүй (эсрэгээр нь ч шаардахгүй). */
 }
 
 console.log('workforce.check: OK');

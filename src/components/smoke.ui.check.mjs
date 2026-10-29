@@ -1,32 +1,9 @@
 /**
  * UI SMOKE — харагдац/компонент бүрийг Node дээр `renderToStaticMarkup`-аар
  * АНХНЫ (ачаалалтын) төлөвт нь зурна — сүлжээгүй, хөтөчгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/smoke.ui.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/smoke.ui.check.mjs
  *   … smoke.ui.check.mjs --list      — жагсаалт л
  *   … smoke.ui.check.mjs Dashboard   — нэрэнд таарах тохиолдлууд л (--dump: markup хэвлэнэ)
- *
- * ⚠️ ЯАГААД (2026-09-30): 112 `.tsx` файл нэг ч компонентын тестгүй байсан —
- *    JSX-ийн эвдрэл, буруу hook дараалал, provider-гүй `useContext`, импортын
- *    тойрог зэрэг нь ЗӨВХӨН хөтөчид нээхэд илэрдэг байв. Энэ шалгуур тэднийг
- *    `npm test`-д барина: шидэхгүй · markup хоосон биш · зарим монгол шошго байна.
- *
- * ⚠️ `*.ui.check.mjs` нэр нь ЗААВАЛ: `tools/ts-alias.mjs` тэр нэрээр UI горимоо
- *    асааж CSS / next/dynamic / @arcgis/core стубуудыг залгана (`ts-alias-hooks.mjs`).
- *    Бусад шалгуурт стуб ОРОХГҮЙ.
- *
- * ⚠️ Глобалууд (`window`, `document`, `localStorage`, `matchMedia`, `ResizeObserver`
- *    …) ЗӨВХӨН ЭНЭ ФАЙЛД, импортоос ӨМНӨ тавигдана — модулийн дээд түвшний
- *    `typeof window` шалгалт «хөтөч» гэж үзнэ. `fetch` ямагт татгалзана (сүлжээ
- *    ҮГҮЙ) — `useAsync` нь SSR-д эффект ажиллуулдаггүй тул харагдац «Татаж
- *    байна…» төлөвтөө үлдэнэ; module-level дуудалтын татгалзлыг тоолно (унагахгүй).
- *
- * ⚠️ Дараах нь SSR-д ЗУРАГДАХГҮЙ тул `skip` (шалтгаантай) — худал амжилт биш:
- *      · `MapCanvas` — ArcGIS `MapView`-г `useLayoutEffect`-д үүсгэдэг, markup нь
- *        хоосон контейнер л; стубаар «зурлаа» гэх нь утгагүй.
- *      · `AgentChat` — WebSocket/EventSource; `DocViewer` — `open` үед л агуулгатай.
- *    Шинэ харагдац нэмэхдээ доорх `CASES`-д нэг мөр нэмнэ — `Portal`-ын дотор
- *    `dynamic()`-оор ачаалагддаг бол `preloadDynamic()`-ийн дараа Portal-ын
- *    markup-д өөрөө орно (тэр ч ажиллаж байгааг «Portal» тохиолдол батална).
  */
 import assert from 'node:assert/strict';
 
@@ -90,13 +67,10 @@ Object.assign(g, {
 if (!g.navigator) g.navigator = {};
 try { Object.defineProperty(g.navigator, 'language', { value: 'mn', configurable: true }); } catch { /* тогтмол */ }
 
-/* ⚠️ Сүлжээ ҮГҮЙ: `fetch` ямагт татгалзана; module-level дуудалт унагахгүй, тоолно. */
 let fetchCalls = 0;
 let unhandled = 0;
 g.fetch = (input) => { fetchCalls++; return Promise.reject(new Error(`smoke: сүлжээгүй (${typeof input === 'string' ? input.slice(0, 60) : 'request'})`)); };
 process.on('unhandledRejection', () => { unhandled++; });
-/* ⚠️ Модулийн түвшний `setInterval`/`setTimeout` процессыг барихгүй (`unref`) —
-   `process.exit()` дуудахгүй (Windows дээр libuv assertion, ts-alias-hooks-ийн тэмдэглэл). */
 for (const fn of ['setInterval', 'setTimeout']) {
   const orig = g[fn];
   g[fn] = (...a) => { const t = orig(...a); t?.unref?.(); return t; };
@@ -119,9 +93,6 @@ const filters = argv.filter((a) => !a.startsWith('-'));
 
 /**
  * Provider-ууд: Locale/Theme (layout.tsx) + Map/Filter (Portal.tsx-ийн бүтэц).
- * ⚠️ `AuthProvider` ХЭРЭГГҮЙ — `AuthGate`-ийн context-ийн анхдагч утга нь
- *    `status: 'off'` (нэвтрэлт унтраалттай, бүх эрхтэй) — page.tsx-ийн `AUTH.appId`
- *    хоосон үеийн замтай ижил.
  */
 const wrap = (el, { map = true } = {}) => {
   let inner = el;
@@ -180,7 +151,6 @@ const CASES = [
   { name: 'Finance', load: () => import('@/modules/Finance'), pick: (m) => m.Finance, props: {}, expect: ['Санхүүжилтийн бүртгэл'] },
   { name: 'IpcTable', load: () => import('@/modules/IpcTable'), pick: (m) => m.IpcTable, props: { contracts: [] } },
   { name: 'Guitsetgel', load: () => import('@/modules/Guitsetgel'), pick: (m) => m.Guitsetgel, props: {} },
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   { name: 'Zovshoorol', load: () => import('@/modules/Zovshoorol'), pick: (m) => m.Zovshoorol, props: {} },
   { name: 'Tailan', load: () => import('@/modules/Tailan'), pick: (m) => m.Tailan, props: {}, expect: ['Удирдлагын тайлан'] },
   { name: 'ExecReport', load: () => import('@/modules/ExecReport'), pick: (m) => m.ExecReport, props: {} },
@@ -194,11 +164,8 @@ const CASES = [
   { name: 'ViewPanel', skip: 'Portal-ын дотоод самбар — олон тооны төлөв/callback prop; Portal тохиолдол дамжуулан зурна' },
   { name: 'FillNew', load: () => import('@/modules/sheet/FillNew'), pick: (m) => m.default, props: {} },
   { name: 'ErhTypes', load: () => import('@/modules/ErhTypes'), pick: (m) => m.ErhTypes, props: {}, map: false },
-  /* ⚠️ 2026-09-30: НЭГ УРСГАЛ = НЭГ ХУУДАС — хуудас бүрийн панел (зохиогч + батлагч нэг дор).
-     Багцаар олгодог 7 хуудас «багц × үүрэг» хүснэгт (`AclGrid`) — «Багц» булан ба багцын мөр зурагдах ёстой */
   { name: 'ChanarAcl', load: () => import('@/modules/ChanarAcl'), pick: (m) => m.ChanarAcl, props: {}, map: false,
     expect: ['Гүйцэтгэгч (ирүүлэгч)', 'ТУХ — инженер · менежер', 'ХАБЭА', 'Багц 1'] },
-  /* ⚠️ 2026-10-23: QAQC хасагдсан (QaqcAcl) */
   { name: 'HuvaariAcl', load: () => import('@/modules/HuvaariAcl'), pick: (m) => m.HuvaariAcl, props: {}, map: false,
     expect: ['Зохиогч', 'Батлагч', 'Багц 1'] },
   { name: 'ObyemAcl', load: () => import('@/modules/ObyemAcl'), pick: (m) => m.ObyemAcl, props: {}, map: false,
@@ -214,13 +181,11 @@ const CASES = [
   { name: 'PlainCapAcl:gazar', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'gazar' }, map: false,
     expect: ['Газрын төлөв засах'] },
   { name: 'CapOrphanNote', load: () => import('@/modules/CapOrphanNote'), pick: (m) => m.CapOrphanNote, props: { cap: 'plan' }, map: false,
-    /* ⚠️ ACL уншигдаагүй тул `null` — markup хоосон байх нь ЗӨВ; wrap-ын provider-ууд л зурагдана */
     allowEmpty: true },
   { name: 'GuitsetgelAcl', load: () => import('@/modules/GuitsetgelAcl'), pick: (m) => m.GuitsetgelAcl, props: {}, map: false,
     expect: ['Багц 1'] },
   { name: 'DedButetsAcl', load: () => import('@/modules/DedButetsAcl'), pick: (m) => m.DedButetsAcl, props: {}, map: false,
     expect: ['Засварлагч'] },
-  /* ⚠️ 2026-10-19: «Систем түр хаах» — хаалттай хэрэглэгчийн цонх (тогтмол текст + тайлбар + дахин нээгдэх) ба эрхийн хуудас */
   { name: 'SystemClosed', load: () => import('@/components/AuthGate'), pick: (m) => m.SystemClosed, map: false,
     props: { info: { on: true, note: 'Шилжүүлэлтийн тайлбар', until: '10-20 09:00', by: 'bat', at: Date.UTC(2026, 9, 19, 6) }, username: 'tester', onRecheck: async () => {}, onSignOut: noopFn },
     expect: ['Систем түр хаагдсан', 'Системийг нийслэлийн дата төв рүү шилжүүлж байгаа тул түр хаагдсан. Түр хүлээнэ үү.', 'Шилжүүлэлтийн тайлбар', 'Дахин нээгдэх: 10-20 09:00', 'Дахин шалгах', 'Гарах', 'role="alertdialog"'] },
@@ -247,7 +212,6 @@ else {
     try {
       const mod = await c.load();
       const Comp = c.pick(mod);
-      /* ⚠️ `memo()`/`forwardRef()` нь объект (`$$typeof`) — LayerCatalog */
       assert.ok(typeof Comp === 'function' || (Comp && typeof Comp === 'object' && Comp.$$typeof), `${c.name}: компонент экспорт олдсонгүй`);
       if (c.preload) {
         const pe = await preloadDynamic();
@@ -255,7 +219,6 @@ else {
       }
       const props = typeof c.props === 'function' ? await c.props() : c.props;
       const html = renderToStaticMarkup(wrap(h(Comp, props), { map: c.map !== false }));
-      /* ⚠️ `allowEmpty` — санаатайгаар `null` буцаадаг бүрэлдэхүүн (ACL уншигдаагүй үеийн `CapOrphanNote`) */
       assert.ok(c.allowEmpty || (html && html.trim().length > 0), `${c.name}: markup хоосон`);
       for (const s of c.expect ?? []) assert.ok(html.includes(s), `${c.name}: «${s}» markup-д алга`);
       ok++;

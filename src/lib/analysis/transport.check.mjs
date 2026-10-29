@@ -4,27 +4,14 @@
  *
  * Газрын зураг дээрх `barilga` (et:24)-ийг татаж, барилга бүрийг 7 ангилалд
  * хуваан, өглөөний оргил цагийн хүн-зорчилт ба тээврийн хуваарийг тооцно.
- *
- * ⚠️ Логик нь `transport.ts`-ийн ХУУЛБАР (node TS уншихгүй) — тэндээ өөрчилвөл
- * ЭНДЭЭ ч өөрчил.
  */
 import assert from 'node:assert/strict';
 
-/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
 if (process.env.SELBE_LIVE_SKIP) {
   console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
   process.exit(0);
 }
 
-/*
- * ⚠️ ЭХ СУРВАЛЖ (2026-08-27-нд СОЛИГДСОН): `Selbe_ET_20260721` хаагдсан (499).
- * Давхаргууд нэгтгэсэн `data` үйлчилгээнд шилжсэн — дугаарын зураглал нь
- * `services.ts`-ийн `TD_LAYER`-тэй ижил:
- *     et:24 «Барилга»          → data/108
- *     et:5  «Замын тэнхлэг»    → data/104
- *     et:2  «Автобусны буудал» → data/87
- */
-/* ⚠️ 2026-10-20: Enterprise — `TD` (AGOL түлхүүр) `query.ts`-ээр зураглагдана (POST · токен · талбарын нэр эх хэлбэрээр). */
 const { SELBE_ET } = await import('@/lib/services.ts');
 const { arcgisPost } = await import('@/lib/query.ts');
 const URL = `${SELBE_ET}/99`;
@@ -79,8 +66,6 @@ async function fetchAll() {
   const out = [];
   let offset = 0;
   for (;;) {
-    // ⚠️ Полигоны оронд ТӨВ ЦЭГ (`returnCentroid`) — замд хуваарилахад л хэрэгтэй.
-    //    Web Mercator (3857)-оор авна: замын геометртэй нэг систем.
     const j = await arcgisPost(`${URL}/query`, {
       where: '1=1', outFields: `${F.purpose},${F.population},${F.capacity}`, returnGeometry: 'false', returnCentroid: 'true',
       outSR: '3857', resultOffset: String(offset), resultRecordCount: '2000',
@@ -101,8 +86,6 @@ async function fetchAll() {
 
 /**
  * «Замын тэнхлэг» (et:5)-ийг Web Mercator шугам болгож татна.
- * ⚠️ `roadNet.ts`-ийн адил UTM хайрцгаар шүүнэ — CAD-ийн эх цэг рүү унасан
- * гажсан хэрчмүүд шүүгдэхгүй бол «хамгийн ойрын зам» худал болно.
  */
 async function fetchRoads() {
   const geometry = JSON.stringify({
@@ -212,12 +195,6 @@ if (unknown.size) {
 
 /* ══════════════════ Phase 2 — замын эрэлт ══════════════════ */
 
-/**
- * ⚠️ Энд замын нэгж нь ЭХ ДАВХАРГЫН ШУГАМ (et:5-ийн path); аппад бол
- * `buildNetwork`-ийн ИРМЭГ. Хоёулаа CAD-ийн ижил хэрчмүүдээс гардаг тул эрэлтийн
- * хуваарилалт ойролцоо — энэ шалгалт нь ТОМЬЁОГ (жингийн нормчилол, зайн босго,
- * нийлбэрийн хадгалалт) баталгаажуулна, аппын ирмэгийн индексийг БИШ.
- */
 const roads = await fetchRoads();
 assert.ok(roads.length > 0, 'замын шугам татагдсангүй');
 
@@ -252,7 +229,6 @@ for (const a of rows) {
   distsM.push(best[0].d / WM_UNITS_PER_M);
   if (veh <= 0) continue;
 
-  // ⚠️ Жинг НОРМЧИЛНО — 3-аас цөөн зам олдвол зорчилт «алга болохгүй»
   const wSum = best.reduce((s, _, i) => s + ROAD_WEIGHTS[i], 0);
   for (let i = 0; i < best.length; i++) {
     const share = (veh * ROAD_WEIGHTS[i]) / wSum;
@@ -323,7 +299,6 @@ for (const a of rows) {
   const distM = bestD / WM_UNITS_PER_M;
   const band = busBand(distM);
   bldByBand[band]++;
-  // ⚠️ ЗӨВХӨН орон сууц — багтаамжийг хүн ам гэж тоолохгүй
   if (cat === 'residential') { popByBand[band] += pop; resPop += pop; }
   stopDemand[bestI] += trips * MODE_SPLIT.transit;
 }

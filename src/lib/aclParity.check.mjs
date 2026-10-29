@@ -1,8 +1,6 @@
 /**
  * ЭРХИЙН ДЭД СИСТЕМҮҮДИЙН ТЭГШ БАЙДАЛ — offline эх кодын гэрээ.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/aclParity.check.mjs
- *
- * ⚠️ ЯАГААД ЭНЭ ТЕСТ БАЙХ ЁСТОЙ ВЭ (2026-09-08-ны эрхийн бүрэн шалгалт).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/aclParity.check.mjs
  *
  * Эрхийн систем нь БАРАГ ИЖИЛ дөрвөн ACL модуль (`guitsetgel` · `qaqc` ·
  * `huvaari` · `obyem`) ба UserAdmin доторх ГУРВАН БАРАГ ИЖИЛ салаанаас
@@ -27,38 +25,21 @@ import fs from 'node:fs';
 const read = (p) => fs.readFileSync(p, 'utf8');
 /**
  * ТАЙЛБАРГҮЙ эх код — шалгуурууд нь кодын БОДИТ бичилтийг тулгах ёстой.
- *
- * ⚠️ Энэ файлын шалгуурууд өөрсдөө кодын хэв маягийг мөрөөр хайдаг тул зассан
- *    алдааг ТАЙЛБАРТ дурдахад (⚠️ тэмдэглэгээ нь энэ төслийн дүрэм) тэр тайлбар
- *    нь «алдаа хэвээр байна» гэсэн ХУДАЛ уналт өгдөг — яг тэр нь энэ тестийг
- *    бичих үед тохиолдсон. Тиймээс блок ба мөрийн тайлбарыг эхлээд хасна.
  */
 const strip = (src) => src
   .replace(/\/\*[\s\S]*?\*\//g, ' ')
   .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
 const readCode = (p) => strip(read(p));
-/** §14-ийн товч туслах (⚠️ 2026-10-19) */
+/** §14-ийн товч туслах (2026-10-19) */
 const ok14 = (c, m) => assert.ok(c, m);
 
 /**
  * `<scopeFn>(…) ?? []`  ба  `<scopeFn>(…) || []` хэв шинж.
- * ⚠️ Тусад нь тогтмол: regex-ийн escape-ийг нэг л газар бичнэ.
  */
 const BAD_SCOPE = '\\([^)]*\\)\\s*(\\?\\?|\\|\\|)\\s*\\[\\]';
 
 /* ══════════ 1. set*Assign ба remove*Assign нь ИЖИЛ хатуу шалгууртай ══════════ */
 /**
- * ⚠️ `sync` нь «бүх зүйл бүтсэн үү» гэсэн ГАНЦ хариу — админы UI түүнээс
- * улаан анхааруулга гаргадаг. Хуваарилалтын мөр (`r.ok`) бичигдээд эрхийн
- * `__cap__:` мөр (`r.g`) унавал тэр хүн хуваарилагдсан ч хуудсаа нээж
- * ЧАДАХГҮЙ — тиймээс хоёулаа шалгагдана.
- */
-/**
- * ⚠️ 2026-09-09: ГУРВАН МОДУЛЬ НЭГ ЦӨМ БОЛСОН (`scopedAcl.ts`). Урьд нь энэ
- * шалгуур гурван файлыг ТУС ТУСАД нь тулгадаг байв — учир нь тэдгээр нь
- * нэрээс бусад бүрэн ижил ~250 мөрийн ХУУЛБАР байсан. Одоо логик нэг газарт
- * тул шалгуур ч тийш чиглэнэ.
- *
  * Гурван бүрхүүл (`qaqcAcl` · `huvaariAcl` · `obyemAcl`) нь `makeAcl`-ийг
  * дуудахаас өөр логикгүй байх ЁСТОЙ — тэдгээрт `markResult` дахин гарч ирвэл
  * давхардал буцаж ирсэн гэсэн үг (доорх 1b шалгуур барина).
@@ -70,7 +51,6 @@ const BAD_SCOPE = '\\([^)]*\\)\\s*(\\?\\?|\\|\\|)\\s*\\[\\]';
     'scopedAcl: markResult(u, r.ok) үлдсэн — эрх олголтын үр дүнг залгиж байна. '
     + '`r.ok && r.g` байх ёстой (set ба remove ХОЁУЛАА).');
 
-  /* ⚠️ 2026-10-01: + `retry` («Дахин илгээх» · «Дахин олгох») — мөн хоёуланг барина */
   const strong = core.match(/markResult\(u,\s*r\.ok\s*&&\s*r\.g\)/g) ?? [];
   assert.equal(strong.length, 3,
     `scopedAcl: markResult(u, r.ok && r.g) нь ЯГ 3 удаа (set + remove + retry) байх ёстой, олдсон: ${strong.length}`);
@@ -80,10 +60,6 @@ const BAD_SCOPE = '\\([^)]*\\)\\s*(\\?\\?|\\|\\|)\\s*\\[\\]';
   assert.equal(ret.length, 3,
     `scopedAcl: sync нь 'r.ok && r.g' буцаах ёстой (3 газар), олдсон: ${ret.length}`);
 
-  /* ⚠️ 2026-09-21: хасалтын revoke нь ГҮЙЦЭТГЭХ агшиндаа «дахин хуваарилагдсан
-     уу» гэж шалгана — `guitsetgelAcl.removeAssign`-ийн `revoke && !stageOfUser(u)`
-     дүрэмтэй тэгш. Болзолгүй `syncCaps(u, [])` буцаж ирвэл хойшилсон хасалт
-     шинэ хуваарилалтын эрхийг арчина (huvaariAcl.check-ийн runtime шалгуур). */
   assert.match(core, /revoke\s*&&\s*!load\(\)\.some\(\(a\) => a\.user === u\)\s*\?\s*await syncCaps\(u,\s*\[\] as R\[\]\)/,
     'scopedAcl.removeAssign: revoke нь дахин хуваарилагдсан эсэхийг шалгах ёстой');
   assert.doesNotMatch(core, /const g = revoke \? await syncCaps\(u, \[\] as R\[\]\) : true;/,
@@ -92,9 +68,6 @@ const BAD_SCOPE = '\\([^)]*\\)\\s*(\\?\\?|\\|\\|)\\s*\\[\\]';
   assert.match(g, /revoke\s*&&\s*!stageOfUser\(u\)\s*\?\s*await revokeFlowAccess/,
     'guitsetgelAcl.removeAssign: дахин томилогдсон хүний эрхийг буцаах ёсгүй');
 
-  /* ⚠️ 2026-09-21: remote ачаалагдаагүй сешнд localStorage-ийн хуваарилалт /
-     эрх ҮЛ ТООЦОГДОНО — гурван модульд ижил туг. Нэгд нь арилвал (сүлжээ
-     хаагаад локалд тарьсан эрх) тэр модульд өөрөө өөртөө эрх олгох зам нээгдэнэ. */
   for (const [f, flag] of [
     ['src/lib/scopedAcl.ts', 'let remoteSynced = false;'],
     ['src/lib/guitsetgelAcl.ts', 'let remoteSynced = false;'],
@@ -129,16 +102,6 @@ for (const [f, name] of ACL_FILES) {
 console.log('✅ гурван бүрхүүл нимгэн — логик цөмд хэвээр');
 
 /* ══════════ 2. _syncRemote* нь username-ыг trim() хийнэ ══════════ */
-/**
- * ⚠️ Бичих тал (`set*Assign`) нь `trim().toLowerCase()` хийдэг. Уншихдаа
- * `trim()` хийхгүй бол remote мөрөнд санамсаргүй зай орсон үед түлхүүр нь
- * ХЭЗЭЭ Ч таарахгүй — хуваарилалт «алга болсон» мэт харагдана.
- */
-/*
- * ⚠️ 2026-09-09: Чанар · Хуваарь · Обьём гурвын `_syncRemote*` нь одоо
- *    `scopedAcl.syncRemote`-д НЭГ удаа бичигдсэн (бүрхүүл нь зөвхөн
- *    дамжуулна). Тиймээс цөмийг НЭГ удаа, үлдсэн хоёр модулийг тус тусад нь.
- */
 const SYNC_FILES = [
   ['src/lib/scopedAcl.ts', 'const syncRemote'],
   ['src/lib/guitsetgelAcl.ts', 'export function _syncRemoteAssigns'],
@@ -157,12 +120,6 @@ for (const [f, decl] of SYNC_FILES) {
 console.log('✅ _syncRemote* (цөм + 2 модуль) — username бүгд trim().toLowerCase()');
 
 /* ══════════ 3. caps.ts — dirty-set БАЙХ ёстой ══════════ */
-/**
- * ⚠️ `permissions.ts`-д 2026-08-27-нд нэмэгдсэн хамгаалалт `caps.ts`-д
- * ХУУЛАГДААГҮЙ байв: ArcGIS бичилт унасан эрхийг хаана ч тэмдэглэдэггүй тул
- * дараагийн `initRemote` (5 мин тутам) кэшийг бүхэлд нь дарж бичихэд админы
- * засвар ЧИМЭЭГҮЙ буцдаг байлаа.
- */
 {
   const src = readCode('src/lib/caps.ts');
   for (const need of ['DIRTY_KEY', 'loadDirty', 'saveDirty', 'trackWrite', 'retryDirtyCaps', 'dirtyCapKeys']) {
@@ -172,11 +129,9 @@ console.log('✅ _syncRemote* (цөм + 2 модуль) — username бүгд tr
   const i = src.indexOf('export async function setCaps');
   assert.ok(i > 0, 'caps.ts: setCaps олдсонгүй');
   const body = src.slice(i, src.indexOf('export function toggleCap'));
-  /* ⚠️ 2026-10-04: `out` — шинэ мөр дээр нэгтгэсэн жагсаалт (`mergeCapDelta`); dirty үед `next` */
   assert.ok(/trackWrite\(u,\s*(next|out),\s*ok\)/.test(body),
     'caps.ts: setCaps нь trackWrite(u, next, ok) дуудах ёстой');
 
-  /* ⚠️ ХООСОН жагсаалтыг АЛГАСАХГҮЙ: `c.length` шүүлтүүр буцаж ирвэл барина */
   assert.ok(!/if\s*\(r\.user\s*&&\s*c\.length\)/.test(src),
     'caps.ts: _syncRemoteCaps нь хоосон эрхийн жагсаалтыг алгасаж байна (c.length шүүлтүүр)');
 
@@ -189,16 +144,8 @@ console.log('✅ _syncRemote* (цөм + 2 модуль) — username бүгд tr
 console.log('✅ caps.ts — dirty-set · trackWrite · trusted overlay');
 
 /* ══════════ 3б. Dirty-set нь UI-д ХОЛБОГДСОН (2026-09-08-ны амьд шалгалт) ══════════ */
-/**
- * ⚠️ caps.ts-д dirty-set нэмсэн ч UserAdmin зөвхөн permissions-ийн dirtyKeys()-ийг
- * уншиж байсан — эрхийн бичилт унасан тэмдэг refresh-ээр арилж, retry товч ч
- * түүнийг дахин илгээдэггүй байв. Тэмдэг ба retry нэг эх сурвалжаас гарна.
- */
 {
   const ua = readCode('src/components/UserAdmin.tsx');
-  /* ⚠️ regex БИШ, includes(): энэ блок анх `node -e` + bash quoting-оор
-     бичигдэхэд бүх `\` идэгдэж, regex-үүд утгагүй болж санамсаргүй тэнцэж
-     байв (CLAUDE.md-ийн `node -e` занга). Энгийн мөр тулгалт аюулгүй. */
   assert.ok(ua.includes('new Set([...dirtyKeys(), ...dirtyCapKeys()])'),
     'UserAdmin: dirtyRemote нь dirtyKeys() ба dirtyCapKeys() ХОЁУЛАНГ нэгтгэх ёстой');
   assert.ok(ua.includes('Promise.all([retryDirty(), retryCapsDirty()])'),
@@ -224,8 +171,6 @@ console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public банн�
      2026-09-22: 7 дахь нь нэмэлт ажил (`__ajil__:`);
      2026-09-23: 8 дахь нь дэд бүтцийн засвар (`__butets__:`);
      2026-09-25: 9 дэх нь эрхийн төрлийн загвар (`__type__:`) */
-  /* ⚠️ 2026-10-23: QAQC хасагдсан (`__qaqc__:` синк) → 8 */
-  /* ⚠️ 2026-10-26: + «Хуваарь харах» хүрээний модуль (`huvaariView`, уншигч бүртгэнэ) → 9 */
   assert.equal(logged.length, 9,
     `initRemote-ийн 8 ACL синк + хуваарь харах модуль бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
   /* caps нь trusted-ыг дамжуулна */
@@ -235,14 +180,8 @@ console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public банн�
 console.log('✅ permissions.initRemote — 8 синк бүр console.error, caps нь trusted авна');
 
 /* ══════════ 5. permsRemote — НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР бүх угтварт ══════════ */
-/**
- * ⚠️ `caps` ганцаараа массив байсан тул давхар `__cap__:` мөр ХОЁУЛАА
- * жагсаалтад орж, ХАССАН эрх дараалал зөрөхөд СЭРГЭДЭГ байв. Бусад дөрөв
- * Map ашигладаг — тэдэнтэй ижил дүрэмд оруулав.
- */
 {
   const src = readCode('src/lib/permsRemote.ts');
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   for (const m of ['flowBy', 'capsBy', 'huvaariBy', 'obyemBy', 'ajilBy', 'butetsBy']) {
     assert.ok(new RegExp(`const ${m} = new Map<`).test(src),
       `permsRemote: ${m} нь Map байх ёстой — давхар мөрөөс хассан эрх сэргэнэ`);
@@ -263,27 +202,16 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
     "findTableUrl: num:'10' — 11 хуурамч item үүсгэвэл жинхэнэ хүснэгт цонхноос гарч remote УНТАРНА");
   assert.ok(/num: '100',/.test(src), "findTableUrl: num нь '100' байх ёстой");
 
-  /* ⚠️ GRANTS УНШИЛТЫН ТЭГШ ХЭМ — 2026-09-16-ны аудитын олдвор.
-     `fetchAll` нь `grants`-ыг ЗӨВХӨН `__chanar__:` салаанд уншдаг байв;
-     `__huvaari__:` ба `__obyem__:` хаядаг байсан тул хуудас сэргээх бүрд
-     үүрэг×багцын ҮРЖВЭР эргэж ирж, «Багц 1-д зохиогч, Багц 5-д батлагч»
-     гэсэн хүн Багц 1-д Ч БАТЛАГЧ болж, `decidePlan`-ийн зохиогч=батлагч
-     татгалзалтаар тэр багц ГАЦДАГ байлаа. Гурван салаа ижил уншина. */
-  /* ⚠️ 2026-10-04: ЗӨВХӨН `fetchAll`-ийн биеэс — `scopedRead` (бичихийн өмнөх нэгтгэлийн уншилт) нь ижил задлалттай 6 дахь газар */
   const fetchAllSrc = src.slice(src.indexOf('export async function fetchAll'), src.indexOf('async function findOids'));
   const grantsReads = (fetchAllSrc.match(/Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/g) ?? []).length;
   assert.ok(/export async function scopedRead[\s\S]*?Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/.test(src),
     'scopedRead: grants-ыг fetchAll-тай ижил уншина');
-  /* ⚠️ 2026-10-19 (аудит №10): таван салаа НЭГ туслахаар (`scoped`) — хуулбар биш, тэгш хэм бүтцээр баталгаатай.
-     Шалгуур: туслах grants-ыг уншина (ЯГ нэг) ба таван угтвар бүгд түүгээр явна. */
   assert.equal(grantsReads, 1, `fetchAll: grants уншилт нэг туслахад (scoped) байх ёстой, олдсон: ${grantsReads}`);
   const scopedList = fetchAllSrc.slice(fetchAllSrc.indexOf('const SCOPED'), fetchAllSrc.indexOf('rowLoop:'));
   for (const pfx of ['AJIL_PREFIX', 'BUTETS_PREFIX', 'CHANAR_PREFIX', 'OBYEM_PREFIX', 'HUVAARI_PREFIX']) {
     assert.ok(scopedList.includes(`[${pfx}, `), `fetchAll: ${pfx} нийтлэг (grants уншдаг) задлалаар явахгүй байна`);
   }
   /* Бичих тал ч гурвуулаа — уншилт бичилттэйгээ тэнцүү байх ёстой */
-  /* ⚠️ 2026-10-26 (A6): таван хуулбар НЭГ туслахаар (`scopedUpsert(kind)`) — бичилт ЯГ нэг газар, таван систем
-     бүгд түүгээр явна (хуулбар биш тул зөрөх боломжгүй; уншилтын `scoped`-той ижил загвар). */
   const grantsWrites = (src.match(/grants \? \{ roles, bagts, grants \} : \{ roles, bagts \}/g) ?? []).length;
   assert.equal(grantsWrites, 1, `upsert: grants бичилт НЭГ туслахад (scopedUpsert) байх ёстой, олдсон: ${grantsWrites}`);
   assert.ok(/export function scopedUpsert\([\s\S]*?SCOPED_PREFIX\[kind\][\s\S]*?grants \? \{ roles, bagts, grants \}/.test(src), 'scopedUpsert: SCOPED_PREFIX-ээр grants бичихгүй байна');
@@ -291,8 +219,6 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
     assert.ok(src.includes(`return scopedUpsert('${k}', user, roles, bagts, grants);`), `${k}Upsert: scopedUpsert-ээр явахгүй байна`);
     assert.ok(src.includes(`return scopedRemove('${k}', user);`), `${k}Remove: scopedRemove-ээр явахгүй байна`);
   }
-  /* ⚠️ Мөрийн ТӨРӨЛД `grants` ИЛ зарлагдсан байх — cast-аар нуувал дараагийн
-     салаа нэмэхэд төрлийн систем анхааруулахаа болино. */
   for (const t of ['HuvaariRow', 'ObyemRow', 'ChanarRow', 'AjilRow']) {
     const decl = src.slice(src.indexOf(`export type ${t} = {`), src.indexOf(`export type ${t} = {`) + 220);
     assert.match(decl, /grants\?: Grant\[\]/,
@@ -302,15 +228,6 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
 console.log('✅ permsRemote — 6 угтвар Map · хуудаслалт · хайлт 100 · grants 4/4 тэгш хэм');
 
 /* ══════════ 6. UserAdmin — ХУВААРИЛАЛТЫГ ӨӨРӨӨ БИЧИХГҮЙ (2026-09-25) ══════════ */
-/**
- * ⚠️ 2026-09-09-нд `qaqc` · `plan` · `obyem` гурван салааг `flipScoped` болгож
- * нэгтгэсэн байв (super · `r.ok` · `.trim()` алдаанууд). 2026-09-25-нд
- * `flipScoped` БҮХЭЛДЭЭ УСТСАН (баталсан төлөвлөгөө): тэр унтраалга нь
- * хуваарилалтын ХОЁР ДАХЬ эх сурвалж болж `[ALL]`-аар хүрээг тэлдэг байв.
- * Одоо хуваарилалт зөвхөн `aclOps`-оор (карт · матриц · панел) — энэ шалгуур
- * `UserAdmin` дахин `set*Grants` дуудаж эхлэхийг барина. `aclOps`-ийн дүрэм
- * (§8) нь super · `r.ok` · `.trim()`-ийг тэнд НЭГ газар барина.
- */
 {
   const src = readCode('src/components/UserAdmin.tsx');
   assert.ok(!src.includes('const flipScoped'),
@@ -320,9 +237,6 @@ console.log('✅ permsRemote — 6 угтвар Map · хуудаслалт · �
     assert.ok(!src.includes(fn),
       `UserAdmin: «${fn}» буцаж ирэв — хуваарилалтын бичилт зөвхөн aclOps-оор`);
   }
-  /* ⚠️ 2026-09-30: картын «Нэмэлт эрх» унтраалга (`flipCap` · `dropOrphan`) УСТСАН —
-     эрх бүр өөрийн хуудсанд. `__cap__:` бичилт ЗӨВХӨН `aclOps.capDirectOp`-оор
-     (`PlainCapAcl` · `CapOrphanNote`); `UserAdmin`/`UserRights`/`UserCard` toggleCap дуудахгүй. */
   for (const f of ['src/components/UserAdmin.tsx', 'src/components/UserRights.tsx', 'src/components/UserCard.tsx', 'src/components/UserRow.tsx']) {
     const c = readCode(f);
     assert.ok(!c.includes('toggleCap('), `${f}: toggleCap буцаж ирэв — эрх зөвхөн aclOps.capDirectOp-оор (эрхийн хуудас)`);
@@ -332,7 +246,6 @@ console.log('✅ permsRemote — 6 угтвар Map · хуудаслалт · �
   const ops = readCode('src/lib/aclOps.ts');
   const co = ops.slice(ops.indexOf('export function capDirectOp('), ops.indexOf('export async function runOp('));
   /* (a) гаргалгаатай эрх super-ээс бусдад ШУУД олгогдохгүй — хуваарилалтын хоёр дахь эх сурвалж болохгүй */
-  /* ⚠️ 2026-10-23: `tableSuper` = `roleForUser(u) === 'super'` (хадгалагдсан эрхийн жагсаалтад ч хэрэглэгдэнэ) */
   assert.ok(co.includes("const tableSuper = roleForUser(u) === 'super';") && co.includes('if (on && isDerivedCap(cap) && !tableSuper)'),
     'capDirectOp: гаргалгаатай эрх super-ээс бусдад шууд олгогдож байна');
   /* (b) хасалт баталгаажуулалттай; addRow-д «Бөглөх» таб хаагдахыг ил хэлнэ */
@@ -355,7 +268,6 @@ console.log('✅ UserAdmin — flipScoped · flipCap устсан · set*Grants 
   assert.ok(i > 0, 'UserAdmin: add() олдсонгүй');
   const body = src.slice(i, i + 3000);
   assert.ok(/stageOfUser\(key\)/.test(body), 'add(): урсгалын өнчин шалгалт алга');
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   for (const fn of ['listHuvaariAssigns', 'listObyemAssigns']) {
     assert.ok(body.includes(fn),
       `add(): ${fn} шалгалт алга — устгагдсан аккаунтын хуваарилалт шинэ нэрэнд ЧИМЭЭГҮЙ наалдана`);
@@ -364,29 +276,11 @@ console.log('✅ UserAdmin — flipScoped · flipCap устсан · set*Grants 
 console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд шалгагдана');
 
 /* ══════════ 8. ScopedAclPanel — GRANT ТУС БҮРИЙГ хөнддөг ══════════ */
-/**
- * ⚠️ 2026-09-09-нд ХАДГАЛАЛТ СОЛИГДСОН: `{roles[], bagts[]}` (үүрэг × багцын
- * үржвэр) → `grants[]` (үүрэг бүр ӨӨРИЙН багцтай). Урьд нь панелд `wide` /
- * `widening` нэртэй хамгаалалтууд байсан нь үржвэрийн сул талыг нөхөх
- * зорилготой байв: нэг багцад нэмсэн үүрэг БУСАД багцад тарж, зохиогч=батлагч
- * давхцал үүсгэн багц ГАЦДАГ байлаа. Тэр хамгаалалтууд бүгд «болохгүй» гэж
- * хэлдэг тул админ «Багц 1-д зохиогч, Багц 5-д батлагч» гэсэн ЭНГИЙН
- * томилгоог хийж чаддаггүй байсан. Одоо тарах ЗАМ БАЙХГҮЙ тул хамгаалалт
- * хэрэггүй — шалгуур нь БҮТЦИЙГ барина.
- *
- * ⚠️ 2026-09-10: `HuvaariAcl` ба `ObyemAcl` хоёрын ЛОГИК нь
- * `ScopedAclPanel.tsx`-д нэгдсэн.
- * ⚠️ 2026-09-25: бичих дүрэм `aclOps.ts`-д шилжсэн (`addPkgOp` · `removePkgOp`) —
- * хэрэглэгчийн карт ба матриц ч ИЖИЛ op-оор бичдэг. Тиймээс шалгуур нь тэр
- * НЭГ файлыг тулгана; панелууд (`ScopedAclPanel` · `ChanarAcl` · `DedButetsAcl`)
- * НИМГЭН хэвээр эсэхийг тусад нь барина.
- */
 {
   const f = 'src/lib/aclOps.ts';
   const src = readCode(f);
   const i = src.indexOf('export function addPkgOp(');
   assert.ok(i > 0, `${f}: addPkgOp олдсонгүй`);
-  /* ⚠️ 2026-10-09 (аудит №6): `removePkgOp` устсан — `addPkgOp`-ийн бие дараагийн `export function` хүртэл */
   const body = src.slice(i, src.indexOf('export function', i + 10));
 
   /* (а) Хуучин үржвэрийн логик буцаж ирээгүй */
@@ -399,22 +293,21 @@ console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд ш�
   assert.match(body, /grants\.find\(\(g\) => g\.role === role\)/,
     `${f}: addPkgOp нь ТУХАЙН үүргийн grant-ыг олж хөндөх ёстой`);
 
-  /* (в) ⚠️ ХҮРЭЭ ТЭЛЭХГҮЙ: ALL_BAGTS-тай grant-д багц нэмбэл хүрээ нь
+  /* (в) ХҮРЭЭ ТЭЛЭХГҮЙ: ALL_BAGTS-тай grant-д багц нэмбэл хүрээ нь
      бүх багцаас ганц багц руу ХУМИГДАНА — тиймээс шалгаж алгасна. */
   assert.match(body, /!mine\.bagts\.includes\(ALL_BAGTS\)/,
     `${f}: ALL_BAGTS-тай grant-д багц нэмбэл хүрээ хумигдана — шалгах ёстой`);
   assert.match(body, /\.trim\(\)\.toLowerCase\(\)/,
     `${f}: addPkgOp нь нэрийг trim().toLowerCase() хийх ёстой`);
 
-  /* (г) ⚠️ 2026-10-09 (аудит №6): гэрээ `removePkgOp`-оос `scopedCellOp` руу шилжсэн (хуучин op устсан).
+  /* (г) 2026-10-09 (аудит №6): гэрээ `removePkgOp`-оос `scopedCellOp` руу шилжсэн (хуучин op устсан).
      ALL_BAGTS-тай хүнийг нэг нүднээс хасахад гацахгүй: `aclGrid.planGrantRemove` → `narrow`
      (бусад багцын ил жагсаалт, асууна), дэд бүтцэд асуухгүй; сүүлийн grant → `drop`. */
-  /* (`setRoleAllOp` · `dropRoleOp` · `flowStageOp` нь `aclE2E` шалгуурын бэлтгэлд үлдсэн — aclOps-ийн ⚠️) */
+  /* (`setRoleAllOp` · `dropRoleOp` · `flowStageOp` нь `aclE2E` шалгуурын бэлтгэлд үлдсэн — aclOps) */
   for (const dead of ['removePkgOp', 'qaqcAddOp', 'qaqcRemoveOp', 'flowAddOp', 'flowRemoveOp', 'flowAllOp', 'flowChipOp']) {
     assert.ok(!src.includes(`export function ${dead}(`), `${f}: үхмэл op «${dead}» буцаж ирэв — нүд бүр *CellOp-оор`);
   }
   assert.ok(!src.includes('export function removeAllMsg('), `${f}: removeAllMsg экспортгүй байх ёстой (дуудагч зөвхөн энд)`);
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   const rm = src.slice(src.indexOf('export function scopedCellOp('), src.indexOf('/* ══════════════════════ Гүйцэтгэлийн урсгал (шаттай)'));
   assert.match(rm, /planGrantRemove\(cur, role, pkg, spec\.universe\(\)\)/,
     `${f}: scopedCellOp хасах шийдвэрээ aclGrid.planGrantRemove-оос авах ёстой`);
@@ -428,13 +321,13 @@ console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд ш�
   assert.match(rm, /confirm: \[removeAllMsg\(sys, u\)\]/,
     `${f}: мөрийг бүхэлд нь хасахыг баталгаажуулах ёстой`);
 
-  /* (д) ⚠️ БАГЦГҮЙ ҮЛДСЭН GRANT ӨӨРӨӨ УНАНА — хоосон `bagts` бүхий grant
+  /* (д) БАГЦГҮЙ ҮЛДСЭН GRANT ӨӨРӨӨ УНАНА — хоосон `bagts` бүхий grant
      хадгалагдвал тэр хүн «хуваарилагдсан ч нэг ч багцгүй» гэсэн утгагүй
      төлөвт орно (цөм нь түүнийг хаядаг ч op бичих ёсгүй). Дүрэм одоо `aclGrid.ts`-д. */
   assert.match(readCode('src/lib/aclGrid.ts'), /filter\(\(g\) => g\.bagts\.length > 0\)/,
     'aclGrid: багцгүй үлдсэн grant хасагдах ёстой');
 
-  /* (е) ⚠️ revoke=false — таван системийн `removeNoRevoke` бүр `, false)` дамжуулна */
+  /* (е) revoke=false — таван системийн `removeNoRevoke` бүр `, false)` дамжуулна */
   const noRev = src.match(/removeNoRevoke: \(u\) => remove\w+Assign\(u, false\)/g) ?? [];
   assert.equal(noRev.length, 5,
     `${f}: таван системийн removeNoRevoke бүр revoke=false байх ёстой, олдсон: ${noRev.length}`);
@@ -443,15 +336,12 @@ console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд ш�
   const ro = src.slice(src.indexOf('export async function runOp('));
   assert.equal((ro.match(/if \(!r\.ok\)/g) ?? []).length, 1,
     `${f}: runOp-д r.ok шалгалт ЯГ 1 байх ёстой`);
-  /* ⚠️ 2026-10-12 (дарааллын аудит): дүрэм нь `r.sync`/`r.granted`-ийн `await Promise.all`-ын ӨМНӨ — асуултын өмнөх
-     `pendingHeldBy` (уншилт) await нь `r` үүсэхээс өмнө тул хамаарахгүй */
   assert.ok(ro.indexOf('if (!r.ok)') < ro.indexOf('await Promise.all('),
     `${f}: runOp нь r.ok-ыг sync-ийн await-ын ӨМНӨ шалгах ёстой`);
   assert.ok(ro.includes('if (!ready()) { setErr(lockMsg()); return false; }'),
     `${f}: runOp-д түгжээний шалгалт алга`);
 }
 
-/* ⚠️ ГУРВАН БҮРХҮҮЛ НИМГЭН ХЭВЭЭР — логик буцаж хуулагдвал давхардал сэргэнэ */
 for (const f of ['src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx', 'src/modules/AjilAcl.tsx']) {
   const src = readCode(f);
   assert.match(src, /ScopedAclPanel/,
@@ -468,8 +358,6 @@ for (const f of ['src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx', 'src/
   }
 }
 
-/* ⚠️ Панелууд op-оор бичнэ — шууд set*Grants / remove*Assign дуудахгүй (2026-09-25).
-   ⚠️ 2026-09-30: хөзөр → «багц × үүрэг» хүснэгт (`AclGrid`) — нүд бүр `scopedCellOp` (дүрэм `aclGrid.planGrant*`) */
 for (const [f, sys] of [
   ['src/modules/ScopedAclPanel.tsx', 'spec.sys'],
   ['src/modules/ChanarAcl.tsx', "'chanar'"],
@@ -493,7 +381,6 @@ console.log('✅ aclOps — grant тус бүр тусад нь · ALL хамг�
 {
   const src = readCode('src/modules/GuitsetgelAcl.tsx');
   const decl = src.indexOf('const orphanFail');
-  /* ⚠️ 2026-09-30: багана → «багц × шат» хүснэгт; нүд нь `cell` — orphanFail түүнээс ӨМНӨ, гадна */
   const col = src.indexOf('const cell =');
   assert.ok(decl > 0 && col > 0, 'GuitsetgelAcl: orphanFail эсвэл cell олдсонгүй');
   assert.ok(decl < col,
@@ -506,53 +393,38 @@ console.log('✅ GuitsetgelAcl — orphanFail эцэг бүрэлдэхүүнд,
 console.log('\naclParity.check: ok');
 
 /* ══════════ 10. 2026-09-08-ны ХОЁР ДАХЬ ШАЛГАЛТЫН ГЭРЭЭ ══════════ */
-/**
- * ⚠️ Эхний шалгалт 15 алдаа зассан ч дараах ЦООРХОЙнууд үлдсэн байв —
- * бүгд «ижил кодын нэгд нь л засвар хүрсэн» ижил хэв шинжтэй.
- */
 {
   /* (а) `guitsetgelAcl.setAssign` — 3 модульд зассан `r.ok && r.g` энд орхигдсон */
   const ga = readCode('src/lib/guitsetgelAcl.ts');
   assert.equal((ga.match(/markResult\(u,\s*r\.ok\)/g) ?? []).length, 0,
     'guitsetgelAcl: markResult(u, r.ok) үлдсэн — эрх олголтын уналт админд ХУДАЛ «амжилттай» гэж харагдана');
-  /* ⚠️ `removeAssign` нь бусад модулиас ӨӨР бүтэцтэй (`{sync}` л буцаана,
-     `r.g` талбаргүй) тул тэнд `markResult(u, ok && g)` хэлбэртэй. Чухал нь
-     ХОЁУЛАА эрхийн үр дүнг барих явдал, хэлбэр нь биш. */
   assert.ok(ga.includes('markResult(u, r.ok && r.g)'),
     'guitsetgelAcl.setAssign: эрх ОЛГОЛТЫН үр дүн (`r.g`) шалгагдахгүй байна');
   assert.ok(ga.includes('markResult(u, ok && g)'),
     'guitsetgelAcl.removeAssign: эрх БУЦААЛТЫН үр дүн шалгагдахгүй байна');
   /* `revokeFlowAccess` нь үр дүнгээ буцаана — `void` бол дуудагч мэдэхгүй */
-  /* ⚠️ 2026-10-23: + `autoRole` (төрлийг зөвхөн автоматаар тавьсан бол арилгана) */
   assert.ok(ga.includes('async function revokeFlowAccess(user: string, stage: Stage, autoRole = false): Promise<boolean>'),
     'guitsetgelAcl: revokeFlowAccess нь Promise<boolean> байх ёстой (үр дүнгээ хаяхгүй)');
 
-  /* (б) `syncCaps` нь ГАРААР олгосон эрхийг устгах ёсгүй.
-     ⚠️ 2026-09-09: гурван модулийн `syncCaps` нь `scopedAcl`-д НЭГ болов. */
+  /* (б) `syncCaps` нь ГАРААР олгосон эрхийг устгах ёсгүй. */
   {
     const s = readCode('src/lib/scopedAcl.ts');
     const i = s.indexOf('async function syncCaps');
     assert.ok(i > 0, 'scopedAcl: syncCaps олдсонгүй');
     const b = s.slice(i, i + 1600);
-    /* ⚠️ 2026-09-21: `capsStored` (тугтай `capsOf` биш) — remote унасан үед ч хадгалсан эрхийг УНШИЖ арчихгүй. */
-    /* ⚠️ 2026-10-09: `|| b.includes('c.capsOf(user)')` хувилбарыг хасав — дээрх шалтгаанаар `capsOf`
-       руу буцах нь РЕГРЕСС (remote унахад эрх арчигдана), шалгуур түүнийг давуулах ёсгүй. */
     assert.ok(b.includes('c.capsStored(user)'),
       'scopedAcl: syncCaps нь одоогийн эрхийг УНШИХГҮЙ байна — гараар олгосон эрхийг чимээгүй устгана');
     assert.ok(!/toggleCap\(user,\s*'\w+',\s*roles\.includes/.test(b),
       'scopedAcl: syncCaps нь болзолгүй toggleCap хэрэглэсээр байна');
     /* «Хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгана — эс бөгөөс нэг үүрэг
        хасахад НӨГӨӨГИЙН эрх ч хасагдана (эсвэл эсрэгээр, хэзээ ч хасагдахгүй). */
-    /* ⚠️ 2026-10-26: Хуваарийн «Харагч» (эрхгүй үүрэг) хасагдсан тул анхны энгийн шалгалт буцав */
     assert.ok(/const none = roles\.length === 0;/.test(b),
       'scopedAcl: syncCaps нь «хуваарилалт бүхэлдээ арилах» тохиолдлыг ялгах ёстой');
     assert.ok(/else if \(none\) next\.delete\(cap\);/.test(b),
       'scopedAcl: syncCaps нь эрхийг ЗӨВХӨН бүх үүрэг арилах үед хасах ёстой');
   }
 
-  /* (в) `r.ok` шалгалт.
-     ⚠️ 2026-09-09: гурван салаа `flipScoped` болж нэгдсэн тул НЭГ удаа.
-     ⚠️ 2026-09-25: `flipScoped` устаж бичилт `aclOps.runOp`-д шилжсэн — тэнд НЭГ удаа. */
+  /* (в) `r.ok` шалгалт. */
   const ua = readCode('src/components/UserAdmin.tsx');
   assert.equal((readCode('src/lib/aclOps.ts').match(/if \(!r\.ok\)/g) ?? []).length, 1,
     'aclOps.runOp: `r.ok` шалгалт ЯГ 1 байх ёстой — эс бөгөөс `{ok:false}` үед '
@@ -578,19 +450,10 @@ console.log('\naclParity.check: ok');
 
 /* ══════════ ХҮРЭЭНИЙ `null` ≠ `[]` — ХЭРЭГЛЭГЧ ТАЛД ══════════ */
 /**
- * ⚠️ 2026-09-16-ны аудитын олдвор (`Qaqc.tsx`). `scopedAcl.scope`-ийн ГЭРЭЭ:
- *    `null` = ХЯЗГААРГҮЙ, `[]` = ЮУ Ч БИШ. Хэрэглэгч талд
- *    `(scope(...) ?? []).includes(x)` гэж бичвэл `null` нь `[]` болж,
- *    «БҮХ багц» хуваарилагдсан хүн ямар ч багц дээр эрхгүй болно.
- *
  *    Тэр нь АНХДАГЧ зам байв: эрх олгох хоёр стандарт зам хоёулаа
  *    `[ALL_BAGTS]` бичдэг тул `scope` нь `null` буцаадаг. Панелд эрх
  *    ОЛГОГДСОН гэж харагдаж, хуудас нээгдэж, гэвч засагдахгүй байлаа —
  *    чимээгүй инверс, улаан алдаа ч, тайлбар ч байхгүй.
- *
- * ⚠️ Гурван хөрш модуль ЗӨВ байсан (`Huvaari` `inScope`, `FillNew`
- *    `sc0 === null || …`, `chanarAcl`) — тэгш байдлын шалгуур яг ийм
- *    зөрүүг барих ёстой байсан ч бариагүй.
  *
  * ДҮРЭМ: хүрээ буцаадаг функцийн хариуг `?? []` / `|| []`-ЭЭР хавсаргаад
  * шууд `.includes` дуудаж БОЛОХГҮЙ — `x === null || x.includes(...)` бич.
@@ -600,15 +463,12 @@ console.log('\naclParity.check: ok');
     'bagtsScope', 'huvaariScope', 'obyemScope', 'chanarScope', 'bagtsFor',
   ];
   const consumers = [
-    /* ⚠️ 2026-10-23: QAQC хасагдсан */
     'src/modules/Huvaari.tsx',
     'src/modules/HuvaariBatlah.tsx',
     'src/modules/Guitsetgel.tsx',
     'src/modules/sheet/FillNew.tsx',
     'src/lib/hyanaltStore.ts',
   ];
-  /* ⚠️ 2026-10-09 (аудит №3): нэр солигдсон/устгагдсан хэрэглэгчийг ЧИМЭЭГҮЙ алгасдаг байв
-     (`continue`) — шинэ нэртэй файл хамгаалалтгүй үлддэг. Одоо ЧАНГА унана: жагсаалтыг шинэчил. */
   for (const p of consumers) {
     assert.ok(fs.existsSync(p), p + ': хүрээний хэрэглэгч олдсонгүй (нэр солигдсон/устгагдсан?) — `consumers` жагсаалтыг шинэчил');
     const code = readCode(p);
@@ -622,14 +482,6 @@ console.log('\naclParity.check: ok');
 console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?? []` хориотой');
 
 /* ══════════ REMOTE-ГҮЙ СЕШНД БИЧИХ ЗАМ ч ХААЛТТАЙ (2026-09-21, аудитын засвар) ══════════ */
-/**
- * ⚠️ Fail-closed засвар нь УНШИГЧ API-г хоосон болгосон ч БИЧИГЧ зам
- *    (`toggleCap` · `syncCaps`) `capsStored` = localStorage-оос эхэлдэг. Шинэ
- *    browser-т тэр нь `[]` тул remote уншигдаагүй атлаа бичилт бүтвэл
- *    `[] ∪ {cap}` ArcGIS дээрх бүтэн жагсаалтыг дарна. Мөн UserAdmin нь уншихдаа
- *    тугтай, бичихдээ туггүй функц холиход хуваарилалтын хүрээ ALL болж тэлдэг.
- *    Дөрвөн газар ижил хаалт байх ЁСТОЙ — нэг нь арилвал бусад нь утгагүй.
- */
 {
   const caps = readCode('src/lib/caps.ts');
   assert.match(caps, /export function toggleCap[\s\S]{0,300}if \(!remoteSynced\) return Promise\.resolve\(false\);/,
@@ -644,8 +496,6 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
     'guitsetgelAcl.removeAssign: хоосон нэрийн хамгаалалт алга (scopedAcl-тэй тэгш)');
 
   const ua = readCode('src/components/UserAdmin.tsx');
-  /* ⚠️ 2026-09-24: долоон ACL-ийн өөрийн туг ч орно (flow · qaqc · huvaari · obyem · chanar · ajil · butets).
-     ⚠️ 2026-09-25: илэрхийлэл `aclOps.allAclReady`-д НЭГ газар — есөн туг бүгд тэнд. */
   const ops = readCode('src/lib/aclOps.ts');
   const ar = ops.slice(ops.indexOf('export const allAclReady'), ops.indexOf('export const lockMsg'));
   for (const r of ['remoteReady', 'capsRemoteReady', 'flowAclReady', 'huvaariAclReady',
@@ -656,7 +506,6 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
     'UserAdmin: capsLocked нь allAclReady()-аас гарах ёстой — remote-гүй панел уншихдаа [], бичихдээ кэш холино');
   assert.ok(readCode('src/modules/ErhOverview.tsx').includes('const locked = !allAclReady();'),
     'ErhOverview: түгжээ allAclReady()-аас гарах ёстой');
-  /* ⚠️ 2026-09-30: карт хуваарилалт бичихээ больсон — «Төрлөөр тохируулах» (зөвхөн харагдац) remoteReady-ээр түгжигдэнэ */
   assert.ok(!readCode('src/components/UserCard.tsx').includes('aclOps'),
     'UserCard: aclOps бичилт буцаж ирэв — карт зөвхөн харагдац (2026-09-30)');
   assert.ok(readCode('src/components/UserTypeSection.tsx').includes('!remoteReady()'),
@@ -669,7 +518,6 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
   assert.ok(readCode('src/modules/useAclRunner.ts').includes('ready: () => boolean = allAclReady'),
     'useAclRunner: анхдагч түгжээ allAclReady биш');
   assert.ok(ops.includes('ready: () => boolean = allAclReady'), 'aclOps.runOp: анхдагч түгжээ allAclReady биш');
-  /* ⚠️ 2026-09-30: `flipCap` · `dropOrphan` устсан — зөвхөн `add()` үлдэнэ */
   for (const fn of ['const add = () =>']) {
     const i = ua.indexOf(fn);
     assert.ok(i > 0, `UserAdmin: ${fn} олдсонгүй`);
@@ -678,10 +526,8 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
   }
   assert.ok(ua.includes('capsLocked ? capsStored(u.username) : capsOf(u.username)'),
     'UserAdmin: remote-гүй бол эрхээр нээгдсэн харагдацын тэмдэг кэшнээс (`capsStored`) харагдах ёстой');
-  /* ⚠️ 2026-10-23: «Сэргээх» (`d.clear`) үхмэл зам УСТСАН — мөр · хуваарилалт · эрхийг арилгадаг салаа буцаж орохгүй */
   assert.ok(!ua.includes('if (d.clear)') && !ua.includes('markClear'), 'UserAdmin.saveAll: устгасан «Сэргээх» (d.clear) зам буцаж орсон');
   assert.ok(ua.includes('restoreUser(k)'), 'UserAdmin: «Буцаах» нь permissions.restoreUser-ээр сэргээх ёстой');
-  /* ⚠️ 2026-09-30: энгийн эрхийн хуудас (`PlainCapAcl`) — QaqcAcl-тай ИЖИЛ түгжээ */
   const pc = readCode('src/modules/PlainCapAcl.tsx');
   assert.ok(pc.includes('const ready = () => remoteReady() && capsRemoteReady();'),
     'PlainCapAcl: түгжээ remoteReady && capsRemoteReady байх ёстой');
@@ -690,11 +536,10 @@ console.log('✅ хүрээний null ≠ [] — хэрэглэгч талд `?
 
   /* AuthGate: remote уншигдаагүй бол signed-in ч 15 сек */
   const ag = readCode('src/components/AuthGate.tsx');
-  /* ⚠️ 2026-10-19: дунд нь «систем хаалттай → 30 с» салаа нэмэгдсэн (§14) — 15 с нь түрүүлж хэвээр */
   assert.ok(ag.includes("status === 'denied' || !remoteReady() ? 15_000 : sysClosedRef.current ? 30_000 : 5 * 60_000"),
     'AuthGate: signed-in + remote-гүй үед 5 мин хүлээж байна — 15 сек байх ёстой');
 
-  /* query.isOrgUrl: ⚠️ 2026-10-20 — байгууллага = Enterprise (`NEXT_PUBLIC_ENT_DATA`-ийн сервер, startsWith); AGOL org сегмент хасагдсан */
+  /* query.isOrgUrl: 2026-10-20 — байгууллага = Enterprise (`NEXT_PUBLIC_ENT_DATA`-ийн сервер, startsWith); AGOL org сегмент хасагдсан */
   const q = readCode('src/lib/query.ts');
   assert.ok(q.includes("const ORG_BASE = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim()") && q.includes('url.startsWith(`${ORG_BASE}/`)'),
     'query.isOrgUrl: Enterprise суурийн (NEXT_PUBLIC_ENT_DATA) startsWith шалгуур алга — гадны хост руу токен явна');
@@ -705,11 +550,6 @@ console.log('✅ remote-гүй сешн — toggleCap · syncCaps · regrant · 
 console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps · r.ok×3 · cap orphan · ноорог үлдэх');
 
 /* ══════════ ҮҮРЭГ → ЭРХИЙН ГАНЦ ХҮСНЭГТ (2026-09-25) ══════════ */
-/**
- * ⚠️ «Хуваарь зохиогч → `plan`» зураглал урьд нь НАЙМ газар давтагдсан байв
- *    (таван `*Acl.ts`, гурван панел, ChanarAcl-ийн хоёр inline, DedButetsAcl,
- *    flipScoped). Одоо `aclRoleCaps.ROLE_CAPS` — бусад нь ТҮҮНИЙГ заана.
- */
 {
   for (const [f, key] of [
     ['src/lib/huvaariAcl.ts', 'ROLE_CAPS.huvaari'],
@@ -721,7 +561,6 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
     const src = readCode(f);
     assert.ok(src.includes(`roleCaps: ${key},`), `${f}: roleCaps нь ${key} байх ёстой — гар хуулбар буцаж ирэв`);
   }
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   /* Панелуудад inline зураглал үлдээгүй */
   for (const f of ['src/modules/ChanarAcl.tsx', 'src/modules/DedButetsAcl.tsx', 'src/modules/ScopedAclPanel.tsx',
     'src/modules/HuvaariAcl.tsx', 'src/modules/ObyemAcl.tsx', 'src/modules/AjilAcl.tsx', 'src/components/UserAdmin.tsx']) {
@@ -735,31 +574,22 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
-  const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m))); /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m)));
   assert.equal(PLAIN_CAPS.length, 11, `энгийн эрх ЯГ 11 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
-  assert.equal(derived.size, 9, `гаргалгаатай эрх 9 байх ёстой, олдсон: ${derived.size}`); /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  assert.equal(derived.size, 9, `гаргалгаатай эрх 9 байх ёстой, олдсон: ${derived.size}`);
   for (const c of all) assert.equal(isDerivedCap(c), derived.has(c), `isDerivedCap(${c}) буруу`);
 }
 console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 9 ∪ энгийн 7 = CAPS');
 
 /* ══════════ 12b. capText — НЭГ УРСГАЛ = НЭГ ХУУДАС (2026-09-30) ══════════ */
-/**
- * ⚠️ Хэрэглэгч үйлдэл бүрийг тусад нь 14 хуудас болгосныг ТАТГАЛЗСАН — зохиогч ба
- *    батлагч нэг хуудсанд. Энэ шалгуур: хуудас 9 (+ урсгал), эрх БҮР яг нэг
- *    хуудсанд, картын унтраалга урсгалтай 6 харагдацыг зурахгүй, «Бүгдийг
- *    асаах/унтраах» тэдгээрийг хөндөхгүй.
- */
 {
   const { ERH_PANES, PANE_CAPS, paneOfCap } = await import('@/modules/capText.ts');
   const { WORKFLOW_VIEWS, CAP_HOST_VIEW } = await import('@/lib/caps.ts');
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'butets', 'zovshoorol', 'fin', 'gazar', 'hamaaral', 'habea', 'zurag', 'sys'],
     'capText.ERH_PANES: хажуугийн цэсний 12 хуудас (2026-10-26: + ТЭЗҮ · зураг төсөл; 2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл; 2026-10-19: + Систем түр хаах), энэ дарааллаар');
-  /* ⚠️ 2026-10-19: «Систем түр хаах» — харагдац НЭЭХГҮЙ, ганцаараа өөрийн хуудсанд */
-  /* ⚠️ 2026-10-23: «Систем» хуудсанд + `docsUpload` (баримт бичгийн сан) */
   assert.deepEqual(PANE_CAPS.sys, ['sysClose', 'docsUpload', 'docsGroups'], 'Систем хуудас: түр хаах · баримт оруулах · баримтын бүлэг');
   assert.deepEqual(CAP_HOST_VIEW.sysClose, [], 'sysClose: гэр харагдацгүй');
   const capsSrc = readCode('src/lib/caps.ts');
@@ -768,10 +598,8 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
   const placed = Object.values(PANE_CAPS).flat();
   assert.deepEqual([...placed].sort(), [...all].sort(), 'PANE_CAPS: эрх бүр ЯГ нэг хуудсанд байх ёстой');
   assert.deepEqual(PANE_CAPS.huvaari, ['plan', 'planApprove'], 'Хуваарийн эрх: зохиогч + батлагч нэг хуудсанд');
-  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'cfSwitch'], 'Санхүү: утга + мөр + сарын мөнгө шилжүүлэх нэг хуудсанд'); /* ⚠️ 2026-10-26: + cfSwitch */
+  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'cfSwitch'], 'Санхүү: утга + мөр + сарын мөнгө шилжүүлэх нэг хуудсанд');
   for (const c of all) assert.ok(PANE_CAPS[paneOfCap(c)].includes(c), `paneOfCap(${c}) буруу`);
-  /* ⚠️ 2026-10-09 (аудит №6): CapKey БҮР хоёр шошгоны хүснэгтэд (`capText.capLabel` · `erhLabels.capLabelShort`) —
-     `hamaaral` · `habeaData` богино шошгоноос дутуу байж түлхүүр нь ил харагдаж байв */
   for (const [lf, fn] of [['src/modules/capText.ts', 'capLabel'], ['src/modules/erhLabels.ts', 'capLabelShort']]) {
     const lsrc = readCode(lf);
     const at = lsrc.indexOf(`export const ${fn} = `);
@@ -779,9 +607,6 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
     const lbody = lsrc.slice(at, lsrc.indexOf('};', at));
     for (const c of all) assert.ok(lbody.includes(`k === '${c}'`), `${lf}: ${fn}-д «${c}» шошго алга`);
   }
-  /* ⚠️ 2026-10-09: + «ma» (MA — материал баталгаажуулалт, чанарын эрхээр нээгдэнэ) → 7 */
-  /* ⚠️ 2026-10-20: − «chanar» («Чанарын баримт» харагдац хасагдсан) → 6 */
-  /* ⚠️ 2026-10-23: QAQC хасагдсан − «qaqc» → 5 */
   assert.equal(new Set(WORKFLOW_VIEWS).size, 5, 'WORKFLOW_VIEWS 5 байх ёстой');
   for (const v of WORKFLOW_VIEWS) assert.ok(Object.values(CAP_HOST_VIEW).some((vs) => vs.includes(v)), `WORKFLOW_VIEWS: ${v} CAP_HOST_VIEW-д алга`);
 
@@ -802,13 +627,6 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
 console.log('✅ capText — 9 урсгалын хуудас · эрх бүр нэг хуудсанд · урсгалтай 6 харагдац картаас гадуур');
 
 /* ══════════ 13. aclOps — ЗАН ТӨЛӨВИЙН ШАЛГУУР (2026-09-25, хянагчийн олдвор) ══════════ */
-/**
- * ⚠️ Дээрх §8 нь эх кодын ХЭВ ШИНЖИЙГ тулгадаг; энэ хэсэг op-уудыг ЖИНХЭНЭЭР
- *    ажиллуулж ҮР ДҮНГ шалгана: жагсаалтыг `_syncRemote*`-ээр бөглөж, op-ыг
- *    бүтээж, `confirm` ба `run()`-ийн дараах локал төлөвийг харна.
- * ⚠️ Сүлжээгүй: `fetch` нь шууд унана — remote бичилт `false` өгч, локал
- *    төлөв (op-ын гол гэрээ) хэвээр шалгагдана.
- */
 {
   const mem = new Map();
   globalThis.window = globalThis;
@@ -823,7 +641,6 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   globalThis.fetch = async () => { throw new Error('offline (aclParity)'); };
 
   const OPS = await import('@/lib/aclOps.ts');
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   const FL = await import('@/lib/guitsetgelAcl.ts');
   const HV = await import('@/lib/huvaariAcl.ts');
   const BT = await import('@/lib/butetsAcl.ts');
@@ -834,32 +651,21 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   const { STAGE_ORDER } = await import('@/lib/hyanalt.ts');
   const [G0, G1] = PKG_GROUPS;
   /* Порталд БАЙГАА (хатуу, super биш) аккаунт — `isKnown` үнэн, асуулт асуугдана */
-  /* ⚠️ Хэрэглэгч бүр ТУСДАА: offline бичилт `failed`-д орж, дараагийн `_syncRemote*` тэр хүний
-     ЛОКАЛ төлөвийг давамгайлуулдаг (`scopedAcl.syncRemote`-ийн ⚠️) — нэг нэрийг дахин бөглөж болохгүй. */
-  /* ⚠️ 2026-10-19 (аудит №9): кодын жишээ урсгалын 4 аккаунт хасагдсан — хатуу энгийн аккаунт (2) + панелийн
-     бүртгэлтэй (доорх `setUser`) нэрсээр 6 болгоно; аль аль нь «порталд байгаа» (`isKnown`) */
   const K = [
     ...Object.entries(ROLE_BY_USER).filter(([, r]) => r !== 'super').map(([u]) => u.toLowerCase()),
     'k_known_a', 'k_known_b', 'k_known_c', 'k_known_d',
   ].slice(0, 6);
   assert.ok(K.length >= 6, '6 энгийн аккаунт хэрэгтэй');
   const settle = async (w) => { await w.sync; await w.granted; };
-  /* ⚠️ 2026-09-30: `aclOps.isCleanup` — порталд БАЙХГҮЙ нэрийг устгагдсан аккаунт гэж үзэж нүдний ✕ нь
-     мөрийг бүхэлд нь (асуулгагүй, эрх хөндөхгүй) цэвэрлэнэ. Доорх зохиомол нэрс «порталд байгаа»
-     аккаунтын дүрмийг шалгадаг тул store-д бүртгэнэ (remote бичилт offline унана — хамаагүй). */
   {
     const P = await import('@/lib/permissions.ts');
-    /* ⚠️ 2026-10-09 (аудит №6): + `b_all` — дэд бүтцийн ALL → ил жагсаалт шалгуур `scopedCellOp`-оор (доор) */
     for (const n of ['q_all2', 'c_all', 'c_new', 'c_ball', 'c_q', 'b_all']) void P.setUser(n, { views: [], docs: false }, null);
-    /* ⚠️ 2026-10-19: `K`-ийн панелийн нэрс (хатуу жагсаалтад урсгалын аккаунт алга болсон) */
     for (const n of K) if (!ROLE_BY_USER[n]) void P.setUser(n, { views: [], docs: false }, null);
   }
 
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   CAPS._syncRemoteCaps([]);
 
-  /* ── Урсгал: шат шилжүүлэх асууна, багц ба viewOnly арилна ──
-     ⚠️ 2026-10-09 (аудит №6): `flowAddOp` · `flowStageOp` · `flowChipOp` · `flowRemoveOp` устсан — `flowCellOp` */
+  /* ── Урсгал: шат шилжүүлэх асууна, багц ба viewOnly арилна ── */
   const [S0, S1] = STAGE_ORDER;
   FL._syncRemoteAssigns([
     { user: K[2], stage: S0, bagts: [G0, G1], viewOnly: true },
@@ -897,7 +703,7 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   assert.ok(drop.includes('asWrite(removeAssign(u, cur.stage))'), 'flowDropOp: мэдэгдэх аккаунтад revoke=true байх ёстой');
   assert.ok(drop.includes('asWrite(removeAssign(u, cur.stage, false))'), 'flowDropOp: устгагдсан аккаунтад revoke=false байх ёстой');
 
-  /* ── addPkgOp — «Бүх багц» (⚠️ 2026-10-09, аудит №6: `removePkgOp` устсан — хасах гэрээ доорх `scopedCellOp`-д) ── */
+  /* ── addPkgOp — «Бүх багц» (2026-10-09, аудит №6: `removePkgOp` устсан — хасах гэрээ доорх `scopedCellOp`-д) ── */
   HV._syncRemoteHuvaari([{ user: 'h_all', grants: [{ role: 'author', bagts: ['*'] }, { role: 'approver', bagts: [G0] }] }]);
   assert.equal(OPS.addPkgOp('huvaari', 'h_all', 'author', G1), null, 'addPkgOp: ALL-д нэмбэл хумигдана → null');
   const hadd = OPS.addPkgOp('huvaari', 'h_new', 'approver', G1);
@@ -935,20 +741,17 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   BT._syncRemoteButets([{ user: 'c_ball', grants: [{ role: 'editor', bagts: ['*'] }] }]);
   assert.equal(OPS.scopedCellOp('butets', 'c_ball', 'editor', P[0], false).confirm?.length ?? 0, 0,
     'scopedCellOp(butets): ALL → ил жагсаалт асуулгагүй (2026-09-23-ны дүрэм)');
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
 
   /* Явагдаж буй бичилтийн тэмдэг — `runOp` дуусахад арилна */
   globalThis.confirm = () => true;
-  const pr = OPS.runOp(OPS.scopedCellOp('huvaari', 'p_user', 'author', G0, true), () => {}, () => true); /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  const pr = OPS.runOp(OPS.scopedCellOp('huvaari', 'p_user', 'author', G0, true), () => {}, () => true);
   assert.equal(OPS.aclPendingFor('p_user'), true, 'aclPendingFor: бичилтийн үед үнэн');
   await pr;
   assert.equal(OPS.aclPendingFor('p_user'), false, 'aclPendingFor: дууссаны дараа худал');
 }
-/* ⚠️ Урсгалын панел ч op-оор бичнэ (2026-09-25) — карт ба матрицтай ИЖИЛ асуулт (2026-10-23: QAQC хасагдсан) */
 {
   const g = readCode('src/modules/GuitsetgelAcl.tsx');
   assert.doesNotMatch(g, /\b(setAssign|removeAssign|setViewOnly)\(/, 'GuitsetgelAcl: шууд бичилт буцаж ирэв — aclOps.flow*Op-оор');
-  /* ⚠️ 2026-09-30: «багц × шат» хүснэгт — нүд бүр `flowCellOp` (дотроо flowDropOp-ын зам), туг `flowViewOnlyOp` */
   for (const op of ['flowCellOp(', 'flowViewOnlyOp(']) assert.ok(g.includes(op), 'GuitsetgelAcl: ' + op + ' алга');
   assert.equal((g.match(/useAclRunner\(/g) ?? []).length, 1, 'GuitsetgelAcl: НЭГ runner (нэг түгжээ) бүх хүснэгтэд');
   const oc = readCode('src/lib/aclOps.ts');
@@ -956,7 +759,6 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   const cellOp = oc.slice(at, oc.indexOf('export function', at + 10));
   assert.ok(cellOp.includes("case 'drop': return flowDropOp(u)"), 'flowCellOp: бүхэлд нь хасах нь flowDropOp-ын зам байх ёстой');
   assert.ok(cellOp.includes('moveMsg('), 'flowCellOp: шат шилжүүлэх нь moveMsg асуух ёстой');
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.ok(g.includes('<AclGrid'), 'GuitsetgelAcl: нийтлэг хүснэгт (AclGrid)-ээр зурах ёстой');
 }
 console.log('✅ aclOps зан төлөв — шат шилжүүлэх · сүүлийн багц · ALL · дэд бүтэц · pending');
@@ -976,8 +778,6 @@ console.log('✅ aclOps зан төлөв — шат шилжүүлэх · сү�
   const go = hv.slice(hv.indexOf('const groupOpts = useMemo('), hv.indexOf('const canEditRole = useMemo('));
   assert.ok(/hasCap\(user\?\.username, 'addRow'\) \? ajilScope\(user\?\.username, 'editor'\)/.test(go), '№1: Huvaari.groupOpts нэмэлт ажлын хүрээг нэгтгэхгүй байна');
   assert.ok(hv.indexOf('const [capN, setCapN]') < hv.indexOf('const groupOpts = useMemo('), '№1: capN groupOpts-оос ӨМНӨ зарлагдах ёстой (TDZ)');
-  /* ⚠️ 2026-10-23: «Батлагдсан» харагдацад (`savedView`) засвар хаалттай — ЭРХ (`canEditRole`) нь хүрээний дүрэм хэвээр,
-     `canEdit = canEditRole && !savedView` */
   assert.ok(/const canEdit = canEditRole && !savedView;/.test(hv), '№1: canEdit = эрх && !savedView');
   assert.ok(/const canEditRole = useMemo\(\s*\(\) => !review && \(status === 'off' \|\| inScope\(huvaariScope\(user\?\.username, 'author'\)/.test(hv), '№1: огноо засах эрх хуваарийн хүрээгээр хэвээр');
 
@@ -1018,12 +818,8 @@ console.log('✅ aclOps зан төлөв — шат шилжүүлэх · сү�
 }
 console.log('✅ 2026-10-19 аудит — гэр харагдац · хүрээний нэгдэл · кодын super · хүрээгээр тэмдэг · AGOL нэр · эрхийн шошго');
 
-/* ══════════ 14. «СИСТЕМ ТҮР ХААХ» — AuthGate · Root · permsRemote эх кодын гэрээ (⚠️ 2026-10-19) ══════════
- * ⚠️ Хаалтыг ажиллуулж шалгах нь `aclE2E` §11-д (хуурамч хүснэгт); энд UI давхаргын байрлал:
- *    (а) `AuthNotice`-д `SystemClosed` нь сешн дууссан цонхны ДАРАА (дахин нэвтрэх зам), татгалзсан цонхноос өмнө;
- *    (б) хаалттай хэрэглэгчийн poll 30 с; (в) хаалттай үед `who` хоосон (lib бичилт татгалзана);
- *    (г) `authorized` худал ба `Root` Portal-ыг `frozen`-оор амьд үлдээнэ (хадгалаагүй ажил устахгүй);
- *    (д) `fetchAll`-д `__sys__:` салаа хэрэглэгчийн мөрөөс ӨМНӨ (хий хэрэглэгч үүсгэхгүй). */
+/* ══════════ 14. «СИСТЕМ ТҮР ХААХ» — AuthGate · Root · permsRemote эх кодын гэрээ (2026-10-19) ══════════
+ */
 {
   const ag = readCode('src/components/AuthGate.tsx');
   const an = ag.slice(ag.indexOf('export function AuthNotice('), ag.indexOf('function NoticeDialog('));
@@ -1032,15 +828,12 @@ console.log('✅ 2026-10-19 аудит — гэр харагдац · хүрээ
   for (const other of ['<AccessLost', '<NoticeDialog']) {
     ok14(iSys < an.indexOf(other), `AuthNotice: SystemClosed нь ${other}-оос ӨМНӨ байх ёстой`);
   }
-  /* ⚠️ 2026-10-19 (аудит №2): сешн дууссан цонх ХААЛТЫН цонхноос ӨМНӨ — эс бөгөөс хаалттай хэрэглэгч дахин нэвтрэх
-     замгүй, «Дахин шалгах» нь токенгүй үүрд унана */
   ok14(an.indexOf('<SessionExpired') > 0 && an.indexOf('<SessionExpired') < iSys, 'AuthNotice: SessionExpired нь SystemClosed-оос ӨМНӨ байх ёстой');
   const scc = ag.slice(ag.indexOf('export function SystemClosed('), ag.indexOf('function AccessLost('));
   ok14(scc.includes('reopenSessionDead()') && scc.includes('retrySession()') && scc.includes('void recheck()'), 'SystemClosed: «Дахин шалгах» сешн дууссан үед дахин нэвтрэх цонх гаргана');
   ok14(ag.includes('sysClosedRef.current ? 30_000 : 5 * 60_000'), 'AuthGate.period: хаалттай үед 30 с');
   ok14((ag.match(/setCurrentUser\([^)]*!lock[^)]*\)/g) ?? []).length === 2, 'AuthGate: хаалттай үед setCurrentUser(null) — нэвтрэлт ба poll ХОЁУЛАА');
   ok14((ag.match(/closedFor\(/g) ?? []).length === 3, 'AuthGate: closedFor — нэвтрэлт · poll · store-ийн мэдэгдэл');
-  /* ⚠️ 2026-10-19 (аудит №2): бусад `initRemote` дуудагчийн (scheduleRemoteRefresh · retryAcl · UserAdmin) төлөв ч тусна */
   ok14(ag.includes('const a = subscribePerms(sync);') && ag.includes('const b = subscribeCaps(sync);') && ag.includes('setCurrentUser(lock ? null : name);'),
     'AuthProvider: эрхийн store/caps мэдэгдэлд хаалтыг дахин тооцдоггүй');
   const portal = readCode('src/components/Portal.tsx');

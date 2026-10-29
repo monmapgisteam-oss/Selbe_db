@@ -68,11 +68,7 @@ const s1 = span('2025-10-15', '2025-12-10');
   const m = new Map([['2025-10', 400], ['2025-11', 600]]);
   assert.ok(balanced(m, 1000), 'тэнцсэн');
   assert.ok(!balanced(m, 1001), 'дутуу бол няцаана');
-  /* ⚠️ Хөвөгч цэгийн алдаа (0.1+0.2≠0.3) худал «таарахгүй» гаргах ёсгүй */
   assert.ok(balanced(new Map([['2026-01', 0.1], ['2026-02', 0.2]]), 0.3));
-  /* ⚠️ 2026-09-30 РЕГРЕСС: 3 оронтой x.xx5 нийт — 2 оронтой хоёр хөрш хоёулаа ЯГ
-     хагас нэгжийн зайтай. Урьд нь хатуу `<` тул аль нь ч тэнцдэггүй байв
-     («обьём зөв хуваасан ч болохгүй»). */
   const one = (v) => new Map([['2026-01', v]]);
   assert.ok(balanced(one(0.13), 0.125), '0.125 → 0.13 тэнцэнэ');
   assert.ok(balanced(one(0.12), 0.125), '0.125 → 0.12 тэнцэнэ');
@@ -100,7 +96,6 @@ const s1 = span('2025-10-15', '2025-12-10');
   assert.equal(planPctFromMonths(m, d('2026-03-31')), 1, 'дуусахад 100%');
   const mid = planPctFromMonths(m, d('2026-02-14'));
   assert.ok(mid > 0.1 && mid < 0.2, `сар дотор шугаман: ${mid}`);
-  /* ⚠️ Гол утга: 2 сарын эцэст 20% — шугаман бол 67% байх байсан */
   assert.ok(planPctFromMonths(m, d('2026-02-28')) < 0.5, 'бодит муруй шугамаас ЭРС өөр');
 }
 /* Задаргаагүй → `null` («мэдэгдэхгүй»), 0 БИШ */
@@ -125,7 +120,7 @@ assert.equal(dkeyOf('b1_9f', 412, '5/1', '2025-10'), `b1_9f|${TURUL_PLAN}|412|5/
   assert.equal(p.get(412).get('5/1').get('2025-11'), 880);
   assert.equal(sumMonths(p.get(412).get('5/1')), 1300);
 }
-/* ── 6б. ⚠️ 2026-10-22 (аудит №2): `sar` (DateOnly) — бичих «YYYY-MM-01» мөр; уншихад мөр ч, хуучин мс ч ── */
+/* ── 6б. 2026-10-22 (аудит №2): `sar` (DateOnly) — бичих «YYYY-MM-01» мөр; уншихад мөр ч, хуучин мс ч ── */
 {
   const at = (o) => ({ attributes: o });
   assert.equal(sarDateOnly('2026-03'), '2026-03-01');
@@ -146,9 +141,7 @@ assert.equal(dkeyOf('b1_9f', 412, '5/1', '2025-10'), `b1_9f|${TURUL_PLAN}|412|5/
 
 console.log('huvaariObyem.check: ok — сар ✓ хоосон бүрдэл ✓ нийлбэр ✓ S-муруй ✓ задлалт ✓');
 
-/* ── 7. БИЧИЛТИЙН БАГЦ — орлуулах ёстой, нэмэх БИШ ──
-   ⚠️ Хуваарь богиноссон үед хуучин сарын мөр үлдвэл нийлбэр нь нийт обьёмоос
-   давж, «таарахгүй» гэсэн худал зөрчил мөнхөд үлдэнэ. */
+/* ── 7. БИЧИЛТИЙН БАГЦ — орлуулах ёстой, нэмэх БИШ ── */
 {
   const meta = {
     bagts: 'b1_9f', bagtsNer: 'Багц 1 · 9 давхар', des: 412,
@@ -166,7 +159,6 @@ console.log('huvaariObyem.check: ok — сар ✓ хоосон бүрдэл ✓
 
   assert.equal(e.adds.length, 1, 'шинэ сар нэмэгдэх ёстой');
   assert.equal(e.adds[0].attributes.sar_txt, '2026-01');
-  /* ⚠️ 2026-10-22 (аудит №2): DateOnly талбарт «YYYY-MM-DD» МӨР (epoch мс БИШ) — Enterprise /186 метаг амьдаар шалгав */
   assert.equal(e.adds[0].attributes.sar, '2026-01-01', 'sar нь DateOnly МӨР, сарын 1-ний өдөр');
   assert.equal(typeof e.updates[0]?.attributes.sar, 'string', 'шинэчлэлд ч мөр');
   assert.equal(e.adds[0].attributes.turul, TURUL_PLAN);
@@ -210,8 +202,6 @@ console.log('huvaariObyem.check: ok — бичилтийн багц ✓');
   assert.equal(oids.get(k1), 13, 'СҮҮЛИЙН мөр үлдэнэ');
   assert.deepEqual(dups, [11], 'өмнөх мөр илүүдэлд ялгарна');
 
-  /* ⚠️ Үлдсэн OID нь `toPkgPlan`-ий ХАРУУЛАХ утгатай НЭГ мөрийг заах ёстой —
-     эс бөгөөс хэрэглэгч 150 гэж хараад 100-гийн мөр засагдана. */
   const plan = toPkgPlan(feats);
   assert.equal(plan.get(412).get('5/1').get('2025-10'), 150,
     'харагдах утга ба шинэчлэгдэх OID нэг мөрийнх');
@@ -222,8 +212,7 @@ console.log('huvaariObyem.check: ok — бичилтийн багц ✓');
 
 console.log('huvaariObyem.check: ok — давхардсан dkey ✓');
 
-/* ── 9. САРЫН НӨӨЦ — хүн хүч · машин механизм (2026-09-24) ──
-   ⚠️ Обьёмтой зэрэгцээ, тусдаа Map; талбар байхгүй үйлчилгээг тэсвэрлэнэ. */
+/* ── 9. САРЫН НӨӨЦ — хүн хүч · машин механизм (2026-09-24) ── */
 {
   const at = (o) => ({ attributes: o });
   /* toPkgRes: талбартай/талбаргүй/хагас */
@@ -302,9 +291,7 @@ console.log('huvaariObyem.check: ok — давхардсан dkey ✓');
 console.log('huvaariObyem.check: ok — сарын нөөц ✓');
 
 /* ══════════ САР ДОТОРХ ХУВЬ — АЖЛЫН ЭХЛЭХ–ДУУСАХ ӨДРӨӨР (2026-10-01, хэрэглэгчийн шийдвэр) ══════════
- * ⚠️ Урьд нь 20-нд эхлэх ажлын тэр сарын обьём сарын 1-нээс өсдөг тул бодит 0 гүйцэтгэлтэй
- *    ажил сарын эхэнд «хоцорсон» гэж ХУДАЛ харагддаг байв; 10-нд дуусах ажил 10-нд 100% хүрдэггүй.
- *    `span`-гүй дуудлага (хуучин дуудагчид) ХЭВЭЭР — бүтэн сараар. */
+ */
 {
   const m = new Map([['2026-03', 100]]);
   const sp = span('2026-03-20', '2026-03-29');   // 10 хоног
@@ -316,8 +303,6 @@ console.log('huvaariObyem.check: ok — сарын нөөц ✓');
   assert.equal(planPctFromMonths(m, d('2026-03-24'), sp), 0.5, '5 дахь өдөр 50%');
   assert.equal(planPctFromMonths(m, d('2026-03-29'), sp), 1, 'дуусах өдөр 100% (сарын эцэс хүлээхгүй)');
   assert.equal(planPctFromMonths(m, d('2026-03-31'), sp), 1, 'сарын эцэс 100% — муруйн цэг өөрчлөгдөхгүй');
-  /* ⚠️ 2026-10-08: УРВУУ муж (дуусах < эхлэх) = ХУВААРЬГҮЙ → null (`bagtsSheet.planAt`-тай нэг).
-     Урьд нь `own = null` болгоод бүтэн сараар ХУВЬ гаргадаг байв. */
   assert.equal(planPctFromMonths(m, d('2026-03-25'), span('2026-03-29', '2026-03-20')), null,
     'урвуу муж → null (бүтэн сарын хувь БИШ)');
   assert.equal(planPctFromMonths(m, d('2026-03-31'), span('2026-03-29', '2026-03-20')), null,
@@ -338,7 +323,7 @@ console.log('huvaariObyem.check: ok — сарын нөөц ✓');
   }
   /* Мужтай огт давхцахгүй сар (хуучирсан задаргаа) — бүтэн сараар, унахгүй */
   assert.equal(planPctFromMonths(new Map([['2026-05', 10]]), d('2026-05-16'), sp3), planPctFromMonths(new Map([['2026-05', 10]]), d('2026-05-16')));
-  /* Хагас span (null) → хуучин зам; ⚠️ 2026-10-08: УРВУУ span → null (хуваарьгүй, `planAt`-тай нэг) */
+  /* Хагас span (null) → хуучин зам; 2026-10-08: УРВУУ span → null (хуваарьгүй, `planAt`-тай нэг) */
   assert.equal(planPctFromMonths(m, d('2026-03-10'), { start: null, end: d('2026-03-29') }), planPctFromMonths(m, d('2026-03-10')));
   assert.equal(planPctFromMonths(m, d('2026-03-10'), { start: d('2026-03-29'), end: d('2026-03-20') }), null, 'урвуу муж → null');
   /* `bagtsSheet.planAt` ба `plan.spanFrac` НЭГ томъёо */
@@ -353,9 +338,7 @@ console.log('huvaariObyem.check: ok — сарын нөөц ✓');
 console.log('huvaariObyem.check: ok — сар доторх хувь ажлын өдрөөр ✓');
 
 /* ══════════ САРЫН ОБЬЁМ БИЧСЭНИЙ ДАРАА КЭШ ХҮЧИНГҮЙ (2026-10-01) ══════════
- * ⚠️ Батлалтын дараа муруй/дашбоард TTL дуустал хуучин байв. `HUVAARI_OBYEM` түлхүүр
- *    нэмэгдэж, `applyPlanEdits` бичсэн бол (багц дундуур унасан ч) хүчингүй болгоно;
- *    төлөвлөгөөт муруй тэр түлхүүрээр бүртгэгдсэн. Сүлжээгүй — автобус ба эх код. */
+ */
 {
   const bus = await import('./dataBus.ts');
   let dropped = 0;
@@ -368,13 +351,9 @@ console.log('huvaariObyem.check: ok — сар доторх хувь ажлын 
   const SRC = fs.readFileSync('src/lib/huvaariObyem.ts', 'utf8');
   const i = SRC.indexOf('export async function applyPlanEdits(');
   const body = SRC.slice(i);
-  /* ⚠️ 2026-10-09: хариу алдагдсан (`isLostWrite`) үед ч хүчингүй болгоно */
   assert.ok(/if \(isLostWrite\(err\)\) lost = true;/.test(body), 'applyPlanEdits: хариу алдагдсан үед HUVAARI_OBYEM хүчингүй болгохгүй');
   assert.ok(/finally \{\s*if \(a \+ u \+ dl > 0 \|\| lost\) invalidate\('HUVAARI_OBYEM'\);\s*\}/.test(body),'applyPlanEdits: бичсэний дараа HUVAARI_OBYEM хүчингүй болгохгүй байна');
-  /* ⚠️ 2026-10-21: дутуу хариу = кодгүй `ArcGISError` → `isLostWrite` үнэн (тэмдэг үлдэнэ, кэш хүчингүй) */
   assert.ok(/if \(res\.length !== want\[n\] \|\| unsure\) \{\s*throw new ArcGISError\(/.test(body), 'applyPlanEdits: дутуу хариу ArcGISError биш — isLostWrite худал');
-  /* ⚠️ 2026-10-21 (аудит №2): ЗӨВХӨН `success === false` тодорхой татгалзал (энгийн Error); `success`-гүй үр дүн
-     нь `unsure` → `ArcGISError` (lost) — `bagtsSheet.applyAdds`/`applyUpdates`-ийн нэг дүрэм */
   assert.ok(/const bad = res\.find\(\(r\) => r\.success === false\);/.test(body), 'applyPlanEdits: тодорхой татгалзал зөвхөн success === false биш');
   assert.ok(/const unsure = res\.some\(\(r\) => r\.success !== true\);/.test(body), 'applyPlanEdits: success-гүй үр дүн тодорхойгүй (lost) биш');
   assert.ok(!/r\.success !== true\)\);\s*if \(bad\)/.test(body), 'applyPlanEdits: success-гүй үр дүн татгалзал гэж шидэгдэж байна');
@@ -384,7 +363,7 @@ console.log('huvaariObyem.check: ok — сар доторх хувь ажлын 
 }
 console.log('huvaariObyem.check: ok — HUVAARI_OBYEM кэш хүчингүй ✓');
 
-/* ══════════ ⚠️ 2026-10-08: 500-ААС ИХ МӨРИЙН ДАРААЛАЛ — давхардлын устгал → нэмэх → шинэчлэх → бусад устгал
+/* ══════════ 2026-10-08: 500-ААС ИХ МӨРИЙН ДАРААЛАЛ — давхардлын устгал → нэмэх → шинэчлэх → бусад устгал
  * Өдрийн эхэнд БҮХ устгал эхэлж явдаг байсан нь шууд хадгалах замд алдагдалтай (устгал орсон, нэмэлт
  * унасан → сарын обьём алга). Зөвхөн `dups` (давхардсан dkey-ийн илүүдэл) эхэлнэ; `deletes`-д давхар
  * орсон бол нэг л удаа. Сүлжээгүй — эх код. */

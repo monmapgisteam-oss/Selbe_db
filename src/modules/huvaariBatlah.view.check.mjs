@@ -1,8 +1,6 @@
 /**
  * «ХУВААРЬ БАТЛАХ» ХАРАГДАЦ — offline эх кодын гэрээ.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/huvaariBatlah.view.check.mjs
- *
- * ⚠️ ЯАГААД ЭНЭ ТЕСТ БАЙХ ЁСТОЙ ВЭ (2026-09-16).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/huvaariBatlah.view.check.mjs
  *
  * Батлах дараалал нь ТӨЛӨВЛӨГДСӨН ч ХЭРЭГЖЭЭГҮЙ байсан: `loadAllPending`
  * нь хүлээгдэж буй БҮХ илгээлтийг нэг query-гээр татахаар бичигдсэн,
@@ -14,9 +12,6 @@
  *   (1) тэр функц ҮНЭХЭЭР дуудагдсаныг — дахин орхигдохоос;
  *   (2) дараалал эх өгөгдөлд БИЧИХГҮЙ гэсэн цөм инвариантыг — «энд ч
  *       баталъя» гэсэн хожмын «сайжруулалт»-аас.
- *
- * ⚠️ Ажиллуулж барих боломжгүй (ArcGIS ба React шаардана) тул ЭХ КОДЫГ
- *    шууд тулгана — `aclParity.check.mjs`-ийн хэв маягаар.
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -26,22 +21,11 @@ import { VIEW_BY_KEY, HOME_SECTIONS } from '@/lib/services';
 const read = (p) => fs.readFileSync(p, 'utf8');
 /**
  * ТАЙЛБАРГҮЙ эх код.
- *
- * ⚠️ ЗААВАЛ: доорх шалгуурууд кодын бичилтийг мөрөөр хайдаг бөгөөд энэ
- *    төслийн дүрмээр зассан алдааг ⚠️ тайлбарт дурддаг. Тайлбарыг хасахгүй
- *    бол «`approve: true` энд байна» гэх мэт ХУДАЛ уналт гарна — `aclParity`
- *    бичих үед яг тэр тохиолдсон.
  */
 const strip = (src) => src
   .replace(/\/\*[\s\S]*?\*\//g, ' ')
   .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1');
 const readCode = (p) => strip(read(p));
-/**
- * ⚠️ 2026-09-30: `Huvaari.tsx` нь `src/modules/huvaari/*`-д хуваагдсан (hook · дэд бүрэлдэхүүн ·
- *    цэвэр функц). Эх кодын шалгуурууд хуваарийн БҮХ файлын нийлбэр дээр ажиллана —
- *    `Huvaari.tsx` эхэнд, дараа нь хавтасны файлууд нэрийн дарааллаар (индексийн
- *    харьцуулалт файл дотроо л утгатай).
- */
 const HV_FILES = ['src/modules/Huvaari.tsx',
   ...fs.readdirSync('src/modules/huvaari').filter((f) => /\.tsx?$/.test(f)).sort().map((f) => 'src/modules/huvaari/' + f)];
 const readHv = () => HV_FILES.map((p) => fs.readFileSync(p, 'utf8')).join('\n');
@@ -51,11 +35,6 @@ const V = readCode(VIEW);
 const CAPS_SRC = readCode('src/lib/caps.ts');
 
 /* ══════════ 1. `loadAllPending` ҮНЭХЭЭР дуудагдана ══════════ */
-/**
- * ⚠️ Энэ функц 0 дуудагчтай шигдсэн байсан — дахин орхигдож болно.
- * ⚠️ `loadPending(` (НЭГ багцын хувилбар) энд БАЙХ ЁСГҮЙ: түүгээр бол багц
- *    тутам нэг query болж, хэдэн арван дараалсан хүсэлт явна.
- */
 {
   assert.match(V, /import\s*\{[^}]*\bloadAllPending\b[^}]*\}\s*from\s*'@\/lib\/huvaariBatlah'/s,
     'HuvaariBatlah: `loadAllPending`-ийг импортлоогүй — дараалал бүх багцыг харахгүй');
@@ -68,13 +47,6 @@ console.log('✅ loadAllPending — импортлогдож, дуудагдан
 
 /* ══════════ 2. ДАРААЛАЛ ЭХ ӨГӨГДӨЛД БИЧИХГҮЙ ══════════ */
 /**
- * ⚠️ БҮХ ДИЗАЙНЫ ЦӨМ ИНВАРИАНТ. Батлах нь `Huvaari.tsx`-д ГУРВАН шаттай
- * гинж (`setApproving` → `useEffect` → `save()` → `applyUpdates()` →
- * `decidePlan(approve: true)`) бөгөөд «бичих зүйлгүй» ба «бичилт унасан»
- * гэсэн хоёр нарийн салаа агуулна. Хожим «энд ч баталъя, нэг товшилт
- * хэмнэнэ» гэж хуулбарлавал тэр салаанууд алдагдаж, хуваарь эх хуудсанд
- * бичигдэлгүй «батлагдсан» болох зам нээгдэнэ.
- *
  * БУЦААХ нь харин зөв: `decidePlan(approve: false)` эх өгөгдөлд юу ч
  * бичдэггүй. Энэ асимметрыг код дээр механикаар тулгана.
  */
@@ -89,14 +61,9 @@ console.log('✅ loadAllPending — импортлогдож, дуудагдан
 console.log('✅ цөм инвариант — дараалал эх өгөгдөлд бичихгүй, зөвхөн буцаана');
 
 /* ══════════ 3. `payload` жагсаалтад БИШ, мөр дэлгэхэд ══════════ */
-/**
- * ⚠️ `payload` нь 1,048,576 тэмдэгт. `HEAD_FIELDS` түүнийг санаатай хасдаг;
- *    жагсаалтын түвшинд татвал тэр бүх зорилго үгүй болж хуудас гацна.
- */
 {
   assert.ok(V.includes('loadPayload'),
     'HuvaariBatlah: `loadPayload` алга — мөр дэлгэхэд агуулга харагдахгүй');
-  /* ⚠️ 2026-10-08: татах зам `ensureDetail`-д (дэлгэх · урьдчилан татах хоёулаа) — `toggle` түүнийг дуудна */
   const i = V.indexOf('const ensureDetail');
   assert.ok(i > 0, 'HuvaariBatlah: агуулга татах `ensureDetail` олдсонгүй');
   assert.ok(V.slice(i, i + 900).includes('loadPayload'),
@@ -109,13 +76,6 @@ console.log('✅ цөм инвариант — дараалал эх өгөгд�
 console.log('✅ payload — зөвхөн мөр дэлгэхэд татагдана');
 
 /* ══════════ 4. ӨӨРИЙГӨӨ БАТЛАХ хамгаалалт UI-д ГАРНА ══════════ */
-/**
- * ⚠️ `decidePlan` нь өөрийгөө батлахыг ХОЁР давхаргад татгалздаг (дуудагчийн
- *    утга ба СЕРВЕРИЙН мөр). Домэйн дүрэм хэвээр боловч UI нь товч ДАРАХААС
- *    ӨМНӨ хэлэх ёстой — эс бөгөөс батлагч дараад алдаа хүлээж авна.
- * ⚠️ Монгол текстээр БИШ, кодын бүтцээр анкорлоно: үг сольсон нь тестийг
- *    эвдэх ёсгүй.
- */
 {
   assert.ok(/const isOwn\s*=/.test(V),
     'HuvaariBatlah: `isOwn` (өөрийн илгээлт) тооцоолол алга');
@@ -135,11 +95,6 @@ console.log('✅ payload — зөвхөн мөр дэлгэхэд татагда
 console.log('✅ өөрийгөө батлах — тусдаа хэсэг, хоёр товч хаалттай, шалтгаан ил');
 
 /* ══════════ 5. БУЦААХАД ШАЛТГААН ЗААВАЛ (UI-д ч) ══════════ */
-/**
- * ⚠️ `decidePlan` нь шалтгаангүй буцаалтыг татгалздаг. UI нь түүнийг
- *    ТУСГАХ ёстой: шалтгаангүй буцаалт нь гүйцэтгэгчид юуг засахыг
- *    хэлэхгүй тул хоосон давталт үүсгэнэ.
- */
 {
   assert.ok(/if\s*\(busy\s*\|\|\s*!why\)/.test(V),
     'HuvaariBatlah: буцаах функц шалтгааныг шалгахгүй байна');
@@ -150,10 +105,6 @@ console.log('✅ өөрийгөө батлах — тусдаа хэсэг, хо
 console.log('✅ буцаах — шалтгаан заавал (функц ба товч хоёуланд)');
 
 /* ══════════ 6. БҮРЭН ДАХИН УНШИНА, локал хасалт БИШ ══════════ */
-/**
- * ⚠️ Өөр батлагч зуур шийдсэн байж болно (`decidePlan`-ийн хоцролын
- *    хамгаалалт). Локал мутациар дараалал хүснэгтээсээ чимээгүй зөрнө.
- */
 {
   const i = V.indexOf('const reject');
   assert.ok(i > 0, 'HuvaariBatlah: `reject` олдсонгүй');
@@ -163,14 +114,6 @@ console.log('✅ буцаах — шалтгаан заавал (функц ба
 console.log('✅ буцаасны дараа — бүтэн дахин уншина');
 
 /* ══════════ 7. CAP_HOST_VIEW МАССИВ · capViewsOf ХАВТГАЙРУУЛНА ══════════ */
-/**
- * ⚠️ ХАМГИЙН ХОРТОЙ ЗӨРЧИЛ. `capViewsOf` нь `map` хэрэглэвэл `ViewKey[][]`
- *    буцаана; `new Set` нь массивыг СУУРИАР давхардалгүйжүүлдэг тул юу ч
- *    хасагдахгүй, улмаар `resolveAccess`-ийн `includes` ХЭЗЭЭ Ч таарахгүй
- *    болж БҮХ хүний эрхийн харагдац чимээгүй алга болно.
- * ⚠️ Нэг оролт string, нөгөө нь массив байх ХООРДМОЛ хэлбэрийг ч барина —
- *    амьд объектоор шалгана, зөвхөн эх кодоор биш.
- */
 {
   assert.ok(CAPS_SRC.includes('Record<CapKey, ViewKey[]>'),
     'caps.ts: `CAP_HOST_VIEW` нь массив биш — planApprove хоёр харагдац нээж чадахгүй');
@@ -181,10 +124,7 @@ console.log('✅ буцаасны дараа — бүтэн дахин унши�
   for (const { key } of CAPS) {
     assert.ok(Array.isArray(CAP_HOST_VIEW[key]),
       `caps.ts: CAP_HOST_VIEW.${key} нь массив биш — хоёрдмол хэлбэр capViewsOf-ыг эвдэнэ`);
-    /* ⚠️ 2026-10-19: `sysClose` («Систем түр хаах») САНААТАЙ харагдацгүй — удирдлага нь цэсний товч
-       (`ViewRail.onSysClose`), хуудас нээх утгагүй. Бусад эрх харагдацтай байх ёстой хэвээр. */
     if (key === 'sysClose') { assert.deepEqual(CAP_HOST_VIEW[key], [], 'sysClose: харагдацгүй байх ёстой'); continue; }
-    /* ⚠️ 2026-10-23: `docsUpload` (баримт бичгийн сан) САНААТАЙ харагдацгүй — сан нь цэсний «Баримт» товчны цонх */
     if (key === 'docsUpload' || key === 'docsGroups') { assert.deepEqual(CAP_HOST_VIEW[key], [], 'docsUpload: харагдацгүй байх ёстой'); continue; }
     assert.ok(CAP_HOST_VIEW[key].length > 0,
       `caps.ts: CAP_HOST_VIEW.${key} хоосон — эрх нь харагдацгүй, чимээгүй утгагүй`);
@@ -197,12 +137,6 @@ console.log('✅ буцаасны дараа — бүтэн дахин унши�
 console.log('✅ CAP_HOST_VIEW массив · capViewsOf хавтгайруулна');
 
 /* ══════════ 8. `planApprove` ХОЁУЛАНГ нээнэ ══════════ */
-/**
- * ⚠️ Батлах нь дараалалаас `huvaari` руу ШИЛЖДЭГ тул хоёрын аль нэгийг
- *    хаавал эрх нь ажлаа дуусгах ЗАМГҮЙ болно: дараалал нээгдээд батлах
- *    товч үхсэн байх, эсвэл дараалал огт харагдахгүй.
- * ⚠️ ДАРААЛАЛ ЧУХАЛ: [0] нь «гэр» — батлагчийн байгалийн бууж ирэх газар.
- */
 {
   assert.deepEqual(CAP_HOST_VIEW.planApprove, ['huvaariBatlah', 'huvaari'],
     'caps.ts: planApprove нь дараалал БА хуваарь хоёуланг нээх ёстой (дараалалтайгаа)');
@@ -212,13 +146,6 @@ console.log('✅ CAP_HOST_VIEW массив · capViewsOf хавтгайруул
 console.log('✅ planApprove — дараалал БА хуваарь хоёулаа');
 
 /* ══════════ 9. ХАРАГДАЦ БҮРЭН БҮРТГЭГДСЭН ══════════ */
-/**
- * ⚠️ `services.ts` нь `VIEWS`-д ОРООГҮЙ `ViewKey` нь `VIEW_BY_KEY[key]`
- *    дээр `undefined` болж, навигацид гарахгүй, гүн холбоосоор ч нээгдэхгүй
- *    атлаа эрхийн загварт олгогдож болдог «хий түлхүүр» болсон эвдрэлийг
- *    баримтжуулсан (2026-08-27, `bagts`/`monitor`).
- * ⚠️ `HOME_SECTIONS`-д оруулаагүй бол нүүрт «Бусад хэсэг» болж унана.
- */
 {
   const v = VIEW_BY_KEY.huvaariBatlah;
   assert.ok(v, 'services.ts: `huvaariBatlah` нь VIEWS-д бүртгэгдээгүй — хий түлхүүр');
@@ -230,16 +157,7 @@ console.log('✅ planApprove — дараалал БА хуваарь хоёул
 console.log('✅ харагдац — VIEWS · standalone · HOME_SECTIONS');
 
 /* ══════════ 10. БАТЛАХ ШИЛЖИЛТ — санах ойгоор, URL-аар БИШ ══════════ */
-/**
- * ⚠️ `writeParams` (urlState.ts) нь ТАНИХГҮЙ түлхүүрийг хөнддөггүй тул
- *    `?approve=<oid>` нь харагдац солиход ч, F5-д ч ҮЛДЭЖ, аль хэдийн
- *    шийдвэрлэгдсэн саналын цонхыг ДАХИН нээх байлаа. `sessionStorage` ч
- *    мөн адил F5-ыг давна.
- * ⚠️ `setView`-ЭЭР шилжинэ (`Schem`-ийн дүрэм): URL-аар тойрвол өмнөх
- *    харагдацын шүүлт үлдэнэ.
- */
 {
-  /* ⚠️ 2026-09-30: харагдацын бүртгэл `viewRegistry.tsx`-д гарсан — батлах шилжилт тэнд */
   const P = readCode('src/components/Portal.tsx') + '\n' + readCode('src/components/viewRegistry.tsx');
   assert.ok(/const \[planJump, setPlanJump\]\s*=\s*useState/.test(P),
     'Portal: `planJump` санах ойн төлөв алга — батлах шилжилт ажиллахгүй');
@@ -255,8 +173,6 @@ console.log('✅ харагдац — VIEWS · standalone · HOME_SECTIONS');
     'Huvaari: `jump` prop алга — дараалалаас шилжих зам байхгүй');
   assert.ok(H.includes('onJumpDone'),
     'Huvaari: `onJumpDone` алга — хүсэлт цэвэрлэгдэхгүй, цонх дахин нээгдэнэ');
-  /* ⚠️ ХОЁР ШАТ: `pending` хүрэлцэхээс өмнө цонх нээвэл зурагдалтын
-     `flowBox === 'decide' && pending` хамгаалалт юу ч зурахгүй. */
   assert.ok(/pending\?\.oid\s*===\s*jump\.oid[\s\S]{0,120}setFlowBox\('decide'\)/.test(H),
     'Huvaari: `pending` тулгалгүйгээр цонх нээж байна — товч дарсан атлаа юу ч болохгүй');
 }
@@ -267,14 +183,6 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
  * Хэрэглэгч: «илгээсний дараа батлах хэсэг тухайн багцын хуваарийг бүхэлд нь,
  * Хуваарь хэсэгт харж байгаа шиг харж батална; гүйцэтгэлтэй адил алийг нь
  * зөвшөөрсөн, алийг нь зөвшөөрөөгүйг гүйцэтгэгч харна».
- *
- * ⚠️ Гурван зүйлийг механикаар барина:
- *   (1) Дараалал ӨӨРИЙН Gantt бичээгүй — `Huvaari`-г `review` горимоор ДАХИН
- *       ашиглана (батлах гинж ганцхан газар — §2-ийн цөм инвариант хэвээр).
- *   (2) «Батлах» нь БҮХ өөрчлөгдсөн мөр ногоон болтол хаалттай (`allOk`) —
- *       эс бөгөөс мөр тус бүрийн хяналт утгагүй.
- *   (3) Буцаахад зөвшөөрсөн мөрүүд `okRows`-оор ХАДГАЛАГДАНА — эс бөгөөс
- *       гүйцэтгэгч улаан/ногоон харахгүй.
  */
 {
   const V = readCode(VIEW);
@@ -286,7 +194,6 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   const H = strip(readHv());
   assert.ok(/review\?:\s*HuvaariReview/.test(H), 'Huvaari: `review` prop алга');
   /* Засвар хаалттай: canEdit нь review-д худал */
-  /* ⚠️ 2026-10-23: эрх (`canEditRole`) ба «Батлагдсан» харагдацын хаалт тусдаа — `canEdit = canEditRole && !savedView` */
   assert.ok(/const canEditRole = useMemo\(\s*\(\)\s*=>\s*!review\s*&&/.test(H) && /const canEdit = canEditRole && !savedView;/.test(H),
     'Huvaari: хяналтын горимд засвар хаагдаагүй (`canEdit`)');
   /* Батлах товч allOk-оор хаалттай */
@@ -301,11 +208,8 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   assert.ok(/const rejectReview[\s\S]{0,900}decide\(false,[\s\S]{0,80}okRows\.has/.test(H),
     'Huvaari: хяналтын буцаалт зөвшөөрсөн мөрийг дамжуулахгүй');
   /* 2026-09-29 аудит: хяналтын горимоос ГАДУУРХ «Шийдвэрлэх → Буцаах» ч тэмдэг дамжуулна */
-  /* ⚠️ 2026-10-09: урьдчилан хараагүй бол `[]` (бүх өөрчлөгдсөн мөр зохиогчид УЛААН) — тэмдэглэгээгүй буцаалт алга */
-  /* ⚠️ 2026-10-09 (аудит): өөрийн шалтгаангүй буцаалт татгалзана; тэмдэглэл `REASON_MAX`-д заавал багтана */
   assert.ok(/onReject=\{\(txt\) => \{[\s\S]{0,120}if \(!own\) return;[\s\S]{0,40}if \(previewing\) \{ void decide\(false, txt, reviewOids\.filter\(\(o\) => okRows\.has\(o\)\)\); return; \}[\s\S]{0,300}void decide\(false, [\s\S]{0,200}REASON_MAX[\s\S]{0,80}, \[\]\);/.test(H),
     'Huvaari: FlowBox-ын буцаалт урьдчилан харсан тэмдэглэгээг хаяж байна (эсвэл хараагүй үед [] биш)');
-  /* ⚠️ 2026-10-09 (аудит): тайлбар заавал багтахаар ХЭРЭГЛЭГЧИЙН текстийг тайрна */
   assert.ok(/reason: `\$\{why\.slice\(0, Math\.max\(0, REASON_MAX - blind\.length - 1\)\)\}\\n\$\{blind\}`, okRows: \[\]/.test(V),
     'HuvaariBatlah: дарааллаас буцаахад okRows: [] (бүгд улаан) дамжихгүй');
   /* 2026-09-29 аудит: буцаалт · илгээлт солигдох · батлалтын дараа `okRows` цэвэрлэгдэнэ */
@@ -316,15 +220,12 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
     const c0 = H.indexOf('const refreshFlow = useCallback');
     const c1 = H.indexOf('useEffect(() => { void refreshFlow(); }', c0);
     const rf = H.slice(c0, c1);
-    /* ⚠️ 2026-10-01: `catch (e)` — алдааг ангилж бичнэ (friendlyError) */
     const cat = rf.slice(rf.lastIndexOf('} catch'));
     assert.ok(!/setPending\(null\)/.test(cat) && /setPending\(\(p0\) => \(p0 && p0\.pkgKey === key \? p0 : null\)\)/.test(cat),
       'Huvaari.refreshFlow: сүлжээний алдаанд pending=null → түгжээ тайлагдана');
   }
   /* 2026-09-29 аудит: `previewing` нь `decidePlan` АМЖИЛТТАЙ болсны дараа л тайлагдана */
-  /* ⚠️ 2026-10-01: амжилттай салаанд `partialRef` арилгах мөр нэмэгдсэн — хоёр хэлбэрийг таньна */
   assert.ok(/if \(r\.ok\) \{\s*setPreviewing\(false\); setOkRows\(new Set\(\)\);/.test(H)
-    /* ⚠️ 2026-10-11 (аудит №7): амжилттай салаанд `wroteSomeRef`/`lostWriteRef` тэглэлт ба тайлбар ч орж болно */
     && /\} else \{\s*(?:(?:\/\*[\s\S]*?\*\/|if \((?:partialRef|wroteSomeRef|lostWriteRef)\.current === oid\) \w+\.current = null;)\s*)*setPreviewing\(false\);\s*setOkRows\(new Set\(\)\);\s*setNote\(tr\('Хуваарь батлагдаж/.test(H),
     'Huvaari: батлалт унахад previewing тайлагдаж хяналтын товчнууд идэвхгүй үлдэнэ');
   /* Гүйцэтгэгчийн тал — буцаагдсаныг ноорогт буулгаж тэмдэглэнэ */
@@ -359,7 +260,6 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
     'Huvaari: батлах явцад Esc хяналтыг хаана — эх хуудас бичигдээд илгээлт pending үлдэнэ');
   /* flowReady нь pending-тэй НЭГ зурагдалтад — «аль хэдийн шийдвэрлэгдсэн» худал алдаа */
   const rf = H.slice(H.indexOf('const refreshFlow = useCallback'), H.indexOf('useEffect(() => { void refreshFlow(); }'));
-  /* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — 2026-10-09: хоёр төрөл НЭГ дор (`loadPendingBoth`), идэвхтэйнх нь `both[kind]` */
   assert.ok(rf.indexOf('loadPendingBoth(pkg.key)') > 0 && rf.indexOf('both[kind]') > 0
     && rf.indexOf('setFlowReady(true)') > rf.indexOf('loadPendingBoth(pkg.key)'),
     'Huvaari: `flowReady=true` нь `loadPending`-ээс ӨМНӨ — хяналт хүлээгдэж буйг шийдвэрлэгдсэн гэж андуурна');
@@ -406,7 +306,6 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
   /* 3. Бодит огноо сонгосон БҮХ блокт */
   assert.ok(/applyExtra\(modalRow\.oid, actBlks, actual, res\);/.test(H), 'Huvaari: бодит огноо зөвхөн идэвхтэй блокт орж байна');
   assert.ok(/const actDirty = (?:!xLock && )?actTouched && \[\.\.\.selB\]\.some\(/.test(H), 'Huvaari: бодит огнооны өөрчлөлт зөвхөн идэвхтэй блокоор шийдэгдэж байна');
-  /* ⚠️ 2026-09-29 (аудит 10): талбарыг ХӨНДӨӨГҮЙ бол бусад сонгосон блокийн бодит огноог дарахгүй */
   assert.ok(/setActTouched\(true\)/.test(H), 'Huvaari: бодит огнооны талбарыг хөндсөн тэмдэг алга — бусад блокийн бодит огноо арчигдана');
   /* 5. Сольж харах — шийдвэр гаргаж чадах батлагчид ГАРАХГҮЙ (strict бус харалтаас батлах зам хаалттай) */
   assert.ok(/\{\(!canApprove \|\| isOwnSubmission\) && approving == null && \(\s*<span className=\{h\.tlZoom\}/.test(H),
@@ -415,25 +314,18 @@ console.log('✅ буцаагдсан санал — автоматаар ноо
   /* 7. Буцаасан шалтгаан — «Хуваарь батлах» хуудсанд зохиогчид; хуудсанд 30 с тутам шалгана */
   assert.ok(/loadLastPerPkg\(\)/.test(V) && /x\.status === PLAN_STATUS\.returned/.test(V) && /back\.filter\(isOwn\)/.test(V),
     'HuvaariBatlah: өөрийн буцаагдсан илгээлт шалтгаантайгаа харагдахгүй');
-  /* ⚠️ 2026-10-09: ХОЁР төрлийг шалгана (`loadPendingBoth`) — идэвхтэйнх өөрчлөгдвөл `refreshFlow`, нөгөөх нь `setPendingOther`;
-     идэвхтэй табын илгээлт байхгүй үед ч мөчлөг ажиллана (`pending != null` нөхцөлгүй) */
-  /* ⚠️ 2026-10-09 (аудит №2): `setPendingOther(pO)`-ийн өмнө татлагын хүлээлтийн тайлбар нэмэгдсэн тул зай {0,500} → {0,2500} */
   assert.ok(/void loadPendingBoth\(key\)\.then\(\(both\) => \{[\s\S]{0,900}both\[k0\][\s\S]{0,400}void refreshFlow\(\);[\s\S]{0,2500}setPendingOther\(pO\)/.test(H),
     'Huvaari: хүлээгдэж буй илгээлт шийдэгдсэнийг хуудас өөрөө мэдэхгүй (эсвэл нөгөө табынхыг шинэчлэхгүй)');
-  /* ⚠️ 2026-10-09 (аудит №2): нөгөө табын илгээлт шийдэгдэхэд `pendingOther`-ийг ЗӨВХӨН татлага амжилттай үед арилгана */
   assert.ok(/refetchBg = useCallback\(async \(\): Promise<boolean>/.test(H)
     && /void refetchBg\(\)\.then\(\(done\) => \{[\s\S]{0,400}if \(done &&[\s\S]{0,200}setPendingOther\(\(cur\) => \(cur\?\.oid === goneOid \? null : cur\)\)/.test(H),
     'Huvaari: мөчлөг татлага хийгдээгүй/унасан ч `pendingOther`-ийг шинэчилж — хуучирсан мөр дахин татагдахгүй');
   assert.ok(!/pollOkRef = useLatest\([^)]*pending != null/.test(H), 'Huvaari: мөчлөг идэвхтэй табын илгээлтгүй үед зогссоор — нөгөө табын түгжээ хоцорно');
-  /* ⚠️ 2026-10-09: бодит огноо · нөөцийн түгжээ ба архивлалтын хаалт — UI биш, БИЧИХИЙН ӨМНӨ серверээс (fail-closed) */
   {
-    /* ⚠️ 2026-10-12 (аудит №8): deps-д `ham`/`obDraft` нэмэгдсэн (уялдаа · сарын обьёмын түгжээ) */
     const xc = H.slice(H.indexOf('const xLockCheck = useCallback('), H.indexOf('}, [aDraft, resDraft, obResDraft, ham, obDraft, pkg.key, kind, rows'));
     assert.ok(xc.includes('st.ham.has(o)') && xc.includes('st.ob.has(d)'), 'Huvaari: xLockCheck уялдаа/сарын обьёмын түгжээг шалгахгүй');
     assert.ok(/await loadPending\(key, other\)/.test(xc) && /await loadPayload\(pO\.oid\)/.test(xc) && /catch \(e\) \{\s*return tr\(/.test(xc),
       'Huvaari: xLockCheck нөгөө табын илгээлтийг серверээс (strict) уншихгүй эсвэл алдаанд нээлттэй');
     const sv = H.slice(H.indexOf('const save = useCallback('), H.indexOf('/* ══════════════ БАТЛАХ УРСГАЛ'));
-    /* ⚠️ 2026-10-12 (аудит №8): бичих зам `strict` (тасарсан жаазын оронд хуучин агшин хүлээн авахгүй) */
     const iFresh = sv.indexOf('const fresh = await loadRows(pkg, sc, undefined, undefined, { strict: true });');
     assert.ok(sv.indexOf('await archivingBusy(pkg.key)') > 0 && sv.indexOf('await archivingBusy(pkg.key)') < iFresh
       && sv.indexOf('await xLockCheck()') > 0 && sv.indexOf('await xLockCheck()') < iFresh,

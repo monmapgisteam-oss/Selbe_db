@@ -1,9 +1,6 @@
 /**
  * `utm48.ts` — WGS84 ↔ UTM 48N ↔ Web Mercator.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/utm48.check.mjs
- *
- * ⚠️ Лавлах цэг нь АМЬД өгөгдлөөс (2026-10-14): `IoT_sensor/13`-ийн нэг объектыг сервер
- *    `outSR=4326` ба `outSR=32648`-аар буцаасан утга — ArcGIS-ийн өөрийн проекцтой тулгана.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/utm48.check.mjs
  */
 import assert from 'node:assert/strict';
 

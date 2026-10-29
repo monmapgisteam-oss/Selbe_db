@@ -1,19 +1,8 @@
 /**
  * ГҮЙЦЭТГЭЛИЙН ХЯНАЛТ — ТҮР ЖИШЭЭ ӨГӨГДӨЛ.
  *
- * ⚠️ ЗӨВХӨН урсгалыг нүдээр харах зорилготой. Бодит ажлын өгөгдөл БИШ.
- * ⚠️ Ажлын нэр бүр «ЖИШЭЭ —» гэж эхэлдэг тул цэвэрлэлт нь ЯГ эдгээрийг л
- *    олно — бодит бүртгэлд хүрэхгүй.
- *
- *   үүсгэх :  node --experimental-transform-types --import ./tools/ts-alias.mjs tools/hyanalt-demo.mjs --target=<HYANALT.url> --i-know-this-is-production
- *   устгах :  … tools/hyanalt-demo.mjs --target=<HYANALT.url> --i-know-this-is-production --clean
- *
- * ⚠️ 2026-09-25: PRODUCTION ХАМГААЛАЛТ. `HYANALT.url` нь `.env`-ийн HJ-ээс
- *    гардаг ганц prod хүснэгт (өөр орчин алга), урьд нь loader admin токеныг
- *    чимээгүй залгадаг байв. Одоо `--target` (ЯГ `HYANALT.url`-тэй тэнцүү —
- *    скрипт бичих хаягаа өөрчилж чадахгүй тул таарахгүй бол татгалзана) БА
- *    `--i-know-this-is-production` хоёулаа байхгүй бол юу ч бичихгүй.
- *    Loader токен залгахаа больсон (зөвхөн `*.check.mjs`).
+ *   үүсгэх:  node --experimental-transform-types --import./tools/ts-alias.mjs tools/hyanalt-demo.mjs --target=<HYANALT.url> --i-know-this-is-production
+ *   устгах:  … tools/hyanalt-demo.mjs --target=<HYANALT.url> --i-know-this-is-production --clean
  */
 import { addRows, queryAll, HYANALT, F, STATUS, DECISION } from '@/lib/hyanalt';
 
@@ -44,8 +33,6 @@ if (process.argv.includes('--clean')) {
     body: new URLSearchParams({ f: 'json', deletes: oids.join(',') }).toString(),
   });
   const j = await r.json();
-  /* ⚠️ 2026-09-25 (аудит 8): ArcGIS алдаа 200-аар `{ error }` биетэй ирдэг (CLAUDE.md) —
-     урьд «Устгав: 0 мөр» гэж чимээгүй өнгөрдөг байв; мөр бүрийн `success:false` ч мөн. */
   if (j.error) { console.error('⛔ ArcGIS алдаа:', j.error.message ?? JSON.stringify(j.error)); process.exit(1); }
   const res = j.deleteResults ?? [];
   const bad = res.filter((x) => !x.success);
@@ -83,7 +70,6 @@ const rows = [
   base(2, { ...A, n: 2, sent: '2026-08-19T08:05', eng: DECISION.approve, engAt: '2026-08-19T09:26',
     mgr: DECISION.return, mgrAt: '2026-08-20T14:45',
     mgrWhy: 'Актын дугаар болон хүлээлгэн өгсөн огноо дутуу.', status: STATUS.managerReturned }),
-  // ⚠️ Компани ДАХИН ИЛГЭЭГЭЭГҮЙ — огноо өмнөхтэй ижил тул «дахин шалгалт» болно
   base(3, { ...A, n: 3, sent: '2026-08-19T08:05', eng: DECISION.approve, engAt: '2026-08-21T10:12',
     status: STATUS.managerReview }),
 

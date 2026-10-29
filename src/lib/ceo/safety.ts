@@ -3,30 +3,6 @@
  *
  * Эх сурвалж: Survey123 ослын бүртгэл (`HABEA.incident`) — ~17 мөрийн жижиг
  * хүснэгт, нэг асуулгаар бүтнээрээ ирнэ.
- *
- * ⚠️ ХОХИРЛЫГ ЭНД ӨӨРӨӨ бодно, `execTriage.loadDamage()`-ийг ДУУДАХГҮЙ — тэр нь
- *    ижил хүснэгтийг ДАХИН татдаг (нэг картад хоёр удаа ArcGIS). Гэхдээ шүүлт
- *    нь `loadDamage`-тэй ЯГ ИЖИЛ дүрэм (`DAMAGE_RE`): төрлийг яг таарцаар биш,
- *    «хохирол» агуулснаар — Survey123-ийн сонголт «Эд хөрөнгийн хохирол» ч,
- *    гараар бичсэн «эд хөрөнгийн хохирол учруулсан» ч алдагдах ёсгүй. Хоёр
- *    газрын regex зөрвөл нүүр самбар ба ХАБЭА хуудас өөр тоо харуулна.
- *
- * ⚠️ 2026-10-09: ОГНООНЫ `CreationDate` НӨӨЦ ЗАМ ХАСАГДАВ — ХАБЭА хуудас (`Habea.tsx`
- *    `normIncident`) 2026-09-17-нд түүнийг аль хэдийн хассан (`d: nn(r[I.ognoo])`), харин энд
- *    үлдсэн тул `field_22` хоосон мөр нүүр самбарт «өнөөдөр» (бөглөсөн өдөр) огноотой болж
- *    «сүүлийн 30 хоногт» тоологдож, хуудаснаас өөр тоо гардаг байв. Огноо = ЗӨВХӨН `field_22`.
- *
- * ⚠️ `null` ≠ 0: хоёулаа хоосон бүртгэл нь «сүүлийн 30 хоногт» тоологдохгүй,
- *    `asOf`-д орохгүй, хүснэгтэд «—» гарна — ямар нэг огноо зохиож
- *    орлуулахгүй. Огноо огт байхгүй бол `asOf: null`.
- *
- * ⚠️ 2026-10-21 (аудит): ХОХИРЛЫН ТҮВШИН ч `RECENT_DAYS` цонхоор (`damageRecent`) — ослын түвшин
- *    2026-10-09-нд 30 хоног болсон атал хохирол бүх хугацаагаар үлдсэн тул 3 дахь хохирол
- *    бүртгэгдмэгц карт мөнхөд «Яаралтай» байв. Бүх хугацааны хохирол «{0} хохирол» баримтад хэвээр.
- *
- * ⚠️ Тооцоо (`computeSafety`) нь ЦЭВЭР — сүлжээгүй, `Date.now()`-гүй — тул
- *    `safety.check.mjs` түүнийг шууд импортлон шалгана. `now` нь зөвхөн
- *    ачаалагчийн биед авагдана.
  */
 import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
@@ -41,15 +17,11 @@ import { cell, daysBetween, table, worstOf, type Cell, type KpiIssue, type KpiRe
 
 /**
  * Хохирлын төрлийн шүүлт — `execTriage.loadDamage`-ийн regex-тэй ИЖИЛ байх ёстой.
- * ⚠️ Нэгийг нь өөрчилбөл нөгөөг нь мөн адил өөрчил.
  */
 export const DAMAGE_RE = /хохирол/i;
 
 /**
  * «Сүүлийн үеийн» осол гэж тооцох цонх, хоног.
- * ⚠️ САНАЛ (2026-09-06, CEO самбар): 30 хоног нь удирдлагын сарын тоймын
- *    хэмжээс — тооцоолж гаргасан босго БИШ. Энэ цонхонд орсон осол бүр
- *    `issues`-д улаанаар нэрлэгдэнэ.
  */
 export const RECENT_DAYS = 30;
 
@@ -93,12 +65,6 @@ const toMs = (v: unknown): number | null => {
 /**
  * ХООСОН НООРОГ — Survey123-д эхлүүлээд бөглөөгүй ослын маягт: ТӨРӨЛ (`field_7`),
  * БАГЦ (`field_6`), ОГНОО (`field_22`) ГУРВУУЛАА хоосон.
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ийм мөр «осол» болж тоологддог байв —
- *    төрөлгүй, багцгүй, огноогүй (эсвэл `CreationDate`-аар өнөөдрийн огноотой)
- *    «осол» KPI-г худал өсгөнө. Нүүр самбар ба ХАБЭА хуудас (`Habea.tsx`) ЭНЭ
- *    НЭГ дүрмээр хасна. Огноо 0 нь хоосонтой адил (`toMs`-ийн дүрэм).
- * ⚠️ ЗӨВХӨН гурвуулаа хоосон бол — нэг нь ч бөглөгдсөн бол жинхэнэ (дутуу) бүртгэл.
  */
 export function isBlankIncident(r: Row): boolean {
   const I = HABEA.incident.fields;
@@ -108,20 +74,13 @@ export function isBlankIncident(r: Row): boolean {
 
 /**
  * Эх мөрийг `SafetyRow` болгоно — талбарын нэрс `HABEA.incident.fields`-ээс.
- * ⚠️ 2026-10-22 (аудит): төрөл · шалтгааны төрөл · компани нь домэйны НЭРЭЭР (`dom`, `codedName`) — Survey123-ийн КОД 30–31
- *    тэмдэгтэд тасардаг тул CEO картад «"Хятадын хоёр дахь металлурги г», «Моторт тээврийн хэрэгсэлийн осо» гэж гардаг
- *    байв (ХАБЭА хуудас 2026-10-21-нээс нэрээр). Толь алга/танихгүй код → код өөрөө.
  */
 export function toSafetyRow(r: Row, dom: CodedMaps = {}): SafetyRow {
   const I = HABEA.incident.fields;
-  /* ⚠️ Survey123 давхаргын OID нь жижиг үсгээр `objectid` (Habea.tsx-тэй ижил);
-     өөр нэртэй ирвэл ч алдахгүй — зөвхөн тодорхойлоход хэрэглэнэ. */
   const oidRaw = r.objectid ?? null;
   const oid = oidRaw == null ? null : Number(oidRaw);
   return {
     oid: oid != null && Number.isFinite(oid) ? oid : null,
-    /* ⚠️ 2026-10-09: `Habea.tsx` `normIncident`-тэй ИЖИЛ — ЗӨВХӨН `field_22`; 0/хоосон → `null`
-       (`CreationDate` руу УНАХГҮЙ — толгойн ⚠️) */
     ognoo: toMs(r[I.ognoo]),
     company: codedName(dom[I.company], r[I.company]),
     bagts: str(r[I.bagts]),
@@ -175,13 +134,9 @@ export const newestFirst = (a: SafetyRow, b: SafetyRow): number => {
 export const isDamage = (r: SafetyRow): boolean => DAMAGE_RE.test(r.turul);
 
 export function aggregateSafety(rows: readonly SafetyRow[], now: number): SafetyAgg {
-  /* ⚠️ 2026-10-21 (аудит): `last`/`daysSince`/`asOf` ч `<= now` — `recent`-тэй нэг дүрэм. Урьд нь ирээдүйн
-     огноотой (буруу бөглөсөн) мөр «сүүлийнх −5 хоногийн өмнө»/ирээдүйн `asOf` болгодог байв. */
   const dated = rows.map((r) => r.ognoo).filter((x): x is number => x != null && x <= now);
   const last = dated.length ? Math.max(...dated) : null;
   const since = now - RECENT_DAYS * 86_400_000;
-  /* ⚠️ 2026-10-09: дээд хязгаар `now` — ирээдүйн огноотой (буруу бөглөсөн) мөр «сүүлийн 30 хоногт»
-     тоологдож картыг улаан болгодог байв */
   const recentRows = rows.filter((r) => r.ognoo != null && r.ognoo >= since && r.ognoo <= now);
   return {
     total: rows.length,
@@ -189,7 +144,6 @@ export function aggregateSafety(rows: readonly SafetyRow[], now: number): Safety
     last,
     daysSince: last == null ? null : daysBetween(last, now),
     recent: recentRows.length,
-    /* ⚠️ 2026-10-21: түвшний хохирол — ЗӨВХӨН цонхонд (толгойн ⚠️); бүх хугацааных `damage` баримтад */
     damageRecent: recentRows.filter(isDamage).length,
     byType: tally(rows, (r) => r.turul),
     byBagts: tally(rows, (r) => r.bagts),
@@ -212,29 +166,17 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
   const agg = aggregateSafety(rows, now);
   const since = now - RECENT_DAYS * 86_400_000;
 
-  /* ── Баримт: зөвхөн тоо бүхий богино хэсгүүд ──
-     ⚠️ i18n (2026-09-06-ны хяналт): «{0} хохирол» ба «Багц: {0}» нь `en.ts`-д
-     АЛЬ ХЭДИЙН байгаа түлхүүрүүд — тэдгээрийг ДАХИН хэрэглэнэ, шинэ хувилбар
-     («хохирол {0}», «багц: {0} — {1}») зохиохгүй. Үлдсэн 2 баримт + нэгж +
-     2 хүснэгтийн гарчиг нь ШИНЭ түлхүүр — `en.ts`-д орох ёстой
-     (`node tools/i18n-extract.mjs` олно). Түлхүүрийн эх текстийг өөрчилбөл
-     орчуулга ЧИМЭЭГҮЙ унана (монголоор гарна) — засахдаа `en.ts`-тэй хамт. */
+  /* ── Баримт: зөвхөн тоо бүхий богино хэсгүүд ── */
   const facts: string[] = [];
   if (agg.last != null && agg.daysSince != null) {
     facts.push(tr('сүүлийнх {0} хоногийн өмнө ({1})', agg.daysSince, date(agg.last)));
   }
-  /* ⚠️ 2026-10-09: гол тоо нь сүүлийн 30 хоногийнх тул энд НИЙТ (бүх хугацааны) тоо */
   facts.push(tr('нийт {0}', num(agg.total)));
   facts.push(tr('{0} хохирол', agg.damage));
   const topBagts = agg.byBagts[0];
   if (topBagts) facts.push(tr('Багц: {0}', `${topBagts.name} — ${topBagts.n}`));
 
   /* ── Түвшин ── */
-  /* ⚠️ 2026-10-09: ослын түвшин СҮҮЛИЙН 30 ХОНОГООР (`agg.recent`). Урьд нь бүх хугацааны
-     `agg.total` тул 6 дахь осол бүртгэгдмэгц карт мөнхөд «Яаралтай» болж, сайжрал харагддаггүй
-     байв. Гол тоо ба шошго ч 30 хоног.
-     ⚠️ 2026-10-21 (аудит): хохирлын түвшин ч ИЖИЛ цонхоор (`agg.damageRecent`) — бүх хугацааны
-     `agg.damage` ≥ 3 болмогц карт мөнхөд улаан байсан; бүх хугацааны тоо баримтад хэвээр. */
   const level = worstOf([incidentLevel(agg.recent), damageLevel(agg.damageRecent)]);
 
   /* ── Хүснэгтүүд: бүх бүртгэл нэрээр нь, дараа нь төрөл/багцын задаргаа ── */
@@ -260,8 +202,6 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
   /* ── Анхааруулга: сүүлийн 30 хоногийнх улаан; түүнээс хуучин хохирол шар ── */
   const issues: KpiIssue[] = [];
   for (const r of rows) {
-    /* ⚠️ 2026-10-11 (аудит №7): `<= now` — `agg.recent`-тэй нэг дүрэм; ирээдүйн огноотой (буруу бөглөсөн)
-       мөр «сүүлийн 30 хоног»-ийн улаан анхааруулга болдог байв */
     const recent = r.ognoo != null && r.ognoo >= since && r.ognoo <= now;
     if (recent) issues.push({ text: issueText(r), tone: 'bad' });
     else if (isDamage(r)) issues.push({ text: issueText(r), tone: 'warn' });
@@ -281,30 +221,15 @@ export function computeSafety(rowsIn: readonly SafetyRow[], now: number): KpiRes
 
 /* ══════════════ Ачаалагч ══════════════ */
 
-/**
- * ⚠️ Ганц эх сурвалж: уншигдахгүй бол ШИДНЭ (хэсэгчилсэн уналт байхгүй) —
- *    `cached` унасан амлалтыг кэшлэхгүй тул дараагийн дуудалт дахин оролдоно.
- *    `HABEA` тагаар Survey123 руу бичсэн код `invalidate('HABEA')` дуудахад
- *    энэ кэш хаягдана.
- */
-/**
- * ⚠️ 2026-09-17: мөрүүд тусдаа кэштэй — «Багц ажлын оноо» (`scorecardLoad.ts`)
- *    багц бүрийн ослыг эндээс тоолно; ижил хүснэгтийг хоёр дахин татахгүй.
- */
 export const loadSafetyRows = cached(async (): Promise<SafetyRow[]> => {
   const I = HABEA.incident.fields;
-  /* ⚠️ 2026-10-22 (аудит): домэйны толь ЗЭРЭГ (`toSafetyRow`-ийн ⚠️); мета унавал `{}` — код хэвээр, карт унахгүй */
   const [raw, dom] = await Promise.all([
     queryFeatures(HABEA.incident.url, {
-      /* ⚠️ 2026-10-09: `CreationDate` татахгүй — огнооны нөөц зам хасагдсан (толгойн ⚠️) */
       outFields: [...Object.values(I), 'objectid'],
-      /* ⚠️ 2026-10-06 (аудит): `objectid` tiebreak — ижил огноотой (ялангуяа огноогүй null) мөрийн
-         дараалал тогтворгүй тул хуудас хооронд давхардах/алгасагдах эрхтэй. */
       orderBy: `${I.ognoo} DESC, objectid DESC`,
     }),
     loadCodedMaps(HABEA.incident.url, [I.turul, I.shaltgaanTurul, I.company]),
   ]);
-  /* ⚠️ 2026-10-01: хоосон ноорог хасагдана (`isBlankIncident`) */
   return raw.filter((r) => !isBlankIncident(r)).map((r) => toSafetyRow(r, dom));
 }, 5 * 60_000, ['HABEA']);
 

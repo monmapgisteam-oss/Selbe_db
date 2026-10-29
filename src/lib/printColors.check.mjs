@@ -60,7 +60,6 @@ CAT_LIGHT.forEach((hex, i) => {
 
 /* Гантын төлөв = good/data/bad (huvaariPdf-ийн ST_FILL үүнд тулгуурлана) */
 assert.equal(resolve('--gantt-done'), PRINT_COLORS.good, '--gantt-done ≠ --good');
-/* ⚠️ 2026-10-23: «явж буй» = --water (Environment: moss = акцент/дууссан) */
 assert.equal(resolve('--gantt-run'), PRINT_COLORS.water, '--gantt-run ≠ --water');
 assert.equal(resolve('--gantt-late'), PRINT_COLORS.bad, '--gantt-late ≠ --bad');
 

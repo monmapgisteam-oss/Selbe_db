@@ -26,7 +26,7 @@ const key = (iso) => ubDayKey(day(iso));
   assert.deepEqual(mix.get(key('2026-09-01')), { mongol: 12, gadaad: 3 });
 }
 
-/* 2. ⚠️ Нэг компани задаргаагүй (ажилтантай) → өдөр ЗАДАРГААГҮЙ (Map-д орохгүй) — Нийт муруйд үлдэнэ */
+/* 2. Нэг компани задаргаагүй (ажилтантай) → өдөр ЗАДАРГААГҮЙ (Map-д орохгүй) — Нийт муруйд үлдэнэ */
 {
   const part = { ognoo: day('2026-09-02'), [MK.niitAjiltan]: 10, [MK.mongol]: 7, [MK.gadaad]: 3, [NBG.niitAjiltan]: 5 };
   const mix = mixByDay([part], null);

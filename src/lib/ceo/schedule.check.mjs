@@ -1,6 +1,6 @@
 /**
  * «ХУВААРИЙН ХОЦРОГДОЛ» картын ЦЭВЭР тооцооны шалгуур — сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/schedule.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/schedule.check.mjs
  *
  * Хамгаалж буй дүрмүүд:
  *   · сарын хоцрогдол — муруйн эхлэл (`pct > 0`), `pct ≥ actual` эхний сар,
@@ -10,11 +10,6 @@
  *   · null ≠ 0 — хэмжилтгүй багц тоолуурт орохгүй, тусдаа хүснэгтэд нэрээр
  *   · хэмжигдсэн багц огт байхгүй → «—», `unknown`
  *   · дедуп: `pkgKeyOf(pkg2) || pkgKeyOf(pkg)`, диапазон мөр алгасна
- *
- * ⚠️ `lagLevel` / `lagOf` нь Finance.tsx-д (Node ачаалж чадахгүй) тул энд
- *    ИЖИЛ дүрмийн туршилтын хуулбар өгнө (`lagLevel`: ≥10 улаан, ≥5 шар;
- *    `lagOfLike`: сүүлийн phys≠null сар ≤ өнөөдөр, багцын/төслийн муруй,
- *    planned ≤ 0 → null) — Finance-ийн дүрэм өөрчлөгдвөл эдгээрийг мөн засна.
  */
 import assert from 'node:assert/strict';
 import {
@@ -24,8 +19,6 @@ import {
 import { CASHFLOW_NEW } from '../services.ts';
 
 const lagLevel = (gap) => (gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null);
-/* ⚠️ `vol` — 2026-09-09-нд `PlanPoint`-д нэмэгдсэн (тухайн сард төлөвлөсөн
-   обьём). KPI нь зөвхөн ХУВИЙГ уншдаг тул энд үргэлж `null`. */
 const pt = (label, pct) => ({ label, pct, vol: null });
 const NOW_YM = '2026-09';
 
@@ -41,7 +34,6 @@ const lagOfLike = (cache) => (months) => {
   for (const p of series) { if (p.label > months[mi].label) break; planned = p.pct; found = true; }
   if (!found || planned <= 0) return null;
   const actual = months[mi].phys ?? 0;
-  /* ⚠️ 2026-10-22 (аудит): `coverage` — муруйн төгсгөл (`planProgress.planCoverage`), Finance.lagOf-той нэг */
   return { month: months[mi].label, planned, actual, gap: planned - actual, coverage: series[series.length - 1].pct };
 };
 
@@ -128,7 +120,6 @@ assert.equal(curveViaLag(infinite, 'K', '2026-05', 3).length, 3);
 assert.equal(curveViaLag(infinite, 'K', 'x').length, 1);
 
 /* ── computeSchedule ── */
-/* ⚠️ 2026-10-22 (аудит): хуваарь БҮРЭН хамарсан (`coverage: 100`) — дүгнэгдэнэ; дутуугийн шалгуур доор (§ хамралт) */
 const mk = (key, label, lag, hasPhys = true) => ({ key, curveKey: key, label, lag: lag && { coverage: 100, ...lag }, hasPhys });
 const pkgs = [
   mk('БАГЦ3', 'Багц 3', { month: '2026-05', planned: 30, actual: 28, gap: 2 }),
@@ -153,7 +144,6 @@ assert.equal(r.level, 'bad');
 assert.equal(r.unit, 'багц хоцорсон');
 assert.deepEqual(r.failedSources, ['муруй']);
 assert.equal(r.facts[0], '1 яаралтай · 1 анхаарах');
-/* ⚠️ 2026-10-09 (аудит №2): нэгж н.х (`gdash.gapPts`) */
 assert.equal(r.facts[1], 'хамгийн муу −15.0 н.х');
 assert.equal(r.facts[2], 'дундаж −8.0 н.х');
 assert.equal(r.facts[3], '2 багц хэмжилтгүй');
@@ -232,7 +222,7 @@ assert.equal(r6.tables[0].rows[1][4].v, 2);
 /* Түрүүлсэн: муруйн хэсэг хэмжилтийн сар хүртэл л байхад ч сарын хоцрогдол 0 */
 assert.equal(r6.tables[0].rows[1][5].v, 0);
 
-/* ── ⚠️ 2026-10-22 (аудит): ХУВААРИЙН ХАМРАЛТ < 95% — тоо ил, ДҮГНЭЛТ үгүй ──
+/* ── 2026-10-22 (аудит): ХУВААРИЙН ХАМРАЛТ < 95% — тоо ил, ДҮГНЭЛТ үгүй ──
    Багц 3.3 (хамралт 8.6%): төлөвлөсөн 8.6 < бодит 25.1 тул урьд нь «Хэвийн» (good) гардаг байв. */
 {
   const rc = computeSchedule(
@@ -272,9 +262,6 @@ assert.equal(r6.tables[0].rows[1][5].v, 0);
 /* ── collectPkgLags: дедуп, диапазон алгасах, нэр pkg2 || pkg ── */
 const C = CASHFLOW_NEW.fields;
 const rows = [
-  /* ⚠️ Cashflow_0909-д багцын багана НЭГ (`bagts`) — `pkg` ба `pkg2` ижил
-     талбарыг заана. Хоёуланг нь бичвэл сүүлийнх нь эхнийхийг ДАРНА, дедуп
-     шалгагдахгүй өнгөрнө. Навчны утгыг НЭГ УДАА бичнэ. */
   { [C.pkg2]: 'Багц 4-1' },
   { [C.pkg2]: 'Багц 4' },
   { [C.pkg2]: 'Багц 4-1' },
@@ -282,8 +269,6 @@ const rows = [
   { [C.pkg2]: null },
 ];
 const months = (r0) => [
-  /* ⚠️ Биет хэмжилтийг БАГЦААР ялгана: нэг багана болсон тул «дэд байна уу»
-     гэдгээр ялгах боломжгүй. «4-1»-д хэмжилт бий, «Багц 4»-д алга. */
   { label: '2026-01', given: 0, phys: String(r0[C.pkg2] ?? '').includes('4-1') ? 5 : null, pkg: 'БАГЦ4' },
 ];
 const got = collectPkgLags(rows, months, (ms) => (ms[0].phys == null ? null : { month: '2026-01', planned: 6, actual: 5, gap: 1 }));
@@ -293,8 +278,6 @@ assert.deepEqual(got.map((p) => p.curveKey), ['БАГЦ4', 'БАГЦ4']);
 assert.equal(got[0].hasPhys, true);
 assert.equal(got[1].hasPhys, false);
 assert.equal(got[1].lag, null);
-/* ⚠️ 2026-09-21: `prefer` — угсралтын мөр эхэнд байсан зураг төслийн мөрийг ОРЛОНО,
-   тэнцэх мөргүй багцад эхнийх хэвээр; тоо (`lag`) мөрөөс хамаарахгүй. */
 {
   const rows2 = [
     { [C.pkg2]: 'Багц 4-1', bagts_tuvshin1: '1' },   /* ТЭЗҮ, зураг төсөл — эхэнд */
@@ -307,9 +290,7 @@ assert.equal(got[1].lag, null);
   assert.equal(g2[1].label, 'Багц 4', 'тэнцэх мөргүй бол эхнийх');
 }
 
-/* ── ymOf: lagOf-ийн nowYm-тэй ижил — ОРОН НУТГИЙН сар (2026-09-21, `monthKey`) ──
-   ⚠️ `Date.UTC` БИШ, орон нутгийн `new Date(y, m, d)`: машины бүсээс үл хамааран
-   «хэрэглэгчийн харсан сар» гарах ёстой. Сарын сүүлийн шөнө ч сараа алдахгүй. */
+/* ── ymOf: lagOf-ийн nowYm-тэй ижил — ОРОН НУТГИЙН сар (2026-09-21, `monthKey`) ── */
 assert.equal(ymOf(new Date(2026, 8, 6).getTime()), '2026-09');
 assert.equal(ymOf(new Date(2026, 0, 31, 23, 59).getTime()), '2026-01');
 assert.equal(ymOf(new Date(2026, 1, 1, 0, 30).getTime()), '2026-02', 'сарын 1-ний шөнө ӨМНӨХ сар болохгүй');
@@ -338,8 +319,6 @@ const chainMonths = (r0) => {
     label, given: 0, phys: label === at ? phys : null, pkg: key,
   }));
 };
-/* ⚠️ 2026-10-22 (аудит): туршилтын муруй 30%/20%-д дуусдаг (хамралт < 95%) — `lagOf` (Finance-ийн хуулбар) тэр
-   хамралтыг тавина. Бүрэн хуваарийн гинжийг хамралт 100-аар, дутуугийнхыг доор тус тусад нь. */
 const lagOfFull = (ms) => { const l = lagOf(ms); return l && { ...l, coverage: 100 }; };
 const chainPkgs = collectPkgLags(chainRows, chainMonths, lagOfFull);
 const chainCurves = collectCurves(chainPkgs, lagOf, NOW_YM);

@@ -45,14 +45,12 @@ const dayOf = (v) => (typeof v === 'string' && v ? v : null);
   assert.equal(s.day, '2026-09-03');
 }
 {
-  /* ⚠️ №5 — БҮЛГИЙН мөр АЛГАСАГДАНА, эс тэгвээс хүүхдээ дахин тоолно */
   const leaves = [{ unit: 100, obyem: [2] }, { unit: 100, obyem: [3] }];
   const withGroup = [{ group: true, unit: 100, obyem: [5] }, ...leaves];
   assert.equal(snapshotOf(leaves, 'd').une, 500);
   assert.equal(snapshotOf(withGroup, 'd').une, 500, '⚠️ 1000 БИШ — бүлэг тоологдохгүй');
 }
 {
-  /* ⚠️ №1 — бөглөгдөөгүй бол `null`, `0` БИШ */
   const s = snapshotOf([{ unit: 100, obyem: [null, null] }], 'd');
   assert.equal(s.obyem, null, '⚠️ 0 БИШ — бөглөгдөөгүй');
   assert.equal(s.une, null, '⚠️ 0 БИШ');
@@ -70,7 +68,7 @@ const dayOf = (v) => (typeof v === 'string' && v ? v : null);
   assert.equal(snapshotOf([{ unit: null, obyem: [7] }], 'd').une, null);
 }
 
-/* ══ 2. snapAt — ӨМНӨХ хамгийн сүүлийнх (⚠️ №4) ══ */
+/* ══ 2. snapAt — ӨМНӨХ хамгийн сүүлийнх (№4) ══ */
 {
   const snaps = [
     { day: '2026-09-03', obyem: 1, une: 100 },
@@ -84,7 +82,7 @@ const dayOf = (v) => (typeof v === 'string' && v ? v : null);
   assert.equal(snapAt([], '2026-09-04'), null, 'агшингүй');
 }
 
-/* ══ 3. linkContract — ХУРИМТЛАЛААР жишнэ (⚠️ №2) ══ */
+/* ══ 3. linkContract — ХУРИМТЛАЛААР жишнэ (№2) ══ */
 {
   const snaps = [
     { day: '2026-09-03', obyem: 10, une: 1000 },
@@ -103,13 +101,10 @@ const dayOf = (v) => (typeof v === 'string' && v ? v : null);
   assert.equal(r[0].obyem, 10);
   assert.equal(r[0].zoruu, -100, 'дутуу олгосон');
 
-  /* ⚠️ IPC-2: хуримтлал 900+800 = 1700, агшин 2500 → зөрүү −800.
-     НЭМЭГДЛЭЭР жишсэн бол 800 − 2500 = −1700 гэсэн ХУДАЛ тоо гарна. */
   assert.equal(r[1].une, 2500);
   assert.equal(r[1].zoruu, -800, '⚠️ −1700 БИШ — ХУРИМТЛАЛААР жишнэ');
 }
 {
-  /* ⚠️ №3 — урьдчилгаа ХОЛБОГДОХГҮЙ, хуримтлалд ч ОРОХГҮЙ */
   const snaps = [{ day: '2026-09-03', obyem: 10, une: 1000 }];
   const pays = [
     pay(1, advance, 5000, { [P.payDate]: '2026-09-04' }),
@@ -122,7 +117,6 @@ const dayOf = (v) => (typeof v === 'string' && v ? v : null);
   assert.equal(r[1].zoruu, -100, '⚠️ 5000 урьдчилгаа хуримтлалд ОРООГҮЙ');
 }
 {
-  /* ⚠️ №1 — АРХИВААС ӨМНӨХ төлбөр (түүхэн 22 IPC-ийн бодит нөхцөл) */
   const snaps = [{ day: '2026-09-03', obyem: 10, une: 1000 }];
   const r = linkContract(
     [pay(1, work, 900, { [P.ipcNo]: 1, [P.payDate]: '2026-08-26' })],
@@ -179,7 +173,7 @@ const dayOf = (v) => (typeof v === 'string' && v ? v : null);
   assert.deepEqual(r.map((x) => x.oid), [2, 1], 'оролтын дараалал хадгалагдана');
 }
 
-/* ══ 4. linkUpdates — ⚠️ №6 холбогдоогүй мөрийг ч бичнэ ══ */
+/* ══ 4. linkUpdates — №6 холбогдоогүй мөрийг ч бичнэ ══ */
 {
   const res = [
     { oid: 1, id: 'ХО-0001', obyem: 10, une: 1000, zoruu: -100, reason: 'ok' },
@@ -208,12 +202,11 @@ const dayOf = (v) => (typeof v === 'string' && v ? v : null);
   assert.equal(s.by['no-snapshot'], 1);
   assert.equal(s.by['not-work'], 1);
   assert.equal(s.zoruu, 20, '−10 + 30');
-  /* ⚠️ Нэг ч холбогдоогүй бол `null` — «зөрүү 0» гэж ХУДЛААР харагдахгүй */
   assert.equal(linkSummary([res[2], res[3]]).zoruu, null, '⚠️ 0 БИШ');
   assert.equal(linkSummary([]).zoruu, null);
 }
 
-/* ══ 6. payPkgKey — ⚠️ ДИАПАЗОН мөр буруу багцад наалдахгүй ══ */
+/* ══ 6. payPkgKey — ДИАПАЗОН мөр буруу багцад наалдахгүй ══ */
 {
   assert.equal(payPkgKey({ [C.pkg]: 'Багц 14' }), 'БАГЦ14');
   assert.equal(payPkgKey({ [C.pkg]: 'Багц-1-4' }), '', '⚠️ диапазон → хоосон, «Багц 14»-д НААЛДАХГҮЙ');

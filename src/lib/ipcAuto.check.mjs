@@ -36,7 +36,6 @@ const P = HO_IPC.payFields;
 {
   assert.equal(dayOf('2026-09-09'), '2026-09-09');
   assert.equal(dayOf('2026-09-09T10:00:00Z'), '2026-09-09', 'цаг таслагдана');
-  /* ⚠️ Сар дангаараа ХҮРЭХГҮЙ — өдөр шаардана */
   assert.equal(dayOf('2026-09'), null, '⚠️ бүтэн огноо шаардана');
   assert.equal(dayOf('хог'), null);
   assert.equal(dayOf(''), null);
@@ -49,13 +48,12 @@ const P = HO_IPC.payFields;
   assert.equal(isAuto({ [P.id]: id }), true);
   assert.equal(autoDay({ [P.id]: id }), '2026-09-09');
 
-  /* ⚠️ №2 — ГАРААР оруулсан мөр автомат БИШ */
   assert.equal(isAuto({ [P.id]: 'ХО-0001' }), false, '⚠️ гараар оруулсан мөр');
   assert.equal(isAuto({}), false, 'ID-гүй мөр');
   assert.equal(autoDay({ [P.id]: 'ХО-0001' }), null);
 }
 
-/* ══ 3. findAutoRow — ⚠️ №2 ба №5 ══ */
+/* ══ 3. findAutoRow — №2 ба №5 ══ */
 {
   const rows = [
     { [P.id]: 'ХО-0015', [C.pkg]: 'Багц-3.3' },                          // гараар
@@ -66,20 +64,18 @@ const P = HO_IPC.payFields;
   const hit = findAutoRow(rows, 'БАГЦ33', '2026-09-09');
   assert.equal(hit[P.id], autoId('БАГЦ33', '2026-09-09'), 'зөв мөр олдов');
 
-  /* ⚠️ ИЖИЛ САРЫН ӨӨР ӨДӨР нь ӨӨР мөр — нэгтгэгдэхгүй */
   const other = findAutoRow(rows, 'БАГЦ33', '2026-09-03');
   assert.equal(other[P.id], autoId('БАГЦ33', '2026-09-03'),
     '⚠️ ижил сарын өөр агшин тусдаа мөр');
 
   assert.equal(findAutoRow(rows, 'БАГЦ33', '2026-09-30'), null, 'байхгүй агшин');
   assert.equal(findAutoRow(rows, '', '2026-09-09'), null, 'багцгүй');
-  /* ⚠️ №2 — гараар оруулсан мөр ХЭЗЭЭ Ч олдохгүй */
   const manual = [{ [P.id]: 'ХО-0015', [C.pkg]: 'Багц-3.3' }];
   assert.equal(findAutoRow(manual, 'БАГЦ33', '2026-09-09'), null,
     '⚠️ гараар оруулсан мөрийг ОЛОХГҮЙ — дарж бичихгүй');
 }
 
-/* ══ 4. autoInsert — ⚠️ №3 `dun`-д БИЧИХГҮЙ ══ */
+/* ══ 4. autoInsert — №3 `dun`-д БИЧИХГҮЙ ══ */
 {
   const a = autoInsert({ pkg: 'Багц-3.3', code: 'Багц-3.3', day: '2026-09-09', obyem: 1234, une: 9.5e9 });
   assert.equal(a[C.pkg], 'Багц-3.3');
@@ -89,18 +85,14 @@ const P = HO_IPC.payFields;
   assert.equal(a[LINK_FIELDS.obyem], 1234);
   assert.equal(a[LINK_FIELDS.une], 9.5e9);
 
-  /* ⚠️ ОГНОО — гүйцэтгэл батлагдсан огноо. `DateOnly` тул `YYYY-MM-DD`
-     МӨР (epoch ms БИШ) — амьдаар одоо байгаа мөрүүд ингэж хадгалагдсан. */
   assert.equal(a[P.payDate], '2026-09-09', '⚠️ огноо ЗААВАЛ бичигдэнэ');
   assert.equal(typeof a[P.payDate], 'string', '⚠️ epoch тоо БИШ, мөр');
 
-  /* ⚠️ №3 — БОДИТ гүйлгээний ДҮН ОРООГҮЙ */
   assert.ok(!(P.amount in a), '⚠️ `dun`-д БИЧИХГҮЙ — олгосон гэж худлаа тоологдоно');
   assert.ok(!(P.ipcNo in a), '⚠️ IPC дугаар ОРОХГҮЙ — санхүү нөхнө');
   assert.ok(!(C.order1No in a), '⚠️ захирамж ОРОХГҮЙ');
   assert.ok(!(C.contractTotal in a), '⚠️ гэрээний төсөв ОРОХГҮЙ');
 
-  /* ⚠️ №6 — зөрүү `null` (dun хоосон тул) */
   assert.equal(a[LINK_FIELDS.zoruu], null, '⚠️ 0 БИШ');
 }
 
@@ -113,12 +105,10 @@ const P = HO_IPC.payFields;
   assert.equal(u[LINK_FIELDS.une], 9e9);
   assert.equal(u[LINK_FIELDS.zoruu], 1e9, '10 − 9 = 1 тэрбум илүү олгосон');
 
-  /* ⚠️ Багц/ID/төрөл ӨӨРЧЛӨГДӨХГҮЙ — гараар зассан утга дарагдахгүй */
   assert.ok(!(C.pkg in u), '⚠️ багц дахин бичигдэхгүй');
   assert.ok(!(P.id in u), '⚠️ ID дахин бичигдэхгүй');
   assert.ok(!(P.amount in u), '⚠️ `dun` дахин бичигдэхгүй');
 
-  /* ⚠️ №6 — `dun` хоосон бол зөрүү `null` */
   const noDun = autoUpdate({ [HO_IPC.oid]: 78 }, {
     pkg: 'Багц-3.3', code: 'Багц-3.3', day: '2026-09-09', obyem: 500, une: 9e9,
   });
@@ -130,14 +120,13 @@ const P = HO_IPC.payFields;
   assert.equal(noUne[LINK_FIELDS.zoruu], null, '⚠️ нэгж өртөггүй → зөрүүгүй');
 }
 
-/* ══ 6. planAuto — ⚠️ №1 агшинд НЭГ мөр ══ */
+/* ══ 6. planAuto — №1 агшинд НЭГ мөр ══ */
 {
   const a = { pkg: 'Багц-3.3', code: 'Багц-3.3', day: '2026-09-09', obyem: 500, une: 9e9 };
 
   /* Байхгүй бол НЭМНЭ */
   assert.equal(planAuto([], a).op, 'insert');
 
-  /* ⚠️ №1 — ЯГ ИЖИЛ АГШИН байвал ШИНЭЧИЛНЭ, хоёр дахь мөр үүсгэхгүй */
   const rows = [{
     [HO_IPC.oid]: 77, [P.id]: autoId('БАГЦ33', '2026-09-09'), [C.pkg]: 'Багц-3.3',
   }];
@@ -145,19 +134,16 @@ const P = HO_IPC.payFields;
   assert.equal(p.op, 'update', '⚠️ INSERT БИШ — агшинд НЭГ мөр');
   assert.equal(p.attrs[HO_IPC.oid], 77);
 
-  /* ⚠️ ГҮЙЦЭТГЭЛ ОРСОН БОЛГОНД ШИНЭ МӨР (хэрэглэгчийн засвар 2026-09-10):
-     ижил сарын ӨӨР агшин нь ШИНЭ мөр — сард нэгтгэхгүй. */
   const next = planAuto(rows, { ...a, day: '2026-09-10' });
   assert.equal(next.op, 'insert', '⚠️ ижил сарын шинэ агшин → ШИНЭ мөр');
   assert.equal(next.attrs[P.id], autoId('БАГЦ33', '2026-09-10'));
 
-  /* ⚠️ №2 — гараар оруулсан мөр байхад ч АВТОМАТ мөр тусад нь үүснэ */
   const manual = [{ [P.id]: 'ХО-0015', [C.pkg]: 'Багц-3.3', [P.ipcNo]: 1 }];
   assert.equal(planAuto(manual, a).op, 'insert',
     '⚠️ гараар оруулсныг дарахгүй, тусдаа автомат мөр');
 }
 
-/* ══ 6b. ⚠️ №7 — ГЭРЭЭНИЙ КОД (2026-09-10-ний бодит алдаа) ══ */
+/* ══ 6b. №7 — ГЭРЭЭНИЙ КОД (2026-09-10-ний бодит алдаа) ══ */
 {
   /* `geree_kod` шинэ мөрд ЗААВАЛ бичигдэнэ */
   const ins = autoInsert({
@@ -165,7 +151,6 @@ const P = HO_IPC.payFields;
   });
   assert.equal(ins[C.code], 'Багц-3.3', '⚠️ код БАЙХГҮЙ бол буруу бүлэгт очно');
 
-  /* ⚠️ КОДГҮЙ бол ЮУ Ч ХИЙХГҮЙ — ХО-0045-тай нийлэхээс сэргийлнэ */
   const noCode = planAuto([], {
     pkg: 'Багц-3.3', code: '', day: '2026-09-09', obyem: 1, une: 1,
   });
@@ -181,19 +166,16 @@ const P = HO_IPC.payFields;
   assert.equal(contractCodeOf(rows, 'БАГЦ99'), '', 'олдохгүй бол хоосон');
   assert.equal(contractCodeOf(rows, ''), '', 'багцгүй');
 
-  /* ⚠️ КОДГҮЙ мөрөөс код АВАХГҮЙ — ХО-0045 нь «кодгүй гэрээ» */
   const empty = [{ [P.id]: 'ХО-0045', [C.pkg]: 'Багц-9', [C.code]: '' }];
   assert.equal(contractCodeOf(empty, pkgKeyOf('Багц-9')), '',
     '⚠️ кодгүй мөрөөс код авахгүй');
 
-  /* ⚠️ АВТОМАТ мөрөөс код АВАХГҮЙ — анхны алдаа мөнхөрнө */
   const autoOnly = [{
     [P.id]: autoId('БАГЦ33', '2026-09-01'), [C.pkg]: 'Багц-3.3', [C.code]: 'БУРУУ',
   }];
   assert.equal(contractCodeOf(autoOnly, 'БАГЦ33'), '',
     '⚠️ автомат мөрөөс код авбал алдаа мөнхөрнө');
 
-  /* ⚠️ 2026-10-09: нэг багцад ОЛОН гэрээ — эхнийх биш, барилга угсралт → «Гүйцэтгэл» төлбөртэй */
   const multi = [
     { [P.id]: 'ХО-0001', [C.pkg]: 'Багц-7', [C.code]: 'Багц-7 ЗТ', [C.workType]: 'ТЭЗҮ,Судалгаа', [P.kind]: 'Гүйцэтгэл' },
     { [P.id]: 'ХО-0002', [C.pkg]: 'Багц-7', [C.code]: 'Багц-7', [C.workType]: 'Барилга угсралт', [P.kind]: 'Урьдчилгаа төлбөр' },
@@ -219,30 +201,26 @@ const P = HO_IPC.payFields;
 /* ══ 7. planAuto — алгасах тохиолдлууд ══ */
 {
   const base = { pkg: 'Багц-3.3', code: 'Багц-3.3', day: '2026-09-09' };
-  /* ⚠️ №4 — хэмжигдээгүй бол мөр ҮҮСГЭХГҮЙ */
   const s = planAuto([], { ...base, obyem: null, une: null });
   assert.equal(s.op, 'skip');
   assert.equal(s.why, 'no-data', '⚠️ хоосон бөглөлтөөс мөр үүсэхгүй');
 
-  /* ⚠️ ЖИНХЭНЭ 0 нь ХЭМЖИГДСЭН — алгасахгүй (`null ≠ 0`) */
   assert.equal(planAuto([], { ...base, obyem: 0, une: 0 }).op, 'insert',
     '⚠️ жинхэнэ тэг гүйцэтгэл БИЧИГДЭНЭ');
   /* Аль нэг нь хэмжигдсэн байхад ч бичигдэнэ */
   assert.equal(planAuto([], { ...base, obyem: 500, une: null }).op, 'insert');
 
-  /* ⚠️ №5 — ДИАПАЗОН багц: `pkgKeyOf` нь `''` буцаана → алгасана */
   const r = planAuto([], { pkg: 'Багц-1-4', code: 'Багц-1-4', day: '2026-09-09', obyem: 1, une: 1 });
   assert.equal(r.op, 'skip');
   assert.equal(r.why, 'no-pkg', '⚠️ диапазон багц буруу эзэнд наалдахгүй');
 
-  /* ⚠️ Буруу огноо — САР дангаараа ч ХҮРЭХГҮЙ */
   assert.equal(planAuto([], { ...base, day: '2026-09', obyem: 1, une: 1 }).why, 'bad-day',
     '⚠️ сар дангаараа хүрэхгүй — бүтэн огноо шаардана');
   assert.equal(planAuto([], { ...base, day: '2026', obyem: 1, une: 1 }).why, 'bad-day');
   assert.equal(planAuto([], { ...base, day: '', obyem: 1, une: 1 }).why, 'bad-day');
 }
 
-/* ══ 8. ⚠️ ЗӨРҮҮ = ХУРИМТЛАЛ − une (2026-09-25-ны аудит, Багц 3.3 IPC-5) ══
+/* ══ 8. ЗӨРҮҮ = ХУРИМТЛАЛ − une (2026-09-25-ны аудит, Багц 3.3 IPC-5) ══
    Урьд нь `dun − une` (6.32 − 34.77 = −28.45 тэрбум) гардаг байв. Гараар
    оруулсан 4 ажлын IPC + AUTO мөрийн `dun` = 34.77 тэрбум → зөрүү ≈ 0.
    Урьдчилгаа ба ӨӨР гэрээний мөр хуримтлалд ОРОХГҮЙ. */
@@ -300,10 +278,8 @@ const P = HO_IPC.payFields;
   assert.ok(W.includes("const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));") && !W.includes('contractCodeOf('), 'syncIpcFromFill warn-ийг хаяхгүй (F6)');
   assert.ok(W.includes("if (isBlocklessBagts(bagts)) return { ok: true, op: 'skip', why: 'no-data' };"), 'блокгүй багц — no-data (F2)');
   assert.ok(W.includes("if (!cols.length) { reads.push('no-obyem'); continue; }"), 'обьёмгүй хуудас «дутуу» биш (F2)');
-  /* ⚠️ 2026-10-09 (аудит №6): огт нийтлэгдээгүй хуудас `missing` биш `unpublished`; шийдвэр `sheetsVerdict`-ээр */
   assert.ok(W.includes("if (!upTo) { reads.push('unpublished'); continue; }"), 'жаазгүй хуудас «unpublished» (аудит №6)');
   assert.ok(W.includes('const verdict = sheetsVerdict(reads);') && W.includes('if (!verdict.go) return verdict.result;'), 'шийдвэр sheetsVerdict-ээр (аудит №6)');
-  /* ⚠️ 2026-10-26: бүрэн давхардсан хуудас (4-2·12F) IPC-ийн нийлбэрт орохгүй — `uniqueBlockCounts`-ийн жин 0 */
   assert.ok(W.includes('const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));')
     && W.includes('if (sc && sc.bld.length > 0 && weights[i] === 0) continue;'), 'давхардсан хуудас IPC-д алгасагдана (2026-10-26)');
   {

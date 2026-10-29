@@ -1,31 +1,12 @@
 /**
  * «ТАЙЛАН ТАТАХ» — ИДЭВХТЭЙ ХАРАГДАЦЫН ДЭЛГЭЦ ДЭЭР ХАРАГДАЖ БУЙ БҮХ ҮЗҮҮЛЭЛТИЙГ
- * .docx БОЛГОН ТАТНА (2026-10-15, хэрэглэгч: «Khorshoo_loan-ийн тайлан татахыг
+ *.docx БОЛГОН ТАТНА (2026-10-15, хэрэглэгч: «Khorshoo_loan-ийн тайлан татахыг
  * ойлгоод зүүн самбарын 1–26 хэсэг тус бүрд нэм»).
  *
  * Khorshoo_loan-ийн `lib/report.ts`-ийн зарчим: «Дэлгэц дээр харагдаж буй бүх
- * үзүүлэлтийг идэвхтэй шүүлтүүрийн хамт .docx болгон татаж авна». Бүтэц нь мөн
+ * үзүүлэлтийг идэвхтэй шүүлтүүрийн хамт.docx болгон татаж авна». Бүтэц нь мөн
  * адил: гарчиг → огноо → шүүлтийн нөхцөл → дугаарласан бүлгүүд (гарчиг, тайлбар,
  * хүснэгт) — дээр нь график ба газрын зургийг зураг болгон оруулна.
- *
- * ⚠️ ЯАГААД DOM-ООС: 26 харагдац бүр өөр өгөгдөл, өөр сонголтын төлөвтэй (багц,
- *    огноо, таб …) бөгөөд тэр төлөв модуль дотроо `useState`-д байдаг тул порталаас
- *    уншигдахгүй. Дэлгэцийн DOM нь харин ЯГ идэвхтэй шүүлт, таб, сонголтын үр дүн —
- *    тайлан дэлгэцтэй үргэлж ТААРНА, харагдац нэмэгдэхэд тусдаа код бичихгүй.
- * ⚠️ СИНХРОН ХЭСЭГ ДЭЛГЭЦЭНД ХАРАГДАХГҮЙ: (1) `data-theme`-ийг түр 'light' болгоно —
- *    харанхуй горимын цайвар бичиг/график цагаан цаасан дээр уншигдахгүй; (2) удирдлагын
- *    элементүүдийг (шүүлтийн чип, таб, «харах» товч …) `data-rep-hide`-аар түр нууна —
- *    `innerText` тэднийг автоматаар алгасна. Хоёуланг нь ИЖИЛ task дотор буцаана —
- *    хөтөч хооронд нь зурдаггүй тул дэлгэц анивчихгүй.
- * ⚠️ Газрын зураг — `view.takeScreenshot` (`mapShots.ts`); WebGL canvas-ыг шууд
- *    уншвал хоосон гардаг.
- * ⚠️ 2026-10-15-ны амьд туршилтын засвар (Ерөнхий дашбоард · ХАБЭА):
- *    - он/сар/улирлын шүүлтийн чип («Бүгд 2024 2025 … 1 2 … 12») мөр мөрөөр орж байсан →
- *      ≥3 богино товчтой бүлэг = удирдлага;
- *    - графикийн тэнхлэгийн тоо («0.0% 13.9% … 2024») графикийн доор жагсаж байсан →
- *      график агуулсан хэсэгт зөвхөн тооноос тогтсон мөрийг хасна;
- *    - KPI карт («2.49 их наяд ₮ / НИЙТ ТӨСӨВ») салангид мөр болж байсан → дараалсан
- *      2–5 мөртэй элементүүд нэг хүснэгт (нэр | утга), тоо эхэлсэн бол нэрийг урагшлуулна.
  */
 import { NUMERIC, buildDocx, downloadDocx, type DocBlock } from './docx';
 import { liveMapViews } from './mapShots';
@@ -59,8 +40,6 @@ const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 function visible(el: Element): boolean {
   const he = el as HTMLElement & { checkVisibility?: (o?: object) => boolean };
-  /* ⚠️ `display: contents` хайрцаггүй → `checkVisibility` ХУДЛАА false өгдөг (Тайлан харагдацын
-     бие бүхэлдээ алга болж байв) — хүүхдүүдийг нь тус тусад нь шалгана */
   if (getComputedStyle(el).display === 'contents') return true;
   if (typeof he.checkVisibility === 'function') {
     if (!he.checkVisibility({ checkVisibilityCSS: true })) return false;
@@ -97,8 +76,6 @@ function hasSpecial(el: Element): boolean {
 
 /**
  * График ШУУД хүүхдээр агуулсан хэсэг — ах дүү текст нь тэнхлэгийн шошго, хасна.
- * ⚠️ Урьд 2 түвшин гүн шалгадаг байсан → Газар чөлөөлөлтийн самбар бүхэлдээ «тэнхлэг» болж
- *    KPI-ийн тоо («2,088») алга болж, картууд хүснэгт болохгүй байв. Зөвхөн шууд хүүхэд.
  */
 const holdsChart = (el: Element) =>
   [...el.querySelectorAll(':scope > svg, :scope > canvas')].some((d) => isChartSvg(d) || isChartCanvas(d));
@@ -107,8 +84,6 @@ const CONTROL_ROLES = new Set(['button', 'tab', 'radio', 'switch', 'option', 'me
 
 /**
  * Удирдлага (шүүлтийн чип, таб, «харах/нэмэх» товч) эсэх.
- * ⚠️ Урт (≥28 тэмдэгт) товчийг ҮЛДЭЭНЭ — жагсаалтын мөр бүхэлдээ товч байдаг
- *    (жиш. бүсийн эрэмбэ «1 Сэлбэ … 2.3 км 5 объект»), тэр нь өгөгдөл.
  */
 function isControl(el: Element): boolean {
   const role = el.getAttribute('role');
@@ -121,7 +96,7 @@ function isControl(el: Element): boolean {
   if (t.length >= 28) return false;
   if (!/\d/.test(t) || ACTION_RE.test(t)) return true;
   /* Сегментлэсэн сонголт («24 цаг · 7 хоног · 30 хоног», «Бүгд 2024 2025 …») — ≥3 богино ах дүү
-     товч, ЯГ НЭГ нь сонгогдсон. ⚠️ Ерөнхий дашбоардын шалтгааны жагсаалт («зөвшилцөх 93» …) ч
+     товч, ЯГ НЭГ нь сонгогдсон. Ерөнхий дашбоардын шалтгааны жагсаалт («зөвшилцөх 93» …) ч
      ижил бүтэцтэй боловч аль нь ч сонгогдоогүй → өгөгдөл хэвээр. */
   const pressed = (k: Element) => ['aria-pressed', 'aria-selected', 'aria-checked'].some((a) => k.getAttribute(a) === 'true');
   const sib = el.parentElement ? [...el.parentElement.children].filter((k) => k.tagName === 'BUTTON' || k.getAttribute('role') === 'button') : [];
@@ -132,11 +107,11 @@ function isControl(el: Element): boolean {
   return sib.length >= 3 && sib.every((k) => oneLine((k as HTMLElement).innerText || '').length < 16);
 }
 
-/** Удирдлагыг түр нууна (синхрон хэсэгт; файлын толгойн ⚠️) — нуусан элементүүдийг буцаана */
+/** Удирдлагыг түр нууна (синхрон хэсэгт; файлын толгой) — нуусан элементүүдийг буцаана */
 function hideControls(roots: Element[]): Element[] {
   const hidden: Element[] = [];
   /* Зөвхөн УДИРДЛАГА гэж нуусан нь — доорх бүлгийн шалгалтад; чимэглэлийн aria-hidden («▸») орохгүй
-     (⚠️ орвол дэлгэх товч «▸ Автозам» бүхэлдээ «шошгын бүлэг» болж нуугдана) */
+     (орвол дэлгэх товч «▸ Автозам» бүхэлдээ «шошгын бүлэг» болж нуугдана) */
   const ctrl: Element[] = [];
   for (const r of roots) {
     for (const el of r.querySelectorAll(`${SKIP_SEL},button,summary,[role]`)) {
@@ -152,8 +127,6 @@ function hideControls(roots: Element[]): Element[] {
     }
   }
   /* Бүх товч нь нуугдсан бүлгийн богино шошго («ЖИЛ», «САР») — бүлгийг бүхэлд нь нууна (2 түвшин) */
-  /* ⚠️ Зөвхөн ≥2 товч нуугдсан (эсвэл өмнөх давхарт бүлгээрээ нуугдсан) эцэг — ганц «ⓘ» товчтой
-     KPI карт («92.0% ГАЗАР ЧӨЛӨӨЛӨЛТ») богино тул андуурч нуугдана */
   const groups = new Set<Element>();
   for (let pass = 0; pass < 2; pass++) {
     const parents = new Set(ctrl.map((h) => h.parentElement).filter((p): p is HTMLElement => !!p && !p.hasAttribute(HIDE) && !roots.includes(p)));
@@ -173,13 +146,6 @@ function hideControls(roots: Element[]): Element[] {
   return hidden;
 }
 
-/**
- * ⚠️ 2026-10-19: ХҮСНЭГТИЙН НИЙТ МӨР — виртуал гүйлгээтэй хүснэгт DOM-д зөвхөн ХАРАГДАЖ БУЙ цонхоо зурдаг
- *    (жиш. «Гүйцэтгэл бөглөх» 1,400 мөрийн ~40). Хүснэгт өөрөө нийт тоогоо зарлана: `data-rep-total`
- *    (манай тэмдэглэгээ, ӨГӨГДЛИЙН мөрийн тоо). Зарлаагүй бол `null` (тоо мэдэгдэхгүй).
- * ⚠️ `aria-rowcount`-ыг УНШИХГҮЙ — стандартаар толгойн мөрийг ТООЦДОГ тул өгөгдлийн мөртэй харьцуулахад
- *    бүтэн хүснэгтийг ч «тайрсан» гэж худал тэмдэглэнэ.
- */
 function declaredTotal(el: Element): number | null {
   const raw = el.getAttribute('data-rep-total');
   const n = raw == null ? NaN : Number(raw);
@@ -188,8 +154,6 @@ function declaredTotal(el: Element): number | null {
 
 /**
  * Хүснэгт — `<table>` эсвэл `role=table|grid`. colspan-ыг хоосон нүдээр дэлгэнэ.
- * ⚠️ 2026-10-19: ТАЙРАЛТЫГ ИЛ ХЭЛНЭ — урьд нь `MAX_TABLE_ROWS`-оор тайрсан эсвэл виртуал хүснэгтийн
- *    зөвхөн дэлгэцийн мөрүүдийг авсан тайлан БҮТЭН мэт харагддаг байв. Одоо хүснэгтийн ДАРАА тэмдэглэл.
  */
 function readTable(el: Element): DocBlock[] {
   const head: string[][] = [];
@@ -209,7 +173,6 @@ function readTable(el: Element): DocBlock[] {
       if (!cells.some(Boolean)) continue;
       const inHead = tr_.parentElement?.tagName === 'THEAD' || (!rows.length && [...tr_.cells].every((c) => c.tagName === 'TH'));
       const dest = inHead && !rows.length ? head : rows;
-      /* ⚠️ 2026-10-19: `capped` нь хязгаараас ЦААШ мөр ҮЛДСЭН үед л — яг 1500 мөртэй хүснэгт бүтэн */
       if (dest === rows && rows.length >= MAX_TABLE_ROWS) { capped = true; break; }
       dest.push(cells);
     }
@@ -280,9 +243,6 @@ function serializeSvg(svg: SVGSVGElement): { xml: string; w: number; h: number }
 
 /**
  * ГРАФИКИЙН ХАЙРЦАГ — SVG + түүний HTML тэнхлэг/шошгыг НЭГ зураг болгоно.
- * ⚠️ 2026-10-15 амьд туршилт: Ерөнхий дашбоардын S-муруйн тэнхлэг («0.0% … 92.8%», он)
- *    HTML давхарга тул зөвхөн SVG-ийг зурахад тэнхлэггүй хоёр шугам л гарсан.
- *    `foreignObject` дотор тооцоолсон загвартай хуулбарыг зурна (dom-to-image-ийн арга).
  */
 function chartBox(el: Element): SVGSVGElement | null {
   if (el.tagName.toLowerCase() === 'svg' || el.querySelector('table,[role="table"],h1,h2,h3,h4,[data-map-canvas],.esri-view,canvas')) return null;
@@ -337,8 +297,6 @@ function cardLines(el: Element): string[] | null {
 
 /** Нэр | утга — тоо эхэлсэн картад («2.49 их наяд ₮ / НИЙТ ТӨСӨВ») нэрийг урагшлуулна */
 function cardRow(lines: string[]): string[] {
-  /* ⚠️ «2.49 их наяд ₮» нь NUMERIC-т таарахгүй (нэгж + ₮) — цифрээр эхлээгүй мөр = нэр.
-     Хэд байвал ХАМГИЙН УРТЫГ нь авна: «2,088 / талбар / НИЙТ НЭГЖ ТАЛБАР»-д нэгж биш нэр. */
   const isName = (l: string) => !/^[−\-+]?\(?\d/.test(l) && !NUMERIC.test(l);
   /* ТОМ ҮСГЭЭР бичсэн мөр (CSS uppercase шошго — `innerText` хувиргалтыг хадгалдаг) давуу:
      «114,085 / объект / НИЙТ» → нэр = НИЙТ, нэгж биш */
@@ -349,9 +307,7 @@ function cardRow(lines: string[]): string[] {
   return [lines[k], lines.filter((_, j) => j !== k).join(' · ')];
 }
 
-/* ── Word-ийн жинхэнэ график (2026-10-19, хэрэглэгч: «графикийг зургаар биш, аятайхан графикаар») ──
-   ⚠️ `ui.tsx`-ийн Ring · Donut · Series · Trend өгөгдлөө `data-report-chart`-д тавьдаг (`repChart`-ийн ⚠️).
-      Тийм элемент SVG→PNG биш, `docxChart` график болно; атрибутгүй график (тусгай SVG) зураг хэвээр. */
+/* ── Word-ийн жинхэнэ график (2026-10-19, хэрэглэгч: «графикийг зургаар биш, аятайхан графикаар») ── */
 const REP_CHART = '[data-report-chart]';
 /** CSS өнгө (`var(--tone)` г.м.) → 6 оронтой HEX — ТЭР элемент дотор (хувьсагч нь удамшдаг), гэрэл горимд */
 function resolveColor(el: Element, css: string | undefined): string | undefined {
@@ -532,17 +488,6 @@ function roots(): Element[] {
 /* Анхдагч («бүгд») сонголт — шүүлт биш */
 const ALL_RE = /^(бүгд|бүх(\s|$)|all(\s|$)|—$)/i;
 
-/**
- * ⚠️ 2026-10-23 (UX аудит E1): ХАРАГДАЦЫН ӨӨРИЙН ШҮҮЛТ — дэлгэцээс (DOM). Урьд нь тайланд зөвхөн порталын бүс
- *    бичигддэг тул он/сар/улирал, багц, таб, чартын сонголтоор нарийссан тайлан «Шүүлтгүй — бүх өгөгдөл» гэж худал
- *    гарч байв. 26 харагдацын төлөв модуль дотроо (файлын толгойн ⚠️ ЯАГААД DOM-ООС) тул:
- *    (1) `data-rep-filter="Нэр: утга"` — модуль өөрөө зарласан шүүлт (хамгийн үнэн);
- *    (2) `<select>` — «Бүх…»/хоосон биш утга (эхний сонголт ч тооцогдоно — 2026-10-23), нэр нь aria-label/label/title;
- *        `data-rep-skip` атрибуттай (эсвэл түүний дотор) сонгогч шүүлт БИШ — алгасна;
- *    (3) сегментлэсэн товчны бүлэг (≥2 ах дүү, ЯГ НЭГ нь pressed/selected) — «Бүгд» биш бол; бүлгийн нэр нь
- *        эцгийн aria-label эсвэл бүлгийн өмнөх богино шошго («ЖИЛ»).
- *    Тайлангийн удирдлага нуух (`hideControls`) -аас ӨМНӨ уншина.
- */
 export function readFilters(rs: Element[] = roots()): string[] {
   const out: string[] = [];
   const add = (s: string) => { const t = oneLine(s); if (t && !out.includes(t)) out.push(t); };
@@ -557,9 +502,6 @@ export function readFilters(rs: Element[] = roots()): string[] {
     for (const el of r.querySelectorAll('[data-rep-filter]')) if (visible(el) && !el.closest('[data-report-skip]')) add(el.getAttribute('data-rep-filter') || '');
     for (const el of r.querySelectorAll('select')) {
       const sel = el as HTMLSelectElement;
-      /* ⚠️ 2026-10-23: ЭХНИЙ сонголтыг алгасахгүй — «Багц 1» г.м. эхний сонголт нь бодит шүүлт байж болно (урьд нь
-         `selectedIndex <= 0` тул «Шүүлтгүй» гэж худал бичигддэг байв). Зөвхөн хоосон/`all` утга · «Бүгд/Бүх…»-ийг алгасна.
-         `data-rep-skip` — шүүлт БИШ сонгогч (эрэмбэ, нүдний засвар) өөрөө зарлана. */
       if (!visible(sel) || sel.selectedIndex < 0 || sel.closest('[data-rep-skip],[data-report-skip]')) continue;
       const v = oneLine(sel.selectedOptions[0]?.text || '');
       if (!v || sel.value === '' || /^all$/i.test(sel.value) || ALL_RE.test(v)) continue;
@@ -567,14 +509,9 @@ export function readFilters(rs: Element[] = roots()): string[] {
       add(name ? `${name}: ${v}` : v);
     }
     const seen = new Set<Element>();
-    /* ⚠️ 2026-10-26: нийтлэг `Segmented` (`role="radio"` + `aria-checked`) ч шүүлт — bagts-ийн merge ТУХ-ын «Бүлэг», «Журмууд»-ын
-       төрөл, «Хуваарь»-ын шүүлтийг `aria-pressed`-ээс Segmented болгосноор тайлан шүүсэн хүснэгтийг «Шүүлтгүй — бүх өгөгдөл»
-       гэж хэвлэдэг байв. Бүлгийн нэр нь radiogroup-ийн `aria-label`; «≥3» дүрэм хэвээр (2 сонголттой горим шүүлт биш). */
     const isRadio = (k: Element) => k.getAttribute('role') === 'radio' && k.hasAttribute('aria-checked');
     for (const el of r.querySelectorAll('[aria-pressed="true"],[aria-selected="true"],[role="radio"][aria-checked="true"]')) {
       const p = el.parentElement;
-      /* ⚠️ 2026-10-23: `data-report-skip` (газрын зургийн хэрэгсэл · 2D/3D/BIM · давхаргын жагсаалт) ч шүүлт БИШ — merge-ийн
-         дараа тэдгээр үргэлж DOM-д байх болсон тул «Давхарга · Газрын зургийн харагдац: 2D» шүүлт гэж бичигддэг байв */
       if (!p || seen.has(p) || !visible(el) || el.closest('[data-rep-skip],[data-report-skip]')) continue;
       seen.add(p);
       const sib = [...p.children].filter((k) => k.hasAttribute('aria-pressed') || k.hasAttribute('aria-selected') || isRadio(k));
@@ -597,10 +534,6 @@ export function readFilters(rs: Element[] = roots()): string[] {
   return out;
 }
 
-/**
- * ⚠️ 2026-10-23 (UX аудит E1): ДЭЛГЭЦ БҮРЭН АЧААЛАГДААГҮЙ эсэх — ачаалж буй хэсгийн тоо (эргэлдэгч · `aria-busy`).
- *    Урьд нь ачаалж байхад дарахад тэр хэсгүүд тайланд «Ачаалж байна…» эсвэл огт ороогүй байв (`ReportButton` асууна).
- */
 export function pendingCount(rs: Element[] = roots()): number {
   let n = 0;
   for (const r of rs) {
@@ -616,14 +549,10 @@ const p2 = (x: number) => String(x).padStart(2, '0');
 const stamp = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
 
 export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]> {
-  /* ⚠️ 2026-10-19: модуль өөрийн угсрагчтай бол (Гүйцэтгэл — `reportSource`) DOM уншихгүй */
   const src = reportSource(meta.key);
-  /* ⚠️ 2026-10-19 (хэрэглэгч): өөрийн угсрагчтай тайланд харагдацын тайлбар (`desc` — «Хийсэн ажлаа
-     бөглөж илгээх, …») ОРОХГҮЙ */
   if (src) {
     const head = { ...meta, desc: undefined, filters: [...meta.filters, ...(src.filters?.() ?? [])] };
     const body = await src.blocks();
-    /* ⚠️ Блокуудыг агшин зургаас ӨМНӨ авна — `await`-ийн хооронд төлөв өөрчлөгдөж болно */
     const host = src.map ? roots().find((r) => liveMapViews(r).length) : undefined;
     const shot = host ? await mapShot(host) : null;
     return withHead(head, shot ? [{ kind: 'img', ...shot, caption: tr('Газрын зураг') }, ...body] : body);
@@ -632,9 +561,7 @@ export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]>
   const html = document.documentElement;
   const prevTheme = html.dataset.theme;
   const rs = roots();
-  /* ⚠️ 2026-10-23 (UX аудит E1): удирдлагыг нуухаас ӨМНӨ — шүүлтийн товч/сонголтыг уншина (`readFilters`) */
   const filters = [...new Set([...meta.filters, ...readFilters(rs)])];
-  /* ⚠️ Гэрэл горим + удирдлага нуух — зөвхөн синхрон хэсэгт (файлын толгойн ⚠️) */
   const style = document.createElement('style');
   style.textContent = `[${HIDE}]{display:none!important}`;
   html.dataset.theme = 'light';
@@ -651,15 +578,11 @@ export async function buildViewReport(meta: ViewReportMeta): Promise<DocBlock[]>
 
   const resolved = await Promise.all(pending.map(resolve));
   const body = resolved.filter((b): b is DocBlock => !!b);
-  /* ⚠️ 2026-10-23 (UX аудит E1): зураг болгож чадаагүй график/газрын зураг ЧИМЭЭГҮЙ алга болохгүй — тэмдэглэл */
   const dropped = resolved.filter((b, i) => !b && pending[i].kind !== 'block').length;
   return withHead({ ...meta, filters }, captionTables(mergeStatLines(body)), dropped);
 }
 
-/* ── «Нэр / тоо / нэгж» мөрүүдийг хүснэгт болгох (2026-10-19, хэрэглэгч: «page 1 сул зайг янзал») ──
-   ⚠️ Дарагддаг карт (давхарга асаах товч г.м.) `cardLines`-д орохгүй тул «Цэвэр ус хангамж» · «42.2» · «км»
-      гурван тусдаа мөр болж, хуудсыг босоо чиглэлд дүүргэдэг байв. Дараалсан ≥2 ийм бүлгийг
-      «нэр · утга нэгж» хүснэгт болгоно (картын ердийн хүснэгттэй ижил хэлбэр). */
+/* ── «Нэр / тоо / нэгж» мөрүүдийг хүснэгт болгох (2026-10-19, хэрэглэгч: «page 1 сул зайг янзал») ── */
 const VAL_LINE = /^[−\-+]?\(?[\d\s.,]+\)?\s*%?$/;
 const UNIT_LINE = /^[\p{L}²³/.]{1,8}$/u;
 const isPlain = (b: DocBlock | undefined): b is Extract<DocBlock, { kind: 'p' }> =>
@@ -685,11 +608,7 @@ export function mergeStatLines(body: DocBlock[]): DocBlock[] {
 }
 
 /* ── Хүснэгтийн нэр · тайлбар (2026-10-19, хэрэглэгч: «хүснэгт нэртэй байх — графикийн нэр байж болно;
-      хүснэгтийн дээр түүнийг тайлбарласан тайлбар») ──
-   ⚠️ ЗӨВХӨН DOM замд — өөрийн угсрагчтай тайлан (`reportSource`) хүснэгтээ өөрөө нэрлэдэг.
-   ⚠️ Нэр = хүснэгтийн өмнөх хамгийн ойрын гарчиг (графикийн/картын нэр). Гарчиг шууд өмнө нь байвал
-      («ГАЗАР ЧӨЛӨӨЛӨЛТ» → «төлөв · га» → хүснэгт) давхар бичихгүйн тулд гарчгийг «Хүснэгт N. …» мөрөөр
-      СОЛЬЖ, богино дэд мөрийг (нэгж, ангилал) тайлбарт шингээнэ. 1-р түвшний гарчиг (дугаарлагддаг) үлдэнэ. */
+      хүснэгтийн дээр түүнийг тайлбарласан тайлбар») ── */
 /** Мөрийн нэр нь өөрөө нэгж («км», «га», «төрөл») — хамгийн их утгыг харьцуулах утгагүй */
 const UNIT_LABEL = /^(төрөл|км|м|м²|м2|га|цэг|ш|объект|хүн|айл|%)$/i;
 /** Хүснэгтийн шууд өмнөх богино шошго мөр («Зам», «Тээвэр») — картын нэр */
@@ -709,8 +628,6 @@ function describe(name: string, t: Extract<DocBlock, { kind: 'table' }>, unit: s
   const parts = [tr('«{0}» хүснэгтэд {1} үзүүлэлтийг харуулав.', name, String(t.rows.length))];
   if (unit) parts.push(tr('Нэгж, ангилал: {0}.', unit));
   /* 2 баганат «нэр · утга» хүснэгтэд хамгийн их утгыг онцолно (дэлгэцийн графикийн гол мэдээлэл) */
-  /* ⚠️ 2026-10-19: ЗӨВХӨН ижил нэгжтэй цэвэр тоонд — «төрөл 5 · км 36.0 · га 79.8» (мөр бүр өөр нэгж)
-     дээр «Хамгийн их нь га (79.8)» гэх утгагүй өгүүлбэр гардаг байв; «3 · төрөл · 7 · объект» тоо биш. */
   const unitOf = (v: string) => v.replace(/[−\-+\d\s.,()]/g, '');
   if (t.rows.length >= 3 && t.rows.every((r) => r.length === 2 && NUMERIC.test(r[1].trim()))
     && new Set(t.rows.map((r) => unitOf(r[1]))).size === 1 && !t.rows.some((r) => UNIT_LABEL.test(r[0].trim()))) {
@@ -724,9 +641,7 @@ function describe(name: string, t: Extract<DocBlock, { kind: 'table' }>, unit: s
   return parts.join(' ');
 }
 
-/* ── Графикийн тайлбар (2026-10-19, хэрэглэгч: «графикийн дээр нэрийн доор тухайн графикийг тайлбарласан хэсэг») ──
-   ⚠️ Өгөгдлөөс (`DocChartSpec`) бодно — зурагтай ижил тоо. Мөр бүр өөр нэгжтэй байж болох ч график нь нэг
-      тэнхлэгтэй тул хамгийн их/бага нь утгатай. `null` (хэмжээгүй) цэг тооцогдохгүй. */
+/* ── Графикийн тайлбар (2026-10-19, хэрэглэгч: «графикийн дээр нэрийн доор тухайн графикийг тайлбарласан хэсэг») ── */
 const fmtN = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
 function describeChart(name: string, c: DocChartSpec, unit: string): string {
   const parts: string[] = [];
@@ -810,9 +725,6 @@ export function captionTables(body: DocBlock[]): DocBlock[] {
 
     n += 1;
     const adjacent = !!head && out.length - head.at - 1 === subs.length;
-    /* ⚠️ 2026-10-19 (хэрэглэгч: «хүснэгтийн нэрийг ойлгомжтой болго, бүгд Нэгтгэл үзүүлэлт гэсэн байна»):
-       гарчиг шууд өмнө нь биш бол хүснэгтийн ДЭЭРХ богино шошгыг («Зам», «Тээвэр», «Ногоон орчин») нэр болгож,
-       давхар бичихгүйн тулд тэр мөрийг хасна. */
     const label = !adjacent && isLabel(out[out.length - 1]) ? (out.pop() as { text: string }).text : null;
     const name = adjacent && head ? sentence(head.text)
       : label ? sentence(label)
@@ -856,9 +768,6 @@ function withHead(meta: ViewReportMeta, body: DocBlock[], dropped = 0): DocBlock
   return [...head, ...body].map(noDash);
 }
 
-/* ⚠️ 2026-10-19 (хэрэглэгч: «тайлан доторх — зураасыг бүгдийг устга») — дэлгэцийн текст, тайлбар,
-   хүснэгтийн нүд бүгдээс «—» хасна; ганц «—» (хоосон утга) нүд хоосон болно. */
-/* ⚠️ Зураасгүй мөрийг ХӨНДӨХГҮЙ — Хуваарийн модны догол (NBSP) шахагдаж алга болно */
 const dash = (s: string): string => (s.includes('—') ? s.replace(/\s*—\s*/g, ' ').trim() : s);
 function noDash(b: DocBlock): DocBlock {
   if (b.kind === 'h' || b.kind === 'p') return { ...b, text: dash(b.text) };

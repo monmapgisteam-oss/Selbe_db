@@ -18,13 +18,6 @@ const nf0 = (v: number) => Math.round(v).toLocaleString('mn-MN');
 
 /**
  * ТЭЭВЭР-ИДЭВХИЙН САМБАР — «Симуляц» табын ЗҮҮН баганад, «Хүн амын төвлөрөл»-ийн доор.
- *
- * ⚠️ Бүтэц нь `SimulationPanel`-тэй ЯГ ижил (сонгогч → гарчиг → тоон уншилт →
- * эрэмбэ) бөгөөд ижил CSS модулийг хуваалцана — хэрэглэгч хоёр самбарыг нэг
- * зуршлаар уншина. Ялгаа нь: энэ нь БАРИЛГА/ЗАМ буддаг, тэр нь БҮС.
- *
- * ⚠️ «Замын ачаалал» (машин агентын симуляц) энэ самбарт ОРОХГҮЙ — тэр нь
- * баруун талын самбарт хэвээр үлдэнэ.
  */
 export function TransportPanel({
   mode,
@@ -36,12 +29,6 @@ export function TransportPanel({
   onRetry,
   net,
 }: {
-  /**
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗАМЫН ЭРЭЛТ (хэрэглэх, холбогдоогүй
-   *    барилга) АЛЬ сүлжээн дээр бодогдсоныг харуулж, сонгуулна. Урьд нь «Ачаалал»
-   *    табын сонголтыг ДАЛДААР дагадаг тул «Төлөвлөгөө» дээр харсан тоо «Бодит»
-   *    сүлжээнийх мэт уншигддаг байв. Сонголт нь «Ачаалал»-тай НЭГ төлөв.
-   */
   net?: NetSel;
   mode: TMode;
   /** Дүрслэл сонгох — эцэг нь энэ самбарыг ИДЭВХТЭЙ болгоно (газрын зураг солигдоно) */
@@ -52,7 +39,6 @@ export function TransportPanel({
   ctx: TransportCtx | null;
   loading: boolean;
   error: string | null;
-  /** ⚠️ 2026-09-25: алдааны дараа дахин татах — өгөөгүй бол товч гарахгүй */
   onRetry?: () => void;
 }) {
   const def = tModeDef(mode);
@@ -66,7 +52,6 @@ export function TransportPanel({
     <Card title={tr('Тээвэр-идэвхийн шинжилгээ')}>
       <div className={c.root} style={{ '--sim': def.hue } as CSSProperties}>
         {/* ── 7 дүрслэлийн сонгогч ── */}
-        {/* ⚠️ 2026-10-26 (UX U8): ←/→ · Home · End нь фокусыг л шилжүүлнэ (`tabFocusNav`); сонголт Enter/Space-ээр */}
         <div className={c.seg} role="tablist" aria-label={tr('Тээврийн дүрслэл')} onKeyDown={(e) => tabFocusNav(e)}>
           {T_MODES.map((m, i) => (
             <button
@@ -85,7 +70,6 @@ export function TransportPanel({
           ))}
         </div>
 
-        {/* ⚠️ 2026-10-01: замын сүлжээ — эрэлт, холболтын KPI ЭНЭ сүлжээн дээр */}
         {active && net && <NetSelector net={net} />}
 
         {!active ? (
@@ -118,10 +102,7 @@ export function TransportPanel({
           </p>
         ) : (
           <>
-            {/* ── Гарчиг ──
-                ⚠️ Тайлбарын догол мөр ЗОРИУДААР БАЙХГҮЙ (`SimulationPanel`-тэй
-                ижил шийдвэр): сонгогчийн товч ба тоон уншилт нь юу харагдаж
-                байгааг аль хэдийн хэлдэг. */}
+            {/* ── Гарчиг ── */}
             <div className={c.head}>
               <span className={c.headTitle}>{def.label}</span>
               {def.unit && <span className={c.headUnit}>{def.unit}</span>}
@@ -142,10 +123,7 @@ export function TransportPanel({
               </div>
             )}
 
-            {/* ── Легенд ──
-                ⚠️ Эрэмбийн ЖАГСААЛТ ЗОРИУДААР БАЙХГҮЙ (`SimulationPanel`-тэй ижил
-                шийдвэр): 363 барилгын жагсаалт нь газрын зурагтай холбогдохгүй тул
-                уншихад хүнд. Объект бүрийн утгыг ЗУРАГ дээр hover хийж уншина. */}
+            {/* ── Легенд ── */}
             {itemCount === 0 ? (
               <p className={c.empty}>{tr('Энэ дүрслэлд тохирох объект алга.')}</p>
             ) : (
@@ -167,17 +145,8 @@ export function TransportPanel({
 
 /* ══════════════════ Легенд ══════════════════ */
 
-/**
- * ⚠️ Хүртээмж нь бусдаас ӨӨР шатлалтай: бага зай = САЙН тул ногоон→шар→улаан.
- * Бусад бүгд YlOrRd дулааны шатлал (`simulation.module.css`-ийн анхдагч).
- */
 function Legend({ mode, min, max, unit }: { mode: TMode; min: number; max: number; unit: string }) {
   if (mode === 'busAccess') {
-    /**
-     * ⚠️ Шатлалын хязгаар нь ӨГӨГДЛИЙН max БИШ, НОРМ (`BUS_OK_M` = 800 м).
-     * Өгөгдлийн max-аар бэхэлбэл бүх барилга буудлын дэргэд байсан ч хамгийн
-     * холыг нь улаанаар зурж, худал сэрэмжлүүлэг өгнө. Дунд тэмдэг = 400 м.
-     */
     return (
       <>
         <div className={c.legend}>
@@ -191,8 +160,6 @@ function Legend({ mode, min, max, unit }: { mode: TMode; min: number; max: numbe
           <span className={c.legendEnd}>{BUS_OK_M} {tr('м+')}</span>
         </div>
         <p className={c.desc} style={{ marginTop: -2 }}>
-          {/* ⚠️ 2026-10-09: 400 м-ийг «БНБД-ийн босго» гэж бичдэг байв — БНБД 30-01-24, 10.22-ын норм
-              нь 500 м (`TRANSIT_NORM_M`); 400 м нь энэ шатлалын «сайн» хэсгийн өөрсдийн зааг. */}
           {tr('Дунд цэг =')} <b>{tr('{0} м', BUS_GOOD_M)}</b> {tr('(шатлалын «сайн хүртээмж»-ийн зааг; БНБД 30-01-24, 10.22-ын норм {0} м). Ажиглагдсан хамгийн хол нь', TRANSIT_NORM_M)}{' '}<b>{tr('{0} м', nf0(max))}</b>.
         </p>
       </>

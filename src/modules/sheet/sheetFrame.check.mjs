@@ -1,9 +1,6 @@
 /**
  * ИЛГЭЭЛТИЙН ЖААЗЫН ЦЭВЭР ФУНКЦУУДЫН ШАЛГУУР.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/sheetFrame.check.mjs
- *
- * ⚠️ Логик ХУУЛБАРЛААГҮЙ — `sheetFrame.ts`-ийн ЖИНХЭНЭ функцуудыг импортолж
- * шалгана. Тэндээ зассан зүйл энд шууд тусна.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/sheet/sheetFrame.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. ObjectID шилжилт — архивт шинэ жааз нэмэгдсэний дараа илгээлтийн
@@ -20,7 +17,6 @@ import assert from 'node:assert/strict';
 import {
   assertFrameLength, buildFrame, buildOidMap, insertAdds, moveKeys, overlaySubmission, rowKeyOf,
   staleSubmissionKeys, mapOldOids, rowOccOf, withFrameOcc, needsFrameOcc, describeNegCells,
-  /* ⚠️ 2026-10-22 (аудит): сөрөг нүдний засвар · архивын огноо */
   negTotalAt, negFixText, negFixOf, describeNegFixes, laterAsOf,
 } from './sheetFrame.ts';
 import { computeAll, fmtInc, incCell, parseInc, sumInc } from './bagtsSheet.ts';
@@ -34,8 +30,6 @@ const sc = {
   obyem: ['o0', null],
   start: ['s0', 's1'],
   end: ['e0', 'e1'],
-  /* ⚠️ Гэрээний огноо (2026-09-11) — амьд схемтэй нийцүүлэв; дутуу байвал
-     тэдгээрийн aliasing/хуулбарлалтын регресс тестээр баригдахгүй. */
   gStart: ['g0', 'g1'],
   gEnd: ['h0', 'h1'],
   /* Бодит огноо (2026-09-23) — мөн амьд схемтэй нийцүүлэв (aliasing тест доор) */
@@ -107,20 +101,12 @@ const rowKeys = old.map((r) => [r.oid, rowKeyOf(r)]);
   assert.equal(buildOidMap(rowKeys, []).size, 0, 'хоосон жааз → хоосон map');
   assert.equal(buildOidMap([[1, 'x ¦ y']], fresh).size, 0, 'олдохгүй түлхүүр map-д ОРОХГҮЙ');
 
-  /* ⚠️ СИЙРЭГ rowKeys (2026-09-08-ны CRITICAL олдвор). `rowKeys` нь ЗӨВХӨН
-     засварласан мөрүүдийг агуулна — 7 мөрийн жаазанд 2 түлхүүр. Урьд нь
-     байрлалаар ойртуулдаг байсан тул сийрэг индекс (0,1) нь жаазны индекс
-     (3,6)-тай харьцуулагдаж, «1 ¦ Шороо»-ийн ХОЁУЛАНГ 203 руу татдаг байв —
-     хоёр өөр блокийн ажил нэг мөрөнд буун, `unmoved` = 0 тул хамгаалалт ч
-     өнгөрдөг. Одоо дараалан хуваарилна: 103→203, 106→206. */
   const sparse = [[103, '1 ¦ Шороо'], [106, '1 ¦ Шороо']];
   const ms = buildOidMap(sparse, fresh);
   assert.equal(ms.get(103), 203, 'сийрэг rowKeys — эхний нэрийдэл');
   assert.equal(ms.get(106), 206, 'сийрэг rowKeys — ХОЁР ДАХЬ нэрийдэл (давхар буугаагүй)');
   assert.equal(new Set(ms.values()).size, 2, 'хоёр түлхүүр НЭГ мөрөнд буув');
 
-  /* ⚠️ 2026-10-04 аудит (#2): СИЙРЭГ жагсаалтад ЗӨВХӨН 2-р «Шороо» (106) — урьд нь `shift()` түүнийг
-     1-р нэрийдэлд (203, ӨӨР блок) буулгадаг байв. Давтамжийн дугааргүй бол ХОЁРДМОЛ (map-д орохгүй). */
   const only2 = mapOldOids([[106, '1 ¦ Шороо']], fresh);
   assert.equal(only2.map.has(106), false, 'хоёрдмол түлхүүр map-д орох ЁСГҮЙ (203 руу буух байсан)');
   assert.deepEqual(only2.ambiguous, [106], 'хоёрдмол гэж мэдээлэгдэх ёстой');
@@ -201,7 +187,6 @@ console.log('✅ хуучин payload суурь жаазаас давтамж �
   const out = insertAdds(old, [add], sc, nBld);
   assert.equal(old.length, 7, 'суурь массив уртсаагүй');
   assert.equal(out.length, 8, 'мөр нэмэгдэв');
-  /* ⚠️ 2026-09-22: шинэ мөр эцгийнхээ ШУУД ДОР (эхэнд) — хэрэглэгчийн шаардлага. */
   const p = old.findIndex((r) => r.group && r.no === '1.1' && r.work === 'Ухах');
   assert.equal(out[p + 1].oid, -1, 'эцэг бүлгийн ШУУД ДОР (эхэнд) орлоо');
   assert.equal(out[p + 1].depth, old[p].depth + 1, 'гүн = эцэг + 1');
@@ -212,12 +197,9 @@ console.log('✅ хуучин payload суурь жаазаас давтамж �
   const orphan = { ...add, oid: -2, parentNo: '7', parentWork: 'БАЙХГҮЙ' };
   assert.equal(insertAdds(old, [orphan], sc, nBld).length, 7, 'эцэггүй add алгасагдав');
   assert.equal(insertAdds(old, [], sc, nBld), old, 'add-гүй бол суурь өөрөө');
-  /* ⚠️ 2026-10-09 (F6): payload-ын эцгийн №/нэрийн илүү зай — `ajilApply`-тай адил тайрч таарна */
   const padded = { ...add, oid: -3, parentNo: ' 1.1 ', parentWork: 'Ухах  ' };
   assert.equal(insertAdds(old, [padded], sc, nBld).length, 8, 'тайрсан эцэг олдоно');
 
-  /* ⚠️ 2026-09-23 (аудитын #18): нэг эцэгт ХОЁР мөр — оруулсан дарааллаараа
-     (эхнийх нь p+1, хоёр дахь нь түүний АРД), урвуу БИШ. */
   const add2 = { ...add, oid: -3, no: '4', work: 'Бетон зуурмаг' };
   const two = insertAdds(old, [add, add2], sc, nBld);
   assert.equal(two.length, 9, 'хоёр мөр нэмэгдэв');
@@ -262,9 +244,6 @@ const sub = (over = {}) => ({
   });
   const ov = overlaySubmission(fresh, s, sc, nBld);
   assert.equal(JSON.stringify(fresh), before, 'суурь мөрүүд mutate болоогүй');
-  /* ⚠️ ALIASING (2026-09-11-ний аудит): хуулбар мөрийн ЗУРГААН массив бүгд
-     эх мөрөөс ТУСДАА хаягтай байх ёстой. `gStart`/`gEnd` хоёр орхигдсон
-     байсан — JSON харьцуулалт үүнийг барьдаггүй (утга ижил тул). */
   /* `aStart`/`aEnd` (2026-09-23) — ижил занга, ижил шалгуур */
   for (const k of ['act', 'obyem', 'start', 'end', 'gStart', 'gEnd', 'aStart', 'aEnd']) {
     const src = fresh.find((r) => r.oid === 203);
@@ -285,7 +264,6 @@ const sub = (over = {}) => ({
   assert.equal(byOid.get(204).end[1], D('2026-10-15'), 'дуусах огноо буув');
   assert.deepEqual([...ov.cellKeys].sort(), ['-1:0', '203:0', '204:0', '204:1', '206:0'], 'cellKeys шинэ oid-оор');
   assert.deepEqual([...ov.dateKeys].sort(), ['203:0:e', '203:0:s', '204:1:e'], 'dateKeys шинэ oid-оор');
-  /* ⚠️ 2026-09-22: нэмсэн мөр эхэнд ордог тул байрлал гулсана — oid-оор олно. */
   const ovR = ov.rows.find((r) => r.oid === 203), frR = fresh.find((r) => r.oid === 203);
   assert.notEqual(ovR, frR, 'мөр бүр шинэ объект');
   assert.notEqual(ovR.obyem, frR.obyem, 'obyem массив хуулбар');
@@ -305,8 +283,6 @@ const sub = (over = {}) => ({
 {
   const ov = overlaySubmission(
     fresh,
-    /* ⚠️ 2026-10-04 (#2): «1 ¦ Шороо» давхардсан тул СИЙРЭГ түлхүүрт давтамжийн дугаар (`rowOcc`) заавал —
-       байхгүй бол хоёрдмол (доорх 4в-2) */
     sub({ rowKeys: [[103, '1 ¦ Шороо'], [150, '9 ¦ БАЙХГҮЙ']], rowOcc: [[103, 0, 2]], cells: [['103:0', '1'], ['150:0', '2']], dates: [['150:0:s', '2026-01-01']] }),
     sc, nBld,
   );
@@ -376,13 +352,9 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
     assert.equal(fr[i].gun, r.depth, 'гүн мөр бүрд');
     assert.ok(!('o1' in fr[i]) || fr[i].o1 === undefined, 'талбаргүй блокт обьём БИЧИГДЭХГҮЙ');
   });
-  /* ⚠️ 2026-09-22: нэмсэн мөр эхэнд ордог тул байрлал гулсана — oid-оор олно. */
   const i3 = ov.rows.findIndex((r) => r.oid === 203), i4 = ov.rows.findIndex((r) => r.oid === 204);
   assert.equal(fr[i3].o0, 12.5, 'навчийн обьём');
   assert.equal(fr[i3].a0, 0.125, 'хувь = обьём ÷ Обьём');
-  /* ⚠️ БОДИТ ОГНОО · ХҮН ХҮЧ · МАШИН (2026-09-23) — жаазанд талбар ЗААВАЛ:
-     байгаа мөрд утга хэвээр, ШИНЭ мөрд (`raw` дутуу) `null`-аар ил бичигдэнэ,
-     эс бөгөөс «Хуваарь» тэнд бичсэн бүртгэл дараагийн жаазанд алга болно. */
   {
     const src = ov.rows[i3];
     src.aStart[0] = D('2026-09-01'); src.aEnd[1] = D('2026-10-02'); src.hun = 7; src.mashin = 2;
@@ -416,14 +388,6 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
 }
 
 /* ═══ 6. buildFrame — МӨНГӨН ДҮН · ХУВИЙН ЖИН D · АЖЛЫН КОД · УЯЛДАА ═══
- *
- * ⚠️ 2026-09-04-ний аудит: `buildFrame` нь `money`/`wD`/`des`/`ham`-ыг ОГТ
- *    бичихгүй, зөвхөн `{...r.raw}`-аар дамжуулдаг байв. `insertAdds` нь шинэ
- *    мөрд `raw`-д ЗӨВХӨН (№, ажил, обьём, нэгж өртөг) өгдөг тул нэмсэн ажил
- *    архивт мөнгөн дүнгүй, жингүй, кодгүй буудаг байлаа — уялдааны код
- *    (`Hamaaral` нь `Des_dugaar`-аар заадаг) хэзээ ч үүсэхгүй. Мөн БҮХ өвөг
- *    бүлгийн `Мөнгөн_дүн` нь нэмэгдсэн Обьём×Нэгж өртгийг агуулахгүй
- *    архивлагдаж, дэлгэц ба үйлчилгээ мөнхөд зөрдөг байв.
  */
 {
   /* des/ham/money талбартай бүдүүвч — 10/10 багцын бодит хэлбэр */
@@ -455,23 +419,12 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   assert.equal(fr[0].des_dugaar, 1, 'байгаа кодыг ДАХИН ДУГААРЛАХГҮЙ');
   assert.equal(leaf.des_dugaar, 3, 'байгаа код хэвээр — уялдааны заалт эвдрэхгүй');
 
-  /* ⚠️ `null ≠ 0`: бодогдох боломжгүй мөнгөн дүнг 0 болгож ДАРАХГҮЙ */
   const noMoney = [row(400, '1', 'Ажил', 0, false, { raw: { objectid: 400, money: 777 } })];
   const fr2 = buildFrame(noMoney, sc2, nBld, D('2026-09-02'), hasObyem, D('2026-09-04'));
   assert.equal(fr2[0].money, 777, 'бодогдохгүй үед хадгалагдсан Мөнгөн дүн ХЭВЭЭР');
 }
 
 /* ═══ 7. assertFrameLength — БОГИНО ЖААЗ АРХИВТ ХЭЗЭЭ Ч БИЧИГДЭХГҮЙ ═══
- *
- * ⚠️ Багц 3.1 · 9 давхарын CRITICAL эвдрэл: суурьт 1,471 мөр, `loadRows` нь
- *    хоосон мөрийг алгасаад 1,470 буцааж, тэр богино жааз архивт бичигдээд
- *    дараагийн ачаалалт hard throw хийж, бөглөх хуудас БА хянагчийн харагдац
- *    хоёулаа бүрмөсөн хаагдсан. Бичихээсээ ӨМНӨ зогсох ёстой.
- *
- * ⚠️ ГЭХДЭЭ ЛАВЛАХ НЬ ЗУРАГЛАЛ БИШ (энэ шалгуурын эхний хувилбарын алдаа):
- *    Багц 3.1-д ЗӨВ жааз нь 1,470 мөр — зураглалын 1,471-тэй жишвэл тэр багцын
- *    батлалт бүрмөсөн хаагдана. Лавлах нь `loadRows(...).frameLen` +
- *    ЭНЭ илгээлтийн нэмэлт; доорх гэрээ яг түүнийг барина.
  */
 {
   /* frameLen 1470 → 1,470-мөрт жааз ЗӨВ (хоосон мөр хасагдсан) */
@@ -481,7 +434,6 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   /* зөрвөл ЗОГСОНО — хоёр талын зөрүүг барина */
   assert.throws(() => assertFrameLength(1470, 1471, 'Багц 3.1 · 9 давхар'), /1470/, 'богино жааз зогсоогдоогүй');
   assert.throws(() => assertFrameLength(1472, 1471, 'Багц 3.1 · 9 давхар'), /1471/, 'урт жааз ч зогсоно');
-  /* ⚠️ Зураглалгүй үйлчилгээнд шалгахгүй — байхгүй лавлахаар нийтлэл хаахгүй */
   assert.doesNotThrow(() => assertFrameLength(1470, 0, 'зураглалгүй'));
 }
 
@@ -495,7 +447,6 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   assert.equal(parseInc(''), null, 'хоосон = засвар алга');
   assert.equal(parseInc('%'), null);
   assert.equal(parseInc('abc'), null);
-  /* ⚠️ 2026-10-21 (аудит): бүрэлдэхүүн `paste.normCell`-ийн дүрмээр — «12,5» аравтын, «1e3»/«0x10» хог, «15%» хог */
   assert.deepEqual(parseInc('12,5'), { n: 12.5, p: 0 }, '«12,5» → 12.5 (урьд чимээгүй хаягддаг байв)');
   assert.deepEqual(parseInc('%12,5'), { n: 0, p: 0.125 });
   assert.equal(parseInc('1e3'), null, '«1e3» хог (урьд 1000)');
@@ -514,8 +465,6 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   const r = row(1, '1', 'A', 3, false, { vol: 100, obyem: [40, null], act: [0.4, 0.3] });
   assert.deepEqual(incCell(r, 0, '15', true), { obyem: 55, act: 0.55 }, 'хэрэглэгчийн жишээ: 40 + 15 = 55');
   assert.deepEqual(incCell(r, 0, '%10', true), { obyem: 50, act: 0.5 }, '%N = Обьёмын N%');
-  /* ⚠️ 2026-10-21 (аудит): сөрөг нийт — дэлгэцэд 0, `neg` тугтай (архивлалт татгалзана); яг 0 бол туггүй */
-  /* ⚠️ 2026-10-22: `raw` — хаагаагүй (сөрөг) нийт, зөвхөн дэлгэцэд */
   assert.deepEqual(incCell(r, 0, '-50', true), { obyem: 0, act: 0, neg: true, raw: { obyem: -10, act: -0.1 } }, 'нийт 0-ээс доош орохгүй — neg туг + жинхэнэ утга');
   assert.deepEqual(incCell(r, 0, '-40', true), { obyem: 0, act: 0 }, 'яг 0 — сөрөг биш');
   {
@@ -530,7 +479,6 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   const noVol = row(3, '3', 'C', 3, false, { act: [0.3, null] });
   assert.deepEqual(incCell(noVol, 0, '%10', true), { obyem: null, act: 0.4 }, 'Обьёмгүй мөрд хувь дээр нэмнэ');
   assert.ok(Math.abs(incCell(r, 1, '%10', false).act - 0.4) < 1e-12, 'талбаргүй блокт хувь дээр нэмнэ');
-  /* ⚠️ 2026-10-09 (F5): талбаргүй блокт обьёмын нэмэлт — архивлах зүйлгүй тул «өөрчлөлт» биш */
   assert.equal(incCell(r, 1, '15', false), null, 'талбаргүй блокт обьёмын нэмэлт = өөрчлөлтгүй');
 
   /* 9c. computeAll — FillNew-ийн `pending` (inc) ба хуучин (abs) */
@@ -564,7 +512,7 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   assert.equal(monFirst, 55);
   assert.equal(tueFirst, 55, 'Мягмар эхэлж батлагдсан ч Даваагийн +10 алдагдахгүй');
 
-  /* 9f-2. ⚠️ 2026-10-21 (аудит): хог нэмэлт → unmoved; нийт сөрөг → negative/negKeys (дэлгэцэд 0 хэвээр) */
+  /* 9f-2. 2026-10-21 (аудит): хог нэмэлт → unmoved; нийт сөрөг → negative/negKeys (дэлгэцэд 0 хэвээр) */
   {
     const ovJ = overlaySubmission(fresh, inc([['203:0', 'abc'], ['204:0', '1e3']]), sc, nBld);
     assert.equal(ovJ.unmoved, 2, 'хог нэмэлт unmoved-д тоологдоно (урьд чимээгүй алгасагддаг байв)');
@@ -574,7 +522,6 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
     const ovN = overlaySubmission(fresh, inc([['203:0', '-50'], ['204:0', '-8']]), sc, nBld);
     assert.equal(ovN.negative, 1, '5 − 50 сөрөг; 8 − 8 = 0 сөрөг биш');
     assert.deepEqual(ovN.negKeys, ['203:0']);
-    /* ⚠️ 2026-10-22 (хэрэглэгч): дэлгэцэд 0 биш ЖИНХЭНЭ (сөрөг) утга — «0 м³» гэж харагдаж ойлгомжгүй байв */
     assert.equal(ovN.rows.find((x) => x.oid === 203).obyem[0], -45, 'дэлгэцэд жинхэнэ утга (5 − 50)');
     assert.deepEqual(ovN.negInc, { '203:0': '-50' }, 'илгээсэн нэмэлт');
     const nm = describeNegCells(ovN.negKeys, ovN.rows, ['Блок 1', 'Блок 2'], ovN.negInc);
@@ -587,7 +534,7 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
     assert.equal(overlaySubmission(ovD.rows, inc([['203:0', '15']]), sc, nBld).negative, 0, 'дараагийн +15 сөрөг биш');
   }
 
-  /* 9f-3. ⚠️ 2026-10-22 (аудит): сөрөг нүдийг таних (`negTotalAt`) ба ЯГ бичих утга (`negFixText`/`negFixOf`/`describeNegFixes`).
+  /* 9f-3. 2026-10-22 (аудит): сөрөг нүдийг таних (`negTotalAt`) ба ЯГ бичих утга (`negFixText`/`negFixOf`/`describeNegFixes`).
      «Хасалтаа устгаж хоосон үлдээ» нь БУЦААГДСАН илгээлтэд буруу — `mergeSubmission` нэмэлтийг НИЙЛҮҮЛДЭГ (`sumInc`) тул
      хоосон нүдэнд өмнөх −0.0017 үлддэг; харагдсан (3 оронтой) «0.002»-ыг бичвэл 0 биш 0.0003 болно. */
   {
@@ -659,7 +606,7 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
     assert.equal(overlaySubmission(fresh, inc([['203:0', sumInc('-50', '45')]]), sc, nBld).rows.find((x) => x.oid === 203).obyem[0], 0, '«45» → нийт 0');
   }
 
-  /* 9f-4. ⚠️ 2026-10-22 (аудит): «Шинэчлэгдсэн огноо» — хожуу нь (`laterAsOf`); хуучин өдрийн хожуу батлалт огноог УХРААХГҮЙ */
+  /* 9f-4. 2026-10-22 (аудит): «Шинэчлэгдсэн огноо» — хожуу нь (`laterAsOf`); хуучин өдрийн хожуу батлалт огноог УХРААХГҮЙ */
   {
     const d10 = D('2026-10-10');
     const d12 = D('2026-10-12');
@@ -688,7 +635,7 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   const legOnce = overlaySubmission(b40, sub({ rowKeys: [], cells: [['10:0', '50']] }), sc, nBld).rows;
   assert.equal(overlaySubmission(legOnce, sub({ rowKeys: [], cells: [['10:0', '50']] }), sc, nBld).rows[0].obyem[0], 50, 'abs давтахад 50 хэвээр');
 
-  /* 9i. ⚠️ 2026-10-09: БЛОКГҮЙ багцын (синтетик блок) Обьёмгүй мөр (`synNoVol` — Обьём null/0/сөрөг) —
+  /* 9i. 2026-10-09: БЛОКГҮЙ багцын (синтетик блок) Обьёмгүй мөр (`synNoVol` — Обьём null/0/сөрөг) —
      inc нэмэлт ХАЯГДАНА: `obyem_sum` нь L-гүй архивлагдахгүй, `cellKeys`/`unmoved`-д ч орохгүй. */
   const scS = { ...sc, bld: ['—'], act: ['ажил_гүйцэтгэл'], plan: ['p'], obyem: ['obyem_sum'], start: [null], end: [null],
     gStart: [null], gEnd: [null], aStart: [null], aEnd: [null], synthetic: true };

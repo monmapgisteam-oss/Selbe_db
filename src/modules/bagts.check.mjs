@@ -1,6 +1,6 @@
 /**
  * БАГЦЫН дашбоардын мөр бүтээхийг шалгана — ЖИВЭЭР (live).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/bagts.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/bagts.check.mjs
  *
  * Хамгаалж буй хоёр алдаа:
  *   1. № (`dugaar`) нь ДАВТАГДДАГ: excel-ийн «3.10» ArcGIS-д «3.1» болж
@@ -9,17 +9,10 @@
  *      мөрүүд чимээгүй нийлж, давхрууд алга болно — түлхүүр нь АЖЛЫН НЭР.
  *   2. Багцын нэр давхарга ↔ хуудсанд өөр («Багц 4.1» ↔ «Багц 4-1») тул
  *      шууд тааруулбал хоосон гарна — `bagtsKey`-ээр холбоно.
- *
- * ⚠️ ЭХ СУРВАЛЖ (2026-08-27-нд СОЛИГДСОН): урьд нь `Selbe_guitsetgel_consolidated`
- * (499, хаагдсан). Одоо `sheetRows.ts` → `Bagts_*` бөглөх хуудсууд.
- *
- * ⚠️ Логик нь `BuildingPanel.tsx::useBagtsWorks`-ийн хуулбар — тэндээ өөрчилвөл
- * ЭНДЭЭ ч өөрчил.
  */
 import assert from 'node:assert/strict';
 import { loadSheetRows, sheetBagtsNames } from './sheet/sheetRows.ts';
 
-/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
 if (process.env.SELBE_LIVE_SKIP) {
   console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
   process.exit(0);
@@ -31,7 +24,6 @@ const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z
 function works(rows) {
   const batches = new Map();
   for (const r of rows) {
-    // ⚠️ Хуулбар (sheet+snap) түлхүүрт ЗААВАЛ орно — нэг өдөрт хоёр нийтлэлт бий
     const k = `${r.sheet}#${r.snap}|${r.block}`;
     const arr = batches.get(k);
     if (arr) arr.push(r); else batches.set(k, [r]);
@@ -76,13 +68,6 @@ assert.ok(names.length >= 5, `бүртгэлд багц хэт бага: ${names
 // Давхаргын «Багц 4.1» → хуудсын «Багц 4-1»
 assert.ok(names.find((n) => bagtsKey(n) === bagtsKey('Багц 4.1')), 'Багц 4.1 таарсангүй');
 
-/*
- * ⚠️ БҮХ БАГЦАД ХАТУУ ШААРДЛАГА ТАВИХГҮЙ. Бөглөх хуудас нь НИЙТЛЭГДСЭН үедээ л
- * `buglusun_ognoo` авдаг; 2026-08-27-нд 10 хуудасны ердөө 2 нь нийтлэгдсэн.
- * «Багц бүрд >10 ажлын төрөл» гэж шаардвал өгөгдөл бөглөгдөх хүртэл тест
- * байнга улаан байж, ЖИНХЭНЭ эвдрэлийг далдална. Тиймээс: өгөгдөлтэй багцад
- * БҮТЦИЙГ хатуу шалгана, өгөгдөлгүйг нь ЗӨВХӨН мэдээлнэ.
- */
 let withData = 0;
 for (const name of names) {
   const rows = works(await loadSheetRows({ group: name, maxLevel: 4 }));
@@ -94,12 +79,6 @@ for (const name of names) {
   assert.equal(new Set(rows.map((r) => r.name)).size, rows.length, `${name}: ажлын нэр давхардав`);
 
   // 2. Давхрын мөрүүд ЭРЭМБЭЭРЭЭ (1-р → 2-р → …): дараалал эвдвэл дашбоард уншигдахгүй
-  /* ⚠️ Бөглөх хуудсанд давхар нь «1F цутгалт» гэж бичигдэнэ — нэгтгэсэн
-        хүснэгтийн «1-р давхар цутгалт» хэлбэр БИШ. Хоёуланг нь барина.
-     ⚠️ Давхрын дугаар АНГИЛАЛ БҮРД дахин 1-ээс эхэлдэг (3.x цутгалт 1F…9F,
-        дараа нь 4.x хана 1F…9F). Тиймээс НИЙТ жагсаалтаар өсөх шаардлага тавьж
-        БОЛОХГҮЙ — ажлын нэрийн ДАГАВРААР (давхрын дараах текст) бүлэглээд
-        бүлэг тус бүрд нь өсөхийг шалгана. */
   const floorGroups = new Map();
   for (const r of rows) {
     const m = /^(\d+)F\s+(.+)$/.exec(r.name) ?? /^(\d+)-р давх[^ ]* (.+)$/.exec(r.name);

@@ -4,22 +4,13 @@ import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { PL_OVER, PL_ROW, ZOOM, type Zoom } from './types';
 import { todayUtc } from './util';
 
-/** ⚠️ 2026-10-21: хуанлийн хүрээнд тооцох огнооны хязгаар — `lib/planProgress.ts`-ийн `OK_LO`/`OK_HI`-тэй ИЖИЛ (тэнд экспортлогдоогүй) */
 const SANE_LO = Date.UTC(2000, 0, 1);
 const SANE_HI = Date.UTC(2100, 0, 1);
 
 /**
  * «ӨНӨӨДӨР» (UTC шөнө дундаар түлхүүрлэсэн ЛОКАЛ өдөр) — шөнө дунд бүрд шинэчлэгдэнэ.
- * ⚠️ 2026-10-09: `useCalendar`-аас ГАРГАВ — `Huvaari` нь «хоцорсон» чипт өнөөдрийг `useCalendar`-аас ӨМНӨ
- *    (TDZ) хэрэглэдэг тул тусдаа `useState(todayUtc)` барьж, шөнө дунд өнгөрөхөд ХУУЧИН өдрөөр үлддэг
- *    байв. Одоо нэг таймер: эцэг үүнийг дуудаж `useCalendar({ now })`-д дамжуулна.
  */
 export function useToday(): number {
-  /* ⚠️ ЛОКАЛ өдөр (2026-09-17): UTC-ээр авбал УБ-д 00:00–08:00 хооронд «өнөөдөр»
-     өчигдөр болж, хоцрогдлын төлөв ба өнөөдрийн шугам нэг хоног хоцордог байв.
-     Хуанлийн өдрүүд өөрсдөө UTC шөнө дундаар түлхүүрлэгддэг тул ижил хэлбэрээр.
-     ⚠️ 2026-09-25: `useMemo([])` байсан тул шөнө дунд өнгөрсөн нээлттэй хуудас
-     «өнөөдөр»-ийг хуучин өдрөөр үлдээдэг байв — дараагийн шөнө дунд таймераар шинэчилнэ. */
   const [now, setNow] = useState(todayUtc);
   useEffect(() => {
     const d = new Date();
@@ -33,29 +24,13 @@ export function useToday(): number {
 /**
  * ХУАНЛИЙН ГЕОМЕТР — «өнөөдөр» · хүрээ · хоног↔px · цонхлолт · толгойн шошго
  * (2026-09-30: `Huvaari.tsx`-ээс механикаар салгав; логик · тайлбар ХЭВЭЭР).
- *
- * ⚠️ Оролт: ноорогтой `plan` (хүрээ түүнээс), `drag` (чирэлтийн үед хүрээ тогтоно),
- *    `zoom`, харагдах мөрүүд `visible`, сонгосон мөр `sel`. Гаралт нь Gantt-ын
- *    зурагдалт ба чирэлтийн хөдөлгүүрт хэрэгтэй бүх хэмжээ.
  */
 export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visible, sel, pin, jumpedRef, now }: {
   plan: readonly PlanRow[];
-  /** ⚠️ 2026-10-09: «өнөөдөр» — эцгийн `useToday()` (нэг таймер, дээрх ⚠️) */
   now: number;
   drag: boolean;
-  /**
-   * ⚠️ 2026-10-07: `sel` мөрийг цонхлолтод ХҮЧЭЭР багтаах уу — зөвхөн чирэлт ба нүдэнд
-   *    бичиж байх үед (`drag || cellEdit`). Урьд нь сонгосон мөр ҮРГЭЛЖ багтдаг тул
-   *    сонгоод хол гүйлгэхэд дунд нь байгаа БҮХ мөр (хэдэн зуу) зурагдаж виртуалчлал
-   *    алдагддаг байв. Чирэлт/бичилт дуусмагц ердийн цонх руу буцна.
-   */
   pin: boolean;
   zoom: Zoom;
-  /**
-   * ⚠️ 2026-10-04: ерөнхий (`T`) — «Бүх блок» горимд эх мөр + блокийн дэд мөрийн хавтгай
-   * жагсаалт (`allBlocks.DispRow`) ЭНЭ цонхлолтоор явна. `oid` нь эх мөрийнх; эх мөр нь
-   * дэд мөрөөсөө өмнө тул `sel`-ийн хайлт эх мөрийг олно. Мөр бүр `PL_ROW` өндөртэй.
-   */
   visible: readonly T[];
   sel: number | null;
   /** Эхний «өнөөдөр» рүү гүйлгэлт хийгдсэн үү — эцгийн `[pkg]` эффект тэглэдэг тул эцэгт зарлагдана */
@@ -63,17 +38,10 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  /* ⚠️ 2026-10-09: «өнөөдөр» ба шөнө дундын таймер `useToday`-д (дээр) — эцэг дамжуулна (`now`) */
   /* ── ХУАНЛИЙН ХҮРЭЭ — доод тал нь 365 хоног, хоёр талдаа СУЛ ЗАЙТАЙ ── */
   const range = useMemo(() => {
-    /* ⚠️ 2026-10-01: давталтаар — `Math.min(...all)` нь ~64k аргумент дамжуулж
-       Safari дээр RangeError өгөх эрсдэлтэй байв. Зурвасгүй бол `now` (хуучин ёс). */
     let lo = now;
     let hi = -Infinity;
-    /* ⚠️ 2026-10-21: ЭВДЭРСЭН ОГНОО ХҮРЭЭНД ОРОХГҮЙ — амьд өгөгдөлд бүлгийн 1899 (Excel-ийн 0 сериал) ·
-       1909 · 1946 оны огноо бий (b32_9f · b33_9f · b2_12f) тул хуанли тэр онуудаас эхэлж ашиглах
-       боломжгүй болдог байв. `lib/planProgress.ts`-ийн `sane`-тай ИЖИЛ хязгаар (2000–2100). Мөр өөрөө
-       нуугдахгүй — зөвхөн хүрээний тооцоонд үл тооно. */
     const take = (ms: number) => {
       if (!Number.isFinite(ms) || ms < SANE_LO || ms > SANE_HI) return;
       if (ms < lo) lo = ms;
@@ -81,33 +49,16 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
     };
     for (const r of plan) for (const sp of r.spans) if (sp) { take(sp.start); take(sp.end); }
     if (hi === -Infinity) hi = now;
-    /**
-     * ⚠️ СУЛ ЗАЙ (2026-09-02, хэрэглэгч). Урьд нь `from`/`to` нь өгөгдлийн ЯГ
-     * захууд байв: хамгийн сүүлийн зурвас хуанлийн баруун ирмэгт наалдаж,
-     * түүнийг цааш чирэх, хугацааг нь сунгах, шинэ ажлыг хойшлуулах ЗАЙ огт
-     * үлддэггүй байлаа. Одоо урд нь 1 сар, ард нь 3 сар нэмнэ.
-     *
-     * ⚠️ Сар бүрээр тэгшилнэ: `Date.UTC` нь сарын халилтыг өөрөө зөв бодно
-     * (12-р сар + 4 → дараа жилийн 4-р сар). Ард талын `0` дахь өдөр нь
-     * «өмнөх сарын сүүлчийн өдөр» тул сарын багана бүтнээрээ дуусна.
-     */
     const d = new Date(lo);
     const from = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1);
     const e = new Date(hi);
     const padded = Date.UTC(e.getUTCFullYear(), e.getUTCMonth() + 4, 0);
-    /* ⚠️ Хамгийн багадаа 365 хоног, шаардлагатай бол дараагийн жил рүү */
     const to = Math.max(padded, from + 364 * DAY);
     return { from, to };
   }, [plan, now]);
-  /* ⚠️ ЧИРЭЛТИЙН ҮЕД хүрээг ТОГТООНО (2026-09-17): `range` нь ноорогтой `plan`-аас
-     бодогддог тул зурвасыг `lo`-оос өмнө татмагц `from` бүтэн сараар эрт болж,
-     чирэлтийн `anchor` (ИНДЕКС) нэг сараар зөрж муж сар сараар ухардаг байв. */
   const rangeRef = useRef(range);
   useEffect(() => { if (!drag) rangeRef.current = range; }, [drag, range]);
   const { from, to } = drag ? rangeRef.current : range;
-  /* ⚠️ 2026-10-23 (хэрэглэгч: «жил дарахад баруун талд хоосон зай гарч байна — ашиглаж сунга»): ЖИЛ горимд хуанли
-     хэвтээ зайг БҮРЭН дүүргэнэ — px = max(0.7, боломжит өргөн ÷ хоногийн тоо). Боломжит өргөн = гүйлгэх хүрээ − зүүн
-     жагсаалт (`gWrap`-ийн эхний хүүхэд); хэмжээ өөрчлөгдөхөд (`ResizeObserver`) дахин бодно. Бусад горим тогтмол. */
   const [avail, setAvail] = useState(0);
   useEffect(() => {
     if (zoom !== 'year') return;
@@ -125,11 +76,6 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
   }, [zoom, plan.length]);
   const days = Math.round((to - from) / DAY) + 1;
   const px = zoom === 'year' && avail > 0 ? Math.max(ZOOM.year, avail / days) : ZOOM[zoom];
-  /* ⚠️ `from` ӨӨРЧЛӨГДӨХӨД ХАРАГДАЦ ҮСРЭХГҮЙ (2026-10-01): чирэлт/popup хамгийн
-     эрт ажлыг өмнөх сар руу зөөхөд `from` сараар эрт болж бүх зурвас баруун тийш
-     шилжиж, дэлгэц ~1 сар «үсэрдэг» байв. Зөрүүг `scrollLeft`-д нөхнө.
-     ⚠️ `useLayoutEffect` — будахаас ӨМНӨ, нэг кадр ч үсрэлт харагдахгүй.
-     ⚠️ Томруулалт (`px`) солигдоход нөхөхгүй — зөвхөн `from`-ийн шилжилт. */
   const fromRef = useRef(from);
   useLayoutEffect(() => {
     const old = fromRef.current;
@@ -138,10 +84,6 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
     if (old === from || !el) return;
     el.scrollLeft = Math.max(0, el.scrollLeft + Math.round(((old - from) / DAY) * px));
   }, [from, px]);
-  /* ⚠️ 2026-10-09: ТОМРУУЛАЛТАД ТӨВИЙН ОГНОО ХАДГАЛАГДАНА. Урьд нь `px` солигдоход `scrollLeft` хуучнаараа
-     үлдэж (эсвэл хөтөч хавчиж) харж байсан сар өөр газар руу «үсэрдэг» байв. Харагдах хуанлийн ТӨВИЙН огноог
-     (мс) гүйлгээ бүрд (`onScroll`) тэмдэглэж, `px` солигдмогц тэр огноог дахин төвд тавина. Дээрх `from`-ийн
-     нөхөлт (`px`-д нөхөхгүй) ХЭВЭЭР — энэ нь зөвхөн `px`-ийн шилжилт. */
   const centerMs = useRef<number | null>(null);
   const pxRef = useRef(px);
   const noteCenter = useCallback(() => {
@@ -169,11 +111,6 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
   };
   const msAt = (k: number) => from + k * DAY;
 
-  /* ⚠️ Эхэнд ӨНӨӨДӨР рүү гүйлгэнэ — 365 хоногийн эхэнд тултал өнгөрсөн
-     жилийн сарууд харагдаж, «хоосон хуанли» гэж уншигдана. */
-  /* ⚠️ 2026-10-09 (аудит №2): deps-ГҮЙ — commit бүрд шалгана (гүйлгээ хийгдмэгц `jumpedRef`-ээр шууд буцна).
-     Урьд нь `[now, xOf, visible.length]` тул гүйлгэгч (`gWrap`) мөр ирснээс ХОЙШ mount болбол (сэргээлтийн хаалт
-     гэх мэт) `scrollRef` null үед нэг удаа ажиллаад дахин ажилладаггүй — хуанли хүрээний эхэнд нээгддэг байв. */
   useEffect(() => {
     if (jumpedRef.current || !scrollRef.current || !visible.length) return;
     jumpedRef.current = true;
@@ -185,8 +122,6 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
   const recalcWin = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    /* ⚠️ Эхний `PL_ROW` нь НААЛДМАЛ толгой (`gSideHead`/`plHead`) — тэр нь
-       урсгалд байдаг тул мөр 0-ийн эхлэл нь `PL_ROW` дээр байна. */
     const top = Math.max(0, el.scrollTop - PL_ROW);
     const a = Math.max(0, Math.floor(top / PL_ROW) - PL_OVER);
     const b = Math.ceil((top + el.clientHeight) / PL_ROW) + PL_OVER;
@@ -199,10 +134,9 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
     winTick.current = requestAnimationFrame(() => {
       winTick.current = 0;
       recalcWin();
-      noteCenter(); // ⚠️ 2026-10-09: томруулалтад төв хадгалах (`centerMs`)
+      noteCenter();
     });
   }, [recalcWin, noteCenter]);
-  /** ⚠️ 2026-10-09: «Өнөөдөр» товч — өнөөдрийг хуанлийн харагдах хэсгийн төвд гүйлгэнэ */
   const goToday = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -210,10 +144,6 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
   }, [now, from, px]);
   useEffect(() => () => { if (winTick.current) cancelAnimationFrame(winTick.current); }, []);
   /* Мөр/шүүлт/эвхэлт солигдоход цонхыг шинэчилнэ */
-  /* ⚠️ 2026-10-11 (аудит №7): гүйлгэгчийн (`gWrap`) ХЭМЖЭЭ солигдоход ч (бүтэн дэлгэц · цонх томруулах · dev-tools) дахин
-     бодно — урьд нь зөвхөн гүйлгэх/мөр солигдоход тул бүтэн дэлгэц асаахад өндөрссөн цонхны доод мөрүүд гүйлгэтэл
-     зурагддаггүй байв (`sheet/fill/useRows`-ийн ижил ResizeObserver). `visible.length`-тэй нэг эффектэд: гүйлгэгч
-     хожуу mount болбол ref эхний render-д хоосон байж болно. */
   useEffect(() => {
     recalcWin();
     const el = scrollRef.current;
@@ -223,13 +153,6 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
     return () => ro.disconnect();
   }, [visible.length, recalcWin]);
 
-  /**
-   * ⚠️ ЗАСВАРЛАЖ буй мөр цонхны ГАДНА үлдэж болохгүй: чирэлт нь мөрийн DOM
-   * дээрх pointer capture-д тулгуурладаг тул зурагдахаа больвол `pointermove`
-   * тасарч, чирэлт дундуураа «өлгөгдөнө». Тиймээс сонгосон/чирж буй мөрийг
-   * цонхонд хүчээр багтаана.
-   * ⚠️ 2026-10-07: ЗӨВХӨН `pin` үед (чирэлт · нүдэнд бичилт) — дээрх ⚠️.
-   */
   const selVis = useMemo(
     () => (!pin || sel == null ? -1 : visible.findIndex((r) => r.oid === sel)),
     [visible, sel, pin],
@@ -241,10 +164,6 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
     [visible, winFrom, winTo],
   );
   /* ── Хуанлийн шошго ── */
-  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): `from`·`total`·`zoom`·`px`-д MEMO. Урьд нь зурагдалт
-     БҮРД (босоо гүйлгээний цонх солигдох, мөр сонгох, чирэлтийн кадр) ~1,000 хоногийг `Date`-ээр
-     гүйж шинэ массив үүсгэдэг тул толгойн ~200 шошго ба торын зураасыг React дахин тулгадаг байв.
-     Тооцоо ЯГ ИЖИЛ — зөвхөн ижил оролтод дахин бодохгүй. */
   const { ticks, months } = useMemo(() => calTicks(from, total, zoom, px), [from, total, zoom, px]);
 
   return {
@@ -253,7 +172,6 @@ export function useCalendar<T extends { oid: number }>({ plan, drag, zoom, visib
   };
 }
 
-/** ⚠️ 2026-10-09: хуанлийн ХАРАГДАХ өргөн — наалдмал зүүн самбар (`gSide`, гүйлгэгчийн эхний хүүхэд) хасагдана */
 function calView(el: HTMLDivElement): number {
   return el.clientWidth - ((el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 0);
 }
@@ -266,29 +184,17 @@ function calTicks(from: number, total: number, zoom: Zoom, px: number) {
     const ms = from + k * DAY;
     const d = new Date(ms);
     const isFirst = d.getUTCDate() === 1;
-    /* ⚠️ 2026-10-23: жилээр харахад сар бүрийн дээд шошго багтахгүй (≈21px) — дээд мөрөнд ЖИЛ (1-р сарын 1), доод
-       мөрөнд сарын дугаар */
     if (zoom === 'year') {
-      /* ⚠️ 2026-10-23: эхний багана (`from` — үргэлж сарын 1) 1-р сар биш бол ч ЖИЛ тавина — эс бөгөөс дараагийн 1-р сар
-         хүртэлх саруудад жил огт харагддаггүй байв */
       if (isFirst && (d.getUTCMonth() === 0 || k === 0)) months.push({ at: ms, lab: String(d.getUTCFullYear()) });
       if (isFirst) ticks.push({ at: ms, lab: msToDay(ms).slice(5, 7), big: d.getUTCMonth() === 0 });
       continue;
     }
     if (isFirst) months.push({ at: ms, lab: msToDay(ms).slice(0, 7) });
-    /* ⚠️ Ганц тоо («21», «28») нь ямар сарынх нь тодорхойгүй. Сарын нэр
-       ДЭЭД мөрөнд тусдаа, хоногийн шошго нь «сар-өдөр» хэлбэрээр доор. */
     if (zoom === 'day') ticks.push({ at: ms, lab: String(d.getUTCDate()), big: isFirst });
     else if (zoom === 'week') {
       if (d.getUTCDay() === 1 || isFirst) ticks.push({ at: ms, lab: msToDay(ms).slice(5), big: isFirst });
     } else if (d.getUTCDay() === 1 || isFirst) ticks.push({ at: ms, lab: '', big: isFirst });
   }
-  /**
-   * ⚠️ ОЙРХОН ШОШГЫГ ХООСЛОНО. Сарын 1 ба долоо хоногийн эхлэл 1–2 хоногийн
-   * зайд таарвал «08-31» ба «09-01» хоёр бие бие рүүгээ орж, аль аль нь
-   * уншигдахгүй болно (зурвас нарийсах тусам байнга тохиолдоно). Зураас нь
-   * үлдэнэ — зөвхөн ТЕКСТИЙГ нь авна.
-   */
   {
     const MIN = zoom === 'year' ? 18 : 40;
     let lastLab = -Infinity;

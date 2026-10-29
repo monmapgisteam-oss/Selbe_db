@@ -3,41 +3,13 @@
 /**
  * НЭМЭЛТ АЖИЛ БАТЛАХ — батлахыг хүлээж буй БҮХ саналын дараалал (2026-09-22).
  *
- * ⚠️ ЯАГААД ТУСДАА ХУУДАС БАЙХ ЁСТОЙ (хэрэглэгчийн шийдвэр: «batlah heseg
- *    tusda baih ystoi tged tuun deer orj irj batlana, guitsetgel bogloh
- *    hesegt hamtda baij bolohgui»): урьд нь батлах товч «Гүйцэтгэл бөглөх»
- *    хуудсан дээр байсан тул батлагч нь багц бүрийг ГАРААР нэг нэгээр нээж
- *    «энд хүлээгдэж буй нэмэлт ажил байна уу?» гэж шалгах цорын ганц
- *    замтай байв. Багц нь 18. Мөн бөглөх хуудас нь БӨГЛӨХ зориулалттай —
- *    хоёр огт өөр үүргийг нэг дэлгэцэд нийлүүлэх нь эргэлзээ төрүүлнэ.
- *
- * ⚠️ `HuvaariBatlah.tsx`-ИЙН ЗАГВАРААР — зохиомж, хэсгүүд (шийдвэрлэх ·
- *    өөрийн · бүртгэлгүй), fail-closed хамрах хүрээ, гурван хоосон
- *    мессеж бүгд түүнтэй ижил. Тэр хуудсыг өөрчилбөл энэ ч дагах ёстой.
- *
  * ═══════════════════════════════════════════════════════════════════════
- * ⚠️⚠️ БАТЛАНГУУТ ҮНДСЭН ХҮСНЭГТЭД БИЧИГДЭНЭ (2026-09-24, хэрэглэгчийн шийдвэр) ⚠️⚠️
  *
  * БАТЛАХ = `decideAjil` (урсгалын мөр `approved`) → `ajilApply.
  * materializeAdds` (сүүлийн жааз + шинэ мөр → бүтэн жааз `applyAdds` →
  * `applied`). Хоёр дахь алхам унавал мөр `approved` хэвээр үлдэж доорх
  * «Батлагдсан · буулгаагүй» хэсэгт гарна — «Дахин буулгах» товч
  * `materializeAdds`-ыг дахин дуудна (идемпотент: давхардлыг хаяна).
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «Батлагдсан · буулгаагүй» хэсэг
- *    `ajilApply.classifyStuck`-ээр ангилагдана — `retry` (товчтой), `fresh`
- *    (саяхан батлагдсан, батлагчийн цонх бичиж байж магадгүй — хүлээлгийн
- *    дараа хуудас өөрөө шинэчлэгдэж товч нээгдэнэ), `orphan` (бүртгэлгүй багц —
- *    урьд нь ЧИМЭЭГҮЙ нуугддаг байв). Товч нь батлагч ЭСВЭЛ админд
- *    (`mayReapply`); унасан шалтгаан мөр дээрээ хадгалагдана.
- *
- * ⚠️ УРЬД НЬ (2026-09-22 … 09-24) энэ хуудас эх өгөгдөлд ОГТ бичдэггүй байв:
- *    батлагдсан мөр зохиогчийн «Гүйцэтгэл бөглөх» хуудасны `adds` ноорогт
- *    орж, гүйцэтгэлийн 6 шат батлагдтал хүлээдэг байлаа. Хэрэглэгч тэр
- *    хүлээлтийг болиулж, мөр нэмэх УРСГАЛЫГ «Хуваарь» руу шилжүүлсэн.
- *    `HuvaariBatlah`-ийн «батлах нь нөгөө талд гүйцээгдэнэ» асимметр ЭНД
- *    ҮЙЛЧЛЭХЭЭ БОЛЬСОН — бичих ажил `ajilApply.ts`-д (тэндхийн ⚠️-г үз).
- * ═══════════════════════════════════════════════════════════════════════
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -54,32 +26,21 @@ import {
 import { roleOf } from '@/lib/permissions';
 import { busyGate, classifyStuck, materializeAdds, mayReapply, parentsCheck } from '@/lib/ajilApply';
 import { hasCap, subscribeCaps } from '@/lib/caps';
-/**
- * ⚠️ `HuvaariBatlah` · `Guitsetgel` · `ErhOverview`-ТЭЙ ХУВААЛЦСАН CSS:
- *    батлах дарааллын зохиомж дөрвүүлэнгийнх ижил — нэг өөрчлөлт бүгдийг
- *    хөндөнө. Өөрийн хуулбар үүсгэвэл дөрөв салж, нэг нь чимээгүй хоцорно.
- */
 import s from './guitsetgel.module.css';
 import { Loading, userError } from '@/components/ui';
 import { setNavDirty } from '@/lib/navGuard';
 import { REASON_MAX, serverNow } from '@/lib/huvaariBatlah';
-/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт (хөтөч «дахин асуухгүй» гэвэл чимээгүй `false` буцаадаг) */
 import { askConfirm } from '@/lib/confirm';
 
 /** Багцын түлхүүр → бүртгэл. Модулийн хүрээнд нэг л удаа боддог. */
 const PKG_BY_KEY = new Map<string, Pkg>(PKGS.map((p) => [p.key, p]));
 
-/** ⚠️ 2026-09-30: обьём · нэгжийн үнэ — ≤3 бутархай орон, илүү тэггүй (0.4 → «0.4», 142.96 → «142.96») */
 const num3 = (v: number): string => (Number.isFinite(v) ? Number(v.toFixed(3)).toLocaleString('en-US') : '—');
 
 const ALL = '';
 
 /**
  * Татах төлөв.
- *
- * ⚠️ `blocked` ба `error` ХОЁР ӨӨР: эхнийх нь батлах ХҮСНЭГТ бэлэн биш
- *    (нэвтрэлт, эзэмшил, хүснэгт алга) — админы хийх зүйл; хоёрдугаарх нь
- *    query унасан — сүлжээний. Нэгтгэвэл админ юуг засахаа мэдэхгүй.
  */
 type State =
   | { k: 'loading' }
@@ -87,9 +48,7 @@ type State =
   | { k: 'error'; msg: string }
   | {
     k: 'ready'; rows: AjilSubmission[]; /** батлагдсан ч буугаагүй (2026-09-24) */ approved: AjilSubmission[];
-    /** ⚠️ 2026-10-23 (UX аудит P1): сүүлийн 30 хоногт буцаасан — шалтгаантай (`loadAllReturned`); уншилт унавал `[]` */
     returned: AjilSubmission[];
-    /** ⚠️ 2026-10-01: татсан агшин — `classifyStuck`-ийн «одоо» (render дотор `Date.now()` дуудахгүй) */
     at: number;
   };
 
@@ -102,12 +61,8 @@ type Detail =
 
 export function AjilBatlah() {
   const { user, status } = useAuth();
-  /* ⚠️ Нэмэлт ажлын ACL ӨӨРИЙН хадгалалттай — захиалахгүй бол админы
-     хуваарилалт энэ хуудсанд хүрэхгүй. */
   const [aclN, setAclN] = useState(0);
   useEffect(() => subscribeAjilAcl(() => setAclN((x) => x + 1)), []);
-  /* ⚠️ 2026-10-01: «Дахин буулгах» товч `ajilApprove` эрхээс хамаарна — эрх
-     ачаалагдмагц дахин зурна (эс бөгөөс анх `[]` үед нуугдсан хэвээр үлдэнэ). */
   useEffect(() => subscribeCaps(() => setAclN((x) => x + 1)), []);
 
   const [st, setSt] = useState<State>({ k: 'loading' });
@@ -121,14 +76,8 @@ export function AjilBatlah() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
-  /**
-   * ⚠️ 2026-10-01: энэ цонхонд буулгах оролдлого ДУУССАН илгээлтүүд — `fresh`
-   *    хүлээлгийг алгасна (батлагч алдааг хармагц шууд дахин буулгана).
-   */
   const [settled, setSettled] = useState<ReadonlySet<number>>(new Set());
-  /** ⚠️ 2026-10-01: илгээлт бүрийн СҮҮЛИЙН буулгалтын алдаа — мөр дээрээ үлдэнэ (дээрх баннер дараагийн үйлдэлд арилдаг) */
   const [applyErr, setApplyErr] = useState<ReadonlyMap<number, string>>(new Map());
-  /** ⚠️ 2026-10-04: «эцэг бүлэг олдсонгүй»-ээр унасан илгээлтүүд → `classifyStuck` `orphan` (буцаах товчтой) */
   const [noParent, setNoParent] = useState<ReadonlySet<number>>(new Set());
   const afterApply = useCallback((oid: number, error: string | null, code?: string) => {
     setSettled((x) => new Set(x).add(oid));
@@ -151,16 +100,8 @@ export function AjilBatlah() {
   const me = (user?.username ?? '').trim().toLowerCase();
   const isSuper = roleForUser(user?.username) === 'super';
 
-  /* ⚠️ Салсны дараа setState дуудахгүй — `fetchDetail`-ийн async ачаалалт ба
-     үйлдлүүдийн `finally` хоёулаа энэ тугийг шалгана. */
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
-  /**
-   * ⚠️ 2026-10-09: ТҮГЖЭЭНИЙ ЦАГИЙН ТИК (`HuvaariBatlah`-ийн загвар, 45 с) — урьд нь түгжигчийг татсан
-   *    агшнаар (`st.at`) бодож, `AJIL_CLAIM_TTL` (10 мин) дууссан түгжээ хуудас сэргээтэл «X ажиллаж
-   *    байна» гэж үлддэг байв. `Date.now()` render-ийн гадна (react-hooks/purity).
-   */
-  /* ⚠️ 2026-10-21: серверийн цаг (`serverNow`) — түгжээний агшин серверийнх (`HuvaariBatlah`-ийн ⚠️) */
   const [now, setNow] = useState(() => serverNow());
   useEffect(() => {
     const id = window.setInterval(() => { if (!document.hidden) setNow(serverNow()); }, 45_000);
@@ -185,20 +126,12 @@ export function AjilBatlah() {
     const g = gen.current;
     setDetail((m) => new Map(m).set(oid, { k: 'loading' }));
     void (async () => {
-      /* ⚠️ `loadPayloadStamped` нь ӨӨРӨӨ `parsePayload`-оор задалж, эвдэрсэн бол
-         `null` буцаана — энд дахин задлах шаардлагагүй. */
       const r = await loadPayloadStamped(oid).catch(() => null);
       if (!alive.current || g !== gen.current) return;
       setDetail((m2) => new Map(m2).set(oid, r ? { k: 'ok', p: r.p, stamp: r.stamp } : { k: 'fail' }));
     })();
   }, []);
 
-  /**
-   * ⚠️ 2026-09-30: ДАРААЛАЛ ДАХИН УНШИГДАХАД КЭШИЙГ ЦЭВЭРЛЭНЭ. Урьд нь мөр
-   *    анх дэлгэхэд татсан агуулга хуудас refresh хийтэл хэвээр үлддэг байв —
-   *    зохиогч `updateAjil`-аар зассан ч батлагч ХУУЧИН мөрүүдийг харж батлах
-   *    боломжтой. Дэлгэгдсэн мөрийг шууд дахин татна, бусад нь дэлгэхэд.
-   */
   const resetDetail = useCallback(() => {
     gen.current += 1;
     setDetail(new Map());
@@ -208,14 +141,10 @@ export function AjilBatlah() {
   /* ══════════════════════ ТАТАХ ══════════════════════ */
   useEffect(() => {
     let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSt({ k: 'loading' });
     void (async () => {
       try {
-        /* ⚠️ ХҮСНЭГТИЙН БЭЛЭН БАЙДЛЫГ ЭХЛЭЭД — дөрвөн өөр шалтгаан, дөрвөн
-           өөр зөвлөгөө. ⚠️ `none` нь ЭНД ӨӨР: бусад батлах хүснэгт super
-           нэвтрэхэд автоматаар үүсдэг, энэ нь AGOL дээр ГАРААР нийтлэгдсэн
-           тул үүсэх зам байхгүй (`ajilBatlah.AjilTableState`-ийн ⚠️). */
         const t = await ajilTableState();
         if (!alive) return;
         if (!t.ok) {
@@ -226,17 +155,9 @@ export function AjilBatlah() {
                 ? tr('Батлах хүснэгт байгаа ч эзэмшигч нь танигдахгүй байна — админд мэдэгдэнэ үү.')
                 : t.why === 'error'
                   ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
-                  /* ⚠️ 2026-10-23 (UX аудит X2/X3): AGOL хасагдсан — үйлчилгээний нэрийг хэрэглэгчид харуулахгүй */
                   : tr('Нэмэлт ажлын батлах хүснэгт олдсонгүй — админд мэдэгдэнэ үү.') });
           return;
         }
-        /* ⚠️ `HEAD_FIELDS`-ийн хөнгөн байдал нь ГЭРЭЭ: `payload` (1,048,576
-           тэмдэгт) энд ТАТАГДАХГҮЙ, зөвхөн мөр дэлгэхэд `loadPayload`-оор
-           нэгийг. Projection-д нэмбэл хэдэн арван саналын агуулга зэрэг
-           татагдаж хуудас гацна. */
-        /* ⚠️ «Батлагдсан · буулгаагүй» (2026-09-24) — `materializeAdds` унасан
-           илгээлтүүд; хэвийн урсгалд хоосон. Хоёр query зэрэг. */
-        /* ⚠️ 2026-10-23 (UX аудит P1): «Буцаасан» хэсэг — ТУСЛАХ мэдээлэл тул уншилт унавал хоосон (дарааллыг хаахгүй) */
         const [rows, approved, returned] = await Promise.all([loadAllPending(), loadAllApproved(), loadAllReturned(30).catch(() => [])]);
         if (!alive) return;
         setSt({ k: 'ready', rows, approved, returned, at: serverNow() });
@@ -251,17 +172,12 @@ export function AjilBatlah() {
 
   /* ══════════════════════ ХАМРАХ ХҮРЭЭ ══════════════════════ */
   /**
-   * ⚠️ FAIL-CLOSED — `HuvaariBatlah`-тай ИЖИЛ дүрэм.
-   *
    * Энэ бол ҮЙЛДЛИЙН ХАЙРЦАГ. Өөр батлагчийн дараалал энд харагдах нь
    * (1) шуугиан, (2) `decideAjil` татгалзах товч дарахыг урих, (3) бусдын
    * ажлын хэмжээг гоожуулах. Тиймээс:
    *     `null`     → бүх pending
    *     `[...]`    → зөвхөн тэр бүлгүүд
    *     `[]`       → ХООСОН + «админаас багц гуй»
-   *
-   * ⚠️ Хатуу `super` нь хамаагүй бүгдийг харна: хуваарилалтыг засах хүн
-   *    өөрөө хуваарилалт байхгүйгээс болж харалгүй түгжигдэх ёсгүй.
    */
   const scope = useMemo(
     () => (status === 'off' || isSuper ? null : ajilScope(user?.username, 'approver')),
@@ -272,11 +188,6 @@ export function AjilBatlah() {
   const noScope = Array.isArray(scope) && scope.length === 0;
   /** Батлагчийн үүрэг ОГТ байхгүй — өөр шалтгаан, өөр мессеж */
   const noRole = status !== 'off' && !isSuper && !hasAjilRole(user?.username, 'approver');
-  /**
-   * ⚠️ 2026-10-06: ПАНЕЛИЙН «super» (override) — харагдац нээлттэй ч БАТЛАХ ХҮРЭЭ нь
-   *    хуваарилалтаас (`permissions.roleOf`-ийн ⚠️). Урьд нь тийм хүн хоосон дараалал /
-   *    хаалттай товчийг тайлбаргүй хардаг байв — доор ИЛ хэлнэ. Хүрээг энд ӨРГӨТГӨХГҮЙ.
-   */
   const panelSuper = status !== 'off' && !isSuper && roleOf(user?.username) === 'super';
 
   const all = useMemo(() => (st.k === 'ready' ? st.rows : []), [st]);
@@ -286,8 +197,6 @@ export function AjilBatlah() {
   );
   /**
    * Батлагдсан ч буугаагүй — ХҮРЭЭГЭЭР шүүж ангилсан (`classifyStuck`).
-   * ⚠️ 2026-10-01: бүртгэлгүй багцыг ХАЯХГҮЙ (`orphan` — тайлбартай, товчгүй);
-   *    урьд нь шүүгдэж батлагдсан ажил чимээгүй алга болдог байв.
    */
   const stuck = useMemo(
     () => (st.k === 'ready'
@@ -297,18 +206,12 @@ export function AjilBatlah() {
   );
   /**
    * «Дахин буулгах» эрх — батлагч ЭСВЭЛ админ (`mayReapply`; lib-д ч ижил шалгуур).
-   * ⚠️ `aclN` — эрх ачаалагдахад дахин бодно (`subscribeCaps`).
    */
   const canReapply = useMemo(
     () => mayReapply({ authOff: status === 'off', isSuper, hasApprove: hasCap(user?.username, 'ajilApprove') }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [status, isSuper, user?.username, aclN],
   );
-  /**
-   * ⚠️ 2026-10-01: `fresh` мөрийн хүлээлэг дуусахад дарааллыг ӨӨРӨӨ дахин уншина —
-   *    тэр хооронд батлагчийн цонх буулгасан бол мөр алга болно, эс бөгөөс товч
-   *    нээгдэнэ. Хэрэглэгч хуудсаа гараар шинэчлэх шаардлагагүй.
-   */
   const nextReady = useMemo(
     () => stuck.reduce((t, x) => (x.kind === 'fresh' && x.readyAt != null && x.readyAt < t ? x.readyAt : t), Infinity),
     [stuck],
@@ -345,7 +248,6 @@ export function AjilBatlah() {
     (x: AjilSubmission) => !!me && me === x.author.trim().toLowerCase(),
     [me],
   );
-  /* ⚠️ 2026-10-23 (UX аудит P1): «Буцаасан» — дарааллын ижил хүрээ (`scope`) ба шүүлт (хайлт · багц) */
   const returned = useMemo(() => {
     if (st.k !== 'ready') return [];
     const needle = q.trim().toLowerCase();
@@ -365,60 +267,26 @@ export function AjilBatlah() {
   /* ══════════════════════ МӨР ДЭЛГЭХ ══════════════════════ */
   const toggle = useCallback((oid: number) => {
     setOpen((cur) => (cur === oid ? null : oid));
-    /* ⚠️ Кэштэй бол ДАХИН ТАТАХГҮЙ: хумиж дэлгэх нь хүнд хүсэлт давтах
-       шалтгаан биш.
-       ⚠️ `fail`-ийг КЭШЛЭХГҮЙ (2026-09-25 аудит): түр сүлжээний алдаа
-       мөнхөд кэшлэгдэж, хуудас refresh хийтэл «Батлах» хаалттай үлддэг байв
-       (`reload` нь `detail`-ийг цэвэрлэдэггүй) — дахин дарахад дахин татна. */
     const cur = detail.get(oid);
     if (!cur || cur.k === 'fail') fetchDetail(oid);
   }, [detail, fetchDetail]);
 
   /* ══════════════════════ БАТЛАХ ══════════════════════ */
-  /**
-   * ⚠️ ХОЁР АЛХАМ (2026-09-24): `decideAjil` (төлөв `approved`) → `materializeAdds`
-   *    (үндсэн хүснэгтэд бүтэн жааз, төлөв `applied`). Хоёр дахь нь унавал
-   *    мөр `approved` хэвээр — «Батлагдсан · буулгаагүй» хэсэгт гарч, «Дахин
-   *    буулгах»-аар дахин оролдоно. Батлалтыг буцаахгүй: шийдвэр гарсан,
-   *    зөвхөн бичилт хоцорсон.
-   * ⚠️ Агуулга уншигдаагүй бол товч ХААЛТТАЙ (`Row`-д) — батлагч юу
-   *    батлахаа хараагүй байж батлах ёсгүй.
-   * ⚠️ 2026-10-23 (UX аудит P3 — МӨР ТУС БҮРИЙН ✓/✕ ХИЙГЭЭГҮЙ, санаатай): шийдвэр ИЛГЭЭЛТ БҮХЛЭЭРЭЭ. Илгээлт нь
-   *    урсгалын НЭГ мөр (нэг төлөв · нэг `stamp`) бөгөөд `materializeAdds` нэмэлт ажлуудыг эцэг-хүүхдийн дугаартай НЭГ
-   *    жааз болгон буулгадаг — хэсгийг батлаж хэсгийг буцаавал дугаарлалт · эцэг мөр тасарч, үлдсэн хэсэг шинэ илгээлт
-   *    болж дахин 1-р шатнаас эхлэх шаардлагатай (урсгал эвдэрнэ). Нэг мөр буруу бол бүхлээр нь шалтгаантай буцаана —
-   *    шалтгаанд аль мөр болохыг бичнэ.
-   */
   const approve = useCallback(async (x: AjilSubmission) => {
     if (busy) return;
-    /* ⚠️ БАТАЛГААЖУУЛНА (2026-09-23): батлах нь эх хуудсанд шууд мөр нэмдэг,
-       буцаах товчгүй тул мөрийн тоог нэрлээд асууна. Товч нь агуулга
-       уншигдсан үед л идэвхтэй тул `detail` энд бэлэн. */
     const d = detail.get(x.oid);
     if (d?.k !== 'ok') return;
     const n = d.p.adds.length;
     if (!(await askConfirm(tr('{0} мөрийг батлах уу? Батлагдмагц мөрүүд үндсэн хүснэгтэд шууд бичигдэнэ — «Хуваарь» ба «Гүйцэтгэл бөглөх» хоёуланд гарна.', num(n)), { ok: tr('Батлах') }))) return;
     if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
-    /* ⚠️ Шийдвэр СЕРВЕРТ гарсан эсэх — `catch`-д дараалал дахин уншихад
-       (2026-09-25 аудит): шийдвэрийн дараа юу ч шидсэн мөр `approved` болсон
-       тул «Шийдвэрлэх»-д хуучирсан хэвээр үлдэж, дахин «Батлах» нь «аль хэдийн
-       шийдвэрлэсэн» гэж гацдаг байв. */
     let decided = false;
     try {
-      /* ⚠️ 2026-10-12 (дарааллын аудит): ГЭЙТ ШИЙДВЭРИЙН ӨМНӨ (`ajilApply.busyGate`, зөвхөн уншина) — хуваарийн
-         батлагч түгжсэн/хэсэгчлэн бичсэн · обьёмын батлалт явж буй · гүйцэтгэлийн архивлалт үед шийдвэр ГАРГАХГҮЙ.
-         Урьд нь `decideAjil` → `approved` бичигдээд `materializeAdds` гэйтэд унаж, илгээлт «Батлагдсан · буулгаагүй»-д
-         гацдаг байв (батлагч буцааж ч чадахгүй — шийдвэр гарсан). Уншилт унавал гэйт өөрөө хаана (fail-closed).
-         `materializeInner` доторх гэйт давхар хамгаалалт хэвээр. */
       const gate = await busyGate(x.pkgKey);
       if ('error' in gate) {
         setErr(tr('Буулгах боломжгүй тул шийдвэр гаргасангүй: {0}', userError(gate.error)));
         return;
       }
-      /* ⚠️ 2026-10-22 (аудит №3): ЭЦЭГ БҮЛЭГ ШИЙДВЭРИЙН ӨМНӨ (`ajilApply.parentsCheck`) — эцэг нь хуудсанд алга мөртэй
-         илгээлтийг батлавал «Батлагдсан» бичигдээд буулгалт «эцэг олдсонгүй» гэж гацдаг байв. Одоо батлахгүй, буцаах
-         шалтгааныг стандарт текстээр (`NO_PARENT_REASON`) бөглөж батлагчийг «Буцаах» руу чиглүүлнэ. */
       const pc = await parentsCheck(x.pkgKey, d.p.adds);
       if (!alive.current) return;
       if (!pc.ok) {
@@ -430,29 +298,15 @@ export function AjilBatlah() {
         oid: x.oid,
         approve: true,
         approver: user?.username ?? '',
-        /* ⚠️ `author` нь ЗӨВХӨН сүлжээнээс өмнөх хямд шалгалт (өөрийгөө
-           батлахыг таслах). Жинхэнэ дүрэм нь СЕРВЕРИЙН мөрөөс уншигдана —
-           UI-ийн утгыг хэзээ ч дүрэм гэж авч болохгүй. */
         author: x.author,
-        /* ⚠️ 2026-09-30: ХАРСАН хувилбарын тэмдэг — зохиогч энэ хооронд
-           `updateAjil`-аар зассан бол `decideAjil` татгалзана (`stale`). */
         stamp: d.stamp,
       });
       if (!r.ok) {
-        /* ⚠️ 2026-10-06 аудит: түүхий серверийн мөрийг `userError`-оор */
         setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'));
-        /* ⚠️ Хуучирсан бол дараалал + агуулгыг дахин уншиж ШИНЭ хувилбарыг харуулна */
         if (r.stale) reload();
         return;
       }
       decided = true;
-      /* ⚠️ Бичилт — `pkgKey`-г серверийнхтэй тулгуулна (`materializeAdds`).
-         ⚠️ 2026-09-30: `stamp` — шийдвэр ба бичилтийн завсарт агуулга
-         солигдвол батлагчийн хараагүй мөрийг бичихгүй. */
-      /* ⚠️ 2026-10-06 аудит: БҮТЭН ЖААЗ бичиж байхад (≈1,400 мөр, 500-аар багцлан `applyAdds`)
-         F5/таб хаах/харагдац солихыг АСУУНА (`navGuard` → `beforeunload` · Portal) — FillNew-ийн
-         'fillnew-send'-ийн ижил. Урьд нь хамгаалалтгүй тул дунд нь тасарвал хагас жааз үлдэж
-         багцыг түгжинэ. `finally`-д ЗААВАЛ цэвэрлэнэ. */
       setNavDirty('ajil-apply', true, tr('Нэмэлт ажлыг хуудсанд буулгаж байна'));
       let m: Awaited<ReturnType<typeof materializeAdds>>;
       try {
@@ -461,17 +315,10 @@ export function AjilBatlah() {
         setNavDirty('ajil-apply', false);
       }
       if (!alive.current) return;
-      /* ⚠️ 2026-10-01: оролдлого ДУУССАН — «Батлагдсан · буулгаагүй»-д хүлээлэггүй
-         шууд «Дахин буулгах» гарна, шалтгаан мөр дээрээ үлдэнэ. */
       afterApply(x.oid, m.ok ? null : m.error, m.ok ? undefined : m.code);
-      /* ⚠️ 2026-10-08: `materializeAdds`-ийн `warn` (хуваарийн илгээлт хүлээгдэж байна) — мэдэгдлийн ард залгана */
-      /* ⚠️ 2026-10-09: `already` (мөрүүд аль хэдийн хуудсанд / өөр таб буулгасан) бол «0 мөр бичигдэв» биш —
-         `reapply`-ийн ижил салаалалт */
       if (m.ok) setNote((m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Батлагдаж хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added))) + (m.warn ? ' ' + m.warn : ''));
       else setErr(tr('Батлагдсан, гэвч хуудсанд буулгаж чадсангүй: {0} — «Батлагдсан · буулгаагүй» хэсгээс дахин буулгана уу.', m.error));
       setOpen(null);
-      /* ⚠️ БҮТЭН ДАХИН УНШИНА, локал хасалт БИШ: өөр батлагч зуур шийдсэн
-         байж болно. Локал мутациар дараалал хүснэгтээсээ чимээгүй зөрнө. */
       reload();
     } catch (e) {
       if (!alive.current) return;
@@ -488,27 +335,19 @@ export function AjilBatlah() {
   }, [busy, user, reload, detail, afterApply]);
 
   /* ══════════════════════ ДАХИН БУУЛГАХ ══════════════════════
-   * ⚠️ Зөвхөн `approved` (батлагдсан ч буугаагүй) мөрд. `materializeAdds` нь
-   *    идемпотент — өмнөх оролдлого мөрийг бичээд тэмдэглэж амжаагүй бол
-   *    давхардлыг хаяж зөвхөн тэмдэглэнэ.
-   * ⚠️ 2026-10-01: давхар дарах / өөр табын зэрэгцээ оролдлогыг lib өөрөө барина
-   *    (`inflight` + түгжээ → дараагийнх нь `applied`-ийг уншаад юу ч бичихгүй).
-   *    Алдаа мөр дээрээ үлдэнэ (`applyErr`). */
+   */
   const reapply = useCallback(async (x: AjilSubmission) => {
     if (busy) return;
     setBusy(true); setErr(''); setNote('');
-    /* ⚠️ 2026-10-06 аудит: бичилт явж байхад гарахыг асууна (`approve`-ийн ⚠️) */
     setNavDirty('ajil-apply', true, tr('Нэмэлт ажлыг хуудсанд буулгаж байна'));
     try {
       const m = await materializeAdds({ pkgKey: x.pkgKey, ajilOid: x.oid });
       if (!alive.current) return;
       afterApply(x.oid, m.ok ? null : m.error, m.ok ? undefined : m.code);
-      /* ⚠️ 2026-10-09: `warn` нь `already` замд ч ирдэг (`materializeInner`) — урьд нь зөвхөн бичсэн замд залгагддаг байв */
       if (m.ok) setNote((m.already ? tr('Мөрүүд аль хэдийн хуудсанд байна — «буулгасан» гэж тэмдэглэв.') : tr('Хуудсанд орлоо — {0} мөр үндсэн хүснэгтэд бичигдэв.', num(m.added))) + (m.warn ? ' ' + m.warn : ''));
       else setErr(tr('Хуудсанд буулгаж чадсангүй: {0}', m.error));
       reload();
     } catch (e) {
-      /* ⚠️ Эрхгүй (`requireCap`) зэрэг шидсэн алдаа — мөн мөр дээр */
       if (!alive.current) return;
       const msg = userError(e);
       afterApply(x.oid, msg);
@@ -520,8 +359,7 @@ export function AjilBatlah() {
   }, [busy, reload, afterApply]);
 
   /* ══════════════════════ ГАЦСАН БАТЛАЛТЫГ БУЦААХ (2026-10-04) ══════════════════════
-   * ⚠️ `orphan` (эцэг бүлэг алга / бүртгэлгүй багц) — дахин буулгах нь хэзээ ч бүтэхгүй тул
-   *    батлагч/админ илгээлтийг шалтгаантай нь нэмэгчид буцаана (`ajilBatlah.returnStuckAjil`). */
+   */
   const returnStuck = useCallback(async (x: AjilSubmission, why: string) => {
     if (busy) return;
     if (!(await askConfirm(tr('Батлагдсан ч хуудсанд буулгах боломжгүй илгээлтийг нэмэгчид буцаах уу? Шалтгаан: {0}', why), { ok: tr('Нэмэгчид буцаах') }))) return;
@@ -543,12 +381,7 @@ export function AjilBatlah() {
   /* ══════════════════════ БУЦААХ ══════════════════════ */
   const reject = useCallback(async (x: AjilSubmission) => {
     const why = (reason.get(x.oid) ?? '').trim();
-    /* ⚠️ Шалтгаан ЗААВАЛ — `decideAjil`-ийн домэйн дүрмийн UI тусгал.
-       Жинхэнэ гэйт нь тэнд хэвээр; энэ нь зөвхөн урьдчилан хэлэх. */
     if (busy || !why) return;
-    /* ⚠️ 2026-09-30: БАТАЛГААЖУУЛНА — буцаалт нь буцаах замгүй бөгөөд шалтгаан
-       нэмэгчид шууд харагдана (`Huvaari` буцаагдсан илгээлтийг шалтгаантай нь
-       нооргонд буулгана). */
     if (!(await askConfirm(tr('Илгээлтийг буцаах уу? Бичсэн шалтгаан нэмэгчид илгээгдэнэ — нэмэгч засаад дахин илгээнэ.'), { ok: tr('Буцаах') }))) return;
     if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
@@ -560,8 +393,6 @@ export function AjilBatlah() {
         approver: user?.username ?? '',
         author: x.author,
         reason: why,
-        /* ⚠️ 2026-09-30: агуулга уншигдсан бол ХАРСАН хувилбарыг тулгана;
-           уншигдаагүй (эвдэрсэн агуулга) бол буцаалт нээлттэй хэвээр. */
         stamp: d?.k === 'ok' ? d.stamp : undefined,
       });
       if (!r.ok) {
@@ -581,13 +412,7 @@ export function AjilBatlah() {
   }, [reason, busy, user, reload, detail]);
 
   /* ══════════════════════ ИЛГЭЭЛТЭЭ ТАТАХ ══════════════════════
-   * ⚠️ Зохиогчийн ӨӨРИЙН үйлдэл — «Өөрийн илгээсэн» хэсэгт л гарна.
-   *    `decideAjil` нь зохиогч=батлагчийг татгалздаг тул үүнгүйгээр
-   *    зохиогч алдаатай илгээлтээ буцаах замгүй болж, өөр батлагч
-   *    шийдтэл багц түгжээтэй үлдэнэ.
-   * ⚠️ Мөрүүдийг «Хуваарь» хуудас руу ЭНДЭЭС буулгах боломжгүй (`adds` нь
-   *    тэндхийн state) — зохиогч тэнд «Илгээлтээ татах»-аар буцааж авах эсвэл
-   *    дахин нэмнэ. Тиймээс баталгаажуулах цонхонд түүнийг ИЛ хэлнэ. */
+   */
   const withdraw = useCallback(async (x: AjilSubmission) => {
     if (busy) return;
     if (!(await askConfirm(tr('Илгээлтээ татах уу? Батлагч шийдвэрлэхээ болино; мөрүүдээ «Хуваарь» хуудсанд дахин нэмнэ.'), { ok: tr('Илгээлтээ татах') }))) return;
@@ -626,7 +451,6 @@ export function AjilBatlah() {
         />
         <select className={s.select} value={grp} onChange={(e) => setGrp(e.target.value)} aria-label={tr('Бүх багц')}>
           <option value={ALL}>{tr('Бүх багц')}</option>
-          {/* ⚠️ 2026-10-09 (аудит №6): багцын нэр нь ӨГӨГДӨЛ — `tr()`-ээр орчуулахгүй */}
           {groupOpts.map((g) => <option key={g} value={g}>{g}</option>)}
         </select>
         {dirty && (
@@ -635,14 +459,12 @@ export function AjilBatlah() {
           </button>
         )}
         <span className={s.spacer} />
-        {/* ⚠️ 2026-10-19: ачаалагдаагүй/унасан үед «—» — «0 илгээлт» алдааны мэдэгдлийн хажууд худал (null ≠ 0) */}
         <span className={s.total}>{tr('{0} илгээлт', st.k === 'ready' ? num(filtered.length) : '—')}</span>
       </div>
 
       <div className={s.body}>
         {err && <div className={s.error} role="alert">{err}</div>}
         {note && <div className={s.note} role="status">{note}</div>}
-        {/* ⚠️ 2026-10-06: панелийн super-т хүрээ хуваарилалтаас гэдгийг ИЛ хэлнэ (`panelSuper`) */}
         {st.k === 'ready' && panelSuper && (noRole || noScope || outside) && (
           <div className={s.note} role="note">
             {tr('Хүрээ нь хуваарилалтаас — танд энэ багц хуваарилагдаагүй. Панелийн «super» үүрэг зөвхөн харагдацыг нээнэ; батлахын тулд «Нэмэлт ажлын эрх» хэсэгт багц хуваарилна уу.')}
@@ -675,15 +497,11 @@ export function AjilBatlah() {
               </div>
               {todo.length === 0 ? (
                 <div className={s.empty}>
-                  {/* ⚠️ ГУРВАН ӨӨР ШАЛТГААН, гурван өөр мессеж. Нэгтгэвэл
-                      батлагч «ажил алга» гэж ойлгоод хүлээсээр байна. */}
                   {noRole
                     ? tr('Танд нэмэлт ажил батлах үүрэг олгогдоогүй байна. Админ «Нэмэлт ажлын эрх» хэсэгт батлагчаар томилсны дараа саналууд энд харагдана.')
                     : noScope
                       ? tr('Танд нэг ч багц хуваарилагдаагүй байна. Админ «Нэмэлт ажлын эрх» хэсэгт багц зааж өгсний дараа батлах ажил харагдана.')
                       : outside
-                        /* ⚠️ Хүрээнээс гадуурх ТООГ ХЭЛЭХГҮЙ — тэр нь өөр
-                           батлагчийн ажлын хэмжээ. */
                         ? tr('Таны багцуудад батлах нэмэлт ажил алга.')
                         : dirty
                           ? tr('Шүүлтэнд тохирох илгээлт алга.')
@@ -701,11 +519,6 @@ export function AjilBatlah() {
               ))}
             </div>
 
-            {/* ⚠️ БАТЛАГДСАН · БУУЛГААГҮЙ (2026-09-24) — `materializeAdds` унасан
-                илгээлтүүд. Хэвийн урсгалд ХООСОН тул хэсэг нь зөвхөн байхад
-                гарна. Зохиогч=батлагч дүрэм ЭНД ҮЙЛЧЛЭХГҮЙ: шийдвэр аль
-                хэдийн гарсан, зөвхөн бичилт хоцорсон — хүрээндээ байгаа ямар
-                ч батлагч дахин буулгаж болно. */}
             {stuck.length > 0 && (
               <div className={s.list} style={{ marginTop: 18 }}>
                 <div className={s.groupHead}>
@@ -715,9 +528,6 @@ export function AjilBatlah() {
                 <div className={s.note} role="status">
                   {tr('Эдгээр илгээлт батлагдсан боловч үндсэн хүснэгтэд бичигдээгүй (сүлжээ, зэрэгцээ батлалт). «Дахин буулгах» дарна уу — давхар мөр үүсэхгүй.')}
                 </div>
-                {/* ⚠️ 2026-10-01: ангилал бүрд ӨӨР тайлбар — товч зөвхөн `retry` ба
-                    эрхтэй (батлагч/админ) үед. `fresh` нь товчгүй: өөр компьютер
-                    дээрх батлагчийн цонх яг одоо бичиж байж магадгүй. */}
                 {stuck.map(({ sub: x, kind, readyAt }) => (
                   <Row
                     key={x.oid} sub={x} open={open === x.oid} onToggle={toggle}
@@ -744,10 +554,6 @@ export function AjilBatlah() {
               </div>
             )}
 
-            {/* ⚠️ ӨӨРИЙН ИЛГЭЭЛТ — ТУСДАА ХЭСЭГ, нийлүүлж хаагаагүй.
-                `decideAjil` нь өөрийгөө батлахыг ХОЁР давхаргад татгалздаг;
-                UI нь товч дарахаас ӨМНӨ хэлэх ёстой. Хаагдсан товчийг
-                бусад мөрийн дунд тавибал «эвдэрсэн» гэж ойлгогдоно. */}
             {own.length > 0 && (
               <div className={s.list} style={{ marginTop: 18 }}>
                 <div className={s.groupHead}>
@@ -766,9 +572,6 @@ export function AjilBatlah() {
               </div>
             )}
 
-            {/* ⚠️ 2026-10-23 (UX аудит P1): БУЦААСАН — сүүлийн 30 хоног, шалтгаантай. Урьд нь буцаасны дараа илгээлт
-                жагсаалтаас алга болж, батлагч юуг яагаад буцаасныг хаанаас ч харах боломжгүй, тоо нь ч байгаагүй.
-                Эвхэгдсэн (`details`) — дарааллыг дарахгүй. Зөвхөн харуулна, үйлдэлгүй. */}
             {returned.length > 0 && (
               <details className={s.list} style={{ marginTop: 18 }}>
                 <summary className={s.groupHead}>
@@ -782,12 +585,11 @@ export function AjilBatlah() {
                         <span className={s.ajil}>{PKG_BY_KEY.get(x.pkgKey)?.label ?? x.pkgKey}</span>
                         <span className={s.meta}>
                           {tr('{0} илгээсэн · {1} буцаасан · {2} · {3} мөр', x.author, x.approver ?? '—',
-                            /* ⚠️ 2026-10-23 (E6): `format.date` — бусад огноотой нэг хэлбэр */ date(x.approverAt), num(x.rowCount))}
+ date(x.approverAt), num(x.rowCount))}
                         </span>
                       </span>
                       <div className={s.reasonBox}>
                         <div className={s.reasonLabel}>{tr('Буцаасан шалтгаан')}</div>
-                        {/* ⚠️ 2026-10-26: системийн эх текстийг идэвхтэй хэлээр (`displayAjilReason`) */}
                         {displayAjilReason(x.reason) || '—'}
                       </div>
                     </div>
@@ -796,11 +598,6 @@ export function AjilBatlah() {
               </details>
             )}
 
-            {/* ⚠️ БҮРТГЭЛГҮЙ БАГЦ — мөрийг ХАЯХГҮЙ. Хаявал гацсан санал
-                мөнхөд харагдахгүй болж, тэр багцад шинэ илгээлт хийх
-                боломжгүй болно (`submitAjil` нь pending байвал татгалздаг).
-                Батлах хаалттай (`Pkg` объект байхгүй), БУЦААХ нээлттэй —
-                гацлаас гарах цорын ганц зам. */}
             {orphan.length > 0 && (
               <div className={s.list} style={{ marginTop: 18 }}>
                 <div className={s.groupHead}>
@@ -813,8 +610,6 @@ export function AjilBatlah() {
                     detail={detail.get(x.oid)} busy={busy} holder={holderOf(x, st.at)}
                     reason={reason.get(x.oid) ?? ''}
                     onReason={(v) => setReason((m) => new Map(m).set(x.oid, v))}
-                    /* ⚠️ Өөрийн илгээлт бол товч ГАРАХГҮЙ — дарахад
-                       `decideAjil` татгалзах л байсан, эвдэрсэн товч. */
                     onReject={isOwn(x) ? undefined : () => void reject(x)}
                     onWithdraw={isOwn(x) ? () => void withdraw(x) : undefined}
                     ownWhy={tr('Энэ багцын түлхүүр бүртгэлд алга — батлах боломжгүй. Буцаавал нэмэгч зөв багцаар дахин илгээнэ.')}
@@ -849,16 +644,10 @@ function Row({
   onWithdraw?: () => void;
   /** Батлагдсан ч буугаагүй мөрийг дахин буулгана (2026-09-24) — зөвхөн «Батлагдсан · буулгаагүй» хэсэгт */
   onReapply?: () => void;
-  /** ⚠️ 2026-10-04: буулгах боломжгүй (`orphan`) батлагдсан илгээлтийг нэмэгчид буцаана */
   onReturnStuck?: () => void;
   /** Төлвийн тэмдэг — анхдагч «Хүлээгдэж буй» */
   badge?: string;
-  /** ⚠️ 2026-10-01: энэ цонхны СҮҮЛИЙН буулгалтын алдаа — «Батлагдсан · буулгаагүй»-д */
   lastError?: string;
-  /**
-   * ⚠️ 2026-10-09: илгээлтийг СЕРВЕР дээр түгжсэн хүн (`ajilBatlah.ajilClaimHolder` — өөр батлагч
-   *    яг одоо шийдвэрлэж/буулгаж байна). Урьд нь харагддаггүй тул дарахад л «яг одоо…» алдаа гардаг байв.
-   */
   holder?: string | null;
 }) {
   const pkg = PKG_BY_KEY.get(sub.pkgKey);
@@ -878,15 +667,9 @@ function Row({
           <span className={s.meta}>
             {sub.author}
             {' · '}
-            {/* ⚠️ `authorSent` нь `null` байж болно — «—» гэж бичнэ
-                (null ≠ 0 дүрэм).
-                ⚠️ `dayKey` (ОРОН НУТГИЙН), `msToDay` (UTC) БИШ: `authorSent`
-                нь ЦАГТАЙ агшин тул UTC-ээр өдөр болгоход УБ-д 00:00–08:00-д
-                илгээснийг өчигдөр гэж харуулна. */}
             {sub.authorSent == null ? '—' : dayKey(sub.authorSent)}
             {' · '}
             {tr('{0} мөр', num(sub.rowCount))}
-            {/* ⚠️ 2026-10-09: түгжигч — хумисан мөрөнд ч харагдана (`holder`-ийн ⚠️) */}
             {holder && !busy ? ` · ${tr('{0} ажиллаж байна', holder)}` : ''}
           </span>
         </span>
@@ -906,17 +689,11 @@ function Row({
             <Loading />
           )}
           {detail?.k === 'fail' && (
-            /* ⚠️ Задарсангүй нь АЛДАА. Батлах хаагдана — юу батлахаа харж
-               чадахгүй; буцаах нээлттэй. */
             <div className={s.error} role="alert">
               {tr('Илгээлтийн агуулга уншигдсангүй — батлах боломжгүй. Буцаавал нэмэгч дахин илгээнэ.')}
             </div>
           )}
 
-          {/* ⚠️ МӨР БҮРИЙГ ИЛ ХАРУУЛНА — батлагч «юуг гэрээнд нэмэх гэж
-              байна» гэдгийг нэрээр нь харах ёстой. Тоо ганцаараа (жишээ нь
-              «3 мөр») хангалтгүй: шинэ ажлыг зөвшөөрөх нь гэрээний хамрах
-              хүрээг өргөтгөх шийдвэр. */}
           {p && p.adds.length > 0 && (
             <div className={s.chWrap}>
               <div className={s.chHead}>
@@ -932,10 +709,6 @@ function Row({
                     <span className={s.chBlk}>
                       {tr('Эцэг: {0}', a.parentWork || '—')}
                     </span>
-                    {/* ⚠️ `null` нь «хэмжилтгүй» — 0 гэж БИЧИХГҮЙ. */}
-                    {/* ⚠️ 2026-09-30: БУТАРХАЙГ ХАДГАЛНА (≤3 орон, бөглөх хуудасны `qty`-тэй ижил) —
-                        `num` анхдагчаар 0 оронтой тул 0.4 → «0», 142.96 → «143» гэж
-                        батлагчид БУРУУ тоо харагддаг байв. */}
                     <span className={s.chVal}>
                       {a.vol == null ? '—' : num3(a.vol)}
                       {a.unit == null ? '' : ` × ${num3(a.unit)}`}
@@ -953,14 +726,10 @@ function Row({
           )}
 
           {ownWhy && (
-            /* ⚠️ ХАРАГДАХ мөр, `title` ганцаараа БИШ — хүрэлцэх төхөөрөмж
-               дээр `title` хэзээ ч гарахгүй. */
             <div className={s.note} role="status">{ownWhy}</div>
           )}
 
           {lastError && (
-            /* ⚠️ 2026-10-01: дээд баннер дараагийн үйлдэлд арилдаг — шалтгаан
-               мөр дээрээ үлдэж, батлагч/админ юуг засахаа харна. */
             <div className={s.error} role="alert">{tr('Сүүлийн буулгалт унав: {0}', lastError)}</div>
           )}
 
@@ -974,7 +743,6 @@ function Row({
                 className={s.field}
                 rows={2}
                 value={reason}
-                /* ⚠️ 2026-10-06 аудит: HuvaariBatlah-ийн ижил дээд хязгаар — `decideAjil` мөн тайрна */
                 maxLength={REASON_MAX}
                 onChange={(e) => onReason(e.target.value)}
                 disabled={busy}
@@ -982,9 +750,6 @@ function Row({
             </>
           )}
 
-          {/* ⚠️ 2026-09-30: ХААЛТТАЙ ТОВЧНЫ ШАЛТГААН ИЛ МӨРӨӨР — `title` хүрэлцэх
-              төхөөрөмж дээр гарахгүй тул товч яагаад дарагдахгүйг хэлэх ганц зам.
-              Агуулга уншигдаагүй (`fail`) бол дээрх алдааны мөр аль хэдийн хэлсэн. */}
           {(() => {
             const why: string[] = [];
             if (busy) why.push(tr('Өөр үйлдэл хийгдэж байна — дуусахыг хүлээнэ үү.'));
@@ -1002,8 +767,6 @@ function Row({
               <button
                 type="button"
                 className={`${s.btn} ${s.ok}`}
-                /* ⚠️ Агуулга уншигдаагүй бол БАТЛАХГҮЙ — батлагч юу
-                   батлахаа хараагүй байна. */
                 disabled={busy || detail?.k !== 'ok'}
                 title={p
                   ? tr('Батлагдмагц мөрүүд үндсэн хүснэгтэд шууд бичигдэнэ.')

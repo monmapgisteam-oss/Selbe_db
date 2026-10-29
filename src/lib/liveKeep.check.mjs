@@ -1,11 +1,6 @@
 /**
  * `live.cached`-ийн `keep` — ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ (сүлжээгүй).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/liveKeep.check.mjs
- *
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): «Багц ажлын оноо», CEO самбарын картууд ба
- *    `loadFinData` хэсэгчилсэн (аль нэг эх унасан) үр дүнгээ 1–5 минут «хуучин нөөц» болгон
- *    барьдаг байв — эх сэргэсэн ч дахин оролдохгүй. Одоо: тэр үр дүн одоогийн дуудагчдад
- *    хүрнэ (унасан эхийн нэр дэлгэцэнд), ДАРААГИЙН дуудалт шинээр татна.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/liveKeep.check.mjs
  */
 import assert from 'node:assert/strict';
 import { cached } from '@/lib/live';

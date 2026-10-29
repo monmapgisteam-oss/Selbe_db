@@ -1,9 +1,9 @@
 /**
  * «ЭРСДЭЛИЙН ЗАГВАР» ХАРАГДАЦЫН РЕГРЕСС (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/ersdelUi.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/ersdelUi.check.mjs
  *
- * Хамгаалж буй алдаанууд (засвар бүр `⚠️ 2026-09-30` тэмдэгтэй):
- *   1. Загварчлалын мужийн өнгө 'var(--…)' → `Overlay.rgb()` NaN → муж ЦАГААН.
+ * Хамгаалж буй алдаанууд (засвар бүр ` 2026-09-30` тэмдэгтэй):
+ *   1. Загварчлалын мужийн өнгө 'var(--…)' → `Overlay.rgb` NaN → муж ЦАГААН.
  *   2. Шинжилгээ өөрөө асаасан давхаргууд дараагийн шинжилгээг ЗӨВХӨН тэднээр хязгаарладаг.
  *   3. Цаг хугацааны агшинд хуурай ч ус ирэх нүдэнд «Энэ цэгт ус ирээгүй»; хуучин усны зам үлддэг.
  *   4. АЧИ-ийн цагираг «12%» (АЧИ 60) гэж бичдэг.
@@ -13,8 +13,6 @@
  *   8. Хувилбарын мөр «оргил урсац 26 м³/с» ↔ доорх «97.3 м³/с оргил урсац».
  *   9–13 (2026-10-01, «хэрэглэгч: бүгдийг зас»): FD2321 аюулын зэрэглэл · «Ирэх
  *      хугацаа» горим · оролтын тэмдэг · кэш/харьцуулалт/экспорт · вэб ажилтан.
- * ⚠️ 1–6 нь React/ArcGIS-ийн холболт тул ЭХ КОДООР шалгана (Node-д газрын зураг зурагдахгүй);
- *    7–8 нь жинхэнэ функцээр.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -34,7 +32,6 @@ assert.ok(/if \(!\/\^\[0-9a-f\]\{6\}\/i\.test\(h\)\) return \[220, 38, 38\];/.te
 
 /* 2. Автоматаар асаасан давхарга `activeIds`-аас хасагдана, каталог хэрэглэгчийн сонголтыг бичнэ */
 assert.ok(src.includes('if (autoOn.current.has(l.id)) return;'));
-/* ⚠️ 2026-10-11 (аудит №7): лавлах давхарга (`REFERENCE_IDS`, khil1) идэвхтэйд тоологдохгүй */
 assert.ok(src.includes('visible.filter((id) => !autoOn.current.has(id) && !(REFERENCE_IDS as readonly string[]).includes(id))'));
 assert.ok(src.includes('setVisible={setVisibleUser}'));
 
@@ -42,8 +39,7 @@ assert.ok(src.includes('setVisible={setVisibleUser}'));
 assert.ok(src.includes("tr('Одоогоор ус алга')"));
 assert.ok(src.includes("if (!p || p.kind !== 'flood') setPath(null);"));
 
-/* 4. АЧИ-ийн цагираг — «%» биш АЧИ-ийн тоо.
-   ⚠️ 2026-10-01: CSS заль (`--aqi-text`) → `Ring`-ийн `text` проп */
+/* 4. АЧИ-ийн цагираг — «%» биш АЧИ-ийн тоо. */
 assert.ok(src.includes('text={num(aqi)}'), 'АЧИ цагираг `text` пропгүй');
 assert.ok(!src.includes("'--aqi-text':") && !css.includes('.aqiRing {'), 'хуучин CSS заль үлдэв');
 
@@ -61,7 +57,7 @@ assert.equal(SATURATE_HAZ, HAZARD_EXTREME);
 assert.equal(HAZARD_CLASS(HAZARD_EXTREME).label, 'Онц аюултай');
 assert.notEqual(HAZARD_CLASS(HAZARD_EXTREME - 0.01).label, 'Онц аюултай');
 
-/* 9. ⚠️ 2026-10-01: DEFRA FD2321 — HR = d·(v+0.5)+DF, 4 ангилал */
+/* 9. 2026-10-01: DEFRA FD2321 — HR = d·(v+0.5)+DF, 4 ангилал */
 {
   const near = (a, b) => Math.abs(a - b) < 1e-9;
   assert.equal(debrisFactor(0.25), 0);
@@ -74,7 +70,6 @@ assert.notEqual(HAZARD_CLASS(HAZARD_EXTREME - 0.01).label, 'Онц аюулта�
   assert.equal(hazardRating(0, 3), 0, 'хуурай нүд');
   assert.equal(HAZARD_CLASS(hazardRating(0.2, 0)).label, 'Бага');
   assert.equal(HAZARD_CLASS(hazardRating(0.3, 0.5)).label, 'Дунд');
-  /* ⚠️ Хуучин `d × v`-ээр 1.5 м ЗОГСОНГИ ус «Бага» гардаг байв — одоо «Өндөр» */
   assert.equal(HAZARD_CLASS(hazardRating(1.5, 0)).label, 'Өндөр');
   assert.equal(HAZARD_CLASS(hazardRating(1, 1.5)).label, 'Онц аюултай');
   assert.equal(HAZARD_CLASS(0.75).label, 'Дунд');
@@ -95,7 +90,7 @@ assert.notEqual(HAZARD_CLASS(HAZARD_EXTREME - 0.01).label, 'Онц аюулта�
   assert.ok(src.includes('HAZARD_LEGEND().map'), 'аюулын легенд ангиллаар');
 }
 
-/* 10. ⚠️ 2026-10-01: «Ирэх хугацаа» горим + легенд, CSS шатлал = uyr.ts */
+/* 10. 2026-10-01: «Ирэх хугацаа» горим + легенд, CSS шатлал = uyr.ts */
 {
   assert.ok(src.includes("['arrival', tr('Ирэх хугацаа')]"));
   assert.ok(src.includes("tr('Ус ирэх хугацаа')"));
@@ -105,12 +100,12 @@ assert.notEqual(HAZARD_CLASS(HAZARD_EXTREME - 0.01).label, 'Онц аюулта�
   }
 }
 
-/* 11. ⚠️ 2026-10-01: оролтын нүд + гидрографын тэмдэг газрын зурагт (`ersdel:` угтвар) */
+/* 11. 2026-10-01: оролтын нүд + гидрографын тэмдэг газрын зурагт (`ersdel:` угтвар) */
 assert.ok(ov.includes("const INLET_ID = 'ersdel:inlet';"));
 assert.ok(ov.includes("tr('Голын оролт · {0} м³/с'"));
 assert.ok(/mk\(INLET_ID\)/.test(ov));
 
-/* 12. ⚠️ 2026-10-01: загварчлалын кэш, харьцуулалт, ETA, экспорт, эрэмбэ */
+/* 12. 2026-10-01: загварчлалын кэш, харьцуулалт, ETA, экспорт, эрэмбэ */
 assert.ok(src.includes('const hit = simCache.current.get(key);'), 'кэш');
 assert.ok(src.includes('const compareAll = useCallback'), 'түвшний харьцуулалт');
 assert.ok(src.includes("tr('Үерийг бодож байна… {0}% · ~{1} с үлдлээ'"), 'ETA');
@@ -118,7 +113,7 @@ assert.ok(src.includes('damageCsv(exportRows())') && src.includes('damageGeoJSON
 assert.ok(src.includes("toggleSort('depth')"), 'дээд гүнээр эрэмбэлэх');
 assert.ok(src.includes('hazardPolygon(fd)'), 'мөрийг хялбарчилж асуулгад');
 
-/* 13. ⚠️ 2026-10-01: үерийн загварчлал ВЭБ АЖИЛТАНД (Next статик экспортын хэлбэр) */
+/* 13. 2026-10-01: үерийн загварчлал ВЭБ АЖИЛТАНД (Next статик экспортын хэлбэр) */
 {
   const sim = readFileSync(new URL('../lib/uyrSim.ts', import.meta.url), 'utf8');
   assert.ok(sim.includes("new Worker(new URL('./uyrSim.worker.ts', import.meta.url), { type: 'module' })"));
@@ -135,8 +130,6 @@ for (const lv of [1, 2, 3]) {
   assert.ok(!s.includes('оргил урсац'), s);
 }
 
-/* ⚠️ 2026-10-21 (аудит): мэдээллийн хайрцгийг хаах ГАНЦ зам `closeInfo` — `pickSeq` өсгөнө; `setHazInfo(null)`
-   нь `onMapPick`-ээс гадуур зөвхөн `closeInfo`-д (хоцорсон `queryFeatures` хаасан хайрцгийг сэргээхгүй) */
 {
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
   assert.ok(/const closeInfo = useCallback\(\(\) => \{\s*pickSeq\.current\+\+;\s*setHazInfo\(null\);\s*setFeatInfo\(null\);\s*setPath\(null\);\s*\}, \[\]\);/.test(code), '`closeInfo` алга/дутуу');

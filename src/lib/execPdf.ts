@@ -6,19 +6,12 @@
  *   1  Нүүр хуудас — гарчиг, товч тодорхойлолт, гол дөрвөн үзүүлэлт
  *   2  Гүйцэтгэлийн хураангуй — зургаан үзүүлэлт, гол дүгнэлт, агуулга
  *   3+ 1. Төслийн ерөнхий байдал … 5. Зөвшөөрөл
- *   ..  6. Дүгнэлт ба зөвлөмж
- *   ..  Хавсралт
- *
- * ⚠️ Өгөгдөл нь ЗӨВХӨН `ExecReport` — дэлгэц (`ExecReport.tsx`)-тэй ижил тоо.
- * ⚠️ Roboto фонтод ₮ БАЙХГҮЙ — `reportPdf.ts`-тэй ижил дүрмээр «төг» болгоно.
- * ⚠️ ТАЙЛАН ДҮГНЭЛТЭЭС ЭХЭЛДЭГГҮЙ: хураангуй хуудсан дээрх «гол дүгнэлт» нь
- *    заалт (уншигчийг чиглүүлэх), бүрэн дүгнэлт ба зөвлөмж нь баримтын ДАРАА.
+ *..  6. Дүгнэлт ба зөвлөмж
+ *..  Хавсралт
  */
 import type { TDocumentDefinitions, Content, TableCell, CustomTableLayout } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, dateTime } from '@/lib/format';
-/* ⚠️ 2026-10-15: палитр, ₮-ийн орлуулга, хүснэгтийн загвар нь `pdfTheme.ts`-д ЗӨӨГДСӨН —
-   AI туслахын тайлан (`lib/agent/reportPdf.ts`) ижил өнгөтэй байх ёстой (ГАНЦ эх). */
 import { PAPER, INK, INK2, INK3, MUTED, RULE, RULE2, SURF, ACCENT, RED, AMBER, T, tableLayout, th, td, tdBold } from '@/lib/pdfTheme';
 import {
   execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel,
@@ -35,7 +28,6 @@ import { execDeltaRows, packTrendOf, givenTrendOf, type ExecDeltas } from '@/lib
 
 /**
  * Бүлгийн гарчиг — дугаар, нэр, доор нь нэг мөрийн тодорхойлолт.
- * ⚠️ 2026-10-06 (аудит): дугаар ба нэр `execSections`-ээс — дэлгэцтэй (`ExecReport.tsx`) ГАНЦ эх.
  */
 const h2 = (k: ExecSectionKey, sub?: string): Content[] => [
   { text: T(`${execSectionNo(k)}. ${execSectionTitle(k)}`), style: 'h2' },
@@ -50,8 +42,6 @@ const lead = (t: string): Content => ({ text: T(t), style: 'lead' });
 
 /**
  * ГОЛ ҮЗҮҮЛЭЛТИЙН МӨР — шошго (жижиг, том үсэг), утга (том), тодотгол.
- * ⚠️ Хүрээгүй: лавлагаа баримт KPI-г хайрцаглахгүй, зөвхөн доогуур
- * зураасаар зааглана.
  */
 function kpiRow(items: { label: string; value: string; sub?: string }[]): Content {
   return {
@@ -84,17 +74,7 @@ function kpiRow(items: { label: string; value: string; sub?: string }[]): Conten
 
 /**
  * ХЭВТЭЭ ЗУРВАСАН ЧАРТ — нэр, зурвас, утга.
- * ⚠️ pdfmake-д чарт байхгүй тул хүснэгт + `canvas`-аар зурна. Зурвасын
- * өргөн нь хамгийн их утгад харьцуулагдана.
  */
-/* ⚠️ 2026-09-25: `value: null` = ХЭМЖИГДЭЭГҮЙ — зөвхөн зам (track) зурна, дүүргэлт
-   ОГТ зурахгүй. Урьд нь дуудагч `?? 0` өгч `Math.max(1, …)`-ээр 1pt зурвас
-   гардаг тул мэдээлэлгүй багц бодит 0%-тай ЯГ адилхан харагдаж байв (null ≠ 0;
-   дэлгэцийн RankBars null-д зурвас зурдаггүй). */
-/* ⚠️ 2026-09-25: `max` өгвөл тэнхлэг ТОГТМОЛ (хувийн чартад 100) — урьд нь
-   хамгийн их утгад харьцуулдаг тул 12% ахисан багц бүтэн зурвастай гарч
-   «дууссан» мэт харагддаг байв. Утга нь [0, max]-д хавчигдана. */
-/* ⚠️ 2026-10-28: хугацааны өөрчлөлт (`execPeriodCalc.execDeltaRows`) — дэлгэц/PNG-тэй НЭГ мөрүүд; PDF-ийн фонтод ▲▼ алга тул сумгүй */
 function deltaBlocks(d: ExecDeltas): Content[] {
   const rows = execDeltaRows(d, false);
   return [
@@ -177,12 +157,7 @@ const sevColor = (s: ExecFinding['sev']) => (s === 'bad' ? RED : s === 'warn' ? 
 
 /**
  * ДҮГНЭЛТИЙН БЛОК — хэсгийн шошго, мэдэгдэл, зөвлөмж.
- * ⚠️ Нэрсийн жагсаалт ЭНД БИШ, хавсралтад — 34 нэр дүгнэлтийн дунд орвол
- * гол санаа живнэ (2026-09-17, хэрэглэгчийн заавар).
  */
-/* ⚠️ 2026-09-21: хавсралтын дугаар `execAppendix`-ээс (ГАНЦ эх). Урьд нь энд
-   дүгнэлтийн индексээр «Хавсралт {idx+1}» гэж бодож, хавсралтын хэсэг нь
-   «Эхлээгүй ажил» байвал +1 шилжүүлдэг тул заалт ба гарчиг зөрдөг байв. */
 function findingBlocks(list: ExecFinding[], withAdvice: boolean, app: readonly ExecAppendix[]): Content[] {
   return list.flatMap((f): Content[] => {
     const no = execAppendixNo(app, f);
@@ -210,8 +185,6 @@ export async function buildExecDoc(
 
   /**
    * ЭХЛЭЭГҮЙ / ГЭРЭЭГҮЙ / ЭХЭЛСЭН — `execFinSplit` (2026-09-21, дэлгэцтэй НЭГ дүрэм).
-   * ⚠️ `given === 0` нь «олголт хийгдээгүй»; `contracted === false` нь «гэрээ
-   * байгуулаагүй» — ХОЁР ӨӨР утга, хольж болохгүй (урьд нь хольдог байв).
    */
   const { started: finStarted, zero: finZero, none: finNone } = execFinSplit(x);
   /** Хавсралт — дугаар ба дараалал `execAppendix`-ээс (дэлгэцтэй ИЖИЛ) */
@@ -219,21 +192,15 @@ export async function buildExecDoc(
   /** Захирамжийн эх үүсвэрүүдийн нийлбэр — хувийн СУУРЬ (нийт төсөв БИШ) */
   const srcSum = g.bySource.reduce((a, s) => a + s.amount, 0);
 
-  /* ⚠️ 2026-10-09 (аудит №2): өгүүлбэрт («{2} нэгж хувийн зөрүүтэй») нэгжгүй тоо — тойруулсны
-     дараа 0 бол тэмдэггүй («−0.0»/«+0.0» гарахгүй, `gdash.pts`-ийн дүрэм). KPI нүд `gapPts`-аар. */
   const gapText = p.gap == null ? '—'
     : Number(Math.abs(p.gap).toFixed(1)) === 0 ? num(0, 1)
       : `${p.gap > 0 ? '−' : '+'}${num(Math.abs(p.gap), 1)}`;
-  /* ⚠️ 2026-10-09 (аудит №2): ӨГӨГДЛИЙН агшин — дэлгэцийн «· Өгөгдөл:»-тэй ижил (`x.fetchedAt`,
-     5 мин кэш). Урьд нь PDF зөвхөн ҮҮСГЭСЭН огноог хэвлэдэг байв. */
   const dataAt = tr('Өгөгдөл: {0}', dateTime(x.fetchedAt));
   const buildPk = p.packs.filter((k) => k.kind === 'build');
   const topType = g.byType[0];
   const topReason = g.land.reasons[0];
   const bestPk = [...buildPk].filter((k) => k.progress != null).sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))[0];
   const worstPk = [...buildPk].filter((k) => k.progress != null).sort((a, b) => (a.progress ?? 0) - (b.progress ?? 0))[0];
-  /* ⚠️ 2026-09-25: ганц багц хэмжигдсэн эсвэл бүгд ижил хувьтай бол
-     «X хамгийн хурдтай, X хамгийн удаан» гэсэн утгагүй өгүүлбэр гарна. */
   const paceText = bestPk && worstPk && bestPk !== worstPk && bestPk.progress !== worstPk.progress
     ? tr(' {0} хамгийн хурдтай ({1}), {2} хамгийн удаан ({3}) явцтай байна.',
       bestPk.name, pct(bestPk.progress ?? 0, 1), worstPk.name, pct(worstPk.progress ?? 0, 1))
@@ -242,11 +209,6 @@ export async function buildExecDoc(
   return {
     pageSize: 'A4',
     pageMargins: [40, 52, 40, 44],
-    /* ⚠️ Дулаан цаасны өнгө — лавлагаа баримтын гол шинж.
-       ⚠️ `canvas` БИШ, ХҮСНЭГТ: pdfmake 0.3.11-д background-д canvas өгвөл
-       `processCanvas` → `addAll(undefined)` гэж унадаг (2026-09-17-нд
-       Node дээр хагаслан баталсан). Бүтэн хуудасны нэг нүдтэй хүснэгт ижил
-       үр дүн өгнө. */
     background: () => ({
       table: { widths: [595], heights: [842], body: [[{ text: '', fillColor: PAPER }]] },
       layout: 'noBorders',
@@ -286,7 +248,6 @@ export async function buildExecDoc(
       /* Агуулга */
       tocItem: { fontSize: 9, color: INK2, margin: [0, 0, 0, 6] },
     },
-    /* ⚠️ Нүүр хуудсанд толгой ГАРАХГҮЙ — тэр нь бие даасан хавтас */
     header: (page: number) => (page === 1 ? '' : {
       margin: [40, 24, 40, 0],
       stack: [
@@ -312,7 +273,6 @@ export async function buildExecDoc(
       { text: tr('Удирдлагын тайлан · Гүйцэтгэлийн тойм').toUpperCase(), style: 'eyebrow', margin: [0, 80, 0, 26] },
       { text: tr('Сэлбэ ухаалаг хотын'), style: 'coverTitle' },
       { text: tr('удирдлагын тайлан'), style: 'coverTitle', margin: [0, 0, 0, 16] },
-      /* ⚠️ Өргөнийг БАГАНААР хязгаарлана — `text`-д `width` байхгүй */
       {
         columns: [{
           width: 380,
@@ -328,24 +288,16 @@ export async function buildExecDoc(
           { stack: [
             { text: T(dateStr), style: 'coverFactV' },
             { text: tr('Тайлан үүсгэсэн огноо').toUpperCase(), style: 'coverFactL' },
-            /* ⚠️ 2026-10-09 (аудит №2): өгөгдлийн агшин (`dataAt`) */
             { text: T(dataAt), style: 'coverFactL' },
           ] },
           { stack: [{ text: tr('{0} ажлын багц', num(g.packages)), style: 'coverFactV' }, { text: tr('{0} төрөл', num(g.types)).toUpperCase(), style: 'coverFactL' }] },
-          /* ⚠️ 2026-09-25: хэмжилтийн эх `progressSrc`-ээр — нэгтгэлээс уншсан бол
-             «6 үе шат» гэж бичих нь худал (KPI-ийн шошготой ижил дүрэм). */
           { stack: [{ text: g.progressSrc === 'negtgel' ? tr('Нэгтгэл гүйцэтгэл') : tr('6 үе шат'), style: 'coverFactV' }, { text: tr('Жигнэсэн гүйцэтгэлийн хэмжилт').toUpperCase(), style: 'coverFactL' }] },
         ],
         columnGap: 18,
       },
-      /* ⚠️ 2×2 — мөнгөн дүн БҮТЭН бичигддэг (товчлол хориотой, `format.ts`)
-         тул дөрвүүлэнг нэг мөрөнд багтаахгүй */
       {
         margin: [0, 48, 0, 0],
         columns: [
-          /* ⚠️ 2026-09-25: тоо нь «Нэгтгэл гүйцэтгэл»-ийн төслийн нийт; нэгтгэл
-             уншигдаагүй бол 6 шатны нөөц бодолт — шошго нь `progressSrc`-ээр
-             ялгарна (урьдын «(6 шатаар)» тайлбар хуучирсан). */
           { stack: [{ text: g.progress == null ? '—' : pct(g.progress, 1), style: 'coverKpiV' }, { text: g.progressSrc === 'negtgel' ? tr('Төслийн нийт гүйцэтгэл') : tr('Төслийн нийт гүйцэтгэл (6 шатаар)'), style: 'coverKpiL' }] },
           { stack: [{ text: T(money(g.budget)), style: 'coverKpiV' }, { text: tr('Нийт төсөв'), style: 'coverKpiL' }] },
         ],
@@ -370,11 +322,9 @@ export async function buildExecDoc(
       ]),
       kpiRow([
         { label: tr('Газар чөлөөлөлт'), value: g.landPct == null ? '—' : pct(g.landPct, 1), sub: tr('{0} / {1} нэгж талбар', num(g.land.cleared), num(g.land.total)) },
-        /* ⚠️ 2026-10-06: хувийн тоологч = ГЭРЭЭЛСЭН багцын олголт (`givenContracted`), `given` БИШ — нэрлэнэ */
         { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1)) },
         { label: tr('Ажлын багц'), value: num(g.packages), sub: tr('{0} төрөл ажил', num(g.types)) },
       ]),
-      /* ⚠️ 2026-10-28: сонгосон хугацааны өөрчлөлт (дэлгэцийн 1.2-той ижил) */
       ...(deltas ? deltaBlocks(deltas) : []),
       {
         margin: [0, 16, 0, 0],
@@ -390,7 +340,6 @@ export async function buildExecDoc(
             width: 180,
             stack: [
               { text: tr('Тайлангийн бүтэц'), style: 'h3', margin: [0, 0, 0, 6] },
-              /* ⚠️ 2026-10-06: `execSections` — бүлгийн гарчиг ба дэлгэцийн агуулгатай ГАНЦ эх */
               ...execSections().map((sec): Content => ({
                 columns: [
                   { width: 14, text: String(sec.no), fontSize: 9, color: ACCENT, bold: true },
@@ -412,7 +361,6 @@ export async function buildExecDoc(
         money(g.budget),
         g.budget > 0 ? pct((g.contract / g.budget) * 100, 1) : '—',
         num(g.types),
-        /* ⚠️ Шошгыг байгаагаар нь — `toLocaleLowerCase` нь товчлол (ИД, ХО…)-ыг эвддэг байв */
         topType ? tr(' Хамгийн том эзлэх хувьтай нь {0} ({1}).', tr(topType.label), money(topType.cost)) : '')),
       cap(tr('Ажлын төрлөөр төсвийн хэмжээ')),
       barChart(g.byType.map((t) => ({ label: tr(t.label), value: t.cost, text: `${num(t.cost)} ₮` })), { nameW: 165, valW: 130 }),
@@ -433,8 +381,6 @@ export async function buildExecDoc(
 
       ...(g.bySource.length ? [
         { text: tr('Захирамжийн эх үүсвэр'), style: 'caption', pageBreak: 'before' } as Content,
-        /* ⚠️ 2026-09-25: эх үүсвэр/төлөв/шалтгааны шошго нь өгөгдлийн монгол
-           утга — дэлгэцтэй адил `tr()`-ээр (англи PDF-д монголоор үлддэг байв). */
         barChart(g.bySource.map((s) => ({
           label: tr(s.label),
           value: s.amount,
@@ -448,7 +394,6 @@ export async function buildExecDoc(
           ]),
           [tdBold(tr('Нийт')), tdBold(num(g.bySource.reduce((a, s) => a + s.n, 0)), true),
             tdBold(num(g.bySource.reduce((a, s) => a + s.contracted, 0)), true),
-            /* ⚠️ 2026-09-29 (аудит 10): дүн 0 бол мөрүүд «—» тул нийт ч «—» */
             tdBold(num(srcSum), true), tdBold(srcSum ? '100.0%' : '—', true)],
         ] }, layout: tableLayout } as Content,
         note(tr('Хувь нь захирамжийн нийт дүнд эзлэх жин; захирамжийн дүн бүх ажилд бүрэн бүртгэгдээгүй тул нийт төсвөөс бага гарна.')),
@@ -496,10 +441,7 @@ export async function buildExecDoc(
       /* ══════════ 3. БИЕТ ГҮЙЦЭТГЭЛ ══════════ */
       { text: '', pageBreak: 'before' },
       ...h2('prog',
-        tr('{0} багц, {1} блок, {2} өрх — барилга угсралтын биет хэмжигдэхүүн', num(buildPk.length), num(p.blocks), householdsLabel(p))), // ⚠️ 2026-10-09 (аудит №6): дутуу өрх ил
-      /* ⚠️ 2026-10-21: зөрүү = төлөвлөгөө − `actualLag` (хуваарьтай багцаар, `execFindings`-ийн ⚠️) —
-         хуваарьгүй багц хасагдсан үед бүх багцын `actual`-ийг зөрүүний хажууд тавьвал тоо нийлэхгүй. */
-      /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол зөрүүний өгүүлбэр БИШ — шалтгааны өгүүлбэр (дүгнэхгүй) */
+        tr('{0} багц, {1} блок, {2} өрх — барилга угсралтын биет хэмжигдэхүүн', num(buildPk.length), num(p.blocks), householdsLabel(p))),
       lead(!coverageOk(p.planCoverage) && p.gap != null
         ? tr('Орон сууцны барилга угсралтын хуваарь {0} хамарсан тул хоцрогдлыг дүгнэсэнгүй (төлөвлөгөө {1}, бодит {2}).',
           p.planCoverage == null ? '—' : pct(p.planCoverage, 1),
@@ -517,17 +459,12 @@ export async function buildExecDoc(
           gapText, paceText)),
       kpiRow([
         { label: tr('Бодит гүйцэтгэл'), value: p.actual == null ? '—' : pct(p.actual, 1), sub: p.asOf ? tr('хэмжилт {0}', p.asOf) : undefined },
-        /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хасагдсан бол «(хуваарьтай багцаар)» */
         { label: tr('Төлөвлөсөн'), value: p.planned == null ? '—' : pct(p.planned, 1), sub: p.planExcluded.length ? tr('(хуваарьтай багцаар)') : tr('хуваариас') },
-        /* ⚠️ 2026-10-09 (аудит №2): `gdash.gapPts` — порталын нэг хэлбэр */
-        /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол зөрүүг ДҮГНЭХГҮЙ — «—» + хамралт (`planProgress.coverageOk`,
-           дэлгэцийн удирдлагын тайлантай нэг дүрэм) */
         coverageOk(p.planCoverage)
           ? { label: tr('Зөрүү'), value: gapPts(p.gap), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') }
           : { label: tr('Зөрүү'), value: '—', sub: coverageNote(p.planCoverage) || undefined },
       ]),
       ...(p.planExcluded.length ? [note(planScopeNote(p.planExcluded) ?? '')] : []),
-      /* ⚠️ 2026-10-28: хугацааны өөрчлөлт утгын хажууд (сумгүй — фонт) */
       cap(deltas ? `${tr('Багц тус бүрийн биет гүйцэтгэл')} · ${tr('өөрчлөлт {0} → {1}', deltas.period.from, deltas.period.to)}` : tr('Багц тус бүрийн биет гүйцэтгэл')),
       barChart(buildPk.map((k) => {
         const t = packTrendOf(deltas, k.key, false);
@@ -535,7 +472,6 @@ export async function buildExecDoc(
       }), { nameW: 110, valW: deltas ? 120 : 70, max: 100 }),
       { table: { headerRows: 1, widths: ['*', 60, 70, 80], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Гүйцэтгэл'), true)],
-        /* ⚠️ 2026-10-11 (аудит №7): багцын өрх ч `householdsLabel` (null ≠ 0 — «—»/«N (дутуу)») */
         ...buildPk.map((k): TableCell[] => [
           td(k.name), td(num(k.blocks), true), td(householdsLabel(k), true),
           td(k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1), true,
@@ -549,14 +485,10 @@ export async function buildExecDoc(
         [th(tr('Түвшин')), th(tr('Хувь')), th(tr('Блок'), true)],
         ...p.levels.map((l): TableCell[] => [td(l.label), td(l.range), td(num(l.n), true)]),
       ] }, layout: tableLayout },
-      /* ⚠️ 2026-10-11 (аудит №7): бөглөгдөөгүй блок `levelCounts`-ийн 0–25%-д аль хэдийн орсон — нэмэлт мөр
-         байвал мөрүүдийн нийлбэр блокийн тооноос давна; тэмдэглэл (дэлгэцтэй нэг). */
       ...(p.noData > 0 ? [note(tr('үүнээс бөглөгдөөгүй: {0} — 0–25%-д орсон', num(p.noData)))] : []),
 
       /* ══════════ 4. САНХҮҮЖИЛТ ══════════ */
       { text: '', pageBreak: 'before' },
-      /* ⚠️ 2026-09-21: «гэрээт багц» гэж БҮХ мөрийг нэрлэхээ болив — `f.rows` нь
-         гэрээгүй (зөвхөн төсөвтэй) багцыг ч агуулна; гэрээт тоо = `contracted`. */
       ...h2('fin',
         tr('{0} багц ({1} гэрээт) — инженерийн шугам сүлжээ, нийгмийн дэд бүтэц зэргийг хамарна',
           num(f.rows.length), num(f.rows.filter((r) => r.contracted).length))),
@@ -570,9 +502,7 @@ export async function buildExecDoc(
           ? tr(' Гэрээ байгуулаагүй {0} багц тусад нь хавсралтад.', num(finNone.length))
           : '')),
       kpiRow([
-        /* ⚠️ `planTotal` = §1-ийн «Нийт гэрээлсэн дүн»-тэй ЯГ ИЖИЛ тоо (CONTRACTED мөр) */
         { label: tr('Гэрээлсэн нийт дүн'), value: money(f.planTotal), sub: `${num(f.planTotal)} ₮` },
-        /* ⚠️ 2026-10-06: хувийн тоологч (гэрээлсэн багцын олголт)-ийг нэрлэнэ — §1-ийн ⚠️ */
         { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1)) },
         { label: tr('Олгогдоогүй үлдэгдэл'), value: money(f.remain), sub: tr('гэрээт боловч санхүүжилт хүлээгдэж буй') },
       ]),
@@ -590,19 +520,15 @@ export async function buildExecDoc(
       { table: { headerRows: 1, widths: ['*', 100, 100, 46], body: [
         [th(tr('Багц')), th(tr('Гэрээлсэн (төг)'), true), th(tr('Олгосон (төг)'), true), th(tr('Хувь'), true)],
         ...finStarted.map((r): TableCell[] => [
-          /* ⚠️ Гэрээгүй атлаа олголттой багц — «гэрээгүй» гэж ил тэмдэглэнэ (2026-09-21) */
           td(r.contracted ? r.label : `${r.label} (${tr('гэрээгүй')})`, false, r.contracted ? undefined : AMBER),
           td(r.plan > 0 ? num(r.plan) : '—', true), td(num(r.given), true),
           td(r.pct == null ? '—' : pct(r.pct, 1), true, r.pct != null && r.pct < 10 && r.plan > 0 ? RED : undefined),
         ]),
-        /* ⚠️ ЭХЛЭЭГҮЙ ГЭРЭЭТ АЖЛУУД НЭГ МӨРӨНД — нэрс нь хавсралтад (§тайлбар) */
         ...(finZero.length ? [[
           td(tr('Эхлээгүй ажил ({0} гэрээт багц)', num(finZero.length)), false, RED),
           td(num(finZero.reduce((a, r) => a + r.plan, 0)), true),
           td(num(0), true), td('0.0%', true, RED),
         ] as TableCell[]] : []),
-        /* ⚠️ ГЭРЭЭ БАЙГУУЛААГҮЙ (зөвхөн төсөвтэй) багц — ТУСДАА мөр (2026-09-21):
-           гэрээлсэн багана «—», хувь бодогдохгүй; төсөвт өртөг нь хавсралтад. */
         ...(finNone.length ? [[
           td(tr('Гэрээ байгуулаагүй ажил ({0} багц)', num(finNone.length)), false, AMBER),
           td('—', true), td(num(0), true), td('—', true),
@@ -612,8 +538,6 @@ export async function buildExecDoc(
       ] }, layout: tableLayout },
       ...(finZero.length ? [note(tr('«Эхлээгүй ажил» гэдэг нь гэрээ байгуулагдсан боловч олголт хараахан хийгдээгүй багцууд; нэрсийг хавсралтаас үзнэ үү.'))] : []),
       ...(finNone.length ? [note(tr('«Гэрээ байгуулаагүй ажил» гэдэг нь зөвхөн төсөвт өртөгтэй, гэрээ хараахан байгуулагдаагүй багцууд; гэрээлсэн дүнд орохгүй, нэрс ба төсвийг хавсралтаас үзнэ үү.'))] : []),
-      /* ⚠️ 2026-10-04: гэрээлсэн багцаас гадуурх олголт (`givenOther` = `paidShare.paidOther`) — диапазон
-         мөр ба гэрээлсэн дүнгийн түлхүүрт таараагүй багц; урьдын «(хэд хэдэн багц хамарсан)» шошго буруу байв */
       ...(f.givenOther > 0 ? [note(tr('Нийт олгосон дүнд гэрээлсэн багцаас гадуурх {0} ₮ олголт (хэд хэдэн багц хамарсан мөр, гэрээлсэн дүнгийн багцад холбогдоогүй төлбөр) орсон — олгосон хувьд ороогүй.', num(f.givenOther)))] : []),
       note(tr('«Олгосон» нь урьдчилгаа ба гүйцэтгэлийн бүх төлбөрийн нийлбэр.')),
 
@@ -627,9 +551,6 @@ export async function buildExecDoc(
         kpiRow([
           { label: tr('Зөвшөөрсөн'), value: `${num(z.ok)} / ${num(z.total)}`, sub: tr('нийт зөвшөөрлөөс') },
           { label: tr('Хүлээгдэж буй'), value: num(z.wait), sub: tr('хариу хүлээгдэж байна') },
-          /* ⚠️ 2026-09-25: хүснэгтийн «Зөвшөөрөөгүй» багана = no + unknown; KPI нь
-             зөвхөн `no` тул танигдаагүй төлөвтэйг тусад нь дэд мөрөнд хэлнэ —
-             эс тэгвээс KPI ба «Нийт» мөр хоёр өөр тоо харуулж, зөрүү тайлбаргүй. */
           { label: tr('Зөвшөөрөөгүй'), value: num(z.no), sub: z.unknown > 0 ? tr('+ {0} танигдаагүй төлөвтэй', num(z.unknown)) : z.no > 0 ? tr('ажил эхлэхэд шууд саад') : undefined },
         ]),
         cap(tr('Багц тус бүрийн зөвшөөрлийн төлөв')),
@@ -657,15 +578,10 @@ export async function buildExecDoc(
       { text: '', pageBreak: 'before' },
       ...h2('summary',
         tr('Тайланд илэрсэн гол асуудал бүрт харгалзах үйл ажиллагааны зөвлөмж')),
-      /* ⚠️ 2026-10-06 (аудит): AI дүгнэлт тооцоолсон дүгнэлтийг ОРЛОХГҮЙ, НЭМЭГДЭНЭ — урьд нь
-         AI дүгнэлттэй PDF-д хүндрэлийн өнгөт дүгнэлт, зөвлөмж ба «хавсралт N» заалт алга болдог
-         байв (дэлгэцтэй ижил: дүгнэлт үргэлж, AI дүгнэлт түүний ДАРАА). */
       ...findingBlocks(findings, true, appendix),
       ...(summary ? [{ text: tr('AI дүгнэлт'), style: 'h3', margin: [0, 16, 0, 4] } as Content, ...summaryBlocks(summary)] : []),
 
-      /* ══════════ ХАВСРАЛТ ══════════
-         ⚠️ 2026-09-21: дараалал ба дугаар `execAppendix`-ээс — дүгнэлт дэх
-         «хавсралт N» заалттай ЯГ таарна (урьд нь зөрдөг байв). */
+      /* ══════════ ХАВСРАЛТ ══════════ */
       ...(appendix.length ? [
         { text: tr('Хавсралт'), style: 'h1', pageBreak: 'before' } as Content,
         ...appendix.flatMap((a): Content[] => {
@@ -673,7 +589,6 @@ export async function buildExecDoc(
           if (a.kind === 'finZero') {
             return [head, { table: { headerRows: 1, widths: ['*', 110, 100], body: [
               [th(tr('Гэрээт багц')), th(tr('Гэрээ (төг)'), true), th(tr('Олгосон (төг)'), true)],
-              /* ⚠️ 2026-10-26 (аудит): гэрээний дүн хоосон гэрээт багц «0» биш «—» (null ≠ 0) */
               ...finZero.map((r): TableCell[] => [td(r.label), td(r.plan > 0 ? num(r.plan) : '—', true), td(num(0), true)]),
               [tdBold(tr('Нийт')), tdBold(num(finZero.reduce((s, r) => s + r.plan, 0)), true), tdBold(num(0), true)],
             ] }, layout: tableLayout }];

@@ -1,8 +1,4 @@
-/* «Хэсэгчилсэн ЕТ» — гурван хэсэгтэй самбар (`HesegPanel` · `HesegChange` · `HesegNeed`), 2026-10-13
-   ⚠️ 2026-10-23: Environment — карт 12px · --line · --surface (сүүдэргүй); сонгогдсон
-   таб/мөр moss 12% + moss 45% хүрээ (+ мөрд inset 3px зурвас); KPI .analytics-stat
-   (13px булан, 10px шошго, 600 утга); хүснэгт .pe-table (10px uppercase толгой);
-   сегмент .view-switch; tooltip surface 95% + blur, 12px; жин ≤600. */
+/* «Хэсэгчилсэн ЕТ» — гурван хэсэгтэй самбар (`HesegPanel` · `HesegChange` · `HesegNeed`), 2026-10-13 */
 
 .wrap { display: flex; flex-direction: column; gap: 10px; }
 
@@ -59,7 +55,6 @@
   text-align: left;
   cursor: pointer;
 }
-/* ⚠️ Өнгөт дөрвөлжин — газрын зургийн ангиллын өнгө (inline), хэлбэр л */
 .swatch { width: 12px; height: 12px; flex: none; border-radius: 3px; }
 .name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; }
 .val { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-variant-numeric: tabular-nums; }
@@ -186,6 +181,5 @@
 .cmpTbl td small { display: block; margin-top: 3px; font-size: 11px; color: var(--ink-3); }
 .val > small { font-size: 11px; color: var(--ink-3); }
 
-/* 03 — «Төрлөөр / Бүсээр» солигч (2026-10-13).
-   ⚠️ 2026-10-26: нийтлэг `Segmented` (components/Switch.tsx); энд зөвхөн бүтэн өргөн, тэнцүү баганууд */
+/* 03 — «Төрлөөр / Бүсээр» солигч (2026-10-13). */
 .modes > [role='radiogroup'] { display: grid; width: 100%; grid-template-columns: 1fr 1fr; }

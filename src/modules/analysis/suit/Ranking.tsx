@@ -20,21 +20,11 @@ export function Ranking({
   rows: Row[];
   mode: Mode;
   ind: Indicator;
-  /** ⚠️ 2026-10-01: CSV экспортод үзүүлэлт бүрийн түүхий утга/оноо */
   indicators: readonly Indicator[];
   selected: string | null;
   onSelect: (id: string | null) => void;
 }) {
-  /* ⚠️ 2026-10-09 (аудит №3): `.tot`-ийн бичиг горимоос хамаарна (`scoreInk(_, dark)`) —
-     дэвсгэр нь `--score-N` токен; цайвар «Маш сайн» 3.5:1, dark «Маш муу» 2.8:1 байсныг засав. */
   const dark = useTheme().theme === 'dark';
-  /**
-   * ⚠️ Анхнаасаа зөвхөн 25–45 онооны бүлэг нээлттэй — анхаарал шаардсан бүсийг
-   * шууд харуулж, өндөр оноотой бүсүүд жагсаалтыг дүүргэхгүй.
-   *
-   * ⚠️ Түвшинг ОНООНЫ ЗУРВАСААР олно, шошгын үгээр БИШ: интерфейсээс үнэлгээний
-   * үг хассан тул шошгонд түшиглэвэл дараа нь чимээгүй эвдэрнэ.
-   */
   const [off, setOff] = useState<Set<number>>(
     () => new Set(SCORE_LEVELS.map((_, i) => i).filter((i) => SCORE_LEVELS[i].min !== 25)),
   );
@@ -43,14 +33,8 @@ export function Ranking({
     () => [...rows].sort((a, b) => (valueOf(b, mode, ind) ?? -1) - (valueOf(a, mode, ind) ?? -1)),
     [rows, mode, ind],
   );
-  /**
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ИЖИЛ (бүхэлчилсэн) оноонд ИЖИЛ байр
-   *    («1, 2, 2, 4») — урьд нь мөрийн дугаар (`i + 1`) байв (`rankUtil.competitionRanks`).
-   */
   const ranks = useMemo(() => competitionRanks(sorted.map((r) => valueOf(r, mode, ind))), [sorted, mode, ind]);
   const withData = countWithData(rows, mode, ind);
-  /* ⚠️ 2026-10-22 (аудит): хэмжсэн жин босгоос доош (оноогүй) бүсийн тоо — урьд нь `ASSUME_MET`-ийн таамгаар бүх бүс
-     оноотой болж «40/40 бүс өгөгдөлтэй» гэж худал хэлдэг байв (`config.MIN_MEASURED_SHARE`-ийн ⚠️) */
   const lowCov = mode === 'urban' ? rows.filter((r) => r.urbanReason === 'coverage').length : 0;
   const minPct = Math.round(MIN_MEASURED_SHARE * 100);
   const exportCsv = () => downloadText(
@@ -83,9 +67,6 @@ export function Ranking({
             setOff(next);
           }}
         >
-          {/* ⚠️ Бүлгийн нэр нь ҮНЭЛГЭЭНИЙ ҮГГҮЙ («сайн»/«муу» гэхгүй): эрэмбэ нь
-              оноог харуулах ёстой болохоос дүгнэлт өгөх ёсгүй. Түвшинг ӨНГӨ ба
-              ОНООНЫ ЗУРВАС хоёр л заана. */}
           <i style={{ background: L ? L.tone : NO_DATA_TONE }} />
           <span>{L ? tr('{0}–{1} оноо', L.min, Math.min(100, L.max)) : tr('Өгөгдөлгүй')}</span>
           <em />
@@ -106,7 +87,6 @@ export function Ranking({
         title={r.coverage == null ? undefined : tr('Хэмжсэн жин {0}% — оноо гаргахад ≥ {1}% шаардлагатай', Math.round(r.coverage * 100), minPct)}
       >
         <span className="rk">{ranks[i] ?? '—'}</span>
-        {/* ⚠️ 2026-10-22 (аудит): ангиллыг орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) · хэмжсэн жингийн хувь (`MapRow.coverage`) */}
         <span className="nm">{zoneLabel(r.id)}<i>{zoneTypeLabel(r.type)}</i>{r.coverage != null && <i>{tr('хэмжсэн {0}%', Math.round(r.coverage * 100))}</i>}</span>
         <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
         <span className="tot" style={{ background: scoreTone(tot), color: scoreInk(tot, dark) }}>{tot == null ? '—' : Math.round(tot)}</span>
@@ -116,7 +96,6 @@ export function Ranking({
 
   return (
     <>
-      {/* ⚠️ 2026-10-01: хэдэн бүс ОНООТОЙ вэ (өгөгдөлгүй нь байргүй) + CSV экспорт */}
       <div className={s.rankMeta}>
         <span>
           {tr('{0}/{1} бүс өгөгдөлтэй', withData, rows.length)}

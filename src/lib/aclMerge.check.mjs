@@ -1,13 +1,6 @@
 /**
  * ХОЁР АДМИН ЗЭРЭГ — эрх/багцын бичилт бие биенийхээ өөрчлөлтийг АРЧИХГҮЙ (2026-10-04).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/aclMerge.check.mjs
- *
- * ⚠️ ЯАГААД: `caps.setCaps` · `scopedAcl.pushRow` нь ≤5 мин настай кэшээс БҮТЭН жагсаалт
- *    бичдэг байв — Б админ (хуучин кэштэй) нэг эрх/багц нэмэхэд А админы саяхан нэмсэн
- *    эрх/багц ArcGIS-аас чимээгүй алга болно. Одоо бичихийн өмнө мөрийг ДАХИН уншиж
- *    зөвхөн ганц өөрчлөлтийг давхарлана (`mergeCapDelta` · `mergeGrantDelta`).
- * ОРЧИН: `aclE2E.fake.mjs` — «нөгөө админ» = хуурамч хүснэгтийг шууд засах (энэ сешний
- *    кэш хуучирсан хэвээр). АМЬД ArcGIS РУУ ЮУ Ч ЯВАХГҮЙ.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/aclMerge.check.mjs
  */
 import assert from 'node:assert/strict';
 import { fake, settle } from './aclE2E.fake.mjs';
@@ -27,7 +20,6 @@ const eq = (a, b, m) => { assert.deepEqual(a, b, m); checks += 1; };
 const sorted = (x) => [...x].sort();
 
 /* ── Цэвэр дүрэм ── */
-/* ⚠️ 2026-10-23: QAQC хасагдсан — `qaqc` эрхийн оронд `gazar` */
 eq(sorted(CAPS.mergeCapDelta(['addRow'], ['addRow', 'gazar'], ['addRow', 'finRow'])), sorted(['addRow', 'finRow', 'gazar']),
   'нэмэлт: нөгөө админы finRow хадгалагдана');
 eq(sorted(CAPS.mergeCapDelta(['addRow', 'gazar'], ['addRow'], ['addRow', 'gazar', 'finRow'])), sorted(['addRow', 'finRow']),
@@ -86,7 +78,7 @@ await w2.sync; await settle();
 eq(sorted(fake.json('__huvaari__:', U).grants[0].bagts), sorted([P0, P1, P2]), 'ArcGIS: P1 (нөгөө админ) хадгалагдав');
 eq(sorted(HV.listHuvaariAssigns().find((a) => a.user === U).grants[0].bagts), sorted([P0, P1, P2]), 'локал нэгтгэгдэв');
 
-/* ── Dirty → tombstone (⚠️ 2026-10-09, аудит №6) ──
+/* ── Dirty → tombstone (2026-10-09, аудит №6) ──
    А админ сүлжээгүй үед X-ийг засав (dirty) → Б админ X-ийг устгав → А-гийн дараагийн poll
    (`retryDirtyOnce`) ба dirty салаатай `setUser` хоёулаа tombstone-ыг ДАРАХ ЁСГҮЙ. */
 {
@@ -126,7 +118,7 @@ eq(sorted(HV.listHuvaariAssigns().find((a) => a.user === U).grants[0].bagts), so
   eq(P.hasAccess(T2), false, 'T2: нэвтрэхгүй');
 }
 
-/* ── clearOverride ↔ tombstone (⚠️ 2026-10-11, аудит №7) ──
+/* ── clearOverride ↔ tombstone (2026-10-11, аудит №7) ──
    Энгийн «Сэргээх» (`clearOverride`) нөгөө админы tombstone-ыг АРЧИХГҮЙ; зөвхөн «Буцаах»
    (`{ revive: true }`) арилгана — сүлжээгүй дарсан ч dirty-д `revive` хадгалагдаж retry-д биелнэ.
    Энгийн `null` dirty tombstone дээр урьдын адил хаягдана. Локал мөр remote амжилт хүртэл үлдэнэ. */

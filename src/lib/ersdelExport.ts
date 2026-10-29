@@ -1,12 +1,5 @@
 /**
  * ӨРТСӨН ОБЪЕКТ ба ҮЕРИЙН МӨРИЙГ ЭКСПОРТЛОХ — CSV · GeoJSON (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- *
- * ⚠️ ЦЭВЭР функцууд (ArcGIS SDK-гүй) — геометрийг `type`/`x`/`paths`/`rings`
- *    шинжээр нь уншина, тиймээс Node тестэд энгийн объектоор шалгагдана.
- * ⚠️ GeoJSON нь RFC 7946: WGS84 (lon, lat), ГАДНА цагираг цагийн зүүний ЭСРЭГ,
- *    нүх нь цагийн зүүний ДАГУУ. ArcGIS-ийн полигон эсрэг дүрэмтэй (гадна нь
- *    цагийн зүүний дагуу) тул эргүүлж, нүхийг харьяа гадна цагирагт нь оноож
- *    MultiPolygon болгоно — эс бөгөөс QGIS/geojson.io нүхийг «арал» гэж зурна.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -112,18 +105,7 @@ export type ExportRow = {
   geom: 'area' | 'line' | 'point';
   clsLabel: string;
   objects: ExportObject[];
-  /**
-   * ⚠️ 2026-10-09: давхарга ТАЙРАГДСАН (`damageOf`-ийн `truncated`) — `objects`
-   *    нь зөвхөн татагдсан эхний хэсэг (`MAX_GEOM`), бүтэн жагсаалт БИШ.
-   *    Урьд нь экспорт үүнийг хаяж, ДУТУУ файл бүтэн мэт харагддаг байв.
-   *    `undefined` = мэдэгдэхгүй (хуучин дуудагч) — нүд хоосон.
-   */
   truncated?: boolean;
-  /**
-   * ⚠️ 2026-10-09: мужид орсон объектын БҮТЭН тоо (`DamageRow.n`) — `objects.length`-ээс их байж болно.
-   *    `null` = тоолох асуулга унасан (`DamageRow.countFailed`) — бүтэн тоо мэдэгдэхгүй (CSV хоосон,
-   *    GeoJSON `null`); `undefined` = өгөөгүй (хуучин дуудагч).
-   */
   totalN?: number | null;
 };
 
@@ -132,13 +114,11 @@ const unitOf = (geom: ExportRow['geom']) => (geom === 'area' ? 'm2' : geom === '
 
 /**
  * ӨРТСӨН ОБЪЕКТУУДЫН CSV.
- * ⚠️ Гүн/өртөг мэдэгдэхгүй бол нүд ХООСОН (0 БИШ). Хэмжээ нь мужид ОРСОН хэсэг.
  */
 export function damageCsv(rows: ExportRow[]): string {
   const header = [
     tr('Давхарга'), 'layer_id', 'oid', tr('Ангилал'), tr('Хэмжээ'), tr('Нэгж'),
     tr('Дээд гүн (м)'), tr('Үнэлгээ (₮)'),
-    /* ⚠️ 2026-10-09: давхарга тайрагдсан эсэх ба бүтэн тоо — файл дутуу гэдгийг файл дотроо хэлнэ */
     'truncated', 'total_n',
   ];
   const out: unknown[][] = [];
@@ -153,9 +133,6 @@ export function damageCsv(rows: ExportRow[]): string {
         r.totalN ?? null,
       ]);
     }
-    /* ⚠️ 2026-10-09 (аудит): ТАЙРАГДСАН давхарга НЭГ Ч объектгүй (геометр татагдаагүй) бол давхаргын
-       ГАНЦ мөр (oid/хэмжээ хоосон) — урьд нь CSV-д огт гардаггүй тул давхарга өртөөгүй мэт харагддаг
-       байв (GeoJSON нь `truncated_layers`-ээр аль хэдийн хэлдэг). */
     if (r.truncated && !r.objects.length) {
       out.push([
         r.title, r.layerId, null, r.clsLabel, null, unitOf(r.geom), null, null,
@@ -204,11 +181,6 @@ export function damageGeoJSON(
       });
     }
   }
-  /**
-   * ⚠️ 2026-10-09: ТАЙРАГДСАН давхаргууд FeatureCollection-ийн `properties`-д
-   *    (RFC 7946 §6.1 «гадаад гишүүн» — уншигч мэдэхгүй бол үл тоомсорлоно).
-   *    `partial: true` = файл ДУТУУ: тэдгээр давхаргын объект бүгд ороогүй.
-   */
   const truncatedLayers = rows
     .filter((r) => r.truncated)
     .map((r) => ({ layer_id: r.layerId, layer: r.title, exported_n: r.objects.length, total_n: r.totalN ?? null }));

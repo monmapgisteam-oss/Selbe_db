@@ -13,9 +13,6 @@ export function ChangeBoundary() {
   useEffect(() => {
     if (!view || view.destroyed || view.type !== '2d' || !view.map) return;
     const map = view.map;
-    /* ⚠️ 2026-10-19 (аудит): khil1 ЭНЭ АГШИНД байхгүй (давхарга дараа ачаалагддаг — MapCanvas-ийн дараалал, таб
-       солих) үед урьд нь шууд `return` хийж, хил хэзээ ч тодрохгүй байв. Одоо `map.layers`-ийн change-ийг ҮРГЭЛЖ
-       сонсож, анх ОЛДСОН инстанцаас эх загвар · индексийг нэг удаа авна. */
     let previousRenderer: FeatureLayer['renderer'] = null;
     let previousIndex = -1;
     let captured = false;

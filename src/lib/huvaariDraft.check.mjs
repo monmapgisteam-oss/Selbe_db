@@ -52,7 +52,6 @@ const rows = new Map([
   [12, { spans: [null, null], ham: null, aStart: [null, null], aEnd: [null, null], hun: null, mashin: null }],
 ]);
 const srvMonths = new Map([['5|9F', new Map([['2026-01', 10], ['2026-02', 5]])]]);
-/* ⚠️ `undefined` = сервер МЭДЭГДЭХГҮЙ (ачаалагдаагүй); задаргаагүй = ХООСОН Map */
 /* Сарын нөөц (2026-09-24) — зэрэгцээ */
 const srvRes = new Map([['5|9F', new Map([['2026-01', { hun: 4, mashin: 1 }]])]]);
 const ctx = { n: 2, rows, months: (k) => srvMonths.get(k) ?? new Map(), monthsRes: (k) => srvRes.get(k) ?? new Map() };
@@ -183,10 +182,7 @@ console.log('✅ нийлүүлэлт');
   assert.equal(ap.applied, 2);
   assert.equal(ap.stale, 4);
   assert.deepEqual(ap.dropped.sort(), [kS(11, 1), kH(10), kS(99, 0), kS(10, 5), kM('5|9F'), kM('9|9F'), 'bogus'].sort());
-  /* ⚠️ Хуучирсан нүд `staleKeys`-д ТУСДАА — дуудагч тэдэнд tombstone тавихгүй (бусдын нүдийг устгахгүй) */
   assert.deepEqual(ap.staleKeys.sort(), [kS(11, 1), kS(99, 0), kS(10, 5), kM('9|9F')].sort());
-  /* ⚠️ 2026-09-25 аудит: `bv` ЗӨРСӨН хэсэг тусдаа — «мөр алга»/блок гадуурх нь ОРОХГҮЙ
-     (бусдын шинэ жаазын нүдэд tombstone тавихгүй) */
   assert.deepEqual(ap.bvKeys.sort(), [kS(11, 1), kM('9|9F')].sort());
   /* Сервер МЭДЭГДЭХГҮЙ (задаргаа ачаалагдаагүй) → сарын нүд тулгагдахгүй, ХАЯГДАХГҮЙ */
   const unk = cellsToMaps(new Map([[kM('9|9F'), cell([['2026-03', 2]], 1, 'a', [['2026-03', 1]])]]), { ...ctx, months: () => undefined });
@@ -222,7 +218,7 @@ console.log('✅ нийлүүлэлт');
 }
 console.log('✅ хуучирсан нүд');
 
-/* ── 4б. ⚠️ 2026-10-08: ХУУЧИН (16:00Z — УБ-ын шөнө дунд) `bv`/`val` тэгшлэгдэнэ.
+/* ── 4б. 2026-10-08: ХУУЧИН (16:00Z — УБ-ын шөнө дунд) `bv`/`val` тэгшлэгдэнэ.
  * Мөрүүд одоо `normDayMs`-ээр (UTC шөнө дунд) уншигддаг тул 2026-10-08-аас өмнө түүхий агшнаар
  * бичигдсэн нүд «хуучирсан» гэж худлаа хаягддаг байв. ── */
 {
@@ -353,8 +349,6 @@ console.log('✅ remapDraft');
   /* Бусад машины хуучин локал хуулбар — `cleared`-ээр нүд бүрээр */
   const otherLocal = mk([[kH(2), cell('хамтрагч-илгээлтэд-ороогүй', 150, 'b')], [kH(4), cell('хуучин-офлайн', 90, 'b')]]);
   assert.deepEqual([...dropCleared(otherLocal, cl.cleared).entries.keys()], [], 'cleared-ээс хуучин бүх нүд хуулбараас хаагдана');
-  /* ⚠️ 2026-10-21: TTL-ээс ШИНЭ, илгээлтэд ОРООГҮЙ (tombstone-гүй) синк хийгдээгүй нүд ҮЛДЭНЭ; илгээсэн нүдийг алсын
-     tombstone `merge`-ээр хаана */
   {
     const T = 10 * 86400e3;
     const mine = mk([[kH(6), cell('А-синкгүй', T - 50, 'a')], [kH(1), cell('илгээсэн', T - 60, 'a')]]);
@@ -390,7 +384,7 @@ console.log('✅ remapDraft');
 }
 console.log('✅ HLC · нүд тус бүрийн cleared · хэсэгчилсэн цэвэрлэлт');
 
-/* ── 8. ⚠️ 2026-10-08: НЯГТ БИЧИГЛЭЛ — муж хоногоор, нэр индексээр, val === bv нүд орохгүй; ХУУЧИН хэлбэр уншигдсаар ── */
+/* ── 8. 2026-10-08: НЯГТ БИЧИГЛЭЛ — муж хоногоор, нэр индексээр, val === bv нүд орохгүй; ХУУЧИН хэлбэр уншигдсаар ── */
 {
   const d = mk([
     [kS(10, 0), cell(sp(2, 6), 900, 'gtumenjargal', sp(1, 5))],
@@ -447,7 +441,6 @@ console.log('✅ нягт бичиглэл · хуучин хэлбэр унши
   const lite = serialize(d0, full.length - 1);
   assert.ok(lite.length < full.length && parse(lite).rk.get(10).des === 5 && parse(lite).rk.get(10).work === '', 'нэргүй танихуун');
   assert.equal(parse(serialize(d0, 10)).entries.size, 3, 'хэт бага max — нүд хэвээр');
-  /* ⚠️ 2026-10-26 (аудит): хэт бага max-д ч кодын танихуун ҮЛДЭНЭ (жааз солигдоход нүд өнчрөхгүй) */
   assert.equal(parse(serialize(d0, 10)).rk.get(10).des, 5, 'танихуун (код) хэзээ ч хасагдахгүй');
   /* Одоогийн мөрүүд: код 5 → 210, «1.2 Арматур» → 211; код 9 алга */
   const ctx = {
@@ -477,7 +470,7 @@ console.log('✅ нягт бичиглэл · хуучин хэлбэр унши
 }
 console.log('✅ шинэ жааз — танихуунаар зөөнө');
 
-/* ── ⚠️ 2026-10-22 (аудит №1): НЯГТ TOMBSTONE — ямар ч хэмжээний илгээлтийн цэвэрлэлт алсад багтана ── */
+/* ── 2026-10-22 (аудит №1): НЯГТ TOMBSTONE — ямар ч хэмжээний илгээлтийн цэвэрлэлт алсад багтана ── */
 {
   const MAX = 80_000; // `draftRemote.REMOTE_MAX` (тэр модуль ArcGIS импортолдог тул энд тоогоор)
   /* 1. Эргэх хөрвүүлэлт — бүх төрлийн түлхүүр, сөрөг oid, загваргүй (түүхий) түлхүүр, олон агшин */
@@ -517,7 +510,6 @@ console.log('✅ шинэ жааз — танихуунаар зөөнө');
   assert.deepEqual([...back.del].sort(), [...cleared.del].sort(), 'энэ хэмжээнд агшин бөөрөнхийлөгдөхгүй (ЯГ)');
   assert.equal(back.entries.size, 1, 'илгээлтэд ороогүй нүд үлдэнэ');
   assert.equal(back.cleared, ts);
-  /* ⚠️ баталгаанууд хэвээр: хуучин хуулбар амилахгүй, ШИНЭ засвар үлдэнэ */
   const oldCopy = mk([[kS(1700, 0), cell({ start: 1, end: 2 }, ents[13][1].at, 'u')]], [], 1);
   assert.equal(merge(back, oldCopy, ts + 10).entries.has(kS(1700, 0)), false, 'цэвэрлэгдсэн нүдний хуучин хуулбар амилахгүй');
   const newer = mk([[kS(1700, 0), cell({ start: 5, end: 6 }, ents[13][1].at + 1, 'bat')]], [], 1);

@@ -1,9 +1,7 @@
 /**
  * ГАЗАР ЧӨЛӨӨЛӨЛТИЙН НЭГДСЭН ТООЦОО (`land.ts`) — ЦЭВЭР ЛОГИКИЙН ШАЛГУУР.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/land.check.mjs
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас). Хамгаалж буй хоёр алдаа:
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/land.check.mjs
  *
  *  1. «БҮРЭН ЧӨЛӨӨЛСӨН»-ИЙН БИЧИГЛЭЛ. Урьд нь `=== PARCEL_CLEARED` гэж ЯГ
  *     таарцаар жишдэг тул «Бүрэн чөлөөлсөн.», «Бүрэн  чөлөөлсөн » гэх мэт мөр
@@ -33,7 +31,6 @@ for (const v of [
 for (const v of ['зөвшилцөх', 'Бүрэн чөлөөлөөгүй', 'Бүрэн', '', null, undefined, '—']) {
   assert.ok(!isClearedStatus(v), `«${v}» нь чөлөөлсөн БИШ`);
 }
-/* ⚠️ Бусад төлөвийн ТҮҮХИЙ утга хөндөгдөхгүй (trim л) — «гэрээлсэн.» ≠ «гэрээлсэн» хэвээр */
 assert.equal(statusKey(' гэрээлсэн. '), 'гэрээлсэн.', 'бусад төлөвийн цэгийг хасахгүй');
 assert.equal(statusKey('зөвшилцөх'), 'зөвшилцөх');
 assert.equal(statusKey(null), '', 'хоосон → дуудагч өөрийн шошгыг тавина');
@@ -75,7 +72,7 @@ console.log('✅ buildLandStatus: чөлөөлсөн 1920/2038, шалтгаан
 const ls2 = buildLandStatus(
   [{ [S]: PARCEL_CLEARED, n: 10, a: 1_000 }, { [S]: 'зөвшилцөх', n: 2, a: 200 }],
   [
-    { [S]: `${PARCEL_CLEARED}.`, a: 50 }, // ⚠️ бичиглэл өөр ч НЭГ бүлэгт
+    { [S]: `${PARCEL_CLEARED}.`, a: 50 },
     { [S]: 'маргаантай', a: 30 }, // эхний асуулгад байхгүй шошго — шинэ бүлэг, n = 0
     { [S]: 'зөвшилцөх', a: null }, // хоосон нийлбэр — алгасна
   ],
@@ -97,7 +94,7 @@ const empty = buildLandStatus([], []);
 assert.equal(empty.total, 0);
 assert.equal(empty.pct, null, '0 хуваарьт хувь null — 0% БИШ');
 
-/* ══════════════ 5. ⚠️ 2026-10-22 (аудит): мөрөөр бүлэглэх — area=0 → полигон, хуваагдсан нэгж талбар нэг удаа ══════════════ */
+/* ══════════════ 5. 2026-10-22 (аудит): мөрөөр бүлэглэх — area=0 → полигон, хуваагдсан нэгж талбар нэг удаа ══════════════ */
 {
   const { parcelAreaOf, parcelGroupRows, landuseText } = await import('./land.ts');
   const F = PARCEL_LEFT.fields;
@@ -125,7 +122,7 @@ assert.equal(empty.pct, null, '0 хуваарьт хувь null — 0% БИШ');
   assert.equal(landuseText(null, 'ХАА-н үйлдвэрлэлийн цогцол'), 'ХАА-н үйлдвэрлэлийн цогцол', 'бүтэн нэр мэдэгдэхгүй — өөрөө');
   console.log('✅ parcelGroupRows: area=0 → полигон · хуваагдсан нэг удаа · landuseText (2026-10-22)');
 }
-/* ══════════════ 6. ⚠️ 2026-10-23 (аудит): «Тайлан» (дэлгэц + PDF) нь НЭГ тооцоог (`loadLandStatus`) ашиглана ══════════════
+/* ══════════════ 6. 2026-10-23 (аудит): «Тайлан» (дэлгэц + PDF) нь НЭГ тооцоог (`loadLandStatus`) ашиглана ══════════════
    Урьд нь `reportData.loadLandRaw` `area_m2`-ийг шууд нэмдэг тул 2026-10-22-ны дүрэм (`parcelAreaOf` · `parcelAreasDeduped`)
    хамрагдаагүй — тайлан 953,987 м², бусад харагдац 961,303 м². Эх кодоор баталгаажуулна (функц нь сүлжээ шаарддаг). */
 {

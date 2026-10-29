@@ -1,8 +1,6 @@
 /**
  * `Segmented` (role=radiogroup) — roving tabindex ба сумны товчлуур (ARIA APG radio group), 2026-10-26. Сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/segmented.ui.check.mjs
- *
- * ⚠️ `*.ui.check.mjs` нэр ЗААВАЛ — `ts-alias` CSS модулийг стубаар залгана.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/segmented.ui.check.mjs
  */
 import assert from 'node:assert/strict';
 

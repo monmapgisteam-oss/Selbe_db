@@ -120,7 +120,6 @@ const base = () => [
   assert.equal(r4[FL.actPct], null, 'null бичигдэнэ');
 }
 {
-  /* ⚠️ 2026-10-19 (аудит): бүх хүүхдийн төсөв хоосорвол эцгийн Σ E → null; эцгийн E null → хүүхдийн F · G → null */
   const b = base();
   const form = E.negForm(b);
   const m = E.applyNegEdits(b, form, new Map([[3, { budget: null }], [4, { budget: null }]]));
@@ -136,7 +135,6 @@ const base = () => [
   assert.equal(s[1].act, null, 'S(бүлэг) — хүүхэд бүгд хоосон → null (хуучин 0.4 биш)');
 }
 {
-  /* ⚠️ 2026-10-19 (аудит): оролтын шалгалт */
   const P = E.parseNegInput;
   assert.deepEqual(P('12,5', 'act'), { ok: true, v: 0.125 });
   assert.deepEqual(P('12.5%', 'w'), { ok: true, v: 0.125 });
@@ -155,7 +153,6 @@ const base = () => [
   assert.deepEqual(P('0', 'budget'), { ok: true, v: 0 });
 }
 {
-  /* ⚠️ 2026-10-19 (аудит): нийт мөр — дэлгэцийн томьёо (жинтэй хоосон → null; Σ жингээр нормчлол) */
   const T = E.negTotals([
     { p: 0.5, act: 0.4, planG: 0.5, planGch: 0.5, planGu: null, planNw: 0.1, planPw: 0.2 },
     { p: 0.4, act: 0.1, planG: 0.2, planGch: 0.2, planGu: 0.3, planNw: 0.1, planPw: 0.2 },
@@ -170,7 +167,6 @@ const base = () => [
   assert.equal(one.perfG, 0, 'N = 0 → биелэлт 0');
 }
 {
-  /* ⚠️ 2026-10-19 (аудит): зэрэг засвар — өөр хүний өөрчлөлт зөрчил; манай өмнөх (хариу алдагдсан) бичилт зөрчил биш */
   const b = base();
   const form = E.negForm(b);
   const m = E.applyNegEdits(b, form, new Map([[4, { act: 1 }]]));
@@ -192,7 +188,6 @@ const base = () => [
   near(ru.attrs[FL.actPct], 0.8 * (0.6 * 0.5 + 0.4 * 1) / 0.8 * 100, 'S(нийт) — Σ G × S ÷ Σ G, ×100');
   const elsewhere = { ...root, act: 0.55 };
   assert.equal(E.negRootUpdate(ours, elsewhere, root).stale, true, 'нийт мөр өөр газраас өөрчлөгдсөн');
-  /* ⚠️ 2026-10-19: давхцаагүй өөр нийтлэгч — мөр 3-ыг засаж нийт мөрийг томьёогоор дахин бичсэн → зөрчил БИШ */
   const fresh2 = base();
   fresh2[2].act = 0.9;
   fresh2[1].act = 0.6 * 0.9 + 0.4 * 0.25;
@@ -204,7 +199,6 @@ const base = () => [
   assert.equal(E.negRootUpdate(merged2, { ...root2, act: 0.123 }, root, fresh2).stale, true, 'томьёогоор тайлбарлагдахгүй өөрчлөлт — зөрчил');
 }
 {
-  /* ⚠️ 2026-10-19: Σ жин 0 / бүх жин хоосон → нийт null (0 биш); нийт мөрт 0 бичихгүй */
   const nul = { act: 0.4, planG: 0.5, planGch: 0.5, planGu: 0.5, planNw: 0.1, planPw: 0.2 };
   const a = E.negTotals([{ p: null, ...nul }, { p: null, ...nul }]);
   assert.equal(a.act, null, 'бүх жин хоосон → S null');

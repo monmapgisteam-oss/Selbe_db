@@ -165,8 +165,6 @@ assert.equal(countReportImages([rep, rep]), 4, 'ижил тайлангийн з
 console.log('✅ UB огноо · файлын нэрийн нөөц · огноогүй PDF · зургийн тоо · байтгүй зураг · HEIC');
 
 /* ══════════ fetchAttachment — текст хавсралт ≠ ArcGIS алдаа (2026-10-09) ══════════ */
-/* ⚠️ Урьд нь json/text/html БҮХ 200 хариуг алдаа гэж үзэж `.txt/.json/.html` хавсралт (Чанар)
-   хэзээ ч нээгддэггүй байв. Алдаа = ЗӨВХӨН `{ error }` түлхүүртэй JSON. */
 {
   const { fetchAttachment } = await import('@/lib/uzlegReport.ts');
   const realF = globalThis.fetch;
@@ -190,19 +188,16 @@ console.log('✅ UB огноо · файлын нэрийн нөөц · огно
   }
 }
 console.log('✅ fetchAttachment: текст/JSON/HTML хавсралт нээгдэнэ, зөвхөн {error} JSON алдаа');
-/* ⚠️ 2026-10-09 (аудит): шошгын цэвэрлэгээ — таг + HTML entity */
 {
   assert.equal(cleanLabel('<b>9.</b>&nbsp;Хашаа &amp; хамгаалалт'), '9. Хашаа & хамгаалалт');
   assert.equal(cleanLabel('a &lt;b&gt; &quot;c&quot; &#39;d&#39; &#x27;e&#x27; &apos;f&apos;'), `a <b> "c" 'd' 'e' 'f'`, 'задласан &lt;b&gt; таг гэж хасагдахгүй');
   assert.equal(cleanLabel('&unknown; &#0;'), '&unknown; &#0;', 'танихгүй entity хэвээр');
 }
-/* ⚠️ 2026-10-09 (аудит): зөвхөн растерыг inline — svg/html татагдана */
 {
   assert.equal(rasterTypeOf('image/PNG; charset=binary'), 'image/png');
   assert.equal(rasterTypeOf('image/jpg'), 'image/jpeg');
   for (const t of ['image/svg+xml', 'text/html', 'image/heic', '', null, undefined]) assert.equal(rasterTypeOf(t), null, String(t));
 }
-/* ⚠️ 2026-10-09 (аудит №2): төрөлгүй (octet-stream / хоосон) хариуны растерыг байтаар таних; svg/html ХЭЗЭЭ Ч растер биш */
 {
   const enc = (t) => [...new TextEncoder().encode(t)];
   const bytes = (a) => new Uint8Array(a);
@@ -257,7 +252,7 @@ console.log('✅ cleanLabel (entity) · rasterTypeOf (svg/html inline БИШ) ·
   assert.equal(unknownCode.submitter, 'newbie', 'домэйнд байхгүй код хэвээр');
   console.log('✅ Илгээсэн — inspector домэйны нэрээр (2026-10-21)');
 }
-/* ── ⚠️ 2026-10-22 аудит: «Аюулыг илрүүлэх үзлэг» — илрүүлэлт эцгийн `uniquerowid || globalid`-д, зураг нь хүснэгтийн хавсралтаас ──
+/* ── 2026-10-22 аудит: «Аюулыг илрүүлэх үзлэг» — илрүүлэлт эцгийн `uniquerowid || globalid`-д, зураг нь хүснэгтийн хавсралтаас ──
    Амьд өгөгдөл: 61/61 эцгийн `uniquerowid` NULL, 345/345 илрүүлэлтийн `parentrowid` = эцгийн `globalid` — урьд 0 илрүүлэлт. */
 {
   const { groupFindings, parentKeys, guidKey } = await import('@/lib/uzlegReport.ts');

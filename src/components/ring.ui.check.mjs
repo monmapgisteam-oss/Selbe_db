@@ -1,9 +1,6 @@
 /**
  * `ui.tsx` `Ring` — `text` prop голын «{v}%»-ийг дарна (2026-10-01).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/ring.ui.check.mjs
- *
- * ⚠️ Эрсдэлийн AQI зэрэг хувь биш утгад: цагираг 0–100 дүүргэлттэй, гол нь `text`.
- *    Өгөгдөлгүй (`value` null) үед `text` өгсөн ч «—» (null ≠ 0).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/ring.ui.check.mjs
  */
 import assert from 'node:assert/strict';
 import { createElement as h } from 'react';

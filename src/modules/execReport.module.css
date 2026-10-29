@@ -3,11 +3,8 @@
    ӨВӨРМӨЦ хэсгүүд: горим сэлгэгч, AI дүгнэлтийн хайрцаг, инфографикийн
    урьдчилсан харагдац. */
 
-/* ⚠️ 2026-10-04: горим сэлгэгч (`.modes`/`.mode`) нь `report.module.css`-ийн
-   `.seg`/`.segBtn` (ТУХ-ын сегмент) болж ШИЛЖСЭН. */
 
-/* Хоёрдогч товч — AI дүгнэлт. ТУХ-ын `ghostBtn` (`report.module.css`-ийн `.btn`-тэй ижил)
-   ⚠️ 2026-10-23: Environment — .pe-ghost (32px, 8px булан, 12px/500, hover --surface-2) */
+/* Хоёрдогч товч — AI дүгнэлт. ТУХ-ын `ghostBtn` (`report.module.css`-ийн `.btn`-тэй ижил) */
 .btn2 {
   all: unset;
   display: inline-flex;
@@ -54,12 +51,6 @@
 }
 .aiEmpty { font-style: italic; color: var(--ink-3); }
 
-/*
- * ⚠️ НЭГ БАГАНА (2026-09-17, хэрэглэгчийн заавар: «2 багана биш 1 болго»).
- * Хоёр баганат тор нь тэгш бус урттай блокуудыг зэрэгцүүлж, нэг тал нь
- * хоосон үлддэг байв; уншлагын дараалал ч эвдэрнэ. PDF нь угаасаа нэг
- * багана тул дэлгэц ба баримт одоо ижил.
- */
 .one {
   display: grid;
   grid-template-columns: 1fr;
@@ -79,10 +70,6 @@
 /*
  * ── ГОЛ ДҮГНЭЛТ — ТАЙЛАНГИЙН ХЭЛБЭР (2026-09-17, хэрэглэгчийн заавар:
  *    «ойлгомжтой тайлангийн формат руу оруул») ──
- *
- * ⚠️ `.ai` дээрх `white-space: pre-wrap` нь ЧӨЛӨӨТ ТЕКСТЭД (AI дүгнэлт)
- *    зориулагдсан. Бүтэцтэй жагсаалтад тэр нь илүүдэл хоосон мөр үүсгэдэг
- *    тул энд буцаана.
  */
 .aiText { margin: 0; white-space: pre-wrap; }
 
@@ -137,8 +124,6 @@
 }
 @media (max-width: 720px) { .findingItems { columns: 1; } }
 
-/* ⚠️ 2026-10-04: голлосон том үсгэн толгой (`.docHeadMid`/`.titleUp`/`.subMid`,
-   2026-09-17) ХАСАГДСАН — толгой нь ТУХ-ын hero (`ReportContents.ReportHero`). */
 
 /* Дүгнэлт дэх хавсралтын заалт — гол өгүүлбэрээс бүдэг */
 .findingRef { color: var(--ink-3); }
@@ -158,14 +143,10 @@
 }
 .appN { flex: none; font-size: 11px; font-weight: 500; color: var(--ink-3); }
 
-/* ⚠️ 2026-10-04: A4 өргөнтэй цаас (`.paperA4`/`.narrow`, 2026-09-17) ХАСАГДСАН —
-   дэлгэцэд ТУХ-ын агуулга шиг урсана (хэрэглэгч: «ТУХ хэсэгтэй бүрэн адилхан»).
-   Хэвлэх/PDF-ийн хэмжээнд нөлөөгүй (PDF нь `execPdf`-ээр тусдаа). */
 
 /* KPI хүснэгтийн утгын хажуугийн тодотгол (төсвийн %, үлдсэн талбар…) */
 .kpiSub { font-weight: 400; color: var(--ink-3); }
 
-/* ⚠️ 2026-10-28: өөрчлөлтийн хугацааны сонголт ба ▲/▼ (`execPeriodCalc`) */
 .period { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); }
 .periodLabel { color: var(--ink-3); }
 .periodOn { background: var(--data); color: #fff; border-color: var(--data); }

@@ -1,17 +1,10 @@
-/*
- * ⚠️ 2026-09-30: `FillNew.tsx` (6.9k мөр) задарсан — хүснэгтийн МӨРҮҮД (зурагдах цонх) — гүйцэтгэлийн нүд · төлөвлөгөөт хувь · огноо · шинэчлэгдсэн огноо.
- *    Код ЯГ хэвээр зөөгдсөн, зан төлөв өөрчлөгдөөгүй; `draft.check.mjs` ·
- *    `shareDraft.check.mjs` эх кодын шалгуураа FillNew.tsx + fill/* нийлбэрээс уншина.
- */
 import { Fragment, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { Schema } from "../bagts.pkg";
 import { fmtInc, parseInc, type SheetRow } from "../bagtsSheet";
-/* ⚠️ 2026-10-22 (аудит): сөрөг нийтийн нэг дүрэм — хянагч (`hyanaltDetail`), «Илгээх» (`FillNew`) ба энэ хүснэгт */
 import { negFixOf, negFixText, negTotalAt } from "../sheetFrame";
 import { negjOf, unitLabel } from "../negj";
 import { t as tr } from "@/lib/i18nCore";
 import { fixCyr } from "@/lib/format";
-/* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт */
 import { askConfirm, getConfirmSnapshot } from "@/lib/confirm";
 import { PvCell } from "./PvCell";
 import type { useObyem } from "./useObyem";
@@ -19,10 +12,8 @@ import type { useCellEdit, PastePrev } from "./useCellEdit";
 import { RO, cellKey, cls, dt, full, pc, qty, synNoVol, wt, type Calc, type EditCell, type PickState, type SheetView } from "./util";
 import st from "../sheet.module.css";
 import { extraCls, extraVal, type ExtraCol } from "./extraCols";
-/* ⚠️ 2026-10-09: багана бүрийн өргөн — `SheetHead`-ийн бариултай ИЖИЛ түлхүүр (`colWidths.cw`-ийн ⚠️) */
 import { cw } from "../colWidths";
 
-/* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `backChgDates`-ийн анхдагч — тогтмол хоосон олонлог (render бүрд шинэ үүсгэхгүй) */
 const EMPTY_KEYS: ReadonlySet<string> = new Set<string>();
 
 type ObyemT = ReturnType<typeof useObyem>;
@@ -44,10 +35,8 @@ export function FillRows({
   pending: Record<string, string>; byMap: Map<string, string>; fillMode: "obyem" | "pct";
   ovBase: Map<number, SheetRow>; meKey: string;
   volMode: CellT['volMode']; edit: EditCell | null; view?: SheetView; backChg: Set<string>; backOk: Set<string>;
-  /** ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): буцаагдсан илгээлтэд өөрчлөгдсөн огноо (`${oid}:${b}:s|e`) — улаан хүрээ, түгжээгүй */
   backChgDates?: ReadonlySet<string>;
   locked: boolean; noEdit: boolean; say: (msg: string) => void; canPerf: boolean;
-  /** ⚠️ 2026-10-09: бөглөх эрхгүй ШАЛТГААН (хяналтын хориг · «зөвхөн харна») — байхгүй бол ерөнхий `(perfWhy ?? RO.noPerf)` */
   perfWhy?: string | null; busy: boolean;
   pctOnly: CellT['pctOnly']; pctHintRef: RefObject<boolean>; setVal: Dispatch<SetStateAction<string>>;
   cellSeed: CellT['cellSeed']; setEdit: Dispatch<SetStateAction<EditCell | null>>; hitKey: string | null; noPerf: boolean;
@@ -55,19 +44,12 @@ export function FillRows({
   commit: CellT['commit']; nextEditable: CellT['nextEditable']; nextBlockEditable: CellT['nextBlockEditable'];
   pendDate: Record<string, string>; setPick: Dispatch<SetStateAction<PickState | null>>;
   asOf: number | null; asOfOrig: number | null;
-  /** ⚠️ 2026-09-30: хөвөгч шар анхааруулга — төлөвлөсөн обьёмын буруу утгад (`PvCell.onBad`) */
   warn?: (msg: string) => void;
-  /** ⚠️ 2026-10-01: ноорог сэргэж дуустал нүд нээгдэхгүй (`RO.restoring`) */
   restoring?: boolean;
-  /** ⚠️ 2026-10-01: «үлдэгдэл = Обьём − архив − хяналтад − ноорог» тайлбар */
   remainHint?: CellT['remainHint'];
-  /** ⚠️ 2026-10-01: буулгалтын урьдчилсан харагдац — бичигдэх (цэнхэр) / татгалзсан (улаан ✕) */
   pastePrev?: PastePrev | null;
-  /** ⚠️ 2026-10-09: «Бусад талбар» — зөвхөн унших төгсгөлийн баганууд (`extraCols.ts`); `SheetHead`-тэй ИЖИЛ массив */
   extra?: ExtraCol[];
-  /** ⚠️ 2026-10-23: ХУРААНГУЙ харагдац — `SheetHead`-тэй ИЖИЛ дүрэм (№ · Ажил · Обьём · Инж. обьём · блокийн нүд ба хувь л) */
   compact?: boolean;
-  /** ⚠️ 2026-10-09 (аудит №3): зөвшөөрөгдсөн нүдний илгээгээгүй утгыг буцаах (`useCellEdit.clearLocked`) */
   clearLocked?: CellT['clearLocked'];
 }) {
   return (
@@ -76,11 +58,8 @@ export function FillRows({
                 const r = rowsAll[i];
                 const c = calc[i];
                 if (!c) return null;
-                /* ⚠️ Нийтлэгдээгүй (oid < 0) ЭСВЭЛ батлагдаж нийтлэгдсэн нэмэлт (addedOids) — хоёулаа улаан. */
                 const isNew = r.oid < 0 || addedOids.has(r.oid);
-                /* ⚠️ 2026-10-09: № нь бүтэн гарчиг (зайтай) бөгөөд Ажил хоосон бол нэрийг «Ажил» нүдэнд (доорх ⚠️) */
                 const noTitle = /\s/.test(r.no);
-                /* ⚠️ 2026-10-23 (UX аудит S15): өгөгдөлд «хєрс», «нїх» (є/ї) — ЗӨВХӨН харуулахдаа `fixCyr`; түлхүүрт түүхий нэр */
                 const workTxt = fixCyr(r.work || (noTitle ? r.no : ""));
                 return (
                   <Fragment key={r.oid}>
@@ -88,10 +67,6 @@ export function FillRows({
                     data-r={i}
                     className={`${r.group ? st.cat : ""}${isNew ? ` ${st.newRow}` : ""}`.trim() || undefined}
                   >
-                    {/* ⚠️ 2026-10-09 (хөтөч дээрх хэмжилт): барилгын 8 багцын дээд бүлгийн № нь бүтэн гарчиг
-                        («A. Бэлтгэл ажил», «Б. Барилга угсралтын ажил»), Ажил нь ХООСОН — 40px-ийн № нүднээс
-                        халиж царцсан «Ажил» нүдний доор тайрагдаж («A. Бэлтг») уншигдахгүй байв. № нүд «…»-аар
-                        тайрна (`.b32 td.c-no`, бүтэн нь `title`-д), нэр нь «Ажил» нүдэнд (`workTxt` — № зайтай үед л; «1.1» зэрэг код давхардахгүй). */}
                     <td className={cls("num fz c-no")} {...ro(RO.no)} title={noTitle ? r.no : RO.no}>{r.no}</td>
                     <td
                       className={cls("fz c-ajil")}
@@ -116,7 +91,6 @@ export function FillRows({
                         </button>
                       )}
                       {workTxt}
-                      {/* ⚠️ Бүлгийн «+» ба шинэ мөрийн «×» ХАСАГДАВ (2026-09-24) — «Хуваарь»-д. */}
                     </td>
                     {!compact && (<>
                     <td className={cls("right c-w")} style={cw("wc", "w")} {...ro(RO.wC)} title={full(c.C)}>{wt(c.C)}</td>
@@ -125,8 +99,6 @@ export function FillRows({
                         бөглөхөд хамт хөдөлдөг тул бодогдох өнгөтэй. Дээд
                         бүлгүүдэд өөрчлөлт нь бөөрөнхийлөлтөөс нуугдах тул
                         бүтэн нарийвчлалыг tooltip-оор өгнө. */}
-                    {/* ⚠️ 2026-10-09: өргөн нь толгойн «Одоо байгаа» (`now`)-оос — урьд нь толгой `c-now` (104),
-                        бие `c-w` (72) хоёр өөр хувьсагчтай тул бариул биеийн нүдийг хөдөлгөдөггүй байв. */}
                     <td className={cls("right c-w calc")} style={cw("now", "now")} {...ro(RO.wE)} title={full(c.E)}>
                       {wt(c.E)}
                     </td>
@@ -136,11 +108,7 @@ export function FillRows({
                         дүн, тэндээс хуудсын БҮХ хувийн жин бодогддог тул энд
                         засах эрх нээвэл нэг тоо солиход бүх мөрийн жин
                         чимээгүй шилжинэ. */}
-                    {/* ОБЬЁМ — тоо ба ХЭМЖИХ НЭГЖ нэг нүдэнд, «1300 м³» хэлбэрээр.
-                        ⚠️ Бүлгийн мөрд нэгж БИЧИХГҮЙ: бүлэг нь өөр өөр нэгжтэй
-                        ажлуудыг агуулдаг тул нэг нэгж оноох нь худал болно.
-                        ⚠️ Нэгж нь `negj.ts`-ийн дүрмээр ажлын нэрнээс гарна
-                        (хамралт 95.5%); тодорхойлогдоогүй бол зөвхөн тоо. */}
+                    {/* ОБЬЁМ — тоо ба ХЭМЖИХ НЭГЖ нэг нүдэнд, «1300 м³» хэлбэрээр. */}
                     <td className={cls("right c-vol")} style={cw("ob", "vol")} {...ro(RO.vol)}>
                       {qty(r.vol)}
                       {!r.group && r.vol != null && negjOf(r.work) && (
@@ -148,12 +116,10 @@ export function FillRows({
                       )}
                     </td>
                     {/* ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — засагдах цорын ганц
-                        нүд (гүйцэтгэлийн блокоос гадна). ⚠️ Гүйцэтгэлийн
+                        нүд (гүйцэтгэлийн блокоос гадна). Гүйцэтгэлийн
                         `pending`-ээс ТУСДАА `pvPend`-д хадгалагдана. */}
                     <PvCell
                       r={r}
-                      /* ⚠️ `r.oid >= 0` — түр (сөрөг) дугаартай НЭМСЭН мөрд
-                         засахыг ХААНА (`RO.plannedVolNewRow`-ийн ⚠️). */
                       canEdit={editing && canObyemEdit && !pvSub && !!sc?.f.plannedVol && !r.group && r.oid >= 0}
                       draft={pvPend[r.oid]}
                       preview={pvPreview?.get(r.oid)}
@@ -166,10 +132,8 @@ export function FillRows({
                       })}
                       cls={cls}
                       ro={ro}
-                      /* ⚠️ 2026-10-09 (аудит №3): орчуулгатай нэгж (`unitLabel`) — англи хувилбарт түүхий «тн/ш» гардаг байв */
                       negj={unitLabel(negjOf(r.work)) || null}
                       onBad={warn}
-                      /* ⚠️ 2026-10-07: засах эрхтэй ч «Бөглөх» дараагүй — PvCell шалтгааныг нэрлэнэ */
                       notEditing={!locked && canObyemEdit && !editing}
                     />
                     {/* ОБЬЁМЫН НИЙЛБЭР — блокуудын нийлбэр тул мөрийн Обьёмтой
@@ -190,40 +154,16 @@ export function FillRows({
 
                     {/* ГҮЙЦЭТГЭЛИЙН НҮД — обьём ба хувь НЭГ нүдэнд.
                           дээд мөр (том тоо) = бөглөсөн ОБЬЁМ — ЭНЭ Л бичигдэнэ
-                          доод мөр (жижиг %) = обьём ÷ мөрийн Обьём — зөвхөн үр дүн
-
-                        ⚠️ Хувийг гараар засах зам БАЙХГҮЙ. Хоёр эх сурвалжтай
-                        болбол (гараар бичсэн хувь vs обьёмоос бодогдсон) аль нь
-                        үнэн болох нь тодорхойгүй болж, тайлан зөрнө. */}
+                          доод мөр (жижиг %) = обьём ÷ мөрийн Обьём — зөвхөн үр дүн */}
                     {sc.bld.map((b, bi) => {
                       const key = cellKey(r.oid, bi);
                       const dirty = key in pending;
                       /*
                        * ӨӨР ХҮНИЙ бөглөсөн нүд үү (2026-09-10, хэрэглэгч:
                        * «2 акаунт нэг ноорог хуваалцдаг нь санаа зовоож бн»).
-                       *
-                       * ⚠️ ЯАГААД: `byMap` нь нүд бүрийн эзнийг аль хэдийн
-                       *    хадгалдаг байсан ч ЗӨВХӨН оролцогчийн жагсаалт ба
-                       *    «Илгээх» түгжээнд ашиглагдаж, хүснэгт дээр огт
-                       *    харагддаггүй байв. Тиймээс бөглөгч нөгөөгийнхөө
-                       *    ажлыг өөрийнх гэж андуурч давхар бичих эрсдэлтэй.
-                       *
-                       * ⚠️ Зөвхөн ИЛГЭЭГЭЭГҮЙ (`dirty`) нүдэнд утгатай:
-                       *    илгээгдсэн тоо нь хэний ч биш, багцынх.
-                       *
-                       * ⚠️ `meKey` хоосон (нэвтрэлт унтраалттай) үед бүх нүд
-                       *    «бусдынх» болж шарлахаас сэргийлж түүнийг шаардана.
                        */
                       const cellBy = dirty ? byMap.get(key) : undefined;
-                      /*
-                       * ⚠️ ЭНЭ УДААГИЙН НЭМЭЛТ ба «өмнөх · энэ удаа · нийт» (2026-09-25).
-                       *    Илгээгээгүй нүдэнд суурь = энэ мөр (`r`), нэмэлт = `pending`;
-                       *    буцаагдсан/хянагдаж буй өөрчлөгдсөн нүдэнд суурь = давхарлалтын
-                       *    өмнөх архив (`ovBase`), нэмэлт = нийт − суурь. Нэгж нь горимын.
-                       */
                       const volR = r.vol != null && r.vol > 0 ? r.vol : null;
-                      /* ⚠️ 2026-10-09: блокгүй багцын (`sc.synthetic`) обьёмгүй нүд — хувь null; `act` нь
-                         Excel загварын 0 тул «өмнөх: 0%» гэж худал харуулдаг байв (null ≠ 0) */
                       const pctOf = (x: SheetRow) =>
                         volR != null && x.obyem[bi] != null
                           ? x.obyem[bi]! / volR
@@ -249,21 +189,10 @@ export function FillRows({
                         : !dirty && baseRow && totNow != null
                           ? tr('өмнөх: {0} · энэ удаа: {1} · нийт: {2}', fmtU(prevV) || '—', signed(totNow - (prevV ?? 0)), fmtU(totNow))
                           : '';
-                      /* ⚠️ 2026-10-22 (хэрэглэгч: «ийм алдаа дахин гарах эрсдэлийг бүрэн зас»): НИЙТ СӨРӨГ болох нэмэлт —
-                         хуудсанд байгаагаас их хасалт (жиш. хоосон нүдэнд −0.0017). Бичих АГШИНД улаанаар тэмдэглэж,
-                         шалтгааныг хэлнэ; ийм нүдтэй илгээлт `FillNew.publish`-д ХААГДАНА (хянагчид хүрч гацахгүй).
-                         Хүлцэл нь `incCell.below`-тай ижил (хөвөгч цэгийн чимээ сөрөг биш). */
                       const negTot = incAmt != null ? (prevV ?? 0) + incAmt : null;
                       const negNow = dirty && negTot != null && incAmt != null
                         && negTot < -1e-9 * Math.max(1, Math.abs(prevV ?? 0), Math.abs(incAmt));
-                      /* ⚠️ 2026-10-22 (аудит): ИЛГЭЭСЭН (буцаагдсан/хянагдаж буй) нүдний нийт СӨРӨГ — ноорогийн биш, давхарлалтаас
-                         (`sheetFrame.negTotalAt`). Урьд нь зөвхөн бичих агшинд улаан болдог тул буцаагдсан илгээлтийн сөрөг нүд
-                         энгийн «өөрчлөгдсөн» мэт харагдаж, гүйцэтгэгч юу бичихээ мэддэггүй байв. */
                       const negSent = !dirty && negTotalAt(r, bi);
-                      /* ⚠️ 2026-10-22 (аудит): нийтийг 0 болгох утга — бичсэн тоо ноорогийг ОРЛОНО (`useCellEdit.commit`) тул
-                         «ноорогүй нийт»-ийн эсрэг тоо, БҮТЭН нарийвчлалаар (дэлгэц 3 оронтой: −0.0017 → «−0.002»; харагдсаныг
-                         бичвэл 0 болохгүй). Буцаагдсан илгээлтэд «хоосон үлдээ» БУРУУ — өмнө илгээсэн хасалт үлддэг
-                         (`mergeSubmission` нийлүүлдэг). `null` — хувийн хэсэг / обьёмоор илэрхийлэх аргагүй (ерөнхий текст). */
                       const hasF = !!sc.obyem[bi];
                       const negFix = negNow
                         ? hasF && (fillMode === "obyem" || volR != null)
@@ -287,35 +216,17 @@ export function FillRows({
                               : tr('Нийт сөрөг ({0}) — хуудсанд байгаагаас их хасах боломжгүй, ийм нүдтэй бол илгээгдэхгүй. Нийтийг 0 болгохын тулд энэ нүдэнд «{1}» гэж бичнэ үү.', negShow, negFix);
                       const byOther = !!cellBy && !!meKey && cellBy !== meKey;
                       const canVol = volMode(r, bi);
-                      /* ⚠️ ЭНЭ нүд НЭЭЛТТЭЙ эсэх. Урьд нь `editing` гэж
-                         нэрлэгдсэн байсан нь ГАДААД `editing` (бөглөх
-                         горим) -ыг СҮҮДЭРЛЭЖ, «Бөглөх» дараагүй байхад ч
-                         нүд нээгддэг байсан шалтгаан. */
                       const cellOpen =
                         edit && edit.i === i && edit.b === bi && edit.col === "obyem";
-                      /*
-                       * ⚠️ ХОЁР ЭХ СУРВАЛЖ (2026-09-22): хянагчийн харагдацад
-                       *    `view.changed`/`view.ok`, ГҮЙЦЭТГЭГЧИЙН талд
-                       *    буцаагдсан илгээлтийн `backChg`/`backOk`.
-                       *    Хоёр горим хэзээ ч зэрэг идэвхтэй байхгүй
-                       *    (`view` байвал `backChg` хоосон) тул `||` аюулгүй.
-                       */
-                      /* ⚠️ 2026-09-23 (#15): `backChg`/`backOk` нь `${oid}:${шошго}`
-                         (индекс биш — локал нэмсэн мөрөөс индекс гулсдаг);
-                         хянагчийн `view.changed`/`view.ok` индексээрээ хэвээр. */
                       const ck = `${i}:${b}`;
                       const bk = `${r.oid}:${b}`;
                       /** 2026-10-01: «үлдэгдэл = Обьём − архив − хяналтад − ноорог» — засварлагдах нүдэнд */
                       const remLine = canVol && !view && remainHint ? remainHint(r, bi, ovBase.get(r.oid)) : '';
                       const changed = !!view?.changed?.has(ck) || backChg.has(bk);
                       const okd = !!view?.ok?.has(ck) || (backChg.has(bk) && backOk.has(bk));
-                      /* ⚠️ 2026-10-09 (хэрэглэгч: «ногоонг дахин засах эрхгүй, зөвхөн улааныг засна»):
-                         ГҮЙЦЭТГЭГЧИЙН талд зөвшөөрөгдсөн нүд түгжээтэй — хайрцаггүй (`view`), нээгдэхгүй.
-                         Хянагчийн харагдацад (`view`) хамаарахгүй — тэнд товшилт зөвшөөрлийг сэлгэнэ. */
                       const okLock = !view && backChg.has(bk) && backOk.has(bk);
                       const open = () => {
                         // Хяналтын горим: өөрчлөгдсөн нүд нь ЗӨВШӨӨРӨХ товч
-                        /* ⚠️ 2026-10-22 (аудит): зөвшөөрөл татгалзвал (нийт сөрөг — `Guitsetgel.toggleOk`) шалтгааныг хэлнэ */
                         if (locked) {
                           const why = changed ? view?.onCell?.(i, b) : undefined;
                           if (why) say(why);
@@ -323,17 +234,10 @@ export function FillRows({
                         }
                         if (noEdit)
                           return say(
-                            /* ⚠️ 2026-09-07: «өнөөдрийн гүйцэтгэл аль хэдийн
-                               илгээгдсэн» гэсэн ХУУЧИН текст солигдов — өдөрт
-                               нэг удаа гэсэн хязгаар байхгүй болсон. `noEdit`
-                               нь одоо ЗӨВХӨН `locked` (хяналтын харагдац). */
                             tr('Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.'),
                           );
                         if (!canPerf) return say((perfWhy ?? RO.noPerf));
-                        /* ⚠️ 2026-10-09 (аудит №3): ногоон нүдэнд илгээгээгүй утга үлдсэн бол БУЦААХ л боломжтой (`clearLocked`) */
                         if (okLock) {
-                          /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт — татгалзвал урьдын адил шалтгааныг хэлнэ.
-                             `clearLocked` өөрөө түгжээ ба ноорогт байгааг ДАХИН шалгана (асуулт нээлттэй хооронд өөрчлөгдсөн бол юу ч хийхгүй). */
                           if (dirty && clearLocked && editing && !busy && !restoring) {
                             void askConfirm(tr('Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — илгээгээгүй утгыг буцаах уу?'), { ok: tr('Утгыг арилгах') })
                               .then((yes) => { if (yes) clearLocked(r, bi); else say(RO.okLocked); });
@@ -341,29 +245,14 @@ export function FillRows({
                           }
                           return say(RO.okLocked);
                         }
-                        /* ⚠️ «БӨГЛӨХ» ДАРААГҮЙ бол нүд НЭЭГДЭХГҮЙ
-                           (2026-09-09). Дээрх `canPerf` нь ЭРХ, энэ нь
-                           САНААТАЙ үйлдлийн хаалт — хоёр өөр зүйл. */
                         if (!editing) return say(RO.notEditing);
-                        /* ⚠️ Илгээлт явж байхад нүд нээхгүй — `RO.busy`-ийн ⚠️ (2026-09-25) */
                         if (busy) return say(RO.busy);
-                        /* ⚠️ 2026-10-01: ноорог сэргэж дуустал нээхгүй — бичсэн утга сэргээлтэд дарагдахгүй */
                         if (restoring) return say(RO.restoring);
-                        /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөр — тусдаа шалтгаан (`synNoVol`) */
                         if (!canVol) return say(r.group ? RO.groupAct : synNoVol(sc, r) ? RO.synNoVol : RO.noObyemField);
-                        /* ⚠️ Обьёмын багана дутуу блокт ХУВЬ горим нээгдэнэ —
-                           хувь нь `sc.act[b]`-д хадгалагдана (107/107 блокт
-                           бий). Хэрэглэгчид яагаад зөвхөн хувиар болохыг
-                           нэг удаа хэлнэ; дараа нь дуугүй ажиллана. */
                         if (pctOnly(r, bi) && !pctHintRef.current) {
                           pctHintRef.current = true;
                           say(RO.pctOnlyHint);
                         }
-                        /* ⚠️ Горимын дагуу: хувь горимд ХУВИЙГ, эс бөгөөс
-                           обьёмыг урьдчилан тавина. `pending`-д хадгалагдсан
-                           нь ӨӨР горимынх байж болно (жиш. хувиар бичсэн нүдийг
-                           обьём горимд нээх) — тэр үед хадгалагдсан мөрийг
-                           шууд тавихгүй, ОДООГИЙН горимын тоо руу хөрвүүлнэ. */
                         setVal(cellSeed(r, bi));
                         setEdit({ i, b: bi, col: "obyem" });
                       };
@@ -372,32 +261,15 @@ export function FillRows({
                           key={`a${b}`}
                           data-bi={bi}
                           style={cw(`a${bi}`, "bld")}
-                          /* ⚠️ `view` нь `editable`-ийн ЗАСАГДАХГҮЙ хувилбар:
-                             хайрцаг, курсор алга — гэхдээ обьём ба хувь
-                             ХОЁУЛАА харагдана (бөглөгчийн харж буй тоо). */
-                          /* ⚠️ ХОЁР ТӨЛӨВ, НЭГ ТЭМДЭГ (2026-09-06, хэрэглэгч:
-                             «илгээсэн, илгээгээгүй ноорог гэсэн 2 ялгаа
-                             байхад л болно»):
-                               · `dirty` — НООРОГ, хараахан ИЛГЭЭГЭЭГҮЙ
-                               · тэмдэггүй — ИЛГЭЭГДСЭН (хянагдаж байгаа ч,
-                                 батлагдсан ч — бөглөгчийн хувьд «явсан» нэг
-                                 л утгатай)
-                             ⚠️ Гурав дахь («хянагдаж байна») тэмдгийг богино
-                             хугацаанд туршаад ХАСАВ: бөглөгчид нэмэлт ялгаа
-                             хэрэггүй, зөвхөн чимээ болсон. */
                           className={cls(
                             "num bld" +
                               (canVol ? (noPerf || okLock ? " view" : " editable") : " calc") +
                               (dirty ? " dirty" : "") +
                               (byOther ? " byOther" : "") +
                               (changed ? (okd ? " chgOk" : " chg") : "") +
-                              /* ⚠️ 2026-10-07: `${мөр}:${блок}:${үсрэлтийн №}` — угтвараар (`useVirtualWindow`-ийн ⚠️) */
                               (hitKey?.startsWith(`${i}:${b}:`) ? " chgHit" : "") +
-                              /* 2026-10-01: буулгалтын урьдчилсан харагдац
-                                 ⚠️ 2026-10-07: түлхүүр нь `key` (`cellKey(oid, ИНДЕКС)`) — урьд нь `bk` (`oid:ШОШГО`)
-                                    хайдаг тул цэнхэр/улаан тодруулга ХЭЗЭЭ Ч гардаггүй байв. */
+                              /* 2026-10-01: буулгалтын урьдчилсан харагдац */
                               (pastePrev?.rej.has(key) ? " pasteBad" : pastePrev?.ok.has(key) ? " pasteOk" : "") +
-                              /* ⚠️ 2026-10-22: нийт сөрөг болох нэмэлт — дээрх `negNow`-ийн ⚠️; илгээсэн (буцаагдсан) сөрөг нүд ч (`negSent`) */
                               (negNow || negSent ? " negTot" : ""),
                           )}
                           /* Нүдний АЛЬ Ч цэгт дарахад нээгдэнэ — хоёр мөрийн
@@ -405,8 +277,6 @@ export function FillRows({
                              (хэрэглэгч үүнийг «хоёр дарж байж нээгддэг» гэж
                              мэдэрдэг байв). */
                           tabIndex={canVol && !noPerf ? 0 : changed ? 0 : undefined}
-                          /* ⚠️ Нүдийг НЭЭЛГҮЙГЭЭР (зөвхөн фокуслаад) буулгаж болно —
-                             Excel-ийн зуршил: нүд сонгоод шууд Ctrl+V. */
                           onPaste={(e) => {
                             const t = e.clipboardData.getData("text/plain");
                             if (pasteBlock(i, bi, t)) e.preventDefault();
@@ -416,7 +286,6 @@ export function FillRows({
                             if (locked) {
                               if (changed && (e.key === "Enter" || e.key === " ")) {
                                 e.preventDefault();
-                                /* ⚠️ 2026-10-22 (аудит): татгалзлын шалтгаан (`open`-ийн ⚠️) */
                                 const why = view?.onCell?.(i, b);
                                 if (why) say(why);
                               }
@@ -428,37 +297,27 @@ export function FillRows({
                             }
                           }}
                           title={
-                            /* ⚠️ 2026-10-22: нийт сөрөг — хамгийн ЭХЭНД (илгээгдэхгүй шалтгаан); аудит: ЯГ бичих тоог хэлнэ (`negTip`) */
                             (negTip ? negTip + '\n' : '') +
                             /* 2026-10-01: татгалзсан буулгалтын шалтгаан — ЭХЭНД */
                             (pastePrev?.rej.has(key) ? tr('Буулгахгүй: {0}', pastePrev.rej.get(key) ?? '') + '\n' : '') +
-                            /* ⚠️ Эзний нэрийг ЭХЭНД — өнгө нь «өөр хүн»
-                               гэдгийг л хэлнэ, ХЭН гэдгийг энэ мөр хэлнэ. */
                             (byOther ? tr('{0} бөглөсөн — хараахан илгээгээгүй.', cellBy ?? '') + '\n' : '') +
                             /* 2026-10-01: үлдэгдэл (`remainHint`) */
                             (remLine ? remLine + '\n' : '') +
-                            /* ⚠️ 2026-09-25: нэмэлтийн мөр — илгээгээгүй ба өөрчлөгдсөн нүдэнд */
                             (incLine && (dirty || changed) ? incLine + '\n' : '') +
                             (okLock
                               ? RO.okLocked
                               : changed
                               ? okd
                                 ? tr('ЗӨВШӨӨРСӨН — дахин дарвал буцаана')
-                                /* ⚠️ 2026-10-22 (аудит): хянагчид сөрөг нүд зөвшөөрөгдөхгүй — «дарж зөвшөөрнө үү» гэж хэлэхгүй (`negTip`) */
                                 : negSent && view
                                   ? ''
-                                  /* ⚠️ 2026-10-23 (UX аудит X3): «агшин» — дотоод нэр */
                                   : tr('Өмнөх батлагдсан утгаас ӨӨРЧЛӨГДСӨН — дарж зөвшөөрнө үү')
                               : r.group
                               ? RO.groupAct
                               : !canVol
-                                /* ⚠️ 2026-10-09: блокгүй багцын Обьёмгүй мөр (`synNoVol`) */
                                 ? (synNoVol(sc, r) ? RO.synNoVol : RO.noObyemField)
                                 : r.vol
-                                  /* ⚠️ Блок буулгах боломжийг ЭНД сануулна —
-                                     эс тэгвээс хэн ч мэдэхгүй далд шинж болно. */
                                   ? tr('Мөрийн Обьём {0} · бөглөсөн {1} = {2}\nExcel-ээс олон нүдийг хуулж Ctrl+V дарж болно.', qty(r.vol), qty(c.obyem[bi]), pc(c.act[bi], 2))
-                                    /* ⚠️ 2026-10-09: блокгүй багцад «энэ удаагийн обьём → нийлбэр → хувь»-г нэмж хэлнэ */
                                     + (sc.synthetic ? '\n' + RO.synCell : '')
                                   : RO.noRowVol)
                           }
@@ -471,17 +330,6 @@ export function FillRows({
                                 type: "text" as const,
                                 inputMode: "decimal" as const,
                                 className: st.cellInputLine,
-                                /**
-                                 * ⚠️ ЛАВЛАХ ТОО НҮДЭНДЭЭ (2026-09-03-ны аудит):
-                                 * бичих утга нь мөрийн «Обьём»-оос хэтрэх ёсгүй,
-                                 * хувь нь түүгээр бодогдоно. Гэтэл тэр багана
-                                 * царцаагүй тул 10-р блок дээр ажиллахад
-                                 * дэлгэцээс гүйлгэгдэн алга болж, ганц зам нь
-                                 * `title`-ийг хулганаар хүлээх байв.
-                                 */
-                                /* ⚠️ 2026-09-25 — НЭМЭЛТИЙН ГОРИМ: оролт ХООСОН нээгдэж
-                                   ӨМНӨХ нийт нь энд харагдана («өмнөх: 40») — бичих тоо
-                                   нь түүн дээр НЭМЭГДЭНЭ. Мөрийн «Обьём» нь `title`-д. */
                                 placeholder: prevHint(r, bi),
                                 title: tr('Өмнөх бөглөлтөөс хойш хийсэн хэмжээгээ бичнэ — нийт нь автоматаар нэмэгдэнэ. Залруулахдаа сөрөг тоо бичнэ.')
                                   + (remLine ? '\n' + remLine : ''),
@@ -489,36 +337,20 @@ export function FillRows({
                                 defaultValue: val,
                                 onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
                                   const el = e.target;
-                                  /* ⚠️ 2026-10-07: blur-ийн commit НЯЦААГДВАЛ (асуултад «Цуцлах» · тоо биш) нүд
-                                     нээлттэй үлддэг (`commit`-ийн 2026-10-06 ⚠️) ч фокус нь алга болж, дараагийн
-                                     товшилт бичсэн текстийг арчдаг байв — оролтод буцааж фокуслана. */
-                                  /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт НЭЭЛТТЭЙ бол фокусыг БУЦААХГҮЙ — цонхны фокусыг
-                                     булаавал Esc/Enter оролтод очиж, цонх хариугүй үлдэнэ (`useCellEdit.asking`-ийн ⚠️) */
                                   if (!commit(r, bi, el.value) && el.isConnected && !getConfirmSnapshot().req) el.focus();
                                 },
-                                /* ⚠️ Нүд НЭЭЛТТЭЙ байхад буулгасан блок — оролт
-                                   нь нэг мөр текст л авдаг тул таслан авна. */
                                 onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => {
-                                  /* ⚠️ 2026-09-29 (аудит 10): `<td>`-ийн onPaste ч `pasteBlock`
-                                     дууддаг тул дамжуулбал ХОЁР удаа асууж/мэдэгддэг байв */
                                   e.stopPropagation();
                                   const t = e.clipboardData.getData("text/plain");
                                   if (pasteBlock(i, bi, t)) e.preventDefault();
                                 },
                                 onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
-                                  /* ⚠️ 2026-10-07: оролт унтрахад фокус `body` руу унадаг байв (Escape · сүүлийн
-                                     мөрийн Enter/Tab) — эзэн `<td>`-д буцаана. Оролт АЛГА БОЛСНЫ ДАРАА (rAF):
-                                     өмнө нь фокусолбол blur → commit дуудагдаж Escape утгыг бичих болно. */
                                   const td = e.currentTarget.closest("td");
                                   const back = () => requestAnimationFrame(() => td?.focus());
                                   if (e.key === "Escape") { setEdit(null); back(); return; }
                                   if (e.key === "Enter" || e.key === "Tab") {
                                     e.preventDefault();
-                                    /* ⚠️ Утга хүлээн аваагүй бол ШИЛЖИХГҮЙ (`commit`-ийн ⚠️, 2026-09-24) */
                                     if (!commit(r, bi, e.currentTarget.value)) return;
-                                    /* ⚠️ Enter = ДООШ (нэг блок дотор дараагийн мөр), Tab =
-                                       ХАЖУУ (нэг мөрөнд дараагийн блок) — хүснэгтийн хэвшил
-                                       (2026-09-23). Урьд нь хоёулаа доош гүйдэг байв. */
                                     const dir = e.shiftKey ? -1 : 1;
                                     const t = e.key === "Enter"
                                       ? nextEditable(i, bi, dir, "obyem")
@@ -534,23 +366,10 @@ export function FillRows({
                             />
                           ) : (
                             <span className={st.cellVol}>
-                              {/* ⚠️ 2026-09-06: ГОРИМООР солигдоно. Обьём
-                                  горимд ТОМООР обьём (хуучин зан төлөв), хувь
-                                  горимд ТОМООР хувь гарна — доорх жижиг мөр нь
-                                  эсрэгээрээ. Хоёулаа ҮРГЭЛЖ харагдана: горим нь
-                                  зөвхөн ДАРААЛЛЫГ солино, мэдээллийг нуухгүй.
-                                  Хоосон бол ХООСОН — хайрцгийн хүрээ нь
-                                  «энд бичнэ» гэдгийг хэлчихнэ. */}
                               {fillMode === "pct" ? pc(c.act[bi], 1) : qty(c.obyem[bi])}
-                              {/* ⚠️ Нэгж нь ЗӨВХӨН утга байгаа үед. Хоосон
-                                  нүдэнд ганцаар «м³» гарвал «бөглөсөн» мэт
-                                  харагдаж, бөглөх ёстой нүд нүднээс мултарна. */}
                               {fillMode === "obyem" && c.obyem[bi] != null && negjOf(r.work) && (
                                 <span className={st.negj}>{unitLabel(negjOf(r.work))}</span>
                               )}
-                              {/* ⚠️ ЭНЭ УДААГИЙН НЭМЭЛТ — жижиг «+15» (2026-09-25). Нүдний
-                                  том тоо нь НИЙТ (суурь + нэмэлт); нэмэлт нь ил харагдахгүй
-                                  бол хэрэглэгч «55» нь өөрийн бичсэн тоо уу гэж эргэлзэнэ. */}
                               {incAmt != null && incAmt !== 0 && (
                                 <small style={{ marginLeft: 3, fontSize: "0.72em", opacity: 0.8, fontWeight: 600 }}>
                                   {signed(incAmt)}
@@ -560,17 +379,6 @@ export function FillRows({
                           )}
                           {/* Хувь — ЗӨВХӨН үр дүн. Товшилт нь дээрх нүдний
                               обьёмын оролтыг нээнэ (td-ийн onClick). */}
-                          {/* ⚠️ 2026-09-04 (аудит): `c.actOver[bi]` тугийг ЭНД
-                              хэрэглэнэ. Урьд нь `bagtsSheet.computeAll` тугийг
-                              бөглөдөг ч кодын хаана ч УНШИХГҮЙ байв — тиймээс
-                              Багц 1·9F oid 31534 «5/3» нүд 309.9% гэж
-                              харагдаж, эцэг бүлэг ба J нь 100%-иар таслагдсан
-                              (`actAgg`) тоо үзүүлдэг ба ЯАГААД зөрснийг
-                              хэрэглэгчид хэлэх зүйл байсангүй — «бүлгийн дүн
-                              эвдэрсэн» гэж уншигдана. Одоо түүхий утга
-                              анхааруулгын өнгөтэй + `title`-д шалтгаантай.
-                              ⚠️ Нүдний УТГЫГ таслахгүй хэвээр (`c.act`) —
-                              өгөгдлийн алдааг нуухгүй гэсэн дүрэм. */}
                           <span
                             className={cls("cellPct calcPct" + (c.actOver[bi] ? " pctOver" : ""))}
                             title={c.actOver[bi]
@@ -578,9 +386,6 @@ export function FillRows({
                               : undefined}
                           >
                             {fillMode === "pct"
-                              /* ⚠️ Хувь горимд доор ОБЬЁМ. Мөрийн Обьёмгүй үед
-                                 обьём бодогдохгүй тул «—» гарна — тэр нь
-                                 «мэдээлэлгүй», 0 БИШ. */
                               ? qty(c.obyem[bi])
                               : pc(c.act[bi], 1)}
                           </span>
@@ -607,20 +412,10 @@ export function FillRows({
                         const key = `${r.oid}:${bi}:${k}`;
                         const fld = k === "s" ? sc.start[bi] : sc.end[bi];
                         const ms = k === "s" ? c.start[bi] : c.end[bi];
-                        // ⚠️ Хаанаас ирсэн огноо вэ: `agg` = дэд мөрүүдийн
-                        // MIN/MAX (бодогдоно, засагдахгүй), `own`/`none` = энэ
-                        // мөрийнх (хоосон байсан ч засагдана).
                         const src = k === "s" ? c.startSrc[bi] : c.endSrc[bi];
                         // Талбар нь үйлчилгээнд байхгүй блок бий (толгой нь
                         // эвдэрсэн) — тэнд хадгалах газаргүй тул засагдахгүй.
-                        /* ⚠️ 2026-10-12 (аудит №8, ШИЙДВЭР): ногоон ✓ түгжээ (`okLock`) ОГНООНД ХАМААРАХГҮЙ — хянагчийн
-                           нүд тутмын зөвшөөрөл нь блокийн обьём/гүйцэтгэлийн нүдэд (`${oid}:${b}`) л; `okCells` огноо
-                           (`:s`/`:e`) агуулдаггүй, `changedKeys` ч огноог өөрчлөлтөд тоолдоггүй. Тиймээс буцаагдсан
-                           илгээлтэд ч Эхлэх/Дуусах огноо засагдана (`FillNew.publish`-ийн `okBad`-ийн ⚠️). */
                         const editable = !noPerf && src !== "agg" && !!fld;
-                        /* ⚠️ 2026-10-07: ЗАСАГДАХГҮЙ ШАЛТГААН — гүйцэтгэлийн нүдний `open()`-той ИЖИЛ
-                           дараалал. Урьд нь `editable` худал бол бүгдийг «огнооны багана байхгүй» гэж
-                           хэлдэг тул «Бөглөх» дараагүй / эрхгүй хүн худал шалтгаан уншдаг байв. */
                         const dateWhy = editable
                           ? ""
                           : noEdit
@@ -648,8 +443,6 @@ export function FillRows({
                           <td
                             key={`${k}${b}`}
                             style={cw(`${k}${bi}`, "date")}
-                            /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): буцаагдсан илгээлтэд өөрчлөгдсөн огноо улаан хүрээтэй
-                               (`backChgDates`) — обьёмын нүдний `chg`-тэй ижил; ногоон ✓ түгжээ огноонд хамаарахгүй (дээрх ⚠️) */
                             className={cls(
                               "num c-date" +
                                 (editable ? " cursor-cell" : "") +
@@ -657,8 +450,6 @@ export function FillRows({
                                 (key in pendDate ? " dirty" : ""),
                             )}
                             title={editable ? tr('Дарж календараар сонгоно') : dateWhy}
-                            /* ⚠️ 2026-10-07: гараас (Tab → Enter) ч нээгдэнэ — урьд нь `tabIndex`-гүй тул
-                               огнооны нүдэнд гараар хүрэх зам огт байгаагүй */
                             tabIndex={editable ? 0 : undefined}
                             onClick={(e) => pickHere(e.currentTarget)}
                             onKeyDown={editable ? (e) => {
@@ -680,8 +471,6 @@ export function FillRows({
                             (i === 0 && !noPerf ? " cursor-cell" : "") +
                             (i === 0 && asOf !== asOfOrig ? " dirty" : ""),
                         )}
-                        /* ⚠️ 2026-10-07: засагдахгүй үед `title` «Дарж календараар сонгоно» гэж худал хэлж,
-                           товшилт ЧИМЭЭГҮЙ өнгөрдөг байв — шалтгааныг огнооны нүдтэй ижил дарааллаар. */
                         title={i !== 0
                           ? RO.asOfRow
                           : !noPerf
@@ -704,15 +493,12 @@ export function FillRows({
                         {i === 0 ? dt(asOf) : ""}
                       </td>
                     )}
-                    {/* ⚠️ 2026-10-09: «БУСАД ТАЛБАР» — ЗӨВХӨН УНШИХ (засах зам ҮГҮЙ), сүүлийн жаазны ЭНЭ мөрийн
-                        хадгалсан утга (`r.raw`). Хоосон бол хоосон (null ≠ 0). Товшвол шалтгааныг хэлнэ. */}
                     {extra.map((x, xi) => {
                       const v = extraVal(x, r);
                       return (
                         <td
                           key={`x${x.key}`}
                           className={cls(`${x.kind === "int" || x.kind === "pct" ? "num " : ""}${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)}
-                          /* ⚠️ 2026-10-09: багана тус бүрийн өргөн (`ExtraCol.wStyle`) — толгойтой ИЖИЛ объект */
                           style={x.wStyle}
                           {...ro(RO.extra)}
                           title={v.title ?? RO.extra}

@@ -8,7 +8,6 @@ import { calculateRows, whereMatches } from './hyanaltDecision.fake.mjs';
 
 const mode = process.argv.find((a) => a.startsWith('--case='))?.slice(7) ?? 'main';
 const enterprise = mode === 'enterprise';
-/* ⚠️ 2026-10-26: хаяг/талбар Enterprise-ийн БОДИТ нэрээр (жижиг үсэг) — `enterprise` горим нь үндсэн горимтой ижил хаяг/нэр (зураглалын унтраалга хасагдсан) */
 process.env.NEXT_PUBLIC_ENT_DATA = 'https://decision.test/rest/services/Hosted';
 process.env.NEXT_PUBLIC_PORTAL_URL = 'https://decision.test/portal';
 process.env.NEXT_PUBLIC_ALLOWED_ORG_ID = 'decision-test';
@@ -95,8 +94,6 @@ const unchangedRejection = async (fn, matcher) => {
 try {
   reset();
   if (['unsupported', 'metadata-error', 'metadata-malformed'].includes(mode)) {
-    /* ⚠️ 2026-10-21 (аудит): «дэмжигдээгүй — админд» ЗӨВХӨН амжилттай уншилт `supportsCalculate:false` өгөхөд;
-       мета унасан/гажсан (мэдэхгүй) үед «дахин оролдоно уу» — хоёулаа бичилтгүй */
     const expected = mode === 'unsupported' ? /дэмжигдээгүй/ : /дахин оролдоно уу/;
     await unchangedRejection(() => updateDecision(toRow(original()), patch()),
       (e) => e instanceof HyanaltError && expected.test(e.message));

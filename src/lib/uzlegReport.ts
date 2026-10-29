@@ -10,21 +10,6 @@
  *     «Илгээсэн хэрэглэгч», «Илгээсэн огноо».
  *   · «ObjectID N» — үзлэг бүр тусдаа хуудас: Ерөнхий мэдээлэл → хэсгүүд (G01…) →
  *     Дүн / Summary → Баталгаажуулах хэсэг; хариулт өнгөтэй, зураг НҮДЭНД шигтгэсэн.
- *
- * ⚠️ СХЕМ ХАТУУ БИЧИГДЭЭГҮЙ — АЖИЛЛАХ ҮЕД ТАНИНА (маягтууд нэргүй хандалтад хаалттай
- *    тул хөгжүүлэлтийн үед талбарыг шалгах боломжгүй байв):
- *      · АСУУЛТ  = «Нийцсэн / Conformance …» хариулттай codedValue домэйнтэй талбар
- *                  (`g01`, `d02` …); текст нь alias, дараалал нь талбарын дараалал.
- *      · ДАГАЛДАХ = асуултын нэрээр эхэлсэн талбар (`g01_blk` → блок, бусад текст →
- *                  тайлбар); зураг = хавсралтын `keywords` асуултын нэрээр эхэлбэл.
- *      · ТОЛГОЙ  = эхний асуултаас ӨМНӨХ талбарууд; ГАРЫН ҮСЭГ = сүүлийн асуултаас
- *                  ХОЙШИХ (дүн/онооноос бусад) талбарууд — Survey123 маягтын дарааллаар.
- *      · ХЭСЭГ   = асуултын угтвар (`g`, `d`, `c` …); нэр ба оноо нь `sc_*_earned/appl`
- *                  талбаруудаас ДАРААЛЛААР (alias «1. Барилгын гадаа …: авсан оноо»).
- *    Нэрлэлт өөр байвал тайлан ЭВДРЭХГҮЙ — асуултууд нэг хэсэгт дарааллаараа гарна.
- *
- * ⚠️ ТАЙЛАНГИЙН ТЕКСТ МОНГОЛООР, `tr()`-ГҮЙ — албан маягт (`ipcPdf.ts`-ийн ижил дүрэм).
- * ⚠️ `null ≠ 0`: бөглөөгүй оноо «—», 0 гэж бичихгүй.
  */
 import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
 import { arcgisPost, type Row } from '@/lib/query';
@@ -56,13 +41,6 @@ const metaCache = new Map<string, Promise<UzField[]>>();
 const NAMED_ENT: Readonly<Record<string, string>> = {
   nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
 };
-/**
- * ⚠️ 2026-10-09 (аудит): Survey123-ын шошгыг ЦЭВЭРЛЭНЭ — таг хасаад ENTITY-г задлана
- *    (`&nbsp; &amp; &lt; &gt; &quot; &apos; &#39; &#x27;`). Урьд нь зөвхөн таг хасдаг тул
- *    «Хашаа&nbsp;хамгаалалт», «A &amp; B» PDF/Excel-д үсгээр гардаг байв. Тагийг ЭХЛЭЭД хасна —
- *    `&lt;b&gt;` нь задласны дараа текст хэвээр (дахин таг гэж хасагдахгүй).
- *    Талбарын alias ба coded-value домэйны НЭР хоёуланд ижил дүрэм.
- */
 export const cleanLabel = (s: string): string => s
   .replace(/<[^>]*>/g, '')
   .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
@@ -75,7 +53,7 @@ export const cleanLabel = (s: string): string => s
   .replace(/\s+/g, ' ')
   .trim();
 
-/** Давхаргын талбарууд (alias, домэйнтэй). ⚠️ Алдаа кэшлэгдэхгүй. */
+/** Давхаргын талбарууд (alias, домэйнтэй). Алдаа кэшлэгдэхгүй. */
 export function loadUzFields(url: string): Promise<UzField[]> {
   let p = metaCache.get(url);
   if (!p) {
@@ -83,12 +61,8 @@ export function loadUzFields(url: string): Promise<UzField[]> {
       .filter((f) => f.name)
       .map((f) => ({
         name: String(f.name),
-        /* ⚠️ 2026-10-09 (хэрэглэгч): Survey123 асуултын нэр HTML-тэй («<b>9.</b> Барилгын …») —
-           PDF/Excel-д тэмдэгт нь үсгээр гардаг байв. Тагийг хасна, дугаар/текст үлдэнэ. */
-        /* ⚠️ 2026-10-09 (аудит): entity ч задлагдана (`cleanLabel`) */
         alias: cleanLabel(String(f.alias || f.name)) || String(f.name),
         type: String(f.type ?? ''),
-        /* ⚠️ 2026-10-09 (аудит): домэйны НЭР ч ижил цэвэрлэгээтэй (хоосорвол код) */
         dom: f.domain?.type === 'codedValue' && f.domain.codedValues?.length
           ? new Map(f.domain.codedValues.map((c) => [String(c.code), cleanLabel(String(c.name ?? c.code)) || String(c.code)]))
           : null,
@@ -100,7 +74,7 @@ export function loadUzFields(url: string): Promise<UzField[]> {
 }
 
 /**
- * Хариултыг ангилна. ⚠️ ДАРААЛАЛ ЧУХАЛ: «Minor Non-Conformance» нь «conform»-ыг
+ * Хариултыг ангилна. ДАРААЛАЛ ЧУХАЛ: «Minor Non-Conformance» нь «conform»-ыг
  * агуулдаг тул ноцтой/бага/ажиглалтыг НИЙЦСЭНЭЭС өмнө шалгана.
  */
 export function ansCls(code: unknown, label: unknown): AnsCls {
@@ -109,7 +83,6 @@ export function ansCls(code: unknown, label: unknown): AnsCls {
   if (/minor|бага зэрг/.test(t)) return 'minor';
   if (/observ|ажиглалт/.test(t)) return 'obs';
   if (/\bn\/?a\b|хамааралгүй|not applicable/.test(t)) return 'na';
-  /* ⚠️ 2026-10-21: тийм/үгүй маягт («Байгаль орчны үзлэг») — «Тийм» = нийцсэн, «Үгүй» = үл нийцэл (улаан, тоололд major) */
   if (/^yes\b|\bтийм\b/.test(t)) return 'conf';
   if (/^no\b|\bүгүй\b/.test(t)) return 'major';
   if (/conform|нийцсэн/.test(t)) return 'conf';
@@ -136,7 +109,6 @@ const cleanScoreAlias = (s: string) => s.replace(/\s*[:：—-]?\s*(авсан|�
 
 /* ═════════════════ Тайлангийн загвар ═════════════════ */
 
-/** ⚠️ 2026-10-09: `heic` — хавсралтын төрөл image/heic|heif (хөтөч ихэвчлэн задалж чаддаггүй) */
 export type UzPhotoRef = { url: string; png: boolean; heic?: boolean };
 
 export type UzItem = {
@@ -165,7 +137,6 @@ export type UzReport = {
   pkg: string;
   company: string;
   score: { e: number; a: number } | null;
-  /** ⚠️ 2026-10-09: `null` = мэдэгдэхгүй (`cnt_*` талбаргүй БА асуулт танигдаагүй) — 0 БИШ */
   counts: Record<'major' | 'minor' | 'obs' | 'conf' | 'na', number | null>;
   header: [string, string][];
   sections: UzSection[];
@@ -188,17 +159,11 @@ export const uzPhotoRef = (a: UzAttachment, url: string): UzPhotoRef => ({
 
 /**
  * GUID-ийн харьцуулах түлхүүр — хаалт, зай хасаж ТОМ үсгээр.
- * ⚠️ 2026-10-22 (аудит): Enterprise-ийн GUID талбар `{XXXXXXXX-…}` (том үсэг, хаалттай) гэж буцдаг ч импорт/Survey123
- *    хаалтгүй эсвэл жижиг үсгээр бичиж болно — тулгалт бичиглэлээс хамаарахгүй байх ёстой.
  */
 export const guidKey = (g: unknown): string => String(g ?? '').replace(/[{}\s]/g, '').toUpperCase();
 
 /**
  * ЭЦГИЙН МӨРИЙН ХОЛБООСЫН ТҮЛХҮҮРҮҮД — `uniquerowid`, дараа нь `globalid` (хоосныг хасна; эхнийх нь ҮНДСЭН).
- * ⚠️ 2026-10-22 (аудит): хүүхэд хүснэгтийн `parentrowid` нь эцгийн `uniquerowid`-ийг заадаг гэж үзэж ЗӨВХӨН түүгээр
- *    тулгадаг байв. Enterprise руу шилжүүлэхэд «Аюулыг илрүүлэх үзлэг»-ийн 61/61 эцгийн `uniquerowid` NULL болж,
- *    345/345 илрүүлэлт эцгийн `globalid`-ийг заадаг (амьдаар) тул тайланд НЭГ Ч илрүүлэлт гардаггүй байв. Одоо
- *    `uniquerowid || globalid` — аль нь таарсан ч нэг эцэгт оноогдоно (`mir.ts`-ийн `mirRowOf` ижил дүрэм).
  */
 export function parentKeys(r: Record<string, unknown>): string[] {
   const out: string[] = [];
@@ -216,9 +181,6 @@ const LEVEL_CLS: Record<string, AnsCls> = { high: 'major', medium: 'minor', low:
  * «АЮУЛЫГ ИЛРҮҮЛЭХ ҮЗЛЭГ»-ИЙН ИЛРҮҮЛЭЛТ → эцэг бүрийн «Илрүүлсэн аюул» хэсэг (цэвэр функц — `uzlegReport.check`).
  * Маягт асуултгүй — илрүүлэлт бүр холбоотой хүснэгтийн мөр: асуулт = тайлбар, хариулт = түвшин, блок, арга хэмжээ
  * тэмдэглэлд. Үр дүнгийн түлхүүр = эцгийн ҮНДСЭН түлхүүр (`parentKeys(p)[0]`).
- * ⚠️ 2026-10-22 (аудит): (1) `parentrowid` эцгийн АЛЬ Ч түлхүүрт (uniquerowid · globalid) таарна — `parentKeys`-ийн ⚠️;
- *    (2) илрүүлэлтийн ЗУРАГ = хүснэгтийн (`/1`) мөр бүрийн хавсралт (амьдаар ~900) — урьд нь `photos: []` тул
- *    тайланд нэг ч зураг ордоггүй байв.
  */
 export function groupFindings(
   parents: readonly Record<string, unknown>[],
@@ -260,11 +222,6 @@ export function groupFindings(
 const two = (n: number) => String(n).padStart(2, '0');
 /** Улаанбаатарын цагийн бүс (UTC+8, зуны цаггүй) — `ceo/workforce.ubDayKey`-ийн дүрэм */
 const UB_OFFSET_MS = 8 * 3_600_000;
-/**
- * ⚠️ 2026-10-09: УЛААНБААТАРЫН цагаар — урьд нь хөтчийн локал цагаар (`getHours`) тул
- *    гадаадаас (эсвэл UTC-тэй машинаас) татахад тайлангийн огноо/өдрийн хил гулсдаг байв
- *    (UB 00:00–07:59-ийн үзлэг өмнөх өдөрт). Хуудасны `ubDayKey`/`uzWeekKey`-тэй НЭГ.
- */
 export const fmtDateTime = (ms: number): string => {
   const d = new Date(ms + UB_OFFSET_MS);
   return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}`;
@@ -316,7 +273,6 @@ export function buildUzReport(
   photoUrl: (attId: number) => string,
   meta: {
     pkg: string; company: string; date: number; formShort?: string; location?: string;
-    /** ⚠️ 2026-10-21: асуултын хэсгүүдийн ДАРАА нэмэх бэлэн хэсгүүд (жиш. аюулыг илрүүлэх үзлэгийн илрүүлэлтийн хүснэгт) */
     extra?: UzSection[];
   },
 ): UzReport {
@@ -440,17 +396,8 @@ export function buildUzReport(
 
   const cnt = (k: string) => numOrNull(r[`cnt_${k}`]);
   const all = sections.flatMap((s) => s.items);
-  /* ⚠️ 2026-10-09: асуулт ОГТ танигдаагүй (`answers` хоосон — схем өөр) бол гараар тоолох
-     боломжгүй тул `null` («—»). Урьд нь 0 болж PDF-д «Ноцтой 0» гэж ХУДАЛ бичигддэг байв. */
   const tally = (c: AnsCls): number | null => (answers.length ? all.filter((x) => x.cls === c).length : null);
   const e = numOrNull(r.sc_all_earned); const a = numOrNull(r.sc_all_appl);
-  /* ⚠️ 2026-10-21 (аудит): Survey123-ийн үзлэгүүдийг Enterprise руу шилжүүлэхэд Creator/CreationDate нь ШИЛЖҮҮЛЭГЧ ба
-     шилжүүлсэн агшин болсон (V11 2026-10-15, захиалагчийн 2026-10-19 — хуучин багана хадгалагдаагүй). Тиймээс «Илгээсэн»
-     нь шилжүүлгийн өмнөх мөрд маягтын өөрийн үзлэгч (`inspector`) ба үзлэгийн огноо (`insp_datetime`). */
-  /* ⚠️ 2026-10-21 (аудит): `inspector` нь codedValue домэйнтэй (код «dagiiranz» → «Б.Дагийранз ХАБЭА-н инженер») —
-     урьд нь код хэвээр гарч, толгойн «Үзлэг хийсэн ажилтан» (домэйны нэр) ба шинэ мөрийн Creator (ArcGIS нэр)-тэй
-     нэг баганад гурван нэрлэлт болдог байв. Одоо үзлэгчтэй мөр БҮРД домэйны нэр (`fieldText`), үзлэгчгүй мөрд л
-     Creator; огноо нь шилжүүлгийн өмнөх мөрд үзлэгийн огноо хэвээр. */
   const inspField = byName.get('inspector');
   const inspector = inspField ? fieldText(inspField, r, byName) : String(r.inspector ?? '').trim();
   const creator: unknown = inspector || (r.created_user ?? r.creator);
@@ -510,14 +457,12 @@ export async function loadUzAttachments(url: string, oids: number[]): Promise<Ma
 /**
  * Үзлэгийн БАЙРШИЛ — «өргөрөг, уртраг» (WGS84). Хуудасны ачаалагч геометргүй
  * (`returnGeometry: false`) тул тайланд зориулж ТУСАД нь нэг хүсэлтээр.
- * ⚠️ Алдаа гарвал хоосон — байршилгүй тайлан ч ажиллана.
  */
 export async function loadUzLocations(url: string, oids: number[]): Promise<Map<number, string>> {
   const out = new Map<number, string>();
   try {
     for (let i = 0; i < oids.length; i += 200) {
       const chunk = oids.slice(i, i + 200);
-      /* ⚠️ 2026-10-09: `outFields` — зөвхөн OBJECTID (урьд нь `*`: 100+ талбарыг дэмий татдаг байв) */
       const j = await arcgisPost<{ objectIdFieldName?: string; features?: { attributes?: Row; geometry?: { x?: number; y?: number } }[] }>(
         `${url}/query`,
         { f: 'json', objectIds: chunk.join(','), outFields: 'objectid', returnGeometry: 'true', outSR: '4326' },
@@ -536,28 +481,15 @@ export async function loadUzLocations(url: string, oids: number[]): Promise<Map<
 
 /**
  * Хавсралтын хаяг — ТОКЕНГҮЙ.
- * ⚠️ 2026-10-09 (аюулгүй байдал): урьд нь тайлан угсрах агшинд `?token=` залгаж, зургийг
- *    GET-ээр татдаг байв — токен ArcGIS/прокси/CDN-ийн access log-д бүтнээрээ үлдэж (CWE-598),
- *    олон зурагтай тайлан удаан татагдахад хугацаа нь дуусаж 498 авдаг. Одоо токен ЗӨВХӨН
- *    татах агшинд POST биеэр (`fetchAttachment`).
  */
 export const attUrl = (layerUrl: string, oid: number, id: number): string =>
   `${layerUrl}/${oid}/attachments/${id}`;
 
 /** Байгууллагын ArcGIS хост мөн үү — токеныг ЗӨВХӨН тийш (`query.isOrgUrl`-ийн ижил дүрэм).
- * ⚠️ 2026-10-20: байгууллага = Сэлбэ Enterprise ArcGIS Server (`NEXT_PUBLIC_ENT_DATA`-ийн `/Hosted`-гүй суурь); AGOL
- *    (`NEXT_PUBLIC_ARCGIS_HJ`) хасагдсан. Хувьсагчийг ШУУД уншина (`services` импортлохгүй — ачаалалтын гинж). */
+ */
 const ORG_BASE = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim().replace(/\/+$/, '').replace(/\/Hosted$/i, '');
-/** ⚠️ 2026-10-09: экспортлогдсон — хуудасны зургийн слайдер ч (blob URL) энэ шалгуураар токен илгээнэ */
 export const isOrgUrl = (url: string): boolean => !!ORG_BASE && url.startsWith(`${ORG_BASE}/`);
 
-/**
- * ⚠️ 2026-10-09 (аудит): ХАВСРАЛТЫГ ДЭЛГЭЦЭД/ТАБАД ХАРУУЛАХ ЗӨВШӨӨРӨГДСӨН ТӨРӨЛ — зөвхөн растер.
- *    Blob URL нь порталын origin-ийг өвлөдөг тул `image/svg+xml` (мөн text/html — `fetchAttachment`
- *    текстээс Blob сэргээдэг) хавсралтыг серверийн `content-type`-тайгаар нээвэл доторх скрипт
- *    порталын эрхээр ажиллана. `Chanar.INLINE_TYPES`-тэй ижил зарчим: растерыг ЭНЭ төрлөөр
- *    ДАХИН ТӨРӨЛЖҮҮЛЖ нээнэ, бусдыг (svg · html · heic …) зөвхөн татна.
- */
 const RASTER_TYPES: Readonly<Record<string, string>> = {
   'image/jpeg': 'image/jpeg', 'image/jpg': 'image/jpeg', 'image/pjpeg': 'image/jpeg',
   'image/png': 'image/png', 'image/gif': 'image/gif', 'image/webp': 'image/webp',
@@ -567,11 +499,6 @@ const RASTER_TYPES: Readonly<Record<string, string>> = {
 export const rasterTypeOf = (contentType: string | null | undefined): string | null =>
   RASTER_TYPES[String(contentType ?? '').split(';')[0].trim().toLowerCase()] ?? null;
 
-/**
- * ⚠️ 2026-10-09 (аудит №2): БАЙТЫН ГАРЫН ҮСГЭЭР растер төрөл (magic bytes) — `head` нь файлын эхний ≥12 байт.
- *    JPEG `FF D8 FF` · PNG `89 50 4E 47` · GIF `47 49 46 38` · WEBP `RIFF....WEBP` · BMP `42 4D`.
- *    SVG/HTML нь текст (`<`, `<?xml`, BOM …) тул ЭНД ХЭЗЭЭ Ч таарахгүй — растер биш бол `null`.
- */
 export function sniffRasterType(head: ArrayLike<number>): string | null {
   const b = (i: number) => (i < head.length ? head[i] : -1);
   if (b(0) === 0xff && b(1) === 0xd8 && b(2) === 0xff) return 'image/jpeg';
@@ -589,16 +516,6 @@ const GENERIC_TYPES = new Set([
   'application/binary', 'application/unknown', 'application/x-download', 'application/force-download',
 ]);
 
-/**
- * ⚠️ 2026-10-09 (аудит №2): ТАТСАН Blob-ийн аюулгүй растер төрөл. Урьд нь ЗӨВХӨН HTTP хариуны
- *    `content-type` (`blob.type`)-аар шийддэг тул AGOL зургийг `application/octet-stream` эсвэл
- *    хоосон төрлөөр өгвөл `<img>` «Зураг татагдсангүй» гарч, табад нээхэд өргөтгөлгүй файл татагддаг байв.
- *    Дүрэм: (1) `blob.type` растер → тэр; (2) `blob.type` «төрөлгүй» (`GENERIC_TYPES`) → эхний 16 байтыг
- *    `sniffRasterType`; (3) бусад (svg · html · xml · text · heic …) → `null` — байтыг ч ҮЗЭХГҮЙ.
- *    ⚠️ attachmentInfos-ийн `contentType`-ийг харуулах шийдвэрт ИТГЭХГҮЙ — тэр нь байршуулагчийн
- *    зарласан утга; байт л батална (растер формат бүр гарын үсэгтэй тул алдагдах зураг үгүй).
- *    Зарласан төрлийг зөвхөн татах файлын нэр/өргөтгөлд (`attachmentFileName`) ашиглана.
- */
 export async function rasterTypeOfBlob(blob: Blob): Promise<string | null> {
   const declared = rasterTypeOf(blob.type);
   if (declared) return declared;
@@ -616,13 +533,6 @@ const EXT_BY_TYPE: Readonly<Record<string, string>> = {
   'application/json': 'json', 'text/csv': 'csv', 'application/zip': 'zip', 'video/mp4': 'mp4',
 };
 
-/**
- * ⚠️ 2026-10-09 (аудит №2): ТАТАХ ФАЙЛЫН НЭР. Урьд нь үргэлж `attachment-<id>` (өргөтгөлгүй) тул
- *    татсан файл нээгддэггүй байв. Хавсралтын `name` (attachmentInfos) байвал тэр — зам/хориотой
- *    тэмдэгтийг `_` болгоно; өргөтгөлгүй бол төрлөөс нэмнэ. Нэргүй бол `attachment-<id>.<ext>`,
- *    төрөл үл мэдэгдэх бол `.bin`. ⚠️ svg/html-д өргөтгөл АВТОМАТААР нэмэхгүй (хоёр товшилтоор
- *    хөтчид нээгдэх файл болгохгүй) — нэр нь өөрөө агуулсан бол л хэвээр.
- */
 export function attachmentFileName(id: string | number, name?: string | null, type?: string | null): string {
   const ext = EXT_BY_TYPE[rasterTypeOf(type) ?? String(type ?? '').split(';')[0].trim().toLowerCase()];
   /* файлын нэрэнд удирдах тэмдэгт (\u0000–\u001f) хориотой */
@@ -638,17 +548,6 @@ const abortErr = () => new DOMException('Aborted', 'AbortError');
 
 /**
  * ХАВСРАЛТЫН БАЙТ — POST, токен БИЕЭР (2026-10-09).
- * ⚠️ Татахын ӨМНӨ `ensureFreshToken` — олон зурагтай тайлан минут гаруй татагдана.
- * ⚠️ ArcGIS алдааг HTTP 200-аар JSON биетэй буцаадаг тул `content-type`-ийг шалгана
- *    (токенгүй GET нь HTML нэвтрэх хуудас буцаадаг — амьдаар баталсан);
- *    498/499 бол `refreshAfterTokenError` → НЭГ удаа дахин. Бусад алдаа → `null`
- *    (дуудагч «татагдсангүй»-д тоолно).
- * ⚠️ `URLSearchParams` бие = энгийн CORS хүсэлт (preflight-гүй).
- * ⚠️ 2026-10-09: оролдлого бүр `ATT_TIMEOUT_MS` (30с) — урьд нь хугацаагүй тул нэг гацсан
- *    хавсралт тайлан татахыг МӨНХӨД «Зураг татаж байна… 41/42»-д түгжиж, цонх хаагдахгүй
- *    байв. Timeout → `null` (татагдсангүйд тоологдоно). `signal` (хэрэглэгч цуцлах) бол
- *    `AbortError` ШИДНЭ. `AbortSignal.any` бүх хөтөчид байхгүй (`query.ts`-ийн ⚠️) — гараар.
- * ⚠️ Токеныг ЗӨВХӨН байгууллагын хост руу (`isOrgUrl`).
  */
 export async function fetchAttachment(url: string, signal?: AbortSignal): Promise<Blob | null> {
   await ensureFreshToken();
@@ -664,9 +563,6 @@ export async function fetchAttachment(url: string, signal?: AbortSignal): Promis
     try {
       const res = await fetch(url, { method: 'POST', body, signal: ctl.signal });
       let code = res.ok ? 0 : res.status;
-      /* ⚠️ 2026-10-09: текст төрлийн хариу нь ArcGIS-ийн алдаа ЗӨВХӨН `{ error }` түлхүүртэй JSON бол.
-         Урьд нь json/text/html БҮРИЙГ алдаа гэж үздэг тул `.txt/.json/.html` хавсралт (Чанар)
-         хэзээ ч нээгддэггүй байв. Бие нэг л удаа уншигдах тул текстээс нь Blob-ийг сэргээнэ. */
       const ct = res.headers.get('content-type') ?? '';
       if (res.ok && /json|text\/(plain|html)/i.test(ct)) {
         const txt = await res.text();
@@ -696,9 +592,6 @@ export async function fetchAttachment(url: string, signal?: AbortSignal): Promis
 
 /**
  * Татсан, жижигрүүлсэн зураг — PDF-д `data` (data URL), Excel-д `bytes` ба хэмжээ.
- * ⚠️ 2026-10-09 (санах ой): ЗӨВХӨН сонгосон форматын хэлбэр үүснэ — нөгөө нь `null`.
- *    Урьд нь зураг бүрд data URL + байт ХОЁУЛАА (≈2.3× санах ой) хадгалагддаг тул олон
- *    зурагтай тайлан хөтчийг унагадаг байв.
  */
 export type UzImg = { data: string | null; bytes: Uint8Array | null; w: number; h: number; png: boolean };
 /** Тайлангийн зургийн хэлбэр — `pdf` → data URL, `xlsx` → байт */
@@ -724,10 +617,6 @@ export const countReportImages = (reports: UzReport[]): number => reportRefs(rep
 
 /**
  * Зургийг татаж ЖИЖИГРҮҮЛНЭ — файлын хэмжээг барина.
- * ⚠️ Гарын үсэг PNG хэвээр (тунгалаг дэвсгэр); бусад нь JPEG 0.72.
- * ⚠️ 2026-10-09: `'heic'` — татагдсан ч хөтөч HEIC-ийг задалж чадсангүй (Chrome/Firefox-д
- *    `createImageBitmap` image/heic-д унадаг). «Татагдсангүй»-гээс ТУСАД нь тоологдоно —
- *    сүлжээ биш формат асуудал тул «дахин оролдох» нь тусалдаггүй.
  */
 async function toImg(ref: UzPhotoRef, max: number, mode: UzImgMode, signal?: AbortSignal): Promise<UzImg | 'heic' | null> {
   const blob = await fetchAttachment(ref.url, signal);
@@ -761,11 +650,6 @@ async function toImg(ref: UzPhotoRef, max: number, mode: UzImgMode, signal?: Abo
 
 /**
  * Бүх тайлангийн зургийг 4 зэрэгцээгээр татна — явцыг мэдэгдэнэ.
- * ⚠️ 2026-10-09: `failed` — татагдаагүй зургийн хаягууд. Урьд нь чимээгүй хаягддаг тул
- *    PDF/Excel-д зураг дутуу атал Excel-ийн «зураг» тоо бүтнээрээ үлддэг байв. Цонх
- *    «N зураг татагдсангүй» гэж хэлж, Excel татагдсан (ба татагдаагүй) тоог бичнэ.
- * ⚠️ 2026-10-09: `heic` — задлах боломжгүй HEIC (тусдаа тоо, `failed`-д ОРОХГҮЙ — цонх хоёрыг
- *    тусад нь хэлнэ; Excel-ийн тоонд хоёулаа «татагдсангүй»). `signal` цуцлагдвал `AbortError`.
  */
 export async function loadReportImages(
   reports: UzReport[],
@@ -859,7 +743,6 @@ function reportContent(rep: UzReport, img: Map<string, UzImg>, logo: string | nu
     out.push(...blocks.slice(1));
   };
   const c = rep.counts;
-  /** ⚠️ 2026-10-09: мэдэгдэхгүй тоо «—» (0 БИШ) */
   const cn = (v: number | null) => (v == null ? '—' : String(v));
   const out: Obj[] = [
     ...(logo ? [{ svg: logo, width: 150, margin: [0, 0, 0, 10], ...(first ? {} : { pageBreak: 'before' }) }] : (first ? [] : [{ text: '', pageBreak: 'before' }])),
@@ -930,7 +813,6 @@ export function buildUzPdf(reports: UzReport[], img: Map<string, UzImg>, logo: s
     pageSize: 'A4',
     pageMargins: [40, 40, 40, 50],
     defaultStyle: { font: 'Roboto', fontSize: 10, color: INK },
-    /* ⚠️ 2026-10-09: огноогүй (`date = 0`) бол «—» — урьд нь «1970-01-01» гэж бичигддэг байв */
     info: { title: one ? `${one.form} — ${one.pkg} — ${one.date > 0 ? fmtDate(one.date) : '—'}` : 'Ажлын байрны үзлэг' },
     footer: (page: number) => ({
       text: [
@@ -948,10 +830,6 @@ export function buildUzPdf(reports: UzReport[], img: Map<string, UzImg>, logo: s
 
 /* ═════════════════ Excel (.xlsx — нэмэлт сангүй) ═════════════════ */
 
-/**
- * ⚠️ XLSX нь ZIP — сан нэмэхгүйн тулд ШАХАЛТГҮЙ («stored») ZIP-ийг энд угсарна.
- *    Excel, LibreOffice хоёулаа нээнэ. CRC32 л хэрэгтэй.
- */
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
@@ -1104,14 +982,11 @@ const sheetName = (s: string, used: Set<string>) => {
 };
 
 /** «Морин сувд - Захиалагчийн үзлэг 2026-09-29» */
-/* ⚠️ 2026-10-09: компани/багц нь хэвийн болголтоос «—» (`habeaUzleg.clean`) ирж болно —
-   `companyShort` түүнийг хоосон болгодог тул `||` нөөц одоо ажиллана (урьд нь «— - …»). */
 export const reportTitle = (r: UzReport): string =>
   `${companyShort(r.company) || companyShort(r.pkg) || 'Үзлэг'} - ${r.formShort} ${r.date > 0 ? fmtDate(r.date) : ''}`.trim();
 
 /**
  * Зургийн тоо — ТАТАГДСАН (эсвэл татаагүй) нь; татагдаагүй байвал «2 (1 татагдсангүй)».
- * ⚠️ 2026-10-09: урьд нь хавсралтын БҮХ тоог бичдэг тул зураг дутуу атал тоо бүтэн харагддаг байв.
  */
 const photoCount = (photos: UzPhotoRef[], failed: ReadonlySet<string>): string | number | null => {
   const bad = photos.filter((p) => failed.has(p.url)).length;
@@ -1129,7 +1004,6 @@ function inspectionSheet(r: UzReport, img: Map<string, UzImg>, name: string, fai
   let maxPhotos = 0;
   const kv = (label: string, value: string | number | null, s: number = ST.cell): XRow =>
     ({ cells: [{ v: '', s: ST.cell }, { v: label, s: ST.cell }, { v: value, s }, { v: '', s: ST.cell }, { v: '', s: ST.cell }, { v: '', s: ST.cell }] });
-  /* ⚠️ Хэсгийн гарчиг A–G НЭГТГЭСЭН нүдэнд — нарийн A баганад ороож мөр 150pt өндөр болдог байв */
   const merges: string[] = [];
   const band = (t: string): XRow => {
     merges.push(`A${rows.length + 1}:G${rows.length + 1}`);
@@ -1192,7 +1066,6 @@ function tableSheet(reports: UzReport[], name: string, failed: ReadonlySet<strin
   const sumKeys: string[] = [];
   for (const r of reports) for (const x of r.summary) if (!sumKeys.includes(x.label)) sumKeys.push(x.label);
   head.push(...sumKeys);
-  /* ⚠️ Гарын үсгийн хэсэгт ИЖИЛ нэр давтагдана («Огноо / Date» ×3) — байрлалаар түлхүүрлэнэ */
   const sigRowKeys = (r: UzReport) => {
     const seen = new Map<string, number>();
     return r.signatures.map((s) => { const n = (seen.get(s.label) ?? 0) + 1; seen.set(s.label, n); return `${s.label}#${n}`; });
@@ -1280,8 +1153,6 @@ export function buildUzXlsx(
 
 /**
  * Файлын нэрэнд тохиромжгүй тэмдэгт ба «ХХК», хашилтыг арилгана — «"Морин сувд" ХХК» → «Морин сувд».
- * ⚠️ 2026-10-09: дан «—» (хоосон утгын орлуулга, `habeaUzleg.clean`) → '' — дуудагчийн `||`
- *    нөөц (багц, «Үзлэг») ажиллана. Урьд нь файлын нэр «2026-09-29 —» болдог байв.
  */
 export const companyShort = (s: string): string => s
   .replace(/["“”«»']/g, '')

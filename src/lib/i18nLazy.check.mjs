@@ -1,32 +1,24 @@
 /**
- * ХЭЛ СОЛИХОД ДАХИН АЧААЛАЛГҮЙ — модулийн түвшний `tr()` ХОРИОТОЙ (2026-09-30).
+ * ХЭЛ СОЛИХОД ДАХИН АЧААЛАЛГҮЙ — модулийн түвшний `tr` ХОРИОТОЙ (2026-09-30).
  *
- * `setLocale` нь `location.reload()`-гүй ажилладаг (`LOCALE_SWITCH_RELOADS =
+ * `setLocale` нь `location.reload`-гүй ажилладаг (`LOCALE_SWITCH_RELOADS =
  * false`): store шинэчлэгдэж, `LocaleProvider` `key={generation}`-ээр аппыг
  * remount хийнэ. Гэвч МОДУЛЬ нэг л удаа ачаалагддаг тул модулийн түвшинд
  * (функцээс гадуур) дуудсан `tr('…')` нь ачаалах үеийн хэлээр ХӨЛДӨНӨ —
  * remount ч дахин үнэлэхгүй. 2026-09-30-нд ~1,540 ийм дуудалтыг
- *   · `key: tr('…')`          → `get key() { return tr('…'); }`
- *   · `key: [tr('…'), …]`     → `const lzKey = perLocale(() => […]); get key() { return lzKey(); }`
- *   · `const X = tr('…')`     → `const X = () => tr('…')` (дуудалтад `X()`)
- *   · `const X = [tr('…')]`   → `const X = perLocale(() => […])` (дуудалтад `X()`)
+ *   · `key: tr('…')`          → `get key { return tr('…'); }`
+ *   · `key: [tr('…'), …]`     → `const lzKey = perLocale( => […]); get key { return lzKey; }`
+ *   · `const X = tr('…')`     → `const X =  => tr('…')` (дуудалтад `X`)
+ *   · `const X = [tr('…')]`   → `const X = perLocale( => […])` (дуудалтад `X`)
  * хэлбэрт шилжүүлсэн. Энэ шалгуур ШИНЭ модулийн түвшний дуудалт орж ирэхээс
  * сэргийлнэ.
  *
  * Хориотой хоёр хэлбэр (AST-аар, `tools/i18n-extract.mjs`-тэй ижил аргаар):
- *   1. Функцийн өвөггүй `tr()` — объектын талбар, массивын элемент, тогтмол.
- *   2. Модулийн түвшинд ШУУД ажилладаг callback доторх `tr()` —
+ *   1. Функцийн өвөггүй `tr` — объектын талбар, массивын элемент, тогтмол.
+ *   2. Модулийн түвшинд ШУУД ажилладаг callback доторх `tr` —
  *      `X.map((r) => ({ title: tr(…) }))`, `Object.fromEntries(…tr(…))` —
  *      ачаалах үед нэг удаа ажиллаад мөн адил хөлддөг.
- * Зөвшөөрөгдсөн: getter/функц/компонент/`perLocale(() => …)` дотор.
- *
- * ⚠️ САНААТАЙ СТАТИК: мэдэгдлийн өмнөх тайлбарт `i18n-static` бичсэн бол
- *    алгасна — зөвхөн үр дүн нь хэлээс үл хамаарах тохиолдолд (жиш.
- *    `DedButets.WELL_SUFFIX`: суффикс ба давхаргын нэр нэг агшинд ижил хэлээр).
- *
- * ⚠️ `t(` нь `i18nCore`-ийн жинхэнэ нэр — импортын alias-ыг (`t as tr`)
- *    файл бүрээс уншина; `ViewPanel.tsx`-ийн `t: Totals` зэрэг өөр `t`-д
- *    хамаарахгүй.
+ * Зөвшөөрөгдсөн: getter/функц/компонент/`perLocale( => …)` дотор.
  */
 import assert from 'node:assert/strict';
 import ts from 'typescript';
@@ -36,8 +28,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/* ⚠️ 2026-09-30: өөр сешн засварлаж буй файл — 12 цэг (`label: tr(…)` → getter)
-   болмогц энэ жагсаалтыг ХООСЛО. Эдгээр нь унагахгүй, сануулна. */
 const PENDING = new Set([]);
 
 function walk(d, acc = []) {
@@ -135,8 +125,6 @@ assert.ok(/export function perLocale</.test(core), 'perLocale helper алга');
 /* ── perLocale: хэл бүрд нэг удаа, identity тогтмол ── */
 {
   const { perLocale, setLocale, getLocale, t, loadLocaleDict } = await import('./i18nCore.ts');
-  /* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — урьдчилан
-     ачаалснаар `setLocale('en')` урьдын адил СИНХРОН солигдоно. */
   await loadLocaleDict('en');
   let calls = 0;
   const arr = perLocale(() => { calls++; return [t('Хойд')]; });

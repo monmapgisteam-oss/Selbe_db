@@ -4,15 +4,8 @@ import { t as tr } from '@/lib/i18nCore';
  * тээврийн хуваарь, замын эрэлт, автобусны хүртээмж.
  *
  * Эх сурвалж: газрын зураг дээрх «Барилга» давхарга (`et:24`) — 2026-08-24-ээс
- * нэгтгэсэн `data`/108 үйлчилгээнд. Хаягийг ГАРААР бичихгүй: `layerUrl()`
+ * нэгтгэсэн `data`/108 үйлчилгээнд. Хаягийг ГАРААР бичихгүй: `layerUrl`
  * каталогоос угсарна.
- *
- * ⚠️ ХОЁР ТУСДАА талбар:
- *   · `Population`    (alias «Хүн ам»)     — орон сууцны оршин суугчийн тоо
- *   · `Huchin_chadal` (alias «Хүчин чадал») — орон сууц БУС барилгын багтаамж
- *   Орон сууц → Population, бусад → Huchin_chadal. Хоёрыг ШУУД нийлүүлэхгүй —
- *   1 оршин суугч ба 1 сургуулийн суудал ижил утгагүй тул зөвхөн хүн-зорчилт
- *   болгосны ДАРАА нэгтгэнэ.
  */
 
 /** et:24 барилгын давхаргын гол талбарууд */
@@ -42,10 +35,6 @@ export const CAT_LABEL: Record<BuildingCat, string> = {
 
 /**
  * Зориулалтын утгыг ТҮЛХҮҮР ҮГЭЭР 7 ангилалд буулгана.
- *
- * ⚠️ ДАРААЛАЛ чухал: орон сууц ЭХЭНД (》«Үйлчилгээтэй орон сууц» → орон сууц),
- *    оффис нь худалдаа-үйлчилгээний ӨМНӨ (》«Оффис, үйлчилгээ» → оффис).
- *    Батлагдсан онцгой тохиолдол: спорт·хүүхэд/ахмад → үйлчилгээ; холбоо·цагдаа → оффис.
  */
 export function classifyBuilding(purpose: unknown): BuildingCat {
   const s = String(purpose ?? '').toLowerCase().trim();
@@ -82,7 +71,6 @@ export const TRIP_COEF: Record<BuildingCat, number> = {
 
 /**
  * Нэг барилгын өглөөний оргил цагийн хүн-зорчилт.
- * ⚠️ ЧУХАЛ ДҮРЭМ: орон сууц бол ЗӨВХӨН Population, бусад бол ЗӨВХӨН Capacity.
  */
 export function buildingTrips(cat: BuildingCat, population: number, capacity: number): number {
   const base = isResidentialCat(cat) ? Math.max(0, population) : Math.max(0, capacity);
@@ -120,8 +108,6 @@ export const ROAD_WEIGHTS = [0.5, 0.3, 0.2] as const;
 export type BusBand = 'good' | 'ok' | 'poor';
 
 /** Автобусны буудал хүртэлх зайн босго (м) */
-/* ⚠️ 2026-10-09: 400 м нь ДҮРСЛЭЛИЙН шатлалын зааг — БНБД-ийн норм БИШ. БНБД 30-01-24, 10.22-ын
-   норм нь 500 м (`suit/simulation.TRANSIT_NORM_M`); «БНБД-ийн босго» гэж бүү шошголоорой. */
 export const BUS_GOOD_M = 400; // 0–400 сайн
 export const BUS_OK_M = 800;   // 400–800 боломжийн · >800 үйлчилгээ дутмаг
 

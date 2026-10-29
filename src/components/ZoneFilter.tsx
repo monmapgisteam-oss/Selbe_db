@@ -31,12 +31,6 @@ import s from '@/modules/dashboard.module.css';
  *   · `bar`   — самбарын бүтэн мөр (Ерөнхий төлөвлөгөө/Барилгын хяналтын байрлал)
  *   · `panel` — ЗӨВХӨН агуулга (толгой + чипүүд). Товч ба хайрцгийг `MapTools`
  *               өөрөө барина — «Давхарга»/«Тунгалаг»-тай яг ижил хэв маягаар.
- *
- * ⚠️ 2026-08-23: `tool` хувилбар ХАСАГДСАН. Тэр нь товч ба доош нээгдэх
- * dropdown-ыг НЭГ элемент дотор барьдаг байсан бөгөөд хэрэгслийн зурвас босоо
- * багана (`overflow-y: auto`) болсны дараа dropdown нь тэр гүйлгэх хайрцагт
- * ТАСАРЧ, бүсүүд харагдахаа болих байв. Одоо хавтан нь зурвасаас ГАДУУР,
- * түүний баруун талд бие даан байрлана.
  */
 
 /** Бүсийн дэлгэцийн нэр — `lib/zoneLabel` (2026-10-26-нд салгав; хуучин импортууд хэвээр ажиллана) */
@@ -125,7 +119,6 @@ export function ZoneFilter({
   const [open, setOpen] = useState(false);
   const q = useZoneGroups();
 
-  /* ⚠️ 2026-10-23 (UX аудит S17): унжих жагсаалт Esc-ээр хаагдана (урьд нь зөвхөн «Хаах» товчоор) */
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
@@ -148,7 +141,6 @@ export function ZoneFilter({
           {sel.length > 0 && (
             <button type="button" className={s.zoneBarBtn} onClick={() => zoomToZone(zone!)}>{tr('Төвлөрөх')}</button>
           )}
-          {/* ⚠️ 2026-10-23 (X7): сонголт АРИЛГАХ — «Цуцлах» нь «үйлдлийг болих» гэж уншигддаг байв */}
           {sel.length > 0 && (
             <button type="button" className={s.zoneBarClear} onClick={() => setZone(null)}>{tr('Арилгах')}</button>
           )}
@@ -158,10 +150,7 @@ export function ZoneFilter({
     );
   }
 
-  /* ── БҮТЭН МӨР хувилбар — самбарын толгойн доор (өмнөх ZoneBar-ын байрлал) ──
-     ⚠️ 2026-10-23 (UX аудит X7/S17): «Бүс» · «Бүх бүс» · «Бүс нэмэх/сонгох» САНААТАЙ ХЭВЭЭР — энэ шүүлт нь газрын
-     зургийн БҮС (`ZONE_LAYER`, `zoneType`) сонгодог, багц биш. «Багц» гэж нэрлэвэл багцын шүүлттэй андуурагдана;
-     аудитаас зөвхөн «Цуцлах» → «Арилгах» хэрэгжив. */
+  /* ── БҮТЭН МӨР хувилбар — самбарын толгойн доор (өмнөх ZoneBar-ын байрлал) ── */
   return (
     <div className={s.zoneBar}>
       <span className={s.zoneBarLabel}>{tr('Бүс')}</span>

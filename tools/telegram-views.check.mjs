@@ -1,9 +1,6 @@
 /**
  * Telegram ботын «✅ Зөвшөөрөх» эрх — `VIEWS`-ээс, санхүүгүй (2026-10-01).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs tools/telegram-views.check.mjs
- *
- * ⚠️ Шинэ харагдац (ТУХ г.м.) автоматаар орох ёстой; санхүү (`pkgFin` · `finance`)
- *    ба `sensitive: true` датасетийн харагдац ХЭЗЭЭ Ч орохгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs tools/telegram-views.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -41,7 +38,7 @@ const bot = readFileSync(new URL('./telegram-bot.mjs', import.meta.url), 'utf8')
 assert.match(bot, /const FULL_VIEWS = botFullViews\(VIEWS\.map\(\(v\) => v\.key\)\);/);
 console.log('✅ telegram-bot.mjs нь VIEWS-ээс уншина');
 
-/* ── ⚠️ 2026-10-21: олгох харагдац ∩ админы өөрийн хүрээ (`grantWithin`) — хязгаартай админ FULL_VIEWS олгохгүй ── */
+/* ── 2026-10-21: олгох харагдац ∩ админы өөрийн хүрээ (`grantWithin`) — хязгаартай админ FULL_VIEWS олгохгүй ── */
 assert.deepEqual(grantWithin(full, 'all'), full, "'all' админ бүгдийг олгоно");
 assert.deepEqual(grantWithin(['plan', 'pkgProg', 'gazar'], ['pkgProg', 'plan']), ['plan', 'pkgProg'], 'хязгаартай админ — зөвхөн өөрийн хүрээ, дараалал олгох жагсаалтынх');
 assert.deepEqual(grantWithin(['plan', 'pkgProg'], ['gazar']), [], 'хүрээнд нь байхгүй → хоосон (бот татгалзана)');

@@ -1,10 +1,7 @@
 /**
  * CEO KPI «Нэгж талбар / газар чөлөөлөлт» — цэвэр тооцооны шалгуур.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/land.check.mjs
- *
- * ⚠️ ЛОГИК ХУУЛБАРЛААГҮЙ — жинхэнэ `computeLand`/`parseParcels`-ыг импортлоно.
- *    Сүлжээ ОГТ ҮГҮЙ: ачаалагч (`loadLandKpi`) дуудагдахгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/land.check.mjs
  *
  * Хамгаалж буй бодит алдаанууд:
  *  1. МЭДЭЭЛЭЛГҮЙ нь ТЭГ болох — талбайгүй мөр «0 га» биш «—».
@@ -45,7 +42,7 @@ const parcels = parseParcels([
   raw(5, 'татгалзсан', 700),
   raw(6, 'маргаантай', 361),
   raw(7, 'гэрээлсэн', null, { [F.areaAlt]: 500 }),   // areaAlt нөөц
-  raw(8, 'гэрээлсэн', 0),                            // ⚠️ 2026-10-22: 0 = хэмжилт биш (полигонгүй тул null)
+  raw(8, 'гэрээлсэн', 0),
   raw(9, null, null),                                 // төлөвгүй, талбайгүй
 ]);
 const clearance = { cleared: 1945, remaining: 9, remainingHa: 1.4162, total: 1954, pct: 99.54 };
@@ -55,7 +52,6 @@ const overlaps = { total: 4, byPkg: [{ name: 'Багц 1 · 9 давхар', par
 
 assert.equal(parcels.length, 9);
 assert.equal(parcels[6].areaM2, 500, 'area хоосон → areaAlt');
-/* ⚠️ 2026-10-22 (аудит): `area_m2 = 0` нь хэмжилт БИШ — Талб_1 > 0, эс бөгөөс полигоны талбай (`land.parcelAreaOf`) */
 assert.equal(parcels[7].areaM2, null, 'area=0, нөөцгүй → null (0 БИШ)');
 {
   const [z1, z2, z3] = parseParcels([
@@ -74,7 +70,6 @@ assert.equal(parcels[7].areaM2, null, 'area=0, нөөцгүй → null (0 БИШ
   ]);
   assert.equal(split.length, 3, 'хүснэгтэд полигон бүр хэвээр');
   assert.equal(sumAreaM2(split), 785, '685 давхар тоологдохгүй');
-  /* ⚠️ 2026-10-23: шалтгааны бүлэглэл ч ИЖИЛ дүрмээр — га нийт үлдсэн га-тай тэнцэнэ, тоо нь полигон бүрээр */
   const sr = byReason(split);
   assert.equal(sr.length, 1);
   assert.equal(sr[0].n, 3, 'тоо — мөр бүр');
@@ -197,8 +192,6 @@ assert.equal(tp.rows.length, ROW_CAP + 1);
 assert.ok(String(tp.rows.at(-1)[0].v).includes('50'), 'сүүлийн мөр тасалсан тоог заана');
 assert.equal(tp.rows.at(-1).length, 7, 'тасалсан мөр багана тоотой таарна');
 
-/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): Editor Tracking асаалттай — `asOf` = хамгийн сүүлийн
-   EditDate; талбар алга (метадатад `editFieldsInfo` байхгүй) бол `null` хэвээр */
 {
   const rowsEd = [{ last_edited_date: Date.UTC(2026, 8, 1) }, { last_edited_date: Date.UTC(2026, 8, 20) }, { last_edited_date: null }];
   assert.equal(lastEditOf(rowsEd, 'last_edited_date'), Date.UTC(2026, 8, 20));

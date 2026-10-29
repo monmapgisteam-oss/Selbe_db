@@ -3,29 +3,14 @@
 /**
  * БАГЦААР ХУВААРИЛАХ ACL-ИЙН ЕРӨНХИЙ ЦӨМ — гурван дэд системийн ГАНЦ эх код.
  *
- * ⚠️ ЯАГААД ЭНЭ ФАЙЛ БАЙХ ЁСТОЙ ВЭ (2026-09-09). Чанар · Хуваарь · Обьём
- * гурав нь ЯГ ИЖИЛ бүтэцтэй, ~250 мөр тус бүр, ялгаа нь ЗӨВХӨН нэр байв
- * (`huvaariAcl` ба `obyemAcl` хоёрыг тэмдэгтийн нэрээр солиод `diff` хийхэд
- * ЯЛГАА ГАРАХГҮЙ). Тэр давхардлын үнэ нь баримтжуулагдсан:
- *
  *   · `aclParity.check.mjs`-ийн толгой: «Шалгалтаар олдсон 13 алдааны 7 нь
  *     ЯГ НЭГ хэв шинжтэй байв: засвар нь ижил кодын НЭГД нь л хүрч, бусад
  *     руу хуулагдаагүй.»
  *   · 2026-09-09-нд дахин хоёр ийм алдаа олдсон: `UserAdmin.flipCap`-ийн
- *     гурван салааны ЗӨВХӨН нэгэнд `.trim()` байсан.
+ *     гурван салааны ЗӨВХӨН нэгэнд `.trim` байсан.
  *
  * `aclParity` тест нь давхардлыг ХАМГААЛДАГ болохоос АРИЛГАДАГГҮЙ. Энэ файл
  * шалтгааныг нь арилгана: нэг газар засвал гурвуулаа засагдана.
- *
- * ⚠️ `guitsetgelAcl` нь ЭНД ОРОХГҮЙ. Тэр нь ШАТТАЙ (`stage`) бөгөөд «нэг
- * аккаунт нэг шатанд» гэсэн үндсэн өөр дүрэмтэй; албадан нэгтгэвэл
- * хийсвэрлэл эвдэрч, хоёулангийнх нь логик бүрхэг болно.
- *
- * ⚠️ ХАДГАЛАЛТ нь өөрчлөгдөөгүй: `localStorage` түлхүүр, ArcGIS-ийн мөрийн
- * угтвар, JSON хэлбэр бүгд ХЭВЭЭР. Энэ бол цэвэр бүтцийн нэгтгэл —
- * өгөгдөл шилжүүлэх шаардлагагүй.
- *
- * ⚠️ FAIL-CLOSED: хуваарилагдаагүй бол `[]` — нэг ч багц.
  */
 
 import { isCodeSuper, roleForUser } from './services';
@@ -39,24 +24,12 @@ export const ALL_BAGTS = '*';
 /**
  * ХУУЧИН SNAPSHOT ЛОКАЛ БИЧИЛТИЙГ ДАРАХААС ХАМГААЛАХ ГЛОБАЛ ТООЛУУР.
  *
- * ⚠️ ЯАГААД (2026-09-25, аудитын засвар). `syncRemote` (ба `caps._syncRemoteCaps`)
- *    нь remote snapshot-оор кэшийг БҮХЭЛД нь сольдог; зөвхөн `failed`
- *    хэрэглэгчийг давхарладаг байв. Таб руу буцахад `check()` → `fetchAll`
- *    эхэлж, админ тэр агшинд «Нэмэх» дарвал applyEdits-ээс ӨМНӨ авсан
- *    snapshot ирж шинэ хуваарилалтыг самбараас арчина (remote-д бий атлаа);
- *    дараагийн «Нэмэх» нь тэр ХУУЧИН мөрөөс `grants`-ыг бүтээж `pushRow`-оор
- *    remote-ийг дарж, эхний нэмэлт бүрмөсөн алдагдана.
- *
  * ЗАГВАР: локал бичилт бүр (дараалалд орох ба дуусах агшинд) `seq`-ийг
  *    ахиулж, хэрэглэгчийн сүүлийн утгыг хадгална. `initRemote` хүсэлт
  *    эхлэхдээ тэр агшны `seq`-ийг тэмдэглэнэ. Snapshot-ыг буулгахад
  *    хэрэглэгчийн сүүлийн бичилт тэмдгээс ХОЙШ бол snapshot тэр бичилтийг
  *    агуулаагүй байж болох тул ЛОКАЛ төлөв давамгайлна; дараагийн poll
  *    (тэмдэг бичилтээс хойш) remote-оор засна.
- * ⚠️ Зэрэг хэд хэдэн хүсэлт (poll + UserAdmin нээх) — ХАМГИЙН ЭРТНИЙ
- *    тэмдгийг авна (консерватив: локал илүү удаан үлдэнэ, алдагдахгүй).
- * ⚠️ Тэмдэггүй (тест шууд `syncRemote` дуудах) бол энэ шалгуур идэвхгүй —
- *    урьдын зан төлөв (`failed` + дараалалд байгаа хэрэглэгч л давхарлана).
  */
 let seq = 0;
 const outstanding: number[] = [];
@@ -87,11 +60,6 @@ export function _newerThanSnapshot(t: number | undefined): boolean {
 /**
  * НЭГ ҮҮРЭГ + ТҮҮНИЙ БАГЦУУД — хуваарилалтын БҮТЭЦ НЭГЖ (2026-09-09).
  *
- * ⚠️ ЯАГААД ЭНЭ ХЭЛБЭР ВЭ: урьд нь `{ roles[], bagts[] }` байсан нь ҮҮРЭГ ×
- * БАГЦЫН ҮРЖВЭР үүсгэдэг байв. «Багц 1-д зохиогч, Багц 5-д батлагч» гэж
- * томилохыг оролдвол дөрвөн хослол үүсч, тэр хүн Багц 1-д БАТЛАГЧ ч болно —
- * `decidePlan` зохиогч=батлагчийг татгалздаг тул тэр багц ГАЦНА.
- *
  * Тэр сул талыг нөхөхийн тулд ТАВАН хамгаалалт бичигдсэн байсан
  * (`HuvaariAcl` 3 · `ObyemAcl` 3 · `UserAdmin` 2) бөгөөд тэдгээр нь бүгд
  * «болохгүй» гэж хэлдэг: админ хүссэн зүйлээ хийж чадахгүй, «эхлээд хасаад
@@ -110,12 +78,10 @@ export type Assign<R extends string = string> = {
   user: string;
   /**
    * ҮҮРЭГ БҮР ӨӨРИЙН БАГЦТАЙ. Үүрэггүй системд ганц `{ role: '', bagts }`.
-   * ⚠️ Хоосон массив БАЙХГҮЙ: мөр нь өөрөө хасагдана.
    */
   grants: Grant<R>[];
 };
 
-/** ⚠️ ХУУЧИН ХЭЛБЭР — зөвхөн УНШИХАД (2026-09-09-өөс өмнөх мөрүүд) */
 type LegacyAssign = { user: string; roles?: string[]; bagts?: string[] };
 
 /**
@@ -186,21 +152,11 @@ export type AclSpec<R extends string> = {
   roleCaps: Readonly<Record<R, CapKey>>;
   /**
    * ҮҮРЭГГҮЙ системийн ганц эрх (Чанар). Үүрэгтэй системд `undefined`.
-   * ⚠️ Хуваарилалт байвал олгоно, арилвал буцаана.
    */
   soleCap?: CapKey;
   /** Алсын бичилт — `permsRemote`-ийн харгалзах хос */
-  /**
-   * ⚠️ `roles`/`bagts` нь ХУУЧИН клиентэд зориулсан НЭГДЭЛ, `grants` нь ҮНЭН
-   *    эх сурвалж. Хоёуланг нь дамжуулна — `permsRemote` хоёуланг бичнэ.
-   */
   push: (user: string, roles: R[], bagts: string[], grants: Grant<R>[]) => Promise<boolean>;
   remove: (user: string) => Promise<boolean>;
-  /**
-   * ⚠️ 2026-10-04: хэрэглэгчийн мөрийг ШИНЭЭР унших (`permsRemote.scopedRead`) — бичихийн
-   *    ӨМНӨ нэгтгэнэ (`pushRow`). `null` = уншиж чадсангүй (бичихгүй), `{row:null}` = мөр алга.
-   *    Өгөөгүй бол урьдын зан (локал бүтэн жагсаалт).
-   */
   read?: (user: string) => Promise<{ row: { roles?: string[]; bagts?: string[]; grants?: Grant<string>[] } | null } | null>;
   /** Алдааны мессежүүд — систем бүр өөрийн үгтэй */
   msg: {
@@ -214,15 +170,7 @@ export type AclSpec<R extends string> = {
 /** Нэг дэд системийн бүрэн API */
 export type Acl<R extends string> = {
   list: () => Assign<R>[];
-  /** ⚠️ Хуучин (`roles`/`bagts`) ба шинэ (`grants`) хоёуланг хүлээж авна */
   syncRemote: (
-    /**
-     * ⚠️ `Grant<string>` — `Grant<R>` БИШ (2026-09-16). `permsRemote` нь
-     *    үүргийн утгыг ШАЛГАДАГГҮЙ, зөвхөн тээвэрлэдэг (тэр модулийн
-     *    баримтжуулсан зарчим). Танигдахгүй үүргийг ЭНЭ функц өөрөө
-     *    `ROLES.has()`-ээр хаядаг тул нарийн төрөл шаардах нь худал
-     *    баталгаа өгөөд дуудагч талыг cast хийхэд хүргэнэ.
-     */
     rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
   ) => void;
   failedUsers: () => string[];
@@ -263,24 +211,11 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
   /**
    * Энэ сешнд remote хуваарилалт НЭГ Ч УДАА уншигдсан уу (2026-09-21).
-   * ⚠️ `false` бол УНШИХ API (`scope` · `hasRole` · `grantsOf` · `list`)
-   *    localStorage-ийн кэшийг ҮЛ ТООЦОЖ «хуваарилагдаагүй» ([]) буцаана —
-   *    хатуу тохиргоонд багцын хуваарилалт байхгүй тул default нь хоосон.
-   *    Эс бөгөөс хатуу жагсаалтын хэрэглэгч `selbe-*-acl-v1`-д өөртөө багц
-   *    бичээд сүлжээгээ хаагаад нэвтэрвэл хүрээ нь хүчинтэй байв. Бичих зам
-   *    (`load()` шууд) хэвээр — админы засвар remote руу урьдын адил явна.
-   *    `caps.remoteSynced` · `permissions.remoteLoaded`-тэй ижил үндэслэл.
    */
   let remoteSynced = false;
   /** Уншилтад ХҮЧИНТЭЙ жагсаалт — remote ачаалагдаагүй бол хоосон */
   const effective = (): Assign<R>[] => (remoteSynced ? load() : []);
 
-  /**
-   * ⚠️ ХУУЧИН ХЭЛБЭРИЙГ УНШИНА (2026-09-09). `localStorage` дээр өмнөх
-   *    хувилбарын `{roles[], bagts[]}` мөр үлдсэн байж болно — хөрвүүлэхгүй
-   *    бол `grants` нь `undefined` болж БҮХ хуваарилалт чимээгүй алга болно.
-   *    Хөрвүүлэлт нь эрхийг НЭМЭХГҮЙ, ХАСАХГҮЙ (`fromLegacy`).
-   */
   const normalize = (a: Assign<R> | LegacyAssign): Assign<R> | null => {
     if (!a || typeof a.user !== 'string') return null;
     const g = (a as Assign<R>).grants;
@@ -312,15 +247,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
   function save(list: Assign<R>[]): void {
     cache = list;
-    /*
-     * ⚠️ `localStorage` БҮТЭЛГҮЙТЭЖ БОЛНО (2026-09-07-ны 100% аудит):
-     * хувийн горим, квот дүүрэх, сайтын өгөгдөл хаасан тохиргоо — гурвуулаа
-     * ШИДДЭГ. Хамгаалалтгүй бол `save` шидэж, дуудагч унаж, админы панел
-     * эвдэрнэ; бүр муу нь `notify()` хүрэхгүй тул захиалагчид ХУУЧИН эрхээ
-     * хараад үлдэнэ.
-     * ⚠️ Санах ойн `cache` дээр аль хэдийн шинэчлэгдсэн бөгөөд алсын бичилт
-     * тусдаа явдаг тул локал хадгалалт унасан ч ажиллагаа ҮРГЭЛЖИЛНЭ.
-     */
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(spec.storeKey, JSON.stringify(list));
@@ -345,8 +271,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   const touched = new Map<string, number>();
 
   function enqueue<T>(u: string, fn: () => Promise<T>): Promise<T> {
-    /* ⚠️ Дараалалд орох БА дуусах агшинд тэмдэглэнэ (2026-09-25) — файлын
-       толгойн «Remote агшин» тайлбар. */
     touched.set(u, _touchSeq());
     const prev = chain.get(u) ?? Promise.resolve();
     const p = prev.then(fn, fn);
@@ -375,21 +299,9 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
   /**
    * Хуваарилалтыг remote руу бичих.
-   * ⚠️ Жагсаалтыг ГҮЙЦЭТГЭХ агшиндаа уншина: дараалалд хүлээх хооронд
-   *    хэрэглэгч хасагдсан/дахин нэмэгдсэн бол сүүлийн байдал нь бичигдэнэ.
    */
   async function pushRow(user: string, delta?: { base: Grant<R>[]; next: Grant<R>[] }): Promise<boolean> {
     try {
-      /*
-       * ⚠️ ШИНЭ МӨР ДЭЭР ӨӨРИЙН ӨӨРЧЛӨЛТИЙГ ДАВХАРЛАНА (2026-10-04). Урьд нь ≤5 мин настай
-       *    кэшээс бүтэн `grants` бичдэг тул хоёр админ нэг хүнд зэрэг багц нэмэхэд
-       *    сүүлийнх нь эхнийхийн багцыг ЧИМЭЭГҮЙ арчдаг байв. `delta` (энэ дуудлагын
-       *    өмнөх/дараах локал утга) өгөгдсөн бол remote мөрийг ДАХИН уншиж
-       *    `mergeGrantDelta`-аар нэгтгээд локалыг ч түүгээр шинэчилнэ. Уншиж чадаагүй
-       *    бол БИЧИХГҮЙ (`false` → «!» тэмдэг, «Дахин илгээх»). `retry`/`purge` нь delta-гүй
-       *    (зорьсон локал төлөвийг хэвээр бичнэ).
-       */
-      /* ⚠️ Өмнөх бичилт УНАСАН (`failed`) бол локал нь баталгаажаагүй зорилго — бүтнээр нь (урьдын зан) */
       if (delta && spec.read && !failed.has(user)) {
         const fresh = await spec.read(user);
         if (!fresh) return false;
@@ -403,12 +315,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
       }
       const a = load().find((x) => x.user === user);
       if (!a) return spec.remove(user);
-      /*
-       * ⚠️ ХУУЧИН ХЭЛБЭРИЙН НЭГДЭЛ (2026-09-09): бүх үүрэг, бүх багцыг
-       *    ХАВТГАЙЛНА. Энэ нь мэдээллийг АЛДДАГ (аль үүрэг аль багцад
-       *    байсныг мартана) тул зөвхөн хуучин build-ийн нөөц болгож бичнэ;
-       *    `grants` нь бүтнээрээ дагалдана.
-       */
       const roles = [...new Set(a.grants.map((g) => g.role))].filter((r): r is R => r !== '');
       const bagts = [...new Set(a.grants.flatMap((g) => g.bagts))];
       return spec.push(a.user, roles, bagts, a.grants);
@@ -420,29 +326,14 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   /**
    * ЭРХИЙГ ҮҮРЭГТЭЙ НЬ ТААРУУЛНА — хуваарилалт ажиллах чадвартай байх ёстой.
    *
-   * ⚠️ ЗӨВХӨН ХЭРЭГТЭЙГ НЬ ХӨНДӨНӨ (2026-09-08). Урьд нь үүрэг байхгүй бол
-   * `toggleCap(u, cap, false)` гэж БОЛЗОЛГҮЙ унтраадаг байв — тэр нь эрхийг
-   * ЯМАР ЗАМААР олгосныг үл ялгана. Админ гараар олгосон эрхийг энэ
-   * хуваарилалт чимээгүй УСТГАДАГ байлаа.
-   *
    * ДҮРЭМ: үүрэг БАЙВАЛ эрхийг олгоно. Үүрэг БАЙХГҮЙ бол — тухайн эрхийг
    * зөвхөн НЭГ Ч үүрэг үлдээгүй үед л хасна (хуваарилалт бүхэлдээ арилах).
    */
   async function syncCaps(user: string, roles: R[]): Promise<boolean> {
-    /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙН ЭРХИЙГ ХӨНДӨХГҮЙ — эрх нь ЗӨВХӨН шууд олголтоос
-       (`aclOps.capDirectOp`). `setGrants` super-ийг татгалздаг ч `removeAssign(u, revoke=true)`
-       хуучин мөрийг хасахад энд хүрч шууд олгосон эрхийг (`qaqc` г.м.) буцаадаг байв. */
-    /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super — хүснэгтийн super-ийн эрх хуваарилалттайгаа синклэгдэнэ (`aclOps.isCleanup`-ийн ⚠️) */
     if (isCodeSuper(user)) return true;
     try {
       const c = await import('./caps');
-      /* ⚠️ REMOTE УНШИГДААГҮЙ БОЛ ТАТГАЛЗАНА (2026-09-21, аудитын засвар) —
-         `caps.toggleCap`-тай ижил: `capsStored` нь шинэ browser-т `[]` тул
-         «одоогийн + үүргийн эрх» нь ArcGIS дээрх бүтэн жагсаалтыг дарж бичнэ.
-         `false` → `r.g=false` → хуваарилалт «унасан» гэж тэмдэглэгдэнэ. */
       if (!c.capsRemoteReady()) return false;
-      /* ⚠️ `capsStored` — тугтай `capsOf` биш (2026-09-21): remote унасан үед
-         `[]`-ээс эхэлбэл админы бусад эрхийг арчина (caps.ts-ийн тайлбар). */
       const cur = c.capsStored(user);
       const next = new Set(cur);
 
@@ -468,28 +359,12 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
   /* ══════════════════════════ API ══════════════════════════ */
 
-  /* ⚠️ `effective` — remote ачаалагдаагүй бол хоосон (2026-09-21) */
   const list = (): Assign<R>[] => effective();
 
   /**
    * REMOTE-ООС ИРСЭН хуваарилалтыг cache-д буулгана — `initRemote` дуудна.
-   *
-   * ⚠️ REMOTE = ЭЦСИЙН ҮНЭН: энд байхгүй хэрэглэгчийн хуваарилалт ХАСАГДСАН.
-   * ⚠️ НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР: давхар мөр ирвэл СҮҮЛИЙНХ (их OBJECTID) ялна.
-   * ⚠️ `trim()` (2026-09-08): remote мөрийн username-д санамсаргүй зай орвол
-   *    түлхүүр нь бичилтийн талынхтай (`set` нь `trim().toLowerCase()`)
-   *    ТААРАХГҮЙ болж, хуваарилалт «алга болдог» байв.
-   * ⚠️ Үүрэгтэй системд үүрэггүй мөрийг АЛГАСНА — «хуваарилагдсан ч юу ч
-   *    хийж чадахгүй» гэсэн утгагүй төлөв үүсгэхгүй.
    */
   const syncRemote = (
-    /**
-     * ⚠️ `Grant<string>` — `Grant<R>` БИШ (2026-09-16). `permsRemote` нь
-     *    үүргийн утгыг ШАЛГАДАГГҮЙ, зөвхөн тээвэрлэдэг (тэр модулийн
-     *    баримтжуулсан зарчим). Танигдахгүй үүргийг ЭНЭ функц өөрөө
-     *    `ROLES.has()`-ээр хаядаг тул нарийн төрөл шаардах нь худал
-     *    баталгаа өгөөд дуудагч талыг cast хийхэд хүргэнэ.
-     */
     rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
   ): void => {
     const byUser = new Map<string, Assign<R>>();
@@ -497,13 +372,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
       if (!r.user) continue;
       const user = r.user.trim().toLowerCase();
 
-      /*
-       * ⚠️ ХОЁР ХЭЛБЭР ЗЭРЭГ (2026-09-09). ArcGIS дээр хуучин
-       *    `{roles[], bagts[]}` мөр үлдсэн байж болно — шинэ хэлбэрийг л
-       *    уншвал тэдгээр эрх ЧИМЭЭГҮЙ алга болно. Хөрвүүлэлт нь эрхийг
-       *    НЭМЭХГҮЙ, ХАСАХГҮЙ; дараагийн бичилтэд шинэ хэлбэрээр хадгалагдана.
-       */
-      /* ⚠️ `Grant<string>` — доорх шүүлт нь `ROLES.has()`-ээр `R` болгож нарийсгана */
       const raw: Grant<string>[] = Array.isArray(r.grants)
         ? r.grants
         : fromLegacy<R>({ user, roles: r.roles, bagts: r.bagts }, hasRoles);
@@ -520,20 +388,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
       if (!grants.length) continue;
       byUser.set(user, { user, grants });
     }
-    /*
-     * ⚠️ БИЧИГДЭЭГҮЙ (`failed`) хэрэглэгчийн ЛОКАЛ төлөв давамгайлна (2026-09-23
-     *    аудит). Урьд нь remote агшин кэшийг бүхэлд нь сольдог тул ArcGIS-д
-     *    бичигдэж амжаагүй хуваарилалт (сүлжээ унасан) дараагийн poll-д
-     *    (5 мин / таб руу буцахад) самбараас чимээгүй алга болж, «⚠️ бичигдсэнгүй»
-     *    туг нь мөргүй үлддэг байв. Локалд байвал локалынхыг, хассан бол хассаныг.
-     */
-    /*
-     * ⚠️ ДАРААЛАЛД БАЙГАА ба SNAPSHOT-ЫН ДАРАА БИЧИГДСЭН хэрэглэгч ч мөн
-     *    (2026-09-25, аудитын засвар) — `failed`-тэй ижил: snapshot нь тэр
-     *    бичилтээс ӨМНӨ авагдсан байж болох тул локал нь илүү шинэ. Эс бөгөөс
-     *    самбараас шинэ хуваарилалт алга болж, дараагийн нэмэлт хуучин мөрөөс
-     *    бүтээгдээд remote-ийг дардаг байв (файлын толгойн «Remote агшин»).
-     */
     const keep = new Set<string>(failed);
     for (const u of chain.keys()) keep.add(u);
     for (const [u, t] of touched) if (_newerThanSnapshot(t)) keep.add(u);
@@ -544,7 +398,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
         if (loc) byUser.set(u, loc); else byUser.delete(u);
       }
     }
-    /* ⚠️ Энэ мөчөөс л уншилт кэшийг тооцно (2026-09-21) — remote = үнэн. */
     remoteSynced = true;
     save([...byUser.values()]);
   };
@@ -552,18 +405,11 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   /**
    * Аккаунтад үүрэг ба багц олгох / шинэчлэх.
    *
-   * ⚠️ Хатуу super-ийг ХУВААРИЛАХГҮЙ: түүнд хязгаар үйлчилдэггүй (`scope`
-   *    `null` буцаана) тул хуваарилалт нь худал хязгаар л харуулна.
-   *
    * @param grant `false` бол эрхийг ЭНД олгохгүй — багц солиход эрх аль
    *   хэдийн олгогдсон тул дахин бичих нь дэмий.
    */
   /**
    * ХУВААРИЛАЛТЫГ БҮТНЭЭР солино.
-   *
-   * ⚠️ Гарын үсэг нь ХЭВЭЭР (`roles[], bagts[]`) — дуудагч талд өөрчлөлт
-   *    шаардахгүй. Дотроо `grants`-д хөрвүүлнэ: тэр хэлбэр нь үүрэг бүрд
-   *    ӨӨР багц өгөх боломжтой (`setGrants`), энэ нь бүгдэд ижил өгнө.
    */
   const set = (user: string, roles: R[], bagts: string[], grant = true): AclWrite => {
     const rs = saneRoles(roles);
@@ -580,8 +426,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   const setGrants = (user: string, grants: Grant<R>[], grant = true): AclWrite => {
     const u = user.trim().toLowerCase();
     if (!u) return { ok: false, error: spec.msg.noUser };
-    /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super татгалзана — хүснэгтийн super (доошлуулж болно) хуваарилагдана, мөр нь
-       энгийн мөр (`aclOps.isCleanup`-ийн ⚠️); хүрээ нь super байхад нь `scope` → хязгааргүй хэвээр */
     if (isCodeSuper(u)) return { ok: false, error: spec.msg.superUser };
 
     /* Танигдахгүй үүрэг, багцгүй мөрийг хаяна */
@@ -603,7 +447,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
     const cur = load();
     const exists = cur.some((a) => a.user === u);
-    /* ⚠️ 2026-10-04: энэ засварын СУУРЬ — `pushRow` шинэ мөр дээр зөвхөн ялгааг давхарлана */
     const base = cur.find((a) => a.user === u)?.grants ?? [];
     const next = exists
       ? cur.map((a) => (a.user === u ? { user: u, grants: clean } : a))
@@ -617,13 +460,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
       const g = grant ? await syncCaps(u, rolesAll) : true;
       return { ok, g };
     });
-    /*
-     * ⚠️ ЭРХ ОЛГОЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08). Урьд нь `markResult(u,
-     *    r.ok)` байсан тул: хуваарилалтын мөр бичигдээд `syncCaps` УНАВАЛ
-     *    админд «амжилттай» гэж ХУДАЛ харагдана. Хэрэглэгч нь хуваарилагдсан
-     *    ч эрхгүй тул хуудсаа ОГТ нээж чадахгүй, шалтгаан нь хаана ч
-     *    бичигдэхгүй. Хасалт ба нэмэлт хоёр ижил хатуу шалгуур байх ёстой.
-     */
     const sync = run.then((r) => { markResult(u, r.ok && r.g); return r.ok && r.g; });
     const granted = run.then((r) => r.g);
     return { ok: true, sync, granted };
@@ -637,31 +473,11 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    */
   const removeAssign = (user: string, revoke = true): AclWrite => {
     const u = user.trim().toLowerCase();
-    /* ⚠️ Хоосон нэр (2026-09-21): урьд нь `''` түлхүүрээр хоосон мөр устгах гэж
-       remote руу явж, `syncCaps('')`-ийг ч дууддаг байв. `setGrants`-тай тэгш. */
     if (!u) return { ok: false, error: spec.msg.noUser };
-    /* ⚠️ 2026-10-04: хасалт ч ялгаагаар — завсарт өөр админы нэмсэн багц хадгалагдана */
     const base = load().find((a) => a.user === u)?.grants ?? [];
     save(load().filter((a) => a.user !== u));
     const run = enqueue(u, async () => {
       const ok = await pushRow(u, { base, next: [] });
-      /*
-       * ⚠️ ЭРХ БУЦААЛТЫН ҮР ДҮНГ ЗАЛГИХГҮЙ (2026-09-08). Урьд нь `syncCaps`-ийн
-       *    үр дүнг хаяж зөвхөн мөрийн бичилтийг буцаадаг байв: `__cap__:` мөр
-       *    ArcGIS дээр ҮЛДСЭН ч `sync` нь `true` гарч, админд «амжилттай» гэж
-       *    ХУДАЛ мэдээлдэг. Дараагийн `initRemote` тэр мөрийг эргүүлж татаж
-       *    эрхийг СЭРГЭЭДЭГ тул хасагдсан хүн харагдацтайгаа үлддэг байлаа.
-       */
-      /*
-       * ⚠️ ДАРААЛАЛД ХҮЛЭЭХ ХООРОНД ДАХИН ХУВААРИЛАГДСАН БОЛ ЭРХИЙГ БУЦААХГҮЙ
-       *    (2026-09-21) — `guitsetgelAcl.removeAssign`-ийн `revoke &&
-       *    !stageOfUser(u)` дүрэмтэй ижил. `enqueue` нь зөвхөн энэ хөтчийн
-       *    дуудлагуудыг цувуулдаг; хооронд нь өөр админ эсвэл `initRemote` →
-       *    `syncRemote` тэр хүнийг дахин хуваарилсан байж болно. Тэр үед
-       *    `syncCaps(u, [])` нь ҮҮРЭГТЭЙ системд (`none = true`) бүх үүргийн
-       *    эрхийг хасаж, шинээр хуваарилагдсан хүнийг эрхгүй орхидог байв.
-       *    Гүйцэтгэх агшиндаа жагсаалтыг ДАХИН уншина (`pushRow`-той ижил).
-       */
       const g = revoke && !load().some((a) => a.user === u) ? await syncCaps(u, [] as R[]) : true;
       return { ok, g };
     });
@@ -672,8 +488,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
   /**
    * Аккаунт УСТГАХАД хуваарилалтыг бүрмөсөн арилгах.
-   * ⚠️ Эрх БУЦААХГҮЙ — аккаунт бүхэлдээ устаж байгаа тул tombstone-той
-   *    уралдах ёсгүй (`purgeAssign`-тай ижил дүрэм).
    */
   const purge = (user: string): Promise<boolean> => {
     const u = user.trim().toLowerCase();
@@ -688,17 +502,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
 
   /**
    * «ДАХИН ИЛГЭЭХ» · «ДАХИН ОЛГОХ» (2026-10-01, «хэрэглэгч: бүгдийг зас»).
-   *
-   * ⚠️ ЯАГААД: `failed` тэмдэг (мөр/эрхийн бичилт унасан) нь панелд «!» л харуулдаг байв —
-   *    дахин оролдох цорын ганц зам нь багцыг хасаад дахин нэмэх (эрх буцаах асуулттай).
-   *    Мөн хуваарилалт бий атлаа эрх нь алга (`erhOverview.missingCaps`) үед ч ижил.
-   * ⚠️ ЛОКАЛ ТӨЛӨВ = ЗОРЬСОН ТӨЛӨВ: `failed` хэрэглэгчийн локал мөр `syncRemote`-д давамгайлдаг
-   *    тул энд ГҮЙЦЭТГЭХ агшиндаа уншаад тэр хэвээр нь бичнэ (`pushRow` — мөр алга бол устгал).
-   * ⚠️ ЭРХ ЗӨВХӨН НЭМЭГДЭНЭ (`syncCaps(roles)`, мөр байвал) — алга болсон мөрийн эрхийг энд
-   *    буцаахгүй: тэр нь `aclOps.revokeGoneRoles`-ийн ажил, өнчин эрх нь хуудасны
-   *    «өнчин эрх — хасах»-аар ил цэвэрлэгдэнэ (автомат хасалт хийхгүй).
-   * @param grant `false` — устгагдсан аккаунт / хатуу super-ийн хуучин мөр: зөвхөн мөрийг бичнэ,
-   *   `__cap__:` мөр ДАХИН үүсгэхгүй (`aclOps.isCleanup`).
    */
   const retry = (user: string, grant = true): AclWrite => {
     const u = user.trim().toLowerCase();
@@ -708,14 +511,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
       const a = load().find((x) => x.user === u);
       const rolesAll = a ? [...new Set(a.grants.map((g) => g.role))].filter((r): r is R => r !== '') : [];
       let g = grant && a ? await syncCaps(u, rolesAll) : true;
-      /*
-       * ⚠️ ЭРХИЙН МӨР ӨМНӨ НЬ УНАСАН БОЛ ТҮҮНИЙГ Ч ДАХИН БИЧНЭ. Анхны бичилтэд `syncCaps` нь
-       *    кэшийг аль хэдийн шинэчилсэн (`setCaps` локалд эхэлж бичдэг) тул энд «өөрчлөлтгүй» гэж
-       *    ArcGIS руу бичихгүй `true` буцаана — `__cap__:` мөр dirty хэвээр үлдэж, «Дахин илгээх»
-       *    амжилттай мэт харагдах байв. Хадгалсан (зорьсон) жагсаалтыг бүтнээр нь илгээнэ —
-       *    `caps.retryCapsDirty`-ийн тухайн хэрэглэгчийн хувилбар.
-       */
-      /* ⚠️ 2026-10-21 (аудит): кодын super-ээс бусдад (хүснэгтийн super ч) — `syncCaps`-тай ижил дүрэм */
       if (grant && a && !isCodeSuper(u)) {
         try {
           const c = await import('./caps');
@@ -742,18 +537,9 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   const scope = (user: string | null | undefined, role?: R): string[] | null => {
     if (!user) return [];
     if (roleForUser(user) === 'super') return null;
-    /* ⚠️ `effective` — remote ачаалагдаагүй бол хуваарилагдаагүй (2026-09-21) */
     const a = effective().find((x) => x.user === user.trim().toLowerCase());
     if (!a) return [];
 
-    /*
-     * ⚠️ ҮҮРЭГ ЗААСАН БОЛ ЗӨВХӨН ТҮҮНИЙ БАГЦУУД (2026-09-09). Урьд нь бүх
-     *    үүргийн багц нэг сагсанд байсан тул «Багц 1-д зохиогч, Багц 5-д
-     *    батлагч» гэсэн хүн Багц 1-д Ч БАТЛАГЧ болдог байв. Одоо grant бүр
-     *    өөрийн багцтай тул хязгаар ЯГ таарна.
-     * ⚠️ Үүрэг заагаагүй бол (`role` undefined) — БҮХ үүргийн НЭГДЭЛ, өөрөөр
-     *    хэлбэл «энэ систем дотор ямар нэг эрхтэй багцууд».
-     */
     const rel = hasRoles && role != null ? a.grants.filter((g) => g.role === role) : a.grants;
     if (!rel.length) return [];
     if (rel.some((g) => g.bagts.includes(ALL_BAGTS))) return null;
@@ -763,7 +549,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   /** Хуваарилалтыг ЯГ ХЭВЭЭР нь унших — панел засварлахад хэрэгтэй */
   const grantsOf = (user: string | null | undefined): Grant<R>[] | null => {
     if (!user) return null;
-    /* ⚠️ `effective` (2026-09-21) — `scope`-той ижил дүрэм */
     return effective().find((x) => x.user === user.trim().toLowerCase())?.grants ?? null;
   };
 
@@ -771,7 +556,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   const hasRole = (user: string | null | undefined, role: R): boolean => {
     if (!user) return false;
     if (roleForUser(user) === 'super') return true;
-    /* ⚠️ `effective` (2026-09-21) — `scope`-той ижил дүрэм */
     const a = effective().find((x) => x.user === user.trim().toLowerCase());
     return a?.grants.some((g) => g.role === role) ?? false;
   };

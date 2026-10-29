@@ -8,7 +8,6 @@ import type { PlanRow } from '@/lib/plan';
 import type { MonthRes, PkgPlan, PkgRes } from '@/lib/huvaariObyem';
 import type { PlanSubmission } from '@/lib/huvaariBatlah';
 import { REMOTE_MAX } from '@/lib/draftRemote';
-/* ⚠️ 2026-10-26: хадгалалт ДАВХАРГААР (`huvaariStore`) — 191-д эх хуудасны бүтцээр мөр (`n:plan:…`) эсвэл хуучин JSON; hook-ийн утга зүй хэвээр */
 import { blobStore, legacyPending, prepareStore, type HDStore, type HDStoreMode } from '@/lib/huvaariStore';
 import {
   applyClear, cellsToMaps, coversMark, dropCleared, hdClearMarkKey, hdKey, hdLocalKey, hlcNext, identityRemap, isEmpty as hdIsEmpty,
@@ -26,17 +25,6 @@ const HD_RECENT = 10 * 60_000;
 /**
  * ХУВААЛЦСАН НООРОГ — ArcGIS дээрх нэг мөрөнд сэргээх · дифф · бичих · мөчлөг
  * (2026-09-30: `Huvaari.tsx`-ээс механикаар салгав; логик · тайлбар ХЭВЭЭР).
- *
- * ⚠️ Энэ hook нь 6 ноорогийн Map-ыг ЭЗЭМШДЭГГҮЙ — эцэг (`Huvaari`) дамжуулна,
- *    учир нь тэдгээрийг чирэлт · popup · батлах гинж ч уншиж бичдэг. Энд зөвхөн
- *    алстай нийлүүлэх зам. Гаралтын ref-үүд (`hdTimer` · `hdFlushRef` · `hdClearRef` ·
- *    `hdSkipUnlockOnce` · `hdRemapRef` · `hdMapsRef` · `hdMeta` · `meRef`) нь эцгийн
- *    `withdraw` · `sendForApproval` · `clearPreview` · чирэлтийн цуцлалт · нэмэлт
- *    ажлын урсгалд урьдын адил хэрэглэгдэнэ.
- * ⚠️ Эффектийн ДАРААЛАЛ: энэ hook эцэг дотор `commit`/чирэлтээс ӨМНӨ дуудагддаг тул
- *    сэргээх · дифф · мөчлөгийн эффектүүд батлах гинж · урсгалын эффектүүдээс ӨМНӨ
- *    ажиллана; тэдгээр нь state-ээр (дараагийн зурагдалт) эсвэл ref-ээр л харилцдаг
- *    тул үр дүн ижил.
  */
 export function useSharedDraft({
   kind, pkgKey, user, status, canEdit, locked, previewing, approving, pending,
@@ -81,14 +69,8 @@ export function useSharedDraft({
   pkgKeyRef: React.RefObject<string>;
   /** «Улсын комисс» шинэ жаазын oid зураглал — эцгийн `[pkg]` эффект тавьдаг, сэргээх эффект нэг удаа хэрэглэнэ */
   hdRemapRef: React.RefObject<{ pkg: string; map: Map<number, number> } | null>;
-  /**
-   * ⚠️ 2026-10-09: ХАМТРАГЧИЙН нүд нийлүүлэлтээр (`hdApply`) ӨӨРЧЛӨГДСӨН түлхүүрүүд (`s:`/`h:`/`a:`/`r:`/`m:`/`n:`) —
-   *    эцэг буцаалтын агшинг (`Huvaari.undoSnap`) хүчингүй болгоно: тэр агшин нь нийлүүлэлтээс ӨМНӨХ утга
-   *    тул Ctrl+Z хамтрагчийн шинэ утгыг хуучнаар дарах байв. Өөрийн нүд тоологдохгүй.
-   */
   onRemote?: (keys: ReadonlySet<string>) => void;
 }) {
-  /* ⚠️ 2026-10-09: `hdApply`-ийн deps-ийг хөдөлгөхгүйн тулд ref-ээр */
   const onRemoteRef = useLatest(onRemote);
   /**
    * Хуваалцсан нооргийн СЭРГЭЭЛТ ДУУССАН түлхүүр (2026-09-29) — `hdReady` ref-ийн
@@ -110,17 +92,14 @@ export function useSharedDraft({
   const hdFlushNowRef = useRef<() => void>(() => {});
   /**
    * ГИБРИД ЛОГИК ЦАГ — харсан бүх агшны (нүдний `at` · tombstone · `t` · `cleared`) MAX
-   * (2026-10-04 аудит). Шинэ мета · tombstone · `cleared` · `t` бүгд `hdStamp()`-аар —
-   * `Date.now()`-ээр БИШ: цаг нь хоцорсон машины засвар бусдын хуучин нүднээс бага `at`
+   * (2026-10-04 аудит). Шинэ мета · tombstone · `cleared` · `t` бүгд `hdStamp`-аар —
+   * `Date.now`-ээр БИШ: цаг нь хоцорсон машины засвар бусдын хуучин нүднээс бага `at`
    * авч нийлүүлэлтэд ялагддаг, tombstone нь хуучин нүдийг хаяж чаддаггүй байв.
-   * ⚠️ Түлхүүр солигдоход тэглэхгүй — нэг чиглэлд л өснө (HLC-ийн дүрэм).
    */
   const hdClock = useRef(0);
   const hdStamp = useCallback(() => { const t = hlcNext(hdClock.current); hdClock.current = t; return t; }, []);
   /**
    * Ноорогт харагдсан агшнаар цагийг урагшлуулна.
-   * ⚠️ Одооноос 1 хоногоос ЦААШ ирээдүйн агшныг дагахгүй — эвдэрсэн/цаг нь буруу
-   *    машины нэг утга бүх клиентийн цагийг мөнхөд «ирээдүй» рүү түлхэнэ.
    */
   const hdSee = useCallback((d: HDDraft | null | undefined) => {
     const m = Math.min(maxStamp(d), Date.now() + 24 * 3600_000);
@@ -140,17 +119,10 @@ export function useSharedDraft({
   const hdLastOkAt = useRef(0);
   /**
    * АЛСЫН `at`-ын СҮҮЛД ХАРСАН УТГА — нийлүүлсэн эсвэл өөрөө бичсэн.
-   * ⚠️ `>`-ээр ХАРЬЦУУЛАХГҮЙ (2026-09-24): `at` нь бичигчийн цаг тул цагийн
-   *    зөрүүтэй клиент бусдын бичилтийг «хуучин» гэж алгасаж дарж бичдэг
-   *    байв. Одоо `at0 !== hdLastSeenAt` бол ЯМАР Ч тохиолдолд дахин уншина;
-   *    өөрийн бичилтийн дараа бичсэн `t`-г тавина (сервер яг тэр утгыг
-   *    хадгалдаг) — өөр хэн нэг завсарт бичсэн бол утга зөрж, дахин уншина.
    */
   const hdLastSeenAt = useRef(0);
   /**
    * БИЧИЛТИЙН ҮЕ (generation) — цэвэрлэлт/түлхүүр солигдох бүрд +1 (2026-09-24).
-   * ⚠️ Явж буй `saveRemoteDraft` цэвэрлэлтийн ДАРАА буувал хаясан ноорог алсад
-   *    амилдаг байв; үе зөрсөн бол бууж ирмэгц дахин цэвэрлэнэ.
    */
   const hdGen = useRef(0);
   /**
@@ -160,65 +132,24 @@ export function useSharedDraft({
    */
   const hdSkipUnlockOnce = useRef(false);
   /* ══════════════ ХУВААЛЦСАН НООРОГ — ArcGIS дээр (2026-09-23) ══════════════ */
-  /**
-   * ⚠️ ЯАГААД (хэрэглэгч: «бөглөх хуудасныхтай адил — хэн ч, аль ч төхөөрөмжөөс
-   *    явж буй нооргийг харна»): ноорог зөвхөн санах ойд байсан тул таб хаах,
-   *    багц солиход устаж, хамт ажиллагчид огт харагддаггүй байв. Одоо
-   *    `Selbe_Guitsetgel_Draft` хүснэгтийн (`draftRemote.ts`) ТУСДАА мөрөнд
-   *    (`plan:<төрөл>:<багц>` — `|`-гүй, `huvaariDraft.ts`-ийн толгой) 1.5 с
-   *    завсарлагатай бичигдэж, нээхэд сэргэж, 3 с тутам бусдын нүдтэй нийлнэ.
-   *    Цэвэр логик (нүд ↔ Map, нийлүүлэлт, tombstone) — `huvaariDraft.ts`.
-   *
-   * ⚠️ БИЧИХГҮЙ ҮЕҮҮД (fail-closed): `canEdit` биш · ArcGIS унтраалттай ·
-   *    түгжээтэй (`locked`) · урьдчилан харж байгаа (санал нь өөрийн ноорог
-   *    БИШ) · батлах явцад (`approving` — `save` Map-уудыг хоослоход «цуцлалт»
-   *    гэж андуурч алсын нооргийг устгах байв) · тухайн түлхүүрийн сэргээлт
-   *    дуусаагүй (`hdReady` — эс бөгөөс багц/төрөл солих эффектүүд Map-уудыг
-   *    хоослоход ШИНЭ түлхүүрийн алсын ноорог «хоосорлоо» гэж устгагдана).
-   *
-   * ⚠️ ДИФФ нь МЕТА-г хөтөлнө: 5 Map өөрчлөгдөх бүрд нүдийг өмнөхтэй тулгаж,
-   *    шинэ/өөрчлөгдсөн нүдэнд «би · одоо», хасагдсанд tombstone тавина.
-   *    Бичих боломжгүй үед (урьдчилан харалт г.м.) дифф ХИЙХГҮЙ, дараа нь
-   *    эргэж ирэхэд суурийг ДАХИН тавина — эс бөгөөс саналын нүд бүр
-   *    «миний нүд» болж, харахаа болиход бүгд tombstone болно.
-   *
-   * ⚠️ READ-MERGE-WRITE: бичихийн өмнө хямд `at` шалгаж, алс шинэ бол уншиж
-   *    нийлүүлээд бичнэ — эс бөгөөс хоёр хүн ээлжлэн бие биенийхээ нүдийг
-   *    дардаг. Өөрийн бичилтийн `t`-г `hdLastMerged` болгож, тойрог өөрийгөө
-   *    дахин уншихгүй. Гарын үсэг (`sig`) ижил бол бичихгүй.
-   */
-  /*
-   * ⚠️ 2026-10-04 аудит: `pending` = засвар ЛОКАЛ хуулбарт байгаа ч алсад ХАРААХАН биш
-   *    (товлолт хүлээгдэж эсвэл алсын уншилт удааширч байна). Урьд нь энэ завсарт толгой
-   *    өмнөх «хадгалагдсан HH:MM»-ийг харуулсаар байв — уншилт гацвал худал.
-   */
-  /* ⚠️ 2026-10-26: `local` — хадгалалтын горим алсад бичихгүй (`rows-wait`: 191-ийн баганыг шалгаж чадсангүй) — засвар зөвхөн энэ компьютерт */
   type HdStatus = { st: 'idle' | 'pending' | 'saving' | 'saved' | 'err' | 'big' | 'local'; at?: number; err?: string };
   const [hdSt, setHdSt] = useState<HdStatus>({ st: 'idle' });
   /** Ноорогт нүд бичсэн БУСАД хүмүүс — толгойн «ноорогт: …» */
   const [hdUsers, setHdUsers] = useState<string[]>([]);
   const hdKeyCur = hdKey(kind, pkgKey);
-  /* ⚠️ 2026-09-30: зурагдалтын дунд `ref.current = x` бичдэг байсныг `useLatest` (commit-ийн
-     дараа, эффектээс өмнө) болгов — уншигчид нь эффект · async · хариулагч тул утга ижил. */
   const hdKeyRef = useLatest(hdKeyCur);
   const kindRef = useLatest(kind);
   const meRef = useLatest((user?.username ?? '').trim().toLowerCase());
   /**
    * Серверийн суурь — `base` (төрлийн муж) + `rows` (уялдаа · бодит · нөөц) + `obPlan`.
-   * ⚠️ `months()` нь задаргаа АЧААЛАГДААГҮЙ/УНАСАН (`obState !== 'ok'`) үед
-   *    `undefined` = «мэдэгдэхгүй» (тулгахгүй), ачаалагдсан бол задаргаагүй
-   *    ажилд ХООСОН Map = «мэдэгдэж буй хоосон». Хоёрыг ялгахгүй бол
-   *    ачаалалтын завсарт алсын бүх сарын нүд «хуучирсан» болдог (2026-09-24).
    */
   const hdCtx = useMemo<HDCtx>(() => {
     const m = new Map<number, HDRowBase>();
     const byOid = new Map(rows.map((r) => [r.oid, r]));
-    /* ⚠️ 2026-10-26: бүтцийн танихуун (эцэг бүлгийн зам · дээд бүлэг · дэс дугаар) — 191-ийн мөрийн ноорог (`etseg_zam` · `mur_dav`) ба `identityRemap` */
     const ids = rowIdentity(rows);
     for (const r of base) {
       const sr = byOid.get(r.oid);
       if (!sr) continue;
-      /* ⚠️ 2026-10-09: танихуун (`des` · № · нэр) — шинэ жаазад зөөхөд (`identityRemap`) */
       const id = ids.get(r.oid);
       m.set(r.oid, {
         spans: r.spans, ham: sr.ham, aStart: sr.aStart, aEnd: sr.aEnd, hun: sr.hun, mashin: sr.mashin, des: sr.des, no: sr.no, work: sr.work,
@@ -243,16 +174,9 @@ export function useSharedDraft({
     };
   }, [base, rows, n, obPlan, obRes, obState, sc]);
   const hdCtxRef = useLatest(hdCtx);
-  /**
-   * ⚠️ 2026-10-26: ХАДГАЛАЛТ (`huvaariStore`) — сэргээлт бүрд тухайн түлхүүрт бэлдэгдэнэ (`prepareStore`: хүснэгтийн
-   *    төлөв · залхуу шилжүүлэлт). `hdStoreKey` нь бэлдсэн түлхүүр — өөр бол мөчлөг/бичилт хүлээнэ. `hdStoreNote` — super-т
-   *    (`blob`: «notebook ажиллуулна уу») эсвэл засагч бүрд (`rows-wait`: шалгаж чадсангүй) харуулах тайлбар.
-   */
   const hdStore = useRef<HDStore>(blobStore);
   const hdStoreKey = useRef('');
-  /** ⚠️ 2026-10-26 (шүүлт): түр/зөвхөн-унших горимыг дахин шалгасан агшин (мөчлөгийн ⚠️) */
   const hdRecheckAt = useRef(0);
-  /** ⚠️ 2026-10-26: хуучин табын JSON бичилтийг хэрэглэгчид хэлсэн хувилбар (`legacyPending`) — ижил хувилбарт давтахгүй */
   const hdLegacyNoted = useRef<number | null>(null);
   const [hdStoreMode, setHdStoreMode] = useState<HDStoreMode>('blob');
   const [hdStoreNote, setHdStoreNote] = useState('');
@@ -273,23 +197,12 @@ export function useSharedDraft({
   const hdStale = useRef(new Map<string, HDEntry>());
   /**
    * ЭНЭ ТҮЛХҮҮРИЙН СҮҮЛИЙН ЦЭВЭРЛЭЛТИЙН АГШИН (`cleared`) — харсан утгуудын MAX.
-   * ⚠️ 2026-10-01 аудит: `hdApply` үүнийг хадгалдаггүй, `hdLocal` гаргадаггүй тул
-   *    илгээх/цуцлах/батлахын ДАРААХ анхны энгийн бичилт алсын мөрөөс `cleared`-ийг
-   *    арилгадаг байв (`saveRemoteDraft` мөрийг бүхлээр нь солино). Tombstone-ууд
-   *    (`HD_DEL_TTL`, 7 хоног) дууссаны дараа өөр компьютерийн хуучин localStorage
-   *    хуулбар (`t < cleared` дүрмээр л хаагддаг) хуучин нүдийг амилуулна.
-   *    `hdApply` · `hdClear` · сэргээлт MAX-аар өсгөнө; түлхүүр солигдоход тэглэнэ.
    */
   const hdCleared = useRef(0);
   /** Сэргээлт ДУУССАН түлхүүр — үүнээс өөр үед дифф ч, бичилт ч үгүй */
   const hdReady = useRef<string | null>(null);
   /**
    * АЛСЫН `at`-ын СҮҮЛД ХАРСАН УТГА — нийлүүлсэн эсвэл өөрөө бичсэн.
-   * ⚠️ `>`-ээр ХАРЬЦУУЛАХГҮЙ (2026-09-24): `at` нь бичигчийн цаг тул цагийн
-   *    зөрүүтэй клиент бусдын бичилтийг «хуучин» гэж алгасаж дарж бичдэг
-   *    байв. Одоо `at0 !== hdLastSeenAt` бол ЯМАР Ч тохиолдолд дахин уншина;
-   *    өөрийн бичилтийн дараа бичсэн `t`-г тавина (сервер яг тэр утгыг
-   *    хадгалдаг) — өөр хэн нэг завсарт бичсэн бол утга зөрж, дахин уншина.
    */
   const hdLastSig = useRef('');
   const hdBusy = useRef(false);
@@ -312,9 +225,6 @@ export function useSharedDraft({
   useEffect(() => { hdObAt.current = obState === 'ok' ? Date.now() : 0; hdObHlc.current = obState === 'ok' ? hdStamp() : 0; }, [obPlan, obRes, obState, hdStamp]);
   /**
    * ХУУЧИРСАН НҮДИЙГ АНХ ХАРСАН ЛОКАЛ ЦАГ (2026-10-04 аудит) — `түлхүүр → {at, t}`.
-   * ⚠️ БУСДЫН `bv` зөрсөн нүдийг устгах эсэхийг ӨӨР машины цагаар (`e.at`) биш, ЭНЭ
-   *    клиентийн ажиглалтаар шийднэ (`hdApply`): нүд (ижил `at`-тай) манай мөр серверээс
-   *    ирэхээс ӨМНӨ аль хэдийн ноорогт байсан бол бичигчийн суурь манайхаас гарцаагүй хуучин.
    */
   const hdSeen = useRef(new Map<string, { at: number; t: number }>());
   /**
@@ -325,19 +235,10 @@ export function useSharedDraft({
   const hdExpectEmpty = useRef(false);
   /** Түгжигдэх агшинд алсад очоогүй засвар үлдсэн — бичих боломж эргэж ирэхэд товлоно (2026-10-04) */
   const hdOwed = useRef(false);
-  /** Сэргээлтэд уншсан локал хуулбарын дээд агшин (`hdWriteLocal`-ийн ⚠️, 2026-10-04) */
+  /** Сэргээлтэд уншсан локал хуулбарын дээд агшин (`hdWriteLocal`, 2026-10-04) */
   const hdLocalSeen = useRef(0);
   /** «Ноорог хэт том» мэдэгдлийг нэг удаа л (2026-10-08) */
   const hdBigNoted = useRef(false);
-  /**
-   * ⚠️ 2026-10-09: ЖААЗ СОЛИГДОХОД НООРОГ АЛДАГДАХГҮЙ (хэрэглэгч: «шинэ жааз ирэхэд ноорог алга болж байна»).
-   *    · `hdRk` — сүүлд нийлүүлсэн ноорогийн мөрийн танихуун (`HDDraft.rk`): энэ клиентийн мөрөнд
-   *      ОЛДОХГҮЙ (хуучирсан) нүдний танихууныг дараагийн бичилтэд АЛДАХГҮЙ дамжуулна.
-   *    · `hdLostRef` — сүүлийн нийлүүлэлтэд (`hdApply`) танихуунаар ч зөөгдөөгүй мөрүүд (сэргээлтийн мэдэгдэлд).
-   *    · `hdRemapHold` — `rows` шинэ жааз болж Map-уудыг шинэ oid руу зөөх зуур (дараагийн зурагдалт хүртэл)
-   *      дифф ХИЙХГҮЙ: эс бөгөөс хуучин түлхүүртэй Map шинэ суурьтай тулгагдаж бүх нүд tombstone авдаг байв.
-   *    · `hdOrphan` — зөөгдөөгүй мөрийн oid → «№ нэр» (эцгийн «өнчин ноорог» мэдэгдэлд нэрээр).
-   */
   const hdRk = useRef(new Map<number, HDRowKey>());
   const hdLostRef = useRef<{ lost: string[]; unknown: number; moved: number }>({ lost: [], unknown: 0, moved: 0 });
   const hdRemapHold = useRef<{ draft: Draft } | null>(null);
@@ -346,17 +247,11 @@ export function useSharedDraft({
   const draggingRef = useLatest(dragging);
   const statusRef = useLatest(status);
   /** Хүлээгдэж буй цэвэрлэлтийн дахин оролдлого (2026-10-04)
-   * ⚠️ 2026-10-04 (шүүлт): ТҮЛХҮҮР ТУС БҮРТ (Map) — урьд нь ганц таймер/тоолуур хуваалцдаг тул
-   *    B багцын цэвэрлэлт A багцын хүлээгдэж буй дахин оролдлогыг цуцалж, тоолуурыг тэглэдэг байв. */
+   */
   const hdClearTimer = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const hdClearTries = useRef(new Map<string, number>());
   const hdClearBusy = useRef(false);
   const hdPrevW = useRef(false);
-  /**
-   * ⚠️ `pending`-ЭЭР, `locked`-ООР БИШ (2026-09-24): `locked` нь батлах явцад
-   *    (`approving`) түр тайлагддаг тул «түгжээ тайлагдав» зам `save()` явж
-   *    байхад Map-уудыг хоослож, батлалт «эх хуудсанд бичигдсэнгүй» гэж унадаг байв.
-   */
   const hdPending = pending != null;
   const hdPrevPending = useRef(hdPending);
   /** Сэргээлт/нийлүүлэлт хориотой — илгээлт хүлээгдэж, батлагдаж эсвэл урьдчилан харагдаж байхад */
@@ -375,7 +270,6 @@ export function useSharedDraft({
   const hdSchedule = useCallback((ms: number) => {
     if (hdTimer.current) clearTimeout(hdTimer.current);
     hdTimer.current = setTimeout(() => { hdTimer.current = null; void hdFlushRef.current(); }, ms);
-    /* ⚠️ 2026-10-04: бичилт хүлээгдэж байна — «хадгалагдсан» гэж харуулахгүй (алдаа/хэт том хэвээр) */
     setHdSt((s) => (s.st === 'err' || s.st === 'big' || s.st === 'local' || s.st === 'pending' || s.st === 'saving' ? s : { st: 'pending' }));
   }, []);
   /** Бичих зүйлгүй (алсынхтай ижил) — «хадгалагдсан» төлөвт буцаана */
@@ -389,10 +283,6 @@ export function useSharedDraft({
    * түлхүүрийг ээлжлэн ДАРЖ бичиж, нэг табын засвар энэ компьютерийн хуулбараас алга
    * болдог байв. Одоо байгаа хуулбартай `merge` (нүд бүрээр шинэ нь ялна, tombstone
    * хүчинтэй) → `mark` өгвөл хэсэгчилсэн цэвэрлэлтийг давхар хэрэглэнэ.
-   * ⚠️ Синхрон — `pagehide`/unmount/«Ноорог хаях»-д шууд дуудагдана.
-   * ⚠️ Хуучин хуулбараас зөвхөн СЭРГЭЭЛТЭЭС ХОЙШ бичигдсэн нүд (`at > hdLocalSeen` — нөгөө
-   *    таб) нийлнэ: түүнээс өмнөх нь сэргээлтээр санах ойд аль хэдийн орсон тул энэ таб
-   *    хассан бол (tombstone-ийн 7 хоног дууссан ч) хуулбараас дахин амилахгүй.
    */
   const hdWriteLocal = useCallback((key: string, d: HDDraft, mark?: HDClearMark | null) => {
     try {
@@ -419,8 +309,6 @@ export function useSharedDraft({
   }, []);
   /**
    * Алсад бичигдсэн ноорог тэмдгийг бүрэн агуулсан бол тэмдгийг арилгана.
-   * ⚠️ Өмнө эхэлсэн бичилт явж байвал (`hdBusy`) ҮЛДЭЭНЭ — тэр бууж ирээд цэвэрлэлтийг
-   *    дарж болох тул дахин цэвэрлэлт (`hdClearSeq`-ийн шалгалт) тэмдгийг шаардана.
    */
   const hdSettleMark = useCallback((key: string, written: HDDraft, self = false) => {
     const mk = hdReadMark(key);
@@ -430,7 +318,7 @@ export function useSharedDraft({
   /**
    * ЗӨӨЛӨН МЭДЭГДЭЛ (2026-10-08) — энэ hook-ийн мэдэгдлүүд 2 секундээс ЗАЛУУ мэдэгдлийг дарахгүй
    * (хойшилно). Хамтрагчийн нүд дарсан тухай («N нүд…») мэдэгдлийг дифф бүрд биш, богино хойшлолын
-   * дараа НЭГ удаа нэгтгэж бичнэ (`hdDiff`-ийн ⚠️). ⚠️ Зөвхөн ЭНЭ hook-ийн тавьсан мэдэгдлийн агшныг
+   * дараа НЭГ удаа нэгтгэж бичнэ (`hdDiff`). Зөвхөн ЭНЭ hook-ийн тавьсан мэдэгдлийн агшныг
    * мэднэ — эцгийн мэдэгдлийг хамгаалах нь эцгийн асуудал.
    */
   const hdNoteAt = useRef(0);
@@ -459,27 +347,16 @@ export function useSharedDraft({
   /**
    * ДИФФ — Map-уудыг (`hdMapsRef` — commit-ийн ХАМГИЙН СҮҮЛИЙН утга) `hdPrev`-тэй тулгаж
    * мета · tombstone хөтөлнө; өөрчлөлт байсан эсэхийг буцаана (2026-10-04 аудит).
-   * ⚠️ ЯАГААД ТУСДАА: урьд нь зөвхөн идэвхгүй (`useEffect`) эффект хийдэг байсан тул
-   *    `hdLocal` (мөчлөг · flush) `hdPrev`-ийг уншихад сүүлийн чирэлтийн алхам ороогүй
-   *    байж болох ба нийлүүлсэн үр дүн (`hdApply`) тэр алхмыг Map-аас буцааж арилгадаг
-   *    байв. Одоо `hdLocal` бүр эхлээд үүнийг дуудна.
-   * ⚠️ Бичих боломжгүй/суурь шинэчлэгдэж байгаа үед ЮУ Ч ХИЙХГҮЙ — эффект суурийг тавина.
    */
   const hdDiff = useCallback((): boolean => {
     if (hdReady.current !== hdKeyRef.current || obStateRef.current === 'loading') return false;
     if (!hdWritableRef.current || !hdPrevW.current || hdExpectEmpty.current) return false;
-    /* ⚠️ 2026-10-09: жааз солигдож Map-ууд шинэ oid руу зөөгдөж байна (`hdRemapHold`-ийн ⚠️) */
     if (hdRemapHold.current) return false;
     const cur = mapsToCells(hdMapsRef.current, hdCtxRef.current);
     const prev = hdPrev.current;
     let changed = false;
     let now = 0;
     const stamp = () => (now || (now = hdStamp()));
-    /* ⚠️ 2026-10-08: ХАМТРАГЧИЙН САЯХНЫ НҮДИЙГ ДАРСАН бол ил хэлнэ (зохиомж хэвээр — нүд бүрээр
-       шинэ `at` ялна; цонх нээлттэй байхад нийлсэн нүдийг «Тавих» чимээгүй дардаг байв).
-       ⚠️ 2026-10-08 (нэгтгэл): нүд бүрд БИШ — урт гинжээр (уялдаа · бүлгийн шилжилт) нэг чирэлт олон
-       арван нүд дарахад дифф бүр шинэ мэдэгдэл бичиж, бусад мэдэгдлийг (сэргээлт · алдаа) дардаг байв.
-       Одоо нүд ба хүнийг `hdOverAgg`-д хуримтлуулж, богино хойшлолын дараа НЭГ мэдэгдэл («N нүд»). */
     for (const [k, c] of cur) {
       const p = prev.get(k);
       if (!p || !sameVal(p.val, c.val)) {
@@ -496,11 +373,6 @@ export function useSharedDraft({
     const ctxRows = hdCtxRef.current.rows;
     for (const [k, pc] of prev) {
       if (cur.has(k)) continue;
-      /* ⚠️ 2026-10-21: МӨР НЬ АЛГА (жааз солигдож `remapRowsFull` зөөж чадаагүй «өнчин» мөр) нүдийг
-         tombstone ХИЙХГҮЙ — `mapsToCells` суурьгүй мөрийг хаядаг тул «буцаасан» мэт харагддаг ч
-         хэрэглэгч юу ч буцаагаагүй. Урьд нь шинэ жаазад нэг мөр алга/давхардсан бол тэр мөрийн БҮХ
-         нүд (хамтрагчийнх ч) алсаас устдаг байв. Эх метатайгаа `hdStale`-д шилжинэ (`hdLocal` бичсээр,
-         `hdApply`-ийн хуучирсан нүдний дүрэм шийднэ) — жааз солих эффектийн «өнчин хэвээр» амлалт. */
       const p = parseKey(k);
       if (p && p.type !== 'm' && p.type !== 'n' && !ctxRows.has(p.oid)) {
         const m = hdMeta.current.get(k) ?? { at: stamp(), user: meRef.current };
@@ -521,13 +393,8 @@ export function useSharedDraft({
 
   /**
    * Одоогийн нүдүүд (`hdPrev`) + мета → ноорог.
-   * ⚠️ Метагүй нүдийн «одоо»-г МЕТА-д ХАДГАЛНА (2026-09-24) — урьд нь дуудлага
-   *    бүрд шинэ `at` авдаг тул түгжээтэй үед орсон нүд (татсан илгээлт г.м.)
-   *    үргэлж «дөнгөж бичигдсэн» болж бусдын шинэ нүдийг ч дарах байв.
    */
   const hdLocal = useCallback((): HDDraft => {
-    /* ⚠️ 2026-10-04: эхлээд ОДООГИЙН Map-аар дифф (`hdDiff`-ийн ⚠️). Өөрчлөлт гарсан ч
-       товлолт байхгүй бол (мөчлөг/askSwitch-аас) бичилт товлоно — flush дотор бол өөрөө бичнэ. */
     if (hdDiff() && !hdBusy.current && !hdTimer.current) hdSchedule(1500);
     const now = hdStamp();
     const entries: HDEntries = new Map();
@@ -538,7 +405,6 @@ export function useSharedDraft({
       if (!m) { m = { at: now, user: meRef.current }; hdMeta.current.set(k, m); }
       entries.set(k, { val: c.val, bv: c.bv, at: m.at, user: m.user });
     }
-    /* ⚠️ 2026-10-09: мөрийн танихуун — одоогийн мөрөөс, олдохгүй (хуучирсан) бол өмнө нийлүүлсэн ноорогийнхоор */
     const rk = new Map<number, HDRowKey>();
     const ctxRows = hdCtxRef.current.rows;
     for (const k of entries.keys()) {
@@ -553,8 +419,6 @@ export function useSharedDraft({
     return {
       t: now, kind: kindRef.current, pkg: pkgKeyRef.current, by: { user: meRef.current, at: now },
       entries, del: new Map(hdDel.current), base: { at: hdBaseAt.current, n: hdCtxRef.current.n },
-      /* ⚠️ 2026-10-01: `cleared`-ийг ҮРГЭЛЖ дамжуулна (`hdCleared`-ийн ⚠️) — `sig`-д
-         ордоггүй тул нэмэлт бичилт үүсгэхгүй, зөвхөн дараагийн бичилтэд үлдэнэ. */
       ...(hdCleared.current ? { cleared: hdCleared.current } : {}),
       ...(rk.size ? { rk } : {}),
     };
@@ -563,20 +427,9 @@ export function useSharedDraft({
   /**
    * Нооргийг 5 Map болгож state-д тавина; мета · tombstone · дифф-суурийг
    * ЗЭРЭГ шинэчилнэ — дараагийн дифф «өөрчлөлтгүй» гэж үзнэ.
-   * ⚠️ Tombstone ЗӨВХӨН «серверийнхтэй ижил болсон» нүдэнд (2026-09-24).
-   *    ХУУЧИРСАН (`staleKeys`) нүдэнд ТАВИХГҮЙ: хуучин суурьтай клиент бусдын
-   *    хүчинтэй нүдийг бүгдэд нь устгадаг байв. Хуучирсан нүд зөвхөн энд
-   *    орохгүй — алсад хэвээр, мөрөө шинэчилсэн клиент шийднэ.
    */
   const hdApply = useCallback((d0: HDDraft): HDApply => {
     hdSee(d0);
-    /*
-     * ⚠️ 2026-10-09: ШИНЭ ЖААЗ РУУ ЗӨӨНӨ (`identityRemap`) — нүдний oid энэ клиентийн мөрөнд байхгүй бол
-     *    танихуунаар (код → № + нэр) одоогийн мөр рүү. Урьд нь «мөр алга» нүд хуучирсан гэж хасагдаж,
-     *    МИНИЙ нүд 10 мин-ийн дараа tombstone авч ноорог ор мөргүй устдаг байв. Зөөгдсөн МИНИЙ хуучин
-     *    түлхүүр tombstone авна (давхардахгүй); БУСДЫН хуучин түлхүүр ҮЛДЭНЭ — хуучин жаазтай хамтрагчид
-     *    хүчинтэй (2026-09-25-ны дүрэм, `remapDraft`-ийн `keep`). Мөр ачаалагдаагүй үед зөөхгүй.
-     */
     let d = d0;
     const ctx0 = hdCtxRef.current;
     let movedN = 0;
@@ -585,8 +438,6 @@ export function useSharedDraft({
       hdLostRef.current = { lost: im.lost, unknown: im.unknown, moved: im.map.size };
       if (im.map.size) {
         d = hdRemapDraft(d0, im.map, hdStamp(), (_k, e) => e.user !== meRef.current);
-        /* ⚠️ Зөвхөн ШИНЭЭР үүссэн түлхүүр/tombstone тоологдоно — үлдээсэн хамтрагчийн хуучин нүд нийлүүлэлт
-           бүрд дахин зураглагдах тул бүгдийг тоолбол 1.5 с тутам бичилт товлогдох тойрог үүснэ. */
         const newRows = new Set<number>();
         for (const k of d.entries.keys()) {
           if (d0.entries.has(k)) continue;
@@ -601,7 +452,6 @@ export function useSharedDraft({
     }
     hdRk.current = new Map(d.rk ?? []);
     const ap = cellsToMaps(d.entries, hdCtxRef.current);
-    /* ⚠️ 2026-10-04: HLC — харсан бүх нүднээс ХОЖУУ tombstone (`hdStamp`-ийн ⚠️) */
     const now = hdStamp();
     const dropped = new Set(ap.dropped);
     const stale = new Set(ap.staleKeys);
@@ -609,37 +459,6 @@ export function useSharedDraft({
     for (const [k, e] of d.entries) if (!dropped.has(k)) meta.set(k, { at: e.at, user: e.user });
     const del = new Map(d.del);
     for (const k of dropped) if (!stale.has(k)) del.set(k, now);
-    /*
-     * ⚠️ МАШ ХУУЧИН «ХУУЧИРСАН» НҮДИЙГ УСТГАНА (2026-09-25 аудит). Дээрх дүрэм
-     *    (хуучирсныг мөрөө шинэчилсэн клиент шийднэ) хэрэгжих зам БАЙГААГҮЙ: мөр нь
-     *    шинэ клиент ч түүнийг `hdStale`-д хадгалж `hdLocal`-аар дахин бичдэг тул
-     *    FillNew нийтлэл (бүх OID солигдоно) бүрийн дараа нүд мөнхөд амилж, «ноорогт:
-     *    …» сүнс зохиогч харуулж, ачаалал `REMOTE_MAX` руу өсдөг байв.
-     *    ШИЙДЭХ ЭРХ = ЭНЭ клиентийн суурь нүднээс ШИНЭ: нүд нь манай мөр (`s/h/a/r`)
-     *    эсвэл задаргаа (`m/n`) серверээс ирэхээс `MARGIN`-аас өмнө бичигдсэн бол
-     *    бичигчийн суурь манайхаас хуучин нь гарцаагүй → tombstone. Шинэ нүд (манай
-     *    суурь хуучин байж болох) хэвээр — 2026-09-24-ний хамгаалалт хадгалагдана.
-     *    Цагийн зөрүүнд `MARGIN` (10 мин). Бичих эрхгүй бол хөндөхгүй.
-     */
-    /*
-     * ⚠️ 2026-09-25 аудит: «мөр алга» (шинэ жааз — бүх OID солигдсон) нүд БУСДЫН
-     *    бол tombstone ХИЙХГҮЙ: хуучин жаазтай, хуудсаа шинэчлээгүй хамтрагчийн
-     *    хүчинтэй ажлыг устгадаг байв. Tombstone зөвхөн (а) МИНИЙ нүд — би шинэ
-     *    жаазад шилжсэн тул хуучин oid-той нүд маань гарцаагүй хуучирсан, эсвэл
-     *    (б) `bv` ЗӨРСӨН нүд — мөр байгаа ч сервер бичигчийн суурийг өөрчилсөн.
-     *    Бусдын «мөр алга» нүдийг эзэн нь өөрөө шинэчлэхдээ (а)-аар цэвэрлэнэ.
-     */
-    /*
-     * ⚠️ 2026-10-04 аудит — ӨӨР МАШИНЫ ЦАГААС ХАМААРАХГҮЙ: урьд нь бүх нүдийг бичигчийн
-     *    `e.at`-ыг ЭНЭ клиентийн `Date.now()`-тэй (мөр ирсэн агшин) харьцуулдаг тул цаг нь
-     *    10+ мин хоцорсон хамтрагчийн ШИНЭ суурьтай хүчинтэй нүд устдаг байв.
-     *      · МИНИЙ нүд (а) — бичигч нь би (ихэвчлэн энэ машин); `at` нь HLC тул мөр ирсэн
-     *        агшны HLC утгатай (`hdRowsHlc`) `MARGIN`-тай харьцуулна (урьдын дүрэм).
-     *      · БУСДЫН `bv` зөрсөн нүд (б) — ЛОКАЛ ажиглалтаар: ижил `at`-тай нүдийг манай мөр
-     *        серверээс ирэхээс ӨМНӨ харсан (`hdSeen`) бол бичигчийн суурь манайхаас хуучин
-     *        → tombstone. Анх харж байгаа бол (сэргээлт) ХЭВЭЭР — мөр дахин ачаалагдахад
-     *        (`refetchServer` · хуудас шинэчлэх) шийдэгдэнэ; эзэн нь (а)-аар ч цэвэрлэнэ.
-     */
     const bvStale = new Set(ap.bvKeys);
     const MARGIN = 10 * 60_000;
     let tomb = 0;
@@ -663,8 +482,6 @@ export function useSharedDraft({
       seen.set(k, s);
       st.set(k, e);
     }
-    /* ⚠️ 2026-10-08: ХАМТРАГЧ МИНИЙ САЯХНЫ НҮДИЙГ ХОЖУУ УТГААР ДАРСАН бол ил хэлнэ (нийлүүлэлтийн
-       дүрэм хэвээр — `merge`: нүд бүрээр ШИНЭ `at` ялна). Сэргээлтэд мета хоосон тул дуугарахгүй. */
     const lost = new Set<string>();
     for (const [k, e] of d.entries) {
       if (dropped.has(k)) continue;
@@ -673,21 +490,13 @@ export function useSharedDraft({
       if (sameVal(hdPrev.current.get(k)?.val, e.val)) continue;
       lost.add(e.user);
     }
-    /* ⚠️ 2026-10-08: зөөлөн мэдэгдэл (`hdSoftNote`) — залуу мэдэгдлийг дарахгүй */
     if (lost.size) hdSoftNote(tr('{0} таны саяхан зассан нүдийг хожуу утгаараа дарлаа', [...lost].join(', ')));
-    /* ⚠️ 2026-10-09: хамтрагчийн өөрчилсөн нүд (утга нь сүүлийн нийлүүлэлтийн суурьтай зөрсөн) — эцгийн
-       буцаалтын агшинд (`onRemote`-ийн ⚠️). Сэргээлтэд (`hdPrev` хоосон) бүгд «өөрчлөгдсөн» — тэр үед агшин алга. */
     {
       const remote = new Set<string>();
       for (const [k, e] of d.entries) {
         if (dropped.has(k) || e.user === meRef.current) continue;
         if (!sameVal(hdPrev.current.get(k)?.val, e.val)) remote.add(k);
       }
-      /* ⚠️ 2026-10-09: ХАМТРАГЧИЙН БУЦААЛТ (tombstone) ч мөн — `hdPrev`-д байсан нүд шинэ `d.del`-ээр арилсан бол
-         (миний өөрийн tombstone биш) агшинд хамаарна; урьд нь зөвхөн `entries`-ийг үздэг тул хамтрагч нүдийг
-         буцаасны дараа Ctrl+Z тэр нүдийг хуучин утгаар нь амилуулдаг байв. Мета-д «бусдын» (`by.user`, эсвэл
-         ерөнхий нэр) хэвээр үлдээнэ — `hdOtherRef`/`useDragPlan.rollback` түүнийг хөндөхгүй. Tombstone хэвээр
-         байх хооронд дараагийн нийлүүлэлтэд ч мета үлдэнэ. */
       const delBy = d.by.user && d.by.user !== meRef.current ? d.by.user : tr('хамтрагч');
       for (const [k, t] of d.del) {
         if (d.entries.has(k)) continue;
@@ -704,19 +513,13 @@ export function useSharedDraft({
     hdMeta.current = meta;
     hdDel.current = del;
     hdStale.current = st;
-    /* ⚠️ 2026-10-01: алсын `cleared` алдагдахгүй — `hdCleared`-ийн ⚠️ */
     hdCleared.current = Math.max(hdCleared.current, d.cleared ?? 0);
     hdPrev.current = mapsToCells(ap.maps, hdCtxRef.current);
-    /* ⚠️ 2026-10-04 (шүүлт): Map · `hdPrev` ИЖИЛ суурьтай болсон тул хоосролтын хүлээлт дуусна.
-       Урьд нь «Ноорог хаях»-ын дараа мөчлөг/flush хамтрагчийн нүдийг нийлүүлбэл Map хэзээ ч
-       хоосрохгүй → `hdExpectEmpty` мөнхөд true → дараагийн засвар огт диффлэгдэхгүй, хадгалагдахгүй,
-       төлөв «хадгалагдсан» хэвээр, гарах анхааруулга чимээгүй байв. */
     hdExpectEmpty.current = false;
     setDraft(ap.maps.draft); setHam(ap.maps.ham); setADraft(ap.maps.aDraft);
     setResDraft(ap.maps.resDraft); setObDraft(ap.maps.obDraft); setObResDraft(ap.maps.obRes);
     setHdUsers(hdUsersOf(d).filter((u) => u !== meRef.current));
     /* Устгасан хуучирсан нүдийг алсад хүргэнэ — дуудагчийн товлолтоос үл хамааран */
-    /* ⚠️ 2026-10-09: шинэ жаазад зөөгдсөн нүд (`movedN`) ч — шинэ түлхүүр · хуучны tombstone алсад хүрнэ */
     if (tomb || movedN) hdSchedule(1500);
     return ap;
   }, [hdSchedule, hdSee, hdStamp, hdCtxRef, hdWritableRef, meRef, setADraft, setDraft, setHam, setObDraft, setObResDraft, setResDraft, hdSoftNote, onRemoteRef]);
@@ -753,14 +556,6 @@ export function useSharedDraft({
   /**
    * ХҮЛЭЭГДЭЖ БУЙ ЦЭВЭРЛЭЛТИЙГ АЛСАД ХҮРГЭНЭ (2026-10-04 аудит, HIGH) — READ-MERGE-WRITE,
    * `expectAt`-тай; зөрчилд 3 хүртэл дахин уншина.
-   * ⚠️ Урьд нь хоосон ноорог + бүх нүдний tombstone-ыг уншилтгүй (blind) бичдэг байсан тул
-   *    илгээлтэд ОРООГҮЙ хамтрагчийн нүд (сүүлийн 3 с, эсвэл илгээх завсарт) устдаг байв.
-   *    Одоо алсыг уншиж, ЗӨВХӨН тэмдгийн нүдэнд tombstone тавиад (`applyClear`) бичнэ.
-   * ⚠️ Унавал тэмдэг localStorage-д ҮЛДЭНЭ (`hdClearRetry`; сэргээлт эхлээд үүнийг дуудна) —
-   *    урьд нь унасан цэвэрлэлт ДАХИН оролдогддоггүй тул буцаагдахад хуучин ноорог сэргэж,
-   *    буцаагдсан саналын автомат буулгалтыг (`dirtyN > 0`) хаадаг байв.
-   * ⚠️ `hdLastSeenAt`-ыг ХӨДӨЛГӨХГҮЙ: бичсэн мөрөнд Map-д ороогүй бусдын нүд байж болно —
-   *    дараагийн мөчлөг/flush `at` зөрснийг хараад уншиж нийлүүлнэ.
    */
   const hdRunClear = useCallback(async (key: string): Promise<boolean> => {
     if (!hdReadMark(key)) return true;
@@ -770,15 +565,12 @@ export function useSharedDraft({
     const cur = () => key === hdKeyRef.current;
     let err = '';
     try {
-      /* ⚠️ 2026-10-26: хадгалалт (`huvaariStore`) — одоогийн түлхүүрийнх, эс бөгөөс бэлдэнэ. `rows-wait` (191-ийг шалгаж
-         чадсангүй — түр) бол алсад бичихгүй: тэмдэг localStorage-д үлдэж, дахин бэлдэхэд (сэргээлт · мөчлөг) хэрэглэгдэнэ. */
       const store = key === hdStoreKey.current ? hdStore.current : await prepareStore(key, { canWrite: canEditRef.current, ctx: null });
       if (store.mode === 'rows-wait') return false;
       const blob = store.mode === 'blob';
       for (let i = 0; i < 3; i += 1) {
         const mk = hdReadMark(key);
         if (!mk) return true;
-        /* ⚠️ 2026-10-26: одоогийн жааз (`ctx`) — мөрийн нүдийг кодоор одоогийн oid руу (`huvaariStore.alignToFrame`) */
         const rr = await store.read(key, cur() ? { ctx: hdCtxRef.current } : undefined);
         if (!rr.ok) { err = rr.error; break; }
         const remote = rr.draft;
@@ -792,12 +584,6 @@ export function useSharedDraft({
         });
         const cleared = (b0: HDDraft | null): HDDraft => ({ ...applyClear(b0 ?? empty(), mk.keys, mk.ts), t, by: { user: meRef.current, at: t } });
         let d: HDDraft = cleared(hdMerge(remote, mine));
-        /* ⚠️ 2026-10-09: `REMOTE_MAX` — танихуун хэмжээг хэтрүүлбэл хасагдана (`serialize`-ийн ⚠️) */
-        /* ⚠️ 2026-10-22 (аудит №1): tombstone НЯГТ (`huvaariDraft.encodeDel`) — илгээлтийн хэмжээнээс үл хамааран багтана.
-           Хэтэрсэн хэвээр бол шалтгаан нь ЭНЭ клиентийн бусад (илгээгээгүй, алсад хэзээ ч хүрээгүй «хэт том») нүд байж болно —
-           тэр үед ЗӨВХӨН алсын мөрийг цэвэрлэнэ (`remote` + тэмдэг): цэвэрлэлт заавал бууна, миний бусад нүд санах ой ба
-           локал хуулбарт хэвээр, ердийн бичилт (`hdFlush` — `hdLastSeenAt` хөдлөөгүй тул дахин уншиж нийлүүлнэ) авч явна. */
-        /* ⚠️ 2026-10-26: хэмжээний хязгаар ЗӨВХӨН хуучин JSON-д (`blob`) — 191-ийн мөрийн горимд хязгааргүй */
         let body = blob ? hdSerialize(d, REMOTE_MAX) : '';
         if (blob && body.length > REMOTE_MAX && mine) {
           d = cleared(remote);
@@ -832,26 +618,12 @@ export function useSharedDraft({
 
   /**
    * ЦЭВЭРЛЭЛТ — илгээсэн · «Ноорог хаях». Мөрийг УСТГАХГҮЙ (2026-09-24).
-   * ⚠️ `clearRemoteDraft`-аар устгавал tombstone ч устаж, өөр төхөөрөмжийн
-   *    localStorage хуулбар илгээгдсэн нооргийг дахин амилуулдаг байв.
-   * ⚠️ 2026-10-04 аудит — ХЭСЭГЧИЛСЭН: зөвхөн `mark`-ийн нүд (илгээлтэд орсон / дэлгэц дээр
-   *    байсан, `hdSnapshot`); бусдын шинэ нүд, хуучирсан (`hdStale`) нүд хэвээр. Дараалал:
-   *    (1) санах ойн мета/суурь, (2) ЛОКАЛ хуулбар СИНХРОН — «Ноорог хаях»-ын дараа шууд F5
-   *    дарахад хаясан ноорог амилдаг байв (tombstone 300 мс-ийн дараа л бичигддэг байсан),
-   *    (3) тэмдэг localStorage-д, (4) алс read-merge-write (`hdRunClear`), унавал дахин.
-   *    `cleared` ЗӨВХӨН энд тавигдана (энгийн хоосролт `hdFlush`-ээр, тамгагүй).
-   * ⚠️ Дуудагч Map-уудыг ЗААВАЛ хоосолно (`hdExpectEmpty`).
    */
   const hdClear = useCallback(async (key: string, mark0?: HDClearMark | null, submitOid?: number | null) => {
     if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
     const isCur = key === hdKeyRef.current;
     const mark = mark0 ?? (isCur ? hdSnapshot() : null);
     if (!mark) return;
-    /*
-     * ⚠️ 2026-10-26: ИЛГЭЭХ АГШНЫ ХУУЛБАР (`rows` горим) — цэвэрлэхээс ӨМНӨХ нүдээс (тэмдгийн хүрээнд) 191-ийн
-     *    `n:hsub:<илгээлтийн OBJECTID>` мөрүүд (`noorog_turul='huvaari_ilgeelt'`). Самбар батлагдаагүй хуваарийг ноорог
-     *    цэвэрлэгдсэний дараа ч харна. Best effort — унавал `planSyncSubmitted` илгээлтийн агуулгаас нөхнө.
-     */
     if (submitOid != null && isCur && statusRef.current !== 'off' && hdStoreKey.current === key && hdStore.current.submitted) {
       const loc = hdLocal();
       const sub: HDDraft = { ...loc, entries: new Map([...loc.entries].filter(([k]) => mark.keys.has(k))), del: new Map() };
@@ -865,9 +637,6 @@ export function useSharedDraft({
       const del = new Map(hdDel.current);
       for (const [k, a] of mark.keys) if ((del.get(k) ?? -1) < a) del.set(k, a);
       hdMeta.current = new Map(); hdDel.current = del; hdPrev.current = new Map();
-      /* ⚠️ 2026-10-06: ЗӨВХӨН сэргээгдсэн (`hdReady === key`) үед — сэргээлт явж байхад хаявал диффийн
-         эффект эрт буцаж (`hdReady !== key`), хоосон ноорогт `hdApply` ч дуудагдахгүй тул туг мөнхөд
-         true үлдэж, дараагийн бүх засвар диффлэгдэхгүй/хадгалагдахгүй, шошго «хадгалагдсан» байв. */
       hdExpectEmpty.current = hdReady.current === key;
       hdCleared.current = Math.max(hdCleared.current, mark.ts);
       hdLastSig.current = '';
@@ -910,31 +679,18 @@ export function useSharedDraft({
 
   /**
    * Хадгалалтын үндсэн зам — read-merge-write, дараа нь `sig` ижил бол алгасна.
-   * ⚠️ Локалыг НИЙЛҮҮЛЭХИЙН ӨМНӨ дахин уншина (2026-09-24): уншилтын завсарт
-   *    хийсэн засвар урьд нь `hdApply(merged)`-ээр дэлгэцээс арилж, алсад ч
-   *    очдоггүй байв.
-   * ⚠️ Хоосорсон ноорог ЭНД бичигдэнэ — алсыг нийлүүлсний ДАРАА: дифф
-   *    шууд устгавал сүүлийн 3 с-д бусдын нэмсэн нүд алдагдана.
-   * ⚠️ 2026-10-04 аудит: ХООСОН ноорог ЭНГИЙН замаар (tombstone-той) бичигдэнэ — урьд нь
-   *    `hdClear` дуудаж `cleared` тамга тавьдаг байсан тул энгийн буцаалт бусад машины
-   *    локал хуулбарыг БҮХЭЛД нь хаадаг байв. `cleared` зөвхөн илгээх/«Ноорог хаях»-д.
    */
   const hdFlush = useCallback(async () => {
     if (hdBusy.current) { hdAgain.current = true; return; }
     const key = hdKeyRef.current;
     if (hdReady.current !== key || !hdWritableRef.current) return;
-    /* ⚠️ 2026-10-04: илгээх явцад (`hdHold`) бичихгүй — дуусахад дахин товлоно */
     if (hdHold.current) { hdHeldAgain.current = true; return; }
-    /* ⚠️ 2026-10-04: чирэлт явж байхад нийлүүлэлт (`hdApply`) Map-ыг дарахгүй — дуусахад */
     if (draggingRef.current) { hdSchedule(800); return; }
     const live = () => key === hdKeyRef.current && hdReady.current === key;
     hdBusy.current = true;
     const cs = hdClearSeq.current;
     try {
-      /* ⚠️ 2026-10-04 аудит: ЛОКАЛ ХУУЛБАР ЭХЛЭЭД — алсын уншилт унасан/гацсан ч засвар энэ
-         компьютерт үлдэнэ. Урьд нь уншилт амжилттай болсны ДАРАА л бичигддэг байв. */
       hdWriteLocal(key, hdLocal());
-      /* ⚠️ 2026-10-26: сэргээлтэд бэлдсэн хадгалалт (`huvaariStore`) — түлхүүр зөрвөл (бэлдэж байна) дараа */
       if (hdStoreKey.current !== key && statusRef.current !== 'off') { hdAgain.current = true; return; }
       const store = hdStore.current;
       const at0 = await store.readAt(key);
@@ -948,8 +704,6 @@ export function useSharedDraft({
         const rr = await store.read(key, { ctx: hdCtxRef.current });
         if (!live()) return;
         if (!rr.ok) { setHdSt({ st: 'err', err: rr.error }); hdRetry(); return; }
-        /* ⚠️ 2026-10-04 (шүүлт): уншилтын завсарт «Ноорог хаях»/илгээлтийн цэвэрлэлт болсон бол
-           цэвэрлэлтээс ӨМНӨХ уншилтыг нийлүүлэхгүй — дахин товлож шинээр уншина. */
         if (cs !== hdClearSeq.current) { hdAgain.current = true; return; }
         const local0 = hdLocal();
         const merged = hdMerge(rr.draft, local0) ?? local0;
@@ -957,14 +711,10 @@ export function useSharedDraft({
         hdLastSeenAt.current = at0 ?? 0;
       }
       const local = hdLocal();
-      /* ⚠️ 2026-10-26: хэмжээний хязгаар зөвхөн хуучин JSON-д (`blob`) */
       const body = store.mode === 'blob' ? hdSerialize(local, REMOTE_MAX) : '';
       const s = hdSig(local);
-      /* ⚠️ Локал хуулбар БҮХ оролдлогод — алс унасан ч энэ компьютерт үлдэнэ */
       hdWriteLocal(key, local);
       if (s === hdLastSig.current) { if (!hdTimer.current) hdMarkSynced(); return; }
-      /* ⚠️ 2026-10-08: хэт том — толгойн шошгоос гадна НЭГ удаа ил мэдэгдэнэ (багтмагц дахин дуугарч болно);
-         `hdUnsynced` ч үүнийг «алсад хүрээгүй» гэж тоолно. */
       if (body.length > REMOTE_MAX) {
         setHdSt({ st: 'big' });
         if (!hdBigNoted.current) {
@@ -976,32 +726,18 @@ export function useSharedDraft({
       hdBigNoted.current = false;
       setHdSt({ st: 'saving' });
       const gen = hdGen.current;
-      /* ⚠️ 2026-09-29 аудит: optimistic lock — дээрх уншилтаас хойш өөр хүн бичсэн бол
-         юу ч дарахгүй, дахин уншиж нийлүүлнэ (`conflict`). 2026-10-04: бичсэний дараа
-         дарагдсан нь илэрвэл ч (`draftRemote`-ийн баталгаа) мөн `conflict`. */
       const r = await store.save(key, local, { expectAt: hdLastSeenAt.current, ctx: hdCtxRef.current });
-      /* ⚠️ Бичилт явж байхад ЦЭВЭРЛЭСЭН бол (2026-09-24) энэ бичилт хаясан нүдийг
-         амилуулсан байж болно — тэр даруй дахин цэвэрлэнэ. 2026-10-04: зөвхөн цэвэрлэлтийн
-         үеэр (`hdClearSeq` — сэргээлт/түлхүүр солих нь цэвэрлэлт БИШ) ба тэмдгээр
-         (read-merge-write) — урьд нь бүх нүдийг уншилтгүй tombstone болгодог байв. */
       if ((r.ok || r.written) && cs !== hdClearSeq.current) { void hdRunClearRef.current(key); return; }
-      /* ⚠️ 2026-10-26 (шүүлт): зөрчил = ДАХИН УНШИЖ нийлүүлэх — толгой хөдлөөгүй ч (мөрийн зураг хуучирсан — `planSave`-ийн
-         ⚠️) `hdLastSeenAt`-ыг тэглэж дараагийн бичилт заавал уншина. Урьд нь толгой ижил тул уншилтгүй дахин бичиж, нийлүүлээгүй
-         зурагтай харьцуулдаг байв. */
       if (!r.ok && r.conflict) { if (live()) { hdLastSeenAt.current = -1; hdAgain.current = true; } return; }
       if (gen !== hdGen.current || !live()) return;
       if (r.ok) {
         hdLastSig.current = s;
-        /* ⚠️ Бичсэн `t`-г тавина — сервер яг тэр утгыг хадгалдаг; завсарт өөр
-           хүн бичсэн бол `at0` зөрж дараагийн шалгалтад дахин уншина.
-           ⚠️ 2026-10-26: мөрийн горимд дифф хоосон бол толгой хөдлөхгүй — серверийн утгыг (`r.at`) */
         hdLastSeenAt.current = r.at ?? local.t;
         hdBackoff.current = 3000;
         hdLastOkAt.current = Date.now();
         hdSettleMark(key, local, true);
         setHdSt(hdTimer.current ? { st: 'pending' } : { st: 'saved', at: hdLastOkAt.current });
       } else if (r.local) {
-        /* ⚠️ 2026-10-26: алсад бичихгүй горим — давтахгүй, засвар localStorage-д (дээр бичигдсэн) */
         setHdSt({ st: 'local', err: r.error });
       } else {
         setHdSt({ st: 'err', err: r.error });
@@ -1012,21 +748,11 @@ export function useSharedDraft({
       if (hdAgain.current) { hdAgain.current = false; hdSchedule(300); }
     }
   }, [hdLocal, hdApply, hdWriteLocal, hdMarkSynced, hdSettleMark, hdSchedule, hdRetry, hdKeyRef, hdWritableRef, draggingRef, setNote, statusRef, hdCtxRef]);
-  /* ⚠️ 2026-09-30: commit-ийн дараа (`useLayoutEffect`) — уншигчид нь товлолт (setTimeout) ба
-     async урсгал тул зурагдалтын дунд бичсэнтэй ижил утга. */
   useLayoutEffect(() => { hdFlushRef.current = hdFlush; hdClearRef.current = hdClear; hdRunClearRef.current = hdRunClear; });
   /** Сэргээлтийг ТЭГЛЭНЭ — дараагийн зурагдалтад алсын ноорог дахин уншигдана (3 газар ижил, 2026-09-30) */
   const hdResetRestore = useCallback(() => {
     hdReady.current = null; hdLastSeenAt.current = 0; setHdReadyKey(null);
   }, []);
-  /**
-   * ⚠️ 2026-10-09 (аудит №2): СЭРГЭЭЛТИЙГ ДАХИН АЖИЛЛУУЛАХ — `hdResetRestore()`-ийн дараах `refetchServer` мөр/задаргааг
-   *    тавихаас ӨМНӨ (`loadRows`) унавал доорх эффектийн deps (`rows.length > 0` · `obState` …) ЮУ Ч өөрчлөгдөхгүй тул
-   *    сэргээлт дахин эхэлдэггүй — `hdReadyKey` null хэвээр, хүснэгтийн хаалт (`Huvaari`-ийн `hdRestoringUi`) мөнхөд
-   *    хаалттай үлддэг байв. Дуудагч татлага унасан үед үүнийг дуудна: тоолуур deps-д тул эффект одоогийн мөрөөр
-   *    дахин ажиллана. Сэргээлт аль хэдийн дууссан (`hdReady === key`) бол эффект шууд буцна — хор хөнөөлгүй.
-   *    ⚠️ `hdResetRestore` дотор БҮҮ нэм — тэр нь татлагаас ӨМНӨ дуудагддаг; шууд дахин ажиллавал хуучин мөрөнд сэргээнэ.
-   */
   const [hdRetryN, setHdRetryN] = useState(0);
   const hdRetryRestore = useCallback(() => { setHdRetryN((x) => x + 1); }, []);
 
@@ -1034,9 +760,6 @@ export function useSharedDraft({
    * СЭРГЭЭЛТ — багц/төрөл солигдоход (мөр · задаргаа ачаалагдаж, урсгал
    * мэдэгдсэний дараа). Алс → эс бөгөөс локал хуулбар; уншилтын завсарт хийсэн
    * засвар (Map-д байгаа) нийлнэ. Түгжээтэй бол хойшилно (`locked` deps).
-   * ⚠️ ТҮГЖЭЭ ТАЙЛАГДАХАД (батлагдсан/буцаагдсан) ДАХИН СЭРГЭЭНЭ (2026-09-24):
-   *    урьд нь `hdReady === key` тул алгасаж, илгээхээс өмнөх хуучин нүд шинэ
-   *    хуваалцсан ноорог болж бичигддэг байв. Map · мета бүгд хаягдана.
    */
   useEffect(() => {
     const key = hdKeyCur;
@@ -1052,8 +775,6 @@ export function useSharedDraft({
       }
     }
     if (hdReady.current === key) return undefined;
-    /* ⚠️ `null` (хуучин түлхүүр БИШ): b32→b33→b32 хурдан солиход хуучин утга
-       «бэлэн» гэж уншигдаж сэргээлт алгасагддаг байв (2026-09-24). */
     hdReady.current = null;
     setHdReadyKey(null);
     hdMeta.current = new Map(); hdDel.current = new Map(); hdPrev.current = new Map(); hdStale.current = new Map();
@@ -1063,34 +784,18 @@ export function useSharedDraft({
     hdLastSeenAt.current = 0; hdLastSig.current = ''; hdAgain.current = false; hdBackoff.current = 3000;
     hdGen.current += 1;
     hdSkipUnlockOnce.current = false;
-    /* ⚠️ 2026-10-26: хадгалалт түлхүүр бүрд дахин бэлдэгдэнэ (`prepareStore`) */
     hdStoreKey.current = '';
     if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
     setHdSt({ st: 'idle' }); setHdUsers([]);
-    /* ⚠️ Батлах явцад · урьдчилан харахад · илгээлт хүлээгдэж байхад ЭХЛЭХГҮЙ */
     if (!sc || !rows.length || obState === 'loading' || flowReady === null || hdBlocked) return undefined;
     hdBaseAt.current = Date.now();
     let alive = true;
     void (async () => {
-      /* ⚠️ ЭХЛЭЭД React-д ЗАЙ ӨГНӨ (2026-10-01 аудит): алсын уншилт алгасагдах/шууд шийдэгдэх
-         үед (`status === 'off'`, auth-гүй) `[kind]`/`[pkg]` эффектийн цэвэрлэгээ зурагдахаас
-         ӨМНӨ `hdMapsRef` уншигдаж, ӨМНӨХ төрлийн ноорог шинэ түлхүүрт «би · одоо» болж
-         нийлдэг байв — төлөвлөгөөний огноо гэрээний талбарт бичигдэх эрсдэл. */
       await new Promise((r) => setTimeout(r, 0));
       if (!alive) return;
       let remote: HDDraft | null = null;
       let readErr = '';
       let fromLocal = false;
-      /*
-       * ⚠️ ХҮЛЭЭГДЭЖ БУЙ ЦЭВЭРЛЭЛТ ЭХЛЭЭД (2026-10-04 аудит): илгээсний/хаясны дараах алсын
-       *    цэвэрлэлт унасан бол (тэмдэг үлдсэн) нээх · түгжээ тайлагдах үед СЭРГЭЭХЭЭС ӨМНӨ
-       *    дахин оролдоно. Унасан ч тэмдгийг доор алсын/локал ноорогт хэрэглэнэ — хуучин
-       *    ноорог Map-д орж буцаагдсан саналын автомат буулгалтыг (`dirtyN > 0`) хаахгүй.
-       */
-      /*
-       * ⚠️ 2026-10-26: ХАДГАЛАЛТЫГ БЭЛДЭНЭ — 191-д мөрийн багана байгаа эсэх (`rowsReady`), ноорог шилжсэн эсэх; засагч бол залхуу
-       *    шилжүүлэлт (191-ийн JSON → мөр, баталгаатай). Багана нэмэгдээгүй бол хуучин JSON (`blob`) — өнөөгийн зам.
-       */
       if (status !== 'off') {
         const store = await prepareStore(key, { canWrite: canEditRef.current, ctx: hdCtxRef.current });
         if (!alive) return;
@@ -1115,18 +820,12 @@ export function useSharedDraft({
       }
       hdSee(remote);
       if (remote && mk) remote = applyClear(remote, mk.keys, mk.ts);
-      /* ⚠️ Локал хуулбарыг ҮРГЭЛЖ нийлүүлнэ (2026-09-24) — урьд нь зөвхөн алс
-         хоосон үед; алсад ямар нэг ноорог байхад оффлайн засвар алдагддаг байв.
-         Цэвэрлэлтээс (`cleared`) хуучин НҮД ҮГҮЙ — 2026-10-04 аудит: НҮД ТУС БҮРЭЭР
-         (`dropCleared`); урьд нь `l.t < cleared` бол хуулбарыг БҮХЛЭЭР нь хаяж, цэвэрлэлтээс
-         хойш бичсэн нүд ч алга болдог байв. */
       hdCleared.current = Math.max(hdCleared.current, remote?.cleared ?? 0, mk?.ts ?? 0);
       try {
         const l0 = hdParse(localStorage.getItem(hdLocalKey(key)));
         hdSee(l0);
         hdLocalSeen.current = maxStamp(l0);
         const clearedAt = Math.max(remote?.cleared ?? 0, l0?.cleared ?? 0, mk?.ts ?? 0);
-        /* ⚠️ 2026-10-01: ноорог хоосон ч (`hdApply` дуудагдахгүй) дараагийн бичилтэд үлдэнэ */
         hdCleared.current = Math.max(hdCleared.current, clearedAt);
         let l = l0 ? dropCleared(l0, clearedAt) : null;
         if (l && mk) l = applyClear(l, mk.keys, mk.ts);
@@ -1144,21 +843,13 @@ export function useSharedDraft({
         del: new Map(), base: { at: hdBaseAt.current, n: hdCtxRef.current.n },
       } : null;
       let merged = hdMerge(remote, localD);
-      /* ⚠️ «Улсын комисс» шинэ жааз (2026-09-25 аудит, `hdRemapRef`-ийн ⚠️): алс/локал
-         ноорог хуучин oid-тай тул мөрд тулгахаас ӨМНӨ шинэ oid руу зөөнө; нэг удаа. */
       const rm = hdRemapRef.current;
       if (rm && rm.pkg === pkgKeyRef.current) {
         hdRemapRef.current = null;
-        /* ⚠️ 2026-10-21: `hdApply`-ийн дуудлагатай ИЖИЛ аргумент — HLC цаг (`hdStamp`, `Date.now()` биш:
-           tombstone харсан нүднээс хожуу байх ёстой) ба БУСДЫН хуучин түлхүүрийг үлдээх `keep` (хуучин
-           жаазтай хамтрагчид хүчинтэй). Урьд нь хоёулаа дутуу тул бусдын нүд ч tombstone авдаг байв. */
         if (merged) merged = hdRemapDraft(merged, rm.map, hdStamp(), (_k, e) => e.user !== meRef.current);
       }
       hdReady.current = key;
-      /* ⚠️ 2026-10-06: сэргээлт шинэ суурь — хоосролтын хүлээлт энд дуусна (хоосон ноорогт `hdApply`
-         дуудагдахгүй тул туг гацахгүй; `hdClear`-ийн ⚠️) */
       hdExpectEmpty.current = false;
-      /* ⚠️ `hdApply`-тай НЭГ багцад (React 18) — автомат буулгалт ноорогтой зурагдалтыг харна */
       setHdReadyKey(key);
       hdPrevW.current = hdWritableRef.current;
       if (readErr && !fromLocal) setHdSt({ st: 'err', err: readErr });
@@ -1166,7 +857,6 @@ export function useSharedDraft({
       const ap = hdApply(merged);
       const parts: string[] = [];
       if (ap.applied) parts.push(tr('Ноорог сэргээв: {0} мөр', num(ap.rows)));
-      /* ⚠️ 2026-10-09: шинэ жаазад зөөгдсөн / олдоогүй мөрийг НЭРЭЭР (`hdLostRef`-ийн ⚠️) */
       {
         const lr = hdLostRef.current;
         if (lr.moved) parts.push(tr('{0} мөрийн ноорог шинэчлэгдсэн хуудасны мөр рүү зөөгдөв', num(lr.moved)));
@@ -1180,30 +870,18 @@ export function useSharedDraft({
       if (fromLocal && readErr) parts.push(tr('алсын ноорог уншигдсангүй — энэ компьютерийн хуулбар'));
       if (parts.length) setNote(parts.join(' · '));
       /* Локалоос сэргэсэн эсвэл ижил болсон нүд арилгах бол алсыг шинэчилнэ */
-      /* ⚠️ Уншилтын завсрын засвар (`localD`, ж: татсан илгээлт) ч алсад очих ёстой */
-      /* ⚠️ 2026-10-04: цэвэрлэлтийн тэмдэг хэрэглэгдсэн (алс хоцорсон) бол ч бичнэ — tombstone хүрнэ */
       if ((fromLocal || localD || mk || ap.dropped.length > ap.staleKeys.length) && hdWritableRef.current) hdSchedule(1500);
     })();
     return () => { alive = false; };
-    /* ⚠️ 2026-10-09 (аудит №2): `hdRetryN` — татлага унасны дараах дахин сэргээлт (`hdRetryRestore`-ийн ⚠️) */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hdKeyCur, sc, rows.length > 0, obState, flowReady, hdBlocked, hdPending, status, hdRetryN]);
 
   /**
    * МӨРҮҮД ШИНЭ ЖААЗ БОЛОХОД НООРОГИЙГ ЗӨӨНӨ (2026-10-09, хэрэглэгч: «жааз солигдоход ноорог алга болж байна»).
-   * ⚠️ ЯАГААД: «Гүйцэтгэл бөглөх» нийтлэл · нэмэлт ажил · «Улсын комисс» бүх oid-ыг солино. `refetchServer`/
-   *    хадгалалтын дараа `rows` шинэ жааз болмогц доорх дифф хуучин oid-той Map-ыг шинэ суурьтай тулгаж БҮХ
-   *    нүдийг tombstone болгож (алсаас ч устана), Map нь «өнчин ноорог» болж үлддэг байв.
-   * ⚠️ Зураглал `savePrep.remapRowsFull` (хадгалахтай НЭГ дүрэм: эцэг бүлгийн зам › № ¦ нэр → код → № + нэр).
-   *    Map · дифф суурь (`hdPrev`) · мета · tombstone · ажиглалтыг ЗЭРЭГ зөөж, Map шинэ түлхүүртэй ирэх хүртэл
-   *    дифф зогсоно (`hdRemapHold`). Зөөгдөөгүй мөр «өнчин» хэвээр — нэрийг нь эцэгт (`hdOrphan`).
-   * ⚠️ Энэ эффект ДИФФ-ЭЭС ӨМНӨ зарлагдах ёстой (нэг commit-д эффект зарласан дарааллаар).
-   * ⚠️ Багц солигдоход (`rows` эхлээд `[]`) зөөхгүй — өөр багцын мөр.
    */
   useEffect(() => {
     const prev = hdRowsPrev.current;
     hdRowsPrev.current = { key: pkgKey, rows };
-    /* ⚠️ 2026-10-09: багц солигдоход өмнөх багцын «өнчин» нэрс арилна */
     if (prev.key !== pkgKey) { setHdOrphan((o0) => (o0.size ? new Map() : o0)); return; }
     if (!prev.rows.length || !rows.length || prev.rows === rows) return;
     const have = new Set(rows.map((r) => r.oid));
@@ -1251,15 +929,10 @@ export function useSharedDraft({
 
   /**
    * ДИФФ — 5 Map өөрчлөгдөх бүрд мета/tombstone хөтөлж, 1.5 с дараа бичнэ.
-   * ⚠️ Задаргаа ачаалагдаж байхад (`obState === 'loading'` — багц солих,
-   *    `refetchServer`-ийн завсрын зурагдалт) ОГТ ажиллахгүй: суурь дутуу тул
-   *    сарын нүд «алга болж» tombstone авах байв (2026-09-24).
-   * ⚠️ Ноорог ХООСОРВОЛ шууд устгахгүй — `hdFlush` алсыг нийлүүлээд шийднэ.
    */
   useEffect(() => {
     const key = hdKeyCur;
     if (hdReady.current !== key || obState === 'loading') return;
-    /* ⚠️ 2026-10-09: жааз солигдож Map зөөгдөж байна — шинэ түлхүүртэй Map ирэх хүртэл диффгүй (`hdRemapHold`) */
     if (hdRemapHold.current) {
       if (draft === hdRemapHold.current.draft) return;
       hdRemapHold.current = null;
@@ -1267,23 +940,11 @@ export function useSharedDraft({
     const cur = mapsToCells({ draft, ham, aDraft, resDraft, obDraft, obRes: obResDraft }, hdCtx);
     const wasW = hdPrevW.current;
     hdPrevW.current = hdWritable;
-    /* ⚠️ 2026-10-04: `hdClear`-ийн дараа эцгийн хоосолсон Map ирэх хүртэл диффгүй (`hdExpectEmpty`) */
     if (hdExpectEmpty.current) {
       if (!cur.size) { hdExpectEmpty.current = false; hdPrev.current = cur; }
       return;
     }
-    /* ⚠️ Бичих боломжгүй үед (эсвэл дөнгөж боломжтой болоход) зөвхөн СУУРИЙГ
-       тавина — саналын нүдэнд tombstone тавихгүй; метагүй шинэ нүдэнд «би ·
-       одоо»-г нэг удаа тавина (`at` тогтвортой байхын тулд, 2026-09-24). */
     if (!hdWritable || !wasW) {
-      /*
-       * ⚠️ ДӨНГӨЖ ТҮГЖИГДСЭН (2026-10-04 аудит): түгжээний (хамтрагч илгээсэн · батлалт ·
-       *    урьдчилан харалт) өмнөх сүүлийн 1.5 с-ийн засвар алсад огт очдоггүй байв —
-       *    `hdFlush` бичих боломжгүй үед шууд буцдаг. `hdPrev`/мета нь СҮҮЛИЙН бичих боломжтой
-       *    диффийг агуулна (энэ зурагдалтын Map — санал байж болох — ОРОХГҮЙ, `hdDiff`
-       *    бичих боломжгүйд ажиллахгүй) → локал хуулбарт СИНХРОН бичиж, бичих боломж эргэж
-       *    ирэхэд (эсвэл түгжээ тайлагдсаны дараах сэргээлтэд — локал хуулбар нийлнэ) алсад.
-       */
       if (wasW && !hdWritable && !hdHold.current && (hdTimer.current || hdBusy.current)) {
         if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
         hdWriteLocal(key, hdLocal());
@@ -1300,8 +961,6 @@ export function useSharedDraft({
     const prevSize = hdPrev.current.size;
     if (!hdDiff()) return;
     hdBackoff.current = 3000;
-    /* ⚠️ 2026-10-04 аудит: БҮГД буцаагдсан (хоосорсон) бол tombstone-ыг ЛОКАЛД ШУУД — 300 мс-ийн
-       завсарт F5 дарвал хуучин хуулбар амилдаг байв. Алс нь доорх товлолтоор. */
     if (!hdPrev.current.size && prevSize) hdWriteLocal(key, hdLocal());
     hdSchedule(!hdPrev.current.size && prevSize ? 300 : 1500);
   }, [draft, ham, aDraft, resDraft, obDraft, obResDraft, hdCtx, hdKeyCur, hdWritable, obState, hdSchedule, hdDiff, hdLocal, hdWriteLocal, hdStamp, meRef]);
@@ -1309,36 +968,19 @@ export function useSharedDraft({
   /**
    * МӨЧЛӨГ — 3 с тутам (таб харагдаж байхад) алсын `at`-ыг хямдаар шалгаж,
    * өөр бол уншиж нийлүүлнэ. Мэдэгдэлгүй — зөвхөн толгойн «ноорогт: …».
-   * ⚠️ Нийлүүлсний дараа гарын үсэг өөрчлөгдсөн бол (өөрийн нүд алсад дутуу)
-   *    бичилт товлоно — `sig` эрэмбэ/`by`-аас хамаардаггүй тул тойрог үүсэхгүй.
-   * ⚠️ Таб нуугдах / хуудас хаагдахад хүлээгдэж буй бичилтийг ШУУД гүйцэтгэнэ
-   *    (`FillNew`-тэй ижил) — 1.5 с завсарлага таб хаахад алдагдахгүй.
    */
   useEffect(() => {
     if (status === 'off') return undefined;
     const tick = async () => {
       const key = hdKeyRef.current;
       if (document.hidden || hdBusy.current || hdReady.current !== key || !hdPollOkRef.current) return;
-      /* ⚠️ 2026-10-04 аудит: илгээх явцад (`hdHold`) нийлүүлэхгүй — `busy`-ээр хаагддаггүй
-         байсан тул илгээлтэд ороогүй нүд Map-д орж, цэвэрлэлтийн шийдвэрийг будлиантуулдаг
-         байв. Чирэлт явж байхад ч (`dragging`) Map-ыг дарахгүй — дараагийн мөчлөгт. */
       if (hdHold.current || draggingRef.current) return;
-      /* ⚠️ Мөргүй/задаргаагүй суурьтай (багц солигдож, мөр шинэчлэгдэж байгаа)
-         тулгавал нүд хуучирна эсвэл суурьгүй орно */
       if (hdCtxRef.current.rows.size === 0 || obStateRef.current === 'loading') return;
-      /* ⚠️ 2026-10-26: хадгалалт энэ түлхүүрт бэлдэгдээгүй бол хүлээнэ */
       if (hdStoreKey.current !== key) return;
       const store = hdStore.current;
       hdBusy.current = true;
-      /* ⚠️ 2026-10-04 (шүүлт): уншилтын завсарт цэвэрлэсэн (`hdClearSeq`) бол үр дүнг хаяна —
-         цэвэрлэлтээс ӨМНӨХ алсын ноорог; `hdLastSeenAt` хөдлөхгүй тул дараагийн мөчлөг дахин уншина. */
       const cs = hdClearSeq.current;
       try {
-        /*
-         * ⚠️ 2026-10-26 (шүүлт): ТҮР ГОРИМЫГ ДАХИН ШАЛГАНА (`rows-wait`, 30 с тутам) — `rows`/`blob` болмогц хуудас дахин
-         *    ачаалалгүй шилжинэ (`hdLastSeenAt = -1` → дараагийн мөчлөг уншиж нийлүүлнэ, `hdLastSig` хоосон → локал засвар
-         *    бичигдэнэ). Урьд нь сэргээлтэд л бэлддэг тул түр алдааны дараа таб сешн дуустал алсад бичихгүй байв.
-         */
         if (store.mode === 'rows-wait') {
           if (Date.now() - hdRecheckAt.current < 30_000) return;
           hdRecheckAt.current = Date.now();
@@ -1354,43 +996,25 @@ export function useSharedDraft({
           return;
         }
         const at0 = await store.readAt(key);
-        /*
-         * ⚠️ 2026-10-26: ХУУЧИН ТАБЫН JSON БИЧИЛТ (`rows` горим) — шинэчлээгүй таб 191-ийн JSON мөрөнд бичсэн бол мөрийн уншилт
-         *    түүнийг АЛЬ ХЭДИЙН нийлүүлнэ (`planRead`, `huuchin_at`-аас шинэ нүд); дараагийн бичилт мөрт хүргэнэ. Хуучин таб
-         *    мөрийн засварыг хардаггүй (нэг чиглэлтэй) тул хэрэглэгчид нэг удаа хэлнэ (`legacyPending` — ижил хувилбарт давтахгүй).
-         */
         if (store.mode === 'rows' && legacyPending(at0) && hdLegacyNoted.current !== at0 && key === hdKeyRef.current) {
           hdLegacyNoted.current = at0 as number;
           hdSoftNote(tr('Хуучин хувилбартай таб ({0}) — дахин ачаална уу', tr('хамтрагч')));
         }
-        /* ⚠️ `await` бүрийн дараа ДАХИН шалгана (2026-09-24 аудит): уншилтын завсарт
-           батлалт/урьдчилан харалт эхэлсэн бол `hdApply` Map-уудыг дарж, харж
-           буй санал эсвэл бичигдэж буй ноорог солигддог байв. */
         if (!hdPollOkRef.current || hdHold.current) return;
         if (at0 === undefined || (at0 ?? 0) === hdLastSeenAt.current || key !== hdKeyRef.current) return;
         const rr = await store.read(key, { ctx: hdCtxRef.current });
         if (!hdPollOkRef.current || hdHold.current || draggingRef.current) return;
         if (key !== hdKeyRef.current || hdReady.current !== key || !rr.ok) return;
         if (cs !== hdClearSeq.current) return;
-        /* ⚠️ 2026-10-04: `hdLocal` ОДООГИЙН Map-аар дифф хийнэ (`hdDiff`-ийн ⚠️) — сүүлийн
-           чирэлтийн алхам нийлүүлэлтээр буцахгүй */
         const remote = rr.draft;
         const merged = hdMerge(remote, hdLocal());
         hdLastSeenAt.current = at0 ?? 0;
         if (!merged) return;
         hdApply(merged);
-        /* ⚠️ 2026-10-06: нийлүүлсний дараах ЛОКАЛ-ыг АЛСЫН гарын үсэгтэй харьцуулна. Урьд нь өөрийн
-           сүүлд бичсэн `hdLastSig`-тэй харьцуулдаг тул хамтрагчийн бичилт бүр цуурай бичилт,
-           худал «алсад хараахан хадгалагдаагүй» шошго, гарах анхааруулга үүсгэдэг байв.
-           Ижил бол дахин бичихгүй — `hdLastSig`-ийг локалынхаар тавина (flush · flushNow алгасна).
-           `base.n`-ийг алсынхаар тулгана — мөрийн тоо зөрсөн хоёр клиент ээлжлэн бичиж тойрог үүсгэхгүй. */
         if (hdWritableRef.current) {
           const loc = hdLocal();
           const ls = hdSig(remote ? { ...loc, base: remote.base } : loc);
           if (remote ? hdSig(remote) === ls : hdIsEmpty(loc)) { if (remote) hdLastSig.current = hdSig(loc); }
-          /* ⚠️ 2026-10-26 (шүүлт): алс локалаас ДУТУУ (жиш. мөрийн горимд зэрэг бичилтээр холилдсон сарын цуваа — `seriesRead`-ийн
-             ⚠️) — локал өөрчлөгдөөгүй ч ЗААВАЛ дахин бичнэ (`hdLastSig` хоосон); эс бөгөөс `hdFlush` «өмнө бичсэнтэй ижил» гэж алгасна.
-             Тойрог үүсэхгүй: өөрийн бичилтийн дараа толгой бидний агшинд тул дахин уншихгүй. */
           else { hdLastSig.current = ''; hdAgain.current = true; }
         }
       } finally {
@@ -1399,19 +1023,6 @@ export function useSharedDraft({
       }
     };
     const id = setInterval(() => { void tick(); }, 3000);
-    /* ⚠️ Таб хаагдахад урьдчилсан уншилт (`readRemoteDraftAt`) дуусдаггүй тул
-       (2026-09-24) ЭХЛЭЭД локал хуулбарыг синхрон бичиж, дараа нь алсад
-       уншилтгүйгээр ШУУД бичнэ — «best effort». */
-    /*
-     * ⚠️ 2026-10-04 аудит:
-     *   · ЛОКАЛ хуулбар ТОВЛОЛТООС ҮЛ ХАМААРАН — урьд нь `hdTimer` хоосон (бичилт явж байх ·
-     *     дараалалд) үед юу ч хийхгүй буцдаг тул тэр завсарт таб хаавал засвар энэ компьютерт
-     *     ч үлддэггүй байв. Хоосон ноорог ч СИНХРОН (урьд нь async `hdFlush` руу шилждэг байв).
-     *   · `hdBusy` · `hdHold`-ийг хүндэтгэнэ — явж буй уншилт/бичилттэй зэрэг уншилтгүй бичилт
-     *     хийхгүй (хэрэгтэй бол `hdAgain` → дахин товлоно); бичилт өөрөө `hdBusy` авна.
-     *   · Цэвэрлэлтийн үе (`hdClearSeq`) зөрвөл `hdFlush`-тэй ижил дахин цэвэрлэнэ.
-     * Unmount-д ч дуудагдана (`hdFlushNowRef`) — харагдац солиход 1.5 с-ийн товлолт алдагддаг байв.
-     */
     const flushNow = () => {
       const key = hdKeyRef.current;
       if (hdReady.current !== key || !hdWritableRef.current) return;
@@ -1424,7 +1035,6 @@ export function useSharedDraft({
       }
       if (hdHold.current) { hdHeldAgain.current = true; return; }
       if (hdBusy.current) { hdAgain.current = true; return; }
-      /* ⚠️ 2026-10-26: хадгалалт (`huvaariStore`) — бэлдээгүй бол локал хуулбар л; хэмжээ зөвхөн JSON-д */
       if (statusRef.current === 'off' || hdStoreKey.current !== key) return;
       const store = hdStore.current;
       if (store.mode === 'blob' && hdSerialize(local, REMOTE_MAX).length > REMOTE_MAX) return;
@@ -1432,8 +1042,6 @@ export function useSharedDraft({
       const gen = hdGen.current;
       const cs = hdClearSeq.current;
       hdBusy.current = true;
-      /* ⚠️ 2026-09-29: уншилтгүй бичилт ч бусдын шинэ нүдийг дарахгүй (`expectAt`) —
-         зөрвөл алгасна; локал хуулбар дээр бичигдсэн тул дараагийн нээлтэд нийлнэ. */
       void store.save(key, local, { expectAt: hdLastSeenAt.current, quick: true, ctx: hdCtxRef.current }).then((r) => {
         if ((r.ok || r.written) && cs !== hdClearSeq.current) { void hdRunClearRef.current(key); return; }
         if (gen !== hdGen.current || key !== hdKeyRef.current) return;
@@ -1445,13 +1053,7 @@ export function useSharedDraft({
           setHdSt(hdTimer.current ? { st: 'pending' } : { st: 'saved', at: hdLastOkAt.current });
           return;
         }
-        /* ⚠️ 2026-10-01 аудит: УНАСАН бичилтийг ДАХИН ТОВЛОНО. Урьд нь юу ч хийдэггүй
-           байв — таб буцаж харагдахад `tick` алсын `at` өөрчлөгдөөгүй (`=== hdLastSeenAt`)
-           тул шууд буцаж, засвар дараагийн локал засвар хүртэл алсад очдоггүй байв.
-           `hdFlush` уншиж-нийлүүлж-бичнэ: зөрчил (`conflict`) бол бусдынхтай нийлнэ,
-           бусад алдаанд backoff-той. Бусад товлолт явж байвал түүнийг дарахгүй. */
         if (hdTimer.current) return;
-        /* ⚠️ 2026-10-26 (шүүлт): зөрчил → дахин уншиж нийлүүлнэ (`hdFlush`-ийн ⚠️) */
         if (r.conflict) { hdLastSeenAt.current = -1; hdSchedule(1500); } else hdRetry();
       }).finally(() => {
         hdBusy.current = false;
@@ -1471,9 +1073,6 @@ export function useSharedDraft({
 
   /**
    * UNMOUNT — харагдац солиход хүлээгдэж буй бичилтийг ШУУД гүйцэтгэнэ (2026-10-04 аудит).
-   * ⚠️ Урьд нь дээрх эффектийн цэвэрлэгээ `visibilitychange`/`pagehide` сонсогчдыг авч, 1.5 с-ийн
-   *    товлолт ганцаараа үлддэг байв (React unmount-ын дараа `hdApply` state-гүй). Одоо локал
-   *    хуулбар синхрон + алсад «best effort», дараа нь товлолтуудыг цуцална.
    */
   useEffect(() => () => {
     hdFlushNowRef.current();
@@ -1496,50 +1095,19 @@ export function useSharedDraft({
 
   /**
    * БАГЦ/ТӨРӨЛ СОЛИХ зөвшөөрөл асууна.
-   *
-   * ⚠️ УРЬДЧИЛАН ХАРЖ БАЙХАД ТУСДАА АСУУЛТ (2026-09-11-ний аудитын S1).
-   *    Урьд нь `previewing` үед ШУУД `true` буцаадаг байв — «ноорог нь
-   *    батлагчийнх тул хаяхад эвгүй зүйлгүй» гэсэн үндэслэлээр. Гэвч солих
-   *    нь урьдчилан харалтыг ТАСАЛДАГ: батлагч юу харж байснаа алдаж,
-   *    илгээлт хүлээгдсэн хэвээр үлдэнэ. Тиймээс чимээгүй зөвшөөрөхгүй.
-   * ⚠️ Хоёр тохиолдолд ӨӨР асуулт: урьдчилан харалт нь өгөгдөл алдахгүй
-   *    (сервер дээр хэвээр), ноорог нь АЛДАГДАНА.
    */
   const askSwitch = useCallback(
     async (): Promise<boolean> => {
       if (previewing) {
-        /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт (`askConfirm`) — `askSwitch` аль хэдийн async */
         return askConfirm(tr('Батлах урьдчилан харалт хаагдана. Илгээлт хүлээгдсэн хэвээр үлдэнэ. Үргэлжлүүлэх үү?'));
       }
-      /* ⚠️ 2026-09-29 аудит: зөвхөн ХАРАГЧИД бусдын ноорог Map-д байдаг — юу ч бичихгүй */
       if (!canEditRef.current) return true;
       const key = hdKeyRef.current;
-      /* ⚠️ `dirtyN === 0` ч бичилт ХҮЛЭЭГДЭЖ болно (2026-10-01 аудит): «Ноорог хаях»/буцаалтын
-         дараа tombstone-ыг 300 мс-ийн дараа бичдэг — шууд солибол сэргээлт тэр бичилтийг
-         цуцалж, хаясан ноорог буцаж ирдэг байв. */
       const pendingWrite = !!hdTimer.current || hdBusy.current;
       if (dirtyN === 0 && !pendingWrite) return true;
-      /* ⚠️ Хуваалцсан ноорог ажиллахгүй (`status === 'off'`, түгжээ) ЭСВЭЛ сэргээлт ДУУСААГҮЙ
-         (`hdReady !== key` — `hdLocal()` хоосон, локал хуулбарыг хоосоор дарах байв) үед
-         хадгалах боломжгүй — урьдын асуулт хэвээр, алс/локал руу юу ч бичихгүй. */
       if (!hdWritableRef.current || hdReady.current !== key) {
-        /* ⚠️ 2026-10-23 (UX аудит P4/X1): «Илгээгээгүй» (`dirtyN` нь илгээгээгүй тоо) · аппын дотоод асуулт */
         return dirtyN === 0 || askConfirm(tr('Илгээгээгүй {0} өөрчлөлт байна. Хаяад солих уу?', num(dirtyN)), { danger: true, ok: tr('Хаяад солих') });
       }
-      /*
-       * ⚠️ НООРОГ УСТГАХГҮЙ — ХАДГАЛААД СОЛИНО (2026-10-01, хэрэглэгч: «төлөвлөгөө хэсгийн
-       *    ноорог устаж байна»). Урьд нь «Хаяад солих уу?» гэж асууж, OK дарвал хуваалцсан
-       *    нооргийг `hdClear`-ээр устгадаг байв. Ноорог аль хэдийн (төрөл · багц)-аар тусдаа
-       *    түлхүүртэй (`hdKey`) тул устгах шаардлагагүй: буцаж ирэхэд сэргээлтийн эффект
-       *    тэр түлхүүрээс дахин уншина. Санах ойн Map-ууд `[kind]`/`[pkg]` эффектэд
-       *    цэвэрлэгдсэн хэвээр — нэг илгээлт нэг төрөл авч явах дүрэм хөндөгдөхгүй.
-       * ⚠️ ОДОО ЛАВ БИЧНЭ: түлхүүр солигдмогц сэргээлтийн эффект товлогдсон бичилтийг
-       *    (`hdTimer`, 1.5 с) ЦУЦАЛДАГ тул сүүлийн засвар алдагдах байв. Эхлээд локал
-       *    хуулбар (сүлжээ унасан ч энэ компьютерт үлдэнэ), дараа нь алс. Явж буй
-       *    уншилт/бичилт (`hdBusy`) дуусахыг хүлээнэ — эс бөгөөс `hdAgain` бичилтийг
-       *    ШИНЭ түлхүүр рүү товлоно.
-       */
-      /* ⚠️ 2026-10-04: нийлүүлж бичнэ (`hdWriteLocal` — нөгөө табын хуулбарыг дарахгүй) */
       hdWriteLocal(key, hdLocal());
       for (let i = 0; i < 3; i += 1) {
         if (hdTimer.current) { clearTimeout(hdTimer.current); hdTimer.current = null; }
@@ -1556,35 +1124,21 @@ export function useSharedDraft({
 
   /**
    * АЛСАД ХҮРЭЭГҮЙ ЗАСВАР БАЙНА УУ (2026-10-04 аудит) — эцгийн `beforeunload`/`navGuard`.
-   * ⚠️ Урьд нь `dirtyN > 0` бол ҮРГЭЛЖ анхааруулдаг байв — ноорог алсад бүрэн хадгалагдсан ч.
-   *    Одоо бичих боломжтой үед зөвхөн товлогдсон/явж буй/унасан бичилт (`pending` · `saving`
-   *    · `err`) эсвэл сэргээлт дуусаагүй завсрын засвар. Бичих боломжгүй (ArcGIS унтраалттай,
-   *    түгжээ) үед Map нь ганц хадгалалт тул урьдын `dirtyN > 0` дүрэм хэвээр.
-   *    `big` (хэт том) — 2026-10-08 хүртэл анхааруулдаггүй байв (локал хуулбар синхрон); одоо засвартай
-   *    (`dirtyN > 0`) бол АСУУНА — ноорог алсад ОГТ очоогүй тул өөр төхөөрөмжид харагдахгүй.
    */
   const hdUnsynced = !canEdit ? false
     : !hdWritable ? dirtyN > 0
       : hdReadyKey !== hdKeyCur ? dirtyN > 0
-        /* ⚠️ 2026-10-04 (шүүлт): `err` нь засваргүй үед ч гардаг (нээхэд уншилт унасан, цэвэрлэлтийн
-           оролдлого дууссан) — тэр үед хуурамч «гарах уу?» асуулт гарч байв. `err`-д засвар
-           (`dirtyN > 0`) шаардана. Хоосон Map-ын алсад хүрээгүй tombstone нь локал хуулбарт СИНХРОН
-           бичигдсэн (`hdWriteLocal`) тул гарахад алдагдахгүй — дараагийн нээлтэд алсад очно. */
         : hdSt.st === 'pending' || hdSt.st === 'saving' || (hdSt.st === 'err' && dirtyN > 0)
           || ((hdSt.st === 'big' || hdSt.st === 'local') && dirtyN > 0);
 
   return {
     hdSt, hdUsers, hdLabel, hdReadyKey, hdReady, hdLastSeenAt, hdFlushRef, hdClearRef,
-    /* ⚠️ `*Ref` нэрээр — React Compiler ref-ийг нэрээр нь таньж, эцэгт `.current` бичихийг зөвшөөрнө */
     hdTimerRef: hdTimer, hdSkipUnlockOnceRef: hdSkipUnlockOnce, hdMapsRef, hdMeta, meRef, hdKeyRef, hdWritableRef, canEditRef,
     askSwitch, hdClear, hdResetRestore, hdRetryRestore,
-    /* ⚠️ 2026-10-09: шинэ жаазад зөөгдөөгүй ноорогтой мөрийн нэр (`hdOrphan`-ийн ⚠️) */
     hdOrphan,
     /* 2026-10-04 аудит: илгээх · хаях · хадгалагдаагүй төлөв */
     hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced,
-    /* ⚠️ 2026-10-26: хадгалалтын горим ба тайлбар (`huvaariStore`) — super-т «notebook ажиллуулна уу» */
     hdStoreMode, hdStoreNote,
-    /* ⚠️ 2026-10-26 (шүүлт): илгээлтийн хуулбарыг агуулгаас нөхөхөд (`planSyncSubmitted`) — одоогийн мөр/блок/серверийн муж */
     hdCtxRef, hdReadyRef: hdReady,
   };
 }

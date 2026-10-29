@@ -1,20 +1,13 @@
 /**
  * `NEXT_PUBLIC_*` ОРЧНЫ ХУВЬСАГЧИЙН ТЭНЦВЭР — код ↔ `.env.example` ↔ deploy.yml ↔ test.yml.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs tools/envParity.check.mjs
- *
- * ⚠️ 2026-10-09: ЯАГААД. Код дотор үйлчилгээний хаягийн fallback БАЙХГҮЙ (2026-09-17) —
- *    хувьсагч бүр `.env` (локал), GitHub Variables (deploy.yml), CI (test.yml) гурвуулаа
- *    дээр ИЖИЛ нэрээр байх ёстой. Гараар синк хийдэг тул зөрдөг байв: жишээ нь
- *    `NEXT_PUBLIC_AGENT_PROMPT_HMAC` нь deploy.yml-д нэмэгдсэн ч `.env.example` ба
- *    test.yml-д алга байв (шинэ хөгжүүлэгч мэдэхгүй, CI-ийн build өөр багц гаргана).
- *    Мөн кодоос хасагдсан хувьсагч workflow-д үхмэл мөр болж үлддэг.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs tools/envParity.check.mjs
  *
  * Дүрэм:
  *   1. Кодод (src · tools, ТАЙЛБАРЫГ ХАССАН) хэрэглэгдсэн `NEXT_PUBLIC_*` бүр — `.env.example`,
  *      deploy.yml, test.yml гурвуулаа дээр (OPTIONAL_LOCAL-аас бусад).
  *   2. `.env.example` / deploy.yml / test.yml-д байгаа бүр кодод хэрэглэгдэнэ (хуучирсан мөргүй).
  *   3. deploy.yml ба test.yml-ийн жагсаалт ИЖИЛ.
- *   4. ⚠️ 2026-10-19: Telegram ботын загвар (`deploy/telegram-bot/.env.example`) — кодын `req()`/`svcRoot()`-оор
+ *   4. 2026-10-19: Telegram ботын загвар (`deploy/telegram-bot/.env.example`) — кодын `req`/`svcRoot`-оор
  *      ЗААВАЛ шаардсан бүх хувьсагч идэвхтэй мөрөөр байна (дутуу бол бот асахгүй), мөн кодод хэрэглэгдэхгүй
  *      (хуучирсан) нэр байхгүй. Урьд нь `NEXT_PUBLIC_ARCGIS_IOT` (хуучин нэр) үлдэж, `…_IOT_SVC` · `…_BIM_SCENE` алга байв.
  */
@@ -29,9 +22,6 @@ import { join, sep } from 'node:path';
 const OPTIONAL_LOCAL = new Map([
   ['NEXT_PUBLIC_AUTH_OFF',
     'Нэвтрэлтийг санаатай унтраах (зөвхөн UI бүтэц харах) — production/CI-д ХЭЗЭЭ Ч тавихгүй (env.ts).'],
-  /* ⚠️ 2026-10-19: `NEXT_PUBLIC_ENT_PORTAL_URL` ЭНД БАЙХГҮЙ БОЛСОН — ХАБЭА-гийн бичилт Enterprise сешнээс хамаардаг тул
-     deploy/CI-д GitHub Variable-аар (сонголттой; хоосон бол `habeaRegisters.entAuth` нэргүй бичилт руу буцна) */
-  /* ⚠️ 2026-10-20: `NEXT_PUBLIC_CHANAR_MA_SVC` · `NEXT_PUBLIC_CHANAR_MIR_SVC` ХАСАГДСАН — MA · MIR нь `NEXT_PUBLIC_ENT_DATA`-гийн дор тогтмол нэрээр (env.ts) */
 ]);
 
 const SELF = 'tools/envParity.check.mjs';

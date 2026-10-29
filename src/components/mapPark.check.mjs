@@ -1,11 +1,6 @@
 /**
  * ХЭЛ СОЛИХОД ГАЗРЫН ЗУРГИЙН VIEW УСТАХГҮЙ — `mapPark.ts` (2026-10-01).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/mapPark.check.mjs
- *
- * ⚠️ Хуурамч view-ээр: хэл солих агшинд (`shouldPark`) хадгалагдаж, ижил түлхүүртэй
- *    шинэ MapCanvas түүнийг ДАХИН АВНА (шинэ view үүсэхгүй, устгагдахгүй); түлхүүр
- *    зөрвөл эсвэл хугацаанд хэн ч авахгүй бол устгана (WebGL контекст алдагдахгүй).
- *    Мөн `i18n.tsx`/`page.tsx`-ийн бүтэц: `AuthProvider` remount-ийн ГАДНА.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/mapPark.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

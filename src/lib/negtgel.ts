@@ -1,39 +1,9 @@
 /**
  * ТӨСЛИЙН НЭГТГЭЛ ГҮЙЦЭТГЭЛ — ажлын задаргааны (WBS) мод ба түүний бөглөлт.
- *
- * ⚠️⚠️ 2026-10-13: ЭХ ДАХИН СОЛИГДОВ — `Negtgel_guitsetgel_1013/199` (906 мөр = Excel V3 «Төсөл төлөвлөгөө
- *    биелэлт»), ЗӨВХӨН уншина. Мод нь Excel-ийн томьёоноос (`negtgelTree.ts`), бодолт нь `negtgelAuto.ts`-ийн
- *    толгойд. Доорх 2026-09-25-ны тайлбар хуучин хүснэгтийнх.
- *
- * ⚠️⚠️ 2026-09-25: ЭХ СОЛИГДОВ — `Negtgel_guitsetgel/0` (352 мөр, утгууд
- * БӨГЛӨГДСӨН). Порталд ОДОО ЗӨВХӨН УНШИНА (`loadNegtgelFull`).
- * Доорх Cashflow-оос бодох зам (`computeNegtgel`,
- * `loadCfStages`, `stageProjectPct`) нь хуучин хоосон `Tusul_guitsetgel`-ийн
- * орлуулга байсан; тест ба шүүлттэй индикатор (`gdash.kpisOf`) хэрэглэсээр
- * байгаа тул хэвээр үлдэв.
- *
- * ⚠️ Эх нь `Tusul_guitsetgel/0` (`TUSUL_NEGTGEL`): 198 мөрийн МОД бөгөөд бүтэц
- * нь бэлэн, тоон утга нь БҮГД ХООСОН. Хэрэглэгчийн заавар (2026-09-08):
- * «мэдээллийг нь бөглөөрэй — жишээ нь газар чөлөөлөлтийг Газар чөлөөлөлт
- * хэсгээс авна».
- *
- * ⚠️ БӨГЛӨЛТИЙН ЭХ нь `Cashflow_0909`: гэрээ бүр модны ЗУРГААН хэсэг тус бүрд
- * гүйцэтгэлийн хувьтай (`CASHFLOW_NEW.stages`) ба төсөвт өртөгтэй. Модны мөр
- * бүрийг тохирох ГЭРЭЭНҮҮДТЭЙ холбоод, төсвөөр ЖИГНЭСЭН дунджийг авна.
- *
- * ⚠️ ЭНЭ ФАЙЛ ҮЙЛЧИЛГЭЭ РҮҮ БИЧДЭГГҮЙ. Бодолт нь ЗӨВХӨН дэлгэц дээр явагдана:
- * `applyEdits`-ээр 198 мөрийг дарж бичих нь БУЦААГДАШГҮЙ бөгөөд хэрэглэгчийн
- * ТУСГАЙ зөвшөөрөлтэйгээр л хийгдэнэ.
- *
- * ⚠️ ТААРААГҮЙ мөрийг ТААМАГЛАЖ БҮҮ БӨГЛӨ. `null` үлдээнэ — «мэдээлэлгүй» ба
- * «тэг гүйцэтгэл» хоёрыг хольж болохгүй (`CLAUDE.md`). Аль мөр яагаад
- * тааралгүй үлдснийг `how` талбар хэлнэ.
  */
 import { queryFeatures, queryStats, count } from '@/lib/query';
 import type { LiveProgress } from '@/lib/projectPlanInputs';
 
-/* ⚠️ 2026-10-27: гэрээний үе шатны хувь — АМЬД (`projectPlanInputs.loadLiveProgress`), хадгалсан `tezu` … `guitsetgel_huvi`
-   (Excel-ийн импортын агшин) биш. Динамик импорт (`gdash.loadLiveProgressLazy`-тай ижил шалтгаан); унавал null. */
 const loadLiveProgressLazy = (): Promise<ReadonlyMap<number, LiveProgress> | null> =>
   import('@/lib/projectPlanInputs').then((m) => m.loadLiveProgress()).catch(() => null);
 import {
@@ -61,10 +31,6 @@ export type NegtgelRow = {
   bagts?: string;
 };
 
-/**
- * ⚠️ `null` ба `0` хоёрыг ЯЛГАНА: «хэмжилтгүй» мөрийг 0% гэж зурвал бүх
- * задаргаа тэг гүйцэтгэлтэй мэт харагдана (`CLAUDE.md` → `null ≠ 0`).
- */
 const numOrNull = (v: unknown): number | null => (
   v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v)
 );
@@ -77,11 +43,6 @@ export const negtgelDepth = (code: string): number => {
 
 /**
  * ЭЦЭГ МӨРИЙН ИНДЕКС — БАЙРЛАЛ ба ГҮНЭЭР, кодоор БИШ.
- *
- * ⚠️ Эх хүснэгтэд код ДАВХАРДСАН: «6.2» нь «Газар чөлөөлөлт» ба «Барилга
- * угсралт ажил» гэсэн ХОЁР мөрд, «6» нь «Барилга угсралт» ба «Улсын комисс»-д
- * бичигдсэн. Кодоор эцэг хайвал мод солбилцоно. Гүнээр (Excel-ийн outline шиг)
- * угсарвал давхардал хамаагүй.
  */
 export function negtgelTree(rows: NegtgelRow[]): { parent: number[]; kids: number[][] } {
   const parent = new Array<number>(rows.length).fill(-1);
@@ -100,9 +61,6 @@ export function negtgelTree(rows: NegtgelRow[]): { parent: number[]; kids: numbe
 export async function loadNegtgel(): Promise<NegtgelRow[]> {
   const rows = await queryFeatures(TUSUL_NEGTGEL.url, {
     outFields: [TUSUL_NEGTGEL.oid, F.code, F.name],
-    /* ⚠️ ObjectID-аар эрэмбэлнэ, кодоор БИШ: «1.10» нь тэмдэгтээр «1.2»-оос
-       ӨМНӨ ирдэг тул модны дараалал эвдэрнэ. Мөрийн анхны дараалал нь
-       Excel-ийнхээ дарааллыг хадгалсан. */
     orderBy: TUSUL_NEGTGEL.oid,
   });
   return rows.map((r) => {
@@ -110,8 +68,6 @@ export async function loadNegtgel(): Promise<NegtgelRow[]> {
     return {
       oid: Number(r[TUSUL_NEGTGEL.oid] ?? 0),
       code,
-      /* ⚠️ Excel-ээс ирсэн нэр нь ДОГОЛООР эхэлдэг («    ТЭЗҮ») — доголыг
-         кодын гүнээс өөрсдөө зурдаг тул энд цэвэрлэнэ. */
       name: String(r[F.name] ?? '').replace(/\s+/g, ' ').trim(),
       depth: negtgelDepth(code),
     };
@@ -140,22 +96,16 @@ export async function loadCfStages(): Promise<CfStageRow[]> {
     const id = numOrNull(r[CF_MONTH.id]);
     const lp = live && id != null ? live.get(id) ?? null : null;
     return {
-      /* ⚠️ 2-р түвшин хоосон бол 1-р түвшнээр — нийгмийн дэд бүтэц, бондын хүү */
       turul: String(r[CF.type] ?? '') || String(r[CF.project] ?? ''),
       pkg2: String(r[CF.pkg2] ?? ''),
       detail: String(r[CF.detail] ?? ''),
       budget: Number(r[CF.budget] ?? 0) || 0,
-      /* ⚠️ 2026-10-27: шат бүр амьд (`LiveProgress.stages`); ирээгүй бол null (0 БИШ) */
       pct: Object.fromEntries(FIELDS.map((f) => [f, lp ? lp.stages[f] ?? null : null])),
     };
   });
 }
 
 /** ГАЗАР ЧӨЛӨӨЛӨЛТИЙН ЯВЦ — «Газар чөлөөлөлт» хэсэгтэй ЯГ ижил тоо.
- *
- * ⚠️ Тэнд харагддаг цагираг нь `бүрэн чөлөөлсөн ÷ нийт нэгж талбар`
- * (`Gazar.tsx` → `d.left.resolved / d.left.n`). Өөр томьёо хэрэглэвэл нэг
- * үзүүлэлт хоёр хуудсанд өөр тоо харуулна.
  */
 export async function loadLandPct(): Promise<number | null> {
   const [all, cleared] = await Promise.all([
@@ -177,10 +127,6 @@ const key = (v: unknown): string => String(v ?? '')
 
 /**
  * ХЭСЭГ (depth 1) → гэрээний ШАТНЫ ТАЛБАР.
- *
- * ⚠️ Нэрээр таарна, кодоор БИШ: эх хүснэгтэд «6» гэсэн код ХОЁР мөрд
- * («Барилга угсралт», «Улсын комисс») бичигдсэн. Жагсаалтад байхгүй хэсэг
- * (Улсын комисс) нь эх сурвалжгүй тул ХООСОН үлдэнэ.
  */
 const SECTION_FIELD: Record<string, string> = {
   [key('ТЭЗҮ')]: ST.tezu,
@@ -193,18 +139,6 @@ const SECTION_FIELD: Record<string, string> = {
 
 /**
  * ХЭСГИЙН ЖИН — «Төсөлд эзлэх хувь» (2026-09-08, ХЭРЭГЛЭГЧИЙН өгсөн хуваарилалт).
- *
- * ⚠️ Эдгээр нь ӨГӨГДЛӨӨС БОДОГДОХГҮЙ, ТӨСЛИЙН ШИЙДВЭР: «ТЭЗҮ 5% · ажлын зураг
- * төсөл 10% · газар чөлөөлөлт 3% · зөвшөөрөл 1% · сонгон шалгаруулалт 1% ·
- * барилга угсралт 79% · улсын комисс 1%». Тэдгээргүйгээр төслийн НИЙТ
- * гүйцэтгэлийг гаргах боломжгүй — зургаан шат нэг ижил ажлуудыг өөр өнцгөөс
- * хэмждэг тул төсвөөр жигнэвэл 522% болж хэтэрдэг байв.
- *
- * ⚠️ НИЙЛБЭР нь ЗААВАЛ 100 байх ёстой — эс бөгөөс SUMPRODUCT нь хувь БИШ,
- * утгагүй тоо болно. `negtgel.check.mjs` үүнийг шалгана.
- *
- * ⚠️ Хэсэг нь НЭРЭЭР таарна, кодоор БИШ: эх хүснэгтэд «6» гэсэн код ХОЁР мөрд
- * («Барилга угсралт», «Улсын комисс») бичигдсэн.
  */
 export const SECTION_WEIGHT: Record<string, number> = {
   [key('ТЭЗҮ')]: 5,
@@ -218,16 +152,8 @@ export const SECTION_WEIGHT: Record<string, number> = {
 
 /**
  * МОДНЫ БҮЛГИЙН НЭР → гэрээний ТӨРӨЛ (`Turul`).
- *
- * ⚠️ Хоёр талын нэршил ӨӨР: мод нь ажлын нэрээр, гэрээ нь ангиллын нэрээр
- * бичигдсэн. Тиймээс ил зураглал хэрэгтэй — «ойролцоо утгаар» таарах нь
- * чимээгүй буруу бүлэг холбох эрсдэлтэй.
  */
 const TURUL_OF: Record<string, string> = {
-  /* ⚠️ 2026-09-09: баруун тал нь Cashflow_0909-ийн `ajil_tuvshin2` утгууд.
-     Тэдгээр нь «- Барилга угсралт» гэсэн дагавартай тул хуучин богино нэрээр
-     таарахаа больсон. Нийгмийн дэд бүтцэд 2-р түвшин ХООСОН тул 1-р түвшний
-     нэрээр (`loadCfStages` `turul`-д нөхөгдсөн) таарна. */
   [key('Орон сууцны хороолол барилга угсралт')]: 'ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт',
   [key('Цэцэрлэг, сургууль')]: 'НИЙГМИЙН ДЭД БҮТЭЦ',
   [key('Гадна зам талбай, тохижилт')]: 'ГАДНА ТОХИЖИЛТ, ӨНДӨРЖИЛТ - Барилга угсралт',
@@ -235,12 +161,6 @@ const TURUL_OF: Record<string, string> = {
 
 /**
  * «Багц N …» → гэрээний ДЭД БАГЦ.
- *
- * ⚠️ «Багц N Гадна зам талбай тохижилт» ЭНД БАЙХГҮЙ САНААТАЙ: мод нь дөрвөн
- * багц, гэрээ нь БАГЦ-16.1…16.7 ба 17.1…17.7 гэсэн арван дөрөв — аль нь алинд
- * харьяалагдахыг өгөгдлөөс тогтоох боломжгүй. Таамаглаж холбовол худал
- * гүйцэтгэл гарна; эцэг мөр нь («Гадна зам талбай, тохижилт») ТӨРЛӨӨРӨӨ бүрэн
- * тоологдоно.
  */
 const PKG_RULES: Array<[RegExp, (n: string) => string]> = [
   [/^багц\s*([\d.]+)\s*орон сууцны/i, (n) => `БАГЦ-${n}`],
@@ -252,8 +172,6 @@ const PKG_RULES: Array<[RegExp, (n: string) => string]> = [
 type Hit = { idx: number[]; how: string } | null;
 
 function ownMatch(row: NegtgelRow, cf: CfStageRow[], all: number[]): Hit {
-  /* ⚠️ ХЭСЭГ нь БҮХ гэрээг хамарна — шат бүр гэрээ бүрд хамаатай.
-     Гэхдээ ЗӨВХӨН мэдэгдэж буй зургаан хэсэг: «Улсын комисс» нь өөр мөчлөг. */
   if (row.depth <= 1) {
     return SECTION_FIELD[key(row.name)] ? { idx: all, how: tr('бүх гэрээ') } : null;
   }
@@ -274,9 +192,6 @@ function ownMatch(row: NegtgelRow, cf: CfStageRow[], all: number[]): Hit {
     }
   }
 
-  /* ⚠️ Нэрээр — гэрээний «Нарийвчилсан төрөл» нь модны нэрээр ЭХЭЛДЭГ
-     («Хөрсний ус зайлуулах, доошлуулах ажил» → «…ажлын зураг төсөл
-     боловсруулах»). Тиймээс тэнцүү ба угтвар хоёуланг нь үзнэ. */
   const idx = all.filter((j) => key(cf[j].detail).startsWith(k));
   if (idx.length > 0) return { idx, how: tr('нэрээр') };
   return null;
@@ -292,33 +207,21 @@ export type NegtgelCalc = {
   inProject: number | null;
   /**
    * ТӨЛӨВЛӨГӨӨТ ХУВЬ — одоогоор ҮРГЭЛЖ `null`.
-   *
-   * ⚠️ Багана нь ЭХ ХҮСНЭГТЭД байгаа тул харагдацаас ХАСАХГҮЙ, гэхдээ
-   * порталын аль ч үйлчилгээнд WBS-ийн мөрд харгалзах ТӨЛӨВЛӨГӨӨТ хувь
-   * байхгүй. Эх сурвалж тодорхой болмогц энд бодогдоно; хүртэл нь ХООСОН —
-   * 0 гэж бичвэл «төлөвлөгөөгүй ажил» мэт худал уншигдана.
    */
   planPct: number | null;
   /** Тухайн шатны гүйцэтгэл — төсвөөр ЖИГНЭСЭН дундаж */
   actPct: number | null;
   /**
    * НИЙТ ТӨСӨЛД ОРУУЛЖ БУЙ ХУВЬ = `inProject × actPct ÷ 100`.
-   *
-   * ⚠️ Энэ баганы НИЙЛБЭР нь төслийн НИЙТ гүйцэтгэл (SUMPRODUCT). Тиймээс
-   * ЗӨВХӨН НАВЧ мөрд бодогдоно — эцэг ба хүүхэд хоёуланг нь нэмбэл ажил бүр
-   * хоёр удаа тоологдоно.
    */
   share: number | null;
   /**
    * ТӨЛӨВЛӨГӨӨНИЙ БИЕЛЭЛТ = гүйцэтгэл ÷ төлөвлөгөө.
-   * ⚠️ Төлөвлөгөө байхгүй тул одоогоор `null`. Хуваагч нь 0 байж болох тул
-   * эх сурвалж гарсан ч ХАМГААЛАЛТТАЙ бодох ёстой.
    */
   perf: number | null;
   /**
    * ТӨЛӨВЛӨГӨӨ ба БИЕЛЭЛТИЙН ГУРВАН ХУВИЛБАР (шинэ эх, 2026-09-25).
    * `planPct`/`perf` нь «гэрээгээр» хувилбар; эдгээр нь үлдсэн хоёр.
-   * ⚠️ Хуучин (бодолтын) замд үргэлж `null`.
    */
   planGch?: number | null;
   planGuits?: number | null;
@@ -330,10 +233,6 @@ export type NegtgelCalc = {
   outside?: boolean;
   /** Урьдчилсан төсөвт өртөг, ₮ (эх хүснэгтийнх) */
   budget?: number | null;
-  /**
-   * ⚠️ 2026-10-13: Excel «Төсөл төлөвлөгөө биелэлт»-ийн нэмэлт баганууд (`Negtgel_guitsetgel_1013`) —
-   *    Q «Next week» · R «Өмнө долоо хоног» төлөвлөгөө, W «Weekly» биелэлт (0–100), огноо H…M.
-   */
   planNextWk?: number | null;
   planPrevWk?: number | null;
   perfWk?: number | null;
@@ -353,10 +252,6 @@ export type NegtgelCalc = {
 /**
  * МОДНЫ БҮХ МӨРИЙГ БОДНО.
  *
- * ⚠️ 2026-09-25: харагдацууд ҮҮНИЙГ ДУУДАХГҮЙ — одоо ЗӨВХӨН тест
- *    (`negtgel.check.mjs`) ба хуучин нөөц зам (`loadNegtgelComputed`).
- *    Амьд бодолт нь `negtgelAuto.computeNegAuto` (`loadNegtgelFull`).
- *
  * @param landPct «Газар чөлөөлөлт» мөрд хэрэглэх ГАЗРЫН МОДУЛИЙН хувь. Гэрээний
  *   `Gazar_chuluulult` талбар ч ойролцоо утга өгдөг ч хэрэглэгч «Газар
  *   чөлөөлөлт хэсгээс авна» гэж ТУСГАЙЛАН зааварласан тул тэр давамгайлна.
@@ -372,8 +267,6 @@ export function computeNegtgel(
 
   /**
    * ХАМРАГДАХ ГЭРЭЭНҮҮД — өөрийн зураглал БАЙХГҮЙ бол ХҮҮХДҮҮДЭЭСЭЭ.
-   * ⚠️ Олонлогоор нэгтгэнэ: нэг гэрээ хоёр хүүхдэд орсон ч НЭГ л удаа
-   * тоологдоно, эс бөгөөс жин нь хоёр дахин өснө.
    */
   const idxOf = (i: number): number[] => {
     const h = hits[i];
@@ -387,27 +280,12 @@ export function computeNegtgel(
 
   /**
    * ДЭД МОДНЫ ТӨСӨВ — ЗӨВХӨН НАВЧ мөрүүдийн нийлбэр.
-   *
-   * ⚠️ Эцгийн ӨӨРИЙН `bud` БИШ: жинг тараахад эцэг ба хүүхэд хоёуланг нь
-   * тоовол ажил бүр давхарлана. Мод нь outline дараалалтай (хүүхэд нь эцгийн
-   * ДАРАА) тул ард талаас нь нэг удаа гүйхэд хангалттай.
    */
   const isLeaf = (i: number) => kids[i].length === 0;
   const sub = new Array<number>(rows.length).fill(0);
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     sub[i] = isLeaf(i) ? bud[i] : 0;
     for (const c of kids[i]) sub[i] += sub[c];
-    /*
-     * ⚠️ ӨӨРӨӨ ТААРСАН эцэг, хүүхдүүд нь БҮГД тааралгүй (2026-09-25-ны аудит):
-     *    «Гадна зам талбай, тохижилт» нь төрлөөрөө (`TURUL_OF`) таардаг атлаа
-     *    «Багц N …» хүүхдүүд нь САНААТАЙ тааралгүй (`PKG_RULES`-ийн ⚠️) тул
-     *    `sub` нь 0 болж жин нь «—», хэсгийн 79% нь ҮЛДСЭН мөрүүдэд тарж
-     *    «Орон сууцны хороолол» ~45% байх ёстой атлаа ~60% гардаг байв — «эцэг
-     *    мөр ТӨРЛӨӨРӨӨ бүрэн тоологдоно» гэсэн шийдвэртэй зөрчилдөнө. Ийм мөрийг
-     *    НАВЧ гэж үзэж өөрийн төсвийг авна.
-     * ⚠️ Зөвхөн гүн ≥ 2: хэсэг (гүн ≤ 1) нь БҮХ гэрээг хамардаг тул түүнийг
-     *    навч болговол төслийн мөрийн хуваарь бүхэл төсвөөр хөөрнө.
-     */
     if (sub[i] === 0 && !isLeaf(i) && hits[i] && rows[i].depth >= 2) sub[i] = bud[i];
   }
 
@@ -428,9 +306,6 @@ export function computeNegtgel(
     let how = hits[i] ? hits[i]!.how : (list.length > 0 ? tr('хүүхдээс') : tr('эх сурвалж тодорхойгүй'));
 
     if (field === ST.land && landPct != null) {
-      /* ⚠️ Газар чөлөөлөлтийг ГЭРЭЭНЭЭС БИШ, ГАЗРЫН МОДУЛИАС — хэрэглэгчийн
-         шууд заавар. Хоёр тоо ойролцоо (93.1 ↔ 93.2) ч эх нь ӨӨР: нэг нь
-         гэрээний талбар, нөгөө нь 2,088 нэгж талбарын бодит тоолол. */
       actPct = landPct;
       how = tr('Газар чөлөөлөлт хэсгээс');
     } else if (field && list.length > 0) {
@@ -439,8 +314,6 @@ export function computeNegtgel(
       for (const j of list) {
         const p = cf[j].pct[field];
         if (p == null) continue;
-        /* ⚠️ Төсөвгүй гэрээг ГЭЭХГҮЙ — жинг 1 гэж авна. Эс бөгөөс төсөв нь
-           хараахан батлагдаагүй ажил дунджид ОРОЛЦОХГҮЙ өнгөрнө. */
         const b = cf[j].budget || 1;
         w += b;
         s += b * p;
@@ -452,12 +325,6 @@ export function computeNegtgel(
 
     /*
      * ТӨСӨЛД ЭЗЛЭХ ХУВЬ — хэсгийн ТОГТООСОН жинг доош нь ТӨСВӨӨР тараана.
-     *
-     * ⚠️ Хэсэг (depth 1) нь ЖИНГЭЭ ШУУД авна: «Улсын комисс» мэт гэрээгүй
-     * хэсэг ч 1%-иа хадгалах ёстой, эс бөгөөс баганын нийлбэр 100 болохоо
-     * болино.
-     * ⚠️ Доод мөрүүд нь тэр жинг өөрийн дэд модныхоо ТӨСӨВТ пропорциональ
-     * хуваана — ингэснээр хэсэг доторх нийлбэр нь хэсгийн жинтэй ЯГ тэнцэнэ.
      */
     const secW = SECTION_WEIGHT[key(rows[sec].name)] ?? null;
     let inProject: number | null = null;
@@ -467,24 +334,16 @@ export function computeNegtgel(
 
     /*
      * НИЙТ ТӨСӨЛД ОРУУЛЖ БУЙ ХУВЬ = жин × гүйцэтгэл.
-     *
-     * ⚠️ Мөр БҮРД бодогдоно — тухайн мөр төслийн явцад хэдэн нэгж нэмж байгааг
-     * шууд харуулна. ГЭХДЭЭ баганыг ЦУГ НЭМЖ БОЛОХГҮЙ: эцэг ба хүүхэд хоёулаа
-     * бичигдсэн тул нийлбэр нь хоёр дахин өснө. Төслийн нийт дүн нь ЗӨВХӨН
-     * ХЭСГИЙН (depth 1) мөрүүдийн нийлбэр — доор.
      */
     const share = inProject != null && actPct != null ? (inProject * actPct) / 100 : null;
 
     out.set(r.oid, {
       n: list.length,
-      /* ⚠️ Тааралгүй мөрд жин нь 0% БИШ `null`: «жин байхгүй» ба «тэг жин»
-         хоёр огт өөр мэдээлэл. */
       inSection: sub[i] > 0 && p >= 0 && sub[p] > 0 ? (sub[i] / sub[p]) * 100 : null,
       inProject,
       planPct: null,
       actPct,
       share,
-      /* ⚠️ Хуваагч 0 бол хязгааргүй — `null` үлдээнэ, Infinity гаргахгүй */
       perf: null,
       how,
     });
@@ -492,14 +351,6 @@ export function computeNegtgel(
 
   /*
    * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ = SUMPRODUCT(Төсөлд эзлэх хувь, Гүйцэтгэлийн хувь).
-   *
-   * ⚠️ ЗӨВХӨН ХЭСГИЙН (depth 1) мөрүүдээр — тэдгээрийн жин нь ЯГ 100 болдог
-   * бөгөөд шат бүрийн гүйцэтгэл нь БҮХ гэрээг хамарна. Навчаар бодвол
-   * зураглалд тааралгүй үлдсэн багцууд (жишээ нь «Багц N Гадна зам талбай»)
-   * жингээ хөршүүд рүүгээ шилжүүлж, гүйцэтгэл хиймлээр өснө (навчаар 36.5%,
-   * хэсгээр 33.9% — зөрүү нь яг тэр).
-   * ⚠️ Хэмжилтгүй шат («Улсын комисс») 0 гэж тоологдоно, ГЭХДЭЭ жин нь
-   * хуваарьт ҮЛДЭНЭ — эс бөгөөс тэр 1% бусад шат руу тарна.
    */
   let sumProduct = 0;
   rows.forEach((r) => {
@@ -519,8 +370,6 @@ export function computeNegtgel(
 
 /**
  * ХУУЧИН ЗАМ — мод + гэрээ + газрын явцыг зэрэг татаж, БОДНО.
- * ⚠️ 2026-09-25-наас хойш харагдацууд үүнийг ДУУДАХГҮЙ (`loadNegtgelFull`).
- * Хуучин хоосон модтой ажиллах шаардлага гарвал л хэрэглэнэ.
  */
 export async function loadNegtgelComputed(): Promise<{
   rows: NegtgelRow[];
@@ -529,7 +378,6 @@ export async function loadNegtgelComputed(): Promise<{
   const [rows, cf, landPct] = await Promise.all([
     loadNegtgel(),
     loadCfStages(),
-    /* ⚠️ Газрын модуль уначихвал ҮЛДСЭН бүх мөр бодогдох ёстой */
     loadLandPct().catch(() => null),
   ]);
   return { rows, calc: computeNegtgel(rows, cf, landPct) };
@@ -544,7 +392,6 @@ export type NegtgelFull = {
   /**
    * Хүснэгт рүү бичих синкийн үр дүн (2026-09-25) — таб «синк хийгдсэнгүй»
    * мэдэгдлийг эндээс харуулна. `null` = эх унасан тул синк оролдоогүй.
-   * ⚠️ Хэзээ ч reject хийхгүй (`syncNegtgel` алдааг `error` төлөв болгоно).
    */
   sync: Promise<NegSyncState> | null;
   /**
@@ -553,22 +400,13 @@ export type NegtgelFull = {
    * таб нэрийг нь харуулж, дараагийн дуудалт дахин уншина.
    */
   failed: string[];
-  /**
-   * ⚠️ 2026-10-13: модны эх — `excel` (`negtgelTree.ts`, Excel-ийн томьёоноос) эсвэл `code` (хүснэгт өөрчлөгдсөн
-   *    тул кодоор угсарсан нөөц). `code` үед таб анхааруулна.
-   */
   tree?: 'excel' | 'code';
-  /**
-   * ⚠️ 2026-10-15: ЗАСАХ · НИЙТЛЭХ (`negtgelEdit.ts`) — хүснэгтийн ХАДГАЛСАН мөрүүд (Excel-ийн загвар, 0–1) ба
-   *    системийн эх (`null` = унасан). Таб засварыг `applyNegEdits(stored)` → `computeNegAuto(…, src)` →
-   *    `negDisplay`-ээр дахин зурна.
-   */
   stored: NegRaw[];
   src: NegSources | null;
 };
 
 /**
- * Бодсон мөрүүд → табын мөр ба тооцоо (0–100). ⚠️ 2026-10-15: `loadNegtgelFullRaw`-оос гаргав — засварын
+ * Бодсон мөрүүд → табын мөр ба тооцоо (0–100). 2026-10-15: `loadNegtgelFullRaw`-оос гаргав — засварын
  * загварыг (`TusulNegtgel`) ижил замаар зурна.
  */
 export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: string }>): { rows: NegtgelRow[]; calc: Map<number, NegtgelCalc> } {
@@ -612,14 +450,6 @@ export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: s
 /**
  * НЭГТГЭЛ ГҮЙЦЭТГЭЛ — СИСТЕМЭЭС БОДОЖ харуулна, хүснэгтийг ч шинэчилнэ
  * (2026-09-25, `negtgelAuto.ts`-ийн толгойг үз).
- *
- * ⚠️ ДЭЛГЭЦ нь БОДСОН утгыг харуулна — хүснэгт рүү бичих эрхгүй хэрэглэгч ч
- * одоогийн байдлыг харна. Бичилт (`syncNegtgel`) нь ард нь явна — ЗӨВХӨН
- * super, шинэ уншилтаар, хамгаалалттай (2026-09-25, `negtgelAuto`-ийн ⚠️).
- * ⚠️ Эх сурвалж (бөглөх хуудас, газар) УНАВАЛ хүснэгтийн (Excel-ийн) утгыг харуулна — хоосон дэлгэц/0% биш.
- * ⚠️ Утгууд 0–1 бутархай → энд ×100 (`pct()` үржүүлдэггүй).
- * ⚠️ 2026-10-13: эх нь `Negtgel_guitsetgel_1013` (Excel V3 «Төсөл төлөвлөгөө биелэлт», Excel-ийн баганууд ЗӨВХӨН уншина) —
- *    2026-10-27-оос синк (`syncNegtgel`) бодсон утгыг ЗӨВХӨН `sys_*` талбаруудад бичнэ (`TUSUL_NEGTGEL.sysWrite`).
  */
 async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
   const A = await import('@/lib/negtgelAuto');
@@ -632,15 +462,11 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
     src = await A.loadNegSources();
     failed = src.partial ?? [];
     calcRows = A.computeNegAuto(stored, src);
-    /* ⚠️ Дэлгэцийн `calcRows`-ийг ДАМЖУУЛАХГҮЙ — синк өөрөө шинээр уншина */
     sync = A.syncNegtgel();
   } catch (e) {
     console.warn('[negtgel] системийн эх уншигдсангүй — хүснэгтийн утгаар', e);
-    /* ⚠️ 2026-10-01: АЛЬ эх унасныг нэрлэнэ (`NegSourceError`); бусад алдаа — ерөнхий нэр */
     failed = e instanceof A.NegSourceError ? e.failed : [tr('Системийн эх')];
   }
-  /* ⚠️ 2026-10-13: жин (F · G) ҮРГЭЛЖ Excel-ийн утгаар (хүснэгтийнх) — төсвөөс БОДОХГҮЙ (Excel V3-ийн F нь
-     зарим бүлэгт гараар өгөгдсөн, жиш. 2.1 = 0.666). Эх унасан үед утга ч Excel-ийнх. */
   const use = calcRows ?? stored.map((r) => ({
     ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэл (Excel)'),
   }));
@@ -648,19 +474,10 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
   return { rows, calc, live: calcRows != null, sync, failed, tree: A.negTreeSource(), stored, src: calcRows ? src : null };
 }
 
-/*
- * ⚠️ КЭШ (5 мин) + эх хүснэгт бүрийн засварт хүчингүй болно: дашбоард,
- * тайлан, нэгтгэлийн таб гурвуулаа нэг тооцоог хуваалцана — тус бүр 10
- * бөглөх хуудас дахин уншихгүй.
- */
 let fullP: Promise<NegtgelFull> | null = null;
 let fullAt = 0;
-/* ⚠️ 2026-10-13: эх нь газар (`PARCEL_LEFT`) ба 01-ийн бөглөх хуудас (`BAGTS_SHEET` · `BUILDING`) — Cashflow ба
-   хуваарийн муруй (`CASHFLOW_NEW` · `HUVAARI_OBYEM`) нэгтгэлийн эх БИШ болов (`negtgelAuto`-ийн толгой). */
-/* ⚠️ 2026-10-15: 'TUSUL_NEGTGEL' — таб дээрх «Нийтлэх»-ийн дараа (`negtgelEdit.publishNegEdits`) */
 register(() => { fullP = null; }, ['BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'TUSUL_NEGTGEL']);
 
-/** ⚠️ «Системийн утгаар шинэчлэх» бичилтийн дараа — хүснэгтийг дахин уншуулна */
 export function dropNegtgelFull(): void {
   fullP = null;
 }
@@ -677,9 +494,6 @@ export function loadNegtgelFull(): Promise<NegtgelFull> {
     const mine = loadNegtgelFullRaw();
     fullP = mine;
     mine.catch(() => { if (fullP === mine) fullP = null; });
-    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ. Эх унасан
-       (`live: false` — хадгалсан утга) эсвэл хэсэгчилсэн (`failed`) үр дүн урьд нь 5 минут
-       «хуучин нөөц» болж үлддэг байв — одоо энэ дэлгэцэд нэрээ хэлээд, дараагийн дуудалт дахин уншина. */
     void mine.then((v) => { if (!negtgelComplete(v) && fullP === mine) fullP = null; }, () => {});
   }
   return fullP;
@@ -687,15 +501,6 @@ export function loadNegtgelFull(): Promise<NegtgelFull> {
 
 /**
  * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ = Σ (1-р түвшний төсөлд эзлэх × гүйцэтгэл) ÷ 100.
- *
- * ⚠️ ЗӨВХӨН 1-р түвшин: доод мөрүүд нь эцгийнхээ задаргаа тул хамт нэмбэл
- * ажил бүр хоёр дахин тоологдоно.
- * ⚠️ Жингийн нийлбэр (амьдаар 2026-09-25: 100%) нь 0 бол `null` — «0%» гэж
- * хэлэхгүй.
- * ⚠️ 2026-09-25: жинтэй (> 0) 1-р түвшний мөрийн гүйцэтгэл `null` бол нийт нь
- *    `null` (null ≠ 0) — урьд нь тэр мөр чимээгүй 0 гэж тоологдож нийт
- *    доошилдог байв. Дуудагч «—» эсвэл 6 шатны нөөц бодолтыг (`progressSrc`)
- *    харуулна.
  */
 export function negtgelProjectPct(
   rows: NegtgelRow[],
@@ -731,19 +536,6 @@ export type StageRow = { budget: number; pct: Record<string, number | null> };
 /**
  * ТӨСЛИЙН НЭГДСЭН ГҮЙЦЭТГЭЛ = Σ (хэсгийн жин × хэсгийн гүйцэтгэл) ÷ 100.
  *
- * ⚠️ «Нэгтгэл гүйцэтгэл» хүснэгтийн ДЭЭД мөртэй ЯГ ИЖИЛ томьёо — ерөнхий
- * дашбоардын индикатор ч үүнийг уншина. Хоёр газар өөр байвал нэг үзүүлэлт
- * хоёр хуудсанд өөр тоо харуулна.
- *
- * ⚠️ ЖИН нь ҮРГЭЛЖ БҮТЭН 100: хэмжилтгүй шат (жишээ нь «Улсын комисс») 0 гэж
- * тоологдох ба жин нь хуваарьт ҮЛДЭНЭ. Эс бөгөөс тэр 1% бусад шат руу тарж,
- * гүйцэтгэл хиймлээр өснө.
- *
- * ⚠️ ШҮҮЛТТЭЙ ажиллана: дуудагч нь шүүсэн гэрээнүүдээ өгвөл шатны хувь нь
- * тэдгээрээр дахин жигнэгдэнэ. Харин ЖИН нь төслийн шийдвэр тул шүүлтээс ҮЛ
- * ХАМААРНА — эс бөгөөс нэг багц сонгоход «барилга угсралт 79%» гэсэн жин
- * өөрчлөгдөж, хувь нь утгаа алдана.
- *
  * @param landPct «Газар чөлөөлөлт» шатны хувь — ГАЗРЫН МОДУЛИАС (хэрэглэгчийн
  *   заавар). `null` бол гэрээний `Gazar_chuluulult` талбарт шилжинэ.
  */
@@ -753,11 +545,8 @@ export function stageProjectPct(rows: StageRow[], landPct: number | null): numbe
     let w = 0;
     let s = 0;
     for (const r of rows) {
-      /* ⚠️ Дуудагч `pct`-гүй мөр өгч болно (хуучин зураглал, тестийн mock) —
-         уначихвал БҮХ индикатор хоосорно. Ийм мөр зүгээр л тоологдохгүй. */
       const p = r.pct?.[field] ?? null;
       if (p == null) continue;
-      /* ⚠️ Төсөвгүй гэрээг ГЭЭХГҮЙ — жинг 1 гэж авна */
       const b = r.budget || 1;
       w += b;
       s += b * p;
@@ -781,6 +570,5 @@ export function stageProjectPct(rows: StageRow[], landPct: number | null): numbe
     const p = field === ST.land && landPct != null ? landPct : stage(field);
     if (p != null) { sum += (w * p) / 100; seen += w; }
   }
-  /* ⚠️ Нэг ч шат хэмжигдээгүй бол `null` — 0% гэж хэлэхгүй */
   return seen > 0 ? sum : null;
 }

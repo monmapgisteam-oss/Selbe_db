@@ -1,17 +1,6 @@
 /**
  * ХЯНАЛТЫН ЭРХИЙН ЦЭВЭР ХЭСГҮҮД — илгээгчийн дүрэм ба «хариу алдагдсан» ангилал. Сүлжээгүй, `window`-гүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/hyanaltAuthz.check.mjs
- *
- * ⚠️ 2026-10-09 (аудит №2): хамгаалж буй дүрмүүд (`hyanaltStore.ts`):
- *   1. `submitterDeny` (`authz.submitters`) — илгээгч ӨӨРИЙН илгээсэн гүйцэтгэлийг АЛЬ Ч шатанд батлахгүй
- *      (2026-10-19 — урьд нь зөвхөн инженер); илгээгч биш → чөлөөтэй; илгээгчгүй (legacy) → шалгахгүй.
- *   1б. `selfApprovalDeny` (2026-10-19, аудит №4–5) — нэг тойрогт (хяналтын мөрийн лог) ӨӨР шатанд зөвшөөрсөн
- *      данс дахин батлахгүй (шат шилжсэн ч); ижил шатыг дахин батлах — хэвийн; `u`-гүй логт доод шатуудын
- *      дэлгэцийн нэрээр нөөц шалгалт. ⚠️ Хатуу super ЧӨЛӨӨТЭЙ (хэрэглэгчийн шийдвэр 2026-10-19 — бүх шатыг турших):
- *      цэвэр функц хэнийг ч ялгадаггүй (super-т ч татгалзана), харин `authz`-ийн bypass салаа түүнийг ДУУДАХГҮЙ.
- *   2. `lostWrite` — `hyanalt.post` нь `ArcGISError`-ийг `HyanaltError`-оор ороодог тул `cause`-ыг ч
- *      шалгана: код/статусгүй (JSON биш хариу, 5xx) → «алдагдсан» (үр дүн тодорхойгүй); 400/403 ба
- *      ArcGIS код (498 …), `sessionExpired` → тодорхой татгалзал («алдагдаагүй»).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/hyanaltAuthz.check.mjs
  */
 import assert from 'node:assert/strict';
 import { approvedStagesOf, lostWrite, selfApprovalDeny, submitterDeny } from './hyanaltStore.ts';
@@ -65,8 +54,6 @@ ok('ИЖИЛ шатыг дахин (дээд шат буцаасны дараа)
   assert.equal(selfApprovalDeny('engineer', 'bat', h), null);
 });
 ok('цэвэр дүрэм хэнийг ч ялгахгүй — нэг дансаар дараалсан шат: 2 дахь шатнаас татгалзана (аудит №4)', () => {
-  /* ⚠️ 2026-10-19 (хэрэглэгчийн шийдвэр): хатуу super-ийг энэ дүрмээс `authz`-ийн bypass салаа ЧӨЛӨӨЛНӨ (функцийг
-     дуудахгүй — эх кодоор доор). Энд зөвхөн цэвэр функц: дуудагдвал данс хэн ч байсан татгалзана. */
   const h = H(ev('engineer', 'approve', 'boss', 1));
   for (const st of ['manager', 'planner', 'director', 'head', 'chief']) assert.equal(typeof selfApprovalDeny(st, 'boss', h), 'string', st);
   assert.equal(typeof selfApprovalDeny('engineer', 'boss', H(), undefined, ['boss']), 'string', 'илгээгч өөрөө батлах');
@@ -75,7 +62,6 @@ ok('буцаах чиглэл (hist undefined) — зөвхөн илгээгчи
   assert.equal(selfApprovalDeny('chief', 'bat', undefined), null);
 });
 ok('`u`-гүй лог (R5): доод шатуудын дэлгэцийн нэрээр нөөц — ӨМНӨХ ба ТҮҮНЭЭС ДООШ', () => {
-  /* ⚠️ 2026-10-23: багцын ахлах инженерийн ДАРААХ шат нь төлөвлөлтийн инженер (`planner`) — «өмнөх шат» тэнд */
   const row = { [SF.engineer.who]: 'Бат', [SF.manager.who]: 'Дорж', [F.history]: '' };
   assert.match(selfApprovalDeny('planner', 'x', '', { row, who: ' бат ' }), /хоёр шатанд/, 'инженерийн нэр');
   assert.match(selfApprovalDeny('planner', 'x', '', { row, who: 'Дорж' }), /Өмнөх шатыг/, 'менежерийн нэр');
@@ -83,19 +69,13 @@ ok('`u`-гүй лог (R5): доод шатуудын дэлгэцийн нэр�
   /* `u`-тай зөвшөөрөл байгаа шатанд нэрээр шалгахгүй (нэр давхцах эрсдэлгүй) */
   const h = H(ev('engineer', 'approve', 'bat2', 1));
   assert.equal(selfApprovalDeny('planner', 'x', h, { row, who: 'Бат' }), null);
-  /* ⚠️ 2026-10-23: төлөвлөлтийн АХЛАХ инженерийн «өмнөх шат» = төлөвлөлтийн инженер */
   const row2 = { ...row, [SF.planner.who]: 'Сараа' };
   assert.match(selfApprovalDeny('director', 'x', '', { row: row2, who: 'Сараа' }), /Өмнөх шатыг/, 'төлөвлөлтийн инженерийн нэр');
   assert.match(selfApprovalDeny('director', 'x', '', { row: row2, who: 'Дорж' }), /хоёр шатанд/, 'менежерийн нэр (доод)');
 });
 {
-  /* ⚠️ Эх кодоор. 2026-10-19 (ХЭРЭГЛЭГЧИЙН ШИЙДВЭР): хатуу super (bypass) гүйцэтгэлийн бүх шатыг ганцаараа
-     туршина — `authz`-ийн bypass салаа self-approval-ыг АЛГАСНА, илгээгчийг уншихгүй. Энгийн хэрэглэгчид
-     `selfApprovalDeny` бүх шатанд хэвээр (дээрх цэвэр шалгуурууд). */
   const S = (await import('node:fs')).readFileSync('src/lib/hyanaltStore.ts', 'utf8');
   ok('authz: super bypass → бүрэн чөлөөтэй, дараалан батална (2026-10-26)', () => {
-    /* ⚠️ 2026-10-26 (хэрэглэгчийн шийдвэр, 2026-10-23-ийг БУЦААВ): super дурын шатыг, нэг илгээлтийн бүх шатыг дараалан
-       батална — `selfApprovalDeny` super-т үйлчлэхгүй. Энгийн хэрэглэгчид бүрэн хэвээр. */
     assert.ok(S.includes('  if (by) return null;'), 'super bypass салаа бүрэн чөлөөтэй биш');
     assert.ok(!S.includes('if (by) return AUTH.appId && u ? selfApprovalDeny('), 'super-т өөрийгөө батлах дүрэм буцаж орсон');
     assert.ok(S.includes('return selfApprovalDeny(stage, u, hist, same, submitters);'), 'энгийн хэрэглэгчийн дүрэм алга');

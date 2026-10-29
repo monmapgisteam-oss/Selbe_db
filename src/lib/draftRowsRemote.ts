@@ -2,23 +2,6 @@
 
 /**
  * НООРОГ — ЭХ ХУУДАСНЫ БҮТЦЭЭР, 191-д: ENTERPRISE ДЭЭРХ УНШИЛТ/БИЧИЛТ (2026-10-26).
- *
- * ⚠️ ЯАГААД (хэрэглэгчийн эцсийн шийдвэр): БҮХ ноорог (гүйцэтгэл · илгээлт · хуваарь) ОДОО БАЙГАА `GU_Selbe_Guitsetgel_Draft`
- *    (`Guitsetgel_talbe/191`) хүснэгтэд, эх хуудасны баганын нэрээр, ажил × блок бүрд нэг мөр (`draftRows.ts`-ийн толгой).
- *    Тусдаа `Huvaari_noorog` үйлчилгээ (3 хүснэгт) ХАСАГДСАН. Энэ модуль зөвхөн сүлжээ: багана бэлэн эсэх (`rowsReady`),
- *    хувилбар (`*ReadAt` — нэг статистикийн асуулга), зураг (бүтэн/өөрчлөлтийн уншилт), дифф бичилт (≤500, толгой СҮҮЛД),
- *    хуучин JSON-ыг шингээх, илгээлтийн мөр (MVCC), админы шилжүүлэлт/тулгалт/цэвэрлэлт.
- * ⚠️ БАГАНА НЭМЭХИЙГ КОД ХЭЗЭЭ Ч ХИЙХГҮЙ — хэрэглэгч notebook (`notebook_draft191.py`)-оор. Багана бүрэн биш бол ХУУЧИН JSON
- *    горим (`blob`) өнөөгийнхөөрөө; notebook ажилласнаас хойш ≤5 мин-д хуудас дахин ачаалалгүй шилжинэ (`rowsReady`).
- * ⚠️ ENTERPRISE-ИЙН ЗАНГА (CLAUDE.md): алдаа HTTP 200 + `{error}` (`arcgisPost` шиднэ; мөр бүрийн `success`-ийг ЭНД шалгана) ·
- *    2000 мөрийн хуудаслалт `orderByFields=objectid` · applyEdits ≤ 500 · `rollbackOnFailure` НЭГ хэсэг дотор · талбарын нэр
- *    Enterprise-ийн ЖИЖИГ үсгээр (кирилл ч) · `where`-д ЗӨВХӨН латин багана (`dkey` · `pkg` · `mur_turul` · `noorog_turul` ·
- *    `last_edited_date`) — кирилл баганаар ХЭЗЭЭ Ч шүүхгүй.
- * ⚠️ ХУВИЛБАР = СЕРВЕРИЙН ЦАГ: `max(last_edited_date)` (мс, клиентийн цагаас үл хамаарна) — хамтрагчийн аль ч бичилт (толгойг
- *    дарсан ч) хувилбарыг өөрчилнө, тиймээс CAS/бичсэний дараах баталгаа ХЭРЭГГҮЙ: бичилт зөвхөн ӨӨРИЙН өөрчилсөн бүлгийг
- *    илгээж, дараагийн мөчлөг бусдынхыг нийлүүлнэ.
- * ⚠️ 2026-10-26: гэхдээ бичихийн ӨМНӨ хувилбарыг тулгана (`expectAt`, `planSave` · `fillStore.saveRemoteDraft`) — дифф нь
- *    уншсан ч ноорогт алга мөрийг цэвэрлэдэг тул уншилтгүй бичилт хамтрагчийн шинэ нүдийг дарж болно.
  */
 
 import { arcgisPost } from '@/lib/query';
@@ -37,10 +20,6 @@ import {
 } from '@/lib/draftRows';
 import type { PlanPayload } from '@/lib/huvaariBatlah';
 
-/**
- * ⚠️ БУЦААХ ТУГ — `false` бол багана байсан ч ХУУЧИН JSON горим (схем өөрчлөхгүйгээр буцаах deploy). Шинэ GitHub Variable
- *    нэмэхгүй (CLAUDE.md — жагсаалт тогтмол).
- */
 export const DRAFT_ROWS_ENABLED = true;
 
 /** Нэг applyEdits хэсгийн дээд засвар (CLAUDE.md: 500) */
@@ -66,7 +45,6 @@ type PendIO = (pkgKey: string) => Promise<{ plan: { oid: number; author: string;
 let pendingIO: PendIO | null = null;
 type PayloadIO = (oid: number) => Promise<PlanPayload | null>;
 let payloadIO: PayloadIO | null = null;
-/** ⚠️ ЗӨВХӨН тест (`draftRows.check.mjs`): хуурамч тээвэр · хүснэгтийн хаяг · нэвтэрсэн хэрэглэгч · зургийн сан (хоёр «клиент») */
 export function rowsTestHooks(p: {
   post?: Post; url?: string | null; me?: string | null; imgs?: Map<string, unknown>; reset?: boolean;
   pending?: PendIO | null; payload?: PayloadIO | null;
@@ -102,7 +80,6 @@ let probe: { at: number; p: Promise<{ mode: RowsMode; why?: string }> } | null =
  *   · бүгд бий → `rows`; аль нь ч алга → `blob` (өнөөгийн JSON зам ӨӨРЧЛӨГДӨХГҮЙ);
  *   · ХАГАС (зарим нь алга/нэр өөрчлөгдсөн) → `blob` + `console.error` (ХЭЗЭЭ Ч холихгүй);
  *   · сүлжээний алдаа → `wait` (локал хуулбар, дахин оролдоно).
- * ⚠️ Багана устдаггүй тул `rows` → `blob` буцах зам хамгаалах шаардлагагүй (`rows` сешн даяар кэшлэгдэнэ).
  */
 export async function rowsReady(force = false): Promise<{ mode: RowsMode; why?: string }> {
   if (!DRAFT_ROWS_ENABLED) return { mode: 'blob' };
@@ -162,7 +139,7 @@ const imgOf = (dkey: string): Img => {
   return x;
 };
 
-/* ── Бүлгийн агшны localStorage хуулбар — офлайн хуулбар өдрийн дараа ч зөв нийлнэ (`stampRow`-ийн ⚠️) ── */
+/* ── Бүлгийн агшны localStorage хуулбар — офлайн хуулбар өдрийн дараа ч зөв нийлнэ (`stampRow`) ── */
 const ST_PREFIX = 'selbe-draftrows-st:';
 function loadStamps(dkey: string): Map<string, Stamps> {
   try {
@@ -291,7 +268,6 @@ function chunksOf(ops: Op[], tail: Op | null): Op[][] {
   let cur: Op[] = [];
   for (const u of units.values()) {
     if (cur.length && cur.length + u.length > CHUNK) { out.push(cur); cur = []; }
-    /* ⚠️ Нэг нэгж (сарын цуваа) 500-аас их бол хуваагдана — ховор (22 блок × 24 сар) */
     for (let i = 0; i < u.length; i += CHUNK) {
       const part = u.slice(i, i + CHUNK);
       if (cur.length && cur.length + part.length > CHUNK) { out.push(cur); cur = []; }
@@ -356,8 +332,6 @@ async function sendChunk(url: string, img: Img | null, ops: Op[], rollback = tru
 
 /**
  * ДИФФ БИЧИЛТ — хүссэн мөр + толгой → хэсгүүд. Дифф хоосон, толгой өөрчлөгдөөгүй бол ЮУ Ч бичихгүй.
- * ⚠️ Толгой СҮҮЛИЙН хэсэгт: дунд хэсэг унавал толгой хөдлөхгүй ч бичигдсэн мөр бүр ӨӨРӨӨ хүчинтэй (мөр бүрийн нийлүүлэлт) —
- *    хагас бичилт аюулгүй, дараагийн бичилт үлдсэнийг гүйцээнэ.
  */
 async function writeDiff(
   url: string, dkey: string, img: Img, want: Map<string, Want>, hdr: Attrs, kind: NKind, pkg: string, clearAt: number,
@@ -366,11 +340,6 @@ async function writeDiff(
   const base = { dkey, pkg, kind };
   const skipped: string[] = [];
   let ops = diffRows(byKey(img), want, kind, base, { clearAt, me: who, now: Date.now(), keep: (k) => !img.seen.has(k), skipped });
-  /*
-   * ⚠️ 2026-10-26: САРЫН ЦУВААГ хөндөх бол (мөрийн CAS байхгүй) серверийн ОДООГИЙН цувааны агшныг уншаад диффийг дахин гаргана —
-   *    уншсанаас хойш хамтрагч шинэ үе бичсэн цувааг хуучин бичигч дарахгүй (`diffRows`-ийн ⚠️). Зургийг ХӨНДӨХГҮЙ (бусад бүлгийн
-   *    «зөвхөн өөрчлөгдсөн» дүрэм уншсан зурагтай жишдэг). Цуваа хөндөөгүй бичилтэд нэмэлт асуулга ҮГҮЙ.
-   */
   if (ops.some((o) => seriesKey(o.k) != null)) {
     const sa = new Map<string, number>();
     const got = await queryAll(url, `${COL.dkey} = ${q(dkey)} AND ${COL.turul} IN ('sar_obyem', 'sar_noots')`, ['objectid', COL.key, COL.at]);
@@ -388,15 +357,10 @@ async function writeDiff(
   const hA: Attrs = {
     ...hdr, [COL.dkey]: dkey, [COL.pkg]: pkg, [COL.nturul]: kind, [COL.usr]: who,
     ...(img.legacyAt ? { [COL.legacy]: Math.max(img.legacyAt, num(h0?.[COL.legacy]) ?? 0) } : {}),
-    /* ⚠️ 2026-10-26 (хянагчийн олдвор): цэвэрлэлтийн агшин зөвхөн УРАГШИЛНА (`huuchin_at`-тай ижил) — дахин уншаагүй бичилт
-       (`flushNow`, эсвэл хамтрагчийн илгээлтийн цэвэрлэлттэй уралдсан мөчлөг) өөрийн хуучин/NULL `tseverlesen_at`-аар
-       илгээлтийн агшныг ухраавал дараа нээгчийн `dropCleared` илгээгдсэн хуучин локал нүдийг буцааж сэргээдэг байв. */
     ...(COL.cleared in hdr ? { [COL.cleared]: Math.max(num(hdr[COL.cleared]) ?? 0, num(h0?.[COL.cleared]) ?? 0) || null } : {}),
   };
   const hChanged = !h0 || Object.keys(hA).some((c) => c !== COL.at && c !== COL.usr && (h0[c] ?? null) !== (hA[c] ?? null));
   if (!ops.length && !hChanged) return { ok: true, wrote: false };
-  /* ⚠️ 2026-10-26: зураг хуучирсан байж болно (уншилтгүй бичилт) — толгойн ОДООГИЙН `tseverlesen_at`-ыг жижиг асуулгаар уншиж
-     максимумд оруулна (хуваарийн бичилтэд л — `hdr`-д тэр багана байхад; цувааны `seriesAt`-тай ижил хязгаарлагдмал уншилт) */
   if (COL.cleared in hdr) {
     const live = await queryAll(url, `${COL.dkey} = ${q(dkey)} AND ${COL.key} = 'h'`, ['objectid', COL.cleared]);
     const lc = Math.max(0, ...live.map((a) => num(a[COL.cleared]) ?? 0));
@@ -407,8 +371,6 @@ async function writeDiff(
     : { op: 'add', k: 'h', unit: 'h', a: hA };
   /* Толгойн давхардал (зэрэг анхны бичилт) — бага OBJECTID үлдэнэ */
   const hDup: Op[] = hk.slice(1).map((a) => ({ op: 'delete', k: 'h', unit: 'h', oid: num(a.objectid) ?? 0 }));
-  /* ⚠️ Устгал (давхардал · GC · хугацаа дууссан tombstone) ТУСДАА, `rollbackOnFailure=false` — өөр клиент аль хэдийн устгасан
-     мөр «олдсонгүй» гэж бичилтийг бүхэлд нь буцаахгүй; бичилтийн ДАРАА (толгой буусны дараа) */
   const writes = ops.filter((o) => o.op !== 'delete');
   const dels = [...ops.filter((o) => o.op === 'delete'), ...hDup];
   for (const c of chunksOf(writes, hOp)) {
@@ -418,7 +380,6 @@ async function writeDiff(
   for (let i = 0; i < dels.length; i += CHUNK) await sendChunk(url, img, dels.slice(i, i + CHUNK), false);
   img.legacyAt = 0;
   img.ver = null;
-  /* ⚠️ Бичигчийн зураг — бичсэн бүлэгт нүдний ЯГ агшин (`stampWant`), бусдад мөрийн дүрэм */
   for (const [k, a] of viewOf(img.rows.values(), kind)) {
     const g = groupsOf(kind, String(a[COL.turul] ?? ''), k);
     const w = want.get(k);
@@ -491,15 +452,6 @@ export async function planRead(key: string, opt: { full?: boolean; bld?: readonl
 
 /**
  * ХУВААРИЙН НООРОГИЙГ БИЧНЭ — дифф (зөвхөн өөрчлөгдсөн бүлэг), толгой СҮҮЛД.
- * ⚠️ 2026-10-26: `expectAt` МӨРИЙН горимд ч ХҮЧИНТЭЙ (`fillStore.saveRemoteDraft`-тай ИЖИЛ) — бичихийн өмнө хувилбарыг
- *    (`planReadAt`) дахин уншиж, hook-ийн уншсанаас зөрвөл ЮУ Ч БИЧИХГҮЙ (`conflict` → hook дахин уншиж нийлүүлнэ). ЯАГААД:
- *    `diffRows` энэ клиентийн УНШСАН боловч ноорогт нь алга нүдний мөрийг цэвэрлэдэг тул уншилтгүй бичилт (`flushNow` —
- *    таб нуух · `pagehide`) эсвэл `readAt`–`save`-ийн хооронд хамтрагчийн ШИНЭ утгыг null/хуучин утгаар дардаг байв.
- *    `undefined` = шалгахгүй (`planMigrate` · `migrateAll`). Толгойн «Түгжээ ХЭРЭГГҮЙ» гэсэн хуучин заалт үүнд хамаарахгүй.
- * Буцаах `at`: бичсэн бол `undefined` — hook дараагийн мөчлөгт серверийн хувилбарыг уншиж нийлүүлнэ (өөрийн бичилт ч орно);
- * дифф ХООСОН (юу ч бичээгүй) бол дуудагчийн `expectAt` — hook-ийн мэдлэг ХЭВЭЭР.
- * ⚠️ 2026-10-26: хоосон диффэд `expectAt`-ыг буцаахгүй бол мөрөнд илэрхийлэгдэхгүй (жиш. `val === bv`) нүдтэй локал ноорог
- *    «алс ≠ локал» → бичих → уншихын хязгааргүй тойрогт (3 с тутам) ордог байв.
  */
 export async function planSave(
   key: string, d: HDDraft, opt: { ctx: PlanCtx; extra?: ReadonlyMap<number, HDRowKey>; expectAt?: number | null; cur?: ReadonlySet<number> },
@@ -669,8 +621,6 @@ type Pend = { oid: number; author: string; authorSent: number | null } | null;
 /**
  * ИЛГЭЭЛТИЙН ХУУЛБАРЫГ ТААРУУЛНА (идемпотент) — батлах · буцаах · татах · нээлтийн дараа: хүлээгдэхээ больсон илгээлтийн
  * `n:hsub:*` мөрийг устгаж, хүлээгдэж буйнх нь хуулбаргүй бол агуулгаас нөхнө (ЗӨВХӨН ctx-тэй — блокийн нэр · танихуун).
- * ⚠️ Илгээснээс 60 с дотор нөхөхгүй (илгээгчийн ЯГ хуулбар бичигдэж байна); `known` хуучирсан байж болох тул устгахын өмнө
- *    хүлээгдэж буйг ДАХИН уншина.
  */
 export async function planSyncSubmitted(
   pkgKey: string, opt: { ctx?: PlanCtx; ctxKind?: HDKind; known?: { plan: Pend; geree: Pend }; force?: boolean } = {},
@@ -785,7 +735,6 @@ export async function perfSave(pkg: string, payload: string, frameOverride?: Fra
   if (draftWriteLocked()) return { ok: false, error: LOCKED() };
   const dkey = perfDkey(pkg);
   const img = imgOf(dkey);
-  /* ⚠️ 2026-10-26: админы шилжүүлэлтийн хэсэгчилсэн жааз (`lookupFrame`) ГЛОБАЛ `frames`-д орохгүй — дамжуулж л хэрэглэнэ */
   const frame = frameOverride ?? frames.get(pkg) ?? null;
   if (!frame) return { ok: false, error: tr('хуудасны мөр хараахан ачаалагдаагүй — дахин оролдоно') };
   const d = parseDraft(payload, 'remote');
@@ -838,7 +787,7 @@ export async function subRowsFor(oids: readonly number[]): Promise<Map<number, A
 
 /**
  * ШИНЭ ҮЕИЙН МӨР БИЧНЭ (баталгаажуулалтгүй — толгойн `gens`-д нэмэгдтэл ҮЛ ҮЗЭГДЭНЭ): өөрчлөгдсөн түлхүүрт шинэ мөр,
- * хасагдсанд хоосон мөр (`at` = үе). ⚠️ Унавал энэ дуудлагаар нэмсэн мөрийг устгана (best effort) — үлдсэн нь баталгаажаагүй
+ * хасагдсанд хоосон мөр (`at` = үе). Унавал энэ дуудлагаар нэмсэн мөрийг устгана (best effort) — үлдсэн нь баталгаажаагүй
  * тул хэзээ ч харагдахгүй, GC (15 мин) устгана.
  */
 export async function subWriteGen(
@@ -926,7 +875,6 @@ async function lookupFrame(pkgKey: string, oids: readonly number[]): Promise<Fra
       rows.push({ oid, des: desK ? num(a[desK]) : null, no: noK && a[noK] != null ? String(a[noK]).trim() : '', work: workK && a[workK] != null ? String(a[workK]).trim() : '', depth: 0, group: false });
     }
   }
-  /* ⚠️ 2026-10-26: хэсэгчилсэн — блокийн нэр/тоо мэдэгдэхгүй (`blok` NULL бичигдэнэ, `'Ажил'` биш) */
   return rows.length ? { ...buildFrame(rows, []), partial: true } : null;
 }
 
@@ -956,8 +904,6 @@ export async function migrateAll(onProgress?: (done: number, total: number) => v
         const img = imgOf(planDkeyOfLegacy(k));
         if (!img.legacyAt) continue;
         if (!r.draft) continue;
-        /* ⚠️ 2026-10-26: БҮХ oid-ыг хуудаснаас хайна — олдсон нь «одоогийн жааз» (`cur`): `planToRows` hook-ийн зөөлтийн
-           tombstone-ыг (жаазад алга oid) нүдийг устгах шийдвэр гэж бичихгүй. Танихууныг `rk`-гүй oid-д л нэмнэ */
         const oids = [...r.draft.entries.keys(), ...r.draft.del.keys()].map((x) => Number(/^[shar]:(-?\d+)/.exec(x)?.[1])).filter((o) => Number.isInteger(o));
         const fr = await lookupFrame(planMeta(k).pkg, [...new Set(oids)]).catch(() => null);
         const extra = new Map<number, HDRowKey>();
@@ -972,8 +918,6 @@ export async function migrateAll(onProgress?: (done: number, total: number) => v
         if (!img.legacyAt || !r.draft) continue;
         const d = parseDraft(r.draft.payload, 'remote');
         if (!d) continue;
-        /* ⚠️ 2026-10-26: хэсэгчилсэн жааз ЛОКАЛ — глобал `frames`-д хадгалбал тухайн сешний дараагийн илгээлт/ноорог блокийн
-           нэргүй жаазаар бичигддэг байв */
         let fr: Frame | undefined;
         if (!frames.has(k)) {
           const oids = [...d.cells, ...(d.dates ?? [])].map(([x]) => Number(x.slice(0, x.indexOf(':')))).filter((o) => Number.isInteger(o) && o >= 0);
@@ -1010,10 +954,6 @@ const migCut = (v: Ver): number => Math.max(v.huuchin ?? 0, (v.created ?? 0) + 6
 /**
  * Тулгалт/Phase B-ийн мөрүүд — хуучин JSON мөр (`mur_turul IS NULL`: `<багц>` · `plan:%` · шилжээгүй `sub|`/`done|`) +
  * ШИЛЖСЭН илгээлтийн толгой (`sub|`/`done|`, `mur_turul='tolgoi'`).
- * ⚠️ 2026-10-26: `migrateSubmissionRow`/`saveSubmission` шилжүүлсний дараа толгойд `mur_turul='tolgoi'` тавьдаг тул урьд
- *    `IS NULL`-ээр л уншихад шилжсэн илгээлт тулгалтаас (тоо ч дутна) ба Phase B-ийн `done|` payload хасалтаас БҮРЭН
- *    гардаг байв — зөвхөн шилжээгүй нь орж үргэлж «мөр рүү шилжээгүй» гэж унадаг байв. Толгойн payload-ыг (≈80KB) татахгүй —
- *    `compareSubmissionRow`/`stripSubmissionPayload` өөрсдөө oid-оор уншина. `migrateAll` `IS NULL` хэвээр (шилжээгүйг л хайна).
  */
 export async function legacyAndSubHeads(url: string, fields: readonly string[]): Promise<Attrs[]> {
   const legacy = await queryAll(url, `${COL.turul} IS NULL`, fields);
@@ -1029,7 +969,6 @@ export async function legacyAndSubHeads(url: string, fields: readonly string[]):
 export async function verifyAll(): Promise<VerifyResult> {
   const url = await layerUrl();
   if (!url) throw new Error(tr('ноорогийн хүснэгт олдсонгүй'));
-  /* ⚠️ 2026-10-26: багана алга бол `mur_turul IS NULL` асуулга Enterprise-аас ойлгомжгүй алдаа авна — `migrateAll`-тай ижил хамгаалалт */
   if ((await rowsReady(true)).mode !== 'rows') throw new Error(tr('ноорогийн багана нэмэгдээгүй — notebook ажиллуулна уу'));
   const { PKGS } = await import('@/modules/sheet/bagts.pkg');
   const pk = new Set(PKGS.map((p) => p.key));
@@ -1051,8 +990,6 @@ export async function verifyAll(): Promise<VerifyResult> {
       const exp = b ? hdMerge(b, null) : null;
       const strip = (d: HDDraft) => hdSig({ ...d, entries: new Map([...d.entries].map(([kk, e]) => [kk, { ...e, at: 0, user: '' }])), del: new Map() });
       if (exp && strip(fromRows) === strip(exp)) { out.same += 1; continue; }
-      /* ⚠️ 2026-10-26: шилжүүлснээс хойш хэрэглэгчид мөрөнд үргэлжлүүлэн засдаг тул ЯГ тэнцүү байх албагүй — хуучин нүд бүр
-         мөрөнд ИЖИЛ утгаар байгаа, эсвэл шилжүүлэлтээс ХОЙШ (агшин > `cut`) засагдсан/хасагдсан бол «тооцогдсон» */
       const cut = migCut(v);
       const acc = !!exp && [...exp.entries].every(([kk, e]) => {
         const r = fromRows.entries.get(kk);
@@ -1071,7 +1008,6 @@ export async function verifyAll(): Promise<VerifyResult> {
       const b = parseDraft(raw, 'remote');
       const set = (x: Draft) => JSON.stringify([...x.cells, ...(x.dates ?? [])].map(([kk, vv]) => `${kk}=${vv}`).sort());
       if (b && set(d) === set(b)) { out.same += 1; continue; }
-      /* ⚠️ Хуваарийнхтай ижил «тооцогдсон» дүрэм (шилжүүлснээс хойшхи засвар зөрүү биш) */
       const cut = migCut(v);
       const rv = new Map([...d.cells, ...(d.dates ?? [])]);
       const rAt = new Map(d.byAt ?? []);
@@ -1094,7 +1030,6 @@ export async function verifyAll(): Promise<VerifyResult> {
 /**
  * PHASE B — тулгалт ЗӨВ гарсны ДАРАА (хэрэглэгч баталсан): хуучин амьд ноорогийн JSON мөрийг (`<багц>` · `plan:%`, шинэ толгойн
  * `huuchin_at` ≥ тэдний `at`) УСТГАНА; илгээлтийн payload-аас нүдийг хасна (v3 мета). `bagtsHamaaral` ХЭЗЭЭ Ч хөндөгдөхгүй.
- * ⚠️ Буцаах боломжгүй — дуудагч ИЛ асууна; тулгалтад зөрсөн/ороогүй түлхүүрийг алгасна.
  */
 export async function phaseB(verified: VerifyResult): Promise<{ deleted: number; stripped: number; failed: string[] }> {
   if (draftWriteLocked()) throw new Error(LOCKED());
@@ -1112,13 +1047,10 @@ export async function phaseB(verified: VerifyResult): Promise<{ deleted: number;
     const k = String(a[COL.dkey] ?? '');
     if (!k || k === 'bagtsHamaaral' || bad.has(k)) continue;
     if (k.startsWith('plan:') || pk.has(k)) {
-      /* ⚠️ 2026-10-26: тулгалтаас хойш хуучин таб JSON-д дахин бичсэн бол (`at` > `huuchin_at`) шингээгдтэл УСТГАХГҮЙ */
       const v = await readVer(url, k.startsWith('plan:') ? planDkeyOfLegacy(k) : perfDkey(k), k);
       if (!v.rows || v.huuchin == null || v.huuchin < (num(a[COL.at]) ?? 0)) { failed.push(`${k}: ${tr('тулгалтаас хойш хуучин JSON өөрчлөгдсөн — дахин тулгана уу')}`); continue; }
       del.push({ op: 'delete', k, unit: 'x', oid: num(a.objectid) ?? 0 });
     }
-    /* ⚠️ 2026-10-26: ЗӨВХӨН `done|` (хөлдсөн) толгойн payload-ыг хасна — идэвхтэй `sub|` толгойг хамтрагчийн `saveSubmission`-тай
-       уралдаж ХУУЧИН `gens`-ээр дарах эрсдэлтэй (ArcGIS-д нөхцөлт бичилт алга); `sub|` нь дараагийн илгээлтээр мета болно */
     else if (k.startsWith('done|')) {
       const { stripSubmissionPayload } = await import('@/lib/submission');
       const r = await stripSubmissionPayload(num(a.objectid) ?? 0);
@@ -1133,7 +1065,6 @@ export async function phaseB(verified: VerifyResult): Promise<{ deleted: number;
   return { deleted, stripped, failed };
 }
 
-/** ⚠️ ЗӨВХӨН тест — зургийн сан ба кэшийг цэвэрлэнэ */
 export const resetRowsCache = (): void => { imgs = new Map(); probe = null; frames.clear(); syncSeen.clear(); migratedKeys.clear(); };
 /** Хуучин JSON-ын устгалын агшин (`HD_DEL_TTL`) — тест/баримт */
 export const LEGACY_ABSORB_ALL_MS = HD_DEL_TTL;

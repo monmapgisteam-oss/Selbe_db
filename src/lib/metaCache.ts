@@ -1,28 +1,5 @@
 /**
  * ДАВХАРГА/ҮЙЛЧИЛГЭЭНИЙ МЕТАГИЙН СЕШНИЙ КЭШ (2026-10-22, гүйцэтгэл) — `entInterceptor`-ийн НЭГ interceptor дотор ажиллана.
- *
- * ⚠️ ЯАГААД: газрын зургийн хуудас бүр олон давхаргын метаг (`…/FeatureServer/N?f=json`) татдаг бөгөөд ижил хаягийг
- *    хэд хэдэн давхаргын инстанц ЗЭРЭГ эсвэл дараалан дахин татдаг байв (CDP: `selbe_ET/FeatureServer/101` нэг хуудсанд
- *    8×, суурь зургийн `World_Imagery/MapServer` 9×). Одоо ижил хүсэлт: явж байгаа бол ТҮҮНИЙГ хүлээж хуваалцана,
- *    дууссан бол `TTL_MS` хүртэл санах ойгоос (гүн хуулбараар) өгнө.
- * ⚠️ ЗӨВХӨН МЕТА: `…/(FeatureServer|MapServer|ImageServer|VectorTileServer)[/№]`, GET, JSON, параметр нь ЗӨВХӨН `f`
- *    (+ `returnAdvancedSymbols`). `/query` · `/applyEdits` · дэд нөөц (`/layers` · `/tile` · `resources/styles`), өөр
- *    параметртэй (`returnUpdates` · `_ts` · `gdbVersion` …) эсвэл ил `token`-той хүсэлт ХЭЗЭЭ Ч кэшлэгдэхгүй.
- *    Алдааны хариу (`error`) хадгалагдахгүй — JS API түүнийг `after` хүртэл хүргэдэггүй ч давхар хамгаалалт.
- * ⚠️ `editingInfo.lastEditDate` — JS API-ийн `layer.refresh()` (`FeatureLayerSource.refresh`) метаг ДАХИН татаж
- *    `lastEditDate`-ийг өмнөхтэй харьцуулаад, ижил бол өгөгдлийг ДАХИН АСУУДАГГҮЙ. Кэшийн хуучин хуулбар «өөрчлөгдөөгүй»
- *    гэж худал хэлбэл REST-ээр зассаны дараах `refreshLayer` (`MapCanvas` — `DedButets`) зассан объектыг ХУУЧИН өнгөөр
- *    үлдээнэ (REST бичилт энэ interceptor-оор явдаггүй тул хүчингүй болгож амжихгүй). Тиймээс ХУВААЛЦСАН хуулбар бүрт
- *    (кэшийн хит · явж буй хүсэлтэд нэгдсэн) `editingInfo`-ийн `*LastEditDate`-ийг `null` болгоно (`sharedCopy`):
- *      · `refresh` — `null`-ыг «мэдэхгүй» гэж үзээд ҮРГЭЛЖ дахин асууна (`dataChanged: true`) → хэзээ ч хуучрахгүй;
- *      · ажлын урсгалын `_queryLastEditDateChanged` — «өөрчлөгдсөн» гэж бүтэн дахин ачаална (аюулгүй тал);
- *      · `editingInfo`-ийг УСТГАХГҮЙ: тэр функц `data.editingInfo.lastEditDate`-ийг шалгалтгүй уншдаг — унана.
- *    Бодит утгыг ЗӨВХӨН өөрөө сүлжээнээс татсан хүсэлт авна. Үнэ нь: хуваалцсан метатай давхаргын `refresh` нэг
- *    илүү асуулга хийж болно — хуучин өгөгдөл харуулахаас хямд.
- * ⚠️ Хүчингүй болгох: нэвтрэх/гарах (`clearMetaCache` — `authToken.registerIdentity` · `AuthGate.signOut` · `entDocs`),
- *    JS API-ийн бичилт (Enterprise руу POST/бие — `mutatesData`, `entInterceptor`), аппын бичилт/«Шинэчлэх» (`dataBus` —
- *    `entInterceptor`), `TTL_MS`. `clear()` явж буй хүсэлтийн хариуг ч ХАДГАЛУУЛАХГҮЙ (үе — `gen`) — бичилтээс өмнө
- *    эхэлсэн татлага кэшид суухгүй, түүнийг хүлээгчид өөрсдөө дахин татна.
  */
 
 /** Кэшийн насжилт — схем ховор өөрчлөгдөнө; бичилт/нэвтрэлт/«Шинэчлэх» үүнээс өмнө хаяна */
@@ -38,9 +15,6 @@ const META_PATH_RE = /\/(?:FeatureServer|MapServer|ImageServer|VectorTileServer)
 export const META_URL_RE = /^https?:\/\/[^?#]*\/(?:FeatureServer|MapServer|ImageServer|VectorTileServer)(?:\/\d+)?\/?(?:[?#]|$)/i;
 /**
  * Өгөгдөл/схем ӨӨРЧИЛЖ болзошгүй хүсэлт мөн үү — ил POST/PUT/DELETE эсвэл биетэй (цэвэр — тест).
- * ⚠️ 2026-10-22: endpoint-ын НЭРЭЭР биш АРГААР таньна — JS API-ийн бүх бичилт (засвар · хавсралт · upload) ил `post`
- *    эсвэл `body`-той явдаг, харин уншилт (мета · асуулга) `method`-гүй (урт бол JS API `interceptor`-ийн ДАРАА өөрөө
- *    POST болгоно). Ховор ил POST уншилт кэшийг илүү хаяж болно — аюулгүй тал.
  */
 export const mutatesData = (ro: MetaReqOptions | null | undefined): boolean =>
   !!ro && (ro.body != null || /^(?:post|put|patch|delete)$/i.test(typeof ro.method === 'string' ? ro.method : ''));
@@ -94,7 +68,7 @@ const storable = (d: unknown): boolean => !!d && typeof d === 'object' && !Array
   && (d as { error?: unknown }).error == null && (d as { status?: unknown }).status !== 'error';
 
 /**
- * ХУВААЛЦАХ хуулбар: гүн хуулбар + `editingInfo.*LastEditDate` → `null` (толгойн ⚠️ «lastEditDate» — цэвэр, тест).
+ * ХУВААЛЦАХ хуулбар: гүн хуулбар + `editingInfo.*LastEditDate` → `null` (толгой «lastEditDate» — цэвэр, тест).
  * Хүлээн авагч бүр ӨӨРИЙН хуулбартай — JS API метаг газар дээр нь засдаг (`_patchServiceJSON`).
  */
 export function sharedCopy<T>(data: T): T {
@@ -160,7 +134,7 @@ export function createMetaCache(o: { ttlMs?: number; joinMs?: number; max?: numb
       if (p) {
         const left = join - (now() - p.at);
         if (left > 0) return { kind: 'wait', data: waitFor(p.promise, left) };
-        drop(key, p); // ⚠️ эзэн нь хариугүй алга болсон (дараалалд цуцлагдсан г.м.) — дараагийнх нь эзэн болно
+        drop(key, p);
       }
       let resolve: (d: unknown) => void = () => {};
       const promise = new Promise<unknown>((r) => { resolve = r; });

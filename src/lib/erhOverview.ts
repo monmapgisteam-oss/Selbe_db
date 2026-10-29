@@ -3,11 +3,6 @@
 /**
  * ЭРХИЙН НЭГДСЭН ТОЙМ — «хэн юу хийж чадах вэ» ба «багц бүрд хэн байгаа вэ».
  *
- * ⚠️ ЯАГААД ЭНЭ ФАЙЛ БАЙХ ЁСТОЙ ВЭ (2026-09-09). Админ панел нь ТАВАН
- * бүлэгт хуваагдсан бөгөөд тус бүр нь ӨӨР асуултад хариулдаг:
- *     Хэрэглэгчдийн эрх · Гүйцэтгэлийн урсгал · Чанар · Хуваарь · Обьём
- * Гэвч админд байнга гардаг ХОЁР асуултад хариулах газар БАЙХГҮЙ байв:
- *
  *   1. «Батбаяр юу хийж чадах вэ?» — таван бүлгийг тус тусад нь нээж,
  *      түүний нэрийг хайх ёстой.
  *   2. «Багц 3.1-ийг хэн хариуцаж байна?» — мөн адил.
@@ -15,13 +10,6 @@
  * Улмаас гацаа нь ЗӨВХӨН гарсны дараа мэдэгддэг: батлагч томилоогүй багц
  * илгээлт хүлээн авах хүртэл чимээгүй, зохиогч=батлагч болсон багц
  * `decidePlan` татгалзах хүртэл чимээгүй.
- *
- * ⚠️ ЭНЭ ФАЙЛ ЗӨВХӨН УНШИНА — бичих зам ОГТ байхгүй (матрицын засвар нь
- * `aclOps.ts`-ээр явна, 2026-09-25). Тойм нь одоо байгаа
- * таван дэд системээс ГАРНА, өөрийн хадгалалтгүй. Ингэснээр «тойм зөрсөн»
- * гэсэн ангилалын алдаа үүсэх боломжгүй.
- *
- * ⚠️ React импортлохгүй — `erhOverview.check.mjs` шууд Node дээр ачаална.
  */
 
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
@@ -31,26 +19,11 @@ import type { CapKey } from './caps';
 import { ROLE_CAPS, SCOPED_SYSTEMS, capSystem, rolesOfCap } from './aclRoleCaps';
 import { reviewerClashes, type Reviewer } from './chanarMs';
 
-/* ── Тоймд хэрэгтэй хэмжээгээр нь эх сурвалжийг тодорхойлно ──
-   ⚠️ ЖИНХЭНЭ модулиудыг ЭНД импортлохгүй: тэдгээр нь `localStorage`-тай
-      'use client' модулиуд тул цэвэр тооцоог тестлэхэд саад болно.
-      Дуудагч нь бэлэн өгөгдлийг дамжуулна. */
+/* ── Тоймд хэрэгтэй хэмжээгээр нь эх сурвалжийг тодорхойлно ── */
 
 /** Гүйцэтгэлийн урсгалын томилгоо (`guitsetgelAcl.Assign`) */
-/** ⚠️ `viewOnly` (2026-09-24): томилогдсон ч зөвхөн харна — шатны эзэн БИШ */
 export type FlowRow = { user: string; stage: Stage; bagts: string[]; viewOnly?: boolean };
 /** Багцын хуваарилалт — үүрэгтэй (хуваарь · обьём) эсвэл үүрэггүй (чанар) */
-/**
- * ⚠️ ҮҮРЭГ БҮР ӨӨРИЙН БАГЦТАЙ (2026-09-09). Урьд нь `{roles[], bagts[]}`
- *    байсан нь энэ файлд ХУДАЛ СЭРЭМЖЛҮҮЛЭГ төрүүлдэг байв: «Багц 1-д
- *    зохиогч, Багц 5-д батлагч» хүнийг Багц 1 дээр «өөрөө зохиож өөрөө
- *    батална» гэж гэрчилдэг байсан. Одоо grant тус бүрийг ТУСАД нь үзнэ.
- */
-/**
- * ⚠️ 2026-10-19 (аудит): `bagts` — ХУУЧИН дээд түвшний багцын жагсаалт (2026-09-09-өөс өмнөх `{roles, bagts}` мөр).
- *    `scopedAcl.normalize` нь `grants` байвал түүнийг авч `bagts`-ийг ҮЛ ТООДОГ ч хүснэгтэд үлдсэн хуучин нэр
- *    танигдаагүй багцын шалгалтад (`unknownBagts`) мөн орно — админ цэвэрлэх ёстой.
- */
 export type ScopedRow = { user: string; grants: { role: string; bagts: string[] }[]; bagts?: string[] };
 
 export type ErhSource = {
@@ -63,58 +36,20 @@ export type ErhSource = {
   chanar: ScopedRow[];
   /**
    * Нэмэлт ажил (editor · approver) ба дэд бүтцийн засвар (editor), 2026-09-23.
-   * ⚠️ СОНГОМОЛ — `erhOverview.check.mjs`-ийн хуучин `empty()` эх сурвалж
-   *    эдгээргүй тул байхгүйг `[]` гэж үзнэ.
-   * ⚠️ `butets`-ийн багц нь `BUTETS_PACKS` түлхүүр (25 багц) — `PKG_GROUPS` БИШ,
-   *    тиймээс багцын тоймд (`pkgErh`) ОРОХГҮЙ, зөвхөн хүний тоймд гарна.
    */
   ajil?: ScopedRow[];
   butets?: ScopedRow[];
   /**
-   * Хатуу `super` аккаунтууд (2026-09-24). ⚠️ `roleForUser`-ыг ЭНД
+   * Хатуу `super` аккаунтууд (2026-09-24). `roleForUser`-ыг ЭНД
    *    импортлохгүй (дээрх шалтгаан) — дуудагч өгнө. СОНГОМОЛ: хуучин тест
    *    эх сурвалж нь энэгүй.
    */
   supers?: string[];
-  /**
-   * ⚠️ 2026-10-23: КОДЫН (тестийн) super-ууд — `supers`-ийн дэд олонлог. Өнчин/дутуу эрхийн шалгалтаас (`orphanCaps` ·
-   *    `missingCaps`) ЗӨВХӨН тэд чөлөөтэй; хүснэгтийн super-ийн ХАДГАЛАГДСАН эрх (`caps`) энгийн хүнийх шиг шалгагдана
-   *    (доошлуулахад үлдэх эрх). СОНГОМОЛ (хуучин эх сурвалжид байхгүй = хоосон).
-   */
   codeSupers?: string[];
-  /**
-   * ⚠️ 2026-09-30: ПОРТАЛД БАЙХГҮЙ (устгагдсан) аккаунтууд — хуваарилалтын хуучин мөр нь
-   *    үлдсэн. СОНГОМОЛ (дуудагч `aclOps.liveErhSource` өгнө). Тэд нэвтэрч чадахгүй тул
-   *    гацааны шалгуурт (`pkgIssues`) ЭЗЭН гэж тоологдохгүй — урьд нь устгагдсан батлагчийн
-   *    мөр «батлагчгүй» · «урсгалын цоорхой» анхааруулгыг чимээгүй нууж, илгээлт тэнд
-   *    мөнхөд хүлээдэг байв. Нүдэнд харагдсаар (✕-ээр цэвэрлэхийн тулд).
-   */
   gone?: string[];
-  /**
-   * ⚠️ 2026-10-22 (аудит): эрхийн хүснэгтэд мөртэй атлаа Enterprise ПОРТАЛД АЛГА гэж баталгаажсан аккаунтууд
-   *    (`portalPresence.portalMissing`). Нэвтэрч чадахгүй тул гацааны шалгуурт эзэн биш — хуваарилалттай бол дуудагч
-   *    (`aclOps.liveErhSource`) тэднийг `gone`-д ч нэмнэ; энэ жагсаалт зөвхөн «порталд алга» гэж ялгаж харуулахад.
-   *    СОНГОМОЛ (хуучин эх сурвалжид байхгүй = хоосон).
-   */
   absent?: string[];
-  /**
-   * ⚠️ 2026-10-22 (аудит): аккаунт (жижиг үсгээр) → ЭРХИЙН ТӨРЛӨӨС нь хүлээгдэх урсгалын шат («Газрын дарга» → `chief`).
-   *    Төрөл нь зөвхөн харагдац/үүргийг бичдэг (`roleTypeApply.applyType`) — шат ЗӨВХӨН «Гүйцэтгэлийн урсгалын эрх»-ийн
-   *    томилгооноос. Тиймээс урсгалын төрөлтэй атлаа шатгүй/өөр шаттай хүнийг `typeStageGaps` ил гаргана. СОНГОМОЛ.
-   */
   typeStage?: Record<string, Stage>;
-  /**
-   * ⚠️ 2026-10-23: ЗӨВХӨН ХАРАХ ТӨРӨЛТЭЙ аккаунтууд («Ерөнхий захирал», `zahiral`). Урсгалын мөртэй байсан ч ШИЙДВЭРЛЭДЭГГҮЙ
-   *    (`hyanaltStore.authz` · `submission.companyDeny` хориглоно) тул шатны ЭЗЭН биш — «зөвхөн харна» томилгоотой адил
-   *    (`pkgErh` → `flowViewers`); урьд нь эзэн гэж тоологдож гацааны анхааруулгыг нууж байв. Мөртэй бол `typeStageGaps`
-   *    (`want: null`) ил гаргана. СОНГОМОЛ (хуучин эх сурвалжид байхгүй = хоосон).
-   */
   viewRoles?: string[];
-  /**
-   * ⚠️ 2026-10-26: аккаунт (жижиг үсгээр) → ЭРХИЙН ТӨРЛИЙН «Хуваарь харах» (`roleTypes.typeHuvaariScope`), «Үгүй»-гээс бусад нь.
-   *    `bagts` — `all`-д `null`, `own`-д тухайн хүний хуваарилалтын багцууд (`huvaariView.ownPkgScope`). Зөвхөн ХАРАХ эх
-   *    сурвалж (`workflowSources`) — эрх/гацааны шалгуурт ОРОХГҮЙ. СОНГОМОЛ (хуучин эх сурвалжид байхгүй = хоосон).
-   */
   hvType?: Record<string, { scope: 'all' | 'own'; bagts: string[] | null }>;
   /** Аккаунт → нэмэлт эрхүүд (`caps.capsOf`) */
   caps: Record<string, string[]>;
@@ -137,7 +72,6 @@ export type UserErh = {
   flow: { stage: Stage; bagts: string[] | null; viewOnly: boolean } | null;
   /** Хатуу super — бүх багц, бүх шат; хуваарилалт түүнд үйлчилдэггүй */
   superUser: boolean;
-  /** ⚠️ 2026-10-23: кодын (тестийн) super — өнчин/дутуу эрхийн шалгалтаас чөлөөтэй (`ErhSource.codeSupers`) */
   codeSuper: boolean;
   huvaari: RoleLine[];
   obyem: RoleLine[];
@@ -152,15 +86,9 @@ export type UserErh = {
   /**
    * ТАНИГДААГҮЙ БАГЦ (2026-10-19, аудит) — хуваарилалтад байгаа ч `PKG_GROUPS`-д алга нэр (нэр солигдсон, гараар
    * засагдсан мөр). Тэр нэр ямар ч багцыг НЭЭХГҮЙ (`scope`-ийн `includes` хэзээ ч таарахгүй) — админ засах ёстой.
-   * ⚠️ Дэд бүтэц ОРОХГҮЙ — багц нь `BUTETS_PACKS` түлхүүр (энэ цэвэр файл тэр жагсаалтыг импортлодоггүй).
    */
   unknownBagts: string[];
-  /** ⚠️ 2026-10-26: эрхийн төрлийн «Хуваарь харах» (`ErhSource.hvType`) — `null` = «Үгүй» */
   hvType: { scope: 'all' | 'own'; bagts: string[] | null } | null;
-  /**
-   * ⚠️ 2026-10-26: ЗӨВХӨН ХАРАХ ТӨРӨЛ («Ерөнхий захирал», `ErhSource.viewRoles`) — «Гүйцэтгэл»-ийг томилгоогүйгээр нээнэ
-   *    (`permissions.workflowViewsOf`). Карт үүнийг эх сурвалжаар харуулахгүй бол «хаалттай» гэж худал хэлдэг байв.
-   */
   viewRole: boolean;
 };
 
@@ -195,7 +123,6 @@ export function userErh(src: ErhSource, user: string): UserErh {
   const views = src.views[k] ?? { open: 0, total: 0 };
   const superUser = (src.supers ?? []).some((x) => norm(x) === k);
   const codeSuper = (src.codeSupers ?? []).some((x) => norm(x) === k);
-  /* ⚠️ 2026-10-19 (аудит): `grants[]`-ээс гадна ХУУЧИН дээд түвшний `bagts` (`ScopedRow.bagts`-ийн ⚠️) */
   const rawGrants = (rows: ScopedRow[]): (readonly string[])[] => {
     const r = rows.find((x) => norm(x.user) === k);
     if (!r) return [];
@@ -218,7 +145,6 @@ export function userErh(src: ErhSource, user: string): UserErh {
     butets,
     caps,
     views,
-    /* ⚠️ super нь бүх эрхтэй — «эрх олгоогүй» гэж харуулахгүй (2026-09-24) */
     any: superUser || !!f || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0
       || ajil.length > 0 || butets.length > 0 || caps.length > 0,
     unknownBagts,
@@ -228,16 +154,8 @@ export function userErh(src: ErhSource, user: string): UserErh {
 }
 
 /**
- * ТӨРӨЛ ↔ УРСГАЛЫН ШАТ ЗӨРӨӨ — ⚠️ 2026-10-22 (аудит).
- * ⚠️ ЯАГААД: «Гүйцэтгэгч компани» … «Газрын дарга» төрлийг сонгоход (карт · «Хэрэгжүүлэх») зөвхөн үүрэг ба харагдац
- *    бичигддэг — шат, «Гүйцэтгэл» хуудас, батлах эрх ҮҮСЭХГҮЙ, анхааруулга ч гардаггүй байв (амьд: `munkhbaatar` нь
- *    «Газрын дарга» атлаа урсгалын томилгоогүй). Энд: төрлийн шат (`typeStage`) ба томилгооны шат (`flow`) зөрсөн хүмүүс.
- *    `have === null` — шатгүй (Гүйцэтгэл хуудас нээгдэхгүй, батлахгүй); өөр шат — төрлийн шошго нь худал.
- * ⚠️ Зөвхөн АНХААРУУЛГА: шат нь томилгооноос гардаг (`resolveFlowStage`) тул зөрөө нь заримдаа санаатай байж болно.
- *    Устгагдсан/порталд алга (`gone` · `absent`) ба super-ийг алгасна. «Зөвхөн харна» томилгоо ч шат гэж тооцогдоно.
+ * ТӨРӨЛ ↔ УРСГАЛЫН ШАТ ЗӨРӨӨ — 2026-10-22 (аудит).
  */
-/* ⚠️ 2026-10-23: `want === null` — ЗӨВХӨН ХАРАХ төрөл («Ерөнхий захирал», `ErhSource.viewRoles`) атлаа урсгалын мөртэй
-   (`have` нь тэр мөрийн шат): мөр нь шийдвэрлэх эрх олгодоггүй, эзэн биш — цэвэрлэх ёстой. */
 export type TypeStageGap = { user: string; want: Stage | null; have: Stage | null };
 export function typeStageGaps(src: ErhSource): TypeStageGap[] {
   const skip = new Set([...(src.gone ?? []), ...(src.absent ?? []), ...(src.supers ?? [])].map(norm));
@@ -268,7 +186,7 @@ export type PkgErh = {
   flow: Record<Stage, string[]>;
   /**
    * Шат бүрийн «Зөвхөн харна» томилгоо (2026-09-25) — ЭЗЭН БИШ (`flow`-д
-   * ороогүй), матрицад саарал харагдана. ⚠️ Зөвхөн харагчтай шат нь
+   * ороогүй), матрицад саарал харагдана. Зөвхөн харагчтай шат нь
    * `flowGap`-д хоосон гэж тоологдоно — илгээлт тэнд зогсоно.
    */
   flowViewers: Record<Stage, string[]>;
@@ -291,15 +209,8 @@ export type PkgIssue = {
   args: string[];
   /**
    * Матрицын аль баганыг улаан/шар болгох вэ (`MATRIX_COLS[].id`, 2026-09-25).
-   * ⚠️ СОНГОМОЛ — нэмэлт талбар; хуучин дуудагч (тойм) үл тоомсорлоно.
    */
   cols?: string[];
-  /**
-   * ⚠️ 2026-10-19 (аудит): ЗӨВХӨН АДМИН (хатуу super) шийдвэрлэх боломжтой — super-т хуваарилалт үйлчилдэггүй тул
-   *    тэр бүх багц/шатанд ажиллаж ЧАДНА (гацаа биш), гэвч энгийн хариуцагч томилоогүй хэвээр. Өнгө (`tone`) ХЭВЭЭР —
-   *    анхааруулга алга болохгүй, текст нь ил хэлнэ (`erhLabels.issueText`). Устгагдсан super тоологдохгүй.
-   * ⚠️ ЗӨВХӨН цоорхойд (баганад super-ээс өөр хүн огт алга) — `*SelfApprove`-д хэзээ ч (`pkgErh`-ийн `noPlain`).
-   */
   superOnly?: boolean;
 };
 
@@ -309,21 +220,13 @@ const covers = (b: string[], g: string): boolean =>
 
 /**
  * Нэг багцын эрхийн зураг ба ЦООРХОЙ.
- *
- * ⚠️ ГАЦААГ УРЬДЧИЛЖ ХЭЛНЭ. Одоо систем нь гацахыг ХҮЛЭЭДЭГ: батлагч
- *    томилоогүй багц илгээлт ирэх хүртэл чимээгүй, зохиогч=батлагч болсон
- *    багц `decidePlan` татгалзах хүртэл чимээгүй. Энд тэдгээрийг ажил
- *    зогсохоос ӨМНӨ ил гаргана.
  */
 export function pkgErh(src: ErhSource, bagts: string): PkgErh {
-  /* ⚠️ 2026-10-23: зөвхөн харах ТӨРӨЛ («Ерөнхий захирал») — мөр нь «зөвхөн харна» томилгоотой адил (`ErhSource.viewRoles`) */
   const viewRole = new Set((src.viewRoles ?? []).map(norm));
   const noDecide = (x: FlowRow): boolean => !!x.viewOnly || viewRole.has(norm(x.user));
   const flow = Object.fromEntries(
     STAGE_ORDER.map((st) => [
       st,
-      /* ⚠️ `viewOnly` томилгоо шатны эзэн БИШ (2026-09-24) — `canReview: false`
-         тул тэр шатанд илгээлт зогсоно; эзний жагсаалт ба `flowGap`-д оруулахгүй */
       src.flow.filter((x) => x.stage === st && !noDecide(x) && covers(x.bagts, bagts)).map((x) => x.user),
     ]),
   ) as Record<Stage, string[]>;
@@ -337,7 +240,6 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
   const byRole = (rows: ScopedRow[]): Record<string, string[]> => {
     const out: Record<string, string[]> = {};
     for (const r of rows) {
-      /* ⚠️ Grant ТУС БҮРИЙГ шалгана — тэр үүрэг ТЭР багцад олгогдсон эсэх */
       for (const g of r.grants) {
         if (!covers(g.bagts, bagts)) continue;
         if (!(out[g.role] ??= []).includes(r.user)) out[g.role].push(r.user);
@@ -351,23 +253,14 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
   const chanar = byRole(src.chanar);
   const ajil = byRole(src.ajil ?? []);
 
-  /* ⚠️ 2026-09-30: гацааны шалгуурт устгагдсан аккаунтыг ЭЗЭН гэж тоолохгүй (`ErhSource.gone`);
-     харуулах жагсаалт (нүд) хэвээр */
   const gone = new Set((src.gone ?? []).map(norm));
   const live = <T extends Record<string, string[]>>(m: T): T => (gone.size
     ? Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.filter((x) => !gone.has(norm(x)))])) as T
     : m);
 
-  /* ⚠️ 2026-10-19 (аудит): амьд хатуу super байвал гацаа нь «зөвхөн админ шийдвэрлэнэ» (`PkgIssue.superOnly`) */
   const supers = new Set((src.supers ?? []).map(norm).filter((x) => !gone.has(x)));
   const L = { flow: live(flow), huvaari: live(huvaari), obyem: live(obyem), chanar: live(chanar), ajil: live(ajil) };
   const issues = pkgIssues(bagts, L.flow, L.huvaari, L.obyem, L.chanar, L.ajil);
-  /*
-   * ⚠️ 2026-10-19 (аудит №2): «энгийн хариуцагч томилоогүй» нь ЗӨВХӨН ЦООРХОЙД — issue-ийн БҮХ баганад (`cols`)
-   *    super-ээс өөр хүн огт томилогдоогүй үед. Урьд нь `*SelfApprove`-д ч (батлагч БАЙГАА, зөвхөн зохиогчтой
-   *    давхцсан) ба хэсэгчлэн томилогдсон `chanarNoReviewer`-т ч залгагддаг тул текст худал байв.
-   *    `*SelfApprove` · `chanarOneManRoles` — ХЭЗЭЭ Ч.
-   */
   const colUsers = (id: string): string[] => {
     const [sys, role] = id.split(':');
     const m = (L as Record<string, Record<string, string[]>>)[sys];
@@ -384,23 +277,12 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
 
 /**
  * ӨӨРӨӨС НЬ ӨӨР БАТЛАГЧГҮЙ ЗОХИОГЧ БАЙНА УУ (2026-09-25, аудитын засвар).
- *
- * ⚠️ `decidePlan` · `decideObyem` · `decideAjil` · `chanarMs.review` нь ЗӨВХӨН
- *    тухайн илгээлтийн зохиогч = батлагч тохиолдлыг татгалздаг. Тиймээс гацаа
- *    нь «бүх батлагч зохиогч мөн» биш, «ЯМАР НЭГ зохиогчид өөрөөс нь өөр
- *    батлагч алга». A, B хоёулаа хоёр үүрэгтэй бол бие биенийхээ илгээлтийг
- *    батална; урьдын дүрэм үүнийг худал «гацаа» гэж, админ хүчинтэй
- *    батлагчийг хасахад хүргэж болох байв.
  */
 const noOther = (authors: string[], approvers: string[]): boolean =>
   authors.some((a) => !approvers.some((b) => b !== a));
 
 /**
  * Багцын ЦООРХОЙГ илрүүлнэ.
- *
- * ⚠️ ЗӨВХӨН БОДИТ саадыг хэлнэ. «Чанарын ажилтан алга» гэдэг нь ажил
- *    зогсоохгүй (чанарын баримт хойшилно) тул `warn`; «батлагч алга» нь
- *    илгээсэн хуваарь МӨНХӨД хүлээнэ гэсэн үг тул `bad`.
  */
 function pkgIssues(
   bagts: string,
@@ -415,32 +297,12 @@ function pkgIssues(
   /* ── Чанарын баримт — тухайн төрлийн хянагч БҮГД зөвшөөрөх ёстой ── */
   const cA = chanar.author ?? [];
   if (cA.length) {
-    /* ⚠️ Зохиогчоос ӨӨР хүн тухайн хянагчийн үүрэгт байх ёстой —
-       `chanarMs.review` зохиогч=хянагчийг татгалздаг тул зохиогч л
-       томилогдсон үүрэг нь «томилоогүй»-тэй адил. Нэг ч үүрэг дутвал
-       `resolve` хэзээ ч «Батлагдсан» өгөхгүй → багцын аргачлал МӨНХӨД хүлээнэ. */
-    /* ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, аудитын засвар). Урьд нь «тухайн үүргийн
-       бүх хянагч зохиогч мөн» бол дутуу гэдэг байв — A, B хоёулаа зохиогч
-       БА ТУХ бол A-гийнхыг B, B-гийнхыг A хянана, гацаагүй. `review` нь
-       ЗӨВХӨН тэр баримтын зохиогч=хянагчийг татгалздаг тул дутуу гэдэг нь:
-       ЯМАР НЭГ зохиогчид өөрөөс нь ӨӨР хянагч тэр үүрэгт байхгүй. */
-    /* ⚠️ 2026-09-28: `tug` ч орно — MA (cheng → chanar → tug) ТУГ-гүй бол хэзээ ч батлагдахгүй;
-       `cheng` (ЧХ хяналтын инженер) ч MA-ийн эхний шат. */
     const missing = ['tuh', 'chanar', 'habea', 'tug', 'cheng']
       .filter((r) => noOther(cA, chanar[r] ?? []));
     if (missing.length) {
-      /* ⚠️ 2026-09-25 (аудит 8): `warn`, `bad` БИШ — 5 үүрэг БҮГД нэг төрөлд хэрэггүй
-         (`chanarMs.REVIEWERS_OF`: habea зөвхөн MS-төрөлд, tug — MA · NCR, cheng — MA).
-         Нэг үүрэг дутуу бол ТЭР төрлийн баримт л хүлээнэ, бусад нь явна — толгойн
-         дүрмээр «дутуу ч ажиллана» = `warn`. Матрицад шар. */
       out.push({ tone: 'warn', key: 'chanarNoReviewer', args: [bagts, missing.join(', ')], cols: missing.map((r) => `chanar:${r}`) });
     }
   }
-  /* ⚠️ 2026-09-30: НЭГ ХҮН ХОЁР ҮҮРЭГТ — `chanarMs.review` «нэг хүн зөвхөн НЭГ үүргээр»
-     дүрэмтэй тул ТУХ+ХАБЭА (MS-төрөл) эсвэл ЧХ инженер+Чанар (MA)-ийн ЦОРЫН ГАНЦ эзэн
-     нэг хүн бол тэр төрлийн баримт хэзээ ч батлагдахгүй. Дээрх «дутуу» шалгуур үүнийг
-     харахгүй (үүрэг бүрд хүн байгаа). Төрлөөр (`reviewerClashes`), NCR-д зохиогчоос
-     үл хамаарна. `warn` — зөвхөн тэр төрөл гацна. Мессеж `erhLabels.issueText`-д. */
   for (const c of reviewerClashes(chanar as Partial<Record<Reviewer, string[]>>, cA)) {
     out.push({
       tone: 'warn', key: 'chanarOneManRoles',
@@ -455,10 +317,6 @@ function pkgIssues(
   if (hA.length && !hB.length) {
     out.push({ tone: 'bad', key: 'huvaariNoApprover', args: [bagts], cols: ['huvaari:approver'] });
   } else if (hA.length && hB.length && noOther(hA, hB)) {
-    /* ⚠️ Зохиогч=батлагч: `decidePlan` өөрийгөө батлахыг ТАТГАЛЗДАГ тул
-       өөр батлагчгүй зохиогчийн илгээсэн хуваарийг хэн ч батлахгүй — гацна.
-       ⚠️ `hB.every(u => hA.includes(u))` БИШ (2026-09-25): A, B хоёулаа
-       зохиогч БА батлагч бол бие биенийхээ хуваарийг батална — худал «гацаа». */
     out.push({ tone: 'bad', key: 'huvaariSelfApprove', args: [bagts, hB.join(', ')], cols: ['huvaari:author', 'huvaari:approver'] });
   }
 
@@ -483,13 +341,8 @@ function pkgIssues(
   /* ── Гүйцэтгэлийн урсгал — долоон шат бүрэн байх ёстой (2026-10-23: + төлөвлөлтийн инженер) ── */
   const gaps = STAGE_ORDER.filter((st) => flow[st].length === 0);
   if (gaps.length && gaps.length < STAGE_ORDER.length) {
-    /* ⚠️ ЗАРИМ нь хоосон бол илгээлт тэр шатанд ЗОГСОНО. */
     out.push({ tone: 'bad', key: 'flowGap', args: [bagts, String(gaps.length)], cols: gaps.map((st) => `flow:${st}`) });
   } else if (gaps.length === STAGE_ORDER.length) {
-    /* ⚠️ 2026-10-19 (аудит): БҮГД хоосон — урьд нь «урсгал эхлээгүй» гэж ЧИМЭЭГҮЙ байв. Гэвч тэр багцын гүйцэтгэлийг
-       хэн ч бөглөж, батлах боломжгүй тул админд ил хэлнэ. `warn` (`bad` биш): шинэ/идэвхгүй багцад хэвийн байж
-       болох тул «шинэ гацаа» асуултад (`aclOps.newBlockingText`, зөвхөн `bad`) орохгүй. */
-    /* ⚠️ `cols` ЗААВАЛ (матрицын инвариант — issue бүр баганатай): урсгалын 7 нүд шар */
     out.push({ tone: 'warn', key: 'flowEmpty', args: [bagts], cols: gaps.map((st) => `flow:${st}`) });
   }
 
@@ -516,10 +369,7 @@ export type MatrixCol = { id: string; sys: MatrixSys; role: string };
 
 /**
  * АРВАН ЕСӨН БАГАНА (2026-10-23: урсгал 7 шаттай): урсгал ×7 · Хуваарь ×2 · Обьём ×2 · Нэмэлт ажил ×2 ·
- * Чанарын баримт ×6 (2026-09-28: + ТУГ, + ЧХ инженер). ⚠️ 2026-10-23: QAQC багана хасагдсан.
- * ⚠️ Дэд бүтэц ОРОХГҮЙ — багц нь `BUTETS_PACKS` (25), `PKG_GROUPS` биш;
- *    тусдаа хүснэгтэд (`butetsRows`).
- * ⚠️ Шошго ЭНД БИШ — `tr()` зурагдах агшинд (React талд).
+ * Чанарын баримт ×6 (2026-09-28: + ТУГ, + ЧХ инженер). 2026-10-23: QAQC багана хасагдсан.
  */
 export const MATRIX_COLS: MatrixCol[] = [
   ...STAGE_ORDER.map((st): MatrixCol => ({ id: `flow:${st}`, sys: 'flow', role: st })),
@@ -541,9 +391,6 @@ export type MatrixRow = { bagts: string; cells: Record<string, MatrixCell>; issu
 
 /**
  * Багц бүрийн мөр — нүд бүрд эзэд, харагчид ба өнгө.
- * ⚠️ ӨНГӨ нь `pkgIssues`-ийн `cols`-оос ГАРНА — дүрмийг энд ДАХИН бичихгүй
- *    (хоёр газар бичвэл тойм ба матриц зөрнө).
- * ⚠️ Хатуу super-ийг нүд бүрд нэмэхгүй — тэр нь бүх багцад (UI-ийн тайлбарт).
  */
 export function pkgMatrix(src: ErhSource): MatrixRow[] {
   return allPkgErh(src).map((p) => {
@@ -562,8 +409,6 @@ export function pkgMatrix(src: ErhSource): MatrixRow[] {
 
 /**
  * ДЭД БҮТЦИЙН ХҮСНЭГТ — `BUTETS_PACKS` × «Засварлагч».
- * ⚠️ `packs`-ийг дуудагч өгнө: `butetsPacks.ts` нь `services`-ийн давхаргын
- *    бүртгэлийг ачаалдаг тул энэ цэвэр файл импортлохгүй.
  */
 export function butetsRows(
   src: ErhSource, packs: { key: string; name: string }[],
@@ -588,7 +433,6 @@ const linesOf = (u: UserErh, sys: (typeof SCOPED_SYSTEMS)[number]): RoleLine[] =
  *   · `null` — бүх багц (`ALL_BAGTS`)
  *   · `[]`   — хуваарилалтгүй (энгийн эрх, эсвэл өнчин)
  *   · `[…]`  — заасан багцууд
- * ⚠️ Чанарын `chanarReview` — таван хянагчийн АЛЬ Ч нь эх сурвалж болно.
  */
 export function capBacking(u: UserErh, cap: CapKey): string[] | null {
   const sys = capSystem(cap);
@@ -607,12 +451,6 @@ const backed = (u: UserErh, cap: CapKey): boolean => {
 
 /**
  * ӨНЧИН ЭРХ — асаалттай атлаа тэр системд түүн рүү заадаг үүрэг алга.
- * ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): ЗӨВХӨН КОДЫН super-т үгүй. Хүснэгтийн super-ийн ХАДГАЛАГДСАН эрхийг
- *    (`caps` — `aclOps.liveErhSource`) энгийн хүнийх шиг шалгана: урьд нь super бүхэлдээ чөлөөтэй тул доошлуулахад
- *    үлдэх өнчин/дутуу эрх хаана ч харагддаггүй байв.
- * ⚠️ Энгийн дөрвөн эрх өнчин болохгүй — тэдгээр нь хуваарилалтгүй.
- * ⚠️ UI нь ЗӨВХӨН бүх ACL уншигдсаны дараа харуулна — эс бөгөөс `[]`
- *    жагсаалтаас ХУДАЛ өнчин гарна. Автоматаар ЮУ Ч хасахгүй.
  */
 export function orphanCaps(u: UserErh): CapKey[] {
   if (u.codeSuper) return [];
@@ -621,10 +459,8 @@ export function orphanCaps(u: UserErh): CapKey[] {
 
 /**
  * ЭСРЭГ ТОХИОЛДОЛ — хуваарилалт бий атлаа эрх алга (эрх олголт унасан).
- * ⚠️ Зөвхөн АНХААРУУЛГА: засах зам нь хуваарилалтыг дахин хадгалах (`syncCaps`).
  */
 export function missingCaps(u: UserErh): CapKey[] {
-  /* ⚠️ 2026-10-23: зөвхөн кодын super чөлөөтэй (`orphanCaps`-ийн ⚠️) */
   if (u.codeSuper) return [];
   const out = new Set<CapKey>();
   for (const sys of SCOPED_SYSTEMS) {

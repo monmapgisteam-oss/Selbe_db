@@ -17,21 +17,11 @@ import s from '../suitability.module.css';
 
 /**
  * «Зогсоол» ба «Ногоон байгууламж» картын ДИАГРАМЫН ЦОРЫН ГАНЦ ӨНГӨ.
- *
- * ⚠️ Оноолтын шатлал (ногоон→шар→улаан) хэрэглэхээ БОЛЬСОН: эдгээр карт нь
- * хэмжилтийн тайлан болохоос үнэлгээ биш тул улаан өнгө «алдаа гарлаа» гэсэн
- * худал дохио өгдөг байв (хэрэглэгчийн шийдвэр, 2026-08-12).
- * ⚠️ 2026-08-18: envhub дүрэм — өгөгдлийн ГАНЦ өнгө `var(--data)` (урьд нь
- * хатуу бичсэн цэнхэр #4f83cc байв). Зөвхөн inline style-д ордог тул var() болно.
  */
 const CHART = 'var(--data)';
 
 /**
  * ХАНГАЛТЫН ЗУРВАС — 100% нь нормын түвшин (Зогсоол · Ногоон байгууламж).
- *
- * ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): 5px → порталын 2px зам
- *    (`--chart-track`), `title`-ийн оронд `useTip`. `pct` null (хэрэгцээ тодорхойгүй)
- *    бол ДҮҮРГЭЛТГҮЙ — 0% гэж зурахгүй (null ≠ 0).
  */
 function FillBar({ pct, label, hint }: { pct: number | null; label: string; hint: string }) {
   const tip = useTip();
@@ -47,10 +37,6 @@ function FillBar({ pct, label, hint }: { pct: number | null; label: string; hint
 
 /**
  * ТООЦООНЫ ТОМЬЁО — хураадаг блок.
- *
- * ⚠️ Анхдагчаар НЭЭЛТТЭЙ: хангалтын хувь ХААНААС гарсныг харуулах нь энэ
- * картуудын гол зорилго (хэрэглэгчийн хүсэлт, 2026-08-12). Хураах боломж нь
- * зөвхөн зай чөлөөлөх сонголт — нуух өгөгдмөл БИШ.
  */
 function Formula({ children }: { children: ReactNode }) {
   const [off, setOff] = useState(false);
@@ -74,9 +60,6 @@ function Formula({ children }: { children: ReactNode }) {
  * Хот төлөвлөлтийн үзүүлэлтүүд 3 үндсэн төрөлд бүлэглэгдэнэ. Диаграм нь
  * тэдгээрийн ЖИНГИЙН эзлэх хувийг харуулж, тайлбарт нь тухайн төрлийн дундаж
  * ОНОО гарна.
- *
- * ⚠️ SVG дугуйг `stroke-dasharray`-аар зурна — олон `<path>` үүсгэхээс хямд
- * бөгөөд өнцөг тооцох тригонометр шаардахгүй.
  */
 export function CategoryPie({
   rows, indicators, totalW, filter, setFilter,
@@ -112,13 +95,6 @@ export function CategoryPie({
   }
   const overall = tW ? Math.round(tSum / tW) : null;
 
-  /**
-   * ⚠️ Порталын БУСАД дашбоардтай ИЖИЛ `ui.tsx`-ийн Donut — урьд нь энд өөрийн
-   * SVG дугуй байсан нь ижил өгөгдлийг өөр дүрслэлээр харуулж байв. Зүсмэгийн
-   * хэмжээ нь жингийн эзлэх хувь; тайлбарт төрлийн дундаж оноо (өнгөөр) ба
-   * жингийн хувь. Харанхуй палитрт `ui`-ийн хувьсагчид `.app`-ын CSS гүүрээр
-   * буудаг тул өнгө нь энэ модулийн дэвсгэртэй зохицно.
-   */
   return (
     <Donut
       size="md"
@@ -128,8 +104,6 @@ export function CategoryPie({
         value: c.weight,
         // Зүсмэгийн өнгө нь ангиллын «утга» биш, зөвхөн ялгах зорилготой. Онооны
         // утгыг тайлбарын тоо (scoreTone) хэлнэ.
-        // ⚠️ 2026-10-09: `shade(CAT_LIGHT[0])` (dark-д дагадаггүй hex) → `CATEGORIES`-ийн
-        //    слот `cat(i)` — доорх бүлгийн гарчигтай ИЖИЛ өнгө.
         color: c.color,
         display: (
           <>
@@ -165,8 +139,6 @@ export function IndicatorPicker({
   const ind = indicators.find((i) => i.id === active) ?? indicators[0];
   const groups = CATEGORIES
     .filter((c) => !filter || c.key === filter)
-    // ⚠️ ЛАВЛАГААНЫ үзүүлэлтийг ХАСНА: нормгүй тул «норм хангасан %» ба газрын
-    //    зургийн будалт нь худал (бүх бүс 100 оноо мэт харагдана).
     .map((c) => ({ c, items: indicators.filter((i) => i.cat === c.key && !i.ref) }))
     .filter((g) => g.items.length > 0);
 
@@ -186,11 +158,6 @@ export function IndicatorPicker({
                 const p = r.parts[i.id];
                 if (!p || p.value == null) continue;
                 total++;
-                // ⚠️ «Норм хангасан» нь ТҮҮХИЙ утгын шинж — жингээс ХАМААРАХГҮЙ.
-                //    Өмнө нь жин-гатласан `p.score`-оор шалгаж байсан тул жинг 0
-                //    болгоход бүх бүс худал «унаж» 0/total болдог байв. Норм
-                //    шалгалтыг түүхий утга + хадгалсан нормоор хийнэ (Suitability
-                //    hover, SuitDetail-тэй ижил канон).
                 if (passesNorm(p.value, p.norm)) pass++;
               }
               const pct = total ? (pass / total) * 100 : 0;
@@ -206,7 +173,6 @@ export function IndicatorPicker({
                   <span className="nm">{i.byType ? i.short : i.name}</span>
                   <span className="wt">{((i.weight / totalW) * 100).toFixed(0)}%</span>
                   <span className="cnt">{total ? `${pass}/${total}` : '—'}</span>
-                  {/* ⚠️ 2026-10-09: 2px зам; өнгө токен (`scoreTone`). Хэмжигдсэн бүсгүй (total 0) бол дүүргэлтгүй. */}
                   <span className="bar">{total > 0 && <i style={{ width: `${pct}%`, background: scoreTone(pct) }} />}</span>
                 </button>
               );
@@ -235,12 +201,6 @@ export function Weights({
   setIndicators: (v: Indicator[]) => void;
   totalW: number;
 }) {
-  /* ⚠️ 2026-10-09: `patchNorm` — урвуу муж (доод > дээд г.м.) оноолтыг эвдэхгүй; хумисан бол
-     тухайн үзүүлэлтийн доор тайлбар (`fixMsg`). */
-  /* ⚠️ 2026-10-09: мессеж нь ТЭР ҮЕИЙН үзүүлэлтийн объекттой (`ind`) хамт хадгалагдаж, зөвхөн тэр
-     объект хэвээр байхад харагдана. «Анхны утга» (Suitability.tsx) нь БҮХ объектыг шинээр үүсгэдэг тул
-     reset хийхэд мессеж өөрөө алга болно — урьд нь сэргээсэн утгын доор хуучин «засав» үлддэг байв.
-     Жингийн гулсуур хөдлөхөд (`weight`, хумилтгүй) тухайн мөрийн мессеж мөн арилна. */
   const [fixMsg, setFixMsg] = useState<Record<string, { msg: string; ind: Indicator }>>({});
   const patch = (id: string, key: keyof Indicator, value: number): boolean => {
     const cur = indicators.find((i) => i.id === id);
@@ -254,9 +214,6 @@ export function Weights({
         void _drop;
         return rest;
       }
-      /* ⚠️ 2026-10-09: шалтгаан нь БОДИТ хумилттай таарна — жин (≥ 0) эсвэл горимын босгын дараалал
-         (`patchNorm`: band — 0 оноо ≤ доод ≤ дээд ≤ 0 оноо; higher — 0 оноо ≤ нормын доод;
-         lower — нормын дээд ≤ 0 оноо). Урьд нь бүгдэд «доод нь дээдээсээ их» гэж бичдэг байв. */
       const v = nf(r.ind[key] as number, cur.decimals);
       const msg = key === 'weight'
         ? tr('Утгыг {0} болгож засав — жин сөрөг байж болохгүй.', v)
@@ -272,7 +229,6 @@ export function Weights({
 
   return (
     <div>
-      {/* ⚠️ ЛАВЛАГААНЫ үзүүлэлт нормгүй тул жин/босго засварлах утгагүй */}
       {indicators.filter((i) => !i.ref).map((i) => {
         // Босго засварлах талбарууд — горимоос хамаарч өөр
         const fields: [keyof Indicator, string][] = i.mode === 'band'
@@ -291,7 +247,6 @@ export function Weights({
               type="range" className={s.wSlider} min={0} max={40} step={1}
               value={i.weight}
               aria-label={tr('{0} — жин', i.name)}
-              /* ⚠️ 2026-10-09: хумилтгүй `patch` нь тухайн мөрийн «засав» мессежийг арилгана (гулсуур ≥ 0) */
               onChange={(e) => patch(i.id, 'weight', Number(e.target.value))}
             />
             <div className={s.wReq}><b>{tr('Норм:')}</b> {normLine(i)}</div>
@@ -302,7 +257,6 @@ export function Weights({
               <div className={s.wTypes}>
                 {Object.entries(DENSITY_BY_TYPE).map(([t, v]) => (
                   <div key={t}>
-                    {/* ⚠️ 2026-10-22 (аудит): түлхүүр нь каноник нэр — орчуулж харуулна (`zoneTypeLabel`-ийн ⚠️) */}
                     <span>{zoneTypeLabel(t)}</span>
                     <b>≤ {nf(v[i.byType!], i.decimals)}{i.unit ? ` ${i.unit}` : ''}</b>
                   </div>
@@ -313,9 +267,6 @@ export function Weights({
                 {fields.map(([key, label]) => (
                   <label key={String(key)}>
                     <span>{label}</span>
-                    {/* ⚠️ Controlled: «Анхны утга» reset хийхэд дэлгэцийн тоо
-                        төлөвтэйгээ ХАМТ буцах ёстой — defaultValue бол DOM
-                        хуучин засварласан утгаа хадгалж, оноололтой зөрдөг. */}
                     <NormInput
                       value={i[key] as number | undefined}
                       onCommit={(v) => patch(i.id, key, v)}
@@ -338,10 +289,6 @@ export function Weights({
 
 /**
  * Нормын тоон талбар — бичиж байх үеийн ТҮР утга (`draft`) нь хязгаарлалтаас ТУСДАА.
- * ⚠️ 2026-10-09: `patchNorm` үсэг бүрд хумивал «25» бичих гэж «2» дарахад шууд хөршийн утга
- *    руу үсэрч бичих боломжгүй болно. Тиймээс бичих явцад зөвхөн хүчинтэй тоог шууд илгээнэ
- *    (оноо амьдаар шинэчлэгдэнэ), хумилт хийгдсэн бол тэр мөчид дэлгэцийн тоо засагдана
- *    (blur/Enter-ээр батална). Controlled хэвээр — «Анхны утга» reset нь `draft`-гүй үед шууд харагдана.
  */
 function NormInput({ value, onCommit }: { value: number | undefined; onCommit: (v: number) => boolean }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -377,12 +324,6 @@ export function Parking({
   parking: ParkingOpt;
   setParking: (p: ParkingOpt) => void;
 }) {
-  /* ⚠️ 2026-09-25: Нийлүүлэлт ба хэрэгцээг НЭГ олонлогоос — хэрэгцээ нь
-     тодорхойгүй (`parkingNeed == null`) бүсийг хоёуланд нь хасна. Урьд нь
-     нийлүүлэлт БҮХ бүсээс, хэрэгцээ нь null-ыг 0 гэж тоолж бодогддог тул
-     хангалт хэт өндөр, «Илүүдэл» худал гардаг байв (null ≠ 0). */
-  /* ⚠️ 2026-10-26 (аудит): төлөвлөлтийн бичлэггүй бүс (`planRecordMissing` → `parkingGap == null`, жиш. B-2) нийлүүлэлт нь 0
-     гэж орж хэрэгцээ (188) нь нийтэд нэмэгддэг байв — «дутагдалтай бүс» тоололтой ч зөрдөг. Нэг олонлог. */
   const withNeed = rows.filter((r) => r.parkingNeed != null && r.parkingGap != null);
   const supply = withNeed.reduce((a, r) => a + r.parkingSupply, 0);
   const need: number | null = withNeed.length
@@ -395,8 +336,6 @@ export function Parking({
   const pct = need != null && need > 0 ? (supply / need) * 100 : null;
 
   const hh = withNeed.reduce((a, r) => a + r.households, 0);
-  /* ⚠️ 2026-10-01: ОРШИН СУУГЧ (`Population`) — `data.parkingNeedOf`-тэй ижил
-     (урьд нь `population` = оршин суугч + хүчин чадал байсан) */
   const pop = withNeed.reduce((a, r) => a + r.residentPop, 0);
   /** Хэрэгцээний томьёоны ЗҮҮН тал — сонгосон аргаас хамаарна */
   const needExpr = parking.source === 'households'
@@ -406,7 +345,6 @@ export function Parking({
       : <>{tr('бүх бүсийн нормд заасан зогсоолын нийлбэр')}</>;
 
   return (
-    // ⚠️ `.plain` — бичвэр БҮГД цагаан, онооны ногоон/улаан алга
     <div className={s.plain}>
       <div className={s.subLabel}>{tr('Хэрэгцээг ямар аргаар тооцох вэ?')}</div>
       <div className={s.toggles}>
@@ -462,8 +400,6 @@ export function Parking({
       />
       <div className={s.parkScale}><span>0%</span><span>{tr('Норм 100%')}</span></div>
 
-      {/* ⚠️ БҮТЭН гинж: хэрэгцээ → байгаа → хангалт. Урьд нь зөвхөн хэрэгцээний
-          мөр байсан тул дээрх хувь ХААНААС гарсан нь харагддаггүй байв. */}
       <Formula>
         {tr('Хэрэгцээ =')} {needExpr} = <b>{nf(need)}</b> {tr('зогсоол')}<br />
         {tr('Ерөнхий төлөвлөгөөнд тусгагдсан =')} {nf(il)} {tr('ил +')} {nf(dald)} {tr('далд =')} <b>{nf(supply)}</b> {tr('зогсоол')}<br />
@@ -476,8 +412,6 @@ export function Parking({
           <span>{gap == null || gap >= 0 ? tr('Илүүдэл') : tr('Дутагдал')}</span>
           <b>{gap == null ? '—' : <>{gap >= 0 ? '+' : '−'}{nf(Math.abs(gap))}</>}</b>
         </div>
-        {/* ⚠️ «N / M» биш ЦЭВЭР ТОО: хуваарь нь хоёр нүдэнд давхардаж, «23/23»
-            гэдгийг «23 бүсийн 23» гэхээсээ бутархай мэт уншиж болзошгүй байв. */}
         <div><span>{tr('Дутагдалтай бүс')}</span><b>{short}</b></div>
         <div><span>{tr('Хангалттай бүс')}</span><b>{withNeed.length - short}</b></div>
       </div>
@@ -490,17 +424,6 @@ export function Parking({
 /**
  * НОГООН БАЙГУУЛАМЖИЙН ХАНГАМЖ — «Зогсоолын хэрэгцээ» картын ЯГ ИЖИЛ зарчим:
  * байгаа хэмжээ ба шаардлагатай хэмжээ хоёрыг харьцуулж, хангалтын хувийг гаргана.
- *
- * ⚠️ Хоёр арга нь ӨӨР ЗҮЙЛ хэмждэг (`GreenSource`-ын тайлбарыг үз):
- *   · 6 м²/хүн — ЗӨВХӨН оршин суугчтай бүсэд хэрэгцээ гарна. Оршин суугчгүй
- *     (сургууль, үйлчилгээ) бүс «хэрэгцээгүй» тул тоололд ОРОХГҮЙ — эс бөгөөс
- *     ногоонгүй ч гэсэн «хангалттай» гэж тоологдож, дүнг хөөрөгдөнө.
- *   · Талбайн % — хүн амаас хамаарахгүй тул БҮХ бүсэд үйлчилнэ.
- *
- * ⚠️ ТАЛБАЙ нь `polyHa` (полигоны БОДИТ талбай): ногоон байгууламжийн м² нь
- * бүсийн полигоноор ТАЙРАГДСАН (`nogoon_baiguulamj/0` — бүсээр огтлолцуулсан)
- * тул хувь тооцоход ижил суурьтай байх ёстой. `areaHa` (албан ёсны, зам хассан)
- * авбал хүртээмж хиймлээр өсөж харагдана.
  */
 export function Green({
   rows, green, setGreen,
@@ -516,10 +439,6 @@ export function Green({
 
   /**
    * Бүс бүрийн байгаа ба шаардлагатай хэмжээ. Хэрэгцээгүй бол `null`.
-   *
-   * ⚠️ «Нөлөөллийн бүс» арга нь ӨӨР ЗҮЙЛ хэмждэг: талбай биш, ХҮН. Хэрэгцээ =
-   * бүсийн бүх оршин суугч (бүгд ногоонд хүрэх ёстой), байгаа = радиус дотор
-   * амьдардаг нь. Тиймээс нэгж, шошго нь бусад хоёроос ялгаатай.
    */
   const per = rows.map((r) => {
     if (buffer) {
@@ -537,8 +456,6 @@ export function Green({
   const withNeed = per.filter((p) => p.need != null && p.need > 0);
   const haveAll = rows.reduce((a, r) => a + r.greenM2, 0);
   const need = withNeed.reduce((a, p) => a + (p.need ?? 0), 0);
-  // ⚠️ Хангалтын хувийг ЗӨВХӨН хэрэгцээтэй бүсийн ногооноор — эс бөгөөс
-  //    хэрэгцээгүй бүсийн ногоон нь бусдын дутагдлыг нөхөж, дүн худал өснө.
   const haveNeeded = withNeed.reduce((a, p) => a + p.have, 0);
   const gap = haveNeeded - need;
   const short = withNeed.filter((p) => p.have < (p.need ?? 0)).length;
@@ -550,9 +467,6 @@ export function Green({
 
   /**
    * Хэрэгцээний томьёоны ЗҮҮН тал.
-   * ⚠️ Хүн ам/талбайг ЗӨВХӨН хэрэгцээтэй бүсээр нийлбэрлэнэ — томьёо нь
-   * баруун талын дүнгээ ГАРГАХ ёстой. Бүх бүсээр нийлбэрлэвэл «6,280 × 6 =
-   * 37,680» гэж бичээд өөр тоо гарч, хэрэглэгч арифметик нь буруу гэж бодно.
    */
   const needPop = withNeed.reduce((a, p) => a + p.r.residentPop, 0);
   const needLandM2 = withNeed.reduce((a, p) => a + p.r.polyHa * 10_000, 0);
@@ -563,7 +477,6 @@ export function Green({
       : <>{nf(needLandM2 / 10_000, 1)} {tr('га ×')} {green.share}%</>;
 
   return (
-    // ⚠️ `.plain` — бичвэр БҮГД цагаан, онооны ногоон/улаан алга
     <div className={s.plain}>
       <div className={s.subLabel}>{tr('Хэрэгцээг ямар аргаар тооцох вэ?')}</div>
       <div className={s.toggles}>
@@ -587,8 +500,6 @@ export function Green({
           </span>
         </label>
 
-        {/* ⚠️ Радиус нь ТОГТСОН шатлалтай (гулсуур БИШ): 100 м-ээс дээш бүх утга
-            100% өгдөг тул тасралтгүй гулсуурын дийлэнх нь үхмэл байв. */}
         {buffer ? (
           <div style={{ display: 'flex', gap: 4, marginTop: 5 }}>
             {GREEN_RADII.map((v) => {
@@ -650,7 +561,6 @@ export function Green({
       />
       <div className={s.parkScale}><span>0%</span><span>{tr('Норм 100%')}</span></div>
 
-      {/* ⚠️ БҮТЭН гинж — дээрх хувь хаанаас гарсныг мөр мөрөөр нь харуулна */}
       <Formula>
         {buffer ? tr('Нийт') : tr('Хэрэгцээ')} = {needExpr} = <b>{nf(need)}</b> {unit}<br />
         {buffer ? tr('Хамрагдсан ({0} м дотор)', green.radius) : tr('Байгаа')} = <b>{nf(haveNeeded)}</b> {unit}<br />
@@ -660,8 +570,6 @@ export function Green({
       <div className={s.finSummary}>
         <div>
           <span>{tr('Ногоон эзлэх хувь (төсөл)')}</span>
-          {/* ⚠️ Энэ нь ХАНГАМЖААС тусдаа тоо: нийт газарт ногоон хэдэн хувийг
-              эзэлж байгааг заана («30% ногоон уу?» гэсэн асуултын шууд хариу). */}
           <b>{sharePct == null ? '—' : `${nf(sharePct, 1)}%`}</b>
         </div>
         <div>
@@ -690,14 +598,6 @@ const groupColor = (g: string) =>
  * Газрын зураг дээрх барилга дээр дарахад тухайн барилгын ХӨРШИЙН зураг гарна:
  * радиус тус бүрд хэдэн барилга байгаа, тэдгээр нь ямар зориулалттай, хэдэн
  * метрийн зайд байгаа.
- *
- * ⚠️ Зайг УРЬДЧИЛАН бодоогүй (`LocationPt` тайлбарыг үз): сонгосон барилгаас
- * бусад руу 368 тооцоо л явна — сонголт бүрд шинэчлэгдэнэ.
- *
- * ⚠️ «Өдрийн урсгал» нь тээврийн загварын оргил цагийн ХҮН-ЗОРЧИЛТ: орон сууц
- * үүсгэнэ, сургууль/оффис/үйлчилгээ татна. Оршин суугчийн тоо нь «хэн энд
- * амьдардаг», зорчилт нь «энд хэдэн хүн хөдөлж байна» — бизнесийн байршилд
- * сүүлийнх нь чухал.
  */
 export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPublicOnly }: {
   pts: LocationPt[];
@@ -720,9 +620,6 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
       .sort((a, b) => a.d - b.d)
     : [];
 
-  /* ⚠️ Чагт нь ХОЁУЛАНГ нь хумина: газрын зургийн барилга БА энэ картын
-     хөршийн жагсаалт. Эс бөгөөс зурагт үл харагдах барилга жагсаалтад гарч,
-     дарахад «хаана байна?» гэсэн асуулт төрнө. */
   const check = (
     <label className={s.chk} style={{ marginBottom: 4 }}>
       <input
@@ -759,10 +656,6 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
       {check}
       {/**
         * СОНГОСОН БАРИЛГА — толгойд нь «ЮУ сонгосон» гэдэг л байна.
-        *
-        * ⚠️ Урьд нь энд «210 м» гэсэн том тоо байсан бөгөөд утга нь гурав дахь
-        * мөрөнд («хамгийн ойрын барилга хүртэл») нуугдаж, юуны тоо болох нь
-        * ойлгомжгүй байв. Зайг доорх нүд рүү шошготой нь хамт зөөв.
         */}
       <div style={{
         display: 'flex', alignItems: 'flex-start', gap: 8,
@@ -778,7 +671,6 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
             {me.trips > 0 ? tr(' · {0} зорчилт/ц', nf(me.trips)) : ''}
           </div>
         </div>
-        {/* ⚠️ 2026-10-23 (X7): сонголтыг АРИЛГАХ — «Цуцлах» нь «үйлдлийг болих» гэж уншигддаг байв */}
         <button type="button" className={s.mini} onClick={() => onSel(null)}>
           {tr('Арилгах')}
         </button>
@@ -810,8 +702,6 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
       </div>
 
       <div className={s.finSummary} style={{ marginTop: 9 }}>
-        {/* ⚠️ Зай нь ЭНД, шошготойгоо хамт — толгойн «том тоо» байхдаа юуны
-            тоо болох нь ойлгомжгүй байв. */}
         <div>
           <span>{tr('Хамгийн ойр барилга')}</span>
           <b>{near.length ? tr('{0} м', Math.round(near[0].d)) : '—'}</b>

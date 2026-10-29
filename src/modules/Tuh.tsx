@@ -2,18 +2,6 @@
 
 /**
  * «ТУХ» — ТӨСЛИЙН УДИРДЛАГЫН ХЭСГИЙН БАГЦЫН ХЯНАЛТЫН САМБАР (2026-09-30).
- *
- * ⚠️ ЯАГААД: хэрэглэгч `docs/jishee/Selbe City Packages.html` жишээг өгч
- *    «бүтцийг алдагдуулахгүй, загварыг бүрэн системийг дууриалга, газрын зураг
- *    системийнхтэй яг адилхан, тоо бүгд системээс» гэсэн. Тиймээс:
- *      · БҮТЭЦ (хэсэг, багана, таб, дараалал) — жишээнийх;
- *      · ЗАГВАР — системийн токен/бүрэлдэхүүн (`tuh.module.css`);
- *      · ЗУРАГ — `TuhMap` (PkgProg-ийн ижил жор), БАРУУН талд байнга;
- *      · ТОО — `tuh/model.ts` → системийн ачаалагчууд. Эх сурвалжгүй нь «—».
- *
- * ⚠️ Сонгосон багц `?tuh=` параметрт — PkgProg/PkgFin-ийн `?pkg=`-тэй ХОЛИХГҮЙ
- *    (ТУХ-ын түлхүүр бүлгийн угтвартай: «energy:БАГЦ61»).
- * ⚠️ Газрын зураг НЭГ Л УДАА mount — тойм/дэлгэрэнгүй зөвхөн зүүн баганад солигдоно.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -27,8 +15,6 @@ import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
 import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadBlockHistory } from '@/lib/blockProgress';
 import { loadWorkforceKpi, type WorkforceDetail } from '@/lib/ceo/workforce';
-/* ⚠️ 2026-10-20: «Чанарын баримт» (`Selbe_Chanar_Barimt`) системээс ХАСАГДСАН (хэрэглэгчийн шийдвэр) — MA/MIR баримтын тоо `docs: null` («—»). */
-/* ⚠️ 2026-10-22: багцын хамаарал нь АЖЛЫН холбоосоос (`bagts_hamaaral` талбар) — хуучин багц ↔ багц бүртгэл биш */
 import { loadPkgDeps } from '@/lib/workDepsRemote';
 import { buildPacks, type Pack } from '@/modules/Bagts';
 import { useBuildings } from '@/modules/BuildingPanel';
@@ -38,8 +24,6 @@ import { loadCommissionDates } from './tuh/tuhSchedule';
 import { buildModel, type TuhSrc } from './tuh/model';
 import type { LiveMap } from '@/lib/tuhData';
 
-/* ⚠️ 2026-10-27: гэрээний мөрийн АМЬД явц — «Төсөл төлөвлөгөө биелэлт»-ийн тооцоо (`projectPlanInputs.loadLiveProgress`);
-   ДИНАМИК импорт (Finance.tsx-ийн `loadProjectPlanLazy`-тай ижил шалтгаан — газар/хуваарийн код энд татагдахгүй) */
 const loadLiveProgressLazy = (): Promise<LiveMap> => import('@/lib/projectPlanInputs').then((m) => m.loadLiveProgress());
 import { Overview } from './tuh/Overview';
 import { PkgDetail } from './tuh/PkgDetail';
@@ -51,7 +35,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   setDim: (d: Dim) => void;
   /**
    * «Багцын хамаарал» харагдац руу шилжих (`Portal.setView`) — эрхгүй/өгөөгүй бол холбоос гарахгүй.
-   * ⚠️ 2026-10-06: URL-аар тойрч болохгүй (`ViewCtx.setView`-ийн ⚠️) тул дуудагчаас ирнэ.
    */
   onOpenDeps?: () => void;
 }) {
@@ -66,22 +49,10 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   const comQ = useAsync(loadCommissionDates, []);
   const wfQ = useAsync(loadWorkforceKpi, []);
   const budgetQ = useAsync(loadBudget, []);
-  /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь ТУХ огт уншдаггүй тул
-     «Улсын комисст бэлэн байдал»-ын салбар багцын нүд үргэлж «—», «бүртгэгдээгүй» гэсэн
-     ХУДАЛ бичигтэй байв. */
   const depQ = useAsync(loadPkgDeps, []);
   const liveQ = useAsync(loadLiveProgressLazy, []);
 
   const [sel, setSel] = useState<string | null>(() => readParam('tuh'));
-  /*
-   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): багц нээх/хаах нь хөтчийн ТҮҮХЭНД шинэ бичлэг
-   *    (`push`) — Back тойм руу буцааж, Forward багцыг дахин нээнэ. Урьд нь `replace` тул
-   *    Back дарахад ТУХ-аас бүхэлдээ гардаг байв.
-   *    · popstate → URL-аас `sel` сэргээнэ; тэр үед URL аль хэдийн зөв тул доорх
-   *      `writeParams` өөрөө no-op (`urlState.writeParams`-ийн ⚠️) — гогцоо үүсэхгүй.
-   *    · Анхны mount-д URL = төлөв → мөн no-op (шинэ бичлэг үүсэхгүй).
-   *    · `Portal`-ийн popstate (харагдац ижил) нь харагдацыг хөндөхгүй — ТУХ mount хэвээр.
-   */
   useEffect(() => { writeParams({ tuh: sel }, { push: true }); }, [sel]);
   useEffect(() => {
     const onPop = () => setSel(readParam('tuh'));
@@ -95,7 +66,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
 
   const model = useMemo(() => {
     if (finQ.state !== 'ready') return null;
-    /* ⚠️ Унасан эх сурвалжийг НЭРЛЭЖ хэлнэ — холбогдох тоо «—» болж, «0» гэж уншигдахгүй */
     const failed: string[] = [];
     if (planQ.state === 'error') failed.push(tr('Хуваарийн төлөвлөгөө'));
     if (cfPlanQ.state === 'error') failed.push(tr('Гэрээний сарын төлөвлөгөө'));
@@ -104,13 +74,10 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (comQ.state === 'ready' && comQ.data.failed.length) failed.push(tr('Улсын комиссын огноо ({0})', comQ.data.failed.join(', ')));
     if (wfQ.state === 'error') failed.push(tr('Хүн хүч (ХАБЭА)'));
     if (bq.state === 'error') failed.push(tr('Барилгын блок'));
-    /* ⚠️ 2026-09-30: хагас уншигдсан хуваарь (`PlanCurve.failed`) — тэр багцын гүйцэтгэгчийн
-       төлөвлөгөө «—» болно; шалтгааныг нэрлэнэ («Гүйцэтгэл»-ийн `TsKpi`-тэй ижил) */
     if (planQ.state === 'ready' && planQ.data.failed.length) failed.push(`${tr('Хуваарийн төлөвлөгөө')} (${planQ.data.failed.join(', ')})`);
     if (budgetQ.state === 'error') failed.push(tr('Гэрээний нийт дүн'));
     if (depQ.state === 'error') failed.push(tr('Багцын хамаарал'));
     if (liveQ.state === 'error') failed.push(tr('Гэрээний амьд гүйцэтгэл'));
-    /* ⚠️ 2026-10-01: ачаалж буй эх сурвалж — тэдгээрийн тоо «—» биш «…» (`model.lz`-ийн ⚠️) */
     const loading = new Set<TuhSrc>();
     if (planQ.state === 'loading') loading.add('plan');
     if (cfPlanQ.state === 'loading') loading.add('cfPlan');
@@ -122,7 +89,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (depQ.state === 'loading') loading.add('deps');
     if (liveQ.state === 'loading') loading.add('live');
     const wf = wfQ.state === 'ready' && 'detail' in wfQ.data ? (wfQ.data as { detail: WorkforceDetail }).detail : null;
-    /* ⚠️ 2026-10-26 (хяналт №2): 'huvaari' эхтэй гэрээний цоорхой — «Гэрээний төлөвлөгөө» дутуу гэдгийг багцаар нэрлэнэ */
     const gaps = cfPlanQ.state === 'ready' ? cfPlanGaps(cfPlanQ.data) : null;
     const cfGaps = gaps ? cfGapsText(gaps, (id) => {
       const r = finQ.data.contracts.find((c) => Number(c[CF_MONTH.id]) === id);
@@ -132,8 +98,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       fin: finQ.data,
       plan: planQ.state === 'ready' ? planQ.data : null,
       cfPlan: cfPlanQ.state === 'ready' ? cfPlanQ.data : null,
-      /* ⚠️ 2026-09-30: барилгын давхарга ирээгүй/унасан бол `null` — блок, айлын тоо «—»
-         (урьд нь `buildPacks(null)` → «0 айл · 0 блок» гэж ХУДАЛ харагддаг байв) */
       packs: bq.state === 'ready' ? packs : null,
       hist: histQ.state === 'ready' ? histQ.data : null,
       commission: comQ.state === 'ready' ? comQ.data.dates : null,
@@ -146,23 +110,18 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       failed,
       cfGaps,
       loading,
-      /* ⚠️ 2026-10-09: «Гүйцэтгэлийн явц» график унасан муруйг «дата алга» гэж бичихгүй (`TuhModel.planFailed`) */
       planError: planQ.state === 'error',
     });
   }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ, liveQ]);
 
   /*
-   * «ДАХИН ОРОЛДОХ» — УНАСАН эх сурвалжуудыг л дахин татна (⚠️ 2026-10-01, «хэрэглэгч:
+   * «ДАХИН ОРОЛДОХ» — УНАСАН эх сурвалжуудыг л дахин татна (2026-10-01, «хэрэглэгч:
    * бүгдийг зас»). Урьд нь зөвхөн шар мөр гардаг тул бүтэн хуудас refresh хийхээс өөр
    * аргагүй байв (газрын зураг ч дахин ачаалагдана).
-   * ⚠️ Хагас уншигдсан (`data.failed`) хуваарь/комиссыг ч дахин татна — хэсэгчилсэн үр дүн
-   *    кэшлэгдэхгүй (`cached(…, keep)`; комисст 2026-10-07-нд нэмэв — урьд нь тайлбар
-   *    ийм байсан ч `loadCommissionDates` keep-гүй тул дутуу хуулбар 5 мин үлддэг байв).
    */
   const retryFailed = useCallback(() => {
     if (finQ.state === 'error') finQ.retry?.();
     if (planQ.state === 'error' || (planQ.state === 'ready' && planQ.data.failed.length)) planQ.retry?.();
-    /* ⚠️ 2026-10-26: хуудас/мөнгөний мөр уншигдаагүй (`partial`) цуваа кэшлэгдэхгүй тул дахин татахад засагдаж магадгүй */
     if (cfPlanQ.state === 'error' || (cfPlanQ.state === 'ready' && cfPlanGaps(cfPlanQ.data)?.partial)) cfPlanQ.retry?.();
     if (histQ.state === 'error') histQ.retry?.();
     if (comQ.state === 'error' || (comQ.state === 'ready' && comQ.data.failed.length)) comQ.retry?.();
@@ -176,8 +135,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   const open = useCallback((k: string) => setSel(k), []);
   const back = useCallback(() => setSel(null), []);
 
-  /* ⚠️ 2026-09-30: ЭНГИЙН утгаар мемолно — `row` нь загвар дахин бүрдэх бүрд (эх сурвалж
-     бүр ачаалагдахад) шинэ объект тул газрын зураг сонгосон багц руу дахин нисдэг байв. */
   const selPkg = row ? row.p.pkgKey : null;
   const selHousing = row?.p.group === 'housing';
   const mapSel = useMemo<MapSel>(
@@ -202,7 +159,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
           <p className={s.failNote} role="alert">
             {tr('Санхүүгийн өгөгдөл татагдсангүй')}: {friendlyError(finQ.error)}
             {' '}
-            {/* ⚠️ 2026-10-01: дахин оролдох (`retryFailed`-ийн ⚠️) */}
             <button type="button" className={s.retryBtn} onClick={retryFailed}>{tr('Дахин оролдох')}</button>
           </p>
         ) : !model ? null : row ? (
@@ -212,8 +168,6 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
         )}
       </div>
       <div className={s.side}>
-        {/* ⚠️ 2026-10-06 (аудит): `packsState` — блок ирээгүй/унасан үед «давхаргагүй» гэж худал
-            бичихгүй, бүх блок руу нисэхгүй (`TuhMap`-ийн ⚠️) */}
         <TuhMap dim={dim} setDim={setDim} sel={mapSel} packs={packs} packsState={bq.state} onPickPkg={onPickPkg} />
       </div>
     </div>

@@ -1,8 +1,3 @@
-/*
- * ⚠️ 2026-09-30: `FillNew.tsx` (6.9k мөр) задарсан — хуудсан дээр хөвөх огнооны календар (эхлэх/дуусах/шинэчлэгдсэн огноо).
- *    Код ЯГ хэвээр зөөгдсөн, зан төлөв өөрчлөгдөөгүй; `draft.check.mjs` ·
- *    `shareDraft.check.mjs` эх кодын шалгуураа FillNew.tsx + fill/* нийлбэрээс уншина.
- */
 import type { Dispatch, SetStateAction } from "react";
 import type { SheetRow } from "../bagtsSheet";
 import DatePicker from "../DatePicker";
@@ -24,20 +19,14 @@ export function FillDatePicker({ pick, setPick, busy, say, setAsOf, commitDate, 
           value={pick.value}
           anchor={pick.rect}
           onClose={() => setPick(null)}
-          /* ⚠️ 2026-10-07: «Шинэчлэгдсэн огноо» хоосон болж болохгүй (доорх ⚠️) — «Цэвэрлэх» гарахгүй */
           noClear={pick.kind === "asOf"}
           onPick={(v) => {
-            /* ⚠️ Илгээлт явж байхад бичихгүй — `RO.busy`-ийн ⚠️ (2026-09-25) */
             if (busy) { say(RO.busy); return; }
             if (pick.kind === "asOf") {
-              // ⚠️ Хоосон болговол calc=[] болж бүх мөр алга болно — тиймээс
-              //    задлагдсан үед л солино.
               const ms = inputToMs(v);
               if (ms != null) setAsOf(ms);
             } else {
               commitDate(pick.row, pick.b, pick.kind, v);
-              /* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ (2026-09-17): «Эхлэх» нүдэнд хоног бичсэн бол
-                 дуусах огноог хамт тавина — `endOf` хоёр тал орсон (`plan.ts`). */
               const n = Math.floor(Number(pick.days));
               const s0 = inputToMs(v);
               if (pick.kind === "s" && n >= 1 && s0 != null) {

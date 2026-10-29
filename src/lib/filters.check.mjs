@@ -5,28 +5,15 @@
  * Хамгаалж буй алдаа: буруу SQL нь ArcGIS дээр чимээгүй унадаг — газрын зураг
  * зүгээр л хариу өгөхгүй, консольд ч юу ч гарахгүй. Тиймээс шүүлт бүрийн WHERE
  * -ийг ЖИНХЭНЭ давхарга дээр гүйлгэж, зөвшөөрөгдсөн эсэхийг баталгаажуулна.
- * (Жишээ нь `TRIM()`-ийг эдгээр FeatureServer таньдаггүй.)
- *
- * ⚠️ 2026-08-24: эх сурвалж `building_GOL_barigdaj_ehelsen` (monmap) УСТСАН
- * (алдаа 499) — блокийн давхарга нэгтгэсэн `data`/112 руу шилжсэн. Шинэ
- * давхаргад `GUITS_HV` ба 16 үе шатын талбар БАЙХГҮЙ: гүйцэтгэл, үе шат,
- * гүйцэтгэгчийн бүлгүүд одоо «Гүйцэтгэл бөглөх» хүснэгтээс КЛИЕНТ дээр
- * бодогдож, давхаргыг `objectid IN (…)` жагсаалтаар шүүнэ
- * (`BuildingPanel.tsx`-ийн `oidWhere`). Тиймээс энд шалгах SQL хэлбэрүүд:
- *   · `BAGTS = '…'`        — багцын шүүлт (`Dashboard.tsx`)
- *   · `objectid IN (…)`    — бүлгийн тодруулга
- *   · `(…) AND (…)`        — 3D-ийн нийлүүлсэн definitionExpression
- *     (`MapCanvas.tsx`: хэсэг бүр хаалтад, ` AND `-ээр залгагдана)
+ * (Жишээ нь `TRIM`-ийг эдгээр FeatureServer таньдаггүй.)
  */
 import assert from 'node:assert/strict';
 
-/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
 if (process.env.SELBE_LIVE_SKIP) {
   console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
   process.exit(0);
 }
 
-/* ⚠️ 2026-10-26: Enterprise-ийн БОДИТ хаяг · жижиг үсэгтэй талбар (хөрвүүлэх хүснэгт `entMap` хасагдсан); токен залгагдана. */
 const { BAGTS_AJLUUD, SELBE_ET } = await import('@/lib/services.ts');
 const { arcgisPost } = await import('@/lib/query.ts');
 const URL_ = `${BAGTS_AJLUUD}/0/query`;
@@ -75,7 +62,6 @@ for (const c of comps) {
   const n = await count(`${F.contractor} = ${sqlStr(c)}`);
   assert.ok(n > 0, `«${c}» компани юу ч тодруулахгүй`);
 }
-// ⚠️ Регресс: `TRIM()`-ийг энэ үйлчилгээ ТАНИХГҮЙ (тиймээс хэрэглэж БОЛОХГҮЙ).
 await assert.rejects(() => count(`TRIM(${F.contractor}) = ''`), /татгалзав/);
 
 // 4. 3D-ийн НИЙЛҮҮЛСЭН хэлбэр: бүсийн шүүлт AND тодруулга нэг
@@ -87,16 +73,7 @@ const only = await count(`${F.bagts} = ${sqlStr(bagts)}`);
 assert.ok(both > 0 && both <= only, `нийлүүлсэн шүүлт ${both}/${only}`);
 
 /* ── 6. «Бүртгэгдээгүй / Тодорхойгүй» бүлгийн шүүлт (`groupWhere` → `blankWhere`) ──
- * ⚠️ Энэ бол бүх каталогийн facet-д хамаатай: `TRIM()`-ийг эдгээр FeatureServer
- * ТАТГАЛЗДАГ тул хоосон мөр дарахад зурагт юу ч болдоггүй байв. Шинэ нөхцөл нь
- * тоологдсон ЯГ ижил тоог буцаах ёстой. */
-/* ⚠️ 2026-08-24: эх сурвалж `Selbe_ET_20260721` (monmap) → нэгтгэсэн `data`
-   (MUST). Хуучин үйлчилгээ АЛГА болсон (алдаа 499 «Item does not exist») тул
-   энэ шалгалт чимээгүй 0 давхарга үзэж унаж байв. Давхаргын харгалзаа:
-   ET/24 → data/108 («Барилга байгууламж»), ET/28 → data/106. Хоосон утга
-   агуулсныг амьд шалгаж сонгосон: [108] zoriulalt 158 мөр, [108] Bar_comp
-   315 мөр, [106] zoriulalt 12 мөр. */
-/* ⚠️ 2026-10-26: data/108 → selbe_ET/99 (барилга), data/106 → selbe_ET/100 (бүс) */
+ */
 const FACETS = [[`${SELBE_ET}/99`, 'zoriulalt'], [`${SELBE_ET}/99`, 'bar_comp'], [`${SELBE_ET}/100`, 'zoriulalt']];
 
 const post = async (url, p) => arcgisPost(`${url}/query`, p).catch((e) => ({ error: { message: e.message } }));
@@ -119,7 +96,6 @@ for (const [u, field] of FACETS) {
   assert.ok(!got.error, `хоосон бүлгийн SQL татгалзав: ${where}`);
   assert.equal(got.count, counted, `${field}: шүүлт ${got.count} ≠ тоологдсон ${counted}`);
 
-  // ⚠️ Регресс: хуучин `TRIM()` хэлбэр нь ЭНЭ үйлчилгээнд УНАНА — буцааж болохгүй.
   const old = await post(u, { where: `${field} IS NULL OR TRIM(${field}) = ''`, returnCountOnly: 'true' });
   assert.ok(old.error, `TRIM() гэнэт ажиллав — blankWhere-ийг эргэж харна уу (${field})`);
   checked += 1;

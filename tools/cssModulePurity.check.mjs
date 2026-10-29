@@ -1,18 +1,6 @@
 /**
  * `*.module.css` ЦЭВЭР (pure) ЭСЭХ — `next build`-ийн css-loader-тэй ИЖИЛ дүрэм.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs tools/cssModulePurity.check.mjs
- *
- * ⚠️ 2026-10-09: ЯАГААД. 2026-10-08-нд `map.module.css`-д `:global(.mapFsHost) {…}` гэсэн
- *    ГАНЦ сонгогч орж, css-loader-ийн pure горимд «Selector ":global(.mapFsHost)" is not pure»
- *    гэж `next build` унав — deploy зогсов. tsc · eslint · npm test · `next dev` бүгд үүнийг
- *    БАРЬДАГГҮЙ (dev нь pure шалгалтгүй), харин `next build`-ийг репод ажиллуулахыг CLAUDE.md
- *    хориглодог (хэрэглэгчийн `.next`-ийг эвдэнэ). Тиймээс Next-ийн ӨӨРИЙН багцалсан
- *    `postcss-modules-local-by-default`-ийг `{ mode: 'pure' }`-ээр, дараа нь
- *    `postcss-modules-scope`-ийг ажиллуулж, build-тэй ижил алдааг ~1 секундэд барина.
- *
- * ⚠️ Дүрэм: модулийн CSS-ийн сонгогч БҮР дор хаяж нэг ЛОКАЛ класс/ID агуулна.
- *    `:root {}`, `body {}`, `:global(.x) {}` ганцаараа — хориотой. Глобал дүрэм `globals.css`
- *    руу (хангалттай тодорхой сонгогчтой, жишээ нь `.mapFsHost.mapFsHost.mapFsHost` 0,3,0).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs tools/cssModulePurity.check.mjs
  *
  * Унасан файл бүрийг `файл:мөр:багана — мессеж` хэлбэрээр жагсаана; файл доторх БҮХ
  * буруу блокийг (зөвхөн эхнийхийг биш) олохын тулд унасан файлыг дээд түвшний зангилаагаар
@@ -26,7 +14,6 @@ import { join, relative, sep } from 'node:path';
 const ROOT = process.cwd();
 const require = createRequire(join(ROOT, 'package.json'));
 const postcss = require('postcss');
-/* ⚠️ Next-ийн css-loader яг эдгээрийг ашигладаг — тусдаа хувилбар суулгахгүй (dependency нэмэхгүй). */
 const localByDefault = require('next/dist/compiled/postcss-modules-local-by-default');
 const scope = require('next/dist/compiled/postcss-modules-scope');
 
@@ -45,8 +32,6 @@ export async function checkCss(css, from = 'inline.module.css') {
   const errs = [];
   for (const node of root.nodes) {
     if (node.type === 'comment') continue;
-    /* ⚠️ Програмаар үүсгэсэн root-д `source.input` байхгүй тул scope plugin унадаг — зангилааны
-       ТЕКСТИЙГ анхны мөр/баганад нь байрлуулж (урд нь хоосон мөр/зай) дахин парсална. */
     const st = node.source?.start ?? { line: 1, column: 1 };
     const one = '\n'.repeat(st.line - 1) + ' '.repeat(st.column - 1) + node.toString();
     try {
@@ -120,10 +105,7 @@ if (failures.length) {
 }
 console.log(`✅ ${files.length} *.module.css бүгд pure горимд цэвэр`);
 
-/* ── 3) БҮХ `src/**\/*.css` (globals.css орно) — СИНТАКС задрах эсэх ──
-   ⚠️ 2026-10-09: globals.css-ийн тайлбар дотор «--c*\/--good» гэж бичигдсэн «*» ба «/» зэрэгцээд
-      тайлбарыг эрт хааж, dev «Unknown word» гэж бүх хуудсыг 500 болгосон. tsc/eslint/тест үүнийг
-      БАРЬДАГГҮЙ байв (pure шалгалт зөвхөн *.module.css). Одоо бүх CSS-ийг postcss-ээр задална. */
+/* ── 3) БҮХ `src/**\/*.css` (globals.css орно) — СИНТАКС задрах эсэх ── */
 {
   const all = [];
   const walkAll = (d) => {

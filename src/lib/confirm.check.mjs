@@ -1,6 +1,6 @@
 /**
- * АППЫН ДОТООД АСУУЛТ — `askConfirm` · `toastUndo` (⚠️ 2026-10-23, UX аудит X1).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/confirm.check.mjs
+ * АППЫН ДОТООД АСУУЛТ — `askConfirm` · `toastUndo` (2026-10-23, UX аудит X1).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/confirm.check.mjs
  *
  * Хамгаалж буй алдаа: `window.confirm`-ийг хөтөч хаасан бол чимээгүй `false` → «Батлах»/«Буцаах» юу ч хийхгүй.
  * Шинэ API нь хосттой үед дарааллаар асууна; хостгүй (нэгж тест · Node) үед `window.confirm` руу буцна — бусад

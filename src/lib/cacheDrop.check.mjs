@@ -1,10 +1,6 @@
 /**
  * КЭШ ХАЯГДАХ ЗАМУУД — 2026-10-21-ний кэшийн аудитын бүтцийн шалгуур (эх кодыг уншина, сүлжээгүй).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/cacheDrop.check.mjs
- *
- * ⚠️ ЯАГААД ТЕКСТЭЭР: эдгээр модулиуд ArcGIS SDK (`@arcgis/core`) ба React импортолдог тул Node-д ажиллуулж
- *    зан төлөвийг нь шалгах боломжгүй — `dataBus.invariant.check.mjs`-ийн адил эх кодын БҮТЦИЙГ тулгана.
- *    Тайлбарыг хасаад уншина: тайлбар дахь «subscribeTotals(» мэт дурдлага хуурамч ногоон өгөхгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/cacheDrop.check.mjs
  *
  * Хамгаалж буй алдаанууд (аудит 2, «cache-invalidation»):
  *   1. «Дэд бүтэц»-ийн засвар (`dropTotalsCache` эрин) `planOverlap.infraCache` · `hesegNeed.needCache`-ийг хаядаггүй
@@ -17,11 +13,8 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-/* ⚠️ 2026-10-22 (аудит): ХАБЭА-ийн хугацааг ТООГООР — импортгүй модулиас (`habeaRegisters.ts` нь tsx/css татдаг тул энгийн
-   шалгуурт импортлогдохгүй). Урьд `HABEA_POLL_MS = HABEA_TTL_MS + 30_000` гэсэн эх кодын мөрийг regex-ээр тулгадаг байв. */
 import { HABEA_TTL_MS, HABEA_POLL_MS } from './habeaTiming.ts';
 
-/* ⚠️ Эх файлууд CRLF — LF болгож нэгтгэнэ, эс бөгөөс мөр дамнасан regex таарахгүй */
 const read = (f) => readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
 const code = (f) => read(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*$/gm, '');
 
@@ -53,7 +46,7 @@ console.log('✅ 2. analysis/data.ts — register(…, [])');
 assert.match(code('src/lib/hyanaltStore.ts'), /register\(\(\) => \{ badgeRows = null; \}, \['HYANALT'\]\)/, 'hyanaltStore: badgeRows HYANALT-д бүртгэгдээгүй');
 console.log('✅ 4. hyanaltStore.badgeRows — HYANALT');
 
-/* ── 5. QAQC түлхүүр ── ⚠️ 2026-10-23: QAQC хасагдсан — DataKey-д үлдэх ёсгүй */
+/* ── 5. QAQC түлхүүр ── 2026-10-23: QAQC хасагдсан — DataKey-д үлдэх ёсгүй */
 {
   assert.doesNotMatch(code('src/lib/dataBus.ts'), /\|\s*'QAQC(_DRAFT)?'/, "dataBus.DataKey-д 'QAQC' үлдсэн");
   console.log('✅ 5. QAQC түлхүүр хасагдсан');

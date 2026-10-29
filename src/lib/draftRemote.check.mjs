@@ -1,14 +1,6 @@
 /**
  * `draftRemote.ts`-ийн ЗАН ҮЙЛИЙН шалгуур — хуурамч ArcGIS хүснэгт дээр ЖИНХЭНЭ экспортыг ажиллуулна (2026-10-26, аудит T2).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/draftRemote.check.mjs
- *
- * ⚠️ ЯАГААД: урьд энэ модульд зөвхөн эх текстийн (readFileSync) шалгуур байв (`sharedDraft` · `shareDraft` · `draft`
- *    check) — кодын мөр байгаа эсэхийг хардаг, ажиллахыг биш. Энд upsert · давхардал цэвэрлэх · optimistic lock
- *    (`expectAt`) · бичсэний дараах баталгаа · 200-аар ирдэг мөрийн алдаа · хуучин түлхүүрийн шилжүүлэлт · эзний шалгалт
- *    (super биш бол хүснэгт ҮҮСГЭХГҮЙ) зэргийг бодит дуудлагаар шалгана. Хүснэгт — `arcgisFake.mjs` (санах ой).
- * ⚠️ 2026-10-26 (main-тай нэгтгэл): хүснэгт нь Enterprise-ийн БОДИТ хаягаар ШУУД (`${GUITS}/191`, `draftRemote.tableUrl`)
- *    — порталын хайлт · эзний шалгалт · `createService` огт явахгүй; талбарын нэр жижиг үсэг (`objectid`). Урьдын
- *    «хүснэгт олдсонгүй» · «эзэн танигдсангүй» алхмууд (AGOL-ын item хайлт) тиймээс «хайлтгүй, үүсгэхгүй» шалгуур болов.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/draftRemote.check.mjs
  */
 import assert from 'node:assert/strict';
 import { fake, addTable, assertNoUnexpected } from './arcgisFake.mjs';

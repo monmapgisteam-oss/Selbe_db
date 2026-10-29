@@ -3,25 +3,18 @@
 /**
  * ДЭД БҮТЭЦ — МЭДЭЭЛЛИЙН ТӨЛӨВИЙН ШҮҮЛТҮҮРҮҮД (2026-10-14, хэрэглэгчийн хүсэлт: «атрибутын
  * мэдээлэл бөглөөгүйг шүүж хардаг · өөрчлөлт орсон/ороогүйг шүүж хардаг, төлөвөөр өнгө нь
- * өөрчлөгддөг» · «дууссан, эхэлсэн гэх төлөвөөр шүүдэг»). ⚠️ Бөглөх/засах хэсэгт
+ * өөрчлөгддөг» · «дууссан, эхэлсэн гэх төлөвөөр шүүдэг»). Бөглөх/засах хэсэгт
  * (`DedButetsEdit`, `DedButetsBatch`) ХҮРЭХГҮЙ — зөвхөн харагдац.
  *
  *   · «Мэдээлэл бүрдүүлэлт» — засагдах талбар (`LayerMeta.fields`, системийн талбаргүй) АЛЬ НЭГ
  *     нь хоосон (null эсвэл '') бол «Дутуу», бүгд бөглөгдсөн бол «Бөглөсөн».
  *   · «Өөрчлөлт орсон эсэх» — ДАТАН ДАХЬ өөрчлөлтийн талбар (нэр/alias «өөрчлөлт»/«хувилбар»…;
  *     сонголт нь «Өөрчлөлт орсон» · «Өөрчлөлт ороогүй» · «Эцсийн хувилбар»).
- *     ⚠️ 2026-10-14 (хэрэглэгч: «датаны сонголтууд нь тийм байгаа»): урьд нь ArcGIS-ийн засварын
- *     тэмдэглэлээр (EditDate > CreationDate) бодож байсныг ХАСАВ — хэрэглэгчийн бөглөдөг утга эх.
  *   · «Гүйцэтгэлийн төлөв» — ТӨЛӨВИЙН талбар (нэр/alias «төлөв»/«tuluv»/«status»).
  *
  *   Хоёр «утгын» шүүлтүүрийн сонголт нь кодлогдсон домэйноос (ДАРААЛЛААР нь), домэйнгүй бол
- *   үйлчилгээний ялгаатай утгаас (`returnDistinctValues`). ⚠️ Талбарын нэрийг ГАРААР бичээгүй —
+ *   үйлчилгээний ялгаатай утгаас (`returnDistinctValues`). Талбарын нэрийг ГАРААР бичээгүй —
  *   74 давхарга өөр өөр схемтэй байж болно. Талбаргүй давхарга тодорхой утга сонгоход зурагдахгүй.
- *
- * ⚠️ ЯАГААД renderer (Arcade), SQL шүүлт БИШ: давхарга бүр өөр (кирилл) талбартай, 2D-ийн
- *    `FeatureLayerView.filter` нь клиент талын SQL-ээр кирилл нэрийг найдвартай задлахгүй.
- *    Arcade-ийн \`$feature["нэр"]\` ямар ч нэрийг уншина; ТААРАХГҮЙ утга (\`x\`) симболгүй тул
- *    зурагдахгүй — шүүлт ба өнгө НЭГ механизмаар (`MapCanvas.layerStyle.classes`).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -53,9 +46,8 @@ function hueOf(kind: ValKind, label: string, i: number): string {
     if (/ороогүй|орсонгүй|байхгүй|unchanged|no\b/i.test(label)) return '#64748b';
     if (/орсон|changed|өөрчлөгдсөн/i.test(label)) return '#f59e0b';
   } else {
-    /* ⚠️ 2026-10-14: «Үргэлжилж байгаа» ба «Эхэлсэн» ИЖИЛ өнгөтэй байсан — салгав */
     if (/дуус|гүйцэт|бэлэн|complete|done|finish/i.test(label)) return '#16a34a';
-    if (/эхлээгүй|хүлээ|төлөвл|not|plan|pending/i.test(label)) return '#475569'; // ⚠️ 2026-10-14 (хэрэглэгч): бараан саарал-цэнхэр — цайвар «Төлөв ороогүй»-ээс ялгарна, улаан шиг тод биш
+    if (/эхлээгүй|хүлээ|төлөвл|not|plan|pending/i.test(label)) return '#475569';
     if (/үргэлж|явагд|хийгд|progress|ongoing/i.test(label)) return '#2563eb';
     if (/эхэл|start/i.test(label)) return '#f59e0b';
     if (/зогс|саат|цуцл|stop|hold|cancel/i.test(label)) return '#7f1d1d';
@@ -80,9 +72,6 @@ export function valFieldOf(meta: LayerMeta, kind: ValKind): FieldDef | null {
     hit = hit.filter((f) => f.name !== st?.name);
   } else {
     hit = hit.filter((f) => !FIELD_RE.chg.test(f.name) && !FIELD_RE.chg.test(f.alias));
-    /* ⚠️ 2026-10-26 (аудит): дулаан/халуун усны 16 давхаргад `tolov` (alias «Төлөв», домэйн Өгөх/Буцах — шугамын ЧИГЛЭЛ) ба
-       `work_status` хоёулаа кодтой; эхнийх нь сонгогдож бүх объект «Төлөв ороогүй», «Дууссан» шүүлтэд бүгд нуугддаг байв.
-       Бүх код нь `NOT_STATUS` бол гүйцэтгэлийн төлөв БИШ. */
     hit = hit.filter((f) => !(f.codes?.length && f.codes.every((c) => NOT_STATUS.test((c.label || c.code).trim()))));
   }
   return hit.find((f) => f.codes?.length) ?? hit[0] ?? null;
@@ -107,8 +96,6 @@ function classesOf(
     'var f = $feature;',
     /* Засагдах талбаргүй давхарга — «дутуу» гэж үзэх үндэсгүй */
     `var miss = ${empty.length ? empty.join(' || ') : 'false'};`,
-    /* ⚠️ 2026-10-14 (хэрэглэгч: «зарим нь 2 харагдаад байна»): ШОШГООР нь (код биш) —
-       давхарга бүрийн домэйн ижил «Дууссан»-д өөр код өгдөг тул кодоор бүлэглэвэл давхарддаг байв. */
     valExpr('st', valFieldOf(meta, 'stat')),
     valExpr('cg', valFieldOf(meta, 'chg')),
   ];
@@ -133,8 +120,6 @@ function classesOf(
 
 /**
  * Ялгаатай утгууд — домэйнгүй талбарт үйлчилгээнээс.
- * ⚠️ МОДУЛИЙН кэш БАЙХГҮЙ (`dataBus.invariant`): засварын дараа шинэ утга гарч болох тул
- *    бүрэлдэхүүний state-д (`vals`) — хуудас дахин нээгдэхэд шинээр уншина.
  */
 function distinctOf(meta: LayerMeta, field: string): Promise<string[]> {
   return arcgisPost<{ features?: { attributes?: Record<string, unknown> }[] }>(`${meta.url}/query`, {
@@ -147,11 +132,6 @@ function distinctOf(meta: LayerMeta, field: string): Promise<string[]> {
 
 export type StatOption = { code: string; label: string; hue: string };
 
-/**
- * ⚠️ 2026-10-21: АТРИБУТ ЗАСАГДСАН ДОХИО — давхаргын ялгаатай утгыг (`vals`) дахин уншуулна. Засвар нь
- *    dataBus-ийн түлхүүргүй (давхаргыг `refreshLayer`-ээр л шинэчилдэг) тул урьд нь шинэ төлөвийн утга
- *    сешн дуустал шүүлтүүр/өнгөнд гардаггүй байв. Засагч (`DedButetsEdit` хадгалалт) дуудна.
- */
 const valSubs = new Set<(layerId: string) => void>();
 export function statusValsChanged(layerId: string): void {
   for (const fn of valSubs) fn(layerId);
@@ -166,17 +146,7 @@ const RETRY_MAX = 3;
  */
 export function useStatusClasses(
   ids: readonly string[], fill: StatusPick, edit: StatPick, stat: StatPick, colorBy: ColorBy,
-  /**
-   * ⚠️ 2026-10-14 (хэрэглэгч: «жагсаалтад датан дээрх төлөвүүд гарахгүй байна»): шүүлтүүр
-   * СОНГОГДООГҮЙ үед ч метадата + утгыг урьдчилан татна — эс бөгөөс жагсаалт хоосон гарч байв.
-   * `false` = шүүлтүүр харагдахгүй хэрэглэгч.
-   */
   preload = true,
-  /**
-   * ⚠️ 2026-10-14 (хэрэглэгч: «газрын зураг 2 төрлөөр харагддаг — инженерийн ба гүйцэтгэлээр»):
-   * `true` = «Гүйцэтгэлээр» харагдац — шүүлтгүй ч БҮХ засагдах давхарга гүйцэтгэлийн төлөвийн
-   * өнгөөр будагдана (өнгө үргэлж `stat`); шүүлтүүрүүд нь дээрээс нь шүүнэ.
-   */
   perf = false,
 ) {
   const on = fill !== 'off' || edit !== 'off' || stat !== 'off' || perf;
@@ -184,13 +154,6 @@ export function useStatusClasses(
   const [metas, setMetas] = useState<Record<string, LayerMeta | null>>({});
   /** Домэйнгүй талбарын ялгаатай утгууд — `kind|id`-аар */
   const [vals, setVals] = useState<Record<string, string[]>>({});
-  /**
-   * ⚠️ 2026-10-19: ХҮСЭЛТ ТҮЛХҮҮР БҮРД НЭГ УДАА, цуцлалт зөвхөн UNMOUNT-д (`mounted`). Урьд нь эффект бүр
-   *    өөрийн `alive`-тай бөгөөд `metas`/`vals` deps-д байсан тул ЭХНИЙ хариу ирж төлөв өөрчлөгдөхөд
-   *    өмнөх ажиллалтын `alive` унтарч, явж буй БУСАД хүсэлтийн хариу ХАЯГДДАГ байв; утгын хүсэлтийн
-   *    `asked` нь `finally`-д арилдаг ч эффектийг дахин сэдээх зүйлгүй тул тэр давхаргын утга ХЭЗЭЭ Ч
-   *    дахин хүсэгдэхгүй — жагсаалтад төлөвүүд дутуу гарна. Одоо хариу бүр төлөвт НЭГТГЭГДЭНЭ.
-   */
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -200,12 +163,6 @@ export function useStatusClasses(
   const askedMeta = useRef(new Set<string>());
   /** Хүсэлт илгээсэн ялгаатай утга (`kind|id`) — давхар илгээхгүй */
   const asked = useRef(new Set<string>());
-  /**
-   * ⚠️ 2026-10-21: ДАХИН ОРОЛДЛОГО ба ЗАСВАРЫН ДАРААХ ШИНЭЧЛЭЛ. Урьд нь метадата/утга түлхүүр бүрд НЭГ л
-   *    удаа хүсэгдэж, нэг түр алдаа давхаргыг сешн турш будаггүй үлдээдэг, засвараар нэмэгдсэн шинэ
-   *    төлөвийн утга жагсаалтад гардаггүй байв. Алдаанд `asked*`-аас хасаж `RETRY_MS`-ийн дараа (дээд
-   *    `RETRY_MAX`) эффектийг `rev`-ээр сэдээнэ; `statusValsChanged` ирэхэд тэр давхаргын утгыг шинээр.
-   */
   const [rev, setRev] = useState(0);
   const fails = useRef(new Map<string, number>());
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
@@ -238,7 +195,6 @@ export function useStatusClasses(
     for (const id of key ? key.split(',') : []) {
       if (askedMeta.current.has(id)) continue;
       askedMeta.current.add(id);
-      /* ⚠️ Уншиж чадаагүй давхарга `null` — ангилагдахгүй, анхны загвартаа үлдэнэ (дахин оролдоно — дээрх ⚠️) */
       loadLayerMeta(id)
         .then((m) => { if (mounted.current) { fails.current.delete(`m|${id}`); setMetas((p) => ({ ...p, [id]: m })); } })
         .catch(() => {
@@ -262,7 +218,6 @@ export function useStatusClasses(
           .then((v) => { if (mounted.current) { fails.current.delete(k); setVals((p) => ({ ...p, [k]: v })); } })
           .catch(() => {
             if (!mounted.current) return;
-            /* ⚠️ 2026-10-21: өмнө ирсэн утга байвал ХАДГАЛНА (засварын дараах шинэчлэл унасан) — хоосон болгохгүй */
             setVals((p) => (k in p ? p : { ...p, [k]: [] }));
             retryLater(k, () => asked.current.delete(k));
           });
@@ -272,14 +227,11 @@ export function useStatusClasses(
 
   /**
    * Сонголтууд — ШОШГООР нэгтгэнэ (`code` = хэвшүүлсэн шошго).
-   * ⚠️ 2026-10-14 (хэрэглэгч: «нэршлүүдийг дата доторх сонголтуудтай адилхан болго»): домэйны
-   * ДАРААЛЛААР (цагаан толгойгоор БИШ), домэйнтэй давхаргууд ЭХЭНД; домэйнгүйн утгууд араас нь.
    */
   const optionsOf = (kind: ValKind): StatOption[] => {
     const seen = new Map<string, string>();
     const add = (raw: string) => {
       const k = raw.trim();
-      /* ⚠️ 2026-10-14 (хэрэглэгч): «Өгөх», «Буцах» — шугамын ЧИГЛЭЛ, гүйцэтгэлийн төлөв биш */
       if (k && !(kind === 'stat' && NOT_STATUS.test(k)) && !seen.has(k)) seen.set(k, k);
     };
     const fields = ids.flatMap((id) => {
@@ -303,7 +255,6 @@ export function useStatusClasses(
       chg: Object.fromEntries(chgOptions.map((o) => [o.code, o.hue])),
     };
     const style: Record<string, { classes: StatusClasses }> = {};
-    /* ⚠️ 2026-10-14 (хэрэглэгч: «ямар 8 давхарга вэ»): тоо биш НЭРС — самбарт жагсаана */
     const noStat: string[] = [];
     const noChg: string[] = [];
     let pending = 0;
@@ -321,9 +272,6 @@ export function useStatusClasses(
   return { ...out, statOptions, chgOptions };
 }
 
-/* ⚠️ 2026-10-14 (хэрэглэгч: «дизайныг сайжруул»): порталын шүүлтийн КАПСУЛ-тай ижил хэв
-   (`multiSelect.module.css .pill`) — шошго дээд жижиг үсгээр, идэвхтэй үед өнгөт хүрээ, `▾` заагч.
-   Натив `select` хэвээр (гар, дэлгэц уншигч, гар утсанд бэлэн). */
 function Pick<T extends string>({ label, value, onChange, opts }: {
   label: string; value: T; onChange: (v: T) => void; opts: [T, string][];
 }) {
@@ -348,8 +296,6 @@ export function StatusBar({
   /** «Гүйцэтгэлээр» харагдац (`useStatusClasses.perf`) ба түүнийг солих */
   perf?: boolean;
   onPerf?: (v: boolean) => void;
-  /* ⚠️ 2026-10-14 (хэрэглэгч): шүүлтүүрийн нэрс — «Мэдээлэл бүрдүүлэлт» · «Өөрчлөлт орсон эсэх» ·
-     «Гүйцэтгэлийн төлөв» (талбарын alias-аас БИШ). */
   /** Хажуугийн самбарт (газрын зургийн дээр давхарлахгүй) — 2026-10-14 */
   inline?: boolean;
   fill: StatusPick; edit: StatPick; stat: StatPick; colorBy: ColorBy;
@@ -369,12 +315,8 @@ export function StatusBar({
   const fillOpts: [StatusPick, string][] = [['off', tr('Шүүхгүй')], ['yes', tr('Бөглөсөн')], ['no', tr('Дутуу')]];
   const editOpts: [string, string][] = [['off', tr('Шүүхгүй')], ...vOpts(chgOptions)];
   const statOpts: [string, string][] = [['off', tr('Шүүхгүй')], ...vOpts(statOptions)];
-  /* ⚠️ 2026-10-14 (хэрэглэгч: «байгаад байх шаардлагагүй, хас»): өнгөний тайлбар (чипүүд) ХАСАГДАВ —
-     зөвхөн ачаалал ба «N давхаргад … талбар алга» тэмдэглэл үлдэнэ. */
   const legendEl = on && (pending > 0 || (missing && missing.list.length > 0))
     && <Legend pending={pending} missing={missing} />;
-  /* ⚠️ 2026-10-14 (хэрэглэгч: «дизайн сайжруул»): хажуугийн самбарт «Дэд бүтэц»-тэй ИЖИЛ карт
-     (`Section`) — гарчиг, идэвхтэй шүүлтийн тоо, «Арилгах» нь гарчгийн мөрөнд. */
   if (inline) {
     return (
       <Section
@@ -383,11 +325,7 @@ export function StatusBar({
           ? <>{tr('{0} шүүлт', nOn)} · <button type="button" className={d.stLink} onClick={reset}>{tr('Арилгах')}</button></>
           : undefined}
       >
-        {/* ⚠️ 2026-10-14 (хэрэглэгч): ГАЗРЫН ЗУРГИЙН ХАРАГДАЦ — «Инженерийн» (давхаргын өөрийн
-            өнгө) · «Гүйцэтгэлээр» (гүйцэтгэлийн төлөвийн өнгө). Тайлбар нь ЗӨВХӨН «Гүйцэтгэлээр»-т —
-            шүүлтүүрийн доорх тайлбарыг хэрэглэгч хасуулсан тул тэнд биш. */}
         {onPerf && (
-          /* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` капсул (бүтэн өргөн — `.stView`) */
           <div className={d.stView}>
             <Segmented value={perf ? 'perf' : 'eng'} onChange={(v) => onPerf(v === 'perf')}
               label={tr('Газрын зургийн харагдац')}
@@ -404,9 +342,7 @@ export function StatusBar({
         )}
         <div className={d.stForm} role="group" aria-label={tr('Мэдээллийн төлөв')}>
           <Field label={tr('Мэдээлэл бүрдүүлэлт')} value={fill} onChange={onFill} opts={fillOpts} />
-          {/* ⚠️ 2026-10-14 (хэрэглэгч): ДАТАН дахь сонголт — «Өөрчлөлт орсон» · «Өөрчлөлт ороогүй» · «Эцсийн хувилбар» */}
           <Field label={tr('Өөрчлөлт орсон эсэх')} value={edit} onChange={onEdit} opts={editOpts} />
-          {/* ⚠️ 2026-10-14 (хэрэглэгч): дата дахь төлөвүүд («Өгөх», «Буцах»-гүй); «Бүгд (өнгөөр)» хасагдсан */}
           <Field label={tr('Гүйцэтгэлийн төлөв')} value={stat} onChange={onStat} opts={statOpts} />
         </div>
         {legendEl}
@@ -451,15 +387,12 @@ function Field<T extends string>({ label, value, onChange, opts }: {
     <label className={`${d.stField} ${value !== 'off' ? d.stFieldOn : ''}`}>
       <span>{label}</span>
       <span className={d.stSel}>
-        {/* ⚠️ 2026-10-14 (хэрэглэгч): сонгоогүй үед «Шүүхгүй» биш саарал «Сонгоно…» (placeholder);
-            жагсаалтад ч тэр мөр нь сонголтыг цуцлах зам хэвээр */}
         <select value={value} onChange={(e) => onChange(e.target.value as T)}
           className={value === 'off' ? d.stPlaceholder : undefined}>
           {opts.map(([k, l]) => <option key={k} value={k}>{k === 'off' ? tr('Сонгоно…') : l}</option>)}
         </select>
         <i aria-hidden>▾</i>
       </span>
-      {/* ⚠️ 2026-10-14 (хэрэглэгч): шүүлтүүр тус бүрд жижиг «шинэчлэх» — тухайн шүүлтийг цуцална */}
       <button type="button" className={d.stClear} disabled={value === 'off'}
         onClick={(e) => { e.preventDefault(); onChange('off' as T); }}
         title={tr('Шүүлтийг цуцлах')} aria-label={`${label}: ${tr('Шүүлтийг цуцлах')}`}>

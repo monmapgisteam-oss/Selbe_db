@@ -2,27 +2,6 @@
 
 /**
  * «ГҮЙЦЭТГЭЛ БӨГЛӨХ»-ИЙН НООРОГ — ArcGIS ДЭЭРХ ХУВААЛЦСАН ХАДГАЛАЛТ.
- *
- * ⚠️ ЯАГААД (2026-09-03, хэрэглэгч: «өөр browser, өөр газраас орход ч draft
- * хадгалагдаж байх ёстой»): ноорог нь зөвхөн `localStorage`-д байсан тул
- * оффисын компьютер дээр бөглөсөн ажил гэрийн компьютерт ОГТ харагдахгүй,
- * хөтчийн өгөгдөл цэвэрлэхэд бүрмөсөн алга болдог байв.
- *
- * ⚠️ ЗӨВХӨН ГҮЙЦЭТГЭЛД. Хэрэглэгчийн шийдвэрээр тусдаа хадгалалт: эрхийн
- * `Selbe_Permissions` хүснэгтэд оруулаагүй. Ноорог нь 10–15 секунд тутам
- * дахин бичигддэг ӨНДӨР ЭРГЭЛТТЭЙ өгөгдөл, харин эрхийн хүснэгт нэвтрэлт
- * бүрд уншигддаг — хоёрыг нэг хүснэгтэд хийвэл нэг нь нөгөөгөө удаашруулна.
- *
- * ⚠️ `localStorage` нь ҮНДСЭН зам ХЭВЭЭР. Энэ модуль зөвхөн ХУУЛБАР хийнэ:
- * сүлжээ унасан, эрх дутсан, хүснэгт үүсээгүй — аль ч тохиолдолд бөглөлт
- * тасрахгүй, ажил алдагдахгүй. Алсын хуулбар нь «өөр төхөөрөмж рүү шилжих»
- * гэсэн ГАНЦ асуудлыг шийднэ.
- *
- * ⚠️ ХАРАГДАХ БАЙДЛЫН ХЯЗГААР (баримтжуулсан, `permsRemote`-тэй ижил): хүснэгт
- * нь байгууллагад хуваалцагдсан тул REST-ээр хандах эрхтэй хэн боловч бусдын
- * ноорогийг уншиж чадна. Ноорог нь нийтлэгдээгүй ажлын тоо — нууц агуулга
- * биш; хатуу тусгаарлалт нь мөрийн эзэмшлийн хяналт (ownership-based access)
- * шаардах бөгөөд тэр нь админуудын засварлах чадварыг таслана.
  */
 
 import { GUITS } from '@/lib/services/env';
@@ -40,20 +19,11 @@ const TABLE_NAME = 'drafts';
  * ХАДГАЛАХ ДЭЭД ХЭМЖЭЭ (тэмдэгт). Талбарын урт 100,000 тул түүнээс доогуур
  * барина — үлдсэн зай нь JSON-ы escape-д (кирилл тэмдэгт `\uXXXX` болж
  * 6 дахин сунаж болно) нөөц.
- *
- * ⚠️ Хэтэрсэн ноорог алсад ЯВАХГҮЙ, локалд ҮЛДЭНЭ. Чимээгүй таслах нь
- * хамгийн муу зан: хэрэглэгч «хадгалагдсан» гэж бодоод өөр машин дээр
- * хагас ноорог хүлээж авна.
  */
 export const REMOTE_MAX = 80_000;
 
 /**
- * АЛСЫН НООРОГ БИЧИХ ТҮГЖИГДСЭН ҮҮ (⚠️ 2026-10-19, «Систем түр хаах»).
- * ⚠️ `who.currentUser()` хоосон = систем ЭНЭ хэрэглэгчид хаалттай (`AuthGate.closedFor`) эсвэл эрх
- *    хасагдсан/шалгагдаж байна — тэр үед Portal `frozen` хэлбэрээр АМЬД тул ард нь явдаг мөчлөг/flush
- *    (`useSharedDraft` · `useDraftSync`) хаалтын үеэр ArcGIS руу бичсээр байв. Одоо алсын бичилт ТАТГАЛЗАНА,
- *    локал хуулбар (дуудагчид — `hdWriteLocal` г.м.) хэвээр; дуудагчийн backoff (≤60 с) нь нээгдмэгц үргэлжилнэ.
- * ⚠️ Нэвтрэлт унтраалттай (`AUTH.appId` хоосон, дев) ба Node (тест) орчинд түгжихгүй — `who.requireCap`-ийн дүрэм.
+ * АЛСЫН НООРОГ БИЧИХ ТҮГЖИГДСЭН ҮҮ (2026-10-19, «Систем түр хаах»).
  */
 export const draftWriteLocked = (): boolean =>
   typeof window !== 'undefined' && !!AUTH.appId && !currentUser();
@@ -65,11 +35,6 @@ let ownerMismatch = false;
 /** IdentityManager-аас идэвхтэй token + нэвтэрсэн хэрэглэгч */
 export async function getAuth(): Promise<{ token: string; user: string } | null> {
   try {
-    /* ⚠️ 2026-10-09 (аудит №2): токеноо АВАХААС ӨМНӨ шинэчилнэ (`permsRemote.getToken`-ий
-       2026-10-05 ⚠️-тэй ижил). `tableUrl` → `findTableUrl`/`createTable` нь энэ токеныг
-       `params`-д ИЛ өгдөг тул `query.arcgisPost`-ын «498 → шинэчлээд дахин» зам тэдэнд
-       АЖИЛЛАХГҮЙ — компьютер унтсаны дараа эхний хайлт 498 авч, ноорог зөвхөн локалд үлддэг
-       байв. Хугацаа ихтэй үед шууд буцна (хямд); Node (тест) орчинд шууд буцна. */
     await ensureFreshToken();
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     const cred = esriId.findCredential(`${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`);
@@ -83,12 +48,7 @@ export async function getAuth(): Promise<{ token: string; user: string } | null>
 
 /**
  * ArcGIS REST дуудлага.
- * ⚠️ ArcGIS алдаагаа HTTP 200 + `{error:{...}}` биеэр буцаадаг — `res.ok`
- *    хангалтгүй. Шалгахгүй бол хагас дутуу хүснэгт үүсгээд URL-ыг нь
- *    кэшилнэ (`permsRemote`-ийн баримтжуулсан сургамж).
  */
-/* ⚠️ 2026-09-30: `query.arcgisPost` (timeout · слот · 429 backoff · `res.ok`). `token: 'org'` —
-   дуудагч `getAuth()`-ын токеноо өөрөө `params`-д өгдөг тул түүнийг хэвээр эрхэмлэнэ. */
 const req = (url: string, params: Record<string, string>) => arcgisPost(url, params, { token: 'org' });
 
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
@@ -100,16 +60,11 @@ const TABLE_OWNERS = new Set(
 
 /**
  * Хүснэгтийн URL — байгаа item-ээс.
- * ⚠️ ЭЗНИЙГ ШАЛГАНА: org доторх хэн боловч ижил нэртэй item үүсгэж чадна.
- *    Эзэн нь танигдахгүй бол ноорог тэр рүү бичигдэх ёсгүй.
  */
 async function findTableUrl(token: string): Promise<string | null> {
   const search = await req(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
-    /* ⚠️ 100, 10 БИШ (2026-09-25): ижил нэртэй 10+ item үүсгэхэд жинхэнэ хүснэгт
-       цонхноос түлхэгдэж `ownerMismatch` асдаг байв (`permsRemote`/`chanarStore`-ийн
-       2026-09-08/09-11-ний засвартай ижил). */
     num: '100',
   });
   const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
@@ -155,19 +110,11 @@ async function createTable(token: string, user: string): Promise<string | null> 
       objectIdField: 'objectid',
       fields: [
         { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
-        /* Мөрийн ганц түлхүүр — БАГЦЫН түлхүүр (2026-09-08).
-           ⚠️ Урьд нь «хэрэглэгч|багц» байсан: хүн бүр өөрийн мөртэй тул нэг
-              багцыг хэд хэдэн ажилтан бөглөхөд бие биенийхээ ажлыг ОГТ
-              хардаггүй байв. Одоо НЭГ БАГЦ = НЭГ МӨР — оролцогчид (хэд ч
-              байж болно) нэг нооргийг хуваалцаж, нүд тус бүрээр нийлүүлнэ.
-              Хуучин мөрүүд `readLegacyDrafts`-аар олдож, нэг удаа шилжинэ. */
+        /* Мөрийн ганц түлхүүр — БАГЦЫН түлхүүр (2026-09-08). */
         { name: 'dkey', type: 'esriFieldTypeString', length: 512, nullable: false, editable: true },
         /* Задалсан хэсгүүд — зөвхөн админ хүснэгтийг нүдээр шалгахад */
         { name: 'usr', type: 'esriFieldTypeString', length: 256, nullable: true, editable: true },
         { name: 'pkg', type: 'esriFieldTypeString', length: 256, nullable: true, editable: true },
-        /* ⚠️ Огноо БИШ `Double`: epoch мс. Date талбар нь цагийн бүсээр
-           хөрвүүлэгддэг тул «аль нь шинэ вэ» гэдэг харьцуулалт эргэлзээтэй
-           болно — ноорог сонгоход ЯГ энэ харьцуулалт шийдвэрлэнэ. */
         { name: 'at', type: 'esriFieldTypeDouble', nullable: true, editable: true },
         { name: 'payload', type: 'esriFieldTypeString', length: 100000, nullable: true, editable: true },
       ],
@@ -183,13 +130,9 @@ async function createTable(token: string, user: string): Promise<string | null> 
 
 /**
  * Хүснэгтийн URL — олох, эс бөгөөс (super) үүсгэх.
- * ⚠️ Зөвхөн ОЛДСОН URL кэшлэгдэнэ: `null`-ыг кэшлэвэл порталын хайлтын түр
- *    саат сешн даяар тогтмолжиж, ноорог хэзээ ч алсад очихгүй болно.
  */
 export async function tableUrl(canCreate: boolean): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
-  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (Guitsetgel_talbe/191) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
-     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
   const direct: string | null = `${GUITS}/191`;
   if (direct) {
     tableUrlCache = direct;
@@ -209,80 +152,36 @@ type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default
 type FeatureLayerInst = InstanceType<FeatureLayerMod>;
 /**
  * ДАВХАРГЫН КЭШ — URL тутамд НЭГ `FeatureLayer` (2026-09-08, гүйцэтгэл).
- *
- * ⚠️ ЯАГААД: `new FeatureLayer({url})` бүр удаа давхаргын тодорхойлолтыг
- * (`?f=json` — талбарууд, capabilities, extent) СЕРВЕРЭЭС дахин татдаг.
- * Ноорогийн мөчлөг 3 секунд тутам уншиж, бичихийн өмнө дахин уншдаг тул
- * минутанд ~40 давхарга үүсч, тус бүр нэмэлт дугуй аялал хийж байв —
- * жинхэнэ query-гээс ӨМНӨ. Нэг instance-ийг дахин ашиглавал тэр бүгд
- * арилна (ArcGIS JS API нь `load()`-ийн үр дүнг instance дотроо кэшилдэг).
- *
- * ⚠️ Аюулгүй: `FeatureLayer` нь төлөвгүй асуулга хийдэг (`queryFeatures`,
- * `applyEdits` — бүгд цэвэр функц шиг), тул нэг instance-ийг зэрэгцээ
- * дуудахад мөргөлдөхгүй. Токен нь `IdentityManager`-аас дуудлага бүрд
- * шинээр авагддаг тул хуучирсан токен кэшлэгдэхгүй.
  */
 const layerCache = new Map<string, Promise<FeatureLayerInst>>();
 export async function layer(url: string): Promise<FeatureLayerInst> {
   const hit = layerCache.get(url);
   if (hit) return hit;
   const p = (async () => {
-    /* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбар → эх нэр (JS API хөрвүүлэгч, `lib/entInterceptor.ts`) */
     await installEntInterceptor();
     const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
     const fl = new FeatureLayer({ url });
-    /* ⚠️ 2026-10-21: ачааллыг кэшийн promise ДОТОР хүлээнэ. `load()` нэг удаа унасан
-       (мета timeout · 498/499) instance нь `failed` төлөвт мөнхөд үлддэг (Loadable дахин
-       ачаалдаггүй) тул урьд нь ноорог унших/хадгалах/цэвэрлэх ба илгээлт (`submission.ts`)
-       хуудас дахин ачаалах хүртэл бүгд унадаг байв. Унавал доорх `catch` кэшээс хасна —
-       дараагийн дуудлага ШИНЭ instance үүсгэнэ. */
     await fl.load();
     return fl;
   })();
-  /* ⚠️ PROMISE-ыг кэшилнэ (утгыг биш): зэрэг ирсэн хоёр дуудлага НЭГ
-     instance хүлээнэ — эс бөгөөс хоёулаа өөрийгөө үүсгэж давхардана. */
   layerCache.set(url, p);
-  /* Унавал (импорт · конструктор · `load()`) кэшээс хасна — дараагийн дуудлага дахин оролдоно.
-     ⚠️ Зөвхөн ЭНЭ promise хэвээр байвал хасна — шинээр үүссэнийг устгахгүй. */
+  /* Унавал (импорт · конструктор · `load`) кэшээс хасна — дараагийн дуудлага дахин оролдоно. */
   p.catch(() => { if (layerCache.get(url) === p) layerCache.delete(url); });
   return p;
 }
 
 /**
  * МӨРИЙН ТҮЛХҮҮР — ЗӨВХӨН БАГЦ (2026-09-08, хэрэглэгчийн шийдвэр).
- *
- * ⚠️ УРЬД НЬ `хэрэглэгч|багц` БАЙВ. Хүн бүр өөрийн мөртэй байсан тул нэг
- * багцыг хэд хэдэн ажилтан бөглөхөд бие биенийхээ ажлыг ОГТ ХАРДАГГҮЙ,
- * тус тусдаа илгээлт үүсгэдэг байв. Одоо НЭГ БАГЦ = НЭГ МӨР: оролцогчид
- * (хэд ч байж болно) яг тэр мөрийг уншиж, `mergeDrafts`-аар нүд тус бүрээр
- * нийлүүлж, буцааж бичнэ.
- *
- * ⚠️ Хүснэгтийн БҮТЭЦ хөндөгдөөгүй — шинэ талбар нэмэх нь admin токен
- * шаардана. `usr` талбар нь одоо «хамгийн СҮҮЛД бичсэн хүн» гэсэн утгатай
- * (урьд нь «эзэн»); хэн ямар нүд бөглөсний нарийн бүртгэл нь ноорогийн
- * `payload` дотор (`by` зураглал, `FillNew`) явна.
  */
 const keyOf = (pkgKey: string) => pkgKey;
 /**
  * ХУУЧИН түлхүүрийн загвар (`хэрэглэгч|багц`) — ЗӨВХӨН шилжүүлэлтэд.
- * ⚠️ Багцын түлхүүрт `|` ОРДОГГҮЙ (`bagts.pkg.ts`-ийн `key` нь `b32`,
- *    `b33_9f` маягийн латин таних тэмдэг) тул `LIKE '%|<багц>'` нь шинэ
- *    (`dkey = <багц>`) мөрд таарахгүй.
  */
 const legacyLike = (pkgKey: string) => `%|${pkgKey}`;
 export const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
 /**
  * Хуучин НООРОГИЙН мөрийн шүүлт — `readLegacyDrafts` ба `clearLegacyDrafts`
  * ХОЁУЛАА ЭНИЙГ хэрэглэнэ.
- *
- * ⚠️ ИЛГЭЭЛТИЙН МӨРИЙГ ХАСНА (2026-09-25-ны аудит): энэ хүснэгтэд
- *    `submission.ts`-ийн мөрүүд ч амьдардаг бөгөөд 2026-09-07-оос ӨМНӨХ
- *    идэвхтэй илгээлтийн түлхүүр `sub|<багц>` нь `LIKE '%|<багц>'`-т ТААРДАГ
- *    байв. Анхны амжилттай алсын хадгалалтын дараа `clearLegacyDrafts` тэр
- *    хянагдаж буй илгээлтийг УСТГАЖ, `readSubmissionByOid` `{ok, sub:null}`
- *    буцааж, батлалт legacy замаар явж илгээсэн нүднүүд архивт ОРДОГГҮЙ.
- *    `done|` угтвар одоогийн хэлбэрээрээ (`done|<багц>|<oid>`) таарахгүй ч
- *    ирээдүйн хэлбэрийн өөрчлөлтөөс хамгаалж мөн хасна.
  */
 const legacyWhere = (pkgKey: string) =>
   `dkey LIKE ${sqlStr(legacyLike(pkgKey))} AND dkey NOT LIKE 'sub|%' AND dkey NOT LIKE 'done|%'`;
@@ -292,24 +191,9 @@ export type RemoteDraft = { at: number; payload: string };
 /**
  * АЛСЫН НООРОГИЙН АГШИН — `payload`-ГҮЙ, ХЯМД шалгалт (2026-09-08, гүйцэтгэл).
  *
- * ⚠️ ЯАГААД: хуваалцсан ноорогийн мөчлөг 3 секунд тутам уншдаг ба `payload`
- * нь 80,000 тэмдэгт хүртэл байна. Хоёр хүн ажиллаж байхад ихэнх тойрогт
- * ЮУ Ч ӨӨРЧЛӨГДӨӨГҮЙ байдаг — гэтэл бүтэн ачааг татаж, задалж, нийлүүлж
- * байв. Зөвхөн `at` (Double) татвал хариу ~200 байт болно: 400 дахин бага.
- *
- * ⚠️ Мөн БИЧИХИЙН ӨМНӨХ уншилтад хэрэглэнэ: алсын `at` нь өөрийн сүүлд
- * нийлүүлсэн агшинтай ижил бол нөгөө тал юу ч бичээгүй — нийлүүлэх зүйлгүй
- * тул бүтэн уншилтыг АЛГАСААД шууд бичиж болно.
- *
  * Буцаана: `at` (мс) · `null` = мөр байхгүй · `undefined` = уншиж чадсангүй
  * (сүлжээ/эрх). Гуравыг ЯЛГАХ нь чухал — «байхгүй» гэж андуурвал дуудагч
  * бусдын ажлыг дарж бичнэ.
- *
- * ⚠️ 2026-09-25: НЭВТРЭЭГҮЙ ба ХҮСНЭГТ ҮҮСЭЭГҮЙ нь `null` (`undefined` БИШ) —
- *    `readRemoteDraft`-ийн «алдаа биш, ноорог зөвхөн локалд» дүрэмтэй ИЖИЛ.
- *    Урьд нь `undefined` буцааж хоёр хос зөрдөг байв: «Дуусгасан» товч ба
- *    `flush` «алсын ноорогийг шалгаж чадсангүй» гэсэн ХУДАЛ сүлжээний алдаа
- *    харуулж, хүснэгтийг анх үүсгэх бичилт (`tableUrl(true)`) хэзээ ч явдаггүй.
  */
 export async function readRemoteDraftAt(pkgKey: string): Promise<number | null | undefined> {
   try {
@@ -320,7 +204,6 @@ export async function readRemoteDraftAt(pkgKey: string): Promise<number | null |
     const fl = await layer(url);
     const res = await fl.queryFeatures({
       where: `dkey = ${sqlStr(keyOf(pkgKey))}`,
-      /* ⚠️ ЗӨВХӨН `at` — `payload` НЭМЭХГҮЙ, тэр нь энэ функцийн бүх утга учир */
       outFields: ['objectid', 'at'],
       returnGeometry: false,
       orderByFields: ['objectid ASC'],
@@ -335,12 +218,6 @@ export async function readRemoteDraftAt(pkgKey: string): Promise<number | null |
 
 /**
  * ХУУЧИН МӨРҮҮД (`хэрэглэгч|багц`) — нэг удаагийн шилжүүлэлтэд.
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ (2026-09-08): түлхүүр өөрчлөгдөхөд ArcGIS дээр байгаа
- * хуучин ноорогууд шинэ хайлтад ОЛДОХГҮЙ болно — хагас бөглөсөн ажил
- * чимээгүй алга болно. Тиймээс дуудагч тал (`FillNew`) эдгээрийг ЦӨМИЙГ НЬ
- * шинэ нооргтой нийлүүлээд шинэ түлхүүрт бичнэ; АМЖИЛТТАЙ бичсэний дараа л
- * `clearLegacyDrafts`-аар устгана. Тиймээс зам нэг л удаа явна.
  */
 export type LegacyDraft = { at: number; payload: string; user: string };
 
@@ -365,16 +242,13 @@ export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
     }
     return out;
   } catch {
-    /* ⚠️ ШИДЭХГҮЙ: шилжүүлэлт нь НЭМЭЛТ зам. Унасан ч шинэ түлхүүрийн уншилт
-       хэвийн явах ёстой — эс бөгөөс хуучин мөргүй хүн ч ноороггүй үлдэнэ.
-       Дараагийн ачаалалт дахин оролдоно. */
     return [];
   }
 }
 
 /** ХУУЧИН мөрүүдийг устгана — шинэ түлхүүрт АМЖИЛТТАЙ бичсэний ДАРАА л дуудна. */
 export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
-  if (draftWriteLocked()) return false; // ⚠️ 2026-10-19: `draftWriteLocked`-ийн ⚠️
+  if (draftWriteLocked()) return false;
   try {
     const url = await tableUrl(false);
     if (!url) return false;
@@ -390,7 +264,6 @@ export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
     const r = await fl.applyEdits(
       { deleteFeatures: oids.map((objectId) => ({ objectId })) } as Parameters<typeof fl.applyEdits>[0],
     );
-    /* ⚠️ 2026-09-25: хоосон/дутуу хариу ≠ амжилт — ArcGIS алдаагаа 200-аар буцаадаг тул тоо нь oid-тай тэнцэх ёстой */
     const dr = r.deleteFeatureResults ?? [];
     return dr.length === oids.length && dr.every((x) => x.error == null);
   } catch {
@@ -398,7 +271,6 @@ export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
   }
 }
 
-/** ⚠️ Дотоод — алдааг ШИДНЭ. Гадна талын хос нь доор. */
 async function readRemoteDraftRaw(pkgKey: string): Promise<RemoteDraft | null> {
   try {
     const auth = await getAuth();
@@ -418,26 +290,12 @@ async function readRemoteDraftRaw(pkgKey: string): Promise<RemoteDraft | null> {
     if (!last?.payload || !Number.isFinite(last.at)) return null;
     return { at: Number(last.at), payload: String(last.payload) };
   } catch (e) {
-    /* ⚠️ ШИДНЭ — дээрх `readRemoteDraft` барьж, дуудагчид ЯЛГАЖ хэлнэ */
     throw e;
   }
 }
 
 /**
  * АЛСЫН НООРОГИЙН УНШИЛТ — АЛДААГ ЯЛГАДАГ хувилбар (2026-09-07).
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: «ноорог БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ» хоёрыг
- * ялгалгүй `null` буцаадаг байв. Сүлжээ түр тасрах, токен шинэчлэгдэх,
- * хүснэгтийн URL олдохгүй байх агшинд дуудагч «ноорог алга» гэж дүгнэж,
- * бөглөгч ХООСОН хуудас хараад ажлаа алдсан гэж боддог — ямар ч алдаа
- * гарахгүй. Тэр ноорог ArcGIS дээр БАЙСААР байна.
- *
- * ⚠️ ЯГ ЭНЭ АНГИЛЛЫН алдааг `submission.ts` (`readActiveSubmission`),
- * `hyanaltStore.ts` ба `hyanaltDetail.ts` дээр 2026-09-04-нд CRITICAL гэж
- * тэмдэглэн зассан — ноорогийн зам ганцаараа хоцорсон байв.
- *
- * ⚠️ Нэвтрээгүй ба хүснэгт үүсээгүй нь АЛДАА БИШ: ноорог зөвхөн локалд
- * байна гэсэн үг тул `{ ok: true, draft: null }`.
  */
 export type RemoteDraftRead =
   | { ok: true; draft: RemoteDraft | null }
@@ -454,8 +312,6 @@ export async function readRemoteDraft(pkgKey: string): Promise<RemoteDraftRead> 
 
 /**
  * АЛСЫН НООРОГ — байхгүй/алдаа бол `null`.
- * ⚠️ Алдаа ХЭЗЭЭ Ч шидэхгүй: энэ нь нэмэлт тав тух, бөглөлтийн зам биш.
- * ⚠️ Уншилт УНАСНЫГ ялгах шаардлагатай бол `readRemoteDraft`-ийг хэрэглэ.
  */
 export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | null> {
   const r = await readRemoteDraft(pkgKey);
@@ -464,28 +320,8 @@ export async function loadRemoteDraft(pkgKey: string): Promise<RemoteDraft | nul
 
 /**
  * НООРОГИЙГ АЛСАД БИЧНЭ (upsert). Хэт том, эрхгүй, сүлжээгүй бол `false`.
- * ⚠️ Давхардсан мөрийг ЦЭВЭРЛЭНЭ — эс бөгөөс уншилт хуучин мөрийг сонгож
- *    «хадгалсан ч эргэж ирэхгүй» гэсэн чимээгүй алдаа үүсгэнэ.
- */
-/**
- * ⚠️ 2026-09-08: `boolean`-аас `{ok, error}` болов. Урьд нь ДОЛООН өөр
- * шалтгаан (хэт том · нэвтрээгүй · хүснэгт олдсонгүй · эзэн танигдсангүй ·
- * уншилт унасан · бичилт татгалзсан · сүлжээ) ганц `false` болж дэлгэцэд
- * «ArcGIS-д хуулагдсангүй» гэж л гардаг байв — хэрэглэгч ч, засварлагч ч
- * ЯГ ЮУ болсныг мэдэх аргагүй. Одоо шалтгаан нь дэлгэц ба консолд гарна.
- *
- * ⚠️ `tableUrl(true)` — super нэвтэрсэн бол хүснэгт байхгүй үед ҮҮСГЭНЭ.
- *    Бусад хэрэглэгчид хүснэгт үүсэх хүртэл «олдсонгүй» гэж харна — тэр нь
- *    зөв: тэдэнд үүсгэх эрх байхгүй, super нэг удаа нэвтэрмэгц шийдэгдэнэ.
  */
 export type RemoteSave = { ok: true } | { ok: false; error: string; conflict?: boolean };
-/**
- * ⚠️ 2026-10-04 аудит: `RemoteSave`-ийн ӨРГӨТГӨЛ (хуучин хэлбэр хэвээр — FillNew нийцтэй).
- *    `written: true` = бидний `applyEdits` АМЖИЛТТАЙ буусан ч дараах шалгалтаар мөрийн `at`
- *    өөр болсон (завсарт өөр хүн дарж бичсэн) → `conflict: true` хамт ирнэ. Дуудагч
- *    дахин уншиж нийлүүлнэ; «бичилт буусан» гэдгийг мэдэх шаардлагатай (цэвэрлэлтийн үе
- *    зөрсөн үед дахин цэвэрлэх эсэх — `useSharedDraft`) бол үүгээр ялгана.
- */
 export type RemoteSaveResult = RemoteSave & { written?: boolean };
 
 /**
@@ -504,7 +340,6 @@ export async function saveRemoteDraft(
   if (payload.length > REMOTE_MAX) {
     return { ok: false, error: tr('ноорог хэт том ({0} тэмдэгт, дээд {1})', String(payload.length), String(REMOTE_MAX)) };
   }
-  /* ⚠️ 2026-10-19: систем хаалттай / эрх түгжигдсэн үед алсад бичихгүй (`draftWriteLocked`-ийн ⚠️) */
   if (draftWriteLocked()) {
     return { ok: false, error: tr('систем хаалттай эсвэл эрх түгжигдсэн — ноорог зөвхөн энэ хөтчид, нээгдмэгц хуулагдана') };
   }
@@ -551,25 +386,11 @@ export async function saveRemoteDraft(
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
     const res = [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])];
     if (!res.length) return { ok: false, error: tr('ArcGIS бичилтийн үр дүн хоосон буцаав') };
-    /* ⚠️ ArcGIS мөр бүрийн алдааг `error` талбарт буцаадаг — HTTP 200-тай.
-       Эрхгүй (`Editing` capability, эсвэл org гишүүн биш) бол энд илэрнэ. */
     const bad = res.find((x) => x.error != null);
     if (bad) {
       const e = bad.error as { message?: string; description?: string } | undefined;
       return { ok: false, error: tr('ArcGIS татгалзав: {0}', e?.message ?? e?.description ?? String(bad.error)) };
     }
-    /*
-     * ⚠️ БИЧСЭНИЙ ДАРААХ БАТАЛГАА (2026-10-04 аудит): дээрх `expectAt` шалгалт (query) ба
-     *    `applyEdits` хоёр ТУСДАА дуудлага — ArcGIS-д compare-and-swap байхгүй тул хоёр клиент
-     *    ижил `at` уншаад хоёулаа бичвэл сүүлийнх нь эхнийхийг чимээгүй дарна. Бүрэн хаах
-     *    аргагүй; харин бичсэний ДАРАА мөрийг дахин уншиж `at` нь БИДНИЙХ эсэхийг шалгана.
-     *    Өөр бол бидний бичилт дарагдсан → `conflict` (+ `written`) — дуудагч дахин уншиж
-     *    нийлүүлээд бичнэ (бидний нүд түүний санах ойд хэвээр тул алдагдахгүй).
-     * ⚠️ Зөвхөн `expectAt`-тай (хуваалцсан, read-merge-write) дуудлагад — blind overwrite
-     *    (`expectAt` байхгүй) хуучин зангаараа. Мөр АЛГА (устгагдсан) эсвэл шалгалт унасан
-     *    бол амжилт гэж үзнэ: FillNew нийтлэлийн `clearRemoteDraft`-ийн дараа «зөрчил» гэж
-     *    дахин бичвэл нийтэлсэн нооргийг амилуулна.
-     */
     if (opt && opt.expectAt !== undefined) {
       try {
         const chk = await fl.queryFeatures({
@@ -586,7 +407,6 @@ export async function saveRemoteDraft(
     }
     return { ok: true };
   } catch (e) {
-    /* ⚠️ Консолд ч бичнэ — дэлгэцийн богино мессежээс бүтэн шалтгаан харагдана */
     console.error('[selbe] ноорог алсад хадгалагдсангүй:', e);
     return { ok: false, error: String((e as Error)?.message ?? e) };
   }
@@ -594,16 +414,8 @@ export async function saveRemoteDraft(
 
 /**
  * АЛСЫН НООРОГИЙГ УСТГАНА — нийтэлсэн, эсвэл хэрэглэгч «Устгах» дарсан үед.
- * ⚠️ Түлхүүрт таарах БҮХ мөрийг устгана (давхардлыг ч) — үлдсэн мөр дараагийн
- *    ачаалалтад «нийтлэгдээгүй ажил байна» гэж ХУДЛАА сануулна.
- *
- * ⚠️ ХУВААЛЦСАН (2026-09-08): ноорог нь одоо БАГЦЫНХ тул энэ нь БҮХ
- *    оролцогчийн ажлыг устгана — өөрийн хувийг биш. «Илгээх» дарахад тэр нь
- *    ЗӨВ (бүгдийн ажил хяналт руу орсон); «Ноорог устгах» товч нь бусдын
- *    ажлыг ч арчих тул дуудагч тал баталгаажуулж асуух ёстой.
  */
 export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
-  /* ⚠️ 2026-10-19: хаалттай үед устгах ч бичилт — татгалзана (`draftWriteLocked`) */
   if (draftWriteLocked()) return false;
   try {
     const auth = await getAuth();
@@ -623,7 +435,6 @@ export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
     const r = await fl.applyEdits(
       { deleteFeatures: oids.map((objectId) => ({ objectId })) } as Parameters<typeof fl.applyEdits>[0],
     );
-    /* ⚠️ 2026-09-25: хоосон/дутуу хариу ≠ амжилт — ArcGIS алдаагаа 200-аар буцаадаг тул тоо нь oid-тай тэнцэх ёстой */
     const dr = r.deleteFeatureResults ?? [];
     return dr.length === oids.length && dr.every((x) => x.error == null);
   } catch {

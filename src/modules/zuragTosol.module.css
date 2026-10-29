@@ -1,10 +1,5 @@
 /*
  * ТЭЗҮ · АЖЛЫН ЗУРАГ ТӨСӨЛ — шатлалтай хүснэгт + навч мөрийн оролт.
- *
- * ⚠️ 2026-10-26: Environment — карт 12px (--r-lg) · --line · --surface; толгой uppercase 10.5px/600;
- * хүснэгт .pe-table (11.5px, 10px толгой, наалддаг толгой); оролт .pe-field (28px нягт, 7px, --line-strong,
- * bg --bg, --data focus); товч .pe-primary/.pe-ghost (32px, 8px, 12px/600); жин ≤600.
- * ⚠️ `*.module.css`-д сонгогч БҮР локал класс агуулна (`next build` «is not pure»).
  */
 .wrap {
   height: 100%;
@@ -244,7 +239,6 @@
 .inpPct { width: 72px; text-align: right; }
 /* Хадгалаагүй засвар — бүдэг шар дэвсгэр */
 .inpDirty { background: color-mix(in oklab, var(--warn) 12%, var(--bg)); }
-/* ⚠️ Буруу оролт — хадгалах үед нэрлэж татгалзана; энд урьдчилан улаан хүрээ */
 .inpBad,
 .inpBad:focus {
   border-color: var(--bad);

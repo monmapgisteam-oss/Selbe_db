@@ -1,11 +1,6 @@
 /**
  * MA ХАВСРАЛТЫН БАГЦЫН ХҮРЭЭ (2026-10-19, аудит №3) — `ma.maAttachScopeDeny`.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/maAttachScope.check.mjs
- *
- * ⚠️ Урьд нь `addMaAtt`/`deleteMaAtt` нь зөвхөн `chanarAuthor`/`chanarReview` эрхийг шалгадаг тул Багц 1-ийн
- *    ирүүлэгч Багц 5-ын MA-гийн гэрчилгээг нэмж/устгаж чаддаг байв. Одоо `ficMakt.scopeDeny` ·
- *    `chanarStore.attachDeny`-ийн ижил дүрэм: (ирүүлэгчийн эрх БА тэр багцад ирүүлэгч) ЭСВЭЛ
- *    (хянагчийн эрх БА тэр багцад хянагчийн үүрэг). Танигдахгүй багц → татгалзана. Сүлжээгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/maAttachScope.check.mjs
  */
 import assert from 'node:assert/strict';
 
@@ -88,7 +83,6 @@ await ok('strict=false (Node · нэвтрэлт унтраалттай) → ш�
 });
 WHO.setCurrentUser(null);
 
-/* ⚠️ Бичих хоёр зам хоёулаа хүрээг шалгана (эх кодоор — сүлжээгүй) */
 {
   const { readFileSync } = await import('node:fs');
   const S = readFileSync('src/lib/ma.ts', 'utf8');

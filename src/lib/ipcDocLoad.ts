@@ -8,13 +8,6 @@
  *     Блок бүрийн хуримтлагдсан БУА = Σ навч мөрийн (обьём × нэгж өртөг).
  *     Төлөвлөсөн огноо (хуваарь) ба гэрээний огноо ч эндээс.
  *   · ХО гүйцэтгэл (`HO_guitsetgel`) — гэрээний дүн · дугаар · гүйцэтгэгч · урьдчилгаа.
- *
- * ⚠️ НЭГ БАГЦ — ОЛОН ХУУДАС: 9 ба 12 давхрын хуудас (Багц 1, 2, 4.2) нэг гэрээнд. Блокууд
- *    нийлж нэг баримт болно; блокийн нэрэнд давхрыг угтвар болгоно («12F 5/1»).
- * ⚠️ «Сард нэг бөглөнө» (хэрэглэгч) — хуудас бүрд тухайн сарын СҮҮЛИЙН агшин. Нэг сард
- *    бөглөөгүй хуудас өмнөх агшнаараа үлдэнэ (тайлант гүйцэтгэл нь 0).
- * ⚠️ Архив нь зөвхөн системд бөглөж эхэлснээс хойш (2026-09-03) — түүнээс өмнөх цаасан
- *    IPC-ийг дахин гаргахгүй; эхний сарын «өмнөх» нь 0 (`ipcDoc`-ийн анхааруулга).
  */
 
 import { PKGS, loadSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
@@ -38,15 +31,7 @@ export type IpcSource = {
   contractEnd: number | null;
   blocks: IpcBlock[];
   months: IpcMonth[];
-  /**
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): хуудас бүрийн ЭХНИЙ агшин — `buildIpcDoc`
-   * (`...src`-ээр дамжина) орой эхэлсэн хуудсыг (`lateSheetsOf`) анхааруулна.
-   */
   sheets: IpcSheetStart[];
-  /**
-   * ⚠️ 2026-10-09: багцад олон гэрээ ялгагдахгүй таарсан үед (`ipcAuto.pickContract`) — аль гэрээг
-   * сонгосныг хэлэх өгүүлбэр; дуудагч ил харуулна. Ганц/тодорхой бол `null`.
-   */
   warn?: string | null;
 };
 
@@ -56,17 +41,12 @@ const sheetLabel = (pkg: Pkg): string => (pkg.floors ? `${pkg.floors}F` : pkg.la
 /** Багцын түлхүүр (`bagtsKey`, «БАГЦ32») → бөглөх хуудсууд */
 export const sheetsOf = (packKey: string): Pkg[] => PKGS.filter((p) => bagtsKey(p.group) === packKey);
 
-/** Нормчилсон өдөр → `dayFilter`-т олдох түүхий өдөр (зөвхөн зөрсөн үед) — `fillDays`-ийн ⚠️ */
+/** Нормчилсон өдөр → `dayFilter`-т олдох түүхий өдөр (зөвхөн зөрсөн үед) — `fillDays` */
 const rawDay = new Map<string, string>();
 const rawOf = (pkg: Pkg, day: string): string => rawDay.get(`${pkg.key}|${day}`) ?? day;
 
 /**
  * Хуудасны архивын өдрүүд — `returnDistinctValues` (нэг хүсэлт).
- * ⚠️ 2026-10-09: өдрийг `msToDay(normDayMs(v))`-ээр бүлэглэнэ/шошголно — ЛОКАЛ шөнө дундаар (16:00Z)
- *    тамгалсан хуучин жааз урьд нь ӨМНӨХ өдөр (сарын эхэнд бол өмнөх САР) болж бүлэглэгддэг байв.
- *    Харин жаазыг `loadRows(pkg, sc, day)`-ийн ХАТУУ `dayFilter` (00:00–23:59 UTC)-ээр татдаг тул 16:00Z
- *    тамгатай жааз нормчилсон өдрийн мужид ОРОХГҮЙ — тийм өдөрт түүхий өдрийг (`rawOf`) хадгалж татахдаа
- *    түүгээр асууна. Тэр өдөр ЯГ (00:00Z) тамгатай жааз ч байвал нормчилсон өдрөөрөө (шинэ дүрэм).
  */
 async function fillDays(pkg: Pkg, sc: Schema): Promise<string[]> {
   const f = sc.f.fillDate;
@@ -74,10 +54,6 @@ async function fillDays(pkg: Pkg, sc: Schema): Promise<string[]> {
   const days = new Set<string>();
   const exact = new Set<string>();
   const shifted = new Map<string, string>();
-  /* ⚠️ Хуудаслалт + `orderByFields` (CLAUDE.md-ийн ArcGIS занга)
-     ⚠️ 2026-10-09 (аудит №6): `exceededTransferLimit`-ээр таслана, `fs.length < 2000`-оор БИШ
-     (`hyanalt.queryAll`-ийн загвар) — үйлчилгээний `maxRecordCount` 2000-аас бага (1000) бол эхний
-     хуудсаар зогсож, сүүлийн өдрүүд чимээгүй алга болдог байв; offset-ийг ирсэн мөрийн тоогоор нэмнэ. */
   for (let off = 0; ; ) {
     const j = await agsFetch(`${pkg.url}/query`, {
       where: `${f} IS NOT NULL`, outFields: f, returnDistinctValues: 'true', returnGeometry: 'false',
@@ -134,12 +110,6 @@ export async function loadIpcSource(packKey: string): Promise<IpcSource> {
       return { pkg, sc, days };
     })),
   ]);
-  /* ⚠️ 2026-10-09: багцад ОЛОН гэрээ таарвал ЭХНИЙХ биш — `ipcAuto.pickContract` (барилга угсралт →
-     «Гүйцэтгэл» төлбөртэй → кодоор); ялгагдахгүй үлдвэл `warn` (баримтын цонх ил харуулна). */
-  /* ⚠️ 2026-10-09 (F6): AUTO мөр бичигддэг гэрээтэй (`ipcAutoWrite.syncIpcFromFill` → `autoContractFor`) ЯГ
-     ижил гэрээг сонгоно. Урьд нь `groupHo`-ийн бүлгүүдээс (кодгүй '' бүлэг эрэмбээр ЭХЭНД, `hasWork` нь
-     төлсөн дүнгээр — `contractFor`-оос өөр) сонгодог тул баримт ӨӨР гэрээний толгойтой гарч болдог байв.
-     Код олдохгүй бол хуучин сонголт (`pickContract`). */
   const cands = groupHo(hoRows).filter((c) => c.key === packKey);
   const cf = autoContractFor(hoRows, packKey);
   const byCode = cf.code ? cands.find((c) => c.code === cf.code) ?? null : null;
@@ -159,7 +129,6 @@ export async function loadIpcSource(packKey: string): Promise<IpcSource> {
   const rowsAt = (pkg: Pkg, sc: Schema, day: string) => {
     const k = `${pkg.key}|${day}`;
     let p = cache.get(k);
-    /* ⚠️ 2026-10-09: хатуу `dayFilter`-т ТҮҮХИЙ өдрөөр (`fillDays`-ийн ⚠️) */
     if (!p) { p = loadRows(pkg, sc, rawOf(pkg, day)).then((r) => r.rows); cache.set(k, p); }
     return p;
   };
@@ -212,8 +181,6 @@ export async function loadIpcSource(packKey: string): Promise<IpcSource> {
     contractNo: ho?.contractNo ?? '',
     contract: ho?.contractTotal ?? null,
     advance: ho?.advanceTotal ?? null,
-    /* ⚠️ Гэрээний огноо (`geree_ehleh/duusah`) бөглөгдөөгүй хуудас олон — тэр үед блокуудын
-       ТӨЛӨВЛӨСӨН мужаар (скан баримтын «Эхлэх ба дуусах» хоосон үлдэхгүй). */
     contractStart: minN(cStart) ?? minN(blocks.map((b) => b.planStart)),
     contractEnd: maxN(cEnd) ?? maxN(blocks.map((b) => b.planEnd)),
     blocks,
@@ -228,8 +195,6 @@ export async function loadIpcSource(packKey: string): Promise<IpcSource> {
  * `returnDistinctValues` асуулга, мөр татахгүй). IPC карт (`IpcTable`) орой эхэлсэн
  * хуудсыг (`ipcDoc.lateSheetsOf`) баримт нээхээс ӨМНӨ анхааруулахад (2026-10-01,
  * «хэрэглэгч: бүгдийг зас»).
- * ⚠️ Нэг хуудастай багц → `[]` (асуулга явахгүй — орой эхлэх хуудас байхгүй).
- * ⚠️ Кэш: бөглөх хуудас руу бичихэд (`BAGTS_SHEET`) хаягдана; алдааг кэшлэхгүй.
  */
 const startsCache = new Map<string, Promise<IpcSheetStart[]>>();
 register(() => startsCache.clear(), ['BAGTS_SHEET']);

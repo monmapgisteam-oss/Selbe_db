@@ -19,7 +19,6 @@
  *      хувьд ороогүй олголт нуугдах, «Хянагдаж буй IPC» хоосон, комиссын огноо хуучин
  *      агшнаас, хуудас дахин дахин татагдах, «2026» он хатуу, Back түүхгүй.
  */
-/* ⚠️ Орон нутгийн сар (`monthKey`) — УБ-ын цагийн бүсэд шалгана (импортоос ӨМНӨ) */
 process.env.TZ = 'Asia/Ulaanbaatar';
 import assert from 'node:assert/strict';
 const {
@@ -102,7 +101,6 @@ ok('ижил багцын хоёр гэрээ нийлнэ, гэрээлсэн �
   assert.equal(e.cost, 5e9);
   assert.equal(e.contracted, true);
 });
-/* ⚠️ 2026-10-27: гэрээний явц АМЬД (`live`: cashflow_id → S) — хадгалсан `guitsetgel_huvi` уншигдахгүй */
 const LV = new Map([[34, { S: 20, stages: {} }], [99, { S: null, stages: {} }]]);
 ok('амьд явцыг дүнгээр жигнэнэ, хоосон мөр жинд орохгүй; live алга → null', () => {
   const e = pk.find((p) => p.pkgKey === 'БАГЦ61');
@@ -230,7 +228,6 @@ const sheet = [
 ok('бүлгийн муж = дэд ажлуудын MIN/MAX (өөрийн огноо биш)', () => assert.deepEqual(rowSpan(sheet, 0), { start: d(10), end: d(90) }));
 ok('улсын комисс = хамгийн хожуу блок', () => assert.equal(commissionOf(sheet), d(130)));
 ok('комиссын мөргүй → null', () => assert.equal(commissionOf(sheet.slice(0, 3)), null));
-/* ⚠️ 2026-10-09 (аудит №6): `calDaysBetween` — хуанлийн өдөр; 8 цагийн зөрүүтэй агшнууд ч бүхэл хоног */
 ok('calDaysBetween — хуанлийн өдрөөр, цагийг үл тооно', () => {
   const ub = Date.parse('2026-10-01T00:00:00+08:00');
   /* 23 цагийн дараа — хуанлиар 0 хоног (`daysBetween` нь 1 гэж дугуйлна) */
@@ -398,7 +395,6 @@ ok('сүүлийн хэмжигдсэн сарын physAt; өөр сарынх �
   assert.equal(measDayOf([{ label: '2026-08', phys: 0, physAt: '2026-07-31' }], '2026-09', 'x'), '2026-08-31', '0% нь хэмжилт');
   assert.equal(measDayOf([{ label: '2026-10', phys: 9, physAt: '2026-10-02' }], '2026-09', 'x'), 'x', 'ирээдүйн сар');
   assert.equal(measDayOf(null, '2026-09', 'x'), 'x');
-  /* ⚠️ 2026-10-04: physAt-гүй ОДООГИЙН сарын цэг (ОГТ тайлагнаагүй багцын 0%) — өнөөдөр, сарын эцэс БИШ */
   assert.equal(measDayOf([{ label: '2026-10', phys: 0, physAt: null }], '2026-10', 'x', '2026-10-04'), '2026-10-04');
   assert.equal(measDayOf([{ label: '2026-09', phys: 5, physAt: null }], '2026-10', 'x', '2026-10-04'), '2026-09-31', 'өнгөрсөн сар — сарын эцэс хэвээр');
 });

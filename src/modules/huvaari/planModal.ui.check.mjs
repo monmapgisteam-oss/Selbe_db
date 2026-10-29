@@ -80,7 +80,7 @@ console.log('✓ PlanModal SSR: 11 тохиолдол');
 
 /* ── 12. (2026-10-01, хэрэглэгч: бүгдийг зас) ТЭНЦЭЭГҮЙ БЛОКИЙН ЧИП УЛААН ──
    Асуудалтай блок шууд олдоно: идэвхгүй блок — дуудагчийн `badBlks`; идэвхтэй блок —
-   цонхны одоогийн оролтоор (нийлбэр тэнцээгүй бол). Өнгө ганцаараа биш — «⚠» ба title. */
+   цонхны одоогийн оролтоор (нийлбэр тэнцээгүй бол). Өнгө ганцаараа биш — « » ба title. */
 {
   const two = (spans, vol = 900) => ({ ...row(spans, vol), act: [null, null], aStart: [null, null], aEnd: [null, null] });
   const chips = (html) => [...html.matchAll(/<button[^>]*class="mdChip[^"]*"[^>]*>([^<]*)<\/button>/g)].map((m) => ({ cls: /class="([^"]*)"/.exec(m[0])[1], txt: m[1] }));
@@ -192,8 +192,6 @@ console.log('✓ PlanModal SSR: combobox · алхмаар хуулах товч
   // onOtherTab өгөөгүй → энгийн span
   html = rend();
   assert.ok(!/rowDateOther/.test(html), 'onOtherTab-гүй бол нөгөө таб товч биш');
-  // ⚠️ 2026-10-09: идэвхтэй таб ТҮГЖЭЭТЭЙ (onDate/onDays алга) ч нөгөө таб засагдана (түгжээ төрөл тус бүрд) — товч ГАРНА;
-  // бүлэг/нэмэлт мөр/эрхгүй мөрд дуудагч (`Huvaari`) `onOtherTab`-ийг өгөхгүй (дээрх «onOtherTab-гүй» тохиолдол)
   html = rend({ onOtherTab: noop, onDate: undefined, onDays: undefined });
   assert.equal((html.match(/rowDateOther/g) ?? []).length, 3, 'идэвхтэй таб түгжээтэй үед ч нөгөө табын 3 нүд товч');
   assert.ok(!/data-col=/.test(html.replace(/data-col="ham"/g, '')), 'түгжээтэй идэвхтэй табын огнооны нүд засагдахгүй');

@@ -1,10 +1,7 @@
 /**
  * IoT БОСГО ХЭТРЭЛТИЙН KPI-ийн ШАЛГУУР (CEO самбар).
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/iot.check.mjs
- *
- * ⚠️ ЛОГИК ХУУЛБАРЛААГҮЙ — ЖИНХЭНЭ `computeIot`/`buildIotKpi`-г импортлоно.
- *    Сүлжээ ХЭРЭГГҮЙ: `SensorLive` хэлбэрийн зохиомол мөрөөр ажиллана.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/iot.check.mjs
  *
  * Ямар БОДИТ алдаанаас хамгаалж байгаа вэ:
  *  1. ЗААЛТГҮЙ (null) нь хэтрэлт ч биш, хэвийн ч биш — тоолуурт орохгүй,
@@ -12,9 +9,6 @@
  *  2. ХӨРСНИЙ ЧИЙГ урвуу чиглэлтэй: босгоос ДЭЭШ нь хэтрэлт БИШ, доош нь «хуурай».
  *  3. ХУУЧИРСНЫГ ХЭМЖИГДЭХҮҮНЭЭР шалгана: мэдрэгчийн нэг утга шинэ байхад
  *     нөгөө утгын хэтрэлт 3 хоногийн өмнөх бол улаан биш шар (`staleExceed`).
- *     ⚠️ Зохиомол нас нь `loadSensors('7d')`-ийн ХҮРЭЭНД (168ц) багтах ёстой —
- *     хүрээнээс гадуур нас нь бодит ачаалагчид ХЭЗЭЭ Ч ирдэггүй (`latest = null`
- *     болно) тул тийм fixture «боломжгүй төлөв» дээр тест давуулна.
  *  4. УНАСАН мэдрэгч `failedSources`-д нэрээр; БҮГД унавал УЛААН, гол тоо «—».
  *  5. Хүснэгт бүр асуудалтай мөр БҮРИЙГ нэрээр агуулна; багана таарна.
  *  6. `facts` нь зөвхөн тоотой богино хэсгүүд.
@@ -38,7 +32,6 @@ assert.ok(WINDOW_H > IOT_STALE_H, `хүрээ ${WINDOW_H}ц ≤ хуучирса
 
 /** Зохиомол хэмжигдэхүүн — `MetricSeries` хэлбэр */
 function metric(key, label, unit, dp, latest, ageH, alert, extra = {}) {
-  // ⚠️ Хүрээнээс гадуур нас = бодит ачаалагчид боломжгүй төлөв
   if (latest != null) assert.ok(ageH < WINDOW_H, `${label}: нас ${ageH}ц хүрээ ${WINDOW_H}ц-аас их`);
   const latestAt = latest == null ? null : NOW - ageH * H;
   return {
@@ -297,7 +290,6 @@ function sensor(key, label, series, error) {
   ], NOW);
   const k = buildIotKpi(s, ['Гэрэл']);
   for (const t of k.tables) for (const r of t.rows) assert.equal(r.length, t.cols.length, t.title);
-  /* ⚠️ 2026-10-21: хуучирсан чийг хуурайд ОРОХГҮЙ — 2 мөр; `stale` тоолуурт хэвээр */
   assert.equal(k.tables[0].rows.length, 2, 'хэтэрсэн + хуучирсан хэтрэлт = 2 мөр (хуучирсан чийг хуурай биш)');
   assert.equal(k.tables[0].rows[0][8].v, 'одоогийн');
   assert.equal(k.tables[0].rows[1][8].v, 'хуучирсан');

@@ -2,39 +2,6 @@
 
 /**
  * ДЭД БҮТЦИЙН ОБЪЕКТЫН АТРИБУТ ЗАСАХ — маягт.
- *
- * ⚠️ БҮТЭЦ нь `GazarEdit.tsx`-ийг ДАГАНА (тэр нь `ZovshoorolEdit`-ээс гарсан
- * репогийн маягтын жишиг): ноорог нэг объектод, `dirty` ref, талбар тус
- * бүрийн алдаа + сэрвэрийн нэг мөр, Escape ба backdrop-оор хаах, `busy` үед
- * бүх товч идэвхгүй.
- *
- * ⚠️ ЯЛГАА — ТАЛБАРУУД ТОГТМОЛ БИШ. `GazarEdit` нь нэг үйлчилгээний мэдэгдэж
- * буй 5 баганыг гараар зурдаг; энд 16 давхарга ӨӨР ӨӨР схемтэй тул маягт
- * `loadLayerMeta`-гийн буцаасан талбарын жагсаалтаар БАЙГУУЛАГДАНА. Шинэ
- * багана нэмэгдвэл маягтад өөрөө гарч ирнэ, код засах шаардлагагүй.
- *
- * ⚠️ АМЖИЛТГҮЙ БОЛ МАЯГТ ХААГДАХГҮЙ. Сүлжээ унасан үед хаагдвал бичсэн зүйл
- * алдагдана; хэрэглэгч дахин бичихээс өөр аргагүй болно.
- *
- * ⚠️ ХОЁР ГОРИМ: `oid` өгвөл БАЙГАА мөрийг засна, өгөхгүй бол
- * (`geometry` заавал) ШИНЭ объект үүсгэнэ — ArcGIS Experience Builder-ийн
- * editor-ын «зурж нэмээд маягт бөглөх» урсгал (хэрэглэгчийн хүсэлт,
- * 2026-09-02). Хоёр горим НЭГ маягт хуваалцана: талбарын жагсаалт, шалгуур,
- * алдааны дүрэм ижил тул хоёр файл болговол аль нэг нь чимээгүй хоцорно.
- *
- * ⚠️ ХОЁР БАЙРЛАЛ (2026-09-14, хэрэглэгч: «ArcGIS Experience Builder-ийн edit
- * widget шиг»): `docked` үед БАРУУН САМБАР дотор, үгүй бол ТӨВИЙН цонх.
- *
- * ⚠️ САМБАР нь зөвхөн «илүү жижиг цонх» БИШ — зарчмын ялгаа нь ГАЗРЫН ЗУРАГ
- * НЭЭЛТТЭЙ ҮЛДЭНЭ. Тиймээс: (1) backdrop БАЙХГҮЙ (байвал зураг дарагдана),
- * (2) Escape нь ХААХГҮЙ (самбар нь горимын байнгын хэсэг, түр цонх биш;
- * Escape дарахад зурсан дүрс цуцлагдах ёстой), (3) гадуур товшиход
- * хаагдахгүй — зураг дээр ажиллах нь энгийн үйлдэл.
- *
- * ⚠️ ГЕОМЕТРЭЭС ГАРАХ ХЭМЖЭЭ (`Shape__Length`) ЗАСАГДАХГҮЙ — үйлчилгээ өөрөө
- * `editable: false` гэж хэлдэг. Идэвхгүй `input` болговол «яагаад бичиж
- * болохгүй байна» гэсэн асуулт төрөх тул ТОДОРХОЙЛОЛТ (`<dl>`) хэлбэрээр
- * үзүүлнэ (`GazarEdit`-ийн «Талбай»-тай ижил шийдэл).
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -54,15 +21,9 @@ import { statusValsChanged } from './DedButetsStatus';
 
 /**
  * ХАДГАЛСНЫ ДАРАА БУЦААХАД хэрэгтэй мэдээлэл.
- *
- * ⚠️ Буцаалтыг ЭНД бэлдэх нь чухал: хуучин утгууд зөвхөн маягтын дотор
- * (`before`) байдаг бөгөөд маягт хаагдмагц алга болно. Дуудагч тал дараа нь
- * үйлчилгээнээс дахин уншиж «хуучин утга»-г сэргээх боломжгүй — тэр үед
- * ШИНЭ утга л тэнд байх болно.
  */
 export type UndoInfo =
   | { kind: 'add'; oid: number }
-  /** ⚠️ 2026-10-21: `wrote` — манай БИЧСЭН утга (`butetsEdit.RevertRow`-ийн CAS); буцаахын өмнө серверийн одоогийн утгатай тулгана */
   | { kind: 'attr'; oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }
   /** Олон мөрийн засвар (`DedButetsBatch`) — мөр бүр ӨӨРИЙН хуучин утгатай */
   | { kind: 'batch'; rows: { oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }[] };
@@ -71,8 +32,6 @@ import { Loading, userError } from '@/components/ui';
 
 /**
  * ГЕОМЕТРЭЭС ГАРАХ СИСТЕМИЙН ХЭМЖЭЭ — толгойн тодорхойлолтод.
- * ⚠️ Эдгээр нь `meta.readOnly`-д ирдэг ч жагсаалтаар нь зурвал «Shape__Length»
- *    гэсэн техникийн нэр гарна; хүн уншихаар нэрлээд НЭГЖТЭЙ нь харуулна.
  */
 const GEOM_LEN = 'SHAPE__Length';
 const GEOM_AREA = 'SHAPE__Area';
@@ -80,12 +39,7 @@ const GEOM_AREA = 'SHAPE__Area';
 /**
  * ГАРААР БИЧИГДСЭН УРТЫН талбарууд — эдгээр нь порталын БҮХ уртын нийлбэрийн
  * эх сурвалж (`LayerDef.qty.field = 'urt_m'`).
- *
- * ⚠️ Хориглоогүй, ХАРИН геометрийн бодит уртыг хажууд нь бичнэ: гараар өөр тоо
- * тавибал каталогийн багана, «Дэд бүтэц»-ийн км, «Эрсдэлийн загвар»-ын
- * хохирлын үнэлгээ гурвуулаа дагаж зөрнө. Хэрэглэгч зөрүүг ХАРААД шийднэ.
  */
-/* ⚠️ 2026-10-01: `LEN_FIELD` → `butetsLen.lenFieldUnit` (нэр + давхаргын `qty.field`, нэгжтэй нь) */
 
 const numOf = (v: unknown): number | null => {
   const x = Number(v);
@@ -119,17 +73,6 @@ async function serverLenM(meta: LayerMeta, oid: number, row: Row | null): Promis
 
 /**
  * НЭГ ТАЛБАРЫН ОРОЛТ — домэйнтэй бол `<select>`, үгүй бол `<input>`.
- *
- * ⚠️ 2026-09-16-нд маягтын доторх `field()`-ээс ЭКСПОРТ болгон гаргав:
- * олон мөрийн маягт (`DedButetsBatch`) ЯГ ижил оролт зурах ёстой — хуулбар
- * бичвэл домэйн, тоон оролт, уртын хязгаарын дүрэм хоёр газарт зөрж хоцорно
- * (файлын толгойн «нэг маягт» зарчим).
- *
- * ⚠️ `type="text"` САНААТАЙ — `type="number"` нь хөтөч бүрд өөр бөөрөнхийлж,
- * аравтын таслалыг чимээгүй иддэг. Шалгалт нь `validateRow`-д.
- *
- * ⚠️ `placeholder` нь олон мөрийн маягтад «бүү хөндө» гэдгийг хэлдэг — дан
- * маягт өгөхгүй.
  */
 export function FieldInput({
   f, value, err, disabled, onChange, hint, placeholder,
@@ -148,10 +91,6 @@ export function FieldInput({
       {f.codes ? (
         <select className={d.input} value={value} disabled={disabled}
           onChange={(ev) => onChange(ev.target.value)}>
-          {/* ⚠️ Хоосон сонголт нь ЗӨВХӨН nullable талбарт — эс бөгөөс
-              шаардлагатай талбарыг санамсаргүй хоослох зам нээгдэнэ.
-              Олон мөрийн маягтад (`placeholder` өгсөн) хоосон = «бүү хөндө»
-              тул ҮРГЭЛЖ байна. */}
           {(f.nullable || placeholder != null) && (
             <option value="">{placeholder ?? tr('— сонгоогүй —')}</option>
           )}
@@ -188,18 +127,17 @@ export function DedButetsEdit({
   canEdit: boolean;
   /**
    * Амжилттай хадгалсны дараа — хэдэн талбар бичигдсэн ба ЮУГ БУЦААХ вэ.
-   * ⚠️ `undo` нь `null` байж болно: юу ч өөрчлөгдөөгүй бол буцаах зүйл алга.
    */
   onDone: (changed: number, undo: UndoInfo | null) => void;
   onCancel: () => void;
   /**
-   * БАРУУН САМБАР дотор эсэх. Дээрх толгойн ⚠️-г үз — зөвхөн зохиомжийн
+   * БАРУУН САМБАР дотор эсэх. Дээрх толгой-г үз — зөвхөн зохиомжийн
    * биш, ЗАН ТӨЛВИЙН ялгаа (backdrop, Escape, гадуур товшилт).
    */
   docked?: boolean;
   /**
    * Маягтын ДООР нэмэх хэсэг — хэлбэр засах, устгах зэрэг ГЕОМЕТРИЙН
-   * үйлдлүүд. ⚠️ Эдгээрийг ЭНД биш ДУУДАГЧ талд байлгасан шалтгаан:
+   * үйлдлүүд. Эдгээрийг ЭНД биш ДУУДАГЧ талд байлгасан шалтгаан:
    * тэдгээр нь `SketchViewModel`-тэй ажилладаг бөгөөд түүний төлөв
    * (`reshape`, `reshaped`) нь газрын зурагтай хамт `DedButets`-д амьдардаг.
    * Энд зөөвөл маягт газрын зургийн төлөвийг мэддэг болж, хоёр модуль
@@ -211,11 +149,6 @@ export function DedButetsEdit({
    * ЗӨВХӨН `Shape__*` талбаруудыг дахин уншина (доорх эффект).
    */
   geomRev?: number;
-  /**
-   * ⚠️ 2026-10-01: маягт ӨӨРӨӨ утга бичсэн (хэлбэр засварын дараа уртыг геометрээс
-   *    бөглөсөн) — оролтын `onChange` дамжихгүй тул эцэг (`DedButets.formDirty`) мэдэхгүй
-   *    байх байв; «хадгалаагүй» асуулт ажиллахын тулд дуудна.
-   */
   onDirty?: () => void;
 }) {
   /** Шинэ объект үүсгэж байна уу (эсвэл байгааг засаж байна уу) */
@@ -227,19 +160,10 @@ export function DedButetsEdit({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
   const [fail, setFail] = useState('');
-  /**
-   * ⚠️ 2026-10-05: «Нэмэх»-ийн ХАРИУ АЛДАГДСАН (timeout/сүлжээ) — объект үүссэн эсэх
-   *    тодорхойгүй. Урьд нь маягт идэвхтэй үлдэж, дахин дарахад объект ДАВХАРДДАГ байв.
-   *    `true` үед «Нэмэх» хаалттай; хэрэглэгч газрын зураг дээр шалгаад өөрөө нээнэ.
-   */
   const [unsure, setUnsure] = useState(false);
   const dirty = useRef(false);
   /** Амжилттай хадгалалтын тоолуур — маягт нээлттэй үлдвэл мөрийг дахин татна (2026-09-21) */
   const [saved, setSaved] = useState(0);
-  /**
-   * ⚠️ 2026-10-01: геометрээс АВТОМАТААР бөглөгдсөн уртын талбарын нэр — доор нь «геометрээс
-   *    бөглөв» гэж ил хэлнэ (хэрэглэгч гараар бичээгүй утгыг өөрийнх гэж андуурахгүй).
-   */
   const [auto, setAuto] = useState('');
   /** Геодезийн урт (м) — Web Mercator/газарзүйн давхаргад геометрээс (проекцолсонд `null`) */
   const [geoLen, setGeoLen] = useState<number | null>(null);
@@ -248,23 +172,10 @@ export function DedButetsEdit({
   const onDirtyRef = useRef(onDirty);
   useSyncRef(onDirtyRef, onDirty);
 
-  /**
-   * ⚠️ СХЕМ БА МӨРИЙГ ЭНД ТАТНА. Газрын зургийн `onPick` нь давхаргын
-   * `outFields`-д ачаалагдсан талбарыг л буцаадаг тул түүгээр маягт нээвэл
-   * зарим талбар хоосон харагдаж, хадгалахад ЖИНХЭНЭ утгыг нь дарж бичих
-   * эрсдэлтэй (`GazarEdit`-ийн ижил шалтгаан).
-   */
   useEffect(() => {
     let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoad(true); setFail(''); setErr({}); setUnsure(false);
-    /**
-     * ⚠️ ХУУЧИН МӨРИЙГ ЗААВАЛ ЦЭВЭРЛЭНЭ. `before` нь ЗӨВХӨН амжилттай
-     * уншилтад бичигддэг тул цэвэрлэхгүй бол өмнөх объектын мөр үлдэнэ:
-     * нэг объект зассаны ДАРАА шинэ объект зурахад (`oid == null`) толгойн
-     * «Геометрийн урт» нь ӨМНӨХ объектын уртыг харуулж, хэрэглэгч зурсан
-     * зүйлийнхээ хэмжээг буруу уншина.
-     */
     setBefore(null);
     setP(null);
     setAuto('');
@@ -273,7 +184,6 @@ export function DedButetsEdit({
     dirty.current = false;
     (async () => {
       const m = await loadLayerMeta(layerId);
-      /* ⚠️ Шинэ объектод татах мөр БАЙХГҮЙ — схем л хэрэгтэй */
       const row = oid == null ? null : await loadRow(m, oid);
       return { m, row };
     })()
@@ -281,12 +191,7 @@ export function DedButetsEdit({
         if (!alive) return;
         setMeta(m);
         if (oid == null) {
-          /* ⚠️ `before` нь `null` хэвээр — `diffRow` дуудагдахгүй, шинэ мөр
-             нь `createRow`-оор бүтнээрээ бичигдэнэ. */
           const p0 = emptyPatch(m);
-          /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ШИНЭ ШУГАМЫН уртын талбарыг зурсан
-             геометрээс АВТОМАТААР бөглөнө (геодезийн — зурсан дүрс Web Mercator). Урьд нь
-             хоосон үлдэж, km-ийн KPI-д «уртгүй объект» болж ордог байв. Хэрэглэгч засаж болно. */
           const lf = lenFieldOf(m, layerId);
           const len = lf ? geomLengthM(geometry) : null;
           if (lf && len != null) {
@@ -303,19 +208,8 @@ export function DedButetsEdit({
       .catch((e) => alive && setFail(userError(e)))
       .finally(() => alive && setLoad(false));
     return () => { alive = false; };
-    /* ⚠️ 2026-10-01: `geometry` — ШИНЭ зурсан дүрс бүр шинэ маягт (уртыг тэр дүрсээс бөглөнө).
-       Байгаа объектод `undefined` тул нөлөөгүй; эцэг нь `pick`-ийг ижил лавлагаатай барина. */
   }, [layerId, oid, saved, geometry]);
 
-  /**
-   * ⚠️ 2026-09-29 (аудит 10): ХЭЛБЭР хадгалсан / буцаасны дараа `before`-ийн
-   * `Shape__Length/Area` хуучирч, `urt_m`-ийн доорх «Геометрийн бодит урт» нь
-   * ХУУЧИН уртыг харуулдаг байв. Мөрийг дахин татаж ЗӨВХӨН `Shape__*`-ийг
-   * солино — `p` (хадгалаагүй оролт) ба `dirty`-г ХӨНДӨХГҮЙ. Дээрх ачаалах
-   * эффектийг ашиглавал бичсэн оролт дарагдана.
-   * ⚠️ `lastRev` — `layerId`/`oid` солигдоход энэ эффект ажиллахгүй (тэр үед
-   * дээрх эффект бүтэн мөрийг аль хэдийн татна).
-   */
   const lastRev = useRef(geomRev);
   useEffect(() => {
     if (geomRev === lastRev.current) return;
@@ -327,10 +221,6 @@ export function DedButetsEdit({
       .then(async ({ m, row }) => {
         if (!alive || !row) return;
         setBefore((b) => (b ? { ...b, [GEOM_LEN]: row[GEOM_LEN], [GEOM_AREA]: row[GEOM_AREA] } : b));
-        /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ХЭЛБЭР өөрчлөгдсөний дараа уртын талбарыг
-           ШИНЭ геометрээс бөглөнө (хадгалахгүй — хэрэглэгч «Хадгалах» дарна). Урьд нь
-           `Urt_m` хуучин уртаараа үлдэж km-ийн KPI зөрдөг байв. Маягтыг «хадгалаагүй»
-           болгож эцэгт мэдэгдэнэ (`onDirty`). */
         const lf = lenFieldOf(m, layerId);
         if (!lf) return;
         const len = await serverLenM(m, oid, row);
@@ -346,11 +236,6 @@ export function DedButetsEdit({
     return () => { alive = false; };
   }, [geomRev, layerId, oid]);
 
-  /**
-   * ⚠️ 2026-10-01: Web Mercator/газарзүйн давхаргад `Shape__Length` нь ХАВТГАЙ Web Mercator
-   *    урт (энэ өргөрөгт ~1.49 дахин их) — геометрийг татаж ГЕОДЕЗИЙН урт/талбайг бодно
-   *    (`Shape__Area` ч мөн ~2.2 дахин их). Проекцолсон (UTM) давхаргад сүлжээнд залгахгүй.
-   */
   useEffect(() => {
     if (!meta || oid == null || measureKind(meta.wkid) === 'planar') return;
     let alive = true;
@@ -362,9 +247,6 @@ export function DedButetsEdit({
       })
       .catch(() => { /* мэдэгдэхгүй — «—» */ });
     return () => { alive = false; };
-    /* ⚠️ 2026-10-21: `saved` — хадгалсны дараа дээрх ачаалах эффект `geoLen`/`geoArea`-г тэглэдэг, харин
-       `loadLayerMeta` КЭШТЭЙ (ижил `meta` лавлагаа) тул зөвхөн [meta, oid]-оор энэ эффект дахин ажиллахгүй,
-       маягт нээлттэй үлдэхэд геодезийн урт/талбайн мөр алга болдог байв. */
   }, [meta, oid, saved]);
 
   const set = (name: string, v: string) => {
@@ -378,16 +260,8 @@ export function DedButetsEdit({
 
   /**
    * ХААХЫН ӨМНӨХ АСУУЛТ — маягт дотор мөр («Тийм»/«Үгүй»).
-   *
-   * ⚠️ 2026-09-23: `window.confirm` хөтчид хаагдсан үед үргэлж `false`
-   * буцаан бөглөсөн маягт ХААГДАХГҮЙ гацдаг байв (`DedButets.confirmQ`-ийн
-   * ижил сургамж). Асуулт самбарт гарна; талбар засвал арилна.
    */
   const [askClose, setAskClose] = useState(false);
-  /* ⚠️ 2026-09-29 (аудит 10): маягт `key`-гүй тул объект солигдоход `askClose`
-     үлдэж, Б объектын ЦЭВЭР маягт «Хадгалаагүй өөрчлөлт байна» гэж нээгддэг
-     байв. Объект солигдоход рендерийн үед тэглэнэ («өмнөх prop» хэв —
-     эффект доторх синхрон setState-ийг lint хориглодог). */
   const objKey = `${layerId}:${oid ?? 'new'}`;
   const [askFor, setAskFor] = useState(objKey);
   if (askFor !== objKey) {
@@ -403,10 +277,6 @@ export function DedButetsEdit({
 
   /**
    * Esc-ээр хаагдана — цонх нээгээд гарах товч хайх шаардлагагүй.
-   *
-   * ⚠️ САМБАРЫН горимд БҮРТГЭГДЭХГҮЙ: тэнд Escape нь газрын зургийн
-   * зураалтыг цуцлах зориулалттай бөгөөд самбар нь горимын байнгын хэсэг тул
-   * санамсаргүй хаагдвал бөглөж байсан маягт алга болно.
    */
   useEffect(() => {
     if (docked) return;
@@ -415,16 +285,12 @@ export function DedButetsEdit({
     return () => window.removeEventListener('keydown', h);
   }, [tryClose, docked]);
 
-  /* ⚠️ 2026-10-09: ТӨВИЙН ЦОНХ (`aria-modal="true"`) — фокусын урхи (`useFocusTrap`-ийн ⚠️:
-     `aria-modal` нь Tab-д нөлөөгүй). САМБАРТ (`docked`) идэвхгүй — модал биш, газрын зурагтай
-     зэрэг ажиллана. */
   const modalRef = useRef<HTMLDivElement>(null);
   useFocusTrap(modalRef, !docked);
 
   const submit = async () => {
     if (!meta || !p) return;
     if (!isNew && !before) return;
-    /* ⚠️ 2026-09-30: байгаа мөрт ЗӨВХӨН өөрчилсөн талбар (`validateChanged`-ийн тайлбар) */
     const e = isNew ? validateRow(meta, p) : validateChanged(meta, before as Row, p);
     setErr(e);
     if (Object.values(e).some(Boolean)) return;
@@ -432,34 +298,18 @@ export function DedButetsEdit({
     try {
       if (isNew) {
         const newOid = await createRow(meta, geometry, p);
-        statusValsChanged(layerId); // ⚠️ 2026-10-21: төлөвийн шүүлтүүрийн утгыг шинэчилнэ (`DedButetsStatus`)
-        /* ⚠️ Шинэ объектод «хэдэн талбар бичигдсэн» гэдэг утгагүй — НЭГ МӨР
-           нэмэгдсэн гэдгийг 1-ээр дамжуулна (дуудагч тал давхаргаа дахин
-           уншуулах эсэхээ үүгээр шийднэ). */
+        statusValsChanged(layerId);
         onDone(1, { kind: 'add', oid: newOid });
         return;
       }
-      /* ⚠️ Буцаах утгуудыг БИЧИХЭЭС ӨМНӨ бэлдэнэ — дараа нь `before` нь
-         хуучирсан хуулбар болох ч энэ объект аль хэдийн салангид. */
       const back = revertAttrs(meta, before as Row, p);
-      /* ⚠️ 2026-10-21 (кодын аудит): БИЧИХ утга (`saveRow`-ийн `diffRow`-тай ЯГ ижил) — буцаалт серверийн
-         одоогийн утгыг үүнтэй тулгаж, хооронд нь өөр хэрэглэгч зассан бол ДАРАХГҮЙ (`revertRows`). */
       const wrote = diffRow(meta, before as Row, p);
       const n = await saveRow(meta, oid as number, before as Row, p);
-      if (n > 0) statusValsChanged(layerId); // ⚠️ 2026-10-21: төлөвийн шүүлтүүрийн утгыг шинэчилнэ (`DedButetsStatus`)
-      /* ⚠️ 2026-09-21: эцэг `onDone`-д маягтыг хаадаг ч хэрэглэгч хадгалаагүй
-         хэлбэрийн засвараа хаяхаас татгалзвал (`DedButets.closeEdit` → `false`)
-         маягт НЭЭЛТТЭЙ үлдэнэ. Тэр үед `before` хуучирч (дараагийн хадгалалт
-         буруу diff бичнэ), `dirty` нь худал «хадгалаагүй» асуулт гаргана.
-         Тиймээс бичсэний дараа ноорог цэвэр гэж тэмдэглээд мөрийг дахин
-         татна (`saved` тоолуур ачаалах эффектийг сэргээнэ); маягт салсан бол
-         эдгээр setState нь хор хөнөөлгүй. */
+      if (n > 0) statusValsChanged(layerId);
       dirty.current = false;
       onDone(n, n > 0 ? { kind: 'attr', oid: oid as number, attrs: back, wrote } : null);
       setSaved((x) => x + 1);
     } catch (x) {
-      /* ⚠️ Маягт ХААГДАХГҮЙ — бичсэн зүйл үлдэнэ */
-      /* ⚠️ 2026-10-05: шинэ объектын хариу алдагдсан бол дахин илгээхийг хаана (`unsure`) */
       if (isNew && isLostResponse(x)) {
         setUnsure(true);
         setFail('');
@@ -473,20 +323,14 @@ export function DedButetsEdit({
 
   /**
    * Геометрийн урт (м) — уртын талбарын доор зөрүүг харуулахад.
-   * ⚠️ 2026-10-01: SR-ээр (`serverLenM`-ийн дүрэм): шинэ объектод зурсан геометрээс
-   *    (геодезийн), Web Mercator давхаргад геодезийн (`geoLen`), UTM-д `Shape__Length`.
    */
   const geomLen = isNew
     ? geomLengthM(geometry)
     : geoLen ?? (meta && measureKind(meta.wkid) !== 'planar' ? null : before ? numOf(before[GEOM_LEN]) : null);
   const geomArea = geoArea ?? (meta && measureKind(meta.wkid) !== 'planar' ? null : before ? numOf(before[GEOM_AREA]) : null);
 
-  /* ⚠️ 2026-09-30: давхаргын УРТЫН талбар (`LayerDef.qty.field`) — `LEN_FIELD` нь зөвхөн
-     `urt_m`/`urt_km`/`length_km`-ийг таньдаг тул `Length_m`, `Length_metr`, `Shugam_Urt`
-     талбартай 12 шугам давхаргад «Геометрийн бодит урт» зөрүүний сануулга гардаггүй байв. */
   const qtyDef = LAYER_BY_ID[layerId]?.qty ?? null;
   const field = (f: FieldDef) => {
-    /* ⚠️ 2026-10-01: уртын талбар ба нэгж — `butetsLen.lenFieldUnit` (км талбарт км-ээр бөглөнө) */
     const unit = f.kind === 'number' ? lenFieldUnit(f.name, qtyDef) : null;
     const lenHint = unit != null && geomLen != null;
     const fromGeom = lenHint ? lenFieldValue(geomLen, unit, !!f.int) : '';
@@ -502,7 +346,6 @@ export function DedButetsEdit({
           <span className={d.fHint}>
             {tr('Геометрийн бодит урт: {0} м', num(geomLen, 1))}
             {auto === f.name && <> · <b>{tr('геометрээс бөглөв')}</b></>}
-            {/* ⚠️ «Урт ← геометр» — талбарыг геометрийн уртаар (талбарын нэгжээр) дарж бичнэ */}
             {canEdit && (p?.[f.name] ?? '') !== fromGeom && (
               <>
                 {' '}
@@ -523,11 +366,6 @@ export function DedButetsEdit({
     );
   };
 
-  /**
-   * ⚠️ БҮРХҮҮЛ нь хоёр өөр, ДОТОР нь ИЖИЛ. Хуулбарлаж хоёр салангид маягт
-   * бичих сонголт байсан ч татгалзсан: талбарын жагсаалт, шалгуур, алдааны
-   * дүрэм, хадгалах урсгал бүгд ижил тул нэгийг засахад нөгөө нь хоцорно.
-   */
   const body = (
       <>
         <div className={d.modalHead}>
@@ -544,10 +382,7 @@ export function DedButetsEdit({
         ) : (
           <>
             <div className={d.form}>
-              {/* ЗАСАГДАХГҮЙ — таних тэмдэг ба геометрээс гарах хэмжээ.
-                  ⚠️ Шинэ объектод дугаар БАЙХГҮЙ (сервер оноодог) бөгөөд
-                  геометрийн хэмжээ ч сервер дээр л бодогдоно — тиймээс
-                  «зурсан» гэдгийг л хэлнэ. */}
+              {/* ЗАСАГДАХГҮЙ — таних тэмдэг ба геометрээс гарах хэмжээ. */}
               <dl className={d.ro}>
                 <dt>{tr('Объектын дугаар')}</dt>
                 <dd>{isNew ? tr('хадгалахад олгогдоно') : oid}</dd>
@@ -578,8 +413,6 @@ export function DedButetsEdit({
                 </p>
               )}
 
-              {/* ⚠️ Үйлчилгээ засварыг зөвшөөрөхгүй бол ЭНД шууд хэлнэ —
-                  хэрэглэгч бөглөж дуусаад хадгалах дарж байж мэдэх нь хожуу. */}
               {!isNew && !meta.canUpdate && (
                 <div className={d.formErr} role="alert">
                   {tr('Энэ давхарга засварыг зөвшөөрөхгүй байна')}
@@ -593,13 +426,8 @@ export function DedButetsEdit({
               {fail && <div className={d.formErr} role="alert">{fail}</div>}
             </div>
 
-            {/* ⚠️ ГЕОМЕТРИЙН үйлдлүүд — дуудагч талаас (дээрх `extra`-гийн
-                тайлбарыг үз). Хадгалах товчнуудын ДЭЭР: тэдгээр нь өөр
-                объектод биш ЭНЭ мөрөнд үйлчилдэг тул маягтын үргэлжлэл. */}
             {extra}
 
-            {/* ⚠️ 2026-10-05: хариу алдагдсан «Нэмэх» — `unsure`-ийн тайлбар */}
-            {/* ⚠️ 2026-10-09: `alertdialog` БИШ — диалог биш, фокус барихгүй мөрийн мэдэгдэл */}
             {unsure && (
               <div className={d.askRow} role="alert">
                 <span className={d.askMsg}>
@@ -629,9 +457,6 @@ export function DedButetsEdit({
               <button type="button" className={d.btn} onClick={tryClose} disabled={busy}>
                 {docked ? tr('Хаах') : tr('Болих')}
               </button>
-              {/* ⚠️ ШИНЭ объектод `fields.length === 0` нь саад БИШ: атрибутгүй
-                  давхаргад ч геометр нэмэх нь утгатай. Засах горимд харин
-                  бөглөх зүйлгүй тул товч хаалттай. */}
               <button type="button" className={d.primary} onClick={submit}
                 disabled={busy || !canEdit || unsure
                   || (isNew ? !meta.canCreate : !meta.canUpdate || meta.fields.length === 0)}>
@@ -643,9 +468,6 @@ export function DedButetsEdit({
       </>
   );
 
-  /* ⚠️ САМБАР — `role="dialog"`-гүй: энэ нь модаль БИШ, горимын байнгын
-     хэсэг. `aria-modal` тавибал дэлгэц уншигч газрын зургийг «ард нь далд»
-     гэж зарлаж, зурагтай ажиллах боломжийг нуух болно. */
   if (docked) return <aside className={d.pane}>{body}</aside>;
 
   return (

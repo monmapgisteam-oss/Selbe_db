@@ -1,14 +1,7 @@
 'use client';
 
 /**
- * «СИСТЕМ ТҮР ХААХ» — удирдлагын цонх ба шар зурвас (⚠️ 2026-10-19, нийслэлийн дата төв рүү шилжүүлэх).
- *
- * ⚠️ ХЭН: `sysClose` эрхтэй (админ самбарын «Систем түр хаах» хуудаснаас аккаунтаар олгоно) эсвэл кодын super —
- *    `Portal` товчийг зөвхөн тэдэнд зурна; бичих зам өөрөө ч шалгана (`permissions.setSystemClosed` → `requireCap`).
- * ⚠️ ХААЛТ НЬ БҮХ ХҮНИЙГ ГАРГАНА — `window.confirm` ЗААВАЛ (хаах ба нээх хоёуланд). Тайлбар/хугацааг шинэчлэх нь
- *    дахин «хаах» бичилт (ижил асуулттай биш, тусдаа асуулт).
- * ⚠️ Дотор байгаа хэрэглэгчид дараагийн эрхийн шалгалтад (5 мин / таб идэвхжих) цонх гарна — шууд биш. Текстэд ил.
- * ⚠️ Хаалт клиент талд (`acl-client-only` хүлээн зөвшөөрсөн) — ArcGIS-ийн токен хүчинтэй хэвээр (05 §1).
+ * «СИСТЕМ ТҮР ХААХ» — удирдлагын цонх ба шар зурвас (2026-10-19, нийслэлийн дата төв рүү шилжүүлэх).
  */
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -26,8 +19,6 @@ import s from './auth.module.css';
 
 /**
  * Одоогийн хаалтын төлөв (бүх хэрэглэгчид — эрх үл хамаарна), `null` = нээлттэй.
- * ⚠️ `systemClosed()` нь ижил агуулгад ИЖИЛ объект буцаадаг (`permissions._syncRemoteSys`) — `useSyncExternalStore`-ийн
- *    агшин тогтвортой. Эрхийн store-ийн мэдэгдлээр (`initRemote`-ийн төгсгөл) шинэчлэгдэнэ.
  */
 export function useSystemClosed(): SysState | null {
   return useSyncExternalStore(subscribe, systemClosed, () => null);
@@ -42,7 +33,7 @@ const subscribeRights = (fn: () => void): (() => void) => {
 
 /**
  * Систем хаах/нээх эрхтэй юу — `sysClose` эрхтэй ЭСВЭЛ кодын super (`permissions.canBypassClosed`-тай ИЖИЛ дүрэм:
- * хаах эрхтэй хүн хаалттай үед ч нэвтэрнэ). ⚠️ Зөвхөн нэвтэрсэн (`signed-in`) үед — нэвтрэлт унтраалттай дев
+ * хаах эрхтэй хүн хаалттай үед ч нэвтэрнэ). Зөвхөн нэвтэрсэн (`signed-in`) үед — нэвтрэлт унтраалттай дев
  * орчинд `hasCap` бүгдэд үнэн тул товч гаргахгүй (бичих токен ч байхгүй).
  */
 export function useCanCloseSystem(username: string | null | undefined, signedIn: boolean): boolean {
@@ -55,8 +46,6 @@ export const sysByText = (st: SysState): string =>
 
 /**
  * ШАР ЗУРВАС — систем хаалттай атлаа ЭНЭ хэрэглэгч (эрхтэй/super) дотор ажиллаж байхад; мартаж орхихоос сэргийлнэ.
- * ⚠️ `onOpen` байвал (удирдах эрхтэй) товч — удирдлагын цонхыг нээнэ.
- * ⚠️ 2026-10-19 (аудит №2): дуудагч (`Portal`) ЗӨВХӨН `canBypassClosed` хэрэглэгчид зурна — бусдад «бусдад хаалттай» худал.
  */
 export function SystemClosedStrip({ onOpen }: { onOpen?: () => void }) {
   const st = useSystemClosed();
@@ -81,16 +70,10 @@ function SystemCloseInner({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true);
   const cur = useSystemClosed();
-  /* ⚠️ Хаалттай бол одоогийн тайлбар/хугацаагаар эхэлнэ (шинэчлэхэд) */
   const [note, setNote] = useState(cur?.note ?? '');
   const [until, setUntil] = useState(cur?.until ?? '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  /*
-   * ⚠️ 2026-10-19 (аудит): НЭЭГДЭХДЭЭ ТӨЛӨВИЙГ ШИНЭЭР УНШИНА — store-ийн төлөв 5 мин хүртэл хуучирсан байж болно
-   *    (өөр эзэмшигч завсарт нээсэн/хаасан). Уншиж дуустал товч идэвхгүй (`loading`); шинэ төлөв өөр бол
-   *    тайлбар/хугацааг түүгээр сольно. Уншилт унавал сүүлийн мэдэгдэж буйгаар — бичихийн өмнө дахин шалгана.
-   */
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let alive = true;
@@ -116,19 +99,16 @@ function SystemCloseInner({ onClose }: { onClose: () => void }) {
       : update
         ? tr('Хаалтын тайлбар ба дахин нээгдэх хугацааг шинэчлэх үү?')
         : tr('Системийг хаах уу? Таныг болон админаас (super) бусад бүх хэрэглэгч «Систем түр хаагдсан» цонх харж, порталд орж чадахгүй болно. Одоо дотор байгаа хүмүүст 5 минутын дотор (эсвэл цонх идэвхжихэд) гарна — хадгалаагүй ажил нь устахгүй.');
-    /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` — хаах нь бүх хэрэглэгчийг гаргадаг тул улаан (`danger`) */
     if (!(await askConfirm(q, on && !update
       ? { danger: true, ok: tr('Системийг хаах') }
       : { ok: !on ? tr('Системийг нээх') : tr('Шинэчлэх') }))) return;
     setBusy(true);
     setMsg(null);
     try {
-      /* ⚠️ 2026-10-19 (аудит): цонхонд ХАРАГДСАН төлөв (`cur`) — бичихийн өмнө дахин уншиж зөрвөл татгалзана */
       const ok = await setSystemClosed(on, note, until, { expect: cur, update });
       if (ok) {
         setMsg({ ok: true, text: !on ? tr('Систем нээгдлээ.') : update ? tr('Шинэчлэгдлээ.') : tr('Систем хаагдлаа.') });
       } else {
-        /* ⚠️ Тодорхой шалтгаан (`permsRemote.takeWriteError`) — динамик: энэ цонх Portal-ын ачаалалд орохгүй */
         const { takeWriteError } = await import('@/lib/permsRemote');
         setMsg({ ok: false, text: takeWriteError() || tr('ArcGIS-т хадгалагдсангүй — холболтоо шалгаад дахин оролдоно уу.') });
       }
@@ -139,7 +119,6 @@ function SystemCloseInner({ onClose }: { onClose: () => void }) {
         setUntil(e.fresh?.until ?? '');
         setMsg({ ok: false, text: tr('Төлөв өөрчлөгдсөн — шинэчиллээ. Шинэ төлөвийг шалгаад дахин сонгоно уу.') });
       } else {
-        /* ⚠️ 2026-10-23 (UX аудит X3): түүхий `e.message` биш — ойлгомжтой текст (`userError`) */
         setMsg({ ok: false, text: userError(e) });
       }
     } finally {
@@ -207,7 +186,6 @@ function SystemCloseInner({ onClose }: { onClose: () => void }) {
           </button>
         )}
         <button type="button" className={s.btnGhost} disabled={busy} onClick={onClose}>
-          {/* ⚠️ 2026-10-19 (аудит): «Хаах» биш — «Системийг хаах»-тай андуурагдана */}
           {tr('Болих')}
         </button>
       </div>

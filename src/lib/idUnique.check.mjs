@@ -32,7 +32,6 @@ assert.deepEqual(collidedIds(rows, mine, []), [], 'оноогоогүй бол �
 const plan = renumberPlan(rows, [11]);
 assert.equal(plan.get(11), 13, 'max(12)+1');
 assert.deepEqual([...renumberPlan(rows, [11, 12], [20]).entries()], [[11, 21], [12, 22]], 'extra-г ч тооцно, дараалан');
-/* ⚠️ 2026-10-05: тэнцүүлэгч — зөвхөн ИХ OBJECTID-тай тал шилжинэ (хоёулаа шилжвэл дахин давхцана) */
 {
   const two = [{ oid: 1, id: 4 }, { oid: 10, id: 5 }, { oid: 11, id: 5 }];
   assert.equal(collidesBelow(two, 10, 5), false, 'түрүүлж бичигдсэн мөр дугаараа хадгална');
@@ -43,7 +42,6 @@ assert.deepEqual([...renumberPlan(rows, [11, 12], [20]).entries()], [[11, 21], [
 console.log('✅ idUnique: илрүүлэлт · дахин дугаарлалт · тэнцүүлэгч');
 
 /* Эх код: бичсэний дараах шалгалт холбогдсон */
-/* ⚠️ 2026-10-27: «Гэрээ (Cashflow)» таб (`FullTable`) устгагдсан — түүний эх кодын шалгуур хасагдав */
 const hy = readFileSync(new URL('./hyanalt.ts', import.meta.url), 'utf8');
 assert.ok(hy.includes("collidesBelow(idRows, oid, cur)"), 'hyanalt.ensureUniqueId: тэнцүүлэгч (бага OBJECTID ялна) алга');
 const sub = readFileSync(new URL('./hyanaltSubmit.ts', import.meta.url), 'utf8');

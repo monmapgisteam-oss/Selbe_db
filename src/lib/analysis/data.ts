@@ -5,10 +5,6 @@
  *
  * Бүх орон зайн тооцоо UTM 48N (метр) дээр ПЛАНАРААР хийгдэнэ — геодезик
  * тооцоо энэ хэмжээний талбайд ялгаа өгөхгүй бөгөөд хамаагүй удаан.
- *
- * ⚠️ Энэ модуль ГЕОМЕТР татдаг цорын ганц газар. Давхаргын тоо, хэмжээг
- * `lib/totals.ts` сервер тал дээр бодуулдаг; энд зөвхөн орон зайн харьцаа
- * (зай, огтлолцол, агуулагдал) шаардсан зүйлийг л татна.
  */
 
 import Query from '@arcgis/core/rest/support/Query';
@@ -18,11 +14,6 @@ import * as geometryEngine from '@arcgis/core/geometry/geometryEngine';
 import * as geometryEngineAsync from '@arcgis/core/geometry/geometryEngineAsync';
 import type Geometry from '@arcgis/core/geometry/Geometry';
 
-/**
- * ⚠️ ArcGIS 4.34-д `geometryEngine` нь хийсвэр `Geometry`-г БИШ, тодорхой
- * төрлүүдийн НЭГДЛИЙГ (`GeometryUnion`) хүлээж авдаг болсон. Асуулгаас ирэх
- * геометр нь ажиллах үедээ яг тэдгээрийн нэг тул хөрвүүлэлт нь аюулгүй.
- */
 type GeomArg = __esri.GeometryUnion;
 import type Polygon from '@arcgis/core/geometry/Polygon';
 import { layerUrl, LAYER_BY_ID, ZONE_FIELDS, zoneCanon, zoneRefValues, zoneType, SELBE_ET } from '@/lib/services';
@@ -43,39 +34,20 @@ const n = (v: unknown) => (v == null || !Number.isFinite(Number(v)) ? 0 : Number
 
 /**
  * Давхаргын БҮХ объектыг татна.
- *
- * ⚠️ Үйлчилгээний `maxRecordCount` (2000) дээр таслагдахаас сэргийлж ХУУДАСЛАНА.
- * Үгүй бол 3,200 объекттой «Гадна дулаан» дутуу ирж, инженерийн хүртээмжийн
- * тооцоо чимээгүй буруу гарна.
  */
 const PAGE = 2000;
 async function fetchAll(u: string, outFields: string[], returnGeometry = false): Promise<Feat[]> {
   const out: Feat[] = [];
-  // ⚠️ Дараагийн хуудсыг ИРСЭН бичлэгийн тоогоор ахиулна (PAGE-ээр НЕ).
-  // Сервер хариуны хэмжээгээр таслахад 2000-аас цөөн ирж, exceededTransferLimit
-  // үнэн байдаг — PAGE-ээр ахиулбал дундах бичлэгүүд чимээгүй алдагдана.
   for (let start = 0; ; ) {
     const q = new Query({
       where: '1=1',
       outFields,
       returnGeometry,
       outSpatialReference: { wkid: WKID },
-      /*
-       * ⚠️ `orderByFields` ЗААВАЛ (2026-09-15-ны аудит). ArcGIS нь эрэмбэгүй
-       *    үед хуудасны мөрийн дарааллыг БАТАЛГААЖУУЛДАГГҮЙ: заагийн мөр
-       *    давхардах эсвэл унах бөгөөд алдаа нь ЧИМЭЭГҮЙ. Жишээ нь «Гадна
-       *    дулаан» (3,200 объект) хоёр хуудсаар ирэхэд нэг сегмент давхардаж
-       *    нөгөө нь унавал `engUnion` дутуу болж, БҮХ бүсийн `engineering`
-       *    зай буруу гарна. `buildings.ts` ба `roadNet.ts`-д яг энэ эрсдэлийг
-       *    2026-09-07-нд зассан ч энэ файлд хүрээгүй байв.
-       */
       orderByFields: ['objectid ASC'],
       start,
       num: PAGE,
     });
-    /* ⚠️ 2026-10-20: AGOL түлхүүрийн хаяг (`TD/118`) → Enterprise. JS API-ийн `executeQueryJSON` нь `query.ts`-ийн
-       цөмөөр явдаггүй тул зураглал ЭНД — урьд нь AGOL руу шууд явж 499 → «Тохиромжтой байдал» нээхэд AGOL-ын нэвтрэх
-       цонх гардаг байв. Талбарын нэр (`Shape__Area` · `RefName_12` · `OBJECTID`) `lib/entInterceptor.ts` хөрвүүлнэ. */
     const res = await query.executeQueryJSON(u, q);
     out.push(...(res.features as unknown as Feat[]));
     if (res.features.length === 0) break;
@@ -123,10 +95,6 @@ export type Zone = {
   /**
    * НӨЛӨӨЛЛИЙН БҮС — бүсийн ОРОН СУУЦНЫ барилга бүрээс хамгийн ойрын ногоон
    * байгууламж хүртэлх зай (м) ба тэнд оршин суудаг хүний тоо.
-   *
-   * ⚠️ Радиусыг гулсуураар өөрчилдөг тул ЗАЙГ нэг удаа бодоод хадгална —
-   * хамралт нь дараа нь энгийн шүүлт (`d <= R`) болно. Эс бөгөөс гулсуур
-   * хөдлөх бүрд 800 полигоны union ба 368 зайн тооцоо дахин явна.
    */
   greenDist: { pop: number; d: number }[];
 
@@ -142,8 +110,6 @@ export type Zone = {
   raw: Record<string, number | null>;
   /**
    * `ASSUME_MET`-ээр ДАРАГДАХААС ӨМНӨХ бодит утгууд.
-   * ⚠️ Тооцоо зогсоогүй гэдгийн баталгаа: дарагдсан үзүүлэлтийн жинхэнэ утга
-   * энд бүтнээрээ хадгалагдана (`ASSUME_MET` хоосон бол `raw`-тай ижил).
    */
   rawActual: Record<string, number | null>;
 };
@@ -177,23 +143,11 @@ export type AnalysisData = {
   buildingCats: BuildingPurposeStat[];
   /** Барилгын цэгүүд — «Байршил» картын шинжилгээ */
   bldPts: LocationPt[];
-  /**
-   * ⚠️ 2026-09-30: ТАТАГДААГҮЙ эх сурвалжууд (нэрээр) — хоосон бол бүгд бүрэн.
-   * Урьд нь автобус/LRT-ийн буудал, инженерийн дэд бүтэц унахад `[]` болж
-   * «Тээврийн хүртээмж» «өгөгдөл алга» эсвэл ХЭТ ХОЛ зай харуулж, тэр хагас үр
-   * дүн сесс дуустал кэшлэгддэг байв.
-   */
   failed: string[];
 };
 
 /**
  * БАРИЛГЫН ЦЭГ — «Байршил» картын шинжилгээний нэгж.
- *
- * ⚠️ Зайг УРЬДЧИЛАН бодохгүй: хэрэглэгч ЯМАР Ч барилгыг сонгож болох тул бүх
- * хосын зай (368² ≈ 135,000) хэрэг болно. Оронд нь координатыг өгөөд UI тал
- * дээр сонгосон барилгаас нь л (368 тооцоо) бодуулна.
- *
- * ⚠️ Координат нь UTM 48N (метр, `WKID`) тул зай нь ШУУД метрээр гарна.
  */
 export type LocationPt = {
   oid: number;
@@ -220,8 +174,6 @@ export type BuildingPurposeStat = {
   pop: number;
   /**
    * Бүлэгт бодитоор багтсан `Зориулалт_m`-ийн ТҮҮХИЙ утгууд.
-   * ⚠️ Газрын зургийн шүүлтэд (SQL `NOT IN`) хэрэгтэй: ArcGIS-д кирилл regex
-   * байхгүй тул бүлгийн хэв шинжийг тэнд давтаж чадахгүй.
    */
   values: string[];
   /** Бүлэгт зориулалт нь ХООСОН/NULL бичлэг оров уу */
@@ -240,8 +192,6 @@ function resolveZoneId(raw: unknown, ids: Set<string>): string | null {
   const id = zoneCanon(raw);
   if (!id) return null;
   if (ids.has(id)) return id;
-  // ⚠️ Ногоон байгууламж ХУУЧИН кодтой: «D-8» нь одоо `D-8.1`/`D-8.2` болсон.
-  //    Хуваагдсан бүсийн эхнийхэд нь оноож, талбайг нь алдахгүй байна.
   const split = zoneRefValues(id).map(zoneCanon).find((c) => ids.has(c));
   if (split) return split;
   const parent = id.replace(/\.\d+$/, '');
@@ -254,17 +204,6 @@ function resolveZoneId(raw: unknown, ids: Set<string>): string | null {
  *   1. бусад кодын бүстэй ДАВХЦАЛ хамгийн бага (`overlapOf`, м²; 1 м²-аас бага зөрүү тэнцүү);
  *   2. дотоод цагираг (НҮХ) олон (`holesOf`);
  *   3. талбай (`areaOf`) том; 4. тэнцвэл эхнийх.
- * ⚠️ 2026-10-22 (аудит): урьд нь зөвхөн «том нь» гэж objectid 47-г үлдээдэг байв — тэр нь objectid 12-ын нүх (7,905 м²)
- *    болох K-6 бүсийг БҮТНЭЭР нь агуулдаг тул K-6-ийн 2 барилга (240 хүүхдийн цэцэрлэг орно) X-13 (оноололд ордоггүй
- *    ногоон бүс) руу оноогдож K-6 «барилгагүй» харагддаг байв. Одоо нүхтэй, давхцалгүй objectid 12 үлдэнэ.
- *    ⚠️ ӨГӨГДЛИЙН ЭЗЭНД: objectid 47 нь ДАВХАРДСАН ХУУЛБАР (нүхгүй) — `selbe_ET/100`-аас устгах хэрэгтэй.
- * ⚠️ 2026-10-21 (аудит): ӨГӨГДЛИЙН АЛДАА — бүсийн давхаргад (`selbe_ET/100`) «X-13» ХОЁР мөртэй: objectid 47 (1 цагираг,
- *    20,347 м²) ба objectid 12 (ЯГ ТЭР гадна цагираг + 7,905 м² НҮХ = 12,442 м²; `gazar_ga` хоёуланд 1.2441 — хуулбар мөр).
- *    Урьд нь хоёулаа тусдаа `Zone` болж: `greenByZone` (кодоор) ижил 3,058 м² ногоон ХОЁР удаа төслийн нийлбэрт,
- *    `aggregateBuildings` эхний таарсан полигонд, бүсийн тоо 58 (57 код). Давхаргад засах хүртэл ЭНД нэгтгэнэ: том
- *    полигон нь жижгийг бүхэлд нь агуулдаг (нүх нь л ялгаа) тул «том нь» = хоёрын нэгдэл — барилга/ногооны оноолт
- *    алдагдахгүй. Давхардлыг `console.warn`-д нэрлэнэ; `failed`-д ОРУУЛАХГҮЙ (тэр нь кэшлэлтийг хаана — өгөгдөл
- *    засагдтал нээлт бүрд секундын тооцоо дахин явах байсан).
  */
 export function dedupeZoneFeats<T extends { attributes: Record<string, unknown> }>(
   feats: readonly T[],
@@ -330,30 +269,16 @@ export function interiorRingCount(rings: readonly (readonly (readonly number[])[
 
 /**
  * БҮСИЙН ТӨЛӨВЛӨЛТИЙН БИЧЛЭГ ХООСОН эсэх — FAR · BCR · зогсоолын норм · төлөвлөсөн ил/далд зогсоол БҮГД 0/хоосон.
- * ⚠️ 2026-10-22 (аудит): B-2-ийн бичлэг бүхэлдээ 0 (бөглөгдөөгүй) атал «төлөвлөсөн зогсоол 0» гэж уншигдаж зогсоолын
- *    хангамж 0% (188 өрхийн 100% дутагдал) болдог байв. Бүх утга 0 нь хэмжилт биш — ӨГӨГДӨЛГҮЙ (null ≠ 0).
  */
 export const planRecordMissing = (z: Pick<Zone, 'zoneFar' | 'zoneBcr' | 'normParking' | 'etIl' | 'etDald'>): boolean =>
   !(z.zoneFar ?? 0) && !(z.zoneBcr ?? 0) && !z.normParking && !z.etIl && !z.etDald;
 
-/**
- * ⚠️ Модулийн түвшний КЭШ. Энэ ачаалалт нь 4,000+ шугамын union, 368×52
- * `contains` тест хийдэг тул хэдэн секунд авна. Харагдац солих бүрд дахин
- * ажиллуулбал хэрэглэгч буцаж ирэх бүрдээ хүлээх болно. Өгөгдөл нь сесс дотор
- * өөрчлөгддөггүй тул амлалтыг нь хадгалж дахин ашиглана.
- */
 let cache: Promise<AnalysisData> | null = null;
-/* ⚠️ 2026-10-21 (кэшийн аудит): толгойн «Шинэчлэх» (`dataBus.invalidateAll`) энэ кэшийг ч хаяна — `hesegChange` ·
-   `hesegNeed` · `planOverlap`-ийн 2026-10-19-ний дүрэм (хоосон `reads`: хүснэгтийн бичилт хөндөхгүй, зөвхөн бүтэн
-   шинэчлэлт). Урьд нь автобусад бүртгэлгүй тул ArcGIS Pro-гийн бүс/барилгын засвар хуудас дахин ачаалтал
-   «Тохиромжтой байдал» · Нүүрний оноонд харагддаггүй, толгойн «Өгөгдөл: HH:MM» худал шинэ цаг заадаг байв.
-   Дээрх «сесс дотор өөрчлөгддөггүй» нь ХАРАГДАЦ солиход дахин бодохгүй гэсэн шийдвэр хэвээр. */
 register(() => { cache = null; }, []);
 
 export function loadAnalysisCached(onProgress: Progress = () => {}): Promise<AnalysisData> {
   if (!cache) {
     cache = loadAnalysis(onProgress)
-      /* ⚠️ 2026-09-30: ХАГАС үр дүнг (`failed`) кэшлэхгүй — дараагийн нээлт дахин оролдоно */
       .then((d) => { if (d.failed.length) cache = null; return d; })
       .catch((e) => {
         cache = null; // алдаа кэшлэхгүй — дахин оролдох боломжтой байх ёстой
@@ -365,15 +290,11 @@ export function loadAnalysisCached(onProgress: Progress = () => {}): Promise<Ana
 
 export async function loadAnalysis(onProgress: Progress = () => {}): Promise<AnalysisData> {
   onProgress(tr('Бүсийн мэдээлэл…'), 6);
-  // ⚠️ Талбарын нэрийг ЭНД бичихгүй — бүсийн давхарга солигдоход (`ZONE_ID` →
-  //    `RefName_1`, `TOROL` → `Angilal`) энэ жагсаалт чимээгүй хоосон утга буцаана.
   const Z = ZONE_FIELDS;
   const zoneFeats0 = await fetchAll(url(SRC.zones), [
     Z.id, Z.type, Z.areaHa, 'SHAPE__Area', Z.far, Z.farPct, Z.bcr,
     Z.parkNorm, Z.parkPlanOpen, Z.parkPlanUnder,
   ], true);
-  /* ⚠️ 2026-10-21 (аудит): давхардсан код (X-13) — нэг бүс. ⚠️ 2026-10-22: бусад бүстэй давхцалгүй / нүхтэй хуулбар
-     (`dedupeZoneFeats`-ийн ⚠️) — давхцлыг ЗӨВХӨН давхардсан кодын хуулбаруудад бодно (хямд). */
   const ringsOf = (f: Feat) => ((f.geometry as Polygon | null)?.rings ?? []) as number[][][];
   const { feats: zoneFeats, dups: zoneDups } = dedupeZoneFeats(zoneFeats0, (a) => zoneCanon(a[Z.id]), (a) => n(a.SHAPE__Area), {
     holesOf: (f) => interiorRingCount(ringsOf(f)),
@@ -401,25 +322,10 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   ], true);
 
   onProgress(tr('Ногоон байгууламж…'), 38);
-  // ⚠️ `nogoon_baiguulamj/0` (`..._intersect`): бүсийн полигонтой огтлолцуулсан тул
-  //    бүсийн код `RefName_12`-д БҮГД бичигдсэн (кодгүй объект байхгүй), талбай
-  //    `Shape__Area` (м²) нь бүсийн хилээр тайрагдсан. Ангилалгүй — бүх объект
-  //    `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ.
-  // ⚠️ ГЕОМЕТРТЭЙ: «нөлөөллийн бүс» арга нь ногооноос барилга хүртэлх ЗАЙГ
-  //    хэмждэг тул зөвхөн талбайн тоо хангалтгүй.
-  // ⚠️ ЗУРГИЙН давхаргаас (`data`/35, `sb:1`) ӨӨР эх сурвалж — тэр нь 807
-  //    хэсгийг НЭГТГЭСЭН ганц полигон, атрибутгүй тул бүс тус бүрийн ногоон
-  //    талбай тэндээс бодогдохгүй. Тиймээс ТООЦООНД зориулсан тусдаа
-  //    үйлчилгээ: нэрийн ард `_analysis` гэж ялгасан.
-  // ⚠️ 2026-08-24: monmap-ын `nogoon_baiguulamj`-аас MUST-ын
-  //    `nogoon_baiguulamj_analysis`/118 руу шилжив. Обьект 807 = 807, талбай
-  //    55 га = 55 га, `RefName_12`/`Angilal`/`Area_hec` талбар бүрэн адил.
-  /* ⚠️ 2026-09-17: MUST → monmap `SELBE_ALL_DATA_last_0917` (ижил дугаар 118). */
   const GREEN_DATA_URL = `${SELBE_ET}/114`;
   const green = await fetchAll(GREEN_DATA_URL, ['refname_12', 'SHAPE__Area'], true);
 
   onProgress(tr('Нийтийн тээврийн зогсоол…'), 50);
-  /* ⚠️ 2026-09-30: уналт ҮРГЭЛЖИЛНЭ (хагас дүн нь хоосноос дээр) ч НЭРЭЭР нь бүртгэнэ — `failed` */
   const failed: string[] = [];
   const soft = (label: string) => (e: unknown): Feat[] => {
     console.warn(`[selbe] анализ: «${label}» татагдсангүй:`, e);
@@ -441,18 +347,9 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
   const stopGeoms = [...bus, ...lrt].map((f) => f.geometry).filter(Boolean) as GeomArg[];
   const engGeoms = engResults.flat().map((f) => f.geometry).filter(Boolean) as GeomArg[];
 
-  // ⚠️ Нэгтгэсэн (union) геометр — эс бөгөөс бүс бүрд 4,000+ шугам тус бүрээр
-  //    зай бодох болж, 52 × 4,000 = 200,000 тооцоо явна.
-  //    async хувилбар (2026-08-21 гүйцэтгэлийн аудит): 4,000+ хэсгийн union нь
-  //    синхроноор main thread-ийг хэдэн секунд царцаадаг байв — worker-т бодно.
-  //    (Хоёр union зэрэг — нэг нь нөгөөгөө хүлээхгүй.)
   const greenGeoms = green.map((f) => f.geometry).filter(Boolean) as GeomArg[];
   const [engUnion, greenUnion] = await Promise.all([
     engGeoms.length ? geometryEngineAsync.union(engGeoms) : Promise.resolve(null),
-    /**
-     * ⚠️ Ногоон байгууламжийн НЭГТГЭСЭН геометр — «нөлөөллийн бүс» аргад.
-     * 807 полигон тус бүрээр зай бодвол 368 × 807 = 297,000 тооцоо явна.
-     */
     greenGeoms.length ? geometryEngineAsync.union(greenGeoms) : Promise.resolve(null),
   ]);
 
@@ -464,11 +361,6 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     const a = f.attributes;
     const zid = resolveZoneId(a.refname_12, zoneIds);
     if (!zid) continue;
-    // ⚠️ Ангилалгүй эх сурвалж — бүгд `GREEN_CATEGORIES`-ийн ганц түлхүүрт нэгдэнэ
-    //    (ЯГ таарах ёстой, эс бөгөөс `computeRaw`-ын `activeGreen` шүүлт 0 болгоно).
-    //    `tr()` ХЭРЭГЛЭХГҮЙ: `defaultGreenCats()` орчуулгагүй түүхий key өгдөг тул
-    //    EN хэлэнд tr()-тэй түлхүүр («Green space») таарахгүй, бүх бүсийн ногоон
-    //    0 болдог байв. Энэ түлхүүр дэлгэцэд хэзээ ч гардаггүй — нэр нь `short`-оос.
     const cat = GREEN_CATEGORIES[0].key;
     greenCats.add(cat);
     const bucket = greenByZone.get(zid) ?? {};
@@ -490,13 +382,8 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
     const areaHa = n(a[Z.areaHa]) > 0 ? n(a[Z.areaHa]) : n(a.SHAPE__Area) / 10_000;
     const polyHa = n(a.SHAPE__Area) > 0 ? n(a.SHAPE__Area) / 10_000 : areaHa;
 
-    // ⚠️ `FAR` талбар 52 бүсийн 22-т ЭВДЭРСЭН: утга таслагдаж 1.15-ын оронд
-    //    0.01, 8.43-ын оронд 0.08 гэж бичигджээ. `FAR_HUVI` (хувиар) нь бүрэн
-    //    бүтэн бөгөөд `BAR_M2/GAZAR_M2`-тай 43/52 бүст таарна — тиймээс
-    //    `FAR_HUVI ÷ 100`-г ЗАСВАРЛАСАН утга болгон шууд ашиглана.
     const zoneFar = a[Z.farPct] != null ? n(a[Z.farPct]) / 100 : (a[Z.far] != null ? n(a[Z.far]) : null);
     // BCR нь эзлэх ХЭСЭГ (0–0.5) тул ×100 хийж хувь болгоно
-    /* ⚠️ 2026-10-01: хэмжээсийг ӨГӨГДЛӨӨС шалгана (`bcrScaleOf`) — хувиар ирвэл ×100 БИШ */
     const zoneBcr = a[Z.bcr] != null ? bcrToPct(n(a[Z.bcr]), bcrFrac) : null;
 
     let transitM: number | null = null;
@@ -514,8 +401,6 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
       geometry: geom,
       areaHa, polyHa, zoneFar, zoneBcr,
       normParking: n(a[Z.parkNorm]),
-      // ⚠️ Шинэ бүсийн давхаргад ЗӨВХӨН төлөвлөсөн зогсоол (ил/далд) бий —
-      //    «одоо байгаа» (ET_NIIT) талбар байхгүй тул нийлбэрийг өөрсдөө угсарна.
       etIl: n(a[Z.parkPlanOpen]), etDald: n(a[Z.parkPlanUnder]),
       etNiit: n(a[Z.parkPlanOpen]) + n(a[Z.parkPlanUnder]),
       ...emptyAgg(),
@@ -548,8 +433,6 @@ export async function loadAnalysis(onProgress: Progress = () => {}): Promise<Ana
 
 /**
  * Барилга бүрийн ТӨВ ЦЭГ + шинжилгээнд хэрэгтэй атрибут.
- *
- * ⚠️ Төв цэггүй бичлэгийг алгасна — зайн тооцоонд оруулах боломжгүй.
  */
 function locationPts(buildings: Feat[]): LocationPt[] {
   const out: LocationPt[] = [];
@@ -577,10 +460,6 @@ function locationPts(buildings: Feat[]): LocationPt[] {
 
 /**
  * Барилгуудыг ЗОРИУЛАЛТЫН бүлгээр нэгтгэнэ.
- *
- * ⚠️ Бодитоор БАЙГАА бүлгийг л буцаана — хоосон мөр жагсаалтыг сунгаад
- * «энэ төрлийн барилга байхгүй» гэдгийг тоогоор нь давхар хэлэхгүй.
- * Эрэмбэ нь тоогоор буурах, «Бусад» ямагт СҮҮЛД (үлдэгдлийн бүлэг).
  */
 function groupBuildingPurposes(buildings: Feat[]): BuildingPurposeStat[] {
   const agg = new Map<string, { count: number; gfaM2: number; pop: number; values: Set<string>; blank: boolean }>();
@@ -592,14 +471,7 @@ function groupBuildingPurposes(buildings: Feat[]): BuildingPurposeStat[] {
     b.count += 1;
     b.gfaM2 += n(a[BF.gfa]);
     // Бүлэгт нэг л «хүн» багана — орон сууцны бүлэгт оршин суугч, бусдад хүчин чадал
-    // ⚠️ `aggregateBuildings`-тэй ИЖИЛ дүрэм (2026-09-21): урьд нь хоёр
-    //    баганыг НИЙЛҮҮЛДЭГ байсан тул хоёулаа бөглөгдсөн барилгад (орон
-    //    сууц + доод давхрын үйлчилгээ) хүн давхардан тоологдож байв.
     b.pop += isResidential(raw) ? n(a[BF.population]) : n(a[BF.capacity]);
-    /* ⚠️ 2026-09-25: SQL `NOT IN`-д ТАЙРААГҮЙ эх утгыг хадгална — `trim()`
-       хийсэн утга нь сүүлдээ зайтай бичлэгтэй тэнцэхгүй тул тэр барилга
-       бүлгийг унтраасан ч зурагт үлдэж байв. Хоосон ('' / зай) ч мөн адил:
-       NULL биш тул `IS NULL`-д орохгүй, жагсаалтаар л хасагдана. */
     const orig = a[BF.purpose] == null ? null : String(a[BF.purpose]);
     if (orig != null) b.values.add(orig);
     if (!raw) b.blank = true;
@@ -636,14 +508,6 @@ function emptyAgg() {
 
 /**
  * Барилгыг бүсэд оноож нэгтгэнэ — SELECT BY LOCATION.
- *
- * ⚠️ `ZONE_ID` талбараар БИШ, барилгын ТӨВ ЦЭГ аль бүсийн дотор байгаагаар.
- * Эх өгөгдөлд 19 барилгын `ZONE_ID` хоосон бөгөөд 6 барилгынх нь бодит
- * байршилтайгаа зөрдөг. Талбараар бодвол 71,048 м² шалны талбай унаж, бүсийн
- * FAR/BCR, нягтшил бүгд дутуу гарна.
- *
- * ⚠️ Төв цэгээр авснаар барилга ЯГ НЭГ бүсэд ороод, зааг дээрх барилга давхар
- * тоологдохгүй — бүсүүдийн нийлбэр эх өгөгдөлтэй яг тэнцэнэ.
  */
 const SNAP_METERS = 100;
 
@@ -672,14 +536,9 @@ function aggregateBuildings(zones: Zone[], buildings: Feat[]) {
       if (bd <= SNAP_METERS) hit = best;
     }
     if (!hit) continue;
-    // ⚠️ Оноосон бүсийг бичлэг дээр нь ТЭМДЭГЛЭНЭ: нийгмийн хүртээмжийг бүсийн
-    //    ОРОН СУУЦНЫ барилгуудаар бодох тул тэр холбоо дараа хэрэгтэй.
     a._zone = hit.id;
 
     const b = byZone.get(hit.id) ?? emptyAgg();
-    // ⚠️ ЭХ ТАЛБАРУУДААС шууд: `Population` = оршин суугч, `Huchin_chadal` =
-    //    хүчин чадал. Урьд нь `Total_population`-ыг зориулалтын regex-ээр
-    //    хуваадаг байсныг орлов (тоо ижил, ангилал нь эх өгөгдлийнх болов).
     const pop = n(a[BF.population]);
     const cap = n(a[BF.capacity]);
     const gfa = n(a[BF.gfa]);
@@ -707,14 +566,6 @@ function aggregateBuildings(zones: Zone[], buildings: Feat[]) {
  * хувь нь ХҮН АМААР жигнэгдэнэ:
  *
  *     хамрах % = (хүрээнд багтсан орон сууцны хүн ам) ÷ (бүсийн нийт оршин суугч)
- *
- * ⚠️ БАРИЛГЫН түвшинд хэмжинэ, бүсийн полигоноос БИШ. Полигоноос зай бодвол том
- * бүсийн нэг булан хүрээнд орсон л бол бүхэлдээ «хүртээмжтэй» гэж тоологдоно —
- * хэдэн га бүсэд энэ нь бүтэн худал болно.
- *
- * ⚠️ Оршин суугчгүй бүсэд утга ГАРАХГҮЙ (null): үйлчилгээ, оффисын бүсэд
- * «сургууль хүрэхгүй байна» гэж дүгнэх нь утгагүй. `0%` гэж бичвэл тэр бүс
- * оноололд ХУДЛАА торох болно.
  */
 function computeSocialAccess(zones: Zone[], buildings: Feat[], greenUnion: GeomArg | null) {
   /** Байгууламжийн төв цэгүүд — төрлөөр */
@@ -788,19 +639,9 @@ function computeSocialAccess(zones: Zone[], buildings: Feat[], greenUnion: GeomA
 
 /* ══════════════════ Эдийн засаг ══════════════════ */
 
-/* ⚠️ 2026-08-24: `computeEconomics` УСТГАГДАВ. Дэд бүтцийн зардлыг
-   ЗОХИОМОЛ `negj_une` (нэгж үнэ) талбараас бодож, түүн дээрээ ашиг/маржин
-   тооцдог байсан. Эзэмшигчийн шийдвэрээр эдийн засгийн загвар бүрмөсөн
-   хасагдсан — бүсийн оноо одоо ЗӨВХӨН хот төлөвлөлтийн нормоор бодогдоно. */
 
 /**
  * BCR талбар ХЭСЭГ (0–1) үү, ХУВЬ (0–100) уу — БҮХ бүсийн утгын МЕДИАНААР.
- *
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урьд нь `× 100` гэж ХАТУУ бичсэн
- *    тул эх давхаргад BCR хувиар (40, 11 …) бичигдвэл 4,000% болж норм (≤40)
- *    БҮХ бүсэд зөрчигдөнө — чимээгүй. Одоо: медиан ≤ 1.5 бол хэсэг (`true`),
- *    эс бөгөөс хувь (`false`). Утгагүй бол хуучин таамаг (хэсэг).
- * ⚠️ Медиан — нэг эвдэрсэн бичлэг (хувиар бичигдсэн 40) хэмжээсийг шийдэхгүй.
  */
 export function bcrScaleOf(values: unknown[]): boolean {
   const v = values
@@ -813,8 +654,6 @@ export function bcrScaleOf(values: unknown[]): boolean {
 
 /**
  * Нэг BCR утгыг ХУВЬ болгоно.
- * ⚠️ Хэсгийн горимд ч 1.5-аас их утга нь аль хэдийн хувь (холимог өгөгдөл) —
- *    дахин ×100 хийхгүй.
  */
 export const bcrToPct = (v: number, fraction: boolean): number =>
   (fraction && v <= 1.5 ? v * 100 : v);
@@ -823,10 +662,6 @@ export const bcrToPct = (v: number, fraction: boolean): number =>
 export function parkingNeedOf(z: Zone, p: ParkingOpt): number | null {
   switch (p.source) {
     case 'households': return z.households > 0 ? z.households * p.perHousehold : null;
-    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): «Хүн амаар» = ОРШИН СУУГЧ
-       (`Population`, `live.POPULATION_FIELD`). Урьд нь `z.population`
-       (= Population + Huchin_chadal) байсан тул сургууль/оффисын СУУДАЛ ч «хүн ам»
-       болж, зогсоолын хэрэгцээ ~1.6 дахин хөөрөгддөг байв (25,039 хүчин чадал). */
     case 'population': return z.residentPop > 0 ? (z.residentPop * p.per1000) / 1000 : null;
     default: return z.normParking > 0 ? z.normParking : null;
   }
@@ -834,13 +669,6 @@ export function parkingNeedOf(z: Zone, p: ParkingOpt): number | null {
 
 /**
  * `ASSUME_MET` үзүүлэлтийн «норм хангасан» утга — ОДООГИЙН (засагдсан) нормоос.
- *
- * ⚠️ 2026-09-25 аудит: урьд нь тогтмол 100 (% / м) бичдэг тул «Жин» картаас
- * инженерийн «Нормын дээд»-ийг 80 м болговол БҮХ бүсийн таамаг 100 м нь
- * зөрчил болж («✗ Инженер 100 м»), бодит зай огт ашиглагдаагүй атлаа оноо
- * ~39 болж унадаг байв. Норм нь хязгаар тул утгыг ТЭР хязгаарт тавина —
- * `higher` → `target`, `lower` → `best`, `band` → `optMin`. Норм өгөөгүй
- * дуудагч (`indicators` байхгүй) хуучин тогтмол утгаа авна.
  */
 function assumedValue(id: string, fallback: number, indicators?: readonly Indicator[]): number {
   const ind = indicators?.find((i) => i.id === id);
@@ -852,8 +680,6 @@ function assumedValue(id: string, fallback: number, indicators?: readonly Indica
 /**
  * Сонгосон ногоон ангилал / зогсоолын аргаас хамаарч ТҮҮХИЙ үзүүлэлтийг дахин бодно.
  * (Жин өөрчлөгдөхөд энэ дахин ажиллах шаардлагагүй — зөвхөн оноолт л дахин бодогдоно.
- *  ⚠️ Харин НОРМЫН босго өөрчлөгдвөл `indicators`-ийг өгч дахин дуудна — `ASSUME_MET`
- *  утга түүнээс хамаарна, `assumedValue`-г үз.)
  */
 export function computeRaw(
   zones: Zone[],
@@ -866,15 +692,10 @@ export function computeRaw(
 ) {
   for (const z of zones) {
     /**
-     * ⚠️ НОГООН ТАЛБАЙГ БҮХ БҮСЭД бодно — оноололоос хассан бүсэд ч.
-     *
      * Урьд нь энэ мөр хасалтын доор байсан тул «Ногоон байгууламж, тохижилт»
      * ангилалтай 10 бүсийн 16.1 га ногоон нь `greenM2 = 0` болж, төслийн ногоон
      * 54 га-гийн оронд 36 га гэж харагддаг байв — яг ногоон байгууламжийн бүсийн
      * ногоон нь тоологдохгүй байсан нь илт буруу.
-     *
-     * ⚠️ ОНООЛОЛТ хэвээр хасагдана: `raw` хоосон үлдэх тул тэр бүс саараар
-     * харагдаж, эрэмбэ/дундажид орохгүй. Энд зөвхөн НЭГТГЭЛ бодогдоно.
      */
     z.greenM2 = Object.entries(z.greenByCat)
       .filter(([cat]) => activeGreen.has(cat))
@@ -882,10 +703,6 @@ export function computeRaw(
 
     // Оноололд орохгүй бүс — түүхий үзүүлэлт бодохгүй (raw хоосон → оноо null → саарал).
     // Гараар идэвхжүүлсэн ангилал бол ХАСАХГҮЙ (доор бодогдоно).
-    /* ⚠️ Зогсоолын талбаруудыг ч ЦЭВЭРЛЭНЭ (2026-09-25 аудит): урьд нь өмнөх
-       ажиллалтын `parkingNeed`/`parkingGap` үлдэж, оноололоос гарсан бүсийн
-       дэлгэрэнгүйд бүх үзүүлэлт «өгөгдөлгүй» атлаа хуучин «Хэрэгцээ N»,
-       «дутагдал M зогсоол» харагддаг байв. Анхны утгатай ижил (`loadZones`). */
     if (z.excluded && !scoreTypes?.has(z.type)) {
       z.raw = {}; z.rawActual = {};
       z.parkingSupply = 0; z.parkingNeed = null; z.parkingGap = null;
@@ -894,13 +711,10 @@ export function computeRaw(
 
     z.parkingSupply = z.etNiit;
     z.parkingNeed = parkingNeedOf(z, parking);
-    /* ⚠️ 2026-10-22 (аудит): бүсийн бичлэг бүхэлдээ 0 бол төлөвлөсөн зогсоол МЭДЭГДЭХГҮЙ (`planRecordMissing`) — дутагдал null */
     const planMissing = planRecordMissing(z);
     z.parkingGap = z.parkingNeed == null || planMissing ? null : z.parkingSupply - z.parkingNeed;
 
     z.raw = {
-      // ⚠️ FAR/BCR нь 0 бол «норм хангасан» БИШ: барилгажилт төлөвлөөгүй гэсэн үг
-      //    тул ӨГӨГДӨЛГҮЙ гэж үзэн оноололтоос хасна.
       far: z.zoneFar && z.zoneFar > 0 ? z.zoneFar : null,
       bcr: z.zoneBcr && z.zoneBcr > 0 ? z.zoneBcr : null,
       parking: !planMissing && z.parkingNeed && z.parkingNeed > 0 ? (z.parkingSupply / z.parkingNeed) * 100 : null,
@@ -908,43 +722,20 @@ export function computeRaw(
        * НОГООН — ХОЁР ТУСДАА үзүүлэлт, нягтшилтай ЯГ ижил хос:
        *   · `green`    — нэг ОРШИН СУУГЧид ногдох м² (БНБД 8.2, жинтэй)
        *   · `greenCap` — нэг ХҮЧИН ЧАДАЛД ногдох м² (лавлагаа, жингүй)
-       *
-       * ⚠️ Хуваарийг НИЙЛҮҮЛЖ БОЛОХГҮЙ (`z.population`): сургуулийн сурагч
-       * ойролцоох орон сууцны оршин суугчтай давхардаж тоологдох тул нэг хүнд
-       * ногдох ногоон хиймлээр буурна.
-       *
-       * ⚠️ Хоёуланг нь ЖИНЛЭВЭЛ нэг ногоон талбай оноонд ХОЁР удаа тоологдоно —
-       * тиймээс `greenCap` нь `ref` (оноололд орохгүй).
        */
       green: z.residentPop > 0 ? z.greenM2 / z.residentPop : null,
       greenCap: z.capacityPop > 0 ? z.greenM2 / z.capacityPop : null,
       /**
        * НЯГТШИЛ — ХОЁР ТУСДАА үзүүлэлт (хэрэглэгчийн шийдвэр, 2026-08-12).
-       *
-       * ⚠️ Хоёрыг НИЙЛҮҮЛЖ БОЛОХГҮЙ: сургуулийн суудал зэрэг хүчин чадал нь
-       * ойролцоох орон сууцны оршин суугчтай ДАВХАРДДАГ (сурагч гэртээ ч,
-       * сургууль дээрээ ч тоологддог) тул нийлбэр нь бодит ачааллыг хөөрөгдөнө.
-       *
-       * ⚠️ Зөвхөн оршин суугчаар бодвол орон сууцгүй атлаа барилгатай 27 бүс
-       * «өгөгдөлгүй» болж саарлаар харагддаг байсан — тэрхүү хоосон зайг
-       * `densityCap` нөхнө (жин нь 0 тул оноог хөндөхгүй).
        */
       density: z.polyHa > 0 && z.residentPop > 0 ? z.residentPop / z.polyHa : null,
       densityCap: z.polyHa > 0 && z.capacityPop > 0 ? z.capacityPop / z.polyHa : null,
-      // ⚠️ `transit` үзүүлэлт ОНООЛОЛООС хасагдсан (`INDICATORS`-ыг үз) ч түүхий
-      //    утгыг нь үлдээв: буцаахад ганц мөр (үзүүлэлтийн тодорхойлолт) л хэрэгтэй.
       transit: z.transitM,
       engineering: z.engDistM,
       social: z.social?.score ?? null,
     };
 
-    /* ── ТҮР дүгнэлт ── `ASSUME_MET` дэх үзүүлэлтийг «норм хангасан» болгоно.
-       ⚠️ Бодит утгыг УСТГАХГҮЙ — `rawActual`-д бүтнээрээ үлдэнэ. Өгөгдөлгүй
-       (`null`) бүсэд ч хангасан гэж үзнэ: зорилго нь тэр үзүүлэлтийг оноололд
-       нөлөөлүүлэхгүй байх (эс бөгөөс жин нь дахин хуваарилагдаж, өөр
-       үзүүлэлтийн эзлэх хувийг чимээгүй өсгөнө).
-       ⚠️ 2026-10-22 (аудит): эдгээр нь «ХЭМЖСЭН ЖИН»-д ОРОХГҮЙ — `urbanScore` хэмжсэн жин `MIN_MEASURED_SHARE`-ээс доош
-       бүсийг оноогүй (null) болгоно; эс бөгөөс зөвхөн FAR+BCR-тэй бүс таамгийн 100-аар 100 оноо авдаг байв. */
+    /* ── ТҮР дүгнэлт ── `ASSUME_MET` дэх үзүүлэлтийг «норм хангасан» болгоно. */
     z.rawActual = z.raw;
     const assumed = Object.entries(ASSUME_MET);
     if (assumed.length) {

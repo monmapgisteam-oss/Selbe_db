@@ -1,12 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
    БАГЦ АЖЛЫН ОНОО — нүүрний удирдлагын самбар.
    Гэрлэн дохио нь `--h` (kpiLevels LEVEL_TONE) — `ceoBoard.module.css`-тэй
-   нэг хэл: өнгө + тоо (өнгө ганцаараа утга дамжуулахгүй).
-   ⚠️ 2026-10-23: Environment — карт 12px · --line · --surface (сүүдэргүй), KPI
-   хавтан 13px (.analytics-stat), хүснэгт .pe-table (10px uppercase толгой, 6/10px
-   мөр, сонголт moss 12% + inset 3px), badge 6px (tone 35% хүрээ / 8–16% дэвсгэр),
-   товч .pe-ghost (32px/28px, 8px), жин ≤600. `--h` гэрлэн дохионы өнгө хэвээр.
-   ═══════════════════════════════════════════════════════════ */
+   нэг хэл: өнгө + тоо (өнгө ганцаараа утга дамжуулахгүй). */
 
 .board { width: 100%; min-width: 0; }
 
@@ -39,7 +34,6 @@
 .retry:hover { background: var(--surface-2); color: var(--ink); }
 .warnLine { margin: 0 0 8px; font-size: 11.5px; color: var(--warn-ink, var(--warn)); }
 
-/* ⚠️ 2026-10-28: самбарын дээд сэрэмжлүүлэг (`scoreAlerts`) ба оноон дээрх ⚠ (`DimScore.caveat`) — `--h` нь зэргийн өнгө */
 .alerts { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
 .alert {
   display: flex; align-items: flex-start; gap: 7px;
@@ -74,7 +68,6 @@
 /* ══ Төслийн нийт ══ */
 .summary {
   display: grid;
-  /* ⚠️ 2026-10-26 (аудит): «Нийт» + 6 бүлэг = 7 хавтан («Чанар» 10-23-нд хасагдсан) — 8 багана баруунд хоосон нүд үлдээдэг байв */
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 12px;
@@ -172,7 +165,6 @@
   min-width: 0;
 }
 @media (max-width: 1100px) { .detail { position: static; scroll-margin-top: 8px; } }
-/* ⚠️ 2026-10-06 (аудит): сонголтын дараа фокус тийш шилждэг (`togglePick`) — гараар ирсэн үед л хүрээ */
 .detail:focus { outline: none; }
 .detail:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .note { margin: 0; font-size: 12px; color: var(--ink-3); }
@@ -215,8 +207,6 @@
 .dimOn { background: color-mix(in oklab, var(--data) 12%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--data) 45%, transparent); }
 .dimHead { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .dimHead b { flex: 1; font-weight: 600; }
-/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): 4px → порталын хэвтээ баганын 2px,
-   зам `--chart-track` (ui.module.css `.barTrack`-тэй ижил тоо). */
 .bar { display: block; height: 2px; border-radius: 1px; background: var(--chart-track); overflow: hidden; }
 .bar i { display: block; height: 100%; border-radius: 1px; background: var(--h); }
 .facts { font-size: 11px; line-height: 1.35; color: var(--ink-3); }
@@ -302,9 +292,6 @@
 .statusHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .statusHead b { font-size: 12.5px; font-weight: 600; color: var(--ink); }
 .statusHead span { font-size: 11px; color: var(--ink-3); }
-/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): порталын `Stack` (ui.module.css .stack) —
-   8px, радиус 4px, суурь `--chart-track`, хэсэг хооронд 2px ГАДАРГУУН зай (`box-shadow` —
-   өргөнийг өөрчлөхгүй тул харьцаа ЯГ хэвээр). Урьд нь 1px `gap` байв. */
 .statusMini {
   display: flex !important; flex: 1 1 160px; max-width: 360px; height: 8px;
   margin-left: auto; border-radius: 4px; overflow: hidden; background: var(--chart-track);
@@ -347,9 +334,6 @@
 /* «Багц ажил» жагсаалтын «Төлөв» багана */
 .thStatus { min-width: 150px; width: 22%; text-align: left !important; }
 .statusCell { text-align: left; }
-/* ⚠️ 2026-10-09: 18px өндөр ХЭВЭЭР (шүүлтийн товч, тоо дотроо) — бусад нь `Stack`-тай ижил:
-   радиус 4px, 2px гадаргуун зай, суурь `--chart-track`; бичиг `#fff` → `--hue-ink`
-   (dark горимд бараан — цайвар дүүргэлт дээр цагаан уншигдахгүй). */
 .gBar { display: flex; height: 18px; min-width: 120px; border-radius: 4px; overflow: hidden; background: var(--chart-track); }
 .gSeg {
   flex-basis: 0; min-width: 16px;
@@ -373,11 +357,9 @@
 }
 
 /* Бүлгийн хавтан доторх тархалт */
-/* ⚠️ 2026-10-09: 6px → `Stack`-ийн 8px, радиус 4px, 2px гадаргуун зай, суурь `--chart-track` */
 .dimBar { display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; background: var(--chart-track); }
 .dimBar i { flex-basis: 0; background: var(--h); box-shadow: inset -2px 0 0 var(--surface); }
 .dimBar i:last-child { box-shadow: none; }
-/* ⚠️ Судал = «мэдээлэл хүлээгдэж буй» (.hatch хэл) — чимэглэл биш, хэвээр */
 .dimBar i.segPending { background: repeating-linear-gradient(90deg, var(--ink-3) 0 3px, transparent 3px 5px); }
 .sumProblem { font-size: 11px; color: var(--ink-3); }
 .sumProblem b { color: var(--bad-ink, var(--bad)); }

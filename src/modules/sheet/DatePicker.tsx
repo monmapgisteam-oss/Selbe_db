@@ -2,10 +2,6 @@
 
 // МОНГОЛ КАЛЕНДАР — хүснэгтийн огнооны нүдэнд.
 //
-// ⚠️ Яагаад өөрсдөө бичив: `<input type="date">`-ийн календарыг ХӨТӨЧ өөрөө
-// зурдаг. Түүний загвар, товчны нэр («Clear» / «Today»), хэл нь хөтөч/системийн
-// тохиргооноос хамаардаг бөгөөд хуудаснаас ЯМАР Ч аргаар өөрчлөгддөггүй.
-// Тиймээс монгол нэртэй, порталын өнгөтэй өөрийн календар зурав.
 //
 // Огноог БҮХЭЛД НЬ UTC шөнө дундаар ажиллуулна — үйлчилгээний огноо тэгж
 // хадгалагддаг тул орон нутгийн цагаар бодвол өдөр нэгээр гулсана.
@@ -39,11 +35,6 @@ export type PickerProps = {
    * нүдэнд «Тавих» дарахад эхлэхээс тооцно. Өгөөгүй бол мөр гарахгүй (asOf).
    */
   days?: { value: string; onChange: (v: string) => void; onApply: () => void; canApply: boolean };
-  /**
-   * ⚠️ 2026-10-07: «Цэвэрлэх» товчийг НУУНА — огноогүй байж болохгүй талбарт («Шинэчлэгдсэн
-   *    огноо»: хоосон бол `calc = []`, бүх мөр алга). Урьд нь товч гарч, дарахад `onPick("")`
-   *    чимээгүй хаягдаж зөвхөн цонх хаагддаг байв — хэрэглэгч «цэвэрлэгдсэн» гэж андуурна.
-   */
   noClear?: boolean;
 };
 
@@ -78,14 +69,9 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
     const down = (e: MouseEvent) => {
       if (!box.current?.contains(e.target as Node)) onClose();
     };
-    /* ⚠️ 2026-10-04: Esc нь ЗӨВХӨН календарыг хаана — `capture` + `stopPropagation`:
-       «Хуваарь»-ийн popup доторх огнооны талбараас нээгдэхэд popup-ын Esc (window)
-       түүнийг ч хаадаг байв. */
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.stopPropagation(); onClose(); }
     };
-    // ⚠️ `capture: true` — хүснэгтийн доторх гүйлт нь `window`-д хүрдэггүй.
-    // ⚠️ Цонхны ДОТООД гүйлт (оны `select` жагсаалт г.м) хаахгүй (2026-09-23).
     const scroll = (e: Event) => {
       if (box.current?.contains(e.target as Node)) return;
       onClose();
@@ -106,21 +92,10 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
   /**
    * ГАРААР ЯВАХ (2026-09-23): фокустай өдөр — нээхэд сонгосон (эсвэл өнөөдөр)
    * өдөр дээр очно; ←→ ±1 хоног, ↑↓ ±7 хоног; сар хальвал харагдац дагана.
-   * ⚠️ Хулганагүй хэрэглэгч урьд нь 42 товчийг Tab-аар тойрдог байв.
    */
   const [focusMs, setFocusMs] = useState(base);
-  /* ⚠️ 2026-10-04: нээхэд фокус БИЧИХ талбарт (доор) — шууд «20261004» Enter. Өдрийн
-     товч руу зөвхөн сумаар явж эхэлсний дараа (`navRef`) шилжинэ; эс бөгөөс эффект
-     бичиж буй талбараас фокусыг булаана. */
   const navRef = useRef(false);
   const typeRef = useRef<HTMLInputElement>(null);
-  /* ⚠️ 2026-10-04 (шүүлт): эхний фокус + `select()` нь НЭГ Л УДАА (`didInit`). Урьд нь
-     эффект `focusMs` өөрчлөгдөх БҮРД талбарыг дахин сонгодог байв — бичих явцад
-     «2026-10-1» зөв огноо болмогц `focusMs` шилжиж, бүх текст сонгогдоод дараагийн
-     товч БҮГДИЙГ дарж бичдэг байв. Бичихээс үүдсэн `focusMs`-ийн өөрчлөлт фокусад
-     ХҮРЭХГҮЙ (`navRef` false) — зөвхөн календар хөдөлгөнө.
-     ⚠️ Мэдрэгч дэлгэцэнд (`pointer: coarse`) бичих талбарт автоматаар фокуслахгүй —
-     гарын товчлуур өөрөө гарч календарыг таглана; хүсвэл өөрөө товшоно. */
   const didInit = useRef(false);
   useEffect(() => {
     if (!pos) return;
@@ -141,20 +116,11 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
    * арчихаас) — арилгах нь доорх «Цэвэрлэх» товч хэвээр.
    */
   const [typed, setTyped] = useState(value);
-  /* ⚠️ 2026-10-04: `value` нээлттэй үед ГАДНААС солигдвол (нөгөө нүд «Үргэлжлэх»-ээр
-     бодогдох, сервер шинэчлэл) бичих талбар хуучин утгаа барьдаг байв — render-ийн
-     үеийн тохируулга (effect биш) шинэ утгыг авна. */
   const [typedOf, setTypedOf] = useState(value);
   if (typedOf !== value) { setTypedOf(value); setTyped(value); }
-  /* ⚠️ 2026-10-04: сумаар өдөр хөдөлгөсөн (бичихээс хойш) — хоосон талбарт Enter нь
-     фокустай өдрийг тавина (өдрийн товч дээрх Enter-тэй ижил, регресс биш). */
   const arrowedRef = useRef(false);
   const typedDay = parseDayInput(typed);
   const typedBad = typed.trim() !== '' && typedDay == null;
-  /* ⚠️ 2026-10-04 (шүүлт): нээгдэхэд фокус бичих талбарт байдаг тул сум өдөр
-     хөдөлгөдөггүй байв. Талбар ХООСОН эсвэл анхны утгаасаа ӨӨРЧЛӨГДӨӨГҮЙ үед
-     ←→↑↓ нь өдрийн хүснэгт рүү шилжиж алхана; бичиж эхэлсэн бол сум нь текст дотор
-     курсор хөдөлгөх ердийн үүргээ хийнэ. */
   const typeKey = (e: RKeyboardEvent<HTMLInputElement>) => {
     const arrow = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1
       : e.key === "ArrowUp" ? -7 : e.key === "ArrowDown" ? 7 : 0;
@@ -201,12 +167,6 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
 
   /**
    * ОНЫ ЖАГСААЛТ — сонгогдож буй он ЗААВАЛ багтана.
-   *
-   * ⚠️ Хатуу мужаар (жиш. 2024–2032) бичвэл хэдэн жилийн дараа хуучирч,
-   * хуваарийн огноо жагсаалтад ОРОХГҮЙ болно — тэр үед `select` нь утгаа
-   * олохгүй, эхний мөрөө харуулж, хэрэглэгч мэдэлгүй он СОЛИНО. Тиймээс
-   * муж нь ӨНӨӨДРӨӨС бодогдоно, дээр нь одоогийн харагдац ба сонгосон
-   * огнооны оныг албаар нэмнэ.
    */
   const years = (() => {
     const nowY = new Date(todayMs()).getUTCFullYear();
@@ -228,13 +188,6 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
       <div className={st.calHead}>
         <button className={st.calNav} onClick={() => step(-12)} title={tr('Өмнөх жил')} aria-label={tr('Өмнөх жил')}>«</button>
         <button className={st.calNav} onClick={() => step(-1)} title={tr('Өмнөх сар')} aria-label={tr('Өмнөх сар')}>‹</button>
-        {/*
-          * ⚠️ ОН/САРЫГ ШУУД СОНГОНО (2026-09-04, хэрэглэгч: «эндээс он сар
-          * өөрчлөгдөхгүй»). Сумнууд ажилладаг ч 22px, бүдэг өнгөтэй бөгөөд
-          * төслийн хуваарь 2025→2027 үргэлжилдэг тул нэг сараар алхаж хүрэхэд
-          * хорь гаруй товшилт болдог байв. Сум нь ХЭВЭЭР (хажуугийн сар руу
-          * хурдан алхах), дээр нь шууд сонголт нэмэгдэв.
-          */}
         <span className={st.calTitle}>
           <select
             className={st.calPick}
@@ -266,8 +219,6 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
           ref={typeRef}
           className={st.calTypeIn + (typedBad ? ` ${st.calTypeBad}` : "")}
           value={typed}
-          /* ⚠️ 2026-10-04: `numeric` биш — iOS-ийн тоон гарт «-» «.» «/» байхгүй тул
-             «2026-10-04» бичих боломжгүй байв. */
           inputMode="text"
           autoComplete="off"
           placeholder="2026-10-04"
@@ -276,7 +227,6 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
           title={tr('Огноо бичээд Enter дарна: 2026-10-04 · 2026.10.04 · 20261004')}
           onFocus={() => { navRef.current = false; }}
           onChange={(e) => {
-            /* ⚠️ Бичих нь фокусыг өдрийн товч руу ХЭЗЭЭ Ч булаахгүй */
             navRef.current = false;
             arrowedRef.current = false;
             setTyped(e.target.value);
@@ -350,7 +300,6 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
         </div>
       )}
       <div className={st.calFoot}>
-        {/* ⚠️ 2026-10-07: `noClear` — огноогүй байж болохгүй талбарт товч гарахгүй */}
         {!noClear && <button className={st.calBtn} onClick={() => onPick("")}>{tr('Цэвэрлэх')}</button>}
         <button className={st.calBtn} onClick={() => onPick(ymd(today))}>{tr('Өнөөдөр')}</button>
       </div>

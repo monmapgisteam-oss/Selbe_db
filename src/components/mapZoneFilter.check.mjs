@@ -1,15 +1,12 @@
 /**
- * БҮСИЙН ШҮҮЛТ — `layerWhere`-тэй харагдацад ч бүс сонгоход зураг шүүгдэнэ (⚠️ 2026-10-22, аудит).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/mapZoneFilter.check.mjs
+ * БҮСИЙН ШҮҮЛТ — `layerWhere`-тэй харагдацад ч бүс сонгоход зураг шүүгдэнэ (2026-10-22, аудит).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/mapZoneFilter.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. `MapCanvas`: `layerWhere` өгөгдмөгц жагсаалтад БАЙХГҮЙ (эсвэл `null`) давхарга ч бүсийн шүүлтээ алддаг байв —
  *      «Ерөнхий дашбоард» үргэлж `layerWhere` дамжуулдаг тул Багц-1 сонгоход KPI 30 барилга, зураг 368 гардаг байв.
  *   2. «Ерөнхий дашбоард»-д бүсийн ПОЛИГОН дарахад `ZONE_ID` (бүсийн давхаргад ТИЙМ ТАЛБАР БАЙХГҮЙ) уншиж юу ч
  *      болохгүй, эсвэл түүхий «E-5-1»/«Багц -1» бичиглэл тавигдаж чип (каноник) тодрохгүй байв.
- *
- * ⚠️ React/ArcGIS Node-д ажиллахгүй тул холболтыг ЭХ КОДООР (тайлбаргүйгээр) тулгана (`uiGuards.check.mjs`-ийн арга);
- *    бүсийн кодын хөрвүүлэлт (`zoneCanon`) ба WHERE (`zoneWhere`) нь жинхэнэ функцээр.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

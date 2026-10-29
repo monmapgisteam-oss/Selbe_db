@@ -1,14 +1,9 @@
 /**
  * UI SMOKE — `@arcgis/core/**`-ийн СТУБ УТГА (`ts-alias-hooks.mjs`, ui горим).
  *
- * `mkStub(name)` нь юу ч болж чадах Proxy: `new X()`, `X()`, `X.a.b.c`, `X.on(...)`
+ * `mkStub(name)` нь юу ч болж чадах Proxy: `new X`, `X`, `X.a.b.c`, `X.on(...)`
  * бүгд дахин стуб буцаана — ArcGIS-ийн класс, namespace хоёуланг нь орлоно.
- * Ингэснээр `useState(() => new Map())` зэрэг эхлүүлэгч Node-д унахгүй.
- *
- * ⚠️ Стуб нь React-ийн хүүхэд болж болохгүй тул `$$typeof`/`then`/`toJSON`
- *    зэрэг тусгай түлхүүрт undefined өгнө; `Symbol.toPrimitive` → нэр (лог).
- * ⚠️ Массив/тоо шаардсан газар (`.length`, `.forEach`) стуб буцаана — тэр нь
- *    зөвхөн эффект/асинхрон замд хэрэглэгддэг тул SSR render-д хүрэхгүй.
+ * Ингэснээр `useState( => new Map)` зэрэг эхлүүлэгч Node-д унахгүй.
  */
 const UNDEF = new Set(['then', 'toJSON', '$$typeof', '__esModule', 'nodeType', 'asymmetricMatch', 'ref', 'key']);
 

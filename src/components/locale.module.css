@@ -1,7 +1,6 @@
 /* Хэл солих товч — `LocaleToggle.tsx`.
    Порталын толгойд `.iconBtn`-ийг (40px дугуй) гаднаас өгдөг тул `.btn` нь ЗӨВХӨН нүүр
-   хуудасны (өөрийн хэв маягтай) тохиолдолд ажиллана.
-   ⚠️ 2026-10-23: Environment — ghost товч (32px, 8px булан, --line-strong хүрээ, hover --surface-2). */
+   хуудасны (өөрийн хэв маягтай) тохиолдолд ажиллана. */
 
 .btn {
   display: grid;
@@ -34,7 +33,6 @@
 .spin { animation: localeSpin 0.9s linear infinite; }
 @keyframes localeSpin { to { transform: rotate(360deg); } }
 
-/* ⚠️ 2026-10-06 (аудит): толь татагдаагүй мэдэгдэл — товчны ДООР хөвнө (толгойн зохиомжийг шахахгүй) */
 .wrap {
   position: relative;
   display: inline-flex;

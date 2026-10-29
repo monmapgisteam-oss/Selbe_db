@@ -1,10 +1,6 @@
 /**
  * AI релений хурдны хязгаар — хэрэглэгч 40 · IP таг 300 · амжилтгүй нэвтрэлт 20 (2026-10-01).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs tools/agentRateLimit.check.mjs
- *
- * ⚠️ `agent-proxy/rateLimit.mjs` — `server.mjs` ба `worker.mjs`-ийн хуваалцсан цөм.
- *    Хамгаалж буй алдаа: НЭГ IP-ийн ард (оффисын NAT) суугаа олон ажилтан нийлээд
- *    минутад 40-д баригддаг байв. Одоо хэрэглэгч тус бүр 40, IP-д 300 таг.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs tools/agentRateLimit.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -15,7 +11,6 @@ import {
   sanitizeChat, sanitizeTools, sanitizeMessages, THINKING_UPDATES_BETA, thinkingUpdatesFor,
 } from '../agent-proxy/rateLimit.mjs';
 
-/* ⚠️ 2026-10-09: + authFailIp (IP-ийн амжилтгүй нэвтрэлтийн таг) · concurrent (дуудагчийн зэрэг хүсэлт) · botConcurrent */
 assert.deepEqual({ ...LIMITS }, { user: 40, ip: 300, authFail: 20, authFailIp: 100, concurrent: 2, botConcurrent: 6 });
 assert.equal(WINDOW_MS, 60_000);
 
@@ -91,7 +86,6 @@ for (const f of ['server.mjs', 'worker.mjs']) {
   assert.match(src, /from ['"]\.\/rateLimit\.mjs['"]/, `${f}: rateLimit.mjs импортлоогүй`);
   assert.ok(!/function rateLimited\(/.test(src), `${f}: хуучин тоолуур үлдсэн`);
   assert.match(src, /limiter\.hit\(`ipcap:\$\{ip\}`, LIMITS\.ip\)/, `${f}: IP таг 300 биш`);
-  /* ⚠️ 2026-10-09: server.mjs нь `failKey` (TRUSTED_PROXY алга бол IP + токены хэш) — доор тусад нь */
   assert.match(src, /limiter\.full\((`authfail:\$\{ip\}`|failKey), LIMITS\.authFail\)/, `${f}: амжилтгүй нэвтрэлтийн шалгалт алга`);
   assert.match(src, /limiter\.hit\((`authfail:\$\{ip\}`|failKey), LIMITS\.authFail\)/, `${f}: амжилтгүй нэвтрэлт тоологдохгүй`);
   assert.match(src, /caller = `user:\$\{auth\.username\}`/, `${f}: хэрэглэгчээр түлхүүрлээгүй`);
@@ -103,7 +97,7 @@ for (const f of ['server.mjs', 'worker.mjs']) {
 }
 console.log('✅ server.mjs · worker.mjs: хэрэглэгч 40 · IP 300 · authfail 20 холбогдсон');
 
-/* ── ⚠️ 2026-10-09 (аудит №6): минутын тоолол (`hit`) ЗӨВХӨН слот/төсөв авсны ДАРАА — татгалзсан 429 тоологдохгүй;
+/* ── 2026-10-09 (аудит №6): минутын тоолол (`hit`) ЗӨВХӨН слот/төсөв авсны ДАРАА — татгалзсан 429 тоологдохгүй;
       дээд үйлчилгээний түлхүүрийн алдаа 502 `upstream_auth` (хоёр реле ижил) ── */
 for (const f of ['server.mjs', 'worker.mjs']) {
   const src = readFileSync(new URL(`../agent-proxy/${f}`, import.meta.url), 'utf8');
@@ -118,12 +112,11 @@ for (const f of ['server.mjs', 'worker.mjs']) {
 assert.deepEqual({ ...UPSTREAM_AUTH }, { error: 'Туслахын серверийн тохиргооны алдаа', code: 'upstream_auth', retryable: false });
 console.log('✅ server.mjs · worker.mjs: минутын тоолол слотын дараа · upstream_auth 502');
 
-/* ── ⚠️ 2026-10-09 (аудит №3): server.mjs — TRUSTED_PROXY алга бол authfail нь IP + ТОКЕНЫ ХЭШ ── */
+/* ── 2026-10-09 (аудит №3): server.mjs — TRUSTED_PROXY алга бол authfail нь IP + ТОКЕНЫ ХЭШ ── */
 {
   const src = readFileSync(new URL('../agent-proxy/server.mjs', import.meta.url), 'utf8');
   assert.match(src, /const failKey = TRUSTED_PROXY\s*\?\s*`authfail:\$\{ip\}`\s*:\s*`authfail:\$\{ip\}:\$\{tokenHash\(/,
     'server.mjs: TRUSTED_PROXY алга үед authfail токены хэшээр түлхүүрлэгдэх ёстой');
-  /* ⚠️ аудит №4: verified кэш ТҮҮХИЙ токеноор түлхүүрлэхгүй */
   assert.ok(!/verified\.(get|set|delete)\(token\b/.test(src), 'server.mjs: verified кэш түүхий токеноор');
   console.log('✅ server.mjs: authfail IP+токены хэш (TRUSTED_PROXY алга) · verified кэш хэшээр');
 }
@@ -132,7 +125,7 @@ console.log('✅ server.mjs · worker.mjs: минутын тоолол слот�
   assert.ok(!/verified\.(get|set|delete)\(token\b/.test(src), 'worker.mjs: verified кэш түүхий токеноор');
 }
 
-/* ── ⚠️ 2026-10-09 (аудит №1): өдрийн токены төсөв ── */
+/* ── 2026-10-09 (аудит №1): өдрийн токены төсөв ── */
 {
   assert.equal(DAILY_TOKEN_BUDGET_DEFAULT, 300_000);
   assert.equal(budgetFromEnv(undefined), 300_000);
@@ -163,17 +156,15 @@ console.log('✅ server.mjs · worker.mjs: минутын тоолол слот�
   for (const f of ['server.mjs', 'worker.mjs']) {
     const src = readFileSync(new URL(`../agent-proxy/${f}`, import.meta.url), 'utf8');
     assert.match(src, /code: ['"]daily_budget['"]/, `${f}: төсвийн 429 алга`);
-    /* ⚠️ 2026-10-09: бодит хэрэглээ `settleTokens`-оор (урьдчилсан тооцоог тааруулна) */
     assert.match(src, /settleTokens\(/, `${f}: хэрэглээ төсөвт нэмэгдэхгүй`);
     assert.match(src, /x-prompt-sig/, `${f}: PROMPT_HMAC толгой CORS/шалгалтад алга`);
-    /* ⚠️ аудит №7: түүхий алдааны мессеж клиентэд очихгүй */
     assert.ok(!/error: `Биеийг уншиж чадсангүй: \$\{e\.message\}`/.test(src), `${f}: задлагчийн мессеж клиентэд`);
   }
   assert.ok(/AI үйлчилгээ/.test(upstreamErrorText(500)) && !/undefined/.test(upstreamErrorText(undefined)));
   console.log('✅ server.mjs · worker.mjs: төсөв · гарын үсгийн толгой · ерөнхий алдааны мессеж холбогдсон');
 }
 
-/* ── ⚠️ 2026-10-09 (2-р ээлж): зэрэг хүсэлтийн таг ── */
+/* ── 2026-10-09 (2-р ээлж): зэрэг хүсэлтийн таг ── */
 {
   const c = createConcurrency();
   const r1 = c.acquire('user:bat', LIMITS.concurrent);
@@ -187,7 +178,7 @@ console.log('✅ server.mjs · worker.mjs: минутын тоолол слот�
   console.log('✅ зэрэг хүсэлт: дуудагчид 2 · суллах idempotent');
 }
 
-/* ── ⚠️ 2026-10-09: төсвийн урьдчилсан тооцоо ── */
+/* ── 2026-10-09: төсвийн урьдчилсан тооцоо ── */
 {
   assert.equal(estimateInputTokens(1000), 500, 'байт / 2');
   assert.equal(estimateInputTokens(1000, 400), 320, 'системийн хэсэг 1/10 жинтэй: 600/2 + 400/20');
@@ -207,13 +198,13 @@ console.log('✅ server.mjs · worker.mjs: минутын тоолол слот�
   console.log('✅ төсөв: урьдчилан хасна · бодитоор тааруулна · usage алга бол оролтын тооцоо');
 }
 
-/* ── ⚠️ 2026-10-09: ботын дуудагч (`x-bot-user`) ── */
+/* ── 2026-10-09: ботын дуудагч (`x-bot-user`) ── */
 assert.equal(botCaller('123456'), 'bot:123456');
 assert.equal(botCaller(undefined), 'bot');
 assert.equal(botCaller('1; DROP'), 'bot');
 assert.equal(botCaller('9'.repeat(30)), 'bot');
 
-/* ── ⚠️ 2026-10-09: дээд үйлчилгээ рүү явах хүсэлтийн цагаан жагсаалт ── */
+/* ── 2026-10-09: дээд үйлчилгээ рүү явах хүсэлтийн цагаан жагсаалт ── */
 {
   const schema = { type: 'object', properties: { id: { type: 'string' } } };
   const t = sanitizeTools([{ name: 'query_feature', description: 'd', input_schema: schema, cache_control: { type: 'ephemeral' }, extra: 1 }]);
@@ -250,7 +241,7 @@ assert.equal(botCaller('9'.repeat(30)), 'bot');
   console.log('✅ хүсэлтийн шалгалт: серверийн хэрэгсэл · зураг/документ татгалзана · талбаруудыг дахин угсарна');
 }
 
-/* ── ⚠️ 2026-10-09: хоёр реле шинэ хамгаалалтуудыг хэрэглэнэ ── */
+/* ── 2026-10-09: хоёр реле шинэ хамгаалалтуудыг хэрэглэнэ ── */
 for (const f of ['server.mjs', 'worker.mjs']) {
   const src = readFileSync(new URL(`../agent-proxy/${f}`, import.meta.url), 'utf8');
   assert.match(src, /sanitizeChat\(payload/, `${f}: tools/messages шалгагдахгүй`);
@@ -277,7 +268,6 @@ for (const f of ['server.mjs', 'worker.mjs']) {
 }
 console.log('✅ server.mjs · worker.mjs: шалгалт · зэрэг таг · урьдчилсан төсөв · татгалзалт тоологдоно · кэш эхлээд · chunked таслана');
 
-/* ⚠️ 2026-10-19: явцын тэмдэглэл (`thinking.display: 'updates'`) — ЗӨВХӨН Opus 5.5; бусад загварт хүсэлт өөрчлөгдөхгүй */
 assert.equal(THINKING_UPDATES_BETA, 'thinking-display-updates-2026-08-18');
 assert.equal(thinkingUpdatesFor('claude-opus-5-5'), true);
 for (const m of ['claude-opus-5', 'claude-haiku-4-5', 'claude-haiku-5-5', 'claude-opus-5-50', '', undefined]) {

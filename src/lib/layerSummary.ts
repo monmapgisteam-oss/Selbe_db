@@ -8,14 +8,6 @@
  * Талбар бүрд: нэр (alias) · бөглөлт (N/нийт) · утгууд.
  *   · домэйн/текст → хамгийн олон 5 утга тоогоор (домэйны КОД → НЭР)
  *   · тоо          → бага … их, уртын талбарт нийлбэр (м)
- *
- * ⚠️ ХООСОН ТАЛБАРЫГ 0 ГЭЖ ХАРУУЛАХГҮЙ. `Test0911S`-ийн ихэнх тайлбарын талбар
- * (`Diameter`, `Material`, `Work_Status`…) 2026-09-11-нд 0/181 бөглөлттэй.
- * «Диаметр 0» гэж харуулбал худал хэмжилт болно — «бөглөгдөөгүй» гэж тусад нь
- * бүлэглэнэ (CLAUDE.md: null ≠ 0).
- *
- * ⚠️ СХЕМ нь `butetsEdit.loadLayerMeta`-аас — alias ба домэйны толийг ДАХИН
- * бичихгүй, тэр нь аль хэдийн кэштэй.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -41,11 +33,6 @@ export type LayerSummary = {
   empty: string[];
 };
 
-/**
- * ⚠️ Системийн ба координатын талбар ХАСАГДАНА: `X`/`Y`/`X_48N` мөр бүрд
- * өөр утгатай тул «хамгийн олон утга» нь 72 ширхэг нэг удаагийн тоо болно —
- * мэдээлэл биш, шуугиан.
- */
 const HIDE = /^(objectid|fid|globalid|shape__\w+|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date|x|y|x_48n|y_48n)$/i;
 
 /** Уртын талбар — нийлбэр нь утгатай (метр) */
@@ -54,21 +41,10 @@ const LENGTH = /^(urt_m|length_m|length_metr|shugam_urt)$/i;
 const cache = new Map<string, Promise<LayerSummary>>();
 
 /**
- * ⚠️ ЗАСВАРЫН ДАРАА КЭШ ЗААВАЛ ХАЯГДАНА (2026-09-15).
- *
  * Энэ хураангуй нь «Инженерийн дэд бүтэц»-ийн давхаргын МӨРҮҮДЭЭС бодогддог
  * бөгөөд портал тэдгээрт БОДИТООР бичдэг (атрибут, хэлбэр, нэмэх, устгах).
  * Хаяхгүй бол засвар хийсний дараа «N объект», талбарын бөглөлт сешн
  * дуустал ХУУЧИН тоогоо барина.
- *
- * ⚠️ ЯАГААД `dataBus.register` БИШ ВЭ: дэд бүтцийн давхаргад автобусын
- * хүснэгтийн түлхүүр БАЙХГҮЙ. Тэдгээрийн засварын ЦОРЫН ГАНЦ хүчингүй болгох
- * зам нь `dropTotalsCache()` — `DedButets`-ийн бичих бүх зам
- * (маягт, хэлбэр хадгалах, үйлдэл буцаах, устгах) түүнийг дууддаг. Шинэ
- * түлхүүр зохиовол бичигч талд хоёр дахь дуудлага нэмэх шаардлага гарч,
- * аль нэгийг нь мартах өдөр ирнэ.
- * ⚠️ 2026-10-06: `totals.ts` нь `dropTotalsCache`-ийг `dataBus`-д (хоосон `reads`) бүртгэсэн тул
- *    порталын «↻ Шинэчлэх» (`invalidateAll`) ч энэ кэшийг `subscribeTotals`-аар хаяна.
  */
 subscribeTotals(() => { cache.clear(); });
 
@@ -76,7 +52,6 @@ export function loadLayerSummary(layerId: string): Promise<LayerSummary> {
   const hit = cache.get(layerId);
   if (hit) return hit;
   const p = build(layerId);
-  /* ⚠️ Унасан хүсэлтийг кэшэд ҮЛДЭЭХГҮЙ — дараагийн дарахад дахин оролдоно */
   p.catch(() => cache.delete(layerId));
   cache.set(layerId, p);
   return p;
@@ -88,9 +63,6 @@ async function build(layerId: string): Promise<LayerSummary> {
 
   const [meta, rows] = await Promise.all([
     loadLayerMeta(layerId),
-    /* ⚠️ 2026-10-06: давхаргын тогтмол шүүлт (`d.where`) — каталогийн тоо/зурагтай НЭГ хүрээ
-       (`totals.withLayerWhere`-ийн ⚠️). Урьд нь шүүлтгүй тул `where`-тэй давхаргад «N объект»
-       ба бөглөлт каталогоос ӨӨР олонлогоос бодогдох байв. */
     queryFeatures(layerUrl(L), { where: withLayerWhere(L, null), outFields: ['*'] }),
   ]);
 
@@ -104,10 +76,6 @@ async function build(layerId: string): Promise<LayerSummary> {
       .filter((v) => v != null && v !== '');
     if (!vals.length) { empty.push(f.alias); continue; }
 
-    /* ⚠️ Төрлийг СХЕМЭЭС авна, утгаас ТААМАГЛАХГҮЙ (2026-09-16). Урьд нь
-       `vals.every(typeof v === 'number')` байв: Double талбарт нэг ч текст мөр
-       (жиш. «DN200») орвол бүтэн талбар текст гэж ангилагдаж, `min … max` ба
-       уртын нийлбэр АЛГА болж, оронд нь санамсаргүй 5 утга «чип» болж гардаг. */
     const nums = vals.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
     const isNum = f.kind === 'number' && nums.length > 0;
     if (isNum && !f.codes) {

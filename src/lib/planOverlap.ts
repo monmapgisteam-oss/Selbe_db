@@ -16,24 +16,8 @@ import { buildOverlapDisplay, individualZoneIdentity, type OverlapDisplay, type 
  * «ЕРӨНХИЙ ТӨЛӨВЛӨГӨӨ» → «Detail»: ИНЖЕНЕРИЙН ШУГАМ СҮЛЖЭЭ ↔ ФИЗИК ОБЪЕКТЫН ДАВХЦАЛ
  * (2026-10-13, хэрэглэгчийн заавар).
  *
- * ⚠️ АРГА НЬ ХЭРЭГЛЭГЧИЙН ArcGIS Pro СКРИПТТЭЙ ИЖИЛ (2026-10-13 — хэрэглэгч өөрийн
- *    `arcpy` кодыг өгсөн; урьдах «union × union» аргыг СОЛИВ):
- *   1. Инженерийн давхаргууд = `…_0916` үйлчилгээний БҮХ давхарга (шугам · талбай · цэг, 74).
- *   2. Төрөл = давхаргын НЭРЭЭР түлхүүр үгээр (`TYPES`, `classify`) — 8 төрөл + «Бусад».
- *   3. Давхарга бүрийг зорилтот давхаргатай `Intersect` (ONLY_FID, output_type=INPUT):
- *      ГАРАЛТЫН ОБЪЕКТ = (инженерийн объект × зорилтот полигон) ХОС бүр.
- *        · ТОО — бүх геометрийн төрлөөр (цэг/талбай ч тоологдоно);
- *        · УРТ — ЗӨВХӨН шугамын огтлолцлын урт (`SHAPE@LENGTH`).
- *      ⚠️ Полигонуудыг НЭГТГЭДЭГГҮЙ — давхцсан хоёр полигон дотор орсон шугам ХОЁР
- *         удаа тоологдоно (Pro-ийн Intersect-тэй ижил).
  *   Pro скрипт Барилга (REBUILDING) ба Зам (1006_GUDAMJ_MERGE)-аар бодсон; энд ижил аргаар
  *   5 ангилал × 2 тал (одоогийн `sb:*` / шинэчлэгдсэн `rd:*`).
- *
- * ⚠️ Координат 3857 (газрын зурагтай ижил) — урт нь `geodesicLength`. Pro нь UTM 48N
- *    (32648) хавтгай урт; Сэлбэ орчимд UTM-ийн масштабын алдаа ≤ 0.04% тул ялгаа үл мэдэгдэнэ.
- * ⚠️ Геометрийг ХЯЛБАРЧЛАХГҮЙ (Pro-той тулгахад урт зөрөхгүйн тулд) — хурдыг PBF өгнө.
- * ⚠️ Гүйцэтгэл: хос бүрийг шалгахгүй — полигон бүрийн хүрээ (extent)-тэй огтлолцох
- *    объектуудыг л `intersect`-д өгнө (worker, `geometryEngineAsync`).
  */
 
 export type OverlapSide = 'now' | 'next';
@@ -77,8 +61,6 @@ const classify = (name: string): string => {
 
 /**
  * Нэг мөр = инженерийн ДАВХАРГА (багц ажлын давхарга, жиш. «Багц5_1_Дулааны_өгөх») × ангилал.
- * ⚠️ 2026-10-13 (хэрэглэгч: «яг давхцаж буй хэсгийн мэдээлэл багц ажлын actual layer хэсгээр
- *    харагддаг байх»): урьд нь 8 ТӨРЛӨӨР нэгтгэдэг байв — одоо давхаргаар, төрөл нь өнгөнд.
  */
 export type OverlapCell = { type: string; layer: string; cat: OverlapCat; lengthM: number; count: number };
 /**
@@ -103,16 +85,9 @@ type Geom = __esri.GeometryUnion;
 
 /**
  * НЭГ ХУУДАСНЫ УНШИЛТ — PBF, бүтэлгүйдвэл JSON; ХОЁУЛАА хугацаатай, нэвтрэх цонхгүй.
- * ⚠️ 2026-10-19 (аудит): токенгүй үед зарим эх (Redesign/FeatureServer/2) `f=pbf`-д HTTP 400 буцаадаг — JS API нь
- *    IdentityManager-ийн нэвтрэх цонхыг ХҮЛЭЭЖ амлалт ХЭЗЭЭ Ч шийдэгддэггүй байв (01-ийн самбар үүрд «Тооцоолж
- *    байна…»). Одоо `authMode: 'no-prompt'` (бүртгэлтэй токен хэвээр хэрэглэгдэнэ, шинээр асуухгүй) + `PAGE_TIMEOUT_MS`
- *    хугацаа (AbortController + race — цонх хүлээж буй хүсэлт signal-ыг үл тоосон ч) → JSON нөөц → алдаа.
- *    `hesegChange` · `hesegNeed` ч үүнийг хэрэглэнэ.
  */
 const PAGE_TIMEOUT_MS = 45_000;
 export function queryPageSafe(u: string, q: Query): Promise<__esri.FeatureSet> {
-  /* ⚠️ 2026-10-20: Enterprise-д ЗӨВХӨН JSON (урьдын зан төлөв — PBF-ийн нөөц зам нь AGOL-ын үед л байв).
-     ⚠️ 2026-10-26: хаяг аль хэдийн Enterprise-ийн БОДИТ хаяг (хуучин `entMap.remapUrl` хасагдсан). */
   const target = u;
   const run = (fn: typeof query.executeQueryPBF): Promise<__esri.FeatureSet> => {
     const ac = new AbortController();
@@ -125,7 +100,7 @@ export function queryPageSafe(u: string, q: Query): Promise<__esri.FeatureSet> {
   return run(query.executeQueryJSON);
 }
 
-/** Давхаргын бүх геометрийг ХУУДАСЛАЖ татна (`analysis/data.ts` §fetchAll-ийн ⚠️ — OID эрэмбэ заавал) */
+/** Давхаргын бүх геометрийг ХУУДАСЛАЖ татна (`analysis/data.ts` §fetchAll — OID эрэмбэ заавал) */
 async function fetchObjects(u: string, oid: string, outFields = [oid]): Promise<{ geometry: Geom; attributes: Record<string, unknown> }[]> {
   const out: { geometry: Geom; attributes: Record<string, unknown> }[] = [];
   for (let start = 0; ; ) {
@@ -138,7 +113,7 @@ async function fetchObjects(u: string, oid: string, outFields = [oid]): Promise<
       start,
       num: 2000,
     });
-    /* PBF (JSON-оос ~6 дахин жижиг) — дэмжихгүй үйлчилгээнд JSON руу буцна (`queryPageSafe`-ийн ⚠️) */
+    /* PBF (JSON-оос ~6 дахин жижиг) — дэмжихгүй үйлчилгээнд JSON руу буцна (`queryPageSafe`) */
     const res = await queryPageSafe(u, q);
     for (const f of res.features) if (f.geometry) out.push({ geometry: f.geometry as Geom, attributes: f.attributes ?? {} });
     if (!res.features.length) break;
@@ -177,23 +152,9 @@ export type InfraFeat = { feature: string; type: string; layer: string; geom: Ge
 /**
  * Инженерийн БҮХ давхаргын объектууд (төрөлтэй) — ХОЁР ТАЛД ИЖИЛ тул нэг удаа татаж кэшлэнэ.
  * Давхаргын нэрсийг үйлчилгээний метадатаас (Pro скрипт шиг НЭРЭЭР ангилна).
- * ⚠️ Модулийн кэш: алдаа гарвал устгана (дараагийн оролдлого дахин татна).
  */
 let infraCache: Promise<{ feats: InfraFeat[]; failed: string[] }> | null = null;
-/*
- * ⚠️ 2026-10-19 (аудит): санах ойн кэшүүд толгойн «Шинэчлэх»-ээр (`dataBus.invalidateAll`) ХАЯГДАНА — урьд нь
- *    сешн дуустал үлддэг байв. Хөтчийн хадгалалт (IndexedDB, 24 цаг) нь санаатай шийдвэр (доорх ⚠️) — хэсэгчилсэн
- *    үр дүн тэнд хэзээ ч бичигддэггүй.
- */
 register(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); }, []);
-/*
- * ⚠️ 2026-10-21 (кэшийн аудит): «Инженерийн дэд бүтэц» (`DedButets` → `butetsEdit`) ЯГ ЭНЭ `infra:*` давхаргуудад бичдэг
- *    бөгөөд бичих зам бүр `dropTotalsCache()`-аар дуусдаг (автобусын түлхүүргүй) — `pkgSaad` · `parcelOverlap` ·
- *    `layerSummary`-ийн адил тэр эрийг сонсож санах ойн кэшийг хаяна. Урьд нь засварын дараа «Хэсгийн хэрэгцээ»
- *    (`hesegNeed` → `loadInfra`) ба давхцал хуучин геометрээр бодогдож, зөвхөн толгойн «Шинэчлэх»-ийг хүлээдэг байв.
- *    Хөтчийн хадгалалт (IndexedDB, 24 ц) санаатай хэвээр (доорх ⚠️ 2026-10-13) — хадгалсан давхцлын үр дүн тэр хугацаанд
- *    хэвээр, харин шинэ/хугацаа дууссан тооцоо л шинэ геометрээр.
- */
 subscribeTotals(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); });
 /**
  * Инженерийн давхарга (`infra:N`) → төрөл (`OVERLAP_TYPES` түлхүүр) — `loadInfra` ачаалсны дараа дүүрнэ.
@@ -205,10 +166,6 @@ export const infraIdsOfType = (type: string): string[] =>
 
 export function loadInfra() {
   infraCache ??= (async () => {
-    /* ⚠️ 2026-10-20: инженерийн давхаргууд Enterprise-ийн `Bagts_ajluud` үйлчилгээний НЭГ ХЭСЭГ (98 давхаргын 74).
-       ⚠️ 2026-10-26: хөрвүүлэх хүснэгтгүй — давхарга бүрийн БОДИТ хаяг `infra:N` LayerDef-ийн `url`-д (`pkg.ts` INFRA_TABLE);
-       үйлчилгээний метаас зөвхөн НЭР (`classify`) авна, `infra:*`-д хамаарахгүй давхаргыг алгасна. `infra:N`-ийн N нь
-       тогтвортой id (LAYER_BY_ID · groups.ts · MapCanvas · эрхийн түлхүүр) — Enterprise-ийн дугаар биш. */
     const infraByEnt = new Map<number, { id: string; url: string }>();
     for (const d of LAYERS) {
       if (!d.id.startsWith('infra:')) continue;
@@ -239,9 +196,6 @@ export function loadInfra() {
     }));
     return { feats: parts.flat(), failed };
   })().catch((e) => { infraCache = null; throw e; });
-  /* ⚠️ 2026-10-19 (аудит): ХЭСЭГЧИЛСЭН үр дүнг (татагдаагүй давхаргатай) КЭШЛЭХГҮЙ — одоогийн дуудагчид хүрнэ
-     (нэрийг нь харуулна), дараагийн дуудалт дахин татна (`hesegChange`-ийн ⚠️-тэй ижил). Урьд нь түр уналт сешн
-     дуустал «дутуу» үр дүн болж үлддэг байв. */
   const mine = infraCache;
   void mine.then((r) => { if (r.failed.length && infraCache === mine) infraCache = null; }, () => {});
   return mine;
@@ -257,14 +211,6 @@ const touches = (f: InfraFeat, e: __esri.Extent) => {
 const resultCache = new Map<OverlapSide, Promise<OverlapResult>>();
 
 /* ══════════ ХӨТӨЧИЙН ХАДГАЛАЛТ (IndexedDB) ══════════
- * ⚠️ 2026-10-13 (хэрэглэгч: «Давхцлыг тооцоолж байна… удаад байна — нэг бодсон үр дүнгээ
- *    хадгалаад шууд харуулдаг болго»): тооцоо нь хэдэн зуун полигон × 9,850 объект тул
- *    анх удаа хэдэн арван секунд авна. Үр дүнг (нүд + тодруулгын шугам) хөтөчид хадгалж,
- *    дараагийн нээлтэд ШУУД харуулна.
- * ⚠️ Хугацаа `PERSIST_TTL` (24 цаг) — өгөгдөл (Redesign, инженерийн шугам) засагдвал
- *    хамгийн ихдээ нэг өдөр хуучин тоо харагдана. Шууд шинэчлэх бол `STORE_VER`-ийг ахиулах
- *    эсвэл `clearOverlapStore()`.
- * ⚠️ Хадгалалт АМЖИЛТГҮЙ (хувийн цонх, квот) бол чимээгүй — тооцоо ердийнхөөрөө явна.
  */
 const STORE_DB = 'selbe-overlap';
 const STORE_VER = 4; // 4: эх объектын OID болон хэсэгчилсэн ЕТ-ийн тусдаа бүсүүд.
@@ -306,7 +252,6 @@ async function readStored(side: OverlapSide): Promise<OverlapResult | null> {
   };
 }
 async function writeStored(r: OverlapResult): Promise<void> {
-  /* ⚠️ Хагас үр дүнг (татагдаагүй давхаргатай) ХАДГАЛАХГҮЙ — дараагийн нээлтэд дахин бодно */
   if (r.failed.length) return;
   const db = await idb();
   if (!db) return;
@@ -352,12 +297,6 @@ async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>): Prom
 
 /**
  * ЯВЦЫН ТЕКСТ — нэг талын тооцоог хүлээж буй БҮХ дуудагчид (зургийн давхарга · самбар).
- * ⚠️ 2026-10-13: урьд `onStep` нь ЗӨВХӨН тооцоог ЭХЛҮҮЛСЭН дуудагчид очдог байв — самбар
- *    кэшлэгдсэн promise-ийг авч «Давхцлыг тооцоолж байна…» дээр хувьгүй зогсдог байлаа.
- */
-/*
- * ⚠️ 2026-10-19 (review): ЯВЦ НЬ ТООЦООНЫ ҮЕ (generation)-ЭЭР ТУСГААРЛАГДСАН — урьд нь тал бүрд нэг жагсаалт байсан тул
- *    «Шинэчлэх»-ийн дараа ХУУЧИН (хаягдсан) тооцоо үргэлжилсээр шинэ тооцооны хүлээгчдэд өөрийн хувийг илгээдэг байв.
  */
 type StepGen = { subs: Set<(msg: string) => void>; last: string };
 const stepGens = new Map<number, StepGen>();
@@ -365,17 +304,10 @@ const genOf = new WeakMap<Promise<OverlapResult>, number>();
 let genSeq = 0;
 /** Тал бүрийн ЯВАГДАЖ буй (хамгийн сүүлд эхэлсэн) тооцооны үе — дууссан талд явцын захиалга нэмэхгүй */
 const running = new Map<OverlapSide, number>();
-/**
- * ⚠️ 2026-10-19 (review): НЭГ ТАЛЫН ТООЦООНЫ ДЭЭД ХУГАЦАА (`hesegChange.CHANGE_TIMEOUT_MS`-тэй ижил) — хуудас бүр
- *    `PAGE_TIMEOUT_MS`-тэй ч геометрийн worker гацвал самбар үүрд эргэлдэхгүй; алдаа харуулж кэш хаягдана.
- */
 const OVERLAP_TIMEOUT_MS = 4 * 60_000;
 
 /**
  * ЯВЦЫН ТЕКСТИЙГ ЗАХИАЛНА — буцаасан функцээр цуцална (бүрэлдэхүүн unmount-д).
- * ⚠️ 2026-10-19 (аудит): урьд нь `computeOverlap(side, onStep)` нь кэш ДУУССАН (`end()` бүртгэлийг цэвэрлэсэн) хойно
- *    ч сонсогчийг шинэ Set-д нэмдэг тул тэр нь хэзээ ч устахгүй, unmount-д ч цуцлагддаггүй байв (санах ойн алдагдал).
- *    Одоо зөвхөн ЯВАГДАЖ буй тооцоонд нэмнэ; дуусахад (`end`) бүгд арилна.
  */
 export function onOverlapStep(side: OverlapSide, fn: (msg: string) => void, p?: Promise<OverlapResult>): () => void {
   /* `p` өгвөл ЗӨВХӨН тэр тооцооны явц (`computeOverlap`-ийн буцаасан амлалт); өгөөгүй бол тэр талын явагдаж буйнх */
@@ -401,7 +333,6 @@ export function computeOverlap(side: OverlapSide, onStep?: (msg: string) => void
   const sg: StepGen = { subs: new Set(), last: '' };
   stepGens.set(gen, sg);
   running.set(side, gen);
-  /* ⚠️ Зөвхөн ӨӨРИЙН үеийн захиалагчид — хаягдсан тооцоо шинийхэд явц илгээхгүй */
   const step = (msg: string) => {
     if (!stepGens.has(gen)) return;
     sg.last = msg;
@@ -442,12 +373,10 @@ export function computeOverlap(side: OverlapSide, onStep?: (msg: string) => void
     const jobs = cats.flatMap(({ c, polys }) => polys.map((poly, pi) => ({ c, poly, pi })));
     let done = 0;
     step(tr('Давхцлыг тооцоолж байна… {0}%', 0));
-    /* ⚠️ 2026-10-13: ДАРААЛЛААР биш 4 зэрэг (worker) — полигон бүрийг хүлээх нь хамгийн удаан хэсэг байв */
     await pool(jobs, 4, async ({ c, poly, pi }) => {
       const e = poly.extent;
       const cand = e ? feats.filter((f) => touches(f, e)) : [];
       if (cand.length) {
-        /* ⚠️ async (worker) — нэг полигон × түүний хүрээнд орсон объектууд, нэг дуудлагаар */
         const res = (await geometryEngineAsync.intersect(cand.map((f) => f.geom), poly)) as unknown as (Geom | null)[];
         res.forEach((g, i) => {
           if (isEmpty(g)) return;
@@ -473,10 +402,7 @@ export function computeOverlap(side: OverlapSide, onStep?: (msg: string) => void
   resultCache.set(side, p);
   if (onStep) { const off = onOverlapStep(side, onStep, p); void p.then(off, off); }
   /* Дууссаны дараа явцын бүртгэлийг цэвэрлэнэ */
-  /* ⚠️ Зөвхөн ӨӨРИЙН үе — «Шинэчлэх»-ийн дараа эхэлсэн шинэ тооцооны бүртгэлийг хуучин нь арилгахгүй */
   const end = () => { stepGens.delete(gen); if (running.get(side) === gen) running.delete(side); };
-  /* ⚠️ 2026-10-19 (аудит): ХЭСЭГЧИЛСЭН үр дүн (`failed`) санах ойд ч КЭШЛЭГДЭХГҮЙ — урьд нь зөвхөн IndexedDB-д
-     бичигддэггүй байсан ч сешн дуустал санах ойд үлддэг байв. */
   p.then((r) => { end(); if (r.failed.length && resultCache.get(side) === p) resultCache.delete(side); },
     () => { end(); if (resultCache.get(side) === p) resultCache.delete(side); });
   return p;

@@ -1,6 +1,5 @@
 /* Чирж өргөсгөдөг 3 багана — `ResizableColumns.tsx`.
- * ⚠️ 2026-10-23: Environment — `ui/resizable-columns.tsx` (grid 10px зай, 1px бариул → hover --data).
- * Өргөн нь `--col-l` / `--col-r` (компонент DOM-д шууд бичнэ); `--col-r-floor` — дуудагчийн доод хязгаар. */
+ */
 .cols {
   --col-r-eff: max(var(--col-r, 360px), var(--col-r-floor, 0px));
   position: relative;
@@ -49,7 +48,6 @@
   .grip { width: 18px; margin-left: -4px; margin-right: -4px; }
 }
 
-/* ⚠️ Нарийн дэлгэц (≤1180px, `--bp-split`) — нэг багана, хуудас гүйнэ, бариулгүй */
 @media (max-width: 1180px) {
   .cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
   .grip { display: none; }

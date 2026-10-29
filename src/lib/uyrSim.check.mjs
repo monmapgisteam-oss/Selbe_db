@@ -1,19 +1,6 @@
 /**
  * ҮЕРИЙН ЗАГВАРЧЛАЛ — голын оролт ба усны хадгалалтын регресс (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/uyrSim.check.mjs
- *
- * ⚠️ Юуг барих гэсэн юм бэ:
- *   1. `pickInlets` — голын урсац ХӨНДИЙН ЁРООЛООР (гадны ус орж ирэх ирмэг)
- *      орно. Урьд нь «ирмэгийн өндрийн медианаас дээш» хаалга хөндийн ёроолыг
- *      тасалж, энгэрийн салангид 8 нүдэнд урсацын 1/8-ийг цутгадаг байв; MFD
- *      хуримтлалыг хөршийнхтэй харьцуулбал ГАРАЛТЫН нүд (урсгал хуваагддаг)
- *      оролт мэт харагддаг.
- *   2. Гол татагдсан ч талбайд ОРООГҮЙ бол голын оролт ҮГҮЙ.
- *   3. `limitOutflow` — нүднээс нэг алхамд байгаа уснаас ИЛҮҮ гарахгүй (урьд нь
- *      нүүр тус бүрийн тагтай тул 4 нүүр тус бүр бүтэн нүдийг урсгаж, сөрөг
- *      гүнийг 0 болгоход УС ҮҮСДЭГ байв).
- *   4. Бүтэн загварчлал (DSM офлайн) — NaN-гүй, хүрээ нь торны БОДИТ хамралт
- *      (`N·f` багана, 640-ын 639), голын оролт байгаа үед `peakQ` бичигдэнэ.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/uyrSim.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -42,7 +29,6 @@ import { transferList } from '@/lib/uyrSimCore';
       terrainZ: new Float32Array(1), bedZ: new Float32Array(1), maxDepth: new Float32Array(1),
       maxSpeed: new Float32Array(1), arrivalS: new Float32Array(1), accHa: a, catchHa: a,
       channelMask: new Uint8Array(1),
-      /* ⚠️ 2026-10-09: тооцооны муж */
       domMask: new Uint8Array(1),
     },
   };
@@ -141,7 +127,6 @@ const acc = flowAccum(zf, N, undefined, valid);
   globalThis.fetch = async (input) => {
     const url = typeof input === 'string' ? input : input.url;
     if (url.startsWith('/uyr/')) return new Response(readFileSync(new URL(`.${url.split('?')[0]}`, `${PUB.href}/`)));
-    /* ⚠️ Голын давхарга (сүлжээ) — офлайн тул татагдахгүй: загварчлал голгүй үргэлжлэх ёстой */
     throw new TypeError('offline');
   };
   try {
@@ -169,7 +154,6 @@ const acc = flowAccum(zf, N, undefined, valid);
     /* Голгүй (офлайн) ч хөндийгөөр ирэх оролт олдоно → оролтын урсац бичигдэнэ */
     assert.equal(m.peakQ, 97.3);
     assert.equal(m.hydroQ?.length, m.slices);
-    /* ⚠️ 2026-10-01: гидрографын оргил ≤ peakQ (урьд нь 1.08×), оролтын нүд метад */
     assert.ok(Math.max(...m.hydroQ) <= m.peakQ + 1e-9, `гидрограф оргилоос хэтэрлээ: ${Math.max(...m.hydroQ)}`);
     assert.ok(Math.max(...m.hydroQ) > m.peakQ * 0.9, 'гидрографын оргил хэт бага');
     assert.ok(Array.isArray(m.inlets) && m.inlets.length > 0 && m.inlets.length <= 8, 'оролтын нүд метад алга');
@@ -180,11 +164,9 @@ const acc = flowAccum(zf, N, undefined, valid);
     /* Ирэх хугацааны горим: растер зурагдана (canvas стуб) — алдаагүй */
     fd.frame(5, 0.5, 0, 'arrival');
     fd.frame(5, 0.5, 0, 'hazard');
-    /* ⚠️ 2026-10-09: алхмын хязгаар ба бодогдсон хугацаа метад; ердийн тохиолдолд тасраагүй */
     assert.equal(m.truncated, false, 'ердийн загварчлал алхмын хязгаарт хүрэв');
     assert.ok(Math.abs(m.simulatedMin - m.simMin) < 0.05, `бодогдсон хугацаа ${m.simulatedMin}`);
     assert.equal(m.simulatedSlices, m.slices);
-    /* ⚠️ 2026-10-09: тооцооны муж — гадна нь «тооцоогүй», дотор нь нойтон нүд бүгд */
     assert.equal(typeof fd.inDomain, 'function', 'inDomain алга');
     let inDom = 0;
     for (let i = 0; i < m.width * m.height; i++) {
@@ -193,14 +175,12 @@ const acc = flowAccum(zf, N, undefined, valid);
     }
     assert.ok(inDom > 0, 'тооцооны муж хоосон');
 
-    /* ⚠️ 2026-10-01: хэт жижиг талбай — цөмийн `SimError` орчуулагдаж ирнэ */
     const e0 = m.extent;
     const cx = (e0.xmin + e0.xmax) / 2;
     const cy = (e0.ymin + e0.ymax) / 2;
     const tiny = [[[cx, cy], [cx + 30, cy], [cx + 30, cy + 30], [cx, cy + 30], [cx, cy]]];
     await assert.rejects(simulateFlood(1, undefined, tiny), /хэт жижиг/);
 
-    /* ⚠️ 2026-10-01: цуцлалт — `AbortError` (дуудагч чимээгүй алгасна) */
     const ac = new AbortController();
     ac.abort();
     await assert.rejects(simulateFlood(1, undefined, null, ac.signal), (er) => er.name === 'AbortError');

@@ -3,15 +3,6 @@
  *
  *   npm run iot:watch          — нэг удаа шалгаад гарна (cron/systemd timer-т)
  *   npm run iot:watch -- --loop 15   — 15 минут тутам давтана (24/7 процесс)
- *
- * ⚠️ Портал нь СТАТИК тул мэдэгдлийг браузер илгээж чадахгүй: таб хаагдмагц
- * хяналт зогсоно. Тиймээс энэ нь ботын хостод (аль хэдийн 24/7) ажилладаг
- * ТУСДАА процесс. Ботын \`TELEGRAM_BOT_TOKEN\`-ыг дахин ашиглана.
- *
- * ⚠️ ЯГ ЯМАР ҮЕД мэдэгдэх вэ: төлөв ӨӨРЧЛӨГДӨХӨД л (ok → alert). Босго давсан
- * хэвээр байгаа мэдрэгчийг 15 минут тутам давтвал хүн мэдэгдлийг унтраана —
- * тэр мөчөөс эхлэн ЖИНХЭНЭ дохио ч хүрэхээ болино. Төлөвийг файлд хадгалж
- * ялгааг нь л илгээнэ; сэргэсэн үед мөн нэг удаа мэдэгдэнэ («хэвийн боллоо»).
  */
 
 import fs from 'node:fs';
@@ -19,14 +10,9 @@ import { loadSensors, outOfRange, UB_OFFSET_MS } from '../src/lib/sensors.ts';
 
 /**
  * Мэдэгдлийн цагийн тамга — Улаанбаатарын цагаар (+08:00, зуны цаггүй).
- * ⚠️ 2026-10-09 (аудит №6): урьд `new Date().toLocaleString('mn-MN')` — ХОСТЫН бүсээр
- *    (GitHub Actions = UTC) тул Telegram-д 8 цагаар хоцорсон цаг гарч байв. Одоо
- *    `sensors.ts`-ийн `UB_OFFSET_MS`-тэй нэг тогтмолоор `YYYY-MM-DD HH:mm (УБ)`.
  */
 const ubNow = () =>
   `${new Date(Date.now() + UB_OFFSET_MS).toISOString().slice(0, 16).replace('T', ' ')} (УБ)`;
-/* ⚠️ 2026-10-09: «их нь сайн» жагсаалтыг CEO самбараас ИМПОРТЛОНО — хуулбарлавал хоёр тал салж,
-   самбар «хуурай» гэж шар байхад Telegram «хэвийн» гэж хэлнэ. */
 import { IOT_HIGHER_IS_GOOD } from '../src/lib/ceo/iot.ts';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -40,7 +26,6 @@ const TO = String(process.env.IOT_ALERT_CHATS ?? process.env.TELEGRAM_ALLOWED ??
 const STATE_FILE = process.env.IOT_STATE_FILE || 'iot-watch-state.json';
 
 /** Хэдэн цагийн дараа «хуучирсан» гэж үзэх вэ (порталын дүрэмтэй ИЖИЛ) */
-/* ⚠️ 2026-10-04: 48 → 24 — `sensors.SENSOR_STALE_H` / `ceo/iot.IOT_STALE_H`-тэй нэг */
 const STALE_H = Number(process.env.IOT_STALE_HOURS ?? 24);
 
 if (!TOKEN) {
@@ -76,14 +61,6 @@ const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 
 /**
  * Мэдрэгчийн ТӨЛӨВ — CEO самбарын `src/lib/ceo/iot.ts` (`computeIot`)-ийн дүрэмтэй НЭГ.
- * ⚠️ 2026-10-09: урьд нь «`Iot.tsx`-ийн `stateOf`-той ИЖИЛ» гэж бичсэн байсан ч тийм
- *    функц тэнд аль хэдийн байхгүй; харин босгыг ГЭНЭН `latest >= alert`-ээр шалгадаг
- *    байсан тул (1) decoder-ийн 6553.5%-ийн гэмтэлтэй заалт «хөрс чийглэг» гэж ногоон,
- *    (2) ХУУРАЙ хөрс (чийг < 15%) «хэвийн боллоо» гэж мэдэгддэг байв. Одоо:
- *      · физик мужаас гадуур (`fault` / `outOfRange`) → «мэдрэгчийн гэмтэл», босготой ЖИШИХГҮЙ;
- *      · `IOT_HIGHER_IS_GOOD` (хөрсний чийг) → босгоос ДООШ бол «хуурай» (анхааруулга).
- * ⚠️ Хоёр газарт өөр дүрэм бичвэл самбар ногоон байхад Telegram улаан дохио явуулж,
- *    аль нь үнэн болох нь мэдэгдэхгүй болно.
  */
 const isFault = (m) => m.fault || outOfRange(m, m.latest);
 const higherIsGood = (sn, m) => IOT_HIGHER_IS_GOOD.has(`${sn.key}:${m.key}`);
@@ -156,8 +133,6 @@ async function check() {
     if (st === 'alert' || st === 'fault' || st === 'dry') lines.push(...detail(sn));
   }
 
-  // ⚠️ Төлөвийг ИЛГЭЭХЭЭС ӨМНӨ хадгална: илгээлт унавал дараагийн ажиллалтад
-  //    ижил мэдэгдэл дахин явахгүй (спам болохоос сэргийлнэ).
   saveState(now);
 
   if (!lines.length) {

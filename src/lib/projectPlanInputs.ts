@@ -9,19 +9,8 @@
  *   blockPlanned(pkg, blok, asOf) — Хуваарийн төлөвлөгөөт % дурын өдрөөр (`bagtsSheet.planCurve`, блок тус бүрээр)
  *   land(pkg, blok)               — газар чөлөөлөлт % = чөлөөлөгдсөн ÷ нийт нэгж талбарын ТОО (орон зайн огтлолцол)
  *
- * ба `loadProjectPlan()` — CASHFLOW_NEW-ийн Excel мөрүүдийг (dd_kod IS NOT NULL) уншиж мод угсраад,
+ * ба `loadProjectPlan` — CASHFLOW_NEW-ийн Excel мөрүүдийг (dd_kod IS NOT NULL) уншиж мод угсраад,
  * оролтуудыг цуглуулж `computePlan` + `monthlySeries`-ийг бодно.
- *
- * ⚠️ 2026-10-26: ТҮЛХҮҮР. Excel-ийн багцын бичиглэл («Багц-1», «БАГЦ-5.1», «Багц-4.2», «БАГЦ - 19.1») ба
- *    системийн нэр («Багц 1», «Багц 5.1», «Багц 4-2») НЭГ `bagtsKey`-д («БАГЦ1» · «БАГЦ51» · «БАГЦ42») буудаг;
- *    блок нь `buildingKey(багц, блок)` («БАГЦ42|6/1») — `blockProgress`/`sheetRows`-ийн ЯГ тэр түлхүүр. Тиймээс
- *    нэг багцын 9F/12F хуудас (`pkg.group` нэг) системийн бусад хэсэгтэй АДИЛ нэг багцад нийлнэ.
- *    Олон багцыг хамарсан мөр («БАГЦ 1-4», «БАГЦ-6.1, 6.2») `pkgKeyOf`-оор хоосон түлхүүр авч АЛЬ Ч багцад
- *    наалдахгүй (`isPkgRange`-ийн ⚠️ — Багц 14 руу хуурамч наалдалт).
- * ⚠️ 2026-10-26: ЭХ УНАВАЛ `null`, ӨӨР ЭХ РҮҮ ЧИМЭЭГҮЙ ШИЛЖИХГҮЙ. `PlanInputs`-ийн дүрмээр `undefined` нь
- *    «дараагийн эх» (хадгалсан утга → шугаман L/M) гэсэн үг. Хуваарь уншигдаагүйд блокийн P-г шугаманаар
- *    бодвол итгэл төрүүлэхүйц ХУДАЛ тоо гарна — тиймээс уналт/хуваарьгүй нь `null`, `failed`-д нэрээрээ.
- * ⚠️ Бүх хувь 0–100 (`pct()` 100-аар үржүүлдэггүй); null ≠ 0.
  */
 import {
   buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday,
@@ -54,8 +43,6 @@ const CF = CASHFLOW_NEW.fields;
 
 /**
  * Хадгалсан мөрийг уншихдаа ЭНЭ талбарууд (`PlanStoredRow`-ийн түлхүүр → хүснэгтийн эх нэр).
- * ⚠️ Хариуны түлхүүрийг ТОМ/ЖИЖИГ ҮСЭГ ҮЛ ЯЛГАН уншина (`attrOf`) — Enterprise-ийн бодит нэр жижиг үсэгтэй
- *    (⚠️ 2026-10-26: толь/хөрвүүлэлт хасагдсан); хуучин том үсэгтэй мөр (кэш · фикстур) ч уншигдана.
  */
 const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['objectid', CASHFLOW_NEW.oid],
@@ -114,9 +101,6 @@ export function toStoredRow(a: Record<string, unknown>): PlanStoredRow {
 
 /**
  * `dd_kod`-ын БАЙГАЛИЙН эрэмбэ — цифрийн хэсгийг тоогоор («1.10» > «1.9»), бусдыг тэмдэгтээр.
- * ⚠️ 2026-10-26 (тохиролцоо, cf-wave2): dd_kod нь ЭРЭМБЭЛЭГДЭХ код — Excel-ийн дараалал үүгээр сэргэнэ.
- *    Серверийн `orderByFields` нь мөрөөр («1.10» < «1.9») эрэмбэлдэг тул клиентэд ДАХИН эрэмбэлнэ.
- *    Тэнцвэл objectid (тогтвортой). Код давтагдашгүй бол ах дүүсийн дараалал л нөлөөлнө (`sortPlanRows`-ийн ⚠️).
  */
 export function compareDdKod(a: string | null | undefined, b: string | null | undefined): number {
   const x = String(a ?? '').match(/\d+|\D+/g) ?? [];
@@ -135,8 +119,6 @@ export function compareDdKod(a: string | null | undefined, b: string | null | un
 
 /**
  * Мөрүүдийг Excel-ийн дараалалд (цэвэр) — `projectPlan.orderPlanRows`.
- * ⚠️ 2026-10-27: `dd_kod` ДАВХАРДВАЛ (импорт `--kod=excel`) objectid-ийн дараалал (= Excel-ийн дараалал, импорт
- *    хүснэгтийг Excel-ийн дарааллаар бүрэн дахин бичдэг) — тэр үед эцгийн холбоос ч дарааллаас хамаарна.
  */
 export function sortPlanRows(rows: readonly PlanStoredRow[]): PlanStoredRow[] {
   return orderPlanRows(rows, compareDdKod);
@@ -144,9 +126,6 @@ export function sortPlanRows(rows: readonly PlanStoredRow[]): PlanStoredRow[] {
 
 /**
  * Excel-ийн БҮХ мөр — мөнгөний + бүтцийн (`dd_kod IS NOT NULL`), сарын мөр ОРОХГҮЙ.
- * ⚠️ `Cashflow_start IS NULL`-ийг давхар тавина: сарын мөрд dd_kod хоосон байх ёстой ч (импортын дүрэм)
- *    хуулбарласан сарын мөр dd_kod-той ирвэл модонд давхардсан код болж нийлбэрийг хөөргөнө.
- * ⚠️ 0 мөр (импортоос өмнө) нь АЛДАА БИШ — `loadProjectPlan` хоосон төлөв буцаана.
  */
 async function fetchPlanRows(): Promise<PlanStoredRow[]> {
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
@@ -175,10 +154,6 @@ export const blockKeyOf = (pkg: string | null | undefined, blok: string): string
 
 /**
  * БЛОКИЙН БОДИТ ГҮЙЦЭТГЭЛ (0–100).
- * ⚠️ 2026-10-26: бөглөх хуудасны хуваарьт БАЙГАА атлаа хэмжилтгүй блок → 0 (`pkgProgressOf`-ийн 2026-10-01-ний
- *    хэрэглэгчийн шийдвэр «тайлагнаагүй блок = 0%»; Excel-д ч эхлээгүй блок 0, төлөв «Эхлээгүй»).
- *    Хуваарьт ч, хэмжилтэд ч байхгүй (хуудасгүй багц, нэр зөрсөн блок) → `undefined` (мэдэхгүй → хадгалсан S → null).
- *    Эх УНАСАН → `null` (0 гэж зурахгүй).
  */
 export function blockActualOf(src: ActualSources): NonNullable<PlanInputs['blockActual']> {
   return (pkg, blok) => {
@@ -194,8 +169,6 @@ export function blockActualOf(src: ActualSources): NonNullable<PlanInputs['block
 
 /**
  * БЛОКГҮЙ НАВЧНЫ (дэд бүтэц) БОДИТ ГҮЙЦЭТГЭЛ — блокгүй багцын бөглөх хуудас (5.x · 6.x · 7.1 · 10).
- * ⚠️ Блоктой багцын блокгүй навч («Бүгд · Өндөржилтөөс гарах газар шороо») энд ОРОХГҮЙ (`undefined`) — тэр
- *    нь багцын нийт гүйцэтгэл биш, нэг ажлын мөр.
  */
 export function pkgActualOf(src: ActualSources): NonNullable<PlanInputs['pkgActual']> {
   return (pkg) => {
@@ -254,10 +227,6 @@ export type BlockSchedules = {
   keys: () => string[];
 };
 
-/**
- * ⚠️ 2026-10-26 (cf-spec): ХУВААРИЙН АЛДААТАЙ ОГНОО → null — эхлэх > дуусах, 2000-аас өмнө / 2100-аас хойш
- *    (Excel-ийн 0 сериал 1899-12-30 г.м.). Хос нь ХАМТ хаягдана: ганц талтай муж хуваарь биш.
- */
 const cleanSpan = (s: number | null | undefined, e: number | null | undefined): [number | null, number | null] => {
   const a = saneDate(s), b = saneDate(e);
   return a == null || b == null || b < a ? [null, null] : [a, b];
@@ -267,23 +236,13 @@ const dayOf = (ms: number) => Math.floor(ms / DAY);
 
 /**
  * Хуудсуудаас блок бүрийн хуваарь (цэвэр — тестлэгдэнэ).
- *
- * ⚠️ 2026-10-26: БЛОК ТУС БҮРИЙН муруй. `planCurve` нь мөрийн блокуудын ДУНДЖИЙГ буцаадаг тул (`avgOut`) блокийн
- *    утгыг гаргахын тулд мөр бүрийн огноог ЗӨВХӨН тэр блокийнхоор (`start[b]`/`end[b]` → нэг баганат) хуулж,
- *    `nBld = 1`-ээр дуудна. Жин (`vol × unit` · `money` · `wD`) блокоос хамаардаггүй тул `computeAll`/«Хуваарь»-тай
- *    ЯГ НЭГ дүрэм (жин D, огнооны өв own/agg, бүлгийн онцгой тохиолдол) — тусдаа томьёо БИЧИХГҮЙ.
- *    Утга нь «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» мөрийнх (`isConstructionNo`) — бэлтгэл ажил ОРОХГҮЙ (`planProgress`-тэй ижил).
- * ⚠️ «Хуваарьгүй» = «Б.» мөрийн доорх аль ч мөрөнд тэр блокийн ЗӨВ огнооны хос алга → `null` (0 БИШ).
- *    `planCurve` огноогүй блокт 0 гаргадаг (`AVERAGE(IF(…="",0,…))`) тул энд тусад нь шалгана.
- * ⚠️ НЭГ ТҮЛХҮҮР ХОЁР ХУУДАСНЫ (Багц 4-2: 9F-ийн F6_x ба 12F-ийн F6_x — `uniqueBlockCounts`-ийн ⚠️) үед
- *    ӨМНӨХ хуудас (PKGS-ийн дараалал, 9F) ДАВАМГАЙЛНА — хуваарьгүй бол дараагийнх.
  */
 export function makeSchedules(sheets: readonly PlanSheet[]): BlockSchedules {
   type Entry = { sh: PlanSheet; b: number; bi: number; rowsB: SheetRow[] | null; memo: Map<number, number> };
   const entries = new Map<string, Entry>();
   for (const sh of sheets) {
     const bi = sh.rows.findIndex((r) => isConstructionNo(r.no));
-    if (bi < 0) continue; // ⚠️ ачаалагч (`fetchSchedules`) «Б.» мөргүй хуудсыг `failed`-д бүртгэнэ
+    if (bi < 0) continue;
     /* «Б.» мөрийн доод мөрүүд (гүнээр) — хуваарьтай эсэхийг энд л шалгана */
     let end = bi + 1;
     while (end < sh.rows.length && sh.rows[end].depth > sh.rows[bi].depth) end += 1;
@@ -299,10 +258,6 @@ export function makeSchedules(sheets: readonly PlanSheet[]): BlockSchedules {
       }
     });
   }
-  /* ⚠️ 2026-10-26 (хяналтын олдвор): сарын задаргааны callback-д ЦЭВЭРЛЭСЭН биш ЭХ огноо (`raw`) өгнө.
-     `cleanSpan` урвуу мужийг [null, null] болгодог тул түүгээр дамжуулбал `planPctFromMonths` огноогүй гэж
-     бүтэн сараар хувь гаргаж, урвуу (= хуваарьгүй, 2026-10-08) мөрийг «бүрэн төлөвлөгдсөн» мэт тоолж байв.
-     Эх хосоор өгвөл `planPctFromMonths` өөрийн «урвуу → null» дүрмийг `planProgress`-тэй ЯГ адил хэрэгжүүлнэ. */
   const raw = new Map<SheetRow, [number | null, number | null]>();
   const rowsOf = (en: Entry): SheetRow[] => {
     if (!en.rowsB) {
@@ -350,7 +305,7 @@ export function makeSchedules(sheets: readonly PlanSheet[]): BlockSchedules {
   };
 }
 
-/** `blockPlanned` callback — хуваарьгүй/уншигдаагүй блок `null` (шугаман руу УНАХГҮЙ — файлын толгойн ⚠️) */
+/** `blockPlanned` callback — хуваарьгүй/уншигдаагүй блок `null` (шугаман руу УНАХГҮЙ — файлын толгой) */
 export function blockPlannedOf(sched: BlockSchedules | null): NonNullable<PlanInputs['blockPlanned']> {
   return (pkg, blok, asOf) => (sched ? sched.at(pkg, blok, asOf) : null);
 }
@@ -371,10 +326,6 @@ export function monthlyOf(ob: PkgPlan | null | undefined): PlanSheet['monthly'] 
 /**
  * Хуваарийн хуудсуудыг уншина — `planProgress.loadPlanCurve`-тэй ИЖИЛ уншилт (`planFields`, `persist` кэш,
  * сарын задаргаа `HUVAARI_OBYEM` хоосон бол асуухгүй).
- * ⚠️ Хуудас УНАВАЛ `failed`-д; тэр багцын блокууд хуваарьгүй (null) болно — өөр хуудсаар нөхөхгүй.
- * ⚠️ 2026-10-26 (хяналтын олдвор): ЗӨВХӨН блоктой хуудас (`floors != null`) — блокгүй 16 хуудас блокийн хуваарь
- *    хэзээ ч өгөхгүй атлаа уналт нь «бүрэн биш» гэж худал анхааруулж, кэшийг (`!failed.length`) огт тогтоохгүй байв.
- *    Уншигдсан ч «Б.» мөргүй хуудас = УНАЛТ (`planProgress`-ийн 2026-10-06-ны ⚠️) — чимээгүй null биш.
  */
 async function fetchSchedules(): Promise<{ sched: BlockSchedules; failed: string[]; failedGroups: string[] }> {
   const failed: string[] = [];
@@ -402,8 +353,6 @@ async function fetchSchedules(): Promise<{ sched: BlockSchedules; failed: string
     }
   }));
   const sheets = got.filter((x): x is PlanSheet & { order: number } => !!x).sort((a, b) => a.order - b.order);
-  /* ⚠️ Хуудас нь унасан багцын БҮХ блок хуваарьгүй — 12F уншигдаад 9F унасан үед 12F-ийн давхардсан «6/x»
-     9F-ийн оронд ялж болохгүй (давамгайллын дүрэм эвдэрнэ) */
   const failedGroups = [...new Set(blockPkgs.filter((p) => failed.includes(p.key)).map((p) => bagtsKey(p.group)))];
   const ok = sheets.filter((s) => !failedGroups.includes(bagtsKey(s.group)));
   return { sched: makeSchedules(ok), failed: failed.map((k) => `schedule:${k}`), failedGroups };
@@ -412,22 +361,7 @@ const loadSchedules = cached(fetchSchedules, SESSION_TTL_MS, ['BAGTS_SHEET', 'HU
 
 /* ══════════════════ 4. Газар чөлөөлөлт % (нэгж талбарын тоогоор) ══════════════════ */
 
-/*
- * ⚠️ 2026-10-26: ХОЛБООС НЬ ОРОН ЗАЙН. Нэгж талбарын давхаргад (`PARCEL_LEFT`, Enterprise `GA_Selbe_jijuur`)
- *    багц/блокийн талбар АЛГА (`Блок` 31/2,088 мөрд л) — атрибутаар холбох боломжгүй (`Gazar.useZoneLeft`-ийн ⚠️).
- *    «Саад — багцаар»-тай (`parcelOverlap` · `pkgSaad`) ИЖИЛ хүрээ:
- *      · орон сууцны блок → барилгын давхаргын (`BUILDING`, `${BAGTS_AJLUUD}/0`) тэр блокийн footprint;
- *      · блоктой багц (блокгүй мөр) → тэр багцын бүх блокийн footprint;
- *      · дэд бүтцийн/нийгмийн багц → `PKG_BY_BAGTS`-ийн давхаргууд.
- *    Нийт = хүрээтэй ДОТООД огтлолцолтой нэгж талбар (зөвхөн хилээр хүрэлцсэн нь ОРОХГҮЙ — `parcelOverlap`-ийн
- *    2026-10-22-ны дүрэм, `TOL` 0.1 м), чөлөөлсөн = тэдгээрийн «Бүрэн чөлөөлсөн» (`isClearedStatus`).
- * ⚠️ ЯАГААД ӨӨРӨӨ ОГТЛОЛЦУУЛНА ВЭ. `overlapLeftParcels` нь ЗӨВХӨН үлдсэн талбарыг (серверт `parcelLeftWhere`)
- *    тоолдог — НИЙТ тоо түүнээс гарахгүй. Серверт блок бүрээр 2 тоолох асуулга = 226+ хүсэлт; харин бүх нэгж
- *    талбар (2 хуудас) + footprint (1) + багцын давхаргууд (давхарга бүрд 1) татаад клиентэд огтлолцуулах нь хямд.
- * ⚠️ Хүрээ олдоогүй (footprint-гүй блок — `buildingKey`-ийн ⚠️ БАГЦ2|5/8) → `null` («мэдэхгүй»).
- *    Хүрээ байгаа ч нэг ч нэгж талбартай огтлолцоогүй → `EMPTY_AREA_PCT` (чөлөөлөх газар алга = бүрэн).
- */
-/** Нэгж талбаргүй хүрээний хувь — чөлөөлөх газар байхгүй тул 100 (⚠️ дээрх) */
+/** Нэгж талбаргүй хүрээний хувь — чөлөөлөх газар байхгүй тул 100 (дээрх) */
 export const EMPTY_AREA_PCT = 100;
 /** Хүрэлцэл ялгах хүлцэл (м) — `parcelOverlap.GEN_M`-тэй ижил */
 const TOL = 0.1;
@@ -480,7 +414,6 @@ function strictlyIn(rings: number[][][], x: number, y: number): boolean {
 }
 /**
  * Хоёр хэрчим ЖИНХЭНЭ огтлолцох уу — төгсгөл бүр нөгөө шугамаас `TOL`-оос хол, эсрэг талд.
- * ⚠️ Хилээр давхцсан (коллинеар) эсвэл оройгоор хүрэлцсэн нь ОРОХГҮЙ — хөрш талбар «саад» болохгүй.
  */
 function properCross(a: number[], b: number[], c: number[], d: number[]): boolean {
   const side = (p: number[], q: number[], r: number[]) => {
@@ -496,7 +429,6 @@ function properCross(a: number[], b: number[], c: number[], d: number[]): boolea
 
 /**
  * Нэгж талбарын ДОТООД цэг — хамгийн урт ирмэгийн дундаас дотогш 2·TOL; нимгэн бол хоёр дахь, … эцэст нь null.
- * ⚠️ Төв (centroid) БИШ — хотгор хэлбэрт төв гадна унадаг.
  */
 function interiorPoint(rings: number[][][]): number[] | null {
   const edges: [number, number[], number[]][] = [];
@@ -534,7 +466,6 @@ export function makeParcelIndex(parcels: readonly LandParcel[]): ParcelIndex {
   const cells = (bb: Box, fn: (k: string) => void) => {
     const x0 = Math.floor((bb[0] - TOL) / CELL), x1 = Math.floor((bb[2] + TOL) / CELL);
     const y0 = Math.floor((bb[1] - TOL) / CELL), y1 = Math.floor((bb[3] + TOL) / CELL);
-    /* ⚠️ Хэт том хүрээ (км-ийн шугам) — торыг гүйлгэхгүй, бүгдийг нэр дэвшүүлнэ */
     if ((x1 - x0 + 1) * (y1 - y0 + 1) > 40_000) { fn('*'); return; }
     for (let x = x0; x <= x1; x += 1) for (let y = y0; y <= y1; y += 1) fn(`${x},${y}`);
   };
@@ -623,11 +554,6 @@ export type LandSources = {
 
 /**
  * Excel-ийн багцын түлхүүр → каталогийн (`PKG_BY_BAGTS`) НЭМЭЛТ түлхүүрүүд.
- * ⚠️ 2026-10-26 (хяналтын олдвор): Excel ба каталог зарим багцыг өөрөөр бичдэг тул давхарга олдохгүй/дутуу байв:
- *    · Excel «БАГЦ-7.1» (БАГЦ71) — каталогт Багц 7-ийн хөрсний усны давхаргууд (infra:61/62) «БАГЦ-7» (БАГЦ7);
- *    · Excel «Багц-6.1…6.4» — каталогт цахилгааны шугам (БАГЦ61…64) ба «Багц 6.x · Холбоо» (infra:42–51,
- *      `Багц1_Холбоо`… → БАГЦ1ХОЛБОО…) ТУСДАА түлхүүртэй — холбоогүйгээр хүрээний ХЭСГЭЭР бодогдож байв.
- *    «БАГЦ-7.2»-ийн давхарга каталогт АЛГА — `null` (мэдэхгүй) хэвээр.
  */
 const LAND_PKG_ALIAS: Readonly<Record<string, readonly string[]>> = {
   БАГЦ71: ['БАГЦ7'],
@@ -645,7 +571,6 @@ export function landLayerIdsOf(pk: string): string[] {
 
 /**
  * Түлхүүр бүрийн хувь (цэвэр). `null` = мэдэхгүй (хүрээ алга / эх унасан).
- * ⚠️ Дэд бүтцийн давхаргатай багц (`landLayerIdsOf`) давхаргаараа; давхаргагүй бол блоктой багцын footprint-уудаар.
  */
 export function landPctMap(src: LandSources, keys: Iterable<string>): Map<string, number | null> {
   const out = new Map<string, number | null>();
@@ -680,8 +605,6 @@ type Feat = { attributes?: Record<string, unknown>; geometry?: Geo };
 
 /**
  * Давхаргын объектуудыг геометртэй нь ХУУДАСЛАН татна.
- * ⚠️ Эхний хуудас эрэмбэгүй; хязгаарт хүрвэл OID-оор (`objectIdFieldName`) ЭХНЭЭС нь эрэмбэтэй (CLAUDE.md:
- *    эрэмбэгүй offset давхардал/алдагдал). Хоосон хуудас атлаа `exceededTransferLimit` → алдаа (дутуу үр дүн биш).
  */
 async function fetchGeoFeats(url: string, where: string, outFields: string[], gen: boolean): Promise<Feat[]> {
   let order: string | null = null;
@@ -734,7 +657,7 @@ async function fetchParcels(): Promise<ParcelIndex> {
 }
 const loadParcels = cached(fetchParcels, SESSION_TTL_MS, ['PARCEL_LEFT']);
 
-/** Барилгын footprint — `buildingKey` → объектууд (нэг түлхүүрт ХОЁР feature байж болно — `buildingKey`-ийн ⚠️) */
+/** Барилгын footprint — `buildingKey` → объектууд (нэг түлхүүрт ХОЁР feature байж болно — `buildingKey`) */
 async function fetchFootprints(): Promise<Map<string, LandShape[]>> {
   const F = BUILDING.fields;
   const fs = await fetchGeoFeats(BUILDING.url, '1=1', [F.bagts, F.block], true);
@@ -754,12 +677,8 @@ const loadFootprints = cached(fetchFootprints, SESSION_TTL_MS, ['BUILDING']);
 
 /**
  * Дэд бүтцийн давхаргын геометр — давхарга бүрд НЭГ удаа.
- * ⚠️ `parcelOverlap.geomCache`-тэй ижил эх (экспортгүй тул хуваалцахгүй); засвар нь `DedButets` →
- *    `dropTotalsCache()` тул `subscribeTotals`-аар хаяна. Амжилтгүй амлалт кэшлэгдэхгүй.
  */
 const layerGeomCache = new Map<string, Promise<LandShape[]>>();
-/* ⚠️ 2026-10-26 (хяналтын олдвор): газрын мемог (`landMemo`) ХАМТ хаяна — эс бөгөөс нэгж талбар · footprint-ийн
-   объект ижил тул `prepareLand` хуучин геометрийн хувийг 5 минут хүртэл буцаана. */
 register(() => { layerGeomCache.clear(); landMemo = null; }, []);
 subscribeTotals(() => { layerGeomCache.clear(); landMemo = null; });
 function layerShapes(id: string): Promise<LandShape[]> {
@@ -781,11 +700,6 @@ export function landKeysOf(tree: PlanTree): string[] {
   return [...out];
 }
 
-/**
- * ⚠️ Тооцооны МЕМО — оролтын ОБЪЕКТЫН ИЖИЛ БАЙДЛААР (кэшлэгдсэн нэгж талбар · footprint · түлхүүрүүд) түлхүүрлэнэ.
- *    Эх кэшүүд (`PARCEL_LEFT` · `BUILDING`) хаягдахад шинэ объект ирж мемо өөрөө хуучирна; дэд бүтцийн давхаргын
- *    геометр (`subscribeTotals` · `register`) объектын түлхүүрт ОРОХГҮЙ тул тэдгээрийн callback мемог шууд хаяна.
- */
 let landMemo: { parcels: ParcelIndex | null; foot: Map<string, LandShape[]> | null; sig: string; res: Promise<{ pcts: Map<string, number | null>; failed: string[] }> } | null = null;
 
 async function prepareLand(keys: string[]): Promise<{ pcts: Map<string, number | null>; failed: string[] }> {
@@ -805,7 +719,6 @@ async function prepareLand(keys: string[]): Promise<{ pcts: Map<string, number |
       const pks = [...new Set(keys.filter((k) => k.startsWith('P|')).map((k) => k.slice(2)))].filter((pk) => landLayerIdsOf(pk).length);
       await Promise.all(pks.map(async (pk) => {
         const got = await Promise.allSettled(landLayerIdsOf(pk).map(layerShapes));
-        /* ⚠️ Нэг давхарга нь унасан багц ДУТУУ хүрээгээр бодогдохгүй — `null` (хагас тоо «чөлөөлөгдсөн» мэт) */
         if (got.some((g) => g.status === 'rejected')) { failedPkgs.add(pk); failed.push(`land:${pk}`); return; }
         infra.set(pk, got.flatMap((g) => (g.status === 'fulfilled' ? g.value : [])));
       }));
@@ -872,8 +785,6 @@ export function emptyPlan(today: number = ubToday()): ProjectPlan {
 
 /**
  * Мөр + оролтоос бүтэн тооцоо (цэвэр, `sched`-ийг өдрүүдээр урьдчилж бодно).
- * ⚠️ P/Q/R = өнөөдөр · +7 · −7 хоног (`computePlan`), сарын цуваа нь сар бүрийн сүүлийн өдөр — хуваарийг
- *    эдгээр өдрөөр НЭГ дуудалтаар бодно (блок бүрд `planCurve` нэг удаа).
  */
 export function assemblePlan(
   rows: readonly PlanStoredRow[],
@@ -894,12 +805,6 @@ export function assemblePlan(
 
 /**
  * ТӨСЛИЙН ТӨЛӨВЛӨГӨӨ — харагдацуудын нэг эх.
- *
- * ⚠️ Хэсэг бүр өөрийн кэштэй (`cached`, 5 мин, автобусны түлхүүрээр): CASHFLOW_NEW · BAGTS_SHEET ·
- *    HUVAARI_OBYEM · PARCEL_LEFT · BUILDING. Тооцоо (`computePlan`) дуудалт бүрд — хурдан (~905 мөр).
- * ⚠️ Excel мөр алга → `empty: true` (бусад эхийг ОГТ татахгүй). CASHFLOW_NEW унасан → шидэнэ (энэ бол
- *    харагдацын үндэс — хоосон гэж худал хэлэхгүй). Бусад эх унавал `failed`-д, тэр мөрүүд `null`.
- * @param today ms — тестэд/«өдрөөр харах»-д тогтмол өгнө
  */
 export async function loadProjectPlan(today: number = ubToday()): Promise<ProjectPlan> {
   const rows = await loadPlanRows();
@@ -930,12 +835,6 @@ export type LiveProgress = {
 
 /**
  * cashflow_id → амьд гүйцэтгэл — «Төсөл төлөвлөгөө биелэлт»-ийн S (`computePlan`), цэвэр (тестлэгдэнэ).
- * ⚠️ 2026-10-27 (хэрэглэгч: «cashflow-ийн явц үргэлж системээс амьд уншигддаг болго, Excel-ийн тоо хэрэггүй»):
- *    дашбоард (`gdash.loadGdashCf`) · ТУХ (`tuhData.progressOf`) · Нэгтгэл (`negtgel.loadCfStages`) гэрээний явц ба
- *    үе шатны хувийг ЭНДЭЭС авна. Хүснэгтийн `guitsetgel_huvi` · `tezu` · `ajliin_zurag_tusul` · `gazar_chuluulult` ·
- *    `zuwshuurul` · `songon_shalgaruulalt` (Excel-ийн импортын агшин) тэнд УНШИГДАХГҮЙ — `guitsetgel_huvi` нь зөвхөн
- *    computePlan-ийн гар оролт (ТЭЗҮ · зураг төсөл · зөвшөөрөл · сонгон). Хэсэгт/төсөлд эзлэх (F · G) хэвээр хадгалсан жин.
- * ⚠️ Үе шатын мөрийг багцаар `bagtsKey`-ээр (диапазон мөр ч өөртэйгөө таарна) — pre-order тул хамгийн гүехэн нь эхэнд.
  */
 export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
   const ST = CASHFLOW_NEW.stages;

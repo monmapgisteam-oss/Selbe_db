@@ -1,15 +1,13 @@
 /**
  * «ТӨСӨЛ ТӨЛӨВЛӨГӨӨ БИЕЛЭЛТ» таб (Finance.tsx) ба «Хуваарь» эхтэй гэрээний 5-р түвшний сарууд — Node дээр,
  * сүлжээгүй (2026-10-26).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/financeProjectPlan.ui.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/financeProjectPlan.ui.check.mjs
  *
  * Шалгана:
  *   §1 `huvMonthRows` — тооцоолсон сар → OID-гүй синтетик мөр; `cashflow_huwi` 0–100, ХО дүнгүй бол null (0 биш)
  *   §2 `ProjectPlanTable` — Excel-ийн толгой, модны байрлалын Д/Д, null → «—», эвхэлт (түвшин 2),
  *      мөнгөний мөрийн «Гараар/Хуваарь» тэмдэг, `canSwitch`-тэй үед л «Хуваарь руу шилжүүлэх»
  *   §3 эх кодын хамгаалалт — `publish` 'huvaari' гэрээний сарыг нэмэх/устгахгүй
- *
- * ⚠️ `*.ui.check.mjs` нэр ЗААВАЛ — `ts-alias` CSS/next/dynamic стубуудыг үүгээр залгана (`smoke.ui.check`-ийн ⚠️).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -92,7 +90,6 @@ check('huvMonthRows', () => {
   assert.equal(huvMonthRows(null).size, 0);
 });
 
-/* ⚠️ 2026-10-26: Enterprise-ийн жижиг үсгийн талбар — 'Cashflow_' (том C) шалгалт сарын мөрийг бүхэлд нь хоосолж байв */
 check('isCfMonthCol — сарын мөрийн нүд жижиг үсгийн талбарт утгатай', () => {
   const r = huvMonthRows({ contracts: new Map([[7, { id: 7, source: SRC_HUVAARI, cost: 1000, months: new Map([['2026-03', 250]]) }]]) }).get(7)[0];
   const shown = Object.keys(r).filter(isCfMonthCol).sort();
@@ -142,7 +139,6 @@ check('шилжүүлэх товч — эрхтэй, зөвхөн гараар �
   const html = render(true);
   const cnt = html.split('Хуваарь руу шилжүүлэх').length - 1;
   assert.equal(cnt, 1, "'huvaari' гэрээнд товч гарахгүй, 'garaar'-д нэг");
-  /* ⚠️ хяналт №2: uy_shat хоосон (импортоос өмнөх) — товч ХААЛТТАЙ, шалтгаантай */
   const btn = (h) => h.match(/<button[^>]*>Хуваарь руу шилжүүлэх<\/button>/)?.[0] ?? '';
   assert.match(btn(html), /disabled=""/, 'хоосон үе шат — хаалттай');
   assert.match(btn(html), /тодорхойгүй/, 'шалтгааныг title-д');
@@ -153,7 +149,6 @@ check('шилжүүлэх товч — эрхтэй, зөвхөн гараар �
 });
 
 /* ══════════ §3 Эх кодын хамгаалалт ══════════ */
-/* ⚠️ 2026-10-27: «Гэрээ (Cashflow)» таб (`FullTable`) устгагдсан — түүний эх кодын шалгуур хасагдав */
 check('CashflowPlan — canSwitch · money дамжина', () => {
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
   assert.match(src, /<CashflowPlan[\s\S]{0,400}canSwitch=\{canSwitch\}[\s\S]{0,60}money=\{money\}/);
@@ -167,7 +162,6 @@ check('шилжүүлэлт — хоёр харагдац НЭГ урсгала�
   }
 });
 
-/* ⚠️ 2026-10-26: сарын задаргаа уншигдаагүй үед «Cashflow хувиарлах»-ын шилжүүлэлт хаалттай (ProjectPlanTable-тай ижил) */
 check('CashflowPlan — monthsError үед «Хуваарь руу шилжүүлэх» хаалттай', () => {
   const cfp = readFileSync(new URL('./CashflowPlan.tsx', import.meta.url), 'utf8');
   assert.match(cfp, /const doSwitch = async \(\) => \{[\s\S]{0,600}\|\| monthsError\) return;/, 'doSwitch-ийн хамгаалалт');
@@ -175,7 +169,6 @@ check('CashflowPlan — monthsError үед «Хуваарь руу шилжүү�
 });
 
 
-/* ⚠️ 2026-10-26: «Төсөл төлөвлөгөө биелэлт» таб merge-ээр roving tabIndex-гүй үлдсэн (UX U8) */
 check('tablist — таб бүр roving tabIndex-тэй', () => {
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
   const tabs = src.split('role="tab"').slice(1).map((s) => s.slice(0, 400));

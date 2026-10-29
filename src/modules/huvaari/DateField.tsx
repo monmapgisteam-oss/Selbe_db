@@ -6,19 +6,11 @@ import { t as tr } from '@/lib/i18nCore';
 import { parseDayInput } from '@/lib/dateInput';
 import h from '../huvaari.module.css';
 
-/* ⚠️ `dynamic` — `Finance.tsx`-ийн ижил шалтгаан: календар `sheet.module.css`-ийг дагуулдаг */
 const DatePicker = dynamic(() => import('@/modules/sheet/DatePicker'), { ssr: false });
 
 /**
  * ОГНООНЫ ТАЛБАР — ГАРААР БИЧИХ + 📅 КАЛЕНДАР (2026-10-04, хэрэглэгч: «бодит эхэлсэн
  * дууссан мөн адил календараас сонголгүй гараар бичиж өгөх боломжтой болгох»).
- *
- * ⚠️ `<input type="date">`-ийг СОЛИВ: түүний бичих хэлбэр (сар/өдөр/он сегмент) нь
- *    хөтөч · системийн хэлнээс хамаарч, «20261004» гэж шууд бичих боломжгүй байв.
- *    Календар нь «Гүйцэтгэл бөглөх» · Санхүүгийнхтэй ИЖИЛ (`sheet/DatePicker`).
- * ⚠️ Эцэгт ЗӨВХӨН ЗӨВ огноо (`YYYY-MM-DD`) эсвэл `''` очно. Буруу бичвэл эцгийн утга
- *    ХӨНДӨГДӨХГҮЙ, харин `onBad(true)` — эцэг «Тавих»-ыг хаана (хуучин огноо чимээгүй
- *    тавигдахаас сэргийлнэ). Хэлбэр нь `parseDayInput`.
  */
 export function DateField({ value, onChange, onBad, disabled, label }: {
   /** `YYYY-MM-DD` эсвэл `''` */
@@ -40,8 +32,6 @@ export function DateField({ value, onChange, onBad, disabled, label }: {
   const parsed = parseDayInput(txt);
   const bad = parsed == null;
   const [cal, setCal] = useState<DOMRect | null>(null);
-  /* ⚠️ Буруу төлвийг ЭФФЕКТЭЭР мэдээлнэ — эцгээс утга солигдож текст дахин бөглөгдөхөд
-     (мөр/блок солих) «буруу» тэмдэг эцэгт гацахгүй; салгахад (бодит багана нуугдах) цэвэрлэнэ. */
   const onBadRef = useRef(onBad);
   useEffect(() => { onBadRef.current = onBad; });
   useEffect(() => {
@@ -61,8 +51,6 @@ export function DateField({ value, onChange, onBad, disabled, label }: {
         className={`${h.select} ${h.dateTxt}${bad ? ` ${h.dateBad}` : ''}`}
         value={txt}
         disabled={disabled}
-        /* ⚠️ 2026-10-05: `numeric` биш — iOS-ийн тоон гарт «-» «.» «/» байхгүй тул
-           «2026-10-04» бичих боломжгүй байв (`sheet/DatePicker`-ийн ижил засвар). */
         inputMode="text"
         autoComplete="off"
         placeholder="2026-10-04"

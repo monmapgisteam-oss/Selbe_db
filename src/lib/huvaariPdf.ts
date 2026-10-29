@@ -7,36 +7,6 @@
  *
  *   ┌──────┬──────────────┬──────────── хуанли (бүлгийн мужаар) ────────────┐
  *   │ код  │ ажил (шатлал) │ ▓▓▓▓▓▓ зурвас ▓▓▓▓▓▓ огноо · хоног               │
- *
- * ⚠️ ЗАГВАРЫН ТҮҮХ (2026-09-30, хэрэглэгчтэй хамт) — БУЦААЖ БҮҮ ОРУУЛ:
- *    A3, огнооны 12 багана → хуанли жижиг; A2, сарын тэнхлэг → «бар-ууд маш
- *    богино ойлгомжгүй»; нэг аварга хуудас (4.4 × 4.5 м), хоногийн тэнхлэг →
- *    «хүн харахад маш хэцүү, бүхэлд нь хоногоор 2 хуудсанд багтаах нь буруу
- *    сонголт». Эцэст нь MS Project / Primavera-гийн хэвлэлийн ёсоор: ЕРДИЙН
- *    ЦААС (A3 хэвтээ) + БҮЛГЭЭР ХУУДАСЛАХ + бүлэг бүрийн ӨӨРИЙН тэнхлэг —
- *    15 хоногийн цутгалт хоног бүрээр, 3 жилийн төсөл сараар уншигдана.
- * ⚠️ ОГНООГҮЙ ДЭД АЖИЛ ОРНО — бүлгийнхээ хугацаагаар (`inh`, тасархай хүрээ).
- *    Анх огноогүй мөрийг бүгдийг хассан нь АЛДАА байв (2026-09-30, хэрэглэгч:
- *    «задаргаатай ажил бүрийг харах боломжгүй»): хуваарийн дүрмээр бүлгийн
- *    ӨӨРИЙН огноо давамгайлдаг (`bagtsSheet.computeAll`) тул «1.1 Суурь
- *    ухлага» огноотой, доторх 5 ажил огноогүй байх нь ЕРДИЙН — тэд бүлгийн
- *    хугацаанд хийгдэнэ. Хасахад задаргаа бүхэлдээ алга болж байв.
- *    Огноотой өвөг огтгүй мөр л (жинхэнэ хуваарьгүй) хасагдана.
- * ⚠️ Мөрүүд нь `Huvaari.visible` (эвхсэн · түвшин · хайлт шүүгдсэн), зурвас нь
- *    идэвхтэй таб (`kind`) ба блок (`blk`)-ийнх, «Зэрэг» асаалттай бол нөгөө
- *    төрлийн лавлагааны зурвас доод хагаст.
- * ⚠️ ӨНГӨ нь `huvaari.module.css`-ийн ГЭРЭЛТЭЙ сэдвийн утга — цаасан дээр
- *    харанхуй сэдэв утгагүй.
- * ⚠️ ТООЦОО ХИЙХГҮЙ: огноо, төлөв, зөрчил бүгд дуудагчаас (`HvPdfRow`) бэлэн
- *    ирнэ — `effSpan`/`statusOf`/`requiredStart`-ийг энд давтвал дэлгэцтэй
- *    зөрөх хоёр дахь эх үүснэ.
- * ⚠️ СОНГОЛТ (`HvPdfOpts`, 2026-09-30): хугацааны цонх (ирэх 1/3 сар) —
- *    талбайн 7 хоногийн хуралд; зөвхөн хоцорсон/явж буй ажил; A3/A4.
- * ⚠️ ГҮЙЦЭТГЭЛ (`act`) нь 0–1 БУТАРХАЙ — зурвасын тэр хэсгийг бараан
- *    дүүргэж, шошгонд `× 100` хувиар бичнэ (`pct()` 100-аар үржүүлдэггүй тул
- *    энд ашиглахгүй). `null` = хэмжээгүй → дүүргэлтгүй, хувь бичихгүй.
- * ⚠️ `null` ≠ 0: хуваарьгүй мөрд зурвас ОГТ зурахгүй.
- * ⚠️ Roboto-д «→» бий эсэх баталгаагүй тул огнооны мужийг «–»-ээр бичнэ.
  */
 import type { TDocumentDefinitions, Content, TableCell, CanvasElement, Column } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
@@ -66,7 +36,7 @@ export type HvPdfRow = {
   act: number | null;
   /**
    * ӨВЛӨСӨН МУЖ — өөрөө огноогүй мөрийн хамгийн ойрын огноотой эцэг бүлгийн
-   * зурвас. ⚠️ `buildHuvaariDoc` ӨӨРӨӨ бөглөнө (дуудагч өгөхгүй).
+   * зурвас. `buildHuvaariDoc` ӨӨРӨӨ бөглөнө (дуудагч өгөхгүй).
    */
   inh?: Span | null;
 };
@@ -78,11 +48,6 @@ export type HvPdfOpts = {
   /** Зөвхөн хоцорсон ба явж буй ажил (бүлгүүд нь дагаж үлдэнэ) */
   active: boolean;
   paper: 'A3' | 'A4';
-  /**
-   * ⚠️ 2026-10-08: «БҮХ БЛОК» — олон блоктой багцад блок бүрийг нэг баримтад (блок бүр өөрийн
-   *    хураангуй + бүлгийн хуудсуудтай, `HvPdfInput.blocks`). Сонголт нь дуудагчийнх; энд зөвхөн
-   *    `blocks` өгөгдсөн эсэх үйлчилнэ. Хуучин ганц блокийн зам ХЭВЭЭР (2026-09-30-ны загвар).
-   */
   allBlocks?: boolean;
 };
 export const HV_PDF_DEFAULT: HvPdfOpts = { months: 0, active: false, paper: 'A3', allBlocks: false };
@@ -96,22 +61,11 @@ export type HvPdfInput = {
   refLabel: string | null;
   /** Идэвхтэй блокийн нэр (`sc.bld[blk]`), нэг блоктой бол '' */
   block: string;
-  /* ⚠️ 2026-10-09 (аудит №6): `from`/`to` (дэлгэцийн цонх) хасав — хаана ч уншигддаггүй үхмэл талбар байв */
   now: number;
   rows: HvPdfRow[];
   hasActual: boolean;
   opts?: HvPdfOpts;
-  /**
-   * ⚠️ 2026-10-08: «БҮХ БЛОК» — блок бүрийн мөрүүд (`rows`-тай ижил дүрмээр, тэр блокийн зурвас).
-   *    Өгвөл `rows`/`block` ОРОЛГҮЙ, блок бүр ТУСДАА хэсэг (өөрийн хураангуй + бүлгүүд), гарчиг нь
-   *    «Блок · …», блок бүр шинэ хуудаснаас. Хоосон/байхгүй бол ганц блокийн хуучин зам.
-   */
   blocks?: { block: string; rows: HvPdfRow[] }[];
-  /**
-   * ⚠️ 2026-10-09: НООРОГ/САНАЛЫН ШОШГО — хадгалаагүй ноорог эсвэл урьдчилан харж буй санал PDF-д ОРДОГ
-   *    («дэлгэц дээрх л хэвлэгдэнэ») атлаа баримт нь батлагдсан хуваарь мэт харагдаж байв. Өгвөл толгойд
-   *    гарчгийн хажууд улаанаар («НООРОГ — батлагдаагүй N мөр» / «САНАЛ (урьдчилан харалт)»).
-   */
   draftLabel?: string;
 };
 
@@ -125,19 +79,11 @@ const C = {
   gridBig: '#c3cad4',
   head: '#eef1f5',
   group: '#f3f5f8',
-  /* ⚠️ 2026-10-09: төлвийн өнгө = дэлгэцийн `--gantt-done/run/late`
-     (= --good/--data/--bad), `PRINT_COLORS`-оос. Урьд good #16a34a хуучирсан
-     хуулбар байв. Бэх (ink/ink2) нь цаасны #14181c хэвээр (`reportPdf`-тэй ижил). */
   good: PRINT_COLORS.good,
   data: PRINT_COLORS.data,
-  /* ⚠️ 2026-10-23: «явж буй» = --gantt-run = --water (Environment-д moss = дууссан/акцент) */
   water: PRINT_COLORS.water,
   bad: PRINT_COLORS.bad,
   overlap: '#a21caf',
-  /* ⚠️ ТӨЛӨВЛӨСӨН (эхлээгүй · гүйцэтгэл хэмжигдээгүй) — ЦЭНХЭР, саарал БИШ
-     (2026-09-30, хэрэглэгч: «хуваарьгүй ажил юу саарал вэ»). Цайвар саарал
-     нь «идэвхгүй / хуваарьгүй» гэж уншигдаж байв. Дэлгэцийн `.tlTodo`/
-     `.tlNone` саарал хэвээр — цаасан дээр л ялгана. */
   todo: '#3b6fd0',
   none: '#3b6fd0',
   plan: '#3b6fd0',
@@ -145,8 +91,6 @@ const C = {
 const ST_FILL: Record<Status, string> = {
   done: C.good, run: C.water, late: C.bad, todo: C.todo, none: C.none,
 };
-/* ⚠️ 2026-10-09 (аудит №6): `ST_DARK` хасав — бүх төлөв `true` (бүх дүүргэлт бараан) тул үхмэл; бичвэрийн өнгө
-   доор `!r.group && !partial`-аар шууд. */
 
 
 /* ── Хэмжээс (pt) — цаасаас үл хамаарах ── */
@@ -170,10 +114,6 @@ type Col = { key: 'des' | 'work'; head: string; w: number; align?: 'left' | 'cen
 
 /**
  * ЦААСНААС ХАМААРАХ ХЭМЖЭЭС — A3/A4 хэвтээ.
- * ⚠️ ЗӨВХӨН КОД + АЖИЛ (2026-09-30, хэрэглэгч: «эне fieldүүдийг хидэлж татах
- *    ёстой»). Огноо, хоног, хүн · техник, хамаарлын баганууд PDF-д ОРОХГҮЙ.
- * ⚠️ A4 дээр ажлын нэрийн багана нарийсна — эс бөгөөс хуанли ~400pt болж
- *    7 хоногийн масштаб ч бүдгэрнэ.
  */
 type Geo = { pageW: number; pageH: number; cols: Col[]; gw: number; avail: number; perPage: number; split: number };
 function geo(paper: 'A3' | 'A4'): Geo {
@@ -187,19 +127,12 @@ function geo(paper: 'A3' | 'A4'): Geo {
   const perPage = Math.floor((avail - TITLE_H - HEAD_H - 4) / (ROW_H + ROW_LINE));
   /**
    * Бүлгийг ХУВААХ босго — үүнээс олон мөртэй бүлэг дэд бүлгүүдэд задарна.
-   * ⚠️ 2 хуудас: 10 хуудас дамжсан нэг тэнхлэг нь бүх төслийг хамарч
-   *    хоногийн нарийвчлалыг алдагдуулна.
    */
   return { pageW, pageH, cols, gw: Math.floor(pageW - MARGIN * 2 - leftW - 2), avail, perPage, split: perPage * 2 };
 }
 
 const iso = (ms: number | null) => (ms == null ? '—' : new Date(ms).toISOString().slice(0, 10));
 const short = (ms: number) => new Date(ms).toISOString().slice(5, 10);
-/**
- * ⚠️ Урт нэрийг ГАРААР таслана: pdfmake-ийн `noWrap` нь нүднээс ХАЛЬЖ хажуугийн
- *    багана руу бичдэг, ороох нь мөрийн өндрийг сунгаж хуанлийн эгнээг эвддэг.
- *    Кирилл үсэг латинаас өргөн тул 0.56.
- */
 const fit = (s: string, w: number, fs: number) => {
   const max = Math.max(1, Math.floor(w / (fs * 0.56)));
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
@@ -207,10 +140,6 @@ const fit = (s: string, w: number, fs: number) => {
 const dayStart = (ms: number) => Math.floor(ms / DAY) * DAY;
 /**
  * ХУУЧИН ФОНТЫН ТЭМДЭГТ — «хєрс», «їе» → «хөрс», «үе».
- * ⚠️ Төсвийн Excel-ээс ирсэн нэрс нь Ө/Ү-г украин Є/Ї кодоор хадгалсан (хуучин
- *    монгол фонт тэдгээрийг Ө/Ү мэт зурдаг байв). Roboto жинхэнэ Є/Ї зурна —
- *    PDF дээр л засна, ӨГӨГДӨЛ ХӨНДӨХГҮЙ. Монгол бичвэрт Є/Ї жинхэнээрээ
- *    хэрэглэгддэггүй тул андуурах эрсдэлгүй.
  */
 const norm = (s: string) => s.replace(/є/g, 'ө').replace(/Є/g, 'Ө').replace(/ї/g, 'ү').replace(/Ї/g, 'Ү');
 const rowLabel = (r: HvPdfRow) => norm(`${r.no ? `${r.no} ` : ''}${r.work}`.trim());
@@ -242,12 +171,6 @@ const DAY_MIN_PT = 7.5;
 
 /**
  * Мужаас масштаб сонгоно, ирмэгийг нь бүхэл нэгж рүү тэлнэ.
- * ⚠️ БОСГО: 92 хоног (≈3 сар) хүртэл хоног бүр ~8.5pt+ — дугаар багтана;
- *    400 хоног (≈13 сар) хүртэл 7 хоног бүр ~14pt+; түүнээс урт бол сараар.
- * ⚠️ 2026-09-30: ХОНОГООР нь ЗӨВХӨН хоног бүр `DAY_MIN_PT`-ээс өргөн үед. Дээрх
- *    ~8.5pt нь A3-ийнх (761pt хуанли); A4-т (522pt) «Ирэх 3 сар» (94 хоног) нь
- *    5.5pt/хоног болж өдрийн дугаарууд бие биен дээгүүр бичигдэн уншигдахаа
- *    больдог байв — тэр үед 7 хоногоор зурна (A4: ≤67 хоног л хоногоор).
  */
 function makeAxis(lo: number, hi: number, gw: number, force?: Scale): Axis {
   const span = Math.round((hi - lo) / DAY) + 1;
@@ -304,7 +227,6 @@ function ticksOf(ax: Axis): Tick[] {
       if (mon1) out.push({ ms, x, kind: jan1 ? 'year' : 'month', lab: monday ? String(dd) : null });
       else if (monday) out.push({ ms, x, kind: 'minor', lab: String(dd) });
     } else if (mon1) {
-      /* ⚠️ Сар хэт нарийн бол (олон жилийн муж) дугаарыг алгасна — давхцана */
       const lab = 30 * ax.px >= 9 ? String(d.getUTCMonth() + 1) : null;
       out.push({ ms, x, kind: jan1 ? 'year' : 'month', lab });
     }
@@ -334,7 +256,6 @@ function topLabels(ax: Axis): { x: number; lab: string }[] {
 
 type Section = {
   title: string; rows: HvPdfRow[]; axis: Axis; summary?: boolean;
-  /** ⚠️ 2026-10-08: «Бүх блок» — блокийн ЭХНИЙ хэсэг, үргэлж шинэ хуудаснаас */
   blockStart?: boolean;
 };
 
@@ -354,12 +275,6 @@ type Part = { path: string[]; rows: HvPdfRow[] };
 
 /**
  * Бүлгүүдэд задлах: `Geo.split`-ээс том бүлэг дэд бүлгүүдэд хуваагдана.
- * ⚠️ Задарсан бүлгийн нэр зам (`path`) болж гарчигт орно.
- * ⚠️ 2026-10-09 (аудит №6): задарсан бүлгийн ӨӨРИЙН мөр (зурвас) ЭХНИЙ дэд хэсгийн эхний мөр болж ҮЛДЭНЭ — урьд нь
- *    хэсэгт огт ордоггүй («зурвас нь хураангуйд гарна» гэж найдсан) атлаа хураангуй зөвхөн `d0 + 1` хүртэл тул гүн
- *    ≥ d0+2 бүлгийн зурвас PDF-ийн ХААНА Ч гардаггүй байв.
- * ⚠️ Дангаар байгаа ажлын мөрүүд (бүлэггүй) нэг хэсэгт цугларна — мөр бүр
- *    тусдаа хуудас болохгүй.
  */
 function split(rows: HvPdfRow[], path: string[], out: Part[], max: number): void {
   let loose: HvPdfRow[] = [];
@@ -380,7 +295,7 @@ function split(rows: HvPdfRow[], path: string[], out: Part[], max: number): void
 
 /**
  * ЖИЖИГ ХӨРШ БҮЛГҮҮДИЙГ НЭГ ХУУДСАНД — эцэг нь ижил, нийлбэр нь нэг хуудсанд
- * багтвал нийлүүлнэ. ⚠️ Үгүй бол 3 мөртэй бүлэг бүр бүтэн хуудас иднэ.
+ * багтвал нийлүүлнэ. Үгүй бол 3 мөртэй бүлэг бүр бүтэн хуудас иднэ.
  */
 function pack(parts: Part[], perPage: number): Part[] {
   const out: Part[] = [];
@@ -397,10 +312,6 @@ function pack(parts: Part[], perPage: number): Part[] {
 
 /**
  * МӨР СОНГОХ — `keep`-д тэнцсэн ажил ба тэдгээрийн БҮХ эцэг бүлэг.
- * ⚠️ Жагсаалтад хүүхэдгүй бүлэг (дэлгэц дээр эвхсэн) нь ажил мэт шалгагдана.
- * ⚠️ Хүүхдүүд нь бүгд ОГНООГҮЙ бүлэг (жишээ нь «1.2 Суурь буцаан булалт» —
- *    бүлгийн өөрийн огноотой, дэд ажлууд хуваарьгүй) нь өөрөө шалгагдана —
- *    эс бөгөөс огноотой бүлэг «хүүхэд үлдсэнгүй» гээд алга болно.
  */
 function select(rows: HvPdfRow[], keep: (r: HvPdfRow) => boolean, dated: (r: HvPdfRow) => boolean): HvPdfRow[] {
   const out: HvPdfRow[] = [];
@@ -409,8 +320,6 @@ function select(rows: HvPdfRow[], keep: (r: HvPdfRow) => boolean, dated: (r: HvP
     if (!kids.length) { if (keep(root)) out.push(root); continue; }
     const inner = select(kids, keep, dated);
     if (inner.length) out.push(root, ...inner);
-    /* ⚠️ 2026-10-09 (аудит №6): ӨӨРИЙН зурвастай (`bar`) бүлэг огноотой хүүхдүүд нь бүгд цонх/шүүлтээс унасан ч
-       `keep`-д тэнцвэл өөрөө үлдэнэ — урьд нь «хүүхэд үлдсэнгүй» гээд хасагддаг байв. */
     else if ((!kids.some(dated) || !!root.bar) && keep(root)) out.push(root);
   }
   return out;
@@ -430,7 +339,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
 
   /*
    * ӨВЛӨСӨН МУЖ — өөрөө огноогүй мөрт хамгийн ойрын огноотой ЭЦГИЙН зурвас
-   * (толгойн ⚠️). Мөрүүд модны дарааллаар (эцэг нь хүүхдийнхээ өмнө) ирдэг
+   * (толгой). Мөрүүд модны дарааллаар (эцэг нь хүүхдийнхээ өмнө) ирдэг
    * тул гүнээр нь стек барина.
    */
   const inherit = (rows: HvPdfRow[]): HvPdfRow[] => {
@@ -445,14 +354,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       return { ...r, inh };
     });
   };
-  /* ⚠️ Огноотой өвөг ч үгүй мөр (жинхэнэ хуваарьгүй) л хасагдана */
   const hasDate = (r: HvPdfRow) => !!(r.bar || r.inh || r.ref || (x.hasActual && r.aStart != null));
-  /*
-   * ⚠️ 2026-10-06: «ОДОО» ТЭНХЛЭГ ДЭЭР — ОРОН НУТГИЙН ханын цаг (UTC-шөнө-дундын тэнхлэгт).
-   *    Тэнхлэг/зурвас нь UTC-шөнө-дундын огноо; урьд нь `dayStart(x.now)` (UTC өдөр) тул
-   *    Улаанбаатарт 00:00–08:00 хооронд «Өнөөдөр» шугам, «ирэх N сар» цонх ӨЧИГДӨР дээр
-   *    буудаг байв (хэвлэсэн огнооны `dayKey`-ийн ⚠️-тэй ижил дүрэм). Цагийн бутархай хадгалагдана.
-   */
   const nowAx = x.now - new Date(x.now).getTimezoneOffset() * 60_000;
   /* Хугацааны цонх — өнөөдрөөс ирэх N сар (календарийн сар) */
   const today = dayStart(nowAx);
@@ -461,9 +363,6 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       const d = new Date(today);
       const y = d.getUTCFullYear();
       const m = d.getUTCMonth() + opts.months;
-      /* ⚠️ 2026-10-08: САРЫН ЭЦЭСТ ХАЛИХГҮЙ — `Date.UTC(y, m, 31)` нь 2-р сард 3-р сарын 3 болж
-         цонх ХЭТЭРДЭГ байв (01-31 + 1 сар → 03-02). Төгсгөл нь тэр сарын СҮҮЛИЙН өдрөөс
-         (`Date.UTC(y, m + 1, 0)`) хэтрэхгүй; ердийн өдөрт хуучин тоо хэвээр (01-15 → 02-14). */
       const end = Math.min(Date.UTC(y, m, d.getUTCDate()) - DAY, Date.UTC(y, m + 1, 0));
       return [today, end];
     })()
@@ -473,17 +372,11 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     const rg = rangeOf([r], nowAx, x.hasActual);
     return !!rg && rg[0] <= win[1] && rg[1] >= win[0];
   };
-  /* ⚠️ Өвлөсөн мужтай мөр өөрийн төлөвгүй — «зөвхөн идэвхтэй» шүүлтэд орохгүй */
   const isActive = (r: HvPdfRow) => !opts.active || (!!r.bar && (r.st === 'late' || r.st === 'run'));
   /* Цонхтой бол муж нь цонхоор хязгаарлагдана */
   const clampR = (rg: [number, number] | null): [number, number] | null =>
     rg && win ? [Math.max(rg[0], win[0]), Math.min(rg[1], win[1])] : rg;
 
-  /*
-   * ⚠️ 2026-10-08: «БҮХ БЛОК» — `blocks` өгөгдвөл блок бүр ӨӨРИЙН хураангуй + бүлгийн хуудсуудтай
-   *    (гарчиг «Блок · …», блокийн эхний хэсэг шинэ хуудаснаас); ганц блокийн зам ЯГ ХЭВЭЭР
-   *    (нэг багц = `{ block: x.block, rows: x.rows }`, гарчигт угтвар үгүй).
-   */
   const sets = x.blocks?.length ? x.blocks : [{ block: x.block, rows: x.rows }];
   const multi = !!x.blocks?.length;
   const sections: Section[] = [];
@@ -557,8 +450,6 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
         });
       }
     }
-    /* ⚠️ «Өнөөдөр» шошготой давхцах сар/оны шошгыг түүний АРД шилжүүлнэ —
-       цонхтой PDF-д өнөөдөр нь тэнхлэгийн эхлэл тул эхний сартай яг давхцдаг. */
     const nowIn = nowAx >= ax.from && nowAx < ax.from + ax.days * DAY;
     const nowX = nowIn ? xOf(ax, nowAx) : -1e9;
     for (const l of topLabels(ax)) {
@@ -577,23 +468,6 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
   /**
    * БИЕИЙН СҮЛЖЭЭ — ХҮСНЭГТ (хуудасны хэсэг) БҮРД НЭГ УДАА, толгойн нүдэнд (2026-10-01,
    * хэрэглэгч: бүгдийг зас).
-   *
-   * ⚠️ ЯАГААД: урьд нь хоног/7 хоногийн шугам МӨР БҮРД давтагддаг байв (`bodyRow`-ийн
-   *    `gridOf`) — 1,700 мөр × ~94 шугам ≈ 160 мянган вектор; A3 «Ирэх 3 сар» PDF хөтчид
-   *    ~1 GB санах ой иддэг байв. Одоо хүснэгт бүрд шугам бүр НЭГ удаа, эхний мөрийн
-   *    дээд захаас сүүлийн мөрийн доод зах хүртэл үргэлжилсэн — харагдах байдал ижил
-   *    (мөр хоорондын 0.3pt хэвтээ шугам дээр нь л зурагдана; «Өнөөдөр»-ийн тасархай
-   *    шугамын хэм мөр бүрд дахин эхлэхээ больсон).
-   * ⚠️ СӨРӨГ КООРДИНАТ + `relativePosition` — САНААТАЙ: pdfmake канвасын өндрийг
-   *    `max(y)`-аар хэмждэг тул эерэг урт шугам (а) толгой мөрийг сунгаж, (б) хуудасны
-   *    үлдэгдлээс урт бол толгойг дараагийн хуудас руу түлхэнэ. Тиймээс канвасыг
-   *    сүүлийн мөрийн ДООД зах руу `relativePosition`-оор (салангид блок, байрлалд
-   *    нөлөөгүй) шилжүүлж, шугамыг ДЭЭШ (y ≤ 0) зурна → хэмжсэн өндөр 0.
-   *    Байрлал: толгойн канвас (`HEAD_H`) → толгойн доод зураас 0.7 → мөр бүр
-   *    `ROW_H` + 0.3; сүүлийн мөрийн доод зах = 0.7 + n·unit − 0.3.
-   * ⚠️ Хүснэгт бүр ӨӨРИЙН мөрийн тоотой тул урт бүлэг ГАРААР хуудаслагдана (доорх
-   *    `chunks`) — pdfmake-ийн автомат хуудаслалтад толгой давтагдахад ижил урт
-   *    шугам сүүлийн (дутуу) хуудсанд хүснэгтээс хальна.
    */
   const gridOf = (ax: Axis, nRows: number): Content[] => {
     if (nRows <= 0) return [];
@@ -622,11 +496,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       { text: r.des != null ? String(r.des) : '—', fontSize: FS, bold: r.group, color: C.ink2, alignment: 'center', margin: [0, ty, 0, 0], fillColor: fill },
       { text: fit(rowLabel(r), cols[1].w - ind - PAD * 2, FS), fontSize: FS, bold: r.group, color: C.ink, margin: [ind, ty, 0, 0], fillColor: fill },
     ];
-    /* ⚠️ Тунгалаг тэгш өнцөгт — хоосон мөрөнд ч canvas өндрийг барина.
-       ⚠️ 2026-10-01: СҮЛЖЭЭ мөр бүрд БИШ — хүснэгтийн толгойд нэг удаа (`gridOf`-ийн ⚠️). */
     const cv: CanvasElement[] = [{ type: 'rect', x: 0, y: 0, w: 0.01, h: ROW_H, color: '#ffffff', fillOpacity: 0 }];
-    /* ⚠️ 2026-10-09 (аудит №6): `half` нь ЗУРАГДСАН лавлагаа (`refC`)-аар — `r.ref` тэнхлэгээс гадуур бол `clip` null
-       буцааж, урьд нь зурвас дэмий хагас өндөртэй, шошго нь дээш шилжсэн байв. */
     const refC = r.ref ? clip(ax, r.ref) : null;
     const half = !!refC;
     if (refC) {
@@ -653,17 +523,13 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       const bw = wOf(ax, barC);
       const by = ROW_H * 0.14;
       const bh = half ? ROW_H * 0.4 : ROW_H * 0.68;
-      /* ⚠️ Гүйцэтгэл 0–1; 0 < act < 1 үед л хэсэгчилсэн дүүргэлт */
-      /* ⚠️ 2026-10-21: `act` (0..1-д тайрсан) — ЗӨВХӨН зурвасын өргөнд. Шошго нь ТҮҮХИЙ `raw`-аас
-         (дэлгэцтэй ижил): урьд нь шошго ч тайрсан утгаас бодогдож 3.099 (309.9%) «100%» гэж бичигддэг байв. */
       const raw = r.act != null && Number.isFinite(r.act) ? r.act : null;
       const act = raw != null ? Math.max(0, Math.min(1, raw)) : null;
       const partial = !r.group && act != null && act > 0 && act < 1;
       if (r.group) {
         cv.push({ type: 'rect', x: bx, y: by, w: bw, h: bh, r: 1, color: C.overlap, fillOpacity: 0.16, lineColor: C.overlap, lineWidth: 0.7 });
       } else if (partial) {
-        /* ГҮЙЦЭТГЭЛ — зурвасын суурь цайвар, гүйцэтгэсэн хэсэг нь бүтэн өнгөөр.
-           ⚠️ Хувь нь БҮТЭН ажлын (`r.bar`)-ынх — тайрсан хэсгийнх биш. */
+        /* ГҮЙЦЭТГЭЛ — зурвасын суурь цайвар, гүйцэтгэсэн хэсэг нь бүтэн өнгөөр. */
         const full0 = xOf(ax, r.bar.start);
         const fullW = Math.max(1.5, spanDays(r.bar) * ax.px - 0.4);
         const doneEnd = Math.min(bx + bw, Math.max(bx, full0 + fullW * act));
@@ -683,8 +549,6 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
        * нэр ч), үгүй бол зурвасын ГАДНА баруун, зай үгүй бол зүүн талд.
        */
       const d = spanDays(r.bar);
-      /* ⚠️ 2026-10-06: 0 < act < 1 бол 1..99 — урьд нь `Math.round` 0.996-г «100%», 0.004-ийг «0%» гэж
-         харуулж, дуусаагүй ажлыг дууссан / эхэлсэн ажлыг эхлээгүй мэт харагдуулдаг байв. */
       const pv = raw == null ? null : raw > 0 && raw < 1 ? Math.min(99, Math.max(1, Math.round(raw * 100))) : Math.round(raw * 100);
       const pc = pv != null ? ` · ${pv}%` : '';
       const full = `${iso(r.bar.start)} – ${iso(r.bar.end)} · ${d}${tr('х')}${pc}`;
@@ -692,7 +556,6 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       const fullW = full.length * cw;
       let txt = full;
       let lx = bx + 3;
-      /* ⚠️ Хэсэгчилсэн дүүргэлттэй бол бичвэр цайвар хэсэгт ч орно — бараан */
       let color = !r.group && !partial ? '#ffffff' : C.ink;
       if (!half && bw > fullW + 8) {
         if (bw > fullW + 80) txt = `${fit(norm(r.work || r.no), bw - fullW - 18, LAB_FS)}   ${full}`;
@@ -709,7 +572,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     }
     /*
      * ӨВЛӨСӨН МУЖ — огноогүй дэд ажил: бүлгийн хугацаагаар ТАСАРХАЙ хүрээ,
-     * дүүргэлтгүй. ⚠️ Өөрийн огноо биш гэдэг нь хэлбэрээр нь ялгарна —
+     * дүүргэлтгүй. Өөрийн огноо биш гэдэг нь хэлбэрээр нь ялгарна —
      * бүтэн зурвас зурвал «энэ ажил яг энэ хугацаатай» гэж худал уншигдана.
      */
     const inhC = !r.bar && r.inh ? clip(ax, r.inh) : null;
@@ -735,13 +598,6 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
 
   /*
    * БҮЛГҮҮДИЙГ ДАРААЛАН БАЙРЛУУЛНА — жижиг бүлгүүд нэг хуудсанд.
-   * ⚠️ Хуудасны үлдэгдлийг ӨӨРӨӨ тооцож, гарчиг + толгой + 5 мөр багтахгүй
-   *    бол бүлгийг шинэ хуудаснаас эхлүүлнэ — эс бөгөөс гарчиг хуудасны ёроолд
-   *    ганцаараа үлдэж, хүснэгт нь дараагийн хуудсанд гарна. Мөрийн өндөр
-   *    тогтмол (`heights`) тул тооцоо pdfmake-ийн бодит зохиомжтой таарна.
-   * ⚠️ Урт бүлэг хуудас дамжвал хүснэгтийн толгой (тэнхлэг) давтагдана
-   *    (`headerRows`).
-   * ⚠️ ХУРААНГУЙ нь дангаараа 1-р хуудсанд (бүтэн PDF-д) — дараагийн бүлэг шинэ хуудаснаас.
    */
   const unit = ROW_H + ROW_LINE;
   const headH = HEAD_H + 1.4;
@@ -750,17 +606,10 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     const d0 = Math.min(...sec.rows.map((r) => r.depth));
     const n = sec.rows.length;
     const need = TITLE_H + headH + Math.min(n, 5) * unit;
-    /* ⚠️ Хураангуй нь дангаараа 1-р хуудсанд ЗӨВХӨН бүтэн PDF-д — цонх/шүүлттэй
-       үед хэдхэн мөр тул хуудас хоосон үлдэнэ. */
     const soloSummary = sections[si - 1]?.summary && !win && !opts.active;
-    /* ⚠️ 2026-10-08: блокийн эхний хэсэг (`blockStart`) үргэлж шинэ хуудаснаас */
     const breakBefore = si > 0 && (!!sec.blockStart || soloSummary || used + need > G.avail - 4);
     if (breakBefore) used = 0;
-    /* Хуудас дамжсаны дараах `used`-ийг загварчилна.
-       ⚠️ 2026-10-01: ХУУДАС БҮРИЙН мөрийн тоог (`chunks`) хадгална — хүснэгт бүр өөрийн
-       сүлжээтэй тул бүлгийг ГАРААР хуудаслана (`gridOf`-ийн ⚠️). Загварчлал нь бодит
-       зохиомжоос ИЛҮҮ өндөр тооцдог (гарчиг ~17pt < `TITLE_H`, `− 4` нөөц) тул хэсэг
-       бүр хуудсандаа ЯГ багтана — pdfmake өөрөө дахин таслахгүй. */
+    /* Хуудас дамжсаны дараах `used`-ийг загварчилна. */
     const chunks: number[] = [];
     let left = n;
     let y = used + TITLE_H + headH;
@@ -783,9 +632,6 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       ],
       margin: [0, 0, 0, TITLE_H - 15],
     });
-    /* ⚠️ 2026-10-01: хуудас бүрд ТУСДАА хүснэгт (толгой + сүлжээ + тэр хуудасны мөрүүд).
-       Үргэлжлэлийн хүснэгт шинэ хуудаснаас — урьдын `headerRows` давталттай ИЖИЛ харагдана.
-       `headerRows: 1` хэвээр: загварчлал алдвал (болох ёсгүй) толгой ч гэсэн давтагдана. */
     let at = 0;
     chunks.forEach((cnt, ci) => {
       const part = sec.rows.slice(at, at + cnt);
@@ -818,7 +664,6 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
       ...key(sw(C.good), stText('done')),
       ...key(sw(C.data), stText('run')),
       ...key(sw(C.bad), stText('late')),
-      /* ⚠️ «эхлээгүй» ба «хэмжигдээгүй» нэг өнгө (цэнхэр) — нэг тайлбар */
       ...key(sw(C.todo), tr('Төлөвлөсөн (эхлээгүй · хэмжигдээгүй)')),
       ...key(sw(C.plan, { color: C.plan, fillOpacity: 0.07, lineColor: C.plan, lineWidth: 0.7, dash: { length: 2.2, space: 1.6 } }), tr('Огноогүй — бүлгийн хугацаа')),
       ...key(sw(C.overlap, { fillOpacity: 0.16, lineColor: C.overlap, lineWidth: 0.7 }), tr('Бүлэг')),
@@ -834,14 +679,9 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     color: C.ink2,
   });
 
-  /* ⚠️ 2026-09-30: ХЭВЛЭСЭН ӨДӨР — ОРОН НУТГИЙН (`dayKey`), `iso` (UTC) БИШ. `iso` нь
-     хуанлийн UTC-шөнө-дундын огноонд зориулагдсан; ЦАГТАЙ `Date.now()`-ийг UTC-ээр
-     өдөр болгоход УБ-д 00:00–07:59-д хэвлэсэн PDF «өчигдөр» гэж гардаг байв
-     (`format.dayKey`-ийн ⚠️ дүрэм). */
   const printed = dayKey(Date.now());
   const sub = [
     x.kindLabel,
-    /* ⚠️ 2026-10-08: «Бүх блок» — блокийн тоо; ганц блокийн замд блокийн нэр хэвээр */
     multi ? tr('Бүх блок ({0})', num(sets.length)) : x.block,
     win ? tr('Ирэх {0} сар', opts.months) : '',
     opts.active ? tr('Зөвхөн хоцорсон ба явж буй') : '',
@@ -861,7 +701,6 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
         {
           columns: [
             { text: `${tr('Хуваарь')} — ${x.pkg}`, bold: true, fontSize: 13, width: 'auto' },
-            /* ⚠️ 2026-10-09: ноорог/саналын шошго (`draftLabel`-ийн ⚠️) */
             ...(x.draftLabel ? [{ text: x.draftLabel, bold: true, fontSize: 10, color: C.bad, margin: [12, 2, 0, 0], width: 'auto' } as Content] : []),
             { text: sub, fontSize: 9, color: C.ink3, margin: [12, 3, 0, 0], width: '*' },
           ],

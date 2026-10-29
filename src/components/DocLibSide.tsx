@@ -28,7 +28,6 @@ const kb = (n: number | null) =>
 
 export function DocLibSide({ active, onPick }: { active: string | null; onPick: (key: string | null) => void }) {
   const sess = useEntSession();
-  /* ⚠️ 2026-10-23: хоёр тусдаа эрх — PDF оруулах/устгах/шилжүүлэх (`docsUpload`) · бүлэг засах (`docsGroups`) */
   const canEdit = hasCap(currentUser(), 'docsUpload');
   const canGroups = hasCap(currentUser(), 'docsGroups');
   const [groups, setGroups] = useState<DocGroup[] | null>(null);
@@ -47,10 +46,6 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
   /** PDF-ийн жагсаалт энэ сешнд амжилттай уншигдсан эсэх — үгүй бол бүлэг «хоосон» гэдгийг мэдэхгүй */
   const [listOk, setListOk] = useState(false);
 
-  /**
-   * ⚠️ 2026-10-23: хоёр уншилт ТУСДАА (`allSettled`) — өмнө нь `Promise.all` байсан тул PDF-ийн жагсаалт (Enterprise
-   * хайлт) унахад бүлгүүд `[]` болж, статик ТЭЗҮ-БОНУ баримтууд ч хамт алга болдог байв.
-   */
   const loadAll = useCallback(async (isAlive: () => boolean = () => true) => {
     const [g, l] = await Promise.allSettled([loadGroups(), sess ? listPdfs() : Promise.resolve(null)]);
     if (!isAlive()) return;
@@ -66,7 +61,7 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
 
   useEffect(() => {
     let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-23: гаднын (Enterprise · эрхийн хүснэгт) уншилт — төлөв зөвхөн `await`-ийн ДАРАА тавигдана
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAll(() => alive);
     return () => { alive = false; };
   }, [loadAll]);
@@ -79,7 +74,6 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
   const saveEdit = () => run(async () => {
     const title = edit?.title.trim() ?? '';
     if (!edit || !title || !groups || groupsFailed) { setEdit(null); return; }
-    /* ⚠️ 2026-10-23: шинээр уншсан жагсаалт дээр зөвхөн ЭНЭ өөрчлөлтийг хийнэ (`saveGroups`-ийн ⚠️) */
     const next = await saveGroups((cur) => {
       if (cur.some((x) => x.id !== edit.id && x.title.toLowerCase() === title.toLowerCase())) {
         throw new Error(tr('«{0}» нэртэй бүлэг аль хэдийн бий.', title));
@@ -108,8 +102,6 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
   const removeGroup = (g: DocGroup) => run(async () => {
     if (!groups || groupsFailed || !sess) return;
     if (!(await askConfirm(tr('«{0}» бүлгийг устгах уу?', g.title), { ok: tr('Устгах') }))) return;
-    /* ⚠️ 2026-10-23: «хоосон» эсэхийг ШИНЭ жагсаалтаар — хуучин/ачаалагдаагүй жагсаалтаар устгавал тэр бүлгийн PDF-үүд
-       чимээгүй «ТЭЗҮ-БОНУ» руу шилждэг байв (`groupOf`) */
     const fresh = await listPdfs();
     /* хайлтын индекс хоцордог тул саяхан оруулсан (зөвхөн локал `items`-д буй) PDF-ийг ч тооцно */
     if (hasGroupTag([...fresh, ...(items ?? [])], g.id)) throw new Error(tr('«{0}» бүлэгт PDF байгаа тул устгах боломжгүй.', g.title));
@@ -129,7 +121,6 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
     for (const f of list) {
       try {
         const { item, warn } = await uploadPdf(f, upGroup.current);
-        /* ⚠️ Хайлтын индекс хоцордог — шинэ item-ийг өөрөө эхэнд нэмнэ (`entUploadPdf`-ийн ⚠️) */
         setItems((prev) => [item, ...(prev ?? []).filter((x) => x.id !== item.id)]);
         onPick(ENT_KEY + item.id);
         if (warn) notes.push(warn);
@@ -147,8 +138,6 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
     if (!(await askConfirm(tr('«{0}» PDF-ийг Enterprise-ээс бүрмөсөн устгах уу? Буцаах боломжгүй.', d.title), { ok: tr('Устгах') }))) return;
     await deletePdf(d);
     setItems((prev) => (prev ?? []).filter((x) => x.id !== d.id));
-    /* ⚠️ 2026-10-26 (аудит): нээлттэй байсан PDF-ийг устгавал харагч устгагдсан item дээр үлдэж, дахин нээхэд «Геопорталд
-       нээх ↗» мухар холбоос гардаг байв — сонголтыг цэвэрлэнэ («жагсаалтаас сонгоно уу»). */
     if (active === ENT_KEY + d.id) onPick(null);
   });
 
@@ -204,8 +193,6 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
                 <button type="button" className={s.grpAct} disabled={busy} title={tr('Нэр солих')} aria-label={tr('Нэр солих')}
                   onClick={() => setEdit({ id: g.id, title: g.title })}>✎</button>
               )}
-              {/* ⚠️ 2026-10-23: PDF-ийн жагсаалт энэ сешнд АМЖИЛТТАЙ уншигдсан үед л «хоосон» гэж үзнэ (гарсан · уншилт
-                  унасан үед n=0 нь «мэдэхгүй» гэсэн үг) — `removeGroup` дахин шинэ жагсаалтаар шалгана */}
               {canGroups && !groupsFailed && sess && listOk && items != null && g.id !== TEZU_GROUP && n === 0 && (
                 <button type="button" className={s.grpAct} disabled={busy} title={tr('Хоосон бүлгийг устгах')}
                   aria-label={tr('Хоосон бүлгийг устгах')} onClick={() => { void removeGroup(g); }}>✕</button>

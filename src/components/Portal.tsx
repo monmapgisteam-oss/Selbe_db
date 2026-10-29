@@ -4,7 +4,6 @@ import {
   Component, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore,
   type CSSProperties, type ErrorInfo, type ReactNode,
 } from 'react';
-/* ⚠️ 2026-10-23: Environment — толгой/dock/KPI-ийн дүрс lucide-react-ээс шууд */
 import {
   Building2, CircleQuestionMark, House, LandPlot, LoaderCircle, LogOut, MapPin, Moon,
   RefreshCw, Shapes, Sun, User, Users, type LucideIcon,
@@ -33,15 +32,11 @@ import { ResizableColumns } from '@/components/ResizableColumns';
 import { zonesLabel } from '@/components/ZoneFilter';
 import { useZoomToFilter } from '@/lib/useZoomToFilter';
 import dynamic from 'next/dynamic';
-/* ⚠️ 2026-09-30: харагдацын модулиуд (статик `Dashboard` + бүх `dynamic` chunk)
-   ба тэдгээрийн ⚠️ шийдвэрүүд `viewRegistry.tsx`-д — шинэ харагдац нэмэхэд
-   энд ЮУ Ч засахгүй. */
 import { ViewSlot, type PlanJump } from '@/components/viewRegistry';
 import { ErrorBoundary, chunkErrorText, isChunkLoadError } from '@/components/ErrorBoundary';
 import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { LocaleToggle, hasUnsavedWork } from '@/components/LocaleToggle';
-/* ⚠️ 2026-10-04: товч нь тусдаа хөнгөн файлаас — `AgentChat` нь доор `dynamic` (`AgentButton.tsx`-ийн ⚠️) */
 import { AgentButton, AgentLoading } from '@/components/AgentButton';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
@@ -58,36 +53,15 @@ import {
 } from '@/lib/services';
 import { readParam, writeParams, foreignViewParams } from '@/lib/urlState';
 import { planNavBusy } from '@/lib/huvaariBatlah';
-/* ⚠️ 2026-09-29 (аудит 10): импортгүй хөнгөн lib — `Finance` өөрөө `dynamic` */
 import { finNavDirty } from '@/lib/finEdit';
-/* ⚠️ 2026-09-30: харагдацын ерөнхий «хадгалаагүй засвар» туг — импортгүй lib (`confirmLeave`) */
 import { navDirtyLabels } from '@/lib/navGuard';
 import { num } from '@/lib/format';
 import { ReportButton } from '@/components/ReportButton';
 import { askConfirm } from '@/lib/confirm';
-/* ⚠️ 2026-10-19: «Систем түр хаах» — удирдлагын цонх ба шар зурвас (жижиг, ArcGIS-гүй) */
 import { SystemCloseDialog, SystemClosedStrip, useCanCloseSystem, useSystemClosed } from '@/components/SystemCloseDialog';
 /** «Тайлан» товч ГАРАХГҮЙ харагдацууд (2026-10-19, хэрэглэгч) — Санхүүжилт, Үйл ажиллагааны схем, Чанар (QAQC), БАТЛАХ бүлэг, ТУХ, Багцын хамаарал, Зөвшөөрөл */
 const NO_REPORT = new Set<string>(['finance', 'schem', 'qaqc', 'huvaariBatlah', 'ajilBatlah', 'chanar', 'ma', 'tuh', 'bagtsHamaaral', 'zovshoorol']);
-/**
- * ⚠️ `ViewPanel` (64 KB) нь ЗӨВХӨН `standalone` БИШ харагдацуудад зурагдана
- * (`!isFull` салбар). Анхдагч `dashboard` нь standalone тул эхний ачаалалтад
- * ХЭРЭГГҮЙ — 2026-09-03-ны аудитаар динамик болгов.
- */
 const ViewPanel = dynamic(() => import('@/modules/ViewPanel').then((m) => m.ViewPanel), { ssr: false });
-/**
- * ⚠️ 2026-10-04 (ачааллын аудит): хоёр том, ХОВОР цонх `dynamic` — урьд нь статик
- *    байсан тул бүх хэрэглэгчийн Portal chunk-д орж байв:
- *    · `UserAdmin` (~630 КБ эх код: эрхийн хүснэгтүүд, `ChanarAcl` → `chanarMs` …) —
- *      ЗӨВХӨН super admin-д mount болдог. Mount-ын нөхцөл ӨӨРЧЛӨГДӨӨГҮЙ (`isSuper`)
- *      тул super-ийн хувьд төлөв/эффектийн зан урьдын адил, зөвхөн дэвсгэрт татагдана;
- *      бусад хэрэглэгч ОГТ татахгүй.
- *    · `AgentChat` (~220 КБ: агентын клиент, датасетийн бүртгэл, markdown) — анх
- *      НЭЭХЭД л mount (`agentMounted`).
- */
-/* ⚠️ 2026-10-06 (аудит): `loading` — chunk татагдах хооронд хоосон дэлгэц биш мэдэгдэл.
-   `UserAdmin` нь super-т ХААЛТТАЙ байхад ч mount болдог (дээрх ⚠️) тул түүний мэдэгдэл
-   ЗӨВХӨН цонх нээгдсэн үед (`AdminOpenCtx`) — эхлэлд super-т анивчихгүй. */
 const AdminOpenCtx = createContext(false);
 function AdminLoading() {
   const open = useContext(AdminOpenCtx);
@@ -108,13 +82,7 @@ function AdminLoading() {
   );
 }
 /**
- * ХӨВӨГЧ ЦОНХНЫ ХАШЛАГА (⚠️ 2026-10-06, аудит).
- * ⚠️ `ErrorBoundary scope="view"` нь fallback-аа УРСГАЛД (`minHeight: 240`) зурдаг — харагдацын
- *    саванд зөв, харин Portal-ын төгсгөлийн хөвөгч цонхнуудад (DocViewer · UserAdmin · HelpPanel ·
- *    AgentChat — бүгд `position: fixed`) тэр нь 100dvh-ийн shell-ийн ДООР, дэлгэцээс гадна гарна.
- *    Энд fallback нь баруун доод буланд ТОГТМОЛ мэдэгдэл: chunk-ийн алдаа (шинэ хувилбар) →
- *    «Хуудсыг дахин ачаалах» (`ErrorBoundary.isChunkLoadError`-ийн ⚠️ — автоматаар reload ХИЙХГҮЙ);
- *    бусад → «Хаах» (цонхыг хааж хашлагыг цэвэрлэнэ, дахин нээж болно).
+ * ХӨВӨГЧ ЦОНХНЫ ХАШЛАГА (2026-10-06, аудит).
  */
 class OverlayBoundary extends Component<
   { children: ReactNode; label: string; onReset: () => void },
@@ -174,21 +142,12 @@ const AgentChat = dynamic(() => import('@/components/AgentChat').then((m) => m.A
 });
 
 import s from '@/app/shell.module.css';
-/* ⚠️ 2026-10-21 (аудит): эрх хасагдсан харагдацын хаалтын цонх (`ViewLost`) — `AuthGate`-ийн цонхнуудтай нэг загвар */
 import a from '@/components/auth.module.css';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 
 /** Тэмдэггүй үеийн ТОГТМОЛ лавлагаа — `ViewRail`-д рендер бүрт шинэ объект өгөхгүй */
 const EMPTY_BADGES: NavBadges = {};
-/** ⚠️ 2026-10-22: нуугдмал самбарын (`hesegET`) тоо — татахгүй, «ачаалж буй» (хоосон Map-ыг уналт гэж зурахгүй) */
 const TOTALS_IDLE = { state: 'loading', data: null, error: null } as const;
-/**
- * ⚠️ 2026-10-22 (аудит): ЯВЖ БУЙ БИЧИЛТИЙН (`setNavDirty`-ийн `-send`/`-apply` түлхүүртэй) тугуудын нэрс — «Гүйцэтгэл
- *    бөглөх»-ийн илгээлт (`fillnew-send`), «Гүйцэтгэлийн хяналт»-ын шийдвэр (`hyanalt-apply`), нэмэлт ажил буулгалт
- *    (`ajil-apply`). `navGuard` түлхүүрийг гаргадаггүй тул НЭРЭЭР тулгана (дуудагч бүр ижил `tr()`-ээр өгдөг). Эрх хасагдсан
- *    харагдацын товч (`setView` `force`) хадгалаагүй засварын асуултыг алгасдаг ч эдгээрийг АСУУСААР (`confirmLeave`-ийн
- *    `busyOnly`). Шинэ ийм туг нэмбэл нэрийг энд нэмнэ — `portalLeave.check.mjs` эх кодоос тулгаж унагана.
- */
 const navBusyLabels = (): string[] => {
   const busy = new Set([
     tr('Гүйцэтгэл илгээж байна'),
@@ -199,7 +158,6 @@ const navBusyLabels = (): string[] => {
 };
 /**
  * «Хэсэгчилсэн ЕТ» (`hesegET`) — ХЭСЭГ БҮРИЙН газрын зургийн давхаргууд (2026-10-13, хэрэглэгчийн заавар).
- * ⚠️ Модулийн ТОГТМОЛ — `MapCanvas`-ийн эффектийг рендер бүрт дэмий эргүүлэхгүй.
  */
 /** Шинэчлэгдсэн (`rd:*`, Redesign): бүс + `OVERLAP_CATS`-ийн шинэ давхаргууд */
 const DETAIL_NEXT_LAYERS: string[] = ['rd:2', ...OVERLAP_CATS.flatMap((c) => c.next)];
@@ -220,7 +178,6 @@ const OLD_ET_LAYERS: string[] = [ZONE_LAYER.id, BUILT_LAYER.id, 'sb:2', ...OLD_E
  * 01 «Өөрчлөлт» — SWIPE: ЗҮҮН нь 13-р ЕТ-ийн зураг, БАРУУН нь шинэ хэсэгчилсэн ЕТ (хэрэглэгч: «харьцуулах
  * хэсэг нь 13 дээр байгаа ерөнхий төлөвлөгөөний map»). Мөр сонгоход ИЖИЛ СЭДВИЙН хоёр давхарга
  * (`CHANGE_ITEMS` `now` ↔ `next`) үлдэнэ. Хуучин бүс нь сонголтгүй эсвэл «Бүс» сонгосон үед асна.
- * ⚠️ Инженерийн шугам 01-д ХАРАГДАХГҮЙ («шугам сүлжээний мэдээлэл харуулахаа боль»).
  */
 const H01_SWIPE = {
   /* Сэдэв сонгоход харагдах хуучин давхаргууд (`OVERLAP_CATS.now`) ч ЗҮҮН талд таслагдана */
@@ -232,7 +189,7 @@ const H02_SWIPE = { leading: DETAIL_NEXT_LAYERS, trailing: [OVERLAP_LAYER_ID.nex
 const H03_SWIPE = { leading: DED_BUTETS_LAYER_IDS, trailing: [...DETAIL_NEXT_LAYERS, ...NEED_COMPARE_LAYERS.trailing] };
 
 /**
- * Багануудын АНХНЫ өргөн (px) — `ResizableColumns` (⚠️ 2026-10-23: Environment — каталог · зураг · самбар
+ * Багануудын АНХНЫ өргөн (px) — `ResizableColumns` (2026-10-23: Environment — каталог · зураг · самбар
  * гурван чирэгддэг багана). Хязгаар (зүүн ≤560 · баруун ≤720) нь урьдын `useColumnResize`-тэй ИЖИЛ; доод нь 180
  * (Environment). Чирэлтийн логик (try/catch хадгалалт · `lostpointercapture` · гараар) `ResizableColumns`-д шилжив.
  * Хуучин түлхүүрүүдийг (`selbe-catalog-width` · `selbe-panel-width`) нэг удаа уншина — хэрэглэгчийн өргөн алдагдахгүй.
@@ -241,13 +198,6 @@ const CAT_DEFAULT = 286;
 const PANEL_DEFAULT = 360;
 const COL_LEGACY = { left: 'selbe-catalog-width', right: 'selbe-panel-width' };
 
-/**
- * ⚠️ 2026-10-05: СҮЛЖЭЭНИЙ ТӨЛӨВ (`navigator.onLine` + online/offline үйл явдал) — толгойн
- *    «Сүлжээний холболт тасарсан» туузад. `subscribe` нь модулийн түвшинд (тогтмол лавлагаа —
- *    `useSyncExternalStore` рендер бүрд дахин бүртгэхгүй).
- * ⚠️ `onLine === true` нь интернэт БАЙГАА гэсэн баталгаа биш (зөвхөн сүлжээний интерфейс) —
- *    тиймээс тууз нь зөвхөн ТАСАРСАН-ыг хэлнэ; хүсэлтийн алдаа урьдын адил карт бүрд гарна.
- */
 const subscribeOnline = (fn: () => void): (() => void) => {
   window.addEventListener('online', fn);
   window.addEventListener('offline', fn);
@@ -267,10 +217,6 @@ const hhmm = (ms: number): string => {
 
 /**
  * Гадна бүрхүүл — зөвхөн контекстүүдийг өгнө.
- *
- * ⚠️ `FilterProvider` нь `useMap()`-ыг дуудах тул `MapProvider`-ын ДОТОР байх
- * ёстой. Мөн порталын агуулга `useFilter()`-ыг дуудах тул түүнээс ДООР байх
- * ёстой — иймд агуулгыг тусад нь салгав.
  */
 export default function Portal(
   { onHome, navScope = 'all', docsAllowed = true, isSuper = false }:
@@ -295,27 +241,12 @@ export default function Portal(
  */
 function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
   const { view } = useMap();
-  /**
-   * ⚠️ Порталын зураггүй standalone харагдац (analysis, sheet, tailan, finance —
-   * `layers: []`) context-д view ХЭЗЭЭ Ч бүртгэдэггүй тул хүлээх дохио ирэхгүй,
-   * Booting 12с дэмий таглана — тэдгээрт ЭХНЭЭСЭЭ дууссан гэж үзнэ.
-   * (useState-ийн initializer-т нэг удаа тооцно — hooks-ийн дараалал тогтвортой.)
-   */
   const [done, setDone] = useState(() => {
     const v = VIEW_BY_KEY[clampView(initialView(), navScope)];
     return !!v.standalone && !v.layers.length;
   });
   useEffect(() => {
     if (done) return;
-    // ⚠️ Context дэх `view` нь dev StrictMode-ийн register(null) timing-ээс болж
-    //    заримдаа хоцордог тул DOM-ийн `esri-view` бэлэн эсэхийг ч POLLING-оор
-    //    шалгана. Аль нэг нь бэлэн болмогц (эсвэл дээд тал нь ~12с) хаана.
-    /* ⚠️ 2026-10-04: харагдацын ӨГӨГДӨЛ/ЗУРАГ унасан бол ШУУД хаана — урьд нь
-       ХАБЭА-ийн «ачаалахад алдаа гарлаа» 12с эргэлдэгчийн ард нуугддаг, iot-ийн
-       удаан 3D бүхэл 12с таглаж байв. Дохио (DOM): `[data-boot-fail]` (MapCanvas
-       initError, модулийн алдааны карт) эсвэл `role="alert"`; ~3с болоод DOM-д
-       нэг ч зураг (`[data-map-canvas]`) алга бол харагдац зураггүй — хүлээх
-       зүйл байхгүй. Дээд хязгаар 12с → ~8с. Overlay өөрөө `role="status"`. */
     let tries = 0;
     const iv = setInterval(() => {
       tries += 1;
@@ -335,8 +266,6 @@ function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
       style={{
         position: 'fixed', inset: 0, zIndex: 4000,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        /* ⚠️ 2026-10-23: Environment — цэнхэр радиал градиент → хуудасны paper (--bg), эргэгч нь lucide
-           Loader2 (--data); градиент/туяа хэрэглэхгүй (дизайны дүрэм) */
         gap: 22, background: 'var(--bg)',
         color: 'var(--ink)',
       }}
@@ -345,8 +274,6 @@ function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
       <img src="/logo.svg" alt="" width={60} height={60} style={{ animation: 'selbePulse 1.8s ease-in-out infinite' }} />
       <LoaderCircle size={32} strokeWidth={1.5} aria-hidden style={{ color: 'var(--data)', animation: 'selbeSpin .9s linear infinite' }} />
       <div style={{ fontSize: 13, fontWeight: 500 }}>{tr('Дашбоард ачаалж байна…')}</div>
-      {/* ⚠️ 2026-09-25: «20 минутын хот» → «Ухаалаг хот» — Home/Landing-ийн брэндтэй
-          НЭГ нэр (2026-08-24-ний хэрэглэгчийн шийдвэр, тэдгээрийн ⚠️-г үз). */}
       <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
         {tr('Сэлбэ')} {tr('Ухаалаг хот')} · Digital Twin Platform
       </div>
@@ -356,23 +283,15 @@ function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
 
 /**
  * URL-аас эхлэх төлөвийг уншина (хуваалцсан холбоос, F5).
- * ⚠️ Portal нь `ssr:false` тул initializer-ууд ҮРГЭЛЖ хөтөч дээр ажиллана;
- * буруу/хуучирсан утгыг чимээгүй хаяж анхдагчид буцна — URL-аар апп эвдэхгүй.
  */
 const initialView = (): ViewKey => {
   const v = readParam('v');
-  /* ⚠️ `Object.hasOwn` (2026-09-21) — `?v=constructor` / `__proto__` нь энгийн
-     индексжүүлэлтээр prototype-ийн гишүүнийг «олж» харагдац биш утга буцаагаад
-     Portal бүхэлдээ унадаг байв. `Root.scopeFromUrl`-тай ижил хамгаалалт. */
   return v && Object.hasOwn(VIEW_BY_KEY, v) ? (v as ViewKey) : DEFAULT_VIEW;
 };
 
 /**
  * URL-д ПОРТАЛЫН хүрээ байгаа юу — `false` бол `Root` нүүр хуудас руу шилжиж Portal-ыг
  * unmount хийнэ (popstate-ийн «порталаас гарах» салаа).
- * ⚠️ 2026-09-30: `Root.scopeFromUrl`-ийн «null биш» нөхцөлтэй ЯГ ИЖИЛ дүрэм (`all=1` ·
- *    хуучин `g` · хүчинтэй `v`) — нэгийг өөрчилвөл нөгөөг ХАМТ засна. `Root`-ийг
- *    импортлохгүй: тэр нь Portal-ыг `dynamic`-аар ачаалдаг (мөчлөг үүснэ).
  */
 const inPortalUrl = (): boolean => {
   const v = readParam('v');
@@ -381,26 +300,11 @@ const inPortalUrl = (): boolean => {
 
 /**
  * Харагдацыг эрхийн хүрээгээр хайчилна.
- * ⚠️ 2026-08-29: `?v=finance` гүн холбоос эрхгүй хэрэглэгчид ЭХНИЙ commit-д
- *    зурагдаж (өгөгдлийн effect ч ажиллаад) дараа нь л guard шилжүүлдэг байв —
- *    initializer-т хайчилснаар эрхгүй агуулга нэг агшин ч гарахгүй.
  */
 const clampView = (v: ViewKey, scope: 'all' | ViewKey[]): ViewKey =>
   scope === 'all' || !scope.length || scope.includes(v) ? v : scope[0];
 
-/**
- * ⚠️ IoT нь 3D-ЭЭР эхэлнэ (2026-08-21, хүсэлт): мэдрэгчийн тэмдэг газраас дээш
- * өргөгдсөн байдгаараа л уншигдана — 2D-д тэр өндөр харагдахгүй тул цэгүүд
- * ортофото дээр хавтгайрч, аль нь юу болох нь ялгагдахгүй.
- *
- * ⚠️ URL-ийн `?d=` нь ҮРГЭЛЖ дээгүүр: хуваалцсан холбоос хүний сонгосон горимыг
- * хадгална, эс бөгөөс `?v=iot&d=2d` гэсэн холбоос өөрөө 3D болж нээгдэнэ.
- */
 const initialDim = (): Dim => {
-  /* ⚠️ «Инженерийн дэд бүтэц» ҮРГЭЛЖ 2D-ээр нээгдэнэ (2026-09-16, хэрэглэгчийн
-     хүсэлт) — `?d=3d` URL ч дарж чадахгүй. Шугам, худгийн тор нь 3D мешэн дээр
-     барилгын дор дарагдаж уншигдахгүй; засах горим ч зөвхөн 2D-д ажилладаг. */
-  /* ⚠️ 2026-10-13: «Хэсэгчилсэн ЕТ» мөн ЗААВАЛ 2D — swipe нь зөвхөн MapView-д ажилладаг */
   if (initialView() === 'dedButets' || initialView() === 'hesegET') return '2d';
   const d = readParam('d');
   if (d === '3d' || d === 'bim' || d === '2d') return d;
@@ -430,18 +334,8 @@ function PortalContent(
 
   /**
    * Каталогийн багана нээлттэй эсэх ба самбарт задалж харуулах давхарга.
-   *
-   * ⚠️ Эхлэхэд каталогийг НЭЭХГҮЙ: анх орж ирсэн хүн зургаа хараагүй байхад
-   * жагсаалт гарвал юуных болохыг нь мэдэхгүй. Хэрэглэгч өөрөө «Ерөнхий
-   * мэдээлэл» дарахад нээгдэнэ.
    */
   // Давхаргын сонголт — «Давхарга» товчоор нээж/хаана.
-  // ⚠️ 2026-08-18: зүүн БАГАНА байсныг зурган дээрх ХӨВӨГЧ POPUP болгов
-  //    (хэрэглэгчийн шийдвэр) — идэвхжихэд зураг шахагдахгүй, дээр нь хөвнө.
-  // ⚠️ 2026-10-23: Environment — дахин чирэгддэг ЗҮҮН БАГАНА (`ResizableColumns`, хэрэглэгчийн шийдвэр:
-  //    «KPI мөр + 3 багана»). Нээх/хаах төлөв (энэ `catalog`) ба бүх товч хуучнаараа.
-  /* ⚠️ 2026-10-23 (UX аудит S14): УТСАН дээр (≤620px) давхаргын жагсаалт газрын зургийн ~75%-ийг бүрхэж нээгддэг байв —
-     хумигдсан эхэлнэ (≤1180px-д багана нэг мөрөнд овоордог, жагсаалт ЭХЭНД — merge-д алдагдсаныг сэргээв) */
   const [catalog, setCatalog] = useState(() => typeof window === 'undefined' || !window.matchMedia('(max-width: 620px)').matches);
   const [layer, setLayer] = useState<string | null>(initialLayer);
   /**
@@ -449,28 +343,24 @@ function PortalContent(
    *   01 `change` — ерөнхий төлөвлөгөөний өөрчлөлт (тоо хэмжээ + хуучнаас нэмэгдсэн);
    *   02 `overlap` — одоо байгаа дэд бүтэцтэй давхцал (багц ажлын давхаргаар);
    *   03 `need` — дэд бүтэц хүртээмжгүй шинэ барилгын нэмэлт холболт.
-   * ⚠️ Урьд «Ерөнхий төлөвлөгөө»-ний «Detail»/«Одоо» горим байсныг ТУСДАА харагдац болгов —
-   *    «Ерөнхий төлөвлөгөө» анхныхаа хэвээр.
    */
   const [hesegTab, setHesegTab] = useState<HesegTab>('change');
   /** 01-д СОНГОСОН мөр — зураг дээр тэр ангиллын давхаргууд л үлдэнэ (ЕТ-ний карт шиг) */
   const [hesegPick, setHesegPick] = useState<ChangePick>(null);
-  /* `overlapFocus` — самбар ↔ зураг hover-ийн холбоо (`PlanOverlap.tsx`-ийн ⚠️). 02 нь ЗӨВХӨН шинэ тал. */
+  /* `overlapFocus` — самбар ↔ зураг hover-ийн холбоо (`PlanOverlap.tsx`). 02 нь ЗӨВХӨН шинэ тал. */
   const [overlapFocus, setOverlapFocus] = useState<OverlapFocus>(null);
-  /* Самбарт ДАРЖ СОНГОСОН карт/мөр — hover байхгүй үед зураг дээр үлдэнэ (`PlanOverlap.tsx`-ийн ⚠️) */
+  /* Самбарт ДАРЖ СОНГОСОН карт/мөр — hover байхгүй үед зураг дээр үлдэнэ (`PlanOverlap.tsx`) */
   const [overlapSel, setOverlapSel] = useState<OverlapFocus>(null);
   /* 02-т чагтаар зураг дээр АСААСАН ангиллууд (`PlanOverlapPanel` §shown) — анхдагч нь унтраалттай */
   const [overlapShown, setOverlapShown] = useState<OverlapCat[]>([]);
   /**
    * Харьцуулах SWIPE АСААЛТТАЙ эсэх — зургийн «Харьцуулах» товч (`SwipeToggle`, fullscreen-ий доор).
-   * ⚠️ 2026-10-13: анхдагч УНТРААЛТТАЙ (хэрэглэгч: «Swipe button дарахад compare хийдэг байх»).
    */
   const [hesegSwipe, setHesegSwipe] = useState(false);
   /* 03-т сонгосон инженерийн төрөл — зураг дээрх шугамыг тэр төрлөөр шүүнэ */
   const needSelection = useNeedSelection();
   /**
    * «Detail»-ийн давхаргын товчоор (`DetailLayerMenu`) УНТРААСАН давхаргууд (2026-10-13).
-   * ⚠️ Хасагдсан жагсаалт (асаалттай биш) — анхдагч нь бүгд асаалттай.
    */
   const [detailHidden, setDetailHidden] = useState<string[]>(OLD_ET_OPTIONAL);
   const needExistingIds = useMemo(() => needSelection.type
@@ -481,7 +371,6 @@ function PortalContent(
     partial: DETAIL_NEXT_LAYERS, previous: OLD_ET_LAYERS,
     change: hesegPick, overlapActive: !!overlapSel || overlapShown.length > 0,
     needActive: !!needSelection.type || !!needSelection.zone || needSelection.priorityOnly,
-    /* ⚠️ Сэдэв сонгосон бол тэр сэдвийн хуучин давхаргыг (жиш. дугуйн зам) анхдагч `OLD_ET_OPTIONAL` нуулт ДАРАХГҮЙ */
     hidden: hesegPick ? detailHidden.filter((id) => !(OLD_ET_OPTIONAL.includes(id) && hesegPick.oldLayers.includes(id))) : detailHidden,
     existing: needExistingIds,
   }), [detailHidden, hesegTab, hesegSwipe, hesegPick, overlapShown, overlapSel, needSelection.type, needSelection.zone, needSelection.priorityOnly, needExistingIds]);
@@ -514,11 +403,6 @@ function PortalContent(
     return [];
   }, [hesegTab, hesegSwipe, hesegPick, overlapSel, overlapShown.length, needSelection.type, needSelection.zone, needSelection.priorityOnly, needExistingIds]);
 
-  /* ⚠️ 2026-10-23: Environment — ЗҮҮН ЦЭСНИЙ ХУРААХ/ДЭЛГЭХ (54px ↔ бүтэн, `selbe-nav-min`; 2026-08-18 ·
-     08-25 · 09-30 · 10-06-ны шийдвэрүүд) ХАСАГДАВ: dock нь ҮРГЭЛЖ 104px (дүрс + товч шошго), бүтэн нэр
-     tooltip-д (`ViewRail`). Хураах товч, түүний төлөв, хадгалалт байхгүй. */
-  /* ⚠️ 2026-10-23 (хэрэглэгч: «menu хэсэгт хийсэн бүх засварыг буцаа»): цэс урьдын хэлбэрт — 244px ↔ 54px
-     хураах (`selbe-nav-min`, анхдагч ХУРААСТАЙ — 2026-08-25 · 10-06-ны шийдвэр). */
   const [navMin, setNavMin] = useState(() => {
     if (typeof window === 'undefined') return true;
     try { return localStorage.getItem('selbe-nav-min') !== '0'; } catch { return true; /* private */ }
@@ -548,7 +432,6 @@ function PortalContent(
   /* Зүүн цэсний «Гарах» мөрөнд (`ViewRail.onSignOut`) */
   const auth = useAuth();
   const { clear: clearFilter, active: filterActive } = useFilter();
-  /* ⚠️ 2026-10-07: `setView`-д ref-ээр — deps-д оруулбал шүүлт солигдох бүрд `setView` шинэчлэгдэнэ */
   const filterActiveRef = useRef(filterActive != null);
   useEffect(() => { filterActiveRef.current = filterActive != null; }, [filterActive]);
 
@@ -556,25 +439,13 @@ function PortalContent(
   const [docsOpen, setDocsOpen] = useState(false);
   /** Хэрэглэгчийн эрх удирдлагын modal (зөвхөн super admin) */
   const [adminOpen, setAdminOpen] = useState(false);
-  /**
-   * ⚠️ 2026-10-19: «Систем түр хаах» цонх — `sysClose` эрхтэй эсвэл кодын super (`useCanCloseSystem`). Цэсний «Систем»
-   *    бүлэгт товч (`ViewRail.onSysClose`); хаалттай үед ЭНЭ хэрэглэгч нэвтэрсэн бол (эрхтэй) шар зурвас.
-   */
   const [sysOpen, setSysOpen] = useState(false);
   const canSys = useCanCloseSystem(auth.user?.username, auth.status === 'signed-in');
   const sysNow = useSystemClosed();
   /**
    * AI туслахын цонх нээлттэй эсэх.
-   * ⚠️ Агент нь `navScope`-оор хязгаарлагдана — тэр нь хэрэглэгчийн үзэж болох
-   * харагдацууд. Тиймээс эрхгүй хэсгийн давхаргыг агент ч харахгүй.
    */
   const [agentOpen, setAgentOpen] = useState(false);
-  /**
-   * ⚠️ 2026-10-04 (ачааллын аудит): AI цонх (`AgentChat` — `dynamic`, ~220 КБ эх код)
-   *    анх НЭЭГДЭХЭД л mount болно. Хаалттай үед тэр юу ч зурдаггүй, реле шалгалт ч
-   *    зөвхөн `open` үед — тиймээс нээгээгүй хэрэглэгч chunk-ийг ОГТ татахгүй. Нэг
-   *    удаа нээсний дараа mount хэвээр (яриа, өргөн горим хадгалагдана — урьдын адил).
-   */
   const [agentMounted, setAgentMounted] = useState(false);
   /** Порталын тусламжийн цонх (2026-09-30, `HelpPanel`) */
   const [helpOpen, setHelpOpen] = useState(false);
@@ -582,34 +453,19 @@ function PortalContent(
 
   /**
    * ЦЭСНИЙ ТООН ТЭМДЭГ (2026-09-30, `navBadges.ts`).
-   *
-   * ⚠️ Нэвтэрсний ДАРАА л ачаална (эрх, токен бэлэн) · 3 минут тутам ·
-   *    тэмдэгтэй харагдацаас ГАРАХАД шууд (батлагч дөнгөж шийдвэрлэсэн тоо
-   *    хуучин хэвээр үлдэхгүй). Алдаа чимээгүй — өмнөх тоо хэвээр.
-   * ⚠️ Таб нуугдсан үед хүсэлт явуулахгүй.
    */
-  /* ⚠️ 2026-10-06 (аудит): тэмдэг ХЭНИЙХ болохыг хамт хадгална — уналтад өмнөх тоо хэвээр
-     үлдэх (`mergeNavBadges`) тул хэрэглэгч солигдоход өмнөх хүний тоо нөгөөд гарахгүй. */
   const [badgeState, setBadgeState] = useState<{ who: string | null; b: NavBadges }>({ who: null, b: {} });
   const badgeUser = auth.user?.username ?? null;
   const badges = badgeState.who === badgeUser ? badgeState.b : EMPTY_BADGES;
   const badgeReady = auth.status === 'signed-in' || auth.status === 'off';
-  /* ⚠️ `navScope` массив нь `Root`-ийн рендер бүрт ШИНЭ лавлагаа (эрхийн poll
-     15 с–5 мин тутам рендерлэдэг) — шууд deps-д тавибал тэр бүрд дахин татна.
-     Агуулгын түлхүүрээр л шинэчилнэ. */
   const scopeKey = navScope === 'all' ? 'all' : navScope.join(',');
   const badgeScope = useMemo<'all' | ViewKey[]>(
     () => (scopeKey === 'all' ? 'all' : (scopeKey.split(',').filter(Boolean) as ViewKey[])),
     [scopeKey],
   );
-  /* ⚠️ 2026-10-01: ЗӨВХӨН СҮҮЛИЙН дуудлагын хариу (`makeBadgeRefresher`-ийн ⚠️) —
-     дараалалгүй ирсэн хуучин хариу шинэ тоог дарахгүй. */
   const [badgeRefresher] = useState(() => makeBadgeRefresher(loadNavBadges));
   const refreshBadges = useCallback(() => {
     if (!badgeReady || document.visibilityState === 'hidden') return;
-    /* ⚠️ 2026-10-06 (аудит): БҮХ газрыг солихгүй, НИЙЛҮҮЛНЭ — унасан эх сурвалжтай харагдацад
-       (`null`) өмнөх тоо хэвээр (дээрх «Алдаа чимээгүй — өмнөх тоо хэвээр»). Урьд нь «Гүйцэтгэл»-ийн
-       нийлбэр (обьём + хяналт) нэг нь унахад ХАГАС дүн харуулдаг байв (`navBadges.mergeNavBadges`). */
     badgeRefresher(badgeUser, badgeScope).then((b) => {
       if (b) setBadgeState((prev) => ({ who: badgeUser, b: mergeNavBadges(prev.who === badgeUser ? prev.b : {}, b) }));
     }, () => { /* чимээгүй */ });
@@ -617,8 +473,6 @@ function PortalContent(
   useEffect(() => {
     refreshBadges();
     const iv = setInterval(refreshBadges, 3 * 60_000);
-    /* ⚠️ 2026-09-30: ACL ирэхэд (чанарын тоо ACL-гүй бага гардаг) ба бичилт
-       бүрийн дараа (`dataBus.invalidate`) тэмдгийг шууд шинэчилнэ — 3 минут хүлээхгүй. */
     const offBadge = subscribeNavBadges(refreshBadges);
     const offData = subscribeData(refreshBadges);
     return () => { clearInterval(iv); offBadge(); offData(); };
@@ -627,32 +481,14 @@ function PortalContent(
   /**
    * Давхаргын тоо, хэмжээ — каталогийн багана, багцын тойм, давхаргын дашбоард
    * ГУРВУУЛАА эндээс уншина. Нэг эх сурвалж, нэг хүсэлтийн багц.
-   *
-   * ⚠️ «Барилгын хяналт»-д хяналтын хоёр давхарга НЭМЭГДЭНЭ: тэнд каталог
-   * нээгдэх бөгөөд мөрүүд нь тоогоо харуулах ёстой.
-   */
-  /**
-   * ⚠️ Тусдаа бүрэн дэлгэцтэй харагдац (дашбоард, анализ) нь порталын каталог,
-   * самбарыг зурахгүй, өөрсдөө өгөгдлөө татна — тэдгээрт `usePlanTotals`-ыг
-   * дуудахгүй (29 хүсэлт дэмий).
    */
   const standalone = !!VIEW_BY_KEY[view].standalone;
 
-  /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): урьд нь каталогийн БҮХ 158 давхаргыг (~156 статистик хүсэлт) харагдац нээх
-     бүрд татдаг байв (2026-08-20: каталог бүх давхаргыг харуулдаг) — бүлгүүд хураалттай эхэлдэг, «Хэсэгчилсэн ЕТ»-д
-     самбар нуугдмал тул тэр тоог хэн ч хараагүй байхад. Одоо ЗӨВХӨН самбарын тойм (`ViewPanel.PlanOverview` —
-     `PLAN_LAYER_IDS`, «Ерөнхий мэдээлэл» л); каталог нээлттэй бүлгийнхээ тоог өөрөө татна (`LayerCatalog`-д
-     `totals` өгөхгүй), сонгосон давхаргын самбар — өөрийнхөө. Бүгд давхарга тус бүрийн НЭГ кэшээс
-     (`totals.layerTotalsShared`) тул тоо зөрөхгүй, давхардсан хүсэлтгүй. */
   const totals = usePlanTotals(zone, !standalone && view === 'plan', PLAN_LAYER_IDS);
 
-  /* ⚠️ Хуваарийн батлах/хадгалах гинж явж байхад харагдац солихоос өмнө асууна
-     (2026-09-25 аудит #4, `planNavBusy`-ийн ⚠️) — салгавал гинж дундаа тасарна. */
   const viewNowRef = useRef(view);
-  /** Порталын ерөнхий мэдэгдлийн тууз: эрх хумигдаж харагдац солигдсон (⚠️ 2026-10-06),
-   *  хадгалаагүй ажлаас болж автомат шинэчлэл хойшилсон (⚠️ 2026-10-12, `onVis`) */
-  /* ⚠️ 2026-10-26 (аудит): URL-аар (`?v=` — Нүүрний «Харагдац руу орох» г.м.) ЭРХГҮЙ харагдац хүсэгдсэн бол
-     `clampView` чимээгүй `navScope[0]` руу оруулдаг тул хэрэглэгч товч эвдэрсэн гэж ойлгодог байв — шалтгааныг хэлнэ. */
+  /** Порталын ерөнхий мэдэгдлийн тууз: эрх хумигдаж харагдац солигдсон (2026-10-06),
+   *  хадгалаагүй ажлаас болж автомат шинэчлэл хойшилсон (2026-10-12, `onVis`) */
   const [portalNotice, setPortalNotice] = useState<string | null>(() => {
     const asked = readParam('v');
     const req = initialView();
@@ -661,51 +497,19 @@ function PortalContent(
       ? tr('«{0}» харагдац танд нээгдээгүй тул «{1}» руу орлоо.', VIEW_BY_KEY[req].title, VIEW_BY_KEY[got].title)
       : null;
   });
-  /** ⚠️ 2026-10-12 (дарааллын аудит): таб буцахад хадгалаагүй ажлаас болж ХОЙШЛУУЛСАН шинэчлэл */
   const refreshDeferredRef = useRef(false);
-  /* ⚠️ 2026-09-30: ref-ийг ЭФФЕКТЭД шинэчилнэ (рендер дотор бичих нь eslint
-     react-hooks/refs). Уншигч нь зөвхөн үйл явдлын хариулагч ба доорх guard
-     эффект — хоёулаа энэ эффектийн ДАРАА ажиллана (зарлалтын дараалал). */
   useEffect(() => { viewNowRef.current = view; });
-  /* ⚠️ 2026-09-25: `boolean` буцаана — татгалзсан эсэхийг popstate мэдэх ёстой
-     (доорх `onPop`-ийн ⚠️). */
-  /* ⚠️ 2026-09-30: хамгаалалт ТУСДАА функц — харагдац солих, лого (нүүр рүү)
-     ба «Гарах» ГУРВУУЛАА үүгээр явна. Урьд нь зөвхөн `setView`-д байсан тул
-     лого эсвэл «Гарах» дарахад хадгалаагүй ажил асуултгүй алга болдог байв. */
-  /* ⚠️ 2026-10-21 (аудит): `reason` — асуултын ӨМНӨ яагаад гарах болсныг хэлнэ (эрх хасагдсан үед
-     урьд нь зөвхөн «Хадгалаагүй засвар байна. Гарах уу?» гарч, хэрэглэгч шалтгааныг мэдэхгүй
-     «Болих» дарж эрхгүй харагдацдаа үлддэг байв — доорх эрхийн хамгаалалтын ⚠️). */
-  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → апп доторх `askConfirm` (ASYNC). Хөтчийн «энэ сайтаас дахин
-     бүү асуу» тэмдэглэгдсэн үед `window.confirm` чимээгүй false буцааж харагдац солих · лого · «Гарах» · Back БҮГД
-     юу ч хийхгүй болдог байв. Иймд гинж бүхэлдээ async (`setView` · popstate · лого · «Гарах» · эрхийн хамгаалалт).
-     `leaveAsks` — СИНХРОН: асуух зүйл байгаа эсэхийг Back (`onPop`) асуултын ӨМНӨ мэдэх ёстой (`Root`-ийн хойшлуулсан
-     popstate URL-ыг 0мс-д уншина — асуух бол URL-ыг тэр агшинд сэргээнэ). Нөхцөл, дараалал нь хуучнаараа. */
   const leaveAsks = useCallback((busyOnly = false): string[] => {
     const qs: string[] = [];
     if (planNavBusy()) qs.push(tr('Хуваарь хадгалагдаж/батлагдаж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?'));
-    /* ⚠️ 2026-10-22 (аудит): `busyOnly` (эрх хасагдсан цонхны товч — `setView`-ийн `force`) — ЗӨВХӨН ЯВЖ БУЙ бичилтийг
-       асууна: дээрх Хуваарийн гинж (`planNavBusy` — `Huvaari.tsx`-ийн «ГИНЖ ЯВЖ БАЙХАД ГАРАХГҮЙ» ⚠️) ба илгээлт/шийдвэр/
-       буулгалт (`navBusyLabels`). Хадгалаагүй засварын асуултууд (доор) алгасагдана — товч өөрөө «алдагдана» гэж хэлдэг
-       тул давхар асуухгүй (2026-10-21-ний шийдвэр хэвээр). Урьд нь `force` бүх асуултыг алгасаж модулийг бичилтийн
-       дундуур unmount хийдэг байв. */
     if (busyOnly) {
       const busyL = navBusyLabels();
       if (busyL.length) qs.push(tr('{0}: бичилт явж байна — одоо гарвал дундаа тасарч болзошгүй. Гарах уу?', busyL.join(' · ')));
       return qs;
     }
-    /* ⚠️ 2026-09-29 (аудит 10): Санхүүгийн бүртгэл / «Cashflow хувиарлах»-ын
-       хадгалаагүй засвар — урьд нь зөвхөн `Finance` доторх таб солилтод асуудаг
-       байсан тул өөр харагдац руу шилжихэд `pend`/`adds` баталгаагүй алга болдог байв. */
     if (finNavDirty()) qs.push(tr('Санхүүгийн бүртгэлд хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?'));
-    /* ⚠️ 2026-09-30: ЕРӨНХИЙ хамгаалалт (`navGuard.setNavDirty`) — «Дэд бүтэц», «Газар»,
-       «Зөвшөөрөл» зэрэг харагдацын засварын маягт урьд нь харагдац солих, лого,
-       «Гарах»-д асуултгүй алга болдог байв. Шинэ харагдац энд юу ч засахгүйгээр нэмэгдэнэ. */
     const labels = navDirtyLabels();
     if (labels.length) qs.push(tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')));
-    /* ⚠️ 2026-10-06 (аудит): дээрх гурван тугт ОРООГҮЙ модулиуд (QAQC-ийн хадгалаагүй нүд,
-       `useDraftSync`, CashflowPlan …) — тэдний `beforeunload` сонсогчоос асууна
-       (`LocaleToggle.hasUnsavedWork`-ийн ⚠️). Дээр аль хэдийн асууж зөвшөөрсөн бол ДАХИН
-       асуухгүй (тэр модулиуд ч `beforeunload` бүртгэдэг тул давхар асуулт гарна). */
     const asked = qs.length > 0;
     if (!asked && hasUnsavedWork()) qs.push(tr('Хадгалаагүй өөрчлөлт байна. Гарвал алдагдана. Гарах уу?'));
     return qs;
@@ -727,25 +531,8 @@ function PortalContent(
       leavingRef.current = false;
     }
   }, [leaveAsks]);
-  /**
-   * ⚠️ 2026-10-05: ӨГӨГДЛИЙН ШИНЭЧЛЭЛ. Кэшийн TTL нь ДАРААГИЙН дуудалтад л шалгагддаг тул
-   *    нээлттэй харагдац өөрөө хэзээ ч дахин татдаггүй, `invalidateAll` зөвхөн хэл солиход
-   *    холбогдсон байв — өглөө нээсэн дашбоард оройн тоог F5 дартал харуулдаггүй.
-   *    (а) толгойн «Шинэчлэх» товч + «Өгөгдөл: HH:MM» (сүүлд БҮТНЭЭР шинэчилсэн / сешн эхэлсэн цаг);
-   *    (б) таб `AWAY_REFRESH_MS`-ээс удаан нуугдаад буцаж ирэхэд автоматаар.
-   * ⚠️ ХАДГАЛААГҮЙ ЗАСВАРТАЙ үед (б) АЖИЛЛАХГҮЙ, (а) асууна — дахин таталт засварын маягтын
-   *    суурь өгөгдлийг сольж болзошгүй. `confirmLeave`-тэй ИЖИЛ гурван туг.
-   */
   const dataAt = useSyncExternalStore(subscribeData, dataRefreshedAt, () => 0);
   const online = useSyncExternalStore(subscribeOnline, isOnline, () => true);
-  /*
-   * ⚠️ 2026-10-12 (дарааллын аудит): гурван туг ХАНГАЛТГҮЙ — `confirmLeave`-ийн адил
-   *    `hasUnsavedWork()` (QAQC-ийн нүд · `useDraftSync` · CashflowPlan …-ын `beforeunload`
-   *    сонсогч) ч энд орно. Урьд нь тэдгээрийн хадгалаагүй маягт дээр таб буцаж ирэхэд
-   *    `invalidateAll` чимээгүй ажиллаж, маягтын суурь мөр дахин татагдаж засвар дарагдах
-   *    эрсдэлтэй байв; «Шинэчлэх» ч асуулгүй явдаг байв.
-   */
-  /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх `askConfirm` (async) — `confirmLeave`-ийн ⚠️ */
   const refreshData = useCallback(async () => {
     const dirty = planNavBusy() || finNavDirty() || navDirtyLabels().length > 0 || hasUnsavedWork();
     if (dirty && !(await askConfirm(
@@ -761,11 +548,8 @@ function PortalContent(
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
       const away = hiddenAt == null ? 0 : Date.now() - hiddenAt;
       hiddenAt = null;
-      /* ⚠️ 2026-10-12: урьд ХОЙШЛУУЛСАН шинэчлэл байвал богино завсрын дараа ч дахин оролдоно */
       if (away <= AWAY_REFRESH_MS && !refreshDeferredRef.current) return;
       if (planNavBusy() || finNavDirty() || navDirtyLabels().length > 0 || hasUnsavedWork()) {
-        /* ⚠️ 2026-10-12: хадгалаагүй ажилтай бол ХОЙШЛУУЛНА (дараагийн таб буцах үед, ажил
-           хадгалагдсан бол ажиллана); шалтгааныг НЭГ УДАА л хэлнэ — таб бүр сэлгэхэд давтахгүй. */
         if (!refreshDeferredRef.current) {
           refreshDeferredRef.current = true;
           setPortalNotice(tr('Хадгалаагүй ажил байгаа тул өгөгдлийг автоматаар шинэчилсэнгүй — хадгалсны дараа «Шинэчлэх» дарна уу.'));
@@ -779,10 +563,6 @@ function PortalContent(
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
-  /* ⚠️ 2026-10-13 (хэрэглэгч: «гүйцэтгэл бөглөх батлагдсан тохиолдолд шууд багцын гүйцэтгэлийн зүүн панел
-     өөрчлөгдөх ёстой, автомат болох ёстой»): БАТЛАЛТ ХАРАГЧ — өөр хэрэглэгч/таб эцэслэн баталсныг (60 с ·
-     таб идэвхжихэд) илрүүлж гүйцэтгэлийн кэшийг хүчингүй болгоно (`hyanaltStore.startApprovalWatch`-ийн ⚠️).
-     ⚠️ ДИНАМИК импорт — `hyanaltStore` том тул порталын анхны багцад оруулахгүй. */
   useEffect(() => {
     let off: (() => void) | null = null;
     let dead = false;
@@ -792,27 +572,12 @@ function PortalContent(
     return () => { dead = true; off?.(); };
   }, []);
 
-  /* ⚠️ 2026-10-21 (аудит): `opts.reason` — асуултын шалтгаан (`confirmLeave`-ийн ⚠️); `opts.force` — АСУУЛГҮЙ
-     шилжинэ: эрх хасагдсан харагдацын хаалтын цонхны товч (`ViewLost`) — хэрэглэгч шалтгааныг аль хэдийн
-     уншсан, хадгалаагүй ажил алдагдахыг товч өөрөө хэлдэг тул давхар асуулт гаргахгүй. */
-  /* ⚠️ 2026-10-23 (UX аудит X1): ASYNC — `confirmLeave` апп доторх цонхоор асуудаг болсон (`confirmLeave`-ийн ⚠️) */
   const setView = useCallback(async (v: ViewKey, opts?: { reason?: string; force?: boolean }): Promise<boolean> => {
-    /* ⚠️ 2026-10-06 (аудит): ИЖИЛ харагдац руу «шилжих» нь ЮУ Ч хийхгүй. Урьд нь доорх бүрэн
-       шинэчлэл (асаасан давхарга, сонголт, шүүлт, каталог) ажиллаж, идэвхтэй мөр дээр дахин
-       дарах (`ViewRail`-ийн ⚠️ «жагсаалт хумигдана/дэлгэгдэнэ»), алгасах холбоосын `#` навигаци
-       ба `Tuh`-ийн түүхийн бичлэг дээрх Back (popstate) хэрэглэгчийн ажлыг чимээгүй арилгадаг
-       байв. Каталогийг сэлгэх нь ЗӨВХӨН цэсний даралтад (`railSelect`). */
     if (v === viewNowRef.current) return true;
-    /* ⚠️ 2026-10-22 (аудит): `force` нь ЗӨВХӨН хадгалаагүй засварын асуултыг алгасна — явж буй бичилтийг (Хуваарийн
-       save→decidePlan гинж · гүйцэтгэлийн илгээлт/шийдвэр · нэмэлт ажил буулгалт) асуусаар (`confirmLeave`-ийн
-       `busyOnly`). Урьд нь `!opts?.force && …` нь БҮХ асуултыг алгасаж, бичилт явж байхад эрх хумигдаад «Болих»
-       дарсан хэрэглэгч цонхны товчоор модулийг гинжийн дундуур unmount хийдэг байв. */
     if (!(await confirmLeave(opts?.reason, !!opts?.force))) return false;
     setViewState(v);
     // Харагдацын анхны давхаргууд ил — эхлэх байдал үргэлж утга учиртай
     setVisible(VIEW_BY_KEY[v].initial);
-    // ⚠️ Өмнөх харагдацын сонголт шинэ давхаргын талбарын нэрсээр уншигдвал
-    //    бүх мөр «Бүртгэгдээгүй» болно
     setPicked(null);
     setPickedLayer(null);
     setLayer(null);
@@ -820,36 +585,23 @@ function PortalContent(
      * Шүүлт нь өмнөх харагдацын давхаргын талбарын нэрээр бичигдсэн SQL. Үлдвэл
      * шинэ харагдацын давхаргад тэр талбар байхгүй тул ArcGIS хүсэлт бүхэлдээ
      * унаж, зураг чимээгүй хоосорно.
-     * ⚠️ 2026-10-07: ЗӨВХӨН шүүлт идэвхтэй үед — урьд нь харагдац солих бүрд
-     * дуудагдаж, зураг сонгосон бүсээ орхиод төслийн бүтэн хүрээ рүү нисдэг байв.
-     * Самбарын шууд тодруулгыг самбар өөрөө unmount-даа цэвэрлэнэ.
      */
     if (filterActiveRef.current) clearFilter();
-    // ⚠️ Каталог товчоор удирдагдана. «Ерөнхий төлөвлөгөө» нь давхаргын жагсаалт
-    //    гол агуулгатай тул НЭЭЛТТЭЙ эхэлнэ; бусад харагдац хумигдсан.
     setCatalog(v === 'plan' && !window.matchMedia('(max-width: 620px)').matches);
     /**
-     * IoT руу орход 3D. ⚠️ ЗӨВХӨН IoT-д тавина — бусад харагдац руу шилжихэд
+     * IoT руу орход 3D. ЗӨВХӨН IoT-д тавина — бусад харагдац руу шилжихэд
      * горимыг ХҮЧЭЭР 2D болгохгүй: хэрэглэгч 3D-г санаатай сонгосон бол тэр
      * сонголт нь харагдац солих болгонд алга болох ёсгүй.
      */
     if (v === 'iot') setDim('3d');
     /**
-     * ⚠️ ХАБЭА — ЗААВАЛ 2D-ЭЭР нээгдэнэ (2026-09-06, хэрэглэгчийн хүсэлт).
-     *
      * Дээрх дүрмийн ЗАРИМДАА БУРУУ ажилладаг талыг нөхөж байна: IoT нь
      * 3D тавьдаг ч буцааж авдаггүй тул IoT → ХАБЭА гэж явахад зураг 3D
      * хэвээр нээгддэг байв. ХАБЭА-гийн гол дүрслэл нь краны цэг ба
      * аюулгүйн бүсийн ПОЛИГОН — 3D мешэн дээр бүс нь хэвтээ хавтгайд
      * дарагдаж, кран хоорондын давхцал уншигдахгүй болно.
-     *
-     * ⚠️ URL-ийн `?d=` нь ЭНД хөндөгдөхгүй: энэ нь хэрэглэгч ХАРАГДАЦ
-     * СОЛИХОД л ажилладаг. Анхны ачаалалт ба Back нь `initialDim()`-ээр
-     * явдаг тул хуваалцсан холбоосын горим ХЭВЭЭР үлдэнэ.
      */
     if (v === 'habea') setDim('2d');
-    /* ⚠️ «Инженерийн дэд бүтэц» мөн ЗААВАЛ 2D (2026-09-16) — `initialDim`-ийн
-       тайлбарыг үз. Харагдац солихдоо ч, анхны ачаалалтад ч ижил дүрэм. */
     if (v === 'dedButets' || v === 'hesegET') setDim('2d');
     if (v === 'hesegET') {
       setHesegSwipe(false);
@@ -859,22 +611,17 @@ function PortalContent(
       setOverlapFocus(null);
       setOverlapShown([]);
       resetNeedSelection();
-      /* ⚠️ 2026-10-19 (аудит): `[]` биш `OLD_ET_OPTIONAL` — урьд нь харагдац руу орох бүрд хуучин ЕТ-ийн сонгомол
-         давхаргууд (дугуйн · явган зам · ногоон) АНХДАГЧ унтраалтаа алдаж бүгд асдаг байв (`OLD_ET_OPTIONAL`-ийн ⚠️). */
       setDetailHidden(OLD_ET_OPTIONAL);
     }
     return true;
   }, [clearFilter, confirmLeave]);
-  /** Цэсний даралт — идэвхтэй харагдац дээр дахин дарвал ЗӨВХӨН каталогийг сэлгэнэ (`ViewRail`-ийн ⚠️) */
+  /** Цэсний даралт — идэвхтэй харагдац дээр дахин дарвал ЗӨВХӨН каталогийг сэлгэнэ (`ViewRail`) */
   const railSelect = useCallback((v: ViewKey) => {
     if (v === viewNowRef.current) { setCatalog((c) => !c); return; }
     void setView(v);
   }, [setView]);
-  /* ⚠️ 2026-10-23: `ViewCtx.setView` (`viewRegistry`) СИНХРОН `boolean` төрөлтэй — модулиуд утгыг нь уншдаггүй
-     (HuvaariBatlah · Tuh · Schem · SysDoc зөвхөн дууддаг) тул асуултыг эхлүүлээд `true` буцаана. */
   const ctxSetView = useCallback((v: ViewKey): boolean => { void setView(v); return true; }, [setView]);
   /** «Гарах» — dock-ийн мөр ба толгойн хэрэглэгчийн чип ХОЁУЛАА (`confirmLeave`-ийн хамгаалалттай) */
-  /* ⚠️ 2026-10-23: `confirmLeave` ASYNC (UX аудит X1) — Promise үргэлж truthy тул `await` ЗААВАЛ */
   const signOut = async () => { if (await confirmLeave()) void auth.signOut(); };
 
   const badgeViewRef = useRef(view);
@@ -899,11 +646,6 @@ function PortalContent(
     const push = view !== lastViewRef.current;
     lastViewRef.current = view;
     const v = view === DEFAULT_VIEW ? null : view;
-    /* ⚠️ 2026-10-06 (аудит): ХАРАГДАЦ СОЛИХОД (`push`) бусад харагдацын параметрийг
-       (`tuh`, `pkg`, `fine` — `urlState.VIEW_PARAMS`) арилгана. Урьд нь `writeParams` танихгүй
-       түлхүүрийг хөнддөггүй тул `?v=tuh&tuh=…` нь бусад харагдацад ч үлдэж, хуваалцсан
-       холбоос/буцаж ороход хуучин сонголт сэргэдэг байв. URL аль хэдийн ЭНЭ харагдацыг заасан
-       бол (popstate-ийн сэргээлт) хөндөхгүй — Back/Forward-ийн түүх бохирдохгүй. */
     const stale = push && readParam('v') !== v ? foreignViewParams(view) : {};
     writeParams({
       ...stale,
@@ -920,13 +662,11 @@ function PortalContent(
 
   /** Одоогийн URL төлөв — Back татгалзагдахад URL-ыг буцааж бичихэд (onPop) */
   const urlNowRef = useRef({ view, zone, layer, dim });
-  /* ⚠️ 2026-09-30: эффектэд шинэчилнэ (`viewNowRef`-тэй ижил) — `onPop` нь
-     popstate үйл явдалд л уншина. */
   useEffect(() => { urlNowRef.current = { view, zone, layer, dim }; });
 
   /* URL → төлөв: хөтчийн Back/Forward-д харагдацыг бүтэн сэргээнэ */
   useEffect(() => {
-    /** Татгалзсан Back — одоогийн төлөвийг URL-д PUSH-ээр буцааж бичнэ (доорх ⚠️ 2026-09-25) */
+    /** Татгалзсан Back — одоогийн төлөвийг URL-д PUSH-ээр буцааж бичнэ (доорх 2026-09-25) */
     const restoreUrl = (extra: Record<string, string> = {}) => {
       const cur = urlNowRef.current;
       writeParams({
@@ -938,16 +678,6 @@ function PortalContent(
       }, { push: true });
     };
     const onPop = () => {
-      /* ⚠️ 2026-09-30: НҮҮР ХУУДАС РУУ Back (URL-д порталын хүрээ үлдээгүй — `inPortalUrl`)
-         нь харагдац солих БИШ, ПОРТАЛААС ГАРАХ: `Root` Portal-ыг бүхэлд нь unmount хийнэ.
-         Урьд нь энд `setView(DEFAULT_VIEW)` л дуудагддаг тул одоогийн харагдац нь
-         анхдагч бол асуулт ОГТ гардаггүй, асуусан ч «Үгүй» гэхэд `Root`-ийн popstate
-         (эхэлж бүртгэгдсэн) аль хэдийн нүүр рүү шилжүүлчихсэн байж хадгалаагүй ажил
-         алга болдог байв. Одоо лого/«Гарах»-тай ИЖИЛ `confirmLeave()`; татгалзвал
-         `all=1`-тэй URL-ыг буцааж бичнэ — `Root` өөрийн сонсогчийг хойшлуулж
-         (`setTimeout`) ЭНЭ сэргээсэн URL-ыг уншина. */
-      /* ⚠️ 2026-10-23 (UX аудит X1): асуулт ASYNC болсон тул асуух зүйлтэй бол URL-ыг ЭХЛЭЭД (синхрон) сэргээнэ —
-         `Root` 0мс-д уншихдаа порталд үлдэнэ; «Гарах» гэвэл нүүр рүү `onHome`-оор (логотой ижил) гарна. */
       if (!inPortalUrl()) {
         if (!leaveAsks().length) return;
         restoreUrl({ all: '1' });
@@ -955,25 +685,12 @@ function PortalContent(
         return;
       }
       // `setView` нь харагдацын бүрэн шинэчлэл (шүүлт цэвэрлэх г.м.) хийдэг
-      // ⚠️ Эрхгүй харагдац руу Back хийвэл хайчилж, URL-ыг replace-ээр засна
-      //    (push хийвэл доорх guard-тай гогцоо үүснэ)
       const next = clampView(initialView(), navScope);
-      /* ⚠️ 2026-10-06 (аудит): харагдац ӨӨРЧЛӨГДӨӨГҮЙ popstate (алгасах холбоосын `#`,
-         `Tuh`-ийн дотоод түүх) — харагдацын шинэчлэлийг ОГТ ажиллуулахгүй (`setView`-ийн ⚠️).
-         Бүс/давхаргыг л URL-аас уншина (ижил бол no-op). Горимыг (`dim`) ХӨНДӨХГҮЙ:
-         `initialDim` нь `?d=` байхгүй үед харагдацын анхдагчийг (IoT → 3D) өгдөг тул
-         хэрэглэгчийн сонгосон 2D-г `#` навигаци 3D болгоно. */
       if (next === viewNowRef.current) {
         setZone(readParam('z'));
         setLayer(initialLayer());
         return;
       }
-      /* ⚠️ 2026-09-25: Хэрэглэгч «Гарах уу?»-д ҮГҮЙ гэвэл харагдац хэвээр ч
-         урьд нь доорх бүс/давхарга/горимыг ӨМНӨХ бичлэгээс тавьж, URL нь өөр
-         харагдацыг заасан хэвээр үлддэг байв (төлөв ≠ URL, F5 → буруу
-         харагдац). Татгалзвал юуг ч хөндөхгүй, одоогийн төлөвийг URL-д
-         PUSH-ээр буцааж бичнэ — Back-ийн өмнөх бичлэг түүхэнд хэвээр. */
-      /* ⚠️ 2026-10-23: `setView` ASYNC — URL-ын утгуудыг асуултын ӨМНӨ авна (хариулах хооронд URL өөрчлөгдөж болно) */
       const urlView = initialView();
       const z = readParam('z');
       const l = initialLayer();
@@ -999,37 +716,17 @@ function PortalContent(
    * шилжүүлж, хязгаарлагдсан хэрэглэгч эрхгүй агуулга үзэхээс сэргийлнэ.
    */
   useEffect(() => {
-    // ⚠️ Хоосон массивыг «бүх эрх» гэж үзэж БОЛОХГҮЙ — эрхгүй deep-link бүрэн
-    //    зурагддаг байв. Хоосон хүрээтэй үед Root Portal-ыг огт зурдаггүй тул
-    //    энд navScope үргэлж 1+ гишүүнтэй.
     if (navScope === 'all') return;
     if (!navScope.includes(view)) {
-      // ⚠️ Redirect түүхэнд PUSH хийвэл Back → эрхгүй view сэргэж guard дахин
-      //    push — гарах аргагүй гогцоо. lastViewRef-ыг урьдчилан оноож URL
-      //    эффектийн push-ыг дарна: redirect нь replace байх ёстой.
       lastViewRef.current = navScope[0];
-      /* ⚠️ 2026-10-06 (аудит): шилжвэл ШАЛТГААНЫГ хэлнэ — урьд нь хадгалаагүй засваргүй үед
-         харагдац чимээгүй солигддог тул хэрэглэгч юу болсныг ойлгодоггүй байв. Татгалзвал
-         (хадгалаагүй ажлаа хадгалахаар) `lastViewRef`-ийг буцаана. `navScope` нь `Root`-д
-         агуулгын түлхүүрээр тогтворжсон тул энэ эффект рендер бүрт дахин асуухгүй. */
       const from = VIEW_BY_KEY[view].title;
       const to = VIEW_BY_KEY[navScope[0]].title;
-      /* ⚠️ 2026-10-21 (аудит): асуултад ШАЛТГААНЫГ хэлнэ (`confirmLeave(reason)`). Татгалзвал («Болих» —
-         хадгалаагүй ажлаа алдахгүйн тулд) харагдац ҮЛДЭХ ч эрхгүй агуулга ХАРАГДАХГҮЙ: доорх `viewAllowed`
-         рендерийн хамгаалалт `ViewLost` хаалтын цонх гаргаж, порталыг `inert` болгоно (Root-ийн `frozen`-тэй
-         ижил зарчим — ажил нь амьд, эрх сэргэвэл цонх өөрөө хаагдана). */
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: эрхийн хүрээ АЖИЛЛАЖ БАЙХАД хумигдахад (гаднын permissions store) харагдацыг шилжүүлэх; `setView` нь шүүлт/сонголт цэвэрлэх гаднын нөлөөтэй тул рендер дотор тооцож болохгүй
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void setView(navScope[0], { reason: tr('Таны эрх өөрчлөгдсөн тул «{0}» харагдац хаагдана.', from) }).then((ok) => {
         if (ok) setPortalNotice(tr('Таны эрх өөрчлөгдсөн тул «{0}» хаагдаж, «{1}» руу шилжлээ.', from, to)); else lastViewRef.current = view;
       });
     }
   }, [navScope, view, setView]);
-  /**
-   * ⚠️ 2026-10-21 (аудит): РЕНДЕРИЙН ЭРХИЙН ХАМГААЛАЛТ. Дээрх эффект нь «Болих»-оор няцаагдах (хадгалаагүй
-   *    ажил) ба эффект ажиллах хүртэлх нэг кадрын аль алинд нь эрхгүй харагдац бүрэн зурагддаг байв. Одоо
-   *    `view` хүрээнд байхгүй л бол порталын агуулга `inert`, дээр нь `ViewLost` хаалтын цонх (шалтгаан +
-   *    хүрээний эхний харагдац руу АСУУЛГҮЙ шилжих товч). Эрх сэргэвэл (`navScope` дахин агуулна) цонх алга.
-   */
   const viewAllowed = navScope === 'all' || navScope.includes(view);
 
   const pick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
@@ -1043,20 +740,11 @@ function PortalContent(
   /**
    * ОРТОФОТО — харагдац бүрийн анхдагч.
    *
-   * ⚠️ 2026-08-28 (хэрэглэгчийн хүсэлт): «Ерөнхий дашбоард» ба «Ерөнхий
-   * төлөвлөгөө» ХОЁРООС БУСАД бүх харагдац эхний оролтод ортофототой нээгдэнэ.
-   * Урьд нь (2026-07-31) зөвхөн pkgFin/pkgProg/habea асаалттай, бусад нь
-   * топографи байв. Тэр хоёр нь төлөвлөлтийн бүсчлэл/давхаргыг өнгөөр уншдаг
-   * тул топографи хэвээр; бусад нь бодит талбайтай тулгаж хардаг.
-   *
    * Харагдац дотроо гараар унтраасан/асаасан нь дараагийн солилт хүртэл үлдэнэ.
    * `Ersdel` өөрөө ч `setOrtho(true)` хийдэг — энэ дүрэмтэй нийцнэ.
    */
   const { setOrtho, view: mapView } = useMap();
   useEffect(() => {
-    /* ⚠️ 2026-09-24: «Инженерийн дэд бүтэц» ч ортофотогүй нээгдэнэ — суурь нь
-       LIGHT GRAY CANVAS (доор), ортофото түүнийг бүрхэж шугам уншигдахгүй. */
-    /* ⚠️ 2026-10-13: «Хэсэгчилсэн ЕТ» мөн ортофотогүй — LIGHT GRAY CANVAS суурьтай нээгдэнэ (хэрэглэгчийн заавар) */
     setOrtho(view !== 'gdash' && view !== 'dashboard' && view !== 'plan' && view !== 'dedButets' && view !== 'hesegET');
   }, [view, setOrtho]);
   /* Суурь зураг: дэд бүтэц — LIGHT GRAY CANVAS, бусад — хиймэл дагуул */
@@ -1064,51 +752,26 @@ function PortalContent(
     applyViewBasemap(mapView, view === 'dedButets' || view === 'hesegET' ? 'gray-vector' : 'satellite', view);
   }, [view, mapView]);
 
-  /* ── Багануудын өргөн — `ResizableColumns` (доорх рендер; `CAT_DEFAULT`-ийн ⚠️) ── */
+  /* ── Багануудын өргөн — `ResizableColumns` (доорх рендер; `CAT_DEFAULT`) ── */
   const active = VIEW_BY_KEY[view];
-  /**
-   * ⚠️ Бүтэн талбайг эзлэх харагдацууд (ерөнхий дашбоард, анализ) нь ӨӨРСДИЙН
-   * бүрэн зохион байгуулалттай — порталын каталог/самбар/нэгтгэлийг зурахгүй.
-   * Хоёр ArcGIS view зэрэг ажиллавал WebGL контекст үрэгдэж зураг анивчина тул
-   * харагдац бүр өөрийн ганц зурагтай.
-   *   · analysis  — Suitability Modeler (өөрийн 3 багана, харанхуй палитр)
-   *   · dashboard — газрын зургийг тойрсон үзүүлэлтийн самбар
-   */
   /**
    * «ХУВААРЬ БАТЛАХ» → «ХУВААРЬ» ДАМЖУУЛАЛТ — ЗӨВХӨН САНАХ ОЙД.
    *
    * Батлах дараалал дээр «Хуваарь хуудсанд батлах» дарахад тэр багцаар
    * `Huvaari` нээгдэж, шийдвэрлэх цонх өөрөө гарна (батлах логик тэнд л
    * байна, хуулбарлагдаагүй — `HuvaariBatlah.tsx`-ийн толгойг үз).
-   *
-   * ⚠️ URL-Д БИЧИХГҮЙ: `writeParams` (urlState.ts) нь ТАНИХГҮЙ түлхүүрийг
-   *    хөнддөггүй тул `?approve=<oid>` нь харагдац солиход ч, F5-д ч ҮЛДЭЖ,
-   *    аль хэдийн шийдвэрлэгдсэн саналын цонхыг ДАХИН нээх байлаа. Мөн
-   *    хуваалцсан холбоос нь бусдад ч тэр цонхыг нээнэ.
-   * ⚠️ `sessionStorage` ч мөн адил F5-ыг ДАВНА — яг тэр эрсдэлээс
-   *    зайлсхийх шаардлагатай. React төлөв нь refresh-д үхдэг тул
-   *    цэвэрлэх юм байхгүй: энэ нь шинж, хязгаарлалт биш.
    */
   const [planJump, setPlanJump] = useState<PlanJump | null>(null);
   const clearPlanJump = useCallback(() => setPlanJump(null), []);
-  /* ⚠️ 2026-10-06 (аудит, гүйцэтгэл): `ViewSlot`-ын контекст рендер бүрт ШИНЭ объект байсан тул
-     харагдацын модуль Portal-ын рендер бүрд (тэмдэг, сүлжээ, өгөгдлийн цаг) дахин зурагддаг байв. */
   const slotCtx = useMemo(
     () => ({ dim, setDim, zone, setZone, navScope, setView: ctxSetView, planJump, setPlanJump, clearPlanJump }),
-    /* ⚠️ 2026-10-26 (P8): `theme` — объектод ОРООГҮЙ ч deps-д ЗОРИУД: `ViewSlot` memo болсон тул сэдэв солиход
-       модуль дахин зурагдах цорын ганц зам (JS-ээр өнгө уншдаг модулиуд — `viewRegistry.ViewSlot`-ын ⚠️). */
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- theme зориуд (дээрх ⚠️)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [dim, zone, navScope, ctxSetView, planJump, clearPlanJump, theme],
   );
   // `standalone` нь бүтэн дэлгэцийн харагдацуудыг ЯГ тэмдэглэдэг — тусад нь тоолохгүй
   const isFull = standalone;
-  /**
-   * ⚠️ «Ерөнхий мэдээлэл»-нд нэгтгэсэн зурвас нь самбарын толгойд (доод хүрээгүй)
-   * үлдэнэ. Каталогийн НЭЭЛТ нь бүх харагдацад «Давхарга» товчоор удирдагдана —
-   * plan-д ч жагсаалтыг нуух/харуулах боломжтой (хэрэглэгчийн хүсэлт).
-   */
   const planPanel = view === 'plan';
-  /** «Хэсэгчилсэн ЕТ» (`hesegET`) — дээрх `hesegTab`-ийн ⚠️ */
+  /** «Хэсэгчилсэн ЕТ» (`hesegET`) — дээрх `hesegTab` */
   const planDetail = view === 'hesegET';
   // Каталог нь зөвхөн «Ерөнхий мэдээлэл» ба «Барилгын хяналт»-д байна
   const catOpen = catalog && !isFull && !planDetail;
@@ -1116,9 +779,6 @@ function PortalContent(
   /**
    * «Ерөнхий мэдээлэл»-д ХЭДЭН БАГЦ сонгогдсоныг тоолно — самбар өөрөө өргөсөж
    * сонгосон багцуудыг ЗЭРЭГЦЭЭ багана болгон харуулахад ашиглана.
-   *
-   * ⚠️ `ViewPanel`-ийн `pickedGroups`-тэй ИЖИЛ дүрэм: анхны багцтай яг тэнцүү бол
-   * «хараахан сонгоогүй» тул 0; бүс сонгогдвол ZONE_ID-гүй давхаргыг хасна.
    */
   const planGroups = useMemo(() => {
     if (view !== 'plan') return 0;
@@ -1133,14 +793,6 @@ function PortalContent(
     return new Set(on.map(groupOf).filter(Boolean)).size;
   }, [view, visible, zone]);
 
-  /**
-   * ⚠️ 2+ багц сонгоход самбарыг АВТОМАТААР өргөсгөж хоёр баганыг зэрэг харуулна
-   * («Ерөнхий дашбоард»-ын дэлгэрэнгүйтэй ижил зарчим). Хэрэглэгчийн гараар
-   * тохируулсан өргөнөөс ХЭТ БАГА болгохгүй — `max()`; мөн газрын зургийг хамгаалж
-   * `52vw`-ээр таглана. Багц сонгоогүй үед хуучин өргөн.
-   * ⚠️ 2026-10-23: `max()` нь `ResizableColumns`-ийн CSS-д (`--col-r-eff`) — энд зөвхөн ДООД хязгаар
-   *    (`--col-r-floor`); хэрэглэгчийн өргөн (`--col-r`) компонентод.
-   */
   const autoCols = Math.min(2, planGroups);
   const autoPanel = planGroups >= 2 ? autoCols * 300 + (autoCols - 1) * 10 + 44 : 0;
   const colsStyle = planGroups >= 2
@@ -1149,21 +801,16 @@ function PortalContent(
 
   return (
     <>
-      {/* ⚠️ 2026-10-05: сүлжээ тасарсан тууз — `role="status"` (`alert` биш: `Booting` нь
-          `[role="alert"]`-ыг «харагдац унасан» дохио гэж уншдаг). Товшилтыг хаахгүй. */}
       {!online && (
         <div className={s.offline} role="status" aria-live="polite">
           {tr('Сүлжээний холболт тасарсан')}
         </div>
       )}
-      {/* ⚠️ 2026-10-06: эрх хумигдаж харагдац солигдсон — `role="status"` (`offline`-ийн ⚠️).
-          ⚠️ 2026-10-12: мөн хадгалаагүй ажлаас болж хойшилсон автомат шинэчлэл (`onVis`). */}
       {portalNotice && (
         <div
           role="status"
           aria-live="polite"
           style={{
-            /* ⚠️ 2026-10-23: толгой 80px (`--head`) болсон тул түүний ДООР */
             position: 'fixed', top: 'calc(var(--head) + 8px)', left: '50%', transform: 'translateX(-50%)', zIndex: 3500,
             display: 'flex', alignItems: 'center', gap: 10, maxWidth: 'min(560px, calc(100vw - 32px))',
             padding: '8px 10px 8px 14px', borderRadius: 10, background: 'var(--surface)', color: 'var(--ink)',
@@ -1182,17 +829,8 @@ function PortalContent(
           </button>
         </div>
       )}
-      {/* ⚠️ 2026-10-23: Environment — ХҮРЭЭ: зүүн DOCK (`--nav` 104px, fixed; ≤900px-д доод зурвас) + баруун
-          тал (толгой `--head` 80px sticky · агуулга 12px зайтай). Газрын зурагтай харагдац: KPI зурвас ДЭЭР,
-          доор нь чирэгддэг 3 багана (каталог · зураг · самбар — `ResizableColumns`). Бүтэн дэлгэцийн
-          харагдацууд (`viewRegistry`) дотоод бүтцээ хадгалж зөвхөн энэ хүрээнд сууна.
-          ⚠️ 2026-08-18: `--hue: active.hue` ХАСАГДСАН хэвээр (байгууллагын НЭГ акцент).
-          ⚠️ z-index: толгой 20 · dock 15 ХЭВЭЭР — модулиудын бүтэн дэлгэцийн overlay (30–40) тэднээс дээр
-             гарахаар тооцогдсон (`dedButets`/`finance.module.css`). Хүрээнд `transform`/`filter` БАЙХГҮЙ
-             (тэд `fixed`-ийн эх хүрээг өөрчилнө); blur зөвхөн толгойн `backdrop-filter`. */}
       <div
         className={`${s.shell} ${navMin ? s.shellNavMin : ''}`}
-        /* ⚠️ 2026-10-21 (аудит): эрхгүй харагдац — агуулга `inert` (`viewAllowed`-ийн ⚠️, `ViewLost` дээр нь) */
         inert={!viewAllowed}
       >
         {/* ── ЗҮҮН DOCK: харагдацын жагсаалт (Environment `shell/sidebar.tsx`) ── */}
@@ -1210,7 +848,6 @@ function PortalContent(
             {!navMin && <span>{tr('Хураах')}</span>}
           </button>
           <div className={s.dockNav}>
-            {/* ⚠️ 2026-10-06 (аудит): цэс ч ТУСДАА хашлагад — уналт нь бүх порталыг үхүүлэхгүй */}
             <ErrorBoundary scope="view" label={tr('Цэс нээгдсэнгүй')}>
             <ViewRail
               view={view}
@@ -1224,8 +861,6 @@ function PortalContent(
               onSysClose={canSys ? () => setSysOpen(true) : undefined}
               sysCloseActive={sysOpen}
               sysClosedNow={!!sysNow}
-              /* ⚠️ Нэвтэрсэн үед л (2026-09-23): auth унтраалттай (`off`) бол гарах
-                 зүйл байхгүй тул мөр гарахгүй. */
               userName={auth.user?.fullName || auth.user?.username}
               onSignOut={auth.status === 'signed-in' ? signOut : undefined}
               badges={badges}
@@ -1236,38 +871,25 @@ function PortalContent(
 
         <div className={s.frame}>
         <header className={s.head}>
-          {/* Лого/нэр дээр дарахад НҮҮР рүү буцна (onHome өгөгдсөн бол товч болно).
-              ⚠️ 2026-10-23: Environment — 60px лого (≤640px-д 44px), Manrope 16px/700 UPPERCASE брэнд, доор нь
-              11px зам заагч = идэвхтэй харагдацын нэр (≤640px-д нуугдана). */}
+          {/* Лого/нэр дээр дарахад НҮҮР рүү буцна (onHome өгөгдсөн бол товч болно). */}
           <div className={s.identity}>
             <button
               type="button"
               className={s.brand}
-              /* ⚠️ 2026-09-30: `confirmLeave` — хадгалаагүй ажлын хамгаалалт (дээрх ⚠️) */
               onClick={onHome ? async () => { if (await confirmLeave()) onHome(); } : undefined}
               disabled={!onHome}
               title={onHome ? tr('Нүүр хуудас руу буцах') : undefined}
             >
               <img src="/logo.svg" alt="" className={s.logo} />
-              {/* ⚠️ 2026-08-21: Дэд гарчиг ХАСАГДСАН (хэрэглэгчийн хүсэлт) — толгойд зөвхөн брэндийн нэр. */}
               <h1 className={s.brandName}>{tr('Сэлбэ ухаалаг хот')}</h1>
             </button>
             <div className={s.crumb}>{active.title}</div>
           </div>
 
-          {/* ⚠️ 2026-08-17: Харагдац сонголт толгойноос ЗҮҮН DOCK руу зөөгдсөн. */}
 
           <ActiveFilterChip />
 
-          {/* ⚠️ Хэрэгслүүд ЗААВАЛ өөрийн саванд. Урьд нь `ActiveFilterChip` нь
-              баруун тийш түлхэх үүрэг гүйцэтгэдэг байсан ч тэр нь шүүлт
-              идэвхгүй үед `null` буцаадаг — тэгэхээр товчнууд брэндийн ЯГ
-              хажууд наалдаж, толгойн баруун тал хоосон үлддэг байв.
-              `margin-left: auto` нь шүүлт байгаа эсэхээс ҮЛ ХАМААРАН түлхэнэ. */}
-          {/* ⚠️ «Хэрэглэгчийн эрх» толгойд БИШ (2026-08-20) — dock-ийн «СИСТЕМ» бүлэгт.
-              ⚠️ 2026-10-23: Environment — 40px дугуй дүрсэн товчнууд, 1px зааг, дараа нь хэрэглэгчийн чип. */}
           <div className={s.headTools}>
-            {/* ⚠️ 2026-10-05: өгөгдлийн цаг + гараар шинэчлэх (дээрх `refreshData`-ийн ⚠️) */}
             <span className={`${s.dataAt} num`} title={tr('Өгөгдлийг сүүлд бүтнээр шинэчилсэн цаг')}>
               {tr('Өгөгдөл: {0}', hhmm(dataAt))}
             </span>
@@ -1281,16 +903,10 @@ function PortalContent(
               <RefreshCw size={18} strokeWidth={1.6} aria-hidden />
             </button>
 
-            {/* ⚠️ 2026-10-15: «Тайлан» — идэвхтэй харагдацыг (1–26 бүгд) Word болгон татна (`ReportButton`).
-                ЗӨВХӨН super admin-д (хэрэглэгчийн заавар) — `isSuper` нь `AuthGate`-ийн hard role. */}
             {isSuper && !NO_REPORT.has(view) && <ReportButton
               viewKey={view}
               title={active.title}
               desc={active.desc}
-              /* ⚠️ 2026-10-23 (UX аудит E1): «Бүс» ЗӨВХӨН бүсээр шүүдэг харагдацад (зурагтай харагдац · Ерөнхий/
-                 Дашбоард) — урьд нь бүсгүй харагдацын тайланд ч «Бүс: X» гэж худал бичигддэг байв. Ерөнхий дашбоардад бүс
-                 нь ЗӨВХӨН газрын зургийг шүүнэ (KPI нь төслийн нийт — `GeneralDash`-ийн E2 ⚠️). Он/сар/таб/сонголт зэрэг
-                 харагдацын өөрийн шүүлтийг `viewReport` дэлгэцээс уншиж нэмнэ (`readFilters`). */
               filters={zone && (!standalone || view === 'gdash' || view === 'dashboard')
                 ? [view === 'gdash'
                   ? tr('Бүс (зөвхөн газрын зураг): {0}', zonesLabel(zone.split(',').filter(Boolean)))
@@ -1310,9 +926,6 @@ function PortalContent(
               {theme === 'dark' ? <Sun size={18} strokeWidth={1.6} aria-hidden /> : <Moon size={18} strokeWidth={1.6} aria-hidden />}
             </button>
 
-            {/* ⚠️ 2026-09-30: ТУСЛАМЖ — хэрэглэгчийн эрхэнд байгаа хэсэг бүр юунд
-                зориулагдсан, хэн ашигладгийг тайлбарлана (`HelpPanel`). Анхны зөвлөмжийн
-                сум нь «?» товчийн төвөөс хэмжигдэнэ (`HelpTip`, 2026-10-26). */}
             <button
               type="button"
               className={s.iconBtn}
@@ -1325,8 +938,6 @@ function PortalContent(
               <CircleQuestionMark size={18} strokeWidth={1.6} aria-hidden />
             </button>
 
-            {/* ⚠️ 2026-10-23: Environment `auth/user-chip.tsx` — ХЭН нэвтэрсэн, яаж ГАРАХ. Нэвтэрсэн үед л
-                (auth `off` бол гарах зүйлгүй — dock-ийн «Гарах» мөртэй ижил нөхцөл). */}
             {auth.status === 'signed-in' && auth.user && (
               <>
                 <span className={s.headDiv} aria-hidden />
@@ -1342,20 +953,9 @@ function PortalContent(
         </header>
 
         {/* Бүтэн талбайн харагдацууд — ерөнхий дашбоард ба анализ */}
-        {/* ⚠️ 2026-10-06: `id="main"` — алгасах холбоосын (`SkipLink`) ЗОРИЛТ. Модулиуд өөрсдийн
-            `<main>`-тэй тул энд ДАХИН `<main>` нэмэхгүй (давхар landmark). */}
         {isFull && (
-          /* ⚠️ 2026-10-06 (аудит): `id="main"` — `SkipLink`-ийн зорилт (урьд нь `#panel` зөвхөн
-             самбартай харагдацад байв). `<main>` БИШ: модулиуд өөрсдөө `<main>` зурдаг (давхар main). */
           <div className={s.suit} id="main" tabIndex={-1}>
-            {/* ⚠️ ХАРАГДАЦ БҮР ТУСДАА ХАШЛАГАД (2026-09-03-ны аудит): нэг
-                модулийн рендерийн throw бүх порталыг үхүүлдэг байв — навигац,
-                каталог, ХАДГАЛААГҮЙ НООРОГ бүгд алга болно. `key={view}` нь
-                харагдац солиход хашлагыг remount хийж, хуучин алдааг арилгана. */}
             <ErrorBoundary scope="view" key={view} label={tr('«{0}» нээгдсэнгүй', VIEW_BY_KEY[view].title)}>
-              {/* ⚠️ 2026-09-30: харагдац → модуль нь `viewRegistry.tsx`-ийн НЭГ
-                  хүснэгт (урьд нь энд 20 давхар гурвалсан оператор байв).
-                  Модуль бүр контекстоос зөвхөн өөрт хэрэгтэй пропоо авна. */}
               <ViewSlot
                 view={view}
                 ctx={slotCtx}
@@ -1365,9 +965,6 @@ function PortalContent(
         )}
 
         {!isFull && (
-          /* ⚠️ 2026-10-23: `id="main"` нь ЭНЭ ажлын талбарт (KPI · каталог · зураг · самбар бүгд) — урьд нь зураг
-             (`#main`) ба самбар (`#panel`) тусдаа байв. Тайлан (`viewReport.roots`) KPI-г ч багтааж, давхардуулахгүйн
-             тулд самбарын `id="panel"` хасагдсан; `SkipLink` `#main` руу (fallback хэвээр). Каталог `data-report-skip`. */
           <div className={s.work} id="main" tabIndex={-1}>
             {/* ── KPI ЗУРВАС (Environment `.analytics-overview`) — урьд нь самбарын толгойн доор (plan) эсвэл
                 дэлгэцийн доод хүрээнд (бусад) байсан нэгтгэсэн үзүүлэлт. «Хэсэгчилсэн ЕТ»-д байхгүй (урьдын адил). */}
@@ -1386,7 +983,7 @@ function PortalContent(
               style={colsStyle}
             >
               {/**
-                * Давхаргын сонголт — ЗҮҮН БАГАНА (⚠️ 2026-10-23: Environment — байнгын багана; 2026-08-18-ны
+                * Давхаргын сонголт — ЗҮҮН БАГАНА (2026-10-23: Environment — байнгын багана; 2026-08-18-ны
                 * зурган дээрх ХӨВӨГЧ popup (`catPop`) ба 2026-09-15-ны «зургийн зүүн ирмэгт» шийдвэр ХАСАГДАВ).
                 * Нээх/хаах нь урьдын адил («Давхарга» товч · цэсний идэвхтэй мөр · ×) — хаахад багана алга болж
                 * зураг өргөснө. `embedded` — өөрийн хүрээгүй хувилбар (карт нь `.catCol`).
@@ -1394,7 +991,6 @@ function PortalContent(
               {catOpen && (
                 <div className={s.catCol}>
                   <ErrorBoundary scope="view" label={tr('Давхаргын жагсаалт нээгдсэнгүй')}>
-                  {/* ⚠️ 2026-10-22: `totals` ӨГӨХГҮЙ — нээлттэй бүлгийнхээ тоог л өөрөө татна (дээрх `totals`-ийн ⚠️) */}
                   <LayerCatalog
                     view="plan"
                     visible={visible}
@@ -1411,19 +1007,10 @@ function PortalContent(
                 </div>
               )}
 
-              {/* ⚠️ 2026-10-07: `data-map-host` — бүтэн дэлгэц энэ хашлагыг бүхэлд нь авна (`MapCanvas.toggleFs`).
-                  ⚠️ 2026-10-23: Environment — зураг нь 12px булантай карт (--line хүрээ, overflow hidden, ≥300px). */}
               <div className={s.map} data-map-host="">
-                {/* ⚠️ 2026-10-06 (аудит): зураг, хэрэгслийн зурвас, тунгалаг, каталог, нэгтгэлийн
-                    зурвас ТУС БҮР өөрийн хашлагад — урьд нь `scope="view"`-ийн ГАДНА байсан тул
-                    тэдгээрийн рендерийн алдаа (эсвэл байршуулалтын дараах chunk 404) root
-                    хашлагад (layout.tsx) хүрч ПОРТАЛЫГ БҮХЭЛД нь сольдог байв. Зургийн хашлага
-                    `key`-гүй: харагдац солих бүрд ArcGIS зургийг дахин үүсгэхгүй. */}
                 <ErrorBoundary scope="view" label={tr('Газрын зураг нээгдсэнгүй')}>
                 <MapCanvas
                   dim={dim}
-                  /* ⚠️ «Detail» — зөвхөн хоёр талын давхарга + `bare`: суурь 14-ийн бусад нь асахгүй.
-                     Swipe: зүүн — одоогийн ерөнхий төлөвлөгөө, баруун — шинэчлэгдсэн (`DETAIL_NEXT_LAYERS`). */
                   visible={planDetail ? detailVisible : visible}
                   bare={planDetail}
                   /* Харьцуулах товч асаалттай үед л (`hesegSwipe`); хэсэг бүр өөрийн хоёр талтай */
@@ -1433,8 +1020,6 @@ function PortalContent(
                   layerFilters={planDetail ? detailFilters : undefined}
                   opacity={opacity}
                   zone={planDetail ? null : zone}
-                  /* ⚠️ Явган хүний зам нь ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д үргэлж
-                     асаалттай (`services.ts` §PLAN_ALWAYS_ON_IDS). */
                   alwaysOn={planPanel && !planDetail ? PLAN_ALWAYS_ON_IDS : undefined}
                   onPick={pick}
                 />
@@ -1447,9 +1032,7 @@ function PortalContent(
                   </ErrorBoundary>
                 )}
 
-                {/* «Detail» — давхцлын тодруулга (swipe нь зөвхөн 2D-д, `MapCanvas` §swipe).
-                    ⚠️ 2026-10-13: «Одоогийн төлөвлөгөө» / «Шинэчлэгдсэн» товч зургаас САМБАРЫН ТОЛГОЙ руу
-                    шилжив (хэрэглэгчийн заавар) — `PlanOverlapPanel` §sideSwitch. */}
+                {/* «Detail» — давхцлын тодруулга (swipe нь зөвхөн 2D-д, `MapCanvas` §swipe). */}
                 {planDetail && dim === '2d' && hesegTab === 'overlap' && (
                   <ErrorBoundary scope="view" floating label={tr('Давхцлын тооцоо нээгдсэнгүй')}>
                     <PlanOverlapLayers focus={overlapFocus} shown={overlapShown} selected={overlapSel} />
@@ -1482,9 +1065,7 @@ function PortalContent(
                 )}
 
                 {/* Газрын зургийн НЭГДСЭН хэрэгслийн зурвас — бүх харагдацад ижил
-                    (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв.
-                    ⚠️ 2026-10-13: «Detail»-д ГАРАХГҮЙ (хэрэглэгч: «энэ байхгүй, одоо дээр бол байна») —
-                    каталог/тунгалаг/бүс тэнд утгагүй; давхаргыг дээрх товч удирдана. */}
+                    (`MapTools`). Урьд нь энэ блок энд гараар бичигдсэн байв. */}
                 {!planDetail && (
                 <ErrorBoundary scope="view" floating label={tr('Зургийн хэрэгслүүд нээгдсэнгүй')}>
                 <MapTools
@@ -1493,16 +1074,10 @@ function PortalContent(
                   layersOpen={catOpen}
                   onLayers={() => setCatalog((v) => !v)}
                   opacityOpen={opacityOpen}
-                  /* ⚠️ Тунгалаг нь `setView`-д ТЭГЛЭГДДЭГГҮЙ (санаатай — доорх
-                     `setView`-ийн жагсаалтыг үз) тул өмнөх харагдацад 10% болгосон
-                     давхарга энд ч бүдэг хэвээр. Товчны тэмдэг нь тэр далд төлөвийг
-                     ил болгоно (2026-09-15-ны хэрэглээний аудит). */
                   opacityCount={Object.values(opacity).filter((v) => v < 1).length}
                   onOpacity={() => setOpacityOpen((v) => !v)}
                   zone={zone}
                   setZone={setZone}
-                  /* ⚠️ ЗҮҮН ХАВТАС — ЗӨВХӨН энэ харагдацад (2026-09-15,
-                     хэрэглэгчийн заавар). Бусад зураг хуучин зохиомжтой. */
                   dock
                 />
                 </ErrorBoundary>
@@ -1522,10 +1097,8 @@ function PortalContent(
                 )}
               </div>
 
-              {/* ── БАРУУН БАГАНА: самбар — картууд босоо цуваа, багана өөрөө гүйнэ ──
-                  ⚠️ 2026-10-23: өргөн тохируулах бариул нь `ResizableColumns`-д (урьд нь самбарын зүүн ирмэгт). */}
+              {/* ── БАРУУН БАГАНА: самбар — картууд босоо цуваа, багана өөрөө гүйнэ ── */}
               <aside className={s.panel} aria-label={tr('{0} самбар', active.title)}>
-                {/* ⚠️ 2026-10-13: «Detail» горимд гарчгийн карт НУУГДАНА (хэрэглэгчийн заавар) */}
                 {!planDetail && (
                 <header className={s.panelHead}>
                   <span className={s.panelIcon}><Icon name={active.icon} /></span>
@@ -1545,7 +1118,6 @@ function PortalContent(
                         setTab={(x) => {
                           if (x === hesegTab) return;
                           setHesegTab(x); setHesegPick(null); setOverlapSel(null); setOverlapFocus(null);
-                          /* ⚠️ 2026-10-19 (аудит): таб солиход ч хуучин ЕТ-ийн сонгомол давхарга АНХДАГЧААР унтраалттай */
                           setOverlapShown([]); resetNeedSelection(); setHesegSwipe(false); setDetailHidden(OLD_ET_OPTIONAL);
                         }}
                         change={<ChangePanel pick={hesegPick} setPick={setHesegPick} />}
@@ -1563,16 +1135,10 @@ function PortalContent(
                   </div>
                 )}
 
-                {/* ⚠️ Баруун самбар нь газрын зурагтай ХАМТ зурагддаг тул
-                    түүний уналт зургийг ч авч унагадаг байв — тусад нь хашина. */}
-                {/* ⚠️ «Detail»-д УСТГАХГҮЙ, нуух — самбарын дотоод төлөв «Одоо» руу буцахад хэвээр.
-                    `hidden` атрибут БИШ: `.panelBody`-ийн `display: flex` түүнийг дарна. */}
                 <div className={s.panelBody} style={planDetail ? { display: 'none' } : undefined}>
                   <ErrorBoundary scope="view" key={`panel-${view}`} label={tr('Самбар нээгдсэнгүй')}>
                   <ViewPanel
                     view={view}
-                    /* ⚠️ 2026-10-22: нуугдмал самбарт тоо татахгүй — хоосон (унтраалттай) Map-ыг «N давхарга татагдсангүй»
-                       (role=alert) гэж зурахгүйн тулд «ачаалж буй» төлөв (`TOTALS_IDLE`) */
                     totals={view === 'plan' ? totals : TOTALS_IDLE}
                     visible={visible}
                     setVisible={setVisible}
@@ -1593,7 +1159,6 @@ function PortalContent(
         </div>
       </div>
 
-      {/* ⚠️ 2026-10-21 (аудит): эрхгүй харагдацын хаалтын цонх (`viewAllowed`-ийн ⚠️) */}
       {/* `!viewAllowed` нь `navScope`-ыг массив болгож нарийсгана (TS-ийн alias нарийсгалт) */}
       {!viewAllowed && (
         <ViewLost
@@ -1604,12 +1169,6 @@ function PortalContent(
       )}
 
       {/* ТЭЗҮ баримт бичгийн глобал popup — fixed тул бүх харагдацыг халхална */}
-      {/* ⚠️ `docsAllowed`-ыг ЭНД дахин шалгана (`Home`-той ижил): эрх нь ажиллаж
-          байх үед super admin панелаас буурвал нээлттэй цонх өөрөө хаагдана. */}
-      {/* ⚠️ 2026-10-06 (аудит): ХӨВӨГЧ ЦОНХ БҮР ТУСДАА ХАШЛАГАД — `dynamic` chunk-ийн 404 (шинэ
-          хувилбар байршсан) эсвэл рендерийн throw нь урьд нь root хашлага хүртэл хөөрч БҮХ
-          порталыг (хадгалаагүй ажилтай нь) унагадаг байв. `OverlayBoundary` — буланд мэдэгдэл
-          («Хуудсыг дахин ачаалах» / «Хаах»), бусад хэсэг ажиллана. */}
       <OverlayBoundary label={tr('Баримт бичгийн цонх нээгдсэнгүй')} onReset={() => setDocsOpen(false)}>
         <DocViewer open={docsAllowed && docsOpen} onClose={() => setDocsOpen(false)} />
       </OverlayBoundary>
@@ -1623,16 +1182,11 @@ function PortalContent(
         </OverlayBoundary>
       )}
 
-      {/* ⚠️ 2026-10-19: «Систем түр хаах» — удирдлагын цонх (эрхтэй) ба хаалттай үеийн шар зурвас. Зурвас нь
-          ЗӨВХӨН ЭНЭ хэрэглэгчид хаалт үйлчлэхгүй үед (`auth.sysClosed` хоосон) — хаалттай хэрэглэгчид
-          `SystemClosed` цонх аль хэдийн бүтэн дэлгэцээр. */}
       {canSys && (
         <OverlayBoundary label={tr('Систем түр хаах цонх нээгдсэнгүй')} onReset={() => setSysOpen(false)}>
           <SystemCloseDialog open={sysOpen} onClose={() => setSysOpen(false)} />
         </OverlayBoundary>
       )}
-      {/* ⚠️ 2026-10-19 (аудит): зурвас ЗӨВХӨН хаалтыг ДАВАХ эрхтэйд (`canSys` = `canBypassClosed`). Урьд нь хаалт
-          хараахан тусаагүй (дараагийн poll хүлээж буй) энгийн хэрэглэгчид «бусдад хаалттай» гэж ХУДАЛ хэлдэг байв. */}
       {sysNow && canSys && !auth.sysClosed && !sysOpen && (
         <SystemClosedStrip onOpen={() => setSysOpen(true)} />
       )}
@@ -1645,8 +1199,6 @@ function PortalContent(
 
       {/* AI туслах — бүх харагдацад нэг л удаа (яриа харагдац соливол тасрахгүй) */}
       <AgentButton open={agentOpen} onToggle={() => { setAgentMounted(true); setAgentOpen(true); }} />
-      {/* ⚠️ 2026-10-04: анх НЭЭХЭД л mount (дээрх `agentMounted`-ийн ⚠️) — дараа нь хаасан ч
-          mount хэвээр тул яриа хадгалагдана. */}
       {agentMounted && (
         <OverlayBoundary label={tr('AI туслах нээгдсэнгүй')} onReset={() => setAgentOpen(false)}>
           <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />
@@ -1658,15 +1210,6 @@ function PortalContent(
 
 /* ── Эрх хасагдсан харагдацын хаалтын цонх ── */
 
-/**
- * ⚠️ 2026-10-21 (аудит): эрх хасагдсан атлаа хадгалаагүй ажлаас болж («Болих») үлдсэн харагдацыг
- * ХААНА — `AuthGate.AccessLost`-той ижил загвар (`auth.module.css`), фокусын урхитай (`useFocusTrap`).
- * Агуулга нь ард `inert` — харагдахгүй, дарагдахгүй; эрх сэргэвэл Portal энэ цонхыг зурахаа болино.
- * Товч нь `setView(…, { force: true })` — асуулгүй: хадгалаагүй ажил алдагдахыг товч өөрөө хэлнэ.
- * ⚠️ 2026-10-22 (аудит): ЯВЖ БУЙ бичилт (Хуваарийн гинж · илгээлт · шийдвэр · буулгалт) байвал товч АСУУНА
- *    (`confirmLeave`-ийн `busyOnly`) — «Болих» бол бичилт дуустал цонх хэвээр, дараа нь дахин дарна.
- * `role="alertdialog"` (`alert` БИШ — `Booting` нь `[role="alert"]`-ыг «харагдац унасан» гэж уншдаг).
- */
 function ViewLost({ from, to, onGo }: { from: string; to: string; onGo: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, true);
@@ -1691,10 +1234,6 @@ function ViewLost({ from, to, onGo }: { from: string; to: string; onGo: () => vo
 
 /**
  * Газрын зурагт одоо ямар шүүлт үйлчилж байгааг ҮРГЭЛЖ харуулна.
- *
- * ⚠️ Урьд нь идэвхтэй шүүлт зөвхөн түүнийг үүсгэсэн самбарын мөрөнд л
- * тодорсон байдаг байв. Хэрэглэгч доош гүйлгэж, өөр хэсэг рүү шилжсэний дараа
- * зураг яагаад бүдгэрсэн шалтгааныг олох арга байхгүй байлаа.
  */
 function ActiveFilterChip() {
   const { active, clear } = useFilter();
@@ -1724,13 +1263,6 @@ function ActiveFilterChip() {
 
 /* ── Хэрэглэгчийн чип (толгойн баруун захад) ── */
 
-/**
- * ⚠️ 2026-10-23: Environment `auth/user-chip.tsx` — 40px pill (28px аватар + нэр), дарахад нэр · нэвтрэх нэр ·
- * «Гарах». Порталын толгойд урьд нь хэрэглэгчийн мөр БАЙГААГҮЙ (зөвхөн цэсний «Гарах» мөр — хэвээр үлдэнэ).
- * ⚠️ `UserCard.tsx`-д БИШ, ЭНД: тэр файл эрхийн удирдлагын хүнд модулиудыг (`UserRights`, `UserWorkflow` …)
- *    импортлодог — Portal-аас импортловол `UserAdmin`-ий `dynamic` хуваалт (2026-10-04-ний ⚠️) эвдэрнэ.
- * Аватар — `AuthGate`-ийн токенгүй `thumbnail`; ачаалагдахгүй бол дүрс рүү буцна.
- */
 function UserChip({ name, username, thumbnail, onSignOut }: {
   name: string;
   username: string;
@@ -1787,12 +1319,6 @@ function UserChip({ name, username, thumbnail, onSignOut }: {
 
 /* ── KPI зурвас — нэгтгэсэн үзүүлэлт ── */
 
-/**
- * ⚠️ Энэ зурвас урьд нь ДЭЛГЭЦИЙН ДООД хүрээ, дараа нь самбарын гарчгийн доор байв.
- * ⚠️ 2026-10-23: Environment — ажлын талбарын ДЭЭД мөр, `.analytics-stat` хавтангууд (38px дүрсний хайрцаг,
- *    10px шошго, 23px утга) auto-fit сүлжээнд. Ачаалж байхад хавтангууд «…»-тэй (хоосон зурвас биш).
- *    Тоо, асуулга, null ≠ 0 дүрэм ӨӨРЧЛӨГДӨӨГҮЙ.
- */
 /** Бүсийн тоо/талбай/өрх — каноник кодоор ДАВХАРДАЛГҮЙ (кодгүй мөр тус бүр нэг); SUM-ын дүрмээр утгагүй бол `null` */
 function zoneTotals(rows: Row[]): { n: number; ga: number | null; ail: number | null } {
   const Z = ZONE_FIELDS;
@@ -1816,44 +1342,24 @@ function zoneTotals(rows: Row[]): { n: number; ga: number | null; ail: number | 
 }
 
 function SummaryBar({ zone }: { zone: string | null }) {
-  // ⚠️ Хоёр давхарга бүсээ ӨӨР талбар, ӨӨР бичиглэлээр агуулна — нэг WHERE-ийг
-  //    хоёуланд нь тавьж болохгүй (`zoneWhere` давхарга бүрд нь угсарна).
   const where = zone ?? '1=1';
 
   const q = useAsync(async () => {
     const Z = ZONE_FIELDS;
     const zoneQ = zone ? zoneWhere(ZONE_LAYER, zone) ?? '1=1' : '1=1';
     const builtQ = zone ? zoneWhere(BUILT_LAYER, zone) ?? '1=1' : '1=1';
-    /* ⚠️ 2026-09-22 (өгөгдлийн аудит): «айл» ба «хүн ам» нь урьд нь /106 `URH_TOO`
-       (8,591) ба /108 `Total_population` (68,326 — `live.ts:35`-д ХОРИОТОЙ багтаамжийн
-       тоо) байсан бөгөөд бусад БҮХ харагдацын `loadHousing().ail` (/112 AIL_TOO) ·
-       `loadHeadline().population` (/108 `Population`)-той зөрдөг байв. Одоо бүс
-       СОНГООГҮЙ үед яг тэр хоёр эхээс; бүс сонгосон үед /108-ыг бүсээр шүүж
-       `Population` (`POPULATION_FIELD`) талбараар, айлыг /112-т бүсийн талбар
-       байхгүй тул /106 `URH_TOO`-оор (бүсийн төлөвлөлтийн өрх) авна. */
     const [zones, built, headline, housing] = await Promise.all([
-      /* ⚠️ 2026-10-26 (аудит): бүсийн давхаргад давхардсан мөр бий (X-13 — objectid 12 ба 47, `analysis/data.dedupeZoneFeats`-ийн ⚠️) —
-         `count`/`sum` нь «58 бүс», X-13 сонгоход «2 бүс · 2.49 га» гэдэг байв (анализ, бүсийн шүүлт 57). Каноник кодоор нэг удаа. */
       queryFeatures(layerUrl(ZONE_LAYER), { where: zoneQ, outFields: [Z.id, Z.landHa, Z.households] }).then(zoneTotals),
       queryStats(layerUrl(BUILT_LAYER), [count(oidOf(BUILT_LAYER), 'n'), sum(POPULATION_FIELD, 'pop')], builtQ),
       loadHeadline(),
       loadHousing(),
     ]);
-    /* ⚠️ 2026-09-25: SUM нь мөргүй/бүх утга хоосон үед `null` буцаадаг —
-       `Number(x ?? 0)` нь «мэдээлэлгүй»-г «0 га / 0 хүн» гэж худал харуулдаг
-       байв (null ≠ 0). COUNT нь үргэлж тоо тул `?? 0` хэвээр. */
     const orNull = (v: unknown): number | null => {
       const n = v == null ? NaN : Number(v);
       return Number.isFinite(n) ? n : null;
     };
     return {
       zones: Number(zones.n ?? 0),
-      /**
-       * ⚠️ Бүс сонгогдсон үед тэр бүсийн `GAZAR_GA`; сонгоогүй үед хилийн
-       * давхаргын АМЬД `Hec_area` (урьд нь бэхлэгдсэн 158 га байсан). Бүх
-       * бүсийн нийлбэр (~131 га) нь зөвхөн бүсчилсэн газрыг хамардаг тул
-       * төслийн хэмжээг илэрхийлэхгүй.
-       */
       ga: zone ? orNull(zones.ga) : headline.areaHa,
       ail: zone ? orNull(zones.ail) : housing.ail,
       built: Number(built.n ?? 0),
@@ -1862,8 +1368,6 @@ function SummaryBar({ zone }: { zone: string | null }) {
   }, [where]);
 
   if (q.state === 'error') {
-    /* ⚠️ 2026-10-05: шалтгаан (`friendlyError`) + «Дахин оролдох». Урьд нь дөрвөн асуулгын аль нэг
-       унахад нүцгэн «Үзүүлэлт татагдсангүй» л гарч, F5-аас өөр гарцгүй байв. */
     return (
       <div className={s.kpi} role="alert" aria-label={tr('Нэгтгэсэн үзүүлэлт')}>
         <div className={`${s.stat} ${s.statWide}`}>

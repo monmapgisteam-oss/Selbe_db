@@ -1,6 +1,6 @@
 /**
- * ДАВХАРГЫГ MAP-Д ХОЙШЛУУЛЖ НЭМЭХ (`lazyLayers.ts`, ⚠️ 2026-10-22 — гүйцэтгэл).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/lazyLayers.check.mjs
+ * ДАВХАРГЫГ MAP-Д ХОЙШЛУУЛЖ НЭМЭХ (`lazyLayers.ts`, 2026-10-22 — гүйцэтгэл).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/lazyLayers.check.mjs
  *
  * Хамгаалж буй зүйлс:
  *   1. Сангийн давхарга Map-д ЗӨВХӨН хэрэгтэй үед орно (`mapLayer` нэмэхгүй; `ensureMapLayer`/`lazyShowVisible` нэмнэ).
@@ -9,9 +9,6 @@
  *   3. `ChangeBoundary` khil1-ийг төгсгөл рүү зөөгөөд ХУУЧИРСАН индекс рүү буцаавал дараалал сэргэнэ.
  *   4. `MapCanvas` холболт — Map эхэндээ зөвхөн ортофото + `LAZY_END`, шинж тавих эффектүүд Map-д ороогүйг ч давтана,
  *      Эрсдэлийн шинжилгээ нуугдсан давхаргыг `mapLayer`-ээр олно.
- *
- * ⚠️ ArcGIS Node-д ажиллахгүй тул Map/Collection-ийг хуурамчаар (Collection-ийн `add`/`reorder` дүрэмтэй ижил) орлуулна;
- *    холболтыг ЭХ КОДООР (тайлбаргүйгээр) тулгана (`uiGuards.check.mjs`-ийн арга).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

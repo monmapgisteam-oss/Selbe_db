@@ -1,14 +1,14 @@
 /**
  * ДАХИН ШАЛГАЛТ (`hyanaltStore.recheck`) — УРАЛДААН ба БИЧИЛТИЙН ДАРААХ АЧААЛАЛТ.
  * Хуурамч ArcGIS (`fetch`), амьд сүлжээ рүү НЭГ Ч хүсэлт явахгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/hyanaltRecheck.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/hyanaltRecheck.check.mjs
  *
  * Хамгаалж буй алдаанууд (2026-09-30):
- *   1. ⚠️ «ok» (дээш илгээх) зам бичихийн өмнө ДАХИН ШАЛГАДАГГҮЙ байв
+ *   1. «ok» (дээш илгээх) зам бичихийн өмнө ДАХИН ШАЛГАДАГГҮЙ байв
  *      (`movedSince` зөвхөн «back» ба `apply`-д). Нэг шатанд хоёр данс томилогдсон
  *      үед нөгөө нь хооронд нь «back» хийвэл ergelt+1 мөр нэмэгдэж, гүйцэтгэгчид
  *      очсон буцаалт чимээгүй дарагдана; хоёулаа «ok» бол ижил тойрогтой ХОЁР мөр.
- *   2. ⚠️ Бичилт БҮТСЭНИЙ дараах `refresh()` унавал `{ok:false}` буцдаг байв —
+ *   2. Бичилт БҮТСЭНИЙ дараах `refresh` унавал `{ok:false}` буцдаг байв —
  *      хянагч улаан алдаа хараад дахин дарж STALE авна (`apply`-ийн 2026-09-29-ний
  *      засвартай ижил).
  */
@@ -38,8 +38,6 @@ globalThis.fetch = async (input, init) => {
   const body = init?.body instanceof URLSearchParams ? init.body : new URLSearchParams(String(init?.body ?? ''));
   if (!url.startsWith(HYANALT.url)) { st.unexpected.push(url); throw new TypeError('сүлжээ хаалттай (тест)'); }
   const path = url.slice(HYANALT.url.length);
-  /* ⚠️ 2026-10-01: давхаргын МЕТАДАТА (`serviceFieldNames`) — шийдвэрийн лог талбар
-     (`Shiidveriin_tuuh`) БАЙГАА үйлчилгээ гэж үзнэ (`hasHistoryField`). */
   if (path === '' || path === '/') {
     return json({ supportsCalculate: true, fields: Object.values(F).map((name) => ({ name })) });
   }
@@ -56,12 +54,10 @@ globalThis.fetch = async (input, init) => {
   }
   if (path === '/applyEdits') {
     st.wrote = true;
-    /* ⚠️ 2026-10-12 (R3): давхар тойргийн устгал (`hyanalt.deleteRow`) */
     if (body.has('deletes')) {
       const ids = String(body.get('deletes')).split(',').map(Number);
       const res = ids.map((id) => {
         st.deletes.push(id);
-        /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): устгал УНАДАГ горим (`failDelete`) — ихэр үлдэх тохиолдол (7) */
         if (st.failDelete) return { objectId: id, success: false };
         const i = st.rows.findIndex((x) => x.objectid === id);
         if (i >= 0) st.rows.splice(i, 1);
@@ -131,7 +127,6 @@ const reset = () => {
   st.beforeAdd = null;
   st.failDelete = false;
 };
-/* ⚠️ `bypass: true` — эрхийн шалгуур (`authz`) энэ шалгуурын сэдэв биш */
 const ok = (who) => recheck(1, 'ok', '', who, 'engineer', undefined, true);
 const back = (who, why) => recheck(1, 'back', why, who, 'engineer', undefined, true);
 
@@ -206,7 +201,6 @@ st.failAfterWrite = true;
   check(st.rows[0][F.status] === STATUS.engineerReturned, '4: гүйцэтгэгч рүү буцав');
   check(st.rows[0][F.engineerReason] === 'хэмжилт дутуу', '4: шалтгаан бичигдэв');
   check(st.adds.length === 0, '4: шинэ мөр үүсэхгүй');
-  /* ⚠️ 2026-10-01: ШИЙДВЭРИЙН ЛОГ — нэр дарагдсан ч лог нь «В»-гийн буцаалтыг хадгална */
   const log = JSON.parse(String(st.rows[0][F.history] ?? '[]'));
   check(log.length === 1 && log[0].stage === 'engineer' && log[0].who === 'Инженер В' && log[0].act === 'recheck-back'
     && log[0].reason === 'хэмжилт дутуу', `4: лог үйл явдал нэмэгдэх ёстой (${JSON.stringify(log)})`);

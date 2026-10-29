@@ -4,7 +4,6 @@ import { housingSeries, HOUSING_PKGS } from '@/lib/gdash';
 import { MAP_PKG_ALIAS } from '@/lib/pkgAlias';
 import type { ProgressPoint } from '@/lib/execPeriodCalc';
 
-/** ⚠️ Блокийн хуваагч, ХО жин, тайлагнаагүй блокийн дүрэм нь сарын графиктай НЭГ. */
 export function execProgressPoints(
   hist: PhysHistory,
   universe: ReadonlyMap<string, readonly string[]>,

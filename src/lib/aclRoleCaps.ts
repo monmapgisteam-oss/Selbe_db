@@ -1,36 +1,16 @@
 /**
  * ҮҮРЭГ → ЭРХИЙН ГАНЦ ХҮСНЭГТ — багцаар хуваарилагддаг эрхүүдийн эх сурвалж.
- *
- * ⚠️ ЯАГААД ЭНЭ ФАЙЛ БАЙХ ЁСТОЙ ВЭ (2026-09-25). «Хуваарь зохиогч → `plan`»
- *    гэх мэт зураглал урьд нь НАЙМ газар гараар давтагдсан байв: таван
- *    `*Acl.ts`-ийн `roleCaps`, гурван панелийн `roleCaps`/`removeRevokingRoles`,
- *    `ChanarAcl`-ийн хоёр inline объект, `DedButetsAcl`, `UserAdmin.flipScoped`.
- *    Нэгийг нь солиход бусад нь хоцорч, эрх буцаалт буруу эрх рүү явах байв —
- *    `aclParity.check.mjs`-ийн «нэгд нь зассан, бусдад хуулаагүй» хэв шинж.
- *
- * ⚠️ ЦЭВЭР МОДУЛЬ: зөвхөн `type CapKey` импортлоно — `erhOverview.ts` ба
- *    Node дээрх тест шууд ачаална (localStorage, React хамааралгүй).
- *
- * ⚠️ ГАРГАЛГААТАЙ (derived) ба ЭНГИЙН (plain) эрх (2026-09-25, хэрэглэгчийн
- *    баталсан төлөвлөгөө): хуваарилалтаас гардаг 10 эрхийн ЭХ СУРВАЛЖ нь
- *    хуваарилалт. «Хэрэглэгчид» самбарын унтраалга тэднийг `[ALL]`-аар
- *    олгодог байсан нь хоёр дахь эх сурвалж болж, багцын хязгаарыг чимээгүй
- *    тэлдэг байв. Одоо super-ээс бусдад тэр нь зөвхөн ҮЗҮҮЛЭЛТ.
  */
 
 import type { CapKey } from './caps';
 
 /**
  * Багцаар хуваарилагддаг таван систем — үүрэг → эрх.
- * ⚠️ Чанарын таван хянагч НЭГ эрх (`chanarReview`) хуваалцана — `caps.ts`-ийн ⚠️.
- * ⚠️ `ajil.editor` нь БАЙГАА `addRow` эрх (`ajilAcl.ts`-ийн ⚠️).
  */
 export const ROLE_CAPS = {
   huvaari: { author: 'plan', approver: 'planApprove' },
   obyem: { editor: 'obyemEdit', approver: 'obyemApprove' },
   ajil: { editor: 'addRow', approver: 'ajilApprove' },
-  /* ⚠️ 2026-09-28: `tug` (ТУГ) — MA/NCR хянагч; `cheng` — ЧХ хяналтын инженер, MA-ийн
-     эхний шат (2-р үе шат). Тавуулаа ижил `chanarReview`. */
   chanar: { author: 'chanarAuthor', tuh: 'chanarReview', chanar: 'chanarReview', habea: 'chanarReview', tug: 'chanarReview', cheng: 'chanarReview' },
   butets: { editor: 'butets' },
 } as const satisfies Record<string, Readonly<Record<string, CapKey>>>;
@@ -39,19 +19,13 @@ export const ROLE_CAPS = {
 export type ScopedSys = keyof typeof ROLE_CAPS;
 export const SCOPED_SYSTEMS: readonly ScopedSys[] = ['huvaari', 'obyem', 'ajil', 'chanar', 'butets'];
 
-/** Хуваарилалтаас гардаг эрхийн систем — ⚠️ 2026-10-23: QAQC (үүрэггүй систем) хасагдсан */
+/** Хуваарилалтаас гардаг эрхийн систем — 2026-10-23: QAQC (үүрэггүй систем) хасагдсан */
 export type DerivedSys = ScopedSys;
 
 /**
  * ХУВААРИЛАЛТААС ГАРДАГГҮЙ таван эрх — зөвхөн нэрээр, унтраалгаар олгоно.
- * ⚠️ `caps.CAPS` = гаргалгаатай ∪ энгийн, давхцалгүй (`aclParity.check.mjs` барина).
- * ⚠️ 2026-10-04: `hamaaral` (багцын хамаарал) — батлагчгүй, багцаар хуваарилагдахгүй.
  */
-/* ⚠️ 2026-10-08: `habeaData` (ХАБЭА-ийн бүртгэл оруулах) — батлагчгүй, багцаар хуваарилагдахгүй. */
-/* ⚠️ 2026-10-19: `sysClose` («Систем түр хаах») — аккаунтаар, харагдац нээхгүй (`caps.ts`-ийн ⚠️). */
 export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'sysClose', 'docsUpload', 'docsGroups', 'zuragEdit', 'cfSwitch'];
-/* ⚠️ 2026-10-26: `zuragEdit` (ТЭЗҮ · зураг төсөл) · `cfSwitch` (сарын мөнгө гараар → Хуваарь) — аккаунтаар. */
-/* ⚠️ 2026-10-23: `docsUpload` (баримт бичгийн сан — оруулах/устгах) — аккаунтаар, харагдац нээхгүй. */
 
 /** Эрх аль системийн хуваарилалтаас гардаг вэ — энгийн эрхэд `null` */
 export function capSystem(cap: CapKey): DerivedSys | null {

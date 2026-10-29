@@ -1,27 +1,15 @@
 /**
  * Явцын муруйн ЛОГИК ХЯЗГААР — ЖИВЭЭР (live).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/series.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/series.check.mjs
  *
  * Хамгаалж буй алдаа: барилга угсралт БУУДАГГҮЙ. Хуудсанд «50 → 10 → 15» гэсэн
  * бичлэг байвал (дутуу тайлан, цэвэрлэсэн нүд, бичлэгийн алдаа) муруй хиймэл
  * хонхор гаргаж, «ажил ухарсан» мэт уншигдана. `progressSeries` нь блок бүрээр
  * ӨССӨН ДҮНГ (running max) авдаг тул нэг блокийн муруй ХЭЗЭЭ Ч буурахгүй.
- *
- * ⚠️ ЭХ СУРВАЛЖ (2026-08-27-нд СОЛИГДСОН): урьд нь `Selbe_guitsetgel_consolidated`
- * руу ӨӨРИЙН асуулга явуулж логикийг ХУУЛБАРЛАДАГ байв. Тэр үйлчилгээ хаагдсан
- * (499). Одоо порталын ЖИНХЭНЭ шугамыг (`blockProgress.ts` → `sheetRows.ts` →
- * `Bagts_*`) шууд дуудаж шалгана — хуулбар логик байхгүй тул «тест ногоон атлаа
- * портал өөр тоо харуулах» зөрүү үүсэхгүй.
- *
- * ⚠️ ХАТУУ ТОО ТАВИХГҮЙ: бөглөх хуудсуудад гүйцэтгэл дөнгөж орж эхэлж байгаа
- * (2026-08-27-нд 26 блок, 2 агшин). «≥113 блок» гэх мэт хязгаар тавибал өгөгдөл
- * бөглөгдөх хүртэл тест улаан байх бөгөөд жинхэнэ эвдрэлийг далдална. Тиймээс
- * ДҮРЭМ (муруй буурахгүй, хувь хүрээндээ) дээр л тогтоно.
  */
 import assert from 'node:assert/strict';
 import { loadBlockHistory, progressSeries } from './blockProgress.ts';
 
-/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
 if (process.env.SELBE_LIVE_SKIP) {
   console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
   process.exit(0);

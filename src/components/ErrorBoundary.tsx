@@ -6,33 +6,8 @@ import { t as tr } from '@/lib/i18nCore';
 
 /**
  * ХАМГИЙН ГАДНА ДАВХАРГЫН АЛДААНЫ ХАШЛАГА (2026-08 аудит, олдвор #9).
- *
- * ⚠️ Яагаад хэрэгтэй вэ: портал 5+ гадаад үйлчилгээний АМЬД өгөгдлөөр рендер
- * хийдэг тул талбарын бүтэц өөрчлөгдөх, гэнэтийн null/NaN зэрэг нь аль нэг
- * компонентод рендерийн throw үүсгэж болно. Хашлагагүй үед React 19 бүх
- * root-оо unmount хийж, статик export тул сервер fallback ч байхгүй —
- * хэрэглэгч Next-ийн стайлгүй англи «Application error…» хуудас л харна.
- * `useAsync` зөвхөн async алдааг барьдаг, рендерийн throw-г хамгаалахгүй.
- *
- * ⚠️ Class компонент байх ШАЛТГААН: React 19-д ч алдаа барих цорын ганц зам
- * нь `getDerivedStateFromError`/`componentDidCatch` — hook-оор ийм API алга.
- * Мөн заавал 'use client': layout.tsx нь сервер компонент тул class-ыг
- * шууд тэнд бичиж болохгүй (SkipLink-тэй ижил хуваалт).
- *
- * ⚠️ Fallback-ийн стайл ЗОРИУД inline: алдаа CSS модулиудын аль нэгэнд
- * холбоотой байж ч болзошгүй тул зөвхөн globals.css-ийн токенуудад найдна
- * (тэдгээр нь root layout-д үргэлж ачаалагдсан байдаг).
  */
 
-/**
- * ⚠️ 2026-10-05: CHUNK АЧААЛАГДААГҮЙ алдаа мөн үү (JS/CSS). Портал нь GitHub Pages дээрх
- *    статик экспорт — шинэ хувилбар байршуулахад хуучин chunk-ийн hash-тай файлууд УСТДАГ тул
- *    нээлттэй таб дараагийн харагдацаа нээхэд 404 авна. «Дахин оролдох» (төлөв цэвэрлэх)
- *    тусгүй: `next/dynamic` унасан амлалтаа хадгалдаг, файл ч сервер дээр байхгүй.
- *    Цорын ганц засвар — хуудсыг дахин ачаалах. `ui.friendlyError` мөн үүнийг ашиглана.
- * ⚠️ АВТОМАТААР reload ХИЙХГҮЙ — хадгалаагүй ажил алдагдана; товчийг хэрэглэгч өөрөө дарна
- *    (`navGuard`-ийн `beforeunload` хамгаалалт хэвээр ажиллана).
- */
 export function isChunkLoadError(e: unknown): boolean {
   const name = (e as { name?: string } | null)?.name ?? '';
   const m = String((e as { message?: string } | null)?.message ?? e ?? '');
@@ -58,24 +33,10 @@ type Props = {
   children: ReactNode;
   /**
    * ХАРАГДАЦЫН хүрээнд ажиллах горим (2026-09-03-ны хэрэглэгч талын аудит).
-   *
-   * ⚠️ Урьд нь хашлага ЗӨВХӨН root-д байсан тул нэг модулийн рендерийн throw
-   * бүх порталыг (навигац, каталог, газрын зураг, ХАДГАЛААГҮЙ НООРОГ) бүтэн
-   * дэлгэцийн алдаагаар СОЛИДОГ байв. Модуль бүрийг тусад нь ороосноор
-   * унасан харагдац л мессеж болж, бусад нь ажиллаж үлдэнэ.
-   *
-   * ⚠️ Дуудагч нь харагдац бүрд ӨӨР `key` өгнө: React нь `key` солигдоход
-   * хашлагыг remount хийдэг тул харагдац сольсны дараа хуучин алдаа арилна.
    */
   scope?: 'view';
   /** Дэлгэцэд харагдах нэр — «Санхүүжилт нээгдсэнгүй» гэх мэт */
   label?: string;
-  /**
-   * ⚠️ 2026-10-06 (аудит): ХӨВӨГЧ fallback — modal/хөвөгч хэрэгслийн (`UserAdmin`, `AgentChat`,
-   *    `MapTools`, `OpacityPanel`) хашлагад. Энгийн харагдацын fallback (240px өндөр, урсгалд)
-   *    нь тэдгээрийн байранд байрлалгүй гарч, бүтэн дэлгэцийн grid-ийг эвддэг. Хөвөгч нь
-   *    баруун доод буланд жижиг карт.
-   */
   floating?: boolean;
   /** Жижиг мөрийн fallback (нэгтгэлийн зурвас г.м.) — 240px өндөр эзлэхгүй */
   compact?: boolean;
@@ -103,8 +64,6 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.error && this.props.scope === 'view' && this.props.quiet) return null;
-    /* ⚠️ 2026-10-06: ХӨВӨГЧ / ЖИЖИГ fallback (`floating`/`compact`-ийн ⚠️) — chunk-ийн алдаанд
-       reload, бусдад «Дахин оролдох»; `onClose` өгвөл «Хаах». */
     if (this.state.error && this.props.scope === 'view' && (this.props.floating || this.props.compact)) {
       const chunk = isChunkLoadError(this.state.error);
       const { floating, onClose } = this.props;
@@ -157,8 +116,6 @@ export class ErrorBoundary extends Component<Props, State> {
         </div>
       );
     }
-    /* ⚠️ 2026-10-05: chunk-ийн алдаа — ХОЁР горимд ИЖИЛ: «шинэ хувилбар» + reload товч
-       (`isChunkLoadError`-ийн ⚠️). Харагдацын горимд бүтэн дэлгэц эзлэхгүй хэвээр. */
     if (this.state.error && isChunkLoadError(this.state.error)) {
       const view = this.props.scope === 'view';
       return (
@@ -186,10 +143,6 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
     if (this.state.error && this.props.scope === 'view') {
-      /* ⚠️ ХАРАГДАЦЫН fallback: бүтэн дэлгэц ЭЗЛЭХГҮЙ, reload ч ХИЙХГҮЙ —
-         навигац амьд үлддэг тул хэрэглэгч өөр харагдац руу шилжиж ажлаа
-         үргэлжлүүлнэ. «Дахин оролдох» нь зөвхөн ЭНЭ хашлагын төлөвийг арилгана
-         (root-ынхоос ялгаатай: тэнд бүтэн reload хэрэгтэй байдаг). */
       return (
         <div
           role="alert"
@@ -251,9 +204,6 @@ export class ErrorBoundary extends Component<Props, State> {
           <p style={{ fontSize: 15, fontWeight: 600 }}>
             {tr('Алдаа гарлаа — хуудсыг дахин ачаална уу')}
           </p>
-          {/* ⚠️ Remount БИШ, бүтэн reload: рендерийн throw ихэвчлэн санах ойн
-              кэштэй өгөгдлөөс детерминист давтагддаг тул зөвхөн state
-              цэвэрлэвэл дороо дахин унана. Reload нь кэшийг шинээр эхлүүлнэ. */}
           <button
             type="button"
             onClick={() => location.reload()}

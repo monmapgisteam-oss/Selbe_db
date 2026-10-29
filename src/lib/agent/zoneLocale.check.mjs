@@ -12,8 +12,6 @@ import { normalizeZone } from '@/lib/agent/overview';
 import { bagtsKey } from '@/lib/services';
 import { setLocale, getLocale, loadLocaleDict } from '@/lib/i18nCore';
 
-/* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — урьдчилан
-   ачаалснаар `setLocale('en')` урьдын адил СИНХРОН солигдоно. */
 await loadLocaleDict('en');
 
 let pass = 0;
@@ -32,7 +30,6 @@ for (const loc of ['mn', 'en']) {
   eq('bus 1 → Багц-1', normalizeZone('bus 1'), 'Багц-1');
   eq('package 4.1 (англи хэрэглэгч) → Багц-4.1', normalizeZone('package 4.1'), 'Багц-4.1');
   eq('кирилл оролт хэвээр', normalizeZone('Багц-6.1'), 'Багц-6.1');
-  /* ⚠️ 2026-10-26 (аудит): зайтай/зураасгүй кирилл — өгөгдлийн «Багц-N» */
   eq('Багц 1 → Багц-1', normalizeZone('Багц 1'), 'Багц-1');
   eq('багц3.2 → Багц-3.2', normalizeZone('багц3.2'), 'Багц-3.2');
   eq('Багц 4.1 бүс → хэвээр (дагавартай)', normalizeZone('Багц 4.1 бүс'), 'Багц 4.1 бүс');

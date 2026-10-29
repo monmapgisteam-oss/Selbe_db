@@ -14,7 +14,6 @@
  */
 import assert from 'node:assert/strict';
 
-/* ⚠️ `butetsPacks` (→ `services`) нь `window`/`localStorage` хүлээдэг — `butetsAcl.check`-ийн ижил shim (2026-09-25) */
 const mem = new Map();
 globalThis.window = globalThis;
 globalThis.localStorage = {
@@ -61,7 +60,6 @@ console.log('✅ эрхгүй аккаунт ялгагдана');
     huvaari: [{ user: 'buh', grants: [{ role: 'author', bagts: ['*'] }] }],
   };
   const u = userErh(src, 'buh');
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.equal(u.huvaari[0].bagts, null, '«*» нь null (бүх багц) болох ёстой');
   assert.equal(u.any, true);
 
@@ -77,7 +75,6 @@ console.log('✅ «*» = бүх багц, багц бүрд тоологдоно
   const src = {
     ...empty(),
     users: ['Batbayar'],
-    /* ⚠️ 2026-10-23: QAQC хасагдсан */
     huvaari: [{ user: '  BATBAYAR  ', grants: [{ role: 'author', bagts: [G0] }] }],
     caps: { batbayar: ['gazar'] },
   };
@@ -237,9 +234,6 @@ console.log('✅ эрэмбэ — эрхтэй нь эхэнд');
   assert.equal(pkgErh(empty(), G0).issues.some((i) => i.key === 'chanarNoReviewer'), false, 'зохиогчгүй бол анхааруулахгүй');
   const u = userErh(full, 't');
   assert.equal(u.chanar.length, 2); assert.equal(u.chanar[0].bagts, null, '* → null'); assert.equal(u.any, true);
-  /* ⚠️ 2026-10-21: «нэг хүн нэг үүргээр» дүрэм амьд урсгалд ҮГҮЙ (MA · FIC · М-акт аль ч НЭГ хянагчийн
-     шийдвэрийг хүлээн авна, `chanarMs.reviewerClashes`) — нэг хүн хоёр үүрэгт байсан ч гацааны анхааруулга гарахгүй.
-     Урьд нь t = ТУХ+ХАБЭА, q = ЧХ инженер+Чанар+ТУГ үед «MS/MA гацна» гэж худал анхааруулдаг байв. */
   const clash = pkgErh(full, G0).issues.filter((i) => i.key === 'chanarOneManRoles');
   assert.deepEqual(clash, [], 'нэг хүн хоёр үүрэгт — гацаагүй');
   const indep = { ...empty(), chanar: [
@@ -253,7 +247,6 @@ console.log('✅ чанарын баримт — 5 хянагч (tuh · chanar �
 /* ══════════════════ 9. МАТРИЦ ба ГАРГАЛГААТАЙ ЭРХ (2026-09-25) ══════════════════ */
 {
   /* 19 багана: урсгал 7 (2026-10-23) · хуваарь 2 · обьём 2 · нэмэлт ажил 2 · чанарын баримт 6 */
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.equal(MATRIX_COLS.length, 19, 'матриц 19 баганатай байх ёстой');
   assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:tug'), '2026-09-28: ТУГ багана');
   assert.ok(MATRIX_COLS.some((c) => c.id === 'chanar:cheng'), '2026-09-28: ЧХ инженер багана');
@@ -282,7 +275,6 @@ console.log('✅ матриц — 19 багана, багц бүр мөр');
     { user: 't', grants: [{ role: 'tuh', bagts: [G0] }] },
   ] };
   assert.equal(tone(ch, 'chanar:tuh'), null, 'томилогдсон хянагч хэвийн');
-  /* ⚠️ 2026-09-25: `warn` — үүрэг бүр зөвхөн ӨӨРИЙН төрлийн баримтыг гацаана (habea зөвхөн MS) */
   assert.equal(tone(ch, 'chanar:chanar'), 'warn', 'дутуу хянагч шар');
   assert.equal(tone(ch, 'chanar:habea'), 'warn');
   assert.equal(tone(ch, 'chanar:tug'), 'warn', 'ТУГ дутуу → шар (MA · NCR л хүлээнэ)');
@@ -340,7 +332,6 @@ console.log('✅ дэд бүтэц — BUTETS_PACKS мөр');
     users: ['boss', 'rv', 'qa', 'orph', 'all'],
     supers: ['boss'],
     chanar: [{ user: 'rv', grants: [{ role: 'habea', bagts: [G0] }] }],
-    /* ⚠️ 2026-10-23: QAQC хасагдсан */
     huvaari: [{ user: 'all', grants: [{ role: 'author', bagts: ['*'] }] }],
     caps: {
       boss: ['plan', 'finRow'],
@@ -350,7 +341,6 @@ console.log('✅ дэд бүтэц — BUTETS_PACKS мөр');
       all: ['plan'],
     },
   };
-  /* ⚠️ 2026-10-23: ХҮСНЭГТИЙН super-ийн хадгалагдсан эрх энгийн хүнийх шиг шалгагдана; зөвхөн КОДЫН super чөлөөтэй */
   assert.deepEqual(orphanCaps(userErh(src, 'boss')), ['plan'], 'хүснэгтийн super-ийн хадгалсан өнчин эрх харагдах ёстой');
   const codeSrc = { ...src, codeSupers: ['boss'] };
   assert.deepEqual(orphanCaps(userErh(codeSrc, 'boss')), [], 'кодын super-т өнчин эрх гарах ёсгүй');
@@ -363,7 +353,6 @@ console.log('✅ дэд бүтэц — BUTETS_PACKS мөр');
 
   assert.equal(capBacking(userErh(src, 'all'), 'plan'), null, 'ALL → null (бүх багц)');
   assert.deepEqual(capBacking(userErh(src, 'rv'), 'chanarReview'), [G0]);
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   assert.deepEqual(capBacking(userErh(src, 'orph'), 'butets'), [], 'хуваарилалтгүй → []');
   assert.deepEqual(capBacking(userErh(src, 'qa'), 'zovshoorol'), [], 'энгийн эрх → []');
 
@@ -371,17 +360,13 @@ console.log('✅ дэд бүтэц — BUTETS_PACKS мөр');
   const miss = { ...empty(), users: ['m'], huvaari: [{ user: 'm', grants: [{ role: 'approver', bagts: [G0] }] }], caps: {} };
   assert.deepEqual(missingCaps(userErh(miss, 'm')), ['planApprove']);
   assert.deepEqual(missingCaps(userErh(src, 'boss')), [], 'хуваарилалтгүй super-т дутуу эрх алга');
-  /* ⚠️ 2026-10-23: хүснэгтийн super — хуваарилалт бий атлаа хадгалсан эрх алга → анхааруулна; кодын super → үгүй */
   const supMiss = { ...empty(), users: ['sa'], supers: ['sa'], huvaari: [{ user: 'sa', grants: [{ role: 'approver', bagts: [G0] }] }], caps: { sa: [] } };
   assert.deepEqual(missingCaps(userErh(supMiss, 'sa')), ['planApprove'], 'хүснэгтийн super-ийн дутуу эрх');
   assert.deepEqual(missingCaps(userErh({ ...supMiss, codeSupers: ['sa'] }, 'sa')), [], 'кодын super-т анхааруулахгүй');
 }
 console.log('✅ өнчин эрх · эх сурвалж · дутуу эрх');
 
-/* ── 10. Устгагдсан аккаунтын хуучин мөр гацааг НУУХГҮЙ (2026-09-30) ──
-   ⚠️ Урьд нь порталд алга (устгагдсан) батлагч/шатны эзний мөр «батлагчгүй» · «урсгалын цоорхой»-г
-      чимээгүй нуудаг байв — тэр хүн нэвтэрч чадахгүй тул илгээлт тэнд мөнхөд хүлээнэ.
-      Нүдэнд (засахад) харагдсаар, зөвхөн гацааны шалгуурт тоологдохгүй. */
+/* ── 10. Устгагдсан аккаунтын хуучин мөр гацааг НУУХГҮЙ (2026-09-30) ── */
 {
   const huv = {
     ...empty(),
@@ -435,7 +420,6 @@ console.log('✅ устгагдсан аккаунтын хуучин мөр г�
   assert.deepEqual(userErh(src, 'u2').unknownBagts, ['Хуучин нэр'], '«*» танигдаагүй гэж тоологдов');
   assert.deepEqual(userErh(src, 'u3').unknownBagts, []);
   assert.deepEqual(unknownPkgUsers(src).map((x) => x.user).sort(), ['u1', 'u2']);
-  /* ⚠️ 2026-10-19 (аудит): ХУУЧИН дээд түвшний `bagts` (grants-тай хамт үлдсэн) ч шалгагдана */
   const legacy = { ...empty(), users: ['u4'], obyem: [{ user: 'u4', grants: [{ role: 'author', bagts: [G0] }], bagts: ['Хуучин багц'] }] };
   assert.deepEqual(userErh(legacy, 'u4').unknownBagts, ['Хуучин багц'], 'хуучин `bagts` танигдаагүй багцад орсонгүй');
 
@@ -449,7 +433,6 @@ console.log('✅ устгагдсан аккаунтын хуучин мөр г�
   assert.equal(withSup.superOnly, true, 'super шийдвэрлэх боломжтойг тэмдэглээгүй');
   const goneSup = pkgErh({ ...noAppr, supers: ['boss'], gone: ['BOSS'] }, G0).issues.find((i) => i.key === 'huvaariNoApprover');
   assert.ok(!goneSup.superOnly, 'устгагдсан super тоологдов');
-  /* ⚠️ 2026-10-19 (аудит №2): батлагч БАЙГАА (зохиогчтой давхцсан) — «энгийн хариуцагч томилоогүй» ХУДАЛ */
   const self = { ...empty(), supers: ['boss'], huvaari: [{ user: 'a', grants: [{ role: 'author', bagts: [G0] }, { role: 'approver', bagts: [G0] }] }] };
   const selfI = pkgErh(self, G0).issues.find((i) => i.key === 'huvaariSelfApprove');
   assert.ok(selfI && !selfI.superOnly, '*SelfApprove-д superOnly залгагдав');
@@ -466,7 +449,7 @@ console.log('✅ устгагдсан аккаунтын хуучин мөр г�
 }
 console.log('✅ бүх шат хоосон · танигдаагүй багц · зөвхөн super (анхааруулга хэвээр)');
 
-/* ── ⚠️ 2026-10-22 (аудит): ТӨРӨЛ ↔ УРСГАЛЫН ШАТ — урсгалын төрөл шат олгодоггүй (`typeStageGaps`) ── */
+/* ── 2026-10-22 (аудит): ТӨРӨЛ ↔ УРСГАЛЫН ШАТ — урсгалын төрөл шат олгодоггүй (`typeStageGaps`) ── */
 {
   const src = {
     ...empty(),

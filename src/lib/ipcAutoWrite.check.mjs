@@ -1,15 +1,7 @@
 /**
  * `ipcAutoWrite.ts`-ийн ЗАН ҮЙЛИЙН шалгуур — хуурамч HO_IPC хүснэгт (REST) дээр ЖИНХЭНЭ экспортыг ажиллуулна
  * (2026-10-26, аудит T2).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ipcAutoWrite.check.mjs
- *
- * ⚠️ ЯАГААД: энэ модуль HO_IPC-д МӨНГӨН ДҮНГИЙН зөрүү (`guits_zoruu`) бичдэг атал зөвхөн эх текстийн шалгуурт
- *    (`ipcAuto.check.mjs`) байв. Энд `refreshAutoZoruu`-ийн дүрмүүд: ЗӨВХӨН AUTO мөр · ЗӨВХӨН өөрчлөгдсөн утга ·
- *    гэрээгээр шүүх · хоосон `dun` → `null` (0 БИШ) · бүх хуудсыг уншина (2000-ийн хуудаслалт) · 500 мөрийн багц ·
- *    мөрийн алдаа (200 + success:false) → ok:false · бичих оролдлогын дараа `HO_IPC` кэш ҮРГЭЛЖ хүчингүй; мөн
- *    `syncIpcFromFill`-ийн сүлжээгүй хаалтууд (огноо · багц · блокгүй багц).
- * ⚠️ `syncIpcFromFill`-ийн бөглөх хуудас уншдаг үндсэн зам (24 хуудасны бүдүүвч + жааз) энд ОРООГҮЙ — тэр нь
- *    `ipcAuto.check.mjs`-ийн цэвэр функцүүд (`planAuto` · `sheetsVerdict`)-ээр шалгагддаг.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ipcAutoWrite.check.mjs
  */
 import assert from 'node:assert/strict';
 import { fake, addTable, assertNoUnexpected } from './arcgisFake.mjs';

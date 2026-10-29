@@ -29,11 +29,7 @@ import { levelCounts, type BlockProgressMap } from '@/lib/blockProgress';
 import {
   HUE, catOf, aggregateMonths, physNow, progMonthsOf, SR_ONLY, type PackCat,
 } from '@/modules/pkgShared';
-/* ⚠️ Хуучин импортлогчдод — `aggregateMonths` урьд нь эндээс экспортлогддог байв. */
 export { aggregateMonths, physNow } from '@/modules/pkgShared';
-/* ⚠️ 2026-10-09 (аудит №6): хуваарийн зөрүүний БҮХ хэлбэр `gdash.gapPts`/`gapPtsWord` («н.х») —
-   урьд нь энэ дэлгэцэнд KPI «−5.0 н.х», жагсаалт/график «-5.0 pp» (`pkgShared.pp`) гэж ХОЁР
-   нэгжээр бичдэг байв; `pp(-gap)` нь тэг дээр «-0.0 pp» гаргадаг. */
 import { gapPts, gapPtsWord } from '@/lib/gdash';
 import {
   loadPlanCurveCached, planPctAt, measureDayOf, planCoverage, coverageOk, coverageNote,
@@ -43,18 +39,7 @@ import {
 /**
  * «Гүйцэтгэлийн явц» графикийн нэг цэг — ТӨЛӨВЛӨГӨӨ (хуваариас) ба БОДИТ
  * (биет гүйцэтгэл), хоёулаа ХУВЬ.
- *
- * ⚠️ 2026-09-06: урьд нь `MonthPt` (санхүүгийн цэг)-ийг дамжуулж, төлөвлөгөөг
- *    түүний `cumPct` талбараас уншдаг байв — тэр нь МӨНГӨний өссөн хувь
- *    бөгөөд биет %-тай харьцуулагдаж болохгүй. Одоо графикт зөвхөн өөрийнх
- *    нь хэрэгтэй хоёр тоо орно, мөнгөн талбар огт байхгүй.
  */
-/**
- * ⚠️ `vol` — тухайн сард ТӨЛӨВЛӨСӨН обьём (хуваарийн сарын задаргаанаас).
- *    `null` = задаргаа ороогүй; 0 БИШ. Нэгж холилдсон нийлбэр тул зөвхөн
- *    ХАРУУЛНА, тооцоонд ОРОХГҮЙ (`planProgress.PlanPoint.vol`-ийн ⚠️).
- */
-/* ⚠️ export (2026-09-30) — «ТУХ» ижил графикийг ашиглана (нэг график хэл) */
 export type ProgPt = {
   label: string; plan: number; act: number | null; vol: number | null;
   /**
@@ -87,24 +72,15 @@ import ts from './pkgProg.module.css';
  *             хяналт болж солигдоно («‹ Багц руу буцах»)
  *   · БАРУУН— блок бүрийн гүйцэтгэл ба ажлын төрлийн задаргаа
  *   · ДООР  — санхүүгийн график БҮТЭН өргөнөөр (төлөвлөгөө·олгосон·биет + badge)
- *
- * ⚠️ ШИНЭ ЛОГИК БАРАГ БИЧЭЭГҮЙ: картууд нь Bagts-ийн, барилгын хяналт нь
- * BuildingPanel-ийн, санхүүгийн график нь Finance-ийн ЭКСПОРТ — гурван хуучин
- * харагдацын ажиллагаа өөрчлөлтгүй ЭНД дахин угсрагдана. Хуучин 3 цэс хэвээр;
- * нэгтгэл батлагдмагц устгаж болно.
  */
 
 /** Дараалал нь дэлгэцийн дараалал; нэрийг render үед tr()-ээр авна */
 /**
  * БАРИЛГА УГСРАЛТЫН АНГИЛАЛ — жагсаалтын ТОЛГОЙД гардаг (2026-09-10).
- * ⚠️ Тогтмолоор нэрлэв: `PACK_CATS`-ийн дараалал өөрчлөгдөхөд ч «аль нь
- *    дээр вэ» гэдэг нь индексээр биш УТГААР тодорхойлогдоно.
  */
 const BUILD_CAT: PackCat = 'build';
 const PACK_CATS: { key: PackCat; name: () => string }[] = [
   { key: 'build', name: () => tr('Барилга угсралт') },
-  /* ⚠️ «Инженерийн дэд бүтэц» (2026-09-10, хэрэглэгчийн заавар): зөвхөн
-     «Дэд бүтэц» гэвэл нийгмийн дэд бүтэцтэй андуурагдана. */
   { key: 'infra', name: () => tr('Инженерийн дэд бүтэц') },
   { key: 'soc', name: () => tr('Нийгмийн барилга') },
   { key: 'site', name: () => tr('Өндөржилт') },
@@ -119,19 +95,12 @@ const meanOf = (vals: (number | null)[]) => {
 };
 
 /**
- * ⚠️ ЭНЭ МОДУЛЬ ЗӨВХӨН «БАГЦЫН ГҮЙЦЭТГЭЛ»-Д. 
- *
- * ⚠️ 2026-08-21 (хэрэглэгчийн хүсэлт): урьд нь ГАНЦ «Багцын хяналт» цонх гэрээ,
- * санхүүжилт, биет явц, барилгын хяналтыг БҮГДИЙГ багтааж, баруун багана 6-7
- * карт болдог байв. Одоо хоёр харагдац НЭГ модулиас гарна:
- *
  *   · `fin`  — гэрээ, CASHFLOW, олгосон санхүүжилт, хөрөнгө оруулалт
  *   · `prog` — биет явц, блокийн төлөв, давхцал, барилгын хяналт
  *
  * Багцын жагсаалт, газрын зураг, өгөгдөл ачаалалт нь ХОЁУЛАНД ижил тул
  * хуваалцагдана — салгасан нь ЗӨВХӨН дээд индикатор ба баруун баганын карт.
  */
-/* ⚠️ 2026-10-08: `Date.now()`-ийг render-ийн гадна (react-hooks/purity) — `monthKey()`-тэй ижил загвар */
 const todayDayKey = (): string => dayKey(Date.now());
 
 export function PkgProg({ dim, setDim }: {
@@ -140,12 +109,7 @@ export function PkgProg({ dim, setDim }: {
 }) {
   /**
    * Талын багануудын өргөн — чирж тохируулна, хөтөчид хадгалагдана.
-   * ⚠️ Горим тус бүр ӨӨРИЙН өргөнтэй: санхүүгийн баруун багана нь графиктай,
-   * гүйцэтгэлийнх нь блокийн урт жагсаалттай — нэг утга хоёуланд тохирохгүй.
    */
-  /* ⚠️ 2026-09-30: `hostRef`-ийг ТУСАД НЬ задална — React Compiler нь `*Ref` нэртэй
-     талбар агуулсан обьектыг бүхэлд нь ref гэж үзэж, `side.style`/`side.left`
-     хандалт бүрийг «render үеийн ref хандалт» гэж анхааруулдаг байв. */
   const { hostRef: sideHostRef, ...side } = useSideResize('pkgProg');
   const q = useBuildings();
   const finQ = useAsync<FinData>(loadFinData, []);
@@ -158,16 +122,10 @@ export function PkgProg({ dim, setDim }: {
   const perfQ = useTaskPerf(pb);
 
   useEffect(() => { setHighlight(null); }, [setHighlight]);
-  /* ⚠️ 2026-10-07: харагдац ХААГДАХАД ч тодруулгыг арилгана — `MapProvider.hl` порталын
-     хэмжээнд амьдардаг тул зурагт дарсан барилгын тодруулга (`onMapPick`) дараагийн
-     харагдацын зурагт үлддэг байв. `Dashboard`-ын 2026-09-29-ний unmount-цэвэрлэлттэй
-     ижил зарчим. */
   useEffect(() => () => { setHighlight(null); }, [setHighlight]);
   useEffect(() => { writeParams({ pkg: sel }); }, [sel]);
 
   const packs = useMemo<Pack[]>(
-    /* ⚠️ 2026-09-30: `pkgPct` — сонгосон багцын KPI хавтан (`PackKpi`) жагсаалтын
-       «бодит гүйцэтгэл» (`physLatest`)-тэй нэг тоо (`Bagts.buildPacks`-ийн ⚠️) */
     () => (q.state === 'ready' ? buildPacks(q.data.rows, q.data.pkgPct) : buildPacks(null)),
     [q],
   );
@@ -178,22 +136,12 @@ export function PkgProg({ dim, setDim }: {
    * БАГЦТАЙ ДАВХЦАЖ БУЙ «ҮЛДСЭН НЭГЖ ТАЛБАР» — чөлөөлөгдөөгүй, барилга
    * эхлүүлэхэд саад болж буй газар. Багц сонгоход орон зайн огтлолцлоор олж,
    * газрын зурагт зурж, тоог нь KPI-д гаргана.
-   *
-   * ⚠️ Хариу хожуу ирж БУСАД багцын үр дүнг дарж бичихээс `alive` хамгаална
-   *    (хэрэглэгч хурдан дараалан сонгоход).
    */
-  /* ⚠️ Алдааг `{oids: []}`-оор ОРЛУУЛАХГҮЙ — «0 саад» нь ногооноор «саад алга»
-     гэсэн ХАРИУЛТ болж уншигддаг тул татаж чадаагүйг жинхэнэ 0-ээс ялгаж
-     `'error'` төлөвт хадгална (KPI/картад саарлаар «тоолж чадсангүй»). */
   const [overlap, setOverlap] = useState<Overlap | 'error' | null>(null);
   useEffect(() => {
     let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOverlap(null);
-    /* ⚠️ Багц СОНГООГҮЙ үед ч тоолно — тэгэхдээ БҮХ блокоор (`where = null`),
-       өөрөөр хэлбэл төслийн НИЙТ саад. Урьд нь сонголтгүй үед огт тоолохгүй
-       байсан тул хэрэглэгч «нийт хэдэн талбар саад болж байна» гэдгийг
-       мэдэхийн тулд багц бүрийг ээлжлэн сонгох шаардлагатай байв. */
     /* Багц сонгосон бол ТҮҮНИЙ бүх давхарга; эс бөгөөс БҮХ БАГЦЫНХ —
        барилгын блокууд + дэд бүтцийн 48 багцын давхаргууд. Зөвхөн блокоор
        тоолвол шугам хоолой, замын коридор дээрх саад тоологдохгүй үлддэг. */
@@ -205,20 +153,12 @@ export function PkgProg({ dim, setDim }: {
             pk.kind === 'infra' ? pk.layerIds.map((id) => ({ layerId: id, where: pk.where })) : [],
           ),
         ];
-    /* ⚠️ ХАГАС ҮР ДҮН = АЛДАА (2026-09-25 аудит): `overlapLeftParcels` нь зарим
-       давхарга унавал (429 г.м.) `failed: [...]`-тай ДУТУУ тоо буцаадаг — урьд нь
-       бүрэн тоо мэт (12 нь 20-ын оронд, эсвэл ногоон 0) харагддаг байв.
-       `pkgSaad`-ийн ижил дүрэм; кэш хагас хариуг хадгалдаггүй тул дахин ачаалахад
-       дахин оролдоно. */
     overlapLeftParcels(srcs)
       .then((r) => alive && setOverlap(r.failed?.length ? 'error' : r))
       .catch(() => alive && setOverlap('error'));
     return () => {
       alive = false;
     };
-    /* ⚠️ `packs` ЗААВАЛ — багц сонгоогүй үед эх сурвалжийг `packs`-аас бүрдүүлдэг;
-       урьд нь өгөгдөл ачаалагдахаас өмнөх хоосон `packs`-аар тоолоод дахин
-       тоолдоггүй тул дэд бүтцийн багцын саад нийт тоонд ордоггүй байв. */
   }, [active, packs]);
 
   /** Амжилттай үр дүн л — зурагт/шүүлтэд алдааны төлөв «хоосон» мэт орохгүй */
@@ -226,28 +166,10 @@ export function PkgProg({ dim, setDim }: {
 
   /**
    * КАРТААС СОНГОСОН давхцсан талбарууд — газрын зураг ҮҮГЭЭР нарийсна.
-   *
-   * ⚠️ `ovOk` нь ТӨСЛИЙН (эсвэл сонгосон багцын) БҮХ давхцсан талбар. Багцын
-   *    картын зурвас дээр дарахад зөвхөн ТЭР багцынх үлдэх ёстой — эс бөгөөс
-   *    зураг нэг талбар руу ойртсон ч эргэн тойронд өөр багцын хэдэн арван
-   *    улаан полигон зурагдсан хэвээр байна.
-   */
-  /**
-   * ⚠️ ЗӨВХӨН OID БИШ, БАГЦЫН ТҮЛХҮҮР ч хамт. Талбарууд нь «хаана саад байна»
-   *    гэдгийг хэлдэг ч «ЮУНД саад болж байна» гэдгийг хэлдэггүй: сонгосон
-   *    багцын ӨӨРИЙН давхарга (цахилгааны шугам, ус хангамжийн цагираг г.м.)
-   *    зурагдахгүй бол хэрэглэгч улаан талбаруудыг хоосон агаарт хараад
-   *    учрыг нь олохгүй (2026-08-27, хэрэглэгчийн заалт).
    */
   const [ovPick, setOvPick] = useState<{ key: string; oids: number[] } | null>(null);
-  /**
-   * ⚠️ 2026-09-21: багц СОНГООГҮЙ үеийн «Багц N — блокууд» картуудын
-   * сонголт — НЭГ л карт, нэг л мөр (`BlocksCard.sel`-ийн тайлбар).
-   * `oid` нь блокийн OID эсвэл давхцлын зурвасын түлхүүр (`'overlap'`).
-   */
   const [cardSel, setCardSel] = useState<{ key: string; oid: string } | null>(null);
-  /* Багц солиход сонголт суллагдана — өөр багцын талбар дээр түгжигдэхгүй.
-     ⚠️ 2026-09-30: эффект биш, RENDER дунд — `active` солигдсон тэр render-т л. */
+  /* Багц солиход сонголт суллагдана — өөр багцын талбар дээр түгжигдэхгүй. */
   const [selActive, setSelActive] = useState(active);
   if (selActive !== active) {
     setSelActive(active);
@@ -271,23 +193,12 @@ export function PkgProg({ dim, setDim }: {
    * БАГЦ БҮРИЙН давхцсан үлдсэн нэгж талбар — «Багц N — блокууд» картын
    * толгойд ба «Саад — багцаар» чартад. Багц тус бүрд тусдаа огтлолцол тул
    * зэрэг бодогдож, нэг нь унавал бусдыг унагахгүй (allSettled).
-   *
-   * ⚠️ ЗӨВХӨН БАРИЛГЫН багц (7). Бүх багцаар (55) тоолох оролдлого
-   *    2026-08-27-нд хийгдээд БУЦААГДСАН: карт бэлэн болох хугацаа 14 сек
-   *    болж, 131 хүсэлт порталын нийтлэг 6-слотын дараалалд орж бусад
-   *    картыг хойшлуулж байв. Бүх багцын задаргаа нь «Газар чөлөөлөлт»
-   *    харагдацад (тэнд газрын сэдэв тул байрандаа) шилжсэн.
    */
-  /* ⚠️ ТОО биш ОБЬЕКТ: картын зурвасыг дарахад тэр багцын давхцсан талбар руу
-     очих тул ObjectID-ууд хэрэгтэй (зөвхөн тоогоор очих газар мэдэгдэхгүй). */
   const [ovByPack, setOvByPack] = useState<Map<string, Overlap | 'error'> | null>(null);
   useEffect(() => {
     let alive = true;
     const builds = packs.filter((pk) => pk.kind === 'build');
-    /* ⚠️ 2026-10-21 (аудит): барилга ачаалагдаагүй (`q` бэлэн биш → `buildPacks(null)`-д барилгын багц
-       байхгүй) үед «хоосон Map» (= тоологдсон) БИШ, `null` (ачаалж байна); бэлэн болоход ч өмнөх
-       (хоцорсон) үр дүнг харуулахгүй null-ээс эхэлнэ. Хоосон Map нь зөвхөн барилга бэлэн, багцгүй үед. */
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — түлхүүр солигдоход ачаалж буй/өмнөх төлөвийг синхрон тэглээд шинээр татна; render үед гаргавал бүтэц өөрчлөгдөнө
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOvByPack(q.state === 'ready' && !builds.length ? new Map() : null);
     if (q.state !== 'ready' || !builds.length) return;
     Promise.allSettled(
@@ -298,10 +209,7 @@ export function PkgProg({ dim, setDim }: {
     ).then((rs) => {
       if (!alive) return;
       const m = new Map<string, Overlap | 'error'>();
-      /* ⚠️ Унасныг АЛГАСАХГҮЙ — түлхүүр нь Map-д огт орохгүй бол картын толгой
-         «тоолж байна…» гэж МӨНХӨД хүлээлгэдэг байв; `'error'` = ил хэлнэ. */
       rs.forEach((r, i) => {
-        /* ⚠️ `failed` (хагас) = 'error' — дутуу тоог бүрэн мэт харуулахгүй (2026-09-25) */
         if (r.status === 'fulfilled') m.set(r.value[0], r.value[1].failed?.length ? 'error' : r.value[1]);
         else m.set(builds[i].key, 'error');
       });
@@ -319,10 +227,7 @@ export function PkgProg({ dim, setDim }: {
   const [ovByCat, setOvByCat] = useState<Map<PackCat, number | 'error'> | null>(null);
   useEffect(() => {
     let alive = true;
-    /* ⚠️ 2026-10-21 (аудит): барилга бэлэн болтол ТООЛОХГҮЙ — урьд нь дэд бүтцийн багц ирмэгц ажиллаж,
-       барилгын ангилалд эх давхарга байхгүй тул `0` («асуудалгүй») бичиж, барилга ирсний дараа ч шинэ
-       тоо иртэл тэр 0 харагддаг байв. Шинэ тоолол бүрийн эхэнд `null` (ачаалж байна) руу тэглэнэ. */
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-21: татах эффект — шинэ тоолол эхлэхэд өмнөх үр дүнг синхрон тэглэнэ
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOvByCat(null);
     if (q.state !== 'ready' || !packs.length) return;
     Promise.allSettled(PACK_CATS.map(async (c) => {
@@ -331,15 +236,11 @@ export function PkgProg({ dim, setDim }: {
         .flatMap((p) => p.layerIds.map((id) => ({ layerId: id, where: p.where })));
       if (!srcs.length) return [c.key, 0] as const;
       const r = await overlapLeftParcels(srcs);
-      /* ⚠️ Хагас үр дүн (`failed`) → 'error' (2026-09-25): дэд бүтцийн цөөн давхарга
-         унахад «асуудал 0» ногоон худал гардаг байв. */
       if (r.failed?.length) throw new Error('partial overlap');
       return [c.key, r.oids.length] as const;
     })).then((rs) => {
       if (!alive) return;
       const m = new Map<PackCat, number | 'error'>();
-      /* ⚠️ Унасныг АЛГАСАХГҮЙ — Map-д байхгүй түлхүүр `?? 0`-оор «асуудал 0»
-         гэсэн худал сайн мэдээ болдог байв; `'error'` = «—» саарлаар гарна. */
       rs.forEach((r, i) => {
         if (r.status === 'fulfilled') m.set(r.value[0], r.value[1]);
         else m.set(PACK_CATS[i].key, 'error');
@@ -362,7 +263,6 @@ export function PkgProg({ dim, setDim }: {
    * тааруулж НЭГ УДАА бэлдэнэ. Жагсаалтын гүйцэтгэлийн хувь ба хоцрогдлын
    * alert үүнээс тооцогдоно.
    */
-  /* ⚠️ 2026-09-30: логик нь `Finance.pkgMonthsMap`-д — «Багцын мэдээлэл» ч мөн үүнийг ашиглана. */
   const finMap = useMemo(
     () => (finQ.state === 'ready' ? pkgMonthsMap(finQ.data) : null),
     [finQ],
@@ -371,29 +271,15 @@ export function PkgProg({ dim, setDim }: {
   /**
    * ХУВААРИЙН ТӨЛӨВЛӨГӨӨ — «Гүйцэтгэл бөглөх» хуудсуудын эхлэх/дуусах
    * огноонд суурилсан сар тутмын өссөн хувь (`loadPlanCurve`).
-   *
-   * ⚠️ Урьд нь `cashflow_0813`-аас гардаг байсан (`aggregateMonths().cumPct`)
-   *    бөгөөд хуваагч нь 12 САРЫН ЦОНХНЫ нийлбэр байсан тул муруй нь цонхны
-   *    төгсгөлд ҮРГЭЛЖ 100% болж, дэлгэцэд «2026-09-д төсөл дуусна» гэж
-   *    ГАРЧ БАЙВ. Төсөл бодитоор 2027-12 хүртэл үргэлжилдэг.
    */
-  /* ⚠️ 2026-09-25: КЭШТЭЙ хувилбар — Finance (`loadFinData` доторх
-     `planCurveCache`) · negtgel · execReport-той НЭГ хуулбар. Урьд нь энэ
-     хуудас нээгдэхэд 10 бөглөх хуудас ХОЁР удаа бүтнээр уншигддаг байв. */
   const planQ = useAsync(loadPlanCurveCached, []);
 
   /**
    * Графикийн мөрүүд: тэнхлэг ба ТӨЛӨВЛӨГӨӨ нь ХУВААРИАС, БОДИТ гүйцэтгэл нь
    * хуучин санхүүгийн цэгүүдээс (`phys`) шошгоор тааруулж холбогдоно.
-   *
-   * ⚠️ Хуваарь олдоогүй үед (дэд бүтцийн багц — бөглөх хуудасгүй) ХУУЧИН
-   *    зан төлөв хэвээр: тэнд хуваарийн эх сурвалж огт байхгүй.
    */
   const progMonths = useMemo<ProgPt[] | null>(() => {
     const pc = planQ.state === 'ready' ? planQ.data : null;
-    /* ⚠️ 2026-10-09 (аудит №2): ТӨСЛИЙН графикт хуваарьгүй багц байвал БОДИТ шугам ч
-       хуваарьтай багцаар (`physLag`) — төлөвлөгөөт шугамтай нэг олонлог, зөрүү хэтрэхгүй.
-       Гарчиг «(хуваарьтай багцаар)» гэж хэлнэ; толгойн «бодит гүйцэтгэл» (`physNow`) бүх багцаар. */
     const base = active
       ? (finMap?.get(active.key) ?? null)
       : (finQ.state === 'ready'
@@ -401,29 +287,16 @@ export function PkgProg({ dim, setDim }: {
           ? { ...m, phys: m.physLag, physAt: m.physLagAt ?? null }
           : m))
         : null);
-    /* ⚠️ Хуваарь ирээгүй бол ГРАФИК ЗУРАХГҮЙ — cashflow руу буцаж унах зам
-       2026-09-06-нд хаагдсан (тэр үйлчилгээ байхгүй). Хоосон график нь
-       буруу муруйгаас ДЭЭР.
-       ⚠️ `pc.months` хоосон эсэхийг ЭНД шалгахгүй (2026-09-25 аудит): өөр хуудас
-       унаснаас төслийн нийт хоосон байхад бүрэн ачаалсан багцын `byBagts`
-       муруй алга болдог байв — хоосон цувааг доорх `series` шалгалт барина. */
     if (!pc) return null;
-    /* Багц сонгосон бол тэр багцын муруй; сонгоогүй бол ТӨСЛИЙН нийт.
-       ⚠️ 2026-09-30: төслийн муруй — `projectPlanOf` (ХО дүнгээр, бодит `aggregateMonths`-тай
-       нэг жин); урьд нь `pc.months` (БЛОКИЙН тоогоор) тул хоёр шугам өөр жинтэй байв. */
+    /* Багц сонгосон бол тэр багцын муруй; сонгоогүй бол ТӨСЛИЙН нийт. */
     const series = active && active.key !== '__all'
       ? pc.byBagts.get(active.key)
       : (finQ.state === 'ready' ? projectPlanOf(finQ.data, pc) : pc.months);
-    /* ⚠️ 2026-09-30: цэгүүдийг `pkgShared.progMonthsOf` бүтээнэ — «ТУХ» ижил функцийг
-       хэрэглэдэг (хэмжилтгүй сар `null`, `planM` нь хэмжилтийн өдрөөр). */
     return progMonthsOf(base, series);
   }, [active, finMap, finQ, planQ]);
-  /** ⚠️ 2026-10-09 (аудит №2): төслийн төлөвлөгөө/хоцрогдлоос хасагдсан хуваарьгүй багцууд */
   const planExcl = useMemo<string[]>(() => (finQ.state === 'ready' && planQ.state === 'ready'
     ? projectPlanScope(finQ.data, planQ.data)?.excluded ?? []
     : []), [finQ, planQ]);
-  /* ⚠️ 2026-10-22 (аудит): графикийн ТӨЛӨВЛӨГӨӨТ муруйн хуваарийн хамралт — гарчигт «хуваарь X% хамарсан»
-     (`planProgress.coverageNote`); хамралт бага муруй «төлөвлөгөө бага» мэт уншигдахаас сэргийлнэ. */
   const chartCov = useMemo<string>(() => {
     const pc = planQ.state === 'ready' ? planQ.data : null;
     if (!pc) return '';
@@ -442,27 +315,14 @@ export function PkgProg({ dim, setDim }: {
   const alertKeys = useMemo(() => {
     const s = new Set<string>();
     if (!finMap) return s;
-    /*
-     * ⚠️ ЭНД ЗӨВХӨН БИЕТ ХОЦРОГДОЛ: төлөвлөсөн явцаас хэдэн хувь хоцорсон.
-     *    Санхүүжилтийн хоцрогдол нь «Багцын санхүү» модулийнх — хоёрыг нэг
-     *    дүрмээр шийдвэл нэг цонхны alert нөгөөгийнхөө асуултад хариулж,
-     *    «яагаад улаан байна вэ» гэдэг нь ойлгогдохгүй болно.
-     */
     packs.forEach((p) => {
       const months = finMap.get(p.key);
       if (!months) return;
-      /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан багцыг хоцорсон гэж ДҮГНЭХГҮЙ (`lagLevelOf`) */
       if (lagLevelOf(lagOf(months))) s.add(p.key);
     });
     return s;
   }, [packs, finMap]);
   const alerted = useMemo(() => packs.filter((p) => alertKeys.has(p.key)), [packs, alertKeys]);
-  /**
-   * ⚠️ 2026-09-25: ХОЦРОГДОЛ НЬ МЭДЭГДЭХГҮЙ багцууд — бөглөх хуудас нь уншигдаагүй
-   *    (`PlanCurve.failed`) тул `byBagts`-д муруй байхгүй, `lagOf` `null` буцааж
-   *    `alertKeys` тэднийг ЧИМЭЭГҮЙ орхидог байв: «⚠ Хоцрогдолтой багц» бүлэгт
-   *    гарахгүй нь «хоцроогүй» гэсэн худал сайн мэдээ. Одоо тусдаа мэдэгдэл.
-   */
   const lagUnknown = useMemo(() => {
     if (planQ.state !== 'ready' || !planQ.data.failed.length) return [] as Pack[];
     const failed = new Set(planQ.data.failed);
@@ -489,8 +349,6 @@ export function PkgProg({ dim, setDim }: {
       where: null,
       blocks,
       households: build.reduce((s, p) => s + p.households, 0),
-      /* ⚠️ 2026-10-01: давхардсан полигон нэг блок (`uniqueBlocks`).
-         ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): тайлагнаагүй блок 0% (урьд нь хасагддаг байв) */
       progress: meanOf(uniqueBlocks(blocks).map((b) => b.progress ?? 0)),
     };
   }, [packs]);
@@ -507,58 +365,27 @@ export function PkgProg({ dim, setDim }: {
     return oids.length ? `${BUILDING.oid} IN (${oids.join(',')})` : null;
   }, [alerted]);
 
-  /**
-   * ⚠️ 2026-08-20: Багцын давхаргууд нь СУУРЬ, дээр нь каталогийн сонголт
-   * (`useLayerPicks`). Урьд нь `visible` нь зөвхөн сонгосон багцаас гардаг тул
-   * энэ цонхонд давхаргын каталог огт байхгүй, порталын бусад ~84 давхаргын
-   * нэгийг ч контекст болгон нэмэх арга үгүй байв.
-   */
   const [visible, setVisible] = useLayerPicks(active ? active.layerIds : [BLOCK_LAYER]);
   const [catOpen, setCatOpen] = useState(false);
   const [opOpen, setOpOpen] = useState(false);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
-  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
-     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
   useZoomToFilter({ zone });
 
   /**
    * ЗУРАГТ ӨГӨХ жагсаалт — каталогийн сонголт (`visible`) дээр давхцсан
    * үлдсэн нэгж талбар олдвол газар чөлөөлөлтийн давхаргыг НЭМНЭ: инженер
    * аль блок дээр саад байгааг зурган дээр шууд харна.
-   *
-   * ⚠️ `setVisible` рүү БИЧИХГҮЙ — тэр нь хэрэглэгчийн каталогийн сонголт тул
-   * overlap ирэх бүрд бохирдоно. Зөвхөн ГАРАЛТ дээр давхарлана.
    */
   const mapVisible = useMemo(() => {
     const ids = [...visible];
-    /* ⚠️ Сонгосон багцын давхарга — саад ЮУНД болж байгааг харуулна. Багц
-       СОНГООГҮЙ (жагсаалтаас) үед энэ нь цорын ганц зам: `visible`-ийн суурь
-       нь зөвхөн блокийн давхарга тул дэд бүтцийн шугам огт зурагдахгүй. */
     if (ovPack) ids.push(...ovPack.layerIds);
     if (ovShown.length) ids.push(PARCEL_LAYER);
     return ids.length === visible.length ? visible : [...new Set(ids)];
   }, [visible, ovPack, ovShown]);
   /**
    * ДАВХЦСАН НЭГЖ ТАЛБАРЫН ХЭВ МАЯГ — УЛААН (хэрэглэгчийн шийдвэр, 2026-08-25).
-   *
-   * ⚠️ Улаан нь энэ порталд «саад / эрсдэл» гэсэн ТӨЛӨВИЙН өнгө бөгөөд
-   *    давхцсан үлдсэн талбарын ТОО аль хэдийн улаанаар бичигддэг
-   *    (`--bad-ink`). Зураг нь өөр өнгөөр (ягаан) ярьж байсан тул тоо ба
-   *    полигон хоёр НЭГ зүйлийг хэлж байгаа нь нүдэнд холбогдохгүй байв.
-   *
-   * ⚠️ Блокууд улбар шар (`#ea580c`) тул ойролцоо өнгөтэй: ЗУЗААН хүрээ
-   *    (4.2) ба өндөр дүүргэлт (0.3) нь ялгааг барина.
-   *
-   * ⚠️ HEX-ЭЭР бичнэ, CSS хувьсагчаар БИШ: MapCanvas-ийн `rgb()` нь зөвхөн
-   *    `#rrggbb`-г задалдаг тул `var(--bad)` өгвөл NaN болж, полигон огт
-   *    зурагдахгүй. Утга нь `globals.css`-ийн `--bad`-тай ижил.
-   */
-  /**
-   * ⚠️ АНИВЧИЛТ ХАСАГДСАН (2026-08-28, хэрэглэгчийн заавар): пульс нь
-   * талбаруудыг тасралтгүй томруулж жижигрүүлдэг тул хэлбэр, хэмжээг нь
-   * нүдээр уншиж болохгүй болно. Ялгааг өнгө ба зузаан хүрээ барина.
    */
 
   const parcelStyle = useMemo(
@@ -571,16 +398,6 @@ export function PkgProg({ dim, setDim }: {
 
   const layerWhere = useMemo<Record<string, string | null>>(
     () => {
-      /* ⚠️ `layerWhere` өгөгдмөгц MapCanvas бүсийн (zone) fallback-ийг БҮХ
-         давхаргад алгасдаг (жагсаалтад БАЙХГҮЙ давхарга ч `?? null`-аар
-         шүүлтгүй болдог) тул каталогоос асаасан бүсчлэлтэй давхаргууд «Бүс»
-         сонгоход шүүгдэлгүй, каталогийн тоотойгоо зөрдөг байв. Тиймээс бүсийн
-         шүүлтийг давхарга бүрд ЭНДЭЭС өөрсдөө тавина (noZone давхаргад
-         `zoneWhere` null тул зан төрх өөрчлөгдөхгүй — тэдгээрт орон зайн маск
-         хэвээр үйлчилнэ). */
-      /* ⚠️ 2026-10-22 (аудит): MapCanvas одоо `null`/жагсаалтад алга давхаргад ӨӨРӨӨ бүсийн шүүлт тавьдаг болсон
-         (`MapCanvas.layerWhere`-ийн ⚠️) — доорх давталт ижил утга өгөх тул хор хөнөөлгүй; `null` (жиш. дэд бүтцийн
-         багцын «давхарга бүхэлдээ») одоо бүсийн шүүлтээ хадгална. */
       const w: Record<string, string | null> = {};
       if (zone) {
         for (const id of mapVisible) {
@@ -589,23 +406,11 @@ export function PkgProg({ dim, setDim }: {
         }
       }
       /* Багц сонгосон → тэр багц; чартаас багц сонгосон → түүнийх;
-         эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд.
-         ⚠️ 2026-09-21: `active?.where ?? …` гинж нь дэд бүтцийн багцын
-         `where: null`-ыг («давхарга бүхэлдээ») `alertedWhere` руу унагаадаг
-         байв — доорх zoom-ийн эффектийн 2026-08-21-ний засвартай ижил алдаа.
-         Багц сонгосон бол ТҮҮНИЙ where (null = шүүлтгүй); `alertedWhere` нь
-         зөвхөн багц сонгоогүй үед. `ovPack` нь `??`-ээр хэвээр: чартаас
-         сонгосон дэд бүтцийн багцын давхаргад блок ордоггүй тул блокийн
-         давхарга анхдагч (хоцрогдолтой) шүүлтээ хадгална. */
+         эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд. */
       w[BLOCK_LAYER] = active ? active.where : (ovPack?.where ?? alertedWhere);
-      /* ⚠️ Чартаас сонгосон багцын БУСАД давхарга (дэд бүтцийн шугам) —
-         давхаргын БҮХ объект биш, зөвхөн тэр багцынхыг үлдээнэ. */
       if (ovPack) {
         for (const id of ovPack.layerIds) if (id !== BLOCK_LAYER) w[id] = ovPack.where;
       }
-      // ⚠️ Давхаргад 2,119 талбар бий — ЗӨВХӨН давхцсаныг үлдээнэ, эс бөгөөс
-      //    бүх хот дүүрэн парсел зурагдаж блокууд дарагдана.
-      /* ⚠️ Картаас нэг багц сонгосон бол ТҮҮНИЙ талбарууд; эс бөгөөс бүгд. */
       w[PARCEL_LAYER] = ovShown.length ? parcelOidsWhere(ovShown) : null;
       return w;
     },
@@ -625,18 +430,7 @@ export function PkgProg({ dim, setDim }: {
      хоёул тогтвортой тул хамаарал [setHighlight]. */
   const onMapPick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     const b = pickedBuilding(attrs, layerId);
-    /*
-     * ⚠️ ХООСОН ГАЗАР ДАРВАЛ СОНГОЛТ АРИЛНА. Урьд нь `if (!b) return` байсан
-     *    тул барилга сонгосны дараа зөвхөн дээд талын «‹ багц руу буцах» товч
-     *    л гарц болдог байв — зурган дээр хаана ч дарсан шүүлт хэвээр наалдаж,
-     *    хэрэглэгч «гацсан» гэж мэдэрдэг. Газрын зурагт хоосон газар дарах нь
-     *    «сонголтоо болих» гэсэн ердийн дохио.
-     */
     if (!b) {
-      /* ⚠️ Багцын сонголтыг БАС арилгана: зөвхөн барилгыг цуцлаад багцын
-         шүүлтийг үлдээвэл зураг тэр багцаараа хумигдсан хэвээр байх тул
-         хэрэглэгч «арилсангүй» гэж мэдэрнэ. Хоосон газар дарах = БҮХ
-         сонголтоо болих. */
       pick(null);
       return;
     }
@@ -651,9 +445,6 @@ export function PkgProg({ dim, setDim }: {
 
   /**
    * Сонгосон багц руу нисэх.
-   *
-   * ⚠️ 2026-08-21 ЗАСВАР: урьд нь `zoomToWhere(id, active?.where ?? alertedWhere
-   * ?? '1=1')` байсан тул ЗӨВХӨН БАРИЛГЫН багцад ажилладаг байв.
    *
    * Багц ХОЁР ТӨРӨЛТЭЙ (`buildPacks`):
    *   · `build` — давхарга нь БҮХ блокийн нэг давхарга, багцыг нь `where`
@@ -690,8 +481,6 @@ export function PkgProg({ dim, setDim }: {
       /* Дэд бүтэц/нийгмийн барилгад биет хувь байхгүй тул
          «гүйцэтгэлийн хувь» гэж амлахгүй — зурагт байгаа зүйлээ л. */
       note={c.key === BUILD_CAT ? tr('блокийн гүйцэтгэл') : tr('зурагт харагдах давхарга')}
-      /* ⚠️ Alert-тай багц нь ТУСДАА бүлэгт гарсан тул эндээс хасагдана —
-         эс бөгөөс нэг багц хоёр газар давхардаж жагсана. */
       packs={packs.filter((p) => catOf(p) === c.key && !alertKeys.has(p.key))}
       sel={sel}
       onSel={pick}
@@ -703,9 +492,6 @@ export function PkgProg({ dim, setDim }: {
     /* Талын багануудыг чирж өргөсгөх/нарийсгах бариулууд. */
     <div
       ref={sideHostRef}
-      /* ⚠️ Горимын класс — хоёр харагдац бүтцээрээ ижил тул ялгах ЦОРЫН ГАНЦ
-         дохио нь өнгө. Хэрэглэгч табаа сольсноо мэдэхгүй бол санхүүгийн тоог
-         гүйцэтгэл гэж уншина. */
       className={`${ts.pack} ${side.hostClass}`}
       style={side.style}
     >
@@ -716,8 +502,6 @@ export function PkgProg({ dim, setDim }: {
           багцын KPI хэвээр ── */}
       <div className={ts.kpi}>
         {errQ ? null : loading ? <Loading /> : active ? (
-          /* ⚠️ `fin` дамжуулснаар PackKpi нь МӨНГӨНИЙ хавтан гаргана —
-             гүйцэтгэл/блок/айл огт харагдахгүй. */
           <PackKpi active={active} packs={packs} />
         ) : (
           <TsKpi packs={packs} finQ={finQ} planQ={planQ} />
@@ -741,9 +525,6 @@ export function PkgProg({ dim, setDim }: {
               * доош бууж, хуудас нээх бүрд эхлээд асуудал уншигддаг байв.
               */}
             {PACK_CATS.filter((c) => c.key === BUILD_CAT).map(catList)}
-            {/* ⚠ ХОЦРОГДОЛТОЙ багцууд — тусдаа бүлэг, карт бүхэлдээ анивчина.
-                ⚠️ 2026-08-21: ЗӨВХӨН гүйцэтгэлийн харагдацад — хоцрогдол нь биет
-                явц vs төлөвлөгөөний зөрүү тул санхүүгийн асуултын хэсэг БИШ. */}
             {alerted.length > 0 && (
               <div className={ts.alertCard}>
                 <TsPackList
@@ -761,10 +542,6 @@ export function PkgProg({ dim, setDim }: {
                 <Note>{tr('{0}: бөглөх хуудас уншигдсангүй — хоцрогдол тооцоологдоогүй.', lagUnknown.map((p) => tr(p.name)).join(', '))}</Note>
               </Section>
             )}
-            {/* ⚠️ 2026-09-08 (аудит, HIGH): `finMap` нь `finQ`-ээс гардаг тул
-                `loadFinData` унавал `alertKeys` ХООСОРЧ «⚠ Хоцрогдолтой багц»
-                бүлэг бүхэлдээ алга болно — тэр нь «хоцорсон багц алга» гэсэн
-                ХУДАЛ сайн мэдээ. Хоосон нь «мэдээлэлгүй» гэдгийг ил хэлнэ. */}
             {finQ.state === 'error' && (
               <Section title={tr('⚠ Хоцрогдолтой багц')}>
                 <Note>{tr('Санхүүгийн өгөгдөл татагдсангүй — хоцрогдол тооцоологдоогүй.')}</Note>
@@ -793,8 +570,6 @@ export function PkgProg({ dim, setDim }: {
           onPick={onMapPick}
         />
 
-        {/* ⚠️ 2026-08-20: Урьд нь ЗӨВХӨН 2D/3D/BIM байсан — Давхарга ч, Тунгалаг
-            ч, Бүс ч байхгүй. Одоо бүх харагдацтай ижил нэгдсэн зурвас. */}
         <MapTools
           dim={dim}
           setDim={setDim}
@@ -831,8 +606,6 @@ export function PkgProg({ dim, setDim }: {
         )}
 
         <div className={o.packLegend}>
-          {/* ⚠️ Чартаас сонгосон багц ч тайлбартай байна — эс бөгөөс зурагт
-              нэмэгдсэн шугам ямар давхарга болох нь нэргүй үлдэнэ. */}
           {(active ?? ovPack)?.kind === 'infra'
             ? (active ?? ovPack)!.layerIds.map((id) => (
               <span key={id} className={o.packLegendItem}>
@@ -864,15 +637,11 @@ export function PkgProg({ dim, setDim }: {
         ) : !active ? (
           /* Багц сонгоогүй — ТӨСЛИЙН НЭГДСЭН: гэрээ/төсөв · эх үүсвэр · төлөв · блок гүйцэтгэл */
           <>
-            {/* ⚠️ 2026-09-30: орон сууцны багана = `physNow` (TsKpi-тай нэг тоо); ачаалж байхад `undefined` */}
-            {/* ⚠️ 2026-10-22 (аудит): «Инженерийн дэд бүтэц» — ӨӨРИЙН батлагдсан биет хувь (`infraPhysNow`, GeneralDash ·
-                удирдлагын тайлантай нэг); урьд нь «мэдээлэлгүй» */}
             <CatChart
               packs={packs}
               housing={finQ.state === 'ready' ? physNow(finQ.data, monthKey()) : finQ.state === 'error' ? null : undefined}
               infra={finQ.state === 'ready' ? infraPhysNow(finQ.data)?.pct ?? null : finQ.state === 'error' ? null : undefined}
             />
-            {/* ⚠️ 2026-10-06: хуваарь = бөглөх хуудасны блок (`q.data.keys`), газрын зургийн блок БИШ */}
             {allPack && q.state === 'ready' && <LevelsCard pm={q.data.prog} keys={q.data.keys} ovByCat={ovByCat} />}
             {/* ТӨСЛИЙН НИЙТ давхцсан үлдсэн нэгж талбар — хэрэглэгчийн
                 хүсэлтээр (2026-08-21) ТУСДАА КАРТ болгож БУЦААВ: FinCard-аас
@@ -887,21 +656,12 @@ export function PkgProg({ dim, setDim }: {
               </span>
               <b
                 className={`${ts.ovTotVal} num`}
-                /* ⚠️ 2026-08-23 (хэрэглэгчийн хүсэлт): ЯГААН (`--overlap`) → УЛААН
-                   (`--bad-ink`). Урьд нь тоо нь зурган дээрх давхцлын давхаргын
-                   ягаантай ижил утгатай байсан; одоо тоо нь «саад/эрсдэл» гэсэн
-                   статусын хэлээр (улаан) ярина — багцын картуудын толгой дахь
-                   давхцлын тоотой ч нэг өнгө болов (`BlocksCard`).
-                   ⚠️ ГАЗРЫН ЗУРАГ дээрх полигон ЯГААН ХЭВЭЭР: тэр нь улбар шар
-                   блокуудаас ялгарахын тулд зориуд сонгогдсон (`Tsogts.tsx` §350). */
                 style={{ color: overlap === 'error' ? 'var(--ink-3)' : ovOk?.oids.length ? 'var(--bad-ink)' : 'var(--good-ink)' }}
               >
                 {overlap == null ? '…' : overlap === 'error' ? '—' : num(overlap.oids.length)}
               </b>
             </Section>
-            {/* Блок бүрийн гүйцэтгэл — БАГЦААР нь бүлэглэсэн (нэг багц = нэг карт).
-                ⚠️ Зөвхөн ГҮЙЦЭТГЭЛИЙН харагдацад: блокийн биет явц нь санхүүгийн
-                асуултад хамаарахгүй, харин баганыг маш урт болгодог. */}
+            {/* Блок бүрийн гүйцэтгэл — БАГЦААР нь бүлэглэсэн (нэг багц = нэг карт). */}
             {packs.filter((p) => p.kind === 'build').map((p) => (
               /* АНХДАГЧ нь ХААЛТТАЙ (2026-08-21) — олон багцын блок нэг
                  баганад маш урт тул үзье гэсэн нь нээж харна; refresh хийхэд
@@ -924,8 +684,6 @@ export function PkgProg({ dim, setDim }: {
                   return r && r !== 'error' ? r.oids : undefined;
                 })()}
                 onOverlapPick={(oids) => setOvPick(oids ? { key: p.key, oids } : null)}
-                /* ⚠️ 2026-09-21: 7 картын сонголт НЭГ төлөвт (`cardSel`) — зөвхөн
-                   сүүлд сонгосон карт «сонгогдсон» харагдана (`BlocksCard.sel`). */
                 sel={cardSel?.key === p.key ? cardSel.oid : null}
                 onSel={(v) => setCardSel(v ? { key: p.key, oid: v } : null)}
               />
@@ -953,8 +711,6 @@ export function PkgProg({ dim, setDim }: {
         <ProgChart
           months={progMonths}
           planFailed={planQ.state === 'error' ? -1 : planQ.state === 'ready' ? planQ.data.failed.length : 0}
-          /* ⚠️ 2026-09-29 (аудит 10): ачаалж байх үед `progMonths` = null тул график
-             «Гүйцэтгэлийн дата алга» гэж ХАРИУЛТ мэт бичдэг байв — ачаалал ≠ хоосон. */
           loading={planQ.state === 'loading' || finQ.state === 'loading'}
           title={(active
             ? tr('{0} — гүйцэтгэлийн явц', tr(active.name))
@@ -977,30 +733,12 @@ export function PkgProg({ dim, setDim }: {
 /**
  * ДЭЭД ИНДИКАТОРУУД (2026-08-21, хэрэглэгчийн жагсаалтаар) — багц сонгоогүй
  * үеийн төслийн нэгдсэн 6 үзүүлэлт.
- *
- * ⚠️ ТӨЛӨВЛӨСӨН хувь нь доод графиктай ИЖИЛ эх сурвалжаас — «Гүйцэтгэл
- *    бөглөх»-ийн ХУВААРЬ (`loadPlanCurve`), 2026-09-04-нөөс. Урьдын
- *    `aggregateMonths().cumPct` нь cashflow-ийн 12 сарын ЦОНХОНД
- *    нормчлогддог тул «2026-09-д 100%» гэсэн худал тоо өгдөг байв.
- * ⚠️ БОДИТ хувь нь хэвээр `aggregateMonths().phys` — ХО дүнгээр жигнэсэн биет %
- *    (`gdash.housingPct`, 2026-09-30; өмнө нь блокоор).
- */
-/*
- * ⚠️ 2026-09-08 (аудит, HIGH): `fin`/`plan`-ийг задалсан утгаар БИШ, бүтэн
- *    `Async`-аар авна. Урьд нь дуудагч тал `finQ.state === 'ready' ? … : null`
- *    гэж шахдаг байсан тул АЧААЛЖ БАЙГАА ба АЛДАА ГАРСАН хоёр ялгагдахгүй
- *    болж, `loadFinData`/`loadPlanCurve` унамагц гурван хавтан «…» гэж
- *    МӨНХӨД хөлдөж, алдааны мессеж ч, «Дахин оролдох» товч ч хаана ч
- *    гардаггүй байв — тэр нь `Bagts.tsx:531`-д нэг удаа зассан алдаатай ЯГ
- *    ижил. Одоо: ачаалж байна = «…», алдаа = «—» (+ доор нэрлэсэн алдаа).
  */
 function TsKpi(
   { packs, finQ, planQ }:
   { packs: Pack[]; finQ: Async<FinData>; planQ: Async<PlanCurve> },
 ) {
   const fin = finQ.state === 'ready' ? finQ.data : null;
-  /* ⚠️ 2026-09-30: `projectPlanOf` — ТӨЛӨВЛӨГӨӨ бодит (`physNow`)-той НЭГ (ХО) жинтэй;
-     урьд нь `planQ.data.months` (БЛОКИЙН тоогоор) тул «зөрүү» хоёр өөр жинг хасдаг байв. */
   const plan = useMemo<PlanPoint[] | null>(() => (planQ.state === 'ready'
     ? (fin ? projectPlanOf(fin, planQ.data) : planQ.data.months)
     : null), [planQ, fin]);
@@ -1010,34 +748,18 @@ function TsKpi(
   const failed = finQ.state === 'error' || planQ.state === 'error';
   const t = useMemo(() => {
     if (!fin) return null;
-    const nowYm = monthKey(); /* ⚠️ ОРОН НУТГИЙН сар — UTC slice нь сарын 1-ний шөнө ӨМНӨХ сар өгдөг */
+    const nowYm = monthKey();
     let planned: number | null = null;
-    /* ⚠️ 2026-09-22: `physNow` — Dashboard/ExecReport-той НЭГ туслах (pkgShared.ts) */
     const actual = physNow(fin, nowYm);
     /*
      * ТӨЛӨВЛӨГӨӨ — ХУВААРИАС, доорх графиктай ЯГ НЭГ эх сурвалж.
-     * ⚠️ `aggregateMonths().cumPct` (cashflow) ХЭРЭГЛЭХГҮЙ: түүний хуваагч
-     *    нь 12 сарын цонхны нийлбэр тул цонх дуусахад үргэлж 100% болдог.
      */
-    /* ⚠️ 2026-09-25: ХЭМЖИЛТИЙН ӨДРИЙН төлөвлөгөө — урьд нь ЭНЭ сарын эцсийн
-       цэгийг (`p.label <= nowYm`) хэдэн сарын өмнөх хэмжилттэй жишиж хиймэл
-       «хоцрогдол» гаргадаг байв. `Finance.lagOf` ба `execReport`-той НЭГ дүрэм
-       (`planPctAt` = `negtgelAuto.housingPlanOf`). Хэмжилтгүй бол энэ сарын эцэс (хуучин зан). */
     let lastM: { label: string; physAt?: string | null } | null = null;
     for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) lastM = m;
-    /* ⚠️ 2026-10-08: `measureDayOf` — `Finance.lagOf` · `execReport` · ТУХ-тай НЭГ дүрэм (`planProgress`-ийн
-       «ганц дүрэм» ⚠️ 2026-10-04): `physAt` алга ба сар нь одоогийнх бол ӨНӨӨДӨР, `-31` биш. */
     const at = lastM ? measureDayOf(lastM.label, lastM.physAt, todayDayKey()) : `${nowYm}-31`;
     if (plan?.length) planned = planPctAt(plan, at);
     let gap = planned != null && actual != null ? planned - actual : null;
-    /* ⚠️ 2026-10-09 (аудит №2): хуудас уншигдсан бол төлөвлөгөө ба зөрүүг `projectLagNow`-оор —
-       хоёр тал НЭГ (хуваарьтай) багцын олонлог. Хуваарьгүй багц бодит талд л тоологдож хоцрогдлыг
-       хэтрүүлэхгүй; `actual` (толгойн тоо) нь `physNow` хэвээр. */
     let excluded: string[] = [];
-    /* ⚠️ 2026-10-22 (аудит): ХАРУУЛАХ бодит = зөрүүний бодит тал. Урьд нь хуваарьгүй багц хасагдсан үед
-       «бодит» хавтан `physNow` (бүх багц), «зөрүү» нь `physLag`-аас бодогддог тул нэг эгнээний тоо хоорондоо
-       нийцдэггүй байв (23.1% · 34.2% · −9.6 н.х — зөрүү нь харагдахгүй 24.55%-иас). Одоо хасагдсан багц байвал
-       бодит нь ч тэр олонлогоор (шошгонд «(хуваарьтай багцаар)»); хасагдаагүй бол хоёр ЯГ ижил. */
     let actualShown = actual;
     let coverage: number | null = null;
     if (planQ.state === 'ready') {
@@ -1048,64 +770,38 @@ function TsKpi(
       if (ln.excluded.length) actualShown = ln.actual;
       coverage = ln.coverage;
     }
-    /* ⚠️ 2026-10-09 (аудит №6): `planTotal · given · share · remain` ХАСАГДАВ — бодогдоод
-       `items`-д хэзээ ч ордоггүй үхмэл код байсан; `share` нь `paidShareOf`-оос зөрдөг хуучин
-       томьёо (төлөвлөгөө = гэрээ ЭСВЭЛ төсөв). Санхүүгийн тоонууд PkgFin-ийн `TsKpi`-д. */
     return { planned, actual: actualShown, gap, excluded, coverage };
   }, [fin, plan, planQ]);
-  /**
-   * ⚠️ Индикаторууд ГОРИМООР ялгана. «Нийт төслийн тоо» ХОЁУЛАНД байна — тэр нь
-   * контекст (хэдэн багцын тухай ярьж байна) бөгөөд аль ч асуултад хэрэгтэй.
-   * Гүйцэтгэлийн зөрүү нь БИЕТ vs ТӨЛӨВЛӨГӨӨ тул гүйцэтгэлийн талд; олгосон
-   * санхүүжилт ба түүний хувь нь санхүүгийн талд.
-   */
   /** Хэмжигдээгүй утгын дэлгэц: ачаалж байхад л «…», бусад үед (алдаа, эсвэл
-      бэлэн ч утга null — мэдээлэлгүй) «—».
-      ⚠️ 2026-09-21: урьд нь `failed ? '—' : '…'` тул хоёр хүсэлт амжилттай
-      ирсэн ч `actual`/`planned` null бол «…» мөнхөд «ачаалж байна» мэт харагдав. */
+      бэлэн ч утга null — мэдээлэлгүй) «—». */
   const loading = finQ.state === 'loading' || planQ.state === 'loading';
   const none = loading && !failed ? '…' : '—';
-  /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт — «төлөвлөсөн»-ийн хажууд; < 95% бол зөрүүг ДҮГНЭХГҮЙ (шошгонд) */
   const covNote = coverageNote(t?.coverage);
   const items = [
-      /* ⚠️ 2026-10-23 (UX аудит E6): ЮУГ тоолсныг `h` (tooltip) хэлнэ — 55/50/77 зэрэг өөр өөр тоо тайлбаргүй байв */
       { v: num(packs.length), l: tr('нийт төслийн тоо'), h: tr('Багцын бүртгэлд буй бүх багц ажил — гэрээ, санхүүжилт бүртгэгдээгүй багц ч орно') },
       {
         v: t?.actual == null ? none : pct(t.actual, 1),
-        /* ⚠️ 2026-10-22 (аудит): зөрүүний бодит тал (хуваарьтай багцаар) бол шошгонд хэлнэ — дээрх `actualShown` */
         l: t?.excluded.length ? `${tr('бодит гүйцэтгэлийн хувь')} ${tr('(хуваарьтай багцаар)')}` : tr('бодит гүйцэтгэлийн хувь'),
       },
       { v: t?.planned == null ? none : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') + (covNote ? ` · ${covNote}` : '') },
       {
-        /* ⚠️ 2026-10-06 (аудит): нэгж pp, `num()` — ТУХ-тай нэг хэлбэр (`pkgShared.pp`).
-           `gap` = төлөвлөгөө − бодит (эерэг = хоцорсон) тул тэмдгийг эргүүлнэ: хоцорсон → «-5.0 pp».
-           ⚠️ 2026-10-09 (аудит №2): порталын нэг хэлбэр `gdash.gapPts` — «−5.0 н.х», тэг «0.0 н.х». */
         v: t?.gap == null ? none : gapPts(t.gap),
         l: tr('гүйцэтгэлийн зөрүүгийн хувь')
           + (t?.gap != null && !coverageOk(t.coverage) ? ` · ${tr('хуваарь дутуу — дүгнэхгүй')}` : ''),
     },
   ];
-  /* ⚠️ Алдааг НУУХГҮЙ — нэрлэсэн шалтгаан ба «Дахин оролдох» товч `Data`-аас
-     гарна. Хоёулаа унасан үед НЭГ мессеж хангалттай (эхнийх нь). */
   const errQ: Async<unknown> | null =
     finQ.state === 'error' ? finQ : planQ.state === 'error' ? planQ : null;
   return (
     <>
-      {/* ⚠️ 2026-09-25: `PlanCurve.failed` ИЛ ГАРНА — урьд нь нэг хуудас уншигдаагүй
-          үед төслийн төлөвлөгөө чимээгүй «—» болж, шалтгаан хаана ч гардаггүй байв. */}
       {!errQ && planFailed > 0 && (
         <div className={o.tile} style={{ '--tone': 'var(--warn)' } as CSSProperties}>
           <span className={o.tileLabel}>{tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', planFailed)}</span>
         </div>
       )}
-      {/* ⚠️ 2026-10-13 (хэрэглэгч): хуваарьгүй багцын тэмдэглэл («Төлөвлөгөө ба хоцрогдол — хуваарьтай
-          багцаар») 12-т ХАРУУЛАХГҮЙ — эхлээд зүүн самбарын карт болгосны дараа «энэ картыг hide хий».
-          Олонлог хэвээр (`projectPlanScope`) — `ProgChart`-ийн гарчгийн «(хуваарьтай багцаар)» л үлдэнэ. */}
       {items.map((i) => (
         /* Нэг аяс (--data) — өнгөөр ялгах утга биш, зэрэгцсэн нэг эгнээ */
         <div key={i.l} className={o.tile} style={{ '--tone': 'var(--data)' } as CSSProperties}>
-          {/* ⚠️ 2026-10-23 (UX аудит E4): утгыг `<b>`-д — CSS-ийн `.tileVal b` (бүтэн мөнгөн дүнд зориулсан хэмжээ) үйлчилнэ;
-              урьд нь шууд текст тул «530,872,795,39|» хавтангаас хальж тайрагддаг байв. ТООГ богиносгохгүй (`format.mnt`-ийн ⚠️). */}
           <span className={`${o.tileVal} num`} title={'h' in i && i.h ? i.h : i.v}><b>{i.v}</b></span>
           <span className={o.tileLabel}>{i.l}</span>
         </div>
@@ -1141,28 +837,9 @@ function TsPackList({
       const months = finMap?.get(p.key) ?? null;
       /* ХОЦРОГДОЛ — БИЕТ явц төлөвлөсөн явцаас хэдэн ХУВЬ хоцорсон */
       const lag = months ? lagOf(months) : null;
-      /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол улаан/шар/хэвийн ДҮГНЭХГҮЙ (`lagLevelOf`) */
       const lvl = lagLevelOf(lag);
       let execPct: number | null = null;
-      /*
-       * ⚠️ БОДИТ ГҮЙЦЭТГЭЛ (2026-09-30, хэрэглэгч: «бодит гүйцэтгэлийн хувь руу
-       *    шилжүүл») — ажлын хуудсын БИЕТ %, дээд талын «бодит гүйцэтгэлийн хувь»
-       *    ба хоцрогдлын тэмдгийн «бодит»-той НЭГ эх (`physLatest` = `lagOf`-ийн
-       *    цэг). Урьд нь `p.progress` — блокийн хүснэгтийн ЖИНГҮЙ дундаж байсан
-       *    тул жагсаалт ба толгойн тоо зөрдөг байв.
-       *    Хэмжилтгүй бол «—» (блокийн дундаж руу БУЦАЖ УНАХГҮЙ — хоёр өөр
-       *    хэмжигдэхүүн нэг баганад холилдоно).
-       */
       execPct = physLatest(months);
-      /*
-       * ⚠️ 2026-10-13 (хэрэглэгч: «бүх гүйцэтгэлийг 01. Гүйцэтгэл-ийн батлагдсан хэсгээс нэгтгэ»;
-       *    «10.13-нд Багц 5.1 дээр орсон гүйцэтгэл огт орохгүй байна»): ДЭД БҮТЦИЙН (блокгүй) багц ч
-       *    БИЕТ % — бөглөх хуудасны синтетик блокийн «Б.» мөрөөс (`Finance.loadFinDataRaw` →
-       *    `blockProgress.loadInfraHistory`). Урьд нь `p.kind === 'build'` л уншдаг тул блокгүй 14 багц
-       *    «мэдээлэлгүй» байв. Бөглөх хуудасгүй багц (`months`-д биет цэггүй) — «—» хэвээр.
-       * ⚠️ «Олгосон / төлөвлөгөө» МӨНГӨН хувийг «гүйцэтгэл» гэж ХЭЗЭЭ Ч харуулахгүй (хуучин дүрэм
-       *    хэвээр) — харьцуулж болохгүй хоёр хэмжигдэхүүн нэг баганад холилдоно.
-       */
       return { p, lag, lvl, execPct };
     })
     .sort((a, b) => {
@@ -1171,12 +848,6 @@ function TsPackList({
       return rank(a.lvl) - rank(b.lvl) || (b.lag?.gap ?? 0) - (a.lag?.gap ?? 0);
     });
   return (
-    /*
-     * ⚠️ БҮХ БҮЛЭГ НЭЭЛТТЭЙ ЭХЭЛНЭ (хэрэглэгчийн шийдвэр, 2026-08-25). Хураах
-     *    нь ЗӨВХӨН хэрэглэгчийн санаачилгаар — гарчиг дээр дарж хаана.
-     *    Анхнаасаа хаалттай байвал зүүн багана хоосон харагдаж, ямар багц
-     *    байгаа нь ч мэдэгдэхгүй байв.
-     */
     <Section
       title={title}
       note={tr('{0} багц · {1}', num(packs.length), note)}
@@ -1192,7 +863,6 @@ function TsPackList({
             <ListItem
               title={tr(p.name)}
               sub={p.kind === 'build'
-                  /* ⚠️ 2026-10-22 (аудит): дүгнэгдээгүй (хуваарь < 95%) багцад ч төл./бодит + «хуваарь X% хамарсан» */
                   ? tr('{0} блок · {1} айл{2}', num(blockCount(p)), num(p.households), lag && (lvl || !lagJudged(lag))
                     ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(1), lag.actual.toFixed(1))
                       + (lagJudged(lag) || !coverageNote(lag.coverage) ? '' : ` · ${coverageNote(lag.coverage)}`)
@@ -1201,27 +871,17 @@ function TsPackList({
                      зөвхөн зурагт хэдэн давхаргатай нь. */
                   : (p.layerIds.length ? tr('{0} давхарга', num(p.layerIds.length)) : tr('зураггүй'))}
               value={
-                /* ⚠️ `flexWrap` — «Санхүүжилт»-ийн жагсаалттай ЯГ ижил зан:
-                   нарийн самбарт тэмдэг картаас хальж гарахгүй. */
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   flexWrap: 'wrap', justifyContent: 'flex-end',
                 }}>
                   {execPct == null ? '—' : pct(execPct, 1)}
-                  {/**
-                    * ⚠️ 2026-08-18: анхааруулга нь ЗӨВХӨН «⚠» тэмдэг байсныг
-                    * ЗӨРҮҮ + ТӨЛӨВЛӨСӨН/БОДИТ гурвалаар ил гаргав. Урьд нь тоо
-                    * нь зөвхөн hover-ийн `title`-д байсан тул жагсаалтыг нүдээр
-                    * гүйлгэхэд аль багц хэр хоцорсныг ХАРАХ арга байхгүй байлаа.
-                    */}
                   {lvl && lag && (
                     <b
                       className={`${ts.gapBadge} ${lvl === 'red' ? ts.gapRed : ts.gapYellow}`}
                       title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
                     >
                       <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
-                      {/* ⚠️ 2026-10-09 (аудит №6): `gdash.gapPts` («−5.0 н.х») — дээрх KPI-тай нэг хэлбэр;
-                          урьд `pp(-lag.gap)` («-5.0 pp», тэг дээр «-0.0 pp») */}
                       <span className="num">{gapPts(lag.gap)}</span>
                       <small className="num">
                         {lag.planned.toFixed(1)}/{lag.actual.toFixed(1)}
@@ -1234,28 +894,7 @@ function TsPackList({
               active={open}
               onClick={() => onSel(open ? null : p.key)}
             />
-            {/**
-              * ⚠️ ДЭД БҮТЦИЙН БАГЦ ДАРАХАД ДАВХАРГУУД ЗАДАРНА (2026-09-11,
-              * хэрэглэгчийн хүсэлт): «Багц 5.1 · 10 давхарга» → доор нь 10
-              * давхарга, давхарга дарахад түүний өгөгдөл. Дахин дарвал хаагдана —
-              * `onSel` аль хэдийн toggle тул тусдаа төлөв хэрэггүй.
-              *
-              * ⚠️ ЗӨВХӨН `infra`: барилгын багцын задаргаа нь блок бөгөөд тэр
-              * нь баруун талын `BlocksCard`-д аль хэдийн гардаг.
-              *
-              * ⚠️ Утгын багана (`valueFor`) ӨГӨӨГҮЙ: энэ жагсаалтын утга нь
-              * гүйцэтгэлийн хувь бөгөөд давхаргад тийм хэмжигдэхүүн байхгүй.
-              * Урт нь давхарга дарахад өгөгдлийн хэсэгт нийлбэрээр гарна.
-              */}
             {open && p.kind === 'infra' && <PackLayers layerIds={p.layerIds} />}
-            {/*
-              * ⚠️ ЖАГСААЛТЫН ДОТОРХ ЖИЖИГ ГРАФИК ХАСАГДСАН (2026-08-25).
-              *    290px өргөн, 140px өндөр талбайд 12 сарын гурван цуваа
-              *    багтахгүй: шошго нь дүрс болж, муруйнууд нийлж, юу ч
-              *    уншигдахгүй байв. Багц сонгоход доод талын БҮТЭН график
-              *    аль хэдийн тэр багц руу шилждэг — хоёр дахь, муудсан
-              *    хуулбар нь зөвхөн эргэлзээ төрүүлнэ.
-              */}
             </Fragment>
           );
         })}
@@ -1279,13 +918,6 @@ function TsPackList({
  */
 /**
  * БАГЦ БҮРИЙН САНХҮҮЖИЛТ — төлөвлөгөө, олгосон, олгосон хувь.
- *
- * ⚠️ Тоо нь доод графиктай ИЖИЛ эх сурвалжаас (`contractMonths`): төлөвлөгөө нь
- * сарын `amount`-ийн нийлбэр, олгосон нь `given`-ийнх. Тусад нь тооцвол хоёр
- * газрын дүн зөрнө.
- *
- * ⚠️ Санхүүгийн бүртгэлгүй багцыг ХАСНА — «0 ₮» гэж харуулбал «олгоогүй»
- * гэсэн ХУДАЛ дохио өгнө; бодит утга нь «гэрээ бүртгэгдээгүй».
  */
 function CatChart({ packs, housing, infra }: {
   packs: Pack[];
@@ -1294,30 +926,14 @@ function CatChart({ packs, housing, infra }: {
    * `gdash.housingPct`). `undefined` = ачаалж байна («…»), `null` = мэдээлэлгүй.
    */
   housing: number | null | undefined;
-  /**
-   * ⚠️ 2026-10-22 (аудит): «Инженерийн дэд бүтэц»-ийн батлагдсан биет хувь — `Finance.infraPhysNow` (Cashflow-ийн
-   * ангиллаар). `undefined` = ачаалж байна, `null` = хэмжигдээгүй (0 биш).
-   */
   infra?: number | null;
 }) {
   const rows = PACK_CATS.map((c) => {
     const list = packs.filter((p) => catOf(p) === c.key);
     const pcts: number[] = [];
-    /*
-     * ⚠️ ЗӨВХӨН БИЕТ явц. Урьд нь дэд бүтцийн багцад биет өгөгдөл байхгүй тул
-     *    «олгосон / төлөвлөгөө» мөнгөн хувиар нөхөж, барилгын биет хувьтай НЭГ
-     *    баганад нийлүүлдэг байв — хоёр өөр хэмжигдэхүүний дундаж нь юуг ч
-     *    хэмждэггүй тоо.
-     */
-    /* ⚠️ 2026-09-30: ОРОН СУУЦ (`build`) = `housing` (`physNow` — ХО дүнгээр
-       жигнэсэн, дээд индикатор `TsKpi`-тай ЯГ НЭГ тоо). Урьд нь (2026-09-25) БҮХ
-       тайлагнасан блокийн энгийн дундаж байсан тул нэг дэлгэц дээр орон сууцны
-       хоёр өөр хувь зэрэг харагддаг байв. Бусад ангилал биет өгөгдөлгүй тул
-       хоосон («мэдээлэлгүй») хэвээр — мөнгөн хувиар нөхөхгүй. */
     if (c.key === 'build') {
       return { c, n: list.length, mean: housing ?? null, wait: housing === undefined };
     }
-    /* ⚠️ 2026-10-22 (аудит): дэд бүтэц — блокгүй тул доорх блокийн дундаж үргэлж хоосон байв; батлагдсан хувиар */
     if (c.key === 'infra') {
       return { c, n: list.length, mean: infra ?? null, wait: infra === undefined };
     }
@@ -1334,8 +950,6 @@ function CatChart({ packs, housing, infra }: {
       title={tr('Төслийн төрөл')}
       note={tr('{0} багц ажил', num(packs.length))}
     >
-      {/* ⚠️ 2026-10-09 («графикийн жигдрэл»): ангилал бүр `cat(i)` (dark-тай токен) —
-          урьд нь `shade(HUE)` hex. Мэдээлэлгүй ангилал `null` (зурвасгүй) — 0 БИШ. */}
       <Bars
         max={100}
         items={rows.map((r, i) => ({
@@ -1366,11 +980,6 @@ function LevelsCard({
    */
   ovByCat: Map<PackCat, number | 'error'> | null;
 }) {
-  /* ⚠️ 2026-10-04 (2026-10-01-ний «тайлагнаагүй блок = 0%» шийдвэр): хэмжилтгүй блок «0–25%»-д
-     ТООЛОГДОНО. Тайлангүйн тоо `note`-д ил хэвээр.
-     ⚠️ 2026-10-06: Дашбоард · Удирдлагын тайлантай НЭГ дүрэм (`blockProgress.levelCounts`) — урьд нь
-     газрын зургийн давхаргын блокоор (`allPack.blocks`) тоолдог тул footprint-гүй (29/3, 5/8) блок
-     орохгүй, хуваарь Дашбоардын тархалтаас зөрдөг байв. */
   const counts = levelCounts(pm, keys);
   const total = counts.reduce((a, b) => a + b, 0);
   const all = new Set<string>(keys);
@@ -1379,9 +988,6 @@ function LevelsCard({
   all.forEach((k) => { const v = pm.get(k)?.overall; if (v == null || !Number.isFinite(v)) noData++; });
   return (
     <Section title={tr('Блокийн төлөв')} note={tr('{0} блок{1}', total, noData ? tr(' · {0} тайлангүй (0%)', noData) : '')}>
-      {/* ⚠️ 2026-10-09 («графикийн жигдрэл»): `shade(HUE)` САНААТАЙ үлдэв — газрын зургийн
-          блокийн давхарга ба түүний тайлбар (`packLegend`) ЯГ эдгээр өнгөөр будагддаг;
-          зурагтай ижил байх нь токеноос чухал (төлөвлөгөөний «HUE identity» дүрэм). */}
       <Bars
         color={HUE}
         items={PROGRESS_LEVELS.map((l, i) => ({
@@ -1427,65 +1033,30 @@ function LevelsCard({
  */
 /** Санхүүгийн графикийн өндрийн хязгаарууд (px) — чирэх бариул */
 
-/* ⚠️ `aggregateMonths` · `catOf` · `HUE` → `pkgShared.ts` (2026-09-17): хоёр
-   харагдацын ижил хуулбар нэг эх сурвалж болов. */
 
 
 /**
  * ГҮЙЦЭТГЭЛИЙН ЯВЦ — ТӨЛӨВЛӨСӨН vs БОДИТ, хоорондын ЗӨРҮҮ будагдана.
- *
- * ⚠️ «Багцын санхүү»-гийн «санхүүжилтийн явц» графиктай ИЖИЛ дүрслэл
- *    (хэрэглэгчийн шийдвэр, 2026-08-25): тасархай = зорилт, зузаан бүтэн =
- *    баримт, хоорондын талбай = зөрүү. Хоёр цонхны график нэг хэлээр ярьвал
- *    хэрэглэгч нэгийг сурчихаад нөгөөг нь дахин тайлах шаардлагагүй.
- *
- * ⚠️ ЯЛГАА нь ХЭМЖИГДЭХҮҮНД: тэнд ₮ (хуримтлагдах мөнгө), энд % (биет явц).
- *    Мөнгө ЭНД ОГТ ГАРАХГҮЙ.
- *
- * ⚠️ ТЭНХЛЭГ ба ТӨЛӨВЛӨГӨӨ нь 2026-09-04-нөөс ХУВААРИАС ирнэ (`progMonths`):
- *    төслийн эхлэхээс дуусах хүртэл (2025-08 … 2027-12), 29 сар. Урьд нь
- *    cashflow-ийн 12 сарын цонх байсан тул муруй нь тэр цонхны төгсгөлд
- *    үргэлж 100% болж, «2026-09-д төсөл дуусна» гэж ХУДАЛ харуулж байв.
  */
 /**
- * ⚠️ ХУВЬ БҮХ ГАЗАРТ АРАВТЫН НЭГ ОРОНТОЙ (2026-09-09, хэрэглэгчийн заавар:
- * «бутархайгаараа бүх цаг үед харагдана, бүхэлчилж болохгүй»).
- *
  * Бүхэлчлэл нь ЖИЖИГ ХӨДӨЛГӨӨНИЙГ НУУНА: 26.14% → 27% гэж бөөрөнхийлөхөд
  * тухайн өдөр 0.4 нэгжээр ахисан гүйцэтгэл дэлгэц дээр ОГТ өөрчлөгдөөгүй
  * мэт харагдана. Мөн «0%» нь «эхлээгүй» ба «0.4% хийгдсэн» хоёрыг
  * ялгахгүй болгоно.
  */
-/**
- * ⚠️ export (2026-09-30) — «ТУХ» харагдац багц бүрийн S-муруйд ЭНЭ графикийг
- *    ашиглана: хэрэглэгч «үндсэн системтэй адилхан» байхыг шаардсан.
- */
 export function ProgChart({ months, title, planFailed = 0, loading = false }: {
   months: ProgPt[] | null;
   title: string;
-  /**
-   * ⚠️ 2026-09-29 (аудит 10): хуваарь (`planQ`) эсвэл бодит гүйцэтгэл (`finQ`)
-   * АЧААЛЖ байна. Урьд нь энэ үед «дата алга» / «хараахан бөглөгдөөгүй» гэж
-   * бичигдэж, хүлээлтийг хоосон ХАРИУЛТ мэт уншуулдаг байв.
-   */
   loading?: boolean;
   /**
    * Уншигдаагүй бөглөх хуудасны тоо (`PlanCurve.failed`); `-1` = муруй бүхэлдээ
-   * уншигдсангүй. ⚠️ 2026-09-25: урьд нь хоёулаа «Гүйцэтгэлийн дата алга» гэж
+   * уншигдсангүй. 2026-09-25: урьд нь хоёулаа «Гүйцэтгэлийн дата алга» гэж
    * харагдаж, «дата байхгүй» ба «уншиж чадсангүй» ялгагддаггүй байв.
    */
   planFailed?: number;
 }) {
   const [hi, setHi] = useState<number | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  /**
-   * ⚠️ БОДИТ ӨРГӨН (px) — виртуал 1200 БИШ (2026-09-03, зохиомжийн засвар).
-   * `preserveAspectRatio="none"` нь виртуал өргөнийг бодит рүү сунгадаг тул
-   * ҮСЭГ нь хэвтээгээр гажиж, нарийн цонхонд шошго шахагдан уншигдахаа
-   * больдог байв. Одоо 1 нэгж = 1px — «Санхүүжилтийн явц» графиктай ижил.
-   * ⚠️ Доорх «дата алга» гэсэн эрт буцалтаас ДЭЭР дуудагдана: hook нь рендер
-   *    бүрд ИЖИЛ дарааллаар дуудагдах ёстой.
-   */
   const W = useChartWidth(wrapRef, 1200);
 
   if (!months || !months.length) {
@@ -1495,7 +1066,6 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
           ? (planFailed > 0
             ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', planFailed)
             : tr('Төлөвлөгөөт муруй уншигдсангүй'))
-          /* ⚠️ 2026-09-29 (аудит 10): алдаа нь ачааллаас ДАВУУ — унасан муруйг хүлээлгэхгүй */
           : loading ? tr('Ачаалж байна…') : tr('Гүйцэтгэлийн өгөгдөл алга.')}
         />
       </Section>
@@ -1503,29 +1073,15 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
   }
 
   const rows = months;
-  /*
-   * ⚠️ ХЭМЖИГДСЭН сарууд — `act != null`. Урьд нь `act > 0` байсан тул:
-   *   · жинхэнэ 0% (ажил эхлээгүй) нь ХЭМЖИЛТ атлаа муруйнаас таслагдаж,
-   *   · датагүй багц (жиш. бөглөж эхлээгүй Багц 2) дээр «Бодит гүйцэтгэл»
-   *     ба «Зөрүү» ХОЁУЛАА чимээгүй алга болж, зөвхөн төлөвлөгөөний тасархай
-   *     шугам үлддэг — хэрэглэгч графикийг эвдэрсэн гэж үздэг байв.
-   */
   const measured = rows.map((r, i) => (r.act == null ? -1 : i)).filter((i) => i >= 0);
   const lastAct = measured.length ? measured[measured.length - 1] : -1;
   const cur = lastAct >= 0 ? rows[lastAct] : null;
   const curAct = cur?.act ?? null;
-  /* ⚠️ 2026-09-25: хэмжилтийн ӨДРИЙН төлөвлөгөөтэй (`planM`) — KPI хавтан ба
-     `lagOf`-той нэг тоо; сарын эцсийн цэг нь хиймэл хоцрогдол өгдөг байв. */
   const curGap = curAct == null ? null : (cur!.planM ?? cur!.plan) - curAct;
   const behind = (curGap ?? 0) > 0;
 
   const N = rows.length;
   const H = 250;
-  /* ⚠️ Y тэнхлэгт ТУСДАА багана (2026-09-03). Урьд нь шошго нь торны ДЭЭР,
-     графикийн талбай дотор сууж, эхний саруудын муруй ба шошготой давхарладаг
-     байв — тиймээс эхний цэгийн шошгыг 26px хойш түлхэх «labelX» хачирхалтай
-     дүрэм хэрэгтэй болсон. «Санхүүжилтийн явц»-тай ижил бүтэц: тоо нь гадна,
-     муруй нь дотор. */
   const padL = 40;
   const padR = 56;  /* сүүлийн цэгийн шошго */
   const padT = 24;
@@ -1536,27 +1092,12 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
   const yFor = (v: number) => padT + (1 - Math.max(0, Math.min(100, v)) / 100) * plotH;
 
   const planPts = rows.map((r, i) => ({ x: xFor(i), y: yFor(r.plan) }));
-  /* ⚠️ 2026-10-09 («графикийн жигдрэл»): `null` = ЦООРХОЙ. Урьд нь зөвхөн хэмжигдсэн
-     цэгүүдийг (`measured`) нэг замд оруулж, ДУНДАХ хэмжилтгүй сарыг ГҮҮРЭЭР холбодог
-     байв — «тэр сард X% байсан» гэсэн худал уншилт (CLAUDE.md: null ≠ 0, цоорхой
-     үлдээнэ). Одоо `chartStyle.lineSegments` нь null дээр муруйг ТАСАЛНА. */
   const actPts = rows.map((r, i) => (r.act == null ? null : { x: xFor(i), y: yFor(r.act) }));
-  /* ⚠️ Нэг МОНОТОН муруй (`chartStyle`) — локал Catmull-Rom (`curve`) хасагдсан:
-     хашилттай ч гэсэн тэр нь хуримтлагдсан муруйд бага зэрэг хэтэрдэг байв. */
   const planSegs = lineSegments(planPts);
   const actSegs = lineSegments(actPts);
 
   /*
    * ЗӨРҮҮГИЙН ТАЛБАЙ — төлөвлөгөөний муруйгаас бодит муруй хүртэл.
-   * ⚠️ Хоёр шугам ойрхон явахад ялгаа нь нүдэнд баригддаггүй; будсанаар
-   *    зөрүү нь ХЭМЖЭЭ болж харагдана.
-   * ⚠️ 2026-10-09: бодит муруйн ХЭСЭГ БҮРД тусдаа талбай — цоорхой сард зөрүү
-   *    будагдахгүй (хэмжилтгүй сарын зөрүү ТОДОРХОЙГҮЙ). Буцах ирмэг нь бодит
-   *    муруйн ЯГ ижил монотон зам (урвуу чиглэлд) — урьд нь шулуун хугарал
-   *    байсан тул талбайн ирмэг муруйгаас зөрж харагддаг байв.
-   * ⚠️ 2026-10-09 (аудит №3): дээд ирмэг нь төлөвлөгөөний шугамын ЯГ ижил (БҮТЭН цувааны)
-   *    муруйн [from, to] хэсэг — урьд нь `planPts.slice()`-ийг дахин гөлгөршүүлж захын
-   *    налуу өөр болсон тул ирмэг тасархай шугамаас салж харагддаг байв.
    */
   const gapAreas = actSegs.filter((sg) => !sg.single).map((sg) => {
     const top = monotonePath(planPts, sg.from, sg.to);
@@ -1564,30 +1105,17 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
     return `${top} ${back} Z`;
   });
 
-  /* ⚠️ 2026-09-25: ХУУЧИРСАН `hi` — багц солиход `months` богиносож, өмнөх
-     hover-ийн индекс мужаас гарч `rows[hi].plan` дээр УНАДАГ байв. */
   const hv = hi != null && hi >= 0 && hi < N ? hi : null;
   const pt = hv != null ? rows[hv] : null;
-  /* ⚠️ 2026-09-29 (аудит 10): tooltip-ийн «Төлөвлөсөн»/«Зөрүү» нь толгойн тэмдэглэл
-     (`curGap`) ба KPI-тай НЭГ суурь — хэмжилтийн ӨДРИЙН төлөвлөгөө (`planM`). Урьд нь
-     сарын эцсийн `plan`-аар бодож, нэг цэгт хоёр өөр зөрүү гардаг байв. Хэмжилтгүй
-     сард `planM` = null тул сарын эцсийн цэг хэвээр. */
   const ptPlan = pt ? (pt.act != null ? (pt.planM ?? pt.plan) : pt.plan) : 0;
   const anchor =(i: number): 'start' | 'middle' | 'end' => (i === 0 ? 'start' : i === N - 1 ? 'end' : 'middle');
-  /* ⚠️ 2026-10-09: S-муруйн НЭГ эх — `globals.css`-ийн `--chart-plan`/`--chart-actual`
-     (= `--c3`/`--c2`, урьдын `cat(2)`/`cat(1)`-тэй ижил утга, dark-тай). */
   const PLAN_C = 'var(--chart-plan)';
   const ACT_C = 'var(--chart-actual)';
-  /* Цэгийн тэмдэг — 5px дүүргэлт (`CHART.markerR`) + гадна талд 2px гадаргуун цагираг (`CHART.ring`).
-     ⚠️ 2026-10-23: Environment `AreaChart` — цэг ҮРГЭЛЖ харагдана: энгийн .5, заасан сар 1, бусад .15;
-        заасан цэгийг томруулахгүй (урьдын `SvgHoverMarker` 7px тэмдэг хасагдсан). */
+  /* Цэгийн тэмдэг — 5px дүүргэлт (`CHART.markerR`) + гадна талд 2px гадаргуун цагираг (`CHART.ring`). */
   const dotOp = (i: number) => (hv == null ? 0.5 : i === hv ? 1 : 0.15);
   const dot = (cx: number, cy: number, fill: string, op: number) => (
     <circle cx={cx} cy={cy} r={CHART.markerR + CHART.ring / 2} className={ts.progDot} style={{ fill, strokeWidth: CHART.ring, opacity: op }} />
   );
-  /* ⚠️ 2026-10-23: Environment `AreaChart` — шошгыг ≥11% алхмаар сийрэгжүүлнэ (эхний/сүүлчийнх үргэлж,
-     сүүлчийнхтэй 11%-иас ойр завсрынх алгасна), дараа нь доорх ЖИНХЭНЭ пикселийн багтаамж (`fitLabels`).
-     Дунд цэгүүдийн утга харагдсаар. */
   const envThin = (i: number, last: number) => {
     if (N <= 1 || i === 0 || i === last) return true;
     const gap = 100 / (N - 1);
@@ -1596,22 +1124,10 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
   };
 
   /*
-   * ⚠️ ЦЭГ БҮР ДЭЭР УТГА — «Санхүүжилтийн явц» (ComboChart)-ийн ЯГ тэр дүрэм.
-   *
    *    Тэнд 2026-08-25-нд «зөвхөн эцсийн утга үзүүлэх нь БУРУУ: 12 сарын урт
    *    графикийг гаргаад ганц тоо уншуулах юм бол график хэрэггүй» гэж
    *    зассан байсныг энэ график давтаж, дахин ЗӨВХӨН сүүлийн цэгээ
    *    тоогоор бичдэг байв (2026-08-27).
-   *
-   * ⚠️ Мөргөлдөхөөс сэргийлэх дүрэм: ТӨЛӨВЛӨГӨӨ муруйнхаа ДЭЭР, БОДИТ нь
-   *    ДООР бичигдэнэ — хоёр цуваа ойртсон ч давхцахгүй.
-   * ⚠️ Сүүлийн цэгийг АЛГАСНА: тэнд том шошго тусдаа бичигдэнэ (давхарлахгүй).
-   */
-  /**
-   * ⚠️ БАГТААМЖААР сонгоно, тогтмол алхмаар БИШ (2026-09-03). Хэдэн сар
-   *    харагдахаас хамааран «25%» гэсэн богино шошго ч нарийн цонхонд
-   *    мөргөлдөнө; жинхэнэ пикселээр хэмжиж багтахыг нь л үлдээнэ.
-   * ⚠️ Сүүлийн цэгийг АЛГАСНА: тэнд том шошго тусдаа бичигдэнэ (давхарлахгүй).
    */
   const fitPct = (idx: number[], valOf: (i: number) => string) => new Set(
     fitLabels(idx.map((i) => ({ i, x: xFor(i), w: textW(valOf(i)), anchor: anchor(i) }))),
@@ -1620,8 +1136,6 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
     rows.map((_, i) => i).filter((i) => i !== N - 1 && envThin(i, N - 1)),
     (i) => pct(rows[i].plan, 1),
   );
-  /* ⚠️ `i !== lastAct`: сүүлийн хэмжилт дээр доорх ТОМ шошго аль хэдийн
-     бичигдэнэ — хоёуланг нь зурвал нэг цэг дээр хоёр тоо давхарлана. */
   const actLbl = fitPct(
     measured.filter((i) => i !== N - 1 && i !== lastAct && envThin(i, lastAct)),
     (i) => pct(rows[i].act, 1),
@@ -1638,22 +1152,13 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
       note={
         curGap == null ? undefined : (
           <span className={behind ? ts.progBad : ts.progGood}>
-            {/* ⚠️ 2026-10-09 (аудит №6): `gdash.gapPtsWord` — «5.0 н.х хоцролт» / «2.0 н.х түрүүлсэн»,
-                тэг «0.0 н.х» (Дашбоардын `gapLabel`-тай нэг); урьд `ppAbs` («5.0 pp») */}
             {gapPtsWord(curGap)}
           </span>
         )
       }
     >
       {/* Легенд — тэмдэг нь ШУГАМЫН ХЭЛБЭРИЙГ давтана */}
-      {/*
-        * ⚠️ ЗУРАГДААГҮЙ ЦУВААГ ТАЙЛБАРТ ЖАГСААХГҮЙ. Урьд нь бөглөгдөөгүй
-        *    багц дээр «Бодит гүйцэтгэл» ба «Зөрүү» гэж бичээд, харгалзах
-        *    шугам нь огт байхгүй байсан тул хэрэглэгч дутуу зурагдсан гэж
-        *    ойлгодог байв. Одоо дата байхгүйг ИЛ хэлнэ.
-        */}
       <div className={ts.progLegend}>
-        {/* ⚠️ 2026-10-23: Environment — тэмдэг нь шугамтай ИЖИЛ ТАСАРХАЙ `4 4` (`CHART.planDash`) */}
         <span><i className={ts.progDash} style={{ color: PLAN_C }} />{tr('Төлөвлөсөн')}</span>
         {measured.length > 0 && (
           <>
@@ -1661,8 +1166,6 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             <span><i className={behind ? ts.progAreaBad : ts.progAreaGood} />{tr('Зөрүү')}</span>
           </>
         )}
-        {/* ⚠️ 2026-09-29 (аудит 10): `finQ` ачаалж байхад «бөглөгдөөгүй» гэж хэлэхгүй —
-            бодит гүйцэтгэл ирээгүй байгаа нь бөглөөгүй гэсэн үг БИШ. */}
         {measured.length === 0 && (
           <span className={ts.progNoData}>
             {loading ? tr('Ачаалж байна…') : tr('Бодит гүйцэтгэл хараахан бөглөгдөөгүй')}
@@ -1673,18 +1176,12 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
       <div
         className={ts.progWrap}
         ref={wrapRef}
-        /* ⚠️ ЗУРАГЛАЛ нь ГРАФИКИЙН ТАЛБАЙГААР — бүтэн өргөнөөр бодоход зүүн
-           тэнхлэгийн багана ба баруун шошгын зайнаас болж заагуур хулганаас
-           хазайж, өөр сарын tooltip гардаг байв. */
         onMouseMove={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           const t = (e.clientX - r.left - padL) / Math.max(1, plotW);
           setHi(Math.max(0, Math.min(N - 1, Math.round(t * (N - 1)))));
         }}
         onMouseLeave={() => setHi(null)}
-        /* ⚠️ 2026-10-06 (аудит): ГАРААР ч уншигдана — урьд нь сарын утга зөвхөн хулганы
-           hover-оор гардаг байв. Tab-аар фокуслоход сүүлийн хэмжилт (эсвэл сүүлийн сар) дээр
-           зогсож, ←/→ сараар, Home/End эхлэл/төгсгөл рүү; уншилт нь доорх `aria-live` мөрөнд. */
         tabIndex={0}
         role="group"
         aria-label={tr('{0} — сар сонгохдоо ← → товч', title)}
@@ -1705,21 +1202,13 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             pt.label, pct(ptPlan, 1), pt.act == null ? '—' : pct(pt.act, 1),
             pt.act == null ? '—' : gapPts(ptPlan - pt.act)) : ''}
         </span>
-        {/* ⚠️ `preserveAspectRatio="none"` ХАСАГДСАН — `viewBox` нь бодит
-            пикселтэй тэнцүү тул үсэг гажихаа болив. */}
         <svg className={ts.progSvg} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title}>
-          {/* ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): БОСОО тор — тэнхлэгийн он·сарын
-              шошготой сар бүрд 1px `--chart-grid` (хэвтээ 0–100% тортой нэг хэл).
-              ⚠️ 2026-10-23: Environment `AreaChart` — БОСОО тор ХАСАГДСАН; хэвтээ 0/25/50/75/100% нь
-                 БҮГД 1px тасархай `3 4` `--line`, Y шошго 9px бүтэн тунгалаг. */}
           {/* Тор — 0/25/50/75/100%, шошго торны ЗҮҮН талд */}
           {CHART.grid.map((t) => {
             const gy = yFor(t);
             return (
               <g key={t}>
                 <line x1={padL} x2={W - padR} y1={gy} y2={gy} className={ts.progGrid} />
-                {/* ⚠️ Торны ЗҮҮН талд, гадна багананд — муруй ба шошготой
-                    давхцахгүй (2026-09-03). Босоо голлолт: `gy + 3`. */}
                 <text x={padL - 8} y={gy + 3} className={ts.progAxisY} textAnchor="end">{t}%</text>
               </g>
             );
@@ -1730,15 +1219,6 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             <path key={`gap-${k}`} d={d} className={behind ? ts.progGapBad : ts.progGapGood} style={{ opacity: CHART.gapFill }} />
           ))}
 
-          {/* ⚠️ 2026-10-09: төлөвлөгөө 2px ТАСАРХАЙ (`CHART.planDash`), бодит 2px БҮТЭН (урьд 1.6 / 2.8).
-              Зузаан биш ХЭЛБЭР нь үүргийг хэлнэ — бүх S-муруйд нэг дүрэм.
-              ⚠️ 2026-10-09 (лавлах CRM загвар — өнгө хэвээр): төлөвлөгөө ЦЭГЭН ('1 5', round cap),
-              хоёр шугам цувааныхаа өнгөөр ГЭРЭЛТЭНЭ (`glow`; хэвлэхэд `chartGlow` унтраана).
-              ⚠️ 2026-10-23: Environment — гэрэлтэлт (`glow` filter, `chartGlow`) ХАСАГДСАН; төлөвлөгөө
-                 `--chart-plan` ТАСАРХАЙ `4 4` (butt үзүүр), бодит `--chart-actual` (= `--data`) бүтэн.
-              ⚠️ S-муруйд ТАЛБАЙН градиент НЭМЭЭГҮЙ — улаан/ногоон ЗӨРҮҮГИЙН талбай (2026-08-25-ны
-              хэрэглэгчийн шийдвэр) нь энд ГОЛ өгүүлэмж; доогуур нь цувааны талбай давхарлавал
-              зөрүүний өнгө бохирдож уншигдахаа болино. */}
           {planSegs.map((sg) => (sg.single ? null : (
             <path
               key={`pl-${sg.from}`}
@@ -1759,28 +1239,19 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             />
           )))}
 
-          {/* Hover — босоо шугам. ⚠️ 2026-10-23: Environment crosshair — `--data` 1px `2 2` .7;
+          {/* Hover — босоо шугам. 2026-10-23: Environment crosshair — `--data` 1px `2 2`.7;
               цуваа бүрийн 7px тэмдэг (`SvgHoverMarker`) ХАСАГДСАН — цэг нь доор 1 тунгалагтай тодорно. */}
           {hv != null && (
             <line x1={xFor(hv)} x2={xFor(hv)} y1={padT} y2={padT + plotH} className={ts.progCursor} />
           )}
 
-          {/* ЦЭГҮҮД — бүх сарын төлөвлөгөө, зөвхөн ХЭМЖИГДСЭН сарын бодит (null ≠ 0).
-              ⚠️ 2026-10-23: «Сүүлийн цэгүүд — томоор» (r + 1) БОЛИВ — Environment-д бүх цэг 5px. */}
+          {/* ЦЭГҮҮД — бүх сарын төлөвлөгөө, зөвхөн ХЭМЖИГДСЭН сарын бодит (null ≠ 0). */}
           {rows.map((r, i) => <g key={`pd-${i}`}>{dot(xFor(i), yFor(r.plan), PLAN_C, dotOp(i))}</g>)}
           {rows.map((r, i) => (r.act != null ? <g key={`ad-${i}`}>{dot(xFor(i), yFor(r.act), ACT_C, dotOp(i))}</g> : null))}
 
-          {/* ТӨЛӨВЛӨГӨӨНИЙ утга — муруйн ДЭЭР талд.
-              ⚠️ 2026-10-23 (Environment `AreaChart`): бичиг 10px/400 `--ink-2` (заасан сард `--ink`),
-                 halo-гүй; заасан сарын бичиг ч ҮЛДЭНЭ (pill хасагдсан). */}
+          {/* ТӨЛӨВЛӨГӨӨНИЙ утга — муруйн ДЭЭР талд. */}
           {rows.map((r, i) => (planLbl.has(i) ? (
             <g key={`pl-${i}`}>
-              {/* ⚠️ y-г 12-оос дээш барина: дээд ирмэгт хүрсэн цэгийн шошго
-                  SVG-ийн гаднаас тасарч, тоо хагас харагддаг. */}
-              {/* ⚠️ ОБЬЁМ нь хувийн ХАЖУУД (2026-09-09, хэрэглэгчийн
-                  хүсэлт «обьём давхар харагдмаар бн»). Задаргаа ороогүй
-                  сард ЗӨВХӨН хувь — «0» гэж бичвэл «тэр сард ажил
-                  төлөвлөөгүй» гэж ХУДАЛ уншигдана (`null ≠ 0`). */}
               <text
                 x={xFor(i)}
                 y={Math.max(12, yFor(r.plan) - 9)}
@@ -1795,10 +1266,7 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             </g>
           ) : null))}
 
-          {/* БОДИТ гүйцэтгэлийн утга — муруйн ДООР талд, зөвхөн ХЭМЖИГДСЭН сард.
-              ⚠️ `i !== lastAct`: сүүлийн хэмжилт дээр доорх төгсгөлийн шошго аль хэдийн
-                 бичигдэнэ — хоёуланг нь зурвал нэг цэг дээр хоёр тоо давхарлана
-                 (2026-08 дээр «0%» хоёр удаа гарч байсан). */}
+          {/* БОДИТ гүйцэтгэлийн утга — муруйн ДООР талд, зөвхөн ХЭМЖИГДСЭН сард. */}
           {rows.map((r, i) => (actLbl.has(i) && r.act != null ? (
             <g key={`ac-${i}`}>
               <text
@@ -1812,8 +1280,7 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
             </g>
           ) : null))}
 
-          {/* Сүүлийн цэгүүдийн утга — цэгийн БАРУУН талд.
-              ⚠️ 2026-10-23: Environment — 12px/600 цувааны өнгө → бусад шошготой ИЖИЛ 10px/400 ink-2. */}
+          {/* Сүүлийн цэгүүдийн утга — цэгийн БАРУУН талд. */}
           <text
             x={xFor(N - 1) + 9}
             y={yFor(rows[N - 1].plan) + 4}
@@ -1839,13 +1306,6 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
           ) : null))}
         </svg>
 
-        {/* ⚠️ 2026-10-09: `xFor(hv)` ПИКСЕЛЭЭР — `viewBox` = бодит өргөн (`W`) тул
-            муруйн цэгтэй яг давхцана. Урьд нь `hv/(N-1)`%-аар (wrap-ийн бүтэн өргөн)
-            тул `padL`/`padR`-ийн хэрээр цэгээс зөрдөг байв — ComboChart-ын
-            2026-10-07-ны засвартай ижил.
-            ⚠️ 2026-10-23 (Environment `AreaChart` Tooltip): ЦЭГИЙН дэргэд — t < .22 зүүнээс, > .78
-            баруунаас, бусад голлуулна; цэг дээд 45%-д бол ДООР, эс бөгөөс ДЭЭР (10px). Утгын pill
-            (`PointCallout`) ХАСАГДСАН — бодит утга энд 17px-ээр. */}
         {pt && hv != null && (() => {
           /* Түшиц цэг — бодит (хэмжигдсэн бол), эс бөгөөс төлөвлөгөө */
           const ty = pt.act != null ? yFor(pt.act) : yFor(pt.plan);
@@ -1866,7 +1326,6 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
               </div>
               <div className={ts.progTipBody}>
                 <div className={ts.progTipMain}>
-                  {/* ⚠️ «—» нь ХЭМЖИГДЭЭГҮЙ гэсэн үг; жинхэнэ 0% нь «0.0%» гэж гарна */}
                   <span className={`num ${ts.progTipBig}`} style={{ color: ACT_C }}>{pct(pt.act, 1)}</span>
                   <span className={ts.progTipUnit}>{tr('Бодит')}</span>
                 </div>
@@ -1885,8 +1344,6 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
                   <i />
                   {tr('Зөрүү')}
                   <b className="num">
-                    {/* ⚠️ 2026-10-09 (аудит №6): `gdash.gapPts(төл − бодит)` («−5.0 н.х» = хоцорсон) —
-                        дэлгэц уншигчийн мөр, KPI, жагсаалттай нэг хэлбэр; урьд `pp(бодит − төл)` */}
                     {pt.act == null ? '—' : gapPts(ptPlan - pt.act)}
                   </b>
                 </p>

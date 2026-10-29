@@ -10,7 +10,7 @@ import { DocLibSide } from './DocLibSide';
 import s from './docviewer.module.css';
 
 /**
- * БАРИМТ БИЧГИЙН САН — глобал popup (модал). ⚠️ 2026-10-23: бүлэглэсэн сан (`DocLibSide`, `lib/docLib.ts`) —
+ * БАРИМТ БИЧГИЙН САН — глобал popup (модал). 2026-10-23: бүлэглэсэн сан (`DocLibSide`, `lib/docLib.ts`) —
  * хуучин «ТЭЗҮ-БОНУ» жагсаалт «ТЭЗҮ-БОНУ» бүлэгт шилжсэн.
  *
  * Навбарын «ТЭЗҮ» товчоор нээгдэж, порталын аль ч харагдац дээр давхарлана
@@ -21,10 +21,6 @@ import s from './docviewer.module.css';
 
 /**
  * НАРИЙН ДЭЛГЭЦ (≤720px) — CSS-ийн `@media (max-width: 720px)`-тэй ИЖИЛ хил.
- * ⚠️ 2026-10-06 (аудит): гар утсанд 168px жагсаалт iframe-ийн хажууд үлдэж PDF ~150px өргөнтэй
- *    болдог, мөн гар утасны хөтчүүд PDF iframe-ийг муу (эхний хуудас л, эсвэл хоосон) зурдаг.
- *    Тиймээс нарийн дэлгэцэд жагсаалт ДЭЭР овоологдож, iframe-ийн ОРОНД «шинэ таб-д нээх» товч.
- * ⚠️ Сервер/тест (window-гүй) дээр `false` — hydration зөрөхгүй (эхний зураг iframe-гүй тул).
  */
 const NARROW = '(max-width: 720px)';
 const subNarrow = (fn: () => void): (() => void) => {
@@ -37,25 +33,14 @@ const isNarrow = (): boolean =>
   typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(NARROW).matches;
 
 export function DocViewer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  /* ⚠️ 2026-10-06 (аудит): анхдагч СОНГОЛТГҮЙ (`null`). Урьд нь `DOCS[0]` сонгогдсон байдлаар нээгдэж
-     iframe нь 22 MB `tezu-rev-01.pdf`-ийг шууд татдаг байв (зөвхөн жагсаалт харах гэсэн ч, гар утсанд
-     ч). Одоо iframe-ийн `src` нь хэрэглэгч баримт СОНГОСНЫ дараа л тавигдана. */
   const [active, setActive] = useState<string | null>(null);
   const narrow = useSyncExternalStore(subNarrow, isNarrow, () => false);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  /* ⚠️ ФОКУСЫН УРХИ (`useFocusTrap`) — `aria-modal="true"` нь зөвхөн дэлгэц
-     уншигчид зориулагдсан бөгөөд ХӨТЧИЙН Tab-д нөлөөгүй: урхигүй үед Tab
-     дарсаар байхад фокус модалаас гарч, ард байгаа порталын товч, хүснэгтийн
-     нүд рүү шилждэг байв. Мөн хаахад фокусыг нээсэн товч («ТЭЗҮ») дээр нь
-     буцаана — эс тэгвээс Tab хуудасны эхнээс дахин эхэлнэ. */
   useFocusTrap(modalRef, open);
 
-  // ⚠️ Escape-ээр хаах + нээлттэй үед фоны гүйлгэлтийг түгжих.
-  //    Эффектийг нөхцөлт дуудахгүй (hook дүрэм) — дотор нь `open`-оор шалгана.
   useEffect(() => {
     if (!open) return;
-    /* ⚠️ 2026-10-21: дээр нь өөр урхи (сешн/эрхийн цонх) нээлттэй бол Esc нь түүнийх — энэ модалыг хаахгүй */
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTopFocusTrap(modalRef.current)) onClose(); };
     window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
@@ -69,7 +54,6 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
   if (!open) return null;
 
   const doc = active == null ? null : (DOCS.find((d) => d.key === active) ?? null);
-  /* ⚠️ 2026-10-08 (туршилт): `ent:<id>` = Enterprise геопорталын PDF item (`EntDocs.tsx`) */
   const entId = active?.startsWith(ENT_KEY) ? active.slice(ENT_KEY.length) : null;
 
   return (
@@ -108,12 +92,6 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
           {/* Баруун — сонгосон PDF (уугуул харагч). `key` нь баримт солиход
               iframe-ыг бүрэн шинэчилж, зарим браузерын кэш асуудлаас сэргийлнэ. */}
           <div className={s.viewer}>
-            {/*
-              * ⚠️ ГАДААД баримтыг `<iframe>`-д ТАВИХГҮЙ (2026-09-10):
-              * SharePoint/OneDrive нь `X-Frame-Options`-оор дотоод хүрээг
-              * хаадаг тул хоосон цагаан талбай л гарна. Оронд нь шинэ таб-д
-              * нээх ТОВЧ — юу болсныг ил хэлж, нэг товшилтоор нээгдэнэ.
-              */}
             {entId ? (
               <EntDocFrame id={entId} narrow={narrow} />
             ) : !doc ? (
@@ -122,16 +100,12 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
               </div>
             ) : isExternalDoc(doc) || narrow ? (
               <div className={s.ext}>
-                {/* ⚠️ Тайлбар мөр ХАСАГДСАН (2026-09-10, хэрэглэгчийн заавар):
-                    товч өөрөө юу болохыг хэлж байгаа тул дээрх өгүүлбэр нь
-                    зөвхөн техникийн шалтгаан тоочсон давхардал байв. */}
                 <a
                   className={s.extBtn}
                   href={docUrl(doc)}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  {/* ⚠️ 2026-10-06: нарийн дэлгэцийн дотоод PDF-д `cta` (гадаад холбоосын текст) хамаарахгүй */}
                   {(isExternalDoc(doc) ? doc.cta : undefined) ?? tr('{0} — шинэ таб-д нээх ↗', doc.title)}
                 </a>
               </div>

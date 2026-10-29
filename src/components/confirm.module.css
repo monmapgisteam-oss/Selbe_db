@@ -1,8 +1,5 @@
 /*
- * АППЫН ДОТООД АСУУЛТ ба «БУЦААХ» МЭДЭГДЭЛ — `ConfirmHost` (⚠️ 2026-10-23, `window.confirm`-ийн оронд).
- * ⚠️ z-index 6500: бүх модал (DocViewer · UserAdmin · тусламж) ба «Систем түр хаах» цонхноос (`auth.module.css`
- *    `.screenOver` 6000) ДЭЭР — тэдгээрийн дотроос асуулт асуудаг.
- * ⚠️ Сонгогч бүр локал класстай (`next build`-ийн «is not pure» — CLAUDE.md).
+ * АППЫН ДОТООД АСУУЛТ ба «БУЦААХ» МЭДЭГДЭЛ — `ConfirmHost` (2026-10-23, `window.confirm`-ийн оронд).
  */
 
 .overlay {
@@ -39,7 +36,6 @@
   color: var(--ink);
 }
 
-/* ⚠️ `pre-line` — хуучин `window.confirm`-ийн мессежүүд `\n\n`-ээр догол мөр тусгаарладаг */
 .msg {
   margin: 0;
   font-size: 0.88rem;
@@ -79,7 +75,6 @@
   border: 1px solid var(--hue);
 }
 .btnOk:hover { filter: brightness(1.08); }
-/* ⚠️ Бэх `--hue-ink` — цайвар горимд #fff, харанхуйд бараан: харанхуйн цайвар `--bad` дээр цагаан бичиг 2.8:1 л байв */
 .btnDanger {
   background: var(--bad);
   border-color: var(--bad);
@@ -93,7 +88,6 @@
 }
 
 /* ── «Буцаах» мэдэгдэл ── */
-/* ⚠️ Хүрээ нь ҮРГЭЛЖ DOM-д (`role="status"`) — дэлгэц уншигч агуулга нэмэгдэхэд л зарладаг */
 .toastWrap {
   position: fixed;
   left: 50%;

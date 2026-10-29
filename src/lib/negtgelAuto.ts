@@ -1,10 +1,6 @@
 /**
  * НЭГТГЭЛ ГҮЙЦЭТГЭЛ — Excel «Төсөл төлөвлөгөө биелэлт»-ийн ЗАГВАР + СИСТЕМИЙН БОДИТ ГҮЙЦЭТГЭЛ.
  *
- * ⚠️⚠️ 2026-10-13: ЭХ БА ТОМЬЁО СОЛИГДОВ (хэрэглэгч: «Negtgel_guitsetgel_1013-ийг хуучин нэгтгэл
- *    гүйцэтгэлээр соль; харагдуулах ба томьёолол нь `docs/Төсөл Гүйцэтгэл_Орон сууц, Нийгмийн дэд
- *    бүтэц_261007 - V3.xlsx`-ийн «Төсөл төлөвлөгөө биелэлт» хуудас»).
- *
  * ── ЭХ ── `TUSUL_NEGTGEL` = `Negtgel_guitsetgel_1013/199` (906 мөр = тэр хуудасны 6–911-р мөр, B…W багана).
  *    ЗӨВХӨН уншина (Query). Хувь нь 0–100 (`TUSUL_NEGTGEL.scale`) — энд 0–1 болгоно. «ТӨСЛИЙН НИЙТ» (WBS «0»)
  *    мөрийг мөрийн жагсаалтад ОРУУЛАХГҮЙ — таб/дашбоард 1-р түвшнээс өөрсдөө бодно (Excel-ийн 6-р мөрийн томьёо).
@@ -27,16 +23,6 @@
  *   Хэмжилтгүй (тайлагнаагүй / эх унасан) бол Excel-ийн утга ХЭВЭЭР (null ≠ 0).
  *   Excel-д эдгээр мөрийн S нь томьёо БИШ, гараар бичсэн утга (89 тогтмол эцгийн зөрсөн 7 нь яг эдгээр) —
  *   систем түүнийг амьд хэмжилтээр солино.
- * ⚠️ ЗӨВХӨН ӨӨРЧЛӨГДСӨН мөрийн ӨВГҮҮДИЙГ дахин бодно — бусад бүх нүд Excel-ийн утгаа ЯГ хадгална. Excel-д
- *    мужийн хоёр алдаа бий (879 нь хөрш 885-ын хүүхдүүдийг, 842 нь 857-г орхисон муж); хувирал ороогүй
- *    салаанд тэднийг «засахгүй» — Excel-ийн тоотой нэг байх нь хэрэглэгчийн шаардлага.
- * ⚠️ Төлөвлөгөөт хувь (N…R) ба жин (F · G) — Excel-ийн утгаар (систем бодохгүй). 2026-10-13-аас өмнө
- *    гүйцэтгэгчийн төлөвлөгөөг «Хуваарь»-ийн муруйгаас, бусад шатыг Cashflow-оос бодож байсан — Excel V3 нь
- *    тэдгээрийг өөрөө агуулдаг тул ХАСАГДАВ.
- * ⚠️ 2026-10-27 (хэрэглэгч: «төлөвлөгөөт хувь next week хуваарьтай холбо»): ЗӨВХӨН Q «Next week» — багцын мөр
- *    «Хуваарь»-ийн муруйгаас (өнөөдөр + 7 хоног), өвгүүд Σ F × Q (`computeNegAuto`-ийн «NEXT WEEK» хэсэг). N · O · P · R
- *    Excel-ийнх хэвээр.
- * ⚠️ Бүх утга дотооддоо 0–1 бутархай.
  */
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
@@ -101,7 +87,7 @@ export type NegRaw = NegVals & {
   actStart?: string;
   actEnd?: string;
   /**
-   * `sys_guitsetgel` · `sys_next_week` (0–1) — өмнө нь БИЧСЭН системийн утга. ⚠️ Тооцооны суурь БИШ (суурь нь Excel-ийн
+   * `sys_guitsetgel` · `sys_next_week` (0–1) — өмнө нь БИЧСЭН системийн утга. Тооцооны суурь БИШ (суурь нь Excel-ийн
    * `act` · `planNw`) — зөвхөн өөрчлөгдөөгүй утгыг дахин бичихгүйн тулд (`negSysDiff`).
    */
   sysAct?: number | null;
@@ -137,10 +123,6 @@ const txt = (v: unknown): string => String(v ?? '').trim();
 
 /**
  * ДАВХАРДСАН БҮЛЭГ КОДЫГ ЭХНИЙХИЙНХЭЭ ДООР ОРУУЛНА — кодоор угсрах НӨӨЦ замд (`fallbackDepth`).
- *
- * ⚠️ Хуучин хүснэгтэд «5.2.3» ДӨРВӨН мөрд: эхнийх нь «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ» бүлэг, дараагийн гурав нь
- * түүний ДЭД хэсэг. Кодоор гүн тогтоовол тэд 5.2-ын шууд хүүхэд болно. Дүрэм: эхний давхцал ХҮҮХЭДТЭЙ
- * (бүлэг) бол л дараагийнхыг түүний доор оруулна.
  */
 export function nestDupGroups(codes: string[]): number[] {
   const d0 = codes.map((c) => negtgelDepth(c));
@@ -148,7 +130,6 @@ export function nestDupGroups(codes: string[]): number[] {
   const first = new Map<string, number>();
   codes.forEach((c, i) => {
     if (!c) return;
-    /* ⚠️ Аль хэдийн шилжсэн дэд модны мөрийг ДАХИН шилжүүлэхгүй (2026-09-25) */
     if (d[i] !== d0[i]) return;
     const f = first.get(c);
     if (f == null) { first.set(c, i); return; }
@@ -162,9 +143,6 @@ export function nestDupGroups(codes: string[]): number[] {
 
 /**
  * КОДООР УГСРАХ НӨӨЦ МОД — Excel-ийн мод (`NEG_TREE`) хүснэгттэй таарахгүй үед.
- * ⚠️ Үе шат бүрийн (`PHASE`) ЭХНИЙ мөр = 1-р түвшин; доторх гүн нь тэр үе шатанд ДАНГААР `nestDupGroups`.
- *    Бүх хүснэгтэд нэг дор хийвэл «3» давхардал (Газар чөлөөлөлт · Зөвшөөрөл) Зөвшөөрлийг Газар
- *    чөлөөлөлтийн доор оруулна (шинэ хүснэгтэд Газар чөлөөлөлт 184 хүүхэдтэй).
  */
 export function fallbackDepth(codes: string[], phases: string[]): number[] {
   const out = new Array<number>(codes.length).fill(1);
@@ -208,7 +186,6 @@ export function excelTree(codes: string[], phases: string[]): { depth: number[];
     for (const i of NEG_TREE.outside) outside[i] = true;
     return { depth, outside, source: 'excel' };
   }
-  /* ⚠️ Нөөц — нийт («0») мөр байвал гүн 0, бусад нь үе шатаар */
   const isRoot = (i: number) => codes[i] === '0' || (i === 0 && !phases[0]);
   const rest = codes.map((_, i) => i).filter((i) => !isRoot(i));
   const d = fallbackDepth(rest.map((i) => codes[i]), rest.map((i) => phases[i]));
@@ -219,20 +196,12 @@ export function excelTree(codes: string[], phases: string[]): { depth: number[];
 
 /** «ТӨСЛИЙН НИЙТ» (гүн 0) мөр — утгууд 0–1 (`negRootOf`) */
 export type NegRootRow = NegVals & { oid: number; code: string };
-/**
- * ⚠️ 2026-10-19 (аудит): «ТӨСЛИЙН НИЙТ» мөрүүд — `loadNegRaw`-ийн БУЦААСАН массив бүрд (ижил уншилтын агшин).
- *    Засварын нийтлэлт (`negtgelEdit.publishNegEdits`) нийт мөрийг зэрэг засварын шалгалтад оруулж, тоо нь 1
- *    биш бол мэдээлнэ. Массив руу талбар нэмэхгүй (дуудагч олон, `structuredClone`/spread-д алдагдана) — WeakMap.
- */
 const rootsOf = new WeakMap<readonly NegRaw[], NegRootRow[]>();
 /** `loadNegRaw`-ийн тэр уншилтын нийт мөрүүд; `undefined` = массив `loadNegRaw`-ээс ирээгүй (тест · хуулбар) */
 export const negRootOf = (rows: readonly NegRaw[]): NegRootRow[] | undefined => rootsOf.get(rows);
 
 /**
  * Хүснэгтийг ХАДГАЛСАН (Excel-ийн) утгатай нь бүтнээр уншина.
- * ⚠️ OID-оор — мөрийн дараалал нь Excel-ийн мод; кодоор эрэмбэлбэл эвдэрнэ.
- * ⚠️ «ТӨСЛИЙН НИЙТ» (гүн 0) мөрийг БУЦААХГҮЙ — 1-р түвшний мөрүүдээс бодогдоно (`projectTotal`). ⚠️ 2026-10-19:
- *    харин `negRootOf(үр дүн)`-ээр ижил уншилтын нийт мөрийг авна.
  */
 export async function loadNegRaw(): Promise<NegRaw[]> {
   const raw = await queryFeatures(TUSUL_NEGTGEL.url, { outFields: ['*'], orderBy: TUSUL_NEGTGEL.oid });
@@ -254,7 +223,6 @@ export async function loadNegRaw(): Promise<NegRaw[]> {
       ...v,
       oid: Number(r[TUSUL_NEGTGEL.oid] ?? 0),
       code: codes[i],
-      /* ⚠️ Excel-ийн нэр доголоор/мөр шилжилтээр эхэлдэг — нэг мөр болгоно */
       name: txt(r[F.name]).replace(/\s+/g, ' '),
       bagts: txt(r[F.bagts]).replace(/\s+/g, ' '),
       depth: t.depth[i],
@@ -288,7 +256,6 @@ export type NegSources = {
   housingPkgs?: Set<string>;
   /**
    * БЛОКГҮЙ багцын (5.x · 6.x · 7.1 · 10) БАТЛАГДСАН биет гүйцэтгэл — `pkgNo` («5.1») → 0–100.
-   * ⚠️ ЗӨВХӨН тайлагнасан (`blocks > 0`) багц (`blockProgress.loadInfraProgress`).
    */
   infra?: Map<string, number>;
   /** Бөглөх хуудастай БЛОКГҮЙ багцууд — `pkgNo` */
@@ -302,7 +269,6 @@ export type NegSources = {
   blockUni?: ReadonlyMap<string, readonly string[]>;
   /**
    * ХЭСЭГЧЛЭН уншигдсан эхүүдийн нэр (2026-10-01) — дэлгэц нэрлэж, `loadNegtgelFull` КЭШЛЭХГҮЙ.
-   * ⚠️ 2026-10-13: хуваарийн муруй эх биш болсон. ⚠️ 2026-10-19: блокийн хуваарь (`blockUni`) унавал энд нэрлэгдэнэ.
    */
   partial?: string[];
   /**
@@ -337,9 +303,6 @@ const settledValue = <T,>(r: PromiseSettledResult<T>): T => {
  *
  * «БАГЦ-5.1» · «Багц 5.1» · «БАГЦ - 19.1» · «БАГЦ -9» · «БАГЦ 1- 4» ·
  * «БАГЦ-6.1, 6.2 Нэмэлт ажил» → «5.1» · «19.1» · «9» · «1-4» · «6.1,6.2».
- *
- * ⚠️ ЦЭГИЙГ ХАДГАЛНА — `bagtsKey` цэгийг хасдаг тул «1-4» ба «14» (Нэвтрэх
- * суваг) нэг түлхүүр болж, орон сууцны суурийн холболт суваг руу холбогдоно.
  */
 export const pkgNo = (s: string): string => s
   .toUpperCase()
@@ -359,12 +322,6 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 
 /**
  * ОРОН СУУЦНЫ ТӨЛӨВЛӨГӨӨТ ХУВЬ — багц бүрийн ХЭМЖИЛТИЙН ӨДРИЙН байдлаар (цэвэр функц, тест).
- *
- * ⚠️ 2026-10-13: нэгтгэлд ХЭРЭГЛЭГДЭХЭЭ БОЛИВ (төлөвлөгөөт хувь Excel-ээс). Функц нь `planProgress.planPctAt`-ийн
- *    «ганц дүрэм»-ийн лавлах хэрэгжилт (`Finance` · `PkgProg` · `planProgress`-ийн тайлбар иш татдаг) тул хэвээр.
- * ⚠️ Өмнөх сарын эцэс → тухайн сарын эцсийн хооронд ЛОКАЛ өдрөөр шугаман завсарлана. Өмнөх сарын цэг
- *    байхгүй = энэ сард эхэлсэн → эхлэл 0. Тухайн сарын цэг байхгүй бол сүүлийн өнгөрсөн цэг; бүх цэг
- *    ирээдүйд бол Map-д ОРОХГҮЙ (төлөвлөгөөгүй ≠ 0).
  */
 export function housingPlanOf(
   byBagts: Map<string, Array<{ label: string; pct: number }>>,
@@ -402,10 +359,6 @@ export function housingPlanOf(
 
 /**
  * Орон сууцны багцын хувь — ЗӨВХӨН дор хаяж НЭГ блок нь хэмжигдсэн (тайлагнасан) багц.
- *
- * ⚠️ 2026-10-09 (аудит): `blockProgress.pkgProgressOf` нь нэг ч блок тайлагнаагүй багцад `{pct: 0, blocks: 0}`
- *    өгдөг — дашбоардад зөв (0%), гэвч нэгтгэлд Excel-ийн утгыг 0-ээр дарна. Хэмжилт огт байхгүй багц нь
- *    «эх сурвалжгүй» (`null` → Excel-ийн утга үлдэнэ), 0 БИШ.
  */
 export function measuredHousing(
   housing: Map<string, number>,
@@ -422,8 +375,6 @@ export function measuredHousing(
 
 /**
  * @param fresh `true` = КЭШГҮЙ (бичих зам — `syncNegtgel`; одоогийн хүснэгт зөвхөн уншигддаг).
- * ⚠️ 2026-10-13: Cashflow ба хуваарийн муруй ЭХ БИШ болов (Excel V3 тэдгээрийн утгыг агуулна) — хоёр хүнд
- *    уншилт хасагдав. Үлдсэн эх: газар · 01-ийн батлагдсан гүйцэтгэл (блоктой ба блокгүй).
  */
 export async function loadNegSources(fresh = false): Promise<NegSources> {
   const [{ loadLandPct }, L, B, { PKGS }] = await Promise.all([
@@ -432,13 +383,10 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
     import('@/lib/blockProgress'),
     import('@/modules/sheet/bagts.pkg'),
   ]);
-  /* ⚠️ 2026-10-01: `allSettled` — АЛЬ эх унасныг нэрлэнэ (`NegSourceError.failed`). Нэг нь ч унавал БҮХЭЛДЭЭ
-     шиднэ — хагас эхээр бодвол унасан эхийн мөрүүд Excel-ийн утгаараа үлдэж шинэ тоотой холилдоно. */
   const names = [tr('Газар чөлөөлөлт'), tr('Гүйцэтгэл бөглөх'), tr('Блокийн гүйцэтгэл'), tr('Блокгүй багцын гүйцэтгэл')];
   const res = await Promise.allSettled([
     loadLandPct(),
     fresh ? L.loadFillPkgProgressFresh() : L.loadFillPkgProgress(),
-    /* ⚠️ `housing`-тай НЭГ кэш (`fillPkgProgressRaw` дотор ижил дуудлага) — хэмжигдсэн эсэхийг шалгахад */
     fresh ? B.loadBlockProgressFresh() : B.loadBlockProgress(),
     B.loadInfraProgress(fresh),
   ]);
@@ -449,15 +397,10 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
   }
   const land = settledValue(res[0]);
   const blocks = settledValue(res[2]);
-  /* ⚠️ 2026-10-14: блокийн хуваарь унавал барилгын задаргаа л алгасагдана (багцын мөр хэвээр системийн) —
-     бүхэлд нь шидэхгүй (`housingBreakdown` хуваарьгүй бол `null`). */
   const blockUni = await B.loadBlockUniverse().catch((e: unknown) => {
     console.warn('[negtgel] блокийн хуваарь уншигдсангүй — барилгын задаргаа Excel-ийн утгаар', e);
     return undefined;
   });
-  /* ⚠️ 2026-10-27 (хэрэглэгч: «төлөвлөгөөт хувь next week хуваарьтай холбо»): хуваарийн муруй унавал «Next week»
-     л Excel-ийн утгаар үлдэнэ — бүхэлд нь шидэхгүй (`partial`-д нэрлэнэ). Хагас уншигдсан муруйн унасан хуудасны
-     багц `byBagts`-д байхгүй (`PlanCurve.failed`-ийн ⚠️) тул тэр багц Excel-ийн утгаар. */
   const { loadPlanCurveCached, planPctAt } = await import('@/lib/planProgress');
   const curve = await loadPlanCurveCached().catch((e: unknown) => {
     console.warn('[negtgel] хуваарийн муруй уншигдсангүй — «Next week» Excel-ийн утгаар', e);
@@ -491,16 +434,12 @@ export async function loadNegSources(fresh = false): Promise<NegSources> {
   }
   return {
     land,
-    /* ⚠️ 2026-10-09: тайлагнаагүй багцын 0%-ийг Excel-ийн утга дээр дарахгүй (`measuredHousing`-ийн ⚠️) */
     housing: measuredHousing(settledValue(res[1]), blocks),
     housingPkgs: new Set(PKGS.filter((p) => p.floors != null).map((p) => bagtsKey(p.group))),
     infra,
     infraPkgs,
     blocks,
     blockUni,
-    /* ⚠️ 2026-10-19 (аудит): блокийн хуваарь унасан үед барилгын мөрүүд Excel-ийн S-ээр ЧИМЭЭГҮЙ үлддэг байв —
-       одоо ХЭСЭГЧИЛСЭН гэж нэрлэнэ: таб «Хэсэгчлэн уншигдсан» мэдэгдэл гаргаж, `loadNegtgelFull` КЭШЛЭХГҮЙ
-       (дараагийн нээлт дахин уншина). */
     partial: [
       ...(blockUni ? [] : [tr('Блокийн хуваарь (барилгын задаргаа Excel-ийн утгаар)')]),
       ...(curve && !curve.failed.length ? [] : [tr('Хуваарийн төлөвлөгөө («Next week» хэсэгчлэн Excel-ийн утгаар)')]),
@@ -531,8 +470,6 @@ function liveAct(rows: NegRaw[], i: number, parent: number[], src: NegSources): 
   if (name === nkey('Газар чөлөөлөлт') && (r.depth === 1 || chain.includes(nkey('Бэлтгэл ажил')))) {
     return src.land == null ? null : { act: src.land, how: tr('Газар чөлөөлөлт хэсгээс') };
   }
-  /* ⚠️ ЗӨВХӨН «Барилга угсралт ажил» (5.2) салаа — «5.1.3 Талбайн бэлтгэл», зураг төсөл, зөвшөөрөл … дотор ч
-     ижил багцын мөр бий; тэдгээр нь биет гүйцэтгэл БИШ. */
   if (!r.bagts || !chain.includes(nkey('Барилга угсралт ажил'))) return null;
   /* Орон сууц — «Орон сууцны хороолол барилга угсралт»-ын ШУУД хүүхэд (багцын мөр) */
   const p = parent[i];
@@ -554,8 +491,6 @@ function liveAct(rows: NegRaw[], i: number, parent: number[], src: NegSources): 
 
 /**
  * БАГЦЫН МӨРИЙН ХУВААРИЙН ТҮЛХҮҮР (`bagtsKey`) — «Next week»-ийн төлөвлөгөөт хувийг аль багцын муруйгаас авах.
- * ⚠️ `liveAct`-ийн ЯГ ТЭР мөрүүд (5.2 салааны орон сууцны багцын мөр · блокгүй багцын мөр), гэхдээ гүйцэтгэл
- *    хэмжигдсэн эсэхээс ҮЛ ХАМААРНА — тайлагнаагүй багц ч хуваарьтай байж болно.
  */
 function planKeyOf(rows: NegRaw[], i: number, parent: number[], src: NegSources): string | null {
   const r = rows[i];
@@ -567,28 +502,17 @@ function planKeyOf(rows: NegRaw[], i: number, parent: number[], src: NegSources)
   const k = bagtsKey(r.bagts);
   if (p >= 0 && nkey(rows[p].name) === nkey('Орон сууцны хороолол барилга угсралт') && src.housingPkgs?.has(k)) return k;
   const no = pkgNo(r.bagts);
-  /* ⚠️ Блокгүй багц — `pkgNo`-оор (`bagtsKey` нь цэгийг хасдаг тул «1-4» ба «14» нийлнэ — `pkgNo`-ийн ⚠️) */
   return no && src.infraPkgs?.has(no) ? `no:${no}` : null;
 }
 
 /**
  * ОРОН СУУЦНЫ БАГЦЫН БАРИЛГЫН ЗАДАРГАА — «Гүйцэтгэлийн хувь» (S) СИСТЕМЭЭС, «Хэсэгт эзлэх» (F) Excel-ийнх.
  *
- * ⚠️ 2026-10-14 (хэрэглэгч: «нэгтгэл гүйцэтгэл өөрөө өөрийгөө update хийнэ — 5.2.1-ээс доош задаргаа тус
- *    бүрийн тоог систем update хийнэ»). Excel V3-д барилгын мөрийн S нь ГАРААР хуулсан нэг тоо (Багц-1-ийн 20
- *    барилга бүгд 25.72% — багцын хуучин дундаж), багцын мөр нь (28.23%) түүнээс бодогддоггүй тул доод мөрүүдийн
- *    нийлбэр эцэгтэйгээ таардаггүй байв.
- * ⚠️ 2026-10-15 (хэрэглэгч: «Хэсэгт эзлэх хувь Excel-ийн утгаар явна, Excel дээр ямар томьёо байна тэр
- *    ажиллана»): F нь Excel-ийн (блокийн төсөв ÷ багцын төсөв) — 10-14-ний «блокуудад тэнцүү жин» БУЦААГДАВ.
- *    Тиймээс багцын мөр нь 01-ийн энгийн дунджаас (дашбоард 12) бага зэрэг ЗӨРНӨ — санаатай: нэгтгэл нь Excel-ийн
- *    томьёогоор (төсвөөр жигнэж) бодно.
- *
  * ДҮРЭМ:
  *   · Барилгын мөр (C багана «5/1» = `buildingKey`) → S = тэр блокийн батлагдсан `overall`; хуваарьт байгаа ч
  *     тайлагнаагүй бол 0 (01-ийн багцын дундажтай ижил дүрэм).
  *   · Блокт таараагүй мөр (жиш. Багц-4.1 «Бүгд» газар шороо) — системд эх байхгүй → Excel-ийн S ХЭВЭЭР.
  *   · Багцын мөр = Σ F × S (Excel-ийн томьёо, `computeNegAuto`-ийн 2-р алхам).
- * ⚠️ Нэг ч мөр блокт таараагүй бол `null` — багцын мөр 01-ийн багцын хувиараа үлдэнэ.
  */
 function housingBreakdown(
   rows: NegRaw[], i: number, kids: number[][], src: NegSources, pk: string,
@@ -621,7 +545,7 @@ function housingBreakdown(
  * 1. Системийн гүйцэтгэлтэй мөр (`liveAct`) — утгаа ТОГТООНО (pinned; өөрийн хүүхдүүдээс бодогдохгүй, Excel-д
  *    ч тэр мөр гараар бичигддэг).
  * 2. Утга нь ӨӨРЧЛӨГДСӨН мөрийн өвгүүд — Excel-ийн томьёо: Σ (хүүхдийн F × хүүхдийн S), `outside` хасна.
- *    Өөрчлөлтгүй салаа Excel-ийн утгаа ЯГ хадгална (толгойн ⚠️ — Excel-ийн мужийн алдаа).
+ *    Өөрчлөлтгүй салаа Excel-ийн утгаа ЯГ хадгална (толгой — Excel-ийн мужийн алдаа).
  * 3. Гүйцэтгэл өөрчлөгдсөн мөрийн биелэлт: T/U/V/W = S ÷ N/O/P/R (0 бол 0; аль нэг нь хоосон бол хоосон).
  * 1б. Орон сууцны багцын барилгын мөрүүд (`housingBreakdown`) — S системээс (F Excel-ийнх); багцын мөр нь
  *    тэгвэл ТОГТООГДОХГҮЙ, 2-р алхмаар Σ F × S болно (доод мөрийн нийлбэр эцэгтэйгээ таарна).
@@ -646,7 +570,7 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
       o.act = nv;
       changed[i] = true;
     }
-    /* 1б. Барилгын задаргаа — багцын мөрийг доод мөрүүдээс нь бодуулна (`housingBreakdown`-ийн ⚠️) */
+    /* 1б. Барилгын задаргаа — багцын мөрийг доод мөрүүдээс нь бодуулна (`housingBreakdown`) */
     const bd = v.pk ? housingBreakdown(rows, i, kids, src, v.pk) : null;
     if (!bd) return;
     pinned[i] = false;
@@ -678,7 +602,6 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
     if (!dirty[i] || pinned[i]) continue;
     const use = kids[i].filter((k) => !rows[k].outside);
     if (!use.some((k) => out[k].act != null)) continue;
-    /* ⚠️ Хоосон хүүхэд 0 — Excel-ийн SUMPRODUCT-тэй ижил; хуваагч Σw БИШ */
     const nv = r6(use.reduce((a, k) => a + (rows[k].w ?? 0) * (out[k].act ?? 0), 0));
     const o = out[i];
     o.auto = true;
@@ -690,9 +613,7 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
   }
 
   /* «NEXT WEEK» (Q) — 2026-10-27 (хэрэглэгч: «хуваарьтай холбо»). Багцын мөр ХУВААРИЙН муруйгаас (`planKeyOf`),
-     өвгүүд нь гүйцэтгэлтэй ижил Excel-ийн томьёо Σ (F × Q) — зөвхөн өөрчлөгдсөн салаа.
-     ⚠️ Орон сууцны багцын доорх барилгын мөрүүд Excel-ийн утгаар (муруй нь багцаар, блокоор биш) — багцын мөр
-        ТОГТООГДОНО, хүүхдүүдээс нь дахин бодогдохгүй. */
+     өвгүүд нь гүйцэтгэлтэй ижил Excel-ийн томьёо Σ (F × Q) — зөвхөн өөрчлөгдсөн салаа. */
   if (src.planNext?.size) {
     const pinP = new Array<boolean>(rows.length).fill(false);
     const dirtyP = new Array<boolean>(rows.length).fill(false);
@@ -728,7 +649,6 @@ export function computeNegAuto(rows: NegRaw[], src: NegSources): NegCalcRow[] {
 
 /**
  * Төслийн нийт гүйцэтгэл (0–1) = Σ 1-р түвшний жин × гүйцэтгэл (Excel-ийн 6-р мөрийн S томьёо).
- * ⚠️ 2026-09-25: жинтэй (p > 0) 1-р түвшний мөрийн гүйцэтгэл `null` бол нийт нь `null` (null ≠ 0).
  */
 export const projectTotal = (rows: Array<{ depth: number; p: number | null; act: number | null }>): number | null => {
   let w = 0;
@@ -747,10 +667,6 @@ export const projectTotal = (rows: Array<{ depth: number; p: number | null; act:
 
 /**
  * ҮЙЛЧИЛГЭЭ РҮҮ БИЧИХ ЗАСВАРУУД — зөвхөн ӨӨРЧЛӨГДСӨН талбар, хүснэгтийн масштабаар (`SCALE`).
- *
- * ⚠️ Жин, нэр, код, багцыг ХЭЗЭЭ Ч бичихгүй. `null`-оор утга дарахгүй.
- * ⚠️ 2026-10-13: одоогийн хүснэгт ЗӨВХӨН уншигддаг (`TUSUL_NEGTGEL.readOnly`) — бичилт ажиллахгүй; функц нь
- *    бичигдэх хүснэгт рүү буцах үед бэлэн (тест).
  */
 export function negDiff(stored: NegRaw[], calc: NegCalcRow[]): Record<string, unknown>[] {
   const ups: Record<string, unknown>[] = [];
@@ -770,8 +686,6 @@ export function negDiff(stored: NegRaw[], calc: NegCalcRow[]): Record<string, un
 
 /**
  * СИСТЕМИЙН ТАЛБАРУУДЫН ЗАСВАР (2026-10-27) — `sys_guitsetgel` · `sys_next_week` · `sys_shinechilsen`.
- * ⚠️ Excel-ийн баганыг ХЭЗЭЭ Ч бичихгүй. Бодсон утга (`calc`) нь өмнө бичсэн `sys_*`-ээс ялгаатай мөрд л; `null`-оор
- *    дарахгүй (null ≠ 0). Огноо нь тухайн мөрийн аль нэг утга шинэчлэгдсэн үед л.
  */
 export function negSysDiff(stored: NegRaw[], calc: NegCalcRow[], now: number = Date.now()): Record<string, unknown>[] {
   const ups: Record<string, unknown>[] = [];
@@ -793,7 +707,6 @@ export function negSysDiff(stored: NegRaw[], calc: NegCalcRow[], now: number = D
 const ROW_GAP = 0.2;
 /** Төслийн нийт нэг дор ИНГЭЭС их өөрчлөгдвөл ЮУ Ч бичихгүй */
 const TOTAL_GAP = 0.2;
-/** ⚠️ Хамгаалалт ЗӨВХӨН гүйцэтгэл ба төлөвлөгөөнд — биелэлт нь харьцаа тул жижиг төлөвлөгөөтэй мөрд үсэрнэ */
 const GUARD: (keyof NegVals)[] = ['act', 'planG', 'planGch', 'planGu'];
 
 export type NegGuardRow = { oid: number; code: string; name: string; field: keyof NegVals; from: number; to: number };
@@ -832,7 +745,6 @@ export function planNegSync(
     for (const k of GUARD) {
       const ov = sr[k];
       const nv = c[k];
-      /* ⚠️ Хоосон нүдийг анх бөглөх нь «үсрэлт» БИШ */
       if (ov == null || nv == null || Math.abs(nv - ov) <= ROW_GAP) continue;
       blocked.push({ oid: sr.oid, code: sr.code, name: sr.name, field: k, from: ov, to: nv });
       bad.add(i);
@@ -862,7 +774,6 @@ export type NegSyncState =
 export const canSyncNegtgel = (user: string | null = currentUser()): boolean =>
   roleForUser(user) === 'super';
 
-/** ⚠️ Нэг хөтөчөөс 10 минутад нэгээс олон удаа бичихгүй */
 const SYNC_GAP = 10 * 60_000;
 let lastSync = 0;
 let lastState: NegSyncState | null = null;
@@ -883,8 +794,6 @@ const liveLoad = async () => {
 };
 const liveWrite = async (ups: Record<string, unknown>[]): Promise<number> => {
   const { tokenParam, ensureFreshToken, isTokenError } = await import('@/lib/authToken');
-  /* ⚠️ 2026-09-29 (аудит 10): богино хугацаатай PKCE токеныг бичихийн ӨМНӨ шинэчилж, токены алдаанд НЭГ удаа
-     дахин оролдоно (токены алдаа хүсэлтийг БҮХЭЛД нь татгалздаг тул аюулгүй). */
   await ensureFreshToken();
   if (!tokenParam().token) throw new Error(tr('Нэвтрэлтийн токен алга — бичсэнгүй'));
   const { applyAll } = await import('@/lib/tableWrite');
@@ -899,18 +808,10 @@ const liveWrite = async (ups: Record<string, unknown>[]): Promise<number> => {
 
 /**
  * БОДСОН УТГЫГ ХҮСНЭГТ РҮҮ БИЧНЭ — хүн оролцохгүй.
- *
- * ⚠️⚠️ 2026-10-13: одоогийн хүснэгтийн Excel-ийн баганууд (`Negtgel_guitsetgel_1013`) ЗӨВХӨН уншигддаг (`readOnly`).
- * ⚠️ 2026-10-27 (хэрэглэгч: «хуучин утгыг дарж бичихгүйгээр шинэ field»): бодсон гүйцэтгэл ба «Next week» нь
- *    ТУСДАА `sys_guitsetgel` · `sys_next_week` (+ `sys_shinechilsen`) талбаруудад бичигдэнэ (`TUSUL_NEGTGEL.sysWrite`).
- * ⚠️ ЭРХ: ЗӨВХӨН super. ШИНЭ өгөгдлөөр (кэшгүй эх) бодож зөвхөн ӨӨРЧЛӨГДСӨН талбарыг бичнэ. Хамгаалалт:
- *    `planNegSync`. Нэг хөтөчөөс 10 минутад ≤1 (`force` давна).
  */
 export function syncNegtgel(opts: { force?: boolean } = {}, io: NegSyncIo = {}): Promise<NegSyncState> {
-  /* ⚠️ 2026-10-27: Excel-ийн баганууд `readOnly` хэвээр, гэвч `sysWrite` — синк зөвхөн `sys_*`-д бичнэ (`planNegSync`) */
   if (TUSUL_NEGTGEL.readOnly && !TUSUL_NEGTGEL.sysWrite && !io.write) return Promise.resolve({ kind: 'off' });
   if (!canSyncNegtgel((io.user ?? currentUser)())) return Promise.resolve({ kind: 'off' });
-  /* ⚠️ 2026-09-25: `force` явж буй ЭНГИЙН синкийн үр дүнд ЗАЛГИГДАХГҮЙ — дуустал хүлээгээд дахин ажиллуулна */
   if (syncing) {
     if (!opts.force) return syncing;
     return syncing.catch(() => null).then(() => syncNegtgel(opts, io));
@@ -924,13 +825,6 @@ export function syncNegtgel(opts: { force?: boolean } = {}, io: NegSyncIo = {}):
       const calc = computeNegAuto(stored, src);
       const plan = planNegSync(stored, calc, !!opts.force);
       const n = plan.ups.length ? await (io.write ?? liveWrite)(plan.ups) : 0;
-      /* ⚠️ 2026-10-21 (кэшийн аудит): БАТАЛГААТАЙ бичилтийн дараа `TUSUL_NEGTGEL` хүчингүй — урьд нь зөвхөн
-         `dropNegtgelFull` (таб) тул «Тайлан» (`reportData.loadReportExtra`) · удирдлагын тайлан (`execReport`) ·
-         `negtgelEdit.capP` 5 мин хуучин нэгтгэл уншдаг байв (`negtgelEdit.publishNegEdits`-ийн 2026-10-19-ний ⚠️-тэй ижил).
-         ⚠️ ЗӨВХӨН `n > 0` — уналт/хариу алдагдсан үед ХҮЧИНГҮЙ БОЛГОХГҮЙ: энэ синк ачаалагч (`negtgel.loadNegtgelFullRaw`)
-         дотроос дуудагддаг, уналтад `lastSync = 0` тул хүчингүй болговол дахин ачаалал → дахин синк → дахин уналт
-         гэсэн давталт үүснэ. Амжилтад давталт байхгүй: дахин ачаалалтын синк `lastState`-ээ буцаана (`SYNC_GAP`).
-         Одоо `readOnly` тул зам унтраалттай (`fields.ts`-ийн ⚠️) — асаахад л нөлөөлнө. */
       if (n > 0) invalidate('TUSUL_NEGTGEL');
       st = plan.blocked.length || plan.totalBlocked
         ? { kind: 'guard', n, at: Date.now(), blocked: plan.blocked, total: plan.total, totalBlocked: plan.totalBlocked }
@@ -939,7 +833,6 @@ export function syncNegtgel(opts: { force?: boolean } = {}, io: NegSyncIo = {}):
     } catch (e) {
       console.warn('[negtgel] автомат шинэчлэл бичигдсэнгүй', e);
       st = { kind: 'error', at: Date.now(), reason: e instanceof Error ? e.message : String(e) };
-      /* ⚠️ 2026-09-25: УНАЛТ 10 минут КЭШЛЭГДЭХГҮЙ — дараагийн кэш хоосрох мөчид дахин оролдоно */
       lastSync = 0;
     }
     lastState = st;
@@ -950,7 +843,6 @@ export function syncNegtgel(opts: { force?: boolean } = {}, io: NegSyncIo = {}):
   return mine;
 }
 
-/** ⚠️ Зөвхөн тест — модуль-түвшний төлөвийг цэвэрлэнэ */
 export function _resetNegSync(): void {
   lastSync = 0;
   lastState = null;

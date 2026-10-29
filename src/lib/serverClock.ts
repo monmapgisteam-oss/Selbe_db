@@ -1,26 +1,5 @@
 /**
  * СЕРВЕРИЙН ЦАГ — ArcGIS-ийн цагийг нэг удаа хэмжиж, хөтчийн цагтай зөрүүг (`clockOff`) хадгална.
- *
- * ⚠️ 2026-10-12 (дарааллын аудит): ЯАГААД. Хяналтын шатны огноо (`SF[шат].sent/returned`), шийдвэрийн лог
- *    (`at`), илгээлтийн `approvedAt`, «архивлаж байна» тэмдгийн `startedAt`, компанийн илгээсэн огноо —
- *    бүгд БИЧСЭН хөтчийн `Date.now()`-оор, харин тэдгээрийг ЖИШИХ (`markFresh`, `subAt ≤ okWrittenAt`,
- *    `residual.at ≥ unclosed.at`, түгжээний TTL) нь ӨӨР хөтчийн цагаар явдаг байв. Хоёр компьютерын цаг
- *    хэдэн минут зөрвөл (2026-10-12-нд энэ машин AGOL-оос ~100 с түрүүлж байв) амьд тэмдэг «хуучирсан»,
- *    хуучирсан нь «амьд» гэж уншигдана. Нэг эх сурвалж — серверийн цаг.
- * ⚠️ `huvaariBatlah.ts`-ийн `serverNow`/`syncServerClock` (2026-10-12-ны өглөө) 2026-10-26-нд (A3) ЭНЭ модульд
- *    нэгтгэгдсэн — тэр нь өөрийн төлөвгүй, эндээс дахин экспортолж өөрийн хүснэгтээр синк хийнэ. Томьёо
- *    (`clockOffsetOf`) ба дүрэм нь ТЭНДЭЭС хуулсан:
- *      · Editor Tracking (`EditDate`) — хүснэгтийг код өөрөө үүсгэдэг, засварын бүртгэл асаагүй → хэрэглэхгүй;
- *      · Хариуны `Date` толгой — AGOL `Access-Control-Expose-Headers`-т оруулдаггүй → хөтчийн JS уншиж чадахгүй;
- *      · ҮЛДСЭН нь `outStatistics` max(`CURRENT_TIMESTAMP`) — hosted давхаргад ажилладаг (2026-10-12-нд амьд шалгав).
- *        AGOL query-н хариуг КЭШЛЭДЭГ тул `where`-д санамсаргүй тоо (`OBJECTID > -N`) нэмнэ.
- * ⚠️ ЗӨРҮҮ = сервер − хүсэлтийн хоёр үзүүрийн дундаж (RTT/2-ын нарийвчлал — минутын TTL-д хангалттай).
- *    10 минут тутам шинэчилнэ; унавал сүүлийн мэдэгдсэн (эхэндээ 0 = хуучин зан, `Date.now()`) хэвээр,
- *    60 с-ийн дараа дахин оролдоно. 10 с-ээс урт хүсэлтийг хэмжилтэд авахгүй.
- * ⚠️ NODE (тест, `tools/`): `syncServerClock` хэзээ ч дуудагдахгүй эсвэл сүлжээгүй унана → `clockOff` 0 →
- *    `serverNow()` = `Date.now()`. Импорт нь ЦЭВЭР (сүлжээний модулиуд `import()`-оор дотор нь) тул Node-д
- *    ачаалахад гаж нөлөөгүй.
- * ⚠️ Хүснэгт ХООСОН бол max нь `null` — зөрүү шинэчлэгдэхгүй (хуучин утга хэвээр).
  */
 
 let clockOff = 0;
@@ -40,26 +19,11 @@ export function clockOffsetOf(srv: number, t0: number, t1: number): number {
   return Math.round(srv - (t0 + t1) / 2);
 }
 
-/**
- * ⚠️ 2026-10-21 (аудит №2): ХҮЛЭЭН АВАХ ЗӨРҮҮНИЙ ДЭЭД ХЯЗГААР — 15 мин. Урьд нь ямар ч зөрүүг хязгаарлалтгүй
- *    авдаг байв. Үүнээс их зөрүү нь бодит цагийн зөрүүгээс илүү ХЭМЖИЛТИЙН АЛДАА (цагийн бүсгүй тайлал — яг N цаг,
- *    кэшлэгдсэн хариу, хоёртын хайлтын гажуудал) байх магадлалтай бөгөөд тийм утгаар бүх түгжээ · тэмдэг · батлалтын
- *    огноо нэг дор буруу бичигдэнэ. Хүлээн авахгүй, `console.warn`-оор ил хэлнэ (чимээгүй биш); сүүлийн мэдэгдсэн
- *    зөрүү хэвээр, дараагийн хэмжилт `CLOCK_TTL`-ийн дараа (`clockAt` тавигдана — минут тутам ~17 хүсэлтээр
- *    давтахгүй). `huvaariBatlah.syncServerClock` ч ЭНЭ дүрмээр.
- */
 export const MAX_CLOCK_OFF = 15 * 60_000;
 /** Хэмжсэн зөрүү хүлээн авахуйц уу — `|off| ≤ MAX_CLOCK_OFF` (цэвэр; тест) */
 export function clockOffsetOk(off: number): boolean {
   return Number.isFinite(off) && Math.abs(off) <= MAX_CLOCK_OFF;
 }
-/**
- * ⚠️ 2026-10-26 (аудит): ТОМ ЗӨРҮҮГ ЧАНАРААР НЬ хүлээн авна. Амьд өгөгдөлд (183, мөр 47 — Багц 3.3) хөтчийн цаг ~7.4 ц
- *    түрүүлсэн компьютер инженер/менежерийн шатны огноог ИРЭЭДҮЙД бичсэн нь батлагдсан: хоёртын хайлт (±12 ц) жинхэнэ
- *    серверийн цагт нийлдэг атал 15 мин-ийн хязгаар үүнийг «хэмжилтийн алдаа» гэж хаяж, буруу хөтчийн цаг руу унадаг байв.
- *    Одоо 15 мин-ээс их зөрүүг ХОЁР бие даасан хэмжилт тус бүр богино (≤ 2 с) сүүлийн хүсэлттэй, хоорондоо ≤ 5 с-ээр
- *    таарч, ±12 ц дотор байвал хүлээн авна (цэвэр; тест).
- */
 export const MAX_CONFIRM_RTT = 2_000;
 export const MAX_CONFIRM_DIFF = 5_000;
 export function largeOffsetConfirmed(off1: number, rtt1: number, off2: number, rtt2: number): boolean {
@@ -76,12 +40,6 @@ const tsLiteral = (ms: number): string => new Date(ms).toISOString().slice(0, 19
 
 /**
  * СЕРВЕРИЙН АГШИН ХЭМЖИХ — `{ srv, t0, t1 }` эсвэл `null`. `syncServerClock` (энд) ба `huvaariBatlah` хоёулаа хэрэглэнэ.
- * ⚠️ 2026-10-21 (аудит): Enterprise (PostgreSQL) `outStatistics`-д `CURRENT_TIMESTAMP`-ийг хүлээн авдаггүй (500) —
- *    урьд нь алдааг залгиж `clockOff` үргэлж 0 болж, цаг зөрөхөөс хамгаалах механизм чимээгүй унтарсан байв.
- *    Харин `where`-д `CURRENT_TIMESTAMP > timestamp '…'` ажилладаг тул ХОЁРТЫН ХАЙЛТ: ±12 цагийн мужийг
- *    `returnCountOnly`-оор 1 с хүртэл нарийсгана (~17 хүсэлт, ~0.2 с; 10 минут тутам нэг удаа). Хүснэгт хоосон
- *    бол (count үргэлж 0) хэмжихгүй. AGOL-д `outStatistics` зам хэвээр эхэлж оролдоно; Enterprise хаягт
- *    (`ENT_HOSTED` дор) оролдохгүй — доорх ⚠️ 2026-10-21 (аудит №2).
  */
 export async function measureServerTime(
   base: string,
@@ -90,9 +48,6 @@ export async function measureServerTime(
   const { arcgisPost } = await import('./query');
   const { ENT_HOSTED } = await import('./services/env');
   const salt = () => `${oidField} > -${1 + Math.floor(Math.random() * 1e9)}`;
-  /* ⚠️ 2026-10-21 (аудит №2): Enterprise хаягт (2026-10-26-оос `base` нь ҮРГЭЛЖ бодит Enterprise хаяг)
-     `outStatistics` max(CURRENT_TIMESTAMP) замыг ОРОЛДОХГҮЙ — тэнд ҮРГЭЛЖ 500 тул хэмжилт бүрд нэг дэмий алдааны
-     хүсэлт серверийн логт бичигдэж, хоёртын хайлт нэг RTT хожимддог байв. AGOL/бусад хаягт нэг хүсэлтийн зам хэвээр. */
   const ent = base.startsWith(`${ENT_HOSTED}/`);
   if (!ent) {
     try {
@@ -109,9 +64,6 @@ export async function measureServerTime(
       if (Number.isFinite(v) && v > 0 && t1 - t0 <= 10_000) return { srv: v, t0, t1 };
     } catch { /* доорх хоёртын хайлт */ }
   }
-  /* ⚠️ 2026-10-21 (аудит): СҮҮЛИЙН ХҮСЭЛТИЙН хоёр үзүүр (`pt0`/`pt1`). Хайлтын явцад серверийн цаг урагшилдаг тул
-     эцсийн муж нь СҮҮЛИЙН шалгалтуудын үеийн (≈t1) серверийн цаг — урьд нь бүх хайлтын (t0+t1)/2-той хослуулдаг
-     тул зөрүү (t1−t0)/2-оор хазайдаг байв. Одоо `clockOffsetOf`-д сүүлийн хүсэлтийн өмнө/дараах цагийг өгнө. */
   let pt0 = 0;
   let pt1 = 0;
   const count = async (ms: number): Promise<number> => {
@@ -143,11 +95,7 @@ export async function measureServerTime(
 /**
  * Серверийн цагийн зөрүүг шинэчилнэ (кэштэй, явагдаж буйг хуваалцана) — алдааг залгина.
  * @param url хэмжих hosted хүснэгтийн REST хаяг; өгөөгүй бол хяналтын хүснэгт (`hyanalt.HYANALT.url`).
- * @param oidField `url` хүснэгтийн OID талбар (`huvaariBatlah.F.oid`) — анхдагч `objectid` (⚠️ 2026-10-26: Enterprise жижиг үсэг).
- * ⚠️ `arcgisPost` ба `HYANALT` динамик импорт — энэ модуль нь `submission.ts` · `hyanaltSubmit.ts` ·
- *    `hyanaltStore.ts` гурваас уншигддаг тул модулийн тойрог үүсгэхгүй, Node-д ч ачаалагдана.
- * ⚠️ 2026-10-26 (A3): `huvaariBatlah` (→ `ajilBatlah` · `obyemBatlah`) ч ЭНЭ функцээр, ӨӨРИЙН хүснэгтээр синк хийнэ —
- *    зөрүү (`clockOff`) НЭГ, бүгд нэг Enterprise серверийнх тул аль хүснэгтээр хэмжсэн нь хамаагүй.
+ * @param oidField `url` хүснэгтийн OID талбар (`huvaariBatlah.F.oid`) — анхдагч `objectid` (2026-10-26: Enterprise жижиг үсэг).
  */
 export async function syncServerClock(url?: string, oidField = 'objectid'): Promise<void> {
   const t = Date.now();
@@ -162,8 +110,6 @@ export async function syncServerClock(url?: string, oidField = 'objectid'): Prom
       const m = await measureServerTime(base, oidField);
       if (!m) return;
       let off = clockOffsetOf(m.srv, m.t0, m.t1);
-      /* ⚠️ 2026-10-21 (аудит №2): `MAX_CLOCK_OFF`-оос их зөрүүг шууд хүлээн авахгүй (дээрх ⚠️) —
-         ⚠️ 2026-10-26 (аудит): ХОЁР ДАХЬ бие даасан хэмжилтээр баталбал авна (`largeOffsetConfirmed`-ийн ⚠️) */
       if (!clockOffsetOk(off)) {
         const m2 = await measureServerTime(base, oidField);
         const off2 = m2 ? clockOffsetOf(m2.srv, m2.t0, m2.t1) : Number.NaN;

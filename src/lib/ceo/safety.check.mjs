@@ -1,9 +1,7 @@
 /**
  * «ХАБЭА — осол, зөрчил» CEO үзүүлэлтийн ШАЛГУУР.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/safety.check.mjs
- *
- * ⚠️ ЛОГИК ХУУЛБАРЛААГҮЙ — жинхэнэ `computeSafety`-г импортлоно. Сүлжээгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/safety.check.mjs
  *
  * Ямар БОДИТ алдаанаас хамгаалж байгаа вэ:
  *  1. ОГНООГҮЙ бүртгэл 0 (1970) болох — «сүүлийнх 20 000 хоногийн өмнө» гэсэн
@@ -14,7 +12,7 @@
  *  2. Хохирлын regex `execTriage.loadDamage`-аас зөрөх — нүүр самбар ба
  *     ХАБЭА хуудас өөр тоо харуулна.
  *  3. Босго: 0 → Сайн, 1–5 → Дунд, 6+ → Яаралтай; хохирол 1–2 → Дунд, 3+ → Яаралтай
- *     (⚠️ 2026-10-21: хохирол ч СҮҮЛИЙН 30 хоногоор — хуучин хохирол түвшинд биш, баримтад л).
+ *     (2026-10-21: хохирол ч СҮҮЛИЙН 30 хоногоор — хуучин хохирол түвшинд биш, баримтад л).
  *  4. Хүснэгт ТОО биш НЭРЭЭР: бүх бүртгэл мөр бүр гарна, шинэ нь эхэнд,
  *     огноогүй нь СҮҮЛД; баганын тоо мөр бүрд таарна.
  *  5. Анхааруулга: сүүлийн 30 хоногийнх улаан, хуучин хохирол шар, хуучин
@@ -74,7 +72,6 @@ const row = (o = {}) => ({
   assert.equal(toSafetyRow({ field_22: NOW }).ognoo, NOW);
   assert.equal(toSafetyRow({}).oid, null);
 
-  // ⚠️ 2026-10-09: CreationDate нөөц зам ХАСАГДСАН — Habea.tsx normIncident-тэй ижил (`d: nn(ognoo)`)
   assert.equal(toSafetyRow({ field_22: null, created_date: NOW - 5 * DAY }).ognoo, null,
     'field_22 хоосон → null (CreationDate руу унахгүй)');
   assert.equal(toSafetyRow({ field_22: 0, created_date: NOW - 5 * DAY }).ognoo, null,
@@ -92,7 +89,6 @@ const row = (o = {}) => ({
   // Ирээдүйн огноо (буруу бөглөсөн) «сүүлийн 30 хоногт» орохгүй
   const future = toSafetyRow({ field_22: NOW + 3 * DAY, field_7: 'Зөрчил' });
   assert.equal(aggregateSafety([future], NOW).recent, 0, 'ирээдүйн огноо recent-д орохгүй');
-  // ⚠️ 2026-10-21: ирээдүйн огноо `last`/`daysSince`-д ч орохгүй (`recent`-тэй нэг дүрэм)
   const past = toSafetyRow({ field_22: NOW - 2 * DAY, field_7: 'Зөрчил' });
   const fa = aggregateSafety([future, past], NOW);
   assert.equal(fa.last, NOW - 2 * DAY, 'ирээдүйн огноо last болохгүй');
@@ -123,12 +119,10 @@ assert.equal(damageLevel(DMG_BAD_N), 'bad');
 const dated = (n, daysAgo, extra = {}) => Array.from({ length: n }, (_, i) =>
   row({ ognoo: NOW - (daysAgo + i) * DAY, turul: 'Зөрчил', bagts: 'Багц 2', company: 'К', ...extra }));
 
-/* ⚠️ 2026-10-09: ослын түвшин СҮҮЛИЙН 30 ХОНОГООР (`agg.recent`), бүх хугацааных биш */
 assert.equal(computeSafety(dated(INCIDENT_WARN_MAX, 0), NOW).level, 'warn', '30 хоногт 1–5 осол → Дунд');
 assert.equal(computeSafety(dated(INCIDENT_WARN_MAX + 1, 0), NOW).level, 'bad', '30 хоногт 6+ осол → Яаралтай');
 assert.equal(computeSafety(dated(INCIDENT_WARN_MAX + 1, 100), NOW).level, 'good', 'хуучин 6+ осол (хохиролгүй) → 30 хоногт 0 → Сайн');
 assert.equal(computeSafety(dated(3, 100), NOW).value, '0', 'гол тоо = сүүлийн 30 хоног');
-/* ⚠️ 2026-10-21: хохирлын түвшин ч СҮҮЛИЙН 30 ХОНОГООР (`agg.damageRecent`) */
 assert.equal(
   computeSafety(dated(DMG_BAD_N, 0, { turul: 'Эд хөрөнгийн хохирол' }), NOW).level, 'bad',
   '30 хоногт хохирол ≥ DMG_BAD_N → Яаралтай, нийт тоо бага ч',
@@ -175,7 +169,6 @@ assert.equal(computeSafety(dated(1, 0, { turul: 'Эд хөрөнгийн хох�
   assert.ok(r.facts.length <= 4, 'баримт 3–4-өөс илүүгүй');
   assert.ok(r.facts[0].startsWith('сүүлийнх 3 хоногийн өмнө ('), r.facts[0]);
   assert.ok(r.facts.includes('нийт 5'), r.facts.join(' | '));
-  // ⚠️ «{0} хохирол» ба «Багц: {0}» — en.ts-ийн БАЙГАА түлхүүрүүд (safety.ts-ийн тайлбар)
   assert.ok(r.facts.includes('2 хохирол'), r.facts.join(' | '));
   assert.ok(r.facts.includes('Багц: Багц 3 — 2'), r.facts.join(' | '));
   for (const f of r.facts) assert.match(f, /\d/, `баримт тоогүй: ${f}`);
@@ -213,8 +206,6 @@ assert.equal(computeSafety(dated(1, 0, { turul: 'Эд хөрөнгийн хох�
 }
 
 /* ══════════════ 7. Хоосон ноорог (2026-10-01) ══════════════ */
-/* ⚠️ Survey123-д эхлүүлээд бөглөөгүй маягт (төрөл · багц · огноо гурвуулаа хоосон) осол БИШ.
-   Нэг нь ч бөглөгдсөн бол жинхэнэ (дутуу) бүртгэл — хасахгүй. ХАБЭА хуудас ч энэ функцээр. */
 {
   assert.equal(isBlankIncident({ field_7: null, field_6: null, field_22: null, created_date: NOW }), true,
     'CreationDate байсан ч гурвуулаа хоосон бол ноорог');
@@ -237,7 +228,7 @@ assert.equal(computeSafety(dated(1, 0, { turul: 'Эд хөрөнгийн хох�
   assert.equal(r.issues.filter((i) => i.tone === 'bad').length, 0, 'ирээдүйн огноо улаан анхааруулга үүсгэхгүй');
 }
 
-/* ══════════════ 3. ⚠️ 2026-10-22 (аудит): төрөл · шалтгаан · компани домэйны НЭРЭЭР (тасархай код биш) ══════════════ */
+/* ══════════════ 3. 2026-10-22 (аудит): төрөл · шалтгаан · компани домэйны НЭРЭЭР (тасархай код биш) ══════════════ */
 {
   const dom = {
     field_7: new Map([['Моторт тээврийн хэрэгсэлийн осо', 'Моторт тээврийн хэрэгсэлийн осол зөрчил']]),

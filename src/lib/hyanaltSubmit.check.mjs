@@ -1,17 +1,17 @@
 /**
  * ИЛГЭЭЛТ → ХЯНАЛТЫН БҮРТГЭЛИЙН IDEMPOTENCY — цэвэр функц, сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/hyanaltSubmit.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/hyanaltSubmit.check.mjs
  *
  * Хамгаалж буй алдаанууд (бүгд 2026-09-07-нд бодитоор гарсан):
- *   1. ⚠️ БУЦААЛТЫН ДАРААХ ДАХИН ИЛГЭЭЛТ ГАЦАХ. «`Шилжүүлсэн` БИШ бүх мөр»
+ *   1. БУЦААЛТЫН ДАРААХ ДАХИН ИЛГЭЭЛТ ГАЦАХ. «`Шилжүүлсэн` БИШ бүх мөр»
  *      гэж шалгавал буцаагдсан ГУРВАН төлөв ч таарч, гүйцэтгэгч засвараа
  *      илгээхэд ШИНЭ тойрог үүсэхгүй, ажил МӨНХӨД гацна.
- *   2. ⚠️ ӨДӨР ХООРОНД `sheetOid` ДАВХЦАХ. `closeSubmission` унасан ховор
+ *   2. ӨДӨР ХООРОНД `sheetOid` ДАВХЦАХ. `closeSubmission` унасан ховор
  *      тохиолдолд өчигдрийн мөр хөлдөөгүй үлдэж, маргааш ижил OBJECTID
  *      дахин ашиглагдвал өнөөдрийн ажил хяналтад ОГТ ОРОХГҮЙ.
- *   3. ⚠️ НЭГ ӨДӨРТ ОЛОН ТОЙРОГ. «Хянагдаж байхад дахин илгээх» хориг
+ *   3. НЭГ ӨДӨРТ ОЛОН ТОЙРОГ. «Хянагдаж байхад дахин илгээх» хориг
  *      2026-09-07-нд хасагдсан тул энэ функц л давхардлыг барина.
- *   4. ⚠️ ХУУДАСНЫ ШОШГЫГ МӨНХӨД ХАЯХ (2026-09-08). `hasOpenLegacy` нь
+ *   4. ХУУДАСНЫ ШОШГЫГ МӨНХӨД ХАЯХ (2026-09-08). `hasOpenLegacy` нь
  *      `sheetOid`-ыг шалгадаггүй байсан тул нэг нээлттэй хуучин мөр тэр
  *      өдрийн БҮХ илгээлтээс шошгыг хаяж, `groupWorks` тэднийг нэг Work
  *      болгож нийлүүлэн, өмнөх илгээлтүүд хянагчид ОГТ харагдахгүй болно.
@@ -45,13 +45,7 @@ for (const st of [STATUS.engineerReview, STATUS.managerReview, STATUS.directorRe
   assert.equal(hit[F.id], 'G-000001');
 }
 
-/* ── 3. ⚠️ ГҮЙЦЭТГЭГЧ РҮҮ БУЦААГДСАН — ЖИНХЭНЭ дахин илгээлт, ШИНЭ тойрог ҮҮСНЭ ──
- *
- * ⚠️ ЗӨВХӨН «Инженер буцаасан» нь КОМПАНИД очно (`OWNER`, hyanalt.ts:112).
- *    «Менежер буцаасан» → ИНЖЕНЕРТ, «ЕМ буцаасан» → МЕНЕЖЕРТ буцна: тэдгээрийг
- *    гүйцэтгэгч дахин илгээдэггүй, хүлээн авсан ХЯНАГЧ `recheck`-ээр шийднэ
- *    (`hyanaltStore.recheck`). Тиймээс тэр хоёр нь энэ шалгуурт ТААРЧ,
- *    шинэ тойрог үүсгэхгүй байх нь ЗӨВ.
+/* ── 3. ГҮЙЦЭТГЭГЧ РҮҮ БУЦААГДСАН — ЖИНХЭНЭ дахин илгээлт, ШИНЭ тойрог ҮҮСНЭ ──
  */
 assert.equal(
   openReviewRow([row(500, STATUS.engineerReturned)], 500, TAG), null,
@@ -70,7 +64,7 @@ assert.equal(
   'батлагдсан илгээлт дээр шинэ бүртгэл үүсэх нь ЗӨВ',
 );
 
-/* ── 5. ⚠️ ӨӨР ӨДРИЙН мөр таарахгүй (sheetOid дахин ашиглагдсан ч) ── */
+/* ── 5. ӨӨР ӨДРИЙН мөр таарахгүй (sheetOid дахин ашиглагдсан ч) ── */
 assert.equal(
   openReviewRow([row(500, STATUS.engineerReview, PREV_TAG)], 500, TAG), null,
   'өчигдрийн хянагдаж буй мөр өнөөдрийн илгээлтийг дарах ЁСГҮЙ',
@@ -102,7 +96,7 @@ assert.equal(openReviewRow([row(500, STATUS.engineerReview)], 0, TAG), null);
 /* ── 9. Хоосон жагсаалт ── */
 assert.equal(openReviewRow([], 500, TAG), null);
 
-/* ── 10. ⚠️ ХУУЧИН НЭРИЙН ӨВЛӨЛТ ЗӨВХӨН ӨӨРИЙН МӨРӨӨС (2026-09-08) ──
+/* ── 10. ХУУЧИН НЭРИЙН ӨВЛӨЛТ ЗӨВХӨН ӨӨРИЙН МӨРӨӨС (2026-09-08) ──
  *
  * Урьд нь (багц·өдөр·компани)-гаар л шалгадаг байсан тул НЭГ нээлттэй
  * хуучин мөр тэр өдрийн БҮХ шинэ илгээлтээс хуудасны шошгыг хаядаг байв —
@@ -155,7 +149,6 @@ assert.equal(openReviewRow([], 500, TAG), null);
   assert.equal(hasOpenLegacy([legacy(500, STATUS.engineerReview)], BAGTS, COMP, TAG, null), false);
   assert.equal(hasOpenLegacy([legacy(500, STATUS.engineerReview)], BAGTS, COMP, TAG, 0), false);
 
-  /* ⚠️ 2026-09-25: одоогийн тойрог ШИЛЖҮҮЛСЭН бол дарагдсан хуучин мөрөөс өвлөхгүй */
   assert.equal(
     hasOpenLegacy([
       { ...legacy(500, STATUS.managerReturned), objectid: 10, [F.ergelt]: 1 },
@@ -165,7 +158,7 @@ assert.equal(openReviewRow([], 500, TAG), null);
   );
 }
 
-/* ── 11. ⚠️ ЗӨВХӨН ОДООГИЙН ТОЙРОГ (2026-09-25, HIGH) ──
+/* ── 11. ЗӨВХӨН ОДООГИЙН ТОЙРОГ (2026-09-25, HIGH) ──
  *
  * `recheck('ok')` хуучин A мөрийг «Менежер буцаасан» хэвээр үлдээж шинэ B
  * тойрог нэмдэг. B компанид буцсаны дараах засвар A-д `reused` гэж шингэвэл
@@ -187,7 +180,7 @@ assert.equal(openReviewRow([], 500, TAG), null);
   assert.equal(hit?.[F.id], 'G-000021', 'хянагчийн гар дээрх ОДООГИЙН тойргийг л буцаана');
 }
 
-/* ── ⚠️ 2026-10-09 (аудит №6): `Row` (`hyanaltStore.toRow` — `__oid`, `OBJECTID` талбаргүй) оролт ──
+/* ── 2026-10-09 (аудит №6): `Row` (`hyanaltStore.toRow` — `__oid`, `OBJECTID` талбаргүй) оролт ──
  * Урьд нь `currentRows` зөвхөн `r[OBJECTID]` уншдаг тул `Row`-д хоёулаа 0 болж, ижил `Хэддэх_удаа`-тай
  * мөрүүдээс жагсаалтын СҮҮЛИЙНХ ялдаг байв — `__oid` их нь ялах ёстой. */
 {
@@ -224,7 +217,6 @@ assert.equal(openReviewRow([], 500, TAG), null);
   /* Дууссан мөчлөг → бүртгэх шаардлагагүй */
   assert.equal(needsRegistration([row(700, STATUS.transferred)], 700, TAG, RET), false, 'шилжүүлсэн');
   assert.equal(needsRegistration([back], null, TAG, RET), false, 'sheetOid алга');
-  /* ⚠️ 2026-10-05: эцсийн зөвшөөрлөөс ХОЙШ бичигдсэн үлдэгдэл (`residual`) — тойроггүй өнчин */
   const fin = { ...row(700, STATUS.transferred), [F.chiefSent]: new Date(RET).toISOString() };
   assert.equal(needsRegistration([fin], 700, TAG, RET + 5_000), true, 'үлдэгдэл нэмэлт шинэ тойрогт орох ёстой');
   assert.equal(needsRegistration([fin], 700, TAG, RET - 5_000), false, 'архивлагдсан (хаалт унасан) илгээлт өнчин биш');
@@ -235,7 +227,6 @@ assert.equal(openReviewRow([], 500, TAG), null);
   console.log('✅ needsRegistration — одоогийн тойрог · буцаалтын дараах засвар');
 }
 
-/* ⚠️ 2026-10-09 (хэрэглэгч: «нэг удаа явуулаад 6 шат бүрэн давж байж дараа дахин бөглөх»): `reviewLockDays` */
 {
   const r = (oid, so, status, ajil) => ({ objectid: oid, [F.sheetOid]: so, [F.status]: status, [F.bagts]: 'Багц 1', [F.ajil]: ajil });
   const A = 'Гүйцэтгэл · 2026.10.04 · Багц 1 · 9 давхар';
@@ -256,7 +247,6 @@ assert.equal(openReviewRow([], 500, TAG), null);
   assert.deepEqual(lock([{ ...r(1, 10, STATUS.engineerReview, A), [F.bagts]: 'Багц 2' }]), [], 'өөр багц — хориггүй');
   console.log('✅ reviewLockDays — хяналтад явж буй илгээлт · буцаалт · архивласан · өөр хуудас');
 
-  /* ⚠️ 2026-10-09 (аудит №2): хянагчийн дараалалтай ИЖИЛ `groupWorks` (ажлын одоогийн тойрог) */
   const cyc = (oid, ergelt, status, ajil = A, so = 10) => ({ ...r(oid, so, status, ajil), [F.ergelt]: ergelt, [F.company]: 'ХХК' });
   /* recheck('ok'): хуучин A «Менежер буцаасан» (OWNER = инженер) хэвээр, шинэ тойрог «Шилжүүлсэн» */
   assert.deepEqual(lock([cyc(10, 1, STATUS.managerReturned), cyc(11, 2, STATUS.transferred)]), [],
@@ -278,7 +268,6 @@ assert.equal(openReviewRow([], 500, TAG), null);
   const st = reviewLockState([r(1, 10, STATUS.engineerReview, A), r(2, 11, STATUS.engineerReturned, BACK)],
     'Багц 1', 'Багц 1 · 9 давхар', other);
   assert.deepEqual(st, { days: ['2026.10.04'], returned: ['2026.10.03'] });
-  /* ⚠️ 2026-10-09 (аудит №6): `fillMs` нь UTC шөнө дунд (`nowFillMs`) — `dayLabel` ч `getUTC*`-ээр задалдаг болов */
   const ms = (y, m, d) => Date.UTC(y, m - 1, d);
   assert.equal(reviewLockBlocks(st, ms(2026, 10, 3)), false, 'буцаагдсан өдрийн засвар — хориггүй');
   assert.equal(reviewLockBlocks(st, ms(2026, 10, 4)), true, 'хянагдаж буй өдрийг доор нь солих — хориг');

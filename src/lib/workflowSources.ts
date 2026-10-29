@@ -1,17 +1,5 @@
 /**
  * УРСГАЛТАЙ 6 ХАРАГДАЦЫН ЭХ СУРВАЛЖ — «энэ хуудас ЯАГААД нээлттэй/хаалттай вэ» (2026-10-01).
- *
- * ⚠️ ЯАГААД («хэрэглэгч: бүгдийг зас»): урсгалтай 6 харагдац (Гүйцэтгэл · Хуваарь · Хуваарь
- *    батлах · Нэмэлт ажил батлах · Чанарын баримт · Чанар (QAQC)) ЗӨВХӨН хуваарилалтаар нээгддэг
- *    болсон (`permissions.workflowViewsOf`). Хэрэглэгчийн карт тэднийг унтраалгагүй, ЗӨВХӨН
- *    ХАРУУЛАХ мөрөөр — «Хуваарийн эрх · Зохиогч · Багц 3.1» гэх мэт эх сурвалж ба тэр хуудас руу
- *    холбоостой — харуулна. Эх сурвалжийн дүрэм энд НЭГ газар (UI-д давтахгүй).
- *
- * ⚠️ `resolveAccess`-ТЭЙ ИЖИЛ ДҮРЭМ: харагдац нээлттэй ⇔ (а) урсгалын томилгоо (Гүйцэтгэл), эсвэл
- *    (б) эрх нь ОЛГОГДСОН (`granted`) хуваарилалт / шууд олголт. Хуваарилалт бий атлаа эрх нь
- *    алга (`granted: false`, `erhOverview.missingCaps`) бол хуудас ХААЛТТАЙ — картын «Дахин олгох».
- *
- * ⚠️ ЦЭВЭР МОДУЛЬ: `UserErh` (`erhOverview.userErh`)-ээс тооцно — localStorage, React хамааралгүй.
  */
 
 import { CAP_HOST_VIEW, WORKFLOW_VIEWS, type CapKey } from './caps';
@@ -49,8 +37,6 @@ const hosts = (cap: CapKey): ViewKey[] => CAP_HOST_VIEW[cap].filter((v) => WORKF
 
 /**
  * Хэрэглэгчийн урсгалтай 6 харагдац тус бүрийн эх сурвалж — `WORKFLOW_VIEWS`-ийн дарааллаар.
- * ⚠️ Нэг эрх ОЛОН харагдац нээнэ (`planApprove` → Хуваарь батлах + Хуваарь) — эх сурвалж хоёуланд.
- * ⚠️ Хуваарилалтаас гараагүй эрх (`cap`) — хуваарилалтаар тайлбарлагдаагүй үлдсэн эрх л.
  */
 export function workflowRows(u: UserErh): WfRow[] {
   const by = new Map<ViewKey, WfSource[]>(WORKFLOW_VIEWS.map((v) => [v, []]));
@@ -64,8 +50,6 @@ export function workflowRows(u: UserErh): WfRow[] {
       ...(u.flow.viewOnly ? { viewOnly: true } : {}),
     });
   }
-  /* ⚠️ 2026-10-26: «Ерөнхий захирал» төрөл «Гүйцэтгэл»-ийг томилгоогүйгээр ЗӨВХӨН ХАРНА (`permissions.workflowViewsOf`) —
-     эх сурвалжгүй бол карт «хаалттай · хуваарилалтгүй» гэж худал харуулж, татгалзах урсгалын хуудас руу заадаг байв */
   if (u.viewRole && !u.flow) {
     push('guitsetgel', { sys: 'type', role: 'zahiral', bagts: null, cap: null, granted: true, viewOnly: true });
   }
@@ -84,16 +68,12 @@ export function workflowRows(u: UserErh): WfRow[] {
     for (const v of hosts(c)) push(v, { sys: 'cap', role: c, bagts: null, cap: c, granted: true });
   }
 
-  /* ⚠️ 2026-10-26: эрхийн ТӨРЛИЙН «Хуваарь харах» — «Бүх багц», эсвэл «Өөрийн багц» (хуваарилалттай багц байвал л) */
   if (u.hvType && (u.hvType.bagts === null || u.hvType.bagts.length > 0)) {
     push('huvaari', { sys: 'type', role: u.hvType.scope, bagts: u.hvType.bagts, cap: null, granted: true, viewOnly: true });
   }
 
   return WORKFLOW_VIEWS.map((view) => {
     const sources = by.get(view) ?? [];
-    /* ⚠️ 2026-10-26: «Хуваарь» — «Хуваарийн эрх»-ийн мөр (зохиогч · батлагч) эрх (`caps`) алга байсан ч тэр багцыг
-       ЗӨВХӨН ХАРАХ-аар нээнэ (`huvaariView.huvaariViewScope` — `resolveAccess`-тэй ижил дүрэм); «эрх олгогдоогүй» тэмдэг хэвээр */
-    /* ⚠️ 2026-10-26: танигдаагүй багц (`unknownBagts`) нь `huvaariViewScope`-д шүүгддэг тул ганцаараа нээхгүй */
     const viaPlan = view === 'huvaari' && sources.some((s) => s.sys === 'huvaari'
       && (s.bagts === null || s.bagts.some((b) => !u.unknownBagts.includes(b))));
     return { view, sources, open: u.superUser || viaPlan || sources.some((s) => s.granted) };

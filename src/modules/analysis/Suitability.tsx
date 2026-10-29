@@ -84,21 +84,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /* ── Ачаалалт ── */
   const [data, setData] = useState<AnalysisData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /* ⚠️ 2026-09-30: проекцолсон геометр нь STATE (урьд нь ref + `projected` туг) —
-     `rows` нь render дунд бодогддог тул ref уншиж болохгүй. `null` = хараахан үгүй. */
   const [geoms, setGeoms] = useState<Map<string, Polygon | null> | null>(null);
-  /* ⚠️ 2026-10-06 (аудит): ДАХИН ОРОЛДЛОГЫН тоолуур. Урьд нь ачаалалт нэг удаа
-     унахад `.loader` (inset:0 · z-index:99) бүх аппыг хааж, товч ч, сүлжээ
-     сэргэхэд дахин оролдлого ч байхгүй — цорын ганц гарц нь хуудсыг бүтнээр нь
-     refresh хийх байв. `loadAnalysisCached` нь алдааг кэшлэдэггүй тул энэ
-     тоолуурыг өсгөхөд шинээр татна. */
   const [loadNonce, setLoadNonce] = useState(0);
   const retryLoad = useCallback(() => {
     setError(null);
     setLoadNonce((n) => n + 1);
   }, []);
   /* Сүлжээ сэргэхэд (`online`) — ЗӨВХӨН алдаатай үед өөрөө дахин оролдоно
-     (`useAsync`-ийн 2026-10-05-ны ⚠️-тэй ижил загвар). */
+     (`useAsync`-ийн 2026-10-05-ны -тэй ижил загвар). */
   const loadFailed = error != null;
   useEffect(() => {
     if (!loadFailed) return;
@@ -106,8 +99,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     return () => window.removeEventListener('online', retryLoad);
   }, [loadFailed, retryLoad]);
 
-  /* ⚠️ 2026-10-26 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) кэшийг хаядаг ч энэ харагдац дахин ачаалдаггүй тул «Өгөгдөл: HH:MM»
-     шинэ цаг заасан ч оноо/эрэмбэ хуучин үлддэг байв (HesegChange · PlanOverlap-тэй ижил `refreshEpoch`). Шинэ нь иртэл хуучин үлдэнэ. */
   const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
   const hasDataRef = useRef(false);
   useEffect(() => {
@@ -131,7 +122,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
       } catch (e: unknown) {
         console.error('[selbe] анализ:', e);
-        /* ⚠️ Шинэчлэлт унавал өмнөх өгөгдөл ХЭВЭЭР (алдааны дэлгэц зөвхөн өгөгдөлгүй үед) */
         if (alive && !hasDataRef.current) setError(userError(e));
       }
     })();
@@ -139,34 +129,24 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   }, [loadNonce, epoch]);
 
   /* ── Загварын төлөв ── */
-  // ⚠️ Нээгдэх горим = ХОТ ТӨЛӨВЛӨЛТ: «Ерөнхий» (blend) таб хасагдсан тул
-  //    түүнээр нээвэл ямар ч табгүй хуудас гарна.
   const [mode, setMode] = useState<Mode>('urban');
-  /* ⚠️ 2026-10-09 (аудит №3): газрын зургийн онооны өнгө ГОРИМООР (`scoreColor(_, dark)` =
-     `--score-N` токены задарсан hex) — эрэмбэ/хэмжүүр/радарын токентой ижил. Урьд нь
-     газрын зураг хуучин горимгүй hex-ээр будагдаж самбараас өөр өнгөтэй байв. */
   const dark = useTheme().theme === 'dark';
   const [indicators, setIndicators] = useState<Indicator[]>(() => INDICATORS.map((i) => ({ ...i })));
   const [activeIndicator, setActiveIndicator] = useState(INDICATORS[0].id);
   const [catFilter, setCatFilter] = useState<CategoryKey | null>(null);
   /**
    * Идэвхтэй симуляцын дэд төрөл — «Симуляц» табд ашиглана.
-   * ⚠️ Анхдагч нь «Ачаалал» — сонгогчийн ЭХНИЙ товчтой нийцнэ (эс бөгөөс нээхэд
-   * эхний товч ба идэвхтэй таб зөрж, хэрэглэгч андуурна).
    */
   const [simKind, setSimKind] = useState<SimKind>('road');
   /** Хүн амын төрөл — «Хүн амын төвлөрөл» симуляцад (оршин суугч ↔ хүчин чадал) */
   const [popBasis, setPopBasis] = useState<PopBasis>('resident');
   /**
    * Тээвэр-идэвхийн дүрслэл ба тэр самбар ИДЭВХТЭЙ эсэх.
-   * ⚠️ `simKind`-тэй ХАМТ оршино: аль самбар сүүлд дарагдсан нь газрын зургийг
-   * буддаг. Тээвэр идэвхтэй үед бүсийн будалт саарал болж, барилга/зам тодрно.
    */
   const [tMode, setTMode] = useState<TMode>('trips');
   const [tActive, setTActive] = useState(false);
   /**
    * Симуляцын газрын зургийн ХЭВ МАЯГ — полигон (хил хэвээр) ↔ дулааны гадаргуу.
-   * ⚠️ Зөвхөн «Симуляц» горимд үйлчилнэ; оноололын будалтыг хөндөхгүй.
    */
   const [mapStyle, setMapStyle] = useState<MapStyle>('poly');
   /** Трафик timeline-ийн цаг (замын симуляц + ирээдүйд газрын зургийн анимац) */
@@ -184,23 +164,17 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /**
    * ХАСАГДСАН боловч ОНООЛОЛД ОРУУЛСАН ангиллууд (нийгмийн дэд бүтэц, газар
    * чөлөөлөлт дутуу — 17 бүс).
-   *
-   * ⚠️ АНХНААСАА ОРУУЛСАН (хэрэглэгчийн шийдвэр, 2026-08-12): урьд нь хоосон
-   * байсан тул тэдгээр 17 бүс саараар харагдаж, эрэмбэ ба дунджид ордоггүй
-   * байв. «Бүсийн ангилал» картаас хасч болно (мөр дээр нь дарж шүүнэ).
    */
   const [scoreOn, setScoreOn] = useState<Set<string>>(() => new Set(ACTIVATABLE_ZONE_TYPES));
   /**
    * БАРИЛГЫН зориулалтын шүүлт — унтраасан бүлгүүд (`BUILDING_PURPOSES[].key`).
-   * Хоосон = бүх барилга харагдана. ⚠️ Зөвхөн ГАЗРЫН ЗУРГИЙН харагдацад
+   * Хоосон = бүх барилга харагдана. Зөвхөн ГАЗРЫН ЗУРГИЙН харагдацад
    * үйлчилнэ: бүсийн оноо барилгуудаас нэгтгэгддэг тул энд шүүвэл дүн өөрчлөгдөж,
    * «би зөвхөн нуусан» гэж бодсон хэрэглэгч өөр оноо хараад төөрнө.
    */
   const [bldOff, setBldOff] = useState<Set<string>>(() => new Set());
   /**
    * ШҮҮСЭН БАРИЛГА руу газрын зургийг төвлөрүүлэх ТООЛУУР.
-   * ⚠️ `bldWhere`-ээр шууд сэрээж болохгүй: тэр нь бүсийн ангиллын шүүлтээс ч
-   *    хамаарч дахин бодогддог тул хэрэглэгч бүс шүүхэд зураг гэнэт үсэрнэ.
    */
   const [bldFocus, setBldFocus] = useState(0);
   /** «Байршил» картын хүрээний радиус (м) */
@@ -212,8 +186,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * Контекст давхаргын ил байдал.
-   * ⚠️ Карт нь ХУРААГДСАНААР эхэлнэ: анализын гол мессеж нь бүсийн ОНООНЫ
-   * БУДАЛТ бөгөөд 27 давхаргын чагт задгай байвал зүүн талбарыг эзэлнэ.
    */
   const [layerOn, setLayerOn] = useState<Record<string, boolean>>(
     () => Object.fromEntries(MAP_LAYERS.map((l) => [l.key, l.on])),
@@ -223,38 +195,22 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * товчтой ижил зарчим. Хаалттай эхэлж, товч дарахад газрын зурагт хөвж гарна.
    */
   const [layerCatOpen, setLayerCatOpen] = useState(false);
-  /**
-   * ⚠️ 2026-08-20: «Тунгалаг» ЭНЭ ЦОНХОНД НЭМЭГДЭВ. Бусад бүх харагдацад
-   * байсан атал энд байхгүй байв — учир нь `SuitMap` нь `MapCanvas` БИШ, өөрийн
-   * давхаргын моделтой бөгөөд opacity-г огт дэмждэггүй байлаа (одоо дэмжинэ).
-   *
-   * ⚠️ «Бүс» товч энд ЗОРИУДААР БАЙХГҮЙ (хэрэглэгчийн шийдвэр): энэ цонхны
-   * гол дүрслэл нь БҮС бүрийн оноо — бүсийг зурагнаас шүүх нь өөрийнх нь
-   * үндсэн уншилтыг устгана. Бүсээ энд «Бүсийн ангилал»/«Бүсийн эрэмбэ»
-   * картуудаар шүүнэ.
-   */
   const [opOpen, setOpOpen] = useState(false);
   const [opacity, setOpacity] = useState<Record<string, number>>({});
-  /** Тайлангийн газрын зургийн агшин — түр будалт (`shoot`-ийн ⚠️); null бол дэлгэцийн ердийн будалт */
+  /** Тайлангийн газрын зургийн агшин — түр будалт (`shoot`); null бол дэлгэцийн ердийн будалт */
   const [shotView, setShotView] = useState<ShotView | null>(null);
   const appRef = useRef<HTMLDivElement>(null);
 
   /* ── Тооцоо ── */
   const rows = useMemo<Row[]>(() => {
     if (!data || !geoms) return [];
-    /* ⚠️ Засагдсан `indicators`-ыг дамжуулна (2026-09-25 аудит) — эс бөгөөс
-       `ASSUME_MET` тогтмол 100-г ашигласаар норм засварыг үл тоодог байв. */
     computeRaw(data.zones, greenCats, parking, scoreOn, indicators);
     return data.zones.map((z) => {
       const u = urbanScore(z.raw, indicators, z.type);
-      /* ⚠️ `scored` — оноололд орсон эсэх, ГАНЦ эх сурвалж (2026-09-21):
-         `scoredRows`-ийн шүүлттэй ЯГ ижил дүрэм; `SuitMap` товшилт/hover-т
-         үүнийг уншина (идэвхжүүлсэн бүс сонгогдоно). */
       return {
         ...z,
         urban: u.score,
         parts: u.parts,
-        /* ⚠️ 2026-10-22 (аудит): хэмжсэн жин · шалтгаан — эрэмбэ/дэлгэрэнгүйд (`MapRow.coverage`-ийн ⚠️) */
         coverage: u.coverage,
         urbanReason: u.reason,
         displayGeom: geoms.get(z.id) ?? null,
@@ -265,7 +221,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * Олон нийтийн бүсийн кодууд — чагт асаалттай үед зураг ба картыг хумина.
-   * ⚠️ Ангиллаар гаргана, гараар жагсаахгүй: бүс нэмэгдэхэд аяндаа дагана.
    */
   const publicZoneIds = useMemo(
     () => rows.filter((r) => LOCATION_ZONE_TYPES.includes(r.type)).map((r) => r.id),
@@ -274,8 +229,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * «Байршил» картын шинжилгээнд орох барилгууд.
-   * ⚠️ Чагт асаалттай үед ЗУРГИЙН шүүлттэй ИЖИЛ олонлог байх ёстой — эс бөгөөс
-   * зурагт үл харагдах барилга жагсаалтад гарч, дарахад олдохгүй.
    */
   const locPts = useMemo(() => {
     const all = data?.bldPts ?? [];
@@ -288,8 +241,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * ОНООЛОЛД орох бүсүүд — ногоон байгууламж, одоо байгаа барилгыг ХАСНА.
-   * ⚠️ Газрын зурагт (`rows`) бүх бүс хэвээр (хассан нь саарал), харин эрэмбэ,
-   * диаграм, дундаж, эдийн засаг зэрэг ТООЦОО зөвхөн `scoredRows`-оор явна.
    */
   const scoredRows = useMemo(
     () => rows.filter((r) => !r.excluded || scoreOn.has(r.type)),
@@ -308,15 +259,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * «Ногоон байгууламж» картын гулсуур ↔ `green` ҮЗҮҮЛЭЛТИЙН НОРМ — нэг утга.
-   *
-   * ⚠️ Хоёр тусдаа төлөв БАЙЛГАХГҮЙ: картад 10 м², «Жин» картад 6 м² гэж
-   * зөрвөл аль нь оноог тодорхойлж байгаа нь ойлгомжгүй болно. Тиймээс ганц эх
-   * сурвалж нь `indicators`-ийн `green.target` бөгөөд гулсуур түүнийг шууд
-   * засна — зогсоолын гулсуур оноог өөрчилдөгтэй ижил зан.
-   *
-   * ⚠️ ЗӨВХӨН «6 м²/хүн» аргад үйлчилнэ: тэр нь үзүүлэлттэй ижил нэгжтэй
-   * (м²/хүн). «Талбайн %» арга нь оноололд ордоггүй тул газрын зургийг
-   * хөндөхгүй.
    */
   const greenTarget = indicators.find((i) => i.id === 'green')?.target ?? GREEN.perPerson;
   const greenView: GreenOpt = { ...greenOpt, perPerson: greenTarget };
@@ -329,8 +271,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * Ногоон байгууламжийн давхаргыг газрын зурагт асаах.
-   * ⚠️ Аль хэдийн асаалттай бол төлөвийг ХӨНДӨХГҮЙ — эс бөгөөс хэрэглэгч
-   * гараар унтраасан ч карт руу дарах бүрд эргэж асч, тэмцэлдэнэ.
    */
   const showGreenLayer = useCallback(() => {
     setLayerOn((v) => (v[GREEN_LAYER_KEY] ? v : { ...v, [GREEN_LAYER_KEY]: true }));
@@ -341,14 +281,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * Барилгын давхаргын SQL шүүлт — унтраасан бүлгийн зориулалтуудыг хасна.
-   *
-   * ⚠️ Бүлгийн ХЭВ ШИНЖИЙГ (regex) БИШ, бодитоор байсан ТҮҮХИЙ утгуудыг
-   * жагсаана: ArcGIS-д кирилл regex байхгүй. Шинэ зориулалт нэмэгдвэл жагсаалтад
-   * ороогүй тул ХАРАГДАНА — өгөгдөл чимээгүй алга болохоос энэ нь дээр.
-   *
-   * ⚠️ SQL-д `NULL NOT IN (…)` нь ҮНЭН биш тул зориулалтгүй бичлэг ямар ч
-   * шүүлтэд алга болно. Тиймээс «Бусад» бүлэг ил үед `IS NULL`-ыг тусад нь
-   * зөвшөөрнө (зориулалтгүй бичлэг тэр бүлэгт тоологддог).
    */
   const bldWhere = useMemo(() => {
     const parts: string[] = [];
@@ -360,22 +292,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       if (!values.length) {
         if (!otherOn) parts.push(`${BF.purpose} IS NOT NULL`);
       } else {
-        /* ⚠️ 2026-09-25: `sqlStr` (N'…') — кирилл утгыг N угтваргүй бол ArcGIS/SQL
-           Server тэнцүүлэхгүй байж болно (CLAUDE.md-ийн ArcGIS занга). */
         const list = values.map(sqlStr).join(',');
         const not = `${BF.purpose} NOT IN (${list})`;
         parts.push(otherOn ? `(${BF.purpose} IS NULL OR ${not})` : not);
       }
     }
 
-    /* ── БҮСИЙН АНГИЛЛЫН шүүлт ──
-       ⚠️ Унтраасан ангиллын бүс газрын зургаас бүрэн алга болдог тул тэдгээрийн
-          дотор ЗОГСОХ барилга ч алга болох ёстой (ArcGIS-ийн filter-ийн зан).
-       ⚠️ Бүсийн код бичиглэлээр зөрдөг («B-2» ↔ «B-2.1», «D-8» ↔ «D-8.1/8.2»)
-          тул түүхий id-г шууд БИШ, `zoneRefValues`-ээр бүх хувилбарт тэлж өгнө. */
-    /* ⚠️ 2026-10-11 (аудит №7): барилгын `ZONE_ID` нь ХУУЧИН код («D-8») ч, шинэ код («D-8.1») ч байж
-       болно — `zoneWhere`-ийн ижил нэгдэл (`zoneLegacyValues` + `zoneRefValues`); урьд нь зөвхөн
-       `zoneRefValues` тул хуучин кодтой барилга шүүлтээс чимээгүй унадаг байв. */
+    /* ── БҮСИЙН АНГИЛЛЫН шүүлт ── */
     const zoneVals = (ids: string[]) => [...new Set(ids.flatMap((id) => [...zoneLegacyValues(id), ...zoneRefValues(id)]))];
     if (catOff.size && rows.length) {
       const keep = rows.filter((r) => !catOff.has(r.type)).map((r) => r.id);
@@ -386,13 +309,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
     /**
      * «Байршил» картын чагт — улаан бүсийн барилга.
-     * ⚠️ Гараар хассан барилгыг (`LOCATION_EXCLUDE_OIDS`) ЭНД ч хасна: карт ба
-     *    зураг НЭГ олонлогтой байх ёстой, эс бөгөөс жагсаалтад байхгүй барилга
-     *    зурагт үлдэж, дарахад карт хоосон хариу өгнө.
      */
-    /* ⚠️ 2026-10-26 (аудит): `zone_id IN (...)` БИШ — жагсаалт (`locPts`) барилгыг ТӨВ ЦЭГЭЭР (100 м дотор хамгийн ойр) бүсэд
-       оноодог тул `zone_id` хоосон/зөрүүтэй барилга (155, 269 г.м.) жагсаалтад гарч зурагт нуугддаг байв. Нэг олонлог —
-       `locPts`-ийн objectid (`LOCATION_EXCLUDE_OIDS` аль хэдийн хасагдсан). */
     if (locPublicOnly) {
       if (!locPts.length) return '1=0';
       parts.push(`objectid IN (${locPts.map((p) => p.oid).join(',')})`);
@@ -407,19 +324,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const ind = indicators.find((i) => i.id === activeIndicator) ?? indicators[0];
   const totalW = indicators.reduce((a, i) => a + i.weight, 0) || 1;
 
-  /* ⚠️ 2026-08-24: `basePrice` (барилгын давамгайлах нэгж үнэ) УСТГАВ —
-     эдийн засгийн гулсуур ба зохиомол `negj_une` загвартай хамт хасагдсан. */
 
   /**
    * СИМУЛЯЦЫН ОЛОНЛОГ — ангиллын шүүлтээр (`catOff`).
-   *
-   * ⚠️ 2026-09-08: НОРМЧИЛОЛ ба ДУНДАЖ ЗААВАЛ ЭНЭ олонлогоор бодогдоно.
-   * Урьд нь шүүгдээгүй `rows` дамжуулагддаг байсан тул: газрын зураг нь
-   * нуугдсан бүсүүдийн min/max-аар будагдаж, харин баруун самбар нь ШҮҮГДСЭН
-   * `rows`-оор (мөр 771-ийн `rows.filter(!catOff)`) өөрийн `simRange`-ээ
-   * бодож легенд зурдаг байв — легендийн «хамгийн их» өнгө зурагт ХЭЗЭЭ Ч
-   * гарахгүй, hover-ийн «дунджаас +N%» нь харагдахгүй бүсүүдээр бодогдоно.
-   * Зураг · легенд · hover гурав НЭГ эх сурвалжтай байх ёстой.
    */
   const simRows = useMemo(() => rows.filter((r) => !catOff.has(r.type)), [rows, catOff]);
 
@@ -433,36 +340,26 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * Бүсийн симуляцын хэмжүүрийн ДУНДАЖ — hover панелийн «дунджаас» мөрд.
-   * ⚠️ Эрэмбэлэх шаардлагагүй (эрэмбийн мөр хасагдсан) тул зөвхөн дундаж.
    */
   const simAvg = useMemo(() => {
     if (mode !== 'simulation') return 0;
     const vals = simRows
       .map((r) => simMetric(r, simKind, popBasis).value)
-      /* ⚠️ Тээвэрт 0 м (буудлын дэргэд) = ХАМГИЙН САЙН утга — хасахгүй
-         (2026-09-25 аудит, `SimulationPanel`-ийн засвартай ижил). */
       .filter((v): v is number => v != null && Number.isFinite(v) && (simKind === 'transit' ? v >= 0 : v > 0));
     return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
   }, [simRows, simKind, popBasis, mode]);
 
   /* ── Замын ачаалал: сүлжээг ХЭРЭГТЭЙ болоход нь ачаална ── */
   const roadMode = mode === 'simulation' && !tActive && simKind === 'road';
-  /* ⚠️ 2026-09-30: цагийн консол зөвхөн «Ачаалал»-д (`SimulationPanel` kind === 'road') —
-     тэндээс гарахад `playing` хэвээр үлдэж rAF нь 10 Гц-ээр `setMinute` дуудаж, БҮХ
-     харагдацыг дахин зурсаар байв. Гарахад зогсооно (render дундах «өмнөх төлөв» хэв). */
   if (!roadMode && clock.playing) clock.setPlaying(false);
   /** Тээвэр-идэвхийн самбар газрын зургийг буддаг эсэх */
   const transportMode = mode === 'simulation' && tActive;
   /**
    * Харьцуулах ЗАМЫН СҮЛЖЭЭ — Бодит / Төлөвлөгөө / Шинэ зам (`netSources.ts`).
-   * ⚠️ Доорх `netCars`/`netLoad` үүнээс хамаардаг тул ЭНД зарлагдана.
    */
   const [netKind, setNetKind] = useState<NetKind>('plan');
-  /** ⚠️ Замын сүлжээг ХОЁУЛАА хэрэглэнэ — агентын симуляц ба эрэлтийн хуваарилалт */
   /**
    * Идэвхтэй сүлжээн дээр МАШИН явах уу («Шинэ зам» — зөвхөн харагдана).
-   * ⚠️ Явахгүй бол замын сүлжээ УГСАРЧ ч болохгүй: тэр line нь холбогдоогүй
-   * хэсгүүд тул машин мухарт гацна.
    */
   const netCars = netHasCars(netKind);
   /**
@@ -473,24 +370,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const needNet = (roadMode && netCars) || transportMode;
   /**
    * Идэвхтэй дүрслэлд дулааны гадаргуу утга ЗҮЙТЭЙ эсэх.
-   * ⚠️ Heatmap цөмүүдийг НЭМДЭГ тул зөвхөн хуримтлагдах хэмжигдэхүүнд утгатай —
-   * зай (хүртээмж, автобус) ба машин агентын симуляц (ачаалал) хамаарахгүй.
    */
   const heatable = transportMode ? tModeDef(tMode).heatable : simDef(simKind).heatable;
   const heatOn = mode === 'simulation' && mapStyle === 'heat' && heatable;
-  /**
-   * ⚠️ Барилгын өгөгдөл нь тээврийн самбарт ЗӨВХӨН хэрэгтэй биш: «Төвлөрөл»-ийн
-   * дулааны гадаргуу ч барилгын центроидоос гардаг тул тэнд ч татна.
-   */
   const needBuildings = tActive || heatOn;
   /**
    * Оргил цагт сүлжээнд зэрэг явах машин — бүсийн хүн амаас (гараар өгөөгүй).
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `assignLoads(net, rows)`-тэй ИЖИЛ
-   *    олонлог (`rows` — БҮХ бүс). Урьд нь машины ТОО оноолсон бүсээс
-   *    (`scoredRows`), машины ТАРХАЛТ бүх бүсээс бодогддог байсан тул оноололоос
-   *    хассан «одоо байгаа барилга»-ын бүсийн оршин суугчид хөдөлгөөнийг
-   *    байршуулдаг атлаа тоонд ороогүй байв. Оршин суугч оноолоос үл хамааран
-   *    аялал үүсгэнэ.
    */
   const peakCars = useMemo(() => peakVehicles(rows), [rows]);
   const [roadNet, setRoadNet] = useState<Network | null>(null);
@@ -498,8 +383,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const [trafficStats, setTrafficStats] = useState<TrafficStats | null>(null);
   /**
    * ГЭРЛЭН ДОХИОНЫ зохицуулалтын хөтөлбөр (2 / 4 / 8 ээлж).
-   * ⚠️ Сүлжээнд хадгалагдахгүй — солиход дахин татах/угсрах шаардлагагүй,
-   * дараагийн фреймээс шууд үйлчилнэ.
    */
   /**
    * ГЭРЛЭН ДОХИОНЫ БАРИГДСАН ЭЭЛЖ — null бол хуваарь автоматаар эргэлдэнэ;
@@ -510,7 +393,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   /**
    * Боломжит хөтөлбөрүүд — сүлжээний ГЕОМЕТРЭЭС бодсон «Авто (зөрчилгүй)» нь
    * эхэнд, дараа нь гараар бичсэн хувилбарууд.
-   * ⚠️ Авто хөтөлбөр нь ачаалагдсан сүлжээнээс хамаарна (дохио байхгүй бол алга).
    */
   /** Бодит уулзварын хуваарь — UI-д ганц хөтөлбөр (3 ээлж: 3·4·7·8 → 1·6 → 2·5) */
   const realPlan = useMemo(
@@ -519,14 +401,9 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   );
   /**
    * Хөдөлгүүр/зуралтад өгөх ИДЭВХТЭЙ хөтөлбөр.
-   * ⚠️ Ээлж баригдсан үед НЭГ ээлжтэй, шаргүй синтетик хөтөлбөр өгнө — signalPhase
-   * тэр ээлжийн кодуудыг БАЙНГА ногоон, бусдыг улаан гэж тооцно (шинэ логик
-   * хэрэггүй, мөчлөгийн математик өөрөө ингэж ажиллана).
    */
   const signalPlan = useMemo(() => {
     if (signalStage == null || !realPlan.stages[signalStage]) return realPlan;
-    // ⚠️ Уулзвар БҮРИЙН тухайн ээлжийг барина — эс бөгөөс ээлж барихад зөвхөн
-    //    фоллбэк хуваарь үлдэж, 2-р уулзвар буруу чиглэлээ асаана.
     const held = Object.fromEntries(
       Object.entries(realPlan.byJunction ?? {}).map(([name, st]) => [
         name, [st[signalStage] ?? st[st.length - 1]],
@@ -542,17 +419,13 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   }, [realPlan, signalStage]);
 
   // Сүлжээ солиход хуучин геометрийг цэвэрлэж дахин ачаална (ирмэг индекс өөр).
-  /* ⚠️ 2026-09-30: эффект биш, RENDER дунд — `netLoad` солигдсон (ба эхний) render-т л. */
   const [netLoaded, setNetLoaded] = useState<typeof netLoad | null>(null);
   if (netLoaded !== netLoad) {
     setNetLoaded(netLoad);
     setRoadNet(null);
     setRoadErr(null);
-    /* ⚠️ 2026-09-30: өмнөх сүлжээний хураангуй шинэ сүлжээний мэт үлддэг байв */
     setTrafficStats(null);
   }
-  /* ⚠️ 2026-09-30: трафикийн канвас идэвхгүй болоход (3D/BIM, горим солих, сүлжээ ачаалж
-     байх) `onStats` зогсдог ч сүүлийн тоо «амьд» мэт харагдсаар байв — идэвхгүй бол null. */
   const trafficLive = roadMode && netCars && !!roadNet && dim === '2d';
   const [trafficWas, setTrafficWas] = useState(trafficLive);
   if (trafficWas !== trafficLive) {
@@ -561,16 +434,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   }
 
   useEffect(() => {
-    // ⚠️ 3.9 мянган хэрчмийг ХЭРЭГТЭЙ болоход л татна («Ачаалал» эсвэл
-    //    тээвэр-идэвх) — бусад горимд хэрэггүй траффик үүсгэхгүй.
-    //    `loadNetworkCached` нь сүлжээ бүрийг НЭГ УДАА кэшлэнэ.
-    /* ⚠️ 2026-09-25: `roadErr` байвал дахин татахгүй — урьд нь алдааны дараа
-       `rows` солигдох бүрд чимээгүй дахин оролддог байв. Дахин оролдлого нь
-       ЗӨВХӨН «Дахин оролдох» товчоор (`retryTransport` → roadErr = null). */
     if (!needNet || roadNet || roadErr || !rows.length) return;
     let alive = true;
-    // ⚠️ Гэрлэн дохио (дүрмийн + OSM) `loadNetworkCached` дотор аль хэдийн
-    //    тавигдсан ирнэ; энд зөвхөн бүсийн эрэлтийн жинг (`baseLoad`) ононо.
     loadNetworkCached(netLoad)
       .then((net) => {
         if (!alive) return;
@@ -586,17 +451,8 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * МАШИНТАЙ БҮХ СҮЛЖЭЭНИЙ БАГТААМЖ — НЭГ машины тагт (`commonCarCap`).
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урьд нь таг нь ИДЭВХТЭЙ сүлжээний
-   *    багтаамжаас (`TrafficOverlay`) тул «Бодит» ба «Төлөвлөгөө» өөр тооны
-   *    машинтай гүйж харьцуулалт шударга бус байв. «Ачаалал»-д орох үед машинтай
-   *    БҮХ сүлжээг (кэшээс) ачаалж багтаамжийг нь хадгална; ачаалагдаагүй байхад
-   *    таг нь мэдэгдэж буйнуудын хамгийн бага — самбар «(бусад сүлжээ ачаалж
-   *    байна)» гэж хэлнэ.
    */
   const [netCaps, setNetCaps] = useState<Partial<Record<NetKind, number>>>({});
-  /* ⚠️ 2026-10-04: багтаамж УНАСАН сүлжээ — урьд нь `.catch(() => {})` тул самбар «(бусад
-     сүлжээ ачаалж байна)» гэж мөнхөд бичдэг байв. Унасныг тоолж «татагдсангүй» гэнэ;
-     «Дахин оролдох» (`road.onRetry`) цэвэрлэнэ. */
   const [netCapErr, setNetCapErr] = useState<Partial<Record<NetKind, true>>>({});
   useEffect(() => {
     if (!roadMode) return;
@@ -636,14 +492,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     return () => { alive = false; };
   }, [needBuildings, tData, tErr]);
 
-  /** ⚠️ 2026-09-25: Тээврийн самбарын «Дахин оролдох» — хоёр алдааг цэвэрлэхэд
-      дээрх хоёр эффект дахин ажиллана (кэш нь алдаан дээр өөрөө цэвэрлэгддэг). */
   const retryTransport = useCallback(() => { setTErr(null); setRoadErr(null); }, []);
 
   /**
    * Тээврийн БҮХ тооцоо — барилга, зам, автобус гурав нэг дор.
-   * ⚠️ Замд хуваарилалт нь 363 барилга × ~4 мянган ирмэг тул memo ЗААВАЛ:
-   * дүрслэл сэлгэх бүрд дахин бодвол интерфейс мэдэгдэхүйц гацна.
    */
   const tCtx = useMemo<TransportCtx | null>(() => {
     if (!tData || !roadNet) return null;
@@ -656,11 +508,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     };
   }, [tData, roadNet]);
 
-  /**
-   * ⚠️ Дулаан горимд Ч будалтыг тооцно — зөвхөн БҮДЭГ болгоно (`transportFaint`).
-   * Шалтгаан: hover панель нь ЭНЭ дүрсүүд дээр л ажилладаг тул тэднийг огт
-   * зурахгүй бол дулааны гадаргуу дээр юу ч дарж уншиж чадахгүй болно.
-   */
   const transportPaint = useMemo(
     () => (transportMode && tCtx ? tPaint(tMode, tCtx) : null),
     [transportMode, tCtx, tMode],
@@ -670,8 +517,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const heat = useMemo(() => {
     if (!heatOn) return null;
     if (transportMode) return tCtx ? transportHeat(tCtx, tMode) : null;
-    // ⚠️ Төвлөрлийн дулаан нь БАРИЛГЫН центроидоос гарна (бүсийн центроидоос БИШ),
-    //    жин нь АБСОЛЮТ хүний тоо. Бүсийн ангиллын шүүлт `zoneIds`-ээр дамжина.
     if (!tData) return null;
     const zoneIds = new Set(rows.filter((r) => !catOff.has(r.type)).map((r) => r.id));
     return densityHeat(tData.buildings, popBasis, zoneIds);
@@ -686,12 +531,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * «Ачаалал» табд ЗАМЫН ТАЛБАЙГ автоматаар асаана — машин агентууд юун дээр
    * гүйж байгаа нь харагдахгүй бол симуляц утгагүй. Агентууд `et:5` тэнхлэгээр
    * явдаг тул `et:29` полигоны яг дундуур гүйж харагдана.
-   *
-   * ⚠️ ЗӨВХӨН «Төлөвлөгөө» сүлжээнд: `et:29` бол ТӨЛӨВЛӨГӨӨТ замын талбай тул
-   * «Бодит» (OSM) сүлжээн дээр асаавал бодит машинтай зөрнө. Бодит зам дээр
-   * хэрэглэгчийн vector tile суурь + OSM өөрөө контекст болно.
-   * ⚠️ Табаас гарахад ЗӨВХӨН өөрсдөө асаасан бол унтраана — хэрэглэгч каталогоос
-   * гараар асаасан байсныг таслах эрхгүй.
    */
   const layerOnRef = useRef(layerOn);
   useSyncRef(layerOnRef, layerOn);
@@ -703,10 +542,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
   /**
    * «Шинэ зам» сонгоход түүний line давхаргуудыг АВТОМАТААР асаана.
-   * ⚠️ Тэр сүлжээнд машин явахгүй тул line нь харагдахгүй бол сонголт нь
-   * газрын зураг дээр ЮУ Ч ӨӨРЧЛӨХГҮЙ — хэрэглэгчид эвдэрсэн мэт харагдана.
-   * ⚠️ Сонголтоос гарахад ЗӨВХӨН өөрсдөө асаасныг унтраана (каталогоос гараар
-   * асаасныг таслах эрхгүй) — «Зам (талбай)»-тай ижил зарчим.
    */
   useEffect(() => {
     const keys = (NET_SOURCES[netKind].display ?? []).filter((k) => !layerOnRef.current[k]);
@@ -722,26 +557,19 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    */
   useEffect(() => {
     if (!(roadMode && netKind === 'real')) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: давхаргыг нуух/буцаах нь cleanup-тай хос үйлдэл — render үед гаргах аргагүй
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLayerOn((v) => ({ ...v, [BUILDING_LAYER]: false }));
     return () => setLayerOn((v) => ({ ...v, [BUILDING_LAYER]: true }));
   }, [roadMode, netKind]);
 
   const colorOf = useCallback(
     (r: MapRow) => {
-      /* ⚠️ 2026-10-19: тайлангийн агшин зураг (`shotView`) — табыг солихгүйгээр зөвхөн будалтыг түр сольно */
       if (shotView) {
         return shotView.mode === 'simulation'
           ? simColor(simNorm(simMetric(r, shotView.sim, popBasis).value, shotRng ?? simRng))
           : scoreColor(valueOf(r as Row, shotView.mode, ind), dark);
       }
-      // ⚠️ Тээвэр-идэвх идэвхтэй үед БҮС бүгд «өгөгдөлгүй» өнгөтэй болно —
-      //    газрын зургийн мессеж нь барилга/зам тул бүсийн дулаан будалт
-      //    түүнийг зөвхөн бүрхэнэ (`SuitMap` үүнийг цайвар дэвсгэр болгож зурна).
       if (transportMode) return NO_DATA_COLOR;
-      /* ⚠️ «Улаан бүсийн барилга» чагт асаалттай үед бүсийг ОНООГООР будахгүй,
-         жигд саараар: тэр үед газрын зургийн мессеж нь БАРИЛГЫН байршил бөгөөд
-         ногоон-улаан будалт нүдийг татаж, барилга ялгарахгүй болно. */
       if (locPublicOnly) return LOC_ZONE_GRAY;
       return mode === 'simulation'
         ? simColor(simDef(simKind).ready ? simNorm(simMetric(r, simKind, popBasis).value, simRng) : null)
@@ -757,8 +585,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const bareReal = roadMode && netKind === 'real';
   /** Бүс газрын зурагт харагдах эсэх — ангиллын шүүлтээр (унтраасан нь бүдгэрнэ) */
   const shown = useCallback(
-    // ⚠️ Чагт асаалттай бол ЗӨВХӨН тэр ангиллын бүс үлдэнэ — барилгын шүүлттэй
-    //    ижил олонлог байх ёстой (эс бөгөөс хоосон бүс зурагт эзэлхүүн эзэлнэ).
     (r: MapRow) => !bareReal && !catOff.has(r.type)
       && (!locPublicOnly || LOCATION_ZONE_TYPES.includes(r.type)),
     [catOff, bareReal, locPublicOnly],
@@ -768,9 +594,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const zoneTip = useCallback((r: MapRow) => {
     /**
      * СИМУЛЯЦЫН hover панель — оноололынхоос ТУСДАА бүтэцтэй.
-     * ⚠️ ЭРЭМБЭ (энэ бүс хэддүгээрт вэ) ЗОРИУДААР БАЙХГҮЙ: ижил утгатай бүсүүд
-     * дээр эрэмбэ нь дурын дараалал болж («100 тэмдэгтэй атлаа 4-т») андуурмаг
-     * төрүүлдэг. Харьцуулалт нь ДУНДЖААС хэдэн хувь гэдгээр илэрхийлэгдэнэ.
      */
     if (mode === 'simulation') {
       const def = simDef(simKind);
@@ -782,7 +605,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       const diffTxt = diff == null ? '—'
         : `<b style="color:${diff > 0 ? 'var(--warn-ink)' : 'var(--good-ink)'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
 
-      /* ⚠️ 2026-10-22 (аудит): {3} — бүсийн ангиллыг орчуулж (`zoneTypeLabel`-ийн ⚠️) */
       return tr('\n        <div class="t">\n          <b>{0}</b>\n          <span class="st" style="background:{1};color:#1a1205">{2}</span>\n        </div>\n        <div class="sub2">{3} · {4} га</div>\n        <dl>\n          {5}\n          {6}\n          {7}\n          {8}\n        </dl>', esc(r.id), simColor(t), t == null ? '—' : Math.round(t * 100), esc(zoneTypeLabel(r.type)), nf(r.areaHa, 2), dt(esc(def.label), `<b>${m.text}</b>`), dt(tr('Дунджаас'), diffTxt), dt(tr('Оршин суугч'), nf(r.residentPop)), dt(tr('Барилга'), nf(r.buildingCount)));
     }
     const row = r as Row;
@@ -790,9 +612,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     let pass = 0, total = 0;
     const failed: { name: string; v: string }[] = [];
     for (const i of indicators) {
-      // ⚠️ Лавлагаа/жин 0 үзүүлэлт (greenCap, densityCap) норм-д ОРОХГҮЙ —
-      //    оноолол (score.ts:83) ба дэлгэрэнгүй самбар (SuitDetail) хассан тул
-      //    hover тоолол мөн адил хасна (эс бөгөөс худал «✗» ба буруу X/Y гарна).
       if (i.ref || i.weight <= 0) continue;
       const p = row.parts[i.id];
       if (!p || p.value == null) continue;
@@ -801,18 +620,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       else failed.push({ name: i.short, v: nf(p.value, i.decimals) + (i.unit ? ` ${i.unit}` : '') });
     }
     const dt = (k: string, v: string) => `<dt>${k}</dt><dd>${v}</dd>`;
-    /* ⚠️ 2026-10-22 (аудит): {3} — бүсийн ангиллыг орчуулж (`zoneTypeLabel`-ийн ⚠️) */
-    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), /* ⚠️ 2026-10-09: орчуулгын түлхүүрийг хөндөхгүйгээр бичгийн өнгийг style-д залгана (`scoreInk`). ⚠️ 2026-10-09 (аудит №3): дэвсгэр нь самбартай ИЖИЛ токен (`scoreTone`, hover нь DOM тул var() задарна), бичиг нь горимоор */ `${scoreTone(score)};color:${scoreInk(score, dark)}`, score == null ? '—' : Math.round(score), esc(zoneTypeLabel(row.type)), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? 'var(--good-ink)' : 'var(--bad-ink)'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
+    return tr('\n      <div class="t">\n        <b>{0}</b>\n        <span class="st" style="background:{1}">{2}</span>\n      </div>\n      <div class="sub2">{3} · {4} га · {5}</div>\n      <dl>\n        {6}\n        {7}\n        {8}\n        {9}\n      </dl>\n      {10}', esc(row.id), `${scoreTone(score)};color:${scoreInk(score, dark)}`, score == null ? '—' : Math.round(score), esc(zoneTypeLabel(row.type)), nf(row.areaHa, 2), scoreLabel(score), dt(tr('Оршин суугч'), nf(row.residentPop)), dt(tr('Өрх'), nf(row.households)), dt(tr('Барилга'), nf(row.buildingCount)), dt(tr('Норм хангасан'), `<b style="color:${pass === total ? 'var(--good-ink)' : 'var(--bad-ink)'}">${pass} / ${total}</b>`), failed.length ? `<div class="fails">${failed.map((f) =>
         `<div><span>✗ ${esc(f.name)}</span><em>${f.v}</em></div>`).join('')}</div>` : '');
   }, [mode, ind, indicators, simKind, popBasis, simRng, simAvg, dark]);
 
   /**
    * ТЭЭВЭР-ИДЭВХИЙН hover панель — барилга · замын хэрчим · автобусны буудал.
-   *
-   * ⚠️ ЭРЭМБЭ ЗОРИУДААР БАЙХГҮЙ: живэ өгөгдөл дээр олон объект ЯГ ИЖИЛ утгатай
-   * (жиш. X-12-т 770 хүнтэй 8 адилхан блок) бөгөөд тэдгээрийн хооронд эрэмбэ нь
-   * дурын дараалал болно. «100 тэмдэгтэй атлаа 4-т» гэсэн зөрчил мэт харагдац
-   * үүсгэдэг тул хассан — утга ба тэмдэг хоёр өөрөө хангалттай.
    */
   const transportTip = useCallback((kind: 'b' | 'r' | 's', idx: number): string | null => {
     if (!tCtx) return null;
@@ -823,7 +636,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       const b = tCtx.buildings[idx];
       if (!b) return null;
       const v = buildingValue(b, tMode, tCtx, idx);
-      // ⚠️ Одоогийн дүрслэлд хамаарахгүй барилга — панель харуулахгүй (бүдэг зурагдсан)
       if (v == null) return null;
       const t = tNormFor(tMode, v, tRange(tMode, tCtx));
       const acc = tCtx.bus.access[idx];
@@ -870,39 +682,23 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
   const buildingTip = useCallback((a: Record<string, unknown>) => {
     const st = String(a.barilga_ty ?? '').trim();
     const purpose = String(a['зориулалт_m'] ?? '').trim() || tr('Тодорхойгүй');
-    /* ⚠️ 2026-10-09 (аудит №6): өнгийг `BUILDING_STATUS_COLORS`-оос угсарна — урьд энд
-       `rgb(...)` ДАВХАР бичигдэж, зураг/legend-тэй зөрөх эрсдэлтэй байв. */
     const colors: Record<string, string> = Object.fromEntries(
       Object.entries(BUILDING_STATUS_COLORS).map(([k, c]) => [k, `rgb(${c.join(',')})`]),
     );
     const pop = Number(a.total_population ?? 0);
     const isRes = /орон сууц|house/i.test(purpose);
     const dt = (k: string, v: string | number | null) => (v ? `<dt>${k}</dt><dd>${v}</dd>` : '');
-    /* ⚠️ 2026-10-21 (аудит): талбайгүй барилгад «0 м²» бичигддэг байв — хоосон/0 бол мөр ОРОХГҮЙ (null ≠ 0) */
     const areaM2 = Number(a['барилгын_нийт_талбай_m2']);
     const area = Number.isFinite(areaM2) && areaM2 > 0 ? tr('{0} м²', nf(areaM2)) : null;
     return tr('\n      <div class="t">\n        <b>{0}</b>\n        {1}\n      </div>\n      <dl>\n        {2}\n        {3}\n        {4}\n        {5}\n        {6}\n        {7}\n      </dl>', esc(purpose), st ? `<span class="st" style="background:${colors[st] ?? 'rgb(203,213,225)'}">${esc(st)}</span>` : '', dt(tr('Нийт талбай'), area), dt(tr('Давхар'), Number(a['давхрын_тоо_max'] ?? 0) || null), dt(tr('Өрх'), Number(a.urhiin_too ?? 0) ? nf(Number(a.urhiin_too)) : null), dt(isRes ? tr('Оршин суугч') : tr('Хүчин чадал'), pop ? nf(pop) : null), dt(tr('Зогсоол'), Number(a.parking ?? 0) ? nf(Number(a.parking)) : null), dt(tr('Бүс'), esc(a.zone_id ?? '—')));
   }, []);
 
-  /* ⚠️ Сонгосон бүс оноололоос гарсан (`scored` false — «Бүсийн ангилал»-аас
-     унтраасан) эсвэл `catOff`-оор нуугдсан бол сонголтыг ХҮЧИНГҮЙ гэж үзнэ
-     (2026-09-25 аудит): урьд нь SuitDetail нээлттэй үлдэж бүх үзүүлэлтийг
-     «өгөгдөлгүй», Хангалтыг «—» гэж харуулсаар хуучин зогсоолын дутагдлыг
-     үзүүлдэг байв. Төлөвөөс ГАРГАЖ авна (effect-ээр арилгахгүй). */
   const selRow = rows.find((r) => r.id === selected) ?? null;
   const active = selRow && selRow.scored && !catOff.has(selRow.type) ? selRow : null;
   const selectedLive = active ? selected : null;
 
-  /* ⚠️ 2026-10-19 (хэрэглэгч: «хот төлөвлөлт, үзүүлэлт, симуляц гээд 3 том агуулгаар»): Word тайлан
-     DOM-оос БИШ, энэ төлөвөөс (`suitReport`-ийн ⚠️ — дэлгэц нэг удаад ганц табтай). Unmount-д бүртгэл арилна. */
   const netLabel = NET_SOURCES[netKind].label;
   const reportTraffic = trafficLive ? trafficStats : null;
-  /**
-   * ⚠️ 2026-10-19 (хэрэглэгч: «газрын зургийн зургууд оруул»): бүлэг бүрд ТУХАЙН будалттай газрын зураг.
-   *    Табыг солихгүй — `shotView`-ээр зөвхөн бүсийн будалтыг түр сольж (`colorOf`), зураг дуусахад
-   *    буцаана. Хүлээлт: React рендер + `SuitMap`-ийн будах эффект → view `updating` дуусах → бага зэрэг
-   *    (графикийн тэмдэг сольсны дараах фрейм).
-   */
   const shoot = useCallback(async (v: ShotView) => {
     const host = appRef.current;
     if (!host || !liveMapViews(host).length) return null;
@@ -946,7 +742,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    */
   /**
    * Замын сүлжээ сонгогч — «Ачаалал» ба «Тээвэр-идэвх» хоёр самбарт НЭГ төлөв.
-   * ⚠️ 2026-10-01: тээврийн самбар ч харуулна (`TransportPanel.net`).
    */
   const netSel = {
     kind: netKind,
@@ -979,7 +774,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       stats: trafficLive ? trafficStats : null,
       signalsFailed: !!roadNet?.signalsFailed,
       /* Дохиотой нь дахин — кэш нь дохиогүй сүлжээг хадгалдаггүй (`netSources`) */
-      /* ⚠️ 2026-10-04: `roadErr`-ийг ч цэвэрлэнэ — эс бөгөөс эффект `roadErr`-ээр зогсож дахин татдаггүй */
       onRetry: () => { setRoadErr(null); setRoadNet(null); setNetCapErr({}); },
       flat: dim !== '2d',
       /** «Шинэ зам» — машингүй, зөвхөн газрын зурагт харагдана */
@@ -992,25 +786,17 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         stage: signalStage,
         setStage: setSignalStage,
       },
-      /* ⚠️ 2026-10-01: эрэлт → нийтлэг таг ба дохионы төлөв (самбарт ил) */
       demand: peakCars,
       cap: carCap,
       capPending,
       capFailed,
       signalJunctions,
     },
-    // ⚠️ `selected`/`onSelect` ХАСАГДСАН: эрэмбийн жагсаалт байхгүй болсон тул
-    //    самбар нь бүс сонгодоггүй — сонголт зөвхөн газрын зураг дээр дарж хийгдэнэ.
-    /* ⚠️ 2026-09-08: `simRows` — газрын зургийн нормчилолтой ЯГ ИЖИЛ олонлог
-       (эс бөгөөс самбарын легенд ба зургийн өнгө зөрнө). */
     rows: simRows,
   };
 
   return (
     <div className={s.app} ref={appRef}>
-      {/* ⚠️ Ачаалалтын бүтэн дэлгэцийн loader ХАСАГДСАН — өгөгдөл ачаалагдах зуур
-          апп шууд нээгдэж, бүсүүд бэлэн болмогцоо газрын зурагт гарна. Зөвхөн
-          АЛДАА гарвал л мессежийг харуулна (алдааг далдлахгүйн тулд). */}
       {error && (
         <div className={s.loader}>
           <div className={s.loaderBox}>
@@ -1019,7 +805,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             <div className={`${s.loaderMsg} ${s.loaderErr}`}>
               {tr('Алдаа гарлаа:')} {error}
             </div>
-            {/* ⚠️ 2026-10-06 (аудит): дахин оролдох товч — урьд нь гарцгүй бүтэн дэлгэц */}
             <button type="button" className={s.loaderRetry} onClick={retryLoad}>
               {tr('Дахин оролдох')}
             </button>
@@ -1027,8 +812,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         </div>
       )}
 
-      {/* ⚠️ 2026-09-30: хэсэгчилсэн ачаалалт — аль эх сурвалж унасныг ИЛ хэлнэ
-          (`AnalysisData.failed`; урьд нь хүртээмж «өгөгдөл алга»/хэт хол зай чимээгүй) */}
       {data && data.failed.length > 0 && (
         <div
           role="alert"
@@ -1047,11 +830,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             <h1 title={tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}>{tr('Сэлбэ Хот төлөвлөлтийн үзүүлэлтүүд')}</h1>
           </div>
         </div>
-        {/* ⚠️ 2026-10-26 (аудит): идэвхтэй горим дэлгэц уншигчид ил (`aria-pressed`, CSS-ийн .view-switch загвар) */}
         <nav className={s.tabs} aria-label={tr('Горим')}>
-          {/* ⚠️ «Ерөнхий» (blend) ба «Эдийн засаг» (econ) табууд ХАСАГДСАН.
-              Тэдгээрийн `mode` салаанууд кодод үлдсэн — дахин нээх бол зөвхөн
-              энэ жагсаалтад мөрөө нэмнэ. */}
           {([
             ['urban', tr('Хот төлөвлөлт')],
             ['indicator', tr('Үзүүлэлт')],
@@ -1075,11 +854,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       <Shell
         left={
           <>
-            {/* Тээвэр-идэвхийн 7 дүрслэл — ЗҮҮН талд ГАНЦААРАА.
-                ⚠️ «Хүн амын төвлөрөл» нь БАРУУН самбар руу нүүсэн: тэр гурав
-                (төвлөрөл · хүртээмж · ачаалал) бүгд БҮСЭЭР тооцогддог тул нэг
-                дор байх нь логиктой; зүүн тал БАРИЛГА-аар тооцох шинжилгээнд
-                бүтнээрээ үлдэнэ. */}
+            {/* Тээвэр-идэвхийн 7 дүрслэл — ЗҮҮН талд ГАНЦААРАА. */}
             {mode === 'simulation' && (
               <TransportPanel
                 mode={tMode}
@@ -1087,17 +862,12 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 active={tActive}
                 ctx={tCtx}
                 loading={tActive && !tCtx}
-                /* ⚠️ 2026-09-25: замын сүлжээний алдааг ч — урьд нь зөвхөн `tErr`
-                   тул сүлжээ унахад самбар «ачаалж байна…» дээр үүрд үлддэг байв. */
                 error={tErr ?? roadErr}
                 onRetry={retryTransport}
                 net={netSel}
               />
             )}
 
-            {/* ⚠️ Давхаргын жагсаалт нь зүүн rail-ийн картаас газрын зурган дээрх
-                «Давхарга» товч + каталог руу шилжсэн («Ерөнхий төлөвлөгөө»-тэй
-                ижил зарчим). Доорх `map` слот дахь `SuitLayerCatalog`-ыг үз. */}
             {mode === 'indicator' && (
               <Card title={tr('Хот төлөвлөлтийн тооцоолол')}>
                 <CategoryPie
@@ -1176,7 +946,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 minuteRef: clock.minuteRef,
                 playing: clock.playing,
                 speed: clock.speed,
-                /* ⚠️ 2026-10-01: БҮХ сүлжээнд нэг таг (`commonCarCap`) */
                 maxCars: carCap,
                 signalPlan,
                 onStats: setTrafficStats,
@@ -1187,12 +956,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               roadTile={bareReal}
               bldWhere={bldWhere}
               bldFocus={bldFocus}
-              /* ⚠️ «Байршил» карт ЗӨВХӨН urban/indicator горимд зурагддаг
-                 (доор §location). Симуляц горимд барилга дарахад урьд нь
-                 `setLocPick` + goTo(scale 3000) ажиллаж, зураг гэнэт ойртож,
-                 тодруулга картгүйгээр үлддэг байв (2026-09-21).
-                 `onBldClick` = undefined үед `SuitMap` барилгын даралтыг
-                 БҮС рүү дамжуулна — барилгын доорх бүс сонгогдоно. */
               bldPick={mode === 'urban' || mode === 'indicator' ? locPick : null}
               onBldClick={mode === 'urban' || mode === 'indicator' ? setLocPick : undefined}
               zoneFaint={locPublicOnly}
@@ -1210,8 +973,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               </div>
             )}
 
-            {/* ⚠️ Жагсаалт нь ЯГ ОДОО асаалттай давхаргууд — `OpacityPanel`
-                өөрөө `LAYER_BY_ID`-д байхгүйг (`zone`/`label` дүрслэл) шүүнэ. */}
             {opOpen && (
               <OpacityPanel
                 visible={Object.keys(layerOn).filter((k) => layerOn[k])}
@@ -1222,21 +983,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             )}
 
             {/* «Давхарга» товч + 2D/3D/BIM — НЭГ мөрөнд, зүүн доод буланд
-                (Давхарга нь дим товчны ӨМНӨ, «Ерөнхий төлөвлөгөө»-тэй ижил).
-                ⚠️ ArcGIS-ийн удирдлага (zoom баруун дээд, масштаб баруун доод,
-                дэлгэрэнгүй карт зүүн дээд)-тай мөргөлдөхгүй зүүн доод буланд. */}
-            {/**
-              * ⚠️ 2026-08-20: Бусад бүх харагдацтай ИЖИЛ зурвас (`MapTools`) —
-              * дээд-төвд хөвөгч pill. Урьд нь энэ цонх дангаараа ЗҮҮН ДООД
-              * буланд өөрийн `mapControls`-ыг зурдаг тул хэлбэр нь ч, байрлал
-              * нь ч бусдаас зөрдөг байв.
-              *
-              * ⚠️ «Тунгалаг» ба «Бүс» ЭНД БАЙХГҮЙ — энэ цонх `MapCanvas` БИШ,
-              * өөрийн `SuitMap`-ыг ашигладаг бөгөөд тэр нь давхаргын opacity ч,
-              * бүсийн `definitionExpression` ч дэмждэггүй. Хуурамч (дарахад юу ч
-              * болохгүй) товч тавихаас илүү нь тэднийг SuitMap-д жинхэнээр
-              * хэрэгжүүлэх — тусдаа ажил.
-              */}
+                (Давхарга нь дим товчны ӨМНӨ, «Ерөнхий төлөвлөгөө»-тэй ижил). */}
             <MapTools
               dim={dim}
               setDim={setDim}
@@ -1245,15 +992,10 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               opacityOpen={opOpen}
               onOpacity={() => setOpOpen((v) => !v)}
             >
-              {/* Полигон ↔ дулаан — ЗӨВХӨН «Симуляц» горимд.
-                  ⚠️ Гурван самбар бүрд давтахгүй: энэ нь ЗУРГИЙН тохиргоо тул
-                  зургийн удирдлагын мөрөнд байх нь зөв. */}
+              {/* Полигон ↔ дулаан — ЗӨВХӨН «Симуляц» горимд. */}
               {mode === 'simulation' && (
                 <div className={s.mapDims} role="group" aria-label={tr('Симуляцын дүрслэл')}>
                   {MAP_STYLES.map((v) => {
-                    // ⚠️ Дулаан нь ЗАЙД (хүртээмж, автобус) ба машин агентын
-                    //    симуляцад (ачаалал) утгагүй тул тэнд товч ИДЭВХГҮЙ —
-                    //    дарж болох мөртлөө юу ч болохгүй байвал эвдэрсэн мэт санагдана.
                     const off = v.key === 'heat' && !heatable;
                     return (
                       <button
@@ -1274,12 +1016,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               )}
             </MapTools>
 
-            {/* ⚠️ `key={active.id}` ХАСАВ (2026-09-21): түлхүүр солигдоход
-                `SuitDetail` дахин mount болж, чирж зөөсөн байрлал буланд буцдаг
-                байв — тайлбарт «өөр бүс сонгоход зөөсөн байрлалдаа үлдэнэ»
-                гэсэнтэй зөрж байлаа. Карт дотоод төлөвгүй (зөвхөн DOM байрлал)
-                тул `r` солигдоход шинэ тоо шууд зурагдана; хаагаад дахин
-                нээхэд л (`active` null → объект) mount болж буланд буцна. */}
             {active && (
               <SuitDetail
                 r={active}
@@ -1295,8 +1031,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         right={
           // «Симуляц» горим: БҮСЭЭР тооцогддог гурван симуляц ЭНД БАРУУНД.
           // Бусад горимд ердийн картууд (жин, зогсоол г.м.).
-          // ⚠️ Картын гарчигт төрлүүдээ ЖАГСААХГҮЙ — доорх гурван товч аль хэдийн
-          //    «Төвлөрөл · Хүртээмж · Ачаалал» гэж бичсэн тул давхардал болно.
           mode === 'simulation' ? (
             <Simulation {...simCommon} kinds={['road', 'density', 'transit']} title={tr('Бүсийн симуляц')} />
           ) : (
@@ -1335,8 +1069,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                     type="button"
                     className={s.mini}
                     title={tr('Тооцох арга ба коэффициентийг анхны (default) утга руу буцаана')}
-                    // ⚠️ `stopPropagation` — товч нь картын ГАРЧИГ дотор сууж
-                    //    байгаа тул үгүй бол карт хураагдана.
                     onClick={(e) => { e.stopPropagation(); setParking({ ...PARKING }); }}
                   >
                     <Icon name="reset" size={11} />
@@ -1348,11 +1080,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               </Card>
             )}
 
-            {/* Ногоон байгууламж — «Зогсоолын хэрэгцээ»-ний ижил зарчим.
-                ⚠️ Картыг ХӨНДӨХӨД газрын зурагт ногоон давхарга нь АВТОМАТААР
-                асна: тоо нь тайлбарладаг байгууламж хаана байгааг зэрэг харна
-                (хэрэглэгчийн хүсэлт, 2026-08-12). Унтраахыг нь хориглохгүй —
-                зөвхөн нэг удаа асаана. */}
+            {/* Ногоон байгууламж — «Зогсоолын хэрэгцээ»-ний ижил зарчим. */}
             {(mode === 'urban' || mode === 'indicator') && (
               <Card
                 id="green"
@@ -1363,8 +1091,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                     type="button"
                     className={s.mini}
                     title={tr('Тооцох арга ба коэффициентийг анхны (default) утга руу буцаана')}
-                    // ⚠️ Үзүүлэлтийн нормыг ч БНБД-ийн 6.0 м² руу буцаана —
-                    //    эс бөгөөс карт «6» гэж бичээд оноо 10-аар бодогдоно.
                     onClick={(e) => { e.stopPropagation(); applyGreen({ ...GREEN }); }}
                   >
                     <Icon name="reset" size={11} />
@@ -1373,11 +1099,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 }
               >
                 <div onPointerDown={showGreenLayer}>
-                  {/* ⚠️ `scoredRows` БИШ, БҮХ бүс: газрын ашиглалтын «30% ногоон»
-                      дүрэм ба нэг хүнд ногдох норм нь бүсийн ангиллаас
-                      хамаарахгүй. Оноололоос хассан 35 бүс (46.7 га, түүний
-                      дотор ногоон байгууламжийн 10 бүс) хасагдвал хуваарь 135.3
-                      → 88.6 га болж, хангалт хиймлээр өснө. */}
                   <Green
                     rows={rows}
                     green={greenView}
@@ -1387,9 +1108,6 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               </Card>
             )}
 
-            {/* ⚠️ ХООСОН ЗАГВАР — агуулгыг хэрэглэгч дараа тодорхойлно
-                (2026-08-12). Байрлал нь «Ногоон байгууламж»-ийн ЯГ ДООР;
-                харагдах горим нь ч түүнтэй ижил. */}
             {(mode === 'urban' || mode === 'indicator') && (
               <Card id="location" title={tr('Байршил')} collapsible>
                 <Location
@@ -1416,18 +1134,11 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 /**
  * `Angilal` (каноник `type`)-аар бүс шүүх. Унтраасан ангиллын бүс газрын
  * зургаас БҮРЭН алга болж (барилга нь ч хамт), эрэмбээс хасагдана.
- *
- * ⚠️ ИДЭВХЖҮҮЛЖ БОЛОХ хасагдсан ангилал (`ACTIVATABLE_ZONE_TYPES` — нийгмийн дэд
- * бүтэц, газар чөлөөлөлт дутуу) нь НЭГ дарахад ХОЁУЛАНГ нь удирдана: харагдац
- * (`catOff`) ба оноолол (`scoreOn`). Урьд нь зөвхөн оноололыг удирддаг байсан
- * тул «унтраалттай» мөр газрын зурагт харагдсаар байж, хэрэглэгч товч ажиллахгүй
- * байна гэж бодох шалтгаан болж байв (хэрэглэгчийн хүсэлт, 2026-08-12).
  */
 function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
   cats: { type: string; count: number; color: string }[];
   off: Set<string>;
   setOff: (s: Set<string>) => void;
-  /** ⚠️ Зөвхөн БИЧНЭ: оноолол нь харагдацаас (`off`) гардаг тул уншихгүй */
   setScoreOn: (s: Set<string>) => void;
 }) {
   const allTypes = cats.map((c) => c.type);
@@ -1436,27 +1147,10 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
   /** ӨГӨГДМӨЛ — БҮХ ангилал харагдана (шүүлт тавиагүй байдал) */
   const filtered = visible.length !== allTypes.length;
 
-  /**
-   * ⚠️ ШҮҮЛТИЙГ ТАВИХ (сонгох) зарчим — унтраах БИШ. Мөр дээр дарахад ЗӨВХӨН
-   * тэр ангилал үлдэнэ (ArcGIS-ийн «select by attribute»-ийн зан). Ганцаараа
-   * үлдсэн мөрөө дахин дарвал өгөгдмөл байдал руу буцна.
-   *
-   * ⚠️ `scoreOn`-ыг ХАМТ бичнэ: идэвхжүүлж болох ангилал харагдаж байвал
-   * оноололд ч орно. Хоёр олонлог эсрэг утгатай (`off` = нуусан, `scoreOn` =
-   * оноололд орсон) тул нэг үйлдэлд хоёуланг нь тааруулна.
-   */
   const apply = (hidden: string[]) => {
     setOff(new Set(hidden));
     setScoreOn(new Set(allTypes.filter((t) => ACTIVATABLE_ZONE_TYPES.has(t) && !hidden.includes(t))));
   };
-  /**
-   * ⚠️ ОЛОН СОНГОЛТ — легендийн шүүлтийн зарчим:
-   *   · шүүлтгүй үед дарвал  → ЗӨВХӨН тэр нь үлдэнэ (ганцаарчилна)
-   *   · шүүлттэй үед сонгоогүй мөр → НЭМНЭ («Олон нийт» + «Орон сууц» хоёуланг)
-   *   · сонгосон мөр (олон байхад) → ХАСНА
-   *   · сүүлчийн сонгосон мөр → шүүлт цэвэрлэгдэнэ
-   * Хэрэглэгч Ctrl/Shift дарах шаардлагагүй — энгийн даралтаар бүтнэ.
-   */
   const pick = (type: string) => {
     if (!filtered) { apply(allTypes.filter((t) => t !== type)); return; }
     const on = visible.includes(type);
@@ -1480,10 +1174,7 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
       </div>
       {cats.map((c) => {
         const activatable = ACTIVATABLE_ZONE_TYPES.has(c.type);
-        // ⚠️ Харагдац нь ГАНЦ эх сурвалжтай (`off`) — идэвхжүүлж болох ангилал ч
-        //    үүнийг дагана; `scoreOn` нь `apply`-д хамт бичигддэг.
         const on = !off.has(c.type);
-        /* ⚠️ 2026-10-22 (аудит): ДЭЛГЭЦИЙН нэр орчуулагдана (`zoneTypeLabel`-ийн ⚠️); шүүлт (`off` · `pick`) түүхий `c.type`-аар */
         const name = zoneTypeLabel(c.type);
         return (
           <button
@@ -1508,7 +1199,6 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
             <span style={{ width: 11, height: 11, borderRadius: 2, flex: 'none', background: c.color, opacity: on ? 1 : 0.35 }} />
             {/* 2 мөрийн clamp — «Нийгмийн дэд бүтцийн бүс» г.м. урт нэр «…» болохгүй */}
             <span style={{ flex: 1, minWidth: 0, fontSize: 12, overflow: 'hidden', display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>{name}</span>
-            {/* ⚠️ «оноол» шошго — энэ ангилал ХАРАГДВАЛ оноололд ч ордгийг сануулна */}
             {activatable && (
               <span style={{
                 fontSize: 9, letterSpacing: '.3px', flex: 'none',
@@ -1531,11 +1221,6 @@ function ZoneCatFilter({ cats, off, setOff, setScoreOn }: {
 
 /**
  * БАРИЛГЫН АНГИЛАЛ — `Зориулалт_m` талбарын бүлгүүд («Бүсийн ангилал»-ын ижил зан).
- *
- * ⚠️ Зөвхөн ГАЗРЫН ЗУРГИЙН харагдацыг шүүнэ (`definitionExpression`), ТООЦООГ
- * хөндөхгүй: бүсийн хүн ам, FAR, зогсоол зэрэг нь барилгуудаас нэгтгэгддэг тул
- * энд шүүвэл оноо чимээгүй өөрчлөгдөж, «би зөвхөн нуусан» гэж бодсон хэрэглэгч
- * өөр дүн хараад төөрөх байв.
  */
 function BuildingCatFilter({ cats, off, setOff }: {
   cats: BuildingPurposeStat[];
@@ -1548,13 +1233,7 @@ function BuildingCatFilter({ cats, off, setOff }: {
   const total = cats.reduce((a, c) => a + c.count, 0);
   const shownN = cats.reduce((a, c) => a + (off.has(c.key) ? 0 : c.count), 0);
 
-  /**
-   * ⚠️ ШҮҮЛТ ТАВИХ (сонгох) зарчим — унтраах БИШ, «Бүсийн ангилал» картын ижил
-   * зан. Мөр дээр дарахад ЗӨВХӨН тэр бүлэг үлдэнэ; ганцаараа үлдсэн мөрөө
-   * дахин дарвал шүүлт цэвэрлэгдэнэ.
-   */
   const pick = (key: string) => {
-    // ⚠️ «Бүсийн ангилал»-ын ЯГ ижил олон сонголтын зарчим (тэндхийг үз)
     if (!filtered) { setOff(new Set(allKeys.filter((k) => k !== key))); return; }
     const on = visible.includes(key);
     if (on && visible.length === 1) { setOff(new Set()); return; }

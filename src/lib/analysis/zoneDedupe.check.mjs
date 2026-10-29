@@ -38,7 +38,7 @@ const inp = [F(1, 'A-1', 1), F(2, 'A-1', 2)];
 dedupeZoneFeats(inp, idOf, areaOf);
 assert.equal(inp.length, 2);
 
-/* 6. ⚠️ 2026-10-22 (аудит): X-13 — objectid 12 (нүхтэй, K-6-тэй давхцалгүй) нь 47-оос (нүхгүй, K-6-г агуулна) ДЭЭР */
+/* 6. 2026-10-22 (аудит): X-13 — objectid 12 (нүхтэй, K-6-тэй давхцалгүй) нь 47-оос (нүхгүй, K-6-г агуулна) ДЭЭР */
 {
   const { interiorRingCount, planRecordMissing } = await import('@/lib/analysis/data');
   /* ESRI: гадна цагираг цагийн зүүний дагуу (y-дээш), нүх эсрэг */

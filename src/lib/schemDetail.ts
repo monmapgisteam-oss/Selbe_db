@@ -1,23 +1,5 @@
 /**
  * ЗАНГИЛААНЫ ДЭЛГЭРЭНГҮЙ — «системийг нэг бүрчлэн хянах» самбарын ЦЭВЭР ЗАГВАР.
- *
- * ⚠️ REACT Ч, СҮЛЖЭЭ Ч ЭНД ОРОХГҮЙ (`schem.ts`-тэй ижил гэрээ) — тиймээс
- * `schemDetail.check.mjs` түүнийг шууд импортлон шалгана.
- *
- * ⚠️ ШИНЭ ArcGIS QUERY ГАРАХГҮЙ. Энд гарах БҮХ хүснэгт нь `schemData.ts` аль
- * хэдийн татсан `SchemSources`-оос гарна. Дэлгэрэнгүй нь өгөгдөл ДУТУУ
- * байснаас биш, дэлгэцэд ГАРААГҮЙ байснаас дутуу байсан: `zov` нь зөвшөөрлийн
- * БҮХ мөр, `review` нь хяналтын БҮХ мөр, `bagts` нь багц бүрийн гүйцэтгэл,
- * блок, гүйцэтгэгч, `finance.byBagts` нь багц бүрийн төсвийг аль хэдийн
- * авчирдаг байсан ч зангилаанд ердөө 1–3 тоо л харагддаг байв.
- *
- * ⚠️ `null` ≠ 0. Задаргааны нүд ч мөн адил: тооцоологдоогүй нүд `null` хэвээр
- * үлдэж «—» болно. Энэ репогийн хамгийн олон давтагдсан алдаа.
- *
- * ⚠️ ДҮРМИЙГ ДАВХАРДУУЛАХГҮЙ. Багцын шүүлт (`samePkg`), ажлаар бүлэглэх
- * (`groupWorks`), NaN цэвэрлэх (`fin`), босго (`TH`) — бүгд НЭГ эх сурвалжаас
- * импортлогдоно. Хуулбарлавал схемийн зангилаа ба самбар нь ижил агшинд ӨӨР
- * тоо харуулж эхэлнэ.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -37,8 +19,6 @@ import { GROUP_ROOT, type FineId } from '@/lib/schemFine';
 
 /**
  * Хүснэгтийн нэг нүд.
- * ⚠️ `kind` өгвөл дэлгэц дээр МЕТРИКИЙН адил (`show()`) хэлбэржинэ; өгөөгүй бол
- *    түүхий текст. `v === null` нь ҮРГЭЛЖ «—», хэзээ ч 0 биш.
  */
 export type Cell = { v: string | number | null; kind?: MetricKind };
 
@@ -48,8 +28,6 @@ export type DetailTable = {
   /** ХАРАГДАХ мөрүүд — `ROW_CAP`-аар таслагдсан байж болно */
   rows: Cell[][];
   /**
-   * ⚠️ ТАСЛААГҮЙ бүтэн мөрүүд — ЗӨВХӨН таслагдсан үед байна (`ceo/kpi.table`).
-   *
    * Багцаар шүүхдээ (`ceo/filter.filterTable`) ЭНЭ уншигдана: таслалт нь
    * шүүхээс өмнө хийгддэг тул эхний багцуудын мөр л үлдэж, сүүлийн багц
    * сонгоход жагсаалт хоосон гардаг байв (2026-09-15-ны аудит). Схемийн
@@ -60,11 +38,6 @@ export type DetailTable = {
 
 /**
  * Анхаарал татах нэг мөр — өнгө нь `Health`-ийн ижил хэлээр.
- *
- * ⚠️ `at` нь НАРИЙН схемийн аль картад буухыг заана (2026-09-02). Заагаагүй бол
- * бүлгийн үндсэн картад (`GROUP_ROOT`) буна — «үйлчилгээ татагдсангүй» гэх мэт
- * бүлэг бүхэлдээ хамаарах анхааруулга. Ерөнхий схемд (бүлэг бүр ганц карттай)
- * энэ талбар хэрэглэгдэхгүй.
  */
 export type Issue = { text: string; tone: Health; at?: FineId };
 
@@ -79,11 +52,6 @@ export type SchemDetail = {
 
 /**
  * ЗАНГИЛАА ↔ ЭХ СУРВАЛЖ.
- *
- * ⚠️ Энэ бол «нэг бүрчлэн хянах»-ын ГОЛ хэсэг: тоо нь «—» байхад «үйлчилгээ
- * унасан уу, эсвэл үнэхээр өгөгдөл байхгүй юү» гэдгийг хэрэглэгч ТААХГҮЙ.
- * `huvaari` нь ЗОРИУДААР хоосон — тэр зангилаа амьд эх сурвалжгүй
- * (`schem.ts`-ийн баримтжуулсан шийдвэр).
  */
 export const NODE_SOURCE: Record<SchemId, readonly SourceKey[]> = {
   tolovlolt: ['headline'],
@@ -104,23 +72,12 @@ const cell = (v: string | number | null, kind?: MetricKind): Cell => ({ v, kind 
 
 /**
  * ms → «YYYY-MM-DD» ОРОН НУТГИЙН огноогоор.
- *
- * ⚠️ 2026-09-16: урьд нь `toISOString().slice(0, 10)` байв — тэр нь UTC-гээр
- *    хөрвүүлдэг тул Улаанбаатар (+08) дээр орон нутгийн 00:00–07:59-д
- *    тэмдэглэгдсэн зөвшөөрлийн огноо ӨМНӨХ өдөр харагддаг байлаа.
- *    `format.dayKey` нь тэр зангаас зайлсхийсэн ГАНЦ эх сурвалж
- *    (`live.ts`, `ipcTable.ts` 2026-09-15-нд шилжсэн; энэ файл орхигдсон).
  */
 const dayText = (ms: number | null): string =>
   (ms == null || !Number.isFinite(ms) ? '—' : dayKey(ms));
 
 const noName = (): string => tr('нэргүй');
 
-/**
- * ⚠️ ЖАГСААЛТЫГ ЧИМЭЭГҮЙ ТАСЛАХГҮЙ. Хяналтын хүснэгтэд мянган мөр байж болно;
- * бүгдийг зурвал самбар ашиглагдахаа болино. Гэвч таслалыг НУУВАЛ хэрэглэгч
- * «эдгээр нь бүгд» гэж уншина — тиймээс тасалсан тоог мөр болгож ил үлдээнэ.
- */
 const CAP = 40;
 function capped<T>(list: T[]): { shown: T[]; hidden: number } {
   return { shown: list.slice(0, CAP), hidden: Math.max(0, list.length - CAP) };
@@ -133,12 +90,6 @@ const pickPkg = <T>(list: T[], pkg: string | null, of: (x: T) => unknown): T[] =
 
 /**
  * БАГЦААР БҮЛЭГЛЭХ — `bagtsKey`-ээр (бичиглэлээс үл хамаарна).
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): хяналтын «Багцаар» хүснэгт урьд нь ТҮҮХИЙ
- *    бичиглэлээр мөр үүсгээд, мөр бүрийг `samePkg`-ээр шүүдэг байв — «Багц 4-1» ба
- *    «Багц 4.1» ХОЁР мөр болж, ИЖИЛ ажлууд хоёуланд нь тоологддог (давхар) байлаа.
- * ⚠️ Шошго — тухайн түлхүүрийн ХАМГИЙН ОЛОН давтагдсан бичиглэл (тэнцвэл цагаан толгойн
- *    эхнийх). Түлхүүргүй (хоосон) мөр бүлэгт орохгүй (урьдын `filter(Boolean)`).
  */
 export function byPkgKey<T>(list: readonly T[], of: (x: T) => unknown): { key: string; label: string; list: T[] }[] {
   const by = new Map<string, { names: Map<string, number>; list: T[] }>();
@@ -239,16 +190,6 @@ function zovPart(src: SchemSources, pkg: string | null): Part {
 
   /*
    * МӨР ТУС БҮР.
-   *
-   * ⚠️ 2026-09-06, хэрэглэгч: «ямар бичиг баримт асуудалтай байгаа нь
-   * харагдахгүй, зөвхөн 2 гэж байгаа нь утгагүй». Урьд нь энэ хүснэгт
-   * `if (pkg)` -ээр хаалттай байсан тул НҮҮРЭНД (багц сонгодоггүй) хэзээ ч
-   * гардаггүй, зөвхөн тоолуур харагддаг байв.
-   *
-   * ⚠️ БАГЦГҮЙ үед ШИЙДЭГДЭЭГҮЙГ НЬ Л гаргана (`ok` биш бүгд). Ингэснээр
-   * анхны «хэдэн зуун мөр» гэсэн болгоомжлол хэвээр биелнэ — жагсаалтын урт
-   * нь НИЙТ тоогоор биш АСУУДЛЫН тоогоор хязгаарлагдана. Багц сонгосон үед
-   * зөвшөөрсөн мөрүүд ч хэрэгтэй (тухайн багцын бүтэн зураг).
    */
   const rows = pkg ? mine : mine.filter((z) => z.tolov !== TOLOV.ok);
   if (rows.length) {
@@ -267,7 +208,6 @@ function zovPart(src: SchemSources, pkg: string | null): Part {
           cell(dayText(z.ognoo)),
           cell(z.baiguullaga || '—'),
         ]),
-        /* ⚠️ Таслагдсан мөрийг ЧИМЭЭГҮЙ хаяхгүй — хэдийг нь харуулаагүйгээ хэлнэ */
         ...(hidden > 0
           ? [[cell(tr('… бас {0} мөр', hidden)), cell(''), cell(''), cell(''), cell(''), cell('')]]
           : []),
@@ -275,11 +215,6 @@ function zovPart(src: SchemSources, pkg: string | null): Part {
     });
   }
 
-  /**
-   * ⚠️ ТАНИГДААГҮЙ ТӨЛӨВИЙГ НЭР ЗААЖ ЖАГСААНА. Тэдгээр нь `zovshoorol.ts`-ийн
-   * баримтжуулсан занга — толинд байхгүй утга чимээгүй «зөвшөөрөгдсөн» мэт
-   * ногоон болж болзошгүй. Аль мөр болохыг мэдэхгүй бол засах ч боломжгүй.
-   */
   for (const z of capped(unknown).shown) {
     p.issues.push({
       text: tr('«{0}» ({1}) — төлөв танигдсангүй: «{2}»', z.ner || noName(), z.bagts, String(z.tolov)),
@@ -307,9 +242,6 @@ function gazarPart(src: SchemSources): Part {
     { label: tr('Чөлөөлсөн'), value: clr, kind: 'pct' },
     { label: tr('Нийт нэгж талбар'), value: fin(c?.total), kind: 'count' },
     { label: tr('Чөлөөлсөн нэгж талбар'), value: fin(c?.cleared), kind: 'count' },
-    /* ⚠️ 2026-09-06: шинэ эхэд «Үлдсэн нэгж талбар» гэсэн АНГИЛАЛ байхгүй —
-       `c.remaining` нь одоо «Бүрэн чөлөөлсөн»-өөс бусад БҮГД. Шошгыг
-       ерөнхийлөв, тоо нь `loadClearance`-ээс хэвээр. */
     { label: tr('Чөлөөлөгдөөгүй талбар'), value: fin(c?.remaining), kind: 'count' },
     { label: tr('Үлдсэн талбай'), value: fin(c?.remainingHa), kind: 'ha' },
   );
@@ -334,10 +266,6 @@ function huvaariPart(): Part {
     kind: 'pct',
     why: tr('Хуваарь багц бүрээр ачаалагддаг — схемд амьд тоо гаргахгүй'),
   });
-  /**
-   * ⚠️ ШАЛТГААНЫГ ИЛ БИЧНЭ. Урьд нь зөвхөн tooltip-д нуугдсан байсан тул «энэ
-   * тоо яагаад үргэлж — байдаг юм бэ» гэсэн асуулт хариултгүй үлддэг байв.
-   */
   p.issues.push({
     text: tr('Хуваарийн хамралт нь багц тус бүрийн бүх мөрийг татаж байж бодогддог. Схем нээх бүрд тэр хүсэлтийг явуулбал бусад тоо ч удаашрах тул энд ЗОРИУДААР тооцохгүй — «Хуваарь» харагдацаас үзнэ үү.'),
     tone: 'none',
@@ -350,12 +278,7 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
   const p = emptyPart();
   const rows: BagtsLite[] = src.bagts ?? [];
   const row = pkgRow(src.bagts, pkg);
-  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): хуваарь нь ЗӨВХӨН орон сууцны багцууд
-     (`schem.housingWeight`) — урьд нь `overall.weightSum` дэд бүтцийн багцыг ч
-     хуваарьт оруулдаг тул анхааруулга ҮРГЭЛЖ асдаг байв. */
   const weightSum = housingWeight(src);
-  /* ⚠️ 2026-10-01: багц сонгосон атал мөр олдоогүй бол (хэсэгчилсэн ачаалал) ТӨСЛИЙН
-     нийлбэр БИШ «—» — `cardStat`-ийн `sum`/`proj` дүрэмтэй ижил. */
   const lost = !!pkg && !row;
   const sum = (of: (b: BagtsLite) => number) => (
     lost ? null : src.bagts ? rows.reduce((s, b) => s + of(b), 0) : null
@@ -363,11 +286,6 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
 
   p.metrics.push(
     { label: tr('Гүйцэтгэл'), value: row ? fin(row.progress) : lost ? null : fin(src.overall?.pct), kind: 'pct' },
-    /* ⚠️ 2026-09-25: багц сонгоогүй үед ч НИЙТ блок (`BagtsLite.blocks`-ийн
-       нийлбэр). Урьд нь `progress.blocks` байсан — тэр нь нийт гүйцэтгэл нь
-       ТАЙЛАГНАГДСАН блокийн тоо (`blockProgress.ts` тайлангүйг хасдаг) тул
-       «Блок» шошготой зөрж, багц сонгоход нийт, сонгоогүй үед тайлагнасан гэсэн
-       хоёр өөр олонлог нэг мөрөнд гардаг байв. */
     { label: tr('Блок'), value: row ? row.blocks : sum((b) => b.blocks), kind: 'count' },
     { label: tr('Тайлангүй блок'), value: row ? row.missing : sum((b) => b.missing), kind: 'count' },
     { label: tr('Айлын тоо'), value: row ? row.ail : sum((b) => b.ail), kind: 'count' },
@@ -375,7 +293,6 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
       label: tr('Төсвийн жингийн хамралт'),
       value: weightSum,
       kind: 'pct',
-      /* ⚠️ 2026-10-04: хүртвэр = багц бүрийн ТАЙЛАГНАСАН блокийн хувь × төсөв (`schem.housingWeight`) */
       why: tr('Тайлагнасан блокийн хувиар жигнэсэн орон сууцны багцын төсөв ÷ бүх орон сууцны багцын төсөв (дэд бүтэц орохгүй)'),
     },
     { label: tr('Бүртгэгдсэн блок'), value: fin(src.overall?.rows), kind: 'count' },
@@ -397,7 +314,6 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
         cell(b.contractor || '—'),
       ]),
     });
-    /* ⚠️ ТАЙЛАНГҮЙ БЛОК — гүйцэтгэл нь хэмжигдээгүй (2026-10-01-нөөс дунджид 0%-иар ОРНО) */
     for (const b of capped(rows.filter((x) => x.missing > 0)).shown) {
       p.issues.push({
         text: tr('«{0}» — {1} блок тайлангүй ({2} блокоос).', b.label, b.missing, b.blocks),
@@ -406,16 +322,12 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
       });
     }
   }
-  /* ⚠️ Төслийн нийтэд л — багц сонгоход тэр багцын тоо харагдана, жингийн хамралт хамааралгүй */
   if (!pkg && weightSum != null && weightSum < 100) {
     p.issues.push({
       text: tr('Төсвийн жингийн {0}% л бүртгэгдсэн — нийт гүйцэтгэл дутуу хамралт дээр бодогдож байна.', weightSum.toFixed(0)),
       tone: 'warn',
     });
   }
-  /* ⚠️ 2026-09-30: «ЗОГССОН» БИШ — `progress.stalled` нь гүйцэтгэл < 1% (ажил бодитоор
-     ЭХЛЭЭГҮЙ) тайлагнасан блок (`reportData.loadOverall`). 50%-д гацсан блок ОРДОГГҮЙ, 0.5%-тай
-     эхлээгүй блок ОРДОГ тул «сүүлийн тайлангаас хойш ахиагүй» гэж уншуулах нь худал байв. */
   const stalled = fin(src.progress?.stalled);
   if (stalled != null && stalled > 0) {
     p.issues.push({ text: tr('{0} блокийн гүйцэтгэл 1%-иас доогуур (эхлээгүй).', stalled), tone: 'warn', at: 'bar' });
@@ -443,7 +355,6 @@ function hyanaltPart(src: SchemSources, pkg: string | null): Part {
   p.metrics.push(
     { label: tr('Хүлээгдэж буй'), value: rc.pending, kind: 'count' },
     { label: tr('Буцаасан'), value: rc.returned, kind: 'count' },
-    /* ⚠️ АЖИЛ vs МӨР — мөр бүр НЭГ ТОЙРОГ. Хоёуланг нь үзүүлбэл зөрүү ойлгомжтой. */
     { label: tr('Нийт ажил'), value: works.length, kind: 'count' },
     { label: tr('Нийт тойрог (мөр)'), value: mine.length, kind: 'count' },
   );
@@ -466,10 +377,7 @@ function hyanaltPart(src: SchemSources, pkg: string | null): Part {
 
   /**
    * БУЦААГДСАН АЖЛУУД — «нэг бүрчлэн хянах»-ын гол хүснэгт.
-   * ⚠️ `groupWorks`-ээр НЭГ ажил = НЭГ мөр. Түүхий мөрөөр жагсаавал 8 ажил 30
-   *    мөр болж, зангилааны тоотой зөрнө.
    */
-  /* ⚠️ 2026-09-23: 6 шат — хэлтсийн, газрын даргын буцаалт ч орно; 2026-10-23: 7 шат — төлөвлөлтийн инженерийнх ч */
   const back = (w: (typeof works)[number]) => (
     w.engineerReturns + w.managerReturns + w.plannerReturns + w.directorReturns + w.headReturns + w.chiefReturns
   );
@@ -534,9 +442,6 @@ function ersdelPart(src: SchemSources): Part {
   const blocks = fin(src.progress?.blocks);
   p.metrics.push(
     { label: tr('Эхлээгүй блок (<1%)'), value: stalled, kind: 'count' },
-    /* ⚠️ 2026-10-04: `progress.blocks` нь бөглөх хуудасны БҮХ блок, `stalled` ч тайлангүй блокийг
-       (0%) оруулж тоологдоно (`reportData.loadProgress`) — харьцаа нь «нийт блокийн хэдэн хувь
-       ЭХЛЭЭГҮЙ (<1%) вэ». Урьд нь хоёулаа зөвхөн тайлагнасан блокоос байв (2026-09-25/30). */
     { label: tr('Нийт блок'), value: blocks, kind: 'count' },
     {
       label: tr('Эхлээгүйн эзлэх хувь'),
@@ -558,10 +463,7 @@ function sankhuuPart(src: SchemSources, pkg: string | null): Part {
   const rows: BagtsLite[] = src.bagts ?? [];
   const fi = src.finance;
   const row = pkgRow(src.bagts, pkg);
-  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): багц сонгосон атал мөр олдоогүй бол ТӨСЛИЙН
-     төсөв/гэрээ/олголт тэр багцын нэрийн дор гардаг байв — одоо «—» (`cardStat`-тэй ижил). */
   const budget = row && fi ? fin(fi.byBagts[row.key]) : pkg ? null : fin(fi?.budget);
-  /* ⚠️ Олголт нь БАГЦААР задардаггүй — багц сонгосон үед харьцаа гаргахгүй */
   const paid = pkg ? null : fin(fi?.paid);
   const contract = pkg ? null : fin(fi?.contractAmount);
   p.metrics.push(
@@ -594,8 +496,6 @@ function sankhuuPart(src: SchemSources, pkg: string | null): Part {
     p.tables.push({
       title: tr('Багцаар'),
       cols: [tr('Багц'), tr('Төсөвт өртөг'), tr('Гүйцэтгэл')],
-      /* ⚠️ `byBagts`-д БАЙХГҮЙ багцын нүд `null` — 0 БИШ. «Төсөв тэг» гэж
-         худал хэлбэл тэр багц санхүүжилтгүй мэт харагдана. */
       rows: rows.map((b) => [
         cell(b.label),
         cell(fin(fi.byBagts[b.key]), 'mnt'),
@@ -663,11 +563,6 @@ const PART: Record<SchemId, (src: SchemSources, pkg: string | null) => Part> = {
  * НЭГ ЗАНГИЛААНЫ ДЭЛГЭРЭНГҮЙ.
  *
  * @param pkg Багцын нэр. `null` бол төслийн нийт.
- *
- * ⚠️ Багцаар ЗАДАРДАГГҮЙ зангилаа (`tolovlolt`, `gazar`, `habea`, `ersdel`,
- *    `tailan`) нь багц сонгосон ч төслийн тоогоо хэвээр барина — `buildSchem`-ийн
- *    `projectWide` дүрэмтэй ИЖИЛ. Хоёр газар өөр дүгнэвэл зангилаа ба самбар
- *    ижил агшинд ӨӨР тоо харуулна.
  */
 export function nodeDetail(
   src: SchemSources,
@@ -689,19 +584,6 @@ export function nodeDetail(
 
 /**
  * НАРИЙН КАРТ БҮРИЙН ҮР ДҮН — «энэ ажиллагаа хаана хүрсэн бэ».
- *
- * ⚠️ ЯАГААД (2026-09-02, хэрэглэгч: «карт болгон дээр үр дүнгийн alert
- * харагдана»). Урьд нь ЗӨВХӨН асуудалтай 6 картад дохио гардаг байсан тул
- * үлдсэн 18 карт нь «шалгагдсан ч хэвийн» юу, «огт тооцоологдоогүй» юу гэдэг
- * нь ЯЛГАГДАХГҮЙ байв — хоёулаа ижилхэн хоосон харагдана. Одоо карт бүр
- * өөрийн тоог төлөвтэйгээ хамт харуулна.
- *
- * ⚠️ ЭНЭ НЬ `schemFine.ts`-ийн «карт дээр тоо гарахгүй» гэсэн 2026-09-01-ний
- * шийдвэрийг ОРЛОВ (хэрэглэгчийн шинэ заавар). Тэр үед карт бүрд 2–3 метрик
- * гардаг байсныг хассан; одоо ЯГ НЭГ тоо гарна — зураг дүүрэхгүй, гэхдээ
- * «юу болсон» нь уншигдана.
- *
- * ⚠️ `null` ≠ 0 хэвээр: тооцоологдоогүй бол «—» ба `none` (саарал) төлөв.
  */
 export type CardStat = {
   label: string; value: number | null; kind: MetricKind; tone: Health;
@@ -730,27 +612,13 @@ export function cardStat(
   const row = pkg && rows
     ? rows.find((b) => samePkg(b.label, pkg) || samePkg(b.key, pkg)) ?? null
     : null;
-  /*
-   * ⚠️ БАГЦ СОНГОСОН атал МӨР ОЛДООГҮЙ бол `null` — ТӨСЛИЙН нийлбэр БИШ
-   *    (2026-09-15-ны аудит). Урьд нь `row == null` үед `sum()` нь БҮХ багцын
-   *    нийлбэрийг буцаадаг тул «Тайлангүй блок 47» гэсэн төслийн дүн тухайн
-   *    багцынх мэт харагддаг байв. `row == null` нь `samePkg`-ийн бичиглэлийн
-   *    зөрүүнээс бодитоор үүсдэг. «—» нь худал тооноос ДЭЭР.
-   */
   const sum = (of: (b: BagtsLite) => number) => (
     pkg && !row ? null : rows ? rows.reduce((s, b) => s + of(b), 0) : null
   );
   /**
    * Багц сонгосон үеийн ТӨСЛИЙН нөөц утга — зөвхөн багц СОНГООГҮЙ үед.
-   * ⚠️ Дээрх `sum`-тэй ижил дүрэм: багц сонгосон атал мөр олдоогүй бол «—».
    */
   const proj = (v: number | null): number | null => (pkg ? null : v);
-  /* ⚠️ ХЯНАЛТЫН тоог ч БАГЦААР шүүнэ (2026-09-15-ны аудит). Урьд нь `pkg`
-     огт хэрэглэгддэггүй байсан тул «Багц 4-1» сонгоход `zov*`/`bar*`/`gaz*`
-     картууд тэр багцын тоог, харин `hyCo`/`hyEng`/`hyMgr`/`hyDir`/`hyHead`/
-     `hyChief`/`hyDone` долоон карт ТӨСЛИЙН НИЙТ тоог зэрэг харуулдаг байв — нэг дэлгэц дээр
-     хоёр өөр олонлог, `projectWide` тэмдэг ч байхгүй. `buildSchem`,
-     `hyanaltPart` хоёул `samePkg`-ээр шүүдэг. */
   const rc = src.review ? reviewCounts(pickPkg(src.review, pkg, (r) => r[HF.bagts])) : null;
   const c = src.clearance;
   const fi = src.finance;
@@ -765,7 +633,6 @@ export function cardStat(
     case 'zovWait':
       return statOf(tr('Хүлээгдэж буй'), zn(TOLOV.wait), 'count', fewer(zn(TOLOV.wait)));
     case 'zovNo': {
-      /* ⚠️ Татгалзсан БА танигдаагүйг НЭГТГЭНЭ — карт хоёуланг нь нэрлэдэг */
       const bad = zov ? zov.filter((z) => z.tolov === TOLOV.no || z.tolov === 'unknown').length : null;
       return statOf(tr('Зөвшөөрөөгүй'), bad, 'count', fewer(bad));
     }
@@ -778,20 +645,13 @@ export function cardStat(
     case 'gazLeft':
       return statOf(tr('Үлдсэн талбар'), fin(c?.remaining), 'count', fewer(fin(c?.remaining)));
     case 'huv':
-      /* ⚠️ Хуваарь амьд эх сурвалжгүй (`schem.ts`-ийн шийдвэр) — ҮРГЭЛЖ «—» */
       return statOf(tr('Хамралт'), null, 'pct', 'none');
     case 'bar': {
       const v = row ? fin(row.progress) : proj(fin(src.overall?.pct));
       return statOf(tr('Гүйцэтгэл'), v, 'pct', grade(v, TH.barilgaPct.good, TH.barilgaPct.warn));
     }
     case 'barOk': {
-      /* Тайлагнасан = нийт блок − тайлангүй.
-         ⚠️ 2026-09-25: багц сонгоогүй үед НИЙТ нь `Σ BagtsLite.blocks` —
-         `progress.blocks` БИШ. Тэр нь АЛЬ ХЭДИЙН тайлагнасан блокийн тоо
-         (`blockProgress.ts` тайлангүйг хасдаг) тул түүнээс тайлангүйг ДАХИН
-         хасахад 113 блок · 60 тайлагнасан үед «Тайлагнасан блок 7» гарч,
-         тайлангүй нь олон бол СӨРӨГ тоо ногоон өнгөтэй гардаг байв. `sum` нь
-         багц сонгосон атал мөр олдоогүй үед «—» (дээрх дүрэм). */
+      /* Тайлагнасан = нийт блок − тайлангүй. */
       const blocks = row ? row.blocks : sum((b) => b.blocks);
       const missing = row ? row.missing : sum((b) => b.missing);
       const v = blocks != null && missing != null ? blocks - missing : null;
@@ -809,7 +669,6 @@ export function cardStat(
       return statOf(tr('Ажилтан'), fin(src.habea?.workers), 'count', known(fin(src.habea?.workers)));
     case 'habInc': {
       const v = fin(src.habea?.incidents);
-      /* ⚠️ Осол нь `warn` БИШ `bad` — хүний аюулгүй байдал бусад хоцрогдолтой нэг зэрэгт орохгүй */
       return statOf(tr('Осол, зөрчил'), v, 'count', v == null ? 'none' : v > 0 ? 'bad' : 'good');
     }
     case 'hyCo':
@@ -818,7 +677,6 @@ export function cardStat(
       return statOf(tr('Инженер дээр'), rc ? rc.byStage.engineer : null, 'count', known(rc ? rc.byStage.engineer : null));
     case 'hyMgr':
       return statOf(tr('Багцын ахлах инженер дээр'), rc ? rc.byStage.manager : null, 'count', known(rc ? rc.byStage.manager : null));
-    /* ⚠️ 2026-10-23: шинэ 4-р шат — төлөвлөлтийн инженер */
     case 'hyPlan':
       return statOf(tr('Төлөвлөлтийн инженер дээр'), rc ? rc.byStage.planner : null, 'count', known(rc ? rc.byStage.planner : null));
     case 'hyDir':
@@ -829,13 +687,6 @@ export function cardStat(
       return statOf(tr('Газрын дарга дээр'), rc ? rc.byStage.chief : null, 'count', known(rc ? rc.byStage.chief : null));
     case 'hyDone':
       return statOf(tr('Шилжүүлсэн'), rc ? rc.done : null, 'count', known(rc ? rc.done : null));
-    /* ⚠️ 2026-09-25: САНХҮҮГИЙН КАРТ БАГЦААР — `sankhuuPart`/`buildSchem`-тэй
-       ИЖИЛ дүрэм. Урьд нь үргэлж төслийн дүн (`fi.budget`) харуулдаг тул «Багц
-       4-1» сонгоход самбар багцын төсвийг, карт 2.49 их наяд ₮ төслийн төсвийг
-       зэрэг заадаг байв, «төслийн нийт» тэмдэг ч байхгүй. Төсөв нь `byBagts`-аар
-       задарна; гэрээ ба олголт задардаггүй тул багц сонгосон үед «—» (`why`-тай)
-       — төслийн тоог багцынх мэт харуулахгүй. Багц сонгосон атал мөр олдоогүй
-       бол мөн «—» (`sum`-ийн дүрэм). */
     case 'finBudget': {
       const v = pkg ? (row && fi ? fin(fi.byBagts[row.key]) : null) : fin(fi?.budget);
       return statOf(tr('Төсөвт өртөг'), v, 'mnt', known(v));
@@ -849,9 +700,6 @@ export function cardStat(
     }
     case 'finPaid': {
       const paid = pkg ? null : fin(fi?.paid);
-      /* ⚠️ Олголтыг хуваарьтайгаа харьцуулж дүгнэнэ — дан тоо ганцаараа сайн ч муу ч биш.
-         ⚠️ 2026-10-09: хувь = `finance.paidPct` (гэрээлсэн багцын олголт ÷ гэрээлсэн дүн — `paidShare`,
-         `schem.ts` «Санхүүжилт»-тэй нэг). Урьд нь НИЙТ олголт ÷ төсөвт өртөг байв. */
       const share = pkg ? null : fin(fi?.paidPct);
       return {
         ...statOf(tr('Олгосон'), paid, 'mnt', grade(share, TH.paidPct.good, TH.paidPct.warn)),
@@ -860,7 +708,6 @@ export function cardStat(
     }
     case 'tailan': {
       const age = ageDays(src.progress?.date);
-      /* ⚠️ УРВУУ босго: их нь МУУ (хуучирсан тайлан) */
       const tone: Health = age == null ? 'none'
         : age >= TH.reportAgeD.bad ? 'bad'
           : age >= TH.reportAgeD.warn ? 'warn' : 'good';
@@ -873,11 +720,6 @@ export function cardStat(
 
 /* ══════════════════ Картын анхааруулга ══════════════════ */
 
-/**
- * ⚠️ ХАМГИЙН НОЦТОЙ нь эхэнд — карт дээр ганцхан өнгө, ганцхан тоо гарах тул
- *    аль нь ноцтойг эрэмбээр шийднэ. `none` («мэдээлэлгүй») нь `good`-оос
- *    ДЭЭГҮҮР: тоо нь тодорхойгүй байгааг «хэвийн» гэж уншуулж болохгүй.
- */
 const TONE_RANK: Record<Health, number> = { bad: 3, warn: 2, none: 1, good: 0 };
 
 /** Жагсаалтын хамгийн ноцтой өнгө. Хоосон бол `null`. */
@@ -892,18 +734,6 @@ export function worstTone(list: readonly Issue[]): Health | null {
 /**
  * СХЕМИЙН БҮХ КАРТЫН АНХААРУУЛГА — карт бүрд аль анхааруулга буухыг шийднэ.
  *
- * ⚠️ ЯАГААД (2026-09-02, хэрэглэгч: «процессын үед ямар alert байгааг
- * харуулна»). Анхааруулга нь урьд нь ЗӨВХӨН карт дарж нээсэн самбарт харагддаг
- * байсан тул «аль процесс дээр асуудал байна вэ» гэдгийг мэдэхийн тулд 24
- * картыг ээлжлэн дарж үзэх шаардлагатай байв. Одоо зурган дээрээс шууд
- * уншигдана.
- *
- * ⚠️ АНХААРУУЛГЫГ ДАВХАРДУУЛАХГҮЙ. Нарийн схемд нэг бүлэг 2–5 картад задардаг;
- * бүлгийн бүх анхааруулгыг тэдгээрт давтвал «Зөвшөөрсөн» гэсэн ногоон карт
- * дээр «төлөв танигдсангүй» гэсэн улаан дохио гарна. Тиймээс анхааруулга бүр
- * `Issue.at`-аар өөрийн картаа заана; заагаагүй нь бүлгийн үндсэн картад
- * (`GROUP_ROOT`) буна.
- *
  * @param fine `true` бол нарийн схемийн `FineId`-аар, эс бөгөөс `SchemId`-аар
  *             түлхүүрлэнэ (ерөнхий схемд бүлэг бүр ганц карттай).
  */
@@ -915,8 +745,6 @@ export function alertsByCard(
   const out = new Map<string, Issue[]>();
   for (const id of Object.keys(PART) as SchemId[]) {
     for (const is of PART[id](src, pkg).issues) {
-      /* ⚠️ Ерөнхий схемд `at`-ыг ҮЛ ТООНО: тэнд «Тайлангүй блок» гэсэн карт
-         байхгүй тул түүний анхааруулга хаана ч буухгүй алга болно. */
       const key = fine ? (is.at ?? GROUP_ROOT[id]) : id;
       const list = out.get(key);
       if (list) list.push(is); else out.set(key, [is]);

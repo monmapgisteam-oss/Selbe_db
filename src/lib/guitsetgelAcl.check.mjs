@@ -26,8 +26,6 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
-/* ⚠️ ГАРААР ТАРЬСАН томилгоо (2026-09-21) — импортлохоос ӨМНӨ localStorage-д.
-   Доорх 0-р шалгуур: remote нэг ч удаа уншигдаагүй сешнд энэ мөр ХҮЧИНГҮЙ. */
 mem.set('selbe-guitsetgel-acl-v1', JSON.stringify([
   { user: 'offline_hack', stage: 'director', bagts: ['*'] },
   { user: 'inj_offline', stage: 'director', bagts: ['*'] },
@@ -39,16 +37,11 @@ const {
 } = await import('@/lib/guitsetgelAcl.ts');
 const P = await import('@/lib/permissions.ts');
 const { ROLE_BY_USER } = await import('@/lib/services.ts');
-/* ⚠️ 2026-09-25: урсгалын үүргийн харагдац нь эрхийн төрлийн загвараас (`roleTypes.roleAccess`) */
 const { roleAccess } = await import('@/lib/roleTypes.ts');
 const superName = Object.entries(ROLE_BY_USER).find(([, x]) => x === 'super')[0];
 
 /* ══════════ 0. REMOTE АЧААЛАГДААГҮЙ → localStorage ҮЛ ТООЦНО (2026-09-21) ══════════
- * ⚠️ Урсгалын үүрэгтэй хэрэглэгч (`inj_offline`; 2026-10-19-нөөс хатуу жагсаалтад урсгалын аккаунт БАЙХГҮЙ)
- *    өөрийгөө `director` шатанд «бүх багц» гэж бичээд сүлжээгээ хаагаад
- *    нэвтэрвэл `canReview` давдаг байв. Одоо `_syncRemoteAssigns` ажиллаагүй
- *    бол ХАТУУ ТОХИРГООНЫ default: үүргийн шат (`ROLE_STAGE`), шийдвэргүй,
- *    багцгүй. */
+ */
 assert.equal(stageOfUser('offline_hack'), null, 'remote-гүй сешнд локал томилгоо ХҮЧИНГҮЙ');
 assert.deepEqual(bagtsFor('offline_hack', 'director'), []);
 assert.deepEqual(bagtsScope('inj_offline'), []);
@@ -136,7 +129,6 @@ assert.equal(resolveFlowStage(superName, 'super', 'director').stage, 'director')
 r = resolveFlowStage(null, null, null, true); // дев — нэвтрэлт унтраалттай
 assert.equal(r.canPick, true);
 assert.equal(r.scope, null);
-/* ⚠️ 2026-10-23: шатанд томилогдсон (хүснэгтийн) super-ийн АНХДАГЧ шат = өөрийн томилгоо; сонговол сонгосон шат */
 {
   const RL = await import('./services/roles.ts');
   RL._setTableSupers(['tsup_flow']);
@@ -147,7 +139,6 @@ assert.equal(r.scope, null);
   assert.equal(r.scope, null, 'super — бүх багц (аврах эрх)');
   assert.equal(resolveFlowStage('tsup_flow', 'super', 'manager').stage, 'manager', 'сонгосон шат давамгайлна');
   RL._setTableSupers(null);
-  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — томилгоотой байсан ч зөвхөн харна, бүх багц, super-ийн сонгогч/bypass БИШ */
   _syncRemoteAssigns([{ user: 'zah_flow', stage: 'engineer', bagts: ['Багц 2'] }]);
   r = resolveFlowStage('zah_flow', 'zahiral');
   assert.equal(r.canReview, false, 'захирал шийдвэр гаргахгүй (санамсаргүй томилгоотой ч)');
@@ -166,8 +157,6 @@ assert.equal(resolveFlowStage('late', 'beginner').stage, 'director');
 console.log('✅ resolveFlowStage — шат томилгооноос');
 
 /* ── 7. setAssign → grant: урсгалын бус үүрэг ХЭВЭЭР, guitsetgel НЭМЭГДЭНЭ ── */
-/* ⚠️ 2026-09-29 (аудит 10): `permissions.resolveBaseAccess`/`roleOf` remote уншигдсаны дараа л
-   override-ыг тооцно — аппд `initRemote` хоёр тугийг ХАМТ асаадаг; энд дуурайна. */
 P._markRemoteLoaded();
 _syncRemoteAssigns([]);
 let w = setAssign('selbe_redesign', 'company', [ALL_BAGTS]); // хатуу tolovlolt: views ['plan']
@@ -199,7 +188,6 @@ w = setAssign('selbe_et', 'company', [ALL_BAGTS]); await w.sync;
 let rm = removeAssign('selbe_et', 'company'); await rm.sync;
 assert.equal(stageOfUser('selbe_et'), null);
 assert.ok(P.resolveBaseAccess('selbe_et').views.includes('finance'), 'админы нэмсэн харагдац алга болохгүй');
-/* ⚠️ 2026-10-19: `beginner`-ийн суурьд «Гүйцэтгэл» БАЙХГҮЙ болсон (урсгалтай харагдац зөвхөн томилгоогоор) — олгосныг хасна */
 assert.ok(!P.resolveBaseAccess('selbe_et').views.includes('guitsetgel'), 'томилгоогоор олгосон «Гүйцэтгэл» хасагдах ёстой');
 assert.equal(P.roleOf('selbe_et'), 'beginner');
 console.log('✅ хасахад grant-тай тэгш хэмтэй');
@@ -228,8 +216,6 @@ w = setAssign('comp_a', 'manager', ['Багц 2']);
 await Promise.all([rm.sync, w.sync]);
 assert.equal(stageOfUser('comp_a'), 'manager');
 assert.equal(P.roleOf('comp_a'), 'menejer', 'хойшилсон revoke шинэ grant-ыг дарахгүй');
-/* ⚠️ 2026-09-30: загвар урсгалтай харагдац (guitsetgel) агуулахгүй — урсгалын томилгоо нэмнэ
-   ⚠️ 2026-10-19 (аудит №8): шат шилжихэд загварыг одоогийн харагдац дээр НЭГТГЭНЭ (солихгүй) */
 assert.deepEqual(new Set(P.resolveBaseAccess('comp_a').views),
   new Set([...roleAccess('guitsetgegch').views, 'guitsetgel', ...roleAccess('menejer').views]));
 console.log('✅ хас→нэм дараалал');
@@ -259,9 +245,6 @@ console.log('✅ томилгоо хувийн харагдац/docs/төрли�
 /* ══════════════════════════════════════════════════════════════════════
  * 14. ХӨНДЛӨНГИЙН ХЯНАЛТ — ХАРНА, ШИЙДВЭРЛЭХГҮЙ (2026-09-09)
  * ══════════════════════════════════════════════════════════════════════
- * ⚠️ Урьд нь хоёрхон зам байсан бөгөөд хоёулаа буруу: томиловол ШИЙДВЭРЛЭХ
- *    эрхтэй болно, томилохгүй бол `bagtsFor` нь `[]` өгч жагсаалт ХООСОН.
- *    Аудитор, захиалагчийн төлөөлөгч зэрэг хүнд дундах зам байгаагүй.
  */
 _syncRemoteAssigns([{ user: 'audit', stage: 'engineer', bagts: ['Багц 1'], viewOnly: true }]);
 {
@@ -278,7 +261,6 @@ _syncRemoteAssigns([{ user: 'inj', stage: 'engineer', bagts: ['Багц 1'] }]);
 assert.equal(resolveFlowStage('inj', null).canReview, true, 'туггүй томилгоо шийдвэрлэх эрхээ алдав');
 assert.equal(isViewOnly('inj'), false);
 
-/* ⚠️ ЗӨВХӨН ЯГ `true` — эргэлзээтэй утга эрх ХАСАХГҮЙ */
 _syncRemoteAssigns([{ user: 'muu', stage: 'engineer', bagts: ['Багц 1'], viewOnly: 'yes' }]);
 assert.equal(isViewOnly('muu'), false, '«yes» гэсэн утга тугийг асаав');
 assert.equal(resolveFlowStage('muu', null).canReview, true);
@@ -299,8 +281,6 @@ _syncRemoteAssigns([{ user: 'sw', stage: 'manager', bagts: ['Багц 2'] }]);
   assert.equal(resolveFlowStage('sw', null).canReview, true, 'туг унтраахад эрх сэргэсэнгүй');
 }
 
-/* ⚠️ ТОМИЛГООГҮЙ хүнд туг тавихгүй — «харагч» гэж тэмдэглэсэн атлаа
-   жагсаалт нь хоосон хэвээр байх утгагүй төлөв үүснэ. */
 _syncRemoteAssigns([]);
 assert.equal(setViewOnly('hen_ch', true).ok, false, 'томилгоогүй хүнд туг тавигдав');
 
@@ -317,21 +297,10 @@ console.log('✅ ХӨНДЛӨНГИЙН ХЯНАЛТ — харна, шийдв�
 
 /* ══════════ ШИЙДВЭР ГАРГАХ ЗАМ — ДОМЭЙН ТҮВШИНД ХАМГААЛАГДСАН ══════════ */
 /**
- * ⚠️ 2026-09-16-ны аудитын олдвор: `hyanaltStore.apply`/`recheck` нь `who`
- *    хэн болохыг НЭГ Ч удаа шалгадаггүй байв. Эрхийн БҮХ шийдвэр зөвхөн
- *    `Guitsetgel.tsx`-ийн зурагдалтад (`readOnly` prop, `mine`, жагсаалтын
- *    шүүлт) байсан — тэдгээр нь зурагдах агшны шийдвэр.
- *
  *    НӨЛӨӨ: «Гүйцэтгэл» харагдац руу орох эрхтэй ямар ч аккаунт консолоос
  *    `apply({ oid, stage: 'director', decision: approve, who })` дуудаж,
  *    `archiveSubmission` → `applyAdds` гэсэн БУЦААШГҮЙ архивын бичилтийг
  *    өдөөж чаддаг байв — өөрийн багцаас гадуур ч, `viewOnly` тэмдэгтэй ч.
- *
- * ⚠️ Төслийн бусад ГУРВАН урсгал («UI-д БИШ, домэйн функцэд») энэ зарчмыг
- *    ил бичсэн тул хяналтын урсгал ч ижил байх ЁСТОЙ. Энэ шалгуур нь тэр
- *    хамгаалалт БУЦААЖ АЛГА БОЛОХООС сэргийлнэ.
- *
- * ⚠️ Эх кодоор шалгана: `apply` нь ArcGIS-гүйгээр ажиллахгүй (архив бичдэг).
  */
 {
   const S = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
@@ -345,8 +314,6 @@ console.log('✅ ХӨНДЛӨНГИЙН ХЯНАЛТ — харна, шийдв�
       'hyanaltStore.authz: ' + n + ' шалгагдаагүй');
   }
 
-  /* ⚠️ АРХИВЛАЛТААС ӨМНӨ: `applyAdds` нь буцаашгүй тул нэг ч талбар
-     хөндөгдөхөөс өмнө таслах ёстой. Дараалал нь шалгуурын БҮХ утга. */
   const ia = S.indexOf('const deny = authz(a.stage');
   const iar = S.indexOf('archiveSubmission(cur, a.subAt)');
   assert.ok(ia > 0, 'apply-д authz дуудагдаагүй');
@@ -356,13 +323,9 @@ console.log('✅ ХӨНДЛӨНГИЙН ХЯНАЛТ — харна, шийдв�
   assert.ok(S.includes('const deny = authz(by, me'),
     'hyanaltStore.recheck: authz алга — дахин шалгалтаар тойрч гарна');
 
-  /* ⚠️ FAIL-CLOSED: `bypass` нь ил хүсэгдэх ёстой, анхдагчаар НЭЭЛТТЭЙ биш */
   assert.ok(/bypass\?: boolean;/.test(S) && /a\.bypass === true/.test(S),
     'hyanaltStore: bypass нь fail-closed биш — шалгуур анхдагчаар тойрогдоно');
 
-  /* ⚠️ `me` (ACL түлхүүр) ба `who` (бичигдэх дэлгэцийн нэр) ХОЛИХГҮЙ:
-     `who` нь `fullName` тул давхардаж, солигдож болно — эрхийн шалгуурт
-     хэрэглэвэл нэрээр эрх гоожино. */
   const G = fs.readFileSync('src/modules/Guitsetgel.tsx', 'utf8');
   assert.ok(/me=\{user\?\.username\}/.test(G),
     'Guitsetgel: me (username) дамжуулагдаагүй — authz хэнийг ч танихгүй');

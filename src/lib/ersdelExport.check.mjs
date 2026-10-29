@@ -77,7 +77,6 @@ import { simplifyRings } from '@/lib/uyrSurface';
   }];
   const csv = damageCsv(rows).split('\r\n');
   assert.equal(csv.length, 3, 'толгой + 2 объект');
-  /* ⚠️ 2026-10-09: сүүлийн хоёр багана truncated/total_n — мэдэгдэхгүй бол хоосон */
   assert.ok(csv[1].endsWith(',123.46,m2,0.81,1000,,'), csv[1]);
   assert.ok(csv[2].endsWith(',5,m2,,,,'), `мэдэгдэхгүй гүн/өртөг ХООСОН: ${csv[2]}`);
   assert.ok(csv[0].endsWith(',truncated,total_n'), csv[0]);
@@ -95,7 +94,7 @@ import { simplifyRings } from '@/lib/uyrSurface';
   assert.equal(JSON.parse(damageGeoJSON(rows, null)).features.length, 2);
   assert.equal(fc.properties.partial, false, 'тайрагдаагүй бол partial=false');
 
-  /* 4b. ⚠️ 2026-10-09: ТАЙРАГДСАН давхарга экспортод ИЛ */
+  /* 4b. 2026-10-09: ТАЙРАГДСАН давхарга экспортод ИЛ */
   const tr = [{ ...rows[0], truncated: true, totalN: 1611 }];
   const tcsv = damageCsv(tr).split('\r\n');
   assert.ok(tcsv[1].endsWith(',1,1611'), tcsv[1]);
@@ -105,12 +104,12 @@ import { simplifyRings } from '@/lib/uyrSurface';
   assert.equal(tfc.features[0].properties.layer_truncated, true);
   assert.equal(tfc.features[0].properties.layer_total_n, 1611);
 
-  /* 4c. ⚠️ 2026-10-09: тоолох асуулга унасан (`totalN: null`) → CSV хоосон, GeoJSON null */
+  /* 4c. 2026-10-09: тоолох асуулга унасан (`totalN: null`) → CSV хоосон, GeoJSON null */
   const cf = [{ ...rows[0], truncated: true, totalN: null }];
   assert.ok(damageCsv(cf).split('\r\n')[1].endsWith(',1,'), 'total_n хоосон');
   assert.equal(JSON.parse(damageGeoJSON(cf, null)).properties.truncated_layers[0].total_n, null);
 
-  /* 4d. ⚠️ 2026-10-09: тайрагдсан, НЭГ Ч объектгүй давхарга → давхаргын ганц мөр (oid хоосон) */
+  /* 4d. 2026-10-09: тайрагдсан, НЭГ Ч объектгүй давхарга → давхаргын ганц мөр (oid хоосон) */
   const empty = damageCsv([{ ...rows[0], objects: [], truncated: true, totalN: 42 }]).split('\r\n');
   assert.equal(empty.length, 2, empty.join('|'));
   assert.ok(empty[1].endsWith(',1,42'), empty[1]);

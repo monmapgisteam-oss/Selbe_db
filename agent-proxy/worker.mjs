@@ -1,28 +1,12 @@
 /**
  * Сэлбэ AI туслах — LLM РЕЛЕ, Cloudflare Worker хувилбар.
  *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: портал `output: 'export'` буюу бүрэн статик тул GitHub
- * Pages дээр сервер тал ОГТ ажиллахгүй. Anthropic-ийн түлхүүрийг статик build-д
- * шингээвэл JS багцаас хэн ч уншина. Тиймээс түлхүүр ЗӨВХӨН энд, Cloudflare-ийн
- * нууц хадгалалтад байна — хэрэглэгч юу ч бичихгүй.
- *
- * ⚠️ `server.mjs`-ийн ТОЛИН ХУВИЛБАР (локал хөгжүүлэлтэд тэрийг хэвээр
- * ашиглана). Загвар, effort, кэшлэлт, алдааны мессеж ижил байх ёстой —
- * аль нэгийг өөрчилвөл НӨГӨӨГ нь хамт засна.
- *
- * ⚠️ ЭНЭ ФАЙЛ АГЕНТЫН ЛОГИКГҮЙ. Хэрэгсэл гүйцэтгэх, давхаргын бүртгэл унших,
- * эрх шалгах бүхэн browser талд (`src/lib/agent/*`) явна. Ингэснээр давхарга
- * нэмэгдэх/хасагдахад релег огт засахгүй (гол шаардлага №3).
- *
- * ⚠️ SDK-гүй, зөвхөн `fetch` — Worker дээр багц угсрах алхам нэмэхгүйн тулд.
- *
  * Байршуулах:
  *   cd agent-proxy
  *   npx wrangler secret put ANTHROPIC_API_KEY     # нэг удаа
  *   npx wrangler deploy
  */
 
-/* ⚠️ 2026-10-01: хурдны хязгаар `server.mjs`-тэй ХУВААЛЦСАН модуль — wrangler багцлахдаа оруулна */
 import {
   createLimiter, LIMITS, WINDOW_MS, createBudget, budgetFromEnv, budgetDay, BUDGET_MSG, upstreamErrorText, UPSTREAM_AUTH,
   createConcurrency, CONCURRENT_MSG, botCaller, sanitizeChat,
@@ -34,23 +18,10 @@ const API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 
 const DEFAULTS = {
-  /* ⚠️ 2026-10-19: `claude-opus-5` → `claude-opus-5-5` (`server.mjs`-ийн MODEL-ийн ⚠️). `AGENT_MODEL`-оор солино. */
   MODEL: 'claude-opus-5-5',
-  /* ⚠️ 2026-10-15: 'low' → 'medium' (`server.mjs`-ийн ⚠️-тэй ижил шалтгаан) */
   EFFORT: 'medium',
-  /**
-   * ⚠️ Opus 5-д бодолт анхнаасаа асаалттай ба `max_tokens` нь бодолт + хариу
-   * ХОЁУЛАНГ хамарна.
-   *
-   * ⚠️ 8000 → 10000 (2026-09-15-ны аудит): `server.mjs` нь 10000 байсан тул
-   * локалд бүтэн гардаг урт хариулт (олон багцын хүснэгт + график) байршуулсан
-   * Worker дээр таслагдаж, хөгжүүлэгч локалд давтаж чаддаггүй эвдрэл үүсдэг
-   * байв. Хоёр файл нь толин хувилбар — тоонууд ЗААВАЛ ижил байна.
-   */
   MAX_TOKENS: 10000,
-  /* ⚠️ 2026-10-21: анхдагч портал Enterprise (AGOL хасагдсан — wrangler.toml-ийн ⚠️) */
   PORTAL: 'https://gis.selbecity.mn/geoportal',
-  /* ⚠️ 2026-10-21 (аудит): порталын эрхийн хүснэгт (`SYS_Selbe_Permissions/230`) — `hasPortalRow`-ийн ⚠️; `ARCGIS_PERMS_URL`-оор солино */
   PERMS: 'https://gis.selbecity.mn/map/rest/services/Hosted/SYS_Selbe_Permissions/FeatureServer/230',
 };
 
@@ -59,23 +30,10 @@ const MAX_BODY = 2 * 1024 * 1024;
 
 /**
  * Шалгагдсан ArcGIS токены КЭШ.
- *
- * ⚠️ Токен бүрийг ArcGIS руу дахин шалгуулбал асуулт бүрд нэмэлт 200–400мс
- * саатна (гол шаардлага №1 — хурд). Worker-ийн isolate богино настай тул энэ нь
- * зөвхөн ойрын хүсэлтүүдийг хурдасгах бөгөөд эрх хураахад 5 минутын дотор
- * хүчинтэй байдал дуусна.
  */
 const TOKEN_TTL = 5 * 60 * 1000;
-/**
- * ⚠️ 2026-09-30: кэшийн ДЭЭД ХЭМЖЭЭ (хамгийн хуучныг хаяна) ба нэвтрэлт УНАСАН
- *    токеныг кэшээс ШУУД хасна — ArcGIS 498/401 (хугацаа дууссан, хураагдсан)
- *    хариулсан агшнаас тэр токен дахин шалгагдана, 5 минут хүчинтэй үлдэхгүй.
- */
 const VERIFIED_MAX = 500;
-/* ⚠️ 2026-10-09 (аудит №4, `server.mjs`-ийн толин): кэшийн ТҮЛХҮҮР нь токены SHA-256 хэш —
-   isolate-ийн санах ойд түүхий амьд токен хадгалахгүй; зөвхөн хэш + хэрэглэгчийн нэр. */
 const verified = new Map();
-/** ⚠️ 2026-10-09: кэшээс л (ArcGIS руу явахгүй) — хүчинтэй бол хэрэглэгчийн нэр, эс бөгөөс `null` */
 function verifiedUser(key) {
   const hit = verified.get(key);
   return hit && hit.until > Date.now() ? hit.username : null;
@@ -83,15 +41,6 @@ function verifiedUser(key) {
 
 /** SQL мөрийн литерал — `'` → `''` (хэрэглэгчийн нэр `where`-д орно) */
 const sqlStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
-/**
- * ⚠️ 2026-10-21 (аудит): ПОРТАЛЫН ЭРХИЙН ХҮСНЭГТИЙН МӨР ЗААВАЛ. Нэг байгууллагатай Enterprise дээр `ARCGIS_ORG_ID`
- *    шалгалт утгагүй (геопорталд нэвтэрсэн ХЭН Ч тэр orgId-тай) — порталд бүртгэлгүй аккаунт ч релег ашиглаж чаддаг байв.
- *    Одоо `community/self`-ийн дараа ХЭРЭГЛЭГЧИЙН ӨӨРИЙН токеноор `SYS_Selbe_Permissions`-оос мөрийг нь асууна
- *    (`username = '<нэр>'` — хүснэгтийн түлхүүр trim · жижиг үсэг, `permsRemote.upsert`; устгагдсан мөр = `views: 'removed'`).
- *    Мөргүй/устгагдсан → 403 (кэшлэхгүй); хүснэгт уншигдахгүй (сүлжээ · 403 · алдаа) → 503, retryable (fail-closed —
- *    порталын `hasAccess`-тэй нэг зарчим). Талбарын нэр ЖИЖИГ үсгээр (Enterprise), токен POST биед — `server.mjs`-ийн толин.
- * @returns {Promise<{ok: true} | {ok: false, reason: string, status: 403 | 503}>}
- */
 async function hasPortalRow(token, username, env) {
   const url = (env.ARCGIS_PERMS_URL || DEFAULTS.PERMS).replace(/\/+$/, '');
   const name = String(username ?? '').trim();
@@ -108,7 +57,6 @@ async function hasPortalRow(token, username, env) {
   } catch {
     return { ok: false, reason: 'Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу', status: 503 };
   }
-  // ⚠️ ArcGIS алдаагаа HTTP 200 + `error` биеэр буцаадаг
   if (!data || data.error || !Array.isArray(data.features)) {
     return { ok: false, reason: 'Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу', status: 503 };
   }
@@ -128,13 +76,6 @@ async function hmacHex(key, text) {
   return hex(await crypto.subtle.sign('HMAC', k, enc.encode(text)));
 }
 
-/**
- * ⚠️ 2026-09-30: НУУЦ ТҮЛХҮҮРИЙГ ТОГТМОЛ ХУГАЦААНД харьцуулна (`x-bot-secret`).
- *    `===` нь эхний зөрсөн байтад зогсдог тул хариу өгөх хугацаанаас нууцыг
- *    байт байтаар таах онолын боломж (timing attack) үлддэг. Урт зөрвөл ч бүх
- *    байтыг гүйлгэнэ — хугацаа зөвхөн `a`-гийн уртаас хамаарна.
- *    (`server.mjs`-д `crypto.timingSafeEqual` — толин хувилбар.)
- */
 function secretMatches(given, expected) {
   if (typeof given !== 'string' || typeof expected !== 'string' || !expected) return false;
   const a = new TextEncoder().encode(expected);
@@ -144,35 +85,9 @@ function secretMatches(given, expected) {
   return diff === 0;
 }
 
-/**
- * ⚠️ БУЛААЛТААС ХАМГААЛАХ — нэг дуудагчийн (баталгаажсан ArcGIS хэрэглэгч, эс
- * бөгөөс эх) минут доторх хүсэлтийг хязгаарлана. Түлхүүр барих реле рүү хязгааргүй
- * дуудалт хийхээс сэргийлнэ.
- *
- * ⚠️ Worker-ийн isolate богино настай тул энэ нь ЗӨВХӨН ойрын хүсэлтэд үйлчилнэ
- * (isolate солигдоход тоолол тэглэгдэнэ) — нэг дуудагчийн хурц үерийг барих
- * хамгаалалт. Бат бэх, тархсан хязгаарлалт хэрэгтэй бол Cloudflare KV эсвэл
- * Durable Object-оор тоолуур хийнэ.
- */
-/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): тоолуур (хуучирсан түлхүүрийн цэвэрлэгээтэй)
-   ба хязгаарууд `rateLimit.mjs`-д — `server.mjs`-тэй ХУВААЛЦСАН: баталгаажсан
-   хэрэглэгч минутад 40 · IP таг 300 (оффисын NAT) · амжилтгүй нэвтрэлт IP-д 20. */
 const limiter = createLimiter();
-/* ⚠️ 2026-10-09: дуудагчийн ЗЭРЭГ хүсэлтийн таг — isolate тус бүрд (`relayChat`-ийн өмнөх ⚠️) */
 const inflight = createConcurrency();
 
-/**
- * ⚠️ 2026-10-09 (аудит №5): ISOLATE ХООРОНДЫН ТООЛУУР — `RL_KV` KV холбосон үед л
- *    (`wrangler.toml`-ийн `[[kv_namespaces]]` жишээ). Дээрх санах ойн тоолуур isolate
- *    солигдоход тэглэгдэж, олон байршил/isolate дээр тархсан үерийг бүрэн барьдаггүй байв.
- *    · Санах ойн тоолуур ХЭВЭЭР эхэлж ажиллана (хурдан, KV руу явахгүй); KV нь нэмэлт давхарга.
- *    · KV нь EVENTUALLY CONSISTENT ба нэг түлхүүрт секундэд ~1 бичилт — тоолол ОЙРОЛЦОО
- *      (тогтмол минутын цонх, уралдаанд нэг хоёр алдагдана). Нарийн хязгаар хэрэгтэй бол
- *      Durable Object / Rate Limiting binding.
- *    · IP таг (300/мин) KV-д ОРОХГҮЙ — нэг түлхүүрт секундэд 5 бичилт KV-ийн хязгаарыг давна.
- *    · KV алдаа (хязгаар, түр саатал) хүсэлтийг УНАГААХГҮЙ — санах ойн тоолуур л үлдэнэ.
- *    KV холбоогүй бол зан урьдынхаар (зөвхөн isolate тус бүр).
- */
 const kvWindow = () => Math.floor(Date.now() / WINDOW_MS);
 async function kvNum(env, key) {
   try {
@@ -186,7 +101,6 @@ function kvPut(env, ctx, key, value, ttl) {
   const p = Promise.resolve()
     .then(() => env.RL_KV.put(key, String(value), { expirationTtl: ttl }))
     .catch((e) => console.warn('[agent] KV бичилт унав:', e?.message));
-  /* ⚠️ `waitUntil` — хариуг бичилтээр саатуулахгүй */
   if (ctx?.waitUntil) ctx.waitUntil(p);
   return p;
 }
@@ -204,18 +118,7 @@ async function kvHit(env, ctx, key, limit) {
   return n > limit;
 }
 
-/**
- * ⚠️ 2026-10-09 (аудит №1): ӨДРИЙН ТОКЕНЫ ТӨСӨВ (`rateLimit.mjs`-ийн ⚠️, `DAILY_TOKEN_BUDGET`).
- *    `RL_KV` холбосон бол KV-д (`budget:<УБ өдөр>:<дуудагч>`, 2 хоногийн TTL) — isolate
- *    хооронд хуваалцана (ойролцоо, дээрх KV-ийн ⚠️). Холбоогүй бол isolate тус бүрийн санах ойд:
- *    isolate солигдоход тэглэгдэх тул хэрэглэгч төсвөөс илүү зарцуулж БОЛНО — production-д
- *    KV холбохыг зөвлөнө.
- */
 const memBudget = createBudget();
-/* ⚠️ 2026-10-21 (аудит): `RL_KV` ХОЛБООГҮЙ production — өдрийн төсөв isolate тус бүрд тэглэгддэг тул бодит хязгаар =
-   тохируулсных × isolate-ийн тоо (хязгаарлалт БАЙХГҮЙТЭЙ ойролцоо). Isolate бүрд НЭГ удаа ЧАНГА анхааруулаад isolate
-   доторх төсвийг `NO_KV_BUDGET_SHARE` (½)-аар хумина — реле ажилласаар (эвдэхгүй), харин хэтрэлт багасна. Зэрэг таг
-   (`inflight`) KV-гүй үед ч урьдын адил isolate тус бүрд. Production-д KV ЗААВАЛ — `wrangler.toml`-ийн `[[kv_namespaces]]`. */
 const NO_KV_BUDGET_SHARE = 0.5;
 let warnedNoKv = false;
 function budgetCapFor(env, configured) {
@@ -226,11 +129,6 @@ function budgetCapFor(env, configured) {
   }
   return Math.max(1, Math.floor(configured * NO_KV_BUDGET_SHARE));
 }
-/* ⚠️ 2026-10-09: KV горимд УРЬДЧИЛСАН ТООЦОО (`reserveTokens`) зөвхөн САНАХ ОЙД (isolate тус бүр).
-   Урьд нь хүсэлт бүр KV-д ХОЁР удаа уншиж-бичдэг байв (тооцоо + тааруулалт, секундэд багтан) —
-   KV нь нэг түлхүүрт ~1 бичилт/с тул хоёр дахь бичилт эхнийхийг дарах/алдах эрсдэлтэй. Одоо
-   KV-д ЗӨВХӨН бодит зарцуулалт нэг удаа (`budgetSettle`) бичигдэнэ. Хариу хүлээж буй тооцоо
-   isolate хооронд харагдахгүй — KV өөрөө ойролцоо тул хүлээн зөвшөөрсөн нарийвчлал. */
 const pendingBudget = createBudget();
 const budgetKey = (caller) => `budget:${budgetDay(Date.now())}:${caller}`;
 async function budgetOver(env, caller, limit) {
@@ -238,7 +136,7 @@ async function budgetOver(env, caller, limit) {
   if (env.RL_KV) return (await kvNum(env, budgetKey(caller))) + pendingBudget.used(caller) >= limit;
   return memBudget.over(caller, limit);
 }
-/** Урьдчилсан тооцоо — KV руу БИЧИХГҮЙ (дээрх ⚠️) */
+/** Урьдчилсан тооцоо — KV руу БИЧИХГҮЙ (дээрх) */
 function budgetReserve(env, caller, n) {
   if (!n) return;
   if (env.RL_KV) pendingBudget.add(caller, n);
@@ -253,9 +151,6 @@ function budgetSettle(env, ctx, caller, reserved, charge) {
   }
   memBudget.adjust(caller, charge - reserved);
 }
-/* ⚠️ 2026-10-09: `n` СӨРӨГ байж болно — урьдчилсан тооцоог (`reserveTokens`) бодит хэрэглээгээр
-   тааруулах; 0-ээс доош орохгүй. Promise буцаана: урьдчилсан хасалтыг `await` хийснээр дараагийн
-   хүсэлтийн KV уншилт түүнийг харах магадлал өснө (KV ойролцоо, дээрх ⚠️). */
 async function budgetAdd(env, ctx, caller, n) {
   if (!Number.isFinite(n) || !n) return;
   if (!env.RL_KV) {
@@ -287,8 +182,6 @@ function corsHeaders(origin, env) {
   const h = {
     Vary: 'Origin',
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-    // ⚠️ `x-arcgis-token` — эс бөгөөс browser preflight-д унана
-    // ⚠️ 2026-10-09: `x-prompt-sig` — `PROMPT_HMAC`-ийн гарын үсэг
     'Access-Control-Allow-Headers': 'Content-Type, x-arcgis-token, x-prompt-sig',
     'Access-Control-Max-Age': '86400',
   };
@@ -299,13 +192,8 @@ function corsHeaders(origin, env) {
 /**
  * ArcGIS токеныг ПОРТАЛААС шалгана.
  *
- * ⚠️ Токеныг зөвхөн «хоосон биш» гэж үзэж болохгүй — хүчинтэй эсэхийг ArcGIS
- * өөрөөр нь баталгаажуулж, шаардвал байгууллагын харьяаллыг нь шалгана.
- * Эс бөгөөс релег хэн ч дурын мөр илгээж ашиглана.
- *
  * @returns {Promise<{ok: true, username: string} | {ok: false, reason: string}>}
  */
-/* ⚠️ 2026-10-09: `key` (токены SHA-256) — дуудагч кэшийг шалгахдаа аль хэдийн бодсон бол дахин бодохгүй */
 async function checkArcGIS(token, env, key) {
   if (!token) return { ok: false, reason: 'Нэвтрэлтийн мэдээлэл алга' };
 
@@ -316,12 +204,6 @@ async function checkArcGIS(token, env, key) {
   const portal = (env.ARCGIS_PORTAL || DEFAULTS.PORTAL).replace(/\/+$/, '');
   let data;
   try {
-    /*
-     * ⚠️ Токеныг URL query-д БИЧИХГҮЙ — query string нь ArcGIS-ийн вэб сервер,
-     * завсрын proxy/CDN-ийн access log-д бүрэн хадгалагддаг тул амьд токен
-     * гуравдагчийн логт задарна (CWE-598). ArcGIS REST бүх endpoint дээр
-     * POST + form-urlencoded биед `token`-ийг албан ёсоор хүлээж авдаг.
-     */
     const res = await fetch(`${portal}/sharing/rest/community/self`, {
       method: 'POST',
       headers: {
@@ -336,7 +218,6 @@ async function checkArcGIS(token, env, key) {
     return { ok: false, reason: 'Нэвтрэлт шалгах үйлчилгээ хариу өгсөнгүй' };
   }
 
-  // ⚠️ ArcGIS буруу токенд ч HTTP 200 буцаадаг — биед нь `error` ирнэ
   if (!data || data.error || !data.username) {
     verified.delete(key);
     return { ok: false, reason: 'Нэвтрэлтийн хугацаа дууссан эсвэл хүчингүй байна' };
@@ -347,21 +228,18 @@ async function checkArcGIS(token, env, key) {
     verified.delete(key);
     return { ok: false, reason: 'Танай байгууллагад энэ үйлчилгээ нээгдээгүй байна' };
   }
-  /* ⚠️ 2026-10-21 (аудит): порталын эрхийн мөр заавал (`hasPortalRow`-ийн ⚠️) — байхгүй бол кэшлэхгүй */
   const row = await hasPortalRow(token, data.username, env);
   if (!row.ok) {
     verified.delete(key);
     return { ok: false, reason: row.reason, status: row.status };
   }
 
-  /* ⚠️ Дээд хэмжээ — Map оруулсан дарааллаа хадгалдаг тул эхнийх нь хамгийн хуучин */
   verified.delete(key);
   while (verified.size >= VERIFIED_MAX) verified.delete(verified.keys().next().value);
   verified.set(key, { username: data.username, until: Date.now() + TOKEN_TTL });
   return { ok: true, username: data.username };
 }
 
-/* ⚠️ 2026-10-09 (аудит №6): нэртэй объект — `tools/agentWorker.check.mjs` `fetch`-ийг шууд дуудна (lint: нэргүй default export биш) */
 const handler = {
   async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin');
@@ -376,18 +254,8 @@ const handler = {
 
     /*
      * Эрүүл мэндийн шалгалт — порталын UI реле асаалттай эсэхийг эндээс мэднэ.
-     *
-     * ⚠️ ДОТООД ТОХИРГООГ ЗАДЛАХГҮЙ (2026-09-15-ны аудит). Урьд нь `model` ба
-     *    `effort`-ыг нэвтрэлт, хурдны хязгаар ХОЁУЛАНГААС нь ӨМНӨ буцаадаг
-     *    байсан тул хаягийг олсон хэн ч дотоод тохиргоог хязгааргүй тандаж
-     *    чаддаг байв. Порталын UI-д зөвхөн «амьд эсэх» л хэрэгтэй.
-     *
-     * ⚠️ Хурдны хязгаарт ч оруулна — эс бөгөөс энэ зам нь хязгааргүй хүсэлт
-     *    хүлээж авах цорын ганц нүх болно.
      */
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
-      /* ⚠️ 2026-09-25 (аудит 8): түлхүүр нь IP (`cf-connecting-ip`), origin биш — доорх
-         `pre:` хязгаартай нэг дүрэм; origin зохиосон хэн ч тойрдог байв. */
       if (limiter.hit(`health:${request.headers.get('cf-connecting-ip') || origin || 'anon'}`, LIMITS.ip)) {
         return json(429, { error: 'Хэт олон хүсэлт' }, cors);
       }
@@ -398,58 +266,29 @@ const handler = {
       return json(404, { error: 'Ийм зам байхгүй' }, cors);
     }
 
-    // ⚠️ Танихгүй эхээс ирсэн хүсэлтийг татгалзана: browser CORS-ыг тойрч
-    //    curl-ээр дуудаж болох тул серверт ч шалгана.
     if (origin && !allowedOrigins(env).includes(origin)) {
       return json(403, { error: 'Энэ эх сурвалжид зөвшөөрөл алга' }, cors);
     }
 
-    /*
-     * ⚠️ BROWSER-ГҮЙ ҮЙЛЧЛҮҮЛЭГЧ (Telegram бот). Бот нь ArcGIS хэрэглэгч БИШ тул
-     * `x-arcgis-token` байхгүй — оронд нь `BOT_SECRET` тохируулсан бол
-     * `x-bot-secret` толгойгоор батална. Тохирвол ArcGIS шалгалтыг алгасна.
-     * Ботын хэн ашиглах эрхийг ботын ӨӨРИЙН цагаан жагсаалт (`tools/telegram-bot.mjs`)
-     * барина. `BOT_SECRET` тохируулаагүй бол зан төлөв огт өөрчлөгдөхгүй.
-     */
     const isBot = Boolean(env.BOT_SECRET) && secretMatches(request.headers.get('x-bot-secret'), env.BOT_SECRET);
 
-    /* ⚠️ 2026-10-21 (аудит): `ARCGIS_ORG_ID` ХООСОН бол реле НЭЭЛТТЭЙ (fail-open) байв — хаягийг олсон хэн ч түлхүүр
-       зарцуулна. Worker үргэлж нийтэд ил тул тохиргоогүй = АЖИЛЛАХГҮЙ: бот (`BOT_SECRET` таарсан)-оос бусдад 503
-       (`server.mjs`-ийн тунелийн 403-ын толин). Локал `wrangler dev`-д `.dev.vars`-д ARCGIS_ORG_ID өгнө. */
     if (!env.ARCGIS_ORG_ID?.trim() && !isBot) {
       console.error('[agent] ⛔ ARCGIS_ORG_ID тохируулагдаагүй — реле нэвтрэлтгүй ажиллахгүй (wrangler.toml / .dev.vars)');
       return json(503, { error: 'Реле нэвтрэлтгүй тохируулагдсан байна — администраторт хандана уу', retryable: false }, cors);
     }
 
-    /*
-     * ⚠️ ArcGIS НЭВТРЭЛТ. `ARCGIS_ORG_ID` тохируулсан үед л шаардана — ингэснээр
-     * локал хөгжүүлэлт (`server.mjs`, тохиргоогүй) хэвээр ажиллана.
-     */
-    /* ⚠️ ArcGIS шалгалтаас ӨМНӨ IP-ээр хязгаарлана (2026-09-17): хүчингүй
-       токентой үер бүр `/community/self` руу тус тусдаа хүсэлт үүсгэдэг байв
-       (амжилтгүйг кэшлэдэггүй) — доорх нэрээр хязгаарлагч тэнд хүрдэггүй. */
-    /* ⚠️ 2026-10-01: IP-ийн хязгаар 40 → ТАГ 300 — гол хязгаар нь доорх баталгаажсан хэрэглэгчийнх */
     const ip = request.headers.get('cf-connecting-ip') || origin || 'anon';
     if (limiter.hit(`ipcap:${ip}`, LIMITS.ip)) {
       return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
     }
-    /* ⚠️ 2026-10-09: бот `x-bot-user` (Telegram ID) илгээвэл `bot:<id>` (`rateLimit.botCaller`-ийн ⚠️) —
-       толгойг НУУЦ ТААРСНЫ ДАРАА л уншина. */
     let caller = isBot ? botCaller(request.headers.get('x-bot-user')) : `origin:${origin || 'anon'}`;
     if (env.ARCGIS_ORG_ID && !isBot) {
       const token = request.headers.get('x-arcgis-token');
       const hash = token ? await sha256Hex(token) : '';
-      /* ⚠️ 2026-10-09: БАТАЛГААЖСАН ТОКЕНЫ КЭШ ЭХЛЭЭД (`server.mjs`-ийн толин) — урьд амжилтгүй
-         нэвтрэлтийн хязгаар кэшээс ӨМНӨ шалгагддаг байсан тул нэг IP-ийн ард (оффисын NAT) хэн нэг
-         нь хуучирсан токеноор 20 удаа унахад ХҮЧИНТЭЙ токентой бүх ажилтан 429 авдаг байв. */
       const cachedUser = hash ? verifiedUser(hash) : null;
       if (cachedUser) {
         caller = `user:${cachedUser}`;
       } else {
-        /* ⚠️ 2026-10-01: амжилтгүй нэвтрэлт минутад 20 — хүрсэн бол ArcGIS руу шалгалт ЯВУУЛАХГҮЙ */
-        /* ⚠️ 2026-10-09: түлхүүр нь IP + ТОКЕНЫ ХЭШ (`server.mjs`-ийн аудит №3-тай ижил) — хүчингүй
-           токен бүр өөрийн 20-той; санамсаргүй токенуудын үерийг IP-ийн тусдаа, ӨНДӨР таг
-           (`LIMITS.authFailIp` = 100) барина. + KV (isolate хооронд, дээрх KV-ийн ⚠️) */
         const failKey = `authfail:${ip}:${hash.slice(0, 16)}`;
         const ipFailKey = `authfailip:${ip}`;
         if (limiter.full(failKey, LIMITS.authFail) || limiter.full(ipFailKey, LIMITS.authFailIp)
@@ -458,8 +297,6 @@ const handler = {
         }
         const auth = await checkArcGIS(token, env, hash);
         if (!auth.ok) {
-          /* ⚠️ 2026-10-21: 403 (порталд бүртгэлгүй) · 503 (эрхийн хүснэгт шалгагдсангүй, retryable) — `hasPortalRow`;
-             хүснэгтийн түр саатлыг амжилтгүй нэвтрэлтэд ТООЛОХГҮЙ (хэрэглэгчийн буруу биш) */
           const status = auth.status ?? 401;
           if (status !== 503) {
             limiter.hit(failKey, LIMITS.authFail);
@@ -473,40 +310,24 @@ const handler = {
       }
     }
 
-    // ⚠️ Дуудагч тус бүрд хурдны хязгаар — түлхүүр барих реле рүү үер хийхээс сэргийлнэ
-    /* ⚠️ 2026-10-09: + KV (isolate хооронд) — санах ойнх эхэлж, хэтэрвэл KV руу явахгүй */
-    /* ⚠️ 2026-10-09 (аудит №6): энд зөвхөн ШАЛГАНА (`full`/`kvFull`, тоолохгүй) — тоолол (`hit`) доор, төсөв ба
-       зэрэг хүсэлтийн слот АВСНЫ ДАРАА (`server.mjs`-тэй толин). Урьд төсөв/слотоор татгалзсан 429 ч минутын
-       тоог иддэг байв. */
     if (limiter.full(caller, LIMITS.user) || await kvFull(env, caller, LIMITS.user)) {
       return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
     }
-    /* ⚠️ 2026-10-09: ӨДРИЙН ТОКЕНЫ ТӨСӨВ — нийтлэг `bot` түлхүүр (хуучин, `x-bot-user`-гүй бот) ЧӨЛӨӨТ
-       (`server.mjs`-ийн ⚠️: бүх ботын хэрэглэгч нэг түлхүүр хуваалцана); `bot:<id>` төсөвтэй. */
-    /* ⚠️ 2026-10-21: KV-гүй бол isolate доторх хумьсан төсөв (`budgetCapFor`-ийн ⚠️) */
     const dailyBudget = budgetCapFor(env, budgetFromEnv(env.DAILY_TOKEN_BUDGET));
-    /* ⚠️ 2026-10-09: төсөв унтраалттай (`DAILY_TOKEN_BUDGET=0`) бол тооцоо/KV бичилт ОГТ хийхгүй */
     const budgeted = caller !== 'bot' && dailyBudget > 0;
     if (budgeted && await budgetOver(env, caller, dailyBudget)) {
       return json(429, { error: BUDGET_MSG, code: 'daily_budget', retryable: false }, cors);
     }
 
-    /* ⚠️ 2026-10-21: түлхүүр алга → 502 `upstream_auth` (`server.mjs`-тэй ижил). Урьд 500 буцаадаг байсан нь
-       клиентийн FAILOVER_STATUS-д ороогүй тул нөөц хост (тохиргоо нь зөв байж болох) руу шилждэггүй байв. */
     if (!env.ANTHROPIC_API_KEY) {
       console.error('[agent] ⛔ ANTHROPIC_API_KEY тохируулагдаагүй — `npm run deploy:secret`');
       return json(502, UPSTREAM_AUTH, cors);
     }
 
-    /* ⚠️ 2026-10-09: ЗЭРЭГ ХҮСЭЛТИЙН ТАГ (`LIMITS.concurrent` = 2). ⚠️ ISOLATE ТУС БҮРД — Cloudflare
-       нэг хэрэглэгчийн зэрэг хүсэлтүүдийг өөр isolate руу чиглүүлж болох тул энэ нь БҮРЭН хил биш,
-       ихэнх тохиолдлын (нэг байршил, халуун isolate) үерийг л барина. Бүрэн хил хэрэгтэй бол
-       Durable Object (`README.md` → «Хязгаарлалтын хил»). */
     const release = inflight.acquire(caller, caller === 'bot' ? LIMITS.botConcurrent : LIMITS.concurrent);
     if (!release) {
       return json(429, { error: CONCURRENT_MSG, code: 'concurrent', retryable: true }, cors);
     }
-    /* ⚠️ 2026-10-09 (аудит №6): минутын тоололд ЗӨВХӨН дээд үйлчилгээ рүү явах хүсэлт орно (дээрх `full` ⚠️) */
     limiter.hit(caller, LIMITS.user);
     await kvHit(env, ctx, caller, LIMITS.user);
     try {
@@ -518,13 +339,6 @@ const handler = {
 };
 export default handler;
 
-/**
- * ⚠️ 2026-10-09: биеийг УРСГАЛААР уншиж байт тоолно — `MAX_BODY` давмагц уншихаа зогсооно.
- *    Урьд `content-length`-гүй (chunked) хүсэлтийн биеийг `request.text()`-ээр БҮТНЭЭР санах
- *    ойд буулгасны ДАРАА л хэмжээг шалгадаг (бас UTF-16 нэгжээр) байсан тул хэдэн зуун МБ-ийн
- *    бие isolate-ийн санах ойг дүүргэж чаддаг байв.
- * @returns {Promise<{text: string, bytes: number} | null>} `null` — хэтэрсэн
- */
 async function readBodyCapped(request, max) {
   if (!request.body) return { text: '', bytes: 0 };
   const reader = request.body.getReader();
@@ -548,17 +362,12 @@ async function readBodyCapped(request, max) {
 
 /**
  * `/chat`-ийн үлдсэн хэсэг (бие унших → шалгах → төсөв урьдчилан хасах → Anthropic).
- * ⚠️ 2026-10-09: тусдаа функц — дуудагч зэрэг хүсэлтийн слотыг `finally`-д ЗААВАЛ суллана.
  */
 async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MODEL, EFFORT, withEffort }) {
-  // ⚠️ Биеийг бүтэн уншихаас ӨМНӨ зарласан хэмжээгээр (content-length, БАЙТ)
-  //    таслана — эс бөгөөс том ачаалал бүхэлдээ санах ойд буусны ДАРАА л
-  //    шалгагдана.
   const declared = Number(request.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > MAX_BODY) {
     return json(413, { error: 'Хүсэлтийн бие хэт том' }, cors);
   }
-  /* ⚠️ 2026-10-09: зарласан хэмжээгүй (chunked) биеийг ч байтаар тоолж таслана (`readBodyCapped`) */
   const read = await readBodyCapped(request, MAX_BODY);
   if (!read) return json(413, { error: 'Хүсэлтийн бие хэт том' }, cors);
 
@@ -566,7 +375,6 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
   try {
     payload = JSON.parse(read.text);
   } catch (e) {
-    /* ⚠️ 2026-10-09 (аудит №7): задлагчийн мессеж зөвхөн логт */
     console.warn('[agent] бие уншигдсангүй:', caller, e?.message);
     return json(400, { error: 'Хүсэлтийн биеийг уншиж чадсангүй (JSON биш).' }, cors);
   }
@@ -575,8 +383,6 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
   if (system != null && typeof system !== 'string') {
     return json(400, { error: '`system` мөр байх ёстой', retryable: false }, cors);
   }
-  /* ⚠️ 2026-10-09: `tools`/`messages`-ийг ЦАГААН ЖАГСААЛТААР дахин угсарна (`rateLimit.sanitizeChat`-ийн ⚠️) —
-     серверийн хэрэгсэл, зураг/документ блок Anthropic руу ХҮРЭХГҮЙ. */
   const clean = sanitizeChat(payload ?? {});
   if (!clean.ok) {
     console.warn('[agent] хүсэлт шалгалтад унав:', caller, clean.error);
@@ -584,11 +390,6 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
   }
   const { messages, tools } = clean;
 
-  /*
-   * ⚠️ 2026-10-09 (аудит №1): СИСТЕМИЙН ЗААВРЫН ГАРЫН ҮСЭГ — `PROMPT_HMAC` (нууц) тохируулсан
-   * үед л. `server.mjs`-ийн ⚠️-ийг үз: browser-т түлхүүр ИЛ тул энэ нь зөвхөн саад, хил биш; бот чөлөөт.
-   * Тохируулаагүй бол зан огт өөрчлөгдөхгүй.
-   */
   const promptKey = typeof env.PROMPT_HMAC === 'string' ? env.PROMPT_HMAC.trim() : '';
   if (promptKey && !isBot) {
     const sysText = system == null ? '' : system;
@@ -600,16 +401,10 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
     }
   }
 
-  /* ⚠️ 2026-10-09: ТӨСВИЙГ УРЬДЧИЛАН ХАСНА (`server.mjs`-ийн толин, `rateLimit.estimateInputTokens`-ийн ⚠️) —
-     оролтын тооцоо + `MAX_TOKENS`; доорх `finally` нь `charge`-аар тааруулна:
-       · амжилттай / татгалзсан → бодит `usage`;
-       · холболт тасарсан / хариу уншигдаагүй → ОРОЛТЫН тооцоо;
-       · Anthropic HTTP алдаагаар татгалзсан → 0 (төлбөр авдаггүй). */
   const inputEst = estimateInputTokens(read.bytes, utf8Bytes(system));
   const reserved = budgeted ? reserveTokens(inputEst, DEFAULTS.MAX_TOKENS) : 0;
   if (reserved) budgetReserve(env, caller, reserved);
   let charge = inputEst;
-  /* ⚠️ 2026-10-19: явцын тэмдэглэл (`rateLimit.thinkingUpdatesFor`-ийн ⚠️) — зөвхөн Opus 5.5 */
   const updates = thinkingUpdatesFor(MODEL);
   try {
     let res;
@@ -626,17 +421,9 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
         body: JSON.stringify({
           model: MODEL,
           max_tokens: DEFAULTS.MAX_TOKENS,
-          // ⚠️ Загвар, effort-ыг СЕРВЕР ТАЛ тогтооно — browser-оос ирсэн утгыг
-          //    хэрэглэвэл хэн ч дурын үнэтэй тохиргоогоор токен зарцуулна.
           //
-          // ⚠️ Haiku ЭНЭ ПАРАМЕТРИЙГ ДЭМЖДЭГГҮЙ — илгээвэл бүх хүсэлт
-          //    «This model does not support the effort parameter» гэж унана.
-          //    Тиймээс дэмждэггүй загвар дээр ба `AGENT_EFFORT` хоосон үед ОГТ
-          //    илгээхгүй. (Батлагдсан: claude-haiku-4-5, 2026.08.13)
           ...(withEffort ? { output_config: { effort: EFFORT } } : {}),
           ...(updates ? { thinking: { type: 'adaptive', display: 'updates' } } : {}),
-          // ⚠️ Системийн зааврыг КЭШЛЭНЭ. Тэр нь давхаргын бүртгэл (мянган токен)
-          //    агуулдаг бөгөөд яриа бүрт давтагдана — кэшгүй бол удаан ба үнэтэй.
           system: system
             ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
             : undefined,
@@ -646,43 +433,27 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
       });
       body = await res.json();
     } catch (e) {
-      /* ⚠️ 2026-10-09 (аудит №7): дэлгэрэнгүй зөвхөн логт (`wrangler tail`) */
       console.error('[agent] AI үйлчилгээтэй холбогдож чадсангүй:', caller, e?.message);
-      /* ⚠️ 2026-10-19: `upstream: true` — хүсэлт Anthropic руу ЯВСАН байж болно (холболт хариуны үед тасарсан):
-         клиент өөр хост руу ДАВТАН илгээхгүй (`client.ts` `relayFetch`-ийн ⚠️) — давхар зарцуулалт/хариу. */
       return json(502, { error: 'AI үйлчилгээтэй холбогдож чадсангүй — дахин оролдоно уу.', retryable: true, upstream: true }, cors);
     }
 
     if (!res.ok) {
-      /* ⚠️ 2026-10-09: Anthropic HTTP алдаагаар татгалзсан — төлбөр авдаггүй тул төсвөөс хасахгүй */
       charge = 0;
       const msg = body?.error?.message ?? `AI үйлчилгээний алдаа (HTTP ${res.status})`;
-      /* ⚠️ 2026-10-09 (аудит №7): API-ийн түүхий мессеж (`msg`) зөвхөн логт — клиентэд
-         статусаас ЕРӨНХИЙ мөр (`server.mjs`-тэй ижил, `rateLimit.upstreamErrorText`). */
       console.error('[agent] AI үйлчилгээний алдаа:', caller, res.status, msg);
-      /* ⚠️ 2026-10-09 (аудит №6): Anthropic-ийн 401/403 (түлхүүр буруу/хүчингүй) → 502 `upstream_auth`
-         (`rateLimit.UPSTREAM_AUTH`, `server.mjs`-тэй толин). Урьд статусыг хэвээр дамжуулдаг тул клиент
-         (`callRelay`) ArcGIS токеноо хуучирсан гэж үзэж шинэчлээд дахин илгээж, «дахин нэвтэрнэ үү» гэдэг байв. */
       if (res.status === 401 || res.status === 403) {
         console.error('[agent] ⛔ ANTHROPIC_API_KEY буруу эсвэл хүчингүй — `npm run deploy:secret`');
         return json(502, UPSTREAM_AUTH, cors);
       }
       return json(res.status, {
         error: upstreamErrorText(res.status),
-        /* ⚠️ 2026-10-19: ЗӨВХӨН 429 · 529 (overloaded) — хүсэлт боловсруулагдаагүй нь баталгаатай. Бусад 5xx нь
-           дээд талд хэсэгчлэн боловсруулагдсан байж болох тул автоматаар давтахгүй (хэрэглэгч өөрөө дахин асууна). */
         retryable: res.status === 429 || res.status === 529,
-        /* ⚠️ 2026-10-19: дээд үйлчилгээний хариу — клиент өөр хост руу шилжихгүй (`client.ts` `relayFetch`) */
         upstream: true,
       }, cors);
     }
 
-    /* ⚠️ 2026-10-09: ТАТГАЛЗСАН хариу ч токен зарцуулсан — урьд нь төсөвт нэмэхээс ӨМНӨ буцдаг
-       байсан тул татгалзуулах хүсэлтээр төсвийг тойрох боломжтой байв. */
     charge = settleTokens(body?.usage, inputEst);
 
-    // ⚠️ Аюулгүйн ангилагч татгалзвал HTTP 200 боловч `content` хоосон/дутуу
-    //    ирнэ — `content[0]`-ыг шууд уншвал эвдэрнэ.
     if (body?.stop_reason === 'refusal') {
       return json(200, {
         stop_reason: 'refusal',
@@ -697,7 +468,6 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
       usage: body?.usage,
     }, cors);
   } finally {
-    /* ⚠️ `waitUntil` (KV) — хариуг бичилтээр саатуулахгүй */
     if (reserved) budgetSettle(env, ctx, caller, reserved, charge);
   }
 }

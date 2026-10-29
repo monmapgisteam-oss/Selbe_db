@@ -1,8 +1,3 @@
-/*
- * ⚠️ 2026-09-30: `FillNew.tsx` (6.9k мөр) задарсан — хэрэгслийн мөрийн хэсгүүд — шүүлтүүр · илгээх товч · оролцогч · обьёмын урсгал · багцын хувь · нооргийн байдал.
- *    Код ЯГ хэвээр зөөгдсөн, зан төлөв өөрчлөгдөөгүй; `draft.check.mjs` ·
- *    `shareDraft.check.mjs` эх кодын шалгуураа FillNew.tsx + fill/* нийлбэрээс уншина.
- */
 import { Switch, Toggle } from "@/components/Switch";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { PKGS, pkgFloors, type Pkg } from "../bagts.pkg";
@@ -30,7 +25,7 @@ export function FilterBar({
   today, planCount, resized, resetAll, fullView = true, setFullView, restoring = false,
 }: {
   locked: boolean; busy: boolean; noPerf: boolean;
-  pkg: Pkg; setPkg: Dispatch<SetStateAction<Pkg>>; /** ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт (`askConfirm`) — асинхрон */
+  pkg: Pkg; setPkg: Dispatch<SetStateAction<Pkg>>;
   confirmSwitch: () => Promise<boolean>;
   groupOpts: string[]; floorOpts: Pkg[];
   asOf: number | null; setAsOf: Dispatch<SetStateAction<number | null>>; dateOpts: string[];
@@ -39,19 +34,12 @@ export function FilterBar({
   byPlan: boolean; setByPlan: Dispatch<SetStateAction<boolean>>;
   today: string; planCount: RowsT['planCount'];
   resized: boolean; resetAll: () => void;
-  /** ⚠️ 2026-10-23: «Бүтэн хүснэгт / Хураангуй» харагдац (`FillNew`-ийн `showExtra`-ийн ⚠️) */
   fullView?: boolean; setFullView?: (on: boolean) => void;
-  /** ⚠️ 2026-10-09 (аудит №3): ноорог сэргэж дуустал «Огноо» түгжээтэй (`restoringUi`) — сэргээлтийн `asOf`-той уралдахгүй */
   restoring?: boolean;
 }) {
   return (
     <>
-        {/* ⚠️ Багц, хувилбар, огноо нь ХЯНАЛТАД тогтмол: илгээсэн агшныг
-            хардаг тул сонгуулбал өөр өгөгдөл гарч, хянаж буй зүйл нь
-            баталж буй зүйлээсээ зөрнө. Шүүлтүүр (Бүлэг/Дэд бүлэг) хэвээр —
-            тэдгээр нь өгөгдлийг биш, харагдацыг л хумина. */}
         {!locked && (<>
-        {/* ⚠️ 2026-10-23 (хэрэглэгч): «Обьём ↔ Хувь» горим солих товч БҮРЭН ХАСАГДСАН — үргэлж обьёмоор бөглөнө. */}
         <label className={st.field}>
           {tr('Багц')}{" "}
           <select
@@ -59,7 +47,6 @@ export function FilterBar({
             value={pkg.group}
             disabled={busy}
             onChange={async (e) => {
-              /* ⚠️ 2026-10-23: утгыг asyncаас ӨМНӨ авна (React-ийн үйл явдлын объект дахин ашиглагдаж болно) */
               const g = e.target.value;
               if (!(await confirmSwitch())) return;
               setPkg(pkgFloors(g)[0]);
@@ -71,9 +58,7 @@ export function FilterBar({
           </select>
         </label>
         {/* Хувилбар — зөвхөн 9F ба 12F ХОЁУЛАА хуудастай багцад (1, 2, 4-2).
-            Бусад багцад ганц хувилбартай тул сонгогч ч харагдахгүй.
-            ⚠️ «Хувилбар» гэдэг нь БАРИЛГЫН давхрын тоо (9F/12F) — модны гүнтэй
-            андуурч «Давхар» гэж нэрлэхээс зайлсхийсэн. */}
+            Бусад багцад ганц хувилбартай тул сонгогч ч харагдахгүй. */}
         {floorOpts.length > 1 && (
           <label className={st.field}>
             {tr('Хувилбар')}{" "}
@@ -100,21 +85,11 @@ export function FilterBar({
             value={dt(asOf)}
             disabled={busy || noPerf || restoring}
             onChange={(e) => {
-              /* ⚠️ Хоосон утга нь «тохируулаагүй» хэсгийг сонгосон гэсэн үг —
-                 огноог БУЦААЖ null болгохгүй (санамсаргүй товшилтоор бүх
-                 төлөвлөгөөт хувь алга болохоос сэргийлнэ). Огноог арилгах
-                 шаардлагатай бол «Хуваарь» харагдацаас хийнэ. */
               const ms = inputToMs(e.target.value);
               if (ms != null) setAsOf(ms);
             }}
             title={tr('Төлөвлөгөөт хувь бүхэлдээ энэ огноогоор бодогдоно (excel-ийн «Шинэчлэгдсэн огноо»)')}
           >
-            {/*
-              * ⚠️ ОГНОО ТОХИРУУЛААГҮЙГ ИЛ ХЭЛНЭ (2026-09-06). `value` нь
-              * жагсаалтад байхгүй үед хөтөч ЭХНИЙ мөрийг харуулдаг тул урьд
-              * нь огноогүй хуудас өөр өдрийг «тохируулсан» мэт үзүүлдэг байв.
-              * Энэ мөр нь `value=""`-тэй тул тэр үед ЯГ өөрөө сонгогдоно.
-              */}
             {asOf == null && (
               <option value="">{tr('— тохируулаагүй —')}</option>
             )}
@@ -123,7 +98,6 @@ export function FilterBar({
             ))}
           </select>
         </label>
-        {/* ⚠️ 2026-10-23 (хэрэглэгч: «зай талбайн хуваарилалт, бүтцийг сайжруул»): бүлэг хоорондын босоо зураас (`tbSep`) */}
         <span className={st.tbSep} aria-hidden />
         </>
         )}
@@ -169,8 +143,7 @@ export function FilterBar({
 
         {/* ХУВААРИЙН ДАГУУ — тухайн огноонд явах ёстой ажлууд. Тоо нь ИЛ:
             «18 / 1,370» гэж харуулахгүй бол цөөн мөр гарахад хүснэгт
-            эвдэрсэн мэт уншигдана.
-            ⚠️ 2026-10-23 (хэрэглэгч: «ард талдаа унтрааж асаадаг товчтой болго»): нийтлэг `Toggle` (шошго · тоо · унтраалга). */}
+            эвдэрсэн мэт уншигдана. */}
         <Toggle
           checked={byPlan}
           onChange={setByPlan}
@@ -180,9 +153,6 @@ export function FilterBar({
           title={tr("Өнөөдөр ({0}) хуваарь нь явж байгаа ажлуудыг л харуулна. Хуваарьгүй ажил нуугдана. Дээрх «Огноо» нь ТАЙЛАНГИЙН огноо — үүнд нөлөөлөхгүй.", today)}
         />
 
-        {/* ⚠️ 2026-10-23 (хэрэглэгч): «Бусад талбар» товчны ОРОНД «Хураангуй ◯ Дэлгэрэнгүй» НИЙТЛЭГ УНТРААЛГА (`components/Switch`) —
-            Дэлгэрэнгүй: бүх багана + мөрийн түвшний бусад бүх талбар (ArcGIS-ийн автоматгүй); Хураангуй: № · Ажил · Обьём ·
-            Инж. төлөвлөсөн обьём · блокийн бөглөх нүд ба төлөвлөгөөт хувь л. Хяналтын горимд (`locked`) ч ажиллана. */}
         {setFullView && (
           <Switch
             checked={fullView}
@@ -210,53 +180,27 @@ export function FilterBar({
 export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, dirtyCount, iAmDone, toggleDone, waitingOn, waitingLast, resendAsIs, sendReady = true }: {
   locked: boolean; canSubmitNow: boolean; publish: () => Promise<void>; busy: boolean; noEdit: boolean;
   dirtyCount: number; iAmDone: boolean; toggleDone: () => Promise<void>; waitingOn: string[];
-  /** ⚠️ 2026-10-06 аудит: түгжиж буй хүн бүрийн сүүлийн идэвх (мс) — `useDraftSync.waitingLast` */
   waitingLast?: Map<string, number>;
-  /** ⚠️ 2026-10-04: буцаагдсан илгээлтийг ӨӨРЧЛӨЛТГҮЙ дахин илгээх (`FillNew.resendAsIs`) — засваргүй үед л */
   resendAsIs?: () => void;
-  /** ⚠️ 2026-10-23: «Дуусгах» дарж бэлэн байдлыг шалгуулсан эсэх (`FillNew.readyIssue`) — үгүй бол «Илгээх» идэвхгүй */
   sendReady?: boolean;
 }) {
   return (
     <>
         {/* ══════ НЭГ ТОВЧ — ГУРВАН ТӨЛӨВ (2026-09-08) ══════
-            ⚠️ Хэрэглэгчийн шийдвэр: «хамгийн сүүлд үлдсэн хүн илгээх эрхтэй
-            болно», нэг байрлалд НЭГ товч. Хоёр товч зэрэг идэвхтэй байвал
-            сүүлийн хүн аль нь зөвийг мэдэхгүй — «Дуусгасан» дарах нь тэр
-            үед утгагүй (илгээх нь өөрөө батламж).
 
               · бусад хүлээгдэж байна → «Дуусгасан»  (өөрийгөө хасна)
               · өөрөө дуусгасан      → «Дахин засах» (буцаана)
-              · хүлээх хүнгүй        → «Илгээх»      (хуучин зан ХЭВЭЭР)
-
-            ⚠️ ГАНЦААРАА бөглөж байвал `waitingOn` хоосон тул ШУУД «Илгээх» —
-            багцын дийлэнхийг нэг хүн бөглөдөг бөгөөд тэдэнд шинэ алхам
-            нэмэгдэх ЁСГҮЙ. */}
+              · хүлээх хүнгүй        → «Илгээх»      (хуучин зан ХЭВЭЭР) */}
         {!locked && (
           canSubmitNow ? (
         <button
           className={st.publishBtn}
-          /* ⚠️ 2026-10-04: засваргүй (`dirtyCount === 0`) ч БУЦААГДСАН илгээлтийг хэвээр нь дахин
-             илгээж болно (хянагч алдаатай буцаасан г.м.) — урьд нь товч саарал тул гацдаг байв. */
           onClick={dirtyCount === 0 && resendAsIs ? resendAsIs : publish}
-          /* ⚠️ `inReview` НЬ ЭНД БАЙХАА БОЛИВ (2026-09-07, хэрэглэгч: «хэдэн ч
-             удаа илгээх боломжтой болго»). Хянагдаж байгаа нь товчийг
-             ХААХГҮЙ; өдөр бүр тусдаа `sub|<pkg>|<fillMs>` мөртэй тул өөр
-             өдрийн агуулга хөндөгдөх боломжгүй, ЯГ энэ өдрийнхийг дахин
-             илгээх нь харин САНААТАЙ зөвшөөрөгдсөн (тэр мөр update хийгдэнэ).
-             Мэдэгдэл нь доорх `lockNote`-оор гарна. */
           disabled={busy || noEdit || (dirtyCount === 0 && !resendAsIs) || !sendReady}
-          /* ⚠️ 2026-10-23 (UX аудит F1): Ctrl+S нь одоо ЗӨВХӨН ноорог хадгална — товчны тайлбараас хасав */
           title={sendReady
             ? tr('Хянагчид илгээнэ — газрын дарга баталсны дараа л үндсэн өгөгдөлд орно')
             : tr('Эхлээд «Дуусгах» товчийг дарна уу — илгээхэд бүх зүйл бэлэн эсэхийг шалгасны дараа «Илгээх» идэвхжинэ.')}
         >
-          {/* ⚠️ «Нийтлэх» → «Илгээх» (2026-09-06, хэрэглэгчийн заавар).
-              2026-09-04-нөөс энэ товч ҮНДСЭН ӨГӨГДӨЛД ОГТ БИЧИХГҮЙ — зөвхөн
-              илгээлт үүсгэж хяналтад оруулна; архивт газрын дарга (6-р шат)
-              баталсны дараа л бичигдэнэ. «Нийтлэх» гэсэн нэр нь «тоо маань
-              одоо албан ёсоор орлоо» гэж ойлгогдож, бөглөгч хяналтыг
-              хүлээхгүй өнгөрөх төөрөгдөл үүсгэж байв. */}
           {dirtyCount === 0 && resendAsIs ? tr('Өөрчлөлтгүй дахин илгээх') : <>{tr('Илгээх')}{dirtyCount ? ` (${dirtyCount})` : ""}</>}
         </button>
           ) : (
@@ -272,14 +216,6 @@ export function SubmitControls({ locked, canSubmitNow, publish, busy, noEdit, di
         </button>
           )
         )}
-        {/* ⚠️ ЯАГААД ТҮГЖЭЭТЭЙГ ИЛ ХЭЛНЭ: шалтгаангүй саарал товч нь
-            «эвдэрсэн» гэж ойлгогдоно. Хэнийг хүлээж байгааг нэрээр нь. */}
-        {/* ⚠️ 2026-10-06 аудит: ХЭЗЭЭНЭЭС хойш хүлээж буйг ба АВТОМАТ чөлөөлөлтийг хэлнэ —
-            урьд нь сүүлийн хүн 3 хоног хүртэл шалтгаангүй гацдаг байв (`waitingOn`-ийн ⚠️).
-            Агшингүй (хуучин ноорог) хүний нэрийг огноогүй бичнэ — «мэдээлэлгүй» ≠ «идэвхгүй». */}
-        {/* ⚠️ 2026-10-23 (UX аудит F7): ЮУ ХИЙХИЙГ ИЛ хэлнэ — хамтран бөглөгч «Дуусгасан» дартал «Илгээх» түгжээтэй
-            гэдгийг урьд нь «Илгээх — X дуусгаагүй байна» гэж л хэлдэг тул хэн, юу дарах ёстой нь ойлгомжгүй, илгээлт
-            3 хоног хүлээгддэг байв. Өөрөө дуусгаагүй бол өөрийн алхмыг ч хэлнэ. */}
         {!locked && !canSubmitNow && (
           <span className={st.muted} role="status">
             {tr('«Илгээх» түгжээтэй: {0} «Дуусгасан» товч дартал хүлээнэ — тэдэнд мэдэгдэнэ үү.', waitingOn.map((u) => {
@@ -301,14 +237,10 @@ export function Participants({ participants, byCount, doneBy }: {
 }) {
   return (
     <>
-        {/* ══════ ХУВААЛЦСАН БӨГЛӨЛТ — хэн ажиллаж байна ══════
-            ⚠️ ЗӨВХӨН олон хүн оролцсон үед гарна: ганцаараа бөглөж байхад
-            «👥 өөрийн нэр» гэж харуулах нь дэмий чимээ. */}
+        {/* ══════ ХУВААЛЦСАН БӨГЛӨЛТ — хэн ажиллаж байна ══════ */}
         {participants.size > 1 && (
           <span className={st.muted} title={tr('Энэ багцын нооргийг хуваалцаж бөглөж байгаа аккаунтууд')}>
             {'👥 '}
-            {/* ⚠️ Нүдний тоог хажууд нь — өнгөт нүдтэй уялдана. 0 бол
-                бичихгүй: тэр хүн энэ тойрогт юу ч бөглөөгүй гэсэн үг. */}
             {[...participants].sort().map((u) => {
               const n = byCount.get(u) ?? 0;
               const mark = doneBy.some(([d]) => d === u) ? `✓ ${u}` : u;
@@ -325,47 +257,29 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
   canObyemEdit: boolean; pvSub: ObyemT['pvSub']; pvCells: ObyemT['pvCells']; sendObyem: ObyemT['sendObyem'];
   pvBusy: boolean; canObyemApprove: boolean; locked: boolean; decideObyemHere: ObyemT['decideObyemHere'];
   pvErr: string; pvNote: string;
-  /** ⚠️ 2026-10-01: сүүлийн шийдвэр нь БУЦААЛТ бол тэр илгээлт (`useObyem.pvReturned`) */
   pvReturned?: ObyemT['pvReturned'];
-  /** ⚠️ 2026-10-04: зохиогч өөрийн хүлээгдэж буй илгээлтийг татаж авна (`useObyem.withdrawObyemHere`) */
   withdrawObyemHere?: ObyemT['withdrawObyemHere'];
   /** Нэвтэрсэн хэрэглэгч — «Татаж авах» товчийг зөвхөн зохиогчид */
   me?: string;
-  /**
-   * ⚠️ 2026-10-09: хүлээгдэж буй илгээлтийг ХЭСЭГЧЛЭН бичсэн батлагч (`useObyem.partial`, `''` = нэргүй) — `null`
-   *    бол тэмдэггүй. Тэмдэгтэй илгээлтийг жирийн «Обьём буцаах» lib-д татгалздаг тул батлагчид «Гацсаныг буцаах».
-   */
   partial?: string | null;
-  /** ⚠️ 2026-10-09: гацсан илгээлтийг шалтгаантай буцаана (`useObyem.returnStuck`) */
   returnStuck?: (reason: string) => Promise<void>;
-  /** ⚠️ 2026-10-09: сүүлийн БАТЛАГДСАН илгээлтийн тайлбар — «Алгассан нүд (N): …» (`useObyem.note`) */
   note?: string | null;
 }) {
-  /** ⚠️ 2026-10-06 аудит: буцаах шалтгааны цонх — `null` = хаалттай */
   const [rej, setRej] = useState<string | null>(null);
-  /** ⚠️ 2026-10-09: «Гацсаныг буцаах» шалтгааны цонх — `null` = хаалттай */
   const [stuck, setStuck] = useState<string | null>(null);
   /** Гацсан (хэсэгчлэн бичигдсэн) — батлагчид «Обьём буцаах»-ын оронд «Гацсаныг буцаах» */
   const isStuck = partial != null && !!returnStuck;
   return (
     <>
-        {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БУЦААГДСАН обьёмын илгээлт ба ШАЛТГААН —
-            инженер (обьём засах эрхтэй хүн) хуудсандаа харна; дахин илгээмэгц алга болно. */}
         {canObyemEdit && !pvSub && pvReturned && (
           <span className={st.lockNote} role="status">
             {tr('Обьёмын илгээлт буцаасан ({0} нүд · {1}): {2} — засаад дахин «Обьём батлуулах» дарна уу.',
               num(pvReturned.cellCount),
-              /* ⚠️ 2026-10-06 аудит: `'mn-MN'` хатуу байсан — англи горимд ч монгол огноо гардаг байв */
               [pvReturned.approver ?? '', pvReturned.approverAt ? fmtDate(pvReturned.approverAt) : ''].filter(Boolean).join(' · ') || '—',
-              /* ⚠️ 2026-10-26: системийн эх текстийг идэвхтэй хэлээр (`displayObyemReason`) */
               displayObyemReason(pvReturned.reason) || '—')}
           </span>
         )}
-        {/* ══════ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — тусдаа урсгал ══════
-            ⚠️ «Илгээх»-ЭЭС ТУСДАА товч: тэр нь ГҮЙЦЭТГЭЛИЙГ 6 шатат
-            хяналтад оруулдаг, энэ нь ТӨЛӨВЛӨСӨН ОБЬЁМЫГ 2 шатат батлах
-            урсгалд. Нэг товчинд нийлүүлбэл хоёр өөр шийдвэр нэг
-            батламжид уягдана. */}
+        {/* ══════ ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМ — тусдаа урсгал ══════ */}
         {canObyemEdit && !pvSub && pvCells.length > 0 && (
           <button
             className={st.publishBtn}
@@ -383,26 +297,18 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
             {tr('Обьём батлуулахаар илгээгдсэн: {0} нүд · {1}', num(pvSub.cellCount), pvSub.author)}
           </span>
         )}
-        {/* ⚠️ 2026-10-04: ӨӨРИЙН хүлээгдэж буй илгээлтээ татаж авах — батлагч ирэхгүй бол гацдаг байв.
-            Дүрэм (зөвхөн зохиогч · зөвхөн pending) lib-д дахин шалгагдана. */}
         {pvSub && withdrawObyemHere && canObyemEdit && !locked && me && pvSub.author.trim().toLowerCase() === me.trim().toLowerCase() && (
           <button className={st.layerBtn} onClick={() => void withdrawObyemHere()} disabled={pvBusy}>
             {tr('Илгээлтээ татаж авах')}
           </button>
         )}
 
-        {/* Батлагчийн шийдвэр — зөвхөн эрхтэй хүнд.
-            ⚠️ ХЯНАЛТЫН ХАРАГДАЦАД (`locked`) ХАРАГДАХГҮЙ (2026-09-25-ны аудит):
-            тэр харагдац «зөвхөн харах» гэж зарлагдсан (`RO.viewOnly`) атлаа
-            эндээс үндсэн өгөгдөлд (`applyUpdates`) бичих зам нээлттэй байв.
-            `decideObyemHere` ч мөн шалгана. */}
+        {/* Батлагчийн шийдвэр — зөвхөн эрхтэй хүнд. */}
         {pvSub && canObyemApprove && !locked && (
           <>
             <button
               className={st.publishBtn}
               onClick={async () => {
-                /* ⚠️ 2026-10-04: баталгаажуулалт — батлахад утга ШУУД үндсэн өгөгдөлд бичигдэнэ */
-                /* ⚠️ 2026-10-23 (UX аудит X1): апп доторх асуулт — `window.confirm` хаагдсан хөтөчид товч чимээгүй юу ч хийдэггүй байв */
                 if (!(await askConfirm(tr('Инженерийн обьёмын {0} нүдийг батлах уу? Утгууд шууд үндсэн өгөгдөлд бичигдэж, гүйцэтгэлийн хувь дахин бодогдоно.', num(pvSub.cellCount)), { ok: tr('Обьём батлах') }))) return;
                 void decideObyemHere(true);
               }}
@@ -411,8 +317,6 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
             >
               {tr('Обьём батлах')}
             </button>
-            {/* ⚠️ 2026-10-09: ХЭСЭГЧЛЭН бичигдсэн илгээлт — жирийн буцаалт lib-д татгалзагдана; гүйцээх
-                («Обьём батлах») эсвэл шалтгаантай «Гацсаныг буцаах». Тэмдэггүй бол урьдын «Обьём буцаах». */}
             {isStuck && (
               <span className={st.lockNote} role="status">
                 {tr('{0} хагас бичсэн — Батлах-аар гүйцээнэ, эсвэл шалтгаан бичээд «Гацсаныг буцаах»', partial || '—')}
@@ -427,11 +331,6 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
             <button
               className={st.layerBtn}
               onClick={() => {
-                /* ⚠️ Шалтгаан ЗААВАЛ — `decideObyem` ч мөн шалгана.
-                   ⚠️ 2026-10-06 аудит: `window.prompt` → өөрийн цонх (`RejectDialog`) — prompt нь уртын
-                   хязгааргүй тул 2048-аас урт шалтгаан `applyEdits`-ийг бүхэлд нь унагадаг байв.
-                   «Болих»/Esc = чимээгүй гарна (2026-10-05-ны зан хэвээр); ХООСОН шалтгаанд цонхны
-                   товч идэвхгүй, `decideObyem` ч СҮЛЖЭЭНЭЭС ӨМНӨ татгалзана (мессеж нь `pvErr`-д). */
                 setRej('');
               }}
               disabled={pvBusy}
@@ -463,7 +362,6 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
         )}
         {pvErr && <span className={st.error}>{pvErr}</span>}
         {pvNote && <span className={st.muted}>{pvNote}</span>}
-        {/* ⚠️ 2026-10-09: сүүлийн батлагдсан илгээлтэд батлагчийн АЛГАССАН нүд (хадгалагдсан тайлбар — өгөгдөл, орчуулахгүй) */}
         {note && <span className={st.muted} role="status">{note}</span>}
     </>
   );
@@ -471,18 +369,14 @@ export function ObyemToolbar({ canObyemEdit, pvSub, pvCells, sendObyem, pvBusy, 
 
 /**
  * ОБЬЁМ БУЦААХ ШАЛТГААНЫ ЦОНХ (2026-10-06 аудит) — `window.prompt`-ийн оронд.
- * ⚠️ `maxLength={REASON_MAX}` — талбар 2048; хэтэрвэл `applyEdits` бүхэлдээ унана
- *    (`huvaari/FlowBox`-той ижил хязгаар). Esc / арын дэвсгэр / «Болих» = чимээгүй хаана.
  */
 function RejectDialog({ text, onText, busy, onClose, onOk, title, okLabel }: {
   text: string; onText: (v: string) => void; busy: boolean;
   onClose: () => void; onOk: (why: string) => void;
-  /** ⚠️ 2026-10-09: «Гацсаныг буцаах»-д гарчиг/товчны бичвэр (байхгүй бол «Обьём буцаах») */
   title?: string; okLabel?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref);
-  /* ⚠️ `autoFocus` биш — `useFocusTrap` эхний товч (×) руу фокуслодог (`huvaari/LinkModal`-ийн ⚠️) */
   const taRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { taRef.current?.focus(); }, []);
   useEffect(() => {
@@ -521,19 +415,9 @@ function RejectDialog({ text, onText, busy, onClose, onOk, title, okLabel }: {
 /** Багцын бодит гүйцэтгэл — батлагдсан · батлагдаагүй · нөгөө хувилбар */
 export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false, pkgAll: pkgAllLive }: {
   pkgPct: RowsT['pkgPct']; pkg: Pkg; otherPct: RowsT['otherPct']; otherPending?: boolean;
-  /** ⚠️ 2026-10-26: олон хувилбартай багцын `pkgProgressOf` (`usePkgPct.pkgAll`) — `undefined` = ганц хуудастай багц */
   pkgAll?: number | null;
 }) {
   if (pkgPct?.saved == null) return null;
-  /*
-   * ⚠️ 2026-10-23 (хэрэглэгч: «12F гүйцэтгэл · 9F гүйцэтгэл · багцын гүйцэтгэл · илгээсэн гүйцэтгэл · батлагдвал хүрэх
-   *    гүйцэтгэл» — тусдаа, ойлгомжтой нэртэй хайрцагнууд):
-   *      · «<N>F гүйцэтгэл» — хувилбар БҮРИЙН батлагдсан гүйцэтгэл (тухайн хуудасны бүх блокийн дундаж, тайлангүй 0%);
-   *        хоёр хувилбартай багцад хоёулаа (давхрын тоогоор буурахаар)
-   *      · «Багцын гүйцэтгэл» — хоёр хувилбарын БҮХ блокийн дундаж («Багцын гүйцэтгэл» дэлгэцийн дүрэм — pkgProgressOf)
-   * ⚠️ 2026-10-23 (хэрэглэгч: «хэрэггүй, бүрэн устга»): «Илгээсэн гүйцэтгэл» ба «Батлагдвал хүрэх гүйцэтгэл» хайрцаг
-   *    ХАСАГДСАН — буцааж нэмэхгүй. Зөвхөн батлагдсан гүйцэтгэл (хувилбар бүр + багц) харагдана.
-   */
   type V = { key: string; floors: number; pct: number; blocks: number; total: number; mine: boolean };
   const variants: V[] = [];
   if (pkg.floors != null) {
@@ -541,9 +425,6 @@ export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false, pkgAl
     if (otherPct && otherPct.floors != null) variants.push({ key: 'other', floors: otherPct.floors, pct: otherPct.pct, blocks: otherPct.blocks, total: otherPct.total, mine: false });
     variants.sort((x, y) => y.floors - x.floors);
   }
-  /* ⚠️ 2026-10-26 (аудит): олон хувилбартай багц — «Багцын гүйцэтгэл» дэлгэцийн `pkgProgressOf` (хайрцгуудыг блокийн тоогоор
-     жигнэвэл Багц 4-2-ийн давхардсан 6/x шошго хоёр хуудсанд хуваагдаж зөрдөг байв); ирээгүй бол «—».
-     ⚠️ 2026-10-23: нөгөө хувилбарын тоо ирээгүй (ачаалж буй · унасан) бол «—» — энэ хуудасны дундажийг багцынх гэж харуулахгүй */
   const pkgAll = pkgAllLive !== undefined ? pkgAllLive : otherPending ? null : pkgPct.saved;
   return (
     <>
@@ -573,46 +454,27 @@ export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false, pkgAl
 /** Нооргийн байдал — ногоон тоолуур · устгах · хадгалсан агшин · ArcGIS */
 export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, remoteState, restoring = false, offline = false, localFail = false, canDrop = false }: {
   locked: boolean; dirtyCount: number; noPerf: boolean; dropDraft: () => void; savedAt: number | null; remoteState: RemoteState;
-  /**
-   * ⚠️ 2026-10-09 (аудит №3): бөглөх нь ТҮР хоригтой (`FillNew.reviewLock`) ч «ноорог устгах» НЭЭЛТТЭЙ — урьд нь хориг
-   *    асах агшинд `pending` дүүрэн байсан гүйцэтгэгч «Илгээх» ч, «ноорог устгах» ч үгүй, `resumeReturned` нь «эхлээд
-   *    илгээ/устга» гэдэг тул ГАЦДАГ байв.
-   */
   canDrop?: boolean;
-  /** ⚠️ 2026-10-01: ноорог сэргээж байна — нүд түгжээтэй (`useDraftSync.restoringUi`) */
   restoring?: boolean;
-  /** ⚠️ 2026-10-01: хөтөч сүлжээгүй — ноорог зөвхөн энэ төхөөрөмжид */
   offline?: boolean;
-  /**
-   * ⚠️ 2026-10-04 аудит (#9): ЛОКАЛ хадгалалт УНАСАН (сан дүүрсэн/хаалттай, `useDraftSync.localFail`) —
-   * урьд нь алдааг залгиж «ноорог хадгалагдав» гэж ХУДАЛ баталдаг байв.
-   */
   localFail?: boolean;
 }) {
   return (
     <>
-        {/* ⚠️ 2026-10-01: СЭРГЭЭЛТИЙН түгжээг ИЛ хэлнэ — нүд яагаад нээгдэхгүйг ойлгоно */}
         {!locked && restoring && (
           <span className={st.restoringBadge} role="status">{tr('Ноорог сэргээж байна…')}</span>
         )}
-        {/* ⚠️ 2026-10-01: ОФЛАЙН — бөглөлт зогсохгүй (локалд хадгалагдана), ArcGIS руу дараа нь */}
         {!locked && offline && (
           <span className={st.offlineBadge} role="status"
             title={tr('Сүлжээ тасарсан — засвар энэ төхөөрөмжид хадгалагдаж байна; сүлжээ сэргэмэгц ArcGIS руу автоматаар хуулагдана. Илгээх боломжгүй.')}>
             {tr('Офлайн')}
           </span>
         )}
-        {/* ⚠️ ТАЙЛБАР — ХОЁР төлөвийн ялгааг ҮГЭЭР хэлнэ (2026-09-06).
-            Өнгө ганцаараа мэдээлэл дамжуулах ёсгүй (төслийн дүрэм).
-            Зөвхөн ноорогтой үед гарна — юу ч бөглөөгүй бол чимээ болно. */}
         {!locked && dirtyCount > 0 && (
           <span className={st.hint}>
             <span className={st.legDirty} title={tr('Ногоон хүрээтэй нүд — та зассан, хараахан ИЛГЭЭГЭЭГҮЙ. «Илгээх» дарж хянагчид хүргэнэ. Тэмдэггүй нүд нь илгээгдсэн тоо.')}>
               {tr('ногоон: илгээгээгүй ({0})', dirtyCount)}
             </span>
-            {/* ⚠️ «БОЛИХ» ЦОРЫН ГАНЦ ЗАМ (2026-09-06). Сэргээх цонх хасагдаж
-                ноорог ШУУД буудаг болсон тул түүний «Устгах» гарц ч алга
-                болов. Энэ товчгүй бол хэрэглэгч 40 нүдийг ГАРААР цэвэрлэнэ. */}
             {(!noPerf || canDrop) && (
               <>
                 {' · '}
@@ -624,10 +486,6 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
             )}
           </span>
         )}
-        {/* ⚠️ АВТОМАТ ХАДГАЛАЛТЫН БАТАЛГАА. Ноорог нь зөвхөн ЭНЭ хөтөч дээр
-            байдгийг ил хэлнэ — «хадгалагдсан» гэдгийг «илгээгдсэн» гэж
-            ойлговол хэрэглэгч Нийтлэх дарахгүй өнгөрч, ажил нь хянагчид
-            хүрэхгүй үлдэнэ. */}
         {!locked && localFail && dirtyCount > 0 && (
           <span className={st.autosaveWarn} role="alert">
             {tr('Ноорог энэ хөтчид хадгалагдсангүй (сан дүүрсэн эсвэл хаалттай) — зөвхөн ArcGIS-д хуулагдана. Таб хаахаас өмнө «Илгээх» дарах эсвэл хөтчийн сан чөлөөлнө үү.')}
@@ -636,35 +494,21 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
         {!locked && savedAt != null && dirtyCount > 0 && !localFail && (
           <span
             className={st.autosave}
-            /* ⚠️ Тайлбар нь ҮНЭН байх ёстой: ноорог одоо ArcGIS руу ч
-               хуулагддаг тул «зөвхөн энэ компьютерт» гэдэг нь худал болов. */
             title={tr('Ноорог энэ хөтчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Илгээх» дарна.')}
           >
             {tr('ноорог хадгалагдав {0}', new Date(savedAt).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' }))}
           </span>
         )}
-        {/* ⚠️ ХЭТ ТОМ ноорог алсад ЯВААГҮЙГ ил хэлнэ — «хадгалагдсан» гэж
-            бодоод өөр машин дээр хоосон хуудас хүлээж авах нь хамгийн муу. */}
         {remoteState?.kind === 'big' && (
           <span className={st.autosaveWarn} role="status">
             {tr('Ноорог хэт том тул зөвхөн энэ компьютерт хадгалагдлаа.')}
           </span>
         )}
-        {/* ⚠️ АЛСЫН ХУУЛБАР УНАСАН (2026-09-06) — сүлжээ, токен, эрх, хүснэгт
-            аль нь ч болсон үр дүн НЭГ: ноорог ЗӨВХӨН энэ компьютерт байна.
-            Бөглөлт зогсохгүй тул алдаа биш, харин БАЙДЛЫН мэдээлэл. */}
         {remoteState?.kind === 'fail' && (
-          /* ⚠️ ШАЛТГААНЫГ ХАМТ ХЭЛНЭ (2026-09-08). Урьд нь ямар ч шалтгаангүй
-             «хуулагдсангүй» гэж л гардаг тул хэрэглэгч сүлжээ гэж бодоод
-             хүлээдэг байв — харин жинхэнэ шалтгаан нь хүснэгт үүсээгүй,
-             эзэн зөрсөн, эрхгүй зэрэг ХҮЛЭЭГЭЭД засрахгүй зүйлс байж болно. */
           <span className={st.autosaveWarn} role="status" title={remoteState.why + '\n' + tr('3 секунд тутам автоматаар дахин оролдоно. Өөр компьютероос үргэлжлүүлэх бол энэ асуудлыг засаж хуулагдсаны дараа шилжинэ үү.')}>
             {tr('⚠ ArcGIS-д хуулагдсангүй ({0}) — ноорог зөвхөн энэ компьютерт байна.', remoteState.why)}
           </span>
         )}
-        {/* ⚠️ АМЖИЛТТАЙГ ч ил хэлнэ: «хадгалагдав» гэдэг нь локалыг хэлдэг тул
-            алсын хуулбар ХЭЗЭЭ хуулагдсаныг тусад нь харуулж байж л бөглөгч
-            «өөр компьютероос үргэлжлүүлж болно» гэдэгт итгэнэ. */}
         {remoteState?.kind === 'ok' && !locked && dirtyCount > 0 && (
           <span className={st.autosave} title={tr('Энэ цагийн байдлаар ArcGIS-д хуулагдсан — өөр компьютероос нэвтэрч үргэлжлүүлж болно.')}>
             {tr('ArcGIS {0}', new Date(remoteState.at).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' }))}

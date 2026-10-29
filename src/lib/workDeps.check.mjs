@@ -1,10 +1,6 @@
 /**
  * БАГЦ ХООРОНДЫН АЖЛЫН ХАМААРАЛ — `workDeps.ts`-ийн цэвэр логик (2026-10-22).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/workDeps.check.mjs
- *
- * ⚠️ Гол гэрээ: холбоос нь OBJECTID БИШ «№ ¦ Ажил» + давтамж (+ Des_dugaar) — шинэ архивын жаазад (бүх oid
- *    өөр) ижил мөрөнд тулгагдана; давтамж зөрвөл ТААМАГЛАХГҮЙ (өнчин гэж ИЛ); эвдэрсэн бичлэг шидэнэ;
- *    дугуй · өөртөө · нэг хуудас · 8000-аас урт хориотой; бичилт нь одоогийн утга дээр нэгтгэнэ.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/workDeps.check.mjs
  */
 import assert from 'node:assert/strict';
 import {
@@ -87,7 +83,6 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   assert.equal(e[0].to, nodeId('b31_9f', '1 ¦ Ус'));
   assert.deepEqual(g.post.get(nodeId('b31_9f', '1 ¦ Ус')), [sh2.id], 'урвуу индекс');
 
-  /* ⚠️ ШИНЭ ЖААЗ — бүх OBJECTID өөр (архивын хуулбар); холбоос ижил мөрөнд тулгагдана */
   const g2 = buildGraph(sheets({ 5: val }, {}, {}, 7000, 8000, 9000));
   const sh2b = g2.nodes.get(sh2.id);
   assert.equal(sh2b.oid, 7005, 'шинэ жаазын мөр');
@@ -123,7 +118,6 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   const b2 = nodeId('b31_9f', '2 ¦ Цахилгаан');
   /* a1 ← b1 (a1 нь b1-ээс хамаарна), b1 ← b2 */
   const g = buildGraph(sheets({ 2: refsJson([{ p: 'b31_9f', k: '1 ¦ Ус' }]) }, { 2: refsJson([{ p: 'b31_9f', k: '2 ¦ Цахилгаан' }]) }));
-  /* ⚠️ нэг хуудасны холбоос граф дээр байсан ч (гараар бичсэн) уншигдана; нэмэхэд хориотой */
   assert.ok(reachesPre(g, a1, b2), 'a1 → b1 → b2');
   assert.ok(linkError(g, a1, a1), 'өөртөө');
   assert.ok(linkError(g, a1, nodeId('b1_9f', '2 ¦ Суурь')), 'нэг хуудас');
@@ -138,8 +132,6 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   assert.equal(checkNext(g, a1, cur, []), null, 'өнчнийг хасах — зөвшөөрнө');
   assert.ok(checkNext(g, b2, [], [refOf(g.nodes.get(a1))]), 'дугуй нэмэлт — шалтгаан');
   assert.ok(checkNext(g, a1, [], [{ p: 'b31_9f', k: '9 ¦ Алга' }]), 'олдохгүй ажлыг нэмэхгүй');
-  /* ⚠️ 2026-10-22 (аудит): ижил `refId`-тай хоёрдмол (өнчин) хуучин холбоос нь ШИНЭ холбоосыг дугуйн шалгалтаас
-     чөлөөлөхгүй — хуудсанд гурав дахь «1 ¦ Шороо» нэмэгдсэн, эхнийх нь (o:0) B-ийн «1 ¦ Ус»-аас хамаарна */
   const rows3 = [...A(0, { 2: refsJson([{ p: 'b31_9f', k: '1 ¦ Ус' }]) }), R(7, '1', 'Шороо', 1, false, 7)];
   const g3 = buildGraph([{ p: 'b1_9f', rows: rows3, field: true }, { p: 'b31_9f', rows: B(500), field: true }]);
   const us = nodeId('b31_9f', '1 ¦ Ус');
@@ -234,7 +226,6 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   const sc = resolveSchema([...base, F('bagts_hamaaral')]);
   assert.equal(sc.f.bham, 'bagts_hamaaral');
   assert.equal(sc.f.ham, 'hamaaral', '`^hamaaral$` нь bagts_hamaaral-д ТААРАХГҮЙ');
-  /* ⚠️ `buildFrame` нь `{...r.raw}` — шинэ жаазад талбар ДАМЖИНА (архив хамаарлыг устгахгүй) */
   const json = refsJson([{ p: 'b31_9f', k: '1 ¦ Ус' }]);
   const row = {
     oid: 1, no: '1', des: 1, ham: null, work: 'Шороо', depth: 0, group: false, wC: 1, wD: 1, vol: null, plannedVol: null,

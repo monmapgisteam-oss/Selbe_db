@@ -1,8 +1,6 @@
 /**
  * УДИРДЛАГЫН ТАЙЛАН — хугацааны өөрчлөлтийн АЧААЛАГЧ (2026-10-28). Тооцоо нь `execPeriodCalc.ts` (цэвэр, тестлэгдсэн);
  * энд зөвхөн түүхтэй эх сурвалжуудыг татаж оролт болгоно.
- * ⚠️ Эх сурвалж бүр өөрийн кэштэй (`loadFinData` · `loadWorkforceKpi` · `loadZov`) — тайлангийн 5 минутын кэштэй ижил
- *    агшин; «Шинэчлэх» (`invalidateAll`) бүгдийг хаяна. ХАБ/зөвшөөрөл унавал тэр мөр «—» (0 биш), бусад нь хэвээр.
  */
 import { loadFinData, aggregateMonths, pkgMonthsMap, projectPlanOf } from '@/modules/Finance';
 import { loadPlanCurveCached } from '@/lib/planProgress';
@@ -27,7 +25,6 @@ const msOf = (v: unknown): number | null => {
 export async function loadExecDeltas(x: ExecReport, period: ExecPeriod): Promise<ExecDeltas> {
   const [fin, pc, wf, zovRows, histB, universeB, histI, universeI] = await Promise.all([
     loadFinData(),
-    /* ⚠️ Хуваарийн муруй — графикийн «Төлөвлөгөө» шугам; унавал шугамгүй (бодит хэвээр) */
     loadPlanCurveCached().catch(() => null),
     (loadWorkforceKpi() as Promise<WorkforceKpi>).catch(() => null),
     loadZov().catch(() => null),
@@ -44,9 +41,7 @@ export async function loadExecDeltas(x: ExecReport, period: ExecPeriod): Promise
   );
   const d = computeExecDeltas({
     housing: progress.housing,
-    /* ⚠️ Тайлангийн багцын жагсаалт (`prog.packs`) — нэр · түлхүүр нь түүнтэй ижил (`bagtsKey`) */
     packs: packs.map((p) => ({ key: p.key, label: p.label, points: progress.packs.get(p.key) ?? [] })),
-    /* ⚠️ Төлбөрийн багцын түлхүүр — санхүүгийн мөртэй (`pkgFinRows` → `finPkgKey`) ИЖИЛ зам (`execReport`-ийн ⚠️ 2026-10-09) */
     pays: fin.pays.map((p) => {
       const k = pkgKeyOf(p[HC.pkg]);
       return { at: msOf(p[HP.payDate]), amount: hoAmount(p), key: k && k !== '0' ? finPkgKey(k) : undefined };
@@ -60,7 +55,6 @@ export async function loadExecDeltas(x: ExecReport, period: ExecPeriod): Promise
       }))
       : null,
   }, period);
-  /* ⚠️ 2026-10-28 (хэрэглэгч: «цаг хугацааны график болго»): сарын цуваа — PNG-ийн шугаман график */
   d.series = computeSeries({
     months,
     plan: pc ? projectPlanOf(fin, pc) : [],

@@ -1,15 +1,5 @@
 /**
  * AI ТУСЛАХЫН ТАЙЛАН — PDF (pdfmake).
- *
- * ⚠️ АГУУЛГА нь АГЕНТЫН ХАРИУЛТ ӨӨРӨӨ (`blocks.ts`-ийн задлалт) — энд ямар ч
- * тоо ДАХИН бодогдохгүй, ямар ч өгөгдөл ШИНЭЭР татагдахгүй. Тиймээс цаасан
- * дээрх тоо дэлгэц дээрхтэй ЯГ ТААРНА.
- *
- * ⚠️ Хэв маяг (өнгө, хүснэгтийн зураас, ₮-ийн орлуулга) нь Удирдлагын тайлантай
- * НЭГ эхээс — `src/lib/pdfTheme.ts`. Энд дахин тодорхойлохгүй.
- *
- * ⚠️ Хэрэглэгчийн сонголт (2026-10-15): НҮҮР ХУУДАСГҮЙ, товч толгойтой — чатын
- * хариулт ихэвчлэн нэг хуудас тул бүтэн хавтас нэмбэл хэт жинтэй болно.
  */
 import type { Content, TableCell, CanvasElement, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
@@ -27,7 +17,6 @@ const W = 515;
 
 /**
  * `**тод**` ба кодын тэмдэглэгээ — `AgentMarkdown.inline`-тай ИЖИЛ дүрэм.
- * ⚠️ Хоёуланг НЭГ алхамд салгана, эс бөгөөс код доторх `**` тодоор орно.
  */
 function runs(text: string): Content[] {
   return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean).map((p) => {
@@ -56,10 +45,6 @@ function valText(v: number | null, unit?: string): string {
 
 /**
  * ХЭВТЭЭ ЗУРВАС — `bar`/`column`/`pie`/`stack`/`gauge` бүгд үүгээр.
- * ⚠️ pdfmake-д чарт байхгүй тул хүснэгт + `canvas` (`execPdf.barChart`-ийн арга).
- * ⚠️ `value: null` = ХЭМЖИГДЭЭГҮЙ — зөвхөн зам, дүүргэлт ОГТ зурахгүй (null ≠ 0).
- * ⚠️ `gauge` нь 0–100 тул тэнхлэг ТОГТМОЛ; `pie`/`stack` нь нийтэд эзлэх хувь
- *    тул нийлбэртэй харьцуулна — эс бөгөөс хамгийн том хэсэг ямагт бүтэн урт болно.
  */
 function bars(spec: ChartSpec): Content {
   const vals = spec.data.map((d) => d.value).filter((v): v is number => v != null);
@@ -111,8 +96,6 @@ function bars(spec: ChartSpec): Content {
 
 /**
  * ХУГАЦААНЫ ЦУВАА — `line`.
- * ⚠️ `null` цэг дээр шугам ТАСАРНА (цоорхой) — 0 руу буулгаж холбовол
- *    мэдээлэлгүй сар бодит уналт мэт харагдана (null ≠ 0).
  */
 function line(spec: ChartSpec): Content {
   const H = 72;
@@ -150,8 +133,6 @@ function line(spec: ChartSpec): Content {
           alignment: 'center' as const,
         })),
       },
-      /* ⚠️ Цэг бүрийн ТООГ мөрөөр бичнэ — шугам дээр шошго багтахгүй, цаасан дээр
-         уншигч тоог шалгах боломжтой байх ёстой. */
       {
         margin: [0, 2, 0, 0],
         text: spec.data.map((d) => `${plain(d.label)} ${valText(d.value, spec.unit)}`).join(' · '),
@@ -186,7 +167,6 @@ function blockContent(b: MdBlock): Content[] {
 
   if (b.kind === 'table') {
     const cols = Math.max(b.head.length, ...b.rows.map((r) => r.length));
-    /* ⚠️ Эхний багана нэр (уян), бусад нь тоо — өргөнийг агуулгаар нь тааруулна */
     const widths = Array.from({ length: cols }, (_, i) => (i === 0 ? '*' : 'auto'));
     const row = (cs: string[]) => Array.from({ length: cols }, (_, i): TableCell => {
       const v = cs[i] ?? '';
@@ -215,8 +195,6 @@ export function buildChatPdf(doc: ReportDoc): TDocumentDefinitions {
   return {
     pageSize: 'A4',
     pageMargins: [40, 40, 40, 44],
-    /* ⚠️ Дулаан цаасны өнгө — `canvas` БИШ, нэг нүдтэй ХҮСНЭГТ (pdfmake 0.3.11-д
-       background-д canvas өгвөл `processCanvas` унадаг; `execPdf.ts`-ийн ⚠️). */
     background: () => ({
       table: { widths: [595], heights: [842], body: [[{ text: '', fillColor: PAPER }]] },
       layout: 'noBorders',

@@ -1,10 +1,7 @@
 /**
  * `useAsync` — автобусын шинэчлэлт ба ПАРАМЕТРИЙН солилт давхцахад ХУУЧИН
  * параметрийн өгөгдөл харагдахгүй (2026-10-01).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/useAsync.check.mjs
- *
- * ⚠️ Hook-ийн шийдвэрийн цэвэр функцууд (`paramsChanged` · `keepStale` ·
- *    `visibleResult`) — жинхэнэ модулиас, хуулбар логик биш.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/useAsync.check.mjs
  */
 import assert from 'node:assert/strict';
 import { paramsChanged, keepStale, visibleResult } from '@/lib/useAsync';

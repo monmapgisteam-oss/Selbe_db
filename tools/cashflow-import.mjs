@@ -10,46 +10,13 @@
  *   Шалгах (бичилтийн дараа, юу ч бичихгүй): … --verify [--out=<тайлан.md>]
  *   Сэргээх: node tools/cashflow-import.mjs --restore=<нөөц.json> --token-file=<токен> [--write --i-know-this-is-production]
  *
- * ⚠️⚠️ 2026-10-27: БҮРЭН ДАХИН ҮҮСГЭЛТ (хэрэглэгч: «182 нь Excel-тэй мөр мөрөөрөө ЯГ адилхан», `--kod=excel`).
- *    Excel-ийн Д/Д (B) ДАВХАРДДАГ (35 код 145 мөрд: «3» хоёр үе шатанд, «5.2.3» дөрвөн мөрд, «2.3.3.1» таван ах
- *    дүүст) тул мод/дарааллыг `dd_kod`+`etseg_kod`-оор ганцаар нь сэргээх боломжгүй (жиш. мөр 886 «5.2.3.1»-ийн эцэг нь
- *    гурван «5.2.3»-ын аль нь вэ). Тиймээс ХҮСНЭГТИЙН objectid-ИЙН ДАРААЛАЛ = EXCEL-ИЙН МӨРИЙН ДАРААЛАЛ байхаар бичнэ:
- *    хуучин БҮХ мөр (мөнгөний · сарын · бүтцийн) устаж, Excel-ийн 905 мөр Excel-ийн дарааллаар, дараа нь сарын мөрүүд
- *    шинээр нэмэгдэнэ (`projectPlan.orderPlanRows` давхардсан кодтой үед objectid-оор эрэмбэлнэ).
- *      · МӨНГӨНИЙ мөр Excel-д тааралдсан бол хуучин мөрийн Excel-д байхгүй БҮХ талбар (захирамж, гэрээ, гүйцэтгэгч,
- *        эх үүсвэр, ангилал `bagts_tuvshin*`, `cashflow_id` …) ХУУЛАГДАНА — objectid л солигдоно (сарын мөр, IPC,
- *        дашбоард `cashflow_id`/багцын түлхүүрээр холбогддог; хүснэгт хавсралт, холбоосгүй).
- *      · Бичих дараалал: Excel мөр нэмэх → сарын мөр нэмэх → хуучин бүх мөр устгах (нэмэлт унавал хуучин бүтэн
- *        үлдэнэ; `--restore=` нэмэгдсэнийг устгана).
- *    САРЫН ТӨЛӨВЛӨГӨӨ — «Төсөл төлөвлөгөө биелэлт сараар» хуудасны хуримтлалаас (`cashflowMonthPlan.mjs`-ийн дүрэм):
- *    Excel хамарсан гэрээний 2026-08-аас өмнөх сар УСТНА (эхний сарт нийлнэ), хоосон нүд → мөргүй.
- *    Бичсний ДАРАА хүснэгтийг дахин уншиж Excel-тэй мөр мөрөөр тулгана (`--verify`-тэй ижил).
- * ⚠️ 2026-10-26: НӨӨЦ — `--backup=` ЗААВАЛ (2026-10-27; репогийн гадна, жиш. scratchpad — өгөгдөл нууц).
- *    Нөөц нь сэтгүүл: бичихээс ӨМНӨХ бүх мөр + багц бүрийн дараа нэмэгдсэн OID-ууд. Олон алхмын бичилт дундаа
- *    унавал (`rollbackOnFailure` ЗӨВХӨН нэг багц дотор) `--restore=` нь нэмэгдсэнийг устгаж, устгагдсаныг дахин нэмж,
- *    өөрчлөгдсөнийг нөөцийн утгаар буцаана (dry-run анхдагч; бичихэд `--write --i-know-this-is-production`).
- * ⚠️ 2026-10-26: `--confirm-deletes` = устгах OID-уудын ТОО:ХЭШ (dry-run хэвлэнэ) — зөвхөн тоо таарах нь өөр мөр
- *    устгахаас хамгаалдаггүй.
- * ⚠️ exceljs нь репогийн хамаарал БИШ — `--exceljs=` эсвэл `EXCELJS_DIR` env-ээр өгнө (`createRequire`).
- * ⚠️ Токен ЗӨВХӨН POST биед (`tokenInUrl.check.mjs`); файлаас уншина, хэзээ ч хэвлэхгүй.
- *
- * МӨРИЙН ГУРВАН ТӨРӨЛ (`services/fields.CF_WORK_WHERE`-ийн ⚠️):
+ * МӨРИЙН ГУРВАН ТӨРӨЛ (`services/fields.CF_WORK_WHERE`):
  *   САРЫН    — `cashflow_start IS NOT NULL` — Excel-ийн «сараар» хуудаснаас мөнгөний мөр бүрд дахин үүснэ;
  *   МӨНГӨНИЙ — `cashflow_start IS NULL AND cashflow_id IS NOT NULL` — Excel-ийн тохирох мөрийн утгатай, Excel-д
  *              байхгүй талбар (захирамж, гэрээ, гүйцэтгэгч, эх үүсвэр…) хуучнаасаа ХУУЛАГДАНА; тохирохгүй бол сарын
  *              мөрийнхөө хамт УСТНА; Excel-д л байгаа нь `cashflow_id` = max + 1-тэй нэмэгдэнэ; явц (`guitsetgel_huvi`)
  *              = Excel S × 100 (томьёотой ч үр дүнгээр — хэрэглэгч «Excel-ийн S давамгайлна»);
  *   БҮТЦИЙН  — `cashflow_start IS NULL AND cashflow_id IS NULL` — Excel-ийн бусад бүх мөр.
- *
- * ⚠️ МОД нь Excel-ийн ТОМЬЁОНООС (`src/lib/negtgelTree.ts` → `NEG_TREE.depth`, хэш шалгана) — outlineLevel БИШ:
- *    outline 325 мөрөнд модноос зөрдөг (жиш. 36 «Багц 6» нь 35-ын хүүхэд боловч outline ижил түвшин). `tuvshin` =
- *    модны гүн − 1 (үе шат = 0).
- *    ⚠️ 2026-10-26: E-ийн ЦЭВЭР нийлбэр томьёо (`E858 = …+E889`) эцгийг `NEG_TREE`-ээс ДАВАМГАЙЛНА (`treeFixes`).
- * ⚠️ `dd_kod` = Excel B (анхдагч `--kod=excel`) нь ДАВХАРДДАГ («3» хоёр үе шатанд, «5.2.1.1.1» багц бүрд) тул
- *    `etseg_kod`-оор модыг ганцаар нь сэргээх боломжгүй — `--kod=tree` нь модны дарааллаар өвөрмөц код үүсгэнэ.
- *    Аль нь болохыг хэрэглэгч шийднэ (тайлангийн «Шийдвэр шаардлагатай»).
- * ⚠️ ТОГТМОЛ нүдийг л хадгална (томьёотой → null). Үл хамаарал: МӨНГӨНИЙ мөрийн E томьёотой бол (блокуудын нийлбэр
- *    болох багц) тооцоолсон үр дүнг `ho_dun_geree`-д бичнэ — 33 хэрэглэгч гэрээний дүнг эндээс уншдаг.
  */
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
@@ -71,8 +38,6 @@ const WRITE = opt('write') === true;
 const RESTORE = opt('restore');
 const KOD = opt('kod') === 'tree' ? 'tree' : 'excel';
 const KEEP_NAMES = opt('keep-names') === true;
-/* ⚠️ 2026-10-27: багцын түлхүүр (`pkgKeyOf`) өөрчлөгдөх мөнгөний мөрд системийн `bagts`-ыг хадгалдаг (IPC/газрын
-   зургийн холбоос) — `--excel-bagts` бол Excel-ийнхийг бичнэ (тайлангийн «Шийдвэр») */
 const EXCEL_BAGTS = opt('excel-bagts') === true;
 const VERIFY = opt('verify') === true;
 const SHEET = 'Төсөл төлөвлөгөө биелэлт';
@@ -81,7 +46,6 @@ const MONTH_SHEET = 'Төсөл төлөвлөгөө биелэлт сараар
 const MONTH_FIRST = '2026-08';
 const MONTH_COL0 = 14; // N
 const MONTH_N = 29;
-/* ⚠️ Y5 «2027 он 12-р сар» — байрлалаараа 2027-07 (хэрэглэгч баталсан, толгойн алдаа) */
 const MONTH_HDR_OK = new Set(['Y']);
 const FIRST = 6; // ТӨСЛИЙН НИЙТ
 const LAST = 911;
@@ -132,10 +96,6 @@ const pkgKeyOf = (v) => (isPkgRange(v) ? '' : bagtsKey(v));
 /** Тааруулах код: «БАГЦ - 19.1» → «19.1», «БАГЦ 1- 4» → «1-4», «БАГЦ-6.1, 6.2» → «6.1,6.2» */
 const normCode = (v) => String(v ?? '').toUpperCase().replace(/БАГЦ/g, '').replace(/[–—]/g, '-')
   .replace(/\s+/g, '').replace(/^[-.]+/, '');
-/**
- * ⚠️ МЭДЭГДСЭН НЭР ЗӨРӨЛТ — систем → Excel (үе шат 5). Хэрэглэгчтэй тохирсон (2026-10-26):
- *    «Багц 18.1 Авто зам» = Excel «Багц 18 — Хороолол доторх гол…»; «БАГЦ-6.1, 6.2 Нэмэлт ажил» = «БАГЦ-6.1, 6.2 зам сүвлэх».
- */
 const ALIAS = new Map([['18.1', '18'], ['6.1,6.2НЭМЭЛТАЖИЛ', '6.1,6.2']]);
 
 /** Нэрийн төстэй байдал — тэмдэгтийн хос (bigram) Dice, 0–1 */
@@ -162,11 +122,10 @@ const post = async (path, body) => {
     body: new URLSearchParams({ f: 'json', token: TOKEN, ...body }),
   });
   const j = await res.json();
-  /* ⚠️ ArcGIS алдаа 200-аар ирнэ — биеийг шалгана */
   if (j.error) throw new Error(`ArcGIS ${j.error.code}: ${j.error.message} ${(j.error.details ?? []).join('; ')}`);
   return j;
 };
-/** Бүх мөр — ⚠️ хуудаслалт `orderByFields`-тэй (үгүй бол давхардал/алдагдал) */
+/** Бүх мөр — хуудаслалт `orderByFields`-тэй (үгүй бол давхардал/алдагдал) */
 const readAll = async () => {
   const rows = [];
   for (let off = 0; ; ) {
@@ -180,10 +139,6 @@ const readAll = async () => {
   }
   return rows;
 };
-/**
- * ⚠️ `rollbackOnFailure` нь ЗӨВХӨН нэг багц дотор — 500-аар, багц бүрийн үр дүнг шалгана.
- * ⚠️ 2026-10-26: `onBatch(part, res)` — багц амжилттай болсны ДАРАА (сэтгүүлд нэмэгдсэн OID бичих).
- */
 const apply = async (kind, list, onBatch) => {
   for (let k = 0; k < list.length; k += 500) {
     const part = list.slice(k, k + 500);
@@ -201,22 +156,9 @@ const apply = async (kind, list, onBatch) => {
   }
 };
 
-/**
- * ⚠️ 2026-10-26: fetch-ийн дараа шууд `process.exit` Windows дээр санамсаргүйгээр libuv-ийн
- *    «Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)»-оор 127 кодтой унадаг (keep-alive сокет хаагдаж байхад).
- *    Богино хүлээгээд гарна.
- */
 const quit = async (code) => { await new Promise((r) => { setTimeout(r, 150); }); process.exit(code); };
 
 /* ═══════════ 0. Сэргээх (--restore=<нөөц.json>) ═══════════ */
-/**
- * ⚠️ 2026-10-26: Олон алхмын бичилт (шинэчлэх → нэмэх → устгах…) дундаа унавал хүснэгт ХОЛИМОГ төлөвт үлдэнэ.
- *    Нөөцөөс: (1) сэтгүүлд бичигдсэн НЭМЭГДСЭН мөрийг устгана; (2) нөөцөд байгаа ч одоо алга мөрийг дахин нэмнэ
- *    (OID шинэ — сарын мөр `cashflow_id`-аар холбогддог тул эвдрэхгүй); (3) засагдах талбар нь зөрсөн мөрийг
- *    нөөцийн утгаар буцаана. Засагдахгүй талбар (objectid, globalid, created_user/date, last_edited_user/date) — давхаргын метаас.
- *    Дахин нэмсэн OID-ыг сэтгүүлд (`readded`) бичдэг тул сэргээлт дундаа унавал ДАХИН ажиллуулахад давхардахгүй.
- *    Нөөцөд ч, сэтгүүлд ч байхгүй шинэ мөрийг (бусдын нэмсэн байж болно) ХӨНДӨХГҮЙ — жагсааж хэлнэ.
- */
 if (RESTORE) {
   const bk = JSON.parse(readFileSync(RESTORE, 'utf8'));
   if (Array.isArray(bk)) { console.error('⛔ Хуучин хэлбэрийн нөөц (зөвхөн мөрүүд, сэтгүүлгүй) — нэмэгдсэн мөрийг ялгах боломжгүй; гараар сэргээ.'); process.exit(1); }
@@ -297,7 +239,7 @@ if (hash !== NEG_TREE.hash) {
   process.exit(1);
 }
 
-/* «Сараар» хуудас — хуримтлал (0–1) мөр бүрээр; ⚠️ мөрийн тэгшитгэл ба баганын толгойг шалгаж, зөрвөл ЗОГСОНО */
+/* «Сараар» хуудас — хуримтлал (0–1) мөр бүрээр; мөрийн тэгшитгэл ба баганын толгойг шалгаж, зөрвөл ЗОГСОНО */
 const wsM = wb.getWorksheet(MONTH_SHEET);
 if (!wsM) { console.error(`⛔ «${MONTH_SHEET}» хуудас алга`); process.exit(1); }
 const mKeys = monthKeys(MONTH_FIRST, MONTH_N);
@@ -344,15 +286,6 @@ const parentIdx = [];
     stack[d] = i;
   }
 }
-/**
- * ⚠️ 2026-10-26: E-ийн НИЙЛБЭР томьёо эцгийг ДАВАМГАЙЛНА. `NEG_TREE` нь N («Төлөвлөгөөт хувь Гэрээ») томьёоноос —
- *    N нь мөрийг орхисон газар (N858 = $F859*N859+…+$F885*N885 — N889 АЛГА) мөр буруу эцэгт очдог: мөр 889 «Авто зам,
- *    дугуйн зам, явган зам» 5.2-ын хүүхэд болж байсан, харин Excel E858 = …+E885+E889, F889 = E889/$E$858 → 858-ын
- *    хүүхэд (`projectPlan.fixture.json`-тэй ижил). Дүрэм: мөрийн E-г ЦЭВЭР нийлбэр томьёо (зөвхөн E-лавлагаа · SUM ·
- *    `+` · `,` — жиш. E532 = E718/19 нийлбэр БИШ) лавлавал тэр мөр эцэг (хэд хэдэн бол хамгийн ойр); үгүй бол
- *    `NEG_TREE`. Дарааллын хязгаар: эцэг нь өмнөх мөрийн өвөг (эсвэл өөрөө) байх ёстой (дэд мод тасралтгүй) —
- *    эвдэх солилтыг (жиш. өөр үе шатын мөрийг лавласан) хэрэгжүүлэхгүй, анхааруулна.
- */
 const treeFixes = [];
 {
   const isSumF = (f) => s(f).replace(/\$/g, '').replace(/E\d+(?::E\d+)?/gi, '').replace(/SUM/gi, '')
@@ -406,7 +339,6 @@ const S_PHASE = (name) => /^ТЭЗҮ$/i.test(name) || /^Ажлын зураг т
   || /^Сонгон шалгаруулалт$/i.test(name);
 const phaseNo = (name) => (/^ТЭЗҮ$/i.test(name) ? 1 : /^Ажлын зураг төсөл$/i.test(name) ? 2 : /^Барилга угсралт$/i.test(name) ? 5 : 0);
 
-/* ⚠️ `--kod=tree`: модны дарааллаар өвөрмөц код (үе шат 1…8, хүүхэд «эцэг.n») */
 const treeKod = [];
 {
   const cnt = new Map();
@@ -419,8 +351,6 @@ const treeKod = [];
 }
 const kodOf = (i) => (KOD === 'tree' ? treeKod[i] : s(xl[i].B.c));
 
-/* ⚠️ БАГАНЫН ЗУРАГЛАЛ (2026-10-26, засварласан): Excel-ийн толгойн дагуу J/K = «Гүйцэтгэгч» → guits_*,
-   L/M = «ОСНАУГ/Газар чөлөөлөлт/Бодит» → gazar_* (`services/fields.TUSUL_NEGTGEL`-тэй ижил). */
 const DATE_COLS = { H: 'geree_ehleh', I: 'geree_duusah', J: 'guits_ehleh', K: 'guits_duusah', L: 'gazar_ehleh', M: 'gazar_duusah' };
 
 const items = []; // Excel мөр бүр (7…911) → бичих атрибут
@@ -461,8 +391,6 @@ for (let i = 1; i < xl.length; i += 1) {
   }
   /* S — ТЭЗҮ/Зураг төсөл/Зөвшөөрөл/Сонгон үе шатын НАВЧ мөрийн тогтмол утга, 0–100 */
   const sLeaf = S_PHASE(phName) && children[i].length === 0 && typeof o.S.c === 'number';
-  /* ⚠️ 2026-10-27: МӨНГӨНИЙ мөрийн явц — S-ийн тогтмол ЭСВЭЛ томьёоны үр дүн (хэрэглэгч «Excel-ийн S давамгайлна»);
-     хоосон → null. ×100 хөвөгч цэгийг 1e-9 хүртэл (0.2823 × 100 = 28.229999…) */
   const sNum = typeof o.S.c === 'number' ? o.S.c : (o.S.f !== undefined && typeof o.S.r === 'number' ? o.S.r : null);
   const item = {
     i, r: o.r, phName, phNo: phaseNo(phName), block, attrs,
@@ -515,12 +443,6 @@ const EDITABLE = layerMeta.fields
 const months = sys.filter((r) => r.cashflow_start != null);
 const money = sys.filter((r) => r.cashflow_start == null && r.cashflow_id != null);
 const structOld = sys.filter((r) => r.cashflow_start == null && r.cashflow_id == null);
-/**
- * ⚠️ 2026-10-26: «ТЭЗҮ · Ажлын зураг төсөл» харагдац (`ZuragTosol`) БҮТЦИЙН мөрөнд бичдэг — навчны огноо/явц,
- *    нэмсэн дэд шатны мөр. Бичилт хуучин бүтцийн мөрийг БҮГДИЙГ устгаж Excel-ээс дахин үүсгэдэг тул тэдгээр
- *    засвар чимээгүй алга болж, OID солигдсон тул нээлттэй табын засвар «мөр олдсонгүй» болно. Тайланд тоолж,
- *    бичихэд `--drop-view-edits`-ээр ИЛ зөвшөөрүүлнэ.
- */
 const viewOnlyOld = (() => {
   const xlCodes = new Set(items.map((t) => t.attrs.dd_kod).filter(Boolean));
   return structOld.filter((r) => r.dd_kod && !xlCodes.has(String(r.dd_kod).trim()));
@@ -608,8 +530,6 @@ for (const r of pending) {
 }
 const ambOids = new Set(ambiguous.map((a) => a.r.objectid));
 const matchedIdx = new Set([...match.values()].map((m) => m.t.i));
-/* ⚠️ 2026-10-26: тодорхойгүй мөрийн Excel СОНГОЛТ нь «шинэ» БИШ — систем мөр хэвээр (ambSum) үлдэх тул шинэ гэж
-   тоолбол нэг ажил хоёр удаа (хуучин + шинэ) «дараа»-д ордог байв. Хүн шийдтэл аль алинд нь тоолохгүй. */
 const ambOptIdx = new Set(ambiguous.flatMap((a) => a.opts.map((o) => o.t.i)).filter((i) => !matchedIdx.has(i)));
 
 /* ═══════════ 4. Ангилал → Excel-ийн дарааллаар бичих мөрүүд ═══════════ */
@@ -626,11 +546,9 @@ for (const r of money) {
   const t = m.t;
   const a = {
     ...carry(r), ...t.attrs, ho_dun_geree: t.money.cost, cashflow_id: r.cashflow_id,
-    /* ⚠️ Excel-ийн сарын төлөвлөгөө ЗӨВХӨН 'garaar'-д харагдана ('huvaari' бол Хуваариас тооцоолно — `monthlyMoney`) */
     sar_mongo_eh: 'garaar',
     guitsetgel_huvi: t.sMoney,
   };
-  /* ⚠️ 2026-10-26: системийн `bagts` ХООСОН бол хадгалахгүй — Excel-ийнх бичигдэнэ (oid 8: «» → «Багц-9.1») */
   if (!EXCEL_BAGTS && s(r.bagts) && pkgKeyOf(r.bagts) !== pkgKeyOf(t.attrs.bagts)) { a.bagts = r.bagts; keptBagts.push({ r, t }); }
   if (KEEP_NAMES) a.ajil_uilchilgee = r.ajil_uilchilgee;
   else if (s(r.ajil_uilchilgee) !== s(t.attrs.ajil_uilchilgee)) renamed.push({ r, t });
@@ -653,7 +571,7 @@ const moneyIdx = new Set([...matchedIdx, ...newMoney.map((t) => t.i)]);
 const structure = items.filter((t) => !moneyIdx.has(t.i)).map((t) => ({
   t, a: { ...t.attrs, cashflow_id: null, sar_mongo_eh: null, guitsetgel_huvi: t.sPct ?? null },
 }));
-/* Excel-ийн 905 мөр — ⚠️ ДАРААЛАЛ = Excel-ийн мөрийн дараалал (objectid нь энэ дарааллаар өснө; толгойн ⚠️⚠️) */
+/* Excel-ийн 905 мөр — ДАРААЛАЛ = Excel-ийн мөрийн дараалал (objectid нь энэ дарааллаар өснө; толгой) */
 const planByIdx = new Map([
   ...updates.map((u) => [u.t.i, { kind: 'money', a: u.a, old: u.r }]),
   ...adds.map((x) => [x.t.i, { kind: 'new', a: x.a }]),
@@ -717,7 +635,6 @@ const dupCodes = (() => {
   return [...c.values()].filter((n) => n > 1).reduce((a, n) => a + n, 0);
 })();
 const olDiff = items.filter((t) => xl[t.i].ol !== t.attrs.tuvshin).length;
-/* ⚠️ 2026-10-26: `--kod=tree` — dd_kod-ийн НАТУРАЛ эрэмбэ (хэсэг бүр тоогоор) Excel-ийн мөрийн дарааллыг ЯГ сэргээх ёстой */
 const natCmp = (a, b) => {
   const A = String(a).split('.').map(Number); const B = String(b).split('.').map(Number);
   for (let k = 0; k < Math.min(A.length, B.length); k += 1) if (A[k] !== B[k]) return A[k] - B[k];
@@ -727,8 +644,6 @@ const sortOk = KOD !== 'tree' || items.every((t, k) => k === 0 || natCmp(items[k
 const e6Sum = sumOf(inE6, (t) => t.money.cost);
 const e6Ok = Math.abs(e6Sum - TOTAL_E6) < 0.01;
 const cfTotOk = Math.abs(cfTotAfter - TOTAL_E6) < 0.01;
-/* ⚠️ 2026-10-27: БҮРЭН дахин үүсгэлт — ХУУЧИН БҮХ мөр устна. `--confirm-deletes` = тэдгээрийн ТОО:ХЭШ (хэн нэг нь
-   dry-run-ий дараа мөр нэмж/устгавал хэш өөрчлөгдөж бичихгүй) */
 const delAll = sys.map((r) => r.objectid).sort((a, b) => a - b);
 const delToken = `${delAll.length}:${createHash('sha256').update(delAll.join(',')).digest('hex').slice(0, 12)}`;
 const delMonthsOfDeleted = deletes.reduce((acc, r) => { const x = monthsBy.get(r.cashflow_id); return { n: acc.n + (x?.n ?? 0), sum: acc.sum + (x?.sum ?? 0) }; }, { n: 0, sum: 0 });
@@ -1029,7 +944,6 @@ if (out && out !== true) console.log(`тайлан: ${out}`);
 if (!WRITE) await quit(0);
 if (opt('i-know-this-is-production') !== true) { console.error('⛔ Production хүснэгт — --i-know-this-is-production'); process.exit(1); }
 if (ambiguous.length) { console.error(`⛔ ${ambiguous.length} тодорхойгүй тааралт — эхлээд шийд (бичихгүй).`); process.exit(1); }
-/* ⚠️ 2026-10-26: E6 зөрвөл (Excel өөрчлөгдсөн / мөнгөний мөрийн сонголт буруу) БИЧИХГҮЙ */
 if (!e6Ok || !cfTotOk) { console.error(`⛔ E6 зөрсөн: Excel ${fmt(e6Sum)} · дашбоард ${fmt(cfTotAfter)} ≠ ${fmt(TOTAL_E6)} — бичихгүй.`); process.exit(1); }
 if (KOD === 'tree' && (dupCodes || !sortOk)) { console.error(`⛔ dd_kod: давхардал ${dupCodes}${sortOk ? '' : ' · натурал эрэмбэ Excel-ийн дараалалтай зөрсөн'} — бичихгүй.`); process.exit(1); }
 if (structOld.length && opt('drop-view-edits') !== true) {
@@ -1049,7 +963,6 @@ const saveJournal = () => writeFileSync(backup, JSON.stringify(journal), 'utf8')
 saveJournal();
 console.log(`нөөц: ${backup} (${sys.length} мөр)`);
 const onAdds = (_part, res) => { journal.added.push(...res.map((x) => x.objectId)); saveJournal(); };
-/* ⚠️ Дараалал: НЭМЭХ эхлээд (унавал хуучин бүтэн), УСТГАХ сүүлд. Excel мөрүүд НЭГ дарааллаар — objectid өснө. */
 const steps = [
   ['Excel-ийн мөр нэмэх (Excel-ийн дарааллаар)', 'adds', excelAdds],
   ['сарын мөр нэмэх', 'adds', monthAdds],
