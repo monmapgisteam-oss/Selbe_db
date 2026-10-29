@@ -1,22 +1,5 @@
 /**
  * БАГЦ ХООРОНДЫН АЖЛЫН ХАМААРАЛ (2026-10-22) — ЦЭВЭР ЛОГИК (React · ArcGIS-гүй, `workDeps.check.mjs`).
- *
- * ⚠️ ЯАГААД (хэрэглэгчийн шийдвэр, 2026-10-22): «Багцын хамаарал» нь багц ↔ багц биш, АЖИЛ ↔ АЖИЛ болов —
- *    А багцын нэг ажил Б, В … багцуудын ОЛОН ажлаас хамаарна. ЗӨВХӨН ХАРУУЛНА: хуваарийн огноонд
- *    (`plan.ts` · `deps.ts`-ийн «18FS3» гинж) ОГТ НӨЛӨӨЛӨХГҮЙ. Нэг хуудасны доторх уялдаа нь хуучин
- *    `hamaaral` (Des_dugaar «18FS3») хэвээр — энд ЗӨВХӨН ӨӨР хуудасны (багцын) ажил.
- * ⚠️ ХАДГАЛАЛТ: ХАМААРАХ (ард талын) ажлын мөрийн `bagts_hamaaral` талбар (String 8000) = урьдчилагчдын
- *    JSON массив `[{ p, k, o?, n?, d? }]`:
- *      · `p` — хуудасны түлхүүр (`PKGS[].key`, жиш. «b71»);
- *      · `k` — мөрийн шошго `rowKeyOf` «№ ¦ Ажил» (`sheetFrame.ts`);
- *      · `o`/`n` — тэр шошготой мөрүүдийн доторх дугаар ба нийт тоо (`rowOccOf`, 0 · 1 бол ОРХИНО);
- *      · `d` — `Des_dugaar` (жаазан дотор давтагдахгүй, агшин дамжин тогтвортой — НЭМЭЛТ таних тэмдэг).
- * ⚠️ OBJECTID ХЭЗЭЭ Ч ХАДГАЛАХГҮЙ: архивын жааз бүр хуудсыг ШИНЭ OBJECTID-тай хуулбарладаг тул oid нь
- *    дараагийн жаазад өөр мөр/алга. Шошго + давтамж нь илгээлтийн зөөлтийн (`mapOldOids`) ЯГ дүрэм:
- *    `n` нь одоогийн тоотой тэнцвэл `o` дахь мөр, эс бөгөөс ТААМАГЛАХГҮЙ (хоёрдмол → «өнчин» гэж ИЛ
- *    харуулна, чимээгүй хаяхгүй). `d` таарвал (шошго ижил, ганц мөр) түүнийг илүүд үзнэ.
- * ⚠️ ДУГУЙ ХАМААРАЛ ХОРИОТОЙ (хуучин `linkError`-ийн дүрэм, одоо АЖЛЫН граф дээр); өөртөө · нэг хуудас ·
- *    8000 тэмдэгтээс урт бичлэг мөн хориотой (ил шалтгаантай).
  */
 import { t as tr } from '@/lib/i18nCore';
 import { fixCyr } from '@/lib/format';
@@ -59,8 +42,6 @@ const compact = (r: WorkRef): WorkRef => {
 
 /**
  * Талбарын утга → холбоосууд. Хоосон/`null` → `[]`.
- * ⚠️ ЭВДЭРСЭН бичлэгийг ЧИМЭЭГҮЙ хоосон болгохгүй — ШИДНЭ (хуучин `parseDeps`-ийн дүрэм): эс бөгөөс
- *    дараагийн бичилт тэр мөрийн бүх холбоог дарна. Давхардлыг (ижил `p`·`k`·`o`) нэг болгоно.
  */
 export function parseRefs(raw: unknown): WorkRef[] {
   if (raw == null) return [];
@@ -114,7 +95,6 @@ export function sameRefs(a: readonly WorkRef[], b: readonly WorkRef[]): boolean 
 /**
  * Өөрчлөлтийг ОДООГИЙН (бичихийн өмнө ДАХИН уншсан) жагсаалт дээр хэрэглэнэ — хоёр засварлагч бие биенийхээ
  * холбоог дарахгүй (хуучин `saveChange`-ийн optimistic дүрэм). Нэмэх/хасах хоёулаа IDEMPOTENT.
- * ⚠️ Байгаа холбоосыг дахин «нэмэх» нь түүнийг ШИНЭ (`n`/`d`) мэдээллээр шинэчилнэ.
  */
 export function applyRefChange(cur: readonly WorkRef[], c: RefChange): WorkRef[] {
   const rm = new Set(c.remove.map(refId));
@@ -187,7 +167,7 @@ export type WorkGraph = {
   withField: Set<string>;
 };
 
-/** Холбоосыг мөр рүү тулгана (`WorkGraph.index`) — толгойн ⚠️-ийн дүрэм */
+/** Холбоосыг мөр рүү тулгана (`WorkGraph.index`) — толгой-ийн дүрэм */
 export function resolveRef(
   g: Pick<WorkGraph, 'nodes' | 'index' | 'failed'>,
   ref: WorkRef,
@@ -196,7 +176,6 @@ export function resolveRef(
   if (!sh) return { to: null, why: g.failed.has(ref.p) ? 'unloaded' : 'missing' };
   const cand = sh.get(ref.k) ?? [];
   if (!cand.length) return { to: null, why: 'missing' };
-  /* ⚠️ `Des_dugaar` таарвал (шошго ижил мөрүүдийн ДОТОР, ганц) — тэр нь агшин дамжин тогтвортой код */
   if (ref.d != null) {
     const hit = cand.filter((id) => g.nodes.get(id)?.des === ref.d);
     if (hit.length === 1) return { to: hit[0] };
@@ -204,7 +183,6 @@ export function resolveRef(
   const o = ref.o ?? 0;
   const n = ref.n ?? 1;
   if (cand.length === n && o < n) return { to: cand[o] };
-  /* ⚠️ Тоо зөрсөн (ижил шошготой мөр нэмэгдсэн/хасагдсан) — `mapOldOids`-ийн дүрэм: ТААМАГЛАХГҮЙ */
   return { to: null, why: 'ambiguous' };
 }
 
@@ -237,8 +215,6 @@ export function buildGraph(sheets: readonly SheetIn[]): WorkGraph {
       if (l) l.push(id); else idx.set(k, [id]);
       const par = paths[i].parent;
       g.nodes.set(id, {
-        /* ⚠️ 2026-10-23 (S15): `work` нь ДЭЛГЭЦ/хайлтын нэр — є/ї → ө/ү (`format.fixCyr`). Таних түлхүүр `k` нь
-           ТҮҮХИЙ нэрээс (`rowKeyOf(r)` дээр) — хадгалсан хамаарлын лавлагаа тасрахгүй. */
         id, p: sh.p, k, o, n, oid: r.oid, no: r.no, work: fixCyr(r.work), depth: r.depth, group: r.group,
         des: r.des ?? null, path: paths[i].path, parent: par >= 0 ? ids[par] : null,
       });
@@ -304,19 +280,14 @@ export function linkError(g: Pick<WorkGraph, 'pre' | 'nodes'>, dep: NodeId, pre:
   const a = g.nodes.get(dep);
   const b = g.nodes.get(pre);
   if (a && b && a.p === b.p) return tr('Нэг хуудасны ажлуудын уялдааг «Хуваарь»-аас бүртгэнэ');
-  /* ⚠️ pre → … → dep зам байвал (pre нь dep-ээс дамжуулан хамаардаг) dep → pre нь дугуй үүсгэнэ */
   if (reachesPre(g, pre, dep)) return tr('Дугуй хамаарал үүснэ — тэр ажил энэ ажлаас (дамжуулан) хамаардаг');
   return null;
 }
 
 /**
  * Шинэ жагсаалтыг ШАЛГАНА (бичихийн өмнө): НЭМЭГДСЭН холбоос бүр тулгагдах · өөр хуудас · дугуйгүй; урт ≤ 8000.
- * ⚠️ Хасалт ба хуучин (өнчин ч) холбоос ШАЛГАГДАХГҮЙ — тэдгээрийг хасах боломжтой байх ёстой.
  */
 export function checkNext(g: WorkGraph, dep: NodeId, cur: readonly WorkRef[], next: readonly WorkRef[]): string | null {
-  /* ⚠️ 2026-10-22 (аудит): ЯГ ИЖИЛ (шахсан) холбоос л «хуучин» — урьд нь `refId` (p·k·o)-оор тулгадаг тул хоёрдмол
-     (өнчин) хуучин холбоостой ижил `refId`-тай ШИНЭ холбоос (өөр `n`/`d`, өөр мөрөнд тулгагдана) дугуйн шалгалтгүй
-     бичигддэг байв. */
   const had = new Set(cur.map(refKey));
   for (const r of next) {
     if (had.has(refKey(r))) continue;
@@ -328,14 +299,6 @@ export function checkNext(g: WorkGraph, dep: NodeId, cur: readonly WorkRef[], ne
   return sizeError(refsJson(next));
 }
 
-/**
- * ⚠️ 2026-10-22 (аудит): ӨӨРЧЛӨЛТИЙГ СҮҮЛИЙН (бичихийн өмнө дахин уншсан) ГРАФ ДЭЭР ШИНЭЧИЛНЭ.
- *   · НЭМЭХ холбоос нь харагдацын (хуучирсан байж болох) графаас ирсэн — `o`/`n`/`d`-ийг сүүлийн жаазынхаар
- *     (`refOf`) солино; эс бөгөөс ижил шошготой мөр нэмэгдсэн хуудсанд бичмэгц «хоёрдмол» (өнчин) болно.
- *   · Нэмэх/хасах ажил руу ТУЛГАГДДАГ бусад хуучин холбоосыг (`cur`, өөр `o`/`n` боловч ижил мөр — жиш. `d`-ээр)
- *     мөн хасна: эс бөгөөс нэг ажил хоёр удаа бичигдэх, эсвэл «устгасан» холбоо нөгөө бичлэгээрээ үлдэх байв.
- *   · Тулгагдахгүй (өнчин) холбоосыг ХЭВЭЭР нь — хасахдаа `refId`-аар, нэмэхэд `checkNext` татгалзана.
- */
 export function rebaseChange(g: Pick<WorkGraph, 'nodes' | 'index' | 'failed'>, cur: readonly WorkRef[], c: RefChange): RefChange {
   const target = (r: WorkRef): NodeId | null => resolveRef(g, r).to;
   const add = c.add.map((r) => {

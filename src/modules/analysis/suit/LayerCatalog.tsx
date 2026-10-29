@@ -12,11 +12,6 @@ import c from '@/components/catalog.module.css';
  * ТОХИРОМЖТОЙ БАЙДЛЫН ҮНЭЛГЭЭ-ний давхаргын каталог — «Ерөнхий төлөвлөгөө»-ийн
  * `LayerCatalog`-той ИЖИЛ дүр төрх ба ИЖИЛ бүлгүүд (гарчиг, дүрс, өнгө нь
  * порталын `LAYER_GROUPS`-аас), газрын зурган дээрх «Давхарга» товчоор нээгддэг.
- *
- * ⚠️ Анализ нь өнгө/тунгалагшилтын тусгай рендертэй тул `LayerCatalog`
- * компонентыг шууд дахин ашиглахгүй — ижил CSS (`catalog.module.css`)-ийг
- * ашиглан `MAP_LAYERS` дээр давтана. Давхарга нь plan-тай ижил (~84) бөгөөд
- * бүлэг нь plan-ийн бүлгээр. Ил байдал `layerOn` тэмдэглэлээр удирдагдана.
  */
 
 /** Каталогийн бүлгүүд — plan-тай ЯГ ИЖИЛ (гарчиг · дүрс · өнгө). */
@@ -82,8 +77,6 @@ export function SuitLayerCatalog({
 
   return (
     <aside className={`${c.drawer} ${c.embedded} mapCatalog`} aria-label={tr('Давхаргын жагсаалт')}>
-      {/* ⚠️ Урьд нь энд '--hue': '#4fd1c5' гэж дардаг байв — одоо глобал --hue
-          нь var(--data) тул хоёр горимд өөрөө тохирно (override хэрэггүй). */}
       <header className={c.head}>
         <div className={c.headText}>
           <span className={c.title}>{tr('Давхарга')}</span>

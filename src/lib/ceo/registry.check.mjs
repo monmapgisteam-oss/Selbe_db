@@ -1,10 +1,6 @@
 /**
  * CEO САМБАРЫН БҮРТГЭЛ — бүтцийн шалгуур, сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/registry.check.mjs
- *
- * ⚠️ `registry.ts`-ийг ИМПОРТЛОХГҮЙ, ТЕКСТЭЭР уншина: бүртгэл нь 13 ачаалагчийг
- * импортолдог бөгөөд тэдгээр нь `@/modules/Finance` (React + CSS модуль) руу
- * заадаг тул Node дээр ачаалагдахгүй. Бүтцийн шалгалтад текст хангалттай.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/registry.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. ДАВХАРДСАН түлхүүр — хоёр карт нэг `key`-тэй бол React жагсаалт
@@ -15,10 +11,6 @@
  *      (энэ шалгуур tsc-ээс хурдан, тайлбар нь тодорхой).
  *   4. Ачаалагчийн НЭР давхардах — хоёр карт нэг `load`-той бол нэг нь
  *      нөгөөгийнхөө тоог харуулна.
- *
- * ⚠️ Бүлгийн шалгуур ХАСАГДСАН (2026-09-06): сэдэвчилсэн бүлэг байхаа больж,
- * байрлалыг `schemMap.ts` (схемийн зангилаа) тодорхойлдог болсон. Тэр
- * зураглалыг `schemMap.check.mjs` шалгана.
  */
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -26,7 +18,7 @@ import { readFileSync, existsSync } from 'node:fs';
 const src = readFileSync(new URL('./registry.ts', import.meta.url), 'utf8');
 const services = readFileSync(new URL('../services/views.ts', import.meta.url), 'utf8');
 
-/* ViewKey нэгдэл — services/views.ts-ээс (⚠️ 2026-09-30: services.ts хуваагдсан) */
+/* ViewKey нэгдэл — services/views.ts-ээс (2026-09-30: services.ts хуваагдсан) */
 const vkAt = services.indexOf('export type ViewKey');
 assert.ok(vkAt > 0, 'ViewKey олдсонгүй');
 const vkBlock = services.slice(vkAt, services.indexOf(';', vkAt));
@@ -34,8 +26,6 @@ const VIEW_KEYS = new Set([...vkBlock.matchAll(/"([A-Za-z]+)"/g)].map((m) => m[1
 assert.ok(VIEW_KEYS.size > 10, 'ViewKey уншигдсангүй');
 
 /* Картууд */
-/* ⚠️ 2026-09-30: `title` нь getter (`get title() { return tr('…'); }`) тул `key`…`view`
-   хооронд нэг `{ … }` блок бий — `[^}]*?` оронд getter-ийн биеийг зөвшөөрнө. */
 const cards = [...src.matchAll(/\{\s*key:\s*'([^']+)',(?:[^{}]|\{[^{}]*\})*?view:\s*'([^']+)',\s*load:\s*(\w+)/g)]
   .map((m) => ({ key: m[1], view: m[2], load: m[3] }));
 assert.ok(cards.length >= 12, `карт хэт цөөн олдов (${cards.length}) — хэв шинж эвдэрсэн байж магадгүй`);

@@ -211,7 +211,6 @@ const r23 = base.find((r) => r.objectid === 23);
   const w = weighAdds(have, more.slice(0, 2));
   assert.ok(w.every((r) => Math.abs(r.heseg_ezleh_huvi - 0.3) < 1e-12), 'нэгийг хассан → (1 − 0.4) / 2');
   assert.ok(!w.some(zeroWeight), 'үлдэгдэлтэй → 0 биш');
-  /* ⚠️ 2026-10-26: Excel-ийн ах дүүс 100% эзэлсэн → шинэ дэд шатны жин 0 (анхааруулна, `zeroWeight`) */
   const fullW = [...base,
     { objectid: 31, dd_kod: '2.1.9.1', etseg_kod: '2.1.9', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-1', ajil_uilchilgee: 'А-даалгавар', heseg_ezleh_huvi: 0.6 },
     { objectid: 32, dd_kod: '2.1.9.2', etseg_kod: '2.1.9', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-1', ajil_uilchilgee: 'Загвар зураг', heseg_ezleh_huvi: 0.4 },

@@ -2,29 +2,6 @@
 
 /**
  * ЧАНАРЫН БАРИМТЫН ЭРХ ТОХИРУУЛАХ ПАНЕЛ — БАГЦААР, ЗУРГААН ҮҮРЭГ.
- *
- * ⚠️ `ScopedAclPanel`-ИЙГ ХЭРЭГЛЭХГҮЙ (2026-09-16). Тэр нь ХОЁР үүргийн
- *    (зохиогч · батлагч) хатуу хосолсон бүтэцтэй — `roles: readonly [R, R]`,
- *    «зохиогч=батлагч гацаа» шалгуур хоёр үүрэг л мэднэ. Энд зураглалын
- *    ДӨРВӨН эгнээ: Гүйцэтгэгч ирүүлнэ, ТУХ · Чанар · ХАБЭА гурав ЗЭРЭГЦЭЭ
- *    хянана. Түүнийг хоёр үүрэгт шахвал «хэн ТУХ, хэн ХАБЭА вэ» алдагдана.
- *    2026-09-28: ТАВ ДАХЬ үүрэг ТУГ — MA/NCR-ийн хянагч; ЗУРГАА ДАХЬ (2-р үе шат)
- *    Чанарын хяналтын инженер (`cheng`) — MA-ийн эхний шат (cheng → chanar → tug).
- *    Тиймээс мөрийн логик (`addTo` · `removeFrom`) нь тэр панелтэй ижил,
- *    харин үүргийн тоо ба гацааны шалгуур өөр.
- *
- * ⚠️ ГАЦААНЫ ШАЛГУУР — таван хянагчийн АЛЬ НЭГ нь томилогдоогүй бол тэр
- *    төрлийн баримт ХЭЗЭЭ Ч батлагдахгүй (`chanarMs.resolve`: төрлийн бүх
- *    хянагч зөвшөөрөх ёстой; `REVIEWERS_OF`). Мөн тухайн хянагчийн үүрэгт ЗӨВХӨН зохиогч өөрөө байвал мөн
- *    гацна (`review()` зохиогч=хянагчийг татгалзана).
- *
- * ⚠️ ХАДГАЛАЛТ нь ХЭРЭГЛЭГЧЭЭР — `ScopedAclPanel`-ийн ижил зарчим.
- *
- * ⚠️ ХӨЗӨР → ХҮСНЭГТ (2026-09-30, `GuitsetgelAcl` загвар): мөр = багц,
- *    багана = зургаан үүрэг (`CHANAR_ROLES`-ийн дараалал), нүдэнд аккаунтын
- *    чипүүд (`AclGrid`). Бичилт `aclOps.scopedCellOp('chanar', …)`. Хянагчгүй
- *    үүргийн нүд бүдэг шар; «хянагч дутуу» ба «нэг хүн хоёр үүрэгт» анхааруулга
- *    мөрийн толгойд ⚠, бүтэн текст нь хүснэгтийн доор.
  */
 
 import { useEffect, useState } from 'react';
@@ -41,7 +18,6 @@ import { grantHolds } from '@/lib/aclGrid';
 import { reviewerClashes } from '@/lib/chanarMs';
 import { useAclRunner } from './useAclRunner';
 import { AclGrid, type GridHolder } from './AclGrid';
-/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт — шийдвэрлэгч биш (`portalPresence`) */
 import { portalMissing } from '@/lib/portalPresence';
 import s from './guitsetgel.module.css';
 
@@ -61,7 +37,6 @@ export function ChanarAcl() {
   useEffect(() => subscribe(() => tick((n) => n + 1)), []);
 
   const all = listUsers().map((u) => u.username);
-  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super-ийг нуух — хүснэгтийн super (доошлуулж болно) хуваарилагдана (`aclOps.isCleanup`-ийн ⚠️) */
   const accounts = all.filter((a) => !isCodeSuper(a));
   const known = new Set(all.map((a) => a.toLowerCase()));
 
@@ -69,23 +44,11 @@ export function ChanarAcl() {
   const failed = new Set(chanarFailedUsers());
   const orphanFail = [...failed].some((u) => !rows.some((a) => a.user === u));
   const dirtyPerms = new Set(dirtyKeys());
-  /*
-   * ⚠️ ТҮГЖЭЭ (2026-09-23 аудит) — `DedButetsAcl` · `ScopedAclPanel`-тэй ИЖИЛ.
-   *    Remote уншигдаагүй үед `rows` нь `[]` тул «Нэмэх» дарахад
-   *    `setChanarGrants` тэр хүний БҮХ мөрийг нэг багцаар дарж бичнэ.
-   */
-  /* ⚠️ Өөрийн ACL-ийн туг ч (2026-09-24) — `ScopedAclPanel`-тэй ижил */
   const ready = () => remoteReady() && capsRemoteReady() && chanarAclReady();
   const locked = !ready();
   const LOCK_MSG = tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
-  /* ⚠️ `false` буцвал ArcGIS бичилт унасан — `runOp` зурвас тавина; давхар товшилтыг `busy` барина */
   const { busy, err, setErr, run } = useAclRunner(ready);
 
-  /*
-   * ⚠️ БИЧИХ ДҮРЭМ `aclOps`-Д (2026-09-25) — ALL хамгаалалт, багцгүй grant унах,
-   *    `revoke=false` + зөвхөн хасагдсан үүргийн эрх (Чанарын гурван хянагч нэг
-   *    `chanarReview` хуваалцдаг тул үлдсэн хянагч байвал буцаахгүй).
-   */
   const addTo = (group: string, role: ChanarRole, user: string) => {
     if (locked) { setErr(LOCK_MSG); return; }
     void run(scopedCellOp('chanar', user, role, group, true));
@@ -105,7 +68,6 @@ export function ChanarAcl() {
         viaAll: held === 'all',
         gone: !known.has(a.user),
         absent: portalMissing(a.user),
-        /* ⚠️ 2026-09-30: хатуу super-ийн хуучин мөр — «админ» тэмдэг (`GuitsetgelAcl`-тэй ижил); ✕ нь мөрийг бүхэлд нь цэвэрлэнэ (`aclOps.isCleanup`) */
         admin: roleForUser(a.user) === 'super',
         failed: failed.has(a.user),
         dirty: dirtyPerms.has(a.user),
@@ -114,25 +76,12 @@ export function ChanarAcl() {
 
   /** Багц бүрийн гацаа — нэг удаа тооцоод мөр, нүд хоёуланд */
   const state = new Map(PKG_GROUPS.map((group) => {
-    /* ⚠️ 2026-09-30: устгагдсан аккаунт (`gone`) гацааны шалгуурт тоологдохгүй — `ScopedAclPanel`-ийн ижил дүрэм */
-    /* ⚠️ 2026-10-22 (аудит): порталд алга (`absent`) ч тоологдохгүй — `ScopedAclPanel`-ийн ижил дүрэм */
     const by = Object.fromEntries(CHANAR_ROLES.map((r) => [r, holdersOf(group, r).filter((h) => !h.gone && !h.absent).map((h) => h.user)])) as Record<ChanarRole, string[]>;
     const authors = by.author;
-    /* Хянагчийн үүрэг тус бүрд ЗОХИОГЧООС ӨӨР хүн бий эсэх.
-       ⚠️ ЗОХИОГЧ БҮРЭЭР (2026-09-25, `erhOverview.noOther` ба ScopedAclPanel
-       `stuck`-тай ижил): аль нэг зохиогчид ӨӨРӨӨС НЬ өөр хянагч байхгүй бол
-       л дутуу. Урьд нь А ба Б хоёулаа зохиогч + хянагч үед бие биеэ хянаж
-       чадах атал «дутуу» гэж худал анхааруулдаг байв. */
+    /* Хянагчийн үүрэг тус бүрд ЗОХИОГЧООС ӨӨР хүн бий эсэх. */
     const missing: ChanarRole[] = (['tuh', 'chanar', 'habea', 'tug', 'cheng'] as const)
       .filter((r) => authors.length > 0 && authors.some((a) => !by[r].some((u) => u !== a)));
-    /* ⚠️ 2026-09-30: НЭГ ХҮН ХОЁР ҮҮРЭГТ — «нэг хүн зөвхөн НЭГ үүргээр» (`chanarMs.review`)
-       тул тухайн төрлийн хоёр үүргийн ЦОРЫН ГАНЦ эзэн нэг хүн бол баримт гацна
-       (`erhOverview`-ийн `chanarOneManRoles`-той НЭГ шалгуур — `reviewerClashes`). */
     const clashes = reviewerClashes(by, authors);
-    /* ⚠️ 2026-10-23 (UX аудит Q8): анхааруулгын ТЕКСТ одоогийн урсгалаар — MS · QMP · PRC · NCR-ийн «бүх хянагч
-       зөвшөөрнө» урсгал хасагдсан (`chanarMs`-ийн 2026-10-21 ⚠️). Одоо FIC · М-актыг багцын АЛЬ Ч хянагч (өөрийн
-       оруулснаас бусдыг) шийднэ (`ficMakt.decideFm`) — тиймээс зөвхөн ӨӨР хянагч НЭГ Ч үгүй үед л гацна. Үүрэг
-       дутуу/давхцлын тэмдэглэгээ (шар нүд, ⚠) хэвээр — томилгооны бүрэн бүтэн байдлын сануулга. */
     const noReviewer = authors.some((a) => !(['tuh', 'chanar', 'habea', 'tug', 'cheng'] as const).some((r) => by[r].some((u) => u !== a)));
     const warn = [
       noReviewer
@@ -151,7 +100,6 @@ export function ChanarAcl() {
       <p className={s.aclNote}>
         {tr('Багц тус бүрд Гүйцэтгэгч ба таван хянагч (ТУХ · Чанар · ХАБЭА · ТУГ · Чанарын хяналтын инженер) аккаунтыг тусад нь томилно. Нэг үүрэгт хэдэн ч аккаунт байж болно.')}
         {' '}
-        {/* ⚠️ 2026-10-23 (UX аудит Q8): хасагдсан MS · QMP · PRC · NCR урсгалын тайлбарыг одоогийн MA → MIR → FIC → М-акт урсгалаар солив */}
         {tr('Чанарын урсгал: MA · MIR — Survey123-аар бөглөж шийдвэрлэнэ (порталд харагдана, хавсралт нэмнэ). FIC · М-акт — гүйцэтгэгч PDF оруулж, энэ багцын аль нэг хянагч (өөрийн оруулснаас бусдыг) A · AN · R шийдвэрлэнэ. Дөрвөн шат батлагдвал IPC олгоно.')}
         {' '}
         {tr('⚠️ Гүйцэтгэлийн урсгалын эрхээс ТУСДАА: энд үүрэг олгосон нь түүнийг өгөхгүй.')}
@@ -170,11 +118,9 @@ export function ChanarAcl() {
         cols={CHANAR_ROLES.map((r) => ({
           key: r,
           label: chanarRoleLabel(r),
-          /* ⚠️ 2026-10-23: устгагдсан · порталд алга аккаунтын мөр тоологдохгүй */
           count: rows.filter((a) => a.grants.some((g) => g.role === r) && known.has(a.user) && !portalMissing(a.user)).length,
         }))}
         holders={holdersOf}
-        /* ⚠️ Гацаа: зохиогчоос өөр хянагчгүй үүрэг, эсвэл нэг хүн хоёр үүрэгт давхцсан үүрэг */
         stuck={(g, role) => {
           const st = state.get(g);
           return !!st && (st.missing.includes(role as ChanarRole) || st.clashed.has(role));
@@ -185,7 +131,6 @@ export function ChanarAcl() {
         /* Тэр багцад тэр үүргээр аль хэдийн байгааг («бүх багц»-аар ч) санал болгохгүй */
         candidates={(g, role) => {
           const list = holdersOf(g, role).map((h) => h.user);
-          /* ⚠️ 2026-10-23: порталд алга аккаунтыг санал болгохгүй; super-т «(админ)» шошго */
           return accounts.filter((a) => !list.includes(a.toLowerCase()) && !portalMissing(a))
             .map((a) => ({ value: a, label: roleForUser(a) === 'super' ? `${a} (${tr('админ')})` : a }));
         }}

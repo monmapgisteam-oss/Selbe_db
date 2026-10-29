@@ -1,8 +1,8 @@
 /**
  * БАГЦЫН МӨР (`joinBagts`) БА ОРОН СУУЦНЫ ГҮЙЦЭТГЭЛ (`buildProgressOf`) — цэвэр оролт.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/execData.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/execData.check.mjs
  *
- * Хамгаалж буй алдаанууд (⚠️ 2026-09-30, хэрэглэгчийн шийдвэр — орон сууцны
+ * Хамгаалж буй алдаанууд (2026-09-30, хэрэглэгчийн шийдвэр — орон сууцны
  * гүйцэтгэл ХААНА Ч НЭГ томьёо):
  *   1. Багцын % БҮХ блокоор хуваагдаж тайлангүй блок 0% болох (2026-08-24-ний
  *      хуучин дүрэм). Одоо ЗӨВХӨН тайлагнасан блокийн дундаж — Bagts.buildPacks ·
@@ -11,12 +11,6 @@
  *   3. `buildProgressOf` нь `gdash.housingPct`-ээс ӨӨР тоо гаргах: ХО дүнгээр
  *      жигнэсэн, хэмжигдээгүй багц орохгүй; ХО огт алга бол тайлагнасан блокоор.
  *   4. `missing` (тайлан ирээгүй блок) алга болох — тоотой ХАМТ харагдах ёстой.
- *
- * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): 1 ба 2 БУЦСАН — хуваарь нь бөглөх хуудасны
- *    БҮХ блок (`universe`), тайлагнаагүй блок 0%; нэг ч блок тайлагнаагүй багц 0%
- *    (`null` нь зөвхөн хуваарьгүй — бөглөх хуудас уншигдаагүй багц). 3-ын «хэмжигдээгүй
- *    багц орохгүй» ч мөн адил: тайлагнаагүй багц 0%-иар жинд орно; ХО огт алга бол
- *    нөөц жин нь багцын бүх блок (`total`). Доорх хүлээгдэж буй утгууд шинэ дүрмээр.
  */
 import assert from 'node:assert/strict';
 import { joinBagts, buildProgressOf, ailTotal } from './execData.ts';
@@ -51,7 +45,7 @@ const uni = uniOf({ 'Багц 1': ['1', '2', '3'], 'Багц 2': ['1', '2'], 'Б
 const rows = joinBagts(blocks, prog, uni);
 const by = (label) => rows.find((r) => r.label === label);
 
-/* 1 · 2 — ⚠️ 2026-10-01: багцын % = БҮХ блокийн дундаж (тайлангүй 0%); огт тайлагнаагүй → 0 */
+/* 1 · 2 — 2026-10-01: багцын % = БҮХ блокийн дундаж (тайлангүй 0%); огт тайлагнаагүй → 0 */
 near(by('Багц 1').progress, 40 / 3, 'Багц 1: (10+30+0)/3 — тайлангүй блок хуваарьт орох ёстой (урьд нь /2 = 20)');
 assert.equal(by('Багц 1').missing, 1, 'тайлан ирээгүй блокийн тоо алга болов');
 assert.equal(by('Багц 1').blocks, 3);
@@ -66,16 +60,12 @@ const bp = buildProgressOf(rows, cost);
 assert.equal(bp.pct, housingPct([
   { pct: by('Багц 1').progress, cost: 400, blocks: 3 }, { pct: 70, cost: 600, blocks: 2 }, { pct: 0, cost: 999, blocks: 1 },
 ]), 'buildProgressOf нь gdash.housingPct-ээс өөр тоо гаргав');
-/* ⚠️ 2026-10-01: Багц 3 (тайлагнаагүй) 0%-иар жинд ОРНО — урьд нь хасагдаж 50 гардаг байв */
 near(bp.pct, (400 * 40 / 3 + 600 * 70) / 1999, '400·13.3 + 600·70 + 999·0 ÷ 1999');
 assert.equal(bp.blocks, 6);
 assert.equal(bp.reported, 4);
 assert.equal(bp.missing, 2, 'тайлангүй блок 2 (Багц 1-ийн нэг + Багц 3)');
 
-/* ХО дүн огт алга → блокийн хуваариар (3·13.3 + 2·70 + 1·0) / 6 = 30.
-   ⚠️ 2026-10-01: нөөц жин = `total` (бүх блок) — урьд нь `measured` (45 гардаг байв).
-   Энэ нь бүх блокийн энгийн дундаж (10+30+60+80)/6 = 30-тай ЯГ тэнцүү — хэрэглэгчийн шийдвэр
-   (урьдын «30 гарах ёсгүй» шалгуур ХҮЧИНГҮЙ). */
+/* ХО дүн огт алга → блокийн хуваариар (3·13.3 + 2·70 + 1·0) / 6 = 30. */
 near(buildProgressOf(rows).pct, 30, 'ХО-гүй үед нөөц жин = багцын бүх блок');
 assert.equal(buildProgressOf(rows).pct, housingPct(rows.map((r) => ({
   pct: r.progress, cost: 0, blocks: r.total,
@@ -83,7 +73,7 @@ assert.equal(buildProgressOf(rows).pct, housingPct(rows.map((r) => ({
 assert.deepEqual(rows.map((r) => r.measured), [2, 2, 0]);
 assert.deepEqual(rows.map((r) => r.total), [3, 2, 1]);
 
-/* Огт тайлагнаагүй, хуваарьтай багц → 0% (⚠️ 2026-10-01; урьд нь null) */
+/* Огт тайлагнаагүй, хуваарьтай багц → 0% (2026-10-01; урьд нь null) */
 const none = joinBagts([row('Багц 9', '1', 1)], new Map(), uniOf({ 'Багц 9': ['1'] }));
 assert.equal(none[0].progress, 0);
 assert.equal(none[0].measured, 0);
@@ -95,7 +85,6 @@ assert.equal(lost[0].progress, null, 'хуваарьгүй багц 0% боло�
 assert.equal(buildProgressOf(lost, cost).pct, null, 'хэмжилт ба хуваарьгүй үед null байх ёстой');
 assert.equal(buildProgressOf([]).pct, null);
 
-/* ⚠️ 2026-10-01 РЕГРЕСС: 4 блоктой багцын зөвхөн A нь 100% → 25% (100% БИШ) */
 {
   const r4 = joinBagts(
     [row('Багц 4', 'A', 1), row('Багц 4', 'B', 1), row('Багц 4', 'C', 1), row('Багц 4', 'D', 1)],
@@ -108,13 +97,12 @@ assert.equal(buildProgressOf([]).pct, null);
 }
 
 /*
- * 5 — ⚠️ 2026-09-30: ДАВХАРДСАН feature ба FOOTPRINT-ГҮЙ хэмжилт (амьд өгөгдлийн
+ * 5 — 2026-09-30: ДАВХАРДСАН feature ба FOOTPRINT-ГҮЙ хэмжилт (амьд өгөгдлийн
  *     хэлбэр — `blockProgress.check`: KNOWN_DUP «БАГЦ1|29/1», «БАГЦ2|5/6»;
  *     KNOWN_ORPHAN «БАГЦ1|29/3», «БАГЦ2|5/8»). Багцын хувь нь ХЭМЖИЛТИЙН нүдний
  *     дундаж (`pkgProgressOf`) — «Гүйцэтгэл»-ийн жагсаалт (`physLatest`) ба Тайлан
  *     §3 (`loadOverall`)-тай нэг. Урьд нь feature-ээр гүйлгэж давхардсаныг 2
  *     тоолж, footprint-гүйг хаядаг байсан тул Багц 1 · 2 дэлгэц бүрд өөр % гарав.
- *     ⚠️ 2026-10-01: хуваарь нь БӨГЛӨХ ХУУДАСНЫ блок — газрын зургийн feature БИШ.
  */
 {
   const blocks2 = [
@@ -137,18 +125,12 @@ assert.equal(buildProgressOf([]).pct, null);
   assert.equal(b1.progress, 60, 'Багц 1: давхардсан feature 2 тоологдов эсвэл footprint-гүй хэмжилт хасагдав');
   assert.equal(b1.progress, m.get(b1.key).pct, 'joinBagts ≠ pkgProgressOf');
   assert.equal(b1.measured, 3, 'хэмжилтийн нүд (3), feature (3 = 2+1) БИШ');
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан «29/1» полигон НЭГ блок — блок/айл
-     газрын зургийн давхардлаас хамаарахгүй (урьд нь 3 блок, 30 айл). */
-  /* ⚠️ 2026-10-04: блокийн тоо = бөглөх хуудасны хуваарь (29/1 · 29/2 · 29/3 = 3) — feature
-     (давхардлыг хаясан 2) БИШ; footprint-гүй 29/3 тоологдоно. */
   assert.equal(b1.blocks, 3, 'блокийн тоо бөглөх хуудасны хуваариас биш');
   assert.equal(b1.blocks, b1.total, 'blocks ≠ total (хоёр ертөнц холилдов)');
   assert.equal(b1.ail, 20, 'давхардсан feature-ийн айл хоёр тоологдов');
-  /* ⚠️ 2026-10-01: цувааны түлхүүр = бөглөх хуудасны хуваарь (footprint-гүй 29/3 ОРНО) */
   assert.deepEqual(b1.keys, ['29/1', '29/2', '29/3'].map((b) => buildingKey('Багц 1', b)), 'цувааны түлхүүр хуваариас биш');
   assert.equal(b1.missing, 0);
-  /* Багц 2: хуваарь 5/1, 5/2 — зөвхөн «5/1» хэмжигдсэн → (40 + 0) / 2 = 20.
-     ⚠️ 2026-10-01: урьд нь 40 (хэмжигдсэн блок л); «29/3» feature (буруу багцын нэр) хуваарьт орохгүй */
+  /* Багц 2: хуваарь 5/1, 5/2 — зөвхөн «5/1» хэмжигдсэн → (40 + 0) / 2 = 20. */
   assert.equal(b2.progress, 20);
   assert.equal(b2.missing, 1, '«Багц 2 · 5/2» тайлангүй');
   assert.equal(b2.measured, 1);
@@ -159,7 +141,6 @@ assert.equal(buildProgressOf([]).pct, null);
   assert.equal(buildProgressOf(rows2, new Map([[b1.key, 100], [b2.key, 300]])).pct, 30);
 }
 
-/* ⚠️ 2026-10-09: хоосон `AIL_TOO` нь 0 өрх БИШ — `ailMissing`, нийт нь `ailTotal` (null ≠ 0) */
 {
   const u = uniOf({ 'Багц 1': ['1', '2'], 'Багц 2': ['1'] });
   const rs = joinBagts([row('Багц 1', '1', 10), row('Багц 1', '2', null), row('Багц 2', '1', '')], new Map(), u);
@@ -175,7 +156,6 @@ assert.equal(buildProgressOf([]).pct, null);
   assert.equal(ailTotal(rows).ail, 155);
 }
 
-/* ⚠️ 2026-10-26: хуваарьт байгаа ч полигонгүй блок өрхийн «дутуу»-д тоологдоно (`householdsMissingOf`-тэй нэг дүрэм) */
 {
   const u = uniOf({ 'Багц 1': ['1', '2', '3'] });
   const rs = joinBagts([row('Багц 1', '1', 10), row('Багц 1', '2', 20)], new Map(), u);
@@ -188,7 +168,6 @@ assert.equal(buildProgressOf([]).pct, null);
   assert.equal(ailTotal(joinBagts([], new Map(), uniOf({ 'Багц 1': ['1'] }))).ail, 0, 'полигонгүй багц мөр үүсгэхгүй (хуучин зан)');
 }
 
-/* ⚠️ 2026-10-26: ерөнхий дашбоардын «Баригдаж эхэлсэн блок» — полигон (111) биш хуваарь (113, `joinBagts.blocks`) */
 {
   const { readFileSync } = await import('node:fs');
   const gd = readFileSync(new URL('../modules/GeneralDash.tsx', import.meta.url), 'utf8');

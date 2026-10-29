@@ -8,24 +8,10 @@ import s from './swatch.module.css';
 
 /**
  * Давхаргын симбол — SVG-ээр, газрын зурагтай ИЖИЛ хэв, зузаан, өнгөөр.
- *
- * ⚠️ Тодорхойлолтыг каталогоос уншина, дахин зохиохгүй. Симбол нь зурагтай хэзээ
- * ч зөрөх боломжгүй байх ёстой. Газрын зураг эх webmap-ийн загвараар зурагддаг
- * давхаргад ӨНГИЙГ мөн webmap-ийн снапшотоос (`webmapStyleOf`) авна — эс бөгөөс
- * каталогийн симбол зурагтайгаа зөрнө.
- *
- * ⚠️ Урьд нь энэ нь газрын зураг дээрх «Тайлбар» хайрцагт байв. Тэр хайрцаг нь
- * давхаргын нэрийг үгээр давтаж, зургийн зүүн доод булангийн 232px-ыг байнга
- * эзэлдэг байлаа. Одоо симбол нь каталогийн мөрөндөө — нэр, тоо, өртгийнхөө
- * хажууд байх нь илүү зөв байрлал.
  */
 /**
  * ПЛАН2D renderer-ийн ҮНДСЭН өнгө (`plan2dStyleOf`) — газрын зураг үүнийг webmap снапшотоос ӨМНӨ
  * тавьдаг (`MapCanvas` §renderer: `paint.force` → plan2d → webmap → каталог).
- * ⚠️ 2026-10-09: swatch энэ шатыг АЛГАСДАГ байсан тул alias-тай давхарга (`et:24` Барилга,
- *    `dugui` Дугуйн зам, `nogoon` г.м.) каталогт webmap/каталогийн өнгөөр, зураг дээр план2d-ийн
- *    өнгөөр — хоёр өөр харагддаг байв. esriPFS (зурган дүүргэлт) бол SVG-ийн суурь өнгө
- *    (MapCanvas-ийн `pfsBaseColor`-той ижил дүрэм); CIM зэрэг таниагүй симбол → `undefined` (дараагийн шат).
  */
 function plan2dColor(id: string): string | undefined {
   type Sym = { type?: string; color?: number[]; url?: string; outline?: { color?: number[] } };
@@ -50,14 +36,10 @@ export function LayerSwatch({ d, hue: hueProp }: { d: LayerDef; hue?: string }) 
   const [, setLoaded] = useState(false);
   useEffect(() => {
     let on = true;
-    /* ⚠️ 2026-10-09: план2d загвар ч хүлээнэ (`plan2dColor`) */
     Promise.all([loadWebmapStyle(), loadPlan2dStyle()]).then(() => { if (on) setLoaded(true); });
     return () => { on = false; };
   }, []);
   // Гараар заасан өнгө (facet мөр) → webmap-ийн өнгө → каталогийн hue.
-  // ⚠️ `MAP_HUE_OVERRIDES`-т орсон давхаргад зураг нь снапшотын өнгийг d.hue-ээр
-  //    орлуулж зурдаг тул swatch мөн d.hue — эс бөгөөс каталог зурагтайгаа зөрнө.
-  /* ⚠️ 2026-10-09: `paint.force`-гүй бол план2d-ийн өнгө webmap-аас ӨМНӨ — зурагтай ижил дараалал */
   const hue = hueProp
     ?? (d.paint?.force ? undefined : plan2dColor(d.id))
     ?? (MAP_HUE_OVERRIDES.has(d.id) ? d.hue : webmapStyleOf(d.id)?.color)

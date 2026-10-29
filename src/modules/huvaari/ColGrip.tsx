@@ -6,16 +6,6 @@ type Grip = ReturnType<ReturnType<typeof useColWidths>['grip']>;
 
 /**
  * Толгойн нүдний баруун ирмэгийн ЧИРЭХ БАРИУЛ (2026-10-08) — `useColWidths.grip(key)`.
- * ⚠️ Толгойн нүд `position: relative` байх ёстой (`.gHeadDes` г.м., CSS-д тавьсан).
- * ⚠️ `onPointerDown` нь `stopPropagation` хийдэг — толгой дээрх бусад товшилтын логикт хүрэхгүй.
- * ⚠️ 2026-10-09 (a11y): `aria-valuemin/max` (`useColWidths.SPEC`) нэмэв; шошго багана бүрд ӨӨР
- *    (дуудагч баганын нэрээр). Нэг хувьсагчтай давтагдах баганууд (огноо ×4–6 · хоног ×2 · нөөц ×2)
- *    нэг өргөнийг хуваалцдаг тул ЗӨВХӨН эхнийх нь Tab-ын дараалалд (`tab`); бусад нь хулганаар л —
- *    урьд нь нэг өргөнийг 10 удаа Tab-аар дайрч гардаг байв.
- * ⚠️ 2026-10-08: багана бүр ТУСДАА өргөнтэй болсон (`useColWidths`-ийн ⚠️) тул бүх бариул Tab-д;
- *    `tab` нь сонголт хэвээр (анхдагч `true`).
- * ⚠️ 2026-10-09: гар — сум ±8 · Home/End доод/дээд · Enter/Delete анхдагч; давталтын утга `keyup`/`blur`-д
- *    хадгалагдана (`useColWidths`-ийн ⚠️).
  */
 export function ColGrip({ g, label, tab = true }: { g: Grip; label: string; tab?: boolean }) {
   return (

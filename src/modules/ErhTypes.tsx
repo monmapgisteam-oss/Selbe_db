@@ -7,18 +7,6 @@
  * чеклээд «Хадгалах» — загвар `__type__:` мөрөнд бичигдэнэ. Хадгалсны дараа
  * «Хэрэгжүүлэх» нь тэр төрлийн бүх хэрэглэгчид загварыг дахин тараана
  * (`roleTypeApply.applyType`).
- *
- * ⚠️ 2026-09-30 (хэрэглэгчийн шийдвэр): засах эрх · чанарын үүрэг · урсгал ·
- *    багцын хүрээ мөрүүд ХАСАГДСАН — засах эрх админ порталын өөрийн хуудсанд
- *    (`roleTypes.ts`-ийн ⚠️).
- * ⚠️ ЗАГВАР ≠ ЭРХ: чеклэх нь хэн нэгний эрхийг шууд өөрчлөхгүй (`roleAccess`-ийг
- *    «Сэргээх» ба урсгалын томилгоо шууд уншдаг тул тэдгээр шинэ загвараар явна);
- *    байгаа хэрэглэгчдэд зөвхөн «Хэрэгжүүлэх»-ээр — админ хэзээ тарахаа өөрөө шийднэ.
- * ⚠️ «Хэрэгжүүлэх» нь хадгалаагүй өөрчлөлттэй баганад хаалттай — хуучин
- *    загварыг тарааж, админы харж буйгаас өөр зүйл бичихгүйн тулд.
- * ⚠️ 2026-09-25: бөөнөөр хэрэгжүүлэлтийн төлөв МОДУЛЬД (`roleTypeApply.applyTypeBulk`)
- *    — таб солиход (unmount) давталт тасрахгүй, буцаж ороход явц нь харагдаж,
- *    хоёр дахь давталт эхлэхгүй.
  */
 
 import { useEffect, useState } from 'react';
@@ -29,14 +17,11 @@ import { listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
 import {
   TYPE_ORDER, isStoredTpl, saveTpl, settingGroups, subscribeTypes, tplOf, tplViewKeys, typeLabel, typesReady,
   unseenViews, roleAccess, type TypeTpl,
-  /* ⚠️ 2026-10-26: «ХУВААРЬ» хэсэг — «Хуваарь харах» сонгогч ба «шийдсэн» тэмдэг */
   HV_ROW, hvScopeOf, planViewDecided, tplSeenKeys, withHvScope, type HvScope, type SettingRow,
 } from '@/lib/roleTypes';
-/* ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» МЭДЭЭЛЛИЙН мөр — тэр төрлийн хэдэн хүнд «Хуваарийн эрх»-ийн үүрэг бий */
 import { huvaariAclReady, listHuvaariAssigns, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { isWorkflowView } from '@/lib/caps';
 import { applyTypeBulk, bulkStatus, subscribeBulk } from '@/lib/roleTypeApply';
-/* ⚠️ 2026-10-22 (аудит): урсгалын төрлийг хэрэгжүүлсний дараа шатгүй үлдсэн хүмүүс (`erhOverview.typeStageGaps`) */
 import { ROLE_STAGE } from '@/lib/services';
 import { flowAclReady } from '@/lib/guitsetgelAcl';
 import { liveErhSource } from '@/lib/aclOps';
@@ -46,21 +31,17 @@ import s from './erhTypes.module.css';
 
 type Drafts = Partial<Record<Role, TypeTpl>>;
 
-/* ⚠️ 2026-10-01: `seen`-ийг ч харьцуулна — «шинэ хуудас» тэмдгийг арилгах (хадгалж `seen` бичих)
-   нь бодит өөрчлөлт; `undefined` (хуучин/анхдагч) ба жагсаалт ӨӨР гэж тооцогдоно. */
 const sameSeen = (a?: readonly string[], b?: readonly string[]): boolean =>
   (!a || !b) ? a === b : a.length === b.length && a.every((x) => b.includes(x));
 const eq = (a: TypeTpl, b: TypeTpl): boolean =>
   a.home === b.home && a.on.length === b.on.length && a.on.every((x) => b.on.includes(x)) && sameSeen(a.seen, b.seen);
 
 /**
- * @param remote — дээд панелийн remote уншилтын төлөв (⚠️ 2026-10-01): уншилт ДУУССАН ч
+ * @param remote — дээд панелийн remote уншилтын төлөв (2026-10-01): уншилт ДУУССАН ч
  *   загвар ирээгүй бол «уншигдаж байна…»-г ҮҮРД биш, алдаа + «Дахин оролдох» харуулна.
  */
 export function ErhTypes({ remote, onDirty }: {
   remote?: { busy: boolean; retry: () => void };
-  /** ⚠️ 2026-10-07: хадгалаагүй ноорог байгаа эсэхийг эцэгт (`UserAdmin`) мэдэгдэнэ — хуудас
-      солих · Esc · «← Портал руу буцах» · F5-д асуулгүй арчигдахгүй. ТОГТВОРТОЙ callback өгнө. */
   onDirty?: (dirty: boolean) => void;
 } = {}) {
   const [, setTick] = useState(0);
@@ -87,20 +68,13 @@ export function ErhTypes({ remote, onDirty }: {
   const isDirty = (r: Role): boolean => !!drafts[r] && !eq(drafts[r] as TypeTpl, tplOf(r));
   const dirtyRoles = TYPE_ORDER.filter(isDirty);
   const hasDirty = dirtyRoles.length > 0;
-  /* ⚠️ 2026-10-07: unmount-д (хуудас солигдоход) ноорог алга болдог тул `false` буцаана */
   useEffect(() => {
     onDirty?.(hasDirty);
     return () => onDirty?.(false);
   }, [hasDirty, onDirty]);
 
-  /*
-   * ⚠️ 2026-10-01: ХАДГАЛСАН баганыг засах нь админ тэр баганын бүх харагдацыг ХАРСАН гэсэн үг —
-   *    ноорог `seen` = одоогийн каталог (хадгалахад `saveTpl` ч мөн бичнэ), «шинэ хуудас» тэмдэг
-   *    арилна. Анхдагч (хадгалаагүй) баганад `seen` хөндөхгүй — бодит өөрчлөлтгүй бол ноорог үүсэхгүй.
-   */
   const put = (r: Role, t: TypeTpl) => {
     setMsg('');
-    /* ⚠️ 2026-10-26: + «Хуваарь харах» шийдсэн тэмдэг (`tplSeenKeys`) — хадгалсан баганыг засах = энэ утгыг ч харсан */
     const next = isStoredTpl(r) ? { ...t, seen: tplSeenKeys() } : t;
     setDrafts((d) => ({ ...d, [r]: next }));
   };
@@ -114,11 +88,6 @@ export function ErhTypes({ remote, onDirty }: {
     const t = cur(r);
     put(r, { ...t, on: v ? [...new Set([...t.on, id])] : t.on.filter((x) => x !== id) });
   };
-  /* ⚠️ 2026-10-09 (аудит №6): `admin` мөр БҮХ төрөлд идэвхгүй — загварын `admin` тохиргоог систем
-     уншдаггүй (`Root.hardSuper = roleForUser(...) === 'super'`, зөвхөн код). Урьд нь super баганад
-     чеклэгддэг тул «загвараас админ самбар олгоно» гэсэн ХУДАЛ дүр зурдаг байв. Хадгалагдсан
-     утга (`on`) хэвээр харагдана, өөрчлөгдөхгүй. */
-  /* ⚠️ 2026-10-26: «ХУВААРЬ» хэсгийн id (`huvaari:*`) ЧЕКБОКС БИШ — «бүгд/арилгах» тэднийг хөндөхгүй (сонгогч · мэдээлэл) */
   const allowed = (_r: Role, id: string): boolean => id !== 'admin' && !id.startsWith('huvaari:');
   const hvIds = (r: Role): string[] => cur(r).on.filter((id) => id.startsWith('huvaari:'));
   const setHv = (r: Role, v: HvScope) => { const t = cur(r); put(r, { ...t, on: withHvScope(t.on, v) }); };
@@ -143,9 +112,6 @@ export function ErhTypes({ remote, onDirty }: {
     .map((u) => u.username.toLowerCase());
   /**
    * Загварын (урсгалын бус) харагдацаас ДУТУУ харагдацтай хэрэглэгчид — хадгалсан мөрийн `views` загварын дэд олонлог биш.
-   * ⚠️ 2026-10-26 (аудит): хэрэглэгчийн бодит эрх нь ӨӨРИЙН мөрийн `views`; загвар (анхдагч ч) шинэ хуудастай болоход
-   *    («ТЭЗҮ · зураг төсөл», «6 түвшний хуваарь») «Хэрэгжүүлэх» дарахгүй бол тэдэнд нээгдэхгүй — анхдагч баганад ямар ч
-   *    тэмдэг байхгүй тул админ мэдэхгүй байв.
    */
   const driftOf = (r: Role): number => {
     const tv = roleAccess(r).views;
@@ -160,7 +126,6 @@ export function ErhTypes({ remote, onDirty }: {
   const save = async () => {
     if (!canSave || !dirtyRoles.length) return;
     setSaving(true); setErr(''); setMsg('');
-    /* ⚠️ 2026-09-25: try/finally — бичилт шидвэл товч үүрд хаалттай үлдэхгүй */
     try {
       const failed: Role[] = [];
       for (const r of dirtyRoles) {
@@ -171,7 +136,6 @@ export function ErhTypes({ remote, onDirty }: {
         for (const r of dirtyRoles) if (!failed.includes(r)) delete n[r];
         return n;
       });
-      /* ⚠️ 2026-10-23 (UX аудит X4): дараагийн алхмыг хэлнэ — унасан төрлийн ноорог дээр УСТГАГДАХГҮЙ тул үнэн */
       if (failed.length) setErr(tr('Хадгалагдсангүй: {0} — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.', failed.map(typeLabel).join(', ')));
       else setMsg(tr('Хадгалагдлаа. Хэрэглэгчдэд тараахын тулд баганын «Хэрэгжүүлэх»-ийг дарна уу.'));
     } finally {
@@ -185,7 +149,6 @@ export function ErhTypes({ remote, onDirty }: {
     if (!typesReady()) { setErr(tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')); return; }
     const users = usersOf(r);
     if (!users.length) return;
-    /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` */
     if (!(await askConfirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', typeLabel(r), String(users.length)), { ok: tr('Хэрэгжүүлэх') }))) return;
     setErr(''); setMsg('');
     if (!(await applyTypeBulk(r, users))) setErr(tr('Өөр хэрэгжүүлэлт явагдаж байна — дуустал хүлээнэ үү.'));
@@ -196,8 +159,6 @@ export function ErhTypes({ remote, onDirty }: {
   const bulkMsg = !bulk ? '' : bulk.running
     ? tr('«{0}»: хэрэгжүүлж байна… {1}/{2}', typeLabel(bulk.role), String(bulkDone), String(bulk.total))
     : tr('«{0}»: {1}/{2} хэрэглэгчид хэрэгжлээ.', typeLabel(bulk.role), String(bulk.ok), String(bulk.total));
-  /* ⚠️ 2026-10-22 (аудит): «Хэрэгжүүлэх» нь урсгалын ТӨРӨЛД ч зөвхөн үүрэг/харагдацыг бичдэг — шат, «Гүйцэтгэл» хуудас,
-     батлах эрх үүсэхгүй. Дууссаны дараа тэр төрлийн ШАТГҮЙ хүмүүсийг нэрээр нь хэлнэ (томилгоо — урсгалын хуудсанд). */
   const bulkStage = bulk && !bulk.running ? ROLE_STAGE[bulk.role] : undefined;
   const bulkNoStage = bulkStage && flowAclReady()
     ? typeStageGaps(liveErhSource()).filter((g) => g.want === bulkStage && !g.have).map((g) => g.user)
@@ -209,7 +170,6 @@ export function ErhTypes({ remote, onDirty }: {
   ].join('\n');
 
   if (!typesReady()) {
-    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): уншилт унасан бол үүрд «уншигдаж байна…» биш */
     if (remote && !remote.busy) {
       return (
         <div className={ua.addErr} role="alert">
@@ -238,8 +198,6 @@ export function ErhTypes({ remote, onDirty }: {
                       {isStoredTpl(r) ? '' : ` · ${tr('анхдагч')}`}
                     </span>
                     {typeLabel(r)}
-                    {/* ⚠️ 2026-10-01: хадгалсны дараа нэмэгдсэн хуудас (жиш. «ТУХ») — `on` нь чеклэснийг л
-                        хадгалдаг тул «хаалттай» гэж чимээгүй үлдэх байв. Дарвал «тохируулсан» (ноорог). */}
                     {unseenOf(r).length > 0 && (
                       <button
                         type="button"
@@ -295,7 +253,6 @@ export function ErhTypes({ remote, onDirty }: {
                   <select id={`tt-home-${r}`} className={s.sel} value={cur(r).home} disabled={busy}
                     aria-label={`${tr('Нэвтрэхэд нээгдэх цонх')} — ${typeLabel(r)}`}
                     onChange={(e) => put(r, { ...cur(r), home: e.target.value as ViewKey })}>
-                    {/* ⚠️ 2026-10-26: загвараар нээгдэхгүй цонхыг тэмдэглэнэ — нүүр нь нээгдэхгүй бол `Root.openEntry` эхний зөвшөөрөгдсөн руу */}
                     {VIEWS.map((v) => <option key={v.key} value={v.key}>{v.title}{homeNote(r, v.key)}</option>)}
                   </select>
                 </td>
@@ -314,7 +271,6 @@ export function ErhTypes({ remote, onDirty }: {
           {dirtyRoles.length ? tr('Хадгалах ({0} төрөл)', String(dirtyRoles.length)) : tr('Хадгалах')}
         </button>
         {dirtyRoles.length > 0 && (
-          /* ⚠️ 2026-10-23 (UX аудит X7): болих товч порталд «Болих» (UserAdmin-ы хадгалах мөртэй ижил) */
           <button type="button" className={ua.cancelBtn} disabled={busy} onClick={() => setDrafts({})}>
             {tr('Болих')}
           </button>
@@ -334,15 +290,12 @@ function Group({
 }: {
   title: string;
   rows: SettingRow[];
-  /** ⚠️ 2026-10-26: «Хуваарь харах» сонгогч */
   setHv: (r: Role, v: HvScope) => void;
-  /** ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» мэдээллийн тоо */
   holders: (r: Role, role: 'author' | 'approver') => number | null;
   cur: (r: Role) => TypeTpl;
   flip: (r: Role, id: string, v: boolean) => void;
   allowed: (r: Role, id: string) => boolean;
   busy: boolean;
-  /** ⚠️ 2026-10-01: тэр баганын хадгалсан загварт тохируулаагүй шинэ хуудас уу */
   isNew: (r: Role, id: string) => boolean;
 }) {
   return (
@@ -353,7 +306,6 @@ function Group({
           <td className={s.lbl}>
             <span className={s.lblText}>{row.label}</span>
             {TYPE_ORDER.some((r) => isNew(r, row.id)) && (row.select ? (
-              /* ⚠️ 2026-10-26: «Хуваарь харах» — энэ тохиргооноос ӨМНӨ хадгалсан загварт анхдагч утга үйлчилж байна */
               <span className={s.newBadge} title={tr('Шар нүдэнд анхдагч утга үйлчилж байна — сонгоод «Хадгалах» дарж батална уу.')}>
                 {tr('шинэ тохиргоо — анхдагч утга')}
               </span>
@@ -367,7 +319,6 @@ function Group({
           {TYPE_ORDER.map((r) => (
             <td key={r} className={isNew(r, row.id) ? s.cellNew : undefined}>
               {row.select ? (
-                /* ⚠️ 2026-10-26: «Хуваарь харах» — Бүх багц / Өөрийн багц / Үгүй (`roleTypes.HvScope`) */
                 <select id={`tt-${r}-hv`} className={s.sel} value={hvScopeOf(cur(r).on)} disabled={busy}
                   aria-label={`${row.label} — ${typeLabel(r)}`}
                   onChange={(e) => setHv(r, e.target.value as HvScope)}>
@@ -376,7 +327,6 @@ function Group({
                   <option value="none">{tr('Үгүй')}</option>
                 </select>
               ) : row.info ? (
-                /* ⚠️ 2026-10-26: МЭДЭЭЛЭЛ — засагдахгүй; «Хуваарийн эрх»-ээс багцаар (тоо = тэр төрлийн үүрэгтэй хүн) */
                 (() => {
                   const n = holders(r, row.info);
                   return (

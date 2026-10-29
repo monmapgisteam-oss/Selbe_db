@@ -1,32 +1,23 @@
-/* ── Хулганы тайлбар ──
-   ⚠️ `fixed` — самбарын `overflow` тайралтаас гарахын тулд (`ui.tsx`-ийн
-   `useTip` дээрх тайлбарыг үзнэ үү). `pointer-events: none` заавал: эс бөгөөс
-   заагуурын доор орж өөрөө `pointerleave` өдөөж анивчина. */
+/* ── Хулганы тайлбар ── */
 /* envhub-ийн tooltip: min 124px, hairline хүрээ, шилэн дэвсгэр, өнгөт толгойн
    зурвас (JS талаас color-mix-ээр будна) + том өнгөт утга. Сүүдэр нь ЗӨВХӨН
-   ийм хөвөгч зүйлд зөвшөөрөгдөнө.
-   ⚠️ 2026-10-23: Environment `Tooltip` — `--surface` 95% + blur, `--line-strong`, булан 12px,
-   толгой tone 10%, утга 17px. */
+   ийм хөвөгч зүйлд зөвшөөрөгдөнө. */
 .tip {
   position: fixed;
   z-index: 60;
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  /* ⚠️ 260 → 320: задаргаа нь одоо ОЛОН цэгтэй мөр (мөнгөн дүн, эзлэх хувь,
-     дэд цуваа) тул нарийн цонхонд мөр бүр хоёр болж эвхэрдэг байв. */
   min-width: 140px;
   max-width: 320px;
   overflow: hidden;
   background: color-mix(in oklab, var(--surface) 95%, transparent);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line-strong);
-  /* ⚠️ 2026-10-23: Environment `Tooltip` — булан 12px (`rounded-xl`), хөвөгч тул сүүдэртэй */
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
   color: var(--ink);
 }
-/* ⚠️ 2026-10-23: Environment `Tooltip` — толгой 8×4 (`px-2 py-1`), бие 8×6 (`px-2 py-1.5`) */
 .tipHd {
   display: flex;
   align-items: center;
@@ -46,31 +37,12 @@
   white-space: nowrap;
 }
 .tipDot { width: 6px; height: 6px; flex: none; border-radius: 99px; }
-/*
- * ⚠️ ХЭМЖЭЭ БАГАСГАВ (2026-09-04, хэрэглэгчийн хүсэлт). Утга нь 17px байсан
- * бөгөөд мөнгөн дүн бүтнээрээ бичигддэг (`1,920,638,907,986 ₮`) тул хөвөгч
- * цонх 260px өргөнөө дүүргэж, ард нь байгаа чартыг халхалдаг байв. 13.5px
- * дээр тэр дүн НЭГ мөрөнд багтана.
- *
- * ⚠️ ШАТЛАЛ ТОДОРХОЙ: нэр нь ЖИЖИГ, БҮДЭГ (юуны тухай), утга нь ТОМ, ӨНГӨТ
- * (хариулт). Урьд нь нэр нь `--ink` бүтэн өнгөтэй байсан тул хоёул адил
- * жинтэй уншигдаж, нүд аль нь гол болохыг ялгахгүй байв.
- */
-/* ⚠️ Хэмжээг БУЦААЖ ӨСГӨВ (2026-09-04): 10/13.5/9.5px нь хэт жижиг байв —
-   hover нь тухайн мөрийг СУДЛАХ агшин тул тэнд текст уншигдахуйц байх ёстой
-   (жагсаалтын мөр нь эсрэгээрээ богино, нягт). */
 .tipName {
   font-size: 11.5px;
   font-weight: 500;
   color: var(--ink);
   overflow-wrap: anywhere;
 }
-/*
- * ⚠️ ХОЁР МӨР, ЦЭГТЭЙ (2026-09-04, хэрэглэгчийн хүсэлт). Эхний мөр нь ЮУ
- * (мөнгөн дүн), хоёр дахь нь ХЭР ХЭМЖЭЭНИЙ (нийтэд эзлэх хувь). Урьд нь
- * хоёулаа нэг мөрөнд «·»-ээр залгагдаж, аль нь дүн, аль нь харьцаа болох
- * нь ялгагдахгүй байв.
- */
 .tipBody { display: flex; flex-direction: column; gap: 5px; padding: 6px 8px; }
 .tipVal, .tipHint { display: flex; align-items: baseline; gap: 6px; }
 .tipVal::before, .tipHint::before {
@@ -82,11 +54,6 @@
   background: currentColor;
   opacity: 0.55;
 }
-/* ⚠️ 16 → 13.5: мөнгөн дүн бүтнээрээ бичигддэг («29,031,821,175 ₮») тул
-   том үсгээр цонхны өргөнийг дүүргэж, доорх тайлбар мөрөөс хэт давамгайлж
-   байв. Тайлбар (12px)-тай ойролцоо байвал хоёулаа уншигдана. */
-/* ⚠️ 2026-10-23: Environment `Tooltip` — утга 17px/500, тэмдэггүй (дээрх 13.5px нь зөвхөн
-   урт мөнгөн дүнд — `tipValLong`, 2026-09-04-ний ⚠️ хэвээр). */
 .tipVal { font-size: 17px; line-height: 1.1; font-weight: 500; }
 .tipVal::before { display: none; }
 .tipValLong { font-size: 13.5px; line-height: 1.2; font-weight: 600; }
@@ -108,14 +75,7 @@
   background: var(--line);
 }
 
-/* ── Дашбоардын хэсэг ──
-   ⚠️ 2026-08-17: envhub-ийн Card/Head хэл — хэсэг бүр нь НЭГ хавтангийн заагтай
-   мөр БИШ, hairline хүрээт БИЕ ДААСАН карт (rounded-xs, bg-paper-2). Завсрыг
-   эцэг нь өгнө (`.panelBody` gap 10px). Толгой нь бүтэн өргөний hairline-тай
-   тусдаа зурвас (px-3 py-2), гарчиг 13.5px / 600 / +0.06em uppercase.
-   ⚠️ 2026-10-23: Environment `.analytics-chart-card` — булан 12px (`--r-lg`), сүүдэргүй;
-   толгой 9px 12px + доод зураас, гарчиг 12px/600 UPPERCASE +0.02em (кирилл line-height 1.4),
-   бие 10px 12px. */
+/* ── Дашбоардын хэсэг ── */
 .section {
   padding: 10px 12px;
   background: var(--surface);
@@ -143,8 +103,6 @@
   letter-spacing: 0.02em;
   color: var(--ink);
 }
-/* ⚠️ 2026-10-23: Environment `CutCard meta` — 10.5px tabular, НЭГ мөрөнд, ink-3, агшихгүй
-   (толгой нь `flex-wrap` тул нарийн картад гарчгийн доор бүхлээрээ буна; картаас урт бол «…») */
 .sectionNote {
   flex-shrink: 0;
   max-width: 100%;
@@ -187,9 +145,7 @@
 .sectionFill { display: flex; flex-direction: column; }
 .sectionFill > :last-child { flex: 1; min-height: 0; }
 
-/* Самбарын ГОЛ хэсэг
-   ⚠️ 2026-10-23: Environment `CutCard first` (`border-t-2` + tone) — 2px `--data` ДЭЭД хүрээ;
-   хүрээний бусад тал, толгой нь энгийн картынх (урьдын moss 35% хүрээ/будсан толгой хасагдсан). */
+/* Самбарын ГОЛ хэсэг */
 .sectionPrimary {
   border-top: 2px solid var(--data);
 }
@@ -211,10 +167,7 @@
 
 /* ── Таб ──
    Самбарын биеийг гүйлгэхэд дагаж явна. `--surface` дүүргэлт заавал хэрэгтэй —
-   эс бөгөөс доогуур өнгөрөх агуулга нь хагас тунгалаг табын ард харагдана.
-   ⚠️ 2026-10-23: Environment `.view-switch` — доогуур зураастай таб БИШ, СЕГМЕНТЭН удирдлага:
-   1px `--line` хүрээт зам (3px дотор зай, 8px булан, `--bg` дэвсгэр), дарагдсан нь
-   `--surface` + `0 1px 5px #00000012`. Наалдах зурвас нь гаднах `.tabsBar`. */
+   эс бөгөөс доогуур өнгөрөх агуулга нь хагас тунгалаг табын ард харагдана. */
 .tabsBar {
   position: sticky;
   top: 0;
@@ -262,7 +215,6 @@
   box-shadow: 0 1px 5px #00000012;
 }
 
-/* ⚠️ 2026-10-23: Environment `Badge` — булан 6px, 11px/500, tone хүрээ 35% / дэвсгэр 8% */
 .tabCount {
   padding: 0 5px;
   border-radius: var(--r-sm);
@@ -286,15 +238,7 @@
   border-color: color-mix(in oklab, var(--warn) 35%, transparent);
 }
 
-/* ── Үзүүлэлт (KPI) ──
-   ⚠️ 2026-08-17: envhub-ийн KPI зурвас — тусдаа картууд БИШ, НЭГ hairline
-   хүрээт хайрцаг дотор hairline ЗААГААР тусгаарлагдсан нүднүүд. 1px завсар +
-   --line дэвсгэр нь заагийг зурна; нүд өөрөө хүрээгүй болно.
-   ⚠️ 2026-10-23: Environment — ХУУЧИРСАН (доорх `.stats`/`.stat`-ийн тайлбарыг үз).
-   minmax(0,1fr) — track нь агуулгын min-content-оос доош агшиж чадна;
-   эс бол нарийн эцэг дотор өргөн тоо (8,575 өрх) хүрээг давна. */
-/* ⚠️ 2026-10-23: Environment `.analytics-overview` — нэг hairline хайрцаг БИШ, ТУСДАА хавтангууд
-   8px завсартай (Environment 12px; Сэлбэгийн нарийн хажуугийн баганад 8). */
+/* ── Үзүүлэлт (KPI) ── */
 .stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -306,15 +250,6 @@
 .stats4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 720px) { .stats4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-/* ⚠️ 2026-08-17: envhub-ийн KPI нүдний хэл — ЗҮҮН зэрэгцүүлсэн, дээр нь eyebrow
-   шошго, доор нь 16px/500 тоо. Сүүдэр ОГТ байхгүй (envhub-д картын сүүдэр
-   хориотой — гүнийг hairline + гадаргуун шат өгнө).
-   DOM-ийн дараалал (утга → шошго) хэвээр тул `column-reverse`-ээр эргүүлнэ —
-   56 дуудагчийн нэг нь ч өөрчлөгдөхгүй. */
-/* ⚠️ 2026-10-23: Environment `.analytics-stat` — хавтан 14px 18px, булан 13px (`--r-xl`),
-   `--line` хүрээ, `--surface`; hover-ын хүрээ солигдохгүй (хавтан нь товч биш).
-   DOM дараалал (утга → шошго) хэвээр тул байрлалыг GRID ТАЛБАР өгнө: шошго ДЭЭР, утга ДООР;
-   дүрстэй үед зүүнд 38px хайрцаг хоёр мөрийг эзэлнэ (`statHasIcon`). */
 .stat {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -351,12 +286,9 @@
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
-/* Урт утга (мөнгөн дүн бүтнээр) — 2026-09-01. Тайрахгүй, зөвхөн жижигрүүлнэ.
-   ⚠️ 2026-10-23: Environment-ийн compact 17px. */
+/* Урт утга (мөнгөн дүн бүтнээр) — 2026-09-01. Тайрахгүй, зөвхөн жижигрүүлнэ. */
 .statValueLong { font-size: 17px; letter-spacing: -0.02em; }
 .statUnit { font-size: 11.5px; font-weight: 400; color: var(--ink-3); letter-spacing: 0; }
-/* ⚠️ 2026-10-23: Environment `.analytics-stat-label` — 10px ink-3, том үсэг/tracking-гүй;
-   урьдын 26px нөөцлөсөн өндөр хасагдсан (хавтан нь `align-content: center`). */
 .statLabel {
   grid-area: label;
   font-size: 11px;
@@ -365,22 +297,13 @@
   line-height: 1.4;
   min-width: 0;
 }
-/* Онцолсон KPI — булангаас цацрах зөөлөн өнгөт гэрэлтэй
-   ⚠️ 2026-10-23: Environment — радиал градиент ХАСАГДСАН; `.tinted` хэлээр tone `--tint`
-   (харанхуйд 13%, цайварт 9%) дэвсгэр + tone 30% хүрээ. Утга `--ink` хэвээр (контраст). */
+/* Онцолсон KPI — булангаас цацрах зөөлөн өнгөт гэрэлтэй */
 .statAccent {
   border-color: color-mix(in oklab, var(--tone, var(--data)) 30%, var(--line));
   background: color-mix(in oklab, var(--tone, var(--data)) var(--tint, 9%), var(--surface));
 }
 
-/* ── Баганан жагсаалт ──
-   ⚠️ 2026-08-17: envhub-ийн RowChart хэл — бар нь «блок» биш, текстийн ДООРХ
-   2px hairline зам. Нэр 12px, утга 11.5px; сонголт нь өнгөт дэвсгэр биш
-   ТЕКСТИЙН жингээр (нэр medium + ink болно), бусад нь бүдгэрнэ. */
-/* ⚠️ 2026-10-23: Environment `RowChart` — мөр хооронд 2px, дарагдах мөр 1px тунгалаг хүрээ,
-   hover `--surface-2`, сонгогдсон нь moss 25% хүрээ + moss 7% дэвсгэр. */
-/* ⚠️ 2026-10-23: Environment `.row-chart-item` — мөр БҮР (дардаггүй ч) 3px 6px 4px дотор зайтай,
-   1px тунгалаг хүрээ, 8px булан; урьдын сөрөг margin (`.barClick`) хасагдсан. */
+/* ── Баганан жагсаалт ── */
 .bars { display: flex; flex-direction: column; gap: 2px; }
 .barRow {
   display: flex;
@@ -393,8 +316,6 @@
   text-align: left;
   transition: background 0.15s, opacity 0.15s, border-color 0.15s;
 }
-/* ⚠️ 2026-10-09 (графикийн жигдрэл): бүдгэрэлт БҮХ төрөлд 0.35 (`CHART.dim`).
-   ⚠️ 2026-10-23: Environment — МӨР БҮХЭЛДЭЭ (нэр · утга · зурвас) .35 */
 .barRowDim { opacity: 0.35; }
 .barClick { cursor: pointer; }
 .barClick:hover { background: var(--surface-2); }
@@ -407,8 +328,6 @@
 /* 2026-08-21 аудит: нэг мөрийн «…» нь урт нэрийг («Шинээр төлөвлөж буй
    110/35/10кВ дэд станц» г.м.) хагасаар нь иддэг байв — одоо 2 мөрөнд бүтэн,
    түүнээс хэтэрсэн ховор тохиолдолд л таслаад бүтэн нэр title/tooltip-д. */
-/* ⚠️ 2026-10-23: Environment `.row-chart-label` — нэр БҮТЭН ороно (2 мөрийн тайралт хасагдсан;
-   бүтэн нэр нь мөрийн `title`-д ч бий), сонгогдсон үед жин өөрчлөгдөхгүй. */
 .barName {
   display: inline-flex;
   align-items: baseline;
@@ -421,28 +340,19 @@
 }
 /* Мөрийн ӨӨРИЙН өнгө (`it.color`) — Environment `colorOf`-ийн 6px цэг */
 .barDot { display: inline-block; flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; }
-/* ⚠️ 2026-10-23: Environment — утга 11.5px/600 `--ink` (`.row-chart-heading strong`) */
 /* `flex: none` + `nowrap` — бүтэн мөнгөн дүн шахагдаж мөр таслахгүй (2026-09-01) */
-/* ⚠️ 2026-10-09: утга `--ink-2` (урьд нь --ink-3) — нэр ба утга ижил жинтэй уншигдана */
 .barVal { flex: none; white-space: nowrap; font-size: 11.5px; font-weight: 600; color: var(--ink); }
 .barTrack {
   display: block;
-  /* ⚠️ 2026-10-23: Environment `.row-chart-track-inner` — 5px, булан 4px (`CHART.barH`).
-     Урьдын «2px (хэрэглэгчийн сонголт, 2026-10-09)»-ийг хэрэглэгчийн 2026-10-23-ны
-     «Environment-ийг бүрэн дуурай» шийдвэр орлов. */
   height: 5px;
   width: 100%;
   border-radius: 4px;
   background: var(--chart-track);
-  /* ⚠️ 2026-10-23: Environment `.row-chart-track-inner` — `overflow: hidden` (урьдын `.barMark`
-     тэмдэг байхгүй болсон — хоёр дахь хэмжигдэхүүн нь тусдаа зам `.barTrack2`). */
   overflow: hidden;
   position: relative;
 }
 /*
  * ХОЁРДУГААР ХЭЛХЭЭ — жишээ нь «бодит гүйцэтгэл».
- * ⚠️ ТУСДАА зам: нэг зурвас дээр давхарлавал богино нь урт дороо
- * бүрэн далдарна. Дээд хэлхээнээс 3px доор, ижил зузаантай.
  */
 .barTrack2 { margin-top: 3px; }
 .barFill {
@@ -450,16 +360,11 @@
   height: 100%;
   border-radius: inherit;
   background: var(--tone, var(--data));
-  /* ⚠️ 2026-10-23: Environment — гэрэлтэлт (`box-shadow`) ХАСАГДСАН */
   transition: width 0.2s;
 }
 
-/* ── Хэмжигч (`Meter`) ──
-   ⚠️ 2026-10-09: `tailanChart` (8px бөөрөнхий) ба `tuh/charts` (2px) хоёр хувилбарыг
-   нэгтгэв — `Bars`-ийн мөр: дээр нэр + утга (`.barTop`), доор 2px зам. Төлөвлөгөө нь
-   2px `--ink` зураас, замаас ±4px сунана (тиймээс замд `overflow: hidden` БАЙХГҮЙ). */
+/* ── Хэмжигч (`Meter`) ── */
 .meterRow { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 60px; }
-/* ⚠️ 2026-10-23: Environment `Meter` — зам 6px (`h-1.5`, `CHART.meterH`), булан 6px, гэрэлтэлтгүй */
 .meterTrack {
   position: relative;
   display: block;
@@ -489,7 +394,6 @@
 }
 
 /* Урт жагсаалтыг задлах / хумих */
-/* ⚠️ 2026-10-23: Environment `.pe-ghost` — `--line-strong` хүрээ, hover `--surface-2` */
 .more {
   align-self: flex-start;
   margin-top: 2px;
@@ -504,14 +408,6 @@
 .more:hover { background: var(--surface-2); color: var(--ink); }
 
 /* ── Хэсэгчилсэн мөр (stacked) ── */
-/* ⚠️ 8px → 10px: хэсгүүд нь одоо тусгаарлагч зайтай тул нимгэн зурвасанд
-   хэсэг бүр нь өөрөө хэтэрхий нарийсч байв.
-   ⚠️ 2026-10-09 (графикийн жигдрэл): 8px, радиус 4px, сегмент хооронд 2px зай
-   (`CHART.stackH`/`stackGap`) — CEO StatusPanel/DimBar ижил хэмжээстэй болно. */
-/* ⚠️ 2026-10-09 (лавлах CRM загвар): `overflow: hidden` ХАСАГДАВ — тэр нь сегментийн
-   гэрэлтэлтийг тайрдаг байв; бөөрөнхий үзүүрийг эхний/сүүлийн сегмент өөрөө авна. */
-/* ⚠️ 2026-10-23: Environment `.stacked-chart-track` — 10px, булан 3px, хэсэг хооронд 1px
-   завсар (замын өнгө харагдана), гэрэлтэлтгүй (`CHART.stackH`/`stackGap`). */
 .stack {
   display: flex;
   gap: 1px;
@@ -549,7 +445,7 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: var(--hue-ink); /* ⚠️ 2026-10-23: --data дүүргэлт дээрх бичиг — хоёр горимд уншигдана */
+  color: var(--hue-ink);
   transition: opacity 0.15s;
 }
 .compSwatch { width: 10px; height: 10px; flex: none; border-radius: 2px; }
@@ -566,18 +462,13 @@
 /* envhub: 8px, 1px радиустай дөрвөлжин — donut-д зүсмэгийн багасгасан хувь
    (тунгалаг дэвсгэр + өнгөт хүрээ, inline style-аас), stack-д цул. */
 .legendDot { width: 8px; height: 8px; border-radius: 1px; flex: none; }
-/* ⚠️ 2026-10-09 (лавлах CRM загвар): Donut-ын тайлбарын тэмдэг 12px ХӨНДИЙ цагираг байв.
-   ⚠️ 2026-10-23: Environment `.donut-legend-swatch` — 7px, 2px булантай ЦУЛ (тунгалаг inline). */
 .legendSwatch { width: 7px; height: 7px; flex: none; border-radius: 2px; }
-/* ⚠️ 2026-10-23: Environment `Composition` — «утга · %» нь ink-3, энгийн жин */
 .legendVal { color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
 /* Хувь — үнэмлэхүй тооны ХАЖУУД. Хоёулаа хэрэгтэй: тоо нь хэмжээг, хувь нь
    бүхэлд эзлэх байрыг хэлнэ. */
 .legendPct { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* ── Цагираг ── */
-/* ⚠️ 2026-10-23: Environment — Ring = `PieChart`-ын ганц утгат хэлбэр: `--chart-track` бөгж, нум
-   .88 тунгалаг, шулуун үзүүр, анимацгүй; голын бичвэр SVG (шошго ink-3, утга 600 tabular). */
 .ring { position: relative; display: grid; place-items: center; flex: none; }
 .ring svg { overflow: visible; }
 .ringTrack { fill: none; stroke: var(--chart-track); }
@@ -587,8 +478,7 @@
 
 /* ── Түлхүүр → утга ── */
 .rows { display: flex; flex-direction: column; }
-/* envhub KeyValue хэл — 12px, утга нь medium (600 биш)
-   ⚠️ 2026-10-23: Environment `KeyValue` — мөр 8px, түлхүүр `--ink-2`, утга .num 500 `--ink` */
+/* envhub KeyValue хэл — 12px, утга нь medium (600 биш) */
 .row {
   display: flex;
   align-items: baseline;
@@ -599,15 +489,7 @@
   font-size: 12px;
 }
 .row:last-child { border-bottom: none; }
-/**
- * ⚠️ 2026-08-20: ТҮЛХҮҮР нь хумигдаж мөр дамжина, УТГА нь бүтэн үлдэнэ —
- * урьд нь эсрэгээрээ байв (`.rowKey { flex: none }` + `.rowVal { overflow-wrap:
- * anywhere }`). Нарийн баганад (дашбоардын 272px хажуугийн карт) урт монгол
- * түлхүүр бүх зайг эзэлж, «3,935» гэсэн утга нь ТЭМДЭГТ ТУС БҮРЭЭР босоо
- * тасарч уншигдахаа больдог байлаа.
- */
 .rowKey { color: var(--ink-2); min-width: 0; }
-/* ⚠️ 2026-10-23: Environment `KeyValue tone` — түлхүүрийн өмнөх 6px цэг */
 .rowDot { display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; vertical-align: 1px; }
 .rowVal {
   color: var(--ink);
@@ -624,18 +506,10 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  /**
-   * ⚠️ ЗӨРҮҮЛЖ БУУЛГАНА (2026-09-03). Утга нь нэрийн хажууд багтахгүй бол
-   * ДООШ өөрийн мөрөнд буна — нэрийг шахаж устгахгүй. Ингэхгүй бол «Санхүүжилт
-   * хоцорсон багц» картад «−233,753,870,736 ₮ 4 сар» гэсэн тэмдэг мөрийн
-   * өргөнийг бүхэлд нь идэж, зүүн талын нэр нь тэмдэгт БҮРЭЭР доошоо
-   * («Б·а·г·ц·2») тасарч уншигдахаа больж байв.
-   */
   flex-wrap: wrap;
   row-gap: 3px;
   width: 100%;
   padding: 7px 10px;
-  /* ⚠️ 2026-10-23: Environment — 1px тунгалаг хүрээ (сонгоход мөр хөдлөхгүй), булан 8px */
   border: 1px solid transparent;
   border-radius: var(--r);
   text-align: left;
@@ -644,34 +518,14 @@
   transition: background 0.12s, border-color 0.12s;
 }
 .listItem:hover { background: var(--surface-2); color: var(--ink); }
-/* ⚠️ 2026-10-23: Environment — сонгогдсон: tone 12% дэвсгэр + tone 45% хүрээ */
 .listOn {
   background: color-mix(in oklab, var(--tone, var(--data)) 12%, transparent);
   border-color: color-mix(in oklab, var(--tone, var(--data)) 45%, transparent);
   color: var(--ink);
 }
-/**
- * ⚠️ ЗААВАЛ баганан flex. Урьд нь зөвхөн `flex: 1; min-width: 0` байсан бөгөөд
- * гарчиг ба дэд мөр нь INLINE span хэвээр байлаа: тэдгээр нь нэг мөрөнд
- * зэрэгцэн урсаж, `overflow: hidden`/`text-overflow` нь inline элементэд огт
- * үйлчилдэггүй тул урт нэр дэд мөр ба утган дээрээ давхарладаг байв
- * («Багц 17.1 · Гадна тохи1.08 тэрбумт — Баг»). Блок болгосноор гурвуулаа
- * өөрийн мөртэй болж, таслалт ажиллана.
- */
-/**
- * ⚠️ ХАМГИЙН БАГА ӨРГӨН 110px — нэрийн багана үүнээс нарийсахгүй. `min-width: 0`
- * байхад flex нь нэрийг 0 хүртэл шахдаг байсан бөгөөд `overflow-wrap: anywhere`
- * тэр агшинд тэмдэгт бүрийг шинэ мөрөнд буулгадаг («Б·а·г·ц»). 110px нь
- * хажуугийн самбарын хамгийн нарийн өргөнд (`SplitGrip` MIN 180px) ч багтана.
- */
 .listMain { flex: 1 1 110px; min-width: 110px; display: flex; flex-direction: column; gap: 1px; }
 .listTitle { display: block; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
 .listSub { display: block; font-size: 11px; color: var(--ink-3); overflow-wrap: anywhere; }
-/* ⚠️ `nowrap` — утга нь дундуураа тасрахгүй, ҮРГЭЛЖ БҮТЭН үлдэнэ (мөнгөн дүнг
-   товчлохгүй гэсэн дүрмийн үргэлжлэл).
-   ⚠️ `margin-left: auto` — утга доошоо буусан үедээ ч БАРУУН ирмэгтээ
-   зэрэгцэнэ, эс бөгөөс нэг мөрөнд баруунд, дараагийнхад зүүнд гарч
-   жагсаалтын багана эвдэрнэ. */
 .listVal {
   flex: none;
   margin-left: auto;
@@ -694,26 +548,17 @@
   font-size: 12px;
   color: var(--ink-3);
 }
-/* ⚠️ 2026-10-23: Environment — lucide `Loader2` (svg) эргэлт, `--ink-3` */
 .spinner {
   flex: none;
   color: var(--ink-3);
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-/**
- * ⚠️ Хөдөлгөөн мэдрэг хэрэглэгчид. `globals.css` нь БҮХ анимацийг 0.01ms болгож
- * зогсоодог — тэр нь эргэлдэгчийг зогсоохгүй, ХАГАС дуусаагүй цагираг байдлаар
- * ЭВДЭРСЭН мэт харагдуулдаг байв. Ийм үед бүтэн цагираг болгож, «ажиллаж
- * байгаа» гэдгийг тэмдэг биш ТЕКСТ («Ачаалж байна…») дамжуулна.
- */
 @media (prefers-reduced-motion: reduce) {
   .spinner { opacity: 0.7; }
 }
 
 /* ── Хоосон төлөв ── */
-/* ⚠️ 2026-10-23: Environment `.chart-empty` — 1px ТАСАРХАЙ `--line` хүрээ, 10px булан,
-   дэвсгэргүй, 24px 12px, 12px ink-3 төвд. */
 .empty {
   gap: 6px;
   padding: 24px 12px;
@@ -728,7 +573,6 @@
 
 /* «Дахин оролдох» — алдааны доорх жижиг товч. Бүтэн хуудас refresh хийлгүйгээр
    тухайн хүсэлтийг л дахин явуулна (ArcGIS түр гацах нь энгийн үзэгдэл). */
-/* ⚠️ 2026-10-23: Environment `.pe-ghost` — 28px, булан 8px, 12px/600, `--line-strong` хүрээ */
 .retryBtn {
   margin-top: 2px;
   height: 28px;
@@ -744,7 +588,6 @@
 .retryBtn:hover { background: var(--surface-2); }
 
 /* ── Дугуй диаграм (donut) — Environment `.donut-chart` ── */
-/* ⚠️ 2026-10-23: Environment — бөгж ба тайлбар 10px завсартай, голлуулсан, 2px босоо зай */
 .donutWrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; padding: 2px 0; }
 .donutRing { flex-shrink: 0; max-width: 100%; height: auto; overflow: visible; }
 /* Зүсмэгийн доорх бүтэн бөгж (Environment `paper-hi`) */
@@ -769,12 +612,8 @@
   word-break: normal;
 }
 .donutLeadName { color: var(--ink-2); font-family: var(--cond); }
-/* ⚠️ 2026-10-23: Environment — жин ≤600, нэг өнгө (`--ink`) */
 .donutLeadPct { font-size: 11.5px; font-weight: 600; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-/* ⚠️ 2026-10-23: Environment `.donut-chart-legend` / `.donut-legend-item` — мөр бүр
-   `7px | нэр | утга | хувь`, 3px 4px, доор нь 1px `--line` (сүүлийнх зураасгүй), 5px булан;
-   hover/сонгосон нь `--surface-2`. */
 .donutLegend { flex: 1 1 145px; min-width: 0; }
 .donutItem {
   display: grid;
@@ -813,16 +652,12 @@
 .donutClick:hover,
 .donutOn { background: var(--surface-2); }
 .donutOn .donutName { color: var(--ink); }
-/* ⚠️ 2026-10-09: `.legendSwatch` нь `Stack`-аас тусдаа (7px, 2px булан) — дээр тодорхойлогдсон */
 
-/* Пайн диаграмыг хажууд албадаж зэрэгцүүлнэ — тайлбар багасаж багтана.
-   ⚠️ Нэрийг ellipsis-ээр таслахгүй, шаардлагатай бол мөр даруулж БҮТЭН харуулна (`nowrap`). */
+/* Пайн диаграмыг хажууд албадаж зэрэгцүүлнэ — тайлбар багасаж багтана. */
 .donutRow { flex-wrap: nowrap; }
 .donutRow .donutItem { align-items: start; }
 .donutRow .donutName { white-space: normal; overflow: visible; overflow-wrap: anywhere; line-height: 1.2; }
 .donutRow .legendSwatch { margin-top: 4px; }
-/* ⚠️ 2026-10-23: Environment `legend="below"` — бөгжний ДООР, 2 баганат тор (14px завсар);
-   баганын ЁРООЛЫН хоёр нүд зураасгүй; 380px-ээс нарийн дэлгэцэд 1 багана. */
 .donutStack { flex-direction: column; flex-wrap: nowrap; gap: 12px; }
 .donutStack .donutLegend {
   flex: none;
@@ -839,11 +674,7 @@
   .donutStack .donutLegend { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ── Босоо цуваа (series) — Environment `BarChart` (баганын горим) ──
-   ⚠️ 2026-10-23: Environment `.bar-chart-*` — 34px тэнхлэгийн багана + талбай (9px завсар); тор
-   0/.25/.5/.75/1 × (100 − зай)% дээр 1px ТАСАРХАЙ `--line` (эхнийх бүтэн); тэнхлэгийн 2–3 шошго
-   9px tabular ink-3; багана нүдний 80% (max 44px), 5px дээд булан, .88; нүднүүд 8px завсартай,
-   hover moss 5%. Нэгжийн мөр ДЭЭР, зүүн тийш. */
+/* ── Босоо цуваа (series) — Environment `BarChart` (баганын горим) ── */
 .series { display: flex; flex-direction: column; }
 .seriesUnit {
   display: flex;
@@ -893,8 +724,6 @@
 }
 .seriesClick { cursor: pointer; }
 .seriesClick:hover { background: color-mix(in oklab, var(--data) 5%, transparent); }
-/* ⚠️ 2026-10-23: Environment `.bar-chart-fill` — ЦУЛ (градиентгүй), нүдний 80% (`CHART.colW`),
-   max 44px (`colMaxW`), дээд булан 5px (`colRadius`); тунгалаг .88/.18 нь inline. */
 .seriesBar {
   width: 80%;
   max-width: 44px;
@@ -934,7 +763,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* ⚠️ 2026-10-23: Environment `.bar-chart-ticks .is-selected` — moss, 600 */
 .seriesLabelOn { color: var(--data-ink); font-weight: 600; }
 /* Цөөлсөн шошго — хөрш ХООСОН нүднүүд рүү тэлж, бүтнээрээ уншигдана
    (тайрч «25…» болгохын оронд). Зөвхөн `stride > 1` үед тавигдана. */
@@ -967,8 +795,6 @@
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
-  /* ⚠️ `preserveAspectRatio="none"` нь SVG-г сунгадаг тул үүнгүй бол шугамын
-     зузаан хэвтээ ба босоо чиглэлд ӨӨР болно. */
   vector-effect: non-scaling-stroke;
 }
 /* Crosshair — Trend ба Series line-д нэг */
@@ -979,7 +805,6 @@
   opacity: 0.7;
   vector-effect: non-scaling-stroke;
 }
-/* ⚠️ 2026-10-23: Environment — 5px + 2px `--surface` цагираг; тунгалаг нь inline (.5 / 1 / .15) */
 .seriesLineDot {
   position: absolute;
   width: 5px;
@@ -1025,8 +850,6 @@
 
 /* ── Сонгогч ── */
 
-/* ⚠️ 2026-10-23: Environment `.pe-field select` — 32px, булан 7px, `--line-strong` хүрээ,
-   `--bg` дэвсгэр, 12.5px; фокус нь moss хүрээ + 3px moss 18% цагираг. */
 .select {
   font: inherit;
   font-size: 12.5px;
@@ -1049,10 +872,6 @@
 
 /* ── Цаг хугацааны муруй ── */
 
-/* ⚠️ 2026-08-17: envhub-ийн AreaChart хэл — торгүй, y-тэнхлэггүй байв.
-   ⚠️ 2026-10-23: Environment `AreaChart` — 2px шугам (гэрэлтэлтгүй), .22→.02 градиент, 5px цэг
-   (.5), тор [.25 .5 .75 1] бүгд ТАСАРХАЙ `3 4`, Y шошгогүй; дээрх уншилтын мөр (`trendHead`) ба
-   зүүн тэнхлэг ХАСАГДСАН. */
 .trend { display: flex; flex-direction: column; }
 /* Хажуугийн 4px — ирмэгийн цэг (2.5 + 2px цагираг) тайрагдахгүй */
 .trendPlot { position: relative; margin: 0 4px; }
@@ -1066,7 +885,6 @@
 .trendSvg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 /* `preserveAspectRatio="none"` нь зурсан зайг сунгадаг тул шугамын зузааныг
    `non-scaling-stroke`-оор бэхэлнэ — эс бөгөөс өргөн самбарт нимгэрч харагдана. */
-/* ⚠️ 2026-10-09: 1.5 → 2px (`CHART.stroke`) — бүх шугам нэг зузаантай */
 .trendLine {
   fill: none;
   stroke: var(--tone, var(--data));
@@ -1088,10 +906,7 @@
   background: none;
   cursor: pointer;
 }
-/* Хөндлөн огтлол — ⚠️ 2026-10-23: Environment — SVG `<line>` (`.areaCross`), CSS `::before` хасагдсан */
-/* ⚠️ 2026-10-09: r=3 (6px) + 2px гадаргуун цагираг — `CHART.markerR`/`ring`
-   ⚠️ 2026-10-23: Environment `AreaChart` — 5px цэг + 2px `--surface` цагираг, анхдагчаар .5
-   ХАРАГДАНА (CRM загварын «нуугдмал»-ыг буцаав); заасан цэг 1, бусад нь .15 (`trendPlotHov`). */
+/* Хөндлөн огтлол — 2026-10-23: Environment — SVG `<line>` (`.areaCross`), CSS `::before` хасагдсан */
 .trendDot {
   position: absolute;
   left: 50%;
@@ -1108,7 +923,7 @@
 .trendPlotHov .trendDot { opacity: 0.15; }
 /* Ганц цэгтэй хэсэг — шугамгүй тул цэг нь ЦОРЫН ГАНЦ дүрс, үргэлж харагдана */
 .trendDotSolo { opacity: 1; }
-/* Заасан цэг — ⚠️ 2026-10-23: Environment — ТОМРУУЛАХГҮЙ, зөвхөн бүтэн тунгалаг */
+/* Заасан цэг — 2026-10-23: Environment — ТОМРУУЛАХГҮЙ, зөвхөн бүтэн тунгалаг */
 .trendHitOn .trendDot,
 .trendPlotHov .trendHitOn .trendDot {
   opacity: 1;
@@ -1117,7 +932,6 @@
    эхлэл/сүүл байсан тул завсрын хэмжилт хэзээ болсныг зөвхөн hover-оор мэдэх
    байлаа. Он нь ЗӨВХӨН сольсон цэгт бичигдэнэ (Trend-д хураана) — 9-12 шошго
    нарийн самбарт ч давхцахгүй. */
-/* ⚠️ 2026-10-23: Environment — 10px tabular ink-3, заасан цэгийнх ink */
 .trendAxis {
   position: relative;
   height: 14px;
@@ -1146,15 +960,10 @@
   transform-origin: top right;
 }
 
-/* ── Trend-ийн хэвтээ гүйлт (`visible` заасан үед) ────────────────────────
-   ⚠️ `padding-bottom` нь ЗААВАЛ: гүйлтийн зурвас ~12px эзэлдэг тул үүнгүй бол
-   тэнхлэгийн доод мөр (цаг) таслагдаж, огноо нь ганцаараа үлдэнэ. Habea-гийн
-   `.dayScroll` дээр яг ижил алдаа гарч байсан. */
+/* ── Trend-ийн хэвтээ гүйлт (`visible` заасан үед) ──────────────────────── */
 .trendScroll {
   overflow-x: auto;
   overflow-y: hidden;
-  /* ⚠️ Хажуугийн 14px — эхний/сүүлийн шошго нь цэгийнхээ голд төвлөрдөг тул
-     тэдний хагас нь агуулагчаас гарч, `overflow-x`-д таслагдана. */
   padding: 0 14px 12px;
   overscroll-behavior-x: contain;
 }
@@ -1175,12 +984,9 @@
 .trendTickClock { color: var(--ink-3); font-size: 11px; }
 
 /* Цэгийн утга — муруйн ДЭЭР; `nowrap` нь «1,234.5»-ыг хугалахгүй.
-   `pointer-events: none` — бичиг нь хөрш цэгийн hover-ыг хулгайлахгүй.
-   ⚠️ 2026-10-23: Environment `AreaChart labels` — 10px/400 tabular ink-2 (идэвхтэй ink), цэгээс
-   6px дээр (`transform` inline), chip дэвсгэргүй. */
+   `pointer-events: none` — бичиг нь хөрш цэгийн hover-ыг хулгайлахгүй. */
 .trendVal {
   position: absolute;
-  /* ⚠️ Босгын шошгоос ДООГУУР давхарлана — мөргөлдвөл босго нь дээр гарна */
   z-index: 1;
   font-size: 11px;
   font-weight: 400;
@@ -1192,27 +998,17 @@
 }
 .trendValOn { color: var(--ink); }
 
-/* ── Анхааруулгын босго ─────────────────────────────────────────────────────
-   ⚠️ Улаан нь ЭНД «босго давсан» гэсэн ГАНЦ утга үүрнэ. Тиймээс босгогүй
-   чартад улаан ОГТ гарахгүй — өнгө нь мэдээлэл дамжуулж байж утгатай. */
+/* ── Анхааруулгын босго ───────────────────────────────────────────────────── */
 .trendThresh {
   fill: none;
   stroke: var(--bad);
   stroke-width: 1;
-  /* ⚠️ ШУЛУУН шугам (тасархай БИШ) — захиалагчийн хүсэлт, 2026-08-21 */
   opacity: 0.8;
   /* `preserveAspectRatio="none"` нь зузааныг гажуудуулах тул бэхэлнэ */
   vector-effect: non-scaling-stroke;
 }
 /**
  * Босгын тоо — шугамын баруун үзүүрт.
- *
- * ⚠️ ДАВХЦЛЫН ЭРЭМБЭ. Цэгийн утгын бичиг (`.trendVal`) энэ шошготой мөргөлдөж
- * болно (цэг нь босгын ойролцоо буувал). Хоёулаа хагас тунгалаг байвал
- * давхцсан хэсэг нь ЗУУРАЛДАЖ хоёулаа уншигдахаа болино. Тиймээс:
- *   · шошго нь БҮРЭН ЗУЗААН дэвсгэртэй (`--surface`, тунгалаг биш),
- *   · `z-index` нь утгын бичгээс ДЭЭГҮҮР — мөргөлдвөл босго нь ялна
- *     (босго нь тогтмол лавлагаа; утга нь hover-оор дахин уншигдана).
  */
 .trendThreshTag {
   position: absolute;
@@ -1243,16 +1039,12 @@
 }
 .trendValAlert { color: var(--bad-ink); }
 
-/* ⚠️ ГАР УТАС (2026-08-29): хэсгийн толгойн тэмдэглэл («2 багц · төлөвлөгөөнөөс
-   хоцорсон») баруун ирмэгт тайрагддаг байв — мөр тасалж доош буулгана. */
 @media (max-width: 560px) {
   .sectionHead { flex-wrap: wrap; row-gap: 4px; }
   .sectionNote { flex: 1 1 100%; overflow-wrap: anywhere; }
 }
 
-/* Удаан ачаалалтын тайлбар — 8 сек-ийн дараа гарна (2026-09-02 аудит).
-   ⚠️ Эргэлдэгчийн шошгоос ЖИЖИГ, БҮДЭГ: гол мэдээлэл нь «ачаалж байна»
-   хэвээр, энэ нь зөвхөн «гацаагүй» гэдгийг тайвшруулна. */
+/* Удаан ачаалалтын тайлбар — 8 сек-ийн дараа гарна (2026-09-02 аудит). */
 .slowHint {
   display: block;
   margin-top: 6px;
@@ -1263,9 +1055,7 @@
   text-align: center;
 }
 
-/* Үзүүлэлтийн дүрс — тооны өмнө, түүнтэй нэг мөрөнд
-   ⚠️ 2026-10-23: Environment `.analytics-stat-icon` — 38px хайрцаг (булан 10px, `--surface-2`),
-   moss дүрс 20px; хавтангийн зүүн талд хоёр мөрийг эзэлнэ (`grid-area: icon`). */
+/* Үзүүлэлтийн дүрс — тооны өмнө, түүнтэй нэг мөрөнд */
 .statIcon {
   grid-area: icon;
   display: grid;
@@ -1283,10 +1073,7 @@
 
 /* ── Утгын pill (`PointCallout`) ──
    Дэвсгэр = цувааны өнгө (`--cc` inline), цайварт `--chart-callout-shade`-ээр харлуулна;
-   бичиг `--hue-ink`. Сум нь `--pl` байрлалд (ирмэгийн цэгт зах руу шилжинэ).
-   ⚠️ 2026-10-23: Environment tooltip-ийн хэл — `--surface` 95% + blur, `--line-strong` хүрээ,
-   булан 8px, бичиг `--ink`; цувааны өнгө нь зөвхөн урд талын 6px цэг (`--cc`). Сум нь
-   хүрээний өнгөтэй. Гэрэлтэлт хасагдсан. */
+   бичиг `--hue-ink`. Сум нь `--pl` байрлалд (ирмэгийн цэгт зах руу шилжинэ). */
 .callout {
   position: absolute;
   z-index: 4;
@@ -1334,8 +1121,7 @@
   border-bottom-color: var(--line-strong);
 }
 
-/* ── Hover/фокусын тэмдэг (`HoverMarker`) — r 4.5 + 2px гадаргуу + r 9 гало 25% ──
-   ⚠️ 2026-10-23: Environment — 7px (`CHART.hoverR` 3.5) + 2px `--surface` цагираг, гало-гүй */
+/* ── Hover/фокусын тэмдэг (`HoverMarker`) — r 4.5 + 2px гадаргуу + r 9 гало 25% ── */
 .hmark {
   position: absolute;
   z-index: 3;
@@ -1349,7 +1135,6 @@
 }
 
 /* ── Хэвлэлт: гэрэлтэлт, градиент багана бүдэг саарал толбо болж хэвлэгддэг ── */
-/* ⚠️ 2026-10-23: Environment — гэрэлтэлт/градиент байхгүй болсон тул зөвхөн pill-ийн blur/сүүдэр */
 @media print {
   .callout { box-shadow: none; backdrop-filter: none; background: var(--surface); }
 }

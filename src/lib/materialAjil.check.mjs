@@ -1,10 +1,6 @@
 /**
  * АЖЛЫН МАТЕРИАЛ — гурван талын нийлүүлэлт (`mergeMats`), сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/materialAjil.check.mjs
- *
- * ⚠️ 2026-10-22 (аудит №8): `saveWorkMats` урьд нь бүх жагсаалтыг уншилтгүй дарж бичдэг тул хоёр хүн нэг ажлын
- *    материалыг зэрэг тохируулахад СҮҮЛД хадгалсан нь эхнийхийн нэрсийг чимээгүй устгадаг байв. Одоо хуудас
- *    ачаалсан үеийн утгаас (`base`) хойш сервер өөрчлөгдсөн бол `mergeMats`-аар нийлүүлнэ.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/materialAjil.check.mjs
  */
 import assert from 'node:assert/strict';
 import { mergeMats, parseMats, formatMats } from './materialAjil.ts';

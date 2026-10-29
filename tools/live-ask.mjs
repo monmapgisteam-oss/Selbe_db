@@ -1,11 +1,6 @@
 /**
  * АГЕНТААС ТЕРМИНАЛААР АСУУХ — браузер нээхгүйгээр туршина.
  *
- * ⚠️ Порталын ЯГ ижил кодыг ажиллуулна (`src/lib/agent/*`) — өөр зам БИШ.
- * Тиймээс энд гарсан хариулт нь цонхонд гарах хариулттай ижил байна.
- *
- * ⚠️ Реле АСААЛТТАЙ байх ёстой: `cd agent-proxy && npm start`
- *
  * Хэрэглээ:
  *   npm run ask "Төсөлд хэдэн барилга байна вэ?"
  *   npm run ask "Бүс бүрээр газрын талбай"  -- --scope plan,bagts
@@ -14,7 +9,6 @@
 const args = process.argv.slice(2);
 const question = args.filter((a) => !a.startsWith('--')).join(' ').trim();
 
-/** ⚠️ Эрхийг дуурайх — тодорхойлоогүй бол бүх харагдац (super admin шиг) */
 const scopeArg = args.find((a) => a.startsWith('--scope='))?.slice('--scope='.length);
 const scope = scopeArg ? scopeArg.split(',').map((s) => s.trim()) : 'all';
 

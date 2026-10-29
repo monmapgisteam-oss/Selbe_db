@@ -45,8 +45,6 @@ type State = { result: OverlapResult | null; step: string; error: string | null 
 
 /**
  * HOVER ТАЙЛБАРЫГ ЗУРГИЙН ХҮРЭЭНД БАЙРШУУЛНА — курсорын баруун-доор; багтахгүй бол зүүн/дээш эргүүлнэ.
- * ⚠️ 2026-10-19 (аудит): урьд нь `e.x + 14` шууд тавьдаг тул зургийн баруун/доод ирмэгт тайлбар тасарч, хуудсанд
- *    хэвтээ гүйлгэлт үүсгэдэг байв. Агуулгыг ТАВЬСНЫ ДАРАА дуудна (хэмжээ нь хэрэгтэй). `NeedLayer` ч хэрэглэнэ.
  */
 export function placeTip(tip: HTMLElement, view: __esri.MapView, x: number, y: number): void {
   const W = view.width || window.innerWidth;
@@ -67,10 +65,6 @@ const REFRESH_DEBOUNCE_MS = 400;
 /** Нэг талын давхцлыг бодно (кэштэй — `computeOverlap`) */
 function useOverlap(side: OverlapSide): State {
   const [st, setSt] = useState<State & { side: OverlapSide }>({ side, result: null, step: '', error: null });
-  /* ⚠️ 2026-10-19 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) кэшийг хаяна (`planOverlap`) — дахин бодуулна.
-     Хуучин үр дүн шинэ нь иртэл дэлгэцэд үлдэнэ. */
-  /* ⚠️ 2026-10-19 (review): `dataVersion` биш `refreshEpoch` (кэш зөвхөн `invalidateAll`-д хаягдана); «Шинэчлэх»-ийн
-     дараах дахин бодолтыг сааруулна (тал солих нь шууд); өмнөх үеийн хариу ба явцыг (`onOverlapStep(…, p)`) үл тооно. */
   const epoch = useSyncExternalStore(subscribeData, refreshEpoch, () => 0);
   const lastEpoch = useRef(epoch);
   useEffect(() => {
@@ -80,18 +74,15 @@ function useOverlap(side: OverlapSide): State {
     lastEpoch.current = epoch;
     const t = setTimeout(() => {
       const p = computeOverlap(side);
-      /* ⚠️ 2026-10-19 (аудит): явцын захиалгыг unmount-д ЦУЦЛАНА (`onOverlapStep`-ийн ⚠️) */
       off = onOverlapStep(side, (step) => { if (alive) setSt((prev) => ({ ...prev, side, step })); }, p);
       p.then((result) => { if (alive) setSt({ side, result, step: '', error: null }); })
         .catch((e: unknown) => {
           console.error('[selbe] давхцлын тооцоо унав:', e);
-          /* ⚠️ 2026-10-26 (аудит): түүхий алдаа (URL-тай «timeout 45s: https://…», англи ArcGIS мөр) — 01/03-тай ижил `userError` */
           if (alive) setSt({ side, result: null, step: '', error: userError(e) });
         });
     }, delay);
     return () => { alive = false; clearTimeout(t); off(); };
   }, [side, epoch]);
-  /* ⚠️ Тал солигдсон даруйд хуучин талын үр дүнг харуулахгүй */
   return st.side === side ? st : { result: null, step: '', error: null };
 }
 
@@ -125,8 +116,6 @@ export function PlanOverlapLayers({
   focus, shown, selected,
 }: { focus: OverlapFocus; shown: OverlapCat[]; selected: OverlapFocus }) {
   const { view } = useMap();
-  /* ⚠️ 2026-10-13: 02 нь ЗӨВХӨН шинэ (`next`) тал — «Шинэчлэгдсэн / Одоогийн төлөвлөлт» гэж байх
-     шаардлагагүй (хэрэглэгчийн заавар); хуучин талыг тооцохгүй, зурахгүй */
   const next = useOverlap('next');
   const nextRes = next.result;
   const { data: display, error: displayError } = useOverlapDisplay(nextRes, shown, selected);
@@ -146,13 +135,12 @@ export function PlanOverlapLayers({
   /* Нэг GraphicsLayer — swipe-д id-аараа (Portal §H02_SWIPE: баруун тал нь ЗӨВХӨН идэвхжүүлсэн давхцал) */
   const [gl, setGl] = useState<GraphicsLayer | null>(null);
   useEffect(() => {
-    /* ⚠️ Зөвхөн 2D — swipe ч, энэ бүрэлдэхүүн ч 2D-д л (Portal `dim === '2d'`) */
     if (!view || view.type !== '2d') return;
     const map = view.map;
     if (!map) return;
     const l = new GraphicsLayer({ id: OVERLAP_LAYER_ID.next, listMode: 'hide' });
     map.add(l); // хамгийн ДЭЭР — физик объектын полигоны дээгүүр
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ ArcGIS давхаргыг view-д НЭМСНИЙ дараа л график/hover эффектүүд ажиллах ёстой (гаднын Map-ийн төлөв)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setGl(l);
     return () => { map.remove(l); l.destroy(); setGl(null); };
   }, [view]);
@@ -182,10 +170,6 @@ export function PlanOverlapLayers({
 
   /* ДАВХАРГА сонгоход тэр давхаргын давхцал руу ОЙРТОНО (хэрэглэгч: «zoom to layer and filter») */
   const selLayer = selected?.layer ?? null;
-  /* ⚠️ 2026-10-21: СОНГОЛТ солигдоход л НЭГ удаа ойртоно. `visiblePieces`/`selectedZone` нь давхцлыг дахин
-     бодох бүрд (ангилал асаах/унтраах, өгөгдөл шинэчлэх) шинэ лавлагаа авдаг тул урьд нь зураг сонголт руу
-     буцаж нисч, хэрэглэгчийн шилжүүлгийг (pan) дарж бичдэг байв. Өгөгдөл хараахан ирээгүй (хүрээгүй) бол
-     түлхүүрийг тэмдэглэхгүй — ирмэгц нэг удаа ойртоно. Сонголт арилахад цэвэрлэж дахин сонгоход ойртоно. */
   const zoomedKey = useRef<string | null>(null);
   useEffect(() => {
     if (!view || (!selLayer && !selected?.zone)) { zoomedKey.current = null; return; }
@@ -325,7 +309,6 @@ export function PlanOverlapPanel({
 
   return (
     <section className={s.panel} aria-label={tr('Инженерийн шугамын давхцал')}>
-      {/* ⚠️ 2026-10-13: «Одоогийн / Шинэчлэгдсэн» тал солигч ХАСАГДСАН — 02 нь зөвхөн шинэ тал */}
       {error && <p className={s.err}>{tr('Давхцлыг тооцоолж чадсангүй')}: {error}</p>}
       {!error && !result && (
         <p className={s.wait}><span className={s.spin} aria-hidden />{step || tr('Давхцлыг тооцоолж байна…')}</p>

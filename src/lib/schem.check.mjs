@@ -46,9 +46,6 @@ const cells = new Set(NODES.map((n) => `${n.col}:${n.row}`));
 assert.equal(cells.size, NODES.length, 'хоёр зангилаа нэг (col,row) нүдэнд');
 
 /**
- * ⚠️ ЗҮҮН ТИЙШ УРСГАЛ БАЙХГҮЙ (`back`-ээс бусад). Ухарсан сум нь «энэ шат
- * өмнөхөө буцаадаг» гэж уншигдана — жинхэнэ буцаалт ЗӨВХӨН хяналтад бий.
- *
  * Нэг баганад байх нь зөвшөөрөгдөнө (ж: хяналт → санхүүжилт нь босоо), гэхдээ
  * тэр үед ЗААВАЛ ДООШ явна — дээш заасан сум нь мөн ухралт мэт уншигдана.
  */
@@ -64,10 +61,6 @@ for (const e of EDGES) {
 
 /**
  * Тасарсан зангилаа байхгүй.
- * ⚠️ ГАРАХ ирмэггүй байж БОЛОХ зангилаанууд: `tailan` (урсгалын төгсгөл) ба
- *    хажуугийн хэмжүүрүүд (`habea`, `ersdel`). Тэдгээр нь шат БИШ тул хаашаа
- *    ч урсдаггүй — «ХАБЭА дуусмагц санхүүжилт олгогдоно» гэсэн хамаарал
- *    байхгүй. Харин ОРОХ ирмэггүй нь зөвхөн эхлэл (`tolovlolt`).
  */
 const TERMINAL = new Set(['tailan', 'habea', 'ersdel']);
 const hasIn = new Set(EDGES.filter((e) => e.kind !== 'back').map((e) => e.to));
@@ -77,10 +70,6 @@ for (const n of NODES) {
   if (!TERMINAL.has(n.id)) assert.ok(hasOut.has(n.id), `гарах ирмэггүй: ${n.id}`);
 }
 
-/**
- * ⚠️ САЛАА БА НИЙЛЭЛТИЙН ХЭЛБЭР БЭХЛЭГДСЭН. Схемийн гол санаа нь «зэрэг явах
- * ажлууд» — хэн нэгэн санамсаргүй шулуун гинж болговол энэ унана.
- */
 const succ = (id) => EDGES.filter((e) => e.kind === 'main' && e.from === id).map((e) => e.to);
 const pred = (id) => EDGES.filter((e) => e.kind === 'main' && e.to === id).map((e) => e.from);
 assert.equal(succ('tolovlolt').length, 2, 'төлөвлөгөөнөөс хоёр салаа гарах ёстой');
@@ -173,7 +162,6 @@ for (const n of NODES) {
   assert.ok(st, `төлөв алга: ${n.id}`);
   assert.equal(st.health, 'none', `${n.id}: мэдээлэлгүй үед health нь none байх ёстой`);
   for (const m of st.metrics) {
-    /* ⚠️ ЭНЭ БОЛ ГОЛ ХАМГААЛАЛТ — мэдээлэлгүйг ТЭГ гэж зурахгүй */
     assert.equal(
       m.value, null,
       `${n.id} · «${m.label}»: эх сурвалж унасан атлаа утга гарлаа (${m.value})`,
@@ -231,17 +219,11 @@ assert.equal(buildSchem(twoPkg, 'Багц 1').zovshoorol.health, 'bad');
 
 /* Төлөв бүр ЯГ нэг шатанд харьяалагдана */
 const all = Object.values(STATUS);
-/* ⚠️ 2026-10-23: 13 — төлөвлөлтийн инженерийн хоёр төлөв нэмэгдэв */
 assert.equal(all.length, 13, 'төлөвийн тоо өөрчлөгдсөн — схемийг дахин шалга');
 for (const st of all) {
   assert.ok(STAGE_ORDER.includes(OWNER[st]), `${st}: эзэн нь мэдэгдэхгүй`);
 }
 
-/**
- * ⚠️ МӨР БҮР НЭГ ТОЙРОГ, ажил БИШ. Тиймээс өөр ажлыг загварчлахдаа `ajil`-ыг
- *    ЗААВАЛ ялгана — эс тэгвээс `groupWorks` тэдгээрийг НЭГ ажлын дараалсан
- *    тойрог гэж үзэж, зөвхөн сүүлийнхийг тоолно.
- */
 const row = (st, bagts = 'Багц 1', ajil = st) => ({
   [HF.status]: st, [HF.bagts]: bagts, [HF.ajil]: ajil,
   [HF.company]: 'Гүйцэтгэгч', [HF.ergelt]: 1,
@@ -273,10 +255,6 @@ assert.equal(
   'дууссан ажил газрын даргын гар дээр тоологдов',
 );
 
-/**
- * ⚠️ НЭГ АЖИЛ = НЭГ ТОО. Дахин илгээх бүрд ШИНЭ мөр үүсдэг тул мөрөөр тоолвол
- *    удирдлагын самбар 8 ажил харуулж байхад схем ижил агшинд 30 гэж харуулна.
- */
 const cyc = (st, ergelt, oid) => ({
   [HF.status]: st, [HF.bagts]: 'Багц 1', [HF.ajil]: 'Суурийн бетон',
   [HF.company]: 'Гүйцэтгэгч', [HF.ergelt]: ergelt, objectid: oid,
@@ -293,11 +271,6 @@ const cycRail = stageRail({ ...EMPTY, review: cycles });
 assert.equal(cycRail.find((x) => x.stage === 'manager').n, 1, 'ажил сүүлийн шатандаа байх ёстой');
 assert.equal(cycRail.find((x) => x.stage === 'engineer').n, 0, 'хуучин тойрог зурваст үлдэв');
 
-/**
- * ⚠️ БИЧИГЛЭЛИЙН ЗӨРҮҮ: `building_GOL` нь «Багц 4.1», хяналтын хүснэгт нь
- *    «Багц 4-1». Түүхий тэнцлээр шүүвэл хүлээгдэж буй ажлууд алга болж,
- *    зангилаа ХУДАЛ НОГООН болно.
- */
 const spell = buildSchem(
   { ...EMPTY, review: [row(STATUS.engineerReview, 'Багц 4-1')] },
   'Багц 4.1',
@@ -337,7 +310,6 @@ assert.equal(full.barilga.metrics[0].value, 100, 'гүйцэтгэл 0–100 м�
 assert.equal(full.barilga.health, 'good');
 assert.equal(full.barilga.note, undefined, 'бүрэн хамралтад тэмдэглэл гарах ёсгүй');
 
-/* ⚠️ 2026-10-01: хамралт нь `overall.weightSum` БИШ орон сууцны багцаас (`housingWeight`, §9) */
 const partial = buildSchem({
   ...EMPTY,
   overall: { pct: 80, weightSum: 42, rows: 10 },

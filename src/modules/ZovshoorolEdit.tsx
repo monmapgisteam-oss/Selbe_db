@@ -2,12 +2,6 @@
 
 /**
  * ЗӨВШӨӨРӨЛ НЭМЭХ / ЗАСАХ МАЯГТ.
- *
- * ⚠️ Зарчим: маягт нь хэрэглэгчийн оруулсныг ЧИМЭЭГҮЙ ЗАСАХГҮЙ. Зөрчлийг
- * зөвхөн хэлж, хаана байгааг нэрлэж өгнө. Автоматаар «зөв болгосон» утга нь
- * хэрэглэгчийн мэдэлгүй өөр өгөгдөл болж хадгалагдана.
- *
- * ⚠️ Хадгалах амжилтгүй бол маягт ХААГДАХГҮЙ — оруулсан утга алдагдахгүй.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -35,7 +29,7 @@ const toInput = (ms: number | null): string => {
   return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
 };
 
-/** YYYY-MM-DD → ms (UTC). ⚠️ Орон нутгийн бүсээр уншвал нэг хоног ухарна. */
+/** YYYY-MM-DD → ms (UTC). Орон нутгийн бүсээр уншвал нэг хоног ухарна. */
 const fromInput = (v: string): number | null => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
   return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
@@ -43,9 +37,6 @@ const fromInput = (v: string): number | null => {
 
 const TOLOV_LIST: Exclude<Tolov, 'unknown'>[] = [TOLOV.wait, TOLOV.ok, TOLOV.no];
 
-/* ⚠️ 2026-09-25: төлөв нь ArcGIS-ийн ӨГӨГДӨЛ — товчинд `tr()`-ийн статик
-   түлхүүрээр харуулна (`Zovshoorol.TOLOV_TEXT`-ийн ижил шалтгаан; тэр файл энэ
-   файлыг импортолдог тул эргэх импорт үүсгэхгүйн тулд энд давтав). */
 const TOLOV_LABEL: Record<Exclude<Tolov, 'unknown'>, () => string> = {
   [TOLOV.wait]: () => tr('Хүлээгдэж буй'),
   [TOLOV.ok]: () => tr('Зөвшөөрсөн'),
@@ -59,43 +50,23 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   onCancel: () => void;
 }) {
   const [d, setD] = useState<ZovDraft>(init);
-  /* ⚠️ 2026-09-25 аудит: МАЯГТ НЭЭГДЭХ ҮЕИЙН АГШИН — `saveZov`-ийн ялгааны суурь.
-     Урьд нь суурь өгөхгүй тул `saveZov` ШИНЭ мөрийг уншиж жишдэг байв: маягт
-     нээгдсэний дараа өөр хүний зассан талбар «ялгаа» болж, маягтын ХУУЧИН утгаар
-     чимээгүй дарагдана. Одоо зөвхөн ЭНЭ хэрэглэгчийн өөрчилсөн талбар бичигдэнэ. */
   const [before] = useState<Zov | null>(() =>
     (init.oid ? all.find((r) => r.oid === init.oid) ?? null : null));
-  /**
-   * ⚠️ ХӨНДӨГДСӨН ЭСЭХ — санамсаргүй хаалтаас хамгаална. Гадуур дарах,
-   * Esc дарах нь маягтыг ХААДАГ тул урт тайлбар бичсэн хүн нэг товшилтоор
-   * бүгдийг алдаж болно. Өөрчлөлт байвал баталгаажуулна.
-   */
   const dirty = useRef(false);
-  /* ⚠️ 2026-09-30: `navGuard` — харагдац солих / лого / «Гарах» үед ч асууна (урьд нь
-     зөвхөн модал хаах, F5-д). Маягт хаагдахад (unmount) туг арилна. */
   const markDirty = () => {
     dirty.current = true;
     setNavDirty('zovshoorol', true, tr('Зөвшөөрөл'));
   };
   useEffect(() => () => setNavDirty('zovshoorol', false), []);
-  /* ⚠️ Фокусын урхи (2026-09-03-ны хүртээмжийн аудит) — `aria-modal` нь
-     хөтчийн Tab-д нөлөөлдөггүй, урхигүй бол фокус ард руу гарна. */
   const mdRef = useRef<HTMLDivElement>(null);
   useFocusTrap(mdRef);
   const [err, setErr] = useState<Partial<Record<keyof ZovDraft, string>>>({});
   const [fail, setFail] = useState('');
   const [busy, setBusy] = useState(false);
-  /* ⚠️ 2026-10-06: ШИНЭ зөвшөөрлийн хариу алдагдсан (timeout/сүлжээ) — сервер бичсэн эсэх
-     ТОДОРХОЙГҮЙ. Хэрэглэгч шалгаж баталгаажуулах хүртэл «Хадгалах» хаалттай; эс бөгөөс
-     дахин дарахад ДАВХАРДСАН зөвшөөрөл үүсдэг байв (`DedButetsEdit`-ийн `unsure` загвар). */
   const [unsure, setUnsure] = useState(false);
-  /* ⚠️ 2026-10-09 (аудит №6): давхардлын дараа манай мөр серверт ҮЛДСЭН — мессежийг
-     маягтад харуулж, «Хадгалах» хаалттай; «Хаах» нь `onDone` (`doSave`-ийн тайлбар). */
   const [kept, setKept] = useState(false);
   const firstRef = useRef<HTMLInputElement>(null);
   const editing = init.oid != null;
-  /* ⚠️ 2026-10-09: текст талбарын дээд урт — метадатагаас (`zovshoorol.loadZovFieldLens`);
-     уншигдаагүй бол хуучин хатуу утга НӨӨЦ (хязгааргүй болгохгүй). */
   const [lens, setLens] = useState<ZovFieldLens>({});
   useEffect(() => {
     let alive = true;
@@ -106,11 +77,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   useEffect(() => { firstRef.current?.focus(); }, []);
   /**
    * МАЯГТ ДОТОРХ АСУУЛТ — `window.confirm`-ийн оронд (хаах · ирээдүйн огноо · устгах).
-   *
-   * ⚠️ 2026-10-09 (аудит №6): хөтөч «энэ хуудас дахин харилцах цонх гаргахгүй» гэж
-   * хаасан үед `confirm` ҮРГЭЛЖ `false` буцаадаг тул бөглөсөн маягт хаагдахгүй,
-   * устгах/хадгалах чимээгүй зогсдог байв (`DedButets.confirmQ`-ийн ижил сургамж).
-   * Асуулт маягтын дотор мөр болж гарна; «Тийм» дарахад `onYes`. `danger` — устгал.
    */
   const [confirmQ, setConfirmQ] = useState<{ msg: string; onYes: () => void; danger?: boolean } | null>(null);
   /** Хаахыг оролдох — өөрчлөлт байвал асууна. */
@@ -121,7 +87,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       return;
     }
     onCancel();
-  }, [busy, onCancel, setConfirmQ]); // ⚠️ 2026-10-09 (аудит №6): `setConfirmQ`-г ил бичнэ — React Compiler эс бөгөөс memo-г хаядаг (preserve-manual-memoization)
+  }, [busy, onCancel, setConfirmQ]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') tryClose(); };
@@ -129,16 +95,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     return () => window.removeEventListener('keydown', h);
   }, [tryClose]);
 
-  /*
-   * ⚠️ Нийтлээгүй засвартай байхад таб ХААХАД/дахин ачаалахад хөтөч
-   *    анхааруулна. `tryClose` нь зөвхөн МОДАЛ хаах үед асуудаг тул F5,
-   *    таб хаах, буцах товчинд бөглөсөн маягт ЧИМЭЭГҮЙ алдагддаг байв
-   *    (2026-09-02 аудит). Finance · Huvaari · FillNew · Pivot · UserAdmin
-   *    бүгд ийм хамгаалалттай — эдгээр маягт л гацсан байсан.
-   * ⚠️ `dirty` нь ref тул render дахин хийгддэггүй. Тиймээс сонсогчийг
-   *    БАЙНГА бүртгэж, дотроос нь ref-ээ уншина: `dirty.current`-ыг deps-д
-   *    тавьбал өөрчлөлт мэдрэгдэхгүй.
-   */
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => { if (dirty.current) e.preventDefault(); };
     window.addEventListener('beforeunload', h);
@@ -147,20 +103,8 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
 
   /**
    * БАГЦЫН СОНГОЛТ — «Багцын гүйцэтгэл» харагдацын ЯГ ТЭР жагсаалтаас.
-   *
-   * ⚠️ Урьд нь `PKG_GROUPS` (бөглөх хуудсуудын 7 багц) ашиглаж байв. Тэр нь
-   * ЗӨВХӨН барилга угсралтын багцууд — дэд бүтэц, нийгмийн барилга, өндөржилт
-   * огт байхгүй. Зөвшөөрөл нь бүх төрлийн багцад шаардлагатай тул хяналтын
-   * жагсаалтаас авна: ингэснээр нэрс ч ижил бичигдэж, хоёр хуудас хоорондоо
-   * тааруулагдана.
-   *
-   * ⚠️ Бүртгэлд аль хэдийн байгаа багцыг ч нэмнэ — давхарга уншигдаагүй
-   * эсвэл нэр өөрчлөгдсөн үед хуучин мөр сонголтоос алга болох ёсгүй.
    */
   const bq = useBuildings();
-  /* ⚠️ Хамаарал нь `bq` БИШ мөрүүд өөрсдөө: `useAsync` нь зурагдал бүрд
-     ШИНЭ объект буцаадаг тул `bq`-ээр хамаарвал memo ажиллахгүй, багцын
-     жагсаалт товшилт бүрд дахин угсрагдана. */
   const bRows = bq.state === 'ready' ? bq.data.rows : null;
   const bagtsOpts = useMemo(() => {
     const set = new Set<string>(buildPacks(bRows).map((p) => p.name));
@@ -170,7 +114,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
 
   /**
    * Багц солиход ДАРААЛЛЫГ санал болгоно (сүүлийнх + 1).
-   * ⚠️ Энэ нь САНАЛ — хэрэглэгч гараар өөрчилж болно.
    */
   const nextShat = (bagts: string): number => {
     const mine = all.filter((r) => r.bagts === bagts && r.oid !== d.oid);
@@ -182,19 +125,11 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     setD((p) => ({ ...p, [k]: v }) as ZovDraft);
     setErr((p) => ({ ...p, [k]: undefined }));
     setFail('');
-    /* ⚠️ 2026-10-09 (аудит №6): талбар засвал хүлээж буй асуулт хуучирна */
     setConfirmQ(null);
   };
 
   /** Огнооны талбарт бичсэн текст огноо болж задрахгүй байна (`DateField.onBad`) */
   const [badDate, setBadDate] = useState(false);
-  /**
-   * ⚠️ 2026-10-05: ТӨЛӨВ СОЛИХ. «Хүлээгдэж буй» руу шилжихэд огноог ЭНД (товшилтын
-   *    хариуд, сануулгатай) арилгана — урьд нь `validateZov` «огноо байх ёсгүй» гэж
-   *    унаж, хэрэглэгч огноог гараар хоослох хүртэл хадгалагддаггүй байв. Арилгасан
-   *    огноог санаж, буцаад «Зөвшөөрсөн/Зөвшөөрөөгүй» болгоход сэргээнэ (андуурч дарсан
-   *    товшилт огноог алдагдуулахгүй). `validateZov` хэвээр — тэр засдаггүй, зөвхөн хэлдэг.
-   */
   const stashOgnoo = useRef<number | null>(null);
   const [ognooCleared, setOgnooCleared] = useState(false);
   const setTolov = (t: ZovDraft['tolov']) => {
@@ -211,42 +146,21 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     setD((p) => ({ ...p, tolov: t, ognoo }));
     setErr((p) => ({ ...p, tolov: undefined, ognoo: undefined }));
     setFail('');
-    /* ⚠️ 2026-10-21 (кодын аудит): `set()`-тэй ИЖИЛ — ирээдүйн огнооны асуулт нээлттэй байхад төлөв
-       солиход «Тийм» нь асуулт нээгдэх үеийн ХУУЧИН `d`-г (хуучин төлөв · огноо) хадгалж, сүүлийн засвар
-       чимээгүй алга болдог байв. */
     setConfirmQ(null);
   };
 
   const submit = async () => {
-    /*
-     * ⚠️ 2026-09-08: ЗАСВАРЫН зам нь `remove`-тэй ИЖИЛ хамгаалалттай болов.
-     *    `loadZov` OBJECTID уншиж чадаагүй үед `oid = 0` болдог ч
-     *    `editing = init.oid != null` тул маягт «Засах» горимд нээгддэг.
-     *    Тэр үед «Хадгалах» дарвал `saveZov`-ийн `if (d.oid)` нь `0` дээр
-     *    ХУДАЛ болж `updates` биш `adds` явуулж, хуучин мөр хэвээр үлдэн
-     *    ДАВХАРДСАН ШИНЭ зөвшөөрөл үүсдэг байв — алдаа ч гарахгүй, «хадгаллаа»
-     *    гэж хаагдана (`zovshoorol.ts:36-44`-т яг энэ ангиллын алдаа
-     *    2026-09-04-нд амьдаар тохиолдсоныг баримтжуулсан).
-     *    Устгах нь хамгаалагдсан атлаа хадгалах нь хамгаалалтгүй үлдсэн байв.
-     */
     if (editing && !d.oid) {
-      /* ⚠️ 2026-10-23 (UX аудит X3): «OBJECTID» биш — энгийн үг ба дараагийн алхам */
       setFail(tr('Мөрийн дугаар уншигдаагүй тул засах боломжгүй — хуудсыг дахин ачаалаад оролдоно уу.'));
       return;
     }
     const e = validateZov(d, all);
-    /* ⚠️ 2026-10-05: буруу бичсэн огноо эцгийн утгыг ХӨНДДӨГГҮЙ (`DateField`) — хуучин
-       огноо чимээгүй хадгалагдахаас сэргийлж хадгалалтыг хаана. */
     if (badDate) e.ognoo = tr('Огноо буруу — жишээ: 2026-10-04');
     setErr(e);
     if (Object.values(e).some(Boolean)) return;
-    /* ⚠️ 2026-10-05: ИРЭЭДҮЙН шийдвэрийн огноо — ихэвчлэн он/сарын гарын алдаа. Хориг биш
-       (цагийн бүс, урьдчилж бүртгэх тохиолдол), асууна. Өнөөдөр = хэрэглэгчийн хуанлийн өдөр,
-       харьцуулалт хадгалалтын хэлбэрээр (UTC шөнө дунд). */
     if (d.ognoo != null) {
       const now = new Date();
       const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-      /* ⚠️ 2026-10-09 (аудит №6): `window.confirm` → самбарын асуулт; «Тийм» бол хадгалалт үргэлжилнэ */
       if (d.ognoo > today) {
         setConfirmQ({
           msg: tr('Шийдвэрлэсэн огноо ({0}) өнөөдрөөс ХОЙШ байна. Зөв үү?', toInput(d.ognoo)),
@@ -266,14 +180,8 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       await saveZov({ ...d, ner: d.ner.trim(), bagts: d.bagts.trim() }, before);
       onDone();
     } catch (x) {
-      /* ⚠️ 2026-10-09: бичсэний ДАРАА давхардал илэрсэн (`saveZov` → `resolveAddClash`). Манай мөр
-         серверт ҮЛДСЭН бол маягтыг хаана — дахин «Хадгалах» дарвал урьдчилсан шалгалт өөрийн
-         мөртэй нь давхацна; мессежийг заавал харуулна. Устгагдсан бол маягт нээлттэй (шат солих). */
       if (x instanceof ZovClashError) {
         if (x.kept) {
-          /* ⚠️ 2026-10-09 (аудит №6): `window.alert` → маягтын алдааны мөр. Хөтөч харилцах
-             цонхыг хаасан бол мессеж огт харагдахгүй байв. «Хадгалах» хаалттай (`kept`),
-             хэрэглэгч мессежийг уншаад «Хаах» дарахад `onDone` (жагсаалт шинэчлэгдэнэ). */
           setFail(x.message);
           setKept(true);
           dirty.current = false;
@@ -282,7 +190,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
         setFail(x.message);
         return;
       }
-      /* ⚠️ 2026-10-06: шинэ мөрийн хариу алдагдсан бол дахин илгээхийг хаана (`unsure`) */
       if (!editing && isLostResponse(x)) {
         setUnsure(true);
         setFail('');
@@ -295,25 +202,10 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
   };
 
   const remove = async () => {
-    /*
-     * ⚠️ 2026-09-04: урьд нь энд `if (!d.oid) return;` гэж ЧИМЭЭГҮЙ буцдаг
-     *    байв. `loadZov` OBJECTID уншиж чадаагүй үед (үйлчилгээний OID багана
-     *    FID/OBJECTID_1 болох, эрх солигдох) `oid = 0` болдог ч
-     *    `editing = init.oid != null` тул «Устгах» товч ЗУРАГДСАН хэвээр —
-     *    хэрэглэгч дарахад баталгаажуулах цонх ч гарахгүй, алдаа ч гарахгүй,
-     *    консолд ч юу ч үлдэхгүй байлаа. `deleteZov` дотор нэмсэн шалгуур
-     *    (zovshoorol.ts:316) энэ мөрийн улмаас ХЭЗЭЭ Ч хүрэхгүй байсан тул
-     *    шалтгааныг ЭНД шууд хэлнэ (мессежийг `deleteZov`-ийнхтэй ЯГ ижлээр
-     *    үлдээв — нэг шалтгаан, нэг өгүүлбэр, i18n-д нэг түлхүүр).
-     */
     if (!d.oid) {
-      /* ⚠️ 2026-10-23 (UX аудит X3): «OBJECTID» биш. `zovshoorol.deleteZov`-ийн шидэх текст ЯГ ижил байх ёстой (дээрх ⚠️) —
-         тэр файлд мөн энэ түлхүүр рүү шилжүүлэх хүсэлт өгсөн. */
       setFail(tr('Мөрийн дугаар уншигдаагүй тул устгах боломжгүй — хуудсыг дахин ачаалаад оролдоно уу.'));
       return;
     }
-    /* ⚠️ 2026-10-09 (аудит №6): `window.confirm` → самбарын асуулт (`danger` — «Тийм» улаан).
-       `oid`-ыг ЭНД барина — callback дотор `d.oid`-ийн нарийсгал алдагдана. */
     const oid = d.oid;
     setConfirmQ({
       msg: tr('«{0}» зөвшөөрлийг бүрмөсөн устгах уу? Буцаах боломжгүй.', d.ner),
@@ -330,10 +222,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
       await deleteZov(oid);
       onDone();
     } catch (x) {
-      /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН устгалт (timeout/сүлжээ) — сервер устгасан эсэх
-         ТОДОРХОЙГҮЙ. Урьд нь шууд алдаа гаргаж, хэрэглэгч дахин дарахад «мөр олдсонгүй»
-         гэх мэт ойлгомжгүй алдаа авдаг байв. Мөрийг OID-оор ДАХИН асууна: алга бол
-         устгал амжилттай; байгаа бол анхны алдаа; асуулт ч унавал «тодорхойгүй». */
       if (isLostResponse(x)) {
         let still: Zov | null | undefined;
         try { still = await loadOneZov(oid); } catch { still = undefined; }
@@ -346,8 +234,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
           setFail(tr('Серверээс хариу ирсэнгүй — зөвшөөрөл устгагдсан эсэх ТОДОРХОЙГҮЙ. Хуудсыг дахин ачаалж шалгана уу.'));
           return;
         }
-        /* ⚠️ 2026-10-09: мөр ХЭВЭЭР байна — гэхдээ сервер устгалыг одоо ч боловсруулж байж болох
-           тул «алдаа» биш «тодорхойгүй». Түүхий timeout мессеж хэрэглэгчийг төөрөгдүүлдэг байв. */
         setFail(tr('Серверээс хариу ирсэнгүй — үр дүн тодорхойгүй: зөвшөөрөл одоогоор устгагдаагүй харагдаж байна. Хуудсыг дахин ачаалж шалгаад шаардлагатай бол дахин устгана уу.'));
         return;
       }
@@ -365,11 +251,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
     </label>
   );
 
-  /* ⚠️ 2026-09-25: ТӨЛӨВ `<label>` ДОТОР БИШ — label доторх товчийн аль ч хэсэгт
-     (эсвэл шошгон дээр) дарахад хөтөч label-ийн ЭХНИЙ товчийг (`Хүлээгдэж буй`)
-     идэвхжүүлж, сонголт чимээгүй «хүлээгдэж буй» руу үсэрдэг байв. */
-  /* ⚠️ 2026-10-06: `d.tolov = null` (танигдаагүй, сонгоогүй) үед аль ч товч идэвхгүй —
-     Tab-ын фокус эхний товчинд, сум нь эхний/сүүлчийн товчийг сонгоно. */
   const tolovIdx = Math.max(0, d.tolov ? TOLOV_LIST.indexOf(d.tolov) : -1);
   const tolovKey = (e: ReactKeyboardEvent) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
@@ -403,12 +284,9 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
                 onChange={(e) => {
                   const b = e.target.value;
                   markDirty();
-                  /* ⚠️ 2026-10-07: багцыг ЦЭВЭРЛЭХЭД дараалал 1-д үлдэнэ (0 руу унадаггүй), бусад
-                     талбарын алдаа арилахгүй — зөвхөн `bagts`-ийнх. */
                   setD((p) => ({ ...p, bagts: b, shat: p.oid || !b ? p.shat : nextShat(b) }));
                   setErr((p) => ({ ...p, bagts: undefined }));
                   setFail('');
-                  /* ⚠️ 2026-10-21 (кодын аудит): хүлээж буй асуулт хуучирна — `setTolov`-ийн ⚠️ */
                   setConfirmQ(null);
                 }}
               >
@@ -422,8 +300,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
                 type="number"
                 min={1}
                 step={1}
-                /* ⚠️ 2026-10-07: талбарыг цэвэрлэхэд 0 руу унадаггүй — хоосон (`NaN`) хэвээр,
-                   `validateZov` «1-ээс эхлэх бүхэл тоо» гэж барина */
                 value={Number.isNaN(d.shat) ? '' : String(d.shat)}
                 onChange={(e) => set('shat', e.target.value === '' ? NaN : Number(e.target.value))}
               />
@@ -462,11 +338,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
               {err.tolov ? <span className={s.fErr}>{err.tolov}</span>
                 : d.tolov == null ? <span className={s.fHint}>{tr('Одоогийн төлөв танигдаагүй — сонгоно уу')}</span> : null}
             </div>
-            {/* ⚠️ 2026-10-05: `<input type="date">` → хуваалцсан `DateField` (YYYY-MM-DD текст +
-                📅) — натив оролтын хэлбэр хөтчийн хэлнээс хамаарч өдөр/сар андуурагддаг байв.
-                Хадгалах хэлбэр ХЭВЭЭР (UTC шөнө дунд, `fromInput`).
-                ⚠️ `<label>` ДОТОР БИШ (`field()` биш) — календарийн товч/цонхны товшилт
-                label-ээр дамжиж оролтыг идэвхжүүлэхгүй (Төлөвийн ижил шалтгаан). */}
             <div className={s.f}>
               <span className={s.fLabel}>{tr('Шийдвэрлэсэн огноо')}</span>
               <DateField
@@ -512,9 +383,7 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
           ))}
 
           {fail && <div className={s.formErr} role="alert">{fail}</div>}
-          {/* ⚠️ 2026-10-06: хариу алдагдсан «Нэмэх» — `unsure`-ийн тайлбар */}
           {unsure && (
-            /* ⚠️ 2026-10-09: `alertdialog` БИШ — модал доторх мөрийн мэдэгдэл (өөрөө диалог биш) */
             <div className={s.formErr} role="alert">
               {tr('Серверээс хариу ирсэнгүй — зөвшөөрөл нэмэгдсэн эсэх ТОДОРХОЙГҮЙ. Дахин хадгалахаас өмнө хуудсыг дахин ачаалж, зөвшөөрөл үүссэн эсэхийг шалгана уу.')}
               {' '}
@@ -550,7 +419,6 @@ export function ZovshoorolEdit({ init, all, onDone, onCancel }: {
             </button>
           )}
           <span className={s.spacer} />
-          {/* ⚠️ 2026-10-09 (аудит №6): `kept` — мөр серверт үлдсэн, «Хаах» нь жагсаалтыг шинэчилнэ */}
           <button type="button" className={s.btn} onClick={kept ? onDone : tryClose} disabled={busy}>
             {kept ? tr('Хаах') : tr('Болих')}
           </button>

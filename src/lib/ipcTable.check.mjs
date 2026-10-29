@@ -58,15 +58,11 @@ const contract = (o = {}) => ({
   assert.equal(r[0].advance, true);
   assert.equal(r[1].advance, false);
 
-  /* ⚠️ №2 — урьдчилгаа хуримтлалд ОРООГҮЙ */
   assert.equal(r[0].cum, null, '⚠️ урьдчилгаад хуримтлал БАЙХГҮЙ (0 ч биш)');
   assert.equal(r[1].cum, 20, '⚠️ 70 БИШ — урьдчилгаа 50 ороогүй');
   assert.equal(r[2].cum, 50, '20 + 30');
 }
 {
-  /* ⚠️ №2б — ДУГААРГҮЙ (AUTO) мөр эрэмбийн АРД, хуримтлалд хамгийн сүүлд
-     (2026-09-16-ны засварын тест, 2026-09-17-нд нэмэв). Урьд нь `?? 0`
-     эрэмбэ нь AUTO мөрийг №1-ийн ӨМНӨ суулгаж, бүх cum хөөрдөг байв. */
   const r = payRows([
     pay(9, work, 5, { [P.ipcNo]: null, [P.payDate]: null }),
     pay(3, work, 30, { [P.ipcNo]: 2, [P.payDate]: '2026-06-14' }),
@@ -78,7 +74,6 @@ const contract = (o = {}) => ({
   assert.equal(r[2].cum, 55, 'AUTO мөр хуримтлалд сүүлд орно');
 }
 {
-  /* ⚠️ №3 — огноо ХООСОН байсан ч IPC дугаараар зөв эрэмбэлэгдэнэ */
   const r = payRows([
     pay(2, work, 30, { [P.ipcNo]: 2, [P.payDate]: null }),
     pay(1, work, 20, { [P.ipcNo]: 1, [P.payDate]: null }),
@@ -97,7 +92,6 @@ const contract = (o = {}) => ({
   assert.equal(r[1].cum, 20, 'дараагийнх нь үргэлжилнэ');
 }
 {
-  /* ⚠️ 2026-10-09: дунд/сүүлд `dun` хоосон (AUTO) мөр өмнөх `cum`-ийг ӨВЛӨХГҮЙ, хуримтлал тасрахгүй */
   const r = payRows([
     pay(1, work, 20, { [P.ipcNo]: 1 }),
     pay(2, work, null, { [P.ipcNo]: 2 }),
@@ -123,7 +117,7 @@ const contract = (o = {}) => ({
   assert.equal(r[0].obyem, 1234);
   assert.equal(r[0].une, 18);
   assert.equal(r[0].zoruu, 2);
-  /* Талбар байхгүй бол `null` — `0` БИШ (⚠️ №4) */
+  /* Талбар байхгүй бол `null` — `0` БИШ (№4) */
   const e = payRows([pay(2, work, 20, { [P.ipcNo]: 1 })]);
   assert.equal(e[0].obyem, null, '⚠️ 0 БИШ');
   assert.equal(e[0].zoruu, null, '⚠️ 0 БИШ — «зөрүү 0» нь «таарсан» гэсэн үг');
@@ -136,14 +130,12 @@ const contract = (o = {}) => ({
   })]);
   assert.equal(r[0].orderNo, 'А/250', 'захирамжийн дугаар мөрд');
   assert.equal(r[0].year, 2026, 'он мөрд');
-  /* ⚠️ Захирамжгүй/онгүй бол ХООСОН мөр ба `null` — «0» эсвэл «undefined»
-     гэж харагдах ёсгүй. */
   const e = payRows([pay(2, work, 20, { [P.ipcNo]: 1 })]);
   assert.equal(e[0].orderNo, '', 'захирамжгүй → хоосон мөр');
   assert.equal(e[0].year, null, '⚠️ онгүй → null (0 БИШ)');
 }
 
-/* ══ 2. contractBlocks — ⚠️ №1 давхардахгүй, №6 гарчигтай ══ */
+/* ══ 2. contractBlocks — №1 давхардахгүй, №6 гарчигтай ══ */
 {
   /* Багц-4.1-ийн ХЭВ ШИНЖ: 3 мөр, гэрээний талбар мөрд давтагдсан */
   const c = contract({
@@ -162,7 +154,6 @@ const contract = (o = {}) => ({
   assert.equal(b.hasObyem, false, 'обьёмгүй');
 }
 {
-  /* ⚠️ №6 — багцгүй бол кодоор, кодгүй бол мөрийн ID-гаар */
   assert.equal(contractBlocks([contract({ pkg: '', code: 'ХО-К' })])[0].title, 'ХО-К');
   const noCode = contractBlocks([contract({
     pkg: '', code: '', pays: [pay(9, work, 1, { [P.ipcNo]: 1 })],
@@ -190,9 +181,9 @@ const contract = (o = {}) => ({
     [C.project]: 'Сэлбэ дэд төв',
     [C.workType]: 'Барилга угсралт',
     [C.budgetTotal]: 100,
-    [C.budgetCity]: null,        // ⚠️ хоосон — ХАСАГДАНА
-    [C.contractBond]: '',        // ⚠️ хоосон мөр — ХАСАГДАНА
-    [C.contractSales]: 0,        // ⚠️ ЖИНХЭНЭ 0 — ҮЛДЭНЭ
+    [C.budgetCity]: null,
+    [C.contractBond]: '',
+    [C.contractSales]: 0,
   });
   /* Бүх бүлгийн талбарыг хавтгайруулж шалгана */
   const all = g.flatMap((x) => x.items);
@@ -207,16 +198,11 @@ const contract = (o = {}) => ({
   const by = new Map(all.map((x) => [x.field, x.kind]));
   assert.equal(by.get(C.project), 'text');
   assert.equal(by.get(C.budgetTotal), 'money');
-  /* ⚠️ Захирамж нь ХОС талбар — `pair` төрөлтэй НЭГ мөр */
   assert.equal(details({ [C.order1Date]: '2025-02-20' })[0].items[0].kind, 'pair');
 
-  /* ⚠️ БҮЛЭГ бүр гарчигтай ба ХООСОН бүлэг ГАРАХГҮЙ */
   assert.ok(g.every((x) => x.title && x.items.length), '⚠️ хоосон/гарчиггүй бүлэг байхгүй');
   assert.equal(g.length, 2, 'ГЭРЭЭ ба ТӨСӨВ — ЭРХ ЗҮЙ хоосон тул ГАРААГҮЙ');
 
-  /* ⚠️ ЗАХИРАМЖ — огноо ба дугаар НЭГ мөр болж нийлнэ (хэрэглэгчийн
-     шийдвэр 2026-09-09: «zahiram neg : on dugaar»). Урьд нь ХОЁР мөр
-     эзэлж, 3 захирамж = 6 мөр болдог байв. */
   const legal = details({
     [C.order1Date]: '2025-02-20', [C.order1No]: 'А/250',
   });
@@ -225,17 +211,14 @@ const contract = (o = {}) => ({
   assert.equal(legal[0].items[0].value, '2025-02-20 · А/250', 'огноо · дугаар нийлсэн');
   assert.equal(legal[0].items[0].label, 'Захирамж 1', 'өөрийн шошиг');
 
-  /* ⚠️ Аль нэг нь дутуу байсан ч мөр ГАРНА — байгаа талыг нь харуулна */
   const onlyNo = details({ [C.order2No]: 'А/736' });
   assert.equal(onlyNo[0].items[0].value, 'А/736', 'зөвхөн дугаар');
   const onlyDate = details({ [C.order2Date]: '2025-05-27' });
   assert.equal(onlyDate[0].items[0].value, '2025-05-27', 'зөвхөн огноо');
 
-  /* ⚠️ ХОЁУЛАА хоосон бол мөр ОГТ гарахгүй */
   assert.deepEqual(details({ [C.order3Date]: null, [C.order3No]: '' }), [],
     '⚠️ хоосон захирамж мөр үүсгэхгүй');
 
-  /* ⚠️ Гурван захирамжийн `field` нь ДАВТАГДАХГҮЙ — React-ийн key */
   const three = details({
     [C.order1No]: 'А/250', [C.order2No]: 'А/736', [C.order3No]: 'А/917',
   });
@@ -263,14 +246,13 @@ const contract = (o = {}) => ({
   })]);
   assert.equal(badBlk[0].savingMismatch, true, '⚠️ эх сурвалж эвдэрсний дохио');
 
-  /* ⚠️ Хэмжигдээгүй бол «зөрсөн» ГЭЖ ҮЗЭХГҮЙ */
   const nullBlk = contractBlocks([contract({
     pays: [pay(1, work, 5, { [C.budgetTotal]: 100, [C.contractTotal]: null, [C.saving]: 10 })],
   })]);
   assert.equal(nullBlk[0].savingMismatch, false, '⚠️ хэмжигдээгүй ≠ зөрчил');
 }
 
-/* ══ 3. sortBlocks — ⚠️ №5 null ЭЦЭСТ ══ */
+/* ══ 3. sortBlocks — №5 null ЭЦЭСТ ══ */
 {
   const mk = (title, paid, pct) => ({
     code: title, title, contractor: '', workType: '', contractNo: '',
@@ -301,7 +283,6 @@ const contract = (o = {}) => ({
   const t = ipcTotals([mk(100, 40, 2), mk(200, 60, 3)]);
   assert.equal(t.contracts, 2);
   assert.equal(t.pays, 5);
-  /* ⚠️ 2026-09-29 (аудит 10): `dun`-гүй AUTO мөр төлбөр БИШ */
   const withAuto = mk(100, 40, 2);
   withAuto.rows.push({ oid: 9, id: 'AUTO|Багц 1|2026-09-01', amount: null });
   assert.equal(ipcTotals([withAuto]).pays, 2, '⚠️ AUTO мөр (dun = null) тоологдохгүй');
@@ -310,17 +291,13 @@ const contract = (o = {}) => ({
   assert.equal(t.paid, 100);
   assert.equal(Math.round(t.paidPct), 33, '100/300 → 33 (0–100, ⚠️ pct() үржүүлдэггүй)');
 
-  /* ⚠️ Бүгд хэмжигдээгүй бол `null` — 0 БИШ */
   const e = ipcTotals([mk(null, null, 0)]);
   assert.equal(e.contract, null, '⚠️ 0 БИШ');
   assert.equal(e.paid, null, '⚠️ 0 БИШ');
   assert.equal(e.paidPct, null);
-  /* ⚠️ 0-д хуваахгүй */
   assert.equal(ipcTotals([mk(0, 50, 0)]).paidPct, null, '⚠️ Infinity БИШ');
   assert.equal(ipcTotals([]).contracts, 0);
 
-  /* ⚠️ 2026-09-30: хувийн ТООЛОГЧ = зөвхөн гэрээт дүн тодорхой гэрээний олголт.
-     Урьд нь (40 + 60 + 500) / 300 = 200% гарч байв. */
   {
     const m = ipcTotals([mk(100, 40, 1), mk(200, 60, 1), mk(null, 500, 1)]);
     assert.equal(m.paid, 600, 'нийт олгосон — БҮХ гэрээ');
@@ -340,7 +317,7 @@ const contract = (o = {}) => ({
   }
 }
 
-/* ── ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): AUTO IPC-ийн анхдагч дугаар — гэрээ бүрд ДАРААЛСАН ── */
+/* ── 2026-10-01 («хэрэглэгч: бүгдийг зас»): AUTO IPC-ийн анхдагч дугаар — гэрээ бүрд ДАРААЛСАН ── */
 {
   const R = (o) => ({ oid: null, id: 'x', code: '', advance: false, ipcNo: null, date: null, amount: null, cum: null,
     obyem: null, une: null, zoruu: null, year: null, kind: '', orderNo: '', ...o });

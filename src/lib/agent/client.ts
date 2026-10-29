@@ -2,15 +2,6 @@
 
 /**
  * АГЕНТЫН ГОГЦОО — browser талд ажиллана.
- *
- * ⚠️ ЯАГААД BROWSER-Т ВЭ (сервер талд биш): энд `LAYERS`, `VIEWS`, `query.ts`,
- * хэрэглэгчийн эрх бүгд порталтай ИЖИЛ кодоор ачаалагдана. Тиймээс давхарга
- * нэмэгдэх/хасагдахад агент тэр даруй мэднэ — синхрон алдагдах БОЛОМЖГҮЙ.
- * Сервер тал давхаргын хуулбар хөтөлбөл тэр хуулбар хоцроод агент байхгүй
- * зүйлийн тухай ярьж эхэлнэ. Реле нь зөвхөн API түлхүүр барина.
- *
- * ⚠️ Өгөгдөл ArcGIS-ээс ШУУД browser рүү ирнэ (өнөөдрийнхтэй адил) — реле рүү
- * дамжихгүй. Реле рүү зөвхөн асуулт, давхаргын тайлбар ба нэгтгэсэн үр дүн явна.
  */
 
 import { AGENT_TOOLS, asToolData, describeCall, runTool } from './tools';
@@ -22,41 +13,17 @@ import { AUTH } from '@/lib/services';
 
 export type ToolUseBlock = { type: 'tool_use'; id: string; name: string; input: unknown };
 export type TextBlock = { type: 'text'; text: string };
-/** ⚠️ 2026-10-19: Opus 5.5 — хэрэгслийн хоорондын текст ч ийм блокоор (ихэвчлэн хоосон `thinking`) ирж болно */
 export type ThinkingBlock = { type: 'thinking'; thinking: string; signature?: string };
 export type ContentBlock = TextBlock | ToolUseBlock | { type: string; [k: string]: unknown };
 export type ApiMessage = { role: 'user' | 'assistant'; content: string | ContentBlock[] };
 
-/**
- * ⚠️ Хамгийн олон эргэлт. Агент нэг асуултад давхарга шалгаад (1) асууж (2),
- * дараа нь нарийвчлах (3-4) хэрэгтэй болдог. 6-аас цааш явбал ихэвчлэн
- * төөрсөн гэсэн үг — хязгааргүй гогцоо болохоос сэргийлнэ.
- */
 const MAX_TURNS = 6;
 
-/**
- * ⚠️ 2026-10-19: НЭГ АСУУЛТЫН НИЙТ ДЭЭД ХУГАЦАА — реле хүсэлт бүр 240с (`RELAY_TIMEOUT_MS`) хүртэл,
- *    эргэлт 6 хүртэл тул урьд нь онолын хувьд ~24 минут «Бодож байна…» гацаж болдог байв. Хугацаа
- *    дуусахад реле ба ArcGIS-ийн бүх хүсэлт цуцлагдаж `TimeoutError` шидэгдэнэ (`agentErrorText`).
- */
 const QUESTION_TIMEOUT_MS = 360_000;
 
 /**
  * Реле сервер — env-ээр солино, эс бөгөөс локал dev.
- *
- * ⚠️ `.trim()` ЗААВАЛ: GitHub-ийн Variable-д хаягийг хуулж буулгахад ард нь
- * ХАРАГДАХГҮЙ мөр таслалт (`\r\n`) үлддэг. Тэрийг арилгахгүй бол хүсэлт
- * `…workers.dev⏎/chat` рүү явж, URL хүчингүй болж AI чимээгүйхэн ажиллахаа
- * болино. (Бодитоор тохиолдсон: 2026.08.13, амьд багцаас илрүүлсэн.)
  */
-/* ⚠️ 2026-09-17: fallback (localhost) ХАСАГДАВ — хаяг зөвхөн env-ээс (Variables `AGENT_API` / `.env`).
-   Хоосон бол `relayAlive()` false → AI товч идэвхгүй, бусад хэсэг хэвийн. */
-/* ⚠️ 2026-10-06: дээрх «товч идэвхгүй» нь урьд ХЭРЭГЖЭЭГҮЙ байв — одоо хаяг хоосон бол
-   `AgentButton` огт зурагдахгүй, `alive === false` үед `AgentChat` оролт/илгээхийг хаана. */
-/* ⚠️ 2026-09-28: НӨӨЦ ХОСТ — `AGENT_API` таслалаар хэд хэдэн хаяг авна
-   (`https://pc1….ts.net,https://pc2….ts.net`). Tailscale Funnel нь машин бүрд ТУСДАА
-   хаяг өгдөг бөгөөд хооронд нь өөрөө шилжүүлдэггүй тул нэг хост унтарвал
-   дараагийнх руу үйлчлүүлэгч тал шилжинэ (`relayFetch`, `relayAlive`). */
 export const AGENT_APIS: readonly string[] = (process.env.NEXT_PUBLIC_AGENT_API ?? '')
   .split(',')
   .map((u) => u.trim().replace(/\/+$/, ''))
@@ -70,8 +37,6 @@ let active = 0;
 /**
  * Хост «унтарсан» гэж үзэх хариу: тунель/прокси хост руу хүрч чадаагүй (502/504,
  * Cloudflare 530), эсвэл реле Claude Code-оос гарсан (503).
- * ⚠️ 429 (хурдны хязгаар) ОРОХГҮЙ — өөр хост руу шилжвэл хэрэглэгч бүрийн
- *    хязгаар хост тоогоор үржинэ.
  */
 const FAILOVER_STATUS = new Set([502, 503, 504, 530]);
 
@@ -80,33 +45,9 @@ const HEALTH_TIMEOUT_MS = 8_000;
 
 /**
  * Реле рүү хүсэлт — хост унтарсан бол жагсаалтын дараагийнх руу шилжинэ.
- *
- * ⚠️ Хэрэглэгч цуцалсан (`signal.aborted`) бол ШИЛЖИХГҮЙ, шууд шидэнэ.
- * ⚠️ Сүүлийн хостын хариуг статусаас үл хамааран буцаана — алдааны мессежийг
- *    дуудагч өөрөө задална.
- * ⚠️ ХАЯГГҮЙ бол ЭНД зогсоно. Урьд нь хоосон жагсаалт нь `fetch('/chat')` болж
- *    ХАРЬЦАНГУЙ хаяг руу (статик сайт өөрөө) явж, 404/405-ын JSON биш хариуг
- *    «AI алдаа» гэж задалдаг байв — шалтгаан нь тохиргоо гэдэг нь харагдахгүй.
- *    `relayAlive()` товчийг аль хэдийн хаадаг тул энэ нь зөвхөн гүн хамгаалалт
- *    (`askExecSummary` зэрэг товчгүй зам).
- */
-/**
- * ⚠️ 2026-09-30: реле хүсэлтийн ДЭЭД хугацаа. Релегийн Claude Code timeout нь 180с
- *    (`claudeCode.mjs` `CLAUDE_TIMEOUT_MS`) тул түүнээс УРТ — эс бөгөөс хууль ёсны
- *    удаан хариуг клиент өөрөө таслана. Хэрэглэгчийн `init.signal`-тай нэгтгэнэ.
  */
 const RELAY_TIMEOUT_MS = 240_000;
 
-/**
- * ⚠️ 2026-10-06 (аудит): НӨӨЦ ХОСТ руу ШИЛЖИХЭЭС ӨМНӨХ БОГИНО ШАЛГАЛТ. Урьд нь унжсан
- *    (хариугүй) хост дээр `RELAY_TIMEOUT_MS` (240с) бүтэн хүлээгээд л дараагийнх руу
- *    шилждэг байв — хоёр хосттой үед хэрэглэгч 4 минут «Бодож байна…» хардаг. `/chat` нь
- *    хариугаа бүрэн бэлдсэний ДАРАА л толгойгоо илгээдэг тул түүнд богино timeout тавих
- *    БОЛОМЖГҮЙ (хууль ёсны удаан хариу тасарна). Тиймээс олон хосттой үед хүсэлтийн
- *    ӨМНӨ `/health`-ийг `HEALTH_TIMEOUT_MS`-ээр шалгаж, хариугүй бол шууд дараагийнх руу;
- *    сүүлд амьд гэж батлагдсан хост (`HEALTH_FRESH_MS` дотор) шалгалтгүй явна.
- *    Жинхэнэ хариуны хүлээлт урт хэвээр (240с).
- */
 const HEALTH_FRESH_MS = 60_000;
 const aliveAt = new Map<string, number>();
 
@@ -130,13 +71,9 @@ async function probeHealth(base: string, signal?: AbortSignal): Promise<boolean>
 }
 
 /**
- * СИСТЕМИЙН ЗААВРЫН ГАРЫН ҮСЭГ (⚠️ 2026-10-09, аудит №1) — реле дээр `PROMPT_HMAC` тохируулсан
+ * СИСТЕМИЙН ЗААВРЫН ГАРЫН ҮСЭГ (2026-10-09, аудит №1) — реле дээр `PROMPT_HMAC` тохируулсан
  * үед ИЖИЛ утгыг энд өгнө: бот/Node — `AGENT_PROMPT_HMAC` (`BOT_SECRET`-ийн адил browser-т
  * `undefined`), browser build — `NEXT_PUBLIC_AGENT_PROMPT_HMAC` (GitHub Variable).
- * ⚠️ Browser-ийн утга JS багцад ИЛ — энэ нь хамгаалалтын хил БИШ, санамсаргүй curl/скриптээр
- *    релег ерөнхий LLM прокси болгохыг хүндрүүлэх саад л (`agent-proxy/README.md`).
- *    Бодит хязгаар нь релейн өдрийн токены төсөв.
- * ⚠️ Хоосон бол толгой нэмэгдэхгүй — зан огт өөрчлөгдөхгүй.
  */
 const PROMPT_KEY = process.env.AGENT_PROMPT_HMAC || process.env.NEXT_PUBLIC_AGENT_PROMPT_HMAC || '';
 
@@ -151,7 +88,6 @@ async function promptSig(system: string): Promise<string> {
 /**
  * `/chat`-ийн биед `x-prompt-sig` толгой нэмнэ (`PROMPT_KEY` байвал л). `relayFetch`-д
  * байгаа тул бүх дуудагч (агентын гогцоо, `execReport.askExecSummary`) хамрагдана.
- * ⚠️ Бие нь мөр (JSON) байх ёстой; задлагдахгүй бол толгойгүй явна — реле 403-аар хэлнэ.
  */
 async function withPromptSig(path: string, init: RequestInit): Promise<RequestInit> {
   if (!PROMPT_KEY || !path.startsWith('/chat') || typeof init.body !== 'string') return init;
@@ -166,15 +102,12 @@ async function withPromptSig(path: string, init: RequestInit): Promise<RequestIn
   }
 }
 
-/** `/chat`-ийн 5xx хариуг өөр хост руу давтаж болох уу — дээрх `relayFetch`-ийн ⚠️ 2026-10-19 */
+/** `/chat`-ийн 5xx хариуг өөр хост руу давтаж болох уу — дээрх `relayFetch` 2026-10-19 */
 async function relayMayRetry(res: Response): Promise<boolean> {
   const b = (await res.clone().json().catch(() => null)) as { error?: unknown; retryable?: unknown; upstream?: unknown; code?: unknown } | null;
   /* Манай релейн хариу биш (тунелийн HTML/хоосон, эсвэл өөр бүтэцтэй JSON) — релей хүрээгүй */
   if (!b || typeof b !== 'object' || (!('error' in b) && !('retryable' in b))) return true;
   if (b.code === 'upstream_auth') return true;
-  /* ⚠️ 2026-10-19: реле дээд үйлчилгээнд ХҮРСЭН хариуг ЗААВАЛ `upstream: true`-ээр тэмдэглэдэг (`server.mjs` ·
-     `worker.mjs`). Тэмдэггүй алдаа (бэлэн биш 503, хязгаар …) нь дээд талд хүрэхээс ӨМНӨ татгалзсан → шилжиж болно.
-     (Урьд `=== false` гэж шалгадаг байсан ч реле `upstream: false`-ийг ХЭЗЭЭ Ч илгээдэггүй тул энэ салбар үхмэл байв.) */
   return b.upstream !== true;
 }
 
@@ -187,7 +120,6 @@ export async function relayFetch(path: string, rawInit: RequestInit): Promise<Re
     const i = (active + k) % n;
     const last = k === n - 1;
     const base = AGENT_APIS[i] ?? '';
-    /* ⚠️ 2026-10-06: шилжих боломжтой (сүүлийнх биш) хостыг эхлээд богино шалгана (дээрх ⚠️) */
     if (!last && Date.now() - (aliveAt.get(base) ?? 0) > HEALTH_FRESH_MS) {
       const ok = await probeHealth(base, init.signal ?? undefined);
       if (init.signal?.aborted) throw init.signal.reason ?? new DOMException('aborted', 'AbortError');
@@ -200,12 +132,6 @@ export async function relayFetch(path: string, rawInit: RequestInit): Promise<Re
     const tm = setTimeout(() => ac.abort(new DOMException(`timeout ${RELAY_TIMEOUT_MS}ms`, 'TimeoutError')), RELAY_TIMEOUT_MS);
     try {
       const res = await fetch(`${base}${path}`, { ...init, signal: ac.signal });
-      /* ⚠️ 2026-10-19: `/chat`-ийг 5xx дээр өөр хост руу ДАВТАН илгээхгүй, хэрэв хариу манай РЕЛЕЕС ирсэн бол
-         (JSON `error`/`retryable` биетэй) — тэр үед хүсэлт дээд үйлчилгээнд (Anthropic/Claude Code) аль хэдийн
-         хүрч боловсруулагдсан байж болох тул давталт нь давхар зарцуулалт/хариу үүсгэнэ. Шилжих нь ЗӨВХӨН:
-         тунель/прокси (релей хүрээгүй — JSON биш эсвэл манай биш бие), `upstream: true` тэмдэггүй алдаа (релей
-         дээд талд хүрэхээс ӨМНӨ татгалзсан) эсвэл `upstream_auth` (тэр хостын түлхүүр буруу — юу ч боловсруулагдаагүй).
-         Сүлжээний алдаа (`fetch` шидсэн) урьдын адил дараагийн хост руу — ГЭХДЭЭ `/chat`-ийн хугацаа хэтрэлт биш (доор). */
       if (!last && FAILOVER_STATUS.has(res.status) && (!path.startsWith('/chat') || await relayMayRetry(res))) {
         aliveAt.delete(base);
         continue;
@@ -216,9 +142,6 @@ export async function relayFetch(path: string, rawInit: RequestInit): Promise<Re
     } catch (e) {
       if (init.signal?.aborted) throw e;
       aliveAt.delete(base);
-      /* ⚠️ 2026-10-19: `/chat`-ийн ХУГАЦАА ХЭТРЭЛТ (`TimeoutError`) дээр өөр хост руу ШИЛЖИХГҮЙ — хүсэлт релед хүрч
-         дээд үйлчилгээ боловсруулж байгаа байх магадлалтай (удаан хариулт); давтвал давхар зарцуулалт ба 2×240с хүлээлт.
-         Шилжих нь зөвхөн хариу ирэхээс ӨМНӨХ сүлжээний алдаа (`TypeError: Failed to fetch` …). */
       const reason: unknown = ac.signal.reason;
       if (path.startsWith('/chat') && reason instanceof DOMException && reason.name === 'TimeoutError') throw reason;
       lastErr = e;
@@ -232,46 +155,15 @@ export async function relayFetch(path: string, rawInit: RequestInit): Promise<Re
 
 /**
  * Browser-ГҮЙ үйлчлүүлэгчийн (Telegram бот) реле-баталгаа.
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: байршуулсан реле (worker) нь `ARCGIS_ORG_ID`-тай үед
- * хүсэлт бүрд ArcGIS хэрэглэгчийн токен ШААРДАНА. Telegram бот нь ArcGIS
- * хэрэглэгч БИШ тул токен байхгүй — токен шаарддаг реле рүү очвол бүх хүсэлт
- * 401 болно. Тиймээс бот өөрийн нууц түлхүүрээр (реле дээрх `BOT_SECRET`-тэй
- * ижил) батална. Ботын хандалтыг ботын ӨӨРИЙН цагаан жагсаалт барина.
- *
- * ⚠️ BROWSER-Т АЮУЛГҮЙ: `NEXT_PUBLIC_` угтваргүй тул статик build-д `undefined`
- * болж, толгой нэмэгдэхгүй — порталын зан төлөв огт өөрчлөгдөхгүй. Утга нь
- * ЗӨВХӨН Node процесс (бот)-ын `process.env`-ээс гарна.
  */
 const BOT_SECRET = process.env.AGENT_BOT_SECRET;
 
 /**
  * Нэвтэрсэн хэрэглэгчийн ArcGIS токен — реле үүгээр хэн болохыг батална.
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: реле нь нийтэд нээлттэй хаяг дээр байрлах тул зөвхөн
- * CORS-д найдаж болохгүй (curl түүнийг тоохгүй). Токенгүй бол хаягийг олсон
- * хэн ч байгууллагын AI эрхээр токен зарцуулна.
- *
- * ⚠️ `getCredential` БИШ `findCredential` — эхнийх нь токен байхгүй үед
- * нэвтрэлтийн хуудас руу ЧИГЛҮҮЛНЭ. Хэрэглэгч асуулт бичиж байхад гэнэт хуудас
- * солигдвол бичсэн зүйл нь алдагдана. `findCredential` нь зөвхөн ОДОО байгааг
- * буцаадаг тул хажуугийн үр дагаваргүй.
- *
- * ⚠️ Нэвтрэлт унтраалттай (`AUTH.appId` хоосон) эсвэл локал реле үед энэ нь
- * `null` буцаана — тэр тохиолдолд реле ч токен шаардахгүй.
  */
-/* ⚠️ 2026-09-17: экспортлогдсон — «Удирдлагын тайлан»-гийн AI дүгнэлт
-   (`execReport.askExecSummary`) хэрэгсэлгүй ГАНЦ хүсэлтээр реле рүү явдаг
-   тул `ask()`-ийн гогцоог хэрэглэхгүй, харин ижил нэвтрэлтийн толгой хэрэгтэй. */
 export async function arcgisToken(force = false): Promise<string | null> {
   if (!AUTH.appId) return null;
   try {
-    /* ⚠️ 2026-10-06 (аудит): дамжуулахаас ӨМНӨ токеныг ШИНЭЧИЛЖ уншина — таб нуугдах/компьютер
-       унтахад JS API-ийн цаг хэмжигч хоцорч `findCredential().token` ХУГАЦАА ДУУССАН токен
-       буцаадаг (`authToken.ensureFreshToken`-ийн ⚠️). Урьд нь реле 401 буцааж асуулт унадаг байв.
-       Шинэчлэлт унавал чимээгүй — реле өөрөө татгалзаж, доорх 401-ийн давталт нэг удаа (`force`) оролдоно.
-       Динамик импорт — `authToken` → `query`-г бот/Node-ийн замд (`AUTH.appId` хоосон тул энд
-       хүрэхгүй ч) статикаар чирэхгүй. */
     const { ensureFreshToken } = await import('@/lib/authToken');
     await ensureFreshToken(force);
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
@@ -290,7 +182,6 @@ type RelayReply = {
   content?: ContentBlock[];
   note?: string;
   error?: string;
-  /** ⚠️ 2026-10-09: `'daily_budget'` — өдрийн токены төсөв дууссан (релейн 429) */
   code?: string;
   retryable?: boolean;
 };
@@ -305,15 +196,8 @@ async function callRelay(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      // ⚠️ Токенгүй үед толгойг ОГТ нэмэхгүй — хоосон утга илгээвэл локал реле
-      //    (нэвтрэлт шалгадаггүй) рүү илүү preflight толгой явна.
       ...(token ? { 'x-arcgis-token': token } : {}),
-      // ⚠️ Browser-гүй үйлчлүүлэгч (бот) ArcGIS токенгүй тул нууц түлхүүрээр
-      //    батална. Browser build-д `BOT_SECRET` нь `undefined` — толгой алга.
       ...(BOT_SECRET ? { 'x-bot-secret': BOT_SECRET } : {}),
-      /* ⚠️ 2026-10-09: ботын Telegram хэрэглэгчийн ID — реле `bot:<id>`-аар хурдны хязгаар, зэрэг
-         хүсэлт, өдрийн төсвийг хэрэглэгч тус бүрд тоолно (`agent-proxy/rateLimit.mjs` `botCaller`).
-         ЗӨВХӨН бот (`BOT_SECRET`) — browser-т хэзээ ч нэмэгдэхгүй (CORS-д ч зөвшөөрөгдөөгүй). */
       ...(BOT_SECRET && botUser && /^\d{1,20}$/.test(botUser) ? { 'x-bot-user': botUser } : {}),
     },
     body: json,
@@ -321,14 +205,7 @@ async function callRelay(
   });
   const token = await arcgisToken();
   let res = await post(token);
-  /* ⚠️ 2026-10-06: JSON биш хариу `null` болно (урьд нь `{}`) — 200 атал уншигдахгүй бол
-     хоосон хариу мэт түүхэд `{content: []}` орж дараагийн хүсэлт 400 болдог байв. */
   let reply = (await res.json().catch(() => null)) as RelayReply | null;
-  /* ⚠️ 2026-10-06 (аудит): реле 401 — токен хуучирсан байж болно: ХҮЧЭЭР шинэчилж, токен
-     СОЛИГДСОН бол НЭГ удаа дахин илгээнэ (`query.ts`-ийн 498-ийн давталттай ижил зарчим).
-     Токен өөрчлөгдөөгүй бол давтах нь утгагүй — доорх алдаа хэвээр.
-     ⚠️ 2026-10-09 (аудит №6): ЗӨВХӨН биед `code` АЛГА үед — `code`-той 401/502 (`upstream_auth`:
-        релейн өөрийн түлхүүрийн алдаа) нь ArcGIS токентой хамаагүй тул шинэчлэх/давтах нь дэмий. */
   if (res.status === 401 && !reply?.code && token && !signal?.aborted) {
     const fresh = await arcgisToken(true);
     if (fresh && fresh !== token) {
@@ -337,9 +214,6 @@ async function callRelay(
     }
   }
   if (!res.ok) {
-    /* ⚠️ 2026-10-06: релейн `error` (хатуу монгол, серверийн) зөвхөн ДЭЛГЭРЭНГҮЙ — гол
-       мөр нь статусаас `tr()`-ээр (`RelayError`). Урьд нь `reply.error ?? …` байсан тул
-       реле ямагт `error` буцаадаг учраас орчуулга хэзээ ч ажилладаггүй байв. */
     throw new RelayError(res.status, reply?.error, reply?.code);
   }
   if (!reply || typeof reply !== 'object') throw new RelayError(res.status, tr('Уншигдахгүй хариу'));
@@ -347,10 +221,8 @@ async function callRelay(
 }
 
 /**
- * Реле HTTP алдаа — `message` нь хэрэглэгчид ойлгомжтой (`tr()`), `detail` нь
+ * Реле HTTP алдаа — `message` нь хэрэглэгчид ойлгомжтой (`tr`), `detail` нь
  * серверийн түүхий мөр (зөвхөн дэлгэрэнгүйд).
- * ⚠️ 2026-10-06: параметрийн шинж (`constructor(readonly …)`) ХЭРЭГЛЭХГҮЙ — тестүүд
- *    `.ts`-ийг Node-ийн төрөл хасагчаар ажиллуулдаг, тэр нь үүнийг дэмждэггүй.
  */
 export class RelayError extends Error {
   status: number;
@@ -366,17 +238,12 @@ export class RelayError extends Error {
 }
 
 function relayStatusText(status: number, code?: string): string {
-  /* ⚠️ 2026-10-09: өдрийн төсөв — «завгүй, дахин оролдоно уу» гэвэл хэрэглэгч дахин дахин
-     оролдож дэмий хүлээнэ; маргааш хүртэл нээгдэхгүйг ил хэлнэ. */
   if (status === 429 && code === 'daily_budget') {
     return tr('Өнөөдрийн AI хэрэглээний хязгаар дууслаа — маргааш дахин оролдоно уу.');
   }
-  /* ⚠️ 2026-10-09: дуудагчийн ЗЭРЭГ хүсэлтийн таг (реле `LIMITS.concurrent`) — өөр таб/цонхонд асуулт явж байна */
   if (status === 429 && code === 'concurrent') {
     return tr('Өөр цонхонд асуусан асуултын хариу хүлээгдэж байна — дуусахыг хүлээгээд дахин оролдоно уу.');
   }
-  /* ⚠️ 2026-10-09 (аудит №6): релейн ӨӨРИЙН дээд үйлчилгээний түлхүүр буруу (502 `upstream_auth`) —
-     хэрэглэгчийн нэвтрэлттэй хамаагүй; «дахин нэвтэрнэ үү» / «түр ажиллахгүй» гэхгүй, админд хандуулна. */
   if (code === 'upstream_auth') {
     return tr('AI туслахын серверийн тохиргоонд алдаа гарлаа — системийн администраторт хандана уу.');
   }
@@ -385,16 +252,13 @@ function relayStatusText(status: number, code?: string): string {
   if (status === 413) return tr('Яриа хэт урт боллоо — ⟲ дарж шинээр эхлүүлнэ үү.');
   if (status === 429) return tr('AI туслах завгүй байна — хэсэг хүлээгээд дахин оролдоно уу.');
   if (status === 504) return tr('AI туслах хугацаандаа хариу өгсөнгүй — дахин оролдоно уу.');
-  /* ⚠️ 2026-10-19: 529 (overloaded) — Anthropic-ийн ЕРӨНХИЙ ачаалал; «Реле алдаа (HTTP 529)» гэж техникээр гардаг байв */
   if (status === 529) return tr('AI үйлчилгээ одоогоор хэт ачаалалтай байна — хэдэн минутын дараа дахин оролдоно уу.');
   if (FAILOVER_STATUS.has(status)) return tr('AI туслах түр ажиллахгүй байна, дараа дахин оролдоно уу.');
   return tr('Реле алдаа (HTTP {0})', status);
 }
 
 /**
- * Агентын алдааг дэлгэцийн мөр болгоно: `text` — `tr()`-ээр, `detail` — техникийн мөр.
- * ⚠️ 2026-10-06: урьд нь түүхий «Failed to fetch», «timeout 240000ms»,
- *    серверийн хатуу монгол текст шууд гардаг байв (англи горимд ч).
+ * Агентын алдааг дэлгэцийн мөр болгоно: `text` — `tr`-ээр, `detail` — техникийн мөр.
  */
 export function agentErrorText(e: unknown): { text: string; detail?: string } {
   if (e instanceof RelayError) return { text: e.message, ...(e.detail ? { detail: e.detail } : {}) };
@@ -414,14 +278,10 @@ export function agentErrorText(e: unknown): { text: string; detail?: string } {
 
 /**
  * Реле асаалттай эсэх — UI үүнээс хамааран товчоо идэвхгүй болгоно.
- *
- * ⚠️ Жагсаалтын ЭХНИЙ хостоос эхэлнэ — үндсэн хост буцаж асвал түүн рүү эргэнэ.
- *    Амьд хостыг `active` болгож, дараагийн `/chat` шууд тийш явна.
  */
 export async function relayAlive(signal?: AbortSignal): Promise<boolean> {
   for (let i = 0; i < AGENT_APIS.length; i++) {
     if (signal?.aborted) return false;
-    /* ⚠️ 2026-10-06: `probeHealth` — `relayFetch`-ийн урьдчилсан шалгалттай НЭГ биелэлт */
     if (await probeHealth(AGENT_APIS[i], signal)) {
       active = i;
       return true;
@@ -438,12 +298,7 @@ const textOf = (blocks: ContentBlock[]): string =>
     .trim();
 
 /**
- * ТӨЛӨВЛӨГӨӨНИЙ ТЕКСТ — хэрэгсэл дуудаж буй эргэлтийн блокуудаас (⚠️ 2026-10-19).
- * ⚠️ Claude Opus 5.5 хэрэгслийн дуудлагын ХООРОНДЫН текстийг `text` биш `thinking` блокоор (анхдагчаар
- *    ХООСОН агуулгатай) буцааж болно — урьд нь зөвхөн `text`-ийг уншдаг тул төлөвлөгөө чимээгүй алга
- *    болдог байв. Дараалал: (1) `text` блок; (2) бодолтын блок доторх ```plan` ХАШИЛТТАЙ хэсэг л —
- *    хашилтгүй бодолтын түүхий текстийг хэрэглэгчид ХЭЗЭЭ Ч харуулахгүй (`plan.ts`-ийн ⚠️). Олдохгүй бол
- *    '' — карт зурагдахгүй, алдаа гарахгүй.
+ * ТӨЛӨВЛӨГӨӨНИЙ ТЕКСТ — хэрэгсэл дуудаж буй эргэлтийн блокуудаас (2026-10-19).
  */
 export function planTextOf(blocks: readonly ContentBlock[]): string {
   const text = textOf(blocks as ContentBlock[]);
@@ -458,13 +313,7 @@ export function planTextOf(blocks: readonly ContentBlock[]): string {
 }
 
 /**
- * ТҮҮХИЙН БОДОЛТЫН БЛОКИЙГ ХАСНА (in-place) — түүхийг ЭХНЭЭС нь огтолсны ДАРАА дуудна (⚠️ 2026-10-19).
- * ⚠️ ЯАГААД: Opus 5.5-ийн бодолтын блок нь өөрийн ӨМНӨХ бүх мессежийг (prefix) гарын үсгээр баталдаг —
- *    эхний эргэлтүүдийг хассан түүхэд үлдсэн блок бүр «өөр ярианых» болж (шинэ байгууллагад) 400 буцна.
- *    Баримтжуулсан сэргээлт: ҮЛДСЭН түүхийн БҮХ `thinking`/`redacted_thinking`-ийг хасах (`text` ·
- *    `tool_use` хэвээр). Дараагийн эргэлтүүд энэ шинэ эхлэлтэй нийцэж, түүх дахин зөвхөн АРД нэмэгдэнэ.
- *    Огтлоогүй үед ДУУДАХГҮЙ (дундаас нь хасвал мөн адил хүчингүй болно).
- * ⚠️ Хоосон болсон assistant агуулгыг товч текстээр орлуулна — `{content: []}` нь 400.
+ * ТҮҮХИЙН БОДОЛТЫН БЛОКИЙГ ХАСНА (in-place) — түүхийг ЭХНЭЭС нь огтолсны ДАРАА дуудна (2026-10-19).
  */
 export function stripThinking(history: ApiMessage[]): void {
   for (const m of history) {
@@ -486,24 +335,14 @@ export async function ask(opts: {
   history: ApiMessage[];
   scope: AgentScope;
   onProgress?: (label: string) => void;
-  /**
-   * ⚠️ 2026-10-15 (төлөвлөгөө): хэрэгсэл дуудаж буй эргэлтийн ТЕКСТ — агентын
-   * ажлын төлөвлөгөө. НЭГ УДАА (эхний удаад) дуудагдана; нэмэлт эргэлт
-   * зарцуулахгүй тул хариулт удаашрахгүй.
-   */
   onPlan?: (text: string) => void;
   /**
    * Хэрэгслийн нэг багц гүйцэтгэгдэж дуусахад.
-   * ⚠️ 2026-10-19: төлөвлөгөөний АЛХМЫН тоо БИШ — нэг алхам олон багц, эсвэл олон алхам нэг багцаар
-   *    явдаг тул `AgentChat` үүгээр ✓ тавихаа больсон (алхмууд эргэлт ДУУССАНЫ дараа л ✓).
    */
   onStep?: () => void;
   signal?: AbortSignal;
-  /** ⚠️ 2026-10-09: зөвхөн Telegram бот — `x-bot-user` толгой (`callRelay`-ийн ⚠️) */
   botUser?: string;
 }): Promise<AskResult> {
-  /* ⚠️ 2026-10-19: асуултын НИЙТ дээд хугацаа (`QUESTION_TIMEOUT_MS`) + хэрэглэгчийн цуцлалт НЭГ сигналд —
-     реле ба хэрэгслүүд (ArcGIS) хоёуланд дамжина. Хугацаа дуусвал `TimeoutError` шидэгдэнэ. */
   const ac = new AbortController();
   const onUser = () => ac.abort(opts.signal?.reason ?? new DOMException('aborted', 'AbortError'));
   if (opts.signal?.aborted) onUser();
@@ -527,13 +366,11 @@ export async function ask(opts: {
 async function askLoop(opts: Parameters<typeof ask>[0]): Promise<AskResult> {
   const { question, history, scope, onProgress, onPlan, onStep, signal, botUser } = opts;
 
-  // ⚠️ Заавар нь бүртгэлээс ЯГ ОДОО тооцоологдоно — өмнөх хариултын хуучирсан
-  //    хуулбар хэзээ ч хэрэглэгдэхгүй.
   const system = buildSystemPrompt(scope);
 
   history.push({ role: 'user', content: question });
   onProgress?.(tr('Бодож байна…'));
-  /** Төлөвлөгөөг НЭГ удаа дамжуулна (дээрх `onPlan`-ийн ⚠️) */
+  /** Төлөвлөгөөг НЭГ удаа дамжуулна (дээрх `onPlan`) */
   let planned = false;
 
   for (let turn = 1; turn <= MAX_TURNS; turn++) {
@@ -549,9 +386,6 @@ async function askLoop(opts: Parameters<typeof ask>[0]): Promise<AskResult> {
     const calls = blocks.filter((b): b is ToolUseBlock => b.type === 'tool_use');
     const text = textOf(blocks);
 
-    /* ⚠️ 2026-10-06: `max_tokens` — хариу ТАСАРСАН. Урьд нь бүтэн мэт харагддаг байв.
-       Тасарсан tool_use-ийн оролт дутуу байж болох тул ГҮЙЦЭТГЭХГҮЙ; түүхэд зөвхөн
-       текстийг (tool_result-гүй tool_use үлдвэл дараагийн хүсэлт 400) хийнэ. */
     if (reply.stop_reason === 'max_tokens') {
       const note = tr('⚠️ Хариу тасарсан (хэт урт болсон) — асуултаа хувааж эсвэл товчлон асууна уу.');
       const msg = text ? `${text}\n\n${note}` : note;
@@ -560,26 +394,15 @@ async function askLoop(opts: Parameters<typeof ask>[0]): Promise<AskResult> {
     }
 
     if (!calls.length && !text) {
-      /* ⚠️ 2026-10-06: ХООСОН assistant агуулгыг түүхэд ХЭЗЭЭ Ч хийхгүй — `{content: []}`
-         нь дараагийн бүх хүсэлтийг 400 болгодог байв. Татгалзлын адил текстээр орлуулна. */
       const msg = tr('Хариулт хоосон ирлээ.');
       history.push({ role: 'assistant', content: [{ type: 'text', text: msg }] });
       return { text: msg, turns: turn };
     }
 
-    // ⚠️ Блокуудыг ЯГ ИРСЭН ХЭВЭЭР нь буцааж хийнэ (бодолтын блок орсон байж
-    //    болзошгүй) — засвал дараагийн хүсэлт татгалзагдана.
     history.push({ role: 'assistant', content: blocks });
 
     if (!calls.length) return { text, turns: turn };
 
-    /* ⚠️ 2026-10-15: ТӨЛӨВЛӨГӨӨ — хэрэгсэл дуудаж буй эргэлтийн текст. Зөвхөн
-       ЭХНИЙ удаад дамжуулна (дараагийн эргэлтийн тайлбар нь төлөвлөгөө биш,
-       явцын тэмдэглэл) — мөн хэрэглэгчээс зөвшөөрөл асуудаггүй тул гүйцэтгэл
-       тэр дороо үргэлжилнэ. */
-    /* ⚠️ 2026-10-19: Opus 5.5 — төлөвлөгөө `thinking` блокоор ирж болно (`planTextOf`). ЗӨВХӨН хэрэгсэл дуудсан
-       ЭХНИЙ эргэлтийн блокоос хайна — олдохгүй бол карт зурагдахгүй. Дараагийн эргэлтүүдэд ДАХИН ХАЙХГҮЙ: тэдгээрийн
-       текст нь явцын тэмдэглэл (`display: 'updates'`) тул дунд нь «төлөвлөгөө» болж гарч ирэх нь төөрөгдүүлнэ. */
     if (!planned) {
       planned = true;
       const planText = planTextOf(blocks);
@@ -588,20 +411,15 @@ async function askLoop(opts: Parameters<typeof ask>[0]): Promise<AskResult> {
 
     onProgress?.(describeCall(calls[0].name, calls[0].input));
 
-    /* ⚠️ 2026-09-29 (аудит 10): `signal` хэрэгслийн гүйцэтгэлд дамждаггүй — ✕/Esc/⟲ зөвхөн
-       релегийн fetch-ийг таслаад хэрэгслүүд (~10 с) үргэлжилж, `busy` тогтож байв.
-       Гүйцэтгэлийн өмнө ба дараа таслалтыг шалгаж AbortError шидэнэ. */
     const aborted = () => { if (signal?.aborted) throw new DOMException('aborted', 'AbortError'); };
     aborted();
     // Зэрэг дуудлагуудыг ЗЭРЭГ гүйцэтгэнэ — `query.ts` өөрөө 6-аар хязгаарлана
     const results = await Promise.all(
       calls.map(async (c) => {
-        /* ⚠️ 2026-10-19: `signal` хэрэгсэлд дамжина — чат хаагдахад ArcGIS асуулга зогсоно */
         const out = await runTool(c.name, c.input, scope, signal);
         return {
           type: 'tool_result' as const,
           tool_use_id: c.id,
-          /* ⚠️ 2026-10-09 (аудит №6): «ӨГӨГДӨЛ — заавар биш» хашилт (`tools.ts`-ийн ⚠️) */
           content: asToolData(out.text),
           ...(out.isError ? { is_error: true } : {}),
         };
@@ -609,8 +427,6 @@ async function askLoop(opts: Parameters<typeof ask>[0]): Promise<AskResult> {
     );
     aborted();
 
-    // ⚠️ БҮХ үр дүн НЭГ мессежид орно. Салгавал загвар зэрэгцээ дуудлага
-    //    хийхээ болино.
     history.push({ role: 'user', content: results as unknown as ContentBlock[] });
     onStep?.();
     onProgress?.(tr('Хариултыг бэлдэж байна…'));

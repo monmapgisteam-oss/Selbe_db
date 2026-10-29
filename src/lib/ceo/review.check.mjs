@@ -82,8 +82,6 @@ const pend = (ajil, bagts, owner, days, who, extra = {}) => ({
     failedSources: ['Гүйцэтгэлийн хяналт'],
   });
   assert.equal(r.value, '—', 'хэмжигдээгүй → «—», 0 БИШ');
-  /* ⚠️ 2026-10-11 (аудит №7): гол тоо (хүлээгдэл) УНШИГДААГҮЙ бол түвшин `unknown` — урьд нь зөвхөн
-     бөглөлтийн насаар «warn» гарч, «—» атлаа карт өнгөтэй байв (null ≠ 0). */
   assert.equal(r.level, 'unknown', 'хүлээгдэл уншигдаагүй → мэдэгдэхгүй (бөглөлтөөр л шар гаргахгүй)');
   assert.equal(r.tables.length, 1);
   assert.equal(r.tables[0].title, 'Бөглөлтийн нас — багцаар');

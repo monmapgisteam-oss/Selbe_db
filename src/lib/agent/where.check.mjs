@@ -1,13 +1,11 @@
 /**
  * АГЕНТЫН `where` — ЮНИКОД ЛИТЕРАЛЫН `N'…'` УГТВАР (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/agent/where.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/agent/where.check.mjs
  *
  * Хамгаалж буй алдаа: CLAUDE.md-ийн ArcGIS дүрэм «Юникод мөр: `N'…'` угтвар» — угтваргүй
  * кирилл харьцуулалт зарим үйлчилгээнд алдаагүйгээр 0 мөр буцаадаг. Агентын
  * `query_feature`-ийн `where`-ийг загвар өөрөө бичдэг бөгөөд зааврын жишээ угтваргүй
  * (`ZONE_ID = 'Багц-1'`) байсан → «0 барилга» гэх мэт худал тоо.
- *
- * ⚠️ Сүлжээгүй: `globalThis.fetch`-ийг орлуулж ArcGIS руу ЯВСАН биеийг шалгана.
  */
 import assert from 'node:assert/strict';
 import { nPrefixUnicode, runTool } from '@/lib/agent/tools';

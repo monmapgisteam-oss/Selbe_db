@@ -1,9 +1,6 @@
 /**
  * ИЛГЭЭЛТИЙН ЗАВСРЫН ХАДГАЛАЛТЫН ШАЛГУУР — цэвэр функц, сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/submission.check.mjs
- *
- * ⚠️ ArcGIS-д хандах функцуудыг (`load*`, `saveSubmission`, `closeSubmission`)
- *    ЭНД ДУУДАХГҮЙ — сүлжээ. Зөвхөн `parseSubmission`/`mergeSubmission`.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/submission.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. ЭВДЭРСЭН ИЛГЭЭЛТ БҮХЭЛДЭЭ УСТАХ. Хүснэгт нь org доторх хэн ч засаж
@@ -63,7 +60,6 @@ assert.equal(SUBMISSION_MAX, 80_000);
 
 /* ── 2. `v` буруу → null (ноорогийн payload ижил хүснэгтэд байдаг!) ── */
 {
-  /* ⚠️ 2026-09-25: `v: 2` нь ЗӨВХӨН `mode: 'inc'`-тэй хүчинтэй — туггүй бол горим тодорхойгүй */
   assert.equal(parseSubmission(JSON.stringify({ ...valid(), v: 2 })), null, 'v:2 (горимгүй) задарч болохгүй');
   assert.equal(parseSubmission(JSON.stringify({ ...valid(), v: '1' })), null, "v:'1' задарч болохгүй");
   const noV = valid(); delete noV.v;
@@ -222,9 +218,7 @@ const nextOf = (over = {}) => {
 }
 
 /* ── 11. adds: oid-оор нэгтгэнэ — ИЖИЛ мөрийг шинэ нь дарна (хуучин байрлалд),
-       шинэ oid нэмэгдэнэ ──
-   ⚠️ «Ижил мөр» = № · Ажлын нэр · эцэг таарсан (2026-09-08). Зөвхөн тоо
-      (обьём/нэгж) зөрвөл ЯГ ТЭР мөрийн шинэчлэл гэж үзэж дарна. */
+       шинэ oid нэмэгдэнэ ── */
 {
   const prev = parseSubmission(JSON.stringify({
     ...valid(),
@@ -241,12 +235,6 @@ const nextOf = (over = {}) => {
 }
 
 /* ── 11b. ТҮР OID МӨРГӨЛДӨХ — ХОЁУЛАА үлдэнэ, нүд нь дагаж зөөгдөнө ──
- *
- * ⚠️ 2026-09-08-ны аудитын CRITICAL олдвор: `tmpOid` нь хуудас ачаалагдах
- *    бүрд −1-ээс эхэлдэг тул өдөр 1-д мөр нэмж ИЛГЭЭЭД хуудсаа дахин нээж
- *    дахин мөр нэмэхэд шинэ мөр ДАХИН −1 авна. Урьд нь `adds.set` дардаг
- *    байсан тул өмнөх мөр (нэр, обьём, эцэг) БҮТНЭЭР алга болж, түүний
- *    `${oid}:${b}` нүднүүд ч шинэ мөрийн утгаар солигддог байв.
  */
 {
   const prev = parseSubmission(JSON.stringify({
@@ -333,12 +321,6 @@ const nextOf = (over = {}) => {
 }
 
 /* ── 18. ХЭТ ТОМ ИЛГЭЭЛТИЙН ЗААВАР ҮНЭН БАЙХ ──
- *
- * ⚠️ `saveSubmission` нь хэмжээ ба багцын түлхүүрийг СҮЛЖЭЭНЭЭС ӨМНӨ шалгаж
- *    буцдаг тул эдгээр хоёр зам нь цэвэр функцтэй ижил (ArcGIS руу хандахгүй).
- * ⚠️ 2026-09-04-ний аудит: «хэсэгчлэн илгээнэ үү» гэсэн заавар ХУДАЛ байв —
- *    `mergeSubmission` дараагийн илгээлтийг өмнөхтэй нь ХУРИМТЛУУЛДАГ тул
- *    хагаслах нь хэмжээг огт бууруулахгүй, хэрэглэгч гарцгүй давталтад ордог.
  */
 {
   const big = { ...valid(), cells: [] };
@@ -361,29 +343,16 @@ const nextOf = (over = {}) => {
 
 
 /* ── 20. ӨДӨР БҮР ТУСДАА ТҮЛХҮҮР (2026-09-07) ──
- *
- * ⚠️ ХАМГААЛЖ БУЙ АЛДАА: өдөр бүр тусдаа илгээлт болгохын өмнө багцад ЦОРЫН
- *    ГАНЦ `sub|<pkg>` мөр байсан тул `saveSubmission` нь тэр түлхүүрт
- *    таарсан БУСАД мөрийг «давхардал» гэж үзээд `deleteFeatures`-ээр УСТГАДАГ
- *    (submission.ts). Хэрэв түлхүүрт өдөр орохгүй бол өдөр бүрийн илгээлтүүд
- *    нэг түлхүүрт цугларч, өчигдрийн ХЯНАГДАЖ БУЙ илгээлт устаж, хяналтын
- *    мөрийн `Эх_мөрийн_дугаар` өнчирнө. Тиймээс түлхүүр өдрөөр САЛАХ ёстой.
  */
 {
   const d1 = Date.UTC(2026, 8, 6);
   const d2 = Date.UTC(2026, 8, 7);
   assert.notEqual(subKey('b1_9f', d1), subKey('b1_9f', d2), 'хоёр өдөр НЭГ түлхүүр өгөв');
   assert.equal(subKey('b1_9f', d1), `sub|b1_9f|${d1}`);
-  /* ⚠️ Багц ч мөн салгана — `b1_9f` ба `b1_12f` нэг өдөрт зэрэг илгээгддэг. */
   assert.notEqual(subKey('b1_9f', d1), subKey('b1_12f', d1));
 }
 
 /* ── 21. ХУУЧИН (дагаваргүй) ТҮЛХҮҮР ХЭВЭЭР ҮҮСНЭ ──
- *
- * ⚠️ Үйлдвэрлэлд `sub|<pkg>` хэлбэрийн мөрүүд амьд байгаа тул тэднийг УНШИХ
- *    зам ЗААВАЛ нээлттэй үлдэнэ (`readActiveSubmission` legacy fallback,
- *    `readSubmissionByOid` нь OBJECTID-аар). `fillMs` өгөхгүй дуудвал ЯГ
- *    хуучин хэлбэрийг өгөх ёстой — эс бөгөөс fallback-ийн `where` таарахгүй.
  */
 {
   assert.equal(subKey('b1_9f'), 'sub|b1_9f');
@@ -392,13 +361,6 @@ const nextOf = (over = {}) => {
 }
 
 /* ── 22. `isSubmissionKey` — ГУРВАН ХЭЛБЭР ЗЭРЭГ ──
- *
- * ⚠️ `readRow` нь ЭНЭ шалгуураар «илгээлтийн мөр мөн үү» гэж шийддэг: буруу
- *    хариулбал (а) шинэ өдөртэй мөрийг ноорог гэж үзээд ЧИМЭЭГҮЙ `null`
- *    буцааж хянагч илгээлтээ олохгүй, эсвэл (б) ноорогийн `<user>|<pkg>`
- *    мөрийг илгээлт гэж уншаад өөр хүний ноорог хянагчид харагдана.
- * ⚠️ Функц нь модулиас ГАДАГШ гардаггүй тул `dkey`-ийн ёсыг ЭНД хэлбэрээр
- *    дахин тодорхойлж, хоёулаа `startsWith` угтварт тулгуурладгийг батална.
  */
 {
   const isSub = (k) => k.startsWith('sub|') || k.startsWith('done|');
@@ -410,14 +372,6 @@ const nextOf = (over = {}) => {
 }
 
 /* ── 23. ӨДӨР ХООРОНД АГУУЛГА ХОЛИХГҮЙ ──
- *
- * ⚠️ ХАМГААЛЖ БУЙ АЛДАА (2026-09-07): `FillNew.publish` нь өнөөдрийн
- *    payload-ыг `mergeSubmission(mergeBase, …)`-аар нэгтгэдэг. Хэрэв
- *    `mergeBase` нь ӨӨР ӨДРИЙН илгээлт байвал өчигдрийн нүднүүд өнөөдрийн
- *    payload руу хуулагдаж, ХОЁУЛАА батлагдахад архивт ХОЁР УДАА тоологдоно.
- *    Тиймээс `publish` нь `staged.payload.fillMs === fillMs` үед Л нэгтгэнэ.
- *    Энэ тест нь тэр дүрмийг ЗАГВАРААР (нэгтгэсэн ба нэгтгээгүй хоёр зам)
- *    батална: нэгтгэхгүй бол өчигдрийн нүд ОГТ орохгүй.
  */
 {
   const y = { ...valid(), fillMs: Date.UTC(2026, 8, 6), cells: [['12:0', 'ӨЧИГДӨР']], dates: [], adds: [], rowKeys: [] };
@@ -432,21 +386,12 @@ const nextOf = (over = {}) => {
   assert.ok(!sepCells.has('12:0'), 'ӨӨР ӨДРИЙН нүд өнөөдрийн илгээлтэд орж ирэв');
   assert.equal(sep.fillMs, t.fillMs, 'нэгтгэсэн payload-ийн өдөр шинэ нь байх ёстой');
 
-  /* ⚠️ БУРУУ зам — өдөр зөрсөн байхад нэгтгэвэл ЯГ ЮУ БОЛОХЫГ баримтжуулна:
-     өчигдрийн нүд наалдана. Энэ нь `publish`-ийн `fillMs` тулгалт ЯАГААД
-     заавал хэрэгтэйг харуулна (регресс болвол дээрх шалгуур ганцаараа
-     барихгүй тул энэ мөр нь баримт болж үлдэнэ). */
   const mixed = mergeSubmission(yesterday, t);
   assert.equal(new Map(mixed.cells).get('12:0'), 'ӨЧИГДӨР');
   assert.equal(mixed.fillMs, t.fillMs, 'нэгтгэлд өдөр нь ШИНЭ payload-аас авагдах ёстой');
 }
 
 /* ── 24. НЭГ ӨДРИЙН ДОТОРХ ДАХИН ИЛГЭЭЛТ — ХУРИМТЛАЛ ХЭВЭЭР ──
- *
- * ⚠️ Хэрэглэгчийн шийдвэр 2 (2026-09-07): «төдий өдрийн илгээлтийг дахин
- *    илгээвэл ТЭР өдрийн илгээлт update хийгдэнэ — шинэ тойрог үүсгэхгүй».
- *    Өдөр нэмэгдсэн нь ЭНЭ хуучин зөв зан төлөвийг ЭВДЭЭГҮЙ байх ёстой:
- *    ижил өдөрт хуучин нүд НЭГТГЭГДЭЖ үлдэнэ, дарагдахгүй.
  */
 {
   const day = Date.UTC(2026, 8, 7);
@@ -549,7 +494,6 @@ const nextOf = (over = {}) => {
     'батлалт хуучин payload-ын давтамжийг суурь жаазаас нөхөхгүй байна — мөнхөд гацна');
   const FN = fs.readFileSync('src/modules/sheet/FillNew.tsx', 'utf8');
   assert.ok(FN.includes('const mv = movePayload(await ensureFrameOcc(pkg, sc, resolvedBase ?? staged.payload, freshRows));'), 'дахин илгээх зам суурь жаазаас нөхөхгүй');
-  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → апп доторх `askConfirm` */
   assert.ok(FN.includes('if (mv.lost.length && !(await askConfirm('), 'тулгаж чадаагүй нүдний ГАРЦ (ил баталгаажуулж хасах) алга');
   /* #5: батлагдсан (`done|`) мөрөөс ч хайна */
   const SB = fs.readFileSync('src/lib/submission.ts', 'utf8');
@@ -557,7 +501,7 @@ const nextOf = (over = {}) => {
   assert.ok((FN.match(/await findNonce\(pkg\.key, /g) ?? []).length >= 2, 'ачаалах ба илгээх замууд findNonce ашиглах ёстой');
 }
 
-/* ── 2026-10-09 (R2): «архивлаж байна» тэмдэг — задлалт; ⚠️ 2026-10-09 (дахин): mergeSubmission ДАМЖУУЛНА ── */
+/* ── 2026-10-09 (R2): «архивлаж байна» тэмдэг — задлалт; 2026-10-09 (дахин): mergeSubmission ДАМЖУУЛНА ── */
 {
   const mk = { at: 1000, startedAt: 1001, maxOid0: 500, fillMs: FILL, n: 1460 };
   const p = parseSubmission(JSON.stringify({ ...valid(), archiving: mk }));
@@ -600,18 +544,15 @@ const nextOf = (over = {}) => {
   assert.equal(matchArchivedFrame([row(1, 'A'), row(2, 'x'), row(3, 'y'), row(4, 'q')], { n: 3, rootNo: 'A' }, OIDF, NOF), null, 'n-ээс урт жааз — манайх биш');
   assert.equal(matchArchivedFrame([row(1, 'A'), row(2, 'x'), row(3, 'y')], { n: 3 }, OIDF, NOF), 1, 'хуучин тэмдэг (дээжгүй) — урт + эхний №');
 
-  /* ⚠️ 2026-10-11 (аудит №7): ТАСАРСАН жааз (500-ийн үржвэр, n-ээс богино, № ба дээж таарна) — устгах OID */
   const half = Array.from({ length: 500 }, (_, i) => row(1000 + i, i === 0 ? 'A' : `r${i}`, { b: i === 1 ? 9 : 0 }));
   const mkT = { n: 1471, rootNo: 'A', probe: [[1, 'b', 9], [1300, 'b', 5]] };
   assert.deepEqual(truncatedFrameIds(half, mkT, OIDF, NOF)?.length, 500, 'хагас жааз танигдаж 500 OID буцна (жаазаас гадуурх дээж тоологдохгүй)');
   assert.equal(truncatedFrameIds(half.slice(0, 499), mkT, OIDF, NOF), null, '500-ийн үржвэр биш — танигдсангүй');
-  /* ⚠️ 2026-10-12 (A2): бүтэн тэргүүн хэсэг → `[]` (тасарсан мөр алга, юу ч устгахгүй) — урьд нь `null` (мөнхөд «танигдсангүй») */
   assert.deepEqual(truncatedFrameIds(half, { ...mkT, n: 500 }, OIDF, NOF), [], 'n-тэй тэнцүү (бүтэн) — хөндөхгүй');
   assert.equal(truncatedFrameIds(half, { ...mkT, rootNo: 'B' }, OIDF, NOF), null, 'эхний № зөрвөл — манайх биш');
   assert.equal(truncatedFrameIds(half, { ...mkT, probe: [[1, 'b', 3]] }, OIDF, NOF), null, 'дээж хол зөрвөл — манайх биш');
   assert.equal(truncatedFrameIds([...half.slice(0, 250), ...half.slice(0, 250)], mkT, OIDF, NOF), null, 'эхлэл дунд нь давтагдвал (хоёр жааз) — танигдсангүй');
   assert.equal(truncatedFrameIds([], mkT, OIDF, NOF), null, 'хоосон');
-  /* ⚠️ 2026-10-12 (A2): тасарсан жаазын АРД тэр өдөр өөр бүтэн жааз бичигдсэн — зөвхөн ТЭРГҮҮН (тасарсан) хэсгийг устгана */
   {
     const full = Array.from({ length: 1471 }, (_, i) => row(5000 + i, i === 0 ? 'A' : `r${i}`));
     const ids = truncatedFrameIds([...half, ...full], mkT, OIDF, NOF);
@@ -728,7 +669,6 @@ const nextOf = (over = {}) => {
   assert.ok(FN2.includes('const rp = resolveMark(act.payload, hit != null);') && FN2.includes('dropMark: markDrop'), 'FillNew.publish тэмдгийг шийдэхгүй байна');
   const SB = fs.readFileSync('src/lib/submission.ts', 'utf8');
   assert.ok(SB.includes('payload.archiving?.startedAt !== cm.startedAt && expect?.dropMark !== cm.startedAt'), 'saveSubmission тэмдгийг чимээгүй арчиж болно');
-  /* ⚠️ 2026-10-21 (аудит): `exceptOid` нэмэгдсэн (өөрийн мөрийг алгасах) — гэрээ (нэр · буцах төрөл) хэвээр */
   assert.ok(/export async function archivingBusy\(\s*pkgKey: string,[\s\S]*?exceptOid\?: number,\s*\): Promise<\{ who: string; at: number \} \| null> \{/.test(SB), 'archivingBusy гэрээ');
   console.log('✅ засвар 1 — тэмдэг дамжиж, буусан жаазаас хасагдана');
 }
@@ -778,7 +718,6 @@ const nextOf = (over = {}) => {
   assert.equal(matchArchivedFrame(far, mk, 'oid', 'no', ['d']), null, 'өөр утга → манайх биш');
   const dayOff = [row(1, 'A'), row(2, 'x', { v: 0.3, d: Date.UTC(2026, 9, 2) })];
   assert.equal(matchArchivedFrame(dayOff, mk, 'oid', 'no', ['d']), null, 'өөр өдөр → манайх биш');
-  /* ⚠️ олон жааз: аль нэг нь ЯГ таарвал түүнийг буцаана */
   assert.equal(matchArchivedFrame([...near, row(3, 'A'), row(4, 'x', { v: 0.3, d: Date.UTC(2026, 9, 1) })], mk, 'oid', 'no', ['d']), 3);
   const HY = fs.readFileSync('src/lib/hyanaltStore.ts', 'utf8');
   assert.ok(HY.includes("if (hitOid === 'ambiguous')"), 'archiveSubmission тодорхойгүйд татгалзахгүй байна');

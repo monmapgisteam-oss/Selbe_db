@@ -1,19 +1,7 @@
 'use client';
 
 /**
- * ДЭЛГЭЦИЙН ТООЦООГ ДАВТДАГ `compute` ТӨРЛҮҮД — `finance_summary` · `pkg_plan` (⚠️ 2026-10-19).
- *
- * ⚠️ ЯАГААД: агент санхүүгийн нийт дүн, багцын төлөвлөгөө/хоцрогдлыг ТҮҮХИЙ мөрөөс (`query_feature`)
- *    өөрөө бодож дэлгэцээс зөрдөг байв: Cashflow-ийн сарын мөр хольж нийлбэр хөөрөх, Excel-ийн НИЙТ
- *    хүрээг (`finXlInTotal`) мэдэхгүй байх, «олгосон хувь»-ийн тоологч/хуваарийг андуурах, хуваарийн
- *    муруйг (`planPctAt`) огт харахгүй байх. Энд ДЭЛГЭЦИЙН ЯГ ТЭР функцүүдийг дуудна:
- *      · `finance_summary` — `live.loadBudget` (дашбоардын «Нийт төсөв» · «Гэрээлсэн дүн») +
- *        `paidShare.paidShareOf` (Тайлан · CEO карт · «IPC» · ТУХ-ийн «олгосон хувь»);
- *      · `pkg_plan` — `Finance.pkgMonthsMap` → `lagOf` / `physLatest` / `lagLevel` (PkgProg-ийн
- *        хоцрогдлын alert) + муруйгүй үед `planPctAt(series, measDayOf(…))` (ТУХ-ийн `planContractor`).
- * ⚠️ ТООЦООГ ДАХИН БИЧИХГҮЙ: цэвэр цөм (`financeSummaryOf`, `pkgPlanOf`) нь зөвхөн дэлгэцийн
- *    функцүүдийг хослуулна — `screenCompute.check.mjs` тэдгээр нь дэлгэцийн туслахтай ЯГ тэнцүүг шалгана.
- * ⚠️ Хүнд модулиуд (`Finance.tsx` — React, `live`, `tuhData`) ДИНАМИК импортоор (`compute.ts`-ийн ⚠️).
+ * ДЭЛГЭЦИЙН ТООЦООГ ДАВТДАГ `compute` ТӨРЛҮҮД — `finance_summary` · `pkg_plan` (2026-10-19).
  */
 
 import { paidShareOf } from '@/lib/paidShare';
@@ -41,12 +29,11 @@ export type FinanceSummary = {
   note: string;
 };
 
-/** ⚠️ 2026-10-19: `byType[].n` — төсвийн мөрийн тоо (`loadBudget`); өгвөл 0 мөр → дүнгүүд `null` */
 type BudgetLike = { total: number; orderTotal: number; contract: number; byType?: ReadonlyArray<{ n: number }> };
 
 /**
- * ЦЭВЭР цөм — `loadBudget()`-ийн үр дүн ба `FinData`-ийн гэрээ (`contracts`, `CF_WORK_WHERE`) ·
- * төлбөрийн (`pays`) мөрүүдээс. ⚠️ Хувь нь `paidShareOf`-ийнх — ДАХИН бодохгүй.
+ * ЦЭВЭР цөм — `loadBudget`-ийн үр дүн ба `FinData`-ийн гэрээ (`contracts`, `CF_WORK_WHERE`) ·
+ * төлбөрийн (`pays`) мөрүүдээс. Хувь нь `paidShareOf`-ийнх — ДАХИН бодохгүй.
  */
 export function financeSummaryOf(
   budget: BudgetLike,
@@ -55,8 +42,6 @@ export function financeSummaryOf(
 ): FinanceSummary {
   const share = paidShareOf(contracts, pays);
   const known = share.paidKnown > 0;
-  /* ⚠️ 2026-10-19: null ≠ 0 — эх сурвалж ХООСОН (эрх/шүүлт/үйлчилгээний алдаагаар мөр ирээгүй) үед нийлбэр 0 гарч
-     загвар «төсөв 0 ₮» гэж худал хэлдэг байв. Мөр огт алга → `null` («мэдээлэлгүй»). */
   const budgetRows = budget.byType ? budget.byType.reduce((a, t) => a + (Number(t.n) || 0), 0) : null;
   const noBudget = budgetRows === 0;
   return {
@@ -87,7 +72,6 @@ export async function financeSummary(scope: AgentScope): Promise<FinanceSummary>
 /* ══════════════ pkg_plan ══════════════ */
 
 type MonthLike = { label: string; phys: number | null; physAt?: string | null };
-/* ⚠️ 2026-10-22 (аудит): `coverage` — хуваарийн хамралт (0–100, `planProgress.planCoverage`); < 95% бол дүгнэхгүй */
 type Lag = { month: string; planned: number; actual: number; gap: number; coverage?: number | null } | null;
 
 /** Дэлгэцийн функцүүд — бодит замд `Finance.tsx`-ийнх, тестэд ижил гарын үсэгтэй */
@@ -97,11 +81,6 @@ export type PkgPlanDeps<M extends MonthLike = MonthLike> = {
   lagLevel: (gap: number) => 'red' | 'yellow' | null;
   /** Муруйн кэш алга үед ТУХ-ийн fallback (`planPctAt(series, measDayOf(…))`) — заавал биш */
   planAt?: (key: string, months: M[]) => number | null;
-  /**
-   * ⚠️ 2026-10-19: ОРОН СУУЦНЫ багц эсэх (`tuhData.TUH_HOUSING`) — ТУХ (`tuh/model.ts` `buildModel`) хуваарийн
-   *    муруйг (`series`) ЗӨВХӨН орон сууцанд уншдаг тул `planAt` fallback-ыг ч зөвхөн тэдэнд. Өгөөгүй бол
-   *    fallback ОГТ хэрэглэхгүй (ТУХ-ээс өөр тоо гаргахаас сэргийлнэ).
-   */
   isHousing?: (key: string) => boolean;
 };
 
@@ -117,7 +96,6 @@ export type PkgPlanRow = {
   month: string | null;
   /** PkgProg-ийн alert-ийн түвшин (`lagLevel`) — хуваарь < 95% хамарсан бол `null` (дүгнэхгүй) */
   level: 'red' | 'yellow' | null;
-  /** ⚠️ 2026-10-22 (аудит): хуваарийн хамралт, % — `null` = мэдэгдэхгүй (fallback зам); < 95 бол `gap`/`level` = null */
   coverage: number | null;
 };
 
@@ -130,15 +108,9 @@ export function pkgPlanOf<M extends MonthLike>(
   monthsBy.forEach((months, key) => {
     const lag = deps.lagOf(months);
     const actual = deps.physLatest(months);
-    /* ⚠️ ТУХ-ийн дүрэм: `lagOf` (муруй + хэмжилтийн өдөр) эхэлж, алга бол `planPctAt` fallback — ЗӨВХӨН орон сууц */
     const housing = deps.isHousing?.(key) ?? false;
     const planned = lag?.planned ?? (housing ? deps.planAt?.(key, months) ?? null : null);
-    /* ⚠️ 2026-10-19: fallback-ийн хоцрогдол ТУХ-ийн `gapContractor`-ийн адил `progressOf`-оос — орон сууцанд
-       `progressOf` = `physLatest` (`buildModel`-ийн `actual` Map) = энд `actual`. Тэмдэг нь ТУХ-ийн эсрэг
-       (энд төлөвлөгөө − бодит, эерэг = хоцорсон — PkgProg/`lagOf().gap`-тай ижил). */
     const progress = housing ? actual : null;
-    /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцрогдлыг ДҮГНЭХГҮЙ (`gap`/`level` = null) — дэлгэцийн
-       `Finance.lagJudged`-тэй нэг дүрэм; AI «хоцорсон/түрүүлсэн» гэж худал хэлэхгүй, хамралтыг нэрлэнэ. */
     const coverage = lag?.coverage ?? null;
     /* хамралт ӨГӨГДӨӨГҮЙ (`undefined` — хуучин/тестийн deps) бол өмнөх зан; ӨГӨГДСӨН ба < 95 бол л дүгнэхгүй */
     const judged = !lag || lag.coverage === undefined || coverageOk(coverage);
@@ -171,7 +143,6 @@ export async function pkgPlan(scope: AgentScope): Promise<PkgPlan> {
     import('@/lib/tuhData'),
     import('@/lib/format'),
   ]);
-  /* ⚠️ `loadFinData` нь хуваарийн муруйг (`planCurveCache`) өөрөө ачаална — `lagOf` түүнийг уншина */
   const [fin, pc] = await Promise.all([F.loadFinData(), PP.loadPlanCurveCached().catch(() => null)]);
   const monthsBy = F.pkgMonthsMap(fin);
   const today = FMT.dayKey(Date.now());

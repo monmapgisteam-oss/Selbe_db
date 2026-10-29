@@ -1,11 +1,6 @@
 /**
  * «БАГЦ × ҮҮРЭГ» ХҮСНЭГТИЙН НҮДНИЙ ДҮРЭМ — цэвэр функц (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/aclGrid.check.mjs
- *
- * ⚠️ Хадгалалт аккаунтаар (grant/жагсаалт) хэвээр тул нүдний нэмэх/хасах бүр
- *    аккаунтын мөрийн өөрчлөлт болно. Эндээс алдвал: бусад үүргийн багцыг
- *    хөндөх, «бүх багц»-ыг нэг багц руу хумих, сүүлийн багцыг хасахад «бүх
- *    багц» руу тэлэх (fail-open) зэрэг чимээгүй эрхийн алдаа гарна.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/aclGrid.check.mjs
  */
 import assert from 'node:assert/strict';
 import {
@@ -31,7 +26,6 @@ assert.deepEqual(planGrantAdd([{ role: 'author', bagts: [P1] }], 'approver', P2)
   kind: 'set', roleGone: false, grants: [{ role: 'author', bagts: [P1] }, { role: 'approver', bagts: [P2] }],
 });
 assert.deepEqual(planGrantAdd(mixed, 'author', P1), { kind: 'none' }, 'аль хэдийн байгаа');
-/* ⚠️ эх объектыг өөрчлөхгүй */
 assert.deepEqual(mixed, [{ role: 'author', bagts: [P1] }, { role: 'approver', bagts: [P3] }]);
 
 /* ── 3. «Бүх багц» — бүх мөрийг хамарна, дахин нэмбэл ХУМИГДАНА тул none ── */
@@ -85,11 +79,6 @@ assert.deepEqual(planListRemove([P1], P2, PK), { kind: 'none' });
 assert.deepEqual(planListRemove(null, P2, PK), { kind: 'none' });
 
 /* ══════════ C. GRID_ALL = scopedAcl/qaqcAcl ALL_BAGTS · guitsetgelGrid GRID_ALL ══════════ */
-/* ⚠️ 2026-10-09: ЭХ ТЕКСТИЙГ regex-ээр уншихын оронд ЖИНХЭНЭ модулийг импортлоно — урьд нь
-   «window/ArcGIS шаардана» гэж үзэж байсан ч гурвуулаа Node-д (ts-alias loader) импортлогддог.
-   Regex-ийн 2-р хувилбар (`export { … ALL_BAGTS … }` дахин экспорт) утгыг ОГТ тулгалгүй
-   давуулдаг байв — одоо БОДИТ утгыг тулгана. */
-/* ⚠️ 2026-10-23: QAQC хасагдсан (`qaqcAcl` устсан) */
 for (const [f, name] of [['@/lib/scopedAcl', 'ALL_BAGTS'], ['@/lib/guitsetgelGrid', 'GRID_ALL']]) {
   const m = await import(f);
   assert.equal(typeof m[name], 'string', `${f}: ${name} экспорт олдсонгүй`);

@@ -4,13 +4,6 @@
  * «MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ» (2026-10-09) — Чанарын 4 шатны (MA → MIR → FIC → М-акт)
  * ЭХНИЙ шат. Хуучин «Чанарын баримт» (`Chanar.tsx`)-аас ТУСДАА шинэ сэдэв (хэрэглэгч:
  * «одоо системд байгаа чанар, чанарын баримтаас гадна шинээр сэдэв болгон хий»).
- *
- * ⚠️ Өгөгдөл Survey123-аас (`lib/ma.ts`) — портал БӨГЛӨХГҮЙ, зөвхөн уншиж харуулна.
- * ⚠️ Хавсралт (скан) ЭНДЭЭС нэмэгдэнэ — Survey123 маягтад файл асуулт БАЙХГҮЙ (хэрэглэгчийн
- *    шийдвэр, 2026-10-09). Скан OCR-дохгүй; зөвхөн төрөл · гэрчилгээний № · стандарт ·
- *    хүчинтэй хугацааг гараар (`keywords`). Бичилт Enterprise токентой (`EntSignIn`).
- * ⚠️ Хавсаргах эрх — `chanarAuthor` эсвэл `chanarReview`. Эрхгүй хүн ХАРНА, засахгүй.
- * ⚠️ Загвар нь «Багцын хамаарал»-ынх (ТУХ хүснэгт) — `ma.module.css` ХУУЛБАР.
  */
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -47,13 +40,11 @@ const d0 = (d: FmRow) => d.docNo || d.pdfName || tr('(дугааргүй)');
 
 export function Ma() {
   const q = useAsync(loadMa, []);
-  /* ⚠️ 2026-10-09: MIR (2-р шат) — MA карт бүрийн доор, гинжийн MIR шат. Унасан ч MA харагдсаар (`mirQ` тусдаа) */
   const mirQ = useAsync(loadMir, []);
   const mirMap = useMemo(() => (mirQ.state === 'ready' ? mirsByMa(mirQ.data) : null), [mirQ]);
   const { user, status } = useAuth();
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
-  /* ⚠️ 2026-10-19 (аудит): чанарын хуваарилалт ӨӨР хадгалалттай — багцын хүрээ (`attachFor`) түүнээс */
   const [chN, setChN] = useState(0);
   useEffect(() => subscribeChanarAcl(() => setChN((x) => x + 1)), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио (`BagtsHamaaral`-тай ижил)
@@ -62,11 +53,6 @@ export function Ma() {
   const canAuthor = useMemo(() => hasCap(user?.username, 'chanarAuthor'), [user, capN]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио
   const canReview = useMemo(() => hasCap(user?.username, 'chanarReview'), [user, capN]);
-  /**
-   * ⚠️ 2026-10-19 (аудит): MA КАРТ БҮРИЙН хавсаргах эрх — эрх + ТЭР MA-гийн багцын хүрээ (`ma.maAttachScopeDeny`-тэй
-   *    ИЖИЛ дүрэм; lib нь бичихийн өмнө серверийн мөрөөр дахин шалгана). Урьд нь эрхтэй бол БҮХ багцын MA-д товч
-   *    гардаг байв. Багц танигдахгүй бол хаалттай (fail-closed). Нэвтрэлт унтраалттай (дев) — эрхээр л.
-   */
   const attachFor = useCallback((pkgKey: string): boolean => {
     if (!canAttach) return false;
     if (status === 'off') return true;
@@ -76,10 +62,6 @@ export function Ma() {
     return (canAuthor && isAuthorFor(me, bagts)) || (canReview && reviewerRolesFor(me, bagts).length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `chN` нь хуваарилалт өөрчлөгдсөн дохио
   }, [canAttach, canAuthor, canReview, status, user, chN]);
-  /**
-   * ⚠️ 2026-10-21: FIC · М-акт ОРУУЛАХ / БАТЛАХ эрх ч MA-гийн БАГЦААР (`attachFor`-тэй ижил дүрэм, fail-closed).
-   *    Урьд нь ерөнхий `canAuthor`/`canReview`-ээр тул хүрээгүй багцын MA-д товч гарч, сервер л татгалздаг байв.
-   */
   const fmAuthorFor = useCallback((pkgKey: string): boolean => {
     if (!canAuthor) return false;
     if (status === 'off') return true;
@@ -95,8 +77,6 @@ export function Ma() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `chN` нь хуваарилалт өөрчлөгдсөн дохио
   }, [canReview, status, user, chN]);
 
-  /* ⚠️ 2026-10-09: FIC · М-акт (3–4-р шат) — Enterprise хүснэгт, ЗӨВХӨН Enterprise нэвтрэлттэй уншигдана
-     (`lib/ficMakt.ts`). Нэвтрээгүй бол `fmMap` = null → тэр шатууд «нэвтэрч харна» гэж гарна. */
   const ent = useEntSession();
   const [fmTick, setFmTick] = useState(0);
   const [fm, setFm] = useState<{ rows: FmRow[] | null; err: string }>({ rows: null, err: '' });
@@ -110,23 +90,10 @@ export function Ma() {
   }, [ent, fmTick]);
   const fmMap = useMemo(() => (ent && fm.rows ? fmByMa(fm.rows) : null), [ent, fm]);
   const reloadFm = useCallback(() => setFmTick((n) => n + 1), []);
-  /**
-   * ⚠️ 2026-10-23 (UX аудит Q5): шатны өгөгдөл ҮЛ МЭДЭГДЭХ шалтгаан — нэвтрээгүй / ачаалж буй / унасан. Урьд нь
-   *    нэвтрээгүй үед FIC «Хүлээгдэж буй», М-акт «Хаалттай», IPC «Олгохгүй» гэж батлагдсан MA-д ч ХУДАЛ гардаг байв.
-   *    Хоосон мөр = өгөгдөл бэлэн.
-   */
   const fmWhy = !ent ? tr('Нэвтэрч харна') : fm.rows ? '' : fm.err ? tr('Ачаалагдсангүй') : tr('Ачаалж байна…');
   const mirWhy = mirQ.state === 'ready' ? '' : mirQ.state === 'error' ? tr('Ачаалагдсангүй') : tr('Ачаалж байна…');
 
-  /* ⚠️ 2026-10-09 (хэрэглэгч: «нэг бүртгэл бүхэлдээ харагдана, filter хэрэггүй»): шүүлтүүр ·
-     хураасан хүснэгт ХАСАГДСАН — MA бүр бүтэн карт (толгой + дэлгэрэнгүй + хавсралт). Буцааж бүү нэм. */
-  /* ⚠️ Нэг хариу бичгийн дугаар олон удаа илгээгдвэл СҮҮЛИЙНХ л хүчинтэй (`latestPerRespNo`) */
   const rows = useMemo(() => (q.state === 'ready' ? latestPerRespNo(q.data) : []), [q]);
-  /**
-   * ⚠️ 2026-10-23 (UX аудит Q10): буцаасан MA-г шинэ дугаартай дахин ирүүлбэл (`resubmitLinks`) хуучин карт
-   *    шинийнхээ ШУУД ДООР, тэмдэглэгээтэй — урьд нь хоёр тусдаа материал мэт хол зайтай гардаг байв.
-   *    Шүүлтүүр нэмэхгүй, карт нуухгүй (дээрх 2026-10-09-ний ⚠️).
-   */
   const links = useMemo(() => resubmitLinks(rows), [rows]);
   const ordered = useMemo(() => {
     const out: MaRow[] = [];
@@ -138,22 +105,7 @@ export function Ma() {
     return out;
   }, [rows, links]);
 
-  /**
-   * ⚠️ 2026-10-21: МАТЕРИАЛЫН НӨӨЦ — MA + MIR батлагдсан материал нөөцөд АВТОМАТААР (`materialNoots.syncNoots`).
-   *    Чанарын эрхтэй хүн (`canAttach` — ирүүлэгч эсвэл хянагч) хуудас нээхэд MA · MIR ачаалагдмагц нэг удаа;
-   *    дахин `MA · MIR-ээс шинэчлэх`-ээр. Унасан ч MA харагдсаар (алдаа нөөцийн табд).
-   * ⚠️ 2026-10-21 (аудит №2): `mir_id` талбар алга/тохирохгүй бол lib ШИДЭХГҮЙ (`SyncResult.disabled`) — мэдэгдэл толгойд
-   *    НЭГ удаа (бүх табд), шинэчлэх товч нуугдана, MA · нөөцийн харагдац ажилласаар. Урьд нь алдаа гэж гарч нөөцийн боломж
-   *    бүхэлдээ ажиллахгүй мэт харагддаг байв. Сэргээлт — админ талбар нэмсний дараа хуудсыг дахин ачаална.
-   */
   const [tab, setTab] = useState<'chain' | 'noots' | 'ajil'>('chain');
-  /**
-   * ⚠️ 2026-10-21 (аудит №2): ДОТООД ТАБ СОЛИХ ХАМГААЛАЛТ — «Ажлын материал»-ын ноорог (`AjilMatTab.draft`) табын дотоод
-   *    төлөв тул таб солиход unmount болж асуултгүй устдаг байв (`navGuard` нь зөвхөн харагдац солих · F5-д асуудаг).
-   *    `Guitsetgel.goTab` · `Portal.confirmLeave`-тэй ИЖИЛ асуулт; туг тавигдаагүй үед асуултгүй.
-   */
-  /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт (`askConfirm`) — `window.confirm`-ийг «дахин бүү харуул» гэж
-     хаасан хөтөчид асуулт чимээгүй `false` болж таб огт солигддоггүй байв. */
   const goTab = async (t: 'chain' | 'noots' | 'ajil') => {
     if (t !== tab) {
       const labels = navDirtyLabels();
@@ -170,8 +122,6 @@ export function Ma() {
   const runSync = useCallback(() => {
     if (q.state !== 'ready' || mirQ.state !== 'ready') return;
     setSync({ state: 'running' });
-    /* ⚠️ 2026-10-26 (аудит): хуудас нээх агшны MA/MIR биш ШИНЭЭР уншсанаар — `planSync` тэр агшны receipts-д байхгүй `mir_id`-тай
-       мөрийг УСТГАДАГ тул таб нээлттэй байх хооронд өөр хүн нэмсэн мөр (гараар засварласан утгатай) устдаг байв. */
     Promise.all([loadMa(), loadMir()])
       .then(([ma, mir]) => syncNoots(ma, mir))
       .then((res) => setSync(res.disabled ? { state: 'disabled', reason: res.disabled } : { state: 'done', res }))
@@ -200,13 +150,10 @@ export function Ma() {
         {canAttach && <WorksCsvButton />}
         {!ent && (
           <div className={s.signBox}>
-            {/* ⚠️ 2026-10-23 (UX аудит Q7): ЯАГААД тусдаа нэвтрэлт — FIC · М-акт · хавсралт нь геопорталын (Enterprise)
-                хүснэгт/файл тул түүний дансаар нэвтэрнэ; MA · MIR-ийг нэвтрэлтгүйгээр харна */}
             <p className={s.note}>{tr('FIC · М-акт ба хавсралт геопорталд (gis.selbecity.mn) хадгалагддаг тул тэдгээрийг харах, оруулахад геопорталын дансаар нэвтэрнэ. MA · MIR нэвтрэлтгүйгээр харагдана.')}</p>
             <EntSignIn compact />
           </div>
         )}
-        {/* ⚠️ 2026-10-26 (хэрэглэгч: «нэг загвар»): нийтлэг `Segmented` капсул; солих нь `goTab`-аар (navGuard асуулт) */}
         <div className={s.tabs}>
           <Segmented value={tab} onChange={(t) => { void goTab(t); }} label={tr('Харагдац')}
             options={[
@@ -215,11 +162,9 @@ export function Ma() {
               { value: 'ajil', label: tr('Ажлын материал') },
             ]} />
         </div>
-        {/* ⚠️ 2026-10-21 (аудит №2): автомат бүртгэл идэвхгүй (`mir_id`) — мэдэгдэл НЭГ удаа, бүх табд; MA харагдац ажилласаар */}
         {sync.state === 'disabled' && (
           <p className={s.failNote} role="status">{tr('Материалын нөөцийн автомат бүртгэл идэвхгүй: {0}', sync.reason)}</p>
         )}
-        {/* ⚠️ 2026-10-21: «Дахин оролдох» — урьд нь алдаа гарвал хуудсыг дахин ачаалахаас өөр зам байгаагүй */}
         {ent && fm.err && (
           <p className={s.errNote} role="alert">
             {tr('FIC · М-акт ачаалагдсангүй: {0}', fm.err)}
@@ -256,7 +201,6 @@ export function Ma() {
               fm={fmMap ? fmMap.get(r.respNo) ?? { FIC: [], MAKT: [] } : null}
               link={links.get(r.oid)} mirWhy={mirWhy} fmWhy={fmWhy}
               canAttach={attachFor(r.pkg)} canAuthor={fmAuthorFor(r.pkg)} canReview={fmReviewFor(r.pkg)}
-              /* ⚠️ 2026-10-19 (аудит): «өөрийн оруулсан» — AGOL нэр (`ficMakt.decideFm`-ийн ⚠️) ба хуучин мөрийн Enterprise нэр */
               me={[user?.username ?? '', ent?.user ?? '']} onFmChanged={reloadFm}
               fmErr={ent ? fm.err : ''} />
           ))}
@@ -269,7 +213,6 @@ export function Ma() {
 /**
  * SURVEY123-ЫН АЖЛЫН ЖАГСААЛТ ТАТАХ (`lib/maWorks.ts`) — порталын нэвтрэлтээр бөглөх хуудсуудыг
  * уншиж `works.csv` болгоно; хэрэглэгч Connect-ийн `media/`-д хуулж маягтаа дахин нийтэлнэ.
- * ⚠️ Тусдаа токен ХЭРЭГГҮЙ — survey (Enterprise) хаалттай хуудсуудыг (AGOL) өөрөө уншиж чадахгүй тул.
  */
 function WorksCsvButton() {
   const [busy, setBusy] = useState(false);
@@ -312,18 +255,13 @@ function VerdictChip({ v }: { v: Verdict | null }) {
  * НЭГ MA = НЭГ БҮТЭН ПРОЦЕСС = НЭГ МӨР (2026-10-09, хэрэглэгч: «MIR · FIC · М-акт араас нь (ард талд нь) орно,
  * доор нь харагдаж байгаа нь буруу», «нэг бүтэн процесс нэг мөр»). Зүүнээс баруун тийш:
  *   MA → MIR → FIC → М-акт → IPC — дээд эгнээнд шатны төлөв, доор нь ТЭР шатны агуулга (баганаар).
- * ⚠️ Багана бүр өөрийн шатны доор — MIR-ийг MA-гийн ДООР бүү тавь. Нарийн дэлгэцэд хэвтээ гүйлгэнэ.
- * ⚠️ MIR ачаалагдаж байх үед (`mirs == null`) MIR шат «хүлээгдэж буй» (undefined).
  */
 type FmEntry = { FIC: FmRow[]; MAKT: FmRow[] };
 type CardProps = {
   r: MaRow; mirs: MirRow[] | null; fm: FmEntry | null;
   canAttach: boolean; canAuthor: boolean; canReview: boolean; me: readonly string[]; onFmChanged: () => void;
-  /** ⚠️ 2026-10-21: FIC · М-акт ачаалалтын алдаа (нэвтэрсэн үед) — цонхонд «нэвтэрч харна» БИШ алдаа + дахин оролдох */
   fmErr: string;
-  /** ⚠️ 2026-10-23 (Q10): дахин ирүүлэлтийн холбоо (`resubmitLinks`) */
   link?: ResubLink;
-  /** ⚠️ 2026-10-23 (Q5): MIR / FIC · М-актын өгөгдөл үл мэдэгдэх шалтгаан (хоосон = бэлэн) */
   mirWhy: string; fmWhy: string;
 };
 type PopKey = StageKey | 'IPC';
@@ -331,8 +269,6 @@ type PopKey = StageKey | 'IPC';
 /**
  * НЭГ MA = НЭГ БҮТЭН ПРОЦЕСС = НЭГ МӨР (2026-10-09, хэрэглэгч): зөвхөн шатны товчлуурын эгнээ —
  *   MA → MIR → FIC → М-акт → IPC. Шат дээр ДАРАХАД цонх (popup) нээгдэж тэр шатны мэдээлэл гарна.
- * ⚠️ Мэдээллийг мөрөнд дэлгэхгүй (хэрэглэгч: «нэг бүтэн процесс харагдах UI үнэхээр тэнэг») — цонхонд.
- * ⚠️ MIR ачаалагдаж байх үед (`mirs == null`) MIR шат «хүлээгдэж буй»; FIC · М-акт нь Enterprise нэвтрэлттэй үед.
  */
 function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged, fmErr, link, mirWhy, fmWhy }: CardProps) {
   const [pop, setPop] = useState<PopKey | null>(null);
@@ -342,11 +278,6 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
     MAKT: fm ? fmVerdictFor(fm.MAKT) : undefined,
   });
   const ipc = ipcReady(chain);
-  /**
-   * ⚠️ 2026-10-23 (UX аудит Q5): ҮЛ МЭДЭГДЭХ ШАТ — өмнөх шат батлагдсан ч тэр шатны өгөгдөл уншигдаагүй
-   *    (нэвтрээгүй · ачаалж буй · унасан) бол `chainOf`-ийн `next`/`locked`-ийг харуулахгүй, шалтгааныг хэлнэ;
-   *    дараагийн шатууд ч мөн үл мэдэгдэх. IPC ч «Олгохгүй» биш — тодорхойгүй. Гинжийн дүрэм (`chainOf`) хөндөгдөөгүй.
-   */
   const unk = new Map<StageKey, string>();
   for (let i = 1; i < chain.length; i++) {
     const prev = chain[i - 1];
@@ -377,15 +308,12 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
 
   return (
     <article className={`${s.card} ${link?.next ? s.cardOld : ''}`}>
-      {/* ⚠️ 2026-10-23 (UX аудит Q10): дахин ирүүлэлтийн холбоо — хуучин (буцаасан) карт шинийнхээ доор */}
       {link?.next && (
         <p className={s.resubNote}>{tr('Буцаасан — засаж дахин ирүүлсэн: MA {0} (дээрх карт).', link.next.respNo || tr('(дугааргүй)'))}</p>
       )}
       {link?.prev && (
         <p className={s.resubNote}>{tr('Дахин ирүүлсэн — өмнөх MA {0}-г буцаасан (доорх карт).', link.prev.respNo || tr('(дугааргүй)'))}</p>
       )}
-      {/* ⚠️ 2026-10-26 (аудит): `role="listitem"` нь button-ийн үүргийг дарж дэлгэц уншигч «товч» гэж зарладаггүй байв —
-          энгийн товчнууд нэртэй бүлэгт (`.stage + .stage` сумны загвар хэвээр) */}
       <div className={s.strip} role="group" aria-label={tr('Чанарын шатлал')}>
         {chain.map((st, i) => (
           <button key={st.key} type="button" onClick={() => setPop(st.key)}
@@ -412,7 +340,6 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
             : pop === 'MIR' ? <MirList mirs={mirs} />
               : pop === 'FIC' || pop === 'MAKT' ? (
                 <FmColumn kind={pop === 'FIC' ? 'FIC' : 'MAKT'} maNo={r.respNo}
-                  /* ⚠️ 2026-10-23 (Q5): үл мэдэгдэх шатыг «хаалттай» гэж хэлэхгүй */
                   state={unk.has(pop) ? 'next' : chain[pop === 'FIC' ? 2 : 3].state}
                   rows={fm ? fm[pop === 'FIC' ? 'FIC' : 'MAKT'] : null}
                   canAuthor={canAuthor} canReview={canReview} me={me} onChanged={onFmChanged} loadErr={fmErr} />
@@ -429,13 +356,6 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
 
 /**
  * ЦОНХ (popup) — Esc / ар тал дарж хаана, фокус дотроо (`useFocusTrap`).
- * ⚠️ Ар талын товшилт зөвхөн ар тал дээр ЭХЭЛСЭН бол хаана — цонх доторх сонголт чирэхэд хаагдахгүй.
- */
-/**
- * ⚠️ 2026-10-23 (UX аудит Q3): ЦОНХНЫ ТҮГЖЭЭ — цонх доторх маягт (FIC · М-акт PDF, хавсралт) өөрийн төлөвийг
- *    мэдээлнэ: ИЛГЭЭЖ байхад (`busy`) Esc · ар тал · ✕ цонхыг ХААХГҮЙ; бичсэн боловч хадгалаагүй (`dirty`) бол
- *    хаахаас өмнө асууна (`IpcDocDialog`-ийн зарчим). Урьд нь PDF илгээж байхад Esc дарахад цонх хаагдаж үр дүн,
- *    алдаа нь харагдахгүй, бичсэн дугаар/огноо/шалтгаан асуултгүй алга болдог байв.
  */
 type Lock = { busy: boolean; dirty: boolean };
 const ModalLockCtx = createContext<((id: string, l: Lock | null) => void) | null>(null);
@@ -504,7 +424,6 @@ function DocSwitch({ info, sheet }: { info: React.ReactNode; sheet: () => Promis
   };
   return (
     <div className={s.block}>
-      {/* ⚠️ 2026-10-26: нийтлэг `Segmented`; «Баримт» нь `showDoc`-оор (A4-ийг асинхрон бэлтгэнэ) */}
       <div>
         <Segmented value={mode} label={tr('Харагдац')}
           onChange={(v) => { if (v === 'doc') void showDoc(); else setMode('info'); }}
@@ -518,8 +437,6 @@ function DocSwitch({ info, sheet }: { info: React.ReactNode; sheet: () => Promis
               <span className={s.note}>{tr('Хэвлэх цонхонд «Save as PDF» сонгож PDF болгоно.')}</span>
             </div>
           )}
-          {/* ⚠️ 2026-10-26: «Дахин оролдох» — урьд нь идэвхтэй «Баримт» товчийг ДАХИН дарахад `showDoc` давтагддаг байв;
-              `Segmented` идэвхтэй сонголтын дарааг алгасдаг тул давтах зам энд ил товчоор */}
           {err ? (
             <>
               <p className={s.errNote} role="alert">{err}</p>
@@ -546,15 +463,10 @@ function MaPop({ r, canAttach }: { r: MaRow; canAttach: boolean }) {
 
 /**
  * FIC / М-АКТ БАГАНА — баримтын жагсаалт (PDF нээх · батлах/буцаах) + PDF оруулах.
- * ⚠️ Өмнөх шат батлагдаагүй (`locked`) бол оруулах ХААЛТТАЙ — хатуу дараалал (хэрэглэгчийн шийдвэр).
- * ⚠️ Оруулах — `chanarAuthor`; батлах — `chanarReview`, өөрийн оруулсныг БИШ.
- * ⚠️ 2026-10-09 (аудит №6): энд зөвхөн ТОВЧ нуух — эрх · багцын хүрээ · `locked` гинж · `pending` төлөвийг
- *    `ficMakt.addFm`/`decideFm` СЕРВЕРИЙН өгөгдлөөр дахин шалгаж, `tr()`-тэй алдаа шиднэ (`userError`-оор гарна).
  */
 function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged, loadErr = '' }: {
   kind: FmKind; maNo: string; state: string; rows: FmRow[] | null;
   canAuthor: boolean; canReview: boolean; me: readonly string[]; onChanged: () => void;
-  /** ⚠️ 2026-10-21: ачаалалт унасан (нэвтэрсэн үед) — `rows == null`-ийг «нэвтэрч харна» гэж уншихгүй */
   loadErr?: string;
 }) {
   const [busy, setBusy] = useState(false);
@@ -562,18 +474,14 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
   const [docNo, setDocNo] = useState('');
   const [date, setDate] = useState('');
   const [reason, setReason] = useState<Record<number, string>>({});
-  /* ⚠️ 2026-10-23 (UX аудит Q2): амжилтын мэдэгдэл — урьд нь шийдвэр/PDF хадгалагдсаныг юу ч хэлдэггүй байв */
   const [okMsg, setOkMsg] = useState('');
-  /* ⚠️ 2026-10-23: хуваалцалтын анхааруулга ТУСДАА (`EntDocs`-ийн дүрэм) — урьд нь улаан алдаа болж амжилтын мэдэгдлийг нууж байв */
   const [warnMsg, setWarnMsg] = useState('');
-  /* ⚠️ 2026-10-23: шийдвэрийн асуулт НЭЭЛТТЭЙ үед дахин товшилт хоёр дахь асуулт дараалуулахгүй (`busy` асуултын ДАРАА л асдаг) */
   const askingRef = useRef(false);
   const [fileName, setFileName] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const locked = state === 'locked';
   useModalLock(busy, !!(docNo.trim() || date || fileName || Object.values(reason).some((v) => v.trim())));
 
-  /* ⚠️ 2026-10-21: ачаалалт УНАСАН бол алдаа + «Дахин оролдох» (`onChanged` = `reloadFm`) */
   if (rows == null && loadErr && !locked) {
     return (
       <p className={s.errNote} role="alert">
@@ -596,13 +504,6 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
       onChanged();
     } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
   };
-  /**
-   * ⚠️ 2026-10-23 (UX аудит Q1 · Q2): ШИЙДВЭР — нэг товшилтоор буцаалтгүй бичигддэг байв.
-   *    · AN (санал) · R (шалтгаан) — бичвэр заавал (`ficMakt.decideFm` ч шалгана); товч хоосон үед идэвхгүй.
-   *    · Бичихийн өмнө аппын асуулт: шийдвэрийг дараа нь өөрчлөх боломжгүй (`decideFm` зөвхөн `pending`-ийг бичнэ).
-   *    · Алдаа гарвал (ялангуяа «Төлөв өөрчлөгдсөн — жагсаалт шинэчлэгдлээ») жагсаалтыг ҮНЭХЭЭР дахин ачаална —
-   *      урьд нь мессеж «шинэчлэгдлээ» гэдэг атал хуучин жагсаалт үлддэг байв. Амжилтад «Шийдвэр хадгалагдлаа».
-   */
   const decide = async (row: FmRow, v: Verdict) => {
     const why = (reason[row.oid] ?? '').trim();
     if (v !== 'A' && !why) { setErr(v === 'AN' ? tr('AN шийдвэрт саналаа бичнэ үү.') : tr('Буцаах шалтгаанаа бичнэ үү.')); return; }
@@ -656,7 +557,6 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
             {d.status !== 'pending' && <span className={s.cardNo}>{tr('Шийдвэрлэсэн: {0} · {1}', d.decidedBy, day(d.decidedAt))}</span>}
             {d.reason && <p className={s.pre}>{d.reason}</p>}
             {d.status === 'pending' && canReview && !mine && (() => {
-              /* ⚠️ 2026-10-23 (Q1): AN · R нь бичвэргүй бол идэвхгүй; товч бүр шийдвэрийн бүтэн нэртэй (title · aria-label) */
               const noText = !(reason[d.oid] ?? '').trim();
               const vBtn = (v: Verdict) => (
                 <button type="button" className={s.ghostBtn} disabled={busy || (v !== 'A' && noText)}
@@ -721,8 +621,6 @@ function MaDetail({ r, canAttach }: { r: MaRow; canAttach: boolean }) {
 
 /**
  * ХАВСРАЛТ — жагсаалт · нээх · нэмэх · устгах.
- * ⚠️ Нээх нь токентой POST → Blob → objectURL (токен URL-д орохгүй); шинэ таб-д.
- * ⚠️ Давхарга хавсралт идэвхгүй бол (`hasAttachments:false`) нэмэх товч гаргахгүй, шалтгааныг хэлнэ.
  */
 function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) {
   const sess = useEntSession();
@@ -737,7 +635,6 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
   const [valid, setValid] = useState('');
   const [picked, setPicked] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
-  /* ⚠️ 2026-10-23 (Q3): илгээж байхад цонх хаагдахгүй; бөглөсөн мэдээлэл/сонгосон файлтай бол хаахаас өмнө асууна */
   useModalLock(busy, !!(title.trim() || no.trim() || std.trim() || valid || picked));
 
   const reload = useCallback(async () => {
@@ -753,7 +650,6 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
      шинэчлэл үйлдлийн дараа `reload`-оор */
   useEffect(() => {
     let alive = true;
-    /* ⚠️ Давхаргад хавсралт идэвхгүй бол `/attachments` алдаа өгдөг — эхлээд шалгаад тэр үед жагсаалт татахгүй */
     maHasAttachments()
       .then(async (h) => { const l = h ? await listMaAtts(oid) : []; if (alive) { setList(l); setHasAtt(h); } })
       .catch((e) => { if (alive) { setList([]); setErr(userError(e)); } });
@@ -774,8 +670,6 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
         okN += 1;
       } catch (e) { errs.push(`${f.name}: ${userError(e)}`); }
     }
-    /* ⚠️ 2026-10-23: маягтыг ЗӨВХӨН ≥1 файл орсон үед цэвэрлэнэ — бүгд унасан бол бөглөсөн мэдээлэл · сонгосон файл
-       хэвээр (дахин оролдоно); урьд нь бүгд унасан ч цэвэрлэгдэж дахин бөглүүлдэг байв. */
     if (okN > 0) {
       if (fileRef.current) fileRef.current.value = '';
       setTitle(''); setNo(''); setStd(''); setValid(''); setPicked(0);
@@ -786,14 +680,12 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
   };
 
   const remove = async (a: MaAtt) => {
-    /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт — `window.confirm` хаалттай хөтөчид устгах товч чимээгүй ажилладаггүй байв */
     if (!(await askConfirm(tr('«{0}» хавсралтыг устгах уу?', a.name), { danger: true, ok: tr('Устгах') }))) return;
     setBusy(true); setErr('');
     try { await deleteMaAtt(oid, a.id); await reload(); } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
   };
 
   const openAtt = async (a: MaAtt) => {
-    /* ⚠️ Попап хаагдахаас сэргийлж цонхыг товшилтын агшинд нээгээд дараа нь хаягийг тавина */
     const w = window.open('', '_blank');
     try {
       const b = await maAttBlob(oid, a.id);
@@ -840,8 +732,6 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
 
       {canAttach && (
         hasAtt === false ? (
-          /* ⚠️ 2026-10-23 (UX аудит X3): хэрэглэгчид — «админд мэдэгдэнэ үү»; тохиргооны зам нь зөвхөн админд хэрэгтэй.
-             ⚠️ 2026-10-23 (засвар): тэр зам ил бичвэрт БИШ, `title`-д — энгийн хэрэглэгчид ойлгомжтой */
           <p className={s.failNote} title={tr('Админд: геопортал дахь давхаргын item → Settings → «Enable attachments»')}>{tr('Энэ MA давхаргад хавсралт нэмэх боломж идэвхгүй — админд мэдэгдэнэ үү.')}</p>
         ) : !sess ? (
           <div className={s.signBox}>
@@ -881,7 +771,6 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
 
 /**
  * MIR ЖАГСААЛТ — MA-гийн доор (2-р шат). MIR бүр = талбайд ирсэн нэг ачааны үзлэг.
- * ⚠️ Бүтэн харагдана (хураалтгүй — MA картын дүрэм); зураг дарж ачаална (олон хүсэлтээс сэргийлж).
  */
 function MirList({ mirs }: { mirs: MirRow[] | null }) {
   if (mirs == null) return null;
@@ -897,7 +786,6 @@ function MirList({ mirs }: { mirs: MirRow[] | null }) {
 
 function MirItem({ m }: { m: MirRow }) {
   const st = mirState(m);
-  /* ⚠️ Баримтын хуудсанд зураг — blob objectURL (цонх хаагдахад `MirSheetUrls` санах ойг чөлөөлнө) */
   const sheet = async () => {
     const photos = await loadMirPhotos(m.rowId);
     const list: { url: string; note: string }[] = [];

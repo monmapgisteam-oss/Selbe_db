@@ -1,11 +1,6 @@
 /**
  * ХАЗАЙЛТЫН ШАЛГУУР (drift check) — «агент төслийн хамт хөгжинө» гэдгийн БАТАЛГАА.
  *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: агентын бүртгэл `services.ts`-ээс гардаг ч ТЭР нь
- * ArcGIS үйлчилгээг дүрсэлсэн ГАРААР бичсэн тодорхойлолт. Хэрэв үйлчилгээн дээр
- * давхарга хасагдвал / талбар нэр солигдвол `services.ts` хуучирч, агент
- * БАЙХГҮЙ зүйлийн тухай итгэлтэй ярьж эхэлнэ. Энэ шалгуур яг тэр мөчид барина.
- *
  * Юу шалгах вэ:
  *   1. Бүртгэлд байгаа эх сурвалж бүр ҮЙЛЧИЛГЭЭН ДЭЭР БАЙГАА эсэх
  *   2. Кодод нэрлэсэн талбар бүр (хэмжээ, өртөг, ангилал, бүс, тайлбар) БОДИТООР байгаа эсэх
@@ -19,7 +14,6 @@
 
 import { setTimeout as sleep } from 'node:timers/promises';
 
-/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
 if (process.env.SELBE_LIVE_SKIP) {
   console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
   process.exit(0);
@@ -27,27 +21,18 @@ if (process.env.SELBE_LIVE_SKIP) {
 
 const FAIL = [];
 const WARN = [];
-/** ⚠️ 2026-10-21: эрхгүй (403/499) эх сурвалж — хазайлт БИШ, ⏭ алгасна (доорх `isNoPerm`) */
 const SKIP = [];
 const REQ_TIMEOUT = 20000;
-/** ⚠️ ArcGIS «Too many requests» өгдөг тул зэрэг хүсэлтийг хязгаарлана */
 const CONCURRENCY = 6;
 
 async function getJson(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(REQ_TIMEOUT) });
   if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { code: res.status });
   const body = await res.json();
-  /* ⚠️ ArcGIS алдаа HTTP 200-аар ирдэг — кодыг нь хадгална (403/499 = эрхгүй) */
   if (body?.error) throw Object.assign(new Error(body.error.message ?? 'ArcGIS алдаа'), { code: body.error.code });
   return body;
 }
 
-/**
- * ⚠️ 2026-10-21: ЭРХГҮЙ ≠ ХАЗАЙЛТ. Enterprise дээр зарим үйлчилгээ (`IoT_sensor` FeatureServer/12–16,
- *    ХАБЭА-гийн Survey123) энэ шалгуурын токенд 403 «User does not have permissions» өгдөг — үйлчилгээ БАЙГАА,
- *    зөвхөн хуваалцлын тохиргоо. Урьд нь эдгээр «ХҮРЭХГҮЙ» зөрчил болж шалгуурыг байнга унагадаг байв.
- *    Одоо ⏭ алгасаж САНУУЛНА; бусад алдаа (400 Invalid URL, устсан давхарга, Token Required) хэвээр УНАНА.
- */
 const isNoPerm = (e) => e?.code === 403 || e?.code === 499
   || /does not have permissions/i.test(e?.message ?? '');
 
@@ -79,7 +64,6 @@ function declaredFields(l) {
   if (l.zoneField) f.add(l.zoneField);
   for (const x of l.facets ?? []) f.add(x.field);
   for (const k of Object.keys(AGENT_NOTES[l.id]?.fields ?? {})) f.add(k);
-  // ⚠️ ZONE_ID нь `noZone` тэмдэглэгээгүй БҮХ давхаргад байх ёстой гэж код үздэг
   if (!l.noZone && !l.zoneField) f.add('zone_id');
   return [...f];
 }
@@ -90,9 +74,6 @@ const declaredDatasetFields = (d) => [...new Set([d.oid ?? 'objectid', ...Object
 
 console.log(`Шалгаж байна: ${LAYERS.length} давхарга + ${DATASETS.length} өгөгдлийн эх сурвалж…\n`);
 
-/*
- * ⚠️ 2026-10-26: хаяг БҮР Enterprise-ийн БОДИТ хаяг (хөрвүүлэх хүснэгт `entMap` хасагдсан) — шууд fetch.
- */
 const targets = [
   ...LAYERS.map((l) => ({ id: l.id, title: l.title, url: layerUrl(l), want: declaredFields(l) })),
   ...DATASETS.map((d) => ({ id: d.id, title: d.title, url: d.url, want: declaredDatasetFields(d) })),
@@ -115,10 +96,6 @@ await pool(targets, async (t) => {
     FAIL.push(`\`${t.id}\` «${t.title}» — үйлчилгээнд ХҮРЭХГҮЙ: ${e.message}\n      ${t.url}`);
     return;
   }
-  /*
-   * ⚠️ 2026-10-26: код Enterprise-ийн БОДИТ нэрээр (жижиг үсэг · `SHAPE__Area`) бичигдсэн тул нэрийг ЯГ (үсгийн
-   *    ялгаатай) жишнэ — `outFields` · `orderByFields` · `applyEdits` Enterprise-д үсэг ялгадаг (буруу бол 500).
-   */
   const have = new Set((meta.fields ?? []).map((f) => String(f.name)));
   if (!have.size) {
     FAIL.push(`\`${t.id}\` «${t.title}» — талбар огт ирсэнгүй (устсан эсвэл төрөл нь өөр байж магадгүй)`);
@@ -136,48 +113,17 @@ await pool(targets, async (t) => {
 
 const knownUrls = new Set(LAYERS.map((l) => layerUrl(l)));
 
-/**
- * ⚠️ НЭРЭЭР Ч жишнэ. Зарим давхарга ЕТ-д хуучин хувилбараараа үлдсэн ч бүртгэл
- * түүнийг ШИНЭ тусдаа үйлчилгээнээс авдаг (жиш. «Дугуйн зам» →
- * `dugui_zam_20260731`). Зөвхөн хаягаар жиштэл тэдгээрийг «агент мэдэхгүй» гэж
- * буруу мэдээлж, шалгуур чимээ шуугиан болно.
- */
 const norm = (s) => String(s).replace(/_/g, ' ').toLowerCase().replace(/[^0-9a-zа-яөү]/gi, '');
 const knownNames = new Set(LAYERS.map((l) => norm(l.title)));
 
 /**
  * САНААТАЙ ОРХИГДСОН ДАВХАРГУУД — «бүртгэлд алга» гэж мэдээлэхгүй.
- *
- * ⚠️ ЭДГЭЭР НЬ ХУУЧИРСАН ХУУЛБАР, дутуу бүртгэл БИШ. `Цамхагт_кран_0813`
- *    ба `Цамхагт_кран_бүс_0813` нь `data` үйлчилгээн дэх хөлдүү хуулбарууд:
- *    2026-09-04-нд кран нь ӨӨРИЙН эх үйлчилгээ рүү шилжсэн
- *    (`Цамхагт_кран/FeatureServer/50` ба `/51`, `services.ts`-ийн
- *    `habea:crane`/`habea:buffer`).
- *
- * ⚠️ ЯАГААД БУЦААЖ НЭМЭХГҮЙ ВЭ: хуулбар дээр `Tuluv` талбар БҮХ 50 кранг
- *    «Одоо байгаа» гэж бичсэн байдаг; эх үйлчилгээнд «Одоо байгаа» 48,
- *    «Буусан» 2. Хуулбарыг бүртгэвэл буусан кран «ажиллаж байгаа» мэт
- *    уншигдаж, ХАБЭА-гийн «идэвхтэй N/N» заалт худал болно.
- *
- * ⚠️ Санамжийг ЗҮГЭЭР дуугүй болгосонгүй — ЯАГААДЫГ нь энд бичсэн нь
- *    дараагийн сесс «туслах» гэж буцааж нэмэхээс сэргийлнэ.
  */
 const IGNORED = new Set([
   'Цамхагт_кран_0813',
   'Цамхагт_кран_бүс_0813',
 ].map(norm));
 
-/*
- * ⚠️ 2026-08-27: урьд нь энэ хэсэг `Selbe_ET_20260721`/`_20260725` хоёрыг
- * скан хийдэг байв — тэр хоёр үйлчилгээ хаагдсан тул шалгуур бүрд хоёр
- * «уншигдсангүй» санамж гаргадаг байсан. Одоо давхаргууд бүгд НЭГТГЭСЭН
- * `data` үйлчилгээнд байдаг тул түүнийг л скан хийнэ — «үйлчилгээнд бий,
- * бүртгэлд алга» гэсэн жинхэнэ мэдээлэл эндээс гарна.
- */
-/*
- * ⚠️ 2026-10-26: бүртгэлийн давхаргуудын ашигладаг Enterprise үйлчилгээ БҮРИЙН каталогийг уншина (хөрвүүлэх хүснэгтгүй) —
- *    бүртгэлд байхгүй давхарга `ent:<№>:<нэр>` санамж болно.
- */
 const entSvcs = [...new Set(LAYERS.map((l) => layerUrl(l))
   .filter((u) => u.startsWith(`${ENT_HOSTED}/`) && /\/FeatureServer\/\d+$/.test(u))
   .map((u) => decodeURIComponent(u.slice(ENT_HOSTED.length + 1).replace(/\/FeatureServer\/\d+$/, ''))))];

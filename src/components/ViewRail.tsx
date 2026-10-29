@@ -13,27 +13,11 @@ import s from './tree.module.css';
 
 /**
  * Цэсний тэмдэгт — харагдац → хүлээгдэж буй зүйлийн тоо (`navBadges.ts`).
- * ⚠️ 2026-10-06: `null` = эх сурвалж(ууд) уншигдсангүй («мэдэхгүй») — тэмдэг ЗУРАХГҮЙ
- *    (`badgeOf`), `navBadges.mergeNavBadges` өмнөх тоог хадгалахад ялгана.
  */
 export type NavBadges = Partial<Record<ViewKey, number | null>>;
 
 /**
  * Зүүн багана — ХОЁР харагдац.
- *
- * ⚠️ Урьд нь энд 6 товч байв (бүс, барилга, инженер, зам, ногоон, хяналт).
- * Тэдгээрийн эхний тав нь БҮГД нэг үйлчилгээ, нэг ерөнхий төлөвлөгөөний хэсэг
- * тул хиймэл хуваалт болж, хэрэглэгч давхаргаа хайхад таван товч нээх
- * шаардлагатай болдог байлаа. Одоо «Ерөнхий мэдээлэл» дарахад БҮХ давхарга нэг
- * жагсаалтад багцалж гарна.
- *
- * ⚠️ Идэвхтэй харагдац дээр ДАХИН дарахад жагсаалт хумигдана/дэлгэгдэнэ — эс
- * бөгөөс жагсаалтыг хаачихсан хэрэглэгч дахин нээх арга олохгүй.
- *
- * ⚠️ 2026-09-30: харагдацууд АЖЛЫН ТӨРЛӨӨР бүлэглэгдэв (`NAV_GROUPS` — Миний
- *    ажил · Батлах · Хяналт · Санхүү · Тайлан · Систем). 23 харагдацын
- *    дугаартай ганц жагсаалтад хэрэглэгч хаанаас эхлэхээ олдоггүй байв.
- *    Дугаар нь бүлгүүдийг дамжин үргэлжилнэ (зөвхөн нүдний зангуу).
  */
 export function ViewRail({
   view,
@@ -57,16 +41,10 @@ export function ViewRail({
   /**
    * Навигацийн ХҮРЭЭ. `'all'` = БҮХ харагдац; харагдацын жагсаалт бол зөвхөн
    * тэдгээр. ТЭЗҮ баримт нь аль ч тохиолдолд байнга (доор).
-   *
-   * ⚠️ 2026-08-13-аас хойш `Root` нь ҮРГЭЛЖ `'all'` дамжуулж, эрхээр л хайчилдаг
-   * болсон — сэдвийн хязгаарлалт хасагдсан. Жагсаалтын горим нь эрх хязгаарлагдмал
-   * хэрэглэгчид л ажиллана.
    */
   navScope?: 'all' | ViewKey[];
   /**
    * Толгойн ХЭВТЭЭ хувилбар — зүүн баганы оронд толгойд таб болж багтана.
-   * ⚠️ Тайлбар текст (desc), гарчиг, доод тусламж хасагдаж, зөвхөн дүрс + нэр
-   * үлдэнэ: 56px өндөр толгойд бүтэн босоо мод багтахгүй.
    */
   header?: boolean;
   /** «ТЭЗҮ-БОНУ» баримтын popup нээх — байвал табуудын ХАЖУУД нэг бүлэгт орно */
@@ -80,10 +58,6 @@ export function ViewRail({
   onAdmin?: () => void;
   /** Эрхийн modal нээлттэй эсэх (идэвхтэй тэмдэг) */
   adminActive?: boolean;
-  /**
-   * ⚠️ 2026-10-19: «Систем түр хаах» цонх — ЗӨВХӨН `sysClose` эрхтэй эсвэл кодын super-т (`Portal` шийднэ:
-   *    эрхгүй бол дамжуулахгүй тул мөр гарахгүй). Хэрэглэгчийн мөрийн («Гарах») ӨМНӨ.
-   */
   onSysClose?: () => void;
   /** Цонх нээлттэй эсэх (идэвхтэй тэмдэг) */
   sysCloseActive?: boolean;
@@ -108,22 +82,11 @@ export function ViewRail({
 }) {
   /**
    * ХУРААГДСАН ГОРИМЫН TOOLTIP (2026-09-30).
-   *
-   * ⚠️ `title` шинж нь зөвхөн хулганы hover-т гарна: гараар (Tab) очсон эсвэл
-   *    хүрэлтээр ашиглаж буй хүн дүрс бүр юу болохыг мэдэх арга байгаагүй.
-   *    Одоо hover · focus · удаан дарах (≈0.45 с) гурвуулаа ижил хөвөгч шошго
-   *    гаргана. `position: fixed` — `.nav` нь `overflow-y: auto` тул дотор нь
-   *    absolute байрлуулбал таслагдана.
-   * ⚠️ Удаан дарсны дараах `click` нь навигац хийхгүй — хэрэглэгч зөвхөн нэрийг
-   *    нь харах гэж дарсан.
    */
   const [tip, setTip] = useState<{ text: string; sub?: string; x: number; y: number } | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressed = useRef(false);
   useEffect(() => () => { if (pressTimer.current) clearTimeout(pressTimer.current); }, []);
-  /* ⚠️ 2026-09-30: ref-д хүрэх бүх логик ТОГТМОЛ callback-уудад — `tipProps`
-     нь рендерийн үед дуудагддаг тул түүний дотор ref-д хүрэх нь eslint
-     react-hooks/refs (рендерийн үед ref) гэж тэмдэглэгддэг байв. */
   const cancelPress = useCallback(() => {
     if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
   }, []);
@@ -141,11 +104,6 @@ export function ViewRail({
 
   /**
    * НАРИЙН ДЭЛГЭЦИЙН ЦЭС (≤1180px) — нээлттэй эсэх.
-   *
-   * ⚠️ 2026-09-30: урьд нь 23 табтай ХЭВТЭЭ гүйдэг зурвас болдог байв —
-   *    таблет дээр хаана юу байгааг харахгүй, хуруугаар гүйлгэж хайна.
-   *    Одоо «☰ Одоогийн хэсэг» товч + бүлэглэсэн унжих жагсаалт. Өргөн
-   *    дэлгэцэд энэ товч CSS-ээр нуугдаж, жагсаалт ердийнхөөрөө харагдана.
    */
   const [menuOpen, setMenuOpen] = useState(false);
   const railRef = useRef<HTMLElement>(null);
@@ -186,7 +144,7 @@ export function ViewRail({
       onContextMenu: (e: RMouseEvent) => { if (consumeLongPress(false)) e.preventDefault(); },
     };
   };
-  /** Удаан дарсны дараах товшилтыг залгина (дээрх ⚠️) */
+  /** Удаан дарсны дараах товшилтыг залгина (дээрх) */
   const guardClick = (fn: () => void) => () => {
     if (consumeLongPress()) return;
     setTip(null);
@@ -198,14 +156,6 @@ export function ViewRail({
     const n = badges?.[k];
     return typeof n === 'number' && n > 0 ? n : 0;
   };
-  /* ⚠️ 2026-10-08: харагдац тус бүрийн тэмдгийн утга — «Хуваарь» дээрх тоо нь зохиогчид БУЦААГДСАН
-     илгээлт (`navBadges` → `countPlanReturned`), «хүлээгдэж байна» биш. Бусад харагдац хуучнаараа. */
-  /* ⚠️ 2026-10-09: тоо `num()`-аар (мянгатын тусгаарлагч · хэл) — урьд нь түүхий тоо */
-  /* ⚠️ 2026-10-09: «Хуваарь»-ын тоо = буцаагдсан + саяхан БАТЛАГДСАН (`countPlanApproved`) — «буцаагдсан»
-     гэвэл батлагдсан мэдэгдэл худал нэрлэгдэнэ; хоёуланг багтаасан «шинэ шийдвэр». */
-  /* ⚠️ 2026-10-23 (UX аудит R5): «Гүйцэтгэл»-ийн тоо гүйцэтгэгчид БУЦААСАН (засах) ажил — «хүлээгдэж байна» гэвэл
-     «хянагч хүлээж байна» гэж ойлгогддог байв. Харагдац тус бүрийн утгыг `navBadges.badgeLabelFor` (тоолуурын эх)
-     нэрлэнэ; `null` бол хуучин ерөнхий шошго. X7: «буцаагдсан» → «буцаасан» (нэг нэр томьёо). */
   const badgeLabel = (n: number, k?: ViewKey) => (n
     ? (k === 'huvaari'
       ? tr('шинэ шийдвэр {0} (буцаасан · батлагдсан)', num(n))
@@ -213,9 +163,7 @@ export function ViewRail({
     : '');
 
   {/* «ТЭЗҮ-БОНУ» баримт — харагдацуудтай ИЖИЛ хэлбэрээр.
-      Харагдац биш, popup нээдэг тул `aria-current` биш `aria-pressed`.
-      ⚠️ 2026-08-17: Урьд нь `header &&` гэж хаагдсан байсан тул БОСОО (зүүн
-      багана) горимд огт гардаггүй байв. Одоо хоёуланд. */}
+      Харагдац биш, popup нээдэг тул `aria-current` биш `aria-pressed`. */}
   const docsButton = onDocs ? (
     <button
       type="button"
@@ -245,8 +193,7 @@ export function ViewRail({
       : VIEWS.filter((v) => navScope.includes(v.key));
   const inScope = new Set(shown.map((v) => v.key));
 
-  /* Бүлэг бүрт хүрээнд байгаа харагдацууд; хоосон бүлэг зурагдахгүй.
-     ⚠️ `NAV_GROUPS`-д ороогүй харагдац «Бусад» бүлэгт — цэснээс алга болохгүй. */
+  /* Бүлэг бүрт хүрээнд байгаа харагдацууд; хоосон бүлэг зурагдахгүй. */
   const covered = new Set(NAV_GROUPS.flatMap((g) => g.views));
   const groups = [
     ...NAV_GROUPS.filter((g) => g.id !== 'system').map((g) => ({
@@ -267,19 +214,15 @@ export function ViewRail({
   const viewButton = (v: (typeof VIEWS)[number], extraCls = '') => {
     const no = order.get(v.key) ?? 0;
     const on = v.key === view;
-    /* ⚠️ 2026-10-16: каталог дэлгэгдсэнийг заадаг «›» сум ба `aria-expanded` ХАСАГДСАН (хэрэглэгчийн
-       заавар) — цэсний товч зөвхөн харагдац сонгоно, каталогийн төлөвийг заахгүй. */
     const n = badgeOf(v.key);
     return (
       <button
         key={v.key}
         type="button"
         aria-current={on}
-        /* ⚠️ 2026-09-30: тэмдэгтийн тоо ч нэрэнд — дэлгэц уншигч «3 хүлээгдэж байна» гэж сонсоно */
         aria-label={n ? `${v.title} · ${badgeLabel(n, v.key)}` : v.title}
         /* Дэлгэгдсэн үед нэр харагдаж байгаа тул hover-т ТАЙЛБАРЫГ нь; хураагдсан
            үед өөрийн tooltip (`tipProps`) — давхар гарахгүйн тулд `title`-гүй. */
-        /* ⚠️ 2026-10-23 (R5): тэмдэгтэй үед утгыг нь hover-т ч хэлнэ («Буцаасан 2 — засах») — тоо дангаараа юу гэдгээ хэлдэггүй */
         title={collapsed && !header ? undefined : (n ? `${badgeLabel(n, v.key)} — ${v.desc}` : v.desc)}
         className={`${s.item} ${on ? s.itemOn : ''} ${extraCls}`}
         {...tipProps(v.title, n ? `${badgeLabel(n, v.key)} — ${v.desc}` : v.desc)}
@@ -319,8 +262,6 @@ export function ViewRail({
   );
 
   const totalBadges = shown.reduce((a, v) => a + badgeOf(v.key), 0);
-  /* ⚠️ 2026-10-09: цэсний товчны нийт тэмдгийн `aria-label` — «Хуваарь»-ын тоо нь БУЦААГДСАН илгээлт
-     (`badgeLabel`-ийн ⚠️) тул «N хүлээгдэж байна» гэж нийлүүлбэл худал; хоёр хэсгээр нэрлэнэ. */
   const retBadges = shown.some((v) => v.key === 'huvaari') ? badgeOf('huvaari') : 0;
   const totalLabel = [badgeLabel(totalBadges - retBadges), badgeLabel(retBadges, 'huvaari')].filter(Boolean).join(' · ');
   const current = VIEW_BY_KEY[view];
@@ -352,18 +293,12 @@ export function ViewRail({
       <div className={s.railList} id="selbe-rail-list">
         {groups.map((g) => section(g.id, g.title, g.views.map((v) => viewButton(v))))}
 
-        {/* ТЭЗҮ-БОНУ товч — БҮХ сэдэвт харагдана (харагдацуудын ард).
-            ⚠️ Урьд нь «Ерөнхий дашбоард»-ын ард байсан тул тэр харагдацгүй сэдэвт
-               алга болдог байв; одоо сэдвээс үл хамааран төгсгөлд байнга. */}
+        {/* ТЭЗҮ-БОНУ товч — БҮХ сэдэвт харагдана (харагдацуудын ард). */}
         {/* envhub-ийн «СИСТЕМ» бүлэг шиг — баримт бичиг нь харагдацуудаас
             зураасаар тусгаарлагдсан ӨӨР төрлийн зүйл (popup, харагдац биш). */}
         {docsButton && section('docs', tr('Баримт'), docsButton)}
 
-        {/* СИСТЕМ — цэсний ХАМГИЙН ДООД бүлэг (жагсаалтын төгсгөл).
-            ⚠️ 2026-09-30: «Системийн баримт» харагдац ч энд (`NAV_GROUPS.system`)
-               — мета/админ зүйлс нэг дор, хамгийн сүүлд.
-            ⚠️ Сав нь `.railFoot` — хураагдсан горимд (`.railMin`) гарчиг
-               нуугдаж зөвхөн дүрс үлдэнэ. */}
+        {/* СИСТЕМ — цэсний ХАМГИЙН ДООД бүлэг (жагсаалтын төгсгөл). */}
         {(systemViews.length > 0 || onAdmin || onSysClose || onSignOut) && section('system', tr('Систем'), (
           <>
             {systemViews.map((v) => viewButton(v, s.railAction))}
@@ -384,7 +319,6 @@ export function ViewRail({
               </span>
             </button>
             )}
-            {/* ⚠️ 2026-10-19: «Систем түр хаах» — эрхтэй хүнд л (`onSysClose`); хаалттай үед тайлбарт ил */}
             {onSysClose && (
             <button
               type="button"
@@ -403,8 +337,7 @@ export function ViewRail({
               </span>
             </button>
             )}
-            {/* ХЭРЭГЛЭГЧ + ГАРАХ (2026-09-23) — нэг мөр: нэр нь тайлбар, дарвал гарна.
-                ⚠️ Хураагдсан горимд нэр нуугдаж дүрс үлдэнэ (tooltip-д нэр). */}
+            {/* ХЭРЭГЛЭГЧ + ГАРАХ (2026-09-23) — нэг мөр: нэр нь тайлбар, дарвал гарна. */}
             {onSignOut && (
             <button
               type="button"

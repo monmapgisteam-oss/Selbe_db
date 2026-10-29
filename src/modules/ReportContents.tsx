@@ -3,15 +3,12 @@
 import type { ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { pct } from '@/lib/format';
-/* ⚠️ 2026-10-04: ТУХ-ын хэмжигч (дүүргэлт = бодит, зураас = төлөвлөгөө) — шинээр зурахгүй.
-   ⚠️ 2026-10-09: `ui.Meter wide` (8px, `CHART.meterWideH`) — ТУХ ба тайлангийн хуулбарууд нэгдэв. */
 import { Meter } from '@/components/ui';
 import r from './report.module.css';
 
 /**
  * ТОЛГОЙ — ТУХ-ын hero (зүүн: огноо · гарчиг · дэд гарчиг; баруун: гол хувь + хэмжигч).
  * Хоёр горим (удирдлагын · дэлгэрэнгүй) хоёулаа үүнийг хэрэглэнэ.
- * ⚠️ `value` нь 0–100 (`pct()` 100-аар үржүүлдэггүй). `null` → «—», ачаалж буй бол «…».
  */
 export function ReportHero({ meta, title, sub, figLabel, value, plan, loading, note }: {
   meta: ReactNode; title: string; sub: string; figLabel: string;

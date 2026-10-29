@@ -2,15 +2,6 @@
 
 /**
  * ТАЙЛАН ТАТАХ КАРТ — агентын хариулт доторх ```report блок.
- *
- * ⚠️ ФАЙЛЫН АГУУЛГА нь ЭНЭ ХАРИУЛТ ӨӨРӨӨ (`source`) — блок дотор өгөгдөл
- * байхгүй. Ингэснээр файл ба дэлгэц хэзээ ч зөрөхгүй, токен ч нэмэгдэхгүй.
- *
- * ⚠️ БҮТЭЭГЧИД ДИНАМИК ИМПОРТТОЙ (`AgentChart`-аас ялгаатай): pdfmake нь ~835 КБ
- * фонттой ирдэг, OOXML бичигч ч жижиг биш. Товч ДАРАГДАХ хүртэл татагдахгүй.
- *
- * ⚠️ Хэрэв блок задлагдахгүй бол ЮУ Ч ЗУРАХГҮЙ (`AgentChart`-ийн дүрэм) —
- * хэрэглэгчид түүхий JSON хэзээ ч харагдахгүй.
  */
 
 import { useState } from 'react';
@@ -39,13 +30,10 @@ export function AgentReport({ raw, source }: { raw: string; source: string }) {
   const doc: ReportDoc = {
     title: spec.title || tr('Тайлан'),
     date: fileDate(),
-    /* ⚠️ Тайлангийн блок өөрөө файлд ОРОХГҮЙ */
     blocks: parseBlocks(source).filter((b) => b.kind !== 'report'),
   };
   const tables = reportTables(doc);
 
-  /* ⚠️ Хүснэгт/графикгүй хариултад Excel · CSV утгагүй — товчийг огт гаргахгүй.
-     Бүгд шүүгдвэл ядаж PDF үлдэнэ (хэрэглэгч файл хүссэн). */
   const picked = spec.formats.filter((f) => (f === 'xlsx' || f === 'csv' ? tables.length > 0 : true));
   const formats: ReportFormat[] = picked.length ? picked : ['pdf'];
 
@@ -55,13 +43,9 @@ export function AgentReport({ raw, source }: { raw: string; source: string }) {
     try {
       const name = `Selbe_${slug(doc.title)}_${doc.date}`;
       if (f === 'csv') {
-        /* ⚠️ CSV-д хуудас байхгүй тул хүснэгтүүдийг нэрээр нь зааглаж дараалуулна.
-           ⚠️ Утгууд нь ТОО (`typeTable`) — нэгж толгойд, хувь 0–100 (`csvTable`). */
         const text = tables
           .map((t) => {
             const c = csvTable(typeTable(t));
-            /* ⚠️ 2026-10-21: хүснэгтийн НЭР ч `csvCell`-ээр — түүхий бичвэл `=…` томьёо/таслал
-               Excel-д томьёо болж эсвэл баганыг задалдаг байв (утгууд аль хэдийн `toCsv`-ээр). */
             return [csvCell(t.name), toCsv(c.head, c.rows)].join('\r\n');
           })
           .join('\r\n\r\n');
@@ -88,7 +72,6 @@ export function AgentReport({ raw, source }: { raw: string; source: string }) {
         download(`${name}.pdf`, new Blob([bytes], { type: 'application/pdf' }));
       }
     } catch (e) {
-      /* ⚠️ Алдааг ЧИМЭЭГҮЙ залгихгүй — хэрэглэгч татагдсан гэж бодож хүлээнэ */
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);

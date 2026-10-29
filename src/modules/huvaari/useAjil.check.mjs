@@ -1,18 +1,12 @@
 /**
  * НЭМЭЛТ АЖИЛ — `useAjil.ts`-ийн илгээх · засах · татах урсгал `await`-ийн ДАРАА багц солигдсон
  * эсэхийг шалгадаг (2026-10-21, аудит №1).
- *
- * ⚠️ React hook тул цэвэр функцгүй — эх кодын дүрмийг шалгана: `sendAjil` · `editAjilHere` ·
- *    `saveAjilEdit` · `withdrawAjilHere` бүр `want = pkg.key`-г барьж, хүсэлтийн дараа
- *    `pkgKeyRef.current === want` (`live()`) бол л дэлгэцийн төлөв (алдаа · мэдэгдэл · `refreshAjil`)
- *    хөндөнө; LS (`writeAdds(want, …)`) нь багц солигдсон ч бичигдэнэ (2026-09-25-ны дүрэм).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const src = readFileSync('src/modules/huvaari/useAjil.ts', 'utf8');
 const fn = (name) => {
-  /* ⚠️ 2026-10-23 (UX аудит P3): `sendAjil(note?)` параметртэй, `Promise<boolean>` буцаана — `async (` угтвараар хайна */
   const i = src.indexOf(`const ${name} = useCallback(async (`);
   assert.ok(i >= 0, `${name} олдсонгүй`);
   const j = src.indexOf('\n  }, [', i);
@@ -40,7 +34,7 @@ for (const name of ['sendAjil', 'saveAjilEdit', 'withdrawAjilHere']) {
 }
 console.log('useAjil.check: ok — багц солигдсон бол дэлгэцийн төлөв хөндөгдөхгүй ✓');
 
-/* ── ⚠️ 2026-10-22 (аудит №3): ЭЦЭГГҮЙ нэмэлт мөр — илгээх · засвар хадгалах ХААЛТТАЙ, жагсаалт/бүлэг сонгох буцаана ── */
+/* ── 2026-10-22 (аудит №3): ЭЦЭГГҮЙ нэмэлт мөр — илгээх · засвар хадгалах ХААЛТТАЙ, жагсаалт/бүлэг сонгох буцаана ── */
 {
   for (const name of ['sendAjil', 'saveAjilEdit']) {
     const { body, deps } = fn(name);
@@ -57,7 +51,7 @@ console.log('useAjil.check: ok — багц солигдсон бол дэлгэ
   console.log('useAjil.check: ok — эцэггүй нэмэлт мөр жагсаагдаж, илгээх хаалттай ✓');
 }
 
-/* ── ⚠️ 2026-10-22 (аудит №6): ТОДОРХОЙГҮЙ ТАТАЛТ — мөрүүд тэмдэглэгдэж, `refreshAjil` «Татсан» бол буулгана ── */
+/* ── 2026-10-22 (аудит №6): ТОДОРХОЙГҮЙ ТАТАЛТ — мөрүүд тэмдэглэгдэж, `refreshAjil` «Татсан» бол буулгана ── */
 {
   const { body } = fn('withdrawAjilHere');
   assert.ok(/if \(!r\.ok && r\.unsure\) writeWdMark\(want, \{ oid: ajSub\.oid, adds: pl\?\.adds \?\? \[\], editing \}\);/.test(body), 'withdrawAjilHere: unsure үед мөрүүдийг тэмдэглэдэггүй');

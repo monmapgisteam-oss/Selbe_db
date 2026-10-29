@@ -1,17 +1,8 @@
 /**
  * БӨГЛӨХ ХУУДСУУДАД «ШАТЛАЛ» (`gun`) БАГАНА НЭМЭХ.
  *
- * ⚠️ ЯАГААД: мөрийн шатлал (бүлэг ↔ ажил) нь одоо `src/modules/sheet/bagts.trees.ts`
- * дахь ТОГТМОЛ тэмдэгтийн мөрөөс гардаг бөгөөд тэмдэгт бүр нэг мөрд БАЙРЛАЛААР
- * харгалзана. Тиймээс хуудсанд мөр нэмэх боломжгүй — нэмэнгүүт мөрийн тоо
- * зураглалын урттай зөрж, `loadRows` алдаа шидэн хуудас бүхэлдээ нээгдэхээ болино.
- *
  * Энэ багана нэмэгдсэнээр шатлал КОДООС ӨГӨГДӨЛ рүү шилжинэ: мөр бүр өөрийн
  * гүнээ авч явах тул хэдэн ч мөр нэмэгдсэн хуудас зөв уншигдана.
- *
- * ⚠️ ADMIN ТОКЕН ШААРДАНА. Мөр нэмэх/засах нь токенгүй ажилладаг ч ТАЛБАРЫН
- *    БҮТЭЦ өөрчлөх нь `…/rest/admin/services/…` руу ханддаг бөгөөд тэнд
- *    `499 Token Required` буцаадаг.
  *
  * Токеныг ХЭЗЭЭ Ч кодод бичихгүй — `.env.development.local`-оос уншина
  * (`.gitignore`-д `.env*.local` бий тул репод орохгүй):
@@ -20,9 +11,6 @@
  *
  * Токен авах: https://www.arcgis.com/sharing/rest/generateToken
  *
- * ⚠️ Токен өгөх боломжгүй бол AGOL-ийн UI-аас (Data → Fields → Add) 10 давхаргад
- *    гараар ч нэмж болно — код хоёуланг нь ижил хүлээж авна.
- *
  * Ажиллуулах:
  *     node tools/bagts-gun.mjs --dry   # юу хийхийг л хэвлэнэ
  *     node tools/bagts-gun.mjs         # багана нэмнэ
@@ -30,8 +18,6 @@
 
 import { readFileSync } from 'node:fs';
 
-/* ⚠️ 2026-10-26: хуудас бүрийн БОДИТ Enterprise хаяг `bagts.pkg.ts`-ийн `PKGS`-ээс (`${GUITS}/<№>`) — хөрвүүлэх хүснэгт
-   (`entMap`) хасагдсан. ARCGIS_ADMIN_TOKEN нь ENTERPRISE-ийн админ токен байх ёстой. */
 const { PKGS } = await import('@/modules/sheet/bagts.pkg.ts');
 
 /**
@@ -39,11 +25,6 @@ const { PKGS } = await import('@/modules/sheet/bagts.pkg.ts');
  */
 const SHEETS = PKGS.filter((p) => p.floors != null).map((p) => ({ name: p.key, url: p.url }));
 
-/**
- * ⚠️ `SmallInteger` — гүн нь 0–4 (`bagts.trees.ts`-ийн «A».."E" / «0».."4»).
- *    `nullable` ЗААВАЛ: багана нэмэгдэх агшинд бүх хуучин мөр хоосон байх бөгөөд
- *    код нь тэр үед `TREES`-рүү нөөцлөн буцдаг.
- */
 const GUN = {
   name: 'gun',
   type: 'esriFieldTypeSmallInteger',
@@ -77,8 +58,6 @@ const post = async (url, body) => {
 
 async function main() {
   const t = token();
-  // ⚠️ `--dry` нь ЗӨВХӨН уншина — токенгүйгээр ч төлөвийг харуулах ёстой,
-  //    эс бөгөөс «юу болох вэ» гэдгийг урьдчилж мэдэх боломжгүй болно.
   if (!t && !DRY) {
     console.error('⛔ ARCGIS_ADMIN_TOKEN олдсонгүй.');
     console.error('   `.env.development.local`-д нэмнэ үү:  ARCGIS_ADMIN_TOKEN=…');
@@ -91,9 +70,6 @@ async function main() {
   for (const { name, url } of SHEETS) {
     const admin = url.replace('/rest/services/', '/rest/admin/services/');
 
-    /* ⚠️ 2026-09-30: ADMIN токен POST БИЕЭР — урьд нь `GET …/0?f=json&token=…` байсан тул
-       бүтцийг өөрчлөх эрхтэй токен ArcGIS/прокси/CDN-ийн access log-д бүтнээрээ
-       хадгалагддаг байв (CWE-598; `authToken.ts` ба `ts-alias.mjs`-ийн дүрэм). */
     const meta = await post(url, { f: 'json', ...(t ? { token: t } : {}) });
     if (meta.error) {
       console.log(`${name.padEnd(15)} ⛔ уншигдсангүй: ${meta.error.message}`);

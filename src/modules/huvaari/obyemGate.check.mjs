@@ -60,8 +60,6 @@ const row = (i, oid, des, vol, spans, extra = {}) => ({
   ]);
   const r = unbalancedObyem(plan, BLD, ob, new Map());
   assert.equal(r.bad, 1);
-  /* ⚠️ 2026-09-30: нэр БЛОКТОЙ — идэвхтэй блок дээр тэнцсэн задаргаа хараад
-     «зөв хуваасан ч болохгүй» гэж төөрөхгүй */
   assert.deepEqual(r.names, ['1.2 Ажил 12 (B1)'], 'зөвхөн шилжсэн ажил нэрлэгдэнэ — зөв хуваасан 1.1 биш');
 }
 
@@ -142,8 +140,7 @@ console.log('✓ obyemGate: popup-ын шүүсэн задаргаа → хаа�
 const { unbalancedBlocks, groupSplits, obyemOutsideSpan } = await import('./util.ts');
 
 /* ── 5. БҮЛГИЙН ЗАДАРГАА тэнцлийн шалгалтад ОРОХГҮЙ («Сарын обьём бүлэгт биш») ──
- * ⚠️ Серверт бүлгийн кодоор хадгалагдсан задаргаа хүүхдийг чирэхэд тайрагдаж
- *    «тэнцэхгүй» болж, засах замгүйгээр илгээх/батлах хаагддаг байв. */
+ */
 {
   const sp = span('2026-10-01', '2026-12-31');
   const g = row(0, 6, 10, 900, [sp, null], { group: true, depth: 0, no: '1', work: 'Бүлэг' });
@@ -214,7 +211,6 @@ const { unbalancedBlocks, groupSplits, obyemOutsideSpan } = await import('./util
   assert.ok(gi > 0 && gi < SP.indexOf('!balanced(months, r.vol)'), 'savePrep: бүлгийн задаргаа unbal-д тоологдож байна');
   /* «Ноорог хаях» — асуултын тоо = товчны тоо (dirtyRows) */
   const di = H.indexOf("tr('Ноорог хаях')");
-  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → `askConfirm` */
   const dc = H.lastIndexOf('askConfirm(', di);
   assert.ok(dc > 0 && /num\(dirtyRows\), others/.test(H.slice(dc, di)), '«Ноорог хаях»-ын асуулт товчноос өөр тоо харуулж байна');
   assert.ok(/\{tr\('Ноорог хаях'\)\} \(\{num\(dirtyRows\)\}\)/.test(H), 'товчны тоо dirtyRows хэвээр');
@@ -222,7 +218,6 @@ const { unbalancedBlocks, groupSplits, obyemOutsideSpan } = await import('./util
   const ei = H.indexOf('if (approving == null || busy) return;');
   const es = H.indexOf('void save().then(', ei);
   const eff = H.slice(ei, es);
-  /* ⚠️ 2026-10-01: тайлалт хагас бичилтэд хамгаалагдсан (`partialRef`) — хоёр хэлбэрийг таньна */
   assert.ok(/if \(obOut\.bad > 0\) \{\s*(?:if \(partialRef\.current !== approving\) )?void releasePlanClaim\(/.test(eff), 'батлах эффект: мужаас гадуурх обьёмыг шалгахгүй байна');
   /* PlanModal руу тэнцээгүй блокууд дамжина */
   assert.ok(/badBlks=\{modalBad\}/.test(H) && /unbalancedBlocks\(modalRow, sc\.bld, obDraft, obPlan\)/.test(H), 'PlanModal-д улаан чипийн өгөгдөл дамжихгүй');
@@ -259,7 +254,6 @@ console.log('✓ obyemGate 2026-10-01: бүлгийн задаргаа алга�
   const e = payloadToDrafts(edited, rows, true, srvPlan, new Map(), { kind: 'plan', n: 2 });
   assert.equal(e.ok, false, 'зассан + сервер өөрчлөгдсөн → зөрчил');
   assert.equal(e.why, 'conflict');
-  /* ⚠️ 2026-10-09: зөрчил бүр ЖАГСААЛТАД (тоо = жагсаалтын урт), мөр · сервер → санал */
   assert.equal(e.conflictList.length, e.conflicts, 'зөрчлийн жагсаалт тоотой зөрөв');
   assert.ok(e.conflictList.some((c) => c.what === 'deps' && c.oid === 7 && c.srv === '9SS' && c.mine === '6FS'), JSON.stringify(e.conflictList));
   /* Сервер өөрчлөгдөөгүй бол зассан нь ноорогт буунa */
@@ -270,7 +264,7 @@ console.log('✓ obyemGate 2026-10-01: бүлгийн задаргаа алга�
 
 console.log('✓ obyemGate §9: хөндөөгүй уялдаа · обьём серверийнхээр (tezu-bonu)');
 
-/* ── 10. ⚠️ 2026-10-12 (аудит): САРЫН ЗӨРЧИЛ САР ТУС БҮРЭЭР — 500-аас их мөрийн обьём дундуур тасарсан
+/* ── 10. 2026-10-12 (аудит): САРЫН ЗӨРЧИЛ САР ТУС БҮРЭЭР — 500-аас их мөрийн обьём дундуур тасарсан
    (зарим сар шинэ, зарим нь хуучин) бол «Батлах»-ыг дахин дарахад зөрчил ГЭЖ ЗОГСООХГҮЙ ── */
 {
   const { partialMsg, monthsClash } = await import('./payload.ts');

@@ -1,9 +1,5 @@
 /**
  * ТУХ — АЧААЛСАН ӨГӨГДЛИЙГ НЭГ ЗАГВАР БОЛГОХ (харагдац зөвхөн үүнийг уншина).
- *
- * ⚠️ ШИНЭ ТООЦООГҮЙ: бүх тоо нь байгаа ачаалагч/туслахуудаас (`lagOf`,
- *    `physNow`, `planPctAt`, `housingPct`, `ipcTotals`) эсвэл
- *    `tuhData`-ийн шалгагдсан цэвэр функцээс. Энд зөвхөн холбоно.
  */
 import { monthKey, date } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
@@ -19,7 +15,6 @@ import { lagOf, pkgMonthsMap, physLatest, projectLagNow, type FinData, type Mont
 import { physNow, progMonthsOf } from '@/modules/pkgShared';
 import type { ProgPt } from '@/modules/PkgProg';
 import type { Pack } from '@/modules/Bagts';
-/* ⚠️ 2026-10-22: багцын түвшний хамаарал АЖЛЫН графаас (`workDeps.pkgDeps`, түлхүүр нь `bagtsKey`) */
 import { upstreamOf, downstreamOf, type PkgDep } from '@/lib/workDeps';
 import { sheetsOf } from './tuhSchedule';
 import {
@@ -39,9 +34,6 @@ export type TuhSrc = 'plan' | 'cfPlan' | 'hist' | 'commission' | 'workforce' | '
 
 /**
  * «—» → «…» — тухайн эх сурвалж ХАРААХАН АЧААЛАГДАЖ БАЙГАА бол.
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «—» нь «мэдээлэл алга» гэсэн утгатай тул ачаалж
- *    буй тоонд хэрэглэвэл хэрэглэгч «системд байхгүй» гэж уншдаг байв. Ачаалж дуусаад
- *    утга алга бол «—» хэвээр.
  */
 export const lz = (m: Pick<TuhModel, 'loading'>, ...src: TuhSrc[]) =>
   (txt: string): string => (txt === '—' && src.some((k) => m.loading.has(k)) ? '…' : txt);
@@ -56,14 +48,10 @@ export type TuhRow = {
   planContractor: number | null;
   /** Гүйцэтгэл − гүйцэтгэгчийн төлөвлөгөө (pp) */
   gapContractor: number | null;
-  /**
-   * ⚠️ 2026-10-22 (аудит): гүйцэтгэгчийн хуваарийн ХАМРАЛТ (0–100, `planProgress.planCoverage`) — `coverageOk` биш бол
-   * `planContractor` хэт бага (огноогүй ажлын жин 0-ээр) тул түүгээр «Хоцорсон/Хэвийн», SPI ДҮГНЭХГҮЙ. `null` = хуваарьгүй.
-   */
   planCoverage: number | null;
   /**
    * Гэрээний төлөвлөгөө (CASHFLOW сарын мөр) 0–100 — биет гүйцэтгэлийн ХЭМЖИЛТИЙН
-   * өдрөөр (`measDayOf`), хэмжилтгүй бол өнөөдрөөр (`cfPlanPctAt`-ийн ⚠️ 2026-09-30).
+   * өдрөөр (`measDayOf`), хэмжилтгүй бол өнөөдрөөр (`cfPlanPctAt` 2026-09-30).
    */
   planContract: number | null;
   gapContract: number | null;
@@ -71,7 +59,6 @@ export type TuhRow = {
   /**
    * «Хоцорсон» төлвийг аль зөрүүгээр тогтоосон — `contractor` = гүйцэтгэгчийн хуваарь
    * (`lag.gap`), `contract` = гэрээний төлөвлөгөө (`gapContract`), `null` = зөрүүгүй.
-   * ⚠️ 2026-10-06 (аудит): карт энэ зөрүүг ил харуулна — чип ба тоо зөрөхгүй.
    */
   statusBasis: 'contractor' | 'contract' | null;
   /** Өнгөрсөн 7 хоногийн ахиц (pp) */
@@ -80,13 +67,12 @@ export type TuhRow = {
   /** Улсын комиссын огноо («Хуваарь») */
   commission: number | null;
   /**
-   * Олон хуудастай багцын ЗАРИМ хуудас л огноотой — `commission` нь `null` (`tuhData.mergeCommission`-ийн ⚠️).
+   * Олон хуудастай багцын ЗАРИМ хуудас л огноотой — `commission` нь `null` (`tuhData.mergeCommission`).
    * Дэлгэцэд «— (1/2 хуудас)» (`commissionText`). `null` = дутуу биш.
    */
   commissionPartial: CommissionPartial | null;
   /** Улсын комисс − гэрээт дуусах (хоног; эерэг = хоцорно) */
   delay: number | null;
-  /** ⚠️ Барилгын давхарга уншигдаагүй бол `null` («—», 0 биш) */
   blocks: number | null;
   households: number | null;
   workers: number | null;
@@ -113,8 +99,6 @@ export type TuhRow = {
   /**
    * ЭНЭ багцын төлөвлөгөөт муруйн уналт — `ProgChart.planFailed`-ийн утга: `-1` = муруй бүхэлдээ
    * унасан, `> 0` = энэ багцад (`sheetsOf(pkgKey)`) хамаарах `PlanCurve.failed` хуудасны тоо, `0` = бүрэн.
-   * ⚠️ 2026-10-09 (аудит): урьд нь төслийн НИЙТ `TuhModel.planFailed`-ийг багц бүрийн графикт өгдөг
-   *    тул нэг багцын хуудас унахад БҮХ багцын график «N хуудас уншигдсангүй» гэж бичдэг байв.
    */
   planFailed: number;
 };
@@ -131,9 +115,7 @@ export type TuhModel = {
     actual: number | null;
     planContract: number | null;
     planContractor: number | null;
-    /** ⚠️ 2026-10-09 (аудит №2): `planContractor`-оос хасагдсан хуваарьгүй багцууд (нэрээр) */
     planExcluded: string[];
-    /** ⚠️ 2026-10-22 (аудит): `planContractor`-ийн хуваарийн хамралт (`Finance.projectLagNow`) — «хуваарь X% хамарсан» */
     planCoverage: number | null;
   };
   /**
@@ -146,7 +128,7 @@ export type TuhModel = {
   failed: string[];
   /**
    * Гэрээний сарын төлөвлөгөөний ЦООРХОЙ (`gdash.cfGapsText`) — 'huvaari' эхтэй гэрээ тооцоологдоогүй тул «Гэрээний
-   * төлөвлөгөө» ДУТУУ. null = цоорхойгүй. ⚠️ 2026-10-26 (хяналт №2): урьд нь чимээгүй (null ≠ 0).
+   * төлөвлөгөө» ДУТУУ. null = цоорхойгүй. 2026-10-26 (хяналт №2): урьд нь чимээгүй (null ≠ 0).
    */
   cfGaps: string | null;
   /** Ачаалж буй эх сурвалжууд — `lz` «…» харуулна */
@@ -154,32 +136,20 @@ export type TuhModel = {
   /**
    * Хуваарийн төлөвлөгөөт муруйн уналт — `PkgProg.ProgChart.planFailed`-ийн ЯГ утга:
    * `0` = бүрэн/ачаалж буй, `> 0` = уншигдаагүй хуудасны тоо (`PlanCurve.failed`), `-1` = бүхэлдээ унасан.
-   * ⚠️ 2026-10-09: урьд нь ТУХ-ын `ProgChart` энэ ба `loading`-гүй дуудагддаг тул муруй ачаалж/унасан
-   *    үед «Гүйцэтгэлийн дата алга.» гэж ХАРИУЛТ мэт бичдэг байв (TUH ⚠️ 2026-10-01: ачаалал → «…»,
-   *    уналт → нэрлэнэ).
-   * ⚠️ 2026-10-09 (аудит): ТӨСЛИЙН нийт тоо — багц бүрийн графикт `TuhRow.planFailed` (зөвхөн тэр багцынх).
    */
   planFailed: number;
   /**
    * Багц хоорондын хамаарал («Багцын хамаарал») — `null` = ирээгүй/унасан.
-   * ⚠️ 2026-10-06 (аудит): урьд нь ТУХ огт уншдаггүй байв (`depRows`-ийг үз).
-   * ⚠️ 2026-10-22: АЖЛЫН холбоосоос гаргасан (`workDepsRemote.loadPkgDeps`) — түлхүүр нь `TuhPkg.key` БИШ,
-   *    багцын түлхүүр (`pkgKey` = `bagtsKey`); `depRows` түлхүүрийн ЭЗЭН мөрөөр (`own`) тулгана.
    */
   deps: readonly PkgDep[] | null;
-  /** ⚠️ 2026-10-27: гэрээний мөрийн АМЬД явц (`tuhData.LiveMap`) — ирээгүй/унасан бол null; `PkgDetail` мөр бүрд `rowProgress` */
   live: LiveMap | null;
 };
 
 /**
  * Багцын урд (`up` — энэ багц ХАМААРДАГ) эсвэл ард (`down` — энэ багцаас хамаардаг) талын мөрүүд.
- * ⚠️ Өнчин холбоо (багц нь жагсаалтаас алга) АЛГАСАГДАНА — «Багцын хамаарал»-ын дүрэмтэй ижил.
- * Хамаарал ирээгүй бол `null` (хоосон жагсаалт = «холбоогүй» гэж худал хэлэхгүй).
  */
 export function depRows(m: Pick<TuhModel, 'rows' | 'deps'>, key: string, dir: 'up' | 'down'): TuhRow[] | null {
   if (!m.deps) return null;
-  /* ⚠️ 2026-10-22: `deps` нь багцын түлхүүрээр (`pkgKey`) — мөрийн түлхүүр → `pkgKey` → эзэн мөрүүд (`own`;
-     зураг төслийн давхар мөр хоёр удаа гарахгүй — `keyOwners`-ийн ⚠️) */
   const me = m.rows.find((x) => x.p.key === key);
   if (!me?.own || !me.p.pkgKey) return [];
   const keys = dir === 'up' ? upstreamOf(m.deps, me.p.pkgKey) : downstreamOf(m.deps, me.p.pkgKey);
@@ -193,8 +163,6 @@ export function depRows(m: Pick<TuhModel, 'rows' | 'deps'>, key: string, dir: 'u
 
 /**
  * Улсын комиссын огнооны ДЭЛГЭЦИЙН текст.
- * ⚠️ 2026-10-09: хагас огноотой багц (`commissionPartial`) «— (1/2 хуудас)» — «—» дангаараа
- *    «огноо бүртгэгдээгүй» гэж уншигдаж, нэг хуудас огноотойг нуудаг (`mergeCommission`-ийн ⚠️).
  */
 export function commissionText(m: Pick<TuhModel, 'loading'>, r: Pick<TuhRow, 'commission' | 'commissionPartial'>): string {
   if (r.commissionPartial) {
@@ -242,7 +210,6 @@ export function buildModel(input: {
   loading?: ReadonlySet<TuhSrc>;
   /** Хуваарийн муруй бүхэлдээ УНАСАН (`planQ.state === 'error'`) — `TuhModel.planFailed` = -1 */
   planError?: boolean;
-  /** ⚠️ 2026-10-27: гэрээний мөрийн амьд явц (`projectPlanInputs.loadLiveProgress`) — `progressOf`-ийн эх */
   live?: LiveMap | null;
 }): TuhModel {
   const { fin, plan, cfPlan, packs, hist, commission, workforce, docs } = input;
@@ -253,36 +220,21 @@ export function buildModel(input: {
 
   /*
    * Гэрээний мөр → сарын цэгүүд (`lagOf`-ийн оролт) — багцын түлхүүрээр.
-   * ⚠️ 2026-09-30 (merge bagtsiin-medeelel): `Finance.pkgMonthsMap` — «Гүйцэтгэл»
-   *    (`PkgProg`) ба «Багцын мэдээлэл» (`Bagts`)-тай НЭГ дүрэм. Урьд энд `bagtsKey(pkg)`
-   *    хуулбар байсан тул «БАГЦ 1-4» мэт диапазон мөр «БАГЦ14»-т наалдах (`pkgKeyOf`-ийн
-   *    ⚠️) ба `pkg2`-ийг алгасах эрсдэлтэй байв.
    */
   const monthsBy = pkgMonthsMap(fin);
   /*
    * ОРОН СУУЦНЫ БАГЦЫН БОДИТ ГҮЙЦЭТГЭЛ — `physLatest` (`lagOf`-ийн «бодит» цэг).
-   * ⚠️ 2026-09-30 (merge): урьд `live.loadFillPkgProgress` (блокийн жингүй дундаж) байв;
-   *    bagtsiin-medeelel салбарт «Гүйцэтгэл» · «Багцын мэдээлэл»-ийн жагсаалт энэ «бодит
-   *    гүйцэтгэл» рүү шилжсэн тул ТУХ ч мөн адил — нэг багц гурван дэлгэцэд НЭГ тоо.
-   *    Хэмжилтгүй бол Map-д ОРОХГҮЙ → «—» (0 биш).
-   * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): бөглөх хуудастай боловч ОГТ тайлагнаагүй багцад
-   *    `physLatest` 0 буцаана (тайлагнаагүй блок 0%) — «—» нь зөвхөн хуваарьгүй багц.
    */
   const actual = new Map<string, number>();
   monthsBy.forEach((m, k) => {
     const v = physLatest(m);
     if (v != null) actual.set(k, v);
   });
-  /* ⚠️ 2026-09-30: түлхүүрээр холбогдох өгөгдөл (HO гэрээ, сарын цэг, MA/MIR, ХАБЭА) НЭГ
-     мөрд — `tuhData.keyOwners`-ийн ⚠️ (зураг төслийн мөр барилгын гэрээний мөнгийг
-     өөрийнх мэт харуулж, IPC-ийн хүснэгтэд нэг гэрээ хоёр удаа гардаг байв). */
   const { owner } = keyOwners(pkgs);
   const hoBy = assignHo(pkgs, fin.contractsHo);
   /* ХАБЭА-гийн өдрийн нүд ХООСОН (нийт · монгол · гадаад бүгд бөглөөгүй) — компани тэр
      өдрийн тайланд ороогүй; `ceo/workforce` үүнийг 0 болгодог тул энд ялгана (null ≠ 0) */
   const blankDay = (v: CompanyDay) => v.workers === 0 && v.mongol == null && v.gadaad == null;
-  /* ⚠️ 2026-10-09: уншигдаагүй хуудас (`Pkg.key`) → тоо. `failed`-ийн мөр нь `key` эсвэл
-     «key: тайлбар» (тэнхлэгээс гадуур, `loadPlanCurve`) — түлхүүрийг «: »-ээс өмнөх хэсгээр авна. */
   const failedSheets = new Map<string, number>();
   for (const f of plan?.failed ?? []) {
     const k = f.split(': ')[0];
@@ -299,44 +251,28 @@ export function buildModel(input: {
     const housing = p.group === 'housing';
     /** Энэ мөр түлхүүрийнхээ өгөгдлийн ЭЗЭН мөн эсэх (`keyOwners`) */
     const own = !!p.pkgKey && owner.get(p.pkgKey) === p.key;
-    /* ⚠️ 2026-10-26 (аудит): 01-ийн сарын цэг дэд бүтцийн багцад ч (эзэн мөрд) — S-муруй хоосон байв (`progressOf`-ийн ⚠️) */
     const months = housing || (own && p.group !== 'design') ? monthsBy.get(p.pkgKey) : undefined;
     const lag = months ? lagOf(months) : null;
     const series = housing ? plan?.byBagts.get(p.pkgKey) : undefined;
-    /* ⚠️ 2026-10-08: `lagOf` null (муруйн кэш хараахан алга) үед ч ХЭМЖИЛТИЙН өдрөөр (`measDayOf`)
-       — урьд нь `today` тул хэдэн долоо хоногийн өмнөх хэмжилтийг өнөөдрийн төлөвлөгөөтэй жишдэг
-       байв; хэмжилтгүй бол `measDayOf` өөрөө `today` буцаана. */
     const planContractor = lag?.planned
       ?? (series?.length ? planPctAt(series, measDayOf(months, nowYm, today)) : null);
     const gapContractor = lag ? lag.actual - lag.planned
       : progress != null && planContractor != null ? progress - planContractor : null;
-    /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт (`planCoverage`) — < 95% бол гүйцэтгэгчийн хуваариар ДҮГНЭХГҮЙ: төлөв
-       гэрээний төлөвлөгөөнд (`gapContract`) шилжинэ, SPI (гүйцэтгэгч) «—». Тоо (`planContractor`, `gapContractor`) хэвээр. */
     const planCov = series?.length ? planCoverage(series) : null;
     const covOk = coverageOk(planCov);
     const items = cfItemsOf(p);
-    /* ⚠️ 2026-09-30: ХЭМЖИЛТИЙН өдрөөр (`measDayOf` = `lagOf`-ийн `at`) — урьд нь энэ САРЫН
-       бүтэн төлөвлөгөөг хэдэн долоо хоногийн өмнөх хэмжилттэй жишдэг байв (`cfPlanPctAt`-ийн ⚠️) */
     const planContract = cfPlan ? cfPlanPctAt(cfPlan, items, measDayOf(months, nowYm, today)) : null;
     const gapContract = progress != null && planContract != null ? progress - planContract : null;
 
     const pack = housing && packs ? packs.find((x) => x.kind === 'build' && x.key === p.pkgKey) : undefined;
-    /* ⚠️ 2026-09-30: картын гүйцэтгэлтэй (`physLatest`) НЭГ тодорхойлолт — `tuhData.weekDelta`-ийн ⚠️
-       (урьд нь хувьсах хуваагчтай `progressSeries(…, 'latest')` — шинэ блок тайлагнахад сөрөг) */
-    /* ⚠️ 2026-10-01: хуваагч = багцын бүх блок (`fin.physN`, тайлагнаагүй 0%) */
     const week = housing && hist ? weekDelta(hist, p.pkgKey, today, fin.physN?.get(p.pkgKey)) : null;
 
     const comm = housing ? (commission?.get(p.pkgKey) ?? null) : null;
     const commPartial = housing ? (input.commissionPartial?.get(p.pkgKey) ?? null) : null;
-    /* ⚠️ 2026-10-01: `assignHo`-ийн онооголт ЭЦСИЙН — дахин түлхүүрээр шүүхгүй (`null`):
-       зураг төслийн мөр түлхүүргүй/эцэг кодтой гэрээ авдаг болсон (`ipcOf`-ийн ⚠️). */
     const ipc = ipcOf(null, hoBy.get(p.key) ?? [], ipcNumbers);
 
     /*
      * ХАБЭА — багцын компаниуд (`Bagts_<SFX>`).
-     * ⚠️ 2026-09-30: сүүлийн тайланд ОРООГҮЙ компани (`unreported`) 0 хүн БИШ, мэдээлэлгүй —
-     *    урьд нь «Хүн хүч 0 хүн» гэж талбай зогссон мэт харагддаг байв (`ceo/workforce`
-     *    өөрөө «тайлангүй» гэж ялгадаг). Өдрийн цувааны хоосон нүд ч мөн `null` (`blankDay`).
      */
     const comps = own && workforce ? workforce.companies.filter((c) => c.bagts && bagtsKey(c.bagts) === p.pkgKey) : [];
     const rep = comps.filter((c) => !c.unreported);
@@ -356,18 +292,11 @@ export function buildModel(input: {
       : [];
 
     const mine = own ? (docs ?? []).filter((d) => bagtsKey(d.bagts) === p.pkgKey) : [];
-    /* ⚠️ 2026-10-04: ЗӨВХӨН СҮҮЛИЙН хувилбар (`chanarMs.latest` — «Чанар»-ын жагсаалтын дүрэм).
-       Урьд нь буцаагдаж дахин илгээсэн баримт хувилбар бүрээрээ (rev 0, 1, 2 …) тоологдож,
-       нэг аргачлал «3 баримт · 2 буцаагдсан» гэж хөөрөгддөг байв. */
     const ma = countDocs(latestRev(mine.filter((d) => d.kind === 'MA')));
     const mir = countDocs(latestRev(mine.filter((d) => d.kind === 'MIR')));
 
-    /* ⚠️ Системийн «Гүйцэтгэлийн явц»-тай ЯГ ИЖИЛ цэгүүд (2026-09-30, хэрэглэгч:
-       «чартуудыг үндсэн системтэй адилхан»). */
     const prog = progMonthsOf(months ?? null, series);
     const allMonths = own ? (monthsBy.get(p.pkgKey) ?? null) : null;
-    /* ⚠️ 2026-10-01: багцын ӨӨРИЙН сүүлийн тайлан (урьд нь картад огт байгаагүй, дэлгэрэнгүйд
-       төслийн НИЙТ огноо харагддаг байв) — зөвхөн эзэн мөрд (сарын цэг нь түлхүүрийнх) */
     const lastReport = lastReportOf(allMonths);
 
     return {
@@ -379,12 +308,6 @@ export function buildModel(input: {
       planCoverage: planCov,
       planContract,
       gapContract,
-      /* ⚠️ 2026-10-01: зураг төслийн мөрийн хэмжигдээгүй гүйцэтгэл = «Мэдээлэлгүй» (`statusOf`-ийн ⚠️) */
-      /* ⚠️ 2026-10-06 (аудит): гүйцэтгэгчийн хуваарь (`lag`) алга бол ГЭРЭЭНИЙ төлөвлөгөөний
-         зөрүүгээр (`gapContract`, тэмдэг эсрэг: `statusOf.gap` эерэг = хоцорсон) — урьд нь `lag`
-         зөвхөн орон сууцанд байдаг тул бусад багц ХЭЗЭЭ Ч «Хоцорсон» болдоггүй, харин карт нь
-         `gapContract`-ыг улаанаар харуулдаг тул чип ба тоо хоорондоо зөрдөг байв.
-         Аль зөрүү төлвийг тодорхойлсныг `statusBasis`-д тэмдэглэнэ (картад ил харуулна). */
       status: statusOf({
         contracted: p.contracted,
         progress,
@@ -396,8 +319,6 @@ export function buildModel(input: {
       ipc,
       commission: comm,
       commissionPartial: commPartial,
-      /* ⚠️ 2026-10-09 (аудит №6): хуанлийн өдрөөр (`calDaysBetween`) — `p.end` UB шөнө дунд,
-         `comm` UTC тул `Math.round` 8 цагийн зөрүүгээр +1 хоногийг 0 болгодог байв */
       delay: calDaysBetween(p.end, comm),
       blocks: packs ? (pack?.blocks.length ?? 0) : null,
       households: packs ? (pack?.households ?? 0) : null,
@@ -407,7 +328,6 @@ export function buildModel(input: {
       ma,
       mir,
       docs: mine,
-      /* ⚠️ 2026-10-22 (аудит): хуваарь дутуу бол SPI (гүйцэтгэгч) бодохгүй — хэт бага төлөвлөгөөнд хуваавал «түрүүлсэн» гарна */
       ev: earned(p.cost, progress, planContract, covOk ? planContractor : null),
       prog,
       months: allMonths,
@@ -422,19 +342,11 @@ export function buildModel(input: {
   const statusCount = new Map<TuhStatus, number>();
   for (const r of rows) statusCount.set(r.status, (statusCount.get(r.status) ?? 0) + 1);
 
-  /* ⚠️ 2026-09-30: «Олгосон санхүүжилт — гэрээгээр» (`IpcTable`)-тай НЭГ томьёо (`ipcTotals`):
-     хувийн тоологч = гэрээт дүн нь тодорхой гэрээний олголт (`paidContracted`). Урьд нь
-     `hoTotals().paidPct` (БҮХ олголт ÷ тодорхой гэрээт дүн) — дүнгүй гэрээний олголт хувьд
-     орж хөөрөгддөг байв. `paid` (нийт олгосон) нь хэвээр БҮХ гэрээнийх. */
-  /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): дээрх 2026-09-30-ны томьёо ХҮЧИНГҮЙ —
-     хувь = `paidShare.paidShareOf` (гэрээлсэн багцын олголт ÷ Cashflow-ийн гэрээлсэн дүн),
-     Тайлан · удирдлагын тайлан · CEO карт · «IPC»-тэй ЯГ нэг функц (26.47% → 26.01%).
-     `other` = гэрээлсэн багцаас гадуурх олголт (`share.paidOther`) — хувьд ОРООГҮЙ. */
   const tot = ipcTotals(contractBlocks(fin.contractsHo));
   const share = paidShareOf(fin.contracts, fin.pays);
   const ipcCount = fin.contractsHo.reduce((a, c) => a + ipcNumbers(c.pays).length, 0);
 
-  /* Hero-гийн төлөвлөгөөний жин ба багцын олонлог — `physNow`-тэй нэг (доорх ⚠️ 2026-10-06) */
+  /* Hero-гийн төлөвлөгөөний жин ба багцын олонлог — `physNow`-тэй нэг (доорх 2026-10-06) */
   const costW = pkgCostWeight(fin.contracts.map(cfWeightRow));
   const physKeys = new Set<string>([...fin.phys.keys(), ...(fin.physN?.keys() ?? [])]);
 
@@ -449,27 +361,14 @@ export function buildModel(input: {
     lastReport,
     hero: {
       actual: physNow(fin, nowYm),
-      /* ⚠️ 2026-10-06 (аудит): бодит тал (`physNow`)-тай ЯГ НЭГ жин ба НЭГ багцын олонлог.
-         Урьд нь жин нь `TuhPkg.cost` (бүх мөрийн ХО дүн, `inTotal` шүүлтгүй, `pkg2`-гүй), олонлог
-         нь `planContract`-тай орон сууцны бүх мөр байсан тул «гүйцэтгэл − төлөвлөгөө» (pp) хоёр
-         өөр жинг хасдаг байв. Одоо: жин `pkgCostWeight(contracts → cfWeightRow)` (`physNow` ←
-         `aggregateMonths`-тай нэг), олонлог нь `physNow`-д орсон багцууд (`phys` ∪ `physN`). */
       planContract: housingPct(housing
         .filter((r) => physKeys.has(r.p.pkgKey))
         .map((r) => ({ pct: r.planContract, cost: costW.get(r.p.pkgKey) ?? 0, blocks: r.blocks ?? 0 }))),
-      /* ⚠️ 2026-09-30: ХЭМЖИЛТИЙН өдрөөр — урьд нь ӨНӨӨДРӨӨР бодогдож «Гүйцэтгэл»-ийн
-         «төлөвлөсөн гүйцэтгэлийн хувь»-аас өөр тоо гардаг байв (нэг үзүүлэлт, хоёр тоо). */
-      /* ⚠️ 2026-09-30 (төслийн аудит): төлөвлөгөө ч ХО-оор жигнэсэн (`Finance.projectPlanOf`) —
-         бодит нь (`physNow`) ХО-жинтэй тул блокоор жигнэсэн `plan.months`-тэй харьцуулбал зөрүү
-         хоёр өөр жинг холино («Гүйцэтгэл» · удирдлагын тайлан · Dashboard ижил дүрэмтэй). */
-      /* ⚠️ 2026-10-09 (аудит №2): `projectLagNow` — хуваарьтай багцаар (хуваарьгүй багц шугамыг
-         арилгахгүй), хэмжилтийн өдөр нь ТЭР олонлогийн; хасагдсан багцыг `planExcluded` нэрлэнэ. */
       ...(() => {
         const ln = plan?.months.length ? projectLagNow(fin, plan, nowYm) : null;
         return { planContractor: ln ? ln.planned : null, planExcluded: ln ? ln.excluded : [], planCoverage: ln ? ln.coverage : null };
       })(),
     },
-    /* ⚠️ 2026-10-01: `other` — «IPC» хуудастай ижил хувьд ороогүй олголтыг тусад нь нэрлэнэ */
     paid: { total: tot.paid, pct: share.pct, ipcCount, pays: tot.pays, other: fin.pays.length ? share.paidOther : null },
     statusCount,
     failed: input.failed,

@@ -10,20 +10,6 @@ import { capLabel } from '@/modules/capText';
 /**
  * MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ (2026-10-09). Survey123 маягт → Enterprise hosted
  * feature service (`services/env.ts` CHANAR_MA_SVC — Enterprise, давхарга `/0`). Портал УНШИНА, бөглөхгүй.
- *
- * ⚠️ ХЭРЭГЛЭГЧИЙН ШИЙДВЭРҮҮД (2026-10-09, `memory/chanar-redesign`):
- *    · Чанарын 4 шат MA → MIR → FIC → М-акт; MA-гүй бол MIR-гүй … (гинж MA дээр тулгуурлана).
- *    · НЭГ MA = НЭГ материал, ОЛОН ажил. `works` = Survey123 select_multiple → зайгаар
- *      тусгаарласан `багц:des` түлхүүрүүд (`des` нь бөглөх хуудасны мөрийн тогтвортой дугаар,
- *      `oid` БИШ — нийтлэл бүрд солигддог; `bagts.pkg.ts`-ийн ⚠️).
- *    · MA · MIR батлагдаагүй бол ажил ЯВАГДАХГҮЙ; FIC · М-акт гараагүй бол IPC ОЛГОХГҮЙ.
- *    · Хавсралт (гэрчилгээ · лабораторийн дүн · зураг) Survey123-д ОРДОГГҮЙ — ПОРТАЛААС энэ
- *      бичлэгт attachment болгон нэмнэ; скан OCR-дохгүй, зөвхөн гэрчилгээний № · стандарт ·
- *      хүчинтэй хугацааг гараар бичнэ (`keywords`-д, доорх `AttMeta`).
- * ⚠️ Уншилт `queryFeatures` (token:'org' → Enterprise хост руу AGOL токен ЯВАХГҮЙ; давхарга
- *    нэргүй уншилт зөвшөөрдөг). Хавсралтын бичилт Enterprise токентой (`entSession`).
- * ⚠️ ArcGIS алдаа HTTP 200-аар `{error}` биед — бүх хариуг шалгана.
- * ⚠️ `CHANAR_MA_SVC` хоосон бол харагдац «тохируулаагүй» гэж хэлнэ (зөвхөн локал туршилт).
  */
 export const MA_URL = CHANAR_MA_SVC ? `${CHANAR_MA_SVC}/FeatureServer/0` : '';
 
@@ -71,7 +57,7 @@ const F = {
 const str = (v: unknown): string => (v == null ? '' : String(v).trim());
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
-/** Survey123 select_multiple → утгын жагсаалт. ⚠️ Survey123 ТАСЛАЛААР хадгалдаг (ODK нь зайгаар) — хоёуланг таслана; давхардал · хоосон хасна */
+/** Survey123 select_multiple → утгын жагсаалт. Survey123 ТАСЛАЛААР хадгалдаг (ODK нь зайгаар) — хоёуланг таслана; давхардал · хоосон хасна */
 export function splitMulti(v: unknown): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -129,8 +115,6 @@ export async function loadMa(): Promise<MaRow[]> {
   return rows.map((r) => rowOf(r as Record<string, unknown>));
 }
 
-/* ⚠️ 2026-10-23 (UX аудит Q6 · X7): «Татгалзаагүй» гэсэн давхар үгүйсгэл → «Зөвшөөрсөн»; R нь бусад урсгалын
-   буцаалттай НЭГ үг «Буцаасан». Утга (A · AN · R код) өөрчлөгдөөгүй — зөвхөн шошго. */
 export const verdictLabel = (v: Verdict | null): string =>
   v === 'A' ? tr('A — Зөвшөөрсөн') : v === 'AN' ? tr('AN — Саналтай зөвшөөрсөн') : v === 'R' ? tr('R — Буцаасан') : tr('Шийдвэргүй');
 
@@ -141,8 +125,6 @@ export const isApproved = (v: Verdict | null): boolean => v === 'A' || v === 'AN
  * АЖИЛ БҮРИЙН MA ХААЛГА. Тухайн ажлыг (`багц:des`) сонгосон MA-ууд дундаас:
  *   · нэг ч MA байхгүй → 'none' (материал баталгаажуулалт шаардагдаагүй гэж ҮЗЭХГҮЙ — тодорхойгүй);
  *   · бүгд A/AN → 'ok'; аль нэг нь R эсвэл шийдвэргүй → 'blocked'.
- * ⚠️ Нэг ажил ОЛОН MA-д (бетон + арматур) орж болно — бүгд нь батлагдсан байх ёстой
- *    («ажил эхлэх хаалга», хэрэглэгч 2026-10-09). Тестлэгдэнэ.
  */
 export type MaGate = 'none' | 'ok' | 'blocked';
 export function maGateOf(workKey: string, rows: readonly MaRow[]): { gate: MaGate; mas: MaRow[] } {
@@ -154,12 +136,6 @@ export function maGateOf(workKey: string, rows: readonly MaRow[]): { gate: MaGat
 /**
  * ЧАНАРЫН ГИНЖ — MA → MIR → FIC → М-акт (2026-10-09, хэрэглэгч: «MA үүсэх бүрд араас нь
  * уялдаанууд харагдана, тэдгээр дээр шатлалын уялдаа»). MA бүрийн картан дээр 4 шат.
- *
- * ⚠️ ХАТУУ ДАРААЛАЛ: өмнөх шат батлагдаагүй бол дараагийнх `locked` — MA-гүй бол MIR-гүй,
- *    MIR-гүй бол FIC-гүй, FIC-гүй бол М-акт-гүй (хэрэглэгчийн шийдвэр, `memory/chanar-redesign`).
- * ⚠️ MIR · FIC · М-акт-ын өгөгдөл ХАРААХАН холбогдоогүй (`undefined`) — тэр үед өмнөх шат
- *    батлагдсан бол `next` («хүлээгдэж буй»), эс бөгөөс `locked`. Холбогдмогц `done`/`rejected`.
- * ⚠️ IPC олгох нөхцөл = 4 шат бүгд `done` (`ipcReady`).
  */
 export type StageKey = 'MA' | 'MIR' | 'FIC' | 'MAKT';
 export type StageState = 'done' | 'rejected' | 'pending' | 'next' | 'locked';
@@ -180,11 +156,6 @@ export function chainOf(ma: Verdict | null, next: ChainInput = {}): Stage[] {
 export const ipcReady = (chain: readonly Stage[]): boolean => chain.every((s) => s.state === 'done');
 export const stageLabel = (k: StageKey): string =>
   k === 'MA' ? tr('MA · Материал') : k === 'MIR' ? tr('MIR · Үзлэг') : k === 'FIC' ? tr('FIC · Явцын үзлэг') : tr('М-акт · Дууссан');
-/**
- * ⚠️ 2026-10-23 (UX аудит Q4): «Хүлээгдэж буй» ба «Шийдвэр хүлээж буй» хоёр ялгагдахгүй байв — ХЭНИЙ ээлж
- *    болохыг хэлнэ: `next` = баримт хараахан ирээгүй (гүйцэтгэгч оруулна), `pending` = ирсэн, хянагч шийднэ.
- *    `rejected` нь бусад урсгалын буцаалттай НЭГ үг «Буцаасан» (X7).
- */
 export const stageStateLabel = (s: StageState): string =>
   s === 'done' ? tr('Батлагдсан') : s === 'rejected' ? tr('Буцаасан') : s === 'pending' ? tr('Хянагч шийднэ')
     : s === 'next' ? tr('Гүйцэтгэгч оруулна') : tr('Хаалттай');
@@ -205,12 +176,10 @@ export function latestPerRespNo(rows: readonly MaRow[]): MaRow[] {
 }
 
 /**
- * ДАХИН ИРҮҮЛСЭН MA-ГИЙН ХОЛБОО (⚠️ 2026-10-23, UX аудит Q10). Буцаасан (R) MA-г гүйцэтгэгч засаад ШИНЭ хариу
+ * ДАХИН ИРҮҮЛСЭН MA-ГИЙН ХОЛБОО (2026-10-23, UX аудит Q10). Буцаасан (R) MA-г гүйцэтгэгч засаад ШИНЭ хариу
  * бичгийн дугаартай илгээвэл `latestPerRespNo` хоёуланг нь тусдаа карт болгодог тул «хоёр өөр материал» мэт
  * харагддаг байв. Нэг багц + нэг материалын нэр (том/жижиг үсэг · зай ялгахгүй) доторх R мөрийн ДАРААГИЙН
  * (их objectid) мөрийг түүний дахин ирүүлэлт гэж холбоно.
- * ⚠️ Зөвхөн ХАРУУЛАХ холбоо — гинж/хаалганы дүрэмд (`maGateOf` · `chainOf`) ОРОЛЦОХГҮЙ: материалын нэр гараар
- *    бичигддэг тул таамаг. Тестлэгдэнэ (`ma.check.mjs`).
  */
 export type ResubLink = { prev?: MaRow; next?: MaRow };
 export function resubmitLinks(rows: readonly MaRow[]): Map<number, ResubLink> {
@@ -301,8 +270,6 @@ async function arc<T>(url: string, body: FormData | URLSearchParams): Promise<T>
 
 /** Давхарга хавсралт зөвшөөрдөг эсэх (`hasAttachments`) — үгүй бол админ геопорталаас асаана */
 export async function maHasAttachments(): Promise<boolean> {
-  /* ⚠️ 2026-10-21: Enterprise-ийн давхарга org-only — токенгүй мета 499 «Token Required» буцааж MA-гийн хавсралт
-     хэзээ ч жагсаагддаггүй байв (`listMaAtts`-тэй адил токен залгана). */
   const body = new URLSearchParams({ f: 'json' });
   const s = entSession(); if (s) body.set('token', s.token);
   const j = await arc<{ hasAttachments?: boolean }>(MA_URL, body);
@@ -320,31 +287,14 @@ export async function listMaAtts(oid: number): Promise<MaAtt[]> {
   }));
 }
 
-/**
- * ⚠️ 2026-10-09 (аудит №6): ХАВСРАЛТ НЭМЭХ/УСТГАХ ЭРХ LIB-Д — UI-ийн `canAttach`-тай ИЖИЛ дүрэм
- *    (`chanarAuthor` ЭСВЭЛ `chanarReview`). Урьд нь зөвхөн Enterprise токен шалгадаг тул эрхгүй аккаунт
- *    консолоос MA-гийн гэрчилгээг устгаж чаддаг байв. Хөтөчид л хаана (`who.requireCap`).
- */
 function requireAttachCap(): void {
   try { requireCap('chanarAuthor'); } catch {
     try { requireCap('chanarReview'); } catch {
-      /* ⚠️ 2026-10-19 (аудит): түүхий түлхүүрийн оронд эрхийн нэр (`who.requireCap`-тэй ижил) */
       throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «{0}» эсвэл «{1}» эрх авна уу.', capLabel('chanarAuthor'), capLabel('chanarReview')));
     }
   }
 }
 
-/**
- * ⚠️ 2026-10-19 (аудит): ХАВСРАЛТЫН БАГЦЫН ХҮРЭЭ — `ficMakt.scopeDeny` · `chanarStore.attachDeny`-ийн ижил дүрэм.
- *    Урьд нь эрх (`chanarAuthor`/`chanarReview`) л шалгадаг тул Багц 1-ийн ирүүлэгч Багц 5-ын MA-гийн гэрчилгээг
- *    нэмж/устгаж чаддаг байв. Одоо: (`chanarAuthor` БА тэр багцад ирүүлэгч) ЭСВЭЛ (`chanarReview` БА тэр багцад
- *    ямар нэг хянагчийн үүрэг). MA-гийн `pkg` нь хуудасны түлхүүр («b1_9f») → `PKGS`-ээр багцын бүлэг; танигдахгүй
- *    бол FAIL-CLOSED. Хатуу super — `chanarAcl` хязгааргүй (`scope` null).
- * ⚠️ Зөвхөн нэвтрэлт асаалттай хөтөчид (`strict`, `ficMakt`-тай ижил) — Node шалгуур `strict: true`-г ил өгнө.
- * ⚠️ Модулиуд ДИНАМИК: `chanarAcl` (→ `permsRemote`) · `bagts.pkg` нь MA-гийн цэвэр шалгуурын (`ma.check`) импортыг
- *    хүндрүүлэхгүй.
- * @returns татгалзсан шалтгаан, эсвэл `null` (зөвшөөрнө)
- */
 export async function maAttachScopeDeny(
   pkgKey: string,
   strict: boolean = typeof window !== 'undefined' && !!AUTH.appId,
@@ -387,7 +337,6 @@ export async function addMaAtt(oid: number, file: File, meta: AttMeta): Promise<
 
 export async function deleteMaAtt(oid: number, attId: number): Promise<void> {
   requireAttachCap();
-  /* ⚠️ 2026-10-19 (аудит): багцын хүрээ — `addMaAtt`-тай ижил */
   await requireAttachScope(oid);
   const j = await arc<{ deleteAttachmentResults?: { success?: boolean; error?: { description?: string } }[] }>(
     `${MA_URL}/${oid}/deleteAttachments`, new URLSearchParams({ f: 'json', token: tok(), attachmentIds: String(attId) }));

@@ -2,14 +2,6 @@
 
 /**
  * AI ТУСЛАХЫН ЦОНХ — баруун доод буланд хөвөгч.
- *
- * ⚠️ Цонх нь порталын БҮХ харагдацад нэг л удаа зурагдана (`Portal`-ын төгсгөлд,
- * `DocViewer`-ийн адилаар). Харагдац бүрт тусад нь тавьбал яриа солигдох бүрт
- * тасарна.
- *
- * ⚠️ Агент нь `scope`-оор хязгаарлагдана — тэр нь хэрэглэгчийн ҮЗЭЖ БОЛОХ
- * харагдацуудын жагсаалт (`Root`-оос ирсэн эрх). Ингэснээр эрхгүй хэрэглэгч
- * агентаар дамжуулж бусад хэсгийн өгөгдлийг харах боломжгүй.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -19,13 +11,9 @@ import type { AgentScope } from '@/lib/agent/registry';
 import { AgentMarkdown } from '@/components/AgentMarkdown';
 import { AgentPlan } from '@/components/AgentPlan';
 import s from '@/components/agent.module.css';
-/* ⚠️ 2026-10-04 (ачааллын аудит): хөвөгч товч ба «оч» дүрс ТУСДАА файлд — `Portal` товчийг
-   статикаар, энэ цонхыг (агентын клиент · датасетийн бүртгэл · markdown, ~220 КБ эх код)
-   `dynamic`-аар, анх НЭЭХЭД л ачаална. Хуучин импортын зам ажилласаар байна. */
 import { Spark } from '@/components/AgentButton';
 export { AgentButton } from '@/components/AgentButton';
 
-/** ⚠️ `plan` — агентын ажлын төлөвлөгөө (хариултын өмнө үлдэнэ) */
 type Bubble = { role: 'user' | 'bot' | 'plan'; text: string; done?: boolean };
 
 /** Өргөн горимын сонголтыг хадгалах түлхүүр */
@@ -33,19 +21,9 @@ const WIDE_KEY = 'selbe-agent-wide';
 
 /**
  * Дахин илгээх түүхийн дээд хэмжээ (2026-09-25).
- * ⚠️ Реле (`agent-proxy/server.mjs`) биеийг 2 MB (`MAX_BODY`)-аар хязгаарладаг.
- *    Урт сешнд түүх тэр хэмжээнээс хэтэрч 413 буцдаг бөгөөд ⟲ дарах хүртэл
- *    асуулт бүр унадаг байв. 1.5 MB нь ОДООГИЙН эргэлтийн tool_result-д зай
- *    үлдээнэ.
  */
 const MAX_HISTORY_MSGS = 30;
 const MAX_HISTORY_BYTES = 1_500_000;
-/**
- * ⚠️ 2026-10-19: ОГТЛОХ ЗОРИЛТ — дээд хязгаараас ХАМААГҮЙ доош (≈ хагас). Хязгаарт яг тулгаж огтолбол дараагийн
- *    асуулт бүр дахин хэтэрч, огтлолт (+ БҮХ бодолтын блокийг хасах `stripThinking`, кэш алдагдах) асуулт бүрд
- *    давтагддаг байв. Одоо хязгаар хэтэрсэн үед л ажиллаж, түүхийг ЗОРИЛТ хүртэл богиносгоно — дараагийн хэдэн
- *    асуулт огтлолтгүй (зөвхөн ард нэмэгдэнэ).
- */
 const TRIM_TO_MSGS = 15;
 const TRIM_TO_BYTES = 750_000;
 
@@ -53,15 +31,6 @@ const TRIM_TO_BYTES = 750_000;
  * Түүхийг БАЙРАНД нь (in-place) огтолно — `tools/telegram-bot.mjs`-ийн
  * `trimCut`-тай ижил дүрэм: зөвхөн хэрэглэгчийн АСУУЛТ (role 'user', string
  * content) эхэлдэг цэгээс тасална.
- * ⚠️ Дурын цэгээс тасалбал tool_result нь өөрийн tool_use-гүй үлдэж Anthropic
- *    400 буцаана.
- * ⚠️ Массивын ЗААЛТ хэвээр үлдэнэ (`splice`) — `send()` доторх `h`/`base`
- *    буцаалт түүнд тулгуурладаг.
- * Аль ч цэгээс тасалсан ч хязгаарт багтахгүй бол түүхийг бүхэлд нь цэвэрлэнэ.
- * ⚠️ 2026-10-19 (Claude Opus 5.5 — бодолтын блок ЯРИАНД холбогдсон): эхний эргэлтүүдийг хасмагц үлдсэн
- *    бодолтын блок бүр «өөр ярианых» болж 400 буцдаг (шинэ байгууллагад). Тиймээс ОГТЛОСОН үед л үлдсэн
- *    түүхийн БҮХ бодолтын блокийг хасна (`client.stripThinking`); огтлоогүй үед түүх зөвхөн ард нэмэгдэнэ.
- *    Огтлолт нь асуулт илгээхийн ӨМНӨ (`send`) — явж буй хэрэгслийн гогцооны дунд ХЭЗЭЭ Ч биш.
  */
 function trimHistory(h: ApiMessage[]): void {
   const enc = new TextEncoder();
@@ -88,8 +57,6 @@ function trimHistory(h: ApiMessage[]): void {
 
 /**
  * Эхлэхэд санал болгох асуултууд — хэрэглэгч юу асуухаа мэдэхгүй байх нь түгээмэл.
- * ⚠️ Агентын ЧАДВАРЫГ төлөөлүүлж сонгосон: нэгтгэл, ангиллын задаргаа, бүсийн
- * бүрэн тойм, санхүү — дөрөв нь дөрвөн өөр зам ажиллуулна.
  */
 /** `STARTERS` дахь санхүүгийн жишээний индекс — эрхээр шүүнэ */
 const FIN_STARTER = 3;
@@ -110,40 +77,23 @@ export function AgentChat({
   scope: AgentScope;
 }) {
   const [log, setLog] = useState<Bubble[]>([]);
-  /* ⚠️ 2026-10-15: ЯВЦ ДУНДЫН төлөвлөгөө. Хариулт ирэхэд `log`-д тусдаа бөмбөлөг болж үлдэнэ (ил тод байдал).
-     ⚠️ 2026-10-19: алхмыг хэрэгслийн БАГЦЫН тоогоор ✓ тэмдэглэхээ БОЛИВ — нэг алхам олон багц (эсвэл олон
-     алхам нэг багц) явдаг тул «3-р алхам хийгдэж байна» гэсэн худал байдал үүсдэг байв. Явцад алхмууд
-     «гүйцэтгэж байна» төлөвтэй, эргэлт АМЖИЛТТАЙ дуусахад л бүгд ✓ (`AgentPlan.complete`). */
   const [plan, setPlan] = useState<{ raw: string } | null>(null);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
-  /* ⚠️ 2026-10-06: `detail` — серверийн/сүлжээний түүхий мөр, гол мөрийн доор жижгээр */
   const [error, setError] = useState<{ text: string; detail?: string } | null>(null);
   const [alive, setAlive] = useState<boolean | null>(null);
 
   /**
    * Баруун талын өргөн самбар горим.
-   * ⚠️ Сонголтыг `localStorage`-д хадгална — хэрэглэгч цонх хаагаад дахин
-   * нээх бүрд өргөтгөж суух нь ядаргаатай.
    */
   const [wide, setWide] = useState(false);
   useEffect(() => {
-    /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
-       эффект дотор шидсэн алдаа чатыг бүхэлд нь унагана. */
     try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setWide(localStorage.getItem(WIDE_KEY) === '1');
     } catch { /* хувийн горим — нарийн харагдац хэвээр */ }
   }, []);
-  /*
-   * ⚠️ БИЧИЛТ updater-ЫН ГАДНА, try/catch-тай (2026-09-15-ны аудит). Урьд нь
-   *    `setWide`-ийн updater ДОТОР `localStorage.setItem` дуудагддаг байв:
-   *    (1) хувийн горимд шидсэн алдаа React-ийн updater-аас гарч чатыг
-   *    унагадаг (дээрх `getItem` хамгаалагдсан атал энэ нь үгүй байсан);
-   *    (2) updater нь ЦЭВЭР функц байх ёстой — StrictMode-д хоёр дахин
-   *    дуудагдахад гаж нөлөө давхардана.
-   */
   const toggleWide = () => {
     const next = !wide;
     setWide(next);
@@ -152,26 +102,10 @@ export function AgentChat({
     } catch { /* хувийн горим — тохиргоо хадгалагдахгүй, харагдац ажиллана */ }
   };
 
-  /**
-   * ⚠️ Ярианы ЖИНХЭНЭ түүх (хэрэгслийн дуудлага, үр дүн бүхий) энд. `log` нь
-   * зөвхөн ДЭЛГЭЦИЙН хувилбар. Хоёрыг нэгтгэвэл tool блокууд хэрэглэгчид
-   * харагдаж, эсвэл загварт дутуу түүх очно.
-   */
   const history = useRef<ApiMessage[]>([]);
   const logRef = useRef<HTMLDivElement>(null);
   const abort = useRef<AbortController | null>(null);
 
-  /**
-   * ⚠️ 2026-10-09 (аудит №6): ЭРХ (`scope`) ӨӨРЧЛӨГДӨХӨД ЯРИАГ ШИНЭЭР ЭХЛҮҮЛНЭ. Урьд нь
-   *    `history.current` хэвээр үлддэг тул эрх ХАСАГДСАН хойно ч өмнөх `tool_result`
-   *    (хасагдсан харагдацын өгөгдөл) түүхээр загварт очсоор, загвар түүнээс хариулж
-   *    чаддаг байв. `tools/telegram-bot.mjs`-ийн `scopeKey` загвар: эрэмбэлсэн түлхүүр
-   *    зөрвөл түүх · дэлгэц · алдаа тэглэгдэж, «яриа шинээр эхэллээ» мэдэгдэл гарна.
-   *    Эхний mount-д алгасна (`useRef(scopeKey)` · `useState(scopeKey)`).
-   *  · Дэлгэцийн төлөв — «өмнөх prop» render-дундын хэв маяг (эффект дотор setState БИШ,
-   *    `react-hooks/set-state-in-effect`-д баригдахгүй);
-   *  · ref (түүх, явж буй хүсэлтийн цуцлалт) — эффектэд (render үед ref бичихгүй).
-   */
   const scopeKey = scope === 'all' ? 'all' : [...scope].sort().join(',');
   const [seenScopeKey, setSeenScopeKey] = useState(scopeKey);
   const [scopeNotice, setScopeNotice] = useState(false);
@@ -191,9 +125,6 @@ export function AgentChat({
 
   /**
    * «Дахин шалгах» товчны тоолуур — өөрчлөгдөхөд доорх эффект `/health`-ийг ДАХИН шалгана.
-   * ⚠️ 2026-10-06 (аудит): урьд нь `alive === false` үед ч эхлэх асуултууд ба «Илгээх»
-   *    идэвхтэй байж, асуулт бүр реле хүлээгээд унадаг байв; дахин шалгах цорын ганц зам нь
-   *    цонхыг хаагаад нээх байв.
    */
   const [recheck, setRecheck] = useState(0);
   const [checking, setChecking] = useState(false);
@@ -201,8 +132,6 @@ export function AgentChat({
   useEffect(() => {
     if (!open) return;
     const c = new AbortController();
-    /* ⚠️ 2026-09-29 (аудит 10): тасалсан (`/health` хариулахаас өмнө хаасан) шалгалтын
-       `false`-г хадгалахгүй — дахин нээхэд «ажиллахгүй байна» худал гардаг байв. */
     void relayAlive(c.signal)
       .then((ok) => { if (!c.signal.aborted) setAlive(ok); })
       .catch(() => { if (!c.signal.aborted) setAlive(false); })
@@ -216,8 +145,6 @@ export function AgentChat({
   /** Реле унтарсан гэж БАТЛАГДСАН үед илгээх боломжгүй (`null` = шалгаж байна — хориглохгүй) */
   const offline = alive === false;
 
-  /* ⚠️ 2026-09-29 (аудит 10): нээхэд фокустай FAB unmount болж фокус алга болдог байв
-     — оролтын талбарт шилжүүлнэ (хаахад FAB өөрөө буцааж авна, `AgentButton`). */
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -260,16 +187,9 @@ export function AgentChat({
       // дараагийн хүсэлт эвдэрдэг (400: role ээлжлэх / tool_use араас tool_result)
       // тул эргэлтийн ӨМНӨХ уртыг тэмдэглэж, амжилтгүй үед яг тэр рүү буцаана.
       //
-      // ⚠️ Массивын ЗААЛТЫГ (`history.current` БИШ `h`) барина: хүсэлт явж байхад
-      //    ⟲ дарвал `clear()` шинэ ХООСОН массив тавьдаг. Тэр үед `history.current
-      //    .length = base` гэвэл хоосон массивыг сийрэг (sparse) болгож, дараагийн
-      //    хүсэлтэд `[null,null,…]` илгээгдэн Anthropic 400 буцаана.
       const h = history.current;
-      // ⚠️ `base`-аас ӨМНӨ огтолно — алдаатай үед зөвхөн энэ эргэлтийн мөрүүд
-      //    хасагдана, огтлолт буцаагдахгүй (энэ нь зориуд).
       trimHistory(h);
       const base = h.length;
-      /* ⚠️ `plan` төлөв нь асинхрон тул `setLog`-д ЛОКАЛ хуулбарыг ашиглана */
       let planText = '';
 
       try {
@@ -281,25 +201,14 @@ export function AgentChat({
           onPlan: (p) => { planText = p; setPlan({ raw: p }); },
           signal: controller.signal,
         });
-        /* ⚠️ Төлөвлөгөө ХАРИУЛТЫН ӨМНӨ бөмбөлөг болж үлдэнэ — хэрэглэгч дараа нь ч
-           «агент ямар замаар явсан» гэдгийг харна. */
         setLog((l) => [...l, ...(planText ? [{ role: 'plan' as const, text: planText, done: true }] : []), { role: 'bot' as const, text }]);
       } catch (e) {
         // Түүхийг тэнцвэртэй (role ээлжилсэн, tool_use бүр tool_result-тай) байдалд
         // буцаана — тасалсан ба алдаатай ХОЁУЛАНД (өмнө нь зөвхөн сүүлийн user
         // мөрийг хасдаг байсан тул дан assistant tool_use дүүжлэгдэж үлддэг байв).
-        // ⚠️ `h` (заалт барьсан массив) — `history.current` БИШ. `clear()` шинэ
-        //    массив тавьсан бол энэ нь орхигдсон хуучныг л огтолно; идэвхтэй
-        //    ХООСОН түүх сийрэгжихгүй (дээрх тайлбарыг үз).
         h.length = base;
         if (controller.signal.aborted) return;
-        // ⚠️ Алдааг ЧИМЭЭГҮЙ залгихгүй — хэрэглэгч хуучин хариултыг шинэ гэж
-        //    андуурвал буруу шийдвэр гаргана.
-        /* ⚠️ 2026-10-06: түүхий «Failed to fetch»/серверийн монгол текстийн оронд
-           `tr()`-тэй мөр; техникийн мөр зөвхөн `detail`-д (`agentErrorText`). */
         setError(agentErrorText(e));
-        /* ⚠️ 2026-10-06: бичсэн асуулт АЛГА БОЛОХГҮЙ — талбар хоосон бол буцааж тавина
-           (хэрэглэгч хооронд нь шинээр бичсэн бол дарахгүй). Дахин илгээхэд бэлэн. */
         setInput((cur) => (cur.trim() ? cur : q));
       } finally {
         setBusy(false);
@@ -319,20 +228,10 @@ export function AgentChat({
     setScopeNotice(false);
   };
 
-  /*
-   * ⚠️ 2026-09-02 аудит: энэ самбар `role="dialog"` гэж зарладаг байсан
-   *    атлаа Escape-ээр хаагддаггүй, `aria-modal` ч байгаагүй. Порталын
-   *    бусад 7 модал хоёуланг нь хийсэн — зөвхөн энэ гацсан байв.
-   * ⚠️ `aria-modal` нь ХУДАЛ: самбар нээлттэй байхад хуудасны бусад хэсэг
-   *    ажилласаар байдаг (хэрэглэгч зурагтай ажиллангаа асуудаг) — тиймээс
-   *    `aria-modal` ОРУУЛААГҮЙ, зөвхөн Escape нэмэв.
-   */
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      /* ⚠️ 2026-09-29 (аудит 10): дээр нь модал (`DocViewer` г.м. `aria-modal`) нээлттэй
-         бол Esc нь ТҮҮНИЙ — нэг Esc хоёуланг нь хаадаг байв. */
       if (document.querySelector('[aria-modal="true"]')) return;
       onClose();
     };
@@ -342,9 +241,6 @@ export function AgentChat({
 
   if (!open) return null;
 
-  /* ⚠️ 2026-10-09: `role="dialog"` → `role="complementary"` — самбар МОДАЛ БИШ (дээрх ⚠️:
-     хуудас ажилласаар, `aria-modal` санаатай алга). `dialog` гэж зарлавал дэлгэц уншигч
-     фокус самбарт баригдсан гэж ойлгоно; хажуугийн туслах самбарын зөв үүрэг нь landmark. */
   return (
     <div className={`${s.panel} ${wide ? s.panelWide : ''}`} role="complementary" aria-label={tr('AI туслах')}>
       <div className={s.head}>
@@ -375,9 +271,6 @@ export function AgentChat({
         </button>
       </div>
 
-      {/* ⚠️ 2026-09-30: эцсийн хэрэглэгчид хөгжүүлэгчийн команд (npm install,
-          ANTHROPIC_API_KEY) харуулдаг байв — тэдэнд утгагүй, айдас төрүүлнэ.
-          Одоо энгийн мессеж; асаах заавар ЗӨВХӨН `development` build-д. */}
       {offline && (
         <div className={s.offline} role="status">
           {tr('AI туслах түр ажиллахгүй байна, дараа дахин оролдоно уу.')}
@@ -391,8 +284,6 @@ export function AgentChat({
           >
             {checking ? tr('Шалгаж байна…') : tr('Дахин шалгах')}
           </button>
-          {/* ⚠️ 2026-10-19: зөвхөн bash-ийн `KEY=… node` хэлбэр Windows-ийн PowerShell-д ажилладаггүй байв —
-              (1) түлхүүргүй Claude Code хөдөлгүүр (энэ PC-д нэвтэрсэн `claude`), (2) PowerShell, (3) bash. */}
           {process.env.NODE_ENV === 'development' && (
             <>
               <br />
@@ -420,20 +311,14 @@ export function AgentChat({
         </div>
       )}
 
-      {/* ⚠️ 2026-09-30: `aria-live` — хариу ирэхэд дэлгэц уншигч зарлана */}
       <div className={s.log} ref={logRef} aria-live="polite">
-        {/* ⚠️ 2026-10-09 (аудит №6): эрх өөрчлөгдөж яриа тэглэгдсэнийг хэлнэ (дээрх `scopeKey` ⚠️) */}
         {scopeNotice && (
           <div className={s.progress} role="status">
             {tr('Эрх өөрчлөгдсөн тул яриа шинээр эхэллээ.')}
           </div>
         )}
-        {/* ⚠️ Тайлбар бичиг ЗОРИУДААР байхгүй — зөвхөн дарж болох жишээ асуултууд.
-            Хэрэглэгч уншихаас илүү дарж эхэлдэг. */}
         {!log.length && (
           <div className={s.chips}>
-            {/* ⚠️ 2026-10-26 (аудит): санхүүгийн жишээ («…гэрээний дүн») ЗӨВХӨН санхүүгийн эрхтэй (`ds:cashflow2` = `pkgFin`) хүнд —
-                эрхгүй хүн дарахад «эрх алга» мухардалд хүрдэг байв */}
             {STARTERS().filter((_q, i) => i !== FIN_STARTER || scope === 'all' || scope.includes('pkgFin')).map((q) => (
               <button key={q} type="button" className={s.chip} onClick={() => void send(q)} disabled={offline || busy}>
                 {q}
@@ -444,7 +329,6 @@ export function AgentChat({
 
         {log.map((m, i) => (
           m.role === 'plan'
-            /* ⚠️ Төлөвлөгөө бөмбөлөг БИШ — хүрээгүй карт (хариултаас ялгарна) */
             ? <AgentPlan key={i} raw={m.text} complete={m.done} />
             : (
               <div key={i} className={`${s.msg} ${m.role === 'user' ? s.user : s.bot}`}>
@@ -453,7 +337,6 @@ export function AgentChat({
             )
         ))}
 
-        {/* ⚠️ ЯВЦ ДУНДЫН төлөвлөгөө — алхам бүр гүйцэтгэгдэхэд тэмдэглэгдэнэ */}
         {busy && plan && <AgentPlan raw={plan.raw} running />}
 
         {busy && progress && (
@@ -473,8 +356,6 @@ export function AgentChat({
         )}
       </div>
 
-      {/* ⚠️ 2026-10-06: `alive === false` үед оролт/илгээх/жишээ асуулт ИДЭВХГҮЙ — дээрх
-          offline мэдэгдэл шалтгааныг хэлнэ (`client.ts`-ийн `AGENT_APIS` ⚠️). */}
       <div className={s.foot}>
         <textarea
           ref={inputRef}
@@ -493,8 +374,6 @@ export function AgentChat({
             }
           }}
         />
-        {/* ⚠️ 2026-10-06 (аудит): реле унтарсан (`alive === false`) үед илгээх товч идэвхгүй —
-            урьд нь асуулт илгээгдээд л алдаа буцдаг байв. Шалгаж байх (`null`) үед хаахгүй. */}
         <button
           type="button"
           className={s.send}
@@ -511,8 +390,6 @@ export function AgentChat({
 
 /**
  * Өргөтгөх / жижигрүүлэх дүрс — баруун талын самбарыг илэрхийлнэ.
- * ⚠️ Сумны чиглэл нь ҮЙЛДЛИЙГ заана: жижиг үед «зүүн тийш тат» (өргөтгөх),
- * өргөн үед «баруун тийш түлх» (жижигрүүлэх).
  */
 function Expand({ wide }: { wide: boolean }) {
   return (

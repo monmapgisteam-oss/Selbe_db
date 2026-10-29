@@ -1,10 +1,6 @@
 /**
  * ХУВААРИЙН ЭРХИЙН ЛОГИК ШАЛГУУР — offline (ArcGIS-гүй орчинд ажиллана).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/huvaariAcl.check.mjs
- *
- * ⚠️ `qaqcAcl`-ААС ЯЛГААТАЙ нь ХОЁР ҮҮРЭГ (зохиогч · батлагч). Тиймээс энд
- *    «хүрээ» гэдэг нь ҮҮРЭГ БҮРЭЭР тусдаа асуулт: нэг хүн Багц 2-т зохиогч,
- *    Багц 5-д батлагч байж болно.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/huvaariAcl.check.mjs
  *
  * Хамгаалж буй дүрмүүд:
  *   1. Хуваарилагдаагүй → fail-closed (`[]`).
@@ -155,12 +151,6 @@ console.log('✅ хасалт · үүрэг солих');
 /* ══════════════════════════════════════════════════════════════
  * 8. ҮҮРЭГ БҮРД ӨӨР БАГЦ — 2026-09-09-ны схемийн ГОЛ ЗОРИЛГО
  * ══════════════════════════════════════════════════════════════ */
-/**
- * ⚠️ Хуучин `{roles:['author','approver'], bagts:['Багц 1','Багц 5']}` нь
- *    ДӨРВӨН хослол үүсгэдэг байсан: тэр хүн Багц 1-д ч БАТЛАГЧ болно.
- *    `decidePlan` зохиогч=батлагчийг татгалздаг тул Багц 1 ГАЦНА. Одоо
- *    grant тус бүр өөрийн багцтай тул хүрээ нь ЯГ таарна.
- */
 _syncRemoteHuvaari([]);
 {
   const r = setHuvaariGrants('holimog', [
@@ -174,7 +164,6 @@ _syncRemoteHuvaari([]);
   assert.deepEqual(huvaariScope('holimog', 'approver'), ['Багц 5'],
     'батлагчийн хүрээ');
 
-  /* ⚠️ ГОЛ ЦЭГ: Багц 1-д БАТЛАГЧ БИШ, Багц 5-д ЗОХИОГЧ БИШ */
   assert.equal(huvaariScope('holimog', 'approver').includes('Багц 1'), false,
     'ҮРЖВЭР эргэж ирэв — Багц 1-д батлагч болжээ (тэр багц ГАЦНА)');
   assert.equal(huvaariScope('holimog', 'author').includes('Багц 5'), false,
@@ -189,9 +178,6 @@ _syncRemoteHuvaari([]);
     'үүрэг заагаагүй хүрээ нь нэгдэл байх ёстой');
 }
 
-/* ⚠️ ХУУЧИН ХЭЛБЭР УНШИГДСААР БАЙНА — ArcGIS дээр хуучин мөр үлдсэн байж
-   болно. Хөрвүүлэлт нь эрхийг НЭМЭХГҮЙ, ХАСАХГҮЙ: хуучин утга нь «хоёулаа
-   хоёр багцад» гэсэн санаатай байсан тул ЯГ ТЭР УТГААР нь үлдэнэ. */
 _syncRemoteHuvaari([{ user: 'huuchin', roles: ['author', 'approver'], bagts: ['Багц 2'] }]);
 assert.deepEqual(huvaariScope('huuchin', 'author'), ['Багц 2'], 'хуучин мөр — зохиогч');
 assert.deepEqual(huvaariScope('huuchin', 'approver'), ['Багц 2'], 'хуучин мөр — батлагч');
@@ -219,11 +205,7 @@ assert.equal(setHuvaariGrants('hooson', [{ role: 'author', bagts: [] }], false).
 console.log('✅ үүрэг бүрд ӨӨР багц — үржвэр арилсан, хоёр хэлбэр уншигдана');
 
 /* ══════════ ХАСААД ШУУД ДАХИН ХУВААРИЛАХ — ЭРХ БУЦААГДАХГҮЙ (2026-09-21) ══════════
- * ⚠️ `scopedAcl.removeAssign` нь `syncCaps(u, [])`-ыг БОЛЗОЛГҮЙ дууддаг байв:
- *    дараалалд хүлээх хооронд (өөр админ · `initRemote` · энэ хөтчийн дараагийн
- *    `set`) дахин хуваарилагдсан хүний `plan`/`planApprove` эрхийг ХАСАЖ,
- *    хуваарилагдсан атлаа хуудсаа нээж чадахгүй орхидог байв.
- *    `guitsetgelAcl.removeAssign`-ийн `revoke && !stageOfUser(u)` дүрэмтэй тэнцэв. */
+ */
 {
   const C = await import('@/lib/caps.ts');
   C._syncRemoteCaps([{ user: 'readd', caps: ['plan', 'addRow'] }]);

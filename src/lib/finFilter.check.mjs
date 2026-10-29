@@ -20,9 +20,7 @@ import {
 } from './finFilter.ts';
 import { FIN_FIELD_LABELS } from './financeFieldLabels.ts';
 
-/* ── Туслах: `Finance.tsx`-ийн `fmtCell`-ийн ЭНГИЙН хувилбар ──
-   ⚠️ Бүтэн хуулбар БИШ — шүүлт нь форматлагчийг ГАДНААС авдаг гэдгийг
-      баталгаажуулах зорилготой. Мянгатын таслал л чухал. */
+/* ── Туслах: `Finance.tsx`-ийн `fmtCell`-ийн ЭНГИЙН хувилбар ── */
 const NUMERIC = new Set(['esriFieldTypeDouble', 'esriFieldTypeInteger', 'esriFieldTypeOID']);
 const isNumeric = (t) => NUMERIC.has(t);
 const cellText = (v, t) => {
@@ -35,11 +33,6 @@ const cellText = (v, t) => {
   return String(v).trim();
 };
 
-/*
- * ⚠️ 2026-09-09: `Cashflow_0904` хаягдаж, `Cashflow_0909` (`Cashflow_final`)
- * орлосон — талбарын нэр БҮГД өөрчлөгдсөн. Нүүрнүүд нь: багц (`bagts`),
- * төрөл (`ajil_tuvshin2`), захирамжийн он (`zahiramj_ognoo`-оос).
- */
 const CF_COLS = [
   { name: 'ajil_tuvshin2', alias: 'Төрөл', type: 'esriFieldTypeString' },
   { name: 'bagts', alias: 'Багц', type: 'esriFieldTypeString' },
@@ -103,7 +96,6 @@ assert.equal(match(rows[2], f({ col: { ho_dun_geree: '0' } })), false, 'null н�
 assert.equal(match(rows[3], f({ col: { ho_dun_geree: '=0' } })), true, 'бодит 0 нь шүүгдэнэ');
 assert.equal(match(rows[0], f({ col: { ho_dun_geree: '>1e9' } })), true);
 assert.equal(match(rows[1], f({ col: { ho_dun_geree: '>1e9' } })), false);
-/* ⚠️ 2026-09-25: ХАРЬЦУУЛАЛТЫН зам ч хоосон нүдийг 0 гэж үзэхгүй (`Number(null)` = 0) */
 assert.equal(match(rows[2], f({ col: { ho_dun_geree: '=0' } })), false, 'null нь =0-д таарахгүй');
 assert.equal(match(rows[2], f({ col: { ho_dun_geree: '<=0' } })), false, 'null нь <=0-д таарахгүй');
 assert.equal(match(rows[2], f({ col: { ho_dun_geree: '<1,000,000,000' } })), false, 'null нь <1e9-д таарахгүй');
@@ -128,17 +120,6 @@ assert.equal(isDirty(f({ facet: { year: '2026' } })), true);
 assert.equal(isDirty(f({ col: { ho_dun_geree: '>1' } })), true);
 
 /* ── 9. HO-гийн он нь ЖИНХЭНЭ `on_` талбараас ── */
-/*
- * ⚠️ 2026-09-09: `IPC_LOG` (`ipc_0813/172`, ТЕСТ өгөгдөл) хаягдаж `HO_IPC`
- * орлов. Хуучинд он гэсэн талбар БАЙХГҮЙ байсан тул `IPC09` (хамрах хугацаа)
- * -ийн жилээр гаргадаг байв; шинэд `on_` (Integer 2025/2026) БИЙ.
- *
- * ⚠️ ЭНЭ ШАЛГУУРЫН ГОЛ ЗОРИЛГО: `on_` нь `yearOf()`-ЫГ ХЭРЭГЛЭХГҮЙ
- * гэдгийг бэхжүүлэх. `yearOf` нь epoch мс ба `YYYY-MM-DD` хэлбэрт
- * зориулагдсан; дан `2025` дээр САНАМСАРГҮЙ ажиллах ч тэр нь эмзэг
- * тохиолдол. Хэн нэг нь «нэгдмэл болгоё» гэж `yearOf` руу шилжүүлбэл
- * доорх `2025` тоон утгын шалгуур сануулга өгнө.
- */
 const HO = FIN_FACETS.HO_IPC;
 const hoRows = [
   { bagts: 'Багц-4.1', tulult_turul: 'Гүйцэтгэл', on_: 2026 },
@@ -150,20 +131,11 @@ assert.equal(HO[1].valueOf(hoRows[1]), '', 'онгүй мөр хоосон ху�
 assert.equal(HO[1].valueOf(hoRows[2]), '2025');
 assert.deepEqual(facetValues(hoRows, HO[1]), ['2025', '2026', ''],
   'хоосон нь ТӨГСГӨЛД тусдаа хувинд');
-/* ⚠️ Төлбөрийн төрөл 2/45 мөрд ХООСОН — чимээгүй хаягдахгүй, хоосон хувинд */
 assert.equal(HO[2].valueOf(hoRows[1]), '', 'төрөлгүй мөр хоосон хувинд');
 assert.deepEqual(facetValues(hoRows, HO[2]), ['Гүйцэтгэл', 'Урьдчилгаа төлбөр', '']);
 assert.equal(HO[0].valueOf(hoRows[0]), 'Багц-4.1', 'багц нь `bagts` талбараас');
 
 /* ── 10. Талбарын код нь толинд БАЙГАА эсэх ── */
-/* ⚠️ Оролтыг ОГНООНЫ хэлбэрээр өгнө: нүүрүүдийн зарим нь утгыг огнооноос
-   ГАРГАДАГ тул 'x' гэсэн утга хоосон буцааж, шалгуур худал унана.
-
-   ⚠️ 2026-09-09: `HO_IPC` нүүрнүүд ЭНД ОРООГҮЙ. `financeFieldLabels.ts` нь
-   `IPC0xx` кодын толь хэвээр байгаа (тэр файлыг шинэчлэх нь энэ алхмын
-   хамрах хүрээнээс ГАДУУР) тул HO-гийн `bagts`/`on_`/`tulult_turul` гурав
-   тэнд БАЙХГҮЙ. Толь HO-гоор нөхөгдмөгц доорх шүүлтийг ХАСАЖ бүх нүүрийг
-   эргүүлж хамруулна — эс бөгөөс шүүлтийн жагсаалт чимээгүй хоосорно. */
 const probe = Object.fromEntries(Object.keys(FIN_FIELD_LABELS).map((k) => [k, '2026-01-01']));
 for (const [key, facets] of Object.entries(FIN_FACETS)) {
   if (key === 'HO_IPC') continue;
@@ -187,7 +159,6 @@ assert.deepEqual(distinct([{ a: 'x' }, { a: 'x ' }, { a: 'y' }], (r) => String(r
   assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '9.0%' } }), [], named, isNumeric, scale), true, 'харагдах текстээр');
   assert.ok(seen.includes('zahiramj_unet_tsaas_huvi'), 'cellText баганын нэр авна');
   assert.equal(rowMatches(r, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '>5' } }), [], named, isNumeric), false, 'хэмжээсгүй бол түүхий 0.09 (хуучин зан)');
-  /* ⚠️ 2026-10-21: 0.07 × 100 = 7.000000000000001 — тайрсны дараа `=7` таарна */
   const r7 = { objectid: 10, zahiramj_unet_tsaas_huvi: 0.07 };
   assert.equal(rowMatches(r7, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '=7' } }), [], named, isNumeric, scale), true, '0.07 → =7');
   assert.equal(rowMatches(r7, SHARE_COLS, f({ col: { zahiramj_unet_tsaas_huvi: '<=7' } }), [], named, isNumeric, scale), true);

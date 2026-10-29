@@ -1,17 +1,6 @@
 /**
  * ТАЛБАРЫН ТОГТМОЛ (`F`) — ENTERPRISE-ИЙН БОДИТ НЭР (жижиг үсэг) · ШУУД ХАЯГ — сүлжээгүй (2026-10-26, аудит G9).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/services/entFields.check.mjs
- *
- * ⚠️ ЯАГААД: батлалт/ноорог/эрхийн хүснэгтийн талбарын нэрийг модуль бүр өөрийн `F` (эсвэл `createTable`-ийн
- *    `fields`)-д хатуу бичдэг. Enterprise-д талбарын нэр ЖИЖИГ ҮСЭГТЭЙ — том үсгээр явуулбал 500 «Field name does not
- *    exist» (CLAUDE.md «Enterprise»), зөвхөн амьд бичилт дээр, ихэвчлэн хэрэглэгчийн өмнө илэрдэг.
- * ⚠️ 2026-10-26 (main-тай нэгтгэл): урьд нь `entMap.data.ts`-ийн `ENT_MAP` · `ENT_FIELDS` толитой тулгадаг байв. Толь
- *    (хөрвүүлэх хүснэгт) main-д ХАСАГДСАН — код Enterprise-ийн БОДИТ хаяг/нэрээр шууд бичигдэнэ. Тиймээс сүлжээгүй
- *    шалгах үлдсэн дүрэм: (1) хүснэгтийн хаяг Enterprise үйлчилгээний суурьтай ШУУД (`${GUITS}/N` г.м.), (2) кодын бүх
- *    талбар жижиг үсэг, (3) `oid` = `objectid`.
- * ⚠️ 2026-10-26: талбар Enterprise-д БАЙГАА эсэхийг `entFields.live.check` (амьд мета, токентой үед) тулгана —
- *    `drift.check` эдгээр хүснэгтийг (192/193/189/191/230) ХАМРАХГҮЙ (урьдын тайлбар худал байв).
- * ⚠️ `ficMakt` (`Selbe_Chanar_FIC_MAKT`) тогтмол Enterprise хаягаар шууд тандана — энд орохгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/services/entFields.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

@@ -1,15 +1,5 @@
 /**
  * Word-ийн ЖИНХЭНЭ график (DrawingML chart) — `word/charts/chartN.xml`.
- *
- * ⚠️ 2026-10-19 (хэрэглэгч: «тэр графикийг зургаар биш, аятайхан графикаар оруул»): дэлгэцийн
- *    Ring · Donut · Series · Trend нь өмнө нь PNG зураг болж ордог байв. Одоо компонент бүр өөрийн
- *    өгөгдлийг `data-report-chart` (энэ төрөл, JSON) атрибутаар өгч, тайлан Word-ийн график угсарна —
- *    Word дотор томруулахад бүдгэрэхгүй, өнгө, шошго, тайлбар нь засагдана.
- * ⚠️ Хүснэгтийн ӨГӨГДӨЛ (embedded xlsx) ХАВСАРГАХГҮЙ — утга нь `strCache`/`numCache`-д. Word график
- *    зурна; «Edit Data» дарвал өгөгдлийн файл алга гэж хэлнэ (санаатай: xlsx үүсгэвэл файл хоёр дахин томорно).
- * ⚠️ `null` утга ЦООРХОЙ — `numCache`-д тэр цэгийг бичихгүй (`dispBlanksAs gap`), 0 гэж зурахгүй.
- * ⚠️ OOXML-ийн элементийн ДАРААЛАЛ хатуу (CT_PieSer · CT_BarSer · CT_LineSer · CT_ValAx) — буруу бол
- *    Word файлыг «уншигдахгүй агуулгатай» гэж нээхгүй. Доорх дараалал схемийнх.
  */
 import { esc } from './xlsx';
 
@@ -103,7 +93,6 @@ function axes(horizontal: boolean, fmt: string): string {
 /** Нэг графикийн бүтэн `chartSpace` XML */
 export function chartXml(s: DocChartSpec): string {
   const idx = s.series.map((_, i) => i);
-  /* ⚠️ Тэнхлэгийн тоо: «#,##0.##» нь бүхэл утганд «35.» гэж цэг үлдээдэг (Word) — бүхэл/бутархайгаар сонгоно */
   const fmt = s.series.every((x) => x.values.every((v) => v == null || Number.isInteger(v))) ? '#,##0' : '#,##0.0';
   let plot: string;
   if (s.type === 'doughnut') {

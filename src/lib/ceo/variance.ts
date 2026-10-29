@@ -2,18 +2,9 @@
  * CEO ҮЗҮҮЛЭЛТ «ОБЬЁМЫН ЗӨРҮҮ» — гэрээлсэн обьёмоос ХЭТЭРЧ бөглөгдсөн
  * гүйцэтгэлийн мөнгөн дүн, ₮.
  *
- * Эх сурвалж: `loadVariance()` (`execTriage.ts`) — 10 багцын бөглөх хуудасны
+ * Эх сурвалж: `loadVariance` (`execTriage.ts`) — 10 багцын бөглөх хуудасны
  * навч мөр бүрд «блокуудад бөглөсөн нийлбэр − төлөвлөгдсөн Обьём» × нэгж
  * өртөг. ЗӨВХӨН хэтэрсэн (нийлбэр > Обьём) мөр зөрчил; дутуу нь хэвийн явц.
- *
- * ⚠️ `loadVariance` нь модулийн түвшинд кэштэй ч `dataBus` тагт холбогдоогүй.
- *    Энэ ачаалагчийг `cached(…, ['BAGTS_SHEET'])`-ээр ороосон нь бөглөх хуудас
- *    руу бичсэн үед ЭНЭ давхарга шинэчлэгдэнэ гэсэн үг; доод давхаргын кэш
- *    хуудсыг бүтэн refresh хийтэл хэвээр — өглөөний тоймд хангалттай.
- *    ⚠️ 2026-10-12: доод давхарга (`loadVariance`) одоо мөн `live.cached` (5 мин + `BAGTS_SHEET`).
- *
- * ⚠️ ТӨЛӨВ БҮХЭЛДЭЭ `computeVariance`-д — сүлжээгүй, тестлэгдэнэ
- *    (`variance.check.mjs`). Ачаалагч нь зөвхөн татаад дамжуулна.
  */
 import { t as tr } from '@/lib/i18nCore';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
@@ -25,25 +16,15 @@ import { cell, kpiComplete, table, type Cell, type KpiResult, type Level } from 
 
 /**
  * Түвшин.
- * ⚠️ ДАРААЛАЛ ЧУХАЛ: бүх багц уншигдаагүй бол `works` ч 0, `totalMnt` ч 0 —
- *    эхлээд «good» гэж шалгавал унасан үйлчилгээ «зөрүүгүй» гэж НОГООН гарна.
- *    Тиймээс `unknown`-ийг хамгийн түрүүнд.
- * ⚠️ Босго `VAR_BAD_MNT` (100 сая ₮) нь `execTriage.ts`-ийнх — энд хуулбарлахгүй.
- *    Бага ч гэсэн зөрүү илэрсэн бол «warn»: хяналт хэрэгтэй, гэхдээ яаралтай биш.
  */
 export function varianceLevel(
   v: Pick<Variance, 'works' | 'totalMnt' | 'failedPkgs' | 'measurable'>,
   pkgCount: number,
 ): Level {
-  /* ⚠️ Блокгүй багц хэмжигдэхгүй тул `measurable` (байвал) нь `pkgCount`-аас
-     ЭРХЭМ — эс бөгөөс 10 хэмжигдэх багц бүгд унасан ч 18-д хүрэхгүй «good». */
   const n = v.measurable ?? pkgCount;
   /* Хэмжигдэх багц огт байхгүй (бүгд блокгүй) — «зөрүүгүй» гэж хэлж болохгүй. */
   if (n === 0 && v.measurable != null) return 'unknown';
   if (n > 0 && v.failedPkgs >= n) return 'unknown';
-  /* ⚠️ 2026-10-06: ХЭСЭГЧЛЭН унасан (жишээ нь 10-аас 9) атлаа уншигдсан багцад хэтрэлт алга бол
-     урьд нь «good» (ногоон) гардаг байв — уншигдаагүй багцад хэтрэлт байж болно. Одоо «warn»
-     (дүн дутуу — issue/failedSources-д ил); «зөрүүгүй» гэж зөвхөн БҮХ багц уншигдсан үед. */
   if (v.works === 0) return v.failedPkgs > 0 ? 'warn' : 'good';
   return v.totalMnt >= VAR_BAD_MNT ? 'bad' : 'warn';
 }
@@ -51,12 +32,9 @@ export function varianceLevel(
 /** Хэтэрсэн ажлуудын хүснэгтийн нэг мөр — багана `WORK_COLS`-той ЯГ таарна */
 function workRow(w: VarianceWork): Cell[] {
   return [
-    /* ⚠️ 2026-10-11 (аудит №7): «Багц» = бүлэг («Багц 1», `samePkg`-д таарна); хуудас («9 давхар») тусдаа багана */
     cell(w.pkg),
     cell(w.sheet),
-    /* ⚠️ `no` хоосон байж болно (`String(r.no ?? '')`) — тэр үед «—» */
     cell(w.no || null),
-    /* ⚠️ 2026-10-23 (UX аудит S15): хуудсын нэрний є/ї → ө/ү — ЗӨВХӨН харуулалт, түлхүүр хөндөгдөхгүй */
     cell(fixCyr(w.work)),
     cell(w.vol),
     cell(w.sum),
@@ -79,9 +57,7 @@ export function computeVariance(v: Variance, pkgCount: number = PKGS.length): Kp
   /* Хэтэрсэн ажилтай ЯЛГААТАЙ багцын тоо (давхрын хувилбар бүр тусдаа багц) */
   const pkgN = new Set(v.all.map((w) => w.pkg)).size;
 
-  /* ── facts: ЗӨВХӨН тоо бүхий хэсгүүд ──
-     ⚠️ Бүгд унасан үед «0 ажил хэтэрсэн» гэж бичвэл «зөрүүгүй» гэж худал
-        уншигдана — тэр үед зөвхөн уншигдаагүй тоог хэлнэ. */
+  /* ── facts: ЗӨВХӨН тоо бүхий хэсгүүд ── */
   const facts: string[] = [];
   if (!allFailed) {
     facts.push(tr('{0} ажил хэтэрсэн', num(v.works)));
@@ -89,18 +65,14 @@ export function computeVariance(v: Variance, pkgCount: number = PKGS.length): Kp
   }
   if (v.failedPkgs > 0) facts.push(tr('{0} багц уншигдаагүй', num(v.failedPkgs)));
 
-  /* ── tables[0]: БҮХ хэтэрсэн ажил, зөрүүгийн ₮-өөр буурах эрэмбээр ──
-     ⚠️ `all` аль хэдийн эрэмбэлэгдсэн ч ЭНД дахин эрэмбэлнэ — гэрээ нь энэ
-        файлынх, доод давхаргын дараалалд найдахгүй. */
+  /* ── tables[0]: БҮХ хэтэрсэн ажил, зөрүүгийн ₮-өөр буурах эрэмбээр ── */
   const works = [...v.all].sort((a, b) => b.mnt - a.mnt);
   const workCols = [
     tr('Багц'), tr('Бөглөх хуудас'), tr('№'), tr('Ажил'), tr('Обьём'), tr('Бөглөсөн'),
     tr('Хэтрэлт'), tr('Нэгж өртөг'), tr('Зөрүү ₮'),
   ];
 
-  /* ── tables[1]: багцаар — ажлын тоо ба зөрүүгийн нийлбэр ──
-     ⚠️ Нийлбэр нь зөвхөн ХЭТЭРСЭН мөрүүдийнх (дутуу мөр орохгүй) — `loadVariance`-ийн
-        «зөрүү = зөвхөн хэтэрсэн» дүрэмтэй нэг утгатай. */
+  /* ── tables[1]: багцаар — ажлын тоо ба зөрүүгийн нийлбэр ── */
   const byPkg = new Map<string, { n: number; mnt: number }>();
   for (const w of works) {
     const g = byPkg.get(w.pkg) ?? { n: 0, mnt: 0 };
@@ -119,15 +91,10 @@ export function computeVariance(v: Variance, pkgCount: number = PKGS.length): Kp
       text: tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', num(v.failedPkgs)),
       tone: 'warn',
     });
-    /* ⚠️ `loadVariance` унасан багцын НЭРИЙГ өгдөггүй, зөвхөн тоог — тиймээс
-       нэг нэгдсэн бичлэг. Нэрээр нь хэрэгтэй бол `execTriage.ts`-д нэмнэ. */
     failedSources.push(tr('{0} багцын бөглөх хуудас', num(v.failedPkgs)));
   }
 
   return {
-    /* ⚠️ 2026-10-21 (KPI аудит): БҮХ багц уншигдаж хэтрэлт АЛГА бол «0 ₮» гэж ИЛ. `mnt(0)` нь «—» (format.ts-ийн
-       санаатай зан — хөндөхгүй) боловч энд «—» нь «бүгд унасан» (`unknown`)-тай ЯГ ижил харагдаж, хэмжсэн тэг ба
-       мэдээлэлгүйг нэгтгэдэг байв (null ≠ 0). Хэсэгчлэн унасан (`failedPkgs > 0`) үед хэвээр «—» — дүн дутуу. */
     value: allFailed ? '—' : v.works === 0 && v.failedPkgs === 0 ? `${num(0)} ₮` : mnt(v.totalMnt),
     unit: tr('зөрүү'),
     facts,
@@ -145,18 +112,10 @@ export function computeVariance(v: Variance, pkgCount: number = PKGS.length): Kp
 
 /**
  * Ачаалагч — самбар үүнийг л дуудна.
- * ⚠️ `loadVariance` нь `allSettled` тул хэзээ ч шиддэггүй; «бүгд унасан» нь
- *    exception биш `level: 'unknown'` хэлбэрээр ирнэ (картад «Өгөгдөл алга»).
  */
 export const loadVarianceKpi = cached(
   async (): Promise<KpiResult> => computeVariance(await loadVariance(), PKGS.length),
-  /* ⚠️ 2026-10-12 (дарааллын аудит): 60 с → `SESSION_TTL_MS` (5 мин) — санхүүгийн биш
-     (`BAGTS_SHEET`); 60 с нь зөвхөн `HO_IPC`/`CASHFLOW` ачаалагчдад (`docs/system/03 §3.5`).
-     `loadVariance` өөрөө одоо мөн 5 мин `cached` (`execTriage`-ийн ⚠️) тул хоёр давхарга нэг жигд. */
   SESSION_TTL_MS,
   ['BAGTS_SHEET'],
-  /* ⚠️ 2026-10-21 (KPI аудит): ДУТУУ үр дүнг (хэсэг багц уншигдаагүй — `failedSources`) 5 мин кэшлэхгүй — бусад CEO
-     ачаалагчдын (`loadQaqcKpi` · `loadIotKpi` …) 2026-10-01-ний `kpiComplete` дүрэм энд дутуу байв: нэг багцын түр
-     уналт картыг 5 мин турш «дүн дутуу» хэвээр барьж, дахин оролдох боломжгүй байлаа. */
   kpiComplete,
 );

@@ -1,11 +1,6 @@
 /**
  * «ГҮЙЦЭТГЭЛ БӨГЛӨХ» → EXCEL — цэвэр хэсгийн шалгуур (мөр/багана → workbook загвар), хуурамч өгөгдлөөр.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/sheet.xlsx.check.mjs
- *
- * ⚠️ 2026-10-12: толгойн бүтэц (4 мөр · 14 + 4n + extra багана · нэгдсэн нүд) · бүсийн нэгдсэн нүд ·
- *    бүлгийн тод/догол · хувь (0–1, `0.0%`) ба обьём (тоо + нэгжийн формат) · null → хоосон, 0 → 0 ·
- *    ноорог/буцаагдсан/зөвшөөрсөн өнгө · горим (обьём ↔ хувь) · синтетик ба блокгүй толгой ·
- *    «Мэдээлэл» хуудас · файлын нэр · FillNew-ийн товч (эх кодын гэрээ) · buildXlsx-ээр угсрагдана.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/sheet/sheet.xlsx.check.mjs
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -122,7 +117,7 @@ console.log('✅ синтетик (2 мөр) · блокгүй (1 мөр · +ext
   assert.equal(val(a[1]), 'Бетон цутгах ажил');
   assert.equal(sty(a[1]).indent, 1, 'ажлын мөр гүнээр догол');
   assert.ok(!sty(a[1]).bold);
-  /* Жин — 0–1 бутархай; ⚠️ 2026-10-19: орны тоо дэлгэцийн `util.wt`-тэй ижил (≥10% → 1, ≥1% → 2, бусад → 4) —
+  /* Жин — 0–1 бутархай; 2026-10-19: орны тоо дэлгэцийн `util.wt`-тэй ижил (≥10% → 1, ≥1% → 2, бусад → 4) —
      жижиг жин «0.00%» болж «жингүй» мэт харагдахгүй */
   const wantFmt = (v) => { const p = Math.abs(v * 100); return p >= 10 ? '0.0%' : p >= 1 || p === 0 ? '0.00%' : '0.0000%'; };
   assert.ok(val(a[2]) > 0 && val(a[2]) <= 1 && sty(a[2]).numFmt === wantFmt(val(a[2])), 'Хувийн жин 0–1 + дэлгэцийн орны тоо');
@@ -131,7 +126,6 @@ console.log('✅ синтетик (2 мөр) · блокгүй (1 мөр · +ext
   assert.equal(val(a[5]), 1300);
   assert.equal(sty(a[5]).numFmt, '#,##0 "м³"', 'обьём бүхэл → #,##0 + нэгж');
   assert.equal(val(a[6]), 1200, 'Инж. төлөвлөсөн обьём хадгалсан утга');
-  /* ⚠️ Мөнгөн дүн — дэлгэц `qty(r.money)` (хадгалсан утга), бодогдсон `c.H` БИШ — FillRows-тэй ижил */
   assert.equal(val(a[8]), 2); assert.equal(val(a[9]), 2600, 'Мөнгөн дүн хадгалсан утгаараа');
   assert.equal(sty(a[9]).numFmt, '#,##0');
   /* I/J/K — 0.0% */
@@ -239,7 +233,6 @@ console.log('✅ формат · файлын нэр');
   }
   assert.ok(FN.includes("tr('Excel татах')"), 'товчны шошго');
   assert.ok(/disabled=\{!sc \|\| rows\.length === 0 \|\| calc\.length === 0 \|\| busy\}/.test(FN), 'ачаалаагүй/хоосон үед товч идэвхгүй биш');
-  /* ⚠️ 2026-10-12 (хэрэглэгчийн шийдвэр): товч ЗӨВХӨН super админд (`unrestricted`) — бусдад огт зурагдахгүй */
   assert.ok(/\{unrestricted && \(\s*<button[\s\S]{0,400}tr\('Excel татах'\)/.test(FN), 'Excel товч `unrestricted`-ээр хаагдаагүй — super-ээс бусдад харагдана');
 }
 console.log('✅ FillNew — Excel товч · одоогийн харагдац дамжина · идэвхгүй нөхцөл');

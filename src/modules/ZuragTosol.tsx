@@ -4,14 +4,6 @@
  * ТЭЗҮ · АЖЛЫН ЗУРАГ ТӨСӨЛ — Excel-ийн шатлалаар (`CASHFLOW_NEW`, `dd_kod`) хоёр үе шатын навч мөрийн
  * төлөвлөгөөт огноо (Гэрээ/Хавсралт 5 — `geree_ehleh`/`geree_duusah`) ба явцыг (`guitsetgel_huvi`, 0–100)
  * шинэчлэх хэсэг (2026-10-26, cf-spec «Бусад»).
- *
- * ⚠️ 2026-10-26: ЭЦГИЙН УТГА ЗАСАГДАХГҮЙ — `projectPlan.computePlan`-аар (Excel-ийн томьёо) бодогдоно; засвар
- *    оруулах зуур урьдчилсан мод (`zuragTosol.effectiveRows`) дээр шууд дахин бодогдож харагдана.
- * ⚠️ 2026-10-26: БҮТЭН модыг уншина (`dd_kod IS NOT NULL` — бүх үе шат). Зураг төслийн бүлгийн жин (F) нь
- *    Барилга угсралтын хосоос (`twin`) хуулагддаг тул зөвхөн хоёр үе шатыг уншвал эцгийн хувь буруу гарна.
- * ⚠️ 2026-10-26: «Хадгалах» нь ЗӨВХӨН өөрчлөгдсөн мөр/талбарыг НЭГ `applyAll` (атом) хүсэлтээр бичнэ. Бичихийн
- *    өмнө тэдгээр мөрийг серверээс ДАХИН уншиж, өөр хүн зэрэг зассан бол дарж бичихгүй (`conflicts`).
- * ⚠️ 2026-10-26: ЗАСАХ ЭРХ — тусдаа `zuragEdit` cap (төвд бүртгэнэ). Эрхгүй хүн утгыг л харна (оролтгүй).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -40,7 +32,7 @@ import s from './zuragTosol.module.css';
 type Row = Record<string, unknown>;
 
 /**
- * ЗАСАХ ЭРХ. ⚠️ 2026-10-26: `CapKey`-д `zuragEdit` төвд (caps.ts) нэмэгдэх хүртэл төрлийн хувиргалт —
+ * ЗАСАХ ЭРХ. 2026-10-26: `CapKey`-д `zuragEdit` төвд (caps.ts) нэмэгдэх хүртэл төрлийн хувиргалт —
  *    бүртгэгдээгүй түлхүүрийг `hasCap`/`requireCap` ОЛГООГҮЙ гэж үзнэ (fail-closed), тиймээс аюулгүй.
  */
 const ZURAG_CAP: CapKey = 'zuragEdit';
@@ -56,7 +48,6 @@ const OUT = [
 /** Excel-ийн мөр (мөнгөний + бүтцийн); сарын мөр хасагдана */
 const WHERE = `${F.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`;
 
-/* ⚠️ `at` — «өнөөдөр» ачаалах агшинд (render дотор `Date.now()` цэвэр бус) */
 const loadRows = cached(async () => ({
   rows: await queryFeatures(CASHFLOW_NEW.url, { where: WHERE, outFields: OUT, orderBy: `${CASHFLOW_NEW.oid} ASC` }),
   at: Date.now(),
@@ -127,10 +118,6 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
   /** Хураасан мөрүүд (`dd_kod`) */
   const [shut, setShut] = useState<ReadonlySet<string>>(() => new Set());
 
-  /**
-   * ⚠️ ХАДГАЛСНЫ АГШИН ДАХЬ `rows` — шинэ мөрүүд ирэх хүртэл `pend`-ийг барина (`finEdit.awaitingReload`,
-   *    `CashflowPlan`-ын загвар): тэр дороо цэвэрлэвэл нүд хуучин утга руу үсэрнэ.
-   */
   const [pubFrom, setPubFrom] = useState<Row[] | null>(null);
   const reloading = awaitingReload(pubFrom, rows);
   if (pubFrom != null && !reloading) {
@@ -245,8 +232,6 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
       return;
     }
     if (!e.updates.length && !e.adds.length) { setPend(EMPTY_PENDING); return; }
-    /* ⚠️ Дэд шат нэмэхэд эцэг мөр навч биш болж, түүний хадгалсан явц тооцоонд ОРОХОО БОЛИНО — хэлж асууна */
-    /* ⚠️ 2026-10-26: Жин нь 0 болсон шинэ дэд шат (Excel-ийн ах дүүс 100% эзэлсэн — `zeroWeight`) эцэгт нөлөөлөхгүй — мөн хэлнэ */
     const zero = e.adds.filter((a) => zeroWeight(a as { heseg_ezleh_huvi: number | null })).length;
     if (e.adds.length && !(await askConfirm(
       [
@@ -257,7 +242,6 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
     ))) return;
     setBusy(true);
     try {
-      /* ⚠️ Зэрэг засвар — бичих мөрүүдийг ба шинэ кодуудыг ШИНЭЭР уншина */
       const oids = e.updates.map((u) => Number(u[NAMES.oid]));
       const codes = e.adds.map((a) => String(a.dd_kod));
       const parts = [
@@ -278,7 +262,6 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
       }
       const { n } = await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: e.updates, adds: e.adds }, { cap: ZURAG_CAP });
       invalidate('CASHFLOW_NEW');
-      /* ⚠️ `setPend(EMPTY)` БИШ — шинэ мөрүүд ирэх хүртэл бичсэн утга харагдана (`pubFrom`) */
       setPubFrom(rows);
       setMsg(tr('{0} мөр хадгалагдав', n));
     } catch (x) {
@@ -302,7 +285,6 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
     const v = textOf(pend, o, f);
     const pe = pend.edits[rowKey(o)];
     const changed = pe?.[f] != null;
-    /* ⚠️ 2026-10-26: Огноо засахад хосын ХООСОН талыг улаанаар — ганц огноо хадгалагдахгүй (`buildEdits` 'pair') */
     const r = n.row!;
     const lonely = f !== 'pct' && (pe?.start != null || pe?.end != null)
       && (saneDate(r.geree_ehleh) == null) !== (saneDate(r.geree_duusah) == null)
@@ -405,7 +387,6 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                 const ed = canEdit && leaf;
                 const open = !shut.has(n.code);
                 const sub = canEdit ? substageInfo(n) : null;
-                /* ⚠️ Хос огнооны аль нэг хоосон бол өвгийн огноог placeholder-т (нөгөө нь бөглөгдсөн ч) */
                 const [ia, ib] = ed && (saneDate(r.geree_ehleh) == null || saneDate(r.geree_duusah) == null) ? inherited(n) : [null, null];
                 return (
                   <tr

@@ -37,7 +37,6 @@ const body = (src, name) => {
   const rc = body(U, 'hdRunClear');
   assert.ok(rc.includes('store.read(key') && rc.includes('applyClear(') && rc.includes('expectAt:'),
     'цэвэрлэлт read-merge-write (applyClear, expectAt) биш');
-  /* ⚠️ 2026-10-22 (аудит №1): миний бусад нүдтэй хамт хэтэрвэл ЗӨВХӨН алсын мөрийг цэвэрлэнэ — цэвэрлэлт заавал бууна */
   assert.ok(/if \(blob && body\.length > REMOTE_MAX && mine\) \{\s*d = cleared\(remote\);\s*body = hdSerialize\(d, REMOTE_MAX\);/.test(rc),
     'хэт том үед зөвхөн алсын мөрийг цэвэрлэх нөөц зам алга');
   const cl = body(U, 'hdClear');
@@ -88,7 +87,6 @@ const body = (src, name) => {
 /* 6. navGuard */
 {
   assert.ok(H.includes("import { setNavDirty } from '@/lib/navGuard';"), 'Huvaari navGuard импортлохгүй');
-  /* ⚠️ 2026-10-06: батлагчийн тэмдэглэгээ (`hasOkMarks`) ч хамгаалагдана — `(…) || hasOkMarks` */
   assert.ok(/setNavDirty\('huvaari', \(?hdUnsynced && !previewing/.test(H), 'navGuard hdUnsynced-ээр биш');
   assert.ok(/return \(\) => setNavDirty\('huvaari', false\)/.test(H), 'unmount-д navGuard цэвэрлэхгүй');
   assert.ok(!/if \(!dirtyN \|\| previewing \|\| !canEdit\) return undefined;/.test(H), 'хуучин dirtyN beforeunload үлдсэн');
@@ -110,7 +108,6 @@ const body = (src, name) => {
     'цэвэрлэлтийн давталт түлхүүр бүрт биш (Map)');
   assert.ok(!/hdClearTries\.current = 0/.test(U) && !/hdClearTries\.current \+= 1/.test(U), 'хуваалцсан тоолуур үлдсэн');
   assert.ok(/hdSt\.st === 'err' && dirtyN > 0/.test(U), 'засваргүй err-д гарах анхааруулга гарсаар');
-  /* ⚠️ 2026-10-09: хамтрагчийн tombstone ч буцаалтын агшинд (`onRemote`) хүрнэ, мета «бусдын» хэвээр */
   const apT = body(U, 'hdApply');
   assert.ok(/for \(const \[k, t\] of d\.del\)[\s\S]{0,300}hdPrev\.current\.has\(k\)[\s\S]{0,200}remote\.add\(k\);\s*meta\.set\(k, \{ at: t, user: delBy \}\)/.test(apT),
     'хамтрагчийн буцаалт (tombstone) буцаалтын агшныг хүчингүй болгохгүй байна');
@@ -131,11 +128,9 @@ const body = (src, name) => {
   assert.ok(/\(\(hdSt\.st === 'big' \|\| hdSt\.st === 'local'\) && dirtyN > 0\)/.test(U), 'local төлөвт гарах анхааруулга алга');
   assert.ok(/void planSyncSubmitted\(key, \{ known: both, ctxKind: kind, \.\.\.\(ctxOk \? \{ ctx: hdCtxRef\.current \} : \{\}\) \}\)/.test(H),
     'refreshFlow илгээлтийн хуулбарыг (сэргээгдсэн ctx-тэй) тааруулахгүй');
-  /* ⚠️ 2026-10-26 (шүүлт): зөрчил → дахин уншина; хуучин табыг хэлнэ (шингээлт нь уншилтад); түр горимыг дахин шалгана */
   assert.ok(/if \(!r\.ok && r\.conflict\) \{ if \(live\(\)\) \{ hdLastSeenAt\.current = -1;/.test(fl), 'зөрчлийн дараа толгой хөдлөөгүй үед уншилтгүй бичсээр');
   assert.ok(/legacyPending\(at0\) && hdLegacyNoted\.current !== at0/.test(U), 'хуучин табын JSON бичилтийг хэрэглэгчид хэлэхгүй (эсвэл давтана)');
   assert.ok(/if \(store\.mode === 'rows-wait'\) \{[\s\S]{0,200}prepareStore\(key/.test(U), 'түр горимыг мөчлөгт дахин шалгахгүй');
-  /* ⚠️ 2026-10-26: хуучин 3 хүснэгтийн загварын үлдэгдэл/горим алга; алсын уншилт бүр одоогийн жаазтай (кодоор тааруулна) */
   assert.ok(!/rows-missing|rows-ro|legacyAck|store\.legacy\b|Huvaari_noorog|hn_noorog|huvaariRows/.test(U + H), 'хуучин 3 хүснэгтийн үлдэгдэл');
   assert.ok(!/\.read\(key, \{[^}]*bld:/.test(U)
     && (U.match(/\.read\(key, (\{ (full: true, )?ctx: hdCtxRef\.current \}|cur\(\) \? \{ ctx: hdCtxRef\.current \} : undefined)\)/g) ?? []).length === 4,

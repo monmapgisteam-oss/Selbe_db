@@ -37,7 +37,6 @@ const calc = new Map([
   [1, c({ inProject: 5, planPct: 100, actPct: 100, perf: 100, planPrevWk: 100, perfWk: 100, ctStart: Date.parse('2024-04-08T00:00:00Z'), ctEnd: Date.parse('2024-09-20T00:00:00Z') })],
   [2, c({ inSection: 100, inProject: 5, actPct: 100 })],
   [3, c({ inProject: 95, planPct: 50, actPct: 20, perf: 40, planPrevWk: 40, perfWk: 50 })],
-  /* ⚠️ огноо — НЭЭЛТТЭЙ үе шатанд (ТЭЗҮ анхдагчаар хураалттай, Excel-ийнх шиг) */
   [4, c({ inSection: 100, actPct: 20, exStart: '2025-08-16', actStart: '2025-09-26' })],
   [5, c({ inSection: 100, actPct: 20 })],
   [6, c({ inSection: 100, actPct: 20, auto: true, how: '01. Гүйцэтгэл — батлагдсан биет хувь (блокуудаар)' })],
@@ -109,7 +108,6 @@ console.log('✅ outside тайлбар · огноо');
   const inputs = eh.match(/<input[^>]*class="edIn"[^>]*>/g) ?? [];
   assert.equal(inputs.length, 1, 'зөвхөн засагдах нүд input');
   assert.match(inputs[0], /value="50"/, 'хувь 0–100-гаар');
-  /* ⚠️ 2026-10-19: `dirty` — царцсан нүдэнд тунгалаг бус ногоон (negtgel.module.css) */
   assert.match(eh, /class="[^"]*edCell cellDirty dirty"/, 'зассан нүд — НОГООН');
   assert.match(eh, /class="[^"]*num cellCalc"/, 'томьёогоор өөрчлөгдсөн — ЦЭНХЭР');
   assert.ok(eh.indexOf('id="pub"') > eh.indexOf('class="levels"') && eh.indexOf('id="pub"') < eh.indexOf('<table'), 'товч хэрэгслийн мөрөнд');

@@ -1,5 +1,3 @@
-/* ⚠️ 2026-10-23: Environment — сонгогч .pe-field (32px, 7px булан, --line-strong,
-   bg --bg, moss focus), товч .pe-ghost, анхааруулга --warn токен. */
 .zoneControl select {
   min-width: 0;
   width: 100%;
@@ -54,7 +52,6 @@
 .zoneDetails { display: flex; flex-direction: column; gap: 3px; padding: 0 10px 8px; font-size: 11px; color: var(--ink-3); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: var(--ink-3); }
 .legend span { display: flex; align-items: center; gap: 5px; }
-/* ⚠️ Зураг дээрх шугамын өнгө (#0891b2) — газрын зургийн утга, токен болгохгүй. */
 .legend i { display: inline-block; width: 18px; height: 0; border-top: 1.3px solid #0891b2; }
 .legend .trunk { border-top-style: solid; }
 .legend .branch { border-top-style: dashed; }

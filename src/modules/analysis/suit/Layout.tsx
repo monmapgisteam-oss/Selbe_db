@@ -18,14 +18,6 @@ const DEFAULTS = { '--left-w': '330px', '--right-w': '330px' } as const;
 const MAP_MIN = 240;
 /** Хоёр чирэх зураасны өргөн (CSS `.shell`-ийн `5px`) */
 const GUTTERS = 10;
-/**
- * ⚠️ 2026-09-25 (аудит 8): НЭГ БАГАНЫН горим (`suitability.module.css`-ийн
- * `@media (max-width: 1180px)` — `grid-template-columns: 1fr`, самбарууд босоо).
- * Тэнд `--left-w`/`--right-w` баганын өргөн БИШ тул `maxFor` (цонх − нөгөө самбар −
- * зураг) утаснаас 220px гаргаж inline бичдэг байв; ширээний өргөнд буцахад тэр
- * 220px нь хадгалсан өргөнийг дарж, самбар нарийн үлддэг. Энэ горимд шахахгүй.
- * ⚠️ CSS-ийн босготой ЯГ ИЖИЛ байх ёстой — тэнд өөрчилбөл энд ч.
- */
 const SINGLE_COL_MQ = '(max-width: 1180px)';
 const singleCol = (): boolean =>
   typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(SINGLE_COL_MQ).matches;
@@ -34,12 +26,6 @@ const widthOf = (host: HTMLElement, cssVar: string): number =>
   parseFloat(host.style.getPropertyValue(cssVar) || getComputedStyle(host).getPropertyValue(cssVar))
   || parseFloat(DEFAULTS[cssVar as keyof typeof DEFAULTS]);
 
-/**
- * ⚠️ 2026-09-25: Самбарын өргөний ДЭЭД хязгаар нь ДЭЛГЭЦЭЭС хамаарна.
- * `PANEL_MAX` (620) нь тогтмол тул нарийн цонхонд 620+620 чирж/сэргээхэд
- * газрын зураг (`1fr`) 0px болж MapView чимээгүй хоосордог байв. Нөгөө
- * самбарын одоогийн өргөн + зураасууд + `MAP_MIN`-ийг хасна.
- */
 const maxFor = (host: HTMLElement, cssVar: string, hasRight: boolean): number => {
   const other = cssVar === '--left-w' ? '--right-w' : '--left-w';
   const otherW = other === '--right-w' && !hasRight ? 0 : widthOf(host, other);
@@ -53,12 +39,10 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
   const hasRightRef = useRef(right != null);
   useSyncRef(hasRightRef, right != null);
 
-  /* ⚠️ 2026-09-25: Цонх нарийсахад хэт өргөн самбарыг шахна (хадгалахгүй —
-     localStorage-д хэрэглэгчийн сонголт хэвээр). */
   useEffect(() => {
     const fit = () => {
       const host = shell.current;
-      if (!host || singleCol()) return; // ⚠️ нэг баганад өргөн утгагүй — шахахгүй
+      if (!host || singleCol()) return;
       for (const k of Object.keys(DEFAULTS)) {
         if (k === '--right-w' && !hasRightRef.current) continue;
         const mx = maxFor(host, k, hasRightRef.current);
@@ -71,16 +55,6 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
 
   /**
    * Хадгалсан өргөнийг сэргээх.
-   *
-   * ⚠️ 2026-09-16: урьд нь хадгалсан утгыг ШУУД `setProperty`-д дамжуулдаг байв.
-   * Хоёр занга:
-   *   (1) `try/catch` нь зөвхөн эвдэрсэн JSON-ыг барьдаг — хүчинтэй JSON боловч
-   *       буруу утга (`{"--left-w":"abc"}`) чимээгүй нэвтэрч CSS-д `abc` бичигдэнэ.
-   *   (2) ХЯЗГААР шалгагддаггүй байсан: ширээн дээр 620+620 болгож чирээд ГАР
-   *       УТСААР нээхэд 1245px хатуу багана сэргэж, газрын зураг (`1fr`) 0px
-   *       болж ArcGIS `MapView` ЧИМЭЭГҮЙ хоосон зурагддаг байв.
-   * `SplitGrip.parseSides`-ийн батлагдсан загвар — хэлбэр ба муж хоёуланг нь
-   * шалгана, хязгаар нь чирэлттэй ИЖИЛ (`PANEL_MIN`…`PANEL_MAX`).
    */
   useEffect(() => {
     if (!shell.current) return;
@@ -91,15 +65,11 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
     for (const k of Object.keys(DEFAULTS)) {
       const v = src[k];
       if (typeof v !== 'string') continue;
-      /* `330px` хэлбэрийг ЗААВАЛ шаардана — `%`, `calc()`, хог мөрийг хаяна.
-         ⚠️ 2026-09-21: урьд нь `/^(d+(?:.d+)?)px$/` — `\d` биш `d` үсэг байсан
-         тул ямар ч хадгалсан өргөн таарахгүй, самбарын өргөн ХЭЗЭЭ Ч сэргэхгүй
-         байв. */
+      /* `330px` хэлбэрийг ЗААВАЛ шаардана — `%`, `calc`, хог мөрийг хаяна. */
       const m = /^(\d+(?:\.\d+)?)px$/.exec(v.trim());
       if (!m) continue;
       const n = Number(m[1]);
       if (!Number.isFinite(n) || n < PANEL_MIN || n > PANEL_MAX) continue;
-      // ⚠️ 2026-09-25: одоогийн цонхонд багтахаар шахна (`maxFor`); нэг баганад шахахгүй (`SINGLE_COL_MQ`)
       const mx = singleCol() ? n : maxFor(shell.current, k, hasRightRef.current);
       shell.current.style.setProperty(k, `${Math.round(Math.min(n, mx))}px`);
     }
@@ -115,10 +85,6 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
     try { localStorage.setItem(PANEL_KEY, JSON.stringify(o)); } catch { /* private mode */ }
   }, []);
 
-  /* ⚠️ 2026-09-30: урьд нь `start(cssVar, side)` КАРРИЛСАН үйлдвэр render дунд
-     дуудагдаж closure буцаадаг байв — React Compiler тэр closure доторх
-     `shell.current` уншилтыг render үеийн ref хандалт гэж анхааруулдаг.
-     Одоо `useCallback` + талыг аргументаар; JSX-д тал бүрийн тогтмол боодол. */
   const start = useCallback((cssVar: string, side: 'left' | 'right', e: ReactPointerEvent<HTMLDivElement>) => {
     const host = shell.current;
     if (!host) return;
@@ -136,8 +102,6 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
       const dx = (ev.clientX - startX) * (side === 'left' ? 1 : -1);
       host.style.setProperty(cssVar, `${Math.round(clamp(startW + dx, PANEL_MIN, mx))}px`);
     };
-    /* ⚠️ 2026-09-25: `lostpointercapture` — барилт алдагдвал pointerup ирэхгүй
-       тул чирэлтийн төлөв (`noPointer` — зураг хулгана авахгүй) гацдаг байв. */
     let done = false;
     const up = () => {
       if (done) return;
@@ -156,11 +120,6 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
     bar.addEventListener('lostpointercapture', up);
   }, [save]);
 
-  /**
-   * ⚠️ 2026-09-25: ГАРААР өргөн тохируулах — зураас нь зөвхөн хулганаар
-   * ажилладаг байв. ←/→ нь зураасыг тэр зүгт хөдөлгөнө (чирэлттэй ижил
-   * `side` тэмдэг), Shift — 64px алхам, Home/End — хязгаар.
-   */
   const keyMove = useCallback((cssVar: string, side: 'left' | 'right', e: ReactKeyboardEvent<HTMLDivElement>) => {
     const host = shell.current;
     if (!host) return;
@@ -205,8 +164,6 @@ export function Shell({ left, map, right }: { left: ReactNode; map: ReactNode; r
         onDoubleClick={resetL}
         onKeyDown={keyL}
       />
-      {/* ⚠️ Чирэх үед зураг заагчийг барихгүй — эс бөгөөс ArcGIS чирэлтийг таслана.
-          `position: relative` нь дэлгэрэнгүй картын байрлуулах эцэг. */}
       <div
         className={dragging ? s.noPointer : undefined}
         style={{ position: 'relative', minWidth: 0, minHeight: 0 }}
@@ -253,14 +210,10 @@ export function Card({
   const key = id ?? title;
   const [off, setOff] = useState(!!startOff);
 
-  // ⚠️ Зөвхөн эффект дотор: localStorage нь статик экспортын үед байхгүй.
-  //    Хадгалсан жагсаалт байхгүй бол `startOff` хэвээр үлдэнэ.
   useEffect(() => {
-    /* ⚠️ try/catch (2026-09-07): хувийн горимд `getItem` ШИДДЭГ бөгөөд
-       эффект дотор шидсэн алдаа энэ харагдацыг унагана. */
     try {
       if (localStorage.getItem(COLLAPSE_KEY) === null) return;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — статик экспортод localStorage байхгүй тул хадгалсан эвхэлтийг mount-ын ДАРАА л тавина
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOff(readSet().has(key));
     } catch { /* хувийн горим — анхдагч эвхэлт хэвээр */ }
   }, [key]);
@@ -279,14 +232,6 @@ export function Card({
         {title}
         {pill && <span className={s.pill}>{pill}</span>}
         {action}
-        {/* ⚠️ Caret нь ЗААВАЛ `button` — гарчиг дээрх `onClick` нь зөвхөн хулганад
-            үйлчилдэг тул өмнө нь Tab-аар фокус авдаггүй, Enter/Space-д хариу
-            өгдөггүй байв. Хураалт `localStorage`-д хадгалагддаг ба
-            `.collapsed > .body { display: none }` тул гараар ажилладаг хэрэглэгч
-            картаа дахин дэлгэх ЯМАР Ч аргагүй үлддэг байсан (WCAG 2.1.1).
-            `h2`-ыг өөрийг нь `role="button"` болгож БОЛОХГҮЙ: `action` дотор
-            жинхэнэ товч сууна (Suitability.tsx-ийн «Анхны утга»).
-            Хэв маяг: FillNew.tsx / Wbs.tsx-ийн caret товч. */}
         {collapsible && (
           <button
             type="button"

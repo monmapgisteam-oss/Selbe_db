@@ -10,16 +10,6 @@
  *   · plan   — ЕРӨНХИЙ ТӨЛӨВЛӨГӨӨНИЙ зам
  *   · relief — АЧААЛЛЫГ БУУРУУЛАХ шинэ замын санал (одоогоор зөвхөн харагдана)
  *   · test   — ТУРШИЛТЫН талбар: дурын line-ыг түр холбож шалгах
- *
- * ⚠️ ХАРЬЦУУЛАЛТЫН ГОЛ ЗАРЧИМ: бүгд ИЖИЛ эрэлтээр (ижил тооны машин),
- * ижил тээврийн холимогоор ажиллана — эс бөгөөс «шинэ зам ачааллыг бууруулж
- * байна уу» гэсэн асуултад шударгаар хариулж чадахгүй. Тиймээс эрэлтийн тоо
- * (`peakCars`) ба тээврийн холимог сүлжээнээс ХАМААРАХГҮЙ, гаднаас нэг утгаар
- * өгөгдөнө.
- *
- * ⚠️ Геометр сүлжээ бүрд ArcGIS line-аас ирнэ; гэрлэн дохио нь ЗӨВХӨН БОДИТ
- * `gerlen_dohio` service-ээс (`loadRealSignalsCached`) БҮГДЭД нь ижил наагдана.
- * Дүрмийн (synthesize) ба OSM дохио ХАСАГДСАН — зөвхөн service-ээр шийднэ.
  */
 
 import { LAYER_BY_ID, layerUrl, SELBE_ET } from '@/lib/services';
@@ -31,8 +21,6 @@ import {
 } from './traffic';
 import { loadPathsFrom, WM_UNITS_PER_M } from './roadNet';
 
-/* ⚠️ 2026-08-24: 'relief' («Ачаалал бууруулах зам») ХАСАГДАВ — эх өгөгдөл нь
-   `Selbe_shine_zam` байсан бөгөөд төслөөс бүрмөсөн гарсан. */
 export type NetKind = 'real' | 'plan';
 
 export const NET_KINDS: NetKind[] = ['real', 'plan'];
@@ -47,7 +35,6 @@ export type NetSource = {
   hue: string;
   /**
    * ArcGIS line давхаргын БҮТЭН URL (`…/FeatureServer/<n>`).
-   * ⚠️ Line ирэхэд ЗӨВХӨН ЭНД бөглөнө. `null` бол сүлжээ хараахан холбогдоогүй.
    */
   url: string | null;
   /**
@@ -57,40 +44,22 @@ export type NetSource = {
   layerId?: string;
   /**
    * Геометрийн огтлолцол дээр таслах уу (`nodeByIntersection`).
-   * ⚠️ Тасраагүй урт шугамтай эх сурвалжид ЗААВАЛ (жиш. `Monmap_zam` бодит зам):
-   * үгүй бол уулзварыг гатлах шугам сүлжээг бутаргаж, машин гацна. `et:5` мэтийн
-   * аль хэдийн тасарсан CAD-д ХЭРЭГГҮЙ (илүүц, удаан).
    */
   nodeIntersections?: boolean;
   /**
    * ЧИГЛЭЛТЭЙ сүлжээ юу — машин зөвхөн шугамын сум (дижитал дараалал) дагуу явна.
-   * ⚠️ Бодит замын line сумтай тул `real` = true. `et:5` CAD чиглэлгүй тул false.
    */
   directed?: boolean;
   /**
    * Энэ сүлжээн дээр МАШИН ЯВАХ уу. `false` бол зөвхөн газрын зурагт харагдана.
-   *
-   * ⚠️ Одоо бүх сүлжээнд машин явдаг. Зөвхөн харагддаг байсан «Шинэ зам»
-   * (`Selbe_shine_zam`) 2026-08-24-нд төслөөс бүрмөсөн гарсан.
    */
   cars?: boolean;
   /**
    * ДАВХАРДСАН шугамыг урсгалаас хасах уу (анхдагч — тийм).
-   *
-   * ⚠️ `false` бол бие бие дээрээ хэвтэх шугамууд БҮГД ажиллана. Энэ нь
-   * ЭРГЭЛТИЙН ЗУРВАС зурсан өгөгдөлд ЗААВАЛ хэрэгтэй: тэнд баруун/зүүн эргэх
-   * хөдөлгөөнийг тусад нь шугамаар зурдаг бөгөөд тэдгээр нь голч замын дээгүүр
-   * давхарлан хэвтдэг. Хасвал эргэлт бүр хаагдана — `Monmap_zam_update_SL`
-   * дээр 7.4 км (нийтийн 18%) зам ингэж хаагдаж, машин зүүн эргэж чадахгүй
-   * байв.
-   * ⚠️ Харин НЭГ гудамжийг санамсаргүй хоёр удаа зурсан өгөгдөлд (бодит зам)
-   * хасалт ХЭРЭГТЭЙ — тэнд хоёр жагсаа бие бие дээрээ зурагдана.
    */
   dedupe?: boolean;
   /**
    * Line ирээгүй үед товчны tooltip-д харуулах ЗААВАР.
-   * ⚠️ «Хараахан ирээгүй» гэдэг нь хэрэглэгчид ЮУ ХИЙХИЙГ хэлдэггүй — туршилтын
-   * сүлжээнд хаягийг хаанаас өгөхийг зааж өгнө.
    */
   note?: string;
   /**
@@ -100,11 +69,6 @@ export type NetSource = {
   display?: string[];
 };
 
-/**
- * ⚠️ URL-ууд хараахан ХООСОН (`null`) — хэрэглэгч line өгөөгүй. `plan` нь одоо
- * ажиллаж буй et:5-д түр холбогдсон тул өнөөдөр ч ажиллана. `real`/`relief`
- * line ирэхэд `url`-ыг нь бөглөхөд шууд идэвхжинэ.
- */
 export const NET_SOURCES: Record<NetKind, NetSource> = {
   real: {
     kind: 'real',
@@ -115,8 +79,8 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
     //    Гэрлэн дохио нь бодит gerlen_dohio service-ээс; геометр энэ давхаргаас.
     // test_data [98] monmap_road_simulation — 2026-08-13 шилжив (113 feature)
     url: `${SELBE_ET}/113`,
-    nodeIntersections: true, // ⚠️ урт шугам уулзвар гатална — таслахгүй бол сүлжээ бутарна
-    directed: true, // ⚠️ line сумтай — машин зөвхөн тэр зүг явна
+    nodeIntersections: true,
+    directed: true,
   },
   plan: {
     kind: 'plan',
@@ -127,15 +91,13 @@ export const NET_SOURCES: Record<NetKind, NetSource> = {
     //    et:5 «Замын тэнхлэг»-ийг СОЛЬСОН: энэ нь машин явахаар зурсан жинхэнэ line.
     // test_data [104] ET_road_simulation — 2026-08-13 шилжив (205 feature)
     url: `${SELBE_ET}/102`,
-    nodeIntersections: true, // ⚠️ таслахгүй бол 3.7% холбогдоно; таславал 88.9%
+    nodeIntersections: true,
     directed: true, // line сумтай — 141 мухар бүгд 60м дотор гарцтай (тасралтгүй)
   },
 };
 
 /**
  * Сүлжээ СОНГОХОД БЭЛЭН үү — line ирсэн эсвэл ядаж харуулах давхаргатай юу.
- * ⚠️ Машингүй (`cars: false`) сүлжээ ч БЭЛЭН тооцогдоно: түүнийг сонгоход
- * газрын зураг дээр line нь харагдана (машин зөвхөн явдаг сүлжээнд гүйнэ).
  */
 export function isNetReady(kind: NetKind): boolean {
   const s = NET_SOURCES[kind];
@@ -165,18 +127,12 @@ const cache = new Map<NetKind, Promise<Network>>();
 
 /**
  * Сонгосон сүлжээг НЭГ УДАА татаж кэшлэнэ (геометр + гэрлэн дохио).
- *
- * ⚠️ `baseLoad` (эрэлтийн жин) энд оноогдохгүй — тэр нь бүсийн өгөгдлөөс
- * хамаардаг тул дуудагч тал `assignLoads(net, rows)`-ыг ӨӨРӨӨ дуудна
- * (`roadNet.ts`), яг одоогийн et:5-ийн урсгалтай ижил.
  */
 export function loadNetworkCached(kind: NetKind): Promise<Network> {
   let p = cache.get(kind);
   if (!p) {
     const src = NET_SOURCES[kind];
     // Геометрийг ArcGIS line-аас, гэрлэн дохиог ЗӨВХӨН бодит service-ээс.
-    // ⚠️ Дохионы service унавал ЧИМЭЭГҮЙ дохиогүй угсрагддаг байсан — warn бичиж,
-    //    Network.signalsFailed тугаар UI-д мэдэгдэх боломж үлдээнэ.
     let signalsFailed = false;
     p = Promise.all([
       loadPathsFrom(sourceUrl(src)),
@@ -187,7 +143,6 @@ export function loadNetworkCached(kind: NetKind): Promise<Network> {
       }),
     ])
       .then(([paths, signals]) => {
-        // ⚠️ Огтлолцол дээр таслах — тасраагүй урт шугамтай эх сурвалжид
         const geom = src.nodeIntersections
           ? nodeByIntersection(paths, { unitsPerMeter: WM_UNITS_PER_M })
           : paths;
@@ -196,20 +151,12 @@ export function loadNetworkCached(kind: NetKind): Promise<Network> {
           signals,
           directed: src.directed,
         });
-        /* ⚠️ ДАВХАРДСАН шугамууд (нэг гудамжийг хоёр line-аар зурсан) дээр машин
-           явуулбал хоёр жагсаа бие бие дээрээ зурагдана — тэднийг тэмдэглэж
-           урсгалаас хасна (ирмэгийг устгахгүй тул холболт хэвээр).
-           ⚠️ `dedupe: false` бол АЛГАСНА — эргэлтийн зурвас зурсан өгөгдөлд
-           давхарлал нь ЗӨВ бөгөөд хасвал эргэлт бүр хаагдана. */
         if (src.dedupe === false) {
           console.info(`[selbe] «${src.label}»: давхардлын шүүлт УНТРААЛТТАЙ (эргэлтийн зурвас)`);
         } else {
           const dup = markDuplicates(net);
           if (dup) console.info(`[selbe] «${src.label}»: давхардсан ${dup}/${net.edges.length} ирмэгийг урсгалаас хасав`);
         }
-        /* ⚠️ 2026-09-30: дохиогүй сүлжээг сесс дуустал КЭШЛЭХГҮЙ — урьд нь нэг удаагийн
-           уналтын дараа «Бодит»/«Төлөвлөгөө» дохиотой/дохиогүй чимээгүй харьцуулагдаж,
-           «Дахин оролдох» ч тусалдаггүй байв. Тугийг UI (`RoadStatus`) харуулна. */
         if (signalsFailed) { net.signalsFailed = true; cache.delete(kind); }
         return net;
       })
@@ -231,11 +178,6 @@ let signalCache: Promise<SignalDef[]> | null = null;
 /**
  * Бодит гэрлэн дохионы уулзваруудыг НЭГ УДАА татаж кэшлэнэ.
  *
- * ⚠️ Дата бүтэц: уулзвар бүр (`uulzwar_name`) 4 approach line, тус бүр
- * `gerlen_dohio_code` 1–4. Codes **1,3 = нэг тэнхлэг**, **2,4 = нөгөө** — 30 сек
- * тутам ногоон↔улаан солигдоно. Line-ийн ЧИГЛЭЛ нь тухайн approach-ийн тэнхлэг
- * (босоо=N-S, хэвтээ=E-W) тул codes 1,3-ын тэнхлэг = эхний ногоон (`green0`).
- *
  * Уулзварын ТӨВ = 4 line-ийн бүх оройн дундаж (≈ уулзварын зангилаа).
  */
 export function loadRealSignalsCached(): Promise<SignalDef[]> {
@@ -251,17 +193,6 @@ type SignalFeature = {
 };
 
 async function fetchRealSignals(): Promise<SignalDef[]> {
-  /*
-   * ⚠️ ХУУДАСЛАНА (2026-09-15-ны аудит). Урьд нь `resultRecordCount` ч,
-   *    хуудаслалт ч байгаагүй: `gerlen_dohio` нь уулзвар бүрд 4 approach
-   *    line-тэй тул уулзварын тоо өсөхөд үйлчилгээний анхдагч
-   *    `maxRecordCount` дээр ЧИМЭЭГҮЙ таслагдана. Нэг уулзварын 4 line-ийн
-   *    зарим нь ирэхгүй бол доорх `groups`-ийн төв цэг (`cx`,`cy`) хазайж,
-   *    дохио буруу зангилаанд наалдаж, тэр чиглэлийн машин МӨНХӨД зогсоно.
-   *
-   * ⚠️ `orderByFields` ЗААВАЛ — эрэмбэгүй хуудаслалт нь ижил уулзварын
-   *    line-уудыг заагаар салгаж, дээрх алдааг өөрөө үүсгэнэ.
-   */
   const feats: SignalFeature[] = [];
   for (let off = 0; ; ) {
     const q = new URLSearchParams({
@@ -274,7 +205,6 @@ async function fetchRealSignals(): Promise<SignalDef[]> {
       resultRecordCount: '2000',
       f: 'json',
     });
-    /* ⚠️ 2026-09-30: GET + `tokenQs` → `query.arcgisPost` (токен биеэр; timeout · слот · 429 backoff) */
     const page = await arcgisPost<ArcgisBody & {
       features?: SignalFeature[];
       exceededTransferLimit?: boolean;
@@ -295,20 +225,10 @@ async function fetchRealSignals(): Promise<SignalDef[]> {
     const code = Number(f.attributes.gerlen_dohio_code);
     const path = f.geometry?.paths?.[0];
     if (!path || path.length < 2) continue;
-    /* ⚠️ БӨГЛӨГДӨӨГҮЙ мөрийг АЛГАСНА (нэр эсвэл код хоосон).
-       Ийм мөр эх өгөгдөлд байдаг — зураасаа татчихаад атрибутаа хойшлуулсан.
-       Хамгаалалтгүй бол код 0 болж НЭГ Ч ЭЭЛЖИД ороогүй зогсолтын шугам үүсээд
-       тэр чиглэлийн машин МӨНХӨД улаанд зогсоно; нэргүй тул хуваарь ч
-       сонгогдохгүй. Атрибутыг дүүргэмэгц өөрөө орж ирнэ. */
     if (!name || !Number.isFinite(code) || code <= 0) { skipped++; continue; }
     let g = groups.get(name);
     if (!g) { g = { pts: [], lines: [] }; groups.set(name, g); }
     for (const p of path) g.pts.push(p as Pt);
-    // ⚠️ ТҮҮХИЙ кодыг хадгална — ээлжид хуваарилах нь ЗОХИЦУУЛАЛТЫН ХӨТӨЛБӨРИЙН
-    //    ажил (`SignalPlan`). Ингэснээр хэрэглэгч хөтөлбөр солиход сүлжээг
-    //    дахин татах/угсрах шаардлагагүй.
-    // ⚠️ Уулзварын НЭРИЙГ зураас бүрд наана: код уулзвар бүрд 1-ээс эхэлдэг тул
-    //    хуваарийг нэрээр нь ялгана (`SignalPlan.byJunction`).
     g.lines.push({ pts: path.map((p) => p as Pt), code, j: name });
   }
 

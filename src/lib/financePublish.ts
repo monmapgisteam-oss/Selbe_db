@@ -14,9 +14,6 @@ const idOf = (v: unknown): number | null => {
 };
 const own = (row: Row, key: string) => Object.prototype.hasOwnProperty.call(row, key);
 const same = (a: unknown, b: unknown) => (a ?? null) === (b ?? null);
-/* ⚠️ 2026-10-21 (аудит): `Cashflow_ID` (эцэг↔сарын холбоос) ч ОРОЛТ — дугаар солиход шинэ дугаарын сарууд энэ эцгийн
-   ХО дүнгээр, хуучин дугаарынх шинэ эзнээрээ дахин бодогдох ёстой. Урьд нь энд байгаагүй тул уншилт ч, тооцоо ч явахгүй,
-   сарын `Cashflow_dun` хуучин эцгийн дүнгээр үлдэж S-муруй худал болдог байв. */
 const SOURCE_FIELDS = ['ho_dun_geree', 'ehleh_ognoo', 'duusah_ognoo', 'cashflow_huwi', 'cashflow_id'];
 const PARENT_INPUTS = ['cashflow_id', 'ho_dun_geree', 'ehleh_ognoo', 'duusah_ognoo'];
 const MONTH_INPUTS = ['cashflow_id', 'cashflow_start', 'cashflow_end', 'cashflow_huwi', 'cashflow_dun'];
@@ -28,7 +25,6 @@ export class FinancePublishConflict extends Error {
   }
 }
 
-/** ⚠️ 2026-10-21: ЭНЭ нийтлэлийн `Cashflow_ID` засвар өөр ажлын дугаартай давхцав — сарын дүнг аль эцгээр бодохоо мэдэхгүй тул нийтлэхгүй */
 export class FinanceDuplicateId extends Error {
   constructor(id: number) {
     super(tr('Cashflow_ID {0} өөр ажилд аль хэдийн байна — давхардсан дугаараар сарын дүн бодогдохгүй тул нийтлэгдсэнгүй.', id));
@@ -59,7 +55,6 @@ export async function loadFinancePublishInputs(opts: {
     else throw new FinancePublishConflict();
     const id = idOf((parent ?? month)?.cashflow_id);
     if (id != null) ids.add(id);
-    /* ⚠️ 2026-10-21: ШИНЭ дугаарын эцэг ба сарууд ч хамрах хүрээнд — тэр дугаарын сар дахин бодогдоно, давхардал илэрнэ */
     const nextId = own(change, 'cashflow_id') ? idOf(change.cashflow_id) : null;
     if (nextId != null) ids.add(nextId);
   }
@@ -123,9 +118,6 @@ export function recomputeFinanceAmounts(opts: {
     delete change.cashflow_dun;
     if (Object.keys(change).length <= 1) updates.delete(oid);
   }
-  /* ⚠️ 2026-10-21 (аудит): холбоосыг ЗАСВАРТАЙ нь уншина (`linkIdOf`) — `Cashflow_ID` энэ нийтлэлд солигдож болно.
-     Эцгийн толь ч, сарын эзэн ч ШИНЭ дугаараар. Засвараар үүссэн давхардал → `FinanceDuplicateId` (ил алдаа);
-     өгөгдөлд урьдаас байсан давхардал → `FinancePublishConflict` (хуучин зан). */
   const linkIdOf = (row: Row | undefined): number | null => {
     if (!row) return null;
     const change = updates.get(Number(row[oidField]));
@@ -166,10 +158,6 @@ export function recomputeFinanceAmounts(opts: {
     rejectDuplicate(id);
     change.cashflow_dun = amountOf(change.cashflow_huwi, costOf(id == null ? undefined : parentById.get(id)));
   }
-  /* ⚠️ 2026-10-21: ДАХИН БОДОХ сарууд — (а) ХО дүн нь засагдсан эцгийн (шинэ дугаартай) бүх сар; (б) дугаар нь солигдсон
-     эцгийн ХУУЧИН ба ШИНЭ дугаарын бүх сар (хуучин дугаар эзэнгүй үлдвэл тэр саруудын дүн `null` — эцэггүй хувь дүн
-     болохгүй, `amountOf`-ийн хуучин дүрэм); (в) өөрөө өөр дугаар руу шилжсэн сарын мөр. Энэ нийтлэлд хувь нь бичигдсэн
-     сар дээрх давталтаар аль хэдийн бодогдсон тул давхар бодохгүй; устгагдах мөр хөндөгдөхгүй. */
   const touchedIds = new Set<number>();
   const touchedMonths = new Set<number>();
   for (const [oid, change] of updates) {

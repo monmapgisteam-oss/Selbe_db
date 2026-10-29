@@ -2,15 +2,6 @@
 
 /**
  * ТООЦООЛОГДДОГ ҮЗҮҮЛЭЛТҮҮД — ArcGIS дээр БАЙХГҮЙ, кодод бодогддог тоонууд.
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: «Барилгын хяналт» дашбоардын толгойн 18.3% нь
- * `mon:building.GUITS_HV`-ийн дундаж (≈13%) БИШ. Тэр нь ажлын хуудсын үе шатуудаас
- * `blockProgress.ts`-д тооцоологддог. Агент зөвхөн ArcGIS-ээс уншвал дэлгэц дээрх
- * тоог ХЭЗЭЭ Ч давтаж чадахгүй — хэрэглэгч «буруу хариулж байна» гэж үзнэ.
- *
- * ⚠️ ТООЦООГ ДАХИН БИЧИХГҮЙ: `loadBlockProgress()`-ыг ЯГ дууддаг. Тэр нь порталын
- * `Tsogts`, `BuildingPanel` хоёрын ашигладаг ижил функц. Хуулбарлавал агентын
- * тоо дэлгэц дээрхээс зөрөх өдөр ирнэ.
  */
 
 import { loadBlockProgress, loadBlockUniverse, latestMean, pkgProgressOf, universeKeys } from '@/lib/blockProgress';
@@ -48,35 +39,22 @@ export type BuildingProgress = {
   /**
    * ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ (0–100) — «Нэгтгэл гүйцэтгэл»-ийн жигнэсэн дүн (`negtgel.loadNegtgelPct`): Ерөнхий дашбоардын
    * «Гүйцэтгэлийн хувь», Тайлан ба удирдлагын тайлангийн «төслийн гүйцэтгэл»-тэй НЭГ тоо. Уншигдаагүй бол `null` (0 БИШ).
-   * ⚠️ 2026-10-26 (аудит): урьд нь агент «нийт гүйцэтгэл»-д `housing` (24.5%) хэлдэг атал дэлгэцүүд 38.9% харуулдаг байв.
    */
   project: number | null;
   /** Багц бүр — `pkgProgressOf` (бүх блокоор, тайлангүй 0%) */
   byBagts: { bagts: string; blocks: number; reported: number; ail: number; actual: number }[];
   /** Хамгийн хоцорсон 10 блок (ТАЙЛАГНАСАН блокоос) */
   slowest: BlockRow[];
-  /**
-   * ⚠️ ТАЙЛАН ИРЭЭГҮЙ блокийн тоо. `overall`/`byBagts` нь тэдгээрийг 0% гэж тооцдог.
-   */
   noReport: number;
   note: string;
 };
 
 /**
  * Барилгын гүйцэтгэл — ажлын (бөглөх) хуудсаар тооцоолсон.
- *
- * ⚠️ 2026-10-04: ХУВААРЬ нь БӨГЛӨХ ХУУДАСНЫ блок (`loadBlockUniverse` → `universeKeys`), газрын
- *    зургийн feature БИШ. Урьд нь `mon:building`-ийн feature-ээр гүйлгэдэг тул давхардсан
- *    полигон (29/1, 5/6) хоёр тоологдож, footprint-гүй хэмжилт (29/3, 5/8) хаягддаг — агентын
- *    тоо дэлгэцээс (`pkgProgressOf`/`latestMean`/`physNow`) зөрдөг байв. Давхарга ЗӨВХӨН
- *    айл, гүйцэтгэгч, багцын уншигдах нэрэнд.
- * ⚠️ Тайлагнаагүй блок 0% (2026-10-01-ний хэрэглэгчийн шийдвэр) — бүх дэлгэцтэй нэг дүрэм.
  */
-/** ⚠️ 2026-10-11 (аудит №7): `physNow`-ийн уналтыг процесст НЭГ л удаа логлох туг */
 let physWarned = false;
 
 export async function buildingProgress(scope: AgentScope): Promise<BuildingProgress> {
-  // ⚠️ Эрхийн шалгалт — тооцоолсон ч гэсэн эх өгөгдөл нь давхарга
   const src = resolveSource('mon:building', scope);
   if (!src) throw new Error(tr('`mon:building` давхаргад хандах эрх алга.'));
 
@@ -85,20 +63,15 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
     queryFeatures(layerUrl(l), { outFields: ['bagts', 'blok', 'ail_too', 'bar_comp'] }),
     loadBlockProgress(),
     loadBlockUniverse(),
-    /* ⚠️ ДИНАМИК импорт — `Finance.tsx` нь React модуль (`ceo/contractGap`-ийн ⚠️).
-       Унавал `null` («мэдэгдэхгүй»), бусад тоог унагахгүй. */
     import('@/modules/Finance')
       .then(async (F) => F.physNow(await F.loadFinData()))
       .catch((e: unknown) => {
-        /* ⚠️ 2026-10-11 (аудит №7): НЭГ удаа логлоно — урьд нь чимээгүй залгигдаж, боттой орчинд (`Finance`
-           модуль/санхүүгийн хүснэгт хүрэхгүй) «мэдэгдэхгүй» яагаад вэ гэдэг нь хаана ч харагдахгүй байв. */
         if (!physWarned) {
           physWarned = true;
           console.warn('[selbe] agent/compute: physNow (Finance) ачаалагдсангүй — «мэдэгдэхгүй» гэж тооцно:', e);
         }
         return null;
       }),
-    /* ⚠️ 2026-10-26 (аудит): төслийн нийт (нэгтгэл) — унавал `null` («мэдэгдэхгүй»), бусдыг унагахгүй */
     import('@/lib/negtgel')
       .then((m) => m.loadNegtgelPct())
       .catch((e: unknown) => {
@@ -151,18 +124,11 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
         actual: r1(m.pct),
       }))
       .sort((a, b) => a.actual - b.actual),
-    /**
-     * ⚠️ ТАЙЛАН ИРЭЭГҮЙ БЛОКИЙГ «ХОЦОРСОН» ГЭЖ НЭРЛЭХГҮЙ (2026-09-03-ны
-     * аудит). Тэдгээр нь 0% гэж тоологддог тул эрэмбэлэхэд ҮРГЭЛЖ тэргүүн эгнээнд
-     * гарна — хэмжигдсэнийг нь эрэмбэлж, тайлангүйг тусад нь тоолж мэдэгдэнэ.
-     */
     slowest: blocks
       .filter((b) => b.date !== '')
       .sort((a, b) => a.actual - b.actual)
       .slice(0, 10),
     noReport: blocks.filter((b) => b.date === '').length,
-    /* ⚠️ 2026-10-04: «зарим дэлгэц зөвхөн ТАЙЛАГНАСАН блокоор дундажладаг» гэсэн хуучин
-       анхааруулга ХҮЧИНГҮЙ — бүх дэлгэц (багцын карт, тайлангийн 6.1 ч) бүх блокоор хуваадаг. */
     note:
       tr('`actual` нь АЖЛЫН ХУУДСААС тооцоолсон бодит гүйцэтгэл. ') +
       tr('⚠️ `overall` (блокийн энгийн дундаж) ба `byBagts.actual`-ийн ХУВААРЬ нь бөглөх хуудасны БҮХ блок: тайлан ирээгүй блок 0% — порталын бүх дэлгэцтэй нэг дүрэм. «Төслийн нийт гүйцэтгэл» гэж асуувал `project`-ийг хэл (Ерөнхий дашбоардын «Гүйцэтгэлийн хувь», Тайлан, удирдлагын тайлантай нэг тоо); `housing` нь ЗӨВХӨН орон сууцны биет гүйцэтгэл (Дашбоардын «Биет гүйцэтгэл (багцаар)»), `overall` нь «блокийн дундаж» — гурвыг ялгаж нэрлэ. ') +
@@ -173,9 +139,6 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
 
 /**
  * ГАЗАР ЧӨЛӨӨЛӨЛТ — порталын (Газар чөлөөлөлт · Тайлан · удирдлагын тайлан) ЯГ ТЭР тоо (`land.loadLandStatus`).
- * ⚠️ 2026-10-26 (аудит): урьд нь агент `land:left`-ийн талбайг `SUM(area_m2)`-аар нийлүүлж хувийг ТАЛБАЙГААР бодож (91.2%,
- *    953,987 м²) порталын тоогоор бодсон хувь (91.4%) ба давхардалгүй талбайгаас (961,303 м², `parcelAreaOf`) зөрдөг байв.
- *    Хувь = чөлөөлсөн нэгж талбар ÷ бүх нэгж талбар (ТООГООР).
  */
 export async function landStatus(scope: AgentScope): Promise<{
   total: number; cleared: number; remaining: number; pct: number | null; areaM2: number;

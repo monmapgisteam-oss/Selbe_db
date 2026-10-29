@@ -1,13 +1,6 @@
 /**
  * БЛОКИЙН ГҮЙЦЭТГЭЛ — ИРЭЭДҮЙН ОГНООНЫ ТАСЛАЛТ ба ГАЗРЫН ЗУРГИЙН ТҮЛХҮҮРИЙН ЗӨРҮҮ (сүлжээгүй).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/blockProgressCutoff.check.mjs
- *
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»):
- *   1. Өнөөдрөөс ХОЙШ огноотой хэмжилт газрын зургийн будалт (`compute`) ба багцын
- *      жагсаалт (`history` → `finPhys` → `physLatest`) ХОЁУЛАНД хасагдана — урьд нь зураг
- *      огт таслалтгүй, жагсаалт сараар таслагддаг тул нэг блок хоёр дэлгэцэд өөр хувьтай.
- *   2. `mapKeyIssues` — давхардсан полигон · footprint-гүй хэмжилт · багцын нэр буруу байж
- *      болзошгүй блокийг админд засуулах жагсаалт (өгөгдлийг засахгүй, тоонд нөлөөгүй).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/blockProgressCutoff.check.mjs
  */
 import assert from 'node:assert/strict';
 import { compute, history, progressCutoff, isFutureDay, mapKeyIssues, pkgProgressOf, winnerCells } from './blockProgress.ts';
@@ -48,8 +41,6 @@ const row = (bagts, block, date, pct, no = TASK_SHEET.constructionNo) => ({
     row('Багц 2', '1', '2026-10-25', 0.80), /* энэ сард, гэхдээ ирээдүйн өдөр */
   ];
   const pm2 = compute(sameMonth, today);
-  /* ⚠️ 2026-10-01: багцын хувь блокийн хуваарьтай (`universe`) — тайлагнаагүй блок 0%.
-     Энд хуваарь = хэмжигдсэн ганц блок тул утга өөрчлөгдөхгүй. */
   const uni = new Map([['БАГЦ2', [buildingKey('Багц 2', '1')]]]);
   const { phys } = buildPhys(history(sameMonth, today), ['2026-09', '2026-10'], '2026-10', uni);
   const listPct = phys.get('БАГЦ2')?.get('2026-09');
@@ -79,7 +70,7 @@ const row = (bagts, block, date, pct, no = TASK_SHEET.constructionNo) => ({
   assert.deepEqual(clean, { dup: [], orphan: [], relabel: [] });
 }
 
-/* ── 2б. ⚠️ 2026-10-21 (аудит): `history` — ӨӨР хуудасны хоосон нүд хэмжилтийг ДАРАХГҮЙ (`compute`-ийн дүрэм) ── */
+/* ── 2б. 2026-10-21 (аудит): `history` — ӨӨР хуудасны хоосон нүд хэмжилтийг ДАРАХГҮЙ (`compute`-ийн дүрэм) ── */
 {
   const today = '2026-10-20';
   const k = buildingKey('Багц 4-2', '6/1');
@@ -126,7 +117,7 @@ const row = (bagts, block, date, pct, no = TASK_SHEET.constructionNo) => ({
   assert.deepEqual(history(fut, today).get(k)?.map((p) => p.pct), [40, null]);
 }
 
-/* ── 2в. ⚠️ 2026-10-21 (аудит): ялагчийн ГАНЦ дүрэм — `history`-ийн сүүлийн цэг == `compute`, мөрийн дарааллаас хамаарахгүй ── */
+/* ── 2в. 2026-10-21 (аудит): ялагчийн ГАНЦ дүрэм — `history`-ийн сүүлийн цэг == `compute`, мөрийн дарааллаас хамаарахгүй ── */
 {
   const today = '2026-10-20';
   const k = buildingKey('Багц 4-2', '6/1');

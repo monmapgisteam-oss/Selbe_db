@@ -35,9 +35,7 @@ assert.deepEqual(missing, [], `каталогт ороогүй LAYERS id: ${miss
 
 /* ── 5. Bagts_* ── */
 for (const p of PKGS) assert.ok(byId.has(`bagts:${p.key}`), `Bagts хуудас дутуу: ${p.key}`);
-/* ⚠️ 2026-10-12: 18 → 24 — 6 блокгүй багц нэмэгдсэн (6.3 · 6.5 · 6.6 · 6.7 · 6.8 · 7.1) */
 assert.equal(PKGS.length, 24, `Bagts_* хуудасны тоо өөрчлөгдсөн: ${PKGS.length}`);
-/* ⚠️ 2026-10-23: QAQC хасагдсан */
 assert.ok(![...byId.keys()].some((id) => id.startsWith('qaqc')), 'QAQC мөр каталогт үлдсэн');
 
 /* ── 3. шатлалын холбоос ── */
@@ -63,10 +61,7 @@ for (const e of cat) {
   assert.equal(typeof searchText(e), 'string');
 }
 
-/* ── 4. хаалттай үйлчилгээ ──
-   ⚠️ 2026-10-09 (аудит №6): `CLOSED_SERVICES` одоо CLAUDE.md-ийн 9 устгагдсан үйлчилгээ
-   БҮГД; каталогийн мөр зөвхөн `CLOSED_WITH_ROWS`-д шаардана, бусдад «агуулсан мөр бүр
-   `closed` тугтай» дүрэм л үйлчилнэ. `styleSrc` (загварын түлхүүр) ШАЛГАХГҮЙ. */
+/* ── 4. хаалттай үйлчилгээ ── */
 for (const svc of CLOSED_WITH_ROWS) assert.ok(CLOSED_SERVICES.includes(svc), `CLOSED_WITH_ROWS ⊄ CLOSED_SERVICES: ${svc}`);
 for (const svc of CLOSED_SERVICES) {
   const hit = cat.filter((e) => e.service === svc || (e.url ?? '').includes(`/${svc}/`));
@@ -80,7 +75,7 @@ for (const e of cat.filter((x) => x.closed)) {
   );
 }
 
-/* ── 6. ⚠️ 2026-10-20: «Чанарын баримт» каталогийн мөр системээс ХАСАГДСАН — шалгуур хасагдав. */
+/* ── 6. 2026-10-20: «Чанарын баримт» каталогийн мөр системээс ХАСАГДСАН — шалгуур хасагдав. */
 {
   assert.ok(!cat.some((x) => x.id === 'chanar'), 'chanar мөр хасагдсан байх ёстой');
 }

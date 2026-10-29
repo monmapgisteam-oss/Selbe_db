@@ -1,6 +1,6 @@
 /**
  * ТӨСЛИЙН ТӨЛӨВЛӨГӨӨ · БИЕЛЭЛТИЙН ХӨДӨЛГҮҮР — Excel-тэй тулгах шалгуур (сүлжээгүй).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/projectPlan.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/projectPlan.check.mjs
  *
  * Фикстур (`projectPlan.fixture.json`) = Excel 261007 V3-ын «Төсөл төлөвлөгөө биелэлт»-ийн 905 мөр
  * ХАДГАЛАХ хэлбэрээр (зөвхөн тогтмол нүд, Excel-ийн нэгжээр 0–1) + Excel-ийн өөрийн навч/тогтмол
@@ -15,11 +15,6 @@
  *   3. НЭГЖ. Гаралт 0–100; хадгалсан F/G бутархай (0–1), S 0–100 — холилдвол бүх хувь 100 дахин гажна.
  *   4. null ≠ 0. Хэмжилтгүй навч эцгийн нийлбэрт орохгүй; бүх хүүхэд null бол эцэг null.
  *   5. «Нийслэл төсөв» хэсэг эцгийн нийлбэрт ОРОХГҮЙ (E718 = SUM(E719,E842,E858)).
- *
- * ⚠️ Excel-ийн ӨӨРИЙН ГАЖУУ томьёо (бүтцээс зөрсөн) — `fx.anom`-оор Excel-ийн утгыг дарж тулгана:
- *    Q9/R9/S9 нь «Нийслэл төсөв» F70·X70-г НЭМДЭГ (N9/O9/P9 нэмдэггүй); Q879/S879 нь ах дүүс
- *    885–888-ыг SUMPRODUCT-ын мужид оруулсан. Хөдөлгүүр эдгээрийг ДАГАХГҮЙ (дүрмээр бодно) —
- *    доорх «цэвэр дүрэм» хэсэг ялгааг тогтооно.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -38,11 +33,7 @@ const near = (a, b, tol, msg) => {
 };
 const MET = ['N', 'O', 'P', 'Q', 'R', 'S'];
 
-/* ── Фикстур → хадгалах мөр (0–100) ──
-   ⚠️ 2026-10-26: фикстур Excel-ийн H…M-ийг БАЙРЛАЛААР (r[9]…r[14]) хадгалсан. ЗӨВ зураглал (cf-wave2):
-   H/I → geree_*, J/K «Гүйцэтгэгч» → guits_*, L/M «Газар чөлөөлөлт/бодит» → gazar_*. Хөдөлгүүрийн гаралтын
-   түлхүүр нь ХАДГАЛСАН ТАЛБАРААР (J/K = gazar_*, L/M = guits_*) тул Excel-ийн J/K/L/M-ийг `XL_DATE`-ээр
-   хөрвүүлж тулгана. */
+/* ── Фикстур → хадгалах мөр (0–100) ── */
 const XL_DATE = { H: 'H', I: 'I', J: 'L', K: 'M', L: 'J', M: 'K' };
 const s = (i) => (i == null ? null : fx.strs[i]);
 const stored = fx.rows.map((r) => ({
@@ -80,7 +71,6 @@ for (const [code, exp] of Object.entries(fx.expect)) {
     let ours = DATE.has(c) ? v[XL_DATE[c]] : v[c];
     if (DATE.has(c)) ours = toSerial(ours);
     else if (c !== 'E' && ours != null) ours /= 100;
-    /* ⚠️ Excel хоосон/0 ↔ манай null («мэдэхгүй») — зориуд (null ≠ 0) */
     if (ours == null && (ex == null || ex === 0)) { cells++; continue; }
     near(ours, ex, c === 'E' ? 1e-3 : DATE.has(c) ? 1e-6 : 1e-9, `${c} ${code || 'нийт'}`);
     cells++;
@@ -125,8 +115,6 @@ assert.equal(res.get('3.1.1.1').status, 'done', 'Газар чөлөөлөлт �
   const clean = computePlan(tree, { override: ovOf(false) }, TODAY);
   const c = clean.values.get(tree.root);
   near(c.N, root.N, 1e-9, 'N6 гажуугүй тул ижил');
-  /* ⚠️ S9 (Excel 92.02) нь «Нийслэл төсөв» F70·S70-г нэмдэг — дүрмээр 91.37; S879 нь ах дүүсийг
-     нэмдэг (Excel 6.09 → 0). Нийт S6: Excel 39.341 → 39.151. */
   near(clean.get('2').S, 91.3735, 1e-4, 'S9 цэвэр');
   near(clean.get('5.2.3.3').S, 0, 1e-12, 'S879 цэвэр');
   near(c.S, 39.1507, 1e-4, 'S6 цэвэр');
@@ -215,7 +203,6 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   /* N: навч огноогүй → өвгийн H/I; T = S/N */
   assert.equal(v('1.1').N, 100);
   near(v('1.1').T, 40, 1e-9);
-  /* ⚠️ 2026-10-26: J–M огноогүй үе шат (ТЭЗҮ…Сонгон) → O = P = N (гэрээний муж руу унана; Excel-тэй адил) */
   assert.equal(v('1.1').O, 100, 'газрын огноогүй → гэрээний муж');
   assert.equal(v('1.1').P, 100, 'гүйцэтгэгчийн огноогүй → гэрээний муж');
   assert.equal(v('1.1').Q, 100);
@@ -236,7 +223,7 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   assert.deepEqual(ms.get(t.byCode.get('5.2.1')).map((x) => +x.toFixed(9)), [7.5, 30, 30]);
 }
 
-/* ── 5. F-ийн хосын СУЛ тааруулга (⚠️ 2026-10-26, --keep-names): системийн нэр сүүл залгаастай, багц «18» ↔ «18.1» ── */
+/* ── 5. F-ийн хосын СУЛ тааруулга (2026-10-26, --keep-names): системийн нэр сүүл залгаастай, багц «18» ↔ «18.1» ── */
 {
   const rows = [
     { dd_kod: '3', uy_shat: 'Газар чөлөөлөлт', tusul_ezleh_huvi: 0.1 },
@@ -267,7 +254,7 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   assert.deepEqual(buildTree([{ dd_kod: '9', etseg_kod: '8' }]).issues, ['эцэг олдсонгүй: 9 → 8']);
 }
 
-/* ── 6. Өнөөдөр = Улаанбаатарын хуанлийн өдөр (⚠️ 2026-10-26) ── */
+/* ── 6. Өнөөдөр = Улаанбаатарын хуанлийн өдөр (2026-10-26) ── */
 {
   assert.equal(ubToday(Date.UTC(2026, 9, 6, 17, 0)), d('2026-10-07'), 'УБ 01:00 → тэр өдөр (UTC-ээр өчигдөр)');
   assert.equal(ubToday(Date.UTC(2026, 9, 6, 15, 59)), d('2026-10-06'), 'УБ 23:59');
@@ -279,7 +266,7 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   near(linearPlanned(d('2026-01-01'), d('2026-01-10'), ubToday(Date.UTC(2026, 0, 4, 19))), 50, 1e-9, 'УБ 01-05 → 5/10');
 }
 
-/* ── 7. Excel-ийн ДАВХАРДСАН Д/Д (импорт `--kod=excel`, ⚠️ 2026-10-27) — objectid-ийн дараалал = Excel-ийн дараалал ──
+/* ── 7. Excel-ийн ДАВХАРДСАН Д/Д (импорт `--kod=excel`, 2026-10-27) — objectid-ийн дараалал = Excel-ийн дараалал ──
    Excel 261007 V3-ын бодит хэв: «3» хоёр үе шат; «2.1.1» эцэг ба түүний хүүхэд ижил кодтой; мөр 858 «5.2.3» ба түүний
    гурван хүүхэд «5.2.3» (879 · 885 · 889), ач нар нь «5.2.3.1…» — 886 нь 885-ынх, 880 нь 879-ийнх; «2.3.3.1» таван ах дүү. */
 {

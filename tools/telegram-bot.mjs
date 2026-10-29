@@ -1,40 +1,19 @@
 /**
  * TELEGRAM БОТ — AI туслахыг Telegram-аар нээнэ.
  *
- * ⚠️ ЯАГААД BROWSER-ГҮЙ АЖИЛЛАЖ ЧАДАЖ БАЙНА ВЭ: агентын цөм (`src/lib/agent/*`)
- * нь React-аас хамааралгүй цэвэр TypeScript. Тиймээс Node-д ЯГ ИЖИЛ модулиудыг
- * импортлоно — давхаргын бүртгэл, хэрэгсэл, гогцоо бүгд ижил. Порталд шинэ
- * давхарга нэмэгдвэл бот ч тэр даруй мэднэ (гол шаардлага №3).
- *
  * Урсгал:
  *   Telegram → энэ бот → [src/lib/agent] → реле → Claude
  *                      → ArcGIS (шууд)
  *
- * ⚠️ ЭРХ — ХАМГИЙН ЧУХАЛ: Telegram хэрэглэгч нь ArcGIS хэрэглэгч БИШ, тиймээс
- * порталын `AuthGate` энд үйлчлэхгүй. Цагаан жагсаалт бол ЦОРЫН ГАНЦ хаалга.
- *
- * ⚠️ ШИНЭ ХЭРЭГЛЭГЧ ӨӨРӨӨ НЭМЭГДЭХГҮЙ. Танихгүй хүн бичихэд ЗӨВХӨН хүсэлт
- * үүсч, АДМИН нэг товшилтоор зөвшөөрнө. Автоматаар нэмдэг болговол ботын
- * нэрийг олсон хэн ч төслийн өгөгдлийг уншина.
- *
  * Ажиллуулах:  npm run bot
  */
 
-/*
- * ⚠️ 2026-10-12 (дарааллын аудит): ЦАГИЙН БҮС. Бот Linux сервер/контейнерт UTC-ээр ажиллахад
- *    «өнөөдөр», өдрийн төсөв (`agent-proxy`-ийн Улаанбаатарын өдөр), огнооны хэвлэлт порталаас
- *    8 цагаар зөрж байв. Орчноос өгөөгүй бол Улаанбаатар; `||=` тул гаднаас ил өгсөн TZ давамгайлна.
- *    ESM импорт дээш татагддаг ч Node нь `process.env.TZ`-ийг ДИНАМИКААР дахин уншдаг (v13+), харин
- *    `src/lib/*` нь доор `await import()`-оор ачаалагддаг тул тэдэнд ч эхнээсээ хүчинтэй.
- */
 process.env.TZ ||= 'Asia/Ulaanbaatar';
 
 import { readFileSync, existsSync } from 'node:fs';
 import { toHtmlChunks, stripHtml } from './telegram-format.mjs';
 import { botFullViews, grantWithin } from './telegram-views.mjs';
-/* ⚠️ 2026-10-22 (аудит): хэрэглэгчийн файл — гар засвар тусна, бичихдээ нэгтгэнэ; хасах эрх (`telegram-users.mjs`) */
 import { canRevoke, createUsersStore, writeAtomic } from './telegram-users.mjs';
-/* ⚠️ 2026-10-22 (аудит): серверийн уншилтын токен — Organization-only өгөгдөл (`telegram-arcgis.mjs`) */
 import {
   BOT_TOKEN_MISSING_TEXT, BOT_TOKEN_REJECTED_TEXT, botAuthConfig, botAuthErrorText, createBotCredential,
 } from './telegram-arcgis.mjs';
@@ -42,13 +21,6 @@ import {
 const API = 'https://api.telegram.org';
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
-/**
- * ⚠️ Ажиллах үед зөвшөөрсөн хэрэглэгчид — git-д ОРОХГҮЙ.
- *
- * ⚠️ `TELEGRAM_USERS_FILE`-ээр замыг СОЛИНО: Docker/24-7 байршуулалтад энэ файл
- * тусдаа volume-д (жиш. `/data/telegram-users.json`) байвал контейнер дахин
- * эхлэх/шинэчлэгдэхэд зөвшөөрсөн жагсаалт УСТАХГҮЙ. Заагаагүй бол CWD-д унана.
- */
 const USERS_FILE = process.env.TELEGRAM_USERS_FILE || 'telegram-users.json';
 
 /**
@@ -66,16 +38,9 @@ function parseList(raw) {
   return map;
 }
 
-/**
- * ⚠️ АДМИН нь ЗӨВХӨН `.env.local`-д бичигдсэн хүмүүс. Ботоор дамжуулж
- * зөвшөөрөгдсөн хэрэглэгч бусдыг зөвшөөрөх эрхгүй — эс бөгөөс нэг хүн
- * зөвшөөрөгдмөгц гинжин урвал болж, хаалга бүрмөсөн нээгдэнэ.
- */
 const ADMINS = parseList(process.env.TELEGRAM_ALLOWED);
 
 /**
- * ⚠️ «✅ Зөвшөөрөх» ТОВЧНЫ ЭРХ — ИЛ ЖАГСААЛТ, `'all'` БИШ.
- *
  * Урьд нь `'all'` хадгалдаг байсан бөгөөд `registry.allowedDatasets` нь
  * `scope === 'all'` үед DATASETS-ийг ЯМАР Ч шүүлтгүй буцаадаг. Улмаар
  * `sensitive: true` тэмдэгтэй хоёр датасет — `ds:cashflow2` (гэрээний дүн,
@@ -85,23 +50,12 @@ const ADMINS = parseList(process.env.TELEGRAM_ALLOWED);
  * хэрэглэгч гэрээний дүнг шууд асууж авдаг байлаа. Тэр хоёр датасет
  * `view: 'pkgFin'` тул ИЛ жагсаалтаас `pkgFin` ба `finance` хоёрыг хасахад
  * л хаалт бодитоор үйлчилнэ.
- *
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ГАР АРГААР синк (14 түлхүүр) БАЙХАА
- *    БОЛИВ — `VIEWS`-ийн бүх түлхүүрээс санхүүгийнхийг (`FINANCE_VIEWS`) хасна
- *    (`telegram-views.mjs`). ТУХ · Ерөнхий дашбоард · Дэд бүтэц · Чанар · QAQC зэрэг
- *    шинэ харагдацууд автоматаар орно. Шинэ САНХҮҮГИЙН харагдац нэмэгдвэл
- *    `FINANCE_VIEWS`-д нэмнэ (шалгуур нь эмзэг датасет алдагдвал унана).
- * ⚠️ Хуучин `telegram-users.json`-д `"views": "all"` гэж хадгалагдсан
- * бичлэгүүд ХЭВЭЭР үлдэнэ — шаардвал файлаас нь гараар засна. Өмнө зөвшөөрсөн
- * хэрэглэгчийн ИЛ жагсаалт ч хэвээр (шинэ харагдац авахын тулд дахин зөвшөөрнө).
  */
 const { VIEWS } = await import('../src/lib/services/views.ts');
 const FULL_VIEWS = botFullViews(VIEWS.map((v) => v.key));
 
 /**
  * «🔵 Зөвхөн төлөвлөлт».
- * ⚠️ `'bagts'` нь 2026-08-27-нд `ViewKey`-ээс ХАСАГДСАН хий түлхүүр байсан
- * (`VIEW_BY_KEY.bagts === undefined`) — үүргийг нь `pkgProg` авсан.
  */
 const PLAN_VIEWS = ['plan', 'pkgProg'];
 
@@ -116,23 +70,11 @@ if (!ADMINS.size) {
   process.exit(1);
 }
 
-/**
- * ⚠️ 2026-10-22 (аудит): ArcGIS-ийн УНШИЛТЫН ТОКЕН (`telegram-arcgis.mjs`-ийн ⚠️) — `NEXT_PUBLIC_PORTAL_URL`-ын порталаас.
- *    Тохируулаагүй (`none`) бол бот асна (админ хэрэглэгч удирдах боломжтой), харин асуулт бүрд ТОДОРХОЙ алдаа буцаана —
- *    реле/AI-г дэмий дуудахгүй. Нууц ХЭЗЭЭ Ч логт гарахгүй.
- */
 const BOT_AUTH = botAuthConfig(process.env);
 const arcgisAuth = createBotCredential(BOT_AUTH, { portalUrl: process.env.NEXT_PUBLIC_PORTAL_URL ?? '' });
 
 /* ── Зөвшөөрөгдсөн хэрэглэгчид (файлд хадгалагдана) ── */
 
-/**
- * ⚠️ 2026-10-22 (аудит): ФАЙЛ НЬ ҮНЭН — урьд нь асахдаа НЭГ удаа уншиж, хадгалах бүрд санах ойн хуулбараа бүтнээр нь дарж
- *    бичдэг тул админы гар засвар (хүн хасах) дараагийн «✅ Зөвшөөрөх»-өөр буцаж, гараар хассан хүн ажиллаж буй ботод
- *    эрхтэй хэвээр байв. Одоо `telegram-users.mjs`: эрхийн шалгалт бүрд файл өөрчлөгдсөн эсэхийг (`mtime`) харж дахин
- *    уншина; бичихийн ӨМНӨ дахин уншаад ЗӨВХӨН тэр ID-г өөрчилнө (нэгтгэнэ). Эвдэрсэн файлыг ДАРЖ БИЧИХГҮЙ (2026-10-09-ний
- *    дүрэм хэвээр: асахдаа эвдэрсэн бол хоосноор эхэлж нөөц хуулбар үлдээнэ).
- */
 const usersStore = createUsersStore(USERS_FILE);
 usersStore.load();
 
@@ -140,12 +82,7 @@ usersStore.load();
 const scopeOf = (id) => ADMINS.get(id) ?? usersStore.get(id)?.views ?? null;
 
 /**
- * ЗӨВШӨӨРСӨН ХЭРЭГЛЭГЧИЙН ЭРХИЙГ ХАСАХ — `/revoke <id>` ба «❌» товч (⚠️ 2026-10-22, аудит).
- * ⚠️ ЯАГААД: «✅»-ийн дараа хүсэлтийн мессеж товчгүй болж, `/revoke` байгаагүй тул ГАНЦ админ зөвшөөрсөн хүнээ хасах
- *    замгүй байв (файлыг гараар засахаас өөр — тэр нь ч дарагддаг байв, дээрх ⚠️).
- * ⚠️ Хүрээний дүрэм «✅ Зөвшөөрөх»-тэй ИЖИЛ (`canRevoke` ↔ `grantWithin`): хязгаартай админ зөвхөн өөрийн хүрээнд бүрэн
- *    багтах хэрэглэгчийг хасна. `.env`-ийн админыг ботоор хасахгүй (тохиргооноос).
- * @returns {string} админд хариулах текст
+ * ЗӨВШӨӨРСӨН ХЭРЭГЛЭГЧИЙН ЭРХИЙГ ХАСАХ — `/revoke <id>` ба «❌» товч (2026-10-22, аудит).
  */
 function revokeUser(adminId, targetId) {
   if (!/^\d+$/.test(targetId || '')) return 'Хэрэглээ: /revoke <Telegram ID> — ID-г /users-ээс харна.';
@@ -176,25 +113,13 @@ async function tg(method, body) {
   return json.result;
 }
 
-/**
- * ⚠️ 2026-10-09: ХОЛБООСНЫ УРЬДЧИЛСАН ХАРАГДАЦ УНТРААЛТТАЙ — бүх илгээлтэд. Урьдчилсан харагдац
- *    асаалттай үед Telegram-ийн сервер мессеж доторх хаяг руу ӨӨРӨӨ хандаж (хариулт/нэр доторх
- *    ArcGIS-ийн эсвэл хэрэглэгчийн зохиосон URL), хаягийг гуравдагчид ил болгодог; мөн танихгүй
- *    хэрэглэгчийн нэрэнд шигтгэсэн холбоос админы чатад «карт» болж харагддаг.
- */
 const NO_PREVIEW = { link_preview_options: { is_disabled: true } };
 
-/** ⚠️ Telegram-ийн мессеж 4096 тэмдэгтээр хязгаартай — урт хариултыг хуваана */
-/* ⚠️ 2026-10-21 (аудит): HTML-ийг 3800-аар хайчлахаа болив — markdown-ийн мөрийн хил дээр хувааж, хэсэг бүрийг тусад нь
-   хөрвүүлнэ (`telegram-format.toHtmlChunks`): таг/entity дундуур таслагдахгүй, хүснэгт `<pre>` бүтэн. Доорх цэвэр
-   текстийн нөөц зам хэвээр (Telegram-ийн бусад 400-д). */
 async function reply(chatId, text, extra = {}) {
   for (const chunk of toHtmlChunks(text)) {
     try {
       await tg('sendMessage', { chat_id: chatId, text: chunk, parse_mode: 'HTML', ...NO_PREVIEW, ...extra });
     } catch (e) {
-      // ⚠️ Хуваалт таг дундуур таарвал HTML эвдэрнэ — тэр үед цэвэр текстээр
-      //    дахин илгээнэ. Хэрэглэгч хариултаа авахгүй үлдэхээс сэргийлнэ.
       console.error(`[bot] HTML илгээлт унав, цэвэр текстээр: ${e.message}`);
       await tg('sendMessage', {
         chat_id: chatId,
@@ -211,13 +136,6 @@ const nameOf = (f) =>
 
 /* ── Ярианы төлөв ── */
 
-/**
- * ⚠️ `${chatId}:${userId}` → `{ scopeKey, history }` (2026-09-25, аудит №6).
- *    Урьд нь зөвхөн chatId-аар түлхүүрлэдэг байсан ч эрх (`scopeOf`) нь
- *    userId-аар тооцогддог тул бүлгийн чатад админы (санхүүгийн) хэрэгслийн
- *    үр дүн түүхэнд үлдэж, санхүүгийн эрхгүй гишүүний асуултад дахин
- *    дамжигддаг байв. Эрх өөрчлөгдвөл (scopeKey зөрвөл) түүхийг шинээр эхлүүлнэ.
- */
 const chats = new Map();
 const MAX_HISTORY = 20;
 
@@ -226,11 +144,6 @@ const groupWarned = new Set();
 
 /**
  * Түүхийг огтлох индекс — ЗӨВХӨН асуултын (user + текст) заагаар.
- *
- * ⚠️ Дурын индексээр огтолбол эхний мөр нь `tool_use`-гүй `tool_result`
- *    болж, Messages API дараагийн бүх хүсэлтэд 400 буцааж чат `/new` хүртэл
- *    гацдаг байв. Цонх (сүүлийн `max`) дотор асуултын заагаас эхэлнэ; тийм
- *    зааг байхгүй бол (нэг асуулт `max`-аас урт) хамгийн сүүлийн асуултаас.
  */
 function trimCut(history, max) {
   let last = 0;
@@ -243,42 +156,20 @@ function trimCut(history, max) {
   return last;
 }
 
-/**
- * ⚠️ Нэг хүн олон удаа бичихэд админ руу дахин дахин мэдэгдэхгүй.
- * id → `{ name, at }` (зөвшөөрөх үед бүртгэлд нэрийг нь хадгалахад ашиглана).
- * ⚠️ 2026-10-09: `ACCESS_FILE`-д хадгалагдана (доор) — бот дахин асахад хүсэлтүүд ба цагийн
- *    хязгаар тэглэгдэж, нэг хүн дахин мэдэгдэл үүсгэдэг байв. `PENDING_TTL`-ээс хуучин нь хасагдана.
- */
 const pending = new Map();
 const PENDING_TTL = 14 * 24 * 3600 * 1000;
 
-/**
- * ⚠️ 2026-10-09 (аудит №10): ХАНДАЛТЫН ХҮСЭЛТИЙН ХУРДНЫ ХЯЗГААР.
- *    Урьд `pending` л хамгаалдаг байсан: админ ТАТГАЛЗМАГЦ (`pending.delete`) нэг хүн шууд
- *    дахин хүсэлт илгээж админуудыг дахин дахин мэдэгдлээр дүүргэж чаддаг, мөн шинэ
- *    Telegram бүртгэл бүр хязгааргүй мэдэгдэл үүсгэдэг байв.
- *    · Нэг ID-д цагт НЭГ мэдэгдэл (`REQ_PER_ID_MS`) — татгалзсаны дараа ч;
- *    · Бүх ID нийлээд цагт `REQ_GLOBAL_MAX` мэдэгдэл — хэтэрвэл зөвхөн логт.
- */
 const REQ_PER_ID_MS = 60 * 60 * 1000;
 const REQ_GLOBAL_MAX = 20;
 /** id → сүүлд админд мэдэгдсэн агшин */
 const notifiedAt = new Map();
 /**
  * id → сүүлд ЗӨВШӨӨРӨГДӨӨГҮЙ хэрэглэгчид ХАРИУЛСАН агшин.
- * ⚠️ 2026-10-09: урьд зөвшөөрөгдөөгүй хүний мессеж БҮРД хариулдаг байсан тул нэг хүн (эсвэл олон
- *    шинэ бүртгэл) ботыг Telegram-ийн илгээлтийн хязгаарт хүргэж, бусдын хариуг саатуулж чаддаг
- *    байв. Одоо ID бүрд цагт НЭГ хариу; бусад нь чимээгүй.
  */
 const repliedAt = new Map();
 /** Сүүлийн цагийн бүх мэдэгдлийн агшин */
 let notifyLog = [];
 
-/**
- * ⚠️ 2026-10-09: хандалтын хүсэлтийн төлөв (`pending` · `notifiedAt` · `repliedAt` · `notifyLog`)
- *    `USERS_FILE`-ийн ХАЖУУД жижиг JSON-д (`TELEGRAM_ACCESS_FILE`-ээр солино). Эвдэрсэн бол хоосноор
- *    эхэлнэ — энэ нь ЭРХ БИШ, зөвхөн түр төлөв (эрхийн файлаас ялгаатай, `loadUsers`-ийн ⚠️).
- */
 const ACCESS_FILE = process.env.TELEGRAM_ACCESS_FILE || `${USERS_FILE.replace(/\.json$/i, '')}.access.json`;
 function loadAccess() {
   if (!existsSync(ACCESS_FILE)) return;
@@ -328,7 +219,7 @@ function mayNotify(id, now = Date.now()) {
   return 'ok';
 }
 
-/* ── ⚠️ 2026-10-09: Telegram хэрэглэгч бүрийн асуултын хязгаар ── */
+/* ── 2026-10-09: Telegram хэрэглэгч бүрийн асуултын хязгаар ── */
 
 /**
  * Зөвшөөрөгдсөн хэрэглэгч ч ботыг хязгааргүй ашиглаж чаддаг байв (реле дээр бүх ботын хэрэглэгч
@@ -338,7 +229,6 @@ function mayNotify(id, now = Date.now()) {
  *   · өдөрт (УБ цаг) `TELEGRAM_USER_PER_DAY` (анхдагч 150) асуулт — токены төсвийн ОЙРОЛЦОО орлуулагч
  *     (асуулт бүр ~2–5 реле хүсэлт). АДМИН өдрийн хязгаараас чөлөөт.
  *   · реле рүү `x-bot-user` илгээгддэг тул релейн хэрэглэгч тус бүрийн хурд/төсөв мөн үйлчилнэ.
- * ⚠️ Санах ойд — бот дахин асахад өдрийн тоо тэглэгдэнэ (хүлээн зөвшөөрсөн нарийвчлал).
  */
 const posInt = (raw, dflt) => {
   const n = Number(raw);
@@ -366,11 +256,6 @@ function questionAllowed(userId, isAdmin) {
   return 'ok';
 }
 
-/**
- * ⚠️ 2026-10-09: РЕЛЕ РҮҮ ЗЭРЭГ ЯВАХ АСУУЛТЫН ТАГ (`TELEGRAM_MAX_PARALLEL`, анхдагч 4) — чат бүр
- *    зэрэгцэн боловсруулагддаг болсон тул олон хэрэглэгч зэрэг асуухад реле/ArcGIS-ийг дарахгүй.
- *    Слотыг ШУУД дамжуулна (суллах үед хүлээгч байвал тоолуур буурахгүй) — уралдаанд таг давахгүй.
- */
 const MAX_PARALLEL = posInt(process.env.TELEGRAM_MAX_PARALLEL, 4);
 let running = 0;
 const waiters = [];
@@ -388,12 +273,8 @@ async function withSlot(fn) {
 
 /**
  * Хэрэглэгчид харагдах алдааны мөр.
- * ⚠️ 2026-10-09 (аудит №10): `ArcGISError.url` (үйлчилгээний дотоод хаяг) ба мессеж доторх
- *    URL-ыг Telegram руу ГАРГАХГҮЙ — дэлгэрэнгүй нь зөвхөн консолын логт.
  */
 function userErrorText(e) {
-  /* ⚠️ 2026-10-22 (аудит): ТОКЕНЫ алдаа (499 «Token Required» · 498) нь түр саатал БИШ — тохируулаагүй/татгалзсан гэж
-     ТОДОРХОЙ хэлнэ (`telegram-arcgis.botAuthErrorText`). Урьд нь «түр хүлээгээд дахин оролдоно уу» гэж төөрөгдүүлдэг байв. */
   const tok = botAuthErrorText(e, BOT_AUTH.mode);
   if (tok) return tok;
   if (e?.name === 'ArcGISError' || (e && typeof e === 'object' && 'url' in e)) {
@@ -403,8 +284,6 @@ function userErrorText(e) {
   return msg.replace(/https?:\/\/\S+/g, '[хаяг]');
 }
 
-/* ⚠️ 2026-10-26 (аудит): санхүүгийн жишээ ЗӨВХӨН санхүүгийн эрхтэй (`pkgFin`) хүнд — «✅ Зөвшөөрөх» эрх (`FULL_VIEWS`) санхүүгүй
-   тул тэр жишээ «эрх алга» мухардалд хүргэдэг байв. `helpOf(scope)`. */
 const FIN_EXAMPLE = '  • Багц 6.1-ийн гэрээний дүн хэд вэ?';
 const HELP = [
   'Сэлбэ төслийн AI туслах.',
@@ -428,7 +307,6 @@ const helpOf = (scope) => (scope === 'all' || (Array.isArray(scope) && scope.inc
   ? HELP
   : HELP.split('\n').filter((l) => l !== FIN_EXAMPLE).join('\n'));
 
-/* ⚠️ 2026-10-22 (аудит): админы тушаал — зөвхөн админд харагдана */
 const ADMIN_HELP = [
   '',
   'Админ:',
@@ -442,7 +320,6 @@ async function requestAccess(from, chatId) {
   const id = String(from.id);
   const now = Date.now();
   pruneAccess(now);
-  /* ⚠️ 2026-10-09: ID бүрд цагт НЭГ хариу (`repliedAt`-ийн ⚠️) — бусад нь чимээгүй */
   if (repliedAt.has(id)) return;
   repliedAt.set(id, now);
   const hello =
@@ -454,8 +331,6 @@ async function requestAccess(from, chatId) {
     await reply(chatId, `${hello}Таны хүсэлт админд илгээгдсэн — зөвшөөрөгдмөгц мэдэгдэнэ.\n\nТаны ID: ${id}`);
     return;
   }
-  /* ⚠️ 2026-10-09: хурдны хязгаар (`mayNotify`-ийн ⚠️) — хэтэрвэл админд мэдэгдэхгүй. Урьд энэ үед
-     ч хэрэглэгчид «Админд хүсэлт илгээлээ» гэж ХУДАЛ хэлдэг байв — одоо дараалалд байгааг ил хэлнэ. */
   const verdict = mayNotify(id, now);
   if (verdict !== 'ok') {
     saveAccess();
@@ -467,7 +342,6 @@ async function requestAccess(from, chatId) {
   saveAccess();
   await reply(chatId, `${hello}Админд хүсэлт илгээлээ — зөвшөөрөгдмөгц мэдэгдэнэ.\n\nТаны ID: ${id}`);
 
-  // ⚠️ Хүсэлтийг БҮХ админд илгээнэ — нэг нь л хариулахад хангалттай
   for (const adminId of ADMINS.keys()) {
     try {
       await tg('sendMessage', {
@@ -499,8 +373,6 @@ async function handleCallback(cb) {
   const adminId = String(cb.from?.id ?? '');
   const [action, targetId] = String(cb.data ?? '').split(':');
 
-  // ⚠️ Товшсон хүн ЖИНХЭНЭ админ мөн эсэхийг заавал шалгана — `callback_data`-г
-  //    хэн ч зохиож илгээж болно.
   if (!ADMINS.has(adminId)) {
     await tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Танд эрх алга', show_alert: true });
     return;
@@ -511,14 +383,10 @@ async function handleCallback(cb) {
   }
 
   let note;
-  /** ⚠️ 2026-10-22 (аудит): зөвшөөрсний дараа мессежид «❌ Эрхийг хасах» товч үлдэнэ (урьд нь товчгүй болдог байв) */
   let keepRevoke = false;
   if (action === 'no') {
     pending.delete(targetId);
     saveAccess();
-    /* ⚠️ 2026-10-11 (аудит №7): аль хэдийн ЗӨВШӨӨРӨГДСӨН хэрэглэгчид ❌ дарахад урьд нь зөвхөн `pending`
-       цэвэрлэгдэж `users`-ийн мөр үлддэг тул эрх хасагддаггүй байв — одоо мөрийг устгаж хадгална. */
-    /* ⚠️ 2026-10-22 (аудит): `/revoke`-той НЭГ зам (`revokeUser`) — хүрээний дүрэм · файл нэгтгэх · түүх цэвэрлэх */
     if (usersStore.get(targetId)) {
       note = revokeUser(adminId, targetId);
       keepRevoke = !note.startsWith('Эрхийг хаслаа');
@@ -527,8 +395,6 @@ async function handleCallback(cb) {
       await reply(targetId, 'Хандалтын хүсэлт татгалзагдлаа.').catch(() => {});
     }
   } else {
-    /* ⚠️ 2026-10-21 (аудит): ХЯЗГААРТАЙ админ (`<id>:plan|pkgProg`) FULL_VIEWS бүхэлдээ олгодог байв — олгох харагдац ∩
-       админы ӨӨРИЙН хүрээ (`telegram-views.grantWithin`); хүрээнд нь нэг ч байхгүй бол татгалзана. */
     const own = ADMINS.get(adminId);
     const views = grantWithin(action === 'plan' ? PLAN_VIEWS : FULL_VIEWS, own);
     if (!views.length) {
@@ -537,7 +403,6 @@ async function handleCallback(cb) {
     }
     // Хүсэлт үүсэх үед хадгалсан нэрийг (pending) уншина — `cb.data_name` гэж
     // Telegram callback-т байдаггүй талбар байсан тул нэр үргэлж хоосон үлддэг байв.
-    /* ⚠️ 2026-10-22 (аудит): файлыг дахин уншаад ЗӨВХӨН энэ ID-г нэмнэ — гар засвар дарагдахгүй (`usersStore.update`) */
     const entry = { views, name: pending.get(targetId)?.name ?? '', at: new Date().toISOString() };
     const saved = usersStore.update((d) => { d[targetId] = entry; });
     keepRevoke = true;
@@ -547,7 +412,6 @@ async function handleCallback(cb) {
     note = action === 'plan'
       ? (own === 'all' ? 'Төлөвлөлтийн эрхээр зөвшөөрлөө' : `Төлөвлөлтийн эрхээр (таны хүрээний ${views.length}) зөвшөөрлөө`)
       : (own === 'all' ? 'Санхүүгээс бусад бүх эрхээр зөвшөөрлөө' : `Таны хүрээний ${views.length} харагдацаар зөвшөөрлөө`);
-    /* ⚠️ 2026-10-09: файлд хадгалагдаагүй бол админд ил хэлнэ (`usersStore.update`-ийн ⚠️) — дахин асахад алга болно */
     if (!saved) note += ' (⚠️ файлд хадгалагдсангүй — ботын логийг шалгана уу)';
     await reply(
       targetId,
@@ -556,9 +420,6 @@ async function handleCallback(cb) {
   }
 
   await tg('answerCallbackQuery', { callback_query_id: cb.id, text: note });
-  /* ⚠️ 2026-10-09 (аудит №6): `cb.message` АЛГА байж болно — Telegram хэт хуучин мессежийн
-     товшилтод `message`-гүй (зөвхөн `inline_message_id`) callback өгдөг; урьд `cb.message.chat.id`
-     TypeError шидэж, шийдвэр хадгалагдсан ч `handleCallback` алдаагаар дуусдаг байв. */
   const chatId = cb.message?.chat?.id;
   const messageId = cb.message?.message_id;
   if (chatId != null && messageId != null) {
@@ -567,7 +428,6 @@ async function handleCallback(cb) {
       chat_id: chatId,
       message_id: messageId,
       text: `${cb.message.text ?? ''}\n\n➡️ ${note} (${adminId})`,
-      /* ⚠️ 2026-10-22 (аудит): зөвшөөрөгдсөн хэвээр бол хасах товч ҮЛДЭНЭ — ганц админ ч дараа нь хасаж чадна */
       ...(keepRevoke ? { reply_markup: { inline_keyboard: [[{ text: '❌ Эрхийг хасах', callback_data: `no:${targetId}` }]] } } : {}),
     }).catch(() => {});
   }
@@ -583,9 +443,6 @@ async function handle(msg) {
   const text = (msg.text ?? '').trim();
   if (!chatId || !text) return;
 
-  /* ⚠️ ЗӨВХӨН ХУВИЙН ЧАТ (2026-09-25, аудит №6): бүлэгт хариулт БҮХ гишүүнд
-     (цагаан жагсаалтад ороогүйд ч) харагдаж, асуусан хүний эрхээр татсан
-     өгөгдөл бусдад задардаг. Хандалтын хүсэлт ч бүлэгт үүсгэхгүй. */
   if (msg.chat?.type !== 'private') {
     if (!groupWarned.has(chatId)) {
       groupWarned.add(chatId);
@@ -594,7 +451,6 @@ async function handle(msg) {
     return;
   }
 
-  // ⚠️ ЭРХИЙН ШАЛГАЛТ — бусад бүх зүйлээс ӨМНӨ
   const scope = scopeOf(userId);
   if (!scope) {
     await requestAccess(from, chatId);
@@ -613,8 +469,6 @@ async function handle(msg) {
   }
   // Зөвхөн админд — хэн хандаж байгааг харах
   if (text === '/users' && ADMINS.has(userId)) {
-    /* ⚠️ 2026-10-22 (аудит): НЭРТЭЙ (зөвшөөрөх үед хадгалсан) — урьд нь зөвхөн ID байсан тул хэнийг хасахаа таньдаггүй байв;
-       жагсаалт файлаас (гар засвар тусна) */
     const all = usersStore.all();
     const views = (v) => (v === 'all' ? 'бүх' : Array.isArray(v) ? v.join(', ') : '—');
     const lines = [
@@ -631,7 +485,6 @@ async function handle(msg) {
     await reply(chatId, lines.join('\n'));
     return;
   }
-  /* ⚠️ 2026-10-22 (аудит): `/revoke <id>` — зөвхөн админ, «✅»-ийн хүрээний дүрмээр (`revokeUser`-ийн ⚠️) */
   if (/^\/revoke(@\w+)?(\s|$)/.test(text) && ADMINS.has(userId)) {
     await reply(chatId, revokeUser(userId, text.split(/\s+/)[1] ?? ''));
     return;
@@ -641,14 +494,11 @@ async function handle(msg) {
     return;
   }
 
-  /* ⚠️ 2026-10-22 (аудит): ArcGIS-ийн токен тохируулаагүй — өгөгдөл огт уншигдахгүй тул AI-г дуудахгүй, ТОДОРХОЙ хэлнэ
-     (урьд нь эх сурвалж бүр «Token Required» авч, «түр хүлээгээд дахин оролдоно уу» гэж төөрөгдүүлдэг байв) */
   if (BOT_AUTH.mode === 'none') {
     await reply(chatId, BOT_TOKEN_MISSING_TEXT);
     return;
   }
 
-  /* ⚠️ 2026-10-09: хэрэглэгч бүрийн асуултын хязгаар (`questionAllowed`-ийн ⚠️) */
   const verdict = questionAllowed(userId, ADMINS.has(userId));
   if (verdict === 'minute') {
     await reply(chatId, `Хэт олон асуулт — минутад ${Q_PER_MIN}. Түр хүлээгээд дахин асууна уу.`);
@@ -666,8 +516,6 @@ async function handle(msg) {
     chats.set(chatKey, chat);
   }
   const history = chat.history;
-  /* ⚠️ ask() түүхийг ЯВЦ ДУНД өөрчилнө (асуулт, tool_use, tool_result) —
-     алдаа гарвал ЯГ энэ урт руу буцаана (AgentChat-ийн ижил дүрэм). */
   const base = history.length;
 
   // «бичиж байна…» — хариулт 10+ секунд болдог тул хэрэглэгч хүлээж байгаагаа мэднэ
@@ -678,25 +526,16 @@ async function handle(msg) {
 
   try {
     const t0 = Date.now();
-    /* ⚠️ 2026-10-09: `botUser` → реле `bot:<id>` (хэрэглэгч бүрийн хурд/төсөв); `withSlot` — нийт зэрэг таг */
     const res = await withSlot(() => ask({ question: text, history, scope, botUser: userId }));
     console.log(`[bot] ${userId}: "${text.slice(0, 60)}" → ${((Date.now() - t0) / 1000).toFixed(1)}с, ${res.turns} эргэлт`);
-    /* ⚠️ 2026-10-22 (аудит): энэ асуултын явцад ArcGIS ботын токеныг татгалзсан бол (хэрэгслийн алдаа загварт л очдог)
-       хариуны доор ТОДОРХОЙ шалтгааныг нэмнэ — загварын «түр саатал» гэсэн тайлбарт итгэхгүй */
     const authNote = arcgisAuth.rejectedSince(t0) ? `\n\n⚠️ ${BOT_TOKEN_REJECTED_TEXT}` : '';
     await reply(chatId, `${res.text}${authNote}`);
   } catch (e) {
-    // ⚠️ Алдааг ЧИМЭЭГҮЙ залгихгүй — хэрэглэгч хариулт хүлээсээр үлдэхгүй
     console.error(`[bot] алдаа: ${e?.message ?? e}`);
-    /* ⚠️ Урьд нь зөвхөн сүүлийн 'user' мөрүүдийг хасдаг байсан тул дүүжин
-       assistant `tool_use` үлдэж, дараагийн асуулт бүр 400-аар унадаг байв.
-       Буцаалт нь reply()-ээс ӨМНӨ — Telegram унасан ч түүх эвдрэхгүй. */
     history.length = base;
     await reply(chatId, `Алдаа гарлаа: ${userErrorText(e)}`);
   } finally {
     clearInterval(typing);
-    /* ⚠️ 2026-10-19 (Claude Opus 5.5): эхнээс нь огтолсон бол үлдсэн бодолтын блокууд «өөр ярианых» болж 400
-       буцдаг — огтолсны ДАРАА бүгдийг хасна (`client.stripThinking`, `AgentChat.trimHistory`-тэй ижил). */
     if (history.length > MAX_HISTORY) {
       const cut = trimCut(history, MAX_HISTORY);
       if (cut > 0) {
@@ -707,7 +546,7 @@ async function handle(msg) {
   }
 }
 
-/* ── ⚠️ 2026-10-09: чат бүрийн дараалал ── */
+/* ── 2026-10-09: чат бүрийн дараалал ── */
 
 /**
  * Урьд update бүрийг `await`-аар ДАРААЛАН боловсруулдаг байсан тул нэг удаан асуулт (10–60 с)
@@ -753,10 +592,6 @@ function dispatchMessage(msg) {
 /* ── Урт татах гогцоо (long polling) ── */
 
 process.env.NEXT_PUBLIC_AGENT_API ||= 'http://127.0.0.1:8787';
-/* ⚠️ 2026-10-22 (аудит): ArcGIS-ийн уншилтын итгэмжлэлийг агентын цөмөөс ӨМНӨ бүртгэнэ — `query.ts` (`@/lib/authToken`) ба
-   энэ импорт НЭГ модуль (`src/lib/authToken.ts`) тул бүх эх сурвалжийн хүсэлтэд токен POST биеэр явна, хугацаа дуусахаас
-   өмнө/498-д шинэчлэгдэнэ (`telegram-arcgis.mjs`-ийн ⚠️). Хөтөчийн нэвтрэлт (`AUTH.appId`) унтраалттай хэвээр — реле рүү
-   ArcGIS токен ЯВАХГҮЙ (`client.arcgisToken`), ботын нууцаар батална. */
 if (BOT_AUTH.mode !== 'none') {
   const { registerIdentity } = await import('../src/lib/authToken.ts');
   registerIdentity(arcgisAuth, arcgisAuth.sharing);
@@ -773,7 +608,6 @@ async function main() {
   const me = await tg('getMe', {});
   console.log(`[bot] @${me.username} асаалттай`);
   console.log(`      админ ${ADMINS.size} · зөвшөөрсөн ${Object.keys(usersStore.all()).length}`);
-  /* ⚠️ 2026-10-22 (аудит): ArcGIS-ийн токены төлөв — нууцгүй (горим · хугацаа · шалтгаан) */
   if (BOT_AUTH.mode === 'none') {
     console.error('[bot] ⚠️ ArcGIS-ийн уншилтын токен тохируулаагүй (ARCGIS_BOT_USERNAME + ARCGIS_BOT_PASSWORD эсвэл ARCGIS_BOT_TOKEN) — Organization-only өгөгдөл уншигдахгүй; асуулт бүрд тодорхой алдаа буцаана.');
   } else if (!process.env.NEXT_PUBLIC_PORTAL_URL) {
@@ -795,14 +629,11 @@ async function main() {
 
   while (!stopping) {
     try {
-      // ⚠️ `timeout: 30` — сервер шинэ мессеж хүртэл барина. Богино давталтаар
-      //    байнга асуувал Telegram хурдны хязгаар тавина.
       const updates = await tg('getUpdates', {
         offset,
         timeout: 30,
         allowed_updates: ['message', 'callback_query'],
       });
-      /* ⚠️ 2026-10-09: `await` ХИЙХГҮЙ — чат бүрийн дараалал / товшилт шууд (`enqueue`-ийн ⚠️) */
       for (const u of updates) {
         offset = u.update_id + 1;
         if (u.message) dispatchMessage(u.message);

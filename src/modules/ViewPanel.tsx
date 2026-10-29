@@ -26,15 +26,6 @@ import s from './dashboard.module.css';
 /** «Бүртгэгдээгүй / Тодорхойгүй» бүлэг — жинхэнэ ангилал мэт харагдах ёсгүй */
 const BLANK_HUE = ZONE_TYPE_EMPTY_HUE;
 
-/**
- * ⚠️ 2026-10-11 (аудит №7): ИДЭВХТЭЙ тодруулга ЭНЭ давхаргынх уу (`only` — мөр эсвэл жагсаалт).
- *    Доорх гурван самбар (`LayerDashboard` · `PickedZone` · `PickedFeature`) урьд нь зөвхөн ӨӨРИЙН
- *    `sel` state-ээр шийддэг байв: MapTools-ийн ✕ (`setHighlight(null)`) дарахад `sel` үлдэж, ижил
- *    товчийг дахин дарахад «унтраах» гэж ойлгоод ХОЁР дахь даралтаар л шүүлт тавигддаг; unmount-ын
- *    cleanup нь ӨӨР самбар/модулийн (газар чөлөөлөлтийн полигон г.м.) тодруулгыг ч арилгадаг байв.
- *    Одоо (а) тодруулга алга/өөрийнх биш болмогц `sel` тэглэгдэнэ, (б) cleanup нь зөвхөн өөрийнхөө
- *    тодруулгыг арилгана.
- */
 const ownsHighlight = (h: { where: string | null; only?: string | string[] }, id: string): boolean =>
   !!h.where && (h.only === id || (Array.isArray(h.only) && h.only.includes(id)));
 
@@ -48,12 +39,6 @@ const monoShades = (d: LayerDef, rows: { label: string; blank?: boolean }[]) =>
 
 /* ═════════════════ Үндсэн самбар ═════════════════ */
 
-/**
- * ⚠️ Тоо, хэмжээг ЭНД татахгүй — `Portal` нэг удаа татаж `totals`-оор өгнө.
- * Каталогийн багана ба энэ самбар ижил тоо харуулах ёстой.
- * ⚠️ 2026-10-22: `totals` нь зөвхөн тоймын (`PLAN_LAYER_IDS`) давхаргууд; сонгосон давхаргын самбар (`LayerDashboard`)
- * өөрийн давхаргаа давхарга тус бүрийн ХУВААЛЦСАН кэшээс (`useLazyTotals`) уншина — каталогтой нэг агшны тоо.
- */
 export function ViewPanel({
   view,
   totals,
@@ -79,17 +64,10 @@ export function ViewPanel({
   layer: string | null;
   setLayer: (id: string | null) => void;
 }) {
-  // ⚠️ Барилгын хяналт нь бэспок самбартай (16 үе шат, тайлангийн хүснэгтүүд).
-  //    ТУСДАА компонент — эс бөгөөс түүний дотоод hook-ууд нөхцөлт дуудагдана.
-  // ⚠️ «Анализ» энд ОГТ ирэхгүй: тэр харагдац нь `Portal` дээр өөрийн бүрэн
-  //    дэлгэцээр (Suitability) зурагддаг тул самбар байхгүй.
   const def = layer ? LAYER_BY_ID[layer] : null;
 
   /**
    * НЭГ ДАВХАРГЫГ ДАНГААР НЬ ҮЛДЭЭХ — дахин дарвал ӨМНӨХ олонлог руу буцна.
-   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): буцаахад урьд нь `PLAN_LAYER_IDS` (бүх
-   *    давхарга) асдаг байв — өмнөх сонголт алга болно. `toggleIsolate` санаж сэргээнэ.
-   *    Дарсан объект (`PickedFeature`) ба тоймын чарт (`PlanOverview`) НЭГ санамжтай.
    */
   const isoRef = useRef<Iso>(null);
   const isolate = (id: string) => {
@@ -100,10 +78,6 @@ export function ViewPanel({
 
   return (
     <>
-      {/* ⚠️ 2026-08-20: Самбарын дээд талын «Бүс» мөр ХАСАГДАВ — газрын зурган
-          дээрх `MapTools`-ийн «Бүс» товч ЯГ ИЖИЛ төлөвийг удирддаг тул нэг
-          дэлгэцэд хоёр ижил сонгогч зэрэг байв. Сонгосон бүсийг зурган дээрх
-          чип ба доорх `PickedZone` харуулна. */}
 
       {/* Дарсан объект — ХАМГИЙН ДЭЭР. Зураг дээр дарсан хариу шууд нүдэнд өртөнө. */}
       {picked && pickedLayer && (
@@ -153,10 +127,6 @@ export function ViewPanel({
 
 /**
  * ГЕОМЕТРИЙН ТӨРӨЛ бүрийн хэмжигдэхүүн.
- *
- * ⚠️ Талбай, урт, ширхэг гурвыг НЭГ график дээр нэмж болохгүй: «26.7 га» ба
- * «65.3 км»-ийн нийлбэр утгагүй, харин «654 худаг»-ийг метрээр хэмжих аргагүй.
- * Тиймээс төрөл бүр өөрийн график, өөрийн нэгжтэй.
  */
 const GEOM_CHARTS = [
   {
@@ -166,10 +136,7 @@ const GEOM_CHARTS = [
     get short() { return tr('Талбай'); },
     get note() { return tr('га'); },
     /** м² → га */
-    /* ⚠️ `t.q` null (мэдээлэлгүй) → графикт 0 өндөр — `chartOf` тийм давхаргыг
-       `other` руу шилжүүлдэг тул энд хүрэхгүй */
     value: (d: LayerDef, t: Totals) => (d.qty && t.q != null ? t.q / 10_000 : 0),
-    /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `qtyText` — жижиг давхарга «0.0 га» БИШ «N м²» */
     display: (d: LayerDef, _v: number, t: Totals) => `${qtyText(d, t.q) ?? '—'} · ${num(t.n)}`,
   },
   {
@@ -179,7 +146,6 @@ const GEOM_CHARTS = [
     get note() { return tr('км'); },
     /** «м» → км; «км» нэгжтэй давхарга шууд */
     value: (d: LayerDef, t: Totals) => (!d.qty || t.q == null ? 0 : d.qty.unit === 'км' ? t.q : t.q / 1_000),
-    /* ⚠️ 2026-10-01: `qtyText` — богино шугам «0.0 км» БИШ «N м» */
     display: (d: LayerDef, _v: number, t: Totals) => `${qtyText(d, t.q) ?? '—'} · ${num(t.n)}`,
   },
   {
@@ -191,13 +157,6 @@ const GEOM_CHARTS = [
     value: (_d: LayerDef, t: Totals) => t.n,
     display: (_d: LayerDef, v: number) => `${num(v)}`,
   },
-  /**
-   * ⚠️ ХЭМЖЭЭГҮЙ талбай/шугам. Зарим давхарга (жишээ нь «Зам (талбай)» —
-   * 1,651 объект) зөвхөн ГЕОМЕТРТЭЙ, атрибутгүй тул урт/талбайг нь тооцох
-   * боломжгүй. Эдгээрийг га/км-ийн графикт оруулбал утга нь 0 болж чимээгүй
-   * УНАНА — чеклэсэн давхарга самбарт огт харагдахгүй. Тиймээс өөрийн
-   * хэсэгтэй: хэмжээг нь мэдэхгүй ч тоо нь мэдэгдэнэ.
-   */
   {
     geom: 'other' as const,
     get title() { return tr('Хэмжээ бүртгэгдээгүй'); },
@@ -210,9 +169,6 @@ const GEOM_CHARTS = [
 
 /**
  * `qtyText`-ийн нэгжийн тодорхойлолт — БАГЦ/ЧАРТЫН НИЙЛБЭРТ (давхаргагүй дүн).
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): нийлбэр нь `num(v, 1)` + «км»/«га» байсан тул
- *    жижиг дүн «0.0 км» / «0.0 га» гэж хэмжилтгүй мэт гардаг байв. `qtyText` нь 1 км / 1 га-аас
- *    бага бол «N м» / «N м²». `qtyText` зөвхөн `d.qty`-г уншина.
  */
 const KM_QTY = { qty: { field: '', unit: 'км' } } as LayerDef;
 const M2_QTY = { qty: { field: '', unit: 'м²' } } as LayerDef;
@@ -239,10 +195,6 @@ const chartOf = (d: LayerDef, t: Totals): 'area' | 'line' | 'point' | 'other' =>
 
 /**
  * БАГЦЫН нэгдсэн хэмжигдэхүүн — картанд харуулах утгууд.
- *
- * ⚠️ Урт, талбай, цэг ГУРВЫГ ТУСАД нь хураана. Багц дотор шугам ба талбай
- * хольцтой байдаг («Зам»-д 98.2 км тэнхлэг ба 26.7 га явган зам хоёул) тул
- * нэг тоо болгож нэмбэл утгагүй дүн гарна.
  */
 function cardStats(ids: string[], map: ReadonlyMap<string, Totals>) {
   let km = 0, ha = 0, pts = 0, n = 0;
@@ -274,21 +226,12 @@ function GroupCard({
   /**
    * Багцын БҮХ агуулга — донат, чартууд, тайлбар. Өгвөл карт нь тоймын
    * хайрцаг биш, БҮРЭН хэсэг болно.
-   *
-   * ⚠️ Урьд нь карт нь зөвхөн гурван тоо харуулж, чартууд нь доор ТУСДАА
-   * хэсгүүд болж гардаг байв — 4 багц сонговол картууд дээр, чартууд нь
-   * хэдэн дэлгэц доор тарж, аль чарт аль багцынх болох нь тодорхойгүй
-   * болдог байлаа. Одоо багц бүр өөрийн хайрцагтай.
    */
   children?: React.ReactNode;
 }) {
   const x = cardStats(ids, map);
-  /* ⚠️ 2026-10-19: ТАТАГДААГҮЙ давхаргатай (Map-д алга — унасан/ачаалж буй) багц — дутуу нийлбэрийг бодит тоо
-     мэт харуулахгүй (`completeSum`-ийн дүрэм, толгойн «—»-тэй ижил). Урьд нь тоо татагдаагүй үед «N төрөл ·
-     0 объект» гэж «багц хоосон» мэт худал уншигддаг байв (null ≠ 0). */
   const partial = ids.some((id) => LAYER_BY_ID[id] && !map.has(id));
   const rows: { v: string; k: string }[] = [];
-  /* ⚠️ 2026-10-01: `qtyText`-ээр — жижиг багц «0.0 км» БИШ «450 м» */
   if (!partial) {
     if (x.km > 0) rows.push(splitQty(kmText(x.km)));
     if (x.ha > 0) rows.push(splitQty(haText(x.ha)));
@@ -312,7 +255,6 @@ function GroupCard({
             <span className={s.cardKey}>{r.k}</span>
           </span>
         ))}
-        {/* ⚠️ Хэмжээгүй багц ч гэсэн хоосон харагдаж болохгүй — тоогоо өгнө */}
         {!rows.length && (
           <span className={s.cardStat}>
             <span className={`${s.cardVal} num`}>{partial ? '—' : num(x.n)}</span>
@@ -324,13 +266,8 @@ function GroupCard({
   );
 
   const cls = `${s.card} ${wide ? s.cardWide : ''} ${on ? s.cardOn : ''} ${children ? s.cardFull : ''}`;
-  // ⚠️ 2026-08-18: `g.hue` (газрын зургийн бүлгийн өнгө) → аппын НЭГ акцент.
-  //    Картын чимэглэл (дэвсгэр, хүрээ, дүрс) нь мэдээлэл дамжуулдаггүй тул
-  //    бүлэг бүрээр өнгө солих нь зөвхөн чимэг байв. Чартын өнгө ба мөрийн
-  //    swatch нь газрын зурагтайгаа тааруулсан хэвээр (тэдгээр нь ФУНКЦ).
   const st = { '--tone': 'var(--hue)' } as CSSProperties;
 
-  // ⚠️ Агуулгатай карт нь <div>: <button> дотор чарт, товч байрлуулж болохгүй
   if (children) {
     return <div className={cls} style={st}>{body}<div className={s.cardBody}>{children}</div></div>;
   }
@@ -351,11 +288,6 @@ function GroupCard({
  *   · тойм (10)   → `210px` — 360px самбарт НЭГ багана: 10 карт доошоо
  *                             дараалж, тус бүр нь бүтэн өргөн, том фонттой.
  *                             Самбарыг өргөсгөвөл 2–3 багана болно.
- *
- * ⚠️ Тогтмол `repeat(2, 1fr)` БИШ: самбар 300px хүртэл нарийсдаг бөгөөд тэнд
- * хоёр багана нь 140px тус бүр болж, дотор нь донат ба тайлбар багтахгүй.
- * `auto-fit` + доод хязгаар нь өргөн байвал 2 багана, нарийн бол 1 багана
- * болгож ӨӨРӨӨ шийднэ — самбарын баруун ирмэгийг чирж өргөсгөнө үү.
  */
 const CARD_WIDE_MAX = 1;
 const gridStyle = (n: number, compact = false) =>
@@ -368,12 +300,6 @@ const gridStyle = (n: number, compact = false) =>
  *     (нийт үзүүлэлт, багцаар эзлэх хувь, багцын хэмжээ).
  *   · Сонголт ХИЙСЭН   → «сонголтын» горим: зөвхөн сонгосон багц/давхаргын
  *     чартууд. Ерөнхий чартууд алга болно.
- *
- * ⚠️ «Сонголт хийгээгүй» гэдгийг `visible.length === 0` гэж ҮЗЭХГҮЙ: апп
- * нээгдэхэд бүсийн давхарга анхдагчаар асаалттай байдаг (эс бөгөөс зураг
- * хоосон нээгдэнэ). Тиймээс АНХДАГЧ багцтай ЯГ тэнцүү байхыг «хараахан
- * сонгоогүй» гэж үзнэ — ингэснээр эхний харагдац ерөнхий чартуудтай, зураг нь
- * бүсээ харуулсан хэвээр байна.
  */
 function PlanOverview({
   view,
@@ -396,11 +322,6 @@ function PlanOverview({
 }) {
   /**
    * Нэг давхаргыг ДАНГААР нь үлдээх — дахин дарвал ӨМНӨХ олонлог руу буцна.
-   *
-   * ⚠️ Донат ба багана ХОЁУЛАА давхаргын id-гаар түлхүүрлэдэг тул ЯГ нэг
-   * дүрмээр ажиллах ёстой. Урьд нь зөвхөн багана дарагддаг байсан бөгөөд
-   * донат нь ижилхэн харагдаж атлаа юу ч хийдэггүй байв.
-   * ⚠️ 2026-10-01: буцаалт нь бүх давхарга БИШ, өмнөх сонголт (`toggleIsolate`).
    */
   const isolate = (id: string) => {
     setLayer(null);
@@ -410,34 +331,17 @@ function PlanOverview({
   return (
     <Data q={totals} loading={tr('Үзүүлэлт тооцож байна…')}>
       {(map) => {
-        /**
-         * ⚠️ Бүс сонгогдсон үед `ZONE_ID`-гүй давхаргыг нийлбэрээс ХАСНА —
-         * тэдгээр нь бүсээр шүүгдэх боломжгүй тул төслийн бүх утгаа хэвээр өгнө.
-         * Нийлбэрт оруулбал бүсийн дүн бүхэлдээ худал болно.
-         */
         const counted = PLAN_LAYER_IDS.filter((id) => !(zone && LAYER_BY_ID[id]?.noZone));
-        /* ⚠️ 2026-09-30: ТАТАГДААГҮЙ давхарга (`usePlanTotals` нь хэсэгчилсэн Map-ыг «бэлэн»
-           гэж өгдөг) урьд нь 0-оор нэмэгдэж «Нийт» чимээгүй бага гардаг байв (null ≠ 0). */
         const missing = counted.filter((id) => !map.has(id));
         const allN = missing.length ? null : counted.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
-        /* ⚠️ 2026-09-30: бүс сонгоход карт ч «Нийт»-тэй ИЖИЛ олонлогоор (`counted`) — урьд нь
-           бүсгүй (`noZone`) давхаргын ТӨСЛИЙН бүхэл км/га бүсийн картанд орж ирдэг байв.
-           Давхаргагүй багц (IoT — `GROUP_LAYERS.iot = []`) карт болохгүй: «0 төрөл» гэж
-           харуулаад дарахад бүх давхаргыг унтраадаг байв. */
         const cardIds = (key: keyof typeof GROUP_LAYERS) => GROUP_LAYERS[key].filter((id) => counted.includes(id));
 
         const on = counted.filter((id) => visible.includes(id));
-        /* ⚠️ 2026-10-21: сонголтын горимд ч татагдаагүй давхарга 0 биш — «Нийт»-тэй ИЖИЛ
-           дүрмээр null + «N давхарга татагдсангүй» (урьд нь чимээгүй бага гардаг байв). */
         const onMissing = on.filter((id) => !map.has(id));
         const totalN = onMissing.length ? null : on.reduce((a, id) => a + (map.get(id)?.n ?? 0), 0);
 
         /**
          * БҮСЭЭР ШҮҮГДЭЭГҮЙ СОНГОСОН ДАВХАРГА — `ZONE_ID`-гүй (`noZone`).
-         * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): бүс сонгоход эдгээр нь `counted`-аас
-         *    хасагдаж самбараас ЧИМЭЭГҮЙ алга болдог байв (бүгд бүсгүй үед л тэмдэглэл
-         *    гардаг). Одоо нэрээр нь жагсааж, тоо нь ТӨСЛИЙН НИЙТ гэдгийг «төслийн нийт»
-         *    тэмдгээр хэлнэ — бүсийн нийлбэрт ОРОХГҮЙ хэвээр (дээрх ⚠️).
          */
         const zoneless = zone ? PLAN_LAYER_IDS.filter((id) => LAYER_BY_ID[id]?.noZone && visible.includes(id)) : [];
         const zonelessList = zoneless.length > 0 ? (
@@ -464,8 +368,6 @@ function PlanOverview({
 
         /**
          * Хэрэглэгч хараахан сонголт хийгээгүй эсэх — анхдагч багцтай ЯГ тэнцүү.
-         * ⚠️ `visible`-ыг харна (`on` биш): `on` нь бүсийн шүүлтэд давхарга
-         * хасагдвал богиносох тул «сонгоогүй» гэж худал уншигдана.
          */
         const initial = VIEW_BY_KEY.plan.initial;
         const untouched =
@@ -473,14 +375,6 @@ function PlanOverview({
 
         /**
          * СОНГОСОН ДАВХАРГУУД БАГЦААР — багц бүр өөрийн хэсэгтэй.
-         *
-         * ⚠️ Каталогийн `0/6` товчоор багцыг бүхэлд нь асаахад тэр багцын БҮХ
-         * давхарга энд нэг хэсэг болж гарна. Өөр багц нэмж асаахад ЭНЭ хэсэг
-         * хэвээр үлдэж, доор нь ШИНЭ хэсэг нэмэгдэнэ — багцууд бие биенээ
-         * дарж бичихгүй, зэрэгцэн харагдана.
-         *
-         * ⚠️ `flatMap` нь `filter(Boolean)`-ы оронд: сүүлийнх нь TypeScript-д
-         * `null`-ыг хасч чаддаггүй тул доош хүчээр хөрвүүлэх шаардлагатай болно.
          */
         const pickedGroups = LAYER_GROUPS.flatMap((g) => {
           const layers = GROUP_LAYERS[g.key]
@@ -489,14 +383,10 @@ function PlanOverview({
             .flatMap((x) => (x.d && x.t ? [{ d: x.d, t: x.t }] : []));
           if (!layers.length) return [];
 
-          /* ⚠️ 2026-10-21: багцын сонгосон давхаргын аль нэг нь татагдаагүй бол нийлбэр нь
-             худал бага — null («—»); донат/цуваа нь татагдсан давхаргуудаар үлдэнэ. */
           const groupMissing = GROUP_LAYERS[g.key].some((id) => on.includes(id) && !map.has(id));
           const n = groupMissing ? null : layers.reduce((a, x) => a + x.t.n, 0);
 
           // Донат — тоогоор эзлэх хувь. Тоо нь нэгжгүй тул багц дотор ҮРГЭЛЖ зөв.
-          // ⚠️ НЭГ ӨНГӨ — багц бүрийн донат/цуваа нь тухайн БАГЦЫН өнгөний
-          //    тодоос бүдгэр уусгалт (солонго биш). Их тоотой нь тод.
           const donut = layers
             .filter((x) => x.t.n > 0)
             .sort((a, b) => b.t.n - a.t.n)
@@ -504,8 +394,6 @@ function PlanOverview({
 
           /**
            * Баганан цуваа — НЭГЖ БҮРТ тусдаа.
-           * ⚠️ «Зам» багцад 98.2 км шугам ба 26.7 га талбай хоёул бий. Нэг
-           * график дээр тавибал баганын урт нь юуг ч илэрхийлэхгүй болно.
            */
           const series = GEOM_CHARTS.flatMap((c) => {
             const items = layers
@@ -526,45 +414,18 @@ function PlanOverview({
 
           /**
            * Дотоод ангилалаар задлах — давхарга × ангилал бүрт нэг чартын багц.
-           *
-           * ⚠️ Давхарга бүр ТУСДАА ArcGIS хүсэлт явуулна тул зөвхөн СОНГОСОН
-           * давхаргад: бүх 29-д нь урьдчилж татвал каталог нээх бүрд 29
-           * нэмэлт хүсэлт явна.
-           *
-           * ⚠️ Эхний ХОЁР ангиллаар хязгаарлав. «Барилга» 5 ангилалтай
-           * (төлөв, зориулалт, дэлгэрэнгүй зориулалт, бүсийн төрөл, компани) —
-           * бүгдийг зурвал ганц давхарга 15 чарт болж, бусад сонголт хэдэн
-           * дэлгэц доор үлдэнэ. Эхний хоёр нь «юу вэ» (төлөв) ба «юунд
-           * зориулсан» (зориулалт) хоёрыг хамарна.
            */
           const faceted = layers.flatMap((x) => {
             const fs = (x.d.facets ?? []).slice(0, 2);
             if (fs.length) return fs.map((f) => ({ d: x.d, f }));
             /**
-             * ⚠️ 29 давхаргын ЗӨВХӨН 6 нь ангилалтай. Ангилалгүй давхаргыг
-             * дангаар нь сонгоход (жишээ нь «Цахилгааны шугам») багцын хэсэгт
-             * ганц баганатай чарт л үлдэж, карт бараг хоосон харагддаг байлаа —
-             * хоёр өөр багцаас нэг нэг давхарга сонгоход хоёулаа хоосон.
-             *
              * Ийм давхаргад БҮСЭЭР задлах нь утга бүхий задаргаа: «энэ шугам
              * 52 бүсийн алинд хэр урттай вэ».
-             *
-             * ⚠️ `ZONE_ID`-гүй давхаргад (`noZone`) хүсэлт унана; бүс аль хэдийн
-             * сонгогдсон бол задаргаа нь ганц баганатай болох тул алгасна.
              */
             if (x.d.noZone || zone) return [];
             return [{ d: x.d, f: { field: x.d.zoneField ?? ZONE_FIELD, label: tr('Бүсээр') } }];
           });
 
-          /**
-           * ⚠️ ГАНЦ баганатай цуваа чарт ХЭРЭГГҮЙ. «Бүс» багц нэг давхаргатай
-           * тул «Талбайн давхарга» чарт нь 100%-ийн ганц багана + нэг нэртэй
-           * тайлбар болж, багцын картан дээрх «130.5 га»-г л давтдаг байлаа.
-           * Оронд нь тэр давхаргын ТӨРЛҮҮД (доорх ангиллын чартууд) утга өгнө.
-           *
-           * ⚠️ Ангиллын чарт ч байхгүй бол цуваагаа ҮЛДЭЭНЭ — эс бөгөөс багцын
-           * хэсэг бүрмөсөн хоосон болно.
-           */
           const multi = series.filter((c) => c.items.length > 1);
           const shownSeries = multi.length > 0 || faceted.length > 0 ? multi : series;
 
@@ -594,8 +455,6 @@ function PlanOverview({
                     <button type="button" className={s.zoneBarBtn} onClick={retryTotals}>{tr('Дахин оролдох')}</button>
                   </p>
                 )}
-                {/* ⚠️ 2026-09-30: сонголт бүгд бүсгүй давхарга бол `on` хоосорч тойм руу ЧИМЭЭГҮЙ
-                    буцдаг байв — шалтгааныг хэлнэ */}
                 {zone && !untouched && visible.length > 0 && !on.length && (
                   <p className={s.warnNote}>
                     {tr('Сонгосон давхаргуудад бүсийн талбар (ZONE_ID) байхгүй тул бүсээр шүүгдэхгүй — бүсийн тоймыг харуулав.')}
@@ -607,13 +466,7 @@ function PlanOverview({
 
               {/**
                 * БАГЦ БҮР нэг карт — төрлийн тоо, урт/талбай, цэгийн тоо.
-                * ⚠️ Урьд нь донат + жагсаалт хоёроор харуулдаг байв: донат нь
-                * зөвхөн ОБЪЕКТЫН ТООГ, жагсаалт нь зөвхөн ХЭМЖЭЭГ өгдөг тул
-                * «Инженерийн бэлтгэлд юу байгаа вэ» гэдгийг мэдэхийн тулд хоёр
-                * тусдаа хэсгээс мөрөө олж тааруулах шаардлагатай байлаа. Карт
-                * нь багцын гурван хэмжигдэхүүнийг НЭГ дор өгнө.
                 */}
-              {/* ⚠️ Гарчиггүй — картууд өөрсдөө юу болохоо хэлнэ */}
               <Section>
                 <div className={s.cardGrid} style={gridStyle(LAYER_GROUPS.filter((g) => cardIds(g.key).length > 0).length, true)}>
                   {LAYER_GROUPS.filter((g) => cardIds(g.key).length > 0).map((g) => (
@@ -668,7 +521,6 @@ function PlanOverview({
                         on
                         wide={pickedGroups.length <= CARD_WIDE_MAX}
                       >
-                        {/* ⚠️ Ганц давхаргатай багцад донат утгагүй — 100%-ийн нэг зүсмэг */}
                         {donut.length > 1 && (
                           <div className={s.chartBlock}>
                             <Donut
@@ -685,20 +537,10 @@ function PlanOverview({
                             <div className={s.facetHead}>
                               {c.title}
                               <span className={s.facetNote}>
-                                {/* ⚠️ Ширхэг нь БҮХЭЛ тоо — «1,651.0» гэж бичихгүй.
-                                    `note`-той жишиж болохгүй: тэр нь tr()-ээр орчуулагдсан
-                                    («items») тул EN-д таарахгүй — ГЕОМЕТРЭЭР шалгана. */}
-                                {/* ⚠️ 2026-10-01: км/га нийлбэр `qtyText`-ээр — «0.0 км» БИШ «N м» */}
                                 {c.geom === 'point' || c.geom === 'other' ? num(c.sum)
                                   : c.geom === 'area' ? haText(c.sum) : kmText(c.sum)}
                               </span>
                             </div>
-                            {/**
-                              * ⚠️ Баганан дарахад давхаргын ДЭЛГЭРЭНГҮЙ рүү үсэрдэг байв —
-                              * самбар солигдож, зурагт юу ч болдоггүй. Одоо тэр давхаргыг
-                              * зурагт ДАНГААР нь үлдээж шүүнэ: график нь `visible`-ыг
-                              * дагадаг тул самбар өөрөө шууд тэр давхарга дээр төвлөрнө.
-                              */}
                             <Bars
                               items={c.items}
                               limit={8}
@@ -720,9 +562,6 @@ function PlanOverview({
 
                 {zonelessList}
 
-                {/* ⚠️ Сонголтыг цуцлах — 29 давхаргыг нэг нэгээр нь унтраах нь
-                    тэвчээр барах ажил. Анхдагч байдалд буцаана: зураг бүсээ
-                    харуулж, самбар ерөнхий чартууд руугаа эргэнэ. */}
                 <Section>
                   <button
                     type="button"
@@ -744,15 +583,6 @@ function PlanOverview({
 /**
  * Давхаргыг АНХНЫ ангиллаараа задалж чарт болгоно — донат (тоо) + багана
  * (хэмжээ). Сонгосон багцын хэсэгт давхарга бүрийн доор орно.
- *
- * ⚠️ Урьд нь дотоод ангиллыг харах цорын ганц арга нь давхаргын нэр дээр дарж
- * ТУСДАА дэлгэрэнгүй самбар нээх байв — тэгэхэд сонгосон бусад давхарга
- * самбараас алга болдог тул харьцуулах боломжгүй болно. Одоо ангилал нь
- * сонголтын чартын хэсэгт өөрөө орж ирнэ.
- *
- * ⚠️ Хэмжээний багана нь ЗӨВХӨН `qty`-тэй давхаргад. «Барилга» шиг талбайтай
- * давхаргад төрөл бүрийн ТАЛБАЙ гарах нь гол утга — тоо ганцаараа «100 амины
- * сууц vs 20 орон сууц» гэж төөрөгдүүлнэ.
  */
 function LayerTypeCharts({
   d, f, zone, view,
@@ -767,17 +597,9 @@ function LayerTypeCharts({
   /** Задаргаа нь БҮСЭЭР үү, ангиллаар уу — нэгж үг ба хоосон шошго үүнээс */
   const byZone = f.field === ZONE_FIELD || f.field === ZONE_LAYER.zoneField;
 
-  /* ⚠️ 2026-10-06 (аудит): `queryGroupEx` — серверийн `maxRecordCount`-оор тайрагдсан бүлгийн
-     жагсаалт БҮРЭН мэт (донатын нийлбэр, «N төрөл») харагддаг байв. Тайрагдсан бол «дутуу». */
   const q = useAsync(async () => {
     const { rows, truncated } = await queryGroupEx(layerUrl(d), f.field, layerStats(d), where);
     const g = groups(rows, f.field, byZone ? tr('Тодорхойгүй') : tr('Бүртгэгдээгүй'), ['n', 'q']);
-    /**
-     * ⚠️ «Бүсийн мэдээлэл байхгүй» мөрийг ХАСАХГҮЙ, ЗӨВХӨН нэрийг нь солино.
-     * Хасвал чартын нийлбэр картын дүнгээс зөрнө («49.7 км» карт дээр,
-     * «45.9 км» чарт дээр) — хэрэглэгч алдаа гэж уншина. Бүсийн гадна байгаа
-     * объект нь ч бас өгөгдөл тул өөрийн мөртэй байх ёстой.
-     */
     const list = g
       .map((x) => (byZone && x.label.trim() === ZONE_NONE.trim()
         ? { ...x, label: tr('Бүсэд хамаарахгүй') }
@@ -786,21 +608,14 @@ function LayerTypeCharts({
     return { list, truncated };
   }, [d.id, f.field, where]);
 
-  /* ⚠️ 2026-09-29 (аудит 10): унасан асуулга чартыг ЧИМЭЭГҮЙ алга болгодог байв —
-     «ангилалгүй давхарга»-аас ялгагдахгүй. Алдааг дахин оролдох товчтой харуулна. */
   if (q.state === 'error') return <Empty label={tr('Задаргаа татагдсангүй.')} onRetry={q.retry} />;
-  // ⚠️ Ганц ангилалтай бол задаргаа биш — давхарга өөрөө. Чарт нэмэхгүй.
   if (q.state !== 'ready' || q.data.list.length < 2) return null;
   const data = q.data.list;
   const truncated = q.data.truncated;
 
   const total = data.reduce((a, x) => a + x.values.n, 0);
-  // ⚠️ Нэг давхаргын ангиллууд — НЭГ өнгөний уусгалт (олон өнгө биш)
   const shade = monoShades(d, data);
   const colorOf = (label: string) => shade.get(label) ?? BLANK_HUE;
-  /* ⚠️ 2026-10-22 (аудит №4): ангиллын НЭР — `LayerCatalog.nameOf`-той нэг дүрэм (бүсийн ангилал → `f.canon`, кодтой
-     талбар → `paint.labels`), орчуулсан. Урьд нь донат/багана ба шүүлтийн чип түүхий утга («орон сууцны бүс») харуулж
-     англи горимд монголоор үлддэг байв. Түлхүүр · өнгө · шүүлтийн нөхцөл түүхий утгаараа хэвээр. */
   const nameOf = (label: string): string => tr(f.canon
     ? f.canon(label)
     : f.field === d.paint?.field
@@ -816,11 +631,6 @@ function LayerTypeCharts({
 
   /**
    * Ангилал дарахад зурагт шүүнэ.
-   *
-   * ⚠️ `layerIds`-ыг ЗААВАЛ өгнө: шүүлтийн талбар (жиш. `Layer`) зөвхөн ЭНЭ
-   * давхаргад байдаг тул бусад давхаргад тавибал featureEffect чимээгүй унана.
-   * ⚠️ Донат ба багана НЭГ түлхүүрийн орон зайтай учир нэг товчлуур мэт
-   * ажиллана — аль нэгийг нь дарахад нөгөө нь ч тодорно.
    */
   const pickType = (key: string) => {
     const item = data.find((x) => `${d.id}:${x.label}` === key);
@@ -852,12 +662,6 @@ function LayerTypeCharts({
       .sort((a, b) => b.value - a.value)
     : [];
 
-  /**
-   * ⚠️ Гадна БҮРХҮҮЛГҮЙ (fragment): чартын блокууд нь багцын хэсэг доторх бусад
-   * блокуудтай ЯГ НЭГ ТҮВШИНД байх ёстой — эс бөгөөс `.chartBlock + .chartBlock`
-   * тусгаарлагч зураас нь бүрхүүлийн дотор хоригдож, хөрш чартуудын зааг
-   * харагдахгүй болно.
-   */
   return (
     <>
       <div className={s.chartBlock}>
@@ -893,8 +697,6 @@ function LayerTypeCharts({
               : (byZone ? tr('Урт бүсээр') : tr('Урт төрлөөр'))}
             <span className={s.facetNote}>{qtyText(d, data.reduce((a, x) => a + x.values.q, 0))}</span>
           </div>
-          {/* ⚠️ Хэмжээний багана нь ӨӨР түлхүүртэй (`:q:`) — шүүлт нь ижил тул
-              тоонийх рүү буулгаж, хоёр график нэг сонголтыг хуваалцана. */}
           <Bars
             items={sized}
             limit={8}
@@ -916,15 +718,6 @@ function LayerTypeCharts({
  *   · үндсэн үзүүлэлт  — объект, хэмжээ, нэг объектын дундаж
  *   · ангилал бүрээр   — тоо + хэмжээ
  *   · бүсээр           — тоо + хэмжээ
- *
- * ⚠️ ӨРТГИЙН мэдээлэл ЭНД БАЙХГҮЙ — ерөнхий мэдээллийн каталогт мөнгөн дүн
- * ОГТ ГАРАХГҮЙ. 2026-08-24-нд `negj_une` (нэгж үнэ) дээр тогтсон өртгийн
- * загвар бүхэлдээ хасагдсан (зохиомол дата байсан); «Тохиромжтой байдлын
- * үнэлгээ» модульд ч санхүүгийн тооцоо үлдээгүй.
- *
- * ⚠️ Порталын АМЬД мөнгөн дүн бол ЗӨВХӨН гүйцэтгэлийн тал: Cashflow-ийн
- * төсөвт өртөг/гэрээний дүн (`Dashboard`, `Tailan`) ба газар чөлөөлөлтийн
- * үнэлгээ (`Gazar`). Тэдгээрийг энэ самбарт давтахгүй.
  */
 function LayerDashboard({
   d,
@@ -941,15 +734,6 @@ function LayerDashboard({
 }) {
   const { setHighlight, zoomToLayer, zoomToWhere, highlight } = useMap();
   const [sel, setSel] = useState<string | null>(null);
-  /**
-   * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ. Шүүлт идэвхтэй байхад «‹ Жагсаалт»-аар
-   * буцах (unmount) эсвэл өөр давхарга сонгоход (remount болохгүй) хуучин
-   * WHERE-тэй featureEffect зурган дээр үлдэж, цуцлах удирдлага харагдахгүй
-   * байв. Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана (ref-ээр
-   * шалгана) — эс бөгөөс бусад самбарын тодруулгыг дайрч цэвэрлэнэ.
-   * ⚠️ 2026-10-11 (аудит №7): «өөрийн» гэдгийг `sel`-ээр БИШ, идэвхтэй тодруулгын `only === d.id`-ээр
-   *    шалгана (`ownsHighlight`); ✕-ээр арилсан тодруулгад `sel` тэглэгдэнэ.
-   */
   const selRef = useRef(sel);
   useSyncRef(selRef, sel);
   const hlRef = useRef(highlight);
@@ -960,9 +744,6 @@ function LayerDashboard({
   useEffect(() => {
     if (sel != null && !ownsHighlight(highlight, d.id)) setSel(null);
   }, [highlight, sel, d.id]);
-  /* ⚠️ 2026-09-30: БҮС солигдоход ч тэглэнэ — «Бүсээр» хэсэг алга болж (бүс сонгосон), ангиллын
-     чарт бүсээр хумигддаг атал хуучин сонголт ба бүсгүй WHERE-тэй тодруулга үлдэж, давхарга
-     цуцлах удирдлагагүйгээр бүдгэрсэн хэвээр байв. */
   const selKey = `${d.id}|${zone ?? ''}`;
   const prevLayerRef = useRef(selKey);
   useEffect(() => {
@@ -982,8 +763,6 @@ function LayerDashboard({
     const stats = layerStats(d);
     const KEYS = ['n', 'q'];
 
-    /* ⚠️ 2026-10-06 (аудит): `queryGroupEx` — тайрагдсан (`exceededTransferLimit`) задаргаа
-       «дутуу» тэмдэгтэй (`LayerTypeCharts`-ийн ⚠️). */
     const [facetRaw, zoneRaw] = await Promise.all([
       Promise.all((d.facets ?? []).map((f) => queryGroupEx(url, f.field, stats, where))),
       d.noZone || zone ? Promise.resolve(null) : queryGroupEx(url, d.zoneField ?? ZONE_FIELD, stats, where),
@@ -1004,11 +783,6 @@ function LayerDashboard({
     return { facets, byZone, zoneTruncated: !!zoneRaw?.truncated };
   }, [d.id, where]);
 
-  /**
-   * ⚠️ Тодруулгыг ЗӨВХӨН энэ давхаргад хэрэглэнэ (`d.id`). Шүүлтийн талбар
-   * (жиш. `Layer`, `Barilga_ty`) бусад давхаргад БАЙХГҮЙ тул бүгдэд нь тавибал
-   * тэдгээр давхаргын featureEffect чимээгүй унаж, шүүлт «ажиллахгүй» болно.
-   */
   const pick = (key: string, w: string | null) => {
     const next = sel === key ? null : key;
     setSel(next);
@@ -1021,20 +795,14 @@ function LayerDashboard({
     pick(k, item ? groupWhere(f.field, item) : null);
   };
 
-  /* ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): ЭНЭ давхаргын тоо — давхарга тус бүрийн ХУВААЛЦСАН кэшээс (`useLazyTotals`).
-     `Portal` самбарт одоо зөвхөн тоймын (`PLAN_LAYER_IDS`) тоог татдаг тул каталогоос сонгосон бусад давхарга (33)
-     тэр Map-д байхгүй — урьд нь каталогийн бүх 158-ыг урьдчилж татдаг байв. Каталог/тоймтой ижил агшны тоо. */
   const one = useLazyTotals(zone, [d.id]);
   const t = one.map.get(d.id);
   const qty = t ? qtyText(d, t.q) : null;
 
   /**
    * Нэг объектод ногдох дундаж хэмжээ (шугам → м, талбай → м²).
-   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): `t.q / t.n` БИШ `avgQty(t)` = q ÷ хэмжээ
-   *    БӨГЛӨГДСӨН объектын тоо (`nq`) — уртгүй объект хуваарьт орж дундажийг бууруулдаг байв.
    */
   const avg = d.qty ? avgQty(t) : null;
-  /* ⚠️ 2026-10-01: бүс сонгосон үед БҮСИЙН ДОТОРХ объектууд руу (`zoomWhereFor`) */
   const zoomWhere = zoomWhereFor(d, zone);
 
   return (
@@ -1071,8 +839,6 @@ function LayerDashboard({
         </div>
 
         {one.failed.length > 0 ? (
-          /* ⚠️ 2026-09-30: унасан давхарга — урьд нь «…» мөнхөд. 2026-10-22: унасныг `useLazyTotals` хэлнэ;
-             «Дахин оролдох» нь бүх тоог шинэ эринээр (`retryTotals`) */
           <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={retryTotals} />
         ) : (
           <Stats cols={avg != null ? 3 : 2}>
@@ -1081,7 +847,6 @@ function LayerDashboard({
             {avg != null && (
               <Stat
                 value={num(avg, 1)}
-                /* ⚠️ tr() — config-ийн 'м²'/'км'/'м' EN-д кириллээр үлдэхгүй */
                 unit={tr(d.qty!.unit)}
                 label={tr('Дундаж {0}', d.qty!.unit === 'м²' ? tr('талбай') : tr('урт'))}
               />
@@ -1110,16 +875,12 @@ function LayerDashboard({
             <>
               {/* ── Ангилал бүрээр — ЭХНИЙ ангиллыг дугаар диаграмаар (дашбоард төрх) ── */}
               {facets.map((f, idx) => {
-                // ⚠️ Нэг давхаргын ангиллууд — НЭГ өнгөний уусгалт
                 const shade = monoShades(d, f.items);
                 const total = f.items.reduce((a, i) => a + i.values.n, 0);
                 const items = f.items.map((item) => ({
                   key: `${f.label}:${item.label}`,
-                  /* ⚠️ 2026-10-26 (аудит): харагдах нэр (`facetName`) — түлхүүр · өнгө · шүүлт түүхий утгаараа */
                   label: facetName(d, f.field, item.label),
                   value: item.values.n,
-                  // ⚠️ Тоо ГАНЦААРАА хангалтгүй: 12 хэрчимтэй кабель трасс 1.8 км,
-                  //    3,200 хэрчимтэй дулаан 49.7 км — хэмжээг ч заана.
                   display: [
                     `${num(item.values.n)}`,
                     qtyText(d, item.stats.q ?? null),
@@ -1135,8 +896,6 @@ function LayerDashboard({
                     {/* Эхний ангиллыг дугуй диаграмаар — эзлэх хувийг нэг дор */}
                     {idx === 0 && f.items.length <= 8 && (
                       <div style={{ marginBottom: 14 }}>
-                        {/* ⚠️ Багана нь ЯГ ижил түлхүүртэй — донат нь зүгээр нэг
-                            зураг биш, тэр шүүлтийн өөр нэг удирдлага байх ёстой. */}
                         <Donut
                           items={items.map((it) => ({ key: it.key, label: it.label, value: it.value, color: it.color }))}
                           center={num(total)}
@@ -1196,9 +955,7 @@ function LayerDashboard({
   );
 }
 
-/* ═════════════════ Бүсийн шүүлт ═════════════════
-   ⚠️ 2026-08-10: дотоод `ZoneBar` нь ТУСДАА хэрэглүүр болж `components/ZoneFilter`
-   рүү нүүсэн (төрлөөр бүлэглэсэн, dashboard-д ч ажиллана). Энд зөвхөн хэрэглэнэ. */
+/* ═════════════════ Бүсийн шүүлт ═════════════════ */
 
 /* ═════════════════ Барилгын хяналт ═════════════════ */
 
@@ -1212,21 +969,11 @@ function PickedZone({
   setZone: (z: string | null) => void;
 }) {
   const F = ZONE_FIELDS;
-  // ⚠️ Бүсийн давхарга кодоо «Багц -1» гэж бичдэг; апп даяарын бүсийн утга нь
-  //    каноник («Багц-1») тул шүүлт, харуулалт хоёуланд нь хөрвүүлж авна.
   const id = zoneCanon(attrs[F.id]);
   const type = zoneType(attrs[F.type]);
   const { setHighlight, highlight } = useMap();
   /** Барилгын төлөв дарахад — тэр бүсийн тийм төлөвтэй барилгуудыг тодруулна */
   const [selSt, setSelSt] = useState<string | null>(null);
-  /**
-   * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ. Шүүлт идэвхтэй байхад өөр бүс дарахад
-   * компонент remount хийгдэхгүй тул хуучин бүсийн `zoneWhere`-тэй тодруулга
-   * үлдэж, статусын товч (утга нь бүх бүсэд ижил) «идэвхтэй» мэт худал
-   * харагддаг байв. Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана.
-   * ⚠️ 2026-10-11 (аудит №7): «өөрийн» = идэвхтэй тодруулгын `only === BUILT_LAYER.id` (`ownsHighlight`);
-   *    ✕-ээр арилсан тодруулгад `selSt` тэглэгдэнэ.
-   */
   const selStRef = useRef(selSt);
   useSyncRef(selStRef, selSt);
   const hlRef = useRef(highlight);
@@ -1249,9 +996,6 @@ function PickedZone({
     setSelSt(off ? null : v);
     if (off) { setHighlight(null); return; }
     const zw = zoneWhere(BUILT_LAYER, id);
-    /* ⚠️ 2026-09-30: бусад төлөвийн бүлэг өөрийн WHERE-тэй (`groupWhere` — хоосон/NULL ч багтана)
-       ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): кирилл төлөвт `N'…'` угтвар (`sqlStr`) — угтваргүй
-       юникод харьцуулалт зарим үйлчилгээнд АЛДААГҮЙГЭЭР 0 мөр өгдөг (тодруулга хоосорно). */
     const cond = where ?? `${BUILT_FIELDS.status} = ${sqlStr(v)}`;
     setHighlight(`${zw ? `(${zw}) AND ` : ''}(${cond})`, BUILT_LAYER.id);
   };
@@ -1259,9 +1003,6 @@ function PickedZone({
   const q = useAsync(async () => {
     const B = BUILT_FIELDS;
     const where = zoneWhere(BUILT_LAYER, id) ?? '1=1';
-    /* ⚠️ 2026-09-30: ХҮН АМ = `Population` (`live.POPULATION_FIELD`). `B.population`
-       (`Total_population`) нь Population + Huchin_chadal (сургуулийн суудал г.м.) —
-       тооцоонд ХОРИОТОЙ (live.ts, TRANSPORT_ANALYSIS_HANDOFF); SummaryBar 2026-09-22-нд засагдсан. */
     const byStatus = await queryGroup(layerUrl(BUILT_LAYER), B.status, [
       count(oidOf(BUILT_LAYER), 'n'), sum(B.households, 'urh'), sum(POPULATION_FIELD, 'pop'),
     ], where);
@@ -1270,15 +1011,10 @@ function PickedZone({
       const g = rows.find((r) => r.label === st.value);
       return { ...st, n: g?.values.n ?? 0, urh: g?.values.urh ?? 0, pop: g?.values.pop ?? 0 };
     });
-    /* ⚠️ 2026-09-30: БУСАД (хоосон/танигдаагүй) төлөвтэй барилга урьд нь нийлбэрээс ЧИМЭЭГҮЙ
-       хасагддаг байв (`live.loadHeadline`-ийн ижил засвар). Нийлбэр нь БҮХ бүлгээс; бусад нь
-       саарал баганаар, тодруулга нь бүлгийн ЯГ WHERE-ээр (`groupWhere`). */
     const known = new Set(BUILT_STATUS.map((st) => st.value));
     const extra = rows
       .filter((r) => !known.has(r.label) && r.values.n > 0)
       .map((r) => ({ label: r.label, n: r.values.n, where: groupWhere(B.status, r) }));
-    /* ⚠️ 2026-10-21 (аудит): өрх/хүн амын нийлбэр `stats`-аас — БҮХ бүлэгт хэмжилтгүй бол `null` («—»), 0 БИШ
-       (`query.Group.stats`-ийн ⚠️: null ≠ 0). Барилгын тоо (`n`) нь count тул үргэлж тоо. */
     const sumStat = (k: string): number | null => (rows.every((r) => r.stats[k] == null)
       ? null : rows.reduce((a, r) => a + (r.stats[k] ?? 0), 0));
     return {
@@ -1299,7 +1035,6 @@ function PickedZone({
   return (
     <Section title={tr('Сонгосон бүс')}>
       <div className={s.zoneHead} style={{ '--tone': ZONE_TYPES[type] ?? ZONE_TYPE_EMPTY_HUE } as CSSProperties}>
-        {/* ⚠️ 2026-10-26 (аудит): англи горимд «Багц-3.1», «Олон нийтийн бүс» монголоор үлддэг байв — ZoneFilter-тэй нэг нэр */}
         <span className={s.zoneHeadId}>{zoneLabel(id)}</span>
         <span className={s.zoneHeadType}>{tr(type)}</span>
       </div>
@@ -1313,20 +1048,12 @@ function PickedZone({
       <div style={{ marginTop: 10 }}>
         <Rows
           items={[
-            /* ⚠️ 2026-10-26 (аудит): BCR нь 0–1 бутархай (амьд 0.39987) — «Тохиромжтой байдал» хувиар (40%) харуулдаг тул нэг бүс
-               хоёр хэмжээстэй уншигддаг байв. `analysis/data.bcrToPct`-ийн дүрэм (≤1.5 бол ×100); 0 нь «—» (анализтай ижил). */
             { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {(() => {
               const b = n(F.bcr);
               return b == null || b === 0 ? '—' : `${num(b <= 1.5 ? b * 100 : b, 0)}%`;
             })()}</span> },
-            // ⚠️ Төлөвлөсөн зогсоолын НИЙЛБЭР талбар шинэ бүсийн давхаргад алга —
-            //    ил + далдаас угсарна.
-            /* ⚠️ 2026-09-30: ил ба далд ХОЁУЛАА хоосон бол «—» — урьд нь «… / 0» гэж хэмжилт мэт гардаг байв */
             { key: tr('Зогсоол (норм / төлөвлөсөн)'), value: <span className="num">{num(n(F.parkNorm))} / {num(n(F.parkPlanOpen) == null && n(F.parkPlanUnder) == null ? null : (n(F.parkPlanOpen) ?? 0) + (n(F.parkPlanUnder) ?? 0))}</span> },
             ...(n(F.landPending) ? [{ key: tr('Газар чөлөөлөлт'), value: tr('дуусаагүй') }] : []),
-            // ⚠️ «Батлагдсан төсөв» ба «Гүйцэтгэгч» ХАСАГДСАН: шинэ бүсийн
-            //    давхаргад тэр талбарууд байхгүй, санхүүгийн дүн «Тохиромжтой
-            //    байдлын үнэлгээ» ба «Хөрөнгө оруулалт» хоёрт төвлөрсөн.
           ]}
         />
       </div>
@@ -1346,7 +1073,6 @@ function PickedZone({
                   // НЭГ ӨНГӨ (барилгын давхаргын hue) тодоос бүдгэр — солонго биш
                   display: `${num(st.n)}`, color: shade(LAYER_BY_ID['et:24']?.hue ?? '#f59e0b', i, x.status.length),
                 })),
-                /* ⚠️ 2026-09-30: бусад төлөв — саарал (ангилал биш, «мэдэгдэхгүй») */
                 ...x.extra.map((e) => ({
                   key: `~${e.label}`, label: e.label, value: e.n, display: `${num(e.n)}`, color: 'var(--ink-3)',
                 })),
@@ -1379,15 +1105,6 @@ function PickedFeature({
 }) {
   const { setHighlight, highlight } = useMap();
   const [active, setActive] = useState<string | null>(null);
-  /**
-   * ⚠️ Тодруулга ХОЦРОХООС сэргийлнэ. Шүүлт идэвхтэй байхад өөр объект дарахад
-   * компонент remount хийгдэхгүй тул хуучин WHERE-тэй featureEffect зурган
-   * дээр үлдэж, шинэ объектын товчнуудад хуучин түлхүүр таарахгүй учир цуцлах
-   * чип ч харагдахгүй байв. Онц нь `attrs` объект — дарах бүрд шинээр ирнэ.
-   * Cleanup нь ЗӨВХӨН өөрийн тавьсан тодруулгыг арилгана (ref-ээр шалгана).
-   * ⚠️ 2026-10-11 (аудит №7): «өөрийн» = идэвхтэй тодруулгын `only === def.id` (`ownsHighlight`);
-   *    ✕-ээр арилсан тодруулгад `active` тэглэгдэнэ.
-   */
   const activeRef = useRef(active);
   useSyncRef(activeRef, active);
   const hlRef = useRef(highlight);
@@ -1415,16 +1132,13 @@ function PickedFeature({
   if (def.qty && attrs[def.qty.field] != null) {
     rows.push({
       key: def.qty.unit === 'м²' ? tr('Талбай') : tr('Урт'),
-      /* ⚠️ Нэгжийг tr()-ээр — EN-д «м²» кириллээр үлдэхгүй (жишилт нь түүхий хэвээр) */
       value: <span className="num">{num(Number(attrs[def.qty.field]), 1)} {tr(def.qty.unit)}</span>,
     });
   }
-  // ⚠️ «Нэгж үнэ» ХАСАГДСАН — санхүүгийн дүн зөвхөн анализын модульд.
   if (def.id === BUILT_LAYER.id) {
     for (const [f, label] of [
       [BUILT_FIELDS.floors, tr('Давхар')],
       [BUILT_FIELDS.households, tr('Өрхийн тоо')],
-      /* ⚠️ 2026-09-30: `Population` — `Total_population` нь багтаамж нэмсэн (дээрх бүсийн ⚠️) */
       [POPULATION_FIELD, tr('Хүн ам')],
     ] as [string, string][]) {
       if (attrs[f] == null) continue;
@@ -1432,8 +1146,6 @@ function PickedFeature({
     }
   }
   // Газар чөлөөлөлтийн кадастрын мэдээлэл — эзэмшигч, хаяг, дугаар, тэмдэглэл.
-  // ⚠️ Эдгээр нь ТЕКСТ тул `filters`-т (facets) орохгүй: тус бүр 100+ өөр
-  // утгатай учир дарж шүүх утгагүй, зөвхөн уншиж харах мөр.
   if (def.id === 'land:left') {
     const F = PARCEL_LEFT.fields;
     for (const [f, label] of [
@@ -1455,9 +1167,6 @@ function PickedFeature({
     const k = `${field}:${value}`;
     const next = active === k ? null : k;
     setActive(next);
-    // ⚠️ Тодотголыг ТУХАЙН давхаргад л хязгаарлана (2 дахь арг = def.id) — эс бөгөөс
-    //    facet талбар байхгүй бусад давхаргад featureEffect чимээгүй унаж, тэднийг
-    //    буруугаар бүдгэрүүлнэ (бусад бүх дуудлага layerId дамжуулдаг).
     setHighlight(next ? `${field} = ${sqlStr(String(value))}` : null, def.id);
   };
 
@@ -1497,12 +1206,6 @@ function PickedFeature({
 
       {rows.length === 0 && filters.length === 0 && <Empty label={tr('Энэ дээр бүртгэгдсэн талбар алга.')} />}
 
-      {/**
-        * ⚠️ Зураг дээр дарсны дараа «энэ юу вэ» гэдгийг харуулдаг байсан ч тэр
-        * давхаргыг дангаар нь шүүж харах арга байхгүй байв — 29 давхарга
-        * дээр дээрээсээ давхарлан зурагдсан үед сонирхсон объектоо ялгаж
-        * харах боломжгүй. Нэг товчоор ЗӨВХӨН тэр давхаргыг үлдээнэ.
-        */}
       <button type="button" className={s.zoomBtn} onClick={onIsolate}>
         {isolated ? tr('Бүх давхаргыг буцааж харуулах') : tr('Зөвхөн «{0}»-г харуулах', def.title)}
       </button>

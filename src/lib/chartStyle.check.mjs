@@ -1,13 +1,6 @@
 /**
  * `chartStyle.ts` — графикийн нэг эх (2026-10-09, «бүх графикийн загварыг жигдлэх»).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/chartStyle.check.mjs
- *
- * ⚠️ Барьдаг дүрмүүд:
- *    · `linePath`/`lineSegments` нь `null` дээр ТАСАРНА (null ≠ 0 — гүүрээр холбохгүй);
- *    · ганц цэгтэй хэсэг `single` — шугам/талбай биш, цэг;
- *    · ямар ч оролтод `NaN`/`Infinity` замд орохгүй;
- *    · монотон муруй хуримтлагдсан (өсөх) цуваанд ХЭТРЭХГҮЙ (96 → 98.8 нь 100-г давахгүй);
- *    (`ui.tsx`-ийн markup — `src/components/charts.ui.check.mjs`)
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/chartStyle.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,7 +10,7 @@ import {
   SCORE_HEX, SCORE_INK, SCORE_NODATA_INK,
 } from '@/lib/chartStyle';
 
-/* ── ⚠️ 2026-10-09 (аудит №6): roundPctsTo100 — бүхэл хувиуд нийлээд ЯГ 100 ── */
+/* ── 2026-10-09 (аудит №6): roundPctsTo100 — бүхэл хувиуд нийлээд ЯГ 100 ── */
 assert.deepEqual(roundPctsTo100([1, 1, 1]), [34, 33, 33], '33.3×3 → 99% биш 100%');
 assert.deepEqual(roundPctsTo100([16.5, 16.5, 67]), [17, 16, 67], '17+17+67 = 101% биш');
 assert.deepEqual(roundPctsTo100([75, 25]), [75, 25]);
@@ -29,7 +22,6 @@ assert.deepEqual(roundPctsTo100([]), []);
 for (const vs of [[1, 2, 3, 4, 5, 6, 7], [0.1, 0.2, 0.7], [3, 3, 3, 1]]) {
   assert.equal(roundPctsTo100(vs).reduce((a, b) => a + b, 0), 100, `нийлбэр 100: ${vs}`);
 }
-/* ⚠️ 2026-10-23: Environment — Donut-ын тайлбар НЭГ оронтой; нийлбэр нь ЯГ 100.0 хэвээр */
 assert.deepEqual(roundPctsTo100([1, 1, 1], undefined, 1), [33.4, 33.3, 33.3], '1 орон: 33.4 · 33.3 · 33.3');
 assert.deepEqual(roundPctsTo100([3, 1], undefined, 1), [75, 25]);
 for (const vs of [[1, 2, 3, 4, 5, 6, 7], [0.1, 0.2, 0.7], [3, 3, 3, 1], [1, 1, 1, 1, 1, 1]]) {
@@ -42,8 +34,6 @@ for (const k of ['stroke', 'markerR', 'ring', 'dim', 'areaTop', 'areaBottom', 'g
   assert.ok(k in CHART, `CHART.${k} байх ёстой`);
 }
 assert.equal(CHART.stroke, 2);
-/* ⚠️ 2026-10-23: Environment — 5px цэг, 5px мөрийн зам, тасархай төлөвлөгөө, талбай .22 → .02,
-   donut дотоод = .72 × гадаад, гэрэлтэлтгүй (`glowBlur` 0) */
 assert.equal(CHART.markerR, 2.5);
 assert.equal(CHART.dim, 0.35);
 assert.equal(CHART.barH, 5, 'мөрийн зам 5px (Environment row-chart-track)');
@@ -59,7 +49,6 @@ assert.equal(CHART.colRadius, 5);
 assert.equal(CHART.colW, 0.8, 'Environment .bar-chart-fill 80%');
 assert.equal(CHART.colDim, 0.18);
 assert.equal(CHART.meterH, 6, 'Environment Meter h-1.5');
-/* ⚠️ 2026-10-23: Environment PieChart — суурь 112, гадаад R = size/2 − 4, дотоод .72R */
 assert.deepEqual(DONUT_SIZES, { sm: [82, 10], md: [112, 15], lg: [128, 17] });
 {
   const g = donutGeom(112);
@@ -114,8 +103,6 @@ ctrlYs(monotonePath(uneven)).forEach(([c1, c2], i) => {
   const hi = Math.max(uneven[i].y, uneven[i + 1].y) + 1e-6;
   assert.ok(c1 >= lo && c1 <= hi && c2 >= lo && c2 <= hi, `тэгш бус ${i}: (${c1}, ${c2})`);
 });
-/* ⚠️ 2026-10-09 (аудит №3): monotonePath(pts, from, to) = БҮТЭН муруйн яг тэр хэсэг
-   (slice-лаад дахин бодвол захын налуу өөрчлөгдөж PkgProg-ийн зөрүүний ирмэг зөрдөг байв) */
 {
   const full = monotonePath(cum);
   const cs = full.split(' C').slice(1);
@@ -151,7 +138,7 @@ assert.ok(!/NaN/.test(arcPath(50, 50, 40, 0, Math.PI / 2)));
 assert.equal((arcPath(50, 50, 40, 0, Math.PI * 2).match(/A/g) || []).length, 2);
 
 console.log('✅ chartStyle: тогтмол · null дээр тасрах · NaN-гүй · монотон хэтрэхгүй · niceTicks · glow · arcPath');
-/* ── ⚠️ 2026-10-09 (аудит №3): SCORE_HEX = globals.css-ийн --score-1..5 (хоёр горим) ──
+/* ── 2026-10-09 (аудит №3): SCORE_HEX = globals.css-ийн --score-1..5 (хоёр горим) ──
    Газрын зураг hex, самбар токен ашигладаг тул ТЭНЦҮҮ байх ёстой. color-mix(in oklab)-ийг
    энд бодно (Björn Ottosson-ийн OKLab); хөтчийн бүхэлчлэлд ±2/255 зөвшөөрнө. */
 {

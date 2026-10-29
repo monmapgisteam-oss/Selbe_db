@@ -153,7 +153,6 @@ assert.ok(st.some((s) => s.statisticType === 'count' && s.onStatisticField === L
   assert.doesNotMatch(PORTAL, /CATALOG_LAYER_IDS/, 'Portal каталогийн бүх давхаргыг урьдчилж татахгүй');
   assert.match(PORTAL, /totals=\{view === 'plan' \? totals : TOTALS_IDLE\}/, 'нуугдмал самбарт хоосон Map-ыг уналт гэж зурахгүй');
   const GD = readFileSync('src/modules/GeneralDash.tsx', 'utf8');
-  /* ⚠️ 2026-10-23: карт ТӨСЛИЙН НИЙТЭЭР (zone биш null) — бүс зөвхөн газрын зургийг шүүнэ гэсэн мэдэгдэлтэй нийцүүлэв */
   assert.match(GD, /usePlanTotals\(null, true, PLAN_CARD_IDS\)/, '«Ерөнхий дашбоард»: зөвхөн «Ерөнхий төлөвлөгөө» картын давхарга, төслийн нийтээр');
   for (const [f, src] of [['Portal', PORTAL], ['GeneralDash', GD]]) {
     const cat = src.slice(src.indexOf('<LayerCatalog'), src.indexOf('/>', src.indexOf('<LayerCatalog')));

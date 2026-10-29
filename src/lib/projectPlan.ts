@@ -12,25 +12,6 @@
  *   H/I · J/K · L/M огноо         — хадгалсан, эс бөгөөс үр удмын MIN эхлэх / MAX дуусах
  *   N/O/P/Q/R/S (0–100)          — навч: дүрмээр (доор), эцэг: Σ F_хүүхэд × X_хүүхэд
  *   T/U/V/W (0–100)              — S/N · S/O · S/P · S/R  (хуваарь 0 → 0)
- *
- * ⚠️ НЭГЖ (2026-10-26, тохирсон тодорхойлолт): ГАРАЛТ БҮХ ХУВЬ 0–100 (`pct()` 100-аар
- *    үржүүлдэггүй). Хувиргалт ЗӨВХӨН ирмэг дээр НЭГ удаа. ХАДГАЛСАН нэгж нь импорттой
- *    (`tools/cashflow-import.mjs`) тааруулсан: жин `heseg_ezleh_huvi`/`tusul_ezleh_huvi` нь
- *    Excel-ийнхээрээ БУТАРХАЙ (0–1), `guitsetgel_huvi` нь 0–100 (`STORED_WEIGHT`).
- *    Дотор нь бутархайгаар бодоод гаргахдаа ×100.
- * ⚠️ null ≠ 0. Мэдээлэлгүй нүд `null` хэвээр. Эцгийн нийлбэрт null хүүхэд НЭМЭГДЭХГҮЙ
- *    (Excel-ийн SUMPRODUCT хоосон нүдийг 0 гэж үздэгтэй ТООН ДҮНГЭЭРЭЭ адил), харин
- *    БҮХ хүүхэд null бол эцэг ч null — Excel тэнд 0 гаргадаг, бид «мэдэхгүй» гэнэ.
- * ⚠️ ЖИНГ ДАХИН ХЭВИЙН БОЛГОХГҮЙ: эцэг = Σ F·X, Σ F-д хуваахгүй — Excel ингэдэг.
- *    Мэдэгдэж буй хүүхдүүдээр хуваавал «хуваарьгүй» блок нийт хувийг хөөргөнө.
- *
- * ⚠️ ЭЦГИЙН ХОЛБООС = `etseg_kod`, outlineLevel БИШ. Excel-ийн outlineLevel 113 мөрөнд
- *    томьёоны бүтэцтэй ЗӨРДӨГ (жиш. «Багц 6» мөр 36 нь outline-аар 10-ын хүүхэд, гэтэл
- *    N35 = F36·N36+F48·N48+F56·N56). Импорт `etseg_kod`-ыг томьёоны лавлагаагаар гаргана.
- * ⚠️ «НИЙГМИЙН ДЭД БҮТЭЦ (Нийслэл төсөв)» хэсэг ЭЦГИЙНХЭЭ НИЙЛБЭРТ ОРОХГҮЙ (`outside`):
- *    Excel-д E718 = SUM(E719,E842,E858), N718 = F719·N719+F842·N842+F858·N858 — 891-р мөр
- *    хасагдсан, ах дүүсийн F-ийн нийлбэр түүнгүйгээр = 1. Үе шат бүрийн (2·3·Зөвшөөрөл·4·
- *    Бэлтгэл) ижил хэсэг мөн адил. Мөр өөрөө харагдаж, дотроо бодогдоно.
  */
 import { spanFrac } from './plan';
 import { t as tr } from '@/lib/i18nCore';
@@ -160,8 +141,6 @@ const UB_OFFSET_MS = 8 * 3_600_000;
 
 /**
  * ӨНӨӨДӨР — Улаанбаатарын ХУАНЛИЙН өдөр, тэр өдрийн UTC шөнө дунд (ms).
- * ⚠️ 2026-10-26: `plan.spanFrac` огноог UTC өдрөөр тасалдаг тул `Date.now()`-ийг шууд өгвөл УБ-ын
- *    00:00–08:00-д ӨЧИГДРИЙН хувь гарна. Анхдагч `today` бүгд (`computePlan` · `loadProjectPlan` …) үүгээр.
  */
 export const ubToday = (now: number = Date.now()): number =>
   Math.floor((now + UB_OFFSET_MS) / DAY) * DAY;
@@ -177,7 +156,6 @@ const num = (v: unknown): number | null =>
 
 /**
  * Хадгалсан жингийн (F, G) хуваагч — 1 = бутархай (0–1). Импорт 0–100 болговол 100 болгоно.
- * ⚠️ `guitsetgel_huvi` (S) нь 0–100 — энэ тогтмол түүнд ХАМААРАХГҮЙ.
  */
 export const STORED_WEIGHT = 1;
 const wt = (v: unknown): number | null => { const x = num(v); return x == null ? null : x / STORED_WEIGHT; };
@@ -191,7 +169,6 @@ const hund = (v: number | null): number | null => (v == null ? null : v * 100);
 /**
  * ШУГАМАН ТӨЛӨВЛӨГӨӨТ ХУВЬ (0–100) — `start`…`end` хооронд жигд, `date` өдрийн
  * төгсгөлөөр. Хоёр захыг оруулсан муж (`plan.spanFrac`-ийн конвенц).
- * ⚠️ Огноо дутуу эсвэл урвуу (эхлэх > дуусах) бол `null` — «хуваарьгүй», 0 БИШ.
  */
 export function linearPlanned(start: number | null | undefined, end: number | null | undefined, date: number): number | null {
   const s = saneDate(start);
@@ -203,7 +180,6 @@ export function linearPlanned(start: number | null | undefined, end: number | nu
 /** Блокийн төлөв: 0 → Эхлээгүй, >0 → Эхэлсэн, 100 → Дууссан. null → null. */
 export function blockStatus(pct: number | null | undefined): BlockStatus | null {
   if (pct == null || !Number.isFinite(pct)) return null;
-  /* ⚠️ Хөвөгч цэгийн 99.9999… нь «дууссан» — Excel 0.9999999999999998 хадгалдаг */
   if (pct >= 100 - 1e-9) return 'done';
   if (pct <= 1e-9) return 'notStarted';
   return 'started';
@@ -243,13 +219,6 @@ const keyD = (v: unknown) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').
 
 /**
  * Excel-ийн МӨРИЙН ДАРААЛАЛ — `buildTree`-ийн оролтыг бэлдэнэ (2026-10-27).
- *
- * ⚠️ `dd_kod` ДАВТАГДАШГҮЙ бол — кодын байгалийн эрэмбэ (`cmp`; «1.10» > «1.9»), тэнцвэл objectid.
- * ⚠️ ДАВХАРДВАЛ (импорт `--kod=excel` — Excel-ийн B: «3» хоёр үе шатанд, «5.2.3» дөрвөн мөрд, «2.3.3.1» таван ах
- *    дүүст) кодын эрэмбэ Excel-ийн дарааллыг СЭРГЭЭДЭГГҮЙ (жиш. «5.2.3» гурван ах дүү «5.2.3.1»-ээс өмнө орж,
- *    мөр 886 «5.2.3.1» буруу «5.2.3»-т наалдана). Импорт хүснэгтийг Excel-ийн дарааллаар БҮРЭН дахин бичдэг
- *    (`tools/cashflow-import.mjs`-ийн ⚠️⚠️) тул objectid-ИЙН дараалал = Excel-ийн дараалал. objectid-гүй мөр
- *    (хадгалаагүй шинэ мөр) ТӨГСГӨЛД, оролтын дарааллаараа.
  */
 export function orderPlanRows<T extends PlanStoredRow>(
   rows: readonly T[],
@@ -276,15 +245,6 @@ export function orderPlanRows<T extends PlanStoredRow>(
 
 /**
  * Хадгалсан мөрүүдээс мод угсарна.
- *
- * ⚠️ ДАРААЛАЛ: ах дүүс ОРОЛТЫН дарааллаараа (Excel-ийн мөрийн дараалал). Дуудагч мөрийг
- *    Excel-ийн дарааллаар өгнө (`orderPlanRows`).
- * ⚠️ `dd_kod` ДАВХАРДВАЛ (Excel-ийн B баганад 35 код давхардсан — «3» хоёр үе шатад,
- *    «5.2.1.1.1» долоон багцад) `etseg_kod` хоёрдмол болно. ⚠️ 2026-10-27: эцэг = ижил кодтой мөрүүдээс
- *    ТҮВШИН нь (`tuvshin`) яг нэгээр бага, ӨМНӨ ирсэн ХАМГИЙН ОЙР нь (мөр 885 «5.2.3»-ын эцэг нь өмнөх «5.2.3»
- *    ах дүү мөр 879 биш, түвшин 2-ын мөр 858; мөр 886-ийнх нь хамгийн ойрын түвшин-3 «5.2.3» = 885). Ийнхүү
- *    шийдэгдэх давхардал АЛДАА БИШ — урьд нь давхардал бүр `issues`-д орж «Төсөл төлөвлөгөө биелэлт» табд 110
- *    анхааруулга гарах байв. Өмнө нь тохирох мөр алга (хоёрдмол) бол л `issues`-д.
  */
 export function buildTree(rows: readonly PlanStoredRow[]): PlanTree {
   const issues: string[] = [];
@@ -378,12 +338,6 @@ export function buildTree(rows: readonly PlanStoredRow[]): PlanTree {
  *
  * Эх = Барилга угсралт ажлын (`sub === 'barilga'`) хэсэг — тэнд жин нь E/E_эцэг-ээр
  * бодогддог. Хос хэрэгтэй мөр = F хадгалаагүй, E-гүй, үе шатын түвшин биш мөр.
- *
- * ⚠️ БҮТЦЭЭР тааруулна: мөрийн эцгийн хосын (эсвэл эцэг хосгүй бол «Барилга угсралт ажил»
- *    мөрийн) ХҮҮХДҮҮДЭЭС, дараа нь бүх ҮР УДМААС, эцэст нь бүх эх хэсгээс — тус бүрд
- *    (багц+нэр) → нэр → багц гэсэн дарааллаар ГАНЦ тохирлыг хайна. «5/1» долоон багцад
- *    давтагддаг тул эцгийн хосоор хүрээг нь хумихгүй бол буруу багцын блок тааралдана.
- *    Excel-ийн 649 хуулбар томьёо бүгд энэ дүрмээр давтагдана (`projectPlan.check`).
  */
 function linkTwins(root: PlanNode, nodes: PlanNode[], issues: string[]) {
   const src = root.children.find((p) => p.phase === 'barilga')
@@ -397,8 +351,6 @@ function linkTwins(root: PlanNode, nodes: PlanNode[], issues: string[]) {
   };
   const srcAll = desc(src);
   const pick = (n: PlanNode, cands: PlanNode[]): PlanNode | null => {
-    /* ⚠️ Блокийн мөрд «C» = блок («5/1»), багц биш — импорт блокийн мөрийн `bagts`-д багцыг
-       бичсэн байж болно; тэгвэл 20 блок бүгд «Багц-1» болж тааралдахгүй */
     const cOf = (x: PlanNode) => keyC(x.blok ?? x.row?.bagts);
     const c = cOf(n), d = keyD(n.row?.ajil_uilchilgee);
     const tries: ((x: PlanNode) => boolean)[] = [
@@ -412,14 +364,6 @@ function linkTwins(root: PlanNode, nodes: PlanNode[], issues: string[]) {
     }
     return null;
   };
-  /**
-   * ⚠️ 2026-10-26 (хяналтын олдвор): СУЛ ТААРУУЛГА — дээрх ЯГ тааруулга бүтэлгүйтсэн үед л, ЗӨВХӨН эцгийн хосын
-   *    хүүхдүүдээс. Импорт СИСТЕМИЙН урт нэрийг хадгалдаг (`--keep-names`) тул мөнгөний мөрийн нэр Excel-ийн
-   *    давтагдсан мөрөөс сүүл залгаастай зөрдөг («…усан сангийн ажил -Оруулах тайлбарлана», «…ногоон зурвас-Хавсралт»,
-   *    багц «Багц 18» ↔ «Багц 18.1») → 8 мөр F-гүй үлдэж байв. (1) нормчилсон нэрийн УГТВАР (аль нэг нь нөгөөгийнхөө
-   *    эхлэл, ≥ 6 тэмдэгт) ГАНЦ тохирол; (2) эс бөгөөс ах дүүсийн тоо ижил бол ИЖИЛ БАЙРЛАЛ (Excel-ийн мөр бүр
-   *    Барилга угсралтынхаа бүтцийг дарааллаар нь давтдаг).
-   */
   const keyN = (v: unknown) => keyD(v).replace(/[^0-9a-zа-яөүё]/g, '');
   const loose = (n: PlanNode, scope: PlanNode): PlanNode | null => {
     const sib = n.parent?.children ?? [];
@@ -439,9 +383,6 @@ function linkTwins(root: PlanNode, nodes: PlanNode[], issues: string[]) {
   for (const n of nodes) {
     if (n.depth < 2 || inSrc.has(n)) continue;
     const r = n.row!;
-    /* ⚠️ F-ээ хадгалсан мөрд ч хос хайна — өөрт нь хэрэггүй ч ХҮҮХДҮҮДИЙН хайлтын хүрээ
-       болно (Газар чөлөөлөлтийн «Багц-1» F-тэй, түүний «5/1» блокууд хосоо Багц-1-ийн
-       хосын дотроос л олно). */
     const scope = n.parent?.twin ?? src;
     n.twin = pick(n, scope.children) ?? pick(n, desc(scope)) ?? pick(n, srcAll)
       ?? (n.parent?.twin ? loose(n, n.parent.twin) : null);
@@ -474,9 +415,6 @@ function spanOf(n: PlanNode, a: 'geree' | 'gazar' | 'guits'): [number | null, nu
 
 /**
  * O · P-ийн муж — өөрийн төрлийн (`gazar` / `guits`) огноо навч ба өвөгт алга бол ГЭРЭЭНИЙ (H/I) муж.
- * ⚠️ 2026-10-26 (хяналтын олдвор): ТЭЗҮ · Зураг төсөл · Газар чөлөөлөлт · Зөвшөөрөл · Сонгон шалгаруулалт үе шатад
- *    Excel-д J–M огноо БАЙХГҮЙ бөгөөд тэнд O = P = N (Excel-ийн томьёо гэрээний мужаар бодно). Энэ унахгүй бол
- *    ~465 навч O/P-гүй болж төслийн нийт P ~39.6 (Excel 59.4) болж байв. Гэрээний муж ч алга бол null (0 БИШ).
  */
 function spanOrGeree(n: PlanNode, a: 'gazar' | 'guits'): [number | null, number | null] {
   const sp = spanOf(n, a);
@@ -569,8 +507,6 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
       const e = E.get(n) ?? null;
       const ep = n.parent ? E.get(n.parent) ?? null : null;
       if (g != null && gp) f = g / gp;
-      /* ⚠️ E нь БОДОГДСОН утга (E719 = SUM(...) хадгалагдаагүй) — хадгалсан E-г шаардвал
-         «Барилга угсралт ажил»-ын бүлгүүдийн жин алга болно */
       else if (e != null && ep) f = e / ep;
       else if (n.twin) f = fOf(n.twin);
     }
@@ -670,8 +606,6 @@ export function monthEnds(from: number, to: number, max = 240): number[] {
  * САРЫН ХУРИМТЛАГДСАН ТӨЛӨВЛӨГӨӨТ % (0–100) мөр бүрд — Excel «…сараар».
  * Навч: блок → Хуваарийн төлөвлөгөө (`blockPlanned`), бусад → шугаман L/M; эцэг → Σ F·X
  * (F нь `computePlan`-ынх). `override` нь навч/эцэгт бүтэн цуваа өгч болно (шалгалт).
- *
- * ⚠️ Хуримтлалыг ӨӨРӨӨ бодно — CASHFLOW-ийн `pctCum` жил бүр тэглэгддэг (CLAUDE.md).
  */
 export function monthlySeries(
   res: PlanResult,

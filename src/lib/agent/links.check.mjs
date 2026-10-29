@@ -1,13 +1,7 @@
 /**
  * ӨГӨГДЛИЙН ЗУРГИЙН ШАЛГУУР — сүлжээгүй, цэвэр.
  *
- * ⚠️ ГОЛ ЭРСДЭЛ: зураг/жорд бичигдсэн эх сурвалжийн id нь давхарга хасагдахад
- * ХОЦОРНО — агент байхгүй зүйлийн тухай ярьж эхэлнэ. Тиймээс id бүрийг амьд
- * бүртгэлтэй (`resolveSource`) тулгана (ArcGIS руу ХАНДАХГҮЙ — зөвхөн каталог).
- *
- * ⚠️ ЭРХ: хэрэглэгчид нээгдээгүй эх сурвалжийн жор зааварт ОРОХГҮЙ байх ёстой.
- *
- * Ажиллуулах: node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/agent/links.check.mjs
+ * Ажиллуулах: node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/agent/links.check.mjs
  */
 
 import { strict as assert } from 'node:assert';
@@ -49,13 +43,11 @@ console.log('\n3. Зургийн бүтэц');
   ok('гарчигууд бий', map.includes('ӨГӨГДЛИЙН ЗУРАГ') && map.includes('АЛЬ ТООГ АЛЬ ЭХЭЭС'));
   ok('түлхүүрийн дүрэм бий', map.includes('ДИАПАЗОН') && map.includes('БАРИЛГА = багц + блок'));
   ok('санхүүгийн холбоос бий', map.includes('Багц 8.2'));
-  /* ⚠️ 24 бөглөх хуудас НЭГ мөрөнд нэгтгэгдсэн байх (эс бөгөөс заавар хавагдана) */
   const lines = map.split('\n');
   const from = lines.findIndex((l) => l.startsWith('### ') && l.includes('урсгал'));
   const rest = lines.slice(from + 1);
   const to = rest.findIndex((l) => l.startsWith('### '));
   const flow = (to < 0 ? rest : rest.slice(0, to)).filter((l) => l.startsWith('- '));
-  /* ⚠️ Нэгтгэл эвдэрвэл 40+ мөр болно (24 бөглөх хуудас + 10 QAQC тус тусдаа) */
   ok(`урсгалын мөр нэгтгэгдсэн (${flow.length} ≤ 20)`, from >= 0 && flow.length > 0 && flow.length <= 20);
   ok('нэг өгөгдлийн олон id', map.includes('`et:24`'));
 }
@@ -65,7 +57,6 @@ console.log('\n4. Системийн заавар');
   const a = buildSystemPrompt('all');
   const b = buildSystemPrompt('all');
   ok('зураг ба жорууд зааварт орсон', a.includes('## ӨГӨГДЛИЙН ЗУРАГ') && a.includes('## ЖОРУУД'));
-  /* ⚠️ Реле зааврыг КЭШЛЭДЭГ — хүсэлт бүрд ижил байх ЁСТОЙ (цаг, санамсаргүй id орохгүй) */
   ok('хоёр дуудалт ЯГ ижил (кэш эвдрэхгүй)', a === b);
   ok(`хэмжээ хязгаарт (${a.length} < 55000)`, a.length < 55000);
   const plan = buildSystemPrompt(['plan']);

@@ -1,35 +1,5 @@
 /**
  * БАГЦ АЖЛЫН ОНОО — Cashflow-ийн 74 багц ажил бүрийг ЗУРГААН бүлгээр 0–100.
- *
- * ⚠️ 2026-09-17, хэрэглэгчийн шийдвэр: нүүрний CEO самбар (13 карттай схем)
- *    «Багц ажлын оноо» болж солигдов. Ажлууд нь «Төсөв, гэрээлсэн дүн»
- *    чарттай ИЖИЛ ажлын төрлөөр (`CfRow.type`) бүлэглэгдэнэ; багц бүрд
- *      1. Гүйцэтгэл · 2. Санхүүжилт · 3. Газар чөлөөлөлт · 4. Зөвшөөрөл · 5. ХАБЭА
- *    (⚠️ 2026-10-23 «Чанар» · 2026-10-27 «Ерөнхий төлөвлөгөө» ХАСАГДСАН — доорх ⚠️)
- *    оноо + гэрлэн дохио (≥80 ногоон · 50–79 шар · <50 улаан).
- *    Нийт оноо = бодогдсон бүлгүүдийн ЭНГИЙН дундаж.
- *
- * ⚠️ 2026-09-30: ОЛОН ажлыг НЭГТГЭХДЭЭ (төрлийн бүлэг, төслийн нийт) ТӨСВӨӨР
- *    ЖИГНЭНЭ — порталын дүрэм (gdash, PkgFin: өртгөөр жигнэсэн нэгтгэл). CEO_KPI
- *    спект онооны жигнэлт тодорхойлогдоогүй. Урьд нь энгийн дундаж байсан тул
- *    1.5 тэрбумын ажил 448 тэрбумын ажилтай ижил жинтэй байв. Мөн төслийн нийт
- *    = ажлын нийт оноонуудын дундаж байсан тул хажууд харагдах 7 бүлгийн
- *    дунджаас ӨӨР тоо гардаг байв. Одоо:
- *      · бүлэг d-ийн дундаж = Σ(өртөг × оноо_d) ÷ Σ өртөг (оноотой ажлуудаар)
- *      · бүлгийн / төслийн НИЙТ = хажууд харагдах бүлгийн дундажуудын дундаж
- *        (ажлын нийт = өөрийн бүлгүүдийн дундаж — НЭГ дүрэм, НЭГ олонлог)
- *
- * ⚠️ `null` ≠ 0 (төслийн үндсэн дүрэм). Тухайн багцад хэмжигдэх өгөгдөлгүй
- *    бүлэг (жишээ нь QAQC хүснэгтгүй дэд бүтцийн ажил, газрын зураглалгүй
- *    ТЭЗҮ) «—» бөгөөд нийт дунджид ОРОХГҮЙ. Тэгээр орлуулбал өгөгдөл
- *    бүртгэгдээгүй багц «муу» гэж ХУДАЛ харагдана.
- *
- * ⚠️ ЭНЭ ФАЙЛ ЦЭВЭР (сүлжээгүй, React-гүй) — `scorecard.check.mjs` Node дээр
- *    шалгана. Өгөгдөл татах нь `scorecardLoad.ts`-д.
- *
- * ⚠️ ОНООНЫ ДҮРЭМ нь «анхаарал татах» зорилготой ЭНГИЙН шугаман хасалт —
- *    албан ёсны үнэлгээний аргачлал БИШ. Коэффициентыг доорх `RULE`-д нэг
- *    газар тохируулна; дэлгэц дээр дүрэм нь бүлэг бүрийн тайлбарт ил бичигдэнэ.
  */
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, date } from '@/lib/format';
@@ -38,18 +8,12 @@ import { coverageOk } from '@/lib/planProgress';
 
 /* ══════════════ Бүлгүүд ══════════════ */
 
-/* ⚠️ 2026-10-23: «Чанар» (`qual`, QAQC баримтын бөглөлт) хэмжүүр ХАСАГДСАН — «Чанар (QAQC)» системээс устсан
-   ⚠️ 2026-10-27 (хэрэглэгч: «KPI — Ерөнхий төлөвлөгөө хас»): «Ерөнхий төлөвлөгөө» (`plan`, блокуудын байрлах бүсийн
-   тохиромжтой байдлын оноо) бүлэг ХАСАГДСАН — `scorePlan` · `blockZoneScores` · `scorecardLoad.loadScorePlan` устсан
-   (git түүхэнд). Тохиромжтой байдлын KPI (`registry.suitability`) өөрөө ТУХ/Схемд хэвээр. */
 export type Dim = 'perf' | 'fin' | 'land' | 'permit' | 'hse';
 
-/** ⚠️ 2026-09-17: «Зөвшөөрөл» бүлэг нэмэгдэв (хэрэглэгч). */
 export const DIMS: readonly Dim[] = ['perf', 'fin', 'land', 'permit', 'hse'];
 
 /**
  * Бүлгийн нэр ба холбогдох CEO үзүүлэлтүүд (`registry.ts`-ийн түлхүүр).
- * ⚠️ Функцээр — `tr()`-г модулийн түвшинд дуудвал хэл солигдоход хуучирна.
  */
 export const dimDefs = (): Record<Dim, {
   title: string; short: string; icon: string;
@@ -85,8 +49,6 @@ export const dimDefs = (): Record<Dim, {
   },
   hse: {
     title: tr('ХАБЭА'), short: tr('ХАБЭА'), icon: 'shield',
-    /* ⚠️ 2026-09-17 (хэрэглэгч): ЗӨВХӨН ажлын байрны үзлэгээр — осол, хүн-цаг ТООЦООНД ОРОХГҮЙ.
-       Тиймээс осол (`safety`), хүн·техник (`workforce`) үзүүлэлтийг энд ХОЛБОХГҮЙ. */
     kpis: [],
     rule: tr('Ажлын байрны үзлэгийн нийцлийн хувь: нийцсэн ÷ (нийцсэн + ноцтой + бага зэргийн үл нийцэл). ≥90 ногоон · 70–89 улбар шар · <70 улаан'),
     view: 'habea',
@@ -108,29 +70,13 @@ export type DimScore = {
   facts: Fact[];
   /**
    * ДАТА ХҮЛЭЭГДЭЖ БУЙ — хэмжих хүснэгт/бүртгэл БАЙГАА ч хараахан бөглөгдөөгүй.
-   * ⚠️ «—» (энэ багцад хамаарах өгөгдөл огт алга)-аас ЯЛГААТАЙ, 0 оноо ч БИШ:
-   *    2026-09-17-нд QAQC нэг ч баримт оруулаагүй багцууд 0 оноо авч «эрсдэлтэй»
-   *    гэж харагдсаныг хэрэглэгч залруулав. Нийт дунджид ОРОХГҮЙ.
    */
   pending?: true;
   /**
    * ЗААВАЛ ШИЙДВЭРЛЭХ АСУУДЛУУД — тоо бүрийг нэрлэсэн өгүүлбэр.
-   * ⚠️ 2026-09-17 (хэрэглэгч): сонгосон багцад «асуудлын эрэмбээр заавал
-   *    шийдвэрлэх асуудлын жагсаалт». Эрэмбэ нь `workIssues`-д.
    */
   issues?: DimIssue[];
-  /**
-   * ⚠️ 2026-10-09: ОНООНООС ҮЛ ХАМААРАХ түвшин — оноо нь өөр хэмжүүрээс бодогддог бүлэгт.
-   *    Газар чөлөөлөлтийн БУС ажлын `land` = 100 − 5×давхцал тул 1 давхцал = 95 → `pctLevel`
-   *    «good» гардаг байв, харин CEO газрын карт `overlapLevel`-ээр (≥1 давхцал = bad). Тийм
-   *    бүлэгт түвшинг ЭНД өгнө; дэлгэц `workDimLevel`/`sc.level ?? dimLevel(…)`-ээр уншина.
-   */
   level?: Level;
-  /**
-   * ⚠️ 2026-10-28 (хэрэглэгч: «асуудалтай зүйл дээр alert»): СЭРЭМЖЛҮҮЛЭГ — оноог тайлбартай уншуулна (дэлгэцэд оноон
-   *    дээр ⚠ тэмдэг, самбарын дээд зурваст `scoreAlerts` нэгтгэнэ). Оноо өөрөө ӨӨРЧЛӨГДӨХГҮЙ: эхлэх огноо ирээгүй
-   *    ажил 100, дутуу хуваарьтай багц null хэвээр — зөвхөн ШАЛТГААН нь ил болно. `value` — `partial`-д хуваарийн хамралт.
-   */
   caveat?: { kind: CaveatKind; text: string; value?: number };
 };
 
@@ -152,17 +98,12 @@ export const scoreLevel = (v: number | null): Level =>
 /**
  * ХАБЭА-гийн ӨӨРИЙН босго (2026-09-17, хэрэглэгч: «70-80-90 зарчмаар» —
  * 70 хүртэл улаан · 70–90 улбар шар · 90-ээс дээш ногоон).
- * ⚠️ Бусад бүлэг ба нийт оноо 80/50 хэвээр.
  */
 export const HSE_GOOD = 90;
 export const HSE_WARN = 70;
 
 /**
  * Бүлгийн түвшин — ХАБЭА өөрийн босготой.
- * ⚠️ 2026-10-06: ИЖИЛ үзүүлэлт CEO картад өөр босготой байсан тул (газар: `land.ts` 95/80
- *    `pctLevel`) нэг багцын газар 85% нь
- *    картад «шар», оноонд «ногоон» гардаг байв. Одоо бүлэг бүр ӨӨРИЙН KPI-гийн
- *    түвшний функцтэй (`DIM_LEVEL`); бусад бүлэг ба нийт оноо 80/50 хэвээр.
  */
 const hseLevel = (v: number | null): Level =>
   v == null ? 'unknown' : v >= HSE_GOOD ? 'good' : v >= HSE_WARN ? 'warn' : 'bad';
@@ -202,8 +143,6 @@ export const RULE = {
 export type PerfInput = {
   /**
    * 05-ын хуваарийн хоцрогдол (`collectPkgLags`) — байвал ЗӨВХӨН үүнийг.
-   * ⚠️ 2026-10-22 (аудит): `coverage` — муруйн хуваарийн хамралт (`Finance.lagOf`); `coverageOk` биш бол
-   *    оноо ТАВИХГҮЙ (`perfPartial`).
    */
   lag: { planned: number; actual: number; coverage?: number | null } | null;
   start: number | null;
@@ -214,9 +153,6 @@ export type PerfInput = {
 };
 
 export function scorePerf(i: PerfInput): DimScore {
-  /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан (эсвэл хамралт мэдэгдэхгүй) бол ОНОО ТАВИХГҮЙ — огноогүй ажлын жин
-     төлөвлөгөөнд 0-ээр орж «төлөвлөсөн» хэт бага, хоцорсон багц 100 оноо авдаг байв (Багц 3.3: хамралт 8.6%).
-     Огнооны шугам + Cashflow-ийн хувь руу ч БУУХГҮЙ (`perfNotStarted`-ийн зарчим). */
   if (i.lag && !coverageOk(i.lag.coverage)) return perfPartial(i.lag);
   let planned: number | null = null;
   let actual: number | null = null;
@@ -224,12 +160,10 @@ export function scorePerf(i: PerfInput): DimScore {
     planned = i.lag.planned;
     actual = i.lag.actual;
   } else if (i.progress != null && i.start != null && i.end != null && i.end > i.start) {
-    /* ⚠️ Хуваарийн муруйгүй ажил — эхлэх/дуусах огнооны хооронд ШУГАМААР */
     planned = clamp(((i.now - i.start) / (i.end - i.start)) * 100);
     actual = i.progress;
   }
   if (planned == null || actual == null) {
-    /* ⚠️ 2026-10-28: оноо null хэвээр, ШАЛТГААН нь ил (`caveat`) — огноогүй / явц хэмжигдээгүй */
     if (!i.lag && (i.start == null || i.end == null || i.end <= i.start)) {
       return { ...NONE, caveat: { kind: 'noDates', text: tr('Эхлэх/дуусах огноогүй — гүйцэтгэлийн оноо бодогдохгүй') } };
     }
@@ -241,8 +175,6 @@ export function scorePerf(i: PerfInput): DimScore {
   const gap = planned - actual;
   const score = clamp(100 - Math.max(0, gap) * RULE.perfPerPp);
   const tone = toneOf(score);
-  /* ⚠️ 2026-10-28: ЭХЛЭХ ОГНОО ИРЭЭГҮЙ ажил — төлөвлөсөн 0 · бодит 0 → 100. Дүрэм хэвээр («хоцрогдолгүй»), харин «явц
-     сайн» гэж уншигдахгүйн тулд сэрэмжлүүлнэ; `scoreAlerts` тэдгээрийн тоог самбарын дээд зурваст хэлнэ. */
   const caveat: NonNullable<DimScore['caveat']> | null = !i.lag && i.start != null && i.start > i.now
     ? { kind: 'notDue', text: tr('Эхлэх огноо ирээгүй — 100 оноо нь «хоцрогдолгүй» гэсэн үг, явцыг илэрхийлэхгүй') }
     : null;
@@ -260,10 +192,6 @@ export function scorePerf(i: PerfInput): DimScore {
 
 /**
  * ХУВААРИЙН МУРУЙ УНШИГДААГҮЙ барилгын мөрийн гүйцэтгэлийн оноо.
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): муруй унасан үед `lag = null` болж
- *    `scorePerf` ЧИМЭЭГҮЙ огнооны шугам + Cashflow-ийн хувиар оноо тавьдаг байв —
- *    биет хэмжилттэй багцын оноо өөр аргачлалаар гарч, хэн ч мэдэхгүй. Одоо оноо
- *    `null` («—», 0 БИШ) ба картад шалтгаан нь ил. `info` — гүйцэтгэгчийн дутагдал биш.
  */
 export function perfNoCurve(): DimScore {
   return {
@@ -276,8 +204,6 @@ export function perfNoCurve(): DimScore {
 
 /**
  * ХУВААРЬ ДУТУУ барилгын мөрийн гүйцэтгэлийн оноо (2026-10-22, аудит).
- * ⚠️ Хуваарийн хамралт < 95% — оноо `null` («—», 0 БИШ), тоо (төлөвлөсөн · бодит · хамралт) ба шалтгаан ил (`info`).
- *    Хамралт бага муруйн «төлөвлөсөн» хэт бага тул хоцрогдлыг ДҮГНЭХГҮЙ (100 оноо худал гардаг байв).
  */
 export function perfPartial(lag: { planned: number; actual: number; coverage?: number | null }): DimScore {
   const cov = lag.coverage == null ? '—' : pct(lag.coverage, 1);
@@ -295,10 +221,6 @@ export function perfPartial(lag: { planned: number; actual: number; coverage?: n
 
 /**
  * ХУВААРЬ ЭХЛЭЭГҮЙ барилгын мөрийн гүйцэтгэлийн оноо (2026-10-04).
- * ⚠️ Биет хэмжилттэй, хуваарийн муруй уншигдсан АТЛАА `lagOf` `null` (багцын хуваарь хэмжилтийн
- *    өдөр хараахан эхлээгүй / багцад хуваарь алга) үед `scorePerf` урьд нь огнооны ШУГАМ +
- *    Cashflow-ийн хувиар ЧИМЭЭГҮЙ оноолдог байв — блокийн хэмжилттэй багцыг гэрээний огноогоор
- *    «хоцорсон» гэж улаан гаргана. Одоо оноо `null` («—», 0 БИШ), шалтгаан нь ил (`info`).
  */
 export function perfNotStarted(): DimScore {
   return {
@@ -317,9 +239,6 @@ export type FinInput = {
   now: number;
   /**
    * Гэрээтэй харьцуулах ТӨСӨВ, ₮ — ЗАХИРАМЖИЙН ХО төсөв (`ho_dun_zahiramj`); 0 = мэдэхгүй.
-   * ⚠️ 2026-10-06: урьд нь `ho_dun_geree` (`CfRow.cost`) дамжуулдаг байв — тэр нь гэрээтэй
-   *    мөрд `geree_dun`-тэй ЯГ тэнцүү тул «Гэрээ ба төсвийн зөрүү» ҮРГЭЛЖ 0 байв.
-   *    `contractGap.computeContractGap`-тэй нэг талбар (`scorecardLoad` → `CfRow.budgetOrder`).
    */
   cost: number;
   /** Гэрээний дүн, ₮ — гэрээгүй бол null */
@@ -334,25 +253,11 @@ export function scoreFin(i: FinInput): DimScore {
   const parts: number[] = [];
   const facts: Fact[] = [];
   const issues: DimIssue[] = [];
-  /* ⚠️ 2026-09-21: ГЭРЭЭТЭЙ = «Гэрээлсэн дүн» тайлбартай ЭСВЭЛ гэрээний дүнтэй
-     (`geree_dun > 0`). Урьд нь зөвхөн `contracted` (тайлбар) шалгадаг тул
-     `geree_dun` бөглөгдсөн атлаа тайлбар нь өөр («Магадлагдсан дүн» г.м.) мөр
-     «гэрээгүй, хугацаа өнгөрсөн» гэж 0 оноо аваад доор нь «Гэрээний дүн: N»
-     гэж зөрчилтэй гардаг байв. Тайлбар нь чөлөөт текст (`uncontracted.ts` §⚠️)
-     тул дүн байгаа нь гэрээний илүү найдвартай нотолгоо. */
-  /* ⚠️ 2026-09-21 (ДАХИН АУДИТ, дээрхийг ХҮЧИНГҮЙ болгов): ГЭРЭЭТЭЙ = ЗӨВХӨН
-     `note === CONTRACTED`. `geree_dun` нь гэрээлэгдээгүй мөрд ч (~33 тэрбум)
-     бөглөгдсөн байдаг — энэ бол порталын бүх «гэрээлсэн дүн»-ий дүрэм
-     (`gdash.Kpi.contract`, `live.loadBudget`). `contract > 0`-ийг гэрээ гэж
-     тооцвол тэр 33 тэрбумын мөр «гэрээ байгуулсан» гэж 100 оноо авна.
-     Гэрээгүй мөрийн `contract` дүнг «Гэрээ ба төсвийн зөрүү»-д ч ХЭРЭГЛЭХГҮЙ —
-     `scorecardLoad` тийм мөрд `contract: null` дамжуулна (дэлгэцэд «гэрээгүй»). */
   const contracted = i.contracted;
   if (contracted) {
     parts.push(100);
     facts.push(fact(tr('Гэрээ'), tr('байгуулсан')));
   } else if (i.start != null && i.start < i.now) {
-    /* ⚠️ Эхлэх хугацаа өнгөрсөн атал гэрээгүй — хамгийн том санхүүгийн эрсдэл */
     parts.push(0);
     facts.push(fact(tr('Гэрээ'), tr('эхлэх хугацаа өнгөрсөн, гэрээгүй')));
     issues.push({ tone: 'bad', text: tr('Эхлэх хугацаа өнгөрсөн боловч гэрээ байгуулаагүй') });
@@ -384,7 +289,6 @@ export function scoreFin(i: FinInput): DimScore {
     facts.push(fact(tr('Олгосон санхүүжилт (гэрээний)'), pct(i.paidPct, 1)));
     facts.push(fact(tr('Биет гүйцэтгэл'), pct(i.actual, 1)));
   }
-  /* ⚠️ 2026-10-28: «Гэрээлсэн дүн» тайлбартай атлаа `geree_dun` хоосон — зөрүү бодогдохгүй (оноо хэвээр), сэрэмжлүүлнэ */
   const caveat: NonNullable<DimScore['caveat']> | null = contracted && !(i.contract != null && i.contract > 0)
     ? { kind: 'noContractAmount', text: tr('«Гэрээлсэн дүн» гэсэн ч гэрээний дүн хоосон — төсөвтэй харьцуулах боломжгүй') }
     : null;
@@ -410,7 +314,6 @@ export function scoreLand(i: LandInput): DimScore {
   if (i.isLandWork) {
     if (i.landPct == null) return NONE;
     const score = clamp(i.landPct);
-    /* ⚠️ 2026-10-06: газрын босго 95/80 (`dimLevel` → `pctLevel`) */
     const tone = dimToneOf('land', score);
     return {
       score,
@@ -421,10 +324,6 @@ export function scoreLand(i: LandInput): DimScore {
   if (!i.hasFootprint || i.overlapFailed) return NONE;
   const n = i.overlap ?? 0;
   const score = clamp(100 - n * RULE.landPerParcel);
-  /* ⚠️ Давхцал нь ажил эхлүүлэхэд шууд саад — нэг ч байвал анхааруулга */
-  /* ⚠️ 2026-10-09: түвшин = CEO газрын карттай НЭГ `overlapLevel` (≥1 давхцал = bad). Урьд нь
-     `pctLevel(95)` = good тул «шийдвэрлэх» биш «анхаарах» гэж, бүлгийн төлөвт «хэвийн» гэж гардаг байв.
-     `pctLevel` нь ЗӨВХӨН газар чөлөөлөлтийн өөрийн ажилд (`isLandWork`, дээрх салаа). */
   const level = overlapLevel(n);
   const tone: IssueTone | null = n > 0 ? (level === 'bad' ? 'bad' : 'warn') : null;
   return {
@@ -443,12 +342,6 @@ export type PermitInput = {
   counts: { ok: number; wait: number; no: number; unknown: number } | null;
 };
 
-/**
- * ⚠️ Оноо = зөвшөөрсөн ÷ нийт × 100 (хүлээгдэж буй, татгалзсан, танигдаагүй нь
- *    «зөвшөөрөгдөөгүй» гэж тоологдоно). Бүртгэлгүй багц → «—» (0 биш).
- * ⚠️ Татгалзсан ганц ч байвал оноо ямар ч байсан ЗААВАЛ шийдвэрлэх асуудал —
- *    ажил эхлүүлэх шийдвэрт шууд нөлөөлнө (`zovshoorol.summarize`-ийн `alert`).
- */
 export function scorePermit(i: PermitInput): DimScore {
   const c = i.counts;
   const total = c ? c.ok + c.wait + c.no + c.unknown : 0;
@@ -492,14 +385,6 @@ export type HseInput = {
   inspections: readonly Inspection[];
 };
 
-/**
- * ⚠️ 2026-09-17 (хэрэглэгч): ХАБЭА-г ЗӨВХӨН ажлын байрны үзлэгээр дүгнэнэ.
- *    Осол ба хүн-цаг тооцоонд ОРОХГҮЙ.
- * ⚠️ Оноо = Σнийцсэн ÷ Σ(нийцсэн + ноцтой + бага зэргийн үл нийцэл) × 100.
- *    «Ажиглалт» ба «Хамааралгүй» нь үл нийцэл БИШ тул хуваарьт орохгүй
- *    (баримт болж харагдана).
- * ⚠️ Үзлэггүй идэвхтэй талбай → «дата хүлээгдэж буй» (0 биш); идэвхгүй → «—».
- */
 export function scoreHse(i: HseInput): DimScore {
   let conf = 0;
   let major = 0;
@@ -531,7 +416,6 @@ export function scoreHse(i: HseInput): DimScore {
   }
   const score = clamp((conf / judged) * 100);
   const issues: DimIssue[] = [];
-  /* ⚠️ Ноцтой үл нийцэл нь оноо ямар ч байсан ЗААВАЛ шийдвэрлэх асуудал */
   if (major > 0) issues.push({ tone: 'bad', text: tr('Ажлын байрны үзлэгт {0} ноцтой үл нийцэл илэрсэн', num(major)) });
   const lv = dimLevel('hse', score);
   if (lv === 'bad' || lv === 'warn') {
@@ -555,13 +439,6 @@ export type WorkScore = {
   /** Гэрээний дүн, ₮ — гэрээгүй (`note !== CONTRACTED`) бол null (2026-09-21) */
   contract: number | null;
   cancelled: boolean;
-  /**
-   * ⚠️ 2026-09-21: ГАЗАР ЧӨЛӨӨЛӨЛТИЙН МӨР (6-р хэсэг) — «Багц ажил» БИШ («78 биш 74»,
-   * 2026-09-10). Зөвхөн `land` бүлгийн газар чөлөөлөлтийн салаанд (`loadLandStatus`)
-   * оноотой; жагсаалт, `statusCounts`, «Нийт N багц ажил», шүүлтэд ОРОХГҮЙ —
-   * `CeoScorecard` тэдгээрийг `listed`-ээр хасна. Төслийн нийт (`projectDims`)-д
-   * газрын оноо нь хэвээр орно.
-   */
   isLandWork: boolean;
   dims: Record<Dim, DimScore>;
   /** Бодогдсон бүлгүүдийн энгийн дундаж */
@@ -583,15 +460,11 @@ export const totalOf = (dims: Record<Dim, DimScore>): number | null => meanOf(DI
 
 /**
  * Жин — ажлын урьдчилсан төсөвт өртөг (₮, Cashflow).
- * ⚠️ Гэрээний дүнгээр БИШ: гэрээгүй ажилд дүн байхгүй (`contract: null`) тул
- *    жин нь алга болж, тэдгээрийн оноо (газар, зөвшөөрөл…) нэгтгэлээс хасагдана.
  */
 export const workWeight = (w: WorkScore): number => (Number.isFinite(w.cost) && w.cost > 0 ? w.cost : 0);
 
 /**
  * Жигнэсэн дундаж — `null` утга АЛГАСНА (null ≠ 0).
- * ⚠️ Оноотой бүх ажлын жин 0 (төсөвгүй) бол ЭНГИЙН дундаж — оноотой ажлыг
- *    «жингүй» гэж хаявал өгөгдөл байхад «—» гарна.
  */
 export const weightedMeanOf = (xs: readonly { v: number | null; w: number }[]): number | null => {
   const v = xs.filter((x): x is { v: number; w: number } => x.v != null && Number.isFinite(x.v));
@@ -616,10 +489,6 @@ const dimPending = (works: readonly WorkScore[], means: Record<Dim, number | nul
 
 /**
  * Ажлуудыг төрлөөр бүлэглэнэ.
- * ⚠️ Бүлгийн ДАРААЛАЛ нь төсвөөр буурах («Төсөв, гэрээлсэн дүн» чарттай ижил),
- *    бүлэг доторх ажлууд нийт оноогоор ӨСӨХ — хамгийн муу нь эхэнд (удирдлага
- *    «аль нь асуудалтай» гэж хайдаг). Оноогүй ажил хамгийн сүүлд.
- * ⚠️ ХАСАГДСАН ажил (`cancelled`) оноолгохгүй ч жагсаалтаас АЛГА болгохгүй.
  */
 export function groupByType(works: readonly WorkScore[]): TypeGroup[] {
   const m = new Map<string, WorkScore[]>();
@@ -657,8 +526,6 @@ export function projectDims(works: readonly WorkScore[]): { dims: Record<Dim, nu
 
 /**
  * Ажлын ТӨЛӨВ — нийт оноогоор (80/50). `none` = оноо бодогдоогүй.
- * ⚠️ 2026-09-17 (хэрэглэгч): «эрсдэлтэй · анхааруулга · хэвийн» төлөв бүр
- *    графикаар, дарахад шүүгддэг байх.
  */
 export type WorkStatus = 'bad' | 'warn' | 'good' | 'none';
 export const STATUSES: readonly WorkStatus[] = ['bad', 'warn', 'good', 'none'];
@@ -670,7 +537,7 @@ export const workStatus = (w: WorkScore): WorkStatus => {
 
 /**
  * НЭГ АЖЛЫН бүлгийн түвшин — `DimScore.level` (оноонос үл хамаарах, 2026-10-09) байвал түүгээр,
- * үгүй бол `dimLevel(d, score)`. ⚠️ Бүлгийн/төслийн дундаж (`dimMeans`)-д `dimLevel` хэвээр.
+ * үгүй бол `dimLevel(d, score)`. Бүлгийн/төслийн дундаж (`dimMeans`)-д `dimLevel` хэвээр.
  */
 export const workDimLevel = (w: Pick<WorkScore, 'dims'>, d: Dim): Level => {
   const sc = w.dims[d];
@@ -724,7 +591,6 @@ export const filterActive = (f: ScoreFilter): boolean =>
 
 /**
  * Шүүлтэд тэнцэх үү. Хэмжээс хооронд «БА».
- * ⚠️ Шүүлт идэвхтэй үед ХАСАГДСАН ажил харагдахгүй — тоолуурт ч ордоггүй.
  */
 export function passFilter(w: WorkScore, f: ScoreFilter): boolean {
   if (!filterActive(f)) return true;
@@ -746,8 +612,6 @@ const TONE_RANK: Record<IssueTone, number> = { bad: 0, warn: 1, info: 2 };
 
 /**
  * Сонгосон багцын ЗААВАЛ ШИЙДВЭРЛЭХ асуудлууд — эрэмбээр.
- * ⚠️ Эрэмбэ: (1) зэрэг — заавал → анхаарах → дата оруулах; (2) тухайн бүлгийн
- *    оноо ӨСӨХ (хамгийн муу нь эхэнд); (3) `DIMS`-ийн дараалал (тогтвортой).
  */
 export function workIssues(w: WorkScore): RankedIssue[] {
   const out: RankedIssue[] = [];
@@ -767,11 +631,6 @@ export type ScoreAlert = { kind: 'perfCoverage' | 'notDue' | 'dataGap'; tone: Is
 
 /**
  * САМБАРЫН ДЭЭД ЗУРВАС — оноог хэр итгэж уншихыг хэлнэ (2026-10-28, хэрэглэгч: «асуудалтай зүйл дээр alert»).
- * ⚠️ Оноог ӨӨРЧЛӨХГҮЙ, зөвхөн нэрлэнэ. Хасагдсан ба газрын мөр орохгүй; ажлын тоо/нэр нь `DimScore.caveat`-аас.
- *   · perfCoverage — гүйцэтгэлийн оноотой ажлын өртөг нийт өртөгт < 95% (амьдаар 2026-10-28: 28%): шалтгаан нь дутуу
- *     хуваарь (хамралтаар, өртгөөр эрэмбэлж 6 хүртэл), хуваарь эхлээгүй, муруй уншигдаагүй, огноогүй, явцгүй. < 50% → `bad`.
- *   · notDue — эхлэх огноо ирээгүй атлаа 100 оноотой ажил (дундажийг өсгөнө).
- *   · dataGap — «гэрээлсэн» атлаа гэрээний дүнгүй мөр, огноогүй мөр.
  */
 export function scoreAlerts(works: readonly WorkScore[]): ScoreAlert[] {
   const live = works.filter((w) => !w.cancelled && !w.isLandWork);

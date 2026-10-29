@@ -7,7 +7,6 @@
  *     Мөр нь гараар нэмэгдэхгүй — MA + MIR батлагдмагц автоматаар (`syncNoots`, `Ma.tsx`).
  *   · «Ажлын материал» — гүйцэтгэлийн хүснэгтийн `ashiglah_material_ner`-ийг ажил бүрд НЭГ УДАА тохируулна:
  *     нөөцөд байгаа материалаас СОНГОНО (гараар бичихгүй), нэг ажилд олон материал.
- * ⚠️ Хадгалалт зөвхөн ӨӨРЧЛӨГДСӨН ажлыг бичнэ (`materialAjil.saveWorkMats` — хуваарийн хамгаалалттай ижил).
  */
 import { useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -26,10 +25,6 @@ import s from './ma.module.css';
 
 const qty = (v: number | null) => (v == null ? '—' : num(v));
 
-/* ⚠️ 2026-10-22 (аудит): ТӨЛӨВИЙН ДЭЛГЭЦИЙН НЭР — утга нь ӨГӨГДӨЛ (`tolov` баганад монголоор, `materialNoots.TOLOV`), зөвхөн
-   ДЭЛГЭЦЭД орчуулна; урьд нь `{m.status}` түүхийгээр англи горимд «Дууссан»/«Дуусаагүй» хэвээр үлддэг байв. Хоёр л утгатай
-   тул ЛИТЕРАЛ `tr()` (динамик `tr(m.status)` биш — i18n-extract түлхүүрийг шалгана); танихгүй утга хэвээр. Өнгөний
-   харьцуулалт (`TOLOV.done`) түүхий утгаараа. */
 const statusLabel = (v: string | null): string =>
   v === TOLOV.done ? tr('Дууссан') : v === TOLOV.open ? tr('Дуусаагүй') : v ?? '—';
 
@@ -37,7 +32,6 @@ const statusLabel = (v: string | null): string =>
 export type NootsSync =
   | { state: 'idle' | 'running' } | { state: 'done'; res: SyncResult } | { state: 'error'; error: string } | { state: 'disabled'; reason: string };
 
-/* ⚠️ 2026-10-21 (аудит №2): ХЭСЭГЧИЛСЭН НИЙЛБЭР ИЛ — тоо хэмжээгүй (null) ачаа байвал нийлбэрийн хажууд тэмдэглэнэ (null ≠ 0) */
 function PartialQty({ sum, unknown }: { sum: number | null; unknown: number }) {
   return (
     <td className={s.num} title={unknown ? tr('{0} ачааны тоо хэмжээ мэдэгдэхгүй — нийлбэр дутуу', unknown) : undefined}>
@@ -86,7 +80,6 @@ export function NootsTab({ tick, sync, onSync }: { tick: number; sync: NootsSync
                 ) : sums.map((m) => (
                   <tr key={m.name} className={s.row}>
                     <td>{m.name}</td>
-                    {/* ⚠️ Нэг материал өөр нэгжээр ирвэл нийлбэр утгагүй — нэгжүүдийг ил харуулж анхааруулна */}
                     <td className={m.unitConflict ? s.expired : ''} title={m.unitConflict ? tr('Нэгж зөрүүтэй эсвэл дутуу — нийлбэр, төлөв тооцоогүй') : undefined}>
                       {m.units.join(', ') || '—'}
                       {m.unitConflict && <div>{tr('Нэгж зөрүүтэй')}</div>}
@@ -136,7 +129,6 @@ export function AjilMatTab({ tick }: { tick: number }) {
     return () => setNavDirty('maMaterial', false);
   }, [dirty]);
 
-  /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт — `window.confirm` хаалттай хөтөчид багц огт солигддоггүй байв */
   const switchPkg = async (k: string) => {
     if (dirty && !(await askConfirm(tr('Хадгалаагүй өөрчлөлт байна. Хаяад өөр багц руу шилжих үү?'), { danger: true, ok: tr('Хаяад шилжих') }))) return;
     setDraft(new Map()); setOpen(null); setMsg(null); setPkgKey(k);
@@ -160,8 +152,6 @@ export function AjilMatTab({ tick }: { tick: number }) {
     if (sheet.state !== 'ready' || !draft.size) return;
     setBusy(true); setMsg(null);
     try {
-      /* ⚠️ 2026-10-22 (аудит №8): ХУУДАС АЧААЛСАН ҮЕИЙН утга (`base`) — энэ хооронд өөр хүн хадгалсан бол lib нийлүүлнэ
-         (`materialAjil.saveWorkMats`-ийн ⚠️); урьд нь бүх жагсаалт дарагдаж бусдын нэрс чимээгүй устдаг байв. */
       const byDes = new Map(sheet.data.rows.filter((x) => x.des != null).map((x) => [x.des as number, x]));
       const base = new Map<number, string[]>();
       for (const des of draft.keys()) { const r0 = byDes.get(des); if (r0) base.set(des, matsOf(r0)); }
@@ -181,7 +171,6 @@ export function AjilMatTab({ tick }: { tick: number }) {
     }
   };
 
-  /* ⚠️ 2026-10-23: хайлтыг ДЭЛГЭЦТЭЙ ижил (`fixCyr`: є→ө, ї→ү) хэвийншүүлнэ — хоёр талд; зөвхөн хайлтад (түлхүүр/бичилтэд биш) */
   const f = fixCyr(filter.trim().toLowerCase());
   const shown = f ? rows.filter((r) => fixCyr(`${r.no} ${r.work} ${matsOf(r).join(' ')}`).toLowerCase().includes(f)) : rows;
 

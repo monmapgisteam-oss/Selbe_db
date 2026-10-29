@@ -2,23 +2,6 @@
 
 /**
  * «УЛСЫН КОМИСС» — багц бүрийн хуваарийн ТӨГСГӨЛД тусдаа ажилбар (2026-09-28).
- *
- * ⚠️ ЯАГААД ЖИНХЭНЭ МӨР ВЭ: хуваарийн ноорог · батлалт · хамаарал · Gantt
- *    бүгд бөглөх хуудасны серверийн oid / ажлын кодоор түлхүүрлэгддэг.
- *    Дэлгэцийн виртуал мөр бол тэр бүх замд тусгай зохицуулалт хэрэгтэй.
- *    Тиймээс улсын комиссыг эх хуудсанд (`Bagts_*`) үндсэн түвшний навч
- *    мөрөөр, хамгийн сүүлд, обьём/нэгж өртөггүй, жин 0-ээр НЭГ УДАА бичнэ.
- *    Багцын хувь зөвхөн «Б.» мөрөөс уншигддаг тул нөлөөгүй.
- *
- * ⚠️ АВТОМАТ (хэрэглэгчийн сонголт, 2026-09-28): хуваарь төлөвлөх эрхтэй хүн
- *    багцын хуваарийг нээхэд мөр байхгүй бол `ensureKomissRow` дуудагдана.
- *    Бичилт нь `ajilApply.materializeAdds`-тай ИЖИЛ хэлбэр (шинэ жааз, уралдааны
- *    шалгалт, хагас жааз буцаах) — тэндхийн туслахуудыг дахин ашиглана.
- *
- * ⚠️ НЭР «Улсын комисс» — `negtgel.ts`-ийн «Улсын комисс, хүлээлгэн өгөх» (1%)
- *    түлхүүртэй ЗӨРҮҮТЭЙ санаатай: нэгтгэлийн тоонд санамсаргүй орохгүй.
- * ⚠️ № «УК» — үсэг+цэг биш: `ags.levelFromNo` «X.» хэлбэрийг үе шатны толгой
- *    гэж уншдаг тул навч мөрд тийм № өгөхгүй.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -35,10 +18,6 @@ type RowLike = Pick<SheetRow, 'depth' | 'group' | 'work' | 'no'>;
 
 /**
  * Багцын хуудсанд улсын комиссын мөр байгаа юу — № «УК» + нэрээр (цэвэр), навч мөр.
- * ⚠️ 2026-09-25 аудит: ГҮНЭЭС ҮЛ ХАМААРНА. Урьд нь `depth === 0` шаарддаг тул
- *    `loadRows`-ын мод (TREES fallback · `levelFromNo`) мөрийг гүн 1-д тавьбал «алга»
- *    гэж үзэн багц бүрийн нээлт бүрд ШИНЭ жааз + давхар мөр бичих байв. Гүн ≠ 0
- *    бол `ensureInner` console-д тэмдэглэнэ (мөр байгаа — бичихгүй).
  */
 export function findKomissRow<T extends RowLike>(rows: readonly T[]): T | null {
   const key = KOMISS_WORK.toLowerCase();
@@ -48,7 +27,6 @@ export function findKomissRow<T extends RowLike>(rows: readonly T[]): T | null {
 /**
  * Хамаарлын эх — барилгын багцад «Б.» (сүүлийн үндсэн бүлэг), дэд бүтцийн
  * багцад цорын ганц үндсэн бүлэг. Кодгүй бол `null` (хамааралгүй нэмнэ).
- * ⚠️ Ах дүү үндсэн мөрүүд хооронд тул `deps.hierRelated` хаахгүй.
  */
 export function komissDepSource(rows: readonly SheetRow[]): number | null {
   const roots = rows.filter((r) => r.depth === 0 && r.group);
@@ -58,7 +36,6 @@ export function komissDepSource(rows: readonly SheetRow[]): number | null {
 
 export type EnsureResult = { ok: true; added: boolean } | { ok: false; error: string };
 
-/* ⚠️ Нэг сешнд багц тутам давхар бичихгүй (эффект дахин ажиллах, хоёр таб) */
 const inFlight = new Map<string, Promise<EnsureResult>>();
 
 /** Багцын хуудсанд «Улсын комисс» мөр байхгүй бол нэмнэ (нэг удаа). */
@@ -79,10 +56,6 @@ export function ensureKomissRow(pkgKey: string): Promise<EnsureResult> {
 }
 
 async function ensureInner(pkgKey: string): Promise<EnsureResult> {
-  /* ⚠️ Эрх СҮЛЖЭЭНЭЭС ӨМНӨ — тухайн багцын зохиогчийн ХҮРЭЭ (доор).
-     ⚠️ 2026-10-19 (аудит): `requireCap('plan')` ХАСАГДСАН — хуваарийн бичих зам бүр (`submitPlan` · `decidePlan` ·
-     `Huvaari.canEdit`) зөвхөн хүрээгээр шалгадаг; `plan` эрх нь хуваарилалтын тусгал (`scopedAcl.syncCaps`) тул энд
-     давхар шаардахад эрхийн бичилт унасан зохиогчид хуваарь засагдаж, комиссын мөр нэмэгдэхгүй зөрчил гардаг байв. */
   const { PKGS, fillSchema } = await import('@/modules/sheet/bagts.pkg');
   const pkg = PKGS.find((x) => x.key === pkgKey);
   if (!pkg) return { ok: false, error: tr('Багц олдсонгүй: {0}', pkgKey) };
@@ -92,10 +65,6 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     const sc0 = huvaariScope(me, 'author');
     if (sc0 !== null && !sc0.includes(pkg.group)) return { ok: false, error: tr('Энэ багцын хуваарийг төлөвлөх эрхгүй.') };
   }
-  /* ⚠️ 2026-09-29 аудит: ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ байхад ШИНЭ ЖААЗ бичихгүй — саналын
-     бүх oid «мэдэгдэхгүй» болж батлагдахгүй. UI-ийн `pending` шалгалт (`komissGateRef`)
-     нь `refreshFlow`-оос түрүүлж болох тул ЭНД серверээс дахин асууна; уншигдахгүй
-     бол ч бичихгүй (fail-closed — дараагийн нээлтэд нэмэгдэнэ). */
   try {
     const { loadPending } = await import('./huvaariBatlah');
     if (await loadPending(pkgKey)) return { ok: true, added: false };
@@ -109,14 +78,6 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     import('@/modules/sheet/ags'),
     import('./submission'),
   ]);
-  /*
-   * ⚠️ 2026-10-12 (A6): ГҮЙЦЭТГЭЛИЙН АРХИВЛАЛТ ЯВЖ БАЙХАД БИЧИХГҮЙ (`submission.archivingBusy` — Ажил нэмэх · обьём ·
-   *    Хуваарийн бичигчдийн ижил гэрээ). Урьд нь шалгадаггүй тул архивлалтын A.8 шалгалт ба `applyAdds`-ийн завсарт
-   *    манай жааз орж тэр батлалтын жаазыг (эсвэл бичсэний дараах шалгалтаар буцааж устгагдах) булдаг, архивын
-   *    хагас жаазын цэвэрлэгээ (`cleanupTruncatedFrame` — тэмдгийн өдрийн `OID > maxOid0` мөрүүд) энэ мөрүүдийг
-   *    андуурч устгах эрсдэлтэй байв. Ачаалахаас ӨМНӨ ба `applyAdds`-ийн ЯГ ӨМНӨ; уншиж чадахгүй бол бичихгүй
-   *    (fail-closed — дараагийн нээлтэд нэмэгдэнэ).
-   */
   const archGate = async (): Promise<string | null> => {
     try {
       const b = await archivingBusy(pkg.key);
@@ -132,8 +93,6 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     const why = await archGate();
     if (why) return { ok: false, error: why };
   }
-  /* ⚠️ 2026-10-09: `fillSchema` — архивын схем FillNew/hyanaltStore-той ИЖИЛ (materializeAdds-ийн ⚠️);
-     блокгүй багцад синтетик НЭГ блок, «Хуваарь»-ийн `synthetic` бүдүүвч БИШ */
   const sc = await fillSchema(pkg);
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
@@ -149,11 +108,10 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     return mx;
   };
   const maxOid0 = await maxOidOf();
-  const loaded = await loadRows(pkg, sc, undefined, undefined, { strict: true }); // ⚠️ 2026-10-09: бичих зам — strict
+  const loaded = await loadRows(pkg, sc, undefined, undefined, { strict: true });
   {
     const have = findKomissRow(loaded.rows);
     if (have) {
-      /* ⚠️ 2026-09-25: гүн ≠ 0 — мод үүсгэлт өөрөөр уншсан; мөр байгаа тул бичихгүй, зөвхөн тэмдэглэнэ */
       if (have.depth !== 0) console.warn('[selbe] «Улсын комисс» мөр гүн', have.depth, 'дээр байна (үндсэн түвшин хүлээсэн):', pkg.key);
       return { ok: true, added: false };
     }
@@ -176,10 +134,6 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     if (!obPlan || row.des == null || asOf == null) return null;
     const blok = sc.bld[b];
     const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-    /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр, «бүгдийг зас»): сар доторх төлөвлөгөөт хувь
-         АЖЛЫН жинхэнэ эхлэх–дуусах өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) —
-         `bagtsSheet.planAt`-тай нэг томъёо; сарын эхэнд ХУДАЛ «хоцорсон» арилна. Огноо
-         хоосон/эвдэрсэн бол функц өөрөө бүтэн сараар (хуучин зам). */
     return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
   });
 
@@ -188,35 +142,22 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
   if (findKomissRow(now.rows)) return { ok: true, added: false };
   if (!sameFrame(loaded, now)) return { ok: false, error: tr('Ачаалснаас хойш хуудасны мөрүүд засагдлаа (хуваарь зэрэг хадгалагдсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
   if ((await maxOidOf()) > maxOid0) return { ok: false, error: tr('Ачаалснаас хойш хуудсанд шинэ мөр орлоо (өөр батлалт зэрэг явсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
-  /* ⚠️ 2026-10-12 (A6): архивлалтыг бичихийн ЯГ өмнө дахин (дээрх `archGate`-ийн ⚠️) */
   {
     const why = await archGate();
     if (why) return { ok: false, error: why };
   }
 
-  /* ⚠️ 2026-10-06: 500-аар ӨӨРӨӨ хувааж дуудна. `applyAdds` нь олон багцын дунд тасарвал
-     алдааг «… — дахин Нийтлэх дарж гүйцээнэ үү» гэж ороодог — «Хуваарь»-т ийм товч
-     БАЙХГҮЙ, доор хагас жааз аль хэдийн буцаагддаг тул мессеж зөрчилтэй байв. Нэг
-     дуудлага = нэг багц үед `applyAdds` анхны шалтгааныг ороолгүй шиднэ. */
   const written: number[] = [];
   try {
     for (let i = 0; i < frame.length; i += 500) await applyAdds(pkg, frame.slice(i, i + 500), written);
   } catch (e) {
     const why = String((e as Error)?.message ?? e);
     const ids = new Set(written);
-    /* ⚠️ 2026-10-06: ХАРИУ АЛДАГДСАН (timeout/сүлжээ) бол сүүлийн багц сервер дээр
-       бичигдсэн байж болох ч OID нь `written`-д ороогүй — хагас жааз үлдэж `loadRows`-ыг
-       хаана. `maxOid0`-оос хойших мөрүүдийг серверээс асууж, ЭНЭ жаазын бөглөсөн огноотой
-       (`fillMs`) мөрийг буцаана. Тоо нь жаазаас ИХ бол өөр хүний бичилт холилдсон —
-       устгахгүй, гараар цэвэрлүүлнэ. */
     let foreign = false;
     const { isLostResponse } = await import('./butetsEdit');
     if (isLostResponse(e) && sc.f.fillDate) {
       try {
         const extra: number[] = [];
-        /* ⚠️ 2026-10-21 (кодын хяналт): ӨДРӨӨР биш АГУУЛГААР таних — тэр өдөр өөр бичигч (батлалт) ижил `fillMs`-тэй
-           бүтэн жааз бичсэн бол урьд нь «манайх» гэж бүхэлд нь устгах эрсдэлтэй байв. Баталгаагүй мөрүүд нь МАНАЙ
-           жаазын `written`-ийн дараах хэсэгтэй (№ + ажлын нэр) ДАРААЛЛААРАА таарах ёстой; эс бөгөөс устгахгүй. */
         const writtenSet = new Set(written);
         const tail: { oid: number; no: string; work: string }[] = [];
         const s2 = (v: unknown) => String(v ?? '').trim();

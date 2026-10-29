@@ -124,7 +124,7 @@ check('missing parent conflicts instead of silently clearing the monthly amount'
   await assert.rejects(() => publishFinanceBatch(inputs, async () => { writes++; }), /freshness read failed/);
   check('failed final dependency read leaves edits unsent', () => assert.equal(writes, 0));
 }
-/* ── ⚠️ 2026-10-21 (аудит): `Cashflow_ID` (эцэг↔сарын холбоос) засагдахад ХУУЧИН ба ШИНЭ дугаарын сар дахин бодогдоно ── */
+/* ── 2026-10-21 (аудит): `Cashflow_ID` (эцэг↔сарын холбоос) засагдахад ХУУЧИН ба ШИНЭ дугаарын сар дахин бодогдоно ── */
 {
   const p1 = { objectid: 1, cashflow_id: 5, ho_dun_geree: 100 };
   const p2 = { objectid: 2, cashflow_id: 6, ho_dun_geree: 200 };
@@ -187,5 +187,4 @@ check('missing parent conflicts instead of silently clearing the monthly amount'
   }
 }
 
-/* ⚠️ 2026-10-27: «Гэрээ (Cashflow)» таб (`FullTable`) устгагдсан — түүний эх кодын шалгуур хасагдав */
 console.log(`financePublish: ${checks} checks passed; production mutations0. Final read/write is not server-atomic.`);

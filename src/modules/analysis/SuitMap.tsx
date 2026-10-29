@@ -53,11 +53,9 @@ import { bimLayerFor, bimLayerPeek, dropBimCache } from '@/components/bimCache';
 import { applyView3d, getRender3d, manageBim, profileFor, useBimPkg, useRender3d } from '@/components/render3d';
 import { registerMapView } from '@/lib/mapShots';
 
-/** Map-ын 58 BIM инстанц (`bimCache`) — Map-д байгаа эсэхээс үл хамаарна (⚠️ 2026-10-04, MapCanvas-ийн `bimAll`-тай ижил) */
+/** Map-ын 58 BIM инстанц (`bimCache`) — Map-д байгаа эсэхээс үл хамаарна (2026-10-04, MapCanvas-ийн `bimAll`-тай ижил) */
 const bimAll = (map: Map): BuildingSceneLayer[] => BIM.layers.map((b) => bimLayerFor(map, b.key, () =>
   new BuildingSceneLayer({ id: b.key, url: b.url, title: b.title, visible: true })));
-/** ⚠️ 2026-10-21 (аудит): кэшийн ОДООГИЙН инстанц — дахин үүсгэхгүй (MapCanvas-ийн `bimLive`-тай ижил). Сонгогч ·
-    `manageBim`-д ФУНКЦЭЭР өгнө — нэг удаагийн массив барьвал кэшээс хасагдсан/солигдсон инстанцад холбогдсон үлддэг. */
 const bimLive = (map: Map): BuildingSceneLayer[] => BIM.layers.flatMap((b) => {
   const l = bimLayerPeek<BuildingSceneLayer>(map, b.key);
   return l ? [l] : [];
@@ -65,21 +63,11 @@ const bimLive = (map: Map): BuildingSceneLayer[] => BIM.layers.flatMap((b) => {
 
 export type MapRow = Zone & {
   urban: number | null;
-  /**
-   * ⚠️ 2026-10-22 (аудит): ХЭМЖСЭН ЖИНГИЙН хувь (0–1) ба оноо `null`-ийн шалтгаан — `urbanScore`-оос
-   * (`config.MIN_MEASURED_SHARE`-ийн ⚠️). Эрэмбэ · дэлгэрэнгүй · CSV «өгөгдөл хангалтгүй»-г ил харуулна.
-   */
   coverage?: number | null;
   urbanReason?: 'nodata' | 'coverage' | null;
   displayGeom: Polygon | null;
   /**
    * ОНООЛОЛД ОРСОН эсэх — `!excluded || scoreOn.has(type)` (2026-09-21).
-   *
-   * ⚠️ Товшилт/hover нь урьд нь `excluded`-ийг л шалгадаг байсан тул
-   * «Бүсийн ангилал» картаас ИДЭВХЖҮҮЛСЭН (оноололд оруулсан) 17 бүс зурагт
-   * оноогоор будагдаж байгаа атлаа сонгогдохгүй, hover панель гарахгүй байв.
-   * Ганц эх сурвалж: `Suitability.tsx` §rows энэ тугийг бодож өгнө.
-   * Заагаагүй бол (`undefined`) хуучин дүрэм — `!excluded`.
    */
   scored?: boolean;
 };
@@ -90,8 +78,6 @@ const isScored = (r: MapRow): boolean => r.scored ?? !r.excluded;
 /** Барилгын төлөвийн өнгө — каталогийн legend-тэй нэг эх сурвалж (`config.ts`) */
 const STATUS_COLORS = BUILDING_STATUS_COLORS;
 
-/** ⚠️ Бүх давхаргын хүрээг нарийсгах КОЭФФИЦИЕНТ — үндсэн зургийн
- *  `MapCanvas.OUTLINE_SCALE`-тай ижил байлгана (project даяар нэг харагдац). */
 const OUTLINE_SCALE = 0.55;
 const ow = (w: number) => w * OUTLINE_SCALE;
 
@@ -115,9 +101,6 @@ const SELECT_COLOR = [34, 211, 238, 1];
 
 /**
  * Тээвэр-идэвхийн будалтын тунгалаг байдал.
- * ⚠️ Дүрслэлд ХАМААРАХГҮЙ барилга (жиш. «Хүн ам» дүрслэл дэх сургууль) бүрмөсөн
- * алга болохгүй — маш бүдгээр үлдэж контекст өгнө; эс бөгөөс газрын зураг
- * цоорхойтой харагдана.
  */
 const T_ALPHA_ON = 0.8;
 const T_ALPHA_OFF = 0.1;
@@ -126,8 +109,6 @@ const T_FAINT = 0.22;
 
 /**
  * Дулааны гадаргуугийн өнгөний шатлал — YlOrRd (`simulation.simColor`-той нэг гэр бүл).
- * ⚠️ Хамгийн доод зогсоол нь БҮРЭН ТУНГАЛАГ байх ЁСТОЙ: эс бөгөөс өгөгдөлгүй
- * талбай шар хальсаар бүрхэгдэж, ортофото/бүсийн хил уншигдахгүй болно.
  */
 const HEAT_STOPS = [
   { ratio: 0, color: 'rgba(255, 255, 178, 0)' },
@@ -146,14 +127,6 @@ const hexToRgba = (hex: string, a: number) => [
 
 /**
  * 3D-д давхаргыг ГАЗРЫН ГАДАРГУУ дээр наана.
- * ⚠️ Заавал: гадаргуу ~1350 м өндөрт байх бөгөөд `elevationInfo` өгөхгүй бол
- * давхарга 0 м-т үлдэж мешийн доор алга болно.
- */
-/**
- * ⚠️ ArcGIS 4.34-д `renderer`/`symbol` нь ЯЛГАВАРТАЙ НЭГДЭЛ болсон: гишүүн бүр
- * `type`-ыг ЛИТЕРАЛ байдлаар шаардана. Ерөнхий `__esri.RendererProperties`/
- * `SymbolProperties` нь тэр литералыг агуулаагүй тул шууд оноох боломжгүй.
- * Хүлээн авагч талаас нь гаргаж авбал хувилбар өөрчлөгдөхөд дагаж шинэчлэгдэнэ.
  */
 type RendererProp = NonNullable<__esri.FeatureLayerProperties['renderer']>;
 type SymbolProp = NonNullable<__esri.GraphicProperties['symbol']>;
@@ -162,10 +135,6 @@ const ON_GROUND = { mode: 'on-the-ground' } as unknown as __esri.FeatureLayerPro
 
 function rendererFor(d: MapLayerDef) {
   const c = d.color;
-  // ⚠️ Лавлагааны хил (Сэлбэ 1/2) — ЗӨВХӨН зураас, дүүргэлтгүй. `rendererFor` нь
-  //    каталогийн `fill:0`-ыг мэддэггүй тул энд онцгойлно: эс бөгөөс бүх талбайг
-  //    хилийн өнгөөр буддаг (зөвхөн анализын зурагт гардаг байсан алдаа). Хүрээ нь
-  //    дүүргэлтийн өнгөөрөө (hue) тодоор гарна.
   if ((REFERENCE_IDS as readonly string[]).includes(d.key)) {
     return { type: 'simple', symbol: { type: 'simple-fill', color: [...c, 0],
       outline: { color: [...c, 0.95], width: ow(1.8) } } };
@@ -190,10 +159,6 @@ function rendererFor(d: MapLayerDef) {
 
 /**
  * Барилгын renderer — `Barilga_ty` (төлөв)-өөр.
- *
- * ⚠️ `focus` (шүүлт идэвхтэй) үед ХҮРЭЭГ нь тод, зузаан болгоно: шүүлт нь
- * үлдсэн барилгыг зөвхөн ЦӨӨРҮҮЛДЭГ тул тэдгээр нь ортофото дээр төдийлөн
- * анзаарагдахгүй байв. Одоо «энэ бол миний шүүсэн зүйл» гэдэг нь илт харагдана.
  */
 const bldFocusFill = (c: number[]) => ({
   type: 'simple-fill', color: [...c, 0.55],
@@ -210,10 +175,6 @@ const buildingRenderer = (focus = false) => ({
 
 /**
  * Бүсийн шошгын симбол.
- *
- * ⚠️ 2D ба 3D-д ӨӨР төрөл: `TextSymbol` нь SceneView-д ДЭМЖИГДЭХГҮЙ (ArcGIS-ийн
- * баримтжуулсан хязгаарлалт) тул тэнд `point-3d` + `text` symbolLayer хэрэглэнэ.
- * Нэг ижил бичвэрийг хоёр хэлбэрээр угсарч байгаа нь энэ шалтгаантай.
  */
 function labelSymbol(dim: Dim, text: string, color: string, halo: string, haloSize: number, size: number) {
   if (is3D(dim)) {
@@ -240,8 +201,6 @@ function labelSymbol(dim: Dim, text: string, color: string, halo: string, haloSi
 
 /**
  * Суурь зураг — порталтай ЯГ ИЖИЛ: Esri-гийн нийтийн растр тайл + ортофото.
- * ⚠️ Вектор тайлын суурь зураг БИШ: загвар солиход `VectorTileContainer`
- * дээр унадаг ба 2D-д ортофото түүнийг бүрэн бүрхдэг.
  */
 /** Анхдагч суурь зураг — ТОПОГРАФИ (порталтай нэгдмэл). Ортофото тусдаа давхарга,
  *  эхэндээ унтраалттай — «Суурь зураг» чагтаар асаана. */
@@ -249,16 +208,8 @@ const baseMap = () => Basemap.fromId('topo-vector');
 
 /**
  * БОДИТ ЗАМЫН гадаргуу — attribute-тай vector tile (`test_zam`).
- * ⚠️ Замын ПОЛИГОН (талбай), centerline биш — зөвхөн ХАРАГДАЦ. Трафикийн граф нь
- * `Monmap_zam` line дээр хэвээр (`netSources.ts`). «Бодит» сонгоход л ил болно.
  */
 const ROAD_TILE_URL =
-  /* ⚠️ 2026-09-17: ЗӨВХӨН ЭНЭ tile MUST дээр ҮЛДЭВ (хэрэглэгчийн шийдвэр). monmap-ын
-     `selberoad_0917` нь 32648 (UTM)-ээр нийтлэгдсэн тул 3857 зурагт зурагдахгүй;
-     Web Mercator-оор дахин нийтлэгдмэгц хувьсагчийн утгыг солино. Бусад бүх өгөгдөл monmap.
-     Хаяг зөвхөн env (`NEXT_PUBLIC_ROAD_TILE_URL`) — код дотор линк байхгүй; хоосон бол «Бодит» зам гарахгүй. */
-  /* ⚠️ 2026-10-20 (хэрэглэгч): AGOL `test_zam` → Enterprise `selberoad_TILE_1` (`services/scene.ts` IRGED_ROAD — ижил тайл,
-     32648-ийн ⚠️ тэнд). `NEXT_PUBLIC_ROAD_TILE_URL` хувьсагч хасагдсан. */
   IRGED_ROAD.url;
 
 export function SuitMap({
@@ -305,7 +256,6 @@ export function SuitMap({
   transportTip?: (kind: 'b' | 'r' | 's', idx: number) => string | null;
   /**
    * «Замын ачаалал» симуляц — машин агентуудын давхарга.
-   * ⚠️ Зөвхөн 2D-д зурагдана (доор үз); өгөгдөөгүй бол давхарга огт үүсэхгүй.
    */
   traffic?: {
     net: Network | null;
@@ -319,13 +269,10 @@ export function SuitMap({
   };
   /**
    * Тээвэр-идэвхийн дүрслэл — барилга/зам/буудлын будалт (`transportModes.tPaint`).
-   * ⚠️ Өгөгдөхгүй бол давхарга ХООСОН үлдэнэ (бусад горимд юу ч зурахгүй).
    */
   transportPaint?: TPaint | null;
   /**
    * Дулааны гадаргуу асаалттай — тээврийн дүрсийг БҮДЭГ зурна.
-   * ⚠️ Огт зурахгүй БОЛОХГҮЙ: hover панель зөвхөн эдгээр дүрс дээр ажилладаг тул
-   * тэднийг хаявал дулааны зураг дээр юу ч уншиж чадахгүй болно.
    */
   transportFaint?: boolean;
   /**
@@ -357,17 +304,10 @@ export function SuitMap({
   onBldClick?: (oid: number | null) => void;
   /**
    * Бүсийн будалтыг МАШ ТУНГАЛАГ болгох («Байршил» горим).
-   * ⚠️ Тэр үед мессеж нь БАРИЛГЫН байршил тул бүсийн дүүргэлт зөвхөн хилийн
-   *    чиг баримжаа өгөх ёстой — ортофото, барилга нэвт харагдана.
    */
   zoneFaint?: boolean;
   /**
    * Давхарга тус бүрийн ТУНГАЛАГ (0–1), `MAP_LAYERS[].key`-ээр.
-   *
-   * ⚠️ 2026-08-20: Урьд нь энэ зурагт тунгалаг тохируулах арга ОГТ байхгүй тул
-   * «Тохиромжтой байдал» цонхонд «Тунгалаг» товч зурагдаж чаддаггүй байв.
-   * Заагаагүй давхарга нь БҮТЭЭГДЭХ үеийн анхдагч тунгалагаа хадгална
-   * (жиш. барилга 0.3 — доорх бүсийн онооны будалт нэвт харагдана).
    */
   opacity?: Record<string, number>;
 }) {
@@ -387,8 +327,6 @@ export function SuitMap({
   const paintVerRef = useRef(0);
   /** BIM сонгогч — MapCanvas-тай ижил (`components/bimPicker`) */
   const bimWidgetRef = useRef<BimPicker | null>(null);
-  // ⚠️ Энэ файлд `Map` нэрийг ArcGIS-ийн `Map` класс эзэлсэн тул JS-ийн Map
-  //    ашиглах боломжгүй — энгийн объект хангалттай.
   const ctxRef = useRef<Record<string, Layer>>({});
   /**
    * Давхарга бүрийн БҮТЭЭГДЭХ үеийн тунгалаг — «Тунгалаг» цонхны override
@@ -396,12 +334,6 @@ export function SuitMap({
    */
   const baseOpacityRef = useRef<Record<string, number>>({});
   const [ready, setReady] = useState(false);
-  /**
-   * ⚠️ 2026-09-25: `view.when()`-ийн уналт — урьд нь `.catch(() => {})`-ээр
-   * залгиж, зураг ямар ч мэдээлэлгүй хоосон үлддэг байв. Порталын `MapCanvas`-ийн
-   * `initError`/`initToken`-той ижил загвар: алдааг ил хэлж, WebGL биш бол
-   * «Дахин оролдох» нь view-г дахин үүсгэнэ.
-   */
   const [initErr, setInitErr] = useState<{ name?: string } | null>(null);
   const [initToken, setInitToken] = useState(0);
 
@@ -423,23 +355,16 @@ export function SuitMap({
 
   /**
    * Map-ыг НЭГ УДАА үүсгэнэ; view нь 2D/3D солигдох бүрд дахин үүснэ.
-   * ⚠️ Map-ыг дахин үүсгэвэл давхаргууд шинээр ачаалагдаж, сонголт алдагдана.
    */
   useEffect(() => {
     if (!el.current) return;
 
-    /* ⚠️ 2026-10-20: Enterprise талбарын нэрийн хөрвүүлэгч — давхарга үүсэхээс өмнө (`lib/entInterceptor.ts`) */
     void installEntInterceptor();
     if (!mapRef.current) {
-      /* ⚠️ 2026-10-09: хувилбарыг СУУЛГАСАН багцаас (`kernel.version` = «4.34.8» → «4.34») — урьд
-         «4.34» гараар бичигдсэн тул `@arcgis/core`-ийг шинэчлэхэд CDN-ийн asset (worker, шрифт)
-         хуучин хувилбараас ачаалагдаж зөрөх эрсдэлтэй байв. MapCanvas-тай ИЖИЛ томъёо. */
       esriConfig.assetsPath = `https://js.arcgis.com/${String(arcgisVersion).split('.').slice(0, 2).join('.')}/@arcgis/core/assets`;
 
       const zoneLayer = new GraphicsLayer({ title: tr('Тохиромжтой байдал'), elevationInfo: ON_GROUND });
       const labelLayer = new GraphicsLayer({ title: tr('Шошго'), elevationInfo: ON_GROUND });
-      // ⚠️ Тээврийн будалт нь барилгын давхаргыг ДАРНА (дээр нь зурагдана) —
-      //    эс бөгөөс төлөвийн өнгө (Barilga_ty) шинжилгээний өнгийг бүрхэнэ.
       const tranLayer = new GraphicsLayer({ title: tr('Тээвэр-идэвх'), elevationInfo: ON_GROUND });
       const pickLayer = new GraphicsLayer({ title: tr('Сонголт'), elevationInfo: ON_GROUND, listMode: 'hide' });
       pickRef.current = pickLayer;
@@ -447,31 +372,15 @@ export function SuitMap({
       labelRef.current = labelLayer;
       tranRef.current = tranLayer;
 
-      /**
-       * ⚠️ `special` давхаргууд (оноон будалт, шошго) нь дээрх GraphicsLayer —
-       * тэдгээрийг ЭНД дахин үүсгэхгүй, зөвхөн `ctxRef`-т бүртгэж ил байдлыг
-       * нь нэг ижил механизмаар удирдана.
-       */
       ctxRef.current.zone = zoneLayer;
       ctxRef.current.label = labelLayer;
 
       const ctx = MAP_LAYERS.filter((d) => !d.special && d.layerId).map((d) => {
-        /*
-         * ⚠️ Хаяг нь ЗӨВХӨН каталогоос. Урьд нь `layerId` байхгүй үед
-         * `${ET}/${d.n}` гэсэн нөөц зам байсан бөгөөд тэр ЕТ үйлчилгээ
-         * 2026-08-26-нд хаагдсан (499) — нөөц нь чимээгүй хоосон давхарга
-         * үүсгэх байв. Одоо `layerId`-гүй мөрийг зүгээр л АЛГАСНА.
-         */
         const url = layerUrl(LAYER_BY_ID[d.layerId!]);
         const lyr = new FeatureLayer({
           url,
           title: d.title,
           visible: d.on,
-          /* ⚠️ «*» нь мянга мянган объектын БҮХ баганыг татдаг байв (2026-08-21
-             гүйцэтгэлийн аудит). Hover-панель зөвхөн БАРИЛГЫН attrs уншдаг
-             (buildingTip) тул түүнд л бүх талбар; бусад контекст давхаргад
-             outFields огт өгөхгүй — SDK renderer-т хэрэгтэй хамгийн бага
-             олонлогийг өөрөө татна. */
           ...(d.kind === 'building' ? { outFields: ['*'] } : {}),
           elevationInfo: ON_GROUND,
           renderer: (d.kind === 'building' ? buildingRenderer() : rendererFor(d)) as unknown as RendererProp,
@@ -483,12 +392,6 @@ export function SuitMap({
 
       const buildingLayer = ctx.find((x) => x.d.kind === 'building')?.lyr ?? null;
       bldRef.current = buildingLayer;
-      /**
-       * ⚠️ БАРИЛГА ба НОГООН БАЙГУУЛАМЖ хоёрыг контекстээс САЛГАНА — тэдгээр нь
-       * бүсийн будалтын ДЭЭР зурагдана. Ногоон нь урьд нь контекстийн дунд байсан
-       * тул бүсийн будалт дор нь дарагдаж, «Ногоон байгууламж» картаас асаахад
-       * бараг харагддаггүй байв.
-       */
       const greenLayer = ctx.find((x) => x.d.key === GREEN_LAYER_KEY)?.lyr ?? null;
       const under = ctx
         .filter((x) => x.lyr !== buildingLayer && x.lyr !== greenLayer)
@@ -501,24 +404,18 @@ export function SuitMap({
         title: IMAGERY.title,
         visible: false,
         listMode: 'hide',
-        /* ⚠️ 2026-10-20: Enterprise-ийн нислэгийн кэштэй тайл (wkid 102100 → `TileLayer`), анхдагч нислэг (`services/scene.ts` ORTHO_FLIGHTS-ийн ⚠️) */
         layers: IMAGERY.layers.map((o, i) => new TileLayer({ id: `imagery:${i}`, url: o.url, visible: true })),
       });
 
       /* Бодит замын vector tile гадаргуу — «Бодит» симуляцад л ил. Ортофотогийн
          дээр, бусад контекстийн доор (машин канвас нь газрын зургаас ДЭЭР тул
          энэ давхарга машиныг бүрхэхгүй). */
-      /* ⚠️ Хаяг хоосон (env тохируулаагүй) бол давхарга ОГТ үүсгэхгүй — хоосон url-тай VectorTileLayer алдаа шиднэ. */
       const roadTileLayer = ROAD_TILE_URL ? new VectorTileLayer({
         id: 'roadTile', url: ROAD_TILE_URL, visible: false, listMode: 'hide',
       }) : null;
       roadTileRef.current = roadTileLayer;
 
       /**
-       * ⚠️ ДАРААЛАЛ (доороос дээш):
-       *   ортофото → замын tile → БҮСИЙН БУДАЛТ → контекст → ногоон → барилга
-       *   → тээвэр → шошго
-       *
        * Бүсийн будалт нь бүхэл бүсийг дүүргэдэг ХАМГИЙН ТОМ гадаргуу тул
        * ХАМГИЙН ДООР байна — эс бөгөөс дээрх бүх нарийн давхаргыг (ногоон,
        * инженерийн шугам, зам) бүрхэнэ. Барилга, ногоон байгууламж хоёр нь
@@ -549,7 +446,6 @@ export function SuitMap({
           tilt: 62, heading: 0,
         },
         popupEnabled: false,
-        /* ⚠️ 2026-10-04: «Хурдан» → 'medium', «Нарийн» → урьдын 'high' (MapCanvas-тай ижил, `render3d.ts`) */
         qualityProfile: profileFor(getRender3d()),
       })
       : new MapView({
@@ -564,11 +460,7 @@ export function SuitMap({
     /* «Тайлан татах»-ын газрын зургийн агшин (`mapShots.ts`) */
     registerMapView(view);
 
-    // ⚠️ Виджетүүд MapView|SceneView хоёуланг хүлээж авдаг ч төрлийн
-    //    тодорхойлолт нь MapView-г л заадаг тул нэг удаа cast хийнэ.
     const anyView = view as MapView;
-    /* ⚠️ 2026-10-23: 3D/BIM-д луужин · чиглэл солих товч ч баруун дээд (`MapCanvas`-тай ижил) — `MapTools`-ийн 3D өргөлт
-       (`lift`) хасагдсан тул зүүн дээд буланд үлдвэл хэрэгслийн зурвас (top 12px) тэднийг бүрхэж дарагдахгүй болдог байв */
     (view.type === '3d' ? ['zoom', 'compass', 'navigation-toggle'] : ['zoom'])
       .forEach((id, index) => view.ui.move(id, { position: 'top-right', index } as never));
     view.ui.add(new Home({ view: anyView }), 'top-right');
@@ -578,8 +470,6 @@ export function SuitMap({
     const bmPanel = document.createElement('div');
     bmPanel.style.cssText = 'display:flex;flex-direction:column';
     const orthoRow = document.createElement('label');
-    // ⚠️ Энэ мөр DOM-оор шууд үүсдэг ч ӨНГӨӨ токеноор авна — түүхий hex бичвэл
-    //    гэрэл сэдэвт харанхуй зурвас болж, дизайн системээс сална.
     orthoRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding:9px 11px;'
       + 'font-size:12.5px;font-weight:600;color:var(--ink);background:var(--surface);'
       + 'border-bottom:1px solid var(--line);cursor:pointer';
@@ -592,12 +482,6 @@ export function SuitMap({
     orthoRow.append(orthoChk, document.createTextNode(tr('Ортофото')));
     const galleryDiv = document.createElement('div');
     bmPanel.append(orthoRow, galleryDiv);
-    /* ⚠️ 2026-09-25: Галерей нь Expand-ийн content DOM-д суудаг тул
-       `view.destroy()` устгадаггүй — 2D↔3D солих бүрд нэг нь үлддэг байв.
-       Cleanup-д гараар устгана (MapCanvas-тай ижил). */
-    /* ⚠️ 2026-10-20: ТОДОРХОЙ эх сурвалж (MapCanvas-тай ижил). Анхдагч `PortalBasemapsSource` нь ArcGIS Online-ы
-       суурь зургийн бүлгийг уншдаг бөгөөд тэнд нэвтрэлт шаарддаг item байдаг тул Enterprise руу шилжсэний дараа (AGOL
-       итгэмжлэлгүй) «Please sign in to access the item on ArcGIS Online» цонх гардаг байв. */
     const gallery = new BasemapGallery({
       view: anyView,
       container: galleryDiv,
@@ -630,15 +514,6 @@ export function SuitMap({
 
     /**
      * Дарж БАРИЛГА эсвэл БҮС сонгох.
-     *
-     * ⚠️ Барилгыг ТЭРГҮҮНД шалгана — тэр нь бүсийн будалтын ДЭЭР зурагддаг тул
-     * нүдээр барилга дээр дарсан хүн бүс сонгогдвол гайхна. Барилга олдвол
-     * бүсийн сонголтыг ХӨНДӨХГҮЙ (хоёр самбар зэрэг ажиллана).
-     *
-     * ⚠️ `onBldClick` БАЙХГҮЙ (симуляц горим, `Suitability.tsx` §bldPick) бол
-     * барилга олдсон ч `return` ХИЙХГҮЙ — урьд нь `onBldClick?.()` юу ч
-     * хийлгүй `return` болж, барилгын доорх бүс огт сонгогдохгүй байв
-     * (2026-09-21). Барилга сонгох хүлээн авагчгүй үед даралт бүс рүү очно.
      */
     const click = view.on('click', (e: __esri.ViewClickEvent) => {
       const zoneLayer = zoneRef.current;
@@ -658,8 +533,6 @@ export function SuitMap({
             (r) => r.type === 'graphic' && (r.graphic.attributes as { zoneId?: string })?.zoneId,
           );
           const zid = g && g.type === 'graphic' ? (g.graphic.attributes as { zoneId: string }).zoneId : null;
-          // ⚠️ Оноололд ОРООГҮЙ бүсийг сонгуулахгүй — дэлгэрэнгүй самбар хоосон
-          //    гарахаас сэргийлнэ. Идэвхжүүлсэн (scoreOn) бүс СОНГОГДОНО (2026-09-21).
           const zr = zid ? cb.current.rows.find((x) => x.id === zid) : null;
           cb.current.onSelect(zr && isScored(zr) ? zid : null);
         })
@@ -668,15 +541,11 @@ export function SuitMap({
 
     /**
      * Hover панель. Барилга бүсийн дээр зурагддаг тул эхлээд барилгыг үзүүлнэ.
-     * ⚠️ `hitTest` нь async тул хожуу ирсэн хуучин хариу шинийг дарахгүйн тулд
-     * token-оор хамгаална.
      */
     let token = 0;
     let lastKey: string | null = null;
     const move = view.on('pointer-move', (e: __esri.ViewPointerMoveEvent) => {
       const my = ++token;
-      // ⚠️ ДАРААЛАЛ = ЗУРАГДАХ дараалал: тээврийн дүрс хамгийн дээр зурагддаг
-      //    тул hover-т ч тэргүүн ээлжинд шалгагдана.
       const include = [tranRef.current, bldRef.current, zoneRef.current].filter(Boolean) as Layer[];
       if (!include.length) return;
       view.hitTest(e, { include })
@@ -696,11 +565,6 @@ export function SuitMap({
           let html: string | null = null;
           if (tran && tran.type === 'graphic') {
             const a = tran.graphic.attributes as { tKind: 'b' | 'r' | 's'; tIdx: number };
-            /**
-             * ⚠️ Түлхүүрт БУДАЛТЫН ХУВИЛБАР (`paintVer`) орно: дүрслэл солиход
-             * ИЖИЛ барилгын агуулга өөрчлөгддөг тул зөвхөн индексээр түлхүүрлэвэл
-             * `lastKey` таарч, панель ХУУЧИН утгаа хадгална.
-             */
             const k = `t${paintVerRef.current}${a.tKind}${a.tIdx}`;
             const tipHtml = k === lastKey ? '' : cb.current.transportTip?.(a.tKind, a.tIdx) ?? null;
             // `null` = энэ объект одоогийн дүрслэлд утгагүй → панель харуулахгүй
@@ -712,8 +576,6 @@ export function SuitMap({
           } else if (zone && zone.type === 'graphic') {
             const id = (zone.graphic.attributes as { zoneId: string }).zoneId;
             const r = cb.current.rows.find((x) => x.id === id);
-            // ⚠️ Оноололд ороогүй бүс (ногоон/одоо байгаа барилга/дэд бүтэц) — hover
-            //    панель харуулахгүй; идэвхжүүлсэн бүс ХАРУУЛНА (2026-09-21, `isScored`)
             if (r && isScored(r)) { key = `z${id}`; if (key !== lastKey) html = cb.current.zoneTip(r); }
           }
 
@@ -731,8 +593,6 @@ export function SuitMap({
     });
 
     const leave = view.on('pointer-leave', () => {
-      /* ⚠️ 2026-09-25: token-ийг ахиулна — эс бөгөөс гарахаас өмнө эхэлсэн
-         hitTest хожуу ирж, курсор зурагт байхгүй үед панелийг буцааж нээдэг байв. */
       token += 1;
       if (tipEl.current) tipEl.current.hidden = true;
       lastKey = null;
@@ -744,11 +604,6 @@ export function SuitMap({
       move.remove();
       leave.remove();
       if (!gallery.destroyed) gallery.destroy();
-      /**
-       * ⚠️ `view.destroy()` нь 4.17-оос хойш ӨӨРИЙН `map`-ыг ч хамт устгадаг.
-       * 2D↔3D солиход Map хэвээр үлдэх ёстой тул холбоог эхлээд тасална — эс
-       * бөгөөс шинэ view «The provided map is already destroyed» гэж унана.
-       */
       view.container = null as unknown as HTMLDivElement;
       (view as unknown as { map: Map | null }).map = null;
       view.destroy();
@@ -759,7 +614,6 @@ export function SuitMap({
 
   /** Map-ыг компонент бүрмөсөн салахад л устгана */
   useEffect(() => () => {
-    /* ⚠️ 2026-10-04: BIM кэш (`bimCache`) — Map-д БАЙХГҮЙ (2D/3D горимд хасагдсан) давхаргыг ч устгана */
     if (mapRef.current) dropBimCache(mapRef.current);
     mapRef.current?.destroy();
     mapRef.current = null;
@@ -774,15 +628,11 @@ export function SuitMap({
   /**
    * 3D давхаргуудыг ЗӨВХӨН тохирох горимд газрын зурагт байлгана (3d = меш,
    * bim = барилгын загвар).
-   * ⚠️ `visible: false`-ээр нуух нь ХАНГАЛТГҮЙ: MapView нь эдгээрийг дэмждэггүй
-   * тул зурагт БАЙХАД л «Failed to create layerview» өгнө.
    */
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    /* ⚠️ 2026-10-26 (аудит): урьд нь хуучирсан `SCENE` («Нислэг 1») — ортофото нь «Нислэг 2» (`IMAGERY`) тул нислэг холилдож,
-       Нислэг 2-ын хойд хэсэг мешгүй харагддаг байв. Меш ба ортофото ХАМТ (`scene.ts`-ийн ⚠️) — порталын анхдагч хувилбар. */
     for (const m of MESH_VERSIONS[DEFAULT_MESH_VER].layers) {
       const id = `scene:${m.key}`;
       const existing = map.findLayerById(id);
@@ -797,8 +647,6 @@ export function SuitMap({
 
     for (const b of BIM.layers) {
       const existing = map.findLayerById(b.key);
-      /* ⚠️ 2026-10-04: MapCanvas-тай ИЖИЛ — хасна, гэхдээ устгахгүй (`bimCache`): буцаж ороход
-         метадата (~712 хүсэлт) дахин татагдахгүй. НЭМЭХ нь доорх `manageBim` эффектэд (горимоор). */
       if (dim !== 'bim' && existing) map.remove(existing);
     }
   }, [dim, ready]);
@@ -814,9 +662,6 @@ export function SuitMap({
       clickH?.remove();
       clickH = null;
       if (bimWidgetRef.current) {
-        /* ⚠️ `view`-ийн эффект (dim deps) энэ эффектээс ӨМНӨ зарлагдсан тул
-           салахад түүний cleanup `view.destroy()`-г түрүүлж дуудна — устгасан
-           view-ийн `ui.remove` алдаа шиддэг байв (2026-09-21). */
         if (!view.destroyed) view.ui.remove(bimWidgetRef.current.el);
         bimWidgetRef.current.destroy();
         bimWidgetRef.current = null;
@@ -825,14 +670,10 @@ export function SuitMap({
 
     if (dim !== 'bim') { clear(); return; }
 
-    /* ⚠️ 2026-10-04: кэшийн 58 инстанц — «Хурдан»-д Map-д цөөн нь л байдаг (`manageBim`) */
     const layers = bimAll(map);
     if (!layers.length) return;
 
     clear();
-    /* ⚠️ 2026-10-04: BIM НЭГ НЭГЭЭР — MapCanvas-ийн ⚠️-ийг үз */
-    /* ⚠️ 2026-10-21 (аудит): `layers` ФУНКЦЭЭР — сонголт бүрд кэшийн ОДООГИЙН инстанц (`bimLive`, MapCanvas-тай ижил);
-       урьд нь нэг удаагийн `bimAll` массив барьж, багц/горим солигдсоны дараа ч хуучин инстанцад холбогдсон байв. */
     const widget = createBimPicker({ view: view as SceneView, layers: () => bimLive(map), items: BIM.layers, Explorer: BuildingExplorer });
     view.ui.add(widget.el, 'top-right');
     bimWidgetRef.current = widget;
@@ -841,11 +682,7 @@ export function SuitMap({
     return clear;
   }, [dim, ready]);
 
-  /* ⚠️ 2026-10-04: 3D/BIM ЗУРАГЛАЛЫН ГОРИМ — MapCanvas-тай ижил (`render3d.ts`-ийн ⚠️). «Нарийн»-д
-     энэ зураг урьдын адил ҮЙЛЧИЛГЭЭНИЙ АНХДАГЧ дэд давхаргатай (archOn: false — Architectural-ийг
-     хүчээр асаадаггүй байсан); «Хурдан»-д гадна бүрхүүл + ойрын барилга бүрэн. */
   const r3 = useRender3d();
-  /* ⚠️ 2026-10-14: «Нарийн»-д ачаалах BIM багц — MapCanvas-тай нэг төлөв */
   const bimPkg = useBimPkg();
   useEffect(() => {
     const view = viewRef.current;
@@ -856,15 +693,11 @@ export function SuitMap({
     const map = mapRef.current;
     const view = viewRef.current;
     if (!map || !view || !ready || dim !== 'bim' || view.type !== '3d') return;
-    /* ⚠️ 2026-10-21 (аудит): `bimAll` кэшийг дүүргэнэ, `manageBim`-д `all` ФУНКЦЭЭР (`bimLive`) — MapCanvas-тай ижил */
     if (!bimAll(map).length) return;
     return manageBim({ view: view as SceneView, map, all: () => bimLive(map), m: r3, archOn: false, pkg: bimPkg });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dim, ready, r3, r3 === 'fine' ? bimPkg : null]);
 
-  /* ⚠️ 2026-10-21 (аудит): багц · горим солигдоход BIM сонгогчийн BuildingExplorer-ийг одоогийн давхаргад ДАХИН
-     ХОЛБОНО (MapCanvas-ийн `rebind` эффекттэй ижил) — сонгогчийн эффект зөвхөн `[dim, ready]`-аар үүсдэг тул урьд нь
-     багц солигдсоны дараа Map-аас гарсан инстанцад холбогдсон үлддэг байв. */
   const bimPkgKey = r3 === 'fine' ? bimPkg.pkg : null;
   useEffect(() => {
     if (dim === 'bim' && ready) bimWidgetRef.current?.rebind();
@@ -878,9 +711,7 @@ export function SuitMap({
     }
   }, [layerOn]);
 
-  /* ── Давхаргын ТУНГАЛАГ («Тунгалаг» цонх) ──
-     ⚠️ Анхдагчийг НЭГ УДАА тогтооно: override арилахад эх утга руугаа буцна
-     (барилга 0.3 — доорх бүсийн будалт нэвт харагдах ёстой). */
+  /* ── Давхаргын ТУНГАЛАГ («Тунгалаг» цонх) ── */
   useEffect(() => {
     for (const [key, lyr] of Object.entries(ctxRef.current)) {
       if (baseOpacityRef.current[key] == null) baseOpacityRef.current[key] = lyr.opacity ?? 1;
@@ -893,14 +724,11 @@ export function SuitMap({
     if (roadTileRef.current) roadTileRef.current.visible = roadTile;
   }, [roadTile]);
 
-  /* ── Барилгын зориулалтын шүүлт («Барилгын ангилал» карт) ──
-     ⚠️ Хоосон мөр = шүүлтгүй. `null` олговол ArcGIS өмнөх илэрхийлэлээ
-     хадгалдаг тул заавал '' болгож ЦЭВЭРЛЭНЭ. */
+  /* ── Барилгын зориулалтын шүүлт («Барилгын ангилал» карт) ── */
   useEffect(() => {
     const l = bldRef.current;
     if (!l) return;
     l.definitionExpression = bldWhere ?? '';
-    // ⚠️ Шүүлт идэвхтэй бол ҮЛДСЭН барилгыг тод хүрээгээр онцолно
     l.renderer = buildingRenderer(bldWhere != null) as unknown as RendererProp;
   }, [bldWhere, ready]);
 
@@ -921,17 +749,10 @@ export function SuitMap({
     for (const r of ordered) {
       if (!r.displayGeom) continue;
       const scoreCol = colorOf(r);
-      // ⚠️ Оноогүй (хассан ногоон/одоо байгаа барилга/дэд бүтэц ба жинхэнэ
-      //    өгөгдөлгүй) бүсийг саарал биш ЦАЙВАР-аар — ортофото дээр тодрох.
       const noData = scoreCol === NO_DATA_COLOR;
       const col = noData ? NODATA_FILL : scoreCol;
       const isSel = selected === r.id;
       const vis = shown(r);
-      /**
-       * ⚠️ Шүүлтээс гарсан бүсийг ОГТ ЗУРАХГҮЙ (ArcGIS-ийн filter-ийн зан).
-       * Урьд нь alpha 0.06-оор бүдгэрүүлж үлдээдэг байсан нь «шүүсэн» гэхээсээ
-       * «сонгоогүй» гэж уншигдаж, зураг бөглөрөх шалтгаан болж байв.
-       */
       if (!vis) continue;
       const isBagts = /багц/i.test(r.id);
       const hasSel = selected !== null;
@@ -940,12 +761,6 @@ export function SuitMap({
       if (zoneFaint) alpha = 0.1;
       else if (hasSel && !isSel) alpha *= 0.45;
 
-      /**
-       * ⚠️ ХҮРЭЭНИЙ тунгалаг нь ДҮҮРГЭЛТЭЭС тусдаа: «Байршил» горимд дүүргэлт
-       * 0.1 болтол унадаг бөгөөд хүрээг нь дагуулбал (alpha × 1.35) бүсийн зааг
-       * бараг үл үзэгдэх болно. Тэнд хүрээг ТОД үлдээж, зөвхөн дүүргэлтийг
-       * нэвт харуулна.
-       */
       const outline = isSel ? SELECT_COLOR
         : zoneFaint ? hexToRgba(col, 0.9)
           : noData ? hexToRgba(NODATA_OUTLINE, Math.min(1, alpha * 1.5))
@@ -992,9 +807,6 @@ export function SuitMap({
 
     const sr = { wkid: 3857 };
 
-    // ⚠️ `tKind`/`tIdx` нь hover панелийн ГАНЦ холбоос: эдгээргүй бол зурсан
-    //    дүрсээс буцаад өгөгдөл рүү очих арга байхгүй.
-    // Дулаан асаалттай бол дүрсүүд зөвхөн hover-ийн «баригдах гадаргуу» болно
     const fade = transportFaint ? T_FAINT : 1;
 
     for (const b of transportPaint.buildings) {
@@ -1037,8 +849,6 @@ export function SuitMap({
   useEffect(() => {
     const map = mapRef.current;
     const view = viewRef.current;
-    // ⚠️ ЗӨВХӨН 2D: `HeatmapRenderer` нь SceneView-д дэмжигдэхгүй тул 3D-д
-    //    давхарга нэмбэл «Failed to create layerview» алдаа өгнө.
     if (!map || !view || !ready || is3D(dim) || !heat?.length) return;
 
     const layer = new FeatureLayer({
@@ -1057,8 +867,6 @@ export function SuitMap({
       spatialReference: { wkid: 3857 } as unknown as __esri.SpatialReference,
       popupEnabled: false,
       legendEnabled: false,
-      // ⚠️ Дулааны гадаргуу дээгүүр hover хийхэд бүс/барилга «хаагдахгүй» байх
-      //    ёстой — hitTest-д огт оруулахгүй тул `include` жагсаалтад алга.
     });
 
     // Бүсийн будалтын ДЭЭР, барилгын ДООР — бүсийн хил бүдэг харагдсаар байна
@@ -1066,13 +874,6 @@ export function SuitMap({
     map.add(layer, at);
     heatRef.current = layer;
 
-    /**
-     * ⚠️ Нягтралын хязгаарыг (`minDensity`/`maxDensity`) ГАРААР тааруулах
-     * боломжгүй: тэдгээр нь цөмийн радиус, дэлгэцийн масштаб, жингийн нэгжээс
-     * нэгэн зэрэг хамаардаг. smartMapping нь харагдац бүрд тохирохыг нь бодно;
-     * бид зөвхөн ӨНГИЙГ нь өөрийн шатлалаар сольж, бусад давхаргатай нэгдмэл
-     * болгоно. Алдаа гарвал ArcGIS-ийн анхдагч дулааны өнгө үлдэнэ.
-     */
     let alive = true;
     createHeatRenderer({ layer, view, field: 'w', radius: HEAT_RADIUS, fadeToTransparent: true })
       .then(({ renderer }) => {
@@ -1084,9 +885,6 @@ export function SuitMap({
 
     return () => {
       alive = false;
-      /* ⚠️ Компонент бүрмөсөн салахад `map`-ыг устгах эффект (дээр, [] deps)
-         ЭНЭ эффектээс ӨМНӨ зарлагдсан тул түүний cleanup түрүүлж ажиллаж,
-         энд устгагдсан `map` дээр `remove` дуудагддаг байв (2026-09-21). */
       if (!map.destroyed) map.remove(layer);
       layer.destroy();
       if (heatRef.current === layer) heatRef.current = null;
@@ -1104,18 +902,6 @@ export function SuitMap({
 
   /**
    * ШҮҮСЭН БАРИЛГА руу төвлөрөх — «Барилгын ангилал» картаас сонгоход.
-   *
-   * ⚠️ `bldFocus` нь ТООЛУУР: шүүлт өөрчлөгдөх бүрд өснө. `bldWhere`-ээр
-   * сэрээж болохгүй — тэр нь бүсийн ангиллын шүүлтээс ч өөрчлөгддөг тул
-   * хэрэглэгч бүс шүүхэд газрын зураг гэнэт үсэрнэ.
-   *
-   * ⚠️ Хүрээг СЕРВЭРЭЭС асууна (`queryExtent`): давхарга нь `definitionExpression`
-   * -тэй тул хөтөч дээр ачаалагдсан хэсэг нь бүрэн биш байж болно.
-   *
-   * ⚠️ 2026-10-09 (аудит №6): `bldWhere` null (шүүлт ЦЭВЭРЛЭСЭН) үед асуухгүй.
-   *    Тоолуур шүүлт цэвэрлэхэд ч өсдөг тул `queryExtent()` `where`-гүй явж, энэ
-   *    FeatureServer 400 «No where clause specified» буцаадаг (`MapCanvas.extentOf`-ийн
-   *    ⚠️). Хамаарлын жагсаалтад `bldWhere`-ийг САНААТАЙ оруулахгүй — дээрх ⚠️.
    */
   useEffect(() => {
     const view = viewRef.current;
@@ -1135,10 +921,6 @@ export function SuitMap({
 
   /**
    * СОНГОСОН БАРИЛГЫГ тодруулж, түүн рүү ойртох («Байршил» картаас).
-   *
-   * ⚠️ Тодруулгыг ТУСДАА давхаргад зурна: бүсийн будалтын давхарга (`zoneLayer`)
-   * оноо/шүүлт өөрчлөгдөх бүрд бүхэлдээ цэвэрлэгддэг тул тэнд зурвал тодруулга
-   * санамсаргүй алга болно.
    */
   useEffect(() => {
     const view = viewRef.current;
@@ -1186,8 +968,6 @@ export function SuitMap({
   return (
     <div className={s.mapWrap}>
       <div ref={el} className={s.viewDiv} />
-      {/* ⚠️ Трафикийн канвас нь `viewDiv`-ийн ДЭЭР, hover панелийн ДООР.
-          3D-д хасагдана — тэнд хавтгай проекц газрын гадаргуутай нийцэхгүй. */}
       {traffic && !is3D(dim) && (
         <TrafficOverlay viewRef={viewRef} ready={ready} {...traffic} />
       )}
@@ -1214,7 +994,7 @@ export function SuitMap({
                 : tr('Сүлжээ эсвэл газрын зургийн үйлчилгээний алдаа гарлаа.')}
             </span>
             {initErr.name && <code style={{ opacity: 0.75, fontSize: 11 }}>{initErr.name}</code>}
-            {/* WebGL-ийн уналтад дахин үүсгэх нь ижил уналт өгнө (MapCanvas-ийн ⚠️) */}
+            {/* WebGL-ийн уналтад дахин үүсгэх нь ижил уналт өгнө (MapCanvas) */}
             {!initErr.name?.startsWith('webgl:') && (
               <button
                 type="button"

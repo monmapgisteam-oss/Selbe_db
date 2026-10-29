@@ -5,12 +5,6 @@
  *
  *   L1 Мастер · L2 Үе шат/milestone · L3 Хяналтын хуваарь — гант (Environment: зам `--chart-track`, гүйцэтгэл `--data`,
  *   хоцорсон `--bad`, дууссан `--good`, мэдээлэлгүй — зураас); L4 сарын · L5 7 хоногийн · L6 өдрийн heatmap.
- *
- * ⚠️ 2026-10-26: ӨГӨГДӨЛ нь ЗӨВХӨН уншина — `loadProjectPlan` (Excel-ийн мод + бөглөх хуудас + Хуваарь + газар) ба
- *    milestone огноо (`songon_ognoo`/`ashiglalt_ognoo`). Бөглөх хуудасны дэд бүлгийг (`loadSheetDetail`) L3/L5/L6
- *    нээхэд л татна — L1/L2/L4-т хэрэггүй ачаалал.
- * ⚠️ 2026-10-26: null ≠ 0 — «—» = мэдээлэлгүй (хуваарь алга / эх уншигдаагүй), хоосон нүд = тухайн хугацаанд ажилгүй.
- * ⚠️ 2026-10-26: Импортоос өмнө (CASHFLOW_NEW-д dd_kod-той мөр 0) — алдаа БИШ, «импортлогдоогүй» төлөв.
  */
 
 import { useMemo, useState, type ReactNode } from 'react';
@@ -99,8 +93,6 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
         </div>
       )}
       <div className={s.bar}>
-        {/* ⚠️ 2026-10-26 (аудит): tablist/tab загвар (tabpanel · сум) дутуу байсан тул энгийн товчны бүлэг + `aria-pressed`;
-            утсанд нэр нуугдсан ч хандалтын нэр бүтэн (`aria-label`) */}
         <div className={s.tabs} role="group" aria-label={tr('Түвшин')}>
           {LEVELS.map((l) => (
             <button
@@ -147,8 +139,6 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
         </WithSheet>
       )}
       {lvl === 4 && <MonthHeat d={d} pkgs={shown} today={today} />}
-      {/* ⚠️ 2026-10-26: «Дэд бүлэг» унтраалттай бол бөглөх хуудсыг ОГТ татахгүй (бүх PKGS-ийн act/obyem + computeAll —
-          үр дүн нь хаягдах хүнд ачаалал) — WithSheet-ийг зөвхөн хэрэгтэй үед зурна. */}
       {look && groups && (
         <WithSheet>
           {(det) => <LookHeat d={d} pkgs={shown} det={det} groups daily={lvl === 6} today={today} />}
@@ -164,7 +154,7 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
 /* ══════════════════ Бөглөх хуудасны дэд бүлэг (L3 · L5 · L6) ══════════════════ */
 
 /**
- * Дэд бүлгийг ачаалж хүүхдэд өгнө. ⚠️ Ачаалж байх/унасан үед ч хүснэгт зурагдана (дэд бүлэггүйгээр) — блокийн мөр
+ * Дэд бүлгийг ачаалж хүүхдэд өгнө. Ачаалж байх/унасан үед ч хүснэгт зурагдана (дэд бүлэггүйгээр) — блокийн мөр
  * ба багцын нийт нь тэр эхээс хамаардаггүй тул дэлгэц хоосон хүлээхгүй.
  */
 function WithSheet({ children }: { children: (det: ReadonlyMap<string, BlockDetail> | null) => ReactNode }) {

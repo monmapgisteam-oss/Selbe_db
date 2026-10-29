@@ -11,28 +11,6 @@
  * ══════════════════ ТОРНЫ ХЭМЖЭЭ — МОНГОЛ ОРОН ══════════════════
  *
  * Эх модулийн хүрээ: `86–121°E · 40–53°N`, `2.0°` алхам.
- *
- * ⚠️ Бодит тор нь 19×8 = 152 цэг болж, `122°E · 54°N` хүртэл ЖААХАН ХЭТЭРНЭ:
- * 35° ба 13° нь 2°-д бүхлээр хуваагдахгүй тул алхмын тоог ДЭЭШ бөөрөнхийлөв.
- * Дутуу бөөрөнхийлвөл зүүн (Дорнод) ба хойд (Хөвсгөл) захын зурвас тороос
- * ГАДУУР үлдэж, `windAt` тэнд захын утгаар хазаарлана — өөрөөр хэлбэл улсын
- * хилийн дотор «хөлдсөн» салхи гарна. 152 цэг нь нэг хүсэлтэд асуудалгүй.
- *
- * ⚠️ 2026-09-03: ЭХЭНДЭЭ Сэлбэ дүүргийг тойрсон 5×5 (0.06°) ЖИЖИГ тор хийсэн
- * нь БУРУУ байв. Логик нь «дүүргийн хэмжээст нарийн градиент хэрэгтэй» гэсэн
- * ч үр дүнд нь урсгал зөвхөн Улаанбаатарын орчимд, ирмэгтэйгээ ТАСАРЧ
- * харагддаг байлаа — зургийг холдуулахад салхи гэнэт дуусдаг хайрцаг гарна.
- * Салхи бол улс орны хэмжээний үзэгдэл; хэрэглэгч зургийг холдуулж бүтэн
- * дүр зургийг хардаг тул хүрээ нь ОРНЫ хэмжээтэй байх ЁСТОЙ.
- *
- * ⚠️ 2° алхам дээр Сэлбэ дүүрэг (0.03°) бүхэлдээ нэг нүдэнд унана — тэнд
- * урсгал ЖИГД харагдана. Энэ нь алдаа БИШ: 30 км-ийн дотор синоптик салхи
- * бодитоор ч бараг ижил. Дүүргийн ТООН заалт нь `salhi.ts`-ийн ганц цэгээс
- * тусад нь ирдэг тул нарийвчлал алдагдахгүй.
- *
- * ⚠️ ГАНЦ ХҮСЭЛТ. Open-Meteo нь `latitude=a,b,c&longitude=x,y,z` гэж ХОСООР
- * (декарт үржвэр БИШ) уншиж, массив буцаана. 126 цэг нь эх модулийн 300-ын
- * багцын хязгаарт багтана — тиймээс багцлах давталт энд хэрэггүй.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -43,8 +21,6 @@ const API = 'https://api.open-meteo.com/v1/forecast';
 
 /**
  * МОНГОЛ ОРНЫ ХҮРЭЭ — эх модулийн (`WIND-MODULE.md` §10) ЯГ тэр утга.
- * ⚠️ Тогтмол: тор нь газрын зургийн хөдөлгөөнөөс ҮЛ ХАМААРНА. Хэрэглэгч
- * гүйлгэх бүрд дахин татвал API-гийн өдрийн квот хормын дотор дүүрнэ.
  */
 const LON_MIN = 86;
 const LON_MAX = 121;
@@ -56,11 +32,6 @@ export const STEP = 2.0;
 
 /**
  * ЗАНГУУ ЦЭГ — Сэлбэ дүүрэг (агаарын харуулуудын төв).
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ (2026-09-03, амьдаар илрүүлсэн зөрчил):
- * 2°-ийн тор дээр Сэлбэ рүү хамгийн ойр зангилаа нь ~110 км зайд байдаг тул
- * bilinear интерполяци нь бүсийн ЕРӨНХИЙ урсгалыг өгдөг — дүүргийн бодит
- * салхийг БИШ. Үр дүнд:
  *
  *   · сэвсгэр (`salhi.ts`, ЯГ тэр цэг) — 229°-аас, 0.5 м/с
  *   · тоосонцор (тор)                  — 8°-аас, 2.5 м/с
@@ -74,12 +45,10 @@ const ANCHOR = { lat: 47.9664, lon: 106.9214 };
 
 /**
  * Залруулгын НӨЛӨӨНИЙ РАДИУС (°).
- * ⚠️ Нэг нүднээс (2°) бага байх ЁСТОЙ: том байвал орон даяарх урсгалыг
- * нэг цэгийн заалтаар дарж, тор нь утгаа алдана.
  */
 const ANCHOR_R = 1.2;
 
-/** Зангилааны тоо: 19 багана × 8 мөр = 152 цэг (⚠️ 2026-10-09 аудит №6: урьд нь «18 × 7 = 126» гэж буруу бичсэн) */
+/** Зангилааны тоо: 19 багана × 8 мөр = 152 цэг (2026-10-09 аудит №6: урьд нь «18 × 7 = 126» гэж буруу бичсэн) */
 export const NX = Math.round((LON_MAX - LON_MIN) / STEP) + 1;
 export const NY = Math.round((LAT_MAX - LAT_MIN) / STEP) + 1;
 
@@ -102,9 +71,6 @@ export type WindField = {
   times: number[];
   /**
    * Салхины хэвтээ бүрэлдэхүүн, м/с. Байрлал: `[h * NX * NY + y * NX + x]`.
-   *
-   * ⚠️ `y` нь ӨМНӨӨС ХОЙШ өснө (LAT0 = 0-р мөр) — canvas-ын `y` УРАГШ өсдөгтэй
-   * ЭСРЭГ тул зурахдаа урвуулна (`uyr.ts`-ийн ижил анхааруулга).
    */
   u: Float32Array;
   v: Float32Array;
@@ -112,7 +78,6 @@ export type WindField = {
   date: string;
   /**
    * СҮЛЖЭЭ УНААД хуучирсан кэш өгсөн эсэх (сэрэмжлүүлэг).
-   * ⚠️ TTL доторх шинэ кэш нь `false` — хэвийн зам (2026-09-21).
    */
   cached: boolean;
 };
@@ -123,10 +88,6 @@ const RAD = Math.PI / 180;
 
 /**
  * ХУРД + ЗҮГ → U/V вектор.
- *
- * ⚠️ Цаг уурын конвенц: `dirDeg` нь салхи ХААНААС үлээж байгаа зүг
- * (0° = хойноос). Тиймээс хоёуланд нь ХАСАХ тэмдэг — вектор нь салхи
- * ХААШАА явахыг заана.
  *
  *   u = -speed · sin(dir)   (зүүн→баруун эерэг)
  *   v = -speed · cos(dir)   (өмнөөс→хойш эерэг)
@@ -146,11 +107,6 @@ export const fromUV = (u: number, v: number) => ({
 
 /**
  * ЦЭГИЙН САЛХИ — торны 4 хөрш зангилааг жинлэн.
- *
- * ⚠️ Торны ГАДНА цэгийг ХАЗААРНА (clamp), экстраполяци ХИЙХГҮЙ: 25 цэгийн
- * торыг хэдэн зуун км гадагш сунгавал утга нь физик утгаа алдана. Хэрэглэгч
- * дүүргээс хол гүйлгэвэл захын утга харагдана — энэ нь худал тоо гаргахаас
- * дээр.
  *
  * @param h Цагийн индекс (`field.times`-ын)
  */
@@ -182,10 +138,6 @@ export function windAt(field: WindField, h: number, lat: number, lon: number) {
  * ойролцоох зангилаануудад Гауссын жингээр тарааж нэмнэ. Ингэснээр:
  *   · зангуу цэг дээр талбар нь ЯГ заалттай бараг тэнцэнэ,
  *   · нөлөө нь ~1 нүдэнд бүдгэрч, орон даяарх урсгал ХЭВЭЭР үлдэнэ.
- *
- * ⚠️ Зөрүүг ХУВЬААР биш, ВЕКТОРООР нэмнэ: хурдаар үржүүлбэл намуухан бүсэд
- * (u,v≈0) залруулга бараг үйлчлэхгүй атал яг тэр үед чиглэлийн зөрүү
- * хамгийн их байдаг.
  */
 function applyAnchor(
   u: Float32Array,
@@ -220,10 +172,6 @@ function applyAnchor(
       return (g(x0, y0) * (1 - tx) + g(x1, y0) * tx) * (1 - ty)
         + (g(x0, y1) * (1 - tx) + g(x1, y1) * tx) * ty;
     };
-    /**
-     * ⚠️ Жингүүд нийлбэрээрээ 1 БИШ тул зөрүүг зангуу цэг дээрх ҮР ДҮНГИЙН
-     * жингээр хуваана — эс бөгөөс залруулга дутуу хийгдэж, зөрүү үлдэнэ.
-     */
     const wAt = (
       (w[y0 * NX + x0] * (1 - tx) + w[y0 * NX + x1] * tx) * (1 - ty)
       + (w[y1 * NX + x0] * (1 - tx) + w[y1 * NX + x1] * tx) * ty
@@ -242,14 +190,6 @@ function applyAnchor(
 /* ══════════════════ Татах ба кэш (§9.2, §9.3) ══════════════════ */
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/**
- * ⚠️ ЦАГИЙН БҮС — Open-Meteo-гийн хариу нь ОФФСЕТГҮЙ мөр буцаадаг
- * (`"2026-09-11T07:00"`). `Date.parse` түүнийг ХӨТЧИЙН локал цаг гэж уншина.
- * Тиймээс UB-аас өөр бүсээс нэвтэрвэл `nowIndex` буруу цаг сонгож, сэвсгэрийн
- * чиглэл хэдэн цагаар хазайж байв. Хүсэлтэд `Asia/Ulaanbaatar`-ыг ИЛ заагаад,
- * эргэж ирсэн мөрийг ТУХАЙН бүсийн оффсетоор epoch болгоно — хөтчийн локал
- * цагаас ҮЛ ХАМААРНА.
- */
 export const TZ = 'Asia/Ulaanbaatar';
 
 /** Улаанбаатарын цагаар `YYYY-MM-DD` — хөтчийн бүснээс ҮЛ ХАМААРНА */
@@ -260,10 +200,8 @@ export const ymd = (d: Date = new Date()) =>
 
 /**
  * Оффсетгүй мөрийг (`"2026-09-11T07:00"`) epoch ms болгоно.
- * ⚠️ `utc_offset_seconds` нь хариунаас ирнэ — тогтмол +8 гэж бичвэл зуны цаг
- * эсвэл бүсийн дүрэм өөрчлөгдөхөд чимээгүй хазайна.
  */
-/** UB-ын цагаар `HH:00` — шошгод. ⚠️ `getHours()` нь хөтчийн бүсээр хөрвүүлнэ. */
+/** UB-ын цагаар `HH:00` — шошгод. `getHours` нь хөтчийн бүсээр хөрвүүлнэ. */
 export const hhmmUB = (ms: number): string =>
   new Intl.DateTimeFormat('en-GB', {
     timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
@@ -275,24 +213,12 @@ export const epochOf = (local: string, offsetS: number): number => {
 };
 
 /** Эх модультай ижил түлхүүрийн хэв — `windCache:YYYY-MM-DD` */
-/* ⚠️ Түлхүүрт `a` (anchor) — залруулгагүй ХУУЧИН кэш уншигдвал зөрчил
-   эргэж ирнэ. Формат солигдох бүрд энэ тэмдгийг ӨӨРЧИЛНӨ. */
 const keyOf = (date: string) => `selbe-windgrid:${date}:${NX}x${NY}@${STEP}a`;
 /** Кэшийн хугацаа — эх модультай ижил 2 цаг */
 const TTL = 2 * 3600 * 1000;
 
 type Cached = { ts: number; times: number[]; u: number[]; v: number[] };
 
-/**
- * ⚠️ 2026-09-29 (аудит 10): ӨДӨР ТУТМЫН КЭШИЙГ ЦЭВЭРЛЭНЭ. `selbe-windgrid:`
- *    (≈146 KB) ба `salhi:` түлхүүрүүд огноогоор нэрлэгддэг тул хэзээ ч
- *    устдаггүй байв — ~35 өдрийн дараа 5 MB квот дүүрч, БУСАД модулийн
- *    `setItem` (ноорог, самбарын хэмжээ, ACL кэш) чимээгүй бүтэлгүйтдэг
- *    байсан. Бичихийн ӨМНӨ ижил угтвартай, `keep`-д ороогүй огноотой
- *    түлхүүрийг устгана (өнөөдөр + бичиж буй өдөр үлдэнэ). `prefix` нь
- *    `selbe-windgrid:` мэт `:`-ээр төгссөн байх ёстой — огноо нь дараагийн
- *    `:` хүртэлх хэсэг.
- */
 export function pruneDayCache(prefix: string, keep: string[]): void {
   if (typeof window === 'undefined') return;
   try {
@@ -304,7 +230,6 @@ export function pruneDayCache(prefix: string, keep: string[]): void {
       const day = k.slice(prefix.length).split(':')[0];
       if (!keep.includes(day)) drop.push(k);
     }
-    /* ⚠️ Давталтын дотор устгавал индекс шилжинэ — эхлээд цуглуулна */
     for (const k of drop) ls.removeItem(k);
   } catch {
     /* private горим — цэвэрлэхгүй ажиллана */
@@ -325,19 +250,10 @@ function readCache(key: string): Cached | null {
 
 /**
  * ТОРЫГ ТАТНА — нэг өдрийн 24 цаг, 25 цэг, НЭГ хүсэлт.
- *
- * ⚠️ Алдааны үед ХУУЧИРСАН кэш рүү ухарна (§9.2-ийн fallback зарчим): салхи
- * нь чимэглэл БИШ, сэвсгэрийн чиглэлийг тодорхойлдог тул «өчигдрийн салхи»
- * нь «салхи алга»-аас хамаагүй дээр. Хуучин эсэхийг дуудагч тал
- * (`field.cached`) ил гаргана.
  */
 export async function loadWindField(date: string): Promise<WindField> {
   const key = keyOf(date);
   const hit = readCache(key);
-  /* ⚠️ TTL доторх кэш = ХЭВИЙН зам → `cached: false` (2026-09-21). Урьд нь
-     `true` байсан тул `Ersdel.tsx` торыг дахин нээх бүрд «Кэшнээс — сүлжээ
-     татагдсангүй» гэж ХУДАЛ бичдэг байв. `cached` нь зөвхөн доорх `catch`
-     (сүлжээ унаад хуучирсан кэш өгсөн) үед л `true`. */
   if (hit && Date.now() - hit.ts < TTL) {
     return {
       times: hit.times,
@@ -350,17 +266,12 @@ export async function loadWindField(date: string): Promise<WindField> {
 
   const lats: number[] = [];
   const lons: number[] = [];
-  /* ⚠️ ӨМНӨӨС ХОЙШ, БАРУУНААС ЗҮҮН — `windAt`-ийн индексжүүлэлттэй ИЖИЛ
-     дараалал. Зөрвөл талбар нь толин тусгал болж, урсгал эсрэг чиглэнэ. */
   for (let y = 0; y < NY; y++) {
     for (let x = 0; x < NX; x++) {
       lats.push(+(LAT0 + y * STEP).toFixed(4));
       lons.push(+(LON0 + x * STEP).toFixed(4));
     }
   }
-  /* ⚠️ ЗАНГУУ ЦЭГ нь торны СҮҮЛД — ижил хүсэлтээр авна. Тусдаа дуудлага
-     явуулбал өөр агшны загвар унших эрсдэлтэй (Open-Meteo цаг тутам
-     шинэчлэгддэг) бөгөөд квот ч хоёр дахин зарцуулагдана. */
   lats.push(ANCHOR.lat);
   lons.push(ANCHOR.lon);
 
@@ -369,16 +280,13 @@ export async function loadWindField(date: string): Promise<WindField> {
     longitude: lons.join(','),
     hourly: 'wind_speed_10m,wind_direction_10m',
     wind_speed_unit: 'ms',
-    /* ⚠️ 'auto' БИШ: цуваа нь ҮРГЭЛЖ UB-ын цагаар ирэх ёстой (§TZ) */
     timezone: TZ,
     start_date: date,
     end_date: date,
   });
 
   const get = async (): Promise<Response> => {
-    /* ⚠️ 2026-09-30: timeout — торны олон цэгийн хариу том тул 60с */
     const r = await fetch(`${API}?${params}`, { signal: AbortSignal.timeout(60_000) });
-    /* ⚠️ 429 — өдрийн квот. НЭГ удаа дахин оролдоно (§9.2). */
     if (r.status === 429) {
       await sleep(1200);
       return fetch(`${API}?${params}`, { signal: AbortSignal.timeout(60_000) });
@@ -390,7 +298,6 @@ export async function loadWindField(date: string): Promise<WindField> {
     const res = await get();
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = (await res.json()) as unknown;
-    /* ⚠️ ГАНЦ цэгт объект, ОЛОН цэгт массив ирдэг — хоёуланг нь хүлээнэ */
     const arr = (Array.isArray(body) ? body : [body]) as {
       hourly?: { time?: string[]; wind_speed_10m?: number[]; wind_direction_10m?: number[] };
       utc_offset_seconds?: number;
@@ -403,8 +310,6 @@ export async function loadWindField(date: string): Promise<WindField> {
       throw new Error(tr('Торны цэг дутуу ирлээ: {0}/{1}', String(arr.length), String(NX * NY + 1)));
     }
 
-    /* ⚠️ `new Date(t)` нь оффсетгүй мөрийг ХӨТЧИЙН бүсээр уншина — хариуны
-       `utc_offset_seconds`-ээр бодно (§TZ). */
     const offS = arr[0].utc_offset_seconds ?? 0;
     const times = (arr[0].hourly?.time ?? []).map((t) => epochOf(t, offS));
     const H = times.length;
@@ -412,23 +317,10 @@ export async function loadWindField(date: string): Promise<WindField> {
 
     const u = new Float32Array(H * NX * NY);
     const v = new Float32Array(H * NX * NY);
-    /* ⚠️ Дутуу заалттай ЦАГУУД — `windAt` эдгээрт `null` буцаана (доорх ⚠️) */
     const bad = new Uint8Array(H);
     for (let i = 0; i < NX * NY; i++) {
       const sp = arr[i].hourly?.wind_speed_10m ?? [];
       const dr = arr[i].hourly?.wind_direction_10m ?? [];
-      /*
-       * ⚠️ ДУТУУ ЦАГИЙГ 0-ЭЭР ДҮҮРГЭХГҮЙ (2026-09-15-ны аудит). `salhi.ts`
-       *    нь яг эсрэг дүрэмтэй: «дутуу цагийг ОРХИНО — 0-ээр дүүргэвэл
-       *    «нам гүм» гэсэн ХУДАЛ дохио өгнө». Энд `?? 0` байсан тул нэг
-       *    өгөгдлийг хоёр модуль эсрэгээр тайлбарлаж, `applyAnchor` нь тэг
-       *    вектор дээр залруулга бодож зогсонги бүс үүсгэдэг байв.
-       *
-       * ⚠️ Утга нь `Float32Array` тул `null` хадгалах боломжгүй; оронд нь
-       *    тэр ЦАГИЙГ БҮХЭЛД нь «бүрэн бус» гэж тэмдэглэнэ (`bad`). NaN
-       *    бичих нь болохгүй: `applyAnchor`-ийн интерполяц түүнийг БҮХ
-       *    торонд тараана.
-       */
       for (let h = 0; h < H; h++) {
         const s = sp[h];
         const d = dr[h];
@@ -442,18 +334,9 @@ export async function loadWindField(date: string): Promise<WindField> {
     /* Зангуу цэгийн ЯГ заалт — торыг түүн рүү татна */
     const aSp = arr[NX * NY].hourly?.wind_speed_10m ?? [];
     const aDr = arr[NX * NY].hourly?.wind_direction_10m ?? [];
-    /* ⚠️ Зангуу цэгийн заалт дутуу цаг ч БҮРЭН БУС — тэднийг ч хасна */
     for (let h = 0; h < H; h++) if (aSp[h] == null || aDr[h] == null) bad[h] = 1;
     applyAnchor(u, v, H, aSp, aDr);
 
-    /*
-     * ⚠️ БҮРЭН БУС ЦАГИЙГ ХАСНА (2026-09-15-ны аудит). Торны аль нэг цэгийн
-     *    заалт дутуу цагийг үлдээвэл тэр цэг 0 м/с («нам гүм») гэж уншигдаж,
-     *    `applyAnchor` түүн дээр залруулга бодож зогсонги бүс үүсгэнэ —
-     *    `salhi.ts`-ийн «дутуу цагийг ОРХИНО» дүрмийн зөрчил. Цагийг
-     *    бүхэлд нь хасах нь `windAt`-ийн буцаах төрлийг хөндөхгүй хамгийн
-     *    цэвэр зам: уншигч талууд зөвхөн БҮРЭН цагуудыг хардаг.
-     */
     const keep: number[] = [];
     for (let h = 0; h < H; h++) if (!bad[h]) keep.push(h);
     if (!keep.length) throw new Error(tr('Цагийн цуваа хоосон'));
@@ -470,7 +353,6 @@ export async function loadWindField(date: string): Promise<WindField> {
       });
     }
 
-    /* ⚠️ 2026-09-29 (аудит 10): бусад өдрийн тор квот дүүргэхээс сэргийлнэ */
     pruneDayCache('selbe-windgrid:', [date, ymd()]);
     try {
       window.localStorage.setItem(key, JSON.stringify({
@@ -482,7 +364,6 @@ export async function loadWindField(date: string): Promise<WindField> {
     return { times: outTimes, u: outU, v: outV, date, cached: false };
   } catch (e) {
     if (hit) {
-      /* ⚠️ Хугацаа нь дууссан ч кэш байвал ТҮҮНИЙГ буцаана */
       return {
         times: hit.times,
         u: Float32Array.from(hit.u),

@@ -1,11 +1,5 @@
 /* ══════════════════════════════════════════════════════════
-   «MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ» — зөвхөн энэ харагдацын хэв маяг (2026-10-09).
-   ⚠️ «Багцын хамаарал»-ын (ТУХ) хэв маягийн ХУУЛБАР — импортлохгүй (харагдацууд стайл
-      хуваалцахгүй). Өнгө бүгд глобал токен. Сонгогч БҮР локал класс агуулна (pure).
-   ⚠️ Зөвшөөрөгдсөн breakpoint л: 1400 · 1180 · 900 · 620.
-   ⚠️ 2026-10-23: Environment — карт/хүснэгт 12px, .pe-table (11.5px мөр, 10px толгой), .view-switch,
-      .pe-field (32px), .pe-ghost, 6px badge, цонх --line-strong + --shadow.
-   ══════════════════════════════════════════════════════════ */
+   «MA — МАТЕРИАЛ БАТАЛГААЖУУЛАЛТ» — зөвхөн энэ харагдацын хэв маяг (2026-10-09). */
 
 .wrap {
   height: 100%;
@@ -34,7 +28,6 @@
 
 /* ── Шүүлтүүр ── */
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 10px; }
-/* ⚠️ 2026-10-26: харагдацын сэлгэгчүүд нь нийтлэг `Segmented` (components/Switch.tsx) */
 .search,
 .select,
 .input {
@@ -172,7 +165,6 @@
   border: 1px solid var(--line-strong); border-radius: var(--r); cursor: pointer;
 }
 .retryBtn:hover { background: var(--surface-2); color: var(--ink); }
-/* ⚠️ 2026-10-23: Environment — ачаалж буй / хоосон төлөв: тасархай хүрээ, төвд ink-3 */
 .loading { padding: 40px 12px; text-align: center; color: var(--ink-3); font-size: 12px; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); }
 
 @media (max-width: 620px) {
@@ -184,7 +176,6 @@
 
 /* ── 2026-10-09: КАРТ — MA бүр бүтэн харагдана (шүүлтүүргүй, хураалтгүй) ── */
 .okNote { margin: 0; font-size: 0.74rem; color: var(--good-ink, var(--ink-2)); font-weight: 600; }
-/* ⚠️ 2026-10-23 (UX аудит Q10): дахин ирүүлэлтийн холбоо — хуучин (буцаасан) карт бүдэг, шинийнхээ доор */
 .resubNote { margin: 0; padding: 6px 12px; font-size: 0.74rem; color: var(--ink-2); background: var(--surface-2); border-bottom: 1px solid var(--line); }
 .cards { display: grid; gap: 12px; }
 .card { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
@@ -269,7 +260,6 @@
 .modalBody { overflow-y: auto; padding: 14px; display: grid; gap: 12px; }
 .modalBody .detail { padding: 0; }
 .modalBody .mirBox { padding: 0; }
-/* ⚠️ Цаасан баримтын урьдчилсан харагдац — цаасны саарал санаатай (UI өнгө биш) */
 .sheet { width: 100%; height: 72vh; border: 1px solid var(--line); border-radius: var(--r); background: #e9e9e9; }
 
 @media (max-width: 900px) {

@@ -2,18 +2,6 @@
 
 /**
  * АГЕНТЫН ХЭРЭГСЛҮҮД — зөвхөн ДӨРӨВ.
- *
- * ⚠️ ЯАГААД ЦӨӨН ВЭ: фичер бүрт нэг tool бичвэл 131 эх сурвалжид 131 tool болно —
- * загвар удаан бөгөөд эргэлзээтэй болж, давхарга нэмэх бүрт агентын код засагдана.
- * Эдгээр ерөнхий хэрэгслүүд эх сурвалжийн тоо хэдээр ч өсөхөд ХЭВЭЭР үлдэнэ:
- *   · `describe_feature` — талбаруудыг мэдэх
- *   · `query_feature`    — НЭГ эх сурвалжаас асуух
- *   · `zone_overview`    — НЭГ бүсээр БҮХ эх сурвалжийг нэг дор шүүх
- *   · `compute`          — ArcGIS дээр БАЙХГҮЙ, кодод бодогддог үзүүлэлт
- *
- * ⚠️ Гүйцэтгэл нь порталтай ИЖИЛ `query.ts`-ээр явна: хурдны хязгаарлалт,
- * дахин оролдлого, зэрэг хүсэлтийн тоо (6) бүгд дундаа. Тусдаа асуулгын
- * логик бичвэл агентын тоо дэлгэц дээрх тооноос зөрж, итгэл алдагдана.
  */
 
 import {
@@ -42,18 +30,8 @@ export type ToolDef = {
   input_schema: Record<string, unknown>;
 };
 
-/**
- * ⚠️ Мөрийн ДЭЭД тоо. Агент «бүх барилгыг жагсаа» гэж дуудвал 5000 мөр
- * контекстэд цутгаж, хариулт удаан ба үнэтэй болно. Жагсаалт нь зөвхөн
- * жишээ харах зориулалттай — нийлбэр/тоолол нь `stats`-аар явна.
- */
 const MAX_ROWS = 40;
 
-/**
- * ⚠️ 2026-10-21: БҮЛГИЙН дээд тоо. Урьд нь `groupBy` хариу таслагдахгүй
- * (~2000 бүлэг) тул асар том tool_result нь дараагийн эргэлт БҮРД дахин
- * илгээгдэж байв. Эхний статистикаар буурахаар эрэмбэлж эхний N-ийг үлдээнэ.
- */
 const MAX_GROUPS = 100;
 
 export const AGENT_TOOLS: ToolDef[] = [
@@ -74,10 +52,6 @@ export const AGENT_TOOLS: ToolDef[] = [
     name: 'query_feature',
     get description() { return tr('Давхаргаас өгөгдөл асууна. Хоёр горим: ') +
       tr('(1) НЭГТГЭЛ — `stats` өгвөл ArcGIS дээр тоолол/нийлбэр/дундаж бодогдоно (`groupBy` өгвөл ангиллаар задарна). ') +
-      /* ⚠️ `{0}` орлуулагчаар (2026-09-15-ны аудит): урьд нь тоог `+`-оор
-         нийлүүлдэг байсан тул `i18n-extract.mjs` ТАСАРХАЙ хэлтэрхийг түлхүүр
-         болгож, англи горимд энэ тайлбар хагас орчуулагддаг байв. Мөр 100-д
-         ижил утгыг аль хэдийн зөв бичсэн. */
       tr('(2) ЖАГСААЛТ — `stats` өгөхгүй бол бодит мөрүүд буцна (дээд тал нь {0}). ', MAX_ROWS) +
       tr('Тоон хариулт шаардвал ҮРГЭЛЖ нэгтгэл горимыг ашигла — мөрүүдийг татаад өөрөө нэмэх нь удаан ба алдаатай.'); },
     input_schema: {
@@ -87,7 +61,6 @@ export const AGENT_TOOLS: ToolDef[] = [
         where: {
           type: 'string',
           description:
-            /* ⚠️ 2026-09-30: кирилл утга `N'…'` угтвартай (`nPrefixUnicode`-ийн ⚠️) */
             'SQL шүүлт (ArcGIS). Анхдагч "1=1". Текст утгыг нэг хашилтад, кирилл утгыг N угтвартай бич. Жиш: ZONE_ID = N\'Багц-1\'',
         },
         stats: {
@@ -136,15 +109,12 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'compute',
     get description() { return tr('ArcGIS дээр БАЙХГҮЙ, кодод ТООЦООЛОГДДОГ үзүүлэлтүүд. ') +
-      /* ⚠️ 2026-10-04: `housing` (ХО-жинтэй, дашбоардын толгой) ба `overall` (блокийн дундаж) ХОЁР өөр тоо — ил нэрлэнэ */
       tr('`building_progress` — бөглөх хуудсаар бодсон БОДИТ гүйцэтгэл: ТӨСЛИЙН НИЙТ гүйцэтгэл (`project` — нэгтгэл, Ерөнхий дашбоардын «Гүйцэтгэлийн хувь»), орон сууцны ХО-жинтэй хувь (`housing` — Дашбоардын «Биет гүйцэтгэл (багцаар)»), блокийн дундаж (`overall`), багц бүрийн ') +
       tr('задаргаа, хамгийн хоцорсон блокууд, гүйцэтгэгч компани. ') +
       tr('⚠️ Барилгын НИЙТ гүйцэтгэлийг асуувал ЭНЭ ХЭРЭГСЛИЙГ ашигла — `mon:building`-ийн `GUITS_HV`-ийн ') +
       tr('дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог). ') +
-      /* ⚠️ 2026-10-19: дэлгэцийн функцээр бодогддог хоёр шинэ төрөл (`screenCompute.ts`) */
       tr('`finance_summary` — төслийн нийт төсөвт өртөг, гэрээлсэн дүн, олгосон санхүүжилт, олгосон хувь (дашбоардын ЯГ тэр тоо). Санхүүгийн НИЙТ дүнг асуувал ЭНИЙГ ашигла — Cashflow/IPC-ийн мөрийг өөрөө нийлүүлэхгүй. ') +
       tr('`pkg_plan` — багц бүрийн бодит ба хуваарийн төлөвлөгөөт гүйцэтгэл, хоцрогдол (нэгжээр), анхааруулгын түвшин («Багцын гүйцэтгэл»-ийн ЯГ тэр тоо). «Төлөвлөгөөнөөс хэр хоцорсон бэ» гэвэл ЭНИЙГ ашигла.') +
-      /* ⚠️ 2026-10-26 (аудит): газар чөлөөлөлт — порталын тоо (`compute.landStatus`) */
       tr('`land` — газар чөлөөлөлтийн нийт/чөлөөлсөн/үлдсэн нэгж талбар, хувь (ТООГООР) ба талбай — порталын «Газар чөлөөлөлт»-ийн ЯГ тэр тоо. Газар чөлөөлөлтийн хувийг асуувал ЭНИЙГ ашигла.'); },
     input_schema: {
       type: 'object',
@@ -165,27 +135,15 @@ export const AGENT_TOOLS: ToolDef[] = [
 type FieldMeta = { name: string; alias?: string; type?: string };
 type ServiceMeta = { fields?: FieldMeta[]; maxRecordCount?: number; error?: { message?: string } };
 
-/**
- * ⚠️ Талбарын мета КЭШ — нэг ярианд дахин дахин татахгүйн тулд.
- *
- * ⚠️ ХУГАЦААТАЙ (5 мин): үйлчилгээ ажлын явцад шинэчлэгдэж талбар нэмэгдэх/өөрчлөгдөх
- * боломжтой. Хугацаагүй кэш нь агентыг ХУУЧИН схемд түгжиж, «бодит мөчийн мэдээлэл»
- * гэсэн зарчмыг зөрчинө.
- */
 const META_TTL = 5 * 60 * 1000;
 const metaCache = new Map<string, { at: number; fields: FieldMeta[] }>();
 
 /**
  * @param fresh Кэшийг тойрч АМЬДААР унших (схем өөрчлөгдсөн гэж сэжиглэх үед).
- * ⚠️ 2026-10-15 (схемд зохицох): талбар олдохгүй үед заавал `fresh` уншина —
- *    үйлчилгээнд талбар нэмэгдсэн/нэр солигдсон бол агент 5 минут хүлээхгүйгээр
- *    зохицно. Амжилттай асуулгын замд нэмэлт хүсэлт ҮҮСГЭХГҮЙ.
  */
 async function fieldsOf(url: string, fresh = false, signal?: AbortSignal): Promise<FieldMeta[]> {
   const hit = metaCache.get(url);
   if (!fresh && hit && Date.now() - hit.at < META_TTL) return hit.fields;
-  /* ⚠️ 2026-09-30: GET + токен query string → `arcgisPost` (`ArcGISError`-оо өөрөө шиднэ:
-     `HTTP n`, 200-алдаа, timeout). ⚠️ 2026-10-19: `signal` — чат хаагдахад зогсоно. */
   const body = await arcgisPost<ServiceMeta>(url, {}, signal ? { signal } : {});
   const fields = body.fields ?? [];
   metaCache.set(url, { at: Date.now(), fields });
@@ -194,10 +152,6 @@ async function fieldsOf(url: string, fresh = false, signal?: AbortSignal): Promi
 
 /**
  * ОЙРОЛЦОО ТАЛБАРЫН НЭР — буруу нэр дээр загварт ЗАСВАР санал болгоно.
- *
- * ⚠️ ЯАГААД: хамгийн түгээмэл бүтэлгүйтэл нь дагавар/бичиглэлийн зөрүү
- * (`on` ↔ `on_`, `Zone_id` ↔ `ZONE_ID`, `urt` ↔ `urt_m`). Зөвхөн «ийм талбар
- * алга» гэвэл загвар дахин таамаглаж, эргэлт дэмий өнгөрдөг.
  */
 export function nearFields(name: string, known: Iterable<string>): string[] {
   const norm = (s: string) => s.toLowerCase().replace(/[^0-9a-zа-яөү]/gi, '');
@@ -229,15 +183,8 @@ type QueryIn = {
 };
 
 /**
- * ЭХ СУРВАЛЖИЙН ХАТУУ ШҮҮЛТ + загварын `where` (⚠️ 2026-10-19, `Dataset.baseWhere`-ийн ⚠️).
+ * ЭХ СУРВАЛЖИЙН ХАТУУ ШҮҮЛТ + загварын `where` ( 2026-10-19, `Dataset.baseWhere`).
  * Загварын `where`-ийг хаалтад хийнэ — `a OR b` нь хатуу шүүлтийг тойрохгүй.
- */
-/**
- * ⚠️ 2026-10-19: ЗАГВАРЫН `where`-ИЙН БҮТЦИЙН ШАЛГАЛТ — `andWhere`-ийн хаалтаас «зугтах»-ыг хаана.
- *    `1=1) OR (1=1` мэт ТЭНЦВЭРГҮЙ хаалт `(base) AND (…)`-ийн дотор нэг хаалтыг эрт хааж хатуу шүүлтийг
- *    (`baseWhere`) тойрдог. Мөрийн литерал ('…', '' = escape) ДОТОРХ тэмдгийг тоолохгүй. Мөн литералаас гадуурх
- *    `;` · `--` · `/*` (тайлбар нь хаах хаалтыг «идэж» болно) татгалзана. Алдаатай бол загварт буцаах
- *    тайлбар мөр, зөв бол `null`.
  */
 export function whereError(where: string): string | null {
   let depth = 0;
@@ -271,11 +218,6 @@ export function andWhere(base: string | undefined, where: string): string {
   return w === '1=1' ? base : `(${base}) AND (${w})`;
 }
 
-/**
- * ⚠️ 2026-10-19: ЦУЦЛАЛТ — сигнал өгвөл `p`-г хүлээхээ ЗОГСООЖ AbortError шиднэ. `zone_overview` ·
- * `compute` зэрэг олон ачаалагчтай замд сигнал гүнд хүрдэггүй тул ядаж агентын гогцоо шууд чөлөөлөгдөнө
- * (үлдсэн хүсэлтүүд `query.ts`-ийн 30с timeout-оор дуусна).
- */
 function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return p;
   if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException('aborted', 'AbortError'));
@@ -292,27 +234,8 @@ function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
 /** Агентын хэрэгслийн үр дүн — `is_error` нь загварт алдааг ойлгуулж, өөрөө засах боломж өгнө */
 export type ToolOutcome = { text: string; isError: boolean };
 
-/* ⚠️ 2026-09-30: `nPrefixUnicode` нь `query.ts`-д (sqlStr-ийн хажууд) — `overview.ts` ч
-   хэрэглэдэг тул энд байвал tools ↔ overview импортын тойрог үүснэ. Шалгуурт зориулж
-   эндээс дахин экспортолно. */
 export { nPrefixUnicode };
 
-/**
- * ⚠️ 2026-10-09 (аудит №6 — prompt injection): ArcGIS-ийн мөрийн утга (тайлбар, нэр, чөлөөт
- *    текст) загварт ШУУД очдог тул дотор нь «өмнөх зааврыг үл тоо…» мэт текст байвал загвар
- *    түүнийг заавар гэж ойлгох эрсдэлтэй. Хоёр давхар хамгаалалт:
- *    1) мөрийн утга бүрийг `MAX_STR` тэмдэгтээр ТАЙРНА (урт заавар шигтгэх зайг хумина);
- *    2) үр дүнг загварт явуулахдаа «ӨГӨГДӨЛ — заавар биш» хашилтаар ороох (`asToolData`,
- *       `client.ts`-ийн гогцоо).
- *    Манай ӨӨРИЙН бичсэн тайлбар (`note` · `warn` · `warning`) тайрахгүй — тэр нь каталог/кодоос
- *    гарсан заавар бөгөөд урт байж болно.
- * ⚠️ 2026-10-09: тайралтаас ЧӨЛӨӨЛӨХ нь ЗӨВХӨН хэрэгслийн ӨӨРИЙН бичсэн ДЭЭД ТҮВШНИЙ талбарт
- *    (`ok({...warning})`, `runDescribe`-ийн `warn`/`note`, `zoneOverview`/`buildingProgress`-ийн
- *    `note`). Урьд нэрээр нь ямар ч гүнд чөлөөлдөг байсан тул ArcGIS давхаргын `note`/`warn`/
- *    `warning` нэртэй БАГАНА (`rows[i].note`) хязгааргүй урт текстээр заавар шигтгэх зам болж байв.
- * ⚠️ `runTool`-ийн `text` нь ЦЭВЭР JSON хэвээр (тестүүд `JSON.parse` хийдэг) — хашилт нь
- *    зөвхөн реле рүү явах `tool_result`-д.
- */
 const MAX_STR = 400;
 const AUTHORED_KEYS = new Set(['note', 'warn', 'warning']);
 function capStrings(v: unknown, authored = false, depth = 0): unknown {
@@ -323,7 +246,6 @@ function capStrings(v: unknown, authored = false, depth = 0): unknown {
   if (Array.isArray(v)) return v.map((x) => capStrings(x, false, depth + 1));
   if (v && typeof v === 'object') {
     const out: Record<string, unknown> = {};
-    /* ⚠️ Чөлөөлөлт зөвхөн дээд түвшинд (`depth === 0`) — дээрх ⚠️ */
     for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
       out[k] = capStrings(x, depth === 0 && AUTHORED_KEYS.has(k), depth + 1);
     }
@@ -333,13 +255,7 @@ function capStrings(v: unknown, authored = false, depth = 0): unknown {
 }
 
 /**
- * Загварт очих хэрэгслийн үр дүнг «өгөгдөл» хашилтаар ороох (дээрх ⚠️ №2).
- * ⚠️ 2026-10-09: ДУУДЛАГА БҮРД САНАМСАРГҮЙ ТЭМДЭГ (`fenceNonce`) — урьд хашилт ТОГТМОЛ мөр байсан
- *    тул ArcGIS-ийн утгад `<<<ӨГӨГДЛИЙН ТӨГСГӨЛ>>>` гэж бичээд хашилтыг «хааж», араас нь заавар
- *    шигтгэж болдог байв. Одоо хаалтын тэмдэг өгөгдөлд урьдчилан мэдэгдэхгүй; мөн өгөгдөл доторх
- *    `<<<`/`>>>`-ийг `‹‹‹`/`›››` болгоно (хашилт дуурайлгахгүй).
- * ⚠️ Тэмдэг нь ТҮҮХЭНД нэг удаа бичигдэнэ (`client.ts` түүхэд хадгална) — дараагийн эргэлтүүдийн
- *    кэш (`cache_control`) эвдрэхгүй.
+ * Загварт очих хэрэгслийн үр дүнг «өгөгдөл» хашилтаар ороох (дээрх №2).
  */
 function fenceNonce(): string {
   const b = new Uint8Array(8);
@@ -362,9 +278,6 @@ async function runDescribe(input: { id?: string }, scope: AgentScope, signal?: A
   const src: AgentSource | null = input.id ? resolveSource(input.id, scope) : null;
   if (!src) return notFound(input.id);
 
-  /* ⚠️ 2026-10-15: ЭНЭ хэрэгсэл ҮРГЭЛЖ АМЬДААР уншина (кэшийг тойрч) — зорилго нь
-     «бодит мөчийн схемийг мэдэх». Талбар нэмэгдсэн/нэр солигдсоныг агент тэр
-     дороо олж харна; кэш нь зөвхөн `query_feature`-ийн урьдчилсан шалгалтад. */
   const fields = await fieldsOf(src.url, true, signal);
   return ok({
     id: src.id,
@@ -379,7 +292,6 @@ async function runDescribe(input: { id?: string }, scope: AgentScope, signal?: A
     })),
     warn: src.warn,
     note: src.note,
-    /* ⚠️ 2026-10-19: асуулга бүрд автоматаар нэмэгдэх шүүлт — загвар мэдэж байх ёстой */
     ...(src.baseWhere ? { baseWhere: src.baseWhere } : {}),
   });
 }
@@ -389,16 +301,10 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
   if (!src) return notFound(input.id);
 
   const url = src.url;
-  /* ⚠️ 2026-09-30: кирилл литералд `N'…'` угтвар (`nPrefixUnicode`-ийн ⚠️) */
-  /* ⚠️ 2026-10-19: эх сурвалжийн хатуу шүүлт (`baseWhere`, жиш. Cashflow-ийн ажлын мөр) ЗААВАЛ */
-  /* ⚠️ 2026-10-19: хаалтаас зугтах `where`-ийг ArcGIS руу илгээхгүй — загварт алдаагаар буцаана (`whereError`) */
   const badWhere = whereError(input.where ?? '');
   if (badWhere) return fail(badWhere);
   const where = andWhere(src.baseWhere, nPrefixUnicode(input.where?.trim() || '1=1'));
 
-  // ⚠️ Талбарын нэрийг УРЬДЧИЛЖ шалгана. ArcGIS буруу нэр дээр «Unable to perform
-  //    query» гэсэн ерөнхий алдаа буцаадаг тул агент юу буруу болсныг ойлгохгүй,
-  //    ижил алдааг дахин дахин давтдаг. Энд яг аль нэр буруугий нь хэлж өгнө.
   let known = new Set((await fieldsOf(url, false, signal)).map((f) => f.name));
   // orderBy бас шалгах талбар — «талбар [ASC|DESC], …» тул талбарын нэрсийг л салгана.
   // (Өмнө нь шалгагдахгүй тул хуурмаг нэр ArcGIS-ийн ерөнхий алдаа руу шууд оруулдаг байв.)
@@ -415,14 +321,10 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
   const missing = (set: Set<string>) => used.filter((f) => f && f !== '*' && !set.has(f));
   let bad = missing(known);
   if (bad.length) {
-    /* ⚠️ 2026-10-15 (СХЕМД ЗОХИЦОХ): кэш 5 минут хүртэл хуучирсан байж болно —
-       талбар САЯХАН нэмэгдсэн/нэршилээ сольсон бол энд амьдаар уншиж зохицно.
-       Зөвхөн АЛДААНЫ замд нэмэлт хүсэлт явна (хэвийн асуулга удаашрахгүй). */
     known = new Set((await fieldsOf(url, true, signal)).map((f) => f.name));
     bad = missing(known);
   }
   if (bad.length) {
-    /* ⚠️ Зөвхөн «алга» гэвэл загвар дахин таамаглана — ОЙРОЛЦОО нэрийг санал болгоно */
     const hints = bad
       .map((f) => ({ f, near: nearFields(f, known) }))
       .filter((x) => x.near.length)
@@ -441,14 +343,8 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
         if (!fn) throw new Error(tr('Танихгүй үйлдэл: {0}', s.op));
         return fn(s.field, s.as || `${s.op}_${i}`);
       });
-      /* ⚠️ БҮЛГИЙН ТАЙРАЛТЫГ ч ИЛ хэлнэ — урьд нь зөвхөн `console.warn`-д
-         бичигдэж, загвар дутуу бүлгүүдийг бүрэн гэж үзэж нийлбэр гаргадаг
-         байв (2026-09-03-ны аудит). */
       if (input.groupBy) {
         const g = await queryGroupEx(url, input.groupBy, stats, where, undefined, signal);
-        /* ⚠️ 2026-10-21: бүлгийн тоог MAX_GROUPS-оор таслана (жагсаалтын MAX_ROWS-тай адил) —
-           эхний статистикаар буурахаар эрэмбэлнэ. Enterprise нэрийн үсгийг өөрчилж
-           болох тул түлхүүрийг үсэг харгалзахгүй хайна. */
         let rows = g.rows;
         const capped = rows.length > MAX_GROUPS;
         if (capped) {
@@ -481,10 +377,6 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
       return ok({ source: src.id, where, groupBy: input.groupBy, rows });
     }
 
-    /* ⚠️ 2026-10-21: загвар `limit`-д "all"/"max"/объект өгвөл Math.min/max нь NaN
-       буцааж, `queryFeatures` (`if (opts.limit)`) resultRecordCount-гүйгээр БҮТЭН
-       давхаргыг хуудаслан татаж MAX_ROWS-ыг тойрдог байв. Тоо болгож, төгсгөлгүй
-       бол анхдагч 10 руу буцаад дараа нь хязгаарлана. */
     const rawLimit = Math.floor(Number(input.limit ?? 10));
     const limit = Math.min(Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 10), MAX_ROWS);
     const rows = await queryFeatures(url, {
@@ -495,8 +387,6 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
       signal,
     });
     /**
-     * ⚠️ ТАЙРАГДСАНЫГ ИЛ ХЭЛНЭ (2026-09-03-ны аудит).
-     *
      * Урьд нь зөвхөн `count`/`limit` буцдаг байсан бөгөөд загварт «тэнцүү бол
      * дутуу» гэсэн дүрэм байгаагүй. Зарим датасет (IPC — 59 акт) нь бодогдох
      * баганагүй тул зааврынхаа дагуу МӨР ТАТАЖ бодуулдаг: 59-ийн 40-өөр
@@ -518,16 +408,8 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
       rows,
     });
   } catch (e) {
-    /* ⚠️ 2026-10-19: цуцлалт — алдаа болгож загварт буцаахгүй, гогцоо өөрөө зогсоно */
     if (signal?.aborted) throw e;
     if (e instanceof ArcGISError) {
-      /* ⚠️ 2026-10-15 (СХЕМД ЗОХИЦОХ): ArcGIS буруу талбар дээр «Unable to perform query»
-         гэсэн ЕРӨНХИЙ алдаа буцаадаг тул шалтгаан нь схем өөрчлөгдсөн эсэх нь мэдэгдэхгүй.
-         Энд схемийг АМЬДААР дахин уншиж:
-           · талбар үнэхээр алга болсон бол ЯГ алийг нь, ойролцоо нэрийг нь хэлнэ
-             (загвар дараагийн эргэлтэд өөрөө засна);
-           · схем хэвээр бол алдааг хэвээр буцаана (дахин оролдлого нь `query.ts`-д).
-         Шинэчлэлт өөрөө унавал (сүлжээ) анхны алдааг хэвээр үлдээнэ. */
       try {
         const live = new Set((await fieldsOf(url, true, signal)).map((f) => f.name));
         const gone = missing(live);
@@ -551,8 +433,6 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
 
 /**
  * Нэг tool дуудлагыг гүйцэтгэнэ — алдааг ХЭЗЭЭ Ч чимээгүй залгихгүй.
- * ⚠️ 2026-10-19: `signal` — чат хаагдах/⟲/асуултын дээд хугацаа (`client.ask`) үед ArcGIS асуулга
- *    зогсоно; цуцлалт нь `ToolOutcome` БИШ, AbortError-оор шидэгдэнэ (гогцоо зогсох ёстой).
  */
 export async function runTool(
   name: string,
@@ -568,8 +448,6 @@ export async function runTool(
       const zone = (input as { zone?: string })?.zone?.trim();
       if (!zone) return fail(tr('`zone` заагаагүй байна.'));
       const ov = await abortable(zoneOverview(zone, scope), signal);
-      /* ⚠️ 2026-10-06: эх сурвалж хоосон БОЛОВЧ алдаа өгсөн нь байвал энэ нь ArcGIS-ийн
-         алдаа — «нэрээ шалгана уу» гэвэл хэрэглэгч зөв нэрээ дахин дахин солиж төөрдөг байв. */
       if (!ov.sources.length && ov.failedCount > 0) {
         return fail(
           tr('ArcGIS алдаа: «{0}» бүсийн {1} эх сурвалж хариу өгсөнгүй — өгөгдөл байхгүй гэсэн үг БИШ. Түр хүлээгээд дахин оролдоно уу.', zone, ov.failedCount) +

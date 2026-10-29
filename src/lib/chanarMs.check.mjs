@@ -1,11 +1,6 @@
 /**
  * ЧАНАРЫН БАРИМТЫН ҮЛДСЭН ЦЭВЭР ТУСЛАХУУДЫН ШАЛГУУР — сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/chanarMs.check.mjs
- *
- * ⚠️ 2026-10-21: урсгалын (`review` · `submit` · `resolve` · дугаар · `normalize*` …) шалгуурууд
- *    хасагдав — тэдгээр функц амьд импортлогчгүй үхсэн код байсан тул `chanarMs.ts`-ээс устгагдсан.
- *    Энд зөвхөн амьд экспорт: төлөв/шошго, хянагчийн олонлог, шийдвэрийн код, AN нээлттэй,
- *    `latest` · `latestApproved`, `reviewerClashes` (одоогийн дүрмээр гацаагүй).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/chanarMs.check.mjs
  */
 import assert from 'node:assert/strict';
 import {
@@ -57,8 +52,6 @@ const T = 1_700_000_000_000;
   assert.equal(l.length, 3, '3 өөр баримт');
   assert.equal(l.find((d) => d.bagts === 'Багц 1' && d.seq === 1).rev, 2, '⚠️ сүүлийн хувилбар л жагсаалтад');
 
-  /* ⚠️ 2026-10-09 (аудит №6): `latestApproved` — батлагдсан rev N дээр rev+1 ноорог үүссэн ч (иш татах ·
-     QAQC холбоос · батлагдсан тоонд) rev N хүчинтэй хэвээр; шинэ rev батлагдвал тэр нь орлоно. */
   const withDraft = [...docs, mk('Багц 1', 1, 3, MS_STATUS.draft), mk('Багц 2', 1, 1, MS_STATUS.review), mk('Багц 1', 3, 0, MS_STATUS.returned)];
   assert.equal(latest(withDraft).find((d) => d.bagts === 'Багц 1' && d.seq === 1).rev, 3, 'latest — ноорог rev 3');
   const la = latestApproved(withDraft);
@@ -81,7 +74,7 @@ const T = 1_700_000_000_000;
   assert.equal(isAnOpen({ ...doc, rep: null }), false);
 }
 
-/* ══ 4. reviewerClashes — ⚠️ 2026-10-21: амьд урсгал (MA · FIC · М-акт) аль ч НЭГ хянагчийн
+/* ══ 4. reviewerClashes — 2026-10-21: амьд урсгал (MA · FIC · М-акт) аль ч НЭГ хянагчийн
       шийдвэрийг хүлээн авдаг тул «нэг хүн хоёр үүрэгт» гацаа ҮГҮЙ (урьд нь худал анхааруулга) ══ */
 {
   assert.deepEqual(reviewerClashes({ tuh: ['t'], chanar: ['c'], habea: ['t'], tug: ['g2'], cheng: ['e'] }, ['a']), [], 'ТУХ+ХАБЭА нэг хүн — гацаагүй');

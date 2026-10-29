@@ -13,13 +13,6 @@ import { hasDatedLeaf, sameMonths, sameRes, sameSpan, toPlanRows } from './util'
  * механикаар салгав; логик · тайлбар ХЭВЭЭР, зөвхөн state-гүй болсон).
  */
 
-/**
- * ⚠️ 2026-10-08: ИЛГЭЭЛТИЙН ОГНООГ UTC ӨДӨРТ ТЭГШИТГЭНЭ (`normDayMs`). Мөрүүд (`rows`/`curRows`)
- *    одоо уншихдаа тэгшлэгддэг (`bagtsSheet.loadRows`), харин 2026-10-08-аас ӨМНӨ илгээгдсэн
- *    саналын `spans`/`base.spans`/`actual` нь ТҮҮХИЙ (УБ-ын шөнө дунд = 16:00Z) агшин — хатуу
- *    тулгалт (`sameSpan` · `===`) тэднийг «зэрэгцээ өөрчлөлт» гэж ХУДЛАА зогсоож, батлагдах ч,
- *    ноорогт буух ч боломжгүй болгодог байв. Хоёр талыг тэгшлээд тулгана; бичигдэх утга ч тэгшлэгдсэн.
- */
 const nDay = (ms: number | null | undefined): number | null => normDayMs(ms ?? null);
 const nSpan = (s: { start: number; end: number } | null | undefined): Span | null =>
   (s ? { start: nDay(s.start) ?? s.start, end: nDay(s.end) ?? s.end } : null);
@@ -27,7 +20,7 @@ const nSpan = (s: { start: number; end: number } | null | undefined): Span | nul
 /**
  * ЗӨВШӨӨРӨЛ ШААРДАХ МӨРҮҮД — өөрчлөгдсөн АЖЛЫН мөр + бүлгийн ЖИНХЭНЭ өөрчлөлт
  * (2026-09-30: `Huvaari.tsx`-ийн `reviewOids` memo-гоос механикаар салгав — цэвэр функц).
- * Дүрмийн ⚠️ тайлбарууд дуудагч дээр (`Huvaari.tsx`) хэвээр.
+ * Дүрм тайлбарууд дуудагч дээр (`Huvaari.tsx`) хэвээр.
  */
 export function reviewOidsOf({
 dirtyOids, plan, base, ham, draft, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, hasActual, hasRes, n,
@@ -101,14 +94,6 @@ kind: PlanKind; base: PlanRow[]; rows: SheetRow[]; obPlan: PkgPlan; obRes: PkgRe
     const prev = obRes.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
     bObRes[k] = prev ? Object.fromEntries([...prev].map(([sar, v]) => [sar, { hun: v.hun, mashin: v.mashin }])) : {};
   }
-  /*
-   * ⚠️ ИЛГЭЭХ ҮЕИЙН СУУРЬ (2026-09-21) — ноорогтой мөр бүрийн СЕРВЕР дээрх
-   *    утга (`base` = `rows`, ноороггүй). Батлагч үүгээр (1) зохиогчийн
-   *    ХӨНДӨӨГҮЙ блокийг серверийн одоогийн утгаар үлдээж, (2) илгээснээс
-   *    хойш өөрчлөгдсөн блокийг «зэрэгцээ өөрчлөлт» гэж илрүүлнэ. Урьд нь
-   *    22 блокийн бүтэн агшин бичигдэж, батлахад хооронд нь батлагдсан
-   *    бусдын өөрчлөлт зохиогчийн хуучин утгаар чимээгүй буцдаг байв.
-   */
   const baseByOid = new Map(base.map((r) => [r.oid, r]));
   const rowByOid = new Map(rows.map((r) => [r.oid, r]));
   const bSpans: NonNullable<PlanPayload['base']>['spans'] = {};
@@ -139,11 +124,6 @@ kind: PlanKind; base: PlanRow[]; rows: SheetRow[]; obPlan: PkgPlan; obRes: PkgRe
     const r = rowByOid.get(oid);
     if (r) bRes[String(oid)] = { hun: r.hun, mashin: r.mashin };
   }
-  /* ⚠️ `kind` нь ЗААВАЛ — батлагч нь ӨӨРИЙН табаар бичих талбарыг дур
-     мэдэн шийдэхээс сэргийлнэ (2026-09-11-ний аудитын S1). */
-  /* ⚠️ МӨРИЙН ТОГТВОРТОЙ ТҮЛХҮҮР (2026-09-29) — `oid` → ажлын код. Илгээснээс хойш
-     шинэ жааз нийтлэгдэж бүх `oid` солигдсон ч санал одоогийн мөр рүүгээ зөөгдөнө
-     (`remapPayload`). Кодгүй мөр орохгүй. */
   const keys: NonNullable<PlanPayload['keys']> = {};
   for (const oid of new Set([...draft.keys(), ...ham.keys(), ...aDraft.keys(), ...resDraft.keys()])) {
     const des = rowByOid.get(oid)?.des;
@@ -188,17 +168,7 @@ const fRes = (m: ReadonlyMap<string, MonthRes> | null | undefined): string => {
 };
 
 /**
- * САРЫН ЗАДАРГААНЫ ЗЭРЭГЦЭЭ ӨӨРЧЛӨЛТ — САР ТУС БҮРЭЭР (⚠️ 2026-10-12, аудит).
- *
- * ⚠️ ЯАГААД: урьд нь бүхэл задаргааг (`sameMonths`/`sameRes`) «сервер = суурь ЭСВЭЛ сервер = санал»
- *    гэж тулгадаг байв. 500-аас их мөрийн сарын обьём багцаар бичигдэж ДУНДУУР тасарвал (зарим сар
- *    шинэ, зарим нь хуучин) сервер аль алинтай нь бүхлээрээ тэнцэхгүй тул «Батлах»-ыг дахин дарахад
- *    «зэрэгцээ өөрчлөлт» гэж зогсож, хагас бичилт мөнхөд гацдаг байв.
- * ⚠️ ДҮРЭМ: сар бүрд серверийн утга СУУРЬТАЙ (хөндөөгүй/бичигдээгүй) эсвэл САНАЛТАЙ (бичигдсэн) тэнцвэл
- *    зөрчил биш. Аль алинтай нь зөрвөл л (өөр замаар өөрчлөгдсөн сар) зөрчил — бүхэл задаргааны
- *    хуучин дүрмээс ХАТУУ БИШ, зөвхөн хагас бичилтийг давтах боломж нээнэ.
- * ⚠️ `cell` — нүдний харьцуулах түлхүүр; `''` = хоосон (сар байхгүй ба хоосон нөөц нэг) — `sameRes`-ийн
- *    «утгагүй сар тоологдохгүй» дүрэмтэй нийцтэй. Обьём 0 нь хоосонтой ТЭНЦҮҮ БИШ (`sameMonths`-тэй ижил).
+ * САРЫН ЗАДАРГААНЫ ЗЭРЭГЦЭЭ ӨӨРЧЛӨЛТ — САР ТУС БҮРЭЭР (2026-10-12, аудит).
  */
 export function monthsClash<V>(
   now: ReadonlyMap<string, V> | null | undefined,
@@ -220,7 +190,7 @@ const resCell = (v: MonthRes | undefined): string =>
 /**
  * Илгээлтийн агуулгыг ноорогийн Map-ууд болгоно — БАТЛАХЫН ӨМНӨХ алхам
  * (2026-09-30: `Huvaari.tsx`-ийн `applyPayloadToDraft`-оос механикаар салгав — цэвэр
- * функц; state-д тавих нь дуудагчид). Дүрмийн ⚠️ тайлбарууд доор ХЭВЭЭР.
+ * функц; state-д тавих нь дуудагчид). Дүрм тайлбарууд доор ХЭВЭЭР.
  */
 export function payloadToDrafts(
 p0: PlanPayload,
@@ -231,15 +201,11 @@ curRes: PkgRes,
 { kind, n }: { kind: PlanKind; n: number },
 ): PayloadApply {
   if (p0.kind !== kind) return { ok: false, why: 'kind', conflicts: 0, unknown: 0, conflictList: [] };
-  /* ⚠️ 2026-09-29: илгээснээс хойш жааз солигдсон бол саналын `oid`-ыг ажлын кодоор
-     одоогийн мөр рүү зөөнө — эс бөгөөс бүх мөр «олдсонгүй» болж, буцаагдсан хуваарь
-     ноорогт буухгүй, хүлээгдэж буй нь батлагдахгүй байв. `keys`-гүй хуучин илгээлт хэвээр. */
   const p = remapPayload(p0, curRows).pay;
   const curPlanRows = toPlanRows(curRows, n, kind);
   const cur = new Map(curPlanRows.map((r) => [r.oid, r]));
   const curSheet = new Map(curRows.map((r) => [r.oid, r]));
   let conflicts = 0;
-  /* ⚠️ 2026-10-09: зөрчил бүрийг ЖАГСААНА (`PayConflict`-ийн ⚠️) — тоо `conflicts`-тэй ҮРГЭЛЖ тэнцүү */
   const cl: PayConflict[] = [];
   const byDes = new Map<number, SheetRow>();
   for (const r of curRows) if (r.des != null && !byDes.has(r.des)) byDes.set(r.des, r);
@@ -255,14 +221,6 @@ curRes: PkgRes,
     conflicts += 1;
     cl.push({ oid: r?.oid ?? null, no: r?.no ?? '', work: r?.work ?? k.slice(0, cut), what, blk: null, blok: k.slice(cut + 1), srv, mine });
   };
-  /*
-   * ⚠️ МЭДЭГДЭХГҮЙ OID-ыг НООРОГТ ОРУУЛАХГҮЙ (2026-09-25 аудит). Илгээлт нь
-   *    ИЛГЭЭСЭН ҮЕИЙН жаазын oid-оор түлхүүрлэгддэг; хооронд нь шинэ жааз
-   *    нийтлэгдвэл тэдгээр нь одоогийн мөрөнд байхгүй. Урьд нь ноорогт шууд
-   *    орж (`dirtyN > 0`), `save` `staleN`-д унаж, хуваалцсан ноорог тэднийг
-   *    дахин дахин сэргээдэг «сүнс ноорог» давталт үүсгэдэг байв. Зөөх түлхүүр
-   *    (№ ¦ нэр) payload-д БАЙХГҮЙ тул хасаж ТООЛНО — дуудагч шийднэ.
-   */
   const unk = new Set<number>();
   const known = (oid: number): boolean => {
     if (curSheet.has(oid)) return true;
@@ -279,22 +237,13 @@ curRes: PkgRes,
     if (!known(oid)) continue;
     const bs = p.base?.spans[k];
     const now = cur.get(oid);
-    /* ⚠️ БҮЛГИЙН МӨРИЙГ ТУЛГАХГҮЙ (2026-09-21). Бүлэг нь `rollUpGroups`-оор
-       хүүхдүүдийнхээ MIN/MAX болж ноорогт (улмаар илгээлтэд) ордог тул өөр
-       илгээлт нэг бүлгийн ӨӨР хүүхдийг баталсан бол бүлгийн серверийн утга
-       зөрж, «зэрэгцээ өөрчлөлт» гэж ШААРДЛАГАГҮЙ зогсдог байв. Бүлгийг доор
-       серверийн ОДООГИЙН хүүхдээс дахин нэгтгэнэ; «N нүд» тоонд оруулахгүй. */
     if (now?.group) { gOwn.push(k); continue; }
     const v = arr.map((s, b) => {
-      /* ⚠️ 2026-10-08: хоёр тал тэгшлэгдсэн (`nSpan`) — дээрх ⚠️ */
       const v0 = nSpan(s);
       if (!bs || !now) return v0;
       const b0 = nSpan(bs[b]);
       /* Зохиогч хөндөөгүй → серверийн одоогийнх */
       if (sameSpan(v0, b0)) return now.spans[b] ?? null;
-      /* ⚠️ Сервер аль хэдийн САНАЛТАЙ ИЖИЛ бол зөрчил БИШ (2026-09-24 аудит):
-         хагас бичилт (огноо бичигдээд задаргаа унасан) дараа нь мөнхөд
-         «зэрэгцээ өөрчлөлт» гэж зогсдог байв. Доорх бүх тулгалтад ижил. */
       if (!sameSpan(b0, now.spans[b] ?? null) && !sameSpan(v0, now.spans[b] ?? null)) hit(oid, 'span', b, null, fSpan(now.spans[b]), fSpan(v0));
       return v0;
     });
@@ -309,13 +258,6 @@ curRes: PkgRes,
       if (g?.group) d.set(g.oid, spans);
     }
   }
-  /*
-   * ⚠️ БҮЛГИЙН ӨӨРИЙН МУЖ (2026-09-25 аудит). Дээрх «тулгахгүй» дүрэм нь
-   *    НЭГТГЭЛИЙН дагаварт л хамаарна. Огноотой навчгүй блокт бүлгийн муж нь
-   *    ӨӨРИЙНХ (`effSpan`) бөгөөд уялдаатай бүлгийг `propagate` ТЭР мужаар
-   *    шилжүүлдэг — алгасвал батлахад хамаарагчид нь бичигдэж, бүлэг өөрөө
-   *    бичигдэхгүй байв. Тэр блокуудыг навчийн ижил суурь-тулгалтаар авна.
-   */
   for (const k of gOwn) {
     const oid = Number(k);
     const now = cur.get(oid);
@@ -345,16 +287,10 @@ curRes: PkgRes,
   for (const [k, v] of Object.entries(p.deps)) {
     if (!known(Number(k))) continue;
     const bd = p.base?.deps;
-    /* ⚠️ ЗОХИОГЧ ХӨНДӨӨГҮЙ уялдаа (санал = суурь) — серверийн одоогийнх үлдэнэ (2026-10-01).
-       `spans`-ын «хөндөөгүй блок → сервер» дүрэмтэй ижил, `backMarkMapOf`-той нийцтэй.
-       Урьд нь ноорогт орж: батлахад сервер хооронд нь өөрчлөгдсөн бол худал «зэрэгцээ
-       өөрчлөлт», татах/буцаах (`strict: false`) замд хуучин утга серверийнхийг дарна. */
     if (bd && k in bd && (bd[k] ?? '') === (v ?? '')) continue;
     hm.set(Number(k), v);
     if (bd && k in bd) {
       const now = curSheet.get(Number(k));
-      /* ⚠️ 2026-10-09 (аудит №6): `''` ↔ `null` тулгалт — сервер хоосон уялдааг `null`-аар хадгалдаг (`savePrep`:
-         `text.trim() || null`), санал `''` өгч болно; шууд `!== v` бол хоосон = хоосон атлаа «зэрэгцээ өөрчлөлт» болдог байв. */
       const vn = (v ?? '').trim() || null;
       if (now && (now.ham ?? null) !== (bd[k] ?? null) && (now.ham ?? null) !== vn) hit(Number(k), 'deps', null, null, now.ham || '—', v || '—');
     }
@@ -365,11 +301,9 @@ curRes: PkgRes,
     const bo = p.base?.obyem;
     if (bo && k in bo) {
       const was = new Map(Object.entries(bo[k]));
-      /* ⚠️ Зохиогч хөндөөгүй (санал = суурь) — серверийнх үлдэнэ (2026-10-01, уялдаатай ижил) */
       if (sameMonths(mine, was)) continue;
       const cut = k.indexOf('|');
       const now = curPlan.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
-      /* ⚠️ 2026-10-12: САР ТУС БҮРЭЭР (`monthsClash`) — бүхэл задаргаагаар БИШ (доорх функцийн ⚠️) */
       if (monthsClash(now, was, mine, obCell)) hitOb(k, 'obyem', fMonths(now), fMonths(mine));
     }
     ob.set(k, mine);
@@ -387,7 +321,6 @@ curRes: PkgRes,
     const bs = p.base?.actual?.[k];
     const pick = (arr: (number | null)[], baseArr: (number | null)[] | undefined, nowArr: (number | null)[] | undefined) =>
       Array.from({ length: n }, (_, b) => {
-        /* ⚠️ 2026-10-08: бодит огноо ч тэгшлэгдсэн (`nDay`) — мөрийн `aStart`/`aEnd` одоо тэгшлэгддэг */
         const v0 = nDay(arr[b]);
         if (!bs || !now || !baseArr || !nowArr) return v0;
         const b0 = nDay(baseArr[b]);
@@ -419,19 +352,15 @@ curRes: PkgRes,
     const bo = p.base?.obres;
     if (bo && k in bo) {
       const was = new Map(Object.entries(bo[k]).map(([sar, v]) => [sar, { hun: v.hun, mashin: v.mashin }]));
-      /* ⚠️ Зохиогч хөндөөгүй (санал = суурь) — серверийнх үлдэнэ (2026-10-01) */
       if (sameRes(mine, was)) continue;
       const cut = k.indexOf('|');
       const now = curRes.get(Number(k.slice(0, cut)))?.get(k.slice(cut + 1));
-      /* ⚠️ 2026-10-12: сарын нөөц ч САР ТУС БҮРЭЭР — обьёмын ижил дүрэм (`monthsClash`) */
       if (monthsClash(now, was, mine, resCell)) hitOb(k, 'obres', fRes(now), fRes(mine));
     }
     or.set(k, mine);
   }
   const unknown = unk.size;
   if (strict && conflicts) return { ok: false, why: 'conflict', conflicts, unknown, conflictList: cl };
-  /* ⚠️ Батлах/харах (`strict`) замд мэдэгдэхгүй мөртэй саналыг БУУЛГАХГҮЙ —
-     хагас санал харагдаж/батлагдах ёсгүй. Дуудагч `unknown`-оор алдаа хэлнэ. */
   if (strict && unknown) return { ok: false, why: 'unknown', conflicts, unknown, conflictList: cl };
   return { ok: true, conflicts, unknown, conflictList: cl, maps: { draft: d, ham: hm, obDraft: ob, obResDraft: or, aDraft: ad, resDraft: rd } };
 }
@@ -453,11 +382,6 @@ export const conflictMsg = (n0: number) => tr('{0} нүд илгээснээс �
 /**
  * ХАГАС БИЧИГДСЭН БАТЛАЛТ (2026-10-01) — огноо эх хуудсанд орсон, сарын обьём унасан.
  * `prev` — `save`-ийн тавьсан техникийн шалтгаан (сүлжээ г.м.); байвал хойно нь залгана.
- *
- * ⚠️ 2026-10-12 (аудит): `ctx` — АЛЬ АЛХАМ тасарсан (`dates` = эх хуудасны огноо `applyUpdates`,
- *    `obyem` = сарын обьём `applyPlanEdits`) ба ХЭДЭН мөр бичигдсэн (`written`/`total`). Урьд нь мессеж
- *    ҮРГЭЛЖ «огноо бичигдсэн, обьём бичигдсэнгүй» гэдэг тул огнооны 500-ийн багц дундуур тасрахад худал
- *    хэлж, батлагч хэр их нь орсныг мэддэггүй байв. `ctx` өгөөгүй бол хуучин текст ЯГ хэвээр.
  */
 export const partialMsg = (
   prev: string,
@@ -476,7 +400,7 @@ export const partialMsg = (
 export const unknownMsg = (n0: number) => tr('Илгээлтийн {0} мөр одоогийн хуудаснаас олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Батлах боломжгүй — буцааж, зохиогч дахин илгээнэ.', num(n0));
 /**
  * БУЦААСАН ТЭМДЭГ — мөр бүрд 'ok' | 'bad' (2026-09-30: `Huvaari.tsx`-ийн `backMarkMap`
- * memo-гоос механикаар салгав — цэвэр функц). Дүрмийн ⚠️ дуудагч дээр хэвээр.
+ * memo-гоос механикаар салгав — цэвэр функц). Дүрм дуудагч дээр хэвээр.
  */
 export function backMarkMapOf({
 backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes,
@@ -488,13 +412,9 @@ obResDraft: Map<string, Map<string, MonthRes>>; obRes: PkgRes;
 }): Map<number, 'ok' | 'bad'> {
   const out = new Map<number, 'ok' | 'bad'>();
   if (!backOn || !backMarks) return out;
-  /* ⚠️ 2026-09-29: тэмдэг ч одоогийн жаазын `oid`-оор — санал ба зөвшөөрсөн мөрийг зөөнө */
   const rm = remapPayload(backMarks.pay, rows);
   const p = rm.pay;
   const okSet = new Set([...backMarks.ok].map((o) => rm.map.get(o) ?? o));
-  /* ⚠️ 2026-10-08: `okRows` нь ШИЙДВЭРИЙН үеийн жаазын `oid` (батлагчийн хуудас), `rm.map` нь
-     ИЛГЭЭЛТИЙН жаазынхыг л зөөдөг — хоёр жааз зөрвөл ногоон тэмдэг алга болж бүх мөр улаан
-     харагддаг байв. Ажлын КОДООР (`des`) давхар тулгана: илгээлтийн `keys` эсвэл одоогийн жааз. */
   const desOfOld = new Map<number, number>(Object.entries(backMarks.pay.keys ?? {}).map(([k, d]) => [Number(k), d]));
   const curDes = new Map(rows.map((r) => [r.oid, r.des]));
   const okDes = new Set<number>();
@@ -521,7 +441,6 @@ obResDraft: Map<string, Map<string, MonthRes>>; obRes: PkgRes;
     if (arr) {
       const bs = pb?.spans[k];
       for (let b = 0; b < n; b++) {
-        /* ⚠️ 2026-10-08: тэгшлэгдсэн тулгалт (`nSpan`) — `payloadToDrafts`-тай нэг дүрэм */
         const v0 = nSpan(arr[b]);
         if (bs && sameSpan(v0, nSpan(bs[b]))) continue;
         /* Бүлгийн хүүхдээс бодогдох блок — зохиогчийн утга биш */

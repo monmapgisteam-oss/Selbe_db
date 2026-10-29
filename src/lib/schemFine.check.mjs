@@ -43,11 +43,6 @@ for (const e of FINE_EDGES) {
 const eKeys = FINE_EDGES.map((e) => `${e.from}>${e.to}:${e.kind}`);
 assert.equal(new Set(eKeys).size, eKeys.length, 'ирмэг давхардсан');
 
-/**
- * ⚠️ ЗҮҮН ТИЙШ УРСГАЛ БАЙХГҮЙ (`back`-ээс бусад) — ухарсан сум нь «энэ шат
- * өмнөхөө буцаадаг» гэж уншигдана. Нэг баганад байх нь зөвшөөрөгдөнө, гэхдээ
- * тэр үед ЗААВАЛ ДООШ явна.
- */
 for (const e of FINE_EDGES) {
   if (e.kind === 'back') continue;
   const a = FINE_BY_ID[e.from];
@@ -60,8 +55,6 @@ for (const e of FINE_EDGES) {
 
 /**
  * Тасарсан карт байхгүй.
- * ⚠️ ГАРАХ ирмэггүй байж БОЛОХ картууд: урсгалын төгсгөл (`tailan`) ба
- *    ангилал/сөрөг үр дүнгийн картууд — тэдгээрээс цааш урсдаг зүйл БАЙХГҮЙ.
  */
 const TERMINAL = new Set(['tailan', 'zovWait', 'zovNo', 'gazLeft', 'barNo', 'ers', 'habInc']);
 const hasIn = new Set(FINE_EDGES.filter((e) => e.kind !== 'back').map((e) => e.to));
@@ -71,11 +64,6 @@ for (const n of FINE_NODES) {
   if (!TERMINAL.has(n.id)) assert.ok(hasOut.has(n.id), `гарах ирмэггүй: ${n.id}`);
 }
 
-/**
- * ⚠️ ХЯНАЛТЫН ГИНЖ БЭХЛЭГДСЭН. Дөрвөн шат нь ЯГ дараалсан `main` ирмэгтэй,
- * буцаалт нь НЭГ АЛХМААР ухардаг (`hyanalt.ts`-ийн баримтжуулсан дүрэм).
- */
-/* ⚠️ 2026-10-23: төлөвлөлтийн инженер (`hyPlan`) нэмэгдэв — 7 шат */
 const CHAIN = ['hyCo', 'hyEng', 'hyMgr', 'hyPlan', 'hyDir', 'hyHead', 'hyChief'];
 for (let i = 0; i + 1 < CHAIN.length; i += 1) {
   assert.ok(
@@ -95,10 +83,6 @@ for (const e of backs) {
   assert.equal(a - b, 1, `буцаалт нэгээс олон шат алгасав: ${e.from} → ${e.to}`);
 }
 
-/**
- * ⚠️ ЗӨВШӨӨРЛИЙН ГУРВАН ТӨЛӨВ НЬ ГИНЖ БИШ, САЛАА. Гинжээр холбовол
- *    «хүлээгдэж буй нь татгалзсан болж хувирдаг» гэсэн худал ойлголт төрнө.
- */
 for (const leaf of ['zovOk', 'zovWait', 'zovNo']) {
   const from = FINE_EDGES.filter((e) => e.kind !== 'back' && e.to === leaf).map((e) => e.from);
   assert.deepEqual(from, ['zov'], `${leaf} нь «zov»-оос ШУУД гарах ёстой`);
@@ -108,10 +92,6 @@ for (const leaf of ['gazOk', 'gazLeft']) {
   assert.deepEqual(from, ['gaz'], `${leaf} нь «gaz»-аас ШУУД гарах ёстой`);
 }
 
-/**
- * ⚠️ САНХҮҮГИЙН ИРМЭГ БҮГД `feed`. Кодод төлөвийн машин байхгүй тул `main`
- *    болговол «гэрээ байгуулмагц олголт автоматаар явна» гэж уншигдана.
- */
 for (const e of FINE_EDGES) {
   const isFin = (id) => id.startsWith('fin');
   if (isFin(e.to) && e.kind !== 'back') {
@@ -146,12 +126,6 @@ for (const g of groups) {
   );
 }
 
-/**
- * ⚠️ ТАЙЛБАР НЬ ЦОРЫН ГАНЦ АГУУЛГА (2026-09-01, хэрэглэгч: «үр дүн харуулах огт
- * хэрэггүй, зөвхөн ямар ажиллагаа хийгддэг тайлбар байхад л болно»). Карт дээр
- * тоо гарахаа больсон тул хоосон эсвэл нэг үгтэй тайлбар нь картыг утгагүй
- * хайрцаг болгоно.
- */
 for (const n of FINE_NODES) {
   assert.ok(n.desc.length >= 30, `${n.id}: тайлбар хэт богино — «${n.desc}»`);
   assert.ok(n.desc.length <= 110, `${n.id}: тайлбар хэт урт, картад багтахгүй (${n.desc.length})`);
@@ -175,11 +149,6 @@ for (let i = 0; i < boxes.length; i++) {
     assert.ok(!over, `хайрцаг огтлолцов: ${a.id} ↔ ${b.id}`);
   }
 }
-/**
- * ⚠️ ХАРЬЦАА. Ердийн дэлгэц ≈2:1. Хэрэв зураг хэт өндөр эсвэл хэт өргөн бол
- *    масштаб 0.62-оос доош унаж, схем БОСОО ЖАГСААЛТ болж хувирна — 24 карт
- *    нэг багана болвол «схем» гэдэг санаа алдагдана.
- */
 const ratio = L.w / L.h;
 assert.ok(ratio > 1.6 && ratio < 3.6, `харьцаа тохиромжгүй: ${ratio.toFixed(2)}`);
 

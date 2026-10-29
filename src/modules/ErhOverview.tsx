@@ -3,25 +3,9 @@
 /**
  * ЭРХИЙН ТОЙМ — «хэн юу хийж чадах вэ» ба «багц бүрд хэн байгаа вэ».
  *
- * ⚠️ ЯАГААД ЭНЭ БҮЛЭГ БАЙХ ЁСТОЙ ВЭ (2026-09-09). Админ панел нь ТАВАН
- * бүлэгт хуваагдсан бөгөөд тус бүр нь ӨӨР асуултад хариулна. Гэвч админд
- * байнга гардаг хоёр асуултад хариулах газар БАЙХГҮЙ байв:
- *
  *   · «Батбаяр юу хийж чадах вэ?» — таван бүлгийг тус тусад нь нээж, нэрийг
  *     нь хайх ёстой (5 удаа).
  *   · «Багц 3.1-ийг хэн хариуцаж байна?» — мөн адил.
- *
- * ⚠️ 2026-09-25: «ЗӨВХӨН ХАРУУЛНА» дүрэм ӨӨРЧЛӨГДСӨН (баталсан төлөвлөгөө).
- *    «Багцаар» хөзрүүдийн оронд засварлах боломжтой БАГЦ × СИСТЕМИЙН МАТРИЦ
- *    (`ErhMatrix`), «Хүнээр» хөзөр дарвал ХЭРЭГЛЭГЧИЙН КАРТ нээгдэнэ.
- *    «Хоёр газраас засвал аль нь үнэн болох нь бүрхэг» гэсэн хуучин айдас
- *    нь бичих ДҮРЭМ хоёр байснаас үүдэлтэй байв — одоо матриц, карт, бүлгийн
- *    панел бүгд НЭГ давхаргаар (`aclOps`) бичдэг тул дүрэм нэг.
- *
- * ⚠️ ГАЦААГ УРЬДЧИЛЖ ХЭЛНЭ. Одоо систем нь гацахыг ХҮЛЭЭДЭГ: батлагч
- * томилоогүй багц илгээлт ирэх хүртэл чимээгүй, зохиогч=батлагч болсон багц
- * `decidePlan` татгалзах хүртэл чимээгүй. Тооцоо нь `erhOverview.ts`-д
- * (цэвэр функц, бүрэн тесттэй).
  */
 
 import { useEffect, useState } from 'react';
@@ -40,7 +24,6 @@ import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { allAclReady, liveErhSource, lockMsg } from '@/lib/aclOps';
 import { allPkgErh, allUserErh, typeStageGaps, unknownPkgUsers, userErh, type RoleLine } from '@/lib/erhOverview';
-/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт · шалгалтын төлөв (`portalPresence`) */
 import { portalCheckStatus } from '@/lib/portalPresence';
 import { bagtsText, capLabelShort, issueText, roleLabel, type ScopedKind } from './erhLabels';
 import { ERH_PANES, paneLabel } from './capText';
@@ -57,8 +40,6 @@ export function ErhOverview({
   onOpenUser: (user: string) => void;
 }) {
   const [, tick] = useState(0);
-  /* ⚠️ ТАВАН эх сурвалж бүрд захиална — аль нэгэнд нь захиалахгүй бол
-     тэр бүлгийн засвар тоймд хүрэхгүй, админ хуучин зургийг харна. */
   useEffect(() => subscribe(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeCaps(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeAcl(() => tick((n) => n + 1)), []);
@@ -68,15 +49,8 @@ export function ErhOverview({
   useEffect(() => subscribeAjilAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeButetsAcl(() => tick((n) => n + 1)), []);
 
-  /* ⚠️ Матриц АНХДАГЧ (2026-09-25) — «Багцаар» хөзрийн горимыг орлоно */
   const [mode, setMode] = useState<'matrix' | 'user'>('matrix');
 
-  /*
-   * ⚠️ ТҮГЖЭЭ (2026-09-24) — панелуудтай ИЖИЛ туг. Аль нэг эх сурвалж энэ
-   *    сешнд уншигдаагүй бол `list*()` нь `[]` тул тойм «бүгд томилоогүй»,
-   *    «Цоорхой алга» гэсэн ХУДАЛ зураг харуулдаг байв. Уншигдтал ил хэлнэ.
-   * ⚠️ 2026-09-25: илэрхийлэл `aclOps.allAclReady`-д НЭГ газар.
-   */
   const locked = !allAclReady();
   const LOCK_MSG = lockMsg();
 
@@ -84,22 +58,14 @@ export function ErhOverview({
   const pkgs = allPkgErh(src);
   const people = allUserErh(src);
   const allIssues = pkgs.flatMap((p) => p.issues);
-  /* ⚠️ 2026-10-19 (аудит): ӨГӨГДЛИЙН ЦЭВЭРЛЭГЭЭ — эвдэрсэн мөр (`permsRemote.fetchAll` алгассан) ба танигдаагүй багцын
-     нэртэй хуваарилалт. Аль аль нь ЭРХ НЭЭДЭГГҮЙ (fail-closed) — админ «томилсон атлаа ажиллахгүй» шалтгааныг энд харна. */
   const malformed = remoteMalformed();
   const unknownPkgs = unknownPkgUsers(src);
-  /* ⚠️ 2026-10-22 (аудит): ПОРТАЛД АЛГА аккаунт (хүснэгтэд мөртэй, нэвтэрч чадахгүй) ба ТӨРӨЛ ↔ ШАТ зөрөө — урьд нь аль
-     аль нь хаана ч харагддаггүй байв: порталд алга `selbe_redesign` компанийн шатыг 21 багцад «эзэнтэй» харуулж, «Газрын
-     дарга» төрөлтэй `munkhbaatar` шатгүй (Гүйцэтгэл хуудасгүй, батлахгүй) үлдсэн. Хуваарилалт нь `ErhSource`-оос. */
   const absent = (src.absent ?? []).map((u) => userErh(src, u));
   const typeGaps = typeStageGaps(src);
   const presence = portalCheckStatus();
-  /* ⚠️ 2026-10-19: эвдэрсэн мөрийг OBJECTID-оор устгах (`permsRemote.removeMalformedRow`) — зайтай мөрийг
-     `removeByKey` олдоггүй тул энэ л зам. Устгасны дараа хүснэгтийг дахин уншина. */
   const [cleanBusy, setCleanBusy] = useState<number | null>(null);
   const [cleanErr, setCleanErr] = useState('');
   const dropRow = async (oid: number, key: string) => {
-    /* ⚠️ 2026-10-23 (UX аудит X1 · X3): `askConfirm`; «OBJECTID» гэх техникийн үг асуултаас хасагдав (мөр нь нэрээрээ) */
     if (!(await askConfirm(tr('«{0}» мөрийг эрхийн хүснэгтээс УСТГАХ уу? Буцаах боломжгүй.', key), { danger: true, ok: tr('Мөрийг устгах') }))) return;
     setCleanBusy(oid); setCleanErr('');
     try {
@@ -118,7 +84,6 @@ export function ErhOverview({
         {tr('Засвар бүгд нэг бичих давхаргаар — матриц, хэрэглэгчийн карт, бүлгийн хуудас ижил дүрмээр бичиж, ижил асуулт асууна. Хуваарилалт шууд хадгалагдана.')}
       </p>
 
-      {/* ⚠️ ЦООРХОЙ ЭХЭНД: админ хуудас нээмэгц ажил гацах эрсдэлийг харна */}
       {allIssues.length > 0 && (
         <div className={s.aclCol}>
           <div className={s.aclHead}>
@@ -162,7 +127,6 @@ export function ErhOverview({
           </div>
           {typeGaps.map((g) => (
             <div key={`t-${g.user}`} className={s.aclErr} role="alert">
-              {/* ⚠️ 2026-10-23: `want === null` — «Ерөнхий захирал» урсгалын мөртэй (шийдвэрлэдэггүй, эзэн биш) */}
               {g.want === null
                 ? tr('«{0}»: «Ерөнхий захирал» (зөвхөн харна) атлаа «{1}» шатанд томилгоотой — шийдвэрлэх эрхгүй тул шатны эзэн биш. Томилгоог хасна уу.', g.user, g.have ? STAGE_LABEL[g.have] : '—')
                 : g.have
@@ -176,7 +140,6 @@ export function ErhOverview({
           ))}
         </div>
       )}
-      {/* ⚠️ 2026-10-22: порталын тулгалт ажиллаагүй шалтгаан (fail-open — «алга» гэж тэмдэглээгүй) */}
       {presence === 'noPrivilege' && (
         <p className={s.aclNote}>{tr('Порталын аккаунтыг тулгаж чадсангүй — таны Enterprise эрх бүх гишүүнийг харахгүй (порталын админ биш). «Порталд алга» аккаунт тэмдэглэгдээгүй.')}</p>
       )}
@@ -193,7 +156,6 @@ export function ErhOverview({
                 : m.reason === 'user'
                   ? tr('«{0}»: аккаунтын нэр хоосон эсвэл зөвшөөрөгдөөгүй — мөр үл тоогдож байна (хүснэгтээс устгана уу).', m.key)
                   : m.reason === 'space'
-                    /* ⚠️ 2026-10-19: зайтай нэр — эрх олгохгүй; устгаад зөв нэрээр дахин олгоно */
                     ? tr('«{0}»: аккаунтын нэрийн захад/угтварын дараа зай байна — мөр үл тоогдож байна, эрх олгохгүй (устгаад зөв нэрээр дахин олгоно уу).', m.key)
                     : tr('«{0}»: эвдэрсэн мөр (views JSON задлагдсангүй) — үл тоогдож байна, эрх олгохгүй (хүснэгтээс засна уу).', m.key)}
               {m.oid != null && (
@@ -221,7 +183,6 @@ export function ErhOverview({
         </div>
       )}
       {locked && <div className={s.aclErr} role="alert">{LOCK_MSG}</div>}
-      {/* ⚠️ Уншигдаагүй үед «цоорхой алга» гэж худал тайтгаруулахгүй */}
       {!locked && allIssues.length === 0 && (
         <div className={s.aclEmpty}>{tr('Цоорхой алга — багц бүр бүрэн томилогдсон.')}</div>
       )}
@@ -262,14 +223,12 @@ export function ErhOverview({
                 <span className={s.aclCount}>{u.views.open}/{u.views.total}</span>
               </div>
 
-              {/* ⚠️ Хатуу super нь хуваарилалтгүй ч бүх эрхтэй — «эрх олгоогүй» БИШ (2026-09-24) */}
               {u.superUser && (
                 <div className={s.aclName}>{tr('Админ — бүх багц, бүх шат')}</div>
               )}
               {!u.any && (
                 <div className={s.aclEmpty}>{tr('Эрх олгоогүй — зөвхөн харагдац.')}</div>
               )}
-              {/* ⚠️ 2026-10-19 (аудит): танигдаагүй багцын нэр — эрх нээгдэхгүй */}
               {u.unknownBagts.length > 0 && (
                 <div className={s.aclErr} role="alert">{tr('Танигдаагүй багц: {0}', u.unknownBagts.join(', '))}</div>
               )}
@@ -288,7 +247,6 @@ export function ErhOverview({
               <UserRoles title={tr('Инженерийн обьём')} kind="obyem" lines={u.obyem} />
               <UserRoles title={tr('Чанарын баримт')} kind="chanar" lines={u.chanar} />
               <UserRoles title={tr('Нэмэлт ажил')} kind="ajil" lines={u.ajil} />
-              {/* ⚠️ Дэд бүтцийн багц нь түлхүүр (`p.key`) хэлбэрээр хадгалагддаг — нэрээр нь харуулна */}
               <UserRoles
                 title={tr('Дэд бүтцийн засвар')}
                 kind="butets"
@@ -301,9 +259,6 @@ export function ErhOverview({
               {u.caps.length > 0 && (
                 <div className={s.aclRole}>
                   <div className={s.aclRoleHead}>{tr('Засах эрх')}</div>
-                  {/* ⚠️ `join` ЗААВАЛ (2026-09-16): `CAP_HOST_VIEW` нь массив
-                      болсон тул шууд өгвөл React түүнийг тусгаарлагчгүй
-                      нийлүүлж «huvaariBatlahhuvaari» болгоно. */}
                   <div className={s.aclPkgs}>
                     {u.caps.map((c) => (
                       <span key={c} className={s.aclPkg} title={CAP_HOST_VIEW[c as CapKey].join(', ')}>
@@ -318,7 +273,6 @@ export function ErhOverview({
         </div>
       )}
 
-      {/* ⚠️ 2026-09-30: холбоос = урсгалын хуудас бүр (`capText.ERH_PANES`, нэг урсгал = нэг хуудас) */}
       <p className={s.aclNote}>
         {tr('Засах бол:')}{' '}
         <button type="button" className={s.aclPkg} onClick={() => onGo('users')}>{tr('Хэрэглэгчдийн эрх')}</button>{' '}
@@ -341,7 +295,6 @@ function UserRoles({
   return (
     <div className={s.aclRole}>
       <div className={s.aclRoleHead}>{title}</div>
-      {/* ⚠️ 2026-09-25: `role` ДАВХАРДАЖ болно (хуучин мөр нэг үүрэгт хоёр grant) — индекс нэмнэ */}
       {lines.map((l, i) => (
         <div key={`${l.role}|${i}`} className={s.aclUser}>
           <span className={s.aclEmpty} style={{ minWidth: 96 }}>{roleLabel(kind, l.role)}</span>

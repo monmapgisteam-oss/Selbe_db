@@ -1,19 +1,7 @@
 /**
  * ТОХИРОМЖТОЙ БАЙДЛЫН ТОХИРГООНЫ ИНВАРИАНТ — `INDICATORS` жин ба `NORM_FAIL_MAX`.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/analysis/config.check.mjs
- *
- * ⚠️ 2026-10-09 (аудит №6): ЯАГААД. `config.ts`-ийн тайлбарууд хэд хэдэн зүйлийг
- *    «дүрэм» гэж ЗААДАГ ч код барьдаггүй байв:
- *    - `ref: true` (лавлагаа) үзүүлэлт оноололд ОРОХГҮЙ → жин 0 (эс бөгөөс нэг ногоон
- *      талбай/нягтшил оноонд ХОЁР удаа тоологдоно — `greenCap`/`densityCap`-ийн ⚠️);
- *    - оноолох үзүүлэлт бүр эерэг жинтэй, нийлбэр нь >0 (загвар нийлбэрээр нормчилдог
- *      тул 0 бол бүх оноо NaN);
- *    - `NORM_FAIL_MAX` нь «Дунд» түвшний доод босгоос (`SCORE_LEVELS`, 45) ДООГУУР —
- *      «норм зөрчсөн бүс шууд шар/улбар шар» гэсэн `STRICT_NORM`-ын утга учир;
- *    - band/higher/lower нормын мужууд урвуу биш (`score.check.mjs` нь `patchNorm`-ын
- *      ЗАСВАРЫГ шалгадаг, анхны тогтмолыг биш).
- *    Сүлжээ ХЭРЭГГҮЙ — цэвэр тогтмолууд.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/analysis/config.check.mjs
  */
 
 import assert from 'node:assert/strict';
@@ -51,8 +39,6 @@ ok('оноолох жингийн нийлбэр > 0, нэг үзүүлэлт н
   const scored = INDICATORS.filter((i) => !i.ref);
   const sum = scored.reduce((s, i) => s + i.weight, 0);
   assert.ok(sum > 0, 'жингийн нийлбэр 0 — оноо NaN болно');
-  /* ⚠️ Нийлбэр яг 100 байх ШААРДЛАГАГҮЙ (`config.ts`-ийн ⚠️: UI хувийг өөрөө бодно) —
-     зөвхөн нэг үзүүлэлт давамгайлахгүй байхыг барина. */
   for (const i of scored) assert.ok(i.weight * 2 < sum, `${i.id}: жин ${i.weight} нийлбэрийн (${sum}) талаас их`);
   console.log(`    нийлбэр ${sum} (${scored.length} оноолох · ${INDICATORS.length - scored.length} лавлагаа)`);
 });

@@ -1,11 +1,6 @@
 /**
  * ХАБЭА-гийн «ХАМГИЙН СҮҮЛИЙН МӨР» — огноо → EditDate → OID (сүлжээгүй).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/workforceLatest.check.mjs
- *
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): «Тайлан»-гийн ХАБЭА (`reportData.loadHabeaSummary`)
- *    ижил огноотой мөрүүдээс OID-оор л сонгодог байв — нэг өдрийн ЗАСВАРЛАСАН мөр (бага OID,
- *    шинэ EditDate) алгасагдаж, CEO самбар (`groupDays`) өөр мөр сонгож болдог. Одоо хоёулаа
- *    `latestLaborRow` (`newer`-ийн дүрэм).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/workforceLatest.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

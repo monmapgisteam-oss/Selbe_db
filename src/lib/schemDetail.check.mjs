@@ -1,9 +1,7 @@
 /**
  * ЗАНГИЛААНЫ ДЭЛГЭРЭНГҮЙН ШАЛГУУР.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/schemDetail.check.mjs
- *
- * ⚠️ ЛОГИК ХУУЛБАРЛААГҮЙ — ЖИНХЭНЭ `nodeDetail`-ыг импортлоно.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/schemDetail.check.mjs
  *
  * Ямар БОДИТ алдаанаас хамгаалж байгаа вэ:
  *
@@ -108,25 +106,15 @@ const zov = (over) => ({
   assert.equal(by('Нийт зөвшөөрөл').value, 4, 'нийт зөвшөөрлийн тоо');
   assert.equal(by('Танигдаагүй').value, 1, 'танигдаагүй төлөв тоологдоогүй');
 
-  /* ⚠️ ТАНИГДААГҮЙГ НЭР ЗААЖ ХЭЛНЭ — эс тэгвээс аль мөр болохыг мэдэхгүй */
   assert.ok(
     d.issues.some((i) => i.text.includes('Гал түймрийн дүгнэлт') && i.tone === 'bad'),
     'танигдаагүй төлөвтэй зөвшөөрөл нэрээрээ жагсаагдсангүй',
   );
 
-  /* ⚠️ ГАРЧГААР олно, баганаар БИШ: мөрийн жагсаалтын эхний багана ч мөн
-     «Багц» тул баганаар хайвал хоёр хүснэгт хоёулаа таарна. */
   const byPkg = d.tables.find((t) => t.title === 'Багцаар');
   assert.ok(byPkg, 'багцын задаргаа алга');
   assert.equal(byPkg.rows.length, 2, 'хоёр багц гарах ёстой');
 
-  /*
-   * ⚠️ 2026-09-06: багц сонгоогүй үед ч ШИЙДЭГДЭЭГҮЙ мөрүүд ЖАГСАГДАНА.
-   * Урьд нь энэ хүснэгт `if (pkg)`-ээр хаалттай байсан тул НҮҮРЭНД (багц
-   * сонгодоггүй) зөвхөн тоолуур харагдаж, «ямар бичиг баримт асуудалтай вэ»
-   * гэдэг хариултгүй үлддэг байв. Урт нь НИЙТ тоогоор биш АСУУДЛЫН тоогоор
-   * хязгаарлагдана — анхны «хэдэн зуун мөр» болгоомжлол хэвээр биелнэ.
-   */
   const unresolved = d.tables.find((t) => t.title === 'Шийдэгдээгүй зөвшөөрөл');
   assert.ok(unresolved, 'шийдэгдээгүй зөвшөөрлийн жагсаалт алга');
   assert.equal(unresolved.rows.length, 2, 'зөвхөн ok БИШ мөрүүд (wait + unknown) гарна');
@@ -148,7 +136,6 @@ const zov = (over) => ({
   assert.equal(all1.rows.length, 1, 'мөрийн жагсаалт буруу шүүгдэв');
 }
 
-/* ⚠️ Бичиглэлийн зөрүү: «Багц 4-1» ↔ «Багц 4.1» — түүхий тэнцлээр шүүвэл хоосорно */
 {
   const d = nodeDetail(
     { ...EMPTY, failed: [], zov: [zov({ bagts: 'Багц 4-1', tolov: TOLOV.no })] },
@@ -190,20 +177,14 @@ const bagts = (over) => ({
   const t = d.tables.find((x) => x.title === 'Багцаар');
   assert.ok(t, 'багцын хүснэгт алга');
   assert.equal(t.rows.length, rows.length, 'багцын мөрийн тоо зөрөв');
-  /* ⚠️ Гүйцэтгэлгүй багцын нүд «—» — 0 БИШ */
   assert.equal(t.rows[1][1].v, null, 'гүйцэтгэлгүй багц тэг болов');
 
   assert.ok(
     d.issues.some((i) => i.text.includes('Багц 2') && i.text.includes('2')),
     'тайлангүй блоктой багц дурдагдсангүй',
   );
-  /* ⚠️ 2026-10-01: хамралт нь орон сууцны багцаас (`housingWeight`) — санхүүгүй тул блокоор;
-     `overall.weightSum` (58, дэд бүтэцтэй хуваарь) БИШ.
-     ⚠️ 2026-10-04: хүртвэр = ТАЙЛАГНАСАН блокийн хувь (Багц 2: 5-аас 3) — (4 + 3 + 4) ÷ 13 = 85%
-     (урьд нь «progress != null» тул Багц 2 бүхэлдээ хасагдаж 62% байв) */
   assert.ok(d.issues.some((i) => i.text.includes('85%')), 'дутуу жингийн анхааруулга алга');
   assert.ok(!d.issues.some((i) => i.text.includes('58%')), 'дэд бүтэцтэй хуваарийн жин хэвээр');
-  /* ⚠️ 2026-09-30: «зогссон» биш — `stalled` нь < 1% (эхлээгүй) блок */
   assert.ok(d.issues.some((i) => i.text.includes('1%-иас доогуур')), 'эхлээгүй блокийн анхааруулга алга');
   assert.ok(!d.issues.some((i) => i.text.includes('зогссон')), '«зогссон» гэж худал нэрлэсээр');
 
@@ -262,7 +243,6 @@ const cyc = (ergelt, oid, over) => ({
 
   const t = d.tables.find((x) => x.title === 'Багцаар');
   assert.equal(t.rows[0][1].v, 600, 'багцын төсөв');
-  /* ⚠️ ГОЛ ШАЛГУУР: `byBagts`-д байхгүй багц «0 төгрөг» гэж ХУДЛАА гарахгүй */
   assert.equal(t.rows[1][1].v, null, 'төсөвгүй багц тэг болов — «санхүүжилтгүй» гэсэн худал зураг');
 
   assert.equal(d.metrics.find((m) => m.label === 'Олголтын хувь').value, 30, 'олголтын хувь');
@@ -300,11 +280,6 @@ const cyc = (ergelt, oid, over) => ({
 
 /* ══════════════════ 7. БАГЦААР ЗАДАРДАГГҮЙ зангилаа ══════════════════ */
 
-/**
- * ⚠️ `buildSchem`-ийн `projectWide` дүрэмтэй ИЖИЛ байх ёстой: багц сонгосон ч
- *    эдгээр нь төслийн тоогоо хэвээр барина. Зөрвөл зангилаа ба самбар нэг
- *    агшинд ХОЁР ӨӨР тоо харуулна.
- */
 {
   const src = {
     ...EMPTY,
@@ -370,7 +345,6 @@ const cyc = (ergelt, oid, over) => ({
     assert.ok(list.length > 0, `${card}: хоосон анхааруулгын жагсаалт`);
   }
 
-  /* ⚠️ ЗАДАРСАН картад бүлгийн анхааруулга ДАВХАРДААГҮЙ байх ёстой */
   assert.ok(!fine.has('zovOk'), '«Зөвшөөрсөн» картад бүлгийн анхааруулга давхардав');
   assert.ok(fine.get('zovNo')?.length, 'танигдаагүй төлөв өөрийн картдаа буусангүй');
   assert.ok(fine.get('zovWait')?.length, 'огноогүй хүлээлт өөрийн картдаа буусангүй');
@@ -433,7 +407,6 @@ const cyc = (ergelt, oid, over) => ({
   assert.equal(cardStat(live, null, 'habInc').tone, 'good', 'осол 0 ногоон болсонгүй');
   assert.equal(cardStat(live, null, 'zovNo').value, 1, 'татгалзсан+танигдаагүй нийлсэнгүй');
   assert.equal(cardStat(live, null, 'barOk').value, 10, 'тайлагнасан блок = нийт − тайлангүй биш');
-  /* ⚠️ Осол нь `warn` БИШ `bad` — хүний аюулгүй байдал бусад хоцрогдолтой нэг зэрэгт орохгүй */
   const inc = cardStat({ ...live, habea: { workers: 1, tehnik: 1, incidents: 3 } }, null, 'habInc');
   assert.equal(inc.tone, 'bad', 'осол гарсан үед улаан болсонгүй');
   /* Хуваарь — амьд эх сурвалжгүй тул ҮРГЭЛЖ «—» (`schem.ts`-ийн шийдвэр) */

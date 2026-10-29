@@ -1,18 +1,5 @@
 /**
  * ХЯНАЛТЫН ШИЙДВЭРИЙН ТҮҮХ (ЛОГ) — `Shiidveriin_tuuh` талбарын цэвэр туслахууд.
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): хяналтын мөрд шат бүр ГАНЦ нэр/шалтгааны
- *    талбартай (`hyanalt.SF`) тул нэг мөрөнд нэг шат хоёр удаа шийдвэл (А зөвшөөрөөд,
- *    дээд шат буцаасны дараа Б дахин шалгаж буцаавал) А-гийн нэр ДАРАГДДАГ байв
- *    (`Guitsetgel.overwritten`). Одоо шийдвэр БҮР `{stage, who, at, act, reason}`
- *    үйл явдлаар энэ талбарт НЭМЭГДЭНЭ — талбар үйлчилгээнд БАЙВАЛ л
- *    (`hyanalt.hasHistoryField`); байхгүй бол урьдын зан (нэр дарагдана, тэмдэглэгээ).
- *
- * ⚠️ ХЭМЖЭЭНИЙ ХЯЗГААР: талбар String(65536). Хамгийн ХУУЧИН үйл явдлаас хасна —
- *    тоогоор (`HIST_MAX_ENTRIES`) ба JSON-ы уртаар (`HIST_MAX_CHARS`, нөөцтэй).
- *    Шалтгаан `HIST_REASON_MAX` тэмдэгтээр таслагдана (бүтэн бичвэр нь шатны
- *    `…_шалтгаан` талбарт хэвээр).
- * ⚠️ Энэ файл нь ЦЭВЭР — ArcGIS, React, i18n импортлохгүй (`hyanaltHistory.check.mjs`).
  */
 import type { ReviewStage } from './hyanalt';
 
@@ -34,15 +21,11 @@ export const HIST_MAX_ENTRIES = 60;
 export const HIST_MAX_CHARS = 60_000;
 export const HIST_REASON_MAX = 1_000;
 
-/* ⚠️ 2026-10-23: `planner` (төлөвлөлтийн инженер) — үгүй бол түүний үйл явдал ЧИМЭЭГҮЙ хаягдана.
-   Цэвэр файл тул `hyanalt.REVIEW_STAGES`-ийг импортлохгүй — шат нэмэхэд ЭНДЭЭ ч нэм. */
 const STAGES: ReadonlySet<string> = new Set(['engineer', 'manager', 'planner', 'director', 'head', 'chief']);
 const ACTS: ReadonlySet<string> = new Set(['approve', 'return', 'recheck-ok', 'recheck-back']);
 
 /**
  * Түүхий утга → үйл явдлын жагсаалт (хуучнаас шинэ рүү).
- * ⚠️ ТЭСВЭРТЭЙ: эвдэрсэн JSON эсвэл буруу элемент нь ЗӨВХӨН өөрөө хаягдана —
- *    нэг муу бичлэг бүх түүхийг устгахгүй. Хоосон/`null` → `[]`.
  */
 export function parseHistory(raw: unknown): HistEntry[] {
   if (raw == null) return [];
@@ -66,7 +49,6 @@ export function parseHistory(raw: unknown): HistEntry[] {
 
 /**
  * Шинэ үйл явдлыг НЭМЖ, хязгаарт багтаасан JSON буцаана.
- * ⚠️ Хамгийн ХУУЧИН нь эхэлж хасагдана; шинэ үйл явдал ҮРГЭЛЖ үлдэнэ.
  */
 export function appendHistory(raw: unknown, e: HistEntry): string {
   const next: HistEntry = {

@@ -1,13 +1,5 @@
 /**
- * ХАМГИЙН БАГА .docx (WordprocessingML) БИЧИГЧ — гадаад санг ашиглахгүй.
- *
- * ⚠️ `xlsx.ts`-ийн толгойд тэмдэглэсэн шийдвэр: баримтын npm сан (docx, jszip …)
- *    НЭМЭХГҮЙ, OOXML-ийг гараар угсарна. .docx нь ZIP тул `zipStore`-ыг дахин ашиглана.
- * ⚠️ Бүтэц нь Khorshoo_loan-ийн `lib/report.ts`-ийн Word тайлантай ижил:
- *    гарчиг → огноо → шүүлтийн нөхцөл → дугаарласан бүлэг (гарчиг · тайлбар · хүснэгт).
- *    Хүснэгтийн толгой `E2EAEE` дэвсгэртэй, Times New Roman.
- * ⚠️ XML-д хориотой удирдлагын тэмдэгтийг (`\u0000-\u0008` г.м.) ХАСНА — дэлгэцийн
- *    текстэд тааралдвал Word файлыг «эвдэрсэн» гэж нээхгүй.
+ * ХАМГИЙН БАГА.docx (WordprocessingML) БИЧИГЧ — гадаад санг ашиглахгүй.
  */
 import { esc, zipStore } from './xlsx';
 import { chartDrawing, chartXml, type DocChartSpec } from './docxChart';
@@ -30,8 +22,6 @@ const MARGIN = 1000;
 const CONTENT_W = PAGE_W - 2 * MARGIN;
 /* twip → EMU (1 twip = 635 EMU) */
 const MAX_IMG_W = CONTENT_W * 635;
-/* ⚠️ 2026-10-19 (хэрэглэгч: «page 1 сул зайг янзал»): 0.62 → 0.42 — өндөр зураг (газрын зураг) хуудасны
-   үлдсэн зайд багтахгүй бол Word дараагийн хуудас руу түлхэж, өмнөх хуудсанд том хоосон зай үлддэг байв */
 const MAX_IMG_H = (PAGE_H - 2 * MARGIN) * 635 * 0.42;
 const HDR_FILL = 'E2EAEE';
 const FONT = 'Times New Roman';
@@ -164,7 +154,6 @@ export function buildDocx(blocks: DocBlock[]): Uint8Array {
         const rid = `rIdChart${n}`;
         charts.push({ name: `chart${n}.xml`, rid, xml: chartXml(b.spec) });
         const [cx, cy] = chartSize(b.spec);
-        /* ⚠️ docPr id нь зурагтай давхцахгүй (зураг 1…N, график 1000+) */
         return chartDrawing(rid, 1000 + n, cx, cy) + (b.caption ? para(b.caption, { italic: true, size: 17, center: true, color: '555555' }) : '');
       }
     }

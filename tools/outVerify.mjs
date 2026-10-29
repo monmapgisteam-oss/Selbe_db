@@ -1,17 +1,6 @@
 /**
  * `next build`-ийн ДАРААХ СТАТИК ШАЛГАЛТ — `out/` (output: 'export') бүрэн эсэх.
  *   node tools/outVerify.mjs [хавтас]     (анхдагч `out`)
- *
- * ⚠️ 2026-10-26 (аудит T4): ЯАГААД. `npm test`-ийн UI smoke (`smoke.ui.check.mjs`) нь Node-д SSR хийдэг тул
- *    БАЙРШУУЛАХ гэж буй `out/` хавтсыг огт хардаггүй — HTML-ийн заасан `_next/static` chunk/CSS дутуу (хагас build,
- *    distDir/assetPrefix-ийн өөрчлөлт) бол сайт цагаан дэлгэц болж байж л мэдэгддэг. Хөтчийн (puppeteer) smoke-ийг
- *    СОНГООГҮЙ: GitHub runner Enterprise-д хүрдэггүй, бүх харагдац OAuth-ын ард тул нэвтрээгүй Landing-аас өөрийг
- *    харахгүй, харин CI-д Chrome хамаарал ба шинэ уналтын цэг нэмнэ (verdict T4).
- * ⚠️ ГОНЗГОЙ БИШ, БАТ: зөвхөн HTML-ийн `src=` / `href=` атрибутад БИЧИГДСЭН `/_next/static/…` хаягийг шалгана
- *    (RSC payload-ийн дотоод мөрийг биш — тэр хэлбэр Next-ийн хувилбараар өөрчлөгддөг тул худал уналт өгнө).
- *    `?`/`#` сүүл, `&amp;` хасагдана; `%5B` маягийн кодчилол тайлагдана (`[slug]` chunk).
- * Шалгах зүйл: `index.html` · `404.html` (эсвэл `404/index.html`) байна; дор хаяж нэг `/_next/static/` лавлагаа (эс бөгөөс шалгалт өөрөө
- *    эвдэрсэн); лавлагаа бүрийн файл `out/`-д байна. Цэвэр функц `verifyOut` — `outVerify.check.mjs` шалгана.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -43,7 +32,6 @@ export function verifyOut(dir) {
     return { ok: false, errors: [`${dir} хавтас алга — \`npm run build\` (output: 'export') ажиллаагүй юу?`], pages: 0, refs: 0 };
   }
   if (!existsSync(join(dir, 'index.html'))) errors.push('index.html алга');
-  /* ⚠️ `trailingSlash: true` үед Next-ийн хувилбараас хамаарч `404.html` эсвэл `404/index.html` — аль нэг нь хангалттай */
   if (!existsSync(join(dir, '404.html')) && !existsSync(join(dir, '404', 'index.html'))) errors.push('404.html алга');
   const pages = htmlFiles(dir);
   const refs = new Map(); // хаяг → эхний HTML

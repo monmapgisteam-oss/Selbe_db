@@ -1,15 +1,12 @@
 /**
  * Цэсний тэмдэг — ДАРААЛАЛГҮЙ ирсэн хариу шинэ тоог дарахгүй (2026-10-01).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/navBadges.check.mjs
- *
- * ⚠️ `makeBadgeRefresher`: дуудлага бүр дугаартай; хариу ирэхэд илүү шинэ дуудлага
- *    эхэлсэн бол `null` (хэрэглэхгүй). Сүлжээгүй — ачаалагчийг орлуулна.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/navBadges.check.mjs
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { makeBadgeRefresher, BADGE_VIEWS } from '@/components/navBadges';
 
-/* ── ⚠️ 2026-10-08: «Хуваарь» харагдацад зохиогчийн БУЦААГДСАН илгээлтийн тэмдэг (`countPlanReturned`),
+/* ── 2026-10-08: «Хуваарь» харагдацад зохиогчийн БУЦААГДСАН илгээлтийн тэмдэг (`countPlanReturned`),
    «Хуваарь батлах»-д батлагчийн хүлээгдэж буй (`countPlanPending`) — хоёулаа `huvaariBatlah.ts`-д ── */
 {
   assert.ok(BADGE_VIEWS.has('huvaariBatlah'), 'huvaariBatlah тэмдэггүй');
@@ -20,14 +17,11 @@ import { makeBadgeRefresher, BADGE_VIEWS } from '@/components/navBadges';
   const body = L.slice(L.indexOf('export async function countPlanReturned('));
   assert.ok(body.includes("x.status === PLAN_STATUS.returned") && body.includes("huvaariScope(me, 'author')") && L.includes("cached(loadLastPerPkg, BADGE_TTL, ['HUVAARI_BATLAH'])"),
     'countPlanReturned: буцаагдсан · зохиогчийн хүрээ · HUVAARI_BATLAH кэш');
-  /* ⚠️ 2026-10-09: «Хуваарь» тэмдэг = буцаагдсан + саяхан батлагдсан (`countPlanApproved`, 3 хоног, хараагүй) */
   assert.ok(/export async function countPlanApproved\(username: string \| null \| undefined\): Promise<number \| null>/.test(L), 'countPlanApproved алга');
   const ab = L.slice(L.indexOf('export async function countPlanApproved('));
   assert.ok(ab.includes('x.status === PLAN_STATUS.approved') && ab.includes('PLAN_APPROVED_TTL') && ab.includes('!seen.has(x.oid)'),
     'countPlanApproved: батлагдсан · 3 хоног · хараагүй');
   const N = fs.readFileSync('src/components/navBadges.ts', 'utf8');
-  /* ⚠️ 2026-10-12 (аудит №8): «Хуваарь» тэмдэг = `loadPlanNews` (lib-ийн `countPlanReturned` + `countPlanApproved` дүрэм,
-     буцаагдсан ч «харсан»-ыг хасна — `markPlanReturnedSeen`) */
   assert.ok(N.includes("{ view: 'huvaari', load: async () => countPlanNews }"), 'navBadges: «Хуваарь» тэмдэг countPlanNews биш');
   const ln = N.slice(N.indexOf('export async function loadPlanNews('));
   assert.ok(ln.includes('m.countPlanReturned(username)') && ln.includes('m.countPlanApproved(username)'),
@@ -38,7 +32,6 @@ import { makeBadgeRefresher, BADGE_VIEWS } from '@/components/navBadges';
   const H = fs.readFileSync('src/modules/Huvaari.tsx', 'utf8');
   assert.ok(H.includes('markPlanReturnedSeen(d.oid)'), 'Huvaari: буцаагдсан шийдвэрийг харсныг тэмдэглэхгүй');
   const V = fs.readFileSync('src/components/ViewRail.tsx', 'utf8');
-  /* ⚠️ 2026-10-23 (X7): «буцаасан» нэр томьёо; бусад харагдацын шошго `badgeLabelFor`-оос */
   assert.ok(V.includes("? tr('шинэ шийдвэр {0} (буцаасан · батлагдсан)', num(n))") && V.includes("badgeLabelFor(k, n, num)"), 'ViewRail: «Хуваарь» тэмдгийн утга «шинэ шийдвэр N» биш');
   console.log('✅ хуваарийн тэмдэг — батлагчид хүлээгдэж буй · зохиогчид буцаагдсан/батлагдсан');
 }
@@ -101,7 +94,7 @@ const deferred = () => {
   console.log('✅ алдаа → null (тэмдэг чимээгүй)');
 }
 
-/* ── ⚠️ 2026-10-23 (UX аудит R5 · Q4): тэмдгийн шошго (`badgeLabelFor`) ба «MA» тоолуур ── */
+/* ── 2026-10-23 (UX аудит R5 · Q4): тэмдгийн шошго (`badgeLabelFor`) ба «MA» тоолуур ── */
 {
   const { badgeLabelFor } = await import('@/components/navBadges');
   assert.ok(BADGE_VIEWS.has('ma'), 'ma (FIC · М-акт) тэмдэггүй');

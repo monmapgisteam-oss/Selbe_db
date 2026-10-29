@@ -1,6 +1,6 @@
 /**
  * ХУВААРИЙН БАТЛАХ УРСГАЛЫН ШАЛГУУР — offline (ArcGIS-гүй орчинд ажиллана).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/huvaariBatlah.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/huvaariBatlah.check.mjs
  *
  * Хамгаалж буй дүрмүүд (2026-09-07, хэрэглэгчийн шийдвэрээр нэмэгдсэн урсгал):
  *   1. ЗОХИОГЧ ӨӨРИЙГӨӨ БАТЛАХГҮЙ. Шалгуур нь UI-д БИШ, өгөгдлийн давхаргад
@@ -10,9 +10,6 @@
  *      засахыг хэлэхгүй тул хоосон давталт үүсгэнэ.
  *   3. Агуулга эвдэрсэн бол `null` — хагас задарсан ноорог хэрэглэвэл огноо
  *      ЧИМЭЭГҮЙ устана.
- *
- * ⚠️ Сүлжээ шаардсан замуудыг (илгээх, жагсаах) ЭНД шалгахгүй: `tableUrl` нь
- *    ArcGIS token шаарддаг. Энд зөвхөн СҮЛЖЭЭНЭЭС ӨМНӨ ажилладаг дүрмүүд.
  */
 import assert from 'node:assert/strict';
 
@@ -33,9 +30,6 @@ const {
   encodePayload,
 } = await import('@/lib/huvaariBatlah.ts');
 
-/* ⚠️ 2026-10-26: батлах хүснэгт Enterprise-ийн БОДИТ хаягаар шууд (`${GUITS}/192`) — урьд нэгж тестэд зураглал унтраалттай
-   (`SELBE_ENT_OFF`) байхад «хүснэгт олдсонгүй» замаар сүлжээнд хүрдэггүй байв. Одоо Enterprise-ийн хаяг руу явах бүх
-   хүсэлтэд ХООСОН хариу (амьд ArcGIS руу юу ч явахгүй) — «хүснэгт олдсонгүй»-н оронд «илгээлт олдсонгүй». */
 {
   const ENT = String(process.env.NEXT_PUBLIC_ENT_DATA ?? '').replace(/\/+$/, '');
   const realFetch = globalThis.fetch;
@@ -48,7 +42,6 @@ const {
 assert.equal(PLAN_STATUS.pending, 'Хүлээгдэж буй');
 assert.equal(PLAN_STATUS.approved, 'Батлагдсан');
 assert.equal(PLAN_STATUS.returned, 'Буцаагдсан');
-/* ⚠️ 2026-09-21: зохиогч өөрөө татсан — `returned`-ээс ТУСДАА утга */
 assert.equal(PLAN_STATUS.withdrawn, 'Татсан');
 assert.equal(new Set(Object.values(PLAN_STATUS)).size, 4, 'төлөв давхардав');
 console.log('✅ төлөв');
@@ -86,11 +79,6 @@ assert.equal(parsePayload(JSON.stringify({ spans: {}, base: { spans: {} } })).ba
 /* ══════════════════════════════════════════════════════════════
  * ХУВААРИЙН ТӨРӨЛ (`kind`) — 2026-09-11-ний аудитын S1
  * ══════════════════════════════════════════════════════════════
- * ⚠️ Илгээлт нь ТӨЛӨВЛӨСӨН эсвэл ГЭРЭЭНИЙ огнооны алинд хамаарахаа
- *    ӨӨРТӨӨ агуулах ЁСТОЙ. Урьд нь агуулаагүй тул батлагчийн ХАРЖ БУЙ
- *    таб бичих талбарыг дур мэдэн шийддэг байв: «Гэрээ» таб дээр байхад
- *    ТӨЛӨВЛӨГӨӨНИЙ санал `…_geree_*` талбарт бичигдэж, гэрээний лавлагаа
- *    чимээгүй эвдэрдэг (эргүүлэх аргагүй).
  */
 assert.equal(p.kind, 'plan', 'kind бичигдээгүй хуучин илгээлт нь `plan`');
 
@@ -98,22 +86,16 @@ const ger = parsePayload(JSON.stringify({ kind: 'geree', spans: { 3: [null] } })
 assert.ok(ger, 'гэрээний илгээлт задарсангүй');
 assert.equal(ger.kind, 'geree', '`geree` нь хэвээр буцна');
 
-/* ⚠️ FAIL-CLOSED: танихгүй утга ирвэл `plan` — гэрээний талбарт БУРУУ
-   бичихээс сэргийлнэ. «Танихгүй» нь «гэрээ» гэсэн үг ХЭЗЭЭ Ч биш. */
 const odd = parsePayload(JSON.stringify({ kind: 'ХЗ', spans: { 3: [null] } }));
 assert.equal(odd.kind, 'plan', 'танихгүй kind нь `plan` руу унана');
 
-/* ⚠️ ХУУЧИН илгээлт (2026-09-11-ээс өмнөх) — `kind` талбар огт БАЙХГҮЙ.
-   Тэр үед зөвхөн төлөвлөгөө байсан тул `plan` нь таамаг биш БАРИМТ. */
 assert.equal(only.kind, 'plan', '`kind`-гүй хуучин илгээлт нь `plan`');
 console.log('✅ хуваарийн төрөл — буцаж нийцтэй, fail-closed');
 
 /* ══════════════════════════════════════════════════════════════
  * ИЛГЭЭХ ҮЕИЙН СУУРЬ (`base`) — 2026-09-21
  * ══════════════════════════════════════════════════════════════
- * ⚠️ Хуучин илгээлтэд БАЙХГҮЙ → `undefined` (бүх блок «зассан» гэж
- *    үзнэ); байвал `spans` нь мөн адил цэвэрлэгдэнэ; эвдэрсэн бол хаягдана,
- *    илгээлт өөрөө УНАХГҮЙ. */
+ */
 assert.equal(p.base, undefined, 'суурьгүй илгээлт нь `base: undefined`');
 const withBase = parsePayload(JSON.stringify({
   spans: { 12: [{ start: 100, end: 200 }, null] },
@@ -131,10 +113,7 @@ console.log('✅ илгээх үеийн суурь — сонголттой, б
 /* ══════════════════════════════════════════════════════════════
  * БОДИТ ОГНОО (`actual`) · НӨӨЦ (`res`) — 2026-09-23
  * ══════════════════════════════════════════════════════════════
- * ⚠️ Хуучин илгээлтэд БАЙХГҮЙ → `{}` (унахгүй, «хөндөөгүй»). Байвал мөр
- *    тус бүрээр fail-closed: `start`/`end` массив биш мөр ХАЯГДАНА, тоо биш
- *    элемент `null` (индекс гулсахгүй — `map`, `filter` биш), `res`-ийн
- *    тоо биш утга `null` (0 БИШ). Суурь (`base.actual`/`base.res`) мөн адил. */
+ */
 assert.deepEqual(p.actual, {}, 'actual-гүй хуучин илгээлт → {}');
 assert.deepEqual(p.res, {}, 'res-гүй хуучин илгээлт → {}');
 const ext = parsePayload(JSON.stringify({
@@ -159,7 +138,6 @@ assert.deepEqual(ext.base.res['12'], { hun: 4, mashin: 1 }, 'суурийн res 
 assert.equal(withBase.base.actual, undefined, 'суурьт actual байхгүй → undefined (хуучин зан үйл)');
 console.log('✅ бодит огноо · нөөц — буцаж нийцтэй, fail-closed');
 
-/* ⚠️ ЭВДЭРСЭН бол `null` — таамаглахгүй */
 assert.equal(parsePayload(''), null, 'хоосон мөр');
 assert.equal(parsePayload('{ буруу'), null, 'JSON биш');
 assert.equal(parsePayload('null'), null, 'null');
@@ -170,9 +148,6 @@ console.log('✅ агуулга задлах · fail-closed');
 /* ══════════════════════════════════════════════════════════════
  * 3. ЗОХИОГЧ ӨӨРИЙГӨӨ БАТЛАХГҮЙ — ЭНЭ ФАЙЛЫН ГОЛ ШАЛГУУР
  * ══════════════════════════════════════════════════════════════
- * ⚠️ Сүлжээнд ХҮРЭХЭЭС ӨМНӨ татгалзах ёстой. Хэрэв энэ шалгуур
- *    `tableUrl`-ийн ДАРАА байрлавал ArcGIS-гүй орчинд «хүснэгт олдсонгүй»
- *    гэж буруу шалтгаан буцааж, дүрэм нь чимээгүй алга болно.
  */
 let r = await decidePlan({
   oid: 1, approve: true, approver: 'zohiogch_a', author: 'zohiogch_a',
@@ -205,15 +180,9 @@ assert.equal(r.ok, false, 'зөвхөн зайнаас бүрдсэн шалтг
 console.log('✅ буцаахад шалтгаан заавал');
 
 /* ── 5. ДҮРМҮҮД СҮЛЖЭЭНЭЭС ӨМНӨ шалгагдана ──
- * ⚠️ ArcGIS-гүй энэ орчинд `tableUrl` нь `null` буцаадаг. Хэрэв аль нэг
- *    дүрэм түүний ДАРАА байрлавал «хүснэгт олдсонгүй» гэсэн БУРУУ шалтгаан
- *    гарч, дүрэм нь чимээгүй алга болно. Дээрх 3 ба 4-р бүлэг яг үүнийг
- *    барьсан (анх зохиогчийн шалгуур `tableUrl`-ийн дараа байсан).
  *
  *    Харин ХҮЧИНТЭЙ шийдвэр нь хүснэгтгүйд ЗӨВ шалтгаанаар унана.
  */
-/* ⚠️ 2026-09-29: батлагчийн нэр НЭВТЭРСЭН хэрэглэгчтэй тулгагдана (`sameAsLogin`) —
-   нэвтрээгүй бол «тодорхойгүй», өөр нэр бол «зөрж байна», ижил бол сүлжээ рүү. */
 {
   const WHO = await import('@/lib/who.ts');
   const r0 = await decidePlan({ oid: 1, approve: true, approver: 'batlagch_b', author: 'zohiogch_a' });
@@ -227,8 +196,6 @@ console.log('✅ буцаахад шалтгаан заавал');
   assert.equal(r2.ok, false);
   assert.match(r2.error, /зөрж байна/, `өөр нэрээр түгжих өнгөрөв: ${r2.error}`);
   WHO.setCurrentUser('batlagch_b');
-  /* ⚠️ 2026-10-26: хүснэгт Enterprise-ийн БОДИТ хаягаар шууд (`${GUITS}/192`) — «хүснэгт олдсонгүй» зам байхгүй.
-     Сүлжээг хуурамчаар (хоосон хариу) сольж «илгээлт олдсонгүй» хүртэл явахыг шалгана — амьд ArcGIS руу хүрэхгүй. */
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ features: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
   let noTable;
@@ -244,18 +211,12 @@ console.log('✅ буцаахад шалтгаан заавал');
 console.log('✅ дүрэм → нэр → сүлжээ гэсэн дараалал');
 
 /* ── 5б. ИЛГЭЭЛТЭЭ ТАТАХ (2026-09-21) — дүрэм сүлжээнээс өмнө ──
- * ⚠️ `window` shim байгаа тул `requireCap('plan')` ажиллана: эрхгүй бол шидэх
- *    ёстой (консолоос дуудсан хэн ч татахгүй). Эрхтэй ч нэвтэрсэн нэрээс ӨӨР
- *    нэрээр татахыг сүлжээнээс ӨМНӨ татгалзана; хүчинтэй бол хүснэгтгүйд ЗӨВ
- *    шалтгаанаар унана. Зохиогчийн жинхэнэ шалгуур нь СЕРВЕРИЙН мөрөөр тул
- *    энд (сүлжээгүй) шалгагдахгүй. */
+ */
 {
   const CAPS = await import('@/lib/caps.ts');
   const WHO = await import('@/lib/who.ts');
   CAPS._syncRemoteCaps([]);
   WHO.setCurrentUser('zohiogch_a');
-  /* ⚠️ 2026-10-12 (дарааллын аудит): ЭРХГҮЙ ч ШИДЭХГҮЙ — татах нь эзэмшил (`withdrawPlan`-ийн ⚠️); эрх хасагдсан
-     зохиогч өөрийн илгээлтээ татна. Нэвтэрсэн нэр ба серверийн зохиогчийн шалгалт хэвээр (доор). */
   r = await withdrawPlan({ oid: 1, me: 'zohiogch_a' });
   assert.equal(r.ok, false);
   assert.match(r.error, /олдсонгүй/, `эрхгүй зохиогч: эрхийн шалтгаанаар унав — ${r.error}`);
@@ -278,10 +239,6 @@ console.log('✅ дүрэм → нэр → сүлжээ гэсэн дараал�
 console.log('✅ илгээлтээ татах — эрх → нэр → сүлжээ');
 
 /* ── 6. ХООСОН `spans` нь ХҮЧИНТЭЙ агуулга ──
- * ⚠️ 2026-09-08-ны аудит: илгээснээс хойш эх хуваарь өөр замаар ижил утгад
- *    хүрвэл ялгаа үлдэхгүй — ноорог хоосон болно. Тэр нь ЭВДЭРСЭН агуулга
- *    БИШ; `parsePayload` түүнийг `null` болговол батлагч «агуулга
- *    уншигдсангүй» гэсэн ХУДАЛ алдаа хараад илгээлт мөнхөд гацна.
  *
  *    (`Huvaari.tsx` тал дээр `dirtyN === 0` үед `decidePlan` дуудагдаж,
  *     шийдвэр нь бичих зүйлгүй ч бүртгэгддэг — тэр нь UI логик тул энд
@@ -293,12 +250,7 @@ assert.deepEqual(empty.spans, {});
 console.log('✅ хоосон агуулга хүчинтэй');
 
 /* ── 7. ТАТАХ ДАРААЛАЛ — унш → төрөл тулга → тат → ноорог (2026-09-21) ──
- * ⚠️ `Huvaari.withdraw` нь урьд нь ЭХЛЭЭД `withdrawPlan`, ДАРАА нь
- *    `loadPayload` дууддаг байв: агуулга уншигдахгүй/төрөл зөрвөл илгээлт
- *    ТАТАГДЧИХСАН атлаа ноорог хоосон — зохиогчийн ажил хоёр талаас алга.
- *    React шаардах тул ЭХ КОДЫГ тулгана (`huvaariBatlah.view.check`-ийн хэв
- *    маяг): тайлбаргүй эх дээр `loadPayload(` < `p.kind !== kind` <
- *    `withdrawPlan(` гэсэн дараалал. */
+ */
 {
   const fs = await import('node:fs');
   /* 2026-09-30: `withdraw` нь `Huvaari.tsx`-д хэвээр; хуваагдсан файлуудыг ч нийлүүлж уншина (`clearPreview` тэнд) */
@@ -326,12 +278,6 @@ console.log('✅ хоосон агуулга хүчинтэй');
 console.log('✅ татах дараалал — унш → төрөл → тат → ноорог');
 
 /* ══════════ ЗӨВШӨӨРСӨН МӨР (2026-09-25) — гүйцэтгэлийн okCells загвар ══════════ */
-/**
- * ⚠️ `null` ≠ `[]`: `null` = тэмдэглээгүй (талбаргүй/хуучин буцаалт) → гүйцэтгэгчид
- *    улаан/ногоон ОГТ харагдахгүй; `[]` = юу ч зөвшөөрөөгүй → бүх мөр улаан.
- *    Хольвол хуучин буцаалтын бүх мөр ХУДЛАА улаан болно.
- * ⚠️ FAIL-CLOSED: эвдэрсэн жагсаалтын ХАГАСЫГ хэрэглэвэл зарим мөр худлаа ногоон.
- */
 {
   assert.equal(parseOkRows(null), null, 'null → тэмдэглээгүй');
   assert.equal(parseOkRows(''), null, 'хоосон мөр → тэмдэглээгүй');
@@ -365,19 +311,16 @@ console.log('✅ түгжээ — нэргүй/өөрийгөө хаагдана
 /* ══════════ АГУУЛГЫН ДЭЭД ХЭМЖЭЭ (2026-09-29 аудит) ══════════ */
 {
   assert.equal(PAYLOAD_MAX, 1_048_576);
-  /* ⚠️ 2026-10-22 (аудит №4): нягт хэлбэр (`encodePayload`) зөвхөн `PlanPayload`-ийн талбаруудыг бичдэг — хэмжээг уялдааны
-     текстээр хэтрүүлнэ (урьд нь танихгүй `note` талбараар). */
   const big = { kind: 'plan', spans: { 1: [{ start: 0, end: 1 }] }, deps: { 1: 'x'.repeat(PAYLOAD_MAX) }, obyem: {}, actual: {}, res: {} };
   const r = await submitPlan({ pkgKey: 'p', pkgGroup: 'g', author: 'a', rowCount: 1, payload: big });
   assert.equal(r.ok, false, 'хэт том агуулга сүлжээнд хүрэв');
   assert.match(r.error, /хэт том/, 'уртын алдааны мессеж');
-  /* ⚠️ 2026-10-22 (аудит №4): «хэд хэдэн илгээлтэд хуваа» гэж ХУДАЛ зөвлөхгүй — нэг багцад нэг л илгээлт хүлээгдэнэ */
   assert.doesNotMatch(r.error, /хэд хэдэн илгээлтэд/, 'хуваах зөвлөгөө (нэг багцад нэг л илгээлт)');
   assert.match(r.error, /нэг л илгээлт/, 'нэг илгээлтийн дүрмийг хэлнэ');
 }
 console.log('✅ агуулга — 1 MB-аас хэтэрвэл илгээхийн өмнө зогсоно');
 
-/* ══════════ ⚠️ 2026-10-22 (аудит №4): НЯГТ АГУУЛГА (v2) — АЛДАГДАЛГҮЙ, хуучин хэлбэр уншигдсаар ══════════ */
+/* ══════════ 2026-10-22 (аудит №4): НЯГТ АГУУЛГА (v2) — АЛДАГДАЛГҮЙ, хуучин хэлбэр уншигдсаар ══════════ */
 {
   const DAY = 86_400_000;
   const D = (y, m, d) => Date.UTC(y, m - 1, d);
@@ -444,8 +387,7 @@ console.log('✅ агуулга — 1 MB-аас хэтэрвэл илгээхи�
 console.log('\nhuvaariBatlah: ok — төлөв · агуулга fail-closed · өөрийгөө батлахгүй · шалтгаан заавал · түгжээ · урт');
 
 /* ══════════ МӨРИЙН ТОГТВОРТОЙ ТҮЛХҮҮР — `keys` + `remapPayload` (2026-09-29) ══════════
- * ⚠️ Илгээснээс хойш шинэ жааз нийтлэгдэж бүх `oid` солигдоход санал «мөр олдсонгүй»
- *    болж, буцаагдсан хуваарь ноорогт буухгүй байв. Ажлын кодоор зөөнө. */
+ */
 {
   const { remapPayload } = await import('@/lib/huvaariBatlah.ts');
   const raw = JSON.stringify({
@@ -492,10 +434,7 @@ console.log('\nhuvaariBatlah: ok — төлөв · агуулга fail-closed ·
 console.log('✅ тогтвортой түлхүүр — кодоор зөөнө · давхардсан код зөөхгүй · хуучин илгээлт хэвээр');
 
 /* ══════════ CAS ТҮГЖЭЭ — `casClaim` (2026-10-01, хэрэглэгч: бүгдийг зас) ══════════
- * ⚠️ `decidePlan` урьд нь ТҮГЖЭЭ ХООСОН үед түгжээгүйгээр шийддэг байв (⚠️ тайлбар нь
- *    «зогсоно» гэж худал хэлж байсан). Одоо: дахин унш → хоосон хэвээр бол өөр дээрээ
- *    тавь → дахин уншиж баталгаажуул; өөр хүн барьсан/ялсан бол НЭРИЙГ нь хэлнэ.
- *    Хуурамч `io` — сүлжээгүй. */
+ */
 {
   const { casClaim, approveGuard } = await import('@/lib/huvaariBatlah.ts');
   const NOW = 1_000_000_000_000;
@@ -549,7 +488,7 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
   t = io(mk({ batlagch: 'bat', shiidver_ognoo: NOW - 1000 }));
   assert.deepEqual(await casClaim(t, 'bat', { requireEmpty: true }), { ok: true });
 
-  /* (ж) ЭХ КОД: `decidePlan` түгжээгүй үед (`holder !== me`) `casClaim`-аар авна, ⚠️ шинэчлэгдсэн */
+  /* (ж) ЭХ КОД: `decidePlan` түгжээгүй үед (`holder !== me`) `casClaim`-аар авна, шинэчлэгдсэн */
   const fs = await import('node:fs');
   const SRC = fs.readFileSync('src/lib/huvaariBatlah.ts', 'utf8');
   const i = SRC.indexOf('export async function decidePlan(');
@@ -563,7 +502,6 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
   /* ══ ЭХ ХУУДСАНД БИЧИХИЙН ӨМНӨХ ХАМГААЛАЛТ — `approveGuard` (2026-10-01) ══ */
   const sub = (o) => ({ oid: 5, status: PLAN_STATUS.pending, approver: 'bat', approverAt: NOW - 1000, ...o });
   assert.equal(approveGuard(sub({}), 5, 'Bat', undefined, NOW), null, 'өөрийн хүчинтэй түгжээ → бичнэ');
-  /* ⚠️ 2026-10-12: `claimAt` — нэг батлагчийн ӨӨР цонхны түгжээ эх хуудсанд бичихээс ӨМНӨ зогсоно */
   assert.equal(approveGuard(sub({}), 5, 'bat', NOW - 1000, NOW), null, 'claimAt таарсан → бичнэ');
   assert.equal(approveGuard(sub({}), 5, 'bat', NOW - 1400, NOW), null, 'claimAt ±1000 мс дотор (секундээр тайрагдсан) → бичнэ');
   assert.match(approveGuard(sub({}), 5, 'bat', NOW - 5000, NOW), /өөр цонх/, 'өөр цонх дахин түгжсэн → зогсоно');
@@ -581,11 +519,9 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
   /* ЭХ КОД: `Huvaari.save` батлах горимд бичихийн ӨМНӨ дахин уншиж `approveGuard`-аар зогсоно */
   const H = fs.readFileSync('src/modules/Huvaari.tsx', 'utf8');
   const si = H.indexOf('const save = useCallback(');
-  /* ⚠️ 2026-10-01 (merge tezu-bonu): `if (upd.length) { await applyUpdates(...); partialRef … }` блок болсон — хоёр хэлбэрийг таньна */
   const se = H.indexOf('await applyUpdates(pkg, upd);', si);
   assert.ok(si > 0 && se > si, 'Huvaari.save олдсонгүй');
   const pre = H.slice(si, se);
-  /* ⚠️ 2026-10-12: завсарт тайлбар байж болно (`claimAt` нэмэгдсэн) — 300 тэмдэгт хүртэл */
   assert.ok(/if \(approvalMode\) \{\s*const head = await loadSubmissionHead\(approving\);[\s\S]{0,300}?const why = approveGuard\(/.test(pre),
     'Huvaari.save: эх хуудсанд бичихийн өмнө илгээлтийн төлвийг дахин уншихгүй байна');
   assert.ok(H.indexOf('applyPlanEdits(obEdits)', si) > se, 'Huvaari.save: сарын обьём хамгаалалтаас ӨМНӨ бичигдэж байна');
@@ -593,10 +529,7 @@ console.log('✅ тогтвортой түлхүүр — кодоор зөөнө
 console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх approveGuard');
 
 /* ══════════ ХАГАС БИЧИЛТИЙН СЕРВЕР ТЭМДЭГ · ДАВХАРДЛЫН ЦУЦЛАЛТ (2026-10-01) ══════════
- * ⚠️ Хагас бичигдсэн батлалтын хамгаалалт урьд нь зөвхөн санах ойд (`partialRef`) ба
- *    `CLAIM_TTL`-д байсан — сэргээлт/10 минутын дараа татах, буцаах хоёулаа өнгөрдөг байв.
- * ⚠️ Давхардлын цуцлалт (устгал унасан → `withdrawn`) багцын «сүүлийн шийдвэр» болж
- *    жинхэнэ буцаалтын шалтгааныг нууж байв. */
+ */
 {
   const { partialBy, PARTIAL_MARK, isDupCancel, DUP_MARK } = await import('@/lib/huvaariBatlah.ts');
   const P = PLAN_STATUS.pending;
@@ -643,9 +576,6 @@ console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх ap
   const iUpd = sv.indexOf('await applyUpdates(pkg, upd);');
   const iOb = sv.indexOf('applyPlanEdits(obEdits)');
   assert.ok(iMark > 0 && iMark < iRef && iRef < iUpd && iUpd < iOb, 'Huvaari.save: хагас бичилтийн тэмдэг анхны бичилтээс ӨМНӨ биш');
-  /* ⚠️ 2026-10-01: ЗӨВХӨН нэг ч мөр бичигдээгүй (`written === 0`) үед тэмдгийг арилгаж болно */
-  /* ⚠️ 2026-10-05: `/g` — сарын обьёмын catch ч мөн `written === 0`-д тэмдгийг арилгана (хоёр газар) */
-  /* ⚠️ 2026-10-12: `clearPlanPartial(oid, owner)` — эзэнтэй дуудлагыг ч таньна */
   const svNo0 = sv.replace(/if \(await clearPlanPartial\(approving(, [^)]*)?\)\) partialRef\.current = null;/g, '');
   assert.ok(/written\)?\s*===\s*0 && partialRef\.current === approving/.test(sv), 'Huvaari.save: тэмдэг арилгах нь written === 0-оор хамгаалагдаагүй');
   assert.ok(!/partialRef\.current = null/.test(svNo0), 'Huvaari.save: partialRef-ийг decidePlan-аас ӨМНӨ арилгаж байна');
@@ -660,8 +590,6 @@ console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх ap
     assert.ok(/partialRef\.current !== approving\) void releasePlanClaim/.test(ln), `Huvaari: хамгаалалтгүй тайлалт: ${ln.trim()}`);
   }
   assert.ok((dc.match(/partialRef\.current = null/g) ?? []).length >= 2, 'Huvaari: decidePlan амжилттай болоход partialRef арилахгүй');
-  /* ⚠️ 2026-10-11 (аудит №7): `wroteSomeRef` — өмнөх оролдлогод бичигдсэн бол дахин оролдлогын `written === 0` /
-     дахин тэмдэглэх уналт тэмдгийг арилгахгүй; `lostWriteRef`-ийг дахин оролдлогын эхэнд тэглэхгүй, зөвхөн decidePlan амжилтад */
   assert.ok((sv.match(/else if \(wroteSomeRef\.current === approving\) \{/g) ?? []).length >= 2, 'Huvaari.save: written === 0 салаа wroteSomeRef-ээр хамгаалагдаагүй');
   assert.ok(/if \(wroteSomeRef\.current === approving\) \{[\s\S]{0,400}return false;[\s\S]{0,300}await clearPlanPartial\(approving(, [^)]*)?\)/.test(sv), 'Huvaari.save: дахин тэмдэглэх уналтад wroteSomeRef шалгагдаагүй');
   assert.ok(!/^\s*lostWriteRef\.current = null;/m.test(sv), 'Huvaari.save: lostWriteRef-ийг дахин оролдлогын эхэнд тэглэж байна');
@@ -671,10 +599,7 @@ console.log('✅ CAS түгжээ (decidePlan) · бичихийн өмнөх ap
 console.log('✅ хагас бичилтийн сервер тэмдэг · давхардлын цуцлалт «сүүлийн шийдвэр» биш · obLost хаалт · түгжээ хадгална');
 
 /* ══════════ 2026-10-08: ГАЦСАНЫГ БУЦААХ — түгжигчийн гэйт · (багц · төрөл)-өөр давхардал · isApprovedBy ══════════
- * ⚠️ `returnStuckPlan` урьд нь ӨӨР батлагчийн ХҮЧИНТЭЙ түгжээг шалгадаггүй тул бичилтээ гүйцээж буй
- *    батлагчийн илгээлтийг хоёр дахь батлагч «гацсан» гэж буцааж чаддаг байв (`decidePlan`-тай нэг дүрэм).
- * ⚠️ `loadPending(pkg, kind)` — гэрээний ба төлөвлөгөөний санал нэг багцад ЗЭРЭГ хүлээж болно;
- *    `submitPlan`-ийн давхардал ч (багц · төрөл)-өөр. `kind` зөвхөн агуулгад тул `LIKE`-ээр. */
+ */
 {
   const { returnStuckPlan, isApprovedBy, countPlanReturned, loadPending } = await import('@/lib/huvaariBatlah.ts');
   assert.equal(typeof isApprovedBy, 'function');
@@ -707,7 +632,6 @@ console.log('✅ хагас бичилтийн сервер тэмдэг · да
   assert.ok(sp.includes('AND ${KIND_SQL(args.payload.kind)}'), 'submitPlan: бичсэний дараах давхардал төрлөөр биш');
   const la = part('export async function loadAllPending(', 'export async function loadLastPerPkg(');
   assert.ok(la.includes('`${x.pkgKey}|${k ?? \'\'}`'), 'loadAllPending: (багц · төрөл)-өөр давхардал хасахгүй байна');
-  /* ⚠️ 2026-10-09: returnStuckPlan — бичихээс ӨМНӨ `casClaim` · loadHistory(kind) · loadLastPerPkg (багц · төрөл) · loadPending strict */
   assert.ok(rs.indexOf('await casClaim(') > 0 && rs.indexOf('await casClaim(') < rs.indexOf('[F.status]: PLAN_STATUS.returned'), 'returnStuckPlan: бичихээс өмнө casClaim алга');
   assert.ok(L.includes('export async function loadHistory(pkgKey: string, limit = 20, kind?: PlanPayloadKind)'), 'loadHistory: kind параметр алга');
   assert.ok(part('export async function loadLastPerPkg(', 'export async function loadHistory(').includes('`${x.pkgKey}|${x.kind ?? \'\'}`'), 'loadLastPerPkg: (багц · төрөл)-өөр биш');
@@ -718,7 +642,7 @@ console.log('✅ хагас бичилтийн сервер тэмдэг · да
   assert.ok(iBtn > 0 && /disabled=\{busy \|\| !reasonIn\.trim\(\) \|\| !!holder\}/.test(V.slice(iBtn, iBtn + 600)), 'HuvaariBatlah: «Гацсаныг буцаах» түгжээнд хаагдахгүй байна');
 }
 console.log('✅ гацсаныг буцаах — түгжигчийн гэйт · (багц · төрөл) давхардал · isApprovedBy fail-closed');
-/* ── ⚠️ 2026-10-09: `loadPendingBoth` — нэг хямд query, байвал төрөл тус бүр; STRICT (уншилт унавал шиднэ) ── */
+/* ── 2026-10-09: `loadPendingBoth` — нэг хямд query, байвал төрөл тус бүр; STRICT (уншилт унавал шиднэ) ── */
 {
   const fs = await import('node:fs');
   const L = fs.readFileSync('src/lib/huvaariBatlah.ts', 'utf8');

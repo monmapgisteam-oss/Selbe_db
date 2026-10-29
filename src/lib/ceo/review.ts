@@ -7,16 +7,6 @@
  *   Б. БӨГЛӨЛТИЙН НАС — `Bagts_*` бөглөх хуудсуудын «Б.» мөрийн түүх
  *      (`blockProgress.loadBlockHistory`): багц бүрд хамгийн сүүлд ХЭЗЭЭ
  *      бөглөсөн бэ. 14 хоног шар, 30 хоног улаан.
- *
- * ⚠️ ХОЁР ЭХ ТУС ТУСДАА УНАНА: нэг нь уншигдахгүй бол нөгөөгийнхөө тоог
- *    хэвээр үзүүлж, унасан нэрийг `failedSources`-д ил бичнэ. Хоёулаа унавал
- *    л throw.
- *
- * ⚠️ `null` ≠ 0: хүлээгдэл ачаалагдаагүй бол `value` «—», ачаалагдсан ч
- *    хүлээгдэж буй ажилгүй бол «0» — энэ нь ХЭМЖИГДСЭН тэг (юу ч хүлээгдээгүй).
- *
- * ⚠️ Тооцоо (`computeReview`, `fillAgeByPkg`) нь татахаас ТУСДАА цэвэр функц —
- *    `review.check.mjs` сүлжээгүйгээр шалгана. `Date.now()` ЗӨВХӨН ачаалагчид.
  */
 
 import { cached } from '@/lib/live';
@@ -33,8 +23,6 @@ import { t as tr } from '@/lib/i18nCore';
 
 /**
  * Алдааны БОГИНО мөр — эхний мөр, ≤120 тэмдэгт (2026-09-23).
- * ⚠️ ArcGIS-ийн урт stack/JSON-ыг дэлгэцэнд шидэхгүй; бүтнийг дуудагч
- *    `console.warn`-д үлдээнэ.
  */
 export function shortError(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e ?? '');
@@ -50,11 +38,6 @@ import {
 
 /**
  * БӨГЛӨЛТИЙН НАСНЫ БОСГО, хоног — 14 шар · 30 улаан.
- *
- * ⚠️ САНАЛ (2026-09-06): шинэ тогтмол ЗОХИОСОНГҮЙ — `schem.ts`-ийн
- *    `TH.reportAgeD` («Сүүлийн тайлангийн нас») яг ижил утгыг хэмждэг тул
- *    түүнийг ДАХИН ЭКСПОРТЛОВ. Схем дээр 14/30-ыг өөрчилбөл энд ч дагана;
- *    хоёр газар бичвэл нэгийг засахад нөгөө нь чимээгүй хоцорно.
  */
 export const FILL_STALE_DAYS = TH.reportAgeD;
 
@@ -79,8 +62,6 @@ export type FillAge = {
  * `bagtsKey(group)` → `group`. Блокийн түүхийн түлхүүр нь
  * `${bagtsKey(pkg.group)}|${блок}` (`blockProgress.history` ↔ `sheetRows`
  * `bagts: pkg.group`) тул угтварыг нь ЭНЭ хүснэгтээр буцааж нэр болгоно.
- * ⚠️ Хоёр давхрын хувилбар (9/12 давхар) НЭГ багцад нийлнэ — «Багц 1»-ийн
- *    хоёр хуудасны сүүлийн огнооны ИХ нь ялна.
  */
 const PKG_BY_KEY: Record<string, string> = Object.fromEntries(
   PKGS.map((p) => [bagtsKey(p.group), p.group]),
@@ -88,8 +69,6 @@ const PKG_BY_KEY: Record<string, string> = Object.fromEntries(
 
 /**
  * «YYYY-MM-DD» → epoch ms (UTC шөнө дунд). Танигдахгүй бол null.
- * ⚠️ 2026-09-25: `schem.ageDays` одоо ЛОКАЛ өдрөөр бодно — энэ функц UTC хэвээр
- *    (`review.check` тогтмол UTC утгыг шалгадаг); тэдгээр ИЖИЛ БИШ болсон.
  */
 export function dayMs(d: string): number | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
@@ -99,10 +78,6 @@ export function dayMs(d: string): number | null {
 
 /**
  * Багц бүрийн хамгийн сүүлийн бөглөлт — нас БУУРАХ (хамгийн хуучин эхэнд).
- *
- * ⚠️ `pct: null` цэгийг ч ОГНОО гэж тоолно: тэр нь нүд ЦЭВЭРЛЭГДСЭН бичлэг
- *    (Pivot хоосон нүдийг null мөрөөр бичдэг) — хуудсанд гар хүрсэн л бол
- *    «бөглөлтийн идэвх» юм. Хасвал цэвэрлэсэн багц худал хуучирна.
  */
 export function fillAgeByPkg(history: BlockHistory, now: number): FillAge[] {
   const last = new Map<string, string>();
@@ -117,9 +92,6 @@ export function fillAgeByPkg(history: BlockHistory, now: number): FillAge[] {
     }
   }
   const out: FillAge[] = [];
-  /* ⚠️ 2026-10-06: ӨДРИЙН ТҮЛХҮҮРЭЭР харьцуулна — бөглөлтийн огноо нь ЛОКАЛ (УБ) өдөр, урьд нь
-     `dayMs` (UTC шөнө дунд) ↔ `now` (одоогийн агшин) хооронд бодож УБ-ын 00:00–08:00-д нас 1 хоногоор
-     ДУТУУ гардаг байв. Одоо өнөөдрийн ЛОКАЛ өдрийг (`dayKey`) мөн `dayMs`-ээр — хоёр тал нэг тэнхлэгт. */
   const todayMs = dayMs(dayKey(now)) ?? now;
   for (const [pkg, lastFill] of last) {
     const ms = dayMs(lastFill);
@@ -139,16 +111,13 @@ export type ReviewInput = {
   failedSources: string[];
 };
 
-/** Буцаалтын нийт тоо — хянах бүх шатны буцаалтын нийлбэр (⚠️ 2026-10-23: төлөвлөлтийн инженер ч) */
+/** Буцаалтын нийт тоо — хянах бүх шатны буцаалтын нийлбэр (2026-10-23: төлөвлөлтийн инженер ч) */
 const returnsOf = (p: Pending): number =>
   p.work.engineerReturns + p.work.managerReturns + p.work.plannerReturns + p.work.directorReturns
   + p.work.headReturns + p.work.chiefReturns;
 
 /**
  * Цэвэр тооцоо — `KpiResult` угсарна.
- *
- * ⚠️ `pending` нь `pendingAging`-аас аль хэдийн хоног БУУРАХ эрэмбэтэй ирдэг ч
- *    энд дахин эрэмбэлнэ — өөр дуудагч (тест) эрэмбэгүй өгч болно.
  */
 export function computeReview(input: ReviewInput): KpiResult {
   const { failedSources } = input;
@@ -158,7 +127,6 @@ export function computeReview(input: ReviewInput): KpiResult {
   /* ── А. Хүлээгдэл ── */
   const worstDays: number | null = pending == null ? null : (pending[0]?.days ?? 0);
   const stale = pending?.filter((p) => p.days > REVIEW_STALE_DAYS) ?? [];
-  /* ⚠️ 2026-10-23: шатны жагсаалт `STAGE_ORDER`-оос — шат нэмэгдэхэд энд хоцрохгүй (долоон шат) */
   const byStage = Object.fromEntries(STAGE_ORDER.map((s) => [s, 0])) as Record<Stage, number>;
   for (const p of pending ?? []) byStage[p.work.owner] += 1;
 
@@ -174,14 +142,7 @@ export function computeReview(input: ReviewInput): KpiResult {
   const facts: string[] = [];
   if (pending) {
     facts.push(tr('{0} ажил {1} хоногоос дээш', stale.length, REVIEW_STALE_DAYS));
-    /* ⚠️ i18n: «хүлээгдэж буй {0}» ба «{0} ажил» хоёулаа `en.ts`-д БАЙГАА
-       түлхүүр — шинэ «{0} ажил хүлээгдэж байна» зохиохгүй, хоёрыг давхарлана
-       (mn «хүлээгдэж буй 3 ажил» · en «3 tasks pending»). */
     facts.push(tr('хүлээгдэж буй {0}', tr('{0} ажил', pending.length)));
-    /* ⚠️ «Компани» шат нэмэгдсэн: инженер буцаасан ажил КОМПАНИД хүлээгдэж
-       байдаг тул гурван шатны нийлбэр нийт хүлээгдэлтэй таарахгүй байсан. */
-    /* ⚠️ 2026-09-23: шатны нэр `STAGE_LABEL`-ээс (ганц эх) — «ЕМ · ХД · ГД»
-       товчлол уншигчид ойлгомжгүй байв. */
     facts.push(tr('шатаар: {0}', STAGE_ORDER
       .map((s) => `${STAGE_LABEL[s]} ${byStage[s]}`).join(' · ')));
   }
@@ -190,8 +151,6 @@ export function computeReview(input: ReviewInput): KpiResult {
   /* ── Хүснэгтүүд — БҮРЭН, нэртэй ── */
   const tables: DetailTable[] = [];
   if (pending) {
-    /* ⚠️ Гарчиг нь `execMetrics`-ийн «Хүлээгдэж буй ажил» түлхүүрийг ДАХИН
-       хэрэглэнэ («ажлууд» гэж шинэ түлхүүр зохиовол en.ts-д давхар мөр). */
     tables.push(table(
       tr('Хүлээгдэж буй ажил'),
       [tr('Багц'), tr('Ажил'), tr('Компани'), tr('Шат'), tr('Хэн дээр'), tr('Хоног'), tr('Буцаалт')],
@@ -232,8 +191,6 @@ export function computeReview(input: ReviewInput): KpiResult {
     value: num(worstDays),
     unit: tr('хоног хамгийн урт хүлээлт'),
     facts,
-    /* ⚠️ 2026-10-11 (аудит №7): хүлээгдэл УНШИГДААГҮЙ (`pending == null`) бол түвшин `unknown` — урьд нь
-       `reviewAgeLevel(null)` нөгөө талыг л авч, гол тоо «—» атлаа карт ногоон/шар гардаг байв (null ≠ 0). */
     level: pending == null ? 'unknown' : worstOf([reviewAgeLevel(worstDays), fillAgeLevel(maxFillAge)]),
     tables,
     issues,
@@ -244,26 +201,13 @@ export function computeReview(input: ReviewInput): KpiResult {
 
 /* ══════════════ Ачаалагч ══════════════ */
 
-/**
- * ⚠️ `['HYANALT', 'BAGTS_SHEET']` — хянагч шийдвэр гаргах эсвэл гүйцэтгэгч
- *    бөглөх хуудсанд бичмэгц энэ карт хүчингүй болж дахин татагдана. Зөвхөн
- *    TTL-ээр явбал батлагдсан ажил 5 минут хүртэл «хүлээгдэж буй» хэвээр
- *    тоологдоно (`execMetrics.loadReviewAging`-ийн сургамж).
- */
 export const loadReviewKpi: () => Promise<KpiResult> = cached(async () => {
   const now = Date.now();
-  /* ⚠️ Эхийн нэрс нь порталын ХАРАГДАЦЫН нэрс (i18n-д аль хэдийн байгаа
-     түлхүүрүүд) — «Гүйцэтгэлийн хяналт» ба «Гүйцэтгэл бөглөх». Хэрэглэгч
-     унасан эхийг тэр нэрээр нь цэснээс олно; шинэ нэр зохиовол олдохгүй. */
   const names = [tr('Гүйцэтгэлийн хяналт'), tr('Гүйцэтгэл бөглөх')];
   const [rv, fh] = await Promise.allSettled([
     queryAll().then((attrs) => pendingAging(groupWorks(attrs.map(toRow)), now)),
-    /* ⚠️ 2026-10-13: блокгүй багцууд (5.x · 6.x · 7.1 · 10) ч — 01-ийн батлагдсан жааз (`loadInfraHistory`);
-       түлхүүр блоктойгоос ДАВХЦАХГҮЙ тул нийлүүлэхэд давхардахгүй */
     Promise.all([loadBlockHistory(), loadInfraHistory()]).then(([b, i]) => fillAgeByPkg(new Map([...b, ...i]), now)),
   ]);
-  /* ⚠️ `<unknown>` — хоёр эх ӨӨР төрөл буцаадаг (Pending[] · FillAge[]) тул
-     `settled`-ийн `T`-г эхний элементээс дүгнүүлбэл хоёр дахь нь таарахгүй. */
   const { failed } = settled<unknown>([rv, fh], names);
   if (failed.length === names.length) {
     throw new Error(`ceo/review: ${failed.join(', ')} — ${tr('татагдсангүй')}`);
@@ -273,5 +217,4 @@ export const loadReviewKpi: () => Promise<KpiResult> = cached(async () => {
     fills: fh.status === 'fulfilled' ? fh.value : null,
     failedSources: failed,
   });
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): нэг эх унасан картыг КЭШЛЭХГҮЙ (`kpiComplete`) */
 }, 5 * 60_000, ['HYANALT', 'BAGTS_SHEET'], kpiComplete);

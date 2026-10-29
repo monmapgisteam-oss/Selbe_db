@@ -13,7 +13,6 @@ import assert from 'node:assert/strict';
 const { allBlockRows, plainRows, unionSpans, actUnion } = await import('./allBlocks.ts');
 
 const D = 86400000;
-/* ⚠️ 2026-10-22 (аудит №5): 2026-01-01-ээс — бүлгийн нэгтгэл 2000–2100-аас гадуурх мужийг алгасдаг болсон (`deps.saneSpan`) */
 const D0 = Date.UTC(2026, 0, 1);
 const sp = (a, z) => ({ start: D0 + a * D, end: D0 + z * D });
 const row = (i, o) => ({

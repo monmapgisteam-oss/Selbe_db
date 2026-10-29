@@ -1,24 +1,5 @@
 /**
  * ENTERPRISE — JS API ХҮСЭЛТИЙН INTERCEPTOR (2026-10-20; 2026-10-26-нд талбарын нэрийн хөрвүүлэлт ХАСАГДСАН).
- *
- * ⚠️ ЯАГААД: газрын зургийн давхарга (FeatureLayer), ноорог/эрхийн хүснэгтийн `FeatureLayer.queryFeatures`/
- *    `applyEdits` нь `query.ts`-ийн цөмөөр БИШ, JS API-ийн өөрийн `esri/request`-ээр явдаг. `esriConfig.request.interceptors`
- *    нь JS API-ийн БҮХ хүсэлтэд (давхаргын мета · асуулга · layerView-ийн worker-ийн татлага · applyEdits) ажилладаг.
- * ⚠️ 2026-10-26 (хэрэглэгч: «хөрвүүлэх хүснэгт огт ашиглахгүй, бодит датаг шууд ашиглана»): урьд энд талбарын нэрийг
- *    (`BAGTS` ↔ `bagts`) хоёр чиглэлд хөрвүүлдэг байв (`entMap` толь). Одоо код Enterprise-ийн БОДИТ (жижиг үсэгтэй)
- *    нэрээр бичигдсэн тул хөрвүүлэлт БАЙХГҮЙ. Үлдсэн нь нэр өөрчилдөггүй:
- *      · импортын агшны мөшгөлтийн утгын засвар (`editTrack.fixImportStamps` — асуулгын хариунд);
- *      · хуучин мөшгөлтийн баганатай давхаргын метад `supportedQueryFormats = 'JSON'` (PBF хариунд утгын засвар
- *        хийх боломжгүй — урьдын зан төлөв хэвээр; бусад давхарга PBF-ээр).
- * ⚠️ Дуудах цэг: `AuthGate` (аппын эхэнд, нэвтрэлтээс үл хамааран) · `MapCanvas`/`SuitMap` (view үүсгэхээс өмнө) ·
- *    FeatureLayer кэштэй lib-үүд (`draftRemote` · `permsRemote`). Node-д (тест) JS API ачаалагдахгүй тул чимээгүй алгасна.
- * ⚠️ 2026-10-22 (гүйцэтгэл): ЭНЭ НЭГ interceptor ОЛОН үүрэгтэй — JS API `request` нь `urls`-тэй ТААРСАН ЭХНИЙ
- *    interceptor-ыг л ажиллуулдаг (`core/urlUtils.getInterceptor`), тусдаа interceptor нэмбэл давхцсан хаягт аль нэг нь
- *    ХЭЗЭЭ Ч ажиллахгүй. Дараалал — `before`: (1) серверийн итгэмжлэл (`ensureCred`) → (2) метагийн кэш (`metaCache`);
- *    `after`: утгын засвар → кэшид хадгална. Кэшийн хит `before`-оос буцахад JS API `after`-ыг ДУУДДАГГҮЙ (`request.js`)
- *    — тиймээс хадгалсан нь аль хэдийн засагдсан байх ёстой.
- *    `urls` = Enterprise серверийн бүх үйлчилгээ (`ENT_SERVER`, ортофото MapServer/ImageServer ч) + бусад хостын
- *    метагийн хаяг (`META_URL_RE` — суурь зураг); бусад хүсэлт энэ interceptor-оор огт орохгүй.
  */
 import { AUTH, ENT_HOSTED } from '@/lib/services/env';
 import { fixImportStamps } from '@/lib/editTrack';
@@ -40,7 +21,7 @@ const META_REQ = '__selbeMeta';
  */
 export const ENT_SERVER = ENT_HOSTED ? ENT_HOSTED.replace(/\/rest\/services\/.*$/i, '/rest/services').replace(/\/+$/, '') : '';
 
-/** Хуучин мөшгөлтийн (gdb-ээс хуулсан, AGOL-ын эх утгатай) баганатай давхаргын мета уу — `editTrack.ts`-ийн ⚠️ */
+/** Хуучин мөшгөлтийн (gdb-ээс хуулсан, AGOL-ын эх утгатай) баганатай давхаргын мета уу — `editTrack.ts` */
 const hasStampCols = (b: Record<string, unknown>): boolean =>
   Array.isArray(b.fields) && typeof b.type === 'string'
   && (b.fields as { name?: unknown }[]).some((f) => typeof f?.name === 'string' && /^(creationdate|editdate)(_1)?$/.test(f.name));
@@ -87,7 +68,7 @@ const aborted = (s: unknown): boolean => !!(s && typeof s === 'object' && (s as 
 const hasExplicitToken = (url: string, ro: ReqOpts): boolean => /[?&]token=/i.test(url) || ro.query?.token != null;
 
 /**
- * НЭГДСЭН INTERCEPTOR — `before`/`after`/`error` (тестэд хуурамч хамаарлаар; толгойн ⚠️ 2026-10-22 «ГУРВАН үүрэг»).
+ * НЭГДСЭН INTERCEPTOR — `before`/`after`/`error` (тестэд хуурамч хамаарлаар; толгой 2026-10-22 «ГУРВАН үүрэг»).
  */
 export function makeEntInterceptor(d: EntInterceptorDeps): {
   urls: (string | RegExp)[];
@@ -99,16 +80,6 @@ export function makeEntInterceptor(d: EntInterceptorDeps): {
   const onServer = (url: string): boolean => !!d.entServer && url.startsWith(`${d.entServer}/`);
   let coolUntil = 0;
 
-  /**
-   * ⚠️ 2026-10-22 (гүйцэтгэл): ЭХНИЙ ХҮСЭЛТ ТОКЕНТОЙ ЯВНА. JS API (`request.js`) хүсэлт бүрт итгэмжлэлийг
-   *    `IdentityManager.findCredential(url)`-аар хайдаг — тэр нь итгэмжлэлийн `resources`-д ТУХАЙН ҮЙЛЧИЛГЭЭ бүртгэлтэй
-   *    байхыг шаарддаг (`_isIdenticalService`). Тиймээс серверийн итгэмжлэл байсан ч ШИНЭ үйлчилгээ бүрийн эхний хүсэлт
-   *    токенгүй явж 499 аваад `getCredential`-ийн дараа ДАХИН илгээгддэг байв (хуудсанд ~185 мета × 2, CDP-ээр батлав).
-   *    Одоо хүсэлтийн ӨМНӨ `getCredential(url, { prompt: false })`: серверийн итгэмжлэл байвал СҮЛЖЭЭГҮЙ (үйлчилгээг
-   *    бүртгээд буцаана), зөвхөн порталын итгэмжлэл байвал федерацийн токеныг НЭГ удаа үүсгэнэ (зэрэг хүсэлтүүд JS API-ийн
-   *    нэг дараалалд хүлээнэ). Нэвтрэх цонх ГАРГАХГҮЙ; унавал/удвал урьдын адил токенгүй явж JS API өөрөө шийднэ.
-   *    Нэвтрээгүй (итгэмжлэлгүй) · `authMode` тодорхой · ил токентой хүсэлтэд огт оролдохгүй — зан төлөв хэвээр.
-   */
   const ensureCred = async (id: IdLike, url: string, ro: ReqOpts): Promise<{ userId?: string | null } | null> => {
     const find = (u: string) => { try { return id.findCredential(u) ?? null; } catch { return null; } };
     const have = find(url);
@@ -136,8 +107,6 @@ export function makeEntInterceptor(d: EntInterceptorDeps): {
       const server = onServer(url);
       const id = server ? d.id() : null;
       const cred = id ? await ensureCred(id, url, ro) : null;
-      /* ⚠️ Бичилт (ил POST/бие — `mutatesData`) → мета (extent · `editingInfo` · схем) хуучирч болзошгүй — урьдчилж
-         хаяна, `after`/`error`-т ДАХИН (бичилтийн явцад эхэлсэн мета татлага кэшид суухгүй). */
       if (server && mutatesData(ro)) d.cache.clear();
       const key = metaKey(url, ro, cred ? (cred.userId || 'cred') : '');
       if (!key) return undefined;
@@ -166,7 +135,6 @@ export function makeEntInterceptor(d: EntInterceptorDeps): {
         if (d.isEntData(r.url)) r.data = entJsAfter(r.data);
         ok = true;
       } finally {
-        /* ⚠️ Засвар унасан бол засаагүй хариуг ХАДГАЛАХГҮЙ — гэхдээ хүлээгчдийг заавал чөлөөлнө */
         if (m) d.cache.settle(m.key, m.ticket, ok ? r.data : undefined);
         if (onServer(r.url) && mutatesData(ro)) d.cache.clear();
       }
@@ -181,10 +149,6 @@ export function makeEntInterceptor(d: EntInterceptorDeps): {
   };
 }
 
-/* ⚠️ 2026-10-21: boolean биш PROMISE-ыг кэшилнэ. Урьд `installed = true` нь `import('@arcgis/core/config')`
-   шийдэгдэхээс ӨМНӨ тавигддаг тул зэрэг ирсэн хоёр дахь дуудагч хөрвүүлэгч суугаагүй байхад буцаж, түүний
-   FeatureLayer-ийн мета хөрвүүлэгдэлгүй явдаг байв (жижиг үсэгтэй талбар → OBJECTID undefined → ноорог
-   хадгалалт давхардсан add болно). Одоо бүх дуудагч НЭГ суулгалтын дуусахыг хүлээнэ. */
 let installing: Promise<void> | null = null;
 /** `esriConfig.request.interceptors`-т нэг удаа суулгана — JS API байхгүй (Node) бол юу ч хийхгүй */
 export function installEntInterceptor(): Promise<void> {
@@ -213,8 +177,6 @@ async function doInstall(): Promise<void> {
     sessionUrls: [portal ? `${portal}/sharing` : '', ENT_SERVER].filter(Boolean),
     cache: metaCache,
   }));
-  /* ⚠️ 2026-10-22: аппын REST бичилт (`dataBus.invalidate`) · «Шинэчлэх»/таб буцах · хэл солих (`invalidateAll`) →
-     метагийн кэшийг хаяна. REST бичилт (`query.ts` — шууд fetch) энэ interceptor-оор ЯВДАГГҮЙ тул ганц дохио нь энэ. */
   try {
     const { subscribeData } = await import('@/lib/dataBus');
     subscribeData(clearMetaCache);

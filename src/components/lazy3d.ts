@@ -1,16 +1,5 @@
 /**
- * 3D/BIM-ИЙН ArcGIS МОДУЛИЙГ ХОЦРООЖ АЧААЛАХ (⚠️ 2026-10-04, BIM/3D гүйцэтгэл).
- *
- * ⚠️ ЯАГААД: `MapCanvas` нь Portal-ын СТАТИК графт (Portal → MapCanvas) тул түүний статик
- *    импорт БҮХ хэрэглэгчид татагдана. Урьд нь `SceneView` (3D WebGL engine бүхэлдээ),
- *    `BuildingSceneLayer`, `IntegratedMeshLayer`, `BuildingExplorer`, 7 шинжилгээ
- *    (`VolumeMeasurementAnalysis` ~1.3 МБ), `Slide` статик байсан — 3D/BIM-д ОГТ ороогүй 2D
- *    хэрэглэгч ч тэдгээрийг татаж, задлан шинжилдэг байв (dev хэмжилт: 2D ачаалалтад 754
- *    SceneView/3d-engine модуль). Одоо 3D/BIM горимд анх ороход (эсвэл товч дээр хулгана
- *    очиход — `prefetch3d`) л татагдана.
- * ⚠️ Нэг удаа — амлалтыг хадгална; уналтад (сүлжээ) хаяж, дараагийн дуудлага дахин оролдоно
- *    («Дахин оролдох» товч → MapCanvas-ийн `initToken`).
- * ⚠️ Төрлийг `import type`-аар л авна — эс бөгөөс webpack модулийг СТАТИК графт буцааж чирнэ.
+ * 3D/BIM-ИЙН ArcGIS МОДУЛИЙГ ХОЦРООЖ АЧААЛАХ (2026-10-04, BIM/3D гүйцэтгэл).
  */
 import type SceneViewT from '@arcgis/core/views/SceneView';
 import type IntegratedMeshLayerT from '@arcgis/core/layers/IntegratedMeshLayer';

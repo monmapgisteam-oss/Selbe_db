@@ -1,21 +1,11 @@
 /**
- * АППЫН ДОТООД АСУУЛТ ба «БУЦААХ» МЭДЭГДЭЛ — `window.confirm`-ийн оронд (⚠️ 2026-10-23, UX аудит X1).
+ * АППЫН ДОТООД АСУУЛТ ба «БУЦААХ» МЭДЭГДЭЛ — `window.confirm`-ийн оронд (2026-10-23, UX аудит X1).
  *
  * ```ts
  * import { askConfirm, toastUndo } from '@/lib/confirm';
  * if (!(await askConfirm(tr('Энэ мөрийг устгах уу?'), { danger: true, ok: tr('Устгах') }))) return;
- * void toastUndo(tr('Мөр устгагдлаа'), () => restore(row));
+ * void toastUndo(tr('Мөр устгагдлаа'),  => restore(row));
  * ```
- *
- * ⚠️ ЯАГААД: `window.confirm`-ийг хөтөч «энэ хуудас дахин харилцах цонх үүсгэхгүй» сонголтоор хаасан
- *    бол АСУУЛТГҮЙ `false` буцаадаг — «Батлах»/«Буцаах»/«Устгах» товч ЧИМЭЭГҮЙ юу ч хийхгүй болдог байв
- *    (`DedButets.confirmQ`-ийн ⚠️ 2026-09-23). Порталд ~70 ийм цэг байв.
- * ⚠️ React-гүй ЦЭВЭР модуль — lib-ийн гүн дуудлагууд ч (`ajilBatlah.ts` г.м.) импортолж болно; харагдах хэсэг нь
- *    `components/ConfirmHost.tsx` (`Root`-д НЭГ удаа суурилагдсан).
- * ⚠️ ХОСТ АЛГА бол (нэгж тест · Node · `Root`-оос гадуурх мод) `window.confirm` руу буцна, тэр ч алга бол `false` —
- *    шалгууруудын `window.confirm` стуб хэвээр ажиллана (`confirm.check.mjs`).
- * ⚠️ Асуултууд ДАРААЛЛААР (нэг зэрэг нэг л цонх) — хоёр дахь нь эхнийх шийдэгдтэл хүлээнэ.
- * ⚠️ `beforeunload` ХӨТЧИЙН ӨӨРИЙН цонх хэвээр — синхрон тул энэ API тэнд ажиллахгүй.
  */
 
 export type ConfirmOpts = {
@@ -45,7 +35,6 @@ const listeners = new Set<() => void>();
 
 const emit = (): void => {
   const head = queue[0];
-  /* ⚠️ Агшин нь шинэ объект зөвхөн өөрчлөлтөд — `useSyncExternalStore` тогтвортой identity шаарддаг */
   snap = {
     req: head ? { id: head.id, message: head.message, opts: head.opts } : null,
     toast: toast ? { id: toast.id, message: toast.message, ms: toast.ms } : null,
@@ -96,7 +85,6 @@ const win = (): WinLike | undefined => (globalThis as { window?: WinLike }).wind
 
 /**
  * Асуулт асууна — `true` = батлав, `false` = болив (Esc · «Болих» · ард нь дарсан).
- * ⚠️ ҮРГЭЛЖ асинхрон — дуудагч `await` хийнэ (хандлагч функцээ `async` болгоно).
  */
 export function askConfirm(message: string, opts: ConfirmOpts = {}): Promise<boolean> {
   if (hosts <= 0) {
@@ -130,12 +118,8 @@ export function settleConfirm(id: number, value: boolean): void {
  * `false` = хугацаа дуусав / хаав / өөр мэдэгдлээр солигдов / хост алга.
  *
  * Хоёр хэв:
- * 1) Шууд хийгээд буцаана: `doDelete(); void toastUndo(msg, () => restore());`
- * 2) Хугацаа дуустал хойшлуулна: `if (await toastUndo(msg, () => {})) return; await doDelete();`
- *
- * ⚠️ Нэг зэрэг НЭГ мэдэгдэл — шинэ нь хуучныг `false`-оор хаана (2-р хэвийн хойшлогдсон устгал тэр агшинд хийгдэнэ).
- * ⚠️ Хост алга бол шууд `false` (буцаах хүн алга — 2-р хэвд устгал шууд явна).
- * ⚠️ Хулгана/фокус дээр нь байхад хугацаа зогсоно (WCAG 2.2.1) — `ConfirmHost`.
+ * 1) Шууд хийгээд буцаана: `doDelete; void toastUndo(msg,  => restore);`
+ * 2) Хугацаа дуустал хойшлуулна: `if (await toastUndo(msg,  => {})) return; await doDelete;`
  */
 export function toastUndo(message: string, onUndo: () => void, ms = 6000): Promise<boolean> {
   if (hosts <= 0) return Promise.resolve(false);

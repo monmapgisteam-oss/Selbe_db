@@ -2,96 +2,18 @@
 
 /**
  * ИЛГЭЭЛТИЙН ЗАВСРЫН ХАДГАЛАЛТ — «Нийтлэх» → хяналт → батлагдахад л архив.
- *
- * ⚠️ ЯАГААД (2026-09-04, хэрэглэгч: «ноорог систем дотор файлд түр хадгалагдаж
- * байх ёстой, ноорог ҮНДСЭН ДАТАНД хадгалагдаж болохгүй. Бүх шалгалт дуусаж
- * 4 шат дамжсаны дараа л дата хүснэгт буюу үндсэн сервис рүү орно»):
- * урьд нь «Нийтлэх» дарахад `applyAdds` багцын `Bagts_*` үйлчилгээнд
- * (ҮНДСЭН ДАТА) шууд бүтэн жааз бичиж, хяналт нь ТЭР бичигдсэн жаазыг араас
- * нь харж байв — инженер буцаасан ч архивт жааз аль хэдийн үлдчихсэн.
- * Одоо «Нийтлэх» = ИЛГЭЭХ: зөвхөн diff нь `Selbe_Guitsetgel_Draft` хүснэгтийн
- * `sub|<pkgKey>` мөрөнд хадгалагдаж, төлөвлөлтийн ахлах инженер БАТЛАХАД л
- * (`hyanaltStore.apply`) архивт жааз үүснэ.
- *
- * ⚠️ `dkey`-ИЙН ЗАЙ — нэг хүснэгт, гурван төрлийн мөр:
- *   · `<user>|<pkg>`         — ноорог (`draftRemote`, хэвээр; хэрэглэгч бүрд тусдаа)
- *   · `sub|<pkg>|<fillMs>`   — ИДЭВХТЭЙ илгээлт; багц × ӨДӨР бүрд НЭГ мөр
- *   · `sub|<pkg>`            — ХУУЧИН (2026-09-07-оос ӨМНӨХ) идэвхтэй илгээлт,
- *                              өдрийн дагаваргүй; уншилт нь ҮРГЭЛЖ дэмжинэ
- *   · `done|<pkg>|<oid>`     — батлагдсан илгээлт (хөлдсөн); payload-д
- *                              `archiveOid`, `approvedAt` нэмэгдэнэ
- *   Нэг багц × нэг ӨДӨРТ нэг идэвхтэй илгээлт: ТЭР ӨДРИЙН илгээлтийг дахин
- *   илгээхэд ШИНЭ мөр биш, БАЙГАА мөр update хийгдэнэ (`mergeSubmission`-оор
- *   нэгтгэсэн payload-той). Батлагдсаны дараа `sub|` мөр `done|` болж хөлдөнө.
- *
- * ⚠️ ЯАГААД ӨДӨР ОРСОН (2026-09-07, хэрэглэгчийн шууд шаардлага: «хянагдаж
- *    байсан ч дараа өдрийнхийг илгээх боломжтой байх ёстой… дарж бичихгүй,
- *    тусдаа хянагдаад 4 хяналтын зарчмаар явна»):
- *    урьд нь багцад ЦОРЫН ГАНЦ `sub|<pkg>` мөр байсан тул өчигдрийн илгээлт
- *    инженерийн гар дээр байхад өнөөдрийнхийг илгээх зам ОГТ БАЙХГҮЙ байв —
- *    `inReview` бүрмөсөн хаадаг, хаалтыг арилгавал `saveSubmission` тэр НЭГ
- *    мөрийг дарж бичиж, хянагчийн харж буй агуулга доор нь солигдоно.
- *    Одоо өдөр бүр ӨӨРИЙН `sub|` мөртэй, ӨӨРИЙН хяналтын мөртэй
- *    (`hyanaltSubmit`-ийн `Ажлын_нэр`-д огноо ордог тул `groupWorks` тэднийг
- *    аль хэдийн ТУСДАА ажил болгодог) — 4 шат нь өдөр тус бүрд зэрэгцэн явна.
- *
- * ⚠️ ХУУЧИН МӨРҮҮД ҮЙЛДВЭРЛЭЛД БАЙГАА: дагаваргүй `sub|<pkg>` мөрүүд
- *    хянагдсаар байгаа тул тэдгээрийн УНШИХ · БАТЛАХ · ХААХ зам ЗААВАЛ
- *    нээлттэй үлдэнэ. `readSubmissionByOid`/`closeSubmission` нь OBJECTID-аар
- *    ажилладаг тул тэдэнд өөрчлөлт хэрэггүй; `readActiveSubmission` нь
- *    (гүйцэтгэгчийн хуудасны зам) ХОЁУЛАНГ нь хайж, тэр ӨДРИЙНХИЙГ буцаана
- *    (доорх `readActiveSubmission`-ийн ⚠️).
- *
- * ⚠️ OBJECTID ХЭВЭЭР ҮЛДЭХ ЁСТОЙ: хяналтын бүртгэлийн (`guitsetgel_bugluh_hyanalt`)
- * `Эх_мөрийн_дугаар` нь илгээлтийн мөрийн ЭНЭ OBJECTID руу заадаг. Update-ийн
- * оронд delete+add хийвэл дугаар солигдож, хянагч илгээлтээ олохгүй.
- *
- * ⚠️ ЧИМЭЭГҮЙ БИШ — `draftRemote`-оос ялгаатай: ноорог нь нэмэлт хуулбар тул
- * алдаагаа залгидаг (`null`/`false`). Илгээлт нь хяналтын бүртгэлтэй холбогдох
- * ЖИНХЭНЭ алхам: хадгалалт унасныг хэрэглэгч мэдэхгүй бол «илгээлээ» гэж
- * бодоод хүлээнэ, хянагч юу ч харахгүй. Тиймээс `saveSubmission`/`closeSubmission`
- * нь `{ok:false, error}` МЕССЕЖТЭЙ буцаана. Унших зам (`load*`) л чимээгүй
- * `null` — харагдацыг унагаахгүй (илгээлтгүйтэй ижил).
- *
- * ⚠️ Хүснэгтийн URL, нэвтрэлт, давхардал цэвэрлэх ёс — `draftRemote`-ийнх
- * ХЭВЭЭР (тэндээс импортолно): хоёр модуль НЭГ хүснэгтэд бичдэг тул URL-ын
- * кэш, эзний шалгалт хоёр газар салж болохгүй.
- *
- * ⚠️ `null ≠ 0`: payload дахь `asOf`/`base` нь «мэдээлэлгүй» = `null`; тоо биш
- * утгыг 0 болгохгүй.
  */
 
 import { getAuth, tableUrl, layer, sqlStr } from './draftRemote';
-/*
- * ⚠️ 2026-10-26 (хэрэглэгчийн шийдвэр — БҮХ ноорог эх хуудасны бүтцээр 191-д): илгээлтийн НҮД нь `payload` JSON-д БИШ
- *    `n:sub:<толгойн OBJECTID>` мөрүүдэд (ажил × блок бүрд нэг мөр, `obyem_sum` · `бодит_гүйцэтгэл` · огноо — `draftRows`).
- *    Толгой (`sub|…`/`done|…` мөр, OBJECTID ХЭВЭЭР) нь зөвхөн ажлын урсгалын мета (`archiving` · `nonces` · `users` …) ба
- *    БАТАЛГААЖСАН ҮЕҮДИЙН жагсаалт (`gens`) — уншигч `gens`-ийн хамгийн сүүлийн үеийн мөрийг авна (MVCC): хагас/унасан бичилт
- *    ХЭЗЭЭ Ч харагдахгүй. `gens`-гүй (хуучин эсвэл хуучин табын бичсэн) payload-ын нүд нь эх сурвалж хэвээр.
- * ⚠️ PHASE A: `SUB_DUAL` — payload-д v2 бүтэн хуулбар ч (≤ `SUBMISSION_MAX`) — шинэчлээгүй таб ажилласаар; хэтэрвэл v3 мета
- *    (хуучин таб «агуулга задарсангүй» гэж зогсоно — fail-closed). Тулгалтын дараа (`draftRowsRemote.phaseB`) `false` болгоно.
- */
 import { rowsReady, subRowsFor, subWriteGen, subGc, subDropAll, fillFrame, setHeaderCols } from './draftRowsRemote';
 import { cellToCols, colsToCell, pickGeneration, subFromRows, subToRows, ROW_VERSION, type Attrs, type Frame } from './draftRows';
 import { t as tr } from '@/lib/i18nCore';
-/* ⚠️ Нэмэлтийн мөрийн ГАНЦ дүрэм `bagtsSheet`-д (2026-09-25) — энд давтаж бичвэл
-   нэгтгэл ба overlay хоёр өөрөөр уншиж эхэлнэ. Цэвэр функцууд л. */
 import { negInc, parseInc, sumInc } from '@/modules/sheet/bagtsSheet';
-/* ⚠️ 2026-10-11 (аудит №7): хариу алдагдсан бичилтийг тодорхой татгалзлаас ялгана (`saveSubmission.lost`) */
 import { isLostWrite } from './lostWrite';
-/* ⚠️ 2026-10-12 (дарааллын аудит): «архивлаж байна» тэмдгийн шинэ эсэх (`markFresh`) — ӨӨР хөтчийн `startedAt`-ыг
-   СЕРВЕРИЙН цагаар жишнэ (`serverClock`-ийн ⚠️); синк хийгдээгүй (Node) бол `Date.now()` */
 import { serverNow } from './serverClock';
 
 /**
  * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан батлагдаагүй мөр.
- *
- * ⚠️ Эцгийг ObjectID-гаар санахгүй: батлахад хуудас бүхэлдээ хуулбарлагдаж
- * бүх мөр ШИНЭ ObjectID авдаг тул тэр дугаар удаан амьдардаггүй. (№ + ажлын
- * нэр) хос нь эх excel-ийн бүтэц тул хамаагүй тогтвортой.
- *
- * ⚠️ НЭГ ЭХ СУРВАЛЖ: FillNew ба sheetFrame хоёулаа ЭНДЭЭС импортолно —
- * төрөл салбарлавал илгээлт ба бөглөх хуудасны мөр зөрнө.
  */
 export type NewRow = {
   /** Түр ObjectID — САЛАНГИД сөрөг тоо, серверийн дугаартай хэзээ ч мөргөлдөхгүй */
@@ -108,40 +30,24 @@ export type NewRow = {
 
 /**
  * ИЛГЭЭЛТИЙН АГУУЛГА — архивын сүүлийн жааз дээрх diff.
- *
- * ⚠️ `cells`/`dates`/`adds` нь FillNew-ийн `pending`/`pendDate`/`adds`-тай
- * ЯГ ИЖИЛ хэлбэр: илгээлтийг компанийн хуудсанд overlay хийх, хянагчид
- * харуулах, батлахад жааз бүтээх — гурвуулаа нэг хэлбэрээс уншина.
  */
 export type SubmissionPayload = {
   /**
    * Хэлбэрийн хувилбар. `2` = НЭМЭЛТИЙН (`mode: 'inc'`) илгээлт (2026-09-25).
-   * ⚠️ ЗОРИУД ӨСГӨВ: хуучин кодтой (шинэчлээгүй таб) хөтөч `v !== 1`-ийг
-   *    `parseSubmission`-д ТАТГАЛЗАЖ «агуулга задарсангүй» гэж ЗОГСДОГ
-   *    (fail-closed, `readRow`). `v: 1` үлдээвэл тэр таб нэмэлтийг НИЙТ гэж
-   *    уншиж архивт 40 → 15 болгож бичих байсан.
    */
   v: 1 | 2;
   /**
-   * НҮДНИЙ УТГЫН ДҮРЭМ (2026-09-25, `bagtsSheet.CellMode`-ийн ⚠️).
+   * НҮДНИЙ УТГЫН ДҮРЭМ (2026-09-25, `bagtsSheet.CellMode`).
    *   · `'inc'` — `cells` нь ӨМНӨХ бөглөлтөөс хойшх НЭМЭЛТ; батлахад СҮҮЛИЙН
    *     архивын утга дээр НЭМЭГДЭНЭ.
    *   · байхгүй — ХУУЧИН (2026-09-25-аас өмнөх) илгээлт: `cells` нь НИЙТ утга,
-   *     архивын утгыг ОРЛОНО. ⚠️ Туггүй бүхнийг ингэж уншина (давхар нэмэхгүй).
+   *     архивын утгыг ОРЛОНО. Туггүй бүхнийг ингэж уншина (давхар нэмэхгүй).
    */
   mode?: 'inc';
   /** PKGS түлхүүр */
   pkgKey: string;
   /** Илгээсэн (компанийн) хэрэглэгч, жижиг үсгээр */
   user: string;
-  /**
-   * ⚠️ 2026-10-09 (аудит): ЭНЭ илгээлтэд ХЭЗЭЭ НЭГЭН ЦАГТ илгээсэн БҮХ данс (жижиг үсгээр, `mergeSubmission`
-   *    хуримтлуулна; `saveSubmission` хөтөчид нэвтэрсэн хэрэглэгчийг нэмнэ). Урьд нь зөвхөн СҮҮЛИЙН илгээгч
-   *    (`user`) үлддэг тул хамтран бөглөгч А компаниас инженер шат руу шилжүүлэгдвэл Б-ийн дахин илгээсэн
-   *    илгээлтэд орсон ӨӨРИЙН нүдээ өөрөө батлах боломжтой байв (`hyanaltStore.authz` — инженер шатанд
-   *    хянагч ∈ `users ∪ {user}` бол татгалзана). Шинэ ҮЙЛЧИЛГЭЭНИЙ талбар биш — payload JSON дотор.
-   *    Хуучин мөрд алга → зөвхөн `user`-аар.
-   */
   users?: string[];
   /** Илгээсэн агшин (ms) */
   at: number;
@@ -161,20 +67,11 @@ export type SubmissionPayload = {
   rowKeys: [number, string][];
   /**
    * МӨРИЙН ДАВТАМЖИЙН ДУГААР — `[oid, k, n]` (2026-10-04 аудит, #2; `sheetFrame.RowOcc`).
-   * ⚠️ «№ ¦ Ажил» шошго жаазны 60.5%-д давхардсан (Bagts_1_9f) тул `rowKeys` ганцаараа
-   *    мөрийг ялгахгүй: шинэ жааз руу зөөхөд ӨӨР мөрөнд буух байв. Сонголттой —
-   *    хуучин илгээлтэд байхгүй; тэр үед `mapOldOids` хоёрдмол түлхүүрийг ЗӨӨХГҮЙ.
    */
   rowOcc?: [number, number, number][];
   /**
    * ИЛГЭЭЛТИЙН ТАНИГЧУУД — илгээх оролдлого бүрийн санамсаргүй `nonce` (сүүлийн 20),
    * 2026-10-04 аудит (#3).
-   * ⚠️ ЯАГААД: `saveSubmission` сервер дээр бичигдсэний ДАРАА хариу нь тасарвал
-   *    (сүлжээ, timeout) клиент «болсонгүй» гэж үзэж ноорогоо үлдээнэ; дахин дарахад
-   *    «өөр хэрэглэгч илгээсэн» гэж зогсох эсвэл (F5-ын дараа) ижил нэмэлтийг ДАХИН
-   *    нэгтгэж ДАВХАР тоолох байв. Одоо `FillNew.publish` өөрийн хадгалсан `nonce`-ыг
-   *    энд хайж «миний илгээлт аль хэдийн буусан» гэж таньна. `mergeSubmission` хуримтлуулна
-   *    (дараагийн илгээлт өмнөхийнхийг агуулна — өөр хүн дээр нь нэгтгэсэн ч олдоно).
    */
   nonces?: string[];
   /** Батлагдсаны дараа: архивт нэмэгдсэн ЭХНИЙ мөрийн OBJECTID */
@@ -183,29 +80,17 @@ export type SubmissionPayload = {
   /**
    * «БҮРТГЭЛ ХҮЛЭЭГДЭЖ БУЙ» — архивт буусан боловч нэгтгэл (`registerApproved`)
    * ба IPC (`syncIpcFromFill`) хараахан баталгаажаагүй (2026-09-25 аудит).
-   * ⚠️ `closeSubmission` `done|` болгохдоо `true` тавьж, хоёулаа амжилттай
-   *    болсны дараа `markRegistered` арилгана. Таб энэ хооронд хаагдвал
-   *    `hyanaltStore.retryPendingRegistrations` дахин ажиллуулна — урьд нь тэр
-   *    өдөр нэгтгэл/IPC-гүй МӨНХӨД үлддэг байв.
    */
   regPending?: boolean;
   /**
    * «ҮЛДЭГДЭЛ НЭМЭЛТ» (2026-09-25 аудит) — батлах явцад гүйцэтгэгч дахин илгээснээс
    * архивласан хэсгийг хассан үлдэгдэл (`residualAfterArchive`), `hyanaltStore` бичнэ.
-   * ⚠️ Хяналтын мөр нь «Шилжүүлсэн» болсон атлаа энэ агуулга архивт ОРООГҮЙ тул
-   *    FillNew түүнийг урсгалаас үл хамааран давхарлаж/нэгтгэнэ; `hyanaltStore.apply`
-   *    шинэ хяналтын тойрог нээнэ. `mergeSubmission` ДАМЖУУЛАХГҮЙ (дараагийн илгээлт
-   *    өөрөө шинэ тойрог нээдэг); `done|` болоход утгагүй болно.
    */
   residual?: true;
   /**
    * ҮЛДЭГДЛИЙГ ҮҮСГЭСЭН БАТЛАЛТ (2026-10-12, A9) — `hyanaltStore.closeAfterArchive` `residual`-тай хамт бичнэ:
    *   · `row` — тэр үеийн хяналтын мөрийн OBJECTID (эцсийн шатанд батлагдаж байсан);
    *   · `archiveOid`/`day` — тэр батлалтаар архивт бичигдсэн жаазны эхний OID ба өдөр (0 = бичээгүй).
-   * ⚠️ ЯАГААД: үлдэгдэл хадгалагдсаны ДАРАА хяналтын мөрийн `updateRows` унавал мөр эцсийн шатанд үлдэж,
-   *    дахин «Батлах» нь ДООД шатнуудын хараагүй үлдэгдлийг шууд архивладаг байв. Энэ тэмдэгтэй ба ижил мөрөөр
-   *    батлагдвал архивлахгүй — «Шилжүүлсэн» болгож үлдэгдлийг шинэ тойрогт оруулна. `mergeSubmission`
-   *    ДАМЖУУЛАХГҮЙ (дараагийн илгээлт энгийн агуулга).
    */
   residualOf?: { row: number; archiveOid: number; day: string };
   /**
@@ -216,44 +101,18 @@ export type SubmissionPayload = {
    *   · `maxOid0` — бичихийн өмнөх архивын MAX OBJECTID;
    *   · `fillMs` — жаазны `buglusun_ognoo` (өнөөдөр рүү залруулсан байж болно);
    *   · `n` — жаазны мөрийн тоо.
-   * ⚠️ ЯАГААД: архив бичигдээд хаалт (`closeSubmission`) ба хяналтын мөр хоёулаа унавал
-   *    өөр хөтчийн дарга дахин батлахад `archivedSet` (localStorage) харагдахгүй тул БҮТЭН жааз
-   *    дахин бичигддэг байв. Тэмдэг байвал `OBJECTID > maxOid0 AND өдөр = fillMs` жааз архивт
-   *    бүтэн байгаа эсэхийг шалгаж, байвал бичихгүй шууд хаана.
-   * ⚠️ 2026-10-09 (ДАХИН ЗАССАН): `mergeSubmission` ДАМЖУУЛНА (урьд нь «шинэ агуулга = шинэ `at`» гэж
-   *    хаядаг байв). Архив бичигдсэний ДАРАА (хаалт унасан/явж байхад) гүйцэтгэгч дахин илгээвэл тэмдэг
-   *    алга болж, дараагийн батлалт архивласан +15-ийг ДАХИН нэмдэг байв (base+15 → +5 → base+35).
-   *    Дамжуулахдаа архивлаж буй агуулгын хуулбарыг (`prev`) хадгална — `archiveSubmission` тэр жааз
-   *    буусан бол шинэ агуулгыг `residualAfterArchive`-аар хасч бичнэ (`archivedContent`). `closeSubmission`
-   *    ба шийдсэн бичигч (`saveSubmission`-ий `dropMark`) арилгана.
-   * ⚠️ 2026-10-09: `by`/`sid` — тэмдэг тавьсан хэрэглэгч ба хөтчийн сешн (`markArchiving`-ийн «claim»);
-   *    `archivingBusy` (Ажил · обьём · Хуваарийн бичигчид) ШИНЭ (`ARCHIVING_TTL_MS`) тэмдгийг хүлээнэ.
-   * ⚠️ 2026-10-09 (R2-c): «≥ n мөр» нь ЭНЭ илгээлтийн жааз гэдгийг батлахгүй (тэр өдөр ӨӨР жааз бичигдэж
-   *    болно) — `rootNo` (жаазны эхний мөрийн №) ба `probe` (илгээлтээр өөрчлөгдсөн нүднүүдийн дээж:
-   *    [жаазан дахь индекс, талбар, бичсэн утга]) хадгалж `matchArchivedFrame`-ээр ЯГ таньна. Хуучин
-   *    (тэдгээргүй) тэмдэгт ЯГ `n` мөр + эхний № л шалгагдана.
    */
   archiving?: ArchivingMark;
 };
 
-/** «Архивлаж байна» тэмдэг — `SubmissionPayload.archiving`-ийн ⚠️ */
+/** «Архивлаж байна» тэмдэг — `SubmissionPayload.archiving` */
 export type ArchivingMark = {
   at: number; startedAt: number; maxOid0: number; fillMs: number; n: number;
   rootNo?: string;
   probe?: [number, string, number | string | null][];
-  /** ⚠️ 2026-10-09: тэмдэг тавьсан хэрэглэгч (жижиг үсгээр) — `archivingBusy`/`markArchiving`-ийн мессежид */
   by?: string;
-  /** ⚠️ 2026-10-09: тавьсан хөтчийн табын сешн (`SESSION_ID`) — «claim»: өөр сешн ШИНЭ тэмдгийг дарахгүй */
   sid?: string;
-  /**
-   * ⚠️ 2026-10-09: ДАМЖСАН тэмдгийн (`at` ≠ payload.at) архивлаж буй агуулга — `mergeSubmission` анх дамжуулахдаа
-   *    өмнөх payload-ын нүд/мөрийн танигчийг хуулна. Байхгүй бол буусан жаазаас хасах боломжгүй → татгалзана.
-   */
   prev?: ArchSnap;
-  /**
-   * ⚠️ 2026-10-26: `prev`-ийн МӨРИЙН ҮЕ (`n:sub:<OBJECTID>` — толгойн `gens`-ийн нэг) — v3 мета payload-д нүдний хуулбарын
-   *    ОРОНД бичигдэнэ; уншихад тэр үеийн мөрөөс `prev` дахин угсрагдана (`assemble`), GC тэр үеийг хадгална.
-   */
   prevGen?: number;
 };
 /** Архивлаж буй агуулгын хуулбар — `residualAfterArchive`-д хэрэгтэй хэсэг л (`ArchivingMark.prev`) */
@@ -269,8 +128,7 @@ export const PROBE_MAX = 8;
  * архивын жаазаар шийднэ (`matchArchivedFrame`).
  */
 export const ARCHIVING_TTL_MS = 15 * 60_000;
-/** Тэмдэг ШИНЭ үү (`ARCHIVING_TTL_MS`). ⚠️ Цагийн зөрүүгээр ирээдүйд байвал ч шинэ гэж үзнэ (fail-closed).
- *  ⚠️ 2026-10-12 (дарааллын аудит): анхдагч `now` нь СЕРВЕРИЙН цаг (`serverNow`) — `startedAt` ч серверийн цагаар бичигдэнэ. */
+/** Тэмдэг ШИНЭ үү (`ARCHIVING_TTL_MS`). Цагийн зөрүүгээр ирээдүйд байвал ч шинэ гэж үзнэ (fail-closed). */
 export const markFresh = (m: Pick<ArchivingMark, 'startedAt'>, now = serverNow()): boolean =>
   now - m.startedAt < ARCHIVING_TTL_MS;
 
@@ -347,21 +205,12 @@ export function frameProbe(
 /**
  * АРХИВТ ОЛДСОН МӨРҮҮДЭЭС (`OID > maxOid0`, тэмдгийн өдөр, OID-оор эрэмбэлсэн) ЭНЭ ТЭМДГИЙН жаазыг
  * таньж эхний OID-г буцаана; олдохгүй бол `null` (2026-10-09, R2-c).
- * ⚠️ Жааз = эхний № (`rootNo`, хуучин тэмдэгт эхний мөрийнх) -ээр эхэлж, дараагийн тийм мөр (эсвэл
- *    төгсгөл) хүртэл ЯГ `n` мөр; `probe`-ийн нүд бүр бичсэн утгатай тэнцүү. «≥ n мөр» хангалтгүй:
- *    тэр өдөр өөр жааз (ажил нэмэх · Улсын комисс) бичигдсэн бол андуурч, батлагдсан гүйцэтгэлийг
- *    архивт оруулалгүй илгээлтийг хаадаг байв.
- * ⚠️ 2026-10-09: `'ambiguous'` — эхний № ба `n` таарсан жааз байгаа боловч дээжийн утга нь ЗӨВХӨН хөвөгч
- *    таслалын бөөрөнхийллөөр (`cmpArchVal` → `'near'`) зөрсөн. Урьд нь (1e-6 тэнцэл/эсвэл зөрвөл `null`)
- *    «буугаагүй» гэж үзэж жаазыг ДАХИН бичих эрсдэлтэй байв — дуудагч ТАТГАЛЗАНА (fail-closed). Тоог
- *    харьцангуй 1e-9-өөр, огноог (`dateFields`; эсвэл хоёулаа epoch ms) UTC өдрөөр жишнэ.
  */
 export function matchArchivedFrame(
   rows: Record<string, unknown>[],
   mark: Pick<ArchivingMark, 'n' | 'rootNo' | 'probe'>,
   oidField: string,
   noField: string,
-  /** ⚠️ 2026-10-09: огнооны талбарууд — UTC өдрөөр жишнэ */
   dateFields?: readonly string[],
 ): number | null | 'ambiguous' {
   if (!rows.length || mark.n <= 0) return null;
@@ -404,14 +253,6 @@ export function matchArchivedFrame(
  *   · эс бөгөөс устгах OID-ууд.
  * Цэвэр функц — `hyanaltStore.cleanupTruncatedFrame` сүлжээг хариуцна.
  */
-/*
- * ⚠️ 2026-10-12 (A2): ЗӨВХӨН ТЭРГҮҮН ХЭСЭГ. Урьд нь `OID > maxOid0` тэр өдрийн БҮХ мөр нэг тасарсан жааз байх ёстой
- *    гэж үздэг тул тасарсан жаазын ДАРАА тэр өдөр өөр БҮТЭН жааз (ажил нэмэх · Улсын комисс · дараагийн батлалт)
- *    бичигдсэн бол нийт урт ≥ n эсвэл эхний № дахин тааралдаж «танигдсангүй, админ шалгана» гэж МӨНХӨД гацдаг байв.
- *    Одоо тасарсан жааз = `maxOid0`-оос шууд эхлэх ТЭРГҮҮН хэсэг: мөр 0 нь эхний № (`rootNo`, эсвэл хуучин тэмдэгт мөр
- *    0-ийн №), дараагийн тийм № (дараагийн жаазын эхлэл) эсвэл төгсгөл хүртэл. Тэр хэсэг n-ээс БОГИНО, 500-ийн үржвэр,
- *    дээж таарвал түүний OID-ууд; ард нь орсон бүтэн жаазууд ХӨНДӨГДӨХГҮЙ.
- */
 export function truncatedFrameIds(
   rows: Record<string, unknown>[],
   mark: Pick<ArchivingMark, 'n' | 'rootNo' | 'probe'>,
@@ -426,8 +267,6 @@ export function truncatedFrameIds(
   /* Тэргүүн хэсгийн төгсгөл — дараагийн жаазын эхлэл (ижил эхний №) эсвэл төгсгөл */
   let len = 1;
   while (len < rows.length && noOf(rows[len]) !== root) len += 1;
-  /* ⚠️ Тэргүүн хэсэг БҮТЭН (≥ n) — тасарсан жааз АЛГА (`[]`, юу ч устгахгүй); урьд нь `null` («танигдсангүй») тул
-     манай бичилт огт суугаагүй, тэр өдөр өөр бүтэн жааз орсон тохиолдолд батлалт/буцаалт мөнхөд хаагддаг байв. */
   if (len >= mark.n) return [];
   if (len % 500 !== 0) return null;
   const dates = new Set(dateFields ?? []);
@@ -445,7 +284,7 @@ export function truncatedFrameIds(
 }
 
 /**
- * ХАРИУ АЛДАГДСАН БИЧИЛТИЙН ЦЭВЭРЛЭГЭЭ — ЭНЭ ЖААЗЫН МӨРҮҮД (⚠️ 2026-10-21, аудит; `ulsiinKomiss`-ийн 2026-10-21-ний
+ * ХАРИУ АЛДАГДСАН БИЧИЛТИЙН ЦЭВЭРЛЭГЭЭ — ЭНЭ ЖААЗЫН МӨРҮҮД (2026-10-21, аудит; `ulsiinKomiss`-ийн 2026-10-21-ний
  * «өдрөөр биш АГУУЛГААР таних» дүрмийн архивлалтын хувилбар).
  *
  * `hyanaltStore.archiveSubmission`-ийн `applyAdds` хариу алдагдсан (`addsLost`) үед тэмдгийн өдрийн `OID > maxOid0`
@@ -526,7 +365,6 @@ export function archivedContent(p: SubmissionPayload): SubmissionPayload | null 
  *   · `landed` (жааз архивт БУУСАН) → архивласан хэсгийг хассан үлдэгдэл (`residualAfterArchive`), `residual: true`
  *     (архивт ороогүй агуулга — «Шилжүүлсэн» урсгалын дор ч давхарлагдана/нэгтгэгдэнэ);
  *     хасах боломжгүй (хуулбаргүй · түлхүүр тулгагдаагүй) → `null` (дуудагч ТАТГАЛЗАНА).
- *     ⚠️ Хуучин (НИЙТ) горимд дахин бичих нь орлуулалт тул хасахгүй — агуулга хэвээр.
  *   · буугаагүй → агуулга хэвээр (тэр агуулга архивт ХЭЗЭЭ Ч ороогүй).
  *   Хоёуланд тэмдэг арилна. Оролтыг ӨӨРЧЛӨХГҮЙ.
  */
@@ -535,8 +373,6 @@ export function resolveMark(p: SubmissionPayload, landed: boolean): SubmissionPa
   if (landed && p.mode === 'inc') {
     const arch = archivedContent(p);
     if (!arch) return null;
-    /* ⚠️ Нэмсэн мөр (`adds`) буусан жаазад аль хэдийн байрласан — үлдэгдэлд үлдвэл ДАХИН нэмэгдэнэ, түүний
-       сөрөг түлхүүрийг архивын мөрөнд тулгах зам алга. Хасахгүй, ТАТГАЛЗАНА (хүн шийднэ). */
     if (p.adds.length) return null;
     const rest = residualAfterArchive(p, arch);
     if (!rest) return null;
@@ -551,7 +387,6 @@ export function resolveMark(p: SubmissionPayload, landed: boolean): SubmissionPa
  * `{ sameUser }` (ижил хэрэглэгчийн өөр таб/хөтөч эсэх), эс бөгөөс `null` (дарж болно).
  */
 export function claimConflict(
-  /* ⚠️ 2026-10-12 (дарааллын аудит): анхдагч нь серверийн цаг (`markFresh`-тэй ижил) */
   existing: ArchivingMark | undefined, at: number, sid: string, me: string, now = serverNow(),
 ): { sameUser: boolean; by: string } | null {
   if (!existing || existing.at !== at || !markFresh(existing, now)) return null;
@@ -565,20 +400,6 @@ export type StagedSubmission = { oid: number; at: number; done: boolean; payload
 
 /**
  * `rowKeys`-ийг ХУУДАСНЫ ДАРААЛЛААР (oid ӨСӨХӨӨР) эрэмбэлнэ — шинэ массив.
- *
- * ⚠️ ЯАГААД (2026-09-25-ны аудит, HIGH): `sheetFrame.buildOidMap` нь давхардсан
- *    «№ ¦ Ажил» шошготой мөрүүдийн нэрийдлийг `shift()`-ээр ДАРААЛАН олгодог
- *    бөгөөд `rowKeys` хуудасны дарааллаар ирнэ гэдэгт тулгуурладаг. Урьд нь
- *    `mergeSubmission` хуучин payload-ын дарааллыг хадгалж шинэ түлхүүрийг
- *    ТӨГСГӨЛД залгадаг байв: өглөө 2-р «10 · БУСАД АЖИЛ» (oid 5000), үдээс
- *    хойш 1-р нь (oid 1200) засагдвал `[[5000,L],[1200,L]]` болж, батлахаас
- *    өмнө шинэ жааз орвол хоёр мөрийн блокийн утга СОЛИГДОЖ `unmoved = 0`-оор
- *    архивт бичигддэг байлаа.
- * ⚠️ oid өсөх = хуудасны дараалал: жааз бүхэлдээ хуудасны дарааллаар нэмэгддэг
- *    ба `loadRows` ч `objectid ASC`-ээр уншдаг; нэгтгэхээс өмнө хуучин payload
- *    нь `movePayload`-оор одоогийн жаазанд зөөгддөг тул нэг payload-ын rowKeys
- *    НЭГ жаазных. Сөрөг (түр) oid байвал эерэгүүдийн ДАРАА — эерэгийн
- *    харьцангуй дарааллыг хөндөхгүй.
  */
 const byPageOrder = (keys: Iterable<[number, string]>): [number, string][] =>
   [...keys]
@@ -588,45 +409,17 @@ const byPageOrder = (keys: Iterable<[number, string]>): [number, string][] =>
 /**
  * ХАДГАЛАХ ДЭЭД ХЭМЖЭЭ (тэмдэгт) — `draftRemote.REMOTE_MAX`-тай ижил үндэслэл:
  * талбарын урт 100,000, үлдсэн зай нь JSON escape-ийн нөөц.
- *
- * ⚠️ Хэтэрсэн илгээлт ЯВАХГҮЙ, ил алдаатай буцна — таслаж бичвэл хагас diff
- * батлагдаж архивт орно.
  */
 export const SUBMISSION_MAX = 80_000;
 
 const SUB_PREFIX = 'sub|';
 const DONE_PREFIX = 'done|';
 /**
- * ⚠️ Ноорогийн түлхүүр `<user>|<pkg>` жижиг үсгээр тул `sub`/`done` нэртэй
- *    ArcGIS хэрэглэгч байвал давхцана. Одоогийн байгууллагад тийм нэр байхгүй;
- *    гарвал угтварыг өөрчлөх биш (хуучин мөр алдагдана), тэр нэрийг хориглоно.
- */
-/**
  * ИДЭВХТЭЙ ИЛГЭЭЛТИЙН ТҮЛХҮҮР.
- *
- * ⚠️ `fillMs` өгвөл `sub|<pkg>|<fillMs>` — ӨДӨР БҮР ТУСДАА мөр (2026-09-07,
- *    толгойн ⚠️). Өгөхгүй бол ХУУЧИН `sub|<pkg>` — зөвхөн УНШИХ (legacy
- *    fallback) болон тестэд; ШИНЭ мөр энэ хэлбэрээр ХЭЗЭЭ Ч үүсэхгүй.
- * ⚠️ `fillMs` нь `Date.UTC(y,m,d)` буюу өдрийн эхэн — `FillNew.publish`-ийн
- *    ЦОРЫН ГАНЦ эх сурвалж. Секундын нарийвчлалтай агшин (`at`) оруулбал
- *    илгээлт бүр шинэ мөр үүсгэж, «нэг өдөрт нэгтгэх» дүрэм эвдэрнэ.
  */
 export const subKey = (pkgKey: string, fillMs?: number | null) =>
   fillMs == null ? `${SUB_PREFIX}${pkgKey}` : `${SUB_PREFIX}${pkgKey}|${fillMs}`;
-/**
- * ⚠️ `doneKey` нь ӨДРИЙГ АВАХГҮЙ — санаатай. Түлхүүрт `oid` (OBJECTID) орсон
- *    бөгөөд тэр нь хүснэгтэд давтагдашгүй тул өдөр бүрийн хаагдсан илгээлт
- *    аль хэдийн ӨӨР `done|` түлхүүртэй байна. Өдөр нэмбэл түлхүүр уртсахаас
- *    өөр юу ч өгөхгүй, харин ХУУЧИН `done|` мөрүүдтэй хэлбэр зөрнө.
- * ⚠️ `pkgKey` нь `payload.pkgKey`-ээс ирэх ЁСТОЙ (dkey-ээс таслаж авбал шинэ
- *    хэлбэрт `<pkg>|<fillMs>` болно) — `closeSubmission`-ийн ⚠️-г үз.
- */
 const doneKey = (pkgKey: string, oid: number) => `${DONE_PREFIX}${pkgKey}|${oid}`;
-/**
- * ⚠️ ЗӨВХӨН УГТВАРААР — тиймээс `sub|<pkg>`, `sub|<pkg>|<fillMs>`,
- *    `done|<pkg>|<oid>` ГУРВУУЛАА дамжина. Өдөр нэмэгдсэн нь энэ шалгуурыг
- *    эвдээгүй (`submission.check.mjs` тусгайлан батална).
- */
 const isSubmissionKey = (dkey: string) => dkey.startsWith(SUB_PREFIX) || dkey.startsWith(DONE_PREFIX);
 
 const isStr = (x: unknown): x is string => typeof x === 'string';
@@ -643,13 +436,8 @@ const isOcc = (x: unknown): x is [number, number, number] =>
   && (x[1] as number) >= 0 && (x[2] as number) > (x[1] as number);
 /**
  * Хадгалах илгээлтийн танигчийн тоо (`SubmissionPayload.nonces`).
- * ⚠️ 2026-10-04 дахин аудит (#5): 20 → 200. Мөр нь ӨДӨР бүр тусдаа (`sub|<pkg>|<fillMs>`) тул энэ нь
- *    бараг «тэр өдрийн бүх оролдлого»; 20 үед олон оролцогчтой өдөр хариу тасарсан оролдлогын танигч
- *    шахагдаж алга болоод «буугаагүй» гэж дүгнэгдэн ДАХИН илгээгдэх (давхар тоолол) байв. 200 × ~26
- *    тэмдэгт ≈ 5KB — `SUBMISSION_MAX`-д багтана.
  */
 const NONCE_KEEP = 200;
-/** ⚠️ 2026-10-09 (аудит): `SubmissionPayload.users`-ийн дээд тоо — хэмжээ (`SUBMISSION_MAX`) хамгаална */
 const USERS_KEEP = 50;
 /** Илгээгчдийн нэгдэл (жижиг үсгээр, давхардалгүй, сүүлийн `USERS_KEEP`) — `mergeSubmission`/`saveSubmission` */
 function mergeUsers(...lists: (readonly (string | undefined)[] | undefined)[]): string[] {
@@ -668,18 +456,6 @@ export const submittersOf = (p: Pick<SubmissionPayload, 'user' | 'users'>): stri
 
 /**
  * `fillMs`-ИЙН БОДИТ МУЖ — 2020-01-01-ээс өнөөдөр + 2 хоног.
- *
- * ⚠️ ЯАГААД (2026-09-04-ний аудит): `fillMs` нь батлагдахад архивын жаазны
- *    `buglusun_ognoo` болдог бөгөөд `bagtsSheet.latestWhere` нь ХАМГИЙН ИХ
- *    өдрийг «одоогийн» гэж сонгодог. Хүснэгт нь байгууллагын хэн ч засаж
- *    болдог тул `fillMs = Date.UTC(2099,0,1)` гэсэн нэг бичлэг ирээдүйн
- *    жааз үүсгэж, түүнээс хойш батлагдсан БҮХ жаазыг бөглөх хуудас,
- *    хуваарь, дашбоардаас мөнхөд нуух байлаа. Илүү туйлын утга
- *    (|ms| > 8.64e15) нь `msToDay` доторх `toISOString()`-ыг RangeError-оор
- *    унагана.
- * ⚠️ Мужаас гарсан бол payload-ыг БҮХЭЛД нь хаяна (fail-closed): илгээсэн
- *    агшин/өдөр нь мэдэгдэхгүй илгээлтийг батлах боломжгүй. Гүйцэтгэгч
- *    дахин илгээхэд `sub|` мөр дарж бичигддэг тул сэргээх зам нээлттэй.
  */
 const FILL_MIN = Date.UTC(2020, 0, 1);
 const FILL_SLACK = 2 * 86_400_000;
@@ -688,26 +464,11 @@ const isFillMs = (x: unknown): x is number =>
 
 /**
  * Түүхий JSON → шалгагдсан `SubmissionPayload`; эвдэрсэн бол `null`.
- *
- * ⚠️ FillNew-ийн `parseDraft`-тай ИЖИЛ ЁС: хүснэгт нь org доторх хэн ч засаж
- * болох тул итгэл нь localStorage-аас илүү байх ёсгүй. Нэг талбарын алдаа
- * бусад засварыг устгах ёсгүй — эвдэрсэн ХЭСГИЙГ л хаяна:
- *   · `v !== 1`, `pkgKey` хоосон, `cells` массив биш, `at` тоо биш, `fillMs`
- *     бодит мужаас гадуур (`isFillMs`) → `null` (илгээлтийн мөн чанар алга —
- *     ямар багцад, хэзээ гэдэг нь мэдэгдэхгүй);
- *   · `dates`/`adds`/`rowKeys` массив биш → хоосон массив (тэр хэсэг нь л орхигдоно);
- *   · массив доторх хэлбэргүй бичлэг → тэр бичлэг л хаягдана;
- *   · `adds`-ийн oid САЛАНГИД СӨРӨГ БҮХЭЛ байх ёстой (parseDraft-ийн дүрэм):
- *     давхардсан дугаартай хоёр мөр нэг `${oid}:${b}` нүдийг хуваалцаж, нэгд
- *     нь бичсэн обьём нөгөөд нь ч орно — зөрчилтэй БИЧЛЭГИЙГ л хаяна;
- *   · `asOf`/`base` тоо биш → `null` (0 БИШ — `null ≠ 0`).
  */
 export function parseSubmission(raw: string): SubmissionPayload | null {
   try {
     const d = JSON.parse(raw) as Record<string, unknown> | null;
     if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
-    /* ⚠️ `v: 2` ЗААВАЛ `mode: 'inc'`-тэй (2026-09-25): горим нь тоог хэрхэн
-       уншихыг шийддэг тул тодорхойгүй бол ТААМАГЛАХГҮЙ — хаяна. */
     const inc = d.mode === 'inc';
     if (d.v !== 1 && d.v !== 2) return null;
     if (d.v === 2 && !inc) return null;
@@ -718,8 +479,6 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     const cells = (d.cells as unknown[]).filter(isPair).map(([k, v]): [string, string] => [k, v]);
     const dates = (Array.isArray(d.dates) ? (d.dates as unknown[]) : [])
       .filter(isPair).map(([k, v]): [string, string] => [k, v]);
-    /* ⚠️ Хуудасны дарааллаар (`byPageOrder`) — өмнө нь буруу дараалалтай
-       нэгтгэгдэж хадгалагдсан payload-ыг ч унших агшинд засна. */
     const rowKeys = byPageOrder((Array.isArray(d.rowKeys) ? (d.rowKeys as unknown[]) : [])
       .filter(isRowKey));
 
@@ -759,12 +518,10 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     };
     if (Number.isInteger(d.archiveOid) && (d.archiveOid as number) > 0) out.archiveOid = d.archiveOid as number;
     if (isFin(d.approvedAt)) out.approvedAt = d.approvedAt;
-    /* ⚠️ 2026-10-04 (#2/#3): давтамжийн дугаар ба илгээлтийн танигч — эвдэрсэн бичлэгийг л хаяна */
     const occ = Array.isArray(d.rowOcc) ? (d.rowOcc as unknown[]).filter(isOcc).map((e): [number, number, number] => [e[0], e[1], e[2]]) : [];
     if (occ.length) out.rowOcc = occ;
     const nonces = Array.isArray(d.nonces) ? (d.nonces as unknown[]).filter((x): x is string => isStr(x) && x.length > 0 && x.length <= 64) : [];
     if (nonces.length) out.nonces = nonces.slice(-NONCE_KEEP);
-    /* ⚠️ 2026-10-09 (аудит): илгээгчдийн жагсаалт (`SubmissionPayload.users`) — эвдэрсэн элементийг л хаяна */
     const users = Array.isArray(d.users)
       ? [...new Set((d.users as unknown[]).filter((x): x is string => isStr(x) && x.trim().length > 0 && x.length <= 128)
         .map((x) => x.trim().toLowerCase()))].slice(-USERS_KEEP)
@@ -772,17 +529,14 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
     if (users.length) out.users = users;
     if (d.regPending === true) out.regPending = true;
     if (d.residual === true) out.residual = true;
-    /* ⚠️ 2026-10-12 (A9): үлдэгдлийн эх батлалт — бүх талбар хүчинтэй байж л хүлээн авна */
     const ro = d.residualOf as Record<string, unknown> | undefined;
     if (out.residual && ro && typeof ro === 'object' && Number.isInteger(ro.row) && (ro.row as number) > 0
       && Number.isInteger(ro.archiveOid) && (ro.archiveOid as number) >= 0 && isStr(ro.day) && /^\d{4}-\d{2}-\d{2}$/.test(ro.day))
       out.residualOf = { row: ro.row as number, archiveOid: ro.archiveOid as number, day: ro.day as string };
-    /* ⚠️ 2026-10-09 (R2): «архивлаж байна» тэмдэг — бүх талбар бодит тоо байж л хүлээн авна */
     const ar = d.archiving as Record<string, unknown> | undefined;
     if (ar && typeof ar === 'object' && isFin(ar.at) && isFin(ar.startedAt) && Number.isInteger(ar.maxOid0)
       && (ar.maxOid0 as number) >= 0 && isFin(ar.fillMs) && Number.isInteger(ar.n) && (ar.n as number) > 0) {
       const mk: ArchivingMark = { at: ar.at, startedAt: ar.startedAt, maxOid0: ar.maxOid0 as number, fillMs: ar.fillMs, n: ar.n as number };
-      /* ⚠️ 2026-10-09 (R2-c): таних дээж — эвдэрсэн бичлэгийг л хаяна (тэмдэг өөрөө хүчинтэй хэвээр) */
       if (isStr(ar.rootNo) && ar.rootNo.length <= 64) mk.rootNo = ar.rootNo;
       const pr = Array.isArray(ar.probe)
         ? (ar.probe as unknown[]).filter((e): e is [number, string, number | string | null] =>
@@ -791,10 +545,8 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
           && (e[2] === null || isFin(e[2]) || (isStr(e[2]) && e[2].length <= 256)))
         : [];
       if (pr.length) mk.probe = pr.slice(0, PROBE_MAX).map((e): [number, string, number | string | null] => [e[0], e[1], e[2]]);
-      /* ⚠️ 2026-10-09: тавьсан хүн/сешн ба дамжсан агуулгын хуулбар — эвдэрсэн хэсгийг л хаяна */
       if (isStr(ar.by) && ar.by.length <= 128) mk.by = ar.by.toLowerCase();
       if (isStr(ar.sid) && ar.sid.length <= 64) mk.sid = ar.sid;
-      /* ⚠️ 2026-10-26: `prev`-ийн мөрийн үе (v3 мета) */
       if (isFin(ar.prevGen)) mk.prevGen = ar.prevGen;
       const pv = ar.prev as Record<string, unknown> | undefined;
       if (pv && typeof pv === 'object' && Array.isArray(pv.cells) && Array.isArray(pv.rowKeys)) {
@@ -817,15 +569,10 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
 /**
  * ХУРИМТЛАГДСАН илгээлт: хуучин payload дээр шинэ diff-ийг НЭГТГЭНЭ.
  *
- * ⚠️ ЯАГААД нэгтгэх, дарахгүй: багцын хяналтын мөр батлагдаагүй байхад
- * компани дахин илгээвэл (жишээ нь инженер буцаасны дараа нэг нүд засаад)
- * ШИНЭ diff нь зөвхөн тэр нэг нүд — хуучин 40 нүдийг дарвал хянагч
- * «40 нүд алга болов» гэж харна, батлахад ч архивт ордоггүй.
- *
- * Дүрэм: cells/dates — түлхүүрээр, шинэ нь дарна (⚠️ 2026-09-25: `mode: 'inc'`
+ * Дүрэм: cells/dates — түлхүүрээр, шинэ нь дарна (2026-09-25: `mode: 'inc'`
  * үед cells нь НИЙЛБЭР — `sumInc`; горим зөрвөл throw); adds — oid-оор, шинэ нь
  * дарна (хуучин байрлал хэвээр — эцэг/дүү дараалал хадгалагдана), ГЭХДЭЭ ижил
- * oid дээр ӨӨР мөр ирвэл дарахгүй, шинэ сул oid авна (доорх ⚠️); rowKeys —
+ * oid дээр ӨӨР мөр ирвэл дарахгүй, шинэ сул oid авна (доорх); rowKeys —
  * oid-оор нэгтгэж ХУУДАСНЫ ДАРААЛЛААР (oid өсөхөөр) буцаана (`byPageOrder`);
  * asOf — шинэ ?? хуучин ?? null; base — мөн адил (мэдээлэл);
  * pkgKey/user/at/fillMs — шинэ. `archiveOid`/`approvedAt` ОРОХГҮЙ: нэгтгэсэн
@@ -837,12 +584,6 @@ export function mergeSubmission(
   prev: SubmissionPayload | null,
   next: Omit<SubmissionPayload, 'v'>,
 ): SubmissionPayload {
-  /*
-   * ⚠️ ГОРИМ ХОЛИХГҮЙ (2026-09-25, `SubmissionPayload.mode`-ийн ⚠️). Хуучин
-   *    (НИЙТ) payload дээр НЭМЭЛТ нэгтгэвэл «55» ба «15» нэг массивт ялгагдахгүй
-   *    орж, батлахад аль нэг нь буруу уншигдана. Дуудагч (`FillNew.publish`)
-   *    нэгтгэхээс ӨМНӨ нэг горимд хөрвүүлэх ёстой — энд ЧИМЭЭГҮЙ таамаглахгүй.
-   */
   const inc = next.mode === 'inc';
   if (prev && (prev.mode === 'inc') !== inc)
     throw new Error(tr('Илгээлтийн горим зөрсөн (нэмэлт ↔ нийт) — нэгтгэсэнгүй. Хуудсыг дахин ачаална уу.'));
@@ -850,8 +591,6 @@ export function mergeSubmission(
   for (const a of prev?.adds ?? []) adds.set(a.oid, a);
 
   /*
-   * ⚠️ ТҮР OID-ИЙН МӨРГӨЛДӨӨН (2026-09-08-ны аудитын CRITICAL олдвор).
-   *
    * Нэмсэн мөрийн түр `oid` нь дуудагчийн модуль дахь тоолуураас гардаг
    * бөгөөд ТЭР ТООЛУУР ХУУДАС АЧААЛАГДАХ БҮРД −1-ЭЭС ЭХЭЛНЭ. Тиймээс
    * өдөр 1-д мөр нэмж илгээгээд хуудсаа дахин нээж дахин мөр нэмэхэд шинэ
@@ -897,12 +636,6 @@ export function mergeSubmission(
   };
 
   const cells = new Map<string, string>(prev?.cells ?? []);
-  /*
-   * ⚠️ НЭМЭЛТИЙН ГОРИМД НИЙЛҮҮЛНЭ, ДАРАХГҮЙ (2026-09-25). Дахин илгээхэд
-   *    `FillNew`-ийн дэлгэц нь архив + ӨМНӨХ илгээлтийн давхарлалт тул шинэ
-   *    нэмэлт нь тэр давхарласан нийтээс хойшхи хэсэг — өдрийн нийт нэмэлт =
-   *    өмнөх + шинэ. Дарвал өглөөний «+15» алга болно. Тэг болсон нүдийг хаяна.
-   */
   for (const [k0, v] of next.cells) {
     const k = fixKey(k0);
     if (!inc) { cells.set(k, v); continue; }
@@ -915,18 +648,10 @@ export function mergeSubmission(
   for (const [k, v] of next.dates) dates.set(fixKey(k), v);
   const rowKeys = new Map<number, string>(prev?.rowKeys ?? []);
   for (const [o, k] of next.rowKeys) rowKeys.set(remap.get(o) ?? o, k);
-  /* ⚠️ 2026-10-04 (#2): давтамжийн дугаар — oid-оор нэгтгэнэ, шинэ нь ялна. Хуучин талд
-     байгаагүй oid-д (хуучин илгээлт) дугаар зохиохгүй — `mapOldOids` хоёрдмол гэж үзнэ. */
   const occ = new Map<number, [number, number, number]>();
   for (const e of prev?.rowOcc ?? []) occ.set(e[0], [e[0], e[1], e[2]]);
   for (const e of next.rowOcc ?? []) { const o = remap.get(e[0]) ?? e[0]; occ.set(o, [o, e[1], e[2]]); }
-  /* ⚠️ 2026-10-04 (#3): илгээлтийн танигчууд хуримтлагдана (сүүлийн `NONCE_KEEP`) */
   const nonces = [...new Set([...(prev?.nonces ?? []), ...(next.nonces ?? [])])].slice(-NONCE_KEEP);
-  /*
-   * ⚠️ 2026-10-09: «АРХИВЛАЖ БАЙНА» ТЭМДЭГ ДАМЖИНА (`SubmissionPayload.archiving`-ийн ⚠️ — урьд нь хаягддаг байв).
-   *    Анх дамжихдаа (`at` = өмнөх payload-ынх) архивлаж буй агуулгын хуулбарыг (`prev`) хадгална; аль хэдийн
-   *    дамжсан бол хуучин хуулбар хэвээр (тэр л архивлагдаж байсан агуулга). Нэмэлт ба хуучин горимд адил.
-   */
   let archiving: ArchivingMark | undefined;
   if (prev?.archiving) {
     const am = prev.archiving;
@@ -945,7 +670,6 @@ export function mergeSubmission(
     v: inc ? 2 : 1,
     ...(inc ? { mode: 'inc' as const } : {}),
     pkgKey: next.pkgKey,
-    /* ⚠️ Жижиг үсгээр — `parseSubmission`-тэй ижил инвариант, дуудагчид найдахгүй */
     user: next.user.toLowerCase(),
     at: next.at,
     fillMs: next.fillMs,
@@ -954,13 +678,10 @@ export function mergeSubmission(
     cells: [...cells].map(([k, v]): [string, string] => [k, v]),
     dates: [...dates].map(([k, v]): [string, string] => [k, v]),
     adds: [...adds.values()].map((a) => ({ ...a })),
-    /* ⚠️ Хуудасны дарааллаар — `buildOidMap`-ийн `shift()` дараалалд тулгуурладаг
-       (`byPageOrder`-ийн ⚠️). Map нь хуучны дарааллыг хадгалж шинийг төгсгөлд залгадаг. */
     rowKeys: byPageOrder(rowKeys),
     ...(occ.size ? { rowOcc: [...occ.values()].filter(([o]) => rowKeys.has(o)).sort((a, b) => a[0] - b[0]) } : {}),
     ...(nonces.length ? { nonces } : {}),
     ...(archiving ? { archiving } : {}),
-    /* ⚠️ 2026-10-09 (аудит): илгээгчид ХУРИМТЛАГДАНА (`SubmissionPayload.users`) — хуучин `user` ч орно */
     ...(() => {
       const users = mergeUsers(prev?.users, [prev?.user], next.users, [next.user]);
       return users.length ? { users } : {};
@@ -971,20 +692,10 @@ export function mergeSubmission(
 /**
  * АРХИВЛАГДСАН ХЭСГИЙГ ИДЭВХТЭЙ ИЛГЭЭЛТЭЭС ХАСНА — нэмэлтийн горимд л (2026-09-25).
  *
- * ⚠️ ЯАГААД (давхардлаас сэргийлэх): батлах явцад гүйцэтгэгч ДАХИН илгээвэл
- *    `mergeSubmission` нь архивлаж буй агуулгыг (`archived`) шинэ нэмэлттэй
- *    НИЙЛҮҮЛСЭН мөр (`cur`) болгоно; `closeSubmission` `at` зөрсөн тул хаахгүй
- *    (`changed`). Хуучин (НИЙТ) горимд тэр мөрийг дахин батлах нь аюулгүй байсан
- *    (дахин ОРЛУУЛНА), харин нэмэлтийн горимд `archived`-ийн нэмэлт ХОЁР ДАХЬ
- *    удаагаа нэмэгдэнэ. Тиймээс үлдэгдэл = `cur − archived` (нүд бүрээр).
- *
  * Түлхүүр: эхлээд ижил `${oid}:${b}`; олдохгүй бол (дахин илгээлт шинэ жааз
  * руу зөөгдсөн) хоёр payload-ын `rowKeys` шошгоор ДАРААЛЛААР хослуулна
  * (`sheetFrame.buildOidMap`-ийн дүрэм). Хослох аргагүй түлхүүр үлдвэл `null` —
  * дуудагч ил анхааруулна (таамаглаж хасвал буруу нүднээс хасна).
- * ⚠️ `dates` нь ҮНЭМЛЭХҮЙ утга (дахин буулгах нь идемпотент) — хэвээр.
- * ⚠️ Хоёулаа `mode: 'inc'` биш бол `null` (хуучин горимд хасах шаардлагагүй).
- * Оролтыг ӨӨРЧЛӨХГҮЙ.
  */
 export function residualAfterArchive(
   cur: SubmissionPayload,
@@ -1006,16 +717,8 @@ export function residualAfterArchive(
   const aLabelOf = new Map<number, [string, number]>();
   for (const [l, os] of aLab) os.forEach((o, i) => aLabelOf.set(o, [l, i]));
   const curOids = new Set<number>((cur.rowKeys ?? []).map(([o]) => o));
-  /*
-   * ⚠️ 2026-10-04 аудит (#2): СИЙРЭГ жагсаалтын i дэх ↔ i дэх хослол давхардсан шошгод
-   *    ӨӨР мөрийг хослуулж болно (`sheetFrame.buildOidMap`-ийн ⚠️). Хоёр payload-д
-   *    давтамжийн дугаар (`rowOcc` — `[oid, k, n]`) байвал (шошго, k, n)-ээр ЯГ
-   *    хослуулна; эс бөгөөс ЗӨВХӨН шошгын тоо хоёр талд ТЭНЦҮҮ (хоёрдмол биш) үед
-   *    дарааллаар — тэнцүү биш бол `null` (дуудагч ил анхааруулна).
-   */
   const aOcc = new Map<number, [number, number]>((archived.rowOcc ?? []).map((e): [number, [number, number]] => [e[0], [e[1], e[2]]]));
   const cByOcc = new Map<string, number>();
-  /* ⚠️ 2026-10-04 дахин аудит (#10): шошгыг Map-аар (урьд нь мөр бүрд `find` — O(n²)) */
   const cLabel = new Map<number, string>(cur.rowKeys ?? []);
   for (const e of cur.rowOcc ?? []) {
     const l = cLabel.get(e[0]);
@@ -1038,15 +741,11 @@ export function residualAfterArchive(
     if (at <= 0) return null;
     const oid = Number(k.slice(0, at));
     let key = k;
-    /* ⚠️ Ижил жааз (`cur.rowKeys`-д тэр oid бий) эсвэл түр (сөрөг) oid → ижил
-       түлхүүр. Эс бөгөөс шошгоор зөөнө; зөөж чадахгүй бол ЗОГСОНО. */
     if (oid >= 0 && !curOids.has(oid) && !cells.has(k)) {
       const to = pairTo(oid);
       if (to == null) return null;
       key = `${to}${k.slice(at)}`;
     }
-    /* ⚠️ `cur`-д түлхүүр БАЙХГҮЙ = нийлбэр нь 0 болж хаягдсан (`mergeSubmission`)
-       → үлдэгдэл нь `0 − архивласан` (сөрөг залруулга), 0 БИШ. */
     const s = sumInc(cells.get(key), negInc(v));
     const d = parseInc(s);
     if (!d || (d.n === 0 && d.p === 0)) cells.delete(key);
@@ -1073,15 +772,6 @@ type RowAttrs = { objectid?: number; dkey?: string; at?: number; payload?: strin
 /**
  * ХАРИУ — «олдсонгүй» ба «уншиж чадсангүй» хоёрыг ЯЛГАНА.
  *
- * ⚠️ ЯАГААД (2026-09-04-ний аудитын CRITICAL олдвор): `loadSubmissionByOid`
- *    нь алдаа гарсан ч, мөр байхгүй ч ялгаагүй `null` буцаадаг байв.
- *    `hyanaltStore.archiveSubmission` тэр `null`-ыг «хуучин (legacy) мөр —
- *    жааз нь аль хэдийн архивт бий» гэж тайлбарладаг тул сүлжээ түр тасрах,
- *    токен дуусах, `tableUrl` null буцаах агшинд БАТЛАГДСАН илгээлт архивт
- *    ОГТ БИЧИГДЭЛГҮЙ хяналтын мөр «Шилжүүлсэн» болж, дахин батлах зам
- *    хаагддаг байлаа — компанийн бүтэн өдрийн гүйцэтгэл ул мөргүй алга
- *    болно, хаана ч алдаа үлдэхгүй.
- *
  * Тиймээс БИЧИХ шийдвэр гаргадаг дуудагч (`archiveSubmission`, `publish`)
  * `read*` хувилбарыг ашиглана; зөвхөн ХАРУУЛАХ зам (`load*`) чимээгүй
  * `null`-аараа хэвээр.
@@ -1103,14 +793,10 @@ async function readRow(a: RowAttrs | undefined, rowsOf?: ReadonlyMap<number, Att
   if (!isSubmissionKey(dkey)) return { ok: true, sub: null };
   const h = a.payload ? parseHead(String(a.payload)) : null;
   if (!h) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.objectid) };
-  /* ⚠️ 2026-10-26: ТҮР толгой (`pending`) — агуулга хараахан баталгаажаагүй: ХООСОН илгээлт гэж буцаавал хянагч хоосныг харж,
-     хамтрагч хоосон суурь дээр нэгтгэж бичигчийн нүдийг дардаг байв. Шинэ бол «бичигдэж байна» (fail-closed); хугацаа хэтэрсэн
-     бол бичигч унасан — юу ч илгээгдээгүй (баталгаажаагүй толгой хяналтад хэзээ ч орохгүй) */
   if (h.pending != null) {
     if (Date.now() - h.pending < PENDING_TTL) return { ok: false, error: tr('Илгээлт №{0} яг одоо бичигдэж байна — хэдэн секундын дараа дахин ачаална уу', a.objectid) };
     return { ok: true, sub: null };
   }
-  /* ⚠️ 2026-10-26: `gens`-тэй толгой — нүд нь `n:sub:<OBJECTID>` мөрөөс (MVCC); уншиж чадаагүй бол АЛДАА (fail-closed) */
   let payload = h.p;
   if (h.gens) {
     try {
@@ -1145,7 +831,6 @@ export function parseHead(raw: string): SubHead | null {
   if (d.v === 3) {
     if (!gens) return null;
     const inc = d.mode === 'inc';
-    /* ⚠️ 2026-10-26: `rowKeys`/`rowOcc` нь мета-д НҮДГҮЙ oid-ийнх л (`headRaw`-ийн ⚠️) — `assembleRows` мөрийнхтэй нийлүүлнэ */
     const p = parseSubmission(JSON.stringify({
       ...d, v: inc ? 2 : 1, cells: [], dates: [],
       rowKeys: Array.isArray(d.rowKeys) ? d.rowKeys : [], rowOcc: Array.isArray(d.rowOcc) ? d.rowOcc : [],
@@ -1170,23 +855,18 @@ export function headRaw(p: SubmissionPayload, gens: readonly number[] | null, me
   }
   const rest: Record<string, unknown> = { ...full };
   for (const k of ['cells', 'dates', 'rowKeys', 'rowOcc']) delete rest[k];
-  /* ⚠️ 2026-10-26: НҮДГҮЙ oid-ийн `rowKeys`/`rowOcc` (жиш. дахин илгээлтээр нийлбэр нь тэг болж хасагдсан нүдний мөр) мөрөнд
-     илэрхийлэгдэхгүй тул мета-д үлдэнэ — `mergeSubmission` тэднийг хадгалдаг бөгөөд `residualAfterArchive` архивласан нүдийг
-     тэр шошгоор тулгадаг (алга бол «хасах боломжгүй» гэж батлалт зогсдог байв) */
   const used = usedOids(p);
   const xk = p.rowKeys.filter(([o]) => !used.has(o));
   const xo = (p.rowOcc ?? []).filter(([o]) => !used.has(o));
   if (xk.length) rest.rowKeys = xk;
   if (xo.length) rest.rowOcc = xo;
   const ar = p.archiving ? { ...p.archiving } : undefined;
-  /* ⚠️ 2026-10-26: хуулбарыг ЗӨВХӨН мөрийн үетэй (`prevGen`) бол хасна — үегүй бол мета-д ч үлдэнэ (эс бөгөөс
-     «архивлаж буй» агуулга алга болж `residualAfterArchive` хасах зүйлгүй — давхар тоолол) */
   if (ar && ar.prevGen != null) delete ar.prev;
   return JSON.stringify({ ...rest, v: 3, ...(ar ? { archiving: ar } : {}), gens });
 }
 
 /**
- * МӨРИЙН КОДЛОГЧ АГУУЛГЫГ ЯГ СЭРГЭЭХ ҮҮ (⚠️ 2026-10-26, «өгөгдөл алдагдахгүй» — хэрэглэгчийн тэргүүн шаардлага). Нүд ·
+ * МӨРИЙН КОДЛОГЧ АГУУЛГЫГ ЯГ СЭРГЭЭХ ҮҮ (2026-10-26, «өгөгдөл алдагдахгүй» — хэрэглэгчийн тэргүүн шаардлага). Нүд ·
  * огноо ЯГ ижил, ашиглагдаж буй oid-ийн `rowKeys`/`rowOcc` ижил байх ёстой. ЯАГААД: хуучин НИЙТ (v1) илгээлтэд `''` ба
  * `'%0'` нүд бий (амьд 191: `done|b1_9f|128` г.м.) — мөрийн баганад `'%0'` нь `'0'` болж (НИЙТ горимд хувь 0 ≠ обьём 0),
  * `''` алга болдог байв. Алдагдалтай бол мөр рүү БИЧИХГҮЙ — payload эх сурвалж хэвээр (`saveSubmissionInner` ·
@@ -1220,7 +900,7 @@ function normInc(v: string): string | null {
   return s != null && y && close(x.n, y.n) && close(x.p, y.p) ? s : v;
 }
 /**
- * НЭМЭЛТИЙН ГОРИМЫН НҮДИЙГ ХЭВШҮҮЛНЭ (⚠️ 2026-10-26) — УТГА (n, p) ӨӨРЧЛӨГДӨХГҮЙ: тэг/хоосон нэмэлтийг хасна
+ * НЭМЭЛТИЙН ГОРИМЫН НҮДИЙГ ХЭВШҮҮЛНЭ (2026-10-26) — УТГА (n, p) ӨӨРЧЛӨГДӨХГҮЙ: тэг/хоосон нэмэлтийг хасна
  * (`mergeSubmission`-ий «тэг болсон нүдийг хаяна» ЯГ дүрэм — нэмэлт 0 нь юу ч нэмэхгүй), бичлэгийг мөрийн кодлогчийн хэлбэрт
  * («15.50» → «15.5»). «Архивлаж буй» хуулбар (`archiving.prev`) ч адил. НИЙТ (v1) горимд ХӨНДӨХГҮЙ — тэнд `''`/`'%0'` нь утга.
  */
@@ -1249,7 +929,6 @@ async function assemble(oid: number, h: SubHead, rows?: Attrs[]): Promise<Submis
 export function assembleRows(h: SubHead, all: readonly Attrs[]): SubmissionPayload {
   const gens = h.gens ?? [];
   const c = subFromRows(pickGeneration(all, gens));
-  /* ⚠️ 2026-10-26: толгойн `rowKeys`/`rowOcc` (мета — нүдгүй oid-ийнх; давхар хуулбар — бүгд) + мөрийнх (давамгай) */
   const rk = new Map<number, string>(h.p.rowKeys);
   for (const [o, l] of c.rowKeys) rk.set(o, l);
   const occ = new Map<number, [number, number, number]>((h.p.rowOcc ?? []).map((e): [number, [number, number, number]] => [e[0], [e[0], e[1], e[2]]]));
@@ -1284,22 +963,11 @@ async function rowsFor(as: readonly (RowAttrs | undefined)[]): Promise<Map<numbe
   return oids.length ? subRowsFor(oids) : new Map();
 }
 
-/* ⚠️ Хуучин `toStaged` (мөр → `StagedSubmission`, алдааг `null` болгодог)
-   ХАСАГДСАН: `readRow` нь «мөр алга» ба «илгээлт атал уншигдсангүй» хоёрыг
-   ялгадаг болсон тул алдааг чимээгүй `null` болгох завсрын функц нь тэр
-   ялгааг буцаагаад устгах эрсдэлтэй. Чимээгүй хувилбарууд (`loadActiveSubmission` ·
-   `loadSubmissionByOid`) ч 2026-10-09-нд (аудит №6) дуудагчгүй тул хасагдсан — зөвхөн `read*` үлдэнэ. */
 
 const OUT_FIELDS = ['objectid', 'dkey', 'at', 'payload'];
 
 /**
  * Уншихад бэлэн хүснэгтийн URL — `SubRead`-ийн ёсоор.
- *
- * ⚠️ ХОЁР ӨӨР «null»-ыг ЯЛГАНА (`tableUrl` хоёуланг нь `null` гэж нэгтгэдэг):
- *   · нэвтрээгүй → `{ok:false}` — юу ч мэдэхгүй, шийдвэр гаргаж болохгүй;
- *   · нэвтэрсэн боловч хүснэгт огт БАЙХГҮЙ → `{ok:true, url:null}` —
- *     тэр орчинд илгээлт үүсэх БОЛОМЖГҮЙ тул «мөр байхгүй» нь БАТАЛГААТАЙ
- *     бөгөөд хуучин (legacy) хяналтын мөрүүд хэвийн батлагдана.
  */
 async function readUrl(): Promise<{ ok: true; url: string | null } | { ok: false; error: string }> {
   const auth = await getAuth();
@@ -1307,16 +975,9 @@ async function readUrl(): Promise<{ ok: true; url: string | null } | { ok: false
   return { ok: true, url: await tableUrl(false) };
 }
 
-/* ⚠️ 2026-10-09 (аудит №6): чимээгүй `loadActiveSubmission` (алдаа → `null`) ХАСАГДСАН — дуудагчгүй үхмэл код;
-   бүх зам алдааг ялгадаг `readActiveSubmission`-ийг хэрэглэнэ (2026-09-04-ний CRITICAL олдвор). */
 
 /**
  * Багцын ИДЭВХТЭЙ илгээлт — АЛДААГ ЯЛГАДАГ хувилбар.
- *
- * ⚠️ `publish` нь энэ хувилбарыг ашиглана: чимээгүй `null` дээр тулгуурлавал
- *    уншилт унасан агшинд «идэвхтэй илгээлт байхгүй» гэж дүгнэж, өөр
- *    хэрэглэгчийн ЯГ ОДОО хянагдаж буй `sub|` мөрийг бүтнээр нь дарж бичдэг
- *    байв (upsert нь мөрийг dkey-гээр олдог тул тэр мөр рүү л бичнэ).
  */
 export async function readActiveSubmission(pkgKey: string, fillMs?: number | null): Promise<SubRead> {
   try {
@@ -1324,15 +985,6 @@ export async function readActiveSubmission(pkgKey: string, fillMs?: number | nul
     if (!u.ok) return u;
     if (!u.url) return { ok: true, sub: null };
     const fl = await layer(u.url);
-    /*
-     * ⚠️ ХОЁР ТҮЛХҮҮРИЙГ НЭГ ХҮСЭЛТЭЭР (2026-09-07): шинэ
-     * `sub|<pkg>|<fillMs>` ба ХУУЧИН дагаваргүй `sub|<pkg>`. Хуучин мөрүүд
-     * үйлдвэрлэлд амьд байгаа тул тэднийг олохгүй бол гүйцэтгэгчийн
-     * хуудсанд илгээсэн тоо нь ХАРАГДАХАА БОЛЬЖ («миний илгээсэн ажил алга
-     * болжээ») дахин бөглөгдөнө, мөн `publish`-ийн `staged` хоосон болж
-     * ХУРИМТЛАЛ тасарна. Хоёр удаа хүсэлт явуулбал хоёр дахин удаан тул
-     * `IN (…)`-ээр нэг удаа уншаад доор нь ялгана.
-     */
     const dayK = subKey(pkgKey, fillMs);
     const legacyK = subKey(pkgKey);
     const keys = dayK === legacyK ? [legacyK] : [dayK, legacyK];
@@ -1346,19 +998,6 @@ export async function readActiveSubmission(pkgKey: string, fillMs?: number | nul
     /* Тэр ӨДРИЙН мөр байвал ТЭР нь ялна — хуучин мөр байсан ч. */
     const day = feats.find((a) => String(a?.dkey ?? '') === dayK);
     if (day) return readRow(day);
-    /*
-     * ⚠️ ХУУЧИН МӨРИЙГ ЗӨВХӨН ӨДӨР НЬ ТААРВАЛ АВНА (fillMs өгөгдсөн үед):
-     *    дагаваргүй мөр нь ЯМАР Ч өдрийнх байж болно. Өчигдрийн (хянагдаж
-     *    буй) хуучин мөрийг өнөөдрийн суурь болгон буцаавал —
-     *      · `mergeBase` нь өчигдрийн нүднүүдийг өнөөдрийн payload-д хуулж,
-     *        батлагдахад архивт ХОЁР УДАА тоологдоно;
-     *      · `saveSubmission` тэр мөрийг update хийж, хянагчийн ЯГ ОДОО харж
-     *        буй агуулгыг доор нь сольж, өдөр салгасны ач холбогдол алга болно.
-     *    Тиймээс `payload.fillMs` тулгана: тэр өдрийнх бол «энэ өдрийн
-     *    илгээлт» мөн (шинэ хэлбэрт шилжээгүй хуучин мөр) — үргэлжлүүлж
-     *    нэгтгэнэ; өөр өдрийнх бол ХАРААХГҮЙ (`sub:null`) — өнөөдөр ШИНЭ мөр
-     *    үүснэ, хуучин мөр өөрийн хяналтаараа хэвийн батлагдана.
-     */
     const legacy = feats.find((a) => String(a?.dkey ?? '') === legacyK);
     if (!legacy) return { ok: true, sub: null };
     const r = await readRow(legacy);
@@ -1372,28 +1011,12 @@ export async function readActiveSubmission(pkgKey: string, fillMs?: number | nul
 
 /**
  * БАГЦЫН БҮХ ИДЭВХТЭЙ (батлагдаагүй) илгээлт — өдөр бүрд нэг.
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ (2026-09-07): өдөр бүр тусдаа `sub|` мөртэй болсноор
- *    нэг багцад ОЛОН идэвхтэй илгээлт зэрэг оршино (өчигдрийнх хянагдаж
- *    байна + өнөөдрийнх дөнгөж илгээгдлээ). `FillNew` нь «ӨӨР өдрийн
- *    илгээлт хянагдаж байна уу» гэдгийг мэдэж, товчийг хаах эсэхээ шийдэх
- *    ёстой; мөн бөглөх хуудсанд ЗӨВХӨН өнөөдрийн зөрүү давхарлагдана
- *    (бусдыг давхарлавал давхар тоологдоно).
- * ⚠️ `done|` мөрүүд ОРОХГҮЙ — тэдгээрийн агуулга архивт аль хэдийн бий.
- * ⚠️ Чимээгүй: алдаа → хоосон массив (харагдацыг унагаахгүй).
  */
 export async function listActiveSubmissions(pkgKey: string): Promise<StagedSubmission[]> {
   try {
     const u = await readUrl();
     if (!u.ok || !u.url) return [];
     const fl = await layer(u.url);
-    /* ⚠️ `pkg` талбараар шүүнэ — түүнд ЗӨВХӨН `pkgKey` бичигддэг (өдөр
-       ОРООГҮЙ) тул `dkey LIKE` хэрэггүй; `dkey`-ээр угтварыг дахин тулгаж
-       ноорогийн (`<user>|<pkg>`) мөрүүдийг хасна.
-       ⚠️ `dkey LIKE 'sub|%'` СЕРВЕР ДЭЭР (2026-09-25-ны аудит): урьд нь зөвхөн
-       `pkg`-ээр шүүдэг тул тухайн багцын БҮХ `done|` мөрийн (тус бүр ~80KB
-       payload) түүхийг татаад клиент дээр хаядаг байв. Доорх угтварын
-       шалгуур хамгаалалт болж үлдэнэ. */
     const res = await fl.queryFeatures({
       where: `pkg = ${sqlStr(pkgKey)} AND dkey LIKE ${sqlStr(`${SUB_PREFIX}%`)}`,
       outFields: OUT_FIELDS,
@@ -1401,16 +1024,12 @@ export async function listActiveSubmissions(pkgKey: string): Promise<StagedSubmi
       orderByFields: ['objectid DESC'],
     });
     const out: StagedSubmission[] = [];
-    /* ⚠️ 2026-10-26: `gens`-тэй толгойн мөрийг НЭГ дор (уншиж чадаагүй бол тэр толгой алгасагдана — харагдацын зам) */
     const rmap = await rowsFor(res.features.map((f) => f.attributes as RowAttrs | undefined)).catch(() => null);
     for (const f of res.features) {
       const a = f.attributes as RowAttrs | undefined;
       if (!String(a?.dkey ?? '').startsWith(SUB_PREFIX)) continue;
       if (!rmap && a?.payload && String(a.payload).includes('"gens"')) continue;
       const r = await readRow(a, rmap ?? undefined);
-      /* ⚠️ Задраагүй мөрийг ЧИМЭЭГҮЙ алгасна — энэ функц зөвхөн ХАРАГДАЦ ба
-         анхааруулгад хэрэглэгддэг, бичих шийдвэрт БИШ (`readActiveSubmission`
-         тэр үүргийг гүйцэтгэнэ, алдаагаа ил гаргадаг). */
       if (r.ok && r.sub && !r.sub.done && r.sub.payload.pkgKey === pkgKey) out.push(r.sub);
     }
     return out;
@@ -1422,16 +1041,6 @@ export async function listActiveSubmissions(pkgKey: string): Promise<StagedSubmi
 /**
  * ИЛГЭЭХ ОРОЛДЛОГЫН ТАНИГЧ (`nonce`) АЛЬ НЭГ МӨРӨНД БУУСАН УУ — АЛДААГ ЯЛГАДАГ (`SubRead`),
  * 2026-10-04 дахин аудит (#5, MED).
- *
- * ⚠️ ЯАГААД: хариу тасарсан илгээлтийг урьд нь ЗӨВХӨН идэвхтэй (`sub|`) мөрөөс хайдаг байв. Илгээлт
- *    буусны дараа хянагдаж БАТЛАГДСАН бол мөр нь `done|` болж олдохгүй → «буугаагүй» гэж дүгнэж,
- *    ачаалах зам тэмдгийг арилгаж, «Илгээх» нь архивт аль хэдийн орсон нүднүүдийг ДАХИН илгээдэг
- *    (давхар тоолол) байв. Одоо `sub|` ба `done|` ХОЁУЛАНГААС (тухайн багц, `since`-ээс хойш
- *    хадгалагдсан) хайна; идэвхтэй мөр давамгай.
- * ⚠️ `since` — оролдлогын агшнаас нэг хоногийн өмнө (цагийн зөрүүний нөөц): `done|` мөр бүр ~80KB
- *    тул бүх түүхийг татахгүй (`listActiveSubmissions`-ийн ⚠️).
- * ⚠️ Задраагүй мөрийг алгасна (шийдвэр нь «олдсон уу» — олдохгүй бол дуудагч «буугаагүй» биш,
- *    уншилт амжилттай гэж үзнэ; задраагүй мөр ховор, ил алдаагаар батлалт өөрөө зогсдог).
  */
 export async function findNonce(pkgKey: string, nonce: string, since: number): Promise<SubRead> {
   try {
@@ -1447,8 +1056,6 @@ export async function findNonce(pkgKey: string, nonce: string, since: number): P
     });
     let hit: StagedSubmission | null = null;
     for (const f of res.features) {
-      /* ⚠️ 2026-10-26: танигчийг МЕТА-аас (нүд угсрахгүй); олдсон мөрийн угсралт унавал ТОДОРХОЙГҮЙ (`ok:false`) —
-         «буугаагүй» гэж дүгнэвэл дахин илгээж давхар тоолно */
       const a = f.attributes as RowAttrs | undefined;
       const h = a?.payload ? parseHead(String(a.payload)) : null;
       if (!h || h.p.pkgKey !== pkgKey || !(h.p.nonces ?? []).includes(nonce)) continue;
@@ -1465,19 +1072,9 @@ export async function findNonce(pkgKey: string, nonce: string, since: number): P
   }
 }
 
-/* ⚠️ 2026-10-09 (аудит №6): чимээгүй `loadSubmissionByOid` (алдаа → `null`) ХАСАГДСАН — дуудагчгүй үхмэл код;
-   `readSubmissionByOid` (доор) л үлдэнэ. Хуучин тайлбар: зөвхөн `sub|`/`done|` мөрийг буцаана — хуучин хяналтын
-   мөрүүдэд `Эх_мөрийн_дугаар` нь АРХИВЫН OBJECTID тул ноорогийн мөртэй санамсаргүй давхцаж болно, тэр үед
-   `null` → legacy зам (архивын OBJECTID). */
 
 /**
  * Илгээлт OBJECTID-оор — АЛДААГ ЯЛГАДАГ хувилбар (`SubRead`).
- *
- * ⚠️ ЗӨВХӨН ЭНЭ хувилбарыг «архивт бичих эсэх» шийдвэрт хэрэглэнэ
- *    (`hyanaltStore.archiveSubmission`, `FillNew`-ийн хянагчийн харагдац):
- *    `{ok:true, sub:null}` нь «мөр огт байхгүй нь БАТАЛГААЖСАН» гэсэн үг тул
- *    legacy зам руу унаж болно; `{ok:false}` нь «мэдэхгүй» — тэр үед юу ч
- *    хийхгүй зогсоно.
  */
 export async function readSubmissionByOid(oid: number): Promise<SubRead> {
   if (!Number.isInteger(oid) || oid <= 0) return { ok: true, sub: null };
@@ -1499,19 +1096,7 @@ export async function readSubmissionByOid(oid: number): Promise<SubRead> {
 
 /**
  * ГҮЙЦЭТГЭЛ ИЛГЭЭХ ЭРХ — `company` шатанд тэр багцад томилогдсон эсэх (2026-10-06, аудит #2).
- *
- * ⚠️ Урьд нь `saveSubmission`/`submitForReview` хэн ч дуудаж болдог байв — эрх ЗӨВХӨН
- *    `FillNew.canPerf` (зурагдалт)-д байсан тул консолоос өөр багцад илгээлт үүсгэж/дарж,
- *    хяналтын тойрог нээж болдог. Дүрэм нь `canPerf`-тэй ЯГ ижил: нэвтрэлт унтраалттай
- *    эсвэл кодын хатуу `super` → хязгааргүй; эс бөгөөс `bagtsFor(me, 'company')`.
- * ⚠️ `allowChief`: газрын дарга (эцсийн шат) батлалтын дотор үлдэгдэл нэмэлтийг
- *    (`hyanaltStore.archiveSubmission` → `residual`, `apply` → шинэ тойрог) өөрийн нэрээр
- *    бичдэг — тэр багцын `chief` томилгоотой бол зөвшөөрнө.
- * ⚠️ Node (тест, `tools/`) — хөтчийн сешн биш тул шалгахгүй (`who.requireCap`-ийн загвар).
- * ⚠️ Хэрэглэгч нь `currentUser()` — дуудагчийн өгсөн нэрт итгэхгүй.
- * @returns `null` = зөвшөөрнө, эс бөгөөс хэрэглэгчид харуулах мессеж
  */
-/** ⚠️ 2026-10-23: «Ерөнхий захирал» эсэх — `permissions` нь хөтчийн дэлгүүр тул динамик импорт (энэ модуль Node тестэд ч ачаалагдана) */
 async function isZahiralUser(me: string): Promise<boolean> {
   const { roleOf } = await import('./permissions');
   return roleOf(me) === 'zahiral';
@@ -1527,13 +1112,7 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
   const me = currentUser();
   if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
   if (roleForUser(me) === 'super') return null;
-  /* ⚠️ 2026-10-09 (аудит): «Зөвхөн харна» (`viewOnly`) тугтай company-шатны данс урьд нь
-     илгээж ЧАДДАГ байв — энэ функц `isViewOnly`-г огт дууддаггүй тул туг зөвхөн хянагчийн
-     шийдвэрт (`hyanaltStore.authz`) үйлчилдэг байв. Туг нь эрхийг ХАСДАГ (утгыг өөрчлөхгүй) тул
-     энд ч мөн хориглоно. `super` ба нэвтрэлт унтраалттай (`!AUTH.appId`) — дээр аль хэдийн чөлөөлөгдсөн. */
   if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
-  /* ⚠️ 2026-10-23: «Ерөнхий захирал» (`zahiral`) зөвхөн ХАРНА — урсгалын томилгоо (хуучин/алдаатай) үлдсэн ч илгээхгүй
-     (`FillNew.permPerf` · `hyanaltStore.authz`-тай нэг дүрэм; консол/Ctrl+S-ийн зам энд хаагдана). */
   if (await isZahiralUser(me)) return ZAHIRAL_DENY();
   const cb = bagtsFor(me, 'company');
   if (cb === null || cb.includes(group)) return null;
@@ -1545,10 +1124,8 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
 }
 
 /**
- * ҮЛДЭГДЭЛ БИЧИХ ЭРХ (⚠️ 2026-10-21, аудит) — `saveResidualSubmission`: тухайн багцад ЭЦСИЙН (`chief`) шатанд
+ * ҮЛДЭГДЭЛ БИЧИХ ЭРХ (2026-10-21, аудит) — `saveResidualSubmission`: тухайн багцад ЭЦСИЙН (`chief`) шатанд
  * томилогдсон эсэх. Чөлөөлөлт `companyDeny`-тэй ижил (Node · нэвтрэлт унтраалттай · `super`); «зөвхөн харна» хориотой.
- * ⚠️ Гүйцэтгэгчийн (`company`) томилгоо ХАНГАЛТГҮЙ — үлдэгдэл нь архивлалтын дараах хаалт, гүйцэтгэгчийн илгээлт биш;
- *    урьд нь `companyDeny(grp, true)` хоёуланг зөвшөөрдөг тул `residual` туг гүйцэтгэгчийн бүх шалгалтыг тойрдог байв.
  */
 export async function chiefDeny(group: string): Promise<string | null> {
   if (typeof window === 'undefined') return null;
@@ -1560,7 +1137,6 @@ export async function chiefDeny(group: string): Promise<string | null> {
   if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
   if (roleForUser(me) === 'super') return null;
   if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
-  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — `companyDeny`-ийн ⚠️ */
   if (await isZahiralUser(me)) return ZAHIRAL_DENY();
   const ch = bagtsFor(me, 'chief');
   if (ch === null || ch.includes(group)) return null;
@@ -1569,50 +1145,22 @@ export async function chiefDeny(group: string): Promise<string | null> {
 
 /**
  * ИЛГЭЭЛТИЙГ ХАДГАЛНА (upsert `sub|<pkgKey>|<payload.fillMs>`).
- *
- * ⚠️ ТҮЛХҮҮРИЙН ӨДӨР НЬ `payload.fillMs` (2026-09-07) — дуудагчаас ТУСДАА
- *    аргумент авахгүй. ЯАГААД: өдөр хоёр эх сурвалжтай болвол (аргумент ба
- *    payload) зөрөх боломж нээгдэж, `sub|<pkg>|<A>` түлхүүрт `fillMs = B`
- *    гэсэн агуулга суух эрсдэлтэй — батлагдахад архивын жааз БУРУУ өдөрт
- *    орно. `parseSubmission`/`isFillMs` нь `fillMs`-ийг аль хэдийн бодит
- *    мужид тулгадаг тул нэг эх сурвалж хангалттай. (Нэмэлт ашиг: дуудлагын
- *    гарын үсэг `(pkgKey, payload, expect)` ХЭВЭЭР үлдэж, дуудагч бүрийг
- *    засах шаардлагагүй.)
- *
- * ⚠️ ХУУЧИН МӨРИЙГ ӨВЛӨНӨ: тухайн багцад дагаваргүй `sub|<pkg>` мөр байж,
- *    түүний `payload.fillMs` нь ЭНЭ өдрийнх бол ШИНЭ мөр үүсгэхгүй, ТЭР
- *    мөрийг update хийнэ (dkey-г нь ч шинэ хэлбэрт шилжүүлнэ). Эс бөгөөс нэг
- *    өдрийн нэг илгээлт ХОЁР мөр болж, хяналтын мөрийн `Эх_мөрийн_дугаар` нь
- *    хуучин мөрийг заасаар үлдэж, хэрэглэгчийн шинэ засвар хянагчид ХҮРЭХГҮЙ.
- *
- * ⚠️ Байгаа мөрийг update — OBJECTID ХЭВЭЭР (толгойн тайлбар: хяналтын
- *    бүртгэл энэ дугаараар холбогдоно). Давхардлыг устгана (их OBJECTID
- *    үлдэнэ) — эс бөгөөс уншилт хуучин мөрийг сонгож «илгээсэн ч эргэж
- *    ирэхгүй» гэсэн чимээгүй алдаа үүснэ.
- * ⚠️ ArcGIS алдаагаа HTTP 200 + мөр бүрийн `error`-оор буцаадаг —
- *    `applyEdits`-ийн ҮР ДҮНГИЙН МӨР БҮРИЙГ шалгана; `ok:false` МЕССЕЖТЭЙ.
- * ⚠️ Давхардал устгах алхам унавал `ok:false` БИШ — илгээлт их OBJECTID-д
- *    аль хэдийн бичигдсэн бөгөөд уншилт түүнийг л сонгоно; зөвхөн warn.
  */
 export async function saveSubmission(
   pkgKey: string,
   payload: SubmissionPayload,
   expect?: { at: number; dropMark?: number } | null,
 ): Promise<SaveSubmissionResult> {
-  /* ⚠️ 2026-10-21 (аудит): `residual`/`residualOf` ЗӨВХӨН архивлалтын дараах хаалт бичнэ (`saveResidualSubmission` ←
-     `hyanaltStore.closeAfterArchive`). Урьд нь клиентийн payload-д `residual: true` тавихад л илгээгчийн шалгалт
-     (`user` = нэвтэрсэн хүн) ба хяналтын хориг (`reviewLockDeny`) хоёулаа АЛГАСАГДДАГ байв — дурын нэрээр, хянагдаж буй
-     илгээлтийн дор нь бичих боломжтой. Серверийн мөрөөс уншихад (`parseSubmission`) туг хэвээр. */
   if (payload.residual === true || payload.residualOf != null)
     return { ok: false, error: tr('Үлдэгдлийн (residual) тэмдэгтэй илгээлтийг зөвхөн архивлалтын хаалт бичнэ — энэ замаар хүлээн авахгүй.') };
   return saveSubmissionInner(pkgKey, payload, expect, false);
 }
 
-/** `saveSubmission` · `saveResidualSubmission`-ий үр дүн (`lost` — `saveSubmissionInner`-ийн ⚠️) */
+/** `saveSubmission` · `saveResidualSubmission`-ий үр дүн (`lost` — `saveSubmissionInner`) */
 export type SaveSubmissionResult = { ok: true; oid: number } | { ok: false; error: string; lost?: true };
 
 /**
- * ҮЛДЭГДЭЛ ИЛГЭЭЛТИЙГ ХАДГАЛНА (⚠️ 2026-10-21, аудит) — ЗӨВХӨН `hyanaltStore.closeAfterArchive` дуудна: батлах явцад
+ * ҮЛДЭГДЭЛ ИЛГЭЭЛТИЙГ ХАДГАЛНА (2026-10-21, аудит) — ЗӨВХӨН `hyanaltStore.closeAfterArchive` дуудна: батлах явцад
  * дахин илгээснээс архивласан хэсгийг хассан үлдэгдэл (`residual: true` · `residualOf`). Бичигч нь тухайн багцын ЭЦСИЙН
  * (`chief`) шатны томилгоотой байх ёстой (`chiefDeny`) — гүйцэтгэгчийн томилгоо хангалтгүй. Илгээгчийн шалгалт
  * (агуулга гүйцэтгэгчийнх — `user`/`users` хэвээр) ба хяналтын хориг (үлдэгдэл = шинэ тойрог) энд ҮЙЛЧЛЭХГҮЙ.
@@ -1636,39 +1184,13 @@ async function saveSubmissionInner(
    *   · `undefined` → шалгахгүй (хуучин зан төлөв);
    *   · `null`      → мөр БАЙХГҮЙ байх ёстой;
    *   · `{at}`      → байгаа мөрийн `at` нь ЯГ энэ байх ёстой.
-   *
-   * ⚠️ ЯАГААД (2026-09-04-ний аудит): дуудагч талын «хуучирсан уу» шалгуур
-   *    нь ХОЁР ТУСДАА уншилтын хооронд (`loadActiveSubmission` → `saveSubmission`)
-   *    задгай цонхтой бөгөөд `payload.at` нь КЛИЕНТИЙН цагаар бичигддэг тул
-   *    цагийн зөрүүтэй хоёр машин дээр эрэмбийн харьцуулалт чимээгүй давдаг
-   *    байв — өөр хэрэглэгчийн илгээсэн нүднүүд ул мөргүй устана. Энд суурийг
-   *    бичих АГШИНД нь дахин тулгана: зөрвөл `ok:false`, юу ч бичигдэхгүй.
-   */
-  /**
-   * ⚠️ 2026-10-09: `dropMark` — серверийн мөрийн «архивлаж байна» тэмдгийг (`startedAt`-аар) ДУУДАГЧ ШИЙДСЭН
-   *    (`resolveMark`) тул payload-д тэмдэггүй бичихийг зөвшөөрнө. Доорх тэмдгийн хамгаалалтыг үз.
    */
   expect?: { at: number; dropMark?: number } | null,
-  /** ⚠️ 2026-10-21 (аудит): `true` — ЗӨВХӨН `saveResidualSubmission`-аас (илгээгчийн шалгалт · хяналтын хориггүй, `chiefDeny`-тэй) */
   residual = false,
-  /* ⚠️ 2026-10-11 (аудит №7): `lost` — хариу АЛДАГДСАН (`isLostWrite`: timeout · сүлжээ · 5xx) тул илгээлт серверт
-     буусан байж болно; дуудагч (FillNew) тэр үед л явж буй илгээлтийн тэмдгийг (`Inflight`) үлдээнэ, тодорхой
-     татгалзалд арилгана. */
 ): Promise<SaveSubmissionResult> {
   if (payload.pkgKey !== pkgKey) {
-    /* ⚠️ Өөр багцын diff-ийг энэ түлхүүрт бичвэл батлахад буруу багцын архив
-       руу орно — дуудагчийн алдааг ил зогсооно. */
     return { ok: false, error: tr('Багцын түлхүүр зөрсөн: {0} ≠ {1}', payload.pkgKey, pkgKey) };
   }
-  /* ⚠️ Хувилбар нь ГОРИМООС (2026-09-25, `SubmissionPayload.v`-ийн ⚠️) — дуудагчийн
-     `v`-д итгэхгүй: нэмэлтийг `v: 1`-ээр бичвэл хуучин таб түүнийг НИЙТ гэж уншина. */
-  /*
-   * ⚠️ 2026-10-09 (аудит): ИЛГЭЭГЧИЙГ БҮРТГЭНЭ (`SubmissionPayload.users`-ийн ⚠️). Хөтөчид, нэвтрэлттэй
-   *    горимд: `payload.user` нь нэвтэрсэн хэрэглэгч байх ёстой (зөрвөл татгалзана — `ajilBatlah.sameAsLogin`-ийн
-   *    загвар; урьд нь дуудагчийн өгсөн нэр шалгалтгүй бичигддэг байв) бөгөөд түүнийг `users`-д нэмнэ.
-   * ⚠️ Үлдэгдэл (`residual`) мөрийг газрын дарга бичдэг ч агуулга нь ГҮЙЦЭТГЭГЧИЙНХ — `user`/`users`-ийг
-   *    хэвээр үлдээнэ (даргыг илгээгч гэж бүртгэвэл инженерийн шалгуур буруу хүнийг барина).
-   */
   let body: SubmissionPayload = payload;
   if (typeof window !== 'undefined' && !residual) {
     const [{ AUTH }, { currentUser }] = await Promise.all([import('./services'), import('./who')]);
@@ -1681,42 +1203,23 @@ async function saveSubmissionInner(
     }
   }
   const raw = JSON.stringify(body.mode === 'inc' ? { ...body, v: 2, mode: 'inc' } : { ...body, v: 1 });
-  /* ⚠️ 2026-10-26: мөрийн горимд (`rowsReady`) хэмжээний хязгааргүй — нүд `n:sub:<OBJECTID>` мөрөнд, payload-д мета (давхар
-     хуулбар зөвхөн багтвал). Хязгаар хэтэрсэн үед л горимыг асууна — сүлжээнээс ӨМНӨХ хуучин шалгалтын дараалал хэвээр. */
   const rowsBig = raw.length > SUBMISSION_MAX ? (await rowsReady()).mode === 'rows' : false;
   if (raw.length > SUBMISSION_MAX && !rowsBig) {
-    /*
-     * ⚠️ ЗААВАР ҮНЭН БАЙХ ЁСТОЙ (2026-09-04-ний аудит). Урьд нь «хэсэгчлэн
-     *    илгээнэ үү» гэж заадаг байсан нь ХУДАЛ: `mergeSubmission` нь дараагийн
-     *    илгээлтийг өмнөхтэй нь ХУРИМТЛУУЛДАГ тул хагасыг илгээгээд үлдсэнийг
-     *    илгээхэд дүн нь ДАХИН хязгаараас давна — хэрэглэгч гарцгүй давталтад
-     *    орно. Жинхэнэ гарц нь ЗӨВХӨН батлагдах (тэгвэл `sub|` мөр `done|`
-     *    болж хөлдөж, дараагийн илгээлт ЦЭВЭР эхэлнэ).
-     */
     return {
       ok: false,
       error: tr('Илгээлт хэт том ({0} тэмдэгт, дээд {1}). Хэсэгчлэн илгээх нь ТУСЛАХГҮЙ — дараагийн илгээлт өмнөхтэйгээ нэгтгэгддэг тул хэмжээ буурахгүй. Одоо илгээсэн хэсгээ хянагчаар батлуулсны дараа шинэ илгээлт цэвэр эхэлнэ.', raw.length, SUBMISSION_MAX),
     };
   }
-  /* ⚠️ 2026-10-06 (аудит #2): ГҮЙЦЭТГЭГЧИЙН ЭРХ lib-д — `FillNew.canPerf`-тэй ижил дүрэм.
-     Үлдэгдэл (`residual`) мөрийг `hyanaltStore.archiveSubmission` газрын даргын нэрээр бичдэг. */
   if (typeof window !== 'undefined') {
     const { PKGS } = await import('@/modules/sheet/bagts.pkg');
     const grp = PKGS.find((p) => p.key === pkgKey)?.group;
     if (!grp) return { ok: false, error: tr('Илгээлтийн багц олдсонгүй: {0}', pkgKey) };
-    /* ⚠️ 2026-10-21 (аудит): үлдэгдэл → ЭЦСИЙН шатны томилгоо (`chiefDeny`); гүйцэтгэгчийн томилгоо хангалтгүй */
     const deny = residual ? await chiefDeny(grp) : await companyDeny(grp);
     if (deny) return { ok: false, error: deny };
-    /* ⚠️ 2026-10-09 (хэрэглэгч: «нэг удаа явуулаад 6 шат бүрэн давж байж дараа дахин бөглөх»): хуудсанд
-       хяналтад явж буй илгээлт байвал шинэ илгээлт ч, тэрийг доор нь солих ч ХОРИГЛОНО
-       (`hyanaltSubmit.reviewLockDays`-ийн ⚠️). Үлдэгдэл (`residual`) — газрын даргын архивын дараах
-       ШИНЭ тойрог, хориг БИШ. ⚠️ Бичихээс ӨМНӨ — `submitForReview` агуулга бичигдсэний ДАРАА дуудагддаг. */
     if (!residual) {
       const pk = PKGS.find((p) => p.key === pkgKey);
       const others = PKGS.filter((p) => p.group === grp && p.key !== pkgKey).map((p) => p.name);
       const { reviewLockDeny } = await import('./hyanaltSubmit');
-      /* ⚠️ 2026-10-09 (аудит №2): `payload.fillMs` — буцаагдсан илгээлтийн засвар (тэр өдрийн одоогийн ажил
-         гүйцэтгэгчийн гар дээр) бол өөр өдөр хянагдаж байсан ч хориггүй (`hyanaltSubmit.reviewLockBlocks`). */
       const lock = await reviewLockDeny(grp, pk?.name ?? '', others, payload.fillMs);
       if (lock) return { ok: false, error: lock };
     }
@@ -1729,14 +1232,6 @@ async function saveSubmissionInner(
     const fl = await layer(url);
     const dkey = subKey(pkgKey, payload.fillMs);
     const legacyK = subKey(pkgKey);
-    /*
-     * ⚠️ ХОЁР ТҮЛХҮҮР — шинэ (өдөртэй) ба хуучин (дагаваргүй). Хуучин мөрийг
-     *    ЗӨВХӨН тэр өдрийнх бол өвлөнө (толгойн ⚠️) тул `payload`-ыг нь
-     *    уншиж шалгана; өөр өдрийнх бол ОГТ ХӨНДӨХГҮЙ — тэр нь өөрийн
-     *    хяналтаараа явж байгаа тусдаа илгээлт.
-     * ⚠️ `payload` талбарыг НЭМЖ уншина (урьд нь зөвхөн OBJECTID/at байсан) —
-     *    зөвхөн энэ багцын 1–2 мөр тул хэмжээ асуудал биш.
-     */
     const found = await fl.queryFeatures({
       where: `dkey IN (${[dkey, legacyK].map(sqlStr).join(', ')})`,
       outFields: ['objectid', 'dkey', 'at', 'payload'],
@@ -1752,8 +1247,6 @@ async function saveSubmissionInner(
       const p = parseHead(String(f.attributes.payload ?? ''))?.p;
       return !!p && p.fillMs === payload.fillMs;
     });
-    /* ⚠️ 2026-10-26: ТҮР толгой (`SubHead.pending`) — өөр бичигч яг одоо бичиж байвал ЮУ Ч бичихгүй; хугацаа хэтэрсэн (бичигч
-       унасан, агуулгагүй) бол байхгүйд тооцож энэ бичилтээр устгана */
     const pendOf = (x: (typeof feats0)[number]): number | null => parseHead(String(x.attributes.payload ?? ''))?.pending ?? null;
     if (feats0.some((x) => { const pa = pendOf(x); return pa != null && Date.now() - pa < PENDING_TTL; })) {
       return { ok: false, error: tr('Энэ өдрийн илгээлтийг өөр хэрэглэгч яг одоо бичиж байна — хэдэн секундын дараа хуудсыг дахин ачаалж илгээнэ үү. Юу ч илгээсэнгүй.') };
@@ -1764,9 +1257,6 @@ async function saveSubmissionInner(
     const target = oids.length ? oids[oids.length - 1] : null;
     const dupes = [...oids.slice(0, -1), ...stalePend];
     for (const o of stalePend) void subDropAll(o).catch(() => undefined);
-    /* ⚠️ СУУРИЙН ТУЛГАЛТ — дээрх `expect`-ийн тайлбар. Зөрсөн бол ЮУ Ч
-       бичихгүй буцна: дуудагч хуудсаа дахин ачаалж, нөгөө хүний илгээлт
-       дээр нэгтгэх ёстой. */
     if (expect !== undefined) {
       const curAt = target != null ? (feats[feats.length - 1].attributes.at as unknown) : null;
       const same = expect === null
@@ -1779,13 +1269,6 @@ async function saveSubmissionInner(
         };
       }
     }
-    /*
-     * ⚠️ 2026-10-09: «АРХИВЛАЖ БАЙНА» ТЭМДГИЙГ ЧИМЭЭГҮЙ ДАРАХГҮЙ. `markArchiving` нь `at`-ийг ӨӨРЧЛӨХГҮЙ тул
-     *    тэмдэг тавигдахаас ӨМНӨ уншсан дуудагчийн `expect.at` таарч, тэмдэггүй payload нь тэмдгийг арчдаг
-     *    байв — архив бичигдээд хаалт унасан бол дараагийн батлалт архивласан нэмэлтийг ДАХИН нэмнэ. Одоо
-     *    мөрд тэмдэг байхад payload ижил тэмдгийг (`startedAt`) дамжуулаагүй, дуудагч шийдээгүй (`dropMark`)
-     *    бол ЮУ Ч бичихгүй.
-     */
     const curH = target != null ? parseHead(String(feats[feats.length - 1].attributes.payload ?? '')) : null;
     if (target != null) {
       const curP = curH?.p;
@@ -1799,15 +1282,6 @@ async function saveSubmissionInner(
         };
       }
     }
-    /*
-     * ⚠️ 2026-10-26: МӨРИЙН ГОРИМ (`rowsReady`) — НҮД `n:sub:<OBJECTID>` мөрөнд (MVCC):
-     *   1. шинэ толгой бол ЭХЛЭЭД нэмнэ (OBJECTID хэрэгтэй) — payload нь бүтэн v2 (уншигч payload-оос, тэр агшинд ч зөв),
-     *      хэт том бол v3 мета (`gens: []` — хоосон);
-     *   2. шинэ ҮЕИЙН мөр (`subWriteGen` — өөрчлөгдсөн түлхүүр л, баталгаажаагүй тул ҮЛ ҮЗЭГДЭНЭ);
-     *   3. толгойг (`gens` + үе) доорх ЯГ ӨНӨӨГИЙН шинэчлэл/баталгаагаар — энэ нь баталгаажуулалт (commit).
-     *   Мөр бичигдэхгүй бол юу ч баталгаажихгүй (шинээр нэмсэн толгойг устгана) — уншигч өмнөх үеийг харсаар.
-     * ⚠️ «архивлаж байна» тэмдгийн хуулбар (`prev`) анх дамжихад түүний ҮЕ (`prevGen` = өмнөх баталгаажсан үе) — GC хадгална.
-     */
     let rowsOn = rowsBig || (await rowsReady()).mode === 'rows';
     let tgt = target;
     let created = false;
@@ -1818,11 +1292,6 @@ async function saveSubmissionInner(
     let pins: number[] = [];
     /** Шинээр нэмсэн толгойн payload — баталгаажуулалтын өмнөх тулгалтад */
     let createdRaw: string | null = null;
-    /*
-     * ⚠️ 2026-10-26: АЛДАГДАЛГҮЙ ЭСЭХ (`subRowsLossless`) — нэмэлтийн горимд утгыг өөрчлөхгүйгээр хэвшүүлээд
-     *    (`normIncCells`) кодлогч ЯГ сэргээвэл л мөр рүү; эс бөгөөс ЯГ өнөөгийн JSON зам (payload эх сурвалж, `gens`-гүй —
-     *    уншигч payload-ыг авна). Багтахгүй бол өмнөх «хэт том» хариу (юу ч бичихгүй).
-     */
     const fr = rowsOn ? fillFrame(pkgKey) : null;
     const bodyR: SubmissionPayload = rowsOn ? normIncCells(body) : body;
     if (rowsOn) {
@@ -1845,7 +1314,6 @@ async function saveSubmissionInner(
       if (tgt == null) {
         const v2 = headRaw(bodyW, null);
         createdFull = v2.length <= SUBMISSION_MAX;
-        /* ⚠️ 2026-10-26: мета (том) бол ТҮР тэмдэгтэй (`pending`) — баталгаажтал уншигч хоосон илгээлт харахгүй (`readRow`) */
         const first = createdFull ? v2 : JSON.stringify({ ...(JSON.parse(headRaw(bodyW, [], true)) as Record<string, unknown>), pending: Date.now() });
         createdRaw = first;
         let r0: Awaited<ReturnType<typeof fl.applyEdits>>;
@@ -1862,8 +1330,6 @@ async function saveSubmissionInner(
         created = true;
       }
       const tOid = tgt as number;
-      /* ⚠️ 2026-10-26: БҮХ мөр (ямар ч үе) — үеийн дугаар ӨМНӨХ (баталгаажаагүй/хуучин табын) мөртэй ХЭЗЭЭ Ч давхцахгүй
-         (давхцвал тэр мөр шинэ үед «харагдаж» хог орно); харагдах төлөв зөвхөн баталгаажсан үеүдээс */
       const allRows = created ? [] : (await subRowsFor([tOid])).get(tOid) ?? [];
       const usedGen = new Set<number>([...gens0, ...allRows.map((a) => Number(a.at)).filter(Number.isFinite)]);
       /** Үеийн дугаар — толгойн `at`-аас БАГА (самбарын «`at ≤ толгойн at`» дүрэм), 2^-12-ын үржвэр (Double-д ЯГ) */
@@ -1875,12 +1341,6 @@ async function saveSubmissionInner(
       };
       let vis: ReadonlyMap<string, Attrs> = curH?.gens ? pickGeneration(allRows, gens0) : new Map<string, Attrs>();
       const mid: number[] = [];
-      /*
-       * ⚠️ «АРХИВЛАЖ БУЙ» ХУУЛБАР (`archiving.prev`) — мөрийн үетэй байх ёстой (v3 мета-д хуулбар хасагдана, `prevGen`-ээс
-       *    угсрагдана). `markArchiving` үеийг тавьдаг; тавиагүй (хуучин толгой) бол:
-       *      · тэмдэг ЭНЭ агуулгынх (`at` тэнцүү) бөгөөд толгой үетэй → хуулбар = сүүлийн баталгаажсан үе;
-       *      · эс бөгөөс хуулбарыг ӨӨРИЙН үе болгож бичнэ (өмнөх → хуулбар → шинэ дарааллаар).
-       */
       const am = bodyW.archiving;
       const fail = async (err: string): Promise<SaveSubmissionResult> => {
         if (created) {
@@ -1909,13 +1369,6 @@ async function saveSubmissionInner(
       pins = bodyW.archiving?.prevGen != null ? [bodyW.archiving.prevGen] : [];
       raw2 = headRaw(bodyW, gens1);
     }
-    /*
-     * ⚠️ 2026-10-26: БАТАЛГААЖУУЛАЛТЫН ӨМНӨ ТОЛГОЙГ ДАХИН ТУЛГАНА (мөрийн горим). `expect` нь урт бичилтийн дарааллын (мөрийн
-     *    уншилт · архивын үе · `subWriteGen` 500-аар) ӨМНӨ нэг удаа шалгагддаг тул тэр завсарт хамтрагч өөрийн үеийг
-     *    баталгаажуулбал энэ commit ХУУЧИН `gens`-ээр дарж түүний илгээсэн нэмэлтийг алга болгодог байв (хоёулын баталгааны
-     *    уншилт ч давна). Одоо уншсан `at` + payload ЯГ хэвээр биш бол юу ч баталгаажуулахгүй — бичсэн үеийн мөр үл үзэгдэнэ (GC).
-     *    Цонх нь нэг асуулга болж нарийсна (ArcGIS-д нөхцөлт бичилт алга).
-     */
     if (rowsOn && tgt != null && (created ? createdRaw != null : target != null)) {
       const expRaw = created ? (createdRaw as string) : String(feats[feats.length - 1].attributes.payload ?? '');
       const expAt = created ? payload.at : Number(feats[feats.length - 1].attributes.at);
@@ -1940,15 +1393,6 @@ async function saveSubmissionInner(
         : { addFeatures: [{ attributes: attrs }] }),
       ...(dupes.length ? { deleteFeatures: dupes.map((objectId) => ({ objectId })) } : {}),
     };
-    /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `lost` ЗӨВХӨН `applyEdits`-ийн уналтад — урьдчилсан `queryFeatures`
-       (давхардал/тэмдгийн уншилт) унавал юу ч бичигдээгүй тул «алдагдсан» гэж тэмдэглэхгүй (гаднах catch). Урьд нь нэг
-       try дотор байсан тул уншилтын timeout ч `lost` болж, дуудагч илгээлтийн тэмдгийг дэмий үлдээх байв. */
-    /*
-     * ⚠️ 2026-10-26: ШИНЭЭР НЭМСЭН толгойн баталгаажуулалт (`gens`) унавал — толгойн payload БҮТЭН (v2) бол агуулга аль
-     *    хэдийн толгойд бүрэн (уншигч `gens`-гүй payload-ыг авна) тул илгээлт БУУСАН: мөр нь баталгаажаагүй (үл үзэгдэнэ,
-     *    GC). «Унасан» гэж буцаавал хэрэглэгч дахин илгээж `expect` зөрнө. Мета (том) толгой бол агуулгагүй — толгой ба
-     *    мөрийг устгаж алдаа буцаана.
-     */
     let r: Awaited<ReturnType<typeof fl.applyEdits>> | null = null;
     let commitErr: string | null = null;
     let commitLost = false;
@@ -1959,10 +1403,6 @@ async function saveSubmissionInner(
       commitLost = isLostWrite(e);
     }
     let results = r ? [...(r.addFeatureResults ?? []), ...(r.updateFeatureResults ?? [])] : [];
-    /* ⚠️ ХООСОН ХАРИУГ БАС БАРИНА (2026-09-15-ны аудит): `applyEdits` нь
-       алдаагүй атлаа үр дүнгүй буцаж болно. Доорх OID шалгуур нь `add`-ыг
-       барьдаг ч `update`-д `target` аль хэдийн мэдэгдэж байдаг тул барьдаггүй
-       байв — тиймээс хариу ирсэн эсэхийг ЭНД шалгана. */
     if (!commitErr && !results.length) commitErr = tr('серверээс хариу ирсэнгүй.');
     const bad0 = results.find((x) => x.error != null);
     if (!commitErr && bad0) commitErr = errMsg(bad0.error);
@@ -1986,18 +1426,6 @@ async function saveSubmissionInner(
     }
     const badDel = (r?.deleteFeatureResults ?? []).find((x) => x.error != null);
     if (badDel) console.warn('[selbe] илгээлтийн давхардсан мөр устсангүй:', errMsg(badDel.error));
-    /*
-     * ⚠️ 2026-10-05: БИЧСЭНИЙ ДАРААХ БАТАЛГАА. Дээрх `expect` тулгалт ба `applyEdits` хоёрын
-     *    завсарт (ArcGIS-д нөхцөлт бичилт байхгүй) өөр хэрэглэгч ЗЭРЭГ бичвэл:
-     *      · хоёулаа «мөр алга» гэж үзээд НЭМСЭН → хоёр мөр; уншигч сүүлийнхийг авч, нөгөөгийн
-     *        нүд дараагийн хадгалалтаар «давхардал» болж устдаг байв. Дүрэм: БАГА OBJECTID
-     *        (түрүүлж бичигдсэн) ялна — хожуу нь ӨӨРИЙН мөрөө устгаад `ok:false` буцаана
-     *        (дуудагч дахин ачаалж нөгөөгийн илгээлт дээр нэгтгэнэ). Устгал унавал урьдын зан төлөв.
-     *      · хоёулаа НЭГ мөрийг ШИНЭЧИЛСЭН → сүүлийнх нь ялна; дарагдсан тал мөрийн `at`/`usr`
-     *        өөрийнх биш болсныг эндээс мэдэж `ok:false` авна (урьд нь «амжилттай» гэж худал).
-     *    Цонхыг нарийсгана, тэг болгохгүй (баталгааны уншилтын ДАРАА дарагдвал мэдэгдэхгүй).
-     * ⚠️ Баталгааны УНШИЛТ унавал амжилт хэвээр — бичилт өөрөө `applyEdits`-ээр батлагдсан.
-     */
     try {
       const back = await fl.queryFeatures({
         where: `dkey = ${sqlStr(dkey)}`,
@@ -2008,7 +1436,6 @@ async function saveSubmissionInner(
       const rowsB = back.features.filter((f) => typeof f.attributes?.objectid === 'number');
       const mineB = rowsB.find((f) => f.attributes.objectid === oid);
       const lost = tr('Энэ багцад өөр хэрэглэгч илгээлт хийсэн байна — хуудсыг дахин ачаалж, ноорогоо сэргээгээд үргэлжлүүлнэ үү.');
-      /* ⚠️ 2026-10-26: мөрийн горимд толгойг ЭХЛЭЭД нэмсэн (`created`) ч «шинэ мөр» — ижил уралдааны дүрэм; ялагдвал мөрийг ч устгана */
       if (mineB && (target == null || created) && (rowsB[0].attributes.objectid as number) < oid) {
         const del = await fl.applyEdits({ deleteFeatures: [{ objectId: oid }] } as Parameters<typeof fl.applyEdits>[0]);
         const dr = del.deleteFeatureResults ?? [];
@@ -2019,14 +1446,12 @@ async function saveSubmissionInner(
         return { ok: false, error: lost };
       }
     } catch { /* баталгааны уншилт унасан — бичилт батлагдсан хэвээр */ }
-    /* ⚠️ 2026-10-26: толгойн бүтцийн багана (самбарын шүүлт) ба хуучирсан үеийн мөрийн GC — best effort, хүлээхгүй */
     if (rowsOn && gens1) {
       void setHeaderCols(oid, { mur_turul: 'tolgoi', mur_key: 'h', noorog_turul: 'ilgeelt', huvilbar: ROW_VERSION, huuchin_at: payload.at }).catch(() => undefined);
       void subGc(oid, gens1, pins).catch(() => 0);
     }
     return { ok: true, oid };
   } catch (e) {
-    /* ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): энд `applyEdits`-ээс ӨМНӨХ уналт л ирнэ (`lost`-гүй — дээрх ⚠️) */
     return { ok: false, error: tr('Илгээлт хадгалагдсангүй: {0}', errMsg(e)) };
   }
 }
@@ -2034,25 +1459,15 @@ async function saveSubmissionInner(
 /**
  * ИЛГЭЭЛТИЙГ ХААНА — төлөвлөлтийн ахлах инженер баталж архивт бичсэний ДАРАА.
  * `dkey` → `done|<pkgKey>|<oid>`, payload-д `archiveOid`/`approvedAt` нэмнэ.
- *
- * ⚠️ Мөр аль хэдийн `done|` бол `ok:true` (idempotent) — батлах алхам
- *    давтагдахад архивт давхар жааз үүсгэхгүйн шалгалт `hyanaltStore`-д
- *    ЭНЭ төлөвөөр хийгдэнэ.
- * ⚠️ Ноорогийн мөрийг (`user|pkg`) OBJECTID-оор олсон ч хаахгүй — илгээлт биш.
  */
 export async function closeSubmission(
   oid: number,
   archiveOid: number,
   approvedAt: number,
-  /** `true` → payload-д `regPending` тавина (`SubmissionPayload.regPending`-ийн ⚠️) */
+  /** `true` → payload-д `regPending` тавина (`SubmissionPayload.regPending`) */
   regPending?: boolean,
   /**
    * АРХИВЛАСАН АГУУЛГЫН `at` (compare-and-set, 2026-09-25-ны аудит, HIGH).
-   * ⚠️ Жааз бичих хооронд гүйцэтгэгч дахин илгээвэл (ижил `sub|` мөр update)
-   *    урьд нь ШИНЭ агуулга архивт ОРООГҮЙ атлаа `done|` болж хөлддөг байв.
-   *    Өгвөл мөрийн `at` зөрөх үед ХААХГҮЙ — `{ok:false, changed:true}`.
-   * ⚠️ Атом биш (унших → бичих хооронд мс-ийн цонх үлдэнэ) — ArcGIS-д CAS байхгүй.
-   *    `undefined` = шалгахгүй (хуучин зан төлөв).
    */
   expectAt?: number,
 ): Promise<{ ok: boolean; error?: string; changed?: boolean }> {
@@ -2071,7 +1486,6 @@ export async function closeSubmission(
     const dkey = String(a.dkey ?? '');
     if (dkey.startsWith(DONE_PREFIX)) return { ok: true };
     if (!dkey.startsWith(SUB_PREFIX)) return { ok: false, error: tr('Мөр №{0} нь илгээлт биш ({1})', oid, dkey) };
-    /* ⚠️ 2026-10-26: толгой (`parseHead`) — v3 мета ч; мөрийг ХӨДӨЛГӨХГҮЙ (OBJECTID ХЭВЭЭР — `n:sub:<OBJECTID>` дагана) */
     const head = parseHead(String(a.payload ?? ''));
     const payload = head?.p ?? null;
     if (!head || !payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
@@ -2081,38 +1495,16 @@ export async function closeSubmission(
       if (curAt !== expectAt)
         return { ok: false, changed: true, error: tr('Илгээлт №{0} архивлах явцад дахин илгээгдсэн — хаасангүй', oid) };
     }
-    /*
-     * ⚠️ dkey-ЭЭС ТАСЛАХДАА ӨДРИЙГ ХАЯНА (2026-09-07): шинэ хэлбэр нь
-     *    `sub|<pkg>|<fillMs>` тул зүгээр таславал `pkgKey` нь
-     *    `b1_9f|1757203200000` болж, `done|` түлхүүр бохирдоно (уншилт нь
-     *    угтвараар ажилладаг тул эвдрэхгүй ч, `pkg`-ээр хайх · тайланд
-     *    задлах бүх зам худал болно). Энэ нь ЗӨВХӨН нөхөх зам —
-     *    `parseSubmission` хоосон `pkgKey`-г хүлээж авдаггүй тул амьд
-     *    өгөгдөлд бараг хүрэхгүй, гэхдээ хэлбэр зөв байх ёстой.
-     */
     const pkgKey = payload.pkgKey || dkey.slice(SUB_PREFIX.length).split('|')[0];
     const next: SubmissionPayload = { ...payload, archiveOid, approvedAt };
-    /* ⚠️ 2026-10-09 (R2): хаагдсан мөрд «архивлаж байна» тэмдэг утгагүй */
     delete next.archiving;
     if (regPending) next.regPending = true;
     const edit = {
       updateFeatures: [{
-        /* ⚠️ 2026-10-26: payload-ын ХЭЛБЭР хэвээр (`headRaw` — `gens`-тэй бол давхар/мета, эс бөгөөс хуучин) */
         attributes: { objectid: oid, dkey: doneKey(pkgKey, oid), payload: headRaw(next, head.gens, head.meta) },
       }],
     };
     const r = await fl.applyEdits(edit as Parameters<typeof fl.applyEdits>[0]);
-    /*
-     * ⚠️ ХООСОН ХАРИУГ БАС БАРИНА (2026-09-15-ны аудит). Урьд нь зөвхөн
-     *    `error != null`-ыг шалгадаг байсан тул `updateFeatureResults` огт
-     *    ирээгүй хариунд `bad = undefined` болж `{ok:true}` буцдаг байв.
-     *    Тэр үед `sub|` мөр НЭЭЛТТЭЙ үлдэж, дараагийн илгээлт батлагдсан
-     *    агуулга дээр нэгтгэгдэн архивт ДАВХАР тоологдоно.
-     *
-     * ⚠️ `objectId`-ыг БАС шалгана: ArcGIS JS API-ийн `FeatureEditResult`-д
-     *    `success` талбар байхгүй тул амжилтын ганц бодит тэмдэг нь буцсан
-     *    мөрийн дугаар мөн.
-     */
     const ups = r.updateFeatureResults ?? [];
     if (!ups.length) {
       return { ok: false, error: tr('Илгээлт хаагдсангүй: серверээс хариу ирсэнгүй.') };
@@ -2126,10 +1518,7 @@ export async function closeSubmission(
 }
 
 /**
- * «АРХИВЛАЖ БАЙНА» ТЭМДЭГ ТАВИНА (2026-10-09, R2; `SubmissionPayload.archiving`-ийн ⚠️).
- * ⚠️ `at`-ийн CAS (`closeSubmission`-тэй ижил, атом биш) — мөрийн `at` зөрвөл `{ok:false, changed:true}`,
- *    юу ч бичихгүй. `dkey` ба `at` ХӨНДӨГДӨХГҮЙ — зөвхөн payload-д тэмдэг нэмнэ.
- * ⚠️ ArcGIS алдааг HTTP 200-аар буцаадаг тул үр дүнгийн мөрийг шалгана (`updOk`).
+ * «АРХИВЛАЖ БАЙНА» ТЭМДЭГ ТАВИНА (2026-10-09, R2; `SubmissionPayload.archiving`).
  */
 export async function markArchiving(
   oid: number,
@@ -2139,7 +1528,6 @@ export async function markArchiving(
 ): Promise<{ ok: boolean; error?: string; changed?: boolean; busy?: true }> {
   if (!Number.isInteger(oid) || oid <= 0) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
   try {
-    /* ⚠️ 2026-10-09: тавьсан хэрэглэгч/сешн (`ArchivingMark.by`/`sid`) — «claim» */
     const me = ((await getAuth())?.user ?? '').toLowerCase();
     const url = await tableUrl(false);
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
@@ -2149,22 +1537,12 @@ export async function markArchiving(
     if (!a) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
     const dkey = String(a.dkey ?? '');
     if (!dkey.startsWith(SUB_PREFIX)) return { ok: false, changed: true, error: tr('Мөр №{0} нь илгээлт биш ({1})', oid, dkey) };
-    /* ⚠️ 2026-10-26: толгой (`parseHead`) — v3 мета ч; бичихдээ ХЭЛБЭР хэвээр (`headRaw`) */
     const head = parseHead(String(a.payload ?? ''));
     const payload = head?.p ?? null;
     if (!head || !payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', oid) };
     const curAt = isFin(a.at) ? Number(a.at) : payload.at;
     if (curAt !== expectAt)
       return { ok: false, changed: true, error: tr('Илгээлт №{0} архивлах явцад дахин илгээгдсэн — хаасангүй', oid) };
-    /*
-     * ⚠️ 2026-10-09: «CLAIM» — ХОЁР ХӨТӨЧ ЭЦСИЙН ШАТЫГ ЗЭРЭГ БАТЛАХ. Урьд нь хоёр дахь нь эхнийхийн ШИНЭ тэмдгийг
-     *    дарж, хоёулаа жааз бичдэг байв (бичсэний дараах уншилт зөвхөн СҮҮЛИЙН бичигчийг барина). Одоо ижил `at`-тай,
-     *    `ARCHIVING_TTL_MS`-ээс залуу, ӨӨР сешний тэмдэг байвал юу ч бичихгүй (`busy`); ижил хэрэглэгчийн өөр
-     *    таб/хөтөч бол тусгай мессеж. Хуучирсан тэмдгийг (тавьсан таб унасан) дарна — дуудагч архивыг өмнө нь
-     *    `matchArchivedFrame`-ээр шалгасан.
-     * ⚠️ АРИЛГАЛТ (`mark === null`) — ЗӨВХӨН өөрийн сешний тэмдгийг; өөр сешнийхийг арилгавал тэр бичиж
-     *    байхад «архивлаж байна» хамгаалалт алга болно.
-     */
     if (mark) {
       const cf = claimConflict(payload.archiving, expectAt, SESSION_ID, me);
       if (cf) {
@@ -2180,19 +1558,9 @@ export async function markArchiving(
       return { ok: false, error: tr('«Архивлаж байна» тэмдэг өөр цонхных — арилгасангүй') };
     }
     const next: SubmissionPayload = { ...payload };
-    /* ⚠️ 2026-10-26: мөртэй (`gens`) толгойд тэмдгийн агуулга = СҮҮЛИЙН баталгаажсан үе (`at` тулгагдсан) — `prevGen`
-       тавина: дараа нь дахин илгээхэд хуулбар (`prev`) мета-д хасагдсан ч тэр үеэс угсрагдана (`assembleRows`), GC
-       тэр үеийг хадгална. Мета толгойн `payload` нүдгүй тул хуулбарыг ЭНДЭЭС авах боломжгүй — үе нь цорын ганц зөв эх. */
     const pg = head.gens?.length ? head.gens[head.gens.length - 1] : undefined;
     if (mark) next.archiving = { ...mark, by: mark.by ?? me, sid: SESSION_ID, ...(pg != null && mark.prevGen == null ? { prevGen: pg } : {}) };
     else delete next.archiving;
-    /* ⚠️ 2026-10-09 (R2/7): `at` талбарыг payload-тай НЭГ бичилтээр (атом) бичнэ, дараа нь ДАХИН уншиж
-       батална. Урьд нь зөвхөн payload бичдэг байв: унших → бичих завсарт гүйцэтгэгч дахин илгээвэл мөрийн
-       `at` нь ШИНЭ, payload нь ХУУЧИН (+тэмдэг) болж зөрдөг — уншигч (`readRow`) мөрийн `at`-ийг түрүүлж
-       авдаг тул хуучин агуулга шинэ хувилбарын нэрээр харагдана. Одоо мөр үргэлж өөртөө нийцтэй
-       (`at` = payload.at). Бичсэний дараах уншилтаар `at` өөрчлөгдсөн эсвэл тэмдэг алга бол (манай
-       бичилтийн ДАРАА өөр бичилт орсон) `changed` — дуудагч архивлахгүй. ArcGIS-д CAS байхгүй тул
-       унших → бичих хоорондох мс-ийн цонх хэвээр (`closeSubmission`-ийн ⚠️). */
     const r = await fl.applyEdits({
       updateFeatures: [{ attributes: { objectid: oid, at: curAt, payload: headRaw(next, head.gens, head.meta) } }],
     } as Parameters<typeof fl.applyEdits>[0]);
@@ -2217,14 +1585,9 @@ export async function markArchiving(
  *   · тухайн багцын нээлттэй `sub|` мөр(үүд)-ийн аль нэгэнд (өдрөөс үл хамааран) ШИНЭ (`ARCHIVING_TTL_MS`)
  *     «архивлаж байна» тэмдэг байвал `{ who, at }` (`at` = эхэлсэн агшин), эс бөгөөс `null`;
  *   · уншилт УНАВАЛ THROW — дуудагч ХААНА (fail-closed): «тэмдэг алга» гэж ҮЗЭХГҮЙ.
- * ⚠️ ЯАГААД: `hyanaltStore.archiveSubmission` тэмдгийг жааз бичихээс ӨМНӨХ шалгалтын (`sameFrame`/MAX OID) ӨМНӨ
- *    тавьдаг; энэ хооронд өөр бичигч жааз/шинэчлэл оруулбал нэг нь нөгөөгөө булна.
- * ⚠️ Задраагүй мөрийг алгасна (тийм мөрийг архивлах боломжгүй — `readRow` ил алдаагаар зогсдог).
- * ⚠️ Серверт `payload LIKE '%"archiving"%'`-аар шүүнэ (`JSON.stringify` яг ийм бичдэг) — бүх payload-ыг татахгүй.
  */
 export async function archivingBusy(
   pkgKey: string,
-  /** ⚠️ 2026-10-21 (аудит): ӨӨРИЙН `sub|` мөрийг алгасна — `archiveSubmission` тэмдгээ тавьсны ДАРАА багцын БУСАД мөрийн тэмдгийг шалгана */
   exceptOid?: number,
 ): Promise<{ who: string; at: number } | null> {
   const u = await readUrl();
@@ -2237,11 +1600,9 @@ export async function archivingBusy(
     returnGeometry: false,
     orderByFields: ['objectid ASC'],
   });
-  /* ⚠️ 2026-10-12 (дарааллын аудит): серверийн цагаар (`markFresh`-ийн ⚠️) */
   const now = serverNow();
   let best: { who: string; at: number } | null = null;
   for (const f of res.features) {
-    /* ⚠️ 2026-10-26: зөвхөн МЕТА (тэмдэг) — нүд угсрахгүй (`headRow`) */
     const r = headRow(f.attributes as RowAttrs | undefined);
     if (!r.ok || !r.sub || r.sub.done || r.sub.payload.pkgKey !== pkgKey) continue;
     if (exceptOid != null && r.sub.oid === exceptOid) continue;
@@ -2252,7 +1613,7 @@ export async function archivingBusy(
   return best;
 }
 
-/** `applyEdits`-ийн шинэчлэлийн үр дүн — хоосон хариу ч алдаа (`closeSubmission`-ий ⚠️) */
+/** `applyEdits`-ийн шинэчлэлийн үр дүн — хоосон хариу ч алдаа (`closeSubmission`-ий) */
 const updOk = (r: { updateFeatureResults?: { error?: unknown; objectId?: unknown }[] }): string | null => {
   const ups = r.updateFeatureResults ?? [];
   if (!ups.length) return tr('Серверээс хариу ирсэнгүй.');
@@ -2262,10 +1623,7 @@ const updOk = (r: { updateFeatureResults?: { error?: unknown; objectId?: unknown
 
 /**
  * «БҮРТГЭЛ ХҮЛЭЭГДЭЖ БУЙ» ТЭМДГИЙГ АРИЛГАНА — нэгтгэл ба IPC хоёулаа
- * амжилттай болсны дараа (`SubmissionPayload.regPending`-ийн ⚠️).
- *
- * ⚠️ IDEMPOTENT: мөр `done|` биш, эсвэл тэмдэггүй бол `ok:true` — юу ч бичихгүй.
- * ⚠️ ArcGIS алдаа HTTP 200-аар ирдэг тул үр дүнгийн мөрийг шалгана (`updOk`).
+ * амжилттай болсны дараа (`SubmissionPayload.regPending`).
  */
 export async function markRegistered(sheetOid: number): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!Number.isInteger(sheetOid) || sheetOid <= 0) return { ok: true };
@@ -2280,7 +1638,6 @@ export async function markRegistered(sheetOid: number): Promise<{ ok: true } | {
     });
     const a = res.features[0]?.attributes as RowAttrs | undefined;
     if (!a || !String(a.dkey ?? '').startsWith(DONE_PREFIX)) return { ok: true };
-    /* ⚠️ 2026-10-26: толгой (`parseHead`) — v3 мета ч; ХЭЛБЭР хэвээр (`headRaw`) */
     const head = parseHead(String(a.payload ?? ''));
     const payload = head?.p ?? null;
     if (!head || !payload) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', sheetOid) };
@@ -2299,11 +1656,6 @@ export async function markRegistered(sheetOid: number): Promise<{ ok: true } | {
 
 /**
  * БҮРТГЭЛ ХҮЛЭЭГДЭЖ БУЙ `done|` илгээлтүүд — `retryPendingRegistrations`-д.
- *
- * ⚠️ Бүх `done|` мөрийн 80KB-ийн payload-ыг татахгүйн тул серверт `LIKE`-аар
- *    шүүнэ (`JSON.stringify` нь яг `"regPending":true` бичдэг), дараа нь
- *    задлаад ДАХИН тулгана. `orderByFields` — хуудаслалтын дүрэм.
- * ⚠️ Чимээгүй: алдаа → хоосон (дахин оролдлого нь зөвхөн нөхөх зам).
  */
 export async function listRegPending(): Promise<StagedSubmission[]> {
   try {
@@ -2348,10 +1700,6 @@ async function headAt(oid: number): Promise<{ fl: Awaited<ReturnType<typeof laye
  * ХУУЧИН (v1/v2, `gens`-гүй) ИЛГЭЭЛТИЙГ МӨР РҮҮ — `n:sub:<OBJECTID>` үе бичээд payload-д ЗӨВХӨН `gens` (+ «архивлаж буй»
  * хуулбарын `prevGen`) нэмнэ (нүд ХЭВЭЭР — Phase B хүртэл; хуучин таб уншсаар). `at` · `dkey` · OBJECTID хөдлөхгүй. Давтахад юу
  * ч хийхгүй.
- * ⚠️ 2026-10-26 (өгөгдөл алдагдахгүй): кодлогч агуулгыг ЯГ (эсвэл нэмэлтийн горимд утга ижилээр — `normIncCells`) сэргээхгүй
- *    бол ШИЛЖҮҮЛЭХГҮЙ — payload эх сурвалж хэвээр, `ok:false` + шалтгаан (админд харагдана, тулгалтад `pending`).
- * ⚠️ Үеийн дугаар өмнөх (унасан оролдлогын) мөртэй давхцахгүй; `«архивлаж буй» хуулбар` (`archiving.prev`) байвал түүнийг
- *    ӨМНӨХ үе болгож бичнэ (`prevGen`) — v3 мета-д хуулбар хасагдахад тэр үеэс угсрагдана.
  */
 export async function migrateSubmissionRow(oid: number): Promise<{ ok: true; migrated: boolean } | { ok: false; error: string }> {
   try {
@@ -2398,11 +1746,8 @@ export async function migrateSubmissionRow(oid: number): Promise<{ ok: true; mig
     if (prevGen != null && obj.archiving && typeof obj.archiving === 'object') obj.archiving = { ...(obj.archiving as Record<string, unknown>), prevGen };
     const next = JSON.stringify({ ...obj, gens });
     if (next.length > 100_000) return { ok: false, error: tr('Илгээлт №{0}-ийн payload хэт урт', oid) };
-    /* ⚠️ `at`-ийн CAS (уншсанаас хойш дахин илгээгдсэн бол бичихгүй — шинэ агуулгыг хуучин үеэр солихгүй) */
     const again = await headAt(oid);
     if (!again || String(again.a.payload ?? '') !== raw || Number(again.a.at) !== Number(h0.a.at)) return { ok: false, error: tr('Илгээлт №{0} шилжүүлэх явцад өөрчлөгдсөн — дахин оролдоно уу', oid) };
-    /* ⚠️ 2026-10-26: уншсан `at`-ыг ХАМТ бичнэ — завсарт хамтрагч дахин илгээсэн бол түүний баталгааны уншилт (`mineB.at`) зөрөөг
-       барина; бичсэний дараа payload ЯГ манайх эсэхийг шалгана */
     const r = await h0.fl.applyEdits({ updateFeatures: [{ attributes: { objectid: oid, payload: next, ...(isFin(h0.a.at) ? { at: h0.a.at } : {}) } }] } as Parameters<typeof h0.fl.applyEdits>[0]);
     const err = updOk(r);
     if (err) return { ok: false, error: err };
@@ -2423,7 +1768,6 @@ export async function compareSubmissionRow(oid: number): Promise<'same' | 'diff'
   if (!head || !head.gens) return 'pending';
   if (head.meta) return 'same';
   const p = await assemble(oid, head);
-  /* ⚠️ 2026-10-26: нэмэлтийн горимд утга ижил (`normIncCells`) бол ижил — НИЙТ горимд ЯГ */
   return sameContent(p, head.p) ? 'same' : 'diff';
 }
 
@@ -2439,8 +1783,6 @@ export async function stripSubmissionPayload(oid: number): Promise<{ ok: true } 
     if (head.p.archiving?.prev && head.p.archiving.prevGen == null) return { ok: false, error: tr('Илгээлт №{0} архивлагдаж буй — дараа хасна', oid) };
     const p = await assemble(oid, head);
     if (!sameContent(p, head.p)) return { ok: false, error: tr('Илгээлт №{0}-ийн мөр payload-аас зөрсөн — хасаагүй', oid) };
-    /* ⚠️ 2026-10-26: угсралт (хэд хэдэн хүсэлт) хооронд толгой өөрчлөгдсөн бол (хамтрагчийн шинэ үе) ХУУЧИН `gens`/мета-гаар
-       дарахгүй — бичихийн ЯГ өмнө payload + `at` тулгаж, `at`-ыг хамт бичиж, дараа нь шалгана (`markArchiving`-ийн дүрэм) */
     const again = await headAt(oid);
     if (!again || String(again.a.payload ?? '') !== String(h0.a.payload ?? '') || Number(again.a.at) !== Number(h0.a.at)) {
       return { ok: false, error: tr('Илгээлт №{0} шилжүүлэх явцад өөрчлөгдсөн — дахин оролдоно уу', oid) };

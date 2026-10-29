@@ -4,13 +4,6 @@
  * ТУХ — БАГЦЫН ДЭЛГЭРЭНГҮЙ. Жишээ HTML-ийн дараалал:
  *   гарчиг → KPI → [Тойм · Хуваарь · Гүйцэтгэл · Ашиглалт|Хамааралтай орон сууц ·
  *   Зураг · Материал · Төлбөр (IPC) · Асуудал].
- *
- * ⚠️ Хуваарийн мэдээлэл (гол үе шат, Level 3, хүн хүч/техник, улсын комисс) нь
- *    «Хуваарь»-ийн бөглөх хуудаснаас (`loadPkgSchedule`) — ЗӨВХӨН энэ багцынх.
- * ⚠️ Эх сурвалжгүй хэсэг бүтцээрээ «—» (хэрэглэгчийн сонголт, 2026-09-30).
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БҮХЭЛДЭЭ хоосон хэсэг (Зураг, Асуудал, Хамааралтай
- *    орон сууц, баримтгүй Материал) ХУРААГДСАН (`Section empty`); ачаалж буй тоо «…»;
- *    «Сүүлд тайлагнасан» нь ЭНЭ багцынх (урьд нь төслийн нийт огноо байв).
  */
 import { useMemo } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -29,11 +22,8 @@ import { payRows } from '@/lib/ipcTable';
 import { lz, depRows, commissionText, type TuhModel, type TuhRow } from './model';
 import { loadPkgSchedule, sheetsOf } from './tuhSchedule';
 import { Legend, Gantt, GANTT_LEGEND, type GanttRow } from './charts';
-/* Системийн карт ба цуваа — «ХАБЭА»-гийн «Ажилтан — өдрөөр» графиктай ижил (`ui.Series`).
-   ⚠️ 2026-10-09: хэмжигч — `ui.Meter` (ТУХ-ын локал хуулбар хасагдсан) */
+/* Системийн карт ба цуваа — «ХАБЭА»-гийн «Ажилтан — өдрөөр» графиктай ижил (`ui.Series`). */
 import { Section as Card, Series, Meter, Loading, type SeriesLineDef } from '@/components/ui';
-/* ⚠️ Системийн графикууд — «Гүйцэтгэлийн явц» (PkgProg) ба «Санхүүжилтийн явц» (Finance).
-   ТУХ өөрийн S-муруй/мөнгөн график зурахгүй (2026-09-30, «үндсэн системтэй адилхан»). */
 import { ProgChart } from '@/modules/PkgProg';
 import { ComboChart, lagLevel, lagLevelOf } from '@/modules/Finance';
 import { coverageOk, coverageNote } from '@/lib/planProgress';
@@ -45,9 +35,6 @@ import s from '../tuh.module.css';
 
 /**
  * ЗӨРҮҮНИЙ ӨНГӨ — (бодит − төлөвлөгөө), нэгж хувь; сөрөг = хоцролт.
- * ⚠️ 2026-10-04: урьд нь `< 0` бол улаан, бусад (`null` ч) НОГООН байв — 0.1 нэгж хоцролт
- *    улаан, «мэдэгдэхгүй» ногоон. Одоо порталын НЭГ босго (`Finance.lagLevel`: 5 шар · 10
- *    улаан); `null` саармаг (өнгөгүй), хоцроогүй бол ногоон.
  */
 const gapTone = (gap: number | null): string => {
   if (gap == null) return '';
@@ -55,7 +42,6 @@ const gapTone = (gap: number | null): string => {
   return lv === 'red' ? s.bad : lv === 'yellow' ? s.warn : s.good;
 };
 
-/** ⚠️ 2026-10-09 (аудит №2): мөнгөн дүн — 0 нь «0 ₮» (хэмжилт), «—» ЗӨВХӨН `null`-д (`mnt()` 0-ийг «—» болгодог) */
 const mnt0 = (v: number | null | undefined): string =>
   v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`;
 
@@ -82,28 +68,19 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
   m: TuhModel;
   onBack: () => void;
   onOpen: (key: string) => void;
-  /** ⚠️ 2026-10-06: «Багцын хамаарал» харагдац руу (`Tuh.onOpenDeps`) — өгөөгүй бол холбоосгүй */
   onOpenDeps?: () => void;
 }) {
   const housing = r.p.group === 'housing';
   const now = m.now;
-  /* ⚠️ 2026-10-09 (аудит): хуваарийн огноо (`rowSpan`, гол үе шат) нь UTC шөнө дундын ms — «Хуваарь»
-     (`huvaari/util.todayUtc`)-тай ижил ЛОКАЛ өдрийн UTC шөнө дундаар жишнэ. Урьд нь `Date.now()`
-     (`m.now`) тул өнөөдөр дуусах ажил тэр өдрийн турш «Хоцорсон» болж, гол үе шат «өнгөрсөн» гэж
-     тэмдэглэгддэг байв. */
   const today = useMemo(() => { const d = new Date(now); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); }, [now]);
-  /* ⚠️ 2026-09-30: хуваарь нь түлхүүрийн ЭЗЭН мөрийнх (`TuhRow.own`) — зураг төслийн мөр барилгын
-     хуваарийг (гол үе шат, Level 3, нөөц) өөрийнх мэт харуулахгүй (`tuhData.keyOwners`-ийн ⚠️) */
   const hasSheets = r.own && sheetsOf(r.p.pkgKey).length > 0;
   const schedQ = useAsync(
     () => (hasSheets ? loadPkgSchedule(r.p.pkgKey) : Promise.resolve([])),
     [r.p.pkgKey, hasSheets],
   );
   const sched = schedQ.state === 'ready' ? schedQ.data : null;
-  /** Хуваарь ачаалж байхад «—» → «…» (`model.lz`-ийн ⚠️) */
+  /** Хуваарь ачаалж байхад «—» → «…» (`model.lz`) */
   const schedWait = (t: string): string => (t === '—' && hasSheets && schedQ.state === 'loading' ? '…' : t);
-  /* ⚠️ 2026-10-07: хуваарь унахад «Дахин оролдох» — урьд нь `schedQ.retry` холбогдоогүй тул
-     зөвхөн бүтэн хуудас refresh-ээр л дахин татдаг байв (газрын зураг ч дахин ачаалагдана). */
   const schedFail = (
     <p className={s.failNote}>
       {tr('Хуваарь уншигдсангүй')}
@@ -111,7 +88,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
       <button type="button" className={s.retryBtn} onClick={schedQ.retry}>{tr('Дахин оролдох')}</button>
     </p>
   );
-  /** ХАБЭА (хүн хүч) ачаалж байна — бодит тоо ирэх хүртэл «…» (доорх «Хүн хүч»-ийн ⚠️) */
+  /** ХАБЭА (хүн хүч) ачаалж байна — бодит тоо ирэх хүртэл «…» (доорх «Хүн хүч») */
   const wfWait = m.loading.has('workforce');
 
   const derived = useMemo(() => {
@@ -150,13 +127,8 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
   }, [sched, today]);
 
   const elapsed = elapsedPct(r.p.start, r.p.end, now);
-  /* ⚠️ 2026-10-09: үлдсэн хоног хуанлийн өдрөөр (`calDaysBetween`) — `Math.round` биш */
   const left = calDaysBetween(now, r.p.end);
-  /* ⚠️ 2026-10-26 (аудит): газрын зургийн багцын холбоос (`mapPkgLayers`) — Багц 7.1 · 8 «GIS давхарга —» гардаг байв */
   const layerTitles = (mapPkgLayers(r.p.pkgKey) ?? []).map((id) => LAYER_BY_ID[id]?.title).filter(Boolean);
-  /* ⚠️ 2026-10-06 (аудит): «Багцын хамаарал»-ын холбоосууд — урьд нь `hasDeps` хатуу `false`,
-     урьдчилсан нөхцөлийн эгнээ «—», «хамаарал бүртгэгдээгүй» гэсэн ХУДАЛ бичигтэй байв.
-     `null` = хамаарал ирээгүй (ачаалж/унасан). */
   const upRows = depRows(m, r.p.key, 'up');
   const downRows = depRows(m, r.p.key, 'down');
   const depsWait = m.loading.has('deps');
@@ -170,23 +142,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
   /* IPC */
   /**
    * Олголтын бүртгэл — огноогоор, хуримтлалтай (render дотор хувьсагч өөрчлөхгүй).
-   * ⚠️ 2026-09-30: (1) ЗӨВХӨН дүнтэй мөр — AUTO мөр (`dun` хоосон, огноо нь батлалтын
-   *    өдөр) олголт БИШ (`ipcTable.payCount`-ийн ⚠️); урьд нь «олгосон огноо»-той мөр болж
-   *    харагддаг байв. (2) «гэрээний %»-ийн ТООЛОГЧ = гэрээт дүн нь тодорхой гэрээний
-   *    олголт (`cumKnown`) — хуваарь (`contractTotal`)-тай нэг хүрээ (`ipcOf.paidPct` ·
-   *    `ipcTable.ipcTotals`); «Хуримтлагдсан» ₮ нь хэвээр БҮХ олголт.
-   */
-  /*
-   * ⚠️ 2026-10-09: ГЭРЭЭ БҮРЭЭР `ipcTable.payRows`-ийн КАНОНИК дараалал (урьдчилгаа эхэнд, дараа нь
-   *    IPC № өсөх). Урьд нь `guilgee_ognoo` МӨРӨӨР эрэмбэлдэг байв — огноогүй мөр (45-ийн 5) ЭХЭНД
-   *    орж, хуримтлал буруу мөрд наалдана (`payRows`-ийн ⚠️); бас багцын бүх гэрээг нэг хуримтлалд холино.
-   * ⚠️ 2026-10-09 (аудит): «Хуримтлагдсан» ба «гэрээний %» нь УРЬДЧИЛГААГ ОРУУЛСАН хуримтлал — гэрээний
-   *    «олгосон %» (`ipcOf.paidPct` · CEO · IPC-ийн `paidTotal`) урьдчилгааг багтаадаг. Урьд нь
-   *    `PayRow.cum` (зөвхөн гүйцэтгэлийн мөр, урьдчилгаанд `null`) хэрэглэдэг тул бүртгэлийн сүүлийн %
-   *    гэрээний олгосон %-иас урьдчилгааны хэмжээгээр бага гардаг байв. Одоо дараалал дагуу бүх дүнтэй
-   *    мөрийг нэмнэ (урьдчилгаа эхэнд тул гүйцэтгэлийн мөрийн хуримтлал = урьдчилгаа + `PayRow.cum`);
-   *    урьдчилгааны мөр ч ӨӨРИЙН хуримтлалтай. `PayRow.cum`-ийг ӨӨРЧЛӨХГҮЙ (`ipcLink`-ийн зөрүү үүнээс).
-   *    «гэрээний %» = тухайн мөрийн хуримтлал ÷ ТУХАЙН гэрээний гэрээт дүн (тодорхой, > 0 үед).
    */
   const payLog = useMemo(() => (r.ipc?.contracts ?? []).flatMap((c) => {
     const tot = c.contractTotal != null && c.contractTotal > 0 ? c.contractTotal : null;
@@ -245,7 +200,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гүйцэтгэгчийн төлөвлөгөөнөөс')}</span>
-          {/* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол өнгөөр (хоцорсон/хэвийн) ДҮГНЭХГҮЙ, хамралтыг нэрлэнэ */}
           <span className={`${s.statValue} ${r.planCoverage == null || coverageOk(r.planCoverage) ? gapTone(r.gapContractor) : ''}`}>{lz(m, 'plan')(pp(r.gapContractor))}</span>
           <span className={s.statNote}>
             {tr('SPI (гүйцэтгэгч) {0}', lz(m, 'plan')(r.ev.spiContractor == null ? '—' : num(r.ev.spiContractor, 2)))}
@@ -259,11 +213,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Хүн хүч')}</span>
-          {/* ⚠️ 2026-09-30: багц ХАБЭА-д холбоотой бол ЗӨВХӨН ХАБЭА (тайлангүй → «—»); хуваарийн
-              ТӨЛӨВЛӨСӨН нөөцийн нийлбэрийг (`resourcesOf`) бодит тоо мэт орлуулахгүй */}
-          {/* ⚠️ 2026-10-06 (аудит): ХАБЭА ачаалж байхад «…» — урьд нь энэ хооронд ТӨЛӨВЛӨСӨН
-              нөөц (`resourcesOf`) бодит мэт гараад, ХАБЭА ирэхэд өөр тоо руу үсэрдэг байв. ХАБЭА-д
-              холбоогүй багцад хуваарийн нөөц рүү буцна — тэр үед «төлөвлөсөн» гэж ИЛ шошголно. */}
           <span className={s.statValue}>
             {r.workerDays.length ? num(r.workers) : wfWait ? '…' : schedWait(num(derived?.hun ?? null))}
             <small>{tr('хүн')}{!r.workerDays.length && !wfWait && derived?.hun != null ? ` · ${tr('төлөвлөсөн')}` : ''}</small>
@@ -359,11 +308,8 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
                 const C = CASHFLOW_NEW.fields;
                 const F = { pkg: C.pkg, name: C.detail, contractor: C.contractor, cost: C.budget, end: C.endDate, note: C.amountNote };
                 const one = r.p.rows.length === 1;
-                /* ⚠️ 2026-10-27: мөр бүрийн АМЬД явц (`tuhData.rowProgress` · `m.live`) — хадгалсан `guitsetgel_huvi`/шатны
-                   талбар биш; хоосон бол «Мэдээлэлгүй» (`statusOf`-ийн `nullAs`) */
                 const pr = one ? r.progress : rowProgress(c, m.live);
                 const st = one ? r.status : tuhStatus({
-                  /* ⚠️ 2026-10-09: порталын НЭГ дүрэм (`gdash.isContracted` — дотоод зай нэгтгэнэ) */
                   contracted: isContracted(c), progress: pr, gap: null,
                   nullAs: r.p.group === 'design' ? 'unknown' : 'todo',
                 });
@@ -411,12 +357,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
 
       {/* ── Гүйцэтгэл ── */}
       <Section id="tuh-progress" title={tr('S-curve — хуримтлагдсан гүйцэтгэл')}>
-        {/* ⚠️ 2026-10-09: ачаалж/унасан муруй «дата алга» биш (`TuhRow.planFailed` — ЗӨВХӨН энэ багцынх) */}
         <ProgChart months={r.prog} title={tr('Гүйцэтгэлийн явц')} loading={m.loading.has('plan')} planFailed={r.planFailed} />
-        {/* ⚠️ «ХАБЭА»-гийн «Ажилтан — өдрөөр»-тэй ИЖИЛ `ui.Series` (line + утга). Тайлангүй өдөр
-            0 БИШ (null ≠ 0) — 0 цэгээр «ажилтангүй» гэж худал харуулахгүй. */}
-        {/* ⚠️ 2026-10-09: тайлангүй өдрийг ХАСАХГҮЙ — ЦООРХОЙ (`Series.lines`-ийн `null`). Урьд нь шүүгдэж
-            хасагддаг тул тэнхлэг хуанлиа алдаж, 3 хоногийн завсар хөрш өдрүүд мэт нийлж зурагддаг байв. */}
         {(() => {
           const days = r.workerDays;
           const reported = days.some((d) => d.value != null);
@@ -432,8 +373,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         <h3>{tr('EV ба PV')}</h3>
         <div className={s.stats}>
           {([
-            /* ⚠️ 2026-10-09 (аудит №2): EV/SV-д `mnt0` — `mnt()` 0-ийг «—» болгодог тул «эхлээгүй (0 ₮)»
-               ба «мэдээлэлгүй» нийлдэг байв (null ≠ 0); «—» ЗӨВХӨН `null`-д */
             ['EV', mnt0(r.ev.ev)],
             [tr('PV (гэрээ)'), lz(m, 'cfPlan')(mnt(r.ev.pvContract))],
             [tr('PV (гүйцэтгэгч)'), lz(m, 'plan')(mnt(r.ev.pvContractor))],
@@ -495,9 +434,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
           </p>
         </Section>
       ) : (
-        /* ⚠️ 2026-10-01: эх сурвалжгүй — хураагдсан (`Section empty`) */
-        /* ⚠️ 2026-10-06 (аудит): эх нь «Багцын хамаарал» — энэ багцаас ХАМААРДАГ (ард талын)
-           багцууд (орон сууц эхэнд). Холбоогүй бол хураагдсан хэвээр. */
         <Section id="tuh-dependents" title={tr('Хамааралтай орон сууц')} empty={!downRows?.length && !depsWait}>
           <p className={s.note}>
             <DepList
@@ -578,7 +514,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             <span className={s.meterGap}><Meter value={r.ipc?.paidPct ?? null} plan={r.progress} /></span>
             <span className={s.statNote}>
               {tr('{0} гэрээний · биет гүйцэтгэл {1}', pct(r.ipc?.paidPct ?? null), pct(r.progress))}
-              {/* ⚠️ 2026-10-01: хувьд ороогүй олголт тусад нь («IPC» хуудастай ижил) */}
               {r.ipc?.paidOther != null && r.ipc.paidOther !== 0 && <> · {tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', mnt(r.ipc.paidOther))}</>}
             </span>
           </div>
@@ -602,7 +537,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             items={r.months}
             height={280}
             lagMonth={r.lag?.month}
-            /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол хоцрогдлын тэмдэг ГАРГАХГҮЙ (`lagLevelOf`) */
             lagLvl={lagLevelOf(r.lag)}
             contract={r.p.cost != null && r.p.cost > 0 ? r.p.cost : null}
           />
@@ -641,7 +575,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             </tr></thead>
             <tbody>
               {(r.ipc?.contracts ?? []).map((c) => {
-                /* ⚠️ 2026-09-30: `c.pays[0]` (толгой мөр) БИШ — `tuhData.firstFilled`-ийн ⚠️ */
                 const CF = HO_IPC.contractFields;
                 const pick = (k: string) => firstFilled(c.pays, k);
                 const pend = c.pays.flatMap((p) => Object.values(HO_PENDING).map((f) => numOf(p[f]))).filter((x): x is number => x != null);
@@ -666,7 +599,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
       </Section>
 
       {/* ── Асуудал ── */}
-      {/* ⚠️ 2026-10-01: эх сурвалжгүй — хураагдсан */}
       <Section id="tuh-issues" title={tr('Асуудал')} empty>
         <div className={s.three}>
           <div className={s.panel}><h3>{tr('Өнгөрсөн 7 хоногийн ололт')}</h3><p className={s.note}>—</p></div>

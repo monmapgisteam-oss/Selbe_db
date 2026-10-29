@@ -2,27 +2,6 @@
 
 /**
  * ХУВААРЬ — «Гүйцэтгэл бөглөх» хуудасны эхлэх/дуусах огноог ТӨЛӨВЛӨХ хэсэг.
- *
- * ⚠️ ЯАГААД ТУСДАА ХАРАГДАЦ (2026-08-28, хэрэглэгчийн шийдвэр): бөглөх хуудас
- * нь 1,400 мөр × 60 багана. Тэнд нэг ажлыг 12–22 блокт хуваарилахын тулд
- * 24–44 удаа календар нээж дарна. Амьд өгөгдөл үүнийг баталсан — 10 багцын
- * 6-д хуваарийн хамралт 6%-иас доогуур байв.
- *
- * ⚠️ НЭГ БҮТЭН ХҮСНЭГТ (2026-09-01, хэрэглэгчийн заавар). Урьд нь дээд талд
- * ЖАГСААЛТ, доод талд тусдаа ХУАНЛИ байсан: дээрээс бүлгээ сонгоод доор нь
- * төлөвлөнө. Хоёр тусдаа хэсэг байсан тул сонгосон мөр доод хуанлиас олдохгүй,
- * харц дээш доош үсэрдэг байв. Одоо ХОЁУЛАА НЭГ ХҮСНЭГТ: зүүн талд ажлын мод,
- * мөр БҮРИЙН АРД өөрийнх нь хуваарийн зурвас. Мөр нэгээс нэг эгнэнэ.
- *
- * ⚠️ ХОЁР ЗАМААР ТОХИРУУЛНА:
- *   1. ЗУРВАС ЧИРЭХ — хурдан, харьцангуй (мужийг нүдээр тааруулна).
- *   2. POPUP ХУАНЛИ — ажлын нэр дээр дарахад нээгдэнэ; огноог ТООГООР
- *      нарийн оруулна, бүх блокт нэг дор тараана. Чирэлт нь 1 пиксель = 1
- *      хоног тул яг тодорхой огноо тавихад тохиромжгүй.
- *
- * ⚠️ ХАДГАЛАЛТ нь БАЙГАА хуудсанд буцаж бичигдэнэ (`applyUpdates`) — шинэ
- * үйлчилгээ үүсгэхгүй тул төлөвлөгөөт хувь, график, тайлан бүгд өөрчлөлтгүй.
- * АРХИВТ ШИНЭ АГШИН ҮҮСГЭХГҮЙ: хуваарь нь хэмжилт биш, төлөвлөгөө.
  */
 
 import { type PointerEvent as PEvt, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
@@ -40,7 +19,6 @@ import { applyUpdates, loadRows, msToDay, type SheetRow } from '@/modules/sheet/
 import { insertAdds, type NewRow } from '@/modules/sheet/sheetFrame';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { ajilScope, subscribeAjilAcl } from '@/lib/ajilAcl';
-/* ⚠️ 2026-10-26: «Хуваарь» ХАРАХ хүрээ (төрөл · өөрийн багц) ба түүний эх сурвалжуудын дохио */
 import { huvaariViewScope } from '@/lib/huvaariView';
 import { subscribeTypes } from '@/lib/roleTypes';
 import { subscribe as subscribePerms } from '@/lib/permissions';
@@ -66,22 +44,14 @@ import {
   renewPlanClaim, displayReason, serverNow, BLIND_NOTE_SRC,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
-/* ⚠️ 2026-10-12: «шинэ шийдвэр» тэмдгийн багц бүрийн жагсаалт · буцаагдсаныг «харсан» тэмдэглэх (`navBadges`-ийн ⚠️) */
 import { loadPlanNews, markPlanReturnedSeen, type PlanNews } from '@/components/navBadges';
-/* ⚠️ 2026-10-09: `isLostWrite` нэг эх сурвалжаас (урьд нь энд `butetsEdit.isLostResponse`-ийн хуулбар байв) */
 import { isLostWrite } from '@/lib/lostWrite';
-/* ⚠️ 2026-10-09: гүйцэтгэлийн архивлалт явж байгаа эсэх — `save`-ийн бичихийн өмнөх хаалт (fail-closed) */
 import { archivingBusy } from '@/lib/submission';
-/* ⚠️ 2026-10-12 (дарааллын аудит): нэмэлт ажлын буулгалт явж байхад бичихгүй (`archGate`) */
 import { ajilApplyBusyFor } from '@/lib/ajilBatlah';
 import { setNavDirty } from '@/lib/navGuard';
-/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт (хөтөч «дахин асуухгүй» гэвэл чимээгүй `false` буцаадаг) */
 import { askConfirm } from '@/lib/confirm';
 import { hdKey, kA, kH, kM, kN, kR, kS, parseKey } from '@/lib/huvaariDraft';
 import h from './huvaari.module.css';
-/* ⚠️ 2026-09-30: 8.2k мөрийн нэг файлыг `src/modules/huvaari/`-д хуваав — туслах ·
-   төрөл · дэд бүрэлдэхүүн · цэвэр функц · тусдаа hook. Логик · ⚠️ тайлбар бүр
-   тэндээ ХЭВЭЭР; энэ файл нь төлөв · урсгал · зурагдалтын ЭХ хэвээр. */
 import {
   MAX_DAYS, PL_ROW, type ADraft, type Draft, type Drag, type HuvaariReview, type PlanKind, type ResDraft, type Zoom,
 } from './huvaari/types';
@@ -102,7 +72,6 @@ import { setReportSource } from '@/lib/reportSource';
 import { huvaariBlocks } from '@/lib/huvaariReport';
 import { useDragPlan } from './huvaari/useDragPlan';
 import { useSharedDraft } from './huvaari/useSharedDraft';
-/* ⚠️ 2026-10-26: илгээх агшны хуулбар (191-ийн `n:hsub:<OBJECTID>` мөр) — шийдвэр/татлага/нээлтийн дараа тааруулна */
 import { planSyncSubmitted } from '@/lib/draftRowsRemote';
 import { orphanAddsMsg, useAjil } from './huvaari/useAjil';
 import {
@@ -117,21 +86,10 @@ import { Segmented, Switch, Toggle } from '@/components/Switch';
 
 export type { HuvaariReview } from './huvaari/types';
 
-/**
- * ⚠️ ӨНГӨ нь ТӨЛӨВЛӨГӨӨ биш ГҮЙЦЭТГЭЛийг илэрхийлнэ: дууссан ногоон, явж
- * буй цэнхэр, хоцорсон улаан, эхлээгүй саарал, хэмжигдээгүй нь ЦАЙВАР
- * ЗУРААСТАЙ — «мэдэхгүй»-г «тэг»-ээс ялгана.
- */
 const ST_CLASS: Record<Status, string> = {
   done: h.tlDone, run: h.tlRun, todo: h.tlTodo, late: h.tlLate, none: h.tlNone,
 };
 
-/**
- * ⚠️ 2026-10-06 аудит: хяналтыг ШИЙДВЭРГҮЙ хаахад (Esc · «✕ Хаах») батлагчийн
- * ногоон тэмдэглэгээ (`okRows`) зөвхөн санах ойд тул ЧИМЭЭГҮЙ устдаг байв.
- * Тэмдэглэгээ байвал хаахаас өмнө асууна; байхгүй бол шууд хаана.
- */
-/* ⚠️ 2026-10-23 (UX аудит X1): async — аппын дотоод асуулт (`askConfirm`) */
 async function confirmDropMarks(n: number): Promise<boolean> {
   return n === 0 || askConfirm(tr('Зөвшөөрсөн {0} мөрийн тэмдэглэгээ хадгалагдахгүй. Шийдвэргүй хаах уу?', num(n)), { danger: true, ok: tr('Хаах') });
 }
@@ -142,28 +100,16 @@ async function confirmDropMarks(n: number): Promise<boolean> {
  * ЭНД орохгүй. `applyUpdates`/`applyPlanEdits` нь ЭХНИЙ хүсэлт замдаа алдагдсан ч `written = 0` тавьдаг
  * тул урьд нь `save` хагас бичилтийн тэмдгийг арилгаж, зохиогч татах/батлагч буцаах боломжтой болж —
  * хуудсанд СУУСАН огноо «татсан» саналынх болж үлддэг байв (2026-10-08).
- * ⚠️ 2026-10-09: локал хуулбар → `@/lib/lostWrite` (нэг дүрэм, дүрэм тэнд).
  */
 /** Хариу алдагдсан хагас бичилтийн мессеж (`partialMsg`-ийн адил, `prev` хойно нь) — 2026-10-08 */
 const lostWriteMsg = (prev: string) => tr('Хариу ирээгүй — хуудсанд бичигдсэн эсэх тодорхойгүй; дахин «Батлах» дарж дуусгана уу (буцаах боломжгүй).')
   + (prev ? ` (${prev})` : '');
 
-/* ⚠️ 2026-10-08: түгжээ авснаас хойших минут — `Date.now()` render-ийн гадна (react-hooks/purity)
-   ⚠️ 2026-10-09: `now` ПАРАМЕТРЭЭР (минут тутам шинэчлэгдэх `clock` төлөв) — урьд нь функц нь render дотор
-      `Date.now()` дууддаг тул дүрэм зөрчиж, тоо нь өөр шалтгаанаар зурагдах хүртэл хөдөлдөггүй байв. */
 const minutesSince = (ms: number | null | undefined, now: number): number => (ms == null ? 0 : Math.max(0, Math.floor((now - ms) / 60_000)));
-/** ⚠️ 2026-10-09: жаазын танигч — мөрийн OID-ын дараалал + бөглөсөн огноо (`useObyem.frameIdOf`-ийн ижил дүрэм) */
 const frameIdOf = (x: { rows: readonly { oid: number }[]; snapshot: number | null }): string =>
   `${x.snapshot ?? ''}|${x.rows.map((r) => r.oid).join(',')}`;
-/** ⚠️ 2026-10-12 (аудит №8): санал сарын обьём/нөөц агуулах уу — `refetchServer({ needOb })`-ийн ⚠️ (fail-closed тулгалт) */
 const payHasOb = (p: PlanPayload): boolean => Object.keys(p.obyem ?? {}).length > 0 || Object.keys(p.obres ?? {}).length > 0;
-/**
- * ⚠️ 2026-10-12 (аудит №8): «НЭЭЛГҮЙ БУЦААСАН» ТАЙЛБАР — ХАДГАЛАХ текст, МОНГОЛ ЭХЭЭР (`tr()`-гүй, lib-ийн `BLIND_NOTE_SRC`).
- *    Урьд нь батлагчийн хэлээр орчуулагдаж бичигддэг тул англи батлагчийн буцаалт монгол зохиогчид англиар гардаг байв.
- *    Харуулахдаа `displayReason()`.
- */
 const BLIND_NOTE = BLIND_NOTE_SRC;
-/** ⚠️ 2026-10-12 (аудит №8): `rejectReview`-ийн хадгалдаг «Зөвшөөрөгдөөгүй N мөр: …» мөр (монгол эх) — `showPlanReason` орчуулна */
 const UNAPPROVED_RE = /^Зөвшөөрөгдөөгүй (\d+) мөр: (.*)$/;
 /**
  * ХАДГАЛСАН БУЦААЛТЫН ШАЛТГААНЫГ ДЭЛГЭЦЭНД (2026-10-12, аудит №8) — lib-ийн `displayReason` (системийн тогтмол мөрүүд) +
@@ -176,17 +122,6 @@ export function showPlanReason(raw: string | null | undefined): string {
   }).join('\n');
 }
 
-/**
- * ⚠️ 2026-10-09: НӨГӨӨ ТАБЫН ИЛГЭЭЛТИЙН БОДИТ ОГНОО · НӨӨЦИЙН МӨРҮҮД (`xLock`-ийн ⚠️) — UI-ийн түгжээ (эффект) ба
- *    бичихийн өмнөх шалгалт (`xLockCheck`) НЭГ дүрэм: `actual`/`res` мөр (oid + `keys`-ээр ажлын код) ба сарын
- *    нөөцийн (`obres`) кодууд.
- */
-/*
- * ⚠️ 2026-10-12 (аудит №8): УЯЛДАА (`deps` → `Hamaaral`) ба САРЫН ОБЬЁМ (`obyem`) ч ТӨРЛӨӨС ҮЛ ХАМААРНА — хоёр төрлийн
- *    илгээлт ижил мөрийн уялдаа/сарын обьём агуулбал хоёулаа хүлээгдэж, сүүлд батлагдсан нь эхнийхийг чимээгүй дардаг
- *    байв. Одоо `ham` (уялдааны мөр — oid ба `keys`-ээр код) ба `ob` (сарын обьёмын код) ТУСДАА олонлог —
- *    бодит огноо · нөөцийн (`oids`/`des`) UI түгжээг (`xLockWhy`) өргөсгөхгүй, зөвхөн `xLockCheck` (илгээх/хадгалах) хэрэглэнэ.
- */
 type XLockSet = { oids: Set<number>; des: Set<number>; ham: Set<number>; hamDes: Set<number>; ob: Set<number> };
 const xLockSetOf = (p: PlanPayload): XLockSet => {
   const oids = new Set<number>();
@@ -221,18 +156,6 @@ const xLockSetOf = (p: PlanPayload): XLockSet => {
 /** Мөр (oid · ажлын код) түгжээнд орох эсэх — `xLockWhy` ба `xLockCheck`-ийн нэг нөхцөл */
 const xLockHit = (st: XLockSet, oid: number | null, des: number | null): boolean =>
   (oid != null && st.oids.has(oid)) || (des != null && st.des.has(des));
-/**
- * ⚠️ 2026-10-08: НЭГ ТҮВШНИЙ БУЦААЛТ (Ctrl+Z · «Буцаах») — сүүлийн `applyChanges` багцын ӨМНӨХ агшин.
- *    `spans` — хөндөгдсөн мөрийн (чирэлтэд БҮХ мөрийн) муж; `ob`/`obRes` — хөндөгдсөн `${код}|${блок}`
- *    түлхүүрийн ноорог (`undefined` = ноорогт байгаагүй). `full` = чирэлтийн бүтэн агшин (түлхүүр
- *    бүрийг тулгаж сэргээнэ). Чирэлтийн цуцлалт (`undoRef`, popup хаах) ТУСДАА хэвээр.
- */
-/*
- * ⚠️ 2026-10-09: `ham`/`aD`/`rD` — уялдаа · бодит огноо · нөөцийн ноорог (`undefined` = ноорогт байгаагүй). Урьд нь
- *    агшин зөвхөн `applyChanges`-д (муж өөрчлөгдсөн үед) авагддаг тул ЗӨВХӨН уялдаа/бодит огноо/алхмаар хуулсан
- *    задаргаа (`copyShifted`) өөрчлөгдөхөд ӨМНӨХ агшин үлдэж, Ctrl+Z ӨӨР (хуучин) засварыг буцаадаг байв.
- *    Нэг үйлдлийн (нэг товшилт/товч — нэг синхрон тик) бүх хэсэг НЭГ агшинд нийлнэ (`snapUndo`).
- */
 type UndoSnap = {
   spans: Map<number, (Span | null)[]>;
   ob: Map<string, Map<string, number> | undefined>;
@@ -244,10 +167,6 @@ type UndoSnap = {
 };
 /** `snapUndo`-ийн оролт — хөндөгдөх хэсгүүд (2026-10-09) */
 type UndoPart = { spans?: Map<number, (Span | null)[]>; ob?: Iterable<string>; ham?: number[]; aD?: number[]; rD?: number[]; full?: boolean };
-/**
- * ⚠️ 2026-10-09: ХАМТРАГЧИЙН НИЙЛҮҮЛЭЛТ агшны түлхүүрийг хөндсөн үү (`useSharedDraft.onRemote`) — тэгвэл агшин
- *    хүчингүй (нийлүүлэлтээс ӨМНӨХ утгаар Ctrl+Z хамтрагчийн шинэ утгыг дарах байв).
- */
 function undoTouched(u: UndoSnap, keys: ReadonlySet<string>): boolean {
   for (const k of keys) {
     const p = parseKey(k);
@@ -261,18 +180,11 @@ function undoTouched(u: UndoSnap, keys: ReadonlySet<string>): boolean {
   }
   return false;
 }
-/**
- * ⚠️ 2026-10-09: ТАЙРАЛТААС ӨМНӨХ БҮТЭН сарын задаргаа (`snap`) дээр одоогийн ноорог (`cur`) давамгайлж нийлнэ —
- *    `snap` алга бол `null` (хуучин зан: `cur`-аас тайрна). `Huvaari.applyChanges`-ийн `obFullRef`-ийн ⚠️.
- */
 function fullMonths<V>(snap: Map<string, V> | undefined, cur: Map<string, V>): Map<string, V> | null {
   return snap ? new Map([...snap, ...cur]) : null;
 }
-/** ⚠️ 2026-10-09: буцаалтын стекийн дээд хэмжээ — хуучин агшин хасагдана (санах ой: чирэлтийн агшин бүтэн хуулбар) */
 const UNDO_MAX = 30;
-/** ⚠️ 2026-10-09: ноорог сэргээлт ИНГЭЭС удвал (сүлжээ гацсан) хаалттай хүснэгтийн оронд дахин ачаалах товч гарна */
 const RESTORE_SLOW_MS = 45_000;
-/** ⚠️ 2026-10-09: буцаах (`u`) · дахин хийх (`r`) стек */
 type UndoStk = { u: UndoSnap[]; r: UndoSnap[] };
 const UNDO_EMPTY: UndoStk = { u: [], r: [] };
 /** `null` — хоёуланг цэвэрлэх (хуучин `setUndoSnap(null)`); функц — цэвэр шинэчлэл */
@@ -281,7 +193,6 @@ function undoStkReduce(s: UndoStk, a: null | ((s: UndoStk) => UndoStk)): UndoStk
   return a(s);
 }
 /** Шүүлтийн чип (2026-10-08) — `dirtyOids` · уялдааны зөрчил · хоцорсон; байгаа шүүлттэй БА-аар хослоно */
-/* ⚠️ 2026-10-09: `unbal` — сарын обьём нийт обьёмтой тэнцээгүй мөр (`unbalRows`, илгээх хаалттай нэг дүрэм) */
 type Chip = 'dirty' | 'viol' | 'late' | 'unbal';
 /** Өөрчлөлтийн жагсаалтын мөр (2026-10-08) — хяналтын самбар · илгээхийн өмнөх хураангуй · «хадгалаагүй N» */
 type Chg = {
@@ -296,12 +207,6 @@ type Chg = {
 /** Фокус оролтод байна уу — хурдан товчлуур (Ctrl+Z · `]` · Space) оролтыг хөндөхгүй (2026-10-08) */
 const inInput = (el: EventTarget | null): boolean =>
   el instanceof HTMLElement && !!el.closest('input, textarea, select, [contenteditable="true"]');
-/**
- * ⚠️ 2026-10-09: `window`-ын товчлуурын сонсогч (Esc · Ctrl+Z · `]` · Space) ЭНЭ үйл явдлыг ҮЛ ТООМСОРЛОХ уу:
- *    оролт дотор · `[role=complementary]` (AgentChat самбар — 2026-10-09-нөөс `dialog` биш) дотор · эсвэл
- *    Хуваарийн үндэс (`[data-huvaari-root]`)-ээс ГАДУУР. Урьд нь чат самбарт бичиж байхдаа Ctrl+Z/Space дарахад
- *    хуваарийн ноорог буцаж, Esc нь бүтэн дэлгэцийг хаадаг байв. Фокусгүй (`body`) үед хэвийн ажиллана.
- */
 const keyIgnored = (el: EventTarget | null): boolean => {
   if (!(el instanceof HTMLElement)) return false;
   if (el === document.body || el === document.documentElement) return false;
@@ -316,58 +221,20 @@ export function Huvaari({
   review?: HuvaariReview;
   /**
    * «ХУВААРЬ БАТЛАХ» ДАРААЛАЛААС ШИЛЖИЖ ИРСЭН БАТЛАХ ХҮСЭЛТ (2026-09-16).
-   *
-   * ⚠️ Дараалал нь эх өгөгдөлд БИЧИХГҮЙ (`HuvaariBatlah.tsx`-ийн толгой):
-   *    батлах гинж (`save` → `applyUpdates` → `decidePlan`) ЗӨВХӨН энд
-   *    байдаг тул товч дарахад тэр багцаар энэ хуудас нээгдэж, шийдвэрлэх
-   *    цонх өөрөө гарна.
-   * ⚠️ `Portal`-ийн САНАХ ОЙН төлөв — URL ч, `sessionStorage` ч БИШ: тэр
-   *    хоёр нь F5-ыг давж, шийдвэрлэгдсэн саналын цонхыг дахин нээх байлаа.
    */
   jump?: { pkgKey: string; oid: number } | null;
   /** Хүсэлтийг НЭГ л удаа хэрэглэсний дараа цэвэрлэнэ */
   onJumpDone?: () => void;
 } = {}) {
   const { user, status } = useAuth();
-  /* ⚠️ Хуваарийн хуваарилалт ӨӨРИЙН хадгалалттай — түүнд захиалахгүй бол
-     админы өөрчлөлт энэ хуудсанд хүрэхгүй. */
   const [hvN, setHvN] = useState(0);
   useEffect(() => subscribeHuvaariAcl(() => setHvN((x) => x + 1)), []);
   const [pkg, setPkg] = useState<Pkg>(
     () => (review ? PKGS.find((p) => p.key === review.pkgKey) : undefined) ?? PKGS[0],
   );
-  /* ⚠️ ОДООГИЙН багц (2026-09-21): батлах гинжний сүүлийн алхам ХУУЧИН
-     closure-ийн `refreshFlow`-ыг дууддаг тул багц солигдсоны ДАРАА ч дугаар
-     нь хамгийн сүүлийнх болж, өмнөх багцын pending шинэ багцад наалддаг байв.
-     Дугаараас гадна түлхүүрийг ч тулгана. (2026-09-30: `useLatest`, эрт зарлав —
-     хуваалцсан ноорог · нэмэлт ажлын hook-ууд ч уншина.) */
   const pkgKeyRef = useLatest(pkg.key);
   /**
    * БҮХ БАГЦ ХАРАГДАНА — ХАРАХ нь ЗАСАХААС ТУСДАА (2026-09-09).
-   *
-   * ⚠️ ХАРАГДАЦЫН ЭРХ (`views`) нь «юуг ХАРАХ», ACL хуваарилалт нь «юуг
-   *    ЗАСАХ» гэсэн ХОЁР ӨӨР асуулт. Порталын бусад бүх модуль (Газар ·
-   *    Санхүү · Дэд бүтэц · Зөвшөөрөл) яг ийм: `hasCap` нь ЗӨВХӨН товч
-   *    идэвхжүүлэхэд хэрэглэгддэг, өгөгдөл нь бүгд харагдана.
-   *
-   * ⚠️ УРЬД НЬ багцын сонгогчийг хуваарилалтаар ШҮҮДЭГ байв. 2026-09-07-нд
-   *    би `guitsetgelAcl.bagtsScope` → `huvaariScope` болгож зассан — тэр нь
-   *    зөв (урсгалын томилгоо хуваарийн эрх өгөх ёсгүй) ГЭВЧ хажуугийн үр
-   *    дагаврыг анзаараагүй: хуучин `bagtsScope` нь томилогдоогүй хүнд `null`
-   *    (=бүх багц) буцаадаг байсан бол `huvaariScope` нь fail-closed `[]`.
-   *    Үр дүнд хуваарилагдаагүй хүнд сонгогч ХООСОН болж, доорх «зөвхөн
-   *    харна» гэсэн баннер ХУДАЛ амлалт болов — харах зүйл үлдээгүй.
-   *
-   * ⚠️ Хүрээ нь `canEdit`/`canApprove` дээр ХЭВЭЭР үйлчилнэ (доор) — өөрийн
-   *    багцаас гадуур зөвхөн УНШИНА. Аюулгүй байдал сулраагүй: бичих зам
-   *    бүр (`onDown` · `applyModal` · `save` · `decidePlan`) тэдгээрээр
-   *    хаагдсан хэвээр.
-   *
-   * ⚠️ 2026-09-15 (хэрэглэгчийн шууд шаардлага): ЭНЭ ШИЙДВЭР ХУМИГДАВ.
-   *    «Багц хуваарилсан аккаунт өөрийн багцаас БУСДЫГ харж байна» — тэр нь
-   *    буруу. Дээрх 2026-09-09-ний засвар нь `huvaariScope` fail-closed
-   *    болсноос үүдсэн ХАЖУУГИЙН үр дагаврыг (хуваарилагдаагүй хүнд сонгогч
-   *    хоосон болох) нөхөх түр шийдэл байсан бөгөөд хэт өргөн болсон байв.
    *
    *    ОДООГИЙН ДҮРЭМ:
    *      · хуваарилалт БАЙХГҮЙ (`[]`, аль ч үүрэгт)  → БҮХ багц (харах эрх
@@ -378,37 +245,20 @@ export function Huvaari({
    *    Хоёр үүргийн НЭГДЭЛ: зохиогч Багц 3-т, батлагч Багц 5-д томилогдсон
    *    хүн хоёуланг нь харна — эс бөгөөс батлах ажлаа хийж чадахгүй.
    */
-  /* ⚠️ Эрх ба нэмэлт ажлын хуваарилалт ӨӨР хадгалалттай — `groupOpts` · `canAddRow` хоёулаа хамаарна */
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
   const [ajN, setAjN] = useState(0);
   useEffect(() => subscribeAjilAcl(() => setAjN((x) => x + 1)), []);
-  /* ⚠️ 2026-10-26: харах хүрээ (`huvaariViewScope`) нь төрлийн загвар · үүрэг · урсгал · обьём · дэд бүтцийн хуваарилалтаас */
   const [typesN, setTypesN] = useState(0);
   useEffect(() => {
     const f = () => setTypesN((x) => x + 1);
     const offs = [subscribeTypes(f), subscribePerms(f), subscribeFlowAcl(f), subscribeObyemAcl(f), subscribeButetsAcl(f)];
     return () => { for (const o of offs) o(); };
   }, []);
-  /*
-   * ⚠️ 2026-10-19 (аудит): НЭМЭЛТ АЖЛЫН МӨР НЭМЭГЧИЙН хүрээ (`ajilScope(…, 'editor')` + `addRow` эрх) ч НЭГДЭЛД
-   *    орно. Урьд нь зөвхөн хуваарийн хоёр үүрэг тул «Багц 1-д хуваарь зохиогч, Багц 5-д мөр нэмэгч» хүнд
-   *    сонгогч Багц 1-ээр хумигдаж Багц 5-д мөр нэмэх замгүй байв (мөр нэмэх UI ЭНД л — `canAddRow`).
-   *    ЭРХ ӨӨРЧЛӨГДӨХГҮЙ: огноо засах = `canEdit` (хуваарийн зохиогчийн хүрээ), батлах = `canApprove`,
-   *    мөр нэмэх = `canAddRow` (нэмэлт ажлын хүрээ) — бусад багцад зөвхөн ХАРНА.
-   */
-  /*
-   * ⚠️ 2026-10-26 (хэрэглэгч: «харах хүрээг гараар — бүх багц эсвэл тодорхой багц»): СОНГОГЧ = «ХАРАХ ХҮРЭЭ»
-   *    (`huvaariView.huvaariViewScope` — төрлийн «Хуваарь харах» ∪ зохиогч · батлагчийн багц) ∪ мөр нэмэгчийн
-   *    хүрээ. Урьдын «хуваарилалтгүй бол БҮХ багц» нөөц ХАСАГДСАН — хүрээгүй хүнд багц харагдахгүй (доорх `noScope` мэдэгдэл);
-   *    «Хуваарь» цэс ч тэр үед нээгдэхгүй (`permissions.workflowViewsOf`). ЭРХ ӨӨРЧЛӨГДӨХГҮЙ: харах хүрээнээс гадна засах/
-   *    батлах/мөр нэмэх нь `canEditRole` · `canApprove` · `canAddRow`-оор хэвээр.
-   */
   const groupOpts = useMemo(() => {
     if (status === 'off') return PKG_GROUPS;
     const v = huvaariViewScope(user?.username);
     const e = hasCap(user?.username, 'addRow') ? ajilScope(user?.username, 'editor') : [];
-    /* ⚠️ `null` нь ХЯЗГААРГҮЙ */
     if (v == null || e == null) return PKG_GROUPS;
     const mine = new Set([...v, ...e]);
     return PKG_GROUPS.filter((g) => mine.has(g));
@@ -416,28 +266,6 @@ export function Huvaari({
   }, [user, status, hvN, capN, ajN, typesN]);
   /**
    * ЗАСАХ ЭРХ — тусад нь олгодог (`caps`) + багцын хүрээ.
-   * ⚠️ Нэг огноо солиход БҮХ багцын төлөвлөгөөт хувь, тайлан, хоцрогдлын
-   *    дохио дахин бодогдоно. Бөглөх эрхэд дагалдуулж болохгүй: бөглөгч
-   *    өөрийн хоцрогдлыг арилгахын тулд хуваарийг хойш чирэх боломжтой болно.
-   */
-  /**
-   * ⚠️ `pending` нь ЭНД ОРОХГҮЙ — түгжээ нь `canEdit`-д БИШ (доорх `locked`).
-   *    Учир нь БАТЛАХ явцад агуулгыг ноорогт буулгаад `save`-ээр бичдэг тул
-   *    тэр агшинд түгжээ асуулаа бол батлагдсан хуваарь өөрөө бичигдэхгүй.
-   */
-  /* ⚠️ ХЯНАЛТЫН ГОРИМД (`review`) ЗАСВАР ХААЛТТАЙ — батлагч саналыг ХАРНА,
-     өөрчлөхгүй. `save()` нь `canEdit`-ийг шалгадаггүй тул батлах гинж хэвээр
-     ажиллана (агуулга ноорогт буугаад бичигдэнэ). */
-  /*
-   * ⚠️ 2026-10-23 (хэрэглэгч: «бодит батлагдсан хуваарь ба ноорог хувилбар 2-ыг солиж харах»): ХАРАГДАЦЫН СОНГОЛТ.
-   *    `viewSaved` — серверт хадгалагдсан (батлагдсан) хуваарийг НООРОГГҮЙГЭЭР харуулна (`plan` = `base`); тэр үед
-   *    засвар ХААЛТТАЙ (`canEdit`) — ноорог хөндөгдөхгүй, «Ноорог» руу буцахад хэвээр. Хяналтын горимд (`review`)
-   *    үйлчлэхгүй (батлагч саналыг харна).
-   * ⚠️ 2026-10-23: ЭРХ (`canEditRole`) ба харагдацын хаалт (`canEdit` = эрх && !savedView) ТУСДАА — урьд нь нэг утга байсан
-   *    тул «Батлагдсан» руу шилжихэд «эрх алга» гэсэн худал мэдэгдэл гарч, сэргээх товчнууд алга болж, `useSharedDraft`-ийн
-   *    хамгаалалт (`askSwitch` · `hdUnsynced`) унтарч ноорог асуулгүй хаягдаж болдог байв. Сонголт нь БАГЦАД уягдсан
-   *    (өөр багц руу шилжихэд «Ноорог» руу буцна), таб солиход ч тэглэнэ (`[kind]` эффект). `savedView` нь доор —
-   *    урьдчилан харах · батлах · илгээлт хүлээгдэх үед үйлчлэхгүй.
    */
   const [viewSavedAt, setViewSavedAt] = useState<string | null>(null);
   const viewSaved = viewSavedAt === pkg.key;
@@ -450,8 +278,6 @@ export function Huvaari({
 
   /**
    * БАТЛАХ ЭРХ — `plan`-аас ТУСДАА (2026-09-07).
-   * ⚠️ Зохиогч өөрийгөө батлахаас хамгаалах ганц шалгуур нь UI БИШ,
-   *    `decidePlan` дотор — хоёр эрхийг нэг хүнд олговол товч идэвхтэй болно.
    */
   const canApprove = useMemo(
     () => status === 'off' || inScope(huvaariScope(user?.username, 'approver'), pkg.group),
@@ -462,11 +288,7 @@ export function Huvaari({
   /**
    * МӨР НЭМЭХ ЭРХ (2026-09-24, FillNew-ээс шилжсэн) — `addRow` эрх + нэмэлт
    * ажлын ЗАСВАРЛАГЧИЙН хүрээ (`ajilAcl`, `null` = хязгааргүй).
-   * ⚠️ Хуваарийн `canEdit`-ээс ТУСДАА: огноо тавих ба гэрээнд ажил нэмэх нь
-   *    өөр өөр хариуцлага. Админ (`super`) ч `addRow` эрхээ панелаас ил асаана
-   *    (FillNew-ийн 2026-09 дүрэм) — хүрээ л түүнд үл хамаарна.
    */
-  /* ⚠️ `capN` · `ajN` (эрх · нэмэлт ажлын хуваарилалтын дохио) — `groupOpts`-оос ДЭЭШ зарлагдсан (2026-10-19) */
   const canAddRow = useMemo(() => {
     if (review) return false;
     if (!hasCap(user?.username, 'addRow')) return false;
@@ -475,25 +297,12 @@ export function Huvaari({
     return sc0 === null || sc0.includes(pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, status, capN, ajN, pkg.group, review]);
-  /**
-   * ⚠️ 2026-10-26 (хэрэглэгч): ЗӨВХӨН ХАРАХ ГОРИМ — энэ багцад засах (зохиогч) · батлах · мөр нэмэх эрх АЛЬ НЬ Ч алга
-   *    (төрлийн «Хуваарь харах», эсвэл өөр багцын зохиогч). Толгойд «Зөвхөн харах» тэмдэг; бичих зам бүр
-   *    эдгээр гурваар аль хэдийн хаалттай (`sendForApproval` · `decide` · `useSharedDraft.hdWritable` · `useAjil`).
-   */
   const viewOnly = !review && status !== 'off' && !canEditRole && !canApprove && !canAddRow;
 
   /**
    * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ — байвал хуваарь ТҮГЖИГДЭНЭ.
-   * ⚠️ Хоёр санал зэрэг хүлээвэл батлагч алийг нь батлахаа мэдэхгүй, мөн
-   *    хоёулаа батлагдвал сүүлийнх нь өмнөхийг чимээгүй дарна.
    */
   const [pending, setPending] = useState<PlanSubmission | null>(null);
-  /**
-   * ⚠️ 2026-10-08: ТҮГЖЭЭ ТӨРӨЛ (`kind`) ТУС БҮРД — `pending` нь ЗӨВХӨН идэвхтэй табын (төлөвлөгөө/гэрээ)
-   *    хүлээгдэж буй илгээлт (`loadPending(pkgKey, kind)`). Урьд нь төлөвлөгөөний илгээлт «Гэрээ» табыг
-   *    ч түгждэг байв. `pendingOther` — НӨГӨӨ табынх: зөвхөн мэдэгдэлд (энэ таб засагдана гэж хэлэх,
-   *    дарааллаас буруу таб дээр ирснийг таних).
-   */
   const [pendingOther, setPendingOther] = useState<PlanSubmission | null>(null);
   /** Хоёр табын хүлээгдэж буй илгээлт — `[kind]` эффект солино (deps `[kind]` хэвээр) */
   const pendRef = useLatest({ cur: pending, other: pendingOther });
@@ -501,139 +310,72 @@ export function Huvaari({
   const [flowReady, setFlowReady] = useState<boolean | null>(null);
   /**
    * БЭЛЭН БИШ БОЛ ЯАГААД — баннерт ЯГ энэ шалтгааныг бичнэ (2026-09-11).
-   * ⚠️ Урьд нь гурван огт өөр шалтгаан нэг мессеж болж нийлдэг байсан тул
-   *    админ юу засахаа мэдэхгүй байв.
    */
   const [flowWhy, setFlowWhy] = useState<string>('');
   /**
    * СҮҮЛИЙН ШИЙДВЭР — хүлээгдэж буй илгээлт байхгүй үед харуулна.
-   *
-   * ⚠️ БУЦААСАН ШАЛТГААНЫГ гүйцэтгэгчид ХҮРГЭХ цорын ганц зам. Үүнгүй бол
-   *    буцаалт нь чимээгүй алга болж, гүйцэтгэгч юуг засахаа мэдэхгүй хэвээр
-   *    дахин ижил хуваарь илгээнэ — «шалтгаан заавал» гэсэн дүрэм утгагүй
-   *    болно (2026-09-07-ны шалгалтаар илэрсэн).
    */
   const [lastDecision, setLastDecision] = useState<PlanSubmission | null>(null);
   /**
    * «Улсын комисс» ШИНЭ ЖААЗ бичигдсэний дараа хуваалцсан ноорогийг (hd) ШИНЭ oid руу
    * зөөх зураглал (`remapOids`, хадгалахтай ижил дүрэм) — сэргээх эффект нэг удаа
    * хэрэглээд тэглэнэ. `pkg` — өөр багцад хэрэглэхгүй. (2026-09-25 аудит)
-   * ⚠️ 2026-09-30: ЭНД (эрт) зарлана — доорх `[pkg]` эффект бичдэг, `useSharedDraft` уншина.
    */
   const hdRemapRef = useRef<{ pkg: string; map: Map<number, number> } | null>(null);
   /**
    * БАТЛАХ УРСГАЛЫН АЛХАМЫН ТЭМДЭГ — `save` дуудагдсан уу (батлах эффект доор).
-   * ⚠️ 2026-09-30: эффектүүдээс ӨМНӨ зарлана (react-hooks/immutability: хожим зарлагдсан
-   *    ref-ийг эффектэд бичихийг хориглодог); утга · дүрэм батлах эффектийн ⚠️-д.
    */
   const savedRef = useRef(false);
   /**
    * ХАГАС БИЧИГДСЭН БАТЛАЛТ — `oid` (2026-10-01).
-   * ⚠️ Батлах `save` нь эхлээд огноог (`applyUpdates`), ДАРАА нь сарын обьёмыг
-   *    (`applyPlanEdits`) бичдэг — хоёр тусдаа үйлчилгээ, нийтлэг транзакц алга.
-   *    Хоёр дахь нь унахад урьд нь түгжээ ТАЙЛАГДАЖ, санал `pending` хэвээр үлддэг
-   *    тул: зохиогч татах, эсвэл батлагч БУЦААХ боломжтой болж, татагдсан/буцаагдсан
-   *    саналын огноо эх хуудсанд үлддэг байв (эх хуваарь батлагдалгүй хөдөлсөн).
-   *    Одоо: түгжээ ҮЛДЭНЭ (`CLAIM_TTL` хүртэл татах/өөр батлагч хаалттай), энэ
-   *    сешнд буцаах хаагдана, «Батлах»-ыг дахин дарахад зөвхөн үлдсэн хэсэг
-   *    бичигдэнэ (огноо серверт таарсан тул диффд орохгүй).
    */
   const partialRef = useRef<number | null>(null);
-  /** ⚠️ 2026-10-08: хагас бичилтийн тэмдэг ҮЛДСЭН ч бичилтийн ХАРИУ АЛДАГДСАН (`isLostWrite`) илгээлт — мессеж нь `partialMsg` биш `lostWriteMsg` */
   const lostWriteRef = useRef<number | null>(null);
-  /** ⚠️ 2026-10-11 (аудит №7): энэ илгээлтийн АЛЬ НЭГ оролдлогод эх хуудсанд ≥1 мөр бичигдсэн (эсвэл хариу алдагдсан —
-      бичигдсэн байж болно). `save` ДАХИН оролдлогод (`markPlanPartial` унах · `written === 0`) урьд нь өмнөх оролдлогын
-      бичилтийг үл тоож `clearPlanPartial`-аар тэмдгийг арилгадаг байв — хагас суусан санал буцаагдах/татагдах боломжтой
-      болдог. Энэ ба `lostWriteRef`/`partialRef` нь ЗӨВХӨН `decidePlan(approve)` амжилттай болоход тэглэгдэнэ (oid-оор
-      түлхүүрлэгдсэн тул багц/төрөл солиход өөр илгээлтэд нөлөөлөхгүй). */
   const wroteSomeRef = useRef<number | null>(null);
-  /** ⚠️ 2026-10-09: бичсэний дараа жааз солигдсон (`save`-ийн `frameIdOf` шалгалт) илгээлт — мессеж нь `save`-ийнх хэвээр */
   const frameMovedRef = useRef<number | null>(null);
-  /** ⚠️ 2026-10-08: `claimPlan`-ийн түгжээний агшин — `decidePlan({ claimAt })` нэг батлагчийн өөр цонхыг ялгана */
-  /* ⚠️ 2026-10-12 (аудит №8): `save` бичих алхам бүрийн ӨМНӨ `renewPlanClaim`-аар сунгаж, шинэ агшныг энд тавина —
-     `approveGuard`/`markPlanPartial`-д ч дамжуулна (ӨӨР цонхны ижил батлагчийн түгжээг «минийх» гэж үзэхгүй). */
   const claimAtRef = useRef<number | null>(null);
-  /**
-   * ⚠️ 2026-10-12 (аудит №8): БАТЛАХ БИЧИЛТ ЯГ АЛЬ АЛХАМД УНАСАН — `partialMsg(…, { step, written, total })`. Урьд нь
-   *    батлах эффект ямар ч уналтад «огноо бичигдсэн боловч сарын обьём бичигдсэнгүй» гэдэг тул огнооны ДУНДАА (500-ийн
-   *    2-р багц) унасан эсвэл түгжээ сунгагдаагүй үед батлагч худал мэдээлэл авдаг байв. oid-оор түлхүүрлэгдэнэ.
-   */
   const failStepRef = useRef<{ oid: number; step: 'dates' | 'obyem'; written?: number; total?: number } | null>(null);
   /**
    * ОЛОН БЛОК — ЕРӨНХИЙ СОНГОЛТ (2026-09-29, хэрэглэгч: «өмнө нь нэг ажил дээр блок сонгож
    * төлөвлөж болдог байсан бол төлөвлөгөөг бүхэлд нь олон блок сонгож төлөвлөх боломжтой
    * болгох; нэг ажил олон блок сонгох хэвээр үлдэнэ»).
-   *
-   * ⚠️ Идэвхтэй блок (`blk`) ҮРГЭЛЖ сонгогдсон — энэ Set нь НЭМЭЛТ блокууд.
-   * ⚠️ ХЭРЭГЖИЛТ: ажил бүрийн цонх (`PlanModal`) эдгээр блокийг УРЬДЧИЛАН сонгосон
-   *    нээгдэнэ — чирэлт/товшилтын дараа «Тавих» дарахад огноо · сарын обьём · нөөц
-   *    сонгосон бүх блокт ИЖИЛ тавигдана (`applyModal`-ийн `blks`, 2026-09-24-ний
-   *    шалгагдсан зам). Чирэлт өөрөө идэвхтэй блокт л зурагдана: цуцлах (`undoRef`),
-   *    гинж, сарын тайралт бүгд нэг блокоор бичигдсэн — олон блокт шууд бичвэл цуцлалт
-   *    бусад блокийг сэргээхгүй.
-   * ⚠️ Багц · төрөл солигдоход цэвэрлэгдэнэ (блокийн жагсаалт өөр).
    */
   const [gBlks, setGBlks] = useState<Set<number>>(() => new Set());
   /** Илгээх/шийдвэрлэх цонх */
   /* `reject` — хяналтын горимын буцаах цонх (2026-09-25) */
   const [flowBox, setFlowBox] = useState<'send' | 'decide' | 'reject' | null>(null);
   /**
-   * Цонхны ТАЙЛБАР/ШАЛТГААНЫ текст — ЭЦЭГТ (2026-09-23). ⚠️ `FlowBox` дотор
+   * Цонхны ТАЙЛБАР/ШАЛТГААНЫ текст — ЭЦЭГТ (2026-09-23). `FlowBox` дотор
    *    байсан тул ард нь дарж/Esc-ээр хаахад бичсэн шалтгаан устдаг байв.
    *    Зөвхөн илгээлт/шийдвэр АМЖИЛТТАЙ болоход л цэвэрлэнэ.
    */
   const [flowTxt, setFlowTxt] = useState('');
-  /**
-   * ⚠️ 2026-10-23 (UX аудит P3): НЭМЭЛТ АЖИЛ ИЛГЭЭХ ЦОНХ — нэмэгчийн тайлбар (`submitAjil.note`) бичих газар. Урьд нь товч шууд
-   *    илгээдэг тул батлагчийн «Нэмэгчийн тайлбар» ҮРГЭЛЖ хоосон байв. Текст ЭЦЭГТ — Esc/ард дарж хаахад устахгүй (`flowTxt`-ийн дүрэм).
-   */
   const [ajBox, setAjBox] = useState(false);
   const [ajTxt, setAjTxt] = useState('');
   /**
    * БАТЛАХ ЯВЦАД — батлагдаж буй илгээлтийн `oid`.
-   * ⚠️ `save` нь ноорогийг React төлөвөөс уншдаг тул агуулгыг буулгасны ДАРАА,
-   *    дараагийн зурагдалтад бичилтийг гүйцэтгэнэ (`useEffect` доор).
    */
   const [approving, setApproving] = useState<number | null>(null);
   /**
    * УРЬДЧИЛАН ХАРАХ — илгээгдсэн хуваарийг хуанли дээр НООРОГ болгон буулгав уу.
-   *
-   * ⚠️ Үүнгүй бол батлагч «14 мөр» гэсэн тоо л хараад ХАРААГҮЙ зүйлээ батлана.
-   *    Санал нь ноорог болж буусан үед хуанли дээр өөрчлөлт нь ЯГ адилхан
-   *    (`h.rowDirty`) тодорно — батлагч юуг зөвшөөрч буйгаа нүдээр харна.
-   *
-   * ⚠️ Урьдчилан харах нь ЭХ ХУУДСАНД ЮУ Ч БИЧИХГҮЙ: ноорог нь зөвхөн санах
-   *    ойд. Батлахгүйгээр хуудсаа сэргээвэл ул мөргүй арилна.
    */
   const [previewing, setPreviewing] = useState(false);
-  /* ⚠️ 2026-10-23: «Батлагдсан» харагдац (`viewSaved`-ийн ⚠️) — урьдчилан харах · батлах · илгээлт хүлээгдэх үед ҮЙЛЧЛЭХГҮЙ:
-     урьд нь батлагч саналыг ачаалаад «Батлагдсан» руу шилжвэл хуанли серверийн хуваарийг харуулж (`reviewOids` хоосон),
-     мөр ногоон болгохгүйгээр харагдахгүй саналыг батлах боломжтой байв. */
   const savedView = viewSaved && !review && !previewing && approving == null && pending == null;
   const canEdit = canEditRole && !savedView;
 
   /**
-   * «Улсын комисс» автомат нэмэлтийн хаалга — ачаалалтын эффект ref-ээр уншина (`canEdit`-ийн ⚠️).
-   * ⚠️ 2026-09-25 аудит: ИЛГЭЭЛТ ХҮЛЭЭГДЭЖ (`pending`) · батлагдаж · урьдчилан харагдаж
-   *    байхад БИЧИХГҮЙ — шинэ жааз нь батлалтын жаазыг булж, батлалт `sameFrame`-ээр
-   *    унана. Багц солиход `pending` асинхрон ирдэг тул энэ нь зөвхөн МЭДЭГДЭЖ БУЙ
-   *    төлөвийн хаалт; сервер талын `sameFrame`/MAX OID шалгалт үлдсэнийг барина.
+   * «Улсын комисс» автомат нэмэлтийн хаалга — ачаалалтын эффект ref-ээр уншина (`canEdit`).
    */
-  /* ⚠️ 2026-09-30: `useLatest` — commit-ийн дараа, эффектээс өмнө бичигдэнэ; уншигч нь `[pkg]` эффект тул утга ижил */
   const komissGateRef = useLatest(() => canEdit && status !== 'off' && kind === 'plan' && pending == null && approving == null && !previewing);
   /** `previewing`-ийн одоогийн утга — async урсгалд уншихад (2026-09-25) */
   const previewingRef = useRef(previewing);
   useEffect(() => { previewingRef.current = previewing; }, [previewing]);
   /**
    * ЗЭРЭГЦЭЭ ӨӨРЧЛӨЛТӨӨР урьдчилан харалт УНАСАН илгээлтийн `oid` (2026-09-25 аудит #1).
-   * ⚠️ Тэр үед `previewing` худал хэвээр тул хяналтын «Буцаах» ч хаалттай болж
-   *    илгээлт мөнхөд гацдаг байв — ийм илгээлтийг БУЦААХ ёстой (`conflictMsg`).
    */
   const [previewBad, setPreviewBad] = useState<number | null>(null);
   /**
    * БАТЛАГЧИЙН ЗӨВШӨӨРСӨН мөр (хяналтын горим) — `Guitsetgel.okKeys`-ийн загвар.
-   * ⚠️ Бүгд ногоон болтол «Батлах» ХААЛТТАЙ (гүйцэтгэлийн дүрэм); буцаахад
-   *    энэ жагсаалт хадгалагдаж гүйцэтгэгчид улаан/ногоон болж харагдана.
    */
   const [okRows, setOkRows] = useState<Set<number>>(new Set());
   /**
@@ -641,50 +383,26 @@ export function Huvaari({
    * `oid` = тэр илгээлт; `ok` = батлагчийн зөвшөөрсөн мөрүүд. Бусад өөрчлөгдсөн
    * мөр улаан (засах ёстой). Дахин илгээх, багц/төрөл солиход арилна.
    */
-  /* ⚠️ `pay` — БУЦААГДСАН САНАЛЫН агуулга (2026-09-25 аудит #3): тэмдгийг зөвхөн
-     саналд байсан мөрд, утга нь саналтайгаа ИЖИЛ хэвээр байхад л тавина.
-     Гүйцэтгэгч засмагц (эсвэл шинэ мөр хөндмөгц) мөр саармаг болно. */
   const [backMarks, setBackMarks] = useState<{ oid: number; ok: Set<number>; pay: PlanPayload } | null>(null);
 
   /**
    * ЗАСВАР ТҮГЖИГДСЭН ҮҮ — хүлээгдэж буй илгээлт байхад ГАРААР засахгүй.
-   *
-   * ⚠️ ЯАГААД ЗААВАЛ ТҮГЖИХ ЁСТОЙ ВЭ: түгжихгүй бол гүйцэтгэгч чирж засаад
-   *    ноорог хуримтлуулна, гэтэл «Батлуулах» товч нь `!pending` нөхцөлтэй
-   *    тул ХАРАГДАХГҮЙ — хийсэн ажил нь ГАРАХ ЗАМГҮЙ үлдэж, багц солиход
-   *    чимээгүй устана. Мөн батлагдсан агшинд серверийн хуваарь солигдох тул
-   *    тэр ноорог хуучин мөрийн дугаарт наалдана.
-   *
-   * ⚠️ БАТЛАХ ЯВЦАД (`approving`) түгжээг ТАВИНА — тэр үед агуулгыг ноорогт
-   *    буулгаж `save`-ээр бичих ёстой.
    */
   const locked = pending != null && approving == null;
 
   /**
    * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ нь ӨӨРИЙНХ ҮҮ (2026-09-08).
-   * ⚠️ Зөвхөн ХАРАГДАЦЫН тэмдэглэгээ — жинхэнэ хаалт нь `decide`-д (бичихээс
-   *    өмнө) ба `decidePlan`-д. Гурвуулаа НЭГ дүрэм: нэр нь жижиг үсгээр,
-   *    цэвэрлэгдсэн байдлаар харьцуулагдана.
    */
   const isOwnSubmission = useMemo(() => {
     const me = (user?.username ?? '').trim().toLowerCase();
     return !!pending && !!me && me === pending.author.trim().toLowerCase();
   }, [pending, user]);
-  /* ⚠️ 2026-10-09: «… батлаж байна (N мин)»-ийн цаг — минут тутам, зөвхөн тэр мэдэгдэл харагдах үед (`minutesSince`-ийн ⚠️) */
-  /* ⚠️ 2026-10-12 (аудит №8): `pendingHolder`-ээс ӨМНӨ зарлана — түгжигчийг ЭНЭ цагаар бодно (доорх ⚠️) */
-  /* ⚠️ 2026-10-12: СЕРВЕРИЙН цаг (`serverNow` — хөтчийн цагийн зөрүү засагдсан) — түгжээний `approverAt` серверийнх */
   const [clock, setClock] = useState(() => serverNow());
-  /** ⚠️ 2026-10-08: хүлээгдэж буй илгээлтийн түгжигч (хүчинтэй) ба хагас бичсэн батлагч — зохиогчийн харагдацад (`HEAD_FIELDS`-ээс) */
-  /* ⚠️ 2026-10-12 (аудит №8): `clock`-оор (deps-д) — урьд нь `claimHolderOf(pending)` нь зөвхөн `pending` солигдоход
-     бодогддог тул түгжээ 10 мин-ийн дараа дуусаад ч зохиогчид «X батлаж байна (N мин)» өсөөд, «Илгээлтээ татах» хаалттай
-     үлддэг байв. Одоо минут тутмын цагаар хугацаа нь амьдаар дуусна. */
   const pendingHolder = useMemo(() => (pending ? claimHolderOf(pending, clock) : null), [pending, clock]);
   const pendingPartial = useMemo(() => (pending ? partialBy(pending.status, pending.reason) : null), [pending]);
-  /* ⚠️ 2026-10-09: хүлээгдэж буй илгээлтийн «N цаг/хоног хүлээж байна» (түгжээний мэдэгдэл) ч энэ цагаар */
   const clockOn = (isOwnSubmission && pendingPartial == null && !!pendingHolder) || (!review && pending != null);
   useEffect(() => {
     if (!clockOn) return undefined;
-    /* ⚠️ 2026-10-09: асаалтын агшинд шууд — хуудас удаан нээлттэй байсан бол анхны утга хуучирсан (≤ 1 мин биш) */
     const t0 = window.setTimeout(() => setClock(serverNow()), 0);
     const id = window.setInterval(() => setClock(serverNow()), 60_000);
     return () => { window.clearTimeout(t0); window.clearInterval(id); };
@@ -692,25 +410,9 @@ export function Huvaari({
 
   const [sc, setSc] = useState<Schema | null>(null);
   const [rows, setRows] = useState<SheetRow[]>([]);
-  /**
-   * ⚠️ 2026-10-12 (аудит №8): ХУУЧИН (ТАСАРСАН ЖААЗНЫ ОРОНД) АГШИН — `loadRows`-ийн `truncated` (уншилтын зам өнөөдрийн
-   *    тасарсан жаазын оронд өмнөх өдрийн бүтэн жаазыг өгсөн). Урьд нь дуудагч энэ тугийг үл тоож, батлагч хуучин агшин
-   *    дээр саналыг тулгаж харж байв. Одоо баннерээр ил хэлж, батлах/хадгалахыг хаана (бичих зам `strict` — ямар ч
-   *    байсан шиднэ). `null` = сүүлийн агшин бүтэн.
-   */
   const [frameOld, setFrameOld] = useState<{ day: string; shownDay: string } | null>(null);
-  /**
-   * ⚠️ 2026-10-12 (аудит №8): ЗОХИОГЧИЙН «ШИНЭ ШИЙДВЭР» (буцаагдсан · саяхан батлагдсан, хараагүй) — багц бүрээр.
-   *    Цэсний «шинэ шийдвэр N» тэмдэг аль багцад болохыг хэлдэггүй тул зохиогч багц бүрийг нээж хайдаг байв. Багц
-   *    сонгогчид цэг (●) ба толгойн доор үсрэх товчнууд. `null` = уншаагүй/мэдэхгүй (null ≠ хоосон).
-   */
   const [planNews, setPlanNews] = useState<PlanNews[] | null>(null);
   const [busy, setBusyRaw] = useState(false);
-  /* ⚠️ 2026-10-09 (аудит): `busy`-ийн СИНХРОН тусгал + үеийн тоолуур — хадгалах/илгээх/батлах эхлэх БА дуусах бүрд
-     тоолуур нэмэгдэнэ. Арын (30 с мөчлөгийн) `refetchServer` эхэндээ үеийг барьж, хариу ирэхэд үе солигдсон бол
-     ҮР ДҮНГ ХАЯНА (`refetchBg`). Урьд нь мөчлөгийн татлага хадгалалттай давхцаж ХУУЧИН `obOids`/`obPlan`-ыг
-     сэргээдэг тул дараагийн хадгалалт `dkey` давхар мөр үүсгэдэг байв. `useState`-ийн `busy` нь зурагдалтаар
-     хоцордог тул ref. */
   const busyNowRef = useRef(false);
   const busyGenRef = useRef(0);
   const setBusy = useCallback((v: boolean) => {
@@ -719,13 +421,9 @@ export function Huvaari({
     setBusyRaw(v);
   }, []);
 
-  /* ── НЭМЭЛТ АЖИЛ (2026-09-24; `huvaari/adds.ts`-ийн `tmpOid`-ийн ⚠️) ── */
+  /* ── НЭМЭЛТ АЖИЛ (2026-09-24; `huvaari/adds.ts`-ийн `tmpOid`) ── */
   /**
    * Нэмсэн мөр — БАГЦЫН ТҮЛХҮҮРТЭЙ ХАМТ хадгална.
-   * ⚠️ ЯАГААД: `[adds, pkg.key]`-д хадгалах эффект нь багц солигдох агшинд
-   *    ӨМНӨХ багцын мөрийг ШИНЭ багцын LS түлхүүрт бичих байсан (эффектүүд нэг
-   *    commit-д, төлөв хоцорно). Түлхүүр нь мөртэй хамт явбал тэр зөрүү үүсэхгүй.
-   * ⚠️ 2026-09-30: жагсаалт нь ЭЦЭГТ (`rowsAll`-д хэрэгтэй), урсгал нь `useAjil`-д.
    */
   const [addsSt, setAddsSt] = useState<{ key: string; list: NewRow[] }>({ key: '', list: [] });
   const adds = addsSt.key === pkg.key ? addsSt.list : EMPTY_ADDS;
@@ -749,20 +447,14 @@ export function Huvaari({
    * ОГНОО · НӨӨЦИЙН БАГАНЫГ ХУРААХ (2026-09-23, хэрэглэгч: «энэ хэсгийг хурааж
    * нээдэг байж болох уу»). Хураахад «Гэрээ эхлэх … Техник» 10 багана нуугдаж,
    * зүүн самбар нарийсч хуанлид зай өгнө; код · нэр · хамаарал үлдэнэ.
-   * ⚠️ Анхдагч нь НЭЭЛТТЭЙ — хэрэглэгч багануудыг шаардаж нэмүүлсэн тул
-   *    анх удаа нээхэд нуугдсан байж болохгүй. Сешн хооронд санагдана.
    */
   const [cols, setCols] = useState(() => {
     try { return localStorage.getItem('selbe-huvaari-cols') !== '0'; } catch { return true; }
   });
   /** Зүүн жагсаалтыг чирж өргөсгөх нэмэлт пиксел (2026-10-04, `useSideExtra`) */
   const { elRef: sideRef, style: sideStyle, grip: sideGrip } = useSideExtra();
-  /* ⚠️ 2026-10-08: баганын өргөн чирэх (`useColWidths`) — `.gSide`-ийн хувьсагчаар, `sideStyle`-тай нэг элемент */
-  /* ⚠️ 2026-10-09: харагдах баганын ТОО (`useColWidths`-ийн `--col-extra`) — хураасан (`cols` худал) үед огноо ·
-     хоног · нөөц нуугдана; бодит огноо/нөөцийн багана талбартай үйлчилгээнд л (`hasActual`/`hasRes`-тэй ижил дүрэм). */
   const colAct = !!sc && sc.aStart.some(Boolean);
   const colRes = !!sc && !!(sc.f.hunHuch || sc.f.mashin);
-  /* ⚠️ 2026-10-08: багана бүр тусдаа өргөнтэй (`useColWidths`-ийн ⚠️) — үржигдэхүүн 0/1 */
   const cOn = cols ? 1 : 0;
   const cAct = cols && colAct ? 1 : 0;
   const cRes = cols && colRes ? 1 : 0;
@@ -772,7 +464,6 @@ export function Huvaari({
     as: cAct, ae: cAct,
     rh: cRes, rm: cRes,
   });
-  /* ⚠️ 2026-10-09: `colW.elRef` нь тогтвортой (`useCallback([])`) — шинж чанараар биш, ХУВЬСАГЧААР deps-д (exhaustive-deps) */
   const colElRef = colW.elRef;
   const sideAndColRef = useCallback((node: HTMLDivElement | null) => { colElRef(node); return sideRef(node); }, [colElRef, sideRef]);
   useEffect(() => {
@@ -781,46 +472,23 @@ export function Huvaari({
   /*
    * «БҮХ БЛОК» ХАРАГДАЦ (2026-10-04, хэрэглэгч: «бүх блокийн хуваарийг зэрэг харах
    * боломжтой болго»). Ажил бүрийн доор хуваарьтай блок бүрийн дэд мөр (`allBlocks.ts`).
-   * ⚠️ ЗӨВХӨН ХАРАХ: чирэлт · холбоос · popup · мөр нэмэх хаалттай, сум нуугдана;
-   *    ноорог/хадгалалт/батлалтад хүрэхгүй. Засах нь дэд мөр дээр дарж тэр блок руу.
-   * ⚠️ Бодит асаалт нь `allOn` (доор) — синтетик/ганц блоктой багц ба хяналтын
-   *    горимд хүчингүй.
-   * ⚠️ 2026-10-04 (шүүлт): САНАХГҮЙ — зөвхөн энэ нээлтэд. Урьд нь localStorage-д хадгалагдаж,
-   *    дараагийн сешн «зөвхөн харах» горимоор нээгдэн хэрэглэгч яагаад чирж болохгүйг ойлгодоггүй
-   *    байв (`selbe-huvaari-cols`-ийн ёсноос санаатай гажив).
    */
   const [allBlk, setAllBlk] = useState(false);
-  /** ⚠️ 2026-10-09: «Бүх блок»-оос дэд мөрөөр засахаар гарсан — цонх хаагдахад буцаж асна (`pickBlk`, `undoDragOnClose`) */
   const allBackRef = useRef(false);
   useEffect(() => {
     try { localStorage.setItem('selbe-huvaari-wide', wide ? '1' : '0'); } catch { /* хаалттай орчин */ }
   }, [wide]);
-  /* ⚠️ ХЯНАЛТЫН ГОРИМ ҮРГЭЛЖ БҮТЭН ДЭЛГЭЦ (хэрэглэгчийн сонголт) — хэрэглэгчийн
-     `wide` тохиргоог ХӨНДӨХГҮЙ (LS-д бичихгүй), зөвхөн зурагдалтад. */
   const isWide = !!review || wide;
   const isReview = !!review;
   const reviewCloseRef = useLatest(review?.onClose);
-  /* ⚠️ БАТЛАХ ЯВЦАД Esc ХААХГҮЙ (2026-09-25 аудит): «Хаах» товч `busy`/`approving`
-     үед хаалттай ч Esc нь хаадаг байсан — `save()` эх хуудсанд бичиж дуусаад
-     `decidePlan` дуудах эффект салгагдсан бүрэлдэхүүнд ажиллахгүй тул хуваарь
-     бичигдсэн атлаа илгээлт `pending` хэвээр үлдэнэ. Ref-ээр — эс бөгөөс
-     сонсогч `busy` хөдлөх бүрд дахин бүртгэгдэж диалогийнхаас ХОЙНО орно. */
   const escBlockRef = useLatest(busy || approving != null);
-  /* ⚠️ 2026-10-06 аудит: ногоон тэмдэглэгээтэй бол Esc ч асууна (`confirmDropMarks`) */
   const okNRef = useLatest(okRows.size);
   useEffect(() => {
     if (!isWide) return;
     const esc = (e: KeyboardEvent) => {
-      /* ⚠️ 2026-10-07: `defaultPrevented` — React-ийн `onKeyDown`-оор хаагддаг дэд цонх
-         (`LinkModal` · `AddBox` · PDF popover) Esc-ээ `preventDefault`+`stopPropagation` хийнэ.
-         Урьд нь React тэдгээрийг `window`-д хүрэхээс ӨМНӨ салгаж амжсан тул
-         `[role=dialog]` олдохгүй, Esc нэг даралтаар дэд цонхыг ч, хяналтыг ч хаадаг байв. */
-      /* ⚠️ 2026-10-09: оролт · чат самбар · Хуваариас гадуурх фокус (`keyIgnored`) — «Үсрэх» оролтод Esc дарахад
-         хяналт/бүтэн дэлгэц хаагддаг байв. */
       if (e.key !== 'Escape' || e.defaultPrevented || keyIgnored(e.target) || document.querySelector('[role="dialog"]')) return;
       if (isReview) {
         if (escBlockRef.current) return;
-        /* ⚠️ 2026-10-23: асуулт async — хариулах зуур явц эхэлсэн бол (`escBlockRef`) хаахгүй */
         void confirmDropMarks(okNRef.current).then((ok) => { if (ok && !escBlockRef.current) reviewCloseRef.current?.(); });
       } else setWide(false);
     };
@@ -828,87 +496,37 @@ export function Huvaari({
     return () => window.removeEventListener('keydown', esc);
   }, [isWide, isReview, escBlockRef, reviewCloseRef, okNRef]);
   const [err, setErr] = useState('');
-  /**
-   * ⚠️ 2026-10-08: ХАДГАЛАЛТЫН ДАРААХ ОЛОН АЛДАА — ЖАГСААЛТААР (`err`-ээс тусдаа). Урьд нь `save` 3–4
-   *    өгүүлбэрийг « · »-ээр нэг мөр болгож нийлүүлдэг тул уншигдахгүй байв. Мөр нэрлэгдсэн зүйлд
-   *    (`lostOids`) `oid` — «→ ажил руу» холбоос тэр мөр рүү үсэрнэ (`goToRow`).
-   */
-  /* ⚠️ 2026-10-09: `b` — үсрэх блок (тэнцээгүй/зөрчилтэй блок; байхгүй бол идэвхтэй) */
   const [errList, setErrList] = useState<{ msg: string; oid?: number; b?: number }[]>([]);
   /**
-   * БУЦААЛТЫН СТЕК + ДАХИН ХИЙХ (2026-10-09; урьд нь нэг түвшин — 2026-10-08, `UndoSnap`-ийн ⚠️).
-   * ⚠️ `u` — буцаах агшнууд (сүүлийнх нь орой, дээд тал нь `UNDO_MAX`), `r` — дахин хийх агшнууд. Шинэ засвар
-   *    `r`-ийг цэвэрлэнэ. Арилгах дүрэм ХЭВЭЭР: хадгалах/илгээх/хаях/багц·төрөл солих бүрд `setUndoSnap(null)` —
-   *    одоо хоёр стекийг бүхэлд нь цэвэрлэнэ. `undoSnap` нь оройн агшин (товч/мэдэгдэл харуулах эсэх).
+   * БУЦААЛТЫН СТЕК + ДАХИН ХИЙХ (2026-10-09; урьд нь нэг түвшин — 2026-10-08, `UndoSnap`).
    */
-  /* ⚠️ 2026-10-09: `useReducer` — `dispatch` нь ТОГТВОРТОЙ тул хуучин `setUndoSnap(null)` дуудлагууд (олон callback-ийн
-     deps-гүй) хэвээр ажиллана: `null` = хоёр стекийг цэвэрлэх, функц = стекийн шинэчлэл (`undoStkReduce`). */
   const [undoStk, setUndoSnap] = useReducer(undoStkReduce, UNDO_EMPTY);
   const undoSnap = undoStk.u.length ? undoStk.u[undoStk.u.length - 1] : null;
   const redoSnap = undoStk.r.length ? undoStk.r[undoStk.r.length - 1] : null;
-  /**
-   * ⚠️ 2026-10-09: ТАЙРАЛТААС ӨМНӨХ БҮТЭН САРЫН ЗАДАРГАА/НӨӨЦ (түлхүүр `${код}|${блок}`) — чирэлтээс гадуурх засварт
-   *    (`applyChanges`) анх тайрагдахад санагдана; муж буцаж өргөсөхөд сарууд эргэж гарна (`fullMonths`).
-   *    Ноорог хоосрох (хадгалах · хаях · багц солих) эсвэл түлхүүр сервертэй тэнцэхэд арилна.
-   */
   const obFullRef = useRef(new Map<string, Map<string, number>>());
   const obResFullRef = useRef(new Map<string, Map<string, MonthRes>>());
   /** `applyChanges` агшин авахгүй (буцаалт өөрөө · чирэлтийн цуцлалт) — синхрон туг */
   const undoSkipRef = useRef(false);
   /** Чирэлтийн ЭХНИЙ `commit`-д л агшин авна — хоног бүрийн алхамд биш */
   const undoDragSeenRef = useRef(false);
-  /**
-   * ⚠️ 2026-10-09: НЭГ ҮЙЛДЛИЙН БАГЦ — нэг синхрон тикт (`queueMicrotask` хүртэл) авсан агшны хэсгүүд НИЙЛНЭ
-   *    (`snapUndo`): popup-ын «Тавих» нь уялдаа · муж · сар · бодит огноог дараалан бичдэг.
-   */
   const undoBatchRef = useRef(false);
-  /**
-   * ⚠️ 2026-10-09: ЧИРЭЛТ/НҮДНИЙ ОГНОО НЭЭСЭН цонхны «Тавих» — шинэ агшин АВАХГҮЙ, байгаад нь НИЙЛҮҮЛНЭ. Урьд нь
-   *    чирэлт (эсвэл нүдэнд бичсэн огноо) → цонх → «Тавих» дарахад агшин «Тавих»-ын өмнөх (чирэлтийн ДАРААХ)
-   *    төлөвөөр солигдож, Ctrl+Z чирэлтээс өмнөх огноо руу буцдаггүй байв.
-   */
   const undoMergeRef = useRef(false);
   /** Нүдний огноо (Enter) нээсэн цонхны мөр — `undoMergeRef`-ийн эх; цонх хаагдахад арилна (2026-10-09) */
   const undoOpenRef = useRef<number | null>(null);
-  /**
-   * ⚠️ 2026-10-09: нүдний сүүлийн зохиогч ӨӨР хүн үү (`hdMeta`) — `useSharedDraft` доор дуудагддаг тул ref-ээр
-   *    (утгыг тэр hook-ийн дараах эффект тавина). Буцаалт хамтрагчийн нүдийг сэргээхгүй/устгахгүй
-   *    (`useDragPlan.rollback`-ийн `other()`-тэй нэг дүрэм).
-   */
   const hdOtherRef = useRef<(k: string) => boolean>(() => false);
   /** Гинжээр дагаж шилжсэн хамаарагчийн тоо — түр мэдэгдэл (2026-10-08) */
   const [chainN, setChainN] = useState(0);
-  /** ⚠️ 2026-10-09: гинжээр шилжсэн мөрүүд (код/№ · шилжилт хоногоор, `null` = муж үүссэн/арилсан) — мэдэгдэлд */
   const [chainList, setChainList] = useState<{ lab: string; d: number | null }[]>([]);
-  /** ⚠️ 2026-10-09: давтан ижил тоо ирэхэд ч 6 с-ийн цагийг шинэчлэх тоолуур */
   const [chainSeq, setChainSeq] = useState(0);
-  /**
-   * ⚠️ 2026-10-09: ГИНЖ ЭХЛЭХЭЭС ӨМНӨХ тэнцээгүй мөрүүд (`unbalRows`) — гинжийн мэдэгдэлд «K ажлын сарын обьём
-   *    тэнцэхгүй боллоо» гэж ШИНЭЭР тэнцэхгүй болсныг тоолно. Урьд нь гинж хамаарагчдын мужийг шилжүүлж
-   *    задаргааг нь `keepMonths`-оор тайрдаг атлаа энэ нь «Батлуулах» дарах хүртэл чимээгүй байв.
-   */
   const [chainUnbal0, setChainUnbal0] = useState<ReadonlySet<number> | null>(null);
-  /**
-   * ⚠️ 2026-10-09: УРТ БИЧИЛТИЙН ЯВЦ — хадгалах · илгээх · батлах · татах · урьдчилан харахын алхам бүр
-   *    («Шалгаж байна…», «Огноо бичиж байна (1/3)…»). Урьд нь `busy` үед товчнууд саарал болохоос өөр
-   *    дохиогүй тул хэдэн секундын бичилтийг «гацсан» гэж ойлгож дахин дарж/хуудас сэргээдэг байв.
-   */
   const [progress, setProgress] = useState('');
   /** Шүүлтийн чипүүд (2026-10-08) */
   const [chips, setChips] = useState<Set<Chip>>(() => new Set());
   /** «Өөрчлөлт N» хажуугийн самбар нээлттэй эсэх (2026-10-08) */
   const [chgOpen, setChgOpen] = useState(false);
-  /* ⚠️ 2026-10-08: «хоцорсон» чипт өнөөдөр — `useCalendar`-ийн `now` нь `visible`-ээс ХОЙНО тодорхойлогддог
-     (TDZ) тул энд lazy initializer-ээр (render дотор `Date` дуудахгүй — react-hooks/purity).
-     ⚠️ 2026-10-09: `useToday` — шөнө дунд шинэчлэгдэнэ (урьд нь хуудас нээсэн өдрөөр үлддэг байв); ЭНЭ утга
-        `useCalendar({ now })`-д дамжина — нэг таймер. */
   const today = useToday();
   /**
-   * ХУВААРЬ АЧААЛАХ АЛДАА — `err`-ээс ТУСДАА (⚠️ 2026-10-01, «хэрэглэгч: бүгдийг зас»).
-   * ⚠️ Урьд нь ачаалах алдааг `setErr(e.message)`-ээр түүхийгээр нь («Token Required»)
-   *    улаан баннерт тавьж, доор нь «мөр олдсонгүй» гэсэн худал хоосон төлөв гардаг байв.
-   *    Одоо `Data`-гийн алдааны блок (ойлгомжтой тайлбар · эвхмэл техникийн мөр ·
-   *    «Дахин оролдох») ГАНЦ удаа гарна.
+   * ХУВААРЬ АЧААЛАХ АЛДАА — `err`-ээс ТУСДАА (2026-10-01, «хэрэглэгч: бүгдийг зас»).
    */
   const [loadErr, setLoadErr] = useState<Error | null>(null);
   /** «Дахин оролдох» — ачаалах эффектийг дахин ажиллуулах тоолуур */
@@ -931,14 +549,7 @@ export function Huvaari({
    */
   const [aDraft, setADraft] = useState<ADraft>(new Map());
   const [resDraft, setResDraft] = useState<ResDraft>(new Map());
-  /* ⚠️ Сонгосон мөрийн OID (2026-09-25 аудит) — `PlanRow.i` БИШ: нэмэлт мөр орох/гарах,
-     шинэ жааз татагдахад индекс шилжиж өөр мөр тодордог байв. */
   const [sel, setSel] = useState<number | null>(null);
-  /**
-   * ⚠️ 2026-10-07: НҮДЭНД БИЧИЖ БУЙ мөрийн oid (`TaskRow.onEditing`) — `useCalendar`-ийн
-   *    `pin`: бичиж байх зуур мөрийг цонхлолтод хүчээр багтаана, эс бөгөөс хүрдээр
-   *    `PL_OVER`-оос цааш гүйлгэхэд мөр салж бичсэн текст алга болдог байв.
-   */
   const [cellEdit, setCellEdit] = useState<number | null>(null);
 
   /* ══════ САРЫН ОБЬЁМ (тусдаа үйлчилгээ, `huvaariObyem.ts`) ══════ */
@@ -946,23 +557,9 @@ export function Huvaari({
   const [obPlan, setObPlan] = useState<PkgPlan>(new Map());
   /**
    * Задаргааны АЧААЛЛЫН ТӨЛӨВ (2026-09-24) — хуваалцсан ноорогийн суурьт.
-   * ⚠️ `loadPkgPlan` нь мөрүүдээс ТУСДАА promise тул `rows` ирсэн атлаа
-   *    `obPlan` хоосон агшин бий; тэр үед сарын нүдийг тулгавал бүгд
-   *    «хуучирсан» болно. `loading` үед ноорогийн сэргээлт ба дифф зогсоно;
-   *    `fail` = задаргаагүй үргэлжилнэ (сарын суурь мэдэгдэхгүй).
    */
   const [obState, setObState] = useState<'loading' | 'ok' | 'fail'>('loading');
-  /**
-   * ⚠️ 2026-10-21 (аудит, HIGH): энэ багцын задаргаа ДОР ХАЯЖ НЭГ удаа АМЖИЛТТАЙ ачаалагдсан эсэх. Урьд нь
-   *    `refetchServer`-ийн `catch` (ба `guard`-ийн салаа) задаргаа ОГТ ачаалагдаагүй байхад ч `ok` тавьдаг байв —
-   *    `obPlan`/`obOids` хоосон атлаа «ok» болж, сарын обьём оруулбал `buildEdits` OID олохгүй тул сар БҮР серверт
-   *    байгаа мөрийн ХАЖУУД `adds` болж (давхардал), сарын дүн хоёр дахин өсдөг байв. Одоо ачаалагдаагүй бол `fail`.
-   */
   const obLoadedRef = useRef(false);
-  /**
-   * ⚠️ 2026-10-21: САРЫН ОБЬЁМЫН ХҮСНЭГТИЙГ ДАХИН АЧААЛАХ — «Батлуулах»-ын хаалт (`obNotReady`)-ын «Дахин ачаалах».
-   *    Хүлээн авахдаа багц солигдоогүйг (`pkgKeyRef`) шалгана; унавал өмнөх төлөв (`obLoadedRef`) хэвээр.
-   */
   const retryOb = () => {
     const key = pkg.key;
     setObState('loading');
@@ -977,17 +574,10 @@ export function Huvaari({
   const [obOids, setObOids] = useState<Map<string, number>>(new Map());
   /**
    * ДАВХАРДСАН мөрийн ИЛҮҮДЭЛ OID-ууд (2026-09-08).
-   * ⚠️ `dkey`-д сангийн unique индекс АЛГА тул зэрэг хадгалалт ижил
-   *    түлхүүртэй хоёр мөр үүсгэж чадна. Апп дотор нь ганц утга харагддаг
-   *    учир нүдээр илрэхгүй ч Excel/ArcGIS Pro-д обьём давхар тоологдоно.
-   *    Дараагийн бичилтэд `deletes`-т нийлүүлж чимээгүй арилгана.
    */
   const [obDups, setObDups] = useState<number[]>([]);
   /**
    * ХАДГАЛААГҮЙ задаргаа — `${ажлын код}|${блок}` → сар → обьём.
-   * ⚠️ Огнооны ноорог (`draft`) ба уялдааны ноорог (`ham`)-той ЗЭРЭГЦЭЭ,
-   *    тусдаа: обьём нь огноо хөндөлгүй өөрчлөгдөж болно (мөн эсрэгээр).
-   *    Гурвуулаа нэг «Хадгалах»-д нийлнэ.
    */
   const [obDraft, setObDraft] = useState<Map<string, Map<string, number>>>(new Map());
   /**
@@ -1005,78 +595,34 @@ export function Huvaari({
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   /**
    * ХАРАГДАХ ТҮВШИН — «Түвшин 1 2 3 4 5» зурвасын идэвхтэй товч.
-   *
-   * ⚠️ `Finance`-ийн «Гэрээний бүртгэл» хуудасны ЯГ ИЖИЛ загвар (хэрэглэгчийн
-   *    шаардлага, 2026-09-15): нэг порталд нэг үүрэгтэй хоёр өөр хэлбэр
-   *    байх ёсгүй. Тэнд `lvl` нь 1–5, `setLevel` нь эвхэлтийг бөөнөөр тавьдаг.
-   *
-   * ⚠️ `0` = «холимог»: хэрэглэгч ГАРААР нэг бүлэг эвхсэн бол аль ч товч
-   *    тодрохгүй — дэлгэц дээрх байдалтай зөрчилдсөн тодруулга үлдэх ёсгүй
-   *    (`Finance.lvOn`-ийн ижил ⚠️).
-   *
-   * ⚠️ АНХДАГЧ нь ХАМГИЙН ГҮН (бүх мөр дэлгээтэй) — хуваарь нь ажил тус бүрийн
-   *    огноог ЗАСАХ хуудас тул хаалттай эхлэх нь ажлыг нэмэгдүүлнэ.
    */
   const [lvl, setLvl] = useState(0);
   /**
    * Popup хуанли нээгдсэн мөрийн OID.
-   * ⚠️ 2026-09-25 аудит: урьд нь `PlanRow.i` (индекс) байсан тул 30 с-ийн мөчлөг
-   *    батлагдсан нэмэлт мөрийг оруулахад индекс шилжиж, «Тавих» ӨӨР ажилд бичдэг байв.
    */
   const [modal, setModal] = useState<number | null>(null);
-  /**
-   * ⚠️ 2026-10-07: НҮДНЭЭС (`DateCell`/`DaysCell`-д Enter) нээгдсэн popup-ын мөр — хаахад
-   *    фокус тэр мөрийн нэрийн товч руу буцна (`PlanModal.returnFocus`). Нээгдэх үед
-   *    оролт аль хэдийн салсан тул `useFocusTrap`-ийн «өмнөх фокус» нь `<body>` байдаг байв.
-   */
   const [modalFrom, setModalFrom] = useState<number | null>(null);
 
   /**
    * ШҮҮЛТҮҮР. `filter` нь түргэн таб, бусад нь сонголт.
-   * ⚠️ Тусдаа талбар болгосон шалтгаан: хэрэглэгч «хоцорсон, урт, 2026 онд
-   *    эхлэх» гэж ХОСЛУУЛЖ шүүнэ. Нэг радио жагсаалт байсан бол зөвхөн нэгийг.
    */
   const [filter, setFilter] = useState<'all' | 'has' | 'none' | 'partial'>('all');
-  /** ⚠️ 2026-10-23: «Хуваарьгүй» шүүлтэд бүлгийн мөрийн огноо · зурвас нуугдана — харагдах ажлууд бүгд хуваарьгүй тул
-      нуугдсан хуваарьтай ажлуудаас бодогдсон бүлгийн муж «бүлэг хуваарьтай» мэт төөрөгдүүлдэг байв. Зөвхөн ХАРАГДАЦ. */
   const grpNoSpan = filter === 'none';
   const [fYear, setFYear] = useState('all');
   /**
    * БҮЛГЭЭР ШҮҮХ — сонгосон бүлэг ба ДОТОРХ бүх ажлыг л үлдээнэ.
-   * ⚠️ Утга нь `PlanRow.i` (эх массивын индекс), `oid` БИШ: ижил нэртэй
-   *    бүлэг олон байж болох ба индекс нь модны байрлалыг ч заана.
-   * ⚠️ 2026-09-25-нд ЭРГҮҮЛСЭН — утга нь бүлгийн OID. OID ч мөр бүрд давтагдашгүй
-   *    (ижил нэртэй бүлгийг ялгана), харин индекс нь нэмэлт мөр бүлгийн эхэнд
-   *    орох/хасагдахад шилжиж, багц солиход ч үлдэж ӨӨР салбарыг шүүдэг байв.
    */
   const [fGrp, setFGrp] = useState<'all' | number>('all');
 
   /* ── Хуанлийн төлөв ── */
-  /* ⚠️ АНХДАГЧ нь «сар» (2026-09-02, хэрэглэгч). Хуваарь 2025–2028 оныг
-     дамждаг тул «7 хоног» (7px/хоног) дээр нээхэд ~1,035 хоног нь 7,000px
-     болж, нэг дэлгэцэнд ердөө 3–4 сар багтана — хүн эхлээд БҮТЭН зургийг
-     хармаар байдаг. «сар» (2.6px/хоног) дээр бүхэл төсөл нэг дэлгэцэнд
-     ойролцоогоор багтана; нарийвчлах бол товчоор томруулна. */
   /**
    * ХУВААРИЙН ТӨРӨЛ — «Төлөвлөгөө» эсвэл «Гэрээ» (2026-09-11).
-   *
-   * ⚠️ Солиход НООРОГ ЦЭВЭРЛЭГДЭНЭ (доорх эффект): ноорог нь `oid` →
-   *    блокийн муж гэсэн хэлбэртэй бөгөөд аль төрлийнх болох нь тэмдэглэгдэх
-   *    газаргүй. Цэвэрлэхгүй бол төлөвлөгөөнд зассан огноо гэрээний талбарт
-   *    бичигдэнэ — чимээгүй, эргүүлэх аргагүй.
    */
   const [kind, setKind] = useState<PlanKind>(review?.kind ?? 'plan');
-  /** ⚠️ 2026-10-09: одоогийн таб — async урсгалын хоцорсон хариуг хаях (`refreshFlow.live` · 30 с мөчлөг) */
   const kindRef = useLatest(kind);
 
   /**
    * НӨГӨӨ ТАБЫН ИЛГЭЭЛТИЙН БОДИТ ОГНОО · НӨӨЦИЙН ТҮГЖЭЭ (2026-10-09).
-   * ⚠️ ЯАГААД: түгжээ төрөл тус бүрд (`pendingOther`-ийн ⚠️) — гэтэл бодит огноо (`bodit_*`) ба нөөц (`hun_huch`/
-   *    `mashin_mehanizm`) нь `kind`-ээс ХАМААРАХГҮЙ нэг талбар. Нөгөө табын илгээлт тэдгээрийг агуулж байхад энэ
-   *    табаас засаж хадгалбал батлагдах үед илгээлтийн хуучин утга дарж бичнэ (эсвэл эсрэгээр) — урьд нь хаалтгүй.
-   * ⚠️ Илгээлтийн `payload`-ыг уншиж `actual`/`res` мөрүүд (oid + `keys`-ээр ажлын код) ба сарын нөөцийн (`obres`)
-   *    кодуудыг олно; тэр мөрүүдэд `applyExtra` ба popup-ын бодит/нөөцийн хэсэг ХААЛТТАЙ (шалтгаан ил).
-   * ⚠️ FAIL-CLOSED: уншиж дуусаагүй/уншигдаагүй (`set: null`) бол БҮХ мөрөнд хаалттай — огноо · обьём хэвээр.
    */
   const [xLock, setXLock] = useState<{ oid: number; set: XLockSet | null } | null>(null);
   const pendOtherOid = pendingOther?.oid ?? null;
@@ -1089,7 +635,7 @@ export function Huvaari({
     }).catch(() => { if (!dead) setXLock({ oid: pendOtherOid, set: null }); });
     return () => { dead = true; };
   }, [pendOtherOid]);
-  /** Мөрийн бодит огноо/нөөц түгжээтэй бол ШАЛТГААН, эс бөгөөс `undefined` (дээрх ⚠️) */
+  /** Мөрийн бодит огноо/нөөц түгжээтэй бол ШАЛТГААН, эс бөгөөс `undefined` (дээрх) */
   const xLockWhy = useCallback((oid: number, des: number | null): string | undefined => {
     if (pendOtherOid == null) return undefined;
     const lab = kind === 'plan' ? tr('Гэрээ') : tr('Төлөвлөгөө');
@@ -1100,15 +646,6 @@ export function Huvaari({
     }
     return undefined;
   }, [pendOtherOid, xLock, kind]);
-  /**
-   * ⚠️ 2026-10-09: БИЧИХ/ИЛГЭЭХИЙН ӨМНӨХ ТҮГЖЭЭНИЙ ШАЛГАЛТ (`sendForApproval` · `save`). Дээрх `xLockWhy` нь ЗӨВХӨН UI
-   *    (popup · `applyExtra`) бөгөөс 30 с-ийн мөчлөгөөр шинэчлэгддэг тул хуучирсан байж болно: нөгөө табын илгээлт
-   *    ноорог бичсэний ДАРАА гарвал бодит огноо/нөөцийн ноорог хаалтгүй илгээгдэж/бичигдэж, хоёр илгээлт нэг талбарыг
-   *    бие биеэр нь дарах байв. Энд нөгөө табын хүлээгдэж буй илгээлтийг СЕРВЕРЭЭС дахин уншиж (strict), бодит огноо ·
-   *    нөөцийн ноорог (`aDraft` · `resDraft` · `obResDraft`) түгжээтэй мөрд байвал ТАТГАЛЗАНА — мөрүүдийг нэрлэнэ.
-   *    FAIL-CLOSED: уншиж чадахгүй бол ч татгалзана. Бодит/нөөцийн ноорог байхгүй бол шалгахгүй (`null`).
-   *    Уншсан илгээлтээр `pendingOther`/`xLock`-ийг ч шинэчилнэ (UI хоцрохгүй).
-   */
   const xLockCheck = useCallback(async (): Promise<string | null> => {
     const oids = new Set<number>([...aDraft.keys(), ...resDraft.keys()]);
     const desR = new Set<number>();
@@ -1116,7 +653,6 @@ export function Huvaari({
       const d = Number(k.slice(0, k.indexOf('|')));
       if (Number.isFinite(d)) desR.add(d);
     }
-    /* ⚠️ 2026-10-12 (аудит №8): уялдааны (`ham`) ба сарын обьёмын (`obDraft`) ноорог ч (`XLockSet`-ийн ⚠️) */
     const hamO = new Set<number>(ham.keys());
     const desOb = new Set<number>();
     for (const k of obDraft.keys()) {
@@ -1153,7 +689,6 @@ export function Huvaari({
       if (r && oids.has(r.oid) && xLockHit(st, r.oid, d)) continue;
       names.push(nm(r, String(d)));
     }
-    /* ⚠️ 2026-10-12: уялдаа · сарын обьём — тусдаа жагсаалт, тусдаа мессеж (бодит огноо/нөөцийн мессежтэй хольж андуурахгүй) */
     const names2: string[] = [];
     for (const o of hamO) {
       const r = rows.find((x) => x.oid === o);
@@ -1177,43 +712,20 @@ export function Huvaari({
   /**
    * ЛАВЛАГАА ХАРАГДАХ ЭСЭХ — нөгөө төрлийн зурвас (2026-09-11, хэрэглэгч:
    * «дангаар нь харах бол гэрээ төлөвлөгөө дээр дарж идэвхжүүлдэг болго»).
-   *
-   * ⚠️ `kind` нь ЗАСАХ төрөл, энэ нь ХАРАХ асаалт — хоёр өөр зүйл. Засвар,
-   *    ноорог, хадгалалт, батлалт бүгд `kind`-ээс л хамаарна; энэ асаалт
-   *    юу ч бичдэггүй. Эс бөгөөс нэг ноорогт хоёр төрөл холилдоно.
-   * ⚠️ Анхдагчаар УНТРААЛТТАЙ: дангаар нь харах нь үндсэн байдал, зэрэг
-   *    харахыг «Зэрэг» товчоор ил асаана.
    */
   const [showRef, setShowRef] = useState(false);
   const [zoom, setZoom] = useState<Zoom>('month');
   const [blk, setBlk] = useState(0);
-  /* ⚠️ АНХДАГЧ 0 (2026-09-24): олон блок сонгоход бүгдэд ИЖИЛ огноо тавина —
-     хэрэглэгчийн сонголт; >0 бол блок бүр алхмаар хойшилно (хуучин зан). */
   const [takt, setTakt] = useState(0);
   const [drag, setDrag] = useState<Drag | null>(null);
   /**
    * ХАМААРЛЫГ ШУГАМААР ХОЛБОХ (2026-09-22, хэрэглэгч: «бар хооронд шугам чирж
    * хамаарал шууд холбоно»). Зурвасын баруун захын бариулаас чирж эхлээд нөгөө
    * АЖЛЫН мөр дээр тавихад тэр мөр энэ ажлаас FS (лаг 0) хамаардаг болно.
-   * ⚠️ Шалгуур (дугуй, өвөг/удам, түгжээ) — `applyModal`-д ганц газар; энд
-   *    зөвхөн зорилтыг олж дамжуулна. `i` = урд ажлын `plan` индекс, `x/y` =
-   *    `.plLanes`-ийн дотоод координат (түр шугамын үзүүр).
    */
   const [link, setLink] = useState<{ i: number; x: number; y: number } | null>(null);
   const lanesRef = useRef<HTMLDivElement | null>(null);
   /** Холбосны дараах цонх — төрөл (FS/SS) ба хоног асууна (2026-09-22, хэрэглэгч). `si` урд, `ti` хамаарагч. */
-  /**
-   * ⚠️ `dblks` (2026-09-24 → 2026-10-01) — уялдааны БЛОКУУД: `number[]` = зөвхөн тэдгээр
-   *    блок (тус бүрд `@N`), `null` = бүх блок (блокгүй бичиглэл). Чирж холбоход
-   *    ИДЭВХТЭЙ блок + «олон блокт зэрэг төлөвлөх» сонголт (`gBlks`) (синтетик ганц
-   *    блоктой багцад `null` — `@` гарахгүй); сум дээр дарахад тэр сумны уялдааных.
-   * ⚠️ 2026-10-01 (хэрэглэгч: «олон блок дээр зэрэг төлөвлөхөд холбоос олон блок
-   *    тавигдахгүй байна»): урьд нь ганц `dblk` (идэвхтэй блок) байсан тул `gBlks`-ийн
-   *    огноо олон блокт ордог атлаа уялдаа нь ганц блокт л тавигддаг байв.
-   * ⚠️ `collapse` — БҮХ блок сонгогдсон тул блокгүй НЭГ уялдаа бичнэ; тэр кодын
-   *    `@N` уялдааг хасна (эс бөгөөс тэр блокт давхар шилжилт, 2026-09-25 аудит).
-   */
-  /* ⚠️ `so`/`to` — урд · хамаарагч мөрийн OID (2026-09-25 аудит, индекс шилжихээс) */
   const [linkAsk, setLinkAsk] = useState<{ so: number; to: number; dblks: number[] | null; collapse?: true } | null>(null);
   /** Popup/холбох цонх нээлттэй эсэх — async урсгалд (`refreshAjil`, 2026-09-25) */
   const uiOpenRef = useRef(false);
@@ -1221,68 +733,38 @@ export function Huvaari({
   /** Эхний «өнөөдөр» рүү гүйлгэлт хийгдсэн үү — `[pkg]` эффект тэглэнэ, `useCalendar` уншина */
   const jumpedRef = useRef(false);
 
-  /*
-   * ⚠️ Сонгосон багц хүрээнээс ГАДУУР бол зөвшөөрөгдсөн эхнийх рүү шилжинэ
-   *    — эс бөгөөс хэрэглэгч засах эрхгүй хуудас ширтэнэ. Хадгалаагүй
-   *    ноорогтой үед хөндөхгүй (`askSwitch`-ийн дүрэм).
-   */
   useEffect(() => {
-    /* ⚠️ `obDraft` ч ноорог (2026-09-24) — түүнгүйгээр сарын задаргаа л зассан үед асуулгүй солигдож байв */
-    /* ⚠️ Хяналтын горимд багц ТОГТМОЛ — дарааллаас сонгосон илгээлтийнх. */
     if (review) return;
     if (groupOpts.includes(pkg.group) || draft.size || ham.size || aDraft.size || resDraft.size || obDraft.size || obResDraft.size || !groupOpts.length) return;
     const first = pkgFloors(groupOpts[0])[0];
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: эрхийн хүрээ (гадаад ACL захиалга) өөрчлөгдөхөд сонгосон багцыг зөвшөөрөгдсөн руу шилжүүлэх — санаатай синк, зурагдалтад дериваци болгох боломжгүй (pkg нь хэрэглэгчийн сонголт)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (first) setPkg(first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupOpts]);
 
   useEffect(() => {
     let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: багц солигдоход ArcGIS-ээс дахин ачаалах эффект — ачаалахын өмнө төлөвийг тэглэх нь энэ файлын ⚠️-уудаар бэхлэгдсэн дараалал; дериваци/key-ээр солих нь бүх төлөвийг дахин зохион байгуулах том өөрчлөлт
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBusy(true); setErr(''); setLoadErr(null); setRows([]); setSc(null);
     setDraft(new Map()); setHam(new Map()); setSel(null); setCollapsed(new Set()); setModal(null);
-    /* ⚠️ 2026-10-08: алдааны жагсаалт · буцаалтын агшин · өөрчлөлтийн самбар · гинжний мэдэгдэл ч багцынх */
     setErrList([]); setUndoSnap(null); setChgOpen(false); setChainN(0); setPendingOther(null);
-    /* ⚠️ Бүлгийн шүүлт · холбох цонх ч багцынх (2026-09-25 аудит) */
     setFGrp('all'); setLinkAsk(null);
     setADraft(new Map()); setResDraft(new Map());
-    /* ⚠️ Түвшний товчийг ч тэглэнэ — багц бүр ӨӨР гүнтэй тул өмнөх багцын
-       сонголт шинэ модонд утгагүй (эвхэлт нь дээр цэвэрлэгдсэн). */
     setLvl(0);
     setObPlan(new Map()); setObOids(new Map()); setObDraft(new Map()); setObDups([]);
     setObRes(new Map()); setObResDraft(new Map());
     setObState('loading'); obLoadedRef.current = false;
-    /* ⚠️ Урьдчилан харах ба батлах урсгалын төлөв нь БАГЦЫНХ — ноорог
-       цэвэрлэгдэхэд эдгээр ч дагаж тэглэгдэхгүй бол өмнөх багцын санал
-       харагдсаар байгаа мэт товч, баннер үлдэнэ. */
     setPreviewing(false); setApproving(null); setFlowBox(null); setFlowTxt('');
     setOkRows(new Set()); setBackMarks(null);
-    /* ⚠️ 2026-10-23: «Батлагдсан» харагдац ч таб бүрд тэглэнэ (`viewSaved`-ийн ⚠️) */
     setViewSavedAt(null);
-    /* ⚠️ Батлах урсгалын АЛХАМЫН тэмдэглэгээг ч тэглэнэ (2026-09-15-ны
-       аудит): savedRef нь useRef тул багц/төрөл солиход үлддэг байв. Бичилт
-       унаад true үлдсэн бол дараагийн батлалтад save() ОГТ дуудагдалгүй
-       шууд decidePlan руу орж, хуваарь эх хуудсанд бичигдэлгүй «батлагдсан»
-       болж, гүйцэтгэгчийн санал ул мөргүй алга болно. */
     savedRef.current = false;
     setBlk(0); jumpedRef.current = false; setGBlks(new Set());
-    /* ⚠️ 2026-10-12: өмнөх багцын «хуучин агшин» тэмдэг шинэ багцад үлдэхгүй (`frameOld`-ийн ⚠️) */
     setFrameOld(null);
     /* Нэмэлт ажил (2026-09-24): маягт хаана, баннер тэглэнэ, локал ноорогийг сэргээнэ — `useAjil`-ийн
        `[pkg.key]` эффект (энэ эффектийн ДАРАА, нэг commit-д). */
-    /* ⚠️ Сарын обьёмыг ТУСАД НЬ татна: тэр үйлчилгээ унасан ч хуваарийн
-       хуудас нээгдэх ЁСТОЙ. Алдааг `setErr` рүү хийхгүй — улаан баннер нь
-       огноо төлөвлөхөд саад болно; задаргаа нь зүгээр л хоосон харагдана. */
     loadPkgPlan(pkg.key)
       .then((r) => { if (alive) { setObPlan(r.plan); setObRes(r.res); setObOids(r.oids); setObDups(r.dups); setObState('ok'); obLoadedRef.current = true; } })
       .catch(() => { if (alive) setObState('fail'); /* задаргаагүйгээр үргэлжилнэ */ });
-    /* ⚠️ СИНТЕТИК БЛОК (2026-09-23): блокгүй 14 багцад (5.x · 6.x · 7.1 · 10) мөрийн
-       түвшний огноо (`Төлөвлөгөөт_хуваарь__Эхлэх/Дуусах` · `geree_*` · `bodit_*`)
-       нэг блок болж орно — хуваарь барилгын багцтай ИЖИЛ ажиллана, доорх
-       `save` нь `sc.start[b]`/`sc.gStart[b]`/`sc.aStart[b]` нэрээр бичдэг тул
-       мөрийн баганад шууд бичигдэнэ. ЗӨВХӨН ЭНД опт-ин — FillNew/дашбоард/
-       нэгтгэл `loadSchema(pkg)`-ээр хоосон блок хэвээр (`Schema.synthetic`). */
     setKomissNote('');
     hdRemapRef.current = null;
     loadSchema(pkg, { synthetic: true })
@@ -1293,17 +775,9 @@ export function Huvaari({
          * «УЛСЫН КОМИСС» АВТОМАТ (2026-09-28, хэрэглэгчийн сонголт): төлөвлөгөөт
          * хуваарийг төлөвлөх эрхтэй хүн нээхэд багцын төгсгөлд тэр мөр байхгүй
          * бол `ensureKomissRow` НЭГ УДАА нэмж (шинэ жааз), дараа нь мөрүүдийг
-         * дахин татна. ⚠️ Алдаа нь улаан баннер БИШ — хуваарь нээгдэх ёстой;
-         * зөвхөн тэмдэглэл. ⚠️ Эрхийг ref-ээр уншина — эффектийн deps `[pkg]`
+         * дахин татна. Алдаа нь улаан баннер БИШ — хуваарь нээгдэх ёстой;
+         * зөвхөн тэмдэглэл. Эрхийг ref-ээр уншина — эффектийн deps `[pkg]`
          * хэвээр (эрх ирэх бүрд дахин ачаалахгүй; lib түвшинд давхар шалгана).
-         *
-         * ⚠️ 2026-09-25 аудит: `setRows` ГАНЦ УДАА — ensure-ийн ӨМНӨ биш, ДАРАА.
-         *    Урьд нь хуучин мөрүүд эхлээд тавигдаж, хуваалцсан ноорогийн сэргээх
-         *    эффект тэдгээр дээр ажиллаад, дараа нь шинэ жааз (`r2`, бүх OID шинэ)
-         *    ирэхэд бүх нүд «мөр алга» болж ноорог өнчирдөг байв. Одоо шинэ жааз
-         *    бичигдсэн бол хуучин→шинэ oid зураглалыг (`remapOids`, хадгалахтай ижил
-         *    дүрэм) `hdRemapRef`-д тавьж, сэргээх эффект нооргийг зөөж хэрэглэнэ.
-         *    `busy` бичилт дуустал үлдэнэ — мөр хоосон харагдахаас дээр.
          */
         if (!review && komissGateRef.current() && !findKomissRow(r.rows)) {
           const res = await ensureKomissRow(pkg.key);
@@ -1321,62 +795,29 @@ export function Huvaari({
         }
         setSc(schema);
         setRows(r.rows);
-        /* ⚠️ 2026-10-12: тасарсан жаазын оронд хуучин агшин (`frameOld`-ийн ⚠️) */
         setFrameOld(r.truncated ? { day: r.truncated.day, shownDay: r.truncated.shownDay } : null);
       })
-      /* ⚠️ 2026-10-01: түүхий мессежийг `err` баннерт БИШ — `loadErr`-д (дээрх ⚠️) */
       .catch((e) => alive && setLoadErr(e instanceof Error ? e : new Error(String(e))))
       .finally(() => alive && setBusy(false));
     return () => { alive = false; };
-    /* ⚠️ `review` санаатай ОРУУЛААГҮЙ — хянах горим солиход мөрийг дахин
-       татахгүй; зөвхөн багц солигдоход ачаална. `reloadN` — «Дахин оролдох». */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pkg, reloadN]);
 
   /**
    * ТӨРӨЛ СОЛИГДОХОД НООРОГ ЦЭВЭРЛЭГДЭНЭ (2026-09-11).
-   *
-   * ⚠️ ЗААВАЛ: ноорог нь `oid → блокийн муж` хэлбэртэй бөгөөд аль төрлийнх
-   *    болохыг тэмдэглэх газаргүй. Цэвэрлэхгүй бол ТӨЛӨВЛӨГӨӨНД зассан
-   *    огноо ГЭРЭЭНИЙ талбарт бичигдэнэ — чимээгүй, эргүүлэх аргагүй.
-   * ⚠️ Уялдаа (`ham`) ба сарын обьём (`obDraft`) нь ЗӨВХӨН төлөвлөгөөнд
-   *    хамаарах тул тэднийг ч цэвэрлэнэ.
-   * ⚠️ Солихоос ӨМНӨ ноорог (төрөл · багцын) хуваалцсан мөрөнд бичигдэнэ (`askSwitch`,
-   *    2026-10-01) — буцаж ирэхэд сэргэнэ. Энэ эффект нь зөвхөн санах ойн цэвэрлэгээ.
-   * ⚠️ БАТЛАХ УРСГАЛЫН төлвийг Ч цэвэрлэнэ (2026-09-11-ний аудитын S1).
-   *    Урьд нь `previewing`/`approving`/`pending`/`flowBox` үлддэг байсан тул:
-   *    батлагч урьдчилан хараад таб солиход ноорог цэвэрлэгдэн `dirtyN` 0
-   *    болж, «бичих зүйлгүй» салаа ажиллан илгээлтийг `approved` болгоно —
-   *    гүйцэтгэгчийн санал УЛ МӨРГҮЙ алга болж «батлагдлаа» гэж мэдээлнэ.
-   *    Багц солих эффект (`[pkg]`) яг ижил шалтгаанаар эдгээрийг тэглэдэг.
    */
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: төрөл (plan/geree) солигдоход ноорог · батлах урсгалын төлөвийг ЦЭВЭРЛЭХ — дээрх ⚠️-ийн дагуу санаатай; ноорог нь төрлөө тэмдэглэдэггүй тул дериваци боломжгүй
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map());
-    /* ⚠️ Бодит огноо · нөөц (2026-09-23) нь `kind`-ээс хамаардаггүй ч ЦЭВЭРЛЭНЭ:
-       нэг илгээлт нэг `kind` авч явдаг тул таб солиход хагас ноорог үлдвэл
-       дараагийн илгээлт хоёр төрлийн хольц болно. `askSwitch` урьдчилан хадгалдаг. */
     setADraft(new Map()); setResDraft(new Map());
     setSel(null); setModal(null); setNote(''); setKomissNote(''); setErr('');
     setPreviewing(false); setApproving(null); setFlowBox(null); setFlowTxt('');
     setOkRows(new Set()); setBackMarks(null);
-    /* ⚠️ 2026-10-23: «Батлагдсан» харагдац ч таб бүрд тэглэнэ (`viewSaved`-ийн ⚠️) */
     setViewSavedAt(null);
-    /* ⚠️ 2026-10-08: алдааны жагсаалт · буцаалтын агшин · самбар ч төрлийнх */
     setErrList([]); setUndoSnap(null); setChgOpen(false); setChainN(0);
-    /* ⚠️ 2026-10-12 (аудит №8): «Тэнцээгүй» чип зөвхөн «Төлөвлөгөө»-нд (сарын обьём) — «Гэрээ» таб руу асаалттай шилжвэл
-       чип нь зурагдахгүй атлаа шүүлт хэвээр тул БҮХ мөр нуугддаг байв (`unbalRows` гэрээнд хоосон). */
     setChips((s) => (s.has('unbal') ? new Set([...s].filter((c) => c !== 'unbal')) : s));
-    /* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — таб солиход хүлээгдэж буй илгээлтүүд СОЛИГДОНО
-       (`refreshFlow` дараа нь серверээс дахин уншина; энэ нь завсрын зурагдалтад буруу
-       табын түгжээ харагдахгүй гэсэн л үүрэгтэй). Ref-ээр — deps `[kind]` хэвээр. */
     const pr = pendRef.current;
     setPending(pr.other); setPendingOther(pr.cur);
-    /* ⚠️ Батлах урсгалын АЛХАМЫН тэмдэглэгээг ч тэглэнэ (2026-09-15-ны
-       аудит): savedRef нь useRef тул багц/төрөл солиход үлддэг байв. Бичилт
-       унаад true үлдсэн бол дараагийн батлалтад save() ОГТ дуудагдалгүй
-       шууд decidePlan руу орж, хуваарь эх хуудсанд бичигдэлгүй «батлагдсан»
-       болж, гүйцэтгэгчийн санал ул мөргүй алга болно. */
     savedRef.current = false;
     /* `pendRef` нь `useLatest`-ийн тогтвортой ref — deps-д байх нь эффектийг дахин ажиллуулахгүй */
   }, [kind, pendRef]);
@@ -1386,29 +827,16 @@ export function Huvaari({
    * Бодит огноо · нөөцийн багана ХАРАГДАХ ЭСЭХ (2026-09-23) — талбар байгаа
    * үйлчилгээнд л. Блокгүй 8 багцад `aStart` хоосон тул бодит огноо нуугдана;
    * `hun_huch`/`mashin_mehanizm` 18/18-д бий ч схемээс шалгана (null = нуух).
-   * ⚠️ 2026-09-23: блокгүй багцад синтетик блок (`Schema.synthetic`) мөрийн
-   *    `bodit_ehleh/duusah`-ыг `aStart[0]`-д авчирдаг тул тэнд ч бодит огноо
-   *    харагдана (багана байвал).
    */
   const hasActual = !!sc && sc.aStart.some(Boolean);
   const hasRes = !!sc && !!(sc.f.hunHuch || sc.f.mashin);
   /** Олон блоктой (синтетик биш) багц — «Бүх блок» товч зөвхөн тэнд (2026-10-04) */
   const multiBlk = !!sc && !sc.synthetic && n > 1;
-  /* ⚠️ Хяналтын горимд УНТРААЛТТАЙ: батлагчийн тэмдэглэгээ (`onMark`) · «дараагийн
-     зөрүү» гүйлгэлт нь идэвхтэй блокоор ажилладаг (2026-10-04). */
   const allOn = allBlk && multiBlk && !isReview;
 
   /**
    * ХУУДАСНЫ БҮХ МӨР — серверийнх + хараахан батлагдаагүй нэмэлт (2026-09-24).
-   * ⚠️ ЗӨВХӨН `base`/`refBase` (харагдац) үүнээс; `rows` нь `save`/`byOid`/
-   *    `hdCtx`/`refetchServer`-ийн эх ХЭВЭЭР — нэмсэн мөр сөрөг oid-тай тул
-   *    ноорог/илгээлтэд орж болохгүй (`onDown` · `TaskRow` · холбоос суллах
-   *    гурвуулаа `oid < 0`-г хаана). `insertAdds` нь `sheetFrame`-ийн ЦОРЫН
-   *    ГАНЦ хэрэгжилт — батлахад `ajilApply` ЯГ үүгээр оруулна, байрлал ижил.
    */
-  /* ⚠️ ХЯНАЛТЫН ГОРИМД (`review`) НЭМЭЛТ МӨР ОРУУЛАХГҮЙ (2026-09-25 аудит #7):
-     `adds` нь БАТЛАГЧИЙН ӨӨРИЙН хөтчийн localStorage — зохиогчийн саналд хамааралгүй
-     мөр хяналтын хуанлид гарч, мөрийн индекс/гүйлгэлтийг хөдөлгөдөг байв. */
   const rowsAll = useMemo(
     () => (sc && !isReview ? insertAdds(rows, adds, sc, n) : rows),
     [rows, adds, sc, n, isReview],
@@ -1419,21 +847,6 @@ export function Huvaari({
   /**
    * ЛАВЛАГААНЫ хуваарь — НӨГӨӨ төрлийн огноо (2026-09-11, хэрэглэгчийн хүсэлт:
    * «төлөвлөгөө гэрээ 2-ийг зэрэг харах»).
-   *
-   * ⚠️ Засах боломжгүй, зөвхөн ХАРУУЛНА: зурвасын ард нимгэн судлаар гарч,
-   *    «гэрээнээс хэр хазайсан» гэдгийг НЭГ дэлгэцээс уншина. Хоёр төрлийг
-   *    зэрэг ЗАСВАЛ аль нь ноорогт хамаарахыг ялгах газаргүй болно.
-   * ⚠️ НООРОГ давхарлахгүй (`rows`-оос шууд): лавлагаа нь ХАДГАЛАГДСАН
-   *    утга байх ёстой — эс бөгөөс өөрийн зассан зурвасаа өөртэйгөө жишнэ.
-   * ⚠️ Бүлгийн мөрд ХҮҮХДЭЭСЭЭ бодогдоно (`effSpan`) — зурах үед хийгдэнэ.
-   */
-  /*
-   * ⚠️ 2026-09-15: `showRef`-ЭЭС САЛГАВ. Урьд нь «Зэрэг» унтраалттай үед огт
-   *    бодохгүй байсан (2026-09-11-ний аудит, ачаалал хэмнэх) — гэвч одоо
-   *    зүүн самбарын ДӨРВӨН ШИНЭ БАГАНА (гэрээний ба инженерийн огноо) нь
-   *    үүнийг ҮРГЭЛЖ шаардана. Нэг хөрвүүлэлт нэмэгдэх нь тэр багануудыг
-   *    хоосон үлдээхээс дээр: хоёр төрлийн огноог зэрэгцүүлж харах нь
-   *    хуудасны ГОЛ зорилго.
    */
   const refBase = useMemo(
     () => toPlanRows(rowsAll, n, kind === 'geree' ? 'plan' : 'geree'),
@@ -1445,7 +858,6 @@ export function Huvaari({
     return m;
   }, [refBase]);
   const plan = useMemo(() => {
-    /* ⚠️ 2026-10-23: «Батлагдсан» харагдац — ноорог давхарлахгүй (`viewSaved`-ийн ⚠️) */
     if (savedView || (!draft.size && !ham.size && !aDraft.size && !resDraft.size)) return base;
     return base.map((r) => {
       const s = draft.get(r.oid);
@@ -1471,21 +883,8 @@ export function Huvaari({
 
   /**
    * Нийт ноорог — огноо · уялдаа · сарын обьёмын аль нэгийг нь хөндсөн.
-   * ⚠️ Обьёмын ноорог нь `${код}|${блок}` түлхүүртэй тул мөрийн тоотой
-   *    шууд нийлэхгүй; хоёрын НИЙЛБЭРийг «хадгалах зүйл байна уу» гэсэн
-   *    ганц тоо болгож харуулна.
    */
-  /* ⚠️ `dirtyN`-ийг async урсгалд (`refreshAjil`) ref-ээр уншина — deps-д
-     оруулбал чирэлт бүрд урсгал дахин татагдана. */
   const dirtyNRef = useRef(0);
-  /**
-   * ⚠️ 2026-10-09: ӨНЧИН НООРОГ — хуудсанд (`rows`) байхгүй мөрийн (oid) ноорог. Хадгалалтын үед жааз солигдож мөр
-   *    шинэ агшинд олдоогүй (`save`-ийн `lostOids`) бол ноорог нь санаатай үлддэг ч дараа нь ХЭЗЭЭ Ч бичигдэхгүй
-   *    (`prepareSave` «мөр олдсонгүй»): урьд нь «хадгалаагүй N»-д мөнхөд тоологдож, «Хадгалах»/«Батлуулах» нь
-   *    дахин дахин унадаг байв. Тоонд (`dirtyN`/`dirtyOids`) ОРОХГҮЙ, «Өнчин ноорог устгах (N)»-оор цэвэрлэнэ.
-   * ⚠️ Урьдчилан харах/батлах явцад ТООЦОХГҮЙ — тэнд ноорог = илгээлт, мөр серверээс дөнгөж татагдсан байж болох
-   *    тул завсрын зурагдалтад «өнчин» гэж хасвал батлах эффект `dirtyN === 0`-ийг «бичих зүйлгүй» гэж уншина.
-   */
   const orphanOids = useMemo(() => {
     const s = new Set<number>();
     if (!sc || !rows.length || previewing || approving != null) return s;
@@ -1495,12 +894,6 @@ export function Huvaari({
     }
     return s;
   }, [sc, rows, previewing, approving, draft, ham, aDraft, resDraft]);
-  /**
-   * ⚠️ 2026-10-21: ӨНЧИН САРЫН НООРОГ — `${код}|${блок}` түлхүүрийн ажлын код хуудсанд (`byCode`) алга эсвэл блокгүй
-   *    (`savePrep.obLost`-той НЭГ дүрэм). Урьд нь `orphanOids` зөвхөн oid-түлхүүртэйг хамардаг тул эдгээр `dirtyN`-д
-   *    тоологдож, илгээлтэд орж, батлахад `obLost`-оор заавал унадаг байв. `orphanOids`-ийн дүрмээр: тоонд ОРОХГҮЙ,
-   *    илгээлтийг хаана, «Өнчин ноорог устгах»-аар зөвхөн эдгээрийг цэвэрлэнэ. Урьдчилан харах/батлах явцад тооцохгүй.
-   */
   const orphanOb = useMemo(() => {
     const s = new Set<string>();
     if (!sc || !rows.length || previewing || approving != null) return s;
@@ -1516,23 +909,11 @@ export function Huvaari({
       + [...new Set([...obDraft.keys(), ...obResDraft.keys()])].filter((k) => !orphanOb.has(k)).length,
     [draft, ham, aDraft, resDraft, obDraft, obResDraft, orphanOids, orphanOb],
   );
-  /**
-   * ⚠️ 2026-10-21: «Батлуулах»-ын хаалт — сарын обьёмын хүснэгт (`loadPkgPlan`) уншигдаагүй. Төлөвлөгөө табд үргэлж
-   *    (суурь задаргаагүй бол батлагчийн `obOut`/зэрэгцээ өөрчлөлтийн тулгалт худал болно), бусад табд сарын ноорогтой үед.
-   */
   const obNotReady = (kind === 'plan' || obDraft.size > 0 || obResDraft.size > 0) && obState !== 'ok';
   /**
    * ӨӨРЧЛӨГДСӨН ЯЛГААТАЙ МӨРИЙН тоо — илгээлтийн `rowCount` (2026-09-23).
-   * ⚠️ `dirtyN` нь сарын нүд бүрийг тоолдог тул «14 мөр» гэж харуулбал
-   *    батлагчийн дарааллын тоо мөрийн тоотой зөрдөг байв. Обьёмын ноорог
-   *    (`${код}|${блок}`) нь код → мөр болж нэгтгэгдэнэ.
    */
-  /* ⚠️ 2026-10-08: ХҮҮХДЭЭС БОДОГДСОН бүлгийн мөр (`rollUpGroups` — өөрийн шилжилтгүй, уялдаагүй)
-     ТООЛОГДОХГҮЙ — `reviewOidsOf`-ийн бүлгийн дүрэмтэй ижил. Урьд нь «хадгалаагүй N» ·
-     «Батлуулах (N)» · `rowCount` · «Ноорог хаях (N)» нь нэг ажил чирэхэд өвөг бүлгүүдээ хамт
-     тоолж, батлагчийн дарааллын тоо засварын тооноос их гардаг байв. */
   const dirtyOids = useMemo(() => {
-    /* ⚠️ 2026-10-09: өнчин ноорог (`orphanOids`) тоологдохгүй */
     const s = new Set<number>([...ham.keys(), ...aDraft.keys(), ...resDraft.keys()].filter((o) => !orphanOids.has(o)));
     const idx = new Map(plan.map((r, i) => [r.oid, i]));
     for (const [o, sp] of draft) {
@@ -1556,40 +937,16 @@ export function Huvaari({
 
   /**
    * ЗӨВШӨӨРӨЛ ШААРДАХ МӨРҮҮД — өөрчлөгдсөн АЖЛЫН мөр + бүлгийн ЖИНХЭНЭ өөрчлөлт.
-   * ⚠️ Хүүхдээс БОДОГДСОН бүлгийн муж (`rollUpGroups`) хасагдана — хүүхдүүд нь
-   *    ногоон бол тэр нь ч зөв.
    */
-  /* ⚠️ БҮЛГИЙН ЖИНХЭНЭ ӨӨРЧЛӨЛТ ОРНО (2026-09-25 аудит): бүлгийн УЯЛДАА (`ham`)
-     ба НАВЧГҮЙ блокийн өөрийн муж (`applyPayloadToDraft`-ийн `gOwn`) нь хүүхдээс
-     бодогддоггүй, санал өөрөө агуулдаг — хасвал зөвшөөрөлгүйгээр батлагдана.
-     Хүүхдээс бодогдсон (`rollUpGroups`) бүлгийн муж л хасагдана. */
-  /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ / ХАРАГДАХ ЯЛГААГҮЙ МӨР ОРОХГҮЙ (2026-09-25 аудит #8):
-     `applyPayloadToDraft` нь зохиогч хөндөөгүй блокт серверийн ОДООГИЙН утгыг
-     ноорогт тавьдаг, хуваалцсан ноорог ч серверт хүрсэн утгыг агуулж болно —
-     тэр мөрүүд «өөрчлөгдсөн» гэж тоологдож, батлагч ЯЛГААГҮЙ мөрийг хайж
-     ногоон болгох шаардлагатай болдог байв. Одоо мөр бүрийг суурьтай (`base`)
-     тал бүрээр нь тулгана: огноо · уялдаа · бодит огноо (багана байвал) · нөөц
-     (багана байвал) · сарын обьём/нөөц. Ялгаагүй мөр тэмдэггүй (саармаг). */
   const reviewOids = useMemo(
     () => reviewOidsOf({ dirtyOids, plan, base, ham, draft, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, hasActual, hasRes, n }),
     [dirtyOids, plan, base, ham, draft, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, hasActual, hasRes, n],
   );
-  /* ⚠️ 2026-09-25 аудит #2: буцаасан тэмдэглэгээг ноорог хоосроход АРЧИХГҮЙ —
-     `lastDecision`-оос дахин үүсдэг (`backMarks`-ийн эффект); ноороггүй үед
-     `backOn` худал тул харагдахгүй. Урьд нь энд арчдаг байсан тул «Цуцлах»/
-     дахин ачаалсны дараа тэмдэг мөнхөд алга болдог байв. */
   const reviewOk = reviewOids.filter((o) => okRows.has(o)).length;
   const allOk = reviewOids.length > 0 && reviewOk === reviewOids.length;
   useEffect(() => { dirtyNRef.current = dirtyN; }, [dirtyN]);
-  /**
-   * ⚠️ 2026-10-09: САРЫН ОБЬЁМ ТЭНЦЭЭГҮЙ МӨРҮҮД (oid → блокийн индексүүд) — илгээх хаалттай (`unbalancedObyem`)
-   *    ЯГ нэг дүрэм (`util.unbalancedBlocks`, `draftOnly`). Урьд нь зөвхөн «Батлуулах» дарахад алдааны текстэд
-   *    эхний 3 нэр гардаг тул 1,400 мөрөөс аль нь болохыг хайдаг байв — одоо «Тэнцээгүй» чип · мөрийн тэмдэг ·
-   *    товчны тоо · гинжийн мэдэгдэл үүнээс. Зөвхөн сарын НООРОГТОЙ кодоор гүйнэ (чирэлтийн кадрт хямд).
-   */
   const unbalRows = useMemo(() => {
     const m = new Map<number, number[]>();
-    /* ⚠️ 2026-10-23: «Батлагдсан» харагдацад сарын НООРОГ тоологдохгүй (`viewSaved`-ийн ⚠️) */
     if (kind !== 'plan' || !sc || !obDraft.size || savedView) return m;
     const codes = new Set<number>();
     for (const k of obDraft.keys()) { const c = Number(k.slice(0, k.indexOf('|'))); if (Number.isFinite(c)) codes.add(c); }
@@ -1604,14 +961,7 @@ export function Huvaari({
   }, [kind, sc, obDraft, obPlan, byCode, plan, savedView]);
   /** `applyChanges`-ийн гинжийн тэмдэглэлд (deps-гүй уншина) */
   const unbalRef = useLatest(unbalRows);
-  /* ⚠️ 2026-10-08: `obDirtyDes` (сарын ноорогтой кодууд) ХАСАГДАВ — мөрийн «хадгалаагүй» тэмдэг одоо
-     `dirtyOids`-оос (тэнд сарын ноорог аль хэдийн код → мөр болж орсон). */
 
-  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): ЭНД ЗӨВХӨН `tasks` · `planned` · `reversed` уншигдана.
-     `coverageOf` нь навч бүрд 22 блокийн огноог мөр болгон нийлүүлж (`patterns`-ийн Set) чирэлтийн
-     кадр бүрд ~1,400 мөр үүсгэдэг байв — профайлын 2-р хүнд мөр. Гурван талбарыг ЯГ ИЖИЛ дүрмээр
-     (`plan.coverageOf`-ийн давталт) бодно; `patterns`/`from`/`to` хэрэгтэй бол `coverageOf`-ийг
-     дуудна уу. */
   const cov = useMemo(() => {
     let tasks = 0, planned = 0, reversed = 0, partial = 0;
     for (const r of plan) {
@@ -1636,33 +986,6 @@ export function Huvaari({
    * хэдэн хувь (2026-09-22, хэрэглэгчийн хүсэлт: «дээд талын огнооны нүдэнд
    * огнооны доод тал хуваарьт төлөвлөсөн обьём нийт багц обьёмын хэдэн хувь»).
    *
-   * ⚠️ ЗӨВХӨН НАВЧ МӨР (`r.group` биш). Бүлгийн мөрд `vol` уншигддаг
-   *    (`bagtsSheet.ts:752`) тул шүүхгүй бол хүүхдүүдээ ДАХИН тоолж хоёр
-   *    дахин хөөрөгдөнө — `ipcLink.ts:81-83`-ийн ижил ⚠️. Хуваарь ба хуваагч
-   *    ХОЁУЛАА ижил шүүлттэй байх ёстой, эс бөгөөс харьцаа гажна.
-   *
-   * ⚠️ `plannedVol` ба `unit` ХЭРЭГЛЭХГҮЙ — `bagtsSheet.ts:44-52` нь
-   *    хоёуланг «ЯМАР Ч ТООЦООНД ОРОХГҮЙ, зөвхөн харуулна» гэж бэхэлсэн.
-   *    Мөнгөн жин (`vol × unit`) ч хориотой (`bagtsSheet.ts:1075-1077`:
-   *    «үнэ өндөртэй ажил руу хазайлгадаг»).
-   *
-   * ⚠️ Энэ нь БИЕТ ГҮЙЦЭТГЭЛИЙН ЖИН БИШ — нэгж хольсон нийлбэр (м³+м²+ш)
-   *    тул зөвхөн төлөвлөгөөний ЦАГ ХУГАЦААНЫ хуваарилалтыг илэрхийлнэ.
-   *
-   * ⚠️ Ноорог ЗААВАЛ орно (`obDraft` нь `obPlan`-ыг дарна — `obOf`-ийн
-   *    дүрэм) — эс бөгөөс зурвасыг чирэхэд тоо хөдөлдөггүй.
-   *
-   * ⚠️ ХУУРАМЧ ХУВЬ ХЭЗЭЭ Ч ГАРГАХГҮЙ (2026-09-22, хэрэглэгчийн шаардлага:
-   *    «сарын задаргаа байхгүй байхад хуурамч хувь битгий гаргаад бай»).
-   *    Урьд нь задаргаагүй зурваст мөрийн обьёмыг ХОНОГООР шугаман хуваадаг
-   *    байв — тэр нь ТААМАГЛАЛ бөгөөд төлөвлөгчийн хийгээгүй шийдвэрийг
-   *    түүний хийсэн юм шиг харуулна. Одоо ЗӨВХӨН бодит задаргаа: задаргаа
-   *    нэг ч мөрд байхгүй бол сарын нүдэнд ЮУ Ч гарахгүй.
-   *
-   * ⚠️ ХУВААГЧ нь БАГЦЫН НИЙТ ОБЬЁМ (2026-09-22, хэрэглэгч: «тухайн сард
-   *    төлөвлөсөн бүх ажил багц нийт обьём эзлэх хувь»). Задаргаа оруулсан
-   *    хүрээ БИШ — багцын БҮХ навч ажлын `vol` бүх блокоор.
-   *
    *    Тиймээс тоо нь «БАГЦЫН хэдэн хувийг тэр сард төлөвлөсөн» гэсэн утга
    *    өгнө: сар бүрийн нийлбэр = төлөвлөлтийн ХАМРАЛТ. Задаргаа хагас
    *    бөглөгдсөн бол нийлбэр 100%-д хүрэхгүй — тэр нь ЗӨВ дохио, дутууг
@@ -1672,10 +995,6 @@ export function Huvaari({
    *    цонх өөрөө баталдаг: `balanced(mv, total)`, `total = r.vol` буюу НЭГ
    *    блокийн сарын задаргаа `r.vol`-тай тэнцэхийг шаардана
    *    (`PlanModal`). Тиймээс хуваагч нь `Σ r.vol × (хуваарьтай блокийн тоо)`.
-   *
-   * ⚠️ ХУВААРЬГҮЙ блок хуваагчид ОРОХГҮЙ: 22 блокоос 3-д л хуваарь байхад
-   *    22-оор үржүүлбэл хувь 7 дахин багасч, бүрэн төлөвлөсөн багц ч 14%
-   *    гэж харагдана. Хуваарьтай блок нь «төлөвлөх ёстой хүрээ».
    */
   const monPct = useMemo(() => {
     const per = new Map<string, number>();
@@ -1683,17 +1002,11 @@ export function Huvaari({
     for (const r of plan) {
       if (r.group || r.des == null) continue;
       if (r.vol == null || !(r.vol > 0)) continue;
-      /* ⚠️ 2026-10-04 (гүйцэтгэл): мөрийн задаргааг блокийн давталтаас ӨМНӨ нэг удаа; ноорог
-         хоосон бол түлхүүрийн мөр (`${des}|${блок}`) огт үүсгэхгүй — чирэлтийн кадр бүрд
-         ~1,400 × 22 мөр үүсгэдэг байв. Дүрэм ХЭВЭЭР: ноорог нь хадгалагдсаныг дарна. */
       const pm = obPlan.get(r.des);
       const hasDraft = obDraft.size > 0;
       for (let b = 0; b < n; b += 1) {
         const blok = sc?.bld[b];
         if (!blok) continue;
-        /* ⚠️ ХУВААГЧ нь БҮХ хуваарьтай блокоор — задаргаатай эсэхээс
-           ҮЛ ХАМААРНА. Эс бөгөөс бөглөөгүй ажил хуваагчаас ч хасагдаж,
-           нэг ажил бөглөхөд шууд 100% болж, дутуу нь нуугдана. */
         if (!r.spans[b]) continue;
         tot += r.vol;
         const md = (hasDraft ? obDraft.get(`${r.des}|${blok}`) : undefined) ?? pm?.get(blok);
@@ -1709,16 +1022,8 @@ export function Huvaari({
 
   /**
    * Сарын шошгын доорх хувийн ТЕКСТ. `null` = ОГТ зурахгүй.
-   * ⚠️ `null ≠ 0`: багцад обьём бүртгэгдээгүй (`tot === 0`, ж: `4.2·12F`
-   *    мэт `bld` хоосон багц) эсвэл тэр сард хуваарь байхгүй бол хоосон —
-   *    «0» гэж зурвал 30px-ийн зурвас бүхэлдээ тэгээр дүүрч шуугиан болно.
-   * ⚠️ `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ тул энд хэрэглэхгүй; 73px-д «12.4%»
-   *    багтахгүй учир БҮХЭЛ хувь, % тэмдэггүй. Бүтэн утга `title`-д.
    */
   const monLab = useCallback((mk: string): { txt: string; tip: string } | null => {
-    /* ⚠️ (2026-09-23) ГЭРЭЭ табд ЗУРАХГҮЙ: `monPct` нь `plan`-ын (төлөвлөгөөний)
-       мужаар бодогддог тул гэрээний огнооны толгой дор тавибал хоёр эх холилдоно.
-       Сарын обьём нь зөвхөн төлөвлөгөөнд хамаарна (`PlanKind` тайлбар). */
     if (kind !== 'plan') return null;
     if (!(monPct.tot > 0)) return null;
     const v = monPct.per.get(mk);
@@ -1732,27 +1037,11 @@ export function Huvaari({
 
   /**
    * Мөр шүүлтүүрт нийцэж байна уу.
-   *
-   * ⚠️ БҮЛГИЙН мөр ҮРГЭЛЖ гарна: хамралт, огноо бүгд түүний ХҮҮХДҮҮДИЙН
-   *    шинж болохоос бүлгийн өөрийнх биш. Бүлгийг шүүж хаявал доорх ажлууд
-   *    эцэггүй үлдэж, чирэлтийн хавчилт («хүүхэд эцгийнхээ дотор») суурьгүй
-   *    болно.
-   *
-   * ⚠️ «Түвшин» ба «Хугацаа» сонголт ХАСАГДСАН (2026-09-02, хэрэглэгч).
    */
-  /**
-   * ⚠️ 2026-10-08: ЧИП ШҮҮЛТ (`chips`) — «Ноорогтой» (`dirtyOids`) · «Зөрчилтэй» (идэвхтэй блокийн уялдааны
-   *    зөрчил, зурвасын `plBarViol`-той нэг дүрэм, зөвхөн төлөвлөгөө табд) · «Хоцорсон» (`statusOf === 'late'`,
-   *    идэвхтэй блок). Байгаа шүүлттэй БА-аар; бүлгийн мөр хэвээр гарна (дээрх ⚠️).
-   */
-  /* ⚠️ 2026-10-09: блокоор ПАРАМЕТРЖҮҮЛЭВ (`b`) — «Бүх блок» PDF блок бүрийн мөрийг ТЭР блокийн хоцрогдол/зөрчлөөр
-     шүүнэ (урьд нь идэвхтэй блокийн чипээр бүх блокийн хуудсыг шүүдэг байв). Дэлгэцэнд `b = blk` — хэвээр. */
   const chipOkAt = useCallback((r: PlanRow, b: number): boolean => {
-    /* ⚠️ 2026-10-23: «Батлагдсан» харагдацад батлагдаагүй НЭМСЭН мөр (`oid < 0`, локал `adds`) харагдахгүй (`viewSaved`-ийн ⚠️) */
     if (savedView && r.oid < 0) return false;
     if (!chips.size || r.group) return true;
     if (chips.has('dirty') && (savedView || !dirtyOids.has(r.oid))) return false;
-    /* ⚠️ 2026-10-09: «Тэнцээгүй» — бүх блокоор (`unbalRows`), идэвхтэй блокоос үл хамаарна */
     if (chips.has('unbal') && !unbalRows.has(r.oid)) return false;
     if (chips.has('late')) {
       const sp = r.spans[b] ?? null;
@@ -1765,7 +1054,7 @@ export function Huvaari({
     }
     return true;
   }, [chips, dirtyOids, unbalRows, today, kind, plan, byCode, savedView]);
-  /** Шүүлт (таб · жил · чип) — чипүүд блок `b`-ээр (`chipOkAt`-ийн ⚠️) */
+  /** Шүүлт (таб · жил · чип) — чипүүд блок `b`-ээр (`chipOkAt`) */
   const matchAt = useCallback((r: PlanRow, b: number) => {
     if (r.group) return true;
     const filled = r.spans.filter(Boolean).length;
@@ -1773,14 +1062,11 @@ export function Huvaari({
     if (filter === 'none' && filled) return false;
     if (filter === 'partial' && (!filled || filled === r.spans.length)) return false;
     const sp = rowSpan(r);
-    /* ⚠️ 2026-10-01: жил нь мужтай ДАВХЦВАЛ таарна — урьд нь зөвхөн ЭХЛЭХ жил
-       шалгагдаж, 2025-12 → 2026-03 ажил «2026» шүүлтэд гардаггүй байв. */
     if (fYear !== 'all') {
       if (!sp) return false;
       const y = Number(fYear);
       if (Number(msToDay(sp.start).slice(0, 4)) > y || Number(msToDay(sp.end).slice(0, 4)) < y) return false;
     }
-    /* ⚠️ 2026-10-08: чипүүд БА-аар */
     return chipOkAt(r, b);
   }, [filter, fYear, chipOkAt]);
   const match = useCallback((r: PlanRow) => matchAt(r, blk), [matchAt, blk]);
@@ -1796,8 +1082,6 @@ export function Huvaari({
 
   /**
    * Сонгосон бүлгийн ДЭД МОД (бүлэг өөрөө + доторх бүх мөр).
-   * ⚠️ Гүнээр таслана, дараагийн ижил гүнтэй мөр хүртэл — модны дараалал нь
-   *    хавтгай массив тул эцэг/хүүхдийн холбоо зөвхөн ЭНЭ дүрмээр гарна.
    */
   const scoped = useMemo(() => {
     if (fGrp === 'all') return plan;
@@ -1814,14 +1098,7 @@ export function Huvaari({
   /**
    * ХАРАГДАХ МӨРҮҮД — эвхэлт · шүүлт. Зүүн мод ба баруун хуанли ЯГ ЭНЭ
    * жагсаалтаар эгнэнэ.
-   *
-   * ⚠️ ТЕКСТ ХАЙЛТ ХАСАГДСАН (2026-09-02, хэрэглэгч). Хайлт нь модыг ХАВТГАЙ
-   *    жагсаалт болгож, бүлгийн мөрүүдийг хасдаг тул эцгийн муж алдагдаж,
-   *    чирэлтийн хавчилт («хүүхэд эцгийнхээ дотор») ажиллах суурьгүй болдог
-   *    байв. «Бүлэг» сонголт нь модыг бүтнээр нь үлдээж, тэр үүргийг гүйцэтгэнэ.
    */
-  /* ⚠️ 2026-10-09: блок `b`-ийн шүүлтээр (`matchAt`) — дэлгэц `blk`, «Бүх блок» PDF блок бүрээр */
-  /* ⚠️ 2026-10-09: `keep` — шүүлтэд таарахгүй ч ХАРАГДСААР байх мөрүүд (`sticky`, зөвхөн дэлгэцэд; PDF-д үгүй) */
   const visibleAt = useCallback((b: number, keep?: ReadonlySet<number>) => {
     const out: PlanRow[] = [];
     let hideBelow = -1;
@@ -1834,12 +1111,6 @@ export function Huvaari({
     }
     return out;
   }, [scoped, collapsed, matchAt]);
-  /**
-   * ⚠️ 2026-10-09: ШҮҮЛТИЙН ГИШҮҮНЧЛЭЛ «ХӨЛДӨНӨ» — шүүлт (таб · жил · чип) идэвхтэй үед засварласан мөр (чирэлтийн
-   *    эхний алхмаас эхлэн) шүүлтээс гарсан ч ХАРАГДСААР (`sticky`). Урьд нь жишээ нь «Хуваарьгүй» табд огноо тавьмагц
-   *    мөр алга болж, чирэлт/нүд дундаа тасардаг байв. «Шүүлтийг шинэчлэх (N)» товч (`stickyN`) хөлдөлтийг арилгана;
-   *    шүүлт өөрчлөгдөхөд ч арилна (доорх «өмнөх утга» тулгалт — эффект биш).
-   */
   const [sticky, setSticky] = useState<ReadonlySet<number>>(() => new Set());
   const filtOn = filter !== 'all' || fYear !== 'all' || chips.size > 0;
   const filtKey = `${filter}|${fYear}|${[...chips].sort().join(',')}`;
@@ -1859,13 +1130,6 @@ export function Huvaari({
 
   /**
    * ХҮСНЭГТЭД БОДИТООР БАЙГАА ТҮВШНҮҮД — товчийг өгөгдлөөс угсарна.
-   *
-   * ⚠️ Хатуу 1·2·3·4·5 гэж бичихгүй (`Finance`-ээс ЭНД ЯЛГААТАЙ): санхүүгийн
-   *    бүртгэл нь ТОГТМОЛ таван түвшинтэй Excel загвар, харин хуваарийн модны
-   *    гүн БАГЦ БҮРД өөр. Багц 1 нь дөрвөн түвшинтэй, зарим багц хоёр л
-   *    түвшинтэй — байхгүй түвшний товч гарвал дарахад юу ч болохгүй.
-   *
-   * ⚠️ Гүн 0-ээс эхэлдэг тул товчны дугаар нь `depth + 1`.
    */
   const lvls = useMemo(() => {
     const s = new Set<number>();
@@ -1875,33 +1139,12 @@ export function Huvaari({
 
   /**
    * ТҮВШИН СОНГОХ — `Finance.setLevel`-ийн ижил үүрэг.
-   *
-   * ⚠️ `n` нь ТОВЧНЫ дугаар (1-ээс эхэлнэ), гүн нь `n - 1`. «N-р түвшин ХҮРТЭЛ
-   *    дэлгэх» — N-р түвшний бүлгүүд ДЭЛГЭГДЭЖ доторх ажилбар харагдана, гүн ≥ `n`
-   *    бүлгүүдийг `collapsed`-д хийнэ (2026-10-04 засвар — доорх ⚠️).
-   *
-   * ⚠️ ХАМГИЙН ГҮН түвшин нь бүх мөрийг ДЭЛГЭНЭ (`Finance`-ийн 4·5-тай ижил
-   *    зарчим): тэр түвшний бүлгүүд нь навчтай тул эвхэх юм үлдэхгүй.
-   *
-   * ⚠️ Зөвхөн БҮЛЭГ мөрийг (`r.group`) хийнэ — навч мөрийг эвхэх утгагүй
-   *    бөгөөд `visible`-ийн `hideBelow` логик нь тэднийг хардаггүй.
    */
-  /* ⚠️ 2026-09-30: useState-ийн setter-үүд deps-д — React Compiler-ийн шалгуур (preserve-manual-memoization)
-   энэ том бүрэлдэхүүнд setter-ийн тогтвортой байдлыг батлаж чадахгүй тул «inferred ≠ source» гэж
-   унадаг байв; setter-ийн identity ТОГТМОЛ тул deps-д нэмэх нь дахин үүсгэлт нэмэхгүй (React-ийн
-   баримт: «safe to include»). Утга · зан төлөв өөрчлөгдөхгүй. */
   const setLevel = useCallback((n: number) => {
     setLvl(n);
     const deepest = lvls.length ? lvls[lvls.length - 1] : 0;
     /* Хамгийн гүн түвшин = бүгдийг дэлгэх */
     if (n - 1 >= deepest) { setCollapsed(new Set()); return; }
-    /* ⚠️ 2026-10-04 (хэрэглэгч: «Level 3 руу хураахад ажилбарууд харагдах байтал зарим дэд
-       бүлгүүд бүтэн хураагдаж байна»): урьд нь гүн ≥ `n - 1` бүлгийг эвхдэг байв — N-р
-       түвшний бүлэг ӨӨРӨӨ эвхэгдэж, доторх ажилбар нуугддаг атлаа тэр түвшинд шууд байгаа
-       ажилбар (өөр салбарт) ил харагдаж зөрдөг байв; товчны тайлбар «N-р түвшин ХҮРТЭЛ
-       ДЭЛГЭХ»-тэй ч зөрчилдөж байв. Одоо N-р түвшний бүлгүүд ДЭЛГЭГДЭНЭ (доторх ажилбар
-       харагдана), зөвхөн түүнээс ДООШХ (гүн ≥ `n`) бүлгүүд эвхэгдэнэ. */
-    /* ⚠️ 2026-10-04: `n = -1` («0» товч) → гүн ≥ 0 буюу БҮХ бүлэг хураагдана */
     const s = new Set<number>();
     for (const r of scoped) if (r.group && r.depth >= Math.max(0, n)) s.add(r.oid);
     setCollapsed(s);
@@ -1913,9 +1156,6 @@ export function Huvaari({
     for (const r of plan) {
       const sp = rowSpan(r);
       if (!sp) continue;
-      /* ⚠️ 2026-10-01: мужийн ДАМЖСАН бүх жил (шүүлтийн давхцлын дүрэмтэй ижил) */
-      /* ⚠️ 2026-10-04 (гүйцэтгэл): `getUTCFullYear` ≡ `msToDay(..).slice(0, 4)` (ISO нь UTC) —
-         мөр бүрд 2 `toISOString` мөр үүсгэхгүй; чирэлтийн кадр бүрд ~1,400 мөрөөр гүйдэг. */
       const y0 = new Date(sp.start).getUTCFullYear();
       const y1 = new Date(sp.end).getUTCFullYear();
       for (let y = y0; y <= y1; y++) s.add(String(y));
@@ -1935,10 +1175,6 @@ export function Huvaari({
 
   /**
    * ДЭЛГЭЦИЙН МӨРҮҮД — цонхлолт · зүүн жагсаалт · баруун эгнээ ЭНЭ жагсаалтаар (2026-10-04).
-   * ⚠️ Энгийн горимд `visible`-тэй 1:1 (`plainRows`, дэд мөргүй) — зан төлөв ХЭВЭЭР.
-   *    «Бүх блок» горимд эх мөр бүрийн ард хуваарьтай блокийн дэд мөрүүд (`allBlockRows`).
-   * ⚠️ Индекс `k` (Y = k·PL_ROW) нь ЭНЭ жагсаалтынх — `visible`-ийнх биш; энгийн горимд
-   *    хоёр нь ижил тул `startLink`-ийн Y→мөр нөөц зам хэвээр зөв.
    */
   const disp = useMemo(
     () => (allOn ? allBlockRows(visible, plan, n) : plainRows(visible)),
@@ -1955,8 +1191,6 @@ export function Huvaari({
    * ГИНЖНИЙ ҮР ДҮНГ НООРОГТ БУУЛГАНА — `propagate` олон мөрийг зэрэг
    * өөрчилдөг тул НЭГ setState дотор бөөнөөр нь бичнэ; мөр бүрд тусдаа
    * бичвэл чирэлтийн кадр бүрд олон рендер гарна.
-   * ⚠️ Түлхүүр нь `plan`-ы индекс — `PlanRow.i` нь эх массивын индекстэй
-   *    тэнцүү тул `plan[i].oid` үргэлж зөв мөрийг заана.
    */
   /* (`obKey` — ажил+блокийн ноорогийн түлхүүр — `huvaari/util.ts`-д, 2026-09-30) */
 
@@ -1966,7 +1200,6 @@ export function Huvaari({
    */
   const obOf = useCallback((des: number | null, blok: string): Map<string, number> => {
     if (des == null) return new Map();
-    /* ⚠️ 2026-10-23: «Батлагдсан» харагдац — сарын обьёмын ноорог давхарлахгүй (`viewSaved`-ийн ⚠️; огноо `plan` = `base`-тэй нийцнэ) */
     const d = savedView ? undefined : obDraft.get(obKey(des, blok));
     if (d) return d;
     return obPlan.get(des)?.get(blok) ?? new Map();
@@ -1981,9 +1214,6 @@ export function Huvaari({
 
   /**
    * МУЖААС ГАДУУРХ САРЫН ОБЬЁМ — батлахын өмнөх хаалт (2026-10-01, хэрэглэгч: бүгдийг зас).
-   * ⚠️ Дүрэм · тайлбар `huvaari/util.obyemOutsideSpan`-д. Зөвхөн ЭНЭ саналаар өөрчлөгдсөн
-   *    мөр (`dirtyOids`) — урьдчилан харах/батлах үед ноорог = илгээлт. Гэрээ табд сарын
-   *    обьём хамаарахгүй (төлөвлөгөөний мужтай тулгадаг).
    */
   const obOut = useMemo(
     () => (kind === 'plan' && sc ? obyemOutsideSpan(plan, sc.bld, obOf, dirtyOids) : { bad: 0, names: [] as string[] }),
@@ -1996,7 +1226,7 @@ export function Huvaari({
     : '';
   /**
    * БҮЛГИЙН КОДООР ХАДГАЛАГДСАН САРЫН ЗАДАРГАА (2026-10-01) — тэнцлийн шалгалтад ОРОХГҮЙ
-   * («Сарын обьём бүлэгт биш», `util.unbalancedBlocks`-ийн ⚠️), тиймээс ил мэдээлнэ.
+   * («Сарын обьём бүлэгт биш», `util.unbalancedBlocks`), тиймээс ил мэдээлнэ.
    */
   const grpSplit = useMemo(
     () => (kind === 'plan' && sc ? groupSplits(plan, sc.bld, obPlan) : []),
@@ -2004,10 +1234,9 @@ export function Huvaari({
   );
 
   /**
-   * БУЦААЛТЫН АГШИН АВАХ (2026-10-09) — `UndoSnap`/`UndoPart`-ийн ⚠️. Хэсэг бүрийн ОДООГИЙН (өөрчлөхөөс өмнөх)
+   * БУЦААЛТЫН АГШИН АВАХ (2026-10-09) — `UndoSnap`/`UndoPart`. Хэсэг бүрийн ОДООГИЙН (өөрчлөхөөс өмнөх)
    * утгыг авна. Нэг үйлдлийн багц (`undoBatchRef`) эсвэл чирэлт/нүдний цонхны «Тавих» (`undoMergeRef`) бол
    * байгаа агшинд НЭМНЭ — аль хэдийн байгаа түлхүүрийг ДАРАХГҮЙ (хамгийн эртний утга үлдэнэ).
-   * ⚠️ Буцаалт өөрөө ба чирэлтийн цуцлалт (`undoSkipRef`) агшин авахгүй.
    */
   const snapUndo = useCallback((p: UndoPart) => {
     if (undoSkipRef.current) return;
@@ -2030,8 +1259,6 @@ export function Huvaari({
     const rd: UndoSnap['rD'] = new Map();
     for (const o of p.rD ?? []) rd.set(o, resDraft.get(o));
     const next: UndoSnap = { spans: p.spans ?? new Map(), ob, obRes: obR, ham: hm, aD: ad, rD: rd, full: !!p.full };
-    /* ⚠️ 2026-10-09: СТЕК — шинэ үйлдэл оройд нэмэгдэж (`UNDO_MAX`-аас хэтэрвэл хамгийн хуучин нь хасагдана), дахин хийх
-       стек цэвэрлэгдэнэ; нийлүүлэх (`merge`) үед оройн агшинд нэмнэ (дүрэм ХЭВЭЭР — эртний утга үлдэнэ). */
     setUndoSnap((s) => {
       const u = s.u.length ? s.u[s.u.length - 1] : null;
       if (!merge || !u) return { u: [...s.u, next].slice(-UNDO_MAX), r: [] };
@@ -2040,9 +1267,6 @@ export function Huvaari({
         for (const [k, v] of b) if (!m.has(k)) m.set(k, v);
         return m;
       };
-      /* ⚠️ 2026-10-21: БҮТЭН агшинд (`u.full`, чирэлт) нийлүүлэхэд ob/obRes-ийн шинэ түлхүүр = чирэлт эхлэхэд БАЙГААГҮЙ —
-         урьд нь чирэлтийн ДАРАА (тайрсан) утгыг бичиж, Ctrl+Z тайрсан сарыг сэргээн ноорог тэнцэхгүй болдог байв.
-         Байхгүй (`undefined`) гэж тэмдэглэнэ → `applySnap` устгаж серверийн утга үлдэнэ. */
       const addAbs = <V,>(a: Map<string, V | undefined>, b: Map<string, V | undefined>): Map<string, V | undefined> => {
         if (!u.full) return add(a, b);
         const m = new Map(a);
@@ -2059,29 +1283,11 @@ export function Huvaari({
 
   const applyChanges = useCallback((
     ch0: Map<number, (Span | null)[]>,
-    /** ⚠️ 2026-10-08: ГОЛ мөр (oid) — гинжээр дагасан бусад мөрийг тоолж мэдэгдэнэ (`chainN`); чирэлтэд `drag.oid` */
     primary?: number,
-    /** ⚠️ 2026-10-08: буцаалтын агшинд НЭМЖ хадгалах сарын ноорогийн түлхүүр (popup-ын обьём/нөөц) */
     undoKeys?: string[],
   ) => {
     if (!ch0.size) return;
-    /**
-     * ⚠️ БҮЛЭГ НЬ АЖЛААСАА ХАМААРНА (2026-09-06, хэрэглэгчийн заавар).
-     *    Ажлын муж өөрчлөгдмөгц өвөг бүлгүүд нь хүүхдүүдийнхээ MIN/MAX-аар
-     *    ӨӨРСДӨӨ шинэчлэгдэж, ноорогт орж, хадгалахад бичигдэнэ. Урьд нь
-     *    эсрэгээр — бүлгийн муж хүүхдийг хавчдаг байв.
-     */
-    /* ⚠️ 2026-10-21 (аудит №2): `base` (серверийн муж) — бүх навч нь хуваарьгүй болсон бүлгийн «сүнс огноо»
-       тулгалт ноорогтой биш серверийнхтэй (`rollUpGroups`-ийн ⚠️); урьд нь навчийг огноолоод арилгахад бүлгийн
-       өөрийн серверийн огноо null болж хадгалагддаг байв. */
     const ch = rollUpGroups(plan, n, ch0, (k) => base[k]?.spans ?? []);
-    /*
-     * ⚠️ 2026-10-08: НЭГ ТҮВШНИЙ БУЦААЛТЫН АГШИН (`UndoSnap`-ийн ⚠️) — өөрчлөхөөс ӨМНӨ. Чирэлтийн үед
-     *    зөвхөн ЭХНИЙ `commit`-д (хоног бүрийн алхамд биш) БҮХ мөрийн муж ба сарын ноорогийн бүтэн
-     *    хуулбар; бусад (popup · нүд · гинж) — хөндөгдсөн мөр ба тэдний өөрчлөгдсөн блокийн түлхүүр.
-     *    Буцаалт өөрөө (`undoLast`) ба чирэлтийн цуцлалт (`rollback`) агшин авахгүй (`undoSkipRef`).
-     */
-    /* ⚠️ 2026-10-09: агшин `snapUndo`-оор (нэг үйлдлийн хэсгүүд нийлнэ, чирэлт/нүдний цонхны «Тавих» нийлүүлнэ) */
     if (!undoSkipRef.current && (!drag || !undoDragSeenRef.current)) {
       if (drag) undoDragSeenRef.current = true;
       const spans = new Map<number, (Span | null)[]>();
@@ -2103,13 +1309,10 @@ export function Huvaari({
         snapUndo({ spans, ob: keys });
       }
     }
-    /* ⚠️ 2026-10-08: ГИНЖЭЭР ДАГАСАН хамаарагчийн тоо — гол мөрөөс бусад, мужаа сольсон навч мөр */
     {
       const prim = drag?.oid ?? primary;
       if (prim != null) {
         let moved = 0;
-        /* ⚠️ 2026-10-09: ШИЛЖСЭН МӨРҮҮД ба шилжилт (хоног) — нягт гинж (⚠️ хэвээр) сул хугацааг «идсэнийг» ил харуулна.
-           Чирэлтийн үед чирэлтээс ӨМНӨХ мужтай (`drag.snap`, идэвхтэй блок) харьцуулна — кадр бүрийн алхам биш. */
         const list: { lab: string; d: number | null }[] = [];
         for (const [i, sp] of ch0) {
           const r = plan[i];
@@ -2122,15 +1325,11 @@ export function Huvaari({
           list.push({ lab: String(r.des ?? r.no), d: was && now0 ? Math.round((now0.start - was.start) / DAY) : null });
         }
         setChainList(list);
-        /* ⚠️ 2026-10-09: 0 ч тавина — гинжгүй шинэ үйлдэлд өмнөх «N дагаж шилжлээ» үлдэхгүй; давтан ижил тоонд
-           ч 6 с-ийн цаг шинээр (`chainSeq`) */
         setChainN(moved);
         if (moved) setChainSeq((x) => x + 1);
-        /* ⚠️ 2026-10-09: гинжийн ӨМНӨХ тэнцээгүй мөрүүд (`chainUnbal0`-ийн ⚠️) — чирэлтийн кадр бүрд биш, анхны агшин */
         setChainUnbal0((s) => (moved ? (s ?? new Set(unbalRef.current.keys())) : null));
       }
     }
-    /* ⚠️ 2026-10-09: шүүлт идэвхтэй бол засварласан мөрүүд харагдсаар (`sticky`-ийн ⚠️) — буцаалт (`undoSkipRef`) ч мөн */
     if (filtOn) {
       setSticky((s) => {
         let add: Set<number> | null = null;
@@ -2146,25 +1345,13 @@ export function Huvaari({
     setDraft((d) => {
       const m = new Map(d);
       for (const [i, spans] of ch) {
-        /* ⚠️ Батлагдаагүй НЭМЭЛТ мөр (сөрөг oid) ноорогт ОРОХГҮЙ (2026-09-25 аудит) —
-           `save` серверээс олохгүй тул илгээлт батлахад `staleN`-д мөнхөд гацна. */
         if (plan[i].oid < 0) continue;
-        /* ⚠️ СЕРВЕРИЙН УТГАТАЙ ИЖИЛ бол ноорогт ОРУУЛАХГҮЙ, байсан бол ХАСНА
-           (2026-09-21): урьд нь 1px гулссан товшилт (`onMove` d=0) мөрийг ижил
-           утгаар ноорогт оруулж «хадгалаагүй 1» гэж худал тэмдэглэдэг байв;
-           мөн чирээд буцаахад ч ноорог үлддэг байв. */
         const orig = base[i]?.spans;
         const same = !!orig && spans.length === orig.length
           && spans.every((sp, b) => sameSpan(sp, orig[b]));
         if (same) m.delete(plan[i].oid);
         else m.set(plan[i].oid, spans);
       }
-      /* ⚠️ БҮЛГИЙН МӨР ХҮҮХЭДГҮЙ ҮЛДЭХГҮЙ (2026-09-21). Бүлэг ноорогт ЗӨВХӨН
-         `rollUpGroups`-оор ордог (гараар чирэгдэхгүй, popup нь бүлэгт огноо
-         тавьдаггүй). Хүүхдээ буцаахад серверийн бүлгийн ӨӨРИЙН огноо
-         MIN/MAX-аас зөрдөг бол `rollUpGroups` `moved=false` болж дээрх
-         `same` салбарт хүрэхгүй — бүлэг ноорогт «хадгалаагүй 1» гэж үлддэг
-         байв. Навч хүүхэд нь нэг ч ноорогт үлдээгүй бүлгийг хасна. */
       for (const [i] of ch) {
         const g = plan[i];
         if (!g.group || !m.has(g.oid)) continue;
@@ -2173,14 +1360,6 @@ export function Huvaari({
           if (!plan[k].group && m.has(plan[k].oid)) { kid = true; break; }
         }
         if (kid) continue;
-        /* ⚠️ ӨӨРИЙН МУЖ НЬ ШИЛЖСЭН БҮЛЭГ ҮЛДЭНЭ (2026-09-25 аудит). Бүлэг ноорогт
-           `rollUpGroups`-оос ГАДНА `propagate`-оор ч ордог: уялдаатай бүлгийн тухайн
-           блокт огноотой навч байхгүй бол `effSpan` нь ӨӨРИЙН мужийг ашигладаг тул
-           гинж ТЭР мужийг шилжүүлнэ. Урьд нь энд хасагдаж, хамаарагчид нь шинэ
-           огноогоор хөдөлсөн атлаа бүлэг өөрөө хуучиндаа үлддэг байв. Навчгүй
-           блокт серверээс зөрсөн утга = өөрийн шилжилт → үлдээнэ; навчтай блокийн
-           зөрүү нь дээрх нэгтгэлийн дагавар тул хэвээр хасна. Навч нь ноорогт
-           байхгүй (`kid` худал) тул тэдний утга = `base`. */
         const gs = m.get(g.oid)!;
         const bs = base[i]?.spans ?? [];
         const ownShift = gs.some((sp, b) => !sameSpan(sp, bs[b])
@@ -2189,30 +1368,11 @@ export function Huvaari({
       }
       return m;
     });
-    /**
-     * ⚠️ ХУВААРЬ ХӨДӨЛБӨЛ САРЫН БҮРДЭЛ ДАГАНА. ЭНЭ нь огноо өөрчлөгдөх
-     * ЦОРЫН ГАНЦ цэг — чирэлт, popup, уялдааны гинж гурвуулаа эндүүр
-     * дамждаг тул өөр газарт давтах шаардлагагүй.
-     *
-     * ⚠️ АВТОМАТ ТАРААЛТ БАЙХГҮЙ (2026-09-06, хэрэглэгч: «автомат обьём
-     * тараалт хийж болохгүй, бүгд хоосон байх ёстой»). Шинэ сарууд ХООСОН
-     * үлдэж, хүн өөрөө бөглөнө; хэвээр үлдсэн сарын гарын утга хадгалагдана.
-     *
-     * ⚠️ Обьёмгүй эсвэл кодгүй мөрд юу ч хийхгүй: хадгалах холбоос байхгүй.
-     */
-    /* ⚠️ 2026-09-29 аудит: сарын обьём/нөөц ЗӨВХӨН төлөвлөгөөнд — гэрээний зурвас
-       чирэхэд `obDraft` (kind-гүй түлхүүр) гэрээний мужаар тайрагдаж, `save` тэр
-       сарын мөрийг устгадаг байв (`null ≠ 0`). */
     if (kind === 'plan') setObDraft((prev) => {
       const next = new Map(prev);
       let touched = false;
       for (const [i, spans] of ch) {
         const r = plan[i];
-        /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БҮЛЭГ АЛГАСНА — «Сарын обьём бүлэгт биш».
-           Урьд нь хүүхдийг чирэхэд бүлгийн муж (`rollUpGroups`) дагаж хөдөлж, серверт
-           БҮЛГИЙН кодоор хадгалагдсан задаргаа `keepMonths`-оор тайрагдан «тэнцэхгүй» болж,
-           бүлэгт сарын нүд гардаггүй тул засах замгүйгээр илгээх/батлах хаагддаг байв
-           (`util.unbalancedBlocks`-ийн ⚠️). */
         if (r.group || r.des == null || !(r.vol != null && r.vol > 0)) continue;
         spans.forEach((sp, b) => {
           const was = r.spans[b];
@@ -2225,48 +1385,19 @@ export function Huvaari({
           const srv = obPlan.get(r.des!)?.get(blok);
           /* Ноорог > хадгалагдсан — хамгийн шинийг суурь болгоно */
           const cur = next.get(key) ?? srv ?? new Map<string, number>();
-          /* ⚠️ СЕРВЕРИЙН МУЖ РУУ БУЦСАН БОЛ ЧИРЭЛТИЙН ӨМНӨХ ЗАДАРГААГ СЭРГЭЭНЭ
-             (2026-09-21). Урьд нь чирээд буцаахад огнооны ноорог устдаг ч
-             (дээрх `same` салбар) `keepMonths`-оор ТАЙРАГДСАН задаргаа
-             obDraft-д үлдэж «хадгалаагүй 1» + тэнцээгүй нийлбэр гардаг байв.
-             Чирж буй мөр·блок бол `Drag.origMonths` (чирэлтээс өмнөх бүтэн
-             хуулбар) — гинжээр буцсан бусад мөрд `keepMonths` хэвээр. */
-          /* ⚠️ 2026-10-01: ГИНЖЭЭР хөдөлсөн мөр·блок ч чирэлтийн ӨМНӨХ агшнаас
-             (`drag.obSnap` → сервер). Урьд нь зөвхөн чирж буй мөр `origMonths`-тэй,
-             хамаарагчид `cur` (өмнөх алхмаар аль хэдийн тайрагдсан ноорог)-оос
-             `keepMonths` авдаг тул өмнөх ажлыг урагш чираад буцаахад хамаарагчийн
-             эрт сарууд алга болж задаргаа «тэнцэхгүй» үлддэг байв. Чирэлтээс
-             өмнөх муждаа (`drag.snap`) буцсан бол агшныг БҮТНЭЭР сэргээнэ. */
           const inDrag = !!drag && b === blk;
           const pre = inDrag ? drag!.snap?.get(r.oid) : undefined;
           const back = sameSpan(sp, base[i]?.spans[b])
             || (inDrag && pre !== undefined && sameSpan(sp, pre));
-          /* ⚠️ 2026-10-09: ЧИРЭЛТЭЭС ГАДУУРХ засварт (нүд · popup · гинж) тайрахаас ӨМНӨХ бүтэн задаргаа
-             (`obFullRef`, ноорог давамгайлна) — урьд нь `orig = null` тул аль хэдийн тайрагдсан `cur`-аас дахин
-             тайрч, мужийг богиносгоод буцаан сунгахад сарын обьём БҮРМӨСӨН алга болдог байв. */
           const orig = !inDrag ? fullMonths(obFullRef.current.get(key), cur)
             : drag!.oid === r.oid ? drag!.origMonths ?? null
             : drag!.obSnap?.get(key) ?? srv ?? null;
-          /* ⚠️ 2026-09-29 аудит: чирж буй мөр·блокт `keepMonths`-ыг чирэлтийн ӨМНӨХ
-             бүтэн хуулбараас — `cur` нь аль хэдийн тайрагдсан ноорог тул зурвасыг
-             богиносгоод буцаан сунгахад мужаас гарсан сарын утга сэргэдэггүй байв. */
           const val = sp
-            /* ⚠️ 2026-10-09: чирэлтээс гадуур бүтэн хуулбар мужаас ГАДУУРХ сар агуулж болно — үргэлж мужаар тайрна */
             ? (inDrag && back && orig ? new Map(orig) : keepMonths(sp, orig ?? cur))
             : new Map<string, number>();
-          /* ⚠️ 2026-10-09: ТАЙРАЛТ болсон бол бүтэн хуулбарыг (сешн дотор) санана — муж буцаж өргөсөхөд сарууд эргэж
-             гарна. Цэвэрлэх нь хадгалах/хаях (`obDraft` хоосрох) ба сервертэй тэнцэх үед. Арилгах (`sp` null) нь
-             санаатай устгал — санахгүй. Updater-т ref бичих нь давтагдсан ч ижил үр дүн (нийлүүлэлт). */
           const pre0 = orig ?? cur;
-          /* ⚠️ 2026-10-23: АРИЛГАХАД (`sp` null) өмнөх бүтэн хуулбарыг УСТГАНА — урьд нь зүгээр л санахгүй байсан тул
-             хуучин хуулбар үлдэж, дахин огноо тавихад (`fullMonths`) арилгасан сарын обьём эргэж гардаг байв. */
           if (!sp) obFullRef.current.delete(key);
           else if (val.size < pre0.size) obFullRef.current.set(key, new Map([...(obFullRef.current.get(key) ?? []), ...pre0]));
-          /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ (эсвэл хоёулаа хоосон) задаргааг НООРОГТ
-             ҮЛДЭЭХГҮЙ (2026-09-21): задаргаагүй ажлыг чирэхэд
-             `keepMonths(sp, ∅) = ∅` obDraft-д орж, «Батлуулах» нь «задаргаа
-             тэнцэхгүй» гэж илгээх замыг ТҮГЖДЭГ байв. Бичих зүйлгүй бол
-             ноорог ч биш. */
           if (sameMonths(val, srv)) { next.delete(key); obFullRef.current.delete(key); }
           else next.set(key, val);
           touched = true;
@@ -2281,7 +1412,6 @@ export function Huvaari({
       let touched = false;
       for (const [i, spans] of ch) {
         const r = plan[i];
-        /* ⚠️ 2026-10-01: бүлэг алгасна — дээрх обьёмын дүрэмтэй ижил */
         if (r.group || r.des == null || !(r.vol != null && r.vol > 0)) continue;
         spans.forEach((sp, b) => {
           const was = r.spans[b];
@@ -2291,12 +1421,10 @@ export function Huvaari({
           const key = obKey(r.des!, blok);
           const srv = obRes.get(r.des!)?.get(blok);
           const cur = next.get(key) ?? srv ?? new Map<string, MonthRes>();
-          /* ⚠️ 2026-10-01: гинжээр хөдөлсөн мөр ч чирэлтийн өмнөх агшнаас — обьёмын дүрэмтэй ижил */
           const inDrag = !!drag && b === blk;
           const pre = inDrag ? drag!.snap?.get(r.oid) : undefined;
           const back = sameSpan(sp, base[i]?.spans[b])
             || (inDrag && pre !== undefined && sameSpan(sp, pre));
-          /* ⚠️ 2026-10-09: чирэлтээс гадуурх засварт бүтэн нөөц (`obResFullRef`) — обьёмын дүрэмтэй ижил */
           const orig = !inDrag ? fullMonths(obResFullRef.current.get(key), cur)
             : drag!.oid === r.oid ? drag!.origRes ?? null
             : drag!.obResSnap?.get(key) ?? srv ?? null;
@@ -2304,7 +1432,6 @@ export function Huvaari({
             ? (inDrag && back && orig ? new Map(orig) : keepRes(sp, orig ?? cur))
             : new Map<string, MonthRes>();
           const pre0 = orig ?? cur;
-          /* ⚠️ 2026-10-23: арилгахад бүтэн хуулбарыг устгана — обьёмын дүрэмтэй ижил */
           if (!sp) obResFullRef.current.delete(key);
           else if (val.size < pre0.size) obResFullRef.current.set(key, new Map([...(obResFullRef.current.get(key) ?? []), ...pre0]));
           if (sameRes(val, srv)) { next.delete(key); obResFullRef.current.delete(key); }
@@ -2316,41 +1443,26 @@ export function Huvaari({
     });
   }, [plan, base, n, sc, obPlan, obRes, drag, blk, kind, snapUndo, setDraft, setObDraft, setObResDraft, unbalRef, filtOn, setChainN, setChainSeq, setChainList, setSticky, setChainUnbal0]);
 
-  /* ⚠️ 2026-10-08: чирэлт дуусмагц дараагийн чирэлт шинэ агшин авна */
   useEffect(() => { if (!drag) undoDragSeenRef.current = false; }, [drag]);
-  /* ⚠️ 2026-10-09: ноорог хоосорвол (хадгалах · хаях · багц/төрөл солих) бүтэн хуулбарууд арилна (`obFullRef`-ийн ⚠️) */
   useEffect(() => { if (!obDraft.size) obFullRef.current.clear(); }, [obDraft]);
   useEffect(() => { if (!obResDraft.size) obResFullRef.current.clear(); }, [obResDraft]);
-  /* ⚠️ 2026-10-08: гинжний мэдэгдэл түр — 6 с-ийн дараа арилна (чирэлтийн алхам бүрд дахин сунгана)
-     ⚠️ 2026-10-09: `chainSeq` — ижил тоо давтагдахад `chainN` хөдлөхгүй тул цаг сунгагддаггүй байв */
   useEffect(() => {
     if (!chainN) return undefined;
     const t = window.setTimeout(() => setChainN(0), 6000);
     return () => window.clearTimeout(t);
   }, [chainN, chainSeq]);
-  /* ⚠️ 2026-10-09: мэдэгдэл хаагдмагц гинжийн өмнөх агшин (`chainUnbal0`) арилна — дараагийн гинж шинээр авна */
   useEffect(() => { if (!chainN) setChainUnbal0(null); }, [chainN]);
-  /** Гинжээр ШИНЭЭР тэнцэхгүй болсон мөрийн тоо (`chainUnbal0`-ийн ⚠️) */
+  /** Гинжээр ШИНЭЭР тэнцэхгүй болсон мөрийн тоо (`chainUnbal0`) */
   const chainUnbalN = chainUnbal0 ? [...unbalRows.keys()].filter((o) => !chainUnbal0.has(o)).length : 0;
-  /* ⚠️ 2026-10-09: цонх хаагдмагц нүдний «нээсэн» тэмдэг арилна (`undoOpenRef`) */
   useEffect(() => { if (modal == null) undoOpenRef.current = null; }, [modal]);
-  /* ⚠️ 2026-10-09: хамтрагчийн нийлүүлэлт агшны түлхүүрийг хөндвөл агшин хүчингүй (`undoTouched`) */
-  /* ⚠️ 2026-10-09: стекийн АЛЬ НЭГ агшин хөндөгдвөл бүх стек (буцаах · дахин хийх) хүчингүй — дунд нь хасвал
-     дараалсан агшнууд хоорондоо зөрнө (консерватив) */
   const onRemoteDraft = useCallback((keys: ReadonlySet<string>) => {
     setUndoSnap((s) => ([...s.u, ...s.r].some((u) => undoTouched(u, keys)) ? UNDO_EMPTY : s));
   }, [setUndoSnap]);
-  /* ⚠️ 2026-10-09 (аудит): ЖААЗ СОЛИГДОХОД (oid зөөлт — `useSharedDraft`-ийн мөр зөөх эффект) стекүүд ХУУЧИН oid-той
-     агшнуудыг хадгалсаар үлддэг байв — Ctrl+Z өнчин oid-д ноорог тавьж, `prepareSave` бүх хадгалалтыг (`staleN`)
-     татгалздаг байв. Одоо агшин аль нэг нь одоогийн `rows`-д байхгүй oid заавал хоёр стекийг бүхэлд нь цэвэрлэнэ
-     (дунд нь хасвал дараалсан агшнууд зөрнө — `onRemoteDraft`-тай ижил консерватив дүрэм). */
   useEffect(() => {
     if (!rows.length) return;
     setUndoSnap((s) => {
       if (!s.u.length && !s.r.length) return s;
       const live = new Set(rows.map((r) => r.oid));
-      /* ⚠️ 2026-10-09 (аудит №6): СӨРӨГ oid (батлагдаагүй нэмэлт мөр) `rows`-д байдаггүй — «алга болсон» гэж үзэж
-         стекийг дэмий цэвэрлэдэг байв; зөвхөн серверийн (≥ 0) oid-ыг шалгана. */
       const dead = (m: ReadonlyMap<number, unknown>) => { for (const o of m.keys()) if (o >= 0 && !live.has(o)) return true; return false; };
       return [...s.u, ...s.r].some((u) => dead(u.spans) || dead(u.ham) || dead(u.aD) || dead(u.rD)) ? UNDO_EMPTY : s;
     });
@@ -2358,16 +1470,6 @@ export function Huvaari({
 
   /**
    * СҮҮЛИЙН ӨӨРЧЛӨЛТИЙГ БУЦААХ (2026-10-08, Ctrl+Z · толгойн «Буцаах») — `undoSnap`-ийн агшнаар.
-   * ⚠️ Муж нь `applyChanges`-аар (тархалтгүй, сервертэй ижил бол ноорогоос хасагдана), сарын ноорог
-   *    нь агшны түлхүүрээр ШУУД (`applyChanges`-ийн `keepMonths` тайралтын ДАРАА — functional setState
-   *    дараалалтай). `full` (чирэлт) бол агшинд байхгүй түлхүүрийг ч хасна.
-   * ⚠️ Нэг түвшин — буцаасны дараа агшин хоосорно (redo байхгүй). `busy`/`locked`/эрхгүйд ажиллахгүй.
-   * ⚠️ 2026-10-09: ХАМТРАГЧИЙН НҮДИЙГ ХӨНДӨХГҮЙ — сүүлийн зохиогч нь өөр хүн (`hdMeta`, `hdOtherRef`) бол тэр
-   *    нүдийг агшнаар сэргээхгүй/устгахгүй (`useDragPlan.rollback`-ийн дүрэм). Урьд нь агшин авснаас хойш
-   *    хуваалцсан ноорогоор ирсэн хамтрагчийн муж/сар Ctrl+Z-ээр чимээгүй дарагддаг байв. Уялдаа · бодит огноо ·
-   *    нөөцийн ноорог ч агшинд (`UndoSnap`-ийн 2026-10-09 ⚠️).
-   * ⚠️ 2026-10-09: «Нэг түвшин» → СТЕК (`undoStk`). Агшин хэрэглэх нь `applySnap` (доор, логик ХЭВЭЭР); хэрэглэхээс
-   *    ӨМНӨ тэр түлхүүрүүдийн ОДООГИЙН утгыг (`invOf`) нөгөө стект хийнэ — буцаах ↔ дахин хийх тэгш хэмтэй.
    */
   /** Агшны түлхүүрүүдийн ОДООГИЙН утга — буцаах/дахин хийхийн эсрэг агшин (2026-10-09) */
   const invOf = useCallback((u: UndoSnap): UndoSnap => {
@@ -2393,9 +1495,6 @@ export function Huvaari({
   /** Агшныг ноорогт хэрэглэнэ (2026-10-09: `undoLast`-ийн биеэс салгав — логик ХЭВЭЭР) */
   const applySnap = useCallback((u: UndoSnap) => {
     const other = hdOtherRef.current;
-    /* ⚠️ 2026-10-09 (аудит): одоогийн `rows`-д БАЙХГҮЙ oid (жааз солигдсон) алгасна — урьд нь уялдаа · нөөц · бодит
-       огнооны агшин өнчин oid-д ноорог тавьж, `prepareSave` бүх хадгалалтыг татгалздаг байв (`spans` нь `idx`-ээр
-       аль хэдийн алгасдаг). Стекийн цэвэрлэгээ — дээрх `rows`-ийн эффект; энэ нь хамгаалалтын давхарга. */
     const live = new Set(rows.map((r) => r.oid));
     undoSkipRef.current = true;
     try {
@@ -2469,8 +1568,6 @@ export function Huvaari({
   }, [plan, rows, n, applyChanges, setObDraft, setObResDraft, setHam, setResDraft, setADraft]);
   const undoLast = useCallback(() => {
     const u = undoSnap;
-    /* ⚠️ 2026-10-21: чирэлтийн ЯВЦАД буцаахгүй — урьд нь Ctrl+Z чирэлтийн агшинг хасаж, цонх хаагдахад `popUndo` өөр (хуучин) агшинг хасдаг байв */
-    /* ⚠️ 2026-10-23: хаалттай үед ЧИМЭЭГҮЙ алгасдаг байв (ялангуяа «↶ Буцаах» мэдэгдлээс) — шалтгааныг хэлнэ */
     if (!u || !canEdit) return;
     if (busy) { setNote(tr('Буцааж чадсангүй — хадгалалт дуусаагүй байна. Дууссаны дараа дахин оролдоно уу.')); return; }
     if (locked) { setNote(tr('Буцааж чадсангүй — хуваарь батлуулахаар илгээгдсэн тул засвар түгжигдсэн.')); return; }
@@ -2481,10 +1578,9 @@ export function Huvaari({
     setChainN(0);
     setNote(tr('Сүүлийн өөрчлөлт буцлаа.'));
   }, [undoSnap, busy, locked, canEdit, drag, invOf, applySnap, setNote, setUndoSnap, setChainN]);
-  /** ⚠️ 2026-10-09: ДАХИН ХИЙХ (Ctrl+Y · Ctrl+Shift+Z) — буцаасан агшныг эргүүлнэ; буцаах стект эсрэг агшин нэмэгдэнэ */
   const redoLast = useCallback(() => {
     const r = redoSnap;
-    if (!r || busy || locked || !canEdit || drag) return; // ⚠️ 2026-10-21: чирэлтийн явцад үгүй (`undoLast`-ийн ⚠️)
+    if (!r || busy || locked || !canEdit || drag) return;
     const inv = invOf(r);
     applySnap(r);
     setUndoSnap((s) => ({ u: [...s.u, inv].slice(-UNDO_MAX), r: s.r.slice(0, -1) }));
@@ -2492,12 +1588,6 @@ export function Huvaari({
     setNote(tr('Өөрчлөлт дахин хийгдлээ.'));
   }, [redoSnap, busy, locked, canEdit, drag, invOf, applySnap, setNote, setUndoSnap, setChainN]);
   const undoLastRef = useLatest(undoLast);
-  /*
-   * ⚠️ 2026-10-23 (засвар): «Арилгах»-ын «↶ Буцаах» — ЗӨВХӨН ТЭР арилгалтыг буцаана. Урьд нь шууд `undoLast` (Ctrl+Z) байсан
-   *    тул мэдэгдэл ил байх 6 с-д өөр засвар хийсэн / Ctrl+Z дарсан / арилгалт агшин үүсгээгүй бол ӨӨР өөрчлөлт буцдаг байв.
-   *    `onApply`-аас ӨМНӨ дуудагдаж стекийн одоогийн хэлбэрийг тэмдэглэнэ; commit-ийн дараа шинэ оройн агшныг «минийх»
-   *    гэж барина (нийлүүлсэн бол нийлсэн орой — Ctrl+Z ч тэгж буцаана). Товшиход орой хэвээр бол л буцаана.
-   */
   const undoStkRef = useLatest(undoStk);
   const markUndo = useCallback((): (() => void) => {
     const before = undoStkRef.current.u;
@@ -2520,49 +1610,22 @@ export function Huvaari({
 
   /**
    * Popup-ын «Тавих» — огноо ба/эсвэл уялдааг НЭГ алхамд.
-   *
-   * ⚠️ Хоёр тусдаа setState хийвэл хоёр дахь нь ХУУЧИН `plan`-ыг харна
-   * (React нэг тик дотор batch хийдэг) — уялдаа нь шинэ огноог, огноо нь
-   * шинэ уялдааг үл мэдэлцэнэ. Тиймээс нэг газар: уялдааг түр давхарлаад
-   * `propagate`-д өгч, огноог ЭНЭ мөрөөс (шинэ уялдаагаар нь дахин бодуулж)
-   * гинжээр нь тархаана.
    */
   const applyModal = useCallback((
     oid: number,
     spans: (Span | null)[] | null,
     deps: Dep[] | null,
     /** Сарын обьём + нөөц (2026-09-24) — `null` = хөндөхгүй; дотоод `null` = тэр хэсгийг хөндөхгүй */
-    /* ⚠️ 2026-10-21: `byBlk` — БЛОК БҮРД ӨӨР сарын задаргаа (`PlanModal.copyShifted`) НЭГ дуудлагаар; тэр блокт `months`-ийг
-       дарна. Урьд нь блок бүрд тусдаа дуудлага нэг тикт явж, 2 дахь нь хуучин `plan`-аар 1 дэх блокийг `obFullRef`-ийн
-       серверийн саруудаас дахин тайрч, хоосон байх ёстой сүүлийн сарууд хуучин утгаараа эргэж гардаг байв. */
     ob: { months: Map<string, number> | null; res: Map<string, MonthRes> | null; byBlk?: Map<number, Map<string, number>> } | null,
-    /**
-     * ⚠️ САРЫН ЗАДАРГААГ АЛЬ БЛОКТ тавих (2026-09-21). Урьд нь үргэлж ОДООГИЙН
-     *    `blk` байсан тул чирэлтийг цуцлахад (`onClose` → `u.months`) цонх
-     *    нээлттэй байхад блок сольсон бол задаргаа БУРУУ блокт сэргээгддэг
-     *    байв. Дуудагч заагаагүй бол одоогийнх — popup-ын «Тавих» хэвээр.
-     * ⚠️ ОЛОН БЛОК (2026-09-24, хэрэглэгч: «блокийг олноор сонгож нэг төлөвлөлтийг
-     *    зэрэг тавина»): popup сонгосон блок бүрд ИЖИЛ задаргаа/нөөцийн ХУУЛБАР.
-     */
     blks: number[] = [blk],
   ) => {
-    /* ⚠️ `locked` — popup-ийн товчнууд аль хэдийн идэвхгүй ч ЭНЭ нь огноо
-       өөрчлөгдөх ЦОРЫН ГАНЦ юүлүүр тул түгжээг энд ч барина. */
     if (busy || locked) return;
-    /* ⚠️ Батлагдаагүй НЭМЭЛТ мөр (сөрөг oid, 2026-09-25 аудит) — огноо · уялдаа
-       ТАВИХГҮЙ: ноорогт орвол «Батлуулах» түүнийг илгээж, батлахад `save`
-       мөрийг олохгүй (`staleN`) тул илгээлт хэзээ ч батлагдахгүй. */
     if (oid < 0) return;
     const at = plan.findIndex((x) => x.oid === oid);
     if (at < 0) return;
-    /** ⚠️ 2026-10-09: уялдааг (хэсэгчлэн) НЯЦААСАН шалтгаан — буцаана (`applyHamText` → нүд засварт үлдэнэ) */
     let why: string | null = null;
     let deps2 = deps;
     if (deps2) {
-      /* ⚠️ БЛОКИЙН ТООНООС ДАВСАН `@N` (2026-09-24 аудит): багц цөөн блоктой
-         болсон эсвэл гараар «@9» бичсэн бол тэр уялдаа ХЭЗЭЭ Ч үйлчлэхгүй —
-         чимээгүй хадгалахгүй, хасаж ил хэлнэ. Бусад уялдаа хэвээр. */
-      /* ⚠️ 2026-10-09: блок хоорондын эх блок (`src`, «@A>B»-ийн A) ч мөн шалгагдана */
       const over = deps2.filter((d) => (d.blk != null && d.blk >= n) || (d.src != null && d.src >= n));
       if (over.length) {
         why = tr('{0}-р блок алга — уялдаа хадгалагдсангүй', over.map((d) => String((d.blk != null && d.blk >= n ? d.blk : d.src!) + 1)).join(', '));
@@ -2571,22 +1634,7 @@ export function Huvaari({
       }
     }
     if (deps2) {
-      /* ⚠️ Дугуй/шатлалын хамаарлын СҮҮЛЧИЙН хаалт: нэр дэвшигчдийг UI шүүдэг
-         ч энд дахин шалгана — modal нээлттэй байх зуур өөр мөрөнд уялдаа
-         нэмэгдсэн байж болно. Няцаах нь: (1) дугуй (reaches), (2) өвөг/удам
-         бүлэг (hierRelated) — сүүлийнх нь гинжин эргэлт үүсгэдэг байсныг
-         2026-09-03-ны review илрүүлсэн. Чимээгүй хасахгүй, бүхэлд нь няцаана. */
       const me = plan[at].des;
-      /* ⚠️ Зөвхөн ШИНЭ уялдааг шалгана (2026-09-25 review): `reaches` нь бүлгийн
-         гишүүнчлэлээр консерватив (`affectedCodes`-ийн ⚠️) тул хуучин, аль
-         хэдийн хадгалагдсан уялдаа ч «дугуй» гэж унаж, тэр мөрийн уялдааг
-         ХАСАХ/өөрчлөх засвар бүр няцаагддаг байв. Байгаа уялдааг үлдээх/хасах нь
-         шинэ эргэлт үүсгэхгүй. Төрөл/хоцрогдол солих нь ирмэгийг өөрчлөхгүй тул
-         зөвхөн КОДООР тулгана.
-         ⚠️ Блокийг (@N) харгалзахгүй (2026-09-25): `reaches`/`hierRelated` нь
-         блок үл тоодог тул X@1-ийг X@2 болгож зөөхөд шинэ эргэлт үүсэхгүй —
-         (код, блок)-оор тулгавал хуучин уялдааг блокийг нь солиход л няцаадаг
-         байв. */
       const had = new Set(plan[at].deps.map((d) => d.code));
       const badDep = deps2.filter((d) => !had.has(d.code)).some((d) => {
         const pi = byCode.get(d.code);
@@ -2598,34 +1646,18 @@ export function Huvaari({
         setErr(why);
         deps2 = null;
       } else {
-        /* ⚠️ Танигдаагүй токеныг (гараар зассан «5FF2» г.м.) хэвээр угтуулж
-           залгана — харагдахгүй ч ХАДГАЛАЛТАД УСТАХГҮЙ (review-ийн олдвор). */
-        /* ⚠️ `rowsAll` (2026-09-24): `at` нь `plan`-ы индекс = `rowsAll`-ынх, `rows`-ынх БИШ */
         const keep = residualDeps(ham.get(oid) ?? rowsAll[at]?.ham ?? null);
         const text = [...keep, formatDeps(deps2)].filter(Boolean).join(',');
-        /* ⚠️ 2026-10-12 (аудит №8): `Hamaaral` талбарт БАГТАХГҮЙ (`HAM_MAX`) уялдааг НҮДНЭЭС (`applyHamText`) ч няцаана —
-           popup (`PlanModal.depsTooLong`) хаадаг ч нүдний зам шууд ноорогт тавьдаг тул илгээгдээд зөвхөн батлагчийн `save`
-           дээр унадаг байв. Тайрахгүй, бичихгүй; нүд засварт үлдэнэ (`why`). */
         if (text.trim().length > HAM_MAX) {
           why = tr('Уялдааны бичиглэл {0} тэмдэгт — талбарт {1} хүртэл багтана. Блок цөөлөх эсвэл бүх блокийг сонгож нэг уялдаа болгоно уу.', num(text.trim().length), num(HAM_MAX));
           setErr(why);
           return why;
         }
-        /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ БОЛ НООРГООС ХАСНА (2026-10-01): уялдаа нэмээд буцааж устгахад
-           (эсвэл өөрчлөөд буцаахад) ноорогт серверийн утга үлдэж «хадгалаагүй» тоологдож,
-           илгээлтэд орж байв — тэр хооронд серверт өөр уялдаа батлагдвал батлахад худал
-           «зэрэгцээ өөрчлөлт» гарч, буцаах/татах замд хуучин утга серверийнхийг дарна.
-           Харьцуулалт `savePrep`-ийн бичих дүрэмтэй ижил (`trim() || null`). */
-        /* ⚠️ 2026-10-08: серверийн текст КАНОН БИШ (зай, дараалал, жижиг үсэг) бол `formatDeps`-ийн
-           гаралттай үгээр нь зөрж «хадгалаагүй 1» үлддэг байв — хоёуланг нэг дүрмээр
-           (танигдаагүй токен + `formatDeps(parseDeps())`) хэвшүүлж тулгана. */
         const normHam = (t: string | null) => {
           const v = (t ?? '').trim();
           return v ? [...residualDeps(v), formatDeps(parseDeps(v))].filter(Boolean).join(',') : null;
         };
         const same = normHam(text) === normHam(rowsAll[at]?.ham ?? null);
-        /* ⚠️ 2026-10-09: уялдааны ноорог ч буцаалтын агшинд (`UndoSnap`-ийн ⚠️) — уялдаа ДАНГААРАА өөрчлөгдөхөд
-           `applyChanges` хоосон гинж авч агшин үүсдэггүй байв */
         snapUndo({ ham: [oid] });
         setHam((m) => {
           const next = new Map(m);
@@ -2637,44 +1669,18 @@ export function Huvaari({
     const rows2 = deps2 ? plan.map((r, i) => (i === at ? { ...r, deps: deps2! } : r)) : plan;
     const overrides = new Map<number, (Span | null)[]>();
     if (spans) overrides.set(at, spans);
-    /* ⚠️ 2026-10-06: ГЭРЭЭ табд ГИНЖ ҮГҮЙ — уялдаа нь зөвхөн төлөвлөгөөнд (сум ·
-       зөрчил · `applyHamText`-ийн ижил хаалт). Урьд нь гэрээний огноог засахад
-       төлөвлөгөөний `Hamaaral`-аар хамаарагч ажлуудын ГЭРЭЭНИЙ огноо чимээгүй
-       шилждэг байв. `deps`-ийг `toPlanRows`-д хоослохгүй: гэрээ табын «Уялдаа»
-       нүд (`HamCell`) түүнийг харуулсаар. */
     const des = plan[at].des;
-    /* ⚠️ 2026-10-08: буцаалтын агшинд popup-ын обьём/нөөцийн түлхүүрүүд ч орно (`applyChanges`-ийн `undoKeys`) */
     const undoKeys = ob && des != null && kind === 'plan'
       ? blks.map((b) => sc?.bld[b]).filter((x): x is string => !!x).map((blok) => obKey(des, blok)) : undefined;
-    /* ⚠️ 2026-10-09: сарын ноорог ШУУД (`applyChanges`-ээс үл хамааран) — огноо хөндөөгүй «Тавих» / алхмаар
-       хуулах (`PlanModal.copyShifted`) үед `applyChanges` эрт буцаж агшин авдаггүй байв */
     if (undoKeys?.length) snapUndo({ ob: undoKeys });
     applyChanges(kind === 'plan' ? propagate(rows2, n, overrides, deps2 ? [at] : []) : overrides, oid, undoKeys);
-    /**
-     * ⚠️ САРЫН ЗАДАРГАА нь `applyChanges`-ийн ДАРАА — тэр нь огноо
-     * өөрчлөгдсөн блокуудыг АВТОМАТААР дахин тараадаг тул урьд нь тавьбал
-     * гараар оруулсан утга шууд дарагдана. «Бүх блокт» тохиолдолд бусад
-     * блок автомат тараалтаа авч, ЭНЭ блок нь гарын утгаа хадгална.
-     */
-    /* ⚠️ 2026-09-29 (аудит 10): сарын обьём/нөөц ЗӨВХӨН төлөвлөгөөнд (`applyChanges`-ийн
-       ижил хаалт) — гэрээ табын «Тавих»/«Арилгах» нь төлөвлөгөөний сарын задаргаа ·
-       хүн/машиныг (kind-гүй түлхүүр) хөндөж болохгүй. */
     if (ob && des != null && kind === 'plan') {
       const { res } = ob;
       for (const bAt of blks) {
         const blok = sc?.bld[bAt];
         if (!blok) continue;
-        const months = ob.byBlk?.get(bAt) ?? ob.months; // ⚠️ 2026-10-21: блокийн өөрийн задаргаа (`byBlk`-ийн ⚠️)
+        const months = ob.byBlk?.get(bAt) ?? ob.months;
         const key = obKey(des, blok);
-        /* ⚠️ СЕРВЕРТЭЙ ИЖИЛ задаргааг ноорогт ҮЛДЭЭХГҮЙ (2026-09-21): чирэлтийг
-           цуцлахад (`onClose` → `u.months`) задаргаагүй ажилд ХООСОН Map буцаж
-           ирдэг байсан нь obDraft-д үлдэж, «Батлуулах»-ыг «1 ажлын задаргаа
-           тэнцэхгүй» гэж түгждэг байв. Ижил бол хасна — бичих зүйлгүй.
-           ⚠️ Блок бүрд ШИНЭ Map (хуулбар) — нэг Map-ыг хуваалцвал нэг блокийн
-              засвар нөгөөд «чимээгүй» орно. */
-        /* ⚠️ 2026-10-09: popup нь ӨӨРИЙН мужийн саруудад ЭХ СУРВАЛЖ — тайралтын бүтэн хуулбарт (`obFullRef`) тэр
-           мужийн сарыг popup-ын утгаар солино (мужаас гадуурх хадгалагдсан сар хэвээр): эс бөгөөс popup-д санаатай
-           хоосолсон сар дараагийн огнооны засварт хуучин утгаараа эргэж гарах байв. */
         const bsp = (spans ?? plan[at].spans)[bAt] ?? null;
         const inSpan = bsp ? new Set(monthsOf(bsp)) : null;
         if (months) {
@@ -2684,7 +1690,7 @@ export function Huvaari({
             const f = new Map([...f0].filter(([k]) => !inSpan.has(k)));
             for (const [k, v] of mine) f.set(k, v);
             obFullRef.current.set(key, f);
-          } else if (!bsp) obFullRef.current.delete(key); // ⚠️ 2026-10-23: огноо арилгасан блок — хуучин хуулбар эргэж гарахгүй
+          } else if (!bsp) obFullRef.current.delete(key);
           setObDraft((m) => {
             const next = new Map(m);
             if (sameMonths(mine, obPlan.get(des)?.get(blok))) next.delete(key);
@@ -2699,7 +1705,7 @@ export function Huvaari({
             const f = new Map([...f0].filter(([k]) => !inSpan.has(k)));
             for (const [k, v] of mine) f.set(k, v);
             obResFullRef.current.set(key, f);
-          } else if (!bsp) obResFullRef.current.delete(key); // ⚠️ 2026-10-23: обьёмын дүрэмтэй ижил
+          } else if (!bsp) obResFullRef.current.delete(key);
           setObResDraft((m) => {
             const next = new Map(m);
             if (sameRes(mine, obRes.get(des)?.get(blok))) next.delete(key);
@@ -2714,13 +1720,6 @@ export function Huvaari({
 
   /**
    * POPUP-ЫН «Тавих» — БОДИТ ОГНОО (энэ блок) ба НӨӨЦ (мөр) (2026-09-23).
-   *
-   * ⚠️ `applyModal`-аас ТУСДАА: тэр нь `propagate` (гинж) ба `rollUpGroups`
-   *    (бүлэг) руу явдаг; бодит огноо/нөөц тэдгээрт ОРОХГҮЙ — зөвхөн ноорог.
-   * ⚠️ СЕРВЕРТЭЙ ИЖИЛ болвол ноорогоос ХАСНА (`applyChanges`-ийн 2026-09-21-ний
-   *    дүрэм) — эс бөгөөс буцаасан засвар «хадгалаагүй 1» гэж үлдэнэ.
-   * ⚠️ Бүлгийн мөрд ХЭЗЭЭ Ч бичихгүй (`aggExtra`-аар бодогддог); popup нь
-   *    бүлэгт талбарыг хаадаг ч энд давхар хаана.
    */
   const applyExtra = useCallback((
     oid: number,
@@ -2732,11 +1731,8 @@ export function Huvaari({
     if (busy || locked) return;
     const orig = rows.find((r) => r.oid === oid);
     if (!orig || orig.group) return;
-    /* ⚠️ 2026-10-09: НӨГӨӨ табын хүлээгдэж буй илгээлт энэ мөрийн бодит огноо/нөөцийг агуулж байвал БИЧИХГҮЙ
-       (`xLockWhy`-ийн ⚠️) — popup талбарыг хаадаг ч энэ нь цорын ганц юүлүүр тул энд ч барина. */
     const xWhy = actual || res ? xLockWhy(orig.oid, orig.des) : undefined;
     if (xWhy) { setErr(xWhy); return; }
-    /* ⚠️ 2026-10-09: бодит огноо · нөөцийн ноорог ч буцаалтын агшинд (`UndoSnap`-ийн ⚠️) */
     if (actual || res) snapUndo({ aD: actual ? [oid] : [], rD: res ? [oid] : [] });
     const ok = blks.filter((b) => b >= 0 && b < n);
     if (actual && ok.length) {
@@ -2765,36 +1761,11 @@ export function Huvaari({
   /**
    * ХАМААРЛЫГ НҮДЭНД ШУУД БИЧИХ (2026-09-15, хэрэглэгчийн хүсэлт:
    * «11FS14 гэж шууд бичиж холбоос хийх боломжтой болгох»).
-   *
-   * ⚠️ POPUP-ЫГ ОРЛОХГҮЙ, ХАЖУУД НЬ. Popup нь ажлын НЭРЭЭР сонгуулдаг тул
-   *    кодоо мэдэхгүй хүнд зайлшгүй; энэ нь кодоо мэддэг хүнд ХУРДАН зам.
-   *    MS Project-ийн Predecessors нүд яг ийм ажилладаг.
-   *
-   * ⚠️ БҮХ ШАЛГУУР `applyModal`-д (дугуй хамаарал, шатлалын зөрчил, танигдаагүй
-   *    токен хадгалах) — энд ДАВХАРДУУЛАХГҮЙ. Зөвхөн текстийг `Dep[]` болгож
-   *    дамжуулна; буруу бичсэн токеныг `parseDeps` өөрөө алгасана.
-   *
-   * ⚠️ Хоосон болговол уялдааг ЦЭВЭРЛЭНЭ (`[]`) — `null` нь «бүү хөндөөрэй»
-   *    гэсэн утгатай тул ялгах ёстой.
    */
   /**
    * ШУГАМААР ХОЛБОХ ЧИРЭЛТ — бариулаас эхлээд `window` дээр дуусна (2026-09-22).
-   *
-   * ⚠️ Pointer capture АВАХГҮЙ: зорилтыг `elementFromPoint`-оор олдог тул хулгана
-   *    доорх элемент нь ЖИНХЭНЭ мөр байх ёстой (capture авбал үргэлж бариул).
-   * ⚠️ Хамаарал нь ЗОРИЛТ мөрд бичигдэнэ (зорилт нь урд ажлаас хамаарна) — сумны
-   *    чиглэлтэй ижил: урд ажлын баруун зах → хамаарагчийн зүүн зах.
-   * ⚠️ Урд ажилд код (`des`) алга бол холбож болохгүй — уялдаа кодоор бичигддэг.
-   * ⚠️ БҮЛЭГ ↔ БҮЛЭГ, БҮЛЭГ ↔ АЖИЛ БҮГД ХОЛБОГДОНО (2026-09-22, хэрэглэгч:
-   *    «бүлэг хооронд уялдаа хийх боломжтой, бүгд өөр хоорондоо холбогдох
-   *    ёстой»). Хөдөлгүүр аль хэдийн дэмждэг: бүлэг урд ажил бол `effSpan`
-   *    (хүүхдийн MIN/MAX), бүлэг хамаарагч бол `propagate` дэд модыг бүхэлд нь
-   *    шилжүүлнэ. ЗӨВХӨН өвөг ↔ удам (өөрийн дотоод) холбоос хориотой хэвээр —
-   *    `applyModal`-ын `hierRelated` шалгуур (гинжин эргэлт).
    */
   const startLink = (e: PEvt<HTMLElement>, r: PlanRow) => {
-    /* ⚠️ (2026-09-23) Уялдаа ЗӨВХӨН төлөвлөгөөнд — гэрээ табд (`kind !== 'plan'`)
-       холбохгүй (дээрх `PlanKind` тайлбар: «гэрээ нь гинжээр хөдөлдөггүй»). */
     if (!canEdit || locked || busy || kind !== 'plan') return;
     e.preventDefault();
     e.stopPropagation();
@@ -2811,9 +1782,6 @@ export function Huvaari({
     setSel(r.oid);
     setErr('');
     setLink({ i: r.i, ...pos(e) });
-    /* ⚠️ 2026-10-09: БОСОО ИРМЭГИЙН АВТОМАТ ГҮЙЛГЭЭ — заагч хуанлийн дээд (наалдмал толгойн доор) / доод ирмэгээс 40px
-       дотор бол `requestAnimationFrame`-ээр гүйлгэж, түр шугамыг дагуулна. Урьд нь дэлгэцээс гадуурх мөртэй холбох
-       боломжгүй байв. */
     const last = { clientX: e.clientX, clientY: e.clientY };
     let raf = 0;
     const edgeV = (y: number): number => {
@@ -2852,43 +1820,21 @@ export function Huvaari({
       if (ev.type === 'pointercancel') return;
       const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('[data-row]') as HTMLElement | null;
       let ti = el ? Number(el.dataset.row) : NaN;
-      /* ⚠️ (2026-09-23) `elementFromPoint` нь сум (`depHit`), түр шугам, огнооны
-         толгой мэт `[data-row]`-гүй элемент дээр тусвал `null` болж чимээгүй
-         унадаг байв. Нөөц зам: мөрийн өндөр ТОГТМОЛ (`PL_ROW`) тул Y координатаас
-         `visible[k]`-г шууд олно — зурвасын эгнээний дотор л байхад хангалттай. */
       if (!Number.isInteger(ti)) {
         const b = lanes.getBoundingClientRect();
         const x = ev.clientX - b.left;
         const k = Math.floor((ev.clientY - b.top) / PL_ROW);
         if (x >= 0 && x <= b.width && k >= 0 && k < visible.length) ti = visible[k].i;
       }
-      /* ⚠️ (2026-09-23) Өөр дээрээ тавибал ЧИМЭЭГҮЙ (санамсаргүй суллалт);
-         мөр олдохгүй бол дохио — урьд нь юу ч болоогүй мэт байв. */
       if (ti === r.i) return;
       const t = Number.isInteger(ti) ? plan[ti] : undefined;
       if (!t) { setErr(tr('Хамаарал холбогдсонгүй — хуанлийн мөр (зурвасын эгнээ) дээр тавина уу.')); return; }
-      /* ⚠️ Батлагдаагүй нэмэлт мөр (2026-09-24) — кодгүй, серверт байхгүй; уялдаа тавихгүй */
       if (t.oid < 0) { setErr(tr('Энэ мөр батлагдаагүй нэмэлт ажил — батлагдсаны дараа уялдаа тавина.')); return; }
       if (hierRelated(plan, ti, r.i)) { setErr(tr('Өөрийн бүлэг/дэд ажилтайгаа холбож болохгүй — гинжин эргэлт үүснэ.')); return; }
-      /* ⚠️ ДУГУЙ ХАМААРЛЫГ ЭНД (2026-09-23): урьд нь зөвхөн `applyModal`-д
-         шалгагддаг тул хэрэглэгч цонхонд төрөл/хоногоо бөглөж «Тавих» дарсны
-         ДАРАА л «дугуй» гэж няцаагддаг байв. Одоо суллахад шууд — цонх нээгдэхгүй.
-         Чиглэл `applyModal`-тай ижил: хамаарагч (`t`) → урд ажил (`r`). */
       if (t.des != null && reaches(plan, byCode, t.des, r.des as number /* дээр `r.des == null` таслагдсан */)) {
         setErr(tr('Дугуй хамаарал үүсэх тул холбож болохгүй.'));
         return;
       }
-      /* ⚠️ Шууд тавихгүй — цонх нээж төрөл (дуусаад / зэрэг эхлэх) ба хоногийг
-         асууна (2026-09-22, хэрэглэгч: «чирээд холбосны дараа … цонх гарах ёстой»).
-         Аль хэдийн холбогдсон бол цонх нь тэр уялдааг ЗАСНА (давхардуулахгүй). */
-      /* ⚠️ БЛОК ТУС БҮРИЙН уялдаа (2026-09-24): чирж холбосон хамаарал зөвхөн
-         ИДЭВХТЭЙ блокт (`@N`). Синтетик ганц блоктой багцад блокгүй — `@` гарахгүй. */
-      /* ⚠️ 2026-09-25 аудит: энэ хосод БЛОКГҮЙ (бүх блок) уялдаа аль хэдийн байгаа
-         бөгөөд `@N` уялдаа байхгүй бол ТЭРИЙГ засна — урьд нь `@N` нэмэгдэж, тэр
-         блокт хоёр уялдаа (давхар шилжилт) үүсдэг байв. */
-      /* ⚠️ ОЛОН БЛОК (2026-10-01): «олон блокт зэрэг төлөвлөх» асаалттай бол
-         идэвхтэй блок + `gBlks` бүгдэд — огноо (`PlanModal.initSel`)-той ижил хүрээ.
-         БҮХ блок сонгогдвол блокгүй НЭГ уялдаа (`collapse`) — 22 ширхэг `@N` биш. */
       const tb = sc?.synthetic || n === 1
         ? null
         : [...new Set([blk, ...gBlks])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b);
@@ -2911,14 +1857,7 @@ export function Huvaari({
 
   /**
    * Мөрийн ИДЭВХТЭЙ БЛОКИЙН муж — бүлэгт хүүхдээс (`effSpan`), ажилд өөрийнх.
-   * ⚠️ (2026-09-23) Урьд нь бүх блокийн MIN/MAX (`rowSpan`) байсан тул зүүн
-   *    самбарын огноо нь зурвас ба «Бодит» баганаас (идэвхтэй `blk`) зөрдөг байв.
-   *    Хуваарьгүй блок → `null` → «—» (0 БИШ) хэвээр.
    */
-  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): ИДЭВХТЭЙ БЛОКИЙН `effSpan`-ыг `plan`×`blk`-д КЭШЛЭНЭ.
-     Нэг зурагдалтад ижил бүлгийн муж зүүн мөр (`rowSpanAt`) · баруун зурвас · уялдааны сум
-     (урд ба хамаарагч) гэж 3–4 удаа, тус бүр бүх дэд модоор бодогддог байв. Утга ЯГ ИЖИЛ
-     (`effSpan`-ийн цэвэр үр дүн), `plan`/`blk` солигдоход кэш шинээр. */
   const effAt = useMemo(() => lazyCache((i: number): Span | null => effSpan(plan, i, blk)), [plan, blk]);
   const rowSpanAt = useCallback((r: PlanRow): Span | null => (
     r.group ? effAt(r.i) : (r.spans[blk] ?? null)
@@ -2940,19 +1879,11 @@ export function Huvaari({
     return unionSpans(rr.spans.map((_, k) => blockSpan(refBase, rr, k)));
   }, [refByOid, refBase]);
 
-  /* ⚠️ 2026-10-09: татгалзсан (бүхэлд/хэсэгчлэн) бол ШАЛТГААН буцаана — `HamCell` бичсэн текстийг үлдээж улаанаар
-     харуулна (урьд нь нүд чимээгүй хадгалсан утга руу буцдаг байв). Баннер (`setErr`) ч хэвээр. */
   const applyHamText = useCallback((oid: number, text: string): string | undefined => {
-    /* ⚠️ Хадгалалт явж байхад бичсэн уялдаа чимээгүй алга болдог байв (2026-09-23
-       аудит) — одоо мэдэгдэнэ; нүд нь хадгалсан утга руугаа буцна. */
     if (busy) { const w = tr('Хадгалж байна — түр хүлээгээд уялдааг дахин оруулна уу.'); setErr(w); return w; }
-    /* ⚠️ 2026-09-29 аудит: уялдаа ЗӨВХӨН төлөвлөгөөнд — гэрээний огноо гинжээр хөдөлдөггүй */
     if (locked || !canEdit || kind !== 'plan') return;
     const cur = plan.find((x) => x.oid === oid);
     if (!cur) return;
-    /* ⚠️ 2026-10-06: ТАНИГДААГҮЙ токен байвал ТАВИХГҮЙ, ил хэлнэ. Урьд нь `parseDeps`
-       түүнийг чимээгүй алгасаж, үлдсэнээр нь (хоосон бол юу ч үгүйгээр) хуучин уялдааг
-       ДАРЖ устгадаг байв («11FS+2» → хуучин «11FS2» алга). Нүд хадгалсан утга руугаа буцна. */
     const bad = residualDeps(text);
     if (bad.length) {
       const w = tr('Уялдааны бичиглэл танигдсангүй: {0} — жишээ нь «18FS3,22SS-5». Уялдаа өөрчлөгдсөнгүй.', bad.join(', '));
@@ -2960,9 +1891,6 @@ export function Huvaari({
       return w;
     }
     let next = parseDeps(text);
-    /* ⚠️ 2026-10-09: БАЙХГҮЙ КОДТОЙ уялдаа ЧИМЭЭГҮЙ хадгалагдаж (`requiredStart` алгасдаг) хэзээ ч үйлчилдэггүй байв —
-       тэр токенуудыг ХАСАЖ ил хэлнэ, хүчинтэй нь тавигдана. Хуучин (сервер дээр аль хэдийн байсан) уялдааг хөндөхгүй —
-       түүнийг хасах нь хэрэглэгчийн өөрийн шийдвэр (popup-ын ×). */
     const had = new Set(cur.deps.map((d) => d.code));
     const lost = [...new Set(next.filter((d) => !byCode.has(d.code) && !had.has(d.code)).map((d) => d.code))];
     let lostWhy: string | undefined;
@@ -2975,38 +1903,18 @@ export function Huvaari({
        нь хямд биш, мөн «хадгалаагүй» тэмдэг худал асахгүй. */
     if (formatDeps(next) === formatDeps(cur.deps)) return lostWhy;
     if (!lostWhy) setErr('');
-    /* ⚠️ 2026-10-09: `applyModal`-ын няцаалт (дугуй · блок алга) — шалтгаан нь нүдэнд */
     return applyModal(oid, null, next, null) ?? lostWhy;
   }, [busy, locked, canEdit, kind, plan, byCode, applyModal, setErr]);
 
   /**
    * ОГНООГ НҮДЭНД ШУУД БИЧИХ (2026-10-05, хэрэглэгч: «огноо дээр дарж бичиж
    * төлөвлөх»). Идэвхтэй табын (`kind`) ИДЭВХТЭЙ блокийн (`blk`) эхлэх/дуусах.
-   *
-   * ⚠️ Дүрэм нь popup-ын `onStart`-тай ИЖИЛ (2026-10-08-нд хоёуланг нэг дүрэмд оруулав):
-   *    ЭХЛЭХийг бичихэд шинэ эхлэх ≤ хуучин дуусах бол ДУУСАХ ХЭВЭЭР (муж сунах/агшина);
-   *    дуусахаас ХОЙШ бол үргэлжлэх хоног ХАДГАЛАГДАЖ дуусах дагаж шилжинэ. ДУУСАХыг
-   *    бичихэд эхлэх хэвээр. Хуваарьгүй блокт аль нэгийг бичвэл 1 хоногийн муж (start = end).
-   * ⚠️ БҮХ үр дагавар `applyModal`-аар (гинж `propagate` · бүлгийн нэгтгэл · сарын
-   *    задаргаа · ноорог) — энд ДАВХАРДУУЛАХГҮЙ. Бүлэг/нэмэлт мөр тэнд ч хаалттай.
-   *    (2026-10-06: гинж нь ЗӨВХӨН төлөвлөгөө табд — гэрээнд `applyModal` алгасна.)
-   * ⚠️ Дуусах < эхлэх бол ТАВИХГҮЙ — чимээгүй солихгүй, мэдэгдэнэ.
-   * ⚠️ 2026-10-06: `which === 'days'` — ҮРГЭЛЖЛЭХ ХОНОГ бичих (`day` = тоо): эхлэх
-   *    хэвээр, дуусах = эхлэх + N − 1 (`endOf`). Хуваарьгүй блокт эхлэх огноо байхгүй
-   *    тул тавихгүй, мэдэгдэнэ.
    */
   /**
    * ОГНОО ТАВИСНЫ ДАРАА ЗАСВАРЫН ЦОНХ ӨӨРӨӨ НЭЭГДЭНЭ (2026-10-06, хэрэглэгч: «start end
    * тавихад обьём болон хүн хүч бөглөх цонх автоматаар нээгддэг болго»). Чирэлтийн
    * дараа цонх аль хэдийн нээгддэг (`useDragPlan`); энэ нь нүдэнд бичих замынх.
-   * ⚠️ ХОЁР табд — гэрээний табд ч нээнэ (хэрэглэгч: «Enter дархад цонх автоматаар
-   *    нээгдэх ёстой»); тэнд сарын обьём байхгүй ч огноо · блок · үргэлжлэх хоногоо тэндээ
-   *    шалгаж, «Тавих»-аар баталгаажуулна.
-   * ⚠️ `undoRef` хөндөхгүй — бичсэн огноо ноорогт аль хэдийн орсон; цонхыг хаахад
-   *    (`undoDragOnClose`) буцаах агшин байхгүй тул огноо ХЭВЭЭР үлдэнэ (чирэлтээс ялгаатай).
    */
-  /* ⚠️ 2026-10-09: ЗӨВХӨН Enter-ээр (`via`, `TaskRow.CellVia`) — ↓/↑/Tab нь хадгалаад мөр шилжинэ, цонх нээхгүй.
-     Нээсэн цонхны «Тавих» нь энэ бичилтийн буцаалтын агшинд НИЙЛНЭ (`undoOpenRef` → `undoMergeRef`). */
   const openAfterDate = useCallback((oid: number, via: CellVia) => {
     if (via !== 'enter') return;
     undoOpenRef.current = oid;
@@ -3015,18 +1923,10 @@ export function Huvaari({
     setModalFrom(oid);
   }, [setSel, setModal, setModalFrom]);
 
-  /**
-   * ⚠️ 2026-10-09: НҮДЭНД БИЧИХ ОЛОН БЛОК — «Олон блок сонгох» (`gBlks`) асаалттай бол идэвхтэй блок + сонгосон блокууд.
-   *    Урьд нь зөвхөн popup-ын «Тавих» сонголтыг хэрэглэдэг тул нүдэнд бичсэн огноо идэвхтэй блокт л ордог байв.
-   *    Синтетик/ганц блоктой багцад хоосон (идэвхтэй блок л).
-   */
   const multiBlks = useMemo(
     () => (!sc || sc.synthetic || n <= 1 ? [] : [...new Set([blk, ...gBlks])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b)),
     [sc, n, blk, gBlks],
   );
-  /* ⚠️ 2026-10-09: (1) ТАТГАЛЗСАН ШАЛТГААНЫГ буцаана — `DateCell`/`DaysCell` засварт үлдэж улаанаар харуулна
-     (баннер ч хэвээр). (2) Сонгосон блок БҮРД ижил дүрэм (`multiBlks`): идэвхтэй блокт дүрэм зөрчигдвөл бүхэлд нь
-     тавихгүй; бусад блокт тохирохгүй бол (жиш. эхлэх огноогүй блокт хоног) тэр блокийг АЛГАСНА. Нэг `applyModal`. */
   const applyDate = useCallback((oid: number, which: 'start' | 'end' | 'days', day: string, via: CellVia = 'enter'): string | undefined => {
     const fail = (w: string) => { setErr(w); return w; };
     if (busy) return fail(tr('Хадгалж байна — түр хүлээгээд огноог дахин оруулна уу.'));
@@ -3039,9 +1939,6 @@ export function Huvaari({
       if (which === 'days') {
         const d = Number(day);
         if (!Number.isInteger(d) || d < 1) return null;
-        /* ⚠️ 2026-10-08: дээд хязгаар `PlanModal`-тай ижил (3650) — урьд нь хязгааргүй тул 99999 хоног
-           бичихэд хуанли олон жилээр сунаж, сарын задаргаа мужаас гардаг байв.
-           ⚠️ 2026-10-09: нэг тогтмол `MAX_DAYS`; тоо мессежид орлуулгаар. */
         if (d > MAX_DAYS) return tr('Үргэлжлэх хоног {0}-аас их байж болохгүй — тавигдсангүй.', num(MAX_DAYS));
         if (!old) return tr('Эхлэх огноо байхгүй — эхлээд эхлэх огноог бичнэ үү.');
         next = { start: old.start, end: endOf(old.start, d) };
@@ -3050,17 +1947,12 @@ export function Huvaari({
       const ms = dayToMs(day);
       if (ms == null) return null;
       if (!old) next = { start: ms, end: ms };
-      /* ⚠️ 2026-10-08: ЭХЛЭХ огноог ДУУСАХААС ӨМНӨ/ТЭНЦҮҮ тавихад дуусах огноо ХЭВЭЭР (сунгах/агшаах) —
-         урьд нь үргэлжлэх хугацааг хадгалж дуусахыг зөөдөг тул «Дуусах»-ыг эхэлж бичээд дараа нь
-         «Эхлэх» бичихэд бичсэн дуусах огноо алга болдог байв. Дуусахаас ХОЙШ бол л хугацааг хадгална. */
       else if (which === 'start') next = ms <= old.end ? { start: ms, end: old.end } : { start: ms, end: endOf(ms, spanDays(old)) };
       else {
         if (ms < old.start) return tr('Дуусах огноо эхлэх огнооноос өмнө байна — тавигдсангүй.');
         next = { start: old.start, end: ms };
       }
       if (sameSpan(next, old)) return null;
-      /* ⚠️ 2026-10-09: ОГНООГООР бичсэн муж ч `MAX_DAYS`-аас урт байж болохгүй — хоногийн нүдний хязгаар эхлэх/
-         дуусах бичих замаар тойрогддог байв (жиш. 2026 → 2062). */
       if (spanDays(next) > MAX_DAYS) return tr('Үргэлжлэх хоног {0}-аас их байж болохгүй — тавигдсангүй.', num(MAX_DAYS));
       return next;
     };
@@ -3070,9 +1962,6 @@ export function Huvaari({
     while (spans.length < n) spans.push(null);
     let changed = false;
     if (main) { spans[blk] = main; changed = true; }
-    /* ⚠️ 2026-10-21: БУСАД блокийн татгалзсан шалтгааныг ЦУГЛУУЛЖ мэдэгдэнэ — урьд нь чимээгүй алгасдаг
-       тул хэрэглэгч бүх сонгосон блокт тавигдсан гэж андуурдаг байв. Идэвхтэй блок орсон бол нүд засварт
-       үлдэхгүй (буцаахгүй) — зөвхөн баннерт; юу ч орохгүй бол нүдэнд ч буцаана. */
     const skip: string[] = [];
     for (const b of multiBlks) {
       if (b === blk) continue;
@@ -3089,7 +1978,7 @@ export function Huvaari({
 
   /**
    * БҮЛГИЙГ ШИЛЖҮҮЛЭХ (2026-10-09, `PlanModal.onShiftGroup`) — бүлгийн доорх НАВЧ ажил бүрийн мужийг сонгосон блокуудад
-   * `days` хоногоор зөөнө. ⚠️ Бүлгийн огноо гараар засагдахгүй дүрэм (2026-09-06) ХЭВЭЭР — хүүхдүүд хөдөлж, бүлэг
+   * `days` хоногоор зөөнө. Бүлгийн огноо гараар засагдахгүй дүрэм (2026-09-06) ХЭВЭЭР — хүүхдүүд хөдөлж, бүлэг
    * `rollUpGroups`-оор дагана. НЭГ `applyChanges` (гинж `propagate` — төлөвлөгөө табд л) тул нэг Ctrl+Z-ээр буцна.
    * Мужгүй блок хөндөгдөхгүй (огноо зохиохгүй); батлагдаагүй нэмэлт мөр (сөрөг oid) алгасна.
    */
@@ -3120,28 +2009,18 @@ export function Huvaari({
 
   /* ── Чирэлт ── */
 
-  /* ══════════════ ХУВААЛЦСАН НООРОГ — ArcGIS дээр (2026-09-23; `useSharedDraft`) ══════════════
-     ⚠️ Эндээс (чирэлт · хадгалалт · батлах урсгалаас ӨМНӨ) дуудна: тэдгээр нь
-        энэ hook-ийн ref/функцүүдийг уншдаг. */
+  /* ══════════════ ХУВААЛЦСАН НООРОГ — ArcGIS дээр (2026-09-23; `useSharedDraft`) ══════════════ */
   const {
     hdSt, hdUsers, hdLabel, hdReadyKey, hdTimerRef, hdFlushRef, hdClearRef, hdSkipUnlockOnceRef,
     hdMapsRef, hdMeta, meRef, askSwitch, hdResetRestore, hdRetryRestore, hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced, hdOrphan,
     hdStoreMode, hdStoreNote, hdCtxRef, hdReadyRef, hdKeyRef,
   } = useSharedDraft({
-    /* ⚠️ 2026-10-23: ЭРХ (`canEditRole`) — «Батлагдсан» харагдацад ч ноорог хамгаалалт (`askSwitch` · `hdUnsynced`) ажиллана */
     kind, pkgKey: pkg.key, user, status, canEdit: canEditRole, locked, previewing, approving, pending,
     sc, rows, base, n, obPlan, obRes, obState, flowReady, dirtyN, dragging: drag != null,
     draft, ham, aDraft, resDraft, obDraft, obResDraft,
     setDraft, setHam, setADraft, setResDraft, setObDraft, setObResDraft, setNote, pkgKeyRef, hdRemapRef,
-    /* ⚠️ 2026-10-09: хамтрагчийн нийлүүлэлт → буцаалтын агшин (`onRemoteDraft`) */
     onRemote: onRemoteDraft,
   });
-  /**
-   * ⚠️ 2026-10-09 (хэрэглэгч: «миний ноорог бүрэн сэргэтэл хуудас нээгдэхгүй»): засах эрхтэй хүнд хуваалцсан
-   *    ноорог сэргэж дуустал (`hdReadyKey` энэ түлхүүр биш) хүснэгт хаалттай. Батлах · урьдчилан харах ·
-   *    илгээлт хүлээгдэж буй үед сэргээлт ЗОРИУД эхэлдэггүй (`useSharedDraft`-ийн `hdBlocked`) тул хаахгүй.
-   *    Гацвал `RESTORE_SLOW_MS`-ийн дараа зөвхөн дахин ачаалах товч (түлхүүртэй төлөв — эффектэд синхрон setState-гүй).
-   */
   const hdRestoringUi = canEditRole && !previewing && approving == null && pending == null && rows.length > 0
     && hdReadyKey !== hdKey(kind, pkg.key);
   const hdRestKey = hdRestoringUi ? hdKey(kind, pkg.key) : '';
@@ -3152,7 +2031,6 @@ export function Huvaari({
     return () => window.clearTimeout(t);
   }, [hdRestKey]);
   const hdRestoreSlow = !!hdRestKey && hdSlowKey === hdRestKey;
-  /* ⚠️ 2026-10-09: `hdOtherRef`-ийн жинхэнэ утга — `hdMeta`/`meRef` энэ hook-ийн гаралт тул энд (ref-ийн ⚠️) */
   useEffect(() => {
     hdOtherRef.current = (k: string) => {
       const mu = hdMeta.current.get(k)?.user;
@@ -3160,12 +2038,6 @@ export function Huvaari({
     };
   }, [hdMeta, meRef]);
 
-  /**
-   * ⚠️ БАГЦ/ХУВИЛБАР/ТӨРӨЛ СОЛИЛТ ЯВЖ БАЙНА (2026-10-06). `askSwitch` нь ноорогоо
-   *    хуваалцсан мөрөнд бичиж дуустал хэдэн секунд болж болдог — тэр зуур сонгогчид
-   *    идэвхтэй үлдэж, дахин сонгоход хоёр солилт зэрэг явж хожуу ирсэн нь ялдаг байв.
-   *    Явж байхад сонгогчдыг түгжиж, богино шошго харуулна.
-   */
   const [switching, setSwitching] = useState(false);
   const runSwitch = (apply: () => void) => {
     if (switching) return;
@@ -3180,24 +2052,15 @@ export function Huvaari({
     plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
     setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef,
     chain: kind === 'plan',
-    /* ⚠️ 2026-10-09: ирмэгийн автомат гүйлгээ (`useDragPlan.auto`) */
     scrollEl: () => scrollRef.current,
   });
-  /* ⚠️ 2026-10-08: чирэлтийн ЦУЦЛАЛТ (`rollback`) буцаалтын агшин авахгүй — эс бөгөөс Ctrl+Z цуцалсан
-     чирэлтийг дахин тавих байв. Чирэлт эхлэхэд авсан агшин нь цуцлалтын дараа ч хүчингүй (арилгана). */
-  /* ⚠️ 2026-10-09: СТЕК — зөвхөн ЭНЭ чирэлтийн (оройн) агшинг хасна; өмнөх буцаалтын түүх хэвээр. Агшин нь чирэлтийн
-     ЭХНИЙ `commit`-д авагддаг (`undoDragSeenRef`) — хөдөлгөөнгүй бол агшин үүсээгүй тул юу ч хасахгүй. */
   const popUndo = () => setUndoSnap((s) => (s.u.length ? { u: s.u.slice(0, -1), r: s.r } : s));
   const onCancel = () => {
-    /* ⚠️ 2026-10-21: `onCancel0` нь `busy`/`locked` үед буцаалт (`rollback`) ХИЙХГҮЙ — тэр үед агшинг ҮЛДЭЭНЭ
-       (урьд нь хасаж, хагас чирэлтийг буцаах арга үлддэггүй байв). Доорх `undoDragOnClose` ч мөн адил. */
     const had = !!drag && undoDragSeenRef.current && !busy && !locked;
     undoSkipRef.current = true;
     try { onCancel0(); } finally { undoSkipRef.current = false; }
     if (had) popUndo();
   };
-  /* ⚠️ 2026-10-09: «Бүх блок»-оос засахаар гарсан бол (`allBackRef`) цонх хаагдмагц горим буцаж асна — мөр сонгогдсон,
-     `scrollToOid` түүн рүү гүйлгэнэ */
   const allBack = (oid: number | null) => {
     if (!allBackRef.current) return;
     allBackRef.current = false;
@@ -3212,69 +2075,36 @@ export function Huvaari({
     if (had) popUndo();
     allBack(oid);
   };
-  /** ⚠️ 2026-10-09: «Огноог үлдээх» (`PlanModal.onKeep`) — чирэлт ноорогт үлдэж агшин нь буцаалтын стект хэвээр */
   const keepDragClose = () => {
     const oid = modal;
     keepDrag();
     allBack(oid);
   };
 
-  /*
-   * ⚠️ «Мужид жигд хуваарилах» ба «Хуваарь арилгах» товчнууд 2026-09-01-нд
-   * ХАСАГДСАН (хэрэглэгчийн шийдвэр). Хоёулаа СОНГОСОН мөр дээр ажилладаг
-   * байсан тул «аль мөр сонгогдсон бэ» гэдгийг санах шаардлагатай далд төлөв
-   * үүсгэдэг байв. Арилгах нь одоо popup цонхонд («Арилгах») — тэнд ямар ажил,
-   * ямар блокийг арилгаж байгаа нь ил харагдана.
-   *
-   * ⚠️ «Бүх блокт алхмаар тараах» товч 2026-09-02-нд ХАСАГДСАН (хэрэглэгч).
-   * Тэр нь ХАРАГДАЖ БУЙ БҮХ мөрийн бүх блокийг нэг товшилтоор дарж бичдэг
-   * байсан — шүүлт буруу тавьсан үед 264+ нүд чимээгүй устдаг эрсдэлтэй.
-   * Тархаалт нь одоо popup хуанлид ҮЛДСЭН: тэнд НЭГ ажлын хүрээнд, ямар блок,
-   * ямар алхмаар тархаж байгаа нь ил бөгөөд баталгаажуулалттай.
-   */
 
   /* ── Хадгалах ── */
 
-  /* ⚠️ БУЦААХ УТГА (2026-09-25 аудит): `true` = бичих алхам дууслаа (ноорог
-     цэвэрлэгдсэн/тэнцээгүйг үлдээсэн), `false` = ЭХЛЭЭГҮЙ эсвэл УНАСАН (ноорог
-     бүтнээрээ үлдэв). Батлах эффект `busy`-ийн хөдөлгөөнөөс биш, үүнээс мэднэ. */
   const save = useCallback(async (): Promise<boolean> => {
     if (!sc || !dirtyN || busy) return false;
     setBusy(true); setErr(''); setNote(''); setErrList([]);
-    /* ⚠️ Ноорогоо ОДОО барьж авна: async явцад орсон (онолын хувьд —
-       оролтууд busy-д хаалттай ч) шинэ засварыг төгсгөлд нь УСТГАХГҮЙН тулд
-       зөвхөн эдгээр түлхүүрийг цэвэрлэнэ. */
     const tookD = [...draft.keys()];
     const tookH = [...ham.keys()];
     const tookA = [...aDraft.keys()];
     const tookR = [...resDraft.keys()];
-    /* ⚠️ 2026-10-09 (аудит №6): САРЫН ОБЬЁМ · НӨӨЦИЙН ноорог ч мөн адил — урьд нь төгсгөлд `setObDraft(new Map())`
-       бүхэлд нь хоосолдог байв; `useSharedDraft`-ийн 3 с мөчлөг `busy`-гаар хаагддаггүй тул `save()`-ийн async завсарт
-       орсон ХАМТРАГЧИЙН `m:`/`n:` нүд дараагийн диффд tombstone болж алсаас устдаг байв. Зөвхөн бэлтгэлд орсон түлхүүр
-       цэвэрлэгдэнэ (тэнцээгүй/алгассаныг үлдээх дүрэм хэвээр). */
     const tookOb = new Set(obDraft.keys());
     const tookObR = new Set(obResDraft.keys());
-    /* ⚠️ 2026-10-21 (аудит, HIGH): сарын обьём/нөөцийн ноорогтой атлаа задаргаа (`obPlan`/`obOids`) ачаалагдаагүй бол
-       БИЧИХГҮЙ — OID-гүй тул сар бүр серверийн мөрийн хажууд `adds` болж давхардана (`obLoadedRef`-ийн ⚠️). */
     if ((tookOb.size || tookObR.size) && (obState !== 'ok' || !obLoadedRef.current)) {
       setErr(tr('Сарын обьёмын хүснэгт уншигдаагүй тул хадгалах боломжгүй — давхардал үүсэхээс сэргийлэв. Хуудсыг дахин ачаалаад оролдоно уу.'));
       setBusy(false);
       return false;
     }
     try {
-      /* ⚠️ 2026-10-08: `approvalMode` бэлтгэлийн мессежүүдэд ч хэрэгтэй тул дээр зарлана (дүрэм нь доорх ⚠️-д) */
       const approvalMode = approving != null;
-      /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) — батлахад 3 алхам (огноо · сарын обьём · төлөв), хадгалахад 2 */
       const steps = approvalMode ? 3 : 2;
-      /* ⚠️ 2026-10-12: уналтын алхам оролдлого бүрд шинээр (`failStepRef`-ийн ⚠️) */
       if (approvalMode) failStepRef.current = null;
       setProgress(tr('Шалгаж байна…'));
-      /* ⚠️ Бэлтгэл (`upd` · `obEdits` · тоолуурууд) — `huvaari/savePrep.ts`, ЮУ Ч БИЧИХГҮЙ */
       const prep = await prepareSave({ sc, kind, pkg, rows, base, draft, ham, aDraft, resDraft, obDraft, obResDraft, obPlan, obRes, obOids });
       if (!prep.ok && prep.hamLong) {
-        /* ⚠️ 2026-10-04 (шүүлт): уялдааны текст `Hamaaral`-д багтахгүй — тайрахгүй, бичихгүй */
-        /* ⚠️ 2026-10-08: БАТЛАХ горимд мессеж БАТЛАГЧИД — урьд нь «дахин илгээнэ үү» гэж зохиогчид
-           хандсан үг батлагчид гарч, юу хийхээ мэддэггүй байв (доорх «алдагдсан мөр»-ийн хэлбэр). */
         setErr(approvalMode
           ? tr('Батлах боломжгүй — буцааж, зохиогч {0} мөрийн уялдааны бичиглэлийг {1} тэмдэгтээс богиносгож дахин илгээнэ. Эх хуудсанд юу ч бичигдсэнгүй.', num(prep.hamLong), String(HAM_MAX))
           : tr('{0} мөрийн уялдааны бичиглэл {1} тэмдэгтээс урт тул хадгалагдсангүй. Блок тус бүрийн уялдааг цөөлөх эсвэл бүх блокт нэг уялдаа болгоно уу.', num(prep.hamLong), String(HAM_MAX)));
@@ -3288,27 +2118,12 @@ export function Huvaari({
       }
       const { upd, obEdits, unbal, unbalKeys, resSkipped, resSkippedKeys, resDropped, rfUnknown, obLost, grpSkipped } = prep;
       let obN = 0;
-      /*
-       * ⚠️ БАТЛАХ ГОРИМД БҮХ ШАЛГУУР БИЧИХЭЭС ӨМНӨ (2026-09-25 аудит). Урьд нь огноо
-       *    (`applyUpdates`) бичигдсэний ДАРАА л тэнцээгүй задаргаа (`unbal`) ба
-       *    талбаргүй нөөц (`resSkipped`/`rfUnknown`) илэрч, санал ХАГАС бичигдээд
-       *    `pending` хэвээр үлддэг байв — дараагийн оролдлого «зэрэгцээ өөрчлөлт»-д
-       *    унана. Батлалт = бүгд эсвэл юу ч үгүй; энгийн хадгалалт хуучин зан төлөвтэй.
-       *    (`approvalMode` — `try`-ийн эхэнд, 2026-10-08)
-       */
-      /* ⚠️ 2026-10-01: `obLost` (ажил хуудсанд олдоогүй сарын задаргаа) ч мөн — урьд нь
-         задаргаа нь чимээгүй хаягдаж батлалт АМЖИЛТТАЙ болдог байв. `grpSkipped` БИШ:
-         бүлгийн мөр санаатай хөндөгдөхгүй (`savePrep`-ийн ⚠️). */
-      /* ⚠️ 2026-10-12 (аудит №8): `resDropped` (мужаас гадуурх сарын нөөц ХАЯГДАХ) ч батлах горимд ХААЛТ — урьд нь зөвхөн
-         `errList`-д анхааруулга болж, хяналтын цонх `onDone`-оор хаагдахад тэр жагсаалт дамжихгүй тул батлагч хэзээ ч
-         хардаггүй байв (саналын хэсэг чимээгүй алга). Мессеж нь батлагчид ЮУ ХИЙХИЙГ хэлнэ: буцааж, зохиогч засна. */
       if (approvalMode && (unbal || resSkipped || obLost || resDropped || (rfUnknown && obResDraft.size > 0))) {
         const why: string[] = [];
         if (unbal) why.push(tr('{0} ажлын сарын задаргааны нийлбэр нийт обьёмтой тэнцэхгүй', num(unbal)));
         if (resSkipped || rfUnknown) why.push(tr('сарын хүн хүч/машины талбар шалгагдсангүй эсвэл алга'));
         if (obLost) why.push(tr('{0} ажил·блокийн сарын задаргааны ажил хуудсанд олдсонгүй', num(obLost)));
         if (resDropped) why.push(tr('{0} ажил·блокийн мужаас гадуурх сарын хүн хүч/машин хаягдах байсан', num(resDropped)));
-        /* ⚠️ 2026-10-12 (аудит №8): тэнцээгүй/ажил олдоогүй саналыг батлагч ЗАСАХГҮЙ — «Буцаах» зааврыг ил хэлнэ */
         setErr(tr('Батлах боломжгүй — {0}. Эх хуудсанд юу ч бичигдсэнгүй; илгээлт хүлээгдэж буй хэвээр. Буцааж, зохиогч дахин тэнцүүлнэ.', why.join(' · ')));
         return false;
       }
@@ -3320,22 +2135,6 @@ export function Huvaari({
         setNote(tr('Өөрчлөлт олдсонгүй — хуваарь хэвээрээ.'));
         return true;
       }
-      /*
-       * ⚠️ АГШИН СОЛИГДСОН ЭСЭХ (2026-08-29). «Гүйцэтгэл бөглөх» нийтлэх бүрд
-       * хуудсыг БҮТНЭЭР шинэ хуулбар болгож нэмдэг тул энд ачаалсан OBJECTID-ууд
-       * ХУУЧИН хуулбарынх болж болно. Тэр OID руу бичвэл огноо нь хаягдсан
-       * хуулбарт чимээгүй үлдэж, дараагийн нийтлэлд ч алга болно — төлөвлөлтийн
-       * бүхэл сесс алдагдана. Тиймээс хадгалахын өмнө СҮҮЛИЙН агшныг дахин
-       * татаж, мөр бүрийг (№ + ажлын нэр)-ээр шинэ OID руу зөөнө.
-       */
-      /*
-       * ⚠️ 2026-10-09: ГҮЙЦЭТГЭЛИЙН АРХИВЛАЛТ ЯВЖ БАЙХАД БИЧИХГҮЙ (батлах ба энгийн хадгалалт). Архивлалт хуудсыг шинэ
-       *    жааз болгон хуулдаг тул тэр зуур дахин татсан агшин (`fresh`) хуучин жааз болж, огноо архивласан хуулбарт
-       *    чимээгүй бичигдэх байв (батлах горимын бичсэний дараах `frameIdOf` шалгалт зөвхөн дараа нь илрүүлдэг).
-       *    `archivingBusy` уншиж чадахгүй бол ч ТАТГАЛЗАНА (fail-closed). Агшныг татахаас ӨМНӨ шалгана — эс бөгөөс
-       *    архивлалт дуусахаас өмнө татсан хуучин агшин руу бичигдэнэ.
-       */
-      /* ⚠️ 2026-10-12 (A4): шалгалт ФУНКЦ болов — доор `loadRows`-ийн (олон секунд) ДАРАА, бичихийн яг өмнө ДАХИН дуудна */
       const archGate = async (): Promise<boolean> => {
         let arch: { who: string; at: number } | null;
         try {
@@ -3349,10 +2148,6 @@ export function Huvaari({
             arch.who || '—', new Date(arch.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })));
           return false;
         }
-        /* ⚠️ 2026-10-12 (дарааллын аудит): НЭМЭЛТ АЖЛЫН БУУЛГАЛТ ЯВЖ БАЙХАД ч бичихгүй (`ajilBatlah.ajilApplyBusyFor` —
-           `materializeInner`-ийн түгжээ). Буулгалт хуудсыг БҮТЭН шинэ жаазаар солидог тул архивлалттай ижил: энд
-           татсан агшин хуучин жааз болж, огноо булагдсан хуулбарт суух байв. `ajilApply.busyGate` нь хуваарийн
-           батлагчийн түгжээг хардаг (нөгөө чиглэл) — одоо хоёр чиглэлд тэгш. Уншилт унавал ТАТГАЛЗАНА (fail-closed). */
         let aj: { who: string } | null;
         try {
           aj = await ajilApplyBusyFor(pkg.key);
@@ -3367,34 +2162,16 @@ export function Huvaari({
         return true;
       };
       if (!(await archGate())) return false;
-      /* ⚠️ 2026-10-09: нөгөө табын илгээлтийн бодит огноо · нөөцийн түгжээ — СЕРВЕРЭЭС дахин (`xLockCheck`-ийн ⚠️) */
-      /* ⚠️ 2026-10-09 (аудит №6): БАТЛАХ горимд ШАЛГАХГҮЙ — хоёр төрлийн (гэрээ/төлөвлөгөө) илгээлт ижил мөрийн
-         бодит огноо/нөөц агуулбал хоёулаа бие биеэ түгжиж МӨНХӨД батлагдахгүй байв. Илгээх үеийн хаалт
-         (`sendForApproval`) ба `payloadToDrafts`-ийн `base` ↔ сервер тулгалт хангалттай. */
       if (!approvalMode) {
         const why = await xLockCheck();
         if (why) { setErr(why); return false; }
       }
-      /* ⚠️ 2026-10-12 (аудит №8): БИЧИХ зам — `strict` (тасарсан/шалгагдаагүй жаазыг хүлээн авахгүй, шиднэ). Урьд нь
-         уншилтын замаар татдаг тул тасарсан өдөрт ӨМНӨХ өдрийн жааз (`truncated`) ирж, огноо хуучин жаазад бичигдэх байв. */
       const fresh = await loadRows(pkg, sc, undefined, undefined, { strict: true });
       let remapped = 0;
       let lost = 0;
-      /* ⚠️ 2026-10-06: алдагдсан мөрийн ХУУЧИН oid — тэдний ноорог ЦЭВЭРЛЭГДЭХГҮЙ (доорх ⚠️) */
       const lostOids = new Set<number>();
-      /* ⚠️ Жааз солигдсоныг ЭХНИЙ мөрөөр ЭСВЭЛ бичих oid-ын аль нэг нь шинэ агшинд
-         алга болсноор мэднэ (2026-09-25 аудит). */
       const freshOids = new Set(fresh.rows.map((r) => r.oid));
       if (fresh.rows[0]?.oid !== rows[0]?.oid || upd.some((a) => !freshOids.has(a[sc.f.oid] as number))) {
-        /* ⚠️ `remapOids` (эцэг бүлгийн зам › № ¦ нэр, давхардлыг дарааллаар) — 2026-09-25
-           аудит: урьд нь (№ ¦ нэр) + ОЙРЫН ИНДЕКС гэсэн сул түлхүүр ижил нэртэй өөр
-           блокийн мөр рүү огноо зөөдөг байв. «Шинэчлэх» замтай НЭГ дүрэм. */
-        /* ⚠️ 2026-10-09: НӨӨЦ ЗУРАГЛАЛ — `remapOids` (эцэг бүлгийн зам › № ¦ нэр) олоогүй мөрийг ажлын КОДООР
-           (`des`, жааз солигдоход хадгалагддаг — `PlanPayload.keys`/`remapPayload`-ийн ижил түлхүүр), код
-           байхгүй бол № + нэрээр — ЗӨВХӨН хоёр талдаа ГАНЦ таарал байвал. Урьд нь бүлэг шилжсэн/нэр нь
-           засагдсан мөр «алдагдсан» болж ноорог нь мөнхөд өнчирдөг байв.
-           ⚠️ 2026-10-09 (2): дүрэм `savePrep.remapRowsFull`-д — хуваалцсан ноорогийн жааз солих зөөлт ба
-           нэмэлт ажлын «Шинэчлэх» ИЖИЛ зураглалыг хэрэглэнэ. */
         const { map } = remapRowsFull(rows, fresh.rows);
         const moved2: Record<string, unknown>[] = [];
         for (const a of upd) {
@@ -3403,9 +2180,6 @@ export function Huvaari({
           moved2.push({ ...a, [sc.f.oid]: nk });
           remapped += 1;
         }
-        /* ⚠️ БАТЛАХ ГОРИМД алдагдсан мөртэй бол ЮУ Ч БИЧИХГҮЙ (2026-09-25 аудит) — урьд нь
-           үлдсэнийг бичээд «батлагдлаа» гэж үргэлжилж, алдагдсан мөрийн санал ор мөргүй
-           алга болдог байв. */
         if (lost && approvalMode) {
           setErr(tr('{0} мөр хуудасны шинэ хувилбарт олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Эх хуудсанд юу ч бичигдсэнгүй; буцааж, зохиогч дахин илгээнэ.', num(lost)));
           return false;
@@ -3413,73 +2187,27 @@ export function Huvaari({
         upd.length = 0;
         upd.push(...moved2);
       }
-      /*
-       * ⚠️ 2026-10-12 (A4): АРХИВЛАЛТЫГ ДАХИН ШАЛГАНА — дээрх шалгалт `loadRows`-ээс (олон секунд) ӨМНӨ нэг удаа л
-       *    байсан тул энэ завсарт гүйцэтгэлийн батлалт «архивлаж байна» тэмдэг тавиад жаазаа угсарч эхэлбэл огноо
-       *    манай бичилтээр ХУУЧИН (архивлагдаж буй) жаазад суугаад шинэ жаазад хуулагдалгүй алга болдог байв.
-       *    Огноо бичих үед л (сарын обьём нь өөр үйлчилгээ). Батлах горимд хагас бичилтийн тэмдэг (`markPlanPartial`)
-       *    үүнээс ХОЙШ тавигддаг тул энд зогсоход цэвэрлэх зүйлгүй.
-       */
       if (upd.length && !(await archGate())) return false;
-      /*
-       * ⚠️ БИЧИХИЙН ЯГ ӨМНӨ ИЛГЭЭЛТИЙН ТӨЛВИЙГ ДАХИН УНШИНА (2026-10-01, хэрэглэгч: бүгдийг
-       *    зас). `decide` түгжсэнээс хойш (бэлтгэл · агшин дахин татах · сүлжээ удаан,
-       *    түгжээ 10 мин) зохиогч ТАТАХ эсвэл өөр батлагч ШИЙДЭХ боломжтой байсан — тэр
-       *    үед «татсан/буцаагдсан» санал эх хуудсанд суудаг байв. `approveGuard` нь
-       *    шалтгааныг ИЛ хэлнэ; эх хуудас ба сарын обьём ХОЁУЛАА бичигдэхгүй (батлах
-       *    эффект түгжээг тайлж, урьдчилан харалт руу буцаана).
-       */
       if (approvalMode) {
         const head = await loadSubmissionHead(approving);
-        /* ⚠️ 2026-10-12 (аудит №8): түгжээний агшинтай (`claimAtRef`) — ӨӨР цонхны ижил батлагчийн түгжээг «минийх» гэхгүй */
         const why = approveGuard(head, approving, user?.username ?? '', claimAtRef.current ?? undefined);
         if (why) { setErr(why); return false; }
-        /* ⚠️ 2026-10-12 (аудит №8, HIGH): ТЭМДЭГ АЛЬ ХЭДИЙН БАЙНА (өмнөх сешн/цонх/батлагч бичсэн) → `wroteSomeRef`-ийг
-           ЭНД тарина. Урьд нь `wroteSomeRef` зөвхөн ЭНЭ сешний бичилтээр тавигддаг тул хуудас сэргээсний дараах дахин
-           оролдлого (`markPlanPartial` унах · `written === 0`) өмнөх сешний хагас бичилтийн тэмдгийг АРИЛГАЖ, эх хуудсанд
-           суусан саналыг буцаах/татах боломжтой болгодог байв. Энэ оролдлогоос ӨМНӨ байсан тэмдгийг хэзээ ч арилгахгүй.
-           ⚠️ `partialRef`-ийг ЭНД тавихгүй — тэр нь `markPlanPartial` амжилттай болсны ДАРАА л (`huvaariBatlah.check`-ийн дараалал). */
         if (head && partialBy(head.status, head.reason) != null) wroteSomeRef.current = approving;
-        /* ⚠️ ХАГАС БИЧИЛТИЙН ТЭМДЭГ — АНХНЫ бичилтээс ӨМНӨ (2026-10-01). Урьд нь `partialRef`
-           зөвхөн «огноо + сарын обьём» хоёулаа бичигдэх үед, огноо бичигдсэний ДАРАА тавигдаж,
-           `decidePlan`-аас ӨМНӨ арилдаг байв: бүгд бичигдээд `decidePlan` унавал (эсвэл зөвхөн
-           огноотой санал) батлагч «Буцаах» дарж, эх хуудсанд суусан саналыг буцаадаг байв.
-           Одоо: сервер дээрх тэмдэг (`markPlanPartial`, хуудас сэргээсэн ч, `CLAIM_TTL`-ийн
-           дараа ч хэвээр) + `partialRef` хоёулаа ЭНД тавигдаж, ЗӨВХӨН `decidePlan(approve)`
-           амжилттай болоход арилна. Тэмдэг бичигдээгүй бол ЮУ Ч бичихгүй (fail-closed). */
         if (upd.length || obEdits) {
           const mk = await markPlanPartial({ oid: approving, approver: user?.username ?? '', claimAt: claimAtRef.current ?? undefined });
-          /* ⚠️ 2026-10-12 (аудит №8): сервер дээр тэмдэг АЛЬ ХЭДИЙН байсан (`existing`) — дээрх толгойн уншилтаас хойш суусан ч
-             энэ оролдлогынх биш тул арилгахгүй (`wroteSomeRef`). */
           if (mk.existing) wroteSomeRef.current = approving;
           if (!mk.ok) {
-            /* ⚠️ 2026-10-08: тэмдгийн бичилт timeout-оор «унасан» ч сервер дээр СУУСАН байж болно —
-               эх хуудсанд юу ч бичээгүй тул ӨӨРИЙН тэмдгийг арилгана; эс бөгөөс буцаах/татах
-               (`decidePlan`/`withdrawPlan`) юу ч бичигдээгүй атлаа мөнхөд хаагддаг байв. */
-            /* ⚠️ 2026-10-11 (аудит №7): ӨМНӨХ оролдлогод бичигдсэн (`wroteSomeRef`) бол тэмдгийг АРИЛГАХГҮЙ — дахин
-               тэмдэглэх үеийн уналт нь «юу ч бичигдээгүй» гэсэн үг биш. */
             if (wroteSomeRef.current === approving) {
               setErr(tr('Хагас бичилтийн хамгаалалтын тэмдэг дахин хадгалагдсангүй ({0}) — өмнөх оролдлогод эх хуудсанд бичигдсэн тул буцаах боломжгүй; «Батлах»-ыг дахин дарж дуусгана уу.', mk.error ?? ''));
               return false;
             }
-            /* ⚠️ 2026-10-12 (аудит №8): ЭЗНИЙ ХҮРЭЭТЭЙ арилгалт (`clearPlanPartial(oid, owner)`) — зөвхөн МИНИЙ тэмдгийг
-               (урьд нь толгой уншиж харьцуулдаг байсан — уншилт ба арилгалтын завсарт өөр батлагчийн тэмдэг суувал түүнийг
-               арилгах байв). Өмнө байсан тэмдэг дээрх `wroteSomeRef` салаагаар энд хүрэхгүй. */
             await clearPlanPartial(approving, user?.username ?? '');
             setErr(tr('Хагас бичилтийн хамгаалалтын тэмдэг хадгалагдсангүй ({0}) — эх хуудсанд юу ч бичигдсэнгүй; дахин оролдоно уу.', mk.error ?? ''));
             return false;
           }
           partialRef.current = approving;
-          /* ⚠️ 2026-10-11 (аудит №7): `lostWriteRef`-ийг ЭНД тэглэхгүй — дахин оролдлогын эхэнд тэглэвэл өмнөх оролдлогын
-             «хариу алдагдсан» баримт устаж, энэ оролдлого `written === 0`-ээр унахад тэмдэг арилдаг байв (`wroteSomeRef`-ийн ⚠️). */
         }
       }
-      /*
-       * ⚠️ 2026-10-12 (аудит №8): ТҮГЖЭЭ СУНГАХ — эх хуудсанд бичих алхам БҮРИЙН ӨМНӨ (огноо · сарын обьём). Урьд нь түгжээ
-       *    `decide`-д нэг л удаа авагдаж, 1,400 мөрийн бичилт + сарын обьём `CLAIM_TTL` (10 мин)-ээс удвал түгжээ бичилтийн
-       *    ДУНД дуусч, өөр батлагч түгжиж зэрэг бичих боломжтой байв. Сунгалт унавал ЦЭВЭРХЭН зогсоно: юу ч бичихгүй,
-       *    хагас бичилтийн тэмдэг ҮЛДЭНЭ (буцаах/татах хаалттай хэвээр — аюулгүй тал), батлагч дахин «Батлах» дарна.
-       */
       const renewClaim = async (step: 'dates' | 'obyem'): Promise<boolean> => {
         if (!approvalMode || approving == null) return true;
         let rn: { ok: boolean; at?: number; error?: string };
@@ -3496,51 +2224,25 @@ export function Huvaari({
         setErr(tr('Батлах түгжээг сунгаж чадсангүй ({0}) — энэ алхамд эх хуудсанд юу ч бичигдсэнгүй; илгээлт «Хүлээгдэж буй» хэвээр. Хуудсаа шинэчлээд «Батлах»-ыг дахин дарна уу.', rn.error ?? '—'));
         return false;
       };
-      /** ⚠️ 2026-10-09: бичихийн өмнөх жааз (`frameIdOf`) — батлах горимд бичсэний дараа тулгана (доорх ⚠️) */
       const frame0 = frameIdOf(fresh);
       if (upd.length) {
         if (!(await renewClaim('dates'))) return false;
         setProgress(tr('Огноо бичиж байна (1/{0})… {1} мөр', String(steps), num(upd.length)));
         try {
           await applyUpdates(pkg, upd);
-          /* ⚠️ 2026-10-11 (аудит №7): ≥1 мөр суусан — энэ илгээлтийн дараагийн оролдлогод тэмдэг арилгахгүй (`wroteSomeRef`) */
           if (approvalMode) wroteSomeRef.current = approving;
         } catch (e) {
-          /* ⚠️ НЭГ Ч мөр бичигдээгүй (эхний 500-ийн багц бүтнээрээ буцсан) бол хагас бичилт
-             БИШ — тэмдгийг арилгана (2026-10-01): эс бөгөөс бичилт дахин дахин унахад санал
-             буцаах/татах боломжгүй мөнхөд түгжигддэг байв. Нэг ч мөр бичигдсэн бол тэмдэг ҮЛДЭНЭ. */
-          /* ⚠️ 2026-10-08: `written === 0` нь ЗӨВХӨН серверийн ТОДОРХОЙ татгалзалд «юу ч бичигдээгүй»
-             гэсэн үг — хариу алдагдсан (`isLostWrite`: timeout · TypeError · кодгүй ArcGIS алдаа) бол
-             эхний 500 мөр суусан байж болно: тэмдэг ҮЛДЭНЭ, батлагчид «хариу ирээгүй» гэж хэлнэ. */
-          /* ⚠️ 2026-10-11 (аудит №7): бичигдсэн багц (`written > 0`) эсвэл хариу алдагдсан бол `wroteSomeRef` — ДАРААГИЙН
-             оролдлогын `written === 0` уналт тэмдгийг арилгаж чадахгүй (өмнөх оролдлогын мөрүүд эх хуудсанд суусан). */
           if (approvalMode && (((e as { written?: number })?.written ?? 0) > 0 || isLostWrite(e))) wroteSomeRef.current = approving;
-          /* ⚠️ 2026-10-12 (аудит №8): уналтын алхам · бичигдсэн/нийт мөр — батлах эффектийн `partialMsg`-д */
           if (approvalMode) failStepRef.current = { oid: approving, step: 'dates', written: (e as { written?: number })?.written, total: upd.length };
           if (approvalMode && (e as { written?: number })?.written === 0 && partialRef.current === approving) {
             if (isLostWrite(e)) lostWriteRef.current = approving;
             else if (wroteSomeRef.current === approving) { /* өмнөх оролдлого бичсэн — тэмдэг үлдэнэ */ }
-            /* ⚠️ 2026-10-12: эзний хүрээтэй арилгалт (дээрх `markPlanPartial`-ийн ⚠️) */
             else if (await clearPlanPartial(approving, user?.username ?? '')) partialRef.current = null;
           }
           throw e;
         }
-        /*
-         * ⚠️ 2026-10-09: БИЧСЭНИЙ ДАРАА ЖААЗ СОЛИГДСОН ЭСЭХ (батлах горим; `useObyem`-ийн `frameIdOf` шалгалттай ижил).
-         *    `fresh` татсанаас `applyUpdates` дуусах хооронд архивт шинэ жааз орвол (гүйцэтгэл нийтлэх · нэмэлт ажил ·
-         *    «Улсын комисс») огноо ХУУЧИН (архивласан) жаазад бичигдэж, «батлагдсан» атлаа хуудсанд харагдахгүй байв.
-         *    Зөрвөл эсвэл шалгаж чадахгүй бол `decidePlan` ДУУДАХГҮЙ: `false` буцааж (ноорог · хагас бичилтийн тэмдэг
-         *    `partialRef`/`markPlanPartial` ҮЛДЭНЭ, түгжээ тайлагдахгүй), дахин «Батлах» нь шинэ жааз руу зөөж бичнэ
-         *    (ижил утга дахин бичих нь аюулгүй). Сарын обьём (`obEdits`) ЭНЭ ОРОЛДЛОГОД бичигдэхгүй — дахин оролдлогод
-         *    нэг л удаа (давхар `adds` үүсгэхгүй).
-         */
-        /* ⚠️ 2026-10-12 (A4): ЭНГИЙН хадгалалтад Ч шалгана (урьд нь зөвхөн батлах горимд) — архивлалт энэ завсарт шинэ
-           жааз бичсэн бол огноо хуучин жаазад үлдэж хуудсанд харагдахгүй алга болдог байв. Энгийн горимд ноорог
-           ЦЭВЭРЛЭГДЭХГҮЙ (`false` буцаана) — дахин хадгалалт нь шинэ жааз руу зөөж бичнэ (ижил утга — аюулгүй). */
         {
           let moved: boolean | null = null;
-          /* ⚠️ 2026-10-12 (аудит №8): `strict` — тасарсан жаазын оронд хуучин агшин ирвэл «солигдоогүй» гэж андуурахгүй (шиднэ → `null`) */
-          /* ⚠️ 2026-10-12 (merge): `strict` (irgediin-hurteemj) + энгийн хадгалалтын салаа (bagtsiin-medeelel, A4) — хоёулаа */
           try { moved = frameIdOf(await loadRows(pkg, sc, undefined, undefined, { strict: true })) !== frame0; } catch { moved = null; }
           if (moved !== false && approvalMode) {
             frameMovedRef.current = approving;
@@ -3560,20 +2262,10 @@ export function Huvaari({
 
       /*
        * ── САРЫН ОБЬЁМ — ТУСДАА ҮЙЛЧИЛГЭЭ (бичилт; бэлтгэл нь дээр) ─────
-       * ⚠️ Хуваарийн огноо бичигдсэний ДАРАА: задаргаа нь огноон дээр
-       *    тогтдог тул огноо нь бичигдээгүй байхад задаргаа үлдвэл хоёр
-       *    эх сурвалж зөрнө.
        */
       if (obEdits) {
-        /* ⚠️ ДАВХАРДСАН мөрийн ИЛҮҮДЛИЙГ хамт арилгана (2026-09-08): `dkey`-д
-           сангийн unique индекс байхгүй тул зэрэг хадгалалт ижил түлхүүртэй
-           хоёр мөр үлдээж чадна. `buildEdits` нь `obOids`-оос ЗӨВХӨН нэг OID
-           авдаг тул илүүдэл нь өөрөө хэзээ ч устахгүй. */
-        /* ⚠️ 2026-10-08: `deletes`-т нийлүүлэхгүй — `PlanEdits.dups` (lib давхардлыг ЭХЛЭЭД устгана, дараалал тэнд) */
         obEdits.dups = obDups;
         let r2: [number, number, number];
-        /* ⚠️ 2026-10-12 (аудит №8): сарын обьёмын ӨМНӨ түгжээ сунгаж (`renewClaim`-ийн ⚠️), төлвийг ДАХИН шалгана
-           (`approveGuard`) — огнооны бичилтийн зуур зохиогч/өөр батлагч хөдөлсөн бол обьём бичихгүй (тэмдэг үлдэнэ). */
         if (approvalMode) {
           if (!(await renewClaim('obyem'))) return false;
           const head2 = await loadSubmissionHead(approving).catch(() => null);
@@ -3587,29 +2279,16 @@ export function Huvaari({
         setProgress(tr('Сарын обьём бичиж байна (2/{0})…', String(steps)));
         try {
           r2 = await applyPlanEdits(obEdits);
-          /* ⚠️ 2026-10-11 (аудит №7): сарын обьём суусан — `wroteSomeRef` (огнооны замын ⚠️) */
           if (approvalMode && r2[0] + r2[1] + r2[2] > 0) wroteSomeRef.current = approving;
         } catch (e) {
-          /* ⚠️ 2026-09-29 аудит: огноо БИЧИГДСЭН, задаргаа ДУНДАА унасан (жиш. 2 дахь
-             500-ийн багц) — `rows`/`obOids` сэргээгээгүй бол дахин «Хадгалах»-д амжсан
-             `adds` ДАХИН нэмэгдэж `dkey` давхардана (сангийн unique индекс алга).
-             Эх мөр ба задаргааг серверээс дахин татаад л алдааг дамжуулна. */
-          /* ⚠️ 2026-10-05: огнооны замын (дээрх) ижил дүрэм — огноо БИЧИГДЭЭГҮЙ (`upd` хоосон) ба
-             сарын обьёмоос НЭГ Ч мөр бичигдээгүй (`written === 0`) бол хагас бичилт БИШ: тэмдгийг
-             арилгана, эс бөгөөс санал буцаах/татах боломжгүй түгжигддэг байв. */
-          /* ⚠️ 2026-10-08: огнооны замын ижил ангилал — хариу алдагдсан бол тэмдэг үлдэнэ */
-          /* ⚠️ 2026-10-11 (аудит №7): огнооны замын ижил `wroteSomeRef` дүрэм — өмнөх/энэ оролдлогод юу нэгэн суусан бол тэмдэг үлдэнэ */
           if (approvalMode && (((e as { written?: number })?.written ?? 0) > 0 || isLostWrite(e))) wroteSomeRef.current = approving;
-          /* ⚠️ 2026-10-12 (аудит №8): уналтын алхам · бичигдсэн/нийт мөр (`failStepRef`-ийн ⚠️) */
           if (approvalMode) {
             failStepRef.current = { oid: approving, step: 'obyem', written: (e as { written?: number })?.written,
-              /* ⚠️ lib-ийн `PlanWriteErr.total` (давхардлын устгал орсон) байвал түүгээр */
               total: (e as { total?: number })?.total ?? (obEdits.adds.length + obEdits.updates.length + obEdits.deletes.length) };
           }
           if (approvalMode && !upd.length && (e as { written?: number })?.written === 0 && partialRef.current === approving) {
             if (isLostWrite(e)) lostWriteRef.current = approving;
             else if (wroteSomeRef.current === approving) { /* өмнөх оролдлого бичсэн — тэмдэг үлдэнэ */ }
-            /* ⚠️ 2026-10-12: эзний хүрээтэй арилгалт */
             else if (await clearPlanPartial(approving, user?.username ?? '')) partialRef.current = null;
           }
           try {
@@ -3622,36 +2301,18 @@ export function Huvaari({
         }
         obN = r2[0] + r2[1] + r2[2];
       }
-      /* ⚠️ 2026-10-01: `partialRef`-ийг ЭНД АРИЛГАХГҮЙ — бүх хэсэг бичигдсэн ч `decidePlan`
-         унавал санал эх хуудсанд суусан атлаа `pending` хэвээр; батлах эффект `decidePlan`
-         амжилттай болсны ДАРАА л арилгана. */
 
-      /* ⚠️ 2026-10-06: БИЧИЛТИЙН ДАРААХ дахин уншилт ӨӨРИЙН `try`-д. Урьд нь энд унавал гадна
-         `catch` нь `save()`-ийг `false` болгож, бүх зүйл АЛЬ ХЭДИЙН бичигдсэн атлаа ноорог
-         үлдэж, батлах эффект «эх хуудсанд бичигдсэнгүй» гэж худал мэдээлдэг байв. Одоо
-         ноорог цэвэрлэгдэж `true` буцна; хуудас хуучирсныг л ил хэлнэ. */
       let reloadFail = false;
       setProgress(tr('Хуудсыг дахин уншиж байна…'));
       try {
         const r = await loadRows(pkg, sc);
         setRows(r.rows);
       } catch { reloadFail = true; }
-      /* ⚠️ 2026-10-06: ШИНЭ АГШИНД ОЛДООГҮЙ мөрийн (`lostOids`) ноорог ҮЛДЭНЭ — бичигдээгүй
-         ажлыг устгавал хүн юуг дахин оруулахаа мэдэхгүй (урьд нь `took*`-оор хамт арилдаг байв). */
       const clearable = (k: number) => !lostOids.has(k);
       setDraft((m0) => { const m = new Map(m0); for (const k of tookD) if (clearable(k)) m.delete(k); return m; });
       setHam((m0) => { const m = new Map(m0); for (const k of tookH) if (clearable(k)) m.delete(k); return m; });
       setADraft((m0) => { const m = new Map(m0); for (const k of tookA) if (clearable(k)) m.delete(k); return m; });
       setResDraft((m0) => { const m = new Map(m0); for (const k of tookR) if (clearable(k)) m.delete(k); return m; });
-      /* ⚠️ Обьёмын ноорогийг ЦЭВЭРЛЭЖ, задаргааг СЕРВЕРЭЭС дахин татна —
-         бичилтийн дараа ObjectID шинээр үүссэн тул хуучин `obOids` хуучирсан.
-         ⚠️ ТЭНЦЭЭГҮЙ задаргааг ҮЛДЭЭНЭ (2026-09-08): бичигдээгүй атлаа
-            ноорогоос устгавал хүн юуг дахин бөглөхөө мэдэхгүй үлдэнэ. */
-      /* ⚠️ 2026-10-09 (аудит №6): зөвхөн `tookOb`-д орсон (бэлтгэлд өгсөн) түлхүүр цэвэрлэгдэнэ — async завсарт орсон
-         хамтрагчийн/өөрийн шинэ нүд ҮЛДЭНЭ (`tookD/tookH`-ийн хэв маяг, дээрх ⚠️). */
-      /* ⚠️ 2026-10-11 (аудит №7): тэнцээгүй эсэхийг `savePrep`-ийн ШИЙДСЭН түлхүүрээр (`unbalKeys`) — урьд нь энд
-         `base`-ээс `des` → мөр-ийг «сүүлийнх ялна» гэж дахин бодож, давхардсан кодонд `savePrep.firstByDes` («эхнийх
-         ялна»)-тай зөрж, бичигдээгүй задаргаа ноорогоос устах/бичигдсэн нь үлдэх байв (`setObResDraft`-ийн ижил хэв маяг). */
       setObDraft((m0) => {
         const m = new Map<string, Map<string, number>>();
         for (const [k, months] of m0) if (!tookOb.has(k) || unbalKeys.has(k)) m.set(k, months);
@@ -3677,12 +2338,8 @@ export function Huvaari({
         : obN
           ? tr('{0} ажлын хуваарь · {1} сарын обьём хадгалагдлаа', num(upd.length), num(obN))
           : tr('{0} ажлын хуваарь хадгалагдлаа', num(upd.length)));
-      /* ⚠️ Алдаануудыг НЭГТГЭЖ нэг удаа (2026-09-24 аудит) — дараалсан `setErr`-д
-         сүүлийнх л үлдэж, өмнөх (алдагдсан мөр, тэнцээгүй задаргаа) далдлагддаг байв. */
-      /* ⚠️ 2026-10-08: ЖАГСААЛТ (`errList`) — « · »-ээр нийлүүлсэн нэг мөр биш; мөр нэрлэсэн зүйлд `oid` (үсрэх холбоос) */
       const errs: { msg: string; oid?: number }[] = [];
       if (lost) {
-        /* ⚠️ 2026-10-06: аль мөр гэдгийг «№ · ажил»-аар нэрлэнэ — ноорог нь үлдсэн (дээрх ⚠️) */
         errs.push({ msg: tr('{0} мөр хуудасны шинэ хувилбарт олдсонгүй — тэдгээрийн хуваарь хадгалагдсангүй.', num(lost)) });
         for (const o of lostOids) {
           const r0 = rows.find((x) => x.oid === o);
@@ -3690,37 +2347,27 @@ export function Huvaari({
         }
       }
       if (reloadFail) errs.push({ msg: tr('Хадгалагдсан боловч хуудсыг дахин уншиж чадсангүй — хуудсаа сэргээнэ үү.') });
-      /* ⚠️ 2026-10-08: хадгалагдсан — буцаалтын агшин хүчингүй */
       setUndoSnap(null); setChainN(0);
-      /* ⚠️ Тэнцээгүй задаргааг ИЛ хэлнэ — эс бөгөөс «хадгалагдлаа» гэсэн
-         мэдэгдэл нь бичигдээгүй обьёмыг далдална. */
       if (unbal) {
         errs.push({ msg: tr('{0} ажлын сарын задаргааны нийлбэр нийт обьёмтой тэнцэхгүй тул хадгалагдсангүй — хуваарь шилжихэд мужаас гарсан сарууд хасагдсан байна. Тухайн ажлын цонхыг нээж дахин бөглөнө үү.', num(unbal)) });
       }
-      /* ⚠️ Талбар байхгүй бол ЧИМЭЭГҮЙ алгасахгүй — админ AGOL дээр нэмнэ (2026-09-24) */
       if (resSkipped && rfUnknown) {
         errs.push({ msg: tr('Сарын хүснэгтийн хүн хүч/машин талбарыг шалгаж чадсангүй — {0} ажил·блокийн сарын нөөц хадгалагдсангүй. Дахин оролдоно уу.', num(resSkipped)) });
       } else if (resSkipped) {
-        /* ⚠️ 2026-10-23 (UX аудит X2/X3): AGOL хасагдсан · талбарын техник нэрийг хэрэглэгчид харуулахгүй */
           errs.push({ msg: tr('{0} ажил·блокийн сарын хүн хүч/машин механизм хадгалагдсангүй — сарын хүснэгтэд энэ талбар алга. Админд мэдэгдэнэ үү.', num(resSkipped)) });
       }
-      /* ⚠️ Мужаас гадуурх сарын нөөц хаягдсаныг ил хэлнэ (2026-09-24 аудит) */
       if (resDropped) {
         errs.push({ msg: tr('{0} ажил·блокийн мужаас гадуурх сарын хүн хүч/машин хаягдлаа — обьёмгүй сард мөр байхгүй.', num(resDropped)) });
       }
       if (obLost) {
         errs.push({ msg: tr('{0} ажил·блокийн сарын задаргааны ажил хуудсанд олдсонгүй — тэр задаргаа хадгалагдсангүй, дахин бөглөнө үү.', num(obLost)) });
       }
-      /* ⚠️ 2026-10-01: бүлгийн сарын ноорог алгасагдсаныг ил хэлнэ (`savePrep`-ийн ⚠️) */
       if (grpSkipped) {
         errs.push({ msg: tr('{0} бүлгийн сарын задаргаа бичигдсэнгүй — сарын обьём бүлэгт биш, доторх ажил тус бүрт хуваана.', num(grpSkipped)) });
       }
       if (errs.length) setErrList(errs);
       return true;
     } catch (e) {
-      /* ⚠️ 2026-10-09: хариу АЛДАГДСАН (`isLostWrite`) бол «бичигдсэнгүй» гэж худал хэлэхгүй — үр дүн тодорхойгүй.
-         Тодорхой татгалзал (403 · хугацаа дууссан токен · `success:false`) — өөрийн мессеж. Батлах горимд хариу
-         алдагдсан (`lostWriteRef`) бол батлах эффект `lostWriteMsg`-ийг өөрөө нэмдэг тул энд давхардуулахгүй. */
       const lostHere = isLostWrite(e) && !(approving != null && lostWriteRef.current === approving);
       setErr(lostHere
         ? tr('Хариу ирээгүй — эх хуудсанд бичигдсэн эсэх нь тодорхойгүй (үр дүн тодорхойгүй: {0}). Хуудсаа шинэчилж шалгаад шаардлагатай бол дахин хадгална уу.', friendlyError(e))
@@ -3734,48 +2381,15 @@ export function Huvaari({
     setBusy, setErr, setNote, setDraft, setHam, setADraft, setResDraft, setRows, setObPlan, setObRes, setObOids, setObDups, setObState, setObDraft, setObResDraft, setProgress, setErrList, setUndoSnap, setChainN]);
 
   /* ══════════════ БАТЛАХ УРСГАЛ ══════════════
-   * ⚠️ Гүйцэтгэгч ЗОХИОНО → «Батлуулах» → батлагч БАТАЛНА → тэр үед л эх
-   *    хуудсанд бичигдэнэ. Батлагдтал эх хуваарь ХӨДЛӨХГҮЙ тул тайлан,
-   *    хоцрогдлын дохио тогтвортой (2026-09-07, хэрэглэгчийн шийдвэр).
    */
 
-  /**
-   * ⚠️ ХОЦОРСОН ХАРИУГ ХАЯНА (2026-09-16 аудит). Урьд нь багц солигдоход
-   *    хуучин багцын хүсэлт `pending`-ийг ДАРЖ бичдэг байв: дараалалаас
-   *    үсрэхэд эхний багцын хариу зорилтот багцынхыг түрүүлж ирж, jump
-   *    эффект «аль хэдийн шийдвэрлэгдсэн» гэсэн ХУДАЛ алдаа өгдөг байлаа.
-   *    Одоо хүсэлт бүр дугаартай — сүүлийнхээс бусдын хариу үл тоомсорлогдоно.
-   *    Мөн эхлэхэд `flowReady`/`pending`-ийг ЦЭВЭРЛЭНЭ — jump эффект `null`-ийг
-   *    «хараахан ачаалаагүй» гэж уншдаг тул зөв хүлээнэ.
-   *
-   * ⚠️ tezu-bonu салбар ЯГ ИЖИЛ согогийг зэрэг зассан (багцын түлхүүрээр
-   *    хаах). Тэндхийн нэмэлт ойлголт: хоцорсон хариу нь зөвхөн худал алдаа
-   *    биш — хуанли Б-г, шийдвэрлэх цонх А-г харуулж, «Батлах» дарахад БУРУУ
-   *    илгээлт батлагддаг байв. Дугаараар хаах нь түлхүүрээс өргөн (ижил
-   *    багцын давхар дуудлагыг ч барина) тул ганц механизм үлдээв.
-   */
   const flowSeq = useRef(0);
   /** Сүүлд ачаалсан хүлээгдэж буй илгээлт (багцын түлхүүртэй) — алга болсныг илрүүлэхэд (2026-09-25) */
   const flowPendRef = useRef<{ key: string; oid: number | null }>({ key: '', oid: null });
-  /** ⚠️ 2026-10-12: сүүлийн `refreshFlow` АЛДААГААР (сүлжээ · токен) унасан — мөчлөг зөвхөн тэр үед дахин оролдоно
-      (хүснэгт үүсээгүй/эзэмшил гэх мэт админы шалтгааныг 30 с тутам дахин асууж баннерыг анивчуулахгүй) */
   const flowThrewRef = useRef(false);
-  /* ⚠️ `refetchServer` нь `rows`-оос хамаардаг тул шууд deps-д оруулбал мөр
-     солигдох бүрд урсгал дахин татагдана — ref-ээр уншина. (2026-09-30: `refetchServer`-ээс
-     ӨМНӨ зарлав — `refreshFlow` ч уншдаг; жинхэнэ утга нь `refetchServer`-ийн доорх
-     эффектээр тавигдана. Анхны утга нь зөвхөн mount-ын эффект ажиллах хүртэлх орлуулагч —
-     `refetchRef.current()` ямар ч зам дээр `await`-ийн ДАРАА л дуудагддаг.) */
   const refetchRef = useRef<(guard?: () => boolean) => Promise<{ rows: SheetRow[]; plan: PkgPlan; res: PkgRes }>>(
     async () => ({ rows: [], plan: new Map(), res: new Map() }),
   );
-  /**
-   * ⚠️ 2026-10-09 (аудит): АРЫН татлага (30 с мөчлөг · `refreshFlow`-ийн «илгээлт алга болов»). Хадгалах/илгээх
-   *    явж байвал (`busyNowRef`) ЭХЛЭХГҮЙ; эхэлсний дараа `busy` эхэлсэн/дууссан бол (`busyGenRef` солигдсон) үр
-   *    дүнг ХАЯНА — хадгалалтын шинэ `obOids`/`obPlan`-ыг хуучнаар дарахгүй (`busyGenRef`-ийн ⚠️).
-   */
-  /* ⚠️ 2026-10-09 (аудит №2): `true` — татлага БҮРЭН хийгдсэн (мөр + задаргаа state-д). `false` — эхлээгүй (`busy`)
-     эсвэл задаргааны шатанд хаягдсан (`refetchServer`-ийн `guard`). `STALE_REFETCH` шидэгдэж болно. Мөчлөг үүгээр
-     `pendingOther`-ийг ЗӨВХӨН амжилттай үед шинэчилнэ — эс бөгөөс дараагийн мөчлөг дахин оролдоно. */
   const refetchBg = useCallback(async (): Promise<boolean> => {
     if (busyNowRef.current) return false;
     const g = busyGenRef.current;
@@ -3784,43 +2398,28 @@ export function Huvaari({
     return ok();
   }, []);
   /** Хүлээгдэж буй илгээлт ба хүснэгтийн бэлэн байдлыг татна */
-  /* ⚠️ `noRefetch` — дуудагч мөрийг дөнгөж серверээс татсан/татах бол (батлах гинж,
-     татах) давхар ачаалахгүй (2026-09-25). */
-  /** ⚠️ 2026-10-26: илгээлтийн хуулбарыг тааруулах эрх (засах · батлах) — `refreshFlow`-ийн deps-ийг хөдөлгөхгүй ref */
   const subSyncOkRef = useLatest(status !== 'off' && (canEditRole || canApprove));
   const refreshFlow = useCallback(async (opt?: { noRefetch?: boolean }) => {
     const my = ++flowSeq.current;
     const key = pkg.key;
-    /* ⚠️ 2026-10-09: ТӨРӨЛ ч тулгана (`kindRef`) — таб солигдсоны дараа хоцорсон хариу нөгөө табын `pending`-ийг тавьдаг байв */
     const k0 = kind;
     const live = () => my === flowSeq.current && key === pkgKeyRef.current && k0 === kindRef.current;
-    /* ⚠️ 2026-09-25 аудит: ИЖИЛ багцын `pending`-ийг ачаалалт дуустал ҮЛДЭЭНЭ —
-       урьд нь `null` болгож, завсарт `locked`/хуваалцсан нооргийн хаалт түр
-       тайлагдаж (засвар · сэргээлт · «Батлуулах» идэвхждэг) байв. Өөр багцынхыг арилгана. */
     setFlowReady(null); setPending((p0) => (p0 && p0.pkgKey === key ? p0 : null)); setLastDecision(null);
     try {
       const st = await planTableState(status === 'off' || roleForUser(user?.username) === 'super');
       if (!live()) return;
       const ready = st.ok;
-      /* ⚠️ 2026-10-12: `st.why === 'error'` (порталын хайлт унасан) нь ч түр алдаа — мөчлөг дахин оролдоно */
       flowThrewRef.current = !ready && st.why === 'error';
-      /* ⚠️ `flowReady=true`-г `pending`-тэй НЭГ зурагдалтад тавина (2026-09-25,
-         хөтчийн туршилтаар илэрсэн): урьд нь `loadPending`-ээс ӨМНӨ тавьдаг тул
-         `flowReady=true, pending=null` гэсэн завсрын зурагдалт гарч, хяналтын
-         горим (ба `jump`) хүлээгдэж буй илгээлтийг «аль хэдийн шийдвэрлэгдсэн»
-         гэж андуурдаг байв. Бэлэн бус үед л шууд. */
       if (!ready) setFlowReady(false);
       setFlowWhy(ready ? '' : (
         st.why === 'auth'
           ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
           : st.why === 'owner'
             ? tr('Батлах хүснэгт байгаа ч эзэмшигч нь танигдахгүй байна — админд мэдэгдэнэ үү.')
-            /* ⚠️ 2026-10-01: түүхий дэлгэрэнгүйг («Token Required») ойлгомжтой болгоно */
             : st.why === 'error'
               ? tr('Порталын хайлт амжилтгүй: {0}', friendlyError({ message: st.detail ?? '' }))
               : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')
       ));
-      /* ⚠️ 2026-10-08: ТӨРӨЛ ТУС БҮРД (`pendingOther`-ийн ⚠️) — идэвхтэй табынх түгжинэ, нөгөөх нь мэдэгдэлд */
       const other: PlanKind = kind === 'plan' ? 'geree' : 'plan';
       const both = ready ? await loadPendingBoth(pkg.key) : null;
       const p = both ? both[kind] : null;
@@ -3828,28 +2427,14 @@ export function Huvaari({
       if (!live()) return;
       setPending(p);
       setPendingOther(pOther);
-      /* ⚠️ 2026-10-26: 191-ийн илгээх агшны хуулбарыг (`n:hsub:<OBJECTID>` мөр) хүлээгдэж буй илгээлттэй тааруулна (батлах · буцаах · татах · нээх) — самбар
-         батлагдаагүй хуваарийг үүгээр уншина. Арын ажил, урсгалыг хүлээлгэхгүй; ижил төлөвт 5 мин дотор давтахгүй. */
-      /* ⚠️ 2026-10-26 (шүүлт): агуулгаас НӨХӨХ нь зөвхөн сэргээгдсэн ЭНЭ багц/төрлийн ctx-тэй (блокийн нэр · танихуун · серверийн
-         муж); бэлэн биш бол зөвхөн устгана, нөхөлтийг дараагийн мөчлөгт хойшлуулна (`planSyncSubmitted`-ийн ⚠️) */
       if (both && subSyncOkRef.current) {
         const dk = hdKey(kind, key);
         const ctxOk = hdKeyRef.current === dk && hdReadyRef.current === dk;
         void planSyncSubmitted(key, { known: both, ctxKind: kind, ...(ctxOk ? { ctx: hdCtxRef.current } : {}) });
       }
       if (ready) setFlowReady(true);
-      /*
-       * ⚠️ ХҮЛЭЭГДЭЖ БАЙСАН ИЛГЭЭЛТ АЛГА БОЛОВ (2026-09-25 аудит) — өөр хүн
-       *    шийдсэн/татсан. Урьд нь зөвхөн урсгалын төлөв шинэчлэгддэг байв:
-       *    (1) батлагчийн УРЬДЧИЛАН ХАРСАН агуулга «хадгалаагүй N» болж үлдэж,
-       *    «Батлуулах» идэвхжин БУЦААГДСАН саналыг өөрийн нэрээр дахин илгээх
-       *    боломжтой байв — харалтыг цэвэрлэнэ; (2) зохиогчийн хуудсанд
-       *    «батлагдсан» гарсан атлаа хуанли хуучин огноотой үлддэг байв —
-       *    серверээс мөр · задаргааг дахин татна.
-       */
       if (ready) {
         const was = flowPendRef.current;
-        /* ⚠️ 2026-10-08: түлхүүр нь багц + төрөл — таб солиход «илгээлт алга болов» гэж андуурахгүй */
         flowPendRef.current = { key: `${kind}:${key}`, oid: p?.oid ?? null };
         if (was.key === `${kind}:${key}` && was.oid != null && was.oid !== (p?.oid ?? null)) {
           if (previewingRef.current) {
@@ -3857,20 +2442,12 @@ export function Huvaari({
             setADraft(new Map()); setResDraft(new Map());
             setPreviewing(false);
           }
-          /* ⚠️ 2026-09-29 аудит: ӨМНӨХ илгээлтийн ногоон/улаан тэмдэг ШИНЭ илгээлтэд
-             үлдэхгүй — `markOf` шууд ногоон болгож, хараагүй мөр батлагдах байв. */
           setOkRows(new Set());
-          /* ⚠️ 2026-10-09 (аудит): `busy` бус үед (мөчлөг · нээлт) арын хамгаалалттай татлага (`refetchBg`) — хадгалалттай
-             давхцахгүй; `busy` урсгалын дотроос (илгээх → `refreshFlow`) бол хуучнаараа шууд. */
           if (!opt?.noRefetch) {
             void (busyNowRef.current ? refetchRef.current() : refetchBg()).catch(() => { /* дараагийн ачаалалтаар */ });
           }
         }
       }
-      /* ⚠️ Хүлээгдэж буй илгээлт БАЙХГҮЙ үед л сүүлийн шийдвэрийг үзүүлнэ —
-         хоёуланг зэрэг харуулбал аль нь одоогийн байдал болох нь ойлгомжгүй. */
-      /* ⚠️ 2026-10-09: ИДЭВХТЭЙ ТӨРЛИЙН сүүлийн шийдвэр (`loadHistory(…, kind)`) — урьд нь нөгөө табын шийдвэр
-         (буцаасан шалтгаан · автомат сэргээлт · тэмдэг) энэ табд гардаг байв. */
       const last = ready && !p ? ((await loadHistory(pkg.key, 1, kind))[0] ?? null) : null;
       if (!live()) return;
       setLastDecision(last);
@@ -3878,18 +2455,13 @@ export function Huvaari({
       if (!live()) return;
       flowThrewRef.current = true;
       setFlowReady(false);
-      /* ⚠️ 2026-10-01: шалтгааныг АНГИЛНА (эрх · нэвтрэлт · сүлжээ · хугацаа) — урьд нь ямар ч
-         алдааг «сүлжээгээ шалгана уу» гэдэг тул 499/403-д хэрэглэгч буруу зүйл шалгадаг байв. */
       setFlowWhy(tr('Батлах урсгал уншигдсангүй: {0}', friendlyError(e)));
-      /* ⚠️ 2026-09-29 аудит: ИЖИЛ багцын `pending`-ийг ҮЛДЭЭНЭ (дээрх эхлэлийн дүрэмтэй
-         ижил) — урьд нь түр сүлжээний алдаанд `null` болгож `locked` тайлагдаж, засвар ·
-         хуваалцсан ноорог нээгдээд, урсгал сэргэхэд гарах замгүй ноорог үлддэг байв. */
       setPending((p0) => (p0 && p0.pkgKey === key ? p0 : null));
       setLastDecision(null);
     }
   }, [pkg.key, kind, user, status, pkgKeyRef, kindRef, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setOkRows, refetchBg, subSyncOkRef, hdKeyRef, hdReadyRef, hdCtxRef]);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: `refreshFlow` нь ArcGIS-ээс уншихын өмнө `flowReady=null` (ачаалж байна) тавьдаг — гадаад эх сурвалжтай синк, санаатай
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void refreshFlow(); }, [refreshFlow]);
 
   /**
@@ -3897,62 +2469,31 @@ export function Huvaari({
    * зохиогчид харагдахгүй байна»). Урьд нь урсгал зөвхөн хуудас нээхэд уншигддаг тул
    * батлагч буцаасан/баталсан ч зохиогчийн нээлттэй хуудас «хүлээгдэж буй» хэвээр үлдэж,
    * шалтгаан ба буцсан ноорог хуудсаа дахин ачаалах хүртэл харагддаггүй байв.
-   * ⚠️ ХӨНГӨН: зөвхөн `loadPending` (толгой). Төлөв өөрчлөгдсөн үед л `refreshFlow` —
-   *    тэр нь `flowReady`-г түр `null` болгодог тул тогтмол дуудвал дэлгэц анивчина.
-   * ⚠️ Батлах/урьдчилан харах/бичих явцад ба хяналтын горимд шалгахгүй.
-   * ⚠️ 2026-09-29 (аудит 10): ЗОХИОГЧ өөрийн «Илгээсэн хуваарь»-ийг харж байхад (`viewSent`,
-   *    зөвхөн харах) шалгалт ҮРГЭЛЖИЛНЭ — урьд нь `previewing` мөчлөгийг зогсоож, батлагчийн
-   *    шийдвэр · буцаасан шалтгаан «Батлагдсан хуваарь» руу буцтал харагддаггүй байв.
-   *    Өөрчлөгдвөл `refreshFlow` харалтыг өөрөө цэвэрлэнэ. Батлагчийн харалтад хэвээр үгүй.
    */
-  /* ⚠️ 2026-10-09: ХОЁР ТӨРЛИЙГ шалгана (`loadPendingBoth`) — идэвхтэй табын илгээлт байхгүй үед ч мөчлөг ажиллана:
-     нөгөө табын илгээлт гарах/алга болох (`pendingOther` → бодит огноо · нөөцийн `xLock`) ба энэ табд бусдын шинэ
-     илгээлт (түгжээ) хуудас шинэчлэх хүртэл харагддаггүй байв. Идэвхтэй табынх өөрчлөгдвөл урьдын адил `refreshFlow`,
-     зөвхөн нөгөө табынх бол хөнгөн — `setPendingOther` (дэлгэц анивчихгүй). */
   const pollOkRef = useLatest(!review && approving == null && (!previewing || isOwnSubmission) && !busy && flowReady === true);
-  /* ⚠️ 2026-10-12 (аудит №8): урсгал УНШИГДААГҮЙ (`flowReady === false` — сүлжээ · токен) бол мөчлөг `refreshFlow`-ийг
-     дахин оролдоно. Урьд нь мөчлөг зөвхөн `flowReady === true` үед ажилладаг тул түр алдааны дараа хуудас сэргээх хүртэл
-     «илгээх боломжгүй» төлөвт гацдаг байв. */
   const pollRetryRef = useLatest(!review && approving == null && !busy && flowReady === false);
-  /**
-   * ⚠️ 2026-10-09: НӨГӨӨ ТАБЫН илгээлт шийдвэрлэгдэв (байсан → алга) — батлагдсан бол эх хуудсанд тэр төрлийн огноо ·
-   *    бодит огноо · нөөц бичигдсэн; энэ таб (лавлагааны багана · бодит/нөөц) хуучирсан хэвээр үлддэг байв. Доорх мөчлөг
-   *    мөр · задаргааг серверээс дахин татна (ноорог `useSharedDraft`-аар шинэ жаазад зөөгдөнө). Чирэлт (`dragOnRef`)/
-   *    цонх нээлттэй үед алгасна — дараагийн ачаалалтаар.
-   */
   const dragOnRef = useLatest(drag != null);
   useEffect(() => {
     if (status === 'off') return undefined;
     const key = pkg.key;
     const k0 = kind;
     const other: PlanKind = k0 === 'plan' ? 'geree' : 'plan';
-    /* ⚠️ 2026-10-09: нөгөө табын илгээлт шийдэгдэхэд дахин татах боломжтой юу (`dragOnRef`-ийн ⚠️) */
     const refetchOk = () => !!pendRef.current.other && !dragOnRef.current && !uiOpenRef.current;
-    /* ⚠️ 2026-10-09 (аудит №2): арын татлага явж байна — дараагийн мөчлөг давхар эхлүүлэхгүй */
     let bgOn = false;
     const id = window.setInterval(() => {
       if (document.hidden || pkgKeyRef.current !== key || kindRef.current !== k0) return;
-      /* ⚠️ 2026-10-12: уналтаас сэргэх (`pollRetryRef`-ийн ⚠️) */
       if (pollRetryRef.current) { if (flowThrewRef.current) void refreshFlow(); return; }
       if (!pollOkRef.current) return;
       const was = flowPendRef.current.oid;
       void loadPendingBoth(key).then((both) => {
-        /* ⚠️ 2026-10-09: хариу ирэх зуур таб солигдсон бол хаяна (`kindRef`) — нөгөө табын `was`-тай тулгаж худал «өөрчлөгдсөн» гэдэг байв */
         if (!pollOkRef.current || pkgKeyRef.current !== key || kindRef.current !== k0) return;
         if ((both[k0]?.oid ?? null) !== was) {
-          /* ⚠️ 2026-09-29 (аудит 10): харалт цэвэрлэгдэх тул «илгээсэн хуваарь харагдаж байна» мэдэгдэл худал болно */
           if (previewingRef.current) setNote('');
           void refreshFlow();
           return;
         }
         const pO = both[other];
         if ((pO?.oid ?? null) !== (pendRef.current.other?.oid ?? null)) {
-          /* ⚠️ 2026-10-09 (аудит): хадгалалттай давхцахгүй арын татлага (`refetchBg`-ийн ⚠️)
-             ⚠️ 2026-10-09 (аудит №2): нөгөө табын илгээлт ШИЙДЭГДСЭН (байсан → алга) бол `pendingOther`-ийг ЗӨВХӨН татлага
-             АМЖИЛТТАЙ дууссаны дараа шинэчилнэ. Урьд нь `refetchBg` эхлээгүй (`busy`) · `STALE_REFETCH` · сүлжээний алдаа ·
-             чирэлт/цонх нээлттэй (`refetchOk`) үед ч `setPendingOther(null)` хийдэг тул дараагийн мөчлөг «өөрчлөлтгүй»
-             гэж үзэж, хуучирсан мөр/задаргаа хэзээ ч дахин татагддаггүй байв. Одоо дараагийн мөчлөг дахин оролдоно
-             (тэр зуур `xLock` түгжээтэй хэвээр — аюулгүй тал). */
           const gone = pendRef.current.other;
           if (!pO && gone) {
             if (bgOn || !refetchOk()) return;
@@ -3975,37 +2516,19 @@ export function Huvaari({
 
   /**
    * БАТЛАХ ДАРААЛААЛААС ШИЛЖИЖ ИРСЭН ХҮСЭЛТИЙГ ХЭРЭГЛЭНЭ (2026-09-16).
-   *
-   * ⚠️ ХОЁР ШАТТАЙ: эхлээд БАГЦЫГ солино, `refreshFlow` (дээрх эффект)
-   *    `pending`-ийг хүргэтэл ХҮЛЭЭНЭ, дараа л цонхыг нээнэ. Шууд нээвэл
-   *    зурагдалтын `flowBox === 'decide' && pending` хамгаалалт юу ч
-   *    зурахгүй — товч дарсан атлаа ЮУ Ч болоогүй мэт харагдана.
-   *
-   * ⚠️ ХОЦОРСОН ШИЙДВЭР ӨӨРӨӨ ИЛЭРНЭ: `pending` нь өөр `oid`-тай (эсвэл
-   *    `null`) бол зуур өөр батлагч шийдсэн гэсэн үг. Дуугүй өнгөрвөл
-   *    батлагч хоосон хуудас хараад гайхна.
-   *
-   * ⚠️ `kind` (Төлөвлөгөө ↔ Гэрээ) табыг АВТОМАТААР СОЛИХГҮЙ — доорх
-   *    `decide`-ийн дүрэм: «батлагч юу батлахаа ӨӨРӨӨ мэдэж байх ёстой».
-   *    Табын зөрүүний алдаа зориулалтаараа гарна; дараалал нь `kind`-ыг
-   *    мөр ба товчны `title`-д бичсэнээр түүнийг гайхалтай биш болгоно.
    */
   useEffect(() => {
     if (!jump) return;
     const target = PKGS.find((p) => p.key === jump.pkgKey);
     /* 1-р шат: багц соль — дараагийн тойрогт `pending` ирнэ */
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: дарааллаас ирсэн `jump` хүсэлтийг хоёр шатаар (багц → pending) хэрэгжүүлэх — дээрх ⚠️-ийн дагуу санаатай эффект
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (target && target.key !== pkg.key) { setPkg(target); return; }
-    /* ⚠️ Багц СОЛИГДОЖ амжаагүй байж болно (`loadedPkg` биш, `pkg.key`-ээр
-       шалгав) — `refreshFlow` ажиллаж дуустал `flowReady` нь `null` хэвээр. */
     if (flowReady === null) return;
     if (pending?.oid === jump.oid) {
       setFlowBox('decide');
       onJumpDone?.();
       return;
     }
-    /* ⚠️ 2026-10-08: илгээлт НӨГӨӨ төрлийнх (түгжээ төрөл тус бүрд) — «шийдвэрлэгдсэн» гэж худал хэлэхгүй,
-       зөв табыг нэрлэнэ (таб автоматаар СОЛИХГҮЙ — дээрх ⚠️). */
     if (pendingOther?.oid === jump.oid) {
       setErr(kind === 'plan'
         ? tr('Энэ илгээлт ГЭРЭЭНИЙ огноонд хамаарна — «Гэрээ» таб руу шилжээд шийдвэрлэнэ үү.')
@@ -4031,31 +2554,18 @@ export function Huvaari({
 
   /** «Батлуулах» — эх хуудсанд ЮУ Ч бичихгүй, зөвхөн хүснэгтэд хүлээнэ */
   const sendForApproval = useCallback(async (userNote: string) => {
-    /* ⚠️ Урьдчилан харж байхад ИЛГЭЭХГҮЙ (2026-09-25 аудит) — ноорог нь бусдын санал */
-    /* ⚠️ 2026-10-26: ЗАСАХ ЭРХГҮЙ (харагч — хамтрагчийн хуваалцсан ноорог `dirtyN`-д орж болно) бол ИЛГЭЭХГҮЙ — товч
-       `canEdit`-ээр нуугдсан ч функцийн түвшинд ч хаана (lib-ийн `submitPlan` зохиогчийн хүрээг дахин шалгана). */
     if (!dirtyN || busy || previewing || !canEdit) return;
-    /* ⚠️ 2026-10-21: САРЫН ОБЬЁМЫН ХҮСНЭГТ уншигдаагүй (`obNotReady`) бол ИЛГЭЭХГҮЙ — `save()`-ийн хаалттай ижил. Урьд нь
-       `loadPkgPlan` унасан үед ч илгээж, `base.obyem` хоосон тул батлахад блок БҮР «зэрэгцээ өөрчлөлт» болдог байв;
-       хуваалцсан ноорогийн сэргээлт `fail` үед ч сарын нүдийг буулгадаг тул тэдгээрийн илгээлтийг энд хаана. */
     if (obNotReady || ((obDraft.size || obResDraft.size) && !obLoadedRef.current)) {
       setErr(obState === 'loading'
         ? tr('Сарын обьёмын хүснэгт уншигдаж байна — дуусмагц илгээнэ үү.')
         : tr('Сарын обьёмын хүснэгт уншигдаагүй тул илгээх боломжгүй. «Сарын обьём дахин ачаалах»-ыг дарна уу.'));
       return;
     }
-    /* ⚠️ 2026-10-21: ТАСАРСАН ЖААЗЫН ОРОНД ХУУЧИН АГШИН (`frameOld`) дээр ИЛГЭЭХГҮЙ — баннер «батлах/хадгалах
-       боломжгүй» гэдэг атлаа илгээлт нээлттэй байв (батлагч ч `frameOld`-д батлахгүй). */
     if (frameOld) {
       setErr(tr('Хуудасны сүүлийн хувилбар бүрэн хадгалагдаагүй тул илгээх боломжгүй — өмнөх хувилбар ({0}) харагдаж байна. Цэвэрлэгдсэний дараа хуудсаа сэргээнэ үү.', frameOld.shownDay));
       return;
     }
-    /* ⚠️ 2026-10-12 (аудит №8): ӨМНӨХ үйлдлийн жагсаалт (хадгалалт · зөрчил) АМЖИЛТТАЙ илгээлтийн дараа ч үлдэж, шинэ
-       төлөвт хамааралгүй «→ ажил руу» мөрүүд харагддаг байв — эхэнд цэвэрлэнэ (доорх хаалтууд өөрсдийнхөө жагсаалтыг тавина). */
     setErrList([]);
-    /* ⚠️ 2026-10-12 (аудит №8): УРТ УЯЛДАА (`HAM_MAX`) — илгээх үед ХААНА. Урьд нь илгээлт явж, зөвхөн батлагчийн `save`
-       (`savePrep.hamLong`) дээр «буцааж, зохиогч богиносгоно» гэж унадаг тул нэг тойрог дэмий алдагддаг байв. Мөрүүдийг
-       «→ ажил руу» жагсаалтаар нэрлэнэ (тэнцээгүй обьёмын хэв маяг). */
     {
       const byOid0 = new Map(plan.map((r) => [r.oid, r]));
       const longs = [...ham].filter(([, t]) => t.trim().length > HAM_MAX).map(([o, t]) => {
@@ -4070,17 +2580,11 @@ export function Huvaari({
         return;
       }
     }
-    /* ⚠️ ТЭНЦЭЭГҮЙ сарын задаргаатай илгээхийг ХОРИГЛОНО (2026-09-17) — дүрэм ба
-       ⚠️ тайлбарууд `huvaari/util.unbalancedObyem`-д (2026-09-30: цэвэр функц,
-       `obyemGate.check.mjs`-ээр тестлэгдэнэ). Цонх автоматаар нээхгүй — гинж олон
-       мөр хөндөж болно; алдаанд тоо ба нэрийг нэрлэнэ. */
     {
       const { bad, names: list } = unbalancedObyem(plan, sc?.bld ?? [], obDraft, obPlan);
       if (bad > 0) {
         const shown = list.slice(0, 3).join(', ') + (list.length > 3 ? ` (+${num(list.length - 3)})` : '');
         setErr(tr('{0} ажлын сарын задаргаа обьёмтойгоо тэнцэхгүй байна (хоосон задаргаа = 0): {1}. Тухайн ажлын цонхыг нээж сараар тэнцүүлнэ үү.', num(bad), shown));
-        /* ⚠️ 2026-10-09: НЭРС ДАРАГДАХ ЖАГСААЛТААР (`errList` → «→ ажил руу», тэнцээгүй эхний блок) — цонхыг хааж
-           жагсаалт харагдана (бичсэн тайлбар `flowTxt`-д хадгалагдсан хэвээр). «Тэнцээгүй» чипээр бүгдийг шүүнэ. */
         const byOid = new Map(plan.map((r) => [r.oid, r]));
         const items = [...unbalRows].map(([o, bs]) => {
           const r = byOid.get(o);
@@ -4093,15 +2597,10 @@ export function Huvaari({
         return;
       }
     }
-    /* ⚠️ 2026-10-09: МУЖААС ГАДУУРХ САРЫН ОБЬЁМ — батлагчийн хаалт (`obOut`, `util.obyemOutsideSpan`) ИЛГЭЭХЭД ч.
-       Урьд нь зөвхөн батлагч баталж байхад илэрч, илгээлт заавал буцаагддаг байв. Ижил мессеж. */
     if (obOut.bad > 0) {
       setErr(obOutMsg);
       return;
     }
-    /* ⚠️ ОДООГИЙН ХУУДАСТ БАЙХГҮЙ мөрийн ноороготой ИЛГЭЭХГҮЙ (2026-09-25 аудит):
-       хуучин жаазын oid-той санал батлахад `save`-ийн `staleN`-д мөнхөд гацна.
-       Нэмэлт ажлын түр мөр (`oid < 0`) ноорогт ордоггүй. */
     {
       const have = new Set(rows.map((r) => r.oid));
       const stale = new Set([...draft.keys(), ...ham.keys(), ...aDraft.keys(), ...resDraft.keys()].filter((o) => !have.has(o)));
@@ -4109,26 +2608,15 @@ export function Huvaari({
         setErr(tr('{0} мөрийн ноорог одоогийн хуудаснаас олдсонгүй — хуудас хооронд нь шинэчлэгдсэн байна. Илгээгдсэнгүй; хуудсаа сэргээгээд дахин илгээнэ үү.', num(stale.size)));
         return;
       }
-      /* ⚠️ 2026-10-21: КОДООР түлхүүрлэсэн өнчин сарын ноорог (`orphanOb`) ч мөн — батлахад `obLost`-оор унана */
       if (orphanOb.size) {
         setErr(tr('{0} ажил·блокийн сарын обьёмын ноорог одоогийн хуудсанд байхгүй ажилд хамаарна (өнчин) — илгээгдсэнгүй. «Өнчин ноорог устгах»-аар цэвэрлээд дахин илгээнэ үү.', num(orphanOb.size)));
         return;
       }
     }
     setBusy(true); setErr(''); setNote('');
-    /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) */
     setProgress(tr('Шалгаж байна…'));
-    /* ⚠️ 2026-10-04 аудит (HIGH): хуваалцсан ноорогийн мөчлөг · бичилтийг ЗОГСООЖ, илгээлтэд
-       ОРОХ нүдний тэмдгийг `buildPayload`-тай НЭГ агшинд авна — цэвэрлэлт зөвхөн тэдгээрийг
-       хаана; илгээх завсарт хамтрагчийн нэмсэн нүд алсад хэвээр (`useSharedDraft.hdClear`). */
-    /* ⚠️ 2026-10-11 (аудит №7): `xLockCheck`-ийн (сервер) `await`-аас ӨМНӨ — урьд нь тэр завсарт мөчлөгийн `hdApply`
-       хамтрагчийн нүдийг Map-д нийлүүлж, тэмдэг (`hdSnapshot`, амьд ref) тэдгээрийг агуулдаг атлаа `buildPayload`
-       (энэ render-ийн state) агуулдаггүй — цэвэрлэлт илгээлтэд ОРООГҮЙ нүдийг устгах байв. Хаалт (`hdHold`) мөчлөгийг
-       зогсоосноор тэмдэг ба payload нэг агшных; шалгалт `try` дотор — буцалт бүрд `finally`-ийн `hdSubmitEnd()`. */
     const hdMark = hdSubmitBegin();
     try {
-      /* ⚠️ 2026-10-09: нөгөө табын илгээлтийн бодит огноо · нөөцийн түгжээг СЕРВЕРЭЭС дахин шалгана (`xLockCheck`-ийн ⚠️) —
-         UI-ийн `xLockWhy` хуучирсан байж болно; түгжээтэй мөр байвал (эсвэл шалгаж чадахгүй бол) ИЛГЭЭХГҮЙ. */
       {
         const why = await xLockCheck();
         if (why) { setErr(why); return; }
@@ -4138,35 +2626,22 @@ export function Huvaari({
         pkgKey: pkg.key,
         pkgGroup: pkg.group,
         author: user?.username ?? '',
-        /* ⚠️ ЯЛГААТАЙ МӨР (`dirtyRows`), `dirtyN` БИШ — дараалал «N мөр» гэж
-           харуулдаг тул сарын нүд тоолсон тоо түүнтэй зөрдөг байв (2026-09-23). */
         rowCount: dirtyRows,
         note: userNote,
         payload: buildPayload(),
       });
-      /* ⚠️ Унасан ч урсгалыг сэргээнэ (2026-10-01) — өөр хүн түрүүлж илгээсэн бол түгжээ харагдана */
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Илгээгдсэнгүй.')); await refreshFlow(); return; }
-      /* ⚠️ Ноорогийг ЦЭВЭРЛЭНЭ: агуулга нь одоо серверт хадгалагдсан тул
-         локалд үлдээвэл гүйцэтгэгч дахин илгээх, эсвэл батлагдсаны дараа
-         хуучин ноорог дахин бичигдэх эрсдэлтэй. */
       setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map());
       setADraft(new Map()); setResDraft(new Map());
       setFlowBox(null); setFlowTxt('');
       setBackMarks(null);
-      /* ⚠️ 2026-10-08: илгээгдсэн — буцаалтын агшин · самбар хүчингүй */
       setUndoSnap(null); setChainN(0); setChgOpen(false);
       setNote(tr('Хуваарь батлуулахаар илгээгдлээ — батлагч шийдвэрлэнэ.'));
-      /* ⚠️ ХУВААЛЦСАН НООРОГИЙГ ШУУД ЦЭВЭРЛЭНЭ (2026-09-24) — `refreshFlow`-оос
-         ӨМНӨ: тэр `pending`-ийг тавьмагц бичих боломж хаагдаж, дифф→flush
-         зам «цэвэрлэсэн» тэмдгийг хэзээ ч бичихгүй байв. */
       setProgress(tr('Ноорог цэвэрлэж байна…'));
-      /* ⚠️ 2026-10-26: илгээлтийн OBJECTID — 191-д илгээх агшны хуулбар (`n:hsub:<OBJECTID>`, `huvaari_ilgeelt`) */
       await hdClearRef.current(hdKey(kind, pkg.key), hdMark, r.oid ?? null);
       setProgress(tr('Төлөв шинэчилж байна…'));
       await refreshFlow();
     } catch (e) {
-      /* ⚠️ 2026-10-09: хариу АЛДАГДСАН (`isLostWrite`) бол «илгээгдсэнгүй» гэж худал хэлэхгүй — үр дүн тодорхойгүй,
-         урсгалыг дахин уншина (илгээгдсэн бол түгжээ харагдана). Тодорхой татгалзал (403 · хугацаа дууссан) — өөрийн мессеж. */
       if (isLostWrite(e)) {
         setErr(tr('Хариу ирээгүй — илгээгдсэн эсэх нь тодорхойгүй (үр дүн тодорхойгүй: {0}). Хуудсаа шинэчилж шалгаад шаардлагатай бол дахин илгээнэ үү.', friendlyError(e)));
         await refreshFlow().catch(() => { /* мэдэгдэл дээр */ });
@@ -4187,36 +2662,6 @@ export function Huvaari({
    */
   /**
    * Илгээлтийн агуулгыг ноорогт буулгана — БАТЛАХЫН ӨМНӨХ алхам.
-   *
-   * ⚠️ ТӨРӨЛ ЗӨРВӨЛ ТАТГАЛЗАНА (2026-09-11-ний аудитын S1). Илгээлт нь
-   *    `kind`-ээ өөртөө агуулдаг; батлагчийн ХАРЖ БУЙ таб түүнээс өөр бол
-   *    буулгахгүй, `false` буцаана. Эс бөгөөс `save` нь батлагчийн табаар
-   *    талбар сонгодог тул ТӨЛӨВЛӨГӨӨНИЙ санал `…_geree_*` талбарт бичигдэж,
-   *    гэрээний лавлагаа чимээгүй эвдэрнэ (эргүүлэх аргагүй).
-   * ⚠️ Автоматаар таб СОЛИХГҮЙ: батлагч юу батлахаа ӨӨРӨӨ мэдэж байх ёстой.
-   *    Дуудагч тал алдааг ил хэлж, зөв табыг нэрлэнэ.
-   */
-  /**
-   * ⚠️ СУУРЬТАЙ ХАРЬЦУУЛНА (2026-09-21). Илгээлтэд `base` (илгээх үеийн
-   *    серверийн утга) байвал:
-   *      · зохиогчийн ХӨНДӨӨГҮЙ блок (`spans[b] === base[b]`) → ноорогт
-   *        `curRows`-ын ОДООГИЙН утгыг тавина → `save` диффд орохгүй, хооронд
-   *        нь батлагдсан бусдын өөрчлөлт хэвээр үлдэнэ;
-   *      · зохиогчийн ЗАССАН блок дээр `base[b] !== сервер` → ЗЭРЭГЦЭЭ
-   *        ӨӨРЧЛӨЛТ. Сонголт: ЗОГСООНО (`strict`), алгасахгүй — уялдаа ба
-   *        сарын обьём нь тэр блокийн огноонд уягдсан тул хагас батлалт нь
-   *        задаргааг огноогүй үлдээж, `planPctFromMonths` худал болно.
-   *        Батлагч буцааж, зохиогч шинэ суурин дээр дахин илгээнэ.
-   *    Суурьгүй (2026-09-21-ээс өмнөх) илгээлт → бүх блок «зассан», хуучин
-   *    зан үйл. `strict: false` (зохиогч илгээлтээ ТАТАЖ ноорогт буулгах) —
-   *    зөрчилтэй ч буулгана, тоог нь буцаана.
-   * ⚠️ `curRows` параметрээр — дуудагч (`decide`) серверээс дөнгөж татсан
-   *    мөрийг өгнө; state-ийн `rows` энэ тикт хуучин хэвээр.
-   */
-  /**
-   * ⚠️ `curPlan` параметрээр (2026-09-21) — сарын задаргааны тулгалт ч мөн
-   *    СЕРВЕРЭЭС дөнгөж татсан `loadPkgPlan`-тай; state-ийн `obPlan` энэ тикт
-   *    хуучин. Дуудагч өгөөгүй бол state-ийнх (татах зам).
    */
   const applyPayloadToDraft = useCallback((
     p0: PlanPayload,
@@ -4226,9 +2671,6 @@ export function Huvaari({
     curRes: PkgRes = obRes,
   ): { ok: true; conflicts: number; unknown: number } | { ok: false; why: 'kind' | 'conflict' | 'unknown'; conflicts: number; unknown: number } => {
     const ap = payloadToDrafts(p0, curRows, strict, curPlan, curRes, { kind, n });
-    /* ⚠️ 2026-10-09: ЗӨРЧИЛТЭЙ НҮДИЙГ ЖАГСААНА (`payload.PayConflict`-ийн ⚠️) — эхний 10 + «+M», мөр бүр «→ ажил руу»
-       (зөрчилтэй блок). Урьд нь зөвхөн «N нүд» гэсэн тоо гардаг тул аль мөр болохыг хайдаг байв. Дуудагч бүр
-       (харах · батлах · татах · сэргээх) дамждаг тул нэг газар. */
     if (ap.conflictList.length) {
       const bld = sc?.bld ?? [];
       const items = ap.conflictList.slice(0, 10).map((c) => ({
@@ -4241,30 +2683,12 @@ export function Huvaari({
     const { maps } = ap;
     setDraft(maps.draft); setHam(maps.ham); setObDraft(maps.obDraft); setObResDraft(maps.obResDraft);
     setADraft(maps.aDraft); setResDraft(maps.resDraft);
-    /* ⚠️ 2026-10-08: ноорог бүхэлдээ солигдсон — буцаалтын агшин хүчингүй */
     setUndoSnap(null);
     return { ok: true, conflicts: ap.conflicts, unknown: ap.unknown };
   }, [kind, n, obPlan, obRes, sc, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setErrList, setUndoSnap]);
 
   /**
    * СЕРВЕРИЙН ОДООГИЙН мөр ба сарын задаргааг татаж state-д тавина (2026-09-21).
-   *
-   * ⚠️ Урьдчилан харах · батлах · татах ГУРВУУЛАА үүгээр: илгээлтийг state-ийн
-   *    ХУУЧИРСАН `rows`/`obPlan`-той биш, дөнгөж татсантай тулгана. Урьд нь
-   *    зөвхөн батлах (урьдчилан ХАРААГҮЙ үед) шинээр татдаг байсан тул
-   *    `preview` → `decide` замд тулгалт бүхэлдээ АЛГАСАГДАЖ, харснаас
-   *    батлах хүртэлх завсрын зэрэгцээ өөрчлөлт чимээгүй дарагддаг байв.
-   * ⚠️ Задаргаа татагдахгүй бол state-ийнхаар үргэлжилнэ (мөр нь заавал).
-   */
-  /* ⚠️ 2026-10-09 (аудит): `guard` — арын татлага (`refetchBg`); `await` бүрийн дараа `false` бол state-д ЮУ Ч
-     тавихгүй (`STALE_REFETCH` шиднэ). Задаргааны шатанд хаявал `loading`-ийг л `ok` болгоно (доорх `catch`-ийн
-     хуучин задаргаатай үргэлжлэх дүрэмтэй ижил) — эс бөгөөс хуваалцсан ноорогийн дифф үүрд зогсоно. */
-  /*
-   * ⚠️ 2026-10-12 (аудит №8): `opts.strict` — БАТЛАХ (`decide`) зам мөрийг `strict`-ээр татна (тасарсан жаазын оронд хуучин
-   *    агшин хүлээн авахгүй, шиднэ). Уншилтын замд `truncated` ирвэл `frameOld`-ийг тавина (баннер · батлалтын хаалт).
-   * ⚠️ 2026-10-12 (аудит №8, HIGH): `opts.needOb` — санал САРЫН ОБЬЁМ/НӨӨЦ агуулж байхад (`obyem`/`obres`) задаргаа
-   *    татагдахгүй бол state-ийн ХУУЧИРСАН `obPlan`/`obRes`-тэй тулгахгүй — ШИДНЭ (fail-closed). Урьд нь хуучин задаргаатай
-   *    тулгаж, хооронд нь өөр замаар өөрчлөгдсөн сарын обьём «зөрчилгүй» гэж батлагдаж, түүнийг дарж бичдэг байв.
    */
   const refetchServer = useCallback(async (
     guard?: () => boolean,
@@ -4273,16 +2697,12 @@ export function Huvaari({
     const lr = sc ? await loadRows(pkg, sc, undefined, undefined, opts?.strict ? { strict: true } : undefined) : null;
     const freshRows = lr ? lr.rows : rows;
     if (guard && !guard()) throw new Error('STALE_REFETCH');
-    /* ⚠️ `loading`-ийг мөртэй НЭГ багцад тавина (2026-09-24): шинэ мөр + хуучин
-       задаргаа гэсэн завсрын зурагдалтад хуваалцсан ноорогийн дифф ажиллаж
-       сарын нүдийг tombstone болгож байв. Задаргаа ирмэгц `ok`. */
     if (sc) {
       setObState('loading'); setRows(freshRows);
       if (lr) setFrameOld(lr.truncated ? { day: lr.truncated.day, shownDay: lr.truncated.shownDay } : null);
     }
     try {
       const fp = await loadPkgPlan(pkg.key);
-      /* ⚠️ 2026-10-21: хаясан/унасан салаа өмнөх задаргаа БАЙГАА үед л `ok` (`obLoadedRef`-ийн ⚠️) */
       if (guard && !guard()) { setObState(obLoadedRef.current ? 'ok' : 'fail'); return { rows: freshRows, plan: obPlan, res: obRes }; }
       setObPlan(fp.plan); setObRes(fp.res); setObOids(fp.oids); setObDups(fp.dups); setObState('ok'); obLoadedRef.current = true;
       return { rows: freshRows, plan: fp.plan, res: fp.res };
@@ -4296,29 +2716,21 @@ export function Huvaari({
   }, [sc, pkg, rows, obPlan, obRes, setObState, setRows, setObPlan, setObRes, setObOids, setObDups, setFrameOld]);
 
   /** Урьдчилан харах — саналыг хуанли дээр НООРОГ болгон буулгана */
-  /* ⚠️ 2026-10-12 (аудит №8): `true` = санал хуанли дээр буусан — хяналтын горимын «Дахин оролдох» (`reviewRetry`) үүгээр */
   const preview = useCallback(async (): Promise<boolean> => {
     if (!pending || busy) return false;
     setBusy(true); setErr(''); setPreviewBad(null);
     try {
-      /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) */
       setProgress(tr('Саналыг уншиж байна…'));
       const p = await loadPayload(pending.oid);
-      /* ⚠️ 2026-10-12 (аудит №8): ЗАДАРДАГГҮЙ агуулга (`null`) — дахин оролдоход засрахгүй; `previewBad` тавьж «Буцаах»
-         замыг нээнэ (урьд нь хяналт «буулгагдаагүй» төлөвт гацаж, буцаах ч хаалттай байв). Сүлжээний алдаа нь `catch`-д. */
       if (!p) {
         setPreviewBad(pending.oid);
         setErr(tr('Илгээлтийн агуулга уншигдсангүй (эвдэрсэн) — батлах боломжгүй. Буцааж, зохиогч дахин илгээнэ.'));
         return false;
       }
-      /* ⚠️ СЕРВЕРЭЭС ШИНЭЭР (2026-09-21) — `decide`-тэй нэг зам. */
       setProgress(tr('Хуудсыг дахин уншиж байна…'));
-      /* ⚠️ 2026-10-12: сарын обьём/нөөцтэй саналд задаргаа заавал шинэ (`refetchServer`-ийн `needOb` ⚠️) */
       const srv = await refetchServer(undefined, { needOb: payHasOb(p) });
-      /* ⚠️ ТӨРӨЛ ЗӨРВӨЛ буулгахгүй — батлагч өөр табаар харж байна. */
       const ap = applyPayloadToDraft(p, srv.rows, true, srv.plan, srv.res);
       if (!ap.ok) {
-        /* ⚠️ Мэдэгдэхгүй мөр ч зөрчилтэй адил — зөвхөн «Буцаах» (2026-09-25 аудит) */
         if (ap.why === 'conflict' || ap.why === 'unknown') setPreviewBad(pending.oid);
         setErr(ap.why === 'conflict'
           ? conflictMsg(ap.conflicts)
@@ -4351,14 +2763,12 @@ export function Huvaari({
     ajBusy, ajErr, setAjErr, ajNote, setAjNote, ajBack, dismissAjBack, ajStuck, ajApplied,
     refreshAfterApplied, sendAjil, editAjilHere, saveAjilEdit, cancelAjilEdit,
     withdrawAjilHere, saveEditAdd, addRow, dropAdd,
-    /* ⚠️ 2026-10-22 (аудит №3): эцэггүй нэмэлт мөр — баннер (устгах · бүлэг сонгох) ба илгээх товчны хаалт */
     ajOrphans, setAddParent,
   } = useAjil({
     pkg, user, status, canAddRow, rows, busy, setBusy, setErr, pkgKeyRef, refetchRef, dirtyNRef, uiOpenRef,
     adds, setAdds, setAddsSt, addsStRef,
     hdResetRestore, hdRetryRestore, hdMapsRef, setDraft, setHam, setADraft, setResDraft,
     setSel, setFGrp, setCollapsed, setModal, setLinkAsk, undoRef,
-    /* ⚠️ 2026-10-08: OID зөөлтийн дараа зөвшөөрсөн мөр ба засаж буй нүдийг ч зөөнө (`refreshAfterApplied`) */
     setOkRows, setCellEdit,
   });
 
@@ -4367,12 +2777,6 @@ export function Huvaari({
    * (2026-09-21). Урьд нь зохиогчид зам байгаагүй: `decidePlan` зохиогч=батлагч
    * буцаалтыг татгалздаг тул алдаатай илгээлт өөр батлагч буцаатал багцыг
    * түгжинэ.
-   *
-   * ⚠️ Эх хуудсанд ЮУ Ч бичихгүй (`withdrawPlan` зөвхөн төлөв хөдөлгөнө).
-   * ⚠️ АГУУЛГЫГ НООРОГТ БУЦААНА: илгээхэд ноорог цэвэрлэгддэг тул татаад
-   *    хоосон үлдвэл зохиогч бүх ажлаа дахин хийнэ. Зэрэгцээ өөрчлөлттэй ч
-   *    буулгана (`strict: false`) — зохиогч засаж, ШИНЭ суурьтай дахин илгээнэ;
-   *    тоог нь мэдэгдэнэ. Төрөл зөрвөл буулгахгүй, зөвхөн хэлнэ.
    */
   const withdraw = useCallback(async () => {
     if (!pending || busy || !isOwnSubmission) return;
@@ -4380,12 +2784,6 @@ export function Huvaari({
     setBusy(true); setErr(''); setNote('');
     try {
       const oid = pending.oid;
-      /* ⚠️ ДАРААЛАЛ (2026-09-21): ЭХЛЭЭД агуулгыг уншиж, төрлийг тулгана, ДАРАА
-         нь татна. Урьд нь эхлээд татаад дараа нь уншдаг байсан тул агуулга
-         уншигдахгүй эсвэл төрөл зөрвөл илгээлт ТАТАГДЧИХСАН атлаа ноорог хоосон
-         үлдэж — зохиогчийн ажил серверээс ч, дэлгэцээс ч алга болдог байв.
-         Одоо уншигдахгүй/зөрвөл ТАТАХГҮЙ, илгээлт хүлээгдсэн хэвээр. */
-      /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) */
       setProgress(tr('Саналыг уншиж байна…'));
       const p = await loadPayload(oid).catch(() => null);
       if (!p) { setErr(tr('Илгээлтийн агуулга уншигдсангүй — татсангүй, дахин оролдоно уу.')); return; }
@@ -4398,21 +2796,11 @@ export function Huvaari({
       setProgress(tr('Илгээлтийг татаж байна…'));
       const r = await withdrawPlan({ oid, me: user?.username ?? '' });
       if (!r.ok) { setErr(r.error ? userError(r.error) : tr('Илгээлт татагдсангүй.')); return; }
-      /* ⚠️ 2026-10-26: татсан илгээлтийн хуулбарыг (`n:hsub:` мөр) ноорогт буулгахаас ӨМНӨ цэвэрлэнэ (хүлээнэ) — самбар
-         «хүлээгдэж буй» болон «ноорог» хоёуланд нэг ажлыг давхар харахгүй */
       await planSyncSubmitted(pkg.key, { force: true }).catch(() => undefined);
       setProgress(tr('Хуудсыг дахин уншиж байна…'));
-      /* ⚠️ УРСГАЛЫГ ЭХЛЭЭД шинэчилнэ (2026-09-24): `pending` → null болоход
-         хуваалцсан ноорогийн «түгжээ тайлагдав» зам Map-уудыг хоосолдог тул
-         буулгасны ДАРАА дуудвал буцаасан агуулга тэр даруй арчигдаж байв.
-         Мөн энэ нэг удаад хоослохгүй (`hdSkipUnlockOnce`) — агуулга нь
-         зохиогчийн буцааж авсан ажил. */
       hdSkipUnlockOnceRef.current = true;
       await refreshFlow({ noRefetch: true });
       /* Серверийн одоогийн мөртэй тулгаж буулгана — зөрчлийн тоо бодит байна */
-      /* ⚠️ 2026-10-21: татлага АМЖИЛТТАЙ болсон тул дахин уншилт унавал ил хэлж «Ноорогт буцаах» (доорх баннер) санал
-         болгоно. `backSeenSet` нь ЗӨВХӨН амжилттай уншилтын ДАРАА — урьд нь өмнө нь тавигдаж, уналтад зөвхөн сүлжээний
-         алдаа гарч автомат буулгалт ч хаагддаг байв (агуулга зөвхөн серверт үлдэнэ). */
       let srv: Awaited<ReturnType<typeof refetchServer>>;
       try {
         srv = await refetchServer();
@@ -4421,8 +2809,6 @@ export function Huvaari({
         await refreshFlow().catch(() => undefined);
         return;
       }
-      /* ⚠️ 2026-09-29: энэ илгээлтийг ЭНД буулгана — автомат буулгалт давхардахгүй,
-         дараа нь нооргоо хаявал дахин тулгахгүй */
       backSeenSet(pkg.key, kind, pending.oid);
       const ap = applyPayloadToDraft(p, srv.rows, false, srv.plan, srv.res);
       /* Буулгасан нүд «миний» болж (дифф мета тавина) алсад нэг удаа бичигдэнэ */
@@ -4433,7 +2819,6 @@ export function Huvaari({
       const restored = ap.ok;
       const conflicts = ap.conflicts;
       setPreviewing(false);
-      /* ⚠️ Шинэ жаазад олдоогүй мөрийг НУУХГҮЙ (2026-09-25 аудит) — ноорогт буугаагүй */
       const lostTxt = ap.unknown ? ` ${tr('{0} мөр одоогийн хуудаснаас олдсонгүй тул ноорогт буусангүй.', num(ap.unknown))}` : '';
       setNote((restored
         ? (conflicts
@@ -4460,12 +2845,8 @@ export function Huvaari({
    *   алдаа харуулахгүй чимээгүй алгасна (өөр табд нээхэд тэнд сэргэнэ).
    */
   const restoreWithdrawn = useCallback(async (auto = false) => {
-    /* ⚠️ БУЦААГДСАН саналыг ч (2026-09-25): гүйцэтгэгч батлагчийн зөвшөөрөөгүй
-       мөрүүдийг (улаан) засаад дахин илгээнэ — гүйцэтгэлийн «буцаагдсан илгээлт
-       ноорог болж ачаалагдана» загвар. */
     const back = lastDecision?.status === PLAN_STATUS.returned;
     if (!lastDecision || (lastDecision.status !== PLAN_STATUS.withdrawn && !back) || busy || dirtyN > 0 || !canEditRole) return;
-    /* ⚠️ 2026-10-23: сэргээсэн ноорог харагдахын тулд «Ноорог» харагдац руу */
     setViewSavedAt(null);
     setBusy(true); setErr(''); setNote('');
     try {
@@ -4479,24 +2860,17 @@ export function Huvaari({
       }
       const srv = await refetchServer();
       const ap = applyPayloadToDraft(p, srv.rows, false, srv.plan, srv.res);
-      /* ⚠️ Сэргээсэн илгээлтийг тэмдэглэнэ (2026-09-29) — зохиогч нооргоо «Цуцлах»-аар
-         хаясны дараа хуудас нээх бүрд автоматаар дахин буухгүй (товч хэвээр). */
       if (ap.ok) backSeenSet(pkg.key, kind, lastDecision.oid);
       setPreviewing(false);
-      /* ⚠️ Шинэ жаазад олдоогүй мөрийг НУУХГҮЙ (2026-09-25 аудит) — ноорогт буугаагүй */
       const lostTxt = ap.unknown ? ` ${tr('{0} мөр одоогийн хуудаснаас олдсонгүй тул ноорогт буусангүй.', num(ap.unknown))}` : '';
-      /* Батлагчийн тэмдэглэгээ — зөвхөн тэмдэглэсэн (талбартай) буцаалтад.
-         ⚠️ Эффект ч (`lastDecision`-оос) ижлийг тавина — энд шууд тавих нь
-         дахин татахгүйн тулд л (2026-09-25 аудит #2). */
+      /* Батлагчийн тэмдэглэгээ — зөвхөн тэмдэглэсэн (талбартай) буцаалтад. */
       if (back && ap.ok && lastDecision.okRows) {
         setBackMarks({ oid: lastDecision.oid, ok: new Set(lastDecision.okRows), pay: p });
       }
       if (back && ap.ok) {
-        /* ⚠️ 2026-10-12 (аудит №8): төрлөөс үл хамаарах «хуваарь» — гэрээний буцаалтыг «төлөвлөгөө» гэдэг байв */
         setNote((lastDecision.okRows
           ? tr('Буцаасан хуваарь засварт орлоо — УЛААН мөрүүдийг засаад дахин илгээнэ үү (ногоон нь зөвшөөрөгдсөн).')
           : tr('Буцаасан хуваарь засварт орлоо — засаад дахин илгээнэ үү.'))
-          /* ⚠️ Зэрэгцээ өөрчлөлтийн тоог НУУХГҮЙ (татсан замтай ижил) */
           + (ap.conflicts ? ` ${tr('{0} нүд хооронд нь өөр замаар өөрчлөгдсөн тул шалгана уу.', num(ap.conflicts))}` : '') + lostTxt);
         return;
       }
@@ -4515,17 +2889,6 @@ export function Huvaari({
   /**
    * БУЦААГДСАН/ТАТСАН САНАЛЫГ АВТОМАТААР НООРОГТ БУУЛГАНА (2026-09-29, хэрэглэгч:
    * «хуваарь төлөвлөөд явуулаад буцаасан тохиолдолд төлөвлөсөн хуваарь алга болж байна»).
-   *
-   * ⚠️ ЯАГААД: илгээхэд ноорог цэвэрлэгддэг (агуулга илгээлтэд хадгалагдана). Татахад
-   *    (`withdraw`) агуулга шууд ноорогт буцдаг атал БУЦААГДАХАД зөвхөн улаан мэдэгдлийн
-   *    доторх жижиг товчоор л буцдаг байв — дараагүй бол хуанли хуучин хуваарийг харуулж,
-   *    төлөвлөсөн ажил «алга болсон» мэт. Амьд өгөгдөл (b31_9f #6): 133 мөр серверт бүтэн,
-   *    хуваалцсан ноорог илгээснээс хойш хоосон.
-   * ⚠️ НӨХЦӨЛ: зөвхөн ЗОХИОГЧИД · засах эрхтэй · ноорог ХООСОН · хуваалцсан нооргийн
-   *    сэргээлт ДУУССАН (`hdReadyKey` — эс бөгөөс хамт ажиллагчийн ноорог ирэхээс өмнө
-   *    буулгаж давхарлана) · илгээлт хүлээгдээгүй · хяналтын горим биш.
-   * ⚠️ НЭГ УДАА: илгээлт·төрөл бүрд (`autoBackRef` + localStorage `backSeen`) — зохиогч
-   *    нооргоо хаясан бол дахин тулгахгүй; «Ноорогт буцааж засах» товч хэвээр.
    */
   const autoBackRef = useRef('');
   useEffect(() => {
@@ -4540,20 +2903,15 @@ export function Huvaari({
     autoBackRef.current = tag;
     void restoreWithdrawn(true);
   }, [review, lastDecision, pending, busy, dirtyN, canEditRole, flowReady, hdReadyKey, obState, rows.length, kind, pkg.key, user, restoreWithdrawn]);
-  /* ⚠️ 2026-10-09: ЗОХИОГЧ батлагдсан шийдвэрээ энд харлаа — цэсний «батлагдсан» тэмдэг (`countPlanApproved`) арилна */
-  /* ⚠️ 2026-10-12 (аудит №8): БУЦААГДСАН шийдвэр ч «харсан» болно (`navBadges.markPlanReturnedSeen`) — цэсний «шинэ шийдвэр N»
-     нь урьд нь буцаалтыг дахин илгээх хүртэл тоолдог тул харсан атлаа «шинэ» хэвээр байв (шошго ба зан зөрдөг). Харсан
-     багцын цэг (`planNews`) ч арилна. */
   useEffect(() => {
     const d = lastDecision;
     if (review || !d || (d.status !== PLAN_STATUS.approved && d.status !== PLAN_STATUS.returned)) return;
     const me = (user?.username ?? '').trim().toLowerCase();
     if (!me || (d.author ?? '').trim().toLowerCase() !== me) return;
     if (d.status === PLAN_STATUS.approved) markPlanApprovedSeen(d.oid); else markPlanReturnedSeen(d.oid);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-10-12: харсан шийдвэрийн цэгийг (`planNews`) localStorage-ийн тэмдэгтэй НЭГ агшинд арилгана — гадаад төлөвтэй синк
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPlanNews((xs) => (xs && xs.some((x) => x.oid === d.oid) ? xs.filter((x) => x.oid !== d.oid) : xs));
   }, [review, lastDecision, user]);
-  /* ⚠️ 2026-10-12: «шинэ шийдвэр»-ийн багцууд — хуудас нээх/хэрэглэгч солигдоход нэг удаа (хөнгөн: толгой л) */
   const meName = user?.username ?? null;
   useEffect(() => {
     if (review) return undefined;
@@ -4580,23 +2938,12 @@ export function Huvaari({
     setOkRows(new Set());
     setPreviewing(false); setNote('');
     setUndoSnap(null); setChgOpen(false);
-    /* ⚠️ Хуваалцсан нооргийг ДАХИН сэргээнэ (2026-09-24): харалт Map-уудыг
-       дарсан тул алсад шинэ бичилт ирэх хүртэл ноорог харагдахгүй байв. */
     hdResetRestore();
   }, [hdResetRestore, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setOkRows, setNote, setUndoSnap, setChgOpen]);
 
   /**
    * ИЛГЭЭСЭН (БАТЛАГДААГҮЙ) ХУВААРИЙГ ХАРАХ (2026-09-29, хэрэглэгч: «одоо байгаа батлагдсан
    * хуваарь болон илгээсэн батлагдаагүй хуваарийг сольж харах товч нэмэх»).
-   *
-   * ⚠️ ЗӨВХӨН ХАРНА: илгээлт хүлээгдэж байхад засвар түгжээтэй (`locked`), «Хадгалах»/
-   *    «Батлуулах» гарахгүй тул ноорогт буусан агуулга хаашаа ч бичигдэхгүй. «Батлагдсан
-   *    хуваарь» товч (`clearPreview`) нооргийг хаяж серверийн хуваарийг буцаана.
-   * ⚠️ `strict = false`: зохиогч өөрийн илгээснээ ХАРАХ гэсэн — зэрэгцээ өөрчлөлт/олдоогүй
-   *    мөр нь харахад саад биш, тоог нь хэлнэ. Батлагчийн `preview` (strict) хэвээр.
-   * ⚠️ ШИЙДВЭР ГАРГАЖ ЧАДАХ ХҮНД ЭНЭ ТОВЧ ГАРАХГҮЙ (доорх JSX): `decide` нь `previewing`
-   *    үед харж буй ноорогийг ДАХИН ТУЛГАЛГҮЙ бичдэг тул strict бус харалтаас батлах зам
-   *    нээгдэж болохгүй — батлагч «Урьдчилан харах»-аар (strict) харна.
    */
   const viewSent = useCallback(async () => {
     if (!pending || busy || previewing) return;
@@ -4627,37 +2974,19 @@ export function Huvaari({
 
   /**
    * ШИЙДВЭР — батлах эсвэл буцаах.
-   *
-   * ⚠️ ДАРААЛАЛ ЧУХАЛ: батлахад эхлээд агуулгыг ноорог болгон буулгаж эх
-   *    хуудсанд бичнэ, ЗӨВХӨН амжилттай бичигдсэний дараа мөрийг
-   *    `approved` болгоно. Эсрэгээр хийвэл бичилт унасан үед «батлагдсан»
-   *    гэж харагдах атлаа хуваарь хуучин хэвээр үлдэнэ.
    */
   const decide = useCallback(async (approve: boolean, reason: string, okList?: number[]) => {
     if (!pending || busy) return;
-    /* ⚠️ 2026-10-12 (аудит №8): өмнөх үйлдлийн `errList` шийдвэрийн дараа үлдэж, хамааралгүй мөрүүд харагддаг байв */
     setBusy(true); setErr(''); setNote(''); setErrList([]);
-    /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) — батлах бичилт нь доорх эффектэд үргэлжилнэ */
     setProgress(approve ? tr('Шалгаж байна…') : tr('Буцааж байна…'));
     try {
       if (approve) {
-        /*
-         * ⚠️ БАТЛАХААС ӨМНӨ илгээлт ХЭВЭЭР ХҮЛЭЭГДЭЖ БАЙГААГ баталгаажуулна.
-         *    Батлах зам нь эх хуудсанд ЭХЛЭЭД бичээд ДАРАА нь төлөвийг
-         *    шинэчилдэг тул `decidePlan`-ийн хамгаалалт хэтэрхий оройтоно:
-         *    хоёр дахь батлагч хуваарийг бичсэний ДАРАА л татгалзах байлаа.
-         */
-        /* ⚠️ ЭРХИЙГ ЭХ ХУУДСАНД БИЧИХЭЭС ӨМНӨ (2026-09-17): батлах зам нь `save()`
-           → `applyUpdates`-ыг `decidePlan`-ийн хүрээний шалгуураас ӨМНӨ ажиллуулдаг
-           тул эрхгүй хүн (товч нуугдсан ч консолоос) эх хуудсанд бичиж чадах байв. */
         if (!canApprove) { setErr(tr('Энэ багцын хуваарийг батлах эрхгүй.')); return; }
-        /* ⚠️ 2026-10-12 (аудит №8): хуучин (тасарсан жаазын оронд) агшин дээр харсан саналыг батлахгүй (`frameOld`-ийн ⚠️) */
         if (frameOld) {
           setErr(tr('Хуудасны сүүлийн хувилбар бүрэн хадгалагдаагүй тул батлах боломжгүй — өмнөх хувилбар ({0}) дээр харсан санал. Цэвэрлэгдсэний дараа дахин оролдоно уу.', frameOld.shownDay));
           setFlowBox(null);
           return;
         }
-        /* ⚠️ 2026-10-08: идэвхтэй төрлийнх (`pendingOther`-ийн ⚠️) */
         const fresh = await loadPending(pkg.key, kind);
         if (!fresh || fresh.oid !== pending.oid) {
           setErr(tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'));
@@ -4665,48 +2994,22 @@ export function Huvaari({
           await refreshFlow();
           return;
         }
-        /*
-         * ⚠️ ЗОХИОГЧ ӨӨРИЙГӨӨ БАТЛАХГҮЙ — ЭНД, бичихээс ӨМНӨ (2026-09-08).
-         *    `decidePlan` дотор ижил дүрэм бий ч тэр нь БИЧИЛТИЙН ДАРАА л
-         *    ажилладаг: `setApproving` → `useEffect` → `save()` нь огноо,
-         *    уялдаа, сарын обьёмыг эх хуудсанд аль хэдийн бичсэн байна.
-         *    Тэгвэл хуваарь батлагдалгүйгээр хөдөлж, илгээлт нь `pending`
-         *    хэвээр үлдэж хуудас мөнхөд түгжигдэнэ. `plan` + `planApprove`
-         *    хоёр эрхийг нэг хүнд олгосон үед энэ нь цорын ганц хаалт.
-         * ⚠️ Харьцуулалт нь СЕРВЕРИЙН `fresh.author`-оор — локал `pending`
-         *    хуучирсан байж болно.
-         */
         const me = (user?.username ?? '').trim().toLowerCase();
         if (me && me === fresh.author.trim().toLowerCase()) {
           setErr(tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.'));
           setFlowBox(null);
           return;
         }
-        /* ⚠️ МӨР БҮР НОГООН (2026-09-25 аудит): хяналтын горимоос гадуурх «Шийдвэрлэх»
-           цонх ч `Guitsetgel.allOk` дүрмийг дагана — урьдчилан харсан саналын
-           өөрчлөгдсөн мөр бүрийг батлагч ногоон болгосон байх ёстой. Хараагүй бол
-           доор буулгаад батлах эффект улаан мөрөнд зогсоож харалт руу буцаана. */
         if (reviewOids.some((o) => !okRows.has(o))) {
           setErr(tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.'));
           setFlowBox(null);
           return;
         }
-        /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ОБЬЁМТОЙ САР МУЖААС ГАДУУР бол батлахгүй —
-           урьдчилан харж байгаа (ноорог = санал) үед ТҮГЖИХЭЭС ӨМНӨ хэлнэ; харалгүй
-           «Шийдвэрлэх» замд батлах эффект буулгасны дараа шалгана. */
         if (previewing && obOut.bad > 0) {
           setErr(obOutMsg);
           setFlowBox(null);
           return;
         }
-        /*
-         * ⚠️ ТҮГЖЭЭ (claim) — ЭХ ХУУДСАНД БИЧИХЭЭС ӨМНӨ (2026-09-25 аудит). Урьд нь
-         *    бичих явцад зохиогч татах, эсвэл хоёр дахь батлагч буцаах/батлах
-         *    боломжтой байсан тул «татсан/буцаагдсан» санал хуваарьт суудаг байв.
-         *    Түгжсэний дараа `withdrawPlan`/бусдын `decidePlan` татгалзана. Доорх
-         *    бүх эрт буцалт (агуулга уншигдсангүй, зөрчил) түгжээг ТАЙЛНА; батлах
-         *    эффект руу шилжвэл тэр нь бичилт унасан үед тайлна.
-         */
         const cl = await claimPlan({ oid: pending.oid, approver: user?.username ?? '', author: fresh.author });
         if (!cl.ok) {
           setErr(cl.error ?? tr('Шийдвэр хадгалагдсангүй.'));
@@ -4714,30 +3017,15 @@ export function Huvaari({
           await refreshFlow();
           return;
         }
-        /* ⚠️ 2026-10-08: түгжээний агшин — батлах эффект `decidePlan({ claimAt })`-д дамжуулна (өөр цонх ялгана) */
         claimAtRef.current = cl.at ?? null;
-        /* ⚠️ 2026-10-11 (аудит №7): ЭНЭ илгээлтийн `lostWriteRef`-ийг дахин оролдлогын эхэнд тэглэхгүй (`wroteSomeRef`-ийн ⚠️) —
-           зөвхөн өөр илгээлтийнх үлдсэн бол. `frameMovedRef` нь оролдлого бүрийн шалгалт тул тэглэнэ. */
         if (lostWriteRef.current !== pending.oid) lostWriteRef.current = null;
         if (wroteSomeRef.current !== pending.oid) wroteSomeRef.current = null;
         frameMovedRef.current = null;
         failStepRef.current = null;
-        /* ⚠️ 2026-10-01: ХАГАС бичигдсэн илгээлтийн түгжээг ТАЙЛАХГҮЙ (`partialRef`-ийн ⚠️) —
-           дахин «Батлах» дарж агуулга уншигдаагүй/зөрчил гарсан эрт буцалт ч түгжээг алдуулдаг байв. */
         const oid0 = pending.oid;
         const release = () => (partialRef.current === oid0 ? Promise.resolve() : releasePlanClaim({ oid: oid0, approver: user?.username ?? '' }));
         let handed = false;
         try {
-        /* ⚠️ Урьдчилан харж байгаа бол агуулга аль хэдийн ноорогт байна —
-           дахин татвал сүлжээний дэмий дуудлага, мөн батлагчийн харсан
-           зурагтай зөрөх (хооронд нь илгээлт солигдвол) эрсдэлтэй. */
-        /* ⚠️ 2026-09-21-нд ЭРГҮҮЛСЭН — урьдчилан харсан ч ДАХИН ТАТАЖ ТУЛГАНА.
-           Дээрх айдас (илгээлт солигдох) нь `fresh.oid !== pending.oid`-оор
-           аль хэдийн баригдсан. Харин `preview` нь ТЭР ҮЕИЙН мөртэй тулгасан
-           тул харснаас батлах хүртэлх завсарт өөр замаар орсон өөрчлөлт
-           (зэрэгцээ өөрчлөлт, зохиогч хөндөөгүй блокийн шинэ утга) тулгалтыг
-           бүхэлд нь АЛГАСДАГ байв — `previewing` нь тулгалтыг тойрох хаалга
-           болж байсан. Одоо хоёр зам нэг: сервер → тулгах → зөрвөл зогсох. */
         {
           setProgress(tr('Саналыг уншиж байна…'));
           const p = await loadPayload(pending.oid);
@@ -4745,20 +3033,10 @@ export function Huvaari({
             setErr(tr('Илгээлтийн агуулга уншигдсангүй — батлах боломжгүй.'));
             return;
           }
-          /* ⚠️ СЕРВЕРИЙН ОДООГИЙН мөрөөр (2026-09-21): зэрэгцээ өөрчлөлтийг
-             state-ийн хуучирсан `rows`-той биш, дөнгөж татсантай тулгана.
-             Сарын задаргаа ч мөн адил (`refetchServer`). */
           setProgress(tr('Хуудсыг дахин уншиж байна…'));
-          /* ⚠️ 2026-10-12 (аудит №8): `strict` мөр (тасарсан жаазын оронд хуучин агшинтай тулгахгүй) · сарын обьём/нөөцтэй
-             саналд задаргаа заавал шинэ (`refetchServer`-ийн ⚠️). Шидвэл доорх `finally` түгжээг тайлна. */
           const srv = await refetchServer(undefined, { strict: true, needOb: payHasOb(p) });
-          /* ⚠️ ТӨРӨЛ ЗӨРВӨЛ ЭНД ЗОГСОНО (2026-09-11-ний аудитын S1).
-             Ноорогт буулгахгүй тул `save` нь буруу талбарт бичих зам
-             бүрмөсөн хаагдана; илгээлт `pending` хэвээр үлдэнэ.
-             ⚠️ ЗЭРЭГЦЭЭ ӨӨРЧЛӨЛТ ч мөн ЭНД зогсоно (2026-09-21). */
           const ap = applyPayloadToDraft(p, srv.rows, true, srv.plan, srv.res);
           if (!ap.ok) {
-            /* ⚠️ Мэдэгдэхгүй мөр (шинэ жааз) — хагас батлалт хийхгүй (2026-09-25 аудит) */
             setErr(ap.why === 'conflict'
               ? conflictMsg(ap.conflicts)
               : ap.why === 'unknown'
@@ -4769,9 +3047,6 @@ export function Huvaari({
             return;
           }
         }
-        /* ⚠️ `save` нь ноорогийг state-ээс уншдаг тул ЭНД шууд дуудаж
-           болохгүй — React төлөв энэ дуудлагын дараа шинэчлэгдэнэ. Батлах
-           тэмдгийг тавьж, доорх `useEffect` бичилтийг гүйцэтгэнэ. */
         setApproving(pending.oid);
         handed = true;
         setFlowBox(null); setFlowTxt('');
@@ -4780,8 +3055,6 @@ export function Huvaari({
           if (!handed) void release();
         }
       }
-      /* ⚠️ ХАГАС БИЧИГДСЭН саналыг БУЦААХГҮЙ (2026-10-01, `partialRef`-ийн ⚠️) — огноо нь
-         эх хуудсанд аль хэдийн орсон тул буцаавал «буцаагдсан» санал хуваарьт үлдэнэ. */
       if (partialRef.current === pending.oid) {
         setErr(partialMsg(''));
         return;
@@ -4789,27 +3062,18 @@ export function Huvaari({
       const r = await decidePlan({
         oid: pending.oid, approve: false,
         approver: user?.username ?? '', author: pending.author, reason,
-        /* ⚠️ Зөвшөөрсөн мөрүүд (2026-09-25) — гүйцэтгэгч улаан/ногоон харна */
         okRows: okList,
       });
       if (!r.ok) {
         setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'));
-        /* ⚠️ 2026-10-12 (аудит №8): өөр батлагч зуур шийдсэн бол урсгалыг дахин уншина — `lastDecision` тавигдаж хяналтын
-           цонх `onDone`-оор (алдаатай нь) хаагдана; урьд нь цонх «Буцаах»-тай гацдаг байв. */
         await refreshFlow({ noRefetch: true }).catch(() => { /* мэдэгдэл дээр */ });
         return;
       }
-      /* ⚠️ Урьдчилан харсан ноорогийг ЗААВАЛ цэвэрлэнэ: буцаасан саналын
-         агуулга дэлгэц дээр үлдвэл дараагийн «Хадгалах» түүнийг эх хуудсанд
-         бичиж, БУЦААСАН хуваарь батлагдсан мэт болно. */
       setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map());
       setADraft(new Map()); setResDraft(new Map());
       setPreviewing(false);
-      /* ⚠️ 2026-09-29 аудит: тэмдэглэгээ дараагийн илгээлтэд үлдэхгүй */
       setOkRows(new Set());
       setFlowBox(null); setFlowTxt('');
-      /* ⚠️ Талбаргүй үед тэмдэглэгээ хадгалагдаагүйг НУУХГҮЙ — хяналтын горимд
-         цонх хаагдаж мессеж нь дараалал руу дамждаг тул `note`-д нийлүүлнэ. */
       setNote(tr('Хуваарь буцаагдлаа — гүйцэтгэгч засаад дахин илгээнэ.') + (r.warn ? ` ${r.warn}` : ''));
       await refreshFlow({ noRefetch: true });
     } catch (e) {
@@ -4822,21 +3086,9 @@ export function Huvaari({
 
   /**
    * БАТЛАХЫГ ГҮЙЦЭЭХ — агуулга ноорогт буусны ДАРААХ зурагдалт.
-   *
-   * ⚠️ Эх хуудсанд бичих ажлыг `save` хийнэ: тэр нь схем, өөрчлөгдсөн блокийг
-   *    ялгах, агшин солигдвол мөрийг дахин зураглах бүх нарийн ширийнийг
-   *    мэднэ. Энд давхардуулбал хоёр зам салж, нэг нь чимээгүй хоцорно.
-   *
-   * ⚠️ `save` амжилттай болсныг `dirtyN === 0` -оор мэднэ. Бичилт уначихвал
-   *    ноорог үлдэх тул мөрийг `approved` болгохгүй — «батлагдсан» гэж
-   *    харагдаад хуваарь нь хуучин хэвээр үлдэхээс сэргийлнэ.
    */
   /* (`savedRef` — дээр, эрт зарлагдсан) */
-  /** ⚠️ 2026-10-08: `decidePlan`-ийн хариу алдагдсан үед — толгой `approved` болсон уу (уншигдахгүй бол «үгүй»).
-      ⚠️ 2026-10-08 (аудит B8): ЗӨВХӨН ӨӨРИЙН батлалт — `approver` нь нэвтэрсэн хэрэглэгч байх ёстой; өөр батлагч
-      зуур баталсан бол энэ сешний «амжилт» БИШ (алдаа нь хэвээр гарч, урсгал дахин уншигдана). */
   const headApproved = (oid: number): Promise<boolean> => isApprovedBy(oid, user?.username ?? '');
-  /** ⚠️ 2026-10-12 (аудит №8): `partialMsg`-ийн алхмын мэдээлэл — ЭНЭ илгээлтийн сүүлийн уналт (`failStepRef`-ийн ⚠️) */
   const stepOf = (o: number): { step: 'dates' | 'obyem'; written?: number; total?: number } | undefined => {
     const f = failStepRef.current;
     return f && f.oid === o ? { step: f.step, written: f.written, total: f.total } : undefined;
@@ -4844,19 +3096,9 @@ export function Huvaari({
   useEffect(() => {
     if (approving == null || busy) return;
     if (!savedRef.current) {
-      /*
-       * ⚠️ ШИНЭЭР БУУЛГАСАН САНАЛЫГ ДАХИН ТУЛГАНА (2026-09-25 аудит #8). `decide(true)`
-       *    нь серверээс дахин татаж ноорогт буулгадаг — хооронд нь серверт орсон
-       *    өөрчлөлтөөр хяналтын мөрийн жагсаалт (`reviewOids`) өөрчлөгдөж, батлагчийн
-       *    ХАРААГҮЙ мөр ногоонгүйгээр батлагдах байв. Энэ зурагдалт шинэ ноорогтой.
-       */
-      /* ⚠️ 2026-09-25 аудит: хяналтын горимоос ГАДУУР ч (урьдчилан хараагүй
-         «Шийдвэрлэх») мөр бүрийн ногоон дүрэм — харалт руу буцааж тэмдэглүүлнэ.
-         Түгжээг ТАЙЛНА: эх хуудсанд юу ч бичигдээгүй. */
       if (reviewOids.some((o) => !okRows.has(o))) {
-        /* ⚠️ 2026-10-01: ХАГАС бичигдсэн бол ТАЙЛАХГҮЙ (`partialRef`-ийн ⚠️) */
         if (partialRef.current !== approving) void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: батлах гинж САНААТАЙ эффектээр — `save` ноорогийг state-ээс уншдаг тул агуулга буусны ДАРААХ зурагдалтад бичнэ (дээрх ⚠️); хариулагч руу шилжүүлбэл тэр дараалал алдагдана
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setApproving(null);
         setPreviewing(true);
         setErr(review
@@ -4864,10 +3106,6 @@ export function Huvaari({
           : tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.'));
         return;
       }
-      /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): ОБЬЁМТОЙ САР ажлын мужаас ГАДУУР — эх
-         хуудсанд бичихгүй (`util.obyemOutsideSpan`-ийн ⚠️). Энэ зурагдалт саналыг
-         буулгасан ноорогтой тул «Шийдвэрлэх» (урьдчилан хараагүй) зам ч баригдана.
-         Түгжээг ТАЙЛНА: эх хуудсанд юу ч бичигдээгүй. */
       if (obOut.bad > 0) {
         if (partialRef.current !== approving) void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
         setApproving(null);
@@ -4876,8 +3114,6 @@ export function Huvaari({
         return;
       }
       /*
-       * ⚠️ БИЧИХ ЗҮЙЛГҮЙ ИЛГЭЭЛТ — БАТЛАГДСАН гэж хаана (2026-09-08-ны аудит).
-       *
        * Урьд нь энд ЗҮГЭЭР Л ГАРДАГ байсан: `save` дуудагдахгүй, `decidePlan`
        * ч дуудагдахгүй, ямар ч мессеж гарахгүй — батлагч товч дарсан атлаа
        * ЮУ Ч болоогүй мэт харагдаж, илгээлт МӨНХӨД «хүлээгдэж буй» хэвээр
@@ -4889,17 +3125,9 @@ export function Huvaari({
        */
       if (!dirtyN) {
         setApproving(null);
-        /* ⚠️ 2026-09-29 аудит: `previewing`-ийг АМЖИЛТТАЙ болсны дараа л тайлна —
-           унавал хяналтын горимд «Батлах» дахин идэвхтэй үлдэж давтан оролдоно. */
-        /* ⚠️ `busy` гинж ДУУСТАЛ (2026-09-21): урьд нь энэ алхам busy-гүй тул
-           `decidePlan` явж байхад багц солиход өөр багцын pending/шийдвэр
-           наалддаг байв. Сонгогчууд `busy`-д түгжигдэнэ. */
         setBusy(true);
         void (async () => {
-          /** ⚠️ 2026-10-06: `decidePlan` хариу өгсөн эсэх — тэгвэл түгжээг доор аль хэдийн
-              шийдсэн тул дараагийн `refreshFlow` унахад дахин тайлахгүй */
           let answered = false;
-          /* ⚠️ 2026-10-09: явцын мөр (`progress`-ийн ⚠️) */
           setProgress(tr('Төлөв шинэчилж байна…'));
           try {
             const r0 = await decidePlan({
@@ -4908,14 +3136,10 @@ export function Huvaari({
               claimAt: claimAtRef.current ?? undefined,
             });
             answered = true;
-            /* ⚠️ 2026-10-08: `decidePlan`-ийн хариу алдагдсан ч шийдвэр СУУСАН байж болно — толгойг
-               дахин уншиж `approved` бол амжилт (урьд нь «дахин Батлах» гэж худал заадаг байв). */
             const r = r0.ok || !(await headApproved(approving)) ? r0 : { ok: true as const };
             if (r.ok) {
               setPreviewing(false); setOkRows(new Set());
-              /* ⚠️ 2026-10-01: өмнөх хагас бичилтийг энэ батлалт гүйцээв (сервер тэмдгийг `decidePlan` арилгасан) */
               if (partialRef.current === approving) partialRef.current = null;
-              /* ⚠️ 2026-10-11 (аудит №7): `wroteSomeRef`/`lostWriteRef` ч ЗӨВХӨН энд тэглэгдэнэ */
               if (wroteSomeRef.current === approving) wroteSomeRef.current = null;
               if (lostWriteRef.current === approving) lostWriteRef.current = null;
             }
@@ -4924,15 +3148,10 @@ export function Huvaari({
               : '');
             if (!r.ok) {
               setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'));
-              /* ⚠️ 2026-10-06: `claimPlan`-ийн түгжээг ТАЙЛНА (бусад салааны адил) — урьд нь
-                 энд үлдэж илгээлт өөр батлагч/зохиогчид хаалттай гацдаг байв. Хагас бол үгүй. */
               if (partialRef.current !== approving) void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
             }
             await refreshFlow({ noRefetch: true });
           } catch (e) {
-            /* ⚠️ 2026-10-06: `catch`-гүй байсан тул сүлжээний уналт амлалтыг чимээгүй
-               татгалзуулж, хэрэглэгч юу ч мэдэхгүй үлддэг байв. Түгжээг тайлж (хагас бол
-               үгүй), шалтгааныг хэлж, төлөвийг дахин уншина. */
             if (!answered && partialRef.current !== approving) void releasePlanClaim({ oid: approving, approver: user?.username ?? '' });
             setErr(partialRef.current === approving ? partialMsg(userError(e)) : userError(e));
             await refreshFlow({ noRefetch: true }).catch(() => {});
@@ -4944,32 +3163,16 @@ export function Huvaari({
         return;
       }
       savedRef.current = true;
-      /*
-       * ⚠️ УНАЛТЫГ `save`-ИЙН БУЦААХ УТГААР (2026-09-25 аудит). Урьд нь энэ эффект
-       *    `busy` хөдлөхөд дахин ажиллана гэж найддаг байв. Гэтэл `staleN` зам
-       *    `setBusy(true)` → `false`-ийг НЭГ синхрон тикт хийдэг тул React нэгтгэж
-       *    `busy` өөрчлөгдөөгүй мэт болно: эффект дахин ажиллахгүй, `approving` ба
-       *    `savedRef` гацаж, `locked` тайлагдана. Дараа нь «Харахыг болих»/«Цуцлах»
-       *    дарахад `dirtyN` 0 болж энэ эффект `savedRef = true`-гээр `decidePlan`
-       *    руу орж, ЮУ Ч бичигдээгүй илгээлтийг «батлагдсан» болгодог байв.
-       *    Одоо унавал доорх «БИЧИЛТ УНАСАН» салаатай ИЖИЛ төлөвт шууд оруулна;
-       *    эффект өөрөө тэр салаанд түрүүлж орсон бол (`savedRef` худал) алгасна.
-       */
       const claimOid = approving;
       void save().then((ok) => {
         if (ok || !savedRef.current) return;
         savedRef.current = false;
-        /* ⚠️ Бичилт эхлээгүй/унасан — түгжээг тайлна (2026-09-25 аудит).
-           ⚠️ ХАГАС бичигдсэн бол ТАЙЛАХГҮЙ (2026-10-01, `partialRef`-ийн ⚠️). */
         const partial = partialRef.current === claimOid;
         if (!partial) void releasePlanClaim({ oid: claimOid, approver: user?.username ?? '' });
         setApproving(null);
         setPreviewing(true);
-        /* ⚠️ 2026-10-08: хариу алдагдсан бол `lostWriteMsg` — «огноо бичигдсэн» гэж баталгаатай хэлэхгүй */
         const lostW = lostWriteRef.current === claimOid;
-        /* ⚠️ 2026-10-09: жааз солигдсон (`frameMovedRef`) бол `save`-ийн мессеж ХЭВЭЭР — «сарын обьём бичигдсэнгүй» биш */
         const fm = frameMovedRef.current === claimOid;
-        /* ⚠️ 2026-10-12 (аудит №8): ЯГ унасан алхам (`failStepRef`) — «огноо бичигдсэн боловч…» гэж таамаглахгүй */
         const st0 = stepOf(claimOid);
         setErr((cur) => (partial ? (fm ? cur : lostW ? lostWriteMsg(cur) : partialMsg(cur, st0)) : cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.')));
       });
@@ -4979,46 +3182,18 @@ export function Huvaari({
     const oid = approving;
     setApproving(null);
     if (dirtyN) {
-      /*
-       * ⚠️ БИЧИЛТ УНАСАН. Ноорог хэвээр үлдсэн тул `previewing`-ийг
-       *    ТАВИХГҮЙ: тавьчихвал энэ агуулга батлагчийн ӨӨРИЙН засвар мэт
-       *    болж, `locked` тайлагдаж, дараа нь батлалгүйгээр эх хуудсанд
-       *    бичигдэх зам нээгдэнэ. Урьдчилан харах төлөвт үлдээж, «Харахыг
-       *    болих»-оор л цэвэрлүүлнэ.
-       *
-       * ⚠️ 2026-09-21-нд ЭРГҮҮЛСЭН — `previewing`-ийг ТАВИНА. Дээрх айдас
-       *    үндэсгүй: `locked` нь `pending && !approving`-оос л хамаардаг,
-       *    `previewing`-ээс биш; «Батлуулах» ч `!pending`-д нуугддаг тул
-       *    батлалгүй бичих зам нээгдэхгүй. Харин урьдчилан ХАРАЛГҮЙ баталсан
-       *    үед `previewing = false` тул «Цуцлах» (`!locked`) ч, «Харахыг
-       *    болих» (`previewing`) ч гарахгүй — ноорог ГАЦДАГ байв. Одоо
-       *    «Харахыг болих» гарна; дахин «Шийдвэрлэх» дарвал `decide` нь
-       *    `previewing` тул агуулгыг дахин татахгүй, энэ ноорогоо бичнэ.
-       */
       setPreviewing(true);
-      /* ⚠️ Түгжээг тайлна (2026-09-25 аудит) — зохиогч татах/өөр батлагч шийдэх боломжтой болно.
-         ⚠️ ХАГАС бичигдсэн бол ТАЙЛАХГҮЙ (2026-10-01, `partialRef`-ийн ⚠️). */
       const partial = partialRef.current === oid;
       if (!partial) void releasePlanClaim({ oid, approver: user?.username ?? '' });
-      /* ⚠️ `save()` өөрөө тодорхой шалтгаан (staleN г.м.) бичсэн бол ДАРАХГҮЙ (2026-09-17) */
-      /* ⚠️ 2026-10-08: хариу алдагдсан бол `lostWriteMsg` (дээрх салаатай ижил) */
       const lostW = lostWriteRef.current === oid;
       const fm = frameMovedRef.current === oid;
       const st1 = stepOf(oid);
       setErr((cur) => (partial ? (fm ? cur : lostW ? lostWriteMsg(cur) : partialMsg(cur, st1)) : cur || tr('Хуваарь эх хуудсанд бичигдсэнгүй — илгээлт хүлээгдэж буй хэвээр.')));
       return;
     }
-    /* ⚠️ 2026-09-29 аудит: `previewing`-ийг `decidePlan` АМЖИЛТТАЙ болсны ДАРАА л
-       тайлна — урьд нь өмнө тайлдаг тул сүлжээний уналтад `reviewLive` худал болж
-       хяналтын горимд «Батлах»/«Буцаах» хоёулаа идэвхгүй, зөвхөн «Хаах» үлддэг байв.
-       Одоо дахин «Батлах» дарвал ноорог хоосон тул «бичих зүйлгүй» салаагаар
-       `decidePlan` дахин дуудагдана. */
-    /* ⚠️ `busy` гинж ДУУСТАЛ (2026-09-21) — дээрх салаатай ижил шалтгаан. */
     setBusy(true);
     void (async () => {
-      /** ⚠️ 2026-10-06: шийдвэр бүртгэгдсэн бол дараагийн `refreshFlow`-ийн уналтад «дахин Батлах» гэхгүй */
       let decided = false;
-      /* ⚠️ 2026-10-09: явцын мөр — огноо (1/3) · сарын обьём (2/3) `save`-д, төлөв энд (3/3) */
       setProgress(tr('Төлөв шинэчилж байна (3/3)…'));
       try {
         const r0 = await decidePlan({
@@ -5026,17 +3201,13 @@ export function Huvaari({
           approver: user?.username ?? '', author: pending?.author ?? '',
           claimAt: claimAtRef.current ?? undefined,
         });
-        /* ⚠️ 2026-10-08: хариу алдагдсан ч `approved` суусан бол амжилт (дээрх салаатай ижил) */
         const r = r0.ok || !(await headApproved(oid)) ? r0 : { ok: true as const };
         decided = r.ok;
         if (!r.ok) {
-          /* ⚠️ 2026-10-01: `partialRef` (ба сервер тэмдэг) ҮЛДЭНЭ — санал эх хуудсанд суусан тул
-             буцаах/татах хаалттай; «Батлах»-ыг дахин дарахад «бичих зүйлгүй» салаагаар гүйцнэ. */
           setErr((r.error ? userError(r.error) : tr('Хуваарь бичигдсэн ч төлөв шинэчлэгдсэнгүй — дахин оролдоно уу.'))
             + ` ${tr('Хуваарь эх хуудсанд бичигдсэн тул буцаах боломжгүй — «Батлах»-ыг дахин дарж дуусгана уу.')}`);
         } else {
           if (partialRef.current === oid) partialRef.current = null;
-          /* ⚠️ 2026-10-11 (аудит №7): `wroteSomeRef`/`lostWriteRef` ч ЗӨВХӨН энд тэглэгдэнэ (`wroteSomeRef`-ийн ⚠️) */
           if (wroteSomeRef.current === oid) wroteSomeRef.current = null;
           if (lostWriteRef.current === oid) lostWriteRef.current = null;
           setPreviewing(false);
@@ -5045,9 +3216,6 @@ export function Huvaari({
         }
         await refreshFlow({ noRefetch: true });
       } catch (e) {
-        /* ⚠️ 2026-10-06: `catch`-гүй байсан — `decidePlan`/`refreshFlow` шидвэл алдаа
-           чимээгүй алга болдог байв. Хуваарь АЛЬ ХЭДИЙН бичигдсэн тул түгжээг ТАЙЛАХГҮЙ,
-           `!r.ok` салаатай ижил «дахин Батлах» зааврыг өгнө. */
         setErr(decided
           ? userError(e)
           : partialRef.current === oid
@@ -5066,45 +3234,28 @@ export function Huvaari({
   /**
    * НЭЭГДЭНГҮҮТ САНАЛЫГ ХУАНЛИ ДЭЭР БУУЛГАНА — `preview`-ийн ЯГ ижил замаар
    * (сервер → тулгах → зөрвөл зогсох).
-   * ⚠️ Мөр · задаргаа ачаалагдаж дуустал ХҮЛЭЭНЭ: `refetchServer` нь `sc`-гүй
-   *    үед хоосон `rows`-оор тулгаж санал огт буухгүй байх байв.
-   * ⚠️ НЭГ Л УДАА: алдаа гарвал (зэрэгцээ өөрчлөлт г.м.) давтан оролдохгүй —
-   *    мессеж нь батлагчид үлдэнэ.
-   * ⚠️ Энэ эффект `preview`-ийн ДАРАА зарлагдах ёстой — deps массив зурагдалтын
-   *    үед уншигддаг тул өмнө нь бол TDZ (`Cannot access before initialization`).
    */
   const reviewStarted = useRef(false);
   /** Эхлэлийн эффект «аль хэдийн шийдвэрлэгдсэн» алдаа тавьсан (#5) — `onDone`-ийг алгасна */
   const reviewStartErr = useRef(false);
-  /**
-   * ⚠️ 2026-10-12 (аудит №8): ХЯНАЛТЫН ЭХЛЭЛ УНАСАН (урсгал уншигдсангүй · сүлжээ · задаргаа) — «Дахин оролдох» товч.
-   *    Урьд нь эхлэл НЭГ Л удаа (`reviewStarted`) тул зөрчлөөс бусад уналтад хяналт «буулгагдаагүй» төлөвт гацаж,
-   *    «Батлах»/«Буцаах» хоёулаа хаалттай, зөвхөн «Хаах» үлддэг байв. Зөрчил/эвдэрсэн агуулга нь `previewBad` (буцаах зам).
-   */
   const [reviewRetry, setReviewRetry] = useState(false);
   useEffect(() => {
     if (!review || reviewStarted.current) return;
     if (pkg.key !== review.pkgKey || flowReady === null || busy || !sc || !rows.length || obState === 'loading') return;
     reviewStarted.current = true;
-    /* ⚠️ Урсгал уншигдаагүй (сүлжээ/эрх) ≠ «шийдвэрлэгдсэн» — шалтгааныг ЯГ хэлнэ */
     if (flowReady === false) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: хяналтын горим нээгдэнгүүт нэг удаа саналыг буулгах эффект — алдааг ЯГ энд хэлнэ (⚠️ дээр); async ачаалалт дууссаны дараа л ажиллах тул хариулагч болгох боломжгүй
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setErr(flowWhy || tr('Батлах урсгал уншигдсангүй — сүлжээгээ шалгана уу.'));
       setReviewRetry(true);
       return;
     }
     if (pending?.oid !== review.oid) {
-      /* ⚠️ Доорх «шийдвэр хадгалагдсан» эффект ИЖИЛ commit-д `lastDecision`-ийг
-         (өөр хүний шийдвэр) хараад цонхыг ХООСОН мессежтэй хаадаг байв —
-         `err` дараагийн зурагдалтад л `noteRef`-д ордог (2026-09-25 аудит #5).
-         Цонх нээлттэй үлдэж алдаагаа харуулна; «Хаах»-аар гарна. */
       reviewStartErr.current = true;
       setErr(tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'));
       return;
     }
     void preview().then((ok) => { if (!ok) setReviewRetry(true); });
   }, [review, pkg.key, flowReady, flowWhy, busy, sc, rows.length, obState, pending, preview]);
-  /** ⚠️ 2026-10-12: «Дахин оролдох» — эхлэлийг тэглээд урсгалыг дахин уншина; эффект `flowReady`-ийн шилжилтээр дахин ажиллана */
   const retryReview = () => {
     reviewStarted.current = false;
     setReviewRetry(false);
@@ -5113,23 +3264,11 @@ export function Huvaari({
   };
   /** Хяналтын ИЛГЭЭЛТ ЯГ ЭНЭ ҮҮ — өөр/шинэ илгээлт дээр шийдвэр гаргуулахгүй */
   const reviewLive = !!review && pending?.oid === review.oid && previewing;
-  /* ⚠️ ЗӨРЧЛӨӨР УНАСАН хяналт (2026-09-25 аудит #1) — зөвхөн «Буцаах» нээлттэй,
-     тэмдэглэгээгүй (`okRows` undefined): мөр харагдаагүй тул «зөвшөөрсөн» гэх зүйлгүй. */
   const reviewConflict = !!review && pending?.oid === review.oid && !previewing && previewBad === review.oid;
 
   /**
    * ШИЙДВЭР ХАДГАЛАГДСАН — дараалал руу буцна.
-   * ⚠️ `lastDecision` нь `refreshFlow` хүлээгдэж буй илгээлт АЛГА үед л тавьдаг
-   *    тул ЭНЭ илгээлт шийдэгдсэн гэдгийн найдвартай дохио (батлах гинжний
-   *    «бичилт унасан» салаанд илгээлт хүлээгдсэн хэвээр → цонх хаагдахгүй).
    */
-  /* ⚠️ АЛДААГ ч дамжуулна (2026-09-25 аудит): өөр батлагч зуур шийдсэн үед
-     `decidePlan` алдаа өгч, `lastDecision` нь энэ илгээлт болж цонх хаагдана —
-     зөвхөн `note` дамжуулбал тэр алдаа ор мөргүй алга болно. */
-  /* ⚠️ АЛДАА/МЭДЭЭГ ЯЛГАЖ дамжуулна (2026-09-25 аудит #5) — дараалал алдааг
-     `note` (ногоон) болгож харуулдаг байв. */
-  /* ⚠️ 2026-10-12 (аудит №8): `errList` (хадгалалтын анхааруулга — «дахин уншиж чадсангүй» · бүлгийн задаргаа алгассан г.м.)
-     ч дамжина — урьд нь хяналтын цонх хаагдахад жагсаалт ор мөргүй алга болж, батлагч хэзээ ч хардаггүй байв. */
   const noteRef = useLatest<{ msg: string; isErr: boolean }>(err
     ? { msg: err, isErr: true }
     : errList.length
@@ -5147,7 +3286,6 @@ export function Huvaari({
   /**
    * БУЦААХ (хяналтын горим) — зөвшөөрөөгүй мөрүүдийг шалтгаанд ЖАГСААНА
    * (`Guitsetgel.badText`-ийн загвар), зөвшөөрсөнийг `okRows`-оор хадгална.
-   * ⚠️ `butsaasan_shaltgaan` нь 2048 тэмдэгт — эхний 12 мөр, нийт 2000-аар тасална.
    */
   const rejectReview = (txt: string) => {
     if (!txt.trim()) { setErr(tr('Буцаах шалтгааныг бичнэ үү.')); return; }
@@ -5156,48 +3294,24 @@ export function Huvaari({
       .map((o) => byOid.get(o)).filter((r): r is PlanRow => !!r);
     const list = bad.slice(0, 12).map((r) => `${r.no} ${fixCyr(r.work)}`.trim()).join('; ')
       + (bad.length > 12 ? ` … (+${bad.length - 12})` : '');
-    /* ⚠️ 2026-10-12 (аудит №8): ХАДГАЛАХ текст МОНГОЛ ЭХЭЭР (`tr()`-гүй, тоо `String`-ээр) — урьд нь батлагчийн хэлээр
-       орчуулагдаж (англи батлагч → англи шалтгаан) бичигддэг тул монгол зохиогч англиар уншдаг байв. Харуулахдаа
-       `displayReason()` уншигчийн хэлээр орчуулна. */
     const why = bad.length
       ? `${txt.trim()}\nЗөвшөөрөгдөөгүй ${String(bad.length)} мөр: ${list}`
       : txt.trim();
-    /* ⚠️ Зөрчлөөр унасан үед (`reviewConflict`) тэмдэглэгээ ИЛГЭЭХГҮЙ — `[]` бол
-       гүйцэтгэгчид бүх мөр «зөвшөөрөөгүй» улаан болж ХУДАЛ харагдана. */
     void decide(false, why.slice(0, 2000), reviewLive ? reviewOids.filter((o) => okRows.has(o)) : undefined);
   };
   /**
    * ДАРААГИЙН ЗӨВШӨӨРӨӨГҮЙ МӨР (2026-09-25 аудит, UX): ~1,400 мөрийн виртуал
    * жагсаалтад улаан мөрийг гүйлгэж хайх шаардлагагүй — сонгоод гүйлгэнэ.
-   * ⚠️ Өөрчлөлт нь ИДЭВХГҮЙ блокт байвал тэр блок руу шилжинэ — эс бөгөөс
-   *    одоогийн блок дээр ялгаа харагдахгүй.
-   * ⚠️ Шүүлт/эвхэлтэд нуугдсан бол шүүлтийг цэвэрлэж модыг дэлгэнэ.
    */
-  /* ⚠️ 2026-10-07: `blk`-ийг ХАМТ санана — `setBlk(bch)` ба энэ ref нэг агшинд тавигддаг тул
-     доорх эффект мөн зурагдалтад ХУУЧИН `blk`-ээр ажиллаж, хөндлөн гүйлгээ буруу блокийн
-     зурвас руу очдог байв. Эффект `blk` тэр блок болтол хүлээнэ. */
   const scrollToOid = useRef<{ oid: number; blk: number } | null>(null);
-  /* ⚠️ 2026-10-26: доорх тэмдэглэгээ (`reviewSet` · `backOn` · `backMarkMap` · `marking`) · `pickBlk` · `goToRow` нь
-     `jumpNextBad`-аас ӨМНӨ зарлагдана — урьд нь зарлагдахаасаа өмнө хандагддаг байв (react-hooks/immutability).
-     Эффект биш цэвэр утга/callback тул зөөсөн нь эффектийн дарааллыг өөрчлөхгүй. */
   /** Мөрийн тэмдэг: хяналтад — батлагчийн сонголт; гүйцэтгэгчид — буцаасан шийдвэр */
   const reviewSet = useMemo(() => new Set(reviewOids), [reviewOids]);
   /** Буцаасан тэмдэг ИДЭВХТЭЙ юу — яг тэр шийдвэр сүүлийнх, ноорог байгаа */
   const backOn = !review && !!backMarks && dirtyN > 0 && lastDecision?.oid === backMarks.oid;
-  /*
-   * ⚠️ ТЭМДЭГ ЗӨВХӨН САНАЛД БАЙСАН, УТГА НЬ ХЭВЭЭР МӨРД (2026-09-25 аудит #3).
-   *    Урьд нь гүйцэтгэгчийн ОДООГИЙН ноорогтой тулгадаг тул засаж эхэлсэн
-   *    улаан мөр улаан хэвээр, саналд огт байгаагүй ШИНЭ засвар «зөвшөөрөөгүй»
-   *    улаан болж харагддаг байв. Одоо: мөр саналд байх + утга нь саналынхтай
-   *    ИЖИЛ (зохиогч хөндөөгүй блок/талбар — `base`-тэй ижил — тооцохгүй) бол
-   *    л тэмдэглэнэ; өөрчлөгдмөгц саармаг.
-   */
   const backMarkMap = useMemo(
     () => backMarkMapOf({ backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes }),
     [backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes],
   );
-  /* ⚠️ 2026-09-25 аудит: батлагч ЭНГИЙН хуудсанд урьдчилан харж байхад ч мөр бүрийг
-     ногоон болгоно — «Шийдвэрлэх»-ийн батлалт тэр дүрмээр хаалттай (`decide`). */
   const marking = !!review || (previewing && pending != null && canApprove && !isOwnSubmission);
   /**
    * «БҮХ БЛОК»-ийн ДЭД МӨР ДЭЭР ДАРАХ (2026-10-04): тэр блок идэвхжиж горим унтарна —
@@ -5207,17 +3321,12 @@ export function Huvaari({
   const pickBlk = (oid: number, b: number) => {
     setBlk(b);
     setAllBlk(false);
-    /* ⚠️ 2026-10-09: дэд мөрөөс засахаар гарсан — цонх хаагдмагц «Бүх блок» ӨӨРӨӨ буцаж асна (`allBackRef`).
-       «Бүх блок» зөвхөн харах дүрэм (2026-10-04) ХЭВЭЭР; хэрэглэгч горимоо дахин асаах шаардлагагүй болов. */
     allBackRef.current = true;
     setSel(oid);
     scrollToOid.current = { oid, blk: b };
   };
   /**
    * МӨР РҮҮ ОЧИХ (2026-10-08) — алдааны «→ ажил руу» · өөрчлөлтийн самбар · «Үсрэх» оролт нэг зам.
-   * ⚠️ МОДЫГ ХАВТГАЙРУУЛАХГҮЙ (2026-09-02-ны шийдвэр): эвхсэн ӨВӨГ бүлгүүдийг л дэлгэнэ; мөр шүүлтэд
-   *    (таб · жил · бүлэг · чип) нуугдсан бол тэдгээрийг цэвэрлэнэ (`jumpNextBad`-ийн дүрэм). Дараа нь
-   *    сонгож, `scrollToOid` эффект гүйлгэнэ (блок нь `b`).
    */
   const goToRow = useCallback((oid: number, b: number = blk) => {
     const at = plan.findIndex((r) => r.oid === oid);
@@ -5235,7 +3344,6 @@ export function Huvaari({
         setCollapsed((s) => { const m = new Set(s); for (const o of anc) m.delete(o); return m; });
       }
       const inScoped = fGrp === 'all' || scoped.some((x) => x.oid === oid);
-      /* ⚠️ 2026-10-09: шүүлтийг цэвэрлэх нь ЧИМЭЭГҮЙ байв — хэрэглэгч шүүлт яагаад алга болсныг мэддэггүй; ил хэлнэ */
       if (!inScoped || !match(r)) {
         setFilter('all'); setFYear('all'); setFGrp('all'); setChips(new Set());
         setNote(tr('Шүүлт цэвэрлэгдэв — мөр шүүлтэд нуугдсан байв.'));
@@ -5244,8 +3352,6 @@ export function Huvaari({
     setSel(oid);
     scrollToOid.current = { oid, blk: b };
   }, [plan, blk, visible, collapsed, fGrp, scoped, match, setNote, setLvl, setCollapsed, setFilter, setFYear, setFGrp, setChips, setSel]);
-  /* ⚠️ 2026-10-09: ЗОХИОГЧИД ч (`backOn` — буцаагдсан саналын улаан мөр) — «Дараагийн улаан» · `]`. Урьд нь зөвхөн
-     хяналтад ажилладаг тул зохиогч 1,400 мөрөөс ✕-ийг гүйлгэж хайдаг байв. */
   const jumpNextBad = () => {
     const bad0 = marking ? reviewOids.filter((o) => !okRows.has(o))
       : backOn ? [...backMarkMap].filter(([, v]) => v === 'bad').map(([o]) => o) : [];
@@ -5257,9 +3363,6 @@ export function Huvaari({
     const r = plan[i];
     const b0 = base[i];
     const bch = r.spans.findIndex((sp, b) => !sameSpan(sp, b0?.spans[b]));
-    /* ⚠️ 2026-10-12 (аудит №8): НЭГ ЗАМ — `goToRow` (чип шүүлтийг ч цэвэрлэж, ил мэдэгдэнэ; эвхсэн өвгийг л дэлгэнэ).
-       Урьд нь энд чипийг (`chips`) цэвэрлэдэггүй тул «Дараагийн улаан/✕»-ийн мөр чипэд нуугдсан хэвээр, сонгогдсон атлаа
-       харагддаггүй байв; мөн бүх модыг хавтгайруулдаг байв (2026-09-02-ны шийдвэртэй зөрнө). */
     goToRow(r.oid, bch >= 0 ? bch : blk);
   };
   /* Хяналт нээгдмэгц ЭХНИЙ өөрчлөлт рүү гүйлгэнэ — эхний гүйлгэлт «өнөөдөр» рүү
@@ -5276,10 +3379,7 @@ export function Huvaari({
     const o = scrollToOid.current;
     const el = scrollRef.current;
     if (o == null || !el) return;
-    /* ⚠️ 2026-10-07: блок хараахан солигдоогүй бол хүлээнэ (`blk` deps-д) */
     if (o.blk !== blk) return;
-    /* ⚠️ 2026-10-04: индекс ДЭЛГЭЦИЙН жагсаалтаас (`disp`) — «Бүх блок» горимд дэд мөрүүд
-       Y-г шилжүүлдэг; энгийн горимд `visible`-тэй ижил. Эх мөр (`b < 0`). */
     const k = disp.findIndex((v) => v.oid === o.oid && v.b < 0);
     if (k < 0) return;
     scrollToOid.current = null;
@@ -5297,16 +3397,6 @@ export function Huvaari({
     });
   };
 
-  /*
-   * ⚠️ БУЦААСАН ТЭМДЭГЛЭГЭЭГ `lastDecision`-ООС ҮҮСГЭНЭ (2026-09-25 аудит #2).
-   *    Урьд нь зөвхөн «Ноорогт буцааж засах» дарсан агшинд санах ойд тавьдаг тул
-   *    хуудас дахин ачаалах, хамт ажиллагч өөр компьютерээс (хуваалцсан ноорог)
-   *    нээхэд улаан/ногоон тэмдэг огт харагддаггүй байв. Одоо сүүлийн шийдвэр
-   *    «буцаасан» бөгөөд тэмдэглэгээтэй (`okRows != null`) бол саналыг нэг удаа
-   *    татаж хадгална; харагдах эсэхийг `backOn` шийднэ (ноорогтой үед л).
-   * ⚠️ `refreshFlow` нь `lastDecision`-ийг түр `null` болгодог тул энд АРЧИХГҮЙ —
-   *    ижил илгээлт/төрөлд дахин татахгүй (`backRef`).
-   */
   const backRef = useLatest(backMarks);
   useEffect(() => {
     const d = lastDecision;
@@ -5339,9 +3429,6 @@ export function Huvaari({
     const f = focusReq.current;
     if (!f) return;
     if (Date.now() - f.at > 2000) { focusReq.current = null; return; }
-    /* ⚠️ Огноо өөрчлөгдсөн бол popup нээгдэнэ (`openAfterDate`) — фокусыг цонхноос булаахгүй
-       ⚠️ 2026-10-09: зөвхөн МОДАЛ (`aria-modal`) — модал биш «Хэрхэн» заавар (`role="note"`) · PDF popover нээлттэй
-          үед ↓/↑-ын фокус шилжилт урьд нь бүрмөсөн зогсдог байв. */
     if (document.querySelector('[aria-modal="true"]')) { focusReq.current = null; return; }
     const el = document.querySelector<HTMLElement>(`[data-oid="${f.oid}"] [data-col="${f.col}"]`);
     if (el) { focusReq.current = null; el.focus(); }
@@ -5350,9 +3437,6 @@ export function Huvaari({
   const nextRow = useCallback((oid: number, col: 'start' | 'end' | 'days' | 'ham', dir: 1 | -1) => {
     const k0 = disp.findIndex((d) => d.oid === oid && d.b < 0);
     if (k0 < 0) return;
-    /* ⚠️ 2026-10-09: тэр баганад ЗАСАГДАХ нүдгүй мөрийг (бүлэг · хуваарьгүй мөрийн хоног · батлагдаагүй нэмэлт мөр)
-       АЛГАСНА — урьд нь сонголт тийш шилжиж, нүд олдохгүй тул фокус алга болдог байв. Нөхцөл нь `TaskRow`-ийн
-       `onDate`/`onDays`/`HamCell` дамжуулах нөхцөлтэй ижил (мөрийн түвшний хэсэг нь). */
     const hasCell = (r: PlanRow) => (col === 'ham' ? r.oid >= 0
       : !r.group && r.oid >= 0 && (col !== 'days' || !!r.spans[blk]));
     let k = k0 + dir;
@@ -5362,7 +3446,7 @@ export function Huvaari({
     setSel(t.oid);
     const el = scrollRef.current;
     if (el) {
-      /* Мөр 0 нь `PL_ROW`-оос эхэлнэ (наалдмал толгой урсгалд) — `recalcWin`-ийн ⚠️ */
+      /* Мөр 0 нь `PL_ROW`-оос эхэлнэ (наалдмал толгой урсгалд) — `recalcWin` */
       const y = (k + 1) * PL_ROW;
       if (y < el.scrollTop + PL_ROW) el.scrollTop = Math.max(0, y - PL_ROW);
       else if (y + PL_ROW > el.scrollTop + el.clientHeight) el.scrollTop = y + PL_ROW - el.clientHeight;
@@ -5388,10 +3472,6 @@ export function Huvaari({
       const bAt = blks.includes(blk) ? blk : (blks[0] ?? blk);
       const old = b0r?.spans[bAt] ?? null;
       const next = r.spans[bAt] ?? null;
-      /*
-       * ⚠️ 2026-10-09: ХУУЧИН → ШИНЭ утга (зөвхөн «уялдаа» гэсэн тэмдэг биш) — батлагч огнооноос бусдыг (уялдааны
-       *    текст · сар бүрийн обьём · нөөц · бодит огноо) мөр нээж харахгүйгээр шийдэх боломжгүй байв. Урт бол таслана.
-       */
       const flags: string[] = [];
       const cut = (s: string) => (s.length > 90 ? `${s.slice(0, 87)}…` : s);
       const nn = (v: number | null | undefined) => (v == null ? '—' : num(v));
@@ -5481,8 +3561,6 @@ export function Huvaari({
   /**
    * БҮЛГИЙН ДОТОРХ ӨӨРЧЛӨГДСӨН НАВЧ МӨРҮҮД (2026-10-08, хяналт) — бүлгийн ✕/✓ дээр дарахад «энэ бүлгийн
    * N мөрийг зөвшөөрөх үү?» гэж асууж бөөнөөр ногоон болгоно.
-   * ⚠️ 2026-09-25-ны «бүгдийг зөвшөөрөх = зөвхөн super» шийдвэрийг ХЭСЭГЧЛЭН сулруулав: НЭГ бүлгийн
-   *    хүрээнд, БАТАЛГААЖУУЛАЛТТАЙ (`confirm`). Бүх мөрийн нэг товч super-д хэвээр.
    */
   const grpLeaf = useMemo(() => {
     const m = new Map<number, number[]>();
@@ -5505,10 +3583,6 @@ export function Huvaari({
     if (!leaves?.length) return undefined;
     return leaves.every((o) => okRows.has(o)) ? 'ok' : 'bad';
   };
-  /* ⚠️ 2026-10-09: «БОЛИХ» САЛАА ХҮРЭГДЭХ БОЛОВ — урьд нь бүлгийн мөр өөрөө өөрчлөгдсөн (`self`) бөгөөд бүх навч ногоон
-     үед `toggleOk` зөвхөн бүлгийн мөрийг сэлгэж, навчдын зөвшөөрлийг бөөнөөр болих зам огт байгаагүй. Одоо: аль нэг
-     нь (навч эсвэл бүлэг өөрөө) ногоон биш → бүгдийг зөвшөөрнө; бүгд ногоон → бүгдийн зөвшөөрлийг болино. */
-  /* ⚠️ 2026-10-23 (UX аудит X1): async — `askConfirm`; хариулах зуур `okRows` өөрчлөгдөж болох тул функцэн setState хэвээр */
   const markGroup = async (r: PlanRow) => {
     if (busy || approving != null) return;
     const leaves = grpLeaf.get(r.oid) ?? [];
@@ -5528,8 +3602,6 @@ export function Huvaari({
   };
   /**
    * НӨГӨӨ ТАБЫН огнооны нүд дээр дарахад табаа солино (2026-10-08, `TaskRow.onOtherTab`).
-   * ⚠️ 2026-10-23 (UX аудит P7): «шилжих үү?» асуултыг ХАСАВ — шилжилт юу ч устгадаггүй (хадгалаагүй засвартай бол
-   *    `runSwitch` → `askSwitch` өөрөө асууна/хадгална). Шилжсэнийг мэдэгдлээр хэлнэ.
    */
   const otherTab = () => {
     const other: PlanKind = kind === 'plan' ? 'geree' : 'plan';
@@ -5540,19 +3612,15 @@ export function Huvaari({
    * ХУРДАН ТОВЧЛУУР (2026-10-08): Ctrl/⌘+Z — сүүлийн өөрчлөлт буцаах; хяналтад `]` — дараагийн ✕,
    * Space — сонгосон мөрийг ✓/✕. Оролт · товч · дэд цонх нээлттэй үед ажиллахгүй.
    */
-  /* ⚠️ 2026-10-09: `backOn` — зохиогчид `]` (дараагийн улаан) ажиллана, Space (тэмдэглэх) үгүй */
   const keysRef = useLatest({ next: jumpNextBad, sel, marking, backOn, reviewSet, toggle: toggleOk });
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      /* ⚠️ 2026-10-09: `keyIgnored` (оролт · чат самбар · Хуваариас гадуур) ба зөвхөн МОДАЛ цонх (`aria-modal`) —
-         урьд нь `[role="dialog"]` байсан тул анх өөрөө нээгддэг «Хэрхэн» заавар бүх товчлуурыг хаадаг байв. */
       if (e.defaultPrevented || keyIgnored(e.target) || document.querySelector('[aria-modal="true"]')) return;
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         undoLastRef.current();
         return;
       }
-      /* ⚠️ 2026-10-09: ДАХИН ХИЙХ — Ctrl+Y эсвэл Ctrl+Shift+Z (`redoLast`) */
       if ((e.ctrlKey || e.metaKey) && !e.altKey
         && ((!e.shiftKey && e.key.toLowerCase() === 'y') || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
         e.preventDefault();
@@ -5571,40 +3639,11 @@ export function Huvaari({
     return () => window.removeEventListener('keydown', onKey);
   }, [keysRef, undoLastRef, redoLastRef]);
 
-  /**
-   * ⚠️ ХАДГАЛААГҮЙ НООРОГ нь зөвхөн санах ойд байна. Таб хаах, дахин ачаалах,
-   * багц солих гурвуулаа түүнийг чимээгүй устгана.
-   */
-  /* ⚠️ ТАБ ХААХАД анхааруулахгүй: урьдчилан харалтын агуулга нь серверт
-     аюулгүй хадгалагдсан илгээлт бөгөөд хуанли дээр зөвхөн үзүүлж байгаа —
-     хуудсыг хаахад алдагдах зүйлгүй.
-     ⚠️ БАГЦ/ТӨРӨЛ СОЛИХ нь ӨӨР зүйл: тэнд `askSwitch` асуудаг (2026-09-11).
-     Хаах нь урьдчилан харалтыг үлдээнэ, солих нь ТАСАЛНА — батлагч юу харж
-     байснаа алдаж, илгээлт нь хүлээгдсэн хэвээр үлдэнэ. */
-  /*
-   * ⚠️ 2026-10-04 аудит: `dirtyN > 0` БИШ — АЛСАД ХҮРЭЭГҮЙ засвар (`hdUnsynced`: товлогдсон/явж
-   *    буй/унасан бичилт; бичих боломжгүй үед урьдын `dirtyN`). Урьд нь ноорог бүрэн
-   *    хадгалагдсан ч анхааруулдаг байв. `navGuard`-аар — харагдац солих · лого · «Гарах»
-   *    (`Portal.confirmLeave`) ба F5/таб хаах (`beforeunload`) НЭГ газраас асууна; урьд нь
-   *    «Хуваарь» `navGuard`-д бүртгэлгүй байв. Unmount-д заавал `false` (`navGuard`-ийн ⚠️).
-   * ⚠️ 2026-09-29 аудит: зөвхөн ХАРАХ эрхтэйд бусдын хуваалцсан ноорог Map-д орж
-   *    `dirtyN > 0` болдог — түүнд «хадгалаагүй» анхааруулга худал (`hdUnsynced` `canEdit`-ээр).
-   */
-  /* ⚠️ 2026-10-06 аудит: батлагчийн ногоон тэмдэглэгээ (`okRows`) зөвхөн санах ойд —
-     харагдац солих/таб хаахад ч устах тул «хадгалаагүй» гэж тооцно. */
   const hasOkMarks = okRows.size > 0;
   useEffect(() => {
     setNavDirty('huvaari', (hdUnsynced && !previewing) || hasOkMarks, tr('Хуваарь'));
     return () => setNavDirty('huvaari', false);
   }, [hdUnsynced, previewing, hasOkMarks]);
-  /*
-   * ⚠️ ГИНЖ ЯВЖ БАЙХАД ГАРАХГҮЙ (2026-09-25 аудит #4): батлах явцад (`approving`)
-   *    эсвэл бичилт/шийдвэр явж байхад (`busy`) өөр харагдац руу шилжих, таб
-   *    хаах нь гинжийг `save`-ийн ДАРАА, `decidePlan`-ийн ӨМНӨ тасалж болно.
-   *    `Portal.setView` нь `planNavBusy()`-г асууж баталгаажуулна; таб хаахад
-   *    хөтчийн анхааруулга. Дээрх «урьдчилан харалтад анхааруулахгүй» дүрэмтэй
-   *    зөрчилдөхгүй — энэ нь зөвхөн гинж ЯВЖ БАЙХ хооронд.
-   */
   const [navId] = useState(() => Symbol('huvaari'));
   const chainBusy = approving != null || busy;
   useEffect(() => {
@@ -5620,55 +3659,23 @@ export function Huvaari({
 
   const floors = pkgFloors(pkg.group);
 
-  /**
-   * ⚠️ БҮЛГИЙН МӨРИЙГ БОДОГДСОН мужаар нь өгнө (2026-09-06). Цонх нь
-   *    «Эхлэх/Дуусах» талбар ба «Бүлгийн муж» мөрөндөө `spans`-ыг шууд
-   *    уншдаг тул хадгалагдсан ХУУЧИН огноог үзүүлбэл зурвас ба цонх хоёр
-   *    өөр тоо хэлнэ. Бичихгүй — бүлэгт огноо засах хаалттай.
-   */
-  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): БҮЛЭГ БҮРИЙН ҮР ДҮНГ `plan`-д КЭШЛЭНЭ. `effRow` нь
-     зүүн мөр (`TaskRow`) ба баруун эгнээ (бодит зурвас) ХОЁУЛАНГААС цонхны бүлэг бүрд, зурагдалт
-     БҮРД дуудагддаг; бүлэг бүр `n` блок × бүх дэд мод (`effSpan` + `aggExtra`) гүйдэг тул дээд
-     бүлэг ганцаараа ~1,400 мөр × 22 блок. Гүйлгэх/сонгох/чирэх зурагдалтын профайлд хамгийн
-     хүнд мөр байв. Кэш нь `plan`/`n` солигдоход шинээр (useMemo) — утга ЯГ ИЖИЛ, зөвхөн
-     ижил `plan`-д дахин бодохгүй. Мөрийн ОБЪЕКТООР түлхүүрлэнэ (индекс биш) — өөр массивын мөр
-     орж ирсэн ч андуурахгүй. */
   const effRow = useMemo(() => {
     const grp = lazyCache((r: PlanRow): PlanRow => {
-      /* ⚠️ 2026-10-22 (аудит №7): ЗУРВАСТАЙ ЯГ НЭГ ЭХ — `effSpan`. Урьд нь энд зөвхөн НАВЧ хүүхдийн MIN/MAX-ыг гараар
-         бодож, огноотой навчгүй дэд бүлгийн ӨӨРИЙН мужийг (2026-10-21-ний `childAgg` дүрэм) ба 2000–2100-аас гадуурх
-         эвдэрсэн огноог алгасах дүрмийг (`deps.saneSpan`) мэддэггүй тул popup-ийн «Бүлгийн муж» зурвасаас өөр муж
-         хэлдэг байв. Кэш (`lazyCache`, бүлэг бүрд нэг удаа) хэвээр — `effSpan` нь дэд модыг блок бүрд нэг гүйнэ. */
       const spans = r.spans.map((_, b) => effSpan(plan, r.i, b));
       return { ...r, spans, ...aggExtra(plan, r.i, n) };
     });
-    /* ⚠️ Бодит огноо · нөөц ч хүүхдээс (2026-09-23, `aggExtra`) — бичигдэхгүй. */
     return (r: PlanRow): PlanRow => (r.group ? grp(r) : r);
   }, [plan, n]);
 
   /**
    * PDF ТАТАХ — дэлгэц дээрх хуваарийг ЯГ ЭНЭ загвараар (2026-09-30, хэрэглэгч).
-   *
-   * ⚠️ Огноо · нөөц · хамаарлын багана PDF-д ОРОХГҮЙ (`huvaariPdf.LEFT_COLS`).
-   * ⚠️ `visible` мөрүүдийг авна — эвхсэн бүлэг · түвшин · хайлт дэлгэцтэй
-   *    ижил. Цонхлолтын `slice` БИШ: тэр нь зөвхөн харагдах хэсэг.
-   * ⚠️ Мөр бүрийн утгыг хуанлийн зурвастай НЭГ ЭХЭЭС бодно (`rowSpanAt` ·
-   *    `refSpanAt` · `effRow` · `statusOf` · `requiredStart`) — PDF нь өөрөө
-   *    тооцоо хийхгүй (`huvaariPdf.ts`-ийн ⚠️).
-   * ⚠️ Хадгалаагүй ноорог ОРНО — дэлгэц дээр харагдаж буй зүйл л хэвлэгдэнэ.
    */
   const [pdfBusy, setPdfBusy] = useState(false);
   /**
    * ТАТАХЫН ӨМНӨХ СОНГОЛТ (2026-09-30) — хугацааны цонх · зөвхөн идэвхтэй · цаас.
-   * ⚠️ Сешн дотор санагдана (state), хадгалагдахгүй — дараагийн удаа дахин
-   *    сонгоход «бүх хугацаа» гэсэн анхдагч нь гэнэтийн жижиг PDF-ээс сэргийлнэ.
    */
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfOpts, setPdfOpts] = useState<HvPdfOpts>(HV_PDF_DEFAULT);
-  /* ⚠️ 2026-10-07: popover ГАДНА дарахад (`DatePicker`-ийн адил `mousedown`) ба фокус ХААНА ч
-     байсан Esc-д хаагдана. Урьд нь гаднаас хаах зам байхгүй; `role="dialog"` нь хуудасны
-     нийтлэг Esc-ийг зогсоодог тул фокус гадна байхад Esc юу ч хийдэггүй байв. Popover
-     доторх Esc нь React `onKeyDown`-д `stopPropagation` тул энд давхар ирэхгүй. */
   const pdfRef = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!pdfOpen) return;
@@ -5683,9 +3690,6 @@ export function Huvaari({
       window.removeEventListener('keydown', key);
     };
   }, [pdfOpen]);
-  /* ⚠️ 2026-10-08: блок `b`-ээр параметржүүлэв («Бүх блок» — блок бүрд ижил дүрэм, `allBlockRows`-ийн
-     `blockSpan`); идэвхтэй блокт (`b === blk`) урьдын `rowSpanAt`/`refSpanAt`-тай ЯГ ИЖИЛ утга.
-     ⚠️ 2026-10-19: `savePdf`-ээс ГАРГАВ — толгойн «Тайлан» (.docx, `huvaariReport`) ижил мөрийг ашиглана. */
   const rowFor = useCallback((r: PlanRow, b: number): HvPdfRow => {
     const x = r.group ? effRow(r) : r;
     const sp = b === blk ? rowSpanAt(r) : blockSpan(plan, r, b);
@@ -5704,13 +3708,10 @@ export function Huvaari({
       st: sp ? statusOf(sp, r.act?.[b], now) : 'none',
       viol: !!(sp && need != null && sp.start < need),
       ref: showRef ? other : null,
-      /* ⚠️ 0–1 бутархай (хувь биш) — `huvaariPdf` × 100 хийнэ */
       act: r.act?.[b] ?? null,
     };
   }, [effRow, blk, rowSpanAt, plan, kind, byCode, refSpanAt, refSpanOf, now, showRef]);
 
-  /* ⚠️ 2026-10-19 (хэрэглэгч: «ХУВААРЬ ТАЙЛАН зас»): толгойн «Тайлан» — DOM биш, PDF-тэй ижил мөрөөс
-     (идэвхтэй багц · таб · блок · шүүлт). Unmount болоход бүртгэл арилна (`reportSource`-ийн ⚠️). */
   useEffect(() => setReportSource('huvaari', {
     blocks: () => huvaariBlocks({ rows: visibleAt(blk).map((r) => rowFor(r, blk)), hasActual }),
     filters: () => [
@@ -5726,14 +3727,8 @@ export function Huvaari({
     setPdfBusy(true);
     setPdfOpen(false);
     try {
-      /* ⚠️ 2026-10-11 (аудит №7): PDF-д `sticky` (хөлдөөсөн шүүлтийн гишүүнчлэл) ОРОХГҮЙ — `visibleAt(blk)` (`keep`-гүй),
-         `visible` биш: `visibleAt`-ийн ⚠️ («зөвхөн дэлгэцэд; PDF-д үгүй») ба «Бүх блок»-ийн блок бүрийн ижил дүрэм. Урьд нь
-         идэвхтэй блок `visible` (sticky-тэй), бусад блок `visibleAt(b)` (sticky-гүй) тул нэг баримт хоёр өөр мөрийн олонлогтой байв. */
       const out: HvPdfRow[] = visibleAt(blk).map((r) => rowFor(r, blk));
-      /* ⚠️ 2026-10-08: «Бүх блок» — олон блоктой багцад л; блок бүрийн мөрүүд нэг баримтад */
       const allPdf = !!pdfOpts.allBlocks && multiBlk;
-      /* ⚠️ 2026-10-09: блок бүрийн мөрийг ТЭР блокийн шүүлтээр (`visibleAt(b)`) — «Хоцорсон»/«Зөрчилтэй» чип идэвхтэй
-         блокийн төлвөөр бүх блокийн хуудсыг шүүдэг байв. Чипгүй үед `visible`-тэй ижил. */
       const blocks = allPdf ? sc.bld.map((name, b) => ({ block: name, rows: visibleAt(b).map((r) => rowFor(r, b)) })) : undefined;
       const kindLabel = kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө');
       await downloadHuvaariPdf({
@@ -5741,19 +3736,14 @@ export function Huvaari({
         kindLabel,
         refLabel: showRef ? (kind === 'geree' ? tr('Төлөвлөгөө') : tr('Гэрээ')) : null,
         block: n > 1 ? (sc.bld[blk] ?? '') : '',
-        /* ⚠️ 2026-10-09 (аудит №6): `from`/`to` (дэлгэцийн цонх) PDF-д хэрэглэгддэггүй байсан — `HvPdfInput`-аас хасав */
         now,
         rows: out,
         blocks,
         hasActual,
         opts: pdfOpts,
-        /* ⚠️ 2026-10-09: ноорог/саналын шошго (`HvPdfInput.draftLabel`-ийн ⚠️) — баримт батлагдсан мэт харагдахгүй */
         draftLabel: previewing
           ? tr('САНАЛ (урьдчилан харалт)')
-          /* ⚠️ 2026-10-26 (аудит): «Батлагдсан» харагдац (`savedView`) — мөрүүд батлагдсан хуваарийнх тул «НООРОГ» шошгогүй */
           : !savedView && dirtyRows > 0 ? tr('НООРОГ — батлагдаагүй {0} мөр', num(dirtyRows)) : undefined,
-      /* ⚠️ 2026-09-30: файлын нэрийн өдөр ОРОН НУТГИЙН (`dayKey`) — `msToDay` (UTC) нь
-         УБ-д 00:00–07:59-д өчигдрийн огноо өгдөг байв (`format.dayKey`-ийн ⚠️). */
       }, `Huvaari_${pkg.key}_${kind}${allPdf ? '_buhblok' : ''}${pdfOpts.months ? `_${pdfOpts.months}sar` : ''}_${dayKey(Date.now())}.pdf`);
     } catch (e) {
       setErr(tr('PDF үүсгэж чадсангүй: {0}', userError(e)));
@@ -5777,7 +3767,7 @@ export function Huvaari({
   }, [modal, plan, effRow]);
   /**
    * ЦОНХНЫ ТЭНЦЭЭГҮЙ БЛОКУУД — блокийн чип улаан (2026-10-01, хэрэглэгч: бүгдийг зас:
-   * «асуудалтай блокийг шууд олох»). ⚠️ `util.unbalancedBlocks` — илгээх хаалттай нэг
+   * «асуудалтай блокийг шууд олох»). `util.unbalancedBlocks` — илгээх хаалттай нэг
    * дүрэм (үр дүнтэй задаргаа: ноорог ?? сервер). Гэрээ табд сарын обьём алга.
    */
   const modalBad = useMemo(
@@ -5786,15 +3776,7 @@ export function Huvaari({
   );
   /**
    * Popup-д зориулсан ЭЦЭГ БҮЛЭГ — хамгийн ойрын ДЭЭД бүлгийн мөр.
-   *
-   * ⚠️ Чирэлт нь `commit`-доо мужийг эцэгт нь ХАВЧУУЛДАГ байсан ч popup нь
-   *    ШУУД бичдэг байв (2026-09-01-нд хэрэглэгч мэдэгдсэн: «том бүлэгт
-   *    тавьсан хугацаанаас хамаарахгүй байна»). Нэг ажлыг хоёр өөр замаар
-   *    оруулахад ӨӨР ӨӨР дүрэм үйлчлэх нь эвдрэл — одоо хоёулаа ижил.
    */
-  /* ⚠️ 2026-09-30: `useMemo`-г ХАСАВ — React Compiler энэ (for-loop + эрт return) memo-г хадгалж чадахгүй
-     гэж унадаг байв; тооцоолол нь модны гүнээр шугаман (хэдхэн алхам) тул зурагдалт бүрд бодоход хямд.
-     `PlanModal` эцгийг `par?.oid`-оор л тулгадаг тул объектын identity өөрчлөгдөх нь нөлөөгүй. */
   const modalPar = (() => {
     if (!modalRow) return null;
     const at = plan.findIndex((x) => x.i === modalRow.i);
@@ -5816,8 +3798,6 @@ export function Huvaari({
       : new Set<number>();
     const out: { code: number; label: string }[] = [];
     for (const r of plan) {
-      /* ⚠️ hierRelated нь өөрийг нь БА өвөг/удам бүлгийг хоёуланг таслана —
-         тэднээс «хамаарвал» бүлгийн муж өөрөөсөө бодогдож гинжин эргэлт үүснэ */
       if (r.des == null || blocked.has(r.des) || hierRelated(plan, modalRow.i, r.i)) continue;
       out.push({
         code: r.des,
@@ -5829,14 +3809,6 @@ export function Huvaari({
 
   /**
    * «БҮХ БЛОК» ГОРИМЫН ЭГНЭЭ (2026-10-04) — ЗӨВХӨН ХАРАХ.
-   * ⚠️ Эх мөр: бүх блокийн НЭГДЭЛ (`d.sp`) — ажилд саарал `plBarAll` (төлөв нь блок
-   *    тус бүрийнх тул нэгдэлд өнгөлөхгүй), бүлэгт урьдын `plBarG`.
-   * ⚠️ Дэд мөр: тэр блокийн муж — төлөвийн өнгө `statusOf(sp, act[b])` (энгийн зурвастай
-   *    ИЖИЛ дүрэм), бүлэгт `plBarG`. (Бодит мужийн шугам 2026-10-23-нд хасагдсан.)
-   * ⚠️ `onDown`/`startLink`/бариул ОГТ ХОЛБОГДОХГҮЙ — чирэлт/холбоос/popup үүсэхгүй.
-   *    Дэд мөр дээр дарахад тэр блок руу орж засна (`pickBlk`), эх мөрд зөвхөн сонголт.
-   * ⚠️ Хуучин (батлагдсан) зурвас · «Зэрэг» лавлагаа ЭНД ЗУРАГДАХГҮЙ — хяналтын горимд
-   *    энэ горим унтардаг; лавлагаа нь зүүн самбарын огноонд (нэгдэл/блокийнх) бий.
    */
   const allLane = (d: DispRow, k: number) => {
     const { r, b, sp } = d;
@@ -5851,7 +3823,6 @@ export function Huvaari({
         style={{ top: k * PL_ROW, height: PL_ROW }}
         title={sub ? tr('Дарж «{0}» блок руу орж засна', who) : undefined}
         onClick={sub ? () => pickBlk(r.oid, b) : () => setSel(r.oid)}
-        /* ⚠️ 2026-10-23 (UX аудит P9): ГАРААР ч сонгоно — урьд нь зөвхөн хулганаар (Tab-аар хүрч Enter/Space) */
         role="button"
         tabIndex={0}
         aria-label={sub ? tr('Дарж «{0}» блок руу орж засна', who) : `${workName(r)} · ${who}`}
@@ -5862,7 +3833,6 @@ export function Huvaari({
           if (sub) pickBlk(r.oid, b); else setSel(r.oid);
         }}
       >
-        {/* ⚠️ 2026-10-23 (хэрэглэгч: «устга»): бодит мужийн цэнхэр шугам ХАСАГДСАН — бодит огноо popup/баганад хэвээр. */}
         {sp && (
           <div
             className={`${h.plBar} ${sub ? h.plBarSub : ''} ${cls} ${sel === r.oid && (!sub || b === blk) ? h.tlBarOn : ''}`}
@@ -5895,11 +3865,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
     );
   };
 
-  /* ⚠️ 2026-10-04 (рендерийн гүйцэтгэл): ХУАНЛИЙН ТОЛГОЙ (сар · хоногийн шошго) ба ТОР (сар/хоногийн
-     зураас · «өнөөдөр») — элементийг MEMO-д. Босоо гүйлгээний цонх солигдох, мөр сонгох бүрд Huvaari
-     бүтнээрээ зурагддаг ч эдгээр нь зөвхөн хуанлийн хүрээ/томруулалт (`months`·`ticks`·`xOf`)
-     ба сарын хувиас (`monLab`) хамаарна — ижил элемент буцахад React ~200 шошгыг дахин тулгахгүй.
-     Тэмдэглэгээ · зан төлөв ЯГ ИЖИЛ (доорх JSX-ээс механикаар зөөв). */
   const calHead = useMemo(() => (
     <div className={h.plHead}
       onPointerDown={(e) => {
@@ -5913,7 +3878,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         t.addEventListener('pointermove', mv); t.addEventListener('pointerup', up); t.addEventListener('pointercancel', up);
       }}>
       {months.map((m) => {
-        /* ⚠️ 2026-10-23: жилээр харахад дээд мөр нь ЖИЛ («2026») — сарын хувь доод мөрийн сар бүрд (доор) */
         const pc = zoom === 'year' ? null : monLab(m.lab);
         return (
           <span key={m.at} className={h.plMonth} style={{ left: xOf(m.at) }}
@@ -5924,8 +3888,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         );
       })}
       {ticks.map((tk) => {
-        /* ⚠️ 2026-10-23: жилээр харахад сар бүрийн багцын обьёмын хувь (`monLab`, 'YYYY-MM' түлхүүр) сарын шошгон дээр —
-           урьд нь дээд мөрийн «YYYY» шошгоор хайж хэзээ ч олдохгүй тул бүгд алга болдог байв */
         const pc = zoom === 'year' && tk.lab ? monLab(msToDay(tk.at).slice(0, 7)) : null;
         return (
           <span key={tk.at} className={`${h.plDay} ${tk.big ? h.plDayBig : ''}`}
@@ -5951,21 +3913,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
     </>
   ), [months, ticks, zoom, xOf, now, from, to]);
 
-  /* ── УЯЛДААНЫ СУМУУД — идэвхтэй блок дээр, харагдаж буй мөрүүдийн хооронд ──
-     ⚠️ Memo БИШ: `visible`, `sel`, `blk`, `xOf` дөрвүүл байнга хөдөлдөг тул
-     кэш бараг онохгүй; тооцоо нь уялдаатай мөрийн тоогоор шугаман — хямд. */
-  /* ⚠️ 2026-10-09: «Memo БИШ» шийдвэрийг ЭРГҮҮЛЭВ — ВИРТУАЛЧЛАЛ + MEMO. Урьд нь кадр бүрд (чирэлтийн хоног бүр,
-     босоо гүйлгээ, сонголт) БҮХ харагдах мөрийн (~1,400) бүх сумыг дахин зурж path мөр үүсгэдэг байв. Одоо зөвхөн
-     зурагдаж буй цонхны (`winFrom`–`winTo`) ± `ARR_M` мөрт ХОЁР үзүүрийн аль нэг нь байгаа сум; `useMemo` нь
-     `plan`·`blk`·цонх·`xOf`·`sel`-д л дахин бодно (жиш. ижил хоногт pointermove, мэдэгдэл, hover-т бодохгүй). */
-  /* ⚠️ 2026-10-09: `x` — блок хоорондын уялдаа (`Dep.src`): сум нь урд ажлын ЭХ блокийн мужаас; дарж засах
-     (`LinkModal`) нь (код, блок)-оор ажилладаг тул эдгээрт засах зурвас (`depHit`) гаргахгүй — popup-оор засна. */
+  /* ── УЯЛДААНЫ СУМУУД — идэвхтэй блок дээр, харагдаж буй мөрүүдийн хооронд ── */
   const arrows = useMemo(() => {
     const out: { d: string; cls: string; mk: string; key: string; si: number; ti: number; dblk: number | null; x: boolean }[] = [];
-  /* ⚠️ (2026-09-23) Сум ЗӨВХӨН төлөвлөгөө табд — уялдаа гэрээнд хамаарахгүй
-     (`startLink`-ийн ижил дүрэм), гэрээ табд сум/зөрчил зурвал төөрөгдүүлнэ. */
-  /* ⚠️ «Бүх блок» горимд сум НУУГДАНА (2026-10-04): уялдаа нь блок тус бүрийнх, мөрийн
-     Y нь дэд мөрөөр шилжсэн тул идэвхтэй блокийн сум буруу мөр рүү заана. */
   if (kind === 'plan' && !allOn) {
     const ARR_M = 40;
     const lo = winFrom - ARR_M;
@@ -5981,7 +3931,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       const ty = k * PL_ROW + PL_ROW / 2;
       const tx = xOf(ts.start);
       r.deps.forEach((dep, j) => {
-        /* ⚠️ Зөвхөн ИДЭВХТЭЙ блокийн (эсвэл блокгүй) уялдааны сум (2026-09-24) */
         if (dep.blk != null && dep.blk !== blk) return;
         const pi = byCode.get(dep.code);
         if (pi == null || pi === r.i) return;
@@ -6006,17 +3955,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           const sx = xOf(ps.start);
           d = `M ${sx} ${sy} H ${Math.min(sx, tx) - 8} V ${ty} H ${tx}`;
         }
-        /* ⚠️ ЗӨРЧИЛ = хамаарагч шаардлагаас ӨМНӨ эхэлсэн. ХОЖУУ эхлэх нь
-           зөрчил БИШ — хэрэглэгч санаатай хойшлуулсан байж болно (дүрэм биш,
-           чадвар). Зөрчлийг ХОРИГЛОХГҮЙ, зөвхөн улаанаар тэмдэглэнэ. */
         const need = dep.type === 'FS' ? ps.end + (1 + dep.lag) * DAY : ps.start + dep.lag * DAY;
         const viol = ts.start < need;
         const hot = sel === r.oid || sel === plan[pi]?.oid;
-        /* ⚠️ Хошууны marker нь шугамын `stroke`-оос өнгө АВДАГГҮЙ (SVG-ийн
-           marker нь referencing path-аас currentColor өвлөдөггүй) тул ангилал
-           бүрд ТУСДАА marker хэрэглэнэ. */
-        /* ⚠️ Нэр нь `arrKind` — гадна талын `kind` (хуваарийн ТӨРӨЛ) нь
-           огт өөр зүйл; ижил нэр нь уншигчийг төөрөгдүүлнэ. */
         const arrKind = viol ? 2 : hot ? 1 : 0;
         out.push({
           d,
@@ -6033,13 +3974,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
   }
     return out;
   }, [kind, allOn, visible, effAt, xOf, blk, byCode, plan, sel, winFrom, winTo]);
-  /* ⚠️ 2026-10-09: «→ N блок» — нүдэнд бичсэн огноо сонгосон бүх блокт тавигдана (`multiBlks`, `applyDate`) */
   const multiTag = multiBlks.length > 1 && canEdit && !locked && !allOn
     ? <span className={h.multiTag} title={tr('Нүдэнд бичсэн огноо сонгосон {0} блокт тавигдана', num(multiBlks.length))}>{tr('→ {0} блок', num(multiBlks.length))}</span>
     : null;
 
-  /* ⚠️ 2026-10-26 (хэрэглэгч): ХАРАХ ХҮРЭЭГҮЙ — сонгогч хоосон (`groupOpts`-ийн ⚠️). Урьд нь «бүх багц» руу унадаг байв;
-     одоо хүрээнээс гадуурх багцын хуваарийг ХАРУУЛАХГҮЙ. Бүх hook-ийн ДАРАА (hooks-ийн дараалал тогтвортой). */
   if (!review && status !== 'off' && groupOpts.length === 0) {
     return (
       <div className={h.frame} data-huvaari-root="">
@@ -6053,31 +3991,16 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
   }
 
   return (
-    /* ⚠️ 2026-10-09: `data-huvaari-root` — `window`-ын товчлуурын сонсогчид Хуваариас гадуурх үйл явдлыг хаяна (`keyIgnored`) */
     <div className={`${h.frame} ${isWide ? h.frameWide : ''}`} data-huvaari-root="">
-      {/* ── БҮХ ХЭРЭГСЭЛ НЭГ МӨРӨНД ──
-          ⚠️ 2026-09-02 (хэрэглэгч): урьд нь ГУРВАН зурвас байв — (1) багц
-          сонгох толгой, (2) `Section`-ийн «Ажлын хуваарь» гарчиг, (3) шүүлт ба
-          хуанлийн хэрэгсэл. Гурвуулаа хүснэгтээс дээш зай иддэг байсан тул
-          нэгтгэв. `Section`-д `title`/`note` өгөхөө больсноор түүний толгойн
-          мөр огт зурагдахгүй болно.
-
-          ⚠️ Багц сонголт нь `Section`-ЭЭС ГАДНА байх ЁСТОЙ: ачаалж байх ба мөр
-          олдоогүй үед `Section` огт зурагддаггүй тул дотор нь байрлуулбал
-          хэрэглэгч өөр багц руу шилжих ЗАМГҮЙ гацна. Тиймээс өгөгдлөөс
-          хамаарах хэсгүүд нь `sc && rows.length` хамгаалалттай. */}
+      {/* ── БҮХ ХЭРЭГСЭЛ НЭГ МӨРӨНД ── */}
       <header className={h.head}>
         <label className={h.field}>
           {tr('Багц')}{' '}
-          {/* ⚠️ Хяналтын горимд багц ТОГТМОЛ (дарааллаас сонгосон илгээлтийнх) */}
           <select className={h.select} value={pkg.group} disabled={busy || switching || !!review}
             onChange={(e) => { const v = e.target.value; runSwitch(() => setPkg(pkgFloors(v)[0])); }}>
-            {/* ⚠️ 2026-10-12 (аудит №8): «●» — тэр багцад таны илгээлтийн шинэ шийдвэр бий (`planNews`-ийн ⚠️) */}
             {groupOpts.map((g) => <option key={g} value={g}>{tr(g)}{!review && newsGroups.has(g) ? ' ●' : ''}</option>)}
           </select>
         </label>
-        {/* ⚠️ 2026-10-26 (хэрэглэгч): ЗӨВХӨН ХАРАХ тэмдэг — энэ багцад засах · илгээх · батлах · мөр нэмэх эрх алга
-            (`viewOnly`). Засварын бүх удирдлага `canEdit` · `canApprove` · `canAddRow`-оор аль хэдийн нуугдсан. */}
         {viewOnly && (
           <span className={h.roBadge} role="status"
             title={tr('Энэ багцын хуваарийг зөвхөн харна — засах, илгээх, батлах эрх «Хуваарийн эрх»-ээс багцаар оноогдоно.')}>
@@ -6096,7 +4019,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </select>
           </label>
         )}
-        {/* ⚠️ `askSwitch` явж байна (2026-10-06, `switching`-ийн ⚠️) */}
         {switching && <span className={h.muted} role="status">{tr('Ноорог хадгалж байна…')}</span>}
 
         {sc && rows.length > 0 && (
@@ -6108,18 +4030,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               * (2026-09-15, хэрэглэгчийн шаардлага). Товч нь «энэ түвшин
               * хүртэл дэлгэ» гэсэн утгатай: 1 дарвал зөвхөн дээд бүлгүүд,
               * хамгийн гүн нь дарвал бүх ажлын мөр харагдана.
-              *
-              * ⚠️ Товчны ТОО нь БАГЦААС хамаарна (`lvls`) — санхүүгийн
-              *    бүртгэл нь тогтмол таван түвшинтэй Excel загвар, харин
-              *    хуваарийн мод багц бүрд өөр гүнтэй.
-              * ⚠️ Бүлэг огт байхгүй (бүгд навч) бол зурвас гарахгүй.
               */}
             {lvls.length > 1 && (
               <span className={h.lvBar}>
                 <span className={h.lvLbl}>{tr('Түвшин')}</span>
-                {/* ⚠️ 2026-10-04 (шүүлт, хэрэглэгчийн шийдвэр: сэргээх): N товч нь N-р түвшний бүлгийг
-                    ДЭЛГЭДЭГ болсны дараа «зөвхөн дээд түвшин» харах товч үлдээгүй байв. «0» = БҮХ
-                    бүлгийг хураана (гүн ≥ 0); `lvl` нь -1 — 0 нь «сонголтгүй» анхдагч төлөв. */}
                 <button
                   type="button"
                   className={lvl === -1 ? h.lvOn : ''}
@@ -6150,8 +4064,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
 
             <span className={h.tbSep} aria-hidden />
 
-            {/* ⚠️ 2026-10-23 (хэрэглэгч: «нийлүүлээд шүүлтүүр хэрэглүүр болго»): дөрвөн тусдаа товчны оронд НЭГ капсул
-                (`components/Switch` · `Segmented`) — сонголт бүр тоотойгоо */}
             <Segmented<typeof filter>
               value={filter}
               onChange={setFilter}
@@ -6164,8 +4076,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               ]}
             />
 
-            {/* ⚠️ 2026-10-04: огноо УРВУУ ажил — төлөвлөгөөт хувь, муруйд хуваарьгүй гэж тооцогдоно
-                (`bagtsSheet.planAt`); урьд нь чимээгүй «100%» алхам болдог байв */}
             {cov.reversed > 0 && (
               <span role="status" style={{ color: 'var(--bad-ink)', fontWeight: 600, whiteSpace: 'nowrap' }}
                 title={tr('Эдгээр мужийг төлөвлөгөөт хувь ба муруйд хуваарьгүй гэж тооцно — огноог засна уу')}>
@@ -6173,11 +4083,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               </span>
             )}
 
-            {/* ⚠️ Сонголтууд ХОСЛОНО — «бүлэг · 2026» гэж давхарлаж шүүнэ.
-                Тиймээс таб биш, тус тусдаа талбар. */}
-            {/* ⚠️ БҮЛГЭЭР ШҮҮХ нь бусад шүүлтээс ӨМНӨ ажиллана: эхлээд модны
-                салбарыг таслаад, дараа нь түүн дотор жилээр нарийсгана.
-                Тиймээс жагсаалтын эхэнд, өргөн талбартай. */}
             <select className={`${h.sel} ${h.selWide}`} value={String(fGrp)} aria-label={tr('Бүлэг')}
               onChange={(e) => setFGrp(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
               <option value="all">{tr('Бүлэг: бүгд')}</option>
@@ -6190,12 +4095,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               {years.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
 
-            {/* ⚠️ 2026-10-08: ЧИП ШҮҮЛТ — байгаа шүүлттэй БА-аар (`chipOk`); бүлгийн мөр хэвээр гарна */}
-            {/* ⚠️ 2026-10-23 (хэрэглэгч: «устга»): «Ноорогтой · Зөрчилтэй · Хоцорсон» чип, «Үсрэх» оролт, «Цэвэрлэх» ХАСАГДСАН.
-                Зөвхөн «Тэнцээгүй» (илгээхээс өмнөх сарын обьёмын анхааруулга) үлдэв. */}
             {([
-              /* ⚠️ 2026-10-09: «Тэнцээгүй» — сарын обьём тэнцээгүй мөр (`unbalRows`); байхгүй (ба асаагаагүй) үед нуугдана */
-              /* ⚠️ 2026-10-12: АСААЛТТАЙ бол табаас үл хамааран ЗУРАГДАНА — нуугдсан идэвхтэй шүүлт мөрийг бүгдийг нуудаг байв */
               ...((kind === 'plan' && unbalRows.size > 0) || chips.has('unbal') ? [['unbal', tr('Тэнцээгүй'), unbalRows.size] as [Chip, string, number]] : []),
             ] as [Chip, string, number][]).map(([c, label, cnt]) => (
               <button key={c} type="button"
@@ -6210,7 +4110,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               </button>
             ))}
 
-            {/* ⚠️ 2026-10-09: хөлдсөн (засварласан) мөрүүдийг шүүлтээр дахин шүүх (`sticky`-ийн ⚠️) */}
             {stickyN > 0 && (
               <button type="button" className={h.tab}
                 title={tr('Засварласан мөрүүд шүүлтэд таарахгүй ч засвар дуустал харагдсаар байна — дарж шүүлтийг дахин хэрэглэнэ')}
@@ -6219,18 +4118,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               </button>
             )}
 
-            {/* ⚠️ `tbSep`-ийн ЗҮҮН тал нь ЖАГСААЛТЫГ (аль мөр гарах вэ), БАРУУН
-                тал нь ХАРАГДАЦЫГ (аль блок, ямар масштаб) өөрчилнө. */}
             <span className={h.tbSep} aria-hidden />
 
             <label className={h.plField}>
               {tr('Блок')}{' '}
-              {/* ⚠️ Блокийн нэрний хажууд ХУВААРЬТАЙ мөрийн тоо. Үүнгүй бол аль
-                  блок дээр ажил хийгдсэн, аль нь хоосныг мэдэхийн тулд 22 блокийг
-                  нэг бүрчлэн сонгож үзэхээс өөр арга байхгүй. */}
-              {/* ⚠️ «Бүх блок» горимд блок сонгох = тэр блок руу орж засах (дэд мөрийн
-                  товшилттой ижил) — горим унтарна (2026-10-04). */}
-              {/* ⚠️ 2026-10-04 (шүүлт): хяналтын горимд (`isReview`) «Бүх блок» хүчингүй — сонголтыг ХӨНДӨХГҮЙ */}
               <select className={h.select} value={blk} onChange={(e) => { setBlk(Number(e.target.value)); if (!isReview) setAllBlk(false); allBackRef.current = false; }}>
                 {sc.bld.map((b, k) => (
                   <option key={b} value={k}>{b} · {num(blockFill[k])}</option>
@@ -6239,8 +4130,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </label>
             {/*
               * «БҮХ БЛОК» (2026-10-04) — бүх блокийн хуваарийг ажил бүрийн доор зэрэг харуулна.
-              * ⚠️ ЗӨВХӨН ХАРАХ (`tlZoomRef` — «Зэрэг»-ийн ижил «харах» өнгө, засах `tlZoomOn` биш).
-              * ⚠️ Синтетик/ганц блоктой багц ба хяналтын горимд товч ГАРАХГҮЙ (`allOn`-ийн ⚠️).
               */}
             {multiBlk && !isReview && (
               <button type="button"
@@ -6256,14 +4145,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
 
             {/*
               * ХУВААРИЙН ТӨРӨЛ — «Төлөвлөгөө» / «Гэрээ» (2026-09-11).
-              *
-              * ⚠️ ЗӨВХӨН ШИЛЖИНЭ (хэрэглэгчийн хүсэлт): эдгээр хоёр товч нь
-              *    аль огноог ЗАСАХ вэ гэдгийг л сонгоно — нэг нь идэвхтэй.
-              *    Хоёуланг зэрэг харах нь ТУСДАА товч (`Зэрэг`, доор).
-              * ⚠️ Ноорогтой үед эхлээд хадгална (`askSwitch`) — санах ой цэвэрлэгдэх ч
-              *    хуваалцсан ноорог үлдэж, буцаж ирэхэд сэргэнэ (2026-10-01).
               */}
-            {/* ⚠️ 2026-10-23 (хэрэглэгч): «Батлагдсан / Ноорог» — хадгалсан хуваарь ба ноорогтой хувилбарыг солиж харах (`viewSaved`) */}
             {!review && !previewing && approving == null && pending == null && (
               <Switch
                 checked={!viewSaved}
@@ -6275,8 +4157,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   : tr('Хадгалаагүй засвартай (ноорог) хувилбар. «Батлагдсан» руу шилжиж хадгалсан хуваарийг харна.')}
               />
             )}
-            {/* ⚠️ 2026-10-23 (хэрэглэгч: «switch button»): хоёр товчны оронд НИЙТЛЭГ унтраалга (`components/Switch`) —
-                зүүн «Төлөвлөгөө», баруун «Гэрээ». */}
             <Switch
               checked={kind === 'geree'}
               onChange={(v) => { const k: PlanKind = v ? 'geree' : 'plan'; if (kind !== k) runSwitch(() => setKind(k)); }}
@@ -6285,12 +4165,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               title={kind === 'geree'
                 ? tr('Гэрээнд заасан огноог засна.')
                 : tr('Ажлын төлөвлөсөн огноог засна.')}
-              /* ⚠️ `busy` үед ТҮГЖИНЭ (2026-09-11-ний аудит): `save`-ийн
-                 таван await-ийн зуур төрөл солигдвол `[kind]` эффект
-                 ноорогийг цэвэрлэж, «хадгалагдлаа» гэсэн мэдэгдэл ӨӨР
-                 төрлийн хуанли дээр гарна. Багцын сонгогч аль хэдийн
-                 ингэж түгжигддэг. */
-              /* ⚠️ Хяналтын горимд төрөл нь илгээлтийнх — солиход санал цэвэрлэгдэнэ */
               disabled={busy || switching || !!review}
             />
 
@@ -6298,13 +4172,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               * ЗЭРЭГ ХАРАХ — нөгөө төрлийн огноог мөр бүрийн ДООД зурвасаар
               * нэмж харуулна (2026-09-11, хэрэглэгч: «тусдаа зэрэг харах гэдэг
               * button нэм»).
-              *
-              * ⚠️ ЗӨВХӨН ХАРУУЛНА — ноорог, хадгалалт, батлалтад ОГТ хүрэхгүй.
-              *    Засагдах нь ҮРГЭЛЖ дээрх сонголт (`kind`). Эс бөгөөс нэг
-              *    ноорогт хоёр төрөл холилдоно (2026-09-11-ний аудитын S1).
-              * ⚠️ Анхдагчаар УНТРААЛТТАЙ: дангаар нь харах нь үндсэн байдал.
               */}
-            {/* ⚠️ 2026-10-23 (хэрэглэгч: «switch button»): нийтлэг асаах/унтраах товч (`components/Switch` · `Toggle`) */}
             <Toggle
               checked={showRef}
               onChange={setShowRef}
@@ -6316,9 +4184,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   : tr('Гэрээний огноог мөр бүрийн доор нэмж харуулна.'))}
             />
 
-            {/* ⚠️ 2026-10-23 (хэрэглэгч: «харагдахгүй болно»): «Гэрээ/Төлөвлөгөө» ба «Бодит» зурвасны тайлбар ХАСАГДСАН. */}
 
-            {/* ⚠️ 2026-10-23 (хэрэглэгч: «загварыг сайжруул»): томруулалт — нийтлэг капсул (`components/Switch` · `Segmented`) */}
             <Segmented<Zoom>
               value={zoom}
               onChange={setZoom}
@@ -6330,17 +4196,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                 { value: 'year', label: tr('жил') },
               ]}
             />
-            {/* ⚠️ 2026-10-23 (хэрэглэгч: «бүрэн устга»): «Өнөөдөр» (өнөөдөр рүү гүйлгэх) товч ХАСАГДСАН. */}
-            {/* ⚠️ 2026-10-08: гарын товчлуурын заавар (`TaskRow.HowtoHint`) */}
             <HowtoHint />
           </>
         )}
 
         <span className={h.spacer} />
 
-        {/* ⚠️ 2026-10-23 (хэрэглэгч: «устга»): хуанлийн хүрээ («2025-07-01 → … · N хоног») ба «илгээгээгүй N» товч
-            ХАСАГДСАН — илгээх тоо «Батлуулах (N)» товчинд хэвээр. */}
-        {/* ⚠️ 2026-10-08: НЭГ ТҮВШНИЙ БУЦААЛТ — Ctrl+Z-тэй ижил (`undoLast`) */}
         {canEdit && !locked && undoSnap && !previewing && (
           <button type="button" className={`${h.discard} ${h.undoBtn}`} disabled={busy}
             title={tr('Сүүлийн өөрчлөлтийг буцаана (Ctrl+Z)')}
@@ -6348,7 +4209,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {tr('Буцаах')}
           </button>
         )}
-        {/* ⚠️ 2026-10-09: ДАХИН ХИЙХ — Ctrl+Y / Ctrl+Shift+Z-тэй ижил (`redoLast`) */}
         {canEdit && !locked && redoSnap && !previewing && (
           <button type="button" className={`${h.discard} ${h.undoBtn}`} disabled={busy}
             title={tr('Буцаасан өөрчлөлтийг дахин хийнэ (Ctrl+Y)')}
@@ -6367,15 +4227,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </button>
             {pdfOpen && (
               <span className={h.pdfPop} role="dialog" aria-label={tr('PDF татах')}
-                /* ⚠️ 2026-10-07: `preventDefault`+`stopPropagation` — эс бөгөөс нэг Esc popover-ыг ч,
-                   бүтэн дэлгэц/хяналтыг ч хаадаг байв (`Huvaari`-ийн Esc сонсогчийн ⚠️) */
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setPdfOpen(false); } }}>
-                {/* ⚠️ 2026-10-04 (шүүлт): PDF нь блок тус бүрийн загвар (`savePdf` — `blk`) — «Бүх блок»
-                    горимд ч ЗӨВХӨН идэвхтэй блок орно; хэрэглэгчид ил хэлнэ */}
                 {allOn && !pdfOpts.allBlocks && (
                   <span className={h.pdfRow}>{tr('«Бүх блок» горимд ч PDF зөвхөн идэвхтэй блокийг ({0}) агуулна.', sc.bld[blk] ?? '')}</span>
                 )}
-                {/* ⚠️ 2026-10-08: «Бүх блок» — блок бүр тусдаа хэсэг болж нэг PDF-д (`HvPdfInput.blocks`); олон блоктой багцад л */}
                 {multiBlk && (
                   <label className={h.pdfRow}>
                     <input type="checkbox" checked={!!pdfOpts.allBlocks}
@@ -6413,9 +4268,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             )}
           </span>
         )}
-        {/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БҮЛГИЙН кодоор хадгалагдсан сарын задаргаа —
-            тэнцлийн шалгалтад ОРОХГҮЙ («Сарын обьём бүлэгт биш», `util.unbalancedBlocks`) тул
-            чимээгүй алгасахгүй, ил хэлнэ. Устгах/засах нь админы шийдвэр. */}
         {grpSplit.length > 0 && (canEdit || canApprove) && (
           <span className={h.muted} role="status" title={grpSplit.join('; ')}>
             {tr('{0} бүлгийн мөрд сарын обьём хадгалагдсан байна — бүлэгт задаргаа тооцогдохгүй, тэнцлийн шалгалтад орохгүй: {1}',
@@ -6423,8 +4275,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           </span>
         )}
         {/* Хуваалцсан ноорогийн төлөв (2026-09-23) — хадгалагдсан цаг · алдаа · хамт бичигчид */}
-        {/* ⚠️ 2026-10-23 (хэрэглэгч: «"Ноорог хадгалагдсан" гээд ногоон check — одоогийнх хэт урт»): хадгалагдсан үед
-            ЗӨВХӨН «✓ Ноорог хадгалагдсан»; цаг ба хамт бичигчид tooltip-д. Бусад төлөв (хадгалж байна · алдаа) хэвээр. */}
         {hdSt.st === 'saved' ? (
           <span className={`${h.flowNote} ${h.hdOk}`} role="status"
             title={[hdLabel, hdUsers.length > 0 ? tr('ноорогт: {0}', hdUsers.join(', ')) : ''].filter(Boolean).join(' · ')}>
@@ -6436,60 +4286,24 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {hdLabel}
           </span>
         ) : null}
-        {/* ⚠️ 2026-10-26: ноорогийн хадгалалтын төлөв (191) — мөрийн багана нэмэгдээгүй (JSON горим) бол ЗӨВХӨН super-т
-            «notebook ажиллуулна уу»; 191-ийг шалгаж чадсангүй (`rows-wait`) бол засагч бүрд (засвар зөвхөн энэ компьютерт). */}
         {hdStoreNote && canEditRole && (hdStoreMode === 'rows-wait' || roleForUser(user?.username) === 'super') && (
           <span className={`${h.flowNote} ${h.hdWarn}`} role="status">{hdStoreNote}</span>
         )}
 
-        {/* ⚠️ Урьдчилан харж байхад ЭНЭ товч гарахгүй — ноорог нь батлагчийн
-            ӨӨРИЙН засвар БИШ, илгээгдсэн санал. Түүнийг «Харахыг болих»-оор
-            хаяна, эс бөгөөс хоёр товч ижил зүйл хийж будлиантана. */}
         {canEdit && !previewing && !locked && dirtyN > 0 && (
-          /* ⚠️ БУЦААХ ЗАМ. Хуанли дээр чирэх нь маш хурдан үйлдэл тул санамсаргүй
-             өөрчлөлт гарна — хадгалахаас өмнө бүгдийг нэг товчоор цуцлах
-             боломжгүй бол хэрэглэгч хуудсаа дахин ачаалахаас өөр аргагүй. */
           <button type="button" className={h.discard} disabled={busy}
             title={tr('Илгээгээгүй бүх өөрчлөлтийг хаяна — хуваалцсан ноорог БҮХ оролцогчид устна')}
             onClick={async () => {
-              /* ⚠️ Олон өөрчлөлтийг нэг товшилтоор алдахгүй (2026-09-23): 3-аас
-                 дээш бол баталгаажуулна; цөөнд нь асуулт саад болно. */
-              /* ⚠️ Хуваалцсан ноорог (2026-09-24): хоосорсныг дифф → `hdFlush` алсыг
-                 нийлүүлээд цэвэрлэнэ — зөвхөн бичих эрхтэй үед (энэ товч `canEdit`). */
-              /* ⚠️ 2026-09-30: «3-аас дээш» босгыг ХАСАВ — цөөн засвар ч гэсэн
-                 хуваалцсан ноорогоор дамжин БУСАД оролцогчийнх устна (`hdFlush`).
-                 Товч зөвхөн `dirtyN > 0` үед гардаг тул үргэлж асууна; алдах зүйлгүй
-                 (dirtyN = 0) үед товч өөрөө харагдахгүй. */
               const others = hdUsers.length > 0 ? ` (${hdUsers.join(', ')})` : '';
-              /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): асуултын тоо = ТОВЧНЫ тоо (`dirtyRows`,
-                 өөрчлөгдсөн мөр). Урьд нь `dirtyN` (сарын нүд бүрийг тоолдог) байсан тул
-                 товч «(3)» гэж байхад асуулт «12 өөрчлөлт» гэж зөрдөг байв. */
-              /* ⚠️ 2026-10-23 (UX аудит P4): «Хадгалаагүй» → «Илгээгээгүй» — ноорог хуваалцсан мөрөнд АВТОМАТААР хадгалагддаг;
-                 тоолж буй нь батлуулахаар илгээгээгүй өөрчлөлт. X1: аппын дотоод асуулт. */
               if (!(await askConfirm(tr('Илгээгээгүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид{1} устна.', num(dirtyRows), others), { danger: true, ok: tr('Ноорог хаях') }))) return;
-              /* ⚠️ 2026-10-04 аудит: Map-уудыг хоослохоос ӨМНӨ — дэлгэц дээрх нүдийг локалд СИНХРОН
-                 tombstone болгож (шууд F5 дарвал амилахгүй), алсад read-merge-write-аар хаана. */
               hdDiscard();
               setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map()); setADraft(new Map()); setResDraft(new Map()); setNote('');
-              /* ⚠️ 2026-10-08: хаясан ноорогийг Ctrl+Z-ээр сэргээхгүй — агшин · самбар хүчингүй */
               setUndoSnap(null); setChainN(0); setChgOpen(false);
-              /* ⚠️ Буцаасан тэмдэглэгээ ноорогтой хамт (2026-09-25 аудит) — үлдвэл дараагийн
-                 ШИНЭ засвар бүр «батлагч зөвшөөрөөгүй» улаан болж ХУДАЛ харагдана.
-                 2026-09-25 #2/#3: шинэ засвар одоо саармаг (`backMarkMap`); «Ноорогт
-                 буцааж засах» эсвэл дахин ачаалалт тэмдгийг дахин тавина. */
               setBackMarks(null);
             }}>
             {tr('Ноорог хаях')} ({num(dirtyRows)})
           </button>
         )}
-        {/* ⚠️ «Хадгалах» → «Батлуулах» (2026-09-07). Гүйцэтгэгч эх хуудсанд
-            ШУУД бичихээ болив: огноо нь батлагдтал хяналтын хүснэгтэд
-            хүлээнэ. Батлагдаагүй санал тайлан, хоцрогдлын дохиог хөндөхгүй. */}
-        {/* ⚠️ ИЛГЭЭЛТЭЭ ТАТАХ (2026-09-21) — зөвхөн ЗОХИОГЧ, зөвхөн `pending`.
-            «Батлуулах» товчны байранд: тэр товч `pending` үед нуугддаг тул
-            зохиогч энд өөрийн илгээлтийн хувь заяаг удирдана. */}
-        {/* ⚠️ 2026-10-08: батлагч түгжсэн / хэсэгчлэн бичсэн бол товч ХААЛТТАЙ, шалтгаан `title`-д —
-            урьд нь дарсны дараа л `withdrawPlan` татгалздаг байв (`HEAD_FIELDS` түгжээг аль хэдийн авчирдаг). */}
         {canEdit && pending && isOwnSubmission && approving == null && (
           <button type="button" className={h.discard} disabled={busy || !!pendingHolder || pendingPartial != null}
             title={pendingPartial != null
@@ -6501,17 +4315,11 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {tr('Илгээлтээ татах')}
           </button>
         )}
-        {/* ⚠️ НЭМЭЛТ АЖИЛ БАТЛУУЛАХ (2026-09-24) — хуваарийн «Батлуулах»-аас ТУСДАА
-            товч: тэр нь огноог, энэ нь ШИНЭ АЖЛЫГ гэрээнд оруулах эсэхийг 2 шатат
-            урсгалд. Хүлээгдэж буй илгээлт байхад (`ajSub`) гарахгүй — `submitAjil`
-            хоёр дахийг татгалзана. */}
         {canAddRow && !ajSub && adds.length > 0 && (
-          /* ⚠️ 2026-10-22 (аудит №3): эцэггүй мөр байвал ХААЛТТАЙ, шалтгаан `title`-д (`useAjil.ajOrphans`-ийн ⚠️) */
           <button type="button" className={h.save} disabled={ajBusy || ajOrphans.length > 0}
             title={ajOrphans.length > 0
               ? orphanAddsMsg(ajOrphans.length)
               : tr('Нэмсэн шинэ ажлын мөрийг батлуулахаар илгээнэ — батлагдтал үндсэн өгөгдөлд бичигдэхгүй')}
-            /* ⚠️ 2026-10-23 (UX аудит P3): шууд илгээхгүй — тайлбартай цонх (`ajBox`) нээнэ */
             onClick={() => { setAjErr(''); setAjBox(true); }}>
             {tr('Нэмэлт ажил батлуулах')} ({num(adds.length)})
           </button>
@@ -6520,8 +4328,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           <button
             type="button"
             className={h.save}
-            /* ⚠️ 2026-10-21: сарын обьёмын хүснэгт уншигдаагүй (`obNotReady`) ба хуучин агшин (`frameOld`) үед ХААЛТТАЙ,
-               шалтгаан `title`-д (`sendForApproval`-ийн хаалттай ижил) */
             disabled={busy || dirtyN === 0 || flowReady === false || obNotReady || !!frameOld}
             title={flowReady === false
               ? (flowWhy || tr('Батлах хүснэгт бэлэн болоогүй — админ нэг удаа нэвтэрч үүсгэнэ.'))
@@ -6534,18 +4340,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               : unbalRows.size
                 ? tr('{0} ажлын сарын обьём нийт обьёмтой тэнцэхгүй — «Тэнцээгүй» шүүлтээр олж засаад илгээнэ', num(unbalRows.size))
                 : tr('Өөрчлөлтийг батлуулахаар илгээнэ — батлагдтал эх хуваарь хөдлөхгүй')}
-            /* ⚠️ Цонх нээхэд `err` ЦЭВЭРЛЭНЭ (2026-09-21): FlowBox нь `err`-ийг
-               зурдаг тул өмнөх (өөр үйлдлийн) алдаа цонхны дотор «энэ илгээлтийн
-               алдаа» мэт гарч байв. */
             onClick={() => { setErr(''); setFlowBox('send'); }}
           >
-            {/* ⚠️ 2026-09-29 (аудит 10): `dirtyRows` — толгойн «хадгалаагүй N», илгээлтийн `rowCount`-тай НЭГ тоо */}
             {tr('Батлуулах')}{dirtyN ? ` (${num(dirtyRows)})` : ''}
-            {/* ⚠️ 2026-10-09: тэнцээгүй тоог ДАРАХААС ӨМНӨ (`unbalRows`) — урьд нь зөвхөн илгээх үед алдаагаар мэддэг байв */}
             {unbalRows.size > 0 && ` · ${tr('{0} тэнцээгүй', num(unbalRows.size))}`}
           </button>
         )}
-        {/* ⚠️ 2026-10-21: сарын обьёмын хүснэгт унасан (`fail`) бол «Батлуулах» хаалттай — дахин ачаалах товч (`retryOb`) */}
         {canEdit && !pending && obNotReady && obState === 'fail' && (
           <button type="button" className={h.discard} disabled={busy}
             title={tr('Сарын обьёмын хүснэгт уншигдаагүй тул илгээх боломжгүй. «Сарын обьём дахин ачаалах»-ыг дарна уу.')}
@@ -6553,10 +4353,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {tr('Сарын обьём дахин ачаалах')}
           </button>
         )}
-        {/* ⚠️ УРЬДЧИЛАН ХАРАХ — батлагч саналыг ХУАНЛИ ДЭЭР харна. Үүнгүй бол
-            «14 мөр» гэсэн тоо л хараад хараагүй зүйлээ баталж байна гэсэн үг. */}
-        {/* ⚠️ 2026-10-12 (аудит №8): ӨӨРИЙН илгээлтэд (зохиогч + батлагч эрхтэй) гарахгүй — тэр хүнд «Батлагдсан/Илгээсэн
-            хуваарь» сэлгүүр (доор) аль хэдийн байдаг тул хоёр өөр харах товч зэрэг гардаг байв. */}
         {!review && pending && canApprove && !isOwnSubmission && !previewing && (
           <button type="button" className={h.discard} disabled={busy}
             title={tr('Саналыг хуанли дээр буулгаж харна — эх хуудсанд бичигдэхгүй')}
@@ -6571,49 +4367,28 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {tr('Харахыг болих')}
           </button>
         )}
-        {/* ⚠️ ЗОХИОГЧИД ТОВЧ ИДЭВХГҮЙ (2026-09-08). Дүрэм нь `decide`-д
-            (бичихээс өмнө) баригдана; энд идэвхгүй болгох нь ЯАГААД гэдгийг
-            ИЛ болгож, батлагдахгүй мэдэж байж дарахаас сэргийлнэ. */}
         {!review && pending && canApprove && (
           <button type="button" className={h.save} disabled={busy || isOwnSubmission}
             title={isOwnSubmission
               ? tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')
               : undefined}
-            /* ⚠️ Нээхэд `err` цэвэрлэнэ (2026-09-21) — «Батлуулах»-тай ижил шалтгаан. */
             onClick={() => { setErr(''); setFlowBox('decide'); }}>
             {tr('Шийдвэрлэх')} ({num(pending.rowCount)})
           </button>
         )}
-        {/*
-          * ⚠️ ӨӨРИЙН ИЛГЭЭЛТ — товч идэвхгүй болсон ШАЛТГААНЫГ ил хэлнэ
-          *    (2026-09-15). Урьд нь зөвхөн `title` (hover) байсан тул
-          *    мэдрэгч дэлгэцэд ОГТ хүрэхгүй, хулганатай ч гэсэн саарал
-          *    товч ширтсэн хүн «эвдэрсэн» гэж үзнэ. Багц гацсан гэдгийг
-          *    ба гарцыг нь хамт хэлнэ.
-          */}
         {pending && canApprove && isOwnSubmission && (
           <span className={h.muted} role="status">
             {tr('Энэ илгээлтийг та өөрөө хийсэн тул өөрөө батлах боломжгүй. Өөр батлагч шийдвэрлэнэ — багцад батлагч томилоогүй бол админ «Хуваарийн эрх» хэсгээс нэмнэ.')}
           </span>
         )}
         {/*
-          * ⚠️ БАТЛАХ ЭРХГҮЙ бол ШАЛТГААНЫГ ил хэлнэ (2026-09-15, хэрэглэгч:
-          *    «төлөвлөөд батлахад батлах идэвхжихгүй байна»).
-          *
           *    Урьд нь `canApprove` худал үед «Шийдвэрлэх» товч ОГТ
           *    зурагддаггүй байв — хэрэглэгч «товч идэвхгүй» гэж хардаг ч
           *    үнэндээ товч байхгүй, шалтгаан нь хаана ч бичигдэхгүй.
           *    Одоо хэнд хандахыг нэрлэнэ.
-          *
-          * ⚠️ `locked` үед «Батлуулах» товч ч алга болдог (дээрх `!pending`)
-          *    тул энэ мөр нь тэр хоосон зайг ч тайлбарлана.
           */}
         {!review && pending && !canApprove && (
           <span className={h.muted} role="status">
-            {/* ⚠️ ХОЁР ӨӨР шалтгааныг ЯЛГАНА (2026-09-15): «эрх огт байхгүй»
-                ба «эрх бий ч ЭНЭ багцад биш» хоёр нь өөр гарцтай. Хоёуланг
-                нь «эрхгүй» гэж нэгтгэвэл тусдаа эрх тохируулсан хүн юу дутуу
-                байгааг олохгүй. `hasPlanRole` нь багцаас ҮЛ ХАМААРНА. */}
             {hasPlanRole(user?.username, 'approver')
               ? tr('Танд батлах эрх бий, гэхдээ ЭНЭ багцад томилогдоогүй байна. Админ «Хуваарийн эрх» → {0} → «Батлагч» хэсэгт таныг нэмнэ.', tr(pkg.group))
               : tr('Батлах эрхгүй — энэ багцад батлагчаар томилогдсон хүн шийдвэрлэнэ. Админ «Хуваарийн эрх» хэсгээс томилно.')}
@@ -6621,10 +4396,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         )}
         {/*
           * ХЯНАЛТЫН ЗУРВАС (2026-09-25) — зөвшөөрлийн тоолуур · батлах · буцаах · хаах.
-          * ⚠️ «Батлах» нь БҮХ өөрчлөгдсөн мөр ногоон болтол ХААЛТТАЙ — гүйцэтгэлийн
-          *    дүрэм (`Guitsetgel.allOk`): батлагч мөр бүрийг харсан байх ёстой.
-          * ⚠️ Өөрийн илгээлтийг батлахгүй — `decide` ба `decidePlan` ч татгалзана,
-          *    энд товч дарахаас ӨМНӨ хэлнэ.
           */}
         {review && (
           <>
@@ -6638,15 +4409,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               onClick={jumpNextBad}>
               {tr('Дараагийн ✕')}
             </button>
-            {/* ⚠️ 2026-10-08: өөрчлөлтийн жагсаалт — мөр · блок · хуучин→шинэ · ✓/✕ (`chgPanel`) */}
             <button type="button" className={h.discard} aria-pressed={chgOpen}
               disabled={!reviewOids.length}
               title={tr('Өөрчлөгдсөн мөрүүдийн жагсаалт — дарж мөр рүү үсэрнэ, ✓/✕-ээр зөвшөөрнө')}
               onClick={() => setChgOpen((v) => !v)}>
               {tr('Өөрчлөлт {0}', num(reviewOids.length))}
             </button>
-            {/* ⚠️ ЗӨВХӨН super (`Guitsetgel`-ийн «✓ бүгдийг ногоон» дүрэм): батлагч мөр
-                бүрийг харах ёстой — нэг товчоор бүгдийг ногоон болговол хяналт утгаа алдана. */}
             {(status === 'off' || roleForUser(user?.username) === 'super') && (
               <button type="button" className={h.discard}
                 disabled={busy || approving != null || !reviewLive || !reviewOids.length}
@@ -6656,15 +4424,11 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               </button>
             )}
             <button type="button" className={h.discard}
-              /* ⚠️ ЯГ ЭНЭ илгээлт, урьдчилан харсны ДАРАА л (2026-09-25 аудит): урьд нь
-                 зуур солигдсон ШИНЭ илгээлтийг хараагүй байж буцааж, `okRows=[]` бичдэг байв. */
               disabled={busy || approving != null || !(reviewLive || reviewConflict) || !canApprove || isOwnSubmission}
               onClick={() => { setErr(''); setFlowBox('reject'); }}>
               {tr('Буцаах')}
             </button>
             <button type="button" className={h.save}
-              /* ⚠️ 2026-10-01: мужаас гадуурх сарын обьёмтой санал батлагдахгүй (`obOut`) */
-              /* ⚠️ 2026-10-12: хуучин агшин (`frameOld`) дээр батлахгүй — шалтгаан нь дээрх баннерт */
               disabled={busy || approving != null || !reviewLive || !canApprove || isOwnSubmission || (reviewOids.length > 0 && !allOk) || obOut.bad > 0 || !!frameOld}
               title={isOwnSubmission
                 ? tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')
@@ -6678,7 +4442,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               onClick={async () => { if (await askConfirm(tr('Хуваарийг батлах уу? Эх хуудсанд бичигдэнэ.'), { ok: tr('Батлах') })) void decide(true, ''); }}>
               {tr('Батлах')}
             </button>
-            {/* ⚠️ 2026-10-12 (аудит №8): эхлэл унасан бол дахин оролдох (`reviewRetry`-ийн ⚠️) */}
             {reviewRetry && !reviewLive && !reviewConflict && (pending == null || pending.oid === review.oid) && (
               <button type="button" className={h.discard} disabled={busy || approving != null}
                 title={tr('Саналыг дахин уншиж хуанли дээр буулгана')}
@@ -6691,15 +4454,11 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               onClick={() => { void confirmDropMarks(okRows.size).then((ok) => { if (ok) review.onClose(); }); }}>
               ✕ {tr('Хаах')}
             </button>
-            {/* ⚠️ 2026-09-30: «Батлах»/«Буцаах» хаалттай ШАЛТГААН ИЛ мөрөөр (5784-ийн
-                сургамж) — `title` мэдрэгч дэлгэцэд гарахгүй. `busy`/`approving` үед
-                түр хаалт тул бичихгүй. Өөрийн илгээлтийн шалтгааныг дээрх span хэлдэг. */}
             {(() => {
               if (busy || approving != null || isOwnSubmission) return null;
               const why = !canApprove
                 ? tr('Энэ багцын хуваарийг батлах эрхгүй.')
                 : reviewConflict
-                  /* ⚠️ 2026-10-12: эвдэрсэн (уншигдаагүй) агуулга ч энд (`preview`-ийн `previewBad`) */
                   ? tr('Санал одоогийн хуваарьтай зөрчилдсөн эсвэл агуулга нь уншигдсангүй тул зөвхөн буцаах боломжтой.')
                   : !reviewLive
                     ? (reviewRetry
@@ -6707,7 +4466,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                       : tr('Санал хуанли дээр буулгагдаагүй байна — буулгагдсаны дараа шийдвэрлэнэ.'))
                     : reviewOids.length > 0 && !allOk
                       ? tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.')
-                      /* ⚠️ 2026-10-01: мужаас гадуурх обьём — аль ажил/блок/сар гэдгийг нэрлэнэ */
                       : reviewLive && obOut.bad > 0
                         ? obOutMsg
                         : '';
@@ -6715,16 +4473,11 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             })()}
           </>
         )}
-        {/* ⚠️ 2026-10-09: УРТ БИЧИЛТИЙН ЯВЦ (`progress`-ийн ⚠️) — толгойн мөрөнд, цонх (FlowBox) нээлттэй бол тэнд ч */}
         {progress && (
           <span className={h.flowNote} role="status" aria-live="polite">⏳ {progress}</span>
         )}
       </header>
 
-      {/* ⚠️ ХААХ товч (2026-09-23): алдааны баннер хаагдахгүй, тэмдэглэлийнх нь
-          «дарахад хаагдана» гэдэг нь харагддаггүй байв. */}
-      {/* ⚠️ 2026-10-09: ТҮР МЭДЭГДЭЛ (алдаа · гинж · тэмдэглэл) — урсгалд БИШ, давхарга (`.toasts`): гарч/алга болох бүрд
-          хүснэгт үсэрч, чирж буй зурвас заагчаас холддог байв. Хаах дүрэм (×, дарахад) ХЭВЭЭР. */}
       {(err || chainN > 0 || note) && (
         <div className={h.toasts}>
           {err && (
@@ -6733,16 +4486,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               <button type="button" className={h.noteX} onClick={() => setErr('')} aria-label={tr('Хаах')}>×</button>
             </p>
           )}
-          {/* ⚠️ 2026-10-08: гинжээр дагасан хамаарагчийн түр мэдэгдэл (6 с) + буцаах */}
-          {/* ⚠️ 2026-10-09: шилжсэн мөрүүд шилжилтийн хамт («12 (+3х), 15 (−21х)…», 8 хүртэл + «+M») — нягт гинж (⚠️ ХЭВЭЭР)
-              урьдын сул хугацааг «идсэн» эсэх ил харагдана */}
           {chainN > 0 && (
             <p className={`${h.note} ${h.noteDismiss}`} role="status" aria-live="polite" onClick={() => setChainN(0)}>
               {tr('{0} хамаарагч ажил дагаж шилжлээ', num(chainN))}
               {chainList.length > 0 && `: ${chainList.slice(0, 8).map((x) => (x.d == null || x.d === 0
                 ? x.lab
                 : `${x.lab} (${x.d > 0 ? '+' : '−'}${num(Math.abs(x.d))}${tr('х')})`)).join(', ')}${chainList.length > 8 ? ` +${num(chainList.length - 8)}` : ''}`}
-              {/* ⚠️ 2026-10-09: гинж хамаарагчдын сарын задаргааг тайрч ТЭНЦЭХГҮЙ болгосон бол ил (`chainUnbalN`) + шүүлт */}
               {chainUnbalN > 0 && (
                 <>
                   {`, ${tr('{0} ажлын сарын обьём тэнцэхгүй боллоо', num(chainUnbalN))}`}
@@ -6766,14 +4515,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           )}
         </div>
       )}
-      {/* ⚠️ 2026-10-08: хадгалалтын олон алдаа — ЖАГСААЛТ, мөр нэрлэсэнд «→ ажил руу» (`errList`-ийн ⚠️) */}
       {errList.length > 0 && (
         <div className={h.err} role="alert">
           <ul className={h.errList}>
             {errList.map((x, k) => (
               <li key={k}>
                 {x.msg}
-                {/* ⚠️ 2026-10-09: мөр одоогийн хуудсанд байвал л — алдагдсан мөрийн ХУУЧИН oid руу товч юу ч хийдэггүй байв */}
                 {x.oid != null && plan.some((r) => r.oid === x.oid) && (
                   <>
                     {' '}
@@ -6786,12 +4533,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           <button type="button" className={h.noteX} onClick={() => setErrList([])} aria-label={tr('Хаах')}>×</button>
         </div>
       )}
-      {/* ⚠️ 2026-10-09: ӨНЧИН НООРОГ (`orphanOids`-ийн ⚠️) — тоо ба устгах товч */}
-      {/* ⚠️ 2026-10-21: КОДООР түлхүүрлэсэн сарын өнчин ноорог (`orphanOb`) ч энд — жагсааж, ЗӨВХӨН тэдгээрийг устгана */}
       {(orphanOids.size > 0 || orphanOb.size > 0) && canEdit && !locked && (
         <p className={h.err} role="status">
           {orphanOids.size > 0 && tr('{0} мөрийн ноорог одоогийн хуудаснаас олдохгүй (өнчин) — хадгалагдахгүй.', num(orphanOids.size))}
-          {/* ⚠️ 2026-10-09: аль мөр гэдгийг НЭРЭЭР (жааз солигдоход `useSharedDraft.hdOrphan`) — эхний 5 */}
           {(() => {
             const nm = [...orphanOids].map((o) => hdOrphan.get(o)).filter((x): x is string => !!x);
             return nm.length ? ` ${nm.slice(0, 5).join('; ')}${nm.length > 5 ? ` (+${num(nm.length - 5)})` : ''}.` : '';
@@ -6812,8 +4556,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           </button>
         </p>
       )}
-      {/* ⚠️ 2026-10-09: гинжийн мэдэгдэл дээрх давхарга (`.toasts`) руу шилжив */}
-      {/* ⚠️ 2026-10-08: ӨӨРЧЛӨЛТИЙН САМБАР — хяналтад `reviewOids` (✓/✕-тэй), зохиогчид `dirtyOids`; мөр рүү үсэрнэ */}
       {chgOpen && (
         <aside className={h.chgPanel} role="region" aria-label={tr('Өөрчлөлт')}>
           <header className={h.mdHead}>
@@ -6831,7 +4573,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   {okRows.has(c.oid) ? '✓' : '✕'}
                 </button>
               )}
-              {/* ⚠️ 2026-10-09: ЗОХИОГЧИД буцаагдсан саналын тэмдэг (`backMarkMap`) — зөвхөн харуулна */}
               {!marking && backOn && backMarkMap.has(c.oid) && (
                 <span className={h.rowMark} role="img"
                   style={{ color: backMarkMap.get(c.oid) === 'ok' ? 'var(--good-ink)' : 'var(--bad-ink)' }}
@@ -6848,7 +4589,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           ))}
         </aside>
       )}
-      {/* ⚠️ 2026-10-09: `note` дээрх давхарга (`.toasts`) руу шилжив */}
       {komissNote && (
         <p className={`${h.note} ${h.noteDismiss}`} role="status" aria-live="polite" onClick={() => setKomissNote('')}>
           {komissNote}
@@ -6906,14 +4646,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       )}
       {ajBack && (
         <p className={h.err} role="alert">
-          {/* ⚠️ 2026-10-23 (UX аудит P1): шалтгаан ТҮҮХЭЭС дахин гарна (`useAjil.refreshAjil`) — «×» дарвал энэ хөтөч санана */}
           {tr('Нэмэлт ажил буцаасан ({0} мөр, {1}, {2}): {3} — мөрүүд хуудсанд буцаж орлоо, засаад дахин батлуулна уу.', num(ajBack.n), ajBack.by || '—', ajBack.at != null ? dayKey(ajBack.at) : '—', ajBack.reason || '—')}
           <button type="button" className={h.noteX} onClick={dismissAjBack} aria-label={tr('Хаах')}>×</button>
         </p>
       )}
-      {/* ⚠️ 2026-10-22 (аудит №3): ЭЦЭГГҮЙ НЭМЭЛТ МӨР — эцэг бүлэг нь хуудсанд алга тул хүснэгтэд ХАРАГДАХГҮЙ (`insertAdds`
-          алгасдаг) атлаа тоологдож илгээгддэг байв. Энд мөр бүрийг нэрлэж «Устгах» ба одоо байгаа бүлэгт харьяалуулах
-          сонголт өгнө; байх хооронд «Нэмэлт ажил батлуулах» хаалттай (`useAjil.ajOrphans`). */}
       {!review && canAddRow && ajOrphans.length > 0 && (
         <div className={h.err} role="alert">
           {orphanAddsMsg(ajOrphans.length)}
@@ -6932,7 +4668,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                 </select>
                 {' '}
                 <button type="button" className={h.noteBtn} disabled={ajBusy}
-                  /* ⚠️ 2026-10-23 (UX аудит P2): асуултгүй — `dropAdd` «↶ Буцаах» мэдэгдэлтэй (хүснэгтийн «×»-тэй НЭГ зам) */
                   onClick={() => dropAdd(a.oid)}>
                   {tr('Устгах')}
                 </button>
@@ -6956,8 +4691,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           {tr('Батлагдсан нэмэлт ажлын {0} илгээлт үндсэн хүснэгтэд хараахан буугаагүй — батлагч «Нэмэлт ажил батлах» хуудаснаас «Дахин буулгах» дарна.', num(ajStuck))}
         </p>
       )}
-      {/* ⚠️ 2026-10-12 (аудит №8): БУСАД багцын «шинэ шийдвэр» — үсрэх товчтой (`planNews`-ийн ⚠️). Одоогийн багцынх доорх
-          сүүлийн шийдвэрийн мэдэгдэлд харагдана. Төрөл (гэрээ) нь товчинд — таб автоматаар солигдохгүй (`jump`-ийн дүрэм). */}
       {!review && planNews && planNews.some((x) => x.pkgKey !== pkg.key) && (
         <p className={h.note} role="status">
           {tr('Таны илгээлтийн шинэ шийдвэр:')}
@@ -6977,9 +4710,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           })}
         </p>
       )}
-      {/* ⚠️ 2026-10-09: батлагчийн мессежтэй ИЖИЛ ялгал (`hasPlanRole` — багцаас үл хамаарна): «зохиогчийн үүрэг бий ч
-          ЭНЭ багцад биш» ба «үүрэг огт алга» хоёр өөр гарцтай. Урьд нь үүрэгтэй хүнд ч «эрх алга» гэдэг байв. */}
-      {/* ⚠️ 2026-10-19 (аудит): ЗӨВХӨН мөр нэмэгч (нэмэлт ажлын хүрээгээр энэ багц нээгдсэн) — «эрх алга» гэвэл худал */}
       {!review && !canEditRole && !canApprove && canAddRow && (
         <p className={h.note}>
           {tr('Энэ багцад та шинэ ажлын мөр нэмж батлуулахаар илгээх эрхтэй. Хуваарийн огноог засах эрх алга — огноог зөвхөн харна.')}
@@ -6989,66 +4719,45 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         <p className={h.note}>
           {hasPlanRole(user?.username, 'author')
             ? tr('Танд хуваарь төлөвлөх эрх бий, гэхдээ ЭНЭ багцад томилогдоогүй байна — зөвхөн харна. Админ «Хуваарийн эрх» → {0} → «Зохиогч» хэсэгт таныг нэмнэ.', tr(pkg.group))
-            /* ⚠️ 2026-10-12 (аудит №8): ОДООГИЙН эрхийн дэлгэцийн замыг нэрлэнэ (дээрх мөртэй ижил) — «Хуваарь төлөвлөх» гэсэн
-               нэртэй хэсэг байхгүй тул админ хайж олдоггүй байв. */
             : tr('Танд хуваарь засах эрх алга — зөвхөн харна. Админ «Хуваарийн эрх» → {0} → «Зохиогч» хэсэгт таныг нэмнэ.', tr(pkg.group))}
         </p>
       )}
-      {/* ⚠️ Зөвхөн БАТЛАГЧ эрхтэй хүн шийдвэрлэх зүйлгүй үед ХООСОН хуудас
-          хараад «эвдэрсэн юм болов уу» гэж бодохоос сэргийлнэ. */}
-      {/* ⚠️ 2026-10-12 (аудит №8): зөвхөн урсгал АМЖИЛТТАЙ уншигдсан үед (`flowReady === true`) — уншигдаагүй (сүлжээ) эсвэл
-          ачаалж байхад «батлах хуваарь алга» гэж худал хэлдэг байв (доорх алдааны баннер шалтгааныг хэлнэ). */}
       {!review && !canEditRole && canApprove && !pending && flowReady === true && (
         <p className={h.note}>
           {tr('Танд батлах хуваарь алга — гүйцэтгэгч илгээмэгц энд гарч ирнэ. Хуваарийг та зөвхөн харна, засахгүй.')}
         </p>
       )}
-      {/* ⚠️ ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ — засварыг ТҮГЖИНЭ. Хоёр санал зэрэг
-          хүлээвэл батлагч алийг нь батлахаа мэдэхгүй болно. */}
       {!review && pending && (
         <p className={h.note} role="status">
           {tr('{0} мөрийн хуваарь батлагдахыг хүлээж байна ({1} илгээв). Шийдвэр гартал эх хуваарь хөдлөхгүй.',
             num(pending.rowCount), pending.author)}
-          {/* ⚠️ 2026-10-09: ХЭДИЙ ХУГАЦАА хүлээж байгаа ба ХЭН батлах вэ — түгжээ (⚠️ ХЭВЭЭР) хэдэн хоног үргэлжилж
-              болдог тул зохиогч хэнд хандахаа мэдэхгүй байв. Батлагчид хуваарилалтаас (`planApproversOf`). */}
           {(() => {
             const parts: string[] = [];
             if (pending.authorSent != null) {
               const hrs = Math.max(0, Math.floor((clock - pending.authorSent) / 3_600_000));
               parts.push(hrs >= 24 ? tr('{0} хоног хүлээж байна', num(Math.floor(hrs / 24))) : tr('{0} цаг хүлээж байна', num(hrs)));
             }
-            /* ⚠️ 2026-10-12 (аудит №8): ИЛГЭЭСЭН ЗОХИОГЧИЙГ хасна — өөрийгөө батлахгүй тул «батлагч» жагсаалтад байх нь
-               худал; үлдэгдэл хоосон бол «томилоогүй» (зохиогч хэнд ч хандах боломжгүй гэдгийг мэднэ). */
             const auth0 = pending.author.trim().toLowerCase();
             const appr = planApproversOf(pkg.group).filter((u) => u.trim().toLowerCase() !== auth0);
-            /* ⚠️ ACL ачаалагдаагүй бол (`huvaariAclReady`) «томилоогүй» гэж худал хэлэхгүй — юу ч бичихгүй (null ≠ хоосон) */
             if (appr.length) parts.push(tr('батлагч: {0}', appr.slice(0, 5).join(', ') + (appr.length > 5 ? ` (+${num(appr.length - 5)})` : '')));
-            /* ⚠️ 2026-10-23: энгийн батлагч алга ч админ (super) батлах боломжтой бол «томилоогүй» гэж айлгахгүй (`planAdminCanApprove`) */
             else if (huvaariAclReady() && planAdminCanApprove(pending.author)) parts.push(tr('админ батлах боломжтой'));
             else if (huvaariAclReady()) parts.push(tr('батлагч томилоогүй — админ «Хуваарийн эрх» хэсгээс нэмнэ'));
             return parts.length ? ` ${parts.join(' · ')}.` : '';
           })()}
-          {/* ⚠️ 2026-10-08: түгжээ төрөл тус бүрд — аль төрөл хүлээгдэж, аль таб засагдахыг хэлнэ */}
           {' '}
           {kind === 'plan'
             ? tr('Энэ нь ТӨЛӨВЛӨГӨӨНИЙ илгээлт — «Гэрээ» таб засагдана.')
             : tr('Энэ нь ГЭРЭЭНИЙ илгээлт — «Төлөвлөгөө» таб засагдана.')}
           {!canApprove && ` ${tr('Батлагч шийдвэрлэсний дараа энэ хуудас дахин нээгдэнэ.')}`}
-          {/* ⚠️ Хоёр эрхтэй хүнд ЯАГААД товч идэвхгүйг тайлбарлана (2026-09-08) */}
           {canApprove && isOwnSubmission
             && ` ${tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')}`}
-          {/* ⚠️ 2026-10-08: зохиогчид түгжигч / хагас бичилт ИЛ — урьд нь «Илгээлтээ татах» дарсны дараа л мэддэг байв */}
           {isOwnSubmission && pendingPartial != null && ` ${tr('Батлагч ({0}) хэсэгчлэн бичсэн — татах боломжгүй.', pendingPartial || '—')}`}
           {isOwnSubmission && pendingPartial == null && pendingHolder
             && ` ${tr('{0} батлаж байна ({1} мин).', pendingHolder, num(minutesSince(pending.approverAt, clock)))}`}
-          {/* ⚠️ ШИНЭЧЛЭХ (2026-09-23): батлагч шийдсэнийг мэдэхийн тулд хуудсаа
-              бүхэлд нь дахин ачаалах шаардлагагүй — зөвхөн урсгалыг татна. */}
           {' '}
           <button type="button" className={h.noteBtn} disabled={busy} onClick={() => void refreshFlow()}>
             {tr('Шинэчлэх')}
           </button>
-          {/* ⚠️ СОЛЬЖ ХАРАХ (2026-09-29) — шийдвэр гаргаж чадах батлагчид ГАРАХГҮЙ
-              (`viewSent`-ийн ⚠️): тэр «Урьдчилан харах»-аар харна. */}
           {(!canApprove || isOwnSubmission) && approving == null && (
             <span className={h.tlZoom} role="group" aria-label={tr('Хуваарийн хувилбар')} style={{ marginLeft: 8 }}>
               <button type="button" className={`${h.tlZoomB} ${!previewing ? h.tlZoomOn : ''}`}
@@ -7067,7 +4776,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           )}
         </p>
       )}
-      {/* ⚠️ 2026-10-08: НӨГӨӨ табын илгээлт хүлээгдэж байна — энэ таб засагдана (түгжээ төрөл тус бүрд) */}
       {!review && !pending && pendingOther && (
         <p className={h.note} role="status">
           {kind === 'plan'
@@ -7075,27 +4783,17 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             : tr('«Төлөвлөгөө» табын {0} мөрийн илгээлт батлагдахыг хүлээж байна ({1} илгээв) — энэ таб (Гэрээ) засагдана.', num(pendingOther.rowCount), pendingOther.author)}
         </p>
       )}
-      {/* ⚠️ БУЦААСАН ШАЛТГААН — гүйцэтгэгчид хүрэх цорын ганц зам. Үүнгүй бол
-          «шалтгаан заавал» гэсэн дүрэм утгагүй болно. */}
       {!review && lastDecision && lastDecision.status === PLAN_STATUS.returned && (
         /* `pre-line` — шалтгааны «Зөвшөөрөгдөөгүй N мөр: …» жагсаалт тусдаа мөрөнд */
         <p className={h.err} role="status" style={{ whiteSpace: 'pre-line' }}>
-          {/* ⚠️ 2026-09-29 (хэрэглэгч: «буцаасан шалтгаан зохиогчид харагдахгүй байна»):
-              шалтгааныг ТУСДАА мөрөнд, шошготой, тодоор — урт мэдэгдлийн дунд уусдаг байв. */}
           <b>{tr('Хуваарь буцаасан')}</b>
           {` · ${lastDecision.approver ?? '—'} · ${lastDecision.approverAt == null ? '—' : dayKey(lastDecision.approverAt)}`}
           {'\n'}
           <b>{tr('Буцаасан шалтгаан')}: </b>
-          {/* ⚠️ 2026-10-12 (аудит №8): хадгалсан монгол эх текстийг уншигчийн хэлээр (`displayReason`) */}
           {showPlanReason(lastDecision.reason?.trim() ?? '') || tr('шалтгаан бичигдээгүй')}
           {'\n'}
           {tr('Засаад дахин илгээнэ үү.')}
-          {/* ⚠️ БАТЛАГЧИЙН ТЭМДЭГЛЭГЭЭ (2026-09-25) — гүйцэтгэлийн «буцаагдсан
-              илгээлт ноорог болж ачаалагдана, улаан/ногоон нүдтэй» загвар.
-              Ноорог ХООСОН үед л — байгаа ажлын дээр давхарлахгүй. */}
           {lastDecision.okRows && ` ${tr('Батлагч {0} мөрийг зөвшөөрсөн.', num(lastDecision.okRows.length))}`}
-          {/* ⚠️ 2026-10-09: ноорогтой үед ч ХАРАГДАНА (идэвхгүй, шалтгаантай) — урьд нь алга болдог тул зохиогч буцаагдсан
-              саналаа хэрхэн сэргээхээ мэддэггүй байв. Ноорог ДЭЭР давхарлахгүй дүрэм (`restoreWithdrawn`) хэвээр. */}
           {canEditRole && (
             <>
               {' '}
@@ -7103,7 +4801,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                 title={dirtyN > 0
                   ? tr('Одоогийн {0} ноорог байна — хаясны дараа засна', num(dirtyRows))
                   : tr('Буцаасан хуваарийг хуанлид буулгаж засна — зөвшөөрөгдөөгүй мөр УЛААН, зөвшөөрсөн нь НОГООН')}>
-                {/* ⚠️ 2026-10-12 (аудит №8): «хуваарь» — гэрээний буцаалтад ч (төрөл табаар илэрхий) */}
                 {tr('Буцаасан хуваарийг засах')}
               </button>
               {dirtyN > 0 && !backOn && ` ${tr('Одоогийн {0} ноорог байна — хаясны дараа засна', num(dirtyRows))}`}
@@ -7114,7 +4811,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       {backOn && (
         <p className={h.note} role="status">
           {tr('Улаан тэмдэгтэй мөрийг батлагч зөвшөөрөөгүй — засаад дахин илгээнэ үү. Ногоон нь зөвшөөрөгдсөн.')}
-          {/* ⚠️ 2026-10-09: улаан мөрөөр алхах (`jumpNextBad`, `]` товч) — хяналтын «Дараагийн ✕»-тэй нэг зам */}
           {(() => {
             const nBad = [...backMarkMap.values()].filter((v) => v === 'bad').length;
             return (
@@ -7130,13 +4826,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           })()}
         </p>
       )}
-      {/* ⚠️ Зохиогч өөрөө татсан (2026-09-21) — буцаалтаас ялгаатай, шалтгаангүй. */}
       {!review && lastDecision && lastDecision.status === PLAN_STATUS.withdrawn && (
         <p className={h.note} role="status">
           {tr('Өмнөх илгээлтийг зохиогч ({0}) өөрөө татсан — засаад дахин илгээнэ.', lastDecision.author)}
-          {/* ⚠️ НООРОГТ БУЦААХ (2026-09-23): «Хуваарь батлах» дарааллаас татахад
-              зөвхөн төлөв хөдөлдөг (хуанли тэнд байхгүй) тул агуулга энд
-              сэргээгдэнэ. Ноорог ХООСОН үед л — байгаа ажлын дээр давхарлахгүй. */}
           {canEditRole && dirtyN === 0 && (
             <>
               {' '}
@@ -7153,13 +4845,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             lastDecision.approver ?? '', num(lastDecision.rowCount))}
         </p>
       )}
-      {/* ⚠️ ЯГ ШАЛТГААНЫГ бичнэ (2026-09-11). Урьд нь гурван огт өөр
-          шалтгаан (нэвтрээгүй · эзэн танигдахгүй · порталын алдаа) нэг л
-          «олдсонгүй» мессеж болж нийлдэг тул админ юу засахаа мэдэхгүй байв. */}
-      {/* ⚠️ 2026-10-01: хуваарь өөрөө ачаалагдаагүй бол (`loadErr`) урсгалын баннер ДАВХАР
-          алдаа болж (ихэвчлэн ижил шалтгаан — эрх/токен) хоёр удаа гардаг байв — нэг л удаа. */}
-      {/* ⚠️ 2026-10-12 (аудит №8): БАТЛАГЧИД ч (урьд нь зөвхөн `canEdit` — батлагч «батлах хуваарь алга» гэсэн худал мэдэгдэл
-          хардаг байв) · «Дахин оролдох» (`refreshFlow`) — хуудас бүхэлд нь сэргээх шаардлагагүй. */}
       {flowReady === false && (canEditRole || canApprove) && !loadErr && (
         <p className={h.err} role="alert">
           {flowWhy || tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')}
@@ -7171,7 +4856,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           </button>
         </p>
       )}
-      {/* ⚠️ 2026-10-12 (аудит №8): ТАСАРСАН ЖААЗЫН ОРОНД ХУУЧИН АГШИН (`frameOld`-ийн ⚠️) — ил хэлж, батлах/хадгалах хаалттай */}
       {frameOld && (
         <p className={h.err} role="alert">
           {tr('Хуудасны сүүлийн хувилбар ({0}) бүрэн хадгалагдаагүй тул өмнөх бүтэн хувилбарыг ({1}) харуулж байна. Энэ үед батлах/хадгалах боломжгүй — гүйцэтгэлийн батлалт түүнийг цэвэрлэсний дараа хуудсаа сэргээнэ үү.', frameOld.day, frameOld.shownDay)}
@@ -7181,15 +4865,11 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       {busy && !rows.length ? (
         <Loading label={tr('Хуваарь ачаалж байна…')} />
       ) : loadErr ? (
-        /* ⚠️ 2026-10-01: ачаалах алдаа — `Data`-гийн нэг загвар (тайлбар · техникийн мөр · дахин оролдох) */
         <Data q={{ state: 'error', data: null, error: loadErr, retry: () => setReloadN((n) => n + 1) }}>{() => null}</Data>
       ) : !sc || !rows.length ? (
-        /* ⚠️ 2026-10-23 (UX аудит X6): ЯАГААД · ЮУ ХИЙХ */
         <Empty label={tr('Энэ багцад мөр олдсонгүй.')}
           hint={tr('Энэ багцын бөглөх хуудас хоосон байна — өөр багц сонгоно уу, эсвэл админд мэдэгдэнэ үү.')} />
       ) : (
-        /* ⚠️ `title`/`note` ӨГӨХГҮЙ — толгойн мөр нь дээрх нэгтгэсэн зурваст
-           уусав. `Section` нь `title`-гүй үед header-ээ огт зурдаггүй. */
         <Section fill>
           <div className={h.fullBar}>
             {!review && (
@@ -7208,11 +4888,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               <span className={h.fullBarNote}>
                 {review
                   ? `${tr('Хуваарь шийдвэрлэх')} · ${pkg.label} · ${kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө')}`
-                  /* ⚠️ 2026-09-29 (аудит 10): `dirtyRows` — толгойн «хадгалаагүй N»-тэй ижил тоо */
                   : `${pkg.label}${dirtyN ? ` · ${tr('өөрчлөлт')} ${num(dirtyRows)}` : ''}`}
               </span>
             )}
-            {/* ⚠️ 2026-10-23 (хэрэглэгч: «нэг мөрөнд оруулж жижигрүүл»): «Олон блок сонгох» нь «Бүтэн дэлгэц»-тэй НЭГ мөрөнд, жижиг */}
             {canEdit && !locked && sc.bld.length > 1 && (
               <div className={h.gBlks} role="group" aria-label={tr('Олон блок сонгох')}>
                 <span className={h.gBlksLabel}>{tr('Олон блок сонгох')}</span>
@@ -7245,31 +4923,18 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               </div>
             )}
           </div>
-          {/* ⚠️ Хяналтын заавар — «Батлах» яагаад хаалттайг ИЛ хэлнэ */}
           {review && (
             <p className={h.plHint}>
               {tr('Өөрчлөгдсөн мөр улаан хүрээтэй · хуучин огноо нь зурвасын доор бүдгээр · ажлын кодын ✕ дээр дарж зөвшөөрнө (ногоон ✓) · нэр дээр дарж дэлгэрэнгүйг харна · бүгд ногоон болсны дараа «Батлах» идэвхжинэ')}
             </p>
           )}
           {allOn ? (
-            /* ⚠️ «Бүх блок» горим — зөвхөн харах; засах зам нь блокийн мөр (2026-10-04) */
             <p className={h.plHint}>
               {tr('Бүх блок — зөвхөн харах. Ажлын зурвас нь бүх блокийн нийт муж; доорх мөрүүд блок бүрийнх. Блокийн мөр дээр дарж тэр блок руу орж засна.')}
             </p>
           ) : null}
-          {/* ⚠️ 2026-10-23 (хэрэглэгч: «тайлбар текстийг устга»): засварын заавар («Ажлын нэр дээр дарж хуанлиар оруулна ·
-              … · Alt + чирнэ») ХАСАГДСАН — гарын товчлуурын заавар «?» (`HowtoHint`)-д хэвээр. */}
 
           {/* ── НЭГ БҮТЭН ХҮСНЭГТ: зүүн мод + баруун хуанли ── */}
-          {/* ⚠️ 2026-10-09 (хэрэглэгч: «миний ноорог бүрэн сэргэтэл хуудас нээгдэхгүй»): хуваалцсан ноорог сэргэж
-              дуустал (`hdRestoringUi`) хүснэгт/хуанли ХАРАГДАХГҮЙ — сэргээгдээгүй хуваарь дээр чирэх, засах
-              боломжгүй. Гацвал (`RESTORE_SLOW_MS`) л дахин ачаалах товч; хүснэгт өөрөө нээгдэхгүй. */}
-          {/* ⚠️ 2026-10-09 (аудит №2): хаалт нь хүснэгтийг САЛГАХГҮЙ (unmount биш) — урьд нь `scrollRef` null үед
-              `useCalendar`-ийн «өнөөдөр рүү» гүйлгэлт ажиллаад дахин ажилладаггүй тул хуанли хүрээний эхэнд нээгдэж,
-              plan↔geree солих · `pending`→null · `clearPreview` · `hdResetRestore` бүрд дахин mount болж гүйлгээ 0 руу
-              буцаж, `recalcWin`-ийн хуучин цонхоор дээд мөрүүд хоосон зурагддаг байв. Одоо хүснэгт ЗУРАГДСАН хэвээр,
-              зөвхөн НУУГДАЖ (`gWrapGated`: visibility hidden) · `inert` · `aria-hidden` — сэргээгдээгүй өгөгдлийг харах,
-              засах боломжгүй хэвээр; гүйлгээ ба «өнөөдөр» рүү гүйлгэлт хаалт нээгдэхэд байрандаа. */}
           {hdRestoringUi && (
             <div className={h.plHint} role="status" aria-busy="true">
               {tr('Таны ноорог сэргээгдэж байна — бүрэн сэргэсний дараа хүснэгт нээгдэнэ…')}
@@ -7284,7 +4949,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </div>
           )}
           {visible.length === 0 ? (
-            /* ⚠️ 2026-10-23 (UX аудит X6): шүүлтээс болсон бол ИЛ хэлж, нэг товчоор арилгана */
             !hdRestoringUi && (filtOn || fGrp !== 'all'
               ? (
                 <Empty label={tr('Шүүлтэнд тохирох мөр алга.')}
@@ -7300,8 +4964,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             <div className={`${h.gWrap}${hdRestoringUi ? ` ${h.gWrapGated}` : ''}`} ref={scrollRef} onScroll={onScroll}
               aria-hidden={hdRestoringUi || undefined} inert={hdRestoringUi}>
               <div ref={sideAndColRef} style={{ ...sideStyle, ...colW.style }} className={`${h.gSide} ${cols ? '' : h.gSideNarrow} ${canEdit && !locked && !allOn ? (kind === 'plan' ? h.gSideEdP : h.gSideEdG) : ''}`}>
-                {/* ⚠️ 2026-10-09: `gSideEdP/G` — засагдах эхлэх/дуусах нүд нарийн дэлгэц ба хураасан самбарт ч ил (CSS-ийн ⚠️) */}
-                {/* ⚠️ 2026-10-04: баруун ирмэгийг чирж жагсаалтыг томруулна (`useSideExtra`) */}
                 <button type="button" className={`${h.sideGrip}${sideGrip.dragging ? ` ${h.sideGripOn}` : ''}`}
                   role="separator" aria-orientation="vertical"
                   aria-label={tr('Жагсаалтын өргөн')} aria-valuenow={sideGrip.extra}
@@ -7312,9 +4974,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   <span className={h.gHeadDes}>{tr('Ажлын код')}<ColGrip g={colW.grip('des')} label={tr('«Ажлын код» баганын өргөн')} /></span>
                   <span className={h.gHeadWork}>
                     {tr('Ажил')}
-                    {/* ⚠️ Хураах товч нь НЭРИЙН толгойд — нуугдах багануудын өмнө,
-                        тэдгээр нуугдсан ч товч байрандаа үлдэнэ (нуугдсан
-                        багана дотор байсан бол буцааж нээх аргагүй болно). */}
                     <button type="button" className={h.colsBtn}
                       onClick={() => setCols((v) => !v)}
                       title={cols ? tr('Огноо · нөөцийн баганыг хураах') : tr('Огноо · нөөцийн баганыг нээх')}
@@ -7322,60 +4981,34 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                       aria-expanded={cols}>
                       {cols ? '◂' : '▸'}
                     </button>
-                    {/* ⚠️ 2026-10-09: самбар хамт өргөсдөг болсон (`--col-extra`) тул нэрийн багана ШУУД өргөснө */}
                     <ColGrip g={colW.grip('work')} label={tr('«Ажил» баганын доод өргөн')} />
                   </span>
                   {/*
                     * ДӨРВӨН ОГНООНЫ БАГАНА (2026-09-15, хэрэглэгчийн хүсэлт:
                     * «ажилбар бүрийн ард 4 багана нэмнэ — гэрээний эхлэх,
                     * дуусах, инженерийн эхлэх, дуусах огноо»).
-                    *
-                    * ⚠️ ХОЁР ТӨРЛИЙГ ЗЭРЭГ: хуанли нь ЗӨВХӨН идэвхтэй табын
-                    *    огноог зурдаг тул гэрээ ба төлөвлөгөөг зэрэгцүүлж
-                    *    харахын тулд табаа солих шаардлагатай байв. Эдгээр
-                    *    багана нь хоёуланг нь НЭГ мөрөнд гаргана.
-                    *
-                    * ⚠️ ЗАСАГДАХГҮЙ — зөвхөн УНШИНА. Огноо засах цорын ганц
-                    *    зам нь хуанли дээр чирэх (`onDown`) ба popup хэвээр:
-                    *    хоёр өөр засварын зам үүсвэл аль нь үнэн болох нь
-                    *    бүрхэг болно.
                     */}
                   <span className={`${h.gHeadDate} ${h.cGs}`}>{kind === 'geree' && multiTag}{tr('Гэрээ эхлэх')}<ColGrip g={colW.grip('gs')} label={tr('«{0}» баганын өргөн', tr('Гэрээ эхлэх'))} /></span>
                   <span className={`${h.gHeadDate} ${h.cGe}`}>{tr('Гэрээ дуусах')}<ColGrip g={colW.grip('ge')} label={tr('«{0}» баганын өргөн', tr('Гэрээ дуусах'))} /></span>
-                  {/* ⚠️ ХОНОГ нь ТУСДАА БАГАНА (2026-09-15, хэрэглэгч).
-                      Огнооны нүдэнд шигтгэвэл тэр нүд хоёр утга агуулж,
-                      эрэмбэлэх · хуулах · нүдээр гүйлгэх бүгд хүндэрнэ. */}
-                  {/* ⚠️ 2026-10-08: багана бүр ТУСДАА өргөнтэй (`useColWidths`-ийн ⚠️) — бариул бүр Tab-д, шошго баганын нэрээр */}
                   <span className={`${h.gHeadDays} ${h.cGd}`}>{tr('Хоног')}<ColGrip g={colW.grip('gd')} label={tr('«{0}» баганын өргөн', tr('Гэрээгээр үргэлжлэх хоног'))} /></span>
-                  {/* ⚠️ «Төлөвлөгөөт» (2026-09-23, хэрэглэгч) — хажууд «Бодит» багана
-                      нэмэгдсэн тул «Төлөвлөгөө эхлэх» гэвэл аль нь төлөвлөгөө, аль нь
-                      баримт болох нь бүрхэг. */}
                   <span className={`${h.gHeadDate} ${h.cPs}`}>{kind === 'plan' && multiTag}{tr('Төлөвлөгөөт эхлэх')}<ColGrip g={colW.grip('ps')} label={tr('«{0}» баганын өргөн', tr('Төлөвлөгөөт эхлэх'))} /></span>
                   <span className={`${h.gHeadDate} ${h.cPe}`}>{tr('Төлөвлөгөөт дуусах')}<ColGrip g={colW.grip('pe')} label={tr('«{0}» баганын өргөн', tr('Төлөвлөгөөт дуусах'))} /></span>
                   <span className={`${h.gHeadDays} ${h.cPd}`}>{tr('Хоног')}<ColGrip g={colW.grip('pd')} label={tr('«{0}» баганын өргөн', tr('Төлөвлөгөөгөөр үргэлжлэх хоног'))} /></span>
                   {/*
                     * БОДИТ ЭХЭЛСЭН / ДУУССАН (2026-09-23) — идэвхтэй блокийн (`blk`)
-                    * утга; popup-аас засагдана, энд зөвхөн харуулна (дээрх ⚠️-тэй
+                    * утга; popup-аас засагдана, энд зөвхөн харуулна (дээрх -тэй
                     * ижил: засварын нэг л зам). Бүлгийн мөрд хүүхдийн MIN/MAX.
-                    * ⚠️ Талбар байхгүй багцад багана ОГТ гарахгүй (`hasActual`).
                     */}
                   {hasActual && <span className={`${h.gHeadDate} ${h.cAs}`}>{tr('Бодит эхэлсэн')}<ColGrip g={colW.grip('as')} label={tr('«{0}» баганын өргөн', tr('Бодит эхэлсэн'))} /></span>}
                   {hasActual && <span className={`${h.gHeadDate} ${h.cAe}`}>{tr('Бодит дууссан')}<ColGrip g={colW.grip('ae')} label={tr('«{0}» баганын өргөн', tr('Бодит дууссан'))} /></span>}
                   {/* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ (2026-09-23) — мөрийн нөөц; бүлэгт нийлбэр. */}
                   {hasRes && <span className={`${h.gHeadRes} ${h.cRh}`} title={tr('Хүн хүч')}>{tr('Хүн')}<ColGrip g={colW.grip('rh')} label={tr('«{0}» баганын өргөн', tr('Хүн хүч'))} /></span>}
                   {hasRes && <span className={`${h.gHeadRes} ${h.cRm}`} title={tr('Машин механизм')}>{tr('Техник')}<ColGrip g={colW.grip('rm')} label={tr('«{0}» баганын өргөн', tr('Машин механизм'))} /></span>}
-                  {/* ⚠️ ЖИШЭЭГ ТОЛГОЙД (2026-09-15): нүдний `placeholder`-т
-                      тавьбал 1,400 хоосон мөр бүгд «11FS14» гэж харагдаж,
-                      бодит утга мэт уншигдана. Толгойд нэг удаа бичих нь
-                      бичиглэлийг заах ба хүснэгтийг цэвэр үлдээнэ. */}
                   <span className={h.gHeadHam} title={tr('Жишээ: 11FS14 — 11-р ажил дууссанаас 14 хоногийн дараа. Олныг таслалаар: 11FS,22SS-5. @2 = зөвхөн 2-р блок (@-гүй = бүх блок)')}>
                     {tr('Хамаарал')} <i className={h.gHeadHint}>11FS14</i>
                     <ColGrip g={colW.grip('ham')} label={tr('«Хамаарал» баганын өргөн')} />
                   </span>
                 </div>
-                {/* ⚠️ ЗАЙ БАРИГЧ: зүүн мөрүүд УРСГАЛД байдаг тул зурагдаагүй
-                    мөрүүдийн өндрийг орлуулахгүй бол гүйлтийн урт агшиж, зүүн
-                    жагсаалт ба баруун зурвас хоорондоо гулсана. */}
                 {winFrom > 0 && <div aria-hidden style={{ height: winFrom * PL_ROW }} />}
                 {slice.map(({ r: d }) => {
                   const r = d.r;
@@ -7400,20 +5033,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   }
                   /* Бүлгийн бодит огноо · нөөц хүүхдээс (2026-09-23, `aggExtra`) */
                   const x = r.group ? effRow(r) : r;
-                  /* ⚠️ «Бүх блок» горимд эх мөрийн бодит огноо — бүх блокийн нэгдэл (`actUnion`) */
                   const xa = allOn ? actUnion(x.aStart, x.aEnd) : null;
                   return (
                   <TaskRow
                     key={r.oid}
                     r={r}
                     on={sel === r.oid}
-                    /* ⚠️ УЯЛДААНЫ ноорог ч «хадгалаагүй» тэмдэг авна — эс
-                       бөгөөс зөвхөн уялдаа нь өөрчлөгдсөн мөр цэвэр мэт
-                       харагдаж, юу хадгалагдахыг тоолж болохгүй байв.
-                       Бодит огноо · нөөцийн ноорог мөн адил (2026-09-23).
-                       Сарын обьём/нөөцийн ноорог (`des|блок`) ч мөн (2026-09-24 аудит). */
-                    /* ⚠️ 2026-10-08 (аудит B7): `dirtyOids` — хүүхдээс БОДОГДСОН бүлгийн мөр (`rollUpGroups`)
-                       «хадгалаагүй» зүүн зураас авахгүй; толгойн «хадгалаагүй N»-тэй нэг дүрэм. */
                     dirty={!savedView && dirtyOids.has(r.oid)}
                     hasActual={hasActual}
                     hasRes={hasRes}
@@ -7423,9 +5048,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     mashin={x.mashin ?? null}
                     collapsed={collapsed.has(r.oid)}
                     onToggle={() => {
-                      /* ⚠️ ГАРААР эвхэхэд түвшний товч ТОДРОХГҮЙ болно
-                         (`lvl = 0`) — дэлгэц дээрх байдалтай зөрчилдсөн
-                         тодруулга үлдэх ёсгүй (`Finance.lvOn`-ийн ижил дүрэм). */
                       setLvl(0);
                       setCollapsed((s) => {
                         const m = new Set(s);
@@ -7433,55 +5055,26 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                         return m;
                       });
                     }}
-                    /* ⚠️ «Бүх блок» горимд popup НЭЭГДЭХГҮЙ — зөвхөн сонгоно (2026-10-04) */
                     onPick={allOn ? () => setSel(r.oid) : () => { setSel(r.oid); setModal(r.oid); }}
-                    /* ⚠️ ХОЁР ТӨРЛИЙН огноог зэрэг өгнө. `r` нь ИДЭВХТЭЙ
-                       табынх, `refByOid` нь НӨГӨӨ табынх — аль нь гэрээ, аль
-                       нь төлөвлөгөө болохыг `kind`-ээр шийднэ. */
-                    /* ⚠️ БҮЛГИЙН мөрд `effSpan` (хүүхдийн MIN/MAX) — зурвас ба popup-тай
-                       ИЖИЛ эх (2026-09-23 аудит). Урьд нь `rowSpan` (өөрийн хадгалсан
-                       муж) байсан тул блокгүй багцын бүлэгт «—», хажууд нь бүтэн
-                       зурвас гардаг байв. */
-                    /* ⚠️ «Бүх блок» горимд — бүх блокийн НЭГДЭЛ (`d.sp` · `refSpanOf(…, -1)`), 2026-10-04 */
-                    /* ⚠️ 2026-10-23 (хэрэглэгч: «ажлууд нь хуваарьгүй байхад бүлэг хуваарьтай байгаа юм уу — зас»): «Хуваарьгүй»
-                       шүүлтэд бүлгийн огноо (нуугдсан хуваарьтай ажлуудаас бодогддог) ХАРАГДАХГҮЙ — «—» (`grpNoSpan`) */
                     geree={grpNoSpan && r.group ? null : allOn ? (kind === 'geree' ? d.sp : refSpanOf(r.oid, -1)) : kind === 'geree' ? rowSpanAt(r) : refSpanAt(r.oid)}
                     tolov={grpNoSpan && r.group ? null : allOn ? (kind === 'geree' ? refSpanOf(r.oid, -1) : d.sp) : kind === 'geree' ? refSpanAt(r.oid) : rowSpanAt(r)}
-                    /* ⚠️ Уялдааг нүдэнд ШУУД бичих зам (`HamCell`). Түгжээтэй
-                       (батлагдахыг хүлээж буй илгээлт) үед ч засагдахгүй —
-                       `applyHamText` дотор `locked` шалгагдана. */
-                    /* ⚠️ 2026-09-29 аудит: уялдааны нүд ЗӨВХӨН төлөвлөгөө табд засагдана */
                     canEdit={canEdit && !locked && kind === 'plan' && !allOn}
                     onHamText={applyHamText}
-                    /* ⚠️ 2026-10-08: танигдаагүй уялдааны токен — зөвхөн харуулна (`PlanModal.hamKeep`-тэй нэг эх) */
                     hamKeep={residualDeps(ham.get(r.oid) ?? rowsAll[r.i]?.ham ?? null)}
-                    /* ⚠️ ОГНОО ШУУД БИЧИХ (2026-10-05) — ажлын мөр л; бүлэг (хүүхдээс
-                       MIN/MAX), нэмэлт мөр, «Бүх блок» горимд засагдахгүй */
-                    /* ⚠️ 2026-10-09: `via` — цонх ЗӨВХӨН Enter-ээр (`openAfterDate`) */
                     onDate={!r.group && r.oid >= 0 && !allOn && canEdit && !locked
                       ? (w, dd, via) => applyDate(r.oid, w, dd, via) : undefined}
-                    /* ⚠️ ҮРГЭЛЖЛЭХ ХОНОГ бичих (2026-10-06) — огноотой ижил нөхцөл */
                     onDays={!r.group && r.oid >= 0 && !allOn && canEdit && !locked
                       ? (d, via) => applyDate(r.oid, 'days', String(d), via) : undefined}
                     edKind={kind}
-                    /* ⚠️ 2026-10-07: нүдэнд бичиж байх зуур мөрийг цонхлолтод багтаана (`cellEdit` → `pin`) */
                     onEditing={(on) => { setCellEdit(on ? r.oid : null); if (on) setSel(r.oid); }}
-                    /* ⚠️ 2026-10-08: нүднээс Enter/↓/↑ — зэргэлдээ харагдах мөрийн ижил нүд (`nextRow`) */
                     onNextRow={allOn ? undefined : nextRow}
-                    /* ⚠️ 2026-10-08: нөгөө табын огнооны нүд — асууж таб солино (`otherTab`) */
-                    /* ⚠️ 2026-10-09: ИДЭВХТЭЙ таб түгжээтэй (`locked`) үед ч — түгжээ төрөл тус бүрд; харин НӨГӨӨ таб
-                       түгжээтэй (`pendingOther`) бол шилжээд засах зүйлгүй тул товч гарахгүй */
                     onOtherTab={!r.group && r.oid >= 0 && !allOn && canEdit && pendingOther == null && !isReview && !switching ? otherTab : undefined}
-                    /* ⚠️ 2026-10-08: хяналтад өөрчлөгдсөн блокийн чип — дарахад тэр блок (`TaskRow` → `setBlk`) */
                     changedBlks={marking ? reviewBlks.get(r.oid) : undefined}
                     onPickBlk={marking ? (b) => goToRow(r.oid, b) : undefined}
                     blkOn={blk}
-                    /* ⚠️ 2026-10-08: хамт ажиллагчийн ЗАСАЖ БУЙ мөр — хуваалцсан нооргийн мета (`hdMeta`, идэвхтэй блок);
-                       ref тул өөрөө зурагдалт үүсгэхгүй — ноорог нийлэхэд (Map солигдоход) шинэчлэгдэнэ */
                     editedBy={(() => { const m = hdMeta.current.get(kS(r.oid, blk)); return m && m.user !== meRef.current ? m : null; })()}
                     /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
                     added={r.oid < 0}
-                    /* ⚠️ «Бүх блок» горимд мөр нэмэх/засах/хасах хаалттай (зөвхөн харах, 2026-10-04) */
                     onAdd={r.group && canAddRow && !locked && !allOn
                       ? () => { setAddFor((x) => (x === r.oid ? null : r.oid)); setEditAdd(null); setAddForm(EMPTY_FORM); setAjErr(''); }
                       : undefined}
@@ -7496,14 +5089,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     } : undefined}
                     /* ЗӨВШӨӨРӨЛ (2026-09-25): хяналтад — батлагч сэлгэнэ; гүйцэтгэгчид —
                        буцаасан шийдвэрийн улаан/ногоон (зөвхөн харуулна). */
-                    /* ⚠️ 2026-10-08: БҮЛГИЙН мөрд — доторх өөрчлөгдсөн навчдын нэгдсэн тэмдэг (`grpMark`); дарахад
-                       «энэ бүлгийн N мөрийг зөвшөөрөх үү?» (`markGroup`, баталгаажуулалттай — `grpLeaf`-ийн ⚠️) */
                     mark={markOf(r) ?? (marking && r.group ? grpMark(r.oid) : undefined)}
                     onMark={marking && (markOf(r) || (r.group && grpMark(r.oid)))
                       ? () => { if (r.group) void markGroup(r); else toggleOk(r.oid); } : undefined}
                   >
-                    {/* ⚠️ 2026-10-09: САРЫН ОБЬЁМ ТЭНЦЭЭГҮЙ мөрийн тэмдэг (`unbalRows`) — мөрийн баруун захад, өндөр
-                        хөдлөхгүй (`.row` нь `position: relative`); дарахад тухайн ажлын цонх (тэнцээгүй эхний блок). */}
                     {!r.group && unbalRows.has(r.oid) && (() => {
                       const bs = unbalRows.get(r.oid)!;
                       const names = bs.map((b) => sc?.bld[b] ?? String(b + 1)).join(', ');
@@ -7535,16 +5124,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
 
               <div className={h.gRight}>
                 <div className={h.gTrack} style={{ width: W }} ref={trackRef}>
-                  {/* ⚠️ ЧИРЖ ГҮЙЛГЭХ (2026-09-17, хэрэглэгч: «зүүн баруун гүйлт ажиллахгүй»):
-                      сарын толгойн зурвас дээр чирвэл хуанли хэвтээ гүйнэ — гүйлтийн
-                      зурвас нарийн, харагдахгүй байсан. Ажлын мөр дээр чирэх нь
-                      урьдын адил зурвас үүсгэнэ/зөөнө. */}
                   {calHead}
 
-                  {/* ⚠️ 2026-10-01: `plLanesEdit` (touch-action: none) ЗӨВХӨН засах эрхтэй
-                      үед — бусдад мэдрэгч дэлгэц дээр хуанли ердийнхөөрөө гүйнэ.
-                      `pointercancel` нь `onCancel`: хагас чирэлтийг буцааж, popup нээхгүй. */}
-                  {/* ⚠️ «Бүх блок» горимд засахгүй тул `plLanesEdit` үгүй — мэдрэгчид ердийн гүйлгээ (2026-10-04) */}
                   <div className={`${h.plLanes} ${canEdit && !locked && !allOn ? h.plLanesEdit : ''}`}
                     ref={lanesRef}
                     style={{ height: disp.length * PL_ROW }}
@@ -7558,15 +5139,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                       /* «БҮХ БЛОК» — зөвхөн харах эгнээ (`allLane`, 2026-10-04); энгийн горим ХЭВЭЭР доор */
                       if (allOn) return allLane(d, k);
                       const r = d.r;
-                      /* ⚠️ БҮЛГИЙН ЗУРВАС нь ХҮҮХДҮҮДЭЭСЭЭ бодогдоно
-                         (`effSpan`) — хадгалагдсан хуучин огноо нь
-                         тэдэнтэй зөрж байсан ч ЗӨВ мужийг харуулна. */
-                      /* ⚠️ 2026-10-23: «Хуваарьгүй» шүүлтэд бүлгийн зурвас зурагдахгүй (`grpNoSpan`) */
                       const sp = r.group ? (grpNoSpan ? null : effAt(r.i)) : r.spans[blk];
                       const st = sp ? statusOf(sp, r.act?.[blk], now) : 'none';
                       /* Уялдааны зөрчил — шаардлагаас ӨМНӨ эхэлсэн зурвасыг
                          улаан хүрээгээр тэмдэглэнэ (хориглохгүй) */
-                      /* ⚠️ Гэрээ табд зөрчил ТООЦОХГҮЙ (2026-09-23) — сумтай ижил. */
                       const need = sp && r.deps.length && kind === 'plan'
                         ? requiredStart(plan, byCode, r.i, blk) : null;
                       const viol = !!(sp && need != null && sp.start < need);
@@ -7574,10 +5150,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                        * ХУУЧИН (СЕРВЕРИЙН) ЗУРВАС (2026-09-25) — батлагчийн хяналтад
                        * ба буцаасан саналыг засахад: өөрчлөгдсөн мөрийн ОДООГИЙН
                        * батлагдсан огноо доод хагаст бүдгээр («юу байсан → юу болох»).
-                       * ⚠️ `base` нь серверийн мөр, `plan`-тай ИЖИЛ индекстэй.
-                       * ⚠️ Огноо ижил бол ЗУРАХГҮЙ — зөвхөн уялдаа/обьём өөрчлөгдсөн мөрд
-                       *    давхар зурвас «огноо өөрчлөгдсөн» мэт андуурагдана.
-                       * ⚠️ Хуучин огноогүй бол зурахгүй (`null ≠ 0`) — шинэ муж л харагдана.
                        */
                       const oldSp = (review || backOn) && !r.group && reviewSet.has(r.oid)
                         ? base[r.i]?.spans[blk] ?? null : null;
@@ -7592,14 +5164,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                         >
                           {/*
                             * ЛАВЛАГААНЫ ЗУРВАС — нөгөө төрлийн огноо (2026-09-11).
-                            *
-                            * ⚠️ Мөрийн ДООД хагаст, сонгосон төрлийн зурвасын ДООР
-                            *    зэрэгцэнэ (ард нь биш) — хэрэглэгчийн хүсэлт. Хоёр
-                            *    огнооны зөрүү нь хэвтээ шилжилтээр шууд уншигдана.
-                            * ⚠️ Огноо ИЖИЛ байсан ч ЗУРНА: зэрэгцсэн хоёр зурвас нь
-                            *    давхцахгүй тул «ижил байна» гэдэг нь өөрөө мэдээлэл.
-                            * ⚠️ Зөвхөн нөгөө төрөлд огноо БАЙГАА үед — байхгүйг
-                            *    «тэг» гэж зурахгүй (`null ≠ 0`).
                             */}
                           {(() => {
                             if (!showRef) return null;
@@ -7616,9 +5180,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                               />
                             );
                           })()}
-                          {/* ⚠️ 2026-10-23 (хэрэглэгч: «устга»): бодит мужийн цэнхэр шугам ХАСАГДСАН. */}
-                          {/* ⚠️ 2026-10-09: ЧИРЭЛТИЙН ШОШГО — чирж буй зурвасын дээр «эхлэх → дуусах · Nх» (жижиг зурвас
-                              шошгогүй, сарын томруулалтад огноо харагдахгүй байсан тул хэдэн өдөр рүү тавьж буйг мэдэхгүй байв) */}
                           {drag && drag.oid === r.oid && sp && (
                             <span className={`${h.dragTip} ${k === 0 ? h.dragTipBelow : ''}`} style={{ left: xOf(sp.start) }} aria-hidden>
                               {msToDay(sp.start)} → {msToDay(sp.end)} · {spanDays(sp)}{tr('х')}
@@ -7636,9 +5197,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                               className={`${h.plBar} ${half ? h.plBarHalf : ''} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.oid ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''}`}
                               style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
                               onPointerDown={(e) => onDown(e, r, 'move')}
-                              /* ⚠️ 2026-10-06 (a11y): `aria-label`-тай ч гараар хүрэх замгүй байв —
-                                 Enter/Space нь зурвас дээр товшсонтой (нэрээс нээсэнтэй) ижил цонх.
-                                 Батлагдаагүй нэмэлт мөрд (сөрөг oid) цонх гарахгүй (`openBar`-ийн дүрэм). */
                               role={r.oid < 0 ? undefined : 'button'}
                               tabIndex={r.oid < 0 ? undefined : 0}
                               onKeyDown={r.oid < 0 ? undefined : (e) => {
@@ -7650,39 +5208,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                               aria-label={`${fixCyr(r.work) || r.no} · ${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
                               title={`${fixCyr(r.work)}\n${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))}) · ${stText(st)}`}
                             >
-                              {/* ⚠️ Бариул нь зөвхөн АЖЛЫН зурваст: бүлгийнх
-                                  бодогдох тул сунгах утгагүй. */}
                               {!r.group && (
                                 <span className={h.plGrip} onPointerDown={(e) => onDown(e, r, 'l')} />
                               )}
-                              {/* ⚠️ БҮТЭН ОГНОО (2026-09-01, хэрэглэгч): урьд нь «09-12→11-13»
-                                  гэж жилгүй байв. Хуанли 2025–2028 оныг дамждаг тул жилгүй
-                                  огноо аль жилийнх нь нь тодорхойгүй байсан. Дөрвөн шат:
-                                  нэр+бүтэн огноо → бүтэн огноо → он-сар → хоног → юу ч үгүй.
-
-                                  ⚠️ АЖЛЫН НЭР зөвхөн ХАМГИЙН ӨРГӨН зурваст (2026-09-02,
-                                  хэрэглэгч). Огноо нь ~120px эзэлдэг тул нэрийг доогуур
-                                  шатанд нэмбэл гурав дөрвөн үсэг + «…» л үлдэж, мэдээлэл
-                                  өгөхийн оронд огноог л түлхэж гаргана. Нэр нь агшиж
-                                  (`plBarName` ellipsis), огноо нь агшихгүй. */}
-                              {/*
-                                * ⚠️ ОГНОО ДЭЭР ДООР (2026-09-11, хэрэглэгч): эхлэх огноо
-                                *    ДЭЭД мөрөнд, дуусах огноо ба хоног ДООД мөрөнд. Зурвас
-                                *    22px тул 9.5px үсэг хоёр мөр багтана; нэг мөрт «→»-өөр
-                                *    бичихэд 178px шаарддаг байсныг богиносгож, дунд урттай
-                                *    зурвас ч бүтэн огноотой болов. Чирэхэд `sp` шинэчлэгдэх
-                                *    тул огноо шууд дагана.
-                                * ⚠️ «Зэрэг» асаалттай (`showRef`) үед зурвас 11px — хоёр
-                                *    мөр багтахгүй тул хуучин нэг мөрийн шатлал үлдэнэ.
-                                *
-                                * ⚠️ БОСГО 100px (2026-09-15-ны аудит). Урьд нь 66px байсан
-                                *    нь ДООД мөрийн бодит өргөнөөс бага: «2026-04-18 · 187х»
-                                *    нь 9.5px tabular-nums дээр ~94px, дээр нь `.plBar`-ын
-                                *    хоёр `plGrip` ба хүрээ ~6px иднэ. `white-space: nowrap`
-                                *    + `overflow: hidden` тул илүү нь ellipsis-гүй ТАСАРЧ,
-                                *    «2026-04-1» гэж хагас огноо гардаг байв. Доод шат
-                                *    (118px `short()`) -аас бага байх ёстой тул 100px.
-                                */}
                               {!half && spanDays(sp) * px > 100 ? (
                                 <span className={`${h.plBarLab} ${h.plBarTwo}`}>
                                   {spanDays(sp) * px > 250 && (
@@ -7715,9 +5243,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                                 <span className={`${h.plGrip} ${h.plGripR}`}
                                   onPointerDown={(e) => onDown(e, r, 'r')} />
                               )}
-                              {/* ХОЛБОХ БАРИУЛ — баруун захын дугуй; чирээд нөгөө мөр дээр тавина (2026-09-22).
-                                  ⚠️ Бүлгийн зурваст ч бий — бүлэг урд ажил болж чадна (`effSpan`).
-                                  ⚠️ (2026-09-23) ЗӨВХӨН төлөвлөгөө табд — гэрээ гинжээр хөдөлдөггүй. */}
+                              {/* ХОЛБОХ БАРИУЛ — баруун захын дугуй; чирээд нөгөө мөр дээр тавина (2026-09-22). */}
                               {canEdit && !locked && kind === 'plan' && (
                                 <span className={h.plLink}
                                   onPointerDown={(e) => startLink(e, r)}
@@ -7729,15 +5255,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                       );
                     })}
 
-                    {/* ── УЯЛДААНЫ СУМУУД ──
-                        ⚠️ Зурвасуудын ДЭЭР давхарласан SVG, `pointer-events:
-                        none` — чирэлт, товшилтод огт саад болохгүй. Сум нь
-                        зөвхөн ХОЁУЛАА харагдаж буй мөрүүдийн хооронд зурагдана:
-                        шүүлт/эвхэлтэд нуугдсан үзүүр рүү зурвал агаарт дүүжлэгдэнэ. */}
+                    {/* ── УЯЛДААНЫ СУМУУД ── */}
                     {(arrows.length > 0 || link) && (
-                      /* ⚠️ (2026-09-23) `depSvgLink` — холбох чирэлтийн үед `depHit`-ийн
-                         pointer-events унтарна: эс бөгөөс сумны зурвас дээр суллахад
-                         `elementFromPoint` сумыг онож, мөр олдохгүй. */
                       <svg className={`${h.depSvg} ${link ? h.depSvgLink : ''}`} width={W} height={disp.length * PL_ROW} aria-hidden>
                         <defs>
                           {[h.depArrN, h.depArrH, h.depArrB].map((c, k) => (
@@ -7750,15 +5269,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                         {arrows.map((a2) => (
                           <g key={a2.key}>
                             <path d={a2.d} className={a2.cls} markerEnd={a2.mk} />
-                            {/* ⚠️ ХОЛБООС ДЭЭР ДАРЖ ЗАСАХ/УСТГАХ (2026-09-22, хэрэглэгч: «хамаарлыг
-                                устгаж чадахгүй байна»). SVG нь pointer-events: none (чирэлтэд саад
-                                болохгүй) тул ЗӨВХӨН энэ тунгалаг өргөн зурвас (`depHit`) дарагдана —
-                                нарийн шугамыг онох шаардлагагүй. Цонх нь ижил LinkModal, «Уялдаа
-                                устгах» товчтой.
-                                ⚠️ (2026-09-23) ЗӨВХӨН төлөвлөгөө табд (`kind === 'plan'`) — гэрээнд
-                                уялдаа засахгүй. Зурвас (`.plBar`) нь CSS-ээр SVG-ээс ДЭЭШ тул
-                                зурвасын дээрх даралт зурвасд очно; сум зөвхөн хоосон талбайд дарагдана. */}
-                            {/* ⚠️ 2026-10-09: блок хоорондын сум (`a2.x`) — дарж засахгүй (`arrows`-ийн ⚠️) */}
                             {canEdit && !locked && kind === 'plan' && !a2.x && (
                               <path d={a2.d} className={h.depHit}
                                 onClick={(e) => { e.stopPropagation(); setLinkAsk({ so: plan[a2.si].oid, to: plan[a2.ti].oid, dblks: a2.dblk == null ? null : [a2.dblk] }); }}>
@@ -7798,9 +5308,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             setLinkAsk(null);
             if (s.des == null) return;
             const code = s.des;
-            /* ⚠️ Ялгах тэмдэг (код, блок) — 2026-09-24: ижил кодын СОНГООГҮЙ блокийн уялдаа хэвээр.
-               Олон блок (2026-10-01) — сонгосон блок бүрийнхийг хасна.
-               Хоосон болвол `[]` — «цэвэрлэ» гэсэн утга (`null` = хөндөхгүй). */
             const ids = linkAsk.dblks ?? [undefined];
             applyModal(t.oid, null, t.deps.filter((d) => !ids.some((b) => sameDep(d, { code, blk: b }))), null);
           }}
@@ -7809,9 +5316,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             setLinkAsk(null);
             if (s.des == null) return;
             const code = s.des;
-            /* Ижил (код, блок)-ийн хуучин уялдааг сольж бичнэ — нэг хос нэг удаа.
-               ⚠️ ОЛОН БЛОК (2026-10-01): сонгосон блок бүрд тусдаа `@N` уялдаа.
-               `collapse` (бүх блок) — тэр кодын бүх `@N`-ийг хасаад блокгүй нэгийг. */
+            /* Ижил (код, блок)-ийн хуучин уялдааг сольж бичнэ — нэг хос нэг удаа. */
             const ids = linkAsk.dblks ?? [undefined];
             const keep = t.deps.filter((d) => (linkAsk.collapse
               ? d.code !== code
@@ -7830,73 +5335,37 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           blk={blk}
           initSel={gBlks}
           takt={takt}
-          /* ⚠️ `locked` — хүлээгдэж буй илгээлт байхад popup-аас ч засахгүй.
-             Зөвхөн `onDown`-г түгжвэл хуанлийн цонх нээлттэй хэвээр үлдэнэ. */
-          /* ⚠️ 2026-10-09 (аудит №6): `busy` (хадгалалт явж байхад) ч ЗАСАХГҮЙ — `useDragPlan.onDown` busy үед зурвас
-             дээр цонх нээдэг ч `applyModal`/`applyExtra` нь `if (busy) return` тул «Тавих» чимээгүй хаягддаг байв.
-             Одоо тэр үед цонх зөвхөн харах горимтой (`locked`-тай ижил). */
           canEdit={canEdit && !locked && !busy}
           onBlk={setBlk}
           onTakt={setTakt}
           cands={depCands}
-          /* ⚠️ 2026-09-29 аудит: уялдаа · сарын обьём/нөөц ЗӨВХӨН төлөвлөгөө табд —
-             гэрээний огноонд `mvOk` (төлөвлөгөөний сарын нийлбэр) шаардаж, гинжээр
-             гэрээг хөдөлгөдөг байв. */
           hasHam={!!sc.f.ham && kind === 'plan'}
-          /* ⚠️ 2026-10-04: `applyModal`-тай ижил эх (ноорог → сервер) — popup талбарын уртыг шалгана */
           hamKeep={residualDeps(ham.get(modalRow.oid) ?? rowsAll.find((x) => x.oid === modalRow.oid)?.ham ?? null)}
           hasActual={hasActual}
           hasRes={hasRes}
-          /* ⚠️ 2026-10-21 (аудит, HIGH): задаргаа ачаалагдаагүй бол сарын хэсэг ГАРАХГҮЙ — OID-гүй ноорог давхардал үүсгэнэ (`obLoadedRef`) */
           obyem={kind === 'plan' && obState === 'ok'}
           months={obOf(modalRow.des, sc.bld[blk] ?? "")}
           badBlks={modalBad}
-          /* ⚠️ 2026-10-05: гэрээний муж (аль хэдийн ачаалсан `refBase`) — popup зөөлөн анхааруулна; хаахгүй */
           geree={kind === 'plan' ? refSpanOf(modalRow.oid, blk) : null}
           res={obResOf(modalRow.des, sc.bld[blk] ?? "")}
           resFields={obResFields}
-          /* ⚠️ 2026-10-09: нөгөө табын илгээлтийн бодит огноо/нөөцийн түгжээ (`xLockWhy`) */
           xLock={modalRow.group ? undefined : xLockWhy(modalRow.oid, modalRow.des)}
-          /*
-           * ⚠️ ЦУЦЛАХАД ЧИРЭЛТ БУЦНА (2026-09-08). Цонх нь чирэлтийн ДАРАА
-           *    нээгддэг тул хуваарь аль хэдийн ноорогт бичигдсэн байдаг;
-           *    «Хаах»/X/Esc/дэвсгэр дарахад түүнийг сэргээнэ. Эс бөгөөс
-           *    хэрэглэгч цуцалсан гэж бодоод хуваарь нь үлдэнэ.
-           */
           onClose={undoDragOnClose}
-          /* ⚠️ 2026-10-09: чирэлтээр нээгдсэн — «Хаавал чирэлт буцна» + «Огноог үлдээх» (`useDragPlan.dragOpen`/`keepDrag`) */
           dragged={dragOpen === modalRow.oid}
           onKeep={keepDragClose}
-          /* ⚠️ 2026-10-09: бүлгийн мөрд «Бүлгийг шилжүүлэх» (`shiftGroup`) */
           onShiftGroup={modalRow.group ? (d, bs) => shiftGroup(modalRow.oid, d, bs) : undefined}
-          /* ⚠️ 2026-10-23 (UX аудит P7): «Арилгах»-ын «↶ Буцаах» — тэр арилгалтын агшинд уягдсан (`markUndo`-ийн ⚠️) */
           onUndo={markUndo}
-          /* ⚠️ 2026-10-07: нүднээс нээгдсэн бол хаахад фокус тэр мөрийн нэрийн товч руу (`modalFrom`) */
           returnFocus={modalFrom === modalRow.oid
             ? () => document.querySelector<HTMLElement>(`[data-oid="${modalRow.oid}"] .${h.rowMain}`)
             : undefined}
           onApply={(spans, deps, ob, actual, res, blks, actBlks) => {
-            /* ⚠️ 2026-10-09: ЧИРЭЛТ (`undoRef`) эсвэл НҮДНИЙ ОГНОО (`undoOpenRef`) нээсэн цонх — «Тавих» нь тэр
-               өөрчлөлтийн буцаалтын агшинд НИЙЛНЭ (`undoMergeRef`-ийн ⚠️); `undoRef`-ийг цэвэрлэхээс ӨМНӨ уншина. */
             undoMergeRef.current = undoRef.current != null || undoOpenRef.current === modalRow.oid;
-            /* ⚠️ 2026-10-09: чирэлтээр нээгдсэн цонхны ДАРААГИЙН «Тавих» (жиш. «Алхмаар хуулах» → блок бүрийн `onApply`,
-               дараа нь идэвхтэй блокийн «Тавих») ч НИЙЛНЭ — `undoRef` доор цэвэрлэгдэх тул цонхны үлдсэн хугацаанд
-               `undoOpenRef`-оор (цонх хаагдахад арилна) тэмдэглэнэ. Урьд нь эхний `onApply` л нийлж, дараагийнх нь шинэ
-               агшин авч Ctrl+Z чирэлтийг алддаг байв. */
             if (undoRef.current != null) undoOpenRef.current = modalRow.oid;
-            /* ⚠️ ЗӨВШӨӨРӨГДСӨН өөрчлөлт — буцаах мэдээллийг цэвэрлэнэ,
-               эс бөгөөс дараагийн `onClose` түүнийг эргүүлж хаяна. */
             undoRef.current = null;
-            forgetDrag(); // ⚠️ 2026-10-09: «чирэлтийн цонх» тэмдэг (`dragOpen`) ч арилна
+            forgetDrag();
             try {
               applyModal(modalRow.oid, spans, deps, ob, blks);
-              /* Бодит огноо · нөөц — гинжээс гадуур, ноорогт л (2026-09-23).
-                 ⚠️ 2026-09-29 (хэрэглэгчийн шийдвэр: «бодит эхлэх дуусахыг нэг ажил дээр
-                    тохируулахад олон блокт орохгүй байна»): бодит огноо popup-д СОНГОСОН БҮХ
-                    блокт орно (`actBlks`). 2026-09-24-ний «зөвхөн идэвхтэй блок» дүрмийг
-                    хэрэглэгч ЦУЦАЛСАН — блокоо өөрөө сонгодог тул «эхлээгүй блок эхэлсэн
-                    болно» гэсэн эрсдэл нь хэрэглэгчийн ил сонголт. Алхам (takt)-аас үл хамаарна:
-                    бодит огноо шилждэггүй. */
+              /* Бодит огноо · нөөц — гинжээс гадуур, ноорогт л (2026-09-23). */
               applyExtra(modalRow.oid, actBlks, actual, res);
             } finally {
               undoMergeRef.current = false;
@@ -7918,11 +5387,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           onClose={() => setFlowBox(null)}
           onOk={(txt) => void sendForApproval(txt)}
           progress={progress}
-          /* ⚠️ 2026-10-08: ЮУ ИЛГЭЭГДЭХ ВЭ — эхний 50 мөр (мөр · блок · хуучин→шинэ), үлдсэнийг тоогоор */
           summary={changes.length > 0 ? (
             <>
-              {/* ⚠️ 2026-10-09: ХАМТРАГЧИЙН ЗАСВАР ч илгээлтэд орно (хуваалцсан ноорог) — мөр бүрийн СҮҮЛИЙН засварлагчаар
-                  (`hdMeta`) «B-ийн N мөр орно» гэж ил хэлнэ. Урьд нь бусдын засварыг өөрийн нэрээр мэдэлгүй илгээдэг байв. */}
               {(() => {
                 const me = (user?.username ?? '').trim().toLowerCase();
                 const last = new Map<number, { at: number; user: string }>();
@@ -7967,28 +5433,18 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             + (pending.note ? ` — «${pending.note}»` : '')
             + (previewing
               ? ` ${tr('Санал хуанли дээр харагдаж байна.')}`
-                /* ⚠️ Мөр бүрийн ногоон дүрэм (2026-09-25 аудит) — тоог харуулна */
                 + (reviewOids.length ? ` ${tr('Зөвшөөрсөн {0}/{1} мөр', num(reviewOk), num(reviewOids.length))}` : '')
               : ` ${tr('⚠️ Хараахан урьдчилан хараагүй байна — «Урьдчилан харах»-аар шалгаж болно.')}`)}
           label={tr('Буцаах шалтгаан (буцаахад заавал)')}
           okText={tr('Батлах')}
-          /* ⚠️ Буцаахад шалтгаан ЗААВАЛ — `decidePlan` ч мөн шалгана. Шалтгаангүй
-             буцаалт нь гүйцэтгэгчид юуг засахыг хэлэхгүй тул давталт үүсгэнэ. */
           rejectText={tr('Буцаах')}
           busy={busy}
           err={err}
           text={flowTxt}
           onText={setFlowTxt}
-          /* ⚠️ Цонхон дотроос УРЬДЧИЛАН ХАРАХ (2026-09-23): «хараагүй» гэж
-             сануулаад цонхыг хааж товч хайлгадаг байв. `preview` амжилттай бол
-             цонхыг өөрөө хаана. */
-          /* ⚠️ 2026-10-12 (аудит №8): урьдчилан харалт ЗӨРЧЛӨӨР/эвдэрсэн агуулгаар унасан (`previewBad`) бол дахин харах
-             товч ГАРАХГҮЙ — дахин дарахад ижил алдаа; зөвхөн буцаах зам. */
           onPreview={previewing || previewBad === pending.oid ? undefined : () => void preview()}
           onClose={() => setFlowBox(null)}
           progress={progress}
-          /* ⚠️ 2026-10-09: «Батлах» УРЬДЧИЛАН ХАРЖ, бүх мөр ногоон болтол ХААЛТТАЙ (шалтгаан ил) — урьд нь идэвхтэй
-             байж дарахад саналыг буулгаад «ногоон болгосны дараа батална» гэж унадаг байв (хяналтын горимтой нэг дүрэм). */
           okDisabled={isOwnSubmission
             ? tr('Өөрийн илгээсэн хуваарийг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.')
             : previewBad === pending.oid
@@ -8000,34 +5456,20 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   : reviewOids.length > 0 && !allOk
                     ? tr('Өөрчлөгдсөн мөр бүрийг ногоон болгосны дараа батална.')
                     : obOut.bad > 0 ? obOutMsg : undefined}
-          /* ⚠️ 2026-10-09: талбар нь БУЦААХ шалтгаан — бичсэн текст батлахад хадгалагдахгүйг асууна */
           onOk={async (txt) => {
             if (txt.trim() && !(await askConfirm(tr('Бичсэн тайлбар батлахад хадгалагдахгүй. Үргэлжлүүлэх үү?'), { ok: tr('Батлах') }))) return;
             void decide(true, '');
           }}
-          /* ⚠️ 2026-09-29 аудит: урьдчилан харж тэмдэглэсэн бол ногоон/улаан `rejectReview`-тэй
-             ИЖИЛ дамжина — урьд нь хаягдаж гүйцэтгэгч тэмдэггүй хардаг байв.
-             ⚠️ 2026-10-09: УРЬДЧИЛАН ХАРАЛГҮЙ буцаавал `[]` (бүх өөрчлөгдсөн мөр зохиогчид УЛААН) + шалтгаанд тайлбар —
-             урьд нь тэмдэглэгээгүй (`undefined`) буцаж зохиогчид улаан мөр огт гардаггүй байв. */
-          /* ⚠️ 2026-10-09 (аудит): урьд нь `${txt}\n${тайлбар}`-ыг 2000-аар (хатуу тоо) тасалдаг тул урт шалтгаанд
-             «нээлгүй буцаасан» тайлбар ТАСАРЧ алга болдог байв, мөн хоосон шалтгаанд тайлбар ганцаараа шалтгаан
-             болж буцаалт ДАВДАГ байв. Одоо `REASON_MAX` — тайлбар үргэлж багтахаар ХЭРЭГЛЭГЧИЙН текстийг тайрна;
-             өөрийн шалтгаангүй буцаалт татгалзана (`FlowBox` товч ч хаалттай — энэ нь хамгаалалтын давхарга). */
           onReject={(txt) => {
             const own = txt.trim();
             if (!own) return;
             if (previewing) { void decide(false, txt, reviewOids.filter((o) => okRows.has(o))); return; }
-            /* ⚠️ 2026-10-12 (аудит №8): ЗӨРЧЛӨӨР/эвдэрсэн агуулгаар харалт унасан (`previewBad`) — мөр харагдаагүй тул тэмдэглэгээ
-               ИЛГЭЭХГҮЙ (`undefined`, хяналтын `reviewConflict`-ийн дүрэм) ба «нээлгүй буцаасан» тайлбаргүй (батлагч нээхийг
-               оролдсон; шалтгаан нь зөрчил). Урьд нь `[]` + тайлбар илгээж бүх мөр зохиогчид УЛААН болдог байв. */
             if (previewBad === pending.oid) { void decide(false, own, undefined); return; }
-            /* ⚠️ 2026-10-12 (аудит №8): ХАДГАЛАХ тайлбар МОНГОЛ ЭХЭЭР (`tr()`-гүй) — харуулахдаа `displayReason()` орчуулна */
             const blind = BLIND_NOTE;
             void decide(false, `${own.slice(0, Math.max(0, REASON_MAX - blind.length - 1))}\n${blind}`, []);
           }}
         />
       )}
-      {/* ⚠️ 2026-10-23 (UX аудит P3): нэмэлт ажил илгээх цонх — тайлбар + юу илгээгдэх жагсаалт */}
       {ajBox && canAddRow && !ajSub && adds.length > 0 && (
         <FlowBox
           title={tr('Нэмэлт ажил батлуулах')}
@@ -8075,7 +5517,4 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
   );
 }
 
-/* ⚠️ «ХУВААРИЙН ХАМРАЛТ» самбар 2026-09-02-нд ХАСАГДСАН (хэрэглэгч).
-   `coverageOf()`-ийн дүрэм ХЭВЭЭР (2026-10-04-нөөс `cov` дотор хөнгөн давталтаар) — шүүлтийн «Хуваарьтай / Хуваарьгүй» табууд
-   түүний тоог уншсаар байна, зөвхөн толгойн үзүүлэлт л алга болов. */
 

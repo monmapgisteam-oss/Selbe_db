@@ -50,7 +50,6 @@ const near = (a, b, tol, msg) => {
   assert.deepEqual(cleanSpan(D('2026-05-01'), D('2026-04-01')), [null, null], 'эхлэх > дуусах → хос null');
   assert.deepEqual(cleanSpan(-2209161600000, D('2026-04-01')), [null, null], '1899 → хос null');
 
-  /* ⚠️ Оролт нь аль хэдийн хэвийн болсон UTC шөнө дунд (`dayOfLocal`) — дахин хөрвүүлбэл UTC−x бүсэд өдөр хойшилно */
   const wk = weekCols(D('2026-10-21'), 12); // Лхагва
   assert.equal(wk.length, 12);
   assert.equal(wk[0].from, D('2026-10-19'), '7 хоног Даваагаас (10.19–10.25)');
@@ -156,7 +155,7 @@ const near = (a, b, tol, msg) => {
     c(1, D('2025-07-01'), D('2027-07-01'), 0.3),
     c(0.8, D('2025-07-01'), D('2027-04-01'), 0.35),
     c(0.05, D('2025-07-01'), D('2025-09-01'), 1),
-    c(0.75, D('2026-05-01'), D('2026-04-01'), null), // ⚠️ урвуу огноо → хос null
+    c(0.75, D('2026-05-01'), D('2026-04-01'), null),
     c(0.2, D('2026-06-01'), D('2027-07-01'), 0.1),
   ];
   const d = blockDetail(rows, calc, 0);
@@ -250,7 +249,6 @@ const stored = fx.rows.map((r) => ({
   assert.deepEqual(b1.map((r) => r.t), ['section', 'ms', 'bar', 'bar', 'ms', 'ms', 'bar', 'ms', 'ms'], 'Багц-1: захирамж · зураг · газар · сонгон · зөвшөөрөл · барилга · гэрээ · ашиглалт');
   assert.equal(b1[1].name, 'Захирамж');
   assert.equal(b1[1].status, 'none', 'milestone огноо уншигдаагүй (marks = null) → «алга» БИШ, мэдээлэлгүй');
-  /* ⚠️ 2026-10-26 (аудит): milestone уншигдаагүй үед ашиглалт ч «мэдээлэлгүй»; уншигдсан ч алга бол улаан */
   assert.equal(b1[b1.length - 1].status, 'none', 'ашиглалт: marks = null → мэдээлэлгүй (алга БИШ)');
   const l2e = buildL2(plan, pkgs.slice(0, 1), new Map(), TODAY);
   assert.equal(l2e[l2e.length - 1].status, 'missing', 'ашиглалтын огноо уншигдсан ч алга → улаан');
@@ -270,7 +268,6 @@ const stored = fx.rows.map((r) => ({
   assert.ok(!allBars.some((r) => r.status === 'late' && r.actual == null), 'гүйцэтгэл мэдэгдэхгүй → late БИШ');
   assert.ok(!allBars.some((r) => r.status === 'late' && r.alt), 'өөр баганын огноо → late БИШ');
   const gz = buildL1(planNo, TODAY).find((r) => r.id === 'L1.2.3');
-  /* ⚠️ 2026-10-26: газрын огноо алга → O нь гэрээний хугацаагаар (Excel-ийн O = N, `projectPlan.spanOrGeree`) */
   assert.ok(gz.alt && gz.planned != null, 'газар чөлөөлөлт: газрын огноо алга → гэрээний огноо (alt), O = гэрээний шугаман хувь');
   const l2n = buildL2(planNo, pkN.slice(0, 1), null, TODAY);
   const gz1 = l2n.find((r) => r.t === 'bar' && r.name === 'Газар чөлөөлөлт');

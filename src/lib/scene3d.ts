@@ -4,13 +4,6 @@ import { LAYER_BY_ID, layerUrl, SELBE_ET } from '@/lib/services';
  * SCENE3D — Web Scene 'selbe_3D_ 0804' (572442952bcd47d3a2adf68199f62d24)-ээс
  * АВТОМАТААР хуулсан 3D давхаргууд + тэдгээрийн ЯГ scene-ийн renderer (style).
  *
- * ⚠️ Service-ийн default renderer нь ХАВТГАЙ 2D (esriSFS) — scene дотор зохиогч
- * 3D болгосон (барилгыг өндрөөр өргөх Extrude, 3D мод г.м.). ⚠️ Барилгын өндрийг
- * 'Давх_1' (давхрын тоо) БИШ, 'Ondor_m' (бодит метр өндөр) талбараар өргөнө.
- * Тиймээс энд
- * renderer-ийг scene-ээс хуулж, 'rendererJsonUtils.fromJSON'-оор ШУУД тавина —
- * хөрвүүлэлт огт хийхгүй тул scene дээр харагдаж буйтай 100% ижил.
- *
  * Дахин үүсгэх: webscene data-г татаад flatten хийж энэ файлыг дарж бичнэ.
  * Эдгээр нь ЗӨВХӨН BIM (SceneView) горимд FeatureLayer болж нэмэгдэнэ.
  */
@@ -323,8 +316,6 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
   },
   {
     /*
-     * ⚠️ БАРИЛГА — 2D-ТЭЙ ИЖИЛ ГАНЦ ФАЙЛ (2026-09-25, хэрэглэгчийн шийдвэр).
-     *
      * Урьд нь `selbe_3D__0804_WFL1/4` байв — 2D-ийн барилгын (`sb:4` →
      * `SELBE_ALL_DATA_last_0917/108`) shapefile хуулбар (талбарын нэр нь
      * тасарсан). Хоёр файл тусдаа засагдаж САЛСАН: 368 ↔ 355, хуучин 12 BIM-ийн
@@ -334,7 +325,6 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
      * Одоо 2D-ийн файлыг ШУУД уншина — барилга нэмж/засахад НЭГ газар. BIM
      * загварын доорх барилгыг ӨГӨГДЛӨӨС устгахгүй, `MapCanvas` КОДООР нууна
      * (`bimCovered`), тиймээс BIM солигдоход автоматаар дагана.
-     * ⚠️ `/4` одоо ПОРТАЛД ХЭРЭГЛЭГДЭХГҮЙ (AGOL дээр л үлдэнэ).
      */
     "id": "scene3d:4",
     get "title"() { return tr('Барилга'); },
@@ -351,12 +341,6 @@ export const SCENE3D_LAYERS: Scene3DLayer[] = [
       "type": "simple",
       "visualVariables": [
         {
-          /*
-           * ⚠️ ӨНДӨР = ДАВХАР × 3.5 м. `/108`-д `Ondor_m` талбар БАЙХГҮЙ.
-           *    `/4`-ийн `Ondor_m` нь яг `давхар × 3.5`-ыг (тэгш рүү
-           *    бөөрөнхийлсөн) агуулдаг байсныг 355 мөрөөр батлав: 1→4 · 2→7 ·
-           *    9→32 · 12→42 · 16→56 м. Зөрүү хамгийн ихдээ 0.5 м.
-           */
           "type": "sizeInfo",
           "valueExpression": "$feature['давхрын_тоо_max'] * 3.5",
           "valueUnit": "meters"

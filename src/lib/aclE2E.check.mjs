@@ -1,12 +1,6 @@
 /**
  * ЭРХИЙН ТОХИРГОО БҮРИЙН E2E ШАЛГУУР — хуурамч ArcGIS дээр (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/aclE2E.check.mjs
- *
- * ⚠️ ЯАГААД: хэрэглэгч «нэг багцаас хасахад бүх багцаас хасагдаж байна» гэж мэдээлэв.
- *    Одоогийн шалгуурууд (`aclGrid` · `guitsetgelGrid` · `aclParity`) цэвэр дүрэм ба
- *    локал төлөвийг шалгадаг — харин ЖИНХЭНЭ op-ыг (`aclOps`) `runOp`-оор ажиллуулж,
- *    ArcGIS-ийн мөр · эрх (`__cap__:`) · хүрээ (`*Scope`) · харагдац (`resolveAccess`)
- *    дөрвийг НЭГ ДОР, remote-оос дахин уншсаны ДАРАА ч шалгадаг шалгуур байгаагүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/aclE2E.check.mjs
  *
  * ОРЧИН (`aclE2E.fake.mjs`): `Selbe_Permissions` хүснэгтийг санах ойд дуурайна
  *    (`FeatureLayer.queryFeatures/applyEdits` + `search`). АМЬД ArcGIS РУУ ЮУ Ч ЯВАХГҮЙ.
@@ -20,7 +14,7 @@
  *   §6  хэрэглэгчийн карт — үүрэг/харагдац · «Төрлөөр тохируулах» · устгах · сэргээх
  *   §7b зэрэг бичилт (алдагдалгүй) · бичилт унах
  *   §8  remote round-trip — §1–§7-ийн дараа бүр `initRemote`-оор дахин уншиж давтан шалгана
- *   §11 систем түр хаах (`__sys__:maintenance`, ⚠️ 2026-10-19) — хаах/нээх · хэн нэвтрэх · fail-open · эрхгүй бичилт
+ *   §11 систем түр хаах (`__sys__:maintenance`, 2026-10-19) — хаах/нээх · хэн нэвтрэх · fail-open · эрхгүй бичилт
  * UI давхарга (✕ аль op-ыг ямар багц/үүргээр дууддаг вэ) — `src/modules/aclE2E.ui.check.mjs`.
  */
 import assert from 'node:assert/strict';
@@ -34,10 +28,8 @@ fake.owner = SUPER;
 const P = await import('@/lib/permissions.ts');
 const CAPS = await import('@/lib/caps.ts');
 const OPS = await import('@/lib/aclOps.ts');
-/* ⚠️ 2026-10-12 (CI уналт): `runOp`-ын pendingHeldBy амьд хүснэгт уншдаг — хуурамцаар (сүлжээгүй, шууд) */
 OPS.setHeldByReader(async () => []);
 const FL = await import('@/lib/guitsetgelAcl.ts');
-/* ⚠️ 2026-10-23: QAQC хасагдсан */
 const HV = await import('@/lib/huvaariAcl.ts');
 const OB = await import('@/lib/obyemAcl.ts');
 const AJ = await import('@/lib/ajilAcl.ts');
@@ -56,14 +48,10 @@ const eq = (a, b, m) => { assert.deepEqual(a, b, m); checks += 1; };
 const sorted = (x) => [...x].sort();
 
 /* ══════════ Аккаунтууд ══════════
- * ⚠️ Панелаас нэмсэн (хатуу жагсаалтад БАЙХГҮЙ) аккаунт — `role: taniltsah`, суурь харагдац
- *    `['gdash']`: урсгалтай харагдац (`WORKFLOW_VIEWS`) суурьт байхгүй тул эрхээр нээгдэж/
- *    хаагдахыг цэвэр ялгана. Хэрэглэгч бүр ТУСДАА (өмнөх хэсгийн үлдэгдэл нөлөөлөхгүй). */
+ */
 const POOL = Array.from({ length: 120 }, (_, i) => `e2e_u${String(i + 1).padStart(3, '0')}`);
 fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 })));
 
-/* ⚠️ 2026-10-26: «Хуваарь харах» (эрхийн төрөл) — «Мэдээлэл танилцах»-ын анхдагч нь «Бүх багц» тул «Хуваарь» хуваарилалтгүйгээр
-   нээгдэнэ. Эдгээр шалгуур «хуваарилалтаар нээгдэж/хаагдах»-ыг ялгах тул суурь төрлийг «Үгүй» болгож хадгална (бусад нь анхдагч). */
 {
   const hvBase = RT._defaultTpl('taniltsah');
   fake.seed([{ username: '__type__:taniltsah', views: JSON.stringify({ ...hvBase, on: RT.withHvScope(hvBase.on, 'none'), seen: RT.tplSeenKeys() }) }]);
@@ -230,7 +218,6 @@ for (const [sys, d] of Object.entries(SYS)) {
 }
 console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бүх багц»-аас нэгийг хасахад бусад нь ил жагсаалтаар үлдэв; [P1,P2]→[P2]; сүүлийнх → мөр · эрх · харагдац хасагдав; round-trip тэнцүү`);
 
-/* ⚠️ 2026-10-23: QAQC хасагдсан */
 
 /* §1 Гүйцэтгэлийн урсгал — 6 шат */
 {
@@ -297,7 +284,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await run(OPS.setRoleAllOp('huvaari', ua, 'approver'));
   eq(OPS.scopedCellOp('huvaari', ua, 'approver', p3, true), null, `${tag}: «бүх багц»-тай → null`);
   grantIs('huvaari', ua, 'approver', '*', tag);
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   /* урсгал: өөр шатанд байгаа → шилжүүлэх асуулт, хуучин багц ба «Зөвхөн харна» арилна */
   const uf = mkUser();
   await run(OPS.flowCellOp(uf, 'engineer', p1, true));
@@ -435,7 +421,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   const rd = await run(deny);
   ok(!rd.ok && /багц/.test(rd.err), `${tag}: татгалзлын зурвас`);
   capIs(x, 'plan', false, tag);
-  /* ⚠️ 2026-10-12: super БҮХ эрхтэй тохиргоогүйгээр — олгох no-op, хасах татгалзана, __cap__ мөр бичигдэхгүй */
   ok(OPS.capDirectOp(SUPER, 'planApprove', true) === null, `${tag}: super-т олгох — no-op`);
   const sd = OPS.capDirectOp(SUPER, 'planApprove', false);
   ok(sd && 'error' in sd && /super/i.test(sd.error), `${tag}: super-ээс хасах — татгалзал`);
@@ -447,7 +432,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   const o = mkUser();
   await CAPS.setCaps(o, ['addRow']); await settle();
   r = await run(OPS.capDirectOp(o, 'addRow', false));
-  /* ⚠️ 2026-10-19: мөр нэмэх «Хуваарь»-д (`CAP_HOST_VIEW.addRow`) — асуулт тэр хуудсыг нэрлэнэ */
   ok(r.ok && /Хуваарь/.test(r.confirms[0]), `${tag}: addRow-ийн тусгай асуулт`);
   await both((w) => capIs(o, 'addRow', false, `${tag} ${w}`));
   console.log(`✅ §5 энгийн ${PLAIN_CAPS.length} эрх олгох/хасах · харагдац нээх/хаах · санхүүгийн хуваалцсан харагдац · super · өнчин эрх`);
@@ -477,16 +461,12 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await both((w) => {
     eq(acl(), aclBefore, `${tag} ${w}: applyType хуваарилалт/эрхийн мөр хөндөхгүй`);
     eq(sorted(CAPS.capsOf(u)), capsBefore, `${tag} ${w}: applyType эрх хөндөхгүй`);
-    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): урсгалтай харагдац ЗӨВХӨН хуваарилалтаар —
-       applyType тэдгээрийг БИЧИХГҮЙ, харин урсгалын томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр */
     ok(!stored().some((v) => CAPS.WORKFLOW_VIEWS.includes(v)), `${tag} ${w}: урсгалтай харагдац хадгалагдахгүй`);
     ok(P.resolveAccess(u).views.includes('guitsetgel'), `${tag} ${w}: томилгоогоор «Гүйцэтгэл» нээлттэй`);
     eq(P.roleOf(u), 'gazar', `${tag} ${w}: үүрэг солигдоно`);
     eq(FL.stageOfUser(u), 'engineer', `${tag} ${w}: урсгалын шат хэвээр`);
     for (const v of RT.roleAccess('gazar').views) ok(P.resolveAccess(u).views.includes(v), `${tag} ${w}: загварын «${v}»`);
   });
-  /* ⚠️ 2026-10-21 (хэрэглэгчийн шийдвэр): SUPER = эрхийн тохиргоо — super админ л олгоно/хасна (нэвтэрсэн хэрэглэгч
-     тодорхойгүй бол татгалзана); кодын (тестийн) super доошлохгүй; өөрийн super-ийг өөрөө хасахгүй */
   const WHO6 = await import('@/lib/who.ts');
   res = await RTA.applyType(u, 'super');
   ok(!res.ok, `${tag}: нэвтэрсэн super админгүй — super олгохгүй`);
@@ -544,7 +524,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     eq(FL.stageOfUser(u), null, `${tag} ${w}: урсгалгүй`);
   });
   /* Хатуу жагсаалтын аккаунт → tombstone; «Буцаах» → хатуу суурь, хуучин эрх ЭРГЭЖ ИРЭХГҮЙ */
-  /* ⚠️ 2026-10-19: кодод урсгалын (жишээ) аккаунт алга — урсгалын бус хатуу аккаунт (`tolovlolt`) */
   const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'tolovlolt')[0];
   await run(OPS.flowCellOp(hard, 'manager', p1, true));
   await run(OPS.scopedCellOp('obyem', hard, 'editor', p1, true));
@@ -558,7 +537,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   const rt = await run(OPS.flowCellOp(hard, 'manager', p1, true));
   ok(!rt.ok || FL.stageOfUser(hard) === null, `${tag}: устгагдсан аккаунтыг урсгалд томилохгүй`);
   await settle();
-  /* ⚠️ 2026-10-11 (аудит №7): tombstone-ыг зөвхөн «Буцаах» (`revive`) арилгана — энгийн clear татгалзана */
   eq(await P.clearOverride(hard), false, `${tag}: энгийн clearOverride tombstone-ыг арчихгүй`);
   eq(fake.find(hard)[0]?.views, 'removed', `${tag}: ArcGIS tombstone хэвээр`);
   ok(await P.clearOverride(hard, { revive: true }), `${tag}: сэргээх («Буцаах»)`);
@@ -593,7 +571,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     OPS.runOp(OPS.capDirectOp(v, 'zovshoorol', true), () => {}),
     OPS.runOp(OPS.capDirectOp(v, 'finRow', true), () => {}),
   ]);
-  ok(all.every(Boolean), `${tag}: 4 зэрэг бичилт`); /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  ok(all.every(Boolean), `${tag}: 4 зэрэг бичилт`);
   await settle();
   fake.latency = 0;
   await both((w) => {
@@ -613,13 +591,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
 }
 
 /* ══════════ §9. ЦЭВЭРЛЭХ МӨР — устгагдсан аккаунт · хатуу super-ийн хуучин мөр (2026-09-30) ══════════
- * ⚠️ Хамгаалж буй алдаанууд:
- *    (а) устгагдсан аккаунтын чипийн ✕ (олон багцтай) → `setGrants` (grant=true) түүнд `__cap__:` мөр
- *        ДАХИН үүсгэдэг байв → ижил нэрийг дахин нэмэхэд «хуучин засах эрх үлдсэн» гэж түгждэг;
- *    (б) super-ийн хуучин мөрийн НЭГ багцыг хасахад `setGrants`/`setAssign` super-ийг татгалзаж ✕ ҮРГЭЛЖ
- *        унадаг (мөрийг арилгах зам алга);
- *    (в) super-ийн мөрийг бүхэлд нь хасахад түүнд ШУУД олгосон эрх (`plan` · `gazar`) буцдаг байв
- *        (`aclOps.revokeGoneRoles` · `scopedAcl.syncCaps`). */
+ */
 {
   const tag = '§9';
   const [p1, p2, p3] = PKG_GROUPS;
@@ -627,7 +599,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   ok(S2 && S2 !== SUPER.toLowerCase(), `${tag}: хоёр дахь хатуу super`);
   const ghost = 'e2e_ghost_deleted';
   const G = (grants) => JSON.stringify({ roles: [...new Set(grants.map((g) => g.role))], bagts: [...new Set(grants.flatMap((g) => g.bagts))], grants });
-  const directCaps = ['plan', 'obyemApprove', 'gazar', 'zovshoorol']; /* ⚠️ 2026-10-23: QAQC хасагдсан */
+  const directCaps = ['plan', 'obyemApprove', 'gazar', 'zovshoorol'];
   fake.seed([
     { username: `__huvaari__:${ghost}`, views: G([{ role: 'author', bagts: [p1, p2] }]) },
     { username: `__obyem__:${ghost}`, views: G([{ role: 'editor', bagts: ['*'] }]) },
@@ -668,7 +640,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     rowGone('huvaari', S2, `${tag} ${w}`);
     rowGone('obyem', S2, `${tag} ${w}`);
     eq(fake.find(`__flow__:${S2}`), [], `${tag} ${w}: super урсгалын мөр алга`);
-    /* ⚠️ 2026-10-12: `capsOf(super)` = бүх эрх (кодоос); хадгалагдсан мөр (`capsStored`/ArcGIS) хөндөгдөхгүй */
     eq(sorted(CAPS.capsStored(S2)), sorted(directCaps), `${tag} ${w}: super-ийн хадгалагдсан __cap__ хэвээр`);
     eq(sorted(fake.json('__cap__:', S2)), sorted(directCaps), `${tag} ${w}: ArcGIS __cap__ хэвээр`);
     ok(Object.keys(CAPS.CAP_HOST_VIEW).every((c) => CAPS.capsOf(S2).includes(c)), `${tag} ${w}: super бүх эрхтэй`);
@@ -683,7 +654,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   const tag = '§10';
   const [p1] = PKG_GROUPS;
   const up = mkUser();
-  /* ⚠️ POOL-оос БИШ — POOL-ын хэрэглэгч аль хэдийн (зайгүй) мөртэй */
   const sp = 'spaced_user_e2e';
   fake.seed([
     { username: '__flow__:bad_json_u', views: '{эвдэрсэн' },
@@ -705,20 +675,16 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   ok(!CAPS.capsOf('bad_cap_u').length, `${tag}: эвдэрсэн эрхийн мөр эрх нээв`);
   ok(CAPS.capsOf(up).includes('zovshoorol'), `${tag}: «__CAP__:» (том үсэг) угтвар танигдсангүй`);
   ok(!P.listUsers().some((u) => u.username.toLowerCase().startsWith('__cap__:')), `${tag}: угтвартай мөр энгийн хэрэглэгч болж уншигдав`);
-  /* ⚠️ 2026-10-19 (аудит): ЗАЙТАЙ мөр эрх ОЛГОХГҮЙ — урьд нь trim-ээр олгодог атлаа `LOWER(username) = …`-ээр олдохгүй
-     тул хасах боломжгүй байв. Одоо цэвэрлэгээнд (`space`, OID-той), устгах нь `removeMalformedRow`. */
   const a = P.resolveBaseAccess(sp);
   ok(!a || !Array.isArray(a.views) || !a.views.includes('plan'), `${tag}: зайтай нэрийн мөр эрх олгов (${JSON.stringify(a)})`);
   const spacedRow = bad.find((m) => m.reason === 'space' && m.key === `  ${sp.toUpperCase()}  `);
   ok(spacedRow && typeof spacedRow.oid === 'number', `${tag}: зайтай мөр цэвэрлэгээнд (OID-той) гарсангүй (${JSON.stringify(bad)})`);
-  /* бичих тал ч ижил түлхүүр — зайтай/том үсгээр дуудсан ч ижил (trim · жижиг үсэг) түлхүүрээр бичиж уншина.
-     ⚠️ SQL-д TRIM хэрэглэдэггүй тул ХУУЧИН зайтай мөр олдохгүй — шинэ мөр (их OID) нэмэгдэж уншилтад ЯЛНА. */
+  /* бичих тал ч ижил түлхүүр — зайтай/том үсгээр дуудсан ч ижил (trim · жижиг үсэг) түлхүүрээр бичиж уншина. */
   await P.setUser(`  ${sp.toUpperCase()} `, { views: ['gdash'], docs: false }, 'taniltsah');
   await settle();
   ok(fake.rows.some((r) => r.username === sp.toUpperCase()), `${tag}: бичсэн мөрийн нэр зайгүй байх ёстой`);
   await roundTrip();
   ok(JSON.stringify(P.resolveBaseAccess(sp)?.views) === JSON.stringify(['gdash']), `${tag}: зайтай нэрийн бичилт уншигдсангүй (${JSON.stringify(P.resolveBaseAccess(sp))})`);
-  /* ⚠️ 2026-10-19: зайтай мөрийг OID-оор устгана — өөр нэр зөрвөл устгахгүй */
   const { removeMalformedRow } = await import('./permsRemote.ts');
   ok(!(await removeMalformedRow(spacedRow.oid, 'өөр нэр')), `${tag}: нэр зөрсөн ч устгав`);
   ok(fake.rows.some((r) => r.objectid === spacedRow.oid), `${tag}: нэр зөрсөн мөр устсан`);
@@ -731,7 +697,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §10 эвдэрсэн мөр тоймд · угтвар том/жижиг үсэг · нэрийн trim (унших/бичих) · fail-closed');
 }
 
-/* ══════════ §11. СИСТЕМ ТҮР ХААХ (⚠️ 2026-10-19) ══════════
+/* ══════════ §11. СИСТЕМ ТҮР ХААХ (2026-10-19) ══════════
  * `sysClose` эзэмшигч хаана → энгийн хэрэглэгчид хаалттай, эзэмшигч ба кодын super-т үгүй · `__sys__:` мөр хий хэрэглэгч
  * болохгүй · уншилт унахад СҮҮЛИЙН төлөв (fail-open) · нээх · эрхгүй хүний бичилт татгалзана (ArcGIS-т юу ч явахгүй). */
 {
@@ -793,7 +759,6 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   ok(await P.setSystemClosed(true) && P.closedFor(plain) != null, `${tag}: super хаах`);
   ok(await P.setSystemClosed(false) && P.systemClosed() == null, `${tag}: super нээх`);
 
-  /* ⚠️ 2026-10-19 (аудит №2): ХУУЧИРСАН ТӨЛӨВ — цонхонд харагдсан (`expect`) нь ArcGIS-ийнхаас зөрвөл юу ч бичихгүй */
   ok(await P.setSystemClosed(true, 'a', '', { expect: null }), `${tag}: expect таарсан хаалт`);
   const shown = P.systemClosed();
   ok(shown?.note === 'a', `${tag}: харагдсан төлөв`);
@@ -832,7 +797,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §11 систем түр хаах: эзэмшигч хаах/нээх · энгийнд хаалттай, эзэмшигч/super-т үгүй · fail-open · эрхгүй бичилт татгалзав · хуучирсан төлөв дээр бичихгүй');
 }
 
-/* ══════════ §9b. ХҮСНЭГТИЙН SUPER-ИЙН МӨР — энгийн мөр (⚠️ 2026-10-21, аудит) ══════════
+/* ══════════ §9b. ХҮСНЭГТИЙН SUPER-ИЙН МӨР — энгийн мөр (2026-10-21, аудит) ══════════
  * Super = `role:'super'` мөр (доошлуулж болно) тул түүний хуваарилалт «цэвэрлэх мөр» БИШ: ✕ нэг багцыг л хасна,
  * сүүлийнх асууж эрх буцаана; эрх (`__cap__:`) хуваарилалттайгаа синклэгдэнэ; super мөр нь хөндөгдөхгүй
  * (`grantFlowAccess`/`revokeFlowAccess`); доошлуулсны дараа хуваарилалт хэвээр. Кодын (тестийн) super-ийн мөр §9-өөр хэвээр. */
@@ -866,7 +831,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     hvAuthor([p1, p2]);
     eq(FL.stageOfUser(T), 'manager', `${tag} ${w}: шат`);
     eq(SV.roleForUser(T), 'super', `${tag} ${w}: super хэвээр (grantFlowAccess мөрийг хөндөхгүй)`);
-    ok((fake.json('__cap__:', T) ?? []).includes('plan'), `${tag} ${w}: __cap__ мөр синклэгдсэн`); /* ⚠️ 2026-10-23: QAQC хасагдсан */
+    ok((fake.json('__cap__:', T) ?? []).includes('plan'), `${tag} ${w}: __cap__ мөр синклэгдсэн`);
     eq(HV.huvaariScope(T, 'author'), null, `${tag} ${w}: super байхад хүрээ хязгааргүй`);
   });
   /* ✕ нэг багц — мөр бүхэлдээ арилахгүй (цэвэрлэх мөр биш), асуухгүй */
@@ -899,7 +864,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §9b хүснэгтийн super: хуваарилалт энгийн мөр — ✕ нэг багц · сүүлийнх асууна · эрх синк · super мөр хөндөгдөхгүй · доошлуулсны дараа хэвээр');
 }
 
-/* ══════════ §12. АНХНЫ АДМИН (`roles.BOOTSTRAP_SUPER`) — super олгохдоо өөрийн мөрөө бичнэ (⚠️ 2026-10-21, аудит) ══════════
+/* ══════════ §12. АНХНЫ АДМИН (`roles.BOOTSTRAP_SUPER`) — super олгохдоо өөрийн мөрөө бичнэ (2026-10-21, аудит) ══════════
  * Хүснэгтэд super мөргүй үед анхны админ super; өөр хүнд super олгомогц урьд өөрөө super-ээ алдаж (мөргүй) дараагийн
  * нэвтрэлтэд түгжигддэг байв. Одоо `permissions.setUser` өөрийн `role:'super'` мөрийг ЭХЭЛЖ бичнэ. */
 {
@@ -939,7 +904,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §12 анхны админ: super олгохдоо өөрийн super мөрөө бичнэ — super хэвээр · нэвтэрнэ · самбарт харагдана · өөр super доошлуулна');
 }
 
-/* ══════════ §12b. АНХНЫ АДМИН — өөрийн мөрийн бичилт УНАСНЫ дараах олголт (⚠️ 2026-10-22, аудит №4) ══════════
+/* ══════════ §12b. АНХНЫ АДМИН — өөрийн мөрийн бичилт УНАСНЫ дараах олголт (2026-10-22, аудит №4) ══════════
  * Урьд нь `setUser` super тэмдгийг бичихээс ӨМНӨ тавьдаг тул унасан бичилтийн дараа supers=[анхны админ] болж, дараагийн
  * олголт «өөрийн мөрөө эхэлж бич» салааг алгасдаг байв → remote-д зөвхөн нөгөөх super, анхны админ мөргүй → дахин
  * ачаалахад нэвтэрч чадахгүй. */
@@ -973,7 +938,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §12b анхны админ: өөрийн мөр унасны дараах олголт өөрийн мөрийг эхэлж бичнэ — түгжигдэхгүй');
 }
 
-/* ══════════ §12c. «Дахин синк» — ТАРЬСАН (өөр сешний) `role:'super'` dirty мөрийг БИЧИХГҮЙ (⚠️ 2026-10-22, аудит №4) ══════════
+/* ══════════ §12c. «Дахин синк» — ТАРЬСАН (өөр сешний) `role:'super'` dirty мөрийг БИЧИХГҮЙ (2026-10-22, аудит №4) ══════════
  * Dirty-set нь localStorage-д (browser-ийн бүх аккаунтад) — гараар тарьсан super мөр super-ийн токеноор бичигдэж бүрэн
  * super болдог байв. */
 {
@@ -991,7 +956,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §12c «Дахин синк»: тарьсан super мөрийг бичихгүй — хаяж, анхааруулна');
 }
 
-/* ══════════ §13. «Хэрэглэгчийн эрх тохируулах» засварууд (⚠️ 2026-10-23, хэрэглэгч: «бүгдийг зас») ══════════
+/* ══════════ §13. «Хэрэглэгчийн эрх тохируулах» засварууд (2026-10-23, хэрэглэгч: «бүгдийг зас») ══════════
  * (а) ноорогийн хамгаалалт БҮХ хуудсанд (`aclOps.draftGuard` — урьд нь матрицад л);
  * (б) шатнаас хасахад админы ИЛ төрөл үлдэнэ, зөвхөн автоматаар тавьсан төрөл арилна (`Assign.autoRole`);
  * (в) хүснэгтийн super-т шууд эрх ХАДГАЛАГДАНА (`capDirectOp` — `capsStored`), тоймд хадгалсан эрх (`liveErhSource`);
@@ -1075,7 +1040,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §13 эрх тохируулах: ноорогийн хамгаалалт бүх хуудсанд · ил төрөл шатнаас хасахад үлдэнэ · super-т хадгалсан эрх · tombstone + «Буцаах»');
 }
 
-/* ══════════ §14. «ЕРӨНХИЙ ЗАХИРАЛ» (`zahiral`) — зөвхөн харах удирдлага (⚠️ 2026-10-23) ══════════
+/* ══════════ §14. «ЕРӨНХИЙ ЗАХИРАЛ» (`zahiral`) — зөвхөн харах удирдлага (2026-10-23) ══════════
  * Хүчинтэй төрөл · засах/батлах эрхгүй · урсгалын шат биш (гацаа/төрөл↔шат зөрөө үүсгэхгүй) · «Гүйцэтгэл»-ийг зөвхөн харна. */
 {
   const tag = '§14';

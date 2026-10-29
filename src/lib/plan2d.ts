@@ -124,21 +124,12 @@ let pending: Promise<void> | null = null;
 /** Style JSON-ыг урьдчилан ачаална — Map барихаас ӨМНӨ дуудна */
 export function loadPlan2dStyle(): Promise<void> {
   if (STYLES) return Promise.resolve();
-  /* ⚠️ 2026-09-30: timeout — гацсан хүсэлт `pending`-ийг мөнхөд барихгүй (доорх catch дахин оролдуулна) */
   pending ??= fetch("/plan2d-style.json", { signal: AbortSignal.timeout(30_000) })
     .then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       STYLES = (await r.json()) as Record<string, unknown>;
     })
     .catch((e) => {
-      // ⚠️ Алдаанд STYLES-ийг ХООСОН (`{}`) болгож кэшлэхгүй: `{}` нь truthy
-      //    тул дээрх `if (STYLES) return` нь дараагийн БҮХ дуудлагыг шууд
-      //    resolve болгож, сесс дуустал retry огт гардаггүй байв — апп нээх
-      //    агшны нэг глитч 14 `sb:*` давхаргыг webmap renderer-гүй, SDK-ийн
-      //    анхдагч загвараар мэдэгдэлгүй үлдээнэ. `pending = null` тавьснаар
-      //    дараагийн mount (MapCanvas) дээр дахин татна. Promise нь resolve
-      //    хэвээр тул style-ыг хүлээгч гацахгүй.
-      //    (`webmapStyle.ts`-д 2026-09-07-нд яг ижил засвар хийсэн.)
       pending = null;
       console.warn('[selbe] plan2d-style.json татагдсангүй — дараагийн mount дээр дахин оролдоно:', e);
     });
@@ -150,10 +141,6 @@ export function loadPlan2dStyle(): Promise<void> {
  * утгатай каталогийн давхаргуудад мөн өмсгөнө (хэрэглэгчийн хүсэлт: бүх
  * давхаргыг план 2D map-тай жигдлэх). Эдгээр `sb:*` renderer нь `simple`
  * (талбар шаардахгүй) тул өөр үйлчилгээний давхаргад найдвартай тавигдана.
- *
- * ⚠️ Зөвхөн физик/газрын бүрхэвчийн давхаргууд — инженерийн шугам, бүс,
- * хяналт, багц зэрэг план2d webmap-д ЭКВИВАЛЕНТГҮЙ давхаргууд өөрийн
- * загвартаа үлдэнэ (тэдгээрт өмсгөх план2d style алга).
  */
 const PLAN2D_ALIAS: Record<string, string> = {
   "et:24": "sb:4",   // Барилга
@@ -170,7 +157,7 @@ const PLAN2D_ALIAS: Record<string, string> = {
 export const plan2dStyleOf = (id: string): unknown => STYLES?.[id] ?? STYLES?.[PLAN2D_ALIAS[id]];
 
 /**
- * План2d style-ийг ALIAS-аар авсан каталогийн давхаргууд. ⚠️ Тэдгээрийн ихэнх нь
+ * План2d style-ийг ALIAS-аар авсан каталогийн давхаргууд. Тэдгээрийн ихэнх нь
  * зурган текстур (esriPFS/esriPMS) тул SceneView-д дэмжигдэхгүй — 3D/BIM горимд
  * MapCanvas эдгээрийг нуана («picture-fill is unsupported in 3D» алдааны эх).
  * 3D-д меш газрын бүрхэвчийг өөрөө харуулдаг тул визуал алдагдалгүй.

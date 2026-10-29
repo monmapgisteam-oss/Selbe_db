@@ -1,16 +1,5 @@
 /**
  * БАРИЛГЫН ЦЭГҮҮД — тээвэр-идэвхийн шинжилгээний эх өгөгдөл.
- *
- * ⚠️ `transport.ts` (lib/analysis) нь ЦЭВЭР математик — ангилал ба коэффициент;
- * энэ файл нь түүнд ӨГӨГДӨЛ бэлтгэнэ: ArcGIS-ийн `et:24` «Барилга» давхаргаас
- * атрибут + ЦЕНТРОИД татаж, барилга бүрийн оргил цагийн зорчилтыг бодно.
- *
- * ⚠️ ТӨВ ЦЭГ ба ПОЛИГОН хоёулаа НЭГ хүсэлтээр ирнэ: төв цэгээр замд хуваарилж,
- * полигоноор газрын зурагт буддаг. `maxAllowableOffset=1` ерөнхийлөлттэйгээр
- * 363 барилга 98 кБ — түүхий полигоны 175 кБ-аас хямд, харагдацын ялгаагүй.
- *
- * ⚠️ `outSR=3857` (Web Mercator) — `roadNet.ts`-ийн замын сүлжээ ба `SuitMap`-ийн
- * 2D харагдацтай НЭГ координатын систем. Зайг метр болгоход `WM_UNITS_PER_M`.
  */
 
 import { LAYER_BY_ID, layerUrl } from '@/lib/services';
@@ -33,9 +22,7 @@ export type BuildingPt = {
   /** `Зориулалт_m` — түүхий утга (tooltip, шалгалтад) */
   purpose: string;
   cat: BuildingCat;
-  /** ⚠️ ЗӨВХӨН орон сууцны барилгад утгатай */
   population: number;
-  /** ⚠️ ЗӨВХӨН орон сууц БУС барилгад утгатай */
   capacity: number;
   /** Өглөөний оргил цагийн ХҮН-зорчилт */
   trips: number;
@@ -66,24 +53,17 @@ const pageQuery = (offset: number) => new URLSearchParams({
   where: '1=1',
   outFields: [F.purpose, F.population, F.capacity, F.zone, F.block].join(','),
   returnGeometry: 'true',
-  // ⚠️ Төв цэг нь `features[].centroid`-д ТУСДАА ирнэ (`geometry` дотор БИШ)
   returnCentroid: 'true',
   // Ерөнхийлөлт — 175 кБ → 98 кБ, барилгын хэлбэр нүдэнд ижил
   maxAllowableOffset: '1',
   geometryPrecision: '1',
   outSR: '3857',
   /*
-   * ⚠️ ЭРЭМБЭГҮЙ ХУУДАСЛАЛТ ТОГТВОРГҮЙ (2026-09-07-ны 100% аудит).
-   *
    * ArcGIS нь `orderByFields`-гүй үед мөрийн дарааллыг БАТАЛГААЖУУЛДАГГҮЙ:
    * хуудасны зааг дээр нэг барилга ХОЁР удаа ирэх, эсвэл огт УНАХ
    * боломжтой — тэгэхдээ алдаа гарахгүй тул чимээгүй болно. Барилга
    * давхардвал хүн ам, багтаамж, аяллын тоо ХӨӨРӨГДӨЖ тохиромжтой
    * байдлын үнэлгээ бүхэлдээ худал болно; унавал эсрэгээр.
-   *
-   * ⚠️ Одоо 363 барилга нэг хуудсанд багтдаг тул алдаа ИЛЭРДЭГГҮЙ —
-   * давхарга 2,000-аас хэтрэх өдөр л мэдэгдэнэ. Тиймээс одоо бэхлэв.
-   * `OBJECTID` нь `outFields`-д аль хэдийн ирдэг (`a.OBJECTID`).
    */
   orderByFields: 'objectid ASC',
   resultOffset: String(offset),
@@ -98,10 +78,6 @@ const num = (v: unknown) => {
 
 /**
  * «Барилга» давхаргыг татаж, барилга бүрийн зорчилтыг бодно.
- *
- * ⚠️ ТӨВ ЦЭГГҮЙ бичлэгийг ХАЯНА: замд хуваарилах боломжгүй тул шинжилгээнд
- * хэрэггүй бөгөөд (0, 0) координаттай орвол сүлжээнээс хэдэн мянган км зайд
- * унаж, «замд холбогдоогүй» тоог худал өсгөнө.
  */
 export async function loadBuildings(signal?: AbortSignal): Promise<BuildingPt[]> {
   const def = LAYER_BY_ID[BUILDING_LAYER_ID];
@@ -109,16 +85,8 @@ export async function loadBuildings(signal?: AbortSignal): Promise<BuildingPt[]>
   const url = layerUrl(def);
 
   const out: BuildingPt[] = [];
-  // ⚠️ 363 барилга нэг хуудсанд багтдаг ч давхарга өсөж болно — `exceededTransferLimit`
-  //    дуустал үргэлжлүүлнэ (хязгааргүй давталтаас хамгаалж 20 хуудсаар таслав).
-  /* ⚠️ 2026-09-25: Дараагийн хуудасны `offset` нь БОДИТ ирсэн мөрийн тоогоор
-     (`got`) ахина — урьд нь `page * PAGE` байсан тул үйлчилгээний
-     `maxRecordCount` 2000-аас бага (жиш. 1000) бол 1000–1999 мөрүүд чимээгүй
-     алгасагддаг байв. Хоосон хуудас ирвэл зогсоно (хязгааргүй давталтаас). */
   let offset = 0;
   for (let page = 0; page < 20; page++) {
-    /* ⚠️ 2026-09-30: GET + `tokenQs` → `query.arcgisPost` (токен биеэр; timeout · слот ·
-       429 backoff · 200-алдаа `ArcGISError`-оор). */
     const r = await arcgisPost<QueryResp>(`${url}/query`, Object.fromEntries(pageQuery(offset)), { signal });
     if (r.error) throw new Error(r.error.message ?? tr('ArcGIS query алдаа'));
     const got = r.features?.length ?? 0;
@@ -159,8 +127,6 @@ let cache: Promise<BuildingPt[]> | null = null;
 
 /**
  * Барилгуудыг НЭГ УДАА татаж кэшлэнэ (симуляцын горим сэлгэх бүрд дахин татахгүй).
- * ⚠️ Алдаа гарвал кэшийг цэвэрлэнэ — эс бөгөөс түр зуурын сүлжээний саатал
- * бүхэл сессийн турш «өгөгдөлгүй» болж хатна.
  */
 export function loadBuildingsCached(): Promise<BuildingPt[]> {
   if (!cache) {

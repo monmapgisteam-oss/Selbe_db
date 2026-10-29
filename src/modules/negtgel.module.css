@@ -1,19 +1,11 @@
 /*
  * ТӨСЛИЙН НЭГТГЭЛ ГҮЙЦЭТГЭЛ — WBS модны хүснэгт.
- *
- * ⚠️ Санхүүжилтийн Excel харагдацтай ижил зарчим: нягт тор, наалдмал толгой,
- * гүнээр ялгарах мөр. Тусдаа модуль болгосон нь `finance.module.css` нь
- * аль хэдийн 1,600 мөр бөгөөд тэндэх дүрмүүд царцаалт/нэгтгэлтэй нягт
- * холбоотой — энэ хүснэгтэд тэдгээр нь хэрэггүй.
  */
 .wrap {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-height: 0;
-  /* ⚠️ 2026-09-25: «Гүйцэтгэл» хуудасны `.fill` нь дотор зайгүй (бөглөх хуудас
-     ирмэг хүртэл дэлгэгддэг) — энд зай өгөхгүй бол гарчиг, хүснэгт хоёр
-     талын ирмэгт наалдаж тасардаг байв («2 тал руу хэт сунасан»). */
   padding: 12px 20px 16px;
 }
 
@@ -26,7 +18,6 @@
 .search {
   flex: 0 1 280px;
   min-width: 160px;
-  /* ⚠️ 2026-10-23: Environment — `.pe-field` (32px · булан 7px · --line-strong · bg --bg · 12.5px) */
   height: 32px;
   padding: 0 9px;
   border: 1px solid var(--line-strong);
@@ -60,7 +51,6 @@
   cursor: pointer;
 }
 .levels button:hover { background: var(--surface-2); color: var(--ink); }
-/* ⚠️ 2026-10-23: Environment — сонгогдсон түвшин: moss 14% дэвсгэр · moss бичиг · moss 45% хүрээ */
 .lvOn {
   background: color-mix(in oklab, var(--moss) 14%, var(--surface)) !important;
   border-color: color-mix(in oklab, var(--moss) 45%, transparent) !important;
@@ -68,8 +58,6 @@
 }
 
 .scroll {
-  /* ⚠️ Өндрийг ХЯЗГААРЛАНА — 198 мөр хуудсыг сунгаж, наалдмал толгой утгаа
-     алдана (санхүүжилтийн хүснэгттэй ижил шийдэл). */
   max-height: calc(100dvh - 320px);
   overflow: auto;
   border: 1px solid var(--line);
@@ -77,20 +65,12 @@
   background: var(--surface);
 }
 
-/*
- * ⚠️⚠️ 2026-09-25: ЭХ EXCEL-ИЙН ХАРАГДАЦ («Төсөл төлөвлөгөө биелэлт» хуудас) —
- * толгой саарал (#D9D9D9), «Гүйцэтгэлийн хувь» ногоон (#92D050), мөрийн
- * дүүргэлт нь Excel-ийн өнгөөр (`TusulNegtgel.toneOf`-ийн тайлбарыг үз).
- * ⚠️ Өнгөт мөрүүдэд бичвэрийн өнгийг ИЛ тогтооно — харанхуй горимд ч цайвар
- * дэвсгэр дээр бараан бичиг байх ёстой.
- */
 .tbl {
   border-collapse: separate;
   border-spacing: 0;
-  /* ⚠️ Хүснэгт хавтангаа ДҮҮРГЭНЭ — баруун талд хоосон цагаан зай үлдэхгүй */
   width: max-content;
   min-width: 100%;
-  font-size: 11.5px; /* ⚠️ 2026-10-23: Environment — `.pe-table` нягт 11.5px */
+  font-size: 11.5px;
 }
 .tbl th {
   position: sticky;
@@ -100,11 +80,9 @@
   min-width: 84px;
   max-width: 84px;
   padding: 6px 6px;
-  /* ⚠️ 2026-10-23 (хэрэглэгч: «системтэй нийцүүл»): тогтмол хөх (#dbe5ef / dark #122236) → системийн
-     токен, гэрээний бүртгэлийн хүснэгттэй ижил. Харанхуй горимын тусдаа дүрэм хэрэггүй болов. */
   background: var(--surface-2);
   color: var(--ink-2);
-  font-size: 0.75rem; /* ⚠️ 2026-09-25: толгой томорсон — хэрэглэгчийн заавар */
+  font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.3;
   text-align: center;
@@ -113,15 +91,7 @@
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line-strong);
 }
-/* ⚠️ «Гүйцэтгэлийн хувь»-ийн ногоон толгой ХАСАГДСАН (2026-09-25, хэрэглэгчийн заавар) */
 
-/*
- * ⚠️ 2026-10-14: ТОЛГОЙ EXCEL-ИЙН 2 · 4 · 5-Р МӨР ШИГ (хэрэглэгчийн заавар) — гарчиг (`thTitle`, B2:V2),
- *    бүлгийн нэгтгэсэн нүд (`thGrp`, H4:I4 · J4:K4 · L4:M4), дэд толгой (`thSub`, 5-р мөр); бусад нүд 4–5-р
- *    мөрийг босоогоор (`rowSpan=2`). Мөр бүрийн `top` нь JSX-ээс (`--nh0`, `--nh1` — хэмжсэн өндөр).
- *    «ТӨСЛИЙН НИЙТ» мөр царцсан (`totalRow`, Excel ySplit=6) — `--nhh` = толгойн бүтэн өндөр.
- */
-/* ⚠️ `.tbl` угтвартай — `.tbl th` (0,1,1)-ээс давамгай байх ёстой (эс бөгөөс 84px өргөн · голлолт дарна) */
 .tbl .thTitle {
   width: auto;
   min-width: 0;
@@ -130,7 +100,6 @@
   font-size: 0.86rem;
   letter-spacing: 0.02em;
   padding: 7px 10px;
-  /* ⚠️ Хүснэгт дэлгэцээс өргөн тул бичиг зүүн ирмэгтээ наалдана (нэг нүд хэвтээ sticky байж чадахгүй) */
   background: color-mix(in srgb, var(--data) 14%, var(--surface-2));
   color: var(--ink);
 }
@@ -203,7 +172,7 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  font-size: 0.7rem; /* ⚠️ 2026-09-25: тоо жижиг — хэрэглэгчийн заавар */
+  font-size: 0.7rem;
 }
 
 /* Бүлгийг НЭР дээр нь дарж нээх/хаах — «+/−» тэмдэг хасагдсан (2026-09-25) */
@@ -234,15 +203,7 @@
 
 /*
  * ── Мөрийн өнгө ──
- * ⚠️ 2026-09-25 (хэрэглэгчийн заавар: «light дээр тод цэнхэр өнгийг болиулаад
- * бүдэг цэнхэрээр харуул»): ЦАЙВАР горимд Excel-ийн тод хөхийн оронд БҮДЭГ
- * хөх — шатлал нь ижил (үе шат хамгийн бараан, навч цагаан). Excel-ийн
- * жинхэнэ өнгө нь зөвхөн ХАРАНХУЙ горимд.
  */
-/* ⚠️ 2026-10-23 (хэрэглэгч: «системтэй нийцүүл»): тогтмол хөх шатлал (цайвар + харанхуйн тусдаа
-   :global дүрэм) → системийн токен. Шатлал хэвээр — үе шат хамгийн тод, навч энгийн; --data-аар
-   тинттэй, --surface-тэй холиод БҮРЭН бүглээ (царцсан нүдэнд нэвт харагдахгүй). Хоёр горимд автоматаар.
-   tezu-bonu (Environment): жин ≤600. */
 .stage td { background: color-mix(in srgb, var(--data) 22%, var(--surface)); color: var(--ink); font-weight: 600; }
 .work td { background: color-mix(in srgb, var(--data) 16%, var(--surface)); color: var(--ink); font-weight: 600; }
 .l2 td { background: color-mix(in srgb, var(--data) 10%, var(--surface)); color: var(--ink); font-weight: 600; }
@@ -256,8 +217,6 @@
 
 /*
  * ТАЙЛБАРЫН МӨР — тоо хаанаас гарсныг ил хэлнэ.
- * ⚠️ Эх хүснэгтийн нүд ХООСОН атлаа энд тоо харагдаж байгаа тул энэ мөр нь
- * чимэг БИШ: түүнгүйгээр хэрэглэгч эдгээрийг хадгалагдсан утга гэж ойлгоно.
  */
 .note {
   margin: 0;
@@ -271,7 +230,6 @@
 
 /*
  * СИНКИЙН МЭДЭГДЭЛ (2026-09-25) — хамгаалалт бичилтийг зогсоовол ил харуулна.
- * ⚠️ Чимээгүй «гацсан» хүснэгтээс сэргийлнэ: шалтгаан + баталгаажуулах товч.
  */
 .syncNote {
   display: flex;
@@ -287,7 +245,6 @@
   font-size: 12px;
   line-height: 1.4;
 }
-/* ⚠️ 2026-10-23: Environment — `.pe-ghost` (32px · булан 8px · 12px/500 · --line-strong) */
 .syncNote button {
   display: inline-flex;
   align-items: center;
@@ -332,8 +289,6 @@
 .edIn:focus { background: color-mix(in srgb, var(--data) 16%, transparent); box-shadow: inset 0 0 0 1.5px var(--data); }
 /*
  * Томьёогоор дахин бодогдож ӨӨРЧЛӨГДСӨН нүд.
- * ⚠️ 2026-10-19 (аудит): холимог нь `transparent` биш `var(--surface)` (`finance.module.css`-ийн `.xlTbl td.cellDirty`
- *    шиг) — ЦАРЦСАН (`.fz`, sticky) нүд тунгалаг болж хэвтээ гүйлгэхэд доорх нүдний бичвэр нэвт харагддаг байв.
  */
 .cellCalc {
   background: color-mix(in srgb, var(--data) 14%, var(--surface)) !important;
@@ -343,10 +298,6 @@
 .tbl td.dirty {
   background: color-mix(in srgb, var(--good) 16%, var(--surface)) !important;
 }
-/*
- * ⚠️ 2026-10-19 (аудит): засах горимд царцаалтын ирмэгийн зураас (`.fzEdge`) АЛГА болдог байв — `.edCell` ба
- *    `f.cellDirty`-ийн `box-shadow` түүнийг дардаг. Хоёр сүүдрийг НЭГ дор тавина.
- */
 .tbl td.edCell.fzEdge {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--data) 45%, transparent), 2px 0 0 var(--line-strong);
 }

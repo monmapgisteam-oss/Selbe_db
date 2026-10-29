@@ -1,22 +1,5 @@
 /**
  * МИНИМАЛ XLSX БИЧИГЧ — хамааралгүй, цэвэр (хөтөч ба Node хоёуланд ажиллана).
- *
- * ⚠️ 2026-10-12: «Гүйцэтгэл бөглөх» хүснэгтийг дэлгэц дээрх хэлбэрээр нь Excel болгож татах
- *    хэрэгцээнд зориулж бичив. `xlsx`/`exceljs` зэрэг багц НЭМЭХГҮЙ (хэрэглэгчийн шийдвэр —
- *    хэдэн зуун КБ хамаарал, аюулгүй байдлын зарлал) тул OOXML-ийн шаардлагатай хэсгийг
- *    өөрсдөө угсарна:
- *      `[Content_Types].xml` · `_rels/.rels` · `xl/workbook.xml` · `xl/_rels/workbook.xml.rels`
- *      · `xl/styles.xml` · `xl/worksheets/sheetN.xml`
- *    Мөр нь `sharedStrings` БИШ, `t="inlineStr"` (хуудас бүр өөрөө бүтэн — нэг хэсэг бага).
- * ⚠️ ZIP нь STORE (шахалтгүй) — `zlib`/`CompressionStream` хэрэггүй, Node-ийн шалгуур
- *    (`xlsx.check.mjs`) local header-ийн offset-оор шууд задалж уншина. Файлын нэр UTF-8
- *    (flag 0x0800). CRC32 нь ЗААВАЛ зөв — Excel буруу CRC-тэй файлыг «эвдэрсэн» гэнэ.
- * ⚠️ Дэмжих зүйл: нүдний утга (мөр · тоо · хоосон) · нэгдсэн нүд · баганын өргөн · хөлдөөсөн
- *    мөр/багана · загвар (тод · арын өнгө · нимгэн хүрээ · тоон формат · догол · зэрэгцүүлэлт ·
- *    нугалах). Томьёо, огнооны серийн тоо, зураг — ЗОРИУД байхгүй.
- * ⚠️ XML-д `& < > "` ЗААВАЛ escape (`esc`) — ажлын нэрэнд `&`, `<` тааралддаг.
- * ⚠️ Хуудасны нэр: Excel 31 тэмдэгт, `[]:*?/\` хориотой — `sheetName` тааруулна, давхардвал
- *    дугаар залгана (давхардсан нэртэй файлыг Excel нээдэггүй).
  */
 
 /* ── Төрлүүд ── */
@@ -56,12 +39,6 @@ export type XlsxSheet = {
 
 /* ── XML туслахууд ── */
 
-/**
- * ⚠️ 2026-10-19: XML 1.0-д ХОРИОТОЙ удирдлагын тэмдэгтийг (`\u0000-\u0008`, `\u000B`, `\u000C`,
- *    `\u000E-\u001F`, `￾`/`￿`) ХАСНА — `docx.ts`-ийн `clean`-тэй ижил дүрэм. ArcGIS-ийн чөлөөт текстэд
- *    (хуулж буулгасан тайлбар) тийм тэмдэгт байвал Excel файлыг «эвдэрсэн» гэж нээдэггүй байв.
- *    Таб (`\t`), мөр таслал (`\n`, `\r`) — хүчинтэй, хэвээр.
- */
 const XML_ILLEGAL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g;
 export const esc = (s: string): string =>
   s.replace(XML_ILLEGAL, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -99,7 +76,6 @@ type StyleReg = {
 
 function newStyleReg(): StyleReg {
   return {
-    /* ⚠️ Excel: fonts[0] анхдагч; fills[0] = none, fills[1] = gray125 ЗААВАЛ (специйн шаардлага) */
     fonts: ['<font><sz val="10"/><name val="Arial"/></font>'],
     fills: ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>'],
     numFmts: new Map(),
@@ -181,7 +157,6 @@ function cellXml(r: number, c: number, cell: XlsxCell, reg: StyleReg): string {
   const ref = cellRef(r, c);
   if (v == null || v === "") return s ? `<c r="${ref}"${sAttr}/>` : "";
   if (typeof v === "number") {
-    /* ⚠️ NaN/Infinity нь XML-д хүчингүй — хоосон нүд (null ≠ 0 дүрэм хэвээр: тоо биш бол утгагүй) */
     if (!Number.isFinite(v)) return s ? `<c r="${ref}"${sAttr}/>` : "";
     return `<c r="${ref}"${sAttr}><v>${String(v)}</v></c>`;
   }
@@ -257,7 +232,6 @@ export function zipStore(entries: ZipEntry[]): Uint8Array {
   const parts: Uint8Array[] = [];
   const central: Uint8Array[] = [];
   let offset = 0;
-  /* ⚠️ Тогтмол огноо (1980-01-01 00:00) — гаралт детерминистик, шалгуур байт тулгаж болно */
   const dosTime = 0;
   const dosDate = (1 << 5) | 1;
   for (const e of entries) {
@@ -368,7 +342,6 @@ export function buildXlsx(sheets: XlsxSheet[]): Uint8Array {
     { name: "_rels/.rels", data: enc.encode(rels) },
     { name: "xl/workbook.xml", data: enc.encode(workbook) },
     { name: "xl/_rels/workbook.xml.rels", data: enc.encode(wbRels) },
-    /* ⚠️ styles.xml нь хуудсуудыг угсарсны ДАРАА — загварын бүртгэл тэр үед л бүрэн */
     { name: "xl/styles.xml", data: enc.encode(stylesXml(reg)) },
     ...sheetXmls.map((x, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: enc.encode(x) })),
   ];
@@ -379,10 +352,6 @@ export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsh
 
 /**
  * Байтыг файл болгон татна (хөтөчид л) — `csvFile.downloadText`-ийн загвар, зөвхөн Blob нь хоёртын.
- * ⚠️ `Uint8Array` → `Blob`: TS 5.7-ийн `ArrayBufferLike` төрлөөс болж `.buffer`-ийг шууд өгөхгүй,
- *    `slice()`-аар шинэ `ArrayBuffer` авна.
- * ⚠️ 2026-10-15: `mime` параметртэй болов — .docx (`lib/agent/reportDocx.ts`) ч ижил ZIP
- *    бичигчээр үүсдэг тул татах кодыг хуулахгүй. Анхдагч нь ХУУЧНААР .xlsx.
  */
 export function downloadXlsx(filename: string, bytes: Uint8Array, mime: string = XLSX_MIME): void {
   const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;

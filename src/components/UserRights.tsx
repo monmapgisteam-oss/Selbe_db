@@ -3,24 +3,6 @@
 /**
  * НЭГ ХЭРЭГЛЭГЧИЙН ХАРАГДАЦ · ТЭЗҮ-БОНУ — жагсаалтын дэлгэсэн мөр ба
  * хэрэглэгчийн карт ХОЁУЛАА энэ бүрэлдэхүүнийг зурна (2026-09-25).
- *
- * ⚠️ `UserRow.tsx`-ээс САЛГАСАН: карт ба мөр хоёр газар ижил унтраалгыг
- *    тусад нь бичвэл нэгд нь засвар хүрч нөгөөд нь хоцорно (`aclParity`-ийн
- *    хэв шинж). Өөрийн төлөвгүй — бүгд props-оор.
- *
- * ⚠️ ХАДГАЛАХ ДҮРЭМ: харагдац ба ТЭЗҮ-БОНУ нь НООРОГ («Хадгалах» товч).
- *
- * ⚠️ «НЭМЭЛТ ЭРХ» БЛОК ХАСАГДСАН (2026-09-30, хэрэглэгчийн шийдвэр). Урьд нь энд
- *    13 засах эрх (4 энгийн унтраалга + 9 «хуваарилалтаас · Засах →» үзүүлэлт)
- *    зурагддаг байв. Одоо «Хэрэглэгчдийн эрх удирдах» = ЗӨВХӨН ХАРАХ: аккаунт ·
- *    үүргийн шошго · 23 харагдац · ТЭЗҮ-БОНУ · хадгалах. Засах эрх БҮР админ
- *    порталын ӨӨРИЙН хуудсанд (багцаар — `ScopedAclPanel` · `ChanarAcl` ·
- *    `QaqcAcl` · `DedButetsAcl`; аккаунтаар — `PlainCapAcl`). Өнчин/дутуу эрхийн
- *    анхааруулга тэр хуудсанд (`CapOrphanNote`).
- *
- * ⚠️ ЗАСАХ ЭРХЭЭР НЭЭГДСЭН ХАРАГДАЦ (`CAP_HOST_VIEW`) runtime дээр НЭЭЛТТЭЙ тул
- *    унтраалга үүнийг ч харуулна («хаалттай» атлаа хэрэглэгч харсаар байдаг байв).
- *    Tooltip нь тухайн эрхийн хуудас руу заана — унтраалгаар хаагдахгүй.
  */
 
 import { Icon } from '@/components/Icon';
@@ -40,7 +22,6 @@ export type UserRightsProps = {
   hasView: (views: ViewKey[] | 'all', k: ViewKey) => boolean;
   onFlipView: (k: ViewKey) => void;
   onAllViews: (on: boolean) => void;
-  /** ⚠️ 2026-10-12: хатуу super — бүх унтраалга асаалттай, түгжээтэй (эрх нь кодоос) */
   superUser?: boolean;
 };
 
@@ -51,13 +32,6 @@ export function UserRights(props: UserRightsProps) {
   /** Энэ харагдацыг нээсэн эрхүүдийн ХУУДАСНЫ нэр (хажуугийн цэс) */
   const impliedBy = (v: ViewKey): string =>
     [...new Set(caps.filter((c) => CAP_HOST_VIEW[c].includes(v)).map((c) => paneLabel(paneOfCap(c))))].join(' · ');
-  /*
-   * ⚠️ УРСГАЛТАЙ 6 ХАРАГДАЦ ЖАГСААЛТАД ОРОХГҮЙ (2026-09-30, хэрэглэгчийн шийдвэр):
-   *    Гүйцэтгэл · Хуваарь · Хуваарь батлах · Нэмэлт ажил батлах · Чанарын баримт ·
-   *    Чанар (QAQC) нь урсгалын хуваарилалтаар нээгдэж, хасахад буцаагдана
-   *    (`caps.WORKFLOW_VIEWS`). Хадгалагдсан утга нь хөндөгдөхгүй — зөвхөн энд
-   *    засагдахгүй; `hasAccess`/`resolveAccess` хэвээр.
-   */
   const shownViews = VIEWS.filter((v) => !WORKFLOW_VIEWS.includes(v.key));
   const workflowNames = VIEWS.filter((v) => WORKFLOW_VIEWS.includes(v.key)).map((v) => v.title).join(' · ');
 
@@ -65,15 +39,10 @@ export function UserRights(props: UserRightsProps) {
     <>
       {/*
         * СЭДВҮҮД — жагсаалт хэлбэрээр, мөр бүрийн АРД унтраалга.
-        * ⚠️ 2026-08-25 (хэрэглэгчийн хүсэлт): chip-үүдийн үүл байсныг
-        * жагсаалт + switch болгов — аль сэдэв нээлттэйг нэг харцаар
-        * ялгахад унтраалгын байрлал тогтмол байх нь чухал.
         */}
       <div className={s.topicHead}>
         <span className={s.topicHeadLabel}>{tr('Харагдац')}</span>
-        {/* ⚠️ 2026-10-23: «кодоор» хуучирсан — super 2026-10-21-ээс эрхийн хүснэгтийн мөр (админ эрх) */}
         <span className={s.saveHint}>{superUser ? tr('админ эрхээр — засагдахгүй') : tr('ноорог — «Хадгалах»')}</span>
-        {/* ⚠️ 2026-10-12 (super жигд биш): хатуу super-т «Бүгдийг асаах/унтраах» алга — эрх нь кодоос */}
         {!superUser && (
           <>
             <button type="button" className={s.linkBtn} onClick={() => onAllViews(true)}>
@@ -98,14 +67,7 @@ export function UserRights(props: UserRightsProps) {
       <div className={s.topicList}>
         {shownViews.map((v) => {
           const base = hasView(d.views, v.key);
-          /* ⚠️ Засах эрхийн гэр харагдац (CAP_HOST_VIEW) runtime дээр
-             НЭЭЛТТЭЙ — унтраалга үүнийг ч харуулна (толгойн ⚠️). */
-          /* ⚠️ 2026-10-06 (аудит): бүдэг (implied) унтраалга ДАРАГДАХГҮЙ. Урьд нь дарахад
-             харагдац СУУРЬ жагсаалтад ил бичигдэж, засах эрхийг хассаны дараа ч харагдац
-             нээлттэй үлддэг байв (tooltip «тэр хуудсанд хасна» гэж хэлдэг атлаа). Хаах зам =
-             тухайн эрхийн хуудас; `UserAdmin.flipView` ч мөн хамгаална. */
           const implied = !base && capViews.includes(v.key);
-          /* ⚠️ 2026-10-12: хатуу super — асаалттай, түгжээтэй (`UserAdmin.flipView` ч татгалзана) */
           const locked = superUser || implied;
           const vOn = superUser || base || implied;
           return (
@@ -134,7 +96,6 @@ export function UserRights(props: UserRightsProps) {
             </div>
           );
         })}
-        {/* ⚠️ 2026-10-23: «ТЭЗҮ-БОНУ» унтраалга ХАСАГДСАН — баримт бичгийн сан нэвтэрсэн бүх хэрэглэгчид нээлттэй (`docLib`) */}
       </div>
     </>
   );

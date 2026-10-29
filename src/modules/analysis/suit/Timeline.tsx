@@ -9,15 +9,7 @@ import c from './simulation.module.css';
 
 /**
  * СИМ ЦАГ — 24 цагийн трафик timeline-ийн ЦӨМ.
- *
- * ⚠️ Хоёр цаг зэрэгцэнэ: `minuteRef` нь ФРЕЙМ БҮРТ шинэчлэгддэг ЭРХ БҮХИЙ цаг
- * (газрын зургийн анимац rAF дотор үүнийг уншина — дахин зурагдалт үүсгэхгүй),
- * харин `minute` нь UI-д ~10 удаа/сек шинэчлэгддэг ХӨӨРӨГДСӨН төлөв. Тэгвэл цаг
- * жигд урсаж, гэхдээ React-ийн дахин зуралт бага байна.
  */
-// ⚠️ 00:00-оос эхэлнэ: өдрийн мөчлөг цөөн машинтай шөнөөс эхэлж, өглөөний
-//    оргил руу ЖАМААРАА өсдөг. 08:00-оос эхлүүлбэл симуляц шууд оргил ачааллын
-//    дундаас «үсэрч» эхэлдэг байв.
 export function useSimClock(startMin = 0) {
   const [minute, setMinute] = useState(startMin);
   const [playing, setPlaying] = useState(false);
@@ -53,13 +45,6 @@ export function useSimClock(startMin = 0) {
     return () => cancelAnimationFrame(raf.current);
   }, [playing, speed]);
 
-  /**
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХӨТЧИЙН ТАБ далд болоход ЗОГСООНО.
-   *    Хөтөч далд табын rAF-ийг зогсоодог ч буцаж ирэхэд эхний фреймийн `dt` нь
-   *    хэдэн минут болж, цаг гэнэт хэдэн цагаар «үсэрдэг» байв (×60 хурдад 1 мин
-   *    = 1 сим-цаг). Хэрэглэгч буцаад ▶ дарж үргэлжлүүлнэ. Харагдац доторх
-   *    горим/таб солих үеийн зогсолт нь `Suitability.tsx` §roadMode-д.
-   */
   useEffect(() => {
     if (!playing || typeof document === 'undefined') return;
     const onVis = () => { if (document.hidden) setPlaying(false); };
@@ -74,8 +59,6 @@ const SPEEDS = [5, 20, 60] as const;
 
 /**
  * ОРГИЛ ЦАГИЙН ТОВЧ — өглөө 08:00, орой 18:00 (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- * ⚠️ Гулсуураар яг оргилд тааруулах хэцүү байв; харьцуулалт (Бодит ↔ Төлөвлөгөө)
- *    ихэвчлэн оргил цагт хийгддэг. `DIURNAL`-ийн өглөө/оройн оргилтой таарна.
  */
 const PEAKS = [
   { min: 8 * 60, get title() { return tr('Өглөөний оргил руу шилжих'); } },
@@ -87,10 +70,6 @@ const HOUR_TICKS = [0, 6, 12, 18];
 
 /**
  * ЦАГИЙН КОНСОЛ — цаг, өдрийн эрэлтийн муруй, гулсуур, ▶/⏸ ба хурд.
- *
- * ⚠️ Өөрийн хүрээтэй, живсэн фонтой БЛОК болгосон нь санаатай: энэ бол панелийн
- * цорын ганц ХӨДӨЛГӨӨНТ удирдлага тул статик уншилтуудаас тод ялгарах ёстой.
- * `useSimClock`-ийн гаралтыг шууд авна.
  */
 export function Timeline({
   minute,
@@ -111,18 +90,10 @@ export function Timeline({
   hue?: string;
 }) {
   const load = diurnalAt(minute);
-  // ⚠️ Градиентийн id баримт даяар НЭГДМЭЛ байх ёстой (ui.Series-ийн дүрэм)
   const gid = `simCurve${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const W = 244;
   const H = 40;
-  /* ── Эрэлтийн муруй — ГӨЛГӨР ──
-     ⚠️ Урьд нь цэгүүдийг шулуунаар холбосон polyline байсан тул муруй өнцөг
-     өнцгөөрөө хуга харагдаж байв.
-     ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): өөрийн Catmull-Rom хуулбарыг
-     порталын ГАНЦ `lineSegments` (монотон, `chartStyle.ts`) орлов — Catmull-Rom нь
-     цэг хооронд ХЭТЭРДЭГ (overshoot) тул шөнийн 0-д ойр утгууд 0-ээс доош «унаж»
-     зурагддаг байв. Монотон муруй ЦЭГ БҮРЭЭ ЯГ ДАЙРНА, хөршийн мужаас гарахгүй.
-     Талбай нь шугамын ЯГ ижил замаар хаагдана (`areaPath`). */
+  /* ── Эрэлтийн муруй — ГӨЛГӨР ── */
   const pts = [...DIURNAL, DIURNAL[0]].map((v, i) => ({
     x: (i / 24) * W,
     y: H - v * (H - 4) - 2,
@@ -148,10 +119,6 @@ export function Timeline({
         role="img"
         aria-label={tr('Өдрийн эрэлтийн муруй, одоо {0}, эрэлт {1}%', clockText(minute), Math.round(load * 100))}
       >
-        {/* ⚠️ `vectorEffect` ЗААВАЛ: `preserveAspectRatio="none"` нь зургийг
-            хэвтээ тийш сунгадаг тул түүнгүйгээр зураасны өргөн гажина. */}
-        {/* ⚠️ 2026-10-09: өнгө БҮГД `style`-аар — SVG шинж (`stroke=`) дотор var() задрахгүй
-            (`format.ts`-ийн дүрэм). `var(--text)` гэсэн токен БАЙХГҮЙ байсан → `--ink-3`. */}
         {HOUR_TICKS.map((h) => (
           <line
             key={h}
@@ -176,9 +143,6 @@ export function Timeline({
           x1={markX} y1="0" x2={markX} y2={H}
           style={{ stroke: 'var(--ink-3)', strokeWidth: 1, strokeDasharray: '3 3' }} vectorEffect="non-scaling-stroke"
         />
-        {/* ⚠️ Цэгийг `<circle>` БИШ тэг урттай зураасаар (round cap + non-scaling-stroke):
-            `preserveAspectRatio="none"` нь тойргийг ЗУУВАН болгож сунгадаг байв. Гадна нь
-            гадаргуун цагираг (`CHART.ring`), дотор нь цэг (`CHART.markerR`). */}
         <path
           d={`M${markX},${markY} h0`}
           style={{ stroke: 'var(--sunken)', strokeWidth: (CHART.markerR + CHART.ring) * 2, strokeLinecap: 'round' }}

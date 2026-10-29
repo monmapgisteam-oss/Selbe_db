@@ -25,15 +25,6 @@ import { register } from '@/lib/dataBus';
  * бодит газрын метрээр мэдээлнэ. Тэнхлэг гаргаж чадаагүй объектыг 0 урт гэж тооцохгүй.
  * Тэнхлэг нь ЗӨВХӨН статистикт ашиглагдана. Зургийн сонголтод эх полигон давхаргын
  * ID, шүүлт ба хамрах хүрээг дамжуулж, эх үйлчилгээний рендерерийг хэвээр хэрэглэнэ.
- * ⚠️ Хэмжээ нь ГЕОДЕЗИЙН (3857 → `geodesicArea/Length`) — хоёр талыг ижил аргаар хэмжинэ
- *    (`Shape__Area` нь үйлчилгээ бүрийн проекцоос хамаарч зөрдөг).
- * ⚠️ 2026-10-13 (хэрэглэгч) ХАРЬЦУУЛАЛТ — «хуучин ЕТ» = порталын 13-р хэсэг «Ерөнхий төлөвлөгөө»:
- *    · Автозам — хуучин ЕТ-ийн «Автозам» (TD/85) ↔ шинэ (Redesign/0), ХОЁУЛАА БҮТНЭЭР (`old: 'all'`).
- *      ⚠️ 2026-10-14: урьд «Сэлбэ 1 хил»-ээр (`khil1`) тайрдаг байв — хилийн дагуух замын тэнхлэг хил
- *      дээр/гадна орж тасарч, шинэ урт 20.74 км болж байв; хэрэглэгч бүтэн тэнхлэгийг (37.9 км) өөрөө
- *      бодож шалгасан. Хэрэглэгчийн анхны заавар ч «хуучин ЕТ-ийн яг автозам гэсэн хэсэгтэй».
- *      Харин «Сэлбэ 1 хил»-ээр ЗАДАЛНА (`boundary`): хил дотор · хилээс гадуур · нийт (хэрэглэгч: «зүгээр
- *      хил дотор .. км, хилээс гадуур .. км, нийт .. км гэвэл илүү ойлгомжтой»).
  *    · Дугуйн зам · Явган зам — хуучин ЕТ-ийн «Олон нийтийн бүс» ДОТОРХ хэсэгтэй (`old: 'red'`);
  *    · Бүс — хуучин ба шинэ БҮХ бүсийн тоо, талбай;
  *    · Ногоон байгууламж — хуучин ЕТ-ийн БҮТЭН ногоон полигон (`sb:1`, TD/35) ↔ шинэ зургаан
@@ -110,7 +101,6 @@ export type ChangeRow = {
   centerlineResolutionM: number | null;
   /**
    * «Сэлбэ 1 хил» ДОТОРХ тэнхлэгийн урт (автозам) — гадуурх нь нийт − дотор. Хил татагдаагүй бол `null`.
-   * ⚠️ Хилийн дагуух замын тэнхлэг хил дээр/гадна байж болох тул «гадуур»-т орох нь хэвийн.
    */
   boundary: { oldIn: number | null; nextIn: number } | null;
 };
@@ -150,8 +140,6 @@ async function fetchFeats(id: string, zoneField: string | null, codeField: strin
       start,
       num: 2000,
     });
-    /* ⚠️ 2026-10-19 (аудит): токенгүй `f=pbf` 400 → нэвтрэх цонх хүлээж `computeChange` ХЭЗЭЭ Ч шийдэгддэггүй байв
-       (01-ийн самбар үүрд эргэлддэг) — хугацаатай, цонхгүй PBF → JSON (`planOverlap.queryPageSafe`-ийн ⚠️). */
     const res = await queryPageSafe(u, q);
     for (const f of res.features) {
       if (!f.geometry) continue;
@@ -170,8 +158,6 @@ async function fetchFeats(id: string, zoneField: string | null, codeField: strin
 
 /**
  * Хуучин ЕТ-ийн бүсийг КАНОНИК кодоор давхардалгүй (oid ASC — эхнийх үлдэнэ; кодгүй мөр тус бүр).
- * ⚠️ 2026-10-26 (аудит): `selbe_ET/100`-д X-13 хоёр мөртэй (objectid 12 ба 47) — 01-ийн «бүсийн тоо» 58 гэж тоологддог байв
- *    (анализ, бүсийн шүүлт 57). objectid 12 (нүхтэй) үлдэнэ — `analysis/data.dedupeZoneFeats`-ийн сонголттой нэг.
  */
 export function dedupeZoneCodes<T extends { code?: string }>(fs: T[]): T[] {
   const seen = new Set<string>();
@@ -196,9 +182,6 @@ const union = async (gs: Geom[]): Promise<Geom | null> =>
 
 /**
  * ДАВХАРДАЛГҮЙ ТАЛБАЙ — полигонуудыг НЭГТГЭЭД геодезийн талбай.
- * ⚠️ 2026-10-19 (аудит): урьд нь полигон бүрийн талбайг НЭМДЭГ байв — ногоон байгууламжийн зургаан давхарга (мөн
- *    давхарга доторх) хоорондоо давхцдаг тул давхцсан хэсэг 2–3 дахин тоологдож, бүсийн задлалын хувь 100%-иас
- *    давдаг байлаа. Уртын замын `centerlines` давхаргыг нэгтгэдэгтэй ижил дүрэм.
  */
 const areaOf = async (fs: { geom: Geom }[]): Promise<number> => {
   const u = await union(fs.map((f) => f.geom));
@@ -221,9 +204,6 @@ export function changeBoxUnion(bs: ReadonlyArray<ChangeBox | null | undefined>):
 /**
  * ТӨСЛИЙН ХҮРЭЭНЭЭС ХОЛ («ТЭНЭСЭН») ОБЪЕКТЫГ ХАСНА — хүрээ нь `ref`-ийг `margin`-аар тэлсэнтэй огтлолцохгүй бол.
  * Хүрээгүй (цэг г.м.) объект үлдэнэ; `ref` байхгүй бол юу ч хасахгүй. Цэвэр функц (тест).
- * ⚠️ 2026-10-19 (аудит): хуучин ЕТ-ийн «Автозам» (TD/85) дотор Сэлбээс ХОЛ нэг полигон бий (`ChangeMapFocus`-ийн
- *    2026-10-16-ны ⚠️ — зураг тивийн хэмжээнд холддог байв). Зураг үүнийг тойрсон ч хуучин талын ОБЪЕКТЫН ТОО ба
- *    ТАЛБАЙ-д тоологдсоор байв. Одоо харьцуулалтад орохоос ӨМНӨ хасна.
  */
 export function strayFree<T>(fs: readonly T[], boxOf: (f: T) => ChangeBox | null | undefined, ref: ChangeBox | null, margin: number): T[] {
   if (!ref) return [...fs];
@@ -237,8 +217,6 @@ export function strayFree<T>(fs: readonly T[], boxOf: (f: T) => ChangeBox | null
 const STRAY_GROUND_M = 5_000;
 /**
  * Газрын `groundM` метр → EPSG:3857-ийн нэгж, `y` (3857-ийн өргөрөг) дээр. Цэвэр функц (тест).
- * ⚠️ 2026-10-19 (review): урьд нь 3857-ийн 5 000 нэгжийг шууд хэрэглэдэг тул 47.9°N-д газар дээр ~3.35 км л байв
- *    (3857-ийн масштаб 1/cos(өргөрөг) ≈ 1.49). Одоо `1/cos(φ) = cosh(y / R)` (`hesegNeed`-ийн `metersPerUnit`-тэй ижил).
  */
 export function strayMargin(groundM: number, y: number): number {
   return groundM * Math.cosh(y / 6378137);
@@ -248,12 +226,6 @@ export function strayMargin(groundM: number, y: number): number {
  * Derive all three road types from their supplied polygon layers by the same method. */
 /**
  * ХУУЧИН ЕТ-ИЙН АВТОЗАМЫН УРТ — ХЭРЭГЛЭГЧИЙН ӨГСӨН ЛАВЛАХ ТОО (2026-10-14).
- * ⚠️ TD/85 полигоноос raster skeleton-оор гаргахад жолоо, зогсоолын сам, дотор гарц бүрийн дагуу
- *    салаа гарч «маш замбараагүй» (хэрэглэгч ArcGIS Pro дээр шалгав) — 38.7 км, салаа хайчлахад ч
- *    найдваргүй. Хэрэглэгч ArcGIS Pro дээр өөрөө бодсон тоог ӨГСӨН: «миний өгсөн тоог тавь».
- *    Хуучин талын автозамд тэнхлэг БОДОХГҮЙ. Хэрэглэгчийн Pro үр дүн: НИЙТ 24.19 км = «Сэлбэ 1 хил»
- *    дотор 18.41 км + хилээс гадуур 5.78 км (2026-10-14; урьд 26.7 км гэж буруу ойлгосон байв).
- *    Өгөгдөл шинэчлэгдвэл ЭНЭ ТООГ ГАРААР шинэчилнэ.
  */
 const OLD_ROAD_REFERENCE_M = 24_190;
 /** Дээрхийн «Сэлбэ 1 хил» ДОТОРХ хэсэг (гадуур = нийт − дотор = 5.78 км) */
@@ -261,9 +233,6 @@ const OLD_ROAD_REFERENCE_IN_M = 18_410;
 
 /**
  * Тэнхлэгийг МЕТРИЙН UTM 48N (32648)-д бодно.
- * ⚠️ 2026-10-14: ижил полигон (TD/85) Web Mercator-т 52.3 км, UTM-д 38.7 км гарсан — skeleton-ий
- *    дотоод хязгаарууд координатын нэгжээс хамаардаг. Хэрэглэгчийн ArcGIS-тэй тулгах тоо UTM-ийнх тул
- *    тэнд бодоод үр дүнг 3857 руу буцаана (дараагийн тайралт/геодезийн хэмжилт 3857-д).
  */
 const UTM = new SpatialReference({ wkid: 32648 });
 const WM = new SpatialReference({ wkid: WKID });
@@ -295,14 +264,8 @@ async function centerlines(fs: Feat[]): Promise<{ features: Feat[]; resolutionM:
   return { features, resolutionM, complete };
 }
 
-/** ⚠️ Модулийн кэш (статик төлөвлөгөөний өгөгдөл) — алдаа гарвал устгана */
 let changeCache: Promise<ChangeResult> | null = null;
-/* ⚠️ 2026-10-19 (аудит): толгойн «Шинэчлэх» (`invalidateAll`) хаяна — урьд нь сешн дуустал үлддэг байв */
 register(() => { changeCache = null; }, []);
-/**
- * ⚠️ 2026-10-19 (аудит): БҮХ ТООЦООНЫ ДЭЭД ХУГАЦАА — хуудас бүр `queryPageSafe`-ээр хугацаатай ч геометрийн worker
- *    гацвал самбар үүрд эргэлдэхгүй, алдаа харуулж дараагийн нээлтэд дахин оролдоно.
- */
 const CHANGE_TIMEOUT_MS = 4 * 60_000;
 
 export function computeChange(): Promise<ChangeResult> {
@@ -323,7 +286,6 @@ export function computeChange(): Promise<ChangeResult> {
     const [zones, oldZonesAll, khilF] = await Promise.all([
       load(RD_ZONE, ZONE_FIELD), load(ZONE_LAYER.id, ZONE_FIELDS.type, ZONE_FIELDS.id).then(dedupeZoneCodes), load(KHIL_ID),
     ]);
-    /* ⚠️ 2026-10-19 (аудит): ТӨСЛИЙН ХҮРЭЭ — шинэ бүс + «Сэлбэ 1 хил»; хуучин талаас түүнээс хол объектыг хасна (`strayFree`) */
     const aoi = changeBoxUnion([...zones, ...khilF].map((f) => f.geom.extent));
     const margin = aoi ? strayMargin(STRAY_GROUND_M, (aoi.ymin + aoi.ymax) / 2) : 0;
     const near = (fs: Feat[]) => strayFree(fs, (f) => f.geom.extent, aoi, margin);
@@ -362,7 +324,6 @@ export function computeChange(): Promise<ChangeResult> {
         it.key === 'zone' ? Promise.resolve(zones) : Promise.all(it.next.map((id) => load(id))).then((x) => x.flat()),
       ]);
       const sum = (fs: Feat[]) => fs.reduce((a, f) => a + measure(f.geom, it.metric), 0);
-      /* ⚠️ 2026-10-19 (аудит): ТАЛБАЙ нь нэгтгэсэн полигоноор (`areaOf`-ийн ⚠️); тоо · урт хэвээр */
       const total = (fs: Feat[]): Promise<number> => (it.metric === 'area' ? areaOf(fs) : Promise.resolve(sum(fs)));
       const area = it.old === 'khil' ? khil : it.old === 'red' ? red : null;
       // Object counts and areas continue to use source polygon records, not skeleton edges.
@@ -371,7 +332,7 @@ export function computeChange(): Promise<ChangeResult> {
       let oldFs = oldSource, nextFs = nextSource, centerlineResolutionM: number | null = null;
       let oldLinesComplete = true, nextLinesComplete = true;
       let boundary: ChangeRow['boundary'] = null;
-      /* Хуучин ЕТ-ийн автозам — хэрэглэгчийн лавлах тоо (`OLD_ROAD_REFERENCE_M`-ийн ⚠️), тэнхлэг бодохгүй */
+      /* Хуучин ЕТ-ийн автозам — хэрэглэгчийн лавлах тоо (`OLD_ROAD_REFERENCE_M`), тэнхлэг бодохгүй */
       const oldRef = it.key === 'road' ? OLD_ROAD_REFERENCE_M : null;
       if (it.metric === 'len') {
         // Compute BEFORE all geographic clipping; boundary cuts must not invent new centerline ends.
@@ -387,8 +348,6 @@ export function computeChange(): Promise<ChangeResult> {
           boundary = { oldIn: oldRef != null ? OLD_ROAD_REFERENCE_IN_M : null, nextIn: nIn.reduce((a, f) => a + measure(f.geom, 'len'), 0) };
         }
         nextFs = it.old === 'khil' ? await inArea(nextLines.features, 'len', khil) : nextLines.features;
-        /* ⚠️ 2026-10-14 (хэрэглэгч: «…тэнхлэг бүрэн тооцогдоогүй» анхааруулгыг хасуулсан) — самбарт
-           харуулахгүй; давхарга ачаалагдаагүй зэрэг бусад алдаа `failed`-д хэвээр */
       }
       const next = await total(nextFs);
       const oldSourceComplete = it.old !== null && !it.now.some((id) => failedIds.has(id))
@@ -460,7 +419,7 @@ export function computeChange(): Promise<ChangeResult> {
         }
       } else groups = [];
       groups.sort((a, b) => b.value - a.value);
-      /* ХУУЧИН/ШИНЭ харьцуулалт — дээрх ⚠️. Талбай — нэгтгэсэн полигоноор (`areaOf`) */
+      /* ХУУЧИН/ШИНЭ харьцуулалт — дээрх. Талбай — нэгтгэсэн полигоноор (`areaOf`) */
       const [oldVal, oldArea, nextArea] = await Promise.all([
         oldMeasurement.available ? oldRef != null ? Promise.resolve(oldRef) : total(oldFs) : Promise.resolve(null),
         oldSourceComplete ? areaOf(oldSource) : Promise.resolve(null),
@@ -481,7 +440,7 @@ export function computeChange(): Promise<ChangeResult> {
   })();
   const p = Promise.race([work, late]).finally(() => clearTimeout(timer));
   changeCache = p;
-  /* A transient failed fetch must be retryable on the next visit. ⚠️ Зөвхөн ӨӨРИЙН кэш (дунд нь «Шинэчлэх» орж болно). */
+  /* A transient failed fetch must be retryable on the next visit. Зөвхөн ӨӨРИЙН кэш (дунд нь «Шинэчлэх» орж болно). */
   p.then((r) => { if (r.failed.length && changeCache === p) changeCache = null; },
     () => { if (changeCache === p) changeCache = null; });
   return p;

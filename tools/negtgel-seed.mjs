@@ -4,26 +4,11 @@
  * `selbe_bagts_guitsetgel_negtgel` дээр доод графикууд ЯМАР харагдахыг
  * шалгахын тулд 7 багц × 12 сарын агшин үүсгэнэ.
  *
- * ⚠️ ТУРШИЛТЫН ӨГӨГДӨЛ. Бодит ажиллагаа эхлэхэд `--wipe`-аар БҮГДИЙГ устгаад
- *    цэвэр эхэлнэ. Тиймээс энд бодит дүнг ойролцоолохыг ЗОРИОГҮЙ — зөвхөн
- *    дүрслэл шалгах хэлбэр (S-муруй, хоцрогдол, багц хоорондын ялгаа).
- *
- * ⚠️ Токенгүй ажиллана: мөр нэмэх/устгах нь энэ үйлчилгээнд нээлттэй
- *    (талбарын БҮТЭЦ өөрчлөх нь л admin токен шаарддаг).
- *
  * Ажиллуулах (давхаргын URL-ийг ЗААВАЛ ил өгнө):
- *     node --import ./tools/ts-alias.mjs tools/negtgel-seed.mjs --target=<…/FeatureServer/169>           # мөр нэмнэ
- *     node --import ./tools/ts-alias.mjs tools/negtgel-seed.mjs --target=<…> --wipe    # БҮГДИЙГ устгаад дахин үүсгэнэ
- *     node --import ./tools/ts-alias.mjs tools/negtgel-seed.mjs --target=<…> --clear   # ЗӨВХӨН устгана
+ *     node --import./tools/ts-alias.mjs tools/negtgel-seed.mjs --target=<…/FeatureServer/169>           # мөр нэмнэ
+ *     node --import./tools/ts-alias.mjs tools/negtgel-seed.mjs --target=<…> --wipe    # БҮГДИЙГ устгаад дахин үүсгэнэ
+ *     node --import./tools/ts-alias.mjs tools/negtgel-seed.mjs --target=<…> --clear   # ЗӨВХӨН устгана
  *   Production орг (NEXT_PUBLIC_ARCGIS_HJ / _GAZAR) руу бол `--i-know-this-is-production` нэм.
- *
- * ⚠️ 2026-09-25: PRODUCTION ХАМГААЛАЛТ. Урьд энэ скрипт `.env`-ийн HJ-ээс prod
- *    `selbe_bagts_guitsetgel_negtgel`-ийг өөрөө олж, loader admin токеныг
- *    чимээгүй залгадаг байсан тул нэг `--wipe` бодит нэгтгэлийг бүхэлд нь
- *    устгах боломжтой байв. Одоо: (1) зорилтот URL-ийг `--target`-аар ИЛ өгөхгүй
- *    бол ажиллахгүй; (2) тэр нь prod орг дээр (эсвэл env алга тул тодорхойлох
- *    боломжгүй) бол `--i-know-this-is-production` тугийг шаардана;
- *    (3) loader токен залгахаа больсон (зөвхөн `*.check.mjs`).
  */
 
 const PROD_FLAG = '--i-know-this-is-production';
@@ -38,7 +23,7 @@ if (!/^https?:\/\/\S+\/FeatureServer\/\d+$/i.test(argTarget.replace(/\/+$/, ''))
   process.exit(1);
 }
 const URL_ = argTarget.replace(/\/+$/, '');
-/* Prod оргийн үндэс — ⚠️ 2026-10-20: Сэлбэ Enterprise (`NEXT_PUBLIC_ENT_DATA`-ийн сервер). Env алга бол prod гэж ҮЗНЭ. */
+/* Prod оргийн үндэс — 2026-10-20: Сэлбэ Enterprise (`NEXT_PUBLIC_ENT_DATA`-ийн сервер). Env алга бол prod гэж ҮЗНЭ. */
 const prodRoots = [process.env.NEXT_PUBLIC_ENT_DATA]
   .map((u) => (u ?? '').replace(/\/+$/, '').replace(/\/Hosted$/i, '').replace(/rest\/services$/i, '').replace(/\/*$/, '/').toLowerCase())
   .filter((r) => r !== '/');

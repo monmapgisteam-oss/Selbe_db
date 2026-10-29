@@ -3,25 +3,6 @@
 /**
  * ЭРХИЙГ АККАУНТААР ШУУД ОЛГОХ ХУУДАС — хуваарилалтгүй эрхийн ерөнхий панел
  * (2026-09-30).
- *
- * ⚠️ ЯАГААД (хэрэглэгчийн шийдвэр, 2026-09-30): «Хэрэглэгчдийн эрх удирдах» нь
- *    ЗӨВХӨН харагдац болж, картын «Нэмэлт эрх» унтраалга хасагдав. Энгийн дөрвөн
- *    эрх (Зөвшөөрөл · Санхүү — утга · Санхүү — мөр · Газар, `PLAIN_CAPS`) тус
- *    бүр өөрийн цэстэй болж, ЭНЭ панел тэднийг аккаунтын жагсаалтаар олгоно.
- * ⚠️ 2026-10-12 (хэрэглэгчийн шийдвэр): `superOnly` хэсэг («Админ (super) — шууд олгоно»)
- *    ХАСАГДСАН — хатуу super бүх эрхтэй (`caps.capsOf`), хуудас бүрд нэг бүрчлэн олгохгүй.
- *    Бусдад гаргалгаатай эрх энд олгогдохгүй (`aclOps.capDirectOp` татгалзана).
- * ⚠️ 2026-10-23 (хэрэглэгчийн ШИНЭ шийдвэр — 2026-10-12-ны «жагсаалтад super орохгүй»-г СОЛИНО): ХҮСНЭГТИЙН super
- *    жагсаалтад «админ» шошготой гарч, тоологдоно; эрх нь ХАДГАЛАГДСАН жагсаалтаас (`capsStored` — доошлуулахад үлдэх
- *    эрх), олгож/хасаж болно. Урьд нь `tolovlolt_ahlah_eng` (super, `__cap__` finEdit · finRow · hamaaral …) «Санхүүгийн
- *    бүртгэл» · «Багцын хамаарал засах» жагсаалтад харагддаггүй байв. Зөвхөн КОДЫН (тестийн) super нуугдана.
- * ⚠️ ТҮГЖЭЭ `QaqcAcl`-тай ИЖИЛ: `remoteReady() && capsRemoteReady()` — remote
- *    уншигдаагүй бол `[] ∪ {cap}` бичилт remote-ийн бүтэн жагсаалтыг дарна
- *    (2026-09-21). Жагсаалт нь тэр үед кэшнээс (`capsStored`) гэж ил тэмдэглэгдэнэ.
- * ⚠️ ШУУД ХАДГАЛАГДАНА (2026-08-28-ын дүрэм): ноорог биш — унтраалга дараад
- *    «Хадгалах» мартсанаас эрх ажиллаагүй гомдол гарч байсан.
- * ⚠️ Бичилт `aclOps.capDirectOp` → `caps.toggleCap` — унасан бол `dirtyCapKeys`
- *    тэмдэг ба «Дахин синк» («Хэрэглэгчдийн эрх удирдах»).
  */
 
 import { useEffect, useState } from 'react';
@@ -49,18 +30,13 @@ export function PlainCapAcl({ cap }: { cap: CapKey }) {
   const { busy, err, setErr, run } = useAclRunner(ready);
   const off = locked || busy;
 
-  /* ⚠️ Гараар бичихгүй — порталд БАЙГАА аккаунтаас л сонгоно (`QaqcAcl`-ийн ⚠️).
-     ⚠️ 2026-10-23: зөвхөн КОДЫН super нуугдана (толгойн ⚠️); хүснэгтийн super «админ» шошготой. */
   const users = listUsers()
     .map((u) => u.username)
     .filter((u) => !isCodeSuper(u));
   const isAdmin = (u: string): boolean => roleForUser(u) === 'super';
-  /* ⚠️ 2026-10-23: super-т ХАДГАЛАГДСАН жагсаалт — `capsOf` super-т бүх эрх өгдөг */
   const stored = (u: string): CapKey[] | null => (isAdmin(u) ? capsStored(u) : null);
-  /* ⚠️ Remote-гүй бол кэш (`capsStored`) — `capsOf` [] тул худал «эрхгүй» дүр зурна (2026-09-21) */
   const has = (u: string): boolean => (stored(u) ?? (locked ? capsStored(u) : capsOf(u))).includes(cap);
   const holders = users.filter(has);
-  /* ⚠️ 2026-10-23: сонгогчид Enterprise порталд алга гэж батлагдсан аккаунт гарахгүй */
   const free = users.filter((u) => !has(u) && !portalMissing(u));
   const dirtyCaps = new Set(dirtyCapKeys());
   const dirtyPerms = new Set(dirtyKeys());
@@ -94,7 +70,6 @@ export function PlainCapAcl({ cap }: { cap: CapKey }) {
               disabled={off || free.length === 0}
               aria-label={tr('Аккаунт сонгох…')}
             >
-              {/* ⚠️ 2026-10-23 (UX аудит A2): хоосон бол ЯАГААД — шинэ (хадгалаагүй) аккаунт энд гарахгүй */}
               <option value="">{free.length ? tr('Аккаунт сонгох…') : tr('Чөлөөтэй аккаунт алга — шинэ аккаунтыг эхлээд «Хадгалах» дарна уу')}</option>
               {free.map((a) => <option key={a} value={a}>{isAdmin(a) ? `${a} (${tr('админ')})` : a}</option>)}
             </select>

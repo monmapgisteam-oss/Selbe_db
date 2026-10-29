@@ -1,10 +1,6 @@
 /**
  * МИНИМАЛ XLSX БИЧИГЧИЙН ШАЛГУУР — цэвэр, сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/xlsx.check.mjs
- *
- * ⚠️ 2026-10-12: гаралтын ZIP-ийг Node-оор ӨӨРӨӨ задална (STORE тул `zlib` хэрэггүй — local
- *    header-ийн offset-оор уншина), XML-ийг regex-ээр шалгана: нүдний утга · merge · frozen ·
- *    загвар · UTF-8 кирилл · CRC32 · хуудасны нэрийн дүрэм · XML escape.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/xlsx.check.mjs
  */
 import assert from 'node:assert/strict';
 import { buildXlsx, cellRef, colLetter, crc32, esc, sheetName, zipStore } from './xlsx.ts';
@@ -182,7 +178,6 @@ assert.ok(!pst.includes('<numFmts') && pst.includes('<cellXfs count="1">'), 'з�
 assert.ok(dec.decode(plain.get('xl/worksheets/sheet1.xml')).includes('<c r="B1"><v>1</v></c>'), 'загваргүй тоо s attr-гүй байх ёстой');
 console.log('✅ хоосон хуудас · хуудасгүй алдаа · загваргүй гаралт');
 
-/* ⚠️ 2026-10-19: XML-д хориотой удирдлагын тэмдэгт хасагдана (`docx.clean`-тэй ижил) — Excel «эвдэрсэн файл» гэхгүй */
 assert.equal(esc('a\u0000b\u0008c\u000Bd\u000Ce\u001Ff￾'), 'abcdef', 'хориотой тэмдэгт хасагдана');
 assert.equal(esc('t\tn\nr\r'), 't\tn\nr\r', 'таб · мөр таслал хэвээр');
 const ctl = unzipStore(buildXlsx([{ name: 'C', rows: [['x\u0001y']] }]));

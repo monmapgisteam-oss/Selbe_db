@@ -18,19 +18,6 @@ import { num, pct, text } from '@/lib/format';
 const HUE = LAYER_BY_ID['mon:building'].hue;
 const F = BUILDING.fields;
 
-/**
- * ⚠️ ГҮЙЦЭТГЭЛИЙН БҮХ ТОО «Гүйцэтгэл бөглөх»-ийн `Bagts_*` ХУУДСУУДААС
- * (`sheet/sheetRows.ts`) — shapefile-ийн `GUITS_HV` ба 16 үе шатын талбар
- * ХУУЧИРСАН тул энэ хуудсанд ОГТ хэрэглэхгүй. Барилгын давхаргаас зөвхөн
- * гүйцэтгэлгүй шинж чанар (айл, давхар, гүйцэтгэгч, FID) авна — тэдгээр нь
- * бөглөх хуудсанд байхгүй.
- *
- * ⚠️ 2026-08-27: урьд нь энэ модуль `Selbe_guitsetgel_consolidated` нэгтгэсэн
- * хүснэгтээс уншдаг байсныг СОЛИВ — тэр үйлчилгээг эзэн нь дахин зохион
- * байгуулж эхэлснээр талбарууд алга болж, дараа нь бүхэлдээ хаагдсан (499).
- * `TASK_SHEET`-ээс одоо зөвхөн ШОШГЫН тогтмол (`constructionNo`, `subPhaseNos`)
- * л авна — тэр үйлчилгээний URL руу асуулга ЯВАХГҮЙ.
- */
 
 /** null/хоосон утгыг НЭГ бүлэгт (ArcGIS null ба ' '-г тусад нь буцаадаг) */
 const UNKNOWN = () => tr('Тодорхойгүй');
@@ -38,20 +25,9 @@ const UNKNOWN = () => tr('Тодорхойгүй');
 /* ─────────────── Бөглөх хуудасны мөрийн кэш ─────────────── */
 
 /**
- * ⚠️ `loadSheetRows` ӨӨРӨӨ КЭШГҮЙ. `block` параметр нь зөвхөн `outFields`-ийг
- * нарийсгадаг бөгөөд мөрийн тоог ОГТ буулгадаггүй (`where` нь
- * `fillDate IS NOT NULL`) — нэг блокийн дуудлага ч багцын БҮХ агшны 27,400
- * мөрийг 14 дараалсан хуудсаар, ~5 МБ-аар татна. `useTaskPerf` нь
- * `[bagts, blok]`-оор дахин ажилладаг тул барилга дарах БҮРД тэр бүтэн скан
- * дахин явж, блокоо буцааж дарахад ч дахин татагдаж байв (~11 с, 28 хүсэлт).
- *
  * Тиймээс дуудлагын түлхүүрээр кэшлэнэ — `blockProgress.ts`-ийн
  * `memo(fn, ['BAGTS_SHEET'])` загвараар: бөглөх хуудсанд бичмэгц `dataBus`
  * кэшийг хаяж, тоо шууд шинэчлэгдэнэ.
- *
- * ⚠️ Багтаамжийг ХЯЗГААРЛАНА: бичлэг бүр ~5 МБ тул хязгааргүй өсгөвөл олон
- * блок дараалан үзэхэд санах ой дүүрнэ. Сүүлийн `MAX_SHEET_CACHE` дуудлага л
- * үлдэнэ — «нааш цааш дарах» гэсэн бодит хэв маягийг бүрэн барина.
  */
 const MAX_SHEET_CACHE = 4;
 const sheetCache = new Map<string, Promise<SheetRow[]>>();
@@ -66,7 +42,6 @@ function cachedSheetRows(opts: SheetRowOpts): Promise<SheetRow[]> {
     sheetCache.set(key, hit);
     return hit;
   }
-  // ⚠️ Алдааг кэшлэхгүй: түр зуурын «Too many requests» сесс дуустал наалдана.
   const p = loadSheetRows(opts).catch((e) => { sheetCache.delete(key); throw e; });
   sheetCache.set(key, p);
   while (sheetCache.size > MAX_SHEET_CACHE) {
@@ -87,10 +62,6 @@ export type Block = {
   contractor: string;
   /** Өрхийн тоо — `AIL_TOO` хоосон бол 0 БОЛОВЧ `ailMissing = true` (нийлбэрт «дутуу» гэж тэмдэглэ) */
   ail: number;
-  /**
-   * ⚠️ 2026-10-09: `AIL_TOO` ХООСОН (null ≠ 0). `ail`-ийг `number` хэвээр үлдээв — `Bagts.tsx`,
-   * `execReport` г.м. нийлбэрлэгчид тоо хүлээдэг; хоосныг энэ тугаар (мөн `householdsMissing`) ялгана.
-   */
   ailMissing?: boolean;
   floors: number | null;
   /** «Б.» мөрийн гүйцэтгэл 0–100; бөглөгдөөгүй бол null */
@@ -107,8 +78,6 @@ type Agg = {
   keys: string[];
   blocks: number;
   ail: number;
-  /* ⚠️ 2026-10-06: `progress` (`meanOf` — зөвхөн хэмжигдсэн блокийн дундаж, ХУУЧИН дүрэм)
-     ХАСАГДСАН — хаана ч уншигддаггүй байв; багцын хувь `pkgPct`-ээс (`loadBuildings`). */
 };
 
 /** Дундаж — бөглөгдөөгүй блокийг ОРУУЛАХГҮЙ (0 гэж тоовол дундаж худал буурна) */
@@ -119,9 +88,6 @@ const meanOf = (vals: (number | null)[]) => {
 
 /**
  * ТҮЛХҮҮР БҮРЭЭС НЭГ feature — тоолол/дунджид (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- * ⚠️ Давхаргад ижил `buildingKey`-тэй ХОЁР полигон бий (БАГЦ1|29/1, БАГЦ2|5/6) — хэмжилт
- *    НЭГ, тиймээс блок · айл · дундаж нэг удаа тоологдоно. Газрын зургийн шүүлтийн OID-ууд
- *    (`oids`) БҮХ feature-ийг хэвээр агуулна (давхардсан полигон ч зурагт тодорно).
  */
 export function uniqueBlocks<B extends { key: string }>(bs: readonly B[]): B[] {
   const seen = new Set<string>();
@@ -136,7 +102,6 @@ function aggregate(blocks: Block[], keyOf: (b: Block) => string): Agg[] {
     if (a) a.push(b); else m.set(k, [b]);
   }
   return [...m].map(([key, bs]) => {
-    /* ⚠️ 2026-10-01: тоо/дундаж түлхүүрээр (`uniqueBlocks`), OID нь бүх feature */
     const u = uniqueBlocks(bs);
     return {
       key,
@@ -151,20 +116,12 @@ function aggregate(blocks: Block[], keyOf: (b: Block) => string): Agg[] {
 /**
  * Барилгын блокуудын нэгдсэн гүйцэтгэл — нэгтгэсэн хүснэгтийн as-of утгаар.
  * `loadBlockProgress` нь cache-тэй тул газрын зургийн өнгө, tooltip, баруун самбартай
- * ЯГ нэг эх сурвалж. ⚠️ 2026-10-01: хэрэглэгддэггүй `BuildingSummary` (зүүн баганын
+ * ЯГ нэг эх сурвалж. 2026-10-01: хэрэглэгддэггүй `BuildingSummary` (зүүн баганын
  * хуучин самбар) УСТГАВ — git түүхэнд бий.
- */
-/**
- * ⚠️ 2026-09-17: ачаалагч нь hook-оос САЛСАН — «Удирдлагын тайлан»
- * (`src/lib/execReport.ts`) React-гүй орчинд (PDF/инфографик угсрах) ЯГ
- * ИЖИЛ багцын тоог хэрэглэнэ. Hook нь урьдын адил ажиллана.
  */
 
 /**
  * ГАЗРЫН ЗУРГИЙН ТҮЛХҮҮРИЙН ЗӨРҮҮ → console (ЗӨВХӨН хөгжүүлэлтийн горим, сешнд нэг удаа).
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): давхардсан полигон, footprint-гүй хэмжилт,
- *    багцын нэр буруу байж болзошгүй блокийг админ ArcGIS дээр засахад зориулсан жагсаалт.
- *    Тоонд нөлөөгүй (`uniqueBlocks` · `pkgProgressOf` — бөглөх хуудасны хуваариар).
  */
 let mapKeysWarned = false;
 function warnMapKeys(featureKeys: string[], measured: Iterable<string>): void {
@@ -193,10 +150,7 @@ export async function loadBuildings() {
       }),
       loadBlockProgress(),
       loadBlockHistory(),
-      /* ⚠️ 2026-10-01: бөглөх хуудасны блокийн хуваарь — тайлагнаагүй блок 0% */
       loadBlockUniverse(),
-      /* ⚠️ 2026-10-13: блокгүй багцын (5.x · 6.x · 7.1 · 10) 01-ийн батлагдсан гүйцэтгэл — зөвхөн БАГЦЫН
-         хувьд (`pkgPct`); блокийн жагсаалт/дундажид ОРОХГҮЙ (`blockProgress.loadInfraProgress`-ийн ⚠️) */
       loadInfraProgress(),
     ]);
 
@@ -219,7 +173,6 @@ export async function loadBuildings() {
         key,
         bagts: text(r[F.bagts], '').trim(),
         blok: text(r[F.block], '').trim(),
-        /* ⚠️ 2026-10-09: хоосон нүдийг 0 гэж НУУХГҮЙ — `ailMissing` (`Block.ailMissing`-ийн ⚠️) */
         ...((): { ail: number; ailMissing: boolean } => {
           const raw = r[F.households];
           const v = raw == null || raw === '' ? NaN : Number(raw);
@@ -232,24 +185,12 @@ export async function loadBuildings() {
       };
     });
 
-    /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ТОО БҮР түлхүүрээр (`uniqueBlocks`) —
-       давхардсан feature (БАГЦ1|29/1, БАГЦ2|5/6) блок · айл · дундаж · түвшинд нэг удаа.
-       `rows` (feature бүр) ба шүүлтийн `oids` нь хэвээр — зурагт бүх полигон тодорно. */
     const uniq = uniqueBlocks(blocks);
     const withData = uniq.filter((b) => b.progress != null);
-    /* ⚠️ 2026-10-01: ЗӨВХӨН хөгжүүлэлтийн горимд — газрын зургийн түлхүүрийн зөрүүг админд
-       засуулах жагсаалт (`blockProgress.mapKeyIssues`). Өгөгдлийг ЭНД засахгүй. */
     if (process.env.NODE_ENV !== 'production') warnMapKeys(blocks.map((b) => b.key), prog.keys());
-    /* ⚠️ 2026-09-30: БАГЦЫН хувь — хэмжилтийн нүднээс (`pkgProgressOf`), feature-ээр
-       БИШ: давхардсан feature (29/1, 5/6) ба footprint-гүй хэмжилт (29/3, 5/8)-аас
-       болж Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалтаас зөрдөг байв.
-       ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): хуваарь = бөглөх хуудасны БҮХ блок (`uni`),
-       тайлагнаагүй блок 0%. */
     const pkgPct = new Map<string, number>();
     for (const [k, v] of pkgProgressOf(prog, uni)) pkgPct.set(k, v.pct);
-    /* ⚠️ 2026-10-13: блокгүй багц — түлхүүр блоктойгоос ДАВХЦАХГҮЙ (дээрх `loadInfraProgress`) */
     for (const [k, v] of infraPct) if (!pkgPct.has(k)) pkgPct.set(k, v.pct);
-    /* ⚠️ 2026-10-01: төслийн БҮХ блокийн хуваарь — нийт дундаж ба цувааны анхдагч хүрээ */
     const allKeys = universeKeys(prog, uni);
 
     return {
@@ -257,20 +198,11 @@ export async function loadBuildings() {
       rows: blocks,
       /**
        * `bagtsKey` → багцын гүйцэтгэл (0–100) — `buildPacks(rows, pkgPct)`-д дамжуулна.
-       * ⚠️ 2026-10-01: тайлагнаагүй багц 0%; зөвхөн хуваарьгүй (хуудас уншигдаагүй)
-       *    багц Map-д ОРОХГҮЙ.
        */
       pkgPct,
       blocks: uniq.length,
       households: uniq.reduce((s, b) => s + b.ail, 0),
-      /**
-       * ⚠️ 2026-10-09: `AIL_TOO` хоосон блокийн тоо — > 0 бол `households` ДУТУУ нийлбэр; `=== blocks`
-       * бол өрхийн мэдээлэл огт алга («—»). `households` нь `execReport`-ийн `number` төрлийг
-       * хадгалахын тулд тоо хэвээр — харуулагч энэ тоогоор ялгана.
-       */
       householdsMissing: uniq.filter((b) => b.ailMissing).length,
-      /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): бүх блокийн дундаж (тайлагнаагүй 0%) —
-         урьд нь зөвхөн утгатай блокийн дундаж (`meanOf`) байв. */
       progress: latestMean(prog, allKeys).pct,
       floors: meanOf(uniq.map((b) => b.floors)),
       /** Хүснэгтэд хараахан бөглөгдөөгүй блок */
@@ -284,14 +216,9 @@ export async function loadBuildings() {
 
       /**
        * Блок бүрийн хэмжилт — түвшний тоолол (`blockProgress.levelCounts(prog, keys)`).
-       * ⚠️ 2026-10-06: урьдын `levels` (зөвхөн хэмжигдсэн, газрын зургийн блокоор — ХУУЧИН
-       *    дүрэм) хэрэглэгддэггүй байсан тул УСТГАВ; Удирдлагын тайлан ба 05 «Блокийн төлөв»
-       *    Дашбоардтай нэг дүрмээр үүгээр тоолно.
        */
       prog,
 
-      /* ⚠️ 2026-09-30: багцын `progress` = `pkgPct` (дээрх ⚠️) — feature-ийн дундаж БИШ */
-      /* ⚠️ 2026-10-01: цувааны `keys` — тэр багцын бөглөх хуудасны хуваарь (хувьтай нэг) */
       bagts: aggregate(blocks, (b) => b.bagts)
         .map((g) => {
           const bk = bagtsKey(g.key);
@@ -340,7 +267,6 @@ function BlockTrend({ hist, blockKey }: { hist: BlockHistory; blockKey: string }
   return (
     <Section title={tr('Барилга угсралтын явц')} note={tr('{0} хэмжилт', pts.length)}>
       <Col gap="md">
-        {/* ⚠️ 2026-10-26 (UX U7): утга сонгогч — таб биш, нийтлэг `Segmented` капсул */}
         <Segmented value={grain} onChange={setGrain} label={tr('Цувааны алхам')}
           options={GRAINS.map((g) => ({ value: g.key, label: g.label }))} />
         <Trend
@@ -361,10 +287,6 @@ function BlockTrend({ hist, blockKey }: { hist: BlockHistory; blockKey: string }
 /**
  * Хуудсын багцын нэр нь давхаргынхаас ӨӨР бичигддэг («Багц 4.1» ↔ «Багц 4-1»)
  * тул давхаргын нэрийг шууд тааруулж болохгүй — `bagtsKey`-ээр жишнэ.
- *
- * ⚠️ Урьд нь нэгтгэсэн хүснэгтээс `returnDistinctValues`-ээр ТАТДАГ байв.
- * Бөглөх хуудас бүр өөрийн багцтай нэг-нэгээр таарах тул одоо бүртгэлээс шууд
- * гарна — сүлжээний хүсэлт огт шаардлагагүй.
  */
 const matchBagts = (layerBagts: string): string | null =>
   sheetBagtsNames().find((n) => bagtsKey(n) === bagtsKey(layerBagts)) ?? null;
@@ -388,13 +310,6 @@ type BagtsData = { name: string; asOf: string; blocks: number; works: BagtsWork[
  * толгой мөрийн түвшин нь ≤ өөрийнх (өөрөөр хэлбэл доор нь ЗӨВХӨН навч ажил).
  * Ингэснээр «3. ТӨМӨР БЕТОН РАМЫН АЖИЛ» (дэд толгойтой) хасагдаж, «3.2 · 1-р
  * давхар цутгалт» үлдэнэ.
- *
- * ⚠️ Түлхүүр нь № БИШ, АЖЛЫН НЭР: excel-ийн «3.10» ArcGIS-д «3.1» болж
- * хураагдсан тул 9 давхар блокийн «Техникийн давхар цутгалт» ба 12 давхар
- * блокийн «10-р давхар цутгалт» ХОЁУЛАА «3.11» дугаартай.
- *
- * ⚠️ Блок бүрийн утга нь бүх огнооны ХАМГИЙН ИХ нь (`progressSeries`-тэй ижил
- * дүрэм): угсралт буудаггүй, дутуу тайлан хиймэл бууралт үүсгэнэ.
  */
 function useBagtsWorks(layerBagts: string | null): Async<BagtsData | null> {
   return useAsync(async () => {
@@ -418,8 +333,6 @@ function useBagtsWorks(layerBagts: string | null): Async<BagtsData | null> {
       const arr = batches.get(k);
       if (arr) arr.push(r); else batches.set(k, [r]);
     }
-    // ⚠️ Хуудсын МӨРИЙН ДАРААЛАЛ (`ord`) нь толгой↔навч харьцааг үүрдэг —
-    //    уншигч нь багц бүрийг зэрэг татдаг тул энд дахин эрэмбэлнэ.
     for (const arr of batches.values()) arr.sort((a, b) => a.ord - b.ord);
 
     /** ажлын нэр → блок → хамгийн их % */
@@ -495,7 +408,7 @@ export function MonitorBagts({ bagts }: { bagts: string }) {
                 items={d.works.map((w) => ({
                   key: `${w.no}|${w.name}`,
                   label: w.name,
-                  value: w.pct ?? null, // ⚠️ 2026-10-09: `?? 0` → null — Bars дүүргэлтгүй (null ≠ 0)
+                  value: w.pct ?? null,
                   display: w.pct == null ? tr('мэдээлэлгүй') : tr('{0} · {1} блок', pct(w.pct, 1), num(w.blocks)),
                 }))}
               />
@@ -519,14 +432,6 @@ export type TaskPerfData = {
   done: number;                // дууссан (гүйц ≥ 1)
   inProgress: number;          // явцтай (0 < гүйц < 1)
   notStarted: number;          // эхлээгүй — ЯГ 0 бичигдсэн (null ОРОХГҮЙ)
-  /**
-   * ⚠️ Бөглөгдөөгүй (null) навч ажил. Урьд нь `progress ?? 0` гэж 0 болгоод
-   * `notStarted` руу нийлүүлдэг байсан тул «хэмжилт байхгүй» ба «эхлээгүй»
-   * хоёр ялгагдахгүй, Багц 1·9F дээр «Эхлээгүй» гэж харагдах нүдний ~93% нь
-   * (20096 null vs 1520 яг 0) хэмжилт БИШ хоосон нүд байв. `sheetRows.ts:47`
-   * дээр энэ талбар «Бөглөөгүй нүд `null`» гэж ил тодорхойлогдсон бөгөөд
-   * `blockProgress.compute`, `Finance`, `meanOf` бүгд null-ыг САНААТАЙ хасдаг.
-   */
   noData: number;
   /** Энэ блокийн «Б.» мөрийн түүх — явцын муруйд */
   hist: BlockHistory;
@@ -546,18 +451,10 @@ type SectionRow = SheetRow & { section: string };
 /**
  * ХЭСГИЙН НЭРИЙГ СТАМПАЛНА — навч мөрийн хэсэг нь хуудасны дараалал дахь
  * дээрх хамгийн ойрын ТОЛГОЙ мөр (түвшин ≠ 5).
- *
- * ⚠️ Урьд нь энэ нь `ags.applySections` байсан бөгөөд нэгтгэсэн хүснэгтийн
- * `angilal_b` талбарт бичдэг байв. Бөглөх хуудсанд тийм багана БАЙХГҮЙ тул
- * хэсгийг зөвхөн МӨРИЙН ДАРААЛЛААС гаргана — агшин ба блок тус бүрд тусад нь
- * (нэг агшны дотор хуудас бүхэлдээ давтагддаг).
  */
 function stampSections(rows: SheetRow[]): SectionRow[] {
   const batches = new Map<string, SheetRow[]>();
   for (const r of rows) {
-      // ⚠️ Батчийн түлхүүрт ХУУЛБАР (`sheet`+`snap`) ЗААВАЛ орно: нэг өдөрт
-      //    хуудас хоёр ч удаа нийтлэгдэж болох бөгөөд зөвхөн огноогоор багцлавал
-      //    хоёр хуулбар нийлж толгой↔навч харьцаа эвдэрнэ.
     const k = `${r.sheet}#${r.snap}|${r.block}`;
     const arr = batches.get(k);
     if (arr) arr.push(r); else batches.set(k, [r]);
@@ -582,14 +479,6 @@ function stampSections(rows: SheetRow[]): SectionRow[] {
  *                зургийн өнгөтэй ЯГ нэг эх сурвалж, Бэлтгэл ажил ОРОХГҮЙ)
  *   үе шат       «Б1»…«Б5» мөрүүд
  *   ажлын төлөв  «Б.»-ийн доорх навч мөрүүд (Түвшин 5), as-of сүүлийн утгаар
- *
- * ⚠️ БЛОКИЙН НЭР БАГЦААР ДАВТАГДАНА («5/1» долоон багцад тус бүрдээ өөр барилга)
- * тул `barilga_blok LIKE`-аас гадна Багцаар ЗААВАЛ шүүнэ.
- *
- * ⚠️ Дуудагч (ViewPanel-ийн MonitorPanel) НЭГ УДАА дуудаж `MonitorGeneral` ба
- * `MonitorDetail`-д prop-оор өгнө. Урьд нь хоёулаа тус тусдаа дууддаг байсан
- * тул хуудаслалттай ижил хүнд queryAll (блокийн түүх 2000+ мөр давдаг) барилга
- * сонгох бүрд ХОЁР ДАВХАР явдаг байв.
  */
 export function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null> {
   const blok = b?.blok ?? null;
@@ -600,9 +489,6 @@ export function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null
       // Зөвхөн ЭНЭ блокийн багана татагдана — уншигч нь `block`-оор outFields-ээ
       // нарийсгадаг тул хүсэлт багц бүхэлдээ татахаас хамаагүй хөнгөн.
       bagts ? cachedSheetRows({ group: bagts, block: blok }) : Promise.resolve([]),
-      /* ⚠️ 2026-09-25 аудит: `.catch(() => null)` БАЙХГҮЙ — ачаалалт унахад `cell`
-         нь null болж блок «бөглөөгүй» гэж ХУДАЛ харагддаг байв. Одоо алдаа
-         `useAsync`-ийн error төлөвт (дахин оролдох товчтой) очно. */
       loadBlockProgress(),
       loadBlockHistory(),
     ]);
@@ -644,18 +530,11 @@ export function useTaskPerf(b: PickedBuilding | null): Async<TaskPerfData | null
     let done = 0, inProgress = 0, notStarted = 0, noData = 0;
     for (const [k, r] of win) {
       if (r.level !== 5) continue;
-      /* ⚠️ Үе шатыг ТЭНЦҮҮГЭЭР бус нормчлолын НЭГ дүрмээр жишнэ
-       *    (`services.isConstructionNo`): Багц 2·12F ба Багц 3.2·9F-д тэр нүд
-       *    «Б» гэж ЦЭГГҮЙ бичигдсэн тул `=== 'Б.'` шалгуур нэг ч навч ажил
-       *    тоолохгүй, «ажлын төлөв» самбар тэр барилгуудад ОГТ гарахгүй байв. */
       if (!isConstructionNo(phase.get(k))) continue;
-      // ⚠️ null ≠ 0: бөглөгдөөгүй нүдийг «эхлээгүй» рүү нийлүүлэхгүй.
       const p = r.progress;
       if (p == null) noData += 1;
       else if (p >= 1) done += 1; else if (p > 0) inProgress += 1; else notStarted += 1;
     }
-    // ⚠️ `taskCount` нь НИЙТ навч ажлын тоо (мэдээлэлгүй ч орно) — «задаргаа N
-    //    ажлаар» гэсэн хамрах хүрээг илэрхийлдэг тул тоо нь өөрчлөгдөхгүй.
     const taskCount = done + inProgress + notStarted + noData;
     if (!taskCount && !cell) return null;
 
@@ -695,13 +574,9 @@ export function pickedBuilding(
 
 /**
  * ЗҮҮН — барилгын ЕРӨНХИЙ гүйцэтгэл: нийт % + ажлын төлөв.
- * ⚠️ ЗӨВХӨН «Гүйцэтгэл бөглөх»-ийн нэгтгэсэн хүснэгт — shapefile талбар БИШ.
- * ⚠️ `b`/`q`-г дуудагч НЭГ УДАА бэлдэж өгнө (`useTaskPerf`-ийн тайлбар) —
- *    энд өөрөө дуудвал `MonitorDetail`-тай давхар хүсэлт явна.
  */
 export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
-    /* ⚠️ 2026-10-23 (UX аудит X6): хоосон төлөв ДАРААГИЙН алхмыг хэлнэ */
     return <Section><Empty label={tr('Барилга сонгоогүй байна.')} hint={tr('Газрын зураг дээрх барилга дээр дарж сонгоно уу.')} /></Section>;
   }
   return (
@@ -712,10 +587,6 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
           <>
             <Section tone="primary" title={tr('{0} — нийт гүйцэтгэл', b.blok)} note={d.version}>
               <Col gap="sm">
-                {/* ⚠️ `null` ШУУД (2026-09-25 аудит) — `?? 0` нь бөглөгдөөгүйг «0%» цагираг
-                    болгож null ≠ 0 дүрмийг зөрчиж байв; `Ring` өөрөө «—» зурна. */}
-                {/* ⚠️ 2026-10-09: 104/11 → стандарт 'md' (120, зузаан 10%). HUE — газрын зургийн
-                    давхаргын identity өнгө тул хэвээр. */}
                 <Ring value={d.overall} color={HUE} size="md" label={tr('угсралт')} />
                 <Note>
                   {d.overall == null
@@ -726,8 +597,6 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
             </Section>
 
             <Section title={tr('Ажлын төлөв')} note={tr('{0} ажил', num(d.taskCount))}>
-              {/* ⚠️ «Мэдээлэлгүй» нь ЗААВАЛ тусдаа нүд — бөглөгдөөгүй ажлыг
-                  «Эхлээгүй» рүү нийлүүлбэл тайлан чимээгүй худал болно. */}
               <Stats cols={4}>
                 <Stat value={num(d.done)} unit={tr('ажил')} label={tr('Дууссан')} color="var(--good)" />
                 <Stat value={num(d.inProgress)} unit={tr('ажил')} label={tr('Явцтай')} color={HUE} accent />
@@ -744,8 +613,6 @@ export function MonitorGeneral({ b, q }: { b: PickedBuilding | null; q: Async<Ta
 
 /**
  * БАРУУН — ажлын ДЭЛГЭРЭНГҮЙ гүйцэтгэл: Б1…Б5 дэд үе шат.
- * ⚠️ ЗӨВХӨН «Гүйцэтгэл бөглөх»-ийн нэгтгэсэн хүснэгт.
- * ⚠️ `b`/`q`-г дуудагч НЭГ УДАА бэлдэж өгнө (`useTaskPerf`-ийн тайлбар).
  */
 export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<TaskPerfData | null> }) {
   if (!b) {
@@ -768,7 +635,7 @@ export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<Tas
                   items={d.headers.map((h, i) => ({
                     key: `${i}:${h.name}`,
                     label: h.name,
-                    value: h.progress ?? null, // ⚠️ 2026-10-09: `?? 0` → null (null ≠ 0)
+                    value: h.progress ?? null,
                     display: h.progress == null ? tr('мэдээлэлгүй') : pct(h.progress, 0),
                   }))}
                 />

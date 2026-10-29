@@ -1,7 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-// ⚠️ THEME_KEY-г 'use client' модулиас (theme.tsx) импортлохгүй: сервер компонентэд
-//    тэр нь client reference proxy болж, доорх THEME_INIT-д функцын эх код шингэн
-//    inline script эвдэрдэг байв. Заавал энгийн модулиас (themeKey.ts).
 import { ThemeProvider } from '@/lib/theme';
 import { LocaleProvider } from '@/lib/i18n';
 import { SkipLink } from '@/components/SkipLink';
@@ -15,12 +12,7 @@ import './globals.css';
 // стайл ирж анивчна (FOUC), код засахад CSS алга болно. Эдгээрийг root layout
 // (сервер, prerender) дээр урьдчилан импортлон `<head>`-д байнга байлгана.
 // ponytail: SPA бүх модулио ачаалдаг тул CSS-ийг тусад нь хуваах утгагүй.
-// ⚠️ 2026-08-17: `survey.module.css`-ийг ЖАГСААЛТААС хасав — түүний классуудыг
-//    ямар ч компонент импортлодоггүй (зөвхөн энд байсан) тул критик замд дэмий
-//    ачаа байлаа. Файл нь өөрөө хэвээр.
 import './shell.module.css';
-/* ⚠️ 2026-08-25: overview.module.css-ийг сэдэв тус бүрээр салгасан (хэрэглэгчийн
-   хүсэлт — харагдацууд стайл хуваалцахгүй). Урьдчилсан ачаалалд бүгдийг жагсаана. */
 import '@/modules/bagtsOv.module.css';
 import '@/modules/dashboardOv.module.css';
 import '@/modules/gazarOv.module.css';
@@ -48,50 +40,25 @@ import '@/components/home.module.css';
 import '@/components/swatch.module.css';
 import '@/components/opacity.module.css';
 import '@/components/map.module.css';
-// ⚠️ 2026-08-20: `MapTools`-ийн pill. Энэ жагсаалтад ОРООГҮЙ байсан тул зурган
-//    дээрх хэрэгслийн зурвас СТАЙЛГҮЙ (товчнууд босоо овоолсон) гарч байлаа —
-//    файлын толгойд бичсэн яг тэр шалтгаан: модулийн CSS async chunk-д орж,
-//    dev дээр `<head>`-д хүрэхгүй.
 import '@/components/mapTools.module.css';
 import '@/components/ui.module.css';
 import '@/components/catalog.module.css';
 import '@/components/tree.module.css';
-// ⚠️ 2026-10-23: Environment — порталын чирэгддэг 3 багана (`ResizableColumns`)
 import '@/components/resizableColumns.module.css';
 
 /**
- * ⚠️ 2026-08-17: ГАНЦХАН гэр бүл — INTER (envhub «Environment» порталын дизайн
- * хэлийг бүрэн дуурайв). Тэнд хоёр дахь фонт хориотой: тоон утга ч, гарчиг ч,
- * тайлбар ч бүгд Inter, зөвхөн хэмжээ/жин/tracking-ээр ялгарна. Тоон
- * зэрэгцүүлэлтийг mono фонт БИШ `.num` (tabular-nums) хийнэ.
- *
  * `--mono`, `--cond` токенууд `globals.css`-д мөн Inter руу заадаг болсон тул
  * тэдгээрийг хэрэглэдэг бүх CSS өөрчлөлтгүй ажиллана.
  */
-/* ⚠️ 2026-10-21: Inter нь РЕПОД (`public/fonts/inter/`, `globals.css`-ийн @font-face · `--font-sans`). Урьд нь
-   `next/font/google` dev сервер асах бүрд · CI build бүрд Google-ээс татдаг байсан тул ачаалалтай/сүлжээ муу үед
-   «Request timed out after 3000ms · Retrying» гарч эхний хуудас удаашралтай байв. Ижил variable фонт (wght 100–900),
-   ижил дэд олонлог (latin · latin-ext · cyrillic · cyrillic-ext, unicode-range-аар хэрэгтэйг л татна). */
 
 export const metadata: Metadata = {
   title: 'Сэлбэ — Орон зайн мэдээллийн портал',
   description:
     'Сэлбэ дэд төвийн орон зайн мэдээллийн портал. Багцын хил, бүсчлэл, барилгын явц, газар чөлөөлөлт, инженерийн шугам сүлжээ, талбайн хяналтын үзүүлэлт — ArcGIS үйлчилгээнээс шууд.',
-  /* ⚠️ 2026-09-09: selbe.monmap.mn → smart.selbecity.mn (домэйн солигдов).
-     ⚠️ 2026-10-09 (аудит): урьдын «`CNAME` файл custom domain-ийг удирддаг, deploy бүр
-     дарж бичдэг» гэсэн тайлбар БУРУУ байв — `actions/deploy-pages`-ээр deploy хийхэд
-     GitHub `CNAME` файлыг ҮЛ ТООМСОРЛОНО; домэйн нь зөвхөн repo → Settings → Pages →
-     Custom domain-оос ирнэ. Домэйн солихдоо: (1) Settings → Pages-д шинэ домэйн,
-     (2) энэ `metadataBase`, (3) `CNAME` файлуудыг (үндэс + public/, баримт/өөр хэрэгслийн
-     тулд үлдээв) ХАМТ солино. */
   metadataBase: new URL('https://smart.selbecity.mn'),
   // favicon.ico байхгүйгээс 404 гарч байсан — SVG лого нь бүх орчин үеийн browser-т favicon болно
   icons: { icon: '/logo.svg' },
   manifest: '/manifest.json',
-  /* ⚠️ 2026-10-09: `<meta name="referrer">` — гадаад холбоос (хавсралт, ArcGIS-ийн бус хаяг) руу
-     хуудасны БҮТЭН URL (`?v=…`, багц/мөрийн id) задрахгүй, зөвхөн эх (origin). Статик export тул HTTP
-     толгой тавих боломжгүй — meta-аар. `no-referrer` БИШ: ArcGIS-ийн referrer-хязгаартай
-     токен/үйлчилгээ эхийг (Referer: https://smart.selbecity.mn/) шаарддаг. */
   referrer: 'strict-origin-when-cross-origin',
   openGraph: {
     type: 'website',
@@ -104,15 +71,6 @@ export const metadata: Metadata = {
 
 /*
  * ХАРАГДАХ ТАЛБАР (viewport).
- *
- * ⚠️ `viewportFit: 'cover'` (2026-09-16) — эс тэгвээс iPhone-ий «зүсэлт»
- * (notch, Dynamic Island) ба доод заагчийн бүсэд хуудас ОГТ хүрэхгүй, дэлгэцийн
- * дээд/доод талд хар зурвас үлддэг. `cover`-тэй хамт `env(safe-area-inset-*)`
- * ажиллаж эхэлнэ — `globals.css` тэдгээрийг `body`-ийн padding-д хэрэглэнэ.
- *
- * ⚠️ `maximumScale`/`userScalable` ТАВИХГҮЙ: томруулахыг хориглох нь
- * хараа муутай хэрэглэгчийг гацаана. Порталд нягт хүснэгт олонтой тул
- * томруулах нь ЗАЙЛШГҮЙ хэрэгтэй.
  */
 export const viewport: Viewport = {
   width: 'device-width',
@@ -121,13 +79,6 @@ export const viewport: Viewport = {
 };
 
 // Гэрэл асах анивчилтыг (FOUC) зайлуулах — React ачаалахаас өмнө горимоо тавина.
-// ⚠️ 2026-08-17: envhub шиг АНХДАГЧ нь DARK (урьд нь системийн тохиргоог дагадаг
-// байв). Хэрэглэгчийн сонгосон горим (localStorage) ямагт давамгайлна.
-// ⚠️ 2026-08-18: Хадгалагдсан утгыг ШАЛГАНА. Урьд нь localStorage-ийн юуг ч
-// шууд `data-theme`-д тавьдаг байв — хуучирсан/эвдэрсэн утга (жиш. 'auto',
-// хагас бичигдсэн мөр) нь `[data-theme='dark']`-т ч, `[data-theme='light']`-д ч
-// тохирохгүй тул каскад `:root` дээр унаж, DARK анхдагчийн оронд ЦАЙВАР горим
-// нээгддэг байлаа.
 const THEME_INIT = `
 try {
   var t = localStorage.getItem('${THEME_KEY}');
@@ -146,9 +97,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Табын гарчгийг хэлээр нь солино — metadata нь статик prerender тул
             клиент талд л боломжтой (олдвор #37) */}
         <DocumentTitle />
-        {/* ⚠️ Хамгийн гадна давхаргын алдааны хашлага (олдвор #9): аль нэг
-            компонентын рендерийн throw бүх root-ыг unmount хийж, статик
-            export тул Next-ийн стайлгүй англи алдааны хуудас л үлддэг байв. */}
         <ErrorBoundary>
           <LocaleProvider>
             <ThemeProvider>{children}</ThemeProvider>

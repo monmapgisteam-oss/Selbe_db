@@ -1,6 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
 import { ENT_PORTAL, entExactUser, entSession, entStamp, entUploadPdf } from '@/lib/entDocs';
-/** ⚠️ 2026-10-23: FIC · М-актын PDF item-ийн таг — баримт бичгийн сангаас ялгана (`docLib.isFmPdf`) */
 export const FM_TAG = 'selbe-fm';
 import { ENT_HOSTED } from '@/lib/services/env';
 import { chainOf, latestPerRespNo, loadMa, type MaRow, type Verdict } from '@/lib/ma';
@@ -20,11 +19,6 @@ import { fromDateInput } from '@/modules/chanar/chanarUi';
  *
  * ХАДГАЛАЛТ: Enterprise hosted хүснэгт `Selbe_Chanar_FIC_MAKT` (мөр бүр = нэг баримт: төрөл · MA дугаар ·
  * PDF item id · төлөв · батлагч). Анх хэрэгтэй үед зохиогч үүсгэнэ (`tableUrl(true)`), байгууллагад хуваалцана.
- * ⚠️ Нэр байгууллагад аль хэдийн эзлэгдсэн бол ҮҮСГЭХГҮЙ (`isServiceNameAvailable`) — давхар хүснэгт баримтыг хуваана
- *    (`chanarStore`-ын 2026-10-04 сургамж).
- * ⚠️ Бүх хандалт Enterprise токентой (`entSession`) — хүснэгт байгууллагад л нээлттэй; токен POST биеэр.
- * ⚠️ ArcGIS алдаа HTTP 200-аар `{error}`; `applyEdits`-ийн мөр бүрийн `success`-ийг шалгана.
- * ⚠️ Өөрийн оруулсан баримтыг өөрөө батлахгүй (`decideFm`).
  */
 export const FM_TITLE = 'Selbe_Chanar_FIC_MAKT';
 const TABLE_NAME = 'fic_makt';
@@ -80,7 +74,6 @@ export function fmRowOf(a: Record<string, unknown>): FmRow {
  * MA-гийн FIC эсвэл М-акт шат (`chainOf` оролт):
  *   · баримт алга → `undefined` (хүлээгдэж буй); аль нэг A/AN → 'A';
  *   · батлагдсан алга, шийдвэр хүлээж буй байгаа → `null`; бүгд R → 'R'.
- * ⚠️ Явцын үзлэг (FIC) олон удаа байж болно — НЭГ батлагдсан нь шатыг нээнэ.
  */
 export function fmVerdictFor(rows: readonly FmRow[] | undefined): Verdict | null | undefined {
   if (!rows?.length) return undefined;
@@ -129,12 +122,6 @@ async function post<T>(url: string, params: Record<string, string>): Promise<T> 
 
 let urlCache: string | null = null;
 
-/**
- * ⚠️ 2026-10-21 (Enterprise руу бүрэн шилжилт): ЭХЛЭЭД ШУУД ХАЯГААР — Enterprise hosted үйлчилгээний нэр нь item-ийн
- *    нэртэй ижил (`createTable`-ийн `name`), хүснэгт `/0`. Урьд нь зөвхөн порталын ХАЙЛТААР олдог тул хүснэгт
- *    үүссэний дараах хайлтын индексийн хоцролтын үед өөр хэрэглэгч «олдсонгүй» → `createTable` → «нэр эзлэгдсэн»
- *    алдаа авдаг байв. Шууд хаяг олдохгүй (404 · хуучин нэртэй) бол хайлт руу шилжинэ.
- */
 async function directTable(): Promise<string | null> {
   if (!ENT_HOSTED) return null;
   const url = `${ENT_HOSTED}/${FM_TITLE}/FeatureServer/0`;
@@ -157,8 +144,6 @@ async function findTable(): Promise<string | null> {
 }
 
 async function createTable(): Promise<string> {
-  /* ⚠️ 2026-10-21: `content/users/{u}/…` нь порталын ЯГ нэрийг шаарддаг — `sess().user` (`currentUser`) жижиг үсэгт
-     хөрвүүлэгдсэн тул том үсэгтэй нэртэй зохиогчид `createService`/`share` зөрдөг байв (`entDocs.exactUser`-ийн ⚠️). */
   const user = await entExactUser();
   const avail = await post<{ available?: boolean }>(`${rest()}/portals/self/isServiceNameAvailable`, { name: FM_TITLE, type: 'Feature Service' });
   if (avail.available !== true) throw new Error(tr('«{0}» хүснэгт байгууллагад бий боловч танд харагдахгүй байна — админд мэдэгдэнэ үү (эзэмшигч нь байгууллагад хуваалцах ёстой).', FM_TITLE));
@@ -199,16 +184,9 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
   return urlCache;
 }
 
-/* ⚠️ 2026-10-21: OID нь Enterprise-д `objectid` (ЖИЖИГ үсэг) — энэ модуль query.ts-ийн хөрвүүлэгчийг тойрч шууд fetch хийдэг тул
-   `OBJECTID` гэж илгээвэл 500 «Field name 'OBJECTID' does not exist» (FIC · М-акт буюу чанарын 3–4-р шат огт ажиллахгүй байв).
-   Хүснэгтийг ч `objectid`-тэй үүсгэнэ; уншихдаа хоёр хэлбэрийг хүлээнэ (`fmRowOf`). */
 /** Хүснэгтийн мөрүүд — `where`-ээр, хуудаслалттай (`fmRowOf`) */
 async function queryFm(url: string, where: string): Promise<FmRow[]> {
   const out: FmRow[] = [];
-  /* ⚠️ 2026-10-09 (аудит №6): ХУУДАСЛАЛТ — урьд нь `resultRecordCount: 2000` НЭГ хүсэлт байв: 2000-аас дээш
-     баримт (эсвэл үйлчилгээний `maxRecordCount` бага бол түүнээс дээш) чимээгүй алга болж, FIC/М-акт шат
-     «хүлээгдэж буй» гэж худал гардаг. `chanarStore.query`-ийн загвар: `resultOffset` давталт, `orderByFields`
-     ЗААВАЛ, `exceededTransferLimit`-ээр таслана (`fs.length`-ээр БИШ). */
   for (let off = 0; ; ) {
     const j = await post<{ features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean }>(`${url}/query`, {
       where, outFields: '*', orderByFields: 'objectid DESC', resultOffset: String(off), resultRecordCount: '1000',
@@ -230,16 +208,6 @@ export async function loadFm(): Promise<FmRow[]> {
 
 /* ═══════════════ ЭРХ · ХҮРЭЭ · ГИНЖ (серверийн өгөгдлөөр) ═══════════════ */
 
-/**
- * ⚠️ 2026-10-09 (аудит №6): БИЧИХ ЗАМЫН ЭРХ LIB-Д. Урьд нь `addFm` · `decideFm` зөвхөн `entSession()` ба
- *    «өөрийн оруулсныг биш»-ийг шалгадаг, `chanarAuthor`/`chanarReview` эрх, багцын хүрээ, өмнөх шатны
- *    батлагдсан эсэх (`locked`) ба `pending` төлөв нь ЗӨВХӨН UI (`Ma.tsx` → `FmColumn`) байв — консолоос
- *    хэн ч батлагдсан мөрийг R болгож, хаалттай шатанд PDF оруулж чаддаг. `chanarStore.actor`/`authorDeny`
- *    ба `attachDeny`-ийн загвар: эрх `requireCap`, хүрээ `chanarAcl` (нэвтрэлт асаалттай хөтөчид л — `strict`),
- *    төлөв/гинж СЕРВЕРИЙН мөрөөс.
- * ⚠️ MA мөрийн `pkg` нь хуудасны түлхүүр («b1_9f»), чанарын ACL нь багцын бүлэг («Багц 1») — `PKGS`-ээр хөрвүүлнэ;
- *    танигдахгүй бол FAIL-CLOSED.
- */
 const strict = (): boolean => typeof window !== 'undefined' && !!AUTH.appId;
 
 async function maOf(maNo: string): Promise<{ ma: MaRow; bagts: string }> {
@@ -250,13 +218,6 @@ async function maOf(maNo: string): Promise<{ ma: MaRow; bagts: string }> {
   return { ma, bagts };
 }
 
-/**
- * ⚠️ 2026-10-19 (аудит): ӨӨРИЙГӨӨ БАТЛАХ ШАЛГУУРЫН ХЭН — AGOL хэрэглэгчийн нэр (`currentUser`), эрх · хүрээтэй (`requireCap` ·
- *    `chanarAcl`) НЭГ таних тэмдэг. Урьд нь `uploaded_by`/`decided_by` нь Enterprise сешний нэр (`s.user`) байсан тул
- *    нэг хүн AGOL дээр ирүүлэгч, Enterprise-д өөр дансаар (эсвэл өөр хүний Enterprise сешнээр) нэвтэрвэл өөрийн
- *    оруулсныг батлах боломжтой байв. Enterprise нь зөвхөн ТЭЭВЭР (PDF item · хүснэгтийн токен).
- *    `currentUser` хоосон (Node / нэвтрэлт унтраалттай) бол Enterprise нэр — урьдын зан.
- */
 const actorOf = (s: { user: string }): string => (currentUser() ?? s.user).trim().toLowerCase();
 /** Өөрийн оруулсан мөр үү — AGOL нэр, эсвэл ХУУЧИН мөрийн Enterprise нэр (2026-10-19-нөөс өмнө бичигдсэн) */
 export const isOwnUpload = (uploadedBy: string, actor: string, entUser: string): boolean => {
@@ -276,9 +237,6 @@ function scopeDeny(role: 'author' | 'review', bagts: string): void {
 
 /**
  * PDF оруулж баримт нэмнэ: 1) PDF → Enterprise item (байгууллагад хуваалцсан) 2) хүснэгтэд мөр (төлөв pending).
- * ⚠️ 2-р алхам унавал item үүссэн хэвээр — алдааны мессежид item-ийн ID-г хэлнэ (дахин оруулбал давхардана).
- * ⚠️ 2026-10-09 (аудит №6): `chanarAuthor` + багцын хүрээ + ӨМНӨХ ШАТ (MA → MIR → FIC) серверийн өгөгдлөөр —
- *    `chainOf` тухайн шатыг `locked` гэвэл татгалзана (UI-ийн `locked`-той ИЖИЛ дүрэм, PDF item үүсэхээс ӨМНӨ).
  */
 export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docDate: string; file: File }): Promise<{ warn?: string }> {
   const s = sess();
@@ -298,42 +256,31 @@ export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docD
     throw new Error(tr('Өмнөх шат батлагдаагүй — {0} оруулах боломжгүй.', a.kind === 'FIC' ? 'FIC' : tr('М-акт')));
   }
   const title = `${a.kind === 'FIC' ? 'FIC' : 'М-акт'} · ${a.docNo || a.file.name.replace(/\.pdf$/i, '')} · ${a.maNo}`;
-  /* ⚠️ 2026-10-23 (хэрэглэгч: «PDF оруулах Enterprise-ийн folder-ууд»): FIC → «FIC pdf», М-акт → «m-akt pdf» хавтас; `selbe-fm` таг —
-     баримт бичгийн сан (`docLib.listPdfs`) эдгээрийг ялгаж ХАРУУЛАХГҮЙ */
   const { item, warn } = await entUploadPdf(a.file, title, [FM_TAG], a.kind === 'FIC' ? 'FIC pdf' : 'm-akt pdf');
-  /* ⚠️ 2026-10-09 (аудит №6): ОРОН НУТГИЙН шөнө дунд (`fromDateInput`) — урьд нь `T00:00:00Z` (UTC) тул
-     бусад чанарын огноотой (`chanarUi`) 8 цагаар зөрж, өдөр хойшилж харагддаг байв. */
   const dd = fromDateInput(a.docDate);
   try {
     const j = await post<{ addResults?: { success?: boolean; error?: { description?: string } }[] }>(`${url}/applyEdits`, {
       adds: JSON.stringify([{ attributes: {
         [F.kind]: a.kind, [F.maNo]: a.maNo, [F.docNo]: a.docNo.slice(0, 60) || null, [F.docDate]: dd,
         [F.pdfItem]: item.id, [F.pdfName]: a.file.name.slice(0, 255), [F.status]: 'pending',
-        /* ⚠️ 2026-10-19 (аудит): AGOL нэр (`actorOf`) — Enterprise сешний нэр биш */
         [F.uploadedBy]: actorOf(s), [F.uploadedAt]: Date.now(),
       } }]),
     });
     const r = j.addResults?.[0];
     if (!r?.success) throw new Error(r?.error?.description || tr('Мөр нэмэгдсэнгүй.'));
   } catch (e) {
-    /* ⚠️ 2026-10-23 (UX аудит X2 · X3): хэрэглэгч геопорталын item устгах эрхгүй — «админд мэдэгдэнэ үү», ID нь админд */
     throw new Error(tr('PDF хадгалагдсан боловч бүртгэл нэмэгдсэнгүй: {1}. Дахин оруулбал давхардана — админд мэдэгдэнэ үү (файлын дугаар: {0}).', item.id, (e as Error).message));
   }
   return { warn };
 }
 
 /**
- * Батлах / буцаах. ⚠️ Өөрийн оруулсныг батлахгүй; R бол шалтгаан заавал.
- * ⚠️ 2026-10-09 (аудит №6): `chanarReview` + багцын хүрээ; мөрийг СЕРВЕРЭЭС дахин уншиж `pending` биш бол
- *    татгалзана — урьд нь батлагдсан (A) мөрийг дуудагчийн хуучин `row`-оор R болгож дахин бичих боломжтой байв.
- *    «Өөрийн оруулсныг биш»-ийг ч серверийн `uploaded_by`-оор шалгана.
+ * Батлах / буцаах. Өөрийн оруулсныг батлахгүй; R бол шалтгаан заавал.
  */
 export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Promise<void> {
   const s = sess();
   requireCap('chanarReview');
   if (verdict === 'R' && !reason.trim()) throw new Error(tr('Буцаах шалтгаанаа бичнэ үү.'));
-  /* ⚠️ 2026-10-23 (UX аудит Q1): AN = «саналтай зөвшөөрсөн» — санал нь шийдвэрийн утга тул заавал (урьд нь
-     хоосон саналтай AN хадгалагддаг байв). UI товчийг хаадаг ч сервер рүү бичихийн өмнө энд дахин шалгана. */
   if (verdict === 'AN' && !reason.trim()) throw new Error(tr('AN шийдвэрт саналаа бичнэ үү.'));
   const url = await tableUrl(false);
   if (!url) throw new Error(tr('FIC · М-актын хүснэгт олдсонгүй.'));
@@ -341,10 +288,6 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
      доорх /calculate-ийн WHERE-ээр сервер дээр тэр төлөвийг нэг UPDATE дотор шалгана. */
   const { ma, bagts } = await maOf(row.maNo);
   scopeDeny('review', bagts);
-  /* ⚠️ 2026-10-12 (дарааллын аудит): ГИНЖИЙН ШАТ ХААЛТТАЙ бол ШИЙДВЭР ГАРГАХГҮЙ (`addFm`-ийн ижил `chainOf` шалгалт).
-     Урьд нь зөвхөн оруулахад шалгадаг тул оруулсны ДАРАА өмнөх шат буцаагдсан (MIR R → FIC `locked`, FIC R → М-акт
-     `locked`) бол хянагч хаалттай шатны баримтыг батлаж, `ipcReady` гинжийг дундуур нь нөхөх боломжтой байв. Хүлээж
-     буй шат (`next`/`pending`) — шийдвэрлэж болно. Уншилт `pending` уншилтаас ӨМНӨ (дээрх 2026-10-11-ний завсрын дүрэм). */
   const [mirs, fmAll] = await Promise.all([loadMir(), queryFm(url, `${F.maNo} = N'${row.maNo.replace(/'/g, "''")}'`)]);
   const stage = chainOf(ma.verdict, {
     MIR: mirVerdictFor(mirsByMa(mirs).get(row.maNo)),
@@ -357,7 +300,6 @@ export async function decideFm(row: FmRow, verdict: Verdict, reason: string): Pr
   if (!Number.isSafeInteger(row.oid) || row.oid <= 0) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
   const fresh = (await queryFm(url, `objectid = ${Number(row.oid)}`))[0];
   if (!fresh) throw new Error(tr('Баримт олдсонгүй — устгагдсан байж магадгүй.'));
-  /* ⚠️ 2026-10-19 (аудит): AGOL нэрээр (`actorOf`) — хуучин мөрийн Enterprise нэртэй ч тулгана (`isOwnUpload`) */
   const actor = actorOf(s);
   if (isOwnUpload(fresh.uploadedBy, actor, s.user)) throw new Error(tr('Өөрийн оруулсан баримтыг өөрөө батлах боломжгүй.'));
   if (fresh.status !== 'pending') throw new Error(tr('Баримт аль хэдийн шийдвэрлэгдсэн ({0}) — дахин шийдвэрлэхгүй.', fresh.status));

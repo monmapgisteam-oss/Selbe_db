@@ -1,8 +1,7 @@
 /**
  * ХАБ-ЫН БҮРТГЭЛ · ХОГ ХАЯГДАЛ — уншилт ба бичилт (хуурамч fetch, сүлжээгүй). 2026-10-09.
- * ⚠️ `.ui.` — `habeaRegisters` нь `habeaUzleg.prevWeek`-ийг (tsx, css) импортлодог тул UI горимын ачаалагч.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/habeaRegisters.ui.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/habeaRegisters.ui.check.mjs
  *
  * Хамгаалж буй алдаа:
  *  1. Долоо хоногийн хил хөтчийн ЛОКАЛ цагаар (UB биш) — үзлэгийн KPI-аас 8 цагаар зөрнө.
@@ -11,11 +10,11 @@
  *  4. Хуудаслалтгүй (≤2000) уншилт — `orderByFields` + `resultOffset`.
  *  5. ХАРИУ АЛДАГДСАН нэмэлтийг сохроор дахин илгээж ДАВХАРДУУЛАХ — GlobalID / тоогоор шалгана.
  *  6. `invalidate('HABEA')` зөвхөн амжилтад — алдагдсан хариунд карт хуучин үлдэнэ.
- *  7. ⚠️ 2026-10-19: Enterprise руу бичилт НЭРГҮЙ явдаг байв — сешнгүй бол илгээхгүй, сешнтэй бол токен POST биеэр.
- *  8. ⚠️ 2026-10-19: «Сайжруулалт» — мөргүй долоо хоног 0 БИШ `null`; он талбаргүй хүснэгтэд утга + «оны ялгаагүй»
+ *  7. 2026-10-19: Enterprise руу бичилт НЭРГҮЙ явдаг байв — сешнгүй бол илгээхгүй, сешнтэй бол токен POST биеэр.
+ *  8. 2026-10-19: «Сайжруулалт» — мөргүй долоо хоног 0 БИШ `null`; он талбаргүй хүснэгтэд утга + «оны ялгаагүй»
  *     тэмдэглэл (`null` биш); `max(week)` асуулга унавал бүх ачаалалт унахгүй.
- * 10. ⚠️ 2026-10-19: `NEXT_PUBLIC_ENT_PORTAL_URL` хоосон — бичилт урьдын адил нэргүй (production эвдрэхгүй).
- *  9. ⚠️ 2026-10-19: талбарын англи шошго Enterprise-ийн ЖИЖИГ үсэгтэй нэрэнд ч таарна.
+ * 10. 2026-10-19: `NEXT_PUBLIC_ENT_PORTAL_URL` хоосон — бичилт урьдын адил нэргүй (production эвдрэхгүй).
+ *  9. 2026-10-19: талбарын англи шошго Enterprise-ийн ЖИЖИГ үсэгтэй нэрэнд ч таарна.
  */
 import assert from 'node:assert/strict';
 
@@ -131,20 +130,16 @@ try {
     assert.equal(calls[0].p.orderByFields, 'objectid', 'хуудаслалт OID-ээр эрэмбэлнэ');
     assert.equal(calls[1].p.resultOffset, '2');
     assert.deepEqual(d.weeks, [40, 41], 'хоосон Week → 0-р долоо хоног БИШ');
-    /* ⚠️ 2026-10-09: карт ЗӨВХӨН өмнөх бүтэн долоо хоногийг (40) нийлүүлнэ */
     assert.equal(d.weekNo, 40, 'өмнөх бүтэн долоо хоног');
     const beton = d.rows.find((r) => r.metric === 'Бетон (рейс)').byPkg;
     assert.equal(beton['Багц 1'], 2, '40-р долоо хоногийн мөр');
     assert.equal('Багц 2' in beton, false, 'хоосон нүд 0 болж нэмэгдэхгүй; Week хоосон мөр орохгүй (null ≠ 0)');
     assert.equal(d.rows.find((r) => r.metric === 'Ахуйн хог (рейс)'), undefined, '41-р долоо хоног орохгүй');
-    /* ⚠️ 2026-10-09 (аудит): 41 = явагдаж буй долоо хоног — олон он БИШ */
     assert.equal(d.multiYear, false, 'нэг оны өгөгдөл');
     /* 2027-ийн 2-р долоо хоногт (өмнөх = 1) 40, 41 нь өнгөрсөн оных → он ялгагдаагүйг ил хэлнэ */
     const d2 = await R.loadHabeaWaste(new Date('2027-01-13T12:00:00+08:00'));
     assert.equal(d2.weekNo, 1);
     assert.equal(d2.multiYear, true, 'олон оны өгөгдөл илэрнэ');
-    /* ⚠️ 2026-10-09 (аудит №2): ганц алдаатай/урьдчилан оруулсан ирээдүйн долоо хоног олон он БИШ —
-       зөвхөн `weekNo`-оос ≥ 8 долоо хоногоор хойших дугаар л өнгөрсөн оных */
     assert.equal(R.MULTI_YEAR_GAP, 8);
     assert.equal(R.isMultiYear([38, 39, 40, 44], 40), false, '40-р долоо хоногт 44 — шивэх алдаа / урьдчилсан оруулга');
     assert.equal(R.isMultiYear([40, 41, 47], 40), false, '+7 — босгоос доош');
@@ -170,7 +165,6 @@ try {
     assert.equal(R.parseCanCreate(undefined), null, 'метадатагүй → тодорхойгүй');
     handler = () => ({ capabilities: 'Query' });
     assert.equal(await R.loadWasteCanCreate(), false);
-    /* ⚠️ 2026-10-09 (аудит №2): AGOL байгууллагын админ — `community/self`.role === 'org_admin' */
     assert.equal(R.isOrgAdminRole('org_admin'), true);
     for (const r of ['org_publisher', 'org_user', 'account_admin', '', null, undefined]) assert.equal(R.isOrgAdminRole(r), false, String(r));
     assert.equal(await R.loadIsOrgAdmin(), false, 'Node / нэвтрэлтгүй → false (хүсэлт явахгүй)');

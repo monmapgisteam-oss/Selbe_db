@@ -19,7 +19,6 @@ import { ROW_CAP, kpiComplete } from './kpi.ts';
 import { VAR_BAD_MNT } from '../kpiLevels.ts';
 
 const PKG_N = 10;
-/* ⚠️ 2026-10-11 (аудит №7): `pkg` = бүлэг («Багц 1»), `sheet` = хуудас («Багц 1 · 9 давхар») */
 const w = (sheet, no, work, vol, sum, unit) => ({
   pkg: sheet.split(' · ')[0], sheet, no, work, vol, sum, unit, mnt: (sum - vol) * unit,
 });
@@ -57,13 +56,9 @@ const base = (all, failedPkgs = 0) => ({
   assert.equal(r.failedSources.length, 1);
   assert.ok(r.failedSources[0].includes('10'));
   assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: PKG_N }, PKG_N), 'unknown');
-  /* ⚠️ `measurable` (2026-09-17): блокгүй 14 багц хэмжигдэхгүй тул хэмжигдэх 10
-     бүгд унасан ч `failedPkgs (10) < PKG_N (18)` → урьд нь худал 'good' байв. */
   assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 10, measurable: 10 }, PKG_N), 'unknown', 'measurable нь pkgCount-аас эрхэм');
-  /* ⚠️ 2026-10-06: хэсэгчилсэн уналт + хэтрэлтгүй → «warn» (урьд нь худал 'good') */
   assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 3, measurable: 10 }, PKG_N), 'warn');
   assert.equal(varianceLevel({ works: 0, totalMnt: 0, failedPkgs: 0, measurable: 10 }, PKG_N), 'good');
-  /* ⚠️ 2026-10-21: хэсэгчлэн унасан + хэтрэлтгүй → «—» хэвээр (дүн дутуу — «0 ₮» гэж худал хэлэхгүй), кэшлэгдэхгүй */
   const part = computeVariance(base([], 3), PKG_N);
   assert.equal(part.value, '—', 'хэсэгчлэн унасан үед «0 ₮» биш');
   assert.equal(kpiComplete(part), false, 'дутуу үр дүн — `kpiComplete` false → `cached` хаяна');
@@ -85,7 +80,6 @@ const ALL = [
   assert.equal(r.unit, 'зөрүү');
 
   const t0 = r.tables[0];
-  /* ⚠️ 2026-10-11 (аудит №7): «Багц» (бүлэг) + «Бөглөх хуудас» — 9 багана, индекс +1 */
   assert.equal(t0.cols.length, 9);
   assert.equal(t0.cols[0], 'Багц');
   assert.equal(t0.rows.length, ALL.length, 'хүснэгт = БҮХ хэтэрсэн ажил');
@@ -139,7 +133,6 @@ const ALL = [
 
 /* ── 4b. (2026-10-21) Ачаалагч `kpiComplete`-ийг `cached`-ийн 4 дэх аргументаар дамжуулна — эх кодоос тулгана ── */
 {
-  /* ⚠️ тайлбарыг ЭХЛЭЭД хасна — тайлбар дотор «`BAGTS_SHEET`);» мэт текст regex-ийг эрт тасалдаг */
   const src = readFileSync(new URL('./variance.ts', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   const m = /loadVarianceKpi\s*=\s*cached\(([\s\S]*?)\);/.exec(src);
   assert.ok(m, 'loadVarianceKpi = cached(…) олдсонгүй');

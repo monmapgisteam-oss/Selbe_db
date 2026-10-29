@@ -5,50 +5,6 @@
  * Эх сурвалж: ХАБЭА-гийн өдрийн хүн хүчний тайлан (`HABEA.labor`, Survey123).
  * НЭГ мөр = НЭГ өдрийн НЭГДСЭН тайлан; гүйцэтгэгч бүр өөрийн дагавартай
  * баганын бүлэгтэй (`laborCompanyFields(sfx)`), толгойд нь нийт дүн бий.
- *
- * ⚠️ АЛБАН ЁСНЫ ТОО = КОМПАНИУДЫН НИЙЛБЭР, толгойн `Niit_ajiltan` БИШ.
- *    Толгойн дүнг маягт бөглөгч гараар засдаг тул компанийн нийлбэртэй ЯГ
- *    таардаггүй (Habea.tsx: 231,568 ↔ 231,926). Компанийн задаргаа нь
- *    хүснэгттэйгээ нийлэх ёстой тул түүнийг нь ЭХ гэж авна; толгойн дүнг
- *    `detail.headerWorkers`-д ил үлдээнэ (зөрвөл хэрэглэгч харна).
- *    Хүн-цаг нь ЗӨВХӨН толгойд байдаг (`Hun_tsag`) тул тэндээс уншина.
- *
- * ⚠️ ӨДРИЙН ТҮЛХҮҮР — УЛААНБААТАРЫН (+08:00) ХУАНЛИЙН ӨДӨР. `toISOString()`
- *    UTC-ээр огтолдог тул УБ-ын 00:00–08:00-д тэмдэглэсэн тайлан ӨМНӨХ өдөрт
- *    унана. Хөтчийн бүсэд ч найдахгүй (гадаадаас нээвэл өөр өдөр гарна).
- *
- * ⚠️ НЭГ ӨДӨРТ ОЛОН МӨР байж болно (засвар, давхар илгээлт — амьд өгөгдөлд
- *    228 өдрийн 3 нь давхар). Нийлбэрлэвэл тэр өдөр давхар тоологдоно
- *    (Habea.tsx-ийн `byDaySeries` ингэдэг); ЭНД өдөр бүрээс ХАМГИЙН СҮҮЛИЙН
- *    мөрийг л авна — «сүүлийн тайлан» бол засварласан хувилбар нь.
- *
- * ⚠️ «СҮҮЛИЙН» = max `Ognoo` → тэнцвэл max `EditDate` → тэнцвэл max `objectid`.
- *    `Ognoo` нь ОГНОО-л (амьд 231 мөрийн 229 нь яг 04:00Z = УБ 12:00) тул
- *    давхар өдрийн мөрүүд ЯГ ИЖИЛ `Ognoo`-той — зөвхөн түүгээр таслах
- *    боломжгүй, «эхэнд ирсэн» нь серверийн тогтворгүй эрэмбэ (2026-09-06:
- *    ижил query `resultRecordCount`-той/гүй үед oid263/266-г өөр дарааллаар
- *    буцаав). 2026-08-21-нд oid255 (247 ажилтан) сонгогдож, засварласан
- *    oid256 (389, EditDate их)-г алгасаж байв. Survey123-ийн `EditDate` нь
- *    засвар бүрд шинэчлэгддэг (давхар 3 өдөрт max EditDate = max objectid),
- *    `objectid` нь дахин илгээлтэд өснө. Хэдэн мөр давхарласныг `rowsInDay`-д,
- *    сонгосон мөрийн дугаарыг `oid`-д хадгална. Серверийн эрэмбэ ч мөн
- *    `Ognoo DESC, objectid DESC` — 2000 мөр давахад хуудаслалт тогтвортой.
- *
- * ⚠️ ГҮЙЦЭТГЭГЧ ТАЙЛАНГҮЙ ≠ 0 АЖИЛТАНТАЙ. Маягтын `Niit_ajiltan_<SFX>` нь
- *    гүйцэтгэгч репитэд ороогүй үед ч 0 гэж (null БИШ) бичигддэг тул
- *    «хоосон эсэх»-ийг талбараас мэдэх боломжгүй. Тиймээс сүүлийн тайланд
- *    ажилтан ч, техник ч 0 боловч өмнөх 7 хоногт нэг ч удаа тоотой байсан
- *    компанийг «тайлангүй» гэж ТУСАД НЬ тэмдэглэнэ — нийлбэрт 0-оор орно
- *    (тайлан дээр байхгүй = талбай дээр тоологдоогүй), харин issue-д гарна.
- *    ⚠️ 2026-10-21 (аудит): тийм компанитай үед НИЙТ ДУТУУ (`detail.incomplete`),
- *    баримт «нийт дутуу» гэж хэлнэ, түвшин ядаж 'warn' — 0-оор орсон компани
- *    нийтийг жинхэнээсээ бага харуулж буйг «сайн» гэж баталж болохгүй.
- *
- * ⚠️ `null` ≠ 0: сүүлийн мөрөнд НЭГ Ч компанийн ажилтны талбар байхгүй бол
- *    ажилтны нийлбэр `null` («—»), 0 биш. Техник нь ТУСДАА туг — бүх
- *    `Tehnik_<SFX>` хоосон бол техник `null`, ажилтан бөглөгдсөн ч гэсэн
- *    (2026-09-06-ны хяналт: нэг туг хуваалцвал техник 0 гэж худал гардаг байв).
- *    Хүн-цаг хоосон бол мөн `null`.
  */
 import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
@@ -61,26 +17,13 @@ import {
 
 /* ══════════════ Босго ══════════════ */
 
-/**
- * ⚠️ САНАЛ (2026-09-06) — хэрэглэгч батлаагүй. Өмнөх тайлангаас ажилтны тоо
- *    10%-иар буурвал анхаарах, 25%-иар буурвал яаралтай. Хувь нь СӨРӨГ
- *    (бууралт), өсөлт нь дохио биш.
- */
 export const WORKFORCE_DROP_WARN = -10;
 export const WORKFORCE_DROP_BAD = -25;
-/**
- * ⚠️ САНАЛ — сүүлийн тайлан 3 хоногоос хуучин бол хамгийн багадаа «анхаарах»:
- *    өдрийн тайлан амралтын өдөр ч ирдэг тул 3 хоног дуугүй = тайлан зогссон.
- */
 export const WORKFORCE_STALE_DAYS = 3;
 /** «Тайлангүй» гэж тооцох ХАЙХ цонх — сүүлийн тайлангаас өмнөх 7 хоног */
 export const WORKFORCE_LOOKBACK_DAYS = 7;
 /** Хоёрдугаар хүснэгтийн цонх — сүүлийн тайлангаас өмнөх 14 хоног */
 export const WORKFORCE_TREND_DAYS = 14;
-/**
- * ⚠️ САНАЛ — компанийн бууралтыг ЗӨВХӨН өмнөх өдөр 10+ ажилтантай байсан үед
- *    дохиолно: 2 → 1 хүн нь −50% боловч мэдээлэл биш, чимээ.
- */
 export const WORKFORCE_COMPANY_MIN_PREV = 10;
 
 /* ══════════════ Хэлбэрүүд ══════════════ */
@@ -144,7 +87,6 @@ export type WorkforceDetail = {
   staleDays: number | null;
   /** Сүүлийн тайланд ороогүй компанийн `sfx`-үүд */
   unreported: string[];
-  /** ⚠️ 2026-10-21: `unreported` байвал true — нийт ажилтан ДУТУУ (тэр компани 0-оор орсон) */
   incomplete: boolean;
   companies: WorkforceCompanyRow[];
   days: WorkforceDay[];
@@ -177,8 +119,6 @@ function companyDay(r: Row, sfx: string, bagtsFixed: string | null): CompanyDay 
   const mongol = numOrNull(r[f.mongol]);
   const gadaad = numOrNull(r[f.gadaad]);
   const technik = numOrNull(r[f.niitTehnik]);
-  /* ⚠️ Habea.tsx `laborState`-ийн дүрэм: нийт нь хоосон/0 бол монгол+гадаад.
-     Хоёулаа хоосон бол 0 — компани тайланд ороогүй. */
   const split = mongol != null || gadaad != null ? (mongol ?? 0) + (gadaad ?? 0) : null;
   const workers = niit != null && niit > 0 ? niit : (split ?? 0);
   const bagtsRaw = r[f.bagts];
@@ -190,13 +130,6 @@ function companyDay(r: Row, sfx: string, bagtsFixed: string | null): CompanyDay 
 
 /**
  * ГҮЙЦЭТГЭГЧ ТУХАЙН ӨДӨР ТАЙЛАН ӨГСӨН ҮҮ — «ажилтан ЭСВЭЛ техник > 0».
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): толгойн ⚠️ «ГҮЙЦЭТГЭГЧ ТАЙЛАНГҮЙ ≠ 0
- *    АЖИЛТАНТАЙ»-н дүрмийг НЭГ газар экспортлов. `Niit_ajiltan_<SFX>` нь репитэд
- *    ороогүй үед ч 0 гэж бичигддэг тул «0 ажилтан + 0 техник» = ТАЙЛАН ӨГӨӨГҮЙ
- *    (мэдээлэлгүй, `null`), бодит 0 БИШ. ХАБЭА хуудасны өдрийн цуваа (`Habea.byDaySeries`)
- *    үүгээр тайлангүй өдрийг ЦООРХОЙ үлдээнэ — урьд нь сонгосон гүйцэтгэгчийн
- *    «0 ажилтан» гэсэн худал цэг зурагддаг байв.
  */
 export const isReported = (d: Pick<CompanyDay, 'workers' | 'technik'>): boolean =>
   d.workers > 0 || d.technik > 0;
@@ -207,9 +140,6 @@ export const companyReported = (r: Row, sfx: string): boolean =>
 
 /**
  * ТАЙЛАНГИЙН ШИНЭЛЭГ БАЙДАЛ — сүүлийн тайлангаас хойш хэдэн хоног, хуучирсан эсэх.
- * ⚠️ 2026-10-01: CEO самбарын `workforceLevel`-тэй ИЖИЛ босго (`WORKFORCE_STALE_DAYS`) —
- *    ХАБЭА хуудасны «Сүүлийн тайлан: …» анхааруулга үүнийг хэрэглэнэ, хоёр газар
- *    өөр босго бичихгүй. `asOf` алга бол `days: null` («мэдэгдэхгүй», хуучирсан БИШ).
  */
 export function laborStaleness(asOf: number | null, now: number): { days: number | null; stale: boolean } {
   const days = asOf == null || asOf <= 0 ? null : daysBetween(asOf, now);
@@ -219,8 +149,6 @@ export function laborStaleness(asOf: number | null, now: number): { days: number
 /** Нэг мөр → өдрийн бүртгэл (компанийн нийлбэрийг энд бодно) */
 function dayOf(r: Row, at: number, oid: number | null, rowsInDay: number): WorkforceDay {
   const comp: Record<string, CompanyDay> = {};
-  /* ⚠️ ХОЁР ТУСДАА туг. Ажилтны талбар бөглөгдсөн ч `Tehnik_<SFX>` бүгд хоосон
-     байж болно (мөн эсрэгээр) — нэг тугаар явбал хоосон тал 0 гэж худал гарна. */
   let anyWorkers = false;
   let anyTechnik = false;
   let workers = 0;
@@ -245,7 +173,6 @@ function dayOf(r: Row, at: number, oid: number | null, rowsInDay: number): Workf
       technik: numOrNull(r[F.niitTehnik]),
     },
     comp,
-    /* ⚠️ null ≠ 0 — нэг ч компанийн талбар байхгүй мөр «0 ажилтан»/«0 техник» БИШ */
     workers: anyWorkers ? workers : null,
     technik: anyTechnik ? technik : null,
   };
@@ -253,8 +180,6 @@ function dayOf(r: Row, at: number, oid: number | null, rowsInDay: number): Workf
 
 /**
  * ArcGIS-ийн системийн талбарууд — `outFields`-д ил нэрлэнэ (`*` биш).
- * ⚠️ Survey123 давхаргад `editFieldsInfo.editDateField = 'EditDate'`,
- *    `objectIdField = 'objectid'` (жижиг үсэг) — 2026-09-06-нд амьдаар баталсан.
  */
 export const EDIT_DATE_FIELD = 'last_edited_date';
 export const OID_FIELD = 'objectid';
@@ -263,8 +188,6 @@ type DayPick = { r: Row; at: number; edited: number; oid: number; n: number };
 
 /**
  * `a` нь `b`-ээс «сүүлийнх» үү — max `Ognoo` → max `EditDate` → max `objectid`.
- * ⚠️ Оролтын дараалалд ОГТ хамаарахгүй: гурвуулаа тэнцвэл л эхэнд ирсэн нь
- *    үлдэнэ (объект давхардсан гэсэн үг — бодит өгөгдөлд гарахгүй).
  */
 const newer = (a: DayPick, b: DayPick): boolean => (
   a.at !== b.at ? a.at > b.at
@@ -275,15 +198,13 @@ const newer = (a: DayPick, b: DayPick): boolean => (
 /**
  * Түүхий мөрүүд → өдрийн бүртгэлүүд, ШИНЭЭС ХУУЧИН руу.
  * Огноогүй/0 огноотой мөр (дуусаагүй маягт) хасагдана; нэг өдөрт олон мөр
- * байвал `newer`-ийн дүрмээр сүүлийнх нь үлдэнэ (толгойн ⚠️).
+ * байвал `newer`-ийн дүрмээр сүүлийнх нь үлдэнэ (толгой).
  */
 export function groupDays(rows: Row[]): WorkforceDay[] {
   const best = new Map<string, DayPick>();
   for (const r of rows) {
     const at = numOrNull(r[F.ognoo]);
     if (at == null || at <= 0) continue;
-    /* ⚠️ Зөвхөн ЭРЭМБЭЛЭХЭД — хэмжилт биш тул хоосон бол 0 (ямар ч бодит
-       тамгаас бага) гэж үзэж болно; `null ≠ 0` дүрэм энд хамаарахгүй. */
     const cand: DayPick = {
       r, at, edited: numOrNull(r[EDIT_DATE_FIELD]) ?? 0, oid: numOrNull(r[OID_FIELD]) ?? 0, n: 1,
     };
@@ -304,17 +225,6 @@ export function groupDays(rows: Row[]): WorkforceDay[] {
 /**
  * ӨДӨР БҮРЭЭС НЭГ ТҮҮХИЙ МӨР — `groupDays`-ийн ЯГ ИЖИЛ дүрмээр (`newer`), мөрийг
  * өөрийг нь (`Row`) буцаана.
- *
- * ⚠️ 2026-09-30: ХАБЭА хуудас (`Habea.tsx`) давхар өдрийн мөрүүдийг НИЙЛБЭРЛЭДЭГ
- *    байв (`byDaySeries`, `companyTotals`, `mixTotals`, `laborState.cum`) —
- *    2026-08-21-нд засварласан oid256 (389) ба анхны oid255 (247) нийлж 636
- *    ажилтан гэж зурагддаг, энэ самбар ба «Тайлан» 389 гэдэг байв. Дүрмийг
- *    ЭНД нэг газар: хоёр газар бичвэл нэгийг засахад нөгөө нь хоцорно.
- * ⚠️ Огноогүй/0 огноотой мөр (дуусаагүй маягт) ХЭВЭЭР үлдэнэ — өдөрт
- *    хамааруулах боломжгүй; дуудагч өөрийн дүрмээр шийднэ. Оролтын ДАРААЛАЛ
- *    хадгалагдана.
- * @param keyOf өдрийн түлхүүр — анхдагч нь Улаанбаатарын хуанли (`ubDayKey`);
- *        ХАБЭА хуудас өөрийн өдрийн цуваатай ижил түлхүүрийг (`dayKey`) өгнө.
  */
 export function latestRowPerDay(rows: readonly Row[], keyOf: (ms: number) => string = ubDayKey): Row[] {
   const best = new Map<string, DayPick>();
@@ -338,10 +248,6 @@ export function latestRowPerDay(rows: readonly Row[], keyOf: (ms: number) => str
 /**
  * ХАМГИЙН СҮҮЛИЙН НЭГ МӨР — `newer`-ийн ЯГ ИЖИЛ дүрмээр: max `Ognoo` → max `EditDate`
  * → max `objectid` (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- * ⚠️ «Тайлан»-гийн ХАБЭА (`reportData.loadHabeaSummary`) урьд нь огноо → OID-оор л
- *    сонгодог байв — нэг өдрийн давхар мөрийн ЗАСВАРЛАСАН (хуучин OID, шинэ EditDate)
- *    хувилбарыг алгасаж, энэ самбар (`groupDays`) өөр мөр сонгож болдог байлаа.
- * ⚠️ Огноогүй/0 огноотой мөр (дуусаагүй маягт) сонгогдохгүй; алга бол `null`.
  */
 export function latestLaborRow(rows: readonly Row[]): Row | null {
   let best: DayPick | null = null;
@@ -358,11 +264,6 @@ export function latestLaborRow(rows: readonly Row[]): Row | null {
 
 /**
  * НЭГ МӨРИЙН ХҮН ХҮЧ — компани бүрийн нийлбэр (`companyDay`: нийт хоосон/0 бол монгол + гадаад).
- * ⚠️ 2026-10-04: «Тайлан»-гийн ХАБЭА (`reportData.loadHabeaSummary`) ба Дашбоардын «ХАБ өнөөдөр»
- *    (`gdash.loadHseNow`) ЭНЭ ГАНЦ туслахаар. Урьд нь дашбоард маягтын ТОЛГОЙН `Niit_ajiltan`-ийг,
- *    тайлан компанийн `Niit_ajiltan_<SFX>`-ийн нийлбэрийг (монгол+гадаад нөхөлтгүй) уншдаг тул нэг
- *    өдрийн ажилтны тоо хоёр дэлгэцэд зөрдөг байв. `workers`/`technik` `null` = нэг ч компанийн
- *    талбар бөглөөгүй (0 БИШ).
  */
 export function laborHeadOf(r: Row): WorkforceDay {
   return dayOf(r, numOrNull(r[F.ognoo]) ?? 0, numOrNull(r[OID_FIELD]), 1);
@@ -370,7 +271,6 @@ export function laborHeadOf(r: Row): WorkforceDay {
 
 /** Бууралтын хувь ба тайлангийн шинэлэг байдлаас нэгдсэн түвшин */
 export function workforceLevel(deltaPct: number | null, staleDays: number | null): Level {
-  /* ⚠️ Өмнөх тайлангүй (deltaPct null) бол дүгнэлтгүй — `neutral`, «сайн» биш */
   const drop: Level = deltaPct == null ? 'neutral'
     : deltaPct <= WORKFORCE_DROP_BAD ? 'bad'
       : deltaPct <= WORKFORCE_DROP_WARN ? 'warn' : 'good';
@@ -409,7 +309,6 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
     const prevW = p ? p.workers : null;
     const delta = prevW == null ? null : cur.workers - prevW;
     const deltaPct = prevW == null || prevW === 0 || delta == null ? null : (delta / prevW) * 100;
-    /* ⚠️ 2026-10-01: «тайлан өгсөн» дүрэм нь `isReported` — нэг газар */
     const activeBefore = lookback.some((d) => {
       const x = d.comp[c.sfx];
       return !!x && isReported(x);
@@ -427,10 +326,6 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
   /* ── Нийт ── */
   const workersLatest = latest.workers;
   const workersPrev = prev ? prev.workers : null;
-  /* ⚠️ 2026-10-21 (аудит): ЗӨРҮҮ нь ХОЁР өдөр ХОЁУЛАНД тайлан өгсөн (`isReported`) компаниудаар л —
-     урьд нь нийт дүнгүүдийг шууд хасдаг тул маягтаа бөглөөгүй (`unreported`, өнөөдөр 0) компани
-     «−250 хүн» болж түвшинг 'bad' болгодог байв (компани бүрийн анхааруулга `!c.unreported`-аар аль
-     хэдийн хасдаг). Нэг ч компани хоёр өдөр давхцаагүй бол `null` (мэдээлэлгүй, 0 БИШ). */
   let both = 0;
   let dCur = 0;
   let dPrev = 0;
@@ -457,7 +352,6 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
   if (latest.technik != null) facts.push(tr('техник {0}', num(latest.technik)));
   if (latest.header.manHours != null) facts.push(tr('хүн-цаг {0}', num(latest.header.manHours)));
   facts.push(prev ? tr('{0} · өмнөх {1}', latest.key, prev.key) : latest.key);
-  /* ⚠️ 2026-10-21 (аудит): «нийт дутуу» — тайлангүй компани 0-оор орсон тул гол тоо жинхэнээсээ бага (толгойн ⚠️) */
   if (unreported.length) facts.push(tr('{0} компани тайлангүй — нийт дутуу', unreported.length));
 
   /* ── Хүснэгт 1: компаниар, хамгийн их бууралт эхэнд ── */
@@ -516,8 +410,6 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
     .forEach((c) => issues.push({ tone: 'warn', text: tr('{0} — сүүлийн тайланд орсонгүй', c.label) }));
 
   const base: Level = workersLatest == null ? 'unknown' : workforceLevel(deltaPct, staleDays);
-  /* ⚠️ 2026-10-21 (аудит): тайлангүй компанитай бол ЯДАЖ 'warn' — нийт дүн дутуу (толгойн ⚠️).
-     'unknown' (нэг ч талбар байхгүй) хэвээр: мэдээлэлгүйг шар болгохгүй (`worstOf`-ийн дүрэм). */
   const level: Level = unreported.length && base === 'good' ? 'warn' : base;
 
   return {
@@ -547,11 +439,6 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
 
 /* ══════════════ Ачаалагч ══════════════ */
 
-/**
- * ⚠️ `outFields`-д БАЙХГҮЙ талбар бичвэл ArcGIS 400 «'outFields' parameter is
- *    invalid» буцаана (2026-09-06-нд амьдаар баталсан). `Bagts_<SFX>` нь
- *    зөвхөн багц заасан 7 компанид бий — бусдынхыг жагсаалтад оруулахгүй.
- */
 function outFields(): string[] {
   const out: string[] = [OID_FIELD, EDIT_DATE_FIELD, F.ognoo, F.niitAjiltan, F.hunTsag, F.niitTehnik];
   for (const c of COMPANIES) {
@@ -569,8 +456,6 @@ function outFields(): string[] {
 export const loadWorkforceKpi = cached(async (): Promise<KpiResult> => {
   const rows = await queryFeatures(HABEA.labor.url, {
     outFields: outFields(),
-    /* ⚠️ Хоёрдогч түлхүүр ЗААВАЛ — ижил `Ognoo`-той мөрүүдийн эрэмбэ эс бөгөөс
-       хуудас бүрд өөр (толгойн ⚠️); `groupDays` өөрөө ч эрэмбэд найддаггүй. */
     orderBy: `${F.ognoo} DESC, ${OID_FIELD} DESC`,
   });
   return computeWorkforce(rows, Date.now());

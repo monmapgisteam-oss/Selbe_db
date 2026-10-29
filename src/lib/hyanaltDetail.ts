@@ -2,23 +2,6 @@
 
 /**
  * НИЙТЭЛСЭН ГҮЙЦЭТГЭЛИЙГ ХЯНАГЧИД ХАРУУЛАХ.
- *
- * ⚠️ Хяналтын бүртгэл ганцаараа «юу хийсэн» гэдгийг ХЭЛДЭГГҮЙ — зөвхөн хэн,
- * хэзээ илгээснийг л хэлнэ. Инженер юуг зөвшөөрч байгаагаа мэдэхгүй бол
- * хяналт нь ёсорхуу дарах товч болж хувирна. Тиймээс архивын агшнаас
- * бөглөсөн ажлуудыг татаж үзүүлнэ.
- *
- * ⚠️ АГШНЫГ ОГНООГООР БИШ, ЭХ МӨРӨӨР олно. `Компани_илгээсэн_огноо` нь
- * илгээсэн ЯГ АГШИН (UTC), архивын `buglusun_ognoo` нь БӨГЛӨСӨН ӨДӨР
- * (нутгийн цагаар шөнө дунд) — хоёр нь цагийн бүсээс хамаарч ӨӨР өдөрт
- * унаж болно. Эх мөрийн OBJECTID нь тэр агшинд ЯГ хамаарна.
- *
- * ⚠️ 2026-09-04: `Эх_мөрийн_дугаар` нь одоо ИЛГЭЭЛТИЙН мөрийн OBJECTID
- * (`Selbe_Guitsetgel_Draft`-ийн `sub|<pkgKey>`) — гүйцэтгэл нь төлөвлөлтийн ахлах инженер
- * баталтал архивт БАЙХГҮЙ. Тиймээс хянагчид «архивын сүүлийн жааз + илгээлтийн
- * diff» гэсэн ХАРАГДАЦ угсарч өгнө (`loadStaged`). Хуучин (өөрчлөлтөөс өмнөх)
- * ба батлагдсан (`done|…`) мөрүүд нь архивт байгаа тул хуучин зам (`loadArchived`)
- * хэвээр ажиллана — гурван зам НЭГ `Submission` бүтэц буцаана.
  */
 
 import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
@@ -29,7 +12,6 @@ import { describeNegCells, laterAsOf, needsFrameOcc, negTotalAt, overlaySubmissi
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
 import { rowSids } from '@/lib/hyanaltOkCells';
-/* ⚠️ 2026-10-09 (аудит №6): багцын нэрийг `bagtsKey`-ээр жишнэ (`negtgelWrite.summaryOf`-той нэг дүрэм) */
 import { bagtsKey } from '@/lib/services';
 
 /** Нэг мөр — «Гүйцэтгэл бөглөх» хуудасны багануудтай ижил бүрэлдэхүүн */
@@ -57,7 +39,6 @@ export type Filled = {
   acts: (number | null)[];
   /**
    * Тухайн нүд ӨМНӨХ АГШНААС ӨӨРЧЛӨГДСӨН эсэх.
-   * ⚠️ Өмнөх агшин байхгүй (анхны нийтлэл) бол утгатай нүд бүр өөрчлөлт.
    */
   changed: boolean[];
   /** Өмнөх агшны утга — өөрчлөлтийг «юунаас юу болсон» гэж харуулахад. */
@@ -90,21 +71,13 @@ export type Change = {
    * ЭНЭ УДААГИЙН НЭМЭЛТ (2026-09-25, нэмэлтийн горим — `SubmissionPayload.mode`):
    * обьём бол `to − (from ?? 0)`, хувь бол `toPct − (fromPct ?? 0)`. Хянагч
    * «40 → 55» гэсэн нийттэй ХАМТ «+15»-ыг харна. Шинэ нийт нь `null` бол `null`.
-   * ⚠️ Хуучин (НИЙТ) payload-д ч бодогдоно — тэр үед зөрүү (сөрөг ч байж болно).
    */
   inc?: number | null;
   incPct?: number | null;
   /**
    * МӨРИЙН ТОГТВОРТОЙ ТАНИГЧ — `"<oid>|<sid>"` (`hyanaltOkCells.rowSids`).
-   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): хянагчийн зөвшөөрлийг индексээр БИШ
-   *    үүгээр хадгална — жааз солигдох/мөр нэмэгдэхэд индекс гулсдаг.
    */
   rid?: string;
-  /**
-   * ⚠️ 2026-10-22 (аудит): энэ нүдний НИЙТ СӨРӨГ (`sheetFrame.negTotalAt`) — хянагч ХЭЗЭЭ Ч зөвшөөрч (ногоон) болохгүй.
-   *    Урьд нь ногоон болгож буцаахад гүйцэтгэгчийн талд тэр нүд түгжигдэж (`FillNew.okLockAt`), харин «Илгээх» сөрөг
-   *    нүдээр хаагддаг тул гүйцэтгэгч засах ч, илгээх ч боломжгүй гацдаг байв (`Guitsetgel.toggleOk`).
-   */
   neg?: true;
 };
 
@@ -114,14 +87,6 @@ const deltaOf = (from: number | null | undefined, to: number | null | undefined)
 
 /**
  * ХУВААРИЙН ОГНООНЫ ЗАСВАР — хянагчид ХАРАГДАХ ёстой өөрчлөлт.
- *
- * ⚠️ ЯАГААД ТУСДАА, `Change`-д НИЙЛҮҮЛЭЭГҮЙ (2026-09-04-ний аудит):
- *    `changes` нь зөвшөөрлийн ГАРЦ болдог (нүд бүр дээр дарж ногоон болгох)
- *    бөгөөд тэр дарах үйлдэл нь ЗӨВХӨН обьёмын нүдэн дээр боломжтой. Огноог
- *    тэр жагсаалтад хийвэл хэзээ ч ногоон болохгүй нүд үүсч, багц бүхэлдээ
- *    батлагдахаа болино. Тиймээс огноог ИЛ ХАРУУЛНА, гэхдээ түгжихгүй.
- * ⚠️ Урьд нь `ov.dateKeys` хаана ч уншигддаггүй байсан тул огнооны засвар
- *    хянагчид ОГТ харагдахгүй, «өөрчлөгдсөн нүд: 0» гэж бичээд батлагддаг байв.
  */
 export type DateChange = {
   no: string;
@@ -141,8 +106,6 @@ export type Submission = {
   pkgKey: string;
   /**
    * Аль АГШИН (`YYYY-MM-DD`) — хянагчид бөглөх хуудсыг ЭНЭ өдрөөр нээнэ.
-   * ⚠️ Хамгийн сүүлийн агшнаар нээвэл гүйцэтгэгч дараа нь дахин бөглөсөн
-   *    тохиолдолд хянагч огт өөр тоо хараад батална.
    */
   day: string;
   /** Блокийн шошго — «5/1», «5/2» г.м. */
@@ -151,19 +114,12 @@ export type Submission = {
   compared: boolean;
   /**
    * Өмнөх агшны асуулга АЛДААТАЙ дууссан — жишилт «тодорхойгүй».
-   * ⚠️ `compared=false` + `prevError=true` нөхцөлийг «анхны нийтлэл» гэж
-   * ойлгож болохгүй: өөрчлөлтийг илрүүлж ЧАДААГҮЙ гэсэн үг тул `changes`
-   * хоосон байх нь «өөрчлөлтгүй» гэсэн баталгаа БИШ.
    */
   prevError: boolean;
   /** Архивт нэмэгдсэн нийт мөр */
   rows: number;
   /**
    * Агшны БҮХ мөр — хуудасны дараалалаар (бүлэг + ажил).
-   *
-   * ⚠️ Урьд нь зөвхөн обьём бөглөгдсөн мөрийг татдаг байсан нь хянагчийг
-   *    «сонгосон хэсгийг» л харуулж, контекстээс салгадаг байв. Хянагч бүтэн
-   *    хүснэгтийг хараад дүгнэх ёстой.
    */
   filled: Filled[];
   /** Обьём бөглөгдсөн ажлын тоо */
@@ -171,18 +127,11 @@ export type Submission = {
   /** Өөрчлөгдсөн нүднүүд — дарж хүснэгт рүү үсрэх жагсаалт */
   changes: Change[];
   /**
-   * ХУВААРИЙН ОГНООНЫ ЗАСВАР (дээрх `DateChange`-ийн ⚠️).
-   * ⚠️ Хуучин (архивын) зам нь зөвхөн обьёмын баганыг жишдэг тул тэнд ҮРГЭЛЖ
-   *    хоосон — «огноо өөрчлөгдөөгүй» гэсэн БАТАЛГАА БИШ.
+   * ХУВААРИЙН ОГНООНЫ ЗАСВАР (дээрх `DateChange`).
    */
   dateChanges: DateChange[];
   /**
    * «ШИНЭЧЛЭГДСЭН ОГНОО»-г илгээлт өөрчилсөн үү.
-   * ⚠️ Энэ нь ганц нүдний засвар БИШ: `computeAll` түүгээр БҮХ мөрийн
-   *    төлөвлөгөөт хувийг дахин боддог тул батлахад хуудас бүхэлдээ өөрчлөгдөнө.
-   *    Хянагч үүнийг мэдэхгүй батлах ёсгүй.
-   * ⚠️ 2026-10-22 (аудит): батлахад архивт БИЧИГДЭХ огноогоор (`sheetFrame.laterAsOf` — хуучин өдрийн илгээлт огноог
-   *    УХРААХГҮЙ); `asOfFrom` → `asOfTo` (`YYYY-MM-DD`, алга бол `null`) — анхааруулгад «хуучин → шинэ».
    */
   asOfChanged: boolean;
   asOfFrom?: string | null;
@@ -190,51 +139,23 @@ export type Submission = {
   /**
    * Илгээлтийн СҮҮЛИЙН агшин (ms) — хяналтын мөрийн «Компани илгээсэн»
    * огноотой жишихэд.
-   * ⚠️ Багц бүрд ГАНЦ `sub|` мөр байдаг бөгөөд дахин илгээхэд ТЭР МӨР дээр
-   *    нэгтгэгддэг (OBJECTID зориуд хэвээр). Тиймээс буцаагдсан ХУУЧИН
-   *    тойргийн хяналтын мөрийг нээхэд ШИНЭ агуулга харагдана — хянагч юуг
-   *    буцаасныг эргэж харах боломжгүй. Ядаж «үүнээс хойш шинэчлэгдсэн» гэдгийг
-   *    ил хэлнэ.
    */
   subAt?: number;
   /**
    * ИЛГЭЭЛТИЙН мөрийн OBJECTID — хараахан архивлагдаагүй (staged) харагдац.
-   *
-   * ⚠️ Байвал бөглөх хуудсыг ӨДРӨӨР биш, ЭНЭ илгээлтээр нээнэ: архивт тэр
-   *    өдрийн жааз БАЙХГҮЙ учир `day`-гаар нээвэл хянагч хоосон (эсвэл огт
-   *    өөр) хуудас харна.
    */
   subOid?: number;
-  /**
-   * ⚠️ 2026-10-01: илгээлтийн мөрүүдийг шинэ жааз руу (№ ¦ Ажил)-аар ЗӨӨСӨН эсэх
-   *    (`sheetFrame.Overlay.remapped`). Хуучин индексийн зөвшөөрлийг энэ үед итгэхгүй.
-   */
   remapped?: boolean;
-  /**
-   * ⚠️ 2026-10-04: одоогийн жаазын мөрөнд ТУЛГАГДААГҮЙ илгээлтийн нүдний тоо (`Overlay.unmoved`).
-   *    > 0 бол хянагчийн жагсаалтад тэдгээр нүд харагдахгүй — батлахад архивлалт ил зогсоно.
-   */
   unmoved?: number;
-  /**
-   * ⚠️ 2026-10-21 (аудит): нэмэлтийн горимд НИЙТ дүнг СӨРӨГ болгох нүдний тоо (`Overlay.negative`) — жагсаалтад 0-оор
-   *    хаасан утга харагдах ч батлахад архивлалт ил зогсоно (`hyanaltStore.archiveSubmission`).
-   */
   negative?: number;
-  /** ⚠️ 2026-10-22 (хэрэглэгч): сөрөг нүднүүдийн НЭР (`describeNegCells` — «Б → Б18 → 10 → 2 «Ажил» −0.0017») — хаана гэдгийг хэлнэ */
   negCells?: string[];
 };
 
 /**
  * Огноог SQL-д бичих.
- *
- * ⚠️ ТҮҮХИЙ EPOCH ТООГООР харьцуулж БОЛОХГҮЙ. `buglusun_ognoo = 1787270400000`
- * гэж бичвэл энэ үйлчилгээ «Unable to perform query» гэж унана. ArcGIS-ийн
- * стандарт хэлбэр нь `timestamp 'YYYY-MM-DD HH:MM:SS'` (UTC).
  */
 const ts = (ms: number) => `timestamp '${new Date(ms).toISOString().slice(0, 19).replace('T', ' ')}'`;
 
-// ⚠️ ArcGIS алдааг HTTP 200-гаар буцаадаг — `query.arcgisPost` шалгана (2026-09-30:
-//    timeout · слот · `res.ok` · 498 шинэчлэлт нэмэгдэв; токен биеэр).
 const post = (url: string, body: Record<string, string>) => arcgisPost(`${url}/query`, body);
 
 const num = (v: unknown): number | null =>
@@ -254,29 +175,11 @@ const num = (v: unknown): number | null =>
  * @param sheetOid `Эх_мөрийн_дугаар` — илгээлтийн (эсвэл хуучин мөрд архивын) OBJECTID
  */
 export async function loadSubmission(bagts: string, sheetOid: number): Promise<Submission | null> {
-  /*
-   * ⚠️ УНШИЛТЫН АЛДААГ ЗАЛГИХГҮЙ (2026-09-04-ний аудит). Урьд нь
-   *    `loadSubmissionByOid` дуудагддаг байсан бөгөөд тэр нь «мөр байхгүй» ба
-   *    «уншиж чадсангүй» хоёрыг ялгалгүй `null` буцаадаг: сүлжээ түр тасрах
-   *    агшинд хуучин (legacy) зам асаж, `Эх_мөрийн_дугаар`-ыг АРХИВЫН дугаар
-   *    гэж уншина. Тэр хоёр дугаар нь ӨӨР үйлчилгээнийх атлаа нэг талбарт
-   *    хадгалагддаг тул санамсаргүй таарч, хянагчид ОГТ ӨӨР агшныг «энэ
-   *    илгээлт» гэж бүтэн, итгэмээр байдлаар үзүүлдэг байв (амьд хоёр утга
-   *    хоёулаа бодит архивын мөр рүү таарч байгааг хэмжсэн).
-   *    Одоо «мэдэхгүй» бол ил алдаа — хянагч таамгаар батлахгүй.
-   */
   const read = await readSubmissionByOid(sheetOid);
   if (!read.ok) throw new Error(read.error);
   const staged = read.sub;
   if (staged && !staged.done && staged.payload.archiveOid == null)
     return loadStaged(bagts, sheetOid, staged.payload);
-  /*
-   * ⚠️ Батлагдсан илгээлтийн `archiveOid` нь архивын ЭХНИЙ мөрийн дугаар —
-   *    `pkgKey`-тэй нь хамт яг тэр хуудаснаас олно. OBJECTID нь үйлчилгээ
-   *    бүрд давхцаж болдог тул өөр давхрын хуудсаас хайж БОЛОХГҮЙ.
-   *    Дугааргүй батлагдсан илгээлтэд `sheetOid` нь ноорогийн дугаар:
-   *    архивын мөр гэж таамаглахгүй, `null` буцаана.
-   */
   const oid = staged ? staged.payload.archiveOid : sheetOid;
   if (oid == null) return null;
   return loadArchived(bagts, oid, staged ? staged.payload.pkgKey : null);
@@ -289,11 +192,6 @@ export async function loadSubmission(bagts: string, sheetOid: number): Promise<S
  * бөглөх хуудсынхтай ЯГ ижил мөрүүдийг угсарна — `FillNew` нь `view.subOid`
  * үед ЯГ ижил зүйлийг хийдэг тул мөрийн индекс хоёр талд тэнцэнэ (өөрчлөлтийн
  * жагсаалтаас дарж үсрэх нь тэр индекс дээр тулгуурладаг).
- *
- * ⚠️ Тоонуудыг ЭНД `computeAll`-аар бодно — үйлчилгээнээс уншихгүй. Илгээлт нь
- *    архивт хараахан ороогүй тул уншиж авах газар БАЙХГҮЙ; хянагчийн харах тоо
- *    нь бөглөгчийн харснаас зөрөх ёсгүй тул ЯГ ижил томъёог (нэг эх сурвалж)
- *    дуудна.
  */
 async function loadStaged(
   bagts: string,
@@ -303,51 +201,20 @@ async function loadStaged(
   let pl = pl0;
   const pkg = PKGS.find((p) => p.key === pl.pkgKey);
   if (!pkg) throw new Error(tr('Илгээлтийн багц олдсонгүй: {0}', pl.pkgKey));
-  /*
-   * ⚠️ Багц зөрвөл ЗОГСОНО — өөр багцын гүйцэтгэлийг энэ хяналтын мөрөнд
-   *    харуулбал хянагч огт өөр ажлыг батлана.
-   * ⚠️ 2026-10-09 (аудит №6): `bagtsKey`-ээр — хяналтын бүртгэлийн нэр «Багц 4.1» / «Багц 4-1» аль
-   *    бичлэгээр ирсэн ч нэг багц (`negtgelWrite.summaryOf`-той нэг дүрэм; урьд ЯГ тэнцүү тул зөрдөг байв).
-   */
   if (bagtsKey(pkg.group) !== bagtsKey(bagts))
     throw new Error(tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}»', pkg.group, bagts));
 
-  /* ⚠️ 2026-10-09: `fillSchema` — бөглөгчийн (FillNew) ба архивлагчийн (hyanaltStore) бүдүүвчтэй НЭГ:
-     блокгүй багцын синтетик блокийн нүд хянагчид харагдана (`Schema.synthetic`-ийн ⚠️) */
   const sc = await fillSchema(pkg);
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
   const loaded = await loadRows(pkg, sc);
-  /*
-   * ⚠️ 2026-10-04 (REGRESSION засвар): ХУУЧИН (`rowOcc`-гүй) илгээлт ӨМНӨХ жааз дээр бол давтамжийг
-   *    СУУРЬ жаазаас нөхнө — `hyanaltStore.archiveSubmission` (батлалт) ба `FillNew.ensureFrameOcc`-тэй
-   *    ИЖИЛ дүрэм. Урьд нь энд нөхдөггүй тул давхардсан шошготой мөрийн нүд хянагчийн жагсаалтаас
-   *    ХАСАГДАЖ, харин батлалт тэдгээрийг архивт бичдэг байв (хараагүй зүйл батлагдана).
-   *    Уншилт унавал payload ХЭВЭЭР — `unmoved`-оор ил хэлнэ.
-   */
   if (pl.base != null && needsFrameOcc(pl, loaded.rows)) {
     try { pl = withFrameOcc(pl, (await loadRows(pkg, sc, msToDay(pl.base))).rows); } catch { /* хэвээр — доорх `unmoved` */ }
   }
   const ov = overlaySubmission(loaded.rows, pl, sc, nBld);
-  /* ⚠️ 2026-10-22 (аудит): архивлалттай (`hyanaltStore.archiveSubmission`) НЭГ дүрэм — хожуу нь (`laterAsOf`); урьд нь
-     `ov.asOf ?? loaded.asOf` тул хуучин өдрийн илгээлтийн огноогоор төлөвлөгөөт хувийг бодож, батлахад огноо ухардаг байв */
   const asOf = laterAsOf(ov.asOf, loaded.asOf);
-  /* ⚠️ 2026-10-01: мөр бүрийн тогтвортой танигч (`Change.rid`) — FillNew-ийн `rows`-той ИЖИЛ дараалал */
   const sids = rowSids(ov.rows);
-  /*
-   * ⚠️ `asOf` нь `null` БАЙЖ БОЛНО (2026-09-06). Бөглөх (`FillNew`) ба архивлах
-   *    (`hyanaltStore`) хоёулаа огноогүй хуудсыг зөвшөөрдөг болсон тул хянагч
-   *    ч мөн ЯГ тэр тоог харах ёстой; `computeAll` нь тэр үед төлөвлөгөөт
-   *    хувийг `null` (0 биш) болгоно. Урьд нь энд алдаа шиддэг байсан тул
-   *    огноогүй илгээлтэд хянагчийн харагдац унаж, «Гүйцэтгэлийн хяналт»-ын
-   *    батлах товч ӨӨРЧЛӨЛТГҮЙ мэт ИДЭВХТЭЙ үлддэг байв — агуулгыг харалгүй
-   *    батлах зам (одоо `Guitsetgel` тэр үед товчийг хаана).
-   */
   /* ── САРЫН ЗАДАРГАА — бөглөх/архивлахтай ИЖИЛ томъёо ────────────────
-   * ⚠️ `FillNew` ба `hyanaltStore` төлөвлөгөөт хувийг хуваарийн сарын
-   *    задаргаанаас (S-муруй) боддог тул хянагч мөн түүгээр харна; эс бөгөөс
-   *    бөглөгч, хянагч, архив гурав өөр тоо харна. Уншилт унавал чимээгүй —
-   *    задаргаагүй (шугаман) зам, `hyanaltStore`-той ижил.
    */
   const { loadPkgPlan, planPctFromMonths } = await import('@/lib/huvaariObyem');
   let obPlan: Awaited<ReturnType<typeof loadPkgPlan>>['plan'] | null = null;
@@ -360,12 +227,7 @@ async function loadStaged(
     if (!obPlan || row.des == null || asOf == null) return null;
     const blok = sc.bld[b];
     const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-    /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр, «бүгдийг зас»): сар доторх төлөвлөгөөт хувь
-         АЖЛЫН жинхэнэ эхлэх–дуусах өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) —
-         `bagtsSheet.planAt`-тай нэг томъёо; сарын эхэнд ХУДАЛ «хоцорсон» арилна. Огноо
-         хоосон/эвдэрсэн бол функц өөрөө бүтэн сараар (хуучин зам). */
     return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
-  /* ⚠️ 2026-10-09: блокгүй багцын синтетик блокт J = L (хэмжилтгүй бол null) — бөглөх/архивтай НЭГ дүрэм */
   }, "abs", sc.synthetic);
 
   /* Обьёмтой блокуудын дараалал — `blocks`/`cells`/`acts` бүгд ҮҮГЭЭР индекслэгдэнэ. */
@@ -379,15 +241,12 @@ async function loadStaged(
   /* Overlay-аас ӨМНӨХ утга — «юунаас юу болсон» гэдгийг зөвхөн үүгээр мэдэнэ. */
   const baseObyem = new Map<number, (number | null)[]>();
   for (const r of loaded.rows) baseObyem.set(r.oid, r.obyem);
-  /* ⚠️ ХУВИЙН суурь ч (2026-09-24): Обьёмгүй мөрийн «%NN» засвар зөвхөн
-     `act`-д суудаг тул `obyem` ганцаараа жишвэл тэр өөрчлөлт хянагчид
-     ОГТ харагдахгүй байв (FillNew `changedKeys`-ийн ⚠️). */
   const baseAct = new Map<number, (number | null)[]>();
   for (const r of loaded.rows) baseAct.set(r.oid, r.act);
   /* Илгээлт БУУСАН нүднүүд — `${oid}:${b}` */
   const touched = new Set(ov.cellKeys);
 
-  /* ── ОГНООНЫ ЗАСВАР ба «Шинэчлэгдсэн огноо» (дээрх `DateChange`-ийн ⚠️) ── */
+  /* ── ОГНООНЫ ЗАСВАР ба «Шинэчлэгдсэн огноо» (дээрх `DateChange`) ── */
   const baseDates = new Map<number, { s: (number | null)[]; e: (number | null)[] }>();
   for (const r of loaded.rows) baseDates.set(r.oid, { s: r.start, e: r.end });
   const rowAt = new Map<number, number>();
@@ -403,7 +262,6 @@ async function loadStaged(
     const r = ov.rows[i];
     const to = msToDay((se === 's' ? r.start[b] : r.end[b]) ?? null);
     const base = baseDates.get(oid);
-    /* ⚠️ Шинэ мөрд суурь БАЙХГҮЙ — `null` (хоосон огноо), 0 БИШ. */
     const from = base ? msToDay((se === 's' ? base.s[b] : base.e[b]) ?? null) : '';
     if (from === to) continue;
     dateChanges.push({
@@ -427,16 +285,9 @@ async function loadStaged(
     /* Хувийн «юунаас юу» — `blocks`-ийн индексээр (`obyem` өөрчлөгдөөгүй нүдэнд харуулна) */
     const pctFrom: (number | null)[] = [];
     const pctTo: (number | null)[] = [];
-    /** ⚠️ 2026-10-22 (аудит): нийт сөрөг нүд — `blocks`-ийн индексээр (`Change.neg`) */
     const negs: boolean[] = [];
     for (let b = 0; b < nBld; b += 1) {
       if (colOf[b] < 0) {
-        /* ⚠️ ОБЬЁМГҮЙ БЛОК (2026-09-24-ний аудит): `blocks`-д багана байхгүй ч
-           «%NN» засвар нь `act`-д суусан байдаг тул суурьтай нь жишээд
-           `changes`-д ОРУУЛНА — урьд нь `continue` хийж тэр өөрчлөлт хянагчид
-           огт харагдахгүй, «өөрчлөгдсөн нүд: 0» гэж батлагддаг байв.
-           `col: -1` (баганагүй), `block` нь шошго — зөвшөөрлийн түлхүүр
-           `${row}:${block}` хэвээр. */
         if (!touched.has(`${r.oid}:${b}`)) continue;
         const toA0 = r.act[b] ?? null;
         const fromA0 = baseA ? (baseA[b] ?? null) : null;
@@ -453,16 +304,12 @@ async function loadStaged(
           toPct: toA0,
           incPct: deltaOf(fromA0, toA0),
           rid: `${r.oid}|${sids[i]}`,
-          /* ⚠️ 2026-10-22 (аудит): нийт сөрөг — зөвшөөрөгдөхгүй (`Change.neg`-ийн ⚠️) */
           ...(negTotalAt(r, b) ? { neg: true as const } : {}),
         });
         continue;
       }
       const to = c[i].obyem[b];
-      /* ⚠️ Шинэ мөрд (нэмсэн ажил) суурь БАЙХГҮЙ — `null` (0 БИШ). */
       const from = base ? base[b] : null;
-      /* ⚠️ ТҮҮХИЙ `act` (илгээлтийн мөр ↔ суурь мөр) — `computeAll`-ийн
-         бодсон утга БИШ: тэр нь обьёмоос дахин бодогддог тул ижил. */
       const toA = r.act[b] ?? null;
       const fromA = baseA ? (baseA[b] ?? null) : null;
       cells.push(to);
@@ -516,7 +363,6 @@ async function loadStaged(
   return {
     pkgLabel: pkg.label,
     pkgKey: pkg.key,
-    /* ⚠️ Мэдээллийн зорилготой — `subOid` байгаа тул бөглөх хуудас үүгээр нээгдэхгүй. */
     day: msToDay(pl.fillMs),
     blocks,
     /* Илгээлт нь суурь жаазтайгаа шууд жишигдсэн — таамаг байхгүй. */
@@ -527,9 +373,6 @@ async function loadStaged(
     filledCount: filled.filter((f) => (f.sum ?? 0) > 0).length,
     changes,
     dateChanges,
-    /* ⚠️ Суурьтайгаа ЖИШИНЭ: илгээлт огноог хөндөөгүй бол `null`, ижил утга
-       илгээсэн бол өөрчлөлт БИШ. */
-    /* ⚠️ 2026-10-22 (аудит): архивт БИЧИГДЭХ огноогоор (`laterAsOf` — хуучин нь ухраахгүй тул өөрчлөлт биш) + «хуучин → шинэ» */
     asOfChanged: asOf != null && asOf !== loaded.asOf,
     asOfFrom: loaded.asOf != null ? msToDay(loaded.asOf) : null,
     asOfTo: asOf != null ? msToDay(asOf) : null,
@@ -551,7 +394,6 @@ async function loadStaged(
  */
 async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | null): Promise<Submission | null> {
   // Илгээлтийн pkgKey байвал тэр хуудсаар ХЯЗГААРЛАНА; зөвхөн хуучин мөрд давхруудаас хайна.
-  /* ⚠️ 2026-10-09 (аудит №6): `bagtsKey`-ээр (`loadStaged`-ийн ⚠️-тэй ижил) */
   const cands = pkgKey === null
     ? PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts))
     : PKGS.filter((p) => p.key === pkgKey);
@@ -566,13 +408,6 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
 
   for (const p of cands) {
     try {
-      /*
-       * ⚠️ Талбарын нэрийг ЭНД дахин таамаглахгүй — «Гүйцэтгэл бөглөх»-ийн
-       * схемийг ЯГ ТЭР ЛОГИКООР ачаална. Эс бөгөөс `Обьём` ба `Обьём__Шинэ`,
-       * `Бодит_гүйцэтгэл` ба `…_гүйцэтгэлийн_хувь` мэт багц бүрийн зөрүү энд
-       * дахин гараар бичигдэж, нэг нь хоцорвол чимээгүй хоосон харагдана.
-       */
-      /* ⚠️ 2026-10-09: `fillSchema` — бөглөх хуудасны схемтэй ЯГ ижил (блокгүй багцын синтетик блок) */
       const sc = await fillSchema(p);
       const fill = sc.f.fillDate;
       if (!fill) continue;
@@ -587,8 +422,6 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
       if (typeof at !== 'number') continue;         // энэ үйлчилгээнд тэр мөр алга
 
       /*
-       * ⚠️ ОГНООГҮЙ МӨРИЙГ ЖААЗАНД НЬ НЭГТГЭНЭ (2026-09-08-ны аудит).
-       *
        *    Нийтлэл нь мөрүүдээ бичээд ДАРАА нь огноог тамгалдаг. Тэр хоёр дахь
        *    шат тасарвал жаазын нэг хэсэг огноогүй үлдэнэ — «Багц 3.3»-д яг тийм:
        *    1,459 мөрийн 1,238-д огноо бичигдсэн, 221-д (жаазын ДУНД, OID
@@ -602,12 +435,6 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
        *    хянагчийн хүснэгтийн шатлал бүхэлдээ холилдож, «Гүйцэтгэл бөглөх»
        *    хуудсынхтай танигдахаа болино. Мөн `rows` нь 1,238 гэсэн ХУДАЛ тоо
        *    үзүүлнэ.
-       *
-       * ⚠️ ӨӨРӨӨ ШАЛГАДАГ НӨХЦӨЛ — `latestWhere`-ийнхтэй ЯГ ИЖИЛ дүрэм.
-       *    Огноогүй мөрийг ДУРААР нэмэхгүй: агшны шүүлт зураглалаас ДУТУУ
-       *    гарсан БА огноогүйг нэмэхэд ЯГ таарсан үед л нэгтгэнэ. Зөрвөл
-       *    хуучин зан төлөв хэвээр — эс бөгөөс хэзээ ч нийтлэгдээгүй ШИНЭ
-       *    суурь жааз байгаа үед хоёр өөр жааз нийлж, мөрүүд давхардана.
        */
       const exact = `${fill} = ${ts(at)}`;
       const nExpect = (TREES[p.key] ?? '').length;
@@ -619,10 +446,6 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
       let where = exact;
       if (nExpect > 0 && nRows > 0 && nRows < nExpect) {
         const nNull = await cntOf(`${fill} IS NULL`);
-        /* ⚠️ 2026-10-09 (F2): `bagtsSheet.latestWhere`-тэй НЭГ туслах — ЯГ тэнцүүгээр шалгавал мөр
-           нэмэгдсэн жаазад (1,460 ≠ 1,459) хэзээ ч нэгтгэгдэхгүй. */
-        /* ⚠️ 2026-10-09 (F3): доод хязгаарт зураглалын хоосон мөрийг хасна — `latestWhere`-тэй ЯГ ижил
-           (`baseBlankCount`); эс бөгөөс 1470↔1471 багцад хэзээ ч нэгтгэгдэхгүй */
         if (nullFragmentFits(nRows, nNull, nExpect, await baseBlankCount(p, sc))) {
           where = `((${exact}) OR ${fill} IS NULL)`;
           nRows += nNull;
@@ -631,16 +454,6 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
 
       /*
        * ӨМНӨХ АГШНЫГ олно — өөрчлөлтийг зөвхөн түүнтэй жишиж мэдэж болно.
-       * ⚠️ Обьём нь ХУРИМТЛАГДДАГ тул «утгатай = шинэ» гэж үзэж БОЛОХГҮЙ:
-       * өчигдрийн 1300 өнөөдөр ч 1300 хэвээр байвал өөрчлөлт БИШ.
-       */
-      /*
-       * ⚠️ Өмнөх агшны асуулгын алдааг ЧИМЭЭГҮЙ залгихгүй — залгивал энэ
-       * нийтлэл «анхны» мэт, эсвэл хагас өгөгдөлтэй жишигдэж, хянагчид
-       * байхгүй «өөрчлөлт» жинхэнэ мэт харагдана. Гэхдээ throw ч хийхгүй:
-       * гадна catch дараагийн үйлчилгээ рүү үсэрч, ажиллаж байгаа энэ
-       * үйлчилгээний БҮТЭН харагдацыг алдагдуулна. Тиймээс «тодорхойгүй»
-       * (prevError) гэж тэмдэглээд үргэлжлүүлнэ.
        */
       let prevFailed = false;
       let prevQ: { features?: { attributes: Record<string, unknown> }[] } = {};
@@ -662,30 +475,17 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
       let filled: Filled[] = [];
       let filledCount = 0;
       const changes: Change[] = [];
-      /** Суурь нь ИЖИЛ ӨДРИЙН өмнөх жааз уу (доорх `samePrev`-ийн ⚠️) */
+      /** Суурь нь ИЖИЛ ӨДРИЙН өмнөх жааз уу (доорх `samePrev`) */
       let sameDay = false;
       const sum = sc.f.obyemSum;
       if (sum) {
         const w2 = where;
         {
           const obs = sc.obyem.filter(Boolean) as string[];
-          /*
-           * ⚠️ Блокийн ХУВЬ нь обьёмын хажууд ЗААВАЛ хэрэгтэй — «Гүйцэтгэл
-           *    бөглөх» хуудсанд нүд бүр хоёр тоо (обьём + хувь) харуулдаг.
-           *    Зөвхөн обьём үзүүлбэл хянагчийн харж буй хүснэгт бөглөгчийнхөөс
-           *    өөр болж, хоёулаа өөр зүйл ярина.
-           */
           const acts = sc.obyem.map((o, i) => (o ? sc.act[i] : null)).filter(Boolean) as string[];
-          /* ⚠️ OBJECTID ЗААВАЛ (2026-09-25) — жаазыг `sheetOid`-оор олоход (доор) */
           const cols = [sc.f.oid, sc.f.no, sc.f.work, sc.f.wC, sc.f.wD, sc.f.wE, sc.f.vol, sum,
             sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, sc.f.gun, ...obs, ...acts]
             .filter(Boolean) as string[];
-          /*
-           * ⚠️ БҮХ мөрийг ХУУДАСНЫ ДАРААЛЛААР (`objectid ASC`). Эрэмбийг
-           *    обьёмоор солибол бүлэг ба ажлын шатлал холилдож, хүснэгт нь
-           *    «Гүйцэтгэл бөглөх»-тэй танигдахаа болино.
-           * ⚠️ 2,000-ийн хязгаараас давдаг тул хуудаслана.
-           */
           const feats: { attributes: Record<string, unknown> }[] = [];
           for (let off = 0; ; ) {
             const page = (await post(p.url, {
@@ -698,61 +498,17 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
             })) as { features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
             const got = page.features ?? [];
             feats.push(...got);
-            /* ⚠️ `exceededTransferLimit`-ЭЭР таслана, мөрийн тоог 2000-тай
-               жишихээр БИШ (2026-09-15-ны аудит): үйлчилгээний `maxRecordCount`
-               2000-аас БАГА бол (1000 нь ArcGIS-ийн түгээмэл анхдагч) эхний
-               хуудсаар зогсож, жааз ДУТУУ ирнэ. Тэгвэл `lastFrame` буруу
-               заагаар таслаж, мөрийн индекс «Гүйцэтгэл бөглөх»-ийнхтэй зөрч,
-               хянагч ӨӨР зүйл батална (доорх ⚠️ яг үүнийг анхааруулсан). */
             if (!page.exceededTransferLimit || got.length === 0) break;
             off += got.length;
           }
           /*
-           * ⚠️ НЭГ АГШИНД ХОЁР ХУУЛБАР БАЙЖ БОЛНО — санамсаргүй давхар
-           *    нийтлэл эсвэл алдаа засаад дахин нийтэлсэн үед. Тэгвэл
-           *    хуудас ХОЁР ДАХИН урт болж, мөрийн индекс нь «Гүйцэтгэл
-           *    бөглөх»-ийнхтэй ЗӨРНӨ: өөрчлөлтийн жагсаалт хоёр дахин
-           *    үржиж, дарахад нь хүснэгтэд тохирох нүд олдохгүй болно.
-           *
            *    `bagtsSheet.loadRows` ЯГ ижил зүйл хийдэг (`feats2`) — хоёр
            *    тал НЭГ дүрмээр таслаж байж л индекс нь тэнцэнэ.
            */
-          /*
-           * ⚠️ `feats.slice(-expect)` БОЛОХГҮЙ (2026-09-04-ний аудит). Тэр
-           *    дүрэм нь `bagtsSheet.loadRows`-оос АЛЬ ХЭДИЙН ХАЯГДСАН: жаазууд
-           *    тэгш бус урттай байвал (унасан нийтлэлийн үлдэгдэл — Bagts_2_9f
-           *    2026-08-29: [1386,1386,1386,1000]) сүүлээс тоолсон огтлол нь
-           *    жаазны заагийн аль нь ч БИШ газраас эхэлж, ХОЁР өөр агшны
-           *    мөрүүдийг нийлүүлдэг. Тэгвэл `tree[ri]`-ээр оноогддог шатлал,
-           *    «өөрчлөгдсөн нүд»-ийн улаан хүрээ, дарж үсрэх байрлал бүгд өөр
-           *    ажил руу заана — хянагч огт өөр зүйл батална.
-           *    `lastFrame` нь эхний №-ээр зааг таньж, хагас жаазыг алгасдаг
-           *    ЦОРЫН ГАНЦ эх сурвалж — бөглөх хуудас ч мөн түүгээр таслана.
-           */
           const expect = nExpect;
-          /*
-           * ⚠️ ЭНЭ ИЛГЭЭЛТИЙН ЖААЗ — ӨДРИЙН СҮҮЛИЙН ЖААЗ БИШ (2026-09-25-ны
-           *    аудит). Нэг хуудсыг нэг өдөр ХОЁР удаа батлавал хоёр жааз хоёулаа
-           *    ижил `buglusun_ognoo`-той. Урьд нь `lastFrame` тэр өдрийн СҮҮЛИЙН
-           *    жаазыг авдаг байсан тул ЭХНИЙ (Шилжүүлсэн) ажлыг нээхэд хоёр дахь
-           *    батлалтын тоо, «өөрчлөгдсөн» улаан нүд өмнөх ӨДӨРТЭЙ жишигдэн
-           *    харагдаж, буруу илгээлтэд наалддаг байв.
-           *    `sheetOid` нь жаазны ЭХНИЙ мөр (`applyAdds`-ийн `firstOid` /
-           *    хуучин нийтлэлийн эхний мөр) тул тэндээс эхэлсэн ЭХНИЙ бүтэн жааз
-           *    нь яг энэ илгээлт; түүнээс ӨМНӨХ ижил өдрийн жааз нь жишилтийн суурь.
-           *    Мөр олдохгүй бол (OID ирээгүй г.м.) хуучин дүрэм (`lastFrame`).
-           */
           const si = feats.findIndex((x) => Number(x.attributes[sc.f.oid]) === sheetOid);
-          /* ⚠️ 2026-10-09 (F5): `sc.f.work` — хоосон мөргүй/хоосон мөртэй жааз хоёрыг `loadRows`-тэй ижил
-             (хоосон мөрийг хассан) уртаар жишнэ */
           const feats2 = si >= 0 ? firstFrame(feats.slice(si), sc.f.no, expect, sc.f.work) : lastFrame(feats, sc.f.no, expect, sc.f.work);
           const samePrev0 = si > 0 ? lastFrame(feats.slice(0, si), sc.f.no, expect, sc.f.work) : [];
-          /* ⚠️ Зөвхөн БҮТЭН жааз суурь болно — унасан нийтлэлийн үлдэгдэл (богино)
-             бол байрлалаар жишихэд зохиомол «өөрчлөлт» гарна; тэр үед өмнөх өдөр. */
-          /* ⚠️ 2026-10-11 (аудит №7): `expect` нь зураглалын урт (ХООСОН мөрийг ч тоолдог — b31_9f 1471), харин
-             архивын жааз хоосон мөргүй (1470) тул `>= expect` ижил өдрийн өмнөх бүтэн жаазыг ХЭЗЭЭ Ч суурь болгохгүй,
-             өмнөх өдөртэй жишиж зохиомол «өөрчлөлт» гаргадаг байв (`bagtsSheet.ts`-ийн 1470↔1471 ⚠️). Энэ илгээлтийн
-             жаазны уртаар (`feats2.length`) хязгаарлана — `lastFrame` аль хэдийн бүтэн жаазыг л буцаадаг. */
           const need = Math.min(expect, feats2.length);
           const samePrev = expect <= 0 || samePrev0.length >= need ? samePrev0 : [];
           /* Мөрийн тоо ч ЭНЭ жаазных — өдрийн бүх жаазны нийлбэр биш */
@@ -760,16 +516,6 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
           const q = { features: feats2 };
           /*
            * ӨМНӨХ АГШНЫ ижил мөрүүд — `№`-ээр индекслэнэ.
-           * ⚠️ OBJECTID-аар холбож БОЛОХГҮЙ: агшин бүрд мөр ДАХИН хуулагддаг
-           * тул дугаар нь өөр байна. `№` нь багц дотроо тогтвортой.
-           */
-          /*
-           * ⚠️ 2026-10-11 (аудит №7): суурь жаазны мөрийг ТОГТВОРТОЙ танигчаар (`rowSids` — «№ ¦ Ажил»-ын hash +
-           *    ижил шошгын доторх дараалал) индекслэнэ, байрлалаар БИШ. Урьд нь `before.get(String(ri))` тул суурь
-           *    жаазнаас хойш мөр НЭМЭГДСЭН (Хуваарь → нэмэлт ажил) бол нэмсэн мөрөөс хойшхи мөр бүр ӨӨР мөртэй
-           *    жишигдэж зохиомол «өөрчлөлт» гардаг байв. Танигч нь № ба Ажил хоёул хоосон мөрөнд л утгагүй — тэр
-           *    үед байрлал; танигч олдохгүй (шинэ мөр) бол суурьгүй («утгатай нүд бүр шинэ»). Доорх `sidsA`-тай
-           *    (энэ жаазны танигч) нэг функц.
            */
           const before = new Map<string, Record<string, unknown>>();
           const beforePos = new Map<string, Record<string, unknown>>();
@@ -780,8 +526,6 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
           const blankSid = (x: { attributes: Record<string, unknown> }) =>
             String(x.attributes[sc.f.no] ?? '').trim() === '' && String(x.attributes[sc.f.work] ?? '').trim() === '';
           if (samePrev.length) {
-            /* ⚠️ Суурь нь ИЖИЛ ӨДРИЙН өмнөх жааз — өмнөх өдрийнх БИШ (дээрх ⚠️).
-               Аль хэдийн татагдсан тул `fill < at` асуулгын алдаа энд хамаагүй. */
             sameDay = true;
             prevFailed = false;
             indexBefore(samePrev);
@@ -798,30 +542,14 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
                   resultRecordCount: '2000',
                 })) as { features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
                 const got = pv.features ?? [];
-                /*
-                 * ⚠️ Түлхүүр нь № ГАНЦААРАА БИШ — «1», «2» гэсэн дугаар хуудсанд
-                 *    хэдэн ч удаа давтагддаг (бүлэг бүрд шинээр эхэлдэг). Тиймээс
-                 *    БАЙРЛАЛААР индекслэнэ: агшин бүр хуудсыг бүтнээр, ижил
-                 *    дараалалаар агуулдаг тул байрлал тогтвортой.
-                 */
                 prevFeats.push(...got);
-                /* ⚠️ `exceededTransferLimit` — дээрхтэй ижил шалтгаан (2026-09-15) */
                 if (!pv.exceededTransferLimit || got.length === 0) break;
                 off += got.length;
               }
             } catch {
-              /*
-               * ⚠️ Дундаас нэг хуудас унавал prevFeats ДУТУУ — байрлалаар
-               *    индекслэдэг тул дутуу жагсаалттай жишвэл мөр бүр буруу
-               *    хөрштэйгөө тулгарч, зохиомол «өөрчлөлт» гарна. Хагас
-               *    өгөгдлийг бүхэлд нь хаяж «тодорхойгүй» гэж тэмдэглэнэ.
-               */
               prevFailed = true;
             }
             if (!prevFailed) {
-              // ⚠️ Өмнөх агшныг ч ИЖИЛ дүрмээр (`lastFrame`) таслана — эс
-              //    бөгөөс жишилт нь өөр хуулбартай харьцуулж, байхгүй
-              //    өөрчлөлт «олдоно» (дээрх ⚠️).
               const pExpect = (TREES[p.key] ?? '').length;
               const prev2 = lastFrame(prevFeats, sc.f.no, pExpect, sc.f.work);
               indexBefore(prev2);
@@ -829,33 +557,24 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
           }
 
           const tree = TREES[p.key] ?? '';
-          /* ⚠️ 2026-10-09 (F4): ГҮН нь `loadRows`-ийн дүрмээр — эхлээд `gun` багана (жааз БҮХ мөрд
-             дүүрсэн бол; бүлэг = дараагийн мөр өөрөөсөө гүн), эс бөгөөс `TREES` байрлалаар. Урьд нь
-             зөвхөн байрлалаар тул мөр НЭМЭГДСЭН жаазад нэмсэн мөрөөс хойшхи шатлал нэгээр гулсаж,
-             хянагчийн хүснэгт бөглөх хуудсынхаас өөр харагддаг байв. */
           const gunF = sc.f.gun;
           const qf = q.features ?? [];
           const gunDepth = gunF && qf.length > 0 && qf.every((x) => x.attributes[gunF] != null)
             ? qf.map((x) => Number(x.attributes[gunF]) || 0)
             : null;
           const blkLabels = sc.bld.filter((_, i) => sc.obyem[i]);
-          /* ⚠️ 2026-10-01: тогтвортой танигч (`Change.rid`) — ТҮҮХИЙ №/ажил (trim), «—» БИШ */
           const sidsA = rowSids((q.features ?? []).map((x) => ({
             no: String(x.attributes[sc.f.no] ?? ''),
             work: String(x.attributes[sc.f.work] ?? ''),
           })));
           filled = (q.features ?? []).map((x, ri) => {
             const a = x.attributes;
-            /* ⚠️ 2026-10-11 (аудит №7): танигчаар; хоосон (танигчгүй) мөр л байрлалаар (дээрх `indexBefore`-ийн ⚠️) */
             const prev = blankSid(x) ? beforePos.get(String(ri)) : before.get(sidsA[ri]);
             const cells = obs.map((n) => num(a[n]));
             const beforeVals = obs.map((n) => (prev ? num(prev[n]) : null));
             const changed = obs.map((n, k) => {
               const now = cells[k];
               if (now == null) return false;
-              // ⚠️ Өмнөх агшныг ТАТАЖ ЧАДААГҮЙ бол таамаглахгүй — «бүгд
-              //    өөрчлөгдсөн» ч, «өөрчлөлтгүй» ч гэж мэдэгдэх үндэсгүй.
-              //    Төлөв нь `prevError`-оор дуудагчид ил байна.
               if (prevFailed) return false;
               // Анхны нийтлэлд өмнөх агшин алга — утгатай нүд бүр ШИНЭ
               if (!prev) return true;
@@ -908,28 +627,16 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
         pkgKey: p.key,
         day: msToDay(at),
         blocks: sc.bld.filter((_, i) => sc.obyem[i]),
-        // ⚠️ Хуудаслалт унасан бол prevAt олдсон ч ЖИШИГДЭЭГҮЙ — true гэвэл
-        //    UI «улаан хүрээ — өөрчлөгдсөн» гэсэн худал тайлбар үзүүлнэ.
         compared: (prevAt != null || sameDay) && !prevFailed,
         prevError: prevFailed,
         rows: nRows,
         filled,
         filledCount,
         changes,
-        /*
-         * ⚠️ ХУУЧИН (архивын) ЗАМ нь зөвхөн обьёмын баганыг жишдэг тул огноо
-         *    ба «Шинэчлэгдсэн огноо»-ны өөрчлөлтийг ИЛРҮҮЛЖ ЧАДАХГҮЙ. Хоосон
-         *    жагсаалт нь «өөрчлөгдөөгүй» гэсэн БАТАЛГАА БИШ — тэр замаар
-         *    ирдэг мөрүүд нь батлагдсан/хуучин бүртгэлүүд.
-         */
         dateChanges: [],
         asOfChanged: false,
       };
     } catch (e) {
-      /*
-       * ⚠️ Алдааг ЗАЛГИХГҮЙ — нөгөө үйлчилгээг шалгасаар байгаад бүгд унавал
-       * шалтгааныг нь дуудагчид хэлнэ.
-       */
       last = String((e as Error)?.message ?? e);
       continue;
     }

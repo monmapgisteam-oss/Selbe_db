@@ -18,9 +18,6 @@ export type Group = { key: string; label: string; value: number; n: number };
 
 /**
  * groupBy → нийлбэр + мөрийн тоо, УТГААР буурах эрэмбээр.
- *
- * ⚠️ Хоосон/«0» түлхүүрийг ХАЯХГҮЙ — `unknown` шошго болгож ил гаргана
- * (`live.ts`-ийн «Эх үүсвэр задраагүй» дүрэмтэй ижил: зөрүү нуухгүй).
  */
 export function tally<T>(
   rows: readonly T[],

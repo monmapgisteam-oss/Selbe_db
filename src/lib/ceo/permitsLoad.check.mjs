@@ -1,12 +1,6 @@
 /**
  * CEO «Зөвшөөрөл» — УНАЛТ КЭШЛЭГДЭХГҮЙ (2026-09-30) + CEO самбарын автобус.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/permitsLoad.check.mjs
- *
- * ⚠️ ЯАГААД. `loadZov` уналтдаа ШИДДЭГГҮЙ (`null` буцаана) тул урьд нь
- *    `computePermits(null)` (unknown карт) АМЖИЛТТАЙ амлалт болж `cached`-д 5 минут
- *    үлддэг байв: нэг 429/timeout-ын дараа сүлжээ сэргэсэн ч карт «—» хэвээр, самбарын
- *    «Дахин оролдох» зөвхөн `error` төлөвт гардаг тул сэргээх зам ч байгаагүй
- *    (`iot.loadIotKpiSafe`-ээр аль хэдийн засагдсан ижил алдаа).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/permitsLoad.check.mjs
  *
  * Сүлжээ ОГТ хэрэглэхгүй — `fetch` нь хуурамч (эхлээд ArcGIS-ийн 200-аар ирдэг
  * алдаа, дараа нь хэвийн хариу).

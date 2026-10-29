@@ -3,37 +3,13 @@
 /**
  * ЭРХИЙН ХУВААРИЛАЛТЫН ГАНЦ БИЧИХ ДАВХАРГА — хэрэглэгчийн карт, багц × системийн
  * матриц, бүлгийн панелууд бүгд ЭНДЭЭС бичнэ (2026-09-25).
- *
- * ⚠️ ЯАГААД (хэрэглэгчийн баталсан төлөвлөгөө). Нэг хуваарилалтыг урьд нь
- *    ХОЁР газраас засдаг байв: бүлгийн панел (багцаар) ба «Хэрэглэгчид»
- *    самбарын унтраалга (`UserAdmin.flipScoped`, `[ALL]`-аар). Хоёр зам нь
- *    ӨӨР дүрэмтэй тул унтраалга багцын хязгаарыг чимээгүй тэлж, панел нь
- *    түүнийг «бүх багц» гэж харуулдаг байлаа. Одоо нэмэх/хасах бүр нэг
- *    дүрмээр: «Бүх багц» хамгаалалт, багцгүй grant унах, `revoke=false` +
- *    зөвхөн АЛГА БОЛСОН үүргийн эрх буцаах.
- *
- * ⚠️ ХЭЛБЭР: op нь `{ confirm?, run }` — баталгаажуулах асуултууд ба бичилт.
- *    Асуултыг `runOp` асууна (UI биш), тиймээс карт · матриц · панел гурвуулаа
- *    ЯГ ижил асуулт асууна. `null` = хийх зүйлгүй (аль хэдийн тийм).
- *
- * ⚠️ ТЕКСТ: `tr()` зөвхөн op бүтээх агшинд (дарах үед) дуудагдана — модулийн
- *    түвшинд биш (хэл солиход хоцрохгүй).
- *
- * ⚠️ QAQC ба урсгалын шат ЭНД багтсан ч `scopedAcl`-ийн цөмд ОРООГҮЙ — тэдгээр
- *    нь өөр бүтэцтэй (үүрэггүй · «нэг аккаунт нэг шатанд»). `QaqcAcl` ба
- *    `GuitsetgelAcl` панелууд ч (2026-09-25) эдгээр op-оор бичдэг — панел, карт,
- *    матриц гурвуулаа ИЖИЛ асуулт асууна. Сүүлийн багцыг хасахад панел урьд нь
- *    «хасахгүй» гэж зогсоодог байсан — одоо ✕-ийн зам (асууж, эрх буцаана).
  */
 
 import { t as tr } from './i18nCore';
-/* ⚠️ 2026-10-23 (UX аудит X1 · A3): аппын дотоод асуулт ба «Буцаах» мэдэгдэл — `window.confirm`-ийн оронд */
 import { askConfirm, toastUndo } from './confirm';
 import { listUsers, remoteReady, resolveAccess, roleOf } from './permissions';
 import { ROLE_STAGE, isCodeSuper, roleForUser, VIEWS } from './services';
-/* ⚠️ 2026-10-22 (аудит): порталд алга аккаунт (`portalPresence`) — гацааны шалгуурт эзэн биш */
 import { portalMissing } from './portalPresence';
-/* ⚠️ 2026-10-26: «Хуваарь харах» төрлийн хүрээ — урсгалтай хуудасны эх сурвалжид (`ErhSource.hvType`) */
 import { typeHuvaariScope } from './roleTypes';
 import { ownPkgScope } from './huvaariView';
 import { allPkgErh, type ErhSource, type PkgIssue, type ScopedRow } from './erhOverview';
@@ -46,7 +22,6 @@ import type { Stage } from './hyanalt';
 import { capLabelShort, draftFlowMsg, issueText, newAccountMsg, removeMarkedMsg } from '@/modules/erhLabels';
 import { STAGE_LABEL } from './hyanaltGroup';
 import { planCellAdd, planCellRemove } from './guitsetgelGrid';
-/* ⚠️ 2026-10-12 (дарааллын аудит): `pendingHeldBy` — зөвхөн уншигчид (нэрийн орон зайгаар, тойрог импортгүй) */
 import * as hv from './huvaariBatlah';
 import * as ob from './obyemBatlah';
 import * as aj from './ajilBatlah';
@@ -87,25 +62,9 @@ type Row<R extends string = string> = { user: string; grants: Grant<R>[] };
  */
 export type AclOp = {
   confirm?: string[]; run: () => Write; user?: string;
-  /**
-   * ⚠️ 2026-10-05: бичилтийн ДАРААХ эрхийн зураг (цэвэр, юу ч бичихгүй) — `runOp` үүгээр
-   *    «энэ хасалт ямар ШИНЭ гацаа үүсгэх вэ»-г асуултын текстэд нэмнэ (`newBlockingText`).
-   *    Зөвхөн АСУУЛТТАЙ хасах/шилжүүлэх op-д; нэмэх op-д байхгүй.
-   */
   after?: After;
-  /**
-   * ⚠️ 2026-10-23 (UX аудит A3): АСУУЛТГҮЙ ХАСАЛТЫН «БУЦААХ». Нэг нүднээс ✕ (багцын жагсаалт багасах — `set`)
-   *    урьд нь нэг товшилтоор асуулгүй бичигдэж, буцаах замгүй байв. Асуулт НЭМЭХГҮЙ (`runOp`-ын «асуултын тоо
-   *    өөрчлөгдөхгүй» ⚠️) — оронд нь бичилт амжилттай болмогц «Буцаах» мэдэгдэл (`toastUndo`) гарч, дарвал энэ
-   *    эсрэг op (тэр нүдийг дахин нэмэх) ажиллана. Эсрэг op нь ДАРАХ агшинд шинэ мөрөөс бүтнэ (хооронд хийсэн
-   *    өөр засварыг дарахгүй). `done` — мэдэгдлийн текст.
-   */
   undo?: () => AclOp;
   done?: string;
-  /**
-   * ⚠️ 2026-10-23: УРСГАЛЫН op — томилгоо нь хэрэглэгчийн ЭРХИЙН МӨРИЙГ бичдэг (`grantFlowAccess`/`revokeFlowAccess`)
-   *    тул «Хэрэглэгчид»-ийн хадгалаагүй ноорогтой хүнд хориглоно (`draftGuard`).
-   */
   flow?: boolean;
 } | { error: string } | null;
 
@@ -129,11 +88,6 @@ const afterFlow = (u: string, row: { stage: Stage; bagts: string[]; viewOnly?: b
 /**
  * ХЭРЭГЛЭГЧ БҮРИЙН ЯВАГДАЖ БУЙ OP-ЫН ТОО — `runOp` бичилт эхлэхэд нэмж,
  * `sync` (+`granted`) дуусахад хасна.
- * ⚠️ ЯАГААД: хуваарилалт ЛОКАЛД шууд өөрчлөгддөг ч эрх (`__cap__:`) нь
- *    `sync`-ийн ДАРАА олгогдож/буцаагддаг. Тэр хооронд «өнчин эрх» ба «эрх
- *    олгогдоогүй» гэсэн ХУДАЛ анхааруулга гарч, админ «хасах» дарвал дөнгөж
- *    олгосон эрхийг устгах байв. `UserRights` энэ хугацаанд тэмдгийг нуух ба
- *    «хасах»-ыг хаана.
  */
 const pending = new Map<string, number>();
 const PENDING_EVENT = 'selbe-aclops-pending';
@@ -154,11 +108,6 @@ export function subscribeAclPending(fn: () => void): () => void {
 
 /**
  * ЭРХИЙН БҮХ ЕСӨН ЭХ СУРВАЛЖ ЭНЭ СЕШНД УНШИГДСАН УУ — ГАНЦ хуулбар (2026-09-25).
- *
- * ⚠️ Урьд нь `UserAdmin.capsLocked` ба `ErhOverview.locked` хоёр ижил
- *    илэрхийллийг тусад нь бичдэг байв; нэгд нь туг нэмэхэд нөгөө нь хоцорно.
- *    Уншигдаагүй эх сурвалжийн `list*()` нь `[]` тул тэр үед бичвэл хүний
- *    бүх мөрийг нэг багцаар дарж бичнэ (панелуудын 2026-09-23 · 24 ⚠️).
  */
 export const allAclReady = (): boolean => remoteReady() && capsRemoteReady() && flowAclReady()
   && huvaariAclReady() && obyemAclReady() && chanarAclReady()
@@ -167,14 +116,10 @@ export const allAclReady = (): boolean => remoteReady() && capsRemoteReady() && 
 /** Түгжээний зурвас — панелуудын ЯГ ижил текст */
 export const lockMsg = (): string => tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
 
-/* ══════════════ «Хэрэглэгчид»-ийн хадгалаагүй ноорогийн хамгаалалт (⚠️ 2026-10-23) ══════════════ */
+/* ══════════════ «Хэрэглэгчид»-ийн хадгалаагүй ноорогийн хамгаалалт (2026-10-23) ══════════════ */
 
 /**
  * «ХЭРЭГЛЭГЧИД» САМБАРЫН НООРОГ — `UserAdmin` бүртгэнэ (`setAclDrafts`), `runOp` бүх эрхийн хуудсанд шалгана.
- * ⚠️ ЯАГААД («хэрэглэгч: бүгдийг зас»): энэ хамгаалалт урьд нь ЗӨВХӨН тоймын матрицад (`ErhCellEditor.guard`) байв —
- *    «Гүйцэтгэлийн урсгалын эрх» · багцын хуудсууд · энгийн эрхийн хуудсаар (`GuitsetgelAcl` · `ScopedAclPanel` ·
- *    `PlainCapAcl`; 2026-10-23: QAQC хасагдсан) шинэ (хадгалаагүй) · устгахаар тэмдэглэсэн аккаунтад хуваарилалт бичигдэж, урсгалын
- *    томилгоо ноорогтой хүний эрхийн мөрийг бичиж дараагийн «Хадгалах»-тай уралддаг байв. Одоо ГАНЦ газар.
  */
 type DraftMark = { remove?: boolean; isNew?: boolean };
 let adminDrafts = new Map<string, DraftMark>();
@@ -199,17 +144,6 @@ const asFlow = (op: AclOp): AclOp => (op && !('error' in op) ? { ...op, flow: tr
 
 /**
  * МӨРИЙГ БҮХЭЛД НЬ ХАСААД ЗӨВХӨН ХАСАГДСАН ҮҮРГИЙН ЭРХИЙГ БУЦААНА (2026-09-24).
- *
- * ⚠️ `remove*Assign(user)`-ийн анхдагч `revoke=true` нь `syncCaps(u, [])` →
- *    `none` горимд тэр системийн `roleCaps` БҮХ эрхийг хасдаг байв: нэмэлт
- *    ажлын батлагчийг хасахад админы гараар олгосон «Мөр нэмэх» (`addRow`) ч
- *    чимээгүй алга болно. Мөрийг `revoke=false`-оор хасаад, `sync` дууссаны
- *    ДАРАА зөвхөн хасагдсан үүргүүдийн эрхийг буцаана.
- * ⚠️ ГҮЙЦЭТГЭХ АГШИНД ДАХИН УНШИНА: дараалалд хүлээх хооронд дахин
- *    хуваарилагдсан үүргийн эрхийг буцаахгүй; нэг эрх рүү заадаг ӨӨР үүрэг
- *    үлдсэн бол (Чанарын таван хянагч → `chanarReview`) мөн буцаахгүй.
- * ⚠️ 2026-09-25: `ScopedAclPanel.tsx`-ээс ЭНД шилжсэн — карт ба матриц ч
- *    хэрэглэдэг болсон тул UI файлд байх ёсгүй. Логик ӨӨРЧЛӨГДӨӨГҮЙ.
  */
 export function removeRevokingRoles<R extends string>(
   user: string,
@@ -226,13 +160,6 @@ export function removeRevokingRoles<R extends string>(
 /**
  * ҮҮРГИЙН ЗАРИМЫГ ХАСААД (бусад grant ҮЛДЭНЭ) ХАСАГДСАН ҮҮРГИЙН ЭРХИЙГ БУЦААНА
  * (2026-09-25, аудитын засвар).
- *
- * ⚠️ `removeRevokingRoles`-ийн ХОС. `setGrants`-ийн `syncCaps` нь зөвхөн
- *    ОЛГОДОГ (lib-ийн санаатай дүрэм — гараар олгосныг устгахгүй). Тиймээс
- *    «Багц 1 · Зохиогч, Багц 5 · Батлагч» хүний батлагчийг ✕ дарахад
- *    `planApprove` ҮЛДЭЖ, «Хуваарь батлах» асаалттай хэвээр байв.
- * ⚠️ Үүрэг нь БАГЦ ЦӨӨРӨӨД үлдсэн бол эрх ХЭВЭЭР — зөвхөн үүрэг бүхэлдээ
- *    алга болсон үед л буцаана (`revokeGoneRoles`-ийн дахин уншилт).
  */
 export function setGrantsRevokingRoles<R extends string>(
   user: string,
@@ -254,8 +181,6 @@ const rolesOfUser = <R extends string>(list: () => Row<R>[], u: string) =>
 /**
  * `sync` дууссаны ДАРАА `had`-д байсан, одоо алга болсон үүргүүдийн эрхийг
  * буцаана — хоёр замын (бүтэн · хэсэгчилсэн хасалт) НИЙТЛЭГ логик.
- * ⚠️ Үлдсэн үүрэг ИЖИЛ эрх рүү заадаг бол (Чанарын таван хянагч →
- *    `chanarReview`) тэр эрхийг буцаахгүй.
  */
 function revokeGoneRoles(
   u: string,
@@ -264,12 +189,6 @@ function revokeGoneRoles(
   rr: Write,
   roleCaps: Readonly<Partial<Record<string, CapKey>>>,
 ): Write {
-  /* ⚠️ 2026-09-30: ХАТУУ SUPER-ИЙН ЭРХИЙГ ХӨНДӨХГҮЙ — хуучин (remote-д үлдсэн) хуваарилалтын
-     мөрийг хасахад `__cap__:` мөрийг нь буцаадаг байв. 2026-10-12-оос super бүх эрхтэй
-     (`caps.capsOf`), хадгалагдсан мөр нь үлдэгдэл — бичилтээр хөндөхгүй. */
-  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super (`isCodeSuper`). Хүснэгтийн super (`role:'super'` мөр — доошлуулж болно)
-     энгийн хэрэглэгч шиг: хадгалагдсан `__cap__:` мөр нь хуваарилалттайгаа хамт синклэгдэнэ (`capsOf` super байхад нь
-     бүх эрх өгсөөр), эс бөгөөс доошлуулсны дараа хуучин/дутуу эрхтэй үлдэнэ (`isCleanup`-ийн ⚠️). */
   if (!rr.ok || !rr.sync || isCodeSuper(u)) return rr;
   const sync = rr.sync.then(async (ok) => {
     const cur = rolesOf();
@@ -297,7 +216,6 @@ export type SysSpec = {
   failedUsers: () => string[];
   ready: () => boolean;
   setGrants: (u: string, grants: Grant<string>[]) => Write;
-  /** ⚠️ ЗААВАЛ `revoke=false` — эрхийг `removeRevokingRoles` буцаана */
   removeNoRevoke: (u: string) => Write;
   /** Унасан бичилтийг дахин илгээх / эрхийг дахин олгох (2026-10-01, `scopedAcl.retry`) */
   retry: (u: string, grant: boolean) => Write;
@@ -309,8 +227,6 @@ export type SysSpec = {
 
 /**
  * ТАВАН ҮҮРЭГТЭЙ СИСТЕМ — нэг хүснэгтэд.
- * ⚠️ Cast (`as Grant<PlanRole>[]`) нь аюулгүй: `setGrants` цөм нь танигдахгүй
- *    үүргийг `ROLES.has()`-ээр өөрөө хаядаг (`scopedAcl.setGrants`).
  */
 export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
   huvaari: {
@@ -346,7 +262,6 @@ export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
     setGrants: (u, g) => setButetsGrants(u, g as Grant<ButetsRole>[]),
     removeNoRevoke: (u) => removeButetsAssign(u, false),
     retry: (u, g) => retryButetsAssign(u, g),
-    /* ⚠️ Багц нь `BUTETS_PACKS` түлхүүр («БАГЦ51») — `PKG_GROUPS` БИШ (`butetsAcl.ts`) */
     roleCaps: ROLE_CAPS.butets, roles: Object.keys(ROLE_CAPS.butets),
     universe: () => BUTETS_PACKS.map((p) => p.key),
   },
@@ -354,9 +269,6 @@ export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
 
 /**
  * ОДООГИЙН ЭРХИЙН ЗУРАГ — тойм, матриц, карт гурвын ГАНЦ уншилт (2026-09-25).
- * ⚠️ Урьд нь `ErhOverview` дотор бичигдсэн; карт ба жагсаалт ч (өнчин эрх)
- *    хэрэглэдэг болсон тул нэг газар. Цэвэр тооцоо нь `erhOverview.ts`-д.
- * ⚠️ Уншигдаагүй эх сурвалж `[]` өгнө — дуудагч `allAclReady()`-г шалгана.
  */
 export function liveErhSource(): ErhSource {
   const users = listUsers().map((u) => u.username);
@@ -366,39 +278,29 @@ export function liveErhSource(): ErhSource {
   const chanar = listChanarAssigns();
   const ajil = listAjilAssigns();
   const butets = listButetsAssigns();
-  /* ⚠️ 2026-09-30: хуваарилалттай атлаа порталд алга (устгагдсан) — гацааны шалгуурт тоологдохгүй (`ErhSource.gone`) */
   const known = new Set(users.map((u) => u.toLowerCase()));
   const rows: { user: string }[][] = [flow, huvaari, obyem, chanar, ajil, butets];
-  /* ⚠️ 2026-10-22 (аудит): хүснэгтэд мөртэй атлаа Enterprise ПОРТАЛД АЛГА гэж баталгаажсан аккаунт (`portalPresence`) ч
-     «устгагдсан»-тай адил эзэн БИШ — урьд нь «gone» = зөвхөн «хүснэгтэд мөргүй» тул `selbe_redesign` (порталд алга) нь
-     «Гүйцэтгэгч компани» шатны цорын ганц эзэн мэт тоологдож 21 багцын гацаа ХЭЗЭЭ Ч гардаггүй байв. Мэдэхгүй бол «байгаа». */
   const gone = [...new Set(rows.flatMap((l) => l.map((a) => a.user)))]
     .filter((u) => !known.has(u.toLowerCase()) || portalMissing(u));
-  /* ⚠️ 2026-10-22 (аудит): төрлөөс хүлээгдэх урсгалын шат — `erhOverview.typeStageGaps` (төрөл ↔ томилгоо зөрөө) */
   const typeStage: Record<string, Stage> = {};
   for (const u of users) {
     const r = roleOf(u);
     const st = r ? ROLE_STAGE[r] : undefined;
     if (st) typeStage[u.toLowerCase()] = st;
   }
-  /* ⚠️ 2026-10-23: «Ерөнхий захирал» — урсгалын мөртэй байсан ч шатны эзэн биш (`ErhSource.viewRoles`) */
   const viewRoles = users.filter((u) => roleOf(u) === 'zahiral');
-  /* ⚠️ 2026-10-26: эрхийн төрлийн «Хуваарь харах» («Үгүй»-гээс бусад) — `workflowSources`-ийн «Төрөл · Бүх багц» эх сурвалж */
   const hvType: NonNullable<ErhSource['hvType']> = {};
   for (const u of users) {
     const t = typeHuvaariScope(roleOf(u));
     if (t === 'all') hvType[u.toLowerCase()] = { scope: 'all', bagts: null };
     else if (t === 'own') {
-      /* ⚠️ 2026-10-26: `huvaariViewScope`-тэй адил ЗӨВХӨН `PKG_GROUPS` — танигдаагүй багц карт дээр «нээлттэй» гэж худал харуулна */
       const s = ownPkgScope(u);
       hvType[u.toLowerCase()] = { scope: 'own', bagts: s === null ? null : PKG_GROUPS.filter((g) => s.includes(g)) };
     }
   }
   return {
     users,
-    /* ⚠️ Хатуу super — `roleForUser` энд, `erhOverview.ts` импортлодоггүй */
     supers: users.filter((u) => roleForUser(u) === 'super'),
-    /* ⚠️ 2026-10-23: КОДЫН (тестийн) super — өнчин/дутуу эрхийн шалгалтаас ЗӨВХӨН тэд чөлөөтэй (`erhOverview.orphanCaps`) */
     codeSupers: users.filter((u) => isCodeSuper(u)),
     gone,
     absent: users.filter((u) => portalMissing(u)),
@@ -411,8 +313,6 @@ export function liveErhSource(): ErhSource {
     chanar,
     ajil,
     butets,
-    /* ⚠️ 2026-10-23: хүснэгтийн super-ийн ХАДГАЛАГДСАН эрх (`capsStored`) — `capsOf` super-т бүх эрх өгдөг тул тойм ·
-       өнчин/дутуу эрх · эрхийн хуудсууд super-ийн бодит (доошлуулахад үлдэх) эрхийг харуулдаггүй байв. Кодын super хэвээр. */
     caps: Object.fromEntries(users.map((u) => [u.toLowerCase(),
       roleForUser(u) === 'super' && !isCodeSuper(u) ? capsStored(u) : capsOf(u)])),
     views: Object.fromEntries(users.map((u) => {
@@ -452,37 +352,14 @@ const isKnown = (u: string): boolean => listUsers().some((x) => x.username.toLow
  * (remote-д үлдсэн) мөр. Хэнд нь ч хуваарилалт үйлчилдэггүй тул нүдний ✕ нь МӨРИЙГ БҮХЭЛД НЬ,
  * эрх хөндөхгүй (`revoke=false`), асуулгагүй арилгана — `qaqcDropOp`-ийн устгагдсан аккаунтын
  * хуучин дүрмийг гурван систем (QAQC · урсгал · таван үүрэгтэй) бүгдэд.
- * ⚠️ ЯАГААД:
- *    · устгагдсан аккаунтын НЭГ багцыг хасахад `setGrants` (grant=true) нь түүнд `__cap__:` мөр
- *      ДАХИН үүсгэдэг байв — ижил нэрийг дахин нэмэхэд «хуучин засах эрх үлдсэн» гэж түгжинэ;
- *    · super-ийн мөрийн НЭГ багцыг хасахад `setGrants`/`setAssign` super-ийг татгалзаж ✕ ҮРГЭЛЖ
- *      унадаг (мөрийг арилгах зам алга), сүүлийн багц → бүтэн хасалт нь super-т ШУУД олгосон
- *      эрхийг (`plan` · `qaqc` г.м.) буцаадаг байв.
  */
-/* ⚠️ 2026-10-21 (аудит): «super-ийн хуучин мөр» = ЗӨВХӨН КОДЫН super (`isCodeSuper`). Хүснэгтийн super (2026-10-21-ээс
-   `role:'super'` мөр — доошлуулж болно) нь ЭНГИЙН мөр: ✕ нэг багцыг л хасна, сүүлийнх асууж эрх буцаана, эрх нь
-   хуваарилалттайгаа синклэгдэнэ (`revokeGoneRoles` · `scopedAcl.syncCaps`/`setGrants` · `guitsetgelAcl.setAssign`) —
-   урьд нь мөрийг бүхэлд нь асуулгагүй арилгаж, доошлуулсны дараа хуваарилалтгүй/хуучин эрхтэй аккаунт үлдээдэг байв. */
 const isCleanup = (u: string): boolean => !isKnown(u) || isCodeSuper(u);
 
 /* ══════════════ Үүрэгтэй таван систем (Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · Дэд бүтэц) ══════════════ */
 
-/*
- * ⚠️ 2026-10-09 (аудит №6): ҮХМЭЛ OP-УУД УСТГАГДСАН — `removePkgOp` · `qaqcAddOp` · `qaqcRemoveOp` ·
- *    `flowAddOp` · `flowRemoveOp` · `flowAllOp` · `flowChipOp` (хуучин карт/хөзөр/матрицын op-ууд,
- *    2026-09-30-аас UI-аас дуудагдахгүй) ба тэдний `allRoleMsg`. Хүснэгтийн нүд бүр `scopedCellOp` ·
- *    `qaqcCellOp` · `flowCellOp`-оор бичнэ; `aclParity`-ийн гэрээ тэдгээр рүү шилжсэн. `removeAllMsg`
- *    зөвхөн энд (экспортгүй). `setRoleAllOp` · `dropRoleOp` · `flowStageOp` нь UI-д мөн үхмэл ч
- *    `aclE2E` · `aclE2E.ui` шалгуурууд бэлтгэлдээ дууддаг тул ҮЛДСЭН (тус бүрийн ⚠️).
- */
 
 /**
  * БАГЦАД ҮҮРЭГ НЭМЭХ — тэр хүний ТЭР ҮҮРГИЙН grant-д энэ багцыг нэмнэ.
- *
- * ⚠️ «Бүх багц»-тай grant-д ДАХИН нэмэхгүй: хүрээ нь аль хэдийн бүрэн тул
- *    жагсаалт руу буулгавал ХУМИГДАНА (бүх багц → зөвхөн энэ нэг).
- * ⚠️ ЗӨВХӨН тухайн үүргийн grant хөндөгдөнө — бусад үүрэг ӨӨРИЙН багцтай
- *    хэвээр (2026-09-09-ний үүрэг × багцын үржвэрийн засвар).
  */
 export function addPkgOp(sys: ScopedSys, user: string, role: string, pkg: string): AclOp {
   const spec = SCOPED_SYS[sys];
@@ -500,11 +377,6 @@ export function addPkgOp(sys: ScopedSys, user: string, role: string, pkg: string
 
 /**
  * ҮҮРГИЙГ «БҮХ БАГЦ» БОЛГОХ — картын хуучин «Бүх багц» чип.
- * ⚠️ 2026-10-09 (аудит №6): UI-аас дуудагдахгүй — ЗӨВХӨН `aclE2E` · `aclE2E.ui` шалгуурын бэлтгэл
- *    («бүх багц»-тай мөр үүсгэх товчлол) тул үлдээв; `dropRoleOp` · `flowStageOp` мөн адил.
- *    Шинэ UI-д хэрэглэхгүй — `scopedCellOp(…, ALL_BAGTS, true)`.
- * ⚠️ Хүрээг ИЛ тэлэх админы шийдвэр — өөр замаар (унтраалга г.м.) чимээгүй
- *    `[ALL]` бичигдэхгүй (2026-09-25).
  */
 export function setRoleAllOp(sys: ScopedSys, user: string, role: string): AclOp {
   const spec = SCOPED_SYS[sys];
@@ -521,7 +393,6 @@ export function setRoleAllOp(sys: ScopedSys, user: string, role: string): AclOp 
 
 /**
  * ҮҮРГИЙГ БҮХ БАГЦААС ХАСАХ — бусад үүрэг хэвээр; сүүлийнх бол мөр бүхэлдээ.
- * ⚠️ 2026-10-09 (аудит №6): зөвхөн `aclE2E` шалгуурт (`setRoleAllOp`-ийн ⚠️) — UI-аас дуудагдахгүй.
  */
 export function dropRoleOp(sys: ScopedSys, user: string, role: string): AclOp {
   const spec = SCOPED_SYS[sys];
@@ -555,17 +426,6 @@ const narrowMsg = (u: string, pkg: string, n: number): string =>
 /**
  * «БАГЦ × ҮҮРЭГ» ХҮСНЭГТИЙН НҮД (`ScopedAclPanel` · `ChanarAcl` · `DedButetsAcl`,
  * 2026-09-30) — нэмэх/хасах.
- *
- * ⚠️ Шийдвэр нь ЦЭВЭР `aclGrid.planGrant*`-д; энд зөвхөн бичилт ба асуулт.
- *    Бичилт нь `addPkgOp` · `removePkgOp`-той ЯГ ижил: нэмэх → `setGrants`
- *    (эрх олгоно); хасах → `setGrantsRevokingRoles` (алга болсон үүргийн эрх л
- *    буцна); сүүлийн grant → `removeAllMsg` асуугаад `removeRevokingRoles`.
- * ⚠️ 2026-09-30: «Тойм»-ын матриц (`ErhCellEditor`) ч ЭНЭ op-оор бичдэг болсон.
- * ⚠️ `removePkgOp` (хуучин карт · матриц)-оос ЯЛГААТАЙ нэг зүйл: «бүх багц»-тай grant-ыг
- *    НЭГ мөрөөс хасвал бусад бүх багцын ил жагсаалт болгоно (асууна) —
- *    `flowCellOp`-ийн ижил хүснэгтийн дүрэм. Дэд бүтэц 2026-09-23-наас ийм
- *    бөгөөд АСУУДАГГҮЙ — тэр шийдвэр хэвээр.
- * @param label асуултад гарах багцын нэр (дэд бүтцэд түлхүүр биш нэр)
  */
 export function scopedCellOp(
   sys: ScopedSys, user: string, role: string, pkg: string, add: boolean, label: string = pkg,
@@ -575,14 +435,12 @@ export function scopedCellOp(
   if (!u) return null;
   const cur = spec.list().find((a) => a.user === u)?.grants;
   const p = add ? planGrantAdd(cur, role, pkg) : planGrantRemove(cur, role, pkg, spec.universe());
-  /* ⚠️ 2026-09-30: устгагдсан аккаунт / super-ийн хуучин мөр → бүхэлд нь цэвэрлэнэ (`isCleanup`) */
   if (!add && p.kind !== 'none' && isCleanup(u)) return { user: u, run: () => spec.removeNoRevoke(u) };
   switch (p.kind) {
     case 'none': return null;
     case 'create': return { user: u, run: () => spec.setGrants(u, p.grants) };
     case 'set': return add
       ? { user: u, run: () => spec.setGrants(u, p.grants) }
-      /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт — «Буцаах» мэдэгдэл (`AclOp.undo`) ба ШИНЭ гацааг шууд хэлнэ (`after`) */
       : {
         user: u,
         after: afterGrants(sys, u, p.grants),
@@ -605,7 +463,6 @@ export function scopedCellOp(
   }
 }
 
-/* ⚠️ 2026-10-23: QAQC-ийн хуваарилалтын үйлдлүүд (`qaqcDropOp` · `qaqcCellOp`) ХАСАГДСАН — «Чанар (QAQC)» системээс устсан. */
 
 /* ══════════════════════ Гүйцэтгэлийн урсгал (шаттай) ══════════════════════ */
 
@@ -617,10 +474,6 @@ const asWrite = (r: { sync: Promise<boolean> }): Write => ({ ok: true, sync: r.s
 /** «бүх багц» / багцын нэр — шилжүүлэх асуултад */
 const scopeText = (pkg: string): string => (pkg === ALL_BAGTS ? tr('бүх багц') : pkg);
 
-/**
- * ⚠️ НЭГ АККАУНТ НЭГ ШАТАНД (`guitsetgelAcl.setAssign`) — шат солих нь хуучин
- *    багц ба «Зөвхөн харна»-г арилгана. Админд ИЛ хэлж асууна.
- */
 const moveMsg = (u: string, from: Stage, to: Stage, pkg: string): string =>
   tr('«{0}»-г {1} шатнаас {2} шат руу шилжүүлэх үү? Нэг аккаунт зөвхөн нэг шатанд байна — хуучин багцууд ба «Зөвхөн харна» тохиргоо арилж, шинэ шатанд «{3}» хүрээгээр томилогдоно.',
     u, STAGE_LABEL[from], STAGE_LABEL[to], scopeText(pkg));
@@ -633,7 +486,6 @@ function flowDropOpRaw(user: string): AclOp {
   const u = norm(user);
   const cur = flowRow(u);
   if (!cur) return null;
-  /* ⚠️ 2026-09-30: super-ийн хуучин мөр ч (`isCleanup`) — түүний эрх кодоос, буцаах зүйлгүй */
   if (isCleanup(u)) return { user: u, run: () => asWrite(removeAssign(u, cur.stage, false)) };
   return {
     user: u,
@@ -646,8 +498,6 @@ function flowDropOpRaw(user: string): AclOp {
 /**
  * ШАТ СОНГОХ (хуучин карт). `null` = томилгооноос хасах. Шинэ томилгоо «бүх багц»;
  * өөр шатанд байвал шилжүүлэхийг асууна.
- * ⚠️ 2026-10-09 (аудит №6): зөвхөн `aclE2E` · `aclE2E.ui` шалгуурын бэлтгэлд (`setRoleAllOp`-ийн ⚠️) —
- *    UI-аас дуудагдахгүй; хүснэгт `flowCellOp(…, ALL_BAGTS, true)`-оор бичнэ.
  */
 export function flowStageOp(user: string, stage: Stage | null): AclOp {
   return asFlow(flowStageOpRaw(user, stage));
@@ -666,7 +516,7 @@ function flowStageOpRaw(user: string, stage: Stage | null): AclOp {
   };
 }
 
-/** «Зөвхөн харна» туг — эрх хөндөхгүй (`setViewOnly`-ийн ⚠️) */
+/** «Зөвхөн харна» туг — эрх хөндөхгүй (`setViewOnly`) */
 export function flowViewOnlyOp(user: string, on: boolean): AclOp {
   const u = norm(user);
   const cur = flowRow(u);
@@ -676,18 +526,7 @@ export function flowViewOnlyOp(user: string, on: boolean): AclOp {
 
 /**
  * «БАГЦ × ШАТ» ХҮСНЭГТИЙН НҮД (`GuitsetgelAcl`, 2026-09-30) — нэмэх/хасах.
- *
- * ⚠️ Шийдвэр нь ЦЭВЭР `guitsetgelGrid.planCell*`-д; энд зөвхөн бичилт ба асуулт.
- *    Бичилт нь дээрх op-уудтай ЯГ ижил: шинэ → `setAssign` (эрх олгоно);
- *    шилжүүлэх → `moveMsg` асуугаад `setAssign`; багц солих → `grant=false`;
- *    бүхэлд нь хасах → `flowDropOp` (асууж эрх буцаана, устгагдсанд revoke=false).
- * ⚠️ 2026-09-30: «Тойм»-ын матриц (`ErhCellEditor`) ч ЭНЭ op-оор бичдэг болсон.
- * ⚠️ `flowRemoveOp` (хуучин матриц)-оос ЯЛГААТАЙ нэг зүйл: «бүх багц»-тай
- *    хүнийг НЭГ мөрөөс хасвал бусад бүх багцын ил жагсаалт болгоно (асууна) —
- *    хэрэглэгчийн шаардлага (2026-09-30). Матриц ч мөн энэ дүрмээр (2026-09-30, `ErhCellEditor`).
- * @param pkg багцын нэр эсвэл `ALL_BAGTS` («Бүх багц» мөр)
  */
-/* ⚠️ 2026-10-23: урсгалын op (`asFlow`) — ноорогийн хамгаалалт `runOp`-д (`draftGuard`) */
 export function flowCellOp(user: string, stage: Stage, pkg: string, add: boolean): AclOp {
   return asFlow(flowCellOpRaw(user, stage, pkg, add));
 }
@@ -696,8 +535,6 @@ function flowCellOpRaw(user: string, stage: Stage, pkg: string, add: boolean): A
   if (!u) return null;
   const cur = flowRow(u);
   const p = add ? planCellAdd(cur, stage, pkg) : planCellRemove(cur, stage, pkg, PKG_GROUPS);
-  /* ⚠️ 2026-09-30: устгагдсан аккаунт / super-ийн хуучин мөр → бүхэлд нь цэвэрлэнэ (`isCleanup`);
-     super-т `set` нь `setAssign`-ийн татгалзлаар ҮРГЭЛЖ унаж мөр арилгах замгүй байв */
   if (!add && p.kind !== 'none' && isCleanup(u)) return flowDropOp(u);
   switch (p.kind) {
     case 'none': return null;
@@ -709,7 +546,6 @@ function flowCellOpRaw(user: string, stage: Stage, pkg: string, add: boolean): A
     };
     case 'set': return add
       ? { user: u, run: () => setAssign(u, p.stage, p.bagts, false) }
-      /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт — «Буцаах» мэдэгдэл (`AclOp.undo`) ба ШИНЭ гацааг шууд хэлнэ (`after`) */
       : {
         user: u,
         after: afterFlow(u, { stage: p.stage, bagts: p.bagts, viewOnly: cur?.viewOnly === true }),
@@ -732,34 +568,17 @@ function flowCellOpRaw(user: string, stage: Stage, pkg: string, add: boolean): A
 
 /**
  * ЭРХИЙГ АККАУНТАД ШУУД ОЛГОХ / ХАСАХ — хуваарилалтгүй (2026-09-30).
- *
- * ⚠️ ЯАГААД ЭНД: хэрэглэгчийн картын «Нэмэлт эрх» унтраалга (`UserAdmin.flipCap`)
- *    ХАСАГДАЖ, засах эрх бүр өөрийн хуудастай болов. Энгийн дөрвөн эрх
- *    (`PLAIN_CAPS`) тэр хуудсанд аккаунтаар олгогдоно; хатуу super-т
- *    гаргалгаатай эрх ч ЭНЭ замаар — `setGrants` super-ийг татгалздаг,
- *    `hasCap` super-ийг тойрдоггүй тул шууд олгох цорын ганц зам (2026-09-07 · 08).
- * ⚠️ Гаргалгаатай эрхийг super-ээс БУСДАД энэ op-оор олгохгүй — хуваарилалтын
- *    хоёр дахь эх сурвалж болж багцын хязгаарыг тэлнэ (`aclRoleCaps`-ийн ⚠️).
- *    Өнчин эрхийг ХАСАХ нь зөвшөөрөгдөнө (`on=false`).
- * ⚠️ `toggleCap` remote уншигдаагүй бол `false` — `runOp` «ArcGIS-т хадгалагдсангүй»
- *    гэж хэлнэ; `useAclRunner`-ийн `ready` давхар хаана.
  */
 export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
   const u = norm(user);
   if (!u) return null;
-  /* ⚠️ 2026-10-12: хатуу super бүх эрхтэй (`caps.capsOf`) — олгох нь no-op, хасах нь татгалзана */
-  /* ⚠️ 2026-10-21 (аудит): зөвхөн КОДЫН super татгалзана — хүснэгтийн super-ийн ХАДГАЛАГДСАН мөр (`capsStored`) засагдана
-     (өнчин/хуучин эрхийг цэвэрлэх — `CapOrphanNote`); `capsOf` super байхад нь бүх эрх өгсөөр тул олгох нь no-op хэвээр. */
   if (isCodeSuper(u)) return on ? null : { error: tr('Админ (super) бүх эрхтэй — эрх нь тохируулагдахгүй.') };
-  /* ⚠️ 2026-10-23: хүснэгтийн super-т ХАДГАЛАГДСАН жагсаалтаар (`capsStored`) — `capsOf` super-т бүх эрх өгдөг тул олголт
-     үргэлж «аль хэдийн бий» (no-op) болж super-т эрх хадгалах зам алга байв (доошлуулсны дараа үлдэх эрх). */
   const tableSuper = roleForUser(u) === 'super';
   if ((tableSuper ? capsStored(u) : capsOf(u)).includes(cap) === on) return null;
   if (on && isDerivedCap(cap) && !tableSuper) {
     return { error: tr('Энэ эрх багцын хуваарилалтаас гардаг — багц онооно уу, шууд олгохгүй.') };
   }
   const confirm = on ? [] : [
-    /* ⚠️ 2026-10-19 (аудит): мөр нэмэх «Хуваарь»-д (`CAP_HOST_VIEW.addRow`) — «Бөглөх» табыг ЭНЭ эрх нээдэггүй болсон */
     cap === 'addRow'
       ? tr('«{0}»-ийн «{1}» эрхийг хасах уу? «Хуваарь» хуудсанд шинэ ажлын мөр нэмэх боломж хаагдана (хуваарийн эрхгүй бол «Хуваарь» хуудас өөрөө хаагдана).', u, capLabelShort(cap))
       : tr('«{0}»-ийн «{1}» эрхийг хасах уу?', u, capLabelShort(cap)),
@@ -796,10 +615,6 @@ export function failedUsersOf(sys: RepairSys): string[] {
 /**
  * «ДАХИН ИЛГЭЭХ» — бичилт нь унасан хэрэглэгчийн ЛОКАЛ төлөвийг remote руу дахин бичнэ
  * (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- * ⚠️ ЯАГААД: урьд нь «!» тэмдэг ба «Холболтоо шалгаад дахин оролдоно уу» л байв — дахин
- *    оролдох цорын ганц зам нь багцыг хасаад дахин нэмэх (эрх буцаах асуулттай).
- * ⚠️ Асуулгагүй: шинэ шийдвэр БИШ, админы аль хэдийн хийсэн (локалд байгаа) өөрчлөлтийг л
- *    илгээнэ. Устгагдсан аккаунт / хатуу super-ийн хуучин мөрт эрх үүсгэхгүй (`isCleanup`).
  */
 export function retryOp(sys: RepairSys, user: string): AclOp {
   const u = norm(user);
@@ -811,11 +626,6 @@ export function retryOp(sys: RepairSys, user: string): AclOp {
 /**
  * «ДАХИН ОЛГОХ» — хуваарилалт бий атлаа эрх нь алга (`erhOverview.missingCaps`) үед тэр
  * эрхийн системүүдийн хуваарилалтыг ДАХИН хадгалж, үүргийн эрхийг олгоно (2026-10-01).
- * ⚠️ ЯАГААД: урьд нь «багцыг хасаад дахин нэмж хуваарилалтыг дахин хадгална уу» гэсэн
- *    заавар л байв — хасах нь эрх буцаах асуулттай, гацааны анхааруулга өдөөдөг.
- * ⚠️ Хуваарилалтыг ӨӨРЧЛӨХГҮЙ — `retry(grant=true)`: мөрийг хэвээр нь дахин бичиж,
- *    `syncCaps` зөвхөн ОЛГОНО (хасахгүй).
- * ⚠️ Устгагдсан аккаунт / хатуу super-т татгалзана — эрх нь хуваарилалтаас гардаггүй.
  */
 export function regrantOp(user: string, caps: readonly CapKey[]): AclOp {
   const u = norm(user);
@@ -847,15 +657,6 @@ const rowUsers = (sys: RepairSys): string[] => (sys === 'flow' ? listAssigns().m
 
 /**
  * УСТГАГДСАН АККАУНТЫН ҮЛДЭГДЭЛ — эрхийн хуудас бүрд (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- * ⚠️ ЯАГААД: аккаунт устгахад `purge*`/`setCaps(u, [])` унавал (эсвэл өөр клиент/гараар
- *    устгасан) хуваарилалтын мөр ба `__cap__:` мөр ArcGIS дээр үлддэг. Хүснэгтэд тэд бүдэг
- *    чипээр харагддаг ч энгийн эрхийн хуудас (Зөвшөөрөл · Санхүү · Газар) зөвхөн порталд
- *    БАЙГАА аккаунтыг жагсаадаг тул тэдний эрх ХАРАГДАХ ГАЗАРГҮЙ байв; ижил нэрийг дахин
- *    нэмэхэд «хуучин эрх үлдсэн» гэж түгждэг.
- * ⚠️ «Устгагдсан» = порталын жагсаалтад (`listUsers`) алга — tombstone ч, мөргүй ч.
- * ⚠️ Дуудагч `allAclReady()`-г шалгана — уншигдаагүй эх сурвалж `[]` тул худал «цэвэр».
- * @param sys `null` — хуваарилалтгүй (энгийн эрхийн) хуудас
- * @param caps тухайн хуудасны эрхүүд (`capText.PANE_CAPS`)
  */
 export function goneRightsOf(sys: RepairSys | null, caps: readonly CapKey[]): GoneItem[] {
   const out = new Map<string, GoneItem>();
@@ -874,11 +675,6 @@ export function goneRightsOf(sys: RepairSys | null, caps: readonly CapKey[]): Go
 
 /**
  * УСТГАГДСАН АККАУНТЫН ҮЛДЭГДЛИЙГ ЦЭВЭРЛЭХ — тэр хуудасны мөр ба эрх (2026-10-01).
- * ⚠️ Мөр нь `revoke=false`-оор (эрх буцаах бичилт tombstone-ыг хөндөхгүй — `isCleanup`-ийн
- *    дүрэм), эрх нь дараа нь ИЛ жагсаалтаар (`toggleCap(off)`) — зөвхөн ЭНЭ хуудасных.
- * ⚠️ Порталд БАЙГАА аккаунтад `null` — зөвхөн устгагдсаных.
- * ⚠️ Асуулгагүй (нэг товшилт): тэр аккаунт нэвтэрч чадахгүй тул үйлчлэх эрх биш үлдэгдэл.
- *    «Бүгдийг цэвэрлэх» нь дуудагчид НЭГ удаа асууна.
  */
 export function goneCleanupOp(sys: RepairSys | null, caps: readonly CapKey[], user: string): AclOp {
   const u = norm(user);
@@ -917,9 +713,6 @@ const badKeys = (src: ErhSource): Map<string, PkgIssue> => new Map(
 
 /**
  * Op-ын ДАРАА шинээр үүсэх АЖИЛ ГАЦААХ цоорхойн текст (хоосон = үгүй) — 2026-10-05.
- * ⚠️ Дүрэм ЭНД ДАХИН БИЧИГДЭЭГҮЙ: `erhOverview.pkgIssues` (тойм · матрицын ижил эх),
- *    текст нь `erhLabels.issueText`. Зөвхөн `bad` — `warn` (дутуу ч ажиллана) орохгүй.
- * ⚠️ Тооцоо унавал хоосон буцна — анхааруулга нь бичилтийг хэзээ ч зогсоохгүй.
  */
 function newBlockingText(after: After): string {
   try {
@@ -936,16 +729,9 @@ function newBlockingText(after: After): string {
 }
 
 /**
- * ХЭРЭГЛЭГЧИЙН НЭРЭЭР ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ · ХАГАС БИЧИЛТИЙН ТЭМДЭГ · ТҮГЖЭЭ — ⚠️ 2026-10-12 (дарааллын аудит).
+ * ХЭРЭГЛЭГЧИЙН НЭРЭЭР ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТ · ХАГАС БИЧИЛТИЙН ТЭМДЭГ · ТҮГЖЭЭ — 2026-10-12 (дарааллын аудит).
  * Хуваарь (`huvaariBatlah`) · обьём (`obyemBatlah`) · нэмэлт ажил (`ajilBatlah`, `pending` + `approved`) — БАЙГАА
  * уншигчдаар (`loadAllPending`/`loadAllApproved`), юу ч бичихгүй.
- * ⚠️ ЯАГААД: үүрэг/шат хасах, аккаунт устгах үед тэр хүний зохиосон хүлээгдэж буй илгээлт зохиогчгүй гацна
- *    (татах эрх алга — `withdrawPlan`-ийн эзэмшлийн дүрэм нэвтэрсэн хүнд л), хагас бичилтийн тэмдэг/түгжээ нь
- *    батлагчгүй үлдэнэ. Админ үүнийг асуултын текстэд харж байж шийднэ (хориглохгүй).
- * ⚠️ СТАТИК импорт (`hv`/`ob`/`aj` нэрийн орон зай) — батлах модулиуд `aclOps`-ыг (шууд ч, дамжин ч) импортолдоггүй
- *    тул тойрог үүсэхгүй; динамик импорт бол `runOp`-ын асуулт модуль хувиргалтын хугацаагаар хоцорч, `aclE2E.ui`-ийн
- *    `idle()` (сүлжээний `inflight`-ээр л хүлээдэг) асуултыг тоолж амждаггүй байв.
- * ⚠️ Уншилт унавал `null` (мэдэхгүй ≠ 0) — дуудагч «шалгаж чадсангүй» гэж хэлнэ.
  */
 export type HeldByUser = { user: string; pending: number; partial: number; locks: number };
 export async function pendingHeldBy(users: readonly string[]): Promise<HeldByUser[] | null> {
@@ -979,13 +765,6 @@ export async function pendingHeldBy(users: readonly string[]): Promise<HeldByUse
     return null;
   }
 }
-/**
- * ⚠️ 2026-10-12 (CI уналт): `runOp` асуултаас ӨМНӨ `pendingHeldBy`-г хүлээдэг болсон — тэр нь гурван
- *    батлах хүснэгтийг АМЬД (портал хайлт) уншдаг тул Node-ын UI шалгуурт (`aclE2E.ui.check`) сүлжээ рүү
- *    гарч, CI дээр асуулт хойшилж «асуулт 0» гэж унав (энд токентой тул хурдан давж байв). Уншигчийг
- *    СОЛИГДОХ (`setHeldByReader` — шалгуур хуурамц өгнө) ба ХУГАЦААТАЙ (`HELD_BY_TIMEOUT_MS`, хэтэрвэл
- *    `null` = «шалгаж чадсангүй» текст, асуулт хэвээр) болгов.
- */
 export type HeldByReader = (users: readonly string[]) => Promise<HeldByUser[] | null>;
 let heldByReader: HeldByReader = pendingHeldBy;
 export function setHeldByReader(fn: HeldByReader | null): void { heldByReader = fn ?? pendingHeldBy; }
@@ -995,13 +774,13 @@ async function heldByBounded(users: readonly string[]): Promise<HeldByUser[] | n
   const limit = new Promise<null>((r) => { timer = setTimeout(() => r(null), HELD_BY_TIMEOUT_MS); (timer as { unref?: () => void }).unref?.(); });
   try { return await Promise.race([heldByReader(users).catch(() => null), limit]); } finally { if (timer) clearTimeout(timer); }
 }
-/** `pendingHeldBy`-ийн үр дүнг асуултын текст болгоно — хоосон бол `''` (⚠️ 2026-10-12) */
+/** `pendingHeldBy`-ийн үр дүнг асуултын текст болгоно — хоосон бол `''` (2026-10-12) */
 export function heldByText(items: HeldByUser[] | null): string {
   if (items == null) return tr('Хүлээгдэж буй илгээлт · хагас бичилтийн тэмдэг · түгжээг шалгаж чадсангүй — устгахаас өмнө «Хуваарь»/«Обьём»/«Нэмэлт ажил» батлах хуудсыг шалгана уу.');
   return items.map((x) => tr('«{0}»: хүлээгдэж буй илгээлт {1} · хагас бичилтийн тэмдэг {2} · батлах түгжээ {3} — хасвал/устгавал эдгээр эзэнгүй гацна (батлагч буцаах/гүйцээх хэрэгтэй).', x.user, String(x.pending), String(x.partial), String(x.locks))).join('\n');
 }
 
-/* ══════════════ Аккаунт УСТГАХ — «ажил гацах уу» урьдчилсан шалгалт (⚠️ 2026-10-22, аудит) ══════════════ */
+/* ══════════════ Аккаунт УСТГАХ — «ажил гацах уу» урьдчилсан шалгалт (2026-10-22, аудит) ══════════════ */
 
 /**
  * АККАУНТ УСТГАСНЫ ДАРААХ ЭРХИЙН ЗУРАГ — цэвэр. Устгагдах хүмүүсийг аккаунтын жагсаалтаас хасаж `gone`-д нэмнэ
@@ -1018,32 +797,19 @@ const afterRemoveUsers = (users: readonly string[]): After => (src) => {
 };
 
 /**
- * Аккаунт(ууд)-ыг УСТГАХАД шинээр үүсэх ажил ГАЦААХ цоорхойн текст (хоосон = үгүй) — ⚠️ 2026-10-22 (аудит).
- * ⚠️ ЯАГААД: хүснэгтийн нүдний хасалт (`runOp` → `op.after`) энэ шалгалтыг 2026-10-05-наас хийдэг ч «Хэрэглэгчид»-ийн
- *    «Устгах» хийдэггүй байв — цорын ганц хяналтын инженерийг устгахад 21 багцын урсгал чимээгүй тасарсан (аудитын
- *    шалгалт). Дүрэм ДАХИН бичигдээгүй — `newBlockingText` (тойм · матрицын ижил `pkgIssues`).
+ * Аккаунт(ууд)-ыг УСТГАХАД шинээр үүсэх ажил ГАЦААХ цоорхойн текст (хоосон = үгүй) — 2026-10-22 (аудит).
  */
 export function removalBlockingText(users: readonly string[]): string {
   return users.length ? newBlockingText(afterRemoveUsers(users)) : '';
 }
 
 /**
- * ГҮЙЦЭТГЭЛ — УСТГАГДАХ ХҮНИЙ ШАТАНД ХҮЛЭЭГДЭЖ БУЙ АЖИЛ (⚠️ 2026-10-22, аудит).
- * ⚠️ ЯАГААД: устгах асуулт хуваарь · обьём · нэмэлт ажлын илгээлтийг л тоолдог (`pendingHeldBy`) — тэр хүний урсгалын
- *    шатанд (жиш. инженер) ХҮЛЭЭГДЭЖ БУЙ гүйцэтгэлийн илгээлт тоологддоггүй тул устгасны дараа эзэнгүй гацдаг байв.
- *   · `waiting`  — тэр хүний шат · багцын хүрээнд одоо хүлээгдэж буй ажил (ажлын СҮҮЛИЙН тойрог — `groupWorks`);
- *   · `orphaned` — тэдгээрээс тухайн багцад тэр шатанд ӨӨР шийдвэрлэх эзэнгүй үлдэх нь (устгагдах · хүснэгтэд/порталд
- *     алга · «Зөвхөн харна» тоологдохгүй) — устгасны дараа ШУУД гацна.
- * ⚠️ «Зөвхөн харна» томилгоотой хүн шийдвэрлэдэггүй тул өөрийн мөр тоологдохгүй. Уншилт унавал/хугацаа хэтэрвэл `null`
- *    (мэдэхгүй ≠ 0) — дуудагч «шалгаж чадсангүй» гэж хэлнэ.
- * ⚠️ Уншигч СОЛИГДОНО (`setFlowWorksReader`) — Node-ийн шалгуур амьд хүснэгт рүү гарахгүй (`setHeldByReader`-ийн ⚠️).
+ * ГҮЙЦЭТГЭЛ — УСТГАГДАХ ХҮНИЙ ШАТАНД ХҮЛЭЭГДЭЖ БУЙ АЖИЛ (2026-10-22, аудит).
  */
 export type FlowWork = { bagts: string; owner: Stage; done: boolean };
 export type FlowWaiting = { user: string; stage: Stage; waiting: number; orphaned: number };
 export type FlowWorksReader = () => Promise<FlowWork[]>;
 async function readFlowWorks(): Promise<FlowWork[]> {
-  /* ⚠️ ДИНАМИК: `hyanaltStore` (React-тай том модуль) зөвхөн устгах асуултад — `runOp`-ын статик импортын дүрэм (дээрх
-     `pendingHeldBy`-ийн ⚠️) энд хамаарахгүй. Хөрвүүлэлт `toRow` нь ГАНЦ газар (тэр файлын ⚠️). */
   const [H, S, G] = await Promise.all([import('./hyanalt'), import('./hyanaltStore'), import('./hyanaltGroup')]);
   return G.groupWorks((await H.queryAll()).map(S.toRow))
     .map((w) => ({ bagts: w.bagts, owner: w.owner, done: w.status === H.STATUS.transferred }));
@@ -1078,7 +844,7 @@ export async function flowWaitingFor(users: readonly string[]): Promise<FlowWait
     return { user: norm(a.user), stage: a.stage, waiting: open.length, orphaned };
   }).filter((x) => x.waiting > 0);
 }
-/** `flowWaitingFor`-ийн үр дүнг асуултын текст болгоно — хоосон бол `''` (⚠️ 2026-10-22) */
+/** `flowWaitingFor`-ийн үр дүнг асуултын текст болгоно — хоосон бол `''` (2026-10-22) */
 export function flowWaitingText(items: FlowWaiting[] | null): string {
   if (items == null) return tr('Гүйцэтгэлийн урсгалд хүлээгдэж буй ажлыг шалгаж чадсангүй — устгахаас өмнө «Гүйцэтгэл» хуудсыг шалгана уу.');
   return items.map((x) => tr('«{0}»: Гүйцэтгэлийн «{1}» шатанд {2} ажил хүлээгдэж байна — {3} нь өөр шийдвэрлэгчгүй үлдэж гацна.',
@@ -1087,11 +853,6 @@ export function flowWaitingText(items: FlowWaiting[] | null): string {
 
 /**
  * Op-ыг гүйцэтгэнэ: түгжээ → асуултууд → бичилт → `sync` (+`granted`) хүлээнэ.
- *
- * ⚠️ `r.ok`-ЫГ `await`-ЫН ӨМНӨ шалгана: `{ok:false}` үед `sync` байхгүй тул
- *    шалгахгүй бол «ArcGIS-т хадгалагдсангүй» гэсэн ТӨӨРӨГДҮҮЛСЭН алдаа гарна
- *    (асуудал сүлжээнийх биш, няцаалтынх — `UserAdmin.flipScoped`-ийн 2026-09-08 ⚠️).
- * ⚠️ Түгжээг ДАРАХ агшинд дахин шалгана (UI disabled ч давхар хамгаалалт).
  *
  * @param ready панел өөрийн (3 тугтай) түгжээг өгнө — анхдагч нь бүх 9 туг.
  * @returns бүгд бичигдсэн эсэх
@@ -1102,41 +863,21 @@ export async function runOp(
   if (!op) return false;
   if (!ready()) { setErr(lockMsg()); return false; }
   if ('error' in op) { setErr(op.error); return false; }
-  /* ⚠️ 2026-10-23: «Хэрэглэгчид»-ийн ноорогийн хамгаалалт — бүх эрхийн хуудсанд нэг дүрэм (`draftGuard`-ийн ⚠️) */
   const dg = op.user ? draftGuard(op.user, op.flow === true) : null;
   if (dg) { setErr(dg); return false; }
-  /*
-   * ⚠️ 2026-10-05: ГАЦААГ АСУУЛТАД НЬ ХЭЛНЭ. Урьд нь «батлагчгүй» · «өөрөө өөрийгөө батална» ·
-   *    «урсгалын шат хоосон» анхааруулга зөвхөн ХАССАНЫ ДАРАА «Тойм»-д улайж гардаг байв —
-   *    админ сүүлийн батлагчийг хасахдаа илгээсэн хуваарь/обьём мөнхөд хүлээхийг мэдэхгүй.
-   *    Одоо op-ын дараах зургаас (`op.after`) ШИНЭЭР үүсэх `bad` цоорхойг бодож, СҮҮЛИЙН
-   *    асуултын текстэд залгана. Шийдвэр админых хэвээр — хориглохгүй, зөвхөн хэлнэ.
-   * ⚠️ Асуултын ТОО өөрчлөгдөхгүй (шинэ асуулт нэмэхгүй): асуулгагүй op асуулгагүй хэвээр.
-   */
   const confirms = [...(op.confirm ?? [])];
   if (confirms.length && op.after) {
     const warn = newBlockingText(op.after);
     if (warn) confirms[confirms.length - 1] += `\n\n${warn}`;
   }
-  /* ⚠️ 2026-10-12 (дарааллын аудит): үүрэг/шат хасах асуултад тэр хүний ХҮЛЭЭГДЭЖ БУЙ илгээлт · хагас бичилтийн
-     тэмдэг · түгжээний тоог залгана (`pendingHeldBy`) — админ хасахдаа гацах илгээлтийг харна. Зөвхөн асуулттай
-     (хасах/шилжүүлэх) op-д; уншилт унавал юу ч нэмэхгүй (асуултын тоо өөрчлөгдөхгүй). */
   if (confirms.length && op.user) {
     const held = await heldByBounded([op.user]);
     if (held && held.length) confirms[confirms.length - 1] += `\n\n${heldByText(held)}`;
   }
-  /* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → `askConfirm` — хөтөч цонхыг хаасан бол асуулгүй `false` болж
-     ✕/«+» ЧИМЭЭГҮЙ юу ч хийдэггүй байв. Хост алга (Node-ийн шалгуур) бол `window.confirm` руу буцна. */
   for (const c of confirms) if (!(await askConfirm(c))) return false;
-  /* ⚠️ 2026-10-23 (засвар): асуулт async болсон — цонх нээлттэй байх зуур хүснэгтүүд алсын бэлэн байдлаа алдаж болно.
-     Бичихийн өмнө түгжээг ДАХИН шалгана (урьдын синхрон `window.confirm`-д шалгалт бичилттэй нэг агшинд байсан). */
   if (!ready()) { setErr(lockMsg()); return false; }
-  /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалтын ШИНЭ гацааг БИЧИХЭЭС ӨМНӨ бодно — дараа нь бодвол «өмнөх» ба
-     «дараах» зураг ижил болж юу ч олдохгүй. Асуулт нэмэхгүй: «Буцаах» мэдэгдэл ба самбарын алдааны мөрөнд хэлнэ. */
   const undoWarn = !confirms.length && op.undo && op.after ? newBlockingText(op.after) : '';
   const who = op.user ? norm(op.user) : '';
-  /* ⚠️ `run`-аас ӨМНӨ тэмдэглэнэ — локал бичилтийн notify-аар дахин зурахад
-     аль хэдийн «явагдаж буй» байх ёстой (эс бөгөөс нэг рендер худал өнчин). */
   if (who) bump(who, 1);
   try {
     const r = op.run();
@@ -1144,14 +885,10 @@ export async function runOp(
     setErr('');
     const [a, b] = await Promise.all([r.sync ?? Promise.resolve(true), r.granted ?? Promise.resolve(true)]);
     if (a === false || b === false) {
-      /* ⚠️ 2026-10-05: ТОДОРХОЙ шалтгаан байвал (`views` талбарын урт хэтэрсэн г.м.) түүнийг —
-         ерөнхий «хадгалагдсангүй» нь админыг сүлжээгээ шалгахад хүргэдэг байв. */
       const why = await import('./permsRemote').then((m) => m.takeWriteError()).catch(() => '');
       setErr(why || tr('ArcGIS-т хадгалагдсангүй — зөвхөн энэ хөтчид'));
       return false;
     }
-    /* ⚠️ 2026-10-23 (UX аудит A3): асуулгүй хасалт амжилттай — «Буцаах» мэдэгдэл; дарвал эсрэг op (`AclOp.undo`) мөн
-       `runOp`-оор (түгжээ · явагдаж буй тэмдэг · асуулт ижил). Гацаа үүссэн бол самбарт ҮЛДЭХ мөрөнд ч хэлнэ. */
     if (!confirms.length && op.undo) {
       const undo = op.undo;
       if (undoWarn) setErr(undoWarn);

@@ -1,6 +1,6 @@
 /**
- * УНАСАН АЧААЛАЛ ХУДАЛ 0 / «алга» болж харагдахгүй (⚠️ 2026-10-04).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/failedLoads.ui.check.mjs
+ * УНАСАН АЧААЛАЛ ХУДАЛ 0 / «алга» болж харагдахгүй (2026-10-04).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/failedLoads.ui.check.mjs
  *
  * §1 `userError`: түүхий англи серверийн мөр → ойлгомжтой мессеж; монгол мессеж хэвээр;
  *    «Token Required · Token Required» давхардал нэг болно.
@@ -15,8 +15,6 @@ import { friendlyError, userError } from '@/components/ui';
 import { dateTime } from '@/lib/format';
 import { setLocale, loadLocaleDict } from '@/lib/i18nCore';
 
-/* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — урьдчилан
-   ачаалснаар `setLocale('en')` урьдын адил СИНХРОН солигдоно. */
 await loadLocaleDict('en');
 
 const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -58,13 +56,12 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
     'components/IpcDocDialog.tsx', 'modules/AjilBatlah.tsx', 'modules/CashflowPlan.tsx',
     'modules/DedButets.tsx', 'modules/DedButetsBatch.tsx', 'modules/DedButetsEdit.tsx', 'modules/Finance.tsx',
     'modules/Gazar.tsx', 'modules/GazarEdit.tsx', 'modules/Guitsetgel.tsx', 'modules/Huvaari.tsx',
-    'modules/HuvaariBatlah.tsx', 'modules/sheet/FillNew.tsx', 'modules/ZovshoorolEdit.tsx', /* ⚠️ 2026-10-23: QAQC хасагдсан */
+    'modules/HuvaariBatlah.tsx', 'modules/sheet/FillNew.tsx', 'modules/ZovshoorolEdit.tsx',
   ]) assert.ok(!RAW.test(src(f)), `${f}: түүхий e.message дэлгэцэнд`);
   for (const f of ['modules/Habea.tsx', 'modules/habeaUzleg.tsx', 'components/PackLayers.tsx', 'modules/DedButets.tsx']) {
     assert.ok(!/\{0\}', (q|weekScores|totals)\.error\.message\)/.test(src(f)), `${f}: friendlyError`);
   }
 
-  /* ⚠️ 2026-10-20: `Chanar.tsx` · `chanarStore.ts` («Чанарын баримт») хасагдсан — тэдгээрийн шалгуур хасагдав. */
 
   const gs = src('modules/Guitsetgel.tsx');
   assert.match(gs, /const loadFailed = !!error && rows\.length === 0;/);
@@ -99,8 +96,7 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
   assert.match(src('components/ZoneFilter.tsx'), /\{zoneLabel\(z\)\}/, 'бүсийн нэр орчуулагдана');
   assert.match(pt, /zonesLabel\(zone\.split/);
-  for (const f of ['modules/Huvaari.tsx']) { /* ⚠️ 2026-10-23: QAQC хасагдсан */
-    /* ⚠️ 2026-10-12: Хуваарь нь шинэ шийдвэртэй багцад « ●» залгана — `{tr(g)}`-ээр эхлэх нь хангалттай */
+  for (const f of ['modules/Huvaari.tsx']) {
     assert.ok(src(f).includes('<option key={g} value={g}>{tr(g)}'), `${f}: багцын нэр англиар`);
   }
 }

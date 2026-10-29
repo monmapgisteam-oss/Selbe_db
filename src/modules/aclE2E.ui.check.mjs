@@ -1,14 +1,7 @@
 /**
  * ЭРХИЙН UI ДАВХАРГЫН E2E — ✕ / «+» / «Хадгалах» ЯГ АЛЬ op-ыг, ЯМАР багц · үүрэг ·
  * аккаунтаар дууддагийг хуурамч ArcGIS дээр шалгана (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/aclE2E.ui.check.mjs
- *
- * ⚠️ ЯАГААД (хэрэглэгч: «нэг багцаас хасахад бүх багцаас хасагдаж байна»). `aclE2E.check.mjs`
- *    op-уудыг (`aclOps`) шууд ажиллуулж ЗӨВ гэдгийг баталсан — алдаа нь UI-ийн аль ✕ аль op-ыг
- *    дууддагт байв: «Тойм → Багцаар» матрицын нүдний засварлагч (`ErhCellEditor`) «бүх багц»-тай
- *    хүнийг НЭГ нүднээс хасахад хуучин `removePkgOp` → «энэ үүргийг БҮХЭЛД НЬ хасах уу?» → БҮХ
- *    багцаас хасдаг байв. Энэ шалгуур UI бүрэлдэхүүнийг ЖИНХЭНЭЭР зурж, товчийг нь дарж,
- *    ArcGIS-ийн мөрийг шалгана.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/aclE2E.ui.check.mjs
  *
  * АРГА: DOM-гүй «мини рендерер» — React-ийн dispatcher (`H`)-ийг түр сольж функц
  *    бүрэлдэхүүнийг шууд дуудна (useState · useRef · useEffect … — төлөв нь зам бүрд
@@ -43,9 +36,7 @@ const INT = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRAD
 const P = await import('@/lib/permissions.ts');
 const CAPS = await import('@/lib/caps.ts');
 const OPS = await import('@/lib/aclOps.ts');
-/* ⚠️ 2026-10-12 (CI уналт): `runOp`-ын pendingHeldBy амьд хүснэгт уншдаг — хуурамцаар (сүлжээгүй, шууд) */
 OPS.setHeldByReader(async () => []);
-/* ⚠️ 2026-10-22 (аудит): устгах асуултын гүйцэтгэлийн уншилт (`flowWaitingFor`) ч амьд хүснэгт — хуурамцаар */
 OPS.setFlowWorksReader(async () => []);
 const FL = await import('@/lib/guitsetgelAcl.ts');
 const HV = await import('@/lib/huvaariAcl.ts');
@@ -194,9 +185,6 @@ const text = (node) => {
 };
 
 /** Бичилт дуустал хүлээнэ (UI `void run(op)` — амлалтгүй) */
-/* ⚠️ 2026-10-01: POOL-оос гадуурх аккаунтын (хатуу аккаунт, өнчин эрх «ui_orphan_caps» г.м.) бичилтийг ч
-   хүлээнэ — хүснэгтэд байгаа БҮХ нэрийг шалгана; эс бөгөөс удаан машинд (GitHub runner) бичилт
-   дуусахаас өмнө шалгагдаж CI-д л унадаг байв. */
 const baseName = (n) => String(n).replace(/^__[a-z]+__:/i, '');
 const idle = () => settle(() => fake.inflight > 0
   || POOL.some((u) => OPS.aclPendingFor(u))
@@ -206,8 +194,6 @@ const idle = () => settle(() => fake.inflight > 0
 const POOL = Array.from({ length: 80 }, (_, i) => `ui_u${String(i + 1).padStart(3, '0')}`);
 fake.seed(POOL.map((u) => ({ username: u, role: 'taniltsah', views: JSON.stringify(['gdash']), docs: 0 })));
 
-/* ⚠️ 2026-10-26: «Хуваарь харах» (эрхийн төрөл) — «Мэдээлэл танилцах»-ын анхдагч нь «Бүх багц» тул «Хуваарь» хуваарилалтгүйгээр
-   нээгдэнэ. Эдгээр шалгуур «хуваарилалтаар нээгдэж/хаагдах»-ыг ялгах тул суурь төрлийг «Үгүй» болгож хадгална (бусад нь анхдагч). */
 {
   const hvBase = RT._defaultTpl('taniltsah');
   fake.seed([{ username: '__type__:taniltsah', views: JSON.stringify({ ...hvBase, on: RT.withHvScope(hvBase.on, 'none'), seen: RT.tplSeenKeys() }) }]);
@@ -227,9 +213,7 @@ const usersPane = async () => {
 const alerts = (m) => findAll(m.tree, (n) => n.props?.role === 'alert').map((x) => text(x.el));
 
 /* ══════════ §0. Remote НЭГ Ч удаа уншигдаагүй сешн — картаас ноорог үүсэхгүй (2026-09-30) ══════════
- * ⚠️ Тэр үед жагсаалт нь зөвхөн browser-ийн кэш (шинэ browser-т хатуу суурь л) — түүн дээрх
- *    ноорог хадгалагдвал (эсвэл унасан бичилтийн retry-д) бодит мөрийг дарна
- *    (`roleTypeApply.applyType`-ийн «уншигдаагүй сешнд бичвэл бодит мөрийг дарна» дүрэм). */
+ */
 {
   fake.searchDown = true;
   const m = await usersPane();
@@ -356,7 +340,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
       n += 1;
     }
   }
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   /* Урсгал — 6 шат */
   for (const st of STAGE_ORDER) {
     const tag = `§B flow.${st}`;
@@ -425,7 +408,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
 /* ══════════ §D. Гацааны анхааруулга ══════════ */
 {
   const g = PKG_GROUPS[5];
-  /* ⚠️ Өмнөх хэсгүүдийн «бүх багц»-тай хуваарилалт энэ багцыг хамардаг — цэвэрлэнэ */
   for (const x of HV.listHuvaariAssigns()) await HV.removeHuvaariAssign(x.user).sync;
   for (const x of CH.listChanarAssigns()) await CH.removeChanarAssign(x.user).sync;
   await idle();
@@ -453,8 +435,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   for (const role of CH.CHANAR_REVIEWERS) await run(OPS.scopedCellOp('chanar', r1, role, g, true));
   grid = withGrid(ChanarAcl);
   const w = grid.rows.find((r) => r.key === g).warn;
-  /* ⚠️ 2026-10-21: «нэг хүн нэг үүрэг» дүрэм ХАСАГДСАН (`chanarMs.reviewerClashes` → []) — FIC/М-акт нэг
-     хянагчийн шийдвэрийг хүлээн авдаг (`ficMakt.decideFm`); анхааруулга гарахгүй байх ёстой. */
   ok(!w.some((x) => /Нэг хүн хоёр үүрэгт/.test(x)), `§D Чанар: нэг хүн хоёр үүрэгт анхааруулга гарахгүй (${w.join(' | ')})`);
   ok(!w.some((x) => /хянагч томилоогүй/.test(x)), '§D Чанар: хянагч дутуу биш');
   console.log('✅ §D гацаа: батлагчгүй · зохиогч=батлагч · өөр батлагч нэмэхэд арилна · Чанар: хянагч дутуу · нэг хүн олон үүрэгт анхааруулгагүй');
@@ -467,7 +447,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   const g = PKG_GROUPS[0];
   await run(OPS.flowCellOp(u, 'engineer', g, true));
   await run(OPS.scopedCellOp('huvaari', u, 'author', g, true));
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   await run(OPS.capDirectOp(u, 'zovshoorol', true));
   const acl = () => fake.rows.filter((r) => r.username.startsWith('__') && r.username.endsWith(`:${u}`))
     .map((r) => `${r.username}=${r.views}`).sort();
@@ -491,16 +470,11 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   ok(rowOf().dirty, `${tag}: ноорог`);
   const save = () => findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el;
   save().props.onClick({});
-  /* ⚠️ 2026-10-09 (CI-д л унасан, 1b259da): `idle()` зөвхөн POOL-ын бичилтийг хүлээдэг — удаан runner дээр
-     хадгалалт (permsRemote upsert) дуусахаас өмнө `dirty` шалгагдаж байв. Доорх хатуу аккаунтын
-     устгалтай ижил аргаар бичилт дуустал (ноорог арилтал) хүлээнэ. */
   await settle(() => { m.render(); return fake.inflight > 0 || rowOf().dirty; });
   await idle(); m.render();
   p = rowOf();
   eq(p.dirty, false, `${tag}: хадгалагдав`);
   await P.initRemote(false, true); await idle();
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): карт «Хадгалах» урсгалтай харагдацыг БИЧИХГҮЙ —
-     харин томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр (`permissions.workflowViewsOf`) */
   ok(!stored().some((v) => WORKFLOW_VIEWS.includes(v)), `${tag}: хадгалахад урсгалтай харагдац бичигдээгүй (${stored()})`);
   ok(P.resolveAccess(u).views.includes('guitsetgel'), `${tag}: томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр`);
   eq(P.roleOf(u), 'chanar', `${tag}: үүрэг солигдов`);
@@ -510,10 +484,8 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   m.render();
   rowOf().onFlipRemove(); m.render();
   takeConfirms();
-  /* ⚠️ 2026-10-22 (аудит): тэр хүний шатанд (инженер · g) хүлээгдэж буй гүйцэтгэл устгах асуултад тоологдоно */
   OPS.setFlowWorksReader(async () => [{ bagts: g, owner: 'engineer', done: false }]);
   save().props.onClick({});
-  /* ⚠️ 2026-10-09: `idle()` зөвхөн aclOps-ийн pending-ийг хардаг — удаан runner дээр бичилт дуусахаас өмнө шалгагдахгүйн тулд хүлээгдэж буй төлөв тогтотол хүлээнэ (§E «Хадгалах»-тай ижил). */
   await settle(() => { m.render(); return fake.inflight > 0 || acl().length > 0 || P.hasAccess(u); });
   await idle(); m.render();
   const delAsk = takeConfirms();
@@ -524,13 +496,10 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   eq(acl(), [], `${tag}: устгасан аккаунтын ArcGIS хуваарилалт/эрхийн мөр үлдээгүй`);
   eq(P.hasAccess(u), false, `${tag}: нэвтрэхгүй`);
   /* хатуу аккаунт → tombstone → «Буцаах» */
-  /* ⚠️ 2026-10-19: кодод урсгалын (жишээ) аккаунт алга — §0-д зөвхөн ноорог үүсдэг `beginner` */
   const hard = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'beginner')[0];
   await run(OPS.scopedCellOp('obyem', hard, 'editor', g, true));
   m.render();
   findAll(m.tree, byName('UserRow')).find((x) => x.el.props.u.username === hard).el.props.onFlipRemove(); m.render();
-  /* ⚠️ 2026-10-01 (CI-д л унадаг байсан): `idle()` зөвхөн POOL-ын бичилтийг хүлээдэг — хатуу аккаунт
-     POOL-д байхгүй тул удаан машинд (GitHub runner) устгал дуусахаас өмнө шалгагдаж байв. */
   save().props.onClick({});
   await settle(() => fake.inflight > 0 || OPS.aclPendingFor(hard) || !P.listRemoved().includes(hard));
   await idle(); m.render();
@@ -565,7 +534,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   m.render();
   rowOf(u).onFlipView('gdash'); m.render();
   ok(rowOf(u).dirty, `${tag}: ноорог`);
-  /* ⚠️ 2026-10-23: ноорогтой хүний урсгалын op-ыг БҮХ хуудсанд `runOp` хориглоно (`aclOps.draftGuard` — урьд нь матрицад л) */
   const blocked = await run(OPS.flowCellOp(u, 'engineer', g, false));
   ok(!blocked.ok && blocked.err === ERL.draftFlowMsg() && stored(u).includes('guitsetgel'), `${tag}: ноорогтой хүний урсгалын хасалт хориглогдов (${blocked.err})`);
   /* Хасалт ӨӨР таб/админаас ирсэн мэт (энэ самбарын ноорогийн бүртгэлгүй) — хуучин ноорог «Гүйцэтгэл»-ийг буцааж нээхгүй */
@@ -573,7 +541,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   const rm = await run(OPS.flowCellOp(u, 'engineer', g, false));
   ok(rm.ok && !stored(u).includes('guitsetgel'), `${tag}: томилгоо хасагдахад «Гүйцэтгэл» хаагдав`);
   m.render(); save();
-  /* ⚠️ 2026-10-09: `idle()` зөвхөн aclOps-ийн pending-ийг хардаг — удаан runner дээр бичилт дуусахаас өмнө шалгагдахгүйн тулд хүлээгдэж буй төлөв тогтотол хүлээнэ (§E «Хадгалах»-тай ижил). */
   await settle(() => { m.render(); return fake.inflight > 0 || !!rowOf(u)?.dirty; });
   await idle(); m.render();
   await P.initRemote(false, true); await idle();
@@ -594,7 +561,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   save();
   await settle(() => { m.render(); return fake.inflight > 0 || !!rowOf(u2)?.dirty; });
   await idle(); m.render();
-  /* ⚠️ 2026-10-01: хадгалалтад бичигдэхгүй ч томилгоогоор нээлттэй (`workflowViewsOf`) */
   ok(P.resolveAccess(u2).views.includes('guitsetgel'), `${tag}: бөөнөөр preset — томилгоогоор «Гүйцэтгэл» нээлттэй хэвээр`);
 
   /* (3) Хатуу super-ийг доошлуулахгүй — мөрийн сонгогч ба бөөнөөр preset */
@@ -623,12 +589,10 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   await idle(); m.render();
   await P.initRemote(false, true); await idle();
   eq(P.hasAccess(u3), false, `${tag}: устгагдсан панелийн аккаунт амилахгүй`);
-  /* ⚠️ 2026-10-23: панелаас нэмсэн аккаунтад ч TOMBSTONE (`permissions.removeUser`) — мөр нь ЗӨВХӨН `removed` (амьд мөр биш) */
   eq(fake.find(u3).map((r) => r.views), ['removed'], `${tag}: ArcGIS-т амьд мөр дахин үүсэхгүй (зөвхөн tombstone)`);
   ok(P.listRemoved().includes(hard) && !P.hasAccess(hard), `${tag}: tombstone хэвээр`);
   ok(alerts(m).some((a) => a.includes(u3)), `${tag}: алгассаныг ил хэлнэ`);
   eq(findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el.props.disabled, true, `${tag}: ноорог үлдэхгүй`);
-  /* ⚠️ 2026-10-11 (аудит №7): tombstone-ыг зөвхөн `revive` («Буцаах») арилгана */
   await P.clearOverride(hard, { revive: true }); await idle();
 
   /* (5) Устгагдсан (tombstone-гүй) аккаунтын үлдсэн засах эрх нэрийг ДАХИН НЭМЭХИЙГ гацаадаг байв */
@@ -639,8 +603,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   input.el.props.onChange({ target: { value: name } }); m.render();
   takeConfirms();
   findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'addBtn')[0].el.props.onClick({});
-  /* ⚠️ 2026-10-01: өнчин эрхийн устгал `caps`-ийн замаар (aclOps-ийн pending-гүй) явдаг — idle()
-     түүнийг хардаггүй тул удаан машинд (GitHub runner) устгал дуусахаас өмнө шалгагдаж байв. */
   await settle(() => fake.find(`__cap__:${name}`).length > 0);
   await idle(); m.render();
   const cf = takeConfirms();
@@ -742,7 +704,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   m = mount(React.createElement(UserWorkflow, { user: u, onGo: noop }));
   const re = btn(m, /Дахин олгох/);
   ok(re.length === 1, `${tag}: эрх алга → «Дахин олгох»`);
-  /* ⚠️ 2026-10-26: зохиогчийн мөр нь харах хүрээ (`huvaariView`) — эрх алга ч «Хуваарь» ЗӨВХӨН ХАРАХ-аар нээлттэй хэвээр */
   ok(P.resolveAccess(u).views.includes('huvaari'), `${tag}: эрхгүй үед ч «Хуваарь» зөвхөн харах-аар нээлттэй`);
   re[0].props.onClick({});
   await idle();
@@ -795,9 +756,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
 
   /* (5) «Эрхийн төрөл» — seen-гүй хадгалсан загварт «ТУХ» шинэ */
   fake.seed([{ username: '__type__:injener', views: JSON.stringify({ on: ['view:gdash'], home: 'gdash' }) }]);
-  /* ⚠️ 2026-10-26 (CI уналт 80450cc): өмнөх алхмын НИСЛЭГТ БАЙГАА синк (seed-ээс өмнө эхэлсэн) `initRemote`-ийн
-     хүчээр дуудлагыг хуучин агшингаар дуусгаж болдог — удаан CI машинд л илэрдэг уралдаан. Шинэ мөр танигдтал
-     дахин синклэнэ (хязгаартай); жинхэнэ алдааг нуухгүй — доорх `eq` хэвээр шалгана. */
   for (let i = 0; i < 5; i++) {
     await P.initRemote(false, true); await idle();
     if (RT.unseenViews('injener').length > 0) break;
@@ -812,7 +770,6 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   const saveB = findAll(m.tree, (n) => n.type === 'button' && n.props?.className === 'saveBtn')[0].el;
   ok(!saveB.props.disabled, `${tag}: «Хадгалах» идэвхтэй`);
   saveB.props.onClick({});
-  /* ⚠️ 2026-10-09: хамгийн эрсдэлтэй — ErhTypes «Хадгалах» нь `__type__:injener`-ийг бичнэ; seen бичигдтэл хүлээнэ */
   await settle(() => { m.render?.(); return fake.inflight > 0 || !Array.isArray(fake.json('__type__:', 'injener')?.seen) || RT.unseenViews('injener').length > 0; });
   await idle(); m.render();
   eq(RT.unseenViews('injener'), [], `${tag}: хадгалсны дараа тэмдэг арилав`);

@@ -1,12 +1,9 @@
 /**
  * «ГҮЙЦЭТГЭЛ БӨГЛӨХ» → «БАГЦЫН ГҮЙЦЭТГЭЛ» ХОЛБООСЫН ГЭРЭЭ — offline.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/sheetRows.check.mjs
- *
- * ⚠️ 2026-09-08: холбоосыг амьдаар тулгахад Багц 3.2 (12/12) ба Багц 4-1
- * (16/16) блок бүр ТААРСАН — зам зөв. Энэ файл тэр замын ХОЁР гэрээг барина:
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/sheet/sheetRows.check.mjs
  *
  *   1. `sheetRows` нь `bagts`-д `pkg.group` бичнэ, `pkg.label` БИШ.
- *      `buildingKey` нь `bagtsKey()`-ээр нормчилдог тул label орвол
+ *      `buildingKey` нь `bagtsKey`-ээр нормчилдог тул label орвол
  *      «БАГЦ29ДАВХАР» гэж тусдаа түлхүүр үүсч, PkgProg-д нэг блок хоёр
  *      удаа гарна. Одоо 9F/12F-ийн блокийн код ялгаатай (5/x vs 29/x) тул
  *      нийлэхгүй — гэвч тэр нь эх өгөгдлийн санамсаргүй тохироо.
@@ -31,11 +28,7 @@ console.log('✅ sheetRows.bagts = pkg.group (label биш)');
  * `sheetRows` нь `blockProgress`/`negtgel`/`PkgProg`-ийн эх — блокгүй багцын
  * синтетик «Ажил» блок энд орвол `buildingKey('Багц 5.1','Ажил')` гэсэн хуурамч
  * барилга үүснэ. Тиймээс энд `loadSchema(pkg)` ЗӨВХӨН опт-ингүй дуудагдана. */
-/* ⚠️ 2026-10-13 (хэрэглэгч: «бүх гүйцэтгэлийг 01-ийн батлагдсан хэсгээс нэгтгэ»): синтетик блок нь ЗӨВХӨН
-   опт-ин `blockless` замд (блокгүй багцын БАГЦЫН түвшний нэгтгэл — `blockProgress.loadInfra*`). Анхдагч
-   (блоктой) зам ба `sheetBlockKeys` урьдын адил опт-ингүй — `mon:building` join-д хуурамч блок ОРОХГҮЙ. */
 assert.ok(!/synthetic:\s*true|fillSchema/.test(SRC), 'sheetRows нь synthetic/fillSchema-г шууд дуудаж байна — зөвхөн schemaOf(pkg, fill) замаар');
-/* ⚠️ 2026-10-09: бөглөх бүдүүвч (`{ fill: true }`) синтетик блок өгнө — ЗӨВХӨН `fill` аргументтай `schemaOf`-д */
 assert.ok(/fill \? \{ fill: true \} : \{\}/.test(SRC), 'schemaOf: бөглөх бүдүүвч ЗӨВХӨН `fill` аргументаар');
 assert.equal([...SRC.matchAll(/fill:\s*true/g)].length, 2, 'sheetRows: `{ fill: true }` schemaOf-оос гадна (эсвэл тайлбараас өөр газар) гарсан');
 assert.ok(/schemaOf\(pkg, blockless\)/.test(SRC), 'loadSheetRows: бөглөх бүдүүвч ЗӨВХӨН `blockless` опт-инээр');
@@ -59,10 +52,6 @@ console.log('✅ sheetRows — синтетик блок ЗӨВХӨН блокг
 const { bagtsKey, buildingKey } = await import('@/lib/services.ts');
 const { PKGS } = await import('@/modules/sheet/bagts.pkg.ts');
 /**
- * ⚠️ ЗӨВХӨН ОЛОН ХУУДАСТАЙ БАГЦАД (2026-09-16). Давхардлын эрсдэл нь нэг
- *    багц ХЭД ХЭДЭН хуудастай (9F · 12F) үед л үүснэ — тэнд `label` нь
- *    давхраараа ялгагдах ЁСТОЙ, эс бөгөөс `PkgProg`-д блок давхардана.
- *
  *    Нэмэлт багцууд (5.x · 6.x · 10) нь давхраар салдаггүй тул хуудас ГАНЦ
  *    бөгөөд `label === group` — давхардах зүйл байхгүй.
  */
@@ -85,10 +74,7 @@ console.log('✅ bagtsKey — group≠label · 9F/12F нэг group · блок �
 
 
 /* ── 3. resolveSchema: ЗОРИЛТОТ ба ХУУЧИН нэр зэрэг байвал ЗОРИЛТОТ (2026-09-23) ──
- * ⚠️ 18 хуудас бүгд зорилтот нэртэй мөрийн багана авсан ч хуучин хувилбар
- *    (`Обьём__Шинэ` …) ХЭВЭЭР үлдсэн. Шинэ багана талбарын жагсаалтын СҮҮЛД
- *    байдаг тул fuzzy `find` хуучныг эхэлж олох эрсдэлтэй — энд хуучныг
- *    санаатайгаар ЭХЭНД тавьж, сонголт зорилтот руу унахыг барина. */
+ */
 const { resolveSchema } = await import('@/modules/sheet/bagts.pkg.ts');
 const F = (name, type = 'esriFieldTypeDouble') => ({ name, type });
 const oldFirst = [
@@ -146,12 +132,10 @@ console.log('✅ resolveSchema — зорилтот ба хуучин зэрэг
   /* Эх код: `sheetRows` ба `loadRows` хоёул `normDayMs`-ээр уншина */
   assert.match(SRC, /start: withDates && sc\.start\[i\] \? normDayMs\(/, 'sheetRows.start normDayMs-ээр');
   assert.match(SRC, /end: withDates && sc\.end\[i\] \? normDayMs\(/, 'sheetRows.end normDayMs-ээр');
-  /* ⚠️ 2026-10-09: агшны огноо (`fillDate` → `date`) ч мөн normDayMs-ээр */
   assert.match(SRC, /const date = msToDay\(normDayMs\(ms\)\);/, 'sheetRows.date normDayMs-ээр');
   const SHEET = fs.readFileSync('src/modules/sheet/bagtsSheet.ts', 'utf8');
   assert.match(SHEET, /start: sc\.start\.map\(\(x\) => \(x \? normDayMs\(num\(a\[x\]\)\) : null\)\)/, 'loadRows.start normDayMs-ээр');
   assert.match(SHEET, /asOf = normDayMs\(num\(a\[sc\.f\.asOf\]\)\)/, 'loadRows.asOf normDayMs-ээр');
-  /* ⚠️ 2026-10-08: гэрээний ба бодит огноо ч нэг дүрмээр (илгээлтийн тулгалт зөрдөг байв) */
   for (const f of ['gStart', 'gEnd', 'aStart', 'aEnd']) {
     assert.match(SHEET, new RegExp(`${f}: sc\\.${f}\\.map\\(\\(x\\) => \\(x \\? normDayMs\\(num\\(a\\[x\\]\\)\\) : null\\)\\)`), `loadRows.${f} normDayMs-ээр`);
   }

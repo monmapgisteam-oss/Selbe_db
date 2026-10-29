@@ -1,19 +1,8 @@
 /**
- * ҮЕРИЙН ЗАГВАРЧЛАЛЫН ЦӨМ — ЦЭВЭР тооцоо (DOM · ArcGIS SDK · сүлжээ · `tr()` БАЙХГҮЙ).
- *
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `uyrSim.ts`-ийн тооцооны биеийг ЭНД
- *    салгав — загварчлал ВЭБ АЖИЛТАН (`uyrSim.worker.ts`) дотор явж, хөтчийн
- *    үндсэн урсгал (газрын зураг, гүйгч, товч) 1–3 секунд ГАЦАХАА больсон.
- *    Ажилтан байхгүй орчинд (Node тест, хуучин хөтөч) ЯГ ЭНЭ функц үндсэн урсгалд
- *    `yieldFn`-ээр амьсгал авсаар ажиллана (`uyrSim.ts` §simulateFlood).
- *
- * ⚠️ ЭНЭ ФАЙЛД `window`/`document`/`tr()`/`fetch` ОРУУЛАХГҮЙ — ажилтны багцад
- *    орж ирээд модуль ачаалах агшинд унана. Алдааны бичвэрийг дуудагч
- *    орчуулна (`SimError.code`). Өндрийн тор, голын цагираг нь ОРОЛТ — татах нь
- *    `uyrSim.ts`-ийн ажил.
+ * ҮЕРИЙН ЗАГВАРЧЛАЛЫН ЦӨМ — ЦЭВЭР тооцоо (DOM · ArcGIS SDK · сүлжээ · `tr` БАЙХГҮЙ).
  *
  * Загварын тайлбар (LISFLOOD-FP-ийн инерцийн схем, гидрограф, бороо, гарц) нь
- * өмнөх байрандаа — `uyrSim.ts`-ийн толгой тайлбар ба доорх ⚠️ тэмдэглэгээнүүд.
+ * өмнөх байрандаа — `uyrSim.ts`-ийн толгой тайлбар ба доорх тэмдэглэгээнүүд.
  */
 
 import { fillSinks, flowAccum, streamMask } from '@/lib/uyrHydro';
@@ -23,11 +12,9 @@ import type { FloodMeta } from '@/lib/uyr';
 
 /**
  * ЗАГВАРЧЛАХ ТАЛБАЙ — хэрэглэгчийн зурсан полигон (Web Mercator цагирагууд).
- * ⚠️ Байвал ЗАГВАРЧЛАЛЫН ДОМЭЙН нь ЭНЭ (`uyrSim.ts` §SimArea-ийн тайлбар).
  */
 export type SimArea = number[][][];
 
-/* ⚠️ 2026-09-29 (аудит 10): `totalMin` — явцыг `minute / totalMin`-ээр бодно */
 export type SimProgress = { step: number; total: number; minute: number; totalMin: number };
 
 /** Цөмд хэрэгтэй DSM-ийн хэсэг (`uyrSim.ts` §Dsm-тэй нийцтэй) */
@@ -68,15 +55,12 @@ export type SimOutput = {
     accHa: Float32Array;
     catchHa: Float32Array;
     channelMask: Uint8Array;
-    /** ⚠️ 2026-10-09: ТООЦООНЫ МУЖ (1 = бодогдсон) — гадна нь гүн 0 БИШ «тооцоогүй» */
     domMask: Uint8Array;
   };
 };
 
 /**
- * ЦӨМИЙН АЛДАА — бичвэр нь КОД (`code`) + аргумент; дуудагч `tr()`-ээр орчуулна.
- * ⚠️ Ажилтнаас `postMessage`-ээр ирэхэд классын хэлбэр алдагддаг тул `code`,
- *    `arg` хоёрыг тусад нь дамжуулна (`uyrSim.worker.ts`).
+ * ЦӨМИЙН АЛДАА — бичвэр нь КОД (`code`) + аргумент; дуудагч `tr`-ээр орчуулна.
  */
 export class SimError extends Error {
   code: 'small';
@@ -96,7 +80,6 @@ export const abortError = (): Error => {
 };
 
 /* ══════════════════════ Тохиргоо ══════════════════════ */
-/* ⚠️ Утга бүрийн үндэслэл `uyrSim.ts`-д байсан ⚠️ тайлбартайгаа ХАМТ энд зөөгдөв. */
 
 /** Тооцооны тор (192² ≈ 11 м) — CFL-ийн улмаас нүд жижгэрэх тусам зардал хоёр талаараа өснө */
 const SIM = 192;
@@ -145,12 +128,6 @@ export function peakInflow(rainMmH: number): number {
 
 /**
  * ГИДРОГРАФИЙН урсац (м³/с) хугацаанд `t` (сек).
- *
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ОРГИЛ НЬ ЯГ `peak`. Урьд нь
- *    `peak · (BASE + гамма)` байсан тул `t = tp` үед гамма = 1 болж оргил нь
- *    `1.08 · peak` гардаг байв — UI «97.3 м³/с оргил урсацаар бодов» гэж бичих
- *    атлаа загварт 105 м³/с цутгадаг байлаа. Одоо гамма хэсгийг `(1 − BASE)`-ээр
- *    жинлэв: эхлэл/төгсгөлд суурь урсац (`BASE·peak`), оргилд ЯГ `peak`.
  */
 export function hydroQ(peak: number, t: number, totalS: number): number {
   const tp = totalS * HYDRO_PEAK_F;
@@ -161,7 +138,6 @@ export function hydroQ(peak: number, t: number, totalS: number): number {
 
 /**
  * Цэг полигон дотор уу — тэгш/сондгой (even-odd) туяаны арга.
- * ⚠️ Цагираг БҮРИЙГ нэг дор тоолно: нүх нь өөрөө домэйноос ХАСАГДАНА.
  */
 export function inRings(rings: SimArea, x: number, y: number): boolean {
   let inside = false;
@@ -179,8 +155,6 @@ export function inRings(rings: SimArea, x: number, y: number): boolean {
 
 /**
  * ГОЛЫН ОРОЛТЫН НҮДНҮҮД — голын урсац судалгааны талбайд ХААНААС орж ирэх вэ.
- * ⚠️ Дүрэм ба 2026-09-30-ны засварын түүх: `uyrSim.ts` §pickInlets-ийн тайлбар
- *    (функц нь өөрчлөгдөөгүй, зөвхөн энэ файл руу зөөгдөв).
  */
 export function pickInlets(
   N: number,
@@ -252,7 +226,6 @@ export function pickInlets(
 
 /**
  * ГАРАХ УРСГАЛЫН ХЯЗГААР — нэг алхамд нүднээс БАЙГАА УСНААС илүү гарахгүй.
- * ⚠️ 2026-09-30-ны засварын тайлбар: `uyrSim.ts` §limitOutflow (функц өөрчлөгдөөгүй).
  */
 export function limitOutflow(
   qx: Float32Array, qy: Float32Array, d: Float32Array, N: number, dt: number, dx: number,
@@ -282,8 +255,6 @@ export function limitOutflow(
 
 /**
  * Ажилтны `postMessage`-ийн TRANSFER жагсаалт — ДАВХАРДАЛГҮЙ.
- * ⚠️ Зурсан талбайгүй үед `catchHa` нь `accHa`-тай ИЖИЛ массив (нэг буфер);
- *    жагсаалтад хоёр удаа орвол `DataCloneError` гарна.
  */
 export function transferList(out: SimOutput): ArrayBuffer[] {
   const set = new Set<ArrayBuffer>([out.buf]);
@@ -324,7 +295,6 @@ export async function runFloodSim(
   let domCells = 0;
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
-      /* ⚠️ ДУНДАЖ, `min` БИШ — DSM аль хэдийн нүдний доод өндрөөр гарсан */
       let sum = 0;
       let ok = 0;
       let mh = 0;
@@ -337,13 +307,11 @@ export async function runFloodSim(
         }
       }
       z[y * N + x] = sum / (f * f);
-      /* ⚠️ ОЛОНХИЙН дүрэм — mesh-ийн ирмэг дээр «шүдтэй» домэйн үүсгэхгүй */
       dom[y * N + x] = ok * 2 >= f * f ? 1 : 0;
       meshCell[y * N + x] = mh * 2 >= f * f ? 1 : 0;
     }
   }
   const dx = dsm.meta.cellM * f;              // нүдний газрын хэмжээ (м)
-  /* ⚠️ 2026-09-30: СИМИЙН ТОРНЫ БОДИТ ХҮРЭЭ — `N·f` багана (640 → 639) */
   const ext = (() => {
     const e = dsm.meta.extent;
     const k = (N * f) / G0;
@@ -352,7 +320,6 @@ export async function runFloodSim(
 
   /** ХИЙМЭЛ ЗАХТАЙ ЭСЭХ — хэрэглэгч полигон зурсан уу (2026-09-15) */
   const masked = !!(area && area.length);
-  /** ⚠️ 2026-09-30: МАСКГҮЙ домэйн — голын оролт ба ХУРААХ ТАЛБАЙН тайлбарт */
   const domAll = Uint8Array.from(dom);
   if (area && area.length) {
     const cw = (ext.xmax - ext.xmin) / N;
@@ -371,11 +338,9 @@ export async function runFloodSim(
     for (let i = 0; i < N * N; i++) nd += dom[i];
     domCells = nd;
   }
-  /* ⚠️ Хэт жижиг домэйн дээр CFL, оролт, гарц бүгд утгагүй — ил уначихна */
   if (domCells < 200) throw new SimError('small', domCells);
 
   /* ── 1б. Гидрологийн гинж: шатаалт → Fill → FlowAccumulation ── */
-  /* ⚠️ ЖИНХЭНЭ гадаргууг шатаахаас ӨМНӨ хуулна (2026-09-21) — `terrainZ` */
   const zReal = Float32Array.from(z);
   if (river) {
     const cw = (ext.xmax - ext.xmin) / N;
@@ -392,16 +357,13 @@ export async function runFloodSim(
   }
 
   const zf = fillSinks(z, N, dom);
-  /* ⚠️ ШИЙДЭЛД зөвхөн `FILL_LIMIT_M`-ээс гүехэн хонхрыг дүүргэнэ (бодит хонхор хэвээр) */
   const zSim = new Float32Array(z.length);
   for (let i = 0; i < z.length; i++) zSim[i] = Math.min(zf[i], z[i] + FILL_LIMIT_M);
   z.set(zSim);
 
-  /* ⚠️ `zf` — БҮРЭН дүүргэсэн (хуримтлал битүү хонхроор тасрахгүй) */
   const accCells = flowAccum(zf, N, undefined, dom);
   const cellHa = (dx * dx) / 10000;
   const stream = streamMask(accCells, cellHa, STREAM_HA);
-  /* ⚠️ БОДИТ ГОЛ нь хуримтлалын босгоос ҮЛ ХАМААРАН суваг (2026-09-15) */
   for (let i = 0; i < N * N; i++) if (riverCell[i]) stream[i] = 1;
   const n2Cell = new Float32Array(N * N);
   for (let i = 0; i < N * N; i++) {
@@ -428,7 +390,6 @@ export async function runFloodSim(
           const k = i - dnb;
           if (k < 0 || k >= N * N || !dom[k]) continue;
           const sl = (z[k] - z[i]) / dx;
-          /* ⚠️ ХИЙМЭЛ ЗАХ ДЭЭР УС ЗААВАЛ ГАРНА (2026-09-15) */
           if (sl <= 0 && !(masked && !gridEdge)) continue;
           cc += Math.sqrt(sl < S_MIN ? S_MIN : sl);
         }
@@ -578,7 +539,6 @@ export async function runFloodSim(
       }
     }
 
-    /* ⚠️ 2026-09-30: нүд бүрийн ГАРАХ нийлбэр ≤ байгаа ус */
     limitOutflow(qx, qy, d, N, dt, dx);
 
     /* ── Гүний шинэчлэл (дотоод хэсэг + ирмэг тусдаа) ── */
@@ -654,7 +614,6 @@ export async function runFloodSim(
           const ax = ((i % N) > 0 ? qx[i - 1] : 0) + qx[i];
           const ay = (i >= N ? qy[i - N] : 0) + qy[i];
           let vx = ax / (2 * h);
-          /* ⚠️ `qy` нь УРАГШ эерэг, `v` нь ХОЙШ эерэг — тэмдэг эргэнэ */
           let vy = -ay / (2 * h);
           const sp0 = Math.sqrt(vx * vx + vy * vy);
           if (sp0 > V_MAX) { const r = V_MAX / sp0; vx *= r; vy *= r; }
@@ -673,13 +632,6 @@ export async function runFloodSim(
       if (hooks.yieldFn) await hooks.yieldFn();
     }
   }
-  /**
-   * ⚠️ 2026-10-09: АЛХМЫН ХЯЗГААРТ (`MAX_STEPS`) хүрсэн бол загварчлал `SIM_MIN`-д
-   *    ХҮРЭЭГҮЙ. Доорх нөхөлт нь сүүлийн зүсмэлийг давтдаг — урьд нь энэ нь
-   *    ЧИМЭЭГҮЙ байсан тул «60 минутын үр дүн» гэж харагдах атлаа үнэндээ
-   *    эрт зогссон байв. Одоо `meta.truncated`/`simulatedMin`/`simulatedSlices`-д
-   *    бичиж UI-д ил хэлнэ (`Ersdel.tsx`).
-   */
   const hitCap = step >= MAX_STEPS && t < totalS;
   const realSlices = out.length;
   while (out.length < SLICES) {
@@ -734,7 +686,6 @@ export async function runFloodSim(
     ? Math.max(0.8, Math.min(6, Math.round(wetDepths[Math.floor(wetDepths.length * 0.95)] * 10) / 10))
     : 1.5;
 
-  /* ⚠️ `times[i]` нь зүсмэлийн ТӨГСГӨЛ (`uyr.ts` §minuteAt) */
   const t0 = Date.now();
   const stepMs = (totalS * 1000) / SLICES;
   const meta: FloodMeta = {
@@ -757,18 +708,11 @@ export async function runFloodSim(
     totalWetHa: Math.round(everHa * 100) / 100,
     peakDepthM: Math.round(peak * 1000) / 1000,
     simMin: SIM_MIN,
-    /* ⚠️ 2026-10-09: бодитоор бодогдсон хугацаа ба алхмын хязгаарт тасарсан эсэх */
     simulatedMin: Math.round((t / 60) * 10) / 10,
-    /* ⚠️ 2026-10-09 (аудит): НЭГ Ч зүсмэл бодогдоогүй (`realSlices === 0`) бол бүх агшин нь дээрх
-       нөхөлтийн ХООСОН (хуурай) массив — «давталт» биш, үр дүн огт алга. Энэ үед `truncated`-ийг
-       ЗААВАЛ асаана (тусгаар туг = `simulatedSlices === 0`), UI «агшин бодогдоогүй» гэж хэлнэ
-       (`Ersdel.tsx`); урьд нь «N-р алхмаас хойш давталт» гэж бичигдэж «0-р агшин» бодогдсон мэт байв. */
     truncated: hitCap || realSlices === 0,
     simulatedSlices: Math.min(SLICES, realSlices),
-    /* ⚠️ 2026-09-30: голын оролтгүй бол «оролтын урсац» гэж худал тоо бичихгүй */
     peakQ: inlet.length ? Math.round(qPeak * 10) / 10 : undefined,
     hydroQ: inlet.length ? qSeries.slice(0, SLICES) : undefined,
-    /* ⚠️ 2026-10-01: ОРОЛТЫН НҮДНҮҮД — газрын зурагт тэмдэглэгдэнэ (`Overlay` §inlet) */
     inlets: inlet.length ? inlet.slice() : undefined,
     manning: [MANNING_CHANNEL, MANNING_PLAIN],
     domainHa: Math.round(domCells * cellHa * 10) / 10,
@@ -783,15 +727,6 @@ export async function runFloodSim(
 
   const accHa = new Float32Array(P);
   for (let i = 0; i < P; i++) accHa[i] = accCells[i] * cellHa;
-  /**
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХУРААХ ТАЛБАЙН ТАЙЛБАР нь МАСКГҮЙ
-   *    хуримтлалаас (`accAll`). Урьд нь зурсан полигоноор маскжсан `accCells`-ээс
-   *    бичигддэг байсан тул полигоны дээд урсгалын ус огт тоологдохгүй — 400 га
-   *    ус цуглардаг жалга «3 га» гэж ДУТУУ хэлэгддэг байв. Урсгалын сүлжээний
-   *    дэвсгэр (`accHa`) нь маскжсан хэвээр: тооцоонд орсон талбайг л зурна.
-   *    ⚠️ Маскгүй хуримтлал ч ӨНДРИЙН ТОРНЫ хүрээнд л — попап «тооцооны мужид»
-   *    гэж бичнэ (`uyrTailbar.ts`).
-   */
   let catchHa = accHa;
   if (masked) {
     catchHa = new Float32Array(P);
@@ -804,7 +739,6 @@ export async function runFloodSim(
     extra: {
       terrainZ: zReal, bedZ: z, maxDepth: maxD, maxSpeed: maxS, arrivalS: arrival,
       accHa, catchHa, channelMask: stream,
-      /* ⚠️ 2026-10-09: `dom` нь зурсан талбайгаар маскжсан эцсийн муж */
       domMask: dom,
     },
   };

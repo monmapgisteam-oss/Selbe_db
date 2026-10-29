@@ -1,16 +1,14 @@
 /**
  * ХАБЭА ҮЗЛЭГ — ТОКЕНЫ ЗАМ (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/habeaUzleg.ui.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/habeaUzleg.ui.check.mjs
  *
  * Хамгаалж буй алдаа:
- *  1. Үзлэгийн мөр/хавсралтын хүсэлт `getAuth()`-ын ИЛ токеныг дамжуулдаг байв →
+ *  1. Үзлэгийн мөр/хавсралтын хүсэлт `getAuth`-ын ИЛ токеныг дамжуулдаг байв →
  *     `query.run` ('org' горим) тэр токеныг эрхэмлэж, таб унтсаны дараах хугацаа
  *     дууссан токеноор 498 авахад шинэчлээд дахин оролдохгүй «Invalid token».
  *  2. Зургийн хаягт (`<img src>`) ачаалах агшны токен «шатаж» үлддэг байв —
  *     токен шинэчлэгдсэний дараа слайдер эвдэрнэ.
  *  3. Ослын слайдер (`Habea.tsx` `PhotoWall`) мөн адил.
- *  ⚠️ 2026-10-09: `photoSrc` (`?token=` залгадаг) УСТГАГДСАН — зураг `AttPhoto`-оор blob URL
- *     (POST биеэр татна, токен URL-д огт орохгүй — CWE-598).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -36,14 +34,10 @@ assert.ok(wall.includes('<AttPhoto url={p.src}'), 'PhotoWall: blob URL (AttPhoto
 }
 
 /* ══════════ 4. ДОЛОО ХОНОГИЙН KPI — чарттай НЭГ эх (2026-10-01) ══════════ */
-/* ⚠️ KPI нь урьд ОГНООНЫ хилээр, чарт нь `week` кодоор бүлэглэдэг тул нэг долоо хоног
-   хоёр өөр оноотой гардаг байв. 2026-10-09: хоёулаа ОГНООНООС (ISO, Улаанбаатар) —
-   огноогүй мөрөнд л маягтын `week` код (нөөц). */
 assert.equal(uzWeekKey(Date.parse('2026-09-14T00:30:00+08:00')), '2026-W38', 'Даваа 00:30 UB — UTC-ээр Ням ч 38');
 assert.equal(uzWeekKey(Date.parse('2026-09-13T23:59:00+08:00')), '2026-W37', 'Ням — 37');
 assert.equal(uzWeekKey(Date.parse('2027-01-01T12:00:00+08:00')), '2026-W53', 'ISO жил: 2027-01-01 нь 2026-W53');
 assert.equal(weekLabel('2026-W38'), weekLabel('38'), 'шошго жилгүй ижил');
-/* ⚠️ 2026-10-09: он дамжих үед жилтэй шошго; жилгүй түлхүүрт он нэмэгдэхгүй */
 assert.notEqual(weekLabel('2026-W52', true), weekLabel('2027-W52', true), 'жилтэй шошго ялгагдана');
 assert.equal(weekLabel('52', true), weekLabel('52'), 'жилгүй түлхүүр — жилгүй шошго');
 {
@@ -58,8 +52,7 @@ assert.equal(weekLabel('52', true), weekLabel('52'), 'жилгүй түлхүү�
   assert.equal(weekScoreOf(rows, ['B'], []).ns, 1, 'багцын шүүлтийг дагана');
   assert.equal(weekScoreOf([], [], []).pct, null, 'оноогүй — null (0% БИШ)');
 }
-/* Даваа гарагаас шинэ долоо хоног — өмнөх БҮТЭН долоо хоног солигдоно.
-   ⚠️ 2026-10-09: Улаанбаатарын цагаар (хөтчийн бүсээс үл хамаарна) — агшныг +08:00-оор өгнө */
+/* Даваа гарагаас шинэ долоо хоног — өмнөх БҮТЭН долоо хоног солигдоно. */
 {
   const sun = prevWeek(new Date(Date.parse('2026-09-27T23:00:00+08:00')));   // Ням
   const mon = prevWeek(new Date(Date.parse('2026-09-28T00:30:00+08:00')));   // Даваа (UTC-ээр Ням)
@@ -73,7 +66,6 @@ assert.equal(weekLabel('52', true), weekLabel('52'), 'жилгүй түлхүү�
 {
   const fetchSrc = uz.slice(uz.indexOf('async function fetchWeekScores'), uz.indexOf('/** Хуудасны шүүлтээр нүднүүдийг'));
   assert.ok(fetchSrc.includes('${U.ognoo} < ${sqlTs(w.end)}'), 'KPI огнооны хилээр (ISO долоо хоног)');
-  /* ⚠️ 2026-10-09: огноогүй мөр KPI-д ч, чартад ч ОРОХГҮЙ — нэг эх (`week` талбар хэрэглэхгүй) */
   assert.ok(!fetchSrc.includes('${U.week}'), 'огноогүй мөрийг `week` кодоор нөөцлөхгүй (чарттай зөрөхгүй)');
   assert.ok(/if \(metas\.some\(\(m\) => m\.failed\)\) throw/.test(fetchSrc), 'метадата унавал шиднэ (буруу дүн кэшлэхгүй)');
   assert.ok(fetchSrc.includes('${U.scAppl} > 0'), 'онооны дүрэм: appl > 0 (byWeek-тэй ижил)');

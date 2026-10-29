@@ -31,12 +31,11 @@ assert.equal(meanOf([null, null]), null);
 assert.equal(meanOf([0, 100, null]), 50);
 
 /* ── 1. Гүйцэтгэл ── */
-/* ⚠️ 2026-10-22 (аудит): `coverage: 100` — хуваарь бүрэн хамарсан (дүгнэгдэнэ); дутуу хамралт доор (§1б) */
 assert.equal(scorePerf({ lag: { planned: 30, actual: 30, coverage: 100 }, start: null, end: null, progress: null, now }).score, 100);
 assert.equal(scorePerf({ lag: { planned: 30, actual: 10, coverage: 100 }, start: null, end: null, progress: null, now }).score, 50);
 assert.equal(scorePerf({ lag: { planned: 10, actual: 40, coverage: 100 }, start: null, end: null, progress: null, now }).score, 100, 'түрүүлсэн нь торгуулгүй');
 assert.equal(scorePerf({ lag: { planned: 80, actual: 0, coverage: 100 }, start: null, end: null, progress: null, now }).score, 0, '0-ээс доош буухгүй');
-/* ── 1б. ⚠️ 2026-10-22 (аудит): ХУВААРЬ ДУТУУ (< 95%) — оноо `null` (100 БИШ), шалтгаан ил ──
+/* ── 1б. 2026-10-22 (аудит): ХУВААРЬ ДУТУУ (< 95%) — оноо `null` (100 БИШ), шалтгаан ил ──
    Багц 3.3: хамралт 8.6% тул төлөвлөсөн 8.6 < бодит 25.1 → урьд нь 100 оноо «Хэвийн» гардаг байв. */
 {
   const p = scorePerf({ lag: { planned: 8.6, actual: 25.1, coverage: 8.6 }, start: now - 50 * DAY, end: now + 50 * DAY, progress: 40, now });
@@ -69,8 +68,6 @@ assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract:
 assert.equal(scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: null, paidPct: null, actual: null }).score, 0, 'хугацаа өнгөрсөн, гэрээгүй');
 assert.equal(scoreFin({ contracted: false, start: now + DAY, now, cost: 100, contract: null, paidPct: null, actual: null }).score, null, 'эхлээгүй, гэрээгүй — дүгнэхгүй');
 assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract: 110, paidPct: null, actual: null }).score, 75, 'гэрээ 10% их → 50 ба 100-ийн дундаж');
-/* ⚠️ 2026-09-21 (дахин аудит): ГЭРЭЭТЭЙ = ЗӨВХӨН `note === CONTRACTED`. `geree_dun > 0`
-   атлаа тайлбар нь «Гэрээлсэн дүн» биш мөр ГЭРЭЭГҮЙ — дүн нь төсөвтэй ч харьцуулагдахгүй. */
 {
   const r = scoreFin({ contracted: false, start: now - DAY, now, cost: 100, contract: 120, paidPct: null, actual: null });
   assert.equal(r.score, 0, 'geree_dun бөглөгдсөн ч тайлбар CONTRACTED биш → гэрээгүй, хугацаа өнгөрсөн');
@@ -86,7 +83,6 @@ assert.equal(scoreLand({ isLandWork: false, landPct: 70, hasFootprint: true, ove
 assert.equal(scoreLand({ isLandWork: false, landPct: 70, hasFootprint: true, overlap: 4, overlapFailed: false }).score, 80);
 assert.equal(scoreLand({ isLandWork: false, landPct: 70, hasFootprint: true, overlap: null, overlapFailed: true }).score, null, 'огтлолцол татагдаагүй → «цэвэр» гэж хэлэхгүй');
 assert.equal(scoreLand({ isLandWork: true, landPct: 71.4, hasFootprint: false, overlap: null, overlapFailed: false }).score, 71.4);
-/* ⚠️ 2026-10-09: газрын бус ажилд 1 давхцал (95 оноо) = CEO газрын карттай нэг `overlapLevel` → bad */
 {
   const one = scoreLand({ isLandWork: false, landPct: 70, hasFootprint: true, overlap: 1, overlapFailed: false });
   assert.equal(one.score, 95);
@@ -100,7 +96,6 @@ assert.equal(scoreLand({ isLandWork: true, landPct: 71.4, hasFootprint: false, o
   assert.equal(workDimLevel({ dims: { land: lw } }, 'land'), 'good');
 }
 
-/* ⚠️ 2026-10-27: «Ерөнхий төлөвлөгөө» (scorePlan · blockZoneScores) ХАСАГДСАН — шалгуур нь ч хасагдав */
 assert.deepEqual(DIMS, ['perf', 'fin', 'land', 'permit', 'hse'], 'plan бүлэг алга');
 
 /* ── 5. ХАБЭА — ЗӨВХӨН ажлын байрны үзлэг ── */
@@ -130,7 +125,7 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   assert.equal(scorePermit({ counts: { ok: 8, wait: 0, no: 0, unknown: 0 } }).issues.length, 0);
 }
 
-/* ── 6. Чанар ── ⚠️ 2026-10-23: QAQC хасагдсан — «Чанар» (qual) хэмжүүр ба `scoreQual` устсан */
+/* ── 6. Чанар ── 2026-10-23: QAQC хасагдсан — «Чанар» (qual) хэмжүүр ба `scoreQual` устсан */
 
 /* ── Нийт: null бүлэг дунджид орохгүй ── */
 {
@@ -149,20 +144,18 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   const g = groupByType([mk(1, 'A', 90, 10), mk(2, 'A', 30, 5), mk(3, 'A', null, 1), mk(4, 'B', 50, 100), mk(5, 'A', 0, 1, true)]);
   assert.equal(g[0].type, 'B', 'төсвөөр буурах эрэмбэ');
   assert.deepEqual(g[1].works.map((w) => w.oid), [5, 2, 1, 3], 'хамгийн бага оноо эхэнд, оноогүй нь сүүлд');
-  /* ⚠️ 2026-09-30: ТӨСВӨӨР жигнэнэ — (90×10 + 30×5) / 15 = 70 (энгийн дундаж 60 байв) */
   assert.equal(g[1].total, 70, 'төсвөөр жигнэсэн; хасагдсан ажил (0) дунджид орохгүй');
   assert.equal(g[1].dims.perf, 70);
   assert.equal(projectDims([mk(1, 'A', 90, 1), mk(2, 'A', null, 1)]).total, 90);
   {
     const p = mk(7, 'A', null, 1);
-    /* ⚠️ 2026-10-23: QAQC хасагдсан — хүлээгдэж буй төлвийг «Зөвшөөрөл» хэмжүүрээр шалгана */
     p.dims.permit = { score: null, facts: [], pending: true };
     assert.equal(projectDims([p]).pending.permit, true, 'оноогүй + хүлээгдэж буй → бүлэг «хүлээгдэж»');
     assert.equal(projectDims([mk(8, 'A', 60, 1), p]).pending.permit, false, 'оноотой ажил байвал дундаж харагдана');
   }
 }
 
-/* ── ⚠️ 2026-09-30: нэгтгэл ТӨСВӨӨР жигнэсэн, нийт == харагдах бүлгийн дундажуудын дундаж ── */
+/* ── 2026-09-30: нэгтгэл ТӨСВӨӨР жигнэсэн, нийт == харагдах бүлгийн дундажуудын дундаж ── */
 {
   const none = () => Object.fromEntries(DIMS.map((d) => [d, { score: null, facts: [] }]));
   const mkw = (oid, cost, scores) => {
@@ -210,7 +203,6 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
     dims: { perf, fin, land: none, permit: none, hse },
   };
   const r = workIssues(w);
-  /* ⚠️ 2026-10-23: QAQC хасагдсан — «дата» (info) жишээ нь QAQC байсан */
   assert.deepEqual(r.map((x) => x.tone), ['bad', 'bad', 'warn'], 'заавал → анхаарах');
   assert.equal(r[0].dim, 'fin', 'ижил зэрэгт бага оноотой (0) нь эхэнд');
 }
@@ -275,7 +267,6 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   const ws = [
     mk(1, 30, { hse: { score: 60, facts: [] } }),
     mk(2, 65, { hse: { score: 95, facts: [] } }),
-    /* ⚠️ 2026-10-23: QAQC хасагдсан */
     mk(3, 90, { permit: { score: null, facts: [], pending: true } }),
     mk(4, null),
     mk(5, 10, {}, true),
@@ -295,8 +286,6 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   assert.deepEqual(statusByType(typed).map((x) => [x.type, x.counts.bad]), [['A', 1], ['B', 1]]);
 }
 
-/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): хуваарийн муруй уншигдаагүй барилгын мөр —
-   Cashflow-ийн хувиар ЧИМЭЭГҮЙ оноолохгүй, картад ил тэмдэглэнэ */
 {
   const d = perfNoCurve();
   assert.equal(d.score, null, 'муруйгүй үед оноо null («—»), огнооны шугамаар бодохгүй');

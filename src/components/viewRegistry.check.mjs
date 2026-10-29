@@ -2,10 +2,6 @@
  * ХАРАГДАЦЫН БҮРТГЭЛИЙН ШАЛГУУР — `VIEWS` ↔ `VIEW_REGISTRY` хоёр талдаа.
  *   node src/components/viewRegistry.check.mjs
  *
- * ⚠️ СТАТИК (regex) — `viewRegistry.tsx` нь `next/dynamic` ба JSX импортолдог
- *    тул Node-д шууд ачаалж болохгүй; бусад `*.check.mjs`-тэй ижил зарчмаар
- *    эх кодыг ӨӨРИЙГ нь уншиж тулгана. Хуулбар тоо байхгүй тул хоцрохгүй.
- *
  * Хамгаалж буй алдаа:
  *   1. `ViewKey`-д шинэ харагдац нэмэгдээд бүртгэлд ОРООГҮЙ (isFull → хоосон).
  *   2. Бүртгэлд `VIEWS`-д байхгүй түлхүүр үлдэх (устгагдсан харагдац).
@@ -17,9 +13,6 @@ import { readFileSync } from 'node:fs';
 
 const read = (p) => readFileSync(p, 'utf8').split('\r\n').join('\n');
 
-/* ⚠️ 2026-09-30: `services.ts` нь barrel болж `VIEWS` нь `services/views.ts`-д шилжсэн.
-   ⚠️ 2026-10-09 (аудит №3): хуучин байрлал (`services.ts`) руу унах нөөц зам ХАСАГДАВ —
-   barrel-д `VIEWS` байхгүй тул тэр зам шалгуурыг чимээгүй хоосон болгох байв. */
 const VIEWS_SRC = read('src/lib/services/views.ts');
 const REG = read('src/components/viewRegistry.tsx');
 const PORTAL = read('src/components/Portal.tsx');

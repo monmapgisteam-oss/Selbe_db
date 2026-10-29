@@ -1,7 +1,4 @@
-/* ПОРТАЛЫН ТУСЛАМЖ — `HelpPanel.tsx` (2026-09-30)
-   ⚠️ 2026-10-23: Environment — хөвөгч цонх (--line-strong, 12px, --shadow),
-   бүлгийн гарчиг .eyebrow (11px/600/0.15em), сонгогдсон мөр moss 12% + 45% хүрээ,
-   «энд» тэмдэг 6px badge, зөвлөмж tooltip хэлээр (surface 95% + blur). */
+/* ПОРТАЛЫН ТУСЛАМЖ — `HelpPanel.tsx` (2026-09-30) */
 
 .backdrop {
   position: fixed;
@@ -105,7 +102,7 @@
 
 .foot { margin: 14px 0 0; font-size: 11px; line-height: 1.5; color: var(--ink-3); }
 
-/* ── «Хэрхэн хийх вэ» — алхам алхмаар заавар (⚠️ 2026-10-23, S18) ── */
+/* ── «Хэрхэн хийх вэ» — алхам алхмаар заавар (2026-10-23, S18) ── */
 .howList { display: grid; gap: 4px; }
 .how {
   border: 1px solid var(--line);
@@ -199,9 +196,6 @@
 .tipGhost { font-weight: 500; color: var(--ink-2); border: 1px solid var(--line-strong); }
 .tipGhost:hover { background: var(--surface-2); color: var(--ink); }
 
-/* ⚠️ 2026-10-19: УТАС (≤480px) — зөвлөмж толгойн ДООР тогтмол 56px-ээр байрлаж, утсан дээр олон мөр болж
-   өндөрссөн толгойг (`--head` түүнийг дагадаггүй) ДАРЖ, навигацийн товчийг хааж байв. Одоо дэлгэцийн ДООД
-   талд нимгэн самбар (сум нь «?» руу заах боломжгүй тул нуугдана) — толгой бүхэлдээ ил. */
 @media (max-width: 480px) {
   .tip {
     top: auto;

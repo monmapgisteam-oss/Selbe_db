@@ -55,12 +55,10 @@ const render = (d, initial) => renderToStaticMarkup(h(LocaleProvider, null, h(Le
   const d = { plan, marks: new Map(), at, failed: plan.failed };
 
   const l1 = render(d, 1);
-  /* ⚠️ 2026-10-26 (аудит): tablist/tab загвар дутуу байсан тул товчны бүлэг + aria-pressed (утсанд нэр aria-label-д) */
   assert.equal((l1.match(/aria-pressed="(true|false)"/g) ?? []).length, 6, '6 түвшний товч');
   assert.equal((l1.match(/role="tab"/g) ?? []).length, 0, 'дутуу tab загвар үлдээгүй');
   assert.ok(l1.includes('L1.1') && l1.includes('L1.3'), 'L1 мөрүүд');
   assert.ok(l1.includes('Өнөөдөр 2026.10.21'), 'өнөөдрийн шугамын шошго');
-  /* ⚠️ 2026-10-26: дотоод код биш, хүнд ойлгогдох нэрээр (`levelPlan.failLabel`) */
   assert.ok(l1.includes('Багц 4-1 · 9 давхар хуваарь'), 'унасан эх ил (нэрээр)');
   assert.ok(!l1.includes('schedule:b41_9f'), 'дотоод код дэлгэцэнд гарахгүй');
 

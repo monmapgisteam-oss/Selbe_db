@@ -48,7 +48,6 @@ assert.deepEqual(sectionWorks('Гүйцэтгэгч компани', 'Буцаа
 
 assert.deepEqual(sectionWorks('Хяналтын инженер', 'Хүлээгдэж буй'), ['А']);
 assert.deepEqual(sectionWorks('Хяналтын инженер', 'Багцын ахлах инженер буцааж'), ['Г']);
-/* ⚠️ Г (менежер буцаасан) энд ДАВХАР орохгүй */
 assert.deepEqual(sectionWorks('Хяналтын инженер', 'Багцын ахлах инженерт шилжүүлсэн').sort(), ['В', 'Д']);
 assert.deepEqual(sectionWorks('Хяналтын инженер', 'Гүйцэтгэгч компанид буцаасан'), ['Б']);
 assert.deepEqual(sectionWorks('Газрын дарга', 'Баталж бүртгэсэн'), ['Д']);

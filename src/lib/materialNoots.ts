@@ -19,13 +19,11 @@ import type { MirRow } from '@/lib/mir';
  *     хоосон → «Дуусаагүй».
  *   · Бүртгэл АВТОМАТ (`syncNoots`) — чанарын эрхтэй хүн MA хуудас нээхэд. Давхардлаас `mir_id`-аар (MIR-ийн
  *     `uniquerowid`) хамгаална; зэрэг бичигдсэн давхардлыг БАГА objectid үлдээж цэвэрлэнэ.
- *   · ⚠️ 2026-10-21 (аудит №2): `mir_id` талбар алга/тохирохгүй бол ШИДЭХГҮЙ — `SyncResult.disabled`-аар шалтгаанаа
+ *   · 2026-10-21 (аудит №2): `mir_id` талбар алга/тохирохгүй бол ШИДЭХГҮЙ — `SyncResult.disabled`-аар шалтгаанаа
  *     буцаана (MA хуудас · нөөцийн харагдац ажилласаар, зөвхөн автомат бүртгэл идэвхгүй). Шаардлага: String (урт ≥ 38)
  *     эсвэл GUID (`mirIdIssue`). Бичих эрх lib-д (`requireSyncCap`), хүчингүй болголт зөвхөн бичилт оролдсон үед.
  *   · MIR/MA хожим засагдвал (тоо хэмжээ · нэгж · R болсон) мөр нь дагаж шинэчлэгдэж/хасагдана. `mir_id`-гүй (гараар
  *     нэмсэн) мөрийг ХӨНДӨХГҮЙ.
- * ⚠️ Талбарын нэр Enterprise-д жижиг үсгээр — кодод бодит (жижиг) нэрээр бичнэ.
- * ⚠️ ArcGIS алдаа HTTP 200-аар `{error}` — `arcgisPost` шиднэ; `applyEdits`-ийн мөр бүрийн `success`-ийг шалгана.
  */
 export const NOOTS_SVC = `${ENT_HOSTED}/material_noots/FeatureServer`;
 
@@ -68,7 +66,6 @@ export function nootsRowOf(a: Record<string, unknown>): NootsRow {
 
 /**
  * Нэг материалын төлөв — ашигласан нь мэдэгдэхгүй (null) бол «Дуусаагүй» (null ≠ 0).
- * ⚠️ 2026-10-21 (аудит №2): `partial` — аль нэг ачааны тоо хэмжээ мэдэгдэхгүй бол нийлбэр ДУТУУ тул «Дууссан» гэж дүгнэхгүй.
  */
 export function tolovOf(inSum: number | null, usedSum: number | null, partial = false): string {
   return !partial && inSum != null && inSum > 0 && usedSum != null && usedSum >= inSum ? TOLOV.done : TOLOV.open;
@@ -77,11 +74,6 @@ export function tolovOf(inSum: number | null, usedSum: number | null, partial = 
 /** Код `mir_id`-д `{UPPER-GUID}` бичнэ (`syncNoots`) — 38 тэмдэгт */
 export const MIR_ID_LEN = 38;
 
-/**
- * ⚠️ 2026-10-21 (аудит №2): `mir_id` ТАЛБАРЫН ШААРДЛАГА ИЛ — алга · богино · буруу төрөл бол шалтгааныг (хэрэглэгчид харуулах,
- *    админд шаардлагатай төрөл · уртыг нэрлэсэн) буцаана; тохирвол null. Урьд нь зөвхөн «талбар алга» гэж шиддэг байв.
- *    Нэр Enterprise-д жижиг үсгээр ч том үсгээр ирвэл мөн танина.
- */
 export function mirIdIssue(fields: readonly { name?: string; type?: string; length?: number | null }[]): string | null {
   const f = fields.find((x) => String(x.name ?? '').toLowerCase() === NF.mirId);
   if (!f) return tr('Материалын нөөцийн хүснэгтэд «mir_id» талбар алга — админ String (урт ≥ {0}) эсвэл GUID төрлөөр нэмнэ үү.', MIR_ID_LEN);
@@ -134,9 +126,6 @@ export function nootsSummary(rows: readonly NootsRow[]): NootsSum[] {
     const l = m.get(r.name);
     if (l) l.push(r); else m.set(r.name, [r]);
   }
-  /* ⚠️ 2026-10-21 (аудит №2): null-ыг 0 гэж НЭМДЭГГҮЙ — мэдэгдэх утгуудын нийлбэр + мэдэгдэхгүй ачааны тоо тусдаа.
-     Урьд нь [10, null] → 10 гэж чимээгүй гардаг тул «Ирсэн» дутуу, «Үлдэгдэл» · «Дууссан» буруу гарч, `statusFixes`
-     тэр буруу төлвийг бүх мөрөнд бичих байв. */
   const sum = (xs: (number | null)[]): { sum: number | null; unknown: number } => {
     const known = xs.filter((x): x is number => x != null);
     return { sum: known.length ? known.reduce((s, x) => s + x, 0) : null, unknown: xs.length - known.length };
@@ -168,7 +157,6 @@ export type NootsPlan = {
 
 /**
  * СИНКИЙН ТӨЛӨВЛӨГӨӨ — хүснэгтийн одоогийн мөрүүд ба нөөцөд орох ёстой ачаанаас: нэмэх · шинэчлэх · хасах.
- * ⚠️ `mir_id`-гүй мөр (гараар) — хөндөхгүй. Нэг `mir_id` олон мөртэй бол БАГА objectid үлдэнэ.
  */
 export function planSync(rows: readonly NootsRow[], receipts: readonly Receipt[]): NootsPlan {
   const want = new Map(receipts.map((r) => [r.mirId, r] as const));
@@ -222,12 +210,6 @@ async function nootsTable(): Promise<NootsTable> {
   return tableCache;
 }
 
-/**
- * ⚠️ 2026-10-21 (аудит №2): БИЧИХ ЭРХ LIB-Д — UI-ийн `canSync` (`Ma.tsx`: `chanarAuthor` ЭСВЭЛ `chanarReview`)-тэй ИЖИЛ
- *    дүрэм, `ma.requireAttachCap`-ийн загвар. Урьд нь lib-д шалгалтгүй тул эрхгүй нэвтэрсэн хэрэглэгч консолоос нөөцийг
- *    бичиж/устгаж чаддаг байв. Хөтөчид л хаана (`who.requireCap` — Node тест/скрипт хаагдахгүй).
- *    Үйлчилгээний item өөрөө `public` хуваалцсан, засварын мөшгөлтгүй — тэр нь АДМИНЫ тохиргоо, кодоор засагдахгүй.
- */
 function requireSyncCap(): void {
   try { requireCap('chanarAuthor'); } catch {
     try { requireCap('chanarReview'); } catch {
@@ -265,7 +247,6 @@ async function applyChunks(url: string, kind: 'adds' | 'updates' | 'deletes', it
 
 export type SyncResult = {
   added: number; updated: number; removed: number; statusFixed: number;
-  /** ⚠️ 2026-10-21 (аудит №2): автомат бүртгэл ИДЭВХГҮЙ — шалтгаан (`mir_id` алга/тохирохгүй, `mirIdIssue`); юу ч бичээгүй */
   disabled?: string;
 };
 
@@ -273,14 +254,10 @@ let flight: Promise<SyncResult> | null = null;
 
 /**
  * НӨӨЦИЙГ MA · MIR-ТЭЙ ТААРУУЛНА (автомат). Нэг табд зэрэг дуудалт нэг ажиллагаа болно.
- * ⚠️ `mir_id` талбаргүй/тохирохгүй бол давхардлаас хамгаалах түлхүүргүйгээр БИЧИХГҮЙ. 2026-10-21 (аудит №2): урьд нь ШИДДЭГ
- *    байсан тул MA хуудас нээх бүрд алдаа гарч нөөцийн боломж бүхэлдээ ажиллахгүй байв — одоо `disabled`-аар буцаана:
- *    MA харагдац · нөөцийн хүснэгт ажилласаар, зөвхөн автомат бүртгэл идэвхгүй (мэдэгдэл нэг удаа, `Ma.tsx`).
- * ⚠️ Бичсэний дараа ДАХИН уншиж (өөр таб/хэрэглэгчтэй зэрэг бичсэн) давхардлыг хасаж, төлвийг тааруулна.
  */
 export function syncNoots(mas: readonly MaRow[], mirs: readonly MirRow[]): Promise<SyncResult> {
   if (flight) return flight;
-  /* Бичилт ОРОЛДСОН эсэх — хүчингүй болголт зөвхөн тэр үед (доорх `finally`-ийн ⚠️) */
+  /* Бичилт ОРОЛДСОН эсэх — хүчингүй болголт зөвхөн тэр үед (доорх `finally`) */
   let wrote = false;
   flight = (async () => {
     requireSyncCap();
@@ -308,8 +285,8 @@ export function syncNoots(mas: readonly MaRow[], mirs: readonly MirRow[]): Promi
     return { added: plan.adds.length, updated: plan.updates.length, removed: plan.deletes.length + dup.length, statusFixed: fixes.length };
   })().finally(() => {
     flight = null;
-    /* Хагас бичилт ч байж болох тул амжилт/алдаанаас үл хамааран (`applyUpdates`-ийн ⚠️-тэй ижил) — гэхдээ ЗӨВХӨН бичилт
-       оролдсон үед. ⚠️ 2026-10-21 (аудит №2): урьд нь юу ч бичээгүй ч хүчингүй болгодог тул MA хуудас нээх бүрд автобусын
+    /* Хагас бичилт ч байж болох тул амжилт/алдаанаас үл хамааран (`applyUpdates`-тэй ижил) — гэхдээ ЗӨВХӨН бичилт
+       оролдсон үед. 2026-10-21 (аудит №2): урьд нь юу ч бичээгүй ч хүчингүй болгодог тул MA хуудас нээх бүрд автобусын
        хувилбар өсч MA · MIR хүснэгт бүхэлдээ дахин татагдаж (`useAsync`), цэсний тэмдгүүд дахин тоологддог байв. */
     if (wrote) invalidate('MATERIAL_NOOTS');
   });

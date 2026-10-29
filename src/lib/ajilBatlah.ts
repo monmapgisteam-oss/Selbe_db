@@ -2,44 +2,6 @@
 
 /**
  * НЭМЭЛТ АЖЛЫН БАТЛАХ УРСГАЛ — менежер мөр нэмнэ, батлагч батална.
- *
- * ⚠️ ЯАГААД ЭНЭ ХЭРЭГТЭЙ БОЛОВ (2026-09-22, хэрэглэгчийн шийдвэр): «Гүйцэтгэл
- * бөглөх» хуудсанд `addRow` эрхтэй хүн ШИНЭ АЖЛЫН МӨР нэмж чаддаг бөгөөд тэр
- * мөр нь гүйцэтгэлийн илгээлттэй ХАМТ (`SubmissionPayload.adds`) явж, 6 шатат
- * (`REVIEW_STAGES`; 2026-10-09 аудит №6 — урьд «4 шатат» гэж бичигдсэн байв)
- * урсгалаар батлагддаг байв. Гэвч тэр урсгал нь ГҮЙЦЭТГЭЛИЙН ТООГ хэмждэг —
- * «энэ ажил гэрээнд ЕРӨӨС байх ёстой юу» гэдгийг ХЭН Ч тусад нь шийддэггүй.
- * Үр дүнд нь шинэ ажил гүйцэтгэлийн тоонуудын хамт чимээгүй батлагдаж,
- * гэрээний хамрах хүрээ өөрөө хянагдалгүй өсдөг байлаа.
- *
- * ⚠️ ТИЙМЭЭС ТУСДАА УРСГАЛ: мөр нэмэгч илгээнэ → батлагч хараад батална →
- * тэр үед л үндсэн өгөгдөлд мөр үүснэ. Хүртэл мөр нь ЗӨВХӨН энэ хүснэгтэд
- * хүлээнэ, дашбоард/тайлан/тооцоонд ОГТ нөлөөлөхгүй.
- *
- * ⚠️ 2026-09-24 (хэрэглэгчийн шийдвэр): мөр нэмэх нь «Гүйцэтгэл бөглөх»-өөс
- *    «ХУВААРЬ» хуудас руу шилжив, батлагдсан мөр БАТЛАНГУУТ `ajilApply.
- *    materializeAdds`-аар үндсэн хүснэгтэд бүтэн жааз болж бичигдэнэ (урьд нь
- *    зохиогчийн бөглөх хуудасны ноорогт орж, гүйцэтгэлийн 6 шат батлагдтал
- *    хүлээдэг байв). Энэ модуль ӨӨРӨӨ эх хуудсанд бичихгүй хэвээр — зөвхөн
- *    урсгалын төлөв.
- *
- * ⚠️ ГҮЙЦЭТГЭЛИЙН УРСГАЛААС (`hyanalt.ts`) ТУСДАА. Тэр нь БОДИТ гүйцэтгэлийн
- * 6 шатат урсгал (компани → инженер → менежер → захирал → хэлтсийн дарга →
- * газрын дарга; `REVIEW_STAGES`, 2026-10-09 аудит №6), энэ нь ГЭРЭЭНИЙ
- * ХАМРАХ ХҮРЭЭНИЙ 2 шатат урсгал. Хольвол «тоог зөвшөөрсөн» нь «шинэ ажлыг
- * зөвшөөрсөн» гэж уншигдаж, хариуцлага замхарна.
- *
- * ⚠️ ОБЬЁМЫН УРСГАЛААС (`obyemBatlah.ts`) МӨН ТУСДАА. Тэр нь БАЙГАА мөрийн
- * төлөвлөсөн обьёмыг («хэр их»), энэ нь мөр ӨӨРӨӨ байх эсэхийг («юу») шийднэ.
- * Мөн `obyemBatlah` нь багц бүрд ЗӨВХӨН НЭГ хүлээгдэж буй илгээлт зөвшөөрдөг
- * тул хоёрыг нийлүүлбэл обьём буцаагдахад шинэ ажил ч гацна.
- *
- * ⚠️ ХАДГАЛАЛТ: ӨӨРИЙН ArcGIS хүснэгт (`Selbe_Ajil_Batlah_csv`). Хэрэглэгч
- * CSV-ээс AGOL дээр ӨӨРӨӨ нийтэлсэн (2026-09-22) тул энэ модуль хүснэгт
- * ҮҮСГЭХГҮЙ — зөвхөн олж ашиглана. Давхаргын дугаар нь `0` БИШ (доорх
- * `LAYER_ID`-ийн ⚠️-г үз).
- *
- * ⚠️ FAIL-CLOSED: хүснэгт уншигдахгүй бол «батлагдсан» гэж ҮЗЭХГҮЙ.
  */
 
 import { GUITS } from '@/lib/services/env';
@@ -47,21 +9,13 @@ import { AUTH, ROLE_BY_USER, roleForUser } from './services';
 import { ajilAclReady, ajilScope } from './ajilAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
-/* ⚠️ `arcgisPost` (2026-09-30): урьд нь ижил утгатай дотоод `req` байв — хүснэгт
-   Organization-only тул нэвтэрсэн хэрэглэгчийн токен ЗААВАЛ (2026-09-17), токеныг
-   хүсэлтийн өмнө шинэчилж 498-д нэг удаа дахин оролдоно (2026-09-29). */
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
 import type { NewRow } from './submission';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
-/* ⚠️ 2026-10-21 (кодын аудит): `serverNow` — түгжээний агшин, TTL-ийн шүүлт ба `approverAt` СЕРВЕРИЙН цагаар
-   (`obyemBatlah`/`huvaariBatlah`-д 2026-10-12-нд шилжсэн, энд хоцорсон байв): хоёр батлагчийн компьютерийн цаг
-   10 минутаас илүү зөрвөл амьд түгжээг «дууссан» гэж үзэн хоёулаа ИЖИЛ илгээлтийг буулгах боломжтой байлаа. */
 import { REASON_MAX, serverNow, syncServerClock } from './huvaariBatlah';
-/* ⚠️ 2026-10-09: хариу алдагдсан бичилт = үр дүн тодорхойгүй (`lostWrite`-ийн ⚠️) */
 import { isLostWrite } from './lostWrite';
-/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm` → аппын дотоод асуулт (React-гүй модуль — lib-ээс импортолж болно) */
 import { askConfirm } from './confirm';
 
 /** Илгээлтийн төлөв */
@@ -75,22 +29,11 @@ export const AJIL_STATUS = {
   /**
    * Батлагдсан БА мөрүүд үндсэн хүснэгтэд (`Bagts_*`) аль хэдийн
    * БИЧИГДСЭН — `ajilApply.materializeAdds` амжилттай дууссан (2026-09-24).
-   *
-   * ⚠️ `approved`-ООС ЯЛГААТАЙ БАЙХ ЁСТОЙ: `approved` нь «батлагдсан ч
-   *    хуудсанд ХАРААХАН буугаагүй» (буулгалт унасан, дахин оролдоно) гэсэн
-   *    завсрын төлөв. Тэмдэглэхгүй бол ИЖИЛ мөрүүд дахин дахин бичигдэнэ.
-   *    Локал тэмдэглэгээ хангалтгүй — өөр компьютер дээр дахин буух тул
-   *    төлөв нь СЕРВЕРТ байна.
    */
   applied: 'Буулгасан',
   /**
    * БУЦААГДСАН БА зохиогчийн «Хуваарь» хуудас мөрүүдийг `adds`-д
    * аль хэдийн БУЦААЖ буулгасан (2026-09-23, аудитын #13).
-   *
-   * ⚠️ `returned`-ООС ЯЛГААТАЙ БАЙХ ЁСТОЙ — `applied` ↔ `approved`-ын ижил
-   *    шалтгаан: хуудас нээгдэх бүрд буцаагдсан илгээлтийг сэргээвэл ижил
-   *    мөр дахин дахин нэмэгдэнэ. Төлөв нь СЕРВЕРТ — өөр компьютер дээр ч
-   *    дахин буухгүй. Буцаах ШАЛТГААН (`reason`) мөрөнд хэвээр үлдэнэ.
    */
   restored: 'Сэргээсэн',
 } as const;
@@ -98,12 +41,6 @@ export type AjilStatus = (typeof AJIL_STATUS)[keyof typeof AJIL_STATUS];
 
 /**
  * НЭГ ИЛГЭЭЛТИЙН АГУУЛГА — нэмэхээр хүлээж буй мөрүүд.
- *
- * ⚠️ `adds` нь `submission.NewRow[]` — «Гүйцэтгэл бөглөх» хуудасны нэмсэн
- *    мөртэй ЯГ ИЖИЛ хэлбэр. Өөрийн төрөл зохиовол хоёр тал зөрж, батлагдсан
- *    мөрийг эх хуудсанд буулгах үед эцэг нь олдохоо болино.
- * ⚠️ Эцгийг ObjectID-гаар БИШ, (№ + ажлын нэр) хосоор санана — батлахад
- *    хуудас хуулбарлагдаж бүх мөр ШИНЭ ObjectID авдаг (`NewRow`-ийн ⚠️).
  */
 export type AjilPayload = {
   v: 1;
@@ -126,7 +63,7 @@ export type AjilSubmission = {
   approverAt: number | null;
   reason: string | null;
   note: string | null;
-  /** Хэдэн мөр нэмэгдэх — жагсаалтад харуулах. ⚠️ 2026-10-23: хоосон `mor_too` = мэдэгдэхгүй (`null`), 0 биш */
+  /** Хэдэн мөр нэмэгдэх — жагсаалтад харуулах. 2026-10-23: хоосон `mor_too` = мэдэгдэхгүй (`null`), 0 биш */
   rowCount: number | null;
   /** Түүхий JSON — `parsePayload`-аар задарна */
   payload: string;
@@ -134,23 +71,16 @@ export type AjilSubmission = {
 
 /**
  * Буцаах шалтгааны дээд урт (тэмдэгт) — UI `maxLength` үүнтэй ижил (2026-10-06).
- * ⚠️ 2026-10-06: урьд нь хязгааргүй — урт шалтгаан `butsaasan_shaltgaan` талбарын уртаас
- *    хэтэрч `applyEdits` шалтгаангүй унадаг байв. Талбарын бодит урт кодоос мэдэгдэхгүй
- *    (CSV-ээс AGOL дээр нийтлэгдсэн) тул `huvaariBatlah.REASON_MAX`-тай ИЖИЛ 2000.
- * ⚠️ merge 2026-10-06: утга нь `huvaariBatlah.REASON_MAX`-аас (дээрх импорт) — хоёр газар тогтмол байхгүй.
  */
 
 /**
  * ДАВХАР ИЛГЭЭЛТИЙН ЦУЦЛАЛТЫН ТЭМДЭГ (2026-10-06, `huvaariBatlah.DUP_MARK`-ийн загвар) —
  * `submitAjil`-ийн давхардал арилгах зам устгал унахад ялагдсан мөрийг `withdrawn`
  * болгохдоо `butsaasan_shaltgaan`-д бичнэ.
- * ⚠️ Шийдвэр БИШ — `loadHistory`-оос хасна (`isDupCancel`), эс бөгөөс багцын түүхэнд
- *    «татсан» мэт харагдаж жинхэнэ шийдвэрийг дарна.
  */
 export const DUP_MARK = '__davhar_tsutslagdsan__';
 /**
  * Давхардлын улмаас цуцлагдсан мөр мөн эсэх.
- * ⚠️ `approverAt == null` нөөц шалгуур: жинхэнэ `withdrawAjil` ҮРГЭЛЖ `approverAt`-ийг бичдэг.
  */
 export function isDupCancel(x: Pick<AjilSubmission, 'status' | 'reason' | 'approverAt'>): boolean {
   if (x.status !== AJIL_STATUS.withdrawn) return false;
@@ -159,10 +89,6 @@ export function isDupCancel(x: Pick<AjilSubmission, 'status' | 'reason' | 'appro
 
 /**
  * Дуудагчийн өгсөн нэр НЭВТЭРСЭН хэрэглэгчтэй ижил үү (хөтөчид, `AUTH.appId` үед).
- * ⚠️ 2026-10-06 (`huvaariBatlah.sameAsLogin`-ийн хуулбар): `submitAjil`/`decideAjil`/
- *    `returnStuckAjil` хүрээг `currentUser`-оор шалгаад НЭРИЙГ args-аас бичдэг байсан тул
- *    консолоос өөр нэр дамжуулж түүхэнд өөр зохиогч/батлагч үлдээх, зохиогч=батлагч
- *    шалгуурыг тойрох боломжтой байв. Зөрвөл алдаа, эс бөгөөс `null`.
  */
 function sameAsLogin(name: string): { ok: false; error: string } | null {
   if (typeof window === 'undefined' || !AUTH.appId) return null;
@@ -174,19 +100,10 @@ function sameAsLogin(name: string): { ok: false; error: string } | null {
 
 const TITLE = 'Selbe_Ajil_Batlah_csv';
 
-/**
- * ⚠️ ДАВХАРГЫН ДУГААР 219, `0` БИШ (2026-09-22). Бусад батлах модулиуд
- *    хүснэгтээ ӨӨРСДӨӨ `createService`-ээр үүсгэдэг тул давхарга нь үргэлж
- *    `/0` байдаг. Энэ хүснэгтийг хэрэглэгч CSV-ээс AGOL дээр нийтэлсэн
- *    бөгөөд тэр үйлчилгээнд давхаргын дугаарыг AGOL өөрөө өгсөн. `/0` гэж
- *    таамаглавал «Layer not found» гарна.
- */
 const LAYER_ID = 219;
 
 /**
  * Талбарын нэр — амьд үйлчилгээтэй ЯГ тохирно.
- * ⚠️ `docs/csv/Selbe_Ajil_Batlah.csv`-ийн толгойтой ижил байх ЁСТОЙ —
- *    хүснэгт тэр файлаас нийтлэгдсэн.
  */
 export const F = {
   oid: 'objectid',
@@ -226,9 +143,6 @@ const SUPER_OWNERS = new Set(
 /**
  * ХУУЧИН ЭЗЭД — `ROLE_BY_USER`-ээс хасагдсан ч хүснэгтийг үүсгэсэн байж
  * болох аккаунтууд (`obyemBatlah.FORMER_TABLE_OWNERS`-ийн загвар).
- *
- * ⚠️ Энд нэмэх нь ЗӨВХӨН УНШИХ эрхийг нээнэ: хүснэгт өөрөө AGOL дээр
- *    хуваалцагдсан хэвээр, бичих эрх нь тэндээс хамаарна.
  */
 const FORMER_TABLE_OWNERS: string[] = [];
 const TABLE_OWNERS = new Set([
@@ -240,24 +154,15 @@ let tableUrlCache: string | undefined;
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — анхааруулга */
 let ownerMismatch = false;
 
-/**
- * ⚠️ ЭЗНИЙГ ШАЛГАНА: title хайлт нь org доторх ХЭНИЙ Ч үүсгэсэн ижил нэртэй
- * item-ыг буцааж болно. Хуурамч хүснэгт үүсгэсэн хүн бүх багцад шинэ ажил
- * батлах зам нээх байлаа.
- */
 async function findTableUrl(token: string): Promise<string | null> {
   const search = await arcgisPost(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
-    /* ⚠️ 100 — хэн нэгэн 10+ хуурамч item үүсгэвэл ЖИНХЭНЭ хүснэгт эхний
-       10-т багтахаа больж, бүх клиентийн урсгал УНТАРНА (`permsRemote`). */
     num: '100',
   });
   const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);
   const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
-  /* ⚠️ Нийтэд нээлттэй эсэхийг ЭНД барина — `access` нь хайлтын хариунд
-     хамт ирдэг тул нэмэлт хүсэлт хэрэггүй. */
   if (String(hit?.access ?? '') === 'public') {
     console.error(
       `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч`,
@@ -276,20 +181,9 @@ async function findTableUrl(token: string): Promise<string | null> {
 
 /**
  * Хүснэгтийн URL.
- *
- * ⚠️ ҮҮСГЭХ ЗАМ БАЙХГҮЙ (2026-09-22) — `obyemBatlah`/`huvaariBatlah`-аас
- *    ялгаатай. Хүснэгтийг хэрэглэгч AGOL дээр ӨӨРӨӨ нийтэлсэн бөгөөд
- *    давхаргын дугаар (219), талбарын төрөл (`aguulga` 1,048,576 ·
- *    `shiidver_ognoo` Date) нь тэнд тохируулагдсан. Энэ модулиас дахин
- *    үүсгэвэл `/0` давхаргатай ХОЁР ДАХЬ ижил нэртэй үйлчилгээ гарч,
- *    `findTableUrl` аль нэгийг санамсаргүй сонгоно.
- * ⚠️ Зөвхөн ОЛДСОН URL-ыг кэшлэнэ: `null`-ыг кэшлэвэл порталын search-ийн
- *    түр зуурын алдаа сешн даяар тогтмолжино.
  */
 async function tableUrl(): Promise<string | null> {
   if (tableUrlCache) return tableUrlCache;
-  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (Guitsetgel_talbe/189) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
-     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
   const direct: string | null = `${GUITS}/189`;
   if (direct) {
     tableUrlCache = direct;
@@ -304,13 +198,6 @@ async function tableUrl(): Promise<string | null> {
 
 /**
  * ХҮСНЭГТ БЭЛЭН ҮҮ — ба ҮГҮЙ бол ЯАГААД.
- *
- * ⚠️ `huvaariBatlah.planTableState`-ийн загвар: зөвхөн `boolean` буцаавал
- *    гурван огт өөр шалтгаан нэг л «олдсонгүй» мессеж болж нийлж, админ
- *    юуг засахаа мэдэхгүй болно (2026-09-11-ний сургамж).
- * ⚠️ `none` нь ЭНД ӨӨР УТГАТАЙ: бусад батлах модульд «super нэвтрэхэд
- *    автоматаар үүснэ» гэсэн үг, харин энэ хүснэгтийг хэрэглэгч AGOL дээр
- *    ӨӨРӨӨ нийтэлсэн тул үүсгэх зам БАЙХГҮЙ — админд өөр зөвлөгөө хэрэгтэй.
  */
 export type AjilTableState = {
   ok: boolean;
@@ -326,8 +213,6 @@ export type AjilTableState = {
 
 export async function ajilTableState(): Promise<AjilTableState> {
   try {
-    /* ⚠️ Токеныг ТУСАД НЬ шалгана: `tableUrl` нь токенгүй үед ч зүгээр
-       `null` буцаадаг тул «нэвтрээгүй» ба «олдсонгүй» хоёр ялгагдахгүй. */
     if (!(await getToken())) return { ok: false, why: 'auth' };
     const url = await tableUrl();
     if (url) return { ok: true, why: 'ok' };
@@ -368,7 +253,6 @@ function toSubmission(a: Attrs): AjilSubmission | null {
     approverAt: n(a[F.approverAt]),
     reason: s(a[F.reason]),
     note: s(a[F.note]),
-    /* ⚠️ 2026-10-23: null ≠ 0 (`huvaariBatlah.toSubmission`-тэй ижил) */
     rowCount: a[F.rowCount] == null || a[F.rowCount] === '' || !Number.isFinite(Number(a[F.rowCount])) ? null : Number(a[F.rowCount]),
     payload: String(a[F.payload] ?? ''),
   };
@@ -377,9 +261,6 @@ function toSubmission(a: Attrs): AjilSubmission | null {
 async function query(where: string, outFields: string): Promise<Attrs[]> {
   const url = await tableUrl();
   if (!url) return [];
-  /* ⚠️ 2026-10-21: түгжээг уншиж/шүүх бүх зам серверийн цагтай (`huvaariBatlah`-ийн `loadRows`-тэй ижил) — ихэвчлэн
-     кэшээс шууд буцна (10 мин); алдааг залгина, query-г хэзээ ч унагахгүй. Өөрийн хүснэгтийн url-ыг өгнө —
-     хуваарийн хүснэгтийг портал дээр дахин хайхгүй (2026-10-26). */
   await syncServerClock(url);
   const out: Attrs[] = [];
   for (let off = 0; ; ) {
@@ -387,18 +268,12 @@ async function query(where: string, outFields: string): Promise<Attrs[]> {
       where,
       outFields,
       returnGeometry: 'false',
-      /* ⚠️ Хуудаслалтад `orderByFields` ЗААВАЛ — эс бөгөөс ArcGIS хуудас
-         хооронд мөр давхардуулах/алгасах эрхтэй. */
       orderByFields: `${F.oid} ASC`,
       resultOffset: String(off),
       resultRecordCount: '1000',
     });
     const fs = (j.features as { attributes: Attrs }[]) ?? [];
     out.push(...fs.map((f) => f.attributes));
-    /* ⚠️ `exceededTransferLimit`-ЭЭР таслана, `fs.length < 1000`-ААР БИШ
-       (2026-09-24): үйлчилгээний `maxRecordCount` 1000-аас бага байж болно —
-       тэр үед эхний хуудас цөөн мөр буцаад давталт зогсож, үлдсэн илгээлт
-       чимээгүй алга болдог байв (`hyanalt.ts`-ийн 2026-09-15-ны ижил дүрэм). */
     if (!j.exceededTransferLimit || fs.length === 0) break;
     off += fs.length;
   }
@@ -413,9 +288,6 @@ const HEAD_FIELDS = [
 
 /**
  * Багцын хүлээгдэж буй илгээлт.
- *
- * ⚠️ Зөвхөн `pending` нь шинэ илгээлтийг ТҮГЖИНЭ. `approved`/`returned`/
- *    `withdrawn` нь түүх тул дахин илгээж болно.
  */
 export async function loadPending(pkgKey: string): Promise<AjilSubmission | null> {
   const esc = pkgKey.replace(/'/g, "''");
@@ -424,10 +296,6 @@ export async function loadPending(pkgKey: string): Promise<AjilSubmission | null
     HEAD_FIELDS,
   );
   const list = rows.map(toSubmission).filter((x): x is AjilSubmission => x != null);
-  /* ⚠️ 2026-10-06: хэд хэдэн pending үүссэн бол (зэрэгцээ илгээлтийн race) ЭХНИЙХ (бага
-     OBJECTID) ялна — `submitAjil`-ийн давхардал арилгах дүрэмтэй ИЖИЛ (`huvaariBatlah.
-     loadPending`-ийн загвар). Урьд «сүүлийнх ялна» байсан тул цуцлагдах ёстой илгээлт
-     хүлээгдэж буй мэт харагдаж, зохиогч түүнийг засаж/татаж байв. */
   list.sort((a, b) => a.oid - b.oid);
   return list[0] ?? null;
 }
@@ -441,10 +309,6 @@ export async function loadAllPending(): Promise<AjilSubmission[]> {
 /**
  * Багцын түүх — сүүлийн шийдвэрүүд (батлагдсан · буцаагдсан · татсан ·
  * буулгасан · сэргээсэн).
- * ⚠️ «Хуваарь» (`Huvaari`, 2026-09-24-өөс; урьд нь `FillNew`) үүгээр
- *    зохиогчийн `returned` илгээлтийг олж мөрүүдийг нь `adds`-д буцаана
- *    (2026-09-23) — `restored` болсныг дахин буулгахгүй. Мөн хүлээгдэж
- *    байсан илгээлт алга болоход `applied` эсэхийг эндээс мэднэ.
  */
 export async function loadHistory(pkgKey: string, limit = 20): Promise<AjilSubmission[]> {
   const esc = pkgKey.replace(/'/g, "''");
@@ -452,22 +316,12 @@ export async function loadHistory(pkgKey: string, limit = 20): Promise<AjilSubmi
     `${F.pkgKey} = '${esc}' AND ${F.status} <> N'${AJIL_STATUS.pending}'`,
     HEAD_FIELDS,
   );
-  /* ⚠️ 2026-10-06: давхардлын цуцлалтыг хасна (`isDupCancel`) — `limit` хасалтын ДАРАА */
   const list = rows.map(toSubmission).filter((x): x is AjilSubmission => x != null && !isDupCancel(x));
   return list.slice(-limit).reverse();
 }
 
 /**
  * БАТЛАГДСАН, гэвч үндсэн хүснэгтэд хараахан БУУГААГҮЙ илгээлтүүд.
- *
- * ⚠️ 2026-09-24-өөс энэ нь ЗАВСРЫН (алдааны) төлөв: батлангуут
- *    `ajilApply.materializeAdds` бичдэг тул хэвийн урсгалд `approved`
- *    хэдхэн секунд л үлдэнэ. Үлдсэн бол буулгалт унасан — «Хуваарь»
- *    зохиогчид мэдэгдэл харуулна, `AjilBatlah` «Дахин буулгах» товч гаргана.
- * ⚠️ Урьд нь «Гүйцэтгэл бөглөх» хуудас нээгдэхэд эндээс татаж `adds`-д
- *    буулгадаг байв — тэр зам хасагдсан.
- * ⚠️ Олон байж БОЛНО: батлагч хэд хэдэн илгээлтийг дараалан баталсан
- *    байж мэднэ.
  */
 export async function loadApproved(pkgKey: string): Promise<AjilSubmission[]> {
   const esc = pkgKey.replace(/'/g, "''");
@@ -489,10 +343,8 @@ export async function loadAllApproved(): Promise<AjilSubmission[]> {
 }
 
 /**
- * Батлагчийн «Буцаасан» хэсэг (⚠️ 2026-10-23, UX аудит P1) — сүүлийн `days` хоногт буцаасан илгээлтүүд (шалтгаантай),
+ * Батлагчийн «Буцаасан» хэсэг (2026-10-23, UX аудит P1) — сүүлийн `days` хоногт буцаасан илгээлтүүд (шалтгаантай),
  * шинээс хуучин руу. `restored` (зохиогчийн хуудас мөрүүдийг буулгасан) ч буцаалт мөн тул орно.
- * ⚠️ Урьд нь батлагч өөрийн буцаасныг хаанаас ч харах боломжгүй, тоо нь ч алга байв.
- * ⚠️ `HEAD_FIELDS` (хөнгөн) — `payload` татахгүй; огноогоор клиент талд шүүнэ (талбарын төрлөөс үл хамаарах).
  */
 export async function loadAllReturned(days = 30, now = serverNow()): Promise<AjilSubmission[]> {
   const rows = await query(`${F.status} IN (N'${AJIL_STATUS.returned}', N'${AJIL_STATUS.restored}')`, HEAD_FIELDS);
@@ -504,9 +356,6 @@ export async function loadAllReturned(days = 30, now = serverNow()): Promise<Aji
 
 /**
  * НЭГ ИЛГЭЭЛТИЙН ТОЛГОЙ — `payload`-гүй (2026-09-24).
- * ⚠️ `ajilApply.materializeAdds` үүгээр СЕРВЕРИЙН `pkgKey` · `pkgGroup` · төлвийг
- *    уншина — дуудагчийн өгсөн утгад найдвал консолоос өөр багц руу бичих
- *    боломжтой (`decideAjil`-ийн «хүрээг серверийн багцаар» дүрэм).
  */
 export async function loadHead(oid: number): Promise<AjilSubmission | null> {
   const rows = await query(`${F.oid} = ${Number(oid)}`, HEAD_FIELDS);
@@ -515,13 +364,6 @@ export async function loadHead(oid: number): Promise<AjilSubmission | null> {
 
 /**
  * БУУЛГАСАН гэж тэмдэглэх — `loadApproved` дахин буцаахгүй болно.
- *
- * ⚠️ ЗӨВХӨН мөрүүд `adds`-д ОРСНЫ ДАРАА дуудна. Эсрэгээр хийвэл
- *    тэмдэглэгээ амжилттай болоод буулт нь унасан үед мөрүүд БҮРМӨСӨН
- *    алга болно — `applied` нь буцаах замгүй.
- * ⚠️ Төлвийг ШАЛГАНА: зөвхөн `approved` мөрийг `applied` болгоно. Эс
- *    бөгөөс хоцорсон дуудлага `returned`/`withdrawn` мөрийг дарж,
- *    буцаагдсан ажил «буулгасан» болж харагдана.
  */
 export async function markApplied(oid: number): Promise<{ ok: boolean; error?: string }> {
   const url = await tableUrl();
@@ -529,16 +371,12 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
   const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   if (s(cur[0][F.status]) !== AJIL_STATUS.approved) {
-    /* ⚠️ Аль хэдийн `applied` бол АМЖИЛТ гэж үзнэ: хоёр таб зэрэг
-       буулгавал хоёр дахь нь алдаа заах ёсгүй (идемпотент). */
     return s(cur[0][F.status]) === AJIL_STATUS.applied
       ? { ok: true }
       : { ok: false, error: tr('Энэ илгээлт энэ хооронд өөрчлөгдлөө — хуудсаа шинэчилнэ үү.') };
   }
   try {
     const j = await arcgisPost(`${url}/applyEdits`, {
-      /* ⚠️ 2026-10-09: `reason: null` — буулгалтын түгжээний тэмдгийг (`AJIL_CLAIM_MARK`) хамт арилгана;
-         `approved` мөрд жинхэнэ шалтгаан хэзээ ч байдаггүй (`decideAjil` батлахад `null` бичдэг). */
       updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.status]: AJIL_STATUS.applied, [F.reason]: null } }]),
       rollbackOnFailure: 'true',
     });
@@ -547,9 +385,6 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   } finally {
-    /* ⚠️ 2026-10-09: бичилт ОРОЛДСОН бол ҮРГЭЛЖ кэш хүчингүй — урьд нь зөвхөн амжилтад зарладаг тул хариу
-       алдагдсан (сервер дээр `applied` болсон) үед жагсаалт «Батлагдсан · буулгаагүй» хэвээр харагдаж,
-       «Дахин буулгах» дэмий санал болгогддог байв. «Бичигдээгүй атлаа дахин татах» нь хямд. */
     invalidate('AJIL_BATLAH');
   }
 }
@@ -557,11 +392,6 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
 /**
  * БУЦААГДСАНЫГ «СЭРГЭЭСЭН» гэж тэмдэглэх — зохиогчийн хуудас мөрүүдийг
  * `adds`-д буцааж буулгасны ДАРАА (2026-09-23, аудитын #13).
- *
- * ⚠️ `markApplied`-тай ИЖИЛ дараалал: эхлээд `adds`, дараа нь тэмдэглэнэ —
- *    эсрэгээр бол буулт унасан үед буцаагдсан мөр бүрмөсөн алга болно.
- * ⚠️ ЗӨВХӨН `returned` → `restored`; аль хэдийн `restored` бол амжилт
- *    (идемпотент — хоёр таб). Бусад төлөв бол хөндөхгүй.
  */
 export async function markRestored(oid: number): Promise<{ ok: boolean; error?: string }> {
   const url = await tableUrl();
@@ -588,16 +418,6 @@ export async function markRestored(oid: number): Promise<{ ok: boolean; error?: 
 
 /**
  * БАТЛАГДСАН/БУУЛГАСАН НЭМЭЛТ АЖЛЫН ТҮЛХҮҮРҮҮД — «эцгийн № ¦ эцгийн нэр ¦ № ¦ нэр».
- *
- * ⚠️ ЗОРИЛГО (2026-09-22, хэрэглэгч: «сүүлд нэмэгдсэн ажил батлагдсан ч улаан
- *    өнгөтэй байна»): нийтлэгдсэн шинэ мөр серверийн ObjectID авч бусдаас
- *    ялгагдахаа болдог тул «нэмэлт» гэдгийг ЭНЭ хүснэгтээс сэргээнэ. Хуудас
- *    (FillNew) мөр бүрийн эцгийг дээшээ хайж ижил түлхүүр үүсгэж тулгана.
- * ⚠️ Уншихад эрх шаардахгүй — тэмдэглэгээ л. Хүснэгт алга/уншигдахгүй бол хоосон.
- * ⚠️ `parentIdx`-ИЙГ Ч БУЦААНА (2026-09-23, аудитын #17): (эцгийн № + нэр) хос
- *    давхарддаг — Багц 1-д «10 · БУСАД АЖИЛ» блок бүрт нэг. Зөвхөн нэрээр
- *    тулгавал ӨӨР БЛОКИЙН ижил нэртэй мөр ч улаан болно. Хуудас (`FillNew`)
- *    `sheetFrame.parentOf`-той ижил ОЙРХНЫ дүрмээр нэг л эцэг тааруулна.
  */
 export function addedKeyOf(parentNo: string, parentWork: string, no: string, work: string): string {
   return `${parentNo.trim()}¦${parentWork.trim()}¦${no.trim()}¦${work.trim()}`;
@@ -629,13 +449,6 @@ export async function loadPayload(oid: number): Promise<AjilPayload | null> {
 
 /**
  * АГУУЛГЫН ХУВИЛБАРЫН ТЭМДЭГ — түүхий `aguulga` мөрийн хэш (FNV-1a 32 + урт).
- *
- * ⚠️ 2026-09-30: ЯАГААД ХЭШ, ЦАГ БИШ. `updateAjil` нь дарааллын байрыг
- *    хадгалахын тулд `ilgeesen_ognoo`-г САНААТАЙ хөндөхгүй (тэндхийн ⚠️),
- *    засварын агшны талбар хүснэгтэд алга, схем өөрчлөхгүй. Тиймээс батлагчийн
- *    ХАРСАН агуулгыг түүхий мөрийн хэшээр танина — ижил мөр = ижил тэмдэг.
- * ⚠️ Нууцлалын хэш БИШ — зөвхөн «өөрчлөгдсөн үү» гэдгийг илрүүлнэ; мөргөлдөх
- *    магадлал (2⁻³² + урт тэнцэх) нь санамсаргүй засварт тоомжиргүй.
  */
 export function payloadStamp(raw: string): string {
   let h = 0x811c9dc5;
@@ -648,8 +461,6 @@ export function payloadStamp(raw: string): string {
 
 /**
  * АГУУЛГА + ХУВИЛБАРЫН ТЭМДЭГ (2026-09-30) — батлагчийн урьдчилан харах цонх.
- * ⚠️ Тэмдэг нь ЗАДЛАХААС ӨМНӨХ түүхий мөрөөс — `decideAjil` · `materializeAdds`
- *    серверээс дахин уншаад ИЖИЛ аргаар бодож тулгана.
  */
 export async function loadPayloadStamped(oid: number): Promise<{ p: AjilPayload; stamp: string } | null> {
   const rows = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.payload}`);
@@ -661,12 +472,6 @@ export async function loadPayloadStamped(oid: number): Promise<{ p: AjilPayload;
 
 /**
  * Агуулгыг задлах — эвдэрсэн бол `null`.
- *
- * ⚠️ Хагас задарсан агуулга хэрэглэвэл мөр ЧИМЭЭГҮЙ алга болно. Тиймээс
- *    танигдахгүй элементийг ХАЯХГҮЙ, харин БҮТЭН агуулгыг татгалзана —
- *    хагас батлагдсан илгээлт нь батлагдаагүйгээс дор.
- * ⚠️ `vol`/`unit` нь `null` байж БОЛНО («хэмжилтгүй»), гэхдээ `undefined`
- *    БИШ — `null ≠ 0` дүрмийн үргэлжлэл (`format.ts`).
  */
 export function parsePayload(raw: string): AjilPayload | null {
   try {
@@ -679,8 +484,6 @@ export function parsePayload(raw: string): AjilPayload | null {
     for (const a of j.adds) {
       if (!a || typeof a !== 'object') return null;
       const r = a as Partial<NewRow>;
-      /* ⚠️ Түр oid нь СӨРӨГ бүхэл тоо — эерэг байвал серверийн жинхэнэ
-         ObjectID-тай мөргөлдөж, БАЙГАА мөрийг дарах эрсдэлтэй. */
       if (!Number.isInteger(r.oid) || (r.oid as number) >= 0) return null;
       if (typeof r.no !== 'string' || typeof r.work !== 'string') return null;
       if (typeof r.parentNo !== 'string' || typeof r.parentWork !== 'string') return null;
@@ -708,23 +511,10 @@ const editOk = (res: unknown): boolean => {
   return arr.length > 0 && arr.every((r) => r.success === true);
 };
 
-/* ══════════════════ СЕРВЕРИЙН ТҮГЖЭЭ (claim) — ⚠️ 2026-10-09 ══════════════════ */
+/* ══════════════════ СЕРВЕРИЙН ТҮГЖЭЭ (claim) — 2026-10-09 ══════════════════ */
 
 /**
- * НЭМЭЛТ АЖЛЫН ТҮГЖЭЭ — `obyemBatlah.casObyemClaim`-ийн загвар (⚠️ 2026-10-09).
- *
- * ⚠️ ЯАГААД: (1) `decideAjil` нь «дахин унш → бич» л байсан (last-writer-wins) — хоёр батлагч
- *    зэрэг шийдвэл эхнийх нь чимээгүй дарагдана; (2) `ajilApply.materializeAdds`-ийн Web Locks
- *    нь ЗӨВХӨН нэг хөтчийг хамгаалдаг тул хоёр компьютер ИЖИЛ илгээлтийг зэрэг буулгаж хоёр
- *    жааз бичдэг байв. Түгжээ нь мөрөнд СЕРВЕР дээр.
- * ⚠️ ХЭЛБЭР: ШИНЭ ТАЛБАР/ТӨЛӨВ НЭМЭЭГҮЙ — `butsaasan_shaltgaan` (`F.reason`) талбарт
- *    `${AJIL_CLAIM_MARK}:${агшин}:${таб}:${нэр}`. `pending`/`approved` мөрийн шалтгааныг хэн ч
- *    уншдаггүй (шалтгаан зөвхөн `returned`-д). `approver`/`approverAt`-ийг ХӨНДӨХГҮЙ — `approved`
- *    мөрд тэд «хэн, хэзээ баталсан» (`classifyStuck`-ийн хүлээлэг) тул дарж болохгүй.
- * ⚠️ Тэмдэг арилах: `decideAjil` (батлахад `null`, буцаахад шалтгаан), `markApplied` (`null`),
- *    `releaseAjilClaim`, эсвэл `AJIL_CLAIM_TTL` дуусахад (хөтөч хаагдвал мөнхөд үлдэхгүй).
- * ⚠️ Таб бүр ӨӨР (`TAB`) — нэг хэрэглэгч хоёр компьютер/таб дээр зэрэг буулгавал нэрээр ялгагдахгүй.
- * ⚠️ Өгөгдөл тул ОРЧУУЛАГДАХГҮЙ.
+ * НЭМЭЛТ АЖЛЫН ТҮГЖЭЭ — `obyemBatlah.casObyemClaim`-ийн загвар (2026-10-09).
  */
 export const AJIL_CLAIM_MARK = '__ajil_tugjee__';
 export const AJIL_CLAIM_TTL = 10 * 60_000;
@@ -744,7 +534,6 @@ export function ajilClaimOf(
   const m = CLAIM_RE.exec((reason ?? '').trim());
   if (!m) return null;
   const at = Number(m[1]);
-  /* ⚠️ Хэт ирээдүйн агшин (компьютерийн цаг зөрсөн) түгжээг мөнхөд сунгахгүй */
   if (!Number.isFinite(at) || now - at >= AJIL_CLAIM_TTL || at - now >= AJIL_CLAIM_TTL) return null;
   return { who: m[3].trim().toLowerCase(), at, tab: m[2] };
 }
@@ -755,17 +544,8 @@ export function ajilClaimHolder(x: Pick<AjilSubmission, 'status' | 'reason'>, no
 }
 
 /**
- * БАГЦАД НЭМЭЛТ АЖИЛ ЯГ ОДОО ХУУДСАНД БУУЖ БАЙНА УУ — ⚠️ 2026-10-12 (дарааллын аудит), Хуваарь (`Huvaari.archGate`)
+ * БАГЦАД НЭМЭЛТ АЖИЛ ЯГ ОДОО ХУУДСАНД БУУЖ БАЙНА УУ — 2026-10-12 (дарааллын аудит), Хуваарь (`Huvaari.archGate`)
  * ба обьёмын батлагч (`useObyem.archBusy`) `Bagts_*`-д бичихийн ӨМНӨ дуудна.
- * ⚠️ ЯАГААД: `ajilApply.materializeInner` нь `approved` мөрөнд түгжээ (`AJIL_CLAIM_MARK`) тавиад БҮТЭН шинэ жааз
- *    бичдэг; тэр зуур хуваарийн/обьёмын батлагч бичвэл утга нь ХУУЧИН (булагдсан) жаазад үлдэнэ. Гүйцэтгэлийн
- *    архивлалт (`submission.archivingBusy`) ижил шалтгаанаар хаагддаг ч `markArchiving` нь тухайн багцын НЭЭЛТТЭЙ
- *    `sub|` мөр (OID + `at`) шаарддаг — нэмэлт ажлын буулгалтад тийм мөр байхгүй тул тэр тэмдгийг тавих боломжгүй;
- *    оронд нь буулгалтын ӨӨРИЙН түгжээг (`ajilClaimOf`, `materializeInner` → `claimApply` … `releaseApply`/
- *    `markApplied`) уншина. Түгжээ нь бичилтийн БҮХ хугацаанд (A.4–A.11) байна.
- * ⚠️ Уншилт унавал ШИДНЭ — дуудагч хаана (fail-closed). Хүснэгт ОЛДОХГҮЙ (`tableUrl` null → `[]`) бол `null`
- *    (нэмэлт ажлын урсгал байхгүй).
- * @returns `{ who }` — буулгаж буй хүн; эсвэл `null` = чөлөөтэй
  */
 export async function ajilApplyBusyFor(pkgKey: string): Promise<{ who: string } | null> {
   const esc = pkgKey.replace(/'/g, "''");
@@ -789,8 +569,6 @@ const ajilDecidedMsg = (by: string | null, st: string | null) => (by
  * ТҮГЖЭЭГ АТОМААР АВАХ (CAS) — цэвэр (сүлжээг `io`-оор; `ajilReapply.check.mjs`).
  * (1) дахин унш — төлөв `want`, өөр хүний/табын хүчинтэй түгжээгүй; (2) тэмдгээ бич;
  * (3) дахин уншиж ЯГ манай тэмдэг үлдсэнийг батал — зэрэг бичсэн хүн ялсан бол түүний нэрийг буцаана.
- * ⚠️ ArcGIS-д нөхцөлт update БАЙХГҮЙ — завсар маш богино болно, тэг биш (`casObyemClaim`-ийн адил).
- * @returns `null` = түгжээ минийх; мөр = яагаад авч чадаагүй
  */
 export async function casAjilClaim(
   io: {
@@ -798,13 +576,7 @@ export async function casAjilClaim(
     write: (mark: string) => Promise<boolean>;
     now?: () => number;
     tab?: string;
-    /**
-     * ⚠️ 2026-10-09: ИЖИЛ ХЭРЭГЛЭГЧ, ӨӨР ТАБ-ын хүчинтэй түгжээг авах уу (хэрэглэгчээс асууна). Түгжээ табаар
-     *    ялгагддаг тул хуудсаа дахин ачаалсан хэрэглэгч ӨӨРИЙН түгжээндээ 10 минут (`AJIL_CLAIM_TTL`) хаагддаг
-     *    байв. Байхгүй/`false` бол хуучин дүрэм (татгалзана).
-     */
     takeover?: (who: string) => boolean | Promise<boolean>;
-    /** ⚠️ 2026-10-09: хариу алдагдсан тэмдэг МАНАЙХ болж (хожуу) суусан байж болзошгүй үед тайлах */
     release?: () => Promise<void>;
   },
   me: string,
@@ -823,10 +595,6 @@ export async function casAjilClaim(
     if (h.who !== u || !io.takeover || !(await io.takeover(h.who))) return ajilHeldMsg(h.who);
   }
   const mark = `${AJIL_CLAIM_MARK}:${now()}:${tab}:${u}`;
-  /* ⚠️ 2026-10-09: ТЭМДГИЙН ХАРИУ АЛДАГДСАН (`isLostWrite`) бол тэмдэг суусан эсэх ТОДОРХОЙГҮЙ — урьд нь алдааг
-     шууд буцаадаг тул тэмдэг суусан ч «авч чадсангүй» гэж үзэж, ӨӨРИЙН түгжээ нь 10 минут бусдыг (мөн өөрийг нь,
-     өөр табаас) хаадаг байв. Одоо доорх дахин уншилтаар шийднэ: манайх бол амжилт; үгүй бол (хожуу суухаас
-     сэргийлж) `release`. Дахин уншилт ч унавал `release` хийж «тодорхойгүй» гэж хэлнэ. */
   let lost = false;
   try {
     if (!(await io.write(mark))) return tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.');
@@ -862,20 +630,16 @@ async function writeReason(url: string, oid: number, reason: string | null): Pro
       rollbackOnFailure: 'true',
     });
   } catch (e) {
-    /* ⚠️ 2026-10-09: хариу алдагдсан бол тэмдэг суусан байж магадгүй — кэшийг хүчингүй болгоно */
     if (isLostWrite(e)) invalidate('AJIL_BATLAH');
     throw e;
   }
   const ok = editOk(j.updateResults);
-  /* ⚠️ 2026-10-09: бичигч бүр өөрөө кэш хүчингүй болгоно (dataBus.invariant) */
   if (ok) invalidate('AJIL_BATLAH');
   return ok;
 }
 
 /**
  * ТҮГЖЭЭ АВАХ — `ajilApply.materializeAdds` (`want: approved`) ба `decideAjil` (`want: pending`).
- * ⚠️ Унавал ШИДЭХГҮЙ, шалтгаан буцаана (сүлжээний алдаа ч түгжээгүй гэсэн үг — бичихгүй).
- * @returns `null` = түгжээ минийх
  */
 export async function claimAjil(args: { oid: number; me: string; want: AjilStatus }): Promise<string | null> {
   const url = await tableUrl();
@@ -884,8 +648,6 @@ export async function claimAjil(args: { oid: number; me: string; want: AjilStatu
     const err = await casAjilClaim({
       read: async () => (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0] ?? null,
       write: (mark) => writeReason(url, args.oid, mark),
-      /* ⚠️ 2026-10-09: өөр табын ӨӨРИЙН түгжээ — хөтөчид асууна; Node/тестэд хэзээ ч авахгүй */
-      /* ⚠️ 2026-10-23 (UX аудит X1/P7): аппын дотоод асуулт (хост алга бол `window.confirm`, тэр ч алга бол `false`) · богино текст */
       takeover: async (who) => typeof window !== 'undefined'
         && askConfirm(tr('Энэ илгээлтийг таны ({0}) өөр цонх түгжсэн байна. Тэр цонхыг хаасан бол түгжээг энд авах уу?', who), { ok: tr('Түгжээг авах') }),
       release: () => releaseAjilClaim({ oid: args.oid, me: args.me }),
@@ -898,10 +660,10 @@ export async function claimAjil(args: { oid: number; me: string; want: AjilStatu
 }
 
 /**
- * ӨӨР ХЭН НЭГЭН (өөр хүн ЭСВЭЛ өөр таб) хүчинтэй түгжээ барьж байна уу — ⚠️ 2026-10-09
+ * ӨӨР ХЭН НЭГЭН (өөр хүн ЭСВЭЛ өөр таб) хүчинтэй түгжээ барьж байна уу — 2026-10-09
  * (`ajilApply` → `markApplied`-ийн ӨМНӨ). Манай түгжээ хугацаа нь дуусч өөр хүн авсан бол
  * `markApplied` (`reason: null`) түүний тэмдгийг арчиж, бичиж буй жааз нь хамгаалалтгүй болно.
- * @returns бусдын нэр, эсвэл `null` (түгжээ минийх / хэнийх ч биш). ⚠️ Уншилт унавал ШИДНЭ.
+ * @returns бусдын нэр, эсвэл `null` (түгжээ минийх / хэнийх ч биш). Уншилт унавал ШИДНЭ.
  */
 export async function ajilClaimOther(oid: number, me: string): Promise<string | null> {
   const u = me.trim().toLowerCase();
@@ -931,11 +693,6 @@ export async function releaseAjilClaim(args: { oid: number; me: string }): Promi
 
 /**
  * ИЛГЭЭХ — мөр нэмэгчийн «Батлуулах».
- *
- * ⚠️ Эх өгөгдөлд ЮУ Ч бичихгүй. Зөвхөн энэ хүснэгтэд хүлээнэ.
- * ⚠️ Тухайн багцад хүлээгдэж буй илгээлт БАЙВАЛ татгалзана — хоёр санал
- *    зэрэг хүлээвэл батлагч алийг нь батлахаа мэдэхгүй, мөн хоёулаа
- *    батлагдвал ижил мөр ХОЁР УДАА үүснэ.
  */
 export async function submitAjil(args: {
   pkgKey: string;
@@ -944,20 +701,13 @@ export async function submitAjil(args: {
   note?: string;
   payload: AjilPayload;
 }): Promise<{ ok: boolean; error?: string }> {
-  /* ⚠️ Дүрэм СҮЛЖЭЭНЭЭС ӨМНӨ — ArcGIS уншигдахгүй орчинд «хүснэгт олдсонгүй»
-     гэсэн буруу шалтгаанаар дүрэм чимээгүй алга болохоос сэргийлнэ. */
   requireCap('addRow');
   if (!args.payload.adds.length) {
     return { ok: false, error: tr('Нэмсэн мөр алга.') };
   }
-  /* ⚠️ ХҮРЭЭГ lib-д ШАЛГАНА: `null` = хязгааргүй. */
   if (AUTH.appId) {
-    /* ⚠️ НЭВТЭРСЭН хэрэглэгчээр (дуудагчийн `author` БИШ) — консолоос
-       super-ийн нэр дамжуулж алгасахаас. Хөтөчид нэвтрээгүй бол хаана. */
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
-    /* ⚠️ 2026-10-06: хадгалагдах ЗОХИОГЧ = нэвтэрсэн хүн (`sameAsLogin`) — урьд нь
-       `args.author`-ыг шалгалтгүй бичдэг тул өөр нэрээр илгээгээд ӨӨРӨӨ батлах боломжтой. */
     const own = sameAsLogin(args.author);
     if (own) return own;
     const sc = ajilScope(meNow ?? args.author, 'editor');
@@ -975,8 +725,6 @@ export async function submitAjil(args: {
     [F.pkgGroup]: args.pkgGroup,
     [F.status]: AJIL_STATUS.pending,
     [F.author]: args.author.toLowerCase(),
-    /* ⚠️ 2026-10-21 (аудит): СЕРВЕРИЙН цагаар (`huvaariBatlah.submitPlan`-тай ижил) — түгжээ · `approverAt` аль хэдийн
-       `serverNow`, илгээсэн огноо л хөтчийн цагаар үлдсэн байв (хүлээлтийн нас өөр машин дээр зөрнө) */
     [F.authorSent]: serverNow(),
     [F.rowCount]: args.payload.adds.length,
     [F.note]: args.note?.trim() || null,
@@ -989,19 +737,7 @@ export async function submitAjil(args: {
     });
     if (!editOk(j.addResults)) return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     invalidate('AJIL_BATLAH');
-    /*
-     * ⚠️ ДАВХАР ИЛГЭЭЛТ АРИЛГАХ (2026-10-06, `huvaariBatlah.submitPlan`-ийн 2026-10-01-ний
-     *    загвар). Дээрх `loadPending` шалгалт ба `adds` хоёрын завсарт хоёр хүн/таб зэрэг
-     *    дарвал хоёулаа шалгалтыг давж, нэг багцад хоёр `pending` үүсдэг байв — хоёулаа
-     *    батлагдвал ижил мөр ХОЁР УДАА буух эрсдэлтэй. Бичсэний ДАРАА дахин уншиж, БАГА
-     *    OBJECTID-тай (түрүүлж бичигдсэн) илгээлт байвал ӨӨРИЙНХӨӨ мөрийг устгана — хоёр
-     *    тал ижил дүрмээр шийддэг тул яг нэг нь үлдэнэ (`loadPending` ч бага нь ялна).
-     *    Устгал унавал `withdrawn` + `DUP_MARK` болгоно (pending-ээс гарна, түүхэнд орохгүй).
-     * ⚠️ `ok:false` буцаахад `useAjil.sendAjil` локал `adds`-ийг ЦЭВЭРЛЭХГҮЙ — мөрүүд
-     *    зохиогчийн хуудсанд үлдэнэ.
-     */
     const mine = Number((j.addResults as { objectId?: number }[])[0]?.objectId);
-    /* ⚠️ Давхардлын шалгалт унавал (сүлжээ · 498) илгээлт ХАДГАЛАГДСАН хэвээр — 2026-10-21-нээс `ok:false` + «шинэчилнэ үү» (доорх `catch`). */
     if (Number.isFinite(mine)) try {
       const rows = await query(
         `${F.pkgKey} = '${args.pkgKey.replace(/'/g, "''")}' AND ${F.status} = N'${AJIL_STATUS.pending}'`,
@@ -1015,10 +751,6 @@ export async function submitAjil(args: {
           const upd = await arcgisPost(`${url}/applyEdits`, {
             updates: JSON.stringify([{ attributes: { [F.oid]: mine, [F.status]: AJIL_STATUS.withdrawn, [F.reason]: DUP_MARK, [F.approverAt]: null } }]),
           }).catch(() => null);
-          /* ⚠️ 2026-10-21 (кодын аудит): нөөц `updates`-ийн ҮР ДҮНГ шалгана (алдаа HTTP 200-аар ирдэг) —
-             `huvaariBatlah.submitPlan`-д 2026-10-12-нд хийсэн засварын хуулбар энд хоцорсон байв: устгал ч, цуцлалт ч
-             унахад «цуцлагдлаа» гэж ХУДАЛ хэлж, илүүдэл `pending` мөр батлагчийн жагсаалтад үлдэн ХОЁР УДАА батлагдах
-             эрсдэлтэй байлаа. */
           if (!editOk(upd?.updateResults)) {
             invalidate('AJIL_BATLAH');
             return { ok: false, error: tr('{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны давхар илгээлтийг цуцалж чадсангүй. Хуудсыг шинэчилнэ үү.', who || tr('Өөр хэрэглэгч')) };
@@ -1028,8 +760,6 @@ export async function submitAjil(args: {
         return { ok: false, error: tr('{0} энэ багцад нэмэлт ажлыг түрүүлж илгээсэн байна — таны илгээлт цуцлагдлаа. Эхлээд шийдвэрлүүлнэ үү.', who || tr('Өөр хэрэглэгч')) };
       }
     } catch {
-      /* ⚠️ 2026-10-21 (кодын аудит): `huvaariBatlah.submitPlan`-тай ИЖИЛ — давхардал шалгагдаагүй тул энэ мөр
-         цуцлагдах ёстой илүүдэл байж болно; «илгээгдлээ» биш «шинэчилнэ үү» (хадгалагдсан илгээлт түгжээгээ барина). */
       return { ok: false, error: tr('Илгээлт хадгалагдсан боловч давхардлыг шалгаж чадсангүй — хуудсыг шинэчилнэ үү.') };
     }
     return { ok: true };
@@ -1040,18 +770,6 @@ export async function submitAjil(args: {
 
 /**
  * ШИЙДВЭР — батлах эсвэл буцаах.
- *
- * ⚠️ ҮНДСЭН ӨГӨГДӨЛД МӨР ҮҮСГЭХ нь ЭНД БИШ — `ajilApply.materializeAdds`-д
- *    (2026-09-24; урьд нь `FillNew`-ийн ноорог). Тэр ажил нь схем, эцгийн
- *    зураглал, бүтэн жааз угсрах (`sheetFrame.buildFrame` → `bagtsSheet.
- *    applyAdds`) зэрэг эх хуудасны нарийн ширийнийг шаарддаг. Энэ модуль
- *    зөвхөн урсгалын ТӨЛӨВИЙГ хөтөлнө.
- *
- * ⚠️ Дараалал (2026-09-24): ЭХЛЭЭД энэ мөр `approved` болно, ДАРАА нь
- *    `AjilBatlah.approve` → `materializeAdds` бичиж `applied` болгоно. Бичилт
- *    унавал `approved` ХЭВЭЭР үлдэж «Батлагдсан · буулгаагүй» хэсэгт гарна —
- *    «батлагдсан» гэж харагдах атлаа мөр үүсээгүй байдал ИЛ бөгөөд дахин
- *    оролдох замтай (`loadAllApproved`).
  */
 export async function decideAjil(args: {
   oid: number;
@@ -1059,44 +777,15 @@ export async function decideAjil(args: {
   approver: string;
   /**
    * Илгээсэн хүн — ЗӨВХӨН нөөц (fallback).
-   *
-   * ⚠️ Дүрмийн ЖИНХЭНЭ эх нь ЭНЭ БИШ, СЕРВЕРИЙН мөрийн `F.author` (доор
-   *    `cur`-аас уншина). Дуудагчийн өгсөн утгад найдвал консолоос
-   *    `author: ''` дамжуулаад хамгаалалтыг бүрэн алгасаж болно.
    */
   author?: string;
   reason?: string;
   /**
-   * Батлагчийн ХАРСАН агуулгын тэмдэг (`loadPayloadStamped().stamp`) — 2026-09-30.
-   *
-   * ⚠️ 2026-09-30: БАТЛАХАД ЗААВАЛ. `updateAjil` нь хүлээгдэж буй илгээлтийг
-   *    хүссэн үедээ засдаг тул батлагчийн дэлгэц дээрх агуулга хуучирсан байж
-   *    болно — тэмдэггүй бол батлагч ХАРААГҮЙ мөрөө батлана. Буцаахад заавал
-   *    биш (буцаалт юу ч бичихгүй), гэхдээ өгсөн бол мөн тулгана.
+   * Батлагчийн ХАРСАН агуулгын тэмдэг (`loadPayloadStamped.stamp`) — 2026-09-30.
    */
   stamp?: string;
 }): Promise<{ ok: boolean; error?: string; /** Зохиогч агуулгыг өөрчилсөн — дахин харуулна */ stale?: boolean }> {
-  /*
-   * ⚠️ ДҮРМҮҮДИЙГ СҮЛЖЭЭНЭЭС ӨМНӨ шалгана. `tableUrl`-ийн ДАРАА байрлуулбал
-   *    ArcGIS уншигдахгүй орчинд «хүснэгт олдсонгүй» гэсэн буруу шалтгаан
-   *    буцааж, дүрэм нь чимээгүй алга болно.
-   *
-   * ⚠️ ЗОХИОГЧ ӨӨРИЙГӨӨ БАТЛАХГҮЙ. Энэ шалгуур UI-д БИШ, ЭНД байх ёстой:
-   *    товч нуух нь харагдацын асуудал, харин дүрэм нь өгөгдлийнх. Хоёр эрх
-   *    (`addRow` + `ajilApprove`) нэг хүнд олгогдвол товч нь идэвхтэй болох
-   *    тул ганц хамгаалалт нь энэ.
-   *
-   * ⚠️ ХОЁР ДАВХАР ШАЛГУУР:
-   *      (1) ЭНД — дуудагчийн өгсөн `author`-оор, СҮЛЖЭЭНЭЭС ӨМНӨ. ArcGIS
-   *          уншигдахгүй орчинд дүрэм чимээгүй алга болохоос сэргийлнэ.
-   *      (2) `cur`-ийн ДАРАА — СЕРВЕРИЙН мөрийн `F.author`-оор, учир нь (1)
-   *          нь дуудагчийн утгад найддаг тул хуурамчлах боломжтой.
-   */
   requireCap('ajilApprove');
-  /* ⚠️ 2026-10-06: хадгалагдах БАТЛАГЧ = нэвтэрсэн хүн (`sameAsLogin`). Урьд нь хүрээг
-     `currentUser`-оор шалгаад `F.approver`-т `args.approver`-ыг бичдэг тул консолоос
-     өөр нэр дамжуулж түүхэнд худал батлагч үлдээх, зохиогч=батлагч шалгуурыг
-     (`me === author`) тойрох боломжтой байв. */
   const own = sameAsLogin(args.approver);
   if (own) return own;
   const me = args.approver.trim().toLowerCase();
@@ -1107,24 +796,14 @@ export async function decideAjil(args: {
   if (!args.approve && !args.reason?.trim()) {
     return { ok: false, error: tr('Буцаах шалтгааныг бичнэ үү.') };
   }
-  /* ⚠️ 2026-09-30: тэмдэггүй батлалт = батлагч юу батлахаа хараагүй (fail-closed). */
   if (args.approve && !args.stamp) {
     return { ok: false, stale: true, error: tr('Илгээлтийн агуулгыг харсны дараа батлана уу.') };
   }
   const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  /*
-   * ⚠️ ШИЙДВЭР ГАРСАН ЭСЭХИЙГ ДАХИН ШАЛГАНА. Хоёр батлагч хуудсаа зэрэг
-   *    нээгээд нэг нь баталчихвал нөгөөгийн дэлгэц ХУУЧИН хэвээр үлдэнэ.
-   *    Түүнийг дарахад шийдвэр гаргасан хүний нэр чимээгүй дарагдана. Мөр нь
-   *    ганц тул `applyEdits` алдаа өгөхгүй — ЗӨВХӨН энэ шалгуур л барина.
-   * ⚠️ 2026-09-30: тэмдэг өгсөн бол `aguulga`-г ч ХАМТ уншина (нэг мөр, нэг
-   *    хүсэлт) — доор батлагчийн харсан хувилбартай тулгана.
-   */
   const curFields = `${F.oid},${F.status},${F.approver},${F.author},${F.pkgGroup}${args.stamp ? `,${F.payload}` : ''}`;
   const cur = await query(`${F.oid} = ${Number(args.oid)}`, curFields);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
-  /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР — дуудагчийн өгсөн багцаар БИШ. */
   if (AUTH.appId) {
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
@@ -1132,10 +811,6 @@ export async function decideAjil(args: {
     if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын нэмэлт ажлыг батлах эрхгүй.') };
   }
-  /*
-   * ⚠️ ХОЁР ДАХЬ ШАЛГУУР — ЗОХИОГЧ СЕРВЕРЭЭС. Дээрх эрт шалгуур нь дуудагчийн
-   *    утгад найддаг тул хоосон утга дамжуулаад алгасах боломжтой байв.
-   */
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
   if (me && author && me === author) {
     return { ok: false, error: tr('Өөрийн илгээсэн нэмэлт ажлыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.') };
@@ -1150,26 +825,9 @@ export async function decideAjil(args: {
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
   }
-  /*
-   * ⚠️ 2026-09-30: ХУВИЛБАРЫН ШАЛГУУР — батлагч харснаас хойш зохиогч
-   *    `updateAjil`-аар агуулгыг сольсон бол ШИЙДВЭР ГАРГАХГҮЙ. Төлөвийн
-   *    шалгуурын ДАРАА: аль хэдийн шийдвэрлэгдсэн бол тэр мессеж илүү чухал.
-   * ⚠️ Үлдэх цонх: энэ уншилтаас `applyEdits` хүртэл (ArcGIS-д нөхцөлт update
-   *    алга). Тэр завсрын засварыг `updateAjil`-ийн бичсэний дараах шалгалт
-   *    зохиогчид, `materializeAdds`-ийн `stamp` тулгалт батлагчид барина.
-   */
   if (args.stamp && payloadStamp(String(cur[0][F.payload] ?? '')) !== args.stamp) {
     return { ok: false, stale: true, error: tr('Зохиогч илгээлтийг өөрчилсөн — дахин харж шийднэ үү.') };
   }
-  /*
-   * ⚠️ 2026-10-09: ТҮГЖЭЭ + ДАХИН УНШИХ (`decideObyem`-ийн загвар). Урьд нь дээрх уншилт → доорх
-   *    бичилт л байсан тул хоёр батлагч зэрэг шийдвэл СҮҮЛД бичсэн нь чимээгүй ялж (last-writer-wins),
-   *    эхний батлагчийн «батлагдсан» нь «буцаагдсан» болж дарагдах (эсвэл эсрэгээр) боломжтой байв.
-   *    Одоо `casAjilClaim`-аар `pending` мөрийг АТОМААР түгжиж, бичихийн ЯГ ӨМНӨ төлөв/тэмдэг/агуулгыг
-   *    дахин уншина. Түгжээтэй үед өөр батлагчийн `decideAjil`, зохиогчийн `withdrawAjil`/`updateAjil`
-   *    татгалзана. Шийдвэрийн бичилт тэмдгийг өөрөө арилгана (`reason`: батлахад `null`, буцаахад шалтгаан).
-   * ⚠️ Нэвтрэлтгүй горимд (`me` хоосон) `anon` нэрээр — таб нь ялгана.
-   */
   const claimer = me || 'anon';
   const claimErr = await claimAjil({ oid: args.oid, me: claimer, want: AJIL_STATUS.pending });
   if (claimErr) return { ok: false, error: claimErr };
@@ -1195,8 +853,6 @@ export async function decideAjil(args: {
     [F.status]: args.approve ? AJIL_STATUS.approved : AJIL_STATUS.returned,
     [F.approver]: args.approver.toLowerCase(),
     [F.approverAt]: serverNow(),
-    /* ⚠️ 2026-10-06 аудит: `decidePlan`-ийн ижил — UI-г тойрсон урт шалтгааныг тайрна */
-    /* ⚠️ 2026-10-26: урьдчилж бөглөсөн системийн шалтгаан (`NO_PARENT_REASON`) эх текстээр (`ajilReasonSrc`) */
     [F.reason]: args.approve ? null : (args.reason?.trim() ? ajilReasonSrc(args.reason.trim()).slice(0, REASON_MAX) : null),
   };
   try {
@@ -1208,12 +864,6 @@ export async function decideAjil(args: {
     invalidate('AJIL_BATLAH');
     return { ok: true };
   } catch (e) {
-    /* ⚠️ Сүлжээний алдаа — бичигдсэн эсэх тодорхойгүй; тайлах нь зөвхөн `pending` хэвээр үед ажиллана */
-    /* ⚠️ 2026-10-09 (аудит №6): ХАРИУ АЛДАГДСАН (`isLostWrite` — timeout · сүлжээ · 5xx) бол шийдвэр серверт
-       суусан байж болно. Урьд нь энгийн алдаа + `release()` буцдаг тул батлагч дахин дараад «аль хэдийн
-       шийдвэрлэсэн» гэсэн төөрөгдүүлсэн алдаа авдаг байв. Одоо мөрийг ДАХИН УНШИЖ, хүссэн төлөв суусан ба
-       батлагч нь БИ бол амжилт (`hyanaltStore.lostResult`-ийн загвар). Дахин уншилт ч унавал / зөрвөл —
-       урьдын адил алдаа. */
     if (isLostWrite(e) || isLostWrite((e as { cause?: unknown } | null)?.cause)) {
       try {
         const back = (await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver}`))[0];
@@ -1233,15 +883,6 @@ export async function decideAjil(args: {
 
 /**
  * ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч ӨӨРИЙН хүлээгдэж буй илгээлтийг буцааж авна.
- *
- * ⚠️ ЯАГААД: `decideAjil` нь зохиогч=батлагч бүх шийдвэрийг татгалздаг (зөв —
- *    өөрийгөө батлахгүй), гэвч түүний улмаас зохиогч алдаатай илгээлтээ
- *    буцаах замгүй болно: өөр батлагч буцаатал багц түгжээтэй
- *    (`huvaariBatlah.withdrawPlan`-ийн 2026-09-21-ний сургамж).
- * ⚠️ ЭХ ХУУДСАНД ЮУ Ч БИЧИХГҮЙ — зөвхөн урсгалын мөр `withdrawn` болно.
- * ⚠️ ЗӨВХӨН ЗОХИОГЧ: жинхэнэ дүрэм нь СЕРВЕРИЙН `F.author`.
- * ⚠️ `approver`-т ЮУ Ч бичихгүй, `approverAt`-д татсан агшныг: түүх «хэзээ»
- *    гэдгийг мэднэ, «батлагч» багана нь зөвхөн батлагчийнх үлдэнэ.
  */
 export async function withdrawAjil(args: {
   oid: number;
@@ -1250,16 +891,8 @@ export async function withdrawAjil(args: {
 }): Promise<{
   ok: boolean;
   error?: string;
-  /**
-   * ⚠️ 2026-10-22 (аудит №6): ХАРИУ АЛДАГДСАН ба дахин уншилт ч унасан — татагдсан эсэх ТОДОРХОЙГҮЙ. Дуудагч
-   *    (`useAjil.withdrawAjilHere`) мөрүүдийг алдахгүйн тулд тэмдэглэж, дараагийн шалгалтаар (`refreshAjil`) шийднэ.
-   */
   unsure?: boolean;
 }> {
-  /* ⚠️ Дүрмүүд СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-тай ижил шалтгаан. */
-  /* ⚠️ 2026-10-12 (дарааллын аудит): `requireCap('addRow')` ХАСАГДСАН — өөрийн илгээлтээ татах нь ЭРХ биш ЭЗЭМШИЛ
-     (`huvaariBatlah.withdrawPlan`-ийн ижил дүрэм). Урьд нь зохиогчийн эрх хасагдвал түүний хүлээгдэж буй илгээлтийг
-     хэн ч татаж чадахгүй гацдаг байв. Эзэмшил ХАТУУ хэвээр: татагч = НЭВТЭРСЭН хүн ба СЕРВЕРИЙН `F.author`. */
   const me = args.me.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   if (typeof window !== 'undefined' && AUTH.appId) {
@@ -1273,8 +906,6 @@ export async function withdrawAjil(args: {
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
   if (author !== me) return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ татна.') };
-  /* ⚠️ 2026-10-09: батлагч түгжсэн (`decideAjil` шийдвэрээ бичиж буй) үед татахгүй — эс бөгөөс татсан
-     төлвийг батлагчийн шийдвэр дарж бичнэ (`AJIL_CLAIM_MARK`-ийн ⚠️). */
   const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
   if (held && held.who !== me) return { ok: false, error: ajilHeldMsg(held.who) };
   const curStatus = s(cur[0][F.status]);
@@ -1287,13 +918,6 @@ export async function withdrawAjil(args: {
         : tr('Энэ илгээлт аль хэдийн шийдвэрлэгдсэн байна. Хуудсаа шинэчилнэ үү.'),
     };
   }
-  /*
-   * ⚠️ 2026-10-22 (аудит №6): ТҮГЖЭЭ ЭХЛЭЭД (`claimAjil` — `decideAjil`-ийн ижил CAS). Урьд нь дээрх уншилт (түгжээгүй) →
-   *    бичилт л байсан тул батлагч ЯГ тэр завсарт түгжээгээ аваад батлахад хоёр бичилт бие биеэ дарж, зохиогч «Татсан»
-   *    гэж харсан илгээлт «Батлагдсан» болж хуудсанд буух, эсвэл батлагчийн шийдвэр «Татсан»-аар дарагдах боломжтой
-   *    байв (mock harness-ээр давтагдсан). Одоо түгжээтэй үед батлагч (`decideAjil`) ба зохиогч хоёулаа татгалзана;
-   *    татах бичилт тэмдгийг өөрөө арилгана (`reason: null`), унавал тайлна.
-   */
   const claimErr = await claimAjil({ oid: args.oid, me, want: AJIL_STATUS.pending });
   if (claimErr) return { ok: false, error: claimErr };
   const release = () => { void releaseAjilClaim({ oid: args.oid, me }); };
@@ -1324,13 +948,6 @@ export async function withdrawAjil(args: {
     invalidate('AJIL_BATLAH');
     return { ok: true };
   } catch (e) {
-    /*
-     * ⚠️ 2026-10-22 (аудит №6): ХАРИУ АЛДАГДСАН (`isLostWrite` — timeout · сүлжээ · 5xx) бол «Татсан» серверт суусан
-     *    байж болно. Урьд нь энгийн алдаа буцаадаг тул зохиогчийн мөрүүд хуудсанд буцаж ордоггүй (`withdrawAjilHere`
-     *    зөвхөн `ok`-д буулгадаг), илгээлт нь «Татсан» болсон тул өөр замаар ч сэргэдэггүй — ажил бүрмөсөн алга болдог
-     *    байв. Одоо мөрийг ДАХИН УНШИЖ: «Татсан» → амжилт (мөрүүд буулгагдана); хүлээгдэж буй хэвээр → бичигдээгүй
-     *    (түгжээг тайлж алдаа); уншилт ч унавал `unsure` — дуудагч мөрүүдийг тэмдэглэж дараа шийднэ.
-     */
     if (isLostWrite(e) || isLostWrite((e as { cause?: unknown } | null)?.cause)) {
       invalidate('AJIL_BATLAH');
       try {
@@ -1356,11 +973,6 @@ export async function withdrawAjil(args: {
 export const NO_PARENT_REASON = (): string => tr('Эцэг бүлэг олдсонгүй — нэмэлт ажлыг одоо байгаа бүлэгт харьяалуулж дахин илгээнэ үү.');
 /** «Багцын түлхүүр бүртгэлд алга» буцаалтын стандарт шалтгаан (2026-10-26) */
 export const NO_KEY_REASON = (): string => tr('Багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй.');
-/**
- * ⚠️ 2026-10-26 (аудит): СИСТЕМИЙН ШАЛТГААН ArcGIS-д ХЭЛНЭЭС ҮЛ ХАМААРАХ МОНГОЛ ЭХ ТЕКСТЭЭР (`huvaariBatlah.STUCK_PREFIX_SRC`-ийн
- *    загвар). Урьд нь `NO_PARENT_REASON()` (орчуулсан) батлагчийн хэлээр бичигдэж нэмэгчид тэр хэлээр л харагддаг байв.
- *    Бичихдээ `ajilReasonSrc` (орчуулсан мөр → эх), дэлгэцэнд `displayAjilReason` (эх → идэвхтэй хэл).
- */
 export const NO_PARENT_REASON_SRC = 'Эцэг бүлэг олдсонгүй — нэмэлт ажлыг одоо байгаа бүлэгт харьяалуулж дахин илгээнэ үү.';
 export const NO_KEY_REASON_SRC = 'Багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй.';
 const AJIL_SYS_REASONS: readonly (readonly [string, () => string])[] = [
@@ -1386,8 +998,6 @@ export function displayAjilReason(raw: string | null | undefined): string {
 
 /**
  * ГАЦСАН БАТЛАЛТЫГ БУЦААХ ДҮРЭМ — цэвэр (`ajilApply.check.mjs`, 2026-10-04).
- * ⚠️ ЗӨВХӨН `approved` (батлагдсан ч буугаагүй). `applied` нь хуудсанд аль хэдийн бичигдсэн —
- *    буцаавал хуудас ба урсгал зөрнө; `pending`-ийг `decideAjil` шийднэ.
  */
 export function returnStuckDeny(status: string | null, reason: string): string | null {
   if (!reason.trim()) return tr('Буцаах шалтгааныг бичнэ үү.');
@@ -1397,20 +1007,12 @@ export function returnStuckDeny(status: string | null, reason: string): string |
 
 /**
  * БАТЛАГДСАН Ч БУУЛГАХ БОЛОМЖГҮЙ ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл админ (2026-10-04).
- * ⚠️ ЯАГААД: эцэг бүлэг нь хуудсанд алга (устсан/нэр солигдсон) бол `materializeAdds` ҮРГЭЛЖ
- *    «эцэг бүлэг олдсонгүй» гэж унадаг; `decideAjil`/`withdrawAjil` зөвхөн `pending`-д ажилладаг
- *    тул илгээлт «Батлагдсан · буулгаагүй»-д МӨНХӨД гацдаг байв. Одоо `returned` болж
- *    шалтгаантайгаа нэмэгчид буцна — тэр засаад дахин илгээнэ.
- * ⚠️ Эх хуудсанд ЮУ Ч бичихгүй (бичигдээгүй мөр). Хүрээ — серверийн багцаар.
  */
 export async function returnStuckAjil(args: { oid: number; me: string; reason?: string }): Promise<{ ok: boolean; error?: string }> {
-  /* ⚠️ 2026-10-06: `REASON_MAX`-аар таслана (`decideAjil`-тай ижил) */
-  /* ⚠️ 2026-10-26: системийн шалтгаан эх текстээр (`ajilReasonSrc`) */
   const reason = ajilReasonSrc((args.reason ?? NO_PARENT_REASON_SRC).trim()).slice(0, REASON_MAX);
   if (typeof window !== 'undefined' && AUTH.appId) {
     const meNow = currentUser();
     if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
-    /* ⚠️ 2026-10-06: `F.approver`-т бичигдэх нэр = нэвтэрсэн хүн (`sameAsLogin`) */
     const own = sameAsLogin(args.me);
     if (own) return own;
     if (roleForUser(meNow) !== 'super' && !hasCap(meNow, 'ajilApprove')) {
@@ -1432,16 +1034,11 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
     }
     const deny = returnStuckDeny(s(cur[0][F.status]), reason);
     if (deny) return { ok: false, error: deny };
-    /* ⚠️ 2026-10-09: хэн нэгэн яг одоо БУУЛГАЖ байвал (`claimAjil` · `approved`) буцаахгүй — эс бөгөөс мөрүүд
-       хуудсанд бичигдсэн атлаа илгээлт «буцаагдсан» болно (`AJIL_CLAIM_MARK`-ийн ⚠️). */
     const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
     if (held) return { ok: false, error: ajilHeldMsg(held.who) };
   } catch (e) {
     return { ok: false, error: String((e as Error).message || e) };
   }
-  /* ⚠️ 2026-10-09: УНШААД-ШАЛГААД-БИЧИХ завсарт өөр хүн буулгалтын түгжээ (`claimAjil`) авч жааз бичиж
-     эхэлж болох байсан — одоо буцаалтын ӨМНӨ `casAjilClaim`-аар (`approved` мөрд) түгжээг АТОМААР авна.
-     Нэвтрэлтгүй горимд `anon` (`ajilApply`-ийн адил). Буцаалт бичигдээгүй бол түгжээгээ тайлна. */
   const claimer = me || 'anon';
   const claimErr = await claimAjil({ oid: args.oid, me: claimer, want: AJIL_STATUS.approved });
   if (claimErr) return { ok: false, error: claimErr };
@@ -1473,16 +1070,6 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
  * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТЭЭ ЗАСАХ — зохиогч батлагч шийдэхээс ӨМНӨ (2026-09-29,
  * хэрэглэгч: «ажил нэмэх хүсэлт явуулсны дараа буцаагаагүй байхад өөрөө дахин засах
  * боломжтой байх»).
- *
- * ⚠️ ШИНЭ ИЛГЭЭЛТ ҮҮСГЭХГҮЙ — ИЖИЛ мөрийн `aguulga` + мөрийн тоог солино. Төлөв
- *    `pending` хэвээр; батлагч дараагийн нээлтэд ШИНЭ хувилбарыг харна. Татаад дахин
- *    илгээхээс ялгаа: дарааллын байр (`ilgeesen_ognoo`) ба дугаар хадгалагдана.
- * ⚠️ ЗӨВХӨН ЗОХИОГЧ, ЗӨВХӨН `pending` — жинхэнэ дүрэм нь СЕРВЕРИЙН мөр (`withdrawAjil`-тай
- *    ижил). Батлагч аль хэдийн шийдсэн бол татгалзана.
- * ⚠️ ArcGIS-д нөхцөлт update байхгүй — бичсэний ДАРАА дахин уншиж төлөв `pending`
- *    хэвээр эсэхийг шалгана: завсарт батлагдсан бол батлагчийн харсан (хуучин) хувилбар
- *    буусан байж болох тул ИЛ хэлнэ.
- * ⚠️ ЭХ ХУУДСАНД ЮУ Ч БИЧИХГҮЙ.
  */
 export async function updateAjil(args: {
   oid: number;
@@ -1490,7 +1077,6 @@ export async function updateAjil(args: {
   me: string;
   payload: AjilPayload;
 }): Promise<{ ok: boolean; error?: string }> {
-  /* ⚠️ Дүрмүүд СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-тай ижил шалтгаан. */
   requireCap('addRow');
   const me = args.me.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
@@ -1512,9 +1098,6 @@ export async function updateAjil(args: {
   if (s(cur[0][F.pkgKey]) !== args.payload.pkgKey) {
     return { ok: false, error: tr('Илгээлт өөр багцынх байна — хуудсаа шинэчилнэ үү.') };
   }
-  /* ⚠️ 2026-10-06: НЭМЭГЧИЙН ХҮРЭЭ — СЕРВЕРИЙН мөрийн багцаар (`submitAjil`-ийн дүрэм,
-     `decideAjil`-ийн «серверийн багцаар» загвар). Урьд нь зөвхөн зохиогч + `addRow`
-     шалгадаг тул хуваарилалтаас хасагдсан зохиогч хуучин илгээлтээ засаж чаддаг байв. */
   if (AUTH.appId) {
     const sc = ajilScope(currentUser() ?? me, 'editor');
     if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
@@ -1526,13 +1109,8 @@ export async function updateAjil(args: {
   if (s(cur[0][F.status]) !== AJIL_STATUS.pending) {
     return { ok: false, error: gone(s(cur[0][F.status]), s(cur[0][F.approver])) };
   }
-  /* ⚠️ 2026-10-09: батлагч түгжсэн (шийдвэрээ бичиж буй) үед засахгүй — батлагчийн ХАРААГҮЙ агуулга батлагдана */
   const held = ajilClaimOf(s(cur[0][F.status]), s(cur[0][F.reason]));
   if (held) return { ok: false, error: ajilHeldMsg(held.who) };
-  /* ⚠️ 2026-10-21 (аудит): ЗАСВАРЫН ӨМНӨ ТҮГЖЭЭ (`claimAjil`, `pending` — CAS). Дээрх уншилт ба доорх бичилтийн ЗАВСАРТ
-     батлагч түгжиж шийдвэрлэвэл (`decideAjil` → `approved`) засагдсан агуулга батлагчийн ХАРААГҮЙ хувилбараар буудаг байв
-     (`materializeInner`-ийн `stamp` тулгалт зөвхөн `decideAjil`-ийн тэмдэгтэй дуудлагад; доорх `after` шалгалт бичсэний
-     ДАРАА л илрүүлнэ). Түгжээтэй үед батлагчийн `claimAjil` татгалзана; бичсэний дараа тайлна (зөвхөн өөрийн тэмдгийг). */
   const claimErr = await claimAjil({ oid: args.oid, me, want: AJIL_STATUS.pending });
   if (claimErr) return { ok: false, error: claimErr };
   const attrs: Attrs = {
@@ -1568,18 +1146,6 @@ export async function updateAjil(args: {
  * `AjilBatlah`-ийн «Шийдвэрлэх» + «Бүртгэлгүй багц» хэсэгтэй ИЖИЛ дүрэм:
  * `pending` · батлагчийн хүрээнд (`ajilScope(…, 'approver')`, super/нэвтрэлтгүй
  * бол хязгааргүй) · ӨӨРИЙН илгээлт БИШ (`decideAjil` татгалздаг).
- *
- * ⚠️ 2026-09-30: `null` ≠ 0 — `null` нь «мэдэхгүй» (нэвтрээгүй, хүснэгт алга,
- *    сүлжээ унасан); `0` нь «шийдэх зүйл алга». Тэмдэгт `null`-ыг 0 гэж
- *    харуулбал батлагч хүлээгдэж буй ажлаа алгасна.
- * ⚠️ `ajilApprove` эрхгүй бол 0 — `decideAjil` түүнгүйгээр шиднэ.
- * ⚠️ Бүртгэлгүй багцын (`PKGS`-д алга) илгээлтийг ТООЛНО: тэнд батлах хаалттай
- *    ч БУЦААХ нээлттэй — гацлаас гаргах үйлдэл хэвээр.
- */
-/**
- * ⚠️ 2026-09-30: ТЭМДГИЙН ТООЛУУРЫН ӨГӨГДӨЛ — автобусад `AJIL_BATLAH` тагтай богино
- *    кэш (`huvaariBatlah.loadBadgePending`-тэй ижил шалтгаан). Бичих зам бүр
- *    `invalidate('AJIL_BATLAH')` дууддаг; `loadAllPending` өөрөө кэшлэгдэхгүй.
  */
 const BADGE_TTL = 60_000;
 const loadBadgePending = cached(loadAllPending, BADGE_TTL, ['AJIL_BATLAH']);
@@ -1588,7 +1154,6 @@ export async function countAjilPending(username: string | null | undefined): Pro
   try {
     const me = (username ?? '').trim().toLowerCase();
     if (AUTH.appId) {
-      /* ⚠️ Эрх/хуваарилалт хараахан уншигдаагүй бол «мэдэхгүй» — 0 БИШ. */
       if (!me || !capsRemoteReady() || !ajilAclReady()) return null;
       if (!hasCap(me, 'ajilApprove')) return 0;
     }

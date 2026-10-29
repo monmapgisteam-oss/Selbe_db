@@ -1,15 +1,6 @@
 /**
  * БАГЦЫН ГҮЙЦЭТГЭЛ — НЭГ ТОО БҮХ ДЭЛГЭЦЭД (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/pkgProgress.ui.check.mjs
- *
- * ⚠️ ЯАГААД. «Гүйцэтгэл»/«Багцын мэдээлэл»-ийн жагсаалт 2026-09-30-нд «бодит
- *    гүйцэтгэл» (`Finance.physLatest`) руу шилжсэн. Харин сонгосон багцын KPI
- *    хавтан/бөгж (`Bagts.buildPacks` → `PackKpi` · `ContractCard`), удирдлагын
- *    тайлангийн багцын мөр, Дашбоард «Багц ажлаар», Тайлан §2 нь барилгын
- *    давхаргын FEATURE-ээр дундажлагдсаар байв. Давхаргад «БАГЦ1|29/1», «БАГЦ2|5/6»
- *    ХОЁР feature-тэй, «БАГЦ1|29/3», «БАГЦ2|5/8» footprint-гүй (амьдаар баталсан —
- *    `blockProgress.check` KNOWN_DUP/KNOWN_ORPHAN) тул Багц 1 · 2 нэг дэлгэц дээр
- *    хоёр өөр хувьтай харагддаг байв. Одоо бүгд `blockProgress.pkgProgressOf`.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/pkgProgress.ui.check.mjs
  *
  * Шалгана:
  *   1. `pkgProgressOf` ≡ `physLatest(buildPhys(...))` — жагсаалтын тоо ба бусад
@@ -18,10 +9,6 @@
  *      байхгүй бол `null` (feature-ийн дундаж руу буцаж унахгүй); Map-гүй бол хуучин.
  *   3. `PackKpi` — сонгосон багцын «гүйцэтгэл» хавтан `active.progress`-ийг зурна
  *      (давхардсан feature-ээр дахин дундажлахгүй).
- *
- * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): хуваарь нь бөглөх хуудасны БҮХ блок (`universe`),
- *    тайлагнаагүй (эсвэл нүд нь цэвэрлэгдсэн) блок 0%; ОГТ тайлагнаагүй багц 0% (урьд нь
- *    Map-д ордоггүй, null). Доорх хүлээгдэж буй утгууд шинэ дүрмээр (60 → 45, 12.5 → 6.25).
  */
 import assert from 'node:assert/strict';
 import { readFileSync as readSrc } from 'node:fs';
@@ -51,7 +38,6 @@ Object.assign(g, {
   location: Object.assign(new URL('http://localhost/'), { assign: noop, replace: noop, reload: noop }),
   history: { pushState: noop, replaceState: noop, state: null },
 });
-/* ⚠️ Сүлжээ ҮГҮЙ */
 g.fetch = () => Promise.reject(new Error('pkgProgress.ui.check: сүлжээгүй'));
 for (const fn of ['setInterval', 'setTimeout']) {
   const orig = g[fn];
@@ -94,7 +80,6 @@ for (const [k, pts] of hist) {
   const last = pts[pts.length - 1];
   if (last.pct != null) pm.set(k, { overall: last.pct, date: last.date, phases: [] });
 }
-/* ⚠️ 2026-10-01: бөглөх хуудасны блокийн хуваарь — Багц 2-т тайлагнаагүй 5/2, Багц 3.1 огт тайлагнаагүй */
 const uni = new Map([
   ['БАГЦ1', ['29/1', '29/2', '29/3', '29/4'].map((b) => buildingKey('Багц 1', b))],
   ['БАГЦ2', ['5/1', '5/2'].map((b) => buildingKey('Багц 2', b))],
@@ -115,7 +100,6 @@ for (const k of ['БАГЦ1', 'БАГЦ2']) {
   assert.equal(physLatest(monthsOf(k)), means.get(k).pct,
     `${k}: жагсаалтын «бодит гүйцэтгэл» (physLatest) ≠ pkgProgressOf — дэлгэцүүд зөрнө`);
 }
-/* ⚠️ 2026-10-01: огт тайлагнаагүй багц — жагсаалт (`contractMonths` → `physLatest`) ч 0%, «—» БИШ */
 {
   const fin0 = { given: new Map(), phys, physAt, physN };
   const ms = contractMonths({ bagts: 'Багц 3.1' }, fin0);
@@ -140,11 +124,9 @@ const packs = buildPacks(rows, pkgPct);
 const pk = (key) => packs.find((p) => p.key === key);
 assert.equal(pk('БАГЦ1').progress, 45, 'buildPacks: pkgPct-ийг дагасангүй (feature-ийн дундаж 70 гарах ёсгүй)');
 assert.equal(pk('БАГЦ2').progress, 6.25);
-/* ⚠️ 2026-10-01: тайлагнаагүй багц pkgPct-д 0 — feature-ийн дундаж руу унахгүй */
 assert.equal(pk('БАГЦ31').progress, 0, 'тайлагнаагүй багц 0% (урьд нь null)');
 assert.equal(buildPacks(rows, new Map()).find((p) => p.key === 'БАГЦ31').progress, null,
   'pkgPct-д байхгүй (хуваарьгүй) багц null — feature-ийн дундаж руу унахгүй');
-/* ⚠️ 2026-10-26 (аудит): бөглөх хуудасны «Багц 7.1» (БАГЦ71) → газрын зургийн БАГЦ7 (`MAP_PKG_ALIAS`) — «мэдээлэлгүй» биш */
 {
   const p7 = buildPacks(rows, new Map([['БАГЦ71', 31.76]])).find((p) => p.key === 'БАГЦ7');
   assert.equal(p7?.progress, 31.76, 'Багц 7: БАГЦ71-ийн гүйцэтгэл газрын зургийн БАГЦ7-д хүрсэнгүй');
@@ -156,7 +138,6 @@ assert.equal(buildPacks(rows, new Map()).find((p) => p.key === 'БАГЦ31').pro
     'pkgMonthsMap: газрын зургийн багцын түлхүүр (БАГЦ71 → БАГЦ7)');
 }
 assert.equal(pk('БАГЦ1').blocks.length, 3, 'блокийн жагсаалт (feature, OID-оор) хэвээр');
-/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ТОО нь түлхүүрээр — давхардсан «29/1» полигон НЭГ блок */
 assert.equal(blockCount(pk('БАГЦ1')), 2, 'давхардсан полигон блокийн тоонд хоёр орсон');
 assert.equal(pk('БАГЦ1').households, 20, 'давхардсан полигоны айл хоёр тоологдов');
 /* pkgPct-гүй (хуучин дуудагч) → түлхүүрийн дундаж (90 + 30) / 2 = 60 (урьд нь feature-ээр 70) */
@@ -167,7 +148,7 @@ const html = renderToStaticMarkup(React.createElement(PackKpi, { active: pk('Б�
 assert.ok(html.includes('45.0%'), `PackKpi: сонгосон багцын хувь 45.0% биш — ${html.slice(0, 200)}`);
 assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дундажласан 70.0% гарав');
 
-/* ── 3b. ⚠️ 2026-10-01 (ШИЙДВЭР): багц СОНГООГҮЙ үеийн «гүйцэтгэл» = төслийн нэгдсэн орон сууцны
+/* ── 3b. 2026-10-01 (ШИЙДВЭР): багц СОНГООГҮЙ үеийн «гүйцэтгэл» = төслийн нэгдсэн орон сууцны
       тоо (`physNow`, «Гүйцэтгэл»-ийн толгойтой нэг) — блокийн энгийн дундаж БИШ ── */
 {
   const none = renderToStaticMarkup(React.createElement(PackKpi, { active: null, packs, project: { pct: 41.25, loading: false } }));
@@ -188,13 +169,9 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.equal(shared.physNow, physNow, 'pkgShared.physNow ≠ Finance.physNow');
 }
 
-/* ── 4. ТӨСЛИЙН ТӨЛӨВЛӨГӨӨ — бодит (`physNow`)-той НЭГ (ХО) жин (`Finance.projectPlanOf`) ──
-      ⚠️ 2026-09-30: бодит тал ХО дүнгээр жигнэгдэх болсон атал төлөвлөгөө (`PlanCurve.months`)
-      БЛОКИЙН тоогоор үлдэж, TsKpi · удирдлагын тайлан · `lagOf`-ийн «төлөвлөсөн − бодит»
-      хоёр өөр жинг хасдаг байв. Жин нь ИЖИЛ `contracts`-оос (`pkgCostWeight`). */
+/* ── 4. ТӨСЛИЙН ТӨЛӨВЛӨГӨӨ — бодит (`physNow`)-той НЭГ (ХО) жин (`Finance.projectPlanOf`) ── */
 {
   const fin = {
-    /* ⚠️ 2026-10-09 (аудит): бодит талын багцын олонлог — `projectPlanOf`-ийн `pkgs` */
     phys: new Map([['БАГЦ1', new Map()], ['БАГЦ2', new Map()]]),
     contracts: [
       { bagts: 'Багц 1', ho_dun_geree: 400, bagts_tuvshin1: '1' },
@@ -218,11 +195,6 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.equal(s[0].vol, 5, 'vol нь PlanCurve.months-оос');
   assert.deepEqual(projectPlanOf(fin, { ...pc, months: [] }), [], 'хуудас унасан (months хоосон) → хоосон');
 
-  /* ⚠️ 2026-10-09 (аудит №2): ХО жинтэй ХУВААРЬГҮЙ багц (Багц 3.3, 0% тайлагнасан) — төслийн
-     төлөвлөгөөт шугам ХООСОН болохгүй (хуваарьтай Б1+Б2-оор), хоцрогдлын бодит тал ч ТЭР
-     олонлогоор (`physLag`); толгойн бодит (`phys` → `physNow`) орон сууцны бүх багцаар хэвээр.
-     ⚠️ 2026-10-22 (аудит): ДЭД БҮТЭЦ (Багц 5.1, блокгүй, 30%) `phys`-д байсан ч орон сууцны нэгтгэл · төлөвлөгөө ·
-     хасагдсаны жагсаалтад ОРОХГҮЙ (`HOUSING_PKGS`) — урьд нь «Орон сууцны гүйцэтгэл» 21 багцаар (23.10%) бодогддог байв. */
   const fin3 = {
     phys: new Map([
       ['БАГЦ1', new Map([[m1, 20]])],
@@ -248,9 +220,7 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.equal(ln.planned, 38, `${m1}-ийн эцсийн төлөвлөгөө`);
   assert.equal(ln.gap, 0, 'хуваарийн дагуу явж буй багцууд — хуваарьгүй багц хоцрогдлыг хэтрүүлэхгүй (хуучнаар 19)');
   assert.deepEqual(ln.excluded, ['Багц 3.3']);
-  /* ⚠️ 2026-10-22 (аудит): нэг эгнээний тоо нийцнэ — planned − actual = gap */
   assert.equal(ln.planned - ln.actual, ln.gap);
-  /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт = төлөвлөгөөний муруйн ТӨГСГӨЛ (Б1 20 · Б2 50, ХО жингээр 38) */
   assert.equal(ln.coverage, 38);
   assert.equal(coverageOk(ln.coverage), false, '38% < 95% — дүгнэхгүй');
   /* physNow — орон сууцаар; дэд бүтэц өөрийн ангилалд (`physNowOf` / `typePhysNow`) */
@@ -268,7 +238,7 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
     .find((m) => m.label === m1)?.physLag, undefined);
 }
 
-/* ── 4б. ⚠️ 2026-10-22 (аудит): ХУВААРИЙН ХАМРАЛТ — муруйн төгсгөл; < 95% бол дүгнэхгүй ── */
+/* ── 4б. 2026-10-22 (аудит): ХУВААРИЙН ХАМРАЛТ — муруйн төгсгөл; < 95% бол дүгнэхгүй ── */
 {
   assert.equal(planCoverage([{ label: '2027-01', pct: 8.58 }, { label: '2026-12', pct: 5 }]), 8.58, 'шошгоор СҮҮЛИЙН цэг (эрэмбээс үл хамаарна)');
   assert.equal(planCoverage([]), null);
@@ -291,7 +261,7 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.equal(lagJudged({ coverage: 100 }), true);
 }
 
-/* ── 5. ⚠️ 2026-10-01 (ШИЙДВЭР): «Багцын санхүү»-гийн «олгосон хувь» = олгосон ÷ ГЭРЭЭЛСЭН ДҮН
+/* ── 5. 2026-10-01 (ШИЙДВЭР): «Багцын санхүү»-гийн «олгосон хувь» = олгосон ÷ ГЭРЭЭЛСЭН ДҮН
       (`gdash.contractedScope`) — удирдлагын тайлантай нэг хуваарь, шошго «гэрээний дүнгийн %» ── */
 {
   const { pkgFinRows, paidPctOf } = await import('@/modules/PkgFin.tsx');
@@ -317,7 +287,6 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.equal(r2.pct, null, 'гэрээгүй багц — «—»');
 }
 
-/* ⚠️ 2026-10-21 (аудит): барилга ачаалагдаагүй үед давхцлын тоо «0» (= асуудалгүй) биш, null (ачаалж байна) */
 {
   const { readFileSync } = await import('node:fs');
   /* CRLF ажлын мод — LF болгож жишнэ */

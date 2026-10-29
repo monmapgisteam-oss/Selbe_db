@@ -1,6 +1,6 @@
 /**
  * ҮЗҮҮЛЭЛТ → СХЕМИЙН ЗАНГИЛААНЫ ЗУРАГЛАЛ — цэвэр өгөгдөл, сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/schemMap.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/schemMap.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. ҮЗҮҮЛЭЛТ ЧИМЭЭГҮЙ АЛГА БОЛОХ. `registry.ts`-д шинэ карт нэмэгдээд энд
@@ -9,10 +9,6 @@
  *   2. БАЙХГҮЙ ЗАНГИЛАА ЗААХ. `schemFine.ts`-ээс карт устгагдвал энд заасан
  *      түлхүүр хоосон руу заана.
  *   3. Устсан үзүүлэлт зураглалд ҮЛДЭХ — хуучирсан мөр.
- *
- * ⚠️ `registry.ts`-ийг ИМПОРТЛОХГҮЙ, ТЕКСТЭЭР уншина: тэр нь 13 ачаалагчийг
- * дагуулж `@/modules/Finance` (React + CSS модуль) руу заадаг тул Node дээр
- * ачаалагдахгүй (`registry.check.mjs`-тэй ижил шалтгаан).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -27,7 +23,6 @@ for (const [k, v] of Object.entries(KPI_FINE)) {
 
 /* ── 2. `registry.ts`-ийн БҮХ карт зураглалтай ── */
 const reg = readFileSync(new URL('./registry.ts', import.meta.url), 'utf8');
-/* ⚠️ 2026-09-30: `title:` → `get title()` (хэл солиход lazy) — хоёуланг таньна */
 const keys = [...reg.matchAll(/\{\s*key:\s*'([^']+)',\s*(?:get title\(\)|title:)/g)].map((m) => m[1]);
 assert.ok(keys.length >= 12, `карт хэт цөөн олдов (${keys.length}) — хэв шинж эвдэрсэн байж магадгүй`);
 for (const k of keys) {

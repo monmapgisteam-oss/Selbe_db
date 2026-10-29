@@ -3,20 +3,6 @@
  *
  * Хэрэглээ: «Урт ← геометр» товч, шинэ объект/хэлбэр засварын дараа уртын
  * талбарыг (`Urt_m` г.м.) АВТОМАТААР бөглөх.
- *
- * ⚠️ ДҮРЭМ (`measureKind`):
- *   · ПРОЕКЦЛОГДСОН SR (UTM 48N = 32648 — инженерийн 73 давхарга, 2026-10-01-нд
- *     амьд метадатаар баталсан) → ХАВТГАЙ (planar) урт. Сервер `Shape__Length`-ийг
- *     яг ингэж (давхаргын SR-ээр) боддог тул байгаа объектод `Shape__Length` ЭХ.
- *   · WEB MERCATOR (102100/3857) эсвэл ГАЗАРЗҮЙН (4326 г.м.) → ГЕОДЕЗИЙН урт.
- *     Web Mercator-ын хавтгай урт энэ өргөрөгт (~47.9°) 1/cos φ ≈ 1.49 ДАХИН
- *     ХЭТЭРХИЙ — `Shape__Length` ч мөн ийм тул тэр үед ХЭРЭГЛЭХГҮЙ.
- * ⚠️ Зурсан (sketch) геометр нь ҮРГЭЛЖ Web Mercator тул шинэ объектын урт нь
- *    геодезийн. UTM-ийн хавтгай урттай зөрүү нь масштабын коэффициент (≈0.9996–1.0004)
- *    — 1 км-т ≤ 0.4 м, бөглөхөд ач холбогдолгүй; хадгалсны дараа `Shape__Length` ирнэ.
- * ⚠️ Геодезийн тооцоо нь WGS84 эллипсоид дээрх ОРОН НУТГИЙН ойролцоолол (хэрчим бүрийг
- *    ≤ 250 м-ээр хуваана) — инженерийн шугамын хэмжээнд алдаа < 1e-6.
- * ⚠️ REACT/СҮЛЖЭЭГҮЙ, `@arcgis/core`-гүй — `butetsLen.check.mjs` шууд импортлоно.
  */
 
 export type SrKind = 'webmerc' | 'geographic' | 'projected' | 'unknown';
@@ -88,7 +74,6 @@ function pathLength(path: number[][], kind: SrKind): number {
       s += Math.hypot(b[0] - a[0], b[1] - a[1]);
       continue;
     }
-    /* ⚠️ Урт хэрчмийг ХУВААНА (эх SR-ийн шугамаар) — нэг M/N-ээр бодох алдаа багасна */
     const pa = toLonLat(kind)(a);
     const pb = toLonLat(kind)(b);
     const rough = geoSeg(pa[0], pa[1], pb[0], pb[1]);
@@ -181,10 +166,6 @@ export function lenFieldUnit(
   const isQty = qf !== '' && !qf.startsWith('shape__') && n === qf;
   const byName = LEN_FIELD_RE.test(fieldName);
   if (!byName && !isQty) return null;
-  /* ⚠️ 2026-10-09: хэмжээний талбар нь УРТ биш байж болно (ш · м² · м³ — худаг, тулгуур,
-     талбай). Урьд нь Shape__ биш бүх `qty.field`-ийг уртын талбар гэж үзэж, геометрийн
-     уртыг «ширхэг»-ийн талбарт санал болгодог байв. Нэрээр нь урт гэж танигдаагүй бол
-     нэгж нь м/км байх ёстой. */
   if (!byName && qty?.unit !== 'м' && qty?.unit !== 'км') return null;
   if (/km/i.test(fieldName)) return 'km';
   if (isQty && qty?.unit === 'км') return 'km';
@@ -193,7 +174,6 @@ export function lenFieldUnit(
 
 /**
  * Метрийн уртыг талбарын утга болгоно (текст — маягтын ноорог текстээр явдаг).
- * ⚠️ Бүхэл тоон талбарт (`int`) бүхэлчилнэ — эс бөгөөс `validateRow` татгалзана.
  */
 export function lenFieldValue(meters: number, unit: 'm' | 'km', int = false): string {
   if (!Number.isFinite(meters) || meters < 0) return '';

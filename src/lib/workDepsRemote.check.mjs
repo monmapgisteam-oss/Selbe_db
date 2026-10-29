@@ -1,14 +1,7 @@
 /**
  * `workDepsRemote.ts`-ийн ЗАН ҮЙЛИЙН шалгуур — хуурамч ArcGIS (давхаргын мета, REST) дээр ЖИНХЭНЭ экспортыг
  * ажиллуулна (2026-10-26, аудит T2).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/workDepsRemote.check.mjs
- *
- * ⚠️ ЯАГААД: урьд энэ модульд зөвхөн эх текстийн шалгуур (`sheetCache.check.mjs`) байв. Энд ХУДАЛ «холбоогүй»
- *    гэж хэлэхгүй байх дүрмүүд: мета уншигдаагүй хуудас БАЙВАЛ `loadPkgDeps` ШИДНЭ (`[]` буцаахгүй) · талбар нэг ч
- *    хуудсанд алга бол мөр огт уншихгүй `[]` · `saveWorkLinks` үл мэдэгдэх хуудас / `bagts_hamaaral` талбаргүй
- *    хуудсанд ЮУ Ч БИЧИХГҮЙ · хуудас ↔ багцын түлхүүрийн зураглал.
- * ⚠️ Талбартай хуудасны бичих урсгал (24 хуудасны жааз · дугуйн шалгалт · `maxOid` давталт) энд ОРООГҮЙ — цэвэр
- *    логик нь `workDeps.check.mjs`-д, жааз сонголт `bagtsSheet`-ийн шалгууруудад.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/workDepsRemote.check.mjs
  */
 import assert from 'node:assert/strict';
 import { fake, assertNoUnexpected } from './arcgisFake.mjs';

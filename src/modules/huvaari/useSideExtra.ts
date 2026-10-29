@@ -1,26 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 
 /**
- * ЗҮҮН ЖАГСААЛТЫН ӨРГӨНИЙГ ЧИРЖ ТОМРУУЛАХ (2026-10-04, хэрэглэгч: «ажлууд ... болж бүрэн
+ * ЗҮҮН ЖАГСААЛТЫН ӨРГӨНИЙГ ЧИРЖ ТОМРУУЛАХ (2026-10-04, хэрэглэгч: «ажлууд... болж бүрэн
  * харагдахгүй байна»). Үндсэн өргөн нь CSS-ийн `clamp(...)` хэвээр; энэ нь түүн дээр
  * НЭМЭХ пиксел (`--side-extra`, 0…MAX).
- *
- * ⚠️ Чирэх явцад React төлөв ХӨДЛӨХГҮЙ — 1,400 мөрийг дахин зурвал чирэлт гацна
- *    (`components/SplitGrip`-ийн ижил шалтгаан). CSS хувьсагчийг элемент дээр шууд
- *    бичээд `pointerup` дээр л төлөв ба localStorage-д буулгана.
- * ⚠️ localStorage хаалттай/хоосон бол 0 — хуудас хэвийн зурагдана.
- * ⚠️ 2026-10-04 (шүүлт): ЧИНГЭЛГИЙН ӨРГӨНӨӨР ХЯЗГААРЛАНА — урьд нь зөвхөн MAX (900) байсан тул
- *    жагсаалт хуанлийг бүхэлд нь таглаж, бариул дэлгэцээс гарч буцааж татах аргагүй болдог
- *    байв. Хязгаар = гүйлгэх хайрцаг (`.gWrap`) − үндсэн өргөн − `TL_MIN` (хуанлид үлдэх зай);
- *    `ResizeObserver`-оор нээх · цонх/хайрцаг хэмжээ солигдох бүрд дахин бодно.
- *    Хадгалсан утга (`extra`) нь ХЭРЭГЛЭГЧИЙН ХҮСЭЛ — нарийн цонхонд түр багасна (`eff`),
- *    өргөн цонхонд буцаж сэргэнэ; localStorage-ийг хязгаараар ДАРЖ бичихгүй.
- * ⚠️ ≤1180px-д (`huvaari.module.css` @media) `.gSide`-ийн өргөн тогтмол, бариул нуугдана —
- *    тэнд хязгаар бодохгүй.
  */
 const LS = 'selbe-huvaari-side-extra';
 const MAX = 900;
-/** Хуанлид заавал үлдэх хамгийн бага өргөн (px) — ⚠️ 2026-10-09: `useColWidths` ч мөн үүгээр (нэг хязгаар) */
+/** Хуанлид заавал үлдэх хамгийн бага өргөн (px) — 2026-10-09: `useColWidths` ч мөн үүгээр (нэг хязгаар) */
 export const TL_MIN = 240;
 const NARROW = '(max-width: 1180px)';
 const clampX = (v: number, lim = MAX) => Math.max(0, Math.min(MAX, lim, Math.round(v)));
@@ -32,9 +19,6 @@ export function useSideExtra() {
   const [limit, setLimit] = useState(MAX);
   const [dragging, setDragging] = useState(false);
   const el = useRef<HTMLDivElement | null>(null);
-  /* ⚠️ 2026-10-21: ИДЭВХТЭЙ ЧИРЭЛТИЙН цонхны сонсогчдыг салгагч — урьд нь зөвхөн `up` дотор салгадаг тул чирэх
-     зуур харагдац солигдож (unmount) бол сонсогчид үлдэж, салсан зангилаанд бичиж, унтарсан hook-д
-     `setDragging`/`commit` дуудагддаг байв. Unmount-д салгана (хадгалахгүй — чирэлт дуусаагүй). */
   const dragOff = useRef<(() => void) | null>(null);
   useEffect(() => () => dragOff.current?.(), []);
   /** Үйлчилж буй нэмэлт — хүсэл ба чингэлгийн хязгаарын бага нь */
@@ -75,7 +59,6 @@ export function useSideExtra() {
     e.preventDefault();
     const x0 = e.clientX;
     const base = eff;
-    /* ⚠️ Чирэлтийн эхэнд хязгаарыг шинээр хэмжинэ — чирэх явцад хэмжихгүй (layout гацна) */
     const lim = measure();
     let cur = base;
     dragOff.current?.();

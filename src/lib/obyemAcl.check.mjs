@@ -1,10 +1,6 @@
 /**
  * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМЫН ЭРХИЙН ЛОГИК ШАЛГУУР — offline.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/obyemAcl.check.mjs
- *
- * ⚠️ `huvaariAcl`-ТАЙ ИЖИЛ БҮТЭЦ, ӨӨР АСУУЛТ: тэр нь ОГНОО, энэ нь ОБЬЁМ.
- *    Гурван ACL (урсгал · хуваарь · обьём) НЭГ ArcGIS хүснэгтэд өөр өөр
- *    угтвартай мөрөнд амьдардаг тул тэдгээр ХОЛИЛДОХГҮЙ гэдгийг энд барина.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/obyemAcl.check.mjs
  *
  * Хамгаалж буй дүрмүүд:
  *   1. Хуваарилагдаагүй → fail-closed (`[]`).

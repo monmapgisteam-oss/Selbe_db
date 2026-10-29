@@ -21,8 +21,6 @@ export function LinkModal({ src, dst, blks, blocks, onClose, onApply, onRemove }
   dst: PlanRow;
   /**
    * Уялдааны блокууд — `null` = бүх блок (2026-09-24).
-   * ⚠️ 2026-10-01: ОЛОН блок — «олон блокт зэрэг төлөвлөх» сонголттой чирэхэд
-   *    сонгосон блок бүрд ижил уялдаа тавигдана (`Huvaari.tsx` `linkAsk.dblks`).
    */
   blks: number[] | null;
   blocks: string[];
@@ -33,13 +31,8 @@ export function LinkModal({ src, dst, blks, blocks, onClose, onApply, onRemove }
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref);
-  /* ⚠️ (2026-09-23) `autoFocus` ажилладаггүй байв — `useFocusTrap` эхний фокус
-     авагч (`×`) руу фокуслодог. Энэ эффект урхийн ДАРАА (мөрийн дарааллаар)
-     ажиллаж, төрлийн сонгогч руу шилжүүлнэ. */
   const selRef = useRef<HTMLSelectElement>(null);
   useEffect(() => { selRef.current?.focus(); }, []);
-  /* ⚠️ (код, блок)-оор олно — ижил кодын СОНГООГҮЙ блокийн уялдаа энэ цонхных биш (2026-09-24).
-     Олон блок (2026-10-01): сонгосон блокуудаас ЭХНИЙ олдсоныхоор урьдчилан дүүргэнэ. */
   const ids = blks ?? [undefined];
   const cur = src.des != null
     ? ids.map((b) => dst.deps.find((d) => sameDep(d, { code: src.des as number, blk: b }))).find((d) => d != null)
@@ -48,9 +41,6 @@ export function LinkModal({ src, dst, blks, blocks, onClose, onApply, onRemove }
   const [type, setType] = useState<DepType>(cur?.type ?? 'FS');
   const [lag, setLag] = useState<number>(cur?.lag ?? 0);
   const name = (r: PlanRow) => `${r.des ?? '—'} · ${r.work || r.no}`;
-  /* ⚠️ 2026-10-07: Дотор дараад (сонголт/чирэлт) АРД суллахад `click` нь дэвсгэр дээр
-     буудаг тул цонх санамсаргүй хаагддаг байв — `PlanModal`-ийн адил дарах нь ч ард
-     эхэлсэн үед л хаана. */
   const downOnBack = useRef(false);
   return (
     <div className={h.mdBack} role="presentation"
@@ -63,14 +53,8 @@ export function LinkModal({ src, dst, blks, blocks, onClose, onApply, onRemove }
       <div ref={ref} className={h.md} role="dialog" aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          /* ⚠️ 2026-10-07: `preventDefault`+`stopPropagation` — React цонхыг `window`-д
-             хүрэхээс өмнө салгадаг тул хуудасны нийтлэг Esc (`Huvaari` — бүтэн дэлгэц/
-             хяналт хаах) `[role=dialog]`-ийг олохгүй, нэг Esc хоёуланг хаадаг байв. */
           if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); return; }
           if (e.key !== 'Enter') return;
-          /* ⚠️ (2026-09-23) Enter нь ЗӨВХӨН сонгогч/тоон талбар дээр «Тавих» —
-             товч дээр (Болих · × · Уялдаа устгах) байхад товчны өөрийн click
-             ажиллана, эс бөгөөс «Болих» дээр Enter дарахад уялдаа тавигддаг байв. */
           const tag = (e.target as HTMLElement).tagName;
           if (tag === 'SELECT' || tag === 'INPUT') { e.preventDefault(); onApply(type, lag); }
         }}>

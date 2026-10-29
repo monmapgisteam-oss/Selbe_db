@@ -1,9 +1,7 @@
 /**
  * ГЭРЭЭ vs ТӨСӨВТ ӨРТГИЙН ЗӨРҮҮ — цэвэр тооцооны шалгуур.
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/contractGap.check.mjs
- *
- * ⚠️ ЛОГИК ХУУЛБАРЛААГҮЙ — жинхэнэ `computeContractGap`/`buildContractGapKpi`.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/contractGap.check.mjs
  *
  * Ямар БОДИТ алдаанаас хамгаалж байгаа вэ:
  *  1. ГЭРЭЭГҮЙ мөр 0 зөрүүтэй болох — амьд өгөгдөлд 76-ийн 43 нь гэрээгүй,
@@ -11,13 +9,11 @@
  *  2. Зөрүүний ТЭМДЭГ урвуулагдах — давсан нь эерэг байх ёстой.
  *  3. Хоосон нийлбэр 0 болох — давсан гэрээ байхгүй үед `mnt(null)` → «—».
  *  4. Төсөвгүй гэрээ «бүхэлдээ давсан» болох.
- *  5. Хувь 0–1 масштабаар өгөгдөх — `pct()` 100-аар үржүүлдэггүй.
+ *  5. Хувь 0–1 масштабаар өгөгдөх — `pct` 100-аар үржүүлдэггүй.
  *  6. Хүснэгт бүрэн бус — давсан мөр БҮР нэрээрээ орно; эрэмбэ буурах.
  *  7. «гэрээлсэн X / төсөв Y» ХОЁР ӨӨР популяцийг харьцуулах — төсөв БҮХ
  *     мөрөөс (гэрээгүй 43-ыг оруулаад) бол ~1.5 их наяд хуурамч «хэмнэлт».
  *     Хоёулаа ЗӨВХӨН гэрээтэй мөрөөс; contract − budget = Σover + Σunder.
- *     ⚠️ 2026-10-21: төсөвгүй гэрээний Σ дүн `contractTotal`-д ОРОХГҮЙ (нэг популяци),
- *     `noBudgetSum`-д тусдаа — урьд нь хоёр нийлбэр өөр олонлогоос байв.
  *  8. (2026-09-25) ГЭРЭЭТЭЙ = `note === CONTRACTED` — `geree_dun` бөглөгдсөн
  *     ГЭРЭЭГҮЙ мөр «гэрээ» болохгүй; CONTRACTED боловч дүнгүй мөр жагсаалтад
  *     орно, нийлбэрт орохгүй.
@@ -33,15 +29,10 @@ import { CONTRACTED } from '../gdash.ts';
 const F = CASHFLOW_NEW.fields;
 const row = (o) => ({
   [F.detail]: o.work ?? null, [F.project]: o.project ?? null,
-  /* ⚠️ Cashflow_0909-д багцын багана НЭГ (`bagts`) — `pkg` ба `pkg2` ижил
-     талбарыг заана. Хоёуланг нь бичвэл сүүлийнх нь эхнийхийг ДАРНА. */
   [F.pkg2]: o.pkg2 ?? o.pkg ?? null,
-  /* ⚠️ 2026-10-04: төсөв = захирамжийн ХО дүн (`budgetOrder`), `ho_dun_geree` БИШ */
   [F.budgetOrder]: o.b ?? null, [F.contractAmount]: o.c ?? null,
   bagts_tuvshin1: o.sec ?? '2',
   [F.contractor]: o.co ?? null, [F.contractNo]: o.no ?? null, [F.contractDate]: o.dt ?? null,
-  /* ⚠️ 2026-09-25: анхдагч нь дүнтэй мөр = CONTRACTED (хуучин шалгалтууд хэвээр);
-     `note`-ыг ил өгч дүрмийг шалгана (8-р хэсэг) */
   [F.amountNote]: o.note !== undefined ? o.note : (o.c ? CONTRACTED : null),
 });
 
@@ -125,7 +116,7 @@ const row = (o) => ({
 /* ══════ 2б. Нэг популяци — гэрээгүй мөрийн төсөв нийлбэрт ОРОХГҮЙ ══════ */
 {
   const g = computeContractGap([
-    row({ work: 'гэрээгүй том', b: 1_500_000, c: null }),   // ⚠️ энэ төсөв хаягдана
+    row({ work: 'гэрээгүй том', b: 1_500_000, c: null }),
     row({ work: 'давсан', b: 1000, c: 1300 }),
     row({ work: 'хэмнэлт', b: 2000, c: 1900 }),
     row({ work: 'төсөвгүй', b: null, c: 50 }),

@@ -1,15 +1,7 @@
 'use client';
 
 /**
- * АППЫН ДОТООД АСУУЛТ ба «БУЦААХ» МЭДЭГДЭЛИЙН ХОСТ — `@/lib/confirm`-ийн харагдах хэсэг (⚠️ 2026-10-23, UX аудит X1).
- *
- * ⚠️ `Root`-д НЭГ удаа суурилна. Хост суурилаагүй үед `askConfirm` нь `window.confirm` руу буцдаг (`lib/confirm.ts`).
- * ⚠️ Асуулт — `role="alertdialog"` модал: фокусын урхи (`useFocusTrap`, хаахад нээгч товч руу буцна), Esc = Болих,
- *    Enter = Тийм (фокус товч дээр бол тэр товч өөрөө — хөтчийн жам), ард нь дарвал Болих.
- * ⚠️ `danger` асуултад ФОКУС «Болих» дээр — Enter-ийг санамсаргүй дарж устгахаас сэргийлнэ (Enter нь фокустай товчийг
- *    дарна). Бусад асуултад фокус «Тийм» дээр.
- * ⚠️ Нээгдсэн агшинд (250 мс) ба барьсан (repeat) Enter-ийг ҮЛ ТООНО — асуултыг нээсэн товчны Enter нь шинээр гарсан
- *    «Тийм»-ийг давтан дарж, асуултыг харалгүй батлах байв.
+ * АППЫН ДОТООД АСУУЛТ ба «БУЦААХ» МЭДЭГДЭЛИЙН ХОСТ — `@/lib/confirm`-ийн харагдах хэсэг (2026-10-23, UX аудит X1).
  */
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
@@ -26,7 +18,6 @@ export function ConfirmHost() {
   useEffect(() => registerConfirmHost(), []);
   return (
     <>
-      {/* ⚠️ `key` — асуулт бүр шинэ бүрэлдэхүүн: урхи/фокус асуулт бүрд дахин тогтоно */}
       {snap.req && <ConfirmDialog key={snap.req.id} req={snap.req} />}
       <div className={s.toastWrap} role="status" aria-live="polite">
         {snap.toast && <UndoToastView key={snap.toast.id} t={snap.toast} />}
@@ -44,7 +35,6 @@ function ConfirmDialog({ req }: { req: ConfirmReq }) {
   const msgId = useId();
   const { danger, title } = req.opts;
   useFocusTrap(ref, true);
-  /* ⚠️ Урхины эффектийн ДАРАА (эффект зарласан дарааллаар) — урхи эхний товч («Болих») руу фокуслосныг засна */
   useEffect(() => {
     openedAt.current = Date.now();
     (danger ? cancelRef : okRef).current?.focus();
@@ -55,7 +45,6 @@ function ConfirmDialog({ req }: { req: ConfirmReq }) {
       const root = ref.current;
       if (!root || !isTopFocusTrap(root)) return;
       if (e.key === 'Escape') {
-        /* ⚠️ capture + stopPropagation — ард байгаа модалын Esc сонсогч өөрийгөө хаахгүй */
         e.preventDefault();
         e.stopPropagation();
         settleConfirm(req.id, false);
@@ -111,7 +100,6 @@ function ConfirmDialog({ req }: { req: ConfirmReq }) {
 }
 
 function UndoToastView({ t }: { t: UndoToast }) {
-  /* ⚠️ Хулгана ЭСВЭЛ фокус дээр нь байхад хугацаа зогсоно (WCAG 2.2.1) — үлдсэн хугацааг ref-д хадгална */
   const [hover, setHover] = useState(false);
   const [focus, setFocus] = useState(false);
   const left = useRef(t.ms);
@@ -135,7 +123,6 @@ function UndoToastView({ t }: { t: UndoToast }) {
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocus(false); }}
     >
       <span className={s.toastMsg}>{t.message}</span>
-      {/* ⚠️ Түлхүүр «↶ Буцаах» — дан «Буцаах» нь англид батлалтын «Send back» (X8) тул «Undo» болж чадахгүй */}
       <button type="button" className={s.undo} onClick={() => settleToast(t.id, true)}>
         {tr('↶ Буцаах')}
       </button>

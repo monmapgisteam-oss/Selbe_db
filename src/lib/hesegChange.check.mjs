@@ -120,7 +120,6 @@ close(greenChange.percent, -20);
 const greenPieces = sourceChangePieces([{ layer: green.now[0], geom: oldGreen }, { layer: green.next[0], geom: nextGreen }]);
 assert.deepEqual(greenPieces.map((piece) => piece.layer), ['sb:1', 'rd:6']);
 assert.equal(greenPieces[0].geometry, oldGreen, 'The old polygon remains available for native old/new map comparison');
-// ⚠️ 2026-10-19 (аудит): төслийн хүрээнээс хол (тэнэсэн) хуучин полигон тоо/талбайд орохгүй; хүрээгүй бол юу ч хасахгүй
 const aoi = changeBoxUnion([{ xmin: 0, ymin: 0, xmax: 1000, ymax: 1000 }, null, { xmin: 500, ymin: -200, xmax: 2000, ymax: 800 }]);
 assert.deepEqual(aoi, { xmin: 0, ymin: -200, xmax: 2000, ymax: 1000 });
 const feats = [{ id: 'in', b: { xmin: 100, ymin: 100, xmax: 200, ymax: 200 } }, { id: 'edge', b: { xmin: 6500, ymin: 0, xmax: 6800, ymax: 10 } },
@@ -128,10 +127,8 @@ const feats = [{ id: 'in', b: { xmin: 100, ymin: 100, xmax: 200, ymax: 200 } }, 
 assert.deepEqual(strayFree(feats, (f) => f.b, aoi, 5000).map((f) => f.id), ['in', 'edge', 'nobox']);
 assert.equal(strayFree(feats, (f) => f.b, null, 5000).length, 4, 'хүрээгүй — юу ч хасахгүй');
 assert.equal(changeBoxUnion([]), null);
-// ⚠️ 2026-10-19 (review): тэлэлт нь ГАЗРЫН 5 км — 47.9°N-д 3857-ийн ~7 450 нэгж (урьд нь 5 000 нэгж = ~3.35 км)
 const yAt = (lat) => 6378137 * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
 close(strayMargin(5000, yAt(47.9)), 5000 / Math.cos((47.9 * Math.PI) / 180));
 close(strayMargin(5000, 0), 5000);
-// ⚠️ 2026-10-26 (аудит): давхардсан бүсийн мөр (X-13 — oid 12/47) нэг удаа; кодгүй мөр тус бүр үлдэнэ
 assert.deepEqual(dedupeZoneCodes([{ oid: 12, code: 'X-13' }, { oid: 20, code: 'K-6' }, { oid: 47, code: 'X-13' }, { oid: 5 }, { oid: 6 }]).map((f) => f.oid), [12, 20, 5, 6]);
 console.log('hesegChange: complete/partial deltas, missing-versus-zero measurements, centerline statistics, source maps, all zones and full old masterplan green comparison passed');

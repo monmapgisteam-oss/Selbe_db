@@ -1,15 +1,10 @@
-/* ══ БАГЦЫН ДАВХАРГЫН МӨР — ТОВЧ ══
-   ⚠️ 2026-10-23: Environment — сонгогдсон мөр moss 12%, chip 6px badge.
-   ⚠️ Дарагддаг тул товчны дохио (hover, курсор, сум) ЗААВАЛ — эс бөгөөс
-   хэрэглэгч дарж болохыг мэдэхгүй. */
+/* ══ БАГЦЫН ДАВХАРГЫН МӨР — ТОВЧ ══ */
 .row {
   display: grid;
   grid-template-columns: 10px 24px minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   width: 100%;
-  /* ⚠️ Зүүн 22px — эцэг мөрийн цэгийн БАРУУН талаас эхэлнэ, шаталсан нь
-     нүдэнд шууд уншигдана. */
   padding: 4px 10px 4px 22px;
   border: none;
   border-radius: var(--r-sm);
@@ -26,8 +21,6 @@
 .on .name { color: var(--ink); font-weight: 600; }
 
 .caret { font-size: 11px; color: var(--ink-3); }
-/* ⚠️ Тэмдэг 24×10 — шугамын хээ (тасархай 6+3) уншигдах ХАМГИЙН БАГА урт.
-   Богино болговол тасархай ба үргэлжилсэн ялгагдахаа болино. */
 .swatch { width: 24px; height: 10px; display: block; overflow: visible; }
 .name {
   min-width: 0;
@@ -81,6 +74,5 @@
   white-space: nowrap;
 }
 .chip b { color: var(--ink-3); font-weight: 600; }
-/* ⚠️ Хоосон талбарууд тусдаа, БҮДЭГ — «0» гэж харагдахгүй */
 .empty { color: var(--ink-3); font-style: italic; }
 .note { margin: 2px 0 8px 32px; color: var(--ink-3); font-size: 11px; }

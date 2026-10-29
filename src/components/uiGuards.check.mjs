@@ -1,7 +1,7 @@
 /**
  * ХАРАГДАЦЫН ХАМГААЛАЛТУУД — фокусын урхины овоолго · нэг удаагийн ойртолт · буферийн хуудаслалт ·
- * нэвтрэлтийн эффектийн `alive` (⚠️ 2026-10-21, аудит).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/uiGuards.check.mjs
+ * нэвтрэлтийн эффектийн `alive` (2026-10-21, аудит).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/uiGuards.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. `UserAdmin`-ы window `keydown` (Tab · Esc · Ctrl+S) дээр нь нээлттэй `AuthGate`-ийн цонхны (сешн
@@ -12,9 +12,6 @@
  *   3. `MapCanvas` «irged:reach» буфер `queryFeatures`-ийг хуудаслалгүй (2000-оос дээш объект чимээгүй дутуу).
  *   4. `AuthGate` нэвтрэлтийн эффект: `setPermsRead`/хүснэгт үүсгэлт `alive` шалгалтын ӨМНӨ явдаг байв →
  *      `initRemote`-ийн дараа шууд `alive`; super-ийн хүснэгт үүсгэлт модулийн түвшний НЭГ амлалт.
- *
- * ⚠️ 1-ийн овоолгыг жинхэнэ функцээр (`useFocusTrap.ts` — hook-гүй экспортууд), бусдыг ЭХ КОДООР
- *    (React/ArcGIS Node-д ажиллахгүй — `portalLeave.check.mjs`-ийн арга).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -76,8 +73,6 @@ console.log('✅ irged:reach буфер хуудаслалттай');
 /* 4. AuthGate — alive · нэг удаагийн хүснэгт үүсгэлт */
 {
   const ag = strip(read('./AuthGate.tsx'));
-  /* ⚠️ 2026-10-21: super = эрхийн хүснэгтийн мөр (хэрэглэгчийн шийдвэр, `AuthGate`-ийн ⚠️) — хүснэгт үүсгэх эрх
-     `canCreate` (кодын super · `BOOTSTRAP_SUPER`), `hard` нь `initRemote`-ийн ДАРАА бодогдоно → `initRemote(canCreate)`. */
   assert.match(ag, /const remoteOk = await initRemote\(canCreate\);\s*if \(!alive\) return;/, '`initRemote`-ийн дараа шууд `alive`');
   assert.match(ag, /if \(!alive\) return;\s*const hard = roleForUser\(info\.username\);/, '`hard` нь хүснэгт уншигдсаны (`initRemote`) ДАРАА');
   assert.match(ag, /await ensureSuperTables\(\);\s*if \(!alive\) return;/, 'хүснэгт үүсгэлтийн дараа ч `alive`');

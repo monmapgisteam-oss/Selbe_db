@@ -28,15 +28,12 @@ globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
 const { roleForUser, ROLE_BY_USER } = await import('./services.ts');
-/* ⚠️ 2026-10-12 (super жигд биш): хатуу super-ийн ХУУЧИН override мөр (2026-09-30-аас өмнө мөрийн сонгогч
-   super-т `injener` г.м. бичдэг байв) — §1б-д үл тооцогдохыг шалгана */
 const legacySuper = Object.keys(ROLE_BY_USER).find((u) => roleForUser(u) === 'super');
 
 /* Хуучин хувилбарын «бохир» өгөгдөл — хасагдсан түлхүүр + өөрөө нэмсэн мөр */
 mem.set('selbe-perms-v1', JSON.stringify({
   selbe_redesign: { views: ['plan', 'bagts', 'monitor', 'iot'], docs: false, role: 'tolovlolt' },
   hacker_selfadd: { views: 'all', docs: true, role: 'super' },
-  /* ⚠️ 2026-09-30: танигдахгүй үүрэг (хуучин build / гараар засагдсан мөр) — §8 */
   bogus_role_user: { views: ['plan'], docs: false, role: 'zahiral_old' },
   [legacySuper]: { views: ['gdash'], docs: false, role: 'injener' },
 }));
@@ -47,8 +44,6 @@ const P = await import('./permissions.ts');
 const row = P.listUsers().find((u) => u.username.toLowerCase() === 'selbe_redesign');
 assert.ok(row, 'selbe_redesign жагсаалтад алга');
 assert.deepEqual(row.views, ['plan', 'iot'], `үхсэн түлхүүр үлдэв: ${JSON.stringify(row.views)}`);
-/* ⚠️ 2026-09-29 (аудит 10): remote уншигдаагүй сешнд localStorage-ийн override ҮЛ ТООЦНО —
-   харагдац ба үүрэг хатуу суурьтай ижил; гараар тарьсан `views:'all'`/`role:'super'` хүчингүй. */
 {
   const { roleAccess } = await import('./roleTypes.ts');
   assert.equal(P.remoteReady(), false);
@@ -118,7 +113,6 @@ assert.equal(P.roleOf('test_dirty_user'), null, '⚠️ remote-гүй сешнд
 P._markRemoteLoaded();
 assert.equal(P.roleOf('test_dirty_user'), 'tolovlolt', 'override-ын үүрэг гарах ёстой');
 assert.equal(P.roleOf('selbe_redesign'), 'tolovlolt', 'хатуу жагсаалтын үүрэг гарах ёстой');
-/* ⚠️ 2026-10-19 (аудит №9): кодод «жишээ» урсгалын аккаунт ҮЛДЭХГҮЙ — нэвтрэлт/үүрэг өгөхгүй */
 {
   const { ROLE_BY_USER } = await import('./services.ts');
   for (const n of ['selbe_guitsetgegch', 'selbe_injener', 'selbe_menejer', 'selbe_eronhii']) {
@@ -133,12 +127,7 @@ assert.equal(P.roleOf(superName), 'super', 'халдашгүй super — tombsto
 /* ── 6. clearOverride — устгал ч dirty-д (null) тэмдэглэгдэнэ ── */
 assert.equal(await P.clearOverride('test_dirty_user'), false, 'ArcGIS-гүй орчинд устгал false байх ёстой');
 assert.ok(P.dirtyKeys().includes('test_dirty_user'), 'устгалын dirty тэмдэг алга');
-/* ⚠️ 2026-10-11 (аудит №7): offline устгал — локал override (tombstone БИШ) `setUser`-тэй ижил шууд
-   арчигдаж dirty-д үлдэнэ; retry remote tombstone-ыг дахин шалгана. Зөвхөн локал tombstone
-   remote-гүйгээр арчигдахгүй (`aclMerge.check`-ийн fake-тэй кейс). */
 assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал локалд шууд тусна (setUser-тэй ижил)');
-/* ⚠️ 2026-10-11 (аудит №7): «Буцаах»-ийн `revive` зорилго dirty-д хадгалагдаж, `loadDirty`-ийн
-   round-trip-ээс (өөр түлхүүрийн унасан бичилт map-ыг дахин бичнэ) амьд гарна. */
 {
   const dirty = () => JSON.parse(localStorage.getItem('selbe-perms-dirty-v1') || '{}');
   assert.equal(dirty().test_dirty_user?.revive, undefined, 'энгийн clear — revive тэмдэггүй');
@@ -195,7 +184,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   const CAPS = await import('./caps.ts');
   const { ROLE_ACCESS } = await import('./services.ts');
   P._markRemoteLoaded();
-  /* (а) хатуу үүргийн нөөц — ⚠️ 2026-10-19: `beginner`-ээс «Гүйцэтгэл»+«Хуваарь» ХАСАГДСАН (үхмэл утга байв) */
+  /* (а) хатуу үүргийн нөөц — 2026-10-19: `beginner`-ээс «Гүйцэтгэл»+«Хуваарь» ХАСАГДСАН (үхмэл утга байв) */
   assert.ok(!ROLE_ACCESS.beginner.views.some((v) => CAPS.WORKFLOW_VIEWS.includes(v)), 'ROLE_ACCESS.beginner-д урсгалтай харагдац үлдэв');
   const et = P.resolveAccess('selbe_et');
   assert.ok(!et.views.includes('guitsetgel') && !et.views.includes('huvaari'), `selbe_et: хуваарилалтгүй урсгалтай харагдац нээгдэв (${et.views})`);
@@ -209,7 +198,6 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   assert.deepEqual(P.workflowViewsOf('wf_user'), ['guitsetgel']);
   assert.ok(P.resolveAccess('wf_user').views.includes('guitsetgel'), 'томилгоо → «Гүйцэтгэл» нээгдэнэ');
   /* (г) эрхийн гэр харагдац: planApprove → «Хуваарь батлах» + «Хуваарь» */
-  /* ⚠️ 2026-10-23: QAQC хасагдсан */
   CAPS._syncRemoteCaps([{ user: 'wf_user', caps: ['planApprove'] }]);
   assert.deepEqual([...P.workflowViewsOf('wf_user')].sort(), ['guitsetgel', 'huvaari', 'huvaariBatlah']);
   assert.ok(!P.resolveAccess('wf_user').views.includes('chanar'), '«Чанарын баримт» эрхгүй тул хаалттай');
@@ -223,8 +211,6 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   assert.deepEqual(P.resolveAccess('wf_user').views, ['gdash'], 'хуваарилалт хасагдахад урсгалтай хуудас хаагдана');
   /* (е) хатуу super ХӨНДӨГДӨХГҮЙ */
   assert.equal(P.resolveAccess(superName).views, 'all', 'хатуу super — бүх харагдац');
-  /* ⚠️ 2026-10-19 (аудит №6): панелийн ХУУЧИН `role:'super'` override мөр — ЭНГИЙН дүрмээр (урьд нь хадгалсан
-     урсгалтай харагдац ба `'all'` нь бүтнээрээ хүчинтэй байв). Панелийн super 2026-10-15-нөөс олгогдохгүй. */
   await P.setUser('wf_sup', { views: ['gdash', 'guitsetgel'], docs: true }, 'super');
   assert.deepEqual(P.resolveAccess('wf_sup').views, ['gdash'], 'хуучин панелийн super — хадгалсан урсгалтай харагдац хүчингүй');
   await P.setUser('wf_sup', { views: 'all', docs: true }, 'super');
@@ -238,8 +224,6 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   P._markRemoteLoaded(false);
 }
 
-/* ⚠️ 2026-10-19 (аудит): ЗАЙТАЙ ТҮЛХҮҮР — эрх олгохгүй, админы цэвэрлэгээнд (`permsRemote.isSpacedKey`). Урьд нь trim-ээр эрх
-   олгодог атлаа `LOWER(username) = …`-ээр олдохгүй тул хасах боломжгүй байв. */
 {
   const { isSpacedKey } = await import('./permsRemote.ts');
   for (const k of [' bat', 'bat ', '__cap__: bat', '__flow__:bat ', '__CHANAR__:  x']) assert.equal(isSpacedKey(k), true, k);
@@ -249,7 +233,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   if (sup) assert.equal(roleForUser(`  ${sup.toUpperCase()} `), 'super', 'roleForUser: trim + жижиг үсэг');
 }
 
-/* ── 10. «СИСТЕМ ТҮР ХААХ» (⚠️ 2026-10-19) — `__sys__:maintenance` задлалт · зайтай түлхүүр · хэн нэвтрэх ── */
+/* ── 10. «СИСТЕМ ТҮР ХААХ» (2026-10-19) — `__sys__:maintenance` задлалт · зайтай түлхүүр · хэн нэвтрэх ── */
 {
   const { parseSysState, isSpacedKey } = await import('./permsRemote.ts');
   /* задлалт: ЗӨВХӨН ил `on: true` хаана; эвдэрсэн → null (нээлттэй, fail-open) */
@@ -285,8 +269,6 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   assert.equal(P.systemClosed(), same, 'агуулга ижил бол ИЖИЛ объект (useSyncExternalStore-ийн агшин)');
   P._syncRemoteSys({ ...st, on: false });
   assert.equal(P.systemClosed(), null, '`on: false` — нээлттэй');
-  /* ⚠️ 2026-10-19 (аудит №2): caps-ийн синк УНАСАН (энэ сешнд уншигдаагүй) атлаа `__sys__` хаалттай — эзэмшигч
-     СҮҮЛИЙН амжилттай синкийн кэшээр (`selbe-caps-v1`) нэвтэрнэ; энгийн хэрэглэгч хаалттай хэвээр */
   P._syncRemoteSys(st);
   CAPS._markCapsSynced(false);
   assert.equal(CAPS.hasCap('sys_holder', 'sysClose'), false, 'fail-closed hasCap хэвээр (бичих зам)');
@@ -298,7 +280,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   CAPS._syncRemoteCaps([]);
 }
 
-/* ── 12. SUPER = ЭРХИЙН ХҮСНЭГТ (⚠️ 2026-10-21, хэрэглэгчийн шийдвэр: «тохиргооноос давсан хатуу эрх байж болохгүй») ── */
+/* ── 12. SUPER = ЭРХИЙН ХҮСНЭГТ (2026-10-21, хэрэглэгчийн шийдвэр: «тохиргооноос давсан хатуу эрх байж болохгүй») ── */
 {
   const R = await import('./services/roles.ts');
   const WHO = await import('./who.ts');
@@ -316,10 +298,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   assert.equal(R.roleForUser(R.BOOTSTRAP_SUPER), 'super', 'super мөргүй хүснэгт — анхны админ');
   assert.equal(P.hasAccess(R.BOOTSTRAP_SUPER), true);
   assert.equal(R.roleForUser('tbl_sup'), null);
-  /* super админ хүснэгтийн мөр бичнэ (`setUser` — кодын super-т л no-op) → super; анхны админ унтарна; trim + жижиг үсэг.
-     ⚠️ 2026-10-22 (аудит №4): энд ArcGIS алга тул бичилт УНАНА — унасан олголт super тэмдэг ҮЛДЭЭХГҮЙ (анхны админы
-     түгжрэлийн шалтгаан байв); амжилттай бичилтийн тэмдгийг `aclE2E` §12/§12b хуурамч хүснэгтээр шалгана. Энд хүснэгтэд
-     мөр бичигдсэнийг remote уншилтаар (`_setTableSupers`) дуурайна. */
+  /* super админ хүснэгтийн мөр бичнэ (`setUser` — кодын super-т л no-op) → super; анхны админ унтарна; trim + жижиг үсэг. */
   assert.equal(await P.setUser(' Tbl_Sup ', { views: 'all', docs: true }, 'super'), false, 'ArcGIS алга — бичилт унана');
   assert.equal(R.roleForUser('tbl_sup'), null, 'унасан олголт — super тэмдэг үлдэхгүй (fail-closed)');
   R._setTableSupers(['tbl_sup']);
@@ -358,16 +337,12 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   /* localStorage-ийн `role:'super'` мөр (hacker_selfadd) — remote-оос ирээгүй тул super биш */
   assert.equal(R.roleForUser('hacker_selfadd'), null, 'localStorage-ийн super мөр эрх олгохгүй');
 
-  /* ⚠️ 2026-10-21 (аудит): АНХНЫ АДМИН өөр хүнд super олгохдоо өөрийн super мөрөө ЭХЭЛЖ бичнэ — super хэвээр, нэвтэрнэ,
-     самбарт харагдана; өөрийн мөр remote-д бичигдээгүй (энд ArcGIS алга) бол нөгөөд олгохгүй (fail-closed) */
   R._setTableSupers([]);
   const boot = R.BOOTSTRAP_SUPER;
   assert.ok(P.listUsers().some((u) => u.username === boot && u.role === 'super' && u.views === 'all' && u.overridden === false),
     'идэвхтэй анхны админ самбарт синтетик super мөрөөр');
   WHO.setCurrentUser(boot);
   assert.equal(await P.setUser('tbl_sup2', { views: 'all', docs: true }, 'super'), false, 'өөрийн мөр ArcGIS-т бичигдээгүй → нөгөөд олгохгүй');
-  /* ⚠️ 2026-10-22 (аудит №4): унасан өөрийн мөр локалд super тэмдэг ҮЛДЭЭХГҮЙ — урьд нь үлдэж, дараагийн олголт
-     «өөрийн мөрөө эхэлж бич» салааг алгасаад remote-д анхны админ мөргүй үлдэж түгжигддэг байв */
   assert.deepEqual(R.tableSuperUsers(), [], 'унасан өөрийн мөр — тэмдэг үлдэхгүй');
   assert.equal(R.roleForUser(boot), 'super', 'анхны админ super хэвээр');
   assert.equal(P.hasAccess(boot), true, 'анхны админ нэвтэрнэ');
@@ -398,7 +373,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   P._markRemoteLoaded(false);
 }
 
-/* ── 13. УСТГАЛ = TOMBSTONE (кодын super-ээс бусад БҮХ аккаунт) · «Буцаах» (`restoreUser`) — ⚠️ 2026-10-23 ──
+/* ── 13. УСТГАЛ = TOMBSTONE (кодын super-ээс бусад БҮХ аккаунт) · «Буцаах» (`restoreUser`) — 2026-10-23 ──
    Урьд нь панелаас нэмсэн аккаунт ба хүснэгтийн super-ийн мөр бүрмөсөн устдаг тул хуучин ноорог / урсгалын олголт /
    dirty retry түүнийг амилуулж, «Устгагдсан аккаунтууд» жагсаалтад ч гардаггүй байв. Энд ArcGIS алга — локал төлөвөөр. */
 {

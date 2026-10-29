@@ -12,17 +12,12 @@ import s from './docviewer.module.css';
  * Зүүн жагсаалтын доор: нэвтрэх маягт → «PDF оруулах» + геопорталын PDF item-үүд.
  * Сонгосон item-ийг баруун талд `EntDocFrame` харуулна. `DocViewer` нь сонголтыг
  * `ent:<id>` түлхүүрээр ялгана.
- *
- * ⚠️ `NEXT_PUBLIC_ENT_PORTAL_URL` хоосон бол юу ч зурахгүй.
  */
 export const ENT_KEY = 'ent:';
 
-/* ⚠️ 2026-10-23: `EntDocsSide` (хавтгай PDF жагсаалт) ХАСАГДСАН — баримт бичгийн сан `DocLibSide`-д. */
 
 /**
  * Сонгосон item-ийн PDF — токентой POST-оор татаж objectURL-ээр `<iframe>`-д.
- * ⚠️ objectURL-ийг солих/хаах үед `revokeObjectURL` — санах ой алдагдахгүй.
- * ⚠️ Нарийн дэлгэцэд (`narrow`) iframe-ийн оронд шинэ таб-д нээх товч (`DocViewer`-ийн дүрэм).
  */
 export function EntDocFrame({ id, narrow }: { id: string; narrow: boolean }) {
   const [state, setState] = useState<{ id: string; url?: string; err?: string } | null>(null);

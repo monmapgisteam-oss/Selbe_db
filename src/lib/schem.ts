@@ -1,33 +1,5 @@
 /**
  * ТӨСЛИЙН ҮЙЛ АЖИЛЛАГААНЫ СХЕМ — ЦЭВЭР ЗАГВАР.
- *
- * ⚠️ REACT Ч, СҮЛЖЭЭ Ч ЭНД ОРОХГҮЙ. Зөвхөн тогтмол топологи, байрлалын
- * тооцоо, амьд тоог зангилаанд суулгах цэвэр функц. Ингэснээр `schem.check.mjs`
- * түүнийг шууд импортлон шалгана — зурагдах кодыг ажиллуулах шаардлагагүй.
- *
- * ⚠️ ЯАГААД ЭНЭ ХАРАГДАЦ (2026-08-31, хэрэглэгчийн шийдвэр): порталд 15
- * харагдац бий ч тэдгээр нь хоорондоо ХЭРХЭН ХОЛБОГДОХЫГ хэлдэг газар байхгүй.
- * «Гүйцэтгэл хаанаас эхэлж хаана дуусдаг вэ» гэдгийг мэдэхийн тулд харагдац
- * бүрийг тус тусад нь нээж толгойдоо угсрах шаардлагатай байв.
- *
- * ⚠️ ХАМГИЙН ЧУХАЛ ДҮРЭМ — БАЙХГҮЙ ПРОЦЕССЫГ БАЙГАА МЭТ ЗУРАХГҮЙ.
- * Кодыг судалснаар: төсөлд ЖИНХЭНЭ төлөвийн машин ЕРДӨӨ НЭГ — гүйцэтгэлийн
- * зургаан шатны хяналт (`hyanalt.ts`: компани → инженер → менежер → ерөнхий
- * менежер → хэлтсийн дарга → газрын дарга, буцаалт НЭГ алхам ухарна;
- * `OWNER`, `apply`/`recheck`).
- * Бусад нь:
- *   · Зөвшөөрөл — дараалал нь ӨГӨГДЛӨӨС (`shat` бүхэл тоо, багц бүрд өөр)
- *   · Газар чөлөөлөлт — шат БИШ, `Tuluv` талбарын АНГИЛАЛ
- *   · Санхүү (Гэрээ→IPC) — дараалал нь зөвхөн талбарын тайлбарт; кодод
- *     төлөвийн машин ч, төлөвийн enum ч БАЙХГҮЙ
- * Тиймээс ирмэг нь ГУРВАН төрөлтэй (`main`/`feed`/`back`) бөгөөд «хамаарал»-ыг
- * «төлөвийн шилжилт»-ээс ялгана. Нэг сумаар зурвал «газар чөлөөлөгдмөгц
- * барилга автоматаар эхэлдэг» гэсэн худал ойлголт төрнө.
- *
- * ⚠️ `null` ≠ 0. Эх сурвалж унавал метрик нь `null` хэвээр үлдэж «—» зурагдана.
- * Энэ репо тэр алдааг хоёр удаа гаргасан (тэг гүйцэтгэл ба мэдээлэлгүйг
- * нэгтгэсэн) тул `schem.check.mjs` нь «бүх эх сурвалж унасан үед аль ч метрик
- * 0 БАЙХГҮЙ» гэдгийг тусгайлан шалгана.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -47,10 +19,6 @@ export type SchemId =
 
 /**
  * Зангилааны төлөв.
- * ⚠️ `none` нь «МЭДЭХГҮЙ» — «сайн» БИШ. Саарал өнгө ба «Мэдээлэлгүй» гэсэн
- *    ҮГ хоёулаа гарна: өнгө сохор хүн ба хар цагаан хэвлэлтэд ч уншигдана.
- *    Хэрэв `none` нь ногоонтой ойролцоо өнгөтэй байвал БҮРЭН тасалдал
- *    «эрүүл төсөл» мэт харагдана.
  */
 export type Health = 'good' | 'warn' | 'bad' | 'none';
 
@@ -58,7 +26,6 @@ export type MetricKind = 'count' | 'pct' | 'mnt' | 'ha' | 'day';
 
 export type Metric = {
   label: string;
-  /** ⚠️ `null` = татагдаагүй/тооцоологдохгүй. ТЭГ-ээр ХЭЗЭЭ Ч орлуулахгүй. */
   value: number | null;
   kind: MetricKind;
   /** `value` нь яагаад `null` вэ — tooltip/aria-д ил гарна, чимээгүй алга болохгүй */
@@ -73,17 +40,10 @@ export type SchemNode = {
   view: ViewKey | null;
   /** `Icon.tsx`-ийн `P` объектын түлхүүр */
   icon: string;
-  /** ⚠️ ГАРААР зохиосон тор — доорх `layout` тайлбарыг үз */
   col: number;
   row: number;
 };
 
-/**
- * ⚠️ ГУРВАН ӨӨР ИРМЭГ:
- *   main — үе шатны ХАМААРАЛ (өмнөх нь дуусалгүйгээр дараагийнх утгагүй)
- *   feed — ТЭЖЭЭХ холбоо (өгөгдөл нь нөгөө рүү ордог ч дараалал биш)
- *   back — БУЦААХ шилжилт (кодод бичигдсэн жинхэнэ шилжилт)
- */
 export type EdgeKind = 'main' | 'feed' | 'back';
 
 export type SchemEdge = {
@@ -96,26 +56,10 @@ export type SchemEdge = {
 /* ══════════════════ Топологи ══════════════════ */
 
 /**
- * ⚠️ ГҮЙЦЭТГЭЛИЙН 6 ШАТ НЬ НЭГ ЗАНГИЛАА. Тэднийг зургаан тусдаа зангилаа
- * болговол схемийн талыг нэг дэд процесс эзэлж, «төслийн мөчлөг» гэдэг санаа
- * алдагдана. Оронд нь `hyanalt` зангилаа ДОТРОО зургаан цэгийн зурвас
- * харуулна (`Guitsetgel.tsx`-ийн `Track` загвар) — жинхэнэ төлөвийн машин ил
- * хэвээр, дэлгэрэнгүй нь тэр харагдацад.
- */
-/**
- * ⚠️ МӨР БҮР УТГАТАЙ (2026-08-31-ний дахин зохиомж). Урьд нь зангилаанууд
- * зүгээр л сул нүд рүү тарсан байсан тул «яагаад энэ энд байгаа юм бэ» гэсэн
- * асуулт төрдөг байв. Одоо:
- *
  *   мөр 0 — ЗӨВШӨӨРӨХ / ХЯНАХ  (гадны шийдвэр хүлээх цэгүүд)
  *   мөр 1 — ҮНДСЭН УРСГАЛ       (төлөвлөх → барих → санхүүжүүлэх → тайлагнах)
  *   мөр 2 — НӨХЦӨЛ / АЮУЛГҮЙ БАЙДАЛ
  *   мөр 3 — ЭРСДЭЛ
- *
- * ⚠️ ХАБЭА ба Эрсдэл нь ГАРАХ ирмэггүй. Тэдгээр нь урсгалын шат БИШ, барилга
- * угсралтын ХАЖУУГИЙН ХЭМЖҮҮР — «ХАБЭА дуусмагц санхүүжилт олгогдоно» гэсэн
- * дараалал байхгүй. Урьд нь `habea → sankhuu` гэсэн ирмэг зурсан нь тийм
- * хамаарал байгаа мэт худал ойлголт төрүүлж байв.
  */
 export const NODES: readonly SchemNode[] = [
   {
@@ -181,16 +125,9 @@ export const EDGES: readonly SchemEdge[] = [
   { from: 'barilga', to: 'hyanalt', kind: 'main' },
   { from: 'hyanalt', to: 'sankhuu', kind: 'main' },
   { from: 'sankhuu', to: 'tailan', kind: 'main' },
-  /**
-   * ⚠️ ЦОРЫН ГАНЦ ЖИНХЭНЭ БУЦААЛТ. Хяналтын аль ч шат буцаавал ажил
-   * гүйцэтгэгч рүү эргэж, дахин бөглөгдөнө (`hyanaltStore.apply`). Энэ ирмэг
-   * байхгүй бол схем нь «нэг л удаа өгвөл болоо» гэсэн худал зураг болно.
-   */
   { from: 'hyanalt', to: 'barilga', kind: 'back', get label() { return tr('Буцаасан'); } },
   /**
    * ХАЖУУГИЙН ХЭМЖҮҮР — дараалал БИШ, барилгаас САЛБАРЛАСАН хяналт.
-   * ⚠️ Хоёулаа `barilga`-аас ШУУД гарна. Урьд нь `gazar → ersdel` гэсэн ирмэг
-   * байсан нь схемийг хөндлөн огтолж, ямар ч утга нэмээгүй.
    */
   { from: 'barilga', to: 'habea', kind: 'feed' },
   { from: 'barilga', to: 'ersdel', kind: 'feed' },
@@ -202,8 +139,6 @@ export const NODE_BY_ID: Record<SchemId, SchemNode> = Object.fromEntries(
 
 /**
  * Топологийн дараалал (`back` ирмэгийг үл тооно — тэр нь мөчлөг үүсгэнэ).
- * ⚠️ DOM-д зангилаануудыг ЭНЭ дарааллаар байрлуулна: Tab дарахад хэрэглэгч
- *    төслийн мөчлөгөөр алхана, зурган дээрх байрлалаар биш.
  */
 export function topoOrder(): SchemId[] {
   const indeg = new Map<SchemId, number>(NODES.map((n) => [n.id, 0]));
@@ -235,8 +170,6 @@ export function topoOrder(): SchemId[] {
 /* ══════════════════ Байрлал ══════════════════ */
 
 /**
- * ⚠️ БАЙРЛАЛ ГАРААР ЗОХИОГДСОН, АЛГОРИТМААР БИШ.
- *
  * 10 зангилаанд layered (Sugiyama) алгоритм нь ~150 мөр код, огтлолцол
  * багасгах шат шаардана. Түүнээс гадна зангилаа нэмэх бүрд БҮХ зургийг дахин
  * байрлуулж, хэрэглэгчийн орон зайн ой санамжийг эвднэ («газар чөлөөлөлт
@@ -244,23 +177,6 @@ export function topoOrder(): SchemId[] {
  *
  * Дараалал нь БИЗНЕСИЙН БАРИМТ — бодож олох зүйл биш. `col`/`row` тогтмол нь
  * diff-д уншигдана, шинэ хүн зургийг кодоос шууд харна.
- */
-/**
- * ⚠️ ХЭМЖЭЭ 2026-08-31-нд ТОМСГОВ. Анхны 176×78 нь хэт нарийн байв: гурван
- * үзүүлэлт + төлвийн шошго + хяналтын дөрвөн цэг багтахгүй тул доод мөр нь
- * тасарч, «Буцаасан 5» гэсэн тоо нүднээс алга болж байлаа. Мөр бүрд ЯГ хэдэн
- * мөр багтахыг тооцов: гарчиг 18 + зурвас 15 + гурван үзүүлэлт 42 + тэмдэглэл
- * 12 + шошго 16 + доторх зай 17 ≈ 120.
- *
- * ⚠️ `pad` нь 34 — БУЦААХ ирмэг зангилаануудын ДЭЭГҮҮР эргэлддэг тул дээд
- * талд зай хэрэгтэй (доогуур явуулбал ХАБЭА, Эрсдэл хоёрыг огтолно).
- */
-/**
- * ⚠️ ХЭМЖЭЭ нь ДЭЛГЭЦИЙН ХАРЬЦААНААС гарна. Схем нь өргөнөөрөө багтдаг тул
- * масштаб нь ӨРГӨНӨӨР хязгаарлагдана; хэрэв зураг хэт өргөн бол өндрийн
- * ихэнх нь хоосон үлдэнэ. Ердийн дэлгэц ≈2.1:1 тул зураг ч түүнд ойр байх
- * ёстой: 6 багана × 4 мөр нь ≈1882×760 = 2.5:1 — хамгийн ойр хослол.
- * (7 багана × 4 мөр нь 3.2:1 байсан тул өндрийн 53% нь хоосон байв.)
  */
 export const GEO = { w: 220, h: 140, gapX: 78, gapY: 44, pad: 34 } as const;
 
@@ -273,10 +189,6 @@ export type Placed = { id: string; col: number; row: number };
 
 /**
  * ЕРӨНХИЙ ТОРЫН БАЙРЛАЛ.
- *
- * ⚠️ ХОЁР СХЕМ НЭГ ЛОГИКООР. «Ерөнхий» (10 карт) ба «Дэлгэрэнгүй» (24 карт)
- * хоёр өөр торон дээр зурагддаг ч тооцоо нь ГАНЦ функц — хоёр газар бичвэл
- * нэгийг нь зассан үед нөгөө нь чимээгүй зөрж, ирмэг зангилаанаасаа тасарна.
  */
 export function layoutOf<T extends string>(
   nodes: readonly (Placed & { id: T })[],
@@ -314,22 +226,11 @@ export function layout(nodes: readonly SchemNode[] = NODES): {
 /**
  * Ирмэгийн SVG зам.
  *
- * ⚠️ Хоёр цэгийн хооронд Catmull-Rom сплайн (`PkgProg.curve`) хэрэглэх нь
- * илүүц — хэвтээ шүргэгчтэй энгийн куб Безье нь ойлгомжтой ба хяналтын цэг нь
- * зайнаас хамаарч тохируулагдана.
- *
  * `back` нь ДООГУУР нуман: урвуу чиглэлийг шулуунаар зурвал `main` ирмэгтэй
  * давхарлаж, хоёулаа уншигдахгүй болно.
  */
 /**
  * ТОХОЙ ЗАМ — мөрийн ЗАЙГААР (`g`) явж хоёр картыг холбоно (2026-09-16).
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: системийн схем (`sysSchem.ts` — 2026-10-09-нд устгагдсан) 5×5 нягт торонд
- *    зурагддаг. Тэнд (а) баруунаас зүүн тийш `main`/`feed` ирмэг ба
- *    (б) зорилт нь эхийнхээ ШУУД ДЭЭР байрласан `back` ирмэг бий — хоёулаа
- *    хуучин 6×4 схемд хэзээ ч тохиолдоогүй тул Безье нь картуудыг
- *    дундуур нь нэвтэлж байв (тоон дээжээр батлагдсан). Мөрүүдийн хоорондох
- *    34px зай нь ХООСОН — тохой тэр зайгаар явна.
  */
 function elbow(x1: number, y1: number, x2: number, y2: number, g: number): string {
   const r = 12;
@@ -344,17 +245,9 @@ export function edgePath(a: Box, b: Box, kind: EdgeKind): string {
   const ay = a.y + a.h / 2;
   const by = b.y + b.h / 2;
 
-  /**
-   * ⚠️ БУЦААХ ирмэг ДЭЭГҮҮР эргэлдэнэ, доогуур БИШ. Доогуур явуулахад ХАБЭА
-   * (row 2) ба Эрсдэл (row 3) зангилаануудыг огтолж, улаан шугам хоёр
-   * хайрцгийн дундуур гарч уншигдахаа больдог байв.
-   */
   if (kind === 'back') {
     const x1 = a.x + a.w / 2;
     const x2 = b.x + b.w / 2;
-    /* ⚠️ Зорилт эхийнхээ ДЭЭР бүхэлдээ байвал (2026-09-16): дээгүүр нуман
-       зурахад эхийн шууд дээрх картыг босоогоор нэвтэлдэг байв. Хоёр мөрийн
-       ХООРОНДОХ зайгаар тохойлно — эхийн дээд ирмэгээс, зорилтын доод ирмэг рүү. */
     if (b.y + b.h < a.y) {
       return elbow(x1, a.y, x2, b.y + b.h, (b.y + b.h + a.y) / 2);
     }
@@ -362,11 +255,6 @@ export function edgePath(a: Box, b: Box, kind: EdgeKind): string {
     return `M ${x1} ${a.y} C ${x1} ${up}, ${x2} ${up}, ${x2} ${b.y}`;
   }
 
-  /**
-   * ⚠️ БОСОО ирмэг (ижил багана — ж. Барилга → Эрсдэл). Хэвтээ шүргэгчтэй
-   * Безье нь энд хажуу тийш цухуйж, хоосон зайд нуман зурдаг тул доод/дээд
-   * ирмэгээс босоо шүргэгчтэйгээр холбоно.
-   */
   if (b.x + b.w > a.x && a.x + a.w > b.x) {
     const cx1 = a.x + a.w / 2;
     const cx2 = b.x + b.w / 2;
@@ -377,12 +265,6 @@ export function edgePath(a: Box, b: Box, kind: EdgeKind): string {
     return `M ${cx1} ${y1} C ${cx1} ${y1 + dy}, ${cx2} ${y2 - dy}, ${cx2} ${y2}`;
   }
 
-  /**
-   * ⚠️ ЗҮҮН ТИЙШ (b нь a-гийн зүүнд, 2026-09-16). Доорх хэвтээ салбар
-   *    «b нь баруунд» гэж үздэг тул `dx = max(28, сөрөг) = 28` болж, зам
-   *    a-гийн БАРУУН ирмэгээс гарч хоёр картыг ч нэвтэлдэг байв. Өөр мөрөнд
-   *    бол мөрийн зайгаар тохойлно; нэг мөрөнд бол дээгүүр нуман.
-   */
   if (b.x + b.w <= a.x) {
     const cx1 = a.x + a.w / 2;
     const cx2 = b.x + b.w / 2;
@@ -400,15 +282,6 @@ export function edgePath(a: Box, b: Box, kind: EdgeKind): string {
 
 /**
  * ИРМЭГИЙН ШОШГОНЫ БАЙРЛАЛ («Буцаасан») — `edgePath`-ийн ЯГ тэр салбараар.
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь `Schem.tsx` шошгыг хоёр картын
- *    ДООД ирмэгээс 34px доор (`max(y+h) + 34`) тавьдаг байв — ирмэг нь картын
- *    ДЭЭГҮҮР эргэлддэг тул «Ерөнхий»-д шошго буцах сумнаасаа ~350px доор, ХАБЭА-гийн
- *    дээр; «Дэлгэрэнгүй»-д (нэг баганын «Инженер → Гүйцэтгэгч») доорх «Багцын
- *    менежер» картын ДОТОР (SVG нь картын ард тул нуугдана) гардаг байв. Одоо замын
- *    өөрийн оройд/тохойд — мөр хоорондын хоосон зайд — буна.
- * ⚠️ `anchor` — `text-anchor`. Нэг баганын тохойд шошго шугамын БАРУУН талд эхэлнэ
- *    (`start`), бусад нь дундаа (`middle`).
  */
 export function edgeLabelAt(
   a: Box, b: Box, kind: EdgeKind,
@@ -419,7 +292,6 @@ export function edgeLabelAt(
     /* Тохой — мөр хоорондын зайн ДУНД (`g`) хэвтээ хэсэг */
     if (b.y + b.h < a.y) {
       const g = (b.y + b.h + a.y) / 2;
-      /* ⚠️ Нэг баганад тохой хэвтээ хэсэггүй — шошго босоо шугамын ХАЖУУД */
       if (Math.abs(x2 - x1) < 24) return { x: Math.max(x1, x2) + 8, y: g + 3.5, anchor: 'start' };
       return { x: (x1 + x2) / 2, y: g - 4, anchor: 'middle' };
     }
@@ -461,12 +333,6 @@ export type SchemLive = Record<SchemId, SchemState>;
 /**
  * БАГЦААР ЗАДАРДАГГҮЙ зангилаа — `buildSchem`-ийн `projectWide: true`, `nodeDetail`-ийн
  * pkg-г үл тоодог `PART`-тай ЯГ ИЖИЛ олонлог. Нэгийг өөрчилбөл бусдыг нь ч.
- *
- * ⚠️ 2026-09-25: «Дэлгэрэнгүй» схем `buildSchem`-ийг дууддаггүй (карт дээр амьд
- * метрик гарахгүй) тул `st.projectWide` байхгүй — «Багц 3.2» сонгоод «Газар
- * чөлөөлөлт»-ийг нээхэд самбарын гарчиг «Багц 3.2» гэж бичиж, ТӨСЛИЙН 2,088
- * талбарын тоог тэр багцынх мэт уншуулдаг байв. Самбар ба нарийн карт энэ
- * олонлогоор «төслийн нийт» гэж тэмдэглэнэ.
  */
 export const PROJECT_WIDE: ReadonlySet<SchemId> = new Set<SchemId>([
   'tolovlolt', 'gazar', 'habea', 'ersdel', 'tailan',
@@ -474,12 +340,6 @@ export const PROJECT_WIDE: ReadonlySet<SchemId> = new Set<SchemId>([
 
 /**
  * Багцын мөрөөс схемд хэрэгтэй хэсэг.
- *
- * ⚠️ `loadBagtsRows` (`execData.ts`) нь эдгээрээс ГАДНА `origin`, `keys` г.м.
- * буцаадаг — энд зөвхөн схем ба дэлгэрэнгүй самбарт ХЭРЭГЛЭГДДЭГ талбаруудыг
- * нэрлэнэ. Урьд нь дөрөв (`key`·`label`·`progress`·`missing`) байсан тул
- * дэлгэрэнгүй самбарт блокийн тоо, гүйцэтгэгчийг үзүүлэх боломжгүй байв —
- * өгөгдөл нь аль хэдийн ирсэн атлаа ТӨРӨЛ нь нуудаг байсан.
  */
 export type BagtsLite = {
   key: string;
@@ -493,13 +353,6 @@ export type BagtsLite = {
 
 /**
  * ЭХ СУРВАЛЖИЙН НЭР — унасан үед хэрэглэгчид ЭНЭ нэрээр хэлнэ.
- *
- * ⚠️ `schemData.ts`-д БИШ ЭНД байрлана: `SchemSources.failed` нь ЭДГЭЭР мөрийг
- * агуулдаг тул дэлгэрэнгүй самбар «энэ зангилаа аль эх сурвалжаас гарав, тэр
- * нь татагдсан уу» гэдгийг тулгахын тулд ижил тольд хүрэх ёстой. Хоёр газар
- * бичвэл нэгийг нь засахад нөгөө нь чимээгүй зөрж, самбар «бүгд хэвийн» гэж
- * ХУДАЛ хэлнэ. `schemData.ts` нь сүлжээний модуль тул тэндээс импортлох
- * боломжгүй (цэвэр загварыг бохирдуулна).
  */
 export const SOURCE_NAME = {
   get headline() { return tr('ерөнхий үзүүлэлт'); },
@@ -519,16 +372,10 @@ export type SourceKey = keyof typeof SOURCE_NAME;
 export type SchemSources = {
   headline: { areaHa: number; population: number; investTotal: number } | null;
   clearance: { cleared: number; remaining: number; remainingHa: number; total: number; pct: number | null } | null;
-  /* ⚠️ 2026-09-29 (аудит 10): `pct`/`overall` нь null байж болно — блокийн мөргүй үед
-     reportData 0 биш «мэдээлэлгүй» буцаана (null ≠ 0); энд бүгд `fin()`-ээр уншигдана. */
   overall: { pct: number | null; weightSum: number; rows: number } | null;
-  /* ⚠️ 2026-10-04: `blocks` = бөглөх хуудасны БҮХ блок, `reported` = тайлагнасан (reportData.loadProgress) */
   progress: { blocks: number; reported?: number; overall: number | null; date: string; stalled: number } | null;
-  /* ⚠️ 2026-10-09: `paidPct` = `reportData.finance.paidPct` (`paidShare` — гэрээлсэн багцын олголт ÷
-     гэрээлсэн дүн, 0–100; мэдээлэлгүй бол null) — «Санхүүжилт»-ийн эрүүл байдлын ЦОРЫН ГАНЦ хувь */
   finance: { budget: number; contractAmount: number; paid: number | null; paidPct?: number | null; byBagts: Record<string, number> } | null;
   habea: { workers: number; tehnik: number; incidents: number } | null;
-  /** ⚠️ `null` = үйлчилгээ унасан; `[]` = мөр байхгүй. ХОЁР ӨӨР УТГА. */
   zov: Zov[] | null;
   review: Record<string, unknown>[] | null;
   bagts: BagtsLite[] | null;
@@ -537,8 +384,6 @@ export type SchemSources = {
 };
 
 /**
- * ⚠️ NaN → null.
- *
  * `loadHeadline` нь унасан эх сурвалжийнхаа талбарыг `null`-аар БИШ `NaN`-аар
  * тэмдэглэдэг (`live.ts` §Headline-ийн тайлбар). `NaN >= 60` нь `false` тул
  * шууд `grade`-д өгвөл сүлжээний түр доголдол «САНХҮҮ МУУ» гэсэн УЛААН тэмдэг
@@ -549,8 +394,6 @@ export const fin = (v: number | null | undefined): number | null =>
 
 /**
  * Хувь → төлөв.
- * ⚠️ Мэдэхгүй бол төлөв нь ч мэдэгдэхгүй (`none`) — ногоон болгож «зөв» гэж
- *    худлаа хэлэхгүй.
  */
 export const grade = (v: number | null, good: number, warn: number): Health =>
   (v == null ? 'none' : v >= good ? 'good' : v >= warn ? 'warn' : 'bad');
@@ -564,25 +407,10 @@ export const TH = {
   reportAgeD: { warn: 14, bad: 30 },
 } as const;
 
-/* ⚠️ 2026-10-09: `share` (олголт ÷ төсөв) туслах ХАСАГДАВ — «Санхүүжилт» `finance.paidPct`-ээр дүгнэнэ */
 
 /**
  * ТӨСВИЙН ЖИНГИЙН ХАМРАЛТ, 0–100 — гүйцэтгэл нь ХЭМЖИГДСЭН орон сууцны багцуудын
  * төсөв ÷ БҮХ орон сууцны багцын төсөв.
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь `overall.weightSum`
- *    (`reportData.loadOverall`) — түүний ХУВААРЬ нь ТӨСЛИЙН бүх багц, үүнд блокгүй
- *    ДЭД БҮТЦИЙН багцууд (Багц 14 · … — хэзээ ч «бөглөгдөхгүй») орсон тул орон сууцны
- *    багц бүгд тайлагнасан ч хувь 100-д хүрэхгүй, «Төсвийн жингийн N% л бүртгэгдсэн»
- *    анхааруулга ҮРГЭЛЖ асдаг байв. Одоо хуваарь нь зөвхөн `bagts` (орон сууцны
- *    багцууд — `execData.loadBagtsRows`, `building_GOL`-оос).
- * ⚠️ 2026-10-04: ХҮРТВЭР = багц бүрийн ТАЙЛАГНАСАН БЛОКИЙН ХУВЬ × жин ((blocks − missing) ÷ blocks).
- *    Урьд нь «хэмжигдсэн = `progress != null`» байсан — 2026-10-01-ний «тайлагнаагүй багц 0%»
- *    дүрмээс хойш хуудастай багц бүр `progress`-тэй (0) тул хамралт ҮРГЭЛЖ 100% болж,
- *    анхааруулга хэзээ ч асдаггүй байв. `blocks`/`missing` нь бөглөх хуудасны хуваарь (`joinBagts`).
- * ⚠️ Жин нь ХО дүн (`finance.byBagts`); аль ч багцад алга (санхүү унасан г.м.) бол
- *    БЛОКИЙН тоонд БҮРЭН шилжинэ — хагас хагасаар холихгүй (`gdash.housingPct`-ийн дүрэм).
- * @returns `bagts` татагдаагүй/хоосон, эсвэл жин огт алга бол `null`
  */
 export function housingWeight(src: Pick<SchemSources, 'bagts' | 'finance'>): number | null {
   const rows = src.bagts;
@@ -602,29 +430,17 @@ export function housingWeight(src: Pick<SchemSources, 'bagts' | 'finance'>): num
 
 /**
  * Сонгосон багцын мөр (`samePkg` — бичиглэлийн зөрүүг тэсвэрлэнэ).
- * ⚠️ 2026-10-01: `pkg` нь URL-аас `bagtsKey` хэлбэрээр («БАГЦ31») ч ирнэ — `key`-ээр ч тааруулна.
  */
 export const pkgRow = (bagts: readonly BagtsLite[] | null, pkg: string | null | undefined): BagtsLite | null =>
   (pkg && bagts ? bagts.find((b) => samePkg(b.label, pkg) || samePkg(b.key, pkg)) ?? null : null);
 
 /**
- * Багцын шүүлт — ЗӨВХӨН `bagtsKey()`-ээр.
- *
- * ⚠️ Багцын нэр эх сурвалж бүрд ӨӨР бичиглэлтэй: `building_GOL.BAGTS` нь
- * «Багц 4.1», хяналтын хүснэгтийн `Багц` нь «Багц 4-1». Түүхий мөр
- * харьцуулбал («===») тэр багцын мөрүүд БҮГД шүүгдэж, зангилаа «Хүлээгдэж
- * буй 0» гэж ХУДАЛ НОГООН болно — байхгүй ажлыг «цэвэр» гэж мэдээлнэ.
- * `execData.ts` энэ зангыг аль хэдийн баримтжуулсан, схем түүнийг дагана.
+ * Багцын шүүлт — ЗӨВХӨН `bagtsKey`-ээр.
  */
 export const samePkg = (v: unknown, pkg: string) => bagtsKey(v) === bagtsKey(pkg);
 
 /**
  * Түүхий ArcGIS мөрийг `groupWorks`-ийн хүлээх хэлбэрт оруулна.
- *
- * ⚠️ `hyanaltStore.toRow`-ыг ЭНД импортлож БОЛОХГҮЙ — тэр модуль React-тай
- * (`'use client'`, хук) тул схемийн цэвэр загварыг бохирдуулж, `schem.check.mjs`
- * ажиллахаа болино. Бүлэглэлтэд ЗӨВХӨН эдгээр талбар хэрэгтэй; огноог
- * хөрвүүлэхгүй.
  */
 export const toWork = (r: Record<string, unknown>): Row => ({
   ...(r as unknown as Row),
@@ -638,27 +454,14 @@ export const toWork = (r: Record<string, unknown>): Row => ({
 
 /**
  * Хяналтыг «хэний гар дээр байна» гэж ангилна — АЖЛААР, мөрөөр БИШ.
- *
- * ⚠️ Хяналтын хүснэгтэд мөр бүр НЭГ ТОЙРОГ: дахин илгээх, дахин шалгах бүрд
- * ШИНЭ мөр үүснэ (`hyanaltSubmit.submitForReview`, `hyanaltStore.recheck`).
- * Мөрөөр тоолвол 8 ажил 30 болж, удирдлагын самбар (`ExecKpi`) ба «Гүйцэтгэл»
- * харагдац ижил агшинд ӨӨР тоо харуулна — тэд хоёул `groupWorks()`-ээр
- * тойргуудыг нэг ажил болгож, ЗӨВХӨН сүүлийн тойргийг тоолдог. Тооллын дүрэм
- * НЭГ байх ёстой тул схем ч мөн `hyanaltGroup`-аас гарна.
  */
 export function reviewCounts(rows: Record<string, unknown>[]): {
   byStage: Record<Stage, number>;
-  /**
-   * ⚠️ Шат бүрд БУЦААГДСАН байгаа ажил. «Дэлгэрэнгүй» схем үүнийг шатны
-   * хайрцаг дээр ил бичнэ — нийт буцаалтын тоо ГАЦАЛ ХААНА байгааг хэлдэггүй.
-   */
   returnedByStage: Record<Stage, number>;
   pending: number;
   returned: number;
-  /** ⚠️ «Шилжүүлсэн» = ДУУССАН ажил. Хүлээгдэж буйд тоологдохгүй тул тусад нь. */
   done: number;
 } {
-  /* ⚠️ `STAGE_ORDER`-оос угсарна (2026-09-23) — шат нэмэгдэхэд энд хоцрохгүй */
   const byStage = Object.fromEntries(STAGE_ORDER.map((s) => [s, 0])) as Record<Stage, number>;
   const returnedByStage = Object.fromEntries(STAGE_ORDER.map((s) => [s, 0])) as Record<Stage, number>;
   let pending = 0;
@@ -668,13 +471,9 @@ export function reviewCounts(rows: Record<string, unknown>[]): {
     const st = w.status;
     const owner = OWNER[st];
     if (!owner) continue;
-    /* ⚠️ «Шилжүүлсэн» нь ДУУССАН ажил — хүлээгдэж буйд ч, аль ч шатны гар
-       дээр ч тоологдохгүй. `OWNER[transferred]` нь `director` тул шүүхгүй
-       бол дууссан ажлууд «төлөвлөлтийн ахлах инженерийн гар дээр» гэж хуримтлагдана. */
     if (st === STATUS.transferred) { done += 1; continue; }
     byStage[owner] += 1;
     pending += 1;
-    /* ⚠️ 2026-10-23: буцаасан төлөвүүд `RETURNED_STATUS`-ээс — шат нэмэгдэхэд (төлөвлөлтийн инженер) энд хоцрохгүй */
     if ((Object.values(RETURNED_STATUS) as Status[]).includes(st)) {
       returned += 1;
       returnedByStage[owner] += 1;
@@ -697,24 +496,9 @@ export function stageRail(src: SchemSources, pkg?: string | null): { stage: Stag
  * ЭХ СУРВАЛЖУУДЫГ ЗАНГИЛАА БОЛГОНО.
  *
  * @param pkg Багцын нэр («Багц 4-1»). `null` бол төслийн нийт.
- *
- * ⚠️ Багцаар ЗАДАРДАГГҮЙ зангилаа (`tolovlolt`, `gazar`, `ersdel`, `tailan`)
- *    нь багц сонгосон ч төслийн нийт дүнгээ хэвээр үзүүлж, `projectWide`
- *    тэмдэгтэй болно. Багцын нэрийг гарчигт нь хавсаргаад төслийн тоог
- *    үзүүлэх нь ЧИМЭЭГҮЙ ХУДАЛ мэдээлэл болно.
  */
 export function buildSchem(src: SchemSources, pkg: string | null = null): SchemLive {
-  /* ⚠️ `samePkg` — түүхий `===` БИШ (2026-09-15-ны аудит). Доорх мөр 577 ба
-     660 нь аль хэдийн `samePkg`-ээр шүүдэг: «Багц-4.1» ↔ «Багц 4.1» гэсэн
-     бичиглэлийн зөрүүтэй үед зөвшөөрөл/хяналт нь тэр багцаар шүүгдээд,
-     барилга/санхүү нь `bagtsRow == null` болж ТӨСЛИЙН НИЙТ рүү унадаг байв —
-     нэг схем дээр хоёр өөр хамрах хүрээ зэрэгцэнэ. */
   const bagtsRow = pkgRow(src.bagts, pkg);
-  /* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БАГЦ СОНГОСОН атал мөр нь олдоогүй
-     (хэсэгчилсэн ачаалал — «багцын жагсаалт» унасан, эсвэл URL-аас ирсэн багц
-     жагсаалтад алга) бол барилга/санхүүгийн тоо «—». Урьд нь `bagtsRow == null`
-     үед ТӨСЛИЙН нийт гүйцэтгэл/төсөв/олголт тэр багцын нэрийн дор гардаг байв —
-     `schemDetail.cardStat`-ийн 2026-09-15-ны `proj`/`sum` дүрэмтэй ижил. */
   const lost = !!pkg && !bagtsRow;
   const lostWhy = lost ? tr('Энэ багцад мөр олдсонгүй.') : undefined;
 
@@ -732,11 +516,9 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
 
   /* ── Зөвшөөрөл ── */
   let zovList = src.zov;
-  /* ⚠️ Түүхий тэнцэл БИШ — `samePkg` (дээрх бичиглэлийн занга) */
   if (zovList && pkg) zovList = zovList.filter((z) => samePkg(z.bagts, pkg));
   let zovState: SchemState;
   if (!zovList) {
-    /* ⚠️ `loadZov()` нь алдаагаа `null`-аар буцаадаг, throw хийдэггүй */
     zovState = {
       health: 'none',
       metrics: [
@@ -750,8 +532,6 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
     const no = zovList.filter((z) => z.tolov === TOLOV.no).length;
     const unknown = zovList.filter((z) => z.tolov === 'unknown').length;
     zovState = {
-      /* ⚠️ Танигдаагүй төлөв ч анхаарал шаарддаг — `zovshoorol.summarize`-ийн
-         `alert` дүрэмтэй ИЖИЛ. Хоёр газар өөр дүгнэвэл схем ба харагдац зөрнө. */
       health: no > 0 || unknown > 0 ? 'bad' : wait > 0 ? 'warn' : zovList.length ? 'good' : 'none',
       metrics: [
         { label: tr('Зөвшөөрсөн'), value: ok, kind: 'count' },
@@ -775,10 +555,6 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
 
   /**
    * ── Хуваарь ──
-   * ⚠️ ЭНД АМЬД ТОО ГАРГАХГҮЙ. `coverageOf` нь багц бүрд `loadRows(pkg, schema)`
-   * шаарддаг (10 багц × 1,400 мөр) — схем нээх бүрд хүсэлтийн үер болно.
-   * Орлуулах тоо зохиох нь худал мэдээлэл тул зангилаа нь холбоос ба
-   * тайлбартайгаа үлдэнэ. Хямд нэгтгэл (`loadPlanCoverage`) гарвал энд залгана.
    */
   const huvaari: SchemState = {
     health: 'none',
@@ -792,28 +568,18 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
 
   /* ── Барилга угсралт ── */
   const bPct = bagtsRow ? fin(bagtsRow.progress) : lost ? null : fin(src.overall?.pct);
-  /* ⚠️ 2026-10-01: хуваарь нь ЗӨВХӨН орон сууцны багцууд (`housingWeight`) — дэд бүтэц орохгүй */
   const weightSum = housingWeight(src);
   const barilga: SchemState = {
     health: grade(bPct, TH.barilgaPct.good, TH.barilgaPct.warn),
     metrics: [
       { label: tr('Гүйцэтгэл'), value: bPct, kind: 'pct', why: lostWhy },
-      /* ⚠️ 2026-09-25: «Блок» БИШ «Тайлагнасан блок» — `progress.blocks` нь зөвхөн
-         нийт гүйцэтгэл нь тайлагнагдсан блокийн тоо (`blockProgress.ts` тайлангүйг
-         хасдаг). «Блок» гэж бичихэд нийт блок мэт уншигдаж, тайлангүй блок нуугддаг байв.
-         ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): БАГЦ сонгоход урьд нь «—» байв — одоо
-         блок − тайлангүй (нарийн схемийн `cardStat('barOk')`-тэй НЭГ дүрэм). */
       {
         label: tr('Тайлагнасан блок'),
-        /* ⚠️ 2026-10-04: `progress.blocks` нь одоо БҮХ блок — төсөлд Σ(блок − тайлангүй) (бөглөх
-           хуудасны хуваарь, «Тайлангүй блок»-той нэг ертөнц); багцын жагсаалт алга бол `reported` */
         value: bagtsRow ? bagtsRow.blocks - bagtsRow.missing : lost ? null
           : src.bagts ? src.bagts.reduce((a, b) => a + Math.max(0, b.blocks - b.missing), 0) : fin(src.progress?.reported),
         kind: 'count',
         why: lostWhy,
       },
-      /* ⚠️ 2026-10-01: ТӨСЛИЙН нийтэд урьд нь «—» байв — одоо Σ багцын тайлангүй блок
-         (`bagts` унасан бол null, 0 БИШ). */
       {
         label: tr('Тайлангүй блок'),
         value: bagtsRow ? bagtsRow.missing
@@ -822,7 +588,6 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
         why: lostWhy,
       },
     ],
-    /* ⚠️ Энэ тоо ЧИМЭЭГҮЙ хэтрэх гол шалтгаан: бөглөгдөөгүй багц дүнд ороогүй */
     note: !pkg && weightSum != null && weightSum < 100
       ? tr('Төсвийн жингийн {0}% л бүртгэгдсэн', weightSum.toFixed(0))
       : undefined,
@@ -854,9 +619,6 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
   };
 
   /* ── Эрсдэл ── */
-  /* ⚠️ 2026-09-30: «ЗОГССОН» БИШ — `progress.stalled` нь гүйцэтгэл < 1% (ажил бодитоор
-     ЭХЛЭЭГҮЙ) тайлагнасан блок (`reportData.loadOverall`). 50%-д гацсан блок ОРДОГГҮЙ, 0.5%-тай
-     эхлээгүй блок ОРДОГ тул «сүүлийн тайлангаас хойш ахиагүй» гэж уншуулах нь худал байв. */
   const stalled = fin(src.progress?.stalled);
   const ersdel: SchemState = {
     projectWide: true,
@@ -867,15 +629,10 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
   };
 
   /* ── Санхүүжилт ── */
-  /* ⚠️ 2026-10-01: багц сонгосон атал мөр олдоогүй (`lost`) бол ТӨСЛИЙН төсөв/олголт БИШ — «—» */
   const budget = bagtsRow && src.finance
     ? fin(src.finance.byBagts[bagtsRow.key])
     : lost ? null : fin(src.finance?.budget);
-  /* ⚠️ Олголт нь БАГЦААР задардаггүй — багц сонгосон үед харьцаа гаргахгүй */
   const paid = pkg ? null : fin(src.finance?.paid);
-  /* ⚠️ 2026-10-09: эрүүл байдал = порталын НЭГ «олгосон хувь» (`finance.paidPct` — гэрээлсэн багцын
-     олголт ÷ гэрээлсэн дүн). Урьд нь НИЙТ олголт ÷ ТӨСӨВТ ӨРТӨГ (өөр хуваарь) тул Тайлан · CEO-оос
-     өөр хувиар дүгнэгдэж байв. Багц сонгосон үед задардаггүй тул «none». */
   const paidPct = pkg ? null : fin(src.finance?.paidPct);
   const sankhuu: SchemState = {
     health: grade(paidPct, TH.paidPct.good, TH.paidPct.warn),
@@ -895,7 +652,6 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
   const ageD = ageDays(src.progress?.date);
   const tailan: SchemState = {
     projectWide: true,
-    /* ⚠️ Нас нь ИХ байх нь МУУ — `grade` урвуу тул гараар */
     health: ageD == null ? 'none'
       : ageD >= TH.reportAgeD.bad ? 'bad'
         : ageD >= TH.reportAgeD.warn ? 'warn' : 'good',
@@ -910,13 +666,6 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
 
 /**
  * «YYYY-MM-DD» → өнөөдрөөс хойших хоног. Танигдахгүй бол `null`.
- *
- * ⚠️ 2026-09-25: ОРОН НУТГИЙН өдрөөр (`dayKey`-тэй ижил). Урьд нь
- * `Date.parse('…T00:00:00Z')` — хуудасны локал огноог UTC шөнө дунд гэж уншдаг
- * тул УБ-д (+8) 00:00–07:59 хооронд нас НЭГ хоногоор дутуу гарч, 14 хоногийн
- * `warn` / 30 хоногийн `bad` босго нэг өдөр хоцорч асдаг байв. Одоо хоёр
- * талыг локал шөнө дунд болгож өдрийн зөрүүг бүхэлчилнэ (`round` — DST-ийн
- * 23/25 цагийн өдөрт тасрахгүй).
  */
 export function ageDays(date: string | undefined, now: number = Date.now()): number | null {
   if (!date) return null;
@@ -926,7 +675,6 @@ export function ageDays(date: string | undefined, now: number = Date.now()): num
   const mo = Number(m[2]) - 1;
   const d = Number(m[3]);
   const day = new Date(y, mo, d);
-  /* ⚠️ «2026-02-31» шиг огноог `Date` дараа сар руу шилжүүлдэг — хүчингүй гэж үзнэ */
   if (day.getFullYear() !== y || day.getMonth() !== mo || day.getDate() !== d) return null;
   const n = new Date(now);
   if (!Number.isFinite(n.getTime())) return null;

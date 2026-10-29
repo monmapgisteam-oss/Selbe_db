@@ -1,16 +1,6 @@
 /**
- * TELEGRAM БОТЫН ArcGIS УНШИЛТЫН ТОКЕН — тохиргоо · үүсгэлт/шинэчлэлт · `query.ts`-ийн замд залгалт (⚠️ 2026-10-22, аудит).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs tools/telegram-arcgis.check.mjs
- *
- * ⚠️ ЯАГААД: бот Node-д `authToken()` ҮРГЭЛЖ `null` тул Organization-only бүх эх сурвалж «Token Required» авч, хэрэглэгч
- *    «түр хүлээгээд дахин оролдоно уу» гэсэн ХУДАЛ мессеж хардаг байв. Энд:
- *      1. env → горим (`none` · `static` · `password`), нууц нь статусын текстэд ОРОХГҮЙ;
- *      2. нэр/нууц үг → `generateToken` (POST биеэр), 200-аар ирсэн алдаа, татгалзлын дараа порталыг давтан цохихгүй;
- *      3. `registerIdentity` → `query.arcgisPost` токеныг POST биед залгана (ботын `../src/lib/authToken.ts` ба
- *         `@/lib/authToken` НЭГ модуль), хугацаа дуусахаас өмнө ба 498-д шинэчилнэ, тогтмол токен татгалзахад тэмдэглэнэ;
- *      4. хэрэглэгчийн текст — тохируулаагүй ≠ татгалзсан ≠ бусад алдаа;
- *      5. ботын эх кодын гэрээ (регистр нь агентын цөмөөс ӨМНӨ, тохируулаагүй бол AI-г дуудахгүй).
- *    АМЬД СҮЛЖЭЭ РҮҮ ЮУ Ч ЯВАХГҮЙ — `fetch` бүрэн хуурамч.
+ * TELEGRAM БОТЫН ArcGIS УНШИЛТЫН ТОКЕН — тохиргоо · үүсгэлт/шинэчлэлт · `query.ts`-ийн замд залгалт (2026-10-22, аудит).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs tools/telegram-arcgis.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

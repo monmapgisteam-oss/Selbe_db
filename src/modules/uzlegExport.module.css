@@ -1,11 +1,7 @@
 /* ══════════════════════════════════════════════════════════
-   ҮЗЛЭГИЙН ТАЙЛАН ТАТАХ — товч ба цонх (2026-10-06).
-   ⚠️ Өнгө бүгд порталын токеноос (`--data`, `--good`/`--warn`/`--bad`,
-      `--surface*`, `--line*`) — гэрэл/харанхуй хоёр сэдэвт өөрөө тохирно.
-   ══════════════════════════════════════════════════════════ */
+   ҮЗЛЭГИЙН ТАЙЛАН ТАТАХ — товч ба цонх (2026-10-06). */
 
-/* ── Товч («Мэдээлэл» картын доор) ──
-   ⚠️ 2026-10-23: Environment — 32px · булан 8px · 12px/600; moss 12% дэвсгэр · moss бичиг · moss 45% хүрээ */
+/* ── Товч («Мэдээлэл» картын доор) ── */
 .trigger {
   font: inherit;
   font-size: 12px;
@@ -43,7 +39,6 @@
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line-strong);
-  /* ⚠️ 2026-10-23: Environment — хөвөгч цонх: булан 12px, --line-strong, --shadow */
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -89,7 +84,6 @@
 .meta + .link { margin-left: 10px; }
 
 /* Асуумжийн карт */
-/* ⚠️ 2026-10-21 (хэрэглэгч: «зай бага эзэлдэг байх»): 11 асуумж — 4 багана, нэг мөр, богино нэр (UZLEG_SHORT) */
 .forms { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 @media (max-width: 760px) { .forms { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .form {
@@ -104,7 +98,6 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .form:hover { border-color: var(--line-strong); }
-/* ⚠️ 2026-10-23: Environment — сонгогдсон: moss 12% дэвсгэр · moss 45% хүрээ */
 .formOn { border-color: color-mix(in oklab, var(--moss) 45%, transparent); box-shadow: none; background: color-mix(in oklab, var(--moss) 12%, var(--surface)); }
 .formDot { flex: none; width: 9px; height: 9px; border-radius: 3px; }
 .formName { flex: 1; min-width: 0; font-size: 11.5px; font-weight: 600; line-height: 1.25; }
@@ -112,7 +105,6 @@
 
 /* Хугацаа */
 .presets, .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-/* ⚠️ 2026-10-23: Environment — шүүлтийн чип булан 6px; сонгогдсон = moss 13% · moss бичиг · moss 45% хүрээ */
 .chip {
   font: inherit; font-size: 11.5px;
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
@@ -130,7 +122,6 @@
 .chipOn b { color: var(--moss); opacity: 0.85; }
 .dates { display: flex; align-items: flex-end; gap: 8px; }
 .field { flex: 1; display: grid; gap: 3px; font-size: 11px; color: var(--ink-3); }
-/* ⚠️ 2026-10-23: Environment `.pe-field` — 32px · булан 7px · --line-strong · bg --bg · 12.5px; focus moss */
 .field input {
   font: inherit; font-size: 12.5px;
   height: 32px;
@@ -172,7 +163,6 @@
 .row input { accent-color: var(--data); width: 15px; height: 15px; }
 .rowMain { display: grid; gap: 2px; min-width: 0; }
 .rowTop { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
-/* ⚠️ 2026-10-23: Environment badge — булан 6px · 11px/500 · tone бичиг · хүрээ tone 35% · bg tone 8% */
 .pkg {
   font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: var(--r-sm);
   color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line);
@@ -197,9 +187,7 @@
 .warn { color: var(--warn-ink); }
 .bad { color: var(--bad-ink); }
 
-/* ⚠️ 2026-10-23: Environment хоосон төлөв — тасархай хүрээ, төвд ink-3 */
 .empty { margin: 0; padding: 14px 10px; font-size: 12px; text-align: center; color: var(--ink-3); border: 1px dashed var(--line-strong); border-radius: var(--r); }
-/* ⚠️ 2026-10-23: Environment ачаалал — градиент гялбаа ХАСАВ; хавтгай гадарга, бичиг бүдэг лугшина */
 .skeleton {
   padding: 18px; font-size: 12px; text-align: center; color: var(--ink-3);
   background: var(--surface-2);
@@ -242,7 +230,6 @@
 .done { margin: 0; font-size: 12px; color: var(--good-ink); }
 
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
-/* ⚠️ 2026-10-23: Environment `.pe-ghost` / `.pe-primary` — 32px · булан 8px · 12px/600; primary = --workspace-accent */
 .btn {
   font: inherit; font-size: 12px; font-weight: 500;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;

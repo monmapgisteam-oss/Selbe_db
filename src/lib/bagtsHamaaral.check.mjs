@@ -1,9 +1,6 @@
 /**
  * ХУУЧИН БАГЦЫН ХАМААРАЛ — `bagtsHamaaral.ts`-ийн цэвэр логик (2026-10-04; 2026-10-22-оос ЗӨВХӨН шилжүүлэлтэд).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/bagtsHamaaral.check.mjs
- *
- * ⚠️ Гол гэрээ: эвдэрсэн бичлэг ЧИМЭЭГҮЙ хоосон болохгүй (шидэнэ) — эс бөгөөс устгалын бичилт бүх холбоог дарна.
- * ⚠️ 2026-10-22: дугуй/нэмэх логик ХАСАГДСАН — шинэ холбоо нь АЖЛЫН түвшинд (`workDeps.check.mjs`).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/bagtsHamaaral.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -23,7 +20,6 @@ assert.ok(!HAMAARAL_KEY.includes('|'), 'draftRemote-ийн legacyLike-тэй м�
 assert.ok(sameDep(D('A', 'B'), D('A', 'B')) && !sameDep(D('A', 'B'), D('B', 'A')));
 console.log('✅ хуучин бичиглэл');
 
-/* ⚠️ 2026-10-22: хуучин бүртгэлийн уншигч ЗӨВХӨН «Багцын хамаарал» (шилжүүлэлт); ТУХ ажлын графаас */
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 const tuh = strip(readFileSync('src/modules/Tuh.tsx', 'utf8'));
 assert.doesNotMatch(tuh, /bagtsHamaaral/, 'ТУХ хуучин багц ↔ багц бүртгэлээс уншихгүй');

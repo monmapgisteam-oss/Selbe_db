@@ -10,7 +10,7 @@
  * Эх сурвалжууд:
  *   · талбай      — хилийн давхарга [97] `Hec_area`
  *   · хүн ам      — барилгын давхарга [108] `Population` нийлбэр
- *                   (⚠️ `Total_population` ХОРИОТОЙ — багтаамжийн дээд тоо)
+ *                   (`Total_population` ХОРИОТОЙ — багтаамжийн дээд тоо)
  *   · өрх/блок    — building_GOL (AIL_TOO) — `useBagtsTable` аль хэдийн амьд
  *   · нийт ХО     — INVEST хүснэгт (баталгаажсан + урьдчилсан)
  *   · нийт явц    — Төсөл_Гүйцэтгэл жигнэсэн дундаж (Σw·a ÷ Σw)
@@ -32,38 +32,14 @@ import { register, type DataKey } from '@/lib/dataBus';
 
 /**
  * Оршин суух хүн ам — [108]-ийн `Population` талбар.
- * ⚠️ `BUILT_FIELDS.population` (`Total_population`) БИШ: тэр нь багтаамжийн
- * дээд тоо (68 мянга) бөгөөд тооцоонд ХОРИОТОЙ (TRANSPORT_ANALYSIS_HANDOFF).
  */
-export const POPULATION_FIELD = 'population'; // ⚠️ export (2026-09-22): Portal.SummaryBar бүсийн шүүлтэд ижил талбар
+export const POPULATION_FIELD = 'population';
 
 /**
  * Кэштэй loader — амжилтгүй амлалтыг кэшлэхгүй («дахин оролдох» сэргэнэ).
  *
  * `ttlMs` өгвөл тэр хугацааны дараа дараагийн дуудалт шинээр татна — харагдац
  * хооронд шилжихэд дахин татахгүй, гэхдээ өгөгдөл хуучрахгүй.
- *
- * ⚠️ export (2026-08-21 гүйцэтгэлийн аудит): Finance/Habea зэрэг view бүрийн
- * mount дээр бүтэн хүснэгтүүдээ ДАХИН татдаг байсныг энэ хэвээр кэшилнэ.
- *
- * ⚠️ `reads` (2026-08-28) — тухайн ачаалагч ЯМАР хүснэгтээс уншдагийг зарлана.
- * Тэр хүснэгт рүү бичсэн код `invalidate('…')` дуудахад энэ кэш хаягдаж,
- * дэлгэц дээрх дуудагчид ДАХИН татна. Тагийг өгөхгүй бол кэш нь урьдын адил
- * зөвхөн TTL-ээр л шинэчлэгдэнэ — өөрөөр хэлбэл тагийг МАРТВАЛ хуучин зан
- * хэвээр үлдэнэ, чимээгүй эвдрэхгүй.
- */
-/**
- * ⚠️ 2026-10-05: «СЕШНИЙ» кэшүүдийн АНХДАГЧ TTL. Урьд нь `loadBudget` · `loadPkgProgress` ·
- *    `loadFillPkgProgress` · `loadHousing` · `loadSocial` · `loadClearance` (мөн `gdash` ·
- *    `land`-ийн ачаалагчид) TTL-гүй байсан тул өглөө нээсэн таб бусдын өдрийн бичилтийг
- *    хуудсаа refresh хийтэл ХАРДАГГҮЙ байв. Одоо бүгд ИЖИЛ 5 мин (хуучрал нэг жигд хэвээр).
- * ⚠️ TTL нь ДАРААГИЙН дуудалтад л шалгагдана — нээлттэй харагдацыг `Portal`-ын «Шинэчлэх»
- *    товч ба таб буцаж ирэх үеийн `invalidateAll()` шинэчилнэ.
- * ⚠️ 2026-10-12 (гүйцэтгэлийн аудит): `loadFillPkgProgress` (мөн `reportData.loadOverall/
- *    loadProgress`) нь дотроо `blockProgress.loadPkgProgress(false)` → тэндхийн `memo`-г дууддаг;
- *    тэр memo урьд нь TTL-ГҮЙ тул энд 5 мин дуусаад дахин дуудсан ч ХУУЧИН мөрөөр дахин
- *    бодогдож, амлалт биелдэггүй байв. Одоо `blockProgress.MEMO_TTL_MS` (ижил 5 мин) —
- *    тэндээс импортлохгүй (энэ файл түүнийг динамикаар ачаалдаг, мөчлөг).
  */
 export const SESSION_TTL_MS = 5 * 60_000;
 
@@ -71,35 +47,17 @@ export function cached<T>(
   fn: () => Promise<T>,
   ttlMs?: number,
   reads: readonly DataKey[] = [],
-  /**
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ.
-   * Өгвөл амжилттай ирсэн утга `keep(v) === false` (хэсэгчилсэн — аль нэг эх
-   * унасан) үед кэш ХАЯГДАНА: тэр утга нь одоогийн дуудагчдад хүрнэ (унасан эхийн
-   * нэрийг дэлгэц харуулна), харин ДАРААГИЙН дуудалт шинээр татна. Урьд нь
-   * хэсэгчилсэн үр дүн TTL (5 мин) турш «хуучин нөөц» болж үлддэг байв.
-   * Өгөөгүй бол хуучин зан (амжилттай бүхнийг кэшлэнэ).
-   */
   keep?: (v: T) => boolean,
 ): () => Promise<T> {
   let p: Promise<T> | null = null;
   let at = 0;
-  /* ⚠️ 2026-09-30 (төслийн аудит): `reads` хоосон ч БҮРТГЭНЭ — хүснэгтийн бичилт
-     (`invalidate(key)`) тэднийг хөндөхгүй (хоосон `reads`), харин хэл солиход
-     (`dataBus.subscribeLocale → invalidateAll`) хаягдана. Урьд нь бүртгэгдээгүй 5 кэш
-     орчуулсан мөрөө сешн дуустал хуучин хэлээр барьдаг байв. */
   register(() => { p = null; }, reads);
   return () => {
     if (!p || (ttlMs != null && Date.now() - at > ttlMs)) {
       at = Date.now();
-      /* ⚠️ 2026-09-08: унасан амлалт нь ЗӨВХӨН ӨӨРӨӨ идэвхтэй байхад л кэшийг
-         цэвэрлэнэ. Урьд нь хаалт нь `p`-г шалгалгүй тэглэдэг байсан тул:
-         удаан хүсэлт явж байхад `invalidate()` (эсвэл TTL) шинэ хүсэлт
-         эхлүүлж АМЖИЛТТАЙ кэшлэсний ДАРАА хуучин хүсэлт унахад тэр ЗӨВ,
-         ШИНЭ кэшийг устгаж, дараагийн дуудагч дэмий дахин татдаг байв. */
       const mine = fn();
       p = mine;
       mine.catch(() => { if (p === mine) p = null; });
-      /* ⚠️ 2026-10-01: хэсэгчилсэн үр дүн — мөн ӨӨРӨӨ идэвхтэй үед л хаяна (дээрх хаалт) */
       if (keep) void mine.then((v) => { if (!keep(v) && p === mine) p = null; }, () => {});
     }
     return p;
@@ -109,17 +67,15 @@ export function cached<T>(
 /* ══════════════ Төсөв — CASHFLOW_NEW (Cashflow_0909 /0) ══════════════ */
 
 export type Budget = {
-  /** Төсөвт өртөг, ₮ — ⚠️ ЗӨВХӨН `finXlInTotal` хүрээ (2,493 тэрбум), 78 мөрийн нийлбэр БИШ (2026-09-21) */
+  /** Төсөвт өртөг, ₮ — ЗӨВХӨН `finXlInTotal` хүрээ (2,493 тэрбум), 78 мөрийн нийлбэр БИШ (2026-09-21) */
   total: number;
   /** Захирамжийн нийт дүн, ₮ — `finXlInTotal` хүрээ */
   orderTotal: number;
-  /** Гэрээлсэн дүн, ₮ — ⚠️ `finXlInTotal` ∧ `note === CONTRACTED` мөрийн `geree_dun` (2026-09-21) */
+  /** Гэрээлсэн дүн, ₮ — `finXlInTotal` ∧ `note === CONTRACTED` мөрийн `geree_dun` (2026-09-21) */
   contract: number;
   /** Санхүүжилтийн эх үүсвэр — задраагүй үлдэгдэлтэй */
   sources: { key: string; label: string; value: number }[];
-  /** ⚠️ ажлын ТӨРӨЛ (`Turul`)-өөр төсөвт өртөг */
   byType: { key: string; label: string; value: number; n: number }[];
-  /** ⚠️ ДЭД багц (`Ded_bagts`)-аар. `key` нь `bagtsKey()`, `label` нь түүхий нэр. */
   byPkg: { key: string; label: string; value: number; n: number }[];
 };
 
@@ -127,15 +83,9 @@ export type Budget = {
  * ТӨСЛИЙН ТӨСВИЙН ЭХ = `Cashflow_0909/0` (CASHFLOW_NEW). «Хөрөнгө оруулалт
  * өртөг» (/249)-ЭЭС ЯЛГААТАЙ: тэр нь олон нийтийн бүсийн хувийн таамаг оруулж
  * 4.16 их наяд хөөргөдөг; энэ нь захирамж/гэрээгээр баталгаажсан ТӨСЛИЙН төсөв.
- *
- * ⚠️ 2026-09-06: `months` (сарын санхүүжилтийн төлөвлөгөө) ба `transferred`
- * («өмнө шилжүүлсэн») ХАСАГДСАН — тэдгээр нь хуучин `cashflow_0813`-ийн САР ба
- * ӨМНӨХ ШИЛЖҮҮЛСЭН мөрүүдээс гардаг байсан бөгөөд шинэ үйлчилгээнд тийм мөр
- * ОГТ БАЙХГҮЙ. Мөрийн төрлийн шүүлт (`where.master`) ч хэрэггүй болсон: одоо
- * хүснэгт бүхэлдээ 76 гэрээ, мөр бүр НЭГ гэрээ.
  */
 /**
- * Бүлгийн шошго. ⚠️ Бөглөөгүй нүд ГУРВАН хэлбэртэй: `null`, `'0'`, эсвэл
+ * Бүлгийн шошго. Бөглөөгүй нүд ГУРВАН хэлбэртэй: `null`, `'0'`, эсвэл
  * хоосон мөр. `tally` нь `''`/`'0'` хоёрыг «тодорхойгүй» болгодог тул энд
  * `null`-ыг `''` болгож ижил замд оруулна — эс бөгөөс төрөлгүй гэрээнүүд
  * (63 тэрбум ₮) чимээгүй алдагдана.
@@ -146,30 +96,7 @@ const cfLabel = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 export const loadBudget = cached<Budget>(async () => {
   const CF = CASHFLOW_NEW.fields;
-  /* ⚠️ `CONTRACTED`-ийг ДИНАМИКААР (2026-09-21): `gdash.ts` энэ файлын `cached`-ыг
-     импортолдог тул статик импорт нь цикл үүсгэж, ачаалах дарааллаас хамаарч
-     `loadGdashCf = cached(...)` TDZ-д унах эрсдэлтэй. */
   const { CONTRACTED } = await import('@/lib/gdash');
-  /**
-   * ⚠️ 2026-09-21: ХОЁР ХҮСЭЛТ → НЭГ. Урьд нь `queryStats` нь 78 мөр БҮГДИЙГ
-   * шүүлтгүй нэмж «нийт төсөв 3,167.6 тэрбум» гаргадаг байв — Excel-д ч,
-   * дашбоардад ч БАЙХГҮЙ тоо (хэрэглэгчийн шийдвэр 2026-09-15: «яг төсөв нь
-   * 2,493,041,880,532 эндээс бодно»). Одоо нийлбэрүүд ЭНЭ бүлэглэлтээс
-   * клиент талд бодогдоно:
-   *   · `total` · `orderTotal` · `sources` — ЗӨВХӨН `finXlInTotal` мөр
-   *     (Excel-ийн НИЙТ томьёо: 5·6·7-р хэсэг ОРОХГҮЙ) — `reportData.loadFinance`
-   *     ба `gdash.kpisOf`-той ИЖИЛ хүрээ.
-   *   · `contract` — `finXlInTotal` ∧ `note === CONTRACTED` («Гэрээлсэн дүн»,
-   *     2026-09-08-ны дүрэм): `geree_dun` нь гэрээлэгдээгүй мөрд ч бөглөгдсөн
-   *     байдаг тул шүүлтгүй нийлбэл ~33 тэрбумаар их гардаг (`gdash.Kpi.contract`).
-   *     Хүрээг нь `total`-тай ижил авсан нь «гэрээ ÷ төсөв» хувийн тоологч
-   *     хуваарийнхаа ДОТОР байхын тулд.
-   * Бүлэглэлд `note` талбар нэмэгдсэн нь `tally`-д нөлөөгүй — тэр түлхүүрээрээ
-   * нийлүүлдэг.
-   */
-  /* ⚠️ ХОЁР ТҮВШНИЙ дөрвөн талбараар бүлэглэнэ: чартын ангилал нь ганц
-     талбар БИШ, `finXlChartCat`-аар хоёроос бодогддог. Дашбоардтай ИЖИЛ
-     ангилал гарах ёстой — эс бөгөөс хоёр карт өөр бүлэг харуулна. */
   const g = await queryGroup(
     CASHFLOW_NEW.url,
     `${FIN_XL_CHART_FIELDS.join(',')},${CF.pkg2},${CF.amountNote}`,
@@ -185,9 +112,6 @@ export const loadBudget = cached<Budget>(async () => {
   const sumOf = (rows: readonly Row[], f: string) => rows.reduce((a, r) => a + Number(r[f] ?? 0), 0);
   const total = sumOf(inTotal, 'b');
   const orderTotal = sumOf(inTotal, 'o');
-  /* ⚠️ 2026-09-21: ЭНЭ хүрээ (`inTotal` ∧ CONTRACTED) нь порталын ЦОРЫН ГАНЦ «гэрээлсэн
-     дүн»-ий дүрэм — `reportData.contractAmount`, `execReport.csum`,
-     `GeneralDash.KpiStrip.csum` бүгд ижил шүүлттэй; аль нэгийг өөрчилбөл бүгдийг. */
   const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
   const named: { key: string; label: string; value: number }[] = CASHFLOW_NEW.sources
     .map((s, i) => ({ key: s.field as string, label: s.label as string, value: sumOf(inTotal, `s${i}`) }))
@@ -202,7 +126,6 @@ export const loadBudget = cached<Budget>(async () => {
     orderTotal,
     contract,
     sources: named,
-    // ⚠️ `n` = ГЭРЭЭНИЙ тоо — мөр бүр нэг гэрээ тул нийт 76.
     byType: tally(
       g,
       (row) => ({ key: finXlChartCat(row), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),
@@ -214,69 +137,28 @@ export const loadBudget = cached<Budget>(async () => {
       tr('Багц тодорхойлоогүй'),
     ).filter((t) => t.value > 0),
   };
-  // ⚠️ Хяналт (2026-09-21): Σ byType.value ≥ total — задаргаа БҮХ мөрөөр (5·6·7-р
-  //    хэсэг ч орно), `total` нь зөвхөн `finXlInTotal` хүрээ. Тэнцэхгүй нь ЗӨВ.
 }, SESSION_TTL_MS, ['CASHFLOW_NEW']);
 
 export type Headline = {
-  /**
-   * ⚠️ 2026-08 аудит (олдвор #22): аль нэг эх сурвалж унавал ТУХАЙН эх
-   * сурвалжийн тоон талбарууд `NaN`-аар тэмдэглэгдэнэ (`byStatus` нь `[]`).
-   * `null` БИШ байх шалтгаан: төрлийг nullable болговол Dashboard зэрэг
-   * хэрэглэгчдийн арифметик (`h.investTotal / 1e12` г.м.) олон газар эвдэрнэ;
-   * NaN нь тэнд аяндаа тархаж, `num()`/`pct()` «—» гэж зурна, guard-уудад falsy.
-   */
   /** Төслийн талбай, га — хилийн `Hec_area` */
   areaHa: number;
   /** Оршин суух хүн ам — барилгуудын `Population` нийлбэр */
   population: number;
-  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — `Budget.total` (⚠️ `finXlInTotal` хүрээ, 2026-09-21) */
+  /** ТӨСЛИЙН нийт төсөвт өртөг, ₮ — `Budget.total` (`finXlInTotal` хүрээ, 2026-09-21) */
   investTotal: number;
-  /** Гэрээлсэн дүн, ₮ — `Budget.contract` (⚠️ зөвхөн «Гэрээлсэн дүн» мөрөөр, 2026-09-21) */
+  /** Гэрээлсэн дүн, ₮ — `Budget.contract` (зөвхөн «Гэрээлсэн дүн» мөрөөр, 2026-09-21) */
   investConfirmed: number;
   /** Ногоон байгууламжийн талбай, га — test_data [35] */
   greenHa: number | null;
-  /**
-   * ⚠️ ШИНЭ (2026-08-24) — барилгын ТӨЛӨВИЙН задаргаа (`Barilga_ty`):
-   * Төлөвлөсөн / Баригдаж байгаа / Одоо байгаа. `BUILT_STATUS`-ийн дарааллаар,
-   * танигдаагүй утга сүүлд.
-   */
   byStatus: { label: string; n: number }[];
-  /**
-   * ⚠️ ШИНЭ — барилгажих талбай, м² (`Барилгажсан_талбай` нийлбэр).
-   * ⚠️ Энэ нь давхраар үржсэн НИЙТ шалны талбай (≈152 га), барилгын бодит ХӨЛ
-   *    (геометрийн `Shape__Area`, ≈21 га) БИШ. Өртгийн загвар үүн дээр үржинэ.
-   */
   usableM2: number;
-  /**
-   * ⚠️ 2026-10-05: гол гурван эхийн (хил · барилга · төсөв) аль нэг нь УНАСАН — NaN талбарууд
-   *    «мэдээлэлгүй» биш «татагдсангүй». `cached`-ийн `keep` үүгээр хэсэгчилсэн үр дүнг кэшлэхгүй.
-   */
   partial?: boolean;
 };
 
 export const loadHeadline = cached<Headline>(async () => {
   const green = LAYER_BY_ID.nogoon;
-  /*
-   * ⚠️ 2026-08 аудит (олдвор #22): `Promise.all` → `allSettled`. Гурван ӨӨР
-   * үйлчилгээг нэгтгэдэг тул урьд нь cashflow унахад огт хамааралгүй
-   * «га талбай», «хүн ам» ч хамт унаж, бараг бүх харагдацын SummaryBar
-   * «Үзүүлэлт татагдсангүй» болдог байв. Одоо унасан хэсгийн талбарууд NaN
-   * (дэлгэцэд «—») болж бусад нь хэвийн гарна; БҮГД унавал л throw —
-   * `cached` алдааг кэшлэхгүй тул «дахин оролдох» зам хэвээр.
-   */
   const [bR, builtR, budgetR, grR] = await Promise.allSettled([
     queryFeatures(BOUNDARY.plan.url, { outFields: ['hec_area'] }),
-    /*
-     * ⚠️ 2026-08-24: `queryStats` → `queryGroup`. ХҮСЭЛТИЙН ТОО ӨӨРЧЛӨГДӨӨГҮЙ
-     * (нэг хүсэлт хэвээр) — зөвхөн нэг асуулгаас илүү ихийг авч байна. Урьд нь
-     * зөвхөн хүн амын нийлбэр ирдэг байсныг барилгын ТӨЛӨВӨӨР бүлэглэж, мөрийн
-     * тоо · хүн ам · барилгажих талбай гурвыг зэрэг татав. Нийлбэрүүдийг клиент
-     * талд бүлгүүдээс нэмнэ.
-     *
-     * ⚠️ Шинэ хүсэлт НЭМЭХГҮЙ гэдэг нь CEO_KPI_PROMPT §0-ийн хатуу шаардлага —
-     * тиймээс барилгын төлөвийн задаргааг ТУСДАА асуулга болгосонгүй.
-     */
     queryGroup(layerUrl(BUILT_LAYER), BUILT_FIELDS.status, [
       count(oidOf(BUILT_LAYER), 'n'),
       sum(POPULATION_FIELD, 'p'),
@@ -296,8 +178,6 @@ export const loadHeadline = cached<Headline>(async () => {
   const budget = budgetR.status === 'fulfilled' ? budgetR.value : null;
   const gr = grR.status === 'fulfilled' ? grR.value : null;
 
-  /* ⚠️ Танигдаагүй/хоосон төлөв ХАЯГДАХГҮЙ — «Тодорхойгүй» болж сүүлд жагсана.
-     Чимээгүй хаявал нийт барилгын тоо задаргааны нийлбэртэй зөрнө. */
   const order = new Map(BUILT_STATUS.map((x, i) => [x.value, i]));
   const byStatus = (built ?? [])
     .map((r) => ({
@@ -312,18 +192,11 @@ export const loadHeadline = cached<Headline>(async () => {
     population: built ? sumBy(built, (r) => Number(r.p ?? 0)) : NaN,
     investTotal: budget ? budget.total : NaN,
     investConfirmed: budget ? budget.contract : NaN,
-    greenHa: gr && gr.a != null ? Number(gr.a) / 10_000 : null, // ⚠️ null ≠ 0 (2026-09-17)
+    greenHa: gr && gr.a != null ? Number(gr.a) / 10_000 : null,
     byStatus,
     usableM2: built ? sumBy(built, (r) => Number(r.u ?? 0)) : NaN,
     partial: !b || !built || !budget,
   };
-  /* ⚠️ TTL (5 мин) — хэсэгчилсэн (NaN-тай) үр дүн session дуустал кэшлэгдэж
-     «—» гацахаас сэргийлнэ: `cached` зөвхөн reject-ийг л хаядаг тул TTL-гүй
-     бол түр доголдлын үлдэц хэзээ ч засрахгүй байв. */
-  /* ⚠️ `reads` (2026-08-29): `loadBudget`-ыг нэгтгэдэг тул төсөв өөрчлөгдөхөд
-     энэ ч хуучирна — эс бөгөөс толгойн тоо 5 минут хоцорно. */
-  /* ⚠️ 2026-10-05: `keep` — хэсэгчилсэн (аль нэг эх унасан) үр дүнг ОГТ кэшлэхгүй. Урьд нь
-     5 минутын турш «—» гацаж, эх сэргэсэн ч «дахин оролдох» кэшээс хуучныг авдаг байв. */
 }, SESSION_TTL_MS, ['CASHFLOW_NEW'], (h) => !h.partial);
 
 /* ══════════════ Төслийн жигнэсэн явц ══════════════ */
@@ -354,19 +227,14 @@ export type PkgProgressRow = {
 };
 
 /**
- * ⚠️ 2026-09-04: ИРЭЭДҮЙН огноотой мөрийг таслах ЗААГ, epoch ms.
- *
  * ЮУГ: «одоо» гэсэн хатуу агшин БИШ, ӨДРИЙН ТӨГСГӨЛӨӨР таслана.
  *
  * ЯАГААД: ArcGIS-ийн огнооны талбар нь ихэвчлэн UTC шөнө дундаар (00:00Z)
- * тамгалагддаг ба хөтөч нь UTC+8 бүсэд ажилладаг. Хатуу `Date.now()`-оор
+ * тамгалагддаг ба хөтөч нь UTC+8 бүсэд ажилладаг. Хатуу `Date.now`-оор
  * харьцуулбал «өнөөдөр бүртгэсэн» мөр өдрийн эхний хагаст ирээдүйд тооцогдож
  * САНАМСАРГҮЙ хасагдана. Тиймээс ЛОКАЛ өдрийн төгсгөл ба UTC өдрийн төгсгөл
  * хоёрын АЛЬ ХОЖУУГ нь авна — эргэлзээтэй мөрийг хасахгүй, ҮЛДЭЭНЭ
  * (өгөгдөл нуухгүй зарчим).
- *
- * ⚠️ Буцаж гарах эрсдэл: `Math.max`-ыг `Math.min` болговол UTC+ бүсэд
- * өнөөдрийн бүртгэл дэлгэцээс алга болно.
  */
 const futureCutMs = (): number => {
   const now = new Date();
@@ -380,39 +248,17 @@ const futureCutMs = (): number => {
 
 /**
  * Дээрх заагийн `YYYY-MM-DD` хэлбэр — `PkgProgressRow.date`-тай харьцуулахад.
- *
- * ⚠️ `dayKey` (ОРОН НУТГИЙН огноо) — `toISOString().slice(0,10)` БИШ.
- *    `PkgProgressRow.date` мөн `dayKey`-ээр бүтдэг тул хоёулаа НЭГ дүрэмтэй
- *    байх ёстой; эсрэг тохиолдолд зааг нэг хоногоор зөрнө.
  */
 const futureCutDay = (): string => dayKey(futureCutMs());
 
 /**
  * БАГЦЫН ГҮЙЦЭТГЭЛИЙН НЭГТГЭЛ — багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр.
- *
- * ⚠️ Хүснэгт нь append-only: багц бүрд огноо тутам нэг мөр нэмэгддэг тул
- * сүүлийн мөр л одоогийн байдлыг заана.
- *
- * ⚠️ 2026-08-21-нд ХООСОН байсан; 2026-08-27-нд 7 багц бүртгэгдсэн. Дуудагч
- * тал ҮРГЭЛЖ хоосныг зөвшөөрөх ёстой — бөглөлт үе үе тасалддаг.
- *
- * ⚠️ 2026-09-04 (нэгтгэлийн аудит) — ЭНЭ ХҮСНЭГТИЙН ОДООГИЙН АГУУЛГА НЬ
- *    ТУРШИЛТЫН (seed) ӨГӨГДӨЛ. `tools/negtgel-seed.mjs` нь 7 багц × 12 сар =
- *    84 мөр үүсгэсэн бөгөөд сүүлийн агшин нь 2026-09-28 — өнөөдрөөс 24
- *    хоногийн ИРЭЭДҮЙД. Портал түүнийг бодит гэж уншиж «Багц 1 78%» гэж 4
- *    самбарт зурж байв (бодит бөглөх хуудасны хамралт 0.061%).
- *    Мөрийг УСТГАХГҮЙ (тэр нь хэрэглэгчийн шийдвэр) — зөвхөн ИРЭЭДҮЙН
- *    огноотойг УНШИХГҮЙ. БОДИТ бүртгэл нь ирээдүйд
- *    `hyanaltStore.archiveSubmission` → `negtgelWrite.registerApproved`
- *    замаар, баталсан илгээлт бүрд нэг мөрөөр нэмэгдэнэ.
  */
 export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
   const { BAGTS_NEGTGEL, bagtsKey } = await import('@/lib/services');
   const F = BAGTS_NEGTGEL.fields;
   const rows = await queryFeatures(BAGTS_NEGTGEL.url, {
     outFields: [BAGTS_NEGTGEL.oid, F.date, F.bagts, F.progress, F.planned, F.volume, F.volumePlan],
-    /* ⚠️ 2026-10-05: `limit: 4000` ХАСАГДАВ — хүснэгт append-only (багц × огноо) тул хязгаараас
-       хэтэрмэгц ШИНЭ мөрүүд чимээгүй хаягдана. `queryFeatures` өөрөө хуудаслана (OID эрэмбээр). */
   });
 
   const nOrNull = (v: unknown): number | null => {
@@ -421,24 +267,9 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
     return Number.isFinite(x) ? x : null;
   };
 
-  /* ⚠️ БҮХ мөрийг буцаана — СҮҮЛИЙНХИЙГ нь БИШ. Хүснэгт нь багц бүрд огноо
-     тутам нэг мөр нэмдэг тул бүтэн түүх нь ЦУВАА зурах цорын ганц эх. Зөвхөн
-     одоогийн байдал хэрэгтэй дуудагч `latestPkgProgress()`-ыг ашиглана —
-     ингэснээр хоёр төрлийн хэрэглэгч НЭГ HTTP хүсэлт хуваалцана. */
-  /* ⚠️ 2026-09-04: ИРЭЭДҮЙН огноотой мөрийг ЭНД хасна (дэлгэц дээр биш) —
-     `loadPkgProgress` нь энэ хүснэгтийн ЦОРЫН ГАНЦ уншигч тул нэг газарт
-     шүүвэл 4 самбар бүгд зэрэг цэвэрлэгдэнэ. Огноогүй (`null`) мөрийг
-     ХАЯХГҮЙ: тэр нь ирээдүйн биш, зүгээр л бүртгэлгүй — `date: ''` хэвээр
-     үлдэж, дуудагчид өөрсдөө шийднэ (null ≠ 0 зарчим). */
   const cut = futureCutMs();
   let dropped = 0;
   const out: PkgProgressRow[] = [];
-  /* ⚠️ 2026-10-09: НЭГ БАГЦ · НЭГ ӨДӨР = НЭГ МӨР — ХАМГИЙН ИХ OID (сүүлд нэмэгдсэн) ялна.
-     `registerApproved`-ийн «шалгаад-нэмэх» дараалалд давтагдашгүй хязгаар байхгүй тул зэрэг
-     батлалт (9F · 12F хоёр таб) хоёр мөр үлдээж болно; мөн хуучин 16:00Z ба шинэ 00:00Z
-     тамгатай мөр нэг локал өдөрт (`dayKey`) буудаг. Урьд нь цуваанд нэг өдөр ХОЁР цэг гарч,
-     `latestPkgProgress` аль нь давамгайлахыг ArcGIS-ийн буцаах дараалал шийддэг байв.
-     Огноогүй (`''`) мөрийг нэгтгэхгүй — тэд тус тусдаа бүртгэлгүй мөр. */
   const dayIdx = new Map<string, { i: number; oid: number }>();
   for (const r of rows) {
     const raw2 = String(r[F.bagts] ?? '').trim();
@@ -446,10 +277,6 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
     if (!key) continue;
     const ts = r[F.date];
     if (ts != null && Number(ts) > cut) { dropped += 1; continue; }
-    /* ⚠️ ОРОН НУТГИЙН огноо (`dayKey`) — `toISOString().slice(0,10)` нь UTC
-       тул +08 бүсэд 00:00–07:59-ийн мөр ӨМНӨХ өдрийн түлхүүр авдаг байв.
-       Энэ `date` нь `slice(0,7)`-оор САР болж дашбоардын цуваанд ордог тул
-       сарын эхний шөнийн хэмжилт БҮТЭН САРААР гулсдаг байлаа (2026-09-15). */
     const date = ts == null ? '' : dayKey(Number(ts));
     const row: PkgProgressRow = {
       key,
@@ -470,33 +297,17 @@ export const loadPkgProgress = cached<PkgProgressRow[]>(async () => {
     if (dk) dayIdx.set(dk, { i: out.length, oid });
     out.push(row);
   }
-  /* ⚠️ Өгөгдлийн согогийг НУУХГҮЙ — хасагдсан мөрийн тоог консолд ил гаргана.
-     Чимээгүй шүүвэл дараагийн хүн «нэгтгэл хоосон юм байна» гэж эндүүрнэ. */
   if (dropped) {
     console.warn(
       `[selbe] нэгтгэлээс ИРЭЭДҮЙН огноотой ${dropped} мөр хасагдав `
       + `(${rows.length} → ${out.length}); эх нь tools/negtgel-seed.mjs-ийн туршилтын өгөгдөл`,
     );
   }
-  /* ⚠️ Шүүсний дараа мөр үлдэхгүй бол ХООСОН массив — «0%» БИШ, «мэдээлэлгүй».
-     Дуудагч самбарууд бүгд `list.length === 0`-д `<Empty …>` зурдаг. */
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key, 'mn', { numeric: true }));
 }, SESSION_TTL_MS, ['BAGTS_NEGTGEL']);
 
 /**
  * Багц бүрийн ХАМГИЙН СҮҮЛИЙН огноотой мөр — «одоогийн байдал».
- *
- * ⚠️ Огноо ижил байвал СҮҮЛД ирсэн мөрийг авна: `loadPkgProgress` нь огноогоор
- * эрэмбэлж буцаадаг тул энэ нь хүснэгтэд сүүлд нэмэгдсэнтэй тохирно.
- *
- * ⚠️ 2026-09-04: ИРЭЭДҮЙН огноотой мөрийг ЭНД ДАХИН шүүнэ. `loadPkgProgress`
- * аль хэдийн хассан тул энэ нь давхардсан мэт харагдана — гэвч энэ функц нь
- * export хийгдсэн ЦЭВЭР функц бөгөөд ямар ч мөрийн массивыг хүлээж авдаг
- * (тест, ирээдүйн өөр эх сурвалж). «Сүүлийнх»-ийг сонгодог функц ирээдүйн
- * агшин авбал БҮХ самбарыг нэг дор худал болгодог тул хамгаалалт нь энд ч
- * хэрэгтэй. Огноогүй (`''`) мөр нь `<= зааг` тул үлдэнэ.
- *
- * ⚠️ Хоосон буцаах нь ХҮЧИНТЭЙ хариу — «мэдээлэлгүй», 0% БИШ.
  */
 export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
   const cutDay = futureCutDay();
@@ -512,89 +323,34 @@ export const latestPkgProgress = (rows: PkgProgressRow[]): PkgProgressRow[] => {
 
 /**
  * БӨГЛӨХ ХУУДСААР ХЭМЖСЭН БАГЦЫН ГҮЙЦЭТГЭЛ — `bagtsKey` → % (0–100).
- *
- * ⚠️ ЭНЭ НЬ `loadPkgProgress`-ЭЭС ӨӨР ЭХ СУРВАЛЖ (2026-09-10, хэрэглэгчийн
- * заавар: «05.багцын гүйцэтгэл page дээр бөглөгдсөн гүйцэтгэлийн хувиар»).
- *   · `loadPkgProgress` → `BAGTS_NEGTGEL` хүснэгт = БАТЛАГДСАН илгээлтийн
- *     архив. Хяналтын 6 шат (`REVIEW_STAGES`; 2026-10-09 аудит №6 — урьд «4 шат»)
- *     дамжсаны дараа л шинэчлэгддэг тул хоцордог.
- *   · ЭНЭ функц → «Гүйцэтгэл бөглөх» хуудсуудын АМЬД бөглөлт. «05. Багцын
- *     гүйцэтгэл» хуудас яг үүнийг харуулдаг.
- * Амьдаар хэмжихэд хоёр эх зөрдөг (2026-09-10): Багц 1 — 26.92 ↔ 26.14,
- * Багц 2 — 21.35 ↔ 27.60. Тиймээс аль эхийг сонгох нь ЧУХАЛ шийдвэр.
- *
- * ⚠️ «Гүйцэтгэл»-ийн жагсаалт (`Finance.physLatest`) · `Pack.progress` · Тайлан
- * §3-тай ЯГ ИЖИЛ ТОМЬЁО байх ЁСТОЙ (2026-09-30-аас `blockProgress.pkgProgressOf`):
- * хэмжигдсэн блокуудын ЭНГИЙН дундаж, айлын тоо ч, обьём ч жин болохгүй.
- * Хэрэв тэнд өөрчлөгдвөл энд ч өөрчлөгдөх ёстой — эс бөгөөс нэг үзүүлэлт
- * хоёр самбарт хоёр өөр тоо харуулна (`gdash.chartTypeCost`-ийн ⚠️).
- *
- * ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр): ХЭМЖИГДЭЭГҮЙ блок 0% гэж ДУНДАЖИД ОРНО —
- * хуваарь нь бөглөх хуудасны бүх блок (`blockProgress.loadBlockUniverse`). Урьд нь
- * хэмжигдээгүй блок/багц «мэдээлэлгүй» гэж хасагддаг байв. Нэг ч блок тайлагнаагүй
- * багц 0%; зөвхөн хуудас уншигдаагүй (ачаалалт унасан) багц Map-д орохгүй.
- *
- * ⚠️ БАГЦ 3.1 бусад багцтай ИЖИЛ — бөглөлтөөс. Түүний cashflow солилт
- *    (`FILL_FROM_CASHFLOW`) 2026-09-30-нд хасагдсан (`loadBlockProgress`-ийн ⚠️).
  */
 async function fillPkgProgressRaw(fresh: boolean): Promise<Map<string, number>> {
-  /* ⚠️ 2026-09-30: багцын хувь = `blockProgress.pkgProgressOf` — ХЭМЖИЛТИЙН нүднүүдийн
-     энгийн дундаж. Урьд нь барилгын давхаргын feature-ээр гүйлгэдэг байсан тул
-     давхардсан feature (29/1, 5/6) хоёр тоологдож, footprint-гүй хэмжилт (29/3, 5/8)
-     хасагдаж, Багц 1 · 2 «Гүйцэтгэл»-ийн жагсаалт (`Finance.physLatest`) ба Тайлан
-     §3 (`loadOverall`)-аас зөрдөг байв. Давхарга ЭНД хэрэггүй болсон.
-     ⚠️ 2026-10-01: `loadPkgProgress` — хэмжилт + бөглөх хуудасны блокийн хуваарь
-     (тайлагнаагүй блок 0%). */
   const { loadPkgProgress } = await import('@/lib/blockProgress');
   const out = new Map<string, number>();
   for (const [k, v] of await loadPkgProgress(fresh)) out.set(k, v.pct);
   return out;
 }
 
-/* ⚠️ `CASHFLOW_NEW` ХАСАГДАВ (2026-09-30) — Багц 3.1-ийн cashflow солилт хасагдсан тул
-   энэ ачаалагч cashflow-оос хамаарахаа больсон. */
-/* ⚠️ 2026-09-30: `BUILDING` ч хасагдав — давхаргаар гүйлгэхээ больсон (`fillPkgProgressRaw`). */
 export const loadFillPkgProgress = cached<Map<string, number>>(() => fillPkgProgressRaw(false),
   SESSION_TTL_MS, ['BAGTS_SHEET']);
 
 /**
  * КЭШГҮЙ хувилбар — ЗӨВХӨН хүснэгт рүү БИЧИХ зам (`negtgelAuto.syncNegtgel`).
- *
- * ⚠️ 2026-09-25: `loadFillPkgProgress` нь TTL-гүй, зөвхөн ЭНЭ ТАБЫН бичилтээр
- *    хүчингүй болдог. Өглөө нээгдсэн таб бусдын оройн бөглөлтийг ХАРАХГҮЙ тул
- *    түүний хуучин тоо `Negtgel_guitsetgel`-ийн шинэ утгыг дарж бичдэг байв.
- *    Бичихээс өмнө эндээс (мөн `loadBlockProgressFresh`) шинээр уншина.
  */
 export const loadFillPkgProgressFresh = (): Promise<Map<string, number>> => fillPkgProgressRaw(true);
 
-/*
- * ⚠️ БАГЦ 3.1-ИЙН CASHFLOW СОЛИЛТ ХАСАГДСАН (2026-09-30, хэрэглэгч: «багц 3.1 бодит гүйцэтгэл бөглөлтөөс гарсан хувь руу
- *    шилжүүлэлдээ, 16.4 биш үүнээс бага хувь байх ёстой»).
- *    Энд байсан `FILL_FROM_CASHFLOW` · `loadCashflowPkgPct` нь 3.1-ийн бөглөлтийг
- *    гэрээний 16.4%-иар дарахад л хэрэглэгддэг байв (`blockProgress.loadBlockProgress`).
- */
 
 /* ══════════════ Өрх · блок (building_GOL) ══════════════ */
 
-/**
- * ⚠️ 2026-10-09: `ail` — өрхийн талбар (`AIL_TOO`) БҮХ блокт хоосон бол `null` («—»), ЗАРИМД нь
- * хоосон бол нийлбэр нь мэдэгдэж буй хэсгийнх ба `ailPartial = true`. Урьд нь хоосон нүд
- * `?? 0`-ээр 0 өрх болж дутуу нийлбэр бүрэн мэт гардаг байв (null ≠ 0). `ailMissing` — хоосон блокийн тоо.
- */
 export type HousingTotals = { blocks: number; ail: number | null; ailPartial: boolean; ailMissing: number };
 
 /** Нүүр/тайланд хөнгөн нийлбэр — гүйцэтгэлийн хүнд join-гүйгээр */
 export const loadHousing = cached<HousingTotals>(async () => {
   const { BUILDING, buildingKey } = await import('@/lib/services');
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ДАВХАРДСАН feature (ижил `buildingKey` —
-     БАГЦ1|29/1, БАГЦ2|5/6) НЭГ блок. Урьд нь `count(OID)` + `sum(AIL_TOO)` серверээр
-     бодогдож давхардсан полигоны блок/өрх хоёр тоологддог байв — тоо газрын зургийн
-     өгөгдлийн алдаанаас хамаарах ёсгүй (`blockProgress.mapKeyIssues` — админ засна). */
   const F = BUILDING.fields;
   const rows = await queryFeatures(BUILDING.url, {
     outFields: [BUILDING.oid, F.bagts, F.block, F.households],
     orderBy: `${BUILDING.oid} ASC`,
-    /* ⚠️ 2026-10-05: `limit: 4000` хасагдав — хэтэрвэл шинэ блок чимээгүй тоологдохгүй; хуудаслалт OID эрэмбээр */
   });
   const seen = new Set<string>();
   let ail = 0;
@@ -620,25 +376,9 @@ export type SocialRow = {
   n: number;
   /** Хүчин чадал (суудал/ор) — талбар хоосон давхаргад null */
   capacity: number | null;
-  /**
-   * ⚠️ 2026-10-09: `capacity` нь ДУТУУ нийлбэр — барилгатай (n > 0) давхаргын ЗАРИМ нь л хүчин
-   * чадлын утгатай. Урьд нь утгагүй давхарга чимээгүй алгасагдаж дутуу нийлбэр бүрэн мэт гардаг
-   * байв (null ≠ 0). Нийлбэр нь мэдэгдэж буй хэсгийнх хэвээр — дэлгэц «(дутуу)» гэж тэмдэглэнэ.
-   */
   capPartial: boolean;
-  /**
-   * ⚠️ ШИНЭ — давхарга тус бүрийн задаргаа. `loadSocial` нь давхарга тутамд
-   * count+sum аль хэдийн асуудаг байсан бөгөөд дүнг л ХАЯДАГ байв. Шинэ хүсэлт
-   * ҮҮСЭХГҮЙ.
-   */
   per: { id: string; title: string; n: number; capacity: number | null }[];
 };
-/**
- * ⚠️ 2026-10-11 (аудит №7): `loaded` — давхарга нь каталогт БАЙГАА (асуулга явсан) бүлгийн түлхүүрүүд.
- *    `rows` нь урьдын адил ЗӨВХӨН n > 0 бүлгийг агуулна (Dashboard-ын чарт/хүчин чадлын нийлбэр
- *    0-тэй мөрөөр өөрчлөгдөхгүй), харин Irged «0 объект» (loaded) ба «давхарга алга» (loaded-д
- *    байхгүй) хоёрыг үүгээр ялгана — null ≠ 0.
- */
 export type SocialLive = { rows: SocialRow[]; totalN: number; loaded: string[] };
 
 /** test_data-гийн нийгмийн давхаргууд — каталогийн id-гаар (URL нь TD руу шилжсэн) */
@@ -667,13 +407,6 @@ export const loadSocial = cached<SocialLive>(async () => {
             count(oidOf(d), 'n'),
             sum('huchin_chadal', 'cap'),
           ]).catch(async (e: unknown) => {
-            /* ⚠️ 2026-09-25: ТҮР ЗУУРЫН алдааг «талбаргүй» гэж БҮҮ ойлго. Урьд нь
-               ЯМАР Ч алдаа (rate-limit-ийн дахин оролдлого дууссан, timeout,
-               HTTP 5xx, сүлжээ) энэ салаанд орж `cap: null` болж, TTL-гүй
-               кэшэд сесс дуустал үлддэг байв — талбар байгаа атал сургуулийн
-               хүчин чадал «—». Түр алдааг ДАМЖУУЛНА: `cached()` унасан амлалтыг
-               хадгалдаггүй тул дараагийн дуудлага дахин оролдоно. Зөвхөн
-               ArcGIS-ийн ХҮСЭЛТИЙН алдаа (талбар байхгүй г.м.) үлдсэн тоо руу унана. */
             const msg = e instanceof Error ? e.message : String(e);
             if (e instanceof TypeError || isRateLimit(msg) || TRANSIENT_ERR.test(msg)) throw e;
             // Huchin_chadal байхгүй давхаргад зөвхөн тоог авна
@@ -681,15 +414,12 @@ export const loadSocial = cached<SocialLive>(async () => {
             return { ...c, cap: null } as Row;
           });
           const cap = s.cap == null ? null : Number(s.cap);
-          /* ⚠️ 2026-10-21: null ≠ 0 — `cap > 0` нь БОДИТ 0 нийлбэрийг «талбаргүй» гэж үзэж «—» харуулдаг байв.
-             `null` = талбар байхгүй (дээрх catch) эсвэл бүх утга хоосон (SUM → null); 0 бол хүчин чадал 0. */
           return { id, title, n: Number(s.n ?? 0), cap: cap ?? 0, hasCap: cap != null && Number.isFinite(cap) };
         }),
       );
       const n = sumBy(per, (x) => x.n);
       const hasCap = per.some((x) => x.hasCap);
       const cap = sumBy(per, (x) => x.cap ?? 0);
-      /* ⚠️ 2026-10-09: барилгатай давхарга БҮГД хүчин чадалтай үед л бүрэн (`completeSum`-ийн дүрэм) */
       const capPartial = hasCap && per.some((x) => x.n > 0 && !x.hasCap);
       const row: SocialRow = {
         key: g.key,
@@ -701,7 +431,6 @@ export const loadSocial = cached<SocialLive>(async () => {
           .map((x) => ({ id: x.id, title: x.title, n: x.n, capacity: x.hasCap ? x.cap : null }))
           .filter((x) => x.n > 0),
       };
-      /* ⚠️ 2026-10-11 (аудит №7): бүлгийн ядаж нэг давхарга каталогт байвал «ачаалагдсан» (`SocialLive.loaded`) */
       return { row, loaded: g.ids.some((id) => LAYER_BY_ID[id] != null) };
     }),
   );
@@ -711,7 +440,6 @@ export const loadSocial = cached<SocialLive>(async () => {
     totalN: kept.reduce((s, r) => s + r.n, 0),
     loaded: rows.filter((x) => x.loaded).map((x) => x.row.key),
   };
-  /* ⚠️ 2026-10-05: бусад DashData ачаалагчтай ЖИГД TTL (таг хэвээр хоосон — портал бичдэггүй) */
 }, SESSION_TTL_MS);
 
 /* ══════════════════ Газар чөлөөлөлт — нүүрийн KPI ══════════════════ */
@@ -730,25 +458,6 @@ export type Clearance = {
 
 /**
  * Газар чөлөөлөлтийн нэгтгэл — `PARCEL_LEFT`-ийн төлөвөөр.
- *
- * ⚠️ 2026-09-06: ХОЁР АНГИЛАЛ. Шинэ эх нь төлөв ба шалтгааныг нэг талбарт
- * нийлүүлсэн тул «Бүрэн чөлөөлсөн» = чөлөөлсөн, БУСАД БҮГД = чөлөөлөөгүй.
- * Урьд нь «Гэрээлсэн» гэсэн төлөв хоёр ангиллын АЛЬ НЬ Ч БИШ байсан тул
- * cleared + remaining ≠ total байв; одоо тэнцэнэ.
- * `land.ts`-ийн `loadLandStatus`-тай ЯГ ижил дүрэм.
- */
-/**
- * ⚠️ 2026-09-07-ны гүйцэтгэлийн аудит: энэ ачаалагч урьд нь ӨӨРИЙН
- * `queryGroup`-ыг `PARCEL_LEFT` рүү явуулдаг байсан нь `land.ts`-ийн
- * `loadLandStatus`-ийн ЯГ ижил асуулга байв (хоёул төлөвөөр бүлэглэж тоо ба
- * талбай авдаг). Хоёр тусдаа кэштэй тул нэг хуудсанд ХОЁР ижил хүсэлт явж,
- * 6 слотын дараалалд дэмий зай эзэлдэг байлаа. Одоо ГАНЦ эх сурвалжаас
- * гаргана — хүсэлт нэгээр цөөрч, хоёр тоо хэзээ ч зөрөхгүй болов.
- *
- * ⚠️ ТООНУУД ӨӨРЧЛӨГДӨӨГҮЙ: `loadLandStatus` нь `areaAlt` (гараар бичсэн
- *    талбай) нөхөлт нэмдэг ч шинэ үйлчилгээнд `area_m2 IS NULL AND Талб_1
- *    IS NOT NULL` мөр ЯГ 0 (амьдаар шалгасан) тул үлдсэн талбай 7.6544 га
- *    хэвээр. Хожим тийм мөр гарвал энэ зам нь илүү ЗӨВ дүн өгнө.
  */
 export const loadClearance = cached<Clearance>(async () => {
   const { loadLandStatus } = await import('@/lib/land');

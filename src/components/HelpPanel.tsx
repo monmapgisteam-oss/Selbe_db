@@ -2,19 +2,6 @@
 
 /**
  * ПОРТАЛЫН ТУСЛАМЖ — «?» товчоор нээгдэх цонх (2026-09-30).
- *
- * ⚠️ ЯАГААД: 26 харагдацын нэр («Гүйцэтгэл» · «Багцын гүйцэтгэл», «Чанар
- *    (QAQC)» · «Чанарын баримт») ойролцоо тул барилгын ажилтан аль нь өөрт нь
- *    хэрэгтэйг таамаглаж, буруу хуудас нээдэг байв. Энд хэрэглэгчийн ЭРХЭНД
- *    байгаа харагдац бүрийг ажлын төрлөөр (`NAV_GROUPS`) бүлэглэж, «юунд
- *    зориулсан» (`VIEWS.desc`) ба «хэн ашигладаг» (`WHO`) гэж нэг мөрөөр хэлнэ.
- *
- * ⚠️ `WHO` нь `Record<ViewKey, …>` — шинэ харагдац нэмэгдэхэд tsc энд
- *    заавал мөр нэмүүлнэ (тусламж хоцрохгүй).
- *
- * ⚠️ Анх орсон хүнд НЭГ УДАА «?» товчийг заасан зөвлөмж (`HelpTip`) гарна —
- *    localStorage-д тэмдэглэнэ. Хувийн горимд localStorage шиддэг тул
- *    try/catch; уншиж чадахгүй бол зөвлөмж ХАРУУЛАХГҮЙ (давтан гарахаас сэргийлнэ).
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -58,17 +45,8 @@ const WHO: Record<ViewKey, () => string> = {
 };
 
 /**
- * «ХЭРХЭН…» — АЛХАМ АЛХМААР ЗААВАР (⚠️ 2026-10-23, UX аудит S18).
- *
- * ⚠️ ЯАГААД: тусламж зөвхөн «аль хэсэг юунд» гэж хэлдэг байсан тул «илгээсний дараа юу болох»,
- *    «буцаасныг хаана засах» зэрэг ажлын урсгалыг хэрэглэгч таамагладаг байв. Энд хамгийн түгээмэл
- *    зургаан урсгал. `view` — тухайн урсгалын харагдац: хэрэглэгчийн эрхэнд байхгүй бол заавар ГАРАХГҮЙ
- *    (хийж чадахгүй зүйлийг заахгүй), байвал «Нээх» товчоор шууд очно.
- * ⚠️ Товчны нэрийг «…»-д ЯГ дэлгэц дээрхээр бичнэ (`Guitsetgel` · `toolbar` · `Huvaari` · `Tailan`) —
- *    тэдгээр өөрчлөгдвөл энд ч засна. Шатны дараалал нь `lib/hyanalt.ts` `STAGE_ORDER`.
+ * «ХЭРХЭН…» — АЛХАМ АЛХМААР ЗААВАР (2026-10-23, UX аудит S18).
  */
-/* ⚠️ 2026-10-23 (засвар): `steps(full)` — `full === false` нь гүйцэтгэгч (компани шат): `Guitsetgel.seesManager`-ийн дүрмээр
-   менежер · даргын шатны НЭРИЙГ ОГТ харуулахгүй (урьд нь «review» заавар бүх гинжийг гүйцэтгэгчид ил бичдэг байв). */
 const HOWTO: { id: string; view: ViewKey; title: () => string; steps: (full: boolean) => string[] }[] = [
   {
     id: 'fill',
@@ -76,7 +54,6 @@ const HOWTO: { id: string; view: ViewKey; title: () => string; steps: (full: boo
     title: () => tr('Гүйцэтгэл бөглөж илгээх'),
     steps: () => [
       tr('«Гүйцэтгэл» хэсгийг нээж «Гүйцэтгэл бөглөх» табаас багцаа сонгоно.'),
-      /* ⚠️ 2026-10-26 (аудит): 10-23-аас нүд түгжээтэй эхэлнэ («Бөглөх»), «Илгээх» нь «Дуусгах»-ын шалгалтын дараа л идэвхжинэ */
       tr('«Бөглөх» дарж засах горимыг нээгээд нүдэнд гүйцэтгэлийн хувь эсвэл обьём бичнэ — ноорог автоматаар хадгалагдана, хуудсаа хаасан ч алдагдахгүй.'),
       tr('Бөглөж дуусмагц «Дуусгах» дарж бэлэн байдлыг шалгуулна — ингэснээр «Илгээх» идэвхжинэ.'),
       tr('«Илгээх» дарна. Илгээсний дараа хяналт дуустал тэр хуудсыг засах боломжгүй.'),
@@ -149,7 +126,6 @@ export function HelpPanel({
   user,
 }: {
   open: boolean;
-  /** ⚠️ 2026-10-23: нэвтэрсэн хэрэглэгч (ArcGIS username) — «review» зааврын шатны нэрийг гүйцэтгэгчээс нуухад */
   user?: string | null;
   onClose: () => void;
   navScope: 'all' | ViewKey[];
@@ -160,15 +136,6 @@ export function HelpPanel({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(ref, open);
-  /*
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ХААХАД ФОКУС «?» ТОВЧ РУУ.
-   *    `useFocusTrap` нь нээхийн өмнөх фокусыг буцаадаг ч анхны зөвлөмжөөс (`HelpTip`)
-   *    нээхэд тэр товч устсан байдаг тул фокус `<body>`-д унаж, гарын хэрэглэгч
-   *    «хаана байгаагаа» алддаг байв. Нээх товч нь `aria-haspopup="dialog"` +
-   *    `aria-expanded="true"` (Portal) — нээгдсэн агшинд түүнийг олж, хаахад
-   *    (Esc · ✕ · фон · хэсэг сонгох) тэр рүү буцаана. Олдохгүй бол `useFocusTrap`-ийнх хэвээр.
-   *    Энэ эффект `useFocusTrap`-ийн ДАРАА зарлагдсан тул цэвэрлэгээ нь сүүлд ажиллана.
-   */
   useEffect(() => {
     if (!open) return undefined;
     const trigger = document.querySelector<HTMLElement>('button[aria-haspopup="dialog"][aria-expanded="true"]');
@@ -179,7 +146,6 @@ export function HelpPanel({
 
   useEffect(() => {
     if (!open) return;
-    /* ⚠️ 2026-10-21: дээр нь өөр урхи (сешн/эрхийн цонх) нээлттэй бол Esc нь түүнийх — самбарыг хаахгүй */
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTopFocusTrap(ref.current)) onClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
@@ -219,8 +185,6 @@ export function HelpPanel({
         </header>
 
         <div className={s.body}>
-          {/* ⚠️ 2026-10-23 (S18): алхам алхмаар заавар — эрхэнд байгаа урсгал л; `<details>` тул гарын
-              товчлуураар (Enter/Space) нээгдэнэ, анхдагч хаалттай — хэсгүүдийн жагсаалтыг доош түлхэхгүй. */}
           {howto.length > 0 && (
             <section className={s.group} aria-labelledby="selbe-help-howto">
               <h3 id="selbe-help-howto" className={s.groupTitle}>{tr('Хэрхэн хийх вэ — алхам алхмаар')}</h3>
@@ -275,7 +239,6 @@ export function HelpPanel({
           <p className={s.foot}>
             {tr('Эрх хүрэхгүй хэсэг хэрэгтэй бол админд хандана уу. Цэсний улаан тоо нь таныг хүлээж буй зүйлийн тоо.')}
           </p>
-          {/* ⚠️ 2026-10-26 (аудит G3): build-ийн commit (`lib/buildInfo.ts`) — алдааны мэдээллийг commit-той холбоход */}
           <p className={s.foot}>{tr('Хувилбар: {0}', buildLabel())}</p>
         </div>
       </div>
@@ -289,18 +252,10 @@ const TIP_KEY = 'selbe-help-tip-seen';
  * АНХНЫ ОРОЛТЫН ЗӨВЛӨМЖ — толгойн «?» товчийг заана. Нэг л удаа.
  */
 export function HelpTip({ onOpen }: { onOpen: () => void }) {
-  /* ⚠️ Lazy init — Portal нь `ssr:false` тул энд үргэлж хөтөч (localStorage бий) */
   const [show, setShow] = useState(() => {
     try { return !localStorage.getItem(TIP_KEY); } catch { return false; /* хувийн горим */ }
   });
   const tipRef = useRef<HTMLDivElement>(null);
-  /*
-   * ⚠️ 2026-10-23 (UX аудит S6): «харагдац бүрд гардаг, самбарыг халхалдаг». Урьд нь «Ойлголоо» дарах хүртэл
-   *    тэмдэглэгдэхгүй тул дарахгүй үлдээсэн хэрэглэгчид харагдац солих, дахин ачаалах бүрд баруун дээд
-   *    самбарыг дарж гарч байв. Одоо: (1) ГАРМАГЦ «харсан» гэж тэмдэглэнэ — дараагийн ачаалалтад дахин
-   *    гарахгүй (жинхэнэ «нэг удаа»); (2) 15 с-ийн дараа эсвэл зөвлөмжийн ГАДНА товшиход өөрөө хаагдана —
-   *    агуулгыг хэзээ ч удаан халхлахгүй. «Тусламж нээх» товч нь «?» товчтой ижил тул алдах зүйлгүй.
-   */
   useEffect(() => {
     if (!show) return undefined;
     try { localStorage.setItem(TIP_KEY, '1'); } catch { /* хувийн горим */ }
@@ -311,19 +266,12 @@ export function HelpTip({ onOpen }: { onOpen: () => void }) {
     window.addEventListener('pointerdown', onDown);
     return () => { clearTimeout(timer); window.removeEventListener('pointerdown', onDown); };
   }, [show]);
-  /*
-   * ⚠️ 2026-10-23 (UX аудит S7): «Ойлголоо» дарахад товч DOM-оос устаж фокус `<body>`-д унадаг тул дараагийн
-   *    Tab нь DOM-д зөвлөмжийн ДАРААХ «AI туслах» товч руу очиж, дараа нь дээш үсэрдэг байв. Хаахдаа фокусыг
-   *    толгойн «?» товч руу шилжүүлнэ (зөвлөмжийн зааж буй товч — `HelpPanel`-ийн trigger-ийн ижил сонгогч).
-   */
   const done = () => {
     const hadFocus = tipRef.current?.contains(document.activeElement) ?? false;
     setShow(false);
     try { localStorage.setItem(TIP_KEY, '1'); } catch { /* хувийн горим */ }
     if (hadFocus) document.querySelector<HTMLElement>('header button[aria-haspopup="dialog"]')?.focus();
   };
-  /* ⚠️ 2026-10-26 (аудит): 10-23-аас «?»-ийн БАРУУН талд хэрэглэгчийн чип нэмэгдсэн тул CSS-ийн тогтмол `right`
-     сум аватарыг заадаг байв. «?» товчийн төвөөс хэмжинэ (олдохгүй бол CSS-ийн утга хэвээр). */
   const [arrowRight, setArrowRight] = useState<number | null>(null);
   useLayoutEffect(() => {
     if (!show) return undefined;

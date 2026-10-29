@@ -1,14 +1,11 @@
 /**
  * ӨГӨГДЛИЙН АВТОБУС — хүчингүй болголтын логик.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/dataBus.check.mjs
- *   (⚠️ 2026-10-09: §7 нь ЖИНХЭНЭ dataBus.ts-ийг импортлодог тул loader шаардлагатай)
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/dataBus.check.mjs
+ *   (2026-10-09: §7 нь ЖИНХЭНЭ dataBus.ts-ийг импортлодог тул loader шаардлагатай)
  *
  * Хамгаалж буй алдаа: хүснэгт рүү бичсэн атал ТҮҮНЭЭС уншдаг кэш хаягдаагүй
  * үлдвэл дашбоард хуучин тоо харуулна — дэлгэц дээр юу ч анзаарагдахгүй тул
  * гараар барихад хамгийн хэцүү төрлийн алдаа.
- *
- * ⚠️ Логик нь `dataBus.ts`/`live.ts`-ийн ХУУЛБАР (node нь TS уншихгүй) —
- * тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -31,15 +28,10 @@ const invalidate = (...keys) => {
 const dataVersion = () => version;
 const subscribeData = (fn) => { subs.add(fn); return () => subs.delete(fn); };
 
-/* ── live.ts-ийн cached() хуулбар ──
-   ⚠️ 2026-09-25: `if (p === mine)` хаалттай хувилбар (live.ts 2026-09-08). Урьд нь
-   хуулбар нь `p`-г шалгалтгүй тэглэдэг ХУУЧИН логик байсан тул тэр уралдааны
-   хамгаалалтыг огт шалгадаггүй байв. Доорх §0 нь live.ts-ийн ЭХ кодыг уншиж
-   хаалт байгааг тулгана — хуулбар ба эх хоёр салбал ЭНД унана. */
+/* ── live.ts-ийн cached хуулбар ── */
 function cached(fn, ttlMs, reads = []) {
   let p = null;
   let at = 0;
-  /* ⚠️ 2026-09-30: live.ts-тэй ижил — `reads` хоосон ч бүртгэнэ (хэл солиход хаягдана) */
   register(() => { p = null; }, reads);
   return () => {
     if (!p || (ttlMs != null && Date.now() - at > ttlMs)) {
@@ -61,7 +53,6 @@ const check = (label, cond) => {
 
 console.log('\n0. Хуулбар ↔ live.ts — уралдааны хаалт эх кодод байна');
 {
-  /* ⚠️ Файлын байршлаас (cwd биш) — `npm test` ба гараар ажиллуулах хоёуланд */
   const live = readFileSync(new URL('./live.ts', import.meta.url), 'utf8');
   const at = live.indexOf('export function cached');
   check('live.ts-д cached() олдлоо', at >= 0);
@@ -145,9 +136,6 @@ console.log('\n6. Удаан унасан хүсэлт — invalidate-ийн д�
 
 console.log('\n7. ЖИНХЭНЭ dataBus.ts — зан төлөв (хуулбар биш)');
 {
-  /* ⚠️ 2026-10-09: дээрх 1–6 нь логикийн ХУУЛБАР дээр явдаг тул `dataBus.ts`-ийн өөрчлөлтийг
-     (жиш. `writeEpoch`, `invalidateAll`-ийн `refreshedAt`) огт барихгүй байв. Энд ЭХ модулийг
-     импортлож (ts-alias loader — `npm test` бүгдийг түүгээр ажиллуулна) ижил зан төлөвийг тулгана. */
   const bus = await import('@/lib/dataBus');
   let dA = 0;
   let dB = 0;

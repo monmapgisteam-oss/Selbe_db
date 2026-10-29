@@ -2,10 +2,6 @@
  * ДАШБОАРДЫН ТОО — бусад дэлгэцтэй НЭГ томьёо (2026-09-30), эх кодын бүтцийн шалгуур.
  *   node src/modules/dashboardNumbers.check.mjs
  *
- * ⚠️ `Dashboard.tsx` нь ArcGIS SDK, газрын зураг зэрэг хүнд модуль импортолдог тул
- *    энд ТЕКСТЭЭР уншина (`ceo/registry.check`, `tuhData.check`-ийн арга). Тооцооны
- *    цөм (`gdash.contractedScope`, `execData.buildProgressOf`) өөрсдийн шалгууртай.
- *
  * Хамгаалж буй алдаанууд:
  *   1. «Санхүүжилтийн хуримтлал — сараар» (тайлбар «олгосон / гэрээний нийт дүн»)
  *      `FinData.planTotal`-аар (гэрээ ЭСВЭЛ төсөв, бүх мөр) хуваадаг байсан тул
@@ -23,17 +19,12 @@ const src = readFileSync(new URL('./Dashboard.tsx', import.meta.url), 'utf8');
 const at = src.indexOf("tr('Санхүүжилтийн хуримтлал — сараар')");
 assert.ok(at > 0, '«Санхүүжилтийн хуримтлал» самбар олдсонгүй');
 const panel = src.slice(at, src.indexOf('</Panel>', at));
-/* ⚠️ 2026-10-09: `contractedScope` нь `ScheduleDetail`-ийн дээд талд (`scope`) — самбар `const sc = scope;`
-   ⚠️ 2026-10-11 (аудит №7): `useMemo` БИШ энгийн `const` — `ScheduleDetail` нь `detailPanels()`-оос энгийн
-   функцээр дуудагддаг тул hook ОРОХГҮЙ (02-р хэсэг нээхэд hook-ийн тоо өөрчлөгдөж унадаг байв). */
 const scopePlain = /const scope = f \? contractedScope\(f\.contracts\) : null;/.test(src);
 assert.ok(/contractedScope\(f\.contracts\)/.test(panel) || (scopePlain && /const sc = scope;/.test(panel)),
   'хуримтлалын хуваагч contractedScope-оос биш');
 const schedFn = src.slice(src.indexOf('function ScheduleDetail('), src.indexOf('03 · Орон сууцны 7 багц'));
 assert.ok(!/\buse[A-Z]\w*\(/.test(schedFn), 'ScheduleDetail дотор hook байна — detailPanels() энгийн функцээр дууддаг тул унана');
 assert.ok(!/planTotal\.forEach/.test(panel), 'хуримтлал FinData.planTotal (гэрээ ЭСВЭЛ төсөв) руу буцав');
-/* ⚠️ 2026-10-11 (аудит №7): тоологч нь ХОЁР талын түлхүүрийг `finPkgKey`-ээр хөрвүүлж таарна
-   (Cashflow «БАГЦ8» ↔ HO «БАГЦ81»; `paidShare`-тэй нэг дүрэм) */
 assert.match(panel, /const scKeys = new Set\(\[\.\.\.sc\.keys\]\.map\(finPkgKey\)\);/, 'гэрээлсэн багцын түлхүүр finPkgKey-ээр хөрвүүлэгдээгүй');
 assert.match(panel, /f\.givenTotal\.forEach\(\(v, k\) => \{ if \(scKeys\.has\(finPkgKey\(k\)\)\) givenAll \+= v; \}\);/, 'тоологч гэрээлсэн багцаар (finPkgKey) шүүгдээгүй');
 assert.match(panel, /if \(!scKeys\.has\(finPkgKey\(k\)\)\) return;/, 'сарын дүн finPkgKey-ээр шүүгдээгүй');
@@ -56,8 +47,6 @@ const prog = readFileSync(new URL('./PkgProg.tsx', import.meta.url), 'utf8');
 assert.match(prog, /fin \? projectPlanOf\(fin, planQ\.data\) : planQ\.data\.months/, 'PkgProg.TsKpi-ийн төлөвлөгөө блокоор жигнэсэн хэвээр');
 assert.match(prog, /finQ\.state === 'ready' \? projectPlanOf\(finQ\.data, pc\) : pc\.months/, 'PkgProg-ийн төслийн графикийн төлөвлөгөө блокоор жигнэсэн хэвээр');
 const exec = readFileSync(new URL('../lib/execReport.ts', import.meta.url), 'utf8');
-/* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө ба зөрүү НЭГ (хуваарьтай) багцын олонлогоор — `projectLagNow`
-   (дотроо `projectPlanOf`); зөрүүний бодит тал `physNow` биш */
 assert.match(exec, /const lagNow = projectLagNow\(fin, plan, nowYm, dayKey\(Date\.now\(\)\)\);/, 'удирдлагын тайлангийн төлөвлөгөө/зөрүү projectLagNow-оор биш');
 assert.match(fin, /const plan = pc\?\.months\.length \? projectPlanOf\(fin, pc\) : \[\];/, 'projectLagNow projectPlanOf-оор биш');
 assert.match(prog, /const ln = projectLagNow\(fin, planQ\.data, nowYm, todayDayKey\(\)\);/, 'PkgProg.TsKpi-ийн зөрүү projectLagNow-оор биш');

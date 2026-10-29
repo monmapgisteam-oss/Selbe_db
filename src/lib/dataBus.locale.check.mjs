@@ -1,22 +1,17 @@
 /**
  * ХЭЛ СОЛИГДОХОД КЭШ ХАЯГДАНА — `dataBus.ts` ↔ `i18nCore.setLocale` (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/dataBus.locale.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/dataBus.locale.check.mjs
  *
  * Хамгаалж буй алдаа: хэл солих нь хуудсыг дахин ачаалахгүй (remount) болсноос
  * хойш ОРЧУУЛСАН мөр хадгалдаг кэштэй ачаалагч (`live.loadBudget`-ийн «Эх үүсвэр
  * задраагүй», `ceo/*`-ийн KPI картууд) англи горимд ч МОНГОЛООРОО үлддэг байв —
  * нэг дэлгэцэд хоёр хэл холилдоно.
- *
- * ⚠️ ЖИНХЭНЭ модулиуд (`dataBus.ts`, `i18nCore.ts`, `live.ts`-ийн `cached`) —
- *    хуулбар логик биш, тиймээс эх код өөрчлөгдөхөд хоцрохгүй.
  */
 import assert from 'node:assert/strict';
 import { register, dataVersion, subscribeData } from '@/lib/dataBus';
 import { setLocale, getLocale, loadLocaleDict, t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
 
-/* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — урьдчилан
-   ачаалснаар `setLocale('en')` урьдын адил СИНХРОН солигдоно. */
 await loadLocaleDict('en');
 
 let pass = 0;

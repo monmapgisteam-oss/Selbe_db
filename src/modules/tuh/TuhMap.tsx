@@ -2,16 +2,6 @@
 
 /**
  * ТУХ — СИСТЕМИЙН ГАЗРЫН ЗУРАГ (баруун багана, байнга харагдана).
- *
- * ⚠️ ШИНЭ ЗУРАГ БИШ — «Багцын гүйцэтгэл» (`PkgProg.tsx`)-ийн ЯГ ижил жор:
- *    `MapCanvas` + `MapTools` + `LayerCatalog` + `OpacityPanel`, блокийн давхарга
- *    (`mon:building`) гүйцэтгэлээр будагдана, багц сонгоход тэр багц руу нисч
- *    (`zoomToWhere`) шүүнэ. Дэд бүтцийн багц бол ТҮҮНИЙ давхаргууд (`PKG_BY_BAGTS`).
- *
- * ⚠️ ЗУРАГ НЭГ Л УДАА mount — тойм ↔ дэлгэрэнгүй шилжихэд ДАХИН үүсэхгүй
- *    (ArcGIS view дахин үүсвэл WebGL context алдагдана, `Portal.tsx:656`).
- * ⚠️ `onPick` нь `useCallback` — inline функц `memo(MapCanvas)`-ыг эвддэг.
- * ⚠️ `layerWhere` өгмөгц бүсийн шүүлтийг ЭНД давхарга бүрд тавина (PkgProg-ийн ⚠️).
  */
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -44,9 +34,6 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
   packs: Pack[];
   /**
    * Барилгын давхаргын (`useBuildings`) төлөв — `packs` нь `loading`/`error` үед ХООСОН.
-   * ⚠️ 2026-10-06 (аудит): урьд нь энэ үед орон сууцны багц сонговол «Энэ багц газрын
-   *    зурагт давхаргагүй» гэж ХУДАЛ бичээд БҮХ блок руу нисдэг байв. Одоо «…» / алдаа,
-   *    нисэлт блок ирэх хүртэл хүлээнэ. Өгөөгүй бол `ready` (хуучин зан).
    */
   packsState?: 'loading' | 'ready' | 'error';
   /** Блок дээр товшиход тэр блокийн багц (`bagtsKey`); хоосон газар → `null` */
@@ -54,8 +41,6 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
 }) {
   const { zoomToWhere, setHighlight } = useMap();
   useEffect(() => { setHighlight(null); }, [setHighlight]);
-  /* ⚠️ 2026-10-09: UNMOUNT-д ч тодруулгыг арилгана — газрын зургийн контекст (`useMap`) бусад
-     харагдацтай хуваалцагддаг тул ТУХ-аас гарахад блокийн тодруулга дараагийн харагдацад үлддэг байв. */
   useEffect(() => () => setHighlight(null), [setHighlight]);
 
   /** Сонгосон багцын газрын зургийн илэрхийлэл — давхарга + шүүлт */
@@ -65,13 +50,10 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
       const pk = packs.find((p) => p.kind === 'build' && p.key === sel.pkgKey);
       return pk ? { layerIds: [BLOCK_LAYER], where: pk.where } : null;
     }
-    /* ⚠️ 2026-10-26 (аудит): БАГЦ71 → БАГЦ7, БАГЦ8 → БАГЦ82 (`MAP_PKG_ALIAS`) — «давхаргагүй» гэж худал хэлдэг байв */
     const ids = mapPkgLayers(sel.pkgKey);
     return ids?.length ? { layerIds: ids, where: null as string | null } : null;
   }, [sel, packs]);
 
-  /* ⚠️ Дэд бүтцийн багцад блокууд ч СУУРЬ хэвээр — шугам нь аль барилгыг
-     хангаж байгааг хажууд нь харна. */
   const [visible, setVisible] = useLayerPicks(
     target && !sel?.housing ? [BLOCK_LAYER, ...target.layerIds] : [BLOCK_LAYER],
   );
@@ -80,8 +62,6 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
   const [opacity, setOpacity] = useState<Record<string, number>>({});
   const [layerSel, setLayerSel] = useState<string | null>(null);
   const [zone, setZone] = useState<string | null>(null);
-  /* ⚠️ 2026-10-22 (гүйцэтгэл): каталогийн БҮХ (~158) давхаргын тоог энд татахгүй — LayerCatalog `totals`-гүй үед зөвхөн
-     НЭЭЛТТЭЙ бүлгийн тоог өөрөө татна (`totals.useLazyTotals`, хуваалцсан кэш · «—» дүрэм хэвээр). */
   useZoomToFilter({ zone });
 
   const layerWhere = useMemo<Record<string, string | null>>(() => {
@@ -92,22 +72,16 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
         if (d) w[id] = zoneWhere(d, zone);
       }
     }
-    /* ⚠️ Орон сууцны багц — ЗӨВХӨН тэр багцын блокууд; бусад үед бүх блок */
     w[BLOCK_LAYER] = target && sel?.housing ? target.where : (w[BLOCK_LAYER] ?? null);
     return w;
   }, [zone, visible, target, sel]);
 
-  /* Сонгосон багц руу нисэх — дэд бүтцийн багцын `where: null` нь «давхарга бүхэлдээ».
-     ⚠️ 2026-09-30: ТЭМДЭГТ МӨРӨӨР түлхүүрлэнэ — `target` нь өгөгдөл шинэчлэгдэх бүрд
-     (эх сурвалж хожуу ирэх, автобусаар дахин татах) ШИНЭ объект болдог тул хэрэглэгч
-     газрын зургийг томруулж/зөөсөн байхад зураг сонгосон багц руу ДАХИН үсэрдэг байв.
-     Одоо зөвхөн давхарга/шүүлт өөрчлөгдөхөд л нисэнэ. */
+  /* Сонгосон багц руу нисэх — дэд бүтцийн багцын `where: null` нь «давхарга бүхэлдээ». */
   const zoomLayer = target?.layerIds[0] ?? '';
   const zoomWhere = target ? (target.where ?? '1=1') : '';
-  /** Орон сууцны багц сонгосон ч блокууд хараахан ирээгүй/унасан — бай тодорхойгүй (`packsState`-ийн ⚠️) */
+  /** Орон сууцны багц сонгосон ч блокууд хараахан ирээгүй/унасан — бай тодорхойгүй (`packsState`) */
   const pending = !!sel?.housing && !!sel.pkgKey && packsState !== 'ready';
   useEffect(() => {
-    /* ⚠️ 2026-10-06: бай тодорхойгүй үед БҮХ блок руу нисэхгүй — блок ирмэгц `zoomWhere` солигдож нисэнэ */
     if (pending) return;
     if (zoomLayer) zoomToWhere(zoomLayer, zoomWhere);
     else zoomToWhere(BLOCK_LAYER, '1=1');

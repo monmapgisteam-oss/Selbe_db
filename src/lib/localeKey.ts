@@ -1,10 +1,6 @@
 /**
  * Хэлний localStorage түлхүүр ба төрөл — `i18n.tsx` (client) ба `layout.tsx`
  * (сервер) хоёул эндээс уншина.
- *
- * ⚠️ ЗААВАЛ 'use client'-ГҮЙ тусдаа файл — `themeKey.ts`-тэй яг ижил шалтгаан:
- * 'use client' модулиас сервер компонент рүү импортлогдсон утгыг Next нь CLIENT
- * REFERENCE proxy болгодог тул `<script>`-д шингээх мөрийг эвддэг.
  */
 export const LOCALE_KEY = 'selbe-locale';
 

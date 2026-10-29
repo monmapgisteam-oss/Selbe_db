@@ -6,29 +6,6 @@
  * Эрхийн override-ыг байгууллагын ArcGIS дээрх нэг hosted хүснэгтэд хадгална.
  * Ингэснээр super admin ямар ч төхөөрөмжөөс өөрчилсөн эрх бүх хэрэглэгчид
  * (өөр газраас нэвтэрсэн ч) үйлчилнэ — `localStorage` шиг нэг browser-т хязгаарлагдахгүй.
- *
- * ⚠️ Хүснэгт нь super admin ЭХ АНХ нэвтрэхэд автоматаар үүснэ (publish эрхтэй бол).
- * Уншилт нь бүх нэвтэрсэн хэрэглэгчид (org-shared) нээлттэй, бичих нь editor эрхээр.
- * ArcGIS байхгүй/алдаа гарвал дуудагч тал `localStorage`-руу ухарна.
- *
- * ⚠️ УРСГАЛЫН ТОМИЛГОО (2026-08-27): «хэн аль шатанд, аль багцад» гэсэн
- * гүйцэтгэлийн урсгалын томилгоог мөн ЭНЭ хүснэгтэд хадгална — `username`
- * талбарт `__flow__:` угтвартай нөөц мөрөөр. Урьд нь тэр нь зөвхөн админы
- * browser-ийн localStorage-д байсан тул томилогдсон хүний ӨӨРИЙНХ нь
- * төхөөрөмж дээр томилгоо огт харагдахгүй — багцын хязгаарлалт хаана ч
- * биелдэггүй, Төлөвлөлтийн ахлах инженерийн эрх (мөр нэмэх г.м.) хэзээ ч асдаггүй байв.
- * Угтвартай мөрүүд эрхийн уншилтад ОГТ ОРОХГҮЙ (`fetchAll` ялгаж буцаана).
- *
- * ⚠️ ХЯЗГААР (баримтжуулсан): бичих эрх нь ArcGIS item-sharing дээр л
- * тулгуурладаг. Хүснэгтийг олон super admin засах ёстой тул мөрийн эзэмшлийн
- * хязгаарлалт (ownership-based access control) тавьж болохгүй — тиймээс org
- * доторх, бичих эрх бүхий хэн боловч REST-ээр шууд засаж чадна. Клиент талын
- * системд үүнээс чанга хамгаалалт байхгүй; нэвтрэлтийн түвшний эрсдэлийг
- * `permissions.hasAccess` (хатуу жагсаалт + remote баталгаажилт) барина.
- * ⚠️ 2026-10-21 (аудит): SUPER = ЭНЭ ХҮСНЭГТИЙН `role:'super'` МӨР болсноос хойш (`roles._setTableSupers`) дээрх
- *    хязгаар нь харагдац/cap биш АДМИН ЭРХИЙН асуудал: org-даяар засагдах хүснэгтэд бичих эрхтэй ямар ч аккаунт өөртөө
- *    super бичиж чадна. Кодоор хаагдахгүй — Enterprise дээр үйлчилгээний засах эрхийг админ бүлгээр хязгаарлана
- *    (уншилт org-д хэвээр: реле `hasPortalRow` хэрэглэгчийн токеноор мөрөө уншина); `probeEntExposure` илрүүлж улаанаар хэлнэ.
  */
 
 import { SYS_PERMS } from '@/lib/services/env';
@@ -61,41 +38,21 @@ export type FlowRow = {
   user: string; stage: string; bagts: string[];
   /** ХАРНА, ШИЙДВЭРЛЭХГҮЙ — хуучин мөрд `undefined` = жирийн томилгоо */
   viewOnly?: boolean;
-  /** ⚠️ 2026-10-23: эрхийн төрлийг ЭНЭ томилгоо автоматаар тавьсан (`guitsetgelAcl.Assign.autoRole`) — хуучин мөрд `undefined` */
   autoRole?: boolean;
 };
 
 /**
  * НЭМЭЛТ ЭРХИЙН нэг мөр — `__cap__:` угтвартай.
- *
- * ⚠️ `caps` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
- * тээвэрлэнэ (`caps.ts` танигдахгүйг нь хаяна). Ингэснээр шинэ эрх нэмэхэд
- * хадгалалтын давхарга хөндөгдөхгүй.
  */
 export type CapRow = { user: string; caps: string[] };
 
-/* ⚠️ 2026-10-23: `QaqcRow` хасагдсан — «Чанар (QAQC)» системээс устсан (хуучин `__qaqc__:` мөр уншилтад алгасагдана). */
 
 /**
  * ХУВААРИЙН хуваарилалтын нэг мөр — `__huvaari__:` угтвартай.
- *
- * ⚠️ `QaqcRow`-оос ЯЛГААТАЙ нь `roles` талбартай: хуваарь нь ХОЁР үүрэгтэй
- * (зохиогч · батлагч) тул нэг мөрөнд аль нь болохыг хадгална.
  */
 /**
  * ХУВААРИЛАЛТЫН `views` НҮДНИЙ JSON — гурван үүрэгтэй систем (Хуваарь · Обьём ·
  * Чанарын баримт) ижил хэлбэрээр бичдэг.
- *
- * ⚠️ `grants` НЬ ҮНЭН ЭХ СУРВАЛЖ (2026-09-09). `roles`/`bagts` нь зөвхөн
- *    ХУУЧИН клиент build уншиж чадах НӨӨЦ нэгдэл — үүрэг тус бүр аль багцад
- *    хамаарахыг АЛДДАГ (үржвэр болно).
- *
- * ⚠️ 2026-09-16-ны аудит: `fetchAll` нь `grants`-ыг ЗӨВХӨН `__chanar__:`
- *    салаанд уншдаг байв; `__huvaari__:` ба `__obyem__:` салаанууд хаядаг
- *    байсан тул хуудас сэргээх бүрд үржвэр ЭРГЭЖ ИРДЭГ байлаа («Багц 1-д
- *    зохиогч, Багц 5.1-д батлагч» → хоёуланд нь ХОЁУЛАА). Тэр нь
- *    `decidePlan`-ийн зохиогч=батлагч татгалзалтаар багцыг ГАЦААНА. Гурван
- *    салаа ижил төрөл ашиглаж, ижил уншилт хийх ёстой — тиймээс энэ төрөл.
  */
 type ViewsJson = { roles?: string[]; bagts?: string[]; grants?: Grant[] };
 
@@ -103,35 +60,24 @@ export type HuvaariRow = {
   user: string;
   roles: string[];
   bagts: string[];
-  /** ⚠️ Байвал ЭНЭ давамгайлна (`scopedAcl.syncRemote`) */
   grants?: Grant[];
 };
 
 /**
  * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМЫН хуваарилалтын нэг мөр — `__obyem__:` угтвартай.
- *
- * ⚠️ `HuvaariRow`-той ижил бүтэц, ӨӨР асуулт: тэр нь ОГНОО төлөвлөх эрх,
- * энэ нь ОБЬЁМ. Хоёр үүрэг: `editor` (засварлагч) · `approver` (батлагч).
  */
 export type ObyemRow = {
   user: string;
   roles: string[];
   bagts: string[];
-  /** ⚠️ Байвал ЭНЭ давамгайлна — `HuvaariRow`-тай ижил дүрэм */
   grants?: Grant[];
 };
 
 /**
  * НЭМЭЛТ АЖЛЫН хуваарилалтын нэг мөр — `__ajil__:` угтвартай.
- *
- * ⚠️ `ObyemRow`-той ижил бүтэц, ӨӨР асуулт: тэр нь БАЙГАА мөрийн обьёмыг,
- * энэ нь шинэ мөр гэрээнд нэмэгдэх эсэхийг зохицуулна. Хоёр үүрэг:
- * `editor` (мөр нэмэгч) · `approver` (батлагч).
  */
 /**
  * ДЭД БҮТЦИЙН ЗАСВАРЫН хуваарилалтын нэг мөр — `__butets__:` угтвартай.
- * ⚠️ `ObyemRow`-той ижил бүтэц, ганц үүрэг (`editor`); `bagts` нь `bagtsKey`
- *    хэлбэрийн дэд бүтцийн багц («БАГЦ51»), Бөглөх хуудасны бүлэг БИШ.
  */
 export type ButetsRow = {
   user: string;
@@ -144,19 +90,16 @@ export type AjilRow = {
   user: string;
   roles: string[];
   bagts: string[];
-  /** ⚠️ Байвал ЭНЭ давамгайлна — `HuvaariRow`-тай ижил дүрэм */
   grants?: Grant[];
 };
 
 /**
  * ЧАНАРЫН БАРИМТЫН хуваарилалтын нэг мөр — `__chanar__:` угтвартай.
- * ⚠️ ДӨРВӨН үүрэг (author · tuh · chanar · habea) — `chanarAcl.ts`.
  */
 export type ChanarRow = {
   user: string;
   roles: string[];
   bagts: string[];
-  /** ⚠️ Байвал ЭНЭ давамгайлна — `HuvaariRow`-тай ижил дүрэм */
   grants?: Grant[];
 };
 
@@ -180,22 +123,18 @@ const AJIL_PREFIX = '__ajil__:';
 const BUTETS_PREFIX = '__butets__:';
 /**
  * ЭРХИЙН ТӨРЛИЙН ЗАГВАРЫН угтвар (2026-09-25) — `__type__:injener` г.м.
- * ⚠️ Хэрэглэгчийн мөр БИШ: загвар нь өөрөө эрх олгохгүй, админ «Төрлөөр
- *    тохируулах» дарахад л хуваарилалт болж бичигдэнэ (`roleTypeApply.ts`).
  */
 const TYPE_PREFIX = '__type__:';
 /**
- * СИСТЕМИЙН ТӨЛӨВИЙН угтвар (⚠️ 2026-10-19) — `__sys__:maintenance` («Систем түр хаах»).
- * ⚠️ Хэрэглэгчийн мөр БИШ: `fetchAll` энэ угтварыг хэрэглэгчийн салаа руу УНАХААС ӨМНӨ барина — эс бөгөөс
- *    «__sys__:maintenance» нэртэй хий хэрэглэгч (буруу хэлбэртэй `views`) админы жагсаалтад гарч байв.
+ * СИСТЕМИЙН ТӨЛӨВИЙН угтвар (2026-10-19) — `__sys__:maintenance` («Систем түр хаах»).
  */
 const SYS_PREFIX = '__sys__:';
 /** Засварын (хаалтын) мөрийн түлхүүр — `SYS_PREFIX`-ийн ард */
 const SYS_MAINT = 'maintenance';
 
 /**
- * СИСТЕМ ТҮР ХААХ ТӨЛӨВ (⚠️ 2026-10-19) — `__sys__:maintenance` мөрийн `views` JSON.
- *   · `on`    — ЗӨВХӨН яг `true` бол хаалттай (эргэлзээтэй утга хаахгүй — fail-open, доорх ⚠️)
+ * СИСТЕМ ТҮР ХААХ ТӨЛӨВ (2026-10-19) — `__sys__:maintenance` мөрийн `views` JSON.
+ *   · `on`    — ЗӨВХӨН яг `true` бол хаалттай (эргэлзээтэй утга хаахгүй — fail-open, доорх)
  *   · `note`  — хаагчийн нэмэлт тайлбар (сонголттой)
  *   · `until` — «Дахин нээгдэх: …» чөлөөт текст (сонголттой; цагийг шалгахгүй, зөвхөн харуулна)
  *   · `by` · `at` — хэн, хэзээ (мс)
@@ -204,9 +143,6 @@ export type SysState = { on: boolean; note?: string; until?: string; by: string;
 
 /**
  * `__sys__:maintenance` мөрийн `views`-ийг задлана — ЦЭВЭР (`permissions.check` шалгана).
- * ⚠️ 2026-10-19: ЭВДЭРСЭН мөр → `null` (= нээлттэй). Энэ нь эрхийн мөрийн «fail-closed»-оос САНААТАЙ эсрэг:
- *    хаалт бол бүх хүнийг гаргах үйлдэл тул гараар эвдэрсэн/хагас бичигдсэн мөр бүх байгууллагыг түгжих ёсгүй.
- *    Хаалт ЗӨВХӨН ил `on: true`-гээр.
  */
 export function parseSysState(raw: string | null | undefined): SysState | null {
   if (!raw) return null;
@@ -230,13 +166,12 @@ export function parseSysState(raw: string | null | undefined): SysState | null {
 }
 
 /**
- * ЗАЙТАЙ ТҮЛХҮҮР (⚠️ 2026-10-19, `MalformedRow.space`-ийн ⚠️) — нэрийн захад эсвэл угтварын ДАРАА зай.
- * Цэвэр функц (`permissions.check` шалгана). Том/жижиг үсэг хамаарахгүй (`LOWER()` олно).
+ * ЗАЙТАЙ ТҮЛХҮҮР ( 2026-10-19, `MalformedRow.space`) — нэрийн захад эсвэл угтварын ДАРАА зай.
+ * Цэвэр функц (`permissions.check` шалгана). Том/жижиг үсэг хамаарахгүй (`LOWER` олно).
  */
 export function isSpacedKey(raw: string): boolean {
   const lu = raw.trim().toLowerCase();
   if (raw.toLowerCase() !== lu) return true;
-  /* ⚠️ 2026-10-19: + `SYS_PREFIX` («__sys__: maintenance» ч зайтай мөр) */
   const pre = [SYS_PREFIX, TYPE_PREFIX, AJIL_PREFIX, BUTETS_PREFIX, CHANAR_PREFIX, OBYEM_PREFIX, HUVAARI_PREFIX, QAQC_PREFIX, CAP_PREFIX, FLOW_PREFIX]
     .find((p) => lu.startsWith(p));
   return pre != null && lu.slice(pre.length) !== lu.slice(pre.length).trim();
@@ -251,25 +186,13 @@ export type TypeRow = { role: string; tpl: unknown };
  *   · `stage` — урсгалын мөрөнд шат алга
  *   · `user`  — угтварын дараа нэр хоосон эсвэл аюултай нэр (`__proto__` г.м.)
  */
-/**
- * ⚠️ 2026-10-19: `space` — нэр/угтварын ЗАХАД эсвэл угтварын ДАРАА зай («bat », «__cap__: bat»). Ийм мөр урьд нь
- *    (trim-ээр) эрх ОЛГОДОГ атлаа `findOids`/`readRowByKey` (`LOWER(username) = 'trim-лэсэн'`) олдоггүй тул
- *    хасах/засах боломжгүй «үхэшгүй» эрх болдог байв. Одоо эрх ОЛГОХГҮЙ (fail-closed), админы цэвэрлэгээнд
- *    `oid`-оор нь устгана (`removeMalformedRow`).
- * `oid` — устгах товчинд (OBJECTID).
- */
 export type MalformedRow = { key: string; reason: 'json' | 'stage' | 'user' | 'space'; oid?: number };
 
-let tableUrlCache: string | undefined; // ⚠️ зөвхөн ОЛДСОН URL — null/олдоогүйг кэшлэхгүй (tableUrl-ыг үз)
+let tableUrlCache: string | undefined;
 
 /** IdentityManager-аас идэвхтэй token авах (нэвтрээгүй бол null) */
 async function getToken(): Promise<{ token: string; user: string } | null> {
   try {
-    /* ⚠️ 2026-10-05: токеноо АВАХААС ӨМНӨ шинэчилнэ. `findTableUrl`/`createTable` нь токеноо
-       ӨӨРСДӨӨ `params`-д өгдөг (`token: 'org'`) тул `query.arcgisPost`-ын «498 → шинэчлээд
-       дахин» зам тэдэнд АЖИЛЛАХГҮЙ (дуудагчийн токен хэвээр явна). Таб удаан нуугдаад
-       сэрэхэд хугацаа дууссан токеноор хайлт унаж, `initRemote` → `false` → бүх эрх
-       15 сек–5 мин хаалттай үлддэг байв. Node (тест) орчинд шууд буцна. */
     await ensureFreshToken();
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     const cred = esriId.findCredential(`${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`);
@@ -282,13 +205,7 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
 
 /**
  * ArcGIS REST дуудлага.
- * ⚠️ ArcGIS нь алдаагаа HTTP 200 + `{error:{...}}` биеэр буцаадаг — шалгахгүй
- * бол `createTable` хагас дутуу (талбаргүй, share хийгдээгүй) «хордсон»
- * хүснэгт үүсгээд URL-ыг нь кэшилдэг байв. Одоо алдаанд ШИДНЭ — дуудагч
- * тал catch-ээрээ null/false руу ухардаг.
  */
-/* ⚠️ 2026-09-30: `query.arcgisPost` (timeout · слот · 429 backoff · `res.ok`). `token: 'org'` —
-   дуудагч `getToken()`-ы токеноо өөрөө `params`-д өгдөг тул түүнийг хэвээр эрхэмлэнэ. */
 const req = (url: string, params: Record<string, string>) => arcgisPost(url, params, { token: 'org' });
 
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
@@ -297,61 +214,17 @@ const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 const SUPER_OWNERS = new Set(
   Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u),
 );
-/**
- * ⚠️ ХУУЧИН ЭЗЭД (2026-08-29): super-ийг `ROLE_BY_USER`-аас хасахад түүний
- * үүсгэсэн хүснэгт хэнд ч «танигдахгүй» болж, бүх клиент эрх/томилгоо/
- * tombstone-оо алддаг байв. Super-ийг хасахдаа (а) ArcGIS дээр item-ыг одоогийн
- * super-т reassign хийнэ, ЭСВЭЛ (б) нэрийг нь энд үлдээнэ — super эрх БУЦАХГҮЙ,
- * зөвхөн хүснэгт олдох л зорилготой.
- *
- * ⚠️ 2026-10-05 — `ROLE_BY_USER`-ААС SUPER ХАСАХЫН ӨМНӨ ЗААВАЛ ШАЛГА:
- *    `Selbe_Permissions` item-ийн ЭЗЭН тэр хүн мөн үү (AGOL → item → Overview → Owner).
- *    Мөн бол хасмагц `findTableUrl` хүснэгтийг «танигдахгүй эзэнтэй» гэж татгалзаж,
- *    БҮХ хэрэглэгчийн remote эрх унтарна: панелаас нэмсэн аккаунт нэвтрэхгүй, бүх
- *    хуваарилалт/засах эрх хаагдана (fail-closed), админ панел түгжигдэнэ. Шинж тэмдэг:
- *    консолд «хүснэгтийн эзэн танигдсангүй: <нэр>», админ панелд улаан зурвас
- *    (`permsOwnerMismatch`). Засвар нь ХОЁРЫН НЭГ:
- *      (а) AGOL дээр item-ийн эзнийг одоогийн super-т шилжүүлэх (Change owner) — кодгүй;
- *      (б) хассан хүний нэрийг ДООРХ жагсаалтад нэмж дахин байршуулах.
- *    Ижил дүрэм `Selbe_*` ноорог/батлах хүснэгтүүдэд (`draftRemote` · `qaqcDraftRemote`).
- */
 const FORMER_TABLE_OWNERS: string[] = [];
 const TABLE_OWNERS = new Set([...SUPER_OWNERS, ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase())]);
 /** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт олдсон — шинээр үүсгэхийг хориглоно */
 let ownerMismatch = false;
 /** Танигдаагүй эздийн нэрс (сүүлийн хайлт) — админд ИЛ хэлэхэд */
 let mismatchOwners: string[] = [];
-/**
- * ⚠️ 2026-10-05: ХҮСНЭГТИЙН ЭЗЭН ТАНИГДААГҮЙ бол эздийн нэрс (үгүй бол `[]`) — `UserAdmin`-ы
- *    улаан зурвас. Урьд нь шалтгаан ЗӨВХӨН консолд гардаг байсан тул super-ийг кодоос
- *    хассаны дараа «эрхийн хүснэгт уншигдсангүй» гэсэн ерөнхий түгжээнээс өөр дохио
- *    байгаагүй — админ сүлжээгээ шалгаж, дахин ачаалж цаг алдана.
- */
 export const permsOwnerMismatch = (): string[] => (ownerMismatch ? mismatchOwners : []);
-/**
- * ⚠️ ЭРХИЙН ХҮСНЭГТ НИЙТЭД (`access: public`) НЭЭЛТТЭЙ БАЙНА УУ (2026-09-08-ны
- * амьд шалгалт). `createTable` нь ЗӨВХӨН байгууллагад (`org:'true',
- * everyone:'false'`) хуваалцдаг боловч AGOL дээр гараар нийтийн болгосон байв.
- * Тэр үед НЭВТРЭЭГҮЙ хэн ч (`applyEdits` нь токенгүй амжилттай) БҮХ таван
- * ACL-ийн мөрийг нэмж, засаж, устгаж чадна — үүрэг, эрх, урсгал, чанар,
- * хуваарь, обьём бүгд энэ нэг хүснэгтэд. Кодоор засах боломжгүй (серверийн
- * тохиргоо) тул ИЛРҮҮЛЖ, админ панелд улаанаар мэдэгдэнэ.
- */
 let tablePublic = false;
 /** Эрхийн хүснэгт нийтэд нээлттэй эсэх — UserAdmin-ы анхааруулга */
 export const permsTablePublic = (): boolean => tablePublic;
 
-/**
- * ⚠️ 2026-10-21 (аудит): ENTERPRISE ЗАМД хүснэгтийн ИЛ БАЙДЛЫГ шалгана. `tablePublic` зөвхөн AGOL-ын item хайлтад
- *    (`findTableUrl`) тавигддаг тул Enterprise-ийн шууд хаягийн замд (2026-10-20-оос бүх өгөгдөл) ХЭЗЭЭ Ч ажиллахгүй байв. Super нь
- *    одоо энэ хүснэгтийн мөр (`roles._setTableSupers`) — давхарга org-даяар засагдах (`capabilities`-д Editing/Create/
- *    Update/Delete, item `access` org/public) бол байгууллагын засах эрхтэй ЯМАР Ч аккаунт өөрийн токеноор `applyEdits`-ээр
- *    өөртөө `role:'super'` бичиж (шинэ мөр их OID-той тул `fetchAll`-д ялна — мөрийн эзэмшлийн хязгаар ч хамгаалахгүй),
- *    5 минутын poll-оос админ самбар · бүх эрх авна. Зөвхөн УНШИЖ илрүүлнэ (бичихгүй, токен POST биед — `arcgisPost`);
- *    серверийн тохиргоо тул кодоор засагдахгүй — админд улаанаар (`permsTableOrgEditable`): Enterprise дээр үйлчилгээний
- *    засах эрхийг админ бүлгээр хязгаарлах (уншилт org-д хэвээр — реле `hasPortalRow`-д хэрэгтэй). Шалгаж чадаагүй бол
- *    анхааруулгагүй (мэдэхгүй ≠ аюулгүй) — уншилтын замыг унагаахгүй; нэг сешнд нэг удаа, зөвхөн хөтөчид.
- */
 let tableOrgEditable = false;
 /** Эрхийн хүснэгт байгууллагад засагдахаар нээлттэй эсэх (Enterprise) — UserAdmin-ы анхааруулга */
 export const permsTableOrgEditable = (): boolean => tableOrgEditable;
@@ -374,40 +247,24 @@ async function probeEntExposure(layerUrl: string): Promise<void> {
     const item = await arcgisPost<{ access?: unknown }>(`${restBase()}/content/items/${encodeURIComponent(itemId)}`, {});
     const access = String(item.access ?? '').toLowerCase();
     tablePublic = access === 'public';
-    /* ⚠️ 2026-10-26 (хэрэглэгч): console.error ба UserAdmin-ы улаан анхааруулга ХАСАГДСАН — org-ийн аккаунт бүгд
-       итгэмжлэгдсэн (хүлээн зөвшөөрсөн эрсдэл). Төлөвийг л тэмдэглэнэ. */
     tableOrgEditable = editable && (access === 'org' || access === 'public');
   } catch {
-    /* шалгаж чадсангүй — анхааруулгагүй (дээрх ⚠️) */
+    /* шалгаж чадсангүй — анхааруулгагүй (дээрх) */
   }
 }
 
 /**
  * Хүснэгтийн URL олох — байгаа item-ээс.
- *
- * ⚠️ ЭЗНИЙГ ШАЛГАНА: title хайлт нь org доторх ХЭНИЙ Ч үүсгэсэн ижил нэртэй
- * item-ыг буцааж болно — халдагч `Selbe_Permissions` нэртэй хуурамч хүснэгт
- * үүсгэвэл бүх клиент эрхээ түүнээс уншина. Зөвхөн хатуу тохиргооны super
- * админы эзэмшдэг хүснэгтийг л хүлээн авна.
  */
 async function findTableUrl(token: string): Promise<string | null> {
   const search = await req(`${restBase()}/search`, {
     q: `title:"${TITLE}" type:"Feature Service"`,
     token,
-    /*
-     * ⚠️ 100 (2026-09-08): урьд нь '10' байв. Хайлт нь org доторх ХЭНИЙ Ч ижил
-     * нэртэй item-ыг буцаадаг тул хэн нэгэн 10+ хуурамч `Selbe_Permissions`
-     * үүсгэвэл ЖИНХЭНЭ хүснэгт эхний 10-т багтахаа больж, `ownerMismatch`
-     * асаад бүх клиентийн remote эрх УНТАРНА (үйлчилгээ таслах халдлага).
-     * Эзний шүүлтүүр нь хэвээр — энэ нь зөвхөн хайлтын цонхыг өргөсгөнө.
-     */
     num: '100',
   });
   const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
   const same = results.filter((x) => x.title === TITLE && x.url);
   const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
-  /* ⚠️ Нийтэд нээлттэй эсэхийг ЭНД барина — item-ийн `access` талбар хайлтын
-     хариунд хамт ирдэг, нэмэлт хүсэлт хэрэггүй (`tablePublic`-ийн тайлбар). */
   tablePublic = String(hit?.access ?? '') === 'public';
   if (tablePublic) {
     console.error(
@@ -415,13 +272,9 @@ async function findTableUrl(token: string): Promise<string | null> {
       'AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.',
     );
   }
-  // ⚠️ Ижил нэртэй хүснэгт байгаа ч эзэн нь танигдахгүй → ШИНЭЭР ҮҮСГЭХГҮЙ
-  //    (нэр давхцаж унана, эсвэл салаа хүснэгт үүсэж өгөгдөл хуваагдана).
-  //    Админ item-ыг reassign хийх хүртэл remote унтраалттай — шалтгааныг ил хэлнэ.
   ownerMismatch = !hit && same.length > 0;
   mismatchOwners = ownerMismatch ? [...new Set(same.map((x) => String(x.owner ?? '?')))] : [];
   if (ownerMismatch) {
-    /* ⚠️ 2026-10-05: ЯГ юу хийхийг хэлнэ — эзний нэр, хоёр засвар (FORMER_TABLE_OWNERS-ийн ⚠️) */
     console.error(
       `[selbe] ${TITLE} хүснэгтийн эзэн танигдсангүй: ${mismatchOwners.join(', ')}.`,
       'Энэ нэр кодын super жагсаалтад (ROLE_BY_USER) алга тул БҮХ хэрэглэгчийн remote эрх унтарсан.',
@@ -477,43 +330,18 @@ async function createTable(token: string, user: string): Promise<string | null> 
 
 /**
  * Хүснэгтийн URL-ыг тодорхойлох — олох, эс бөгөөс (super) үүсгэх.
- *
- * ⚠️ `canCreate = true` нь ЗӨВХӨН `fetchAll` ← `permissions.initRemote`-ийн
- *    нэвтрэх агшны хатуу super замаас ирнэ (2026-09-21). Бичих замууд
- *    (`upsertByKey` · `removeByKey`) урьд нь бүгд `tableUrl(true)` дууддаг
- *    байв — порталын search индекс түр хоцрох/алдаа гарах агшинд super-ийн
- *    ямар ч бичилт ХОЁР ДАХЬ `Selbe_Permissions` үүсгэж, эрх/томилгоо хоёр
- *    хүснэгтэд хуваагдах эрсдэлтэй байлаа. Одоо бичилт хүснэгт олдохгүй бол
- *    `false` буцаана (dirty-set-д тэмдэглэгдэж дараа retry) — үүсгэхгүй.
  */
 async function tableUrl(canCreate: boolean): Promise<string | null> {
-  // ⚠️ Зөвхөн ОЛДСОН URL-ыг кэшлэнэ — null-ыг кэшлэвэл порталын search транзит
-  //    алдаа/индексжилтийн хоцрогдолтой үед «олдсонгүй» сешн даяар тогтмолжиж,
-  //    remote эрх огт уншигдахгүй байв; одоо дараагийн дуудлагад дахин хайна.
   if (tableUrlCache) return tableUrlCache;
-  /* ⚠️ 2026-10-20: Enterprise-ийн БОДИТ хаягаар ШУУД (SYS_Selbe_Permissions/230) — порталын хайлт/үүсгэлтгүй (AGOL-ын item хайлт
-     Enterprise-д утгагүй). ⚠️ 2026-10-26: хөрвүүлэх хүснэгт (`entMap.entDirect`) хасагдсан — хаяг шууд. */
   const direct: string | null = `${SYS_PERMS}/230`;
   if (direct) {
     tableUrlCache = direct;
-    /* ⚠️ 2026-10-21 (аудит): ил байдлын шалгалт — зөвхөн хөтөчид (тест/Node-д сүлжээ хөндөхгүй), нэг удаа (`probeEntExposure`-ийн ⚠️) */
     if (typeof document !== 'undefined') void probeEntExposure(direct);
     return direct;
   }
   const auth = await getToken();
   if (!auth) return null;
   let url = await findTableUrl(auth.token);
-  /*
-   * ⚠️ ЗӨВХӨН ЭЗЭН ҮҮСГЭНЭ (2026-09-15-ны аудит). Урьд нь `TABLE_OWNERS`
-   *    шалгуургүй байсан тул порталын search индекс хоцрох/түр алдаа гарах
-   *    агшинд publish эрхтэй ЖИРИЙН хэрэглэгч ӨӨРИЙН эзэмшлийн хуурамч
-   *    `Selbe_Permissions` үүсгэж чаддаг байв. Дараа нь `findTableUrl` нь
-   *    эзэн таарахгүй гэж `ownerMismatch` тавьж, БҮХ клиентийн remote эрх,
-   *    урсгал, QAQC, хуваарь, обьёмын томилгоо унтарна.
-   *
-   * ⚠️ `draftRemote.ts` ба `qaqcDraftRemote.ts` аль хэдийн ижил шалгууртай —
-   *    энэ файл л хоцорсон байв.
-   */
   if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase())) {
     url = await createTable(auth.token, auth.user);
   }
@@ -524,7 +352,6 @@ async function tableUrl(canCreate: boolean): Promise<string | null> {
 type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default;
 type FeatureLayerInst = InstanceType<FeatureLayerMod>;
 async function layer(url: string): Promise<FeatureLayerInst> {
-  /* ⚠️ 2026-10-20: Enterprise-ийн жижиг үсэгтэй талбар → эх нэр (JS API хөрвүүлэгч, `lib/entInterceptor.ts`) */
   await installEntInterceptor();
   const { default: FeatureLayer } = (await import('@arcgis/core/layers/FeatureLayer')) as { default: FeatureLayerMod };
   return new FeatureLayer({ url });
@@ -534,8 +361,6 @@ type RawAttrs = { objectid?: number; username?: string; role?: string; views?: s
 
 /**
  * БҮХ мөрийг хуудаслаж татна.
- * ⚠️ `maxRecordCount`-аас хэтэрсэн мөрийг чимээгүй хаявал сүүлд нэмэгдсэн
- * хэрэглэгчид «эрхгүй» болно — хуудаслалт ЗААВАЛ.
  */
 async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAttrs[]> {
   const out: RawAttrs[] = [];
@@ -553,9 +378,6 @@ async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAtt
 
 /**
  * Бүх мөрийг татаж, ЭРХ ба УРСГАЛЫН томилгоо болгон ялгана.
- *
- * ⚠️ Нэг л асуулгаар хоёуланг нь авна — `initRemote` 5 минут тутам дуудагддаг
- * тул давхар round-trip дэмий.
  */
 export async function fetchAll(
   canCreate = false,
@@ -563,9 +385,7 @@ export async function fetchAll(
   perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[];
   huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[]; ajil: AjilRow[];
   butets: ButetsRow[]; types: TypeRow[];
-  /** ⚠️ 2026-10-19: задлагдаагүй (алгассан) мөрүүд — админы тоймд */
   malformed: MalformedRow[];
-  /** ⚠️ 2026-10-19: «Систем түр хаах» төлөв — `null` = мөр алга / эвдэрсэн (нээлттэй) */
   sys: SysState | null;
 } | null> {
   try {
@@ -574,44 +394,17 @@ export async function fetchAll(
     const fl = await layer(url);
     const rows = await queryAllRows(fl, '1=1');
     const perms: Record<string, RemoteRow> = {};
-    /*
-     * ⚠️ НЭГ ХЭРЭГЛЭГЧ = НЭГ ТОМИЛГОО (2026-08-29): зэрэгцээ бичилтийн race-аас
-     * давхар `__flow__:` мөр үүсвэл уншилт нь ЭХНИЙХ, бичилт нь СҮҮЛИЙНХ (их OID)
-     * мөрийг авч зөрдөг байв — багцын хязгаар чимээгүй арилах, эсвэл нэг аккаунт
-     * хоёр шатанд. Мөрүүд OBJECTID ASC ирдэг тул Map-д сүүлийнх нь ялна — эрхийн
-     * мөртэй ижил дүрэм (`upsertByKey`).
-     */
     const flowBy = new Map<string, FlowRow>();
-    /*
-     * ⚠️ НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР (2026-09-08). Урьд нь массив байсан тул
-     * зэрэгцээ бичилтийн race-аас үүссэн давхар `__cap__:` мөр ХОЁУЛАА
-     * жагсаалтад ордог байв. `_syncRemoteCaps` нь эхнээс нь давтдаг учир
-     * СҮҮЛИЙНХ нь ялах ёстой атлаа `upsertByKey` их OID-д бичдэг тул хассан
-     * эрх (хуучин, бага OID мөрд үлдсэн) дараалал зөрөхөд СЭРГЭДЭГ байлаа.
-     * Map нь flow/qaqc/huvaari/obyem-тэй ижил дүрмийг барина: их OID ялна
-     * (мөрүүд OBJECTID ASC ирдэг).
-     */
     const capsBy = new Map<string, CapRow>();
-    /* ⚠️ Хуваарийн мөр ч мөн НЭГ ХЭРЭГЛЭГЧ = НЭГ МӨР */
     const huvaariBy = new Map<string, HuvaariRow>();
     const obyemBy = new Map<string, ObyemRow>();
     const chanarBy = new Map<string, ChanarRow>();
     const ajilBy = new Map<string, AjilRow>();
     const butetsBy = new Map<string, ButetsRow>();
-    /* ⚠️ Эрхийн төрлийн загвар — НЭГ ТӨРӨЛ = НЭГ МӨР, их OID ялна */
     const typesBy = new Map<string, TypeRow>();
-    /*
-     * ⚠️ 2026-10-19 (аудит): ЭВДЭРСЭН МӨРИЙГ ЧИМЭЭГҮЙ АЛГАСАХГҮЙ — `malformed`-д цуглуулж админы тоймд
-     *    (`permissions.remoteMalformed` → `ErhOverview`) харуулна. Алгасах нь хэвээр (fail-closed — эрх нээхгүй), гэвч
-     *    урьд нь админ «томилсон атлаа ажиллахгүй» шалтгааныг хаана ч харахгүй байв.
-     * ⚠️ 2026-10-19 (аудит): УГТВАР ТОМ/ЖИЖИГ ҮСЭГ ҮЛ ХАМААРНА (`__FLOW__:` ч) · нэр `trim().toLowerCase()` — бичих тал
-     *    (`upsert*`) ижил хэлбэрээр бичдэг. Урьд нь `startsWith` том үсэгт мэдрэмтгий тул гараар засагдсан мөр ЭРХИЙН
-     *    мөр гэж уншигдаж, «__CAP__:bat» нэртэй хэрэглэгч үүсдэг байв; энгийн мөрийн түлхүүр зайтай үлддэг байв.
-     */
     const malformed: MalformedRow[] = [];
-    /* ⚠️ 2026-10-19: системийн хаалтын төлөв — давхар мөрөөс их OID ялна (мөрүүд OBJECTID ASC) */
     let sys: SysState | null = null;
-    /** Одоо уншиж буй мөрийн OBJECTID — цэвэрлэгээний товчинд (⚠️ 2026-10-19) */
+    /** Одоо уншиж буй мөрийн OBJECTID — цэвэрлэгээний товчинд (2026-10-19) */
     let curOid: number | undefined;
     const bad = (key: string, reason: MalformedRow['reason']) => {
       malformed.push({ key, reason, ...(typeof curOid === 'number' ? { oid: curOid } : {}) });
@@ -635,14 +428,9 @@ export async function fetchAll(
       const lu = raw.trim().toLowerCase();
       if (!lu) continue;
       curOid = typeof a.objectid === 'number' ? a.objectid : undefined;
-      /* ⚠️ 2026-10-19 (аудит): ЗАЙТАЙ МӨР — эрх ОЛГОХГҮЙ, цэвэрлэгээнд (`MalformedRow.space`-ийн ⚠️). Бичих тал бүр
-         (`upsert*`) зайгүй түлхүүр бичдэг тул ийм мөр зөвхөн ГАРААР засагдсан хүснэгтээс гарна. */
       if (isSpacedKey(raw)) { bad(raw, 'space'); continue; }
 
-      /* ── Системийн төлөвийн мөр (⚠️ 2026-10-19, «Систем түр хаах») ──
-         ⚠️ Хэрэглэгчийн салаанаас ӨМНӨ — угтвар танигдахгүй бол доорх «Эрхийн мөр» түүнийг хий хэрэглэгч
-            болгодог. Танигдахгүй `__sys__:` түлхүүрийг (ирээдүйн тохиргоо) чимээгүй алгасна — эрх нээдэггүй.
-         ⚠️ Эвдэрсэн мөр → нээлттэй (`parseSysState`-ийн ⚠️), тоймд `json`. */
+      /* ── Системийн төлөвийн мөр ( 2026-10-19, «Систем түр хаах») ── */
       const sysKey = strip(lu, SYS_PREFIX);
       if (sysKey != null) {
         if (sysKey === SYS_MAINT) {
@@ -657,8 +445,6 @@ export async function fetchAll(
       if (role != null) {
         try {
           const d = JSON.parse(a.views || '{}') as unknown;
-          /* ⚠️ 2026-09-25: эвдэрсэн мөр → `tpl: null` — `roleTypes` нарийн нөөц (`ROLE_ACCESS`)
-             өгнө; урьд нь алгасдаг байсан тул ӨРГӨН анхдагч загвар (`DEFAULT_TPL`) үйлчилж байв */
           if (!d || typeof d !== 'object') bad(raw, 'json');
           typesBy.set(role, { role, tpl: d && typeof d === 'object' ? d : null });
         } catch { bad(raw, 'json'); typesBy.set(role, { role, tpl: null }); }
@@ -678,14 +464,11 @@ export async function fetchAll(
         continue rowLoop;
       }
 
-      /* ⚠️ 2026-10-23: хуучин Чанарын (QAQC) хуваарилалтын мөр (`__qaqc__:`) — систем хасагдсан, ЗӨВХӨН алгасна
-         (хэрэглэгчийн мөр гэж андуурахгүй). */
       if (strip(lu, QAQC_PREFIX) != null) continue;
 
       /* ── Нэмэлт эрхийн мөр ── */
       const cUser = strip(lu, CAP_PREFIX);
       if (cUser != null) {
-        /* ⚠️ 2026-10-11 (аудит №7): эрхийн мөрийн (доорх) ижил `UNSAFE_KEY` шүүлт — `caps._syncRemoteCaps`-ийн объектын түлхүүр */
         if (!cUser || UNSAFE_KEY.has(cUser)) { bad(raw, 'user'); continue; }
         try {
           const d = JSON.parse(a.views || '[]') as unknown;
@@ -708,9 +491,7 @@ export async function fetchAll(
               user: fUser,
               stage: d.stage,
               bagts: Array.isArray(d.bagts) ? d.bagts : [],
-              /* ⚠️ ЗӨВХӨН ЯГ `true` — эргэлзээтэй утга эрх ХАСАХГҮЙ (2026-09-09) */
               ...(d.viewOnly === true ? { viewOnly: true as const } : {}),
-              /* ⚠️ 2026-10-23: ЗӨВХӨН ЯГ `true` — эргэлзээтэй бол админы ил төрөл гэж үзнэ (хасахад төрөл хэвээр) */
               ...(d.autoRole === true ? { autoRole: true as const } : {}),
             });
           } else bad(raw, 'stage');
@@ -721,8 +502,6 @@ export async function fetchAll(
       /* ── Эрхийн мөр ── */
       // Устгагдсан аккаунт — `views` талбарт `removed` шууд утга (JSON биш)
       const removed = a.views === 'removed';
-      // ⚠️ FAIL-CLOSED: views талбар хоосон/эвдэрсэн (JSON алдаа, урт таслагдсан)
-      //    бол «бүх эрх» БИШ, «эрхгүй» ([]) руу унана — аюулгүй байдлын анхдагч.
       let views: ViewKey[] | 'all' = [];
       if (!removed) {
         try {
@@ -731,16 +510,11 @@ export async function fetchAll(
           if (v !== 'all' && !Array.isArray(v)) bad(raw, 'json');
         } catch { views = []; bad(raw, 'json'); }
       }
-      /* ⚠️ 2026-10-09: `__proto__` · `constructor` · `prototype` нэртэй мөрийг АЛГАСНА — хүснэгтэд
-         бичих эрхтэй хүн ийм `username` бичвэл `perms[k] = …` нь энгийн объектын прототипыг солиж,
-         бүртгэлгүй бүх нэрэнд «эрх» харагдах боломжтой байв (`caps.UNSAFE_KEY`). */
       if (UNSAFE_KEY.has(lu)) { bad(raw, 'user'); continue; }
-      /* ⚠️ 2026-10-19 (аудит): ТҮЛХҮҮР `trim().toLowerCase()` — `userRead`/`upsert`-тэй ижил (урьд нь зайтай үлддэг байв) */
       perms[lu] = {
         username: raw.trim(),
         role: (a.role as Role) || null,
         views,
-        // ⚠️ FAIL-CLOSED: зөвхөн ТОДОРХОЙ 1 (эсвэл true) бол эрх нээнэ; null/хоосон → үгүй
         docs: a.docs === 1 || (a.docs as unknown) === true,
         ...(removed ? { removed: true } : {}),
       };
@@ -765,21 +539,8 @@ export async function fetchAll(
 
 /**
  * `username`-ээр таарах БҮХ мөрийн OBJECTID (өсөх эрэмбээр).
- * ⚠️ Давхар мөр нь зэрэгцээ бичилтийн race-аас үүсдэг бөгөөд `fetchAll`-д
- * СҮҮЛИЙН (их OID) мөр ялдаг тул засварыг ч мөн их OID-д хийж, бусдыг нь
- * устгана — эс бөгөөс «хадгалсан ч үйлчлэхгүй» чимээгүй алдаа гардаг байв.
  */
 async function findOids(fl: FeatureLayerInst, username: string): Promise<number[]> {
-  /*
-   * ⚠️ ХУУДАСЛАЛТ (2026-09-08): урьд нь ганц дуудлага байсан тул үйлчилгээний
-   * `maxRecordCount` (ихэвчлэн 1000, зарим дээр 2000)-аас дээш давхар мөр
-   * үүссэн тохиолдолд илүүдэл нь ОГТ буцаагддаггүй байв. Тэр нь `upsertByKey`-д
-   * «цэвэрлэх давхардал алга» гэж харагдаж, цэвэрлэгдээгүй хуучин мөр дараагийн
-   * уншилтад эргэн гарч ирнэ. `orderByFields`-гүй offset нь мөр алгасдаг тул
-   * эрэмбийг ЗААВАЛ хадгална (CLAUDE.md-ийн ArcGIS занга).
-   */
-  /* ⚠️ 2026-10-19 (аудит): түлхүүр `trim()`-тэй (бичих тал бүр trim хийдэг). SQL-д TRIM хэрэглэхгүй — үйлчилгээний
-     SQL-ийн дэмжлэг шалгагдаагүй; хуучин зайтай мөр олдохгүй бол шинэ мөр (их OID) нэмэгдэж `fetchAll`-д ялна. */
   const where = `LOWER(username) = '${username.trim().toLowerCase().replace(/'/g, "''")}'`;
   const out: number[] = [];
   for (let offset = 0; ; ) {
@@ -799,42 +560,22 @@ async function findOids(fl: FeatureLayerInst, username: string): Promise<number[
 const editOk = (r: { error?: unknown }[] | undefined): boolean =>
   (r ?? []).every((x) => x.error == null);
 
-/**
- * ⚠️ 2026-10-05: `views` ТАЛБАРЫН УРТ — `createTable`-д 2048 тэмдэгт. Урьд нь шалгалтгүй
- *    байсан тул олон багц × олон үүрэгтэй `grants` JSON (эсвэл том загвар) хязгаараас
- *    хэтрэхэд ArcGIS бичилтийг ерөнхий алдаагаар татгалзаж (зарим үйлчилгээ ТАСЛААД
- *    хадгалдаг — тэр үед JSON эвдэрч мөр fail-closed «эрхгүй» болно), админд зөвхөн
- *    «ArcGIS-т хадгалагдсангүй» гэж харагддаг байв. Одоо бичихээс ӨМНӨ шалгаж, шалтгааныг
- *    нэрлэсэн алдаа шиднэ; `upsertByKey` түүнийг барьж `false` буцаана (бүх дуудагчийн
- *    `Promise<boolean>` гэрээ хэвээр), текстийг `takeWriteError` UI-д хүргэнэ.
- */
 const VIEWS_MAX = 2048;
 let lastWriteErr = '';
 let lastWriteErrAt = 0;
 /**
  * Сүүлийн бичилтийн ТОДОРХОЙ шалтгаан (уншмагц цэвэрлэгдэнэ) — `aclOps.runOp` · `UserAdmin`.
- * ⚠️ 15 секундээс хуучныг буцаахгүй — өөр замаар (жиш. загвар хадгалах) үлдсэн хуучин
- *    мессеж дараагийн, хамааралгүй уналтад гарч төөрөгдүүлэхгүй.
  */
 export function takeWriteError(): string {
   const m = Date.now() - lastWriteErrAt < 15_000 ? lastWriteErr : '';
   lastWriteErr = '';
   return m;
 }
-/**
- * ⚠️ 2026-10-06 (аудит): БҮХ уналтын замын шалтгааныг тэмдэглэнэ (урьд нь зөвхөн уртын
- *    шалгалт). `upsertByKey` · `removeByKey` нь нүцгэн `false` буцаадаг тул UI зөвхөн ерөнхий
- *    «хадгалагдсангүй» харуулдаг байв. `Promise<boolean>` гэрээг ӨӨРЧЛӨХГҮЙ (20+ дуудагч) —
- *    шалтгаан нь `takeWriteError()`-ээр; дэлгэцэнд `ui.userError`-оор (дуудагч тал).
- *    Эхний (хамгийн тодорхой) шалтгааныг дарахгүй.
- */
 function noteWriteError(e: unknown): void {
   if (lastWriteErr && Date.now() - lastWriteErrAt < 15_000) return;
   const m = e instanceof Error ? e.message : typeof e === 'string' ? e
     : String((e as { message?: string } | null)?.message ?? e ?? '');
   if (!m) return;
-  /* ⚠️ «ArcGIS-т хадгалагдсангүй» угтвар ЗААВАЛ — түүхий шалтгаан («fake failure», «Failed
-     to fetch») дангаараа юу болсныг хэлэхгүй (aclE2E §7b) */
   lastWriteErr = tr('ArcGIS-т хадгалагдсангүй: {0}', m);
   lastWriteErrAt = Date.now();
 }
@@ -857,9 +598,7 @@ function assertViewsFit(usernameKey: string, attrs: Record<string, unknown>): vo
 /** Нэг түлхүүр (username)-д нэг мөр байлгаж upsert хийнэ; давхардлыг цэвэрлэнэ */
 async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>): Promise<boolean> {
   try {
-    /* ⚠️ 2026-10-05: уртын шалгалт — сүлжээний хүсэлтээс ӨМНӨ (`assertViewsFit`-ийн ⚠️) */
     assertViewsFit(usernameKey, attrs);
-    /* ⚠️ `false` — бичилт хүснэгт ҮҮСГЭХГҮЙ (2026-09-21, `tableUrl`-ийн тайлбар) */
     const url = await tableUrl(false);
     if (!url) { noteWriteError(tr('Эрхийн хүснэгт олдсонгүй эсвэл хандах эрхгүй байна.')); return false; }
     const fl = await layer(url);
@@ -886,7 +625,6 @@ async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>):
 /** Түлхүүрт таарах БҮХ мөрийг устгана (давхардал ч бас) */
 async function removeByKey(usernameKey: string): Promise<boolean> {
   try {
-    /* ⚠️ `false` — устгал хүснэгт ҮҮСГЭХГҮЙ (2026-09-21, `tableUrl`-ийн тайлбар) */
     const url = await tableUrl(false);
     if (!url) { noteWriteError(tr('Эрхийн хүснэгт олдсонгүй эсвэл хандах эрхгүй байна.')); return false; }
     const fl = await layer(url);
@@ -894,10 +632,6 @@ async function removeByKey(usernameKey: string): Promise<boolean> {
     if (!oids.length) return true;
     const del = { deleteFeatures: oids.map((objectId) => ({ objectId })) } as Parameters<typeof fl.applyEdits>[0];
     const r = await fl.applyEdits(del);
-    /* ⚠️ 2026-10-09 (аудит): `editOk` нь `every()` тул ХООСОН/алга `deleteFeatureResults` «амжилт» гэж
-       давдаг байв — сервер юу ч устгаагүй хариу өгсөн ч эрх «хасагдсан» гэж тайлагнагдана. Устгал бол
-       ЗОРИУЛСАН үр дүн тул мөр БҮРД нэг үр дүн шаардана (`upsertByKey`-ийн `ok.length > 0`-той ижил санаа).
-       `editOk`-ийг ӨӨРЧЛӨХГҮЙ — `upsertByKey`-д давхардалгүй үед устгалын үр дүн хоосон байх нь хэвийн. */
     const dr = r.deleteFeatureResults ?? [];
     const good = dr.length === oids.length && editOk(dr);
     if (!good) noteWriteError(editErr(r.deleteFeatureResults) || tr('ArcGIS бичилтийг хүлээж авсангүй.'));
@@ -909,11 +643,7 @@ async function removeByKey(usernameKey: string): Promise<boolean> {
 }
 
 /**
- * ЭВДЭРСЭН (ЗАЙТАЙ г.м.) МӨРИЙГ OBJECTID-ООР УСТГАНА — админы «Эрхийн хүснэгтийн цэвэрлэгээ» (⚠️ 2026-10-19).
- * ⚠️ `removeByKey` нь `LOWER(username) = '<trim>'` тул зайтай мөрийг ОЛДОГГҮЙ — энд OID-оор.
- * ⚠️ Устгахын ӨМНӨ мөрийг дахин уншиж `username` нь харуулсан `expectKey`-тэй ЯГ тэнцүү эсэхийг шалгана — хүснэгт
- *    хооронд өөрчлөгдсөн бол (өөр мөр тэр OID-д) устгахгүй.
- * ⚠️ Эрхийн шалгалт нь дуудагчид (ErhOverview — super-ийн админ панел) ба хүснэгтийн ArcGIS эрхэд (бусад бичилттэй ижил).
+ * ЭВДЭРСЭН (ЗАЙТАЙ г.м.) МӨРИЙГ OBJECTID-ООР УСТГАНА — админы «Эрхийн хүснэгтийн цэвэрлэгээ» (2026-10-19).
  */
 export async function removeMalformedRow(oid: number, expectKey: string): Promise<boolean> {
   try {
@@ -940,12 +670,6 @@ export async function removeMalformedRow(oid: number, expectKey: string): Promis
 
 /**
  * НЭГ ТҮЛХҮҮРИЙН `views`-ИЙГ ШИНЭЭР УНШИНА — бичихийн ЯГ ӨМНӨ нэгтгэхэд (2026-10-04).
- * ⚠️ ЯАГААД: `caps.setCaps` · `scopedAcl.pushRow` нь ≤5 мин настай кэшээс БҮТЭН жагсаалт
- *    бичдэг тул хоёр админ нэг хэрэглэгчийг зэрэг засвал сүүлд бичсэн нь өмнөхийн
- *    нэмсэн эрх/багцыг чимээгүй арчдаг байв. Одоо дуудагч энэ шинэ утга дээр ӨӨРИЙН
- *    ганц өөрчлөлтийг (нэмсэн/хассан) давхарлаж бичнэ.
- * @returns `undefined` = уншиж чадсангүй (дуудагч БИЧИХГҮЙ), `null` = мөр алга,
- *   эс бөгөөс их OID-тай мөрийн `views` (`fetchAll`-ийн «их OID ялна» дүрэм).
  */
 async function readViewsByKey(key: string): Promise<string | null | undefined> {
   const r = await readRowByKey(key);
@@ -968,9 +692,6 @@ async function readRowByKey(key: string): Promise<RawAttrs | null | undefined> {
 
 /**
  * Урсгалын томилгоог ШИНЭЭР уншина (`guitsetgelAcl.pushFlow`-ийн нэгтгэлд, 2026-10-05).
- * ⚠️ `capRead`/`scopedRead`-ийн ижил зорилго: хоёр админ нэг хүний багцыг зэрэг засахад
- *    сүүлд бичсэн нь өмнөхийнхийг арчихгүй. Задлалт `fetchAll`-тэй ИЖИЛ.
- * @returns `null` = уншиж чадсангүй; `{ row: null }` = мөр алга / эвдэрсэн (томилгоогүй).
  */
 export async function flowRead(user: string): Promise<{ row: FlowRow | null } | null> {
   const u = user.trim().toLowerCase();
@@ -997,9 +718,6 @@ export async function flowRead(user: string): Promise<{ row: FlowRow | null } | 
 
 /**
  * Хэрэглэгчийн ЭРХИЙН мөрийг ШИНЭЭР уншина (`permissions.setUser`-ийн нэгтгэлд, 2026-10-05).
- * ⚠️ Задлалт `fetchAll`-ийн «Эрхийн мөр» хэсэгтэй ИЖИЛ (fail-closed: эвдэрсэн `views` → `[]`,
- *    `docs` зөвхөн тодорхой 1).
- * @returns `null` = уншиж чадсангүй; `{ row: null }` = мөр алга.
  */
 export async function userRead(username: string): Promise<{ row: RemoteRow | null } | null> {
   const a = await readRowByKey(username.trim());
@@ -1072,8 +790,6 @@ export async function scopedRead(
 
 /** Нэг хэрэглэгчийн эрхийн мөрийг нэмэх/шинэчлэх (upsert) */
 export function upsert(row: RemoteRow): Promise<boolean> {
-  /* ⚠️ 2026-10-19 (аудит): түлхүүр `trim().toLowerCase()` — `fetchAll` ижил хэлбэрээр уншина; зайтай/том үсэгтэй нэр
-     хоёр өөр мөр (давхар эрх) үүсгэхгүй. Хадгалах `username` нь зайгүй (харагдах хэлбэр нь хэвээр). */
   const key = row.username.trim().toLowerCase();
   return upsertByKey(key, {
     username: row.username.trim(),
@@ -1086,16 +802,11 @@ export function upsert(row: RemoteRow): Promise<boolean> {
 
 /** Хэрэглэгчийн эрхийн мөрийг устгах */
 export function remove(username: string): Promise<boolean> {
-  /* ⚠️ 2026-10-19 (аудит): `upsert`-тэй ижил түлхүүр */
   return removeByKey(username.trim().toLowerCase());
 }
 
 /**
  * Урсгалын томилгоог бичих — нэг хэрэглэгч нэг мөр (`__flow__:` угтвартай).
- *
- * ⚠️ `viewOnly` нь ЗӨВХӨН `true` үед бичигдэнэ (2026-09-09). Хуучин мөр
- *    талбаргүй хэвээр үлдэж, задлахад `undefined` = ЖИРИЙН томилгоо болно —
- *    тэр туг эрхийг ХАСДАГ болохоос НЭМДЭГГҮЙ тул анхдагч нь аюулгүй.
  */
 export function flowUpsert(
   user: string, stage: string, bagts: string[], viewOnly = false, autoRole = false,
@@ -1104,7 +815,6 @@ export function flowUpsert(
   return upsertByKey(key, {
     username: key,
     role: null,
-    /* ⚠️ 2026-10-23: `autoRole` ч ЗӨВХӨН `true` үед (`viewOnly`-тэй ижил — хуучин мөр талбаргүй) */
     views: JSON.stringify({
       stage, bagts, ...(viewOnly ? { viewOnly: true } : {}), ...(autoRole ? { autoRole: true } : {}),
     }),
@@ -1140,9 +850,7 @@ export function typeUpsert(role: string, tpl: unknown): Promise<boolean> {
 }
 
 /**
- * «СИСТЕМ ТҮР ХААХ» ТӨЛӨВИЙГ БИЧНЭ (⚠️ 2026-10-19) — `__sys__:maintenance` нэг мөр (`typeUpsert`-ийн загвар).
- * ⚠️ Эрхийн шалгалт нь дуудагчид (`permissions.setSystemClosed` → `who.requireCap('sysClose')`).
- * ⚠️ `upsertByKey` нь ArcGIS-ийн 200-аар ирдэг алдааг (`error` бие) аль хэдийн барина; урт `assertViewsFit`.
+ * «СИСТЕМ ТҮР ХААХ» ТӨЛӨВИЙГ БИЧНЭ (2026-10-19) — `__sys__:maintenance` нэг мөр (`typeUpsert`-ийн загвар).
  */
 export function sysUpsert(state: SysState): Promise<boolean> {
   const key = SYS_PREFIX + SYS_MAINT;
@@ -1160,9 +868,7 @@ export async function sysRead(): Promise<{ state: SysState | null } | null> {
 }
 
 /**
- * БАРИМТ БИЧГИЙН САНГИЙН БҮЛГҮҮД (⚠️ 2026-10-23) — `__sys__:docgroups` нэг мөр, `views` нь `[{ id, title }]` JSON.
- * ⚠️ `fetchAll` танигдахгүй `__sys__:` түлхүүрийг чимээгүй алгасдаг тул эрхийн уншилтад нөлөөгүй.
- * ⚠️ Эрхийн шалгалт дуудагчид (`docLib.saveGroups` → `docsUpload`).
+ * БАРИМТ БИЧГИЙН САНГИЙН БҮЛГҮҮД (2026-10-23) — `__sys__:docgroups` нэг мөр, `views` нь `[{ id, title }]` JSON.
  */
 const DOC_GROUPS = 'docgroups';
 export type DocGroupRow = { id: string; title: string };
@@ -1189,10 +895,6 @@ export function docGroupsWrite(list: readonly DocGroupRow[]): Promise<boolean> {
 
 /**
  * Багцын хуваарилалтыг бичих — нэг хэрэглэгч нэг мөр (`scopedAcl`-ийн таван систем).
- * ⚠️ 2026-10-26 (A6): урьд нь таван ижил `*Upsert` ба таван `*Remove` функц (зөвхөн угтвар өөр) байв —
- *    одоо НЭГ туслах `SCOPED_PREFIX[kind]`-ээр; экспортын нэрс доор нимгэн бүрхүүлээр хэвээр (дуудагч өөрчлөгдөхгүй).
- * ⚠️ `roles` нь ЧӨЛӨӨТ мөрийн массив: энэ модуль утгыг нь ШАЛГАХГҮЙ, зөвхөн
- *    тээвэрлэнэ (`huvaariAcl` · `obyemAcl` … танигдахгүйг нь хаяна) — `caps`-тай ижил зарчим.
  */
 export function scopedUpsert(
   kind: ScopedKind, user: string, roles: string[], bagts: string[], grants?: Grant[],
@@ -1201,14 +903,6 @@ export function scopedUpsert(
   return upsertByKey(key, {
     username: key,
     role: null,
-    /*
-     * ⚠️ ХОЁР ХЭЛБЭРИЙГ ЗЭРЭГ БИЧНЭ (2026-09-09). `grants` нь ҮНЭН эх сурвалж;
-     *    `roles`/`bagts` нь ХУУЧИН клиент build уншиж чадах нөөц (нэгдэл).
-     *    Ингэсэн тул шинэ клиент бичсэн мөрийг хуучин клиент нээхэд эрх
-     *    ЧИМЭЭГҮЙ алга болохгүй. Хуучин нь үржвэр болж УЯН болох тул
-     *    (жишээ нь Багц 1-д батлагч ч болох) — энэ нь fail-closed биш ч
-     *    зөвхөн ШИЛЖИЛТИЙН хугацаанд, зөвхөн хуучин build дээр үйлчилнэ.
-     */
     views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
     docs: 0,
   });
@@ -1219,8 +913,6 @@ export function scopedRemove(kind: ScopedKind, user: string): Promise<boolean> {
   return removeByKey(SCOPED_PREFIX[kind] + user.trim().toLowerCase());
 }
 
-/* ⚠️ 2026-10-26 (A6): нимгэн бүрхүүлүүд `function` зарлалаар (`const` биш) — `*Acl.ts` модулиуд `remove: xRemove`-ыг
-   модулийн түвшинд уншдаг тул импортын тойрогт `const`-ийн TDZ алдаа гарахгүй (hoisting). */
 /** Хуваарийн хуваарилалт — бичих / арилгах */
 export function huvaariUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('huvaari', user, roles, bagts, grants); }
 export function huvaariRemove(user: string): Promise<boolean> { return scopedRemove('huvaari', user); }

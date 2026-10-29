@@ -1,6 +1,6 @@
 /**
  * ХЭЛ СОЛИХОД ХАДГАЛААГҮЙ АЖИЛ АЛДАГДАХГҮЙ — `LocaleToggle` (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/LocaleToggle.ui.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/components/LocaleToggle.ui.check.mjs
  *
  * Хамгаалж буй алдаа: хэл солих нь 2026-09-30-наас хуудсыг дахин ачаалахгүй —
  * `LocaleProvider` аппыг `key`-ээр REMOUNT хийнэ. Reload үед модулиудын
@@ -8,8 +8,6 @@
  * `beforeunload` үүсгэдэггүй тул Санхүү · Хуваарь · QAQC · Газар · «Гүйцэтгэл
  * бөглөх» … хадгалаагүй засвар АСУУЛТГҮЙ алга болдог байв.
  * Мөн `SkipLink` (LocaleProvider-ийн гадна) хэл солиход хуучин хэлээрээ үлддэг байв.
- *
- * ⚠️ `*.ui.check.mjs` — CSS модулийн стуб хэрэгтэй (`tools/ts-alias.mjs`).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -65,7 +63,6 @@ _resetNavDirty();
 
 console.log('\n2. confirmLocaleSwitch — хадгалаагүй үед л асууна');
 asked = [];
-/* ⚠️ 2026-10-23: async (`askConfirm` — хостгүй үед `window.confirm` руу унана) */
 ok('цэвэр → асуултгүй зөвшөөрнө', (await confirmLocaleSwitch()) === true && asked.length === 0);
 win.addEventListener('beforeunload', finance);
 answer = false;

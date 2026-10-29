@@ -1,16 +1,5 @@
 /**
  * PDF-ИЙН НЭГДСЭН ХЭВ МАЯГ — өнгө, хүснэгтийн загвар, нүдний туслахууд.
- *
- * ⚠️ ЯАГААД ТУСДАА ВЭ: Удирдлагын тайлан (`execPdf.ts`) ба AI туслахын тайлан
- * (`lib/agent/reportPdf.ts`) ХОЁУЛАА энэ палитрыг хэрэглэнэ. Хуулбарлавал нэг
- * өдөр хоёр баримт өөр өнгөтэй болж, «өөр газраас гарсан» мэт харагдана.
- *
- * ⚠️ Утгууд нь лавлагаа баримтаас ШУУД авсан (дулаан цаас, бараг хар гарчиг,
- * дулаан саарал зураас). Төлөв/акцентын өнгө нь вэбийн хэвлэх токен
- * (`PRINT_COLORS`) — 2026-10-09-ны хэрэглэгчийн сонголт.
- *
- * ⚠️ ЦЭВЭР МОДУЛЬ — pdfmake-ийн ажиллах код ОРОХГҮЙ (зөвхөн `type` импорт) тул
- * үүнийг импортлосон ч багцад pdfmake чирэгдэхгүй.
  */
 import type { CustomTableLayout, TableCell } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
@@ -30,15 +19,9 @@ export const AMBER = PRINT_COLORS.warn;    // --warn
 
 /**
  * Roboto-д байхгүй тэмдэгтийг PDF-д орлуулна.
- * ⚠️ pdfmake-ийн суулгацтай ирдэг Roboto нь кирилл (Ө/Ү) дэмждэг ч ₮ тэмдэг
- *    БАЙХГҮЙ — орлуулахгүй бол хоосон дөрвөлжин гарна.
  */
 export const T = (s: string) => s.replace(/₮/g, tr('төг'));
 
-/**
- * ⚠️ БОСОО ЗУРААСГҮЙ: лавлагаа баримт мөр хоорондын нимгэн хэвтээ зураасаар л
- * ялгадаг. Босоо шугам нэмбэл «хүснэгтэн тор» болж, хэв маяг эрс өөрчлөгдөнө.
- */
 export const tableLayout: CustomTableLayout = {
   hLineColor: (i, node) => (i === 1 || i === node.table.body.length ? RULE2 : RULE),
   vLineWidth: () => 0,
@@ -49,8 +32,6 @@ export const tableLayout: CustomTableLayout = {
   paddingBottom: () => 5,
 };
 
-/* ⚠️ Доорх нүднүүд `'th'` загварыг нэрлэдэг — дуудагч баримтын `styles`-д тэр
-   нэр ЗААВАЛ байх ёстой (`execPdf` ба `reportPdf` хоёулаа тодорхойлсон). */
 export const th = (t: string, right = false): TableCell =>
   ({ text: T(t), style: 'th', alignment: right ? 'right' : 'left' });
 export const td = (t: string | number, right = false, color?: string): TableCell =>

@@ -63,7 +63,6 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(t.paid, 60);
   assert.equal(t.contracts, 1);
   assert.equal(t.pays, 3);
-  /* ⚠️ 2026-10-26 (аудит): дүнгүй (AUTO) мөр төлбөрт ТООЛОГДОХГҮЙ — `ipcTable.payCount`-тай нэг дүрэм */
   const withAuto = [...rows, pay(4, 'Багц-4.1', 'Багц-4.1', work, null, { [P.id]: 'AUTO|Багц-4.1|2026-10-01' })];
   assert.equal(hoTotals(withAuto).pays, 3, 'дүнгүй AUTO мөр төлбөр биш');
   assert.equal(hoTotals([pay(5, 'Багц-4.1', 'Багц-4.1', work, null)]).pays, 0, 'зөвхөн дүнгүй мөр → 0 төлбөр');
@@ -73,7 +72,6 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
 {
   const rows = [
     pay(1, 'Багц-14', 'Багц 14', work, 1000),
-    // ⚠️ `bagtsKey('Багц-1-4')` = 'БАГЦ14' — дээрх БОДИТ Багц 14-тэй МӨРГӨЛДӨНӨ
     pay(2, 'Багц-1-4', 'Багц-1-4', work, 876_465_164),
     pay(3, 'олон', 'БАГЦ-10,  БАГЦ-11, БАГЦ-13, БАГЦ-15', work, 5_094_952_269),
   ];
@@ -85,7 +83,6 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   const un = unlinkedPays(rows);
   assert.equal(un.length, 2, 'холбогдоогүй 2 мөр ИЛ гарна');
 
-  // ⚠️ БАГЦЫН MAP-ЫН НИЙЛБЭР ≠ НИЙТ — энэ дүрмийг тестээр бэхжүүлнэ
   const byPkgSum = [...m.values()].reduce((a, v) => a + v, 0);
   assert.equal(hoTotals(rows).paid, 5_971_418_433);
   assert.notEqual(byPkgSum, hoTotals(rows).paid,
@@ -121,7 +118,6 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
 
 /* ══ 4. УРЬДЧИЛГАА vs ГҮЙЦЭТГЭЛ — ялгаж, дугаарлахгүй ══ */
 {
-  // ⚠️ Урьдчилгаа мөрд `ipc_dugaar` ҮРГЭЛЖ null (амьдаар 20/20)
   assert.equal(hoPayCode({ [P.kind]: advance, [P.ipcNo]: null }), 'Урьдчилгаа',
     '⚠️ «IPC-00» гэсэн ХУДАЛ код гарах ЁСГҮЙ');
   assert.equal(hoPayCode({ [P.kind]: work, [P.ipcNo]: 3 }), 'IPC-03');
@@ -151,7 +147,6 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(g.advanceTotal, 314);
   assert.equal(g.workTotal, 216);
   assert.equal(g.paidTotal, 537);
-  // ⚠️ Ангилагдаагүй мөр нь ХОЁР төрлийн АЛЬ Ч ГҮЙД ороогүй ч НИЙТ-д БАЙНА
   assert.equal(g.advanceTotal + g.workTotal, 530, 'хоёр төрлийн нийлбэр < нийт');
 }
 
@@ -169,8 +164,6 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(noCode.key, '', 'багцгүй тул түлхүүр хоосон');
   assert.equal(hoTotals(rows).budget, 533_100_050, 'нийт төсөвт ҮЛДЭНЭ');
 
-  /* ⚠️ 2026-10-21 (аудит): ХОЁР кодгүй мөр — тус тусдаа гэрээ (OID-оор); төсөв нь нийлэхгүй, алдагдахгүй,
-     төлбөр/хувь нь холилдохгүй. Урьд нь нэг `''` гэрээ болж 100-ийн төсөв алга, paidPct (7+3)/500 болдог байв. */
   const two = [
     pay(1, 'Багц-1', 'Багц-1', work, 10, { [C.budgetTotal]: 50 }),
     pay(2, null, null, work, 7, { [C.budgetTotal]: 533_100_000, [C.contractTotal]: 500 }),
@@ -189,7 +182,6 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   const noOid = groupHo([{ [C.code]: null, [P.amount]: 1 }, { [C.code]: null, [P.amount]: 2 }]);
   assert.equal(noOid.length, 2);
 
-  /* ⚠️ 2026-10-22 (аудит №4): НЭГ гэрээний (дугаар ижил) хоёр төлбөрийн кодгүй мөр — нэг гэрээ, төсөв давхардахгүй */
   const sameNo = [
     pay(1, null, null, work, 100, { [C.budgetTotal]: 533_100_000, [C.contractTotal]: 710_800_000, [C.contractNo]: 'ЗҮ2025/07' }),
     pay(2, null, null, work, 50, { [C.budgetTotal]: 533_100_000, [C.contractTotal]: 710_800_000, [C.contractNo]: 'ЗҮ2025/07' }),
@@ -244,19 +236,12 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(hoTotals([{ objectid: 1, [C.code]: 'Г', ...r }]).saving, 84_488);
 }
 
-/* ══ 8-Б. AUTO МӨР — гэрээний талбарыг ХООСРУУЛАХГҮЙ (2026-09-11) ══
-
-   ⚠️ ЭНЭ БОЛ БОДИТ, ХЭМЖСЭН АЛДАА. `ipcAuto.autoInsert` нь гэрээний талбарыг
-   ОГТ бичдэггүй тул AUTO мөр бүр ХООСОН төсөвтэй. Амьдаар 52 мөрийн 7 нь
-   AUTO. Хуучин «эхний мөрөөр dedup» дүрмээр AUTO мөр бүлгийн эхэнд ирвэл
-   тухайн гэрээний төсөв `null` болж, нийт төсөв 2,090.2 → 166.1 тэрбум ₮
-   болж ЧИМЭЭГҮЙ уначихдаг байв. Одоо «утгатай эхний мөр»-өөс авна. */
+/* ══ 8-Б. AUTO МӨР — гэрээний талбарыг ХООСРУУЛАХГҮЙ (2026-09-11) ══ */
 {
   const AUTO = { [P.id]: 'AUTO|БАГЦ1|2026-09-09' };
   const real = pay(1, 'Багц-1', 'Багц-1', work, 10,
     { [C.budgetTotal]: 373_645_400_000, [C.contractTotal]: 373_298_048_361,
       [C.contractor]: 'Гүйцэтгэгч ХХК' });
-  // ⚠️ AUTO мөр ЭХЭНД — амьд өгөгдөлд OID нь сүүлд байгаа нь САНАМСРААР
   const autoFirst = row(46, {
     [C.code]: 'Багц-1', [C.pkg]: 'Багц 1', [P.kind]: work, [P.amount]: 5, ...AUTO,
   });
@@ -277,11 +262,7 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   }
 }
 
-/* ══ 8-В. ХОЁР ӨӨР non-null утга — ЧИМЭЭГҮЙ сонгохгүй, АНХААРУУЛНА ══
-
-   ⚠️ Амьд өгөгдөлд мөнгөн талбарт ийм зөрчил АЛГА (2026-09-11). Гарвал энэ нь
-   эх сурвалж дээр НЭГ гэрээ хоёр өөр төсөвтэй бичигдсэн гэсэн үг — кодоор
-   шийдэх боломжгүй тул ЭХНИЙХИЙГ авч, console.warn-оор ил хэлнэ. */
+/* ══ 8-В. ХОЁР ӨӨР non-null утга — ЧИМЭЭГҮЙ сонгохгүй, АНХААРУУЛНА ══ */
 {
   const warns = [];
   const orig = console.warn;
@@ -297,8 +278,6 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
       'анхааруулга нь ГЭРЭЭ ба ТАЛБАРЫГ нэрлэнэ');
   } finally { console.warn = orig; }
 
-  // ⚠️ `bagts`-ийн бичиглэлийн зөрүү нь анхааруулга ҮҮСГЭХГҮЙ: «Багц-4.1» ба
-  //    «Багц 4-1» хоёр `bagtsKey`-ээр ИЖИЛ түлхүүрт унадаг тул холбоос эвдрэхгүй.
   const w2 = [];
   const o2 = console.warn;
   console.warn = (m) => w2.push(String(m));
@@ -331,7 +310,7 @@ const pay = (oid, code, pkg, kind, dun, extra = {}) => row(oid, {
   assert.equal(hoTotals([pay(1, 'Г', 'Г', work, 265, { [C.contractTotal]: 1000 })]).paidPct, 26.5);
 }
 
-/* ══ 11. ⚠️ 2026-09-30: `hoTotals().paidPct`-ийн тоологч = гэрээт дүн ТОДОРХОЙ гэрээний олголт ══
+/* ══ 11. 2026-09-30: `hoTotals.paidPct`-ийн тоологч = гэрээт дүн ТОДОРХОЙ гэрээний олголт ══
    Гэрээт дүнгүй гэрээний (ХО-0045 г.м.) төлбөр хуваарьт ороогүй тул тоологчид ч орохгүй —
    `ipcTable.ipcTotals.paidContracted`-тай нэг дүрэм. `paid` нь хэвээр бүх мөр. */
 {

@@ -1,10 +1,5 @@
 /**
  * ЧАНАРЫН БАРИМТЫН ДЭЛГЭЦИЙН ЦЭВЭР ТУСЛАХУУД — `Chanar.tsx` ба дэд маягтууд.
- *
- * ⚠️ 2026-09-28: React үгүй, сүлжээ үгүй — `chanarUi.check.mjs` Node дээр
- *    ачаална. Урсгалын дүрэм ЭНД БИШ (`chanarMs.ts`); энд зөвхөн жагсаалтын
- *    шүүлт, хураангуйн тоо, огнооны хөрвүүлэлт, хэвлэх маягтын гарын үсгийн
- *    мөрүүд — дэлгэцийн тооцоо.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -42,7 +37,6 @@ export function matchesSearch(doc: Pick<MsDoc, 'docNo' | 'title'>, q: string): b
 
 /**
  * Багцын жагсаалт — ноорог ЗӨВХӨН зохиогчид (эсвэл super); бусад бүх төлөв.
- * ⚠️ `chanarMs.MS_STATUS`-ийн «draft — хэнд ч харагдахгүй» дүрэм (2026-09-25).
  */
 export function visibleInPkg(docs: readonly MsDoc[], pkg: string, me: string, isSuper: boolean): MsDoc[] {
   const u = me.trim().toLowerCase();
@@ -58,9 +52,6 @@ export function kindCounts(docs: readonly MsDoc[]): Record<DocKind, number> {
 
 /** Баримтын шийдвэрийн код — REP байвал түүнээс, үгүй бол хянагчдын нэгтгэл; шийдвэргүй → null */
 export function docVerdict(doc: Pick<MsDoc, 'kind' | 'status' | 'reviews' | 'rep'>): VerdictCode | null {
-  /* ⚠️ 2026-09-29 (аудит 10): ШИЙДВЭРЛЭГДЭЭГҮЙ төлөвт `rep`-ийг тооцохгүй. NCR-ийн
-     залруулга/дахин нээлт нь REP дугаарын lineage-ийн тулд ӨМНӨХ хариуг мөрөнд
-     үлдээдэг (`chanarStore.submitCorrection`) — тэр нь одоогийн шийдвэр биш. */
   if (doc.status !== MS_STATUS.approved && doc.status !== MS_STATUS.returned) return null;
   if (doc.rep) return doc.rep.verdict;
   const rs = REVIEWERS_OF[doc.kind].map((r) => doc.reviews[r]).filter((r) => r != null);
@@ -71,8 +62,6 @@ export function docVerdict(doc: Pick<MsDoc, 'kind' | 'status' | 'reviews' | 'rep
 
 /**
  * MA хураангуй (баримтаар) — A / AN / R / хүлээгдэж буй (review) / нээлттэй.
- * ⚠️ 2026-09-28: НЭЭЛТТЭЙ = ноорог + review + буцаагдсан + AN-тай батлагдсан
- *    (нөхцөл биелээгүй, `closeAn` хийгдээгүй) — практикийн OPEN/CLOSED.
  */
 export function maSummary(heads: readonly MsDoc[]): { A: number; AN: number; R: number; pending: number; open: number; anOpen: number } {
   const out = { A: 0, AN: 0, R: 0, pending: 0, open: 0, anOpen: 0 };
@@ -205,11 +194,6 @@ export const listToLines = (xs: readonly string[]): string => xs.join('\n');
 /**
  * ОЛОН МӨРТ ТАЛБАРЫН ТҮҮХИЙ ТЕКСТ (2026-09-30) — гаднаас ирсэн жагсаалт (`joined`)
  * өөрчлөгдөхөд оролтын текстийг (`txt`) хэвээр үлдээх үү, солих уу.
- * ⚠️ ЯАГААД: NCR-ийн «Хийсэн алхмууд» `value={listToLines(steps)}` + `linesToList` гэж
- *    ШУУД холбогдсон тул товчлуур бүрд мөрийн төгсгөлийн зай ТАСРАЛТГҮЙ хасагдаж
- *    («Арматур солив» → «Арматурсолив»), Enter-ийн хоосон мөр шүүгдэн ШИНЭ МӨР
- *    нэмэх боломжгүй байв. Текст нь ижил жагсаалт руу задрах бол ХЭВЭЭР (хэрэглэгч
- *    бичиж байна), эс бөгөөс гаднаас өөрчлөгдсөн (өөр баримт) — солино.
  */
 export const keepLinesText = (txt: string, joined: string): string =>
   (listToLines(linesToList(txt)) === joined ? txt : joined);

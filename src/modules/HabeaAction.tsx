@@ -8,11 +8,6 @@
  * `esritask_*` талбартай): асуумж (`survey`) · багц (`site`) · хэсэг (`section`) · зэрэг (`severity_code`) ·
  * төлөв (`esritask_status`) · дуусах хугацаа (`esritask_duedate`). Амьд метадата 2026-10-26: 1041 мөр
  * (V1.1 866 · захиалагчийн 175).
- *
- * ⚠️ ЗӨВХӨН захиалагчийн маягтын мөрүүд (`HABEA.action.survey`) — фокус нь тэр маягтынх.
- * ⚠️ Төлөвийн нэр ба өнгө нь метадатын домэйноос (0–5) ЯГ хуулав — домэйн өөрчлөгдвөл энд солино;
- *    танихгүй код нь кодоороо харагдана (чимээгүй хаягдахгүй).
- * ⚠️ Нэвтэрсэн хэрэглэгчийн токеноор (`getAuth`) — нэвтрээгүй бол хоосон биш ИЛ алдаа (`habeaUzleg.loadPrivate`-ийн дүрэм).
  */
 
 import { useMemo } from 'react';
@@ -38,10 +33,6 @@ const STATUS: { code: number; label: () => string; color: string }[] = [
   { code: 3, label: () => tr('Дууссан'), color: '#16a34a' },
 ];
 const DONE = 3;
-/**
- * ⚠️ 2026-10-26 (хэрэглэгч: «сүүлийн сарын дата харагддаг»): ҮЗЛЭГИЙН ОГНООГООР (`insp_datetime`) сүүлийн 30 хоног —
- *    `now`-оос хойш гулсах цонх. Огноогүй мөр ОРОХГҮЙ (аль сард хамаарахыг мэдэхгүй).
- */
 const WINDOW_DAYS = 30;
 
 type ActionRow = { site: string; pkgK: string; section: string; status: number | null; due: number | null; major: boolean; d: number | null };
@@ -54,7 +45,6 @@ const toRow = (r: Row): ActionRow => {
     site,
     pkgK: site ? habeaPkgKey(site) : '',
     section: String(r.section ?? '').trim(),
-    /* ⚠️ null ≠ 0: хоосон төлөв «Хуваарилаагүй» (0) гэж ТООЦОГДОХГҮЙ */
     status: st == null || st === '' ? null : Number(st),
     due: typeof due === 'number' && due > 0 ? due : null,
     major: r.severity_code === 'major',
@@ -62,7 +52,6 @@ const toRow = (r: Row): ActionRow => {
   };
 };
 
-/* ⚠️ Таг (`HABEA`) — ХАБЭА-гийн бусад кэштэй хамт хүчингүй болно; 5 мин TTL (`habeaUzleg.loaders`-тэй ижил) */
 const loadActions = cached(async (): Promise<ActionRow[]> => {
   const auth = await getAuth();
   if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
@@ -83,9 +72,6 @@ export function HseActionPanel({ pkgs, onPkg, now, tick }: {
   /** Хуудасны давтан шинэчлэлийн тоолуур (`Habea`-ийн `tick`, HABEA_POLL_MS) */
   tick: number;
 }) {
-  /* ⚠️ 2026-10-26: бусад ХАБЭА-гийн ачаалагчтай ИЖИЛ `tick`-ээр дахин татна (Habea-ийн 2026-10-06-ны ⚠️) — HSE_Action-д
-     портал бичдэггүй тул dataBus-ийн invalidate ирэхгүй; урьд нээлттэй табд Workforce-ийн төлөв солигдсон ч тоо хуучин
-     үлдэж, `now` гулсахад хуучин өгөгдлөөс мөр хасагдсаар байв. 5 минутын кэш (`cached`) нь poll-оос богино. */
   const st = useAsync(() => loadActions(), [tick], { keepOn: [tick] });
 
   const view = useMemo(() => {
@@ -98,7 +84,7 @@ export function HseActionPanel({ pkgs, onPkg, now, tick }: {
     const status = STATUS
       .map((s) => ({ key: String(s.code), label: s.label(), value: known.filter((r) => r.status === s.code).length, color: s.color }))
       .filter((x) => x.value > 0);
-    /* Багцаар — ӨӨРИЙН сонголтоор шүүгдэхгүй (ArcGIS Dashboard-ын зан, `habeaUzleg.uzPass`-ийн ⚠️) */
+    /* Багцаар — ӨӨРИЙН сонголтоор шүүгдэхгүй (ArcGIS Dashboard-ын зан, `habeaUzleg.uzPass`) */
     const byPkg = new Map<string, { label: string; open: number; total: number }>();
     for (const r of all) {
       if (!r.pkgK) continue;
@@ -111,8 +97,6 @@ export function HseActionPanel({ pkgs, onPkg, now, tick }: {
       .map(([key, v]) => ({ key, label: v.label, value: v.open, display: `${num(v.open)} / ${num(v.total)}` }))
       .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'mn'));
     const bySec = new Map<string, { open: number; total: number }>();
-    /* ⚠️ 2026-10-26 (аудит): хэсэггүй мөр (амьд 30 хоногт 90-ийн 23) ЧИМЭЭГҮЙ хаягдаж төлөвийн донаттай (90) тоо таардаггүй байв
-       (файлын ⚠️ «чимээгүй хаягдахгүй») — «Хэсэг заагаагүй» тусдаа баар (түлхүүр `''`). */
     for (const r of rows) {
       const sec = r.section || '';
       const cur = bySec.get(sec) ?? { open: 0, total: 0 };

@@ -11,15 +11,6 @@
  *     ЖИЖИГРҮҮЛЭХГҮЙ — чарт хэзээ ч тасрахгүй, карт дотор гүйлгэлт үүсэхгүй;
  *   · давхар товшилт / Enter — анхны (байгалийн) өндөр; ↑/↓ — ±24px;
  *   · өндөр `localStorage`-д — баганын `id` · картын ДАРААЛАЛ · картын ТООГООР.
- *
- * ⚠️ ӨМНӨХ `DashSplit` (2026-10-06)-ООС ЯЛГАА: тэр нь картуудад ТЭНЦҮҮ хувь өгч
- *    байгалийн өндрөөс нь БАГА болгодог тул чарт тасарч дотор нь гүйлгэлт үүсдэг
- *    байсан — хэрэглэгч «чартууд бүтэн харагддаг байх» гэж буцаасан.
- * ⚠️ DOM дээр ажиллана: баганын агуулга нөхцөлт фрагмент ба олон карт буцаадаг
- *    бүрэлдэхүүнүүдээс бүрддэг. `Section` нь `style` prop-гүй тул энд тавьсан
- *    `height` React-ын дахин зурагт дарагдахгүй.
- * ⚠️ Багана (`target`) нь `position: relative` байх ёстой — бариулын байрлал
- *    тэр баганаас тоологдоно.
  */
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
@@ -63,7 +54,6 @@ const maxOf = (min: number) => Math.max(1200, min * 4);
 export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement | null>; id: string }) {
   const [bars, setBars] = useState<Bar[]>([]);
   const dragging = useRef(false);
-  /** ⚠️ 2026-10-09: идэвхтэй чирэлтийн `up` — unmount үед дуудаж `user-select`/`dragging`-ийг сэргээнэ */
   const upRef = useRef<(() => void) | null>(null);
   /** Чирэх үед байгалийн өндрийг дахин хэмжихгүй (layout thrash) — сүүлийн утгыг ашиглана */
   const minRef = useRef<number[]>([]);
@@ -83,7 +73,6 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
 
   const measure = useCallback((el: HTMLElement) => {
     const xs = cards(el);
-    /* ⚠️ 2026-10-09: `aria-controls`-д картын id — байхгүй бол тогтвортой id оноож өгнө */
     const next: Bar[] = xs.slice(0, -1).map((c, i) => {
       if (!c.id) c.id = `${idBase}-card-${i}`;
       const min = dragging.current && minRef.current[i] != null ? minRef.current[i] : natural(c);
@@ -122,8 +111,6 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
     return () => { mo.disconnect(); ro.disconnect(); cancelAnimationFrame(raf); };
   }, [target, apply, measure]);
 
-  /* ⚠️ 2026-10-09: чирэлтийн дунд unmount (горим солих, хуудас шилжих) — урьд нь `up` хэзээ ч
-     дуудагдахгүй тул `body { user-select: none }` бүх порталд ГАЦАЖ үлддэг байв. */
   useEffect(() => () => { upRef.current?.(); }, []);
 
   const setHeight = (el: HTMLElement, i: number, px: number | null) => {
@@ -139,7 +126,6 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
   const onDown = (i: number) => (e: React.PointerEvent<HTMLDivElement>) => {
     const el = target.current;
     if (!el) return;
-    /* ⚠️ 2026-10-09: зөвхөн үндсэн товч — баруун товч (контекст цэс) / дунд товч чирэлт эхлүүлэхгүй */
     if (e.button !== 0) return;
     e.preventDefault();
     const c = cards(el)[i];
@@ -160,10 +146,6 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
       c.style.height = last <= nat ? '' : `${last}px`;
       measure(el);
     };
-    /* ⚠️ 2026-10-09: `lostpointercapture` → `up`. Барилт өөр шалтгаанаар алдагдвал (элемент
-       DOM-оос салах, системийн цонх, alt+tab) `pointerup`/`pointercancel` ирэхгүй тул
-       `dragging`/`data-drag`/`user-select: none` ГАЦАЖ үлддэг байв. `pointerup`-ын дараа ч
-       `lostpointercapture` ирдэг тул `up` НЭГ л удаа ажиллана (`ended`). */
     let ended = false;
     const up = () => {
       if (ended) return;
@@ -216,7 +198,6 @@ export function HabeaCardGrips({ target, id }: { target: RefObject<HTMLElement |
           role="separator"
           aria-orientation="horizontal"
           aria-label={tr('Хэмжээ тохируулах')}
-          /* ⚠️ 2026-10-09: фокуслогдох separator-т утга заавал (ARIA) — дээд картын өндөр, px */
           aria-controls={b.cid}
           aria-valuenow={b.now}
           aria-valuemin={b.min}

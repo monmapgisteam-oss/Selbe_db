@@ -30,10 +30,6 @@ async function rawRows(url, field) {
     const j = await post(url, {
       where: `${field} IS NOT NULL`,
       outFields: `received_datetime,${field}`,
-      /* ⚠️ 2026-10-09: OBJECTID DESC — `received_datetime` нь String бөгөөд `dd/MM/yyyy`
-         утга ч ирдэг тул мөрөөр эрэмбэлэх нь хугацааны эрэмбэ БИШ (sensors.ts-ийн
-         2026-10-06-ны ⚠️). OID нь давхцалгүй тул хуудаслалт ч тогтвортой. */
-      /* ⚠️ 2026-10-19: IoT давхаргын OID нь ЖИЖИГ үсгээр (`objectid`) — `OBJECTID` гэвэл зарим хостод унана (агентын `ds:iot_*`-тэй ижил) */
       orderByFields: 'objectid DESC',
       resultOffset: String(off),
       resultRecordCount: '2000',
@@ -67,12 +63,6 @@ for (const def of SENSORS) {
 
     /* 2. Түүхий мөрөөс хүрээн дэх утгуудыг ӨӨРӨӨ бодно */
     const rows = await rawRows(def.url, m.field);
-    /* ⚠️ 2026-10-09: мужууд (`rawValid` — хогийн сав 30мм…1.5×гүн; `valid` — EC 0…20000 µS/cm,
-       гэрэл 0…200000 lux, хөрсний темп −40…80°C, агаарын темп −60…60°C, чийг 0…100%) нь
-       sensors.ts-ийн МЕТРИК тодорхойлолтоос шууд уншигдана — энд давтаж бичихгүй. */
-    /* ⚠️ 2026-10-09: ТҮҮХИЙ муж (`rawValid`) нь `derive`-ээс ӨМНӨ шүүгдэнэ; физик мужаас
-       (`valid`) гадуурх цэг доод/дээд/дундаж/цуваанд орохгүй ч «сүүлийн заалт»-д орно;
-       «сүүлийн заалт» нь хүрээгээр огтлоогүй БҮТЭН таталтаас (2026-09-17). */
     const pts = [];
     let badAt = null;
     for (const r of rows) {
@@ -97,8 +87,6 @@ for (const def of SENSORS) {
       `эх ${r2(last?.v)} = UI ${r2(series.latest)}`);
     chk(`${m.label} · сүүлийн огноо`, last?.t === series.latestAt,
       last ? new Date(last.t).toISOString() : '—');
-    /* ⚠️ 2026-10-09 (амьд шалгалт): хүрээнд ХҮЧИНТЭЙ цэг алга (хөрсний чийг/EC — бүх заалт
-       мужаас гадуур) бол UI null → эх тал ч null (Math.min() = Infinity, NaN биш). */
     const mn = vals.length ? Math.min(...vals) : null;
     const mx = vals.length ? Math.max(...vals) : null;
     chk(`${m.label} · доод…дээд`,
@@ -112,8 +100,6 @@ for (const def of SENSORS) {
       chk(`${m.label} · сийрэгжүүлэлт үзүүрийг хадгалав`,
         r2(series.points[0].v) === r2(inR[0].v)
         && r2(series.points[series.points.length - 1].v) === r2(inR[inR.length - 1].v));
-      /* ⚠️ 2026-10-09: босго давсан оргил сийрэгжүүлэлтэд алдагдахгүй (sensors.thin) */
-      /* ⚠️ 2026-10-09: «их нь сайн» (хөрсний чийг) бол босгоос ДООШ хамгийн гүн уналт үлдэнэ */
       if (m.alert && HIGHER_IS_GOOD.has(`${def.key}:${m.key}`)) {
         const dip = Math.min(...vals);
         chk(`${m.label} · босгоос доош уналт цуваанд үлдэв`,
@@ -125,14 +111,11 @@ for (const def of SENSORS) {
           peak < m.alert.value || series.points.some((p) => r2(p.v) === r2(peak)),
           `оргил ${r2(peak)}`);
       }
-      /* ⚠️ 2026-10-09: сийрэгжүүлсэн цуваа хугацаагаар ХАТУУ өснө (sensors.thin) */
       chk(`${m.label} · цуваа хатуу өсөх`, series.points.every((p, i, a) => i === 0 || p.t > a[i - 1].t));
     }
 
     /* 3. Хогийн савны ХӨРВҮҮЛЭЛТ — түүхий мм → дүүрэлт % */
     if (m.derive) {
-      /* ⚠️ 2026-10-09: OBJECTID DESC-ийн [0] нь ОРУУЛСАН дарааллаар сүүлийнх — хугацаагаар
-         сүүлийнхийг `parseTs`-ээр олно; түүхий мужаас гадуур бол UI `null` (гэмтэл). */
       const newest = rows.reduce((a, r) => {
         const t = parseTs(r.received_datetime);
         return t != null && Number.isFinite(Number(r[m.field])) && (!a || t > a.t) ? { t, raw: Number(r[m.field]) } : a;
@@ -145,18 +128,11 @@ for (const def of SENSORS) {
       chk(`${m.label} · түүхий мужаас гадуур → гэмтэл`, rawOk || series.fault === true);
       const rawMax = Math.max(...rows.map((r) => Number(r[m.field]))
         .filter((x) => Number.isFinite(x) && !(m.rawValid && (x < m.rawValid.min || x > m.rawValid.max))));
-      /* ⚠️ 2026-10-09 (амьд): хоосон савны заалт 3045мм — мэдрэгч амсраас дээш тул гүнээс 30мм
-         давна (derive 0%-д хавчина). Хүлцэл 5% (±150мм); 1.5× = rawValid-ийн гэмтлийн хил. */
       chk('савны гүн 3015мм — түүхий дээд утгатай нийцэх (±5%)', Math.abs(rawMax - 3015) <= 3015 * 0.05,
         `бүртгэгдсэн дээд ${rawMax}мм`);
     }
 
     /* 4. Хоногийн зөрүү (усны тоолуур) */
-    /* ⚠️ 2026-10-09: sensors.ts-ийн 2026-09-21 / 2026-09-25 дүрмийг БИЕ ДААН давтана —
-       урьд нь хуучин «хоног доторх max − min»-ээр тулгадаг байсан тул шалгалт ҮРГЭЛЖ
-       зөрдөг байв. Дүрэм: хоногийн СҮҮЛИЙН заалт − ӨМНӨХ (дараалсан, УБ-ын хуанлиар)
-       хоногийн СҮҮЛИЙН заалт; цоорхой хоног ба сөрөг зөрүү цэггүй; БҮТЭН цуваанаас
-       бодоод дараа нь хүрээгээр огтолно. */
     if (m.dailyDiff) {
       const d = sn.series.find((x) => x.key === m.dailyDiff.key);
       const lastByDay = new Map();

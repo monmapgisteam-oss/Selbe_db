@@ -2,9 +2,6 @@
 
 /**
  * Давхаргын ТОО ба ХЭМЖЭЭНИЙ тооцоо.
- *
- * ⚠️ Каталогийн багана ба самбарын дашбоард ХОЁУЛАА эндээс уншина. Хоёр газарт
- * хуулбарлавал каталог дээрх дүн самбар дээрхээс зөрөх өдөр ирнэ.
  */
 
 import { queryStats, count, sum, arcgisPost, type Aoi } from './query';
@@ -15,37 +12,17 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useAsync, type Async } from './useAsync';
 import { register } from './dataBus';
 
-/**
- * ⚠️ `q` нь `null` байж болно (2026-09-24): хэмжээний багана ХҮСЭЭГҮЙ (`d.qty`
- *    байхгүй) эсвэл SUM нь `null` (мөр байгаа ч талбар бүгд хоосон) бол
- *    `null` — «мэдээлэлгүй». Урьд нь `Number(null ?? 0)` = 0 болж «хэмжилт
- *    тэг» гэж худал харагддаг байв (порталын `null ≠ 0` дүрэм). `n` нь
- *    үргэлж тоо — COUNT хэзээ ч null биш.
- */
 export type Totals = {
   n: number;
   q: number | null;
   /**
    * ХЭМЖЭЭНИЙ ТАЛБАР БӨГЛӨГДСӨН объектын тоо — `COUNT(qty.field)` (null-ыг тоолдоггүй).
-   * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «дундаж урт» нь `q / n` байсан тул уртгүй
-   *    (`Urt_m` хоосон) объект хуваарьт орж дундажийг ХУДАЛ бууруулдаг байв —
-   *    одоо `q / nq` (`avgQty`). `n - nq` = «N объект уртгүй» (`missingQty`).
-   *    `null`/`undefined` = мэдэгдэхгүй (хэмжээгүй давхарга, хуучин хөтчийн кэш).
    */
   nq?: number | null;
 };
 
 /**
  * ДАВХАРГЫН ТОГТМОЛ ШҮҮЛТ (`d.where`) + дуудагчийн шүүлт — AND-аар.
- *
- * ⚠️ 2026-09-25: урьд нь тоо/хэмжээ ба ангиллын (facet) хүсэлт зөвхөн бүсийн
- *    шүүлт (эсвэл `1=1`)-ийг явуулж `d.where`-ийг ГЭЭДЭГ байв — зураг
- *    (`MapCanvas`) түүнийг хэрэглэдэг тул каталогийн тоо зурагтай зөрж байлаа:
- *    `iot:waste_sensor` зурагт 1 мэдрэгч (`device_id IS NULL`) атал каталогт
- *    15,084 (телеметрийн мөр бүр), `src:heat/water/power` гурвуулаа нэгтгэсэн
- *    эх үүсвэрийн 7 объект (дулааных үнэндээ 3).
- * ⚠️ ИДЕМПОТЕНТ: `whereFor`-ийн үр дүнг `layerTotals`-д дахин өгөхөд тогтмол
- *    шүүлт ХОЁР ДАХЬ удаагаа залгагдахгүй (урд нь аль хэдийн байгааг танина).
  */
 export const withLayerWhere = (d: LayerDef, where: string | null | undefined): string => {
   const w = where && where.trim() && where.trim() !== '1=1' ? where : null;
@@ -58,44 +35,35 @@ export const withLayerWhere = (d: LayerDef, where: string | null | undefined): s
 
 /**
  * Давхаргад тохирох бүсийн шүүлт.
- * ⚠️ Талбарын нэр ба утга давхаргаас хамаарна: бүсийн давхарга өөрөө `RefName_1`
- * («Багц -1») гэж бичдэг бол бусад нь `ZONE_ID` («Багц-1»). `zoneWhere` хөрвүүлнэ.
  */
 export const whereFor = (d: LayerDef, zone: string | null) =>
   withLayerWhere(d, zone ? zoneWhere(d, zone) : null);
 
 /** Давхаргын статистикийн хүсэлт — тоо ба (байвал) хэмжээ */
 export const layerStats = (d: LayerDef) =>
-  // ⚠️ OID нь давхарга бүрт ижил БИШ (хуучин үйлчилгээнүүд `FID`, `objectid`)
   [count(d.oid ?? OID, 'n'), ...(d.qty ? [sum(d.qty.field, 'q'), count(d.qty.field, 'nq')] : [])];
 
 /**
  * НЭГ ОБЪЕКТЫН ДУНДАЖ ХЭМЖЭЭ — хэмжээ БӨГЛӨГДСӨН объектоор хуваана (`nq`).
- * ⚠️ 2026-10-01: урьд нь `q / n` (бүх объект) — уртгүй объект дундажийг бууруулдаг байв.
- *    `nq` мэдэгдэхгүй (хуучин кэш) бол `null` — буруу хуваарьтай тоо гаргахгүй.
  */
 export const avgQty = (t: Totals | undefined | null): number | null =>
   (t && t.q != null && t.nq != null && t.nq > 0 ? t.q / t.nq : null);
 
 /**
  * ХЭМЖЭЭГҮЙ объектын тоо (`n - nq`) — «N объект уртгүй».
- * ⚠️ `nq` мэдэгдэхгүй бол `null` (0 БИШ — «бүгд урттай» гэж худал хэлэхгүй).
  */
 export const missingQty = (t: Totals | undefined | null): number | null =>
   (t && t.nq != null ? Math.max(0, t.n - t.nq) : null);
 
 /**
  * ТАТАГДААГҮЙ давхаргууд — `ids`-ээс `map`-д БАЙХГҮЙ нь (`usePlanTotals`-ын дутуу Map).
- * ⚠️ 2026-10-06: `usePlanTotals` нь зарим давхарга унахад ДУТУУ Map-ыг «бэлэн» гэж буцаадаг
- *    (бүгд унавал л алдаа). Амжилттай бол `ids`-ийн БҮГД Map-д ордог тул дутуу id = унасан.
- *    Дуудагч «N давхарга татагдсангүй» гэж ил хэлж, `retryTotals`-оор дахин оролдуулна.
  */
 export const failedTotals = (map: ReadonlyMap<string, Totals>, ids: readonly string[]): string[] =>
   ids.filter((id) => !map.has(id));
 
 /**
  * `usePlanTotals`-ын буцаасан Map-ын УНАСАН id-ууд — хүссэн `ids` нь дуудагчид үл мэдэгдэх
- * үед (каталог — `LayerCatalog`). ⚠️ 2026-10-06: Map-ыг өөрийг нь түлхүүр болгосон WeakMap —
+ * үед (каталог — `LayerCatalog`). 2026-10-06: Map-ыг өөрийг нь түлхүүр болгосон WeakMap —
  * Map-ын төрөл/дуудагчдын гэрээ ӨӨРЧЛӨГДӨХГҮЙ; бүрэн Map-д хоосон жагсаалт.
  */
 const PARTIAL = new WeakMap<ReadonlyMap<string, Totals>, readonly string[]>();
@@ -103,10 +71,6 @@ export const totalsFailedOf = (map: ReadonlyMap<string, Totals>): readonly strin
 
 /**
  * БҮРЭН НИЙЛБЭР — `ids`-ийн БҮГД татагдсан бөгөөд утгатай үед л тоо, эс бөгөөс `null` («—»).
- * ⚠️ 2026-10-06: Дашбоардын сүлжээ/эрчим хүч/үр өгөөжийн дүн унасан (Map-д байхгүй) эсвэл
- *    `q == null` давхаргыг АЛГАСАЖ нийлбэрлэдэг тул нэг давхарга унахад нийт ЧИМЭЭГҮЙ бага
- *    гардаг байв (null ≠ 0). Дутуу нийлбэрийг бодит тоо гэж харуулахгүй.
- * @param pick давхаргын утга — анхдагч нь хэмжээ (`q`); тоо ширхэгт `(t) => t.n`
  */
 export function completeSum(
   map: ReadonlyMap<string, Totals>,
@@ -126,18 +90,9 @@ export function completeSum(
 
 /**
  * Давхаргын ТОО ба ХЭМЖЭЭГ нэг хүсэлтээр (`outStatistics`).
- *
- * ⚠️ 2026-08-24: ӨРТГИЙН тооцоо ХАСАГДАВ. `negj_une` нь зохиомол дата байсан
- * тул давхаргын нийлбэрт зөвхөн ТОО ба ХЭМЖЭЭ үлдэв — үүнээс `Totals` нь
- * `{ n, q }` хос болов. Урьд нь энэ хүсэлт нэгж үнээр БҮЛЭГЛЭЖ (`GROUP BY`)
- * явдаг байсан бөгөөд одоо бүлэглэлгүй, ганц мөр буцаана.
  */
 export async function layerTotals(d: LayerDef, where: string, aoi?: Aoi): Promise<Totals> {
-  /* ⚠️ `d.where`-ийг ЭНД ч залгана (2026-09-25) — `Bagts`/`reportData` нь
-     `'1=1'`-ийг шууд өгдөг тул `whereFor`-оор дамжихгүй (`withLayerWhere`).
-     ⚠️ 2026-10-01: `aoi` — бүсийн ПОЛИГОНООР орон зайн шүүлт (`ZONE_ID`-гүй давхаргад). */
   const r = await queryStats(layerUrl(d), layerStats(d), withLayerWhere(d, where), aoi);
-  /* ⚠️ `q`: null хэвээр — 0 болгохгүй (`Totals`-ийн тайлбар) */
   return {
     n: Number(r.n ?? 0),
     q: r.q == null ? null : Number(r.q),
@@ -149,15 +104,6 @@ export async function layerTotals(d: LayerDef, where: string, aoi?: Aoi): Promis
 
 /**
  * БҮСИЙН ПОЛИГОН — `ZONE_ID` талбаргүй (`noZone`) давхаргыг бүсээр шүүхэд.
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «Инженерийн дэд бүтэц»-ийн 73 давхарга
- *    бүгд `noZone` тул бүс сонгоход KPI «бүсгүй — төслийн нийт» хэвээр үлддэг
- *    байв. Одоо бүсийн давхаргаас тэр бүсийн ПОЛИГОНЫГ (эх SR-ээр) татаж,
- *    `intersects` шүүлтээр тоолно.
- * ⚠️ `intersects`: бүсийн хилийг ОГТОЛСОН шугам бүтнээрээ (уртаараа) тухайн бүсэд
- *    орно — хоёр бүсийн нийлбэр нь төслийн нийтээс бага зэрэг ИХ байж болно.
- * ⚠️ Олон бүс («A-1,B-2») — цагиргуудыг НЭГ олон-цагирагт полигонд нийлүүлнэ.
- * ⚠️ Алдааг кэшлэхгүй; амжилттайг бүсээр санана (бүсийн хил сешн дотор өөрчлөгдөхгүй).
  */
 const zoneAoiCache = new Map<string, Promise<Aoi | null>>();
 export function loadZoneAoi(zone: string): Promise<Aoi | null> {
@@ -174,7 +120,6 @@ export function loadZoneAoi(zone: string): Promise<Aoi | null> {
   }).then((j) => {
     const rings = (j.features ?? []).flatMap((f) => f.geometry?.rings ?? []);
     const wkid = j.spatialReference?.latestWkid ?? j.spatialReference?.wkid;
-    /* ⚠️ Полигон олдоогүй / SR алга — `null` (дуудагч төслийн нийтээр үлдэнэ) */
     if (!rings.length || !wkid) return null;
     const aoi: Aoi = { geometry: { rings, spatialReference: { wkid } }, wkid, type: 'polygon', rel: 'intersects' };
     return aoi;
@@ -190,8 +135,6 @@ export function loadZoneAoi(zone: string): Promise<Aoi | null> {
  * «0.0 га» гэж гарч байв). 1 га-аас бага → м², 1 км-ээс богино → м.
  */
 export const qtyText = (d: LayerDef, q: number | null): string | null => {
-  /* ⚠️ 2026-09-25: БОДИТ 0 нь «0 м» гэж харагдана (null ≠ 0) — урьд нь `q <= 0`
-     тул хэмжсэн тэг «—» (мэдээлэлгүй) болж уншигддаг байв. Сөрөг/NaN л хоосон. */
   if (!d.qty || q == null || !Number.isFinite(q) || q < 0) return null;
   if (d.qty.unit === 'км') return q < 1 ? tr('{0} м', num(q * 1000)) : tr('{0} км', num(q, 1));
   if (d.qty.unit === 'м') return q < 1000 ? tr('{0} м', num(q)) : tr('{0} км', km(q, 1));
@@ -204,53 +147,14 @@ export const geomText = (d: LayerDef): string =>
 
 /**
  * Ерөнхий мэдээллийн БҮХ давхаргын тоо ба хэмжээ — НЭГ УДАА.
- *
- * ⚠️ Каталогийн багана, багцын тойм, давхаргын дашбоард гурав ижил тоо
- * хэрэглэдэг. Тус тусад нь татвал (а) 29 хүсэлт хэд дахин явж, (б) гурван
- * газарт өөр өөр агшны дүн харагдах эрсдэлтэй. Тиймээс `Portal` дээр нэг удаа
- * дуудаж доош дамжуулна.
- *
- * ⚠️ `enabled` нь «Барилгын хяналт» харагдацад хэрэгтэй: тэнд ЕТ-ийн давхарга
- * огт үзүүлэхгүй тул 29 хүсэлт явуулах нь дэмий.
- *
- * ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): «нэг удаа, БҮГДИЙГ» нь ~156 хүсэлт болж, хэн ч хараагүй үед (каталогийн
- * бүлгүүд хураалттай, «Хэсэгчилсэн ЕТ»-ийн самбар нуугдмал) харагдац нээх бүрд явдаг байв. Одоо дуудагч ХАРУУЛЖ БУЙ
- * давхаргаа л асууна (`Portal` самбарын тойм — `PLAN_LAYER_IDS`, каталог — нээлттэй бүлэг `useLazyTotals`); тоо зөрөхгүй
- * баталгаа нь «нэг Map» биш, давхарга тус бүрийн ХУВААЛЦСАН кэш (`layerTotalsShared`).
  */
 /**
  * SESSION КЭШ — нэг удаа татсан (бүс, давхаргын багц)-ын дүнг санана.
- *
- * ⚠️ Урьд нь бүс солих БҮРД 29 хүсэлт шинээр явдаг байв: «Багц-1» сонгоод
- * буцаад «бүгд» рүү шилжихэд өмнө нь татсан яг тэр дүн дахин татагдана
- * (`MAX_CONCURRENT=6` тул ~5 багц болж цувна). Эх өгөгдөл session дотор
- * өөрчлөгдөх нь ховор тул түлхүүр бүрийн ЭХНИЙ амжилттай үр дүнг модулийн
- * санах ойд хадгална — бүс хооронд шилжих нь агшин зуурын болно.
- * Алдаатай үр дүн кэшлэгдэхгүй (throw нь Map-д хүрэхгүй) — retry цэвэр явна.
  */
 const totalsCache = new Map<string, Map<string, Totals>>();
 
 /**
  * ХӨТЧИЙН КЭШ (`localStorage`) — ХУУЧИН ДҮНГ ШУУД, ШИНИЙГ АРААС НЬ (stale-while-revalidate).
- *
- * ⚠️ 2026-09-16 (хэрэглэгч «Инженерийн дэд бүтэц» хуудсыг хурдан болгохыг
- * хүссэн). Хэмжилт (амьд үйлчилгээ, 74 давхарга, 12 зэрэг): статистикийн
- * нэг хүсэлт ДУНДЖААР 497 мс, бүгд 3.2 секунд — энэ хугацаанд KPI ба багцын
- * жагсаалт «…» харагдана. Дүн нь session-ээс session-д бараг өөрчлөгдөхгүй
- * тул сүүлд БҮРЭН ирсэн дүнг хөтчид хадгалж, дараагийн нээлтэд тэр даруй
- * гаргана; амьд хүсэлтүүд араас нь ирж давхарга бүрээр ДАРЖ бичнэ.
- *
- * ⚠️ Түлхүүрт `epoch` ОРОХГҮЙ: засварын дараа `dropTotalsCache()` эринийг
- * өсгөдөг ч хөтчийн кэш нь «сүүлийн бүрэн дүн» хэвээр — тэр нь хамгийн
- * ихдээ нэг объектын зөрүүтэй, ~3 секундын дараа амьд дүнгээр солигдоно.
- * `LiveTotals.stale` нь энэ агшинд `true` — дуудагч хүсвэл тэмдэглэнэ.
- *
- * ⚠️ ЗӨВХӨН БҮРЭН (нэг ч давхарга унаагүй) дүнг хадгална — дутуу хадгалбал
- * унасан давхарга дараагийн нээлтэд ч «—» гэж гарна.
- *
- * ⚠️ `null ≠ 0` дүрэм: хадгалсан дүн нь БОДИТ хэмжилт (хуучин ч гэсэн), 0-ээр
- * орлуулсан «мэдэхгүй» биш. Мэдэхгүй давхарга (кэшид байхгүй) `map`-д
- * ОРОХГҮЙ хэвээр тул дуудагчийн `has()` шалгалт өмнөх шигээ ажиллана.
  *
  * Private горим, хаалттай storage → try/catch, чимээгүй алгасна.
  */
@@ -268,7 +172,6 @@ function loadPersisted(zone: string | null, ids: string[]): Map<string, Totals> 
   try {
     const raw = localStorage.getItem(persistKey(zone, ids));
     if (!raw) return null;
-    /* ⚠️ 2026-10-01: 4 дэх элемент `nq` — хуучин 3 элементтэй кэшид байхгүй (мэдэгдэхгүй) */
     const rows = JSON.parse(raw) as [string, number, number | null, (number | null)?][];
     if (!Array.isArray(rows)) return null;
     const want = new Set(ids);
@@ -276,7 +179,6 @@ function loadPersisted(zone: string | null, ids: string[]): Map<string, Totals> 
     for (const r of rows) {
       if (!Array.isArray(r) || !want.has(r[0])) continue;
       const n = Number(r[1]);
-      /* ⚠️ `q` null хэвээр сэргэнэ — 0 болгохгүй */
       const q = r[2] == null ? null : Number(r[2]);
       const nq = r[3] == null ? null : Number(r[3]);
       if (Number.isFinite(n) && (q == null || Number.isFinite(q)) && (nq == null || Number.isFinite(nq))) {
@@ -303,22 +205,12 @@ function savePersisted(zone: string | null, ids: string[], map: Map<string, Tota
 
 /**
  * КЭШИЙГ ХҮЧИНГҮЙ БОЛГОХ ЗАМ — атрибут засварын дараа.
- *
- * ⚠️ ЯАГААД `dataBus.invalidate`-ЭЭР БОЛОХГҮЙ ВЭ: дээрх кэш нь `cached()`
- * слот БИШ, энэ модулийн өөрийн `Map` бөгөөд `useAsync` нь `key` мөрөөр
- * л дахин татдаг. Кэшийг цэвэрлэхэд `key` өөрчлөгддөггүй тул хуучин утга
- * ХЭВЭЭР харагдана — тиймээс эрин (`epoch`) тоолуурыг key-д оруулж,
- * захиалагчдыг сэрээнэ.
- *
- * ⚠️ Засвар ҮЙЛЧИЛГЭЭНД амжилттай бичигдсэний ДАРАА л дуудна: амжилтгүй
- * бичилтийн дараа хаявал сайн өгөгдлийг дэмий 119 хүсэлтээр дахин татна.
  */
 let totalsEpochN = 0;
 const totalsSubs = new Set<() => void>();
 
 export function dropTotalsCache(): void {
   totalsCache.clear();
-  /* ⚠️ 2026-10-22: давхарга тус бүрийн кэш ч (`layerTotalsShared`) — түлхүүрт эрин ордог ч санах ойг чөлөөлнө */
   layerCache.clear();
   layerDone.clear();
   layerFail.clear();
@@ -331,13 +223,6 @@ export function dropTotalsCache(): void {
 
 /**
  * ДАВХАРГА ТУС БҮРИЙН АМЛАЛТ — `эрин|бүс|id` → `layerTotals`.
- *
- * ⚠️ ЯАГААД: урьд нь `Portal` · «Ерөнхий дашбоард» каталогийн БҮХ 158 давхаргын тоо/хэмжээг (~156 статистик хүсэлт)
- *    харагдац НЭЭГДЭХ БҮРД татдаг байв — каталогийн бүлгүүд хураалттай эхэлдэг, «Хэсэгчилсэн ЕТ»-д самбар нуугдмал тул
- *    тэр тоог хэн ч хараагүй байхад. Одоо дуудагч бүр ЗӨВХӨН ХАРУУЛЖ БУЙ давхаргаа асууна (каталог — нээлттэй бүлэг,
- *    самбар — тойм, дашбоард — картынхаа давхарга); давхцсан нь НЭГ хүсэлт хуваалцана — тоо нэг агшных (файлын толгойн ⚠️).
- * ⚠️ Уналт КЭШЛЭГДЭХГҮЙ: дараагийн асуулт дахин оролдоно (`layerFail` — зөвхөн «одоо унасан» тэмдэг, `useLazyTotals`-д).
- *    Эрин (`dropTotalsCache` · `retryTotals` · `invalidateAll`) бүгдийг хаяна — урьдын адил.
  */
 const layerCache = new Map<string, Promise<Totals>>();
 /** Шийдэгдсэн утга — `useLazyTotals` зурах үедээ синхрон уншина */
@@ -368,8 +253,7 @@ const subscribeNone = (): (() => void) => () => {};
 const versionNone = (): number => 0;
 
 /**
- * НЭГ ДАВХАРГЫН тоо/хэмжээ — эрин ба бүсээр ХУВААЛЦСАН амлалт (дээрх ⚠️). Шүүлт нь урьдын адил `whereFor`.
- * ⚠️ Мэдэгдэхгүй id → унасан амлалт (урьд нь `LAYER_BY_ID[id]` undefined нь `whereFor` дотор TypeError болдог байв).
+ * НЭГ ДАВХАРГЫН тоо/хэмжээ — эрин ба бүсээр ХУВААЛЦСАН амлалт (дээрх). Шүүлт нь урьдын адил `whereFor`.
  */
 export function layerTotalsShared(zone: string | null, id: string): Promise<Totals> {
   const k = layerKey(totalsEpochN, zone, id);
@@ -398,7 +282,7 @@ export type LazyTotals = {
 
 /**
  * Хүссэн давхаргын үр дүнг кэшээс ялгана (цэвэр — `totals.check`): ирсэн → `map`, унасан (дахин оролдоогүй) → `failed`,
- * бусад нь хүлээгдэж буй. ⚠️ Унасан ч явж буй (дахин оролдож буй) бол хүлээгдэж буй.
+ * бусад нь хүлээгдэж буй. Унасан ч явж буй (дахин оролдож буй) бол хүлээгдэж буй.
  */
 export function lazyView(
   ids: readonly string[],
@@ -422,12 +306,6 @@ export function lazyView(
 
 /**
  * ХАРАГДАЖ БУЙ давхаргуудын тоо — давхарга тус бүрээр, ирсэн бүрийг шууд (2026-10-22).
- *
- * ⚠️ `usePlanTotals`-аас ЯЛГАА: жагсаалт өөрчлөгдөхөд (каталогийн бүлэг нээх) БҮГД «…» руу буцахгүй — шинэ id-ууд л
- *    татагдаж, ирсэн нь хэвээр. Кэшийг (`layerTotalsShared`) бусад дуудагчтай хуваалцана.
- * ⚠️ Унасан давхаргыг ЭНЭ mount-д дахин оролдохгүй (давталт үүсэхгүй) — «дахин оролдох» (`retryTotals`) эсвэл дараагийн
- *    mount/бүс солилт эдгээнэ (`usePlanTotals`-ын «дутуу Map-ыг кэшлэхгүй» дүрэмтэй ижил үр дүн).
- * ⚠️ `enabled = false` эсвэл хоосон `ids` — хүсэлтгүй.
  */
 export function useLazyTotals(zone: string | null, ids: readonly string[], enabled = true): LazyTotals {
   const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
@@ -448,17 +326,12 @@ export function useLazyTotals(zone: string | null, ids: readonly string[], enabl
       seen.add(id);
       layerTotalsShared(zone, id).catch(() => { /* `layerFail`-д — `lazyView` «—» болгоно */ });
     }
-    /* ⚠️ `ids`-ийг `idsKey`-ээр (дуудагч `useMemo`-гүй өгч болно — `usePlanTotalsLive`-ийн ижил дүрэм) */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base, idsKey, enabled]);
   if (!enabled) return { map: new Map(), pending: 0, failed: [] };
   return lazyView(ids, (id) => layerKey(epoch, zone, id), layerDone, layerFail, layerCache);
 }
 
-/* ⚠️ 2026-10-06: Порталын «↻ Шинэчлэх» / таб руу буцах (`dataBus.invalidateAll`) энэ кэшийг
-   ХӨНДДӨГГҮЙ байв — бусад бүх тоо шинэчлэгдэхэд давхаргын тоо/урт сешн дуустал хуучин үлддэг.
-   Хоосон `reads` — зөвхөн `invalidateAll` (хүснэгтийн түлхүүр байхгүй; бичих зам нь өөрөө
-   `dropTotalsCache` дууддаг). `subscribeTotals`-аар `layerSummary` ч хамт хаягдана. */
 register(() => dropTotalsCache(), []);
 
 /** `useSyncExternalStore`-д — ЗААВАЛ модулийн түвшний тогтмол лавлагаа байна */
@@ -473,11 +346,6 @@ export function totalsEpoch(): number {
 
 /**
  * ДАХИН ТАТАХ — унасан давхаргын дүнг хэрэглэгч ӨӨРӨӨ дахин оролдуулна.
- *
- * ⚠️ `dropTotalsCache`-тай ижил механизм (эрин өсөж, захиалагчид сэрнэ):
- * дутуу Map хэзээ ч кэшлэгддэггүй тул хаях кэш байхгүй ч эрин өсөхгүй бол
- * `key` хэвээр үлдэж, `usePlanTotalsLive` дахин татахгүй. Нэр нь ЗОРИЛГЫГ
- * ялгана: тэр нь «бичсэний дараа», энэ нь «унасны дараа».
  */
 export function retryTotals(): void {
   dropTotalsCache();
@@ -486,28 +354,14 @@ export function retryTotals(): void {
 export function usePlanTotals(
   zone: string | null,
   enabled = true,
-  /**
-   * ⚠️ 2026-08-20: Анхдагч нь `PLAN_LAYER_IDS`-ЭЭС `CATALOG_LAYER_IDS` болов.
-   * Каталог одоо БҮХ давхаргыг харуулдаг тул явцуу нийлбэрийн жагсаалтаар
-   * татвал шинээр нээгдсэн 32 мөр тоогоо олохгүй, мөнхөд «…» гэж хүлээнэ.
-   */
   ids: string[] = CATALOG_LAYER_IDS,
 ): Async<Map<string, Totals>> {
-  /* ⚠️ `epoch` нь key-д ОРНО — засварын дараа `dropTotalsCache()` дуудахад
-     энэ утга өсөж, `useAsync` дүнг шинээр татна (дээрх тайлбарыг үзнэ үү). */
   const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
   const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}|${epoch}|${ids.join(',')}`;
   return useAsync(async () => {
     if (!enabled) return new Map<string, Totals>();
     const hit = totalsCache.get(key);
     if (hit) return hit;
-    // ⚠️ allSettled — Promise.all байхад ~119 хүсэлтийн ГАНЦ нь унахад (нэг
-    //    давхаргын HTTP 500 — rate-limit биш тул query.ts retry хийхгүй) бүхэл
-    //    Map алдаа болж, каталог/дашбоардын БҮХ тоо «татагдсангүй» болдог байв.
-    //    Унасан давхаргыг Map-д оруулахгүй — каталогийн мөр «—» гэж гарна
-    //    (LayerCatalog-ийн «алдвал “—”» тохиролцоо), бусад нь хэвийн үзэгдэнэ.
-    /* ⚠️ 2026-10-22: давхарга тус бүрийн ХУВААЛЦСАН кэшээр (`layerTotalsShared`) — каталогийн нээлттэй бүлэг ба самбар
-       ижил давхаргыг дахин татахгүй; шүүлт (`whereFor`) ба уналтын дүрэм урьдын адил. */
     const settled = await Promise.allSettled(
       ids.map(async (id) => [id, await layerTotalsShared(zone, id)] as const),
     );
@@ -523,11 +377,6 @@ export function usePlanTotals(
       // БҮГД унасан бол сервер бүхэлдээ унасан гэсэн үг — жинхэнэ алдаа
       // болгож error UI + «дахин оролдох» товч гаргана
       if (failed.length === ids.length) throw (settled[0] as PromiseRejectedResult).reason;
-      // ⚠️ Дутуу Map-ыг КЭШЛЭХГҮЙ — дараагийн mount/бүс солиход унасан
-      //    давхаргууд дахин татагдаж, өөрөө эдгэрнэ
-      // ⚠️ 2026-10-06: дутуу Map «бэлэн» гэж ирнэ — дуудагч `failedTotals(map, ids)`-аар
-      //    унасныг тоолж, нийлбэрийг `completeSum`-аар (дутуу бол `null` → «—») бодно.
-      //    Хүссэн `ids`-ээ мэдэхгүй дуудагчид — `totalsFailedOf(map)`.
       PARTIAL.set(map, failed);
       return map;
     }
@@ -539,23 +388,8 @@ export function usePlanTotals(
 /**
  * ДЭВШИЛТТЭЙ НИЙЛБЭР — үр дүн ирэх бүрд шинэчлэгдэнэ.
  *
- * ⚠️ ЯАГААД `usePlanTotals`-ААС ТУСДАА ВЭ. Тэр нь БҮХ давхаргын дүн
- * ирэх хүртэл `loading` төлөвтэй байдаг. «Инженерийн дэд бүтэц» хуудсанд
- * энэ нь 74 давхарга × (зэрэг 6) = хэмжсэнээр 4.2 секундын ХООСОН хүлээлт
- * болж байв (2026-09-14-нд амьд үйлчилгээ дээр хэмжсэн: нэг хүсэлт дунджаар
- * 318 мс, медиан 264, хамгийн удаан 801). Тэр хугацаанд дэлгэц дээр ердөө
- * «Тооцоолж байна…» гэсэн нэг мөр байв.
- *
  * Энэ хувилбар нь ирсэн бүрийг нь ТЭР ДАРУЙ гаргана: эхний тоо ~300 мс-д
  * гарч, бүлгүүд дүүрсээр байна.
- *
- * ⚠️ ДУТУУ НИЙЛБЭР ГАРГАХГҮЙ. Дуудагч тал `have()`-ээр шалгаж, багцынхаа
- * БҮХ давхарга ирсэн үед л тоог үзүүлнэ. Дутуу олонлогийн нийлбэрийг
- * шууд бичвэл «146 км» гэх ёстой тоо эхлээд «31 км» гэж гарч, хэрэглэгч
- * түүнийг БОДИТ утга гэж уншина (`null ≠ 0`-ийн ижил сургамж).
- *
- * ⚠️ `usePlanTotals`-ийн session кэшийг ХУВААЛЦАНА: нэг хуудсанд хоёулаа
- * ажиллавал (каталог + KPI) хоёр дахь нь татахгүй, шууд бэлэн авна.
  */
 export type LiveTotals = {
   map: Map<string, Totals>;
@@ -580,16 +414,11 @@ export function usePlanTotalsLive(
   zone: string | null,
   enabled = true,
   ids: string[] = CATALOG_LAYER_IDS,
-  /**
-   * ⚠️ 2026-10-01: `spatialZone` — `ZONE_ID`-гүй (`noZone`) давхаргыг бүсийн ПОЛИГОНООР
-   *    (`loadZoneAoi`) шүүнэ. Үгүй бол урьдын адил бүс нь тэдгээрт үйлчлэхгүй.
-   */
   opts?: { spatialZone?: boolean },
 ): LiveTotals {
   const epoch = useSyncExternalStore(subscribeTotals, totalsEpoch, totalsEpoch);
   const sp = Boolean(opts?.spatialZone && zone);
   const key = `${enabled ? 'on' : 'off'}|${zone ?? ''}${sp ? '|sp' : ''}|${epoch}|${ids.join(",")}`;
-  /* ⚠️ Хөтчийн кэшийн түлхүүр — орон зайн шүүлттэй дүн нь бүсийн талбараар шүүснээс ТУСДАА */
   const pzone = sp ? `${zone}|sp` : zone;
   const [st, setSt] = useState<LiveTotals>(() => ({
     map: new Map(), done: 0, total: ids.length, error: null, failed: 0, stale: false,
@@ -597,7 +426,7 @@ export function usePlanTotalsLive(
 
   useEffect(() => {
     if (!enabled) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: татах эффект — унтраах/кэш оносон үед дүнг синхрон тавина, эс бөгөөс хуучин дүн нэг агшин үлдэнэ
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSt({ map: new Map(), done: 0, total: 0, error: null, failed: 0, stale: false });
       return undefined;
     }
@@ -607,8 +436,6 @@ export function usePlanTotalsLive(
       return undefined;
     }
     let alive = true;
-    /* ⚠️ ШИНЭ Map — өмнөх бүс/багцын дүнг ҮРГЭЛЖЛҮҮЛЖ БОЛОХГҮЙ: хуучин
-       давхаргын тоо шинэ олонлогийнх мэт харагдана. */
     const map = new Map<string, Totals>();
     let done = 0;
     let failed = 0;
@@ -623,26 +450,16 @@ export function usePlanTotalsLive(
     const view = () => (seed ? new Map([...seed, ...map]) : new Map(map));
     setSt({ map: view(), done: 0, total: ids.length, error: null, failed: 0, stale: !!seed });
 
-    /**
-     * ⚠️ ХЭСЭГЧИЛСЭН ШИНЭЧЛЭЛ. Хүсэлт бүрд `setSt` дуудвал 74 рендер болно;
-     * тэдгээрийн бүр нь 74 элементийн нийлбэрийг дахин бодно. Тиймээс
-     * хуримтлуулаад ~120 мс тутамд НЭГ УДАА нийтэлнэ — нүд ялгахгүй
-     * хугацаа боловч рендерийн ачаалал 10 дахин буурна.
-     */
     let timer: ReturnType<typeof setTimeout> | null = null;
     const flush = () => {
       timer = null;
       if (!alive) return;
-      /* ⚠️ Map-ыг ХУУЛЖ өгнө — React нь лавлагааны адилтгалаар шалгадаг тул
-         нэг Map-ыг мутацлаад дамжуулбал дахин рендер ОГТ болохгүй. */
       setSt({ map: view(), done, total: ids.length, error: null, failed, stale: !!seed });
     };
     const bump = () => { if (timer == null) timer = setTimeout(flush, 120); };
 
     void (async () => {
       let firstErr: Error | null = null;
-      /* ⚠️ Бүсийн полигон НЭГ удаа (кэштэй). Олдохгүй/унавал `null` — тэр үед `noZone`
-         давхарга урьдын адил ТӨСЛИЙН нийтээр (худал «0» гаргахгүй). */
       const aoi = sp && zone ? await loadZoneAoi(zone).catch(() => null) : null;
       if (!alive) return;
       await Promise.all(ids.map(async (id) => {
@@ -666,21 +483,14 @@ export function usePlanTotalsLive(
       if (failed) {
         console.warn(`[selbe] usePlanTotalsLive: ${failed} давхаргын тоо татагдсангүй`);
       }
-      /* ⚠️ ЗӨВХӨН БҮРЭН дүнг кэшлэнэ — дутуу Map кэшлэгдвэл унасан давхарга
-         session дуустал «—» хэвээр үлдэж, өөрөө эдгэрэхгүй. */
       if (!failed) {
         totalsCache.set(key, map);
         savePersisted(pzone, ids, map);
       }
-      /* ⚠️ Дууссаны дараа ЗӨВХӨН амьд Map: унасан давхарга кэшийн хуучин
-         дүнгээр «эдгэрч» харагдах ёсгүй — тэр нь «—» гэж ил гарна. */
       setSt({
         map: new Map(map),
         done: ids.length,
         total: ids.length,
-        /* ⚠️ Хоосон жагсаалт (`ids.length === 0`) нь алдаа БИШ (2026-09-23):
-           багц хуваарилагдаагүй аккаунтад `0 === 0` → «Тоо татагдсангүй: no
-           data» гэсэн худал алдаа гардаг байв. */
         error: ids.length > 0 && failed === ids.length ? (firstErr ?? new Error("no data")) : null,
         failed,
         stale: false,
@@ -691,8 +501,6 @@ export function usePlanTotalsLive(
       alive = false;
       if (timer != null) clearTimeout(timer);
     };
-    /* ⚠️ `ids` нь дуудагч талд `useMemo`-гүй байж болох тул `key`-ээр л
-       хамаарна — тэр нь id-уудыг өөрсдийг нь агуулна. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 

@@ -1,6 +1,6 @@
 /**
  * «ГЭРЭЭГҮЙ АЖИЛ» KPI — цэвэр тооцооны тест, сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ceo/uncontracted.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ceo/uncontracted.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. ДУТУУ БҮРТГЭЛ «гэрээгүй» гэж тоологдох — дүн бичсэн ч гүйцэтгэгчгүй
@@ -16,8 +16,8 @@
  *      хүснэгтэд нэрээр нь байх ёстой).
  *   7. Ганц «хасах»/«хасуулах» үг («НӨАТ хасах дүн») мөрийг хасагдсан болгож
  *      жинхэнэ гэрээгүй ажлыг n/Σ-ээс чимээгүй гаргах.
- *   8. Огноо `format.date()`-ээс ӨӨР хэлбэрээр (ISO) гарч ipc картаас зөрөх.
- *   9. ⚠️ 2026-10-22 (аудит): «гэрээтэй» нь ПОРТАЛЫН НЭГ предикат (`gdash.isContracted`) — Багц 5.3 · 5.4
+ *   8. Огноо `format.date`-ээс ӨӨР хэлбэрээр (ISO) гарч ipc картаас зөрөх.
+ *   9. 2026-10-22 (аудит): «гэрээтэй» нь ПОРТАЛЫН НЭГ предикат (`gdash.isContracted`) — Багц 5.3 · 5.4
  *      («Гэрээлсэн дүн» тайлбартай, дүн/гүйцэтгэгчгүй) энд «гэрээгүй», бусад харагдацад «гэрээтэй» гардаг байв.
  *      Эсрэг зөрүү (`noteOnly`) өгөгдлийн эзэнд жагсаалтаар (5-р хүснэгт) гарна.
  */
@@ -37,7 +37,6 @@ const row = (o = {}) => ({
   objectid: 1,
   ajil_tuvshin2: 'БАРИЛГА УГСРАЛТ',
   ajil_tuvshin1: 'Төсөл',
-  /* ⚠️ Cashflow_0909-д багцын багана НЭГ — хуучин Bagts/Ded_bagts нэгдсэн */
   bagts: 'БАГЦ-16',
   ajil_uilchilgee: 'Ажил',
   ho_dun_geree: null,
@@ -50,9 +49,7 @@ const row = (o = {}) => ({
   ...o,
 });
 
-/* ── 1. isUncontracted / isInconsistent / isNoteOnly ──
-   ⚠️ 2026-10-22 (аудит): «гэрээгүй» = `!gdash.isContracted` (тайлбар «Гэрээлсэн дүн» биш) — дүн/гүйцэтгэгчээр БИШ.
-   «Дутуу бүртгэл» = гэрээтэй (тайлбараар) боловч дүн ЭСВЭЛ гүйцэтгэгчийн нэг нь алга. */
+/* ── 1. isUncontracted / isInconsistent / isNoteOnly ── */
 const CN = 'Гэрээлсэн дүн';
 {
   for (const amt of [null, '', 0, '0', -5]) {
@@ -97,7 +94,6 @@ const B = row({ objectid: 2, ajil_uilchilgee: 'B ажил', ho_dun_geree: 500, e
 const C = row({ objectid: 3, ajil_uilchilgee: 'C ажил', ho_dun_geree: null });
 const D = row({ objectid: 4, ajil_uilchilgee: 'D гэрээтэй', geree_dun: 900, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
 const E = row({ objectid: 5, ajil_uilchilgee: 'E дүнтэй', geree_dun: 50, ho_dun_geree: 60 });
-/* ⚠️ 2026-10-22 (аудит): «дутуу бүртгэл» нь ГЭРЭЭТЭЙ (тайлбараар) мөр — G ба E2 «Гэрээлсэн дүн» тайлбартай */
 const G = row({ objectid: 6, ajil_uilchilgee: 'G гүйцэтгэгчтэй', guitsetgegch: 'Х ХХК', geree_dugaar: 'ХМХ-25/1', ho_dun_geree: 70, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
 const E2 = row({ objectid: 9, ajil_uilchilgee: 'E2 дүнтэй гэрээ', geree_dun: 50, ho_dun_geree: 60, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
 /* Багц 5.3 · 5.4-ийн хэлбэр — тайлбартай атлаа дүн, гүйцэтгэгчгүй: ГЭРЭЭТЭЙ, эсрэг зөрүүний жагсаалтад */
@@ -106,7 +102,6 @@ const H = row({ objectid: 7, ajil_uilchilgee: 'H ажил', bagts: 'БАГЦ-16.
 const I = row({ objectid: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 1, ehleh_ognoo: NOW });
 {
   const k = computeUncontracted([A, B, C, D, E, G, H, I, E2, N], NOW);
-  /* ⚠️ 2026-10-22: E (дүнтэй, тайлбаргүй) — порталын дүрмээр ГЭРЭЭГҮЙ; N (тайлбартай, дүнгүй) — гэрээтэй */
   assert.equal(k.value, '6', 'гэрээгүй тоо (A B C E H I)');
   assert.equal(k.level, 'bad');
   assert.equal(k.asOf, null);
@@ -117,8 +112,6 @@ const I = row({ objectid: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 
   assert.ok(k.facts.some((f) => f.includes('2 бүртгэлийн зөрүү')), `тайлбар ↔ дүн зөрүү 2 (E, N): ${k.facts}`);
   for (const f of k.facts) assert.match(f, /\d/, `факт тоогүй: «${f}»`);
 
-  /* ⚠️ 2026-10-09: 4-р хүснэгт — E (дүнтэй, «Гэрээлсэн дүн» тайлбаргүй) тодорхойлолтын зөрүү */
-  /* ⚠️ 2026-10-22: 5-р хүснэгт — N (тайлбартай атлаа дүн, гүйцэтгэгчгүй) ЭСРЭГ зөрүү */
   assert.equal(k.tables.length, 4);
   assert.deepEqual(k.noteMismatch.map((c) => c.work), ['E дүнтэй'], 'D (CONTRACTED) орохгүй');
   assert.deepEqual(k.tables[2].rows.map((r) => r[0].v), ['E дүнтэй']);
@@ -178,8 +171,6 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
   const W = row({ objectid: 13, ajil_uilchilgee: 'W НӨАТ', ho_dun_geree: 7, ehleh_ognoo: NOW - 3 * DAY, ho_dungiin_tailbar: 'НӨАТ хасах дүн' });
 
   const k = computeUncontracted([B, E, X, Y, Z], NOW);
-  /* ⚠️ 2026-10-22 (аудит): E (дүнтэй, тайлбаргүй) — порталын дүрмээр гэрээгүй; Z (дүн+гүйцэтгэгчтэй, тайлбар
-     «хийгдэхгүй») — гэрээтэй БИШ (тайлбар «Гэрээлсэн дүн» биш) тул хасагдсан ажилд нэрээр гарна */
   assert.equal(k.value, '2', 'B ба E гэрээгүй');
   assert.equal(k.level, 'warn', 'X эхэлсэн ч хасагдсан → bad биш');
   assert.ok(k.facts.some((f) => f.includes('560 ₮') && !f.includes('20,560')), `Σ төсөвт X орохгүй: ${k.facts}`);
@@ -223,7 +214,6 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
 {
   assert.equal(computeUncontracted([B], NOW).level, 'warn', 'гэрээгүй ч эхлээгүй');
   assert.equal(computeUncontracted([D], NOW).level, 'good', 'бүгд гэрээтэй');
-  /* ⚠️ 2026-10-22: дутуу бүртгэл = гэрээтэй (тайлбараар) мөр (E2); тайлбаргүй дүнтэй E нь ГЭРЭЭГҮЙ → warn */
   assert.equal(computeUncontracted([D, E2], NOW).level, 'good', 'дутуу бүртгэл түвшинд нөлөөлөхгүй');
   assert.equal(computeUncontracted([D, N], NOW).level, 'good', 'эсрэг зөрүү (тайлбартай, дүнгүй) түвшинд нөлөөлөхгүй — гэрээтэй');
   assert.equal(computeUncontracted([D, E], NOW).level, 'warn', 'тайлбаргүй дүнтэй мөр — порталын дүрмээр гэрээгүй');

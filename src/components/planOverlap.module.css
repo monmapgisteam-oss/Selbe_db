@@ -1,8 +1,4 @@
-/* «Ерөнхий төлөвлөгөө» → «Detail»: инженерийн шугамын ДАВХЦАЛ (2026-10-13) — `PlanOverlap.tsx`
-   ⚠️ 2026-10-23: Environment — газрын зургийн tooltip 6px + дээд 2px --data зурвас;
-   хөвөгч гадаргуу paper 94% + blur, --line-strong; карт 12px · --line (сүүдэргүй);
-   KPI .analytics-stat; сонголт (#38bdf8 → --data) moss 12% + 45% хүрээ + inset 3px;
-   жин ≤600. Ангиллын/системийн өнгө (inline) — газрын зургийн утга, хөндөхгүй. */
+/* «Ерөнхий төлөвлөгөө» → «Detail»: инженерийн шугамын ДАВХЦАЛ (2026-10-13) — `PlanOverlap.tsx` */
 
 /* ── Зураг дээрх hover-ийн тайлбар ── */
 .tip {
@@ -263,7 +259,7 @@
 .chevOn { transform: rotate(90deg); }
 .catChk { margin: 0; accent-color: var(--data); cursor: pointer; }
 
-/* Swipe товч асаалттай (`DetailLayers.tsx` §SwipeToggle) — ⚠️ esri-widget дүрмийн !important-ийг дарна */
+/* Swipe товч асаалттай (`DetailLayers.tsx` §SwipeToggle) — esri-widget дүрмийн !important-ийг дарна */
 .swOn {
   color: var(--data-ink) !important;
   background: color-mix(in oklab, var(--data) 12%, transparent) !important;

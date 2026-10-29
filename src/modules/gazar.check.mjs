@@ -1,17 +1,6 @@
 /**
  * «ГАЗАР ЧӨЛӨӨЛӨЛТ» — «Талбар засах» горим ба полигон (AOI)-ын ГЭРЭЭ.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/gazar.check.mjs
- *
- * ⚠️ ЯАГААД (2026-09-30). «Талбар засах» горим сэргээгдэхдээ `enterEdit`-ийн
- * тайлбарт «AOI-г ч `clear`-ээр хаяна» гэж бичигдсэн боловч код нь зөвхөн
- * `setHighlight(null)` дууддаг байв:
- *   · полигон зурж тооцоолсны дараа горимд ороод гарахад самбарууд
- *     «Сонгосон талбай · полигоноор шүүсэн» тоо харуулж байхад зураг БҮХ
- *     талбайг тодоор харуулна (бүдгэрүүлэлт алга, `aoi` хэвээр);
- *   · засварын горимд зурагт үлдсэн полигон дотор товшиход SketchViewModel
- *     полигоныг засах горимд оруулж, чирэлт нь AOI-г чимээгүй өөрчилнө;
- *   · «Полигон зурах» товч засварын горимд идэвхтэй тул зурах цэг бүр
- *     нэгж талбарын маягт нээнэ.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/gazar.check.mjs
  *
  * `Gazar.tsx` нь React + ArcGIS шаарддаг тул ажиллуулж шалгах боломжгүй —
  * `viewEdit.check.mjs`-ийн аргаар ЭХ КОДЫГ (тайлбаргүйгээр) тулгана.
@@ -19,7 +8,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-/* Тайлбарыг арилгана — `⚠️` тайлбарт бичигдсэн код хэлбэрийн текст ХУДАЛ таарц өгдөг */
+/* Тайлбарыг арилгана — ` ` тайлбарт бичигдсэн код хэлбэрийн текст ХУДАЛ таарц өгдөг */
 const strip = (s) => s
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/^[ \t]*\/\/.*$/gm, '');
@@ -77,10 +66,7 @@ console.log('✅ Полигон зурж байхад засварын гори�
 }
 console.log('✅ «Бүрэн чөлөөлсөн»-ийн бичиглэлүүд дашбоардтай ижил бүлэглэгдэнэ');
 
-/* ── 5. Талбай: дашбоардтай ИЖИЛ дүрэм ──
-   ⚠️ 2026-10-22 (аудит): серверийн `SUM(area_m2)` + `Талб_1` нөхөлтийн асуулга → МӨРӨӨР (`land.loadParcelAreaRows` +
-   `parcelGroupRows`): `area_m2 = 0` → полигоны талбай, хуваагдсан нэгж талбар нэг удаа, `Талб_1` нөхөлт багтсан. `land.ts`
-   ЯГ тэр хоёр функцийг хэрэглэх ёстой — эс бөгөөс «Нийт талбай» хоёр газар зөрнө. */
+/* ── 5. Талбай: дашбоардтай ИЖИЛ дүрэм ── */
 {
   assert.match(src, /loadParcelAreaRows\('1=1', area\)/, 'Газар: нэгж талбарын мөрүүд (AOI-тай) `land.loadParcelAreaRows`-оор');
   assert.match(src, /const lStatus = parcelGroupRows\(lRows\)/, 'Газар: төлөв бүрийн тоо/талбай `parcelGroupRows`-оор');
@@ -109,7 +95,6 @@ console.log('✅ «N нэгж талбар хадгалагдлаа»');
   const m = /const openParcel = useCallback\(\(oid: number\) => \{([\s\S]*?)\}, \[/.exec(src);
   assert.ok(m, '`openParcel` олдсонгүй');
   for (const [re, why] of [
-    /* ⚠️ 2026-10-09 (аудит №6): `askDrop(run)` callback хэлбэр — самбарын асуулт (`window.confirm` хаагдсан хөтчид гацдаг байв) */
     [/askDrop\(\(\) => \{/, 'хадгалаагүй маягтыг асуухгүйгээр солих ёсгүй'],
     [/setEditOid\(oid\)/, 'маягт нээгдэх ёстой'],
     [/setHighlight\(parcelWhere\(oid\)/, 'талбар тодрох ёстой'],
@@ -117,7 +102,6 @@ console.log('✅ «N нэгж талбар хадгалагдлаа»');
   ]) assert.match(m[1], re, `Газар/openParcel: ${why}`);
   /* олон таарвал жагсааж сонгуулна — эхнийхийг чимээгүй нээхгүй */
   assert.match(src, /list\.length === 1\) openParcel\(list\[0\]\.oid\)/);
-  /* ⚠️ 2026-10-26 (аудит): хязгаараас олон бол эхний PARCEL_FIND_LIMIT-ийг л жагсааж «нарийсгана уу» */
   assert.match(src, /setHits\(more \? list\.slice\(0, PARCEL_FIND_LIMIT\) : list\)/, 'Газар: олон үр дүнг жагсаах ёстой');
   assert.match(src, /Эхний \{0\} нь — дугаараа нарийсгана уу/, 'Газар: тайрагдсан хайлтыг хэлэх ёстой');
 }
@@ -126,7 +110,6 @@ console.log('✅ Кадастрын дугаараар хайж, олдсон т
 /* ── 8. GazarEdit — зөвхөн өөрчилсөн төлөвийг шалгана · сүүлд засварласан ── */
 {
   const ed = strip(fs.readFileSync('src/modules/GazarEdit.tsx', 'utf8'));
-  /* ⚠️ 2026-10-05: 3 дахь аргумент `lens` (текст талбарын дээд урт) нэмэгдсэн */
   assert.match(ed, /validateParcelChanged\(before, d(, lens)?\)/, 'GazarEdit: `validateParcelChanged` ашиглах ёстой');
   assert.doesNotMatch(ed, /validateParcel\(d\)/, 'GazarEdit: бүтэн шалгуур хөндөөгүй төлөвөөр хадгалалтыг хаана');
   assert.match(ed, /before\.editedBy/, 'GazarEdit: «сүүлд засварласан» мөр алга');
@@ -148,11 +131,10 @@ console.log('✅ GazarEdit: хөндөөгүй төлөв хадгалалтыг
 }
 console.log('✅ Тодорхойгүй баганын WHERE: NULL · хоосон · «—» · зай');
 
-/* ⚠️ 2026-10-21 (аудит): `toItems` харагдац `query.Group.stats`-аас — хэмжилтгүй бүлэг «—», 0 биш */
 assert.match(src, /display: grp\.stats\[valueKey\] == null \? '—' : `\$\{num\(grp\.stats\[valueKey\]\)\} \$\{unit\}`/, 'toItems харагдац stats-аас биш');
 console.log('✅ toItems: хэмжилтгүй бүлэг «—»');
 
-/* ── ⚠️ 2026-10-21 (аудит): хоцорсон хайлтын хариу засах маягтыг нээхгүй ── */
+/* ── 2026-10-21 (аудит): хоцорсон хайлтын хариу засах маягтыг нээхгүй ── */
 {
   assert.match(src, /const findSeq = useRef\(0\);/, '`findSeq` тоолуур алга');
   const m = /const findParcel = useCallback\(async \(\) => \{([\s\S]*?)\}, \[findNo, openParcel\]\);/.exec(src);

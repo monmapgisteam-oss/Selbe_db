@@ -1,8 +1,8 @@
 /**
  * «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ» ХАРАГДАЦЫН РЕГРЕСС (2026-09-30).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/dedButetsUi.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/dedButetsUi.check.mjs
  *
- * Хамгаалж буй алдаанууд (засвар бүр `⚠️ 2026-09-30` тэмдэгтэй):
+ * Хамгаалж буй алдаанууд (засвар бүр ` 2026-09-30` тэмдэгтэй):
  *   1. Засварын горимоор харагдацаас гарахад хойшлуулсан нийлбэрийн цэвэрлэгээ алга болж,
  *      засварын өмнөх км/тоо сешн дуустал үлддэг; нээлттэй каталог шинэчлэгддэггүй.
  *   2. Хадгалаагүй маягт/дүрс/vertex/олноор засах утга харагдац солих, F5-д асуулгүй алга
@@ -13,7 +13,6 @@
  *   6. Бүсээр хуваагддаггүй KPI бүс солих бүрд 74 статистик дахин татдаг, тэмдэглэлгүй.
  *   7. Багцын мөр ЭХНИЙ давхарга (ДХТ талбай) руу нисдэг.
  *   8. «Саад — багцаар» багцыг эхний давхаргын нэрээр нэрлэж, дэд бүтцийн засварт хуучирдаг.
- * ⚠️ React/ArcGIS-ийн холболт тул ЭХ КОДООР (Node-д газрын зураг зурагдахгүй); 5 нь бүртгэлээр.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -58,7 +57,6 @@ for (const id of DED_BUTETS_LAYER_IDS) {
   if (!LEN_FIELD.test(f)) missed++;
 }
 assert.ok(missed > 0, 'хуучин regex танихгүй талбар одоо ч байна — тестийн урьдчилсан нөхцөл');
-/* ⚠️ 2026-10-01: таних дүрэм `butetsLen.lenFieldUnit` руу шилжив (нэр + qty.field + нэгж) */
 for (const id of DED_BUTETS_LAYER_IDS) {
   const L = LAYER_BY_ID[id];
   if (L?.geom !== 'line' || String(L.qty?.field ?? '').toLowerCase().startsWith('shape__')) continue;
@@ -66,7 +64,7 @@ for (const id of DED_BUTETS_LAYER_IDS) {
 }
 assert.ok(edit.includes('lenFieldUnit(f.name, qtyDef)'), 'маягт уртын талбарыг lenFieldUnit-ээр таньна');
 
-/* 6 — ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): «бүсгүй — төслийн нийт»-ийн оронд бүсийн
+/* 6 — 2026-10-01 (хэрэглэгч: бүгдийг зас): «бүсгүй — төслийн нийт»-ийн оронд бүсийн
    ПОЛИГОНООР орон зайн шүүлт (`totals.loadZoneAoi`). */
 assert.ok(src.includes('usePlanTotalsLive(zone, true, totalIds, { spatialZone: true })'));
 assert.ok(!src.includes("tr('Инженерийн шугам бүсээр хуваагддаггүй — төслийн нийт дүн')"));
@@ -79,7 +77,6 @@ assert.ok(src.includes('sel.ids.find(isLenLayer) ?? sel.ids[0]'));
 assert.ok(saad.includes('commonName(ids.map((id) => LAYER_BY_ID[id]?.title ?? id))'));
 assert.ok(!saad.includes('LAYER_BY_ID[ids[0]]?.title'));
 assert.ok(saad.includes('subscribeTotals(() => { ovCache = null; });'));
-/* ⚠️ 2026-10-21 (аудит): барилгын давхаргыг `limit: 2000`-гүй, OID-оор эрэмбэлж бүгдийг хуудаслан татна */
 assert.ok(!/^\s*limit:\s*2000,/m.test(saad), 'pkgSaad: limit 2000 — 2000-аас дээш блок чимээгүй хасагдана');
 assert.ok(saad.includes('orderBy: `${BUILDING.oid} ASC`,'), 'pkgSaad: OID эрэмбэ (тогтвортой хуудаслалт)');
 assert.ok(ovl.includes('subscribeTotals(() => { geomCache.clear(); resultCache.clear(); });'));
@@ -95,7 +92,6 @@ assert.ok(src.includes("const SEWER_WELL_EXTRA = ['infra:69'];"));
 assert.ok(DED_BUTETS_LAYER_IDS.includes('infra:69'), 'infra:69 инженерийн давхаргад бий');
 /* Хэсэгчилсэн буцаалт */
 assert.ok(src.includes('const r = await revertRows(meta, u.rows);') && src.includes('setUndoable(bad.size ? { ...u, rows: u.rows.filter((x) => bad.has(Math.trunc(x.oid))) } : null);'));
-/* ⚠️ 2026-10-21: дан мөрийн буцаалт ч CAS (`wrote`) — бусдын засварыг сохроор дарахгүй */
 assert.ok(src.includes('await revertRows(meta, [{ oid: u.oid, attrs: u.attrs, wrote: u.wrote }])'), 'дан буцаалт CAS биш');
 /* Маягт: «Урт ← геометр», шинэ объект ба хэлбэр засварын дараах автомат бөглөлт */
 assert.ok(edit.includes("tr('Урт ← геометр')"));

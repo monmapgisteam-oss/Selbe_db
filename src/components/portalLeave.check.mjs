@@ -2,18 +2,14 @@
  * ПОРТАЛААС ГАРАХ ХАМГААЛАЛТ — `Portal.confirmLeave` ба Back товч (2026-09-30).
  *   node src/components/portalLeave.check.mjs
  *
- * ⚠️ СТАТИК (regex) — `Portal.tsx`/`Root.tsx` нь ArcGIS, `next/dynamic`, DOM-ын
- *    `history`-д түшиглэдэг тул Node-д ажиллуулж болохгүй; `viewRegistry.check.mjs`-ийн
- *    хэвээр эх кодыг ӨӨРИЙГ нь уншиж холболтыг тулгана.
- *
  * Хамгаалж буй алдаа:
  *   1. «Дэд бүтэц»/«Газар»/«Зөвшөөрөл»-ийн засвар (`navGuard.setNavDirty`) харагдац
  *      солих, лого, «Гарах»-д асуултгүй алга болдог байв → `confirmLeave` нь
- *      `navDirtyLabels()`-ийг асууна.
+ *      `navDirtyLabels`-ийг асууна.
  *   2. НҮҮР рүү Back: `Root`-ийн popstate (эхэлж бүртгэгдсэн) scope-ыг ШУУД null
  *      болгодог тул Portal «Гарах уу?» гэж асууж байх хооронд ч, «Үгүй» гэсэн ч
  *      Portal unmount болж ажил алга болдог байв (URL портал, дэлгэц нүүр).
- *      → Root хойшлуулж уншина; Portal порталаас гарахад `confirmLeave()` асууж,
+ *      → Root хойшлуулж уншина; Portal порталаас гарахад `confirmLeave` асууж,
  *      татгалзвал `all=1`-тэй URL-ыг буцааж бичнэ.
  */
 import assert from 'node:assert/strict';
@@ -46,8 +42,6 @@ function bodyOf(src, startIdx) {
 console.log('\n1. confirmLeave — ерөнхий navGuard');
 const clAt = PORTAL.indexOf('const confirmLeave = useCallback(');
 ok('confirmLeave олдлоо', clAt > 0);
-/* ⚠️ 2026-10-23 (UX аудит X1): асуултын НӨХЦӨЛҮҮД синхрон `leaveAsks`-д (Back URL-аа асуултын өмнө сэргээх эсэхийг
-   мэдэхийн тулд), `confirmLeave` нь тэдгээрийг апп доторх `askConfirm`-оор (async) асууна. */
 const laAt = PORTAL.indexOf('const leaveAsks = useCallback(');
 ok('leaveAsks олдлоо (confirmLeave-ээс өмнө)', laAt > 0 && laAt < clAt);
 const cl = bodyOf(PORTAL, laAt);
@@ -64,8 +58,6 @@ console.log('\n2. Back → нүүр: Portal асууна, Root хойшлуул�
 const popAt = PORTAL.indexOf('const onPop = () =>');
 ok('Portal-ийн popstate олдлоо', popAt > 0);
 const pop = bodyOf(PORTAL, popAt);
-/* ⚠️ 2026-10-23: асуух зүйлтэй бол URL-ыг АСУУЛТЫН ӨМНӨ (синхрон) сэргээнэ — Root 0мс-д уншаад порталд үлдэнэ;
-   «Хаяад гарах» → onHome (логотой ижил) */
 ok('порталаас гарах (URL-д хүрээ алга) → асуулттай бол all=1-тэй URL-ыг ЭХЛЭЭД сэргээж, зөвшөөрвөл onHome',
   /if \(!inPortalUrl\(\)\) \{\s*if \(!leaveAsks\(\)\.length\) return;\s*restoreUrl\(\{ all: '1' \}\);\s*void confirmLeave\(\)\.then\(\(ok\) => \{ if \(ok\) onHome\?\.\(\); \}\);\s*return;\s*\}/.test(pop));
 ok('харагдац хооронд → setView (хамгаалалттай), татгалзвал URL сэргээнэ',
@@ -87,17 +79,11 @@ ok('Root popstate-ээ setTimeout-оор хойшлуулна (Portal-ийн б�
   /setTimeout\(\(\) => \{[^}]*setScope\(scopeFromUrl\(\)\)/.test(rootPop), rootPop.slice(0, 200));
 ok('Root popstate ШУУД setScope хийхгүй', !/const onPop = \(\) => setScope\(/.test(ROOT));
 
-/* ⚠️ 2026-10-21 (аудит): эрх хасагдсан харагдац — «Болих» дарсан ч эрхгүй агуулга ХАРАГДАХГҮЙ.
-   Урьд нь `setView(navScope[0])` → `confirmLeave` «Гарах уу?» (шалтгаангүй), «Болих» → харагдац бүрэн
-   зурагдсаар. Одоо: асуултад шалтгаан, рендерийн `viewAllowed` хамгаалалт (`inert` + `ViewLost`),
-   цонхны товч АСУУЛГҮЙ (`force`) шилжинэ. */
 console.log('\n3. Эрх хасагдсан харагдац — шалтгаантай асуулт, рендерийн хамгаалалт');
-/* ⚠️ 2026-10-22 (аудит): хоёр дахь параметр `busyOnly` (4-р хэсэг) */
 ok('confirmLeave шалтгаан авна (async)', /const confirmLeave = useCallback\(async \(reason\?: string, busyOnly = false\): Promise<boolean> => \{/.test(PORTAL));
 ok('асуулт бүр шалтгаанаар эхэлнэ', /askConfirm\(reason \? `\$\{reason\}\\n\\n\$\{q\}` : q,/.test(cl2()));
 ok('confirmLeave нь leaveAsks-ийн асуултуудыг асууна', /const qs = leaveAsks\(busyOnly\);/.test(cl2()));
 ok('setView: { reason, force } (async)', /const setView = useCallback\(async \(v: ViewKey, opts\?: \{ reason\?: string; force\?: boolean \}\): Promise<boolean> => \{/.test(PORTAL));
-/* ⚠️ 2026-10-22 (аудит): `force` нь ЗӨВХӨН хадгалаагүй засварын асуултыг алгасна (4-р хэсэг) — урьд нь `!opts?.force && …` */
 ok('force → busyOnly; бусад нь шалтгаантай бүрэн асуулт', /if \(!\(await confirmLeave\(opts\?\.reason, !!opts\?\.force\)\)\) return false;/.test(PORTAL));
 ok('force нь confirmLeave-ийг бүхэлд нь алгасахгүй', !/if \(!opts\?\.force && !confirmLeave\(/.test(PORTAL));
 ok('эрхийн хамгаалалтын эффект шалтгаан дамжуулна',
@@ -109,9 +95,6 @@ ok('ViewLost: alertdialog + фокусын урхи', /function ViewLost\([\s\S]
 function cl2() { return bodyOf(PORTAL, PORTAL.indexOf('const confirmLeave = useCallback(')); }
 function la2() { return bodyOf(PORTAL, PORTAL.indexOf('const leaveAsks = useCallback(')); }
 
-/* ⚠️ 2026-10-22 (аудит): эрх хасагдсан цонхны товч (`force`) ЯВЖ БУЙ бичилтийг асуусаар — урьд нь `force` бүх
-   `confirmLeave`-ийг алгасаж, Хуваарийн save→decidePlan гинж (`planNavBusy`) ба илгээлт/шийдвэр/буулгалтын
-   (`fillnew-send` · `hyanalt-apply` · `ajil-apply`) дундуур модуль unmount болдог байв. */
 console.log('\n4. force — хадгалаагүй засварын асуултгүй, явж буй бичилтийг асууна');
 {
   const c = la2();
@@ -135,13 +118,11 @@ console.log('\n4. force — хадгалаагүй засварын асуулт
   for (const p of files) {
     const s = readFileSync(join(root, p), 'utf8');
     for (const m of s.matchAll(/setNavDirty\('([\w-]+-(?:send|apply))', true, tr\('([^']+)'\)\)/g)) flags.push({ p, key: m[1], label: m[2] });
-    /* ⚠️ 2026-10-23: түлхүүр нь хувьсагч (`const guardKey = \`hyanalt-apply:${work.key}\``) — угтвараар нь таньж нэрийг авна */
     for (const m of s.matchAll(/const (\w+) = `([\w-]+-(?:send|apply)):\$\{[^`]+\}`;\s*setNavDirty\(\1, true, tr\('([^']+)'\)\)/g)) flags.push({ p, key: m[2], label: m[3] });
   }
   ok('явж буй бичилтийн туг ≥ 3 олдлоо (fillnew-send · hyanalt-apply · ajil-apply)',
     ['fillnew-send', 'hyanalt-apply', 'ajil-apply'].every((k) => flags.some((f) => f.key === k)), JSON.stringify(flags.map((f) => f.key)));
   for (const f of flags) ok(`«${f.key}» (${f.p}) нэр navBusyLabels-д`, nb.includes(`tr('${f.label}')`), f.label);
-  /* ⚠️ 2026-10-23: «Батлах ажил»-ын `Item` бүр ӨӨРИЙН түлхүүртэй — нэг түлхүүр хуваалцвал эхэлж дууссан шийдвэр нөгөөгийн тугийг унтраана */
   const G = readFileSync(join(root, 'modules/Guitsetgel.tsx'), 'utf8');
   ok('hyanalt-apply туг ажил бүрд (work.key)',
     G.includes('const guardKey = `hyanalt-apply:${work.key}`;') && G.includes('setNavDirty(guardKey, false);') && !G.includes("setNavDirty('hyanalt-apply'"));

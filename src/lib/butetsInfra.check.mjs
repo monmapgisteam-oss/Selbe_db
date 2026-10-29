@@ -1,10 +1,7 @@
 /**
  * ИНЖЕНЕРИЙН ДЭД БҮТЦИЙН ДАВХАРГЫН МЕТАДАТА — АМЬД, ЗӨВХӨН УНШИЛТ (2026-10-01).
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/butetsInfra.check.mjs
- *
- * ⚠️ АМЬД шалгуур — сүлжээгүй/токенгүй (`SELBE_LIVE_SKIP`) үед ⏭ АЛГАСНА (унахгүй).
- *    Бичилт, схем, үйлчилгээний тохиргоо ОГТ хөндөхгүй — `?f=json` метадата л уншина.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/butetsInfra.check.mjs
  *
  * Шалгадаг зүйл (2026-10-01-ний хэрэглэгчийн «бүгдийг зас» даалгавраас):
  *  1. ДАВХАРГЫН SR. Урт/талбайг `Shape__Length`-ээс авах уу, геометрээс ГЕОДЕЗИЙН
@@ -26,7 +23,6 @@ if (process.env.SELBE_LIVE_SKIP) {
 
 /** Метадата — ArcGIS алдааг HTTP 200-аар буцаадаг тул биеийг шалгана */
 async function meta(id) {
-  /* ⚠️ 2026-10-20: `query.ts`-ээр — Enterprise руу зураглагдаж (`layerUrl`), талбарын нэр эх хэлбэрээр (`SHAPE__Length` → `Shape__Length`) */
   const { arcgisPost, ArcGISError } = await import('./query.ts');
   try {
     return await arcgisPost(layerUrl(LAYER_BY_ID[id]), {}, { timeoutMs: 15000 });
@@ -49,7 +45,6 @@ try {
 }
 
 /* ── 1. SR ── */
-/* ⚠️ 2026-10-09: `loadLayerMeta`-тэй ижил дараалал — source (хадгалалтын SR) ЭХЭНД, extent нөөц */
 const wk = (m) => m.sourceSpatialReference?.latestWkid ?? m.sourceSpatialReference?.wkid
   ?? m.extent?.spatialReference?.latestWkid ?? m.extent?.spatialReference?.wkid;
 const srs = [m1, m6, m69].map(wk);

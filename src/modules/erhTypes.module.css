@@ -1,10 +1,8 @@
-/* ЭРХИЙН ТӨРӨЛ — 10 төрөл × тохиргооны хүснэгт (`ErhTypes.tsx`)
-   ⚠️ 2026-10-23: Environment — .pe-table хэв (12px булан, 11.5px мөр, 10px UPPERCASE sticky толгой),
-   товч/сонгогч .pe-ghost/.pe-field, шошго 6px badge. */
+/* ЭРХИЙН ТӨРӨЛ — 10 төрөл × тохиргооны хүснэгт (`ErhTypes.tsx`) */
 .wrap {
   max-width: 100%;
   overflow: auto;
-  max-height: calc(100vh - 230px); /* ⚠️ 2026-09-30: бүтэн дэлгэц — өндрийг ч дээд зэргээр */
+  max-height: calc(100vh - 230px);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   background: var(--surface);
@@ -90,8 +88,6 @@
 /* Хэрэглэгчийн картын «Эрхийн төрөл» хэсэг (2026-09-30: багцын чип хасагдсан) */
 .typeRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
-/* ⚠️ 2026-10-01: «шинэ хуудас — загварт тохируулаагүй» — хадгалсан загварын ДАРАА нэмэгдсэн хуудас
-   (`roleTypes.unseenViews`). Баганын толгойд товч (дарвал «тохируулсан» ноорог), мөрийн нэрэнд шошго. */
 .newBadge {
   display: inline-block;
   margin: 3px auto 0;
@@ -112,11 +108,8 @@ button.newBadge { cursor: pointer; }
 button.newBadge:disabled { opacity: 0.4; cursor: default; }
 .lbl .newBadge { margin: 2px 0 0 6px; }
 .cellNew { background: color-mix(in oklab, var(--warn) 8%, transparent); }
-/* ⚠️ 2026-10-26: «Хуваарь зохиох / батлах» — МЭДЭЭЛЛИЙН нүд (идэвхгүй чекбокс + тэр төрлийн үүрэгтэй хүний тоо) */
 .info { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--ink-3); cursor: help; }
 
-/* ⚠️ 2026-10-26 (аудит): утсанд (≤760px — userAdmin-ийн цэгтэй нэг) 280px наалддаг шошго 328px гүйлгэх хүрээний ихэнхийг
-   эзэлж төрлийн баганад ~48px л үлддэг байв. */
 @media (max-width: 760px) {
   .corner, .lbl { min-width: 140px; max-width: 160px; }
   .lblHint { display: none; }

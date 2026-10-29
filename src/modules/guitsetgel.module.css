@@ -1,14 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   ГҮЙЦЭТГЭЛИЙН ХЯНАЛТ — олон компанид зориулсан жагсаалтын харагдац.
-
-   ⚠️ Өнгө, радиус, шилжилт бүгд ПОРТАЛЫН токеноос (`globals.css`) — өөр
-   хаанаас ч hex бичихгүй. Ингэснээр гэрэл/харанхуй горим өөрөө дагана.
-   ⚠️ Энэ нь порталын ДОТОР суух тул `min-height: 100vh` БАЙХГҮЙ — эцэг нь
-   өндрөө өгнө.
-   ⚠️ 2026-10-23: Environment — оролт .pe-field (32px, 7px булан, --bg, moss focus), товч 32px/8px,
-   шошго/badge 6px булан (999px зөвхөн дугуй тэмдэг), хүснэгт .pe-table (10px UPPERCASE толгой),
-   сав 12px булан, хөвөгч popover --line-strong + --shadow; жин ≤600.
-   ═══════════════════════════════════════════════════════════ */
+   ГҮЙЦЭТГЭЛИЙН ХЯНАЛТ — олон компанид зориулсан жагсаалтын харагдац. */
 
 .wrap { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .spacer { flex: 1; }
@@ -56,11 +47,7 @@
 .clear:hover { text-decoration: underline; }
 
 /* ══════════ Их бие ══════════ */
-/* ⚠️ ӨРГӨНИЙГ ХАЗААРЛАХГҮЙ. Энд 60–100 баганатай гүйцэтгэлийн хүснэгт
-   сууна — 1200px-ийн хашлага нь хоёр талд хоосон зурвас үлдээж, хүснэгтийг
-   нарийн цонхоор шахаж харуулж байв. */
 .body { flex: 1; min-height: 0; overflow: auto; padding: 16px 22px 48px; width: 100%; }
-/* ⚠️ 2026-10-23: Environment — хоосон төлөв: тасархай хүрээ, төвд ink-3 */
 .empty { padding: 54px 0; text-align: center; color: var(--ink-3); font-size: 12px; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); }
 .note {
   margin-bottom: 14px; padding: 10px 13px;
@@ -75,7 +62,6 @@
   background: var(--surface); overflow: hidden;
 }
 .groupHead {
-  /* ⚠️ Нэр зүүн, тоо баруун — хоёрын хооронд бүх зай */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -93,9 +79,6 @@
 /* Нэг ажлын мөр — товч, уншихад хялбар */
 .itemHead {
   display: grid;
-  /* ⚠️ 4 хүүхэд: сум · нэр · Track · шошго — 3 багана байхад шошго
-     дараагийн мөрөнд унадаг байв (2026-09-23) */
-  /* ⚠️ 2026-10-27: + огноо (`.day`) Track-ийн өмнө — 5 хүүхэд */
   grid-template-columns: 18px 1fr auto auto auto;
   align-items: center; gap: 12px;
   width: 100%; padding: 12px 15px; text-align: left;
@@ -106,7 +89,6 @@
   font-size: 12px; color: var(--ink-2); white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-/* ⚠️ 2026-10-27: багцын дэд гарчиг — `byBagts`-ийн бүлэг бүрийн эхэнд */
 .bagtsHead {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 7px 15px;
@@ -114,13 +96,9 @@
   background: color-mix(in oklab, var(--surface-2) 55%, transparent);
   font-size: 12px; font-weight: 600; color: var(--ink-2);
 }
-/* ⚠️ 2026-10-04: УТАС (375px) — сум·нэр·Track·шошго нэг мөрөнд ажлын нэрийг
-   ~60px болтол шахдаг байв. Нэр бүтэн мөрийг авч, Track ба шошго 2-р мөрөнд
-   (нэрийн доор, 2-р баганаас) буух. 3-р хүүхэд = Track (эсвэл шошго). */
 @media (max-width: 480px) {
   .itemHead { grid-template-columns: 18px 1fr auto; row-gap: 6px; }
   .itemHead > .who { grid-column: 2 / -1; }
-  /* ⚠️ 2026-10-27: 3-р хүүхэд = огноо (өөрийн мөрөнд), 4-р = Track */
   .itemHead > .day { grid-column: 2 / -1; justify-self: start; }
   .itemHead > :nth-child(4) { grid-column: 2; justify-self: start; }
 }
@@ -139,7 +117,6 @@
 }
 
 
-/* ⚠️ 2026-10-23: Environment badge — 6px булан, 11px/500, tone текст, tone 35% хүрээ, tone 8% дэвсгэр */
 .badge {
   padding: 1px 7px; border-radius: var(--r-sm);
   border: 1px solid var(--line-strong);
@@ -162,7 +139,6 @@
 .reasonLabel { color: var(--ink-3); }
 .reasonText { color: var(--bad-ink); }
 
-/* ⚠️ 2026-10-23: Environment — 32px, 8px булан, 12px/600 */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: 32px; padding: 0 14px; border-radius: var(--r);
@@ -258,7 +234,6 @@
   font-size: 12px;
 }
 .stepWho { font-weight: 600; color: var(--ink); }
-/* ⚠️ 2026-09-30: «өмнөх шийдвэрийн нэр дарагдсан» — нэрийн хажуугийн бүдэг тэмдэглэл */
 .stepNote { color: var(--ink-3); font-size: 0.85em; font-style: italic; }
 .verb { color: var(--ink-3); }
 .verbBad { color: var(--bad-ink); }
@@ -336,7 +311,6 @@
 }
 .sub .subMuted { padding: 0 0 6px; }
 
-/* ⚠️ Юу ч бөглөөгүй нийтлэл — зөвшөөрөхийн өмнө анхаарах ЁСТОЙ дохио */
 .subWarn {
   padding: 8px 11px;
   border-left: 2px solid var(--warn);
@@ -347,9 +321,7 @@
 }
 
 
-/* Бөглөх хуудас хянагчийн карт дотор — өөрийн өндрөө авна.
-   ⚠️ Хуучин `.subTable` хэв УСТГАГДСАН: хянагчийн хүснэгт нь одоо
-      «Гүйцэтгэл бөглөх»-ийн ЯГ ТЭР компонент (`sheet.module.css`). */
+/* Бөглөх хуудас хянагчийн карт дотор — өөрийн өндрөө авна. */
 .subSheet {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -364,9 +336,7 @@
 }
 
 /* ══════════════ УРСГАЛЫН ЗУРАГЛАЛ ══════════════
-   Гурван шат ЗЭРЭГ харагдана — ажил хаана байгаа нь нэг харцаар ойлгогдоно.
-   ⚠️ Товч хэлбэртэй ч үүрэгтэй хэрэглэгчид ДАРАГДАХГҮЙ (`disabled`): шат нь
-   аккаунтаас гардаг, гараар сонгодог зүйл биш. */
+   Гурван шат ЗЭРЭГ харагдана — ажил хаана байгаа нь нэг харцаар ойлгогдоно. */
 .flow { display: flex; align-items: center; gap: 4px; }
 .flowStep {
   display: flex;
@@ -435,7 +405,7 @@
   color: var(--ink);
   font-weight: 600;
 }
-/* Ганц таб (урсгалын шатгүй super) — бичиг биш ТОВЧ (2026-10-15, `Guitsetgel`-ийн ⚠️) */
+/* Ганц таб (урсгалын шатгүй super) — бичиг биш ТОВЧ (2026-10-15, `Guitsetgel`) */
 .tabSolo {
   display: inline-flex;
   align-items: center;
@@ -461,9 +431,7 @@
 /* Бөглөх хуудас — өөрийн гүйлгээтэй, үлдсэн өндрийг бүтнээр эзэлнэ */
 .fill { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
-/* ══════════════ ӨӨРЧЛӨГДСӨН НҮДНИЙ ЖАГСААЛТ ══════════════
-   ⚠️ Бүтэн хуудас 1,370 мөртэй; өөрчлөлт нь ихэвчлэн хэдхэн нүд. Жагсаалтгүй
-   бол хянагч тэднийг гараар хайж, үнэндээ шалгахаа больдог. */
+/* ══════════════ ӨӨРЧЛӨГДСӨН НҮДНИЙ ЖАГСААЛТ ══════════════ */
 .chList { margin: 10px 0 4px; }
 .chHead {
   display: flex;
@@ -485,8 +453,6 @@
   color: var(--warn-ink);
   font-variant-numeric: tabular-nums;
 }
-/* ⚠️ Дээд өндөр — өөрчлөлт олон бол жагсаалт хуудсыг бүхэлд нь эзэлж,
-   хүснэгт нь харагдахаа болино. */
 .chWrap {
   display: flex;
   flex-wrap: wrap;
@@ -521,9 +487,7 @@
 .chVal { flex: none; font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .chItem:hover .chVal { color: var(--ink); }
 
-/* ЗӨВШӨӨРСӨН өөрчлөлт — хүснэгтийн ногоон нүдтэй ИЖИЛ өнгө.
-   ⚠️ Жагсаалт ба хүснэгт хоёр өөр өнгөөр ярьвал «энэ тэр нүд мөн үү» гэсэн
-      эргэлзээ дахин төрнө. */
+/* ЗӨВШӨӨРСӨН өөрчлөлт — хүснэгтийн ногоон нүдтэй ИЖИЛ өнгө. */
 .chOk {
   border-color: color-mix(in oklab, var(--good) 45%, transparent);
   background: color-mix(in oklab, var(--good) var(--tint), transparent);
@@ -536,10 +500,7 @@
 .okAll { color: var(--good-ink); font-weight: 600; }
 .okSome { color: var(--warn-ink); font-weight: 600; }
 
-/* «Бүгдийг ногоон болгох» — ЗӨВХӨН системийн админд харагдана.
-   ⚠️ Шийдвэрийн товчнуудаас (`.btn`) ЯЛГАРАХ ёстой: энэ нь ЗӨВХӨН тэмдэглэгээ
-   тавьдаг бөгөөд аль ч шатны шийдвэр ГАРГАХГҮЙ. Тиймээс жижиг, зураастай,
-   тоолуурын хажууд — дүүргэлттэй том товч болговол «батлах» мэт уншигдана. */
+/* «Бүгдийг ногоон болгох» — ЗӨВХӨН системийн админд харагдана. */
 .okAllBtn {
   font: inherit;
   font-size: 11px;
@@ -577,8 +538,7 @@
 }
 .tkWait { opacity: 0.55; }
 
-/* ══════════ ЭРХ ТОХИРУУЛАХ ПАНЕЛ ══════════
-   ⚠️ Порталын ерөнхий эрхийн цонхтой ХОЛБООГҮЙ — энэ нь ажлын хуваарилалт. */
+/* ══════════ ЭРХ ТОХИРУУЛАХ ПАНЕЛ ══════════ */
 .aclWrap { display: flex; flex-direction: column; gap: 12px; }
 .aclNote {
   margin: 0;
@@ -604,9 +564,6 @@
   border-radius: var(--r-lg);
   background: var(--surface);
 }
-/* ⚠️ Ганц баганатай хөзөр (2026-09-30-наас зөвхөн `PlainCapAcl` — QAQC хүснэгт болсон) `auto-fit`-ээр
-   дэлгэц дүүрэн сунгана — уншихад хэцүү, урсгалын 4 баганатай ч зөрнө.
-   Тиймээс өргөнийг нь баганын хэмжээнд барина. */
 .aclOne { max-width: 420px; }
 .aclHead {
   display: flex;
@@ -656,11 +613,6 @@
 .aclName { flex: 1; min-width: 0; font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 /*
  * ЭРХ ХАСАХ ТОВЧ (✕).
- *
- * ⚠️ 2026-09-15-ны хэрэглээний аудит: энэ нь хэрэглэгчийн ЭРХИЙГ устгадаг
- *    товч байтал (а) хүрэх талбай ~21×13px, (б) улаан өнгө нь ЗӨВХӨН hover-д
- *    гардаг тул мэдрэгч дэлгэцэд бүдэг саарал хэвээр — устгана гэсэн ямар ч
- *    дохиогүй байв. Одоо бай нь 32px, өнгө нь анхнаасаа сэрэмжлүүлэг.
  */
 .aclX {
   color: var(--bad-ink);
@@ -688,16 +640,11 @@
   font-weight: 600;
 }
 
-/* ⚠️ ГАР УТАС (2026-08-29): дөрвөн шатны гинж нэг мөрөнд багтахгүй, «Багцын
-   менежер», «Ерөнхий менежер» дэлгэцээс хальж харагдахгүй байв. Мөр тасалж
-   буулгана — сум нь шатны хооронд хэвээр. */
 @media (max-width: 720px) {
   .flow { flex-wrap: wrap; row-gap: 6px; }
   .flowStep { padding: 5px 9px; }
 }
 
-/* ⚠️ ХУВААРИЙН панел — багц бүрийн хөзөр дотор ҮҮРГИЙН блок (Зохиогч ·
-   Батлагч). Урсгалын баганад нэг л жагсаалт байдаг тул тэнд хэрэггүй байв. */
 .aclRole {
   display: flex;
   flex-direction: column;
@@ -714,9 +661,7 @@
   text-transform: uppercase;
 }
 
-/* ══════════ БАГЦ × СИСТЕМИЙН МАТРИЦ (2026-09-25) ══════════
-   ⚠️ Эхний багана ба толгой НААЛДАНА — 19 багана (2026-09-28: + ТУГ, + ЧХ инженер) хэвтээ гүйлгэхэд багцын
-   нэр, үүргийн нэр харагдсаар байх ёстой. Өнгө нь МЭДЭЭЛЭЛ: улаан = гацаа. */
+/* ══════════ БАГЦ × СИСТЕМИЙН МАТРИЦ (2026-09-25) ══════════ */
 .mxWrap {
   max-width: 100%;
   overflow: auto;
@@ -742,7 +687,6 @@
   z-index: 2;
 }
 .mxGroup { top: 0; text-align: center; }
-/* ⚠️ 2026-10-23: top = .mxGroup мөрийн өндөр (10px × 1.3 + 12px padding + 1px зураас = 26px) */
 .mxHead { top: 26px; font-weight: 600; font-size: 11px; }
 .mxCorner { top: 0; left: 0; z-index: 3; }
 .mxRow {
@@ -774,11 +718,7 @@
 .mxBad { background: color-mix(in oklab, var(--bad) var(--tint), transparent); }
 .mxBad .mxNone { color: var(--bad-ink); font-weight: 600; }
 .mxWarn { background: color-mix(in oklab, var(--warn) var(--tint), transparent); }
-/* Нүдний засварлагч — нүдний доор хөвнө.
-   ⚠️ 2026-09-25: `.mxWrap` нь `overflow: auto` + `max-height: 70vh` тул доод/баруун
-   захын нүдний засварлагч гүйлгэх мужид ТАСАРЧ (гүйлгэж байж харагддаг) байв.
-   Засварлагч нээлттэй үед бүрхүүлийн хайрцгийг түр тайлна — `:has()` (Chrome 105+,
-   Safari 15.4+, Firefox 121+); дэмжихгүй хөтөчид хуучин зан (гүйлгэнэ). */
+/* Нүдний засварлагч — нүдний доор хөвнө. */
 .mxWrap:has(.mxPop) {
   overflow: visible;
   max-height: none;
@@ -804,17 +744,11 @@
 .mxCard { cursor: pointer; }
 .mxCard:hover, .mxCard:focus-visible { border-color: color-mix(in oklab, var(--data) 45%, transparent); }
 
-/* ⚠️ 2026-09-30: хаалттай товчны шалтгаан — tooltip-оос гадна ил бичвэр (хүрэлцэх дэлгэц) */
 .blockedWhy {
   margin-top: 6px; font-size: 11.5px; color: var(--ink-3); line-height: 1.4;
 }
 
-/* ══════════ ЭРХИЙН «БАГЦ × ҮҮРЭГ/ШАТ» ХҮСНЭГТ (2026-09-30) — `AclGrid.tsx` ══════════
-   ⚠️ Урсгал · Хуваарь · Обьём · Нэмэлт ажил · Чанарын баримт · QAQC · Дэд бүтэц — БҮГД
-   энэ нэг загвар (хуучин багц бүрийн хөзөр `.aclGrid`/`.aclRole` эдгээрт ашиглагдахаа больсон).
-   ⚠️ Мөр = багц, багана = шат/үүрэг. Толгой мөр ба эхний багана НААЛДАНА — гар утсанд
-   (6 шат нэг дэлгэцэнд багтахгүй) `.ggWrap` дотор хэвтээ гүйлгэхэд багц/шатны
-   нэр харагдсаар байх ёстой. Хуудас өөрөө хэвтээ гүйхгүй. */
+/* ══════════ ЭРХИЙН «БАГЦ × ҮҮРЭГ/ШАТ» ХҮСНЭГТ (2026-09-30) — `AclGrid.tsx` ══════════ */
 /* ═══ «БАГЦ × ШАТ» ХҮСНЭГТ (2026-09-30, 2-р загвар — хэрэглэгчийн «загварыг сайжруул») ═══
    · багана тэнцүү өргөн (table-layout: fixed), багцын багана нарийн
    · «+» нүдний баруун дээд буланд — мөр бүрд тусдаа мөр эзлэхгүй
@@ -828,7 +762,6 @@
   border-radius: var(--r-lg);
   background: var(--surface);
 }
-/* ⚠️ min-width ба эхний баганын өргөн нь баганын тооноос — `AclGrid` inline style-аар */
 .gg { border-collapse: separate; border-spacing: 0; font-size: 11.5px; width: 100%; table-layout: fixed; }
 .gg th, .gg td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); }
 .gg th:last-child, .gg td:last-child { border-right: 0; }
@@ -865,15 +798,13 @@
 }
 .gg tbody tr:nth-child(even) td, .gg tbody tr:nth-child(even) .ggRow { background: color-mix(in oklab, var(--ink) 3%, var(--surface)); }
 .gg tbody tr:hover td, .gg tbody tr:hover .ggRow { background: color-mix(in oklab, var(--data) 6%, var(--surface)); }
-/* Гацаатай багц (зохиогч=батлагч, нэг хүн хоёр үүрэгт г.м.) — мөрийн толгой шар, ⚠ заагчтай */
+/* Гацаатай багц (зохиогч=батлагч, нэг хүн хоёр үүрэгт г.м.) — мөрийн толгой шар, заагчтай */
 .gg tbody tr .ggRow.ggRowWarn { background: color-mix(in oklab, var(--warn) var(--tint), var(--surface)); }
 .ggRow { overflow: hidden; text-overflow: ellipsis; }
 .ggWarns { display: flex; flex-direction: column; gap: 4px; }
 .ggCell { position: relative; vertical-align: top; padding: 6px 30px 6px 8px; }
-/* ⚠️ Хоосон нүд = шийдвэрлэх хүнгүй → ажил гацна. Бүдэг анхааруулга, хашгирахгүй. */
 .gg tbody tr td.ggEmpty { background: color-mix(in oklab, var(--warn) 7%, var(--surface)); }
 .ggDash { color: var(--ink-3); padding: 3px 2px; }
-/* ⚠️ 2026-09-30: нэг нүдэнд олон аккаунт — ДООШОО жагсана (хэрэглэгчийн хүсэлт: ар араасаа биш) */
 .ggChips { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
 .ggChip {
   display: flex;
@@ -942,8 +873,6 @@
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
 }
 
-/* ⚠️ 2026-10-01: «Тойм»-ын матриц ба нүдний засварлагчид устгагдсан / админ (хатуу super) аккаунтыг
-   ялгана — урьд нь энгийн эзэн шиг харагдаж, устгагдсан батлагчийг «байгаа» гэж андуурдаг байв. */
 .aclGoneName { text-decoration: line-through; color: var(--ink-3); }
 .aclAdminName { font-style: italic; color: var(--ink-2); }
 .aclMarkTag {
@@ -959,7 +888,6 @@
   display: inline-block;
 }
 
-/* ⚠️ 2026-10-04: шийдвэрийн анхааруулга — мөр дахин mount болсон ч үлдэнэ (`useApplyWarns`) */
 .warnBanner {
   display: flex; gap: 10px; align-items: flex-start;
   margin: 0 0 10px; padding: 10px 12px; border-radius: var(--r);
@@ -970,7 +898,6 @@
 .warnBanner > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .warnBanner b { display: block; margin-bottom: 2px; }
 
-/* ⚠️ 2026-10-23 (UX аудит R3): шийдвэрийн дараах амжилтын мөр — ажил жагсаалтаас шилжсэн ч хаашаа явсныг хэлнэ */
 .okBanner {
   display: flex; gap: 10px; align-items: flex-start;
   margin: 0 0 10px; padding: 10px 12px; border-radius: 8px;
@@ -979,5 +906,4 @@
   color: var(--good-ink, #0d7a3e); font-size: 0.85rem;
 }
 .okBanner > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-/* ⚠️ 2026-10-23 (UX аудит R3): бичилт явж буй үеийн «Хадгалж байна…» */
 .saving { margin-top: 6px; font-size: 0.8rem; color: var(--ink-2); }

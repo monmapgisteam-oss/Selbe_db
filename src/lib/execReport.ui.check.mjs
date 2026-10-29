@@ -1,9 +1,6 @@
 /**
- * УДИРДЛАГЫН ТАЙЛАН — хуваарийн хамралт · нэгтгэлийн өөрийн төлөвлөгөө · блокийн тоо (⚠️ 2026-10-22, аудит).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/execReport.ui.check.mjs
- *
- * ⚠️ `*.ui.check.mjs` нэр ЗААВАЛ — `execReport.ts` нь `Finance.tsx` · `BuildingPanel.tsx` (JSX, ArcGIS) импортлодог тул
- *    `tools/ts-alias.mjs`-ийн UI стубууд хэрэгтэй. Сүлжээгүй.
+ * УДИРДЛАГЫН ТАЙЛАН — хуваарийн хамралт · нэгтгэлийн өөрийн төлөвлөгөө · блокийн тоо (2026-10-22, аудит).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/execReport.ui.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. Хуваарь < 95% хамарсан үед «Орон сууцны барилга угсралт хуваариас N нэгж хувиар хоцорч/түрүүлж байна» гэж
@@ -16,7 +13,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-/* ⚠️ Хөтөчийн хамгийн бага глобалууд (импортоос ӨМНӨ) — `model.ui.check.mjs`-ийн дэд олонлог */
 const g = globalThis;
 const noop = () => {};
 const listeners = { addEventListener: noop, removeEventListener: noop, dispatchEvent: () => true };
@@ -115,7 +111,6 @@ ok('§3 блокийн тоо — түвшний хүснэгтийн олонл
   assert.match(ER, /blocks: lvKeys\.size/);
   assert.ok(!/blocks: bld\.blocks/.test(ER), 'хуучин `bld.blocks` (полигон) буцав');
   assert.match(ER, /noData: lvNoData/, '«бөглөгдөөгүй» ч ТЭР олонлогоор');
-  /* ⚠️ 2026-10-26 (аудит): багц бүрийн блок ч ТЭР олонлогоор — мөрүүдийн нийлбэр = «Нийт» */
   assert.match(ER, /blocks: lv \? lv\.size : blockCount\(p\)/, 'багцын блок — түвшний олонлогоос (полигон биш)');
   assert.match(ER, /householdsMissing: lv \? householdsMissingOf\(lv, /, 'багцын «дутуу» өрх полигонгүй блокийг тоолно');
 });
@@ -125,7 +120,6 @@ ok('толгой: «Төслийн гүйцэтгэл» өөрийн төлөв�
 });
 ok('§3 эгнээ: бодит нь зөрүүний тал, дутуу хамралтад «хоцрогдол/түрүүлэлт» биш', () => {
   assert.match(UI, /x\.prog\.planExcluded\.length \? x\.prog\.actualLag : x\.prog\.actual/);
-  /* ⚠️ 2026-10-26 (аудит): дутуу хамралтад УТГА ч «—» (PDF-тэй нэг) */
   assert.match(UI, /!coverageOk\(x\.prog\.planCoverage\)\s*\? \{ label: tr\('Зөрүү \(нэгж хувь\)'\), value: '—', sub: coverageNote\(x\.prog\.planCoverage\) \|\| tr\('хуваарь дутуу — дүгнэхгүй'\) \}/);
   assert.match(UI, /plan=\{coverageOk\(x\.prog\.planCoverage\) \? x\.prog\.planned : null\}/, 'дутуу хамралтад PlanMeter «хоцрогдол» өнгөөр будахгүй');
 });
@@ -134,7 +128,7 @@ ok('ангилал: «Инженерийн дэд бүтэц» өөрийн би
   assert.match(ER, /if \(infra\) catPct\.set\(INFRA_TYPE, infra\.pct\);/);
 });
 
-/* ── ⚠️ 2026-10-23: полигонгүй блок ч өрхийн мэдээлэлгүйд тоологдоно ── */
+/* ── 2026-10-23: полигонгүй блок ч өрхийн мэдээлэлгүйд тоологдоно ── */
 ok('householdsMissingOf: AIL_TOO хоосон полигон + полигонгүй блок, дээд хязгаар нь блокийн тоо', () => {
   const keys = new Set(['Б1|1', 'Б1|2', 'Б1|3', 'Б2|1']);
   assert.equal(householdsMissingOf(keys, ['Б1|1', 'Б1|2', 'Б1|3', 'Б2|1'], 0), 0, 'бүгд полигонтой, өрхтэй');

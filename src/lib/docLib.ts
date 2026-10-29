@@ -8,9 +8,6 @@
  *   · PDF — Enterprise геопорталын item (`entDocs.entUploadPdf`), эзний «barimt bichig pdf» хавтсанд (`DOC_FOLDER`),
  *     байгууллагад хуваалцана. Бүлэг нь item-ийн таг `selbe-docgrp:<id>`; тагГҮЙ (хуучин) item → «ТЭЗҮ-БОНУ».
  *   · ХУУЧИН СТАТИК баримтууд (`lib/docs.ts` — `public/docs/*.pdf` · гадаад холбоос) «ТЭЗҮ-БОНУ» бүлэгт ЗӨВХӨН УНШИХ.
- *
- * ⚠️ Харах нь нэвтэрсэн БҮХ хэрэглэгчид; бичих бүх зам `requireCap('docsUpload')` (UI нуугдсан ч консолоос хаана).
- * ⚠️ PDF устгах/шилжүүлэх нь порталын дүрмээр ЗӨВХӨН эзэн эсвэл порталын админ — бусдад портал өөрөө татгалзана.
  */
 import { docGroupsRead, docGroupsWrite, type DocGroupRow } from './permsRemote';
 import { entDeletePdf, entListPdfs, entSetTags, entUploadPdf, ENT_TAG, type EntPdf } from './entDocs';
@@ -28,12 +25,6 @@ export const DOC_FOLDER = 'barimt bichig pdf';
 
 export const defaultGroups = (): DocGroup[] => [{ id: TEZU_GROUP, title: tr('ТЭЗҮ-БОНУ') }];
 
-/**
- * ⚠️ 2026-10-26 (аудит): «ТЭЗҮ-БОНУ» бүлгийн нэр ArcGIS-д ХЭЛНЭЭС ҮЛ ХАМААРАХ МОНГОЛ ЭХ ТЕКСТЭЭР хадгалагдана
- *    (`huvaariBatlah.STUCK_PREFIX_SRC`-ийн сургамж) — дэлгэцэнд `tr()`-ээр. Урьд нь `defaultGroups()`-ийн ОРЧУУЛСАН нэр
- *    анхны засварлагчийн хэлээр (англи горимд «Feasibility study & research») `__sys__:docgroups`-д бичигдэж, бусад бүх
- *    хэрэглэгчид тэр хэлээр л харагдах байв. Гараар солисон нэр хэвээр.
- */
 export const TEZU_TITLE_SRC = 'ТЭЗҮ-БОНУ';
 /** Анхдагч нэрийн хадгалагдаж болзошгүй хэлбэрүүд — эх ба (урьд нь бичигдсэн байж болох) англи орчуулга */
 const TEZU_TITLE_FORMS = new Set([TEZU_TITLE_SRC, 'Feasibility study & research']);
@@ -57,11 +48,8 @@ export async function loadGroups(): Promise<DocGroup[]> {
 /**
  * Бүлгийн жагсаалтыг хадгална — `apply` нь ШИНЭЭР уншсан жагсаалт дээр ЗӨВХӨН энэ үйлдлийн өөрчлөлтийг (нэмэх · нэр
  * солих · устгах) хийнэ; бичигдсэн жагсаалтыг буцаана.
- * ⚠️ 2026-10-23: өмнө нь цонх нээхэд уншсан ХУУЧИН жагсаалтаар `__sys__:docgroups` мөрийг бүхэлд нь дарж бичдэг байв —
- * зэрэг засварлавал нөгөө хүний бүлэг алга болж, тэр бүлгийн PDF-үүд чимээгүй «ТЭЗҮ-БОНУ» руу шилждэг байв.
  */
 export async function saveGroups(apply: (cur: DocGroup[]) => DocGroup[]): Promise<DocGroup[]> {
-  /* ⚠️ 2026-10-23: бүлэг засах нь ТУСДАА эрх (`docsGroups`) — PDF оруулах (`docsUpload`)-аас салгав */
   requireCap('docsGroups');
   const next = apply(await loadGroups());
   if (!(await docGroupsWrite(storeGroups(next)))) throw new Error(tr('Баримтын бүлгийг хадгалж чадсангүй — дахин оролдоно уу.'));

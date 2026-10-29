@@ -11,23 +11,6 @@ import s from './locale.module.css';
 
 /**
  * ХАДГАЛААГҮЙ АЖИЛ БАЙГАА ЭСЭХ — хуудасны `beforeunload` хамгаалалтуудаас асууна.
- *
- * ⚠️ 2026-09-30: ЯАГААД. Хэл солих нь 2026-09-30-наас хуудсыг ДАХИН АЧААЛАХГҮЙ —
- *    `LocaleProvider` аппын дэд модыг `key`-ээр REMOUNT хийнэ
- *    (`i18nCore.LOCALE_SWITCH_RELOADS`). Reload үед модуль бүрийн `beforeunload`
- *    хамгаалалт (Finance · CashflowPlan · Huvaari-ийн ноорог ба батлах гинж · Qaqc ·
- *    GazarEdit · ZovshoorolEdit · «Гүйцэтгэл бөглөх»-ийн `useDraftSync` · Pivot ·
- *    UserAdmin) хөтчийн «Хуудаснаас гарах уу?» асуултыг гаргадаг байв. Remount нь
- *    `beforeunload` үүсгэдэггүй тул хадгалаагүй засвар, хадгалах/батлах гинж
- *    АСУУЛТГҮЙ, ЧИМЭЭГҮЙ алга болдог байв.
- * ⚠️ Модуль бүрийн «dirty» төлөвийг энд ХУУЛБАРЛАХГҮЙ (шинэ модуль нэмэгдэхэд
- *    хоцорно) — ЯГ ТЭДГЭЭР сонсогчдоос асууна: цуцлах боломжтой хиймэл
- *    `beforeunload` илгээхэд аль нэг нь `preventDefault()` (эсвэл `returnValue = ''`)
- *    дуудвал «хадгалаагүй ажил бий». Хуудас хаагдахгүй — энэ бол зөвхөн үйл явдал;
- *    `@arcgis/core`, `next`, `react-dom` `beforeunload` сонсдоггүй (2026-09-30-нд
- *    `node_modules`-оос шалгав).
- * ⚠️ `useDraftSync`-ийн сонсогч дараалалд буй ноорогоо ШУУД илгээдэг (`flush`) —
- *    remount-ийн ӨМНӨ ноорог хадгалагдах тул хор биш, харин ашигтай.
  */
 export function hasUnsavedWork(): boolean {
   if (typeof window === 'undefined') return false;
@@ -44,10 +27,6 @@ export function hasUnsavedWork(): boolean {
  * Хэл солихыг зөвшөөрөх үү — хадгалаагүй ажил байвал хэрэглэгчээс асууна.
  * `true` = солиход аюулгүй (эсвэл хэрэглэгч алдахыг зөвшөөрөв).
  */
-/* ⚠️ 2026-10-23 (UX аудит X1): `window.confirm`-ийн оронд порталын `askConfirm` — хөтчийн «энэ хуудасны
-   асуултыг дахин бүү харуул» чагт тавигдсан үед `window.confirm` асуулгүй `false` буцааж, товч ЮУ Ч хийхгүй
-   мэт байв. Асуулт зөвхөн товшилтоос (синхрон хамгаалалт биш) тул async болгоход аюулгүй. Хост байхгүй (тест)
-   бол `askConfirm` өөрөө `window.confirm` руу унана. */
 export async function confirmLocaleSwitch(): Promise<boolean> {
   if (!hasUnsavedWork()) return true;
   return askConfirm(tr('Хадгалаагүй өөрчлөлт байна — хэл солиход алдагдана. Солих уу?'), {
@@ -59,26 +38,14 @@ export async function confirmLocaleSwitch(): Promise<boolean> {
 /**
  * ХЭЛ СОЛИХ ТОВЧ — нүүр хуудас ба порталын толгой ХОЁУЛАНД нь.
  *
- * ⚠️ Товч дээр ОДООГИЙН биш, ШИЛЖИХ хэлийг бичнэ (монголоор үзэж байхад «EN»).
- * Дарвал юу болохыг харуулах нь хэрэглэгчид ойлгомжтой — «MN» гэж байвал
- * «монгол болгох уу, монгол дээр байна уу» гэдэг нь эргэлзээтэй.
- *
  * `className` өгвөл хостын товчны хэв маягт (жиш. порталын `.iconBtn`) уусна;
  * өгөхгүй бол өөрийн бие даасан хэлбэрээ хэрэглэнэ.
- *
- * ⚠️ 2026-09-30: `confirmLocaleSwitch` — хадгалаагүй ажлын хамгаалалт (дээрх ⚠️).
  */
 export function LocaleToggle({ className }: { className?: string }) {
   const { locale, setLocale } = useLocale();
   const next = locale === 'mn' ? 'en' : 'mn';
   const label = locale === 'mn' ? 'Switch to English' : tr('Монгол хэл рүү шилжих');
-  /* ⚠️ 2026-10-04: англи толь хойшлогдон ачаалагддаг (`i18nCore.loadLocaleDict`) — товч
-     руу заахад/фокуслахад урьдчилан татна, дарахад солилт шууд болно. Алдааг залгина:
-     дарахад `setLocale` өөрөө дахин оролдоно. */
   const warm = () => { loadLocaleDict(next).catch(() => { /* setLocale дахин оролдоно */ }); };
-  /* ⚠️ 2026-10-06 (аудит): толь татагдах явц ба уналт ИЛ (`i18nCore.getLocaleSwitchState`) —
-     урьд нь товч ямар ч дохиогүй, уналт нь зөвхөн console-д. Завгүй үед товч идэвхгүй (давхар
-     дарахгүй); алдаа гарвал товчны доор мэдэгдэл, дахин дарахад дахин оролдоно. */
   const sw = useSyncExternalStore(subscribeDict, getLocaleSwitchState, getServerLocaleSwitchState);
   const busy = sw === 'loading';
 
@@ -95,7 +62,6 @@ export function LocaleToggle({ className }: { className?: string }) {
         aria-label={label}
         title={busy ? tr('Хэлний толь ачаалж байна…') : label}
       >
-        {/* ⚠️ 2026-10-23: Environment — завгүй үед lucide Loader2 эргэнэ (урьд нь «…») */}
         {busy
           ? <LoaderCircle size={16} strokeWidth={1.6} className={s.spin} aria-hidden />
           : <span className={s.code} aria-hidden>{next.toUpperCase()}</span>}

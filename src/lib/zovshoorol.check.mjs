@@ -2,11 +2,8 @@ import assert from 'node:assert/strict';
 import { loadZov, byBagts, summarize, TOLOV, validateZov, oidKey, oidField, F, URL as ZURL_KEY } from '@/lib/zovshoorol.ts';
 import { arcgisPost } from '@/lib/query.ts';
 
-/* ⚠️ 2026-10-21: метадатаг АППТАЙ ИЖИЛ замаар (`arcgisPost`) уншина. ⚠️ 2026-10-26: `URL` нь Enterprise-ийн БОДИТ хаяг
-   (`${GUITS}/171`), талбарын нэр бодит (`objectid`) — хөрвүүлэх хүснэгт (`entMap`) хасагдсан. */
 const zovMetaRaw = () => arcgisPost(ZURL_KEY, {});
 
-/* ⚠️ Org-only үйлчилгээ, токенгүй → алгасна (`tools/ts-alias.mjs`, 2026-09-17). */
 if (process.env.SELBE_LIVE_SKIP) {
   console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
   process.exit(0);
@@ -17,12 +14,7 @@ const meta0 = await zovMetaRaw();
 assert.ok(rows.length > 0, 'мөр алга');
 console.log(`✅ ${rows.length} мөр уншигдав`);
 
-/* ── OBJECTID ─────────────────────────────────────────────────────────────
-   ⚠️ 2026-09-04: `F.oid` нь `'ObjectID'` гэж бичигдсэн байхад амьд хүснэгт
-   `OBJECTID` (том үсгээр) тул БҮХ мөр `oid = 0` болж, засвар бүр ШИНЭ мөр
-   нэмж, «Устгах» чимээгүй ажиллахгүй байв. Энэ шалгуур тэр ангиллын алдааг
-   дахин гаргахгүй: (1) амьд мөр бүрийн oid > 0, (2) метадатагийн
-   `objectIdField` кодтой таарна, (3) хайлт нь ҮСГИЙН МЭДРЭМЖГҮЙ. */
+/* ── OBJECTID ───────────────────────────────────────────────────────────── */
 const zeroOid = rows.filter((r) => !r.oid);
 assert.equal(zeroOid.length, 0,
   `${zeroOid.length}/${rows.length} мөрийн OBJECTID уншигдсангүй: ${zeroOid.map((r) => r.ner).join(', ')}`);
@@ -40,7 +32,6 @@ assert.equal(F.oid.toLowerCase(), String(meta.objectIdField).toLowerCase(),
   `F.oid (${F.oid}) нь амьд талбар (${meta.objectIdField})-аас ЯЛГААТАЙ`);
 console.log(`✅ objectIdField = ${meta.objectIdField} — код ба үйлчилгээ таарав`);
 
-/* ⚠️ Том/жижиг үсгийн ХОЁУЛАНГ нь таних ёстой — үйлчилгээ бүр өөр бичлэгтэй. */
 for (const k of ['OBJECTID', 'ObjectID', 'objectid', 'objectID'])
   assert.equal(oidKey({ [k]: 7, bagts: 'x' }), k, `oidKey нь «${k}»-г танихгүй байна`);
 assert.equal(oidKey({ OBJECTID_1: 7, FID: 3 }), null, 'oidKey нь буруу талбарыг авах ёсгүй');
@@ -50,8 +41,6 @@ const bad = rows.filter((r) => r.tolov === 'unknown');
 assert.equal(bad.length, 0, `танихгүй төлөв: ${bad.map((b) => b.ner).join(', ')}`);
 console.log('✅ бүх төлөв танигдав');
 
-/* ⚠️ 2026-10-01: Editor Tracking асаалттай (`editFieldsInfo.creationDateField`) бол
-   бүртгэгдсэн цаг (`since`) уншигдах ёстой — «удаж буй хүлээлт»-ийн суурь. */
 if (meta0.editFieldsInfo?.creationDateField || meta0.editFieldsInfo?.editDateField) {
   const withSince = rows.filter((r) => r.since != null).length;
   assert.ok(withSince > 0, 'Editor Tracking асаалттай атал нэг ч мөрийн бүртгэгдсэн цаг уншигдсангүй');

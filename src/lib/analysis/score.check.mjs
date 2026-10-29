@@ -1,10 +1,7 @@
 /**
  * НОРМЫН ЗАСВАРЫН ХЯЗГААРЛАЛТ (`patchNorm`) ба онооны бичгийн өнгө (`scoreInk`).
  *
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/analysis/score.check.mjs
- *
- * ⚠️ 2026-10-09: Жингийн тохиргоонд «Нормын доод» > «Нормын дээд» гэх мэт урвуу муж
- *    оноолтыг чимээгүй эвдэж байв. Сүлжээ ХЭРЭГГҮЙ — цэвэр функц.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/analysis/score.check.mjs
  */
 
 import assert from 'node:assert/strict';
@@ -60,7 +57,7 @@ const lower = { ...band, id: 'l', mode: 'lower', best: 5, hardMax: 15 };
   assert.equal(patchNorm(loose, 'optMin', -50).ind.optMin, -50);
 }
 
-/* 6. Бичгийн өнгө — ⚠️ 2026-10-09 (аудит №3): горимоос хамаарна (дэвсгэр нь --score-N токен).
+/* 6. Бичгийн өнгө — 2026-10-09 (аудит №3): горимоос хамаарна (дэвсгэр нь --score-N токен).
       Цайвар: улаан (маш муу) ба бараан ногоон (маш сайн) дээр цагаан, бусад хар-хүрэн,
       өгөгдөлгүй (--ink-3 #5a6a80) дээр цагаан. Dark: бүх шат цайвар тул хар-хүрэн. */
 {
@@ -80,7 +77,7 @@ const lower = { ...band, id: 'l', mode: 'lower', best: 5, hardMax: 15 };
   assert.equal(scoreColor(55, true), '#fbbf24');
 }
 
-/* 7. ⚠️ 2026-10-22 (аудит): хэмжсэн жингийн босго · дэлгэцийн нарийвчлал · норм хамаарахгүй төрөл */
+/* 7. 2026-10-22 (аудит): хэмжсэн жингийн босго · дэлгэцийн нарийвчлал · норм хамаарахгүй төрөл */
 {
   const { urbanScore, normFor, passesNorm, normGap, atPrecision } = await import('./score.ts');
   const { INDICATORS, ASSUME_MET, MIN_MEASURED_SHARE, densityNormOf } = await import('./config.ts');

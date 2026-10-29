@@ -2,63 +2,6 @@
 
 /**
  * НЭМЭЛТ АЖЛЫН БАТЛАГДСАН МӨРИЙГ ҮНДСЭН ХҮСНЭГТЭД БУУЛГАХ (2026-09-24).
- *
- * ⚠️ ЯАГААД ЭНЭ ХЭРЭГТЭЙ БОЛОВ (хэрэглэгчийн шийдвэр): урьд нь батлагдсан мөр
- *    зохиогчийн «Гүйцэтгэл бөглөх» хуудасны НООРОГТ орж, гүйцэтгэлийн 6 шат
- *    батлагдтал хүлээдэг байв — «шинэ ажил гэрээнд орох уу» гэсэн шийдвэр
- *    гүйцэтгэлийн тоонд уягдаж, батлагдсан мөр хэдэн долоо хоног үндсэн
- *    хүснэгтэд гарч ирдэггүй байлаа. Одоо батлангуут ШУУД бичигдэнэ.
- *
- * ⚠️ БҮТЭН ЖААЗ, ГАНЦ МӨР БИШ. Архивын загвар нь «нэг жааз = нэг
- *    `buglusun_ognoo` өдөр»; `loadRows` нь ХАМГИЙН СҮҮЛИЙН өдрийн сүүлийн
- *    жаазыг уншдаг (`latestWhere` · `lastFrame`). Ганц мөр нэмвэл тэр мөр
- *    ямар ч жаазанд харьяалагдахгүй алга болно. Тиймээс `hyanaltStore.
- *    archiveSubmission`-ийн ЯГ ИЖИЛ зам: сүүлийн жааз татах → мөр оруулах →
- *    `buildFrame` → `applyAdds`. Гүйцэтгэлийн тоо ОРОХГҮЙ — `buildFrame`-д
- *    хоосон `pending`/`pendDate` өгнө, `act` нь ачаалснаараа үлдэнэ.
- *
- * ⚠️ `hyanaltStore.ts`-ийн 2026-09-04-ний толгойн дүрэм («`applyAdds`-ыг өөр
- *    газраас БҮҮ дууд») ЭНД НЭГ л удаа сунгагдав — гуравдахь дуудагч байхгүй.
- *    Тэндхийн хамгаалалтууд бүгд давтагдана:
- *      A.6  өдрийн залруулга — сүүлийн жаазны өдрөөс ХУУЧИН өдрөөр бичвэл
- *           `latestWhere` шинэ жаазыг харахгүй (булагдана);
- *      A.7  жааз угсрах (`buildFrame`; уртын assert нь тавтологи тул үгүй);
- *      A.8  бичихийн өмнө уралдааны шалгалт — үйлчилгээний MAX OID ачаалснаас
- *           хойш ӨССӨН бол (өөр батлалт, гүйцэтгэлийн батлалт) ЮУ Ч бичихгүй;
- *      A.9  унасан бол хагас жаазыг `applyDeletes`-ээр буцаана;
- *      A.10 бичсэний дараа мөр бүрийг дахин уншиж батална, мөн бидний дараа
- *           өөр жааз орсон бол `applied` тэмдэглэхгүй (⚠️ 2026-10-09: бичсэн жаазаа
- *           `applyDeletes`-ээр буцаана — A.9-ийн адил).
- *
- * ⚠️ ИДЕМПОТЕНТ: (1) `applied` бол дахин бичихгүй; (2) ижил (эцэг + № + нэр)
- *    мөр эцгийн доор аль хэдийн БАЙВАЛ хаяна (`dedupeAdds`) — хоёр таб зэрэг
- *    батлах, эсвэл бичигдсэн ч `markApplied` унасан үеийн дахин оролдлого
- *    давхар мөр үүсгэхгүй; (3) `markApplied` ЗӨВХӨН бичсэний ДАРАА, бичсэн
- *    мөр серверээс буцаж уншигдсаны дараа.
- *
- * ⚠️ Гүйцэтгэлийн бүртгэл (`registerApproved` · IPC · нэгтгэл) ДУУДАГДАХГҮЙ —
- *    гүйцэтгэл батлагдаагүй, зөвхөн гэрээний хамрах хүрээ өргөжсөн.
- *    `BAGTS_SHEET` кэшийг `applyAdds` өөрөө хүчингүй болгоно.
- *
- * ⚠️ Модулиудыг ДИНАМИКААР импортолно (`hyanaltStore`-ийн ижил шалтгаан):
- *    `AjilBatlah` хуудас `bagtsSheet` · `sheetFrame` · `bagts.pkg`-ийг
- *    статикаар чирвэл батлах дараалал бөглөх хуудсыг бүхэлд нь ачаална.
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас) — «БАТЛАГДСАН · БУУЛГААГҮЙ» ГАЦААГҮЙ БАЙХ:
- *    (1) ИЛРҮҮЛЭЛТ (`classifyStuck`, цэвэр): «буулгасан» тэмдэг = төлөв `applied`
- *        (`markApplied`); `approved` хэвээр = буулгаагүй. Саяхан батлагдсаныг
- *        (`APPLY_GRACE_MS`) «буулгаж байж магадгүй» гэж ялгана, бүртгэлгүй багцыг
- *        нуухгүй — тайлбартай харуулна.
- *    (2) ДАВХАР ДАРАЛТ / ЗЭРЭГЦЭЭ ОРОЛДЛОГО: нэг илгээлтийн хоёр дахь дуудлага
- *        эхнийхээ амлалтыг хүлээнэ (`inflight`); бүх буулгалт нэг түгжээгээр
- *        ДАРААЛНА (`withApplyLock` — Web Locks бол хөтчийн бүх таб, эс бөгөөс
- *        энэ таб). Түгжээ суллагдахад дараагийнх нь серверээс `applied`-ийг уншаад
- *        ЮУ Ч БИЧИХГҮЙ (`already`).
- *    (3) ЭРХ: `ajilApprove` ЭСВЭЛ хатуу super (`mayReapply`). Шийдвэр (`decideAjil`)
- *        `ajilApprove`-ийг ШААРДСАН хэвээр — админ зөвхөн аль хэдийн БАТЛАГДСАН
- *        илгээлтийн бичилтийг гүйцээнэ, шинээр батлахгүй.
- *    (4) Сүлжээний хамаарал `_io`-д — тест (`ajilReapply.check.mjs`) сүлжээгүй
- *        идемпотент байдлыг шалгана.
  */
 
 import { AUTH, roleForUser } from './services';
@@ -67,12 +10,9 @@ import { hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
 import { currentUser, requireCap } from './who';
 import { AJIL_STATUS, ajilClaimOther, claimAjil, loadHead, loadPayloadStamped, markApplied, releaseAjilClaim } from './ajilBatlah';
-/* ⚠️ 2026-10-09: обьёмын батлагч түгжсэн/хэсэгчлэн бичсэн бол буулгахгүй (`obyemBusyFor`-ийн ⚠️) */
 import { obyemBusyFor } from './obyemBatlah';
-/* ⚠️ 2026-10-08: хуваарийн хүлээгдэж буй илгээлт (хагас бичигдсэн бол буулгахгүй) — `huvaariBatlah` энэ файлыг импортлодоггүй */
 import { claimHolderOf as planClaimHolderOf, loadPending as loadPlanPending, partialBy as planPartialBy, type PlanSubmission } from './huvaariBatlah';
 import type { NewRow } from './submission';
-/* ⚠️ 2026-10-09: хариу алдагдсан бичилт = үр дүн тодорхойгүй (`lostWrite`-ийн ⚠️) */
 import { isLostWrite } from './lostWrite';
 
 /* ══════════════════ ЦЭВЭР ХЭСЭГ (тест: ajilApply.check.mjs) ══════════════════ */
@@ -85,10 +25,6 @@ const eq = (a: string, b: string) => a.trim() === b.trim();
 /**
  * Нэмэх мөрийн ЭЦЭГ БҮЛГИЙН индекс — `sheetFrame.parentOf`-ийн ЯГ ИЖИЛ дүрэм:
  * нэрээр таарах бүх бүлгээс `parentIdx`-д ХАМГИЙН ОЙРХОНЫГ. `-1` = алга.
- * ⚠️ (№ + нэр) хос ДАВХАРДДАГ (Багц 1-д «10 · БУСАД АЖИЛ» блок бүрт нэг) —
- *    зөвхөн нэрээр хайвал ӨӨР БЛОКИЙН ижил нэртэй мөр «давхардал» болж, жинхэнэ
- *    шинэ мөр чимээгүй хаягдана (2026-09-24 аудит #3). `insertAdds` энэ л
- *    эцэгт оруулдаг тул давхардлыг ч ЭНЭ эцгийн дэд модонд л хайна.
  */
 export function parentIdxOf(rows: readonly RowLike[], a: NewRow): number {
   let p = -1;
@@ -118,13 +54,6 @@ export function addPresent(rows: readonly RowLike[], a: NewRow): boolean {
 
 /**
  * Давхардлыг хасна: аль хэдийн байгаа мөрийг `dropped`, үлдсэнийг `fresh`.
- * ⚠️ Нэг илгээлт ДОТОР ижил мөр хоёр удаа байвал хоёр дахийг нь ч хаяна.
- * ⚠️ «Ижил» = ИЖИЛ ЭЦЭГ (`parentIdxOf`-оор шийдсэн БАЙРЛАЛ) + № + нэр
- *    (2026-09-25 аудит). Урьд нь түлхүүр нь эцгийн (№ + нэр) л байсан тул
- *    Багц 1-ийн блок бүрийн «10 · БУСАД АЖИЛ» дор тус тусад нэмсэн «5 · Хашаа»
- *    НЭГ мөр болж нийлж, хоёр дахь блокийнх нь чимээгүй хаягддаг байв —
- *    `addPresent`-ийн (дээрх ⚠️) дүрэмтэй зөрчилтэй. Эцэг олдоогүй (`-1`) мөр
- *    (№ + нэрээр) хэвээр нэгтгэгдэнэ — тэр нь `insertAdds`-д ямар ч байсан унана.
  */
 export function dedupeAdds(rows: readonly RowLike[], adds: readonly NewRow[]): { fresh: NewRow[]; dropped: NewRow[] } {
   const fresh: NewRow[] = [];
@@ -141,20 +70,15 @@ export function dedupeAdds(rows: readonly RowLike[], adds: readonly NewRow[]): {
 }
 
 /**
- * ЭЦЭГ БҮЛЭГ НЬ ХУУДСАНД АЛГА НЭМЭЛТ МӨРҮҮД (⚠️ 2026-10-22, аудит №3) — `parentIdxOf < 0`, өөрөөр хэлбэл
+ * ЭЦЭГ БҮЛЭГ НЬ ХУУДСАНД АЛГА НЭМЭЛТ МӨРҮҮД (2026-10-22, аудит №3) — `parentIdxOf < 0`, өөрөөр хэлбэл
  * `sheetFrame.insertAdds` чимээгүй алгасах мөрүүд.
- * ⚠️ ЯАГААД: эцэг бүлэг устсан/нэр солигдсон (эсвэл «эцэг олдсонгүй»-гаар буцаагдсан) мөр «Хуваарь»-ийн хүснэгтэд
- *    ХАРАГДАХГҮЙ (тиймээс «×»-ээр устгах, засах боломжгүй) атлаа «Нэмэлт ажил батлуулах (N)»-д тоологдож ИЛГЭЭГДДЭГ,
- *    батлагдмагц буулгалт «эцэг бүлэг олдсонгүй» (`code: 'no-parent'`) гэж унаж «Батлагдсан · буулгаагүй»-д гацдаг,
- *    буцаагдахад дахин нөгөө тойрог руу орж байв. Зохиогчийн хуудас (`useAjil`) эдгээрийг жагсааж, илгээхийг хаана;
- *    батлагч (`parentsCheck`) батлахаас ӨМНӨ шалгана.
  */
 export function missingParents<T extends NewRow>(rows: readonly RowLike[], adds: readonly T[]): T[] {
   return adds.filter((a) => parentIdxOf(rows, a) < 0);
 }
 
 /**
- * БАТЛАХЫН ӨМНӨХ ЭЦГИЙН ШАЛГАЛТ (⚠️ 2026-10-22, аудит №3) — буулгалттай (`writeFrameLive`) ИЖИЛ схем (`fillSchema`) ба
+ * БАТЛАХЫН ӨМНӨХ ЭЦГИЙН ШАЛГАЛТ (2026-10-22, аудит №3) — буулгалттай (`writeFrameLive`) ИЖИЛ схем (`fillSchema`) ба
  * хатуу уншилтаар (`strict`) одоогийн хуудсыг уншиж, эцэггүй мөр байвал шийдвэр гаргахыг ХААНА. Урьд нь `decideAjil`
  * эхлээд «Батлагдсан» бичээд, буулгалт л «эцэг олдсонгүй» гэж унадаг тул илгээлт гацаж, батлагч «Гацсаныг буцаах»-ыг
  * хайж олох шаардлагатай болдог байв. Уншилт унавал ч хаана (fail-closed) — дахин оролдоно.
@@ -190,10 +114,6 @@ export const dayStartUtc = (ms: number): number => {
 
 /**
  * ӨНӨӨДӨР — ЛОКАЛ хуанлийн өдөр, `Date.UTC(y,m,d)` хэлбэрээр.
- * ⚠️ `hyanaltStore.archiveSubmission` (`Date.UTC(now.getFullYear(), now.getMonth(),
- *    now.getDate())`) ба `FillNew.todayFillMs`-тэй ЯГ ИЖИЛ томъёо (2026-09-24
- *    аудит #6): UTC өдрөөр бодвол УБ-д 00:00–07:59-д батлахад ӨЧИГДРИЙН өдрөөр
- *    жааз бичигдэж, бөглөх хуудасны «өнөөдөр» жаазаас өөр өдөрт унана.
  */
 export const todayLocalMs = (nowMs: number): number => {
   const d = new Date(nowMs);
@@ -202,13 +122,6 @@ export const todayLocalMs = (nowMs: number): number => {
 
 /**
  * БӨГЛӨСӨН ӨДӨР — `max(өнөөдөр (локал), сүүлийн жаазны өдөр)`.
- *
- * ⚠️ `hyanaltStore`-ийн 2026-09-04-ний дүрэм: сүүлийн жаазны өдрөөс ХУУЧИН
- *    өдрөөр бичвэл шинэ жааз `latestWhere`-ийн «хамгийн сүүлийн өдөр»
- *    шүүлтэд ХАРАГДАХГҮЙ — мөр архивт орсон мөртөө хуудсанд хэзээ ч гарч
- *    ирэхгүй. Жаазны өдөр (`buglusun_ognoo`, UTC өдрийн эхэн) өнөөдрөөс
- *    хойш байвал тэр өдрөөр — нэг өдрийн хоёр жааз `lastFrame`-ээр аюулгүй.
- * ⚠️ Хэзээ ч ӨНӨӨДРӨӨС хуучин өдөр буцаахгүй.
  */
 export function fillMsFor(nowMs: number, snapshot: number | null | undefined): number {
   const today = todayLocalMs(nowMs);
@@ -226,14 +139,6 @@ export type FrameLike = {
 
 /**
  * Хоёр ачаалалт ЯГ ИЖИЛ жааз уу — мөр бүрийн OID ба ТҮҮХИЙ атрибут (`raw`)-аар.
- *
- * ⚠️ ЯАГААД MAX OID ХАНГАЛТГҮЙ (2026-09-25 аудит): «Хуваарь»-ийн хадгалалт
- *    (огноо · Hamaaral · бодит огноо · хүн хүч/машин) нь БАЙГАА жааз руу
- *    `applyUpdates`-аар бичдэг — шинэ OID үүсгэхгүй. Ачаалсны дараа тийм бичилт
- *    орвол MAX OID өөрчлөгдөхгүй атлаа манай шинэ жааз ХУУЧИН мөрүүдээс
- *    угсрагдаж хамгийн сүүлийн жааз болно — тэр огноонууд чимээгүй алга болно.
- *    Тиймээс бичихийн өмнө ДАХИН ачаалж `raw`-ийг бүтнээр нь тулгана
- *    (`EditDate` байвал түүгээр ч, байхгүй бол талбар бүрээр илэрнэ).
  */
 export function sameFrame(a: FrameLike, b: FrameLike): boolean {
   if (a.asOf !== b.asOf || a.snapshot !== b.snapshot || a.rows.length !== b.rows.length) return false;
@@ -251,15 +156,6 @@ export function sameFrame(a: FrameLike, b: FrameLike): boolean {
 /**
  * Батлагдсаны дараах ХҮЛЭЭХ ХУГАЦАА — энэ хугацаанд батлагчийн цонх
  * `materializeAdds`-ыг ӨӨРӨӨ гүйцээж байж магадгүй.
- *
- * ⚠️ 2026-10-01: `approved` нь хэвийн урсгалд ч хэдэн секунд–минут (жааз ачаалах,
- *    500-аар багцалж бичих, дахин уншиж батлах) үлддэг. Тэр завсарт ӨӨР батлагч/
- *    админ хуудсаа нээвэл илгээлт «буулгаагүй» болж харагдана; «Дахин буулгах»
- *    дарвал ХОЁР КОМПЬЮТЕР нэг багцад зэрэг жааз бичиж, 500-ийн багцууд холилдох
- *    эрсдэлтэй (`bagtsSheet.lastFrame`; Web Locks зөвхөн НЭГ хөтчийг хамгаална).
- *    Тиймээс саяхан батлагдсаныг ЗӨВХӨН харуулна, товч энэ хугацааны дараа нээгдэнэ.
- * ⚠️ Энэ цонхонд өөрөө оролдоод дууссан бол (`settled`) хүлээхгүй — батлагч алдааг
- *    хармагц шууд дахин буулгана.
  */
 export const APPLY_GRACE_MS = 3 * 60_000;
 
@@ -282,15 +178,6 @@ export type StuckItem<T extends StuckLike> = {
 
 /**
  * БАТЛАГДСАН ч БУУГААГҮЙ илгээлтүүдийг ангилна — хэнд юу харуулахыг.
- *
- * ⚠️ Зөвхөн `approved`. `applied` («Буулгасан») нь буулгалт амжилттай дууссаны
- *    СЕРВЕРИЙН тэмдэг (`markApplied`) — түүнийг энд хэзээ ч оруулахгүй.
- * ⚠️ Хүрээ: `scope` `null` = хязгааргүй (super / нэвтрэлтгүй), `[...]` = зөвхөн тэр
- *    бүлгүүд — `AjilBatlah`-ийн «Шийдвэрлэх»-тэй ижил fail-closed дүрэм.
- * ⚠️ Бүртгэлгүй багцыг ХАЯХГҮЙ (2026-10-01): урьд нь шүүгдэж ЧИМЭЭГҮЙ алга болдог
- *    байв — батлагдсан ажил хэзээ ч хуудсанд орохгүй атлаа хэн ч мэдэхгүй.
- * ⚠️ `approverAt` алга (`null`) эсвэл цаг нь хэт ирээдүйд (компьютерийн цаг
- *    `grace`-ээс илүү зөрсөн) бол `retry` — хүлээлгийг мөнхөд сунгахгүй.
  */
 export function classifyStuck<T extends StuckLike>(
   subs: readonly T[],
@@ -300,11 +187,6 @@ export function classifyStuck<T extends StuckLike>(
     knownPkg: (pkgKey: string) => boolean;
     /** Энэ цонхонд буулгах оролдлого ДУУССАН илгээлтүүд — хүлээлгүй */
     settled?: ReadonlySet<number>;
-    /**
-     * ⚠️ 2026-10-04: буулгалт «эцэг бүлэг олдсонгүй» (`ApplyResult.code: 'no-parent'`)-ээр
-     *    унасан илгээлтүүд → `orphan`. Дахин буулгах нь ХЭЗЭЭ Ч бүтэхгүй (эцэг мөр хуудсанд
-     *    алга) тул `retry` гэж харуулбал товч дарсаар мөнхөд гацдаг байв.
-     */
     noParent?: ReadonlySet<number>;
     grace?: number;
   },
@@ -330,12 +212,6 @@ export function classifyStuck<T extends StuckLike>(
 
 /**
  * «ДАХИН БУУЛГАХ» ЭРХ — батлагч (`ajilApprove`) ЭСВЭЛ хатуу super.
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь `ajilApprove` л байсан тул
- *    тэр эрхгүй админ «Батлагдсан · буулгаагүй»-г харж байгаад дарахад «эрхгүй»
- *    гэж унадаг байв. Буулгалт нь ШИЙДВЭР БИШ — батлагч аль хэдийн шийдсэн
- *    (`decideAjil` `ajilApprove`-ийг шаардсан хэвээр), энэ нь зөвхөн бичилтийг
- *    гүйцээнэ. Багцын хүрээг (`ajilScope`) `materializeInner` тусад нь шалгана.
  */
 export function mayReapply(o: { authOff: boolean; isSuper: boolean; hasApprove: boolean }): boolean {
   return o.authOff || o.isSuper || o.hasApprove;
@@ -345,8 +221,7 @@ export function mayReapply(o: { authOff: boolean; isSuper: boolean; hasApprove: 
 
 export type ApplyResult =
   | { ok: true; /** Аль хэдийн `applied` байсан — юу ч бичээгүй */ already?: boolean; /** Энэ удаа бичигдсэн мөр */ added: number;
-      /** ⚠️ 2026-10-08: буулгасан ч анхааруулга (хуваарийн илгээлт хүлээгдэж байна) — дуудагч харуулна */ warn?: string }
-  /** ⚠️ 2026-10-04: `code: 'no-parent'` — эцэг бүлэг хуудсанд алга (`classifyStuck.noParent`) */
+ warn?: string }
   | { ok: false; error: string; code?: 'no-parent' };
 
 /**
@@ -362,20 +237,9 @@ export type ApplyResult =
  *               бол серверийн одоогийн агуулгатай тулгана (2026-09-30).
  */
 export async function materializeAdds(args: { pkgKey?: string; ajilOid: number; stamp?: string }): Promise<ApplyResult> {
-  /* ⚠️ Дүрэм СҮЛЖЭЭНЭЭС ӨМНӨ — `decideAjil`-ийн ижил шалтгаан. Эрхгүй бол
-     ШИДНЭ (доорх `try`-ийн гадна) — энэ нь сүлжээний алдаа биш.
-     ⚠️ 2026-10-01: `ajilApprove` ЭСВЭЛ хатуу super (`mayReapply`-ийн ⚠️). */
   requireApplyCap();
-  /* ⚠️ 2026-10-01: ДАВХАР ДАРАЛТ — ижил илгээлт энэ табд аль хэдийн буулгагдаж
-     байвал ШИНЭ оролдлого эхлүүлэхгүй, тэр амлалтын үр дүнг буцаана. */
   const cur = inflight.get(args.ajilOid);
   if (cur) return cur;
-  /* ⚠️ ШИДЭХГҮЙ, `{ok:false}` БУЦААНА (2026-09-25 аудит): `loadHead` ·
-     `loadPayload` · `loadSchema` · `loadRows` · динамик импорт нь сүлжээний
-     алдаанд ШИДДЭГ байв — `decideAjil` амжилттай (төлөв `approved`) болсны
-     дараа шидэхэд `AjilBatlah` дараалал дахин уншаагүй, «Батлагдсан ·
-     буулгаагүй» хэсэг гарахгүй, «Батлах» дахин дарахад «аль хэдийн
-     шийдвэрлэсэн» гэж гацдаг байлаа. Дуудагч бүр `ok`-оор салбарлана. */
   const p = withApplyLock(async () => {
     try {
       return await materializeInner(args);
@@ -393,8 +257,6 @@ export async function materializeAdds(args: { pkgKey?: string; ajilOid: number; 
 
 /**
  * Эрхийн шалгуур — `ajilApprove` ЭСВЭЛ хатуу super (2026-10-01, `mayReapply`).
- * ⚠️ `requireCap`-ийн ижил дүрэм: ЗӨВХӨН хөтөчид (Node тест/скрипт хаагдахгүй);
- *    эрхгүй бол `requireCap` өөрөө ИЖИЛ мессежээр шиднэ.
  */
 function requireApplyCap(): void {
   if (typeof window === 'undefined') return;
@@ -413,16 +275,6 @@ let applyTail: Promise<unknown> = Promise.resolve();
 
 /**
  * БҮХ БУУЛГАЛТЫГ НЭГ НЭГЭЭР НЬ — нэг багцад хоёр жааз зэрэг бичигдэхгүй (2026-10-01).
- *
- * ⚠️ ЯАГААД ТҮГЖЭЭ: `applyAdds` 500-аар багцалж бичдэг; хоёр таб зэрэг бичвэл
- *    багцууд холилдож `lastFrame` эвдэрсэн жааз уншина. A.8/A.10б уралдааг
- *    бичилтийн ӨМНӨ/ДАРАА л барина — бичилт ДУНДАХ холилдлыг биш.
- * ⚠️ Web Locks (`navigator.locks`) нь ИЖИЛ хөтчийн бүх табыг хамгаална; өөр
- *    компьютерийг `APPLY_GRACE_MS` + A.8/A.10б хамгаална. Түгжээг БАГЦААР биш
- *    НИЙТЭЭР нь — буулгалт ховор, энгийн нь найдвартай.
- * ⚠️ Түгжээ `_io.lockWaitMs`-ээс удаан суллагдахгүй бол ХҮЛЭЭЛГҮЙ алдаа буцаана —
- *    өөр табын гацсан сүлжээ энэ табыг мөнхөд «ажиллаж байна» болгохгүй. Түгжээ
- *    олгогдсоны дараа таслахгүй (бичилтийг дундуур нь зогсоохгүй).
  */
 async function withApplyLock(fn: () => Promise<ApplyResult>): Promise<ApplyResult> {
   const locks = (globalThis as { navigator?: { locks?: LockManager } }).navigator?.locks;
@@ -442,11 +294,10 @@ async function withApplyLock(fn: () => Promise<ApplyResult>): Promise<ApplyResul
 }
 
 /** Жааз бичилтийн үр дүн — `added: 0` = бүх мөр аль хэдийн хуудсанд байна (юу ч бичээгүй) */
-/* ⚠️ 2026-10-04: `code: 'no-parent'` — `ApplyResult`-ийн адил (эцэг бүлэг хуудсанд алга) */
 export type FrameWrite = { ok: true; added: number } | { ok: false; error: string; code?: 'no-parent' };
 
 /**
- * СҮЛЖЭЭНИЙ ХАМААРАЛ — ⚠️ ЗӨВХӨН тест (`ajilReapply.check.mjs`) солино (2026-10-01).
+ * СҮЛЖЭЭНИЙ ХАМААРАЛ — ЗӨВХӨН тест (`ajilReapply.check.mjs`) солино (2026-10-01).
  * Ажиллах үед үргэлж жинхэнэ функцууд.
  */
 export const _io: {
@@ -454,32 +305,11 @@ export const _io: {
   loadPayloadStamped: typeof loadPayloadStamped;
   markApplied: typeof markApplied;
   writeFrame: (pkgKey: string, adds: readonly NewRow[]) => Promise<FrameWrite>;
-  /**
-   * ⚠️ 2026-10-08: багцын хүлээгдэж буй ХУВААРИЙН илгээлт.
-   * ⚠️ 2026-10-09: уншигдахгүй бол ШИДНЭ (урьд нь `null` — fail-open): хагас бичигдсэн хуваарийн
-   *    илгээлтийг харж чадаагүй атлаа жааз солих нь A.8-ийн «шалгаж чадаагүй ≠ уралдаагүй» дүрмийг зөрчинө.
-   * ⚠️ 2026-10-09: ХОЁР ТӨРЛИЙГ ТУС ТУСАД НЬ (`loadPending(k, 'plan')` + `loadPending(k, 'geree')`) —
-   *    урьд нь `loadPending(k)` бүх төрлийн ХАМГИЙН БАГА OID-той ганц мөрийг л өгдөг тул гэрээний
-   *    тэмдэггүй санал хүлээж байхад ТӨЛӨВЛӨГӨӨНИЙ хагас бичигдсэн илгээлт харагдахгүй байв.
-   *    Тест ганц мөр/`null` өгч болно (`planList`).
-   */
   loadPlanPending: (pkgKey: string) => Promise<PlanSubmission[] | PlanSubmission | null>;
-  /**
-   * ⚠️ 2026-10-09: `markApplied`-ийн ӨМНӨ — буулгалтын түгжээг ӨӨР хүн/таб барьж байна уу
-   *    (`ajilBatlah.ajilClaimOther`). Манайх хугацаа нь дуусч бусдад шилжсэн бол тэмдгийг нь арчихгүй.
-   */
   claimOther: (ajilOid: number, me: string) => Promise<string | null>;
-  /** ⚠️ 2026-10-09: багцын обьёмын батлалт явж буй эсэх (`obyemBatlah.obyemBusyFor`) — унавал ШИДНЭ */
   obyemBusy: (pkgKey: string) => Promise<{ who: string; partial: boolean } | null>;
-  /**
-   * ⚠️ 2026-10-09: багцын ГҮЙЦЭТГЭЛИЙГ яг одоо архивлаж байна уу (`submission.archivingBusy`) — унавал ШИДНЭ.
-   *    Архивлагч сүүлийн жаазад `applyAdds`-аар шинэ жааз бичдэг тул тэр хооронд буулгасан мөр (бидний жааз)
-   *    түүний доор булагдаж, батлагдсан нэмэлт ажил чимээгүй алга болдог байв.
-   */
   archivingBusy: (pkgKey: string) => Promise<{ who: string; at: number } | null>;
-  /** ⚠️ 2026-10-09: илгээлтийн мөрийг СЕРВЕР дээр түгжих (`ajilBatlah.claimAjil`) — `null` = минийх */
   claimApply: (ajilOid: number, me: string) => Promise<string | null>;
-  /** ⚠️ 2026-10-09: түгжээг тайлах (амжилтгүй үед) — алдааг залгина */
   releaseApply: (ajilOid: number, me: string) => Promise<void>;
   /** Өөр табын түгжээг хүлээх дээд хугацаа */
   lockWaitMs: number;
@@ -491,7 +321,6 @@ export const _io: {
   },
   claimOther: (oid, me) => ajilClaimOther(oid, me),
   obyemBusy: (k) => obyemBusyFor(k),
-  /* ⚠️ 2026-10-09: динамик импорт — `submission` нь `draftRemote`/`bagtsSheet`-ийг татдаг (тест `_io`-оор солино) */
   archivingBusy: async (k) => (await import('./submission')).archivingBusy(k),
   claimApply: (oid, me) => claimAjil({ oid, me, want: AJIL_STATUS.approved }),
   releaseApply: (oid, me) => releaseAjilClaim({ oid, me }),
@@ -508,17 +337,8 @@ const planList = (v: PlanSubmission[] | PlanSubmission | null): PlanSubmission[]
  * урьд нь хаалт ганцхан удаа, жааз ачаалж угсрахаас (хэдэн секунд) ӨМНӨ шалгагддаг тул тэр завсарт
  * хуваарийн/обьёмын батлагч түгжиж бичиж эхэлбэл жааз тэдний доороос солигддог байв.
  * @returns `{ error }` = ХААНА (юу ч бичихгүй); эс бөгөөс `{ warn? }`
- * ⚠️ 2026-10-12 (дарааллын аудит): ЭКСПОРТ — `AjilBatlah.approve` үүнийг `decideAjil`-ээс ӨМНӨ (dry) дуудна:
- *    урьд нь гэйт зөвхөн `materializeInner` дотор байсан тул хаалттай үед шийдвэр `approved` болж бичигдээд
- *    буулгалт унаж, илгээлт «Батлагдсан · буулгаагүй»-д гацдаг байв. Зөвхөн уншина — юу ч бичихгүй.
- *    `materializeInner` доторх гэйт хэвээр (давхар хамгаалалт: шийдвэр ба бичилтийн завсарт төлөв солигдож болно).
  */
 export async function busyGate(pkgKey: string): Promise<{ error: string } | { warn?: string }> {
-  /* ⚠️ 2026-10-08: ХУВААРИЙН ИЛГЭЭЛТ ХҮЛЭЭГДЭЖ БАЙХАД — нэмэлт ажил буулгавал хуудасны жааз шинэ
-     хуулбараар солигдож бүх OID шинэчлэгдэнэ. Батлагч ХЭСЭГЧЛЭН бичсэн (`PARTIAL_MARK`) бол
-     хагас бичилтийн үлдсэн хэсэг шинэ агшинд тулгагдахгүй — ХААНА. Тэмдэггүй `pending` бол
-     үргэлжилнэ (`remapPayload` кодоор зөөнө), гэхдээ `warn`-аар ил хэлнэ. */
-  /* ⚠️ 2026-10-09: FAIL-CLOSED — уншилт унавал «хуваарийн илгээлт алга» гэж ҮЗЭХГҮЙ (A.8-ийн дүрэм) */
   let pps: PlanSubmission[];
   try {
     pps = planList(await _io.loadPlanPending(pkgKey));
@@ -531,9 +351,6 @@ export async function busyGate(pkgKey: string): Promise<{ error: string } | { wa
       return { error: tr('Энэ багцын хуваарийн илгээлтийг батлагч ({0}) эх хуудсанд ХЭСЭГЧЛЭН бичсэн байна — тэр батлалт гүйцэгдэх (эсвэл буцаагдах) хүртэл нэмэлт ажлыг буулгах боломжгүй: жааз солигдвол хагас бичилт алдагдана.', pb || '—') };
     }
   }
-  /* ⚠️ 2026-10-09: хуваарийн батлагч ТҮГЖСЭН (`claimPlan` — эх хуудсанд бичихэд бэлтгэж буй) үед ч хаана:
-     тэмдэг (`markPlanPartial`) нь бичилтийн ЯГ өмнө л суудаг тул түгжээ ба тэмдгийн завсарт жааз солигдвол
-     батлагч хуучин OID-оор бичнэ. */
   for (const pp of pps) {
     const h = planClaimHolderOf(pp);
     if (h) return { error: tr('{0} энэ багцын хуваарийг яг одоо батлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', h) };
@@ -541,9 +358,6 @@ export async function busyGate(pkgKey: string): Promise<{ error: string } | { wa
   const warn = pps.length
     ? tr('Анхаар: энэ багцад хуваарийн илгээлт ({0}) батлагдахыг хүлээж байна — нэмэлт ажил буулгаснаар хуудасны шинэ хувилбар үүсэж, батлагч саналыг түүнд тулгана.', pps.map((p) => p.author).join(', '))
     : undefined;
-  /* ⚠️ 2026-10-09: ОБЬЁМЫН БАТЛАЛТ ЯВЖ БАЙХАД — батлагч одоогийн жаазын мөрүүдэд OID-оор бичиж байна
-     (түгжээ) эсвэл ХЭСЭГЧЛЭН бичсэн (тэмдэг). Жааз солигдвол обьём архивласан жаазад үлдэнэ — ХААНА.
-     Уншилт унавал мөн хаана (fail-closed). */
   let ob: { who: string; partial: boolean } | null;
   try {
     ob = await _io.obyemBusy(pkgKey);
@@ -557,9 +371,6 @@ export async function busyGate(pkgKey: string): Promise<{ error: string } | { wa
         : tr('{0} энэ багцын инженерийн обьёмыг яг одоо батлаж байна — дуусахыг хүлээгээд дахин оролдоно уу. Юу ч бичсэнгүй.', ob.who),
     };
   }
-  /* ⚠️ 2026-10-09: ГҮЙЦЭТГЭЛИЙН АРХИВЛАЛТ ЯВЖ БАЙХАД — архивлагч (`hyanaltStore`) өөрийн ачаалсан жаазаас
-     ШИНЭ жааз бичнэ; бидний жааз түүний ДООР булагдаж батлагдсан нэмэлт ажил чимээгүй алга болно. ХААНА.
-     Уншилт унавал мөн хаана (fail-closed). */
   let ar: { who: string; at: number } | null;
   try {
     ar = await _io.archivingBusy(pkgKey);
@@ -576,7 +387,6 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
   if (!head) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
   if (args.pkgKey && args.pkgKey !== head.pkgKey)
     return { ok: false, error: tr('Илгээлт «{0}» багцынх — хуудас «{1}». Юу ч бичсэнгүй.', head.pkgKey, args.pkgKey) };
-  /* ⚠️ БАТЛАГЧИЙН ХҮРЭЭГ СЕРВЕРИЙН БАГЦААР (`decideAjil`-ийн загвар). */
   if (AUTH.appId) {
     const me = currentUser();
     if (typeof window !== 'undefined' && !me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
@@ -587,8 +397,6 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
   if (head.status === AJIL_STATUS.applied) return { ok: true, already: true, added: 0 };
   if (head.status !== AJIL_STATUS.approved)
     return { ok: false, error: tr('Илгээлт батлагдаагүй ({0}) — хуудсанд буулгах боломжгүй.', head.status) };
-  /* ⚠️ 2026-10-09: хуваарь (хоёр төрөл) · обьёмын батлалтын хаалт — `busyGate`-д тусгаарлав (A.8-ийн
-     дараа, `applyAdds`-ийн ЯГ ӨМНӨ дахин дуудагдана); мессеж, дараалал өөрчлөгдөөгүй. */
   const gate = await busyGate(head.pkgKey);
   if ('error' in gate) return { ok: false, error: gate.error };
   const warn = gate.warn;
@@ -596,18 +404,10 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
   const st = await _io.loadPayloadStamped(args.ajilOid);
   const pl = st?.p ?? null;
   if (!pl) return { ok: false, error: tr('Илгээлтийн агуулга уншигдсангүй — батлах боломжгүй. Буцаавал нэмэгч дахин илгээнэ.') };
-  /* ⚠️ 2026-09-30: `decideAjil`-ийн тулгалт ба `approved` бичилтийн ЗАВСАРТ
-     зохиогч агуулгыг сольсон бол батлагчийн ХАРААГҮЙ мөрийг бичихгүй — төлөв
-     `approved` хэвээр, «Батлагдсан · буулгаагүй»-д шинэ агуулгыг харж «Дахин
-     буулгах» (тэмдэггүй) дарна. */
   if (args.stamp && st && st.stamp !== args.stamp)
     return { ok: false, error: tr('Батлах зуур зохиогч агуулгыг өөрчилсөн — юу ч бичсэнгүй. Шинэ агуулгыг харж «Дахин буулгах» дарна уу.') };
 
-  /* ⚠️ 2026-10-09: СЕРВЕРИЙН ТҮГЖЭЭ (`ajilBatlah.claimAjil`, `approved` мөрд) — Web Locks нь ЗӨВХӨН
-     нэг хөтчийг хамгаалдаг тул хоёр компьютер ИЖИЛ илгээлтийг зэрэг буулгаж хоёр жааз бичдэг байв
-     (A.10б нь бичсэний ДАРАА л илрүүлдэг). Түгжээ авч чадаагүй бол ЮУ Ч бичихгүй; тэр хооронд нөгөө нь
-     дуусгасан (`applied`) бол амжилт. Тэмдэг `markApplied`-аар арилна; бусад үед ЭНД тайлна. */
-  /* Нэвтрэлтгүй горимд `anon` — таб нь ялгана (`AJIL_CLAIM_MARK`-ийн ⚠️) */
+  /* Нэвтрэлтгүй горимд `anon` — таб нь ялгана (`AJIL_CLAIM_MARK`) */
   const claimer = (currentUser() ?? '').trim().toLowerCase() || 'anon';
   const claimErr = await _io.claimApply(args.ajilOid, claimer);
   if (claimErr) {
@@ -621,13 +421,7 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
     const w = await _io.writeFrame(head.pkgKey, pl.adds);
     if (!w.ok) return w;
 
-    /* A.11 — зөвхөн амжилтын дараа.
-       ⚠️ `added: 0` = бүх мөр аль хэдийн байна (давхар таб / өмнөх оролдлого бичсэн ч
-       тэмдэглэж амжаагүй) — юу ч бичээгүй, зөвхөн тэмдэглэнэ. */
-    /* ⚠️ 2026-10-09: ТҮГЖЭЭГ ДАХИН УНШИНА — бичилт удаан үргэлжилж манай түгжээ (`AJIL_CLAIM_TTL`) дуусаад
-       ӨӨР хүн/таб авсан бол `markApplied` (`reason: null`) түүний тэмдгийг арчиж, бичиж буй жааз нь
-       хамгаалалтгүй болно — тэмдэглэхгүй, «Дахин буулгах» нь `dedupeAdds`-аар зөвхөн тэмдэглэнэ.
-       Уншилт унавал мөн тэмдэглэхгүй (хэнийх болохыг мэдэхгүй). */
+    /* A.11 — зөвхөн амжилтын дараа. */
     let other: string | null;
     try {
       other = await _io.claimOther(args.ajilOid, claimer);
@@ -642,10 +436,8 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
     if (w.added === 0)
       return m.ok ? { ok: true, already: true, added: 0, ...(warn ? { warn } : {}) } : { ok: false, error: m.error ?? tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     if (!m.ok) return { ok: false, error: tr('Мөрүүд бичигдсэн, гэвч «буулгасан» тэмдэглэгээ хадгалагдсангүй: {0} — «Дахин буулгах» дарвал давхар бичихгүй, зөвхөн тэмдэглэнэ.', m.error ?? '') };
-    /* ⚠️ 2026-10-08: `warn` зөвхөн байвал — `ajilReapply.check`-ийн `deepStrictEqual` түлхүүр хүртэл тулгадаг */
     return { ok: true, added: w.added, ...(warn ? { warn } : {}) };
   } finally {
-    /* ⚠️ `applied` болсон бол тэмдэг аль хэдийн арилсан (`markApplied`); бусад үед тайлна */
     if (!done) await _io.releaseApply(args.ajilOid, claimer).catch(() => undefined);
   }
 }
@@ -653,7 +445,6 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
 /**
  * A.4–A.10б — СҮҮЛИЙН ЖААЗ + ШИНЭ МӨР → БҮТЭН ЖААЗ БИЧИХ (2026-10-01: `materializeInner`-
  * ээс тусгаарлав; алхам, шалгалт, мессеж ӨӨРЧЛӨГДӨӨГҮЙ).
- * ⚠️ `markApplied`-ыг ЭНД дуудахгүй — дуудагч (A.11) бичилт амжилттай болсны ДАРАА.
  */
 async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<FrameWrite> {
   const { PKGS, fillSchema } = await import('@/modules/sheet/bagts.pkg');
@@ -664,21 +455,11 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     import('@/modules/sheet/sheetFrame'),
     import('@/modules/sheet/ags'),
   ]);
-  /* ⚠️ 2026-10-09: «Хуваарь»-ийн `synthetic` БИШ, харин `fillSchema` — архивт бичих схем нь
-     `FillNew`/`hyanaltStore`-той ИЖИЛ байх ёстой (урьдын дүрэм хэвээр); тэд блокгүй багцад синтетик
-     НЭГ блок (обьём `obyem_sum`) авдаг болсон тул энд ч мөн. Анхдагч бүдүүвчээр бичвэл блокгүй
-     багцын жаазанд I/J/K/E null болж бөглөсөн гүйцэтгэл (`Бодит_гүйцэтгэл`) арилна. */
   const sc = await fillSchema(pkg);
   const nBld = sc.bld.length;
   const hasObyem = sc.obyem.map((f) => !!f);
   /**
    * ҮЙЛЧИЛГЭЭНИЙ ХАМГИЙН ИХ OBJECTID — уралдааны шалгалтын хэмжүүр.
-   * ⚠️ `max(loaded.rows.oid)`-той ХАРЬЦУУЛЖ БОЛОХГҮЙ (2026-09-24 аудит #2):
-   *    `loadRows` нь хоосон мөр · хагас жааз · огноогүй мөрийг алгасдаг тул
-   *    үйлчилгээнд түүнээс ИХ OID үргэлж байж болно — тэгвэл «шинэ мөр орсон»
-   *    гэж мөнхөд няцааж, батлалт бүр гацна. Тиймээс НЭГ Л хэмжүүрийг
-   *    (үйлчилгээний MAX) ачаалахаас ӨМНӨ ба бичихийн ӨМНӨ авч, ӨССӨН эсэхийг
-   *    л шалгана.
    */
   const maxOidOf = async (): Promise<number> => {
     const j = await agsFetch(`${pkg.url}/query`, {
@@ -687,7 +468,6 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       returnGeometry: 'false',
     });
     const mx = Number(j?.features?.[0]?.attributes?.mx);
-    /* ⚠️ 2026-10-23 (UX аудит X3): «OBJECTID» техник нэрийг хэрэглэгчид харуулахгүй */
     if (!Number.isFinite(mx)) throw new Error(tr('Хүснэгтийн сүүлийн мөрийн дугаар уншигдсангүй'));
     return mx;
   };
@@ -695,7 +475,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
   try { maxOid0 = await maxOidOf(); } catch (e) {
     return { ok: false, error: tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e)) };
   }
-  const loaded = await loadRows(pkg, sc, undefined, undefined, { strict: true }); // ⚠️ 2026-10-09: бичих зам — лавлах татагдахгүй бол тасарсан жаазыг хүлээж авахгүй
+  const loaded = await loadRows(pkg, sc, undefined, undefined, { strict: true });
   /* A.4 — давхардал хасах */
   const { fresh } = dedupeAdds(loaded.rows, adds);
   /* Бүгд аль хэдийн байна (давхар таб / өмнөх оролдлого бичсэн ч тэмдэглэж
@@ -729,22 +509,13 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       if (!obPlan || row.des == null || asOf == null) return null;
       const blok = sc.bld[b];
       const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-      /* ⚠️ 2026-10-01 (хэрэглэгчийн шийдвэр, «бүгдийг зас»): сар доторх төлөвлөгөөт хувь
-         АЖЛЫН жинхэнэ эхлэх–дуусах өдрөөр (`planPctFromMonths`-ийн 3 дахь аргумент) —
-         `bagtsSheet.planAt`-тай нэг томъёо; сарын эхэнд ХУДАЛ «хоцорсон» арилна. Огноо
-         хоосон/эвдэрсэн бол функц өөрөө бүтэн сараар (хуучин зам). */
       return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
     });
-    /* ⚠️ `assertFrameLength` ЭНД ХЭРЭГГҮЙ (2026-09-24 аудит #8): `frame` нь
-       `rows.map` тул урт нь `loaded.rows.length + added`-тай ҮРГЭЛЖ тэнцэнэ —
-       шалгуур тавтологи. Жинхэнэ хамгаалалт нь A.8 (бичихийн өмнөх уралдаа) ба
-       A.10 (бичсэний дараа мөр бүрийг дахин уншиж батлах). Богино жааз бичих
-       зам энд байхгүй: мөр устгал үгүй, `loaded.rows` бүтнээрээ `rows`-д. */
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
   }
 
-  /* A.7б — ⚠️ 2026-10-09 (ДАХИН ЗАССАН): ХООСОН МӨРӨӨР НӨХӨХГҮЙ. Өмнөх засвар жаазыг `rawFrameLen` хүртэл
+  /* A.7б — 2026-10-09 (ДАХИН ЗАССАН): ХООСОН МӨРӨӨР НӨХӨХГҮЙ. Өмнөх засвар жаазыг `rawFrameLen` хүртэл
      хоосон мөрөөр сунгадаг байв — тэгвэл тухайн өдрийн ДАРААГИЙН (хоосон мөргүй, `hyanaltStore`-ийн) жааз
      манайхаас БОГИНО харагдаж `lastFrame` түүнийг «тасарсан» гэж алгасна. `bagtsSheet.lastFrame` одоо
      ХООСОН БИШ мөрийн тоогоор харьцуулдаг тул хоосон мөр шаардлагагүй. Үлдэх хамгаалалт: шинэ жааз
@@ -754,15 +525,7 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
   }
 
   /* A.8 — уралдаа: ачаалснаас хойш үйлчилгээний MAX OID өссөн бол (шинэ жааз
-     орсон — өөр батлалт, гүйцэтгэлийн батлалт) бичихгүй.
-     ⚠️ A.8а (2026-09-25 аудит): MAX OID нь БАЙГАА жааз руу `applyUpdates`-аар
-     орсон бичилтийг («Хуваарь»-ийн хадгалалт/батлалт) ХАРДАГГҮЙ — сүүлийн
-     жаазыг ДАХИН ачаалж `sameFrame`-ээр тулгана; зөрвөл юу ч бичихгүй (дахин
-     оролдоход шинэ утгуудаар угсарна). Дахин ачаалалтыг MAX OID-оос ӨМНӨ —
-     хямд шалгалт бичилтэд хамгийн ойр. Цонх үлдэнэ (серверт транзакц
-     байхгүй): дахин ачаалалтын ЭХНИЙ хуудас татагдсанаас `applyAdds` бичих
-     хүртэл — үлдсэн хуудсууд + MAX OID хүсэлтийн хугацаа (хэдэн зуун мс-ээс
-     хэдэн секунд). Энэ хугацаанд аль хэдийн татагдсан мөрийг засвал барихгүй. */
+     орсон — өөр батлалт, гүйцэтгэлийн батлалт) бичихгүй. */
   try {
     const now = await loadRows(pkg, sc);
     if (!sameFrame(loaded, now))
@@ -771,11 +534,10 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     if (mx > maxOid0)
       return { ok: false, error: tr('Ачаалснаас хойш хуудсанд шинэ мөр орлоо (өөр батлалт зэрэг явсан) — юу ч бичсэнгүй, дахин оролдоно уу.') };
   } catch (e) {
-    /* ⚠️ Шалгаж ЧАДААГҮЙ нь «уралдаагүй» гэсэн үг БИШ — бичихгүй. */
     return { ok: false, error: tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e)) };
   }
 
-  /* A.8б — ⚠️ 2026-10-09: ХУВААРЬ/ОБЬЁМЫН ХААЛТЫГ ДАХИН (`busyGate`, `applyAdds`-ийн ЯГ ӨМНӨ). Хуваарийн
+  /* A.8б — 2026-10-09: ХУВААРЬ/ОБЬЁМЫН ХААЛТЫГ ДАХИН (`busyGate`, `applyAdds`-ийн ЯГ ӨМНӨ). Хуваарийн
      батлагчийн бичилт (`applyUpdates`) нь бичсэний ДАРАА жаазыг шалгадаггүй тул A.8а-гийн `sameFrame`-ээс
      хойш түгжиж бичиж эхэлбэл манай шинэ жааз түүний OID-уудыг архивт үлдээнэ. Эхний шалгалт ачааллаас
      хэдэн секундын өмнө байсан — завсрыг хамгийн бага болгоно (тэг биш: серверт транзакц байхгүй). */
@@ -788,21 +550,11 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     await applyAdds(pkg, frame, written);
   } catch (e) {
     const why = String((e as Error)?.message ?? e);
-    /* ⚠️ 2026-10-09: ХАРИУ АЛДАГДСАН (`applyAdds`-ийн `lost`, эсвэл түүхий алдаа нь `isLostWrite`) бол `written`
-       нь зөвхөн БАТАЛГААЖСАН мөрүүд — алдагдсан chunk серверт бичигдсэн байж болно. Урьд нь зөвхөн `written`-ийг
-       устгадаг тул тэр chunk архивт ХАГАС жааз болж үлдэж, `loadRows`-ийг хааж/дахин оролдлогын жаазыг булдаг
-       байв. Одоо ЭНЭ ӨДРИЙН, `maxOid0`-оос хойшхи БҮХ мөрийг устгана (A.8б-ийн хаалт тэр завсарт өөр бичигчийг
-       хаасан) ба «үр дүн тодорхойгүй» гэж хэлнэ. Хайлт унавал гараар цэвэрлүүлнэ. */
     const ex = e as { lost?: unknown; cause?: unknown } | null;
     const lost = ex?.lost === true || isLostWrite(e) || isLostWrite(ex?.cause);
-    /* ⚠️ 2026-10-21 (аудит): ОГНООНЫ ТАЛБАРГҮЙ багцад ч (`sc.f.fillDate` алга) — `OID > maxOid0` мөрүүдийг татаж жаазтай
-       дарааллаар (№ · Ажил) тулгана; урьд нь зөвхөн `written`-ийг устгадаг тул алдагдсан chunk хагас жааз болж үлдэн
-       `loadRows`-ийг хааж, дахин оролдлогын жаазыг булдаг байв. Өдрийн шүүлтгүй тул өөр бичигчийн мөр орж болно — доорх
-       дарааллын тулгалт тэднийг «манайх биш» гэж ялгана (устгахгүй, гараар шалгуулна). */
     if (lost) {
       const head = tr('Бичилтийн хариу алдагдсан — үр дүн тодорхойгүй');
       const strays = new Set<number>(written);
-      /* ⚠️ 2026-10-11 (аудит №7): олдсон мөрүүд (OID-ын дарааллаар, №/Ажилтай) — МАНАЙ жааз мөн эсэхийг доор тулгана */
       const found: { o: number; no: string; work: string }[] = [];
       try {
         for (let offset = 0; ; ) {
@@ -827,25 +579,14 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
         }
       } catch (qe) {
         if (written.length) await applyDeletes(pkg, written);
-        /* ⚠️ 2026-10-23 (UX аудит X2/X3): AGOL хасагдсан — «админд мэдэгдэнэ үү»; түүхий алдаа консолд */
         console.warn('[selbe] ajilApply: архивын шалгалт унав — ', qe);
         return { ok: false, error: `${why} · ${head} · ${tr('Архивт үлдсэн мөрийг шалгаж чадсангүй ({0}) — админд мэдэгдэнэ үү (гараар шалгаж цэвэрлэх шаардлагатай).', String((qe as Error)?.message ?? qe))}` };
       }
       if (!strays.size) return { ok: false, error: `${why} · ${head}` };
-      /* ⚠️ 2026-10-11 (аудит №7): `OID > maxOid0 AND өдөр` нь ЗӨВХӨН манай жааз гэсэн баталгаа биш — A.8б-ийн хаалт
-         (`busyGate`) гүйцэтгэлийн архивлалт/обьёмыг л хардаг тул тэр завсарт өөр бичигч (Улсын комисс · өөр ажлын
-         буулгалт) ижил өдрөөр жааз бичсэн байж болно; урьд нь түүнийг ч ХАМТ устгадаг байв. Олдсон мөрийн тоо манай
-         жаазны урттай ТЭНЦҮҮ бөгөөд №/Ажлын дараалал ЯГ таарч байж л устгана; эс бөгөөс зөвхөн баталгаажсан
-         (`written`) мөрөө устгаад гараар шалгахыг хэлнэ. */
-      /* ⚠️ 2026-10-21: ЯГ тэнцүү урт биш — жаазны ЭХЛЭЛ (prefix) байхад хангалттай. `applyAdds` нь 500-мөрийн
-         chunk-ийг дарааллаар бичиж, хариу алдагдсан ЭХНИЙ chunk дээр зогсдог тул серверт ихэвчлэн жаазны
-         эхний хэсэг л үлддэг; урьд нь `found.length === frame.length` шаарддаг тул тэр хагас жааз архивт
-         үлддэг байв. Дараалал (№/Ажил) мөр бүрээр таарах шаардлага хэвээр — өөр бичигчийнхийг устгахгүй. */
       const ours = found.length > 0 && found.length <= frame.length && found.every((f, i) =>
         f.no === String(frame[i]?.[sc.f.no] ?? '').trim() && f.work === String(frame[i]?.[sc.f.work] ?? '').trim());
       if (!ours) {
         const gone0 = written.length ? await applyDeletes(pkg, written) : 0;
-        /* ⚠️ 2026-10-23 (UX аудит X2/X3): хэрэглэгчид мөрийн дугаар (OID)-гүй, AGOL-гүй; техник дэлгэрэнгүй консолд */
         const msg = tr('Архивт {0} мөр ({1}) олдсон боловч энэ батлалтынх ({2} мөр) мөн эсэх нь батлагдсангүй — устгасангүй; админд мэдэгдэнэ үү (гараар шалгаж цэвэрлэх шаардлагатай).', String(found.length), sc.f.fillDate ? msToDay(fillMs) : '—', String(frame.length));
         console.warn('[selbe] ajilApply: хариу алдагдсан бичилтийн цэвэрлэгээ — ', msg, { maxOid0, found: found.length, frame: frame.length });
         return {
@@ -875,13 +616,6 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
     return { ok: false, error: why };
   }
 
-  /**
-   * ⚠️ 2026-10-09: A.10/A.10б ИЛРҮҮЛСЭН алдаанд бичсэн жаазаа (`written`) БУЦААЖ устгана (A.9-ийн адил).
-   *    Урьд нь зөвхөн `approved` хэвээр үлдээдэг тул булагдсан/эвдэрсэн жааз архивт үлдэж, дахин
-   *    оролдлого түүний ДЭЭР дахин жааз бичдэг байв (хоёр компьютерийн уралдаанд хоёр жааз).
-   * ⚠️ Шалгалт ӨӨРӨӨ унасан (сүлжээ) үед УСТГАХГҮЙ — жааз зөв байж болно; дахин оролдоход `dedupeAdds`
-   *    мөрүүдийг олбол зөвхөн тэмдэглэнэ, олохгүй бол дахин бичнэ.
-   */
   const undoWritten = async (why: string): Promise<FrameWrite> => {
     const gone = await applyDeletes(pkg, written);
     const left = written.length - gone;

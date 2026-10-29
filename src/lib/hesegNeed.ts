@@ -55,7 +55,6 @@ async function fetchPolys(id: string, field?: string): Promise<Polygon[]> {
       where: '1=1', outFields: field ? [field] : [], returnGeometry: true, outSpatialReference: { wkid: WKID },
       orderByFields: [`${oidOf(def)} ASC`], start, num: 2000,
     });
-    /* ⚠️ 2026-10-19 (аудит): хугацаатай, нэвтрэх цонхгүй PBF → JSON (`planOverlap.queryPageSafe`-ийн ⚠️) */
     const res = await queryPageSafe(u, q);
     for (const f of res.features) {
       if (f.geometry?.type !== 'polygon') continue;
@@ -73,26 +72,12 @@ async function fetchPolys(id: string, field?: string): Promise<Polygon[]> {
 
 const yieldBrowser = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-/**
- * ⚠️ Модулийн кэш (статик өгөгдөл) — алдаа гарвал устгана.
- * ⚠️ 2026-10-19 (аудит): ХЭСЭГЧИЛСЭН үр дүнг (`failed`) КЭШЛЭХГҮЙ (`hesegChange`-ийн ⚠️-тэй ижил) — урьд нь түр уналт
- *    сешн дуустал «өгөгдөл дутуу» хэвээр үлддэг байв; толгойн «Шинэчлэх» (`invalidateAll`) ч хаяна.
- */
 let needCache: Promise<NeedResult> | null = null;
 register(() => { needCache = null; }, []);
-/* ⚠️ 2026-10-21 (кэшийн аудит): инженерийн шугамын засвар (`DedButets` → `dropTotalsCache`) — `planOverlap.loadInfra`-тай
-   ХАМТ хаягдана, эс бөгөөс хэрэгцээний тооцоо засварын өмнөх геометрээр үлдэнэ (`planOverlap.ts`-ийн ижил ⚠️). */
 subscribeTotals(() => { needCache = null; });
 
 /**
  * ЯВЦЫН ТЕКСТ — тооцоог хүлээж буй БҮХ дуудагчид (самбар · зургийн давхарга), `planOverlap.onOverlapStep`-ийн загвар.
- * ⚠️ 2026-10-19 (аудит): урьд нь `onStep` нь ЗӨВХӨН тооцоог ЭХЛҮҮЛСЭН дуудагчид очдог байв — 03-ийн самбар
- *    (зургийн давхарга түрүүлж эхлүүлдэг) явцын текстгүй «Тооцоолж байна…» дээр зогсдог байлаа.
- */
-/*
- * ⚠️ 2026-10-19 (review): ЯВЦ НЬ ТООЦООНЫ ҮЕ (generation)-ЭЭР ТУСГААРЛАГДСАН — урьд нь нэг глобал жагсаалт байсан тул
- *    «Шинэчлэх»-ийн дараа ХУУЧИН (хаягдсан) тооцоо үргэлжилсээр шинэ тооцооны хүлээгчдэд өөрийн явцыг илгээдэг байв.
- *    Одоо тооцоо бүр өөрийн `gen`-тэй; захиалагч тодорхой амлалтын (эсвэл явагдаж буй) үед л холбогдоно.
  */
 type StepGen = { subs: Set<(msg: string) => void>; last: string };
 const needGens = new Map<number, StepGen>();
@@ -113,10 +98,6 @@ export function onNeedStep(fn: (msg: string) => void, p?: Promise<NeedResult>): 
   return () => { g.subs.delete(fn); };
 }
 
-/**
- * ⚠️ 2026-10-19 (review): БҮХ ТООЦООНЫ ДЭЭД ХУГАЦАА (`hesegChange.CHANGE_TIMEOUT_MS`-тэй ижил) — геометрийн worker гацвал
- *    самбар үүрд эргэлдэхгүй, алдаа харуулж кэш хаягдана (дараагийн нээлтэд дахин оролдоно).
- */
 const NEED_TIMEOUT_MS = 4 * 60_000;
 
 export function computeNeed(onStep?: (msg: string) => void): Promise<NeedResult> {
@@ -128,7 +109,6 @@ export function computeNeed(onStep?: (msg: string) => void): Promise<NeedResult>
   const sg: StepGen = { subs: new Set(), last: '' };
   needGens.set(gen, sg);
   needRunGen = gen;
-  /* ⚠️ Зөвхөн ӨӨРИЙН үеийн захиалагчид — хаягдсан тооцоо шинийхэд явц илгээхгүй */
   const needStep = (msg: string) => {
     if (!needGens.has(gen)) return;
     sg.last = msg;
@@ -171,9 +151,6 @@ export function computeNeed(onStep?: (msg: string) => void): Promise<NeedResult>
     }));
     /**
      * Барилгын бүс — төв цэг нь аль төрлийн бүсэд байна (эхний таарсан, бүсийн дарааллаар).
-     * ⚠️ 2026-10-19 (аудит): урьд нь барилга × бүс БҮРД синхрон `geometryEngine.contains` — хэдэн мянган барилгад
-     *    үндсэн урсгалыг секундээр түгжиж, зураг/самбар хөлддөг байв. Одоо бүсийн ХҮРЭЭ (extent)-ээр урьдчилан шүүж
-     *    (цэг хүрээнээс гадуур бол `contains` дуудахгүй) 200 барилга тутамд хөтөчид амсхийлгэнэ.
      */
     const zoneBoxes = zonePolys.map((z) => ({ z, label: zoneOf(z), e: z.extent }));
     const buildZone: (string | null)[] = [];
@@ -303,7 +280,6 @@ export function computeNeed(onStep?: (msg: string) => void): Promise<NeedResult>
   needGenOf.set(p, gen);
   needCache = p;
   if (onStep) { const off = onNeedStep(onStep, p); void p.then(off, off); }
-  /* ⚠️ Зөвхөн ӨӨРИЙН үе — «Шинэчлэх»-ийн дараа эхэлсэн шинэ тооцооны бүртгэлийг хуучин нь арилгахгүй */
   const end = () => { needGens.delete(gen); if (needRunGen === gen) needRunGen = 0; };
   p.then((r) => { end(); if (r.failed.length && needCache === p) needCache = null; },
     () => { end(); if (needCache === p) needCache = null; });

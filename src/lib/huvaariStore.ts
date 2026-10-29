@@ -2,21 +2,6 @@
 
 /**
  * «ХУВААРЬ»-ИЙН ХУВААЛЦСАН НООРОГИЙН ХАДГАЛАЛТЫН ДАВХАРГА (2026-10-26).
- *
- * ⚠️ ЯАГААД: `useSharedDraft`-ийн утга зүй (нүд бүрийн нийлүүлэлт · tombstone · HLC · түгжээ · цэвэрлэлтийн тэмдэг)
- *    ХЭВЭЭР — зөвхөн хадгалалт солигдоно. Hook үргэлж бүтэн `HDDraft` авна/өгнө:
- *      · `rows`      — 191-д ЭХ ХУУДАСНЫ БҮТЦЭЭР (`n:plan:<төрөл>:<багц>`, ажил × блок × сар бүрд мөр — `draftRowsRemote`);
- *      · `blob`      — notebook-ийн багана нэмэгдээгүй: ЯГ өнөөгийн JSON (`draftRemote`, `REMOTE_MAX`); super-т тайлбар;
- *      · `rows-wait` — баганыг шалгаж чадсангүй (сүлжээ): ЮУ Ч уншихгүй/бичихгүй (засвар localStorage-д), hook 30 с тутам дахин
- *                      бэлдэнэ. JSON руу нөөц бичилт ХЭЗЭЭ Ч хийхгүй (хоёр эх сурвалж салаална).
- * ⚠️ 2026-10-26 (эцсийн загвар): ТУСДАА ШИЛЖҮҮЛЭЛТИЙН АЛХАМ АЛГА — мөрийн уншилт хуучин JSON-ыг (`huuchin_at`-аас хойшхи)
- *    нийлүүлж, засагчийн анхны нээлт (`planMigrate`) эсвэл анхны бичилт толгойд `huuchin_at`-ыг тавина (= шилжүүлэлт); хуучин таб
- *    JSON-д бичсээр байвал дараагийн уншилт шингээнэ (`legacyPending` — hook хэрэглэгчид хэлнэ). Хуучин 3 хүснэгтийн тусдаа
- *    үйлчилгээний хадгалалт ба түүний «хүснэгт алга/зөвхөн унших» горимууд БҮРЭН ХАСАГДСАН.
- * ⚠️ 2026-10-26: ЖААЗ СОЛИГДОХ (`alignToFrame` · `collapseCells`) — мөрийн түлхүүр нь ажлын КОД (`w:d<des_dugaar>:<блок>`), oid
- *    биш. Тиймээс уншилтад нүдийг ОДООГИЙН жаазны тухайн кодтой oid руу шууд зөөж (хуучин oid шинэ жаазад ӨӨР ажилд
- *    давтагдсан ч буруу ажилд наалдахгүй), бичихдээ НЭГ ажил × блокийн давхардсан нүдийг (хуучин/шинэ oid) ГАНЦ болгоно.
- *    `useSharedDraft`-ийн `identityRemap` нь кодгүй мөрийн нөөц (эцэг бүлгийн зам · «№ ¦ нэр») хэвээр.
  */
 
 import { readRemoteDraft, readRemoteDraftAt, REMOTE_MAX, saveRemoteDraft, type RemoteSaveResult } from '@/lib/draftRemote';
@@ -39,7 +24,7 @@ export type HDStore = {
   /** Хэрэглэгчид (`rows-wait`) эсвэл super-т (`blob`) харуулах тайлбар */
   note?: string;
   readAt(key: string): Promise<number | null | undefined>;
-  /** `ctx` — одоогийн жааз (блокийг НЭРЭЭР, ажлыг КОДООР тааруулна — `planFromRows` · `alignToFrame`-ийн ⚠️) */
+  /** `ctx` — одоогийн жааз (блокийг НЭРЭЭР, ажлыг КОДООР тааруулна — `planFromRows` · `alignToFrame`) */
   read(key: string, opt?: { full?: boolean; ctx?: StoreCtx }): Promise<HDStoreRead>;
   save(key: string, d: HDDraft, opt: { expectAt: number | null; quick?: boolean; ctx: StoreCtx }): Promise<HDStoreSave>;
   /** Илгээх агшны хуулбар (`rows`, `n:hsub:<Huvaari_Batlah OBJECTID>`) */
@@ -67,7 +52,7 @@ export const blobStore: HDStore = {
   },
 };
 
-/** Түр алдаа — юу ч уншихгүй/бичихгүй, засвар localStorage-д (`rows-wait`, толгойн ⚠️) */
+/** Түр алдаа — юу ч уншихгүй/бичихгүй, засвар localStorage-д (`rows-wait`, толгой) */
 const waiting = (note: string): HDStore => ({
   mode: 'rows-wait',
   note,
@@ -82,7 +67,6 @@ const waiting = (note: string): HDStore => ({
  * Одоогийн жаазад ОЛДООГҮЙ кодын нүдийн орлуулах oid — хуучин oid шинэ жаазад ӨӨР ажилд давтагдсан үед (жиш. хуудсыг дахин
  * импортлоход OBJECTID 1-ээс эхэлнэ). Сөрөг тул одоогийн мөрд хэзээ ч таарахгүй → hook «мөр алга» (`identityRemap` нөөц,
  * эс бөгөөс хуучирсан нүд — `hdStale`) гэж үзнэ; `rk` код нь хадгалагдаж, бичихэд ижил мөр (`w:d<код>`) рүү буцна.
- * ⚠️ `mur_oid` (Integer) — int32-т багтана; нэмэлт ажлын түр oid (`adds.nextTmpOid`, ~−10¹⁰)-оос өөр муж.
  */
 export const synOid = (des: number): number => planSynOid(des);
 
@@ -113,8 +97,6 @@ function settle(entries: HDEntries, del: Map<string, number>): void {
  * УНШИЛТЫГ ОДООГИЙН ЖААЗАД ТААРУУЛНА — мөрийн нүд бүрийн `oid` нь БИЧИХ ҮЕИЙН жааз (`mur_oid`); код (`rk.des`) нь одоогийн
  * жаазад ГАНЦ бол тэр oid руу; кодын ажил одоогийн жаазад алга бөгөөд хуучин oid нь ӨӨР кодтой ажил бол `synOid` руу (буруу
  * ажилд наалдахгүй); бусад (кодгүй · жааз ачаалагдаагүй) — хэвээр (hook-ийн `identityRemap`).
- * ⚠️ Зөөлт нь ХАДГАЛАЛТЫН ТҮВШНИЙ нэр солилт (мөр нэг л): шинэ tombstone ҮҮСГЭХГҮЙ; нэг түлхүүрт нийлсэн нүднээс ШИНЭ нь,
- *    tombstone — `merge`-ийн дүрмээр.
  */
 export function alignToFrame(d: HDDraft, ctx: StoreCtx): HDDraft {
   if (!ctx?.rows.size) return d;
@@ -141,7 +123,6 @@ export function alignToFrame(d: HDDraft, ctx: StoreCtx): HDDraft {
   const del = new Map<string, number>();
   const put = (k: string, e: HDEntry, own: boolean) => {
     const ex = entries.get(k);
-    /* ⚠️ Тэнцвэл ЗОРИЛТОТ түлхүүр дээр байсных (одоогийн жаазаар бичигдсэн) үлдэнэ */
     if (!ex || e.at > ex.at || (e.at === ex.at && own)) entries.set(k, e);
   };
   for (const [k, e] of d.entries) {
@@ -176,7 +157,7 @@ export function alignToFrame(d: HDDraft, ctx: StoreCtx): HDDraft {
  * тул HDDraft-ийн хуучин/шинэ oid-ын ХОЁР түлхүүр (hook хамтрагчийн хуучин түлхүүрийг хадгалдаг — `remapDraft`-ийн `keep`) нэг
  * мөрөнд бичигдэж, Map-ын дарааллаар ХУУЧИН утга шинэ агшинтай үлдэх эрсдэлтэй байв. Дүрэм (логик нүд бүрд):
  *   · хамгийн ШИНЭ нүд (тэнцвэл одоогийн жаазны oid-тай) ба tombstone-ийн ХАМГИЙН ХОЖУУ нь `merge`-ийн дүрмээр өрсөлдөнө;
- *   · ⚠️ одоогийн жаазад АЛГА oid-ын tombstone нь тухайн нүд одоогийн oid дээр амьд бол ТООЦОГДОХГҮЙ — тэр нь hook-ийн
+ *   · одоогийн жаазад АЛГА oid-ын tombstone нь тухайн нүд одоогийн oid дээр амьд бол ТООЦОГДОХГҮЙ — тэр нь hook-ийн
  *     «хуучин түлхүүрээс зөөсөн» тэмдэг (`remapDraft`, агшин = одоо), нүдийг устгах шийдвэр БИШ; эс тооцвол зөөсөн нүд өөрийн
  *     tombstone-д устна.
  * Код нь одоогийн мөрөөс (`ctx`), эс бөгөөс `rk`-ээс; кодгүй бол `o<oid>` (давхардал үүсэхгүй).

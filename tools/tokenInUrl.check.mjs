@@ -5,15 +5,15 @@
  * Дүрэм (`src/lib/authToken.ts`-ийн толгой, `tools/ts-alias.mjs`): ArcGIS токен POST-ын
  * БИЕЭР л явна. Query string нь ArcGIS/прокси/CDN-ийн access log-д бүтнээрээ хадгалагдаж,
  * Referer-ээр гуравдагчид алдагддаг (CWE-598). Үл хамаарах нь ЗӨВХӨН POST хийх боломжгүй
- * `<img src>`/`<a href>`-ийн хавсралтын хаяг — `tokenQs()` (authToken.ts) ба доорх
+ * `<img src>`/`<a href>`-ийн хавсралтын хаяг — `tokenQs` (authToken.ts) ба доорх
  * ил жагсаалт.
  *
  * Хамгаалж буй алдаа: `tools/bagts-gun.mjs` БҮТЭЦ ӨӨРЧЛӨХ эрхтэй ADMIN токеныг
  * `GET …/0?f=json&token=…`-ээр илгээдэг байв.
  *
  * Шалгах хэв: (1) литерал дотор `?token=${…}` / `&token=${…}` / `'token=' +` угсралт,
- * (2) `fetch(…tokenQs()…)` — `tokenQs` нь зөвхөн img/a-д,
- * (3) ⚠️ 2026-10-09: `tokenQs().slice(1)` ба `?${q}` — токентой хаягийг УРЬДЧИЛАН угсарч
+ * (2) `fetch(…tokenQs…)` — `tokenQs` нь зөвхөн img/a-д,
+ * (3) 2026-10-09: `tokenQs.slice(1)` ба `?${q}` — токентой хаягийг УРЬДЧИЛАН угсарч
  *     дараа нь `fetch`-лэх зам (`uzlegReport.attUrl` → `toImg` GET-ээр татдаг байв). Зөвхөн
  *     рендерийн агшинд `<img src>`/`<a href>`-д залгадаг файлууд (`IMG_ALLOW`) үл хамаарна.
  */
@@ -40,10 +40,6 @@ for (const e of readdirSync('tools')) if (/\.mjs$/.test(e) && !/\.check\.mjs$/.t
 
 /**
  * (3)-ын үл хамаарал — файл → шалтгаан. Энд нэмэхээс өмнө хаяг fetch-д ОРОХГҮЙ гэдгийг батал.
- * ⚠️ 2026-10-09: ХООСОН — ХАБЭА-гийн зураг (`Habea.tsx` IncPhotos/PhotoWall, `habeaUzleg`
- *    слайдер) blob URL-аар (`habeaUzleg.AttPhoto` → `uzlegReport.fetchAttachment`, POST биеэр),
- *    `sheet/ags.attachmentUrl` УСТГАГДСАН. Файл бүхэлдээ чөлөөлөх үл хамаарал БҮҮ нэм —
- *    зураг хэрэгтэй бол `AttPhoto` ашигла.
  */
 const IMG_ALLOW = new Map();
 const IMG_PATTERNS = [
@@ -73,14 +69,12 @@ assert.equal(hits.length, 0, `✗ токен URL-д угсрагдсан (POST �
 /* Зөвшөөрлийн жагсаалт хоцроогүй — жагсаасан файл бүр оршин байна */
 for (const f of ALLOW.keys()) assert.ok(files.includes(f), `✗ ALLOW-д байгаа ${f} олдсонгүй — жагсаалтаас хас`);
 for (const f of IMG_ALLOW.keys()) assert.ok(files.includes(f), `✗ IMG_ALLOW-д байгаа ${f} олдсонгүй — жагсаалтаас хас`);
-/* ⚠️ 2026-10-09: үзлэгийн тайлан — хавсралтыг POST биеэр (`fetchAttachment`), `tokenQs` огт үгүй */
 {
   const rep = readFileSync('src/lib/uzlegReport.ts', 'utf8');
   assert.ok(!/tokenQs/.test(rep), '✗ uzlegReport: tokenQs буцаж орсон — хавсралтын токен POST биеэр л');
   assert.ok(/method: 'POST'/.test(rep) && /body\.set\('token'/.test(rep), '✗ uzlegReport: хавсралт POST + токен биеэр');
   assert.ok(/isOrgUrl\(url\) \? authToken\(\)/.test(rep), '✗ uzlegReport: токен ЗӨВХӨН байгууллагын хост руу');
 }
-/* ⚠️ 2026-10-09: ХАБЭА-гийн зураг blob URL-аар — `tokenQs`/`photoSrc` буцаж орохгүй */
 for (const f of ['src/modules/Habea.tsx', 'src/modules/habeaUzleg.tsx', 'src/modules/sheet/ags.ts']) {
   const src = readFileSync(f, 'utf8').split(/\r?\n/).filter((l) => !isComment(l)).join('\n');
   assert.ok(!/tokenQs\s*\(/.test(src), `✗ ${f}: tokenQs() — зургийг AttPhoto (blob URL)-оор`);

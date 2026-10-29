@@ -5,19 +5,6 @@
  *
  * «Асуумжаа сонгоод, хугацаагаа сонгоод, компаниа сонгоод татах — нэгийг PDF-ээр
  * (`2026-09-29 Морин сувд.pdf` шиг), олныг Excel-ээр, iAuditor шиг».
- *
- * ⚠️ ДӨРВӨН АЛХАМ (2026-10-06 загвар сайжруулалт): Асуумж → Хугацаа → Компани → Үзлэг.
- *    Дугаар нь бодит дараалал — өмнөх алхам дараагийнх нь жагсаалтыг шүүнэ.
- * ⚠️ ФОРМАТ АВТОМАТААР: нэг үзлэг сонгосон бол PDF, олон бол Excel. Хэрэглэгч гараар
- *    сольж болно — олон үзлэгийг ч НЭГ PDF-д (тайлан бүр шинэ хуудаснаас) гаргана.
- * ⚠️ PDF-д зураг ОРНО тул олон үзлэгийн PDF удаан (зураг бүр татагдана) — анхааруулна.
- * ⚠️ Өгөгдөл нь ХАБЭА хуудастай НЭГ ачаалагчаас (`loadUzlegBoth`) — кэш хуваалцана.
- * ⚠️ 2026-10-09: «Болих» (2026-10-23 хүртэл «Цуцлах», X7 нэр томьёо) — татаж байхад цонх түгжигддэг атал гацсан хавсралт (хугацаагүй
- *    fetch) цонхыг МӨНХӨД хаагдахгүй үлдээдэг байв. Одоо хавсралт бүр 30с (`ATT_TIMEOUT_MS`),
- *    «Болих» нь `AbortController`-оор бүх татлагыг зогсооно; цонх хаагдахад мөн цуцална.
- * ⚠️ 2026-10-09: «Зураггүй» сонголт ба `UZ_IMG_WARN`-ээс олон зурагт баталгаажуулалт —
- *    мянга мянган зураг хөтчийн санах ойг дүүргэдэг.
- * ⚠️ 2026-10-09: фокусын урхи (`useFocusTrap`) — нээхэд фокус цонхонд, хаахад буцна.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -39,7 +26,6 @@ import { loadUzlegBoth, uzScoreLevel, UZLEG_SHORT, type UzlegKind, type UzlegRow
 import { queryFeatures, type Row } from '@/lib/query';
 import x from './uzlegExport.module.css';
 
-/* ⚠️ 2026-10-21: 8 шинэ маягт (`HABEA.uzleg`-ийн ⚠️) — тайлан татах цонхонд бүгд */
 const KINDS: UzlegKind[] = [
   'zahialagch', 'v11', 'guitsetgegch',
   'env', 'cold', 'fire', 'hazard', 'autocrane', 'pump', 'gondola', 'tower',
@@ -62,9 +48,6 @@ const FORM_SHORT: Record<UzlegKind, string> = {
 /**
  * «АЮУЛЫГ ИЛРҮҮЛЭХ ҮЗЛЭГ»-ИЙН ИЛРҮҮЛЭЛТ (2026-10-21). Маягт асуултгүй — илрүүлэлт бүр ХОЛБООТОЙ ХҮСНЭГТИЙН мөр
  * (`HABEA.uzleg.hazardFindingsUrl`). Хүснэгт жижиг тул бүгдийг нэг удаа татаж эцгээр нь бүлэглэнэ (`groupFindings`).
- * ⚠️ 2026-10-22 (аудит): холбоос `parentrowid` → эцгийн `uniquerowid || globalid` (`parentKeys`) — амьдаар 61/61 эцгийн
- *    `uniquerowid` NULL, 345/345 илрүүлэлт `globalid`-ийг заадаг тул урьд нь тайланд илрүүлэлт ОГТ гардаггүй байв.
- *    Илрүүлэлтийн зураг нь хүснэгтийн мөрийн хавсралт (`/1`) — сонгосон эцгүүдийн илрүүлэлтийнхийг л татна.
  */
 async function loadHazardFindings(parents: Row[]): Promise<Map<string, UzSection>> {
   const url = HABEA.uzleg.hazardFindingsUrl;
@@ -83,19 +66,12 @@ async function loadHazardFindings(parents: Row[]): Promise<Map<string, UzSection
 }
 const PDF_MANY_WARN = 15;
 
-/**
- * ⚠️ 2026-10-09: ӨДРИЙН ХИЛ УЛААНБААТАРЫН цагаар (UTC+8, `ubDayKey`) — урьд нь хөтчийн
- *    локал цагаар тул өөр бүсээс татахад өдрийн хил гулсаж, хуудасны өдрийн цуваанд
- *    (`ubDayKey`) байгаа үзлэг тайланд орохгүй/өөр өдөрт орж болдог байв.
- */
 const dayStr = (d: Date | number) => ubDayKey(typeof d === 'number' ? d : d.getTime());
 /** «YYYY-MM-DD» → Улаанбаатарын өдрийн эхлэл/төгсгөл (ms) */
 const dayStart = (v: string) => Date.parse(`${v}T00:00:00+08:00`);
 const dayEnd = (v: string) => Date.parse(`${v}T23:59:59.999+08:00`);
 
 /** Хугацааны бэлэн сонголт — эхлэх огноог өнөөдрөөс тооцно */
-/* ⚠️ 2026-10-06: «Нэг өдөр» — хэрэглэгчийн хүсэлт («нэг өдрийн дата зааж татах»).
-   Эхлэх = дуусах = сонгосон өдөр; огнооны ГАНЦ талбар гарна. */
 type Preset = 'day' | 'w' | 'm30' | 'month' | 'all';
 const presetFrom = (p: Preset, today: Date): string => {
   if (p === 'day') return dayStr(today);
@@ -108,9 +84,6 @@ const presetLabel = (p: Preset) => (p === 'day' ? tr('Өдрөөр') : p === 'w'
 
 /**
  * Онооны өнгө — оноогүй бол саарал.
- * ⚠️ 2026-10-09 (аудит №6): босго `habeaUzleg.uzScoreLevel` (90 · 70, дүгнэсэн)-ээс — урьд нь энд
- *    ≥90/≥75 ХАТУУ бичигдсэн тул 70–74 оноо самбарт улбар шар, экспортод улаан гарч зөрдөг байв
- *    (docs 04: «<70 улаан · 70–90 улбар шар»).
  */
 const scoreTone = (p: number | null) => {
   if (p == null) return '';
@@ -153,9 +126,7 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
   const [prog, setProg] = useState<number | null>(null);
   const [err, setErr] = useState('');
   const [done, setDone] = useState('');
-  /** ⚠️ 2026-10-09: татагдаагүй зургийн анхааруулга — файл үүссэн ч ИЛ (чимээгүй хаягддаг байв) */
   const [warn, setWarn] = useState('');
-  /** ⚠️ 2026-10-09: «Зураггүй» — зураг татахгүй (хурдан, санах ой бага) */
   const [noPhotos, setNoPhotos] = useState(false);
   /** Явж буй татлагын цуцлагч — «Цуцлах», Escape, цонх хаагдахад */
   const ctlRef = useRef<AbortController | null>(null);
@@ -172,7 +143,6 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
     return () => { alive = false; };
   }, [kind]);
 
-  /** ⚠️ 2026-10-09: татлагыг цуцална — дараа нь цонх хаагдаж болно */
   const cancel = () => {
     ctlRef.current?.abort();
     ctlRef.current = null;
@@ -181,7 +151,6 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
   };
 
   useEffect(() => {
-    /* ⚠️ 2026-10-09: татаж байхад Escape = «Цуцлах» (урьд нь юу ч хийдэггүй — гацахад гарцгүй) */
     const k = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (!busy) { onClose(); return; }
@@ -195,9 +164,6 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
   }, [busy, onClose]);
 
   const ready = data && data.kind === kind ? data : null;
-  /* ⚠️ 2026-10-09: ОГНООГҮЙ үзлэг (`d = 0`) «Бүгд» хугацаанд ОРНО — урьд нь ямар ч хугацаанд
-     орохгүй тул хэзээ ч татагдах боломжгүй байв. Бусад хугацаанд огноогүйг аль өдөрт
-     хамааруулахаа мэдэхгүй тул хасна; «Бүгд»-д тоог нь ил хэлнэ («N огноогүй»). */
   const withUndated = preset === 'all';
   const inRange = useMemo(() => {
     if (!ready) return [] as number[];
@@ -244,7 +210,6 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
     ctlRef.current?.abort();
     const ctl = new AbortController();
     ctlRef.current = ctl;
-    /* ⚠️ Цуцлагдсан/хаагдсан бол дараагийн await-ийн дараа ЮУ Ч хийхгүй (setState, татах) */
     const live = () => !ctl.signal.aborted;
     setErr(''); setDone(''); setWarn(''); setProg(null);
     try {
@@ -254,17 +219,13 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
       const fields = await loadUzFields(url);
       if (!live()) return;
       const oids = chosen.map((i) => ready.rows[i].oid);
-      /* ⚠️ Excel ч ЗУРАГТАЙ (жишээ файлын «ObjectID N» хуудсанд нүдэнд шигтгэсэн) тул хавсралт,
-         байршлыг хоёр форматад хоёуланд нь татна. */
       setBusy(tr('Хавсралтын жагсаалтыг уншиж байна…'));
       const [atts, locs] = await Promise.all([loadUzAttachments(url, oids), loadUzLocations(url, oids)]);
       if (!live()) return;
-      /* ⚠️ 2026-10-21: аюулыг илрүүлэх үзлэг — илрүүлэлтийн хүснэгт (`loadHazardFindings`-ийн ⚠️) */
       const findings = kind === 'hazard' ? await loadHazardFindings(chosen.map((i) => ready.raw[i])) : null;
       if (!live()) return;
       const reports: UzReport[] = chosen.map((i) => {
         const r = ready.rows[i];
-        /* ⚠️ 2026-10-22 (аудит): эцгийн ҮНДСЭН түлхүүрээр (`uniquerowid || globalid`) — `groupFindings`-ийн түлхүүртэй ижил */
         const fnd = findings?.get(parentKeys(ready.raw[i])[0] ?? '');
         return buildUzReport(form, fields, ready.raw[i], r.oid, atts.get(r.oid) ?? [], (id) => attUrl(url, r.oid, id), {
           pkg: r.site, company: r.company, date: r.d, formShort: FORM_SHORT[kind], location: locs.get(r.oid) ?? '',
@@ -278,14 +239,10 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
       const days = [...new Set(reports.map((r) => (r.date > 0 ? fmtDate(r.date) : '')).filter(Boolean))].sort();
       const span = days.length <= 1 ? (days[0] ?? from) : `${days[0]}–${days[days.length - 1]}`;
       const xlsBase = one ? reportTitle(one) : `${coSet.length === 1 ? coSet[0] : 'Олон компани'} - ${FORM_SHORT[kind]} ${span}`;
-      /* ⚠️ 2026-10-09: `companyShort` «—»-г хоосон болгодог тул нөөц (багц → «Үзлэг») ажиллана */
       const base = one
         ? `${one.date > 0 ? fmtDate(one.date) : 'огноогүй'} ${companyShort(one.company) || companyShort(one.pkg) || 'Үзлэг'}`
         : xlsBase;
-      /* ⚠️ 2026-10-09: олон зураг — санах ой/хугацааны анхааруулга, «Зураггүй»-г санал болгоно */
       const nImg = noPhotos ? 0 : countReportImages(reports);
-      /* ⚠️ 2026-10-23 (UX аудит X1): аппын дотоод асуулт — `window.confirm` хаалттай хөтөчид татах товч чимээгүй зогсдог
-         байв. Хариулах хооронд цонх хаагдсан/цуцлагдсан бол (`live`) юу ч хийхгүй. */
       if (nImg > UZ_IMG_WARN
         && !(await askConfirm(tr('{0} зураг татагдана — удаан бөгөөд хөтчийн санах ойг дүүргэж болзошгүй. Үргэлжлүүлэх үү? («Зураггүй» сонголтоор хурдан)', num(nImg)),
           { ok: tr('Татах') }))) {
@@ -328,7 +285,6 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
       ctlRef.current = null;
       setBusy(''); setProg(null);
       setDone(tr('Татагдлаа: {0}', file));
-      /* ⚠️ 2026-10-09: HEIC (формат) ба татагдаагүй (сүлжээ) ТУСДАА — шалтгаан нь өөр */
       setWarn([
         failed.length ? tr('{0} зураг татагдсангүй', num(failed.length)) : '',
         heic.length ? tr('{0} зураг HEIC — хөрвүүлэх боломжгүй', num(heic.length)) : '',
@@ -350,7 +306,6 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
           <div>
             <h2 id="uz-exp-title" className={x.title}>{tr('Үзлэгийн тайлан татах')}</h2>
           </div>
-          {/* ⚠️ 2026-10-09: татаж байхад ч хаана — unmount нь татлагыг цуцална */}
           <button type="button" className={x.close} onClick={onClose} aria-label={tr('Хаах')}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
           </button>
@@ -363,7 +318,6 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
             <div className={x.forms} role="radiogroup" aria-label={tr('Асуумж')}>
               {KINDS.map((k) => {
                 const on = kind === k;
-                /* ⚠️ 2026-10-21 (хэрэглэгч): богино нэр (`UZLEG_SHORT`), бүтэн нэр hover-т — 11 хавтан нягт */
                 return (
                   <button key={k} type="button" role="radio" aria-checked={on} disabled={lock}
                     className={`${x.form} ${on ? x.formOn : ''}`} title={HABEA.uzleg[k].title}

@@ -3,16 +3,6 @@
 /**
  * НЭГЖ ТАЛБАРЫН ТӨЛӨВ ЗАСАХ — өгөгдлийн давхарга.
  *
- * ⚠️ REACT ЭНД ОРОХГҮЙ. Зөвхөн унших/бичих/шалгах цэвэр функцүүд тул
- * `parcelEdit.check.mjs` түүнийг шууд импортлон шалгана.
- *
- * ⚠️ ЯАГААД (2026-08-31, хэрэглэгчийн шийдвэр): төлөв солих цорын ганц зам нь
- * ArcGIS Experience Builder-ийн ТУСДАА апп байсан. Хэрэглэгч порталаас гарч,
- * өөр систем нээж, ажлаа тэнд хийгээд буцаж ирдэг байв. Одоо тэр үйл
- * ажиллагааг систем дотроо давтана — embed БИШ, өөрийн маягт.
- *
- * ⚠️ ХАМГИЙН ЧУХАЛ ХОЁР ДҮРЭМ:
- *
  *   1. ЗӨВХӨН ӨӨРЧЛӨГДСӨН ТАЛБАРЫГ БИЧНЭ (`diffParcel`). Бүтэн мөрийг буцааж
  *      бичвэл яг тэр агшинд өөр хүн зассан баганыг ДАРЖ БИЧНЭ. ArcGIS-д мөрийн
  *      түвшний түгжээ байхгүй тул энэ нь чимээгүй өгөгдөл алдагдуулна.
@@ -37,8 +27,6 @@ import { parcelAreaOf } from '@/lib/land';
 const F = PARCEL_LEFT.fields;
 
 /**
- * ⚠️ 2026-09-06: `'OBJECTID'` → `PARCEL_LEFT.oid` (`'FID'`).
- *
  * Шинэ үйлчилгээнд `OBJECTID` нэртэй талбар МӨН БАЙГАА боловч тэр нь ЭНГИЙН
  * Integer багана — жинхэнэ OID нь `FID`. Хуучнаар үлдээвэл `applyEdits` буруу
  * мөр рүү бичих (эсвэл огт олохгүй) эрсдэлтэй. Одоо `services.ts`-ийн
@@ -48,10 +36,6 @@ export const PARCEL_OID = PARCEL_LEFT.oid;
 
 /**
  * ЗАСАГДАХ ТӨЛӨВҮҮД — `PARCEL_STATUS_HUES`-ийн түлхүүрээс.
- *
- * ⚠️ Тусдаа жагсаалт бичихгүй: газрын зургийн будалт ба маягтын сонголт НЭГ
- * эх сурвалжаас гарах ёстой. Хоёр газар бичвэл шинэ төлөв нэмэгдэхэд аль нэг нь
- * хоцорч, зураг дээр өнгөтэй атлаа маягтад сонгогдохгүй утга үүснэ.
  */
 export const STATUS_LIST: string[] = Object.keys(PARCEL_STATUS_HUES);
 
@@ -66,16 +50,12 @@ export type Parcel = {
   progress: string;
   /**
    * Талбай м² — ЗӨВХӨН харуулна.
-   * ⚠️ Геометрээс гардаг тул гараар засвал зурагтай зөрнө. Experience
-   *    Builder-т засагддаг нь тэр апп геометрийг ч засдагтай холбоотой.
    */
   areaM2: number | null;
   address: string;
   note: string;
   /**
    * СҮҮЛД ЗАСВАРЛАСАН ХҮН ба ЦАГ — ArcGIS Editor Tracking-ээс (ЗӨВХӨН харуулна).
-   * ⚠️ 2026-10-01: давхаргын `editFieldsInfo` байхгүй (тохиргоо унтраалттай) эсвэл
-   *    мөрд утга алга бол `null` — «хэн ч засаагүй» гэсэн утга БИШ, «мэдэхгүй».
    */
   editedBy: string | null;
   /** ms epoch; `null` = мэдэгдэхгүй (0 БИШ) */
@@ -88,13 +68,11 @@ export type ParcelPatch = Pick<Parcel, 'owner' | 'status' | 'progress' | 'addres
 /* ══════════════════ Уншилт ══════════════════ */
 
 const str = (v: unknown): string => (v == null ? '' : String(v));
-/* ⚠️ 2026-10-09 (аудит №6): `''` → `Number('')` = 0 тул хоосон текст талбай «0 м²» болдог байв — null. */
 const numOrNull = (v: unknown): number | null => {
   if (v == null || v === '') return null;
   const x = Number(v);
   return Number.isFinite(x) ? x : null;
 };
-/** ⚠️ 0/сөрөг тамга нь «огноо алга» — 1970 он гэж харуулахгүй */
 const stampOrNull = (v: unknown): number | null => {
   const t = numOrNull(v);
   return t != null && t > 0 ? t : null;
@@ -102,14 +80,6 @@ const stampOrNull = (v: unknown): number | null => {
 
 /**
  * EDITOR TRACKING-ИЙН ТАЛБАРУУД — давхаргын метадатагийн `editFieldsInfo`-оос.
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): талбарын нэрийг ХАТУУ бичихгүй —
- *    ArcGIS Online-д анхдагч нь `Editor`/`EditDate` боловч Enterprise ба
- *    shapefile-аас нийтэлсэн үйлчилгээнд өөр нэртэй байж болно. Метадата нь
- *    үнэн эх. Тохиргоо унтраалттай бол `editFieldsInfo` нь `null` → энэ функц
- *    `null` буцааж, маягт «сүүлд засварласан» мөрийг ОГТ харуулахгүй.
- *    Тохиргоог асаамагц код өөрчлөхгүйгээр идэвхжинэ (амьдаар 2026-10-01-нд
- *    `Selbe_jijuur` давхаргад асаалттай байгааг баталсан).
  */
 export type EditFields = { editor: string | null; editDate: string | null };
 
@@ -127,9 +97,6 @@ export function editFieldsOf(meta: unknown): EditFields | null {
 
 /**
  * Метадатаг НЭГ удаа татаж кэшлэнэ.
- * ⚠️ Алдаа нь засварыг ХААХГҮЙ — `null` (мөрийг харуулахгүй) болж, кэш
- *    цэвэрлэгдэнэ: дараагийн маягт дахин оролдоно. Энэ бол бүдүүвчийн мета
- *    (мөр БИШ) тул `PARCEL_LEFT`-ийн хүчингүйжүүлэлтэд холбох шаардлагагүй.
  */
 let editFieldsP: Promise<EditFields | null> | null = null;
 export function loadEditFields(): Promise<EditFields | null> {
@@ -147,11 +114,6 @@ export function loadEditFields(): Promise<EditFields | null> {
 
 /**
  * ТЕКСТ ТАЛБАРЫН ДЭЭД УРТ — давхаргын метадатагийн `fields[].length`-ээс.
- *
- * ⚠️ 2026-10-05: «Овог, нэр» · «Хаяг» · «Тайлбар» оролтод хязгааргүй байсан тул урт текст
- *    зөвхөн ХАДГАЛАХ үед ArcGIS-ийн бүрхэг алдаагаар унадаг байв. Уртыг ХАТУУ бичихгүй
- *    (үйлчилгээ шилжихэд өөрчлөгдөнө, `editFieldsOf`-ийн зарчим) — метадата нь үнэн эх.
- *    Уншигдаагүй талбарт хязгаар БАЙХГҮЙ (хуучин зан төлөв): таамгаар хязгаарлахгүй.
  */
 export type TextKey = 'owner' | 'address' | 'note';
 export type FieldLens = Partial<Record<TextKey, number>>;
@@ -187,7 +149,6 @@ export function loadFieldLens(): Promise<FieldLens> {
 
 /** Мөрийг `Parcel` болгоно — талбарын нэрийг НЭГ газар зураглана */
 export function rowToParcel(r: Row, ef: EditFields | null = null): Parcel | null {
-  /* ⚠️ `Number(null)` нь 0 — `isFinite` дангаараа хоосон OID-г нэвтрүүлнэ */
   const raw = r[PARCEL_OID];
   const oid = raw == null ? NaN : Number(raw);
   if (!Number.isFinite(oid)) return null;
@@ -197,9 +158,6 @@ export function rowToParcel(r: Row, ef: EditFields | null = null): Parcel | null
     owner: str(r[F.owner]),
     status: str(r[F.status]),
     progress: str(r[F.progress]),
-    /* ⚠️ Геометргүй 11 мөрд ЗӨВХӨН `Талбай` утгатай — нөхөх зам хэвээр.
-       ⚠️ 2026-10-26 (аудит): `land.parcelAreaOf` (0 нь хэмжилт биш → SHAPE__Area) — area_m2 = 0 (амьд 24 мөр) маягтад «0 м²»
-       гардаг атал KPI тэдгээрт полигоны талбай авдаг тул нэг талбар хоёр өөр талбайтай байв. Зөвхөн харуулалт. */
     areaM2: parcelAreaOf(r),
     address: str(r[F.address]),
     note: str(r[F.note]),
@@ -210,15 +168,9 @@ export function rowToParcel(r: Row, ef: EditFields | null = null): Parcel | null
 
 /**
  * НЭГ нэгж талбарыг дугаараар нь татна.
- *
- * ⚠️ Газрын зургийн `onPick` нь давхаргын `outFields`-д АЧААЛАГДСАН талбарыг л
- * буцаадаг тул маягтыг тэр өгөгдлөөр нээвэл хагас бөглөгдсөн байж болно.
- * Тиймээс OID-г л авч, мөрийг ЭНД бүтнээр нь дахин татна.
  */
 export async function loadParcel(oid: number): Promise<Parcel | null> {
   if (!Number.isFinite(oid)) return null;
-  /* ⚠️ `outFields: *` (анхдагч) тул Editor Tracking-ийн талбарууд ч хамт ирнэ;
-     метадата нь аль талбар болохыг хэлнэ (`loadEditFields` хэзээ ч унахгүй). */
   const [rows, ef] = await Promise.all([
     queryFeatures(PARCEL_LEFT.url, {
       where: `${PARCEL_OID} = ${Math.trunc(oid)}`,
@@ -239,8 +191,6 @@ export const PARCEL_FIND_MIN_LIKE = 4;
 
 /**
  * Хэсэгчилсэн хайлтын SQL — `LIKE N'%…%'`.
- * ⚠️ LIKE-ийн тусгай тэмдэгтүүдийг (`%` `_` `[` `]`) ХАСНА: кадастрын дугаарт
- *    байдаггүй бөгөөд үлдээвэл хэрэглэгчийн бичсэн «_» бүх тэмдэгтэд таарна.
  */
 export const parcelNoLikeWhere = (no: string): string =>
   `${F.parcelNo} LIKE ${sqlStr(`%${no.replace(/[%_[\]]/g, '')}%`)}`;
@@ -249,11 +199,8 @@ export const parcelNoLikeWhere = (no: string): string =>
  * КАДАСТРЫН ДУГААРААР ХАЙНА (2026-10-01, хэрэглэгч: бүгдийг зас).
  *
  * Эхлээд ЯГ таарцаар (`parcelNoWhere`); олдохгүй бөгөөд ≥4 тэмдэгт бол
- * хэсэгчилсэн таарцаар. ⚠️ Олон мөр буцааж болно — амьдаар нэг дугаар 2
+ * хэсэгчилсэн таарцаар. Олон мөр буцааж болно — амьдаар нэг дугаар 2
  * мөрд байх тохиолдол бий (2026-10-01) тул дуудагч ЖАГСААЖ сонгуулна.
- * ⚠️ `orderBy` ЗААВАЛ (OID) — `limit`-тэй хуудаслалт эрэмбэгүй бол тогтворгүй.
- * ⚠️ 2026-10-26 (аудит): `PARCEL_FIND_LIMIT + 1` мөр хүртэл буцаана — илүү мөр нь «тайрагдсан» гэсэн дохио (дуудагч эхний
- *    `PARCEL_FIND_LIMIT`-ийг л жагсааж «нарийсгана уу» гэнэ). Урьд нь 951 таарсан ч «20 нэгж талбар олдлоо» гэж бүтэн мэт хэлдэг байв.
  */
 export async function findParcelsByNo(input: string): Promise<ParcelHit[]> {
   const no = input.trim();
@@ -276,10 +223,6 @@ export async function findParcelsByNo(input: string): Promise<ParcelHit[]> {
 
 /**
  * ЯВЦЫН МЭДЭЭНИЙ утгуудыг ҮЙЛЧИЛГЭЭНЭЭС.
- *
- * ⚠️ Кодод бэхлэхгүй: бохир бичиглэлүүд (арын зай, цэг) бодитоор байгаа бөгөөд
- * тэднийг сонголтод харуулахгүй бол тухайн мөрийг засах гэсэн хүн утгыг нь
- * санамсаргүй «цэвэр» хувилбар руу шилжүүлж, өмнөх бүлэглэлтийг эвдэнэ.
  */
 export const loadProgressValues = cached<string[]>(async () => {
   const rows = await queryGroup(PARCEL_LEFT.url, F.progress, [count(PARCEL_OID, 'n')]);
@@ -291,10 +234,6 @@ export const loadProgressValues = cached<string[]>(async () => {
 
 /* ══════════════════ Шалгуур ══════════════════ */
 
-/**
- * ⚠️ МЭДЭЭЛНЭ, ЗАСАХГҮЙ. Хэрэглэгчийн бичсэнийг чимээгүй өөрчлөхгүй — зөвхөн
- * буруу гэдгийг хэлнэ (`validateZov`-ийн зарчим).
- */
 export function validateParcel(p: ParcelPatch): Partial<Record<keyof ParcelPatch, string>> {
   const e: Partial<Record<keyof ParcelPatch, string>> = {};
   if (!p.status.trim()) {
@@ -308,22 +247,13 @@ export function validateParcel(p: ParcelPatch): Partial<Record<keyof ParcelPatch
 
 /**
  * ЗӨВХӨН ӨӨРЧЛӨГДСӨН талбарыг шалгана (`butetsEdit.validateChanged`-ийн зарчим).
- *
- * ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь `validateParcel` нь төлөвийг
- *    ҮРГЭЛЖ шалгадаг байв. Хуучин/танигдахгүй төлөвтэй мөр (жиш. 2026-09-06-ны
- *    шилжилтээс өмнөх «Үлдсэн нэгж талбар», эсвэл хоосон) дээр хэрэглэгч ЗӨВХӨН
- *    эзэмшигч/хаягийг засахад «Танигдахгүй төлөв» гэж хадгалалт ХААГДДАГ байв —
- *    огт хөндөөгүй талбарын төлөө. Одоо төлөв нь ӨӨРЧЛӨГДСӨН үед л шалгагдана;
- *    хөндөөгүй бол `diffParcel` түүнийг БИЧИХГҮЙ тул түүхий утга хэвээр үлдэнэ.
  */
 export function validateParcelChanged(
   before: Parcel,
   patch: ParcelPatch,
-  /** ⚠️ 2026-10-05: текст талбарын дээд урт (`loadFieldLens`) — өгөөгүй бол шалгахгүй */
   lens: FieldLens = {},
 ): Partial<Record<keyof ParcelPatch, string>> {
   const e: Partial<Record<keyof ParcelPatch, string>> = patch.status === before.status ? {} : validateParcel(patch);
-  /* ⚠️ ЗӨВХӨН өөрчилсөн талбар — хуучин хэт урт утга (байх ёсгүй ч) хөндөөгүй бол саад болохгүй */
   for (const k of TEXT_KEYS) {
     const max = lens[k];
     if (max != null && patch[k] !== before[k] && patch[k].length > max) {
@@ -338,10 +268,6 @@ export function validateParcelChanged(
 /**
  * ӨӨРЧЛӨГДСӨН ТАЛБАРУУДЫГ ялгаж, `applyEdits`-ийн `attributes` болгоно.
  *
- * ⚠️ Хоосон мөр → `null`, `""` БИШ. ArcGIS-ийн текст талбарт хоосон мөр бичвэл
- *    «утга байхгүй» биш «хоосон утга» болж, `IS NULL` шүүлтэд орохгүй.
- * ⚠️ ТҮҮХИЙ утгыг trim ХИЙХГҮЙ (файлын толгойн 2-р дүрэм).
- *
  * @returns өөрчлөлтгүй бол ХООСОН объект — дуудагч тал сүлжээнд огт залгахгүй
  */
 export function diffParcel(before: Parcel, patch: ParcelPatch): Record<string, unknown> {
@@ -351,13 +277,6 @@ export function diffParcel(before: Parcel, patch: ParcelPatch): Record<string, u
     out[field] = now === '' ? null : now;
   };
   put(F.owner, before.owner, patch.owner);
-  /* ⚠️ 2026-09-21: `F.status` ба `F.progress` НЭГ талбар (`явцы_1`, `services.ts`-д
-     санаатай). Хоёуланг нь `put` хийвэл сүүлийнх (progress) нь эхнийхээ
-     чимээгүй дардаг байв — маягтын «Төлөв»-ийг сольсон ч хуучин «Явцын мэдээ»
-     утга бичигдэх эрсдэлтэй. Нэг талбар бол ӨӨРЧЛӨГДСӨН нэгийг л бичнэ, хоёулаа
-     өөрчлөгдвөл `status` (маягтын үндсэн хяналт) давамгайлна. Талбар нь
-     ирээдүйд салвал хуучин зам хэвээр ажиллана. Амьд схемийг 2026-09-21-нд
-     шалгах гэсэн боловч токен хүчингүй (498) — статик тодорхойлолтоор. */
   if (F.status === F.progress) {
     if (before.status !== patch.status) put(F.status, before.status, patch.status);
     else put(F.progress, before.progress, patch.progress);
@@ -373,17 +292,7 @@ export function diffParcel(before: Parcel, patch: ParcelPatch): Record<string, u
 /**
  * Засварыг үйлчилгээнд бичнэ.
  *
- * ⚠️ `applyAll` (`tableWrite.ts`) НЭГ атом хүсэлтээр явуулж, `rollbackOnFailure`
- * тавьж, серверийн талбарыг хасаж, HTTP-200-аар ирдэг мөр бүрийн алдааг
- * шалгадаг. Шинэ `applyEdits` бичих шаардлагагүй.
- *
- * ⚠️ Амжилттай болсны ДАРАА л кэшийг хүчингүй болгоно — амжилтгүй бичилтийн
- * дараа хүчингүй болговол сайн өгөгдлийг дэмий дахин татна.
- *
  * @returns хадгалагдсан НЭГЖ ТАЛБАРЫН тоо: 0 = өөрчлөлт байгаагүй, 1 = энэ талбар.
- *   ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): урьд нь БАГАНЫН тоо буцаадаг байсан
- *   тул нэг талбарын 3 багана засахад «3 талбар хадгалагдлаа» гэж бичигдэж, 3
- *   нэгж талбар засагдсан мэт уншигддаг байв.
  */
 export async function saveParcel(
   before: Parcel,
@@ -391,18 +300,12 @@ export async function saveParcel(
 ): Promise<number> {
   const d = diffParcel(before, patch);
   if (Object.keys(d).length === 0) return 0;
-  /* ⚠️ Эрхийг lib-д (2026-09-17) — урьд нь зөвхөн `GazarEdit`-ийн товч. */
   requireCap('gazar');
 
   await applyAll(PARCEL_LEFT.url, PARCEL_OID, {
     updates: [{ [PARCEL_OID]: before.oid, ...d }],
   });
 
-  /**
-   * ⚠️ БҮХ ХАМААРАЛТАЙ КЭШИЙГ ХАЯНА. `PARCEL_LEFT` түлхүүрт `loadClearance`,
-   * дашбоардын үлдсэн талбар, тайлан, схем, мөн (2026-08-31-нээс) `land.ts`-ийн
-   * `loadLandStatus` ба `parcelOverlap`-ийн геометрийн кэш бүртгэгдсэн.
-   */
   invalidate('PARCEL_LEFT');
   return 1;
 }

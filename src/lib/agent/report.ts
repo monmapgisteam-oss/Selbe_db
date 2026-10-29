@@ -1,12 +1,5 @@
 /**
  * ТАЙЛАН ФАЙЛ — ```report блокийн задлалт ба баримтын загвар (ЦЭВЭР логик).
- *
- * ⚠️ ҮНДСЭН ЗАРЧИМ: файлын АГУУЛГА нь хариулт ӨӨРӨӨ. Загвар блок дотор
- * өгөгдлийг дахин бичихгүй — зөвхөн гарчиг ба хүссэн форматуудыг нэрлэнэ.
- * Ингэснээр (1) токен нэмэгдэхгүй, (2) файл ба дэлгэц ХЭЗЭЭ Ч зөрөхгүй.
- *
- * ⚠️ `chart.ts`-ийн адил: загварын гаргасан JSON ТӨГС БАЙХ БАТАЛГААГҮЙ тул
- * задлалт хэзээ ч ШИДЭХГҮЙ — засах эсвэл `null` буцаана.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -40,8 +33,6 @@ export function parseReport(raw: string): ReportSpec | null {
 
   const title = String(o.title ?? '').trim().slice(0, MAX_TITLE);
 
-  /* ⚠️ Таних боломжгүй форматыг ЧИМЭЭГҮЙ хаяна (загвар «word», «excel» гэж
-     бичих нь бий — доорх ALIAS түүнийг барина). Үлдэгдэл хоосон бол ДӨРВҮҮЛЭЭ. */
   const raw1 = Array.isArray(o.formats) ? o.formats : [];
   const seen = new Set<ReportFormat>();
   for (const f of raw1) {
@@ -76,7 +67,6 @@ export type ReportTable = { name: string; head: string[]; rows: string[][] };
 
 /**
  * Файлд орох хүснэгтүүд — markdown хүснэгт БА графикийн өгөгдөл хоёулаа.
- * ⚠️ Нэр нь өмнөх `**тод**` гарчгаас (эс бөгөөс графикийн/тайлангийн нэрнээс).
  */
 export function reportTables(doc: ReportDoc): ReportTable[] {
   const out: ReportTable[] = [];
@@ -93,7 +83,6 @@ export function reportTables(doc: ReportDoc): ReportTable[] {
       out.push({
         name: b.spec.title || head || tr('График'),
         head: [tr('Шошго'), unit],
-        /* ⚠️ null = ХЭМЖИГДЭЭГҮЙ — хоосон нүд (0 БИШ) */
         rows: b.spec.data.map((d) => [d.label, d.value == null ? '' : String(d.value)]),
       });
     }

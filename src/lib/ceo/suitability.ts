@@ -1,50 +1,12 @@
 /**
  * CEO САМБАР — «Тохиромжтой байдлын үнэлгээ: норм зөрчсөн бүс/үзүүлэлт».
  *
- * Эх сурвалж нь `loadAnalysisCached()` (`@/lib/analysis/data`) — бүсийн
+ * Эх сурвалж нь `loadAnalysisCached` (`@/lib/analysis/data`) — бүсийн
  * давхарга + барилга + ногоон + зогсоол + дэд бүтцээс бүс бүрийн түүхий
  * үзүүлэлт (`raw`/`rawActual`). React hook (`useSuitability`) БИШ — самбар
  * нь `execData.ts:272-316`-ийн `byIndicator` давталтыг ЯГ давтана, гэхдээ
  * үзүүлэлт бүрд ХАМГИЙН МУУ ганц бүс биш, норм зөрчсөн БҮХ бүсийг хуримтлуулна
  * (`kpi.ts`: «бүрэн жагсаалт заавал»).
- *
- * ⚠️ ҮР ДҮН НЬ БҮСЭЭР (`A-14`, `Багц-2.1` …), БАГЦААР БИШ. Бүс → багцын
- *    зураглал репод байхгүй тул ЗОХИОХГҮЙ. Бүсийн id өөрөө «Багц…»-аар эхэлбэл
- *    тэр нь өөрөө багц гэж уншигдана — хүснэгтэд id-г тэр чигт нь бичнэ.
- *
- * ⚠️ `rawActual` уншина, `raw` БИШ (execData-ийн адил): `ASSUME_MET` нь `raw`-д
- *    `social`/`engineering`-ийг хүчээр «хангасан» болгодог. Оноо (`urbanScore`)
- *    харин `raw`-аар — оноололд таамаг үзүүлэлт нөлөөлөхгүй байх ёстой.
- *
- * ⚠️ `engineering` ХАСАГДСАН (хэрэглэгчийн шийдвэр 2026-08-24, execData): норм
- *    нь батлагдаагүй таамаг. `ref` (`greenCap`, `densityCap`) ба жин 0 — мөн адил.
- *
- * ⚠️ `@/lib/analysis/data` нь `@arcgis/core` (geometryEngine, rest/query)-ийг
- *    ШУУД импортолдог. Тиймээс түүнийг ЗӨВХӨН ачаалагчийн биед динамикаар
- *    импортолно — (1) нүүрийн chunk-д ArcGIS SDK ордоггүй, (2) энэ файлын цэвэр
- *    тооцоо (`computeSuitability`, `buildSuitabilityKpi`) Node-д сүлжээгүй
- *    тестлэгдэнэ (`suitability.check.mjs`).
- *
- * ⚠️ dataBus таг ХООСОН: төлөвлөлтийн давхаргууд порталаас бичигддэггүй тул
- *    хүчингүй болгох түлхүүр байхгүй. `loadAnalysisCached` өөрөө модулийн
- *    түвшинд кэштэй (хэдэн секундын тооцоо) — TTL ч хэрэггүй.
- *
- * ⚠️ i18n: `en.ts`-д БАЙГАА түлхүүрийг дахин ашиглана («Үзүүлэлт» · «Норм» ·
- *    «Утга» · «Зөрүү» · «Бүс» · «Төрөл» · «Оноо» · «дундаж оноо» ·
- *    «≤ {0} – {1}{2} (бүсийн төрлөөр)»). Энэ файл `en.ts`-ийг ӨӨРӨӨ засдаггүй —
- *    доорх 14 ШИНЭ түлхүүрийг `en.ts`-д нэмэх ёстой (эс бөгөөс
- *    `tools/i18n-extract.mjs` «дутуу» гэж унана; 2026-09-06-нд скриптээр
- *    шалгахад яг энэ 14 нь дутуу, бусад 9 нь байгаа):
- *      «Үзүүлэлт бүрээр»           → By indicator
- *      «Норм зөрчсөн бүс бүрээр»   → Zones breaching the standard
- *      «Бүсийн оноо — хамгийн муу» → Zone score — worst
- *      «Зөрчсөн бүс» → Zones breaching · «Дүгнэсэн бүс» → Zones assessed
- *      «Хамгийн муу бүс» → Worst zone · «Эх өгөгдөл» → Source data
- *      «батлагдаагүй» → unverified · «Зөрчсөн үзүүлэлт» → Indicators breached
- *      «үзүүлэлт норм зөрчсөн» → indicators breaching the standard
- *      «{0} бүс / {1}» → {0} zones / {1} · «{0} зөрчил» → {0} breaches
- *      «{0} үзүүлэлт батлагдаагүй эх өгөгдөлтэй» → {0} indicators with unverified source data
- *      «{0}: {1} бүс норм зөрчсөн (хамгийн муу {2})» → {0}: {1} zones breach the standard (worst {2})
  */
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
@@ -69,7 +31,7 @@ export type SuitFail = {
   indId: string;
   short: string;
   value: number;
-  /** ТУХАЙН БҮСИЙН норм — `gap` бодоход ашигласантай ижил (execData-ийн ⚠️) */
+  /** ТУХАЙН БҮСИЙН норм — `gap` бодоход ашигласантай ижил (execData) */
   norm: string;
   gap: number;
   assumed: boolean;
@@ -93,7 +55,7 @@ export type SuitZoneScore = {
   type: string;
   /** `urbanScore(z.raw)` — 0–100; бодогдохгүй бол null */
   score: number | null;
-  /** Хэмжсэн жингийн хувь (0–1) — `urbanScore().coverage`. ⚠️ 2026-10-22 (аудит) */
+  /** Хэмжсэн жингийн хувь (0–1) — `urbanScore.coverage`. 2026-10-22 (аудит) */
   coverage: number | null;
   /** Норм зөрчсөн үзүүлэлтийн тоо */
   fails: number;
@@ -116,7 +78,7 @@ export type SuitComputed = {
   assumedCount: number;
   avgScore: number | null;
   /**
-   * Оноолдог бүсээс хэмжсэн жин нь босгоос доош (оноогүй) бүсийн тоо — ⚠️ 2026-10-22 (аудит): урьд нь `ASSUME_MET`-ийн
+   * Оноолдог бүсээс хэмжсэн жин нь босгоос доош (оноогүй) бүсийн тоо — 2026-10-22 (аудит): урьд нь `ASSUME_MET`-ийн
    * таамгаар 100 оноо авч дундажийг 79.5 болгодог байв (хагасаас дээш хэмжигдсэн бүсүүдэд 53.5).
    */
   lowCoverage: number;
@@ -140,13 +102,6 @@ export function computeSuitability(
   /** Оноололд ОРУУЛАХ хасагдсан ангиллууд — анхдагч нь хуудасны анхдагч сонголт */
   scoreTypes: ReadonlySet<string> = ACTIVATABLE_ZONE_TYPES,
 ): SuitComputed {
-  /* ⚠️ ХАСАГДСАН бүс (`excluded` — ногоон байгууламж, одоо байгаа барилга)
-     зөрчилд тоологдохгүй: оноололд ч ордоггүй (execData-ийн адил).
-     ⚠️ 2026-09-25: ҮЛ ХАМААРАХ нь `scoreTypes` (идэвхжүүлж болох ангилал —
-     нийгмийн дэд бүтцийн бүс, газар чөлөөлөлт дутуу). «Тохиромжтой байдал»
-     хуудас тэдгээрийг АНХДАГЧААР оноолдог (`Suitability.tsx` `scoreOn`,
-     хэрэглэгчийн шийдвэр 2026-08-12) тул урьд нь CEO карт 17 бүсийг хасаж,
-     бүсийн тоо, дундаж оноо хуудаснаас зөрдөг байв. */
   const live = zones.filter((z) => !z.excluded || scoreTypes.has(z.type));
   const judged = judgedIndicators(indicators);
   const failsByZone = new Map<string, number>();
@@ -161,20 +116,16 @@ export function computeSuitability(
       const eff = normFor(ind, z.type);
       const v = z.rawActual[ind.id];
       const ok = passesNorm(v, eff);
-      /* ⚠️ null ≠ 0: утгагүй бүс дүгнэгдэхгүй — «хангасан» ч, «зөрчсөн» ч биш */
       if (ok == null || v == null) continue;
       scored += 1;
       if (ok) continue;
       fails += 1;
       const gap = normGap(v, eff) ?? 0;
-      /* ⚠️ Нормыг `eff`-ээс ЭНД хадгална — дэлгэцийн норм = зөрүү бодсон норм */
       const norm = normText(eff, fmtNorm);
       allFails.push({ zone: z.id, type: z.type, indId: ind.id, short: ind.short, value: v, norm, gap, assumed });
       failsByZone.set(z.id, (failsByZone.get(z.id) ?? 0) + 1);
       if (!worst || gap > worst.gap) worst = { zone: z.id, value: v, gap, norm };
     }
-    /* ⚠️ `byType` (FAR/BCR) — ерөнхий норм байхгүй, бүсийн төрлөөр өөр
-       (`DENSITY_BY_TYPE`): мужаар бичнэ (execData:292-303). */
     const capOf = (t: 'farMax' | 'bcrMax') => Object.values(DENSITY_BY_TYPE).map((d) => d[t]);
     const normLabel = ind.byType
       ? tr('≤ {0} – {1}{2} (бүсийн төрлөөр)',
@@ -196,8 +147,6 @@ export function computeSuitability(
 
   /* Оноо — execData:251 (`urbanScore(z.raw, INDICATORS, z.type)`), БҮХ бүсээр;
      хасагдсан бүсийн `raw` хоосон тул оноо нь null → дундажид орохгүй */
-  /* ⚠️ 2026-10-22 (аудит): хэмжсэн жин `MIN_MEASURED_SHARE`-ээс доош бүс оноогүй (`urbanScore`) → дундажид ОРОХГҮЙ;
-     тоо нь `lowCoverage`-аар ил (зөвхөн оноолдог `live` бүсээс) */
   const liveIds = new Set(live.map((z) => z.id));
   let lowCoverage = 0;
   const scoredList: SuitZoneScore[] = zones.map((z) => {
@@ -219,7 +168,6 @@ export function computeSuitability(
     indicatorsFailing: failingRows.length,
     assumedFailing: failingRows.filter((r) => r.assumed).length,
     assumedCount: byIndicator.filter((r) => r.assumed).length,
-    /* ⚠️ null ≠ 0: оноотой бүс байхгүй бол дундаж null, 0 биш */
     avgScore: valid.length ? valid.reduce((a, z) => a + z.score, 0) / valid.length : null,
     lowCoverage,
   };
@@ -269,7 +217,6 @@ export function buildSuitabilityKpi(c: SuitComputed, failed: readonly string[] =
   );
 
   /* (3) Бүсийн оноо — хамгийн муу N */
-  /* ⚠️ 2026-10-22 (аудит): «Хэмжсэн жин (%)» — оноо хэдэн хувь нь хэмжсэн өгөгдөлд тулгуурласныг ил */
   const t3 = table(
     tr('Бүсийн оноо — хамгийн муу'),
     [tr('Бүс'), tr('Төрөл'), tr('Оноо'), tr('Хэмжсэн жин (%)'), tr('Зөрчсөн үзүүлэлт')],
@@ -290,15 +237,11 @@ export function buildSuitabilityKpi(c: SuitComputed, failed: readonly string[] =
       text: tr('{0}: {1} бүс норм зөрчсөн (хамгийн муу {2})', r.short, r.fails, r.worst?.zone ?? ''),
     }));
 
-  /* ⚠️ Зөвхөн БОДИТ тоотой хэсгүүд — оноо null бол тэр хэсгийг бичихгүй */
   const facts: string[] = [];
   if (loaded) {
     facts.push(tr('{0} бүс / {1}', c.zonesFailing, c.scoredZones));
     facts.push(tr('{0} зөрчил', c.pairs));
-    /* ⚠️ «дундаж оноо» нь `en.ts`-д БАЙГАА түлхүүр — «дундаж оноо {0}» гэж
-       шинэ түлхүүр зохиохгүй, тоог ард нь залгана */
     if (c.avgScore != null) facts.push(`${tr('дундаж оноо')} ${num(c.avgScore, 0)}`);
-    /* ⚠️ 2026-10-22 (аудит): оноогүй үлдсэн бүсийн тоо — дундаж хэдэн бүсээс бодогдсоныг ил */
     if (c.lowCoverage > 0) {
       facts.push(tr('{0} бүсийн өгөгдөл хангалтгүй (хэмжсэн жин < {1}%)', c.lowCoverage, Math.round(MIN_MEASURED_SHARE * 100)));
     }
@@ -321,26 +264,16 @@ export function buildSuitabilityKpi(c: SuitComputed, failed: readonly string[] =
     issues,
     /* Төлөвлөлтийн давхаргад огнооны талбар байхгүй */
     asOf: null,
-    /* ⚠️ 2026-10-21 (кодын хяналт): `loadAnalysis`-ийн унасан эх (автобус · LRT · инженерийн давхарга) — урьд нь
-       `[]` гэж хатуу өгч дутуу өгөгдлөөр бодсон оноог анхааруулгагүй, сешн дуустал кэшилдэг байв. */
     failedSources: [...failed],
   };
 }
 
 /* ══════════════ Ачаалагч ══════════════ */
 
-/**
- * ⚠️ Ганц эх сурвалж: `loadAnalysisCached` унавал ЮУ Ч ачаалагдаагүй тул
- *    алдааг дамжуулна (`cached` нь унасан амлалтыг кэшлэхгүй — дахин оролдоно).
- */
 export const loadSuitabilityKpi = cached(async (): Promise<KpiResult> => {
   const { loadAnalysisCached, computeRaw, defaultGreenCats } = await import('@/lib/analysis/data');
   const data = await loadAnalysisCached();
-  /* execData-ийн адил анхдагч ногоон ангилал + зогсоолын арга — `raw`/`rawActual`-ыг бөглөнө.
-     ⚠️ 2026-09-25: `scoreTypes` = хуудасны АНХДАГЧ (`ACTIVATABLE_ZONE_TYPES`) —
-     түүнгүй бол тэдгээр бүсийн `raw` хоосорч, `computeSuitability` оруулсан ч
-     утгагүй болно. */
+  /* execData-ийн адил анхдагч ногоон ангилал + зогсоолын арга — `raw`/`rawActual`-ыг бөглөнө. */
   computeRaw(data.zones, defaultGreenCats(), PARKING, new Set(ACTIVATABLE_ZONE_TYPES));
   return buildSuitabilityKpi(computeSuitability(data.zones), data.failed);
-  /* ⚠️ 2026-10-21: дутуу (failedSources) үр дүнг кэшлэхгүй — дараагийн нээлт дахин оролдоно (`kpiComplete`) */
 }, SESSION_TTL_MS, [], kpiComplete);

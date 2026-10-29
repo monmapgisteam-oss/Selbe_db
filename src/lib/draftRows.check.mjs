@@ -258,7 +258,6 @@ const frame1 = buildFrame(FR1, ['5/1', '5/2']);
   const sp = w.rows.get('w:d77:1');
   ok(sp.a[COL.gs] === Date.UTC(2026, 0, 1) && sp.a[COL.ps] == null, 'гэрээний муж → geree_ehleh (төлөвлөгөөт биш)');
   ok(w.rows.has('b:s:d77:1') && w.rows.get('b:s:d77:1').base, 'суурь null → хоосон суурь мөр');
-  /* ⚠️ 2026-10-26 (R-H1): хуучин/шинэ жаазны давхардсан oid нэг ажилд — Map-ын дарааллаас үл хамааран ШИНЭ нь (утга + mur_oid) */
   {
     const ctxD = { n: 1, rows: new Map([[600, { spans: [], ham: null, aStart: [], aEnd: [], hun: null, mashin: null, des: 88, no: '1', work: 'Шал' }]]), bld: [''] };
     const rkD = new Map([[37001, { des: 88, no: '1', work: 'Шал' }]]);
@@ -671,7 +670,6 @@ function isEmptyRow2(a) { return !a || (a[COL.ob] == null && a[COL.act] == null 
   /* 13e. Жааз үл мэдэгдэх → `blok` NULL ('Ажил' биш) */
   const sp = { cells: [['101:3', '5']], dates: [], rowKeys: [[101, '1.1 ¦ Ухалт']], asOf: null };
   eq(subToRows(sp, null).get('w:o101:3')?.[COL.blk] ?? null, null, 'жаазгүй — blok NULL');
-  /* ⚠️ 2026-10-26: нэр үл мэдэгдэх → `blok` attrs-д ОРОХГҮЙ (шинэ мөрөнд NULL, байгаа мөрийн нэрийг дарахгүй) */
   ok(!(COL.blk in subToRows(sp, null).get('w:o101:3')), 'жаазгүй — blok илгээгдэхгүй');
   {
     const rowsB = [
@@ -705,7 +703,6 @@ function isEmptyRow2(a) { return !a || (a[COL.ob] == null && a[COL.act] == null 
 
 /* ══════════ 14. Тулгалт/Phase B — ШИЛЖСЭН илгээлтийн толгой (2026-10-26) ══════════ */
 {
-  /* ⚠️ шилжсэн `sub|`/`done|` толгой `mur_turul='tolgoi'` болдог — урьд `IS NULL`-ээр л уншиж тулгалт/Phase B-ээс бүрэн гардаг байв */
   const f = fresh();
   f.seed({ dkey: 'b1_9f', usr: 'a', pkg: 'b1_9f', at: 1, payload: '{}' });
   f.seed({ dkey: 'sub|b1_9f|x', usr: 'a', pkg: 'b1_9f', at: 2, payload: '{}' });
@@ -720,7 +717,6 @@ function isEmptyRow2(a) { return !a || (a[COL.ob] == null && a[COL.act] == null 
 
 /* ══════════ 15. Хуваарийн бичилтийн хувилбарын тулгалт (`expectAt`, 2026-10-26) ══════════ */
 {
-  /* ⚠️ уншилтгүй бичилт (`flushNow`) хамтрагчийн шинэ нүдийг цэвэрлэж байв — `fillStore.saveRemoteDraft`-тай ижил тулгалт */
   const f = fresh();
   const A = new Map(); const B = new Map();
   const key = hdKey('plan', 'b41_9f');

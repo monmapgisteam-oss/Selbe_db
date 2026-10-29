@@ -1,17 +1,5 @@
 /**
  * AI ТУСЛАХЫН ТАЙЛАН — Excel (.xlsx).
- *
- * ⚠️ ШИНЭ САН НЭМЭХГҮЙ: `src/lib/xlsx.ts`-ийн гараар бичсэн OOXML бичигчийг
- * дууддаг (`buildXlsx`). Тэнд STORE ZIP, inlineStr ашигладаг тул zlib ч
- * шаардахгүй.
- *
- * ⚠️ БҮТЭЦ (2026-10-15, хэрэглэгчийн шийдвэр): файлыг нээхэд ЭХНИЙ ХУУДАС нь
- * ХҮСНЭГТ байх ёстой. Урьд нь эхний хуудас нь агентын бичвэр (гарчиг, догол
- * мөр, жагсаалт) байсан тул Excel нээхэд А баганад текст урсаж, өгөгдөл хойно
- * үлддэг байв. Одоо: хүснэгт бүр урдаа, тайлбар нь ХАМГИЙН СҮҮЛД.
- *
- * ⚠️ Нүднүүд ЖИНХЭНЭ ТОО (`reportCells.typeTable`) — хувь нь 0–1 + `0.0%`
- * формат. Текстээр бичвэл нийлбэр/эрэмбэ/диаграм ажиллахгүй.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -20,9 +8,7 @@ import { headingOf } from './blocks';
 import { reportTables, type ReportDoc } from './report';
 import { colHeader, plain, typeTable, type TypedTable } from './reportCells';
 
-/* ── Загварууд — `modules/sheet/fill/sheetXlsx.ts`-ийн хэв маягаар ──
-   ⚠️ `xlsx.ts`-ийн фонт нь Arial 10 ТОГТМОЛ: зөвхөн тод/өнгө/хүрээ/байрлал
-   өөрчлөгдөнө. «Том гарчиг» хийх боломжгүй тул тодоор л ялгана. */
+/* ── Загварууд — `modules/sheet/fill/sheetXlsx.ts`-ийн хэв маягаар ── */
 const C_HEAD = 'E7ECF2';
 
 const S_TITLE: XlsxStyle = { bold: true };
@@ -49,8 +35,6 @@ function styler() {
 
 /**
  * Баганын өргөн — ХАРАГДАХ бичвэрийн уртаар (кирилл арай өргөн тул ×1.1).
- * ⚠️ 2026-10-15: урьд нь `{v,s}` объектыг `String()`-ээр хэмждэг байсан тул
- *    загвартай нүд бүр «[object Object]» = 15 тэмдэгт гэж бодогддог байв.
  */
 function widthOf(texts: string[]): number {
   const len = Math.max(0, ...texts.map((t) => t.length));
@@ -103,8 +87,6 @@ function noteSheet(doc: ReportDoc): XlsxSheet {
 export function buildChatXlsx(doc: ReportDoc): Uint8Array {
   const sty = styler();
   const sheets: XlsxSheet[] = reportTables(doc).map((t) => tableSheet(typeTable(t), sty));
-  /* ⚠️ Тайлбар нь ХАМГИЙН СҮҮЛД — Excel эхний хуудсыг нээдэг тул тэнд ХҮСНЭГТ
-     байх ёстой. Хүснэгт огт байхгүй бол тайлбар ганцаараа үлдэнэ. */
   sheets.push(noteSheet(doc));
   return buildXlsx(sheets);
 }

@@ -2,28 +2,6 @@
 
 /**
  * IPC — ОЛГОСОН САНХҮҮЖИЛТ, ГЭРЭЭГЭЭР БҮЛЭГЛЭСЭН УНШИГДАХУЙЦ ХАРАГДАЦ.
- *
- * ⚠️ ЭНЭ БОЛ IPC-ИЙН ЦОРЫН ГАНЦ ХУУДАС (2026-09-09, хэрэглэгчийн шаардлага:
- * «IPC service дээрх бүх мэдээллийг харах ёстой НЭГ page байх ёстой»).
- * Түүхий 37 баганат хүснэгт навигациас ХАСАГДСАН тул үйлчилгээний талбар
- * бүр ЭНД харагдах ЁСТОЙ:
- *   · ТӨЛБӨРИЙН талбар (мөр бүрд өөр) → хүснэгтийн мөрөнд
- *   · ГЭРЭЭНИЙ талбар (мөрд давтагддаг) → дэлгэрэнгүйд, НЭГ УДАА
- * Шинэ талбар нэмэгдвэл `ipcTable.ts`-ийн `DETAIL_SPEC`-д ЗААВАЛ нэм —
- * эс бөгөөс тэр мэдээлэл хэрэглэгчид ХЭЗЭЭ Ч харагдахгүй.
- *
- * ⚠️ ЗАСВАР ЭНД БАЙХГҮЙ — энэ нь ЗӨВХӨН УНШИХ харагдац. Засварын код нь
- * `Finance.tsx`-ээс 2026-09-30-нд устгагдсан (`IpcRawTableUnused`, хэрэглэгддэггүй байв).
- *
- * ⚠️ НИЙЛБЭР ЭНД БОДОГДОХГҮЙ. Бүх тоо `groupHo()` → `contractBlocks()`-оос
- * ирнэ; тэдгээр нь гэрээний давхардлыг аль хэдийн арилгасан. Энэ файлд
- * `rows.reduce(...)` мэт нийлүүлэлт БИЧИХГҮЙ — Багц-4.1 (7 мөр) -ийн төсөв
- * 7 дахин давхардана.
- *
- * ⚠️ ГҮЙЦЭТГЭЛИЙН 3 БАГАНА (обьём · үнэ · зөрүү) нь ӨГӨГДӨЛТЭЙ үедээ л
- * гарна (хэрэглэгчийн шийдвэр 2026-09-09: «байгаа нь гарна, байхгүй нь
- * хоосон»). Одоогоор 45/45 хоосон тул харагдахгүй; бөглөгдмөгц
- * автоматаар нээгдэнэ.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -47,8 +25,6 @@ import s from './ipcTable.module.css';
 
 /**
  * ГҮЙЦЭТГЭЛЭЭС ҮҮССЭН (AUTO) мөрийн өдөр — `AUTO|<багц>|YYYY-MM-DD` (2026-09-29).
- * ⚠️ IPC баримт татах товч ЗӨВХӨН эдгээр картад: гараар оруулсан IPC-үүд бөглөлтийн
- *    архив эхлэхээс (2026-09-03) өмнөх тул тэр сарын гүйцэтгэл системд алга.
  */
 const autoDayOf = (r: PayRow): string | null => {
   if (!r.id.startsWith(AUTO_PREFIX)) return null;
@@ -56,11 +32,6 @@ const autoDayOf = (r: PayRow): string | null => {
   return m ? m[1] : null;
 };
 
-/**
- * ⚠️ `null` ба `0`-ийг ЯЛГАНА. `mnt()` нь `0`-ийг «—» болгодог тул шууд
- * хэрэглэвэл «тэг төлбөр» ба «хэмжигдээгүй» хоёр нэг харагдана. Энд
- * `null` бол «—», жинхэнэ `0` бол «0 ₮».
- */
 const money = (v: number | null): string => {
   if (v == null) return '—';
   if (v === 0) return tr('0 ₮');
@@ -70,7 +41,7 @@ const money = (v: number | null): string => {
 /** Обьём — нэгж холилдсон тул тоог нь л харуулна (₮ БИШ) */
 const vol = (v: number | null): string => (v == null ? '—' : num(Math.round(v)));
 
-/** Түүхий утгыг тоо руу — тоо биш бол `null`. ⚠️ `0` нь ЖИНХЭНЭ тэг. */
+/** Түүхий утгыг тоо руу — тоо биш бол `null`. `0` нь ЖИНХЭНЭ тэг. */
 const num2 = (v: unknown): number | null => {
   if (v == null || v === '') return null;
   const x = Number(v);
@@ -79,22 +50,10 @@ const num2 = (v: unknown): number | null => {
 
 /**
  * ТӨЛБӨРИЙН ОГНОО — `YYYY-MM-DD`.
- *
- * ⚠️ Ерөнхий `date()` хэрэглэхгүй: тэр нь `toLocaleDateString('mn-MN')`
- * дуудах бөгөөд Chrome үүнийг `09/25/2025` (сар/өдөр/жил) гэж гаргадаг.
- * Энэ хүснэгт нь ЦАГ ХУГАЦААНЫ дараалалтай — олон арван мөрийг нүдээр
- * гүйлгэхэд `YYYY-MM-DD` нь эрэмбэтэй нэг мөр болж уншигдана, мөн
- * сар/өдрийн дараалал эргэлзээ төрүүлэхгүй.
- *
- * ⚠️ `guilgee_ognoo` нь аль хэдийн `YYYY-MM-DD` мөр (эсвэл ms epoch) —
- * эхний 10 тэмдэгтийг ШУУД авна. Танихгүй хэлбэрийг ГАЖУУДУУЛАХГҮЙ,
- * түүхий утгаар нь харуулна.
  */
 const payDate = (v: unknown): string => {
   if (v == null || v === '') return '—';
   if (typeof v === 'number' && Number.isFinite(v)) {
-    /* ⚠️ ОРОН НУТГИЙН огноо (`dayKey`) — UTC slice нь +08 бүсэд шөнийн
-       гүйлгээг ӨМНӨХ өдөрт буулгадаг (2026-09-15-ны аудит). */
     return dayKey(v);
   }
   const s2 = String(v);
@@ -111,8 +70,6 @@ function Head({
   open: boolean;
   onToggle: () => void;
 }) {
-  /* ⚠️ Хувь нь 0–100 — `pct()` 100-аар үржүүлдэггүй. Мөн `null` үед
-     туузыг ОГТ зурахгүй (0% гэж зурвал «олгоогүй» гэж худлаа уншигдана). */
   const p = b.paidPct;
   const tip = useTip();
   return (
@@ -127,7 +84,6 @@ function Head({
           <span className={s.gTitle}>{b.title}</span>
           <span className={s.gMeta}>{b.contractor || '—'}</span>
           <span className={s.gCount}>
-            {/* ⚠️ 2026-09-29 (аудит 10): `dun`-гүй AUTO мөр төлбөр биш (`payCount`) */}
             {tr('{0} төлбөр', num(payCount(b.rows)))}
           </span>
           <span className={s.gSpacer} />
@@ -139,9 +95,6 @@ function Head({
             <span className={s.gSumLbl}>{tr('олгосон')}</span>
             {money(b.paidTotal)}
           </span>
-          {/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): порталын хэвтээ баганын КАНОН —
-              утга ДЭЭР (`--ink-2`, `.num`), доор 2px зам (`--chart-track`); hover `useTip`.
-              Урьд нь 6px тууз | хувь нэг эгнээ байв. */}
           <span
             className={s.gPct}
             {...tip.bind({
@@ -150,8 +103,6 @@ function Head({
               hint: `${tr('олгосон')} ${money(b.paidTotal)} / ${tr('гэрээт')} ${money(b.contractTotal)}`,
             })}
           >
-            {/* ⚠️ Тууз нь ЗӨВХӨН хэмжигдсэн үед. Өргөнийг 100-д таслав —
-                хэтэрсэн гэрээ (>100%) туузыг нүднээс гаргахгүй. */}
             {p == null ? (
               <span className={s.gPctNone}>—</span>
             ) : (
@@ -176,16 +127,11 @@ function Head({
 
 /**
  * Гэрээний бүх үлдсэн талбар — дэлгэсэн бүлгийн ЭХНИЙ мөрөнд.
- *
- * ⚠️ ЭНЭ БАЙХГҮЙ БОЛ мэдээлэл АЛДАГДАНА: түүхий хүснэгт хасагдсан тул
- * `tosol_ner`, `huuliin_undeslel`, захирамжууд, эх үүсвэрийн задаргаа
- * зэргийг өөр ХААНААС Ч харах боломжгүй.
  */
 function Details({ b }: { b: ContractBlock }) {
   const fmt = (d: Detail): string => {
     if (d.kind === 'money') return money(num2(d.value));
     if (d.kind === 'date') return payDate(d.value);
-    /* ⚠️ 'pair' нь аль хэдийн нэгтгэгдсэн текст — дахин форматлахгүй */
     return String(d.value);
   };
   /** Нэг бүлгийн тодорхойлолтын жагсаалт */
@@ -193,7 +139,6 @@ function Details({ b }: { b: ContractBlock }) {
     <dl className={s.dl}>
       {items.map((d) => (
         <div className={s.dItem} key={d.field}>
-          {/* ⚠️ Хосолсон мөрд өөрийн шошиг («Захирамж 1») — толины нэр биш */}
           <dt className={s.dt}>{d.label ?? finFieldLabel(d.field)}</dt>
           <dd className={`${s.dd} ${d.kind === 'money' ? s.ddNum : ''}`}>
             {fmt(d)}
@@ -204,11 +149,6 @@ function Details({ b }: { b: ContractBlock }) {
   );
   return (
     <div className={s.dCell}>
-        {/* ⚠️ ХОЁР БАГАНА (хэрэглэгчийн шийдвэр 2026-09-09: «хүснэгт харахад
-            ойлгомжгүй»). Урьд нь 6 баганат нэг сүлжээ байсан тул нүд юуг
-            эхэлж унших нь тодорхойгүй, ойролцоо талбарууд (захирамжийн
-            огноо ↔ дугаар) хол тарж байв. Одоо бүлэг бүр өөрийн гарчигтай,
-            дотроо ДЭЭРЭЭС ДООШ уншигдана. */}
         <div className={s.dCols}>
           {b.details.map((g) => (
             <section className={s.dGrp} key={g.title}>
@@ -216,8 +156,6 @@ function Details({ b }: { b: ContractBlock }) {
               <Rows items={g.items} />
             </section>
           ))}
-          {/* ⚠️ «Олгосон»-ы задаргаа — урьдчилгаа vs гүйцэтгэл. Эх өгөгдөлд
-              ийм багана БАЙХГҮЙ, бодогдсон утга тул тусдаа бүлэгт. */}
           <section className={s.dGrp}>
             <h4 className={s.dGrpTitle}>{tr('ОЛГОЛТ')}</h4>
             <dl className={s.dl}>
@@ -232,9 +170,6 @@ function Details({ b }: { b: ContractBlock }) {
             </dl>
           </section>
         </div>
-        {/* ⚠️ Эх сурвалж эвдэрсний ДОХИО — чимээгүй өнгөрөөвөл буруу тоо
-            тайланд орно. Амьдаар 45/45 таарсан тул энэ ХЭЗЭЭ Ч гарах
-            ёсгүй; гарвал эх өгөгдөл өөрчлөгдсөн гэсэн үг. */}
         {b.savingMismatch && (
           <p className={s.warn}>
             {tr('⚠️ Хадгалагдсан «Хэмнэлт / хэтрэлт» нь төсөв − гэрээт төсвийн зөрүүтэй таарахгүй байна — эх өгөгдлийг шалгана уу.')}
@@ -248,23 +183,9 @@ function Details({ b }: { b: ContractBlock }) {
 
 /**
  * НЭГ ТӨЛБӨР = НЭГ КАРТ.
- *
- * ⚠️ Хэрэглэгчийн шийдвэр (2026-09-09): «нэг ipc нэг нүдэн бүх мэдээлэл
- * агуулна». Хүснэгтийн мөр нь багана бүрийг ТОЛГОЙТОЙ нь тулгаж уншихыг
- * шаарддаг (мөр доош гүйхэд толгой нүднээс гардаг) — картад шошго нь
- * утгынхаа ХАЖУУД байна.
- *
- * ⚠️ Хоосон талбарыг ОГТ гаргахгүй: урьдчилгаад обьём/зөрүү/хуримтлал
- * байхгүй тул тэдгээр мөр картад ОРОХГҮЙ («—» гэж зай эзлэхгүй).
  */
 /**
  * Картын нэг мөр.
- *
- * ⚠️ МОДУЛИЙН ТҮВШИНД: `PayCard` дотор тодорхойлбол render бүрд шинэ
- * төрөл болж, React мөр бүрийг дахин байгуулна.
- *
- * ⚠️ Утга `null` байсан ч мөр ГАРНА («—»). Нуувал карт дутуу болж,
- * «энэ IPC-д обьём хэмжигдээгүй» гэдэг чимээгүй өнгөрнө.
  */
 function Line({ k, v, cls }: { k: string; v: string; cls?: string }) {
   return (
@@ -284,21 +205,12 @@ function PayCard({ r, ipcNo, onDoc, late }: {
   ipcNo?: number;
   /** IPC баримт татах (2026-09-29) — AUTO картад л */
   onDoc?: () => void;
-  /**
-   * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): энэ сард АНХ агшинтай болсон (орой эхэлсэн)
-   * хуудсууд (`ipcDoc.lateSheetsOf`) — тайлант үед гэрээний эхнээс хуримтлагдсан ажил орсон.
-   */
   late?: string[];
 }) {
   return (
     <article className={`${s.card} ${r.advance ? s.cardAdv : ''}`}>
-      {/* ── ТОЛГОЙ: IPC дугаар + ХУГАЦАА ──
-          ⚠️ Огноо БАЙВАЛ огноо, ЭС БӨГӨӨС он. Автоматаар үүссэн мөрд
-          `guilgee_ognoo` хоосон (гүйлгээ хийгдээгүй) тул зөвхөн огноо
-          харуулбал толгой «—» болж, ганц мэдэгдэж буй хугацааны утга
-          (он) доор нуугдана. ⚠️ Он нь ТАНИГЧ — мянгатын таслалгүй. */}
+      {/* ── ТОЛГОЙ: IPC дугаар + ХУГАЦАА ── */}
       <header className={s.cardHd}>
-        {/* ⚠️ AUTO мөр (гүйцэтгэлээс үүссэн) — «Гүйцэтгэл» биш IPC дугаараар (2026-09-29) */}
         <span className={r.advance ? s.tagAdv : s.tagIpc}>
           {onDoc && ipcNo ? `IPC-${String(ipcNo).padStart(2, '0')}` : r.code}
         </span>
@@ -313,31 +225,18 @@ function PayCard({ r, ipcNo, onDoc, late }: {
         {/* ── БАРИМТ ── */}
         <Line k={tr('Захирамж')} v={r.orderNo || '—'} />
 
-        {/* ── БОДИТ ГҮЙЦЭТГЭЛ ──
-            ⚠️ Обьём нь IPC-ийн ОГНООНД тохирох бөглөлтийн агшнаас
-            (`ipcLink.snapAt`), мөнгөн дүн нь тэр обьём × нэгж өртөг.
-            Одоогоор 45/45 хоосон: IPC-үүд 2026-03…08-д, бөглөлтийн архив
-            2026-09-03-аас эхэлдэг тул таарах агшин алга. Цаашид
-            санхүүжилт ЭНЭ тооноос бодогдоно.
-            ⚠️ 2026-09-25: `guits_obyem`/`guits_une`/`guits_zoruu` нь ЗӨВХӨН
-            AUTO мөрөнд (`ipcAutoWrite`) бөглөгдөнө. Гараар оруулсан IPC мөр
-            холбогдохгүй — `ipcLink.linkContract`-ийг production-д хэн ч
-            дууддаггүй тул тэдгээрт энэ хэсэг «—» хэвээр. */}
+        {/* ── БОДИТ ГҮЙЦЭТГЭЛ ── */}
         <div className={s.sep} />
         <h5 className={s.sect}>{tr('Бодит гүйцэтгэл')}</h5>
         <Line k={tr('Обьём')} v={vol(r.obyem)} />
         <Line k={tr('Мөнгөн дүн')} v={money(r.une)} />
 
-        {/* ── ОЛГОЛТ ── ⚠️ картын ГОЛ тоо, томоор */}
+        {/* ── ОЛГОЛТ ── картын ГОЛ тоо, томоор */}
         <div className={s.sep} />
         <div className={s.big}>
           <span className={s.bigLbl}>{tr('Олгосон')}</span>
           <span className={s.bigNum}>{money(r.amount)}</span>
         </div>
-        {/* ⚠️ Зөрүүг ӨНГӨӨР ялгана: илүү олгосон нь анхаарал татах ёстой.
-            `null` үед өнгөгүй «—» — «таарсан» гэж уншигдахгүй.
-            ⚠️ Цаашид санхүүжилт обьёмоос бодогдох тул зөрүү 0 байх ЁСТОЙ;
-            хуучин 22 IPC нь өөр аргаар олгогдсон тул «—». */}
         <Line
           k={tr('Зөрүү')}
           v={money(r.zoruu)}
@@ -364,8 +263,6 @@ function PayCard({ r, ipcNo, onDoc, late }: {
 /**
  * ОЛОН ХУУДАСТАЙ багцуудын хуудас бүрийн ЭХНИЙ агшин (`ipcDocLoad.loadSheetStarts`) —
  * орой эхэлсэн хуудсын анхааруулга (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- * ⚠️ Унасан багц Map-д орохгүй — анхааруулга гарахгүй ч картууд хэвийн (баримт нээхэд
- *    `buildIpcDoc` өөрөө дахин шалгана).
  */
 function useSheetStarts(packKeys: readonly string[]): Map<string, IpcSheetStart[]> {
   const [m, setM] = useState<Map<string, IpcSheetStart[]>>(() => new Map());
@@ -397,37 +294,20 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
   const sorted = useMemo(() => sortBlocks(blocks, sort), [blocks, sort]);
   const showObyem = useMemo(() => anyObyem(blocks), [blocks]);
   const t = useMemo(() => ipcTotals(blocks), [blocks]);
-  /* ⚠️ 2026-10-01 (ШИЙДВЭР, «хэрэглэгч: бүгдийг зас»): толгойн хувь = порталын НЭГ
-     тодорхойлолт (`paidShare`, `reportData.loadFinance` — кэштэй, Тайлан/CEO-тэй нэг дуудлага).
-     Уншигдаагүй бол HO-ийн хувь «HO хүснэгтээр» гэж ил (`ipcHeadShare`-ийн ⚠️). */
   const finQ = useAsync(() => loadFinance(), []);
   const head = useMemo(() => ipcHeadShare(t, finQ.state === 'ready'
     ? {
       contract: finQ.data.contractAmount,
-      /* ⚠️ 2026-10-09: `paidShare.pct`-ийг шууд — HO хоосон үед `null` («—»); урьд нь
-         `paidPctOf(0, contract)` = «0%» гэж дахин боддог байв. */
       pct: finQ.data.paid == null ? null : finQ.data.paidPct ?? paidPctOf(finQ.data.paidContracted, finQ.data.contractAmount),
       paidOther: finQ.data.paidOther,
     }
     : null), [t, finQ.state, finQ.data]);
-  /* ⚠️ 2026-10-01: AUTO карттай ОЛОН хуудастай багцууд л (Багц 1 · 2 · 4.2) — бусдад асуулга явахгүй */
   const multiPacks = useMemo(() => [...new Set(blocks
     .filter((b) => b.rows.some((r) => autoDayOf(r) != null))
     .map((b) => pkgKeyOf(b.code))
     .filter((k) => k && sheetsOf(k).length > 1))].sort(), [blocks]);
   const starts = useSheetStarts(multiPacks);
 
-  /* ⚠️ Түлхүүр нь `code` — кодгүй гэрээ (амьдаар ХО-0045) `''` болно.
-     Тиймээс индексийг ХАМТ хэрэглэнэ, эс бөгөөс хоёр кодгүй гэрээ
-     нэг зэрэг нээгдэж хаагдана. */
-  /* ⚠️ 2026-09-29 (аудит 10): индекс нь ЭРЭМБЭЛЭЭГҮЙ `blocks`-ийнх. Урьд нь
-     эрэмбэлсэн массивын индекс байсан тул эрэмбэ солиход хураасан төлөв ӨӨР
-     гэрээнд шилждэг байв. `sortBlocks` объектыг хуулдаггүй тул лавлагаагаар
-     олдоно. */
-  /* ⚠️ 2026-10-21: ТОГТВОРТОЙ түлхүүр — гэрээний код → (кодгүй бол) гэрээний дугаар → төлбөрийн мөрийн
-     хамгийн бага OBJECTID; ижил суурьтай хэд байвал л дарааллын дугаар. Урьд нь `код#индекс` (эрэмбэлээгүй
-     `blocks`-ийн) байсан тул дахин ачаалалтаар гэрээ нэмэгдэх/хасагдахад индекс шилжиж ӨӨР бүлэг хураагдаж,
-     `shut` нь хэзээ ч цэвэрлэгддэггүй тул `allShut` (size ≥ length) буруу тоолдог байв. */
   const keyMap = useMemo(() => {
     const m = new Map<ContractBlock, string>();
     const seen = new Map<string, number>();
@@ -441,7 +321,6 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
     return m;
   }, [blocks]);
   const keyOf = (b: ContractBlock) => keyMap.get(b) ?? `?:${b.code}`;
-  /* ⚠️ 2026-10-21: одоо БАЙХГҮЙ гэрээний түлхүүрийг тооцохгүй, дараагийн солилтод хаяна */
   const liveKeys = useMemo(() => new Set(keyMap.values()), [keyMap]);
   const prune = (p: Set<string>) => new Set([...p].filter((k) => liveKeys.has(k)));
 
@@ -463,8 +342,6 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
               money(t.contract),
               money(t.paid),
             )}
-            {/* ⚠️ 2026-10-01: хувь нь `paidShare` (Тайлан · CEO · ТУХ-тай нэг). Хувьд ороогүй
-                олголтыг хольж хөөрөгдөхгүй, харин нуухгүй — тусад нь нэрлэнэ. */}
             {head.src === 'cashflow' ? (
               <>
                 {' · '}{tr('гэрээлсэн дүн {0} (Cashflow)', money(head.contract))}
@@ -485,7 +362,6 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
         </div>
         <div className={s.hdR}>
           <label className={s.sortLbl} htmlFor="ipc-sort">{tr('Эрэмбэ')}</label>
-          {/* ⚠️ 2026-10-23: `data-rep-skip` — ЭРЭМБЭ, шүүлт биш (`viewReport.readFilters`) */}
           <select
             id="ipc-sort"
             data-rep-skip=""
@@ -494,7 +370,6 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
             onChange={(e) => setSort(e.target.value as SortKey)}
           >
             <option value="paid">{tr('Олгосон дүнгээр')}</option>
-            {/* ⚠️ 2026-10-26 (аудит): `paidPct` = олгосон ÷ гэрээт — «гүйцэтгэл» нь биет ажлын хувь гэж уншигддаг байв */}
             <option value="pct">{tr('Олгосон хувиар')}</option>
             <option value="contract">{tr('Гэрээт төсвөөр')}</option>
             <option value="pkg">{tr('Багцын нэрээр')}</option>
@@ -505,9 +380,6 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
         </div>
       </header>
 
-      {/* ⚠️ ХҮСНЭГТ БИШ, ЖАГСААЛТ (2026-09-09): төлбөр бүр КАРТ болсон тул
-          нийтлэг `<table>` баганын бүтэц шаардлагагүй. Гэрээ бүр нь
-          толгой + дэлгэрэнгүй + картын сүлжээ. */}
       <div className={s.list}>
         {sorted.map((b) => {
           const k = keyOf(b);
@@ -530,10 +402,6 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
                     {(() => {
                       const packKey = pkgKeyOf(b.code);
                       const docOk = hasIpcDoc(packKey);
-                      /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): IPC дугаар = гэрээ бүрд
-                         ДАРААЛСАН (`ipcTable.ipcNumbers` — байгаа дугаарын дараагийнх, AUTO нь
-                         өдрөөр). Урьд нь харагдах мөрийн тоолуур байсан тул дугааргүй AUTO
-                         мөрийн эрэмбэ ба гар мөрийн цоорхойгоос дугаар гаждаг байв. */
                       const nos = ipcNumbers(b.rows, autoDayOf);
                       const st = starts.get(packKey);
                       return b.rows.map((r) => {

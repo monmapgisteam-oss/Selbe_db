@@ -1,10 +1,6 @@
 /**
  * `tools/testRun.mjs` — шалгуур бүрийн ХУГАЦААНЫ ХЯЗГААР (2026-10-01).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs tools/testRun.check.mjs
- *
- * ⚠️ Гацсан (үүрд ажилладаг) скрипт хязгаарт АЛАГДАЖ, «⏱ ГАЦСАН» мессежтэй
- *    унасан гэж буцах ёстой — `npm test`/deploy-г түгжихгүй. Энгийн скриптийн
- *    гаралт · exit код өөрчлөгдөөгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs tools/testRun.check.mjs
  */
 import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';

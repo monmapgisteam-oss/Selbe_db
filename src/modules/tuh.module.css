@@ -3,19 +3,11 @@
 
      ┌──────────────── агуулга (гүйлгэнэ) ─────────────┬── ЗУРАГ ──┐
      │ hero · KPI · хэсгүүд (жишээ HTML-ийн дарааллаар) │  байнга   │
-     └─────────────────────────────────────────────────┴───────────┘
-
-   ⚠️ ӨНГӨ БҮГД ГЛОБАЛ ТОКЕН (`globals.css`) — жишээ HTML-ийн өнгө/фонтыг
-      ХУУЛАХГҮЙ (хэрэглэгчийн заавар: «загварыг бүрэн системийг дууриалга»).
-   ⚠️ Харагдацууд хэв маяг ХУВААЛЦАХГҮЙ (`layout.tsx`-ийн ⚠️) — газрын зургийн
-      давхар хавтан (`catPanel`, `mapLegend`) PkgProg-оос ХУУЛБАР.
-   ⚠️ Зөвшөөрөгдсөн breakpoint л: 1400 · 1180 · 900 · 620.
-   ══════════════════════════════════════════════════════════ */
+     └─────────────────────────────────────────────────┴───────────┘ */
 
 .tuh {
   height: 100%;
   display: grid;
-  /* ⚠️ px-ээр (хувь биш): `SplitGrip` эхлэх өргөнөө `parseFloat`-аар уншдаг */
   --side-r: 560px;
   position: relative;
   grid-template-columns: minmax(0, 1fr) var(--side-r);
@@ -50,7 +42,6 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  /* ⚠️ 2026-10-23: Environment — карт 12px булан, --line хүрээ, доор нь --sunken */
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--sunken);
@@ -66,7 +57,6 @@
   max-width: min(calc(100% - 212px), 340px);
   display: flex;
   background: var(--surface);
-  /* ⚠️ 2026-10-23: Environment — хөвөгч гадарга: --line-strong хүрээ + --shadow */
   border-right: 1px solid var(--line-strong);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -100,7 +90,6 @@
   align-items: end;
   padding: 12px 4px 16px;
 }
-/* ⚠️ 2026-10-23: Environment `.eyebrow` — 11px/600/0.15em, line-height ≥1.3 */
 .eyebrow {
   margin: 0 0 6px;
   font-size: 11px;
@@ -116,9 +105,7 @@
 .heroNum { font-size: 2.6rem; font-weight: 600; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
 .heroNote { font-size: 0.75rem; color: var(--ink-2); }
 
-/* ── KPI мөр ──
-   ⚠️ 2026-10-23: Environment `.analytics-stat` — тусдаа хавтан (булан 13px, --line, --surface),
-   padding 14/18, шошго 10px ink-3, утга 23px/600/-0.04em. */
+/* ── KPI мөр ── */
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -158,7 +145,6 @@
 .lead { margin: 4px 0 0; max-width: 72ch; font-size: 0.8rem; color: var(--ink-2); }
 
 /* ── Хүснэгт ── */
-/* ⚠️ 2026-10-23: Environment `.pe-table` — хүрээ --line-strong, булан 12px; 11.5px; sticky th 10px uppercase --surface дээр */
 .tableWrap {
   overflow-x: auto;
   border: 1px solid var(--line-strong);
@@ -194,7 +180,7 @@
 .rowLink:hover, .rowLink:focus-visible { color: var(--data-ink); text-decoration: underline; }
 .emptyRow td { color: var(--ink-3); text-align: center; padding: 14px 8px; }
 
-/* ── Чип ── ⚠️ 2026-10-23: Environment badge — булан 6px · 11px/500 · tone бичиг · хүрээ tone 35% · bg tone 8% */
+/* ── Чип ── 2026-10-23: Environment badge — булан 6px · 11px/500 · tone бичиг · хүрээ tone 35% · bg tone 8% */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -216,7 +202,6 @@
 .stateCounts { display: flex; flex-direction: column; gap: 3px; }
 .stateCounts > span { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; }
 .stateCounts b { font-variant-numeric: tabular-nums; }
-/* ⚠️ 2026-10-01: төлвийн тоо нь ТОВЧ — дарахад «Багцууд» тэр төлвөөр шүүгдэнэ */
 .stateBtn {
   all: unset;
   display: flex;
@@ -233,7 +218,6 @@
 .stateBtn[aria-pressed='true'] { background: color-mix(in oklab, var(--moss) 13%, transparent); color: var(--moss); }
 .stateBtn:disabled { cursor: default; opacity: 0.4; }
 
-/* ⚠️ 2026-10-01: бүхэлдээ хоосон хэсэг — хураагдсан (`Section empty`), дарахад нээгдэнэ */
 .collapsed > summary { display: flex; align-items: baseline; gap: 10px; cursor: pointer; list-style: none; }
 .collapsed > summary::-webkit-details-marker { display: none; }
 .collapsed > summary::before { content: '▸'; font-size: 0.8rem; color: var(--ink-3); }
@@ -242,13 +226,10 @@
 .collapsed > summary:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
 .collapsedNote { font-size: 11.5px; color: var(--ink-3); }
 
-/* ⚠️ 2026-10-01: `TUH_STALE_DAYS`+ хоног тайлангүй — карт ба огноо тодорно */
 .stale { color: var(--warn-ink); font-weight: 600; }
 
 /* ── Шүүлтүүр ── */
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-/* ⚠️ 2026-10-26: бүлэг/төрлийн сегмент нь нийтлэг `Segmented` (components/Switch.tsx, `wrap`) */
-/* ⚠️ 2026-10-23: Environment `.pe-field` — 32px · булан 7px · --line-strong · bg --bg · 12.5px */
 .search {
   flex: 1 1 200px;
   min-width: 0;
@@ -285,13 +266,11 @@
 .card[data-tone='good'] { border-left-color: var(--good); }
 .card[data-tone='warn'] { border-left-color: var(--warn); }
 .card[data-tone='bad'] { border-left-color: var(--bad); }
-/* ⚠️ 2026-10-23: Environment — сонгогдсон карт moss 45% хүрээ + moss бүдэг дэвсгэр (outline биш) */
 .card[data-active='true'] {
   outline: 1px solid var(--moss);
   outline-offset: -1px;
   background: color-mix(in oklab, var(--moss) 8%, var(--surface));
 }
-/* ⚠️ Зүүн ирмэг нь төлвийн өнгө хэвээр (`data-tone`) — зөвхөн дэвсгэр/бусад ирмэг */
 .card[data-stale='true'] {
   background: color-mix(in oklab, var(--warn) 8%, var(--surface));
   border-top-color: color-mix(in oklab, var(--warn) 35%, var(--line));
@@ -305,7 +284,7 @@
 .cardPct { font-size: 23px; font-weight: 600; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
 .cardWeek { font-size: 0.72rem; color: var(--ink-2); white-space: nowrap; }
 .cardGap { font-size: 0.78rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-/* Хугацаа ба гүйцэтгэлийн хоёр зурвас — ⚠️ 2026-10-09: хоёр `ui.Meter` мөр (нэр + утга дээр,
+/* Хугацаа ба гүйцэтгэлийн хоёр зурвас — 2026-10-09: хоёр `ui.Meter` мөр (нэр + утга дээр,
    2px зам доор). Урьд нь 8px өөрийн зурвас (`duoRow/duoTrack/duo_*`) байв. */
 .duo { display: flex; flex-direction: column; gap: 6px; }
 .cardWeek b { font-variant-numeric: tabular-nums; }
@@ -319,7 +298,6 @@
 .facts dt { color: var(--ink-3); }
 .facts dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .cardFoot { display: flex; justify-content: flex-end; margin-top: auto; }
-/* ⚠️ 2026-10-23: Environment `.pe-ghost` — 32px · булан 8px · 12px/500 · hover --surface-2 */
 .ghostBtn {
   all: unset;
   box-sizing: border-box;
@@ -337,15 +315,10 @@
 }
 .ghostBtn:hover, .ghostBtn:focus-visible { background: var(--surface-2); color: var(--ink); }
 
-/* ── Хэмжигч — `ui.Meter` (2026-10-09; локал `.meter*` хуулбар хасагдсан) ──
-   ⚠️ Зөвхөн ГАДНА зай: төлөвлөгөөний зураас замаас ±4px сунадаг тул дээд/доод
-      бичвэртэй мөргөлдөхгүйн тулд урьдын `margin: 5px 0`-г бүрхүүл дээр үлдээв. */
+/* ── Хэмжигч — `ui.Meter` (2026-10-09; локал `.meter*` хуулбар хасагдсан) ── */
 .meterGap { display: block; margin: 5px 0; }
 
 /* ── Тайлбар — «Гүйцэтгэлийн явц»-ийн легенд (`pkgProg.module.css` `.progLegend`) ── */
-/* ⚠️ 2026-10-23: Environment `.stacked-chart-legend` — 10.5px `--ink-2`, gap 4/12, доод зай 6;
-   тэмдэг 8px дөрвөлжин (булан 1). Шугаман цувааны тэмдэг (`line`/`dash`) нь муруйтайгаа
-   таарах ёстой тул 12×2px шугам хэвээр — төлөвлөгөө нь муруйтай ижил `4 4` тасархай. */
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -400,7 +373,6 @@ button.ganttRow { cursor: pointer; }
 button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface-2); }
 .ganttRow:last-child { border-bottom: 0; }
 .ganttAlt { background: color-mix(in srgb, var(--ink-3) 5%, transparent); }
-/* ⚠️ 2026-10-23: Environment — сонгогдсон мөр moss 12% + inset 3px moss зүүн зурвас */
 .ganttActive { background: color-mix(in oklab, var(--moss) 12%, transparent); box-shadow: inset 3px 0 0 var(--moss); }
 .ganttHeading { font-weight: 600; background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
 .ganttLabel {
@@ -417,7 +389,6 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
 }
 .ganttLabel small { color: var(--ink-3); }
 .ganttScale { position: relative; }
-/* ⚠️ 2026-10-23: Environment — тэнхлэгийн шошго 10px/400 tabular `--ink-3` (он нь `--ink-2`/500) */
 .ganttScale b {
   position: absolute;
   top: 5px;
@@ -431,10 +402,6 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
 }
 .ganttScale b.ganttYearLbl { color: var(--ink-2); font-weight: 500; }
 .ganttTrack { position: relative; }
-/*
- * ⚠️ 2026-10-23: Environment `RowChart` зам — мөр бүрийн дунд 5px `--chart-track`, булан 4.
- *    Тор нь 1px ТАСАРХАЙ `--line` (сар), оны зааг 1px бүтэн `--line`.
- */
 .ganttTrack::before {
   content: '';
   position: absolute;
@@ -449,11 +416,6 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
 .ganttHeading .ganttTrack::before { display: none; }
 .ganttTick { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--line); }
 .ganttYear { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
-/*
- * ⚠️ 2026-10-23: Environment `RowChart` — зурвас 5px, булан 4, мөрийн ГОЛД (урьд нь 18px
- *    өндөр, 3px булан, дотроо цагаан шошготой «Хуваарь»-ийн зурвас). 5px-д бичиг багтахгүй
- *    тул гүйцэтгэлийн хувь ҮРГЭЛЖ зурвасын ГАДНА (`.ganttPct`). Төлвийн `--gantt-*` өнгө ХЭВЭЭР.
- */
 .ganttBar {
   position: absolute;
   z-index: 1;
@@ -466,7 +428,7 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
   overflow: hidden;
   transition: width 200ms;
 }
-/* «Хуваарь»-ийн төлөвийн өнгө — ⚠️ 2026-10-09: `globals.css`-ийн `--gantt-*` токен (НЭГ эх, dark-тай);
+/* «Хуваарь»-ийн төлөвийн өнгө — 2026-10-09: `globals.css`-ийн `--gantt-*` токен (НЭГ эх, dark-тай);
    урьд нь `huvaari.module.css`-ийн `.tl*`-ээс гараар хуулсан өнгө байв. */
 .st_done { background: var(--gantt-done); }
 .st_run { background: var(--gantt-run); }
@@ -476,7 +438,6 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
   background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--ink-3) 28%, transparent) 0 3px, transparent 3px 6px);
   border-color: color-mix(in srgb, var(--ink-3) 40%, transparent);
 }
-/* ⚠️ 2026-10-23: Environment — хувь зурвасын ГАДНА: 10px/500 tabular `--ink-2`, мөрийн голд */
 .ganttPct {
   position: absolute;
   z-index: 2;
@@ -499,14 +460,10 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
 .ganttMark { position: absolute; z-index: 3; top: 50%; transform: translate(-50%, -50%); font-size: 11px; line-height: 1; color: var(--ink); }
 .ganttMark[data-kind='heat'] { color: var(--bad-ink); }
 .ganttMark[data-kind='milestone'] { color: var(--ink-2); }
-/* «Өнөөдөр» — зурвасын ДЭЭР (z-index), «Хуваарь»-ийн өнөөдрийн шугамтай ижил.
-   ⚠️ 2026-10-09 («графикийн жигдрэл»): хоёр гантад НЭГ дүрэм — 1.5px ТАСАРХАЙ `--bad`
-      (урьд нь 2px бүтэн, 0.85). Тасархай нь зурвастай давхцахдаа доорх өнгийг харуулна. */
+/* «Өнөөдөр» — зурвасын ДЭЭР (z-index), «Хуваарь»-ийн өнөөдрийн шугамтай ижил. */
 .ganttNow { position: absolute; top: 0; bottom: 0; z-index: 2; width: 0; margin-left: -0.75px; border-left: 1.5px dashed var(--bad); }
 
 /* ── Жижиг олон график / IPC карт ── */
-/* ⚠️ НЭГ БАГАНА — системийн «Гүйцэтгэлийн явц» график бүтэн өргөнд зориулагдсан;
-   хоёр баганад шахвал шошго жижгэрч уншигдахгүй (2026-09-30). */
 .multiples { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .progCell { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
 .progCell > :first-child { align-self: stretch; }
@@ -528,7 +485,6 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
 .titleBlock {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
-  /* ⚠️ 2026-10-23: Environment — 1.5px --ink хүрээний оронд 1px --line-strong (гүнийг зураасаар), булан 12px */
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   background: var(--surface);
@@ -599,8 +555,6 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
 .three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .note { margin: 6px 0 0; font-size: 0.72rem; color: var(--ink-3); }
 .failNote { margin: 8px 0; padding: 8px 10px; border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent); border-radius: var(--r); background: color-mix(in oklab, var(--warn) 8%, transparent); font-size: 12px; color: var(--warn-ink); }
-/* ⚠️ 2026-10-01: «Дахин оролдох» — `ui.module.css`-ийн `.retryBtn`-тэй ижил дүр төрх.
-   ⚠️ 2026-10-23: Environment `.pe-ghost` (булан 8px · 12px/500 · --line-strong) */
 .retryBtn {
   margin-left: 6px; height: 28px; padding: 0 12px; font-size: 12px; font-weight: 500;
   color: var(--ink-2); background: transparent;
@@ -641,4 +595,3 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
   .content { scroll-behavior: auto; }
 }
 
-/* ⚠️ 2026-10-05 (merge) `.meterWide` → 2026-10-09: `ui.Meter wide` (CHART.meterWideH) */

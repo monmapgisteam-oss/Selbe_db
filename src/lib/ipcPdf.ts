@@ -1,22 +1,10 @@
 /**
  * САР БҮРИЙН IPC БАРИМТ — PDF (pdfmake) (2026-09-29).
- *
- * ⚠️ ХЭЛБЭР = `docs/ipc barimt`-ийн скан баримтууд (хэрэглэгч: «яг ийм форматаар pdf
- *    татаж авна»): A4 хэвтээ, гурван хуудас —
- *      1. Хүснэгт 7   (санхүүжилтийн хүснэгт)
- *      2. Гүйцэтгэл-1 (зардлын төрлөөр)
- *      3. Хавсралт №12 (блокоор)
- *    Гарчиг, багана, мөрийн нэр, гарын үсгийн хэсэг скан баримтынхаар.
- * ⚠️ БАРИМТЫН ТЕКСТ МОНГОЛООР, `tr()`-ГҮЙ: энэ нь албан маягт — UI-ийн хэл англи байсан ч
- *    баримт монгол хэвээр (скан загвартай ижил). Цонхны текст нь `tr()`-ээр (IpcDocDialog).
- * ⚠️ ТОО: Хүснэгт 7 — 2 оронтой бутархай; Гүйцэтгэл-1 ба Хавсралт 12 — бүхэл төгрөг
- *    (скан баримтынхаар). Хоосон (`null`) нүд «-» — 0 гэж бичихгүй.
- * ⚠️ Roboto-д ₮ байхгүй — нэгж бичихгүй (скан баримтад ч бичигдээгүй).
  */
 import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
 import type { IpcDoc, IpcNote, G1Row, T7Row, H12Row } from '@/lib/ipcDoc';
 
-/** Баримтын доорх тайлбар — монгол маягт (`tr()`-гүй, файлын толгойн ⚠️) */
+/** Баримтын доорх тайлбар — монгол маягт (`tr`-гүй, файлын толгой) */
 const NOTE_MN: Record<IpcNote, string> = {
   noPrev: 'Системд өмнөх сарын агшин алга — тайлант үеийн гүйцэтгэл нь эхнээсээ хуримтлагдсан дүн.',
   noAdvance: 'ХО-д урьдчилгааны бүртгэл алга — урьдчилгаа ба эргэн төлөлт 0.',
@@ -51,8 +39,6 @@ const CUSTOMER = '"Сэлбэ хорин минутын хот корпорац"
 const APPROVER = 'НИЙСЛЭЛИЙН ЗАСАГ ДАРГЫН ТАМГЫН ГАЗРЫН ХӨРӨНГӨ ОРУУЛАЛТЫН ХЭЛТСИЙН ДАРГА';
 
 /* ── Тоо, огноо ── */
-/* ⚠️ Хүснэгт 7-д ЯГ 0 нь «-» (скан баримтын маягт: суутгаагүй/олгоогүй нүд зураастай).
-   Энэ нь ЗӨВХӨН харуулалт — тооцоонд `null` ба 0 ялгаатай хэвээр (`ipcDoc`). */
 const f2 = (x: number | null) => (x == null || Math.abs(x) < 0.005 ? '-' : x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const f0 = (x: number | null) => (x == null ? '-' : Math.round(x).toLocaleString('en-US'));
 const pc = (x: number | null, of: number | null) =>
@@ -61,8 +47,6 @@ const d = (ms: number | null) => (ms == null ? '-' : new Date(ms).toISOString().
 const sig = (name: string) => (name.trim() ? `/${name.trim()}/` : '/................................/');
 
 const TH = { bold: true, fontSize: 7, alignment: 'center' as const, fillColor: '#eeeeee' };
-/* ⚠️ pdfmake-ийн төрлүүд colSpan/rowSpan-ийн хоосон нүд ба margin tuple-д хэт нарийн — нүдийг
-   энгийн объектоор угсраад хүснэгт/агуулгын түвшинд нэг удаа хөрвүүлнэ. */
 type Obj = Record<string, unknown>;
 const cell = (text: string, o: Obj = {}): Obj => ({ text, fontSize: 7, ...o });
 const numCell = (text: string, bold = false, shade = false): Obj =>
@@ -108,9 +92,6 @@ function perfSigners(doc: IpcDoc, meta: IpcMeta): Obj {
     { text: role, fontSize: 7, width: 110 },
     { text: `......................  ${sig(name)}`, fontSize: 7, width: '*' },
   ], margin: [0, 3, 0, 0] });
-  /* ⚠️ `unbreakable` (2026-09-29, хэрэглэгч: «гарын үсэг 2 хуудсанд салсан»): олон блоктой
-     багцад (Багц 2 — 44 блок) Хавсралт 12 хуудасны төгсгөлд хүрч, гарын үсгийн гурван
-     багана хоёр хуудсанд тасардаг байв. Бүтнээрээ багтахгүй бол ДАРААГИЙН хуудас руу. */
   return { unbreakable: true, stack: [{
     columns: [
       { width: '*', stack: [
@@ -178,7 +159,6 @@ function page7(doc: IpcDoc, meta: IpcMeta): Obj[] {
       ['Гүйцэтгэгч', inp.contractor || '-'],
     ),
     { table: { headerRows: 1, widths: [150, '*', 80, '*', '*', '*', '*', '*'], body }, layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5 } },
-    /* ⚠️ Гарын үсгийн хэсэг ТАСРАХГҮЙ (`unbreakable`) — `perfSigners`-ийн ⚠️ */
     { unbreakable: true, stack: [
       { text: 'Боловсруулсан:', fontSize: 8, margin: [0, 10, 0, 0] },
       { text: 'Захиалагчийг төлөөлж:', fontSize: 8, margin: [0, 4, 0, 0] },
@@ -298,8 +278,6 @@ function pageH12(doc: IpcDoc, meta: IpcMeta): Obj[] {
 }
 
 export function ipcPdfDoc(doc: IpcDoc, meta: IpcMeta): TDocumentDefinitions {
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): орой эхэлсэн хуудас (`ipcDoc.lateSheetsOf`) —
-     тайлант үед гэрээний эхнээс хуримтлагдсан ажил орсныг баримт дээр ил бичнэ. */
   const late = doc.lateSheets;
   const lines = [
     ...doc.notes.map((n) => `* ${NOTE_MN[n]}`),

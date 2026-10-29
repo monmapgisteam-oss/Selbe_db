@@ -1,12 +1,6 @@
 /**
  * Нээлттэй ArcGIS view-үүдийн бүртгэл — «Тайлан татах» (`viewReport.ts`) дэлгэц дээрх
  * газрын зургийн агшин зургийг (`takeScreenshot`) авахад хэрэглэнэ.
- *
- * ⚠️ WebGL canvas-ыг `toDataURL`-аар уншвал ХООСОН (preserveDrawingBuffer=false) —
- *    зөвхөн view-ийн `takeScreenshot` зөв зураг өгнө. Контейнераас view-г олох ArcGIS
- *    API байхгүй тул үүсгэх газар (MapCanvas · SuitMap) бүртгэнэ.
- * ⚠️ Хадгалсан (park) view-ийн контейнер DOM-оос салдаг, устгагдсан нь `destroyed` —
- *    хоёуланг нь `liveMapViews` шүүнэ; цуглуулга зөвхөн бүртгэх үед цэвэрлэгдэнэ.
  */
 type AnyView = __esri.MapView | __esri.SceneView;
 

@@ -1,6 +1,6 @@
 /**
- * АНГЛИ ГОРИМ — бүсийн ангилал ба материалын төлөв ОРЧУУЛАГДАНА (⚠️ 2026-10-22, аудит).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/enLabels.check.mjs
+ * АНГЛИ ГОРИМ — бүсийн ангилал ба материалын төлөв ОРЧУУЛАГДАНА (2026-10-22, аудит).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/enLabels.check.mjs
  *
  * §1 Бүсийн ангилал: амьд `Angilal`-ын 8 түүхий (жижиг үсгийн) утга ба `ZONE_TYPES`-ийн каноник нэр бүр каталогийн
  *    facet/шүүлтийн чип (`tr(zoneType(…))`) ба анализ (`zoneTypeLabel`)-аар НЭГ англи нэртэй; анализын CSV ч.
@@ -16,7 +16,6 @@ import { TOLOV } from '@/lib/materialNoots';
 import { zoneTypeLabel } from './analysis/suit/format.ts';
 import { zoneCsv } from './analysis/suit/rankUtil.ts';
 
-/* ⚠️ англи толь хойшлогдон ачаалагддаг — урьдчилан ачаалснаар `setLocale('en')` синхрон (`failedLoads.ui.check.mjs`-тэй ижил) */
 await loadLocaleDict('en');
 const src = (p) => readFileSync(new URL(p, import.meta.url), 'utf8').split('\r\n').join('\n');
 const CYR = /[А-Яа-яЁёӨөҮү]/;

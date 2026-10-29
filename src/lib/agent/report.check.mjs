@@ -1,14 +1,7 @@
 /**
  * ТАЙЛАН ФАЙЛЫН ШАЛГУУР — блокийн задлалт, ```report, PDF/Word/Excel/CSV бүтээгч.
  *
- * ⚠️ Агентын гаргах текст ЗАГВАРААС ирдэг тул төгс байх баталгаагүй: блокоо
- * хаалгүй орхих, JSON эвдрэх, формат буруу нэрлэх бүгд бодитоор тохиолддог.
- * Аль нь ч чатыг унагаах ЁСГҮЙ — хамгийн муудаа товч гарахгүй.
- *
- * ⚠️ Файлын БАЙТЫГ шалгана (ZIP гарын үсэг, шаардлагатай хэсгүүд) — Word/Excel
- * нээхгүй бол хэрэглэгч шалтгааныг нь мэдэхгүй.
- *
- * Ажиллуулах: node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/agent/report.check.mjs
+ * Ажиллуулах: node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/agent/report.check.mjs
  */
 
 import { strict as assert } from 'node:assert';
@@ -74,10 +67,8 @@ console.log('\n1. Блокийн задлалт');
 
 console.log('\n2. Хазгай оролт — чат унахгүй');
 {
-  /* ⚠️ Хаалтын хашлагагүй (хариу таслагдсан) */
   const b = parseBlocks(['Эхлэл.', '```report', '{"title":"Т"'].join('\n'));
   ok('хаалтгүй блок залгигдав', b.length === 2 && b[1].kind === 'report');
-  /* ⚠️ Дан хаалтын хашлага — ХЯЗГААРГҮЙ ДАВТАЛТ үүсгэх ЁСГҮЙ */
   ok('дан хашлага гацаахгүй', parseBlocks(['```', 'Текст'].join('\n')).length === 1);
   ok('хоосон оролт', parseBlocks('').length === 0);
   ok('эвдэрсэн JSON-той график spec null', parseBlocks('```chart\n{буруу\n```').find((x) => x.kind === 'chart').spec === null);
@@ -115,7 +106,6 @@ console.log('\n5. PDF — баримтын тодорхойлолт');
   ok('гарчиг ба огноо толгойд', json.includes('Багц 1 — тойм') && json.includes('2026-10-15'));
   ok('хүснэгтийн мөр орсон', json.includes('Багц 2') && json.includes('24.8%'));
   ok('график canvas-аар зурагдав', json.includes('"canvas"') && json.includes('rect'));
-  /* ⚠️ Roboto-д ₮ БАЙХГҮЙ — `pdfTheme.T()` бүх текстэд үйлчилсэн байх ёстой */
   const money = buildChatPdf({ ...DOC, title: 'Нийт 1,000 ₮', blocks: parseBlocks('Дүн **2,660 ₮** байна.\n\n| Багц | Дүн |\n|---|---|\n| А | 5 ₮ |') });
   ok('₮ тэмдэг орлуулагдав', !JSON.stringify(money).includes('₮'));
 }
@@ -129,7 +119,6 @@ console.log('\n6. Word (.docx) — OOXML');
     .every((n) => txt.includes(n)));
   ok('гарчиг ба хүснэгт', txt.includes('Багц 1 — тойм') && txt.includes('<w:tbl>'));
   ok('MIME зөв', DOCX_MIME.endsWith('wordprocessingml.document'));
-  /* ⚠️ XML-ийн тусгай тэмдэгт зайлуулагдаагүй бол Word файлыг нээхгүй */
   const amp = Buffer.from(buildChatDocx({ ...DOC, title: 'А & Б <тест>', blocks: parseBlocks('Утга: a < b & c') })).toString('utf8');
   ok('& ба < зайлуулагдав', amp.includes('&amp;') && amp.includes('&lt;') && !amp.includes('a < b'));
 }
@@ -141,7 +130,6 @@ console.log('\n7. Excel (.xlsx) — ЭХНИЙ хуудас нь ХҮСНЭГТ'
   const names = [...txt.matchAll(/<sheet name="([^"]+)"/g)].map((m) => m[1]);
   ok('ZIP гарын үсэг', bytes[0] === 0x50 && bytes[1] === 0x4b);
   ok('гурван хуудас (2 хүснэгт + тайлбар)', (txt.match(/xl\/worksheets\/sheet\d+\.xml/g) ?? []).length >= 3);
-  /* ⚠️ 2026-10-15-ны гомдол: Excel нээхэд эхний хуудас бичвэр байсан */
   ok('эхний хуудас = хүснэгт', names[0] === 'Гүйцэтгэлийн байдал');
   ok('«Тайлбар» ХАМГИЙН СҮҮЛД', names[names.length - 1] === 'Тайлбар');
   ok('хувь 0–1 утгаар', txt.includes('<v>0.197</v>'));
@@ -167,7 +155,6 @@ console.log('\n7a. Нүдний төрөл — текст биш ТОО');
   ok('хэмжээ → тоо + нэгж формат дотор', qty.rows[0][1] === 1788 && qty.cols[1].numFmt === '#,##0 "м²"');
   ok('нэгж толгойд давхардахгүй', colHeader(qty.cols[1], true) === 'Талбай');
 
-  /* ⚠️ Нэгж ТОЛГОЙД бичигдсэн (графикийн хүснэгт ба агентын түгээмэл хэлбэр) */
   const hdr = typeTable({ name: 'a', head: ['Багц', 'Гүйцэтгэл (%)'], rows: [['a', '19.7'], ['b', '24.8']] });
   ok('толгойн нэгжээр хувь болов', hdr.cols[1].kind === 'pct' && hdr.rows[0][1] === 0.197);
 
@@ -194,11 +181,9 @@ console.log('\n7c. Төлөвлөгөөний блок');
   const b = parseBlocks(['```plan', '1. Барилгыг тоолох', '2. Багцаар задлах', '```', 'Үр дүн.'].join('\n'));
   ok('```plan блок таних', b[0].kind === 'plan' && b[1].kind === 'para');
   ok('алхмууд задарсан', planSteps(b[0].raw).join('|') === 'Барилгыг тоолох|Багцаар задлах');
-  /* ⚠️ Загвар хашилтгүй ч бичиж болно — тэвчээртэй задлалт */
   ok('хашилтгүй текст ч алхам болно', planSteps('Эхлээд шалгана\nДараа нь тоолно').length === 2);
   ok('6-аас олон алхам тайрагдав', planSteps('1\n2\n3\n4\n5\n6\n7\n8').length === 6);
   ok('хоосон бол алхамгүй', planSteps('   ').length === 0);
-  /* ⚠️ Төлөвлөгөө ФАЙЛД орохгүй (тайлан нь хариултын агуулга) */
   const doc = { title: 'a', date: 'b', blocks: parseBlocks('```plan\n1. Алхам\n```\n\n| А | Б |\n|---|---|\n| 1 | 2 |') };
   ok('тайлангийн хүснэгтэд нөлөөлөхгүй', reportTables(doc).length === 1);
 }

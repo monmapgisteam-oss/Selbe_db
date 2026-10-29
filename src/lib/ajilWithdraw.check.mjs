@@ -1,13 +1,12 @@
 /**
- * НЭМЭЛТ АЖЛЫН ИЛГЭЭЛТЭЭ ТАТАХ (`ajilBatlah.withdrawAjil`) — хуурамч сервертэй, сүлжээгүй (⚠️ 2026-10-22, аудит №6).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ajilWithdraw.check.mjs
+ * НЭМЭЛТ АЖЛЫН ИЛГЭЭЛТЭЭ ТАТАХ (`ajilBatlah.withdrawAjil`) — хуурамч сервертэй, сүлжээгүй (2026-10-22, аудит №6).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/ajilWithdraw.check.mjs
  *
  * Хамгаалж буй алдаанууд:
  *   1. УРАЛДАА — урьд нь уншилт (түгжээгүй) → бичилт л байсан тул батлагч тэр завсарт шийдвэрлэвэл хоёр бичилт
  *      бие биеэ дардаг байв. Одоо эхлээд `claimAjil` (CAS) — өөр хүний хүчинтэй түгжээ байвал татгалзана.
  *   2. ХАРИУ АЛДАГДСАН — «Татсан» серверт суусан ч алдаа буцааж зохиогчийн мөрүүд хуудсанд буцдаггүй байв. Одоо
  *      дахин уншиж «Татсан» бол амжилт; хүлээгдсэн хэвээр бол алдаа; дахин уншилт ч унавал `unsure`.
- * ⚠️ `fetch`-ийг бүрэн сольдог — бодит ArcGIS руу ОГТ хүрэхгүй. Хүснэгт Enterprise-ийн БОДИТ хаягаар (`${GUITS}/189`).
  */
 import assert from 'node:assert/strict';
 const { registerIdentity } = await import('@/lib/authToken.ts');

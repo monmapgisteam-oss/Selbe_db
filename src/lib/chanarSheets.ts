@@ -8,9 +8,6 @@ import type { MirRow, CheckMark } from '@/lib/mir';
  * Survey123-аар бөглөгдсөн MA · MIR-ийг `docs/chanar/{MA,MIR}/*.pdf` дахь цаасан маягтын ЗАГВАРААР
  * A4 HTML болгоно. Нэг HTML-ийг цонхонд (`<iframe srcdoc>`) харуулж, ЯГ ТЭРИЙГ хэвлэнэ — харсан =
  * хэвлэсэн. Гарын үсгийн нүд ХООСОН (цаасан дээр зурна).
- *
- * ⚠️ Бүх утга `esc()`-ээр — Survey123-ийн чөлөөт текст HTML-д шууд орохгүй (XSS).
- * ⚠️ Хэвлэлтийн CSS энэ баримтын ДОТОР (CSS module биш) — `next build`-ийн pure дүрэм хамаарахгүй.
  */
 export const esc = (v: unknown): string =>
   String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
@@ -178,6 +175,5 @@ export function printHtml(html: string): void {
   w.document.open();
   w.document.write(html);
   w.document.close();
-  /* ⚠️ Зураг (лого · фото) ачаалагдсаны дараа хэвлэнэ — эс бөгөөс хоосон дөрвөлжин хэвлэгдэнэ */
   w.addEventListener('load', () => { w.focus(); w.print(); });
 }

@@ -26,24 +26,9 @@ import s from './catalog.module.css';
 /**
  * ДАВХАРГЫН КАТАЛОГ — «Ерөнхий мэдээлэл» дарахад зүүн модны ХАЖУУД нээгдэх багана.
  *
- * ⚠️ Урьд нь модал popup байв. Popup нь зураг ба самбарыг бүрхдэг тул давхарга
- * асаах бүрд «юу өөрчлөгдсөнийг» харахын тулд хаах шаардлагатай болдог байлаа.
- * Багана болгосноор чагт дарах бүрд зурагт өөрчлөлт ШУУД харагдана.
- *
- * ⚠️ Тоо, хэмжээг ЭНД дахин татахгүй: `totals`-ыг `Portal` нэг удаа дуудаж
- * дамжуулна — самбарын дүнтэй зөрөх боломжгүй байх ёстой.
- * ⚠️ 2026-10-22 (гүйцэтгэлийн аудит): `totals` ӨГӨӨГҮЙ бол (Portal · «Ерөнхий дашбоард») НЭЭЛТТЭЙ бүлгийн мөрүүдийн
- * тоог л өөрөө татна (`useLazyTotals`) — бүлгүүд хураалттай эхэлдэг тул урьд нь хэн ч хараагүй 158 давхаргын тоо
- * (~156 хүсэлт) харагдац нээх бүрд явдаг байв. Самбартай зөрөхгүй: хоёулаа давхарга тус бүрийн НЭГ кэшээс.
- *
  * Мөр бүр ХОЁР үйлдэлтэй (2026-07-31, хэрэглэгчийн хүсэлт — чагт хасагдсан):
  *   · нэр — зурагт харуулах/нуух (багана нээлттэй хэвээр)
  *   · баруун захын жижиг диаграм товч — баруун самбарт тэр давхаргын дашбоард
- *
- * ⚠️ `memo` — Portal нь багана чирэх (pointermove бүрт setWidth), объект
- * сонгох зэрэг ЭНД хамаагүй төлөвөөр байнга дахин зурагддаг. Каталогийн
- * пропс тэр үед өөрчлөгддөггүй тул memo нь ~100 мөрийн дахин зуралтыг
- * бүрмөсөн алгасуулна (гацалтын гомдол, 2026-07-31).
  */
 export const LayerCatalog = memo(function LayerCatalog({
   view,
@@ -66,18 +51,11 @@ export const LayerCatalog = memo(function LayerCatalog({
 }: {
   /**
    * Аль харагдацын каталог вэ.
-   * ⚠️ «Барилгын хяналт»-д хяналтын багц ЭХЭНД, дараа нь ЕТ-ийн багцууд —
-   * тэнд гүйцэтгэлийн давхарга дээр контекст нэмэх нь ердийн хэрэглээ.
-   * «ХАБЭА»-д аюулгүй байдлын багц ЭХЭНД, дараа нь хяналт + ЕТ (контекст).
-   *
-   * ⚠️ Сэдэвчилсэн цонх (`gazar`/`iot`/`irged`) ӨӨРИЙНХӨӨ түлхүүрийг дамжуулна —
-   * `'plan'` бичвэл бүтэн порталын каталог гарч, сэдэв нь 18 бүлгийн дунд
-   * булагдана (`catalogGroups`-ын тайлбарыг үз).
    */
   view: CatalogView;
   /**
-   * Бүх мөрийн тоо/хэмжээ (дуудагч татсан). ⚠️ 2026-10-22: ӨГӨӨГҮЙ бол нээлттэй бүлгийнхийг л өөрөө татна
-   * (компонентын толгойн ⚠️).
+   * Бүх мөрийн тоо/хэмжээ (дуудагч татсан). 2026-10-22: ӨГӨӨГҮЙ бол нээлттэй бүлгийнхийг л өөрөө татна
+   * (компонентын толгой).
    */
   totals?: Async<Map<string, Totals>>;
   visible: string[];
@@ -100,43 +78,30 @@ export const LayerCatalog = memo(function LayerCatalog({
    */
   onResizeStart?: (e: ReactPointerEvent<HTMLDivElement>) => void;
   onResizeReset?: () => void;
-  /** ⚠️ 2026-09-25: гараар (сум/Home/End) өргөн тохируулах — `Portal.useColumnResize` */
-  /* ⚠️ Одоогийн өргөнийг (aria-valuenow) ЗОРИУДААР дамжуулахгүй — чирэлтийн
-     pointermove бүрд өөрчлөгдөж `memo`-г эвдэнэ (дээрх ⚠️). */
   onResizeKey?: (e: ReactKeyboardEvent<HTMLDivElement>) => void;
   zone: string | null;
   /**
    * Порталын grid-ийн `cat` баганын оронд ХӨВӨГЧ панелийн дотор зурагдах уу.
-   * ⚠️ Дашбоард/анализ дээр каталог нь газрын зургийг тойрсон хайрцагт хөвж
-   * гарах тул баруун ирмэгийн зураас (`border-right`) илүүц болно.
    */
   embedded?: boolean;
   /**
    * ХАРАГДАЦЫН ӨӨРИЙН НЭМЭЛТ ХЭСЭГ — жагсаалтын ХАМГИЙН ДООД талд
    * (2026-09-15, хэрэглэгчийн заавар: «давхаргын доор «Багц 74» гэж
    * шинээр үүсгэнэ, тэнд багцын ажлууд жагсаалтаар харагдана»).
-   *
-   * ⚠️ Каталог нь ДАВХАРГЫН бүртгэл — ажил, гэрээ зэрэг САНХҮҮГИЙН
-   *    өгөгдлийг энд шууд татвал бүх харагдацад тэр ачаалал дагана.
-   *    Тиймээс агуулгыг дуудагч тал өөрөө бүрдүүлж дамжуулна.
    */
   extra?: ReactNode;
   /**
    * ЭНЭ ХАРАГДАЦАД ҮРГЭЛЖ АСААЛТТАЙ давхаргууд (2026-09-15) — мөр нь
    * «асаалттай» гэж харагдаж, унтраах товшилт ажиллахгүй.
-   * ⚠️ Глобал `ALWAYS_ON_IDS` дээр НЭМЭГДЭНЭ, түүнийг орлохгүй.
    */
   forced?: readonly string[];
   /**
    * ДАВХАРГЫН ШҮҮЛТ (2026-09-23) — `false` буцаасан давхарга каталогт ОГТ
    * гарахгүй, хоосон болсон бүлэг ч гарахгүй. «Инженерийн дэд бүтэц»-ийн
    * багцын аккаунт бусад багцын давхаргыг харахгүй (`DedButets.hidden`).
-   * ⚠️ Өгөөгүй бол хуучнаараа — бүх харагдацад нөлөөгүй.
    */
   allow?: (id: string) => boolean;
 }) {
-  /* ⚠️ 2026-10-09 (аудит №6): `catGroups` — урьд `groups` гэж нэрлэж `@/lib/query`-ийн
-     импорт `groups`-ийг ДАРДАГ байв (`FacetRows` тэр импортыг хэрэглэдэг). */
   const catGroups = allow
     ? catalogGroups(view)
       .map((g) => ({ ...g, ids: g.ids.filter(allow) }))
@@ -147,12 +112,6 @@ export const LayerCatalog = memo(function LayerCatalog({
 
   /**
    * Хураасан багцууд.
-   *
-   * ⚠️ Эхлэхэд БҮГД ХУРААГДСАН — БҮХ харагдацад (2026-07-31, хэрэглэгчийн
-   * хүсэлт). 29 давхарга задгай байвал багана 2–3 дэлгэц болж, доод талын багц
-   * гүйлгэхгүйгээр огт харагдахгүй — хэрэглэгч ямар САЛБАРУУД байгааг ерөөсөө
-   * хараад амждаггүй. Хураангуй байдалд бүх багц нэг дэлгэцэд орж, «юу байгаа
-   * вэ» гэдэг нь эхний хормын дотор мэдэгдэнэ; багцын нэр дарахад асч задарна.
    */
   const [shut, setShut] = useState<Set<string>>(
     () => new Set(catGroups.map((g) => g.key)),
@@ -161,13 +120,6 @@ export const LayerCatalog = memo(function LayerCatalog({
   /**
    * АНХНЫ (default) багц хэвээр байна уу — «Ерөнхий төлөвлөгөө»-ний нээлтийн
    * давхаргууд (`INITIAL_MAP_LAYERS`) яг тэр чигээрээ асаалттай төлөв.
-   *
-   * ⚠️ Хэрэглэгч анхны байдлаас ШИНЭ сонголт хийхэд default давхаргууд
-   * УНТАРЧ, сонголт нь ОРЛОНО (2026-07-31, хэрэглэгчийн хүсэлт) — эс бөгөөс
-   * барилга/зам/ногоон нь сонгосон давхаргыг дарж, «сонголт маань зурагт
-   * нөлөөлсөнгүй» мэт харагдана. Portal-ын `untouched` (баруун самбарын
-   * «сонгоогүй» төлөв) яг ижил харьцуулалт ашигладаг тул хоёул нэг мөч дээр
-   * шилжинэ. Дараагийн сонголтууд ХЭВИЙН нэмэгдэнэ.
    */
   const isDefault = (list: string[]) =>
     view === 'plan' &&
@@ -197,23 +149,11 @@ export const LayerCatalog = memo(function LayerCatalog({
     });
 
   const all = catGroups.flatMap((g) => g.ids);
-  /* ⚠️ Үргэлж асаалттай давхаргыг ч тоолно — жагсаалтад асаасан гэж
-     харагдаж байгаа тул тоолуур түүнийг алгасвал зөрөлдөнө. */
   const forcedIds = [...(ALWAYS_ON_IDS as readonly string[]), ...(forced ?? [])];
   const forcedAll = forcedIds.filter((id) => all.includes(id));
-  /* ⚠️ `onCount` нь ХАЙЛТЫН дараа бодогдоно — доороос харна уу. */
 
   /*
    * ХАЙЛТ (2026-09-15-ны хэрэглээний аудит).
-   *
-   * ⚠️ ЯАГААД: каталогт ~99 давхарга, 19 бүлэг байдаг бөгөөд бүгд ХУРААГДСАН
-   *    эхэлдэг (дээрх ⚠️ — тэр шийдвэр зөв, «юу байгааг» нэг харцаар харуулна).
-   *    Гэвч НЭР нь мэдэгдэж байгаа давхаргыг олохын тулд бүлгүүдийг нэг нэгээр
-   *    нээж үзэхээс өөр арга байсангүй.
-   *
-   * ⚠️ Хайлт нь ХУРААЛТЫГ ДАРНА: бичиж эхлэхэд таарсан давхарга бүхий бүлэг
-   *    задарна (`shut` төлөв ХӨНДӨГДӨХГҮЙ — хайлтыг цэвэрлэвэл хэрэглэгчийн
-   *    гараар нээсэн байдал хэвээр үлдэнэ).
    */
   const [q, setQ] = useState('');
   const needle = q.trim().toLowerCase();
@@ -226,11 +166,6 @@ export const LayerCatalog = memo(function LayerCatalog({
 
   /*
    * ТОЛГОЙН «N асаалттай» — ХАЙЛТААР шүүгдсэн мөрүүдийн тоо (2026-09-16).
-   *
-   * ⚠️ Урьд нь шүүгдээгүй `all`-аас бодогдож байв: хайлтад таарахгүй ч
-   *    үргэлж асаалттай давхарга (`ALWAYS_ON_IDS`, `forced`) жагсаалтаас
-   *    АЛГА болсон хэрнээ тоолуурт үлдэж, «3 асаалттай» гэж уншаад ганц мөр
-   *    харагддаг байлаа — тоолуур ба жагсаалт зөрөлдөнө.
    */
   const shown = catGroups.flatMap((g) => g.ids.filter((id) => hit(id, g.title)));
   const onCount = new Set([
@@ -238,11 +173,6 @@ export const LayerCatalog = memo(function LayerCatalog({
     ...forcedAll.filter((id) => shown.includes(id)),
   ]).size;
 
-  /*
-   * ⚠️ 2026-10-22: ТОО/ХЭМЖЭЭ — дуудагчийн `totals` эсвэл (өгөөгүй бол) ЗӨВХӨН ДЭЛГЭЦЭД ГАРСАН мөрүүдийнх: нээлттэй
-   *    бүлэг (хайлт идэвхтэй бол таарсан бүх бүлэг — доорх `open`-той НЭГ дүрэм). Бүлэг нээхэд шинэ мөрүүд л татагдана,
-   *    ирсэн нь хэвээр (`useLazyTotals`). Доорх зураглал хоёр эх сурвалжид нэг хэлбэртэй (`tot`).
-   */
   const lazyIds = totals ? [] : catGroups.flatMap((g) => (needle || !shut.has(g.key) ? g.ids.filter((id) => hit(id, g.title)) : []));
   const lazy = useLazyTotals(zone, lazyIds, !totals);
   const tot = totals
@@ -250,7 +180,6 @@ export const LayerCatalog = memo(function LayerCatalog({
       map: totals.state === 'ready' ? totals.data : null,
       loading: totals.state === 'loading',
       error: totals.state === 'error' ? totals : null,
-      /* ⚠️ 2026-10-19: ЖАГСААЛТАД БАЙГАА (`catGroups`) давхаргаас л — доорх толгойн тоолуурын ⚠️ */
       failed: totals.state === 'ready' ? totalsFailedOf(totals.data) : [],
       rowLoading: (_id: string) => totals.state === 'loading',
     }
@@ -286,9 +215,6 @@ export const LayerCatalog = memo(function LayerCatalog({
             {num(shown.length)} {tr('нийт ·')} {num(onCount)} {tr('асаалттай')}
             {/* Тоо/хэмжээ хараахан татагдаж байгааг заана — ЖАГСААЛТ өөрөө хүлээхгүй */}
             {tot.loading && <> {tr('· тоолж байна…')}</>}
-            {/* ⚠️ Алдааг «—»-ээр нуухгүй (query.ts-ийн дүрэм) — юу болсныг хэлж,
-                дахин оролдох гарц өгнө. Товч нь текстэн холбоос маягтай тул
-                css модульд шинэ класс нэмэлгүй inline-аар зурав. */}
             {tot.error && (
               <>
                 {' · '}<em className={s.rowWarn}>{tr('тоо татагдсангүй')}</em>
@@ -306,17 +232,9 @@ export const LayerCatalog = memo(function LayerCatalog({
                 )}
               </>
             )}
-            {/* ⚠️ 2026-10-06: ХЭСЭГЧИЛСЭН уналт — `usePlanTotals` зарим давхарга унахад дутуу Map-ыг
-                «бэлэн» гэж буцаадаг тул унасан мөрүүд ЧИМЭЭГҮЙ «—» (мэдээлэлгүй мэт) харагддаг байв.
-                Тоог ил хэлж, дахин татах гарц өгнө (`totals.totalsFailedOf` · `retryTotals`). */}
             {(() => {
               if (!tot.failed.length) return null;
-              /* ⚠️ 2026-10-19: ЖАГСААЛТАД БАЙГАА (`catGroups`) давхаргаас л, давхардалгүй — урьд нь `usePlanTotals`-ын
-                 бүх id-гаас (каталогт харагдахгүй ч хүссэн) тоолж «152 нийт · 153 давхарга татагдсангүй» гэж
-                 нийтээс ИХ тоо гардаг байв. */
               const bad = new Set(tot.failed);
-              /* ⚠️ 2026-10-19 (review): ХАЙЛТААС ҮЛ ХАМААРНА — каталогийн БҮХ (шүүгээгүй) мөрөөс; урьд нь `shown`
-                 (хайлтаар шүүсэн) тул бичих бүрд уналтын тоо өөрчлөгдөж, хайлтад таараагүй уналт нуугддаг байв */
               const n = new Set(catGroups.flatMap((g) => g.ids).filter((id) => bad.has(id))).size;
               if (!n) return null;
               return (
@@ -343,7 +261,6 @@ export const LayerCatalog = memo(function LayerCatalog({
           title={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
           aria-label={shut.size ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
         >
-          {/* ⚠️ 2026-10-23: Environment — lucide дүрс (урьд нь «▸/▾» тэмдэгт) */}
           {shut.size ? <ChevronsUpDown size={14} strokeWidth={1.6} aria-hidden /> : <ChevronsDownUp size={14} strokeWidth={1.6} aria-hidden />}
         </button>
         {!pinned && (
@@ -354,8 +271,7 @@ export const LayerCatalog = memo(function LayerCatalog({
       </header>
 
       <div className={s.body}>
-        {/* ХАЙЛТ — ~99 давхаргаас нэрээр нь олох цорын ганц зам (дээрх ⚠️).
-            ⚠️ 2026-10-23: Environment `.dataset-panel-search` — дүрстэй хайрцаг (оролт нь хэвээр). */}
+        {/* ХАЙЛТ — ~99 давхаргаас нэрээр нь олох цорын ганц зам (дээрх). */}
         <label className={s.searchBox}>
           <Search size={13} strokeWidth={1.75} aria-hidden />
           <input
@@ -374,8 +290,6 @@ export const LayerCatalog = memo(function LayerCatalog({
         <button
           type="button"
           className={s.allOff}
-          /* ⚠️ Үргэлж асаалттай давхарга унтрахгүй тул тэднээс ӨӨР асаалттай
-              зүйл байхад л идэвхтэй. */
           disabled={visible.filter((id) => all.includes(id)).length === 0}
           onClick={() => setVisible((prev) => prev.filter((id) => !all.includes(id)))}
         >
@@ -403,40 +317,22 @@ export const LayerCatalog = memo(function LayerCatalog({
           <span className={s.orthoState}>{ortho ? tr('ил') : tr('нуусан')}</span>
         </button>
 
-        {/**
-         * ⚠️ ЖАГСААЛТЫГ `totals` хүлээлгэхгүй ШУУД зурна. Урьд нь бүх бие
-         * `<Data q={totals}>`-д ороосон тул 29 давхаргын тоо БҮГД (6 зэрэгцээ =
-         * хэдэн секунд) ирэх хүртэл каталог хоосон «тооцож байна…» гэж хүлээлгэдэг
-         * байв. Нэр, симбол, бүлэг нь СТАТИК тул шууд харагдана; тоо/хэмжээ нь
-         * мөр бүрд ирэх бүрд нь дүүрнэ (ачаалж байхад «…», алдвал «—»).
-         */}
         {(() => {
           const map = tot.map;
           return (
             <>
-              {/* ⚠️ ХООСОН ХАЙЛТ (2026-09-23): нэг ч давхарга таарахгүй бол жагсаалт
-                  бүхэлдээ алга болж, «каталог эвдэрсэн» мэт уншигддаг байв.
-                  Хэв нь `catalog.module.css`-д биш — энэ нэг мөрөнд л хэрэгтэй. */}
               {needle && shown.length === 0 && (
                 <p style={{ margin: 0, padding: '14px 16px', fontSize: 12, color: 'var(--ink-3)' }}>
                   {tr('Олдсонгүй')}
                 </p>
               )}
               {catGroups.map((g) => {
-                /* ⚠️ Хайлт идэвхтэй бол ЗӨВХӨН таарсан давхарга үлдэнэ; нэг ч
-                   таарахгүй бүлэг бүхэлдээ ХАРАГДАХГҮЙ (хоосон гарчиг нь
-                   чимээ). Хайлтгүй үед бүх зан төлөв ХУУЧНААРАА. */
                 const ids = g.ids.filter((id) => hit(id, g.title));
                 if (!ids.length) return null;
                 const defs = ids.map((id) => LAYER_BY_ID[id]).filter(Boolean);
-                /* ⚠️ Үргэлж асаалттай давхаргыг ч тоолно (`tailan`) — мөр нь
-                   «асаалттай» гэж харагдаж байхад бүлгийн тоолуур 0 гэвэл
-                   зөрчилдөнө. */
                 const on = ids.filter(
                   (id) => visible.includes(id) || forcedIds.includes(id),
                 ).length;
-                /* ⚠️ Хайж байхад ЗААВАЛ задарна (`main`) — олдсон зүйл нуугдах
-                   ёсгүй. Хайлтгүй үед хэрэглэгчийн гараар эвхсэн байдал хэвээр. */
                 const open = needle ? true : !shut.has(g.key);
 
                 return (
@@ -452,9 +348,6 @@ export const LayerCatalog = memo(function LayerCatalog({
                         * жагсаалт нээж/хаадаг, асаахын тулд баруун захын жижиг
                         * «0/6» товч дарах шаардлагатай байсан — түүнийг тоолуур
                         * гэж уншсан хүн дарж үздэггүй байлаа.
-                        *
-                        * ⚠️ Багц АЛЬ ХЭДИЙН бүрэн асаалттай бол унтраана — эс
-                        * бөгөөс сонголтоо буцаах арга гарчгаас алга болно.
                         */}
                       {/* Дарах талбай нь толгойн БҮТЭН өргөн (дүрс + нэр +
                           тоолуур) — нэр дээр онож дарах шаардлагагүй
@@ -466,7 +359,7 @@ export const LayerCatalog = memo(function LayerCatalog({
                         onClick={() => {
                           toggleGroup(ids);
                           // Асаахад мөрүүд нь задарч, унтраахад буцаж хураагдана
-                          // (⚠️ toggleGroup: нэг ч асаагүй үед л асаана — түүнтэй ижил нөхцөл)
+                          // (toggleGroup: нэг ч асаагүй үед л асаана — түүнтэй ижил нөхцөл)
                           setOpenState(g.key, on === 0);
                         }}
                       >
@@ -489,15 +382,10 @@ export const LayerCatalog = memo(function LayerCatalog({
                       </button>
                     </div>
 
-                    {/* ⚠️ `hidden` атрибут БОЛОХГҮЙ: `.rows`-ын `display: flex`
-                        нь UA-гийн `display: none`-ыг дардаг. Нөхцөлт рендер. */}
                     {open && (
                     <div className={s.rows}>
                       {defs.map((d) => {
                         const t = map?.get(d.id);
-                        /* ⚠️ `ALWAYS_ON_IDS` — газрын зураг тэднийг `visible`-ээс
-                           ҮЛ ХАМААРАН асаадаг тул жагсаалт ч асаалттай гэж
-                           харуулах ёстой (эс бөгөөс «асаагүй» гэж уншигдана). */
                         const isForced = forcedIds.includes(d.id);
                         const isOn = isForced || visible.includes(d.id);
                         const q = t ? qtyText(d, t.q) : null;
@@ -562,7 +450,6 @@ export const LayerCatalog = memo(function LayerCatalog({
             </>
           );
         })()}
-        {/* ⚠️ НЭМЭЛТ ХЭСЭГ — `extra` пропсын тайлбарыг үз (2026-09-15) */}
         {extra}
       </div>
 
@@ -574,16 +461,6 @@ export const LayerCatalog = memo(function LayerCatalog({
 
 /**
  * Давхаргыг АНГИЛЛААРАА задалж каталогт дэд мөр болгоно.
- *
- * ⚠️ «Инженерийн бэлтгэл арга хэмжээ» гэдэг нэг мөр нь 180 объект, 18.4 км-ийг
- * нуудаг байв — дотор нь огт өөр арга хэмжээнүүд (хашаа, тэгшилгээ, далан…)
- * багтдаг ба цар хүрээ нь тус бүрдээ эрс өөр. Каталогоос тэр задаргаа
- * харагдахгүй бол хэрэглэгч давхаргыг нээж, баруун самбар руу очиж байж л
- * мэднэ. Одоо зүүн баганаас шууд харагдаж, дарахад зурагт шүүгдэнэ.
- *
- * ⚠️ Дэд мөр нь ЧАГТ БИШ, ШҮҮЛТ: ArcGIS-д нэг давхаргын хэсгийг тусад нь
- * асаах/унтраах боломжгүй (давхарга бол нэгж). Тиймээс сонгосон төрөл нь
- * тодорч, бусад нь бүдгэрнэ — идэвхтэй шүүлт толгойн тэмдгээр харагдана.
  */
 function FacetRows({
   d,
@@ -601,9 +478,6 @@ function FacetRows({
   const f = d.facets![0];
   const where = whereFor(d, zone);
 
-  /* ⚠️ 2026-10-06 (аудит): `queryGroupEx` — сервер бүлгийн тоог `maxRecordCount`-оор ЧИМЭЭГҮЙ
-     тайрвал (`exceededTransferLimit`) жагсаалт БҮРЭН мэт харагддаг байв. Тайрагдсан бол доор
-     «дутуу» тэмдэг. */
   const q = useAsync(async () => {
     const { rows, truncated } = await queryGroupEx(layerUrl(d), f.field, layerStats(d), where);
     const items = groups(rows, f.field, tr('Бүртгэгдээгүй'), ['n', 'q'])
@@ -611,9 +485,6 @@ function FacetRows({
     return { items, truncated };
   }, [d.id, where]);
 
-  // ⚠️ Алдааг ЧИМЭЭГҮЙ null болгохгүй (query.ts-ийн дүрэм) — дэд мөрүүд дуугүй
-  //    алга болбол хэрэглэгч задаргаа огт байхгүй гэж эндүүрнэ. Жижиг мөрөөр
-  //    мэдэгдэж, дахин оролдох гарц өгнө.
   if (q.state === 'error') {
     return (
       <div className={s.facetRows}>
@@ -626,12 +497,6 @@ function FacetRows({
 
   if (q.state !== 'ready' || q.data.items.length < 2) return null;
 
-  /* ⚠️ Кодтой талбарт хүний нэр (`paint.labels`, 2026-09-15): «1» → «Явган хүний зам». Зураг ба жагсаалт нэг нэр хэлнэ.
-     ⚠️ 2026-10-21 (аудит): `f.canon` (бүсийн ангилал → `zoneType`) — өгөгдлийн жижиг үсгийн утга толины каноник
-     түлхүүрт таардаггүй тул англи горимд монголоор үлддэг байв; ZoneFilter-тэй нэг нэр.
-     ⚠️ 2026-10-22 (аудит): НЭГ ГАЗРААС — мөр БА шүүлтийн чип (`Portal.ActiveFilterChip` нь `label`-ийг дахин
-     орчуулдаггүй) ижил орчуулсан нэр хэлнэ. Урьд нь чип рүү түүхий утга (`item.label`, «орон сууцны бүс») очиж англи
-     горимд монголоор үлддэг байв. Шүүлтийн түлхүүр/нөхцөл (`key` · `groupWhere`) түүхий утгаараа хэвээр. */
   const nameOf = (label: string): string => tr(f.canon
     ? f.canon(label)
     : f.field === d.paint?.field
@@ -644,7 +509,7 @@ function FacetRows({
         const key = `cat:${d.id}:${item.label}`;
         const on = isOn(key);
         const name = nameOf(item.label);
-        const qty = qtyText(d, item.stats.q ?? null); // ⚠️ 2026-10-21: `stats` — бүх утга хоосон бүлэг «0 м» БИШ хоосон (null ≠ 0)
+        const qty = qtyText(d, item.stats.q ?? null);
         return (
           <button
             key={item.label}
@@ -659,13 +524,11 @@ function FacetRows({
                 group: f.label,
                 where: groupWhere(f.field, item),
                 view,
-                // ⚠️ ЗӨВХӨН энэ давхаргад — `Layer` талбар бусад давхаргад алга
                 layerIds: d.id,
                 color: d.hue,
               });
             }}
           >
-            {/* ⚠️ Нэр — дээрх `nameOf` (2026-09-15 · 2026-10-21 · 2026-10-22-ны ⚠️) */}
             <span className={s.facetName}>{name}</span>
             <span className={`${s.facetMeta} num`}>
               {num(item.values.n)} {tr('ш')}{qty ? ` · ${qty}` : ''}

@@ -2,20 +2,6 @@
 
 /**
  * БҮС/БАГЦЫН НЭГДСЭН ТОЙМ — БҮХ эх сурвалжийг нэг дор шүүнэ.
- *
- * ⚠️ ЯАГААД ТУСДАА ХЭРЭГСЭЛ ВЭ: «Багц 1-ийн мэдээллийг дэлгэрэнгүй» гэсэн асуулт
- * нэг давхаргаар хариулагдахгүй — барилга, зам, инженерийн шугам, ажлын хуудас,
- * ХАБЭА бүгдэд тархсан. Агент 100 давхаргыг нэг нэгээр асуувал эргэлтийн
- * хязгаарт мөргөж, хагас дутуу хариулна. Энэ хэрэгсэл БҮГДИЙГ нэг дуудлагаар
- * цуглуулна.
- *
- * ⚠️ ТООГ ӨӨРӨӨ БОДОХГҮЙ: `totals.ts`-ийн `layerTotals()`-ыг дууддаг. Тэр нь
- * порталын каталог, дашбоард хоёрын ашигладаг ЯГ ИЖИЛ тоо/хэмжээний асуулга.
- * Тусдаа тооцоо бичвэл агентын дүн дэлгэц дээрхээс зөрж, итгэл алдагдана.
- *
- * ⚠️ БИЧИГЛЭЛИЙН ЗӨРӨӨ: «Багц-1» / «Багц -1» / «БАГЦ-1» / «Багц 1-1» гэж дөрвөн
- * эх сурвалжид дөрвөн янз бичигдсэн. Давхаргад `zoneWhere()` (порталынх) шийднэ;
- * өгөгдлийн эх сурвалжид утгуудыг ТАТАЖ АВААД `bagtsKey()`-ээр жишнэ.
  */
 
 import { count, nPrefixUnicode, queryGroup, queryStats, sqlStr, type Stat } from '@/lib/query';
@@ -35,8 +21,6 @@ export type OverviewRow = {
   qty?: string;
   /**
    * Давхарга БҮТНЭЭРЭЭ энэ багцынх (мөрөөр шүүгээгүй).
-   * ⚠️ CAD-аас гарсан багцын давхаргууд бүсийн атрибутгүй ч БҮХЭЛДЭЭ нэг багцад
-   * харьяалагддаг — шүүх шаардлагагүй, нийт дүн нь тэр багцынх.
    */
   whole?: boolean;
 };
@@ -50,44 +34,20 @@ export type Overview = {
   skippedCount: number;
   /**
    * Алдаа өгсөн (ArcGIS унасан) эх сурвалжийн тоо.
-   * ⚠️ 2026-10-06: `runTool` үүгээр «бүх эх сурвалж унасан»-ыг «өгөгдөл олдсонгүй»-
-   *    гээс ялгана — урьд нь ArcGIS бүхэлдээ унахад «бүсийн нэрээ шалгана уу» гэж
-   *    хэрэглэгчийг төөрөгдүүлдэг байв.
    */
   failedCount: number;
   note: string;
 };
 
-/**
- * ⚠️ ХҮСЭЛТИЙН ДЭЭД ТОО. Бүсээр шүүгддэг давхарга ~100 бий; бүгдийг асуувал
- * `query.ts`-ийн 6 зэрэгцээ хязгаараар ~10 секунд болно. Хариултын хурд гол
- * шаардлага тул тоог хязгаарлаж, хэтэрвэл хэрэглэгчид ИЛЭН ДАЛАНГҮЙ хэлнэ.
- */
 const MAX_SOURCES = 110;
 
 /* ── Латин бичиглэлийг кирилл болгох ── */
 
 /**
  * «bagts 3.2» → «Багц-3.2».
- *
- * ⚠️ Хэрэглэгч монголоо ЛАТИНААР бичдэг нь энэ порталд түгээмэл. Өгөгдөл дэх
- * утгууд кирилл тул хөрвүүлэхгүй бол `bagtsKey('bagts 1')` = «BAGTS1» болж,
- * «БАГЦ1»-тэй ХЭЗЭЭ Ч таарахгүй — тойм чимээгүй хоосон буцна.
- *
- * ⚠️ Бүтэн галиг хөрвүүлэгч бичихгүй: зөвхөн БАГЦ/БҮС гэсэн хоёр үг л
- * шүүлтэд оролцдог. Илүү өргөн хөрвүүлэлт нь буруу таарц үүсгэх эрсдэлтэй.
- *
- * ⚠️ 2026-09-30: үр дүн нь ӨГӨГДЛИЙН утга (`bagtsKey`/`zoneWhere`-д тулгагдана) —
- *    `tr('Багц-{0}')`-ээр ОРЧУУЛАХГҮЙ. Урьд нь англи горимд «Package-3.2» болж
- *    (`en.ts`), `bagtsKey` нь «PACKAGE32» ≠ «БАГЦ32» тул тойм ЧИМЭЭГҮЙ ХООСОН
- *    буцаж, агент «мэдээлэл олдсонгүй» гэж худал хариулдаг байв. Англи горимын
- *    хэрэглэгч/загвар «package 3.2» гэж бичихэд ч мөн адил — `package`/`pkg`-ийг
- *    ижил хөрвүүлнэ (апп «Багц»-ыг «Package» гэж орчуулдаг).
  */
 export function normalizeZone(input: string): string {
   const s = String(input).trim();
-  /* ⚠️ 2026-10-26 (аудит): КИРИЛЛ «Багц 1» (зайтай/зураасгүй) — `zoneCanon` зайг хасч «Багц1» болгодог тул өгөгдлийн «Багц-1»-тэй
-     таардаггүй, давхаргаас 0 мөр ирдэг байв (хэрэгслийн тайлбар өөрөө «Багц 1» жишээ өгдөг). «Багц-N» хэлбэрт хэвшүүлнэ. */
   const cyr = s.match(/^\s*багц\s*[-\s]*([0-9][0-9.-]*)\s*$/i);
   if (cyr) return `Багц-${cyr[1]}`;
   // Кирилл үсэг аль хэдийн байвал хөрвүүлэх шаардлагагүй
@@ -103,17 +63,12 @@ export function normalizeZone(input: string): string {
 
 /**
  * Датасетын багцын баганаас тухайн бүстэй ТААРАХ утгуудыг олно.
- *
- * ⚠️ SQL дотор `bagtsKey()`-г дуудах боломжгүй тул: ялгаатай утгуудыг НЭГ
- * хүсэлтээр татаж аваад, кодоор жишиж, таарсныг нь `IN (...)` болгоно.
  */
 async function datasetWhere(d: Dataset, zone: string): Promise<string | null> {
   if (!d.zoneField) return null;
   const key = bagtsKey(zone);
   if (!key) return null;
 
-  /* ⚠️ 2026-10-19: эх сурвалжийн хатуу шүүлт (`baseWhere`) — урьд нь `1=1` тул Cashflow-ийн САРЫН мөрүүд
-     ч тоологдож «Багц N — санхүүжилт 300+ мөр» гэх мэт хөөрөгдсөн тоо гардаг байв. */
   const rows = await queryGroup(d.url, d.zoneField, [count(d.oid ?? 'objectid', 'n')], d.baseWhere ?? '1=1');
   const hits = rows
     .map((r) => String(r[d.zoneField!] ?? ''))
@@ -126,47 +81,27 @@ async function datasetWhere(d: Dataset, zone: string): Promise<string | null> {
 /* ── Нэгдсэн тойм ── */
 
 export async function zoneOverview(input: string, scope: AgentScope): Promise<Overview> {
-  // ⚠️ Латинаар ирсэн бол эхлээд кирилл болгоно — эс бөгөөс бүх таарц унана
   const zone = normalizeZone(input);
   const layers = allowedLayers(scope);
   const datasets = allowedDatasets(scope);
 
   const key = bagtsKey(zone);
 
-  /**
-   * ⚠️ АЖЛЫН БАГЦЫН давхаргууд — эдгээр нь `noZone` (CAD-аас гарсан, бүсийн
-   * атрибутгүй) БОЛОВЧ давхарга нь БҮХЭЛДЭЭ нэг багцад харьяалагддаг. Тиймээс
-   * шүүх шаардлагагүй — нийт дүн нь тэр багцынх. Үүнийг оруулаагүйгээс «Багц 5.1»
-   * гэж асуухад 0 ₮ гарч байсан.
-   */
   const pkgIds = new Set(PKG_BY_BAGTS[key] ?? []);
 
-  /**
-   * ⚠️ ГАРЧИГТ шингэсэн холбоос: «Багц 5.1 · Гадна дулаан… (Багц 1)» — тэр
-   * давхарга бүхэлдээ БАРИЛГЫН Багц 1-ийн ажил. Атрибут байхгүй ч гарчигт бий.
-   */
   const titleRef = /\(\s*багц\s*[-\s]*([0-9][0-9.\-]*)\s*\)/i;
 
   // Бүсээр шүүгдэх боломжтой давхаргууд
   const filterable: { l: LayerDef; where: string; whole?: boolean }[] = [];
   let skipped = 0;
   for (const l of layers) {
-    /**
-     * ⚠️ ЭНЭ ШАЛГАЛТ ХАМГИЙН ТҮРҮҮНД. Ажлын багцын давхарга нь `ZONE_ID`-тэй ч
-     * байж болох бөгөөд тэр талбар нь БАРИЛГЫН бүсийг («Багц-1») заадаг. Иймд
-     * «Багц 6.1» гэж асуухад бүсээр шүүвэл 0 мөр гарч, давхарга бүхэлдээ алга
-     * болно. Багцын харьяалал бүсийн шүүлтээс ДЭЭГҮҮР.
-     */
     const m = l.title.match(titleRef);
-    /* ⚠️ 2026-09-30: `Багц-…` нь ӨГӨГДЛИЙН түлхүүр — `tr()`-ээр орчуулахгүй (`normalizeZone`-ийн ⚠️) */
     if (pkgIds.has(l.id) || (m && bagtsKey(`Багц-${m[1]}`) === key)) {
       filterable.push({ l, where: '1=1', whole: true });
       continue;
     }
 
     const w = zoneWhere(l, zone);
-    /* ⚠️ 2026-09-30: `zoneWhere` литералаа угтваргүй угсардаг — «Багц-3.2» зэрэг кирилл
-       бүсэд `N'…'` (`query.nPrefixUnicode`-ийн ⚠️); латин бүсийн код («A-14») хэвээр. */
     if (w != null) { filterable.push({ l, where: nPrefixUnicode(whereFor(l, zone)) }); continue; }
     skipped++;
   }
@@ -174,12 +109,6 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
   const capped = filterable.slice(0, MAX_SOURCES);
   const overflow = filterable.length - capped.length;
 
-  /**
-   * ⚠️ Бүгдийг ЗЭРЭГ явуулна — `query.ts` өөрөө 6-аар хязгаарлаж дараалуулна.
-   * Энд дахин хязгаарлавал хоёр дараалал үүсч, удаан болно.
-   * ⚠️ Нэг давхарга унасан ч БУСДЫГ зогсоохгүй (`allSettled`) — нэг хуучин
-   * үйлчилгээний алдаанаас болж бүх тойм алга болох нь буруу.
-   */
   const layerResults = await Promise.allSettled(
     capped.map(async ({ l, where, whole }) => ({ l, whole, t: await layerTotals(l, where) })),
   );
@@ -207,7 +136,6 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
       const where = await datasetWhere(d, zone);
       if (!where) return null;
       const stats: Stat[] = [count(d.oid ?? 'objectid', 'n')];
-      /* ⚠️ 2026-10-19: `baseWhere` ∧ бүсийн шүүлт (дээрх ⚠️) — `tools.andWhere`-тэй ижил дүрэм (импортын тойргоос болж энд) */
       const row = await queryStats(d.url, stats, d.baseWhere ? `(${d.baseWhere}) AND (${where})` : where);
       return { d, n: Number(row.n ?? 0) };
     }),

@@ -18,16 +18,9 @@
  *   · Монгол орныг бүхэлд нь хамарсан 8×18 тор (144 цэг) ба bilinear
  *     интерполяц. Энэ самбарт ГАНЦ цэгийн (Сэлбэ) утга хэрэгтэй тул торны
  *     оронд нэг дуудлага явуулна — API-д 5 дахин бага ачаалал.
- *
- * ⚠️ ЭНЭ ӨГӨГДӨЛ ЖИНХЭНЭ. `ersdel.ts`-ийн харуулын ЗААЛТ нь жишээ өгөгдөл
- *    (тэр давхаргад утгын талбар байхгүй) — салхи нь тэднээс ЯЛГААТАЙ тул
- *    UI дээр хольж «бүгд жишээ» эсвэл «бүгд жинхэнэ» гэж үзүүлэх нь ХУДАЛ
- *    болно. Дуудагч тал ялгааг нь ил гаргах үүрэгтэй.
  */
 
 import { t as tr, perLocale } from '@/lib/i18nCore';
-/* ⚠️ Цагийн бүсийн логик ГАНЦ газар (`salhiTor.ts` §TZ) — хоёр модуль нэг
-   дүрмээр цаг тайлбарлана. Давхардуулбал нэгийг нь засахад нөгөө нь хоцорно. */
 import { TZ, epochOf, pruneDayCache, ymd } from '@/lib/salhiTor';
 
 const API = 'https://api.open-meteo.com/v1/forecast';
@@ -43,8 +36,6 @@ export type WindHour = {
   speed: number;
   /**
    * Салхи ХААНААС үлээж байгаа чиглэл, градусаар (цаг уурын конвенц).
-   * ⚠️ «Хаашаа» БИШ: 0° = хойноос, 90° = зүүнээс. Бохирдлын тархалтад
-   *    хаанаас үлээж байгаа нь чухал тул хөрвүүлэхгүй хадгална.
    */
   dirDeg: number;
 };
@@ -57,7 +48,6 @@ export type Wind = {
   asOf: number;
   /**
    * СҮЛЖЭЭ УНААД хуучирсан кэш өгсөн эсэх — UI-д сэрэмжлүүлэг болно.
-   * ⚠️ TTL доторх (шинэ) кэш нь `false` — тэр нь хэвийн зам (2026-09-21).
    */
   cached: boolean;
 };
@@ -65,7 +55,7 @@ export type Wind = {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * 8 зүгийн нэр. ⚠️ Монголоор «зүүн» = ДОРНО (east), «баруун» = ӨРНӨ (west) —
+ * 8 зүгийн нэр. Монголоор «зүүн» = ДОРНО (east), «баруун» = ӨРНӨ (west) —
  * англи «left/right»-аар бодвол эсрэгээр буудаг нийтлэг алдаа.
  */
 const DIRS = perLocale(() => [
@@ -79,12 +69,6 @@ export const dirName = (deg: number) => DIRS()[Math.round((((deg % 360) + 360) %
 /**
  * САЛХИНЫ ХҮЧ → БОХИРДЛЫН ТАРХАЛТ.
  *
- * ⚠️ Улаанбаатарын өвлийн смогийн гол хүчин зүйл нь утаа өөрөө БИШ, харин
- * САЛХИГҮЙ байдал: хотхон хөндийд байрлах тул 1 м/с-ээс сул салхитай үед
- * температурын урвуу давхарга үүсч, бохирдол хуримтлагдана. Тиймээс АЧИ-г
- * салхинаас тусад нь харвал «яагаад өнөөдөр муу байна» гэдэг нь тайлбаргүй
- * үлдэнэ.
- *
  * Ангилал нь Beaufort-ын хуваарийн эхний гишүүдэд тулгуурлав (0–0.5 нам гүм,
  * 0.5–1.5 салхины сэвшээ, 1.6–3.3 хөнгөн салхи).
  */
@@ -97,7 +81,6 @@ export const dispersionOf = (speed: number): { label: string; tone: string } =>
 
 type MeteoResponse = {
   hourly?: { time?: string[]; wind_speed_10m?: number[]; wind_direction_10m?: number[] };
-  /** ⚠️ Оффсетгүй мөрийг epoch болгоход ЗААВАЛ хэрэгтэй (`salhiTor` §TZ) */
   utc_offset_seconds?: number;
 };
 
@@ -118,18 +101,11 @@ function readCache(key: string): Cached | null {
 async function fetchHours(lat: number, lon: number, date: string): Promise<WindHour[]> {
   const url =
     `${API}?latitude=${lat}&longitude=${lon}` +
-        /* ⚠️ 'auto' БИШ: UB-ын цагаар ирэх ёстой (`salhiTor` §TZ) */
     `&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms&timezone=${TZ}` +
     `&start_date=${date}&end_date=${date}`;
 
-  /**
-   * ⚠️ 429 (квот) дээр НЭГ удаа дахин оролдоно — эх модулийн зан. Open-Meteo
-   * нь түлхүүргүй үнэгүй тул өдрийн хязгаартай; шууд алдаа шидвэл самбар
-   * хоосорно.
-   */
   let res: Response | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    /* ⚠️ 2026-09-30: timeout — Open-Meteo хариугүй унжвал самбар мөнхөд «ачаалж байна» үлддэг байв */
     res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
     if (res.ok) break;
     if (res.status === 429 && attempt === 0) { await sleep(1200); continue; }
@@ -142,12 +118,10 @@ async function fetchHours(lat: number, lon: number, date: string): Promise<WindH
   const sp = j.hourly?.wind_speed_10m ?? [];
   const dr = j.hourly?.wind_direction_10m ?? [];
 
-  /* ⚠️ Хариуны оффсет — хөтчийн локал цагаар уншихаас сэргийлнэ (§TZ) */
   const offS = j.utc_offset_seconds ?? 0;
   const out: WindHour[] = [];
   for (let i = 0; i < time.length; i++) {
     const t = epochOf(time[i], offS);
-    // ⚠️ Дутуу цагийг ОРХИНО — 0-ээр дүүргэвэл «нам гүм» гэсэн ХУДАЛ дохио өгнө
     if (!Number.isFinite(t) || sp[i] == null || dr[i] == null) continue;
     out.push({ t, speed: Number(sp[i]), dirDeg: Number(dr[i]) });
   }
@@ -168,8 +142,6 @@ export async function loadWind(lat: number, lon: number): Promise<Wind> {
   const cached = readCache(key);
 
   /**
-   * ⚠️ TTL ДОТОРХ кэш = ХЭВИЙН зам, `cached: false` (2026-09-21).
-   *
    * Урьд нь энд `cached: true` буцаадаг байсан тул 2 цагийн дотор хуудсыг
    * ДАХИН нээх бүрд `Ersdel.tsx` «Кэшнээс — сүлжээ татагдсангүй» гэж
    * ХУДАЛ бичдэг байв — сүлжээ унаагүй, ердөө л квот хэмнэсэн. `cached`
@@ -183,8 +155,6 @@ export async function loadWind(lat: number, lon: number): Promise<Wind> {
   try {
     const hours = await fetchHours(lat, lon, date);
     const ts = Date.now();
-    /* ⚠️ 2026-09-29 (аудит 10): өмнөх өдрүүдийн `salhi:` кэш квот дүүргэхээс
-       сэргийлнэ — өнөөдрийн (бүх цэгийн) түлхүүр үлдэнэ (`pruneDayCache`). */
     pruneDayCache('salhi:', [date]);
     try { localStorage.setItem(key, JSON.stringify({ ts, hours } satisfies Cached)); } catch { /* квот */ }
     return { hours, lat, lon, asOf: ts, cached: false };

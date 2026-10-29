@@ -66,7 +66,6 @@ const mk = (o) => ({
   assert.equal(docVerdict(mk({ status: MS_STATUS.approved, reviews: { ...emptyReviews(), tuh: rv(VERDICT.approve), chanar: rv(VERDICT.note), habea: rv(VERDICT.approve) } })), 'AN', 'нэг AN → AN');
   assert.equal(docVerdict(mk({ status: MS_STATUS.returned, reviews: { ...emptyReviews(), tuh: rv(VERDICT.return) } })), 'R');
   assert.equal(docVerdict(mk({ status: MS_STATUS.returned, rep: { no: 'SLB-REP-MS-P0302-0001-00', at: T, verdict: 'R' } })), 'R', 'REP давамгайлна');
-  /* ⚠️ 2026-09-29 (аудит 10): NCR залруулга илгээсний дараа өмнөх хариу мөрөнд үлдэнэ — шийдвэр биш */
   assert.equal(docVerdict(mk({ kind: 'NCR', status: MS_STATUS.review, rep: { no: 'SLB-REP-NCR-P0302-0005-00', at: T, verdict: 'R' } })), null, 'хянагдаж буй төлөвт өмнөх REP тоологдохгүй');
   assert.equal(docVerdict(mk({ kind: 'MA', status: MS_STATUS.approved, reviews: { ...emptyReviews(), tuh: rv(VERDICT.return), chanar: rv(VERDICT.approve), tug: rv(VERDICT.approve) } })), 'A', 'MA-д tuh-ийн бүртгэл тоологдохгүй');
 }
@@ -81,7 +80,6 @@ const mk = (o) => ({
     mk({ oid: 4, kind: 'MA', seq: 4, status: MS_STATUS.review }),
     mk({ oid: 5, kind: 'MA', seq: 5, status: MS_STATUS.draft }),
   ];
-  /* ⚠️ 2026-09-28: AN-тай батлагдсан (oid 2) НЭЭЛТТЭЙ — open 3 → 4 */
   assert.deepEqual(maSummary(ma), { A: 1, AN: 1, R: 1, pending: 1, open: 4, anOpen: 1 });
   /* Материалаар — ангилал бүрд батлагдсан мөр / шаардлагатай тоо */
   const mm = maMaterialSummary([

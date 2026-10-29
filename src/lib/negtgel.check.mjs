@@ -37,7 +37,6 @@ const rows = [
   { oid: 7, code: '1.2.1.2', name: 'Багц 2 Гадна дулаан, ус хангамж, ариутгах татуурга', depth: 4 },
   { oid: 8, code: '6', name: 'Барилга угсралт', depth: 1 },
   { oid: 9, code: '6.1', name: 'Цэцэрлэг, сургууль', depth: 2 },
-  /* ⚠️ Код нь «6» — дээрх хэсэгтэй ДАВХАРДСАН (эх өгөгдөлд бий) */
   { oid: 10, code: '6', name: 'Улсын комисс, хүлээлгэн өгөх', depth: 1 },
 ];
 const { parent, kids } = negtgelTree(rows);
@@ -69,7 +68,6 @@ const cf = [
     pkg2: 'БАГЦ-19.1',
     detail: 'Сургууль',
     budget: 0,
-    /* ⚠️ ХЭМЖИЛТГҮЙ гэрээ — дунджид ОРОХГҮЙ, 0 гэж тоологдохгүй */
     pct: { [ST.tezu]: null, [ST.build]: null, [ST.land]: null },
   },
 ];
@@ -84,7 +82,6 @@ assert.notEqual(g(2).actPct, 75, 'энгийн дундаж (100+50)/2 БИШ');
 assert.ok(g(2).actPct > 90, 'хэмжилтгүй гэрээ 0 болж дунджийг татах ёсгүй');
 
 /* ── 4. ХЭСГИЙН ЖИН ба SUMPRODUCT ──────────────────────────────── */
-/* ⚠️ Жингийн нийлбэр 100 БИШ бол SUMPRODUCT нь хувь байхаа болино */
 assert.equal(
   Object.values(SECTION_WEIGHT).reduce((a, b) => a + b, 0), 100,
   'хэсгийн жингийн нийлбэр ЗААВАЛ 100',
@@ -143,12 +140,6 @@ assert.equal(g(10).n, 0);
 assert.ok(Math.abs(g(1).actPct - 18.97) < 1e-9, 'төслийн нийт = SUMPRODUCT');
 assert.equal(g(1).inProject, 100, 'дээд мөр нь 100%');
 
-/*
- * ⚠️ ХЭСГИЙН ДОТООД мөрүүдийг ЦУГ нэмбэл ДАВХАРДАНА: «Гадна инженерийн
- * шугам сүлжээ» (0.25) → «Гадна дулаан…» (0.25) → «Багц 1» (0.25) гэсэн
- * гурван мөр НЭГ ижил гэрээг гурван удаа бичдэг. Тиймээс төслийн нийтийг
- * ЗӨВХӨН ХЭСГИЙН мөрөөр бодно.
- */
 const tezuKids = [3, 4, 5, 6, 7].reduce((a, o) => a + (g(o).share ?? 0), 0);
 assert.ok(tezuKids > g(2).share, 'дотоод мөрүүдийн нийлбэр хэсгийнхээсээ давна');
 
@@ -464,12 +455,10 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
     write: async (u) => { writes += u.length; return u.length; },
   });
   A._resetNegSync();
-  /* ⚠️ 2026-10-21 (кэшийн аудит): баталгаатай бичилтийн (n > 0) дараа `TUSUL_NEGTGEL` хүчингүй; бичилтгүй/уналтад үгүй */
   const bus = await import('./dataBus.ts');
   let negDrops = 0;
   bus.register(() => { negDrops += 1; }, ['TUSUL_NEGTGEL']);
   assert.equal(TUSUL_NEGTGEL.readOnly, true, 'Negtgel_guitsetgel_1013 — Excel-ийн баганууд readOnly (хэрэглэгчийн шийдвэр)');
-  /* ⚠️ 2026-10-27: `sysWrite` — синк зөвхөн sys_* талбаруудад (16б); Excel-ийн багана руу бичих зам хаалттай хэвээр */
   assert.equal(TUSUL_NEGTGEL.sysWrite, true, 'sys_* талбаруудад бичнэ');
   assert.equal((await A.syncNegtgel({}, io(null))).kind, 'off', 'хэрэглэгчгүй → бичихгүй');
   assert.equal((await A.syncNegtgel({}, io('selbe_et'))).kind, 'off', 'super биш → бичихгүй');
@@ -490,7 +479,6 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   assert.equal(negDrops, 2, 'force бичилт → дахин хүчингүй');
   A._resetNegSync();
   {
-    /* ⚠️ уналт/хариу алдагдсан → хүчингүй болгохгүй (ачаалагч доторх дахин ачаалал → дахин синкийн давталтаас сэргийлнэ) */
     const failing = { ...io('saruul_monmap'), write: async () => { throw new TypeError('сүлжээ тасрав'); } };
     assert.equal((await A.syncNegtgel({}, failing)).kind, 'error');
     assert.equal(negDrops, 2, 'уналтад TUSUL_NEGTGEL хүчингүй болохгүй');
@@ -513,9 +501,6 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   console.log('negtgel 2026-09-25: ok — нийт null · төлөвлөгөөний завсар · хамгаалалт (×100) · эрх · зөвхөн уншигдах хүснэгт');
 }
 
-/* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): ЗӨВХӨН БҮРЭН үр дүнг кэшлэнэ — эх унасан
-   (`live: false`) эсвэл хэсэгчилсэн (`failed`) үр дүн дараагийн дуудалтад дахин уншигдана;
-   аль эх унасныг `NegSourceError.failed` нэрлэнэ. */
 {
   assert.equal(negtgelComplete({ live: true, failed: [] }), true);
   assert.equal(negtgelComplete({ live: false, failed: ['Cashflow'] }), false, 'эх унасан — кэшлэхгүй');
@@ -531,11 +516,6 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   console.log('negtgel 2026-10-01: ok — бүрэн бус үр дүн кэшлэгдэхгүй · уналтын нэр');
 }
 
-/* ⚠️ 2026-10-09 (аудит): нэгтгэлийн бичилт ба автомат бодолт.
-   1. Тайлагнаагүй орон сууцны багц (`pkgProgressOf` → `{pct:0, blocks:0}`) хүснэгтэд 0 бичихгүй.
-   2. Хоёр хуудсын блокоор жигнэсэн дундаж — `null` бол `null`, 0-блоктой хуудас жин 1.
-   3. Давхардлын түлхүүр ӨДРӨӨР — 16:00Z ба 00:00Z нэг өдөр.
-   4. Блокгүй багц (5.x · 6.x · 10) танигдана — `registerApproved` `skipped: 'blockless'`. */
 {
   const { measuredHousing } = await import('./negtgelAuto.ts');
   const housing = new Map([['БАГЦ1', 21], ['БАГЦ2', 0], ['БАГЦ41', 0]]);
@@ -643,7 +623,7 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   console.log('negtgel 2026-10-12: ok — давхардалгүй жин · blendSheets · compute хуудас хоорондын null');
 }
 
-/* ══════════════ ⚠️ 2026-10-23 (аудит): обьём «Б.» бүлгийн хоосон нүднээс БИШ, навч мөрүүдээс ══════════════
+/* ══════════════ 2026-10-23 (аудит): обьём «Б.» бүлгийн хоосон нүднээс БИШ, навч мөрүүдээс ══════════════
    Нэгтгэлийн (`/190`) обьём 25/25 мөрд хоосон, дашбоардын 2 самбар «Обьём бүртгэгдээгүй» байв. */
 {
   const { constructionObyem, sumObyemParts } = await import('./blockProgress.ts');

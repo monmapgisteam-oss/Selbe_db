@@ -1,11 +1,5 @@
 /**
  * НООРОГИЙН ХҮСНЭГТ (191) — ХУУРАМЧ ENTERPRISE ДАВХАРГА (2026-10-26, `draftRows.check.mjs`).
- *
- * ⚠️ АМЬД ArcGIS РУУ НЭГ Ч ХҮСЭЛТ ЯВАХГҮЙ: `draftRowsRemote.rowsTestHooks({ post, url })`-оор тээвэр бүрэн солигдоно.
- * ⚠️ ENTERPRISE-ИЙН ЗАН (CLAUDE.md) ЯГ: алдаа шидэгдэнэ (`arcgisPost`-ын HTTP 200 + `{error}` хувиргалт), мөр бүрийн `success`
- *    (200-тай), `rollbackOnFailure` НЭГ дуудлагад л, 2000 мөрийн хуудаслалт (`orderByFields` заавал), талбарын нэр Enterprise-ийн
- *    ЖИЖИГ үсгээр (кирилл ч — өөр/том үсэг → 500 «Field name does not exist»), `where`-д КИРИЛЛ багана → 500, `last_edited_date`
- *    серверийн цаг (мс), статистикийн асуулга (`groupByFieldsForStatistics`). Нэгдмэл индекс БАЙХГҮЙ (191-ийнх шиг).
  */
 import { ROW_FIELDS } from './draftRows.ts';
 

@@ -11,13 +11,8 @@
  *   · УСТГАГДСАН АККАУНТЫН ҮЛДЭГДЭЛ — порталд алга аккаунтын энэ хуудасны хуваарилалтын мөр ба
  *     `__cap__:` эрх (`aclOps.goneRightsOf`). Энгийн эрхийн хуудас (Зөвшөөрөл · Санхүү · Газар)
  *     порталд БАЙГАА аккаунтыг л жагсаадаг тул тэдний эрх урьд нь ХАРАГДАХ ГАЗАРГҮЙ байв.
- *     «Цэвэрлэх» (`goneCleanupOp`) арилах мөр/эрхийг нэрлэж асууна (⚠️ 2026-10-23 — урьд нь асуулгүй); «Бүгдийг
+ *     «Цэвэрлэх» (`goneCleanupOp`) арилах мөр/эрхийг нэрлэж асууна (2026-10-23 — урьд нь асуулгүй); «Бүгдийг
  *     цэвэрлэх» нэг удаа асууна.
- *
- * ⚠️ Бүх ACL уншигдтал (`allAclReady`) юу ч харуулахгүй — уншигдаагүй эх сурвалжийн `[]`-ээс
- *    худал «цэвэр» эсвэл худал «үлдэгдэл» гарна. Түгжээ нь `runOp` дарах агшинд ч дахин шалгагдана.
- * ⚠️ Энгийн эрхийн бичилт унасныг (`__cap__:` dirty) «Хэрэглэгчдийн эрх удирдах» → «Дахин синк»
- *    хариуцна — энд давхардуулахгүй.
  */
 
 import { useState } from 'react';
@@ -50,9 +45,6 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
   if (!failed.length && !gone.length && !err) return null;
   const off = busy || bulk;
 
-  /* ⚠️ 2026-10-21: БАГЦЫН алдааг ХУРИМТЛУУЛНА — урьд нь op бүр `run`-ийн нэг `setErr`-ээр явж, дараагийн
-     амжилттай op-ын `setErr('')` өмнөх op-ын унасан шалтгааныг арчдаг байв. Op бүрийн алдааг цуглуулж
-     төгсгөлд нэг удаа бичнэ. `runOp`-ийг шууд — бүх товч `bulk`-аар хаалттай тул `run`-ийн түгжээ хэрэггүй. */
   const all = async (ops: (() => AclOp)[]) => {
     setBulk(true);
     const errs: string[] = [];
@@ -106,7 +98,6 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
               {') '}
               <button type="button" className={s.aclPkg} disabled={off}
                 title={tr('Энэ хуудасны хуваарилалт ба эрхийг нь арилгана')}
-                /* ⚠️ 2026-10-23 (хэрэглэгч: «бүгдийг зас»): асуулгүй устгадаг байв — арилах мөр/эрхийг нэрлэж асууна */
                 onClick={async () => {
                   const what = [g.row ? tr('хуваарилалтын мөр') : '', ...g.caps.map(capLabelShort)].filter(Boolean).join(', ');
                   if (!(await askConfirm(tr('Устгагдсан «{0}» аккаунтын энэ хуудсанд үлдсэн {1}-ийг арилгах уу?', g.user, what), { ok: tr('Цэвэрлэх') }))) return;
@@ -119,7 +110,6 @@ export function AclRepairNote({ pane }: { pane: ErhPane }) {
           ))}
           {gone.length > 1 && (
             <button type="button" className={s.aclPkg} disabled={off}
-              /* ⚠️ 2026-10-23 (UX аудит X1): `askConfirm` */
               onClick={async () => {
                 if (!(await askConfirm(tr('Устгагдсан {0} аккаунтын энэ хуудасны үлдсэн хуваарилалт ба эрхийг арилгах уу? {1}',
                   String(gone.length), gone.map((g) => g.user).join(', ')), { ok: tr('Цэвэрлэх') }))) return;

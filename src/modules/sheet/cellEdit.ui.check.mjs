@@ -1,9 +1,6 @@
 /**
  * НҮДНИЙ ЗАСВАР (`fill/useCellEdit`) — БУУРАЛТ · ХЭТРЭЛТ · БУУЛГАЛТЫН АНХААРУУЛГА.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/modules/sheet/cellEdit.ui.check.mjs
- *
- * ⚠️ `useCellEdit` нь React-ийн hook ДУУДДАГГҮЙ (зөвхөн функцүүд буцаадаг) тул
- *    энгийн объектоор шууд дуудаж шалгана.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/sheet/cellEdit.ui.check.mjs
  *
  * Хамгаалж буй алдаанууд (2026-09-30):
  *   1. Обьём (АНХДАГЧ) горимд хувиар бүртгэгдсэн хуучин нүдэнд (act бий, obyem null,
@@ -23,7 +20,6 @@ let answer = false;
 globalThis.window = globalThis;
 globalThis.confirm = (m) => { asked.push(String(m)); return answer; };
 
-/* ⚠️ `use`-гүй нэрээр — React hook дуудахгүй тул энгийн функцээр дуудна (rules-of-hooks) */
 const { useCellEdit: makeCellEdit } = await import('./fill/useCellEdit.ts');
 const { computeAll } = await import('./bagtsSheet.ts');
 
@@ -164,7 +160,6 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
 {
   const src = readFileSync(new URL('./FillNew.tsx', import.meta.url), 'utf8');
   ok(/if \(flushEditRef\.current\(\)\) setPublishQueued\(true\);/.test(src), '5: «Илгээх» нь `commit`-ийн үр дүнг шалгах ёстой');
-  /* ⚠️ 2026-10-23 (UX аудит F1): Ctrl+S нь ЗӨВХӨН ноорог хадгална — илгээхгүй; «Илгээх» илгээхээс өмнө асууна */
   ok(/if \(flushEditRef\.current\(\)\) setSaveQueued\(true\);/.test(src), '5: Ctrl+S нь ноорог хадгална (`saveQueued`)');
   const pub = src.slice(src.indexOf('const publish = useCallback'), src.indexOf('// Ctrl+S'));
   ok(/await askConfirm\(/.test(pub), '5: «Илгээх» илгээхээс өмнө асууна');
@@ -179,7 +174,6 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   ok(/usePkgPct\(\{[^}]*ovBase \}\)/.test(fill), '6: FillNew нь `ovBase`-ийг дамжуулна');
   const pub = fill.slice(fill.indexOf('const publish = useCallback'), fill.indexOf('// Ctrl+S'));
   ok((pub.match(/setOvBase\(/g) ?? []).length >= 2, '6: илгээсний дараа давхарлалтын суурь шинэчлэгдэнэ');
-  /* ⚠️ 2026-10-26 (аудит): нөгөө хувилбар = ӨӨРИЙН бүдүүвчийн блок (4-2: 6/x давхардсан шошго ч орно); багцын тоо = pkgProgressOf */
   ok(rowsSrc.includes('const theirs = new Set(otherBld.map((x) => buildingKey(pkg.group, x)));')
     && rowsSrc.includes('if (onlyMine.has(key)) continue;') && !rowsSrc.includes('if (mine.has(blok)) continue;'),
     '6b: нөгөө хувилбарын блок — өөрийн бүдүүвчээс (ижил шошго хасагдахгүй)');
@@ -277,7 +271,7 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
 
 /* ── 9. «БУСАД ТАЛБАР» ба ТОЛГОЙН БҮТЭЦ (2026-10-09, хэрэглэгч: «table fieldудыг бүгдийг шалгаж бүх
  *       баганыг ил гарга») — `SheetHead` + `FillRows`-ийг жинхэнээр зурж:
- *       (а) толгойд ХООСОН <tr> алга (хоосон мөр sticky толгойг эвдсэн — SheetHead-ийн 2026-10-09 ⚠️);
+ *       (а) толгойд ХООСОН <tr> алга (хоосон мөр sticky толгойг эвдсэн — SheetHead-ийн 2026-10-09);
  *       (б) толгойн торын өргөн (rowSpan/colSpan) == биеийн мөрийн нүдний тоо == FillNew-ийн colSpan;
  *       (в) «Бусад талбар» нь үйлчилгээнд БАЙГАА талбараар л, заасан дарааллаар, зөвхөн уншина;
  *       (г) нуусан үед (`extra = []`) хүснэгт хуучин бүтэцтэйгээ ЯГ ижил. ── */
@@ -354,10 +348,9 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
     return { head, body, trs, widths, tds: rowCells(0).length, rowCells, nBld };
   };
 
-  /* (а)(б)(в) блокгүй — «Бусад талбар» (⚠️ 2026-10-08: зөвхөн Бодит эхэлсэн/дууссан — `extraCols.DEFS`) */
+  /* (а)(б)(в) блокгүй — «Бусад талбар» (2026-10-08: зөвхөн Бодит эхэлсэн/дууссан — `extraCols.DEFS`) */
   const scB = resolveSchema(blokgui, { fill: true });
   const exB = extraCols(scB);
-  /* ⚠️ 2026-10-08: 14 шаардлагагүй багана хасагдав (`extraCols.DEFS`-ийн ⚠️) */
   ok(exB.map((x) => x.key).join(',') === 'aS,aE',
     `9a: блокгүй — зөвхөн Бодит эхэлсэн/дууссан (${exB.map((x) => x.key)})`);
   ok(!exB.some((x) => /^(ObjectID|GlobalID)$/i.test(x.field)), '9a: ObjectID/GlobalID харуулахгүй');
@@ -368,7 +361,6 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
     created_date: Date.UTC(2026, 9, 8, 3, 0), created_user: 'monmap_admin', last_edited_date: null, last_edited_user: 'tumenjargal.g',
   };
   const B = render(scB, [mk(scB, 1, rawB), mk(scB, 2, {})], exB);
-  /* ⚠️ 2026-10-08: синтетик толгой 2 мөр (бүлэг → баганын нэр + Эхлэх/Дуусах) — хоосон зурвасгүй */
   ok(B.trs.length === 2 && B.trs.every((t) => /<th/.test(t)), `9b: блокгүй толгой 2 мөр, ХООСОН <tr> алга (${B.trs.map((t) => (t.match(/<th/g) ?? []).length)})`);
   ok(!/aria-hidden="true"/.test(B.head), '9b: синтетик толгойд хоосон (aria-hidden) нүд алга');
   ok(/Эхлэх/.test(B.trs[1]) && /Дуусах/.test(B.trs[1]), '9b: Эхлэх/Дуусах 2-р мөрөнд');
@@ -383,7 +375,6 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   /* (б)(в) барилгын — мөрийн түвшний талбар л (geree/bodit/L/M алга), блокийн нэр ОРОХГҮЙ */
   const scK = resolveSchema(bld, { fill: true });
   const exK = extraCols(scK);
-  /* ⚠️ 2026-10-08: барилгын багцад мөрийн түвшний bodit_* талбар алга → «Бусад талбар» хоосон */
   ok(exK.length === 0, `9d: барилгын — мөрийн бодит огноогүй тул багана алга (${exK.map((x) => x.key)})`);
   ok(!exK.some((x) => /^F\d/.test(x.field)), '9d: блокийн F…_geree/bodit «Бусад талбар»-т ОРОХГҮЙ');
   const K = render(scK, [mk(scK, 1, { des_dugaar: 3 })], exK);
@@ -399,7 +390,6 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
 
   /* Эх код: FillNew-ийн colSpan бүгд extra-г тооцно · сонголт хэрэглэгч тус бүрд, try/catch */
   const fn = readFileSync(new URL('./FillNew.tsx', import.meta.url), 'utf8');
-  /* ⚠️ 2026-10-23: «Бүтэн / Хураангуй» — colSpan нь нэг `nCols`-оос (хураангуй 4 + n×2, бүтэн 14 + n×4 + нэмэлт) */
   ok(!/colSpan=\{14 \+ nBld \* 4/.test(fn) && (fn.match(/colSpan=\{nCols\}/g) ?? []).length === 3
     && /const nCols = compact \? 4 \+ nBld \* 2 : 14 \+ nBld \* 4 \+ extra\.length;/.test(fn), '9f: FillNew-ийн 3 colSpan харагдацын баганын тоог (`nCols`) тооцно');
   ok((fn.match(/extra=\{extra\}/g) ?? []).length === 2 && /extraPrefKey\(user\?\.username\)/.test(fn), '9f: SheetHead/FillRows ИЖИЛ массив · хэрэглэгч тус бүрийн түлхүүр');
@@ -411,10 +401,8 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const xBlock = fr.slice(fr.indexOf('extra.map('));
   ok(!/onChange|<input|setPending|setPendDate|setPick/.test(xBlock.slice(0, xBlock.indexOf('</tr>'))), '9f: «Бусад талбар» нүдэнд засах зам ҮГҮЙ');
 
-  /* ⚠️ 2026-10-09: блокгүй толгойн шошго — нүдний том тоо НИЙТ, «+N» энэ удаа */
   ok(B.head.includes('Обьём (нийт · +энэ удаа)') && !B.head.includes('Обьём (энэ удаа)'), '9g: блокгүй толгой «Обьём (нийт · +энэ удаа)»');
   ok(/title="[^"]*ХУРИМТЛАГДСАН нийт обьём[^"]*"/.test(B.head), '9g: баганын tooltip нийт/энэ удааг тайлбарлана');
-  /* ⚠️ 2026-10-09: «Бусад талбар»-ын бариул — БАГАНА ТУС БҮРИЙН түлхүүр, нүд толгойтой ижил өргөн */
   const gripCols = [];
   renderToStaticMarkup(React.createElement('table', null, React.createElement(SheetHead, {
     sc: scB, nBld: scB.bld.length, bands: seriesBands('b33_9f', scB.bld), grip: (c) => { gripCols.push(c); return {}; }, extra: exB,
@@ -425,7 +413,6 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   ok(B.head.includes('style="width:var(--w-x-aS, var(--w-xd));min-width:var(--w-x-aS, var(--w-xd));max-width:var(--w-x-aS, var(--w-xd))"'), '9h: толгойн inline өргөн (төрлийн анхдагч руу унана)');
   ok(B.body.includes('style="width:var(--w-x-aE, var(--w-xd));min-width:var(--w-x-aE, var(--w-xd));max-width:var(--w-x-aE, var(--w-xd))"'), '9h: нүдний inline өргөн толгойтой ижил');
 
-  /* ⚠️ 2026-10-23 (хэрэглэгчийн шийдвэр): ХУВААРИЙН ШҮҮЛТ — товч асаалттай бол ҮРГЭЛЖ ажиллана; хуваарьтай мөр 0 бол хүснэгт хоосон (мэдэгдэлтэй) */
   const { useRowFilter } = await import('./fill/useRows.ts');
   const run = (rows, calc, asOf, byPlan = true) => {
     let res = null;

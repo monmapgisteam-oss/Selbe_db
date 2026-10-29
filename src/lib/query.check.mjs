@@ -1,12 +1,6 @@
 /**
  * `query.ts`-ийн ХУВААЛЦСАН ХҮСЭЛТИЙН ЦӨМ (`arcgisPost` · `request`) — 2026-09-30.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/query.check.mjs
- *
- * ⚠️ Сүлжээгүй: `globalThis.fetch`-ийг орлуулна. Шалгах зүйл — урьд нь ~20 файлын
- *    шууд `fetch` тойрдог байсан хамгаалалтууд НЭГ газарт ажиллаж байгаа эсэх:
- *    timeout · 200-аар ирдэг `{error}` · 498 → токен шинэчлээд НЭГ удаа дахин ·
- *    429 backoff · JSON биш хариу · `token: 'org'` горим · `slot: false` ·
- *    `authToken.arcgisPost` бүрхүүл (импортын тойрог ажилладаг).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/query.check.mjs
  */
 import assert from 'node:assert/strict';
 import { arcgisPost, ArcGISError, queryCount, groups } from '@/lib/query';
@@ -15,8 +9,6 @@ import * as A from '@/lib/authToken';
 const realFetch = globalThis.fetch;
 const ok = (body) => ({ ok: true, status: 200, json: async () => body });
 const URL_ = 'https://x/arcgis/rest/services/A/FeatureServer/0';
-/* ⚠️ 2026-10-01: `token: 'always'` нь ЗӨВХӨН org/портал хостод токен залгана — токены шалгуурууд байгууллагын хаягаар явна.
-   ⚠️ 2026-10-20: байгууллага = Enterprise (`NEXT_PUBLIC_ENT_DATA`); `query.isOrgUrl` хувьсагчийг шууд уншдаг тул токен залгагдана. */
 const HJ = (process.env.NEXT_PUBLIC_ENT_DATA ?? '').trim().replace(/\/+$/, '');
 assert.ok(HJ, 'NEXT_PUBLIC_ENT_DATA хоосон — .env ачаалагдаагүй');
 const ORG = `${HJ}/A/FeatureServer/0`;
@@ -74,8 +66,6 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   await arcgisPost(URL_, {}, { token: 'org' });
   assert.equal(new URLSearchParams(String(seen.init.body)).get('token'), null, 'org биш URL-д токен явж болохгүй');
 
-  /* ⚠️ 2026-10-01: `always` — org/портал БИШ хост руу хэрэглэгчийн токен ЯВАХГҮЙ,
-     dev анхааруулга хост бүрд НЭГ удаа; дуудагчийн өөрийн токен хэвээр. */
   const FOREIGN = 'https://gadny.example.org/arcgis/rest/services/B/FeatureServer/0';
   const warns = [];
   const realWarn = console.warn;
@@ -103,7 +93,7 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   console.log('✅ POST · form · f=json · токен зөвхөн биед · always/org горим · always → зөвхөн org/портал хост');
 }
 
-/* ── ⚠️ 2026-10-01: 498 ШУУРГА — олон хүсэлт зэрэг 498 → НЭГ шинэчлэлт ──
+/* ── 2026-10-01: 498 ШУУРГА — олон хүсэлт зэрэг 498 → НЭГ шинэчлэлт ──
    Хариунууд ӨӨР ӨӨР цагт ирнэ: заримынх нь шинэчлэлт ДУУССАНЫ ДАРАА ирдэг — тэд
    «токен аль хэдийн солигдсон» гэж шинэчлэлгүйгээр шинэ токеноор дахин илгээнэ. */
 {
@@ -175,8 +165,6 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   };
   assert.deepEqual(await arcgisPost(ORG, {}), { ok: 1 });
   assert.deepEqual(seen, ['a', 'r1'], 'шинэчилсэн токеноор дахин оролдоогүй');
-  /* ⚠️ 2026-10-09 (аудит №2): хүчээр шинэчлэлтийн 30с хүлээлт ЦАГААР (явсан токеноор биш) —
-     шинэ сешн бүртгэж хүлээлтийг тэглээд «ЯГ нэг удаа дахин»-г тусад нь шалгана. */
   A.registerIdentity({ findCredential: () => cred }, 'https://www.arcgis.com/sharing');
   seen.length = 0;
   globalThis.fetch = async (_u, init) => {
@@ -186,10 +174,6 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   const e = await arcgisPost(ORG, {}).catch((x) => x);
   assert.equal(e.code, 498);
   assert.equal(seen.length, 2, 'ЯГ нэг удаа дахин оролдох ёстой');
-  /* ⚠️ 2026-10-09 (аудит №2): шинэчлэлт САЯ бүтсэн (токен солигдсон) атал ШИНЭ токеноор
-     дахин 498/499 (ҮРГЭЛЖ татгалздаг хаалттай үйлчилгээ) → 30с дотор ДАХИН хүчээр
-     шинэчлэхгүй, давтахгүй. Урьд нь хүлээлт явсан токеноор түлхүүрлэгдсэн тул тэсрэлт бүр
-     шинэ шинэчлэлт эхлүүлдэг байв. */
   const nBefore = n;
   seen.length = 0;
   for (let k = 0; k < 3; k++) {
@@ -214,7 +198,6 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   seen.length = 0;
   const w = await A.arcgisPost(`${ORG}/query`, {}).catch((x) => x);
   assert.equal(w.code, 498);
-  /* ⚠️ 2026-10-20: Enterprise хаяг `…/services/Hosted/A/…` тул замын сүүлд `Hosted/` орно */
   assert.match(w.message, /Invalid token\. \[(Hosted\/)?A\/FeatureServer\/0\/query 498\]/);
   A.registerIdentity(null, '');
   console.log('✅ 498 → refresh → нэг удаа дахин · 30с хүлээлт цагаар (шинэ токеноор 499 → дахин шинэчлэлгүй) · org+дуудагчийн токен → дахин үгүй · authToken бүрхүүл');
@@ -266,8 +249,8 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   console.log('✅ timeout → ArcGISError · хэрэглэгчийн abort → шууд дамжина');
 }
 
-/* ── ⚠️ 2026-09-30: БИЕ УНШИЛТ ГАЦВАЛ ч timeout · хэрэглэгчийн цуцлалт · слот суллагдана ──
-   Урьд цаг хэмжигч толгой ирмэгц цэвэрлэгддэг байсан тул `res.json()` үүрд хүлээж
+/* ── 2026-09-30: БИЕ УНШИЛТ ГАЦВАЛ ч timeout · хэрэглэгчийн цуцлалт · слот суллагдана ──
+   Урьд цаг хэмжигч толгой ирмэгц цэвэрлэгддэг байсан тул `res.json` үүрд хүлээж
    слотоо суллахгүй байв (энэ блок засваргүй кодод ГАЦНА — `guard` барина). */
 {
   /* Толгой ирсэн, бие signal цуцлагдтал ИРЭХГҮЙ (жинхэнэ хөтөч шиг reason-оор няцаана) */
@@ -317,7 +300,6 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   /* Слот суллагдана: 14 гацсан хүсэлт (хязгаар ≤12) — бүгд timeout-оор дуусна */
   globalThis.fetch = stalledBody((s) => s.reason);
   const all = await race(Promise.all(
-    /* ⚠️ 2026-10-04: параметр ЯЛГААТАЙ — ижил мета хүсэлт одоо нэгтгэгддэг (`shared`) тул 14 слот эзлэхгүй */
     Array.from({ length: 14 }, (_, i) => arcgisPost(URL_, { i: String(i) }, { timeoutMs: 40 }).catch((x) => x)),
   ), 5000);
   assert.notEqual(all, 'HANG', 'гацсан биетэй хүсэлтүүд слотоо суллаагүй — дараалал царцав');
@@ -476,7 +458,7 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   console.log('✅ ижил уншилтын нэгтгэл: /query · мета · бичилт/signal/slot:false/горим нэгтгэгдэхгүй · алдаа хуваалцана');
 }
 
-/* ── ⚠️ 2026-10-09 (аудит №2): «Түр хаах»-ын дараа ард явдаг шалгалт цонхыг 10 мин БУЦААЖ ГАРГАХГҮЙ ── */
+/* ── 2026-10-09 (аудит №2): «Түр хаах»-ын дараа ард явдаг шалгалт цонхыг 10 мин БУЦААЖ ГАРГАХГҮЙ ── */
 {
   const dead = { token: 'd1', expires: Date.now() + 10_000, refreshToken: async () => { throw Object.assign(new Error('invalid_grant'), { details: { httpStatus: 400 } }); } };
   A.registerIdentity({ findCredential: () => dead }, 'https://www.arcgis.com/sharing');
@@ -499,7 +481,7 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   console.log('✅ «Түр хаах» → 10 мин poll-оор цонх буцаж гарахгүй · шинэ сешн тэглэнэ');
 }
 
-/* ── ⚠️ 2026-10-21 (аудит): хавсралтын жагсаалт · queryAttachments · queryRelatedRecords · queryDomains — идемпотент
+/* ── 2026-10-21 (аудит): хавсралтын жагсаалт · queryAttachments · queryRelatedRecords · queryDomains — идемпотент
       УНШИЛТ тул сүлжээ/5xx/rate-limit-д дахин оролдоно (2026-10-05-ны «зөвхөн /query» хязгаарлалт эдгээрийг алдсан байв) ── */
 {
   for (const url of [`${URL_}/7/attachments`, `${URL_}/queryAttachments`, `${URL_}/queryRelatedRecords`, `${URL_}/queryDomains`]) {
@@ -525,7 +507,7 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   console.log('✅ attachments · queryAttachments · queryRelatedRecords · queryDomains: сүлжээ/5xx/rate-limit → дахин; addAttachment г.м. нэг оролдлого');
 }
 
-/* ── ⚠️ 2026-10-21 (аудит): `groups()` — хэмжилтгүй бүлгийн статистик `stats`-д null хэвээр (`values`-д 0, нийцтэй) ── */
+/* ── 2026-10-21 (аудит): `groups` — хэмжилтгүй бүлгийн статистик `stats`-д null хэвээр (`values`-д 0, нийцтэй) ── */
 {
   const rows = [
     { f: 'A', n: 2, q: null }, { f: 'A', n: 1, q: null },
@@ -545,7 +527,7 @@ const ORG = `${HJ}/A/FeatureServer/0`;
   console.log('✅ groups(): stats null-ийг хадгална · values 0 (нийцтэй) · эрэмбэ хэвээр');
 }
 
-/* ── ⚠️ 2026-10-22 (аудит): ТООН талбарын бүлгийн шүүлт хашилтгүй — `Code IN (N'1')` → Enterprise 500 «Invalid data type» ── */
+/* ── 2026-10-22 (аудит): ТООН талбарын бүлгийн шүүлт хашилтгүй — `Code IN (N'1')` → Enterprise 500 «Invalid data type» ── */
 {
   const { groupWhere } = await import('./query.ts');
   const rows = [{ Code: 1, n: 1108 }, { Code: 2, n: 1440 }, { Code: null, n: 3 }];

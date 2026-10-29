@@ -1,30 +1,6 @@
 /**
  * ӨГӨГДЛИЙН КАТАЛОГ — порталын уншдаг/бичдэг БҮХ эх сурвалж, давхарга/хүснэгт
  * тус бүрээр (2026-09-25, хэрэглэгчийн хүсэлт: «Системийн баримт»-ын оронд).
- *
- * ⚠️ 2026-09-25: НЭГ МӨР = НЭГ ДАВХАРГА/ХҮСНЭГТ. Олон давхаргатай үйлчилгээ
- *    (`SELBE_ALL_DATA_last_0917`, `Инженерийн_дэд_бүтэц__Сэлбэ_0916`, `QAQC`,
- *    `selbe_3D__0804_WFL1` …) дэд давхарга бүрээрээ задарна. Порталын хэд хэдэн
- *    id НЭГ физик давхарга руу заадаг (жиш. `sb:4` · `et:24` · `scene3d:4` →
- *    `SELBE_ALL_DATA_last_0917/108`) — тэдгээр нь НЭГ мөрөнд нийлж, id-ууд нь
- *    `aliases`-д жагсана. Эс бөгөөс нэг хүснэгт хоёр гурван удаа «өөр эх» мэт
- *    харагдана.
- *
- * ⚠️ 2026-09-25: РЕГИСТРЭЭС АВТОМАТААР. `LAYERS` (+ `IRGED_*_DEF`,
- *    `SCENE3D_LAYERS`), `PKGS` (Bagts_* 18 хуудас), `QAQC_TABLE`, `BIM`,
- *    `MESH_VERSIONS` зэргээс мөр үүснэ — давхарга нэмэгдэхэд каталог өөрөө
- *    дагана. Гараар бичсэн нь ЗӨВХӨН зориулалт ба шинэчлэлийн шатлал (кодын
- *    бичих замаас уншиж бичсэн: `hyanaltStore` · `negtgelWrite` ·
- *    `ipcAutoWrite` · `negtgelAuto` · `tableWrite` · `parcelEdit` ·
- *    `butetsEdit` · `zovshoorol` · `qaqc` · `chanarStore` · `huvaari*` ·
- *    `obyemBatlah` · `ajilBatlah/ajilApply` · `permsRemote` · `draftRemote`).
- *    Бичих зам өөрчлөгдвөл ЭНД мөн засна.
- *
- * ⚠️ 2026-09-25: ТЕКСТ ДУУДАХ АГШИНД `tr()` — модулийн түвшинд тогтмол БИШ
- *    (`purpose()`, `chain()`, `editors()` функц). `caps.ts`-ийн ⚠️-тэй ижил
- *    шалтгаан: i18n гаргагч үсгэн `tr('…')`-г л олно.
- *
- * ⚠️ React-гүй — `dataCatalog.check.mjs` шууд Node дээр ачаална.
  */
 
 import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
@@ -109,17 +85,6 @@ export const kindLabel = (k: CatKind): string =>
 
 /**
  * УСТГАГДСАН (400) ҮЙЛЧИЛГЭЭНҮҮД — CLAUDE.md-ийн «ArcGIS REST-ийн занга».
- * ⚠️ Шалгуур (`dataCatalog.check.mjs`) эдгээрийг агуулсан мөр БҮР `closed`
- *    тугтай эсэхийг барина.
- * ⚠️ 2026-10-09: урьд «хаалттай (499)» гэж бичигдэж байсан — одоо monmap-аас УСТГАГДСАН,
- *    `{ error: { code: 400, "Invalid URL" } }` буцаана (HTTP 200-аар).
- * ⚠️ 2026-10-09 (аудит №6): CLAUDE.md-ийн 9 устгагдсан үйлчилгээг БҮГДИЙГ жагсаав — урьд
- *    зөвхөн каталогт мөртэй 2 нь байсан тул бусад 7 (зөвхөн `styleUrl`/`styleSrc` түлхүүр,
- *    өгөгдөл `TD`-ийн хуулбараас) «амьд» мэт үлддэг байв. Каталогийн мөр ЗӨВХӨН эхний 2-т
- *    бий (`CLOSED_WITH_ROWS`); шалгуур (`dataCatalog.check.mjs`) бусдад мөр шаардахгүй,
- *    харин эдгээрийн алийг ч `service`/`url`-даа агуулсан мөр `closed` тугтай байхыг барина.
- *    `url` талбар нь `SysDoc`-д зөвхөн ХАРУУЛАХ зориулалттай — хаалттай хаяг руу хүсэлт
- *    ХЭЗЭЭ Ч явахгүй.
  */
 export const CLOSED_SERVICES = [
   'Selbe_guitsetgel_consolidated',
@@ -166,13 +131,12 @@ const S = (label: string, ref?: string): Step => (ref ? { label, ref } : { label
 
 /** Гараар шинэчлэгддэг лавлах давхарга */
 const refChain = (view: string = tr('Газрын зураг')): Step[] => [
-  /* ⚠️ 2026-10-23 (X2): AGOL 2026-10-20-нд хасагдсан — бүх өгөгдөл Enterprise-д */
   S(tr('ArcGIS Pro / Enterprise-ээр гараар шинэчилнэ')),
   S(tr('давхарга')),
   S(view),
 ];
 
-/** Гүйцэтгэлийн 7 шатны хяналтын 6 хянагч (`hyanalt.REVIEW_STAGES`; ⚠️ 2026-10-23: төлөвлөлтийн инженер нэмэгдэв) */
+/** Гүйцэтгэлийн 7 шатны хяналтын 6 хянагч (`hyanalt.REVIEW_STAGES`; 2026-10-23: төлөвлөлтийн инженер нэмэгдэв) */
 const reviewSteps = (): Step[] => [
   S(tr('Хяналтын инженер'), 'hyanalt'),
   S(tr('Багцын ахлах инженер')),
@@ -304,7 +268,6 @@ const EXTRA_VIEWS: Record<string, ViewKey[]> = {
   'source:eh': ['dashboard'],
   'habea:osol': ['gdash', 'tailan'],
   'habea:crane': ['gdash'],
-  /* ⚠️ Үзлэгийн гурван давхарга `HABEA_LAYER_IDS`-д ороогүй — `habeaUzleg.tsx` уншина */
   'habea:uzV11': ['habea'],
   'habea:uzG': ['habea'],
   'habea:uzZ': ['habea'],
@@ -321,7 +284,6 @@ function viewsOf(ids: string[]): ViewKey[] {
   const out = new Set<ViewKey>();
   for (const v of VIEWS) if (v.layers.some((l) => ids.includes(l))) out.add(v.key);
   for (const id of ids) for (const v of EXTRA_VIEWS[id] ?? []) out.add(v);
-  /* ⚠️ Өөрийн `VIEWS[].layers`-д ороогүй ч газрын зургийн КАТАЛОГООС асдаг */
   if (!out.size && ids.some((id) => CATALOG_LAYER_IDS.includes(id))) out.add('plan');
   if (!out.size && ids.some((id) => id.startsWith('scene3d:'))) out.add('plan');
   return sortViews(out);
@@ -343,7 +305,6 @@ function registryEntries(): CatEntry[] {
     { id: 'ersdel:sample', url: ERSDEL_FS.url, title: tr('Жишээ харуулын цэгүүд'), geom: 'point' },
     ...SCENE3D_LAYERS.map((l) => ({ id: l.id, url: l.url, title: l.title, geom: '3d' as const })),
   ];
-  /* ⚠️ URL-аар нийлүүлнэ — нэг физик давхарга = нэг мөр (толгойн ⚠️) */
   const byUrl = new Map<string, RawSrc[]>();
   for (const r of raw) {
     const k = keyOfUrl(r.url);
@@ -359,10 +320,8 @@ function registryEntries(): CatEntry[] {
     const ids = sorted.map((r) => r.id);
     const titles = [...new Set(sorted.map((r) => r.title))];
     const p = parseUrl(main.url);
-    /* ⚠️ 2026-10-26: загварын эх (хуучин AGOL хаягийн түлхүүр `styleUrl`) ХАСАГДСАН — снапшот давхаргын id-аар */
     const styleSrc: string[] = [];
     const allScene = sorted.every((r) => r.geom === '3d');
-    /* ⚠️ 2026-10-20: захиалагчийн үзлэг · IoT · бусад бүх давхарга `NEXT_PUBLIC_ENT_DATA`-гийн дор (тусдаа хувьсагч хасагдсан) */
     const envOf = main.id.startsWith('habea:osol') ? 'NEXT_PUBLIC_HABEA_INCIDENT_SVC'
       : main.id === 'habea:uzV11' ? 'NEXT_PUBLIC_HABEA_UZLEG_V11_SVC'
         : main.id === 'habea:uzG' ? 'NEXT_PUBLIC_HABEA_UZLEG_G_SVC'
@@ -440,8 +399,6 @@ function guitsEntries(): CatEntry[] {
   const hy = parseUrl(HYANALT.url);
   const ng = parseUrl(BAGTS_NEGTGEL.url);
   const tn = parseUrl(TUSUL_NEGTGEL.url);
-  /* ⚠️ 2026-10-09 (аудит №6): УСТГАГДСАН үйлчилгээний хаяг — зөвхөн `SysDoc`-ийн мөрөнд
-     ХАРУУЛАХ (`closed: true`, «устгагдсан (400)» тэмдэг); энэ хаягаар хүсэлт явдаггүй. */
   const cons = `${GONE_AGOL}/Selbe_guitsetgel_consolidated/FeatureServer/0`;
   return [
     {
@@ -463,8 +420,6 @@ function guitsEntries(): CatEntry[] {
         S(tr('Батлагдахад done|… болж хөлдөнө')),
       ],
       editors: () => [...flowEditors(), { cap: 'plan', text: tr('Хуваарийн ноорог') }],
-      /* ⚠️ 2026-10-26: БҮХ ноорог ЭХ ХУУДАСНЫ БҮТЦЭЭР (`draftRows.ts`) — `n:` мөрүүд ажил × блок (× сар) бүрд нэг, хуучин JSON мөр
-         notebook-ийн багана нэмэгдэх хүртэл ба тулгалт (Phase B) хүртэл хэвээр */
       rows: () => [
         { key: 'n:<багц>', text: tr('Бөглөлтийн ноорог — ажил × блок бүрд мөр (obyem_sum · бодит_гүйцэтгэл · огноо)') },
         { key: 'n:plan:<төрөл>:<багц>', text: tr('Хуваарийн ноорог — ажил × блок бүрд мөр, сарын обьём ажил × блок × сар бүрд') },
@@ -532,8 +487,6 @@ function guitsEntries(): CatEntry[] {
       aliases: [],
       styleSrc: [],
       views: sortViews(['guitsetgel', 'gdash', 'tailan']),
-      /* ⚠️ 2026-10-13: эх нь Negtgel_guitsetgel_1013 — Excel V3 «Төсөл төлөвлөгөө биелэлт»-ийн 906 мөр (ЗӨВХӨН
-         уншина); хувь 0–100. Систем зөвхөн бодит гүйцэтгэлийг (01 · газар) дэлгэцэнд нийлүүлнэ. */
       purpose: () => tr('Excel «Төсөл төлөвлөгөө биелэлт»-ийн ажлын задаргааны мод — жин, төлөвлөгөө, гүйцэтгэл, биелэлт (0–100).'),
       chain: () => [
         { label: tr('Excel V3 (261007)'), with: [
@@ -610,18 +563,14 @@ function finEntries(): CatEntry[] {
       group: 'fin',
       aliases: [],
       styleSrc: [],
-      /* ⚠️ 2026-10-26: + `zuragTosol` (ТЭЗҮ · зураг төслийн навч мөр засна) · `tuvshin6` (6-р түвшний төлөвлөгөө) */
       views: sortViews(['finance', 'pkgFin', 'pkgProg', 'gdash', 'dashboard', 'tailan', 'schem', 'zuragTosol', 'tuvshin6']),
       purpose: () => tr('Гэрээ бүрийн төсөв, гэрээний дүн, шатны гүйцэтгэл ба сарын санхүүжилтийн төлөвлөгөө.'),
       chain: () => [
         S(tr('Санхүүгийн ажилтан (finEdit · finRow) засна')),
-        /* ⚠️ 2026-09-25: үйлчилгээний нэр `.env`-ээс (`cf`) — хатуу бичвэл хаяг солигдоход хуучирна */
         S(`${cf.service}/${cf.layer} (${tr('шууд, архивгүй')})`),
         { label: tr('Санхүүжилт · Багцын санхүү'), with: [{ label: tr('Нэгтгэл гүйцэтгэл (авто)'), ref: 'negtgel-tusul' }] },
         S(tr('Дашбоард · Тайлан')),
       ],
-      /* ⚠️ 2026-10-26: `finEdit`/`finRow`-оос гадна `zuragEdit` (ТЭЗҮ · зураг төслийн огноо, явц, дэд шат) ба
-         `cfSwitch` (сарын мөнгө Гараар → Хуваарь) мөн энэ хүснэгтэд бичнэ. */
       editors: () => [
         ...finEditors(),
         { cap: 'zuragEdit', text: tr('ТЭЗҮ, зураг төсөл засах') },
@@ -733,15 +682,12 @@ function huvaariEntries(): CatEntry[] {
   ];
 }
 
-/* ⚠️ 2026-10-23: «Чанар (QAQC)» (QAQC · QAQC2 · Selbe_QAQC_Draft) каталогийн мөрүүд ХАСАГДСАН — харагдац системээс устсан. */
 
 /* ══════════════════ Зөвшөөрөл · ХАБЭА · Эрх ══════════════════ */
 
 function otherEntries(): CatEntry[] {
   const zv = parseUrl(ZOV_URL);
   const lb = parseUrl(HABEA.labor.url);
-  /* ⚠️ 2026-10-09 (аудит №6): УСТГАГДСАН үйлчилгээний хаяг — зөвхөн `et-closed` мөрөнд
-     ХАРУУЛАХ (`closed: true`); хүсэлт явдаггүй. */
   const et = `${GONE_AGOL}/Selbe_ET_20260721/FeatureServer`;
   return [
     {
@@ -783,9 +729,6 @@ function otherEntries(): CatEntry[] {
       ],
       editors: NONE,
     },
-    /* ⚠️ 2026-10-19: ХАБЭА-гийн бүртгэл (37 · 40 · 42 · 33) ба хог хаягдал (43) — Enterprise `Сэлбэ_ХАБ1015`
-       (`NEXT_PUBLIC_BIM_SCENE`-ийн `…/Hosted`). Урьд каталогт ОГТ байгаагүй тул «Өгөгдлийн каталог»-оос эх нь
-       харагдахгүй байв. Бичилт Enterprise нэвтрэлттэй (`habeaRegisters`-ийн ⚠️). */
     ...HABEA.registers.items.filter((it) => it.table != null).map((it): CatEntry => {
       const url = `${HABEA.registers.url}/${it.table}`;
       const p = parseUrl(url);
@@ -849,7 +792,6 @@ function otherEntries(): CatEntry[] {
         S(tr('энэ хүснэгт (мөрийн төрлөөр)')),
         S(tr('Нэвтрэхэд эрх, харагдац, шат тогтоно')),
       ],
-      /* ⚠️ 2026-10-19: `sysClose` эрхтэй хүн ЗӨВХӨН `__sys__:maintenance` мөрийг бичнэ («Систем түр хаах») */
       editors: () => [
         { text: tr('Super админ (кодын хатуу жагсаалт)') },
         { cap: 'sysClose', text: tr('Систем түр хаах — зөвхөн системийн төлөвийн мөр') },
@@ -864,7 +806,6 @@ function otherEntries(): CatEntry[] {
         { key: '__ajil__:', text: tr('Нэмэлт ажлын багцын хуваарилалт') },
         { key: '__butets__:', text: tr('Дэд бүтцийн засварын багцын хуваарилалт') },
         { key: '__type__:', text: tr('Эрхийн төрлийн загвар') },
-        /* ⚠️ 2026-10-19: хэрэглэгчийн мөр БИШ — нэг мөр, JSON `{on, note, until, by, at}` */
         { key: '__sys__:maintenance', text: tr('Системийн төлөв — «Систем түр хаах» (хаалттай эсэх, тайлбар, дахин нээгдэх хугацаа)') },
       ],
       note: () => tr('Хүснэгтийг super админ анх нэвтрэхэд код өөрөө үүсгэнэ; бүх харагдац (нэвтрэлт) уншина.'),
@@ -893,13 +834,10 @@ function otherEntries(): CatEntry[] {
 function imgEntries(): CatEntry[] {
   type Src = { id: string; title: string; url: string; kind: CatKind; views: ViewKey[]; allMaps?: true; purpose: () => string };
   const list: Src[] = [
-    /* ⚠️ 2026-10-04: ГАНЦ ортофото — `Selbe_September_tif`. Хуучин «img:ortho-old»
-       (`Selbe_ortho`) хасагдсан (`services/scene.ts` IMAGERY-ийн ⚠️). */
     {
       id: 'img:ortho', title: IMAGERY.title, url: IMAGERY.url, kind: 'image', views: [], allMaps: true,
       purpose: () => tr('Агаарын зураг (ортофото) — 2D газрын зургийн суурь.'),
     },
-    /* ⚠️ 2026-10-20: хаяг хоосон бол мөр гарахгүй (UBHUB хасагдсан, `services/scene.ts` IRGED_ROAD-ийн ⚠️) */
     ...(IRGED_ROAD.url ? [{
       id: 'img:road', title: IRGED_ROAD.title, url: IRGED_ROAD.url, kind: 'image' as const, views: ['irged' as const],
       purpose: () => tr('Замын вектор тайл — иргэдэд хүрэх үр өгөөжийн суурь.'),
@@ -937,8 +875,6 @@ function imgEntries(): CatEntry[] {
       group: 'img' as const,
       aliases: [],
       styleSrc: [],
-      /* ⚠️ 2026-10-19: BIM (SceneServer) нь Enterprise `…/Hosted` — хаяг `NEXT_PUBLIC_BIM_SCENE`-ээс (`services/scene.ts`) */
-      /* ⚠️ 2026-10-20: BIM · меш · ортофото бүгд `NEXT_PUBLIC_ENT_DATA`; өндрийн загвар тогтмол (`services/scene.ts`) */
       ...(x.id === 'img:elev' ? {} : { env: 'NEXT_PUBLIC_ENT_DATA' }),
       views: sortViews(x.views),
       ...(x.allMaps ? { allMaps: true as const } : {}),
@@ -958,12 +894,6 @@ function imgEntries(): CatEntry[] {
 
 /* ══════════════════ Нийт ══════════════════ */
 
-/**
- * ⚠️ 2026-10-21: кэш ХЭЛ СОЛИЛТЫН ҮЕЭР (`getLocaleGeneration`, `i18nCore.perLocale`-ийн ижил түлхүүр) —
- *    урьд нь анх бүтээсэн хэлээр `name` (`tr()`-ээр БҮТЭЭХ агшинд) хөлддөг байв; `purpose`/`chain` нь lazy тул
- *    нэг мөрөнд хоёр хэл холилддог, хэл солиход хуудас дахин ачаалагддаггүй (`LOCALE_SWITCH_RELOADS = false`).
- *    Нэг хэл дотор identity тогтмол.
- */
 let cache: { gen: number; list: CatEntry[] } | null = null;
 
 /** Бүх мөр — бүлгийн дарааллаар. Хэл бүрд нэг удаа бүтээнэ. */

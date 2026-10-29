@@ -1,20 +1,5 @@
 /**
  * ТАЙЛАНГИЙН ХҮСНЭГТИЙН НҮДНИЙ ТӨРӨЛ — текстээс Excel/CSV-ийн ТОО руу.
- *
- * ⚠️ ЯАГААД ХЭРЭГТЭЙ ВЭ: агентын хариулт нь markdown тул бүх утга ТЕКСТ
- * («19.7%», «1,788 м²», «2,660,000,000 ₮»). Тэдгээрийг Excel рүү текстээр
- * бичвэл нийлбэр, эрэмбэ, диаграм ажиллахгүй — хэрэглэгч гар аргаар дахин
- * бичих шаардлагатай болно (2026-10-15-ны гомдол).
- *
- * ⚠️ БАГАНА БҮХЭЛДЭЭ нэг төрөлтэй. Нүд тус бүрийг тусад нь хөрвүүлбэл нэг
- * баганад тоо ба текст холилдож, Excel-ийн нийлбэр ЧИМЭЭГҮЙ дутуу гарна.
- * Тиймээс бүх хоосон БИШ нүд ижил төрлөөр уншигдвал л багана тоон болно.
- *
- * ⚠️ ХУВЬ нь 0–1 утга + `0.0%` формат (репогийн НЭГДСЭН дүрэм —
- * `modules/sheet/fill/sheetXlsx.ts` `pctCell`). 0–100-гаар бичдэг газар репод
- * байхгүй; хольж эхэлбэл Excel дээр 100 дахин зөрнө.
- *
- * ⚠️ ХООСОН нүд `null` хэвээр — 0 БОЛГОХГҮЙ (null ≠ 0).
  */
 
 import type { ReportTable } from './report';
@@ -53,7 +38,6 @@ const UNITS = ['м²', 'м³', 'км²', 'км', 'га', 'цаг', 'хоног',
 /** Мөнгөн тэмдэг — агент «₮» бичдэг, PDF-д «төг» болдог */
 const MONEY = /(₮|төг)\s*$/;
 
-/** ⚠️ `text` нь ЭХ бичвэр — багана текст болж эргэвэл «19.7%» хэвээр үлдэнэ (0.197 БИШ) */
 type Parsed = { kind: ColKind; value: number | string; unit?: string; dec: number; text: string };
 
 /** Мянгатын таслал, зай, юникод хасахыг цэвэрлээд тоо болгоно */
@@ -69,8 +53,6 @@ const decOf = (s: string) => (s.split('.')[1] ?? '').replace(/\D+$/, '').length;
 
 /**
  * Нэг нүдийг уншина. Таних боломжгүй бол ТЕКСТ.
- * ⚠️ Огноо («2026-10-09»), багцын код («Багц-3.1»), «5/7» зэрэг нь ТЕКСТ —
- *    тоо болговол Excel огноо/бутархай болгож гажуудуулна.
  */
 export function parseCell(raw: string): Parsed | null {
   const s = plain(raw);
@@ -81,7 +63,6 @@ export function parseCell(raw: string): Parsed | null {
     const body = s.slice(0, -1).trim();
     const n = toNum(body);
     if (n != null) {
-      /* ⚠️ Хөвөгч цэгийн үлдэгдлийг (19.7/100 = 0.19699…) арилгана */
       return { kind: 'pct', value: Number((n / 100).toFixed(10)), unit: '%', dec: decOf(body), text: s };
     }
     return null;
@@ -114,8 +95,6 @@ export function parseCell(raw: string): Parsed | null {
 /** Тоон баганын Excel формат */
 function numFmtOf(kind: ColKind, unit: string | undefined, dec: number): string | undefined {
   if (kind === 'pct') return dec >= 2 ? '0.00%' : dec === 1 ? '0.0%' : '0%';
-  /* ⚠️ Бүхэл бол `#,##0` — `#,##0.###` нь бүхэл тоонд төгсгөлийн цэг үлдээдэг
-     (`sheetXlsx.qtyFmt`-ийн тайлбар). */
   const base = dec > 0 ? '#,##0.###' : '#,##0';
   if (kind === 'qty' && unit) return `${base} "${unit}"`;
   if (kind === 'money' || kind === 'num') return base;
@@ -124,8 +103,6 @@ function numFmtOf(kind: ColKind, unit: string | undefined, dec: number): string 
 
 /**
  * Хүснэгтийн багана бүрийг нэг төрөлд хөрвүүлнэ.
- * ⚠️ Багана ХОЛИМОГ (тоо + текст) бол БҮХЭЛДЭЭ текст — хагас хөрвүүлэлт нь
- *    Excel дээр «зарим мөр нийлбэрт орохгүй» гэсэн чимээгүй алдаа болно.
  */
 export function typeTable(t: ReportTable): TypedTable {
   const n = Math.max(t.head.length, ...t.rows.map((r) => r.length), 1);
@@ -147,10 +124,6 @@ export function typeTable(t: ReportTable): TypedTable {
     if (col.some((p) => p.unit !== unit0)) return { header, kind: 'text' };
     const dec = Math.max(...col.map((p) => p.dec));
 
-    /* ⚠️ НЭГЖ ТОЛГОЙД БИЧИГДСЭН тохиолдол: «Гүйцэтгэл (%)», «Утга, ₮», «Урт (км)»
-       — нүд нь нүцгэн тоо. Агент ийм хүснэгтийг байнга гаргадаг (мөн графикийн
-       өгөгдлийн хүснэгт ч ийм). Толгойноос нэгжийг нь уншиж баганыг тоон
-       төрөлд оруулна, эс бөгөөс Excel-д хувь нь энгийн тоо болж үлдэнэ. */
     const kind = col[0].kind;
     if (kind === 'num') {
       const u = headerUnit(header);
@@ -193,8 +166,6 @@ export function colHeader(c: TypedCol, inFormat: boolean): string {
 
 /**
  * CSV-ийн хувилбар — формат байхгүй тул НЭГЖИЙГ ТОЛГОЙД, хувийг 0–100-аар.
- * ⚠️ CSV-д `0.197` гэж бичвэл толгой дээрх «(%)»-тэй зөрж «0.197 хувь» мэт
- *    уншигдана. Excel-ийн нүд форматтай тул тэнд 0–1 хэвээр (`typeTable`).
  */
 export function csvTable(t: TypedTable): { head: string[]; rows: (number | string | null)[][] } {
   return {

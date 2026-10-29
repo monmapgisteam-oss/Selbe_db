@@ -1,14 +1,7 @@
 /**
  * Survey123 MA маягтын «Хамаарах ажлууд» жагсаалт — `media/works.csv` (name,label,pkg).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs tools/ma-works-csv.mjs [out.csv]
- *   Токен: ARCGIS_ADMIN_TOKEN (env эсвэл .env.development.local) — бөглөх хуудсууд нэргүй уншигдахгүй.
- *
- * ⚠️ 2026-10-09 (хэрэглэгч: «нэг MA = нэг материал, олон ажил»): MA бөглөхдөө ажлуудаа
- *    сонгодог тул жагсаалт нь бөглөх хуудсуудын НАВЧ мөрүүд (бүлэг биш).
- *    name = `${pkg.key}:${des}` — `des` нь мөрийн ТОГТВОРТОЙ дугаар (`oid` нийтлэл бүрд
- *    солигддог, `bagts.pkg.ts`-ийн ⚠️); label = «№ · ажил»; pkg = choice_filter-ийн түлхүүр.
- * ⚠️ Хуудас өөрчлөгдөх (мөр нэмэгдэх) бүрт дахин үүсгэж Survey123 Connect-д media/works.csv-г
- *    сольж НИЙТЭЛНЭ — эс бөгөөс шинэ ажил MA-д сонгогдохгүй.
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs tools/ma-works-csv.mjs [out.csv]
+ *   Токен: ARCGIS_ADMIN_TOKEN (env эсвэл.env.development.local) — бөглөх хуудсууд нэргүй уншигдахгүй.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { buildWorksCsv } from '@/lib/maWorks';
@@ -18,9 +11,7 @@ if (!TOK) {
   try { const m = /^ARCGIS_ADMIN_TOKEN=(.+)$/m.exec(readFileSync('.env.development.local', 'utf8')); if (m) TOK = m[1].trim(); } catch { /* алга */ }
 }
 if (!TOK) throw new Error('ARCGIS_ADMIN_TOKEN алга — env эсвэл .env.development.local');
-/* ⚠️ 2026-10-20: байгууллага = Сэлбэ Enterprise (`NEXT_PUBLIC_ENT_DATA`-ийн `/Hosted`-гүй суурь); ARCGIS_ADMIN_TOKEN нь Enterprise токен. */
 const ORG = (process.env.NEXT_PUBLIC_ENT_DATA || '').replace(/\/+$/, '').replace(/\/Hosted$/i, '');
-/* ⚠️ Токен POST-ын БИЕЭР (`tools/tokenInUrl.check.mjs`); `ts-alias` зөвхөн *.check.mjs-д залгадаг тул энд өөрөө */
 const orig = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -33,7 +24,6 @@ globalThis.fetch = async (input, init) => {
 };
 
 const out = process.argv[2] || 'works.csv';
-/* ⚠️ 2026-10-09: үндсэн логик `lib/maWorks.ts`-д (порталын «works.csv татах» товчтой НЭГ дүрэм) */
 const { csv, count, failed } = await buildWorksCsv((d, t, p) => { if (p) console.log(`${d + 1}/${t} ${p}`); });
 writeFileSync(out, csv, 'utf8');
 console.log(`${out}: нийт ${count} ажил${failed.length ? ` · уншигдаагүй: ${failed.join(', ')}` : ''}`);

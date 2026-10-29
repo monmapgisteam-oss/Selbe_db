@@ -3,16 +3,7 @@
 /**
  * ТАЙЛАНГ OUTLOOK-ООР ИЛГЭЭХ.
  *
- * ⚠️ Вэбээс `mailto:` нь файл ХАВСАРГАЖ ЧАДДАГГҮЙ (хөтчийн хориг). PDF-ийг
- * автоматаар хавсаргаж, «Send дарахад бэлэн» болгох цорын ганц арга бол
- * `X-Unsent: 1` толгойтой `.eml` файл үүсгэх — Classic Outlook (desktop) үүнийг
- * нээхэд ШИНЭ мэйл бичих цонх (хавсралттай, Send товчтой) гарна.
- *
- * ⚠️ New Outlook / вэб (OWA) нь `.eml`-ийг ингэж нээхгүй тул тэдэнд PDF-ийг
- * ТАТААД `mailto` нээх нөөц арга (`emailViaMailto`) — хэрэглэгч татсан PDF-ээ
- * гараар чирж хавсаргана.
- *
- * pdfmake нь ХҮНД сан тул зөвхөн товч дарахад динамикаар ачаална (`import()`).
+ * pdfmake нь ХҮНД сан тул зөвхөн товч дарахад динамикаар ачаална (`import`).
  */
 import type { BagtsRow } from '@/modules/Dashboard';
 import { t as tr } from '@/lib/i18nCore';
@@ -22,27 +13,12 @@ import type { ReportExtra } from './reportData';
 /**
  * Тайлан хүлээн авагчид — `NEXT_PUBLIC_REPORT_RECIPIENTS`-аар тохируулна.
  *
- * ⚠️ Урьд нь ганц туршилтын хаяг ХАТУУ бичигдсэн байсан бөгөөд кодын өөрийн
- * тайлбар нь «ҮЙЛДВЭРЛЭЛД ГАРГАХААС ӨМНӨ ЗААВАЛ солино» гэж хүлээн зөвшөөрсөн
- * байв — өөрөөр хэлбэл удирдлагад очих ёстой тайлан бүр нэг хүний хаяг руу
- * явдаг. Одоо орчны хувьсагчаар тохирох тул код засахгүйгээр солино.
- *
- * ⚠️ Формат: таслалаар тусгаарласан жагсаалт
- * (`a@monmap.mn,b@monmap.mn`). Хоосон/тохируулаагүй бол жагсаалт ХООСОН —
- * `Tailan` илгээх товчнуудыг хааж, тохиргоо дутууг ил хэлнэ.
- *
- * ⚠️ `NEXT_PUBLIC_*` нь build үед клиент код руу шингэдэг тул ЗӨВХӨН нийтийн
- * ажлын хаяг бичнэ — нууц утга энд ХЭЗЭЭ Ч орохгүй.
- *
  * Хаяг нэмэхэд `emailViaEml` (To: толгой) ба `emailViaMailto` (mailto: хаяг)
  * ХОЁУЛАА автоматаар дагана.
  */
 export const REPORT_RECIPIENTS: string[] = (() => {
   const raw = process.env.NEXT_PUBLIC_REPORT_RECIPIENTS ?? '';
   const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
-  /* ⚠️ 2026-09-23: анхдагч хаяг ХАСАГДСАН — хоосон бол `Tailan` илгээх
-     товчнуудыг хааж «Хүлээн авагч тохируулаагүй» гэж хэлнэ. Нэг хүний
-     туршилтын хаяг руу албан тайлан чимээгүй явахаас хоосон нь дээр. */
   return list;
 })();
 const PDF_NAME = 'Selbe_tailan.pdf';
@@ -58,10 +34,6 @@ function b64utf8(str: string): string {
 const wrap76 = (b64: string) => b64.replace(/(.{76})/g, '$1\r\n');
 /**
  * Гарчиг дахь кириллийг MIME-encoded-word болгоно.
- * ⚠️ 2026-10-21: RFC 2047 — нэг encoded-word ≤ 75 тэмдэгт. Урьд нь бүх гарчиг НЭГ үг (~120 тэмдэгт) байсан тул
- *    зарим клиент задлахгүй/тайрдаг. Одоо ≤ 45 байт (base64 60 + `=?UTF-8?B?` `?=` 12 = 72) хэсгүүдэд хувааж,
- *    CRLF + зайгаар нугална (folding). Код цэгээр (`for…of`) хуваах тул UTF-8 олон байтын дараалал (кирилл 2 байт,
- *    emoji 4 байт) хоёр үгэнд ХУВААГДАХГҮЙ — үг бүр өөрөө хүчинтэй UTF-8 байх ёстой (RFC 2047 §5).
  */
 const ENC_WORD_BYTES = 45;
 const encHeader = (str: string): string => {
@@ -81,15 +53,10 @@ const encHeader = (str: string): string => {
 
 /**
  * pdfmake баримтыг base64 PDF болгоно (динамик ачаалалт).
- *
- * ⚠️ 2026-09-17: экспортлогдсон — «Удирдлагын тайлан» (`execPdf.ts`) ижил
- *    ачаалагч, ижил фонтын VFS хэрэглэнэ; хоёр газар давтвал pdfmake хоёр
- *    удаа ачаалагдаж, VFS хоёр удаа бүртгэгдэнэ.
  */
 export async function renderPdfBase64(doc: unknown): Promise<string> {
   const mod = await import('pdfmake/build/pdfmake');
   const vfsMod = await import('pdfmake/build/vfs_fonts');
-  // ⚠️ UMD/CJS interop — build нь `module.exports`-оор гардаг тул `.default`.
   const pdfMake = ((mod as unknown as { default?: unknown }).default ?? mod) as {
     addVirtualFileSystem?: (v: unknown) => void;
     vfs?: unknown;
@@ -98,8 +65,6 @@ export async function renderPdfBase64(doc: unknown): Promise<string> {
   const vfs = (vfsMod as unknown as { default?: unknown }).default ?? vfsMod;
   if (typeof pdfMake.addVirtualFileSystem === 'function') pdfMake.addVirtualFileSystem(vfs);
   else pdfMake.vfs = vfs;
-  // ⚠️ pdfmake 0.3.x — `getBase64()` нь PROMISE (callback БИШ). Callback дамжуулбал
-  //    Promise шийдэгдэхгүй, товч мөнхөд «Бэлтгэж байна…» дээр гацна.
   return pdfMake.createPdf(doc).getBase64();
 }
 
@@ -122,7 +87,6 @@ export function download(filename: string, blob: Blob): void {
 
 /** Мэйлийн богино гарчиг ба их бие */
 const subjectOf = (dateStr: string) => tr('Сэлбэ 20 минутын хотын ерөнхий тайлан ({0})', dateStr);
-/* ⚠️ Функц — модуль ачаалахад `tr()` дуудвал хэл сонгогдохоос ӨМНӨ орчуулагдана */
 const bodyText = () => tr('Сайн байна уу,\n\nСэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.\n\nХүндэтгэсэн,');
 const bodyHtml = () => tr('<p>Сайн байна уу,</p><p>Сэлбэ 20 минутын хотын ерөнхий тайланг (PDF) хавсаргав.</p><p>Хүндэтгэсэн,</p>');
 

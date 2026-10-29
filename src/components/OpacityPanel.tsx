@@ -10,10 +10,6 @@ import s from './opacity.module.css';
 
 /**
  * Override-гүй давхаргын АНХДАГЧ тунгалаг (0–1).
- * ⚠️ 2026-10-21: урьд нь гулсуур `?? 1` (100%) харуулдаг байсан ч зураг дээр давхарга эх webmap-ийн
- *    opacity-оор (жиш. 60%) явдаг — «100%» худал, «Сэргээх» ч гарахгүй. `MapCanvas`-ийн давхарга
- *    үүсгэх дүрэмтэй ЯГ ижил: план2d загвартай бол webmap-ийн opacity-г тавихгүй (1), эс бөгөөс
- *    `webmapStyleOf(id).opacity ?? 1`. Тэр дүрмийг өөрчилбөл энд ч дагуулна.
  */
 function baseOpacity(id: string): number {
   const d = LAYER_BY_ID[id];
@@ -24,9 +20,6 @@ function baseOpacity(id: string): number {
 /**
  * ТУНГАЛАГ — газрын зураг дээрх хөвөгч цонх. Яг одоо ИЛ байгаа давхаргуудыг
  * жагсааж, тус бүрийн тунгалаг байдлыг (0–100%) гулсуураар тохируулна.
- *
- * ⚠️ Зөвхөн каталогийн ЖИНХЭНЭ давхаргууд (`LAYER_BY_ID`) — лавлагааны хил
- * (`REFERENCE_IDS`) нь зөвхөн зураас тул тунгалагжуулах утгагүй, хасна.
  */
 export function OpacityPanel({
   visible,
@@ -41,7 +34,7 @@ export function OpacityPanel({
   onClose: () => void;
   /**
    * ЗҮҮН ХАВТАСНЫ ЗОХИОМЖ — зургийн зүүн ирмэгт, толгойн эгнээний доор
-   * (2026-09-15). ⚠️ ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д; бусад харагдацад
+   * (2026-09-15). ЗӨВХӨН «Ерөнхий төлөвлөгөө»-д; бусад харагдацад
    * хавтан хуучин байрлалдаа (`MapTools`-ийн `dock` тайлбарыг үз).
    */
   dock?: boolean;
@@ -55,7 +48,6 @@ export function OpacityPanel({
   /** Тухайн давхаргын одоогийн хувь — override байхгүй бол давхаргын АНХДАГЧ (`baseOpacity`) */
   const pctOf = (id: string) => Math.round((opacity[id] ?? baseOpacity(id)) * 100);
 
-  /* ⚠️ 2026-10-21: «Сэргээх» нь анхдагчаас ЗӨРСӨН override байвал — 1-тэй биш, давхаргын өөрийн анхдагчтай жишнэ */
   const touched = ids.some((id) => opacity[id] != null && opacity[id] !== baseOpacity(id));
 
   return (

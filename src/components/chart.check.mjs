@@ -1,11 +1,7 @@
 /**
  * ГРАФИКИЙН БЛОКИЙН ШАЛГУУР — `parseChart` ба Telegram-ийн хасалт.
  *
- * ⚠️ Агентын гаргах JSON нь ЗАГВАРААС ирдэг тул төгс байх баталгаагүй: тоог
- * хашилтад бичих, хувийн тэмдэг залгах, нэг цэг өгөх, блокоо хаалгүй орхих
- * зэрэг бүгд бодитоор тохиолддог. Аль нь ч чатыг унагаах ЁСГҮЙ.
- *
- * Ажиллуулах: node --experimental-transform-types --import ./tools/ts-alias.mjs src/components/chart.check.mjs
+ * Ажиллуулах: node --experimental-transform-types --import./tools/ts-alias.mjs src/components/chart.check.mjs
  */
 
 import { strict as assert } from 'node:assert';
@@ -33,9 +29,6 @@ ok('мянгатын таслал арилав',
   parseChart('{"type":"column","data":[{"label":"a","value":"1,788"},{"label":"b","value":2}]}').data[0].value === 1788);
 ok('нэг цэгтэй график татгалзав',
   parseChart('{"type":"bar","data":[{"label":"a","value":1}]}') === null);
-/* ⚠️ 2026-10-09: тэнхлэгтэй төрөлд утгагүй мөр ХАЯГДАХГҮЙ — null (цоорхой) болно
-   (CLAUDE.md: null ≠ 0, цоорхой үлдээнэ). Урьд нь хасагддаг байсан тул хугацааны
-   цуваанд тайлангүй сар алга болж хөрш сарууд шууд холбогддог байв. */
 {
   const c = parseChart('{"type":"bar","data":[{"label":"a","value":"тодорхойгүй"},{"label":"b","value":2},{"label":"c","value":3}]}');
   ok('bar: утгагүй тоотой мөр null болж ҮЛДЭВ (3 мөр)', c.data.length === 3 && c.data[0].value === null);
@@ -49,7 +42,6 @@ ok('нэг цэгтэй график татгалзав',
     parseChart('{"type":"line","data":[{"label":"a","value":null},{"label":"b","value":null},{"label":"c","value":4}]}') === null);
   ok('gauge-ийн null ТАТГАЛЗАНА',
     parseChart('{"type":"gauge","data":[{"label":"x","value":null}]}') === null);
-  /* ⚠️ 2026-10-09 (аудит №3): хоосон мөр / boolean / массив → null (урьд нь 0 / 1 / 0) */
   const e = parseChart('{"type":"line","data":[{"label":"a","value":""},{"label":"b","value":true},{"label":"c","value":"  "},{"label":"d","value":[]},{"label":"e","value":4},{"label":"f","value":"0"}]}');
   ok('хоосон/тоо биш утга цоорхой (0 БИШ), "0" нь жинхэнэ 0',
     e.data.length === 6 && e.data.slice(0, 4).every((d) => d.value === null) && e.data[4].value === 4 && e.data[5].value === 0);
@@ -66,10 +58,6 @@ ok('stack уншигдав',
   parseChart('{"type":"stack","data":[{"label":"Чөлөөлсөн","value":1703},{"label":"Үлдсэн","value":171}]}').type === 'stack');
 ok('gauge НЭГ цэгээр хүчинтэй',
   parseChart('{"type":"gauge","data":[{"label":"Нийт гүйцэтгэл","value":18.2}]}').data.length === 1);
-/* ⚠️ 2026-09-03: АВТОМАТ ×100 ХӨРВҮҮЛЭЛТ ХАСАГДСАН. Урьд нь `value <= 1`
-   бол «бутархай ирлээ» гэж үзээд 100-аар үржүүлдэг байсан ч энэ төсөлд
-   ЖИНХЭНЭ 1%-иас бага заалт бодитоор тохиолддог — тэдгээр нь чимээгүй
-   40% болж ХУДАЛ уншигдана. Одоо хуваарьт багтахгүйг ТАТГАЛЗАНА. */
 ok('gauge-ийн жинхэнэ 0.182% ХЭВЭЭР (×100 хийхгүй)',
   parseChart('{"type":"gauge","data":[{"label":"x","value":0.182}]}').data[0].value === 0.182);
 ok('gauge-ийн 18.2 хэвээр',
@@ -109,8 +97,6 @@ console.log('\n4. Telegram — JSON ГАРАХГҮЙ, `note` дүгнэлт ҮЛ
   const h = toHtml(md);
   ok('JSON гараагүй', !h.includes('"type"') && !h.includes('"label"'));
   ok('хашлага гараагүй', !h.includes('```'));
-  // ⚠️ ГОЛ ШАЛГУУР: тайлбар нь JSON дотор байдаг тул блокийг бүхэлд нь
-  //    хаявал Telegram хэрэглэгч шинжилгээг бүрэн алдана
   ok('`note` дүгнэлт ҮЛДСЭН', h.includes('Багц 2 тэргүүлж, Багц 3.1 хоцорсон'));
   ok('эх сурвалж хасагдсан', !h.includes('mon:building'));
 }
@@ -127,8 +113,6 @@ console.log('\n4. Telegram — JSON ГАРАХГҮЙ, `note` дүгнэлт ҮЛ
 }
 
 
-/* ⚠️ 2026-10-15: ТАЙЛАНГИЙН БЛОК (```report) — порталд татах товч, Telegram-д зөвлөмжийн мөр.
-   Хасахгүй бол ботын хэрэглэгч түүхий JSON хараад ойлгохгүй. */
 console.log('\n6. Тайлангийн блок Telegram-д');
 {
   const h = toHtml(['Эхлэл.', '```report', '{"title":"Т","formats":["pdf"]}', '```', 'Төгсгөл.'].join('\n'));

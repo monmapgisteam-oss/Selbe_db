@@ -1,5 +1,3 @@
-/* ⚠️ 2026-10-23: Environment — газрын зураг дээр хөвөгч шошго: paper 94% + blur,
-   --line-strong хүрээ, 8px булан, жижиг сүүдэр. */
 .labels {
   position: absolute;
   inset: auto 58px 28px;

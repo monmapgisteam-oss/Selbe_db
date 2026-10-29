@@ -1,16 +1,16 @@
 /**
- * «ХУВААРЬ» ХАРАХ ХҮРЭЭ — хуурамч ArcGIS дээр (⚠️ 2026-10-26, хэрэглэгчийн шийдвэр).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/huvaariView.check.mjs
+ * «ХУВААРЬ» ХАРАХ ХҮРЭЭ — хуурамч ArcGIS дээр (2026-10-26, хэрэглэгчийн шийдвэр).
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/huvaariView.check.mjs
  *
  * Хамгаалж буй шийдвэрүүд:
  *   §1 эрхийн төрлийн «Хуваарь харах» (Бүх багц · Өөрийн багц · Үгүй) — анхдагч утгууд; хадгалсан загварт тэмдэггүй бол
  *      анхдагч, тэмдэгтэй бол хадгалсан утга (`roleTypes.withPlanDefault`); мөрийг дахин бичихгүй.
  *   §2 хүрээ = төрөл ∪ зохиогч ∪ батлагч; «Өөрийн багц» = урсгал · хуваарь · нэмэлт ажил · обьём · дэд бүтэц
  *      (`huvaariView.huvaariViewScope`) — «Хуваарь» цэс зөвхөн хүрээ хоосон биш үед (`permissions.workflowViewsOf`).
- *   §3 ⚠️ 2026-10-26 (хэрэглэгч: «Харагч хэрэггүй»): «Хуваарийн эрх»-ийн «Харагч» (`viewer`) ХАСАГДСАН. ArcGIS-д үлдсэн
+ *   §3 2026-10-26 (хэрэглэгч: «Харагч хэрэггүй»): «Хуваарийн эрх»-ийн «Харагч» (`viewer`) ХАСАГДСАН. ArcGIS-д үлдсэн
  *      `viewer` grant ЧИМЭЭГҮЙ хаягдана — хүрээ/эрх нээхгүй, өнчин/дутуу/танигдахгүй анхааруулгагүй, дараагийн бичилтэд
  *      мөрөөс арилна; картын эх сурвалж («Эрхийн төрөл · Бүх багц») ↔ `resolveAccess`.
- *   §5 ⚠️ 2026-10-26: карт ↔ `resolveAccess` — «Ерөнхий захирал»-ын «Гүйцэтгэл» (төрлөөр, томилгоогүй) ба ТАНИГДААГҮЙ
+ *   §5 2026-10-26: карт ↔ `resolveAccess` — «Ерөнхий захирал»-ын «Гүйцэтгэл» (төрлөөр, томилгоогүй) ба ТАНИГДААГҮЙ
  *      багцтай хуваарилалт («Хуваарь»-ыг нээхгүй — `huvaariViewScope` `PKG_GROUPS`-ээр шүүдэг).
  *   §4 «Хуваарь» хуудасны бичих зам бүр засах эрхээр хаалттай (эх код) · «Зөвхөн харах» тэмдэг · `ErhTypes` сонгогч ·
  *      «Хуваарийн эрх» хоёр баганатай.
@@ -48,7 +48,6 @@ const U = {
   tan: 'hv_tan', gui: 'hv_gui', chan: 'hv_chan', gaz: 'hv_gaz', inj: 'hv_inj', men: 'hv_men', hel: 'hv_hel', zah: 'hv_zah', ed: 'hv_ed',
   lv: 'hv_lv', unk: 'hv_unk', unk2: 'hv_unk2',
 };
-/* ⚠️ 2026-10-26: нэр нь солигдсон (`PKG_GROUPS`-д алга) багц */
 const UNK = 'Багц 99 (хуучин нэр)';
 const [g1, g2, g3] = PKG_GROUPS;
 fake.seed([
@@ -62,13 +61,11 @@ fake.seed([
   { username: U.zah, role: 'zahiral', views: JSON.stringify(['gdash']) },
   { username: U.ed, role: 'chanar', views: JSON.stringify(['gdash']) },
   { username: U.lv, role: 'chanar', views: JSON.stringify(['gdash']) },
-  /* ⚠️ 2026-10-26: ХУУЧИН «Харагч» (`viewer`) grant-тай мөрүүд — ганцхан харагч · зохиогч+харагч */
   { username: `__huvaari__:${U.lv}`, views: JSON.stringify({ roles: ['viewer'], bagts: [g2], grants: [{ role: 'viewer', bagts: [g2] }] }) },
   { username: `__huvaari__:${U.ed}`, views: JSON.stringify({
     roles: ['author', 'viewer'], bagts: [g1, g2], grants: [{ role: 'author', bagts: [g1] }, { role: 'viewer', bagts: [g2] }],
   }) },
   { username: `__cap__:${U.ed}`, views: JSON.stringify(['plan']) },
-  /* ⚠️ 2026-10-26: танигдаагүй багцтай хуваарилалт — «Өөрийн багц» төрлийн обьём · «Үгүй» төрлийн зохиогч (plan эрхгүй) */
   { username: U.unk, role: 'injener', views: JSON.stringify(['gdash']) },
   { username: U.unk2, role: 'chanar', views: JSON.stringify(['gdash']) },
   { username: `__obyem__:${U.unk}`, views: JSON.stringify({ roles: ['editor'], bagts: [UNK], grants: [{ role: 'editor', bagts: [UNK] }] }) },
@@ -148,7 +145,7 @@ const agree = (u, tag) => eq(hvRow(u).open, views(u).includes('huvaari'), `${tag
   console.log('✅ §2 хүрээ = төрөл ∪ зохиогч ∪ батлагч; өөрийн багц = хуваарилалтууд; цэс ↔ хүрээ');
 }
 
-/* ── §3 ХУУЧИН «Харагч» (`viewer`) grant ЧИМЭЭГҮЙ хаягдана (⚠️ 2026-10-26, хэрэглэгч: «Харагч хэрэггүй») ── */
+/* ── §3 ХУУЧИН «Харагч» (`viewer`) grant ЧИМЭЭГҮЙ хаягдана (2026-10-26, хэрэглэгч: «Харагч хэрэггүй») ── */
 {
   const tag = '§3';
   /* ганцхан харагч — хуваарилалт огт байхгүй мэт */
@@ -186,7 +183,7 @@ const agree = (u, tag) => eq(hvRow(u).open, views(u).includes('huvaari'), `${tag
   console.log('✅ §3 хуучин «Харагч» grant чимээгүй хаягдана · анхааруулгагүй · бичилтэд арилна');
 }
 
-/* ── §5 карт ↔ resolveAccess: «Ерөнхий захирал»-ын «Гүйцэтгэл» · танигдаагүй багц (⚠️ 2026-10-26) ── */
+/* ── §5 карт ↔ resolveAccess: «Ерөнхий захирал»-ын «Гүйцэтгэл» · танигдаагүй багц (2026-10-26) ── */
 {
   const tag = '§5';
   const gz = rowsOf(U.zah).find((r) => r.view === 'guitsetgel');

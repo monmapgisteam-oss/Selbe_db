@@ -2,18 +2,6 @@
 
 /**
  * ХЭРЭГЛЭГЧИЙН КАРТЫН «УРСГАЛТАЙ ХУУДАС» ХЭСЭГ — ЗӨВХӨН ХАРУУЛНА (2026-10-01).
- *
- * ⚠️ ЯАГААД («хэрэглэгч: бүгдийг зас»): урсгалтай 6 харагдац (Гүйцэтгэл · Хуваарь · Хуваарь
- *    батлах · Нэмэлт ажил батлах · Чанарын баримт · Чанар (QAQC)) картын унтраалгаас 2026-09-30-нд
- *    хасагдсан ч «яагаад нээлттэй/хаалттай вэ» гэдэг нь картад ХАРАГДАХГҮЙ байв. Одоо мөр бүрд:
- *    төлөв · эх сурвалж («Хуваарийн эрх · Зохиогч · Багц 3.1») · тэр хуудас руу холбоос.
- * ⚠️ УНТРААЛГАГҮЙ: хуудас нь ЗӨВХӨН хуваарилалтаар нээгдэнэ (`permissions.workflowViewsOf`) —
- *    энд бичих зам нь ганцхан «Дахин олгох» (хуваарилалт бий атлаа эрх олгогдоогүй үед —
- *    `aclOps.regrantOp`, хуваарилалтыг ӨӨРЧЛӨХГҮЙ).
- * ⚠️ Эх сурвалжийн дүрэм `workflowSources.workflowRows`-д (цэвэр, тесттэй) — энд давтахгүй.
- * ⚠️ Бүх ACL уншигдтал (`allAclReady`) жагсаалт `[]` тул ХУДАЛ «хаалттай» гэхгүйн тулд түгжээ
- *    зурвас л харуулна. Бичилт явагдаж буй хүнд (`aclPendingFor`) «эрх олгогдоогүй» тэмдгийг
- *    түр нууна (`CapOrphanNote`-ийн ижил дүрэм — эрх нь `sync`-ийн ДАРАА ирдэг).
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -30,9 +18,7 @@ import s from './userAdmin.module.css';
 
 /** Эх сурвалжийн текст — «Хуваарийн эрх · Зохиогч · Багц 3.1» */
 function srcText(x: WfSource): string {
-  /* ⚠️ 2026-10-26: эрхийн ТӨРЛИЙН «Хуваарь харах» — «Эрхийн төрөл · Бүх багц · зөвхөн харна» */
   if (x.sys === 'type') {
-    /* ⚠️ 2026-10-26: «Ерөнхий захирал» — «Гүйцэтгэл»-ийг төрлөөр бүх багцад зөвхөн харна */
     if (x.role === 'zahiral') return [tr('Эрхийн төрөл'), tr('Ерөнхий захирал'), tr('зөвхөн харна')].join(' · ');
     return [tr('Эрхийн төрөл'), x.role === 'all' ? tr('Бүх багц') : tr('Өөрийн багц'),
       x.role === 'all' ? '' : bagtsText(x.bagts), tr('зөвхөн харна')].filter(Boolean).join(' · ');
@@ -41,11 +27,9 @@ function srcText(x: WfSource): string {
   if (x.sys === 'cap') return `${pane} · ${x.cap ? capLabelShort(x.cap) : x.role} · ${tr('шууд олгосон')}`;
   const role = x.sys === 'flow' ? STAGE_LABEL[x.role as Stage]
     : roleLabel(x.sys, x.role);
-  /* ⚠️ Дэд бүтцийн эрх урсгалтай харагдац нээдэггүй (`CAP_HOST_VIEW.butets` = dedButets) — багц нь `PKG_GROUPS` */
   return [pane, role, bagtsText(x.bagts), x.viewOnly ? tr('зөвхөн харна') : ''].filter(Boolean).join(' · ');
 }
 
-/* ⚠️ 2026-10-26: `'types'` — эрхийн төрлийн эх сурвалж «Эрхийн төрөл» хуудас руу */
 export function UserWorkflow({ user, onGo }: { user: string; onGo: (pane: ErhPane | 'types') => void }) {
   const { busy, err, run } = useAclRunner();
   const ready = allAclReady();
@@ -88,7 +72,6 @@ export function UserWorkflow({ user, onGo }: { user: string; onGo: (pane: ErhPan
           </button>
         </div>
       )}
-      {/* ⚠️ 2026-10-19 (аудит): танигдаагүй багцын нэртэй хуваарилалт — эрх нээгдэхгүй, админ дахин сонгоно (`erhOverview.unknownBagts`) */}
       {e.unknownBagts.length > 0 && (
         <div className={s.capErr} role="alert">
           {tr('Танигдаагүй багц ({0}) — ямар ч багц нээгдэхгүй; тухайн эрхийн хуудсанд багцыг дахин сонгоно уу.', e.unknownBagts.join(', '))}

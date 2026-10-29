@@ -1,24 +1,10 @@
 /**
  * Suitability Modeler — envhub дизайны хэл дээр.
  *
- * ⚠️ 2026-08-18: Урьд нь энэ файл ӨӨРИЙН bespoke харанхуй палитртай байв
- * (`--bg:#0d1117`, `--panel:#161d27`… + цайвар горимын тусдаа блок). Одоо
- * гадаргуу, бичиг, зураас БҮГД порталын глобал токеноос (`globals.css`) ирдэг
- * тул хоёр горим автоматаар ажиллана — энд горимын блок БАЙХГҮЙ.
- *
  * envhub дүрэм: картад сүүдэр/glow/градиент ҮГҮЙ (гүн = давхарга + hairline);
  * box-shadow зөвхөн ЖИНХЭНЭ хөвөгч зүйлст (`var(--shadow-lg)`); булан
  * `var(--r-sm)` (999px нь зөвхөн жижиг pill); өгөгдлийн ГАНЦ өнгө `var(--data)`;
  * төлөв `var(--good/warn/bad)` (текстэд `-ink` хувилбар).
- *
- * ⚠️ Байрлал, хэмжээс (grid, зай, өндөр) ХЭВЭЭР — зөвхөн гадаргуугийн хэл.
- *
- * ⚠️ 2026-10-23: Environment — дээрх «envhub» дүрмийг шинэчлэв: карт 12px булан ·
- * --line · --surface (сүүдэргүй); хөвөгч (дэлгэрэнгүй карт, каталог) --line-strong
- * + --shadow; газрын зургийн tooltip 6px + дээд 2px --data зурвас; таб/дим
- * .view-switch (3px, 8px зам, дарагдсан --surface-2 + 0 1px 5px); badge 6px;
- * оролт .pe-field; шошго uppercase lh ≥1.3; сонголт moss 12% + inset 3px; жин ≤600.
- * Онооны (scoreColor/scoreInk) өнгө ба гүүр токенууд ХЭВЭЭР.
  */
 
 .app {
@@ -44,7 +30,6 @@
   height: 100%;
   background: var(--bg);
   color: var(--ink);
-  /* ⚠️ 2026-10-23: `--font-sans` глобалд тодорхойлогдоогүй — body-гийн Inter-ийг удамшуулна */
   font-family: inherit;
   font-size: 13px;
   overflow: hidden;
@@ -68,7 +53,6 @@
 .loaderSub { color: var(--ink-3); margin: 4px 0 22px; font-size: 12px }
 .loaderMsg { margin-top: 10px; color: var(--ink-3); font-size: 11px }
 .loaderErr { color: var(--bad-ink) }
-/* ⚠️ 2026-10-06 (аудит): алдааны дэлгэцийн «Дахин оролдох» — урьд нь гарцгүй байв */
 .loaderRetry {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   margin-top: 14px; height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500;
@@ -87,8 +71,6 @@
 /* Тэмдэг — урьд нь good→fin→bad градиент байв; чимэглэлийн өнгө хасагдаж
    дата өнгөний нэг зурвас үлдэв */
 .brandMark { width: 9px; height: 26px; border-radius: var(--r-sm); background: var(--data) }
-/* ⚠️ 2026-10-04: нарийн дэлгэцэд гарчиг табуудын ард ТАСАРЧ байв — бичвэрийн
-   боодол `min-width: 0`, гарчиг «…»-ээр тасарна (бүтэн нэр нь `title`-д). */
 .brand > div { min-width: 0 }
 .brand h1 { font-size: 13px; line-height: 1.3; letter-spacing: .08em; white-space: nowrap; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis }
 .brand p { margin: 1px 0 0; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
@@ -146,8 +128,6 @@
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px }
 .grow { flex: 1; min-height: 190px; display: flex; flex-direction: column }
-/* ⚠️ `grow` картын дотор жагсаалт КАРТ дотроо гүйх ёстой — эс бөгөөс агуулга
-   картаас доош халина. `body`-д flex дамжуулж, гүйдэг хүүхэд `min-height:0`. */
 .grow > .body { flex: 1; min-height: 0; display: flex; flex-direction: column }
 /* Картын гарчиг — .eyebrow: 11px / .15em / 600 / ink-3 */
 .card h2 {
@@ -183,18 +163,10 @@
 .collapsed > .body { display: none }
 
 /* ---------- Map ---------- */
-/**
- * ⚠️ `height: 100%` ЗААВАЛ. Эх аппад `#mapWrap` нь өөрөө grid-ийн нүд байсан тул
- * мөрийнхөө өндрийг автоматаар авдаг байв. Энд дэлгэрэнгүй картыг байрлуулах
- * `position: relative` эцэг нэмэгдсэн тул `.mapWrap` нь түүний ХҮҮХЭД болсон —
- * өндөр зааж өгөхгүй бол `.viewDiv` (absolute) 0 өндөртэй үлдэж, ArcGIS view
- * канвасаа огт зурахгүй (алдаа ч өгөхгүй, зүгээр л хоосон харагдана).
- */
 .mapWrap { position: relative; min-width: 0; height: 100% }
 .viewDiv { position: absolute; inset: 0 }
 
 /* ---------- Ranking ---------- */
-/* ⚠️ 2026-10-01: «N/M бүс өгөгдөлтэй» + CSV товч */
 .rankMeta {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 0 8px 6px; font-size: 11px; color: var(--ink-3);
@@ -219,9 +191,7 @@
 .rankRow :global(.nm) { overflow-wrap: anywhere; font-weight: 600; letter-spacing: .2px }
 .rankRow :global(.nm) i { display: block; font-style: normal; font-size: 11px; color: var(--ink-3); font-weight: 400; margin-top: 2px }
 .rankRow :global(.nm2) { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 11px; white-space: nowrap }
-/* Онооны нүд — дэвсгэр нь TSX-ээс scoreColor(оноо) (утга заасан өнгө тул үлдэнэ);
-   ⚠️ 2026-10-09: бичиг нь TSX-ээс scoreInk(оноо) — `var(--bg)` (цайвар горимд цагаан) шар/ногоон
-   дээр 1.5–3.3:1 байв. Доорх нь зөвхөн inline өнгөгүй үеийн нөөц (цайвар түвшний хар-хүрэн). */
+/* Онооны нүд — дэвсгэр нь TSX-ээс scoreColor(оноо) (утга заасан өнгө тул үлдэнэ); */
 .rankRow :global(.tot) {
   text-align: center; font-weight: 600; border-radius: var(--r-sm); padding: 6px 0; color: #1a1205;
   font-variant-numeric: tabular-nums; font-size: 14px;
@@ -235,7 +205,6 @@
   cursor: pointer; user-select: none; border-radius: var(--r-sm) var(--r-sm) 0 0;
   width: 100%; border-left: 0; border-right: 0; border-top: 0; color: inherit;
 }
-/* ⚠️ Sticky тул hover нь ЗААВАЛ тунгалаг биш өнгө — доогуур гүйх мөр нэвт харагдах ёсгүй */
 .rankGrp:hover { background: var(--surface-2) }
 .rankGrp u { text-decoration: none; font-size: 11px; color: var(--ink-3); text-align: center; transition: transform .18s }
 .grpOff u { transform: rotate(-90deg) }
@@ -259,14 +228,8 @@
 .chk :global(.swatch) { width: 8px; height: 3px; border-radius: 2px; flex: none }
 .chk :global(.dot) { width: 9px; height: 9px; border-radius: 50%; flex: none }
 
-/* ⚠️ 2026-08-24: эдийн засгийн загвар хасагдсаны дараа `BlendCard.tsx`-ийн
-   нийлмэл үнэлгээний гулсуурын ангиуд (`blendLabels`, `bUrban`, `bFin`,
-   `blendRange`, `blendScores`, `blendScore`) устгав. */
 
 /* ---------- Pie chart (3 үндсэн төрөл) ---------- */
-/* ⚠️ Урьд нь энд .pie/.pieWrap/.pieLegend гэсэн ӨӨРИЙН SVG дугуй байв —
-   CategoryPie одоо порталын дундын `ui.tsx` Donut ашигладаг тул хасагдав
-   (диаграмын нэгдмэл загвар). Доорх /* ---------- Weight rows ---------- */
 .wRow { padding: 11px 0; border-bottom: 1px solid var(--line) }
 .wRow:last-child { border-bottom: 0 }
 .wTop { display: flex; align-items: baseline; gap: 6px }
@@ -277,8 +240,6 @@
   -webkit-appearance: none; appearance: none; width: 100%; height: 5px; border-radius: 999px;
   background: var(--chart-track); outline: none; margin: 6px 0;
 }
-/* ⚠️ 2026-10-23 (UX аудит S11): дээрх `outline: none` (0,2,1) нь глобал `:focus-visible` цагиргийг (мөн 0,2,1,
-   эрт импортлогддог) дардаг тул гараар (Tab) очсон гулсуур ЯМАР Ч тэмдэггүй байв. Гарын фокусад л цагираг. */
 .app input[type=range]:focus-visible { outline: 2px solid var(--hue); outline-offset: 4px; }
 .app input[type=range]:focus-visible::-webkit-slider-thumb { background: var(--data); }
 .app input[type=range]:focus-visible::-moz-range-thumb { background: var(--data); }
@@ -349,9 +310,7 @@
 .parkHeadTxt > span { font-size: 11px; color: var(--ink-3) }
 .parkHeadTxt > span b { color: var(--ink); font-variant-numeric: tabular-nums }
 
-/* Хангалтын зурвас — 100% нь нормын түвшин. Зам = порталын chart-track токен
-   ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): 5px → 2px (`CHART.barH`), радиус 1px.
-   `::before` — 2px зурвасыг hover-доход хэцүү тул ±6px үл үзэгдэх онох талбай. */
+/* Хангалтын зурвас — 100% нь нормын түвшин. Зам = порталын chart-track токен */
 .parkBar {
   position: relative; height: 2px; margin-top: 11px;
   background: var(--chart-track); border-radius: 1px;
@@ -367,19 +326,10 @@
 
 /**
  * ЖИГД КАРТ — «Зогсоолын хэрэгцээ» ба «Ногоон байгууламж».
- *
- * ⚠️ Эдгээрт оноолтын ногоон→шар→УЛААН шатлалыг хэрэглэхээ больсон: карт нь
- * хэмжилтийн тайлан болохоос үнэлгээ биш (хэрэглэгчийн шийдвэр, 2026-08-12).
- * Бичвэр БҮГД үндсэн бэхээр, диаграм БҮГД нэг бүдэг өнгөтэй (`Urban.tsx` → `CHART`).
- * ⚠️ Зөвхөн энэ хоёр картад — `finSummary`/`parkHead` зэрэг ангиуд `Urban.tsx`-ийн
- * бусад картад ч хэрэглэгддэг тул хүрээлэлгүйгээр өөрчилж БОЛОХГҮЙ.
  */
 .plain, .plain span, .plain b, .plain i, .plain em { color: var(--ink) }
 
 /* ---------- Эдийн засгийн шинжилгээ ---------- */
-/* ⚠️ 2026-08-24: `Economics.tsx` устсаны дараа түүний толгойн ангиуд
-   (`econHead`, `econBig`, `econBar`, `econTune`, `pcOff`, `pchartLgd`,
-   `econGrp`) хасагдав — доорхи мөрийн ангиуд `Urban.tsx`-д амьд үлдэв. */
 
 .econChart { margin-top: 5px; max-height: 340px; overflow-y: auto; padding-right: 3px }
 .econRow { margin-bottom: 9px }
@@ -422,8 +372,6 @@
 }
 .mapTip :global(.t) { display: flex; align-items: center; gap: 7px; margin-bottom: 7px }
 .mapTip :global(.t) b { font-size: 12px; color: var(--ink); flex: 1; line-height: 1.3 }
-/* ⚠️ 2026-10-09: `var(--bg)` → хар-хүрэн — тэмдгийн дэвсгэр бүгд цайвар (барилгын төлөв, симуляц);
-   онооны тэмдэг inline `scoreInk`-ээр дарна (улаан түвшинд цагаан) */
 .mapTip :global(.st) { flex: none; font-size: 11px; padding: 2px 6px; border-radius: var(--r-sm); color: #1a1205; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums }
 .mapTip dl { display: grid; grid-template-columns: auto auto; gap: 3px 10px; margin: 0 }
 .mapTip dt { color: var(--ink-3); font-size: 11px }
@@ -440,13 +388,7 @@
 /* Газрын зураг дээгүүр ХӨВДӨГ карт — сүүдэр зөвшөөрөгдөнө (var(--shadow-lg)) */
 .detail {
   /* Утасны нарийн дэлгэцэд 352px нь зургаас хэвтээгээр хальдаг байв
-     (2026-08-21 аудит) — .catPanel-тай ижил хамгаалалт.
-
-     ⚠️ 2026-08-23: `left: 14px` → `200px`. Хэрэгслийн зурвас зүүн ирмэгт
-     босоо багана болж шилжсэн бөгөөд энэ карт z-11 (зурвас z-9) тул хуучин
-     байрлалдаа үлдвэл түүнийг БҮРЭН дарж, «Давхарга»/«2D-3D-BIM» руу хүрэх
-     аргагүй болно. Карт нь чирэгддэг тул хэрэглэгч дурын газраа зөөж болно —
-     энэ бол зөвхөн НЭЭГДЭХ байрлал. */
+     (2026-08-21 аудит) —.catPanel-тай ижил хамгаалалт. */
   position: absolute; left: 200px; top: 14px;
   width: min(352px, calc(100% - 214px));
   max-height: calc(100% - 28px);
@@ -465,7 +407,6 @@
 /* Дэвсгэр нь TSX-ээс scoreColor(оноо) — утга заасан өнгө тул үлдэнэ */
 .dHead :global(.gauge) {
   width: 54px; height: 54px; border-radius: 50%; flex: none; display: grid; place-items: center;
-  /* ⚠️ 2026-10-09: бичиг нь TSX-ээс scoreInk(оноо); энэ нь нөөц */
   font-size: 16px; font-weight: 600; color: #1a1205; font-variant-numeric: tabular-nums;
 }
 .dHead h3 { font-size: 14px; font-weight: 600 }
@@ -490,13 +431,8 @@
 .mTop :global(.v) { font-weight: 600; font-variant-numeric: tabular-nums }
 .mTop :global(.w) { color: var(--ink-3); font-size: 11px }
 .mNorm { font-size: 11px; margin: 0 0 3px }
-/* ⚠️ Норм ХАНГАСАН ба ЗӨРЧСӨН аль ч тохиолдолд НЭГ ногоон (урьд нь зөрчсөнийг
-   улаанаар бичдэг байв). Энэ мөр нь үнэлгээ биш, ШААРДЛАГА-ыг бичдэг; хангасан
-   эсэхийг ✓/✗ тэмдэг ба дээрх утгын өнгө (оноо) хэлнэ. Өгөгдөлгүй бол бүдэг. */
 .mNorm :global(.ok) { color: var(--good-ink) }
 .mNorm span { color: var(--ink-3) }
-/* ⚠️ 2026-10-09: `.mBar` (5px гар хийцийн зурвас) УСТГАВ — `IndRow` нь порталын `Bars`
-   (2px, `--chart-track`) болсон («бүх графикийн загварыг жигдлэх»). */
 
 .dGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px }
 .dGrid > div { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px }
@@ -506,35 +442,24 @@
 .pos { color: var(--good-ink) }
 .neg { color: var(--bad-ink) }
 
-/* ══════════ Дэлгэрэнгүйн ДИАГРАМ ══════════
-   ⚠️ Ангилалт өнгө (`SuitDetail.tsx`-ийн C1/C2/C3) нь оноолтын ногоон→улаан
-   шатлалтай ОГТ давхцахгүй сонгогдсон — диаграмын өнгийг «үнэлгээ» гэж
-   уншихгүй. Утга бүр диаграмын хажууд ТЕКСТЭЭР ч бичигдэнэ (өнгө сохор,
-   хэвлэсэн хувилбарт ч мэдээлэл алдагдахгүй). */
+/* ══════════ Дэлгэрэнгүйн ДИАГРАМ ══════════ */
 .chart { margin: 0 0 10px }
 .chart:last-child { margin-bottom: 0 }
 /* Диаграмын тайлбар — юуг юутай харьцуулж байгааг үгээр хэлнэ */
 .chCap { margin-top: 6px; font-size: 11px; color: var(--ink-3); line-height: 1.45 }
 .chCap b { color: var(--ink-2); font-weight: 600 }
 
-/* Пайн диаграм ЗҮҮН, тайлбар нь БАРУУН талд зэрэгцэнэ (`Donut`-ын DOM дараалал).
-   ⚠️ Картын өргөн нарийхан тул `nowrap`: тайлбар доош унабал пай ганцаараа
-   мөр эзэлж, хэсэг нь хоосон үлдэнэ.
-   ⚠️ `ui.module.css`-ийн ангийн нэр ХЭШЛЭГДДЭГ тул нэрээр нь хандаж болохгүй —
-   бүтцээр (`> div`) барина. */
+/* Пайн диаграм ЗҮҮН, тайлбар нь БАРУУН талд зэрэгцэнэ (`Donut`-ын DOM дараалал). */
 .donutSide > div { flex-wrap: nowrap }
 
 /* ── ААЛЗНЫ (radar) ДИАГРАМ — үзүүлэлтүүдийн онооны профайл ──
    8 тэнхлэг, 0–100 оноо. Тор нь олон өнцөгт (тойрог биш) — тэнхлэгийн тоог
    нүдээр шууд тоолж болно. Профайлын өнгө = дата өнгө. */
 .radar { display: block; margin: 0 auto; max-width: 100%; height: auto }
-/* ⚠️ 2026-10-23: Environment — тор 1px ТАСАРХАЙ `3 4` `--line`, гадна (100) хүрээ нь бүтэн (`.radarGridOut`);
-   тэнхлэгийн шошго 9px `--ink-3`; профайл ба цэг НЭГ өнгө (`--data`). */
 .radarGrid { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4 }
 .radarGridOut { stroke-dasharray: none }
 .radarSpoke { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4 }
 .radarArea { fill: var(--data); fill-opacity: .16; stroke: var(--data); stroke-width: 2; stroke-linejoin: round }
-/* ⚠️ 2026-10-09: өгөгдөлгүй тэнхлэгтэй үед ДҮҮРГЭЛТГҮЙ хөрш-ирмэгүүд — гүүр татахгүй (null ≠ 0) */
 .radarEdge { stroke: var(--data); stroke-width: 2; stroke-linecap: round }
 /* Радарын бичиг — үндсэн бэх (хоёр горимд токеноороо тохирно) */
 .radarLbl { fill: var(--ink-3); font-size: 11px }
@@ -542,9 +467,6 @@
 .radarCtr { fill: var(--ink); font-size: 20px; font-weight: 600; letter-spacing: -0.04em }
 .radarCtrLbl { fill: var(--ink-3); font-size: 11px }
 
-/* ⚠️ 2026-08-24: БОСОО БАГАНАН диаграмын ангиуд (`cols`, `colItem`, `colVal`,
-   `colBar`, `colNames`) устгав — `SuitDetail.tsx`-ийн `Columns` компонент
-   эдийн засгийн загвартай хамт хасагдсан. */
 
 /* ---------- Үзүүлэлт сонгох жагсаалт ---------- */
 .indHead {
@@ -566,7 +488,6 @@
 .ind :global(.nm) { color: var(--ink-2); overflow-wrap: anywhere; text-align: left }
 .ind :global(.wt) { text-align: right; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums }
 .ind :global(.cnt) { text-align: right; font-size: 11px; color: var(--ink); font-variant-numeric: tabular-nums }
-/* ⚠️ 2026-10-09: 5px → 2px зам, радиус 1px («бүх графикийн загварыг жигдлэх») */
 .ind :global(.bar) { height: 2px; background: var(--chart-track); border-radius: 1px; overflow: hidden }
 .ind :global(.bar) i { display: block; height: 100%; border-radius: 1px; transition: width 0.6s var(--ease) }
 
@@ -587,10 +508,6 @@
   .brand p { display: none }
 }
 @media (max-width: 1180px) {
-  /* ⚠️ Багана давхарлагдахад мөрийг ТОГТМОЛ px-ээр барьж болохгүй: .app нь
-     `overflow:hidden` тул нийлбэр өндөр дэлгэцээс их бол баруун баганын
-     (жин, зогсоол, ногоон, байршил) карт таслагдаж, хүрэх арга үлдэхгүй.
-     Иймд shell өөрөө гүйж, панелийн мөр агуулгаараа ургана. */
   .shell { grid-template-columns: 1fr; grid-template-rows: 300px 60vh auto; overflow-y: auto }
   .shellNoRight { grid-template-rows: 300px 1fr }
   .resizer { display: none }
@@ -632,15 +549,9 @@
 .dimBtn:hover { color: var(--ink) }
 .dimBtn.dimOn { background: var(--surface-2); color: var(--ink); box-shadow: 0 1px 5px #00000012 }
 
-/* Каталогийг агуулах ХӨВӨГЧ панель — доторх `SuitLayerCatalog` дүүргэнэ.
-   ⚠️ Урьд нь энд суитийн харанхуй палитрын override блок байв — одоо бүх
-   токен глобал тул `catalog.module.css` шууд зөв уншина (override хасагдсан).
-   Газрын зураг дээгүүр хөвдөг тул сүүдэр зөвшөөрөгдөнө. */
+/* Каталогийг агуулах ХӨВӨГЧ панель — доторх `SuitLayerCatalog` дүүргэнэ. */
 .catPanel {
   position: absolute;
-  /* ⚠️ 2026-08-23: `0` БИШ, `200px` — `MapTools` нь 176px өргөнтэй босоо багана
-     болж зүүн ирмэгт шилжсэн. Ирмэгээс эхэлбэл зурвасыг бүрхэж, «Давхарга»
-     товч руу буцаж хүрэх аргагүй болно (`mapTools.module.css`-ийг үз). */
   left: 200px;
   top: 0;
   bottom: 0;
@@ -659,5 +570,3 @@
   to   { opacity: 1; transform: translateX(0) }
 }
 
-/* ⚠️ Доод хүрээ (`.appFoot` — оноон тархалтын мөр) ХАСАГДСАН: `SuitFooter`
-   компоненттой хамт устсан тул түүний загварууд ч энд байхаа больсон. */

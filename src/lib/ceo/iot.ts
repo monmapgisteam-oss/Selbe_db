@@ -5,53 +5,6 @@
  * заалт (`src/lib/sensors.ts`). Үндсэн дүрэм нь `tools/iot-watch.mjs`-ийн
  * Telegram харуулаас АВСАН: хэтрэлт = `m.alert && m.latest >= m.alert.value`,
  * хуучирсан = `> IOT_STALE_H` цаг, унасан = `sensor.error`, дуугүй = заалт алга.
- *
- * ⚠️ 2026-10-09: доорх хоёр догол мөрийг ОДООГИЙН кодоор шинэчлэв — урьд нь устсан
- *    зан төлөвийг (хүрээн доторх `latest`, 48ц босго) тайлбарлаж байв.
- *
- * ⚠️ ХАРУУЛТАЙ ЯЛГААТАЙ ХЭВЭЭР (2026-09-06, хянагчийн олдвор):
- *    1. Харуул `loadSensors('24h')`, энд '7d'. 2026-09-17-оос `summarize()` нь
- *       `latest`/`latestAt`/`ageHours`-ыг хүрээгээр огтлоогүй БҮТЭН таталтаас
- *       гаргадаг тул хоёулаа ижил «сүүлийн заалт»-ыг харна; хүрээ нь зөвхөн
- *       чарт/доод/дээд/дундаж, таталтын `limit`-д нөлөөлнө.
- *    2. Харуул хуучирсныг МЭДРЭГЧЭЭР (`sn.lastAt`), энд ХЭМЖИГДЭХҮҮНЭЭР
- *       (`m.ageHours`) шалгана. Тиймээс нэг утга нь шинэ, нөгөө нь хуучирсан
- *       мэдрэгчийг харуул «хэвийн/босго», энэ карт «хуучирсан хэтрэлт» (шар) гэж
- *       болно — энэ нь алдаа биш, нарийвчлалын зөрүү.
- *    Хуучирсны босго нь хоёуланд НЭГ: `SENSOR_STALE_H` (24ц, 2026-10-04).
- *    Хөрсний чийгийн урвуу чиглэл (`IOT_HIGHER_IS_GOOD`) ба физик мужаас гадуурх
- *    заалт (`fault`) харуулд ч мөн адил (2026-10-09).
- *
- * ⚠️ ЯАГААД '24h' БИШ '7d' ВЭ: `summarize()`-ийн `latest` нь хүрээнээс үл хамаарах
- *    болсон ч (дээрх 1) ТАТАЛТ нь хүрээний `limit`-ээр хязгаарлагддаг — '24h'
- *    (400 мөр) нь decoder хэдэн өдрөөр хоцорсон хэмжигдэхүүнийг огт татахгүй байж
- *    болно. '7d' (1,400 мөр) нь илүү нөөцтэй. Хандлага/ETA-д нөлөөгүй — `fit()`
- *    өөрөө сүүлийн 24ц-аар цонхолдог. `Iot.tsx` ч '7d'-ээр эхэлдэг тул
- *    `sensors.ts`-ийн кэш хуваалцагдана (нэмэлт татах хүсэлт үүсэхгүй).
- *
- * ⚠️ IoT нь порталын бусад хэсгээс ӨӨР ArcGIS байгууллагад (Mononet ингест) —
- *    `dataBus`-т түлхүүр байхгүй, портал дотроос хэн ч бичдэггүй тул кэш нь
- *    ЗӨВХӨН TTL-ээр (5 мин, `sensors.ts`-тэй ижил) шинэчлэгдэнэ. Таг ХООСОН.
- *
- * ⚠️ ХУУЧИРСНЫГ ХЭМЖИГДЭХҮҮН ТУС БҮРД шалгана (`m.ageHours`), мэдрэгчээр биш:
- *    нэг мэдрэгчийн хоёр утга өөр өөр хугацаанд ирдэг (Mononet-ийн decoder
- *    талбар бүрд тусдаа унтардаг) тул мэдрэгчийн `lastAt` шинэхэн байхад
- *    хэтэрсэн утга нь 3–5 хоногийн өмнөх байж болно (7 хоногийн хүрээнд ийм
- *    заалт бодитоор ирнэ). Тийм хэтрэлт «одоо арга хэмжээ ав» биш — тусад нь
- *    `staleExceed` (шар), улаан биш.
- *
- * ⚠️ ХӨРСНИЙ ЧИЙГ — их байх нь САЙН (`sensors.ts`: «15%-аас дээш — хөрс
- *    хангалттай чийглэг»). Босгыг «дээш давсан» гэж тоолвол чийглэг хөрс улаан
- *    болно. Энд урвуулна: босгоос ДООШ бол «хуурай» (шар), дээш бол хэвийн.
- *
- * ⚠️ `null` ≠ 0: заалтгүй хэмжигдэхүүн нь хэтрэлт ч биш, хэвийн ч биш —
- *    «дуугүй». Хүснэгтэд `cell(null)` → «—». Тоолуурт ОРОХГҮЙ.
- *
- * ⚠️ ХЭТЭРСЭН хэмжигдэхүүнд `trend.etaHours` ҮРГЭЛЖ null (`sensors.ts`-ийн
- *    `eta()`: «аль хэдийн давсан»). Тиймээс «Дүүрэх (цаг)» багана нь зөвхөн
- *    БОСГОНД ДӨХӨЖ буй мөрөнд утгатай — тэдгээрийг `approaching` гэж хүснэгтийн
- *    СҮҮЛД мэдээллийн зорилгоор жагсаана. ТҮВШИНД НӨЛӨӨЛӨХГҮЙ (доорх
- *    `IOT_ETA_NEAR_H`-ийн тайлбар).
  */
 
 import { cached } from '@/lib/live';
@@ -62,36 +15,15 @@ import { cell, table, kpiComplete, type Cell, type KpiIssue, type KpiResult, typ
 
 /**
  * Хуучирсан гэж үзэх нас (цаг).
- * ⚠️ `tools/iot-watch.mjs`-ийн `STALE_H`-тэй ИЖИЛ байх ёстой — нэгийг өөрчилбөл
- *    нөгөөг заавал дага.
- * ⚠️ `loadSensors`-ийн хүрээ (168ц) энэ тооноос ИХ байх ёстой — эс бөгөөс
- *    «хуучирсан» төлөв хэзээ ч гарахгүй (дээрх '7d'-ийн тайлбар).
  */
-/* ⚠️ 2026-10-04: 48 → 24 цаг — `sensors.SENSOR_STALE_H` (Iot хуудас)-тай НЭГ тоо; хоногоос дээш
-   дуугүй мэдрэгч «шинэхэн» гэж харагдахгүй. `tools/iot-watch.mjs`-ийн анхдагч ч 24. */
 export const IOT_STALE_H = SENSOR_STALE_H;
 
-/**
- * ⚠️ САНАЛ (2026-09-06): босгонд хүрэх таамаг (`trend.etaHours`) энэ цагаас
- *    БАГА бол «дөхөж байна» гэж эхний хүснэгтийн сүүлд ЖАГСААНА. Хог цуглуулах
- *    маршрутыг өглөө төлөвлөдөг тул нэг хоногийн дотор дүүрэх сав өнөөдрийн
- *    ажил. Таамаг зөвхөн хуримтлагддаг хэмжигдэхүүнд (`forecast: true` —
- *    одоогоор хогийн сав) байдаг тул циклтэй температур/чийгшилд нөлөөгүй.
- * ⚠️ ТҮВШИНД НӨЛӨӨЛӨХГҮЙ, `issues`-д ОРОХГҮЙ (хянагчийн шаардлага, 2026-09-06):
- *    техник даалгаврын түвшний дүрэм нь «хэтрэлт/унасан → улаан; хуучирсан/
- *    дуугүй/хуурай/хуучирсан хэтрэлт → шар; бусад ногоон». 70%-тай сав 2%/ц-аар
- *    дүүрч байгаа нь картыг шар болгож болохгүй — зөвхөн мэдээлэл.
- */
 export const IOT_ETA_NEAR_H = 24;
 
 /**
  * Утга ИХ байх нь САЙН хэмжигдэхүүнүүд — `sensor.key:metric.key`.
- * ⚠️ `sensors.ts` бүх босгыг «дээш» чиглэлээр зурдаг (захиалагчийн шийдвэр,
- *    2026-08-21); энд ЗӨВХӨН дохионы утгыг урвуулна, чартыг хөндөхгүй.
  */
 export const IOT_HIGHER_IS_GOOD: ReadonlySet<string> = new Set(['soil:moisture']);
-/* ⚠️ 2026-10-04: «их нь сайн» хэмжигдэхүүн ч ФИЗИК мужаас гадуур (хөрсний чийг > 100%) бол
-   «хэвийн» БИШ — мэдрэгчийн гэмтэл (`faults`, `sensors.Metric.valid`). */
 
 /* ══════════════ Төрлүүд ══════════════ */
 
@@ -114,11 +46,9 @@ export type IotHit = {
   stale: boolean;
 };
 
-/** ⚠️ 2026-10-04: `fault` — сүүлийн заалт физик мужаас гадуур (мэдрэгчийн гэмтэл) */
 export type IotSensorState = 'down' | 'alert' | 'fault' | 'silent' | 'stale' | 'ok';
 
 /** Физик мужаас гадуур заалт — мэдрэгчийн гэмтэл (2026-10-04) */
-/* ⚠️ 2026-10-09: `latest = null` — ТҮҮХИЙ мужаас гадуур (`sensors.Metric.rawValid`), харагдах нэгжээр утгагүй */
 export type IotFault = { sensor: string; metric: string; unit: string; dp: number; latest: number | null; latestAt: number | null };
 
 export type IotSensorRow = {
@@ -162,7 +92,7 @@ export type IotSummary = {
   silent: number;
   /**
    * Хуучирсан ХЭМЖИГДЭХҮҮНИЙ тоо (мэдрэгч биш) — унасан/дуугүй мэдрэгчийнх
-   * ороогүй. ⚠️ Мэдрэгчээр тоолвол «нэг утга нь шинэ» мэдрэгч далдлагдана.
+   * ороогүй. Мэдрэгчээр тоолвол «нэг утга нь шинэ» мэдрэгч далдлагдана.
    */
   stale: number;
   metrics: IotMetricRow[];
@@ -234,12 +164,6 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
       states.push({ sensor: sn.label, state: 'down', lastAt: sn.lastAt, error: sn.error });
       // Унасан мэдрэгчийн хэмжигдэхүүнүүд «Бүх хэмжигдэхүүн»-д null-аар үлдэнэ —
       // жагсаалтаас алга болбол CEO тэр мэдрэгч огт байхгүй гэж бодно.
-      /* ⚠️ 2026-09-08: `dailyDiff`-ийн ЦУВАА Ч ОРНО. Эрүүл салбар нь `sn.series`
-         давтдаг бөгөөд `loadOne` нь `dailyDiff`-тэй хэмжигдэхүүн бүрд НЭМЭЛТ
-         цуваа үүсгэдэг (`series.length > metrics.length`). Энд зөвхөн
-         `sn.metrics` давтагдаж байсан тул мэдрэгч унамагц «Усны хоногийн
-         хэрэглээ» мөр хүснэгтээс БҮРМӨСӨН алга болж, яг дээрх тайлбарын
-         сэргийлэхийг зорьсон үр дагавар үүсдэг байв. */
       for (const m of sn.metrics) {
         for (const d of [m, ...(m.dailyDiff ? [m.dailyDiff] : [])]) {
           metrics.push({
@@ -263,11 +187,8 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
       if (m.latestAt != null && (asOf == null || m.latestAt > asOf)) asOf = m.latestAt;
 
       if (m.latest == null && !m.fault) {
-        // ⚠️ Хүрээнд (7 хоног) задарсан заалт огт байхгүй — «дуугүй». `m.total > 0`
-        //    байж болно (7 хоногоос хуучин заалт серверт бий) — тэр утга энд ирдэггүй.
         rank = RANK.silent;
       } else if (m.latest == null) {
-        /* ⚠️ 2026-10-09: сүүлийн заалт ТҮҮХИЙ мужаас гадуур (`rawValid`) — гэмтэл, дуугүй БИШ */
         anyReading = true;
         if (st) { stale++; rank = RANK.stale; } else anyFresh = true;
         anyFault = true;
@@ -277,8 +198,6 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
         anyReading = true;
         if (st) { stale++; rank = RANK.stale; } else anyFresh = true;
 
-        /* ⚠️ 2026-10-04: физик мужаас гадуур — гэмтэл; босготой ЖИШИХГҮЙ (хөрсний чийг 6553% нь
-           «хангалттай чийглэг» биш). `m.fault` (ачаалагч) ба `outOfRange` (муж) хоёулаа нэг дүрэм. */
         if (m.fault || outOfRange(m, m.latest)) {
           anyFault = true;
           faults.push({ sensor: sn.label, metric: m.label, unit: m.unit, dp: m.dp, latest: m.latest, latestAt: m.latestAt });
@@ -286,10 +205,6 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
         } else if (m.alert) {
           const h = hitOf(sn, m, m.latest, m.alert.value, age, st);
           if (IOT_HIGHER_IS_GOOD.has(`${sn.key}:${m.key}`)) {
-            // ⚠️ Урвуу чиглэл: босгоос ДООШ нь асуудал (хуурай); дээш нь хэвийн
-            /* ⚠️ 2026-10-21 (аудит): ХУУЧИРСАН (> IOT_STALE_H) заалтыг хуурайд ТООЛОХГҮЙ — хэдэн өдрийн өмнөх
-               чийг өнөөдрийн хөрсийг хэлэхгүй (хэтрэлтийн «одоогийн»/`staleExceed` ялгаатай нэг зарчим);
-               тэр хэмжигдэхүүн `stale` тоолуур ба `RANK.stale`-д аль хэдийн орж шар болно. */
             if (!st && m.latest < m.alert.value) { dry.push(h); rank = RANK.dry; }
           } else if (m.latest >= m.alert.value) {
             if (st) { staleExceed.push(h); rank = RANK.staleExceed; }
@@ -309,8 +224,6 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
     }
 
     if (hitFresh) sensorsExceeding++;
-    // ⚠️ Дараалал `iot-watch.mjs`-ийн `stateOf`-той ижил: дуугүй → хуучирсан → босго → хэвийн.
-    //    «Хуучирсан» = БҮХ утга нь хуучирсан (мэдрэгчийн `lastAt` > 48ц-тай тэнцүү).
     const state: IotSensorState = !anyReading ? 'silent'
       : !anyFresh ? 'stale'
         : hitFresh ? 'alert' : anyFault ? 'fault' : 'ok';
@@ -346,13 +259,6 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
  * Түвшин — техник даалгаврын дүрмээр ҮГЧЛЭН:
  *   хэтрэлт > 0 эсвэл унасан > 0 → улаан;
  *   хуучирсан хэтрэлт / хуурай / дуугүй / хуучирсан > 0 → шар; бусад ногоон.
- * ⚠️ `sensors === 0` (`loadSensors` өөрөө шидсэн — мэдрэгчийн жагсаалт ч ирээгүй)
- *    л «мэдэхгүй». Таван FeatureServer БҮГД унасан бол `down = 5` → УЛААН
- *    (хянагчийн шаардлага, 2026-09-06: даалгавар «унасан → улаан» гэсэн; урьд
- *    нь `loaded === 0` → unknown байсан нь картыг «татагдсангүй» гэж саарал
- *    болгож байв). Гол тоо нь тэр үед `—` (`buildIotKpi`) — юу ч хэмжигдээгүй
- *    байхад «0 хэтрэлт» гэж бичихгүй (`null` ≠ 0).
- * ⚠️ `approaching` ЭНД ОРОХГҮЙ — зөвхөн мэдээлэл.
  */
 export function iotLevel(s: IotSummary): Level {
   if (s.sensors === 0) return 'unknown';
@@ -421,7 +327,7 @@ export function buildIotKpi(s: IotSummary, failedSources: string[]): KpiResult {
   if (s.approaching.length) extra.push(tr('{0} дөхөж байна', s.approaching.length));
   if (extra.length) facts.push(extra.join(' · '));
 
-  /* ── Анхааруулга: нэрээр (⚠️ `approaching` ОРОХГҮЙ — зөвхөн хүснэгтэд) ── */
+  /* ── Анхааруулга: нэрээр (`approaching` ОРОХГҮЙ — зөвхөн хүснэгтэд) ── */
   const issues: KpiIssue[] = [];
   for (const h of s.exceed) {
     issues.push({ tone: 'bad', text: `${h.sensor} · ${h.metric} ${val(h.latest, h)} ≥ ${val(h.threshold, h)}` });
@@ -482,7 +388,6 @@ export function buildIotKpi(s: IotSummary, failedSources: string[]): KpiResult {
   );
 
   return {
-    // ⚠️ Юу ч уншигдаагүй (`loaded === 0`) бол «0 хэтрэлт» биш «—» — null ≠ 0.
     value: s.loaded === 0 ? '—' : num(s.exceed.length),
     unit: tr('хэмжигдэхүүн босго давсан'),
     facts,
@@ -496,26 +401,12 @@ export function buildIotKpi(s: IotSummary, failedSources: string[]): KpiResult {
 
 /* ══════════════ Ачаалагч ══════════════ */
 
-/**
- * ⚠️ `loadSensors` ганц мэдрэгчийн алдааг ӨӨРӨӨ барьж `error` болгодог тул
- *    энд «хэсэгчилсэн уналт» нь унасан мэдрэгчүүд — тэдгээрийн нэр
- *    `failedSources`-д (сервис тус бүр тусдаа FeatureServer). Бүхэлдээ унавал
- *    (`throw`) `unknown` — шидэхгүй, самбар картаа зурна.
- * ⚠️ Хүрээ '7d' — '24h' биш (файлын толгойн тайлбар): 24ц хүрээнд «хуучирсан»
- *    хэзээ ч гарахгүй.
- */
-/* ⚠️ 2026-09-25: БҮХЭЛДЭЭ УНАСАН үр дүнг КЭШЛЭХГҮЙ. Урьд нь `catch` дотор
-   unknown карт БУЦААДАГ (амжилттай амлалт) тул `cached` түүнийг 5 минут
-   барьж, сүлжээ сэргэсэн ч самбар «мэдэхгүй» хэвээр байв. Одоо дотоод
-   ачаалагч ШИДНЭ (`cached` унасан амлалтыг хаядаг), unknown картыг гадна
-   талын `loadIotKpiSafe` (registry-ийн дуудагч) зурна. */
 export const loadIotKpi = cached<KpiResult>(async () => {
   const now = Date.now();
   const sensors: SensorLive[] = await loadSensors('7d');
   const summary = computeIot(sensors, now);
   const failed = sensors.filter((sn) => sn.error).map((sn) => sn.label);
   return buildIotKpi(summary, failed);
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): унасан мэдрэгчтэй картыг КЭШЛЭХГҮЙ (`kpiComplete`) */
 }, 5 * 60_000, [], kpiComplete);
 
 /** Самбарын ачаалагч — бүхэлдээ унавал шидэхгүй, unknown карт (кэшлэгдэхгүй) */

@@ -1,25 +1,10 @@
 /* «Хуваарь» — ажлын эхлэх/дуусах огноог төлөвлөх харагдац.
- *
- * ⚠️ ХАРАГДАЦ БҮР СТАЙЛАА ТУСДАА барина (2026-08-25-ны шийдвэр) — энэ файл
- * зөвхөн эндээс импортлогдоно. Дизайны хэл нь бусадтай нэг: хавтгай гадаргуу,
- * 1px hairline, өнгө нь ЗӨВХӨН утга заана (алдаа улаан, анхааруулга шар,
- * сонголт акцент). Чимэглэлийн градиент, сүүдэр байхгүй.
- *
- * ⚠️ 2026-10-23: Environment — товч `.pe-*` (32px · 8px · 12px/600), оролт `.pe-field`,
- * карт 12px, хөвөгч гадарга (popup/цонх/мэдэгдэл) --line-strong + --shadow + 12px,
- * сонгогдсон мөр moss 12% + inset 3px moss. Мөрийн өндөр (PL_ROW), баганын өргөн,
- * sticky/z-index, чирэх бариул, `touch-action`, гантын төлвийн өнгө ХӨНДӨГДӨӨГҮЙ.
  */
 
 .frame {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* ⚠️ `height: 100%` НЭЭГДЭЭГҮЙ. Эцэг (`shell .suit`) нь `overflow: auto`
-     тул түүний өндөр агуулгаараа тодорхойлогдож, 100% нь өөрөө өөрийгөө
-     заасан дугуй хамаарал болно — хүрээ агуулгынхаа хэмжээгээр агшиж,
-     доор нь хоосон дэлгэц үлдэж байв. Цонхны өндрөөс толгойн зурвасыг
-     хасаж ШУУД тооцно: төлөвлөх хуанли доод зах хүртэл сунана. */
   height: calc(100dvh - var(--head, 56px));
   min-height: 0;
   padding: 12px;
@@ -31,8 +16,6 @@
  * хөтчийн fullscreen БИШ, `position: fixed` давхарга (дотоод цонхнууд хэвээр).
  * z-index 50 — толгой (10)/самбар (20)-оос дээш, popup (60)-оос доош.
  */
-/* ⚠️ ХҮРЭЭ БҮХЭЛДЭЭ (2026-09-17 засвар): урьд нь зөвхөн хүснэгтийг ороодог тул
-   «Батлуулах» товч, алдааны мөр, FlowBox давхаргын АРД үлдэж хадгалж чадахгүй байв. */
 .frameWide { position: fixed; inset: 0; z-index: 50; height: auto; }
 .fullBar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex: none; margin-bottom: 6px; }
 .fullBarNote { font-size: 12px; color: var(--ink-2); }
@@ -47,16 +30,8 @@
 .fullBtnOn { color: var(--ink-2); background: transparent; border: 1px solid var(--line-strong); }
 .fullBtnOn:hover { background: var(--surface-2); color: var(--ink); }
 
-/**
- * ⚠️ ХҮСНЭГТИЙН КАРТ ҮЛДСЭН ӨНДРИЙГ ЭЗЭЛНЭ. `.frame` нь `overflow: hidden`
- * бөгөөд цонхны өндрөөр тогтмол — доторх `<section>` нь `flex: 1` авахгүй
- * бол агуулгаараа сунаж, доод хэсэг нь ГҮЙЛТГҮЙГЭЭР таслагдана (2026-09-01:
- * хоёр хэсгийг нэгтгэсний дараа яг ийм болсон — `.body` дээр байсан
- * `flex: 1` карт руу шилжсэнгүй).
- */
 .frame > section { flex: 1; min-height: 0; }
 
-/* ⚠️ Шүүлт · хэрэгсэл · заавар нь ТОГТМОЛ өндөртэй — зөвхөн хүснэгт сунана. */
 .plHint { flex: none; }
 
 /* ── Толгойн зурвас ── */
@@ -72,8 +47,6 @@
   border-radius: var(--r-lg);
 }
 .spacer { flex: 1; }
-/* ⚠️ 2026-10-23 (хэрэглэгч: «байрлал, хуваарилалт, хэмжээ жигдэл»): толгойн БҮХ удирдлага ИЖИЛ өндөр (`--ctl-h`),
-   мөр хоорондын зай 8px — урьд нь 22–36px холилдож шаталсан харагддаг байв. */
 .head { --ctl-h: 30px; gap: 8px 10px; }
 .head :is(.sel, .select, .save, .discard, .tlZoomB, .tab) {
   box-sizing: border-box;
@@ -95,7 +68,6 @@
   font-size: 12px;
   color: var(--ink-2);
 }
-/* ⚠️ 2026-10-23: Environment `.pe-field` — 32px · булан 7px · --line-strong · bg --bg · 12.5px; focus moss */
 .select {
   font: inherit;
   font-size: 12.5px;
@@ -111,7 +83,6 @@
   border-color: var(--moss);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent);
 }
-/* ⚠️ 2026-10-23: Environment `.pe-primary` — 32px · булан 8px · 12px/600 · --workspace-accent/-ink */
 .save {
   font: inherit;
   display: inline-flex;
@@ -140,7 +111,6 @@
   border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
   border-radius: var(--r);
 }
-/* ⚠️ 2026-10-26: «Зөвхөн харах» тэмдэг — толгойн удирдлагатай ижил өндөр (`--ctl-h`), засварын товч биш гэдэг нь өнгөөр */
 .roBadge {
   display: inline-flex;
   align-items: center;
@@ -183,7 +153,6 @@
 }
 .noteX:hover { opacity: 1; }
 /* Баннер доторх жижиг үйлдлийн товч (Шинэчлэх · Ноорогт буцаах) */
-/* ⚠️ 2026-10-23: Environment `.pe-ghost` (жижиг) — --line-strong, булан 6px, hover --surface-2 */
 .noteBtn {
   font: inherit;
   font-size: 11.5px;
@@ -201,30 +170,16 @@
 
 /* ── НЭГ БҮТЭН ХҮСНЭГТ: зүүн ажлын мод · баруун хуанли ── */
 
-/**
- * ⚠️ ХОЁР ХЭСЭГ БИШ НЭГ (2026-09-01). Урьд нь дээд талд жагсаалт, доод
- * талд тусдаа хуанли байсан (`.body` сүлжээ). Одоо хоёулаа НЭГ гүйлтийн
- * дотор: босоо гүйлт ЭНД, хэвтээ гүйлт зөвхөн баруун талд. Ингэснээр
- * ажлын нэр ба түүний зурвас ҮРГЭЛЖ нэг эгнээнд үлдэнэ.
- */
 .gWrap {
   display: flex;
   flex: 1;
   min-height: 0;
   width: 100%;
-  /* ⚠️ ХОЁУЛАА ЭНД гүйнэ. Хэвтээ гүйлтийг баруун талд нь өгвөл түүний
-     зурвас 1,400 мөр × 30px = 42,000px доор үлдэж, хүрэх аргагүй болно. */
   overflow: auto;
   border-top: 1px solid var(--line);
-  /* ⚠️ Хэвтээ гүйлтийн зурвас ҮРГЭЛЖ ил, зузаан (2026-09-17): 8px-ийн бүдэг
-     зурвас олдохгүй байсан тул «зүүн баруун гүйлт ажиллахгүй» гэж уншигдаж байв. */
   scrollbar-gutter: stable;
   scrollbar-color: var(--ink-3) transparent;
 }
-/* ⚠️ 2026-10-09 (аудит №2): хуваалцсан ноорог сэргэж дуустал хүснэгт ЗУРАГДСАН хэвээр НУУГДАНА (`Huvaari`-ийн
-   `hdRestoringUi`-ийн ⚠️). `display: none` БИШ — layout үлдэх ёстой: «өнөөдөр» рүү гүйлгэлт (`scrollLeft`) ба
-   цонхлолт (`clientHeight`) нуугдсан үед ч зөв бодогдоно. `visibility` нь pointer-ийг ч хаана; `inert` нь
-   гарын фокусыг (Tab) хаана. ⚠️ Доторх элемент `visibility: visible` тавибал ил гарна — тавихгүй. */
 .gWrap.gWrapGated {
   visibility: hidden;
   pointer-events: none;
@@ -232,91 +187,31 @@
 .gWrap::-webkit-scrollbar { height: 14px; width: 10px; }
 .gWrap::-webkit-scrollbar-thumb { background: var(--ink-3); border: 3px solid var(--surface); border-radius: 99px; }
 .gWrap::-webkit-scrollbar-thumb:hover { background: var(--ink-2); }
-/* ⚠️ Зүүн багана ХЭВТЭЭ гүйлтэд ОРОЛЦОХГҮЙ — нэр байрандаа үлдэнэ. */
-/* ⚠️ Зүүн багана хэвтээ гүйлтэд НААЛДАНА — хуанлийг баруун тийш гүйлгэхэд
-   ажлын нэр байрандаа үлдэнэ, эс тэгвээс «энэ зурвас юуных вэ» алдагдана. */
-/*
- * ⚠️ ӨРГӨН ТЭЛЭВ (2026-09-15): дөрвөн ОГНООНЫ багана нэмэгдсэн тул зүүн
- *    самбар 4 × 78px + 2 × 46px = 404px илүү зай шаардана. Хуучин `clamp(240px, 30%,
- *    420px)`-д тэдгээр нь ажлын нэрийг бараг тэглэж, хүснэгт уншигдахгүй
- *    болно.
- *
- * ⚠️ Дээд хязгаар нь 1150px: түүнээс дээш бол нарийн дэлгэц дээр хуанлид
- *    зай үлдэхгүй. Доод нь 990px — доорх тайлбарын нийлбэр (2026-09-23).
- * ⚠️ `30%` → `58%`: өргөн дэлгэцэд хуанли хэвээр давамгайлна.
- */
 .gSide {
   position: sticky;
   left: 0;
-  /* ⚠️ z-index 4 (2026-09-23): урьд нь 2 байсан тул хэвтээ гүйлгэхэд `.plHead`
-     (3) сар/хоногийн толгой зүүн самбарын толгой ДЭЭГҮҮР, `.plLink` цэгүүд (2)
-     самбар дээгүүр цухуйдаг байв. Дараалал: plBar 1 < plLink 1 < plHead 3 <
-     gSide 4 < gSideHead 5 < mdBack 60. */
   z-index: 4;
-  /* ⚠️ 2026-09-23 ЗАСВАР: 900px дээд хязгаар нь «Бодит эхэлсэн/дууссан» ба
-     «Хүн/Техник» 4 багана нэмэгдсэний дараа БАГТАХГҮЙ болж — тогтмол
-     нүднүүд (бүгд flex: none) 900-аас хальж, ажлын нэр 0px болж, догол мөр
-     (depth×12px) нүднүүдийг мөр бүрд өөр зайд түлхэж хүснэгт эвдэрч байв.
-     Одоо: код 60 + огноо 6×72 + хоног 2×40 + нөөц 2×44 + уялдаа 100 = 760,
-     зай 12×6 = 72, дүүргэлт 16, нэр ≥ 140 → 988px. Доод хязгаар нь ЯГ энэ
-     нийлбэрээс багагүй байх ёстой — эс тэгвээс дахин эвдэрнэ. */
-  /* ⚠️ 2026-10-04: + `--side-extra` — хэрэглэгч баруун ирмэгийг чирж томруулна (`useSideExtra`) */
-  /* ⚠️ 2026-10-09: + `--col-extra` — баганын өргөнийг анхдагчаас өөрчилсөн нийлбэр (`useColWidths`-ийн ⚠️);
-     урьд нь самбар тогтмол тул өргөсгөсөн багана самбараас хальж хуанли дээр давхарладаг байв.
-     ⚠️ 2026-10-09: `--col-extra`-ийн дээд хязгаар JS-д (`useColWidths.roomOf` — хуанлид `TL_MIN` үлдэнэ); энд
-     `max-width` ТАВИХГҮЙ — 1181–1230px өргөнд үндсэн 990px өөрөө хавчигдаж баганууд таслагдана. */
-  /* ⚠️ 2026-10-23 (UX аудит P5): ажлын нэрийн анхдагч 140 → 170 (гүн бүлгийн нэр «БАРИ ЛГЫ…» болж тасардаг байв) —
-     нийлбэр 848 + 170 = 1018 тул доод хязгаар 990 → 1020, дээд 1150 → 1180 (`useColWidths`-ийн `work.def`-тэй ИЖИЛ). */
   flex: 0 0 calc(clamp(1020px, 58%, 1180px) + var(--side-extra, 0px) + var(--col-extra, 0px));
   min-width: 0;
   border-right: 1px solid var(--line);
   background: var(--surface);
-  /*
-   * ⚠️ `align-self: flex-start` ЗААВАЛ (2026-09-22). Энгийн flex-элемент нь
-   *    `stretch`-ээр эцгийнхээ БҮТЭН өндрийг авдаг; тэр үед доторх
-   *    `.gSideHead` (`sticky; top: 0`) нь ЭНЭ элементийн дотор наалдах газар
-   *    олдоггүй тул толгой мөр гүйлттэй хамт дээш алга болно.
-   *    `flex-start` нь өндрийг агуулгаараа тогтоож, `sticky` толгой
-   *    `.gWrap`-ийн дээд ирмэгт наалдана.
-   */
   align-self: flex-start;
 }
 .gSideHead {
   position: sticky;
   top: 0;
-  /* ⚠️ 5 (2026-09-23) — `.gSide` (4)-ээс дээш, `.mdBack` (60)-аас доош. */
   z-index: 5;
   display: flex;
-  /* ⚠️ 2026-10-08: `center` → `stretch` — толгойн нүд бүтэн өндөртэй (PL_ROW) болж, баруун ирмэгийн
-     `.colGrip` (height 100%) толгойн БҮТЭН өндрөөр бариул болно; урьд нь зөвхөн текстийн өндөр
-     (~12px) тул чирэх бариулыг онох бараг боломжгүй байв. Текстийн босоо голлолт нь доорх
-     нүднүүдийн `display: flex; align-items: center`-ээр хэвээр. */
   align-items: stretch;
-  gap: 6px; /* ⚠️ `.row`-той ИЖИЛ — зөрвөл багана гулсана */
+  gap: 6px;
   padding: 0 8px;
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-3);
   background: var(--surface);
-  /* ⚠️ 2026-10-23: Environment `.pe-table th` — доод зураас --line-strong (өндөр/өргөн хөндөгдөөгүй) */
   border-bottom: 1px solid var(--line-strong);
 }
-/* ⚠️ Толгой ба мөрийн багана ЯГ ижил өргөнтэй байх ёстой (`--des-w`,
-   `--ham-w`) — зөрвөл гарчиг утгынхаа дээр таарахгүй. */
-/*
- * ⚠️ ХҮСНЭГТИЙН БАГАНЫ ӨРГӨН — толгой ба мөр ЯГ ижил хувьсагчаас.
- *    Зөрвөл гарчиг утгынхаа дээр таарахгүй.
- * ⚠️ `--date-w` (2026-09-15): дөрвөн огнооны багана. «2026-04-18» нь
- *    10 тэмдэгт, 11px tabular-nums дээр ~72px — 78px нь дүүргэлттэй.
- */
-/* ⚠️ 2026-10-08: анхдагчийг `.gSide` дээр — хэрэглэгч чирж өөрчилсөн утга (`useColWidths`, inline style)
-   энэ хувьсагчийг дарж, толгой · мөр хоёулаа өвлөнө. `.gSideHead, .row` дээр тавьбал inline утга
-   үл хэрэгсэгдэнэ (класс сонгогч нь өвлөлтөөс давамгайлна). */
 .gSide { --des-w: 60px; --ham-w: 100px; --date-w: 72px; --days-w: 40px; --work-min: 170px; --res-w: 44px; }
-/* ⚠️ 2026-10-08 (хэрэглэгч: «нэг нэгээр нь өргөн бүдүүн тааруулах ёстой»): БАГАНА БҮР ТУСДАА ӨРГӨН.
-   Баганын класс нь ӨӨРИЙН элемент дээр `--date-w`/`--days-w`/`--res-w`-ийг `--w-*`-ээр дарна
-   (`--w-*`-ийг `useColWidths` `.gSide` дээр тавина, толгой · мөр өвлөнө). `.rowDate` г.м.
-   өргөний дүрэм хөдлөөгүй. Fallback нь `useColWidths`-ийн анхдагчтай ИЖИЛ — зөрвөл багана гулсана. */
 .cGs { --date-w: var(--w-gs, 72px); }
 .cGe { --date-w: var(--w-ge, 72px); }
 .cPs { --date-w: var(--w-ps, 72px); }
@@ -329,15 +224,10 @@
 .cRm { --res-w: var(--w-rm, 44px); }
 /* Толгойн нүднүүд — баганын бариулын (`.colGrip`) агуулах блок */
 .gHeadDes, .gHeadWork, .gHeadDate, .gHeadDays, .gHeadRes, .gHeadHam { position: relative; }
-/* ⚠️ 2026-10-08: `.gSideHead` stretch болсон тул текстийг нүд ДОТРОО голлоно (баруун зэрэгцүүлэлт хэвээр —
-   `text-align: right` нь олон мөрт текстэд, `justify-content` нь нэг мөрт үйлчилнэ). `.gHeadHam`-ын
-   жишээ (`.gHeadHint`) тусдаа flex item болсон тул `gap`-аар зай. */
 .gHeadDes, .gHeadDate, .gHeadDays, .gHeadRes, .gHeadHam { display: flex; align-items: center; justify-content: flex-end; }
 .gHeadHam { gap: 4px; }
 .gHeadDes { flex: none; width: var(--des-w); padding-right: 8px; text-align: right; }
 .gHeadHam { flex: none; width: var(--ham-w); text-align: right; }
-/* ⚠️ Гарчиг нь ХОЁР МӨР болж эвхэгдэж болно («Төлөвлөгөө эхлэх») — тэр нь
-   зөвшөөрөгдөнө: толгойн мөрийн өндөр PL_ROW тул багтана. */
 .gHeadDate {
   flex: none;
   width: var(--date-w);
@@ -345,7 +235,6 @@
   text-align: right;
   line-height: 1.15;
 }
-/* ⚠️ ХОНОГИЙН гарчиг — огноогоос НАРИЙХАН: гурван оронтой тоо л багтана */
 .gHeadDays {
   flex: none;
   width: var(--days-w);
@@ -361,8 +250,6 @@
   text-align: right;
   line-height: 1.15;
 }
-/* ⚠️ «min-width» ЗААВАЛ (2026-09-23): flex: 1 нь зай дутвал 0 хүртэл агшдаг
-   тул нэрийн багана алга болдог байв. Толгой ба мөр (.rowTree) ИЖИЛ. */
 .gHeadWork { flex: 1; min-width: var(--work-min); display: flex; align-items: center; gap: 6px; }
 /* ХУРААХ ТОВЧ (2026-09-23) — нэрийн толгойн ард; хураасан үед 10 багана нуугдана */
 .colsBtn {
@@ -377,8 +264,6 @@
   cursor: pointer;
 }
 .colsBtn:hover { color: var(--data-ink); border-color: var(--data); }
-/* ⚠️ Хураахад ЯГ 1180px-ийн responsive дүрэмтэй ижил багануудыг нууна —
-   хоёр зам нэг үр дүн өгнө. Самбар 360–480px: код 60 + нэр ≥ 140 + уялдаа 100. */
 .gSideNarrow .gHeadDate, .gSideNarrow .gHeadDays, .gSideNarrow .gHeadRes,
 .gSideNarrow .rowDate, .gSideNarrow .rowDays, .gSideNarrow .rowRes { display: none; }
 .gSideNarrow { flex-basis: calc(clamp(360px, 30%, 480px) + var(--side-extra, 0px) + var(--col-extra, 0px)); }
@@ -410,13 +295,9 @@
   border-radius: 2px;
 }
 .colGrip:hover, .colGrip:focus-visible, .colGripOn { background: color-mix(in oklab, var(--data) 35%, transparent); outline: none; }
-/* ⚠️ 2026-10-08: мэдрэгч дэлгэцэд бариул 14px (хуруугаар 7px-ийг онохгүй) — голлосон хэвээр */
 @media (pointer: coarse) {
   .colGrip { width: 14px; right: -7px; }
 }
-/* ⚠️ `align-self: flex-start` (2026-09-22) — `.gSide`-тэй ИЖИЛ шалтгаан: stretch-ээр
-   эцгийн бүтэн өндрийг авбал доторх `.plHead` (sticky; top: 0) наалдах газраа
-   олохгүй, он/сарын мөр гүйлттэй хамт дээш алга болно. Хэрэглэгч: «Header түгжих». */
 .gRight { flex: none; align-self: flex-start; }
 .gTrack { position: relative; }
 
@@ -449,13 +330,7 @@
 }
 .sel:hover { color: var(--ink); }
 .sel:focus { border-color: var(--moss); box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent); }
-/* ⚠️ Бүлгийн нэр урт (жиш. «Б1 БАРИЛГЫН АЖИЛ») тул илүү өргөн — 148px-д
-   таслагдвал аль бүлэг болох нь танигдахгүй. */
 .selWide { max-width: 220px; }
-/* ⚠️ ШҮҮЛТ ба ХУАНЛИЙН ХЭРЭГСЛИЙН ЗААГ — хоёр бүлэг нэг мөрөнд нийлсэн тул
-   нүдээр ялгах цорын ганц зүйл. Зурвас хоёр мөр болж эвхэгдвэл (нарийн
-   дэлгэц) шугам мөрийн эхэнд үлддэг ч төөрөгдүүлэхгүй: бүлгүүд өөрсдөө
-   дараалснаараа таних боломжтой хэвээр. */
 .tbSep {
   width: 1px;
   flex: none;
@@ -464,7 +339,6 @@
   background: var(--line);
 }
 .tab:hover { background: var(--surface-2); }
-/* ⚠️ 2026-10-23: Environment `.view-switch` дарагдсан — тод гадарга + зөөлөн сүүдэр */
 .tabOn {
   color: var(--ink);
   background: var(--surface-2);
@@ -475,10 +349,7 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 6px; /* ⚠️ `.gSideHead`-тэй ИЖИЛ */
-  /* ⚠️ Зүүн дүүргэлт ТОГТМОЛ — шатлалын догол мөр нь `.rowTree`-д шилжсэн тул
-     «Ажлын код» багана мөр бүрд нэг босоо шугамд эгнэнэ. Баруун нь толгойн
-     (`.gSideHead`) 8px-тэй ИЖИЛ — зөрвөл сүүлийн багана гарчгаасаа гулсана. */
+  gap: 6px;
   padding: 3px 8px;
   font-size: 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
@@ -499,32 +370,22 @@
   align-items: center;
   gap: 8px;
   flex: 1;
-  /* ⚠️ «min-width: 0» → var(--work-min) (2026-09-23): 0 байхад зай дутвал
-     энэ нүд 0px болж, зүүн дүүргэлт (догол мөр, depth×12) л үлддэг тул
-     дараагийн бүх нүд мөр бүрд ӨӨР зайд шилжиж толгойтойгоо зөрж байв.
-     border-box тул догол мөр нь min-width ДОТОР — нүднүүд эгнээ алдахгүй. */
   min-width: var(--work-min);
 }
 .row:hover { background: var(--surface-2); }
 .row:hover .rowWork { text-decoration: underline; text-underline-offset: 2px; }
 .rowGroup { font-weight: 600; background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
-/* ⚠️ 2026-10-23: Environment — сонгогдсон мөр moss 12% + inset 3px moss зүүн зурвас (`.rowDirty`/`.rowBad`/`.rowOk` доор дарна) */
 .rowOn { background: color-mix(in oklab, var(--moss) 12%, transparent); box-shadow: inset 3px 0 0 var(--moss); }
 /* Нийтлээгүй засвар — зүүн ирмэгийн зураас (өнгө нь «хадгалагдаагүй» гэсэн утга) */
 .rowDirty { box-shadow: inset 3px 0 0 var(--data); }
 /*
  * БАТЛАГЧИЙН ЗӨВШӨӨРӨЛ (2026-09-25) — `sheet.module.css`-ийн `.chg` / `.chgOk`
  * загвар: улаан = зөвшөөрөөгүй (засах ёстой), ногоон = зөвшөөрсөн.
- * ⚠️ Хүрээ/дэвсгэр л — мөрийн ӨНДӨР хөдлөхгүй (`PL_ROW`-ийн ⚠️). `.rowDirty`-ийн
- *    зүүн зураасыг ДАРНА: хяналтад «хадгалаагүй» гэдэг утгагүй, шийдвэр чухал.
  */
 .rowBad { box-shadow: inset 3px 0 0 var(--bad); background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .rowOk { box-shadow: inset 3px 0 0 var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
 .rowBad .rowDes { color: var(--bad-ink); font-weight: 600; }
 .rowOk .rowDes { color: var(--good-ink); font-weight: 600; }
-/* ⚠️ СОНГОЛТ ХАРАГДАНА (2026-09-25 аудит #6): `.rowBad/.rowOk` нь `.rowOn`-ы ДАРАА
-   тул дэвсгэрийг нь дарж, тэмдэглэсэн мөрд сонгосон мөр огт ялгарахгүй байв.
-   Тэмдгийн өнгийг хадгалж, сонголтын өнгийг давхарлан, баруун ирмэгт зураас нэмнэ. */
 .rowOn.rowBad {
   background: color-mix(in srgb, var(--data) 14%, color-mix(in srgb, var(--bad) 9%, transparent));
   box-shadow: inset 3px 0 0 var(--bad), inset -3px 0 0 var(--data);
@@ -543,10 +404,6 @@
 }
 .rowMark:hover { text-decoration: underline; }
 .rowMark:focus-visible { outline: 2px solid var(--data); outline-offset: -2px; }
-/* ⚠️ ХУВААРЬТАЙ ажил НОГООН (2026-09-23, хэрэглэгч: «хуваарь хийсэн бол ажил
-   ногоордог болгох») — зөвхөн ажлын мөр (бүлэг биш: бүлгийн муж нь хүүхдийн
-   MIN/MAX тул нэг хүүхэд л төлөвлөгдсөн ч «бүгд бэлэн» мэт уншигдана).
-   Зөвхөн нэрийн өнгө — «хадгалаагүй» зураас, сонголтын дэвсгэр хэвээр. */
 .rowPlanned .rowWork { color: var(--good-ink); }
 
 .caret {
@@ -563,8 +420,6 @@
 
 .rowMain {
   font: inherit;
-  /* ⚠️ Мөр дарагддагийг НҮД харах ёстой — хэрэглэгч «яаж өөрчлөхөө
-     ойлгохгүй» байсны нэг шалтгаан нь мөрүүд текст мэт харагдаж байсан. */
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -587,12 +442,6 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  /* ⚠️ 2026-10-04 (хэрэглэгч: «ажлууд ... болж бүрэн харагдахгүй»): урт нэр 2 МӨРТ
-     ороно. Мөрийн өндөр `PL_ROW` (30) ХӨДЛӨХГҮЙ (хуанлийн эгнээтэй тэгшилнэ): агуулгын
-     хайрцаг = 30 − дүүргэлт 3+3 − доод хүрээ 1 = 23px → 2 × 11.5px = 23.
-     ⚠️ 2026-10-04 (шүүлт): урьд нь 2×12 = 24 — хүрээг тооцоогүй тул 1px илүү, хоёр дахь
-     мөрийн доод ирмэг тасардаг байв. Түүнээс урт нь «…»-оор, бүтэн нэр tooltip-д; илүү зай
-     хэрэгтэй бол жагсаалтын баруун ирмэгийг чирж томруулна (`.sideGrip`). */
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -603,8 +452,7 @@
   line-height: 11.5px;
 }
 
-/* УЯЛДАА — «18FS3,22SS» бичиглэл; урт бол таслагдана, бүтэн нь tooltip-д.
-   ⚠️ ТОВЧ: дарахад popup нээгдэж уялдааг тохируулна. */
+/* УЯЛДАА — «18FS3,22SS» бичиглэл; урт бол таслагдана, бүтэн нь tooltip-д. */
 .rowHam {
   font: inherit;
   flex: none;
@@ -625,9 +473,6 @@
 /* Хоосон нүд үл үзэгдэх товч болохгүй — мөр дээр хулгана очиход «+» гарна */
 .row:hover .rowHam:empty::before { content: '+'; color: var(--ink-3); }
 .row:hover .rowHam:empty:hover::before { color: var(--data-ink); }
-/* ⚠️ Тайлбар нь ЖИШЭЭГЭЭР ярина («5/2 нь 5/1-аас 7 хоногийн дараа») —
-   «такт» гэх мэт салбарын нэр томьёо хэрэглэгчид юу ч хэлэхгүй. */
-/* ⚠️ 2026-10-23: Environment badge — булан 6px · moss бичиг · хүрээ 35% · bg 8% */
 .dirtyTag {
   padding: 1px 7px;
   font-size: 11px;
@@ -637,9 +482,6 @@
   border: 1px solid color-mix(in oklab, var(--moss) 35%, transparent);
   border-radius: var(--r-sm);
 }
-/* ⚠️ 120px байсныг НАРИЙСГАВ (2026-09-02): «Алхам» нь 0–365 гэсэн гуравхан
-   оронтой тоо. Хэрэгслүүд нэг мөрөнд нийлсэн тул илүүдэл өргөн нь хайлтын
-   талбарыг шахаж, эрт эвхэгдэхэд хүргэдэг. */
 .numIn {
   font: inherit;
   width: 58px;
@@ -655,9 +497,6 @@
 .numIn:focus { border-color: var(--moss); box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 18%, transparent); }
 .numIn:disabled { opacity: 0.4; cursor: default; }
 
-/* ⚠️ ЦУЦЛАХ нь ХАДГАЛАХ-ын дэргэд, гэхдээ АНХААРАЛ ТАТАХГҮЙ: гол үйлдэл нь
-   хадгалах. Улаанаар будвал «алдаа» мэт уншигдана. */
-/* ⚠️ 2026-10-23: Environment `.pe-ghost` — 32px · булан 8px · 12px/500 · --line-strong */
 .discard {
   font: inherit;
   display: inline-flex;
@@ -678,7 +517,6 @@
 .discard:disabled { opacity: 0.4; cursor: not-allowed; }
 /* ── ХУГАЦААНЫ ЗУРВАС ── */
 .flowNote { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-/* ⚠️ 2026-10-23: Environment `.view-switch` — 3px padding, 1px --line зам; дарагдсан = тод гадарга + зөөлөн сүүдэр */
 .tlZoom { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--r); }
 .tlZoomB {
   font: inherit;
@@ -693,11 +531,6 @@
 .tlZoomB:hover { color: var(--ink); }
 .tlZoomOn { color: var(--ink); background: var(--surface-2); border-color: transparent; box-shadow: 0 1px 5px #00000012; font-weight: 600; }
 
-/*
- * ⚠️ ЗӨВХӨН ХАРАГДАЖ буй төрөл (2026-09-11) — засагдаж буйгаас (`tlZoomOn`)
- *    ЯЛГАРНА: тодруулга бий, дүүргэлт үгүй. Хоёуланг ижил харуулбал «аль нь
- *    засагдаж байна» гэдэг алдагдана.
- */
 .tlZoomRef {
   color: var(--ink-2);
   border-color: color-mix(in srgb, var(--ink-2) 45%, transparent);
@@ -721,14 +554,8 @@
   border-left: 1.5px dashed var(--bad);
   z-index: 2;
 }
-/* ⚠️ z-index 2 (2026-09-23 аудит) — 3 байхад `.plHead` (3)-тай тэнцэж, босоо
-   гүйлгэхэд сонгосон зурвас наалдмал толгойн ДЭЭГҮҮР гардаг байв. */
 .tlBarOn { outline: 1.5px solid var(--ink); outline-offset: 1px; z-index: 2; }
 
-/* ⚠️ ГҮЙЦЭТГЭЛийн төлөв. «Хэмжигдээгүй» нь «эхлээгүй»-ээс ЗУРААСААР ялгарна —
-   өнгө сохор хүнд ч ялгагдана, мөн «мэдэхгүй»-г «тэг» гэж уншуулахгүй. */
-/* ⚠️ 2026-10-09 («бүх графикийн загварыг жигдлэх»): өнгө нь globals.css-ийн `--gantt-*`
-   токеноос — ТУХ-ийн гант (`tuh.module.css`) ижил эхийг авна; урьд нь хоёр гар хуулбар байв. */
 .tlDone { background: var(--gantt-done); }
 .tlRun { background: var(--gantt-run); }
 .tlLate { background: var(--gantt-late); }
@@ -746,19 +573,9 @@
 .plField { font-size: 11.5px; color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
 .plHint { margin: 0 0 6px; font-size: 11px; color: var(--ink-3); }
 
-/* ⚠️ Зүүн багана нь гүйлгэхээс ГАДНА — ажлын нэр үргэлж харагдана */
-/* ⚠️ Хуанли нь картын ҮЛДСЭН өндрийг бүтнээр эзэлнэ — мөр цөөн үед
-   доор нь хоосон талбай үлдээхгүй, олон үед энд дотроо гүйнэ. */
-/* ⚠️ ХОЁР МӨР: дээр нь сар, доор нь хоног. Нэг мөрөнд давхарлавал
-   «2026-09» ба «7» хоёр бие бие рүүгээ орж, аль аль нь уншигдахгүй. */
-/* ⚠️ Огнооны толгой БОСОО гүйлтэд наалдана — 1,400 мөр гүйлгэхэд «энэ багана ямар сар вэ» алдагдахгүй. */
 .plHead {
   position: sticky;
   top: 0;
-  /* ⚠️ z-index 3 (2026-09-22): зурвас/сум (`plLanes`, `depSvg`) нь DOM-д хойно тул
-     1-ээр доош гүйлгэхэд толгойн дээгүүр зурагдаж, сар/хоног нуугддаг байв.
-     ⚠️ (2026-09-23) `.gSide` (4) / `.gSideHead` (5)-аас ДООШ хэвээр — хэвтээ
-     гүйлгэхэд зүүн самбарын толгой энэ толгойг халхална. */
   z-index: 3;
   cursor: grab; /* чирж гүйлгэнэ (2026-09-17) */
   user-select: none;
@@ -777,12 +594,6 @@
   transform: translateX(2px);
 }
 .plDayBig { color: var(--ink-2); font-weight: 600; }
-/* ⚠️ ХОЁР МӨР НЭГ SPAN ДОТОР (2026-09-22): сарын шошгын ДОР тэр сард
-   төлөвлөсөн обьём нь багцын нийт обьёмын хэдэн хувь (бүхэл, % тэмдэггүй).
-   `.plHead`-ийн 30px өндөр нь `PL_ROW`-той уягдсан — виртуалчлалын offset
-   (`Huvaari.tsx`: `scrollTop - PL_ROW`) ба зүүн `gSideHead`-ийн хатуу
-   өндөр хоёр түүнээс хамаардаг тул ӨНДӨРЛӨХ БОЛОХГҮЙ. Иймд сар/хувь хоёрыг
-   `line-height` шахаж 0–17px дотор байрлуулж, хоногийн 18px-ийг хөндөөгүй. */
 .plMonth {
   position: absolute;
   top: 0;
@@ -798,7 +609,7 @@
   transform: translateX(2px);
 }
 
-/* Сарын шошгын ДООРХ хувь. ⚠️ Сарын шошгоос СУЛ өнгө — гол шошго нь огноо. */
+/* Сарын шошгын ДООРХ хувь. Сарын шошгоос СУЛ өнгө — гол шошго нь огноо. */
 .plMonPct {
   display: block;
   font-size: 11px;
@@ -807,17 +618,7 @@
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
-/* ⚠️ МЭДРЭГЧ ДЭЛГЭЦИЙН ГҮЙЛГЭЭ (2026-10-01): урьд нь `touch-action: none` БҮГДЭД
-   байсан тул зөвхөн харах эрхтэй хэрэглэгч ч хуанлийг хуруугаар гүйлгэж чаддаггүй
-   байв. Анхдагч нь `pan-x pan-y`; засах эрхтэй үед л (`plLanesEdit`) `none` —
-   зурвас/бариул чирэх, хоосон мөрд муж татах. `touch-action` нь өвөг рүүгээ
-   огтлолцдог тул доторх `.plBar`/`.plGrip` ч `none` болно. */
 .plLanes { position: relative; user-select: none; touch-action: pan-x pan-y; }
-/* ⚠️ 2026-10-21: засах эрхтэй ч эгнээ ГҮЙНЭ (`pan-x pan-y`) — урьд нь `.plLanesEdit` бүхэлдээ `none` тул
-   засагч хуанлийг хуруугаар гүйлгэж чаддаггүй, `useDragPlan`-ийн «Alt-гүй хоосон хэсэг → хөтөч гүйлгэнэ»
-   (2026-10-09) хүлээлттэй зөрдөг байв. `none` ЗӨВХӨН чирэгдэх зурвас (ба доторх `.plGrip`) дээр; бүлгийн
-   зурвас (`.plBarG`) чирэгдэхгүй тул гүйнэ. Хуваарьгүй мөрд товшилт 1 хоногийн муж үүсгэнэ (хуучнаараа);
-   мэдрэгчээр шударвал хөтөч гүйлгэж `pointercancel` → `onCancel` хагас чирэлтийг буцаана. */
 .plLanesEdit { touch-action: pan-x pan-y; }
 .plLanesEdit .plBar:not(.plBarG) { touch-action: none; }
 .plLane {
@@ -827,14 +628,8 @@
   border-bottom: 1px solid color-mix(in srgb, var(--line) 45%, transparent);
   cursor: crosshair;
 }
-/* ⚠️ Ээлжит сүүдэр — 20+ зэрэгцээ мөрөнд нүд мөрөө алдахгүй */
 .plLaneAlt { background: color-mix(in srgb, var(--ink-3) 5%, transparent); }
 .plLaneOn { background: color-mix(in oklab, var(--moss) 12%, transparent); }
-/*
- * ⚠️ ДЭЭД ХАГАС (2026-09-11): сонгосон төрлийн зурвас мөрийн дээд талд,
- *    лавлагаа (`plRef`) доод талд — хоёулаа ЗЭРЭГ харагдана. Урьд нь
- *    бүтэн өндөр эзэлдэг байсан тул лавлагааг ард нь нуух хэрэгтэй байв.
- */
 .plBar {
   position: absolute;
   top: 4px;
@@ -845,28 +640,16 @@
   border: 1px solid transparent;
   border-radius: 3px;
   cursor: grab;
-  /* ⚠️ z-index 1 (2026-09-23): `.depSvg` (DOM-д хойно, z auto)-оос ДЭЭШ — сумны
-     дарагдах зурвас (`depHit`) зурвасын дээгүүр өнгөрөхөд зөөх/сунгах чирэлтийг
-     хаадаг байв. Одоо зурвас дээрх даралт зурвасд, сум зөвхөн хоосон талбайд. */
   z-index: 1;
 }
 .plBar:active { cursor: grabbing; }
 
-/*
- * ⚠️ ЗӨВХӨН «Зэрэг» АСААЛТТАЙ үед нарийсна (2026-09-11): лавлагааны зурвас
- *    мөрийн доод хагаст сууж чадах зай гаргана. Унтраалттай үед зурвас нь
- *    БҮТЭН өндөртэй — урьд нь үргэлж нарийссан тул хэрэглэгч «зураас
- *    нарийсаж байна» гэж заасан.
- */
 .plBarHalf {
   bottom: auto;
   height: 11px;
   top: 3px;
 }
-/* БҮЛГИЙН МУЖ — ДЭД АЖЛУУДААСАА БОДОГДДОГ, ГАРААР ЗАСАГДДАГГҮЙ.
-   ⚠️ 2026-09-06: өнгө нь ажлын зурваснаас ЯЛГААТАЙ (нил ягаан `--overlap`)
-      бөгөөд курсор нь `default` — «энэ зурвасыг чирж болохгүй» гэдэг нь
-      тайлбаргүйгээр ойлгогдоно (хэрэглэгчийн заавар). */
+/* БҮЛГИЙН МУЖ — ДЭД АЖЛУУДААСАА БОДОГДДОГ, ГАРААР ЗАСАГДДАГГҮЙ. */
 .plBarG {
   background: color-mix(in srgb, var(--overlap) 16%, transparent);
   border: 1.5px solid color-mix(in srgb, var(--overlap) 65%, transparent);
@@ -885,10 +668,7 @@
   overflow: hidden;
 }
 .plBarG .plBarLab { color: var(--ink); }
-/* НЭР + ОГНОО нэг шошгонд.
-   ⚠️ Нэр нь АГШИНА (`min-width:0` + ellipsis), огноо нь АГШИХГҮЙ (`flex:none`).
-   Эсрэгээр бол урт нэртэй ажлын огноо таслагдаж, зурвасны гол мэдээлэл
-   болох хугацаа алга болно. */
+/* НЭР + ОГНОО нэг шошгонд. */
 .plBarLab:has(.plBarName) {
   display: flex;
   align-items: center;
@@ -905,25 +685,8 @@
 
 /*
  * ХОЁР МӨРИЙН ШОШГО (2026-09-11): эхлэх огноо дээр, дуусах огноо доор.
- *
- * ⚠️ ӨНДРИЙН НӨӨЦ (2026-09-15-ны аудит). `.plBar` нь `top:4px; bottom:4px`
- *    тул PL_ROW=30 дээр 22px, дээр нь `border 1px × 2` — ДОТООД зай 20px.
- *    Хоёр мөр × 9.5px + 1px зай = ЯГ 20px байсан нь хилийн утга: `line-height`
- *    дугуйрах, фонтын дээд/доод зай, эсвэл `border` нэмэгдэх юу ч болсон
- *    доод мөрийг огтолно. Тиймээс шошгын `font-size`-ыг 9px болгож (17px
- *    нийт) 3px нөөц үлдээв — огноо бүтэн уншигдана.
- *
- * ⚠️ `overflow: hidden` + `nowrap` тул багтаагүй текст ellipsis-ГҮЙ тасардаг.
- *    `.plBarName`-д `text-overflow` бий ч ОГНООНЫ мөрөнд байгаагүй — «2026-04-1»
- *    гэж хагас огноо гарч байв. Огноонд ч ellipsis нэмэв: тасарсан нь ил
- *    харагдаж, хэрэглэгч бүтэн огноог хаанаас харахаа мэднэ.
- *    Босго (`Huvaari.tsx`, 100px) нь ердийн тохиолдолд тасралтгүй байлгана.
  */
 .plBarTwo { line-height: 1; font-size: 11px; }
-/* ⚠️ `flex: 1 1 auto` — дээрх `.plBarWhen { flex: none }`-ыг ДАРНА. Хоёр
-   мөрийн хувилбарт огноо нь агших ЁСТОЙ: агшихгүй бол `max-width: 100%`
-   хүчингүй болж ellipsis ажиллахгүй, текст зурвасаас халина. Нэг мөрийн
-   хувилбарт `flex: none` хэвээр (тэнд нэр нь агшдаг — дээрх ⚠️). */
 .plBarTwo .plBarWhen {
   display: flex;
   flex-direction: column;
@@ -945,11 +708,6 @@
 
 /*
  * ЛАВЛАГААНЫ ЗУРВАС — нөгөө төрлийн огноо, мөрийн ДООД хагаст (2026-09-11).
- *
- * ⚠️ Дээд зурвастай ЗЭРЭГЦЭН харагдана (ард нь биш) — хэрэглэгчийн хүсэлт:
- *    «дээр дооd зэрэг харагдана». Хоёр огнооны зөрүү нь хоёр зурвасын
- *    хэвтээ шилжилтээр шууд уншигдана.
- * ⚠️ `pointer-events: none` — чирэх, сонгох бүх үйлдэл дээд зурваст очно.
  */
 .plRef {
   position: absolute;
@@ -982,14 +740,11 @@
 /* Сонгосон мөрийн холбоосууд — акцентаар тодорно */
 .depHot { fill: none; stroke: var(--data); color: var(--data-ink); stroke-width: 1.8; }
 .depBad { fill: none; stroke: var(--bad); color: var(--bad-ink); stroke-width: 1.5; }
-/* ⚠️ Хошуу нь шугамаасаа өнгө өвлөдөггүй тул ангилал бүрд тусдаа marker */
 .depArrN { fill: color-mix(in srgb, var(--ink-2) 65%, transparent); }
 .depArrH { fill: var(--data); }
 .depArrB { fill: var(--bad); }
 
 /* ИРМЭГИЙН БАРИУЛ — уртасгах */
-/* ⚠️ Бариул нь ҮРГЭЛЖ харагдана. Урьд нь зөвхөн hover дээр гардаг байсан
-   тул «уртасгаж болно» гэдгийг мэдэх арга байгаагүй. */
 .plGrip {
   width: 7px;
   flex: none;
@@ -1005,12 +760,6 @@
   border-right: none;
   border-left: 1px solid color-mix(in srgb, var(--surface) 60%, transparent);
 }
-/* ⚠️ 2026-09-30: ДАРАХ ТАЛБАР ≥16px — харагдах бариул 7px хэвээр, тунгалаг
-   `::before` нь хитийг өргөсгөнө (хуруугаар 7px-ийг онох бараг боломжгүй байв).
-   · Зүүн: зурвасын ГАДАГШ тэлнэ — зурвасын их бие (зөөх) хөндөгдөхгүй.
-   · Баруун: гадагш 5px л — түүнээс цааш `.plLink` (z-index 1, DOM-д хойно) давамгайлна;
-     дотогш 4px (богино зурвасын зөөх талбайг хэт идэхгүй).
-   · Босоо: мөрийн `.plBar` top/bottom 4px зайг ашиглана. */
 .plGrip { position: relative; }
 .plGrip::before {
   content: '';
@@ -1025,22 +774,16 @@
   /* Мэдрэгч дэлгэц — ~24px; дотогш илүү тэлэхгүй (зөөх талбай) */
   .plGrip::before { left: -17px; }
   .plGripR::before { left: -6px; right: -11px; }
-  /* ⚠️ 2026-10-08: харагдах бариул ч ≥14px — хуруугаар «энд уртасгана» гэдэг нь мэдэгдэнэ */
   .plGrip { width: 14px; }
 }
 
 /* ── ХАМААРАЛ ШУГАМААР ХОЛБОХ (2026-09-22) ──
-   Зурвасын баруун захаас гадагш цухуйсан дугуй бариул. ⚠️ Зурвас `overflow`-гүй
+   Зурвасын баруун захаас гадагш цухуйсан дугуй бариул. Зурвас `overflow`-гүй
    тул гадагш цухуйна; hover-т тодорно, эс бөгөөс бүдэг — сумны үзүүртэй андуурахгүй. */
 .plLink {
   position: absolute;
-  /* ⚠️ (2026-09-23) Зурвасын ГАДНА (`right: -13px`, 9px): урьд нь `-7px`/11px
-     байж баруун сунгах бариулыг (`.plGripR` 7px) хагас халхалдаг байв — одоо
-     давхцахгүй. z-index 1: `.plBar` (1) дотор; `.gSide` (4)-ээс доош. */
   right: -16px;
   top: 50%;
-  /* ⚠️ (2026-09-23) 9 → 12px, дарах талбар 24px (`::before`), мөр hover-т 0.7:
-     урьд нь бүдэг жижиг цэг олдохгүй, чирж холбох боломж мэдэгддэггүй байв. */
   width: 12px;
   height: 12px;
   margin-top: -6px;
@@ -1052,7 +795,6 @@
   z-index: 1;
 }
 .plLink::before { content: ''; position: absolute; inset: -6px; border-radius: 50%; }
-/* ⚠️ 2026-10-08: мэдрэгч дэлгэцэд холбох цэг 18px, дарах талбар ~34px */
 @media (pointer: coarse) {
   .plLink { width: 18px; height: 18px; margin-top: -9px; right: -20px; opacity: 0.6; }
   .plLink::before { inset: -8px; }
@@ -1064,45 +806,21 @@
 /* Түр шугам — тасархай, акцент өнгө */
 .depDraft { fill: none; stroke: var(--data); stroke-width: 1.8; stroke-dasharray: 5 4; }
 /* Сумны ДАРАГДАХ зурвас — тунгалаг, өргөн; SVG өөрөө pointer-events:none тул энэ л хүлээн авна */
-/* ⚠️ (2026-09-23) 10 → 6px: FS-ийн босоо сегмент завсрын мөрүүдийн зурвас дээр
-   давхарлаж чирэлт/товшилтыг хаадаг байв. */
 .depHit { fill: none; stroke: transparent; stroke-width: 6; pointer-events: stroke; cursor: pointer; }
 .depHit:hover { stroke: color-mix(in srgb, var(--data) 18%, transparent); }
-/* ⚠️ (2026-09-23) Урьдын `.depHit:hover + *` ҮХМЭЛ байв — `depHit` нь `<g>`-ийн
-   СҮҮЛИЙН хүүхэд тул дараах элемент алга. Hover-ийг `<g>`-ээр дамжуулж эхний
-   (харагдах) шугамыг бүдүүрүүлнэ. */
 .depSvg g:hover > path:first-child { stroke-width: 2.2; }
 /* Холбох чирэлтийн үед сумны зурвас pointer-events авахгүй — суллалт мөр рүү очно */
 .depSvgLink .depHit { pointer-events: none; }
 
 /* ── Responsive — нарийн дэлгэцэд босоо өрөгдөнө ── */
 @media (max-width: 1180px) {
-  /*
-   * ⚠️ 2026-09-16 ЗАСВАР: `flex-basis: 190px` нь 4 огноо + 2 хоногийн багана
-   * нэмэгдэхЭЭС ӨМНӨХ (3 баганатай) үеийн утга байв. Одоо мөрийн тогтмол
-   * хэсэг нь код 66 + огноо 4×78 + хоног 2×46 + уялдаа 110 = 534px бөгөөд
-   * бүгд `flex: none`. Цорын ганц агшдаг нь ажлын нэр (`.rowTree`) тул 190px
-   * хайрцагт нэр БҮРМӨСӨН 0px болж, 534px нь наалдмал зүүн самбараас хальж
-   * хуанли дээр давхарладаг байв.
-   *
-   * ⚠️ Шийдэл нь өргөсгөх БИШ НУУХ: нарийн дэлгэцэд 6 огнооны багана нь
-   * ажлын нэрээс чухал биш (огноог мөр дээр дарж дэлгэрэнгүйгээс харна).
-   * Ингэснээр тогтмол хэсэг 66 + 110 = 176px болж, нэрэнд бодит зай үлдэнэ.
-   */
-  /* ⚠️ Бодит огноо (`.rowDate`-д багтана) ба нөөцийн багана ч нуугдана (2026-09-23) */
   .gHeadDate, .gHeadDays, .rowDate, .rowDays, .gHeadRes, .rowRes { display: none; }
-  /* ⚠️ Багана нуугдсан үед хураах товч ч нуугдана (2026-09-23) — юу ч хийдэггүй товч үлдэж байв */
   .colsBtn { display: none; }
-  /* ⚠️ 2026-10-09: огноо · хоног · нөөц энд нуугддаг тул зөвхөн код · нэр · уялдааны нэмэлт (`--col-extra-n`) */
   .gSide { flex-basis: calc(clamp(260px, 46%, 420px) + var(--col-extra-n, 0px)); }
-  /* ⚠️ 2026-10-04 (шүүлт): энд `--side-extra` ҮЙЛЧЛЭХГҮЙ (самбар аль хэдийн 46%) — бариул юу ч
-     хийхгүй атлаа утга хадгалдаг байсан тул НУУНА (`useSideExtra` ч энд хязгаар бодохгүй) */
   .sideGrip { display: none; }
   .frame { height: auto; min-height: 100%; overflow-y: auto; }
 }
 
-/* ⚠️ ГАР УТАС: нарийн дэлгэцэнд №-ийн баганыг шахна («Хуваарь»/«блок»
-   багана 2026-09-03-нд бүрмөсөн устсан тул энд нуух зүйл цөөрсөн). */
 @media (max-width: 640px) {
   .rowNo { min-width: 26px; }
 }
@@ -1110,10 +828,6 @@
 
 /* ── POPUP ХУАНЛИ ── */
 
-/**
- * ⚠️ Дэлгэцийн ТӨВД, дэвсгэр нь бүдгэрнэ. Мөрийн доор задардаг хувилбар
- * байсан бол урт жагсаалтад гүйлт үсэрч, дарсан мөр нүднээс алга болно.
- */
 .mdBack {
   position: fixed;
   inset: 0;
@@ -1128,18 +842,12 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* ⚠️ 640px (2026-09-24): огнооны 2 багана + сарын 4 баганат сүлжээ багтана */
   width: min(640px, 100%);
-  /* ⚠️ 32 сар хүртэл задаргаа багтах тул цонх ДОТРОО гүйнэ (2026-09-06).
-     Урьд нь өндөр нь хязгааргүй байсан тул жижиг дэлгэц дээр «Тавих»
-     товч дэлгэцээс гарч, хэрэглэгч хадгалж чаддаггүй байв. */
-  /* ⚠️ `dvh` — гар утасны хаягийн барыг дагана (2026-09-16). */
   max-height: calc(100vh - 32px);
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
   padding: 14px;
   background: var(--surface);
-  /* ⚠️ 2026-10-23: Environment — хөвөгч цонх: --line-strong, булан 12px, --shadow */
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
@@ -1152,7 +860,6 @@
   font-variant-numeric: tabular-nums;
 }
 .mdWork { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
-/* ⚠️ 2026-10-23: Environment — жижиг дүрсэн товч 28px, булан 6px */
 .mdX {
   font: inherit;
   flex: none;
@@ -1198,12 +905,9 @@
   cursor: pointer;
 }
 .mdSnap:hover { background: var(--surface-2); }
-/* ⚠️ Анхааруулга нь АЛДАА БИШ — хадгалахыг хориглохгүй, зөвхөн юу болохыг
-   урьдчилан хэлнэ. Тиймээс улаан биш шар. */
 .mdWarn { margin: 0; font-size: 11px; color: var(--warn-ink, var(--warn)); }
 /* ── БЛОКУУД — олноор сонгох чип (2026-09-24). Тод хүрээ = идэвхтэй (суурь) блок ── */
 .mdBlks { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
-/* ⚠️ 2026-10-23: Environment — чип булан 6px; сонгогдсон = moss 13% · moss бичиг · moss 45% хүрээ */
 .mdChip {
   font: inherit;
   font-size: 11px;
@@ -1217,20 +921,14 @@
 .mdChip:hover { border-color: var(--line-strong); color: var(--ink); }
 .mdChipOn { color: var(--moss); background: color-mix(in oklab, var(--moss) 13%, transparent); border-color: color-mix(in oklab, var(--moss) 45%, transparent); }
 .mdChipAct { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--data); }
-/* ⚠️ 2026-10-01 (хэрэглэгч: бүгдийг зас): САРЫН ЗАДАРГАА ТЭНЦЭЭГҮЙ блок — улаан хүрээ ба
-   цэг; сонгогдсон (`mdChipOn`) үед ч улаан хүрээ хэвээр тул асуудалтай блок шууд олдоно.
-   Өнгө ганцаараа биш — `⚠` тэмдэг ба `title` ч дагалдана (өнгө ялгадаггүй хүнд). */
 .mdChipBad { border-color: var(--bad); color: var(--bad-ink); box-shadow: inset 0 0 0 1px var(--bad); }
 .mdChipBad.mdChipOn { color: var(--bad-ink); background: color-mix(in oklab, var(--bad) 13%, transparent); border-color: var(--bad); }
 /* ── ОЛОН БЛОК — ерөнхий сонголт, ТОМ чип (2026-09-29, хэрэглэгч: «ерөнхийд томоор») ── */
-/* ⚠️ 2026-10-23 (хэрэглэгч: «нэг мөрөнд оруулж жижигрүүл»): «Бүтэн дэлгэц»-ийн мөрөнд, хайрцаггүй, жижиг чипүүд */
 .gBlks {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; flex: 0 1 auto; min-width: 0;
 }
 .gBlksLabel { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-right: 2px; }
 .gBlksNote { font-size: 11px; color: var(--data-ink); font-weight: 600; }
-/* ⚠️ 2026-10-23: Environment — ТОМ чип (хэрэглэгчийн «ерөнхийд томоор» хэвээр), булан 8px, жин ≤600;
-   сонгогдсон = moss 13% · moss бичиг · moss 45% хүрээ */
 .gChip {
   font: inherit; font-size: 12px; font-weight: 600;
   min-width: 36px; padding: 3px 8px;
@@ -1285,7 +983,6 @@
   border-radius: var(--r-sm);
 }
 .mdDepRow { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-2); }
-/* ⚠️ Ажлын нэр урт — сонгогч нь мөрийн үлдсэн зайг бүгдийг авч агшдаг */
 .mdDepWork { flex: 1; min-width: 0; max-width: 100%; }
 .mdDepD { flex: none; color: var(--ink-3); }
 .mdDepX {
@@ -1308,15 +1005,8 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink-2);
 }
-/* ⚠️ Обьёмын талбар нь мөрийн ҮЛДСЭН зайг бүтнээр авна: аравтын
-   бутархайтай тоо (138.94) 58px-д багтахгүй, «138.9…» гэж таслагдаж
-   байв (2026-09-06-ны скриншот). */
 .mdMonthIn { flex: 1; min-width: 0; width: auto; }
 
-/* ⚠️ Батлах урсгалын цонхны текст талбар (`FlowBox`) — тайлбар ба буцаах
-   шалтгаан. `PlanModal`-ийн бусад ангийг дахин ашигладаг тул зөвхөн энэ нэг
-   шинэ дүрэм хэрэгтэй. */
-/* ⚠️ 2026-10-23: Environment `.pe-field` (textarea) — булан 7px · --line-strong · bg --bg; focus moss */
 .flowText {
   width: 100%;
   resize: vertical;
@@ -1333,10 +1023,6 @@
 
 /*
  * ТОЛГОЙН ЗУРВАСЫН ТАЙЛБАР — товчны ОРОНД гарах шалтгаан (2026-09-15).
- *
- * ⚠️ ЯАГААД: батлах эрхгүй хүнд «Шийдвэрлэх» товч ОГТ зурагддаггүй байсан
- *    тул хэрэглэгч «товч идэвхжихгүй» гэж үздэг ч үнэндээ товч байхгүй,
- *    шалтгаан нь хаана ч бичигдэхгүй байв. Товчны хэмжээ, байрлалд таарна.
  */
 .muted {
   padding: 7px 11px;
@@ -1352,12 +1038,6 @@
 /*
  * ТҮВШНИЙ ЗУРВАС — «Гэрээний бүртгэл» хуудасны ИЖИЛ загвар (2026-09-15,
  * хэрэглэгчийн шаардлага: «түвшин 1–5 үүнтэй адилхан хий»).
- *
- * ⚠️ `finance.module.css`-ийн `.lvBar` · `.lvLbl` · `.lvOn`-ийн ХУУЛБАР.
- *    Нэг файлаас импортлох боломжгүй (CSS module тус бүр тусдаа) бөгөөд
- *    харагдацууд стайлаа ТУСДАА барих нь 2026-08-25-ны шийдвэр — тиймээс
- *    давхардал нь санаатай. Хэмжээ, өнгө ЗӨРЖ БОЛОХГҮЙ: хоёр хуудсанд нэг
- *    үүрэгтэй товч өөр харагдвал хэрэглэгч тэднийг өөр зүйл гэж уншина.
  */
 .lvBar {
   display: inline-flex;
@@ -1369,7 +1049,6 @@
   color: var(--ink-3);
   font-size: 11.5px;
 }
-/* ⚠️ 2026-10-23: Environment — `negtgel.module.css`-ийн `.levels`-тэй ИЖИЛ (дээрх «хэмжээ, өнгө ЗӨРЖ БОЛОХГҮЙ» ⚠️) */
 .lvBar button {
   width: 22px;
   height: 22px;
@@ -1384,8 +1063,6 @@
   cursor: pointer;
 }
 .lvBar button:hover { background: var(--surface-2); color: var(--ink); }
-/* ⚠️ Идэвхтэй товч — хэрэглэгч гараар нэг бүлэг хумивал АЛЬ Ч товч тодрохгүй
-   (`lvl = 0`): дэлгэц дээрх байдалтай зөрчилдсөн тодруулга үлдэх ёсгүй. */
 .lvOn {
   background: color-mix(in oklab, var(--moss) 14%, var(--surface)) !important;
   border-color: color-mix(in oklab, var(--moss) 45%, transparent) !important;
@@ -1394,13 +1071,6 @@
 
 /*
  * ОГНООНЫ НҮД — гэрээ · төлөвлөгөөний эхлэх/дуусах (2026-09-15).
- *
- * ⚠️ ЗАСАГДАХГҮЙ: `button` БИШ `span`. Огноо засах цорын ганц зам нь хуанли
- *    дээр чирэх ба popup хэвээр — хоёр өөр засварын зам үүсвэл аль нь үнэн
- *    болох нь бүрхэг болно (`TaskRow`-ийн ижил ⚠️).
- * ⚠️ `tabular-nums` — багана дотор орон нь эгнэнэ, эс бөгөөс огноонууд
- *    хоорондоо гулсаж уншигдахгүй болно.
- * ⚠️ Хуваарьгүй мөрийн «—» нь бүдэг (`--ink-3`) — жинхэнэ огноотой андуурахгүй.
  */
 .rowDate {
   flex: none;
@@ -1417,8 +1087,6 @@
 
 /*
  * ДАРЖ БИЧИХ ОГНОО (2026-10-05, `TaskRow.DateCell`).
- * ⚠️ Товч ба оролт хоёулаа `.rowDate`-ийн өргөн/зэрэгцүүлэлтийг өвлөнө — багана
- *    гулсахгүй, мөрийн өндөр (`PL_ROW`) хөдлөхгүй. Хүрээ нь ил тунгалаг, hover-т л.
  */
 .rowDateEd {
   font: inherit;
@@ -1431,10 +1099,6 @@
   cursor: text;
 }
 .rowDateEd:hover { border-color: var(--line); color: var(--ink); }
-/* ⚠️ 2026-10-08 (I8): ЗАСАГДАХ нүд гэдэг нь мэдэгдэнэ — hover/фокуст зөөлөн доогуур зураас + «✎»
-   (зөвхөн CSS, мөрийн өндөр хөдлөхгүй). Хуудас 1,400 мөртэй тул ҮРГЭЛЖ биш, зөвхөн hover/focus —
-   эс бөгөөс хүснэгт торлог болно (`.hamIn`-ийн ⚠️). `::after` нь `position: absolute` тул
-   баганын өргөнд нөлөөлөхгүй. */
 .rowDateEd { position: relative; }
 .rowDateEd:hover, .rowDateEd:focus-visible {
   text-decoration: underline dotted color-mix(in srgb, var(--data) 70%, transparent);
@@ -1454,8 +1118,6 @@
   pointer-events: none;
 }
 .rowDateEd:hover::after, .rowDateEd:focus-visible::after { opacity: 0.8; }
-/* ⚠️ 2026-10-08: НӨГӨӨ ТАБЫН нүд — товч, дарахад таб солигдоно (`TaskRow.onOtherTab`); хэлбэр нь уншдаг
-   нүдтэй ижил, hover-т л «энд биш, нөгөө табд» гэсэн тасархай доогуур зураас. */
 .rowDateOther {
   font: inherit;
   font-size: 11px;
@@ -1482,10 +1144,6 @@
 
 /*
  * ҮРГЭЛЖЛЭХ ХОНОГ — огнооны хосын ард, ТУСДАА багана (2026-09-15, хэрэглэгч).
- *
- * ⚠️ Огнооны нүдэнд шигтгэхгүй: нэг нүд хоёр утга агуулбал эрэмбэлэх,
- *    хуулах, нүдээр гүйлгэх бүгд хүндэрнэ.
- * ⚠️ `tabular-nums` — 7 ба 187 хоёр нэг босоо шугамд эгнэнэ.
  */
 .rowDays {
   flex: none;
@@ -1513,12 +1171,6 @@
 /*
  * УЯЛДААНЫ НҮД — ШУУД БИЧДЭГ (2026-09-15, хэрэглэгч: «11FS14 гэж шууд бичиж
  * холбоос хийх боломжтой болгох»). MS Project-ийн Predecessors нүдний загвар.
- *
- * ⚠️ Оролт + «…» товч ХОЁУЛАА `--ham-w` дотор багтана. Тиймээс тэр өргөнийг
- *    62px → 110px болгов (дээрх хувьсагчийн мөрийг үз): «11FS14,22SS-5» гэсэн
- *    хоёр токен уншигдах ёстой.
- * ⚠️ Хүрээ нь ЗӨВХӨН фокуст — 1,400 мөрт нүд бүр хүрээтэй байвал хүснэгт
- *    торлог болж, огноо, нэр зэрэг ГОЛ мэдээлэл живнэ.
  */
 .hamWrap {
   flex: none;
@@ -1542,10 +1194,7 @@
   border-radius: var(--r-sm);
 }
 .hamIn:hover { border-color: var(--line); }
-/* ⚠️ 2026-10-08 (I8): уялдааны нүд ч hover/фокуст доогуур зураастай — `.rowDateEd`-тэй ижил */
 .hamIn:hover, .hamIn:focus { text-decoration: underline dotted color-mix(in srgb, var(--data) 70%, transparent); text-underline-offset: 3px; }
-/* ⚠️ 2026-10-08 (I9): бичиж байх үеийн НЭГ МӨР ЖИШЭЭ — нүдний ДООР абсолют (`.hamWrap` нь
-   `position: relative`), мөрийн өндөр хөдлөхгүй; дараагийн мөрийн дээгүүр (z 3 < gSide 4). */
 .hamWrap { position: relative; }
 .cellHelp {
   position: absolute;
@@ -1568,8 +1217,6 @@
   border-color: var(--data);
   background: var(--surface-2);
   color: var(--ink);
-  /* ⚠️ Фокуст ЗҮҮН зэрэгцүүлэлт — урт бичиглэл бичихэд курсор ирмэгт
-     наалдахгүй, бичсэн зүйл эхнээсээ харагдана. */
   text-align: left;
 }
 /* «…» — popup руу орох зам (жагсаалтаас нэрээр сонгох) */
@@ -1586,8 +1233,6 @@
   cursor: pointer;
 }
 .hamMore:hover { color: var(--data-ink); }
-/* ⚠️ 2026-10-23 (UX аудит P10): «Жагсаалтаас сонгох» 14×11px — хуруугаар онох боломжгүй байв. Мөрийн өндөр (`PL_ROW`)
-   хөдлөхгүйн тулд харагдах товч бага зэрэг (20px), ДАРАГДАХ талбай нь `::before`-ээр ≥32px (`.plGrip`-ийн загвар). */
 @media (pointer: coarse) {
   .hamMore { position: relative; width: 20px; }
   .hamMore::before { content: ''; position: absolute; top: -10px; bottom: -10px; left: -6px; right: -6px; }
@@ -1595,11 +1240,6 @@
 
 /*
  * ТОЛГОЙН ЖИШЭЭ БИЧИГЛЭЛ — «Хамаарал» гарчгийн хажууд «11FS14».
- *
- * ⚠️ Нүдний `placeholder`-ийн ОРОНД (2026-09-15, хэрэглэгч: «бүгд 11FS14
- *    болчихлоо»). Тэнд байвал хоосон мөр бүрд давтагдаж, бодит утга мэт
- *    уншигдана — толгойд НЭГ УДАА бичих нь ижил мэдээллийг өгнө.
- * ⚠️ Гарчгаас БҮДЭГ ба налуу — «энэ бол загвар, утга биш» гэдгийг хэлбэрээр.
  */
 .gHeadHint {
   font-style: italic;
@@ -1610,15 +1250,12 @@
 
 /* Хуваалцсан ноорогийн төлөв — алдаа/хэт том үед анхааруулах өнгө (2026-09-23) */
 .hdWarn { color: var(--bad-ink); }
-/* ⚠️ 2026-10-23: «✓ Ноорог хадгалагдсан» — ногоон */
 .hdOk { color: var(--good-ink, var(--good)); font-weight: 600; }
 
 /* ══════════════════ НЭМЭЛТ АЖИЛ (2026-09-24) ══════════════════
    FillNew-ийн `.addBtn` / `.dropBtn` / `.newRow` / `.addForm`-ийн загвар — мөр
    нэмэх урсгал «Гүйцэтгэл бөглөх»-өөс энд шилжсэн. Улаан = «энэ мөр анхны
    гэрээнд байгаагүй» (хэрэглэгч, 2026-09-22). */
-/* ⚠️ Маягт (`.addPop`) мөрийн ДОТОР абсолют байрлалтай — мөрийн өндөр (PL_ROW)
-   хөдлөхгүй, зүүн жагсаалт ба баруун зурвас эгнээгээ алдахгүй. */
 .row { position: relative; }
 .rowAdded { background: color-mix(in srgb, var(--bad) 6%, transparent); box-shadow: inset 3px 0 0 var(--bad-ink); }
 .rowAdded .rowNo, .rowAdded .rowWork { color: var(--bad-ink); font-weight: 600; }
@@ -1671,7 +1308,6 @@
   font-weight: 400;
   color: var(--ink);
   background: var(--surface);
-  /* ⚠️ 2026-10-23: Environment — хөвөгч гадарга: --line-strong, булан 12px, --shadow */
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
@@ -1693,7 +1329,6 @@
 .addNo { width: 64px; }
 .addWork { flex: 1 1 220px; min-width: 160px; }
 .addNum { width: 100px; }
-/* ⚠️ 2026-10-23: Environment `.pe-primary` / `.pe-ghost` — 32px · булан 8px · 12px */
 .addOk {
   font: inherit;
   height: 32px;
@@ -1763,7 +1398,6 @@
 /* ── Огнооны талбар: гараар бичих + 📅 (2026-10-04, `huvaari/DateField`) ── */
 .dateIn { display: inline-flex; align-items: center; gap: 2px; }
 .dateTxt { width: 104px; font-variant-numeric: tabular-nums; }
-/* ⚠️ 2026-10-08: мэдрэгч дэлгэцэд оролтууд өндөр (≥32px) — хуруугаар онохуйц */
 @media (pointer: coarse) {
   .dateTxt, .numIn, .select { min-height: 32px; }
   .rowDateIn, .hamIn { min-height: 24px; }
@@ -1785,9 +1419,6 @@
 
 /*
  * ── «БҮХ БЛОК» ХАРАГДАЦ (2026-10-04, `huvaari/allBlocks.ts`) — ЗӨВХӨН ХАРАХ ──
- * ⚠️ Дэд мөр нь `PL_ROW` өндөртэй хэвээр (зүүн/баруун эгнэнэ) — зөвхөн өнгө/үсэг.
- * ⚠️ Эгнээ чирэгдэхгүй тул `crosshair`/`grab` курсор худал — `default`; дэд мөр
- *    дарагдана (тэр блок руу орно) тул `pointer`.
  */
 .rowSub { font-size: 11px; color: var(--ink-2); background: color-mix(in srgb, var(--surface-2) 35%, transparent); }
 .rowSub .rowWork { font-size: 11px; color: var(--ink-2); }
@@ -1804,7 +1435,6 @@
   border: 1.5px solid color-mix(in srgb, var(--ink-2) 55%, transparent);
 }
 .plBarAll .plBarLab { color: var(--ink); }
-/* ⚠️ Дээрх дэвсгэр нь `.rowOn`/`.plLaneOn`-оос ХОЙНО тул сонголтыг дарна — буцааж тодруулна */
 .rowSub.rowOn { background: color-mix(in oklab, var(--moss) 12%, transparent); }
 .plLaneSub.plLaneOn { background: color-mix(in oklab, var(--moss) 12%, transparent); }
 
@@ -1823,7 +1453,6 @@
   white-space: nowrap;
 }
 .chipFilter:hover { border-color: var(--line-strong); color: var(--ink); }
-/* ⚠️ 2026-10-23: Environment — сонгогдсон шүүлт: moss 13% · moss бичиг · moss 45% хүрээ */
 .chipFilterOn { color: var(--moss); background: color-mix(in oklab, var(--moss) 13%, transparent); border-color: color-mix(in oklab, var(--moss) 45%, transparent); }
 
 /* ХЯНАЛТЫН ӨӨРЧЛӨЛТИЙН ХАЖУУГИЙН САМБАР — наалддаг, дотроо гүйнэ (`Huvaari.tsx`) */
@@ -1983,7 +1612,6 @@ span.blkChip { cursor: default; }
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  /* ⚠️ 2026-10-23 (UX аудит P5): баруун ирмэгт тасардаг байв — зай хүрэхгүй бол баруунаар тэгшилнэ (`.howtoPopR`) */
   z-index: 7;
   width: min(360px, calc(100vw - 32px));
   display: flex;
@@ -1992,7 +1620,6 @@ span.blkChip { cursor: default; }
   padding: 10px 12px;
   font-size: 11.5px;
   color: var(--ink);
-  /* ⚠️ 2026-10-23: Environment tooltip — --surface 95% + blur, --line-strong, булан 12px */
   background: color-mix(in oklab, var(--surface) 95%, transparent);
   backdrop-filter: blur(12px);
   border: 1px solid var(--line-strong);
@@ -2005,9 +1632,6 @@ span.blkChip { cursor: default; }
 
 /* ══════════ 2026-10-09: ТӨЛӨВЛӨЛТИЙН ХАРИЛЦААНЫ ЗАСВАРУУД ══════════ */
 
-/* ⚠️ НҮДНИЙ ТАТГАЛЗСАН ШАЛТГААН (`TaskRow.DateCell/DaysCell/HamCell`) — оролтыг ороох `cellWrap` нь зөвхөн
-   абсолют шалтгааны агуулах блок; өргөнийг оролт өөрөө (`.rowDate`/`.rowDays`) барина, мөрийн өндөр хөдлөхгүй.
-   Шалтгаан нь `.cellHelp`-ийн ижил байрлалд, улаан. */
 .cellWrap { position: relative; flex: none; display: flex; }
 .cellErr {
   position: absolute;
@@ -2025,9 +1649,6 @@ span.blkChip { cursor: default; }
   pointer-events: none;
 }
 
-/* ⚠️ ИДЭВХТЭЙ ТАБЫН ЭХЛЭХ/ДУУСАХ НҮД ҮРГЭЛЖ ИЛ (`gSideEdP` — төлөвлөгөө, `gSideEdG` — гэрээ). Нарийн дэлгэц
-   (≤1180px) ба хураасан самбар (`gSideNarrow`) бусад огноо · хоног · нөөцийг нуусаар; зөвхөн засагдах хоёр нүд
-   үлдэнэ — урьд нь тэнд бичих зам огт алга болдог байв. Сонгогч (0,3,0) нь нуух дүрмүүдээс давамгайлна. */
 .gSideEdP .gHeadDate.cPs, .gSideEdP .gHeadDate.cPe,
 .gSideEdG .gHeadDate.cGs, .gSideEdG .gHeadDate.cGe { display: flex; }
 .gSideEdP .rowDate.cPs, .gSideEdP .rowDate.cPe,
@@ -2038,8 +1659,6 @@ span.blkChip { cursor: default; }
 @media (max-width: 1180px) {
   .gSide.gSideEdP, .gSide.gSideEdG { flex-basis: calc(clamp(260px, 46%, 420px) + 150px + var(--col-extra-n, 0px)); }
 }
-/* ⚠️ 2026-10-26 (аудит): утсанд (375px) засагчийн самбар 410px болж `.gWrap`-ийг бүрэн эзэлдэг тул хуанли ХЭЗЭЭ Ч харагддаггүй,
-   чирч төлөвлөх боломжгүй байв — дор хаяж 120px хуанли үлдэнэ (огноог эхлэх/дуусах нүдээр эсвэл цонхоор засна). */
 @media (max-width: 640px) {
   .gSide { flex-basis: min(calc(clamp(260px, 46%, 420px) + var(--col-extra-n, 0px)), calc(100% - 120px)); }
   .gSide.gSideEdP, .gSide.gSideEdG {
@@ -2047,7 +1666,6 @@ span.blkChip { cursor: default; }
   }
 }
 
-/* ⚠️ ОЛОН БЛОКТ БИЧИХ тэмдэг — засагдах эхлэх нүдний толгойд «→ N блок» (`Huvaari` `gBlks`) */
 .multiTag {
   position: absolute;
   top: 0;
@@ -2060,7 +1678,6 @@ span.blkChip { cursor: default; }
   pointer-events: none;
 }
 
-/* ⚠️ ЧИРЭЛТИЙН ШОШГО — чирж буй зурвасын дээр «эхлэх → дуусах · Nх» (эхний мөрд доор). Чирэлтэд саад болохгүй. */
 .dragTip {
   position: absolute;
   top: -19px;
@@ -2076,9 +1693,6 @@ span.blkChip { cursor: default; }
 }
 .dragTipBelow { top: calc(100% + 2px); }
 
-/* ⚠️ ТҮР МЭДЭГДЭЛ (алдаа · тэмдэглэл · гинж · шүүлт) — урсгалд биш, дэлгэцийн доод төвд ДАВХАРГА: урьд нь
-   баннер гарч/алга болох бүрд хүснэгт доош/дээш үсэрч, чирж байсан зурвас заагчаас холддог байв.
-   z 55 — бүтэн дэлгэц (50)-ээс дээш, popup (60)-оос доош. Баннерууд өөрсдийн хэлбэрээ (`.err`/`.note`) хадгална. */
 .toasts {
   position: fixed;
   left: 50%;
@@ -2092,7 +1706,6 @@ span.blkChip { cursor: default; }
   transform: translateX(-50%);
   pointer-events: none;
 }
-/* ⚠️ 2026-10-23: Environment toast — --shadow, --line-strong хүрээ, булан 12px */
 .toasts > * { pointer-events: auto; box-shadow: var(--shadow); border-radius: var(--r-lg); }
 .toasts .note { background: var(--surface); border-color: var(--line-strong); }
 

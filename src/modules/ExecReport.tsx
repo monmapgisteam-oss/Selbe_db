@@ -9,12 +9,6 @@
  *   · PDF (инфографик хуудас + 2–3 хуудас хүснэгт)
  *   · Инфографик PNG (нэг зураг — мессенжер, илтгэлд)
  * мөн AI дүгнэлт (реле асаалттай үед) — тайлангийн тоонд л тулгуурлана.
- *
- * ⚠️ Өгөгдөл `@/lib/execReport`-оос — энд тооцоо ХИЙХГҮЙ. Дэлгэц, PDF,
- *    инфографик, AI дөрвүүлээ нэг объект уншина.
- * ⚠️ Ерөнхий (10 хэсэгтэй) тайлан ХЭВЭЭР — `Tailan.tsx`-ийн горим сэлгэгчээр
- *    солигдоно. Энэ модуль түүнийг ОРЛОХГҮЙ, харин удирдлагад зориулсан
- *    богино хувилбар.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -26,8 +20,6 @@ import { num, pct, dateTime } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { invalidateAll } from '@/lib/dataBus';
 import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel } from '@/lib/execReport';
-/* ⚠️ `buildInfographic`/`infographicSvgUrl` ЭНД ХЭРЭГГҮЙ БОЛОВ: зураг нь
-   зөвхөн татагдах файлд үлдсэн (`execPdf`) — тайлангийн хуудсанд байхгүй. */
 import { money } from '@/lib/execInfographic';
 import { progressSub, planScopeNote } from '@/lib/gdash';
 import { coverageOk, coverageNote } from '@/lib/planProgress';
@@ -51,7 +43,6 @@ function Cap({ no, children }: { no: string; children: React.ReactNode }) {
 
 /**
  * Хэсгийн гарчиг — дугаар ба нэр `execSections`-ээс (PDF-тэй ГАНЦ эх, 2026-10-06 аудит).
- * ⚠️ `id`-ийн дугаар = хэсгийн дугаар (`ReportContents` нь `exec-{i+1}` руу үсэрнэ).
  */
 function SecHead({ k }: { k: ExecSectionKey }) {
   return <h2 className={r.h2}>{`${execSectionNo(k)}. ${execSectionTitle(k)}`}</h2>;
@@ -59,12 +50,6 @@ function SecHead({ k }: { k: ExecSectionKey }) {
 
 /**
  * ДҮГНЭЛТИЙН НЭРСИЙН ЖАГСААЛТ — багц, талбарын нэрс (2026-09-17).
- *
- * ⚠️ БҮГДИЙГ ҮРГЭЛЖ ХАРУУЛНА. Хэрэглэгчийн заавар: «ерөөсөө тайлан дээр
- * хураах, нээх гэсэн зүйл байхгүй — тайлан гэдгээ сайн ойлго». Тайлан нь
- * хэвлэгдэж, PDF болж, мэйлээр явдаг баримт: нуусан мөр нь цаасан дээр
- * ОГТ гарахгүй бөгөөд уншигч түүнийг байсан ч гэж мэдэхгүй. Дэлгэц дээр
- * хураангуйлах нь ДАШБОАРДЫН арга, тайлангийнх БИШ.
  */
 function FindingItems({ items }: { items: string[] }) {
   return (
@@ -78,10 +63,8 @@ export function ExecReport() {
   /** Огноо — ЗӨВХӨН клиент дээр (`Tailan`-тай ижил: hydration зөрөхөөс сэргийлнэ) */
   const [date, setDate] = useState('');
   const [periodNow, setPeriodNow] = useState<number | null>(null);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: hydration — эхний зураг серверийнхтэй ижил байх ёстой, localStorage/цагийг mount-ын ДАРАА л уншина
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { const now = Date.now(); setDate(dateTime(now)); setPeriodNow(now); }, []);
-  /* ⚠️ 2026-10-28 (хэрэглэгч: «цаг хугацаагаар харах, өсөлт/бууралт»): сонгосон хугацааны өөрчлөлт (`execPeriodCalc`).
-     Хугацааг mount-ын ДАРАА бодно — `date`-тэй ижил hydration шалтгаан. */
   const [pkey, setPkey] = useState<ExecPeriodKey>('30d');
   const [custom, setCustom] = useState<{ from: string; to: string }>({ from: '', to: '' });
   // Selection changes immediately, without a render using the previous period.
@@ -92,8 +75,6 @@ export function ExecReport() {
   const [summary, setSummary] = useState<string | null>(null);
   /** Реле амьд эсэх — AI товчийг зөвхөн боломжтой үед идэвхжүүлнэ */
   const [ai, setAi] = useState<boolean | null>(null);
-  /* ⚠️ 2026-10-07: релег mount-д НЭГ л удаа шалгадаг байсан тул тэр агшинд унтарсан бол AI товч
-     сешн дуустал идэвхгүй үлддэг байв — одоо «Шинэчлэх» ба сүлжээ сэргэхэд (`online`) дахин шалгана. */
   const aiProbe = useRef<AbortController | null>(null);
   const probeAi = useCallback(() => {
     aiProbe.current?.abort();
@@ -111,41 +92,23 @@ export function ExecReport() {
   }, [probeAi]);
 
   const x = q.state === 'ready' ? q.data : null;
-  /* ⚠️ Өөрчлөлт — тайлан ба хугацаа бэлэн болмогц; хүлээж байхад `loading` (шийдэгдэхгүй амлалт) */
   const dq = useAsync<ExecDeltas | null>(
     () => (x && period ? loadExecDeltas(x, period) : new Promise<ExecDeltas | null>(() => {})),
     [x, period],
   );
   const deltas = dq.state === 'ready' && dq.data && period
     && dq.data.period.from === period.from && dq.data.period.to === period.to ? dq.data : null;
-  /* ⚠️ 2026-09-24: AI хүсэлтийн AbortController — unmount-д цуцална, эс тэгвээс
-     хариу ирэхэд хаагдсан компонентын state-ийг бичих байв. */
   const aiAc = useRef<AbortController | null>(null);
   useEffect(() => () => aiAc.current?.abort(), []);
-  /* ⚠️ Өгөгдөл шинэчлэгдвэл (кэш хаягдах, дахин татах) хуучин AI дүгнэлт
-     ХУУЧИН тоог тайлбарлаж үлддэг байв — цэвэрлэнэ (2026-09-23).
-     ⚠️ 2026-09-25: ЯВЖ БУЙ AI хүсэлтийг мөн ЦУЦЛАНА. Урьд нь зөвхөн `summary`-г
-     цэвэрлэдэг тул хуучин тооноос бичигдсэн хариу ДАРАА нь ирж тавигдаад, шинэ
-     хүснэгттэй PDF/PNG-д хуучин тоог иш татсан дүгнэлт болж орж байв. */
-  /* ⚠️ 2026-09-25: цуцласны дараа ref-ийг ЦЭВЭРЛЭНЭ — дууссан хүсэлтийн controller-ийг
-     abort() хийвэл `signal.aborted` true болж үлдээд, дараагийн PDF/PNG алдааг
-     catch чимээгүй залгидаг байв. */
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- ⚠️ 2026-09-30: өгөгдөл солигдоход явж буй AI хүсэлтийг цуцлах (гаднын үйлдэл) ба дүгнэлтийг тэглэх нь нэг эффектэд
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { aiAc.current?.abort(); aiAc.current = null; setSummary(null); }, [x]);
   const findings = useMemo(() => (x ? execFindings(x) : []), [x]);
   /**
    * ХАВСРАЛТ — нэрсийн жагсаалттай дүгнэлтүүд (2026-09-17).
-   * ⚠️ Дараалал нь дүгнэлтийнхтэй ИЖИЛ байх ёстой: дүгнэлт дэх «хавсралт
-   * N» гэсэн заалт нь энэ массивын индексээр тодорхойлогдоно.
    */
   /**
    * ЭХЛЭЭГҮЙ АЖИЛ — олголт огт хийгдээгүй багцууд (2026-09-17).
-   * ⚠️ `given === 0` нь «олголт хийгдээгүй»; `pct == null` нь «гэрээгүй тул
-   * хувь бодогдохгүй» — ХОЁР ӨӨР утга, хольж болохгүй.
    */
-  /* ⚠️ 2026-09-21: гурван ангилал (эхэлсэн · гэрээт-эхлээгүй · гэрээгүй) ба
-     хавсралтын дугаар ХОЁУЛАА `execReport.ts`-ээс — PDF-тэй НЭГ дүрэм. Урьд нь
-     энд «Эхлээгүй ажил» хавсралт СҮҮЛД, PDF-д ЭХЭНД дугаарлагдаж зөрдөг байв. */
   const finSplit = useMemo(
     () => (x ? execFinSplit(x) : { started: [], zero: [], none: [] }),
     [x],
@@ -157,13 +120,8 @@ export function ExecReport() {
     if (!x || busy || (what !== 'ai' && !deltas)) return;
     setFail('');
     setBusy(what);
-    /* ⚠️ 2026-09-25: цуцлалтыг ЭНЭ дуудлагын өөрийн controller-оор шалгана — `aiAc.current`
-       нь өөр (дууссан/цуцлагдсан) хүсэлтийнх байж болох тул pdf/png алдааг залгихгүй. */
     let ac: AbortController | null = null;
     try {
-      /* ⚠️ 2026-10-06 (аудит): огноог ҮҮСГЭХ агшинд авна (`Tailan.run`-ий 2026-09-29-ний ижил
-         засвар). Урьд нь mount-ын `date` дамждаг тул хэдэн цагийн дараа гаргасан PDF/PNG хуучин
-         цагаар тамгалагддаг байв (`||`-ийн нөөц хэзээ ч ажилладаггүй). */
       const d = dateTime(Date.now());
       if (what === 'pdf') await downloadExecPdf(x, d, summary, deltas);
       else if (what === 'png') await downloadInfographic(x, d, summary, deltas);
@@ -177,7 +135,6 @@ export function ExecReport() {
       if (ac?.signal.aborted) return;
       console.error('[selbe] удирдлагын тайлан:', err);
       const label = what === 'pdf' ? 'PDF' : what === 'png' ? tr('Инфографик') : tr('AI дүгнэлт');
-      /* ⚠️ AI-ийн алдаа (хугацаа хэтэрсэн, реле) нь өөрөө ойлгомжтой мөртэй — түүнийг л харуулна */
       const msg = what === 'ai' && err instanceof Error && err.message ? err.message : '';
       setFail(msg
         ? tr('{0}: {1}', label, msg)
@@ -188,9 +145,6 @@ export function ExecReport() {
   }, [x, busy, summary, deltas]);
   /**
    * ШИНЭЧЛЭХ — `loadExecReport`-ийн 5 минутын кэш (ба түүний уншдаг бүх кэш)-ийг хаяна.
-   * ⚠️ 2026-10-06 (аудит): `Tailan.refresh`-тэй ижил `invalidateAll()` — тагийн жагсаалтыг
-   *    гараар хөтлөхгүй (`Tailan`-ий 2026-10-05-ны ⚠️). `useAsync` нь `dataBus`-аар дахин татна;
-   *    хуучин AI дүгнэлт `[x]` эффектээр цэвэрлэгдэнэ.
    */
   const refresh = useCallback(() => { setPeriodNow(Date.now()); invalidateAll(); probeAi(); }, [probeAi]);
 
@@ -220,16 +174,12 @@ export function ExecReport() {
               {tr('AI дүгнэлт арилгах')}
             </button>
           )}
-          {/* ⚠️ 2026-10-06 (аудит): «Шинэчлэх» — ерөнхий тайлангийнхтай (`Tailan.refresh`) ИЖИЛ
-              `invalidateAll()`; урьд нь энэ горимд 5 минутын кэшийг хаях зам байгаагүй. Өгөгдөл
-              солигдоход AI дүгнэлт цэвэрлэгдэнэ (дээрх 2026-09-23-ны ⚠️). */}
           <button type="button" className={r.btn} disabled={!!busy || q.state === 'loading'} onClick={refresh}
             title={tr('Тайлангийн түр санах ойг хаяж өгөгдлийг дахин татна')}>
             <Icon name="chart" size={15} />
             {tr('Шинэчлэх')}
           </button>
         </div>
-        {/* ⚠️ 2026-10-28: өөрчлөлтийн хугацаа — дэлгэц · PDF · PNG нэг сонголт */}
         <div className={e.period} role="group" aria-label={tr('Өөрчлөлтийн хугацаа')}>
           <span className={e.periodLabel}>{tr('Өөрчлөлт:')}</span>
           {PERIOD_KEYS.map((k) => (
@@ -259,22 +209,14 @@ export function ExecReport() {
       </div>
 
       <article className={r.paper}>
-        {/* ⚠️ 2026-10-04: толгой нь ТУХ-ын hero (`Tailan.ReportHero`) — урьдын голлосон
-            том үсгэн гарчиг (2026-09-17) ба A4 өргөнтэй цаас ХАСАГДСАН (хэрэглэгч: «ТУХ
-            хэсэгтэй бүрэн адилхан»). Гол хувь нь 2-р хэсгийн «Бодит»/«Төлөвлөсөн»-тэй НЭГ. */}
         <ReportHero
-          /* ⚠️ 2026-09-30: өгөгдөл ХЭЗЭЭ татагдсан — `loadExecReport` 5 мин кэштэй тул
-             «Огноо» (зурсан агшин) ≠ өгөгдлийн агшин (`Tailan`-ийн `fetchedAt`-тай ижил). */
           meta={<>{date && <>{tr('Огноо:')} {date}</>}{x && <> {tr('· Өгөгдөл:')} {dateTime(x.fetchedAt)}</>}</>}
-          /* ⚠️ Төслийн нэр мэйлийн гарчиг, ерөнхий тайлантай НЭГ: «Сэлбэ 20 минутын хот» */
           title={tr('Сэлбэ 20 минутын хотын удирдлагын тайлан')}
           sub={tr('Ерөнхий дашбоард · Багцын гүйцэтгэл · Багцын санхүү · Зөвшөөрөл')}
           figLabel={tr('Орон сууцны гүйцэтгэл')}
           value={x?.prog.actual ?? null}
           plan={x?.prog.planned ?? null}
           loading={q.state === 'loading'}
-          /* ⚠️ 2026-10-22 (аудит): «Төлөвлөсөн» нь ОРОН СУУЦНЫ хуваарийнх (хамралттай), «Төслийн гүйцэтгэл» (нэгтгэл)
-             нь ӨӨРИЙН төлөвлөгөөтэй хамт — урьд нь 34.2% нь 38.9%-ийн төлөвлөгөө мэт уншигддаг байв (өөрийнх нь 71.9%). */
           note={x && <>
             {tr('Төлөвлөсөн')} {pct(x.prog.planned, 1)}{coverageNote(x.prog.planCoverage) ? ` (${coverageNote(x.prog.planCoverage)})` : ''}
             {' · '}{tr('Төслийн гүйцэтгэл')} {pct(x.gdash.progress, 1)}
@@ -285,9 +227,6 @@ export function ExecReport() {
         <Data q={q} loading={tr('Дөрвөн дашбоардын өгөгдлийг нэгтгэж байна…')}>
           {(x) => (
             <>
-              {/* ⚠️ 2026-10-06 (аудит): хэсгийн дугаар/гарчиг `execSections`-ээс — PDF-тэй ГАНЦ эх
-                  (урьд нь дэлгэц 1–5, PDF 1–6 өөр гарчигтай байв). Газар чөлөөлөлт · ХАБ нь PDF-тэй
-                  адил ТУСДАА 2-р хэсэг болов. */}
               <ReportContents prefix="exec" titles={[
                 ...execSections().map((sec) => sec.title),
                 ...(appendix.length > 0 ? [tr('Хавсралт')] : []),
@@ -297,7 +236,6 @@ export function ExecReport() {
               <section id={`exec-${execSectionNo('overview')}`} tabIndex={-1} className={r.section}>
                 <SecHead k="overview" />
                 {(() => {
-                  /* ⚠️ НЭГ МАССИВ — карт ба хүснэгт хоёулаа эндээс (§тайлбар) */
                   const kpis = [
                     {
                       label: tr('Нийт төсөв'),
@@ -315,7 +253,6 @@ export function ExecReport() {
                     {
                       label: tr('Төслийн гүйцэтгэл'),
                       value: x.gdash.progress == null ? '—' : pct(x.gdash.progress, 1),
-                      /* ⚠️ 2026-09-25: эхээр (`progressSrc`) — 6 шатны нөөц тоог «нэгтгэлээр» гэж хэлэхгүй */
                       sub: progressSub(x.gdash.progressSrc),
                       desc: x.gdash.progressSrc === 'negtgel'
                         ? tr('Нэгтгэл гүйцэтгэлийн хүснэгтэд ТЭЗҮ-гээс төсөл хүлээлгэн өгөх хүртэлх үе шатыг төсөлд эзлэх хувиар нь нэгтгэсэн дүн.')
@@ -336,11 +273,7 @@ export function ExecReport() {
                     {
                       label: tr('Олгосон санхүүжилт'),
                       value: money(x.fin.given),
-                      /* ⚠️ 2026-10-28: сонгосон хугацаанд олгосон (`execPeriodCalc`) */
                       trend: deltas ? deltaText(deltas.given.delta, 'mnt', { upGood: true }) : null,
-                      /* ⚠️ 2026-10-06: `value` = БҮХ олголт, хувь = ГЭРЭЭЛСЭН багцын олголт ÷ гэрээлсэн
-                         дүн — тоологчийг нэрлэнэ (Тайлан/`reportPdf`-тэй ижил загвар). Урьд нь «гэрээний
-                         X%» нь `given`-ийн хувь мэт уншигддаг байв. */
                       sub: x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(x.fin.givenContracted), pct(x.fin.share, 1)),
                       desc: tr('Гүйцэтгэгчид бодитоор олгосон урьдчилгаа ба гүйцэтгэлийн төлбөрийн нийлбэр.'),
                     },
@@ -369,7 +302,6 @@ export function ExecReport() {
                     </>
                   );
                 })()}
-                {/* ⚠️ 2026-10-28: хугацааны өөрчлөлт — `execPeriodCalc.execDeltaRows` (PDF · PNG-тэй НЭГ мөрүүд) */}
                 {period && (
                   <>
                     <Cap no="1.2">{tr('Хугацааны өөрчлөлт: {0} → {1}', period.from, period.to)}</Cap>
@@ -405,7 +337,6 @@ export function ExecReport() {
                   title={tr('Ажлын төрөл бүрийн төсөв')}
                   fmt={money}
                   items={x.gdash.byType.map((t, i) => ({
-                    /* ⚠️ 2026-10-26 (аудит): ажлын төрлийн нэр англи горимд орчуулагдана (эх үүсвэртэй ижил `tr`) */
                     label: tr(t.label), value: t.cost, hot: i === 0,
                     text: `${money(t.cost)}${t.perf == null ? '' : ` · ${pct(t.perf, 1)}`}`,
                   }))}
@@ -431,34 +362,16 @@ export function ExecReport() {
                     </tr>
                   </tbody>
                 </table></div>
-                {/* ⚠️ ЭНЭ МӨР ҮЛДЭНЭ: нэг хуудсан дээр ХОЁР өөр «нийт» тоо
-                    байгаа тул тайлбаргүй бол тайлан өөртэйгөө зөрчилдсөн
-                    мэт уншигдана. Гэхдээ албан ёсны, богино хэлбэрээр. */}
                 <p className={r.note}>{tr('Нийт төсөв нь орон сууцны хороолол ба ГИШС-ийн хүрээгээр; доорх хүснэгт нь гэрээний бүх мөрийг хамарна.')}</p>
 
-                {/* ⚠️ ЗАХИРАМЖИЙН ЭХ ҮҮСВЭР (2026-09-17, хэрэглэгчийн заавар):
-                    ерөнхий дашбоард дээр байдаг чарт удирдлагын тайланд
-                    байхгүй байв. Мөнгө хаанаас гарч байгаа нь шийдвэрийн
-                    үндэслэл. */}
                 {x.gdash.bySource.length > 0 && (() => {
                   const srcTotal = x.gdash.bySource.reduce((a, s) => a + s.amount, 0);
                   return (
                     <>
-                      {/* ⚠️ KPI КАРТААР (2026-09-17, хэрэглэгчийн заавар).
-                          Эх үүсвэр цөөн (4) бөгөөд тус бүр нь БИЕ ДААСАН
-                          шийдвэрийн тоо тул зурвасаар харьцуулахаас илүү
-                          карт болгож дүнг нь бүтнээр харуулах нь зөв.
-                          ⚠️ Тоо нь `x.gdash.bySource`-оос шууд — эх өгөгдөл
-                          шинэчлэгдэхэд өөрөө дагаж өөрчлөгдөнө. */}
                       <Fig no="1.2">{tr('Захирамжийн эх үүсвэр')}</Fig>
-                      {/* ⚠️ 2 багана × 2 мөр (2026-09-17, хэрэглэгчийн заавар):
-                          эх үүсвэрийн нэр урт тул нэг мөрөнд дөрвүүлэнг
-                          хавчуулбал таслагдана. */}
                       <KpiRow cols={2} items={x.gdash.bySource.map((s) => ({
                         label: tr(s.label),
                         value: money(s.amount),
-                        /* ⚠️ 2026-09-25: захирамжийн нийт 0 бол хувь бодогдохгүй — «0.0%» БИШ «—»
-                           (хүснэгтийн мөр ба PDF-тэй ижил). */
                         sub: tr('{0} · {1} ажил', srcTotal ? pct((s.amount / srcTotal) * 100, 1) : '—', num(s.n)),
                       }))} />
                       <Cap no="1.3">{tr('Захирамжийн эх үүсвэр')}</Cap>
@@ -474,10 +387,9 @@ export function ExecReport() {
                               <td className={r.num}>{srcTotal ? pct((s.amount / srcTotal) * 100, 1) : '—'}</td>
                             </tr>
                           ))}
-                          <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.n, 0))}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.contracted, 0))}</td><td className={r.num}>{num(srcTotal)}</td>{/* ⚠️ 2026-09-29 (аудит 10): дүн 0 бол мөрүүд «—» тул нийт ч «—» */}<td className={r.num}>{srcTotal ? '100.0%' : '—'}</td></tr>
+                          <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.n, 0))}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.contracted, 0))}</td><td className={r.num}>{num(srcTotal)}</td><td className={r.num}>{srcTotal ? '100.0%' : '—'}</td></tr>
                         </tbody>
                       </table></div>
-                      {/* ⚠️ Хувь нь НИЙТ ТӨСӨВТ эзлэх БИШ гэдгийг ил хэлнэ */}
                       <p className={r.note}>{tr('Хувь нь захирамжийн нийт дүнд эзлэх жин; захирамжийн дүн бүх ажилд бүрэн бүртгэгдээгүй тул нийт төсвөөс бага.')}</p>
                     </>
                   );
@@ -496,7 +408,6 @@ export function ExecReport() {
                       <tbody>
                         {x.gdash.land.byStatus.map((b) => (
                           <tr key={b.label}>
-                            {/* ⚠️ 2026-09-25: төлөв/шалтгааны шошго нь өгөгдлийн монгол утга — `tr()` (эх үүсвэртэй адил) */}
                             <td className={b.label === PARCEL_CLEARED ? '' : e.warn}>{tr(b.label)}</td>
                             <td className={r.num}>{num(b.n)}</td>
                             <td className={r.num}>{x.gdash.land.total ? pct((b.n / x.gdash.land.total) * 100, 1) : '—'}</td>
@@ -533,28 +444,15 @@ export function ExecReport() {
               </section>
 
               {/*
-                * ⚠️ 2 ба 3-Р ХЭСГИЙГ ЗЭРЭГЦҮҮЛЭХГҮЙ (2026-09-17, хэрэглэгчийн
-                * шүүмж: «Багцын гүйцэтгэл эхлээд ямар замбараагүй болоод
-                * байна вэ»).
-                *
                 * Урьд нь хоёр ДУГААРЛАСАН хэсэг `.two` торонд хоёр багана
                 * болж байрладаг байв: 3-р хэсгийн 52 багцын жагсаалт хэдэн
                 * мянган пиксел урсахад 2-р хэсэг эрт дуусаж зүүн тал хоосон
                 * үлддэг, уншлагын дараалал ч эвдэрнэ (2-ын дунд 3 эхэлнэ).
-                * ⚠️ PDF нь ХЭЗЭЭ Ч хоёр баганагүй — дараалсан хэсгүүд. Дэлгэц
-                * зэрэгцүүлбэл «дэлгэц = PDF» дүрэм эвдэрнэ (`execPdf.ts`).
-                * Зэрэгцүүлэлт нь ЗӨВХӨН нэг хэсэг доторх хоёр ЖИЖИГ картад
-                * зөв (2-р хэсгийн газар чөлөөлөлт ↔ ХАБ).
                 */}
               {/* ── 3. Биет гүйцэтгэл ── */}
                 <section id={`exec-${execSectionNo('prog')}`} tabIndex={-1} className={r.section}>
                   <SecHead k="prog" />
                   <KpiRow items={[
-                    /* ⚠️ 2026-09-30: `prog.asOf` нь одоо «Бодит» гарсан ХЭМЖИЛТИЙН огноо
-                       (`execReport` — `aggregateMonths().physAt`), барилгын сүүлийн огноо биш */
-                    /* ⚠️ 2026-10-22 (аудит): ЭНЭ эгнээний «Бодит» = зөрүүний бодит тал — хуваарьгүй багц хасагдсан бол
-                       `actualLag` (шошгонд «хуваарьтай багцаар»). Урьд нь бодит 23.1%, төлөвлөсөн 34.2%, зөрүү −9.6 (харагдахгүй
-                       24.55%-иас) гэж нэг эгнээ өөртэйгөө нийцдэггүй байв. */
                     {
                       label: tr('Бодит'),
                       value: (x.prog.planExcluded.length ? x.prog.actualLag : x.prog.actual) == null
@@ -562,27 +460,19 @@ export function ExecReport() {
                       sub: [x.prog.planExcluded.length ? tr('(хуваарьтай багцаар)') : '', x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : '']
                         .filter(Boolean).join(' · ') || undefined,
                     },
-                    /* ⚠️ 2026-09-25: `PlanCurve.failed` ИЛ ГАРНА — «—»-ийн шалтгаан (`PkgProg.TsKpi`-тай ижил) */
-                    /* ⚠️ 2026-10-09 (аудит №2): хуваарьгүй багц хасагдсан бол «хуваарьтай багцаар» (`execReport.prog.planExcluded`) */
                     {
                       label: tr('Төлөвлөсөн'),
                       value: x.prog.planned == null ? '—' : pct(x.prog.planned, 1),
-                      /* ⚠️ 2026-10-22 (аудит): хуваарийн хамралт (`coverageNote`) — хуваарь дутуу бол төлөвлөгөө хэт бага */
                       sub: x.prog.planFailed > 0
                         ? tr('{0} багцын хуудас уншигдсангүй — дүн дутуу', x.prog.planFailed)
                         : [x.prog.planExcluded.length ? tr('(хуваарьтай багцаар)') : '', coverageNote(x.prog.planCoverage)]
                           .filter(Boolean).join(' · ') || undefined,
                     },
-                    /* ⚠️ 2026-10-22 (аудит): хуваарь < 95% хамарсан бол «хоцрогдол/түрүүлэлт/хуваарийн дагуу» гэж ДҮГНЭХГҮЙ */
-                    /* ⚠️ 2026-10-26 (аудит): хамралт < 95% бол УТГА ч «—» (PDF · инфографиктай нэг — «дэлгэц = PDF»); урьд нь «−9.6» тэмдэг
-                       өөрөө «хоцорсон» гэж дүгнэдэг байв */
                     !coverageOk(x.prog.planCoverage)
                       ? { label: tr('Зөрүү (нэгж хувь)'), value: '—', sub: coverageNote(x.prog.planCoverage) || tr('хуваарь дутуу — дүгнэхгүй') }
                       : { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
-                  {/* ⚠️ 2026-10-22 (аудит): хамралт < 95% бол төлөвлөгөөт зураас (ба түүгээр будах «хоцрогдол» өнгө) ГАРГАХГҮЙ */}
                   <PlanMeter value={x.prog.actual} plan={coverageOk(x.prog.planCoverage) ? x.prog.planned : null} label={tr('Орон сууцны барилга угсралт')} />
-                  {/* ⚠️ 2026-10-09 (аудит №2): төлөвлөгөө/зөрүүнээс хасагдсан хуваарьгүй багцыг нэрлэнэ */}
                   {x.prog.planExcluded.length > 0 && <p className={r.note}>{planScopeNote(x.prog.planExcluded)}</p>}
                   <Fig no={String(execSectionNo('prog'))}>{tr('Багц тус бүрийн биет гүйцэтгэл')}</Fig>
                   <RankBars
@@ -591,7 +481,6 @@ export function ExecReport() {
                     fmt={(v) => pct(v, 1)}
                     items={x.prog.packs.filter((p) => p.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1))
                       .map((p, i) => {
-                        /* ⚠️ 2026-10-28: хугацааны өөрчлөлт утгын хажууд (PDF · PNG-тэй нэг) */
                         const t = packTrendOf(deltas, p.key);
                         return { label: p.name, value: p.progress, hot: i === 0 && p.progress != null, text: `${pct(p.progress, 1)}${t ? ` ${t.text}` : ''}` };
                       })}
@@ -601,24 +490,17 @@ export function ExecReport() {
                     <thead><tr><th>{tr('Түвшин')}</th><th>{tr('Хувь')}</th><th className={r.num}>{tr('Блок')}</th></tr></thead>
                     <tbody>
                       {x.prog.levels.map((l) => <tr key={l.label}><td>{l.label}</td><td>{l.range}</td><td className={r.num}>{num(l.n)}</td></tr>)}
-                      {/* ⚠️ 2026-10-11 (аудит №7): өрх `householdsLabel` (null ≠ 0 — «—»/«N (дутуу)»), PDF-тэй нэг */}
                       <tr className={r.total}><td>{tr('Нийт')}</td><td>{householdsLabel(x.prog)} {tr('өрх')}</td><td className={r.num}>{num(x.prog.blocks)}</td></tr>
                     </tbody>
                   </table></div>
-                  {/* ⚠️ 2026-10-11 (аудит №7): бөглөгдөөгүй блок `levelCounts`-д аль хэдийн 0–25%-ийн мөрөнд
-                      (тайлангүй блок 0%) тоологдсон — урьд нь нэмэлт «Бөглөгдөөгүй» мөр байсан тул мөрүүдийн
-                      нийлбэр блокийн тооноос ДАВДАГ байв. Одоо тэмдэглэл. */}
                   {x.prog.noData > 0 && <p className={`${r.note} ${e.warn}`}>{tr('үүнээс бөглөгдөөгүй: {0} — 0–25%-д орсон', num(x.prog.noData))}</p>}
                 </section>
 
                 {/* ── 4. Санхүүжилт ── */}
                 <section id={`exec-${execSectionNo('fin')}`} tabIndex={-1} className={r.section}>
                   <SecHead k="fin" />
-                  {/* ⚠️ 2026-09-21: `planTotal` = 1-р хэсгийн «Нийт гэрээлсэн дүн»-тэй ЯГ ИЖИЛ
-                      (зөвхөн «Гэрээлсэн дүн» мөр); `given` = HO-ийн бүх төлбөр (`execReport.fin` ⚠️). */}
                   <KpiRow items={[
                     { label: tr('Гэрээлсэн нийт дүн'), value: money(x.fin.planTotal), sub: tr('1-р хэсэгтэй ижил') },
-                    /* ⚠️ 2026-10-06: хувийн тоологч (гэрээлсэн багцын олголт)-ийг нэрлэнэ — §1-ийн ⚠️ */
                     { label: tr('Олгосон'), value: money(x.fin.given), sub: x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(x.fin.givenContracted), pct(x.fin.share, 1)) },
                     { label: tr('Үлдэгдэл'), value: money(x.fin.remain) },
                   ]} />
@@ -641,15 +523,11 @@ export function ExecReport() {
                     <tbody>
                       {finStarted.map((f) => (
                         <tr key={f.key}>
-                          {/* ⚠️ Гэрээгүй атлаа олголттой багц — ил тэмдэглэнэ (2026-09-21) */}
                           <td className={f.contracted ? '' : e.warn}>{f.label}{f.contracted ? '' : ` (${tr('гэрээгүй')})`}</td>
                           <td className={r.num}>{f.plan > 0 ? num(f.plan) : '—'}</td><td className={r.num}>{num(f.given)}</td>
                           <td className={`${r.num} ${f.pct != null && f.pct < 10 && f.plan > 0 ? e.warn : ''}`}>{f.pct == null ? '—' : pct(f.pct, 1)}</td>
                         </tr>
                       ))}
-                      {/* ⚠️ ЭХЛЭЭГҮЙ АЖЛУУД НЭГ МӨРӨНД (2026-09-17, хэрэглэгчийн
-                          заавар). Нэрс нь хавсралтад бүтнээрээ гарна — тайлан
-                          бүгдийг харуулна гэсэн дүрэм хэвээр. */}
                       {finZero.length > 0 && (
                         <tr>
                           <td className={e.warn}>{tr('Эхлээгүй ажил ({0} гэрээт багц)', num(finZero.length))}</td>
@@ -658,8 +536,6 @@ export function ExecReport() {
                           <td className={`${r.num} ${e.warn}`}>{pct(0, 1)}</td>
                         </tr>
                       )}
-                      {/* ⚠️ ГЭРЭЭ БАЙГУУЛААГҮЙ (зөвхөн төсөвтэй) багц — ТУСДАА мөр (2026-09-21):
-                          гэрээлсэн дүнд ОРОХГҮЙ, хувь бодогдохгүй; төсөв нь хавсралтад. */}
                       {finNone.length > 0 && (
                         <tr>
                           <td className={e.warn}>{tr('Гэрээ байгуулаагүй ажил ({0} багц)', num(finNone.length))}</td>
@@ -681,7 +557,6 @@ export function ExecReport() {
                       {tr('«Гэрээ байгуулаагүй ажил» гэдэг нь зөвхөн төсөвт өртөгтэй, гэрээ хараахан байгуулагдаагүй багцууд; гэрээлсэн дүнд орохгүй, нэрс ба төсвийг хавсралтаас үзнэ үү.')}
                     </p>
                   )}
-                  {/* ⚠️ 2026-10-04: `givenOther` = олгосон − гэрээлсэн багцын олголт (`paidShare.paidOther`) */}
                   {x.fin.givenOther > 0 && (
                     <p className={r.note}>
                       {tr('Нийт олгосон дүнд гэрээлсэн багцаас гадуурх {0} ₮ олголт (хэд хэдэн багц хамарсан мөр, гэрээлсэн дүнгийн багцад холбогдоогүй төлбөр) орсон — олгосон хувьд ороогүй.', num(x.fin.givenOther))}
@@ -738,18 +613,7 @@ export function ExecReport() {
 
               {/*
                 * ── ДҮГНЭЛТ (2026-09-17, хэрэглэгчийн заавар) ──
-                *
-                * ⚠️ ТАЙЛАН ХЭЗЭЭ Ч ДҮГНЭЛТЭЭС ЭХЭЛДЭГГҮЙ. Урьд нь энэ блок
-                * хамгийн ДЭЭР байсан: уншигч баримтыг хараагүй байж дүгнэлт
-                * уншина гэдэг нь албан ёсны баримтын логик эсрэг. Одоо
-                * дөрвөн хэсгийн ДАРАА, хавсралтын ӨМНӨ.
-                * ⚠️ Урт нэрсийн жагсаалт ЭНД БИШ, ХАВСРАЛТАД — доорх
-                * `appendix`-ийг үз.
                 */}
-              {/* ⚠️ 2026-10-06 (аудит): AI дүгнэлт тооцоолсон дүгнэлтийг ОРЛОХГҮЙ, НЭМЭГДЭНЭ. Урьд нь
-                  AI дүгнэлт үүсмэгц хүндрэлийн өнгөт дүгнэлтүүд ба «хавсралт N» заалт дэлгэц/PDF-ээс
-                  алга болдог тул хавсралт ямар дүгнэлтэд хамаарах нь тодорхойгүй болдог байв. Одоо
-                  дүгнэлт (зөвлөмжтэй — PDF §6-тай ижил) үргэлж, AI дүгнэлт түүний ДАРАА тусдаа блок. */}
               <section id={`exec-${execSectionNo('summary')}`} tabIndex={-1} className={r.section}>
                 <SecHead k="summary" />
                 <div className={e.ai}>
@@ -763,7 +627,6 @@ export function ExecReport() {
                             <span className={e.findingArea}>{f.area}</span>
                             <span className={e.findingText}>
                               {f.text}
-                              {/* ⚠️ Нэрсийг ЭНД цувуулахгүй — хавсралт руу заана */}
                               {execAppendixNo(appendix, f) != null && (
                                 <span className={e.findingRef}>
                                   {' '}{tr('Дэлгэрэнгүйг хавсралт {0}-аас үзнэ үү.', num(execAppendixNo(appendix, f) ?? 0))}
@@ -790,13 +653,10 @@ export function ExecReport() {
                 * ── ХАВСРАЛТ (2026-09-17, хэрэглэгчийн заавар: «хамгийн ард
                 * хавсралт гэж гаргаад үүнд хэт сунжирсан мэдээллүүд ормоор
                 * байна») ──
-                * ⚠️ Мэдээлэл ХАСАГДААГҮЙ, ЗӨӨГДСӨН: нэр бүр хэвээр гарна
-                * (тайлан бүгдийг харуулна). Зөвхөн байрлал нь өөрчлөгдсөн.
                 */}
               {appendix.length > 0 && (
                 <section id={`exec-${execSections().length + 1}`} tabIndex={-1} className={r.section}>
                   <h2 className={r.h2}>{tr('Хавсралт')}</h2>
-                  {/* ⚠️ Дараалал ба дугаар `execAppendix`-ээс — PDF-тэй ижил (2026-09-21) */}
                   {appendix.map((a) => (
                     <div key={`${a.kind}-${a.no}`}>
                       <p className={e.appHead}>

@@ -1,8 +1,8 @@
 /**
  * САРЫН МӨНГӨНИЙ ЭХ (`monthlyMoney.ts`) — цуваа бодолт ба «Гараар → Хуваарь» шилжүүлэлтийн бие. Сүлжээгүй.
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/monthlyMoney.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/monthlyMoney.check.mjs
  *
- * Хамгаалж буй дүрмүүд (⚠️ 2026-10-26):
+ * Хамгаалж буй дүрмүүд (2026-10-26):
  *   1. 'garaar' гэрээний сарын мөр ӨӨРЧЛӨГДӨХГҮЙ (ижил объект, ижил дараалал) — 'huvaari' гэрээгүй бол зан төлөв ижил.
  *   2. 'huvaari' гэрээ гараар мөрөө ҮЛ ТООНО; сар = Σ обьём × нэгж өртөг (₮), pct = дүн ÷ ХО дүн × 100.
  *   3. null ≠ 0: нэгж өртөггүй обьём ₮-д 0-ээр орохгүй (`noUnit`), ИЛ 0 обьём → 0 ₮ сар; хуудас унасан багц → `failed`, цуваагүй.
@@ -15,7 +15,6 @@
  *   7. (хяналт) Гэрээ бүр `noUnit`/`noRow`-тэй; `gaps` нь S-муруйгаас дутсан 'huvaari' гэрээг нэрлэнэ.
  *   8. (хяналт №2) `allowIncomplete` нь БАТЛАСАН дүгнэлт/нийт (`expect`)-тэй л — зөрвөл татгалзана; хуудасны уншилт
  *      бүхэлдээ унавал багц бүр `failed` (`failedSheets`); `confirmAndSwitch` — хоёр харагдацын нэг урсгал.
- * ⚠️ `fetch`-ийг ШИДДЭГ болгож солино — бүх I/O `SwitchIo`-оор; бодит ArcGIS руу ОГТ хүрэхгүй.
  */
 import assert from 'node:assert/strict';
 
@@ -147,7 +146,6 @@ assert.equal(pvInc.months, 2);
 const pvOk = MM.judgePreview('БАГЦ1', MM.mergeSheetMoney('БАГЦ1', [{ sheet: 'x', money: { byMonth: new Map([['2026-10', 7]]), noUnit: 0, noRow: 0 } }]));
 assert.equal(pvOk.verdict, 'ok');
 assert.match(MM.previewText(pvOk), /7/);
-/* ⚠️ хяналт №2: хоосон uy_shat (импортоос өмнөх 78 мөр) — ЗӨВШӨӨРӨХГҮЙ */
 assert.equal(MM.isSwitchPhase(null), false);
 assert.equal(MM.isSwitchPhase(''), false);
 assert.equal(MM.isSwitchPhase(' Барилга угсралт '), true);

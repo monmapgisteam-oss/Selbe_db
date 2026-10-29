@@ -8,38 +8,6 @@
  *   (в) `loadOverlaps` — багц ажлын геометртэй давхцсан талбарууд (хүнд,
  *       модулийн түвшинд кэштэй; унавал давхцлын хүснэгт ГАРАХГҮЙ, тоо
  *       ЗОХИОХГҮЙ)
- *
- * ⚠️ `remainingHa` нь (б)-ийн НЭРТЭЙ мөрүүдээс `area ?? areaAlt` нийлбэрээр
- *    бодогдоно. `live.ts`-ийн `loadClearance().remainingHa` нь ЗӨВХӨН `area`
- *    (`area_m2`) талбарыг нийлүүлдэг тул `areaAlt` (`Талб_1`)-д л бичигдсэн
- *    талбайг алддаг. 2026-09-06-ны амьд хэмжилтээр 143 мөр бүгд `area_m2`-тэй
- *    тул хоёр тоо одоо ТЭНЦЭНЭ; зөрвөл энэ файлынх нь бүрэн гэж ойлго.
- *    (б) унасан үед л (а)-гийн `remainingHa` руу унана.
- *
- * ⚠️ `null` ≠ 0: талбай бөглөөгүй мөр нийлбэрт ОРОХГҮЙ, бүх мөр талбайгүй бол
- *    га нь `null` («—»). Хувь нь `loadClearance`-аас 0–100 хэлбэрээр ирнэ —
- *    `pct()` 100-аар үржүүлдэггүй.
- *
- * ⚠️ Төлөв ба шалтгаан НЭГ талбар (`services.ts`-ийн `PARCEL_LEFT` тайлбар):
- *    үлдсэн мөрийн `status` утга нь ӨӨРӨӨ шалтгаан («зөвшилцөх», «маргаантай»,
- *    «татгалзсан» …). Төлөв хоосон мөр `parcelLeftWhere()`-ээр ҮЛДСЭНД тоологдох
- *    тул түүнийг «Шалтгаан бүртгэгдээгүй» гэсэн тусдаа шалтгаан болгож ИЛ харуулна.
- *
- * ⚠️ i18n (2026-09-06-ны хяналт): шошго бүрд `en.ts`-д АЛЬ ХЭДИЙН байгаа
- *    түлхүүрийг дахин ашиглана — «Шалтгаан бүртгэгдээгүй» (Dashboard),
- *    «Давхцсан үлдсэн нэгж талбар» (Bagts/PkgProg), «Кадастрын дугаар»
- *    (GazarEdit), «Талбай (м²)» (Tailan), «Чөлөөлсөн {0}», «{0} га»+«{0} үлдсэн»,
- *    «{0} давхцсан талбар». Тооны баганын гарчиг нь «Нэгж талбар» (→ Parcels)
- *    — «Талбар» ХЭРЭГЛЭХГҮЙ, en.ts-д тэр нь «Field» (маягтын талбар).
- *    Шинэ түлхүүр ЗӨВХӨН 3: «Шалтгаанаар»,
- *    «талбар чөлөөлөгдөөгүй», давхцлын анхааруулгын өгүүлбэр — тэдгээрийг
- *    `en.ts`-д нэмэх нь нэгтгэгчийн ажил (энэ файл толийг засдаггүй).
- *
- * ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): `PARCEL_LEFT`-д Editor Tracking АСААЛТТАЙ болсон
- *    (урьд нь `editFieldsInfo: null` тул `asOf` ҮРГЭЛЖ `null` байв). `asOf` = чөлөөлөгдөөгүй
- *    талбаруудын хамгийн сүүлийн засварын огноо (`EditDate`). Талбарыг давхаргын
- *    МЕТАДАТААС (`editFieldsInfo.editDateField`) таньж авна — тохиргоо дахин унтарвал
- *    `outFields`-д ОРОХГҮЙ (байхгүй талбар асуувал ArcGIS 400) ба `asOf` `null` хэвээр.
  */
 
 import { t as tr } from '@/lib/i18nCore';
@@ -85,7 +53,6 @@ export type LandInput = {
   failed: string[];
   /**
    * Өгөгдлийн агшин — чөлөөлөгдөөгүй талбаруудын хамгийн сүүлийн `EditDate` (ms).
-   * ⚠️ 2026-10-01: Editor Tracking асаалттай үед л; эс бөгөөс `null`/өгөхгүй.
    */
   asOf?: number | null;
 };
@@ -93,24 +60,17 @@ export type LandInput = {
 /* ══════════════════ Тогтмол ══════════════════ */
 
 /**
- * Төлөвгүй мөрийн шалтгааны шошго — `parcelLeftWhere()`-ийн `IS NULL` салаа.
- * ⚠️ Dashboard/GeneralDash-ийн шалтгааны хоосон төлөвтэй ИЖИЛ түлхүүр —
- *    төлөв = шалтгаан тул «төлөв бөглөөгүй» ≡ «шалтгаан бүртгэгдээгүй».
+ * Төлөвгүй мөрийн шалтгааны шошго — `parcelLeftWhere`-ийн `IS NULL` салаа.
  */
 export const NO_STATUS = () => tr('Шалтгаан бүртгэгдээгүй');
 
 /**
  * АНХААРУУЛГА ӨГӨХ шалтгаанууд — маргаантай / татгалзсан.
- * ⚠️ САНАЛ (2026-09-06): бусад шалтгаан («зөвшилцөх», «гэрээлсэн») нь явцын
- *    хэвийн үе шат; маргаан ба татгалзал л удирдлагын оролцоо шаарддаг.
- *    Эх өгөгдлийн үг өөрчлөгдвөл энд нэмнэ (`i` — том/жижиг үсэг хамаагүй).
  */
 export const WARN_REASON = /маргаан|татгалз/iu;
 
 /**
  * Эх сурвалжийн нэрс — `failedSources`-д гарна.
- * ⚠️ (а) унавал ХУВЬ л алдагдана (үлдсэн тоо (б)-ээс сэргэнэ) тул нэр нь
- *    «Чөлөөлөлтийн хувь»; (в)-ийн нэр нь Багц харагдацын индикаторынхтой ижил.
  */
 export const SOURCE = {
   clearance: () => tr('Чөлөөлөлтийн хувь'),
@@ -120,7 +80,6 @@ export const SOURCE = {
 
 /* ══════════════════ Цэвэр тооцоо ══════════════════ */
 
-/* ⚠️ 2026-10-22 (аудит): `numOrNull` хасагдсан — талбай одоо `land.parcelAreaOf`-оор (нэг дүрэм) */
 
 /** Текст — хоосон/зай бол `null` (`Zoriulalt` нь " " гэж ирдэг) */
 const strOrNull = (v: unknown): string | null => {
@@ -131,11 +90,6 @@ const strOrNull = (v: unknown): string | null => {
 /** `PARCEL_LEFT`-ийн түүхий мөрүүд → нэртэй талбарууд */
 export function parseParcels(rows: readonly Row[]): LandParcel[] {
   const F = PARCEL_LEFT.fields;
-  /* ⚠️ 2026-10-09: «Бүрэн чөлөөлсөн.» гэх мэт ХУВИЛБАР бичиглэлийг ХАСНА. `parcelLeftWhere()` нь
-     ЯГ таарцын SQL тул тэдгээр мөр «үлдсэн саад»-д тоологдож, «Газар» дашбоард (`land.isClearedStatus`)
-     ба давхцал (`parcelOverlap.dropCleared`) чөлөөлсөн гэж үздэг атал CEO KPI-д саад болж ЗӨРДӨГ
-     байв. SQL-ээр хэвийншүүлэх найдваргүй тул клиент талд ИЖИЛ дүрмээр шүүнэ. */
-  /* ⚠️ 2026-10-22 (аудит): зориулалт — `landuse_de` (бүтэн) ?? `Zoriulalt` (тасархайг мэдэгдэх бүтэн нэрээр), `land.landuseText` */
   const known = [...new Set(rows.map((r) => strOrNull(r[F.landuseFull])).filter((x): x is string => !!x))];
   return rows.filter((r) => !isClearedStatus(r[F.status])).map((r) => ({
     oid: Number(r[PARCEL_LEFT.oid]),
@@ -143,8 +97,6 @@ export function parseParcels(rows: readonly Row[]): LandParcel[] {
     owner: strOrNull(r[F.owner]),
     address: strOrNull(r[F.address]),
     reason: strOrNull(r[F.status]) ?? NO_STATUS(),
-    /* ⚠️ 2026-10-22 (аудит): `land.parcelAreaOf` — `area = 0` нь хэмжилт биш (полигоны талбай руу), `land.ts`-тэй НЭГ дүрэм.
-       Урьд «0 хэвээр (хэмжсэн тэг)» гэж үздэг байв. */
     areaM2: parcelAreaOf(r),
     landuse: landuseText(r[F.landuseFull], r[F.landuse], known),
     note: strOrNull(r[F.note]),
@@ -153,8 +105,6 @@ export function parseParcels(rows: readonly Row[]): LandParcel[] {
 
 /**
  * Талбайтай мөрүүдийн м² нийлбэр; нэг ч талбайгүй бол `null`.
- * ⚠️ 2026-10-22 (аудит): ХУВААГДСАН нэгж талбар (ижил кадастрын дугаар + ижил талбай, олон полигон) НЭГ л удаа —
- *    `land.parcelAreasDeduped`-ийн дүрэм (хүснэгтэд полигон бүр хэвээр).
  */
 export function sumAreaM2(parcels: readonly LandParcel[]): number | null {
   let s: number | null = null;
@@ -174,8 +124,6 @@ export function sumAreaM2(parcels: readonly LandParcel[]): number | null {
 /** Шалтгаанаар бүлэглэл — тоогоор буурах, тэнцвэл га-гаар буурах */
 export function byReason(parcels: readonly LandParcel[]): LandReason[] {
   const acc = new Map<string, { n: number; m2: number | null }>();
-  /* ⚠️ 2026-10-23: ХУВААГДСАН нэгж талбарын талбай НЭГ л удаа — `sumAreaM2`-ийн ЯГ дүрэм (`parcelNo|areaM2`). Урьд нь
-     полигон бүрийг нэмдэг тул шалтгааны га-ийн нийлбэр нийт үлдсэн га-аас ИХ гардаг байв. Тоо (`n`) хэвээр (мөр бүр). */
   const seen = new Set<string>();
   for (const p of parcels) {
     const g = acc.get(p.reason) ?? { n: 0, m2: null };
@@ -205,8 +153,6 @@ export function computeLand(input: LandInput): KpiResult {
   }
 
   // ── Нэгтгэл ──
-  // ⚠️ `parcels.length` нь (а) унасан үед л орлоно: хоёулаа байвал (а)-гийн
-  //    тоо бүлэглэлээс, (б)-ийнх мөр татахаас гарсан тул адил байх ёстой.
   const remaining: number | null = clearance?.remaining ?? parcels?.length ?? null;
   const clearedPct: number | null = clearance?.pct ?? null;
   const m2 = parcels ? sumAreaM2(parcels) : null;
@@ -214,9 +160,6 @@ export function computeLand(input: LandInput): KpiResult {
     ? (m2 == null ? null : m2 / 10_000)
     : clearance ? clearance.remainingHa : null;
   const reasons = parcels ? byReason(parcels) : [];
-  /* ⚠️ 2026-09-25: ХАГАС уналттай огтлолцол (`overlaps.failed > 0`) дээр `total`
-     нь ДООД ХЯЗГААР. 0 бол «давхцал алга» гэж хэлж БОЛОХГҮЙ — урьд нь ногоон «0»
-     гардаг байв. Тэгвэл `null` (мэдэхгүй); >0 бол «≥ N» (түвшин «муу» хэвээр). */
   const ovPartial = !!overlaps?.failed;
   const overlapTotal: number | null = overlaps && !(ovPartial && overlaps.total === 0) ? overlaps.total : null;
 
@@ -254,7 +197,6 @@ export function computeLand(input: LandInput): KpiResult {
       tr('Чөлөөлөгдөөгүй талбар'),
       [tr('Кадастрын дугаар'), tr('Эзэмшигч'), tr('Хаяг'), tr('Шалтгаан'), tr('Талбай (м²)'), tr('Зориулалт'), tr('Тайлбар')],
       sorted.map((p) => [
-        /* ⚠️ 2026-10-22 (аудит): зориулалт нь өгөгдлийн утга — англи хэлэнд `tr()` (enData: бүтэн ба тасархай түлхүүр) */
         cell(p.parcelNo), cell(p.owner), cell(p.address), cell(p.reason),
         cell(p.areaM2, 'count'), cell(p.landuse == null ? null : tr(p.landuse)), cell(p.note),
       ]),
@@ -291,7 +233,6 @@ export function computeLand(input: LandInput): KpiResult {
     level,
     tables,
     issues,
-    /* ⚠️ 2026-10-01: Editor Tracking-ээс (`fetchParcels`); унтраалттай бол `null` */
     asOf: input.asOf ?? null,
     failedSources: [...input.failed],
   };
@@ -301,15 +242,12 @@ export function computeLand(input: LandInput): KpiResult {
 
 /**
  * Editor Tracking-ийн ОГНООНЫ ТАЛБАР — давхаргын метадатаас (`editFieldsInfo.editDateField`).
- * ⚠️ 2026-10-01: асаагүй, метадата уншигдаагүй эсвэл талбар жагсаалтад алга бол `null` —
- *    тэр үед асуулгад ОРОХГҮЙ (байхгүй талбар `outFields`-д бол ArcGIS 400).
  */
 async function editDateFieldOf(url: string): Promise<{ ed: string; stat: string | null } | null> {
   try {
     const j = await arcgisPost<{ editFieldsInfo?: { editDateField?: string } | null; fields?: { name?: string }[] }>(url, { f: 'json' });
     const f = j?.editFieldsInfo?.editDateField;
     const names = (j.fields ?? []).map((x) => String(x.name));
-    /* ⚠️ 2026-10-26: импортын агшны засварын хос багана (`editTrack.ts`-ийн ⚠️) — ил `outFields`-д өөрөө нэмнэ */
     return f && names.includes(f) ? { ed: f, stat: trackStatOf(names, f) } : null;
   } catch {
     return null;
@@ -330,39 +268,26 @@ export function lastEditOf(rows: readonly Row[], field: string | null): number |
 /** Үлдсэн талбаруудыг НЭРТЭЙ нь татах (~143 мөр) */
 async function fetchParcels(): Promise<{ parcels: LandParcel[]; asOf: number | null }> {
   const F = PARCEL_LEFT.fields;
-  /* ⚠️ 2026-10-01: Editor Tracking асаалттай бол `EditDate`-ийг хамт татна (`asOf`) */
   const edf = await editDateFieldOf(PARCEL_LEFT.url);
   const ed = edf?.ed ?? null;
   const rows = await queryFeatures(PARCEL_LEFT.url, {
     where: parcelLeftWhere(),
-    /* ⚠️ 2026-10-22 (аудит): полигоны талбай (`area = 0`-ийн нөөц) ба бүтэн зориулалт (`landuse_de`) — `parseParcels`-ийн ⚠️ */
     outFields: [
       PARCEL_LEFT.oid, F.parcelNo, F.owner, F.address, F.status,
       F.area, F.areaAlt, F.note, F.landuse, F.landuseFull, PARCEL_SHAPE_AREA,
       ...(edf ? [edf.ed, ...(edf.stat ? [edf.stat] : [])] : []),
     ],
-    // ⚠️ 2000-аас цөөн ч эрэмбэ өгнө — хуудаслалт хэзээ нэгэн цагт хэрэг болбол
-    //    OID-гүй offset тогтворгүй (`query.ts`-ийн тайлбар)
     orderBy: `${PARCEL_LEFT.oid} ASC`,
   });
   return { parcels: parseParcels(rows), asOf: lastEditOf(rows, ed) };
 }
 
-/**
- * ⚠️ `['PARCEL_LEFT']` — талбарын засвар (`parcelEdit`) `invalidate('PARCEL_LEFT')`
- *    дуудахад энэ кэш хаягдана. `loadOverlaps` нь өөрийн модулийн кэштэй
- *    (execTriage) — тэр нь `BUILDING`/`PARCEL_LEFT`-ийн invalidate-аар
- *    хаягдаж, алдаатай (`failed > 0`) үр дүнг ХЭЗЭЭ Ч кэшлэхгүй (2026-09-25).
- */
 export const loadLandKpi = cached<KpiResult>(async () => {
   const [c, p, o] = await Promise.allSettled([loadClearance(), fetchParcels(), loadOverlaps()]);
   const failed: string[] = [];
   if (c.status === 'rejected') failed.push(SOURCE.clearance());
   if (p.status === 'rejected') failed.push(SOURCE.parcels());
   if (o.status === 'rejected') failed.push(SOURCE.overlaps());
-  /* ⚠️ ХАГАС давхцал (2026-09-25 аудит): зарим багцын давхаргын асуулга унасан
-     бол тоо нь ДООД ХЯЗГААР — эх сурвалжийг «дутуу» гэж тэмдэглэнэ (түвшин нь
-     `total > 0` тул «муу» хэвээр). */
   else if (o.value.failed) failed.push(SOURCE.overlaps());
   return computeLand({
     clearance: c.status === 'fulfilled' ? c.value : null,
@@ -371,5 +296,4 @@ export const loadLandKpi = cached<KpiResult>(async () => {
     failed,
     asOf: p.status === 'fulfilled' ? p.value.asOf : null,
   });
-  /* ⚠️ 2026-10-01 («хэрэглэгч: бүгдийг зас»): эх унасан картыг КЭШЛЭХГҮЙ (`kpiComplete`) */
 }, 5 * 60_000, ['PARCEL_LEFT'], kpiComplete);
