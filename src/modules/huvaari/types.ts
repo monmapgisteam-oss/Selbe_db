@@ -48,6 +48,8 @@ export type Drag = {
   snap?: Map<number, Span | null> | null;
   obSnap?: Map<string, Map<string, number>> | null;
   obResSnap?: Map<string, Map<string, MonthRes>> | null;
+  /** БҮЛГИЙН ШИНЭ МУЖ (2026-10-29) — огноогүй/хоосон хэсэгт чирж буй сүүдэр; өгөгдөлд бичихгүй, тавихад цонхонд дамжина */
+  ghost?: Span | null;
 };
 
 /**

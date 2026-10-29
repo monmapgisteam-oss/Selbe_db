@@ -2,11 +2,11 @@ import { type PointerEvent as PEvt, useCallback, useEffect, useRef, useState } f
 import { useLatest } from './useLatest';
 import { DAY, endOf, spanDays, type PlanRow, type Span } from '@/lib/plan';
 import { propagate } from '@/lib/deps';
-import type { MonthRes, PkgPlan, PkgRes } from '@/lib/huvaariObyem';
+import { remapMonths, type MonthRes, type PkgPlan, type PkgRes } from '@/lib/huvaariObyem';
 import type { Schema } from '@/modules/sheet/bagts.pkg';
 import { kM, kN, kS } from '@/lib/huvaariDraft';
 import { MAX_DAYS, type Drag, type DragMode } from './types';
-import { obKey, sameMonths, sameRes, sameSpan } from './util';
+import { directWorks, obKey, sameMonths, sameRes, sameSpan } from './util';
 
 /**
  * ЗУРВАС ЧИРЭХ ХӨДӨЛГҮҮР — pointer down/move/up · `commit` (гинжтэй) · цуцлах агшин
@@ -17,8 +17,10 @@ const DRAG_PX = 4;
 
 export function useDragPlan({
   plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
-  setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef, chain, scrollEl,
+  setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef, chain, scrollEl, onGroupRange,
 }: {
+  /** Бүлгийн хоосон хэсэгт чирж тавьсан шинэ муж — цонхыг тэр мужаар нээнэ (бүлгээр төлөвлөх, 2026-10-29) */
+  onGroupRange?: (oid: number, span: Span) => void;
   scrollEl?: () => HTMLDivElement | null;
   plan: PlanRow[];
   blk: number;
@@ -80,6 +82,17 @@ export function useDragPlan({
    */
   const dragTouched = useRef(new Set<number>());
   const [dragOpen, setDragOpen] = useState<number | null>(null);
+  /**
+   * БҮЛГИЙГ ЧИРЭХ (2026-10-29, хэрэглэгч: «бүлгийг чирж төлөвлөж болохгүй байна»; голоос — бүгдийг зөөнө, ирмэгээс — доторх
+   * ажлууд пропорционалиар сунана/агшина). Чирэлт эхлэх агшны бүлгийн муж (`g`), идэвхтэй блок дахь мужтай навч ажлууд
+   * (`kids` — муж · сарын задаргаа), сүүлийн тавьсан муж (`last`). Сарын обьём тавихад нэг удаа `remapMonths`-оор.
+   * Буцаалт: `applyChanges`-ийн чирэлтийн БҮТЭН агшин (ноорог сар ч) — нэг Ctrl+Z.
+   */
+  const grp = useRef<{
+    g: Span;
+    kids: { i: number; oid: number; des: number | null; sp: Span; months: Map<string, number> | null }[];
+    last: Map<number, Span>;
+  } | null>(null);
   const auto = useRef<{ raf: number; x: number }>({ raf: 0, x: 0 });
   const stopAuto = () => {
     if (auto.current.raf) cancelAnimationFrame(auto.current.raf);
@@ -118,7 +131,37 @@ export function useDragPlan({
     if (press.current?.ev !== e.nativeEvent) press.current = null;
     if (!canEdit || locked || busy) { openBar(); return; }
     if (r.oid < 0) return;
-    if (r.group) { setSel(r.oid); openBar(); return; }
+    grp.current = null;
+    if (r.group) {
+      const g = r.spans[blk];
+      if (chain && mode === 'new' && onGroupRange && directWorks(plan, plan.findIndex((x) => x.oid === r.oid)).length > 0) {
+        /* Огноогүй (эсвэл хоосон хэсэг) — сүүдэр муж чирнэ; өгөгдөл хөндөхгүй, тавихад цонх тэр мужаар нээгдэнэ */
+        e.preventDefault();
+        e.stopPropagation();
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+        const k0 = dayAt(e.clientX);
+        lastDay.current = k0;
+        moved.current = false;
+        down.current = { x: e.clientX, y: e.clientY, touch: e.pointerType === 'touch' };
+        far.current = false;
+        scroll.current = false;
+        setDrag({ oid: r.oid, mode, anchor: k0, orig: null, ghost: null });
+        setSel(r.oid);
+        return;
+      }
+      if (!chain || mode === 'new' || !g) { setSel(r.oid); openBar(); return; }
+      const blokName = sc?.bld[blk] ?? '';
+      const at = plan.findIndex((x) => x.oid === r.oid);
+      const kids: { i: number; oid: number; des: number | null; sp: Span; months: Map<string, number> | null }[] = [];
+      for (let i = at + 1; at >= 0 && i < plan.length && plan[i].depth > r.depth; i++) {
+        const x = plan[i];
+        const sp = x.spans[blk];
+        if (x.group || x.oid < 0 || !sp) continue;
+        kids.push({ i, oid: x.oid, des: x.des, sp, months: x.des != null && blokName ? new Map(obOf(x.des, blokName)) : null });
+      }
+      if (!kids.length) { setSel(r.oid); openBar(); return; }
+      grp.current = { g, kids, last: new Map() };
+    }
     if (mode === 'new' && r.spans[blk] && !e.altKey) { setSel(r.oid); return; }
     e.preventDefault();
     e.stopPropagation();
@@ -162,6 +205,38 @@ export function useDragPlan({
     lastDay.current = k;
     moved.current = true;
     const o = drag.orig;
+    if (drag.ghost !== undefined && drag.mode === 'new') {
+      const a = Math.min(drag.anchor, k);
+      const b = Math.max(drag.anchor, k);
+      setDrag({ ...drag, ghost: { start: msAt(a), end: msAt(b) } });
+      return;
+    }
+    if (grp.current && drag.mode !== 'new' && o) {
+      const G = grp.current;
+      const d = (k - drag.anchor) * DAY;
+      const ng: Span = drag.mode === 'move' ? { start: o.start + d, end: o.end + d }
+        : drag.mode === 'l' ? { start: Math.min(o.start + d, o.end), end: o.end }
+        : { start: o.start, end: Math.max(o.end + d, o.start) };
+      if (spanDays(ng) > MAX_DAYS) return;
+      const gl = spanDays(G.g) - 1;
+      const nl = spanDays(ng) - 1;
+      const at = (t: number) => (drag.mode === 'move' ? t + d
+        : ng.start + Math.round(gl > 0 ? (((t - G.g.start) / DAY) * nl) / gl : 0) * DAY);
+      const ov = new Map<number, (Span | null)[]>();
+      G.last = new Map();
+      for (const c of G.kids) {
+        const a = at(c.sp.start);
+        const ns = { start: a, end: Math.max(at(c.sp.end), a) };
+        const next = plan[c.i].spans.slice();
+        next[blk] = ns;
+        ov.set(c.i, next);
+        G.last.set(c.i, ns);
+      }
+      const ch = chain ? propagate(plan, n, ov) : ov;
+      for (const i of ch.keys()) if (plan[i]) dragTouched.current.add(plan[i].oid);
+      applyChanges(ch);
+      return;
+    }
     if (drag.mode === 'new') {
       const a = Math.min(drag.anchor, k);
       const b = Math.max(drag.anchor, k);
@@ -217,6 +292,47 @@ export function useDragPlan({
     }
     /* Хөдөлгөөнгүй товшилт: хоосон мөрд 1 хоногийн муж, эсрэг тохиолдолд
        зөвхөн сонголт (дээрх тайлбар). */
+    /* Бүлгийн шинэ муж (сүүдэр) — тавихад цонхыг тэр мужаар нээнэ; хөдөлгөөгүй товшилт зөвхөн сонголт */
+    if (drag && drag.ghost !== undefined && drag.mode === 'new') {
+      if (moved.current && drag.ghost) onGroupRange?.(drag.oid, drag.ghost);
+      setDrag(null);
+      moved.current = false;
+      return;
+    }
+    /* Бүлгийн чирэлт — доторх ажлын сарын обьёмыг шинэ мужид буулгаад цонхыг нээнэ: «Хаах» чирэлтийг буцаана,
+       «Огноог үлдээх» хадгална (ганц ажлын чирэлттэй ижил — `undoRef`) */
+    const G = grp.current;
+    grp.current = null;
+    if (drag && G && moved.current) {
+      const blok = sc?.bld[blk];
+      const upd: { key: string; des: number; months: Map<string, number> }[] = [];
+      for (const c of G.kids) {
+        const ns = G.last.get(c.i);
+        if (!blok || !ns || c.des == null || !c.months?.size) continue;
+        upd.push({ key: obKey(c.des, blok), des: c.des, months: remapMonths(c.months, c.sp, ns) });
+      }
+      if (blok && upd.length) {
+        setObDraft((m) => {
+          const next = new Map(m);
+          for (const u of upd) {
+            if (sameMonths(u.months, obPlan.get(u.des)?.get(blok))) next.delete(u.key);
+            else next.set(u.key, u.months);
+          }
+          return next;
+        });
+      }
+      undoRef.current = {
+        oid: drag.oid, blk, span: drag.orig, months: null, res: null, snap: drag.snap ?? null,
+        touched: new Set(dragTouched.current),
+        obSnap: drag.obSnap ?? null, obResSnap: drag.obResSnap ?? null,
+        snapAll: snapAll.current,
+      };
+      setDragOpen(drag.oid);
+      setModal(drag.oid);
+      setDrag(null);
+      moved.current = false;
+      return;
+    }
     const blank = !!drag && !moved.current && !far.current && !scroll.current && drag.mode === 'new' && !drag.orig;
     if (drag && blank) {
       commit(drag.oid, { start: msAt(drag.anchor), end: msAt(drag.anchor) });
@@ -257,6 +373,7 @@ export function useDragPlan({
   const onCancel = () => {
     stopAuto();
     press.current = null;
+    grp.current = null;
     if (drag && moved.current && !busy && !locked) {
       rollback({
         oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null, res: drag.origRes ?? null, snap: drag.snap ?? null,

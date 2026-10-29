@@ -179,6 +179,18 @@ type PlanModalProps = {
   dragged?: boolean;
   onKeep?: () => void;
   onShiftGroup?: (days: number, blks: number[]) => void;
+  /** Бүлгийн доорх навч ажлуудын мөнгөн дүнгийн нийлбэр — бүлгээр төлөвлөхөд сарын дүнг харуулна (`null` = мэдэгдэхгүй) */
+  groupMoney?: number | null;
+  /** БҮЛГЭЭР ТӨЛӨВЛӨХ (2026-10-29) — бүлгийн муж ба сарын хувиар (0–100) доторх ажлуудыг сонгосон блокуудад төлөвлөнө */
+  onPlanGroup?: (sp: Span, pct: Map<string, number>, blks: number[]) => void;
+  /** Бүлгийн доторх ажлуудын одоогийн сарын мөнгө (обьём × нэгж үнэ) — хувийн анхны утга / том бүлгийн хураангуй */
+  groupCurve?: Map<string, number> | null;
+  /** Том бүлэг (зөвхөн дэд бүлэгтэй) — төлөвлөхгүй, доторх жижиг бүлгүүдээс бодогдсон хураангуйг л харуулна */
+  groupSub?: boolean;
+  /** Анхны төлөвлөгөөт огноо — бүлгийн хоосон хэсэгт чирж тавьсан муж (өгөгдвөл мөрийн мужийг давамгайлна) */
+  initSpan?: Span | null;
+  /** Тараахаас ӨМНӨ урьдчилан харах — тараалттай НЭГ тооцоо (`Huvaari.groupSchedule`): ажил бүрийн огноо · мөнгө · сарын обьём */
+  groupPreview?: (sp: Span, pct: Map<string, number>) => { no: string; work: string; money: number | null; span: Span; months: Map<string, number> | null }[];
   onUndo?: () => () => void;
   returnFocus?: () => HTMLElement | null;
   /**
@@ -220,7 +232,7 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
-  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup, onUndo,
+  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup, onUndo, groupMoney, onPlanGroup, groupPreview, initSpan, groupCurve, groupSub,
 }: PlanModalProps) {
   const mdRef = useRef<HTMLDivElement>(null);
   useFocusTrap(mdRef, true, returnFocus);
@@ -234,8 +246,8 @@ function PlanModalBody({
   }, []);
   const [shiftTxt, setShiftTxt] = useState('');
 
-  const [a, setA] = useState(() => initPlanDates(r, par, blk).a);
-  const [z, setZ] = useState(() => initPlanDates(r, par, blk).z);
+  const [a, setA] = useState(() => (initSpan ? msToDay(initSpan.start) : initPlanDates(r, par, blk).a));
+  const [z, setZ] = useState(() => (initSpan ? msToDay(initSpan.end) : initPlanDates(r, par, blk).z));
   /**
    * СОНГОСОН БЛОКУУД (2026-09-24, хэрэглэгч: «блокийг олноор сонгож нэг
    * төлөвлөлтийг зэрэг тавина»). Идэвхтэй `blk` (огноо/сарын суурь эндээс)
@@ -249,7 +261,7 @@ function PlanModalBody({
    */
   const [keepOnBlk, setKeepOnBlk] = useState(false);
   const toggleB = (k: number) => {
-    if (!dEdit) { onBlk(k); return; }
+    if (!dEdit && !gEdit) { onBlk(k); return; }
     if (!selB.has(k)) { setSelB(new Set([...selB, k])); return; }
     /* Сүүлчийнхийг хасахгүй — хоосон сонголтод «Тавих» утгагүй */
     if (selB.size === 1) return;
@@ -314,6 +326,8 @@ function PlanModalBody({
    * (2026-09-06) тул гараар засагдахгүй — уялдаа нь харин засагдана.
    */
   const dEdit = canEdit && !r.group;
+  /** Бүлгээр төлөвлөх горим — бүлгийн огноо · сарын хувь засагдана (доторх ажилд тараана), бүлгийн өөрийн муж хадгалагдахгүй */
+  const gEdit = canEdit && r.group && obyem && !!onPlanGroup;
 
   const ms1 = dayToMs(a);
   const ms2 = dayToMs(z);
@@ -339,7 +353,7 @@ function PlanModalBody({
     return v.trim() !== '' && Number.isInteger(n) && n >= 1 && n <= MAX_DAYS ? n : null;
   };
   const durBad = dEdit && ms1 != null && durTxt.trim() !== '' && durOk(durTxt) == null;
-  const spanLong = dEdit && days != null && days > MAX_DAYS;
+  const spanLong = (dEdit || gEdit) && days != null && days > MAX_DAYS;
   const onDur = (v: string) => {
     setDurTxt(v);
     const n = durOk(v);
@@ -366,6 +380,14 @@ function PlanModalBody({
   /** Сарын НӨӨЦ (хүн хүч · машин) — `mv`-тэй зэрэгцээ (2026-09-24) */
   const [mrAll, setMr] = useState<Map<string, MonthRes>>(res);
   const [mvBadK, setMvBadK] = useState<string | null>(null);
+  /** Бүлгээр төлөвлөх — сар бүрийн хувь (0–100, нийлбэр 100) */
+  /* Анхны утга — доторх ажлуудын одоогийн сарын мөнгөөс (бүлгийн мөнгөнд эзлэх хувь); шинэ муж чирсэн бол хоосон */
+  const [gp, setGp] = useState<Map<string, number>>(() => {
+    const out = new Map<string, number>();
+    if (initSpan || !groupCurve || !groupMoney || !(groupMoney > 0)) return out;
+    for (const [k, v] of groupCurve) if (v > 0) out.set(k, Math.round((v / groupMoney) * 10000) / 100);
+    return out;
+  });
   /**
    * Мөр/блок солигдоход ХАДГАЛАГДСАНАА суурь болгоно.
    */
@@ -512,6 +534,7 @@ function PlanModalBody({
   const extraOnly = extraDirty && (!spanDirty || prefilled) && !mvDirty && !mrDirty;
   const mdDirty = canEdit && (
     (dEdit && spanDirty && !prefilled)
+    || (gEdit && (spanDirty || gp.size > 0))
     || depsDirty
     || actDirty
     || mvAll.size !== months.size || [...mvAll].some(([k, v]) => months.get(k) !== v)
@@ -579,6 +602,23 @@ function PlanModalBody({
     if (!jobs.length) return;
     const blks = jobs.map((j) => j.b);
     onApply(next, null, { months: null, res: null, byBlk: new Map(jobs.map((j) => [j.b, j.out])) }, null, null, blks, blks);
+  };
+
+  const gpSum = mKeys.reduce((acc, k) => acc + (gp.get(k) ?? 0), 0);
+  const gpOk = gEdit && ms1 != null && ms2 != null && !bad && !spanLong && badTxt.size === 0
+    && mKeys.length > 0 && Math.abs(gpSum - 100) <= 0.005;
+  /** Урьдчилан харах — хувь 100% болсон үед л (тараалттай ижил оролт) */
+  const gPrev = useMemo(
+    () => (gpOk && groupPreview && ms1 != null && ms2 != null
+      ? groupPreview({ start: ms1, end: ms2 }, new Map(mKeys.map((k) => [k, gp.get(k) ?? 0])))
+      : null),
+    [gpOk, groupPreview, ms1, ms2, mKeys, gp],
+  );
+  const planGroup = async () => {
+    if (!gpOk || !onPlanGroup || ms1 == null || ms2 == null) return;
+    if (!(await askConfirm(tr('Бүлгийн доторх ажлуудын огноо ба сарын обьём {0} блокт дарагдана. Үргэлжлүүлэх үү?', num(selB.size)), { ok: tr('Тараах') }))) return;
+    onPlanGroup({ start: ms1, end: ms2 }, new Map(mKeys.map((k) => [k, gp.get(k) ?? 0])), [...selB]);
+    onClose();
   };
 
   const clear = async () => {
@@ -651,7 +691,7 @@ function PlanModalBody({
               </button>
             );
           })}
-          {dEdit && blocks.length > 1 && (
+          {(dEdit || gEdit) && blocks.length > 1 && (
             <>
               <button type="button" className={h.tlZoomB}
                 onClick={() => setSelB(new Set(blocks.map((_, k) => k)))}>{tr('Бүгд')}</button>
@@ -700,12 +740,12 @@ function PlanModalBody({
             <div className={h.mdColHead}>{tr('Төлөвлөгөөт')}</div>
             <label className={h.mdField}>
               {tr('Эхлэх')}
-              <DateField value={a} disabled={!dEdit} label={tr('Эхлэх')}
+              <DateField value={a} disabled={!dEdit && !gEdit} label={tr('Эхлэх')}
                 onChange={onStart} onBad={markBad('a')} />
             </label>
             <label className={h.mdField}>
               {tr('Дуусах')}
-              <DateField value={z} disabled={!dEdit} label={tr('Дуусах')}
+              <DateField value={z} disabled={!dEdit && !gEdit} label={tr('Дуусах')}
                 onChange={setZ} onBad={markBad('z')} />
             </label>
             <label className={h.mdField}>
@@ -714,7 +754,7 @@ function PlanModalBody({
                 <input type="number" min={1} max={MAX_DAYS} step={1}
                   className={`${h.numIn}${durBad ? ` ${h.dateBad}` : ''}`} value={durTxt}
                   aria-invalid={durBad}
-                  disabled={!dEdit || ms1 == null}
+                  disabled={(!dEdit && !gEdit) || ms1 == null}
                   placeholder={ms1 == null ? '—' : ''}
                   aria-label={tr('Үргэлжлэх хоног')}
                   title={ms1 == null ? tr('Эхлэх огноог эхлээд сонгоно') : tr('Хоног бичихэд дуусах огноо автоматаар бодогдоно')}
@@ -754,7 +794,7 @@ function PlanModalBody({
         )}
 
 
-        {r.group && (
+        {r.group && !gEdit && (
           <p className={h.mdPar}>
             {tr('Бүлгийн хугацаа нь доторх ажлуудынхаа хамгийн эрт эхлэх — хамгийн сүүл дуусахаар ӨӨРӨӨ бодогдоно. Гараар засахгүй: ажлуудаа зөөвөл бүлэг дагана.')}
           </p>
@@ -781,10 +821,117 @@ function PlanModalBody({
             </p>
           );
         })()}
-        {r.group && obyem && r.vol != null && r.vol > 0 && (
+        {gEdit && (
+          <div className={h.mdDeps}>
+            <div className={h.mdDepsHead}>
+              {tr('Бүлгээр төлөвлөх')}
+              {groupMoney != null && <span className={h.mdDepsN}>{tr('мөнгөн дүн')} {num(groupMoney)}</span>}
+            </div>
+            <p className={h.mdPar}>
+              {tr('Дээрх эхлэх, дуусах огноо ба ажилтай сар бүрийн хувийг (нийлбэр 100%, хоосон сар 0%) оруулаад «Доторх ажилд тараах» дарна. Бүлгийн мөнгөн дүнгийн тэр хувь тухайн сард гүйцэтгэгдэнэ: доторх ажлууд мөрийн дарааллаар мөнгөн дүнгийнхээ хувиар энэ муруйг дүүргэж, тус бүр өөрийн эхлэх, дуусах огноо ба сарын обьёмтой болно.')}
+            </p>
+            {mKeys.length === 0 ? (
+              <p className={h.mdPar}>{tr('Огноо оруулмагц сарууд өөрөө гарч ирнэ.')}</p>
+            ) : (
+              <div className={`${h.mdMonthGrid} ${h.mdPctGrid}`}>
+                <span className={h.mdMonthHead}>{tr('Сар')}</span>
+                <span className={h.mdMonthHead}>{tr('Хувь (%)')}</span>
+                <span className={h.mdMonthHead}>{tr('Мөнгөн дүн')}</span>
+                {mKeys.map((k) => (
+                  <Fragment key={k}>
+                    <span className={h.mdMonth}>{k}</span>
+                    <input type="number" className={`${h.numIn} ${h.mdMonthIn}`} min={0} max={100} step="0.01"
+                      value={gp.get(k) ?? ''} aria-label={tr('{0}-ны хувь', k)}
+                      onChange={(e) => {
+                        const t = e.target.value.trim();
+                        const v = Number(t);
+                        setGp((m) => {
+                          const out = new Map(m);
+                          if (t === '' || !Number.isFinite(v) || v < 0 || v > 100) out.delete(k);
+                          else out.set(k, v);
+                          return out;
+                        });
+                      }} />
+                    <span className="num">{groupMoney != null && gp.has(k) ? num(groupMoney * (gp.get(k) ?? 0) / 100) : '—'}</span>
+                  </Fragment>
+                ))}
+                <span className={h.mdMonthTot}>{tr('Нийлбэр')}</span>
+                <span className={`${h.mdMonthTot} num`}>{num(gpSum, 2)}%</span>
+                <span className={`${h.mdMonthTot} num`}>{groupMoney != null ? num(groupMoney * gpSum / 100) : '—'}</span>
+              </div>
+            )}
+            {mKeys.length > 0 && !gpOk && (
+              <p className={h.mdWarn}>
+                {tr('Хувийн нийлбэр 100% байх ёстой (хоосон сар 0%)')}
+              </p>
+            )}
+            {gPrev && gPrev.length > 0 && (
+              <div className={h.mdPrev}>
+                <div className={h.mdDepsHead}>{tr('Урьдчилан харах')}<span className={h.mdDepsN}>{num(gPrev.length)} {tr('ажил')}</span></div>
+                <table className={h.mdPrevTbl}>
+                  <thead>
+                    <tr>
+                      <th>{tr('№')}</th><th>{tr('Ажил')}</th><th>{tr('Эхлэх')}</th><th>{tr('Дуусах')}</th>
+                      <th>{tr('Мөнгөн дүн')}</th><th>{tr('Сарын обьём')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gPrev.map((x, i) => (
+                      <tr key={i}>
+                        <td>{x.no}</td>
+                        <td>{fixCyr(x.work)}</td>
+                        <td className="num">{msToDay(x.span.start)}</td>
+                        <td className="num">{msToDay(x.span.end)}</td>
+                        <td className="num">{x.money != null ? num(x.money) : '—'}</td>
+                        <td className="num">{x.months ? [...x.months].filter(([, v]) => v > 0).map(([k, v]) => `${k}: ${num(v, 2)}`).join(' · ') : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className={h.mdPar}>
+              <button type="button" className={h.save} disabled={!gpOk} onClick={() => void planGroup()}>
+                {tr('Доторх ажилд тараах')}
+              </button>
+              {selB.size > 1 && <span className={h.mdParWork}> {tr('{0} блокт', num(selB.size))}</span>}
+            </p>
+          </div>
+        )}
+        {r.group && !gEdit && !groupSub && obyem && r.vol != null && r.vol > 0 && (
           <p className={h.mdPar}>
             {tr('Сарын обьём бүлэгт биш — доторх ажил тус бүрийн цонхонд сараар хуваана.')}
           </p>
+        )}
+        {r.group && groupSub && obyem && (
+          <div className={h.mdDeps}>
+            <div className={h.mdDepsHead}>
+              {tr('Бүлгийн хураангуй')}
+              {groupMoney != null && <span className={h.mdDepsN}>{tr('мөнгөн дүн')} {num(groupMoney)}</span>}
+            </div>
+            <p className={h.mdPar}>
+              {tr('Том бүлэг гараар төлөвлөгдөхгүй — огноо, сарын хувь ба мөнгө нь доторх жижиг бүлгүүдээс автоматаар бодогдоно. Жижиг бүлгээ нээж төлөвлөнө үү.')}
+            </p>
+            {groupCurve && groupCurve.size > 0 ? (
+              <div className={`${h.mdMonthGrid} ${h.mdPctGrid}`}>
+                <span className={h.mdMonthHead}>{tr('Сар')}</span>
+                <span className={h.mdMonthHead}>{tr('Хувь (%)')}</span>
+                <span className={h.mdMonthHead}>{tr('Мөнгөн дүн')}</span>
+                {[...groupCurve].sort(([x], [y]) => (x < y ? -1 : 1)).filter(([, v]) => v > 0).map(([k, v]) => (
+                  <Fragment key={k}>
+                    <span className={h.mdMonth}>{k}</span>
+                    <span className="num">{groupMoney ? `${num((v / groupMoney) * 100, 2)}%` : '—'}</span>
+                    <span className="num">{num(v)}</span>
+                  </Fragment>
+                ))}
+                <span className={h.mdMonthTot}>{tr('Нийлбэр')}</span>
+                <span className={`${h.mdMonthTot} num`}>{groupMoney ? `${num(([...groupCurve.values()].reduce((x, y) => x + y, 0) / groupMoney) * 100, 2)}%` : '—'}</span>
+                <span className={`${h.mdMonthTot} num`}>{num([...groupCurve.values()].reduce((x, y) => x + y, 0))}</span>
+              </div>
+            ) : (
+              <p className={h.mdPar}>{tr('Доторх ажлууд сарын обьёмоор төлөвлөгдөөгүй байна.')}</p>
+            )}
+          </div>
         )}
 
         {/* ── САРЫН ОБЬЁМ ── */}

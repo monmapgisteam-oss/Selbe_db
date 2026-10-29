@@ -4,7 +4,7 @@
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
 import { GUITS } from '@/lib/services';
-import { spanFrac, type Span } from './plan';
+import { DAY, spanFrac, type Span } from './plan';
 import { invalidate } from './dataBus';
 import { isLostWrite } from './lostWrite';
 import { ArcGISError } from './query';
@@ -138,6 +138,142 @@ export const balanced = (
   total: number,
   step = 0.01,
 ): boolean => Math.abs(sumMonths(m) - total) <= step / 2 + 1e-9 * Math.max(1, Math.abs(total));
+
+/**
+ * БҮЛГЭЭР ТӨЛӨВЛӨХ — хэрэглэгчийн өгсөн сарын хувиар (0–100, нийлбэр 100) нийт обьёмыг сарууд руу хуваана.
+ * 0.01 хүртэл бөөрөнхийлж, үлдэгдлийг хамгийн сүүлийн эерэг сард өгнө — нийлбэр нь `total`-тай `balanced`.
+ * Хувь нь хэрэглэгчийнх (апп таамаглахгүй) тул доорх шалгуурын №1 «автомат тараалт»-ын хоригт хамаарахгүй.
+ */
+export function splitByPct(total: number, pct: ReadonlyMap<string, number>): Map<string, number> {
+  const out = new Map<string, number>();
+  let acc = 0;
+  let last: string | null = null;
+  for (const k of [...pct.keys()].sort()) {
+    const p = pct.get(k) ?? 0;
+    const v = Math.round(total * p) / 100;
+    out.set(k, v);
+    acc += v;
+    if (p > 0) last = k;
+  }
+  if (last != null) out.set(last, Math.round((out.get(last)! + total - acc) * 100) / 100);
+  return out;
+}
+
+/** Мужийн өдөр бүрийн сарын түлхүүр (UTC шөнө дунд) */
+const dayKeys = (s: Span): string[] => {
+  const n = Math.max(0, Math.round((s.end - s.start) / DAY) + 1);
+  return Array.from({ length: n }, (_, k) => monthKey(s.start + k * DAY));
+};
+
+export type MoneyWork = { money: number | null; vol: number | null };
+
+/**
+ * БҮЛГИЙН САРЫН МӨНГӨӨР ДАРААЛУУЛАХ (2026-10-29, хэрэглэгч: «бүлгийн ажлын 30%-ийг хийхэд хэдэн төгрөг гэж тооцоод
+ * ажлуудыг дарааллаар нь тэр мөнгөнд багтаана; үлдсэн 30 саяд 3-р ажлын 30 саяын хэсэг тэр сард, үлдсэн нь дараагийн сард;
+ * обьём = мөнгө ÷ нэгж үнэ»). Сар бүрийн багтаамж = Σмөнгө × сарын хувь / Σхувь. Ажлууд (`works` — дарааллаар нь) сарын
+ * багтаамжийг дүүргэнэ; багтаагүй хэсэг дараагийн сард. Огноо: эхний мөнгө орсон сарын 1 — сүүлийн мөнгө орсон сарын сүүл
+ * (бүлгийн мужаар хавчина). Сарын обьём = обьём × (тэр сарын мөнгө / ажлын мөнгө) — мөнгө = обьём × нэгж үнэ тул
+ * «мөнгө ÷ нэгж үнэ»-тэй ижил, нийлбэр нь обьёмтой яг тэнцэнэ (`splitByPct`). 0% сар алгасагдана. Мөнгөгүй ажил тухайн
+ * сардаа (обьём бүхэлдээ); нийт мөнгө 0 бол ажлууд тэнцүү мөнгөтэй гэж үзнэ. Хувь бүгд 0 бол сарууд тэнцүү.
+ */
+export function scheduleByMoney(
+  sp: Span,
+  pct: ReadonlyMap<string, number>,
+  works: readonly MoneyWork[],
+): { span: Span; months: Map<string, number> | null }[] {
+  const keys = monthsOf(sp);
+  if (!keys.length || sp.end < sp.start) return works.map(() => ({ span: { ...sp }, months: null }));
+  const raw = works.map((w) => (w.money != null && w.money > 0 ? w.money : 0));
+  const anyMoney = raw.some((x) => x > 0);
+  const m = anyMoney ? raw : works.map(() => 1);
+  const total = m.reduce((x, y) => x + y, 0);
+  let ptot = 0;
+  for (const k of keys) ptot += Math.max(0, pct.get(k) ?? 0);
+  const cap = keys.map((k) => (ptot > 0 ? (total * Math.max(0, pct.get(k) ?? 0)) / ptot : total / keys.length));
+  const eps = 1e-9 * Math.max(1, total);
+  let mi = 0;
+  let left = cap[0];
+  /* Багтаамжгүй (0%) сарыг алгасна */
+  const skip = () => { while (left <= eps && mi < keys.length - 1) { mi += 1; left = cap[mi]; } };
+  skip();
+  return works.map((w, i) => {
+    const alloc = new Map<string, number>();
+    let rest = m[i];
+    if (rest > 0) {
+      while (rest > eps) {
+        const take = mi === keys.length - 1 ? rest : Math.min(rest, left);
+        if (take > 0) alloc.set(keys[mi], (alloc.get(keys[mi]) ?? 0) + take);
+        rest -= take;
+        left -= take;
+        skip();
+      }
+    } else alloc.set(keys[mi], 0);
+    const used = [...alloc.keys()];
+    const first = monthStart(used[0])!;
+    const last = monthEnd(used[used.length - 1]);
+    const span = { start: Math.max(sp.start, first), end: Math.min(sp.end, last) };
+    if (w.vol == null || !(w.vol > 0)) return { span, months: null };
+    const frac = new Map<string, number>(monthsOf(span).map((k) => [k, 0]));
+    if (m[i] > 0) for (const [k, v] of alloc) frac.set(k, (v / m[i]) * 100);
+    else frac.set(used[0], 100);
+    return { span, months: splitByPct(w.vol, frac) };
+  });
+}
+
+/**
+ * АЖЛЫН ДАРААЛАЛ УЯЛДААГААР (2026-10-29, бүлгээр төлөвлөх — `Hamaaral`): урдах ажил (энэ жагсаалтад байгаа код) нь
+ * хойдохоосоо өмнө. Тогтвортой топологийн эрэмбэ — боломжтой ажлуудаас хамгийн бага мөрийн индексийг эхэлж авна, тиймээс
+ * уялдаагүй ажил мөрийн дарааллаар үлдэнэ. Жагсаалтаас гадуурх код үл тоогдоно; дугуй хамааралтай үлдэгдэл мөрийн дарааллаар.
+ * Буцаах утга — индексүүд.
+ */
+export function orderByDeps(items: readonly { code: number | null; deps: readonly number[] }[]): number[] {
+  const at = new Map<number, number>();
+  items.forEach((x, i) => { if (x.code != null && !at.has(x.code)) at.set(x.code, i); });
+  const need = items.map((x, i) => new Set(x.deps.map((c) => at.get(c)).filter((j): j is number => j != null && j !== i)));
+  const done = new Set<number>();
+  const out: number[] = [];
+  while (out.length < items.length) {
+    let pick = -1;
+    for (let i = 0; i < items.length; i++) {
+      if (done.has(i)) continue;
+      if ([...need[i]].every((j) => done.has(j))) { pick = i; break; }
+    }
+    if (pick < 0) pick = items.findIndex((_, i) => !done.has(i));
+    done.add(pick);
+    out.push(pick);
+  }
+  return out;
+}
+
+/**
+ * САРЫН ОБЬЁМЫГ ШИНЭ МУЖ РУУ БУУЛГАХ (2026-10-29 — бүлгийг чирэхэд доторх ажлын задаргааг дагуулна). Хуучин сар бүрийн
+ * обьёмыг өдрүүддээ жигд тарааж, өдрүүдийг шинэ муж руу шугаманаар буулгаад сараар нийлүүлнэ; нийлбэр хадгалагдана
+ * (`splitByPct`). Шинэ мужийн хоосон сар 0.
+ */
+export function remapMonths(months: ReadonlyMap<string, number>, from: Span, to: Span): Map<string, number> {
+  const total = sumMonths(months);
+  const out = new Map<string, number>(monthsOf(to).map((k) => [k, 0]));
+  if (!(total > 0)) return out;
+  const oldK = dayKeys(from);
+  const newK = dayKeys(to);
+  if (!oldK.length || !newK.length) return out;
+  const cnt = new Map<string, number>();
+  for (const k of oldK) cnt.set(k, (cnt.get(k) ?? 0) + 1);
+  const accm = new Map<string, number>();
+  let got = 0;
+  oldK.forEach((k, d) => {
+    const v = months.get(k);
+    if (v == null || !(v > 0)) return;
+    const t = oldK.length > 1 ? d / (oldK.length - 1) : 0;
+    const nk = newK[Math.round(t * (newK.length - 1))];
+    const add = v / cnt.get(k)!;
+    accm.set(nk, (accm.get(nk) ?? 0) + add);
+    got += add;
+  });
+  if (!(got > 0)) return out;
+  for (const k of out.keys()) out.set(k, ((accm.get(k) ?? 0) / got) * 100);
+  return splitByPct(total, out);
+}
 
 /* ══════════════════ Төлөвлөгөөт хувь (S-муруй) ══════════════════ */
 
