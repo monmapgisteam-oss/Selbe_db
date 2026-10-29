@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   toStoredRow, compareDdKod, sortPlanRows,
-  blockActualOf, pkgActualOf, blockPlannedOf, makeSchedules, monthlyOf,
+  blockActualOf, pkgActualOf, blockPlannedOf, makeSchedules, monthlyOf, makeDateSpans, linkPlanDates,
   makeParcelIndex, parcelHits, landPctOf, landPctMap, landKeyOf, landKeysOf, landOf, landLayerIdsOf, EMPTY_AREA_PCT,
   assemblePlan, emptyPlan, planMonths, liveProgressOf, __test,
 } from './projectPlanInputs.ts';
@@ -117,6 +117,13 @@ const srow = (o) => ({
   sc.prime([D('2026-01-03'), D('2026-01-03') + 3_600_000, D('2026-02-03')]);
   near(bp('Багц-4.2', '5/1', D('2026-01-03') + 7_200_000), 75 * 3 / 10, 1e-9, 'өдрөөр кэшлэнэ');
   assert.equal(blockPlannedOf(null)('Багц-1', '5/1', D('2026-01-01')), null, 'хуваарь унасан → null (шугаман руу УНАХГҮЙ)');
+  /* ⚠️ 2026-10-29: «Бүгд» (багц бүхэлдээ) хуваарьгүй → undefined (огнооны жигд); хуваарь унасан бол null хэвээр */
+  assert.equal(bp('Багц-4.1', 'Бүгд', D('2026-02-05')), undefined, '«Бүгд» хуваарьгүй → undefined');
+  assert.equal(blockPlannedOf(null)('Багц-4.1', 'Бүгд', D('2026-02-05')), null, '«Бүгд» + хуваарь унасан → null');
+  {
+    const whole = makeSchedules([{ ...nine, key: 'w', group: 'Багц 4-1', bld: ['Бүгд'] }]);
+    near(blockPlannedOf(whole)('Багц-4.1', 'Бүгд', D('2026-01-10')), 75, 1e-9, '«Бүгд» Хуваарьт орвол тэндээс');
+  }
   /* сарын задаргаа (monthly) нь `planPct`-ийн үүрэгтэй */
   const withM = makeSchedules([{ ...nine, monthly: (des, blok) => (blok === '5/1' ? 0.5 : null) }]);
   near(withM.at('Багц 4-2', '5/1', D('2026-01-05')), 50, 1e-9, 'сарын задаргаа огнооноос давамгайлна');
@@ -138,7 +145,36 @@ const srow = (o) => ({
     assert.equal(monthlyOf(new Map()), undefined, 'хоосон задаргаа → огнооны зам');
     near(monthly(2, '5/1', D('1899-12-30'), D('2026-02-01'), t), 1, 1e-9, 'sane биш огноо → бүтэн сараар (planProgress-тэй ижил)');
   }
-  console.log('✅ 3. хуваарь — блок бүрээр, хуваарьгүй null, 9F давамгайлал, алдаатай огноо');
+  /* ⚠️ 2026-10-29: огнооны муж — «Б.» → барилга, «А.» → бэлтгэл; хуудасгүй багц undefined, унасан багц null */
+  {
+    const ds = makeDateSpans([nine], ['БАГЦ41']);
+    assert.deepEqual(ds.get('Багц-4.2', '5/1', 'barilga').guits, [D('2026-01-01'), D('2026-02-10')], 'Б. дэд мод MIN/MAX');
+    assert.deepEqual(ds.get('Багц-4.2', '5/1', 'barilga').geree, [null, null], 'гэрээний огноо хоосон → хоосон');
+    assert.deepEqual(ds.get('Багц-4.2', '5/1', 'beltgel').guits, [D('2025-01-01'), D('2025-01-31')], 'А. мөр → бэлтгэл');
+    assert.deepEqual(ds.get('Багц-4.2', '6/1', 'barilga').guits, [null, null], 'огноогүй блок → хоосон');
+    assert.deepEqual(ds.get('Багц-4.2', '6/2', 'barilga').guits, [null, null], 'урвуу · sane биш хос хаягдана');
+    assert.deepEqual(ds.get('Багц-4.2', 'Бүгд', 'barilga').guits, [D('2026-01-01'), D('2026-02-10')], '«Бүгд» = багцын MIN/MAX');
+    assert.deepEqual(ds.get('Багц-4.2', null, 'barilga').guits, [D('2026-01-01'), D('2026-02-10')], 'блокгүй мөр = багцын MIN/MAX');
+    assert.equal(ds.get('Багц-9.1', '1', 'barilga'), undefined, 'хуудасгүй багц → undefined (хоосон)');
+    assert.equal(ds.get('БАГЦ 1-4', null, 'barilga'), undefined, 'олон багц → undefined');
+    assert.equal(ds.get('Багц-4.1', '5/1', 'barilga'), null, 'хуудас уншигдаагүй → null (хадгалсан хэвээр)');
+    const t = buildTree([
+      { objectid: 1, dd_kod: '1', uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: 'Газар', gazar_ehleh: D('2025-01-01'), gazar_duusah: D('2025-06-01'), geree_ehleh: D('2025-01-01'), geree_duusah: D('2025-12-31') },
+      { objectid: 2, dd_kod: '2', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт', geree_ehleh: D('2025-01-01'), geree_duusah: D('2027-12-31') },
+      { objectid: 3, dd_kod: '2.1', etseg_kod: '2', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралтын ажил' },
+      { objectid: 4, dd_kod: '2.1.1', etseg_kod: '2.1', uy_shat: 'Барилга угсралт', bagts: 'Багц-4.2', blok: '5/1', ajil_uilchilgee: 'блок', geree_ehleh: D('2025-01-01'), guits_ehleh: D('2025-02-01'), guits_duusah: D('2025-03-01') },
+      { objectid: 5, dd_kod: '2.1.2', etseg_kod: '2.1', uy_shat: 'Барилга угсралт', bagts: 'Багц-9.1', ajil_uilchilgee: 'хуудасгүй', guits_ehleh: D('2025-02-01'), guits_duusah: D('2025-03-01') },
+    ]);
+    const L = new Map(linkPlanDates(t, ds).map((r) => [r.objectid, r]));
+    assert.equal(L.get(1).gazar_ehleh, null, 'газрын огноо хоосон');
+    assert.equal(L.get(1).geree_ehleh, D('2025-01-01'), 'бусад үе шатны гэрээний огноо хөндөгдөхгүй');
+    assert.equal(L.get(2).geree_ehleh, null, 'барилга угсралтын эцэг мөр хоосон');
+    assert.deepEqual([L.get(4).guits_ehleh, L.get(4).guits_duusah, L.get(4).geree_ehleh], [D('2026-01-01'), D('2026-02-10'), null], 'блок = Хуваарь (хоосон ч)');
+    assert.deepEqual([L.get(5).guits_ehleh, L.get(5).guits_duusah], [null, null], 'хуудасгүй багц хоосон');
+    const keep = new Map(linkPlanDates(t, null).map((r) => [r.objectid, r]));
+    assert.equal(keep.get(4).guits_ehleh, D('2025-02-01'), 'Хуваарь уншигдаагүй → хадгалсан хэвээр');
+  }
+  console.log('✅ 3. хуваарь — блок бүрээр, хуваарьгүй null, 9F давамгайлал, алдаатай огноо, огнооны муж');
 }
 
 /* ══════════ 4. Газар чөлөөлөлт — нэгж талбарын тоогоор ══════════ */
@@ -177,11 +213,17 @@ const srow = (o) => ({
     ['БАГЦ1|5/1', 'БАГЦ1|5/2', 'БАГЦ1|5/9', 'P|БАГЦ1', 'P|', 'P|БАГЦ999']);
   assert.equal(pcts.get('БАГЦ1|5/1'), 50);
   assert.equal(pcts.get('БАГЦ1|5/2'), 100);
-  assert.equal(pcts.get('БАГЦ1|5/9'), null, 'footprint-гүй блок → null (мэдэхгүй)');
+  /* ⚠️ 2026-10-29: эх уншигдсан ч дүрс алга → Map-д ОРОХГҮЙ (`landOf` → undefined → хадгалсан утга) */
+  assert.ok(!pcts.has('БАГЦ1|5/9'), 'footprint-гүй блок → түлхүүргүй (хадгалсан утга руу)');
   near(pcts.get('P|БАГЦ1'), 200 / 3, 1e-9, 'багц = бүх блокийн footprint (0,1,2 — 2/3)');
-  assert.equal(pcts.get('P|'), null);
-  assert.equal(pcts.get('P|БАГЦ999'), null);
+  assert.ok(!pcts.has('P|'), 'олон/хоосон багц → түлхүүргүй');
+  assert.ok(!pcts.has('P|БАГЦ999'), 'давхарга ба footprint-гүй багц → түлхүүргүй');
   assert.equal(landPctMap({ parcels: null, footprints, infra: new Map(), failedPkgs: new Set() }, ['БАГЦ1|5/1']).get('БАГЦ1|5/1'), null, 'нэгж талбар унасан → null');
+  {
+    const nf = landPctMap({ parcels: idx, footprints: null, infra: new Map(), failedPkgs: new Set() }, ['БАГЦ1|5/1', 'P|БАГЦ1']);
+    assert.equal(nf.get('БАГЦ1|5/1'), null, 'барилгын дүрс уншигдаагүй → null');
+    assert.equal(nf.get('P|БАГЦ1'), null, 'барилгын дүрс уншигдаагүй (давхаргагүй багц) → null');
+  }
   /* дэд бүтцийн давхаргатай багц (PKG_BY_BAGTS-д БАГЦ161 бий) — давхарга нь унасан бол null */
   const inf = landPctMap({ parcels: idx, footprints, infra: new Map([['БАГЦ161', [{ rings: sq(20, 0) }]]]), failedPkgs: new Set(['БАГЦ171']) },
     ['P|БАГЦ161', 'P|БАГЦ171']);
@@ -198,7 +240,8 @@ const srow = (o) => ({
   const al = landPctMap({ parcels: idx, footprints, infra: new Map([['БАГЦ71', [{ rings: sq(20, 0) }]]]), failedPkgs: new Set() }, ['P|БАГЦ71']);
   assert.equal(al.get('P|БАГЦ71'), 100, 'alias-аар давхаргатай багц давхаргаараа бодогдоно');
   assert.equal(landOf(pcts)('Багц-1', '5/1'), 50);
-  assert.equal(landOf(pcts)('Багц-1', '29/9'), null);
+  assert.equal(landOf(pcts)('Багц-1', '29/9'), undefined, 'дүрсгүй → undefined (хадгалсан утга)');
+  assert.equal(landOf(new Map([['БАГЦ1|5/1', null]]))('Багц-1', '5/1'), null, 'эх унасан → null');
   /* хотгор (U) нэгж талбарын дотоод цэг дотор нь */
   const U = [[[0, 0], [0, 10], [3, 10], [3, 3], [7, 3], [7, 10], [10, 10], [10, 0], [0, 0]]];
   const ip = __test.interiorPoint(U);

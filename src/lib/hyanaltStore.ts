@@ -1764,6 +1764,21 @@ export async function apply(a: {
         }
         ipcOk = !ipcErr;
       }
+      /* ⚠️ 2026-10-29 (хэрэглэгч: «хүснэгт өөрөө шинэчлэгдэх ёстой»): «Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэлийн хувийг
+         CASHFLOW_NEW-ийн `guitsetgel_huvi`-д бичнэ (`projectPlanSync`-ийн ⚠️). Унавал батлалт хэвээр — шар мөрөөр хэлнэ;
+         дараагийн батлалт зөрсөн мөрийг дахин тулгаж нөхнө. */
+      try {
+        const { syncPlanProgress } = await import('./projectPlanSync');
+        const ps = await syncPlanProgress();
+        if (!ps.ok) {
+          console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл бичигдсэнгүй:', ps.error);
+          warns.push(tr('Батлагдлаа, гэхдээ «Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэлийн хувь хүснэгтэд бичигдсэнгүй ({0}). Дараагийн батлалтаар нөхөгдөнө.', ps.error));
+        } else if ('skipped' in ps) {
+          console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл алгасагдлаа:', ps.skipped);
+        }
+      } catch (e) {
+        console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл бичих алдаа:', e);
+      }
       if (r.ok && ipcOk && archivedPkg) {
         try {
           const { markRegistered } = await import('./submission');

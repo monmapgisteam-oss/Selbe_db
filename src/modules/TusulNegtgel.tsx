@@ -230,7 +230,9 @@ function NegBody({ d: live, onDirty, reloadFailed }: {
   reloadFailed: boolean;
 }) {
   const { role, user, status } = useAuth();
-  const canEdit = status === 'off' ? role === 'super' : roleForUser(user?.username) === 'super';
+  /* ⚠️ 2026-10-29: «Төсөл төлөвлөгөө биелэлт»-ээс уншсан үед (`source: 'plan'`) мөрийн `oid` нь CASHFLOW_NEW-ийнх — 187 рүү
+     нийтлэх засварын зам ХААЛТТАЙ (утгыг «Төсөл төлөвлөгөө биелэлт» · Хуваарь · гүйцэтгэлээр засна). */
+  const canEdit = live.source !== 'plan' && (status === 'off' ? role === 'super' : roleForUser(user?.username) === 'super');
   const [edit, setEdit] = useState(false);
   const [edits, setEdits] = useState<Map<number, Partial<Record<NegEditKey, number | null>>>>(() => new Map());
   const [saving, setSaving] = useState(false);

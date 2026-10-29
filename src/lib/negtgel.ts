@@ -403,7 +403,48 @@ export type NegtgelFull = {
   tree?: 'excel' | 'code';
   stored: NegRaw[];
   src: NegSources | null;
+  /**
+   * ⚠️ 2026-10-29: эх — `'plan'` = «Төсөл төлөвлөгөө биелэлт» (CASHFLOW_NEW + амьд эх, `projectPlanInputs`). Тэр үед
+   *    `oid` нь CASHFLOW_NEW-ийн objectid тул 187 рүү засвар нийтлэх ЗАМ ХААЛТТАЙ (`TusulNegtgel`).
+   */
+  source?: 'plan' | 'negtgel';
 };
+
+/**
+ * «Төсөл төлөвлөгөө биелэлт» → Нэгтгэл гүйцэтгэлийн мөр (цэвэр — тестлэгдэнэ).
+ * ⚠️ 2026-10-29 (хэрэглэгч: «Нэгтгэл гүйцэтгэл мөн холбогдох ёстой — өртөг, жин ч төсөл төлөвлөгөөний биелэлттэй»):
+ *    бүх багана НЭГ эхээс — `computePlan`-ийн E…W (0–100 → 0–1). Огноо: H/I → гэрээ, L/M → гүйцэтгэгч, J/K → газар.
+ */
+export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectPlan): (NegRaw & { auto: boolean; how: string })[] {
+  const fr = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? null : v / 100);
+  const ymd = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? '' : new Date(v).toISOString().slice(0, 10));
+  const out: (NegRaw & { auto: boolean; how: string })[] = [];
+  for (const n of plan.tree.nodes) {
+    const r = n.row;
+    if (!r || r.objectid == null) continue;
+    const v = plan.result.values.get(n);
+    const live = !n.children.length && (n.phase === 'barilga' && n.sub === 'barilga' || n.phase === 'gazar');
+    out.push({
+      oid: r.objectid,
+      code: r.dd_kod ?? '',
+      name: r.ajil_uilchilgee ?? '',
+      bagts: r.bagts ?? '',
+      depth: n.depth,
+      w: fr(v?.F),
+      p: fr(v?.G),
+      budget: v?.E ?? null,
+      outside: n.outside,
+      act: fr(v?.S), planG: fr(v?.N), planGch: fr(v?.O), planGu: fr(v?.P), planNw: fr(v?.Q), planPw: fr(v?.R),
+      perfG: fr(v?.T), perfGch: fr(v?.U), perfGu: fr(v?.V), perfWk: fr(v?.W),
+      ctStart: v?.H ?? null, ctEnd: v?.I ?? null,
+      exStart: ymd(v?.L), exEnd: ymd(v?.M),
+      actStart: ymd(v?.J), actEnd: ymd(v?.K),
+      auto: live,
+      how: live ? tr('Төсөл төлөвлөгөө биелэлт — системээс') : tr('Төсөл төлөвлөгөө биелэлт'),
+    });
+  }
+  return out;
+}
 
 /**
  * Бодсон мөрүүд → табын мөр ба тооцоо (0–100). 2026-10-15: `loadNegtgelFullRaw`-оос гаргав — засварын
@@ -452,6 +493,19 @@ export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: s
  * (2026-09-25, `negtgelAuto.ts`-ийн толгойг үз).
  */
 async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
+  /* ⚠️ 2026-10-29: «Төсөл төлөвлөгөө биелэлт»-ээс (`negRowsFromPlan`) — 187-ийн тусдаа тооцоо зөвхөн нөөц (төлөвлөгөөний
+     мөр алга / ачаалалт унасан). Хоёр таб НЭГ тоо харуулна; дашбоардын «Нэгтгэл» хувь ч үүнийг дагана. */
+  try {
+    const { loadProjectPlan } = await import('@/lib/projectPlanInputs');
+    const plan = await loadProjectPlan();
+    if (!plan.empty) {
+      const use = negRowsFromPlan(plan);
+      const { rows, calc } = negDisplay(use);
+      return { rows, calc, live: true, sync: null, failed: plan.failed, tree: 'excel', stored: use, src: null, source: 'plan' };
+    }
+  } catch (e) {
+    console.warn('[negtgel] «Төсөл төлөвлөгөө биелэлт» уншигдсангүй — 187-ийн тооцоогоор', e);
+  }
   const A = await import('@/lib/negtgelAuto');
   const stored = await A.loadNegRaw();
   let calcRows: Awaited<ReturnType<typeof A.computeNegAuto>> | null = null;
@@ -476,7 +530,7 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
 
 let fullP: Promise<NegtgelFull> | null = null;
 let fullAt = 0;
-register(() => { fullP = null; }, ['BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'TUSUL_NEGTGEL']);
+register(() => { fullP = null; }, ['BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'TUSUL_NEGTGEL', 'CASHFLOW_NEW']);
 
 export function dropNegtgelFull(): void {
   fullP = null;

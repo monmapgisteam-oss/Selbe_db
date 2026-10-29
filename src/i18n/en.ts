@@ -7573,7 +7573,11 @@ const en: Record<string, string> = {
   "Сүүлийн багана: хугацаанд ({0} → {1}) олгосон дүн.": "Last column: amount paid in the period ({0} → {1}).",
   "Орон сууцны барилга угсралт — төлөвлөгөө ба бодит": "Housing construction — plan and actual",
   "Сараар — хэмжилттэй сарууд, багц бүр": "By month — measured months, per package",
-  "Сар бүрийн олголт, ₮ — сүүлийн {0} сар": "Monthly payments, ₮ — last {0} months"
+  "Сар бүрийн олголт, ₮ — сүүлийн {0} сар": "Monthly payments, ₮ — last {0} months",
+  "Батлагдлаа, гэхдээ «Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэлийн хувь хүснэгтэд бичигдсэнгүй ({0}). Дараагийн батлалтаар нөхөгдөнө.": "Approved, but the progress % of «Project plan & performance» was not written to the table ({0}). It will be filled in on the next approval.",
+  "Төсөл төлөвлөгөөний мөр алга": "No project plan rows",
+  "Зарим эх уншигдсангүй ({0})": "Some sources could not be read ({0})",
+  "Төсөл төлөвлөгөө биелэлт — системээс": "Project plan & performance — from the system"
 };
 
 export default en;

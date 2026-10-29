@@ -18,7 +18,7 @@ import {
 } from './projectPlan';
 import {
   CASHFLOW_NEW, CF_MONTH, BUILDING, PARCEL_LEFT, PKG_BY_BAGTS, LAYER_BY_ID,
-  bagtsKey, buildingKey, pkgKeyOf, isConstructionNo,
+  bagtsKey, buildingKey, pkgKeyOf, isConstructionNo, normalizeTaskNo,
 } from './services';
 import {
   loadBlockProgress, loadBlockUniverse, loadInfraProgress,
@@ -305,9 +305,22 @@ export function makeSchedules(sheets: readonly PlanSheet[]): BlockSchedules {
   };
 }
 
-/** `blockPlanned` callback — хуваарьгүй/уншигдаагүй блок `null` (шугаман руу УНАХГҮЙ — файлын толгой) */
+/** Багц БҮХЭЛДЭЭ хамаарах мөрийн блок («Бүгд») — бодит блок биш */
+const WHOLE_PKG_RE = /^бүгд$/i;
+
+/**
+ * `blockPlanned` callback — хуваарьгүй/уншигдаагүй блок `null` (шугаман руу УНАХГҮЙ — файлын толгой).
+ * ⚠️ 2026-10-29 (хэрэглэгч: «холбо, Хуваарь удахгүй хийгдэхэд хуваарьтай болох ёстой»): блок нь «Бүгд» (багц бүхэлдээ,
+ *    жиш. Багц-4.1 «Өндөржилтөөс гарах газар шорооны ажил») бөгөөд Хуваарьт хараахан алга бол `undefined` → хөдөлгүүр
+ *    гүйцэтгэгчийн (түүнгүй бол гэрээний) огнооны хооронд жигд бодно. Хуваарьт `buildingKey(багц, 'Бүгд')` түлхүүрээр
+ *    хуваарь орж ирмэгц (`sched.has`) түүнийг авна. Хуваарь уншигдаагүй (`sched` null) бол урьдын адил `null`.
+ */
 export function blockPlannedOf(sched: BlockSchedules | null): NonNullable<PlanInputs['blockPlanned']> {
-  return (pkg, blok, asOf) => (sched ? sched.at(pkg, blok, asOf) : null);
+  return (pkg, blok, asOf) => {
+    if (!sched) return null;
+    if (WHOLE_PKG_RE.test(blok.trim()) && !sched.has(pkg, blok)) return undefined;
+    return sched.at(pkg, blok, asOf);
+  };
 }
 
 /**
@@ -323,39 +336,136 @@ export function monthlyOf(ob: PkgPlan | null | undefined): PlanSheet['monthly'] 
   };
 }
 
+/* ══════════════════ 3б. Хуваарийн ОГНОО — гэрээ · гүйцэтгэгч (2026-10-29) ══════════════════ */
+
+/**
+ * ⚠️ 2026-10-29 (хэрэглэгч: «газар чөлөөлөлтийн бүх огноог хоосон болго; гэрээ, гүйцэтгэгчийн огноог хоосон ч хамаагүй
+ *    холбо — удахгүй гэрээ, төлөвлөлтийн бүх хуваарь орно, төлөвлөхөд шууд ордог байх ёстой; Хуваарьт төлөвлөх
+ *    боломжгүй багцын огноог хоосон болго»):
+ *    · `gazar_*` — БҮХ мөрөнд хоосон (газрын давхаргад чөлөөлсөн огноо алга);
+ *    · «Барилга угсралт» үе шатны НАВЧ мөр — бөглөх хуудасны (Хуваарь) блокийн дэд модны огноо: «Б.» → барилга, «А.» →
+ *      бэлтгэл; `guits_*` = төлөвлөгөөт эхлэх/дуусах (`start`/`end`), `geree_*` = гэрээний (`gStart`/`gEnd`). Хуудсанд
+ *      хоосон бол ХООСОН (Excel-ийн огноо руу буцахгүй). Блокгүй мөр / «Бүгд» = багцын бүх блокийн MIN/MAX;
+ *    · бөглөх хуудасгүй (Хуваарьт төлөвлөх боломжгүй) багц, олон багцын мөр — хоосон;
+ *    · үе шатны эцэг мөр — хоосон (дэлгэц хүүхдүүдийн MIN/MAX-аар бодно, `computePlan` D);
+ *    · хуудас УНШИГДААГҮЙ багц — хадгалсан огноо ХЭВЭЭР (уналт ≠ хоосон).
+ *    Бусад үе шатны (ТЭЗҮ · зураг · зөвшөөрөл · сонгон …) гэрээ/гүйцэтгэгчийн огноо хөндөгдөхгүй.
+ */
+type Span = [number | null, number | null];
+export type DateSpan = { geree: Span; guits: Span };
+export type DateSpans = {
+  /** `undefined` = холбох хуудас алга (огноо хоосон) · `null` = хуудас уншигдаагүй (хадгалсан хэвээр) */
+  get: (pkg: string | null | undefined, blok: string | null | undefined, sub: 'beltgel' | 'barilga') => DateSpan | null | undefined;
+};
+
+const EMPTY_SPAN: DateSpan = { geree: [null, null], guits: [null, null] };
+const minD = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : Math.min(a, b));
+const maxD = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : Math.max(a, b));
+const joinSpan = (a: DateSpan, b: DateSpan): DateSpan => ({
+  geree: [minD(a.geree[0], b.geree[0]), maxD(a.geree[1], b.geree[1])],
+  guits: [minD(a.guits[0], b.guits[0]), maxD(a.guits[1], b.guits[1])],
+});
+
+/** Хуудсуудаас блок бүрийн огнооны муж (цэвэр — тестлэгдэнэ) */
+export function makeDateSpans(sheets: readonly PlanSheet[], failedGroups: readonly string[] = []): DateSpans {
+  const by = new Map<string, DateSpan>();
+  const groups = new Set<string>();
+  const put = (k: string, sp: DateSpan) => { const p = by.get(k); by.set(k, p ? joinSpan(p, sp) : sp); };
+  for (const sh of sheets) {
+    const g = bagtsKey(sh.group);
+    groups.add(g);
+    for (const sub of ['barilga', 'beltgel'] as const) {
+      const ri = sh.rows.findIndex((r) => (sub === 'barilga' ? isConstructionNo(r.no) : normalizeTaskNo(r.no) === 'А.'));
+      if (ri < 0) continue;
+      let end = ri + 1;
+      while (end < sh.rows.length && sh.rows[end].depth > sh.rows[ri].depth) end += 1;
+      sh.bld.forEach((label, b) => {
+        let sp: DateSpan = EMPTY_SPAN;
+        for (let i = ri; i < end; i += 1) {
+          const r = sh.rows[i];
+          /* мөр бүрийн хосыг `cleanSpan`-аар (урвуу · 2000–2100-аас гадуур → хоёулаа хаягдана) — `makeSchedules`-тэй ижил */
+          sp = joinSpan(sp, { guits: cleanSpan(r.start[b], r.end[b]), geree: cleanSpan(r.gStart?.[b], r.gEnd?.[b]) });
+        }
+        put(`${buildingKey(sh.group, label)}|${sub}`, sp);
+        put(`${g}|*|${sub}`, sp);
+      });
+    }
+  }
+  const failed = new Set(failedGroups);
+  return {
+    get: (pkg, blok, sub) => {
+      const pk = pkgKeyOf(pkg);
+      if (!pk) return undefined;
+      if (failed.has(pk)) return null;
+      if (!groups.has(pk)) return undefined;
+      const b = String(blok ?? '').trim();
+      const k = !b || WHOLE_PKG_RE.test(b) ? `${pk}|*|${sub}` : `${buildingKey(pkg ?? '', b)}|${sub}`;
+      return by.get(k) ?? EMPTY_SPAN;
+    },
+  };
+}
+
+/** Хадгалсан мөрүүдэд холбосон огноог тавина (цэвэр — тестлэгдэнэ). `spans` null = Хуваарь бүхэлдээ уншигдаагүй. */
+export function linkPlanDates(tree: PlanTree, spans: DateSpans | null): PlanStoredRow[] {
+  const out = new Map<PlanStoredRow, PlanStoredRow>();
+  for (const n of tree.nodes) {
+    const r = n.row;
+    if (!r) continue;
+    const x: PlanStoredRow = { ...r, gazar_ehleh: null, gazar_duusah: null };
+    if (n.phase === 'barilga' && spans) {
+      const sp = n.children.length ? undefined : spans.get(r.bagts, n.blok ?? r.blok, n.sub ?? 'barilga');
+      if (sp !== null) {
+        const v = sp ?? EMPTY_SPAN;
+        x.geree_ehleh = v.geree[0]; x.geree_duusah = v.geree[1];
+        x.guits_ehleh = v.guits[0]; x.guits_duusah = v.guits[1];
+      }
+    }
+    out.set(r, x);
+  }
+  return tree.nodes.filter((n) => n.row).map((n) => out.get(n.row!)!);
+}
+
 /**
  * Хуваарийн хуудсуудыг уншина — `planProgress.loadPlanCurve`-тэй ИЖИЛ уншилт (`planFields`, `persist` кэш,
  * сарын задаргаа `HUVAARI_OBYEM` хоосон бол асуухгүй).
+ * ⚠️ 2026-10-29: блокгүй хуудсыг (5.x · 6.x · 7.1 · 10) ч уншина — зөвхөн огнооны мужид (`makeDateSpans`); блокийн
+ *    төлөвлөгөөт % (`makeSchedules`) урьдын адил блоктой хуудсаар л. Гэрээний огнооны багана (`gStart`/`gEnd`) нэмж татна.
  */
-async function fetchSchedules(): Promise<{ sched: BlockSchedules; failed: string[]; failedGroups: string[] }> {
+async function fetchSchedules(): Promise<{ sched: BlockSchedules; spans: DateSpans; failed: string[]; failedGroups: string[] }> {
   const failed: string[] = [];
   const emptyP = countPlanRows().then((c) => c === 0).catch(() => false);
-  const blockPkgs = PKGS.filter((p) => p.floors != null);
-  const got = await Promise.all(blockPkgs.map(async (pkg, order): Promise<(PlanSheet & { order: number }) | null> => {
+  const got = await Promise.all(PKGS.map(async (pkg, order): Promise<(PlanSheet & { order: number; blocks: boolean }) | null> => {
+    const blocks = pkg.floors != null;
     try {
       const sc = await loadSchema(pkg);
-      if (!sc.bld.length) return null; // блокгүй хуудас — блокийн хуваарь биш
-      const obP: Promise<PkgPlan | null> = emptyP
-        .then((empty) => (empty ? null : loadPkgPlan(pkg.key).then((x) => x.plan)))
-        .catch(() => null);
-      const r = await loadRows(pkg, sc, undefined, planFields(sc), { persist: true });
+      if (!sc.bld.length) return null;
+      const obP: Promise<PkgPlan | null> = blocks
+        ? emptyP.then((empty) => (empty ? null : loadPkgPlan(pkg.key).then((x) => x.plan))).catch(() => null)
+        : Promise.resolve(null);
+      const fields = [...new Set([...planFields(sc), ...sc.gStart, ...sc.gEnd].filter((x): x is string => !!x))];
+      const r = await loadRows(pkg, sc, undefined, fields, { persist: true });
       const ob = await obP;
       if (!r.rows.some((row) => isConstructionNo(row.no))) {
         failed.push(pkg.key);
         console.warn(`[selbe] төслийн төлөвлөгөө: ${pkg.key} хуудсанд «Б.» мөр алга`);
         return null;
       }
-      return { key: pkg.key, group: pkg.group, bld: sc.bld, rows: r.rows, monthly: monthlyOf(ob), order };
+      return { key: pkg.key, group: pkg.group, bld: sc.bld, rows: r.rows, monthly: monthlyOf(ob), order, blocks };
     } catch (e) {
       failed.push(pkg.key);
       console.warn(`[selbe] төслийн төлөвлөгөө: ${pkg.key} хуваарь уншигдсангүй`, e);
       return null;
     }
   }));
-  const sheets = got.filter((x): x is PlanSheet & { order: number } => !!x).sort((a, b) => a.order - b.order);
-  const failedGroups = [...new Set(blockPkgs.filter((p) => failed.includes(p.key)).map((p) => bagtsKey(p.group)))];
+  const sheets = got.filter((x): x is PlanSheet & { order: number; blocks: boolean } => !!x).sort((a, b) => a.order - b.order);
+  const failedGroups = [...new Set(PKGS.filter((p) => failed.includes(p.key)).map((p) => bagtsKey(p.group)))];
   const ok = sheets.filter((s) => !failedGroups.includes(bagtsKey(s.group)));
-  return { sched: makeSchedules(ok), failed: failed.map((k) => `schedule:${k}`), failedGroups };
+  return {
+    sched: makeSchedules(ok.filter((s) => s.blocks)),
+    spans: makeDateSpans(ok, failedGroups),
+    failed: failed.map((k) => `schedule:${k}`),
+    failedGroups,
+  };
 }
 const loadSchedules = cached(fetchSchedules, SESSION_TTL_MS, ['BAGTS_SHEET', 'HUVAARI_OBYEM'], (v) => !v.failed.length);
 
@@ -570,34 +680,45 @@ export function landLayerIdsOf(pk: string): string[] {
 }
 
 /**
- * Түлхүүр бүрийн хувь (цэвэр). `null` = мэдэхгүй (хүрээ алга / эх унасан).
+ * Түлхүүр бүрийн хувь (цэвэр). `null` = эх УНАСАН (нэгж талбар · барилгын дүрс · багцын давхарга уншигдаагүй).
+ * ⚠️ 2026-10-29 (хэрэглэгч: «системд гарч байгаа утгыг шууд оруул»): эх БҮРЭН уншигдсан ч тухайн түлхүүрт хүрээний
+ *    дүрс АЛГА (барилгын дүрс олдохгүй блок · газрын давхаргагүй дэд бүтэц/нийгмийн объект · олон/хоосон багц) бол
+ *    түлхүүр Map-д ОРОХГҮЙ → `landOf` `undefined` → хөдөлгүүр хүснэгтэд хадгалсан `guitsetgel_huvi`-г авна
+ *    (`projectPlan.leafValue`). Урьд нь `null` тул 15 мөр «—» гардаг байв. Эх унасан үед `null` хэвээр — хуучин
+ *    хадгалсан утгаар амьд хувийг хуурахгүй.
  */
 export function landPctMap(src: LandSources, keys: Iterable<string>): Map<string, number | null> {
   const out = new Map<string, number | null>();
   const idx = src.parcels;
   for (const k of new Set(keys)) {
     if (!idx) { out.set(k, null); continue; }
-    let shapes: LandShape[] | null = null;
+    /** `null` = эх унасан, `[]` = дүрс алга */
+    let shapes: LandShape[] | null;
     if (!k.startsWith('P|')) {
-      shapes = src.footprints ? src.footprints.get(k) ?? null : null;
+      shapes = src.footprints ? src.footprints.get(k) ?? [] : null;
     } else {
       const pk = k.slice(2);
-      if (!pk || src.failedPkgs.has(pk)) shapes = null;
-      else if (landLayerIdsOf(pk).length) shapes = src.infra.get(pk) ?? null;
+      if (!pk) shapes = [];
+      else if (src.failedPkgs.has(pk)) shapes = null;
+      else if (landLayerIdsOf(pk).length) shapes = src.infra.get(pk) ?? [];
       else if (src.footprints) {
         const fs: LandShape[] = [];
         for (const [bk, f] of src.footprints) if (bk.slice(0, bk.indexOf('|')) === pk) fs.push(...f);
-        shapes = fs.length ? fs : null;
-      }
+        shapes = fs;
+      } else shapes = null;
     }
-    out.set(k, shapes && shapes.length ? landPctOf(idx, parcelHits(idx, shapes)) : null);
+    if (shapes == null) out.set(k, null);
+    else if (shapes.length) out.set(k, landPctOf(idx, parcelHits(idx, shapes)));
   }
   return out;
 }
 
-/** `land` callback — бэлдсэн хувиас; бэлдээгүй түлхүүр `null` */
+/** `land` callback — бэлдсэн хувиас; эх унасан `null`, дүрсгүй (Map-д алга) `undefined` → хадгалсан утга */
 export function landOf(pcts: ReadonlyMap<string, number | null>): NonNullable<PlanInputs['land']> {
-  return (pkg, blok) => pcts.get(landKeyOf(pkg, blok)) ?? null;
+  return (pkg, blok) => {
+    const k = landKeyOf(pkg, blok);
+    return pcts.has(k) ? pcts.get(k) ?? null : undefined;
+  };
 }
 
 type Geo = { rings?: number[][][]; paths?: number[][][]; x?: number; y?: number; points?: number[][] };
@@ -775,6 +896,11 @@ export type ProjectPlan = {
    * Хоосон биш бол тэр эхийн мөрүүд `null` — дэлгэц «бүрэн биш»-ийг ил харуулна.
    */
   failed: string[];
+  /**
+   * ⚠️ 2026-10-29: ХҮСНЭГТЭД хадгалсан мөрүүд (холбосон огноо тавихаас ӨМНӨХ) — `projectPlanSync` зөрүүг үүнээс бодно.
+   *    `tree`-ийн мөрүүд нь холбосон огноотой (`linkPlanDates`).
+   */
+  stored?: readonly PlanStoredRow[];
 };
 
 /** Хоосон төлөв (цэвэр) */
@@ -788,19 +914,23 @@ export function emptyPlan(today: number = ubToday()): ProjectPlan {
  */
 export function assemblePlan(
   rows: readonly PlanStoredRow[],
-  src: { actual: ActualSources; sched: BlockSchedules | null; land: ReadonlyMap<string, number | null> },
+  src: {
+    actual: ActualSources; sched: BlockSchedules | null; land: ReadonlyMap<string, number | null>;
+    /** ⚠️ 2026-10-29: Хуваарийн огноо (`linkPlanDates`) — өгөөгүй бол хадгалсан огноо хэвээр (тест/хуучин дуудагч) */
+    dates?: DateSpans | null;
+  },
   today: number = ubToday(),
   failed: string[] = [],
 ): ProjectPlan {
   if (!rows.length) return { ...emptyPlan(today), failed };
-  const tree = buildTree(rows);
+  const tree = src.dates === undefined ? buildTree(rows) : buildTree(linkPlanDates(buildTree(rows), src.dates));
   const inputs = makeInputs(src);
   src.sched?.prime([today, today + 7 * DAY, today - 7 * DAY]);
   const result = computePlan(tree, inputs, today);
   const months = planMonths(result);
   src.sched?.prime(months);
   const monthly = months.length ? monthlySeries(result, months, inputs) : new Map<PlanNode, (number | null)[]>();
-  return { empty: false, tree, result, inputs, months, monthly, failed };
+  return { empty: false, tree, result, inputs, months, monthly, failed, stored: rows };
 }
 
 /**
@@ -817,10 +947,11 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
     : { blocks: null, universe: null, infra: null };
   if (a.status === 'fulfilled') failed.push(...a.value.failed); else failed.push('actual');
   const sched = s.status === 'fulfilled' ? s.value.sched : null;
+  const dates = s.status === 'fulfilled' ? s.value.spans : null;
   if (s.status === 'fulfilled') failed.push(...s.value.failed); else failed.push('schedule');
   const land = l.status === 'fulfilled' ? l.value.pcts : new Map<string, number | null>();
   if (l.status === 'fulfilled') failed.push(...l.value.failed); else failed.push('land');
-  return assemblePlan(rows, { actual, sched, land }, today, failed);
+  return assemblePlan(rows, { actual, sched, land, dates }, today, failed);
 }
 
 /* ══════════════════ 5. Гэрээний АМЬД гүйцэтгэл (дашбоард · ТУХ · Нэгтгэл) ══════════════════ */
