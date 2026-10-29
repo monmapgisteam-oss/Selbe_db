@@ -11,20 +11,26 @@ import { askConfirm } from '@/lib/confirm';
 import { useAsync } from '@/lib/useAsync';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { isAuthorFor, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarAcl';
-import { PKGS } from '@/modules/sheet/bagts.pkg';
+import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { loadRows } from '@/modules/sheet/bagtsSheet';
+import { fixCyr } from '@/lib/format';
 import {
   ATT_TYPES, MA_URL, addMaAtt, attTypeLabel, chainOf, deleteMaAtt, ipcReady, isExpired, latestPerRespNo, listMaAtts, loadMa, type StageKey,
-  maAttBlob, maHasAttachments, resubmitLinks, stageLabel, stageStateLabel, verdictLabel, type AttType, type MaAtt, type MaRow, type Verdict,
+  maAttBlob, resubmitLinks, stageLabel, stageStateLabel, verdictLabel, type AttMeta, type AttType, type MaAtt, type MaRow, type Verdict,
   type ResubLink,
 } from '@/lib/ma';
 import { addFm, decideFm, fmByMa, fmVerdictFor, loadFm, FM_REASON_MAX, type FmKind, type FmRow } from '@/lib/ficMakt';
 import { entPdfBlob } from '@/lib/entDocs';
-import { loadMir, loadMirPhotos, markLabel, mirCheckLabel, mirPhotoBlob, mirState, mirsByMa, mirVerdictFor, type MirPhoto, type MirRow } from '@/lib/mir';
+import {
+  addMirAtt, deleteMirAtt, listMirAtts, loadMir, loadMirPhotos, markLabel, mirCheckLabel, mirPhotoBlob, mirState, mirsByMa, mirVerdictFor,
+  type MirPhoto, type MirRow,
+} from '@/lib/mir';
 import { maSheetHtml, mirSheetHtml, printHtml } from '@/lib/chanarSheets';
 import { syncNoots } from '@/lib/materialNoots';
 import { navDirtyLabels } from '@/lib/navGuard';
 import { AjilMatTab, NootsTab, type NootsSync } from './MaMaterial';
 import { useFocusTrap } from '@/lib/useFocusTrap';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { useAuth } from '@/components/AuthGate';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import { friendlyError, userError, Loading } from '@/components/ui';
@@ -95,6 +101,12 @@ export function Ma() {
 
   const rows = useMemo(() => (q.state === 'ready' ? latestPerRespNo(q.data) : []), [q]);
   const links = useMemo(() => resubmitLinks(rows), [rows]);
+  /* Нэг хариу бичгийн дугаартай илгээлтийн тоо — >1 бол картан дээр анхааруулна (автомат дугаар зэрэг олгогдсон · давхар илгээлт) */
+  const dups = useMemo(() => {
+    const m = new Map<string, number>();
+    if (q.state === 'ready') for (const r of q.data) if (r.respNo) m.set(r.respNo, (m.get(r.respNo) ?? 0) + 1);
+    return m;
+  }, [q]);
   const ordered = useMemo(() => {
     const out: MaRow[] = [];
     for (const r of rows) {
@@ -145,12 +157,12 @@ export function Ma() {
           {q.state === 'ready' && <span className={s.total}>{rows.length}</span>}
         </h1>
         <p className={s.heroSub}>
-          {tr('Survey123-аар бөглөгдсөн MA. Нэг MA = нэг материал, олон ажил. Батлагдаагүй (R эсвэл шийдвэргүй) MA-тай ажил эхлэхгүй.')}
+          {tr('Survey123-аар бөглөгдсөн MA. Нэг MA = нэг материал, олон ажил. Батлагдаагүй (R эсвэл шийдвэргүй) MA-тай ажилд бөглөх хуудсанд гүйцэтгэл бичигдэхгүй.')}
         </p>
         {canAttach && <WorksCsvButton />}
         {!ent && (
           <div className={s.signBox}>
-            <p className={s.note}>{tr('FIC · М-акт ба хавсралт геопорталд (gis.selbecity.mn) хадгалагддаг тул тэдгээрийг харах, оруулахад геопорталын дансаар нэвтэрнэ. MA · MIR нэвтрэлтгүйгээр харагдана.')}</p>
+            <p className={s.note}>{tr('FIC · М-акт ба хавсралт геопорталд (gis.selbecity.mn) хадгалагддаг тул тэдгээрийг харах, оруулахад геопорталын дансаар нэвтэрнэ. MA · MIR порталын нэвтрэлтээр харагдана.')}</p>
             <EntSignIn compact />
           </div>
         )}
@@ -199,7 +211,7 @@ export function Ma() {
           {ordered.map((r) => (
             <MaCard key={r.oid} r={r} mirs={mirMap ? mirMap.get(r.respNo) ?? [] : null}
               fm={fmMap ? fmMap.get(r.respNo) ?? { FIC: [], MAKT: [] } : null}
-              link={links.get(r.oid)} mirWhy={mirWhy} fmWhy={fmWhy}
+              link={links.get(r.oid)} mirWhy={mirWhy} fmWhy={fmWhy} dupN={dups.get(r.respNo) ?? 0}
               canAttach={attachFor(r.pkg)} canAuthor={fmAuthorFor(r.pkg)} canReview={fmReviewFor(r.pkg)}
               me={[user?.username ?? '', ent?.user ?? '']} onFmChanged={reloadFm}
               fmErr={ent ? fm.err : ''} />
@@ -263,6 +275,8 @@ type CardProps = {
   fmErr: string;
   link?: ResubLink;
   mirWhy: string; fmWhy: string;
+  /** Энэ дугаартай илгээлтийн тоо (`latestPerRespNo` сүүлийнхийг л харуулдаг) */
+  dupN?: number;
 };
 type PopKey = StageKey | 'IPC';
 
@@ -270,7 +284,7 @@ type PopKey = StageKey | 'IPC';
  * НЭГ MA = НЭГ БҮТЭН ПРОЦЕСС = НЭГ МӨР (2026-10-09, хэрэглэгч): зөвхөн шатны товчлуурын эгнээ —
  *   MA → MIR → FIC → М-акт → IPC. Шат дээр ДАРАХАД цонх (popup) нээгдэж тэр шатны мэдээлэл гарна.
  */
-function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged, fmErr, link, mirWhy, fmWhy }: CardProps) {
+function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged, fmErr, link, mirWhy, fmWhy, dupN = 0 }: CardProps) {
   const [pop, setPop] = useState<PopKey | null>(null);
   const chain = chainOf(r.verdict, {
     MIR: mirs ? mirVerdictFor(mirs) : undefined,
@@ -314,6 +328,11 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
       {link?.prev && (
         <p className={s.resubNote}>{tr('Дахин ирүүлсэн — өмнөх MA {0}-г буцаасан (доорх карт).', link.prev.respNo || tr('(дугааргүй)'))}</p>
       )}
+      {dupN > 1 && (
+        <p className={s.failNote} role="status">
+          {tr('«{0}» дугаартай {1} илгээлт байна — сүүлийнх нь харагдаж байна. Давхар дугаар (хоёр хүн зэрэг бөглөсөн) эсвэл засвар эсэхийг шалгана уу.', r.respNo, dupN)}
+        </p>
+      )}
       <div className={s.strip} role="group" aria-label={tr('Чанарын шатлал')}>
         {chain.map((st, i) => (
           <button key={st.key} type="button" onClick={() => setPop(st.key)}
@@ -337,7 +356,7 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
       {pop && (
         <Modal title={title(pop)} onClose={() => setPop(null)}>
           {pop === 'MA' ? <MaPop r={r} canAttach={canAttach} />
-            : pop === 'MIR' ? <MirList mirs={mirs} />
+            : pop === 'MIR' ? <MirList mirs={mirs} canAttach={canAttach} />
               : pop === 'FIC' || pop === 'MAKT' ? (
                 <FmColumn kind={pop === 'FIC' ? 'FIC' : 'MAKT'} maNo={r.respNo}
                   state={unk.has(pop) ? 'next' : chain[pop === 'FIC' ? 2 : 3].state}
@@ -594,6 +613,44 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
   );
 }
 
+/** Багцын ажлын нэрс (`des` → «№ · нэр») — works.csv-тэй ижил эх (бөглөх хуудас); багц тус бүр нэг удаа */
+const workNames = new Map<string, Promise<Map<number, string>>>();
+function loadWorkNames(pkgKey: string): Promise<Map<number, string>> {
+  let p = workNames.get(pkgKey);
+  if (!p) {
+    p = (async () => {
+      const pkg = PKGS.find((x) => x.key === pkgKey);
+      const m = new Map<number, string>();
+      if (!pkg) return m;
+      const sc = await loadSchema(pkg);
+      const { rows } = await loadRows(pkg, sc);
+      for (const x of rows) {
+        if (x.group || x.des == null || m.has(x.des)) continue;
+        m.set(x.des, `${x.no ? `${x.no} · ` : ''}${fixCyr(x.work || '')}`.trim());
+      }
+      return m;
+    })();
+    p.catch(() => { if (workNames.get(pkgKey) === p) workNames.delete(pkgKey); });
+    workNames.set(pkgKey, p);
+  }
+  return p;
+}
+
+function WorkChips({ pkg, works }: { pkg: string; works: readonly string[] }) {
+  const q = useAsync(() => loadWorkNames(pkg), [pkg]);
+  const nameOf = (w: string): string => {
+    if (q.state !== 'ready') return w;
+    const des = Number(w.slice(w.indexOf(':') + 1));
+    return q.data.get(des) || w;
+  };
+  return (
+    <>
+      <div className={s.chips}>{works.map((w) => <span key={w} className={s.chip} title={w}>{nameOf(w)}</span>)}</div>
+      {q.state === 'error' && <p className={s.note}>{tr('Ажлын нэр уншигдсангүй ({0}) — түлхүүрээр харуулав.', userError(q.error))}</p>}
+    </>
+  );
+}
+
 function MaDetail({ r, canAttach }: { r: MaRow; canAttach: boolean }) {
   return (
     <div className={s.detail}>
@@ -611,23 +668,34 @@ function MaDetail({ r, canAttach }: { r: MaRow; canAttach: boolean }) {
       <div className={s.block}>
         <h3 className={s.h3}>{tr('Хамаарах ажлууд ({0})', r.works.length)}</h3>
         {r.works.length ? (
-          <div className={s.chips}>{r.works.map((w) => <span key={w} className={s.chip}>{w}</span>)}</div>
+          <WorkChips pkg={r.pkg} works={r.works} />
         ) : <p className={s.note}>{tr('Ажил сонгогдоогүй — энэ MA ямар ч ажилд хамаарахгүй.')}</p>}
       </div>
-      <MaAttachments oid={r.oid} canAttach={canAttach} />
+      <DocsPanel subject={{ kind: 'ma', ma: r }} canAttach={canAttach} />
     </div>
   );
 }
 
 /**
- * ХАВСРАЛТ — жагсаалт · нээх · нэмэх · устгах.
+ * БАРИМТ (гэрчилгээ · лаб дүн · зураг) — геопорталын тусдаа item (`chanarDocs`): жагсаалт · нээх · нэмэх · устгах.
+ * MA ба MIR хоёуланд нэг самбар; Enterprise сешнгүй бол жагсаалт ч уншигдахгүй (item хайлт нэвтрэлт шаардана).
  */
-function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) {
+type DocSubject = { kind: 'ma'; ma: MaRow } | { kind: 'mir'; mir: MirRow };
+function DocsPanel({ subject, canAttach }: { subject: DocSubject; canAttach: boolean }) {
   const sess = useEntSession();
   const [list, setList] = useState<MaAtt[] | null>(null);
-  const [hasAtt, setHasAtt] = useState<boolean | null>(null);
+  const [warn, setWarn] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const subjectId = subject.kind === 'ma' ? `ma:${subject.ma.oid}` : `mir:${subject.mir.oid}`;
+  const subjRef = useRef(subject);
+  useSyncRef(subjRef, subject);
+  const api = useMemo(() => ({
+    list: () => { const sj = subjRef.current; return sj.kind === 'ma' ? listMaAtts(sj.ma) : listMirAtts(sj.mir); },
+    add: (f: File, meta: AttMeta) => { const sj = subjRef.current; return sj.kind === 'ma' ? addMaAtt(sj.ma, f, meta) : addMirAtt(sj.mir, f, meta); },
+    remove: (a: MaAtt) => { const sj = subjRef.current; return sj.kind === 'ma' ? deleteMaAtt(sj.ma, a) : deleteMirAtt(sj.mir, a); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `subjectId` нь эзэн солигдсон дохио (функцууд ref-ээр уншина)
+  }), [subjectId]);
   const [type, setType] = useState<AttType>('conf');
   const [title, setTitle] = useState('');
   const [no, setNo] = useState('');
@@ -640,41 +708,45 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
   const reload = useCallback(async () => {
     setErr('');
     try {
-      const h = await maHasAttachments();
-      setList(h ? await listMaAtts(oid) : []); setHasAtt(h);
+      setList(await api.list());
     } catch (e) {
       setList([]); setErr(userError(e));
     }
-  }, [oid]);
+  }, [api]);
   /* Анхны ачаалт — setState зөвхөн promise-ийн дотор (`react-hooks/set-state-in-effect`); дараагийн
-     шинэчлэл үйлдлийн дараа `reload`-оор */
+     шинэчлэл үйлдлийн дараа `reload`-оор. Сешнгүй бол хайлт боломжгүй — хоосон жагсаалт, тайлбар доор. */
   useEffect(() => {
     let alive = true;
-    maHasAttachments()
-      .then(async (h) => { const l = h ? await listMaAtts(oid) : []; if (alive) { setList(l); setHasAtt(h); } })
+    if (!sess) { Promise.resolve().then(() => { if (alive) setList([]); }); return () => { alive = false; }; }
+    api.list()
+      .then((l) => { if (alive) setList(l); })
       .catch((e) => { if (alive) { setList([]); setErr(userError(e)); } });
     return () => { alive = false; };
-  }, [oid]);
+  }, [api, sess]);
 
   const certLike = type === 'conf' || type === 'lab' || type === 'qual';
 
   const upload = async () => {
     const files = fileRef.current?.files ? Array.from(fileRef.current.files) : [];
     if (!files.length) { setErr(tr('Файл сонгоно уу.')); return; }
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setWarn('');
     const errs: string[] = [];
-    let okN = 0;
+    const warns: string[] = [];
+    const added: MaAtt[] = [];
     for (const f of files) {
       try {
-        await addMaAtt(oid, f, { type, title: title || undefined, no: certLike ? no : undefined, std: certLike ? std : undefined, valid: type === 'conf' || type === 'qual' ? valid : undefined });
-        okN += 1;
+        const r = await api.add(f, { type, title: title || undefined, no: certLike ? no : undefined, std: certLike ? std : undefined, valid: type === 'conf' || type === 'qual' ? valid : undefined });
+        if (r.warn) warns.push(r.warn);
+        added.push(r.doc);
       } catch (e) { errs.push(`${f.name}: ${userError(e)}`); }
     }
-    if (okN > 0) {
+    if (warns.length) setWarn(warns.join('\n'));
+    if (added.length) {
       if (fileRef.current) fileRef.current.value = '';
       setTitle(''); setNo(''); setStd(''); setValid(''); setPicked(0);
+      /* Порталын хайлтын индекс хэдэн секунд хоцордог — шинэ item-ийг шууд жагсаалтад нэмнэ (дахин хайхгүй) */
+      setList((l) => [...added, ...(l ?? []).filter((x) => !added.some((a) => a.id === x.id))]);
     }
-    await reload();
     if (errs.length) setErr(errs.join('\n'));
     setBusy(false);
   };
@@ -682,13 +754,14 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
   const remove = async (a: MaAtt) => {
     if (!(await askConfirm(tr('«{0}» хавсралтыг устгах уу?', a.name), { danger: true, ok: tr('Устгах') }))) return;
     setBusy(true); setErr('');
-    try { await deleteMaAtt(oid, a.id); await reload(); } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
+    /* Устгасныг жагсаалтаас шууд хасна — индексийн хоцрогдолд устсан item хайлтад хэсэг үлддэг */
+    try { await api.remove(a); setList((l) => (l ?? []).filter((x) => x.id !== a.id)); } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
   };
 
   const openAtt = async (a: MaAtt) => {
     const w = window.open('', '_blank');
     try {
-      const b = await maAttBlob(oid, a.id);
+      const b = await maAttBlob(a);
       const url = URL.createObjectURL(b);
       if (w) w.location.href = url; else window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -700,9 +773,14 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
 
   return (
     <div className={s.block}>
-      <h3 className={s.h3}>{tr('Хавсралт')}{list ? ` (${list.length})` : ''}</h3>
+      <h3 className={s.h3}>
+        {tr('Хавсралт')}{list ? ` (${list.length})` : ''}
+        {sess && list && (
+          <button type="button" className={s.retryBtn} disabled={busy} onClick={() => { void reload(); }} title={tr('Жагсаалтыг порталаас дахин уншина')}>{tr('Шинэчлэх')}</button>
+        )}
+      </h3>
       {list == null ? <Loading /> : list.length === 0 ? (
-        <p className={s.note}>{tr('Хавсралт алга.')}</p>
+        <p className={s.note}>{sess ? tr('Хавсралт алга.') : tr('Хавсралт геопорталын item тул нэвтэрсний дараа харагдана.')}</p>
       ) : (
         <ul className={s.attList}>
           {list.map((a) => {
@@ -714,7 +792,7 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
                   <span>{a.meta.title || a.name}</span>
                 </button>
                 <span className={s.attMeta}>
-                  {[a.meta.no && `№ ${a.meta.no}`, a.meta.std, kb(a.size)].filter(Boolean).join(' · ')}
+                  {[a.meta.no && `№ ${a.meta.no}`, a.meta.std, kb(a.size), a.owner, day(a.modified || null)].filter(Boolean).join(' · ')}
                   {a.meta.valid && (
                     <span className={exp ? s.expired : s.valid}>
                       {exp ? tr('хугацаа дууссан {0}', a.meta.valid) : tr('хүчинтэй {0} хүртэл', a.meta.valid)}
@@ -731,9 +809,7 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
       )}
 
       {canAttach && (
-        hasAtt === false ? (
-          <p className={s.failNote} title={tr('Админд: геопортал дахь давхаргын item → Settings → «Enable attachments»')}>{tr('Энэ MA давхаргад хавсралт нэмэх боломж идэвхгүй — админд мэдэгдэнэ үү.')}</p>
-        ) : !sess ? (
+        !sess ? (
           <div className={s.signBox}>
             <p className={s.note}>{tr('Хавсралт нэмэхийн тулд Enterprise-д нэвтэрнэ.')}</p>
             <EntSignIn compact />
@@ -764,6 +840,7 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
           </div>
         )
       )}
+      {warn && <p className={s.failNote} role="status">{warn}</p>}
       {err && <p className={s.errNote} role="alert">{err}</p>}
     </div>
   );
@@ -772,19 +849,19 @@ function MaAttachments({ oid, canAttach }: { oid: number; canAttach: boolean }) 
 /**
  * MIR ЖАГСААЛТ — MA-гийн доор (2-р шат). MIR бүр = талбайд ирсэн нэг ачааны үзлэг.
  */
-function MirList({ mirs }: { mirs: MirRow[] | null }) {
+function MirList({ mirs, canAttach }: { mirs: MirRow[] | null; canAttach: boolean }) {
   if (mirs == null) return null;
   return (
     <div className={s.mirBox}>
       <span className={s.cardNo}>{tr('{0} ачаа', mirs.length)}</span>
       {mirs.length === 0 ? (
         <p className={s.note}>{tr('Энэ MA-д MIR бүртгэгдээгүй — материал талбайд ирэхэд Survey123-аар бөглөнө.')}</p>
-      ) : mirs.map((m) => <MirItem key={m.oid} m={m} />)}
+      ) : mirs.map((m) => <MirItem key={m.oid} m={m} canAttach={canAttach} />)}
     </div>
   );
 }
 
-function MirItem({ m }: { m: MirRow }) {
+function MirItem({ m, canAttach }: { m: MirRow; canAttach: boolean }) {
   const st = mirState(m);
   const sheet = async () => {
     const photos = await loadMirPhotos(m.rowId);
@@ -794,7 +871,7 @@ function MirItem({ m }: { m: MirRow }) {
     }
     return mirSheetHtml(m, logoUrl(), list);
   };
-  return <DocSwitch info={<MirInfo m={m} st={st} />} sheet={sheet} />;
+  return <DocSwitch info={<MirInfo m={m} st={st} canAttach={canAttach} />} sheet={sheet} />;
 }
 
 /* objectURL-уудыг хуудаснаас гарахад чөлөөлнө (цонх бүрийн iframe/print цонх хэрэглэсний дараа) */
@@ -802,7 +879,7 @@ const liveUrls = new Set<string>();
 const trackUrl = (u: string) => { liveUrls.add(u); return u; };
 if (typeof window !== 'undefined') window.addEventListener('pagehide', () => { for (const u of liveUrls) URL.revokeObjectURL(u); liveUrls.clear(); });
 
-function MirInfo({ m, st }: { m: MirRow; st: string }) {
+function MirInfo({ m, st, canAttach }: { m: MirRow; st: string; canAttach: boolean }) {
   return (
     <div className={`${s.mir} ${s[`st_${st}`] ?? ''}`}>
       <div className={s.mirHead}>
@@ -828,6 +905,7 @@ function MirInfo({ m, st }: { m: MirRow; st: string }) {
         {[m.conQ && tr('Гүйцэтгэгчийн чанарын инженер: {0}', m.conQ), m.cliSup && tr('Хяналтын инженер: {0}', m.cliSup), m.cliQ && tr('Захиалагчийн чанарын инженер: {0}', m.cliQ)].filter(Boolean).join(' · ')}
       </p>
       <MirPhotos rowId={m.rowId} />
+      <DocsPanel subject={{ kind: 'mir', mir: m }} canAttach={canAttach} />
     </div>
   );
 }

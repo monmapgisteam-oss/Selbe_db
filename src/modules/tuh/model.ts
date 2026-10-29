@@ -10,7 +10,8 @@ import { paidShareOf } from '@/lib/paidShare';
 import { planPctAt, planCoverage, coverageOk, type PlanCurve } from '@/lib/planProgress';
 import type { BlockHistory } from '@/lib/blockProgress';
 import type { CompanyDay, WorkforceDetail } from '@/lib/ceo/workforce';
-import { MS_STATUS, latest as latestRev, type MsDoc } from '@/lib/chanarMs';
+import { MS_STATUS } from '@/lib/chanarMs';
+import type { TuhDoc } from './tuhDocs';
 import { lagOf, pkgMonthsMap, physLatest, projectLagNow, type FinData, type MonthPt } from '@/modules/Finance';
 import { physNow, progMonthsOf } from '@/modules/pkgShared';
 import type { ProgPt } from '@/modules/PkgProg';
@@ -81,7 +82,7 @@ export type TuhRow = {
   workerDays: { key: string; value: number | null }[];
   ma: DocCount | null;
   mir: DocCount | null;
-  docs: MsDoc[];
+  docs: TuhDoc[];
   ev: ReturnType<typeof earned>;
   /**
    * «Гүйцэтгэлийн явц» графикийн цэгүүд — PkgProg-ийн ЯГ ижил (`progMonthsOf`):
@@ -171,7 +172,7 @@ export function commissionText(m: Pick<TuhModel, 'loading'>, r: Pick<TuhRow, 'co
   return lz(m, 'commission')(date(r.commission));
 }
 
-const countDocs = (docs: MsDoc[]): DocCount | null => {
+const countDocs = (docs: TuhDoc[]): DocCount | null => {
   if (!docs.length) return null;
   const c: DocCount = { total: docs.length, approved: 0, review: 0, returned: 0, draft: 0 };
   for (const d of docs) {
@@ -199,7 +200,8 @@ export function buildModel(input: {
   /** Хагас огноотой багцууд (`CommissionDates.partial`) — `null`/өгөөгүй = мэдэгдэхгүй */
   commissionPartial?: ReadonlyMap<string, CommissionPartial> | null;
   workforce: WorkforceDetail | null;
-  docs: MsDoc[] | null;
+  /** Survey123 MA · MIR (`tuhDocs.loadTuhDocs`) — `null` = ирээгүй/унасан */
+  docs: TuhDoc[] | null;
   /** «Багцын хамаарал»-ын холбоосууд (багцын түлхүүрээр) — `null` = ирээгүй/унасан */
   deps?: readonly PkgDep[] | null;
   contractedNote: string;
@@ -292,8 +294,8 @@ export function buildModel(input: {
       : [];
 
     const mine = own ? (docs ?? []).filter((d) => bagtsKey(d.bagts) === p.pkgKey) : [];
-    const ma = countDocs(latestRev(mine.filter((d) => d.kind === 'MA')));
-    const mir = countDocs(latestRev(mine.filter((d) => d.kind === 'MIR')));
+    const ma = countDocs(mine.filter((d) => d.kind === 'MA'));
+    const mir = countDocs(mine.filter((d) => d.kind === 'MIR'));
 
     const prog = progMonthsOf(months ?? null, series);
     const allMonths = own ? (monthsBy.get(p.pkgKey) ?? null) : null;

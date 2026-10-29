@@ -1,6 +1,7 @@
 /**
  * MA ХАВСРАЛТЫН БАГЦЫН ХҮРЭЭ (2026-10-19, аудит №3) — `ma.maAttachScopeDeny`.
- *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/maAttachScope.check.mjs
+ *   node --experimental-transform-types --import ./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/maAttachScope.check.mjs
+ *   (`test-users.mjs` — кодын super; үүнгүй «хатуу super» шалгуур унана)
  */
 import assert from 'node:assert/strict';
 

@@ -56,11 +56,13 @@ export function useCellEdit(p: {
   pastePrev?: PastePrev | null;
   setPastePrev?: (v: PastePrev | null) => void;
   okLock?: (oid: number, b: number) => boolean;
+  /** MA хаалга — `des` → шалтгаан (`FillNew.maBlock`): тэр мөрд бичихгүй (дарах · Enter/Tab · буулгалт · commit бүгд) */
+  maBlock?: ReadonlyMap<number, string>;
 }) {
   const {
     sc, fillMode, pending, setPending, edit, setEdit, setErr, warn, done, reviewInc, revert, mineRef, touchMine,
     locked, noEdit, canPerf, perfWhy, busy, editing, rowsAll, vis, hidden, nBld, restoring,
-    pastePrev = null, setPastePrev, okLock,
+    pastePrev = null, setPastePrev, okLock, maBlock,
   } = p;
   /**
    * БУУЛГАЛТЫН УРЬДЧИЛСАН ХАРАГДАЦ (2026-10-01, хэрэглэгч: бүгдийг зас).
@@ -95,7 +97,8 @@ export function useCellEdit(p: {
   const volMode = (r: { group: boolean; vol?: number | null }, b: number) =>
     !r.group && (fillMode === "pct" || !!sc?.obyem[b]) && !synNoVol(sc, r);
   const isOkLocked = (r: { oid: number }, b: number) => !!okLock?.(r.oid, b);
-  const writable = (r: SheetRow, b: number) => volMode(r, b) && !isOkLocked(r, b);
+  const maBlocked = (r: { des: number | null }): string | undefined => (r.des != null ? maBlock?.get(r.des) : undefined);
+  const writable = (r: SheetRow, b: number) => volMode(r, b) && !isOkLocked(r, b) && !maBlocked(r);
 
   /**
    * ХУВЬ ГОРИМД БИЧИХ БОЛОМЖТОЙ ЮУ.
@@ -341,6 +344,8 @@ export function useCellEdit(p: {
   };
   const commit = (r: SheetRow, b: number, raw: string): boolean => {
     if (isOkLocked(r, b)) { warn(RO.okLocked); setEdit(null); return false; }
+    const mb = maBlocked(r);
+    if (mb) { warn(mb); setEdit(null); return false; }
     const ok = commitInner(r, b, raw);
     if (ok || r.group) setEdit(null);
     return ok;

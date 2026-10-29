@@ -533,7 +533,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       {/* ── Материал ── */}
       <Section id="supply" title={tr('Материал: 3-6-9 төлөвлөгөө, MA/MIR, түүвэр')}
         empty={!matRows.length && !m.loading.has('docs')}
-        lead={tr('MA (материалын зөвшөөрөл) ба MIR (материал хүлээн авах үзлэг) — «Чанар» хэсгийн баримтаас.')}>
+        lead={tr('MA (материал баталгаажуулалт) ба MIR (материалын үзлэг) — Survey123-аар бөглөгдсөн, «Материал баталгаажуулалт» хэсгийнх.')}>
         <div className={s.tableWrap}>
           <table className={s.table}>
             <thead>

@@ -20,6 +20,9 @@ const attrs = (o = {}) => ({
   const r = rowOf(attrs());
   assert.deepEqual(r.works, ['b1_9f:12', 'b1_9f:15']);
   assert.deepEqual(rowOf(attrs({ works: 'b1_12f:5,b1_12f:14, b1_12f:5' })).works, ['b1_12f:5', 'b1_12f:14'], 'Survey123 таслалаар');
+  /* 2026-10-29: шинэ `works_all` (25000) тэргүүнд; хоосон бол хуучин `works` */
+  assert.deepEqual(rowOf(attrs({ works_all: 'b2_9f:7,b2_9f:9', works: 'b1_9f:12' })).works, ['b2_9f:7', 'b2_9f:9'], 'works_all тэргүүнд');
+  assert.deepEqual(rowOf(attrs({ works_all: '  ', works: 'b1_9f:12' })).works, ['b1_9f:12'], 'works_all хоосон → хуучин works');
   assert.deepEqual(r.docItems, ['scope', 'conf']);
   assert.equal(r.verdict, 'A');
   assert.equal(r.pkgLabel, 'Багц 1 · 9 давхар');

@@ -120,14 +120,21 @@ export function entSignOut(): void {
 
 /** `access`: порталын хуваалцалт ('private' · 'shared' · 'org' · 'public'); `null` = тодорхойгүй. */
 export type EntPdf = { id: string; title: string; owner: string; modified: number; size: number | null; access: string | null; pending?: boolean;
-  tags?: string[] };
+  tags?: string[];
+  /** Item-ийн тайлбар (`description`) — MA · MIR баримтын мета энд (`chanarDocs`) */
+  description?: string;
+  /** Item төрөл (`PDF` · `Image`) ба файлын нэр */
+  type?: string; name?: string };
 
-type ItemJson = { id: string; title?: string; owner?: string; modified?: number; size?: number; access?: string; tags?: string[] };
+type ItemJson = { id: string; title?: string; owner?: string; modified?: number; size?: number; access?: string; tags?: string[];
+  description?: string | null; type?: string; name?: string };
 const toPdf = (x: ItemJson): EntPdf => ({
   id: x.id, title: x.title || x.id, owner: x.owner ?? '', modified: x.modified ?? 0,
   size: typeof x.size === 'number' && x.size >= 0 ? x.size : null,
   access: x.access ?? null,
   tags: Array.isArray(x.tags) ? x.tags.filter((t): t is string => typeof t === 'string') : [],
+  description: typeof x.description === 'string' ? x.description : '',
+  type: x.type ?? '', name: x.name ?? '',
 });
 
 /** Хайлтын нэг хуудас (порталын `num`-ийн дээд хязгаар 100) */
@@ -139,11 +146,16 @@ export const ENT_LIST_MAX = 2000;
  * Энэ системийн тагтай, хэрэглэгчид харагдах бүх PDF item (сүүлд өөрчлөгдсөн нь эхэнд).
  */
 export async function entListPdfs(): Promise<EntPdf[]> {
+  return entSearch(`type:"PDF" AND tags:"${ENT_TAG}"`);
+}
+
+/** Порталын item хайлт — хуудаслалттай (`q` порталын хайлтын хэллэг), сүүлд өөрчлөгдсөн нь эхэнд, ≤ `ENT_LIST_MAX` */
+export async function entSearch(q: string): Promise<EntPdf[]> {
   const s = need();
   const out: EntPdf[] = [];
   for (let start = 1; out.length < ENT_LIST_MAX;) {
     const j = await post<{ results?: ItemJson[]; nextStart?: number }>('search', new URLSearchParams({
-      q: `type:"PDF" AND tags:"${ENT_TAG}"`, sortField: 'modified', sortOrder: 'desc',
+      q, sortField: 'modified', sortOrder: 'desc',
       start: String(start), num: String(SEARCH_NUM), f: 'json', token: s.token,
     }));
     const page = j.results ?? [];
@@ -196,17 +208,38 @@ async function folderId(s: Sess, owner: string, title: string): Promise<string> 
 }
 
 export async function entUploadPdf(file: File, title?: string, extraTags: readonly string[] = [], folder = ''): Promise<{ item: EntPdf; warn?: string }> {
-  const s = need();
   if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) throw new Error(tr('Зөвхөн PDF файл оруулна.'));
+  return entUploadDoc(file, { title, tags: extraTags, folder });
+}
+
+/** Item төрөл — PDF эсвэл зураг (JPG · PNG); бусад файл оруулахгүй */
+export function entItemTypeOf(file: Pick<File, 'name' | 'type'>): 'PDF' | 'Image' | null {
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return 'PDF';
+  if (/^image\/(jpeg|png)$/.test(file.type) || /\.(jpe?g|png)$/i.test(file.name)) return 'Image';
+  return null;
+}
+
+/**
+ * PDF · зургийг шинэ item болгон оруулж БАЙГУУЛЛАГАД хуваалцана (2026-10-29: MA · MIR баримт ч энэ замаар —
+ * `chanarDocs`). `description` — item-ийн тайлбар (мета энд). Буцаах: шинэ item + (хуваалцаж чадаагүй бол) анхааруулга.
+ */
+export async function entUploadDoc(file: File, o: { title?: string; tags?: readonly string[]; folder?: string; description?: string } = {}):
+  Promise<{ item: EntPdf; warn?: string }> {
+  const s = need();
+  const kind = entItemTypeOf(file);
+  if (!kind) throw new Error(tr('Зөвхөн PDF, JPG, PNG файл хавсаргана.'));
   const owner = await exactUser(s);
-  const ttl = (title ?? '').trim() || file.name.replace(/\.pdf$/i, '');
+  const title = o.title;
+  const folder = o.folder ?? '';
+  const ttl = (title ?? '').trim() || file.name.replace(/\.(pdf|jpe?g|png)$/i, '');
   const fd = new FormData();
   fd.append('f', 'json');
   fd.append('token', s.token);
-  fd.append('type', 'PDF');
+  fd.append('type', kind);
   fd.append('title', ttl);
-  fd.append('tags', [ENT_TAG, ...extraTags].join(','));
+  fd.append('tags', [ENT_TAG, ...(o.tags ?? [])].join(','));
   fd.append('typeKeywords', ENT_TAG);
+  if (o.description) fd.append('description', o.description);
   fd.append('file', file, file.name);
   const fid = folder.trim() ? await folderId(s, owner, folder) : '';
   const j = await post<{ success?: boolean; id?: string }>(`content/users/${encodeURIComponent(owner)}${fid ? `/${encodeURIComponent(fid)}` : ''}/addItem`, fd);
@@ -234,6 +267,11 @@ export async function entUploadPdf(file: File, title?: string, extraTags: readon
 
 /** Item-ийн PDF файлыг токентой (POST) татаж Blob болгоно — `<iframe>`-д objectURL-ээр харуулна */
 export async function entPdfBlob(id: string): Promise<Blob> {
+  return new Blob([await entItemBlob(id)], { type: 'application/pdf' });
+}
+
+/** Item-ийн файл (PDF · зураг) — серверийн `content-type`-тай Blob; токен POST биеэр */
+export async function entItemBlob(id: string): Promise<Blob> {
   const s = need();
   const body = new URLSearchParams({ token: s.token });
   await entStamp(body);
@@ -252,7 +290,7 @@ export async function entPdfBlob(id: string): Promise<Blob> {
     if (j.error?.code === 498 || j.error?.code === 499) { sess = null; emit(); }
     throw new Error(j.error?.message || tr('PDF татагдсангүй.'));
   }
-  return new Blob([await r.blob()], { type: 'application/pdf' });
+  return r.blob();
 }
 
 /** Порталын item хуудас (порталд нэвтэрсэн хөтчид нээгдэнэ) — токенгүй */
@@ -266,7 +304,7 @@ export async function entDeletePdf(id: string, owner: string): Promise<void> {
   const s = need();
   const j = await post<{ success?: boolean }>(`content/users/${encodeURIComponent(owner)}/items/${encodeURIComponent(id)}/delete`,
     new URLSearchParams({ f: 'json', token: s.token }));
-  if (!j.success) throw new Error(tr('PDF устгагдсангүй.'));
+  if (!j.success) throw new Error(tr('Файл (item) устгагдсангүй.'));
 }
 
 /**

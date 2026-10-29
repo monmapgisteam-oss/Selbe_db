@@ -22,6 +22,7 @@ import { loadFinData } from '@/modules/Finance';
 import { friendlyError, Loading } from '@/components/ui';
 import { loadCommissionDates } from './tuh/tuhSchedule';
 import { buildModel, type TuhSrc } from './tuh/model';
+import { loadTuhDocs } from './tuh/tuhDocs';
 import type { LiveMap } from '@/lib/tuhData';
 
 const loadLiveProgressLazy = (): Promise<LiveMap> => import('@/lib/projectPlanInputs').then((m) => m.loadLiveProgress());
@@ -51,6 +52,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   const budgetQ = useAsync(loadBudget, []);
   const depQ = useAsync(loadPkgDeps, []);
   const liveQ = useAsync(loadLiveProgressLazy, []);
+  const docsQ = useAsync(loadTuhDocs, []);
 
   const [sel, setSel] = useState<string | null>(() => readParam('tuh'));
   useEffect(() => { writeParams({ tuh: sel }, { push: true }); }, [sel]);
@@ -78,7 +80,9 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (budgetQ.state === 'error') failed.push(tr('Гэрээний нийт дүн'));
     if (depQ.state === 'error') failed.push(tr('Багцын хамаарал'));
     if (liveQ.state === 'error') failed.push(tr('Гэрээний амьд гүйцэтгэл'));
+    if (docsQ.state === 'error') failed.push(tr('MA · MIR (Survey123)'));
     const loading = new Set<TuhSrc>();
+    if (docsQ.state === 'loading') loading.add('docs');
     if (planQ.state === 'loading') loading.add('plan');
     if (cfPlanQ.state === 'loading') loading.add('cfPlan');
     if (histQ.state === 'loading') loading.add('hist');
@@ -103,7 +107,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       commission: comQ.state === 'ready' ? comQ.data.dates : null,
       commissionPartial: comQ.state === 'ready' ? comQ.data.partial : null,
       workforce: wf,
-      docs: null,
+      docs: docsQ.state === 'ready' ? docsQ.data : null,
       deps: depQ.state === 'ready' ? depQ.data.deps : null,
       live: liveQ.state === 'ready' ? liveQ.data : null,
       contractedNote: CONTRACTED,
@@ -112,7 +116,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       loading,
       planError: planQ.state === 'error',
     });
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ, liveQ]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ, liveQ, docsQ]);
 
   /*
    * «ДАХИН ОРОЛДОХ» — УНАСАН эх сурвалжуудыг л дахин татна (2026-10-01, «хэрэглэгч:
@@ -129,7 +133,8 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (bq.state === 'error') bq.retry?.();
     if (budgetQ.state === 'error') budgetQ.retry?.();
     if (depQ.state === 'error') depQ.retry?.();
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ]);
+    if (docsQ.state === 'error') docsQ.retry?.();
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ, docsQ]);
 
   const row = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
   const open = useCallback((k: string) => setSel(k), []);

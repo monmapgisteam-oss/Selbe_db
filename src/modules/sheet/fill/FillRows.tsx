@@ -25,7 +25,7 @@ export function FillRows({
   backChgDates = EMPTY_KEYS,
   locked, noEdit, say, canPerf, perfWhy, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
   inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
-  restoring = false, remainHint, pastePrev = null, extra = [], compact = false, clearLocked,
+  restoring = false, remainHint, pastePrev = null, extra = [], compact = false, clearLocked, maBlock,
 }: {
   vis: number[]; winFrom: number; winTo: number; rowsAll: SheetRow[]; calc: Calc; addedOids: Set<number>;
   collapsed: Set<number>; toggle: (oid: number) => void;
@@ -51,6 +51,8 @@ export function FillRows({
   extra?: ExtraCol[];
   compact?: boolean;
   clearLocked?: CellT['clearLocked'];
+  /** Буцаасан (R) MA-тай ажлууд (`des` → шалтгаан) — тэр мөрд гүйцэтгэл бичихгүй (`lib/ma.maGateOf`) */
+  maBlock?: ReadonlyMap<number, string>;
 }) {
   return (
     <>
@@ -237,6 +239,8 @@ export function FillRows({
                             tr('Хяналтын харагдацад гүйцэтгэл засах боломжгүй — бөглөх горимоор нээнэ үү.'),
                           );
                         if (!canPerf) return say((perfWhy ?? RO.noPerf));
+                        const mb = r.des != null ? maBlock?.get(r.des) : undefined;
+                        if (mb) return say(mb);
                         if (okLock) {
                           if (dirty && clearLocked && editing && !busy && !restoring) {
                             void askConfirm(tr('Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — илгээгээгүй утгыг буцаах уу?'), { ok: tr('Утгыг арилгах') })

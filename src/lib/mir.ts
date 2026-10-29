@@ -2,7 +2,9 @@ import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
 import { CHANAR_MIR_SVC } from '@/lib/services/env';
 import { entSession, entStamp } from '@/lib/entDocs';
-import { splitMulti, type StageState, type Verdict } from '@/lib/ma';
+import { maAttachScopeDeny, requireAttachCap, splitMulti, type StageState, type Verdict } from '@/lib/ma';
+import { addDoc, deleteDoc, docKey, listDocs, type AttMeta, type ChanarDoc } from '@/lib/chanarDocs';
+import { AUTH } from '@/lib/services';
 
 /**
  * MIR — МАТЕРИАЛЫН ҮЗЛЭГ ШАЛГАЛТ (2026-10-09). Чанарын 2-р шат. Survey123 → Enterprise hosted:
@@ -176,3 +178,31 @@ export async function mirPhotoBlob(p: MirPhoto): Promise<Blob> {
 
 /** MIR-ийн шатны төлөв (картын жагсаалтад) */
 export const mirState = (r: MirRow): StageState => (r.verdict === 'A' || r.verdict === 'AN' ? 'done' : r.verdict === 'R' ? 'rejected' : 'pending');
+
+/* ═══════════════ БАРИМТ — геопорталын тусдаа item (`chanarDocs`, 2026-10-29) ═══════════════ */
+
+export type MirAtt = ChanarDoc;
+export const MIR_DOC_FOLDER = 'Survey-MIR';
+/** Холбоосын таг — `uniquerowid` (хоосон бол objectid) */
+export const mirDocKey = (m: Pick<MirRow, 'rowId' | 'oid'>): string => docKey('mir', m.rowId || `oid-${m.oid}`);
+
+export const listMirAtts = (m: Pick<MirRow, 'rowId' | 'oid'>): Promise<MirAtt[]> => listDocs(mirDocKey(m));
+
+/** Бичилтийн өмнө: MIR-ийн багцад чанарын баримтын эрхтэй эсэх (`maAttachScopeDeny` — MA-тай ижил дүрэм) */
+async function requireMirScope(m: Pick<MirRow, 'pkg'>): Promise<void> {
+  if (!(typeof window !== 'undefined' && !!AUTH.appId)) return;
+  const deny = await maAttachScopeDeny(m.pkg);
+  if (deny) throw new Error(deny);
+}
+
+export async function addMirAtt(m: Pick<MirRow, 'rowId' | 'oid' | 'pkg'>, file: File, meta: AttMeta): Promise<{ doc: MirAtt; warn?: string }> {
+  requireAttachCap();
+  await requireMirScope(m);
+  return addDoc({ key: mirDocKey(m), folder: MIR_DOC_FOLDER }, file, meta);
+}
+
+export async function deleteMirAtt(m: Pick<MirRow, 'pkg'>, att: MirAtt): Promise<void> {
+  requireAttachCap();
+  await requireMirScope(m);
+  await deleteDoc(att);
+}
