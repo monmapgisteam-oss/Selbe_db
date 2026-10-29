@@ -19,7 +19,7 @@ import assert from 'node:assert/strict';
 import {
   monthKey, monthStart, monthsOf, keepMonths, sumMonths, balanced,
   planPctFromMonths, dkeyOf, toPkgPlan, TURUL_PLAN, buildEdits, indexOids,
-  toPkgRes, keepRes, sumRes, sameMonthRes, sarDateOnly, sarKeyOf,
+  toPkgRes, keepRes, sumRes, sameMonthRes, sarDateOnly, sarKeyOf, splitByPct, scheduleByMoney, remapMonths, orderByDeps,
 } from './huvaariObyem.ts';
 
 const d = (iso) => Date.parse(`${iso}T00:00:00Z`);
@@ -378,3 +378,62 @@ console.log('huvaariObyem.check: ok — HUVAARI_OBYEM кэш хүчингүй �
   assert.ok(/const rest = e\.deletes\.filter\(\(x\) => !dupSet\.has\(x\)\);/.test(body), 'applyPlanEdits: dups давхар устгагдана');
 }
 console.log('huvaariObyem.check: ok — 500+ дараалал dups → adds → updates → deletes ✓');
+
+/* ── Бүлгээр төлөвлөх: хэрэглэгчийн сарын хувиар хуваах ── */
+{
+  const out = splitByPct(100, new Map([['2026-10', 30], ['2026-11', 30], ['2026-12', 40]]));
+  assert.deepEqual([...out], [['2026-10', 30], ['2026-11', 30], ['2026-12', 40]], 'splitByPct: энгийн хуваалт');
+  const odd = splitByPct(10, new Map([['2026-01', 33.33], ['2026-02', 33.33], ['2026-03', 33.34]]));
+  assert.ok(balanced(odd, 10), 'splitByPct: бөөрөнхийллийн үлдэгдэл сүүлийн сард — нийлбэр тэнцэнэ');
+  const zeroTail = splitByPct(7, new Map([['2026-01', 50], ['2026-02', 50], ['2026-03', 0]]));
+  assert.equal(zeroTail.get('2026-03'), 0, 'splitByPct: 0% сар 0 хэвээр (үлдэгдэл эерэг сард)');
+  assert.ok(balanced(zeroTail, 7), 'splitByPct: 0% сартай ч тэнцэнэ');
+}
+console.log('huvaariObyem.check: ok — splitByPct ✓');
+
+/* ── Бүлгийн сарын мөнгөөр дараалуулах (хэрэглэгчийн жишээ) ── */
+{
+  const sp = span('2026-10-01', '2026-12-31');
+  const pct = new Map([['2026-10', 30], ['2026-11', 30], ['2026-12', 40]]);
+  const day = (ms) => new Date(ms).toISOString().slice(0, 10);
+  /* Бүлэг 1000: 10-р сар 300 — 120 + 150 + 3-р ажлын 30 (80-аас); үлдсэн 50 нь 11-р сард */
+  const r = scheduleByMoney(sp, pct, [{ money: 120, vol: 12 }, { money: 150, vol: 15 }, { money: 80, vol: 800 }, { money: 650, vol: 65 }]);
+  assert.equal(day(r[0].span.start), '2026-10-01');
+  assert.equal(day(r[0].span.end), '2026-10-31', '1-р ажил 10-р сард');
+  assert.equal(day(r[1].span.end), '2026-10-31', '2-р ажил 10-р сард');
+  assert.equal(day(r[2].span.start), '2026-10-01', '3-р ажил 10-р сард эхэлнэ');
+  assert.equal(day(r[2].span.end), '2026-11-30', '3-р ажлын үлдэгдэл 11-р сард');
+  assert.deepEqual([...r[2].months], [['2026-10', 300], ['2026-11', 500]], 'обьём = мөнгө ÷ нэгж үнэ (30 сая → 300, 50 сая → 500)');
+  assert.equal(day(r[3].span.start), '2026-11-01', '4-р ажил 11-р сараас');
+  assert.equal(day(r[3].span.end), '2026-12-31', '4-р ажил 12-р сар хүртэл');
+  assert.ok(balanced(r[3].months, 65), '4-р ажлын сарын нийлбэр тэнцэнэ');
+  const z = scheduleByMoney(sp, pct, [{ money: 10, vol: 5 }, { money: null, vol: 7 }, { money: 10, vol: null }]);
+  assert.equal(z[2].months, null, 'обьёмгүй ажилд сар бичихгүй');
+  assert.ok(balanced(z[1].months, 7), 'мөнгөгүй ажлын обьём бүтнээрээ');
+  const zero = scheduleByMoney(sp, new Map([['2026-10', 0], ['2026-11', 100], ['2026-12', 0]]), [{ money: 1, vol: 10 }]);
+  assert.equal(day(zero[0].span.start), '2026-11-01', '0% сар алгасагдана');
+  assert.equal(day(zero[0].span.end), '2026-11-30', '0% сар алгасагдана');
+  const clip = scheduleByMoney(span('2026-10-15', '2026-11-10'), new Map([['2026-10', 50], ['2026-11', 50]]), [{ money: 1, vol: 2 }, { money: 1, vol: 2 }]);
+  assert.equal(day(clip[0].span.start), '2026-10-15', 'бүлгийн эхлэлээр хавчина');
+  assert.equal(day(clip[1].span.end), '2026-11-10', 'бүлгийн төгсгөлөөр хавчина');
+}
+
+/* ── Уялдаагаар дараалуулах ── */
+{
+  assert.deepEqual(orderByDeps([{ code: 1, deps: [] }, { code: 2, deps: [] }, { code: 3, deps: [] }]), [0, 1, 2], 'уялдаагүй — мөрийн дараалал');
+  assert.deepEqual(orderByDeps([{ code: 1, deps: [3] }, { code: 2, deps: [] }, { code: 3, deps: [] }]), [1, 2, 0], 'урдах ажил эхэнд');
+  assert.deepEqual(orderByDeps([{ code: 1, deps: [99] }, { code: 2, deps: [] }]), [0, 1], 'жагсаалтаас гадуурх код үл тоогдоно');
+  assert.deepEqual(orderByDeps([{ code: 1, deps: [2] }, { code: 2, deps: [1] }, { code: 3, deps: [] }]), [2, 0, 1], 'дугуй хамаарал — мөрийн дарааллаар');
+}
+
+/* ── Чирэхэд сарын обьём шинэ муж руу ── */
+{
+  const m = new Map([['2026-10', 31], ['2026-11', 30]]);
+  const moved = remapMonths(m, span('2026-10-01', '2026-11-30'), span('2026-11-01', '2026-12-30'));
+  assert.ok(balanced(moved, 61), 'зөөхөд нийлбэр хадгалагдана');
+  assert.ok(!moved.has('2026-10'), 'шинэ мужаас гадуурх сар алга');
+  const grown = remapMonths(m, span('2026-10-01', '2026-11-30'), span('2026-10-01', '2027-01-31'));
+  assert.ok(balanced(grown, 61), 'сунгахад нийлбэр хадгалагдана');
+  assert.equal(grown.size, 4, 'сунгасан мужийн бүх сар');
+}
+console.log('huvaariObyem.check: ok — scheduleByMoney · orderByDeps · remapMonths ✓');

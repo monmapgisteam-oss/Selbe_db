@@ -10,6 +10,34 @@ import type { PlanRow, Span, Status } from '@/lib/plan';
 import { balanced, monthsOf, type MonthRes } from '@/lib/huvaariObyem';
 import type { PlanKind } from './types';
 
+/**
+ * БҮЛГИЙН ШУУД АЖЛУУД (2026-10-29, хэрэглэгч: «хамгийн жижиг бүлгээр төлөвлөнө, том бүлгүүд тэдгээрээс хамааралтай
+ * автоматаар бодогдоно») — бүлгийн доорх навч ажлуудаас ДЭД БҮЛГИЙН дотор ороогүй нь (`plan`-ийн индекс). Батлагдаагүй
+ * нэмэлт мөр (сөрөг oid) ороогүй. Хоосон бол бүлэг зөвхөн дэд бүлгүүдтэй (том бүлэг) — бүлгээр төлөвлөхгүй, хураангуй л.
+ */
+export function directWorks(plan: readonly PlanRow[], at: number): number[] {
+  const out: number[] = [];
+  const d0 = plan[at]?.depth;
+  if (d0 == null) return out;
+  let sub = Infinity;
+  for (let k = at + 1; k < plan.length && plan[k].depth > d0; k++) {
+    const r = plan[k];
+    if (r.depth > sub) continue;
+    sub = Infinity;
+    if (r.group) { sub = r.depth; continue; }
+    if (r.oid >= 0) out.push(k);
+  }
+  return out;
+}
+
+/** Бүлэгт дэд бүлэг бий эсэх (том бүлэг) */
+export function hasSubGroup(plan: readonly PlanRow[], at: number): boolean {
+  const d0 = plan[at]?.depth;
+  if (d0 == null) return false;
+  for (let k = at + 1; k < plan.length && plan[k].depth > d0; k++) if (plan[k].group) return true;
+  return false;
+}
+
 /** Ажил+блокийн ноорогийн түлхүүр */
 export const obKey = (des: number, blok: string) => `${des}|${blok}`;
 

@@ -35,7 +35,7 @@ import {
   type Dep,
 } from '@/lib/deps';
 import {
-  loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf,
+  loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf, orderByDeps, scheduleByMoney,
   obyemResFields, type MonthRes, type PkgPlan, type PkgRes,
 } from '@/lib/huvaariObyem';
 import {
@@ -55,7 +55,7 @@ import h from './huvaari.module.css';
 import {
   MAX_DAYS, PL_ROW, type ADraft, type Draft, type Drag, type HuvaariReview, type PlanKind, type ResDraft, type Zoom,
 } from './huvaari/types';
-import {
+import { directWorks, hasSubGroup,
   aggExtra, dayToMs, groupSplits, hasDatedLeaf, inScope, obKey, obyemOutsideSpan, remapOids, rowSpan, sameMonths, sameRes, sameSpan, short, stText, toPlanRows,
   unbalancedBlocks, unbalancedObyem, workName,
 } from './huvaari/util';
@@ -601,6 +601,8 @@ export function Huvaari({
    * Popup хуанли нээгдсэн мөрийн OID.
    */
   const [modal, setModal] = useState<number | null>(null);
+  /** Бүлгийн хоосон хэсэгт чирж тавьсан шинэ муж — бүлгийн цонхны огнооны анхны утга (бүлгээр төлөвлөх, 2026-10-29) */
+  const [grpRange, setGrpRange] = useState<{ oid: number; span: Span } | null>(null);
   const [modalFrom, setModalFrom] = useState<number | null>(null);
 
   /**
@@ -2007,6 +2009,80 @@ export function Huvaari({
     setNote(tr('Бүлгийн {0} ажил {1} хоногоор шилжлээ.', num(ov.size), days > 0 ? `+${days}` : String(days)));
   }, [busy, locked, canEdit, plan, n, kind, applyChanges, setErr, setNote]);
 
+  /** Мөрийн мөнгөн дүн — `мөнгөн_дүн`, байхгүй бол обьём × нэгж үнэ; `null` = мэдэгдэхгүй (бүлгээр төлөвлөх) */
+  const moneyOf = useCallback((k: number): number | null => {
+    const r = rowsAll[plan[k]?.i ?? -1];
+    const m = r?.money ?? (r?.vol != null && r?.unit != null ? r.vol * r.unit : null);
+    return m != null && Number.isFinite(m) ? m : null;
+  }, [rowsAll, plan]);
+  /**
+   * БҮЛГИЙН ТӨЛӨВЛӨЛТИЙН ТООЦОО — тараалт (`planGroup`) ба цонхны урьдчилан харалт НЭГ эх. Бүлгийн доорх навч ажлууд
+   * (батлагдаагүй нэмэлт мөр — сөрөг oid — алгасна) уялдаагаар (`orderByDeps`, уялдаагүй нь мөрийн дарааллаар) эрэмбэлэгдэж,
+   * `scheduleByMoney`-ээр сарын мөнгөнд багтана. `null` = бүлэг биш.
+   */
+  const groupSchedule = useCallback((oid: number, sp: Span, pct: Map<string, number>) => {
+    const at = plan.findIndex((x) => x.oid === oid);
+    if (at < 0 || !plan[at].group) return null;
+    /* Зөвхөн ШУУД ажлууд — дэд бүлгийн ажлууд өөрийн бүлгээсээ төлөвлөгдөнө (том бүлэг тэднийг дарахгүй) */
+    const leaves = directWorks(plan, at);
+    if (!leaves.length) return null;
+    const order = orderByDeps(leaves.map((k) => ({ code: plan[k].des, deps: plan[k].deps.map((d) => d.code) }))).map((i) => leaves[i]);
+    const sched = scheduleByMoney(sp, pct, order.map((k) => ({ money: moneyOf(k), vol: plan[k].vol })));
+    return order.map((k, i) => ({ k, ...sched[i] }));
+  }, [plan, moneyOf]);
+  /**
+   * БҮЛГЭЭР ТӨЛӨВЛӨХ (2026-10-29, хэрэглэгч: «ажил ажлаар биш агуулах бүлгээр төлөвлөөд сар бүрд 30% тавихад бүлгийн
+   * мөнгөн дүнгээс бодож доторх ажлууд автомат төлөвлөлттэй болно»; 2026-10-29 дахин: сарын хувиар тэр сарын мөнгийг бодож
+   * ажлуудыг дарааллаар нь багтаана, багтаагүй хэсэг дараагийн сард, обьём = мөнгө ÷ нэгж үнэ) — `groupSchedule`-ийн үр
+   * дүнг сонгосон блокууд бүгдэд ижил тавина. Огноо нь сарын мөнгөөс тул уялдааны гинж (`propagate`) хэрэглэхгүй (дараалал
+   * нь уялдаагаар аль хэдийн). Нэг `applyChanges` тул нэг Ctrl+Z-ээр буцна. Обьёмгүй ажилд зөвхөн огноо.
+   */
+  const planGroup = useCallback((oid: number, sp: Span, pct: Map<string, number>, blks: number[]) => {
+    if (busy || locked || !canEdit || kind !== 'plan' || !sc) return;
+    const sched = groupSchedule(oid, sp, pct);
+    if (!sched) return;
+    const bs = blks.filter((b) => b >= 0 && b < n);
+    const ov = new Map<number, (Span | null)[]>();
+    const jobs: { des: number; blok: string; months: Map<string, number>; sp: Span }[] = [];
+    sched.forEach(({ k, span: wsp, months }) => {
+      const r = plan[k];
+      const next = r.spans.slice();
+      while (next.length < n) next.push(null);
+      for (const b of bs) next[b] = { start: wsp.start, end: wsp.end };
+      ov.set(k, next);
+      if (obState !== 'ok' || r.des == null || !months) return;
+      for (const b of bs) {
+        const blok = sc.bld[b];
+        if (blok) jobs.push({ des: r.des!, blok, months, sp: wsp });
+      }
+    });
+    if (!ov.size) { setNote(tr('Бүлэгт төлөвлөх ажил алга.')); return; }
+    setErr('');
+    const undoKeys = jobs.map((j) => obKey(j.des, j.blok));
+    applyChanges(ov, undefined, undoKeys);
+    if (jobs.length) {
+      for (const j of jobs) {
+        const key = obKey(j.des, j.blok);
+        const f0 = obFullRef.current.get(key);
+        if (!f0) continue;
+        const inSpan = new Set(monthsOf(j.sp));
+        const f = new Map([...f0].filter(([k]) => !inSpan.has(k)));
+        for (const [k, v] of j.months) f.set(k, v);
+        obFullRef.current.set(key, f);
+      }
+      setObDraft((m) => {
+        const next = new Map(m);
+        for (const j of jobs) {
+          const key = obKey(j.des, j.blok);
+          if (sameMonths(j.months, obPlan.get(j.des)?.get(j.blok))) next.delete(key);
+          else next.set(key, new Map(j.months));
+        }
+        return next;
+      });
+    }
+    setNote(tr('Бүлгийн {0} ажилд {1} блокт огноо ба сарын обьём тавигдлаа.', num(ov.size), num(bs.length)));
+  }, [busy, locked, canEdit, kind, sc, plan, n, obState, obPlan, groupSchedule, applyChanges, setErr, setNote, setObDraft]);
+
   /* ── Чирэлт ── */
 
   /* ══════════════ ХУВААЛЦСАН НООРОГ — ArcGIS дээр (2026-09-23; `useSharedDraft`) ══════════════ */
@@ -2053,6 +2129,7 @@ export function Huvaari({
     setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef,
     chain: kind === 'plan',
     scrollEl: () => scrollRef.current,
+    onGroupRange: (oid, span) => { setGrpRange({ oid, span }); setModal(oid); },
   });
   const popUndo = () => setUndoSnap((s) => (s.u.length ? { u: s.u.slice(0, -1), r: s.r } : s));
   const onCancel = () => {
@@ -2068,6 +2145,7 @@ export function Huvaari({
     if (oid != null) scrollToOid.current = { oid, blk };
   };
   const undoDragOnClose = () => {
+    setGrpRange(null);
     const had = undoRef.current != null && !busy && !locked;
     const oid = modal;
     undoSkipRef.current = true;
@@ -2076,6 +2154,7 @@ export function Huvaari({
     allBack(oid);
   };
   const keepDragClose = () => {
+    setGrpRange(null);
     const oid = modal;
     keepDrag();
     allBack(oid);
@@ -3775,6 +3854,37 @@ export function Huvaari({
     [modalRow, sc, kind, obDraft, obPlan],
   );
   /**
+   * БҮЛГИЙН ЦОНХНЫ МӨНГӨ — шууд ажилтай (жижиг) бүлэгт шууд ажлуудын, том бүлэгт (зөвхөн дэд бүлэгтэй) доторх бүх ажлын
+   * мөнгөн дүнгийн нийлбэр. Сарын мөнгө (`curve`) — тэдгээр ажлын идэвхтэй блок дахь сарын обьём × нэгж үнэ (мөнгө ÷ обьём):
+   * том бүлгийн хураангуй ба жижиг бүлгийн хувийн анхны утга. `null` = бүлэг биш.
+   */
+  const modalGroup = useMemo(() => {
+    if (!modalRow?.group) return null;
+    const at = plan.findIndex((x) => x.oid === modalRow.oid);
+    if (at < 0) return null;
+    const direct = directWorks(plan, at);
+    const sub = hasSubGroup(plan, at);
+    const ks: number[] = [];
+    if (direct.length) ks.push(...direct);
+    else for (let k = at + 1; k < plan.length && plan[k].depth > modalRow.depth; k++) if (!plan[k].group) ks.push(k);
+    let money = 0;
+    let any = false;
+    const curve = new Map<string, number>();
+    const blok = sc?.bld[blk] ?? '';
+    for (const k of ks) {
+      const m = moneyOf(k);
+      if (m == null) continue;
+      money += m;
+      any = true;
+      const r = plan[k];
+      if (!blok || r.des == null || r.vol == null || !(r.vol > 0)) continue;
+      const per = m / r.vol;
+      for (const [mk, v] of obOf(r.des, blok)) curve.set(mk, (curve.get(mk) ?? 0) + v * per);
+    }
+    return { money: any ? money : null, curve, direct: direct.length > 0, sub };
+  }, [modalRow, plan, moneyOf, obOf, sc, blk]);
+  const modalGroupMoney = modalGroup?.money ?? null;
+  /**
    * Popup-д зориулсан ЭЦЭГ БҮЛЭГ — хамгийн ойрын ДЭЭД бүлгийн мөр.
    */
   const modalPar = (() => {
@@ -5139,7 +5249,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                       /* «БҮХ БЛОК» — зөвхөн харах эгнээ (`allLane`, 2026-10-04); энгийн горим ХЭВЭЭР доор */
                       if (allOn) return allLane(d, k);
                       const r = d.r;
-                      const sp = r.group ? (grpNoSpan ? null : effAt(r.i)) : r.spans[blk];
+                      const ghost = r.group && drag?.oid === r.oid ? drag.ghost ?? null : null;
+                      const sp = ghost ?? (r.group ? (grpNoSpan ? null : effAt(r.i)) : r.spans[blk]);
                       const st = sp ? statusOf(sp, r.act?.[blk], now) : 'none';
                       /* Уялдааны зөрчил — шаардлагаас ӨМНӨ эхэлсэн зурвасыг
                          улаан хүрээгээр тэмдэглэнэ (хориглохгүй) */
@@ -5208,7 +5319,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                               aria-label={`${fixCyr(r.work) || r.no} · ${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)}`}
                               title={`${fixCyr(r.work)}\n${sc.bld[blk]} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', spanDays(sp))}) · ${stText(st)}`}
                             >
-                              {!r.group && (
+                              {(!r.group || kind === 'plan') && (
                                 <span className={h.plGrip} onPointerDown={(e) => onDown(e, r, 'l')} />
                               )}
                               {!half && spanDays(sp) * px > 100 ? (
@@ -5239,7 +5350,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                               ) : spanDays(sp) * px > 40 ? (
                                 <span className={h.plBarLab}>{spanDays(sp)}{tr('х')}</span>
                               ) : null}
-                              {!r.group && (
+                              {(!r.group || kind === 'plan') && (
                                 <span className={`${h.plGrip} ${h.plGripR}`}
                                   onPointerDown={(e) => onDown(e, r, 'r')} />
                               )}
@@ -5354,6 +5465,16 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           dragged={dragOpen === modalRow.oid}
           onKeep={keepDragClose}
           onShiftGroup={modalRow.group ? (d, bs) => shiftGroup(modalRow.oid, d, bs) : undefined}
+          groupMoney={modalGroupMoney}
+          initSpan={grpRange?.oid === modalRow.oid ? grpRange.span : null}
+          groupPreview={modalRow.group && kind === 'plan' && obState === 'ok'
+            ? (sp, pct) => (groupSchedule(modalRow.oid, sp, pct) ?? []).map((x) => ({
+              no: plan[x.k].no, work: plan[x.k].work, money: moneyOf(x.k), span: x.span, months: x.months,
+            }))
+            : undefined}
+          onPlanGroup={modalRow.group && kind === 'plan' && obState === 'ok' && modalGroup?.direct ? (sp, pct, bs) => { forgetDrag(); planGroup(modalRow.oid, sp, pct, bs); } : undefined}
+          groupCurve={modalGroup?.curve ?? null}
+          groupSub={!!modalGroup?.sub && !modalGroup?.direct}
           onUndo={markUndo}
           returnFocus={modalFrom === modalRow.oid
             ? () => document.querySelector<HTMLElement>(`[data-oid="${modalRow.oid}"] .${h.rowMain}`)

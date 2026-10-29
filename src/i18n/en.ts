@@ -5007,7 +5007,6 @@ const en: Record<string, string> = {
   "Засварын горимоос гарсны дараа полигон зурна": "Draw a polygon after leaving edit mode",
   "хоосон сар: {0} — ажил хийхгүй сард 0 бичнэ үү": "empty months: {0} — enter 0 for months with no work",
   "Хоосон сар бий — ажил хийхгүй сард 0 бичнэ үү": "Some months are empty — enter 0 for months with no work",
-  "Сарын обьём бүлэгт биш — доторх ажил тус бүрийн цонхонд сараар хуваана.": "Monthly volume is not set on a group — split it by month in each task inside it.",
   "Огнооны өөрчлөлт алга": "No date changes",
   "«{0}» нэрээр устгагдсан аккаунтын засах эрх ({1}) үлдсэн байна. Эдгээрийг арилгаад нэмэх үү?": "Edit rights of a deleted account ({1}) remain under the name “{0}”. Remove them and add the account?",
   "«{0}» устгагдсан аккаунт — өөрчлөлт хадгалагдсангүй.": "“{0}” is a deleted account — the change was not saved.",
@@ -7573,7 +7572,21 @@ const en: Record<string, string> = {
   "Сүүлийн багана: хугацаанд ({0} → {1}) олгосон дүн.": "Last column: amount paid in the period ({0} → {1}).",
   "Орон сууцны барилга угсралт — төлөвлөгөө ба бодит": "Housing construction — plan and actual",
   "Сараар — хэмжилттэй сарууд, багц бүр": "By month — measured months, per package",
-  "Сар бүрийн олголт, ₮ — сүүлийн {0} сар": "Monthly payments, ₮ — last {0} months"
+  "Сар бүрийн олголт, ₮ — сүүлийн {0} сар": "Monthly payments, ₮ — last {0} months",
+  "Бүлгийн доторх ажлуудын огноо ба сарын обьём {0} блокт дарагдана. Үргэлжлүүлэх үү?": "The dates and monthly volumes of the works in this group will be overwritten in {0} blocks. Continue?",
+  "Тараах": "Distribute",
+  "Бүлгээр төлөвлөх": "Plan by group",
+  "мөнгөн дүн": "amount",
+  "Дээрх эхлэх, дуусах огноо ба ажилтай сар бүрийн хувийг (нийлбэр 100%, хоосон сар 0%) оруулаад «Доторх ажилд тараах» дарна. Бүлгийн мөнгөн дүнгийн тэр хувь тухайн сард гүйцэтгэгдэнэ: доторх ажлууд мөрийн дарааллаар мөнгөн дүнгийнхээ хувиар энэ муруйг дүүргэж, тус бүр өөрийн эхлэх, дуусах огноо ба сарын обьёмтой болно.": "Enter the start and end dates above and a percentage for each working month (total 100%, empty months count as 0%), then press «Distribute to works». That share of the group amount is performed in each month: the works fill this curve in row order by their share of the amount, each getting its own start and end dates and monthly volumes.",
+  "Хувь (%)": "Percent (%)",
+  "Хувийн нийлбэр 100% байх ёстой (хоосон сар 0%)": "Percentages must total 100% (empty months count as 0%)",
+  "Доторх ажилд тараах": "Distribute to works",
+  "Бүлэгт төлөвлөх ажил алга.": "No works to plan in this group.",
+  "Бүлгийн {0} ажилд {1} блокт огноо ба сарын обьём тавигдлаа.": "Dates and monthly volumes set for {0} works in the group across {1} blocks.",
+  "Бүлгийн хураангуй": "Group summary",
+  "Том бүлэг гараар төлөвлөгдөхгүй — огноо, сарын хувь ба мөнгө нь доторх жижиг бүлгүүдээс автоматаар бодогдоно. Жижиг бүлгээ нээж төлөвлөнө үү.": "A large group is not planned by hand — its dates, monthly percentages and amounts are computed from the smaller groups inside it. Open a smaller group to plan it.",
+  "Доторх ажлууд сарын обьёмоор төлөвлөгдөөгүй байна.": "The works inside are not planned by monthly volume yet.",
+  "Сарын обьём бүлэгт биш — доторх ажил тус бүрийн цонхонд сараар хуваана.": "Monthly volume is not set on a group — split it by month in each task inside it.",
 };
 
 export default en;
