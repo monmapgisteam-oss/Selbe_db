@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  useState, useEffect, useMemo, useRef, useCallback, useId, type MouseEvent,
+  useState, useEffect, useMemo, useRef, useCallback, useId, type MouseEvent, type ReactNode,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
@@ -56,6 +56,11 @@ import {
 } from '@/lib/monthlyMoney';
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
 import type { PlanNode, PlanValues, BlockStatus } from '@/lib/projectPlan';
+import {
+  MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
+  importCutoff, pkgOptions, savePlanValue, type FillFilter, type PlanEditKey, type PlanFilter,
+} from '@/lib/planEdit';
+import { AddRowsPanel, EDIT_LABEL, PlanEditCell } from '@/modules/PlanEntry';
 import f from './finance.module.css';
 
 /**
@@ -1189,6 +1194,7 @@ function ProjectPlanView(props: {
   months: Row[];
   monthsError: boolean;
   canSwitch: boolean;
+  canEdit: boolean;
   onSaved: () => void;
 }) {
   const q = useAsync<ProjectPlan>(loadProjectPlanLazy, []);
@@ -1207,13 +1213,15 @@ function ProjectPlanView(props: {
 }
 
 export function ProjectPlanTable({
-  plan, works, months, monthsError, canSwitch, onSaved,
+  plan, works, months, monthsError, canSwitch, canEdit = false, onSaved,
 }: {
   plan: ProjectPlan;
   works: Row[];
   months: Row[];
   monthsError: boolean;
   canSwitch: boolean;
+  /** Гараар оруулах утга засах, мөр нэмэх/устгах (`finEdit`) */
+  canEdit?: boolean;
   onSaved: () => void;
 }) {
   const { tree, result } = plan;
@@ -1242,6 +1250,18 @@ export function ProjectPlanTable({
   const setLevel = (v: number) => { setLvl(v); setTog(new Map()); };
   const toggle = (n: PlanNode) => setTog((m) => new Map(m).set(n.index, !isOpen(n)));
 
+  /**
+   * ХАРАГДАЦ ба ШҮҮЛТ (2026-10-30): «Бүрэн хүснэгт» — Excel-ийн бүх багана; «Мэдээлэл оруулах» — зөвхөн гараар
+   * оруулах утгууд. Шүүлт идэвхтэй бол тохирсон мөр + өвөг нь (эвхэлтийг үл тоомсорлоно).
+   */
+  const [mode, setMode] = useState<'full' | 'entry'>('full');
+  const [flt, setFlt] = useState<PlanFilter>(NO_FILTER);
+  const [adding, setAdding] = useState<PlanNode | null>(null);
+  const cutoff = useMemo(() => importCutoff(plan.stored ?? tree.nodes.map((n) => n.row!)), [plan.stored, tree]);
+  const pkgOpts = useMemo(() => pkgOptions(tree), [tree]);
+  const filtering = filterActive(flt);
+  const keep = useMemo(() => (filtering ? filterPlan(tree, flt) : null), [filtering, tree, flt]);
+
   const vis: PlanNode[] = [];
   const walk = (n: PlanNode) => {
     for (const c of n.children) {
@@ -1249,7 +1269,8 @@ export function ProjectPlanTable({
       if (c.children.length && isOpen(c)) walk(c);
     }
   };
-  walk(tree.root);
+  if (keep) vis.push(...tree.nodes.filter((n) => keep.has(n)));
+  else walk(tree.root);
 
   /* ── Сарын мөнгөний эх — мөнгөний мөр (`cashflow_id`) бүрд ── */
   const F = CASHFLOW_NEW.fields;
@@ -1370,6 +1391,96 @@ export function ProjectPlanTable({
     );
   });
 
+  /* ── Гараар оруулах утга · мөр нэмэх/устгах ── */
+  const onSaveVal = async (n: PlanNode, k: PlanEditKey, v: unknown): Promise<boolean> => {
+    setErr(null);
+    setMsg(null);
+    try {
+      await savePlanValue(n, k, v);
+      setMsg(tr('Хадгаллаа: {0} · {1}', n.code, EDIT_LABEL[k]()));
+      return true;
+    } catch (e) {
+      setErr(userError(e));
+      return false;
+    }
+  };
+  const doDelete = async (n: PlanNode) => {
+    const name = String(n.row?.ajil_uilchilgee ?? '').trim();
+    setErr(null);
+    setMsg(null);
+    if (!(await askConfirm(tr('«{0} {1}» мөрийг устгах уу? Устгасныг буцаах боломжгүй.', n.code, name), { danger: true, ok: tr('Устгах') }))) return;
+    try {
+      await deletePlanRow(n, cutoff);
+      setMsg(tr('Мөр устгалаа: {0}', n.code));
+    } catch (e) {
+      setErr(userError(e));
+    }
+  };
+
+  const nameCell = (n: PlanNode) => {
+    const kids = n.children.length > 0;
+    const open = kids && isOpen(n);
+    return (
+      <td className={`${f.ppFz2} ${f.ppName}`} title={n.row?.ajil_uilchilgee ?? undefined}>
+        <span className={f.ppIndent} style={{ paddingLeft: (n.depth - 1) * 14 }}>
+          {kids && !keep ? (
+            <button
+              type="button"
+              className={f.ppCaret}
+              aria-expanded={open}
+              aria-label={open ? tr('Хумих') : tr('Дэлгэх')}
+              onClick={() => toggle(n)}
+            >{open ? '−' : '+'}</button>
+          ) : <i className={f.ppCaretSp} aria-hidden />}
+          {n.row?.ajil_uilchilgee || '—'}
+        </span>
+      </td>
+    );
+  };
+
+  /** Баганын шүүлтийн мөр — Багц · Ажлын нэр бүх харагдацад, утгын (хоосон/утгатай) шүүлт «Мэдээлэл оруулах»-д */
+  const fillSel = (k: PlanEditKey) => (
+    <th key={k} className={f.ppHd}>
+      <select
+        className={f.ppFltIn}
+        aria-label={tr('{0} — шүүх', EDIT_LABEL[k]())}
+        value={flt.fill[k] ?? 'all'}
+        onChange={(e) => setFlt((x) => ({ ...x, fill: { ...x.fill, [k]: e.target.value as FillFilter } }))}
+      >
+        <option value="all">{tr('Бүгд')}</option>
+        <option value="empty">{tr('Хоосон')}</option>
+        <option value="filled">{tr('Утгатай')}</option>
+      </select>
+    </th>
+  );
+  const filterRow = (rest: ReactNode) => (
+    <tr className={f.ppFlt}>
+      <th className={`${f.ppFz0} ${f.ppNo}`} />
+      <th className={`${f.ppFz1} ${f.ppPkg}`}>
+        <select
+          className={f.ppFltIn}
+          aria-label={tr('Багцаар шүүх')}
+          value={flt.pkg}
+          onChange={(e) => setFlt((x) => ({ ...x, pkg: e.target.value }))}
+        >
+          <option value="">{tr('Бүгд')}</option>
+          {pkgOpts.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+        </select>
+      </th>
+      <th className={`${f.ppFz2} ${f.ppName}`}>
+        <input
+          type="search"
+          className={f.ppFltIn}
+          placeholder={tr('Ажлын нэр эсвэл Д/Д')}
+          aria-label={tr('Ажлын нэрээр шүүх')}
+          value={flt.name}
+          onChange={(e) => setFlt((x) => ({ ...x, name: e.target.value }))}
+        />
+      </th>
+      {rest}
+    </tr>
+  );
+
   const rootV = result.values.get(tree.root);
   return (
     <>
@@ -1378,6 +1489,23 @@ export function ProjectPlanTable({
         <span>{tr('{0}-ний байдлаар · {1} мөр', date(result.today), num(tree.nodes.length))}</span>
       </header>
       <div className={f.ppBar}>
+        <div className={f.tabs} role="group" aria-label={tr('Харагдац')}>
+          <button
+            type="button"
+            aria-pressed={mode === 'full'}
+            className={`${f.tab} ${mode === 'full' ? f.tabOn : ''}`}
+            onClick={() => setMode('full')}
+          >{tr('Бүрэн хүснэгт')}</button>
+          <button
+            type="button"
+            aria-pressed={mode === 'entry'}
+            className={`${f.tab} ${mode === 'entry' ? f.tabOn : ''}`}
+            onClick={() => setMode('entry')}
+          >{tr('Мэдээлэл оруулах')}</button>
+        </div>
+        {filtering && (
+          <button type="button" className={f.tab} onClick={() => setFlt(NO_FILTER)}>{tr('Шүүлт арилгах')}</button>
+        )}
         <span className={f.ppBarLbl}>{tr('Түвшин')}</span>
         <div className={f.tabs} role="group" aria-label={tr('Түвшин')}>
           {Array.from({ length: maxDepth }, (_, i) => i + 1).map((v) => (
@@ -1406,6 +1534,76 @@ export function ProjectPlanTable({
           <ul>{tree.issues.slice(0, 200).map((s, i) => <li key={i}>{s}</li>)}</ul>
         </details>
       )}
+      {adding && canEdit && (
+        <AddRowsPanel
+          key={adding.index}
+          tree={tree}
+          parent={adding}
+          onClose={() => setAdding(null)}
+          onDone={(k) => { setAdding(null); setErr(null); setMsg(tr('{0} мөр нэмлээ', k)); }}
+        />
+      )}
+      {keep && !vis.length && <p role="status" className={f.ppWarn}>{tr('Шүүлтэд тохирох мөр алга')}</p>}
+      {mode === 'entry' ? (
+      <div className={f.ppWrap}>
+        <table className={`${f.tbl} ${f.ppTbl}`}>
+          <thead>
+            <tr>
+              <th className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
+              <th className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
+              <th className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>
+              <th className={f.ppHd}>{tr('Хэсэгт эзлэх')}</th>
+              {PLAN_EDIT_KEYS.map((k) => <th key={k} className={f.ppHd}>{EDIT_LABEL[k]()}</th>)}
+              {canEdit && <th className={f.ppHd}>{tr('Үйлдэл')}</th>}
+            </tr>
+            {filterRow(<>
+              <th />
+              {PLAN_EDIT_KEYS.map(fillSel)}
+              {canEdit && <th />}
+            </>)}
+          </thead>
+          <tbody>
+            {vis.map((n) => {
+              const r = n.row!;
+              const v = result.values.get(n);
+              const why = canEdit && MANUAL_PHASES.has(n.phase) ? addWhy(tree, n) : null;
+              return (
+                <tr key={n.index} className={rowCls(n)}>
+                  <td className={`${f.ppFz0} ${f.ppNo}`}>{ddOf.get(n)}</td>
+                  <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
+                  {nameCell(n)}
+                  <td className={f.cellNum}>{pct(v?.F ?? null, 2)}</td>
+                  {PLAN_EDIT_KEYS.map((k) => (
+                    <PlanEditCell
+                      key={k} n={n} k={k} canEdit={canEdit} onSave={onSaveVal} onError={setErr}
+                      value={k === 'pct' ? v?.S ?? null : r[PLAN_EDIT[k].key]}
+                    />
+                  ))}
+                  {canEdit && (
+                    <td className={f.ppAct}>
+                      {MANUAL_PHASES.has(n.phase) && (
+                        <button
+                          type="button"
+                          className={f.ppMini}
+                          disabled={!!why}
+                          title={why ?? tr('Энэ мөрийн доор дэд мөр нэмэх')}
+                          onClick={() => setAdding(n)}
+                        >{tr('Дэд мөр')}</button>
+                      )}
+                      {deleteWhy(n, cutoff) == null && (
+                        <button type="button" className={`${f.ppMini} ${f.ppMiniBad}`} onClick={() => void doDelete(n)}>
+                          {tr('Устгах')}
+                        </button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      ) : (
       <div className={f.ppWrap}>
         <table className={`${f.tbl} ${f.ppTbl}`}>
           <thead>
@@ -1423,6 +1621,10 @@ export function ProjectPlanTable({
                 <th key={c.k} className={f.ppHd} title={c.title}>{c.label}</th>
               ))}
             </tr>
+            {filterRow(<>
+              {cols.map((c) => <th key={c.k} />)}
+              <th />
+            </>)}
           </thead>
           <tbody>
             <tr className={f.ppTot}>
@@ -1435,26 +1637,11 @@ export function ProjectPlanTable({
             {vis.map((n) => {
               const r = n.row!;
               const v = result.values.get(n);
-              const kids = n.children.length > 0;
-              const open = kids && isOpen(n);
               return (
                 <tr key={n.index} className={rowCls(n)}>
                   <td className={`${f.ppFz0} ${f.ppNo}`}>{ddOf.get(n)}</td>
                   <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
-                  <td className={`${f.ppFz2} ${f.ppName}`} title={r.ajil_uilchilgee ?? undefined}>
-                    <span className={f.ppIndent} style={{ paddingLeft: (n.depth - 1) * 14 }}>
-                      {kids ? (
-                        <button
-                          type="button"
-                          className={f.ppCaret}
-                          aria-expanded={open}
-                          aria-label={open ? tr('Хумих') : tr('Дэлгэх')}
-                          onClick={() => toggle(n)}
-                        >{open ? '−' : '+'}</button>
-                      ) : <i className={f.ppCaretSp} aria-hidden />}
-                      {r.ajil_uilchilgee || '—'}
-                    </span>
-                  </td>
+                  {nameCell(n)}
                   {valCells(v, !!n.blok)}
                   {moneyCell(n)}
                 </tr>
@@ -1463,8 +1650,11 @@ export function ProjectPlanTable({
           </tbody>
         </table>
       </div>
+      )}
       <p className={f.ppFoot}>
-        {tr('Хувь 0–100; «—» = мэдээлэлгүй (0 биш). Гүйцэтгэгчийн төлөвлөгөө: блок → Хуваарь, бусад → огнооны хооронд жигд. Биелэлт = гүйцэтгэл ÷ төлөвлөгөө.')}
+        {mode === 'entry'
+          ? tr('Гараар оруулах утгууд: нүдийг дарж засаад Enter дарна. Барилга угсралт ба газар чөлөөлөлтийн гүйцэтгэл системээс бодогддог тул засагдахгүй.')
+          : tr('Хувь 0–100; «—» = мэдээлэлгүй (0 биш). Гүйцэтгэгчийн төлөвлөгөө: блок → Хуваарь, бусад → огнооны хооронд жигд. Биелэлт = гүйцэтгэл ÷ төлөвлөгөө.')}
       </p>
     </>
   );
@@ -1572,6 +1762,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         months={d.cfMonths}
         monthsError={d.cfMonthsError}
         canSwitch={canSwitch}
+        canEdit={canEdit}
         onSaved={onSaved}
       />
       ) : tab === 'plan' ? (

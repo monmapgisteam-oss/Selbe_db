@@ -52,6 +52,15 @@ export type PlanStoredRow = {
   /** S — 0–100 (зөвхөн ТЭЗҮ · Зураг төсөл · Зөвшөөрөл · Сонгон шалгаруулалтын навчинд) */
   guitsetgel_huvi?: number | null;
   cashflow_id?: number | null;
+  /** Гэрээ байгуулсан огноо — L2 «Сонгон шалгаруулалт (гэрээ байгуулсан)» */
+  geree_ognoo?: number | null;
+  /** Захирамжийн огноо ба дугаар («А/736») */
+  zahiramj_ognoo?: number | null;
+  zahiramj_dugaar?: string | null;
+  /** Ашиглалтад оруулах огноо */
+  ashiglalt_ognoo?: number | null;
+  /** Мөр үүсгэсэн агшин (сервер) — импортын мөрийг гараар нэмсэнээс ялгана (`planEdit.isManualRow`) */
+  created_date?: number | null;
 };
 
 export type PlanNode = {
