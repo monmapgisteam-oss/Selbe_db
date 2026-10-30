@@ -140,22 +140,25 @@ export const balanced = (
 ): boolean => Math.abs(sumMonths(m) - total) <= step / 2 + 1e-9 * Math.max(1, Math.abs(total));
 
 /**
- * БҮЛГЭЭР ТӨЛӨВЛӨХ — хэрэглэгчийн өгсөн сарын хувиар (0–100, нийлбэр 100) нийт обьёмыг сарууд руу хуваана.
- * 0.01 хүртэл бөөрөнхийлж, үлдэгдлийг хамгийн сүүлийн эерэг сард өгнө — нийлбэр нь `total`-тай `balanced`.
- * Хувь нь хэрэглэгчийнх (апп таамаглахгүй) тул доорх шалгуурын №1 «автомат тараалт»-ын хоригт хамаарахгүй.
+ * БҮЛГЭЭР ТӨЛӨВЛӨХ — хэрэглэгчийн өгсөн сарын хувиар (нийлбэрээрээ хэвийн болгоно) нийт обьёмыг сарууд руу хуваана.
+ * 0.01-ээр (центээр) ХАМГИЙН ИХ ҮЛДЭГДЛИЙН аргаар: сар бүр доош бөөрөнхийлөгдөж, дутуу центүүд бутархай нь хамгийн том
+ * эерэг саруудад нэг нэгээр очно — нийлбэр нь `total`-тай яг тэнцэж (`balanced`), СӨРӨГ утга хэзээ ч гарахгүй
+ * (2026-10-29 хяналт: «сүүлийн сард үлдэгдэл» арга 0.00 сард −0.01 бичдэг байв). Хувь нь хэрэглэгчийнх тул доорх
+ * шалгуурын №1 «автомат тараалт»-ын хоригт хамаарахгүй.
  */
 export function splitByPct(total: number, pct: ReadonlyMap<string, number>): Map<string, number> {
-  const out = new Map<string, number>();
-  let acc = 0;
-  let last: string | null = null;
-  for (const k of [...pct.keys()].sort()) {
-    const p = pct.get(k) ?? 0;
-    const v = Math.round(total * p) / 100;
-    out.set(k, v);
-    acc += v;
-    if (p > 0) last = k;
-  }
-  if (last != null) out.set(last, Math.round((out.get(last)! + total - acc) * 100) / 100);
+  const keys = [...pct.keys()].sort();
+  const out = new Map<string, number>(keys.map((k) => [k, 0]));
+  const w = keys.map((k) => Math.max(0, pct.get(k) ?? 0));
+  const wsum = w.reduce((a, b) => a + b, 0);
+  const cents = Math.round(total * 100);
+  if (!(wsum > 0) || !(cents > 0)) return out;
+  const exact = w.map((x) => (cents * x) / wsum);
+  const base = exact.map((x) => Math.floor(x + 1e-9));
+  let rest = cents - base.reduce((a, b) => a + b, 0);
+  const order = exact.map((x, i) => ({ i, f: x - base[i] })).filter((o) => w[o.i] > 0).sort((a, b) => b.f - a.f || a.i - b.i);
+  for (let j = 0; rest > 0 && order.length; j = (j + 1) % order.length, rest--) base[order[j].i] += 1;
+  keys.forEach((k, i) => out.set(k, base[i] / 100));
   return out;
 }
 

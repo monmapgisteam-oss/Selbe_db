@@ -187,6 +187,10 @@ type PlanModalProps = {
   groupCurve?: Map<string, number> | null;
   /** Том бүлэг (зөвхөн дэд бүлэгтэй) — төлөвлөхгүй, доторх жижиг бүлгүүдээс бодогдсон хураангуйг л харуулна */
   groupSub?: boolean;
+  /** Загвар хуулах — ижил бүтэцтэй (шууд ажлуудын нэрийн дараалал ижил) бусад бүлгүүд */
+  groupCopyTargets?: { oid: number; label: string }[];
+  /** Энэ бүлгийн төлөвлөлтийг сонгосон бүлгүүдэд хуулна — бүлэг бүр өмнөхөөсөө `step` хоногоор хойш */
+  onCopyGroup?: (targets: number[], step: number, blks: number[]) => void;
   /** Анхны төлөвлөгөөт огноо — бүлгийн хоосон хэсэгт чирж тавьсан муж (өгөгдвөл мөрийн мужийг давамгайлна) */
   initSpan?: Span | null;
   /** Тараахаас ӨМНӨ урьдчилан харах — тараалттай НЭГ тооцоо (`Huvaari.groupSchedule`): ажил бүрийн огноо · мөнгө · сарын обьём */
@@ -232,7 +236,7 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
-  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup, onUndo, groupMoney, onPlanGroup, groupPreview, initSpan, groupCurve, groupSub,
+  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup, onUndo, groupMoney, onPlanGroup, groupPreview, initSpan, groupCurve, groupSub, groupCopyTargets, onCopyGroup,
 }: PlanModalProps) {
   const mdRef = useRef<HTMLDivElement>(null);
   useFocusTrap(mdRef, true, returnFocus);
@@ -607,6 +611,11 @@ function PlanModalBody({
   const gpSum = mKeys.reduce((acc, k) => acc + (gp.get(k) ?? 0), 0);
   const gpOk = gEdit && ms1 != null && ms2 != null && !bad && !spanLong && badTxt.size === 0
     && mKeys.length > 0 && Math.abs(gpSum - 100) <= 0.005;
+  /** Загвар хуулах — сонгосон бүлгүүд ба бүлэг хоорондын алхам (хоног) */
+  const [cpSel, setCpSel] = useState<Set<number>>(new Set());
+  const [cpStep, setCpStep] = useState('0');
+  const cpStepN = Number(cpStep);
+  const cpOk = cpSel.size > 0 && /^-?\d{1,4}$/.test(cpStep.trim()) && Math.abs(cpStepN) <= MAX_DAYS;
   /** Урьдчилан харах — хувь 100% болсон үед л (тараалттай ижил оролт) */
   const gPrev = useMemo(
     () => (gpOk && groupPreview && ms1 != null && ms2 != null
@@ -888,6 +897,37 @@ function PlanModalBody({
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {groupCopyTargets && groupCopyTargets.length > 0 && onCopyGroup && (
+              <div className={h.mdPrev}>
+                <div className={h.mdDepsHead}>{tr('Загвар хуулах')}<span className={h.mdDepsN}>{num(groupCopyTargets.length)} {tr('ижил бүлэг')}</span></div>
+                <p className={h.mdPar}>{tr('Энэ бүлгийн одоогийн огноо ба сарын обьёмыг ижил бүтэцтэй бүлгүүдэд хуулна. Бүлэг бүр өмнөхөөсөө алхмын хоногоор хойш.')}</p>
+                {groupCopyTargets.map((t) => (
+                  <label key={t.oid} className={h.mdField}>
+                    <input type="checkbox" checked={cpSel.has(t.oid)}
+                      onChange={(e) => setCpSel((s) => { const x = new Set(s); if (e.target.checked) x.add(t.oid); else x.delete(t.oid); return x; })} />
+                    {' '}{fixCyr(t.label)}
+                  </label>
+                ))}
+                <p className={h.mdPar}>
+                  <label className={h.mdField}>
+                    {tr('Алхам')}
+                    <input type="number" step={1} className={h.numIn} value={cpStep} onChange={(e) => setCpStep(e.target.value)}
+                      aria-label={tr('Бүлэг хоорондын алхам (хоног)')} />
+                    {' '}{tr('хоног')}
+                  </label>
+                  {' '}
+                  <button type="button" className={h.tlZoomB} disabled={!cpOk}
+                    onClick={async () => {
+                      if (!cpOk) return;
+                      if (!(await askConfirm(tr('{0} бүлгийн ажлуудын огноо ба сарын обьём дарагдана. Үргэлжлүүлэх үү?', num(cpSel.size)), { ok: tr('Хуулах') }))) return;
+                      onCopyGroup(groupCopyTargets.map((t) => t.oid).filter((o) => cpSel.has(o)), Math.trunc(cpStepN), [...selB]);
+                      onClose();
+                    }}>
+                    {tr('Хуулах')}
+                  </button>
+                </p>
               </div>
             )}
             <p className={h.mdPar}>

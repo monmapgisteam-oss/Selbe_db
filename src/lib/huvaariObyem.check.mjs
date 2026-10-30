@@ -436,4 +436,19 @@ console.log('huvaariObyem.check: ok — splitByPct ✓');
   assert.ok(balanced(grown, 61), 'сунгахад нийлбэр хадгалагдана');
   assert.equal(grown.size, 4, 'сунгасан мужийн бүх сар');
 }
+/* ── Регресс (2026-10-29 хяналт): splitByPct СӨРӨГ утга бичихгүй, нийлбэр тэнцэнэ (санамсаргүй 3000 тохиолдол) ── */
+{
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  for (let t = 0; t < 3000; t++) {
+    const n = 1 + Math.floor(rnd() * 12);
+    const vol = Math.round(rnd() * 100000) / 100;
+    const pct = new Map(Array.from({ length: n }, (_, i) => [`2026-${String(i + 1).padStart(2, '0')}`, rnd() < 0.3 ? 0 : rnd() * 50]));
+    if (![...pct.values()].some((v) => v > 0)) continue;
+    const out = splitByPct(vol, pct);
+    for (const v of out.values()) assert.ok(v >= 0, `сөрөг утга: ${vol} ${JSON.stringify([...pct])} → ${JSON.stringify([...out])}`);
+    assert.ok(balanced(out, vol), `тэнцээгүй: ${vol} → ${JSON.stringify([...out])}`);
+    for (const [k, p] of pct) if (!(p > 0)) assert.equal(out.get(k), 0, '0% сар 0');
+  }
+}
 console.log('huvaariObyem.check: ok — scheduleByMoney · orderByDeps · remapMonths ✓');

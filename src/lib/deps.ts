@@ -350,6 +350,13 @@ function affectedCodes(
  *
  * Буцаана: индекс → шинэ мужууд (overrides-ыг ОРУУЛААД) — эх мөрүүдийг
  * хөндөхгүй, дуудагч нь ноорогтоо нэг дор бичнэ.
+ *
+ * ЗАЙ ХАДГАЛАГДАНА (2026-10-30, хэрэглэгч: «урд ажил хойшлоход хойд ажил мөн хойшлоно, урагшлахад урагшилна; бүлэг ч
+ * адил»): хамаарагч нь шаардлагын ӨӨРЧЛӨЛТИЙН хэмжээгээр (`шинэ шаардлага − хуучин шаардлага`) шилжинэ — урьд нь яг
+ * шаардлага руу «наалддаг» байсан тул санаатай үлдээсэн зай устаж, урд ажил хойшлоход хойд ажил урагш татагддаг байв.
+ * Шаардлага өөрчлөгдөөгүй бол хөдлөхгүй (хүн зөвшөөрсөн давхцал ч хэвээр). Урьд нь хязгааргүй байсан мөр шинээр
+ * хязгаарлагдвал зөрчилтэй үед л шаардлага хүртэл түлхэнэ. `recalc` (сая уялдаа нэмэгдсэн) мөр урьдын адил шаардлагад
+ * тааруулна.
  */
 export function propagate(
   rows: PlanRow[],
@@ -404,7 +411,6 @@ export function propagate(
   /**
    * Нэг мөрийг урьдчилагчдаас нь дахин бодно. Өөрчлөгдвөл true.
    */
-  const lastReq = new Map<string, number>();
   const rowQ: number[] = [];
   const rowPending = new Set<number>();
   const pushRow = (k: number) => {
@@ -415,17 +421,16 @@ export function propagate(
   const recompute = (i: number, all = false): boolean => {
     const r = rows[i];
     if (!r.deps.length) return false;
-    /** Блок `b`-ийн шаардлага энэ гинжээр өөрчлөгдсөн үү — үгүй бол хөндөхгүй */
-    const reqMoved = (b: number, req: number): boolean => {
-      if (all) return true;
-      const key = `${i}:${b}`;
-      const prev = lastReq.get(key);
-      lastReq.set(key, req);
-      if (prev != null && prev !== req) return true;
-      if (requiredStart(rows, byCode, i, b) !== req) return true;
-      const cur = effSpan(rows, i, b, spansOf);
-      const org = effSpan(rows, i, b);
-      return (cur?.start ?? null) !== (org?.start ?? null) || (cur?.end ?? null) !== (org?.end ?? null);
+    /**
+     * Шаардлагын ӨӨРЧЛӨЛТӨӨР зорилтот эхлэл (`cur` — одоогийн эхлэл, `orig` — эх эхлэл): шинэ уялдаа (`all`) бол яг
+     * шаардлага; хуучин шаардлага/муж байхгүй бол зөрчилтэй үед л шаардлага; эс бөгөөс эх эхлэл + (шинэ − хуучин шаардлага).
+     * `null` = хөндөхгүй.
+     */
+    const target = (b: number, req: number, cur: number, orig: number | null): number | null => {
+      if (all) return req;
+      const req0 = requiredStart(rows, byCode, i, b);
+      if (req0 == null || orig == null) return cur < req ? req : null;
+      return orig + (req - req0);
     };
     let changed = false;
     if (r.group) {
@@ -437,10 +442,12 @@ export function propagate(
       for (let b = 0; b < nBlocks; b++) {
         if (pinned.get(i)?.has(b)) continue;
         const req = requiredStart(rows, byCode, i, b, spansOf);
-        if (req == null || !reqMoved(b, req)) continue;
+        if (req == null) continue;
         const eff = effSpan(rows, i, b, spansOf);
-        if (!eff || eff.start === req) continue;
-        const delta = req - eff.start;
+        if (!eff) continue;
+        const want = target(b, req, eff.start, effSpan(rows, i, b)?.start ?? null);
+        if (want == null || eff.start === want) continue;
+        const delta = want - eff.start;
         for (const k of sub) {
           const sp = spansOf(k)[b];
           if (!sp) continue;
@@ -461,11 +468,13 @@ export function propagate(
     for (let b = 0; b < nBlocks; b++) {
       if (pinned.get(i)?.has(b)) continue;
       const req = requiredStart(rows, byCode, i, b, spansOf);
-      if (req == null || !reqMoved(b, req)) continue;
+      if (req == null) continue;
       const own = spansOf(i)[b];
-      if (!own || own.start === req) continue;
+      if (!own) continue;
+      const want = target(b, req, own.start, rows[i].spans[b]?.start ?? null);
+      if (want == null || own.start === want) continue;
       const next = spansOf(i).slice();
-      next[b] = { start: req, end: req + (spanDays(own) - 1) * DAY };
+      next[b] = { start: want, end: want + (spanDays(own) - 1) * DAY };
       out.set(i, next);
       changed = true;
     }

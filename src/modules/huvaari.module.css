@@ -1738,3 +1738,93 @@ span.blkChip { cursor: default; }
   top: 0;
   background: var(--panel, var(--bg));
 }
+
+/* Шинжилгээний самбар (2026-10-29) */
+.anaTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 8px;
+}
+.anaTab {
+  padding: 3px 8px;
+  border: 1px solid var(--line, rgba(127, 127, 127, 0.3));
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.anaTabOn {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 18%, transparent);
+  border-color: var(--accent, #3b82f6);
+  font-weight: 600;
+}
+.anaItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--line, rgba(127, 127, 127, 0.15));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.anaItem:hover {
+  background: color-mix(in srgb, var(--accent, #3b82f6) 8%, transparent);
+}
+.anaLate {
+  color: var(--bad-ink, #c0392b);
+}
+.anaEarly {
+  color: var(--good-ink, #1e8449);
+}
+.anaRes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+}
+.anaResRow {
+  display: grid;
+  grid-template-columns: 58px 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+.anaBars {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.anaBarHun,
+.anaKeyHun {
+  display: inline-block;
+  height: 6px;
+  min-width: 1px;
+  background: var(--accent, #3b82f6);
+  border-radius: 2px;
+}
+.anaBarMash,
+.anaKeyMash {
+  display: inline-block;
+  height: 6px;
+  min-width: 1px;
+  background: #e67e22;
+  border-radius: 2px;
+}
+.anaKeyHun,
+.anaKeyMash {
+  width: 12px;
+}
+/* Эгзэгтэй замын ажил — хуанлийн зурвасны улаан хүрээ */
+.plBarCrit {
+  outline: 2px solid var(--bad, #e74c3c);
+  outline-offset: 0;
+}
