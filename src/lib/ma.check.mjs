@@ -11,7 +11,7 @@ import {
 const attrs = (o = {}) => ({
   objectid: 1, globalid: '{G}', pkg: 'b1_9f', pkg_label: 'Багц 1 · 9 давхар', contractor_name: 'NBG', material_name: 'Арматур',
   sub_doc_no: 'NBG-SLB-MA-0001-00', recv_date: 1_700_000_000_000, resp_no: 'SLB-REP-MA-P0100-0015-00', resp_date: 1_700_100_000_000,
-  works: 'b1_9f:12  b1_9f:15 b1_9f:12', doc_items: 'scope conf', verdict: 'A', an_note: null, r_reason: null,
+  works_all: 'b1_9f:12  b1_9f:15 b1_9f:12', doc_items: 'scope conf', verdict: 'A', an_note: null, r_reason: null,
   appr_name: 'Д.Одгэрэл', prep_name: 'Г.Гантулга', created_date: 1, last_edited_date: 2, ...o,
 });
 
@@ -19,10 +19,9 @@ const attrs = (o = {}) => ({
 {
   const r = rowOf(attrs());
   assert.deepEqual(r.works, ['b1_9f:12', 'b1_9f:15']);
-  assert.deepEqual(rowOf(attrs({ works: 'b1_12f:5,b1_12f:14, b1_12f:5' })).works, ['b1_12f:5', 'b1_12f:14'], 'Survey123 таслалаар');
-  /* 2026-10-29: шинэ `works_all` (25000) тэргүүнд; хоосон бол хуучин `works` */
-  assert.deepEqual(rowOf(attrs({ works_all: 'b2_9f:7,b2_9f:9', works: 'b1_9f:12' })).works, ['b2_9f:7', 'b2_9f:9'], 'works_all тэргүүнд');
-  assert.deepEqual(rowOf(attrs({ works_all: '  ', works: 'b1_9f:12' })).works, ['b1_9f:12'], 'works_all хоосон → хуучин works');
+  assert.deepEqual(rowOf(attrs({ works_all: 'b1_12f:5,b1_12f:14, b1_12f:5' })).works, ['b1_12f:5', 'b1_12f:14'], 'Survey123 таслалаар');
+  /* 2026-10-30: зөвхөн `works_all` (25000) — хуучин `works` талбар үйлчилгээнээс устсан */
+  assert.deepEqual(rowOf(attrs({ works_all: '  ' })).works, [], 'хоосон → ажилгүй');
   assert.deepEqual(r.docItems, ['scope', 'conf']);
   assert.equal(r.verdict, 'A');
   assert.equal(r.pkgLabel, 'Багц 1 · 9 давхар');
@@ -38,9 +37,9 @@ console.log('✅ rowOf — works зайгаар · давхардалгүй · v
 
 /* 2. ажлын хаалга — нэг ч MA байхгүй = none; бүгд A/AN = ok; нэг нь R/хоосон = blocked */
 {
-  const beton = rowOf(attrs({ objectid: 1, resp_no: 'R1', works: 'b1_9f:12 b1_9f:15', verdict: 'A' }));
-  const armatur = rowOf(attrs({ objectid: 2, resp_no: 'R2', works: 'b1_9f:12', verdict: 'R' }));
-  const pending = rowOf(attrs({ objectid: 3, resp_no: 'R3', works: 'b1_9f:15', verdict: null }));
+  const beton = rowOf(attrs({ objectid: 1, resp_no: 'R1', works_all: 'b1_9f:12 b1_9f:15', verdict: 'A' }));
+  const armatur = rowOf(attrs({ objectid: 2, resp_no: 'R2', works_all: 'b1_9f:12', verdict: 'R' }));
+  const pending = rowOf(attrs({ objectid: 3, resp_no: 'R3', works_all: 'b1_9f:15', verdict: null }));
   assert.equal(maGateOf('b1_9f:99', [beton, armatur]).gate, 'none');
   assert.equal(maGateOf('b1_9f:12', [beton]).gate, 'ok');
   assert.equal(maGateOf('b1_9f:12', [beton, armatur]).gate, 'blocked', 'олон MA-гийн нэг нь R → хаалттай');

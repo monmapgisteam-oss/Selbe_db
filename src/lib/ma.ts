@@ -49,9 +49,8 @@ export type MaRow = {
 const F = {
   oid: 'objectid', gid: 'globalid', pkg: 'pkg', pkgLabel: 'pkg_label', contractorName: 'contractor_name',
   materialName: 'material_name', subDocNo: 'sub_doc_no', recvDate: 'recv_date', respNo: 'resp_no', respDate: 'resp_date',
-  /* 2026-10-29: `works` (4000 тэмдэгт ≈ 300 ажил) → `works_all` (25000). Хуучин үйлчилгээний уртыг өөрчлөх боломжгүй
-     (updateDefinition «success» ч хэрэгжээгүй) тул маягт шинэ талбар нэмсэн; хуучин мөрд `works` үлдэнэ — нөөц болгож уншина */
-  worksAll: 'works_all', works: 'works', docItems: 'doc_items', verdict: 'verdict', anNote: 'an_note', rReason: 'r_reason',
+  /* 2026-10-29: `works` (4000 тэмдэгт ≈ 300 ажил) → `works_all` (25000); хуучин `works` талбарыг 2026-10-30 устгасан */
+  works: 'works_all', docItems: 'doc_items', verdict: 'verdict', anNote: 'an_note', rReason: 'r_reason',
   apprName: 'appr_name', apprPos: 'appr_pos', revName: 'rev_name', revPos: 'rev_pos', ackName: 'ack_name', ackPos: 'ack_pos',
   prepName: 'prep_name', prepPos: 'prep_pos', recvByName: 'recv_by_name', recvByPos: 'recv_by_pos', created: 'created_date', edited: 'last_edited_date',
 } as const;
@@ -89,7 +88,7 @@ export function rowOf(a: Record<string, unknown>): MaRow {
     pkgLabel: str(a[F.pkgLabel]) || str(a[F.pkg]),
     contractor: str(a[F.contractorName]),
     material: str(a[F.materialName]),
-    works: splitMulti(str(a[F.worksAll]) || a[F.works]),
+    works: splitMulti(a[F.works]),
     verdict: toVerdict(a[F.verdict]),
     anNote: str(a[F.anNote]),
     rReason: str(a[F.rReason]),
