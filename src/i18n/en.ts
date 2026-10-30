@@ -7646,7 +7646,6 @@ const en: Record<string, string> = {
   "Шинэ бүлэг — мөр бүрийн жинг оруулна, нийлбэр нь 100% байх ёстой.": "New group — enter a weight for each row; the weights must total 100%.",
   "Байгаа мөрүүдийн дунд нэмэгдэх тул жин 0% — нийт хувьд нөлөөлөхгүй.": "Added among existing rows, so the weight is 0% — it does not affect the totals.",
   "Анхааруулга: «{0}»-ийн гүйцэтгэлийн хувь ({1}) цаашид дэд мөрүүдээс бодогдоно.": "Note: the progress of “{0}” ({1}) will from now on be calculated from its sub-rows.",
-  "Хасах": "Remove",
   "Жингийн нийлбэр: {0}%": "Weight total: {0}%",
   "Өндөржилтийн захирамж {0}": "Elevation works order {0}",
   "Өндөржилтийн захирамж": "Elevation works order",
