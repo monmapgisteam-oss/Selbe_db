@@ -17,10 +17,12 @@ const DRAG_PX = 4;
 
 export function useDragPlan({
   plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
-  setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef, chain, scrollEl, onGroupRange,
+  setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef, chain, scrollEl, onGroupRange, obFullRef,
 }: {
   /** Бүлгийн хоосон хэсэгт чирж тавьсан шинэ муж — цонхыг тэр мужаар нээнэ (бүлгээр төлөвлөх, 2026-10-29) */
   onGroupRange?: (oid: number, span: Span) => void;
+  /** Сарын задаргааны «бүтэн» хуулбар (`Huvaari.obFullRef`) — бүлгийн чирэлтээр шинэ задаргаа тавихад хуучныг устгана */
+  obFullRef?: React.RefObject<Map<string, Map<string, number>>>;
   scrollEl?: () => HTMLDivElement | null;
   plan: PlanRow[];
   blk: number;
@@ -233,6 +235,8 @@ export function useDragPlan({
         G.last.set(c.i, ns);
       }
       const ch = chain ? propagate(plan, n, ov) : ov;
+      /* Гинж (бүлгийн түвшний уялдаа) дэд модыг цааш шилжүүлж болно — сарыг ЭЦСИЙН мужид буулгана (`onUp`) */
+      for (const c of G.kids) { const f = ch.get(c.i)?.[blk]; if (f) G.last.set(c.i, f); }
       for (const i of ch.keys()) if (plan[i]) dragTouched.current.add(plan[i].oid);
       applyChanges(ch);
       return;
@@ -315,6 +319,7 @@ export function useDragPlan({
         setObDraft((m) => {
           const next = new Map(m);
           for (const u of upd) {
+            obFullRef?.current?.delete(u.key);
             if (sameMonths(u.months, obPlan.get(u.des)?.get(blok))) next.delete(u.key);
             else next.set(u.key, u.months);
           }

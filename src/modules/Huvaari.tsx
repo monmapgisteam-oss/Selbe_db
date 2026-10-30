@@ -35,7 +35,7 @@ import {
   type Dep,
 } from '@/lib/deps';
 import {
-  loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf, orderByDeps, scheduleByMoney,
+  loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf,
   obyemResFields, type MonthRes, type PkgPlan, type PkgRes,
 } from '@/lib/huvaariObyem';
 import {
@@ -81,6 +81,10 @@ import { HAM_MAX, prepareSave, remapRowsFull } from './huvaari/savePrep';
 import { FlowBox } from './huvaari/FlowBox';
 import { AddBox, BlockRow, HowtoHint, TaskRow, type CellVia } from './huvaari/TaskRow';
 import { PlanModal } from './huvaari/PlanModal';
+import { AnalysisPanel, type AnaTab } from './huvaari/AnalysisPanel';
+import { useAnalysis } from './huvaari/useAnalysis';
+import { useGroupPlan } from './huvaari/useGroupPlan';
+import { sameShapeGroups } from '@/lib/planAnalysis';
 import { LinkModal } from './huvaari/LinkModal';
 import { Segmented, Switch, Toggle } from '@/components/Switch';
 
@@ -524,6 +528,8 @@ export function Huvaari({
   const [chips, setChips] = useState<Set<Chip>>(() => new Set());
   /** «Өөрчлөлт N» хажуугийн самбар нээлттэй эсэх (2026-10-08) */
   const [chgOpen, setChgOpen] = useState(false);
+  /** Шинжилгээний самбар (асуудал · эгзэгтэй зам · хоцролт · нөөц · экспорт, 2026-10-29) — `null` = хаалттай */
+  const [ana, setAna] = useState<AnaTab | null>(null);
   const today = useToday();
   /**
    * ХУВААРЬ АЧААЛАХ АЛДАА — `err`-ээс ТУСДАА (2026-10-01, «хэрэглэгч: бүгдийг зас»).
@@ -2009,79 +2015,10 @@ export function Huvaari({
     setNote(tr('Бүлгийн {0} ажил {1} хоногоор шилжлээ.', num(ov.size), days > 0 ? `+${days}` : String(days)));
   }, [busy, locked, canEdit, plan, n, kind, applyChanges, setErr, setNote]);
 
-  /** Мөрийн мөнгөн дүн — `мөнгөн_дүн`, байхгүй бол обьём × нэгж үнэ; `null` = мэдэгдэхгүй (бүлгээр төлөвлөх) */
-  const moneyOf = useCallback((k: number): number | null => {
-    const r = rowsAll[plan[k]?.i ?? -1];
-    const m = r?.money ?? (r?.vol != null && r?.unit != null ? r.vol * r.unit : null);
-    return m != null && Number.isFinite(m) ? m : null;
-  }, [rowsAll, plan]);
-  /**
-   * БҮЛГИЙН ТӨЛӨВЛӨЛТИЙН ТООЦОО — тараалт (`planGroup`) ба цонхны урьдчилан харалт НЭГ эх. Бүлгийн доорх навч ажлууд
-   * (батлагдаагүй нэмэлт мөр — сөрөг oid — алгасна) уялдаагаар (`orderByDeps`, уялдаагүй нь мөрийн дарааллаар) эрэмбэлэгдэж,
-   * `scheduleByMoney`-ээр сарын мөнгөнд багтана. `null` = бүлэг биш.
-   */
-  const groupSchedule = useCallback((oid: number, sp: Span, pct: Map<string, number>) => {
-    const at = plan.findIndex((x) => x.oid === oid);
-    if (at < 0 || !plan[at].group) return null;
-    /* Зөвхөн ШУУД ажлууд — дэд бүлгийн ажлууд өөрийн бүлгээсээ төлөвлөгдөнө (том бүлэг тэднийг дарахгүй) */
-    const leaves = directWorks(plan, at);
-    if (!leaves.length) return null;
-    const order = orderByDeps(leaves.map((k) => ({ code: plan[k].des, deps: plan[k].deps.map((d) => d.code) }))).map((i) => leaves[i]);
-    const sched = scheduleByMoney(sp, pct, order.map((k) => ({ money: moneyOf(k), vol: plan[k].vol })));
-    return order.map((k, i) => ({ k, ...sched[i] }));
-  }, [plan, moneyOf]);
-  /**
-   * БҮЛГЭЭР ТӨЛӨВЛӨХ (2026-10-29, хэрэглэгч: «ажил ажлаар биш агуулах бүлгээр төлөвлөөд сар бүрд 30% тавихад бүлгийн
-   * мөнгөн дүнгээс бодож доторх ажлууд автомат төлөвлөлттэй болно»; 2026-10-29 дахин: сарын хувиар тэр сарын мөнгийг бодож
-   * ажлуудыг дарааллаар нь багтаана, багтаагүй хэсэг дараагийн сард, обьём = мөнгө ÷ нэгж үнэ) — `groupSchedule`-ийн үр
-   * дүнг сонгосон блокууд бүгдэд ижил тавина. Огноо нь сарын мөнгөөс тул уялдааны гинж (`propagate`) хэрэглэхгүй (дараалал
-   * нь уялдаагаар аль хэдийн). Нэг `applyChanges` тул нэг Ctrl+Z-ээр буцна. Обьёмгүй ажилд зөвхөн огноо.
-   */
-  const planGroup = useCallback((oid: number, sp: Span, pct: Map<string, number>, blks: number[]) => {
-    if (busy || locked || !canEdit || kind !== 'plan' || !sc) return;
-    const sched = groupSchedule(oid, sp, pct);
-    if (!sched) return;
-    const bs = blks.filter((b) => b >= 0 && b < n);
-    const ov = new Map<number, (Span | null)[]>();
-    const jobs: { des: number; blok: string; months: Map<string, number>; sp: Span }[] = [];
-    sched.forEach(({ k, span: wsp, months }) => {
-      const r = plan[k];
-      const next = r.spans.slice();
-      while (next.length < n) next.push(null);
-      for (const b of bs) next[b] = { start: wsp.start, end: wsp.end };
-      ov.set(k, next);
-      if (obState !== 'ok' || r.des == null || !months) return;
-      for (const b of bs) {
-        const blok = sc.bld[b];
-        if (blok) jobs.push({ des: r.des!, blok, months, sp: wsp });
-      }
-    });
-    if (!ov.size) { setNote(tr('Бүлэгт төлөвлөх ажил алга.')); return; }
-    setErr('');
-    const undoKeys = jobs.map((j) => obKey(j.des, j.blok));
-    applyChanges(ov, undefined, undoKeys);
-    if (jobs.length) {
-      for (const j of jobs) {
-        const key = obKey(j.des, j.blok);
-        const f0 = obFullRef.current.get(key);
-        if (!f0) continue;
-        const inSpan = new Set(monthsOf(j.sp));
-        const f = new Map([...f0].filter(([k]) => !inSpan.has(k)));
-        for (const [k, v] of j.months) f.set(k, v);
-        obFullRef.current.set(key, f);
-      }
-      setObDraft((m) => {
-        const next = new Map(m);
-        for (const j of jobs) {
-          const key = obKey(j.des, j.blok);
-          if (sameMonths(j.months, obPlan.get(j.des)?.get(j.blok))) next.delete(key);
-          else next.set(key, new Map(j.months));
-        }
-        return next;
-      });
-    }
-    setNote(tr('Бүлгийн {0} ажилд {1} блокт огноо ба сарын обьём тавигдлаа.', num(ov.size), num(bs.length)));
-  }, [busy, locked, canEdit, kind, sc, plan, n, obState, obPlan, groupSchedule, applyChanges, setErr, setNote, setObDraft]);
+  /* ══════════════ БҮЛГЭЭР ТӨЛӨВЛӨХ · ЗАГВАР ХУУЛАХ (2026-10-29) — `huvaari/useGroupPlan` ══════════════ */
+  const { moneyOf, groupSchedule, planGroup, copyGroup } = useGroupPlan({
+    plan, rowsAll, n, sc, kind, busy, locked, canEdit, obState, obPlan, obOf, obFullRef, applyChanges, setErr, setNote, setObDraft,
+  });
 
   /* ── Чирэлт ── */
 
@@ -2130,6 +2067,7 @@ export function Huvaari({
     chain: kind === 'plan',
     scrollEl: () => scrollRef.current,
     onGroupRange: (oid, span) => { setGrpRange({ oid, span }); setModal(oid); },
+    obFullRef,
   });
   const popUndo = () => setUndoSnap((s) => (s.u.length ? { u: s.u.slice(0, -1), r: s.r } : s));
   const onCancel = () => {
@@ -3407,6 +3345,12 @@ export function Huvaari({
   /**
    * МӨР РҮҮ ОЧИХ (2026-10-08) — алдааны «→ ажил руу» · өөрчлөлтийн самбар · «Үсрэх» оролт нэг зам.
    */
+  /* ══════════════ ШИНЖИЛГЭЭ (2026-10-29) — `huvaari/useAnalysis` ══════════════ */
+  const { anaIssues, anaCrit, critOids, anaDelays, anaRes, exportPlan } = useAnalysis({
+    ana, plan, base, blk, unbalRows, kind, refSpanOf, sc, obResOf, obOf, pkgKey: pkg.key,
+  });
+
+
   const goToRow = useCallback((oid: number, b: number = blk) => {
     const at = plan.findIndex((r) => r.oid === oid);
     if (at < 0) return;
@@ -4434,6 +4378,13 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {tr('Нэмэлт ажил батлуулах')} ({num(adds.length)})
           </button>
         )}
+        {sc && (
+          <button type="button" className={h.discard} aria-pressed={ana != null}
+            title={tr('Асуудал · эгзэгтэй зам · хоцролт · нөөц · Excel экспорт')}
+            onClick={() => setAna((v) => (v ? null : 'issues'))}>
+            {tr('Шинжилгээ')}
+          </button>
+        )}
         {canEdit && !pending && (
           <button
             type="button"
@@ -4665,6 +4616,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {tr('Өнчин ноорог устгах ({0})', num(orphanOids.size + orphanOb.size))}
           </button>
         </p>
+      )}
+      {ana && sc && (
+        <AnalysisPanel tab={ana} onTab={setAna} onClose={() => setAna(null)} plan={plan} blocks={sc.bld} blk={blk}
+          issues={anaIssues} crit={anaCrit} delays={anaDelays} res={anaRes} onJump={goToRow} onExport={exportPlan} />
       )}
       {chgOpen && (
         <aside className={h.chgPanel} role="region" aria-label={tr('Өөрчлөлт')}>
@@ -5305,7 +5260,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                           )}
                           {sp && (
                             <div
-                              className={`${h.plBar} ${half ? h.plBarHalf : ''} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.oid ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''}`}
+                              className={`${h.plBar} ${half ? h.plBarHalf : ''} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.oid ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''} ${critOids?.has(r.oid) ? h.plBarCrit : ''}`}
                               style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
                               onPointerDown={(e) => onDown(e, r, 'move')}
                               role={r.oid < 0 ? undefined : 'button'}
@@ -5466,6 +5421,11 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           onKeep={keepDragClose}
           onShiftGroup={modalRow.group ? (d, bs) => shiftGroup(modalRow.oid, d, bs) : undefined}
           groupMoney={modalGroupMoney}
+          groupCopyTargets={modalRow.group && kind === 'plan' && modalGroup?.direct
+            ? sameShapeGroups(plan, plan.findIndex((x) => x.oid === modalRow.oid), (i) => directWorks(plan, i))
+              .map((i) => ({ oid: plan[i].oid, label: `${plan[i].no} ${fixCyr(plan[i].work)}`.trim() }))
+            : undefined}
+          onCopyGroup={(targets, step, bs) => { forgetDrag(); copyGroup(modalRow.oid, targets, step, bs); }}
           initSpan={grpRange?.oid === modalRow.oid ? grpRange.span : null}
           groupPreview={modalRow.group && kind === 'plan' && obState === 'ok'
             ? (sp, pct) => (groupSchedule(modalRow.oid, sp, pct) ?? []).map((x) => ({
