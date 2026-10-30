@@ -226,7 +226,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
   walk('src');
   const code = (f) => readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const users = files.filter((f) => /loadRows\([^;]*persist: true/.test(code(f))).map((f) => f.replace(/\\/g, '/')).sort();
-  assert.deepEqual(users, ['src/lib/levelPlan.ts', 'src/lib/monthlyMoney.ts', 'src/lib/planProgress.ts', 'src/lib/projectPlanInputs.ts', 'src/lib/sheetShared.ts', 'src/lib/workDepsRemote.ts'], 'persist зөвхөн уншдаг самбаруудад');
+  assert.deepEqual(users, ['src/lib/levelPlan.ts', 'src/lib/materialUsage.ts', 'src/lib/monthlyMoney.ts', 'src/lib/planProgress.ts', 'src/lib/projectPlanInputs.ts', 'src/lib/sheetShared.ts', 'src/lib/workDepsRemote.ts'], 'persist зөвхөн уншдаг самбаруудад');
   for (const f of users) assert.doesNotMatch(readFileSync(f, 'utf8'), /strict: true[^)]*persist|persist: true[^)]*strict/, `${f}: strict+persist хамт`);
   assert.doesNotMatch(readFileSync('src/lib/sheetCache.ts', 'utf8'), /from ['"]react['"]/, 'React импортлохгүй (Node тест)');
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fixCyr } from "@/lib/format";
 import { useAsync } from '@/lib/useAsync';
+import { loadNoots, nootsSummary } from '@/lib/materialNoots';
 import { isApproved, loadMa, maGateOf } from '@/lib/ma';
 import { serverNow, syncServerClock } from '@/lib/serverClock';
 import { dayTagOf, needsRegistration, submitForReview } from '@/lib/hyanaltSubmit';
@@ -881,6 +882,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * хязгаарлагдахгүй; MA уншигдаагүй бол хаалгагүй. Хяналтын харагдацад (`view`) MA татахгүй.
    */
   const maQ = useAsync(view ? async () => [] as Awaited<ReturnType<typeof loadMa>> : loadMa, [view]);
+  /* 2026-10-30: материалын үндсэн норм — ажлын материалын мөрөнд «×норм» (уншигдахгүй бол нормгүй харуулна) */
+  const nootsQ = useAsync(async () => { try { return await loadNoots(); } catch { return []; } }, []);
+  const matNorms = useMemo(() => new Map(nootsQ.state === 'ready' ? nootsSummary(nootsQ.data).map((x) => [x.name, x.norm] as const) : []), [nootsQ]);
   const maBlock = useMemo(() => {
     const m = new Map<number, string>();
     if (view || maQ.state !== 'ready') return m;
@@ -2355,6 +2359,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 warn={warn}
                 restoring={restoringUi} remainHint={remainHint} pastePrev={pastePrev} extra={extra} compact={compact} clearLocked={clearLocked}
                 maBlock={maBlock}
+                matNorms={matNorms}
               />
               {/* Доод ЧИГЖЭЭС — гүйлгэх зурвасны урт үнэн байлгана. */}
               {winTo < vis.length && (

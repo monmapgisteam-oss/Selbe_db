@@ -100,7 +100,8 @@ const part = nootsSummary([row({ inQty: 10, usedQty: 10 }), row({ oid: 2, inQty:
 assert.equal(part.inSum, 10, 'мэдэгдэх утгуудын нийлбэр');
 assert.equal(part.inUnknown, 1);
 assert.equal(part.usedSum, 10);
-assert.equal(part.usedUnknown, 1);
+/* 2026-10-30: зарцуулалт материалын НЭГ мөрөнд л бичигддэг тул бусад мөрийн хоосон утга «тоогүй» биш */
+assert.equal(part.usedUnknown, 0);
 assert.equal(part.rest, null, 'нийлбэр дутуу бол үлдэгдэл тодорхойгүй');
 assert.equal(part.status, TOLOV.open, 'тоогүй ачаатай бол «Дууссан» гэж дүгнэхгүй');
 assert.equal(tolovOf(10, 10, true), TOLOV.open);

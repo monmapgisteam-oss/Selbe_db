@@ -289,3 +289,5 @@
 .matOpt { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
 .matOpt input { accent-color: var(--data); margin: 0; }
 .tabs { margin-top: 12px; }
+/* Нормын оролт (2026-10-30) — нарийн тоон талбар */
+.normIn { flex: 0 0 auto; width: 72px; min-width: 0; padding: 3px 6px; text-align: right; font-variant-numeric: tabular-nums; }
