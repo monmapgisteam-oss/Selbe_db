@@ -19,13 +19,27 @@ const EMPTY_KEYS: ReadonlySet<string> = new Set<string>();
 type ObyemT = ReturnType<typeof useObyem>;
 type CellT = ReturnType<typeof useCellEdit>;
 
+/**
+ * Ажлын материалын нүд → «Арматур ×0.12; Бетон ×1.02» (2026-10-30). Бичлэг «Нэр» эсвэл «Нэр=норм» (тусгай норм —
+ * `lib/materialAjil.parseEntry`-тэй ИЖИЛ дүрэм; энд хүнд импортгүйгээр). Норм мэдэгдэхгүй бол зөвхөн нэр.
+ */
+function matText(v: string, norms: ReadonlyMap<string, number | null> | undefined): string {
+  return v.split(';').map((t) => t.trim()).filter(Boolean).map((t) => {
+    const m = /^(.*?)\s*=\s*(-?\d+(?:[.,]\d+)?)\s*$/.exec(t);
+    const name = (m ? m[1] : t).trim();
+    const own = m ? Number(m[2].replace(',', '.')) : null;
+    const norm = own != null && Number.isFinite(own) ? own : norms?.get(name) ?? null;
+    return norm == null ? name : `${name} ×${+norm.toFixed(4)}`;
+  }).join('; ');
+}
+
 export function FillRows({
   vis, winFrom, winTo, rowsAll, calc, addedOids, collapsed, toggle, ro, editing, canObyemEdit, pvSub, sc,
   pvPend, pvPreview, setPvPend, pending, byMap, fillMode, ovBase, meKey, volMode, edit, view, backChg, backOk,
   backChgDates = EMPTY_KEYS,
   locked, noEdit, say, canPerf, perfWhy, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
   inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
-  restoring = false, remainHint, pastePrev = null, extra = [], compact = false, clearLocked, maBlock,
+  restoring = false, remainHint, pastePrev = null, extra = [], compact = false, clearLocked, maBlock, matNorms,
 }: {
   vis: number[]; winFrom: number; winTo: number; rowsAll: SheetRow[]; calc: Calc; addedOids: Set<number>;
   collapsed: Set<number>; toggle: (oid: number) => void;
@@ -53,6 +67,8 @@ export function FillRows({
   clearLocked?: CellT['clearLocked'];
   /** Буцаасан (R) MA-тай ажлууд (`des` → шалтгаан) — тэр мөрд гүйцэтгэл бичихгүй (`lib/ma.maGateOf`) */
   maBlock?: ReadonlyMap<number, string>;
+  /** 2026-10-30: материалын үндсэн норм (`material_noots.norm`, нэр → норм) — ажлын материалын мөрөнд «×норм» */
+  matNorms?: ReadonlyMap<string, number | null>;
 }) {
   return (
     <>
@@ -93,6 +109,10 @@ export function FillRows({
                         </button>
                       )}
                       {workTxt}
+                      {/* 2026-10-30: ажлын материал («Материал баталгаажуулалт» → «Ажлын материал») — зөвхөн уншина */}
+                      {!r.group && typeof r.raw?.ashiglah_material_ner === "string" && r.raw.ashiglah_material_ner.trim() && (
+                        <span className={st.matLine} title={tr('Ашиглах материал')}>{matText(r.raw.ashiglah_material_ner, matNorms)}</span>
+                      )}
                     </td>
                     {!compact && (<>
                     <td className={cls("right c-w")} style={cw("wc", "w")} {...ro(RO.wC)} title={full(c.C)}>{wt(c.C)}</td>

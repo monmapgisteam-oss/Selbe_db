@@ -7,6 +7,7 @@ import { requireCap } from '@/lib/who';
 import { capLabel } from '@/modules/capText';
 import { isApproved, latestPerRespNo, type MaRow } from '@/lib/ma';
 import type { MirRow } from '@/lib/mir';
+import { loadWorkUses, computeUsage, type MatUse } from '@/lib/materialUsage';
 
 /**
  * МАТЕРИАЛЫН НӨӨЦ (2026-10-21, хэрэглэгчийн шийдвэр) — Enterprise hosted хүснэгт `material_noots`.
@@ -24,12 +25,16 @@ import type { MirRow } from '@/lib/mir';
  *     эсвэл GUID (`mirIdIssue`). Бичих эрх lib-д (`requireSyncCap`), хүчингүй болголт зөвхөн бичилт оролдсон үед.
  *   · MIR/MA хожим засагдвал (тоо хэмжээ · нэгж · R болсон) мөр нь дагаж шинэчлэгдэж/хасагдана. `mir_id`-гүй (гараар
  *     нэмсэн) мөрийг ХӨНДӨХГҮЙ.
+ *   · 2026-10-30 (хэрэглэгч): ЗАРЦУУЛАЛТ — `norm` (материалын үндсэн норм, нэрийн БҮХ мөрд ижил) × ажлын гүйцэтгэсэн
+ *     обьём (`materialUsage`). Материалын НИЙТ зарцуулалт нь тэр материалын ЭХНИЙ (бага objectid) мөрийн
+ *     `ashiglasan_hemjee`-д, бусад мөрд хоосон — ачаа бүрээр давхар тоологдохгүй. «Дутуу» (обьём/норм мэдэгдэхгүй ажил)
+ *     материал «Дууссан» болохгүй.
  */
 export const NOOTS_SVC = `${ENT_HOSTED}/material_noots/FeatureServer`;
 
 export const NF = {
   oid: 'objectid', name: 'material_ner', inQty: 'irsen_hemjee', usedQty: 'ashiglasan_hemjee',
-  unit: 'negj', status: 'tolov', mirId: 'mir_id',
+  unit: 'negj', status: 'tolov', mirId: 'mir_id', norm: 'norm',
 } as const;
 
 /** Төлвийн утга — ӨГӨГДӨЛ тул орчуулагдахгүй */
@@ -43,6 +48,8 @@ export type NootsRow = {
   unit: string;
   status: string;
   mirId: string;
+  /** Материалын үндсэн норм (ажлын 1 нэгжид) — `null` = тавиагүй */
+  norm: number | null;
 };
 
 const str = (v: unknown): string => (v == null ? '' : String(v).trim());
@@ -59,6 +66,7 @@ export function nootsRowOf(a: Record<string, unknown>): NootsRow {
     unit: str(a[NF.unit]),
     status: str(a[NF.status]),
     mirId: guidKey(a[NF.mirId]),
+    norm: num(a[NF.norm]),
   };
 }
 
@@ -117,6 +125,8 @@ export type NootsSum = {
   /** Mixed (including missing) units cannot establish a total or completion status. */
   unitConflict: boolean;
   rest: number | null; status: string | null; n: number;
+  /** Үндсэн норм — нэрийн мөрүүдийн эхний утгатай нь (бүгд ижил байх ёстой) */
+  norm: number | null;
 };
 
 export function nootsSummary(rows: readonly NootsRow[]): NootsSum[] {
@@ -132,9 +142,11 @@ export function nootsSummary(rows: readonly NootsRow[]): NootsSum[] {
   };
   return [...m.entries()].map(([name, l]) => {
     const i = sum(l.map((r) => r.inQty));
+    /* 2026-10-30: зарцуулалт нь материалын НЭГ (эхний) мөрөнд л — бусад мөрийн хоосон утга «тоогүй» БИШ */
     const u = sum(l.map((r) => r.usedQty));
+    u.unknown = 0;
     const unitConflict = new Set(l.map((r) => r.unit.trim().toLowerCase())).size > 1;
-    const partial = i.unknown > 0 || u.unknown > 0;
+    const partial = i.unknown > 0;
     return {
       name,
       units: [...new Set(l.map((r) => r.unit.trim()).filter(Boolean))],
@@ -144,6 +156,7 @@ export function nootsSummary(rows: readonly NootsRow[]): NootsSum[] {
       rest: !unitConflict && !partial && i.sum != null && u.sum != null ? i.sum - u.sum : null,
       status: unitConflict ? null : tolovOf(i.sum, u.sum, partial),
       n: l.length,
+      norm: l.find((r) => r.norm != null)?.norm ?? null,
     };
   }).sort((a, b) => a.name.localeCompare(b.name, 'mn'));
 }
@@ -184,6 +197,37 @@ export function statusFixes(rows: readonly NootsRow[]): { oid: number; status: s
     const status = st.get(r.name);
     return status != null && status !== r.status ? [{ oid: r.oid, status }] : [];
   });
+}
+
+/**
+ * ЗАРЦУУЛАЛТ ба ТӨЛӨВ БИЧИХ МӨРҮҮД (цэвэр) — материал бүрийн эхний (бага objectid) мөрд нийт зарцуулалт, бусдад null;
+ * бүх мөрд нэг төлөв (`tolovOf` — ирсэн дутуу, зарцуулалт «дутуу», нэгж зөрүүтэй бол «Дуусаагүй»).
+ * `usage`-д байхгүй материал — зарцуулалт мэдэгдэхгүй (null).
+ */
+export function usageFixes(rows: readonly NootsRow[], usage: ReadonlyMap<string, MatUse>): { oid: number; used: number | null; status: string }[] {
+  const by = new Map<string, NootsRow[]>();
+  for (const r of rows) {
+    if (!r.name) continue;
+    const l = by.get(r.name);
+    if (l) l.push(r); else by.set(r.name, [r]);
+  }
+  const out: { oid: number; used: number | null; status: string }[] = [];
+  const round = (v: number | null) => (v == null ? null : Math.round(v * 1e6) / 1e6);
+  for (const [name, l0] of by) {
+    const l = [...l0].sort((a, b) => a.oid - b.oid);
+    const u = usage.get(name);
+    /* «Дутуу» зарцуулалт (обьём/норм мэдэгдэхгүй ажилтай) — нийт тодорхойгүй тул null (null ≠ 0; «Дууссан» болохгүй) */
+    const used = u && !u.partial ? round(u.used) : null;
+    const ins = l.map((r) => r.inQty);
+    const inSum = ins.some((x) => x != null) ? ins.reduce<number>((a, x) => a + (x ?? 0), 0) : null;
+    const unitConflict = new Set(l.map((r) => r.unit.trim().toLowerCase())).size > 1;
+    const status = tolovOf(inSum, used, unitConflict || ins.some((x) => x == null) || !u || u.partial);
+    l.forEach((r, i) => {
+      const want = i === 0 ? used : null;
+      if (round(r.usedQty) !== want || r.status !== status) out.push({ oid: r.oid, used: want, status });
+    });
+  }
+  return out;
 }
 
 /* ═══════════════ СЕРВЕР ═══════════════ */
@@ -245,6 +289,24 @@ async function applyChunks(url: string, kind: 'adds' | 'updates' | 'deletes', it
   }
 }
 
+/**
+ * МАТЕРИАЛЫН ҮНДСЭН НОРМ ТАВИХ (2026-10-30) — тэр нэрийн БҮХ мөрд. `null` = арилгана. Эрх — чанарын (`requireSyncCap`).
+ * Зарцуулалт дараагийн синкээр (`syncNoots`) дахин бодогдоно.
+ */
+export async function setMaterialNorm(name: string, norm: number | null): Promise<number> {
+  requireSyncCap();
+  if (norm != null && (!Number.isFinite(norm) || norm < 0)) throw new Error(tr('Норм 0-ээс их тоо байх ёстой.'));
+  const { url } = await nootsTable();
+  const rows = (await loadNoots()).filter((r) => r.name === name && r.norm !== norm);
+  if (!rows.length) return 0;
+  try {
+    await applyChunks(url, 'updates', rows.map((r) => ({ attributes: { [NF.oid]: r.oid, [NF.norm]: norm } })));
+  } finally {
+    invalidate('MATERIAL_NOOTS');
+  }
+  return rows.length;
+}
+
 export type SyncResult = {
   added: number; updated: number; removed: number; statusFixed: number;
   disabled?: string;
@@ -280,8 +342,19 @@ export function syncNoots(mas: readonly MaRow[], mirs: readonly MirRow[]): Promi
     let rows = await loadNoots();
     const dup = planSync(rows, receiptsOf(mas, mirs)).deletes;
     if (dup.length) { await apply('deletes', dup); rows = await loadNoots(); }
-    const fixes = statusFixes(rows);
-    if (fixes.length) await apply('updates', fixes.map((f) => ({ attributes: { [NF.oid]: f.oid, [NF.status]: f.status } })));
+    /* 2026-10-30: ЗАРЦУУЛАЛТ — бүх гүйцэтгэлийн хүснэгтийн ажлуудаас (норм × обьём); хүснэгт уншигдаагүй бол «дутуу» */
+    let usage: Map<string, MatUse>;
+    try {
+      const wu = await loadWorkUses();
+      const defaults = new Map(nootsSummary(rows).map((x) => [x.name, x.norm] as const));
+      usage = computeUsage(wu.works, defaults, wu.failed.length > 0);
+    } catch {
+      usage = new Map();
+    }
+    const fixes = usageFixes(rows, usage);
+    if (fixes.length) {
+      await apply('updates', fixes.map((f) => ({ attributes: { [NF.oid]: f.oid, [NF.usedQty]: f.used, [NF.status]: f.status } })));
+    }
     return { added: plan.adds.length, updated: plan.updates.length, removed: plan.deletes.length + dup.length, statusFixed: fixes.length };
   })().finally(() => {
     flight = null;

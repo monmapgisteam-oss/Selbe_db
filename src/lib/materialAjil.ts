@@ -21,14 +21,43 @@ export const MAT_FIELD = 'ashiglah_material_ner';
 export const MAT_SEP = '; ';
 export const MAT_MAX = 1000;
 
-/** Нүдний текст → нэрсийн жагсаалт (давхардал · хоосон хасна) */
+/**
+ * НЭГ МАТЕРИАЛЫН БИЧЛЭГ (2026-10-30, хэрэглэгч: «материал сонгоход норм дагаж орно, онцгой ажилд л засна»):
+ *   «Арматур» — материалын ҮНДСЭН норм (`material_noots.norm`) хэрэглэгдэнэ;
+ *   «Арматур=0.15» — ЭНЭ ажилд тусгай норм (ажлын 1 нэгжид 0.15 материалын нэгж).
+ * ⚠️ Нэр нь давтагдахгүй — нэг ажилд нэг материал нэг л удаа (тусгай нормтой ч).
+ */
+export type MatEntry = { name: string; norm: number | null };
+const ENTRY_RE = /^(.*?)\s*=\s*(-?\d+(?:[.,]\d+)?)\s*$/;
+export function parseEntry(s: string): MatEntry {
+  const m = ENTRY_RE.exec(s.trim());
+  if (!m || !m[1].trim()) return { name: s.trim(), norm: null };
+  const n = Number(m[2].replace(',', '.'));
+  return { name: m[1].trim(), norm: Number.isFinite(n) && n >= 0 ? n : null };
+}
+/** Бичлэгийг текст болгоно — тусгай норм байвал «Нэр=норм» */
+export const entryText = (e: MatEntry): string => (e.norm == null ? e.name : `${e.name}=${+e.norm.toFixed(6)}`);
+/** Бичлэгийн материалын нэр */
+export const entryName = (s: string): string => parseEntry(s).name;
+
+/** Нүдний текст → бичлэгийн жагсаалт (нэрээр давхардал · хоосон хасна; эхнийх нь үлдэнэ) */
 export function parseMats(v: unknown): string[] {
   const out: string[] = [];
+  const seen = new Set<string>();
   for (const t of (v == null ? '' : String(v)).split(';')) {
     const s = t.trim();
-    if (s && !out.includes(s)) out.push(s);
+    if (!s) continue;
+    const name = entryName(s);
+    if (seen.has(name)) continue;
+    seen.add(name);
+    out.push(entryText(parseEntry(s)));
   }
   return out;
+}
+
+/** Жагсаалтад материалын тусгай нормыг тавина/арилгана (`norm` null = үндсэн норм руу буцаана) — цэвэр */
+export function setEntryNorm(list: readonly string[], name: string, norm: number | null): string[] {
+  return list.map((s) => (entryName(s) === name ? entryText({ name, norm }) : s));
 }
 
 /** Нэрсийн жагсаалт → нүдний текст (`null` = хоосон). Талбарын уртаас хэтэрвэл ШИДНЭ (тайрахгүй). */
