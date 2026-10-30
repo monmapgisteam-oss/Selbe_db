@@ -13,14 +13,15 @@
 import {
   saneDate, type PhaseKind, type PlanNode, type PlanTree, type PlanValues,
 } from './projectPlan';
-import { loadProjectPlan, type ProjectPlan } from './projectPlanInputs';
+import { SHEET_PKGS, loadProjectPlan, type ProjectPlan } from './projectPlanInputs';
 import { CASHFLOW_NEW, CF_MONTH, bagtsKey, buildingKey, pkgKeyOf, isConstructionNo } from './services';
-import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { PKGS, SYNTHETIC_BLOCK, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, computeAll, childIndexes, type Calc, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { planFields } from './planProgress';
 import { queryFeatures } from './query';
 import { cached, SESSION_TTL_MS } from './live';
 import { t as tr } from './i18nCore';
+import type { XlsxCell, XlsxSheet } from './xlsx';
 
 /* ══════════════════ 1. Өдөр · сар ══════════════════ */
 
@@ -95,6 +96,17 @@ export function barStatus(
   if (lateOk && today > end) return 'late';
   if (planned != null && planned - actual > BEHIND_PP) return 'behind';
   return start > today ? 'todo' : 'run';
+}
+
+/**
+ * ДУУСАХ ОГНООНЫ ТААМАГ (2026-10-30) — эхэлснээс хойших дундаж хурдаар (гүйцэтгэл ÷ өнгөрсөн өдөр) үргэлжилбэл
+ * хэзээ 100% хүрэх вэ. Дууссан · эхлээгүй · гүйцэтгэл 0/мэдэгдэхгүй бол null (хурд тодорхойгүй).
+ */
+export function forecastEnd(start: number | null, actual: number | null, today: number): number | null {
+  if (start == null || actual == null || actual >= 100 - 1e-9 || actual <= 1e-9 || today <= start) return null;
+  const elapsed = Math.round((today - start) / DAY) + 1;
+  const perDay = actual / elapsed;
+  return saneDate(today + Math.ceil((100 - actual) / perDay) * DAY);
 }
 
 /**
@@ -375,6 +387,8 @@ export type SubGroup = {
   end: number | null;
   /** Бодит гүйцэтгэл 0–100 (`computeAll.actAgg`) */
   actual: number | null;
+  /** Өнөөдрийн төлөвлөгөөт хувь 0–100 (`computeAll.plan`, Хуваарийн огноогоор) — «Хоцорсон»-ыг тодорхойлно */
+  planned?: number | null;
 };
 export type BlockDetail = {
   /** «Б.»-ийн шууд хүүхдүүд (Б1…Б5) — L3 */
@@ -398,12 +412,14 @@ export function blockDetail(rows: readonly SheetRow[], calc: readonly Calc[], b:
     const d = c?.D ?? null;
     const [s, e] = cleanSpan(c?.start[b], c?.end[b]);
     const a = c?.actAgg[b];
+    const p = c?.plan?.[b];
     return {
       no: String(rows[i].no ?? '').trim(),
       name: String(rows[i].work ?? '').trim(),
       weight: d == null ? null : base ? (d / base) * 100 : d * 100,
       start: s, end: e,
       actual: a == null || !Number.isFinite(a) ? null : a * 100,
+      planned: p == null || !Number.isFinite(p) ? null : p * 100,
     };
   };
   const phases: SubGroup[] = [];
@@ -440,30 +456,52 @@ export function sheetDetails(sheets: readonly DetailSheet[]): Map<string, BlockD
   return out;
 }
 
+/** Блокийн дэд үе шатууд ба блокийн жин (`PlanValues.F`, 0–100; мэдэгдэхгүй бол null) — `mergePhases`-ийн оролт */
+export type WeightedPhases = { gs: readonly SubGroup[]; w: number | null };
+
 /**
- * Багцын дэд үе шат (L3) — блокуудынхыг НЭГТГЭНЭ (цэвэр): жин = дундаж, эхлэх = MIN, дуусах = MAX,
- * гүйцэтгэл = утгатай блокуудын ЭНГИЙН дундаж (блок бүр нэг барилга). Нэрээр (№ + нэр) тааруулна.
+ * Багцын дэд үе шат (L3) — блокуудынхыг НЭГТГЭНЭ (цэвэр): эхлэх = MIN, дуусах = MAX; жин, гүйцэтгэл, төлөвлөгөөт хувь
+ * = БЛОКИЙН ЖИНГЭЭР (F) жигнэсэн дундаж. Нэрээр (№ + нэр) тааруулна.
+ * ⚠️ 2026-10-30 (хэрэглэгч: «Нэгтгэлтэй таарах ёстой»): урьд нь энгийн дундаж байсан тул том/жижиг блок адил тоологдож,
+ *    «Барилга угсралт — нийт» (Σ F·S) мөртэй зөрдөг байв. Жингүй блок (F = null) байвал энгийн дундаж руу шилжинэ.
  */
-export function mergePhases(list: readonly (readonly SubGroup[])[]): SubGroup[] {
-  type Acc = { g: SubGroup; w: number[]; a: number[]; s: number | null; e: number | null };
+export function mergePhases(list: readonly (readonly SubGroup[] | WeightedPhases)[]): SubGroup[] {
+  type Pair = { v: number; w: number };
+  type Acc = { g: SubGroup; wt: Pair[]; a: Pair[]; p: Pair[]; s: number | null; e: number | null };
+  const items: WeightedPhases[] = list.map((x) => ('gs' in x ? x : { gs: x as readonly SubGroup[], w: null }));
+  const allW = items.every((x) => x.w != null && x.w > 0);
   const acc = new Map<string, Acc>();
-  for (const gs of list) for (const g of gs) {
+  for (const it of items) for (const g of it.gs) {
     const k = `${g.no}|${g.name}`;
-    const x = acc.get(k) ?? { g, w: [], a: [], s: null, e: null };
-    if (g.weight != null) x.w.push(g.weight);
-    if (g.actual != null) x.a.push(g.actual);
+    const w = allW ? it.w! : 1;
+    const x = acc.get(k) ?? { g, wt: [], a: [], p: [], s: null, e: null };
+    if (g.weight != null) x.wt.push({ v: g.weight, w });
+    if (g.actual != null) x.a.push({ v: g.actual, w });
+    if (g.planned != null) x.p.push({ v: g.planned, w });
     if (g.start != null && (x.s == null || g.start < x.s)) x.s = g.start;
     if (g.end != null && (x.e == null || g.end > x.e)) x.e = g.end;
     acc.set(k, x);
   }
-  const avg = (xs: number[]) => (xs.length ? xs.reduce((p, q) => p + q, 0) / xs.length : null);
+  const avg = (xs: Pair[]) => {
+    const den = xs.reduce((s, x) => s + x.w, 0);
+    return xs.length && den > 0 ? xs.reduce((s, x) => s + x.v * x.w, 0) / den : null;
+  };
   return [...acc.values()].map((x) => ({
-    no: x.g.no, name: x.g.name, weight: avg(x.w), start: x.s, end: x.e, actual: avg(x.a),
+    no: x.g.no, name: x.g.name, weight: avg(x.wt), start: x.s, end: x.e, actual: avg(x.a), planned: avg(x.p),
   }));
 }
 
 /** Блокийн түлхүүр — Excel-ийн «Багц-4.2» + «6/1» → «БАГЦ42|6/1» (`projectPlanInputs.blockKeyOf`-тэй ижил) */
 export const blockKeyFor = (pkg: string | null | undefined, blok: string): string => buildingKey(pkg ?? '', blok);
+
+/**
+ * БЛОКГҮЙ (шугам сүлжээ · дэд бүтэц) багцын дэд бүлэг — бөглөх хуудасны синтетик «Ажил» блокоос (2026-10-30,
+ * «Хуваарь»-тай ижил). Блоктой багц эсвэл хуудасгүй бол null.
+ */
+export function infraDetail(detail: ReadonlyMap<string, BlockDetail> | null, pk: PkgInfo): BlockDetail | null {
+  if (!detail || pk.blocks.length) return null;
+  return detail.get(blockKeyFor(pk.node.pkg, SYNTHETIC_BLOCK)) ?? null;
+}
 
 /* ══════════════════ 8. Мөрийн загварууд ══════════════════ */
 
@@ -481,6 +519,8 @@ export type GRow =
     inh?: boolean;
     /** Огноо нь үе шатын ҮНДСЭН баганых биш (гэрээ/газар/гүйцэтгэгчийн өөр хос) — төлөвлөгөөт хувийн суурь биш */
     alt?: boolean;
+    /** Дуусах огнооны таамаг (`forecastEnd`) */
+    fc?: number | null;
   }
   | { t: 'ms'; id: string; name: string; depth: number; at: number | null; status: MsStatus }
   | { t: 'note'; id: string; name: string; depth: number };
@@ -489,7 +529,7 @@ export type GRow =
 export function ganttAxis(rows: readonly GRow[], today: number): Axis | null {
   const ds: (number | null)[] = [today];
   for (const r of rows) {
-    if (r.t === 'bar') ds.push(r.start, r.end);
+    if (r.t === 'bar') ds.push(r.start, r.end, r.fc ?? null);
     else if (r.t === 'ms') ds.push(r.at);
   }
   return axisOf(ds, 1);
@@ -536,12 +576,14 @@ function barRow(
   return {
     t: 'bar', id, name, depth, start: s, end: e, actual, planned,
     status: barStatus(s, e, actual, planned, today, !alt), strong: opts.strong, inh, alt,
+    fc: forecastEnd(s, actual, today),
   };
 }
 
 /**
- * L1 — МАСТЕР: төслийн нийт (+ гэрээний дуусах), үе шат бүр, барилга угсралтын чиглэл бүр (+ гэрээний дуусах).
+ * L1 — МАСТЕР: төслийн нийт (+ гэрээний дуусах), барилга угсралтын чиглэл бүр (+ гэрээний дуусах).
  * Багцгүй бүлэг чиглэлийн (Инженерийн дэд бүтэц) дэд бүлгүүд нэг түвшин доош.
+ * ⚠️ 2026-10-30: «Үе шат» хэсэг хасагдсан — `Level planning_261021` загварт L1 нь төслийн нийт ба чиглэлүүд л.
  */
 export function buildL1(plan: ProjectPlan, today: number): GRow[] {
   const { tree, result: res } = plan;
@@ -549,13 +591,11 @@ export function buildL1(plan: ProjectPlan, today: number): GRow[] {
   const rv = res.values.get(tree.root);
   rows.push(barRow(res, tree.root, 'L1.1', tr('Төслийн нийт'), 0, today, { strong: true, phase: 'other' }));
   rows.push({ t: 'ms', id: 'L1.1.1', name: tr('Гэрээний дуусах огноо'), depth: 1, at: rv?.I ?? null, status: milestoneStatus(rv?.I ?? null, doneOf(rv?.S), today) });
-  rows.push({ t: 'section', id: 'L1.2', name: tr('Үе шат'), depth: 0 });
-  tree.root.children.forEach((p, i) => rows.push(barRow(res, p, `L1.2.${i + 1}`, nameOf(p), 1, today)));
   const works = worksNode(tree);
   if (works) {
-    rows.push({ t: 'section', id: 'L1.3', name: tr('Барилга угсралтын чиглэл'), depth: 0 });
+    rows.push({ t: 'section', id: 'L1.2', name: tr('Барилга угсралтын чиглэл'), depth: 0 });
     works.children.forEach((d, i) => {
-      const id = `L1.3.${i + 1}`;
+      const id = `L1.2.${i + 1}`;
       const v = res.values.get(d);
       rows.push(barRow(res, d, id, nameOf(d), 1, today, { strong: true }));
       rows.push({ t: 'ms', id: `${id}.0`, name: tr('Гэрээний дуусах огноо'), depth: 2, at: v?.I ?? null, status: milestoneStatus(v?.I ?? null, doneOf(v?.S), today) });
@@ -569,9 +609,22 @@ export function buildL1(plan: ProjectPlan, today: number): GRow[] {
   return rows;
 }
 
+/** Огноо өнгөрсөн бол биелсэн гэж үзэх milestone (захирамж · гэрээ байгуулсан) — огноо алга бол «мэдээлэлгүй» */
+const pastMs = (id: string, name: string, at: number | null, today: number): GRow => ({
+  t: 'ms', id, name, depth: 1, at, status: at == null ? 'none' : milestoneStatus(at, at <= today, today),
+});
+
+const ELEV_RX = /өндөржилт/i;
+const ADDENDUM_RX = /нэмэлт\s*гэрээ/i;
+
 /**
- * L2 — ҮЕ ШАТ / MILESTONE: төслийн ерөнхий (ТЭЗҮ · хүлээлгэн өгөх · зүгшрүүлэлт) + багц бүрийн 8 мөр
- * (захирамж · зураг төсөл · газар · сонгон · зөвшөөрөл · барилга · гэрээ дуусах · ашиглалт).
+ * L2 — ҮЕ ШАТ / MILESTONE: төслийн ерөнхий + багц бүрийн 7 мөр
+ * (захирамж · зураг төсөл · сонгон · зөвшөөрөл · барилга · гэрээ дуусах · ашиглалт).
+ * ⚠️ 2026-10-30 (`Level planning_261021` загвар):
+ *    · «Төслийн ерөнхий» = ТЭЗҮ · Өндөржилтийн захирамж (өндөржилтийн мөрийн `zahiramj_*`) · Өндөржилтийн нэмэлт
+ *      гэрээ (нэр нь «нэмэлт гэрээ» агуулсан мөр, `geree_ognoo`; гараар нэмнэ — алга бол «мэдээлэлгүй»);
+ *    · «Газар чөлөөлөлт» мөр хасагдсан (загварт алга, газрын огноо хоосон);
+ *    · сонгон шалгаруулалт = ГЭРЭЭ БАЙГУУЛСАН огноо (`geree_ognoo`: сонгон шалгаруулалтын мөр › барилгын багцын мөр).
  */
 export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Marks | null, today: number): GRow[] {
   const { tree, result: res } = plan;
@@ -579,12 +632,19 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
   const idx = phaseIndex(tree);
   rows.push({ t: 'section', id: 'L2.1', name: tr('Төслийн ерөнхий'), depth: 0 });
   let i = 0;
-  for (const p of tree.root.children) {
-    if (p.phase === 'tezu') rows.push(barRow(res, p, `L2.1.${++i}`, nameOf(p), 1, today));
-    else if (p.phase === 'huleelgeh' || p.phase === 'zugshruulelt') {
-      for (const c of p.children) rows.push(barRow(res, c, `L2.1.${++i}`, nameOf(c), 1, today));
-    }
-  }
+  const tezu = tree.root.children.find((p) => p.phase === 'tezu');
+  if (tezu) rows.push(barRow(res, tezu, `L2.1.${++i}`, nameOf(tezu), 1, today));
+  const elev = tree.nodes.find((n) => ELEV_RX.test(nameOf(n)) && (n.row?.zahiramj_ognoo != null || !!n.row?.zahiramj_dugaar));
+  const elevNo = String(elev?.row?.zahiramj_dugaar ?? '').trim();
+  rows.push(pastMs(
+    `L2.1.${++i}`, elevNo ? tr('Өндөржилтийн захирамж {0}', elevNo) : tr('Өндөржилтийн захирамж'),
+    elev?.row?.zahiramj_ognoo ?? null, today,
+  ));
+  const add = tree.nodes.find((n) => ADDENDUM_RX.test(nameOf(n)));
+  rows.push(pastMs(
+    `L2.1.${++i}`, add ? nameOf(add) : tr('Өндөржилтийн нэмэлт гэрээ'),
+    add?.row?.geree_ognoo ?? (add ? res.values.get(add)?.I ?? null : null), today,
+  ));
   pkgs.forEach((pk, j) => {
     const id = `L2.${j + 2}`;
     rows.push({ t: 'section', id, name: pk.label, depth: 0 });
@@ -592,36 +652,39 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     const next = () => `${id}.${++k}`;
     const son = idx.get('songon')?.get(pk.key);
     const mk = (n: PlanNode | undefined) => (n ? marks?.get(n.code) : undefined);
+    /* Захирамж — мөрийн өөрийн `zahiramj_*` (гараар засагдана) › тусдаа уншсан milestone */
+    const own = [pk.node, son].find((n) => n?.row?.zahiramj_ognoo != null || !!n?.row?.zahiramj_dugaar)?.row;
     const ord = [mk(pk.node), mk(son)].find((m) => m?.order != null) ?? mk(pk.node) ?? mk(son);
-    const ordAt = ord?.order ?? null;
-    const ordNo = String(ord?.orderNo ?? '').trim();
+    const ordAt = own?.zahiramj_ognoo ?? ord?.order ?? null;
+    const ordNo = String(own?.zahiramj_dugaar ?? ord?.orderNo ?? '').trim();
     rows.push({
       t: 'ms', id: next(), name: ordNo ? `${tr('Захирамж')} ${ordNo}` : tr('Захирамж'), depth: 1, at: ordAt,
       status: marks == null && ordAt == null ? 'none' : milestoneStatus(ordAt, ordAt != null && ordAt <= today, today),
     });
     const zur = idx.get('zurag')?.get(pk.key);
     if (zur) rows.push(barRow(res, zur, next(), tr('Зураг төсөл'), 1, today));
-    const gaz = idx.get('gazar')?.get(pk.key);
-    if (gaz) rows.push(barRow(res, gaz, next(), tr('Газар чөлөөлөлт'), 1, today));
     if (son) {
       const v = res.values.get(son);
-      const at = mk(son)?.tender ?? mk(pk.node)?.tender ?? v?.I ?? null;
+      const signed = son.row?.geree_ognoo ?? pk.node.row?.geree_ognoo ?? null;
+      const at = signed ?? mk(son)?.tender ?? mk(pk.node)?.tender ?? v?.I ?? null;
+      /* Гэрээ байгуулсан огноо өнгөрсөн = сонгон шалгаруулалт дууссан */
+      const done = signed != null && signed <= today ? true : doneOf(v?.S);
       rows.push({
         t: 'ms', id: next(), name: tr('Сонгон шалгаруулалт (гэрээ байгуулсан)'), depth: 1, at,
-        status: marks == null && at == null ? 'none' : milestoneStatus(at, doneOf(v?.S), today),
+        status: marks == null && at == null ? 'none' : milestoneStatus(at, done, today),
       });
     }
     const zov = idx.get('zovshoorol')?.get(pk.key);
     if (zov) {
       const v = res.values.get(zov);
       const at = v?.I ?? null;
-      rows.push({ t: 'ms', id: next(), name: tr('Зөвшөөрөл (барилга эхлэх)'), depth: 1, at, status: milestoneStatus(at, doneOf(v?.S), today) });
+      rows.push({ t: 'ms', id: next(), name: tr('Зөвшөөрөл (барилгын ажлын)'), depth: 1, at, status: milestoneStatus(at, doneOf(v?.S), today) });
     }
     const cv = res.values.get(pk.node);
     const built = doneOf(cv?.S);
     rows.push(barRow(res, pk.node, next(), tr('Барилга ажил'), 1, today, { strong: true }));
     rows.push({ t: 'ms', id: next(), name: tr('Гэрээний дуусах огноо'), depth: 1, at: cv?.I ?? null, status: milestoneStatus(cv?.I ?? null, built, today) });
-    const ho = mk(pk.node)?.handover ?? null;
+    const ho = pk.node.row?.ashiglalt_ognoo ?? mk(pk.node)?.handover ?? null;
     rows.push({
       t: 'ms', id: next(), name: tr('Ашиглалтад оруулах'), depth: 1, at: ho,
       status: marks == null && ho == null ? 'none' : milestoneStatus(ho, built, today),
@@ -650,15 +713,20 @@ export function buildL3(
     else zur.children.forEach((c, k) => rows.push(barRow(res, c, `${id}.1.${k + 1}`, nameOf(c), 2, today)));
     rows.push({ t: 'section', id: `${id}.2`, name: tr('Барилга угсралт'), depth: 1 });
     rows.push(barRow(res, pk.node, `${id}.2.1`, tr('Барилга угсралт — нийт'), 2, today, { strong: true }));
-    if (detail && pk.blocks.length) {
-      const list = pk.blocks
-        .map((b) => detail.get(blockKeyFor(b.pkg, b.blok!))?.phases)
-        .filter((x): x is SubGroup[] => !!x);
-      if (!list.length) rows.push({ t: 'note', id: `${id}.2.0`, name: tr('Бөглөх хуудасны дэд үе шат олдсонгүй'), depth: 2 });
+    if (detail) {
+      /* Блоктой — блок бүрийн «Б.»-ийн дэд үе шат, блокийн жингээр (F); блокгүй (шугам сүлжээ) — «Ажил» блокийнх */
+      const list: WeightedPhases[] = pk.blocks.length
+        ? pk.blocks.flatMap((b) => {
+          const gs = detail.get(blockKeyFor(b.pkg, b.blok!))?.phases;
+          return gs ? [{ gs, w: res.values.get(b)?.F ?? null }] : [];
+        })
+        : [infraDetail(detail, pk)?.phases].filter((x): x is SubGroup[] => !!x).map((gs) => ({ gs, w: null }));
+      if (!list.length && pk.blocks.length) rows.push({ t: 'note', id: `${id}.2.0`, name: tr('Бөглөх хуудасны дэд үе шат олдсонгүй'), depth: 2 });
       mergePhases(list).forEach((g, k) => rows.push({
         t: 'bar', id: `${id}.2.${k + 2}`, name: g.name || g.no, depth: 2, w: g.weight,
-        start: g.start, end: g.end, actual: g.actual, planned: null,
-        status: barStatus(g.start, g.end, g.actual, null, today),
+        start: g.start, end: g.end, actual: g.actual, planned: g.planned ?? null,
+        status: barStatus(g.start, g.end, g.actual, g.planned ?? null, today),
+        fc: forecastEnd(g.start, g.actual, today),
       }));
     }
   });
@@ -679,8 +747,11 @@ export type HRow = {
   cells: (number | null)[];
   /** Харагдах багануудын нийлбэр (L5/L6) */
   sum?: number | null;
+  /** Нүдний оронд харагдах тайлбар («Хуваарь хуваарилагдаагүй») — бүх нүд null үед */
+  note?: string;
 };
-export type HSection = { pkg: PkgInfo; rows: HRow[] };
+/** `note` — багцын тооцооны арга (толгойд), `methodNote` */
+export type HSection = { pkg: PkgInfo; rows: HRow[]; note?: string };
 
 const hRowOf = (res: ProjectPlan['result'], n: PlanNode, id: string, name: string, kind: HRow['kind'], cells: (number | null)[]): HRow => {
   const v = res.values.get(n);
@@ -689,12 +760,49 @@ const hRowOf = (res: ProjectPlan['result'], n: PlanNode, id: string, name: strin
 };
 
 /**
- * L4 — САРЫН HEATMAP: багц бүрд «Багцын нийт» (сар бүрийн өсөлт), «Өсөх дүн» (хуримтлагдсан), блок бүр.
- * Багана = `plan.months` (бүтэн тэнхлэг) — харагдац `activeRange`-аар тайрна.
+ * БАГЦЫН ТООЦООНЫ АРГА (L4–L6 толгой, 2026-10-30 — `Level planning_261021` загвар): сарын төлөвлөгөө хаанаас бодогдсон.
  */
-export function buildL4(plan: ProjectPlan, pkgs: readonly PkgInfo[]): HSection[] {
+export function methodNote(plan: ProjectPlan, pk: PkgInfo): string {
+  const hasPlan = !!plan.monthly.get(pk.node)?.some((v) => v != null && v > 0);
+  if (pk.blocks.length) {
+    return hasPlan ? tr('Хуваарийн сарын төлөвлөгөө — блокуудын жигнэсэн дүн') : tr('Блокуудын хуваарь хуваарилагдаагүй');
+  }
+  if (SHEET_PKGS.any.has(pkgKeyOf(pk.node.pkg ?? ''))) {
+    return hasPlan ? tr('Хуваарийн төлөвлөгөө') : tr('Хуваарь хуваарилагдаагүй');
+  }
+  return hasPlan ? tr('Гэрээний огнооны хооронд шугаман тооцоо') : tr('Гүйцэтгэлийн хүснэгтгүй — хуваарь байхгүй');
+}
+
+/** Сарын эхний өдөр (UTC) — `months` нь сарын сүүлийн өдөр */
+const monthStart = (ms: number): number => { const d = new Date(ms); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1); };
+
+/**
+ * Шугам сүлжээ · дэд бүтцийн (блокгүй) багцын ДЭД АЖИЛ — «Ажил» блокийн дэд бүлэг, огнооны хооронд шугаман.
+ * Огноогүй бол нүд null + «Хуваарь хуваарилагдаагүй».
+ */
+function infraRows(detail: ReadonlyMap<string, BlockDetail> | null, pk: PkgInfo, id: string, cols: readonly Col[], withSum: boolean): HRow[] {
+  const d = infraDetail(detail, pk);
+  /* «Б.»-ийн шууд хүүхдүүд (Дулааны шугам · Ариутгах татуурга …) — загварынх; Б1-ийн задаргаа (хэсэг тус бүр) хэт нарийн */
+  return (d?.phases ?? []).map((g, gi) => {
+    const dated = g.start != null && g.end != null;
+    const cells = cols.map((c) => (dated ? linearShare(g.weight, g.start, g.end, c.from, c.days) : null));
+    return {
+      id: `${id}.g${gi + 1}`, name: g.name || g.no, kind: 'group', w: g.weight,
+      start: g.start, end: g.end, actual: g.actual, cells,
+      ...(withSum ? { sum: sumAll(cells) } : {}),
+      ...(dated ? {} : { note: tr('Хуваарь хуваарилагдаагүй') }),
+    };
+  });
+}
+
+/**
+ * L4 — САРЫН HEATMAP: багц бүрд «Багцын нийт» (сар бүрийн өсөлт), «Өсөх дүн» (хуримтлагдсан), блок бүр; блокгүй
+ * багцад дэд ажлууд (`detail` өгвөл). Багана = `plan.months` (бүтэн тэнхлэг) — харагдац `activeRange`-аар тайрна.
+ */
+export function buildL4(plan: ProjectPlan, pkgs: readonly PkgInfo[], detail: ReadonlyMap<string, BlockDetail> | null = null): HSection[] {
   const { result: res, monthly, months } = plan;
   const empty = months.map(() => null);
+  const mcols: Col[] = months.map((m) => ({ from: monthStart(m), days: daysInMonth(m) }));
   return pkgs.map((pk, j) => {
     const id = `L4.${j + 1}`;
     const cum = monthly.get(pk.node) ?? empty;
@@ -702,8 +810,9 @@ export function buildL4(plan: ProjectPlan, pkgs: readonly PkgInfo[]): HSection[]
       hRowOf(res, pk.node, `${id}.0`, tr('Багцын нийт'), 'total', increments(cum)),
       { ...hRowOf(res, pk.node, `${id}.c`, tr('Өсөх дүн'), 'cum', [...cum]), actual: null, start: null, end: null },
       ...pk.blocks.map((b, k) => hRowOf(res, b, `${id}.${k + 1}`, b.blok!, 'block', increments(monthly.get(b) ?? empty))),
+      ...infraRows(detail, pk, id, mcols, false),
     ];
-    return { pkg: pk, rows };
+    return { pkg: pk, rows, note: methodNote(plan, pk) };
   });
 }
 
@@ -738,7 +847,8 @@ export function buildLook(
         });
       });
     });
-    return { pkg: pk, rows };
+    if (withGroups) rows.push(...infraRows(detail, pk, id, cols, true));
+    return { pkg: pk, rows, note: methodNote(plan, pk) };
   });
 }
 
@@ -848,7 +958,8 @@ async function fetchSheetDetail(): Promise<SheetDetail> {
   const failed: string[] = [];
   const got = await Promise.all(PKGS.map(async (pkg, order) => {
     try {
-      const sc = await loadSchema(pkg);
+      /* ⚠️ 2026-10-30: блокгүй хуудас (шугам сүлжээ · дэд бүтэц) — «Хуваарь»-тай ижил синтетик «Ажил» блокоор (`infraDetail`) */
+      const sc = await loadSchema(pkg, pkg.floors != null ? {} : { synthetic: true });
       if (!sc.bld.length) return null;
       const fields = [...new Set([...planFields(sc), ...sc.act, ...sc.obyem].filter((x): x is string => !!x))];
       const r = await loadRows(pkg, sc, undefined, fields, { persist: true });
@@ -946,7 +1057,8 @@ export function visibleHeat(
   const needle = q.trim().toLowerCase();
   if (!needle) {
     return secs.map((sec) => {
-      if (collapsedPkg.has(sec.pkg.key)) return { ...sec, rows: [] };
+      /* ⚠️ 2026-10-30: хураасан багц — «Багцын нийт»/«Өсөх дүн» үлдэнэ (бүх багцыг нэг дор харьцуулна) */
+      if (collapsedPkg.has(sec.pkg.key)) return { ...sec, rows: sec.rows.filter((r) => r.kind === 'total' || r.kind === 'cum') };
       const rows: HRow[] = [];
       let hide = false;
       for (const r of sec.rows) {
@@ -974,4 +1086,97 @@ export function visibleHeat(
     out.push({ ...sec, rows: sec.rows.filter((_, i) => keep.has(i)) });
   }
   return out;
+}
+
+/* ══════════════════ Тайлан — Excel (2026-10-30) ══════════════════ */
+
+/** Төлвийн нэр — дэлгэц ба тайлан нэг эхээс */
+export const BAR_TEXT: Record<BarStatus, () => string> = {
+  done: () => tr('Дууссан'),
+  late: () => tr('Хугацаа хэтэрсэн'),
+  behind: () => tr('Хоцорсон'),
+  run: () => tr('Явж байна'),
+  todo: () => tr('Эхлээгүй'),
+  none: () => tr('Мэдээлэл байхгүй'),
+};
+/* ⚠️ 2026-10-30 (загвар): огноогүй milestone — «хийгдээгүй» (улаан); гүйцэтгэл мэдэгдэхгүй — «мэдээлэл байхгүй» (саарал) */
+export const MS_TEXT: Record<MsStatus, () => string> = {
+  done: () => tr('Биелсэн'),
+  late: () => tr('Хугацаа хэтэрсэн'),
+  upcoming: () => tr('Хүлээгдэж буй'),
+  missing: () => tr('Хийгдээгүй'),
+  none: () => tr('Мэдээлэл байхгүй'),
+};
+/** Хугацаа нь өнгөрсөн, гүйцэтгэл 0 — «хийгдээгүй» */
+export const notDone = (r: { status: BarStatus; actual: number | null }): boolean =>
+  r.status === 'late' && (r.actual ?? 0) <= 1e-9;
+
+const HEAD: XlsxCell = { v: '', s: { bold: true, fill: 'E2E8F0', border: true } };
+const hd = (v: string): XlsxCell => ({ ...(HEAD as object), v });
+const num1 = (v: number | null | undefined): XlsxCell => (v == null ? null : { v: Math.round(v * 1000) / 1000, s: { numFmt: '0.0' } });
+
+/** Гантын түвшин (L1–L3) → хуудас */
+function ganttSheet(name: string, rows: readonly GRow[]): XlsxSheet {
+  const out: XlsxCell[][] = [[
+    hd(tr('ID')), hd(tr('Ажил, үе шат')), hd(tr('Эхлэх')), hd(tr('Дуусах')), hd(tr('Гүйцэтгэл %')),
+    hd(tr('Төлөвлөгөө %')), hd(tr('Таамаг дуусах')), hd(tr('Төлөв')),
+  ]];
+  for (const r of rows) {
+    const ind = { indent: r.depth };
+    if (r.t === 'section' || r.t === 'note') {
+      out.push([r.id, { v: r.name, s: { bold: r.t === 'section', indent: r.depth, fill: r.t === 'section' ? 'F1F5F9' : undefined } }]);
+    } else if (r.t === 'ms') {
+      out.push([r.id, { v: r.name, s: ind }, fmtDay(r.at), null, null, null, null, MS_TEXT[r.status]()]);
+    } else {
+      out.push([
+        r.id, { v: r.name, s: { ...ind, bold: !!r.strong } }, fmtDay(r.start), fmtDay(r.end), num1(r.actual), num1(r.planned),
+        r.fc == null ? null : fmtDay(r.fc), notDone(r) ? tr('хийгдээгүй') : BAR_TEXT[r.status](),
+      ]);
+    }
+  }
+  return { name, rows: out, cols: [10, 56, 12, 12, 12, 12, 14, 18], frozen: { rows: 1, cols: 2 } };
+}
+
+/** Heatmap түвшин (L4–L6) → хуудас; `labels` — баганын толгой */
+function heatSheet(name: string, secs: readonly HSection[], labels: readonly string[], withSum: boolean): XlsxSheet {
+  const out: XlsxCell[][] = [[
+    hd(tr('Багц / блок / бүлэг')), hd(tr('Жин %')), hd(tr('Эхлэх')), hd(tr('Дуусах')), hd(tr('Бодит %')),
+    ...(withSum ? [hd(tr('Нийлбэр'))] : []), ...labels.map(hd), hd(tr('Тайлбар')),
+  ]];
+  for (const sec of secs) {
+    out.push([{ v: sec.pkg.label, s: { bold: true, fill: 'F1F5F9' } }, ...Array(4 + (withSum ? 1 : 0) + labels.length).fill(null), sec.note ?? null]);
+    for (const r of sec.rows) {
+      out.push([
+        { v: r.name, s: { indent: r.kind === 'group' ? 2 : r.kind === 'block' ? 1 : 0, bold: r.kind === 'total' } },
+        num1(r.w), r.start == null ? null : fmtDay(r.start), r.end == null ? null : fmtDay(r.end),
+        r.kind === 'cum' ? null : num1(r.actual), ...(withSum ? [num1(r.sum)] : []),
+        ...r.cells.map((v) => (v == null ? null : { v: Math.round(v * 10000) / 10000, s: { numFmt: '0.000' } })),
+        r.note ?? null,
+      ]);
+    }
+  }
+  return { name, rows: out, cols: [44, 8, 12, 12, 9, ...(withSum ? [9] : []), ...labels.map(() => 9), 30], frozen: { rows: 1, cols: 1 } };
+}
+
+/**
+ * 6 ТҮВШНИЙ ХУВААРЬ → Excel-ийн 6 хуудас (цэвэр). `detail` = null бол дэд бүлэггүй. L4 — ажилтай сарууд л.
+ */
+export function levelWorkbook(
+  d: LevelData, pkgs: readonly PkgInfo[], detail: ReadonlyMap<string, BlockDetail> | null,
+): XlsxSheet[] {
+  const today = dayOfLocal(d.at);
+  const l4 = buildL4(d.plan, pkgs, detail);
+  const rng = activeRange(l4.flatMap((x) => x.rows.filter((r) => r.kind !== 'cum').map((r) => r.cells)));
+  const [lo, hi] = rng ?? [0, -1];
+  const l4cut = l4.map((x) => ({ ...x, rows: x.rows.map((r) => ({ ...r, cells: r.cells.slice(lo, hi + 1) })) }));
+  const wk = weekCols(today, 12);
+  const dy = dayCols(today, 14);
+  return [
+    ganttSheet('L1', buildL1(d.plan, today)),
+    ganttSheet('L2', buildL2(d.plan, pkgs, d.marks, today)),
+    ganttSheet('L3', buildL3(d.plan, pkgs, detail, today)),
+    heatSheet('L4', l4cut, d.plan.months.slice(lo, hi + 1).map(fmtMonth), false),
+    heatSheet('L5', buildLook(d.plan, pkgs, detail, wk), wk.map((c) => `${fmtMD(c.from)}–${fmtMD(c.from + 6 * DAY)}`), true),
+    heatSheet('L6', buildLook(d.plan, pkgs, detail, dy), dy.map((c) => fmtMD(c.from)), true),
+  ];
 }

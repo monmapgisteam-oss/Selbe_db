@@ -59,13 +59,17 @@ const render = (d, initial) => renderToStaticMarkup(h(LocaleProvider, null, h(Le
   /* 2026-10-29: бүлгийн түвшний товч («0 1 … N», Хуваарь шиг) */
   assert.ok(l1.includes('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд') && l1.includes('Бүх ажлын мөрийг дэлгэнэ'), 'бүлгийн түвшний товч (Хуваарь шиг 0…N)');
   assert.equal((l1.match(/role="tab"/g) ?? []).length, 0, 'дутуу tab загвар үлдээгүй');
-  assert.ok(l1.includes('L1.1') && l1.includes('L1.3'), 'L1 мөрүүд');
+  assert.ok(l1.includes('L1.1') && l1.includes('L1.2') && !l1.includes('L1.3'), 'L1 мөрүүд («Үе шат» хасагдсан)');
+  assert.match(l1, /class="[^"]*lv1/, 'L1-ийн өнгө');
   assert.ok(l1.includes('Өнөөдөр 2026.10.21'), 'өнөөдрийн шугамын шошго');
+  /* 2026-10-30: хугацааны хуваарь · таамаг · тайлан */
+  for (const t of ['Жил', 'Улирал', 'Сар', 'Таамаг дуусах', 'Excel татах', 'PDF / хэвлэх']) assert.ok(l1.includes(t), t);
   assert.ok(l1.includes('Багц 4-1 · 9 давхар хуваарь'), 'унасан эх ил (нэрээр)');
   assert.ok(!l1.includes('schedule:b41_9f'), 'дотоод код дэлгэцэнд гарахгүй');
 
   const l2 = render(d, 2);
-  assert.ok(l2.includes('Ашиглалтад оруулах') && l2.includes('Огноо алга'), 'L2 milestone, огноо алга → улаан');
+  assert.ok(l2.includes('Ашиглалтад оруулах') && l2.includes('Хийгдээгүй'), 'L2 milestone, огноо алга → «хийгдээгүй» (улаан)');
+  assert.ok(l2.includes('Өндөржилтийн нэмэлт гэрээ'), 'L2 төслийн ерөнхий — нэмэлт гэрээ');
 
   const l3 = render(d, 3);
   assert.ok(l3.includes('Барилга угсралт — нийт'), 'L3 барилгын нийт');
@@ -73,12 +77,15 @@ const render = (d, initial) => renderToStaticMarkup(h(LocaleProvider, null, h(Le
 
   const l4 = render(d, 4);
   assert.ok(l4.includes('Багцын нийт') && l4.includes('Өсөх дүн'), 'L4 мөрүүд');
+  assert.ok(l4.includes('Хуваарийн сарын төлөвлөгөө — блокуудын жигнэсэн дүн'), 'багцын тооцооны тайлбар');
   assert.ok(l4.includes('>26.01<'), '2026-01 багана');
   assert.ok(l4.includes('>—<'), 'хуваарьгүй блок «—» (0 БИШ)');
 
   const l5 = render(d, 5);
   assert.ok(l5.includes('10.19–10.25'), '7 хоног Даваагаас');
   assert.ok(l5.includes('Нийлбэр'));
+  assert.ok(l5.includes('Багц-2') || l5.includes('БАГЦ-2') || l5.includes('Багц 2'), 'L5 — бүх багц нэг дор');
+  assert.ok(!l5.includes('>5/1<'), 'анхдагчаар хураасан — блок харагдахгүй, багцын нийт л');
 
   const l6 = render(d, 6);
   assert.ok(l6.includes('>10.21<') && l6.includes('>11.03<'), '14 өдөр');

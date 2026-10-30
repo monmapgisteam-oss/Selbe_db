@@ -324,7 +324,7 @@
 }
 .msDone { background: var(--gantt-done); }
 .msLate { background: var(--gantt-late); }
-.msUp { background: var(--data); }
+.msUp { background: var(--lv, var(--data)); }
 .msMissing { background: transparent; border-color: var(--gantt-late); }
 /* Гүйцэтгэл мэдэгдэхгүй (огноо өнгөрсөн ч «late» биш — null ≠ 0) */
 .msNone { background: color-mix(in oklab, var(--ink-3) 55%, transparent); }
@@ -399,7 +399,7 @@
   color: var(--ink);
   font-weight: 600;
 }
-.ht .hSec td.hName { background: color-mix(in srgb, var(--data) 10%, var(--surface)); }
+.ht .hSec td.hName { background: color-mix(in srgb, var(--lv, var(--data)) 10%, var(--surface)); }
 .hTotal td { color: var(--ink); font-weight: 600; }
 .hCum td { color: var(--ink-3); font-style: italic; }
 .ht .hBlock td.hName { padding-left: 18px; color: var(--ink); font-weight: 500; }
@@ -489,3 +489,49 @@
 /* Бүлгийн түвшний товч («1 2 3 … Бүгд») — хүснэгтийн дээр */
 .outline { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-3); margin-bottom: 6px; }
 .tab:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Түвшин бүрийн өнгө (2026-10-30, `Level planning_261021` загвар) ── */
+.lvBody { display: contents; }
+.lv1 { --lv: #33489a; }
+.lv2 { --lv: #1f8a4c; }
+.lv3 { --lv: #e07b00; }
+.lv4 { --lv: #c8323c; }
+.lv5 { --lv: #2f6fd0; }
+.lv6 { --lv: #7b3fa8; }
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme="light"])) .lv1 { --lv: #7f95e6; }
+  :global(:root:not([data-theme="light"])) .lv2 { --lv: #4cc283; }
+  :global(:root:not([data-theme="light"])) .lv3 { --lv: #f5a142; }
+  :global(:root:not([data-theme="light"])) .lv4 { --lv: #ef6b73; }
+  :global(:root:not([data-theme="light"])) .lv5 { --lv: #6ea3f0; }
+  :global(:root:not([data-theme="light"])) .lv6 { --lv: #b384d9; }
+}
+:global(:root[data-theme="dark"]) .lv1 { --lv: #7f95e6; }
+:global(:root[data-theme="dark"]) .lv2 { --lv: #4cc283; }
+:global(:root[data-theme="dark"]) .lv3 { --lv: #f5a142; }
+:global(:root[data-theme="dark"]) .lv4 { --lv: #ef6b73; }
+:global(:root[data-theme="dark"]) .lv5 { --lv: #6ea3f0; }
+:global(:root[data-theme="dark"]) .lv6 { --lv: #b384d9; }
+/* Багцын толгойн тооцооны арга · дэд ажлын «хуваарь хуваарилагдаагүй» */
+.hNote { font-size: 11px; font-style: italic; color: var(--ink-3); text-align: center; }
+.hRowNote { font-size: 11px; font-style: italic; color: var(--ink-3); padding-left: 8px; }
+/* ── Таамаг дуусах · хэрэгслийн мөр · хэвлэх (2026-10-30) ── */
+.grow { flex: 1; }
+.fc {
+  position: absolute;
+  top: 4px;
+  width: 2px;
+  height: 16px;
+  margin-left: -1px;
+  background: var(--ink-2);
+  border-radius: 1px;
+}
+.fcLate { background: var(--gantt-late); }
+@media print {
+  .bar, .outline, .legend .foot { display: none !important; }
+  .wrap { height: auto; overflow: visible; padding: 0; }
+  .scroll { overflow: visible !important; max-height: none !important; }
+  .card { box-shadow: none; }
+  .gt, .ht { font-size: 9px; }
+  .wrap, .wrap * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

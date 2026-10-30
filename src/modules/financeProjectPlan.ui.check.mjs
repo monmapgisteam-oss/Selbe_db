@@ -148,6 +148,16 @@ check('шилжүүлэх товч — эрхтэй, зөвхөн гараар �
   assert.match(btn(render(true, ws3)), /disabled=""/, 'зураг төслийн гэрээ — хаалттай');
 });
 
+check('харагдацын сонголт ба баганын шүүлт (2026-10-30)', () => {
+  const html = render(false);
+  assert.ok(html.includes('Бүрэн хүснэгт') && html.includes('Мэдээлэл оруулах'), 'харагдацын хоёр товч');
+  assert.match(html, /aria-label="Багцаар шүүх"/, 'багцын шүүлт');
+  assert.match(html, /aria-label="Ажлын нэрээр шүүх"/, 'нэрийн шүүлт');
+  assert.match(html, /<option value=""[^>]*>Бүгд<\/option>/, 'багцын сонголт «Бүгд»-ээр эхэлнэ');
+  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
+  assert.match(src, /<ProjectPlanView[\s\S]{0,300}canEdit=\{canEdit\}/, 'засах эрх (finEdit) дамжина');
+});
+
 /* ══════════ §3 Эх кодын хамгаалалт ══════════ */
 check('CashflowPlan — canSwitch · money дамжина', () => {
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');

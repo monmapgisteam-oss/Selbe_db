@@ -1455,3 +1455,73 @@ div.bName:hover { background: var(--surface-2); }
 .ppSwitch:hover:not(:disabled) { background: color-mix(in oklab, var(--bad) 10%, transparent); }
 .ppSwitch:disabled { opacity: 0.45; cursor: default; }
 .ppFoot { flex: none; margin: 0; padding: 6px 12px; font-size: 11px; color: var(--ink-3); border-top: 1px solid var(--line); }
+
+/* ── Мэдээлэл оруулах · баганын шүүлт (2026-10-30) ── */
+.ppTbl thead tr.ppFlt th { padding: 3px 4px; vertical-align: middle; background: var(--surface-2); }
+.ppFltIn {
+  width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.ppRo { color: var(--ink-3); }
+.ppCellBtn {
+  display: block;
+  width: 100%;
+  padding: 1px 4px;
+  font: inherit;
+  text-align: inherit;
+  color: var(--ink);
+  background: color-mix(in oklab, var(--data) 6%, transparent);
+  border: 1px dashed color-mix(in oklab, var(--data) 35%, transparent);
+  border-radius: 4px;
+  cursor: text;
+}
+.ppCellBtn:hover { background: color-mix(in oklab, var(--data) 14%, transparent); }
+.ppCellIn {
+  width: 100%;
+  min-width: 90px;
+  padding: 1px 4px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--data);
+  border-radius: 4px;
+}
+.ppAct { white-space: nowrap; }
+.ppMini {
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.ppMini + .ppMini { margin-left: 4px; }
+.ppMini:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
+.ppMini:disabled { opacity: 0.45; cursor: default; }
+.ppMiniOn { color: var(--data-ink); border-color: color-mix(in oklab, var(--data) 50%, transparent); }
+.ppMiniBad { color: var(--bad-ink); border-color: color-mix(in oklab, var(--bad) 45%, transparent); }
+.ppAdd {
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--data) 5%, var(--surface));
+}
+.ppAddHd { display: flex; flex-direction: column; gap: 2px; font-size: 12px; margin-bottom: 6px; }
+.ppAddHd span { color: var(--ink-3); font-size: 11px; }
+.ppAddWarn { color: var(--warn-ink) !important; }
+.ppAddTbl { border-collapse: collapse; font-size: 12px; }
+.ppAddTbl th { padding: 2px 6px; font-size: 11px; font-weight: 600; color: var(--ink-3); text-align: left; }
+.ppAddTbl td { padding: 2px 6px; }
+.ppAddTbl td:first-child .ppCellIn { min-width: 280px; }
+.ppAddFt { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 11px; flex-wrap: wrap; }
+.ppAddFt .editErr { margin: 0; }

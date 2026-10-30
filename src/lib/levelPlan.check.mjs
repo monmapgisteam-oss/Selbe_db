@@ -189,8 +189,15 @@ const near = (a, b, tol, msg) => {
 
   const mp = mergePhases([d.phases, blockDetail(rows, calc, 1).phases]);
   assert.equal(mp.length, 2);
-  near(mp[0].actual, (35 + 17.5) / 2, 1e-9, 'блокуудын энгийн дундаж');
+  near(mp[0].actual, (35 + 17.5) / 2, 1e-9, 'жингүй → блокуудын энгийн дундаж');
   near(mp[0].weight, 80, 1e-9);
+  /* 2026-10-30: блокийн жингээр (F) — «Барилга угсралт — нийт» (Σ F·S)-тэй нэг дүрэм */
+  const mw = mergePhases([{ gs: d.phases, w: 75 }, { gs: blockDetail(rows, calc, 1).phases, w: 25 }]);
+  near(mw[0].actual, 0.75 * 35 + 0.25 * 17.5, 1e-9, 'жигнэсэн дундаж');
+  const mn = mergePhases([{ gs: d.phases, w: 75 }, { gs: blockDetail(rows, calc, 1).phases, w: null }]);
+  near(mn[0].actual, (35 + 17.5) / 2, 1e-9, 'нэг блок жингүй → энгийн дундаж');
+  const mpl = mergePhases([{ gs: [{ ...d.phases[0], planned: 60 }], w: 1 }, { gs: [{ ...d.phases[0], planned: 20 }], w: 3 }]);
+  near(mpl[0].planned, 30, 1e-9, 'төлөвлөгөөт хувь ч жигнэнэ');
 }
 
 /* ══════════ 6. Фикстурын мод — багц, түвшний мөрүүд ══════════ */
@@ -239,14 +246,17 @@ const stored = fx.rows.map((r) => ({
   const l1 = buildL1(plan, TODAY);
   assert.equal(l1[0].t, 'bar');
   assert.equal(l1[0].id, 'L1.1');
-  assert.ok(l1.some((r) => r.t === 'section' && r.id === 'L1.3'), 'чиглэлийн хэсэг');
-  assert.equal(l1.filter((r) => r.t === 'bar' && r.id.startsWith('L1.2.')).length, 8, '8 үе шат');
+  assert.ok(l1.some((r) => r.t === 'section' && r.id === 'L1.2' && r.name === 'Барилга угсралтын чиглэл'), 'чиглэлийн хэсэг');
+  assert.ok(!l1.some((r) => r.name === 'Үе шат'), '«Үе шат» хэсэг хасагдсан (загвар)');
   assert.ok(ganttAxis(l1, TODAY), 'тэнхлэг');
 
   const l2 = buildL2(plan, pkgs.slice(0, 1), null, TODAY);
+  assert.deepEqual(l2.filter((r) => r.id.startsWith('L2.1.')).map((r) => r.t), ['bar', 'ms', 'ms'], 'ерөнхий: ТЭЗҮ · өндөржилтийн захирамж · нэмэлт гэрээ');
+  assert.equal(l2.find((r) => r.id === 'L2.1.3').status, 'none', 'нэмэлт гэрээний мөр алга → мэдээлэлгүй');
   const b1 = l2.filter((r) => r.id.startsWith('L2.2'));
   assert.equal(b1[0].t, 'section');
-  assert.deepEqual(b1.map((r) => r.t), ['section', 'ms', 'bar', 'bar', 'ms', 'ms', 'bar', 'ms', 'ms'], 'Багц-1: захирамж · зураг · газар · сонгон · зөвшөөрөл · барилга · гэрээ · ашиглалт');
+  assert.deepEqual(b1.map((r) => r.t), ['section', 'ms', 'bar', 'ms', 'ms', 'bar', 'ms', 'ms'], 'Багц-1: захирамж · зураг · сонгон · зөвшөөрөл · барилга · гэрээ · ашиглалт (газар хасагдсан)');
+  assert.ok(!b1.some((r) => r.name === 'Газар чөлөөлөлт'));
   assert.equal(b1[1].name, 'Захирамж');
   assert.equal(b1[1].status, 'none', 'milestone огноо уншигдаагүй (marks = null) → «алга» БИШ, мэдээлэлгүй');
   assert.equal(b1[b1.length - 1].status, 'none', 'ашиглалт: marks = null → мэдээлэлгүй (алга БИШ)');
@@ -267,11 +277,7 @@ const stored = fx.rows.map((r) => ({
   const allBars = [...buildL1(planNo, TODAY), ...buildL2(planNo, pkN, null, TODAY), ...buildL3(planNo, pkN, null, TODAY)].filter((r) => r.t === 'bar');
   assert.ok(!allBars.some((r) => r.status === 'late' && r.actual == null), 'гүйцэтгэл мэдэгдэхгүй → late БИШ');
   assert.ok(!allBars.some((r) => r.status === 'late' && r.alt), 'өөр баганын огноо → late БИШ');
-  const gz = buildL1(planNo, TODAY).find((r) => r.id === 'L1.2.3');
-  assert.ok(gz.alt && gz.planned != null, 'газар чөлөөлөлт: газрын огноо алга → гэрээний огноо (alt), O = гэрээний шугаман хувь');
   const l2n = buildL2(planNo, pkN.slice(0, 1), null, TODAY);
-  const gz1 = l2n.find((r) => r.t === 'bar' && r.name === 'Газар чөлөөлөлт');
-  assert.equal(gz1.start, null, 'өвгийн БОДОГДСОН (ах дүүсийн MIN/MAX) огноог зээлэхгүй');
   /* Өвөг мөрийн ӨӨРИЙН хадгалсан хос → inh, N-тэй ижил суурь (projectPlan.spanOf) */
   const zr = l2n.find((r) => r.t === 'bar' && r.name === 'Зураг төсөл');
   assert.ok(zr.inh, 'Багц-1 зураг төсөл — өвөг мөрийн огноо');
@@ -362,11 +368,38 @@ const stored = fx.rows.map((r) => ({
   assert.deepEqual([...hBlockParents(sec)], ['b1']);
   const hid = (xs) => xs.map((x) => `${x.pkg.key}:${x.rows.map((r) => r.id).join(',')}`).join('|');
   assert.equal(hid(visibleHeat([sec], new Set(), new Set(), '')), 'p1:t,c,b1,g1,g2,b2');
-  assert.equal(hid(visibleHeat([sec], new Set(['p1']), new Set(), '')), 'p1:', 'хураасан багц — толгой л');
+  assert.equal(hid(visibleHeat([sec], new Set(['p1']), new Set(), '')), 'p1:t,c', 'хураасан багц — толгой ба нийт/өсөх дүн (2026-10-30)');
   assert.equal(hid(visibleHeat([sec], new Set(), new Set(['b1']), '')), 'p1:t,c,b1,b2', 'хураасан блокийн дэд бүлэг нуугдана');
   assert.equal(hid(visibleHeat([sec], new Set(), new Set(['b1']), 'хана')), 'p1:t,c,b1,g2', 'дэд бүлэг хайхад блок ба нийт хамт');
   assert.equal(hid(visibleHeat([sec], new Set(), new Set(), 'байхгүй')), '', 'тохирохгүй багц хасагдана');
   assert.equal(hid(visibleHeat([sec], new Set(), new Set(), 'багц 1')), 'p1:t,c,b1,g1,g2,b2', 'багцын нэрээр — бүх мөр');
+}
+
+/* ══ Таамаг дуусах · Excel тайлан (2026-10-30) ══ */
+{
+  const { forecastEnd, levelWorkbook, packagesOf: pOf, ganttAxis: gAx } = await import('./levelPlan.ts');
+  const S = D('2026-01-01');
+  /* 100 хоногт 25% → өдөрт 0.25% → үлдсэн 75% = 300 өдөр */
+  assert.equal(forecastEnd(S, 25, S + 99 * DAY), S + 99 * DAY + 300 * DAY, 'шугаман хурдаар');
+  assert.equal(forecastEnd(S, 100, S + 99 * DAY), null, 'дууссан → таамаггүй');
+  assert.equal(forecastEnd(S, 0, S + 99 * DAY), null, 'гүйцэтгэл 0 → хурд тодорхойгүй');
+  assert.equal(forecastEnd(S, null, S + 99 * DAY), null);
+  assert.equal(forecastEnd(S, 30, S), null, 'эхлээгүй/эхний өдөр');
+  assert.equal(forecastEnd(S, 0.0001, S + 99 * DAY), null, '2100 оноос хэтэрвэл null (saneDate)');
+  const bar = { t: 'bar', id: 'x', name: 'x', depth: 0, start: S, end: S + 10 * DAY, actual: 50, planned: null, status: 'run', fc: D('2030-06-01') };
+  assert.ok(gAx([bar], S).n > 12 * 4, 'тэнхлэг таамгийг багтаана');
+
+  const TODAY = D('2026-10-21');
+  const actual = { blocks: new Map([['БАГЦ1|5/1', { overall: 40, date: '2026-10-01', phases: [] }]]), universe: new Map(), infra: new Map() };
+  const sched = { has: () => true, at: (_p, _b, asOf) => linearPlanned(D('2026-01-01'), D('2026-12-31'), asOf), prime: () => {}, keys: () => [] };
+  const plan = assemblePlan(stored, { actual, sched, land: new Map() }, TODAY);
+  const wb = levelWorkbook({ plan, marks: new Map(), at: TODAY, failed: [] }, pOf(plan.tree).slice(0, 2), null);
+  assert.deepEqual(wb.map((x) => x.name), ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'], 'түвшин бүр тусдаа хуудас');
+  assert.equal(wb[0].rows[0][1].v, 'Ажил, үе шат');
+  assert.ok(wb[3].rows[0].length > 7, 'L4 — ажилтай сарын баганатай');
+  assert.ok(wb[4].rows.some((r) => r[0]?.v === 'Багцын нийт'), 'L5 — багцын нийт');
+  const w = wb[3].rows[0].length;
+  assert.ok(wb[3].rows.every((r) => r.length <= w), 'мөр толгойноос урт биш');
 }
 
 console.log('levelPlan.check ✓');

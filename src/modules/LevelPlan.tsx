@@ -7,15 +7,16 @@
  *   хоцорсон `--bad`, дууссан `--good`, мэдээлэлгүй — зураас); L4 сарын · L5 7 хоногийн · L6 өдрийн heatmap.
  */
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { pct } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { Data, userError } from '@/components/ui';
+import { buildXlsx, downloadXlsx } from '@/lib/xlsx';
 import {
-  DAY, activeRange, buildL1, buildL2, buildL3, buildL4, buildLook, dayCols, dayOfLocal, failLabel, fmtDay, fmtMD, fmtMonth,
-  ganttAxis, gParents, hBlockParents, heatLevel, loadLevelData, loadSheetDetail, monthIdx, packagesOf, visibleGantt,
-  visibleHeat, weekCols, xMonths,
+  BAR_TEXT, DAY, MS_TEXT, activeRange, buildL1, buildL2, buildL3, buildL4, buildLook, dayCols, dayOfLocal, failLabel, fmtDay,
+  fmtMD, fmtMonth, ganttAxis, gParents, hBlockParents, heatLevel, levelWorkbook, loadLevelData, loadSheetDetail, monthIdx,
+  notDone, packagesOf, visibleGantt, visibleHeat, weekCols, xMonths,
   type Axis, type BarStatus, type BlockDetail, type Col, type GFilter, type GRow, type HRow, type HSection, type LevelData,
   type MsStatus, type PkgInfo,
 } from '@/lib/levelPlan';
@@ -34,16 +35,39 @@ const LEVEL_TEXT: Record<Level, () => string> = {
   6: () => tr('Өдөр тутмын төлөвлөгөө'),
 };
 const LEVEL_SUB: Record<Level, () => string> = {
-  1: () => tr('Төслийн нийт, үе шат ба барилга угсралтын чиглэл — гүйцэтгэл ба гэрээний дуусах огноо.'),
-  2: () => tr('Багц бүрийн үе шат ба milestone: зураг төсөл, газар чөлөөлөлт, сонгон шалгаруулалт, зөвшөөрөл, барилга, гэрээ дуусах, ашиглалт.'),
+  1: () => tr('Төслийн нийт ба барилга угсралтын чиглэл — гүйцэтгэл ба гэрээний дуусах огноо.'),
+  2: () => tr('Төслийн ерөнхий milestone ба багц бүрийн үе шат: захирамж, зураг төсөл, сонгон шалгаруулалт, зөвшөөрөл, барилга, гэрээ дуусах, ашиглалт.'),
   3: () => tr('Багц бүрийн зураг төслийн дэд шат ба барилга угсралтын дэд үе шат (бөглөх хуудасны жинтэй).'),
   4: () => tr('Багц × блок — сар бүрт төлөвлөсөн гүйцэтгэл (Хуваарийн сарын төлөвлөгөө).'),
-  5: () => tr('Блок × дэд бүлэг — ойрын 12 долоо хоногийн төлөвлөсөн гүйцэтгэл.'),
-  6: () => tr('Блок × дэд бүлэг — ойрын 14 хоногийн өдөр тутмын төлөвлөгөө.'),
+  5: () => tr('Бүх багц — блок ба дэд бүлэг, ойрын 12 долоо хоногийн төлөвлөсөн гүйцэтгэл. Багцыг дарж дэлгэнэ.'),
+  6: () => tr('Бүх багц — блок ба дэд бүлэг, ойрын 14 хоногийн өдөр тутмын төлөвлөгөө. Багцыг дарж дэлгэнэ.'),
 };
 
-/** Сарын өргөн (px) — гантын тэнхлэг сар-жигд */
-const MW = 22;
+/**
+ * ГАНТЫН ХУГАЦААНЫ ХУВААРЬ (2026-10-30) — нэг сарын өргөн (px): жил · улирал · сар. Тэнхлэг сар-жигд хэвээр.
+ */
+type Scale = 'year' | 'quarter' | 'month';
+const SCALE_MW: Record<Scale, number> = { year: 7, quarter: 13, month: 22 };
+const SCALE_TEXT: Record<Scale, () => string> = { year: () => tr('Жил'), quarter: () => tr('Улирал'), month: () => tr('Сар') };
+const SCALES: Scale[] = ['year', 'quarter', 'month'];
+
+/**
+ * СОНГОЛТ ХАЯГТ (2026-10-30) — `?lvl=` (1–6) ба `?bagts=` — холбоос хуваалцахад түвшин/багц хадгалагдана.
+ * Хаягийн бусад параметрт (`?v=` г.м.) хүрэхгүй.
+ */
+function readUrl(): { lvl: Level | null; pkg: string } {
+  if (typeof window === 'undefined') return { lvl: null, pkg: '' };
+  const q = new URLSearchParams(window.location.search);
+  const n = Number(q.get('lvl'));
+  return { lvl: LEVELS.includes(n as Level) ? (n as Level) : null, pkg: q.get('bagts') ?? '' };
+}
+function writeUrl(lvl: Level, pkg: string): void {
+  if (typeof window === 'undefined') return;
+  const u = new URL(window.location.href);
+  u.searchParams.set('lvl', String(lvl));
+  if (pkg) u.searchParams.set('bagts', pkg); else u.searchParams.delete('bagts');
+  if (u.href !== window.location.href) window.history.replaceState(window.history.state, '', u.href);
+}
 
 /**
  * БҮЛГИЙН ТҮВШНЭЭР ХУРААХ (2026-10-29, хэрэглэгч: «Хуваарь шиг 0…N») — «Хуваарь»-ын түвшний зурвастай ИЖИЛ утга:
@@ -54,6 +78,8 @@ const MW = 22;
  */
 type Fold = { level: number | null; ids: ReadonlySet<string> };
 const FOLD0: Fold = { level: null, ids: new Set() };
+/** L5/L6-ийн анхдагч — бүх багц хураасан (багцын нийт л харагдана) */
+const LOOK_FOLD: Fold = { level: 0, ids: new Set() };
 /** `depth` гүнтэй мөр (хүүхэд нь `depth + 1`) хураагдсан эсэх */
 const isFolded = (f: Fold, id: string, depth: number): boolean => (f.level != null && depth >= f.level) !== f.ids.has(id);
 const toggleFold = (f: Fold, id: string): Fold => {
@@ -121,23 +147,26 @@ export function LevelPlan() {
         </p>
       </header>
       <Data q={q} loading={tr('Ачаалж байна…')} minH={320}>
-        {(d) => <LevelPlanBody d={d} />}
+        {(d) => { const u = readUrl(); return <LevelPlanBody d={d} initial={u.lvl ?? 1} initialPkg={u.pkg} />; }}
       </Data>
     </div>
   );
 }
 
 /** Ачаалагдсан өгөгдлийн харагдац — `initial` нь эхлэх түвшин (шалгуурт) */
-export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Level }) {
+export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelData; initial?: Level; initialPkg?: string }) {
   const [lvl, setLvl] = useState<Level>(initial);
-  const [pk, setPk] = useState('');
+  const [pk, setPk] = useState(initialPkg);
   const [groups, setGroups] = useState(true);
   const [q, setQ] = useState('');
   const [gf, setGf] = useState<GFilter>('all');
-  const [fold, setFold] = useState<Fold>(FOLD0);
+  const [fold, setFold] = useState<Fold>(initial === 5 || initial === 6 ? LOOK_FOLD : FOLD0);
+  const [scale, setScale] = useState<Scale>('month');
+  const [xlsBusy, setXlsBusy] = useState(false);
+  const [xlsErr, setXlsErr] = useState<string | null>(null);
   const pkgs = useMemo(() => packagesOf(d.plan.tree), [d.plan.tree]);
-  const blockPkgs = useMemo(() => pkgs.filter((p) => p.blocks.length), [pkgs]);
   const today = dayOfLocal(d.at);
+  useEffect(() => { writeUrl(lvl, pk); }, [lvl, pk]);
 
   if (d.plan.empty) {
     return (
@@ -149,20 +178,33 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
   }
 
   const look = lvl === 5 || lvl === 6;
-  /* L5/L6 нэг багцаар (блок × 16 мөр — бүх багцыг нэг дор зурах нь хэт их) */
-  const lookPkg = blockPkgs.find((p) => p.key === pk) ?? blockPkgs[0] ?? null;
-  const shown: PkgInfo[] = look ? (lookPkg ? [lookPkg] : []) : pk ? pkgs.filter((p) => p.key === pk) : pkgs;
-  const opts = look ? blockPkgs : pkgs;
+  /* ⚠️ 2026-10-30 (загвар): L5/L6 ч БҮХ багц нэг дор — анхдагчаар багцын нийт л (хураасан, `LOOK_FOLD`) */
+  const shown: PkgInfo[] = pk ? pkgs.filter((p) => p.key === pk) : pkgs;
   /* Түвшин солиход хураалт эхлээс — мөрийн ID-ууд түвшин бүрд өөр */
-  const pickLvl = (l: Level) => { setLvl(l); setFold(FOLD0); };
+  const pickLvl = (l: Level) => { setLvl(l); setFold(l === 5 || l === 6 ? LOOK_FOLD : FOLD0); };
   const vo: ViewOpts = {
     fold, onToggle: (id) => setFold((f) => toggleFold(f, id)), onLevel: (n) => setFold({ level: n, ids: new Set() }),
     q, gf: lvl <= 3 ? gf : 'all',
   };
   const filtering = !!q.trim() || (lvl <= 3 && gf !== 'all');
 
+  /** Excel — сонгосон багцын 6 түвшин, түвшин бүр тусдаа хуудас (дэд бүлэг уншигдахгүй бол түүнгүйгээр) */
+  const exportXlsx = async () => {
+    setXlsBusy(true);
+    setXlsErr(null);
+    try {
+      const det = await loadSheetDetail().then((x) => x.blocks).catch(() => null);
+      const day = fmtDay(today).replace(/\./g, '-');
+      downloadXlsx(`6-tuvshnii-huvaari-${day}.xlsx`, buildXlsx(levelWorkbook(d, shown, det)));
+    } catch (e) {
+      setXlsErr(userError(e));
+    } finally {
+      setXlsBusy(false);
+    }
+  };
+
   return (
-    <>
+    <div className={`${s.lvBody} ${LV_CLS[lvl]}`}>
       {d.failed.length > 0 && (
         <div className={s.warn} role="status">
           {tr('Зарим эх уншигдсангүй — холбогдох нүд «—» (мэдээлэлгүй) харагдана: {0}', d.failed.map(failLabel).join(', '))}
@@ -190,11 +232,11 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
             <span>{tr('Багц')}</span>
             <select
               className={s.select}
-              value={look ? lookPkg?.key ?? '' : pk}
+              value={pk}
               onChange={(e) => setPk(e.target.value)}
             >
-              {!look && <option value="">{tr('Бүх багц')}</option>}
-              {opts.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+              <option value="">{tr('Бүх багц')}</option>
+              {pkgs.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
             </select>
           </label>
         )}
@@ -225,17 +267,42 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
         {filtering && (
           <button type="button" className={s.btn} onClick={() => { setQ(''); setGf('all'); }}>{tr('Шүүлт арилгах')}</button>
         )}
+        {lvl <= 3 && (
+          <div className={s.tabs} role="group" aria-label={tr('Хугацааны хуваарь')}>
+            {SCALES.map((k) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={scale === k}
+                className={`${s.tab} ${scale === k ? s.tabOn : ''}`}
+                onClick={() => setScale(k)}
+              >{SCALE_TEXT[k]()}</button>
+            ))}
+          </div>
+        )}
+        <span className={s.grow} />
+        <button type="button" className={s.btn} disabled={xlsBusy} onClick={() => void exportXlsx()}>
+          {xlsBusy ? tr('Бэлдэж байна…') : tr('Excel татах')}
+        </button>
+        <button type="button" className={s.btn} onClick={() => window.print()} title={tr('Харагдаж буй түвшинг хэвлэх эсвэл PDF болгон хадгалах')}>
+          {tr('PDF / хэвлэх')}
+        </button>
       </div>
+      {xlsErr && <div className={s.warn} role="alert">{xlsErr}</div>}
       <p className={s.lvlSub}>{LEVEL_SUB[lvl]()}</p>
 
-      {lvl === 1 && <Gantt rows={buildL1(d.plan, today)} today={today} vo={vo} />}
-      {lvl === 2 && <Gantt rows={buildL2(d.plan, shown, d.marks, today)} today={today} vo={vo} />}
+      {lvl === 1 && <Gantt rows={buildL1(d.plan, today)} today={today} vo={vo} mw={SCALE_MW[scale]} />}
+      {lvl === 2 && <Gantt rows={buildL2(d.plan, shown, d.marks, today)} today={today} vo={vo} mw={SCALE_MW[scale]} />}
       {lvl === 3 && (
         <WithSheet>
-          {(det) => <Gantt rows={buildL3(d.plan, shown, det, today)} today={today} vo={vo} />}
+          {(det) => <Gantt rows={buildL3(d.plan, shown, det, today)} today={today} vo={vo} mw={SCALE_MW[scale]} />}
         </WithSheet>
       )}
-      {lvl === 4 && <MonthHeat d={d} pkgs={shown} today={today} vo={vo} />}
+      {lvl === 4 && (
+        <WithSheet>
+          {(det) => <MonthHeat d={d} pkgs={shown} det={det} today={today} vo={vo} />}
+        </WithSheet>
+      )}
       {look && groups && (
         <WithSheet>
           {(det) => <LookHeat d={d} pkgs={shown} det={det} groups daily={lvl === 6} today={today} vo={vo} />}
@@ -244,9 +311,12 @@ export function LevelPlanBody({ d, initial = 1 }: { d: LevelData; initial?: Leve
       {look && !groups && <LookHeat d={d} pkgs={shown} det={null} groups={false} daily={lvl === 6} today={today} vo={vo} />}
 
       <Legend lvl={lvl} />
-    </>
+    </div>
   );
 }
+
+/** Түвшин бүрийн өнгө (`Level planning_261021` загвар: L1 хар хөх · L2 ногоон · L3 улбар шар · L4 улаан · L5 цэнхэр · L6 нил ягаан) */
+const LV_CLS: Record<Level, string> = { 1: s.lv1, 2: s.lv2, 3: s.lv3, 4: s.lv4, 5: s.lv5, 6: s.lv6 };
 
 /* ══════════════════ Бөглөх хуудасны дэд бүлэг (L3 · L5 · L6) ══════════════════ */
 
@@ -283,23 +353,7 @@ const BAR_CLS: Record<BarStatus, string> = {
 const MS_CLS: Record<MsStatus, string> = {
   done: s.msDone, late: s.msLate, upcoming: s.msUp, missing: s.msMissing, none: s.msNone,
 };
-const BAR_TEXT: Record<BarStatus, () => string> = {
-  done: () => tr('Дууссан'),
-  late: () => tr('Хугацаа хэтэрсэн'),
-  behind: () => tr('Хоцорсон'),
-  run: () => tr('Явж байна'),
-  todo: () => tr('Эхлээгүй'),
-  none: () => tr('Мэдээлэл байхгүй'),
-};
-const MS_TEXT: Record<MsStatus, () => string> = {
-  done: () => tr('Биелсэн'),
-  late: () => tr('Хугацаа хэтэрсэн'),
-  upcoming: () => tr('Хүлээгдэж буй'),
-  missing: () => tr('Огноо алга'),
-  none: () => tr('Мэдээлэл байхгүй'),
-};
-
-function Gantt({ rows, today, vo }: { rows: GRow[]; today: number; vo: ViewOpts }) {
+function Gantt({ rows, today, vo, mw: MW = SCALE_MW.month }: { rows: GRow[]; today: number; vo: ViewOpts; mw?: number }) {
   /* Тэнхлэг БҮТЭН мөрөөр — шүүх/хураахад огнооны хүрээ үсрэхгүй */
   const ax = useMemo(() => ganttAxis(rows, today), [rows, today]);
   const parents = useMemo(() => gParents(rows), [rows]);
@@ -331,6 +385,7 @@ function Gantt({ rows, today, vo }: { rows: GRow[]; today: number; vo: ViewOpts 
             <col style={{ width: 84 }} />
             <col style={{ width: 84 }} />
             <col style={{ width: 70 }} />
+            <col style={{ width: 84 }} />
             <col style={{ width: W }} />
           </colgroup>
           <thead>
@@ -340,13 +395,14 @@ function Gantt({ rows, today, vo }: { rows: GRow[]; today: number; vo: ViewOpts 
               <th>{tr('Эхлэх')}</th>
               <th>{tr('Дуусах')}</th>
               <th className={s.r}>{tr('Гүйцэтгэл')}</th>
-              <th className={s.cTl}><AxisHead ax={ax} nowX={nowX} today={today} /></th>
+              <th title={tr('Одоогийн хурдаар үргэлжилбэл дуусах огноо')}>{tr('Таамаг дуусах')}</th>
+              <th className={s.cTl}><AxisHead ax={ax} nowX={nowX} today={today} mw={MW} /></th>
             </tr>
           </thead>
           <tbody>
             {vis.map((r) => (
               <GanttRow
-                key={r.id} r={r} ax={ax} nowX={nowX} W={W}
+                key={r.id} r={r} ax={ax} nowX={nowX} W={W} MW={MW}
                 fold={!filtering && parents.has(r.id) ? { open: !folded(r.id), onToggle: () => vo.onToggle(r.id) } : null}
               />
             ))}
@@ -358,13 +414,15 @@ function Gantt({ rows, today, vo }: { rows: GRow[]; today: number; vo: ViewOpts 
   );
 }
 
-function AxisHead({ ax, nowX, today }: { ax: Axis; nowX: number; today: number }) {
+function AxisHead({ ax, nowX, today, mw: MW }: { ax: Axis; nowX: number; today: number; mw: number }) {
   const cells: ReactNode[] = [];
   for (let i = 0; i < ax.n; i += 1) {
     const m = ax.m0 + i;
     const mon = m % 12;
+    /* Нарийн хуваарьт сарын дугаар багтахгүй — улирлынх: улирлын эхний сар, жилийнх: сарын дугааргүй */
+    const label = MW >= 18 || (MW >= 12 && mon % 3 === 0) ? String(mon + 1).padStart(2, '0') : '';
     cells.push(
-      <span key={i} className={s.axM} style={{ left: i * MW, width: MW }}>{String(mon + 1).padStart(2, '0')}</span>,
+      <span key={i} className={s.axM} style={{ left: i * MW, width: MW >= 12 && MW < 18 ? MW * 3 : MW }}>{label}</span>,
     );
     if (mon === 0 || i === 0) {
       cells.push(<span key={`y${i}`} className={s.axY} style={{ left: i * MW }}>{Math.floor(m / 12)}</span>);
@@ -394,8 +452,8 @@ function Caret({ fold }: { fold: { open: boolean; onToggle: () => void } | null 
   );
 }
 
-function GanttRow({ r, ax, nowX, W, fold }: {
-  r: GRow; ax: Axis; nowX: number; W: number; fold: { open: boolean; onToggle: () => void } | null;
+function GanttRow({ r, ax, nowX, W, MW, fold }: {
+  r: GRow; ax: Axis; nowX: number; W: number; MW: number; fold: { open: boolean; onToggle: () => void } | null;
 }) {
   const ind = { paddingLeft: 8 + r.depth * 14 };
   const tl = (body: ReactNode) => (
@@ -411,7 +469,7 @@ function GanttRow({ r, ax, nowX, W, fold }: {
       <tr className={r.depth === 0 ? s.secRow : s.subRow}>
         <td className={s.cId}>{r.id}</td>
         <td className={s.cName} style={ind} title={r.name}><Caret fold={fold} />{r.name}</td>
-        <td /><td /><td />
+        <td /><td /><td /><td />
         {tl(null)}
       </tr>
     );
@@ -421,7 +479,7 @@ function GanttRow({ r, ax, nowX, W, fold }: {
       <tr className={s.noteRow}>
         <td className={s.cId}>{r.id}</td>
         <td className={s.cName} style={ind}><Caret fold={fold} />{r.name}</td>
-        <td /><td /><td />
+        <td /><td /><td /><td />
         {tl(null)}
       </tr>
     );
@@ -437,6 +495,7 @@ function GanttRow({ r, ax, nowX, W, fold }: {
         <td className={`${s.r} ${r.status === 'done' ? s.okInk : r.status === 'late' || r.status === 'missing' ? s.badInk : ''}`}>
           {r.status === 'done' ? '✓' : r.status === 'upcoming' ? '' : MS_TEXT[r.status]()}
         </td>
+        <td />
         {tl(x != null ? (
           <>
             <span className={`${s.ms} ${MS_CLS[r.status]}`} style={{ left: x }} title={`${r.name} · ${fmtDay(r.at)} · ${MS_TEXT[r.status]()}`} />
@@ -444,7 +503,7 @@ function GanttRow({ r, ax, nowX, W, fold }: {
           </>
         ) : r.status === 'none'
           ? <span className={s.tlNA}>{tr('Мэдээлэл байхгүй')}</span>
-          : <span className={`${s.tlNA} ${s.badInk}`}>{tr('Огноо алга')}</span>)}
+          : <span className={`${s.tlNA} ${s.badInk}`}>{tr('Хийгдээгүй')}</span>)}
       </tr>
     );
   }
@@ -457,8 +516,12 @@ function GanttRow({ r, ax, nowX, W, fold }: {
     `${fmtDay(r.start)} – ${fmtDay(r.end)}${r.inh ? ` (${tr('өвөг мөрийн огноо')})` : r.alt ? ` (${tr('өөр хуваарийн огноо — төлөвлөгөөт хувийн суурь биш')})` : ''}`,
     `${tr('Гүйцэтгэл')}: ${pct(r.actual, 1)}`,
     r.planned != null ? `${tr('Төлөвлөгөө')}: ${pct(r.planned, 1)}` : null,
+    r.fc != null ? `${tr('Таамаг дуусах')}: ${fmtDay(r.fc)}` : null,
     BAR_TEXT[r.status](),
   ].filter(Boolean).join(' · ');
+  /* Таамаг гэрээний/төлөвлөсөн дуусахаас хойш бол улаан */
+  const fcLate = r.fc != null && r.end != null && r.fc > r.end;
+  const fx = r.fc != null ? xMonths(ax, r.fc) * MW : null;
   return (
     <tr className={`${s.row} ${r.strong ? s.strongRow : ''}`}>
       <td className={s.cId}>{r.id}</td>
@@ -468,16 +531,22 @@ function GanttRow({ r, ax, nowX, W, fold }: {
       <td className={s.num}>{fmtDay(r.start)}</td>
       <td className={s.num}>{fmtDay(r.end)}</td>
       <td className={`${s.r} ${r.status === 'done' ? s.okInk : r.status === 'late' || r.status === 'behind' ? s.badInk : ''}`}>
-        {r.status === 'done' ? `✓ ${pct(100, 0)}` : pct(r.actual, 0)}
+        {r.status === 'done' ? `✓ ${pct(100, 0)}` : notDone(r) ? tr('хийгдээгүй') : pct(r.actual, 0)}
       </td>
+      <td className={`${s.num} ${fcLate ? s.badInk : ''}`}>{r.fc == null ? '' : fmtDay(r.fc)}</td>
       {tl(has ? (
-        <span
-          className={`${s.gBar} ${BAR_CLS[r.status]} ${r.inh || r.alt ? s.inh : ''}`}
-          style={{ left: x0, width: Math.max(3, x1 - x0) }}
-          title={tip}
-        >
-          {fill != null && <span className={s.gFill} style={{ width: `${fill}%` }} />}
-        </span>
+        <>
+          <span
+            className={`${s.gBar} ${BAR_CLS[r.status]} ${r.inh || r.alt ? s.inh : ''}`}
+            style={{ left: x0, width: Math.max(3, x1 - x0) }}
+            title={tip}
+          >
+            {fill != null && <span className={s.gFill} style={{ width: `${fill}%` }} />}
+          </span>
+          {fx != null && fx <= W && (
+            <span className={`${s.fc} ${fcLate ? s.fcLate : ''}`} style={{ left: fx }} title={`${tr('Таамаг дуусах')}: ${fmtDay(r.fc)}`} aria-hidden />
+          )}
+        </>
       ) : <span className={s.tlNA}>{tr('Мэдээлэл байхгүй')}</span>)}
     </tr>
   );
@@ -487,8 +556,10 @@ function GanttRow({ r, ax, nowX, W, fold }: {
 
 type HeatCol = { key: string; label: string; now: boolean };
 
-function MonthHeat({ d, pkgs, today, vo }: { d: LevelData; pkgs: PkgInfo[]; today: number; vo: ViewOpts }) {
-  const secs = useMemo(() => buildL4(d.plan, pkgs), [d.plan, pkgs]);
+function MonthHeat({ d, pkgs, det, today, vo }: {
+  d: LevelData; pkgs: PkgInfo[]; det: ReadonlyMap<string, BlockDetail> | null; today: number; vo: ViewOpts;
+}) {
+  const secs = useMemo(() => buildL4(d.plan, pkgs, det), [d.plan, pkgs, det]);
   const months = d.plan.months;
   /* Ажилтай сарууд л (бүх багцын бүх мөрөөр) — төслийн бүтэн тэнхлэг ТЭЗҮ-гээс эхэлдэг тул хэт өргөн */
   const rng = activeRange(secs.flatMap((x) => x.rows.filter((r) => r.kind !== 'cum').map((r) => r.cells)));
@@ -510,7 +581,7 @@ function LookHeat({
 }) {
   const colsDef: Col[] = useMemo(() => (daily ? dayCols(today, 14) : weekCols(today, 12)), [daily, today]);
   const secs = useMemo(() => buildLook(d.plan, pkgs, det, colsDef, groups), [d.plan, pkgs, det, colsDef, groups]);
-  if (!pkgs.length) return <div className={s.hint}>{tr('Блоктой багц алга')}</div>;
+  if (!pkgs.length) return <div className={s.hint}>{tr('Харуулах мөр алга')}</div>;
   const cols: HeatCol[] = colsDef.map((c, i) => ({
     key: String(c.from),
     label: c.days === 1 ? fmtMD(c.from) : `${fmtMD(c.from)}–${fmtMD(c.from + (c.days - 1) * DAY)}`,
@@ -585,7 +656,7 @@ function HeatSection({ sec, cols, dec, sum, parents, vo }: {
           {sec.pkg.label}
           {sec.pkg.blocks.length > 0 && <span className={s.w}> · {tr('{0} блок', sec.pkg.blocks.length)}</span>}
         </td>
-        <td colSpan={span - 1} />
+        <td colSpan={span - 1} className={s.hNote}>{sec.note}</td>
       </tr>
       {sec.rows.map((r) => (
         <HeatRowView
@@ -610,7 +681,9 @@ function HeatRowView({ r, cols, dec, sum, fold }: {
       <td className={s.num}>{r.end == null ? '' : fmtDay(r.end)}</td>
       <td className={s.r}>{cum ? '' : pct(r.actual, 1)}</td>
       {sum && <td className={`${s.r} ${s.sum}`}>{pct(r.sum ?? null, dec)}</td>}
-      {r.cells.map((v, i) => {
+      {r.note && r.cells.every((v) => v == null) ? (
+        <td colSpan={r.cells.length} className={s.hRowNote}>{r.note}</td>
+      ) : r.cells.map((v, i) => {
         const now = cols[i]?.now ? s.hNow : '';
         if (v == null) return <td key={i} className={`${s.hc} ${s.na} ${now}`}>—</td>;
         if (Math.abs(v) < 1e-9) return <td key={i} className={`${s.hc} ${now}`} />;
@@ -620,7 +693,7 @@ function HeatRowView({ r, cols, dec, sum, fold }: {
           <td
             key={i}
             className={`${s.hc} ${a > 0.55 ? s.hotInk : ''} ${now}`}
-            style={{ background: `color-mix(in oklab, var(--data) ${Math.round(12 + a * 73)}%, transparent)` }}
+            style={{ background: `color-mix(in oklab, var(--lv, var(--data)) ${Math.round(12 + a * 73)}%, transparent)` }}
           >
             {pct(v, dec)}
           </td>
@@ -638,7 +711,7 @@ function Legend({ lvl }: { lvl: Level }) {
       <div className={s.legend}>
         <span className={s.lgItem}><span className={`${s.lgBar} ${s.stRun}`}><span className={s.gFill} style={{ width: '45%' }} /></span>{tr('Бүдэг = төлөвлөсөн хугацаа, тод = бодит гүйцэтгэл')}</span>
         <span className={s.lgItem}><span className={`${s.lgBar} ${s.stDone}`}><span className={s.gFill} style={{ width: '100%' }} /></span>{tr('✓ Дууссан (100%)')}</span>
-        <span className={s.lgItem}><span className={`${s.lgBar} ${s.stLate}`}><span className={s.gFill} style={{ width: '45%' }} /></span>{tr('Улаан = хоцорсон эсвэл огноо алга — шийдвэр шаардлагатай')}</span>
+        <span className={s.lgItem}><span className={`${s.lgBar} ${s.stLate}`}><span className={s.gFill} style={{ width: '45%' }} /></span>{tr('Улаан = хоцорсон эсвэл хийгдээгүй — удирдлагын шийдвэр шаардлагатай')}</span>
         <span className={s.lgItem}><span className={`${s.lgBar} ${s.stNone}`} />{tr('Мэдээлэл байхгүй')}</span>
         <span className={s.lgItem}><span className={`${s.lgBar} ${s.stTodo} ${s.inh}`} />{tr('Тасархай = өвөг мөрийн огноо (өөрийн хуваарьгүй)')}</span>
         <span className={s.lgItem}><span className={`${s.lgMs} ${s.msUp}`} />{tr('Milestone')}</span>
@@ -654,7 +727,7 @@ function Legend({ lvl }: { lvl: Level }) {
       <span className={s.lgItem}>
         <span className={s.lgRamp} aria-hidden>
           {[0.1, 0.3, 0.5, 0.7, 0.9].map((a) => (
-            <span key={a} style={{ background: `color-mix(in oklab, var(--data) ${Math.round(12 + a * 73)}%, transparent)` }} />
+            <span key={a} style={{ background: `color-mix(in oklab, var(--lv, var(--data)) ${Math.round(12 + a * 73)}%, transparent)` }} />
           ))}
         </span>
         {tr('Бага → их (мөр доторх хамгийн их утгатай харьцуулсан)')}

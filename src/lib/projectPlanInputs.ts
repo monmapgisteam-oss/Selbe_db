@@ -64,8 +64,13 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['guits_duusah', CF.contractorEnd],
   ['guitsetgel_huvi', CF.progressPct],
   ['cashflow_id', CF_MONTH.id],
+  ['geree_ognoo', CF.contractDate],
+  ['zahiramj_ognoo', CF.orderDate],
+  ['zahiramj_dugaar', CF.orderNo],
+  ['ashiglalt_ognoo', CF.handoverDate],
+  ['created_date', 'created_date'],
 ];
-const TEXT_KEYS = new Set<keyof PlanStoredRow>(['dd_kod', 'etseg_kod', 'uy_shat', 'bagts', 'blok', 'ajil_uilchilgee']);
+const TEXT_KEYS = new Set<keyof PlanStoredRow>(['dd_kod', 'etseg_kod', 'uy_shat', 'bagts', 'blok', 'ajil_uilchilgee', 'zahiramj_dugaar']);
 
 /** Атрибутыг нэрээр — эхлээд яг, дараа нь том/жижиг үсэг үл ялган */
 function attrOf(a: Record<string, unknown>, name: string): unknown {
