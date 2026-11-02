@@ -23,9 +23,9 @@ import { useAuth } from '@/components/AuthGate';
 import { Data, userError } from '@/components/ui';
 import { buildTree, computePlan, saneDate, type PlanNode } from '@/lib/projectPlan';
 import {
-  EMPTY_PENDING, badText, buildEdits, conflicts, dayOf, displayCodes, dropAdd, effectiveRows, inSection,
-  isEditable, isSubstage, pendingCount, rowKey, setEdit, substageAdds, substageInfo, textOf, toStored,
-  zeroWeight, type EditIssue, type FieldKey, type Names, type Pending,
+  EMPTY_PENDING, badText, buildEdits, canDelete, conflicts, dayOf, displayCodes, dropAdd, effectiveRows, inSection,
+  isEditable, isSubstage, needsEqualize, pendingCount, rowKey, setEdit, substageAdds, substageInfo, textOf, toStored,
+  toggleDelete, toggleEq, zeroWeight, type EditIssue, type FieldKey, type Names, type Pending,
 } from '@/lib/zuragTosol';
 import s from './zuragTosol.module.css';
 
@@ -145,6 +145,13 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
     [base, pend.adds],
   );
   const addKeys = useMemo(() => new Set(pend.adds.map(rowKey)), [pend.adds]);
+  const delSet = useMemo(() => new Set(pend.deletes ?? []), [pend.deletes]);
+  const eqSet = useMemo(() => new Set(pend.eq ?? []), [pend.eq]);
+  /** Устгахаар тэмдэглэсэн мөрүүд — урьдчилсан модноос хасагдсан тул жагсаалтын доор нэрээр */
+  const delNames = useMemo(() => (pend.deletes ?? []).map((o) => {
+    const r = base.find((x) => x.objectid === o);
+    return r ? `${r.bagts ?? ''} · ${r.ajil_uilchilgee ?? ''}`.trim() : String(o);
+  }), [base, pend.deletes]);
   const phases = tree.root.children.filter(inSection);
 
   const dirty = reloading ? 0 : pendingCount(pend);
@@ -231,18 +238,17 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
       setErr(tr('Хадгалах боломжгүй: {0}', list.join('; ')));
       return;
     }
-    if (!e.updates.length && !e.adds.length) { setPend(EMPTY_PENDING); return; }
+    if (!e.updates.length && !e.adds.length && !e.deletes.length) { setPend(EMPTY_PENDING); return; }
     const zero = e.adds.filter((a) => zeroWeight(a as { heseg_ezleh_huvi: number | null })).length;
-    if (e.adds.length && !(await askConfirm(
-      [
-        tr('{0} шинэ дэд шатны мөр нэмэгдэнэ. Нэмсний дараа эцэг мөрийн явц дэд шатуудаас бодогдоно. Хадгалах уу?', e.adds.length),
-        ...(zero ? [tr('Анхааруулга: {0} дэд шатны жин 0% — бусад дэд шат 100%-ийг эзэлсэн тул тэдгээрийн явц эцэг мөрөнд нөлөөлөхгүй. Жинг Excel-ээр засна уу.', zero)] : []),
-      ].join(' '),
-      { ok: tr('Хадгалах') },
-    ))) return;
+    const ask = [
+      ...(e.adds.length ? [tr('{0} шинэ дэд шатны мөр нэмэгдэнэ. Нэмсний дараа эцэг мөрийн явц дэд шатуудаас бодогдоно.', e.adds.length)] : []),
+      ...(zero ? [tr('Анхааруулга: {0} дэд шатны жин 0% — бусад дэд шат 100%-ийг эзэлсэн тул тэдгээрийн явц эцэг мөрөнд нөлөөлөхгүй. Жинг Excel-ээр засна уу.', zero)] : []),
+      ...(e.deletes.length ? [tr('{0} дэд шатны мөр УСТГАГДАНА (буцаах боломжгүй); үлдсэн дэд шатны жин дахин тэнцүүлэгдэнэ.', e.deletes.length)] : []),
+    ];
+    if (ask.length && !(await askConfirm(`${ask.join(' ')} ${tr('Хадгалах уу?')}`, { ok: tr('Хадгалах'), danger: e.deletes.length > 0 }))) return;
     setBusy(true);
     try {
-      const oids = e.updates.map((u) => Number(u[NAMES.oid]));
+      const oids = [...new Set([...e.updates.map((u) => Number(u[NAMES.oid])), ...e.deletes])];
       const codes = e.adds.map((a) => String(a.dd_kod));
       const parts = [
         ...(oids.length ? [`${CASHFLOW_NEW.oid} IN (${oids.join(',')})`] : []),
@@ -255,12 +261,15 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
       })).map((r) => toStored(r, NAMES));
       const clash = conflicts(base, fresh.filter((r) => r.objectid != null && oids.includes(r.objectid)), e.updates, NAMES);
       const taken = codes.filter((c) => fresh.some((r) => r.dd_kod === c));
-      if (clash.length || taken.length) {
+      /* Устгах мөр серверт байхгүй / мөнгөтэй болсон (өөр хүн) бол устгахгүй */
+      const goneOrMoney = e.deletes.filter((o) => { const f = fresh.find((r) => r.objectid === o); return !f || f.cashflow_id != null; })
+        .map((o) => base.find((r) => r.objectid === o)?.dd_kod ?? String(o));
+      if (clash.length || taken.length || goneOrMoney.length) {
         setErr(tr('Өөр хэрэглэгч энэ хооронд өөрчилсөн байна ({0}). Дахин ачаалж шинэ утгаар засна уу.',
-          [...clash, ...taken].slice(0, 5).map(label).join(', ')));
+          [...clash, ...taken, ...goneOrMoney].slice(0, 5).map(label).join(', ')));
         return;
       }
-      const { n } = await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: e.updates, adds: e.adds }, { cap: ZURAG_CAP });
+      const { n } = await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: e.updates, adds: e.adds, deletes: e.deletes }, { cap: ZURAG_CAP });
       invalidate('CASHFLOW_NEW');
       setPubFrom(rows);
       setMsg(tr('{0} мөр хадгалагдав', n));
@@ -411,8 +420,10 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                       {isNew && <span className={s.badge}>{tr('шинэ')}</span>}
                     </td>
                     <td className={s.r}>
-                      {isNew && zeroWeight(r) ? (
-                        <span className={s.warnNote} title={tr('Жин 0% — бусад дэд шат 100%-ийг эзэлсэн тул энэ дэд шатны явц эцэг мөрөнд нөлөөлөхгүй. Жинг Excel-ээр засна уу.')}>
+                      {zeroWeight(r) && (isNew || isSubstage(n)) ? (
+                        <span className={s.warnNote} title={isNew
+                          ? tr('Жин 0% — бусад дэд шат 100%-ийг эзэлсэн тул энэ дэд шатны явц эцэг мөрөнд нөлөөлөхгүй. Жинг Excel-ээр засна уу.')
+                          : tr('Жин 0% — явц нь эцэг мөрөнд нөлөөлөхгүй. Эцгийн мөрийн «Жин тэнцүүлэх» товчоор засна.')}>
                           ⚠ {pct(v.F, 1)}
                         </span>
                       ) : pct(v.F, 1)}
@@ -443,6 +454,25 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                             onClick={() => setPend((p) => dropAdd(p, origByKey.get(k)!))}
                           >✕</button>
                         )}
+                        {!isNew && canDelete(n) && (
+                          <button
+                            type="button"
+                            className={s.rm}
+                            disabled={locked}
+                            title={tr('Энэ дэд шатны мөрийг устгах (хадгалахад)')}
+                            aria-label={tr('Устгах')}
+                            onClick={() => { setMsg(null); setPend((p) => toggleDelete(p, origByKey.get(k)!)); }}
+                          >{tr('Устгах')}</button>
+                        )}
+                        {needsEqualize(n) && r.objectid != null && (
+                          <button
+                            type="button"
+                            className={s.add}
+                            disabled={locked}
+                            title={tr('Дэд шатуудын жинг тэнцүү (1/n) болгоно — 0 эсвэл буруу жинтэй үед')}
+                            onClick={() => { setMsg(null); setPend((p) => toggleEq(p, r.objectid!)); }}
+                          >{eqSet.has(r.objectid) ? tr('Тэнцүүлэхээ болих') : tr('Жин тэнцүүлэх')}</button>
+                        )}
                       </td>
                     )}
                   </tr>
@@ -451,6 +481,14 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
             </tbody>
           </table>
           {visible.length === 0 && <p className={s.hint}>{tr('Тохирох мөр алга.')}</p>}
+          {delSet.size > 0 && (
+            <p className={s.warnNote} role="status">
+              {tr('Устгахаар тэмдэглэсэн {0} мөр: {1} — «Хадгалах» дарахад устгагдана, «Буцаах» дарвал сэргэнэ.', delSet.size, delNames.join('; '))}
+            </p>
+          )}
+          <p className={s.hint}>
+            {tr('Дэд шат — санхүүжилтийн «Төсөл төлөвлөгөө биелэлт» хүснэгтийн бүтцийн мөр (мөнгөгүй), багцын зураг төслийн мөрийн доор 4-р түвшинд хадгалагдана; ТТБ хуудсанд ч харагдана.')}
+          </p>
         </div>
 
         {canEdit && (

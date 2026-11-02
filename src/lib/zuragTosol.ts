@@ -40,13 +40,17 @@ export const zeroWeight = (r: Pick<PlanStoredRow, 'heseg_ezleh_huvi'>): boolean 
  * хасаад үлдсэнийг шинэ мөрүүдэд жигд. Хадгалах ачаа ба урьдчилсан мод ИЖИЛ жинг ашиглана.
  */
 export function weighAdds(base: readonly PlanStoredRow[], adds: readonly PlanStoredRow[]): PlanStoredRow[] {
+  /* ⚠️ 2026-11-02: Excel-ийн `dd_kod` давхарддаг («2.1.2» = Багц-2-ын мөр БА «Багц-16, 17»-ийн мөр) тул ах дүүсийг
+     ЗӨВХӨН `etseg_kod`-оор шүүвэл өөр эцгийн хүүхдүүд (Σ=1) тооцогдож шинэ дэд шат 0 жинтэй хадгалагдаж байв.
+     Дэд шат эцгийнхээ багцыг авдаг (`substageAdds`) тул ах дүү = ижил `etseg_kod` + ижил `bagts`. */
+  const keyOf = (r: PlanStoredRow) => `${r.etseg_kod ?? ''}|${String(r.bagts ?? '').trim().toLowerCase()}`;
   const byParent = new Map<string, number>();
-  for (const a of adds) { const k = a.etseg_kod ?? ''; byParent.set(k, (byParent.get(k) ?? 0) + 1); }
+  for (const a of adds) { const k = keyOf(a); byParent.set(k, (byParent.get(k) ?? 0) + 1); }
   const w = new Map<string, number>();
   for (const [k, cnt] of byParent) {
-    w.set(k, substageWeight(base.filter((r) => (r.etseg_kod ?? '') === k).map((r) => r.heseg_ezleh_huvi), cnt));
+    w.set(k, substageWeight(base.filter((r) => keyOf(r) === k).map((r) => r.heseg_ezleh_huvi), cnt));
   }
-  return adds.map((a) => ({ ...a, heseg_ezleh_huvi: w.get(a.etseg_kod ?? '') ?? a.heseg_ezleh_huvi ?? null }));
+  return adds.map((a) => ({ ...a, heseg_ezleh_huvi: w.get(keyOf(a)) ?? a.heseg_ezleh_huvi ?? null }));
 }
 
 /** Засах 3 талбар → хадгалах талбарын нэр (жижиг үсэг, Enterprise) */
@@ -76,9 +80,12 @@ export function rowPhase(base: readonly PlanStoredRow[], r: PlanStoredRow): Phas
   return 'other';
 }
 
-/** Хадгалаагүй бүх засвар: `edits` — мөрийн түлхүүрээр (`rowKey`), `adds` — шинэ дэд шатны мөрүүд */
-export type Pending = { edits: Record<string, RowEdit>; adds: PlanStoredRow[] };
-export const EMPTY_PENDING: Pending = { edits: {}, adds: [] };
+/**
+ * Хадгалаагүй бүх засвар: `edits` — мөрийн түлхүүрээр (`rowKey`), `adds` — шинэ дэд шатны мөрүүд,
+ * `deletes` — устгах хадгалсан дэд шатны objectid (2026-11-02), `eq` — дэд шатны жинг тэнцүүлэх эцгийн objectid.
+ */
+export type Pending = { edits: Record<string, RowEdit>; adds: PlanStoredRow[]; deletes?: number[]; eq?: number[] };
+export const EMPTY_PENDING: Pending = { edits: {}, adds: [], deletes: [], eq: [] };
 
 /** Үйлчилгээний талбарын нэр — дуудагч `services`-ээс өгнө (lib нь `services`-ээс хамаарахгүй) */
 export type Names = { oid: string; cfId: string };
@@ -246,15 +253,104 @@ function merged(r: PlanStoredRow, e: RowEdit | undefined): PlanStoredRow {
  * утгыг хадгалахаас өмнө харуулна.
  */
 export function effectiveRows(base: readonly PlanStoredRow[], p: Pending): PlanStoredRow[] {
+  const kept = withoutDeleted(base, p);
+  const eqW = equalizedWeights(kept, equalizeParents(base, p));
+  const row = (r: PlanStoredRow): PlanStoredRow => {
+    const m = merged(r, p.edits[rowKey(r)]);
+    const w = r.objectid != null ? eqW.get(r.objectid) : undefined;
+    return w == null ? m : { ...m, heseg_ezleh_huvi: w };
+  };
+  const keptW = kept.map(row);
   return sortByKod([
-    ...base.map((r) => merged(r, p.edits[rowKey(r)])),
-    ...weighAdds(base, p.adds).map((r) => merged(r, p.edits[rowKey(r)])),
+    ...keptW,
+    ...weighAdds(keptW, p.adds).map((r) => merged(r, p.edits[rowKey(r)])),
   ]);
 }
 
-/** Хадгалаагүй өөрчлөлттэй мөрийн тоо (засвар ∪ шинэ мөр) */
+/** Хадгалаагүй өөрчлөлттэй мөрийн тоо (засвар ∪ шинэ мөр ∪ устгал ∪ тэнцүүлэх эцэг) */
 export const pendingCount = (p: Pending): number =>
-  new Set([...Object.keys(p.edits), ...p.adds.map(rowKey)]).size;
+  new Set([...Object.keys(p.edits), ...p.adds.map(rowKey), ...(p.deletes ?? []).map((o) => `d${o}`), ...(p.eq ?? []).map((o) => `e${o}`)]).size;
+
+/* ── Устгах · жин тэнцүүлэх (2026-11-02) ── */
+
+const sameBagts = (a: PlanStoredRow, b: PlanStoredRow): boolean =>
+  String(a.bagts ?? '').trim().toLowerCase() === String(b.bagts ?? '').trim().toLowerCase();
+
+/** Устгахаар тэмдэглэснийг хассан суурь мөрүүд */
+const withoutDeleted = (base: readonly PlanStoredRow[], p: Pending): PlanStoredRow[] => {
+  const del = new Set(p.deletes ?? []);
+  return del.size ? base.filter((r) => r.objectid == null || !del.has(r.objectid)) : [...base];
+};
+
+/** Эцгийн ХАДГАЛСАН дэд шат мөрүүд — ижил `etseg_kod` + ижил багц (Excel-ийн код давхардахаас хамгаална) */
+export function savedSubstages(base: readonly PlanStoredRow[], parent: PlanStoredRow): PlanStoredRow[] {
+  return base.filter((r) => r.objectid != null && (r.etseg_kod ?? '') === (parent.dd_kod ?? '') && sameBagts(r, parent)
+    && SUB_KEYS.includes(nameKey(r.ajil_uilchilgee)));
+}
+
+/** Дэд шатны эцэг мөр — `etseg_kod` + ижил багц; олдохгүй бол зөвхөн кодоор */
+const parentOf = (base: readonly PlanStoredRow[], r: PlanStoredRow): PlanStoredRow | undefined =>
+  base.find((x) => x.dd_kod === r.etseg_kod && sameBagts(x, r)) ?? base.find((x) => x.dd_kod === r.etseg_kod);
+
+/** Жин тэнцүүлэх эцгүүд — ил тэмдэглэсэн (`eq`) + устгасан дэд шатны эцэг (үлдсэн дэд шат дахин хуваана) */
+function equalizeParents(base: readonly PlanStoredRow[], p: Pending): PlanStoredRow[] {
+  const byOid = new Map(base.filter((r) => r.objectid != null).map((r) => [r.objectid as number, r] as const));
+  const out = new Map<number, PlanStoredRow>();
+  for (const o of p.eq ?? []) { const r = byOid.get(o); if (r) out.set(o, r); }
+  for (const o of p.deletes ?? []) {
+    const r = byOid.get(o); if (!r) continue;
+    const par = parentOf(base, r);
+    if (par?.objectid != null) out.set(par.objectid, par);
+  }
+  return [...out.values()];
+}
+
+/** Эцэг бүрийн хадгалсан дэд шатуудад 1/k жин — objectid → жин */
+function equalizedWeights(kept: readonly PlanStoredRow[], parents: readonly PlanStoredRow[]): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const par of parents) {
+    const subs = savedSubstages(kept, par);
+    for (const s of subs) out.set(s.objectid as number, 1 / subs.length);
+  }
+  return out;
+}
+
+/** Хадгалсан дэд шат мөрийг устгаж болох уу — навч, мөнгөгүй (`cashflow_id` null), зураг төслийн үе шат */
+export const canDelete = (n: PlanNode): boolean =>
+  n.phase === 'zurag' && isSubstage(n) && n.children.length === 0 && n.row?.objectid != null && n.row.cashflow_id == null;
+
+/**
+ * Эцгийн дэд шатуудын жин засах шаардлагатай юу — бүх хүүхэд хадгалсан дэд шат бөгөөд аль нэг нь 0/хоосон
+ * жинтэй эсвэл нийлбэр ≠ 1 (жиш. Excel-ийн давхар кодоос 0 жинтэй хадгалагдсан).
+ */
+export function needsEqualize(n: PlanNode): boolean {
+  if (n.phase !== 'zurag' || !n.row || !n.children.length) return false;
+  if (!n.children.every((c) => isSubstage(c) && c.row?.objectid != null)) return false;
+  let sum = 0;
+  for (const c of n.children) {
+    const w = c.row!.heseg_ezleh_huvi;
+    if (typeof w !== 'number' || !Number.isFinite(w) || w <= 1e-9) return true;
+    sum += w;
+  }
+  return Math.abs(sum - 1) > 1e-6;
+}
+
+/** Устгах тэмдэг тавих/авах (мөрийн засвар хамт арилна) */
+export function toggleDelete(p: Pending, r: PlanStoredRow): Pending {
+  const oid = r.objectid;
+  if (oid == null) return p;
+  const cur = p.deletes ?? [];
+  if (cur.includes(oid)) return { ...p, deletes: cur.filter((o) => o !== oid) };
+  const edits = { ...p.edits };
+  delete edits[rowKey(r)];
+  return { ...p, edits, deletes: [...cur, oid] };
+}
+
+/** Жин тэнцүүлэх тэмдэг тавих/авах — эцгийн objectid */
+export function toggleEq(p: Pending, parentOid: number): Pending {
+  const cur = p.eq ?? [];
+  return cur.includes(parentOid) ? { ...p, eq: cur.filter((o) => o !== parentOid) } : { ...p, eq: [...cur, parentOid] };
+}
 
 /** Шинэ мөрийг (ба түүний засварыг) буцаана */
 export function dropAdd(p: Pending, r: PlanStoredRow): Pending {
@@ -282,6 +378,8 @@ export type EditPayload = {
   updates: Record<string, unknown>[];
   /** `applyAll`-ийн `adds` — шинэ БҮТЦИЙН мөр (`cashflow_id` null) */
   adds: Record<string, unknown>[];
+  /** `applyAll`-ийн `deletes` — устгах дэд шатны objectid (2026-11-02) */
+  deletes: number[];
   /** Хоосон биш бол ИЛГЭЭХГҮЙ */
   issues: EditIssue[];
 };
@@ -332,6 +430,14 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
     return out;
   };
 
+  /* Устгал — зөвхөн хадгалсан мөр; алга бол «missing» */
+  const deletes: number[] = [];
+  for (const o of p.deletes ?? []) {
+    if (base.some((r) => r.objectid === o)) deletes.push(o);
+    else issues.push({ key: `d${o}`, code: null, name: null, kind: 'missing' });
+  }
+  const delSet = new Set(deletes);
+
   for (const [key, e] of Object.entries(p.edits)) {
     if (addKeys.has(key)) continue; // шинэ мөр — доор
     const r = byKey.get(key);
@@ -339,6 +445,7 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
       issues.push({ key, code: null, name: null, kind: 'missing' });
       continue;
     }
+    if (delSet.has(r.objectid)) continue; // устгах мөрийн засвар илгээхгүй
     const ch = changes(key, r, e);
     if (!ch || !Object.keys(ch).length) continue;
     const u: Record<string, unknown> = { [names.oid]: r.objectid };
@@ -348,7 +455,16 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
     updates.push(u);
   }
 
-  for (const r of weighAdds(base, p.adds)) {
+  /* Жин тэнцүүлэх — эцгийн үлдсэн дэд шатууд 1/k (устгалын дараах ба ил тэмдэглэсэн эцэг) */
+  const kept = withoutDeleted(base, { ...p, deletes });
+  for (const [oid, w] of equalizedWeights(kept, equalizeParents(base, { ...p, deletes }))) {
+    const r = kept.find((x) => x.objectid === oid)!;
+    if (typeof r.heseg_ezleh_huvi === 'number' && Math.abs(r.heseg_ezleh_huvi - w) < 1e-9) continue;
+    const u = updates.find((x) => x[names.oid] === oid);
+    if (u) u.heseg_ezleh_huvi = w; else updates.push({ [names.oid]: oid, heseg_ezleh_huvi: w });
+  }
+
+  for (const r of weighAdds(kept, p.adds)) {
     const key = rowKey(r);
     const ch = changes(key, r, p.edits[key] ?? {});
     if (!ch) continue;
@@ -369,7 +485,7 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
       [names.cfId]: null,
     });
   }
-  return { updates, adds, issues };
+  return { updates, adds, deletes, issues };
 }
 
 /**
@@ -420,6 +536,8 @@ export const isSubstage = (n: PlanNode): boolean => SUB_KEYS.includes(nameKey(n.
  */
 export function substageInfo(n: PlanNode): { can: boolean; missing: string[] } {
   if (n.phase !== 'zurag' || n.depth < 2 || !n.row || !String(n.row.bagts ?? '').trim()) return { can: false, missing: [] };
+  /* 2026-11-02: дэд шатны мөрийн доор дэд шат санал болгохгүй (А-даалгаварт А-даалгавар …) */
+  if (isSubstage(n)) return { can: false, missing: [] };
   if (!n.children.every(isSubstage)) return { can: false, missing: [] };
   const have = new Set(n.children.map((c) => nameKey(c.row?.ajil_uilchilgee)));
   const missing = DESIGN_SUBSTAGES.filter((s) => !have.has(nameKey(s)));
