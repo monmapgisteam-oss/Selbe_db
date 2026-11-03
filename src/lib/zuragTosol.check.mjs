@@ -6,8 +6,8 @@
  *   1. ЗӨВХӨН ӨӨРЧЛӨГДСӨН ТАЛБАР илгээгдэнэ — анхны утга руу буцсан оролт, ижил өдөр засвар биш.
  *   2. ОГНОО UTC шөнө дундаар — орон нутгийн цагаар бол УБ-д өдөр гулсаж өөрчлөгдөөгүй огноо илгээгдэнэ.
  *   3. null ≠ 0 — хоосон явц `null`, 0 БИШ; 0–100-аас гадуур, тоо биш, эхлэх > дуусах бол ИЛГЭЭХГҮЙ.
- *   4. Шинэ дэд шатны мөр — БҮТЦИЙН (`cashflow_id` ил null), код давтагдашгүй, эцгийн доор эрэмбэлэгдэнэ,
- *      жингийн нийлбэр 1 (✕-ээр хассан ч дахин хуваагдана) тул эцгийн явц Σ F·S-ээр 100% хүрнэ.
+ *   4. Нэмсэн ажлын мөр — БҮТЦИЙН (`cashflow_id` ил null), код давтагдашгүй, эцгийн доор эрэмбэлэгдэнэ, жин
+ *      ТЭНЦҮҮ (нэмэх/✕/устгахад дахин хуваагдана, бичсэн жин давуу); төсөв = эцгийн оноосон төсөв × жин.
  *   5. Зэрэг засвар — бидний бичих талбарыг өөр хүн зассан бол илэрнэ.
  *   6. 2000–2100-аас гадуурх огноо, ганц огноо (хос дутуу) ИЛГЭЭХГҮЙ — чимээгүй алга болохгүй.
  *   7. Импортын хөвөгч цэгийн явц («7.000000000000001») бөөрөнхийлөгдөж, засвар гэж тооцогдохгүй.
@@ -16,8 +16,8 @@ import assert from 'node:assert/strict';
 import { buildTree, computePlan } from './projectPlan.ts';
 import {
   buildEdits, conflicts, cmpKod, sortByKod, setEdit, textOf, pendingCount, dropAdd, effectiveRows,
-  substageInfo, substageAdds, displayCodes, isEditable, parsePct, parseDay, dayOf, dateIn, toStored,
-  EMPTY_PENDING, DESIGN_SUBSTAGES, origText, substageWeight, weighAdds, zeroWeight, rowPhase,
+  canAddWork, workAdd, workNameWhy, worksWeightSum, isAddedWork, canDelete, toggleDelete, pctOfAmount, parseWeight, rowKey,
+  displayCodes, isEditable, parsePct, parseDay, dayOf, dateIn, toStored, EMPTY_PENDING, origText, rowPhase,
 } from './zuragTosol.ts';
 
 const NAMES = { oid: 'objectid', cfId: 'cashflow_id' };
@@ -127,121 +127,132 @@ const r23 = base.find((r) => r.objectid === 23);
   assert.equal(gone.issues[0].kind, 'missing');
 }
 
-/* ── 4. Дэд шат нэмэх ── */
+/* ── 4. Ажил нэмэх (2026-11-03): нэрээр, жин тэнцүү хуваагдана, төсөв эцгийн төсвөөс жингээр ── */
 {
   const tree = buildTree(sortByKod(base));
   assert.deepEqual(tree.issues, []);
   const n22 = tree.byCode.get('2.1.9');
   const n21 = tree.byCode.get('2.1');
   const n11 = tree.byCode.get('1.1');
-  assert.deepEqual(substageInfo(n22), { can: true, missing: [...DESIGN_SUBSTAGES] });
-  assert.equal(substageInfo(n21).can, false, 'бүлгийн мөрийн (хүүхэд нь багц) доор нэмэхгүй');
-  assert.equal(substageInfo(n11).can, false, 'ТЭЗҮ үе шатад дэд шат байхгүй');
+  assert.ok(canAddWork(n22), 'багцын зураг төслийн навч мөрөнд нэмнэ');
+  assert.ok(!canAddWork(n21), 'бүлгийн мөрийн (хүүхэд нь багц) доор нэмэхгүй');
+  assert.ok(!canAddWork(n11), 'ТЭЗҮ үе шатад нэмэхгүй');
   assert.ok(isEditable(n22) && !isEditable(n21), 'навч л засагдана');
+  assert.ok(!tree.nodes.some(isAddedWork), 'хүснэгтийн мөрүүд (эцгээсээ өөр багцтай) нэмсэн ажил биш');
+  assert.equal(workNameWhy(n22, '  '), 'empty');
+  assert.equal(workAdd(n22, tree, ' '), null, 'нэргүй ажил нэмэхгүй');
 
-  const adds = substageAdds(n22, tree);
-  assert.deepEqual(adds.map((r) => r.dd_kod), ['2.1.9.1', '2.1.9.2', '2.1.9.3', '2.1.9.4']);
-  assert.ok(adds.every((r) => r.etseg_kod === '2.1.9' && r.tuvshin === 3 && r.uy_shat === 'Ажлын зураг төсөл'
-    && r.bagts === 'Багц-1' && r.cashflow_id === null && r.objectid === null && r.heseg_ezleh_huvi === 0.25));
+  const a1 = workAdd(n22, tree, ' Хайгуул ');
+  assert.deepEqual(
+    [a1.dd_kod, a1.etseg_kod, a1.tuvshin, a1.uy_shat, a1.bagts, a1.ajil_uilchilgee, a1.cashflow_id, a1.objectid],
+    ['2.1.9.1', '2.1.9', 3, 'Ажлын зураг төсөл', 'Багц-1', 'Хайгуул', null, null],
+  );
+  let p = { ...EMPTY_PENDING, adds: [a1] };
+  let t = buildTree(effectiveRows(base, p));
+  assert.ok(isAddedWork(t.byCode.get('2.1.9.1')), 'эцэгтэйгээ ижил багцтай, мөнгөгүй → нэмсэн ажил');
+  assert.ok(canAddWork(t.byCode.get('2.1.9')), 'хүүхэд нь бүгд нэмсэн ажил → дахин нэмж болно');
+  assert.ok(!canAddWork(t.byCode.get('2.1.9.1')), 'нэмсэн ажлын доор ажил нэмэхгүй');
+  assert.equal(workNameWhy(t.byCode.get('2.1.9'), 'хайгуул'), 'dup', 'ижил нэр давхардахгүй');
+  const a2 = workAdd(t.byCode.get('2.1.9'), t, 'Загвар зураг');
+  p = { ...p, adds: [a1, a2] };
+  t = buildTree(effectiveRows(base, p));
+  const a3 = workAdd(t.byCode.get('2.1.9'), t, 'Магадлал');
+  assert.deepEqual([a2.dd_kod, a3.dd_kod], ['2.1.9.2', '2.1.9.3'], 'код давхардахгүй');
+  p = { ...p, adds: [a1, a2, a3] };
 
-  let p = { edits: {}, adds };
-  p = setEdit(p, adds[0], 'pct', '100');
-  p = setEdit(p, adds[1], 'pct', '50');
-  p = setEdit(p, adds[1], 'start', '2026-02-01');
-  /* Ганц огноо → 'pair' алдаа (spanOf хоёулаа байгаа мөрийг л авдаг) */
-  assert.deepEqual(buildEdits(base, p, NAMES).issues.map((i) => [i.code, i.kind]), [['2.1.9.2', 'pair']]);
-  p = setEdit(p, adds[1], 'end', '2026-03-31');
-  assert.equal(pendingCount(p), 4);
-
-  /* Урьдчилсан мод: шинэ мөрүүд эцгийнхээ доор, эцэг навч биш болно; эцгийн S = Σ ¼·S */
+  /* Жин тэнцүү: 3 ажил → 1/3 */
   const eff = effectiveRows(base, p);
-  assert.deepEqual(eff.map((r) => r.dd_kod).slice(4, 9), ['2.1.9', '2.1.9.1', '2.1.9.2', '2.1.9.3', '2.1.9.4']);
-  const t2 = buildTree(eff);
-  assert.deepEqual(t2.issues, []);
-  const res = computePlan(t2, {}, d('2026-04-01'));
-  assert.equal(res.get('2.1.9').S, 0.25 * 100 + 0.25 * 50, 'эцгийн явц дэд шатуудаас (хоосон дэд шат нийлбэрт орохгүй)');
-  assert.equal(substageInfo(t2.byCode.get('2.1.9')).can, false, 'бүгд нэмэгдсэн — дахин санал болгохгүй');
-  assert.equal(substageInfo(t2.byCode.get('2.1.9.1')).can, false, '2026-11-02: дэд шатны доор дэд шат санал болгохгүй');
-  assert.equal(res.get('2.1.9.3').S, null, 'бөглөөгүй дэд шат null (0 БИШ)');
-  assert.ok(res.get('2.1.9.3').N != null, 'огноогүй дэд шат эцгийн огноогоор төлөвлөгөөт % авна');
+  assert.deepEqual(eff.map((r) => r.dd_kod).slice(4, 8), ['2.1.9', '2.1.9.1', '2.1.9.2', '2.1.9.3']);
+  assert.ok(eff.filter((r) => r.etseg_kod === '2.1.9').every((r) => Math.abs(r.heseg_ezleh_huvi - 1 / 3) < 1e-12), '1/3');
 
-  /* Дутуу дэд шат нөхөх — код давхардахгүй */
-  const partial = buildTree(effectiveRows(base, { edits: {}, adds: adds.slice(0, 2) }));
-  const more = substageAdds(partial.byCode.get('2.1.9'), partial);
-  assert.deepEqual(more.map((r) => [r.dd_kod, r.ajil_uilchilgee]), [['2.1.9.3', 'Техникийн нөхцөл'], ['2.1.9.4', 'Магадлал']]);
+  p = setEdit(p, a1, 'pct', '100');
+  p = setEdit(p, a2, 'pct', '50');
+  p = setEdit(p, a2, 'start', '2026-02-01');
+  assert.deepEqual(buildEdits(base, p, NAMES).issues.map((i) => [i.code, i.kind]), [['2.1.9.2', 'pair']], 'ганц огноо');
+  p = setEdit(p, a2, 'end', '2026-03-31');
+  const res = computePlan(buildTree(effectiveRows(base, p)), {}, d('2026-04-01'));
+  assert.ok(Math.abs(res.get('2.1.9').S - 50) < 1e-9, `эцгийн явц = (100 + 50) / 3 (${res.get('2.1.9').S})`);
+  assert.equal(res.get('2.1.9.3').S, null, 'бөглөөгүй ажил null (0 БИШ)');
 
-  /* Ачаа */
+  /* Ачаа: 3 шинэ мөр, жин 1/3, мөнгөгүй, OID-гүй */
   const e = buildEdits(base, p, NAMES);
   assert.deepEqual(e.issues, []);
   assert.equal(e.updates.length, 0);
-  assert.equal(e.adds.length, 4);
+  assert.equal(e.adds.length, 3);
   assert.deepEqual(e.adds[1], {
     dd_kod: '2.1.9.2', etseg_kod: '2.1.9', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-1', blok: null,
-    ajil_uilchilgee: 'Загвар зураг', heseg_ezleh_huvi: 0.25,
+    ajil_uilchilgee: 'Загвар зураг', heseg_ezleh_huvi: 1 / 3,
     geree_ehleh: d('2026-02-01'), geree_duusah: d('2026-03-31'), guitsetgel_huvi: 50, cashflow_id: null,
   });
   assert.ok(!('objectid' in e.adds[0]), 'шинэ мөр OID-гүй');
-  assert.ok(e.adds.every((a) => 'cashflow_id' in a && a.cashflow_id === null), 'БҮТЦИЙН мөр — cashflow_id ил null');
 
-  /* Буцаах */
-  const back = dropAdd(p, adds[1]);
-  assert.equal(back.adds.length, 3);
-  assert.ok(!('n2.1.9.2' in back.edits), 'шинэ мөрийн засвар хамт арилна');
+  /* Жинг хувиар өөрчлөх — бичсэн нь давуу; хоосон бичвэл тэнцүү хуваалт */
+  let pw = setEdit(p, a1, 'weight', '50');
+  const ew = buildEdits(base, pw, NAMES);
+  assert.deepEqual(ew.adds.map((a) => Math.round(a.heseg_ezleh_huvi * 1e6) / 1e6), [0.5, 0.333333, 0.333333]);
+  const tw = buildTree(effectiveRows(base, pw));
+  const rw = computePlan(tw, {}, d('2026-04-01'));
+  assert.ok(Math.abs(worksWeightSum(tw.byCode.get('2.1.9'), (c) => rw.values.get(c).F) - 116.666667) < 1e-4, 'нийлбэр 100% биш → анхааруулга');
+  assert.equal(worksWeightSum(tw.byCode.get('2.1'), (c) => rw.values.get(c).F), null, 'хүүхэд нь багцууд — хамаарахгүй');
+  pw = setEdit(pw, a1, 'weight', '');
+  assert.ok(!('weight' in (pw.edits[rowKey(a1)] ?? {})), 'хоосон жин засвар биш');
+  assert.equal(parseWeight('12,5').v, 0.125);
+  assert.equal(parseWeight('120').ok, false);
 
-  /* ✕-ийн дараа үлдсэн 3 дэд шатны жин 1/3 — бүгд 100% бол эцэг 100% (75% БИШ) */
-  const eb = buildEdits(base, back, NAMES);
-  assert.ok(eb.adds.every((a) => Math.abs(a.heseg_ezleh_huvi - 1 / 3) < 1e-12), 'жин дахин хуваагдана');
+  /* Буцаах (✕) — үлдсэн 2 ажил 1/2 */
+  const back = dropAdd(p, a2);
+  assert.equal(back.adds.length, 2);
+  assert.ok(!(rowKey(a2) in back.edits), 'шинэ мөрийн засвар хамт арилна');
+  assert.ok(buildEdits(base, back, NAMES).adds.every((a) => Math.abs(a.heseg_ezleh_huvi - 0.5) < 1e-12), 'жин дахин хуваагдана');
   let full = back;
   for (const a of back.adds) full = setEdit(full, a, 'pct', '100');
   const rf = computePlan(buildTree(effectiveRows(base, full)), {}, d('2026-04-01'));
-  assert.ok(Math.abs(rf.get('2.1.9').S - 100) < 1e-9, `3 дэд шат 100% → эцэг 100% (${rf.get('2.1.9').S})`);
+  assert.ok(Math.abs(rf.get('2.1.9').S - 100) < 1e-9, `бүгд 100% → эцэг 100% (${rf.get('2.1.9').S})`);
+  assert.deepEqual(dropAdd({ ...back, deletes: [7] }, a1).deletes, [7], 'устгалын тэмдэг хэвээр');
 }
 
-/* ── Жингийн хуваарилалт: байгаа дэд шатны F-ийг хасаад үлдсэнийг шинэд ── */
+/* ── 4б. Оноосон төсөв: ажлын төсөв = эцгийн (оноосон) төсөв × жин; эцгийн төсөв өөрчлөгдөхгүй ── */
 {
-  assert.equal(substageWeight([], 4), 0.25);
-  assert.equal(substageWeight([0.5, null], 2), 0.25, 'null ах дүү тооцоонд орохгүй');
-  assert.equal(substageWeight([0.7, 0.6], 1), 0, 'сөрөг жин гарахгүй');
-  const have = [...base,
-    { objectid: 30, dd_kod: '2.1.9.1', etseg_kod: '2.1.9', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-1', ajil_uilchilgee: 'А-даалгавар', heseg_ezleh_huvi: 0.4 },
-  ];
-  const tr2 = buildTree(sortByKod(have));
-  const more = substageAdds(tr2.byCode.get('2.1.9'), tr2);
-  assert.equal(more.length, 3);
-  assert.ok(more.every((r) => Math.abs(r.heseg_ezleh_huvi - 0.2) < 1e-12), '(1 − 0.4) / 3');
-  const w = weighAdds(have, more.slice(0, 2));
-  assert.ok(w.every((r) => Math.abs(r.heseg_ezleh_huvi - 0.3) < 1e-12), 'нэгийг хассан → (1 − 0.4) / 2');
-  assert.ok(!w.some(zeroWeight), 'үлдэгдэлтэй → 0 биш');
-  const fullW = [...base,
-    { objectid: 31, dd_kod: '2.1.9.1', etseg_kod: '2.1.9', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-1', ajil_uilchilgee: 'А-даалгавар', heseg_ezleh_huvi: 0.6 },
-    { objectid: 32, dd_kod: '2.1.9.2', etseg_kod: '2.1.9', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-1', ajil_uilchilgee: 'Загвар зураг', heseg_ezleh_huvi: 0.4 },
-  ];
-  const tr3 = buildTree(sortByKod(fullW));
-  const zero = weighAdds(fullW, substageAdds(tr3.byCode.get('2.1.9'), tr3));
-  assert.equal(zero.length, 2);
-  assert.ok(zero.every(zeroWeight), 'ах дүүс 100% → шинэ жин 0');
-  assert.equal(zeroWeight({ heseg_ezleh_huvi: null }), false, 'null ≠ 0');
+  const withBudget = base.map((r) => (r.objectid === 21 ? { ...r, ho_dun_geree: 1000 } : r));
+  const t0 = buildTree(sortByKod(withBudget));
+  const a1 = workAdd(t0.byCode.get('2.1.9'), t0, 'Хайгуул');
+  const t1 = buildTree(effectiveRows(withBudget, { ...EMPTY_PENDING, adds: [a1] }));
+  const a2 = workAdd(t1.byCode.get('2.1.9'), t1, 'Загвар зураг');
+  const p = { ...EMPTY_PENDING, adds: [a1, a2] };
+  const t = buildTree(effectiveRows(withBudget, p));
+  const r = computePlan(t, {}, d('2026-04-01'));
+  assert.equal(r.get('2.1').E, 1000);
+  assert.equal(r.get('2.1.9').E, null, 'багцын мөр өөрийн төсөвгүй');
+  assert.equal(r.get('2.1.9').EA, 500, 'багцын мөр: 1000 × 50%');
+  assert.equal(r.get('2.1.9.1').EA, 250, 'ажил: 500 × 1/2');
+  assert.equal(r.get('2.1').EA, 1000, 'эцгийн төсөв өөрчлөгдөхгүй');
+  assert.equal(r.get('2.1.9.1').E, null, 'оноосон дүн E-д (нийлбэрт) орохгүй');
+  /* Дүнгээр бичих → эцгийн оноосон төсвийн хувь */
+  assert.equal(pctOfAmount(100, 500), 20);
+  assert.equal(pctOfAmount(100, null), null, 'эцгийн төсөвгүй → хувиар оруулна');
+  assert.equal(pctOfAmount(100, 0), null);
+  const pa = setEdit(p, a1, 'weight', String(pctOfAmount(100, r.get('2.1.9').EA)));
+  const ra = computePlan(buildTree(effectiveRows(withBudget, pa)), {}, d('2026-04-01'));
+  assert.ok(Math.abs(ra.get('2.1.9.1').EA - 100) < 1e-6, `бичсэн дүн буцаж гарна (${ra.get('2.1.9.1').EA})`);
+  assert.equal(ra.get('2.1.9').EA, 500, 'эцгийн төсөв хэвээр');
 
-  /* 2026-11-02 (амьд өгөгдөл): Excel-д «2.1.2» код ХОЁР мөрд — Багц-2-ын мөр ба «Багц-16, 17»-ийн бүлэг; бүлгийн
-     хүүхдүүд (etseg_kod '2.1.2', Σ=1) Багц-2-ын дэд шатны ах дүү БИШ → шинэ 4 дэд шат 0.25 жинтэй, 0 биш */
-  const dupKod = [...base,
-    { objectid: 40, dd_kod: '2.1.2', etseg_kod: '2.1', tuvshin: 2, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-16, 17', ajil_uilchilgee: 'ГАДНА ТОХИЖИЛТ', heseg_ezleh_huvi: 0.04 },
-    { objectid: 41, dd_kod: '2.2.1', etseg_kod: '2.1.2', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'БАГЦ-16.1', ajil_uilchilgee: 'Өндөржилтийн ажил БАГЦ 1', heseg_ezleh_huvi: 0.6 },
-    { objectid: 42, dd_kod: '2.2.2', etseg_kod: '2.1.2', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'БАГЦ-16.2', ajil_uilchilgee: 'Өндөржилтийн ажил БАГЦ 2', heseg_ezleh_huvi: 0.4 },
+  /* Барилга угсралтын хэсэгтэй үед ч нэмсэн ажил ХОС авахгүй — жин нь хадгалсан (блокийн төсвөөр биш) */
+  const build = [...withBudget,
+    { objectid: 60, dd_kod: '3', etseg_kod: null, tuvshin: 0, uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт', tusul_ezleh_huvi: 0.85 },
+    { objectid: 61, dd_kod: '3.1', etseg_kod: '3', tuvshin: 1, uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралтын ажил', heseg_ezleh_huvi: 1 },
+    { objectid: 62, dd_kod: '3.1.1', etseg_kod: '3.1', tuvshin: 2, uy_shat: 'Барилга угсралт', bagts: 'Багц-1', ajil_uilchilgee: 'Багц 1', heseg_ezleh_huvi: 1 },
+    { objectid: 63, dd_kod: '3.1.1.1', etseg_kod: '3.1.1', tuvshin: 3, uy_shat: 'Барилга угсралт', bagts: 'Багц-1', blok: '1/1', ajil_uilchilgee: 'Блок 1', ho_dun_geree: 900 },
+    { objectid: 64, dd_kod: '3.1.1.2', etseg_kod: '3.1.1', tuvshin: 3, uy_shat: 'Барилга угсралт', bagts: 'Багц-1', blok: '1/2', ajil_uilchilgee: 'Блок 2', ho_dun_geree: 100 },
   ];
-  const subs = DESIGN_SUBSTAGES.map((name, i) => ({
-    objectid: null, dd_kod: `2.1.2.${i + 1}`, etseg_kod: '2.1.2', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-2', ajil_uilchilgee: name,
-    heseg_ezleh_huvi: 0.25, geree_ehleh: null, geree_duusah: null, guitsetgel_huvi: null, cashflow_id: null,
-  }));
-  const wd = weighAdds(dupKod, subs);
-  assert.ok(wd.every((r) => Math.abs(r.heseg_ezleh_huvi - 0.25) < 1e-12), `давхар код: өөр багцын хүүхэд ах дүү биш → 0.25 (${wd.map((r) => r.heseg_ezleh_huvi)})`);
-  const wdHalf = weighAdds([...dupKod, { ...subs[0], objectid: 43, heseg_ezleh_huvi: 0.4 }], subs.slice(1));
-  assert.ok(wdHalf.every((r) => Math.abs(r.heseg_ezleh_huvi - 0.2) < 1e-12), 'ижил багцын байгаа дэд шат (0.4) тооцогдоно → (1 − 0.4) / 3');
+  const tb = buildTree(effectiveRows(build, p));
+  const rb = computePlan(tb, {}, d('2026-04-01'));
+  assert.equal(tb.byCode.get('2.1.9.1').twin, null);
+  assert.ok(Math.abs(rb.get('2.1.9.1').F - 50) < 1e-9 && Math.abs(rb.get('2.1.9.2').F - 50) < 1e-9,
+    `блокийн төсөв (900/100) нөлөөлөхгүй (${rb.get('2.1.9.1').F}/${rb.get('2.1.9.2').F})`);
 }
 
-/* ── 2026-11-02: хадгалсан дэд шат устгах · жин тэнцүүлэх (амьд алдаа: 4 дэд шат 0 жинтэй хадгалагдсан) ── */
+/* ── 2026-11-02/03: хадгалсан нэмсэн ажил устгах · жин дахин тэнцүү ── */
 {
-  const { canDelete, needsEqualize, toggleDelete, toggleEq } = await import('./zuragTosol.ts');
   const saved = [...base,
     { objectid: 50, dd_kod: '2.1.10.1', etseg_kod: '2.1.10', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-2', ajil_uilchilgee: 'А-даалгавар', heseg_ezleh_huvi: 0, guitsetgel_huvi: 20 },
     { objectid: 51, dd_kod: '2.1.10.2', etseg_kod: '2.1.10', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-2', ajil_uilchilgee: 'Загвар зураг', heseg_ezleh_huvi: 0 },
@@ -253,21 +264,9 @@ const r23 = base.find((r) => r.objectid === 23);
   const t = buildTree(sortByKod(saved));
   const par = t.byCode.get('2.1.10');
   const sub1 = t.byCode.get('2.1.10.1');
-  assert.ok(canDelete(sub1), 'хадгалсан, мөнгөгүй дэд шат устгаж болно');
+  assert.ok(canDelete(sub1), 'хадгалсан, мөнгөгүй нэмсэн ажил устгаж болно');
   assert.ok(!canDelete(par) && !canDelete(t.byCode.get('2.1.9')), 'эцэг / энгийн навч устгахгүй');
-  assert.equal(computePlan(t, {}, d('2026-04-01')).get('2.1.10').S, 0, '0 жинтэй дэд шат → эцэг 0 (алдааны нөхцөл)');
-
-  /* Жин тэнцүүлэх → 4 × 0.25, эцгийн явц 20·¼ = 5; ачаанд 4 update */
-  const pe = toggleEq(EMPTY_PENDING, 23);
-  assert.equal(pendingCount(pe), 1);
-  const te = buildTree(effectiveRows(saved, pe));
-  assert.ok(te.byCode.get('2.1.10').children.every((c) => Math.abs(c.row.heseg_ezleh_huvi - 0.25) < 1e-12), 'урьдчилсан мод: 1/4');
-  assert.equal(computePlan(te, {}, d('2026-04-01')).get('2.1.10').S, 5);
-  const ee = buildEdits([...saved, foreign], pe, NAMES);
-  assert.deepEqual(ee.issues, []);
-  assert.deepEqual(ee.updates.map((u) => [u.objectid, u.heseg_ezleh_huvi]), [[50, 0.25], [51, 0.25], [52, 0.25], [53, 0.25]], 'өөр багцын 54-р мөр хөндөгдөхгүй');
-  assert.deepEqual(ee.deletes, []);
-  assert.equal(pendingCount(toggleEq(pe, 23)), 0, 'дахин дарвал болино');
+  assert.ok(!canDelete(buildTree(sortByKod(saved.map((r) => (r.objectid === 50 ? { ...r, cashflow_id: 5 } : r)))).byCode.get('2.1.10.1')), 'мөнгөтэй мөр устгахгүй');
 
   /* Устгах → мөр модноос алга, үлдсэн 3 жин 1/3, ачаанд deletes + 3 update; засвар нь хамт арилна */
   let pd = { ...EMPTY_PENDING };
@@ -279,18 +278,25 @@ const r23 = base.find((r) => r.objectid === 23);
   assert.equal(td.byCode.get('2.1.10.4'), undefined, 'устгасан мөр урьдчилсан модонд алга');
   assert.equal(td.byCode.get('2.1.10').children.length, 3);
   assert.ok(td.byCode.get('2.1.10').children.every((c) => Math.abs(c.row.heseg_ezleh_huvi - 1 / 3) < 1e-12), 'үлдсэн 3 → 1/3');
-  const ed = buildEdits(saved, pd, NAMES);
+  assert.ok(Math.abs(computePlan(td, {}, d('2026-04-01')).get('2.1.10').S - 20 / 3) < 1e-9, 'эцгийн явц 20·⅓');
+  const ed = buildEdits([...saved, foreign], pd, NAMES);
   assert.deepEqual(ed.issues, []);
   assert.deepEqual(ed.deletes, [53]);
-  assert.deepEqual(ed.updates.map((u) => [u.objectid, Math.round(u.heseg_ezleh_huvi * 1e6) / 1e6]), [[50, 0.333333], [51, 0.333333], [52, 0.333333]]);
+  assert.deepEqual(ed.updates.map((u) => [u.objectid, Math.round(u.heseg_ezleh_huvi * 1e6) / 1e6]), [[50, 0.333333], [51, 0.333333], [52, 0.333333]],
+    'өөр багцын 54-р мөр хөндөгдөхгүй');
   assert.equal(pendingCount(pd), 1);
   assert.deepEqual(toggleDelete(pd, saved.find((r) => r.objectid === 53)).deletes, [], 'дахин дарвал сэргэнэ');
   assert.equal(buildEdits(saved, { ...EMPTY_PENDING, deletes: [999] }, NAMES).issues[0].kind, 'missing', 'алга мөр → missing');
 
-  /* needsEqualize — 0 жинтэй бол тийм; 1/4 болсны дараа үгүй; дэд шат биш хүүхэдтэй бол үгүй */
-  assert.ok(needsEqualize(par));
-  assert.ok(!needsEqualize(te.byCode.get('2.1.10')));
-  assert.ok(!needsEqualize(t.byCode.get('2.1')), 'хүүхэд нь багцууд — тэнцүүлэхгүй');
+  /* Хадгалсан ажлын жинг хувиар засах — тэнцүү хуваалтаас давуу; хадгалсантай ижил бичсэн ч барина */
+  const pw = setEdit(pd, saved.find((r) => r.objectid === 50), 'weight', '0');
+  const ew = buildEdits(saved, pw, NAMES);
+  assert.deepEqual(ew.updates.map((u) => [u.objectid, Math.round(u.heseg_ezleh_huvi * 1e6) / 1e6]), [[51, 0.333333], [52, 0.333333]],
+    '50-ийн жин хэрэглэгчийнхээр (хадгалсан 0) — тэнцүүлэлт дарж бичихгүй');
+  const ew2 = buildEdits(saved, setEdit(EMPTY_PENDING, saved.find((r) => r.objectid === 51), 'weight', '25'), NAMES);
+  assert.deepEqual(ew2.updates, [{ objectid: 51, heseg_ezleh_huvi: 0.25 }], 'ганц жингийн засвар');
+  assert.deepEqual(conflicts(saved, saved.map((r) => (r.objectid === 51 ? { ...r, heseg_ezleh_huvi: 0.9 } : r)), ew2.updates, NAMES), ['2.1.10.2'],
+    'өөр хүн жинг зассан бол илэрнэ');
 }
 
 /* ── 6. Огнооны хүрээ: 2000-аас өмнөх огноо илгээгдэхгүй (хадгалсан нь байгаа ч, null ч) ── */

@@ -4,11 +4,14 @@
  *
  * Хийх зүйл: `CASHFLOW_NEW`-ийн Excel мөрүүдээс (dd_kod) ТЭЗҮ ба Ажлын зураг төсөл үе шатын НАВЧ
  * мөрийн төлөвлөгөөт огноо (`geree_ehleh`/`geree_duusah`) ба явцыг (`guitsetgel_huvi`, 0–100) засна;
- * багцын зураг төслийн мөрийн доор 4 дэд шатны (А-даалгавар · Загвар зураг · Техникийн нөхцөл ·
- * Магадлал) БҮТЦИЙН мөр нэмнэ. Эцгийн утгыг `projectPlan.computePlan` бодно — энд бичихгүй.
+ * багцын зураг төслийн мөрийн доор хэрэглэгчийн нэрлэсэн АЖИЛ нэмнэ (2026-11-03, «+ Ажил нэмэх»): жин нь эцгийн
+ * доорх нэмсэн ажлуудад ТЭНЦҮҮ хуваагдана (хэрэглэгч хувь эсвэл дүнгээр өөрчилж болно), төсөв нь эцгийн төсвөөс
+ * хувиар оноогдоно (`PlanValues.EA`). Эцгийн утгыг `projectPlan.computePlan` бодно — энд бичихгүй.
  */
 import { parseDayInput } from './dateInput';
-import { orderPlanRows, phaseKind, saneDate, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
+import {
+  isAddedWork, orderPlanRows, phaseKind, saneDate, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree,
+} from './projectPlan';
 
 /* ══════════════════ Тогтмол ══════════════════ */
 
@@ -16,48 +19,18 @@ import { orderPlanRows, phaseKind, saneDate, type PhaseKind, type PlanNode, type
 export const ZURAG_PHASES: readonly PhaseKind[] = ['tezu', 'zurag'];
 
 /**
- * Ажлын зураг төслийн 4 ДЭД ШАТ — тохирсон тодорхойлолт (cf-spec «Бусад»).
+ * Нэмсэн ажлын бүлгийн түлхүүр — ижил `etseg_kod` + ижил багц (Excel-ийн `dd_kod` давхардсан үед өөр эцгийн
+ * хүүхдүүдтэй холилдохгүй — 2026-11-02 «2.1.2» = Багц-2 ба «Багц-16, 17»).
  */
-export const DESIGN_SUBSTAGES = ['А-даалгавар', 'Загвар зураг', 'Техникийн нөхцөл', 'Магадлал'] as const;
+const bagtsKey = (v: unknown) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z/]/g, '');
+const groupOf = (r: PlanStoredRow): string => `${r.etseg_kod ?? ''}|${bagtsKey(r.bagts)}`;
 
-/**
- * Шинэ дэд шатны «Хэсэгт эзлэх» жин — БУТАРХАЙ 0–1 (`projectPlan.STORED_WEIGHT`).
- */
-export function substageWeight(siblingF: readonly (number | null | undefined)[], newCount: number): number {
-  let used = 0;
-  for (const f of siblingF) if (typeof f === 'number' && Number.isFinite(f)) used += f;
-  return newCount > 0 ? Math.max(0, 1 - used) / newCount : 0;
-}
-
-/**
- * Шинэ дэд шатны жин 0 эсэх — Excel-ийн ах дүүс аль хэдийн 100% (эсвэл түүнээс их) эзэлсэн тул ҮЛДЭГДЭЛ алга.
- */
-export const zeroWeight = (r: Pick<PlanStoredRow, 'heseg_ezleh_huvi'>): boolean =>
-  typeof r.heseg_ezleh_huvi === 'number' && r.heseg_ezleh_huvi <= 1e-9;
-
-/**
- * Шинэ мөрүүдийн жинг ДАХИН хуваарилна — эцэг (`etseg_kod`) бүрээр, `base`-ийн байгаа ах дүүсийн F-ийг
- * хасаад үлдсэнийг шинэ мөрүүдэд жигд. Хадгалах ачаа ба урьдчилсан мод ИЖИЛ жинг ашиглана.
- */
-export function weighAdds(base: readonly PlanStoredRow[], adds: readonly PlanStoredRow[]): PlanStoredRow[] {
-  /* ⚠️ 2026-11-02: Excel-ийн `dd_kod` давхарддаг («2.1.2» = Багц-2-ын мөр БА «Багц-16, 17»-ийн мөр) тул ах дүүсийг
-     ЗӨВХӨН `etseg_kod`-оор шүүвэл өөр эцгийн хүүхдүүд (Σ=1) тооцогдож шинэ дэд шат 0 жинтэй хадгалагдаж байв.
-     Дэд шат эцгийнхээ багцыг авдаг (`substageAdds`) тул ах дүү = ижил `etseg_kod` + ижил `bagts`. */
-  const keyOf = (r: PlanStoredRow) => `${r.etseg_kod ?? ''}|${String(r.bagts ?? '').trim().toLowerCase()}`;
-  const byParent = new Map<string, number>();
-  for (const a of adds) { const k = keyOf(a); byParent.set(k, (byParent.get(k) ?? 0) + 1); }
-  const w = new Map<string, number>();
-  for (const [k, cnt] of byParent) {
-    w.set(k, substageWeight(base.filter((r) => keyOf(r) === k).map((r) => r.heseg_ezleh_huvi), cnt));
-  }
-  return adds.map((a) => ({ ...a, heseg_ezleh_huvi: w.get(keyOf(a)) ?? a.heseg_ezleh_huvi ?? null }));
-}
-
-/** Засах 3 талбар → хадгалах талбарын нэр (жижиг үсэг, Enterprise) */
+/** Засах талбар → хадгалах талбарын нэр (жижиг үсэг, Enterprise). `weight` — нэмсэн ажлын жин (оролт %, хадгалах 0–1) */
 export const FIELD_OF = {
   start: 'geree_ehleh',
   end: 'geree_duusah',
   pct: 'guitsetgel_huvi',
+  weight: 'heseg_ezleh_huvi',
 } as const;
 export type FieldKey = keyof typeof FIELD_OF;
 
@@ -81,11 +54,11 @@ export function rowPhase(base: readonly PlanStoredRow[], r: PlanStoredRow): Phas
 }
 
 /**
- * Хадгалаагүй бүх засвар: `edits` — мөрийн түлхүүрээр (`rowKey`), `adds` — шинэ дэд шатны мөрүүд,
- * `deletes` — устгах хадгалсан дэд шатны objectid (2026-11-02), `eq` — дэд шатны жинг тэнцүүлэх эцгийн objectid.
+ * Хадгалаагүй бүх засвар: `edits` — мөрийн түлхүүрээр (`rowKey`), `adds` — шинэ ажлын мөрүүд,
+ * `deletes` — устгах хадгалсан нэмсэн ажлын objectid (2026-11-02).
  */
-export type Pending = { edits: Record<string, RowEdit>; adds: PlanStoredRow[]; deletes?: number[]; eq?: number[] };
-export const EMPTY_PENDING: Pending = { edits: {}, adds: [], deletes: [], eq: [] };
+export type Pending = { edits: Record<string, RowEdit>; adds: PlanStoredRow[]; deletes?: number[] };
+export const EMPTY_PENDING: Pending = { edits: {}, adds: [], deletes: [] };
 
 /** Үйлчилгээний талбарын нэр — дуудагч `services`-ээс өгнө (lib нь `services`-ээс хамаарахгүй) */
 export type Names = { oid: string; cfId: string };
@@ -189,6 +162,7 @@ export const rowKey = (r: PlanStoredRow): string =>
  */
 export function origText(r: PlanStoredRow, f: FieldKey): string {
   if (f === 'pct') return r.guitsetgel_huvi == null ? '' : String(Math.round(r.guitsetgel_huvi * 1e6) / 1e6);
+  if (f === 'weight') return r.heseg_ezleh_huvi == null ? '' : String(Math.round(r.heseg_ezleh_huvi * 1e8) / 1e6);
   return dayOf(f === 'start' ? r.geree_ehleh : r.geree_duusah);
 }
 
@@ -214,7 +188,23 @@ export function parsePct(text: string): Parsed {
   return { ok: true, v: x };
 }
 
-const parseOf = (f: FieldKey, text: string): Parsed => (f === 'pct' ? parsePct(text) : parseDay(text));
+/** Жингийн оролт 0–100 (%) → хадгалах 0–1; хоосон → null */
+export function parseWeight(text: string): Parsed {
+  const p = parsePct(text);
+  return p.ok && p.v != null ? { ok: true, v: p.v / 100 } : p;
+}
+
+const parseOf = (f: FieldKey, text: string): Parsed =>
+  (f === 'pct' ? parsePct(text) : f === 'weight' ? parseWeight(text) : parseDay(text));
+
+/**
+ * ДҮН → ЖИН (%) — нэмсэн ажлын төсвийг дүнгээр бичихэд эцгийн оноосон төсвийн хувь болгоно.
+ * Эцгийн төсөв алга/0 бол null (хувиар оруулна).
+ */
+export function pctOfAmount(amount: number, parentBudget: number | null | undefined): number | null {
+  if (parentBudget == null || !Number.isFinite(parentBudget) || parentBudget <= 0 || !Number.isFinite(amount)) return null;
+  return Math.round((amount / parentBudget) * 100 * 1e9) / 1e9;
+}
 
 /**
  * Засвар тавина — анхны утга руугаа БУЦВАЛ засвараас хасна (хоосон `RowEdit` үлдэхгүй).
@@ -222,7 +212,9 @@ const parseOf = (f: FieldKey, text: string): Parsed => (f === 'pct' ? parsePct(t
 export function setEdit(p: Pending, r: PlanStoredRow, f: FieldKey, text: string): Pending {
   const k = rowKey(r);
   const cur: RowEdit = { ...(p.edits[k] ?? {}) };
-  if (text === origText(r, f)) delete cur[f];
+  /* Жин — хадгалсан утгатай харьцуулахгүй (тэнцүү хуваалт хадгалсныг өөрчилдөг тул бичсэнийг ҮРГЭЛЖ барина);
+     хоосон бол засвар биш (тэнцүү хуваасан жин хэвээр) */
+  if (f === 'weight' ? !text.trim() : text === origText(r, f)) delete cur[f];
   else cur[f] = text;
   const edits = { ...p.edits };
   if (Object.keys(cur).length) edits[k] = cur;
@@ -243,7 +235,7 @@ function merged(r: PlanStoredRow, e: RowEdit | undefined): PlanStoredRow {
   const o: PlanStoredRow = { ...r };
   for (const f of Object.keys(e) as FieldKey[]) {
     const ps = parseOf(f, e[f]!);
-    if (ps.ok) o[FIELD_OF[f]] = ps.v;
+    if (ps.ok && !(f === 'weight' && ps.v == null)) o[FIELD_OF[f]] = ps.v;
   }
   return o;
 }
@@ -254,27 +246,20 @@ function merged(r: PlanStoredRow, e: RowEdit | undefined): PlanStoredRow {
  */
 export function effectiveRows(base: readonly PlanStoredRow[], p: Pending): PlanStoredRow[] {
   const kept = withoutDeleted(base, p);
-  const eqW = equalizedWeights(kept, equalizeParents(base, p));
+  const sw = splitWeights(base, p);
+  /* Эхлээд тэнцүү жин, дараа нь хэрэглэгчийн засвар (бичсэн жин давуу) */
   const row = (r: PlanStoredRow): PlanStoredRow => {
-    const m = merged(r, p.edits[rowKey(r)]);
-    const w = r.objectid != null ? eqW.get(r.objectid) : undefined;
-    return w == null ? m : { ...m, heseg_ezleh_huvi: w };
+    const w = r.objectid != null ? sw.saved.get(r.objectid) : sw.adds.get(rowKey(r));
+    return merged(w == null ? r : { ...r, heseg_ezleh_huvi: w }, p.edits[rowKey(r)]);
   };
-  const keptW = kept.map(row);
-  return sortByKod([
-    ...keptW,
-    ...weighAdds(keptW, p.adds).map((r) => merged(r, p.edits[rowKey(r)])),
-  ]);
+  return sortByKod([...kept.map(row), ...p.adds.map(row)]);
 }
 
-/** Хадгалаагүй өөрчлөлттэй мөрийн тоо (засвар ∪ шинэ мөр ∪ устгал ∪ тэнцүүлэх эцэг) */
+/** Хадгалаагүй өөрчлөлттэй мөрийн тоо (засвар ∪ шинэ мөр ∪ устгал) */
 export const pendingCount = (p: Pending): number =>
-  new Set([...Object.keys(p.edits), ...p.adds.map(rowKey), ...(p.deletes ?? []).map((o) => `d${o}`), ...(p.eq ?? []).map((o) => `e${o}`)]).size;
+  new Set([...Object.keys(p.edits), ...p.adds.map(rowKey), ...(p.deletes ?? []).map((o) => `d${o}`)]).size;
 
-/* ── Устгах · жин тэнцүүлэх (2026-11-02) ── */
-
-const sameBagts = (a: PlanStoredRow, b: PlanStoredRow): boolean =>
-  String(a.bagts ?? '').trim().toLowerCase() === String(b.bagts ?? '').trim().toLowerCase();
+/* ── Устгах · жин тэнцүү хуваах (2026-11-02, 2026-11-03) ── */
 
 /** Устгахаар тэмдэглэснийг хассан суурь мөрүүд */
 const withoutDeleted = (base: readonly PlanStoredRow[], p: Pending): PlanStoredRow[] => {
@@ -282,57 +267,40 @@ const withoutDeleted = (base: readonly PlanStoredRow[], p: Pending): PlanStoredR
   return del.size ? base.filter((r) => r.objectid == null || !del.has(r.objectid)) : [...base];
 };
 
-/** Эцгийн ХАДГАЛСАН дэд шат мөрүүд — ижил `etseg_kod` + ижил багц (Excel-ийн код давхардахаас хамгаална) */
-export function savedSubstages(base: readonly PlanStoredRow[], parent: PlanStoredRow): PlanStoredRow[] {
-  return base.filter((r) => r.objectid != null && (r.etseg_kod ?? '') === (parent.dd_kod ?? '') && sameBagts(r, parent)
-    && SUB_KEYS.includes(nameKey(r.ajil_uilchilgee)));
-}
-
-/** Дэд шатны эцэг мөр — `etseg_kod` + ижил багц; олдохгүй бол зөвхөн кодоор */
-const parentOf = (base: readonly PlanStoredRow[], r: PlanStoredRow): PlanStoredRow | undefined =>
-  base.find((x) => x.dd_kod === r.etseg_kod && sameBagts(x, r)) ?? base.find((x) => x.dd_kod === r.etseg_kod);
-
-/** Жин тэнцүүлэх эцгүүд — ил тэмдэглэсэн (`eq`) + устгасан дэд шатны эцэг (үлдсэн дэд шат дахин хуваана) */
-function equalizeParents(base: readonly PlanStoredRow[], p: Pending): PlanStoredRow[] {
-  const byOid = new Map(base.filter((r) => r.objectid != null).map((r) => [r.objectid as number, r] as const));
-  const out = new Map<number, PlanStoredRow>();
-  for (const o of p.eq ?? []) { const r = byOid.get(o); if (r) out.set(o, r); }
-  for (const o of p.deletes ?? []) {
-    const r = byOid.get(o); if (!r) continue;
-    const par = parentOf(base, r);
-    if (par?.objectid != null) out.set(par.objectid, par);
+/**
+ * ЖИН ТЭНЦҮҮ ХУВААХ — ажил нэмсэн эсвэл устгасан эцэг бүрийн доорх БҮХ нэмсэн ажил (хадгалсан + шинэ) 1/k жин авна.
+ * Буцаах: хадгалсан мөрийн objectid → жин, шинэ мөрийн `rowKey` → жин. Хэрэглэгчийн бичсэн жин дараа нь давуулна.
+ */
+function splitWeights(base: readonly PlanStoredRow[], p: Pending): { saved: Map<number, number>; adds: Map<string, number> } {
+  const del = new Set(p.deletes ?? []);
+  const groups = new Set(p.adds.map(groupOf));
+  for (const r of base) if (r.objectid != null && del.has(r.objectid)) groups.add(groupOf(r));
+  const saved = new Map<number, number>();
+  const adds = new Map<string, number>();
+  for (const g of groups) {
+    const kept = base.filter((r) => r.objectid != null && !del.has(r.objectid) && r.cashflow_id == null && groupOf(r) === g);
+    const fresh = p.adds.filter((a) => groupOf(a) === g);
+    const k = kept.length + fresh.length;
+    if (!k) continue;
+    for (const r of kept) saved.set(r.objectid as number, 1 / k);
+    for (const a of fresh) adds.set(rowKey(a), 1 / k);
   }
-  return [...out.values()];
+  return { saved, adds };
 }
 
-/** Эцэг бүрийн хадгалсан дэд шатуудад 1/k жин — objectid → жин */
-function equalizedWeights(kept: readonly PlanStoredRow[], parents: readonly PlanStoredRow[]): Map<number, number> {
-  const out = new Map<number, number>();
-  for (const par of parents) {
-    const subs = savedSubstages(kept, par);
-    for (const s of subs) out.set(s.objectid as number, 1 / subs.length);
-  }
-  return out;
-}
-
-/** Хадгалсан дэд шат мөрийг устгаж болох уу — навч, мөнгөгүй (`cashflow_id` null), зураг төслийн үе шат */
+/** Хадгалсан нэмсэн ажлын мөрийг устгаж болох уу — навч, мөнгөгүй, зураг төслийн үе шат */
 export const canDelete = (n: PlanNode): boolean =>
-  n.phase === 'zurag' && isSubstage(n) && n.children.length === 0 && n.row?.objectid != null && n.row.cashflow_id == null;
+  isAddedWork(n) && n.children.length === 0 && n.row?.objectid != null;
 
 /**
- * Эцгийн дэд шатуудын жин засах шаардлагатай юу — бүх хүүхэд хадгалсан дэд шат бөгөөд аль нэг нь 0/хоосон
- * жинтэй эсвэл нийлбэр ≠ 1 (жиш. Excel-ийн давхар кодоос 0 жинтэй хадгалагдсан).
+ * Нэмсэн ажлуудын жингийн нийлбэр (%) — эцгийн бүх хүүхэд нэмсэн ажил бол; 100%-аас зөрвөл анхааруулна
+ * (ажлуудын төсвийн нийлбэр эцгийн төсөвтэй тэнцэхгүй). Хамаарахгүй бол null.
  */
-export function needsEqualize(n: PlanNode): boolean {
-  if (n.phase !== 'zurag' || !n.row || !n.children.length) return false;
-  if (!n.children.every((c) => isSubstage(c) && c.row?.objectid != null)) return false;
-  let sum = 0;
-  for (const c of n.children) {
-    const w = c.row!.heseg_ezleh_huvi;
-    if (typeof w !== 'number' || !Number.isFinite(w) || w <= 1e-9) return true;
-    sum += w;
-  }
-  return Math.abs(sum - 1) > 1e-6;
+export function worksWeightSum(n: PlanNode, f: (c: PlanNode) => number | null | undefined): number | null {
+  if (!n.children.length || !n.children.every(isAddedWork)) return null;
+  let s = 0;
+  for (const c of n.children) s += f(c) ?? 0;
+  return s;
 }
 
 /** Устгах тэмдэг тавих/авах (мөрийн засвар хамт арилна) */
@@ -346,18 +314,12 @@ export function toggleDelete(p: Pending, r: PlanStoredRow): Pending {
   return { ...p, edits, deletes: [...cur, oid] };
 }
 
-/** Жин тэнцүүлэх тэмдэг тавих/авах — эцгийн objectid */
-export function toggleEq(p: Pending, parentOid: number): Pending {
-  const cur = p.eq ?? [];
-  return cur.includes(parentOid) ? { ...p, eq: cur.filter((o) => o !== parentOid) } : { ...p, eq: [...cur, parentOid] };
-}
-
-/** Шинэ мөрийг (ба түүний засварыг) буцаана */
+/** Шинэ мөрийг (ба түүний засварыг) буцаана — устгалын тэмдэг хэвээр */
 export function dropAdd(p: Pending, r: PlanStoredRow): Pending {
   const k = rowKey(r);
   const edits = { ...p.edits };
   delete edits[k];
-  return { edits, adds: p.adds.filter((x) => rowKey(x) !== k) };
+  return { ...p, edits, adds: p.adds.filter((x) => rowKey(x) !== k) };
 }
 
 /* ── Илгээх ачаа ── */
@@ -388,7 +350,7 @@ export type EditPayload = {
  * Хадгалсан утга ба шинэ утга ижил үү — огноо UTC өдрөөр, тоо утгаар (null ≠ 0).
  */
 const same = (f: FieldKey, a: number | null | undefined, b: number | null): boolean => {
-  if (f !== 'pct') return dayOf(a) === dayOf(b);
+  if (f === 'start' || f === 'end') return dayOf(a) === dayOf(b);
   const x = a ?? null;
   return x == null || b == null ? x === b : Math.abs(x - b) < 1e-9;
 };
@@ -410,7 +372,7 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
     for (const f of Object.keys(e) as FieldKey[]) {
       const ps = parseOf(f, e[f]!);
       if (!ps.ok) {
-        issues.push({ key, code: r.dd_kod, name: r.ajil_uilchilgee ?? null, kind: f === 'pct' ? 'pct' : 'date' });
+        issues.push({ key, code: r.dd_kod, name: r.ajil_uilchilgee ?? null, kind: f === 'pct' || f === 'weight' ? 'pct' : 'date' });
         bad = true;
         continue;
       }
@@ -455,17 +417,20 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
     updates.push(u);
   }
 
-  /* Жин тэнцүүлэх — эцгийн үлдсэн дэд шатууд 1/k (устгалын дараах ба ил тэмдэглэсэн эцэг) */
-  const kept = withoutDeleted(base, { ...p, deletes });
-  for (const [oid, w] of equalizedWeights(kept, equalizeParents(base, { ...p, deletes }))) {
-    const r = kept.find((x) => x.objectid === oid)!;
+  /* Жин тэнцүү хуваах — ажил нэмсэн/устгасан эцгийн хадгалсан ажлууд 1/k; хэрэглэгч жинг нь бичсэн мөр — бичсэнээрээ */
+  const sw = splitWeights(base, { ...p, deletes });
+  for (const [oid, w] of sw.saved) {
+    const r = base.find((x) => x.objectid === oid)!;
+    if (p.edits[rowKey(r)]?.weight != null) continue;
     if (typeof r.heseg_ezleh_huvi === 'number' && Math.abs(r.heseg_ezleh_huvi - w) < 1e-9) continue;
     const u = updates.find((x) => x[names.oid] === oid);
     if (u) u.heseg_ezleh_huvi = w; else updates.push({ [names.oid]: oid, heseg_ezleh_huvi: w });
   }
 
-  for (const r of weighAdds(kept, p.adds)) {
-    const key = rowKey(r);
+  for (const a of p.adds) {
+    const key = rowKey(a);
+    const w = sw.adds.get(key);
+    const r = w == null ? a : { ...a, heseg_ezleh_huvi: w };
     const ch = changes(key, r, p.edits[key] ?? {});
     if (!ch) continue;
     const m = { ...r };
@@ -520,61 +485,56 @@ export function conflicts(
 /** Энэ хэсгийн мөр мөн үү (ТЭЗҮ · Ажлын зураг төсөл үе шатын доорх) */
 export const inSection = (n: PlanNode): boolean => ZURAG_PHASES.includes(n.phase);
 
+export { isAddedWork };
+
 /** Засагдах мөр — НАВЧ (эцгийн утга хүүхдээс бодогддог тул засахгүй) */
 export const isEditable = (n: PlanNode): boolean => inSection(n) && n.children.length === 0 && n.row != null;
 
 /** Нэр харьцуулах түлхүүр — зай, зураас, тэмдэгтийг хаяна («А даалгавар» = «А-даалгавар») */
 const nameKey = (v: unknown) => String(v ?? '').toLowerCase().replace(/[^0-9a-zа-яөүё]/g, '');
-const SUB_KEYS = DESIGN_SUBSTAGES.map(nameKey);
-
-/** Дэд шатны мөр мөн үү (нэрээр) */
-export const isSubstage = (n: PlanNode): boolean => SUB_KEYS.includes(nameKey(n.row?.ajil_uilchilgee));
 
 /**
- * Дэд шат нэмэх боломж — Ажлын зураг төсөл үе шатын, БАГЦТАЙ, үе шатын толгой биш мөр; хүүхэдгүй эсвэл
- * хүүхэд нь бүгд дэд шат (дутууг нөхнө). Бүлгийн мөрийн (хүүхэд нь багцууд) доор НЭМЭХГҮЙ.
+ * АЖИЛ НЭМЭХ боломж (2026-11-03) — Ажлын зураг төсөл үе шатын, БАГЦТАЙ, үе шатын толгой биш, өөрөө нэмсэн ажил
+ * биш мөр; хүүхэдгүй эсвэл хүүхэд нь бүгд нэмсэн ажил. Бүлгийн мөрийн (хүүхэд нь багцууд) доор НЭМЭХГҮЙ.
  */
-export function substageInfo(n: PlanNode): { can: boolean; missing: string[] } {
-  if (n.phase !== 'zurag' || n.depth < 2 || !n.row || !String(n.row.bagts ?? '').trim()) return { can: false, missing: [] };
-  /* 2026-11-02: дэд шатны мөрийн доор дэд шат санал болгохгүй (А-даалгаварт А-даалгавар …) */
-  if (isSubstage(n)) return { can: false, missing: [] };
-  if (!n.children.every(isSubstage)) return { can: false, missing: [] };
-  const have = new Set(n.children.map((c) => nameKey(c.row?.ajil_uilchilgee)));
-  const missing = DESIGN_SUBSTAGES.filter((s) => !have.has(nameKey(s)));
-  return { can: missing.length > 0, missing };
+export function canAddWork(n: PlanNode): boolean {
+  if (n.phase !== 'zurag' || n.depth < 2 || !n.row || !String(n.row.bagts ?? '').trim()) return false;
+  if (isAddedWork(n)) return false;
+  return n.children.every(isAddedWork);
+}
+
+/** Шинэ ажлын нэр буруу эсэх — хоосон · `null` = зөв, 'dup' = энэ эцгийн доор ижил нэртэй ажил бий */
+export function workNameWhy(n: PlanNode, name: string): 'empty' | 'dup' | null {
+  const k = nameKey(name);
+  if (!k) return 'empty';
+  return n.children.some((c) => nameKey(c.row?.ajil_uilchilgee) === k) ? 'dup' : null;
 }
 
 /**
- * ДУТУУ ДЭД ШАТНЫ ШИНЭ МӨРҮҮД (бичихгүй — `Pending.adds`-д орно).
+ * ШИНЭ АЖЛЫН МӨР (бичихгүй — `Pending.adds`-д орно). Жинг `effectiveRows`/`buildEdits` тэнцүү хуваана.
  * Код = «<эцэг>.<n>» — модонд (засвартай мөрүүд оролцсон) АШИГЛАГДААГҮЙ дараагийн дугаар.
  */
-export function substageAdds(n: PlanNode, tree: PlanTree): PlanStoredRow[] {
-  const { can, missing } = substageInfo(n);
-  if (!can || !n.row) return [];
+export function workAdd(n: PlanNode, tree: PlanTree, name: string): PlanStoredRow | null {
+  if (!canAddWork(n) || !n.row || workNameWhy(n, name)) return null;
   const used = new Set(tree.byCode.keys());
   let k = n.children.length + 1;
-  const weight = substageWeight(n.children.map((c) => c.row?.heseg_ezleh_huvi), missing.length);
+  while (used.has(`${n.code}.${k}`)) k += 1;
   const phaseName = (() => { let x: PlanNode = n; while (x.parent && x.parent.row) x = x.parent; return x.row?.uy_shat ?? x.row?.ajil_uilchilgee ?? null; })();
-  return missing.map((name) => {
-    while (used.has(`${n.code}.${k}`)) k += 1;
-    const code = `${n.code}.${k}`;
-    used.add(code);
-    return {
-      objectid: null,
-      dd_kod: code,
-      etseg_kod: n.code,
-      tuvshin: n.row!.tuvshin != null ? n.row!.tuvshin + 1 : n.depth,
-      uy_shat: n.row!.uy_shat ?? phaseName,
-      bagts: n.row!.bagts ?? null,
-      blok: n.row!.blok ?? null,
-      ajil_uilchilgee: name,
-      heseg_ezleh_huvi: weight,
-      geree_ehleh: null,
-      geree_duusah: null,
-      guitsetgel_huvi: null,
-      cashflow_id: null,
-    };
-  });
+  return {
+    objectid: null,
+    dd_kod: `${n.code}.${k}`,
+    etseg_kod: n.code,
+    tuvshin: n.row.tuvshin != null ? n.row.tuvshin + 1 : n.depth,
+    uy_shat: n.row.uy_shat ?? phaseName,
+    bagts: n.row.bagts ?? null,
+    blok: n.row.blok ?? null,
+    ajil_uilchilgee: name.trim(),
+    heseg_ezleh_huvi: null,
+    geree_ehleh: null,
+    geree_duusah: null,
+    guitsetgel_huvi: null,
+    cashflow_id: null,
+  };
 }
 
 /**

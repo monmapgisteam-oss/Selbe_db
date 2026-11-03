@@ -1470,6 +1470,8 @@ div.bName:hover { background: var(--surface-2); }
   border-radius: 4px;
 }
 .ppRo { color: var(--ink-3); }
+/* 2026-11-03: нэмсэн ажлын оноосон төсөв (эцгийн төсөв × жин) */
+.ppAlloc { color: var(--ink-3); font-style: italic; }
 .ppCellBtn {
   display: block;
   width: 100%;

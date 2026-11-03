@@ -13,8 +13,8 @@
  * оролтуудыг цуглуулж `computePlan` + `monthlySeries`-ийг бодно.
  */
 import {
-  buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday,
-  type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree,
+  buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday, sourceSums,
+  type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree, type SourceSums,
 } from './projectPlan';
 import {
   CASHFLOW_NEW, CF_MONTH, BUILDING, PARCEL_LEFT, PKG_BY_BAGTS, LAYER_BY_ID,
@@ -69,6 +69,11 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['zahiramj_dugaar', CF.orderNo],
   ['ashiglalt_ognoo', CF.handoverDate],
   ['created_date', 'created_date'],
+  /* Эх үүсвэр (2026-11-03) — «Төсөл төлөвлөгөө биелэлт»-ийн баганад; нэр нь `CASHFLOW_NEW.sources`-тэй ижил */
+  ['zahiramj_unet_tsaas', 'zahiramj_unet_tsaas'],
+  ['zahiramj_borluulalt_dun', 'zahiramj_borluulalt_dun'],
+  ['zahiramj_niislel_tusuv', 'zahiramj_niislel_tusuv'],
+  ['zahiramj_nzd_nuuts', 'zahiramj_nzd_nuuts'],
 ];
 const TEXT_KEYS = new Set<keyof PlanStoredRow>(['dd_kod', 'etseg_kod', 'uy_shat', 'bagts', 'blok', 'ajil_uilchilgee', 'zahiramj_dugaar']);
 
@@ -141,6 +146,16 @@ async function fetchPlanRows(): Promise<PlanStoredRow[]> {
   return sortPlanRows(rows.map((r) => toStoredRow(r as Record<string, unknown>)).filter((r) => r.dd_kod));
 }
 const loadPlanRows = cached(fetchPlanRows, SESSION_TTL_MS, ['CASHFLOW_NEW']);
+
+/**
+ * ТӨСЛИЙН 4 ЭХ ҮҮСВЭР — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ЯГ ИЖИЛ (`sourceSums` үндэс), хөнгөн:
+ * зөвхөн хүснэгтийн мөрүүд (бусад эх уншихгүй). «Төслийн дэлгэрэнгүй мэдээлэл» · «ТУХ» · «Тайлан» энэ тоог харуулна.
+ */
+export async function loadProjectSourceTotals(): Promise<SourceSums> {
+  const rows = await loadPlanRows();
+  const tree = buildTree(rows);
+  return sourceSums(tree).get(tree.root)!;
+}
 
 /* ══════════════════ 2. Бодит гүйцэтгэл (бөглөх хуудас) ══════════════════ */
 
@@ -873,6 +888,32 @@ function layerShapes(id: string): Promise<LandShape[]> {
   layerGeomCache.set(id, p);
   p.catch(() => { if (layerGeomCache.get(id) === p) layerGeomCache.delete(id); });
   return p;
+}
+
+/**
+ * БАГЦ БҮРИЙН НЭГЖ ТАЛБАРЫН ТОО — нийт / чөлөөлсөн (2026-11-03, нийтийн вэбийн `selbe_public_gazar`).
+ * `landPctMap`-тай ИЖИЛ эх, ижил огтлолцол (`parcelHits`): `P|<pkgKey>` түлхүүр → дэд бүтцийн давхарга эсвэл
+ * тэр багцын барилгын footprint-ууд. Эх унасан бол шидэнэ; дүрсгүй багц Map-д орохгүй.
+ */
+export async function landCountMap(pkgKeys: Iterable<string>): Promise<Map<string, { total: number; cleared: number }>> {
+  const [idx, foot] = await Promise.all([loadParcels(), loadFootprints()]);
+  const out = new Map<string, { total: number; cleared: number }>();
+  for (const pk of new Set(pkgKeys)) {
+    if (!pk) continue;
+    let shapes: LandShape[];
+    if (landLayerIdsOf(pk).length) {
+      shapes = (await Promise.all(landLayerIdsOf(pk).map(layerShapes))).flat();
+    } else {
+      shapes = [];
+      for (const [bk, f] of foot) if (bk.slice(0, bk.indexOf('|')) === pk) shapes.push(...f);
+    }
+    if (!shapes.length) continue;
+    const hits = parcelHits(idx, shapes);
+    let cleared = 0;
+    for (const i of hits) if (idx.parcels[i]?.cleared) cleared += 1;
+    out.set(pk, { total: hits.size, cleared });
+  }
+  return out;
 }
 
 /** Модны газар чөлөөлөлтийн навчнууд → хэрэгтэй түлхүүрүүд */

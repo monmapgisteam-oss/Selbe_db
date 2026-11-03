@@ -40,6 +40,27 @@ assert.match(editWhy(node(4), 'pct'), /Дэд мөр/, 'дэд мөртэй мө
 assert.match(editWhy(node(8), 'pct'), /системээс/, 'барилга угсралтын гүйцэтгэл системээс');
 assert.equal(editWhy(node(8), 'handoverDate'), null, 'огноо бүх мөрд засагдана');
 assert.equal(editWhy(node(4), 'orderNo'), null);
+/* 2026-11-03: төсөвт өртөг ба эх үүсвэр — доод мөрөнд утга бичигдсэн бол эцэг мөр нийлбэр (засагдахгүй), навчинд засагдана */
+{
+  const leaf = { code: 'x.1', row: { objectid: 91, ho_dun_geree: 100 }, children: [], outside: false };
+  const par = { code: 'x', row: { objectid: 90, ho_dun_geree: null }, children: [leaf], outside: false };
+  const empty = { code: 'y', row: { objectid: 92 }, children: [{ code: 'y.1', row: { objectid: 93 }, children: [], outside: false }], outside: false };
+  assert.equal(editWhy(leaf, 'budget'), null, 'навч — засагдана');
+  assert.match(editWhy(par, 'budget'), /Дэд мөр/, 'эцэг — хүүхдээс бодогдоно');
+  assert.equal(editWhy(empty, 'srcBond'), null, 'доод мөрөнд утгагүй бол эцэг ч засагдана');
+  assert.match(editWhy({ ...leaf, row: { ...leaf.row, objectid: null } }, 'srcNzd'), /хадгалагдаагүй/);
+}
+/* 2026-11-03: нэмсэн ажил (зураг төслийн, эцэгтэйгээ ижил багцтай, мөнгөгүй) — мөнгө нь эцгийн төсвөөс жингээр оноогдоно */
+{
+  const t = buildTree([...rows,
+    { objectid: 95, dd_kod: '2.1.8', etseg_kod: '2.1', tuvshin: 2, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-2', ajil_uilchilgee: 'Хайгуул', heseg_ezleh_huvi: 1, created_date: LATER },
+  ]);
+  const w = t.nodes.find((n) => n.row.objectid === 95);
+  assert.match(editWhy(w, 'budget'), /жингээр оноогдоно/);
+  assert.match(editWhy(w, 'srcCity'), /жингээр оноогдоно/);
+  assert.equal(editWhy(w, 'pct'), null, 'гүйцэтгэлийн хувь засагдана');
+  assert.equal(editWhy(node(5), 'budget'), null, 'багцгүй гараар нэмсэн мөр — нэмсэн ажил биш');
+}
 assert.match(editWhy({ ...node(2), row: { ...node(2).row, objectid: null } }, 'contractDate'), /хадгалагдаагүй/);
 
 /* ── Импортын хил · гараар нэмсэн ── */

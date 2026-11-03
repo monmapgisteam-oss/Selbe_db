@@ -19,7 +19,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  buildTree, computePlan, monthlySeries, monthEnds, linearPlanned, blockStatus, phaseKind, ubToday, orderPlanRows,
+  buildTree, computePlan, monthlySeries, monthEnds, linearPlanned, blockStatus, phaseKind, ubToday, orderPlanRows, sourceSums,
 } from './projectPlan.ts';
 
 const fx = JSON.parse(readFileSync(new URL('./projectPlan.fixture.json', import.meta.url), 'utf8'));
@@ -61,7 +61,7 @@ assert.deepEqual(tree.root.children.map((p) => p.phase),
 
 /* ── 1. Excel-тэй тулгалт (гажуу нүдийг Excel-ийн утгаар дарж) ── */
 const TODAY = d('2026-10-07');
-const res = computePlan(tree, { override: ovOf(true) }, TODAY);
+const res = computePlan(tree, { override: ovOf(true), excelWeights: true }, TODAY);
 const DATE = new Set(['H', 'I', 'J', 'K', 'L', 'M']);
 let cells = 0;
 for (const [code, exp] of Object.entries(fx.expect)) {
@@ -112,7 +112,7 @@ assert.equal(res.get('3.1.1.1').status, 'done', 'Газар чөлөөлөлт �
 
 /* ── 2. Цэвэр дүрэм (Excel-ийн гажууг ДАГАХГҮЙ) ── */
 {
-  const clean = computePlan(tree, { override: ovOf(false) }, TODAY);
+  const clean = computePlan(tree, { override: ovOf(false), excelWeights: true }, TODAY);
   const c = clean.values.get(tree.root);
   near(c.N, root.N, 1e-9, 'N6 гажуугүй тул ижил');
   near(clean.get('2').S, 91.3735, 1e-4, 'S9 цэвэр');
@@ -315,4 +315,57 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   assert.equal(t2.nodes.find((n) => n.row.ajil_uilchilgee === 'шинэ').parent.row.ajil_uilchilgee, 'з12', 'түвшин 2-ын «2.1.2»');
 }
 
+/* ── 8. Эх үүсвэр (`sourceSums`, 2026-11-03, хэрэглэгч): эцэг мөр ба Төслийн нийт = АМЬД нийлбэр
+      (өөрийнх › хүүхдүүд; «Нийслэл төсөв» хэсэг орохгүй) ── */
+{
+  const R = (dd, et, name, extra = {}) => ({ dd_kod: dd, etseg_kod: et, ajil_uilchilgee: name, ...extra });
+  const t = buildTree([
+    R('1', null, 'ТЭЗҮ', { uy_shat: 'ТЭЗҮ' }),
+    R('1.1', '1', 'a', { zahiramj_unet_tsaas: 100, zahiramj_niislel_tusuv: 5 }),
+    R('1.2', '1', 'b', { zahiramj_unet_tsaas: 50 }),
+    R('1.3', '1', 'c'),
+    R('2', null, 'Зураг', { uy_shat: 'Ажлын зураг төсөл', zahiramj_borluulalt_dun: 7 }),
+    R('2.1', '2', 'd', { zahiramj_borluulalt_dun: 1000 }),
+    R('3', null, 'Газар чөлөөлөлт', { uy_shat: 'Газар чөлөөлөлт', zahiramj_nzd_nuuts: 9 }),
+  ]);
+  const S = sourceSums(t);
+  const by = (c) => S.get(t.byCode.get(c));
+  assert.deepEqual(by('1'), { zahiramj_unet_tsaas: 150, zahiramj_borluulalt_dun: null, zahiramj_niislel_tusuv: 5, zahiramj_nzd_nuuts: null },
+    'эцэг мөр = хүүхдүүдийн нийлбэр; бүх хүүхэд хоосон бол null');
+  assert.equal(by('2').zahiramj_borluulalt_dun, 7, 'эцэгт өөрийнх бичигдсэн бол хүүхдээс бодохгүй (E-тэй ижил)');
+  assert.deepEqual(by('1.1'), { zahiramj_unet_tsaas: 100, zahiramj_borluulalt_dun: null, zahiramj_niislel_tusuv: 5, zahiramj_nzd_nuuts: null },
+    'өөрийн мөр — бичигдсэн нь л, бусад null (0 биш)');
+  assert.equal(by('1.3').zahiramj_unet_tsaas, null, 'хоосон навч null');
+  const root = S.get(t.root);
+  assert.equal(root.zahiramj_unet_tsaas, 150, 'Төслийн нийт = мөрүүдийн нийлбэр');
+  assert.equal(root.zahiramj_borluulalt_dun, 7, 'эцэгт өөрийнх бичигдсэн бол хүүхдийг давхар тоолохгүй');
+  assert.equal(root.zahiramj_niislel_tusuv, 5);
+  assert.equal(root.zahiramj_nzd_nuuts, 9, 'үе шатны мөрт бичсэн утга (Газар чөлөөлөлт) нийтэд орно');
+}
+
 console.log(`projectPlan.check: OK (${cells} Excel нүд)`);
+
+/* ── 9. Бүрэн автомат жин (2026-11-03): бүлгийн бүх мөр төсөвтэй бол Хэсэгт эзлэх = төсөв ÷ бүлгийн төсөв (хадгалсан
+      жингээс дээгүүр); аль нэг нь төсөвгүй бол хадгалсан жин; Төсөлд эзлэх = F × G_эцэг (үе шатны жин тогтмол) ── */
+{
+  const R = (dd, et, name, extra = {}) => ({ dd_kod: dd, etseg_kod: et, ajil_uilchilgee: name, ...extra });
+  const t = buildTree([
+    R('1', null, 'Зураг', { uy_shat: 'Ажлын зураг төсөл', tusul_ezleh_huvi: 0.1 }),
+    R('1.1', '1', 'a', { ho_dun_geree: 100, heseg_ezleh_huvi: 0.666, tusul_ezleh_huvi: 0.0666 }),
+    R('1.2', '1', 'b', { ho_dun_geree: 300, heseg_ezleh_huvi: 0.334 }),
+    R('1.2.1', '1.2', 'b1', { heseg_ezleh_huvi: 0.4 }),
+    R('1.2.2', '1.2', 'b2', { ho_dun_geree: 50, heseg_ezleh_huvi: 0.6 }),
+  ]);
+  const v = computePlan(t, {}, d('2026-10-07'));
+  const by = (c) => v.get(c);
+  near(by('1.1').F, 25, 1e-9, 'төсөв 100 ÷ (100+300) — хадгалсан 66.6% биш');
+  near(by('1.2').F, 75, 1e-9, '300 ÷ 400');
+  near(by('1.2.1').F, 0, 1e-9, 'төсөвгүй мөр — 0 гэж бодно (хадгалсан жин биш)');
+  near(by('1.2.2').F, 100, 1e-9, '50 ÷ (0 + 50)');
+  near(by('1').G, 10, 1e-9, 'үе шатны жин тогтмол');
+  near(by('1.1').G, 2.5, 1e-9, 'Төсөлд эзлэх = 25% × 10% (хадгалсан 6.66% биш)');
+  near(by('1.2.2').G, 7.5, 1e-9, '100% × 7.5%');
+  const xl = computePlan(t, { excelWeights: true }, d('2026-10-07'));
+  near(xl.get('1.1').F, 66.6, 1e-9, 'Excel горим — хадгалсан жин');
+}
+console.log('projectPlan.check: автомат жин OK');

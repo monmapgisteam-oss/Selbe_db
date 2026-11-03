@@ -28,6 +28,7 @@ import {
 import { dayKey } from '@/lib/format';
 import { FIN_XL_CHART_FIELDS, finXlChartCat, finXlInTotal } from '@/lib/finExcelLayout';
 import { sumBy, tally } from '@/lib/agg';
+import type { SourceKey } from '@/lib/projectPlan';
 import { register, type DataKey } from '@/lib/dataBus';
 
 /**
@@ -75,9 +76,17 @@ export type Budget = {
   contract: number;
   /** Санхүүжилтийн эх үүсвэр — задраагүй үлдэгдэлтэй */
   sources: { key: string; label: string; value: number }[];
+  /**
+   * «Нийслэлийн төсвөөс санхүүжих» мөрүүд — төслийн нийт дүнд ОРДОГГҮЙ (нийгмийн байгууламж), ТУСАД НЬ харуулна
+   * (2026-11-03, хэрэглэгч: «Нийслэлийн төсвөөс санхүүжих утгууд тусдаа гарах хэрэгтэй»). `amount` — захирамжийн дүн, ₮.
+   */
+  cityOutside: { amount: number; n: number };
   byType: { key: string; label: string; value: number; n: number }[];
   byPkg: { key: string; label: string; value: number; n: number }[];
 };
+
+/** `ho_dungiin_tailbar` — «Нийслэлийн төсвөөс санхүүжих…» (төслийн нийтэд ордоггүй мөрийн тэмдэг) */
+export const CITY_FUNDED_RE = /нийслэлийн төсвөөс санхүүжих/i;
 
 /**
  * ТӨСЛИЙН ТӨСВИЙН ЭХ = `Cashflow_0909/0` (CASHFLOW_NEW). «Хөрөнгө оруулалт
@@ -113,19 +122,22 @@ export const loadBudget = cached<Budget>(async () => {
   const total = sumOf(inTotal, 'b');
   const orderTotal = sumOf(inTotal, 'o');
   const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
+  /* ⚠️ 2026-11-03 (хэрэглэгч): эх үүсвэр — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ИЖИЛ амьд нийлбэр
+     (`loadProjectSourceTotals`; Σ = төслийн нийт дүн). «Тайлан» · нийтийн хүснэгттэй НЭГ тоо. «Эх үүсвэр задраагүй» мөр хасав. */
+  const { loadProjectSourceTotals } = await import('@/lib/projectPlanInputs');
+  const ps = await loadProjectSourceTotals();
   const named: { key: string; label: string; value: number }[] = CASHFLOW_NEW.sources
-    .map((s, i) => ({ key: s.field as string, label: s.label as string, value: sumOf(inTotal, `s${i}`) }))
+    .map((s) => ({ key: s.field as string, label: s.label as string, value: ps[s.field as SourceKey] ?? 0 }))
     .filter((x) => x.value > 0)
     .sort((a, b) => b.value - a.value);
-  // Захирамжийн дүнгээс эх үүсвэр задраагүй үлдэгдэл (зөрүү нуухгүй)
-  const rest = orderTotal - sumBy(named, (x) => x.value);
-  if (rest > 0) named.push({ key: 'rest', label: tr('Эх үүсвэр задраагүй'), value: rest });
+  const city = g.filter((r) => !finXlInTotal(r) && CITY_FUNDED_RE.test(cfLabel(r[CF.amountNote])));
 
   return {
     total,
     orderTotal,
     contract,
     sources: named,
+    cityOutside: { amount: sumOf(city, 'o'), n: city.reduce((a, r) => a + Number(r.n ?? 0), 0) },
     byType: tally(
       g,
       (row) => ({ key: finXlChartCat(row), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),

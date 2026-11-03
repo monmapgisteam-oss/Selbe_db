@@ -7,6 +7,8 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
+import type { SourceKey } from '@/lib/projectPlan';
+import { loadProjectSourceTotals } from '@/lib/projectPlanInputs';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
@@ -395,9 +397,10 @@ export const loadFinance = cached(loadFinanceRaw, 5 * 60_000, ['CASHFLOW_NEW', '
 
 async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   const F = CASHFLOW_NEW.fields;
-  const [rows, ho] = await Promise.all([
+  const [rows, ho, ps] = await Promise.all([
     queryFeatures(CASHFLOW_NEW.url, { where: CF_WORK_WHERE, outFields: ['*'] }),
     queryFeatures(HO_IPC.url, { outFields: [HO_IPC.payFields.amount, HO_IPC.contractFields.pkg] }),
+    loadProjectSourceTotals(),
   ]);
 
   /** Гэрээний мөрүүд (78) — шүүлт хэрэггүй, мөр бүр нэг гэрээ */
@@ -478,7 +481,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     landBudget: master
       .filter((r) => secOf(r) === FIN_XL_LAND_CODE)
       .reduce((a, r) => a + nn(r[F.budget]), 0),
-    sources: CASHFLOW_NEW.sources.map((s) => ({ label: s.label, value: sum(s.field) })),
+    /* 2026-11-03 (хэрэглэгч): «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ИЖИЛ (Σ = төслийн нийт дүн) */
+    sources: CASHFLOW_NEW.sources.map((s) => ({ label: s.label, value: ps[s.field as SourceKey] ?? 0 })),
     paid: share.paidKnown ? paid : null,
     paidPct: share.pct,
     paidContracted,

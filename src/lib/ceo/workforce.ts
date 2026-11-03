@@ -453,10 +453,12 @@ function outFields(): string[] {
  * Ганц эх сурвалж — унавал ЮУ Ч ачаалагдаагүй тул шидэнэ (`cached` унасан
  * амлалтыг хадгалдаггүй, дараагийн дуудалт дахин оролдоно).
  */
-export const loadWorkforceKpi = cached(async (): Promise<KpiResult> => {
-  const rows = await queryFeatures(HABEA.labor.url, {
-    outFields: outFields(),
-    orderBy: `${F.ognoo} DESC, ${OID_FIELD} DESC`,
-  });
-  return computeWorkforce(rows, Date.now());
-}, 5 * 60_000, ['HABEA']);
+const loadLaborRows = cached(() => queryFeatures(HABEA.labor.url, {
+  outFields: outFields(),
+  orderBy: `${F.ognoo} DESC, ${OID_FIELD} DESC`,
+}), 5 * 60_000, ['HABEA']);
+
+export const loadWorkforceKpi = cached(async (): Promise<KpiResult> => computeWorkforce(await loadLaborRows(), Date.now()), 5 * 60_000, ['HABEA']);
+
+/** Өдрүүд — сүүлийнх эхэнд (`groupDays`); нийтийн вэбийн хүн хүч (`lib/publicSync`, 2026-11-03) */
+export const loadWorkforceDays = cached(async (): Promise<WorkforceDay[]> => groupDays(await loadLaborRows()), 5 * 60_000, ['HABEA']);

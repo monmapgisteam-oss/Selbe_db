@@ -33,7 +33,11 @@ const near = (a, b, tol, msg) => {
   const r = toStoredRow({
     OBJECTID: 7, dd_kod: ' 5.2.1 ', ETSEG_KOD: '5.2', tuvshin: 2, bagts: 'Багц-1', blok: '', ajil_uilchilgee: 'x',
     ho_dun_geree: '1200', heseg_ezleh_huvi: 0.25, geree_ehleh: D('2026-01-01'), guitsetgel_huvi: '  ', Cashflow_ID: 12,
+    zahiramj_unet_tsaas: '500', ZAHIRAMJ_NZD_NUUTS: '',
   });
+  assert.equal(r.zahiramj_unet_tsaas, 500, 'эх үүсвэр — мөрөөр ирсэн тоо (2026-11-03)');
+  assert.equal(r.zahiramj_nzd_nuuts, null, 'хоосон эх үүсвэр null (0 биш)');
+  assert.equal(r.zahiramj_borluulalt_dun, null, 'ирээгүй эх үүсвэр null');
   assert.equal(r.dd_kod, '5.2.1', 'dd_kod тайрагдана');
   assert.equal(r.etseg_kod, '5.2', 'том/жижиг үсэг үл ялган уншина');
   assert.equal(r.blok, null, 'хоосон блок null');

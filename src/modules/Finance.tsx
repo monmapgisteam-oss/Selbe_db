@@ -55,7 +55,7 @@ import {
   loadMonthlyMoney, monthSourceOf, confirmAndSwitch, switchPhaseWhy, PKG_KEYS, SRC_HUVAARI, CF_SWITCH_CAP, type MonthlyMoney,
 } from '@/lib/monthlyMoney';
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
-import type { PlanNode, PlanValues, BlockStatus } from '@/lib/projectPlan';
+import { isAddedWork, sourceSums, SOURCE_KEYS, type PlanNode, type PlanValues, type BlockStatus, type SourceKey, type SourceSums } from '@/lib/projectPlan';
 import {
   MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
   importCutoff, pkgOptions, savePlanValue, type FillFilter, type PlanEditKey, type PlanFilter,
@@ -1144,16 +1144,23 @@ const loadProjectPlanLazy = (): Promise<ProjectPlan> =>
   import('@/lib/projectPlanInputs').then((m) => m.loadProjectPlan());
 
 type PpKind = 'money' | 'w' | 'date' | 'pct';
-type PpCol = { k: Exclude<keyof PlanValues, 'status'>; label: string; kind: PpKind; title?: string };
+/** `k` — `PlanValues`-ийн багана (E…W) эсвэл эх үүсвэрийн талбар (`sourceSums`, 2026-11-03) */
+type PpCol = { k: Exclude<keyof PlanValues, 'status'> | SourceKey; label: string; kind: PpKind; title?: string };
 type PpGroup = { label: string | null; cols: PpCol[] };
+const isSourceKey = (k: PpCol['k']): k is SourceKey => (SOURCE_KEYS as readonly string[]).includes(k);
 
 /**
- * Excel-ийн үндсэн хуудасны баганууд (E…W), дарааллаар нь.
+ * Excel-ийн үндсэн хуудасны баганууд (E…W), дарааллаар нь. Эх үүсвэрийн 4 багана (захирамжийн дүнгийн задаргаа,
+ * CASHFLOW_NEW-ийн мөрөнд бичигдсэн; хэрэглэгч 2026-11-03: «ил гарга») — E-ийн ард.
  */
 function ppGroups(): PpGroup[] {
   const pctCol = (k: PpCol['k'], label: string, title?: string): PpCol => ({ k, label, kind: 'pct', title });
   return [
     { label: null, cols: [{ k: 'E', label: tr('Урьдчилсан төсөвт өртөг'), kind: 'money' }] },
+    {
+      label: tr('Эх үүсвэр (захирамж)'),
+      cols: CASHFLOW_NEW.sources.map((s) => ({ k: s.field as SourceKey, label: s.label, kind: 'money' as const })),
+    },
     { label: null, cols: [{ k: 'F', label: tr('Хэсэгт эзлэх'), kind: 'w' }] },
     { label: null, cols: [{ k: 'G', label: tr('Төсөлд эзлэх'), kind: 'w' }] },
     { label: tr('Гэрээ (хавсралт 5)'), cols: [{ k: 'H', label: tr('Эхлэх'), kind: 'date' }, { k: 'I', label: tr('Дуусах'), kind: 'date' }] },
@@ -1380,11 +1387,19 @@ export function ProjectPlanTable({
     n.outside ? f.ppOut : '',
   ].filter(Boolean).join(' ');
 
-  const valCells = (v: PlanValues | undefined, blk: boolean) => cols.map((c) => {
-    const x = v ? v[c.k] : null;
+  /** Эх үүсвэрийн нийлбэр мөр бүрд (өөрийнх › хүүхдүүдийн нийлбэр) */
+  const srcOf = useMemo(() => sourceSums(tree), [tree]);
+  const valCells = (v: PlanValues | undefined, blk: boolean, src: SourceSums | undefined, n?: PlanNode) => cols.map((c) => {
+    /* 2026-11-03: нэмсэн ажлын төсөвт өртөг — эцгийн төсвөөс жингээр оноосон (бүдэг налуу; нийлбэрт орохгүй) */
+    const alloc = c.k === 'E' && v?.E == null && v?.EA != null && !!n && isAddedWork(n);
+    const x = isSourceKey(c.k) ? src?.[c.k] ?? null : alloc ? v!.EA : v ? v[c.k] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;
     return (
-      <td key={c.k} className={`${f.cellNum} ${c.kind === 'date' ? f.ppDate : ''}`} title={st ? ppStatusText(st) : undefined}>
+      <td
+        key={c.k}
+        className={`${f.cellNum} ${c.kind === 'date' ? f.ppDate : ''} ${alloc ? f.ppAlloc : ''}`}
+        title={st ? ppStatusText(st) : alloc ? tr('Эцэг мөрийн төсвөөс жингээр оноосон') : undefined}
+      >
         {st && <i className={`${f.ppDot} ${st === 'done' ? f.ppDone : st === 'started' ? f.ppOn : f.ppNot}`} aria-hidden />}
         {ppFmt(c.kind, x)}
       </td>
@@ -1576,7 +1591,10 @@ export function ProjectPlanTable({
                   {PLAN_EDIT_KEYS.map((k) => (
                     <PlanEditCell
                       key={k} n={n} k={k} canEdit={canEdit} onSave={onSaveVal} onError={setErr}
-                      value={k === 'pct' ? v?.S ?? null : r[PLAN_EDIT[k].key]}
+                      value={k === 'pct' ? v?.S ?? null
+                        : k === 'budget' ? v?.E ?? (isAddedWork(n) ? v?.EA ?? null : null)
+                          : PLAN_EDIT[k].kind === 'money' ? srcOf.get(n)?.[PLAN_EDIT[k].key as SourceKey] ?? null
+                            : r[PLAN_EDIT[k].key]}
                     />
                   ))}
                   {canEdit && (
@@ -1631,7 +1649,7 @@ export function ProjectPlanTable({
               <td className={`${f.ppFz0} ${f.ppNo}`} />
               <td className={`${f.ppFz1} ${f.ppPkg}`} />
               <td className={`${f.ppFz2} ${f.ppName}`}>{tr('Төслийн нийт')}</td>
-              {valCells(rootV, false)}
+              {valCells(rootV, false, srcOf.get(tree.root))}
               <td className={f.ppMoney} />
             </tr>
             {vis.map((n) => {
@@ -1642,7 +1660,7 @@ export function ProjectPlanTable({
                   <td className={`${f.ppFz0} ${f.ppNo}`}>{ddOf.get(n)}</td>
                   <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
                   {nameCell(n)}
-                  {valCells(v, !!n.blok)}
+                  {valCells(v, !!n.blok, srcOf.get(n), n)}
                   {moneyCell(n)}
                 </tr>
               );

@@ -319,3 +319,10 @@
   .search { width: 100%; }
   .scroll { max-height: none; }
 }
+
+/* 2026-11-03: нэмсэн ажил — төсөвт өртөг (эцгийн төсвөөс хувиар оноосон бол бүдэг налуу) */
+.alloc { color: var(--ink-3); font-style: italic; }
+.inpAmt { width: 124px; text-align: right; }
+.inpName { width: min(320px, 100%); }
+.addForm td { background: color-mix(in oklab, var(--data) 5%, transparent); }
+.addFormIn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

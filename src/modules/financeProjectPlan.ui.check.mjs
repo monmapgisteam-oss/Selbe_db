@@ -105,9 +105,11 @@ const D = (y, m, d) => Date.UTC(y, m - 1, d);
 const rows = [
   { dd_kod: '1', etseg_kod: null, uy_shat: 'ТЭЗҮ', ajil_uilchilgee: 'ТЭЗҮ', tusul_ezleh_huvi: 0.4 },
   { dd_kod: '1.1', etseg_kod: '1', uy_shat: 'ТЭЗҮ', bagts: 'Багц-1', ajil_uilchilgee: 'ТЭЗҮ боловсруулах',
-    heseg_ezleh_huvi: 1, geree_ehleh: D(2026, 1, 1), geree_duusah: D(2026, 12, 31), guitsetgel_huvi: 30, cashflow_id: 7 },
+    heseg_ezleh_huvi: 1, geree_ehleh: D(2026, 1, 1), geree_duusah: D(2026, 12, 31), guitsetgel_huvi: 30, cashflow_id: 7,
+    zahiramj_unet_tsaas: 1_234_567, zahiramj_niislel_tusuv: 1000 },
   { dd_kod: '2', etseg_kod: null, uy_shat: 'Ажлын зураг төсөл', ajil_uilchilgee: 'Ажлын зураг төсөл', tusul_ezleh_huvi: 0.6 },
-  { dd_kod: '2.1', etseg_kod: '2', uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-2', ajil_uilchilgee: 'Зураг', heseg_ezleh_huvi: 1, cashflow_id: 8 },
+  { dd_kod: '2.1', etseg_kod: '2', uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-2', ajil_uilchilgee: 'Зураг', heseg_ezleh_huvi: 1, cashflow_id: 8,
+    zahiramj_unet_tsaas: 7_654_321 },
   { dd_kod: '2.1.1', etseg_kod: '2.1', uy_shat: 'Ажлын зураг төсөл', ajil_uilchilgee: 'Гүн дэд мөр', heseg_ezleh_huvi: 1 },
 ];
 const plan = assemblePlan(rows, { actual: { blocks: null, universe: null, infra: null }, sched: null, land: new Map() }, D(2026, 7, 2));
@@ -133,6 +135,19 @@ check('толгой ба мөр', () => {
   assert.ok(html.includes('30.0%') || html.includes('30,0%'), 'S = хадгалсан guitsetgel_huvi (0–100, ×100 үгүй)');
   assert.ok(html.includes('Гараар') && html.includes('Хуваарь'), 'сарын мөнгөний эхийн тэмдэг');
   assert.ok(!html.includes('Хуваарь руу шилжүүлэх'), 'эрхгүй бол товчгүй');
+});
+
+check('эх үүсвэрийн баганууд (2026-11-03) — толгой, мөрийн утга, эцэг/нийт нийлбэр', () => {
+  const html = render(false);
+  for (const s of ['Эх үүсвэр (захирамж)', 'Үнэт цаас', 'Төслийн орлого', 'Нийслэлийн төсөв', 'НЗД нөөц']) {
+    assert.ok(html.includes(s), `толгой: ${s}`);
+  }
+  const cell = (n) => new RegExp(`<td[^>]*>${n.toLocaleString('en-US').replace(/,/g, '[,.\\u00a0\\s]?')}</td>`);
+  assert.match(html, cell(1_234_567), '1.1 — өөрийн үнэт цаас');
+  assert.match(html, cell(7_654_321), '2.1 — өөрийн үнэт цаас');
+  /* 2026-11-03 (хэрэглэгч): эцэг мөр ба Төслийн нийт = мөрүүдийн амьд нийлбэр */
+  assert.match(html, cell(8_888_888), 'Төслийн нийт = 1.1 + 2.1 (эцгүүдээр дамжин)');
+  assert.ok(!/<td[^>]*>1[,. \s]?000[,. \s]?000<\/td>/.test(html), 'бичигдээгүй эх үүсвэр 0 биш (null → «—»)');
 });
 
 check('шилжүүлэх товч — эрхтэй, зөвхөн гараар гэрээнд', () => {

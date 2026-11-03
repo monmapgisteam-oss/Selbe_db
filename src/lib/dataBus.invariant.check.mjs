@@ -218,6 +218,10 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
   ['src/lib/ficMakt.ts',
     '2026-10-09: FIC · М-акт — Enterprise хүснэгт, `cached()`/автобусыг АШИГЛАДАГГҮЙ (уншилт бүр шууд `loadFm`); '
     + 'бичсний дараа дуудагч (`Ma.tsx` → `onChanged` → `reloadFm`) дахин уншина. Хүчингүй болгох кэш алга.'],
+  ['src/lib/publicSync/sync.ts',
+    '2026-11-03: нийтийн вэбийн `selbe_public` 6 хүснэгт — систем ЗӨВХӨН бичдэг (уншдаггүй, DataKey/кэш алга); '
+    + 'бичилт бүр хүснэгтийг шууд дахин уншиж тулгадаг (`writeTable`). invalidate() дуудвал өөрийн бичилт автобусаар '
+    + 'дахин синк дуудаж ГОГЦОО үүснэ.'],
 ]);
 
 const WRITER_TOKEN = /(?:^|[^\w$])(?:applyAll|applyUpdates|applyAdds|addRows|updateDecision)\s*\(/m;

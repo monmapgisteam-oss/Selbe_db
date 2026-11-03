@@ -61,7 +61,44 @@ export type PlanStoredRow = {
   ashiglalt_ognoo?: number | null;
   /** Мөр үүсгэсэн агшин (сервер) — импортын мөрийг гараар нэмсэнээс ялгана (`planEdit.isManualRow`) */
   created_date?: number | null;
+  /** Захирамжийн дүнгийн эх үүсвэр (₮) — `CASHFLOW_NEW.sources`; зөвхөн өөрийн мөрд харагдана, нийлбэрлэхгүй (2026-11-03) */
+  zahiramj_unet_tsaas?: number | null;
+  zahiramj_borluulalt_dun?: number | null;
+  zahiramj_niislel_tusuv?: number | null;
+  zahiramj_nzd_nuuts?: number | null;
 };
+
+/** Эх үүсвэрийн талбарууд — `CASHFLOW_NEW.sources`-ийн дараалал (үнэт цаас · төслийн орлого · нийслэлийн төсөв · НЗД нөөц) */
+export const SOURCE_KEYS = ['zahiramj_unet_tsaas', 'zahiramj_borluulalt_dun', 'zahiramj_niislel_tusuv', 'zahiramj_nzd_nuuts'] as const;
+export type SourceKey = (typeof SOURCE_KEYS)[number];
+export type SourceSums = Record<SourceKey, number | null>;
+
+/**
+ * ЭХ ҮҮСВЭР (2026-11-03, хэрэглэгч) — мөр бүр, эцэг/бүлгийн мөр, Төслийн нийт бүгд АМЬД нийлбэр: модоор (өөрийнх
+ * бичигдсэн мөр › хүүхдүүдийн нийлбэр, «Нийслэл төсөв» хэсэг орохгүй — E-тэй ижил дүрэм); хүүхэд бүгд хоосон бол null.
+ * Төслийн нийтийн нийлбэр = төслийн нийт дүн байхаар өгөгдлийг тааруулсан: «Газар чөлөөлөлт» (Д/Д 3) мөрөнд эх үүсвэр
+ * бичигдээгүй дүнг 4-т тэнцүү бичсэн (нэг удаагийн өгөгдлийн засвар).
+ */
+export function sourceSums(tree: PlanTree): Map<PlanNode, SourceSums> {
+  const roll = new Map<PlanNode, SourceSums>();
+  for (const n of [...tree.nodes].reverse().concat(tree.root)) {
+    const r = n.row;
+    const own = !!r && SOURCE_KEYS.some((k) => num(r[k]) != null);
+    const v = {} as SourceSums;
+    for (const k of SOURCE_KEYS) {
+      if (own) { v[k] = num(r![k]); continue; }
+      let s = 0, any = false;
+      for (const c of n.children) {
+        if (c.outside) continue;
+        const x = roll.get(c)?.[k];
+        if (x != null) { s += x; any = true; }
+      }
+      v[k] = any ? s : null;
+    }
+    roll.set(n, v);
+  }
+  return roll;
+}
 
 export type PlanNode = {
   /** `dd_kod` (үндэс бол `''`) */
@@ -104,6 +141,11 @@ export type PlanTree = {
 
 export type PlanValues = {
   E: number | null;
+  /**
+   * ОНООСОН ТӨСӨВ (2026-11-03) — өөрийн E, байхгүй бол эцгийн оноосон төсөв × Хэсэгт эзлэх. Зөвхөн харуулах:
+   * нийлбэр, хувь, тайланд ОРОХГҮЙ (E хэвээр).
+   */
+  EA: number | null;
   /** 0–100 */
   F: number | null;
   /** 0–100 */
@@ -150,6 +192,11 @@ export type PlanInputs = {
    * Объектод түлхүүр БАЙВАЛ (утга нь null ч) тэр нь ЭЦСИЙН — хүүхдээс бодохгүй.
    */
   override?: (node: PlanNode) => Partial<Record<Metric, number | null>> | undefined;
+  /**
+   * `true` = Excel-ийн хадгалсан жинг ЯГ мөрдөнө (тулгалтын тест). Анхдагч (`false`) — бүрэн автомат: Хэсэгт эзлэх
+   * төсвөөр (`budgetShare`), Төсөлд эзлэх = F × G_эцэг (2026-11-03).
+   */
+  excelWeights?: boolean;
 };
 
 /* ══════════════════ Жижиг туслахууд ══════════════════ */
@@ -233,6 +280,18 @@ const OUTSIDE_RX = /нийслэл\s*төсөв/i;
 /** Тааруулах түлхүүр — зай, зураас, цэгийг хаяж том үсгээр (`bagtsKey`-тэй ижил санаа) */
 const keyC = (v: unknown) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z/]/g, '');
 const keyD = (v: unknown) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * НЭМСЭН АЖИЛ (2026-11-03, «ТЭЗҮ · Ажлын зураг төсөл» хуудасны «+ Ажил нэмэх») — Ажлын зураг төсөл үе шатын,
+ * ЭЦЭГТЭЙГЭЭ ИЖИЛ БАГЦТАЙ, мөнгөгүй (`cashflow_id` хоосон) мөр. Хүснэгтийн бусад мөр энэ үе шатад эцгээсээ өөр
+ * багцтай тул андуурагдахгүй. Жин нь хадгалсан «Хэсэгт эзлэх»; төсөв нь эцгийн төсвөөс хувиар оноогдоно (`EA`).
+ */
+export function isAddedWork(n: PlanNode): boolean {
+  const p = n.parent?.row;
+  if (n.phase !== 'zurag' || !n.row || !p || n.row.cashflow_id != null) return false;
+  const b = keyC(n.row.bagts);
+  return !!b && b === keyC(p.bagts);
+}
 
 /* ══════════════════ Мод ══════════════════ */
 
@@ -401,6 +460,8 @@ function linkTwins(root: PlanNode, nodes: PlanNode[], issues: string[]) {
   const inSrc = new Set<PlanNode>([src, ...srcAll]);
   for (const n of nodes) {
     if (n.depth < 2 || inSrc.has(n)) continue;
+    /* Нэмсэн ажил — хос хайхгүй (байрлалаар буруу блоктой холбогдож жин нь блокийн төсвөөр бодогдохоос хамгаална) */
+    if (isAddedWork(n)) continue;
     const r = n.row!;
     const scope = n.parent?.twin ?? src;
     n.twin = pick(n, scope.children) ?? pick(n, desc(scope)) ?? pick(n, srcAll)
@@ -520,14 +581,43 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
   const F = new Map<PlanNode, number | null>();
   F.set(root, 1);
   const busy = new Set<PlanNode>();
+  /**
+   * ⚠️ 2026-11-03 (хэрэглэгч: «Excel-ийг бүрэн автомат болго»): нэг эцгийн доорх (нийлбэрт орох) БҮХ мөр төсөвт өртөгтэй
+   * бол Хэсэгт эзлэх = мөрийн төсөвт өртөг ÷ тэдгээрийн нийлбэр — хадгалсан жингээс ДЭЭГҮҮР (төсөв өөрчлөгдөхөд дагана).
+   * Аль нэг мөр төсөвгүй бол хадгалсан жин (бичмэгц томьёо автоматаар ажиллана). Үе шатны мөр (үндсийн хүүхэд) — хамаарахгүй.
+   */
+  const budgetShare = (n: PlanNode): number | null => {
+    const p = n.parent;
+    if (inputs.excelWeights || !p || p === root || n.outside) return null;
+    /* хэрэглэгч 2026-11-03: төсөвт өртөг хоосон бол 0 гэж бодно; бүлэгт нэг ч төсөв байхгүй бол (÷0) хадгалсан жин */
+    const sib = p.children.filter((c) => !c.outside);
+    let tot = 0;
+    for (const c of sib) tot += E.get(c) ?? 0;
+    return tot > 0 ? (E.get(n) ?? 0) / tot : null;
+  };
+  /**
+   * 2026-11-03 (хэрэглэгч): бүлэгт өөрийн төсөв байхгүй бол — мөр бүрийн Барилга угсралтын ижил багц/блокийн мөрийн (ихэр)
+   * төсвөөр бүлэг ДОТРОО хувь: ихрийн төсөв ÷ бүлгийн ихрүүдийн төсвийн нийлбэр (ихэргүй мөр = 0) → нийлбэр 100%.
+   * Дэд шат (эцэг нь ижил ихэртэй) — ихэр тооцохгүй. Бүлэгт ихрийн төсөв огт байхгүй бол хадгалсан жин.
+   */
+  const twinBudget = (c: PlanNode): number => (c.twin && c.parent?.twin !== c.twin ? E.get(c.twin) ?? 0 : 0);
+  const twinShare = (n: PlanNode): number | null => {
+    const p = n.parent;
+    if (inputs.excelWeights || !p || p === root || n.outside) return null;
+    let tot = 0;
+    for (const c of p.children) if (!c.outside) tot += twinBudget(c);
+    return tot > 0 ? twinBudget(n) / tot : null;
+  };
   const fOf = (n: PlanNode): number | null => {
     if (F.has(n)) return F.get(n)!;
     if (busy.has(n)) return null;
     busy.add(n);
     const r = n.row!;
-    let f = wt(r.heseg_ezleh_huvi);
+    let f = budgetShare(n) ?? twinShare(n) ?? wt(r.heseg_ezleh_huvi);
     if (f == null) {
-      const g = wt(r.tusul_ezleh_huvi);
+      /* Хадгалсан Төсөлд эзлэх ÷ эцгийнх — ЗӨВХӨН үе шатны мөр ба Excel горимд (автомат горимд эцгийн G томьёогоор
+         өөрчлөгдөх тул хуучин G-ээс буцааж бодвол жин хэт томордог — 2026-11-03) */
+      const g = n.parent === root || inputs.excelWeights ? wt(r.tusul_ezleh_huvi) : null;
       const gp = g == null ? null : gOf(n.parent!);
       const e = E.get(n) ?? null;
       const ep = n.parent ? E.get(n.parent) ?? null : null;
@@ -543,19 +633,31 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
      дууддаг — чиглэл нь ҮРГЭЛЖ эцэг рүү тул дугуйрахгүй. ── */
   const G = new Map<PlanNode, number | null>();
   G.set(root, 1);
+  /* ⚠️ 2026-11-03 (хэрэглэгч: бүрэн автомат): үе шатны мөр (үндсийн хүүхэд) — хадгалсан бодлогын жин; бусад мөр — ҮРГЭЛЖ
+     Хэсэгт эзлэх × эцэг мөрийн Төсөлд эзлэх (хадгалсан утга зөвхөн F бодогдохгүй үед). */
   function gOf(n: PlanNode): number | null {
     if (G.has(n)) return G.get(n)!;
     const own = wt(n.row!.tusul_ezleh_huvi);
-    let g = own;
+    let g: number | null = n.parent === root || inputs.excelWeights ? own : null;
     if (g == null) {
       const f = fOf(n);
       const gp = gOf(n.parent!);
-      g = f != null && gp != null ? f * gp : null;
+      g = f != null && gp != null ? f * gp : own;
     }
     G.set(n, g);
     return g;
   }
   for (const n of nodes) { fOf(n); gOf(n); }
+
+  /* ── EA: оноосон төсөв — өөрийн E › эцгийн EA × F (урьдчилсан дарааллаар: эцэг хүүхдээсээ өмнө) ── */
+  const EA = new Map<PlanNode, number | null>();
+  EA.set(root, E.get(root) ?? null);
+  for (const n of nodes) {
+    const own = E.get(n) ?? null;
+    const pa = n.parent ? EA.get(n.parent) ?? null : null;
+    const f = F.get(n) ?? null;
+    EA.set(n, own ?? (pa != null && f != null && !n.outside ? pa * f : null));
+  }
 
   /* ── H…M: хадгалсан › үр удмын MIN эхлэх / MAX дуусах ── */
   const D = new Map<PlanNode, (number | null)[]>();
@@ -607,6 +709,7 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
     const S = hund(x.S), N = hund(x.N), O = hund(x.O), P = hund(x.P), R = hund(x.R);
     values.set(n, {
       E: E.get(n) ?? null,
+      EA: EA.get(n) ?? null,
       F: hund(F.get(n) ?? null),
       G: hund(G.get(n) ?? null),
       H: d[0], I: d[1], J: d[2], K: d[3], L: d[4], M: d[5],

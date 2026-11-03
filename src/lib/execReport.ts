@@ -9,6 +9,8 @@
  */
 
 import { cached, loadFillPkgProgress } from '@/lib/live';
+import type { SourceKey } from '@/lib/projectPlan';
+import { loadProjectSourceTotals } from '@/lib/projectPlanInputs';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
@@ -196,8 +198,14 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       n: b.count ?? 0, contracted: b.countSub ?? 0,
     }))
     .sort((a, b) => b.cost - a.cost);
-  const bySource = chartSourceMerged(cf).map((b) => ({
-    label: sentenceCase(b.label), amount: b.value, contracted: b.sub, n: b.count ?? 0,
+  /* ⚠️ 2026-11-03 (хэрэглэгч: «Тайлан үргэлж бодит харуулж байх ёстой»): эх үүсвэрийн задаргаа — ЗӨВХӨН төслийн нийт
+     дүнд ордог мөр (`inTotal`), «Төслийн дэлгэрэнгүй мэдээлэл»-ийн `loadBudget`-тэй ИЖИЛ хүрээ. Урьд бүх мөрийг нийлүүлж
+     нийслэлийн төсөв 36.4 тэрбум (сургууль 19.1 + цэцэрлэг 20.1 — төслийн нийтэд ордоггүй) гарч, самбарын 4.3-тай зөрдөг байв. */
+  /* 2026-11-03 (хэрэглэгч): дүн — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ИЖИЛ (Σ = төслийн нийт дүн);
+     ажлын тоо/гэрээт — мөрүүдээс */
+  const ps = await loadProjectSourceTotals().catch(() => null);
+  const bySource = chartSourceMerged(cf.filter((r) => r.inTotal)).map((b) => ({
+    label: sentenceCase(b.label), amount: ps?.[b.key as SourceKey] ?? b.value, contracted: b.sub, n: b.count ?? 0,
   }));
 
   /* ── 04. Багцын санхүү — `PkgFin.pkgFinRows`-тэй ИЖИЛ ── */

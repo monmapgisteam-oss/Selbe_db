@@ -9,7 +9,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { userError } from '@/components/ui';
 import { editText, parseCell, type ParseMsg } from '@/lib/finEdit';
-import { date, pct } from '@/lib/format';
+import { date, num, pct } from '@/lib/format';
 import {
   PLAN_EDIT, addPlanRows, editWhy, isNewGroup, newRowsWhy,
   type NewPlanRow, type PlanEditKey,
@@ -27,6 +27,11 @@ export const PARSE_MSG: ParseMsg = {
 
 /** Баганын нэр — i18n-extract статик `tr()`-ийг л олдог тул нэг бүрчлэн */
 export const EDIT_LABEL: Record<PlanEditKey, () => string> = {
+  budget: () => tr('Урьдчилсан төсөвт өртөг'),
+  srcBond: () => tr('Үнэт цаас'),
+  srcSales: () => tr('Төслийн орлого'),
+  srcCity: () => tr('Нийслэлийн төсөв'),
+  srcNzd: () => tr('НЗД нөөц'),
   pct: () => tr('Гүйцэтгэлийн хувь'),
   contractDate: () => tr('Гэрээ байгуулсан огноо'),
   orderDate: () => tr('Захирамжийн огноо'),
@@ -34,7 +39,7 @@ export const EDIT_LABEL: Record<PlanEditKey, () => string> = {
   handoverDate: () => tr('Ашиглалтад оруулах огноо'),
 };
 
-const ESRI_TYPE = { pct: 'esriFieldTypeDouble', date: 'esriFieldTypeDate', text: 'esriFieldTypeString' } as const;
+const ESRI_TYPE = { pct: 'esriFieldTypeDouble', date: 'esriFieldTypeDate', text: 'esriFieldTypeString', money: 'esriFieldTypeDouble' } as const;
 
 /** Нүдэнд харагдах текст */
 export function showVal(k: PlanEditKey, v: unknown): string {
@@ -42,6 +47,7 @@ export function showVal(k: PlanEditKey, v: unknown): string {
   if (v == null || String(v).trim() === '') return '—';
   if (kind === 'pct') return pct(Number(v), 1);
   if (kind === 'date') return date(Number(v));
+  if (kind === 'money') return num(Number(v));
   return String(v);
 }
 
@@ -107,7 +113,7 @@ export function PlanEditCell({
       <input
         className={f.ppCellIn}
         type={kind === 'date' ? 'date' : 'text'}
-        inputMode={kind === 'pct' ? 'decimal' : undefined}
+        inputMode={kind === 'pct' || kind === 'money' ? 'decimal' : undefined}
         aria-label={EDIT_LABEL[k]()}
         autoFocus
         value={text}

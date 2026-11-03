@@ -6,16 +6,16 @@
  * шинэчлэх хэсэг (2026-10-26, cf-spec «Бусад»).
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { pct } from '@/lib/format';
+import { num, pct } from '@/lib/format';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
 import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
-import { awaitingReload } from '@/lib/finEdit';
+import { awaitingReload, parseCell } from '@/lib/finEdit';
 import { hasCap, subscribeCaps, type CapKey } from '@/lib/caps';
 import { setNavDirty } from '@/lib/navGuard';
 import { askConfirm } from '@/lib/confirm';
@@ -23,10 +23,11 @@ import { useAuth } from '@/components/AuthGate';
 import { Data, userError } from '@/components/ui';
 import { buildTree, computePlan, saneDate, type PlanNode } from '@/lib/projectPlan';
 import {
-  EMPTY_PENDING, badText, buildEdits, canDelete, conflicts, dayOf, displayCodes, dropAdd, effectiveRows, inSection,
-  isEditable, isSubstage, needsEqualize, pendingCount, rowKey, setEdit, substageAdds, substageInfo, textOf, toStored,
-  toggleDelete, toggleEq, zeroWeight, type EditIssue, type FieldKey, type Names, type Pending,
+  EMPTY_PENDING, badText, buildEdits, canAddWork, canDelete, conflicts, dayOf, displayCodes, dropAdd, effectiveRows,
+  inSection, isAddedWork, isEditable, origText, pctOfAmount, pendingCount, rowKey, setEdit, textOf, toStored, toggleDelete,
+  workAdd, workNameWhy, worksWeightSum, type EditIssue, type FieldKey, type Names, type Pending,
 } from '@/lib/zuragTosol';
+import { PARSE_MSG } from './PlanEntry';
 import s from './zuragTosol.module.css';
 
 type Row = Record<string, unknown>;
@@ -55,20 +56,10 @@ const loadRows = cached(async () => ({
 
 const sqlStr = (v: string) => `'${v.replace(/'/g, "''")}'`;
 
-/**
- * Дэд шатны нэрийн орчуулга — хадгалсан нэр монгол (`DESIGN_SUBSTAGES`); i18n-extract статик `tr()`-ийг
- * л олдог тул нэг бүрчлэн бичнэ.
- */
-const SUB_TEXT: Record<string, () => string> = {
-  'А-даалгавар': () => tr('А-даалгавар'),
-  'Загвар зураг': () => tr('Загвар зураг'),
-  'Техникийн нөхцөл': () => tr('Техникийн нөхцөл'),
-  'Магадлал': () => tr('Магадлал'),
-};
-const nameOf = (n: PlanNode): string => {
-  const raw = String(n.row?.ajil_uilchilgee ?? '');
-  return isSubstage(n) ? (SUB_TEXT[raw]?.() ?? raw) : raw;
-};
+const nameOf = (n: PlanNode): string => String(n.row?.ajil_uilchilgee ?? '');
+
+/** Нэмсэн ажлуудын жингийн нийлбэр 100%-аас зөрөх хүлцэл (%) */
+const SUM_TOL = 0.01;
 
 const ISSUE_TEXT: Record<EditIssue['kind'], () => string> = {
   date: () => tr('огноо буруу (YYYY-MM-DD)'),
@@ -146,7 +137,16 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
   );
   const addKeys = useMemo(() => new Set(pend.adds.map(rowKey)), [pend.adds]);
   const delSet = useMemo(() => new Set(pend.deletes ?? []), [pend.deletes]);
-  const eqSet = useMemo(() => new Set(pend.eq ?? []), [pend.eq]);
+  /** «+ Ажил нэмэх» нээлттэй эцэг мөр (`dd_kod`) ба бичиж буй нэр; дүнгийн оролтын ноорог (мөрийн түлхүүрээр) */
+  const [adding, setAdding] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
+  const [nameErr, setNameErr] = useState<string | null>(null);
+  const [amt, setAmt] = useState<Record<string, string>>({});
+  /** Нэмсэн ажлуудын жингийн нийлбэр 100% биш эцэг мөрүүд */
+  const badSums = useMemo(() => tree.nodes.filter((n) => {
+    const sm = worksWeightSum(n, (c) => res.values.get(c)?.F);
+    return sm != null && Math.abs(sm - 100) > SUM_TOL;
+  }), [tree, res]);
   /** Устгахаар тэмдэглэсэн мөрүүд — урьдчилсан модноос хасагдсан тул жагсаалтын доор нэрээр */
   const delNames = useMemo(() => (pend.deletes ?? []).map((o) => {
     const r = base.find((x) => x.objectid === o);
@@ -203,14 +203,44 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
     setPend((p) => setEdit(p, o, f, text));
   };
 
-  const addSubs = (n: PlanNode) => {
+  /** Шинэ ажил нэмэх — нэрээр; жин нь эцгийн доорх бүх нэмсэн ажилд тэнцүү хуваагдана */
+  const addWork = (n: PlanNode) => {
     if (!canEdit || locked) return;
-    const adds = substageAdds(n, tree);
-    if (!adds.length) return;
+    const why = workNameWhy(n, newName);
+    if (why) {
+      setNameErr(why === 'empty' ? tr('Ажлын нэрийг бичнэ үү.') : tr('Энэ мөрийн доор ийм нэртэй ажил байна.'));
+      return;
+    }
+    const add = workAdd(n, tree, newName);
+    if (!add) return;
     setMsg(null);
-    setPend((p) => ({ ...p, adds: [...p.adds, ...adds] }));
-    /* Нэмсэн мөрүүд харагдана — хураасан бол дэлгэнэ */
+    setNameErr(null);
+    setNewName('');
+    setPend((p) => ({ ...p, adds: [...p.adds, add] }));
+    /* Нэмсэн мөр харагдана — хураасан бол дэлгэнэ */
     setShut((sh) => { if (!sh.has(n.code)) return sh; const nx = new Set(sh); nx.delete(n.code); return nx; });
+  };
+
+  /** Нэмсэн ажлын төсвийг ДҮНГЭЭР бичих — эцгийн оноосон төсвийн хувь болгож жинд бичнэ */
+  const commitAmount = (n: PlanNode) => {
+    const k = rowKey(n.row!);
+    const text = amt[k];
+    if (text == null) return;
+    setAmt((a) => { const nx = { ...a }; delete nx[k]; return nx; });
+    if (!text.trim()) return;
+    let v: number | null;
+    try {
+      v = parseCell(text, 'esriFieldTypeDouble', tr('Төсөвт өртөг'), PARSE_MSG) as number | null;
+    } catch (e) {
+      setErr(userError(e));
+      return;
+    }
+    if (v == null) return;
+    const p = pctOfAmount(v, n.parent ? res.values.get(n.parent)?.EA : null);
+    if (p == null) { setErr(tr('Эцэг мөрийн төсөвт өртөг алга — жинг хувиар оруулна уу.')); return; }
+    if (p > 100) { setErr(tr('Дүн эцэг мөрийн төсөвт өртгөөс их байна.')); return; }
+    setErr(null);
+    edit(n, 'weight', String(p));
   };
 
   const toggle = (code: string) => setShut((sh) => {
@@ -239,11 +269,10 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
       return;
     }
     if (!e.updates.length && !e.adds.length && !e.deletes.length) { setPend(EMPTY_PENDING); return; }
-    const zero = e.adds.filter((a) => zeroWeight(a as { heseg_ezleh_huvi: number | null })).length;
     const ask = [
-      ...(e.adds.length ? [tr('{0} шинэ дэд шатны мөр нэмэгдэнэ. Нэмсний дараа эцэг мөрийн явц дэд шатуудаас бодогдоно.', e.adds.length)] : []),
-      ...(zero ? [tr('Анхааруулга: {0} дэд шатны жин 0% — бусад дэд шат 100%-ийг эзэлсэн тул тэдгээрийн явц эцэг мөрөнд нөлөөлөхгүй. Жинг Excel-ээр засна уу.', zero)] : []),
-      ...(e.deletes.length ? [tr('{0} дэд шатны мөр УСТГАГДАНА (буцаах боломжгүй); үлдсэн дэд шатны жин дахин тэнцүүлэгдэнэ.', e.deletes.length)] : []),
+      ...(e.adds.length ? [tr('{0} шинэ ажил нэмэгдэнэ. Нэмсний дараа эцэг мөрийн явц ажлуудаас бодогдоно.', e.adds.length)] : []),
+      ...(e.deletes.length ? [tr('{0} нэмсэн ажлын мөр УСТГАГДАНА (буцаах боломжгүй); үлдсэн ажлуудын жин тэнцүү хуваагдана.', e.deletes.length)] : []),
+      ...(badSums.length ? [tr('Анхааруулга: {0} мөрийн доорх ажлуудын жингийн нийлбэр 100% биш — ажлуудын төсвийн нийлбэр эцэг мөрийн төсөвтэй тэнцэхгүй.', badSums.map((n) => dcode.get(n) ?? n.code).join(', '))] : []),
     ];
     if (ask.length && !(await askConfirm(`${ask.join(' ')} ${tr('Хадгалах уу?')}`, { ok: tr('Хадгалах'), danger: e.deletes.length > 0 }))) return;
     setBusy(true);
@@ -291,11 +320,12 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
 
   const input = (n: PlanNode, f: FieldKey, cls: string, ph?: string) => {
     const o = origByKey.get(rowKey(n.row!))!;
-    const v = textOf(pend, o, f);
     const pe = pend.edits[rowKey(o)];
+    /* Жин бичээгүй бол урьдчилсан модны (тэнцүү хуваасан) жин */
+    const v = f === 'weight' && pe?.weight == null ? origText(n.row!, 'weight') : textOf(pend, o, f);
     const changed = pe?.[f] != null;
     const r = n.row!;
-    const lonely = f !== 'pct' && (pe?.start != null || pe?.end != null)
+    const lonely = (f === 'start' || f === 'end') && (pe?.start != null || pe?.end != null)
       && (saneDate(r.geree_ehleh) == null) !== (saneDate(r.geree_duusah) == null)
       && saneDate(f === 'start' ? r.geree_ehleh : r.geree_duusah) == null;
     const bad = badText(f, v) || lonely;
@@ -304,10 +334,10 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
         className={`${s.inp} ${cls} ${changed ? s.inpDirty : ''} ${bad ? s.inpBad : ''}`}
         value={v}
         placeholder={ph}
-        inputMode={f === 'pct' ? 'decimal' : 'numeric'}
+        inputMode={f === 'pct' || f === 'weight' ? 'decimal' : 'numeric'}
         readOnly={locked}
         aria-invalid={bad || undefined}
-        aria-label={`${dcode.get(n) ?? ''} ${f === 'start' ? tr('Эхлэх') : f === 'end' ? tr('Дуусах') : tr('Гүйцэтгэл, %')}`}
+        aria-label={`${dcode.get(n) ?? ''} ${f === 'start' ? tr('Эхлэх') : f === 'end' ? tr('Дуусах') : f === 'weight' ? tr('Жин, %') : tr('Гүйцэтгэл, %')}`}
         onChange={(e) => edit(n, f, e.target.value)}
       />
     );
@@ -378,6 +408,7 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                 <th>{tr('Багц')}</th>
                 <th>{tr('Ажлын нэр')}</th>
                 <th className={s.r} title={tr('Хэсэгт эзлэх хувь')}>{tr('Жин')}</th>
+                <th className={s.r} title={tr('Урьдчилсан төсөвт өртөг — бүдэг налуу нь эцэг мөрийн төсвөөс жингээр оноосон дүн')}>{tr('Төсөвт өртөг')}</th>
                 <th>{tr('Эхлэх')}</th>
                 <th>{tr('Дуусах')}</th>
                 <th className={s.r}>{tr('Төлөвлөгөө')}</th>
@@ -395,11 +426,16 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                 const leaf = isEditable(n);
                 const ed = canEdit && leaf;
                 const open = !shut.has(n.code);
-                const sub = canEdit ? substageInfo(n) : null;
+                const work = isAddedWork(n);
+                const canAdd = canEdit && canAddWork(n);
+                const formOpen = canAdd && adding === k;
+                const wsum = worksWeightSum(n, (c) => res.values.get(c)?.F);
+                const sumBad = wsum != null && Math.abs(wsum - 100) > SUM_TOL;
+                const money = v.E ?? v.EA;
                 const [ia, ib] = ed && (saneDate(r.geree_ehleh) == null || saneDate(r.geree_duusah) == null) ? inherited(n) : [null, null];
                 return (
+                  <Fragment key={k}>
                   <tr
-                    key={k}
                     className={`${n.depth === 1 ? s.phaseRow : n.children.length ? s.grpRow : s.leafRow} ${isNew ? s.newRow : ''}`}
                   >
                     <td className={s.code} style={{ paddingLeft: 6 + (n.depth - 1) * 14 }}>
@@ -418,15 +454,35 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                     <td className={s.nm} title={nameOf(n)}>
                       {nameOf(n)}
                       {isNew && <span className={s.badge}>{tr('шинэ')}</span>}
-                    </td>
-                    <td className={s.r}>
-                      {zeroWeight(r) && (isNew || isSubstage(n)) ? (
-                        <span className={s.warnNote} title={isNew
-                          ? tr('Жин 0% — бусад дэд шат 100%-ийг эзэлсэн тул энэ дэд шатны явц эцэг мөрөнд нөлөөлөхгүй. Жинг Excel-ээр засна уу.')
-                          : tr('Жин 0% — явц нь эцэг мөрөнд нөлөөлөхгүй. Эцгийн мөрийн «Жин тэнцүүлэх» товчоор засна.')}>
-                          ⚠ {pct(v.F, 1)}
+                      {sumBad && (
+                        <span className={s.warnNote} title={tr('Доорх ажлуудын жингийн нийлбэр 100% байх ёстой — эс бөгөөс ажлуудын төсвийн нийлбэр энэ мөрийн төсөвтэй тэнцэхгүй.')}>
+                          ⚠ {tr('Ажлуудын жин {0}', pct(wsum, 1))}
                         </span>
-                      ) : pct(v.F, 1)}
+                      )}
+                    </td>
+                    <td className={s.r}>{ed && work ? input(n, 'weight', s.inpPct) : pct(v.F, 1)}</td>
+                    <td className={s.r}>
+                      {ed && work ? (
+                        <input
+                          className={`${s.inp} ${s.inpAmt} ${pend.edits[k]?.weight != null ? s.inpDirty : ''}`}
+                          value={amt[k] ?? (money == null ? '' : String(Math.round(money)))}
+                          placeholder="—"
+                          inputMode="decimal"
+                          readOnly={locked}
+                          aria-label={`${dcode.get(n) ?? ''} ${tr('Төсөвт өртөг')}`}
+                          title={tr('Дүн бичвэл эцэг мөрийн төсвийн хувь болж жинд бичигдэнэ')}
+                          onChange={(e) => { const t = e.target.value; setAmt((a) => ({ ...a, [k]: t })); }}
+                          onBlur={() => commitAmount(n)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') { e.preventDefault(); commitAmount(n); }
+                            else if (e.key === 'Escape') { e.preventDefault(); setAmt((a) => { const nx = { ...a }; delete nx[k]; return nx; }); }
+                          }}
+                        />
+                      ) : money == null ? '—' : (
+                        <span className={v.E == null ? s.alloc : undefined} title={v.E == null ? tr('Эцэг мөрийн төсвөөс жингээр оноосон') : undefined}>
+                          {num(money)}
+                        </span>
+                      )}
                     </td>
                     <td>{ed ? input(n, 'start', s.inpDate, dayOf(ia) || 'YYYY-MM-DD') : (dayOf(v.H) || '—')}</td>
                     <td>{ed ? input(n, 'end', s.inpDate, dayOf(ib) || 'YYYY-MM-DD') : (dayOf(v.I) || '—')}</td>
@@ -435,14 +491,15 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                     <td className={s.r}>{pct(v.T, 1)}</td>
                     {canEdit && (
                       <td className={s.act}>
-                        {sub?.can && (
+                        {canAdd && (
                           <button
                             type="button"
                             className={s.add}
                             disabled={locked}
-                            title={sub.missing.map((m) => SUB_TEXT[m]?.() ?? m).join(' · ')}
-                            onClick={() => addSubs(n)}
-                          >{tr('+ Дэд шат ({0})', sub.missing.length)}</button>
+                            aria-expanded={formOpen}
+                            title={tr('Энэ мөрийн доор нэр бичиж ажил нэмнэ — жин нь ажлуудад тэнцүү хуваагдана')}
+                            onClick={() => { setNameErr(null); setNewName(''); setAdding(formOpen ? null : k); }}
+                          >{tr('+ Ажил нэмэх')}</button>
                         )}
                         {isNew && (
                           <button
@@ -459,23 +516,39 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                             type="button"
                             className={s.rm}
                             disabled={locked}
-                            title={tr('Энэ дэд шатны мөрийг устгах (хадгалахад)')}
+                            title={tr('Энэ нэмсэн ажлын мөрийг устгах (хадгалахад)')}
                             aria-label={tr('Устгах')}
                             onClick={() => { setMsg(null); setPend((p) => toggleDelete(p, origByKey.get(k)!)); }}
                           >{tr('Устгах')}</button>
                         )}
-                        {needsEqualize(n) && r.objectid != null && (
-                          <button
-                            type="button"
-                            className={s.add}
-                            disabled={locked}
-                            title={tr('Дэд шатуудын жинг тэнцүү (1/n) болгоно — 0 эсвэл буруу жинтэй үед')}
-                            onClick={() => { setMsg(null); setPend((p) => toggleEq(p, r.objectid!)); }}
-                          >{eqSet.has(r.objectid) ? tr('Тэнцүүлэхээ болих') : tr('Жин тэнцүүлэх')}</button>
-                        )}
                       </td>
                     )}
                   </tr>
+                  {formOpen && (
+                    <tr className={s.addForm}>
+                      <td colSpan={11}>
+                        <div className={s.addFormIn} role="group" aria-label={tr('Ажил нэмэх')}>
+                          <input
+                            className={`${s.inp} ${s.inpName}`}
+                            value={newName}
+                            autoFocus
+                            placeholder={tr('Ажлын нэр')}
+                            aria-label={tr('Ажлын нэр')}
+                            readOnly={locked}
+                            onChange={(e) => { setNameErr(null); setNewName(e.target.value); }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') { e.preventDefault(); addWork(n); }
+                              else if (e.key === 'Escape') { e.preventDefault(); setAdding(null); }
+                            }}
+                          />
+                          <button type="button" className={s.add} disabled={locked} onClick={() => addWork(n)}>{tr('Нэмэх')}</button>
+                          <button type="button" className={s.rm} disabled={locked} onClick={() => setAdding(null)}>{tr('Болих')}</button>
+                          {nameErr && <span className={s.err} role="alert">{nameErr}</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -487,7 +560,7 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
             </p>
           )}
           <p className={s.hint}>
-            {tr('Дэд шат — санхүүжилтийн «Төсөл төлөвлөгөө биелэлт» хүснэгтийн бүтцийн мөр (мөнгөгүй), багцын зураг төслийн мөрийн доор 4-р түвшинд хадгалагдана; ТТБ хуудсанд ч харагдана.')}
+            {tr('«+ Ажил нэмэх» — багцын зураг төслийн мөрийн доор нэрээр ажил нэмнэ; «Төсөл төлөвлөгөө биелэлт» хүснэгтэд хадгалагдаж тэр хуудсанд ч харагдана. Жин нь ажлуудад тэнцүү хуваагдана, хувь эсвэл дүнгээр өөрчилж болно. Ажлын төсөвт өртөг = эцэг мөрийн төсөв × жин; эцэг мөрийн төсөв өөрчлөгдөхгүй.')}
           </p>
         </div>
 

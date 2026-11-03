@@ -1,5 +1,16 @@
 import { t as tr } from '@/lib/i18nCore';
-import { BAGTS_AJLUUD, GUITS, GAZAR_CH } from './env';
+import { BAGTS_AJLUUD, GUITS, GAZAR_CH, ENT_HOSTED } from './env';
+
+/**
+ * НИЙТИЙН ВЭБИЙН ХҮСНЭГТҮҮД (2026-11-03) — selbecity.mn-д өгөх тоон статистик; spatial биш 6 hosted table.
+ * Эзэн: хэрэглэгч; org-д edit эрхтэй хуваалцсан; систем нэвтэрсэн хэрэглэгчийн токеноор дарж бичнэ
+ * (`lib/publicSync`). View-үүдийг хэрэглэгч өөрөө үүсгэнэ — код view-г мэдэхгүй, ашиглахгүй.
+ */
+export const SELBE_PUBLIC = {
+  url: `${ENT_HOSTED}/selbe_public_sanhuu_guitsetgel_hunhuch_gazar_niiigem_eh_uusver/FeatureServer`,
+  oid: 'objectid',
+  tables: { sanhuu: 244, niigem: 245, hunHuch: 246, guitsetgel: 247, gazar: 248, ehUusver: 249 },
+} as const;
 
 /* ══════════════════════ Барилгын хяналт ══════════════════════ */
 

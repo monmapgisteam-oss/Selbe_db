@@ -5,7 +5,11 @@
 import type { Row } from '@/lib/query';
 import { HO_IPC, PKG_BY_BAGTS, bagtsKey, hoAmount, isPkgRange, pkgKeyOf } from '@/lib/services';
 
-/** HO гэрээний багцын түлхүүр → Cashflow-ийн багцын түлхүүр (санхүүгийн НЭГ гэрээ) */
+/**
+ * HO гэрээний багцын түлхүүр → Cashflow-ийн багцын түлхүүр (санхүүгийн НЭГ гэрээ).
+ * ⚠️ 2026-11-03: HO өгөгдлийн нэрийг Cashflow-тэй ИЖИЛ болгов (ХО-0031 «Багц-7» → «БАГЦ-7.1», ХО-0033 «Багц-8.1» → «Багц-8»),
+ *    тул амьд өгөгдөлд энэ холбоос хэрэглэгдэхгүй; хуучин экспорт/хуулбарт (нэр буцаж ирвэл) хамгаалалт болгон ҮЛДЭЭВ.
+ */
 export const HO_PKG_ALIAS: Readonly<Record<string, string>> = {
   'БАГЦ81': 'БАГЦ8',
 };
@@ -24,7 +28,7 @@ export const MAP_PKG_ALIAS: Readonly<Record<string, { key: string; label: string
 
 /**
  * САНХҮҮГИЙН НЭГДСЭН ХОЛБООС — HO ба Cashflow-ийн түлхүүр → газрын зургийн багцын түлхүүр/нэр.
- * HO «Багц-8.1» → (`HO_PKG_ALIAS`) «Багц 8» → (`MAP_PKG_ALIAS`) «Багц 8.2».
+ * Гэрээний «Багц 8» → (`MAP_PKG_ALIAS`) зургийн «Багц 8.2»; хуучин HO «Багц-8.1» → (`HO_PKG_ALIAS`) «Багц 8» → «Багц 8.2».
  */
 export const FIN_PKG_ALIAS: Readonly<Record<string, { key: string; label: string }>> = {
   ...MAP_PKG_ALIAS,

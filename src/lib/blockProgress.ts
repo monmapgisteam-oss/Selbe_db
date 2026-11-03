@@ -326,10 +326,23 @@ export type PkgProgress = {
 };
 
 /**
- * БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ — тухайн багцын БҮХ блокийн ЭНГИЙН дундаж, 0–100;
- * тайлагнаагүй блок 0%. Түлхүүр нь `bagtsKey` («БАГЦ1», «БАГЦ41»).
+ * БЛОКИЙН ЖИН — `buildingKey` → «Хэсэгт эзлэх» (Excel F, 0–1) — CASHFLOW_NEW-ийн блокийн мөрөөс (2026-11-03,
+ * хэрэглэгч: «1–4-ийг зас» — багцын явц ТТБ-тэй ЗӨРДӨГ байв: ТТБ Excel-ийн жингээр (9 давхар 4.458 · 12 давхар 5.813),
+ * самбар энгийн дундажаар). Одоо `pkgProgressOf` энэ жингээр нэгтгэнэ → ТТБ = самбар = тайлан = бөглөх хуудас.
+ * Уншигдаагүй / жингүй бол энгийн дундаж (урьдын зан).
  */
-export function pkgProgressOf(pm: BlockProgressMap, universe: BlockUniverse): Map<string, PkgProgress> {
+let blockWeights: ReadonlyMap<string, number> | null = null;
+/** Сүүлд уншсан жин — `pkgProgressOf`-ийн анхдагч (уншаагүй бол `null` → энгийн дундаж); ачаалагч нь `loadBlockWeights` */
+export const cachedBlockWeights = (): ReadonlyMap<string, number> | null => blockWeights;
+
+/**
+ * БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ — тухайн багцын БҮХ блокийн ЖИНЛЭСЭН дундаж (`weights`: Excel F; жингүй блок —
+ * мэдэгдэж буй жингийн дундаж; жин огт байхгүй бол энгийн дундаж), 0–100; тайлагнаагүй блок 0%.
+ * Түлхүүр нь `bagtsKey` («БАГЦ1», «БАГЦ41»). ⚠️ ТТБ-ийн багцын S-тэй ИЖИЛ байх ёстой (`loadBlockWeights`).
+ */
+export function pkgProgressOf(
+  pm: BlockProgressMap, universe: BlockUniverse, weights: ReadonlyMap<string, number> | null = blockWeights,
+): Map<string, PkgProgress> {
   const pkgOf = (key: string) => { const cut = key.indexOf('|'); return cut < 0 ? key : key.slice(0, cut); };
   /* багц → хуваарийн түлхүүрүүд (давхардалгүй) */
   const keysOf = new Map<string, Set<string>>();
@@ -345,14 +358,21 @@ export function pkgProgressOf(pm: BlockProgressMap, universe: BlockUniverse): Ma
   }
   const out = new Map<string, PkgProgress>();
   for (const [pk, keys] of keysOf) {
-    let sum = 0, n = 0;
+    if (!keys.size) continue;
+    /* жин: мэдэгдэж буй блокуудын жин; жингүй блок — тэдгээрийн дундаж (эсвэл 1) */
+    let known = 0, kn = 0;
+    if (weights) for (const key of keys) { const w = weights.get(key); if (w != null && w > 0) { known += w; kn += 1; } }
+    const fill = kn ? known / kn : 1;
+    let sum = 0, wsum = 0, n = 0;
     for (const key of keys) {
+      const w = (weights && kn ? weights.get(key) : null) ?? fill;
+      wsum += w;
       const c = pm.get(key);
       if (c == null || !Number.isFinite(c.overall)) continue; // тайлагнаагүй — 0%
-      sum += c.overall;
+      sum += w * c.overall;
       n += 1;
     }
-    if (keys.size > 0) out.set(pk, { pct: sum / keys.size, blocks: n, total: keys.size });
+    out.set(pk, { pct: wsum > 0 ? sum / wsum : 0, blocks: n, total: keys.size });
   }
   return out;
 }
@@ -583,7 +603,33 @@ export async function loadBlockProgressFresh(): Promise<BlockProgressMap> {
 /**
  * БАГЦ БҮРИЙН БЛОКИЙН ХУВААРЬ (`BlockUniverse`) — бөглөх хуудсуудын бүдүүвчээс.
  */
-export const loadBlockUniverse: () => Promise<BlockUniverse> = memo(sheetBlockKeys);
+/** Блокийн жин (Excel F) — CASHFLOW_NEW-ийн блокийн мөрөөс; `cachedBlockWeights`-ийг дүүргэнэ */
+export const loadBlockWeights: () => Promise<ReadonlyMap<string, number>> = memo(async () => {
+  const { CASHFLOW_NEW, CF_MONTH, bagtsKey: bk } = await import('./services');
+  const { queryFeatures } = await import('./query');
+  const CF = CASHFLOW_NEW.fields;
+  const rows = await queryFeatures(CASHFLOW_NEW.url, {
+    where: `${CF.block} IS NOT NULL AND ${CF_MONTH.start} IS NULL`,
+    outFields: [CF.pkg, CF.block, CF.wSection],
+  });
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const w = Number(r[CF.wSection]);
+    const bl = t(r[CF.block]).trim();
+    if (!bk(r[CF.pkg]) || !bl || !Number.isFinite(w) || w <= 0) continue;
+    const k = buildingKey(r[CF.pkg], bl);
+    out.set(k, (out.get(k) ?? 0) + w);
+  }
+  blockWeights = out;
+  return out;
+}, ['CASHFLOW_NEW']);
+
+export const loadBlockUniverse: () => Promise<BlockUniverse> = memo(async () => {
+  /* Жинг хамт халаана — `pkgProgressOf`-ийн анхдагч жин (`cachedBlockWeights`) хуваарьтай хамт бэлэн байх ёстой;
+     унавал энгийн дундаж (урьдын зан), хуваарь өөрөө унахгүй */
+  const [u] = await Promise.all([sheetBlockKeys(), loadBlockWeights().catch(() => null)]);
+  return u;
+});
 
 /**
  * Багц бүрийн гүйцэтгэл (`pkgProgressOf`) — хэмжилт + хуваарийг хамт ачаална.

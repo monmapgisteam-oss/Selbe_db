@@ -14,7 +14,7 @@ import { t as tr } from './i18nCore';
 import { applyAll } from './tableWrite';
 import { invalidate } from './dataBus';
 import { CASHFLOW_NEW, pkgKeyOf } from './services';
-import type { PhaseKind, PlanNode, PlanStoredRow, PlanTree } from './projectPlan';
+import { isAddedWork, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 
 const F = CASHFLOW_NEW.fields;
 const DAY = 86_400_000;
@@ -25,8 +25,15 @@ export const MANUAL_PHASES: ReadonlySet<PhaseKind> = new Set<PhaseKind>([
 ]);
 
 /** Засагдах утга — `PlanStoredRow`-ийн түлхүүр, хүснэгтийн талбар, төрөл */
-export type PlanEditKey = 'pct' | 'contractDate' | 'orderDate' | 'orderNo' | 'handoverDate';
-export const PLAN_EDIT: Record<PlanEditKey, { key: keyof PlanStoredRow; field: string; kind: 'pct' | 'date' | 'text' }> = {
+export type PlanEditKey = 'budget' | 'srcBond' | 'srcSales' | 'srcCity' | 'srcNzd'
+  | 'pct' | 'contractDate' | 'orderDate' | 'orderNo' | 'handoverDate';
+export const PLAN_EDIT: Record<PlanEditKey, { key: keyof PlanStoredRow; field: string; kind: 'pct' | 'date' | 'text' | 'money' }> = {
+  /* 2026-11-03 (хэрэглэгч): урьдчилсан төсөвт өртөг ба 4 эх үүсвэр засагдана — эцэг мөр хүүхдүүдээс нийлж бодогдоно */
+  budget: { key: 'ho_dun_geree', field: F.budget, kind: 'money' },
+  srcBond: { key: 'zahiramj_unet_tsaas', field: 'zahiramj_unet_tsaas', kind: 'money' },
+  srcSales: { key: 'zahiramj_borluulalt_dun', field: 'zahiramj_borluulalt_dun', kind: 'money' },
+  srcCity: { key: 'zahiramj_niislel_tusuv', field: 'zahiramj_niislel_tusuv', kind: 'money' },
+  srcNzd: { key: 'zahiramj_nzd_nuuts', field: 'zahiramj_nzd_nuuts', kind: 'money' },
   pct: { key: 'guitsetgel_huvi', field: F.progressPct, kind: 'pct' },
   contractDate: { key: 'geree_ognoo', field: F.contractDate, kind: 'date' },
   orderDate: { key: 'zahiramj_ognoo', field: F.orderDate, kind: 'date' },
@@ -43,6 +50,14 @@ const oidOf = (n: PlanNode): number | null => {
 /** Засах боломжгүй шалтгаан; `null` = засаж болно */
 export function editWhy(n: PlanNode, k: PlanEditKey): string | null {
   if (oidOf(n) == null) return tr('Мөр хүснэгтэд хадгалагдаагүй');
+  if (PLAN_EDIT[k].kind === 'money') {
+    /* 2026-11-03: нэмсэн ажлын мөнгө — эцгийн төсвөөс жингээр оноогдоно (энд бичвэл бүлгийн жингийн дүрэм эвдэрнэ) */
+    if (isAddedWork(n)) return tr('Эцэг мөрийн төсвөөс жингээр оноогдоно — «ТЭЗҮ · Ажлын зураг төсөл» хуудсанд хувь эсвэл дүнгээр өөрчилнө');
+    /* Доод мөрүүдэд утга бичигдсэн бол энэ мөр нийлбэр — засагдахгүй */
+    const key = PLAN_EDIT[k].key;
+    const below = (x: PlanNode): boolean => x.children.some((c) => !c.outside && (c.row?.[key] != null || below(c)));
+    return below(n) ? tr('Дэд мөрүүдээс бодогдоно') : null;
+  }
   if (k !== 'pct') return null;
   if (!MANUAL_PHASES.has(n.phase)) return tr('Энэ үе шатын гүйцэтгэл системээс бодогдоно');
   if (n.children.length) return tr('Дэд мөрүүдээс бодогдоно');
