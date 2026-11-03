@@ -295,7 +295,7 @@ export const HABEA_LAYER_IDS: string[] = ["habea:osol", "habea:crane", "habea:bu
  * ҮЗЛЭГИЙН ДАВХАРГА — фокусын маягт бүрт нэг (2026-09-15).
  */
 export const HABEA_UZLEG_LAYER_ID = {
-  v11: "habea:uzV11", guitsetgegch: "habea:uzG", zahialagch: "habea:uzZ",
+  v11: "habea:uzV11", guitsetgegch: "habea:uzG", guitsetgegchMn: "habea:uzGmn", zahialagch: "habea:uzZ",
   env: "habea:uzEnv", cold: "habea:uzCold", fire: "habea:uzFire", hazard: "habea:uzHazard",
   autocrane: "habea:uzAutocrane", pump: "habea:uzPump", gondola: "habea:uzGondola", tower: "habea:uzTower",
 } as const;

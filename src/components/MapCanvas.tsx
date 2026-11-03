@@ -289,12 +289,23 @@ const line = (hex: string, w = 1.4, dash: NonNullable<LayerDef['dash']> = 'solid
 };
 
 /** Цэг — цагаан хүрээтэй; хэлбэрээр нь сэдэв доторх давхаргууд ялгарна */
+/** Pin-ий SVG зам (32×44 хайрцаг, үзүүр нь доод төвд) */
+const PIN_PATH = 'M16 0C7.2 0 0 7.1 0 15.9 0 27.8 16 44 16 44S32 27.8 32 15.9C32 7.1 24.8 0 16 0Z';
+
 const dot = (hex: string, size = 9, marker: NonNullable<LayerDef['marker']> = 'circle') =>
-  ({
-    type: 'simple-marker', style: marker, size,
-    color: c(hex, 0.95),
-    outline: { color: [255, 255, 255, 0.9], width: ow(1.4) },
-  }) as const;
+  marker === 'pin'
+    ? ({
+        /* `path` нь хайрцгийн урт талаар `size`-д багтна; үзүүрийг цэг дээр буулгахаар хагас өндрөөр өргөнө */
+        type: 'simple-marker', style: 'path', path: PIN_PATH, size,
+        yoffset: size / 2,
+        color: c(hex, 0.95),
+        outline: { color: [255, 255, 255, 0.95], width: ow(1.2) },
+      } as const)
+    : ({
+        type: 'simple-marker', style: marker, size,
+        color: c(hex, 0.95),
+        outline: { color: [255, 255, 255, 0.9], width: ow(1.4) },
+      } as const);
 
 /**
  * НҮХЭН ЖОРЛОНГИЙН ЦЭГ — 1,675 объект, ХАМГИЙН ЭНГИЙН дүрслэл: жижиг дугуй.
@@ -1783,6 +1794,8 @@ export const MapCanvas = memo(function MapCanvas({
       return DEFAULT_MESH_VER;
     }
   });
+  /** Нислэг сонгогч — анхдагч ХУРААГДСАН (2026-11-03, хэрэглэгч: «эхний байдал дээр хураасан байлга») */
+  const [flightOpen, setFlightOpen] = useState(false);
   const meshVerRef = useRef(meshVer);
   useSyncRef(meshVerRef, meshVer);
   const pickMeshVer = useCallback((v: MeshVer) => {
@@ -4201,6 +4214,12 @@ export const MapCanvas = memo(function MapCanvas({
           үед) нислэгийн ортофото тайл солигдоно ( 2026-10-20: `ORTHO_FLIGHTS` — хоёулаа нэг `meshVer`). */}
       {(dim === '3d' || ortho) && !scene && ready && (
         <div className={s.flightBar} role="group" aria-label={tr('3D мешийн нислэг')} data-flight="">
+          {!flightOpen ? (
+            <button type="button" className={`${s.flightBtn} ${s.flightOn}`} aria-expanded={false}
+              title={tr('Нислэг сонгох')} onClick={() => setFlightOpen(true)}>
+              {meshVer === 'old' ? tr('Нислэг 1') : tr('Нислэг 2')} ▴
+            </button>
+          ) : (<>
           {FLIGHTS.map((f) => (
             <button
               key={f}
@@ -4217,6 +4236,9 @@ export const MapCanvas = memo(function MapCanvas({
               {f === 'old' ? tr('Нислэг 1') : tr('Нислэг 2')}
             </button>
           ))}
+          <button type="button" className={s.flightBtn} aria-expanded title={tr('Хураах')} aria-label={tr('Хураах')}
+            onClick={() => setFlightOpen(false)}>▾</button>
+          </>)}
         </div>
       )}
 

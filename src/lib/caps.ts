@@ -25,6 +25,7 @@ export type CapKey =
   | 'chanarReview'
   | 'hamaaral'
   | 'habeaData'
+  | 'habeaOwn'
   | 'sysClose'
   | 'docsUpload'
   | 'docsGroups'
@@ -90,6 +91,12 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    * Батлагчгүй, багцаар хуваарилагдахгүй — шууд ArcGIS-д. Эрхгүй хүн карт ЭНГИЙН харна.
    */
   { key: 'habeaData', icon: 'shield' },
+  /**
+   * ХАБЭА — ЗӨВХӨН ӨӨРИЙН БАГЦ ХАРАХ (2026-11-03, хэрэглэгч: «гүйцэтгэгч багцын аккаунтаараа нэвтрээд зөвхөн тухайн
+   * багцын мэдээллээ л харах»). Энэ эрхтэй аккаунтад ХАБЭА хуудасны бүх чарт · газрын зураг · тайлан тухайн хүнд аль
+   * нэг эрхийн хуудсанд оноогдсон багцаар шүүгдэнэ (`habeaScope`). «ХАБЭА-ийн бүртгэл оруулах»-аас ТУСДАА.
+   */
+  { key: 'habeaOwn', icon: 'helmet' },
   /** ТЭЗҮ · ЗУРАГ ТӨСӨЛ ЗАСАХ (2026-10-26) — навч мөрийн огноо, явц; батлагчгүй, аккаунтаар. */
   { key: 'zuragEdit', icon: 'pen' },
   /**
@@ -142,6 +149,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   chanarReview: ['ma'],
   hamaaral: ['bagtsHamaaral'],
   habeaData: ['habea'],
+  habeaOwn: ['habea'],
   sysClose: [],
   docsUpload: [],
   docsGroups: [],

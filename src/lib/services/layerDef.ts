@@ -41,7 +41,8 @@ export type LayerDef = {
   dash?: "solid" | "dash" | "dot" | "dash-dot" | "long-dash";
   width?: number;
   fill?: number;
-  marker?: "circle" | "square" | "diamond";
+  /** `pin` — дусал хэлбэрийн тэмдэглэгээ, үзүүр нь цэг дээрээ (2026-11-03, HSE_Action) */
+  marker?: "circle" | "square" | "diamond" | "pin";
   size?: number;
   /**
  * Полигоны ХҮРЭЭНИЙ өнгө — өгөөгүй бол `hue` (дүүргэлттэй ижил).

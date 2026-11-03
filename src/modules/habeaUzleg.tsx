@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures, queryGroup, count, sum, arcgisPost, type Row } from '@/lib/query';
 import { getAuth } from '@/lib/draftRemote';
+import { devToken } from '@/lib/authToken';
 import { attachmentFileName, fetchAttachment, rasterTypeOfBlob } from '@/lib/uzlegReport';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
@@ -29,7 +30,7 @@ import h from './habea.module.css';
 /* ═════════════════ Төрөл ═════════════════ */
 
 /** Аль маягт вэ */
-export type UzlegKind = 'v11' | 'guitsetgegch' | 'zahialagch'
+export type UzlegKind = 'v11' | 'guitsetgegch' | 'guitsetgegchMn' | 'zahialagch'
   | 'env' | 'cold' | 'fire' | 'hazard' | 'autocrane' | 'pump' | 'gondola' | 'tower';
 
 const U = HABEA.uzleg.fields;
@@ -40,7 +41,8 @@ const U = HABEA.uzleg.fields;
 export const UZLEG_SHORT: Record<UzlegKind, () => string> = {
   zahialagch: () => tr('Захиалагчийн ажлын байрны үзлэг'),
   v11: () => tr('Ажлын байрны үзлэг V1.1'),
-  guitsetgegch: () => tr('Гүйцэтгэгчийн ажлын байрны үзлэг'),
+  guitsetgegch: () => tr('Гүйцэтгэгчийн үзлэг (Хятад хэл)'),
+  guitsetgegchMn: () => tr('Гүйцэтгэгчийн үзлэг - Барилгын талбай'),
   env: () => tr('Байгаль орчны үзлэг'),
   cold: () => tr('Хүйтний үеийн түр зогсолтын үзлэг'),
   fire: () => tr('Галын аюулгүй байдлын үзлэг'),
@@ -305,7 +307,8 @@ const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
  */
 const loadPrivate = async (url: string): Promise<Row[]> => {
   const auth = await getAuth();
-  if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
+  /* ⚠️ 2026-11-02: нэвтрэлт унтраалттай ЛОКАЛ dev-д dev токеноор уншина (`authToken.devToken` — production-д үргэлж null) */
+  if (!auth && !devToken()) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   return queryFeatures(url, { outFields: ['*'] });
 };
 
@@ -320,6 +323,7 @@ const loaders: Record<UzlegKind, () => Promise<Row[]>> = {
     5 * 60_000,
     ['HABEA'],
   ),
+  guitsetgegchMn: cached(() => loadPrivate(HABEA.uzleg.guitsetgegchMn.url), 5 * 60_000, ['HABEA']),
   zahialagch: cached(
     () => loadPrivate(HABEA.uzleg.zahialagch.url),
     5 * 60_000,
@@ -427,7 +431,8 @@ export function loadWeekScores(now: Date = new Date()): Promise<WeekScores> {
 
 async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promise<WeekScores> {
   const auth = await getAuth();
-  if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
+  /* ⚠️ 2026-11-02: нэвтрэлт унтраалттай ЛОКАЛ dev-д dev токеноор уншина (`authToken.devToken` — production-д үргэлж null) */
+  if (!auth && !devToken()) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   const where = `(${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)})`;
   const groupBy = `${U.site},${U.company}`;
   const metas = await Promise.all(SCORE_URLS.map((url) => loadDomains(url, url === HABEA.uzleg.v11.url ? 'v11' : 'zahialagch')));
@@ -953,7 +958,8 @@ type UzPhotoSet = { items: UzPhoto[]; failed: number };
 async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhotoSet> {
   if (!rows.length) return { items: [], failed: 0 };
   const auth = await getAuth();
-  if (!auth) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
+  /* ⚠️ 2026-11-02: нэвтрэлт унтраалттай ЛОКАЛ dev-д dev токеноор уншина (`authToken.devToken` — production-д үргэлж null) */
+  if (!auth && !devToken()) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   const OID_BATCH = 100;
   const groups: {
     parentObjectId: number;
@@ -1273,7 +1279,11 @@ export const stepNote = (
   </span>
 );
 
-export function UzlegFin({ st, sel, onPick, curYm = '' }: { st: State; curYm?: string } & Pick) {
+export function UzlegFin({ st, sel, onPick, curYm = '', week = true }: {
+  st: State; curYm?: string;
+  /** «Үзлэг — долоо хоногоор» картыг харуулах эсэх — гүйцэтгэгчийн зэрэгцээ харагдацад хасна (2026-11-03) */
+  week?: boolean;
+} & Pick) {
   const scroll = useRef<HTMLDivElement>(null);
   /**
    * ӨДӨР ↔ САР — НЭГ КАРТ, гарчгийн шилжүүлэгчтэй (2026-09-17, хэрэглэгчийн
@@ -1339,6 +1349,7 @@ export function UzlegFin({ st, sel, onPick, curYm = '' }: { st: State; curYm?: s
         * болго») ЭНД, өдөр ба сарын цуваатай НЭГ ЗУРВАСТ, ижил муруйгаар.
         * Гурвуулаа ЦАГ ХУГАЦААНЫ цуваа тул зэрэгцэн харагдах нь зөв.
         */}
+      {week && (
       <Section
         title={wk.score ? tr('Үзлэг — долоо хоногоор, оноо') : tr('Үзлэг — долоо хоногоор')}
         note={wk.items.length
@@ -1360,6 +1371,7 @@ export function UzlegFin({ st, sel, onPick, curYm = '' }: { st: State; curYm?: s
           )
           : uzEmpty(sel)}
       </Section>
+      )}
     </>
   );
 }

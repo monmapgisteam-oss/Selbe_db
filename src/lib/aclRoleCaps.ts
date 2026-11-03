@@ -25,7 +25,7 @@ export type DerivedSys = ScopedSys;
 /**
  * ХУВААРИЛАЛТААС ГАРДАГГҮЙ таван эрх — зөвхөн нэрээр, унтраалгаар олгоно.
  */
-export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'sysClose', 'docsUpload', 'docsGroups', 'zuragEdit', 'cfSwitch'];
+export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'habeaOwn', 'sysClose', 'docsUpload', 'docsGroups', 'zuragEdit', 'cfSwitch'];
 
 /** Эрх аль системийн хуваарилалтаас гардаг вэ — энгийн эрхэд `null` */
 export function capSystem(cap: CapKey): DerivedSys | null {

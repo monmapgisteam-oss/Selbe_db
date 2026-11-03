@@ -61,6 +61,9 @@ export const HABEA_SVC = {
     .replace("survey123_654f661e1f0e4b37a4fb3a7e026b09c3", "service_d3a71860374b45bdbfbe5a1650364f0d"),
   uzlegV11: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_V11_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_V11_SVC),
   uzlegG: svcRoot("NEXT_PUBLIC_HABEA_UZLEG_G_SVC", process.env.NEXT_PUBLIC_HABEA_UZLEG_G_SVC),
+  /** Гүйцэтгэгчийн ажлын байрны үзлэг - Барилгын талбай (`hse_contractor_inspection_mn`, 2026-10-22) — Хятад хэлний
+      маягттай (`uzlegG`, `_cn`) ИЖИЛ 322 талбар; ХАБЭА-ийн гүйцэтгэгчийн фокуст баруун талд. */
+  uzlegGMn: `${ENT_HOSTED}/service_8214d076994b4ca89262260133d4b411_form`,
   /** Захиалагчийн ажлын байрны үзлэг 2026 (`hse_client_inspection_2026`) — 2026-09-17-нд
       нийтлэгдсэн; `habea:uzZ` ба ХАБЭА-ийн захиалагчийн үзлэгийн самбар эндээс уншина. */
   uzlegZahialagch: `${ENT_HOSTED}/service_b56e0aa028f0441bb49ed6c40e381012`,

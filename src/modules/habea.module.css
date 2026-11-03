@@ -300,6 +300,180 @@
 /**
  * ДӨРВӨН ЭХ СУРВАЛЖ — 2×2 ТЭНЦҮҮ ХАВТАН.
  */
+/* ══ «Мэдээлэл» сонгогч ба «Тайлан татах» (2026-11-02) — нэг мөрөнд хоёр товч, сонголт доош задарна ══ */
+.infoBar {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.infoBar > * { flex: 1 1 0; min-width: 0; }
+/*
+ * Огноо · Багц · Компани — «Мэдээлэл · Тайлан татах»-ын доор (2026-11-03). Капсулын оронд ТАЛБАРЫН МӨР:
+ * бүтэн өргөн, шошго зүүн талд тогтмол өргөнтэй, утга ба ▾ баруун ирмэгт — гурван мөрийн утга нэг баганад
+ * тэгшрэнэ. ⚠️ `MultiSelect`/`DateRangePill`-ийн CSS модулийн нэр хэшлэгддэг тул БҮТЦЭЭР нь (div > span · button)
+ * зөвхөн энэ хайрцагт дарж бичнэ — бусад хуудасны капсул хэвээр.
+ */
+.fltPills {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+}
+.fltPills > div {
+  display: flex;
+  width: 100%;
+  height: 34px;
+  padding: 0 4px 0 12px;
+  border-width: 1px;
+  border-radius: var(--r);
+}
+.fltPills > div > span:first-child { flex: 0 0 64px; }
+.fltPills > div > button {
+  flex: 1 1 auto;
+  justify-content: space-between;
+  max-width: none;
+  height: 100%;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: var(--r-sm);
+}
+.fltPills .coNote { padding-left: 2px; }
+.infoWrap { position: relative; }
+/* ⚠️ 2026-11-02: «Тайлан татах» (`uzlegExport.module.css .trigger`)-тэй ЯГ ижил загвар */
+.infoBtn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--moss);
+  background: color-mix(in oklab, var(--moss) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--moss) 45%, transparent);
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.infoBtn:hover,
+.infoBtn[aria-expanded='true'] { background: color-mix(in oklab, var(--moss) 20%, transparent); }
+.infoBtn:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+/* Сонголт идэвхтэй — хүрээ тодорно */
+.infoBtnOn { border-color: var(--moss); }
+.infoBtn > svg { flex: none; }
+.infoBtnSel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.infoChev { transition: transform 0.18s; }
+.infoChevOpen { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .infoBtn, .infoChev { transition: none; }
+}
+/* ⚠️ 2026-11-02: цэс — бүлэг гарчиг · өнгөт цэг · чек · нарийн зааг */
+.infoMenu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: max(100%, 280px);
+  max-height: 64vh;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid color-mix(in oklab, var(--moss) 35%, var(--line));
+  border-radius: var(--r);
+  box-shadow: 0 12px 32px color-mix(in srgb, #000 32%, transparent);
+  scrollbar-width: thin;
+}
+/* Толгой мөр — гарчиг ба ↻ «Анхны харагдац» */
+.infoMenuHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 6px 9px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.infoReset {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--moss);
+  background: color-mix(in oklab, var(--moss) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--moss) 40%, transparent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.infoReset:hover:not(:disabled) { background: color-mix(in oklab, var(--moss) 22%, transparent); }
+.infoReset:hover:not(:disabled) svg { transform: rotate(-90deg); }
+.infoReset svg { transition: transform 0.2s; }
+.infoReset:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.infoReset:disabled { color: var(--ink-3); background: transparent; border-color: var(--line); cursor: default; opacity: 0.7; }
+.infoItem {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+  padding: 5px 9px;
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--r) - 3px);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.infoItem:hover { background: var(--surface-2); color: var(--ink); }
+.infoItem:focus-visible { outline: 2px solid var(--data); outline-offset: -2px; }
+.infoItemOn,
+.infoItemOn:hover {
+  color: var(--moss);
+  background: color-mix(in oklab, var(--moss) 14%, transparent);
+}
+.infoDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--surface) 70%, transparent);
+}
+.infoItemLabel { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; line-height: 1.25; }
+.infoItemOn .infoItemLabel { font-weight: 600; }
+.infoItemVal {
+  flex: none;
+  min-width: 22px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.infoCheck { flex: none; font-size: 12px; font-weight: 700; color: var(--moss); }
+@media (prefers-reduced-motion: reduce) { .infoItem, .infoReset, .infoReset svg { transition: none; } }
+
 .focusGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -658,6 +832,8 @@
   min-height: 0;
 }
 .finHalfGrid > section { min-width: 0; min-height: 0; }
+/* Ганц карттай хагас (гүйцэтгэгчийн зэрэгцээ харагдац) — бүтэн өргөнөөр */
+.finHalfOne { grid-template-columns: minmax(0, 1fr); }
 
 /* Газрын зураг — карттай ижил hairline хүрээ, сүүдэргүй (envhub) */
 .map {
@@ -813,31 +989,6 @@
    Зураг ДЭЭГҮҮР ЖИНХЭНЭ хөвөгч гадаргуу тул shadow-lg + blur нь энд
    зөвшөөрөгдөнө (overview-ийн mapTools/legend-тэй ижил хэл). ── */
 /* ══ ГАЗРЫН ЗУРГИЙН ШҮҮЛТҮҮР — баруун дээд булан ══ */
-.mapFilter {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 7;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-  max-width: calc(50% - 40px);
-  padding: 6px;
-  background: color-mix(in oklab, var(--surface) 96%, transparent);
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  box-shadow: var(--shadow);
-}
-
-@media (min-width: 721px) {
-  .mapFilter { flex-wrap: nowrap; justify-content: safe flex-end; overflow-x: auto; scrollbar-width: thin; }
-}
-/* Нарийн зурагт капсулууд босоо — хэвтээ дараалал зургийг бүрхэнэ */
-@media (max-width: 720px) {
-  .mapFilter { border-radius: var(--r-lg); flex-direction: column; align-items: flex-end; }
-}
-
 .pick {
   position: absolute;
   right: 12px;

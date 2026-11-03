@@ -27,9 +27,19 @@ export type XlsxCell = string | number | null | undefined | { v?: string | numbe
 /** Нэгдсэн муж — 0-суурьтай, хоёр зах ОРНО */
 export type XlsxMerge = { r1: number; c1: number; r2: number; c2: number };
 
+/**
+ * Шигтгэсэн зураг (2026-11-03) — `row`/`col` нүдний зүүн дээд буланд (0-суурьтай), өндөр `hPt` (pt),
+ * өргөн нь харьцаагаар. `bytes` — JPEG эсвэл PNG.
+ */
+export type XlsxPic = { row: number; col: number; bytes: Uint8Array; png: boolean; w: number; h: number; hPt: number };
+
 export type XlsxSheet = {
   name: string;
   rows: XlsxCell[][];
+  /** Мөрийн өндөр (pt) — мөрийн индексээр (0-суурьтай) */
+  heights?: Record<number, number>;
+  /** Шигтгэсэн зургууд */
+  pics?: XlsxPic[];
   merges?: XlsxMerge[];
   /** Баганын өргөн (Excel-ийн тэмдэгтийн нэгжээр); `undefined` = анхдагч */
   cols?: (number | undefined)[];
@@ -163,7 +173,7 @@ function cellXml(r: number, c: number, cell: XlsxCell, reg: StyleReg): string {
   return `<c r="${ref}"${sAttr} t="inlineStr"><is><t xml:space="preserve">${esc(String(v))}</t></is></c>`;
 }
 
-function sheetXml(sh: XlsxSheet, reg: StyleReg): string {
+function sheetXml(sh: XlsxSheet, reg: StyleReg, drawingRid: string | null = null): string {
   const nCols = Math.max(sh.cols?.length ?? 0, ...sh.rows.map((r) => r.length), 1);
   const nRows = Math.max(sh.rows.length, 1);
   let out = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -193,7 +203,9 @@ function sheetXml(sh: XlsxSheet, reg: StyleReg): string {
   sh.rows.forEach((row, r) => {
     let cells = "";
     row.forEach((cell, c) => { cells += cellXml(r, c, cell, reg); });
-    if (cells) out += `<row r="${r + 1}">${cells}</row>`;
+    const ht = sh.heights?.[r];
+    const htAttr = ht != null && ht > 0 ? ` ht="${ht}" customHeight="1"` : "";
+    if (cells || htAttr) out += `<row r="${r + 1}"${htAttr}>${cells}</row>`;
   });
   out += "</sheetData>";
   if (sh.merges?.length) {
@@ -201,8 +213,34 @@ function sheetXml(sh: XlsxSheet, reg: StyleReg): string {
     for (const m of sh.merges) out += `<mergeCell ref="${cellRef(m.r1, m.c1)}:${cellRef(m.r2, m.c2)}"/>`;
     out += "</mergeCells>";
   }
+  /* `drawing` нь `mergeCells`-ийн ДАРАА (элементийн дараалал спецээр хатуу) */
+  if (drawingRid) out += `<drawing r:id="${drawingRid}"/>`;
   out += "</worksheet>";
   return out;
+}
+
+/* ── Зураг (drawingN.xml) ── */
+
+const EMU_PER_PX = 9525;
+const PX_PER_PT = 96 / 72;
+
+function drawingXml(pics: XlsxPic[]): string {
+  const anchors = pics.map((p, i) => {
+    const hPx = p.hPt * PX_PER_PT;
+    const wPx = hPx * (p.w / Math.max(1, p.h));
+    const cx = Math.round(wPx * EMU_PER_PX);
+    const cy = Math.round(hPx * EMU_PER_PX);
+    return "<xdr:oneCellAnchor>"
+      + `<xdr:from><xdr:col>${p.col}</xdr:col><xdr:colOff>${3 * EMU_PER_PX}</xdr:colOff><xdr:row>${p.row}</xdr:row><xdr:rowOff>${3 * EMU_PER_PX}</xdr:rowOff></xdr:from>`
+      + `<xdr:ext cx="${cx}" cy="${cy}"/>`
+      + `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${i + 2}" name="Image ${i + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>`
+      + `<xdr:blipFill><a:blip r:embed="rId${i + 1}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>`
+      + `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>`
+      + "<xdr:clientData/></xdr:oneCellAnchor>";
+  }).join("");
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+    + anchors + "</xdr:wsDr>";
 }
 
 /* ── ZIP (STORE) ── */
@@ -312,15 +350,38 @@ export function buildXlsx(sheets: XlsxSheet[]): Uint8Array {
     }
     names.push(n);
   }
-  const sheetXmls = sheets.map((sh) => sheetXml(sh, reg));
+  /* Зурагтай хуудас бүрт drawing + media (дугаар нь бүх номоор үргэлжилнэ) */
+  const extra: ZipEntry[] = [];
+  const drawOver: string[] = [];
+  let mediaNo = 0;
+  let drawNo = 0;
+  const RELS_NS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+  const sheetXmls = sheets.map((sh, si) => {
+    if (!sh.pics?.length) return sheetXml(sh, reg);
+    drawNo += 1;
+    extra.push({ name: `xl/worksheets/_rels/sheet${si + 1}.xml.rels`, data: enc.encode(RELS_NS
+      + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${drawNo}.xml"/></Relationships>`) });
+    const rels = sh.pics.map((p, i) => {
+      mediaNo += 1;
+      const ext = p.png ? "png" : "jpeg";
+      extra.push({ name: `xl/media/image${mediaNo}.${ext}`, data: p.bytes });
+      return `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${mediaNo}.${ext}"/>`;
+    }).join("");
+    extra.push({ name: `xl/drawings/drawing${drawNo}.xml`, data: enc.encode(drawingXml(sh.pics)) });
+    extra.push({ name: `xl/drawings/_rels/drawing${drawNo}.xml.rels`, data: enc.encode(`${RELS_NS}${rels}</Relationships>`) });
+    drawOver.push(`<Override PartName="/xl/drawings/drawing${drawNo}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
+    return sheetXml(sh, reg, "rId1");
+  });
 
   const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
     + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
     + '<Default Extension="xml" ContentType="application/xml"/>'
+    + (mediaNo ? '<Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="png" ContentType="image/png"/>' : "")
     + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
     + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
     + sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")
+    + drawOver.join("")
     + "</Types>";
   const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
@@ -344,6 +405,7 @@ export function buildXlsx(sheets: XlsxSheet[]): Uint8Array {
     { name: "xl/_rels/workbook.xml.rels", data: enc.encode(wbRels) },
     { name: "xl/styles.xml", data: enc.encode(stylesXml(reg)) },
     ...sheetXmls.map((x, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: enc.encode(x) })),
+    ...extra,
   ];
   return zipStore(entries);
 }

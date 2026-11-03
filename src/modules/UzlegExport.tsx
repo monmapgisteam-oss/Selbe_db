@@ -24,17 +24,19 @@ import {
 } from '@/lib/uzlegReport';
 import { loadUzlegBoth, uzScoreLevel, UZLEG_SHORT, type UzlegKind, type UzlegRow } from './habeaUzleg';
 import { queryFeatures, type Row } from '@/lib/query';
+import { ActionExportDialog } from './ActionExport';
 import x from './uzlegExport.module.css';
 
 const KINDS: UzlegKind[] = [
-  'zahialagch', 'v11', 'guitsetgegch',
+  'zahialagch', 'v11', 'guitsetgegch', 'guitsetgegchMn',
   'env', 'cold', 'fire', 'hazard', 'autocrane', 'pump', 'gondola', 'tower',
 ];
 /** Файлын нэр ба Excel-ийн хуудасны гарчигт — «Морин сувд - Захиалагчийн үзлэг 2026-09-29» */
 const FORM_SHORT: Record<UzlegKind, string> = {
   zahialagch: 'Захиалагчийн үзлэг',
   v11: 'Ажлын байрны үзлэг V1.1',
-  guitsetgegch: 'Гүйцэтгэгчийн үзлэг',
+  guitsetgegch: 'Гүйцэтгэгчийн үзлэг (Хятад хэл)',
+  guitsetgegchMn: 'Гүйцэтгэгчийн үзлэг - Барилгын талбай',
   env: 'Байгаль орчны үзлэг',
   cold: 'Хүйтний үеийн түр зогсолтын үзлэг',
   fire: 'Галын аюулгүй байдлын үзлэг',
@@ -94,22 +96,31 @@ const scoreTone = (p: number | null) => {
 /** `domFail` — 2026-10-09: кодын тайлбар (domain) уншигдсангүй (`loadUzlegBoth`) */
 type Loaded = { kind: UzlegKind; raw: Row[]; rows: UzlegRow[]; domFail?: boolean };
 
-export function UzlegExportButton({ kind }: { kind?: UzlegKind | null }) {
-  const [open, setOpen] = useState(false);
+export function UzlegExportButton({ kind, scope = null }: {
+  kind?: UzlegKind | null;
+  /** ХАБЭА харах хүрээ (`habeaScope`, `habeaPkgKey` түлхүүр) — `null` = бүх багц; өгвөл тайланд зөвхөн тэр багцууд (2026-11-03) */
+  scope?: readonly string[] | null;
+}) {
+  /* ⚠️ 2026-11-02: 'action' — HSE_Action-ий тайлан (`ActionExportDialog`), асуумжийн жагсаалтын «Action» хавтангаас */
+  const [open, setOpen] = useState<'uz' | 'action' | null>(null);
   return (
     <>
-      <button type="button" className={x.trigger} onClick={() => setOpen(true)}>
+      <button type="button" className={x.trigger} onClick={() => setOpen('uz')}>
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
           <path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12v1.5h10V12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        {tr('Үзлэгийн тайлан татах')}
+        {/* ⚠️ 2026-11-02 (хэрэглэгч): «Мэдээлэл»-ийн хажууд товч нэр — цонхны гарчиг бүтэн хэвээр */}
+        {tr('Тайлан татах')}
       </button>
-      {open && <UzlegExportDialog initialKind={kind ?? 'zahialagch'} onClose={() => setOpen(false)} />}
+      {open === 'uz' && <UzlegExportDialog initialKind={kind ?? 'zahialagch'} scope={scope} onClose={() => setOpen(null)} onAction={() => setOpen('action')} />}
+      {open === 'action' && <ActionExportDialog scope={scope} onClose={() => setOpen(null)} onBack={() => setOpen('uz')} />}
     </>
   );
 }
 
-function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; onClose: () => void }) {
+function UzlegExportDialog({ initialKind, scope, onClose, onAction }: {
+  initialKind: UzlegKind; scope: readonly string[] | null; onClose: () => void; onAction?: () => void;
+}) {
   const [kind, setKind] = useState<UzlegKind>(initialKind);
   const [data, setData] = useState<Loaded | null>(null);
   const [loadErr, setLoadErr] = useState('');
@@ -169,10 +180,13 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
     if (!ready) return [] as number[];
     const a = dayStart(from); const b = dayEnd(to);
     return ready.rows.map((r, i) => ({ r, i }))
-      .filter(({ r }) => (r.d > 0 ? r.d >= a && r.d <= b : withUndated))
+      .filter(({ r }) => (!scope || scope.includes(r.bagtsK)) && (r.d > 0 ? r.d >= a && r.d <= b : withUndated))
       .map(({ i }) => i);
-  }, [ready, from, to, withUndated]);
-  const undated = useMemo(() => (ready && withUndated ? ready.rows.filter((r) => !(r.d > 0)).length : 0), [ready, withUndated]);
+  }, [ready, from, to, withUndated, scope]);
+  const undated = useMemo(
+    () => (ready && withUndated ? ready.rows.filter((r) => !(r.d > 0) && (!scope || scope.includes(r.bagtsK))).length : 0),
+    [ready, withUndated, scope],
+  );
   const companies = useMemo(() => {
     if (!ready) return [] as { key: string; n: number }[];
     const m = new Map<string, number>();
@@ -324,10 +338,17 @@ function UzlegExportDialog({ initialKind, onClose }: { initialKind: UzlegKind; o
                     onClick={() => { if (!on) { setKind(k); setCos([]); resetPick(); } }}>
                     <span className={x.formDot} style={{ background: LAYER_BY_ID[HABEA_UZLEG_LAYER_ID[k]]?.hue ?? 'var(--data)' }} aria-hidden />
                     <span className={x.formName}>{UZLEG_SHORT[k]()}</span>
-                    {on && ready && <span className={`${x.formCount} num`}>{tr('{0} үзлэг', num(ready.rows.length))}</span>}
                   </button>
                 );
               })}
+              {/* ⚠️ 2026-11-02 (хэрэглэгч): HSE_Action-ий тайлан — тусдаа цонх (хугацаа · багц · PDF/Excel) */}
+              {onAction && (
+                <button type="button" role="radio" aria-checked={false} disabled={lock}
+                  className={x.form} title={tr('Үл нийцлийн арилгалт (HSE Action)')} onClick={onAction}>
+                  <span className={x.formDot} style={{ background: LAYER_BY_ID['habea:action']?.hue ?? 'var(--data)' }} aria-hidden />
+                  <span className={x.formName}>{tr('Үл нийцлийн мэдээлэл')}</span>
+                </button>
+              )}
             </div>
           </section>
 

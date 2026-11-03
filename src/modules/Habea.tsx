@@ -52,10 +52,11 @@ import { MultiSelect } from '@/components/MultiSelect';
 import { DateRangePill } from '@/components/DateRangePill';
 import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError, type SeriesLineDef } from '@/components/ui';
 import { UzlegExportButton } from './UzlegExport';
+import { useHabeaScope, scopePkgs } from './habeaScope';
 import { loadHabeaRegisters, loadHabeaWaste, loadIsOrgAdmin, loadWasteCanCreate, HABEA_POLL_MS, HABEA_TTL_MS } from '@/lib/habeaRegisters';
 import { HabeaCardGrips } from './HabeaCardGrips';
 import { AddButton, RegisterAddDialog, WasteAddDialog } from './HabeaEntry';
-import { HseActionPanel } from './HabeaAction';
+import { HseActionPanel, loadActions, actionWhere, actValueLabel, actPickLabel, toggleActSel, NO_ACT_SEL, ACT_DIMS, ACT_DIM_LABEL, type ActSel, type ActDim } from './HabeaAction';
 
 /** «Хог хаягдал» донат — `HABEA.waste.kinds`-д байхгүй төрлийн нөөц өнгө (өгөгдлийн дарааллаар) */
 const WASTE_EXTRA = ['#7c3aed', '#0ea5e9', '#14b8a6', '#f97316', '#a3e635', '#ec4899', '#64748b', '#eab308'];
@@ -235,7 +236,7 @@ const normIncident = (r: Row, dom: CodedMaps): Inc => ({
 /* ─────────── Цамхагт кран ─────────── */
 
 const CRANE_HUE: Record<string, string> = {
-  'Шинээр нэмэгдсэн': 'var(--data)', 'Одоо байгаа': 'var(--data)', 'Буусан': '#9ca3af',
+  'Шинээр нэмэгдсэн': '#14b8a6', 'Одоо байгаа': '#14b8a6', 'Буусан': '#9ca3af',
 };
 
 type Crane = {
@@ -643,7 +644,7 @@ function pickRows(id: string, a: Record<string, unknown>, dom: CodedMaps): [stri
  * ШҮҮЛТҮҮРИЙН ЧИПҮҮД — өгөгдлийн эх сурвалж бүрд НЭГ.
  */
 const FOCUS_CHIPS: {
-  key: 'inc' | 'labor' | Exclude<UzlegKind, 'zahialagch'>;
+  key: 'inc' | 'labor' | 'action' | Exclude<UzlegKind, 'zahialagch' | 'guitsetgegchMn'>;
   label: () => string;
   count: (inc: number) => number | null;
 }[] = [
@@ -659,7 +660,18 @@ const FOCUS_CHIPS: {
   { key: 'pump', label: UZLEG_SHORT.pump, count: () => null },
   { key: 'gondola', label: UZLEG_SHORT.gondola, count: () => null },
   { key: 'tower', label: UZLEG_SHORT.tower, count: () => null },
+  /* ⚠️ 2026-11-02 (хэрэглэгч): HSE_Action-ийг захиалагчийн үзлэгээс салгаж ТУСДАА шүүлтүүр болгов */
+  { key: 'action', label: () => tr('Үл нийцлийн мэдээлэл'), count: () => null },
 ];
+
+/** Мөрийн өнгөт цэг — газрын зураг дээрх тэр мэдээллийн давхаргын өнгө (байхгүй бол саарал) */
+const infoHue = (k: (typeof FOCUS_CHIPS)[number]['key']): string => {
+  if (k === 'inc') return LAYER_BY_ID['habea:osol']?.hue ?? 'var(--ink-3)';
+  if (k === 'labor') return 'var(--ink-3)';
+  if (k === 'action') return LAYER_BY_ID['habea:action']?.hue ?? 'var(--ink-3)';
+  const id = HABEA_UZLEG_LAYER_ID[k === 'v11' ? 'zahialagch' : k];
+  return LAYER_BY_ID[id]?.hue ?? 'var(--ink-3)';
+};
 
 /* ─────────── Хөндлөн шүүлтийн загвар ─────────── */
 
@@ -789,12 +801,21 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   /* Олон хэмжээст хөндлөн шүүлт + зурган дээрээс сонгосон объект */
   const [sel, setSel] = useState<Sel>(NO_SEL);
+  /** «Үл нийцлийн мэдээлэл» фокусын чартын хөндлөн шүүлт (2026-11-02, `HabeaAction`) */
+  const [actSel, setActSel] = useState<ActSel>(NO_ACT_SEL);
   /**
    * БАГЦ ба КОМПАНИ — ОЛОН СОНГОЛТ (2026-09-15, хэрэглэгчийн хүсэлт).
    * Хоосон массив = бүгд. Хүснэгтийн мөр, газрын зургийн давхаргын аль аль
    * нь эдгээрээс ДАМЖИН `pkgEff`/`coEff`-ээр шүүгдэнэ.
    */
-  const [pkgs, setPkgs] = useState<string[]>([]);
+  const [pkgSel, setPkgs] = useState<string[]>([]);
+  /**
+   * ХАРАХ ХҮРЭЭ (2026-11-03) — «Эрхийн төрөл»-ийн «ХАБЭА харах: Өөрийн багц» (анхдагч: гүйцэтгэгч) аккаунт зөвхөн
+   * өөрт оноогдсон багцаа харна. `pkgs` нь ҮРГЭЛЖ хүрээнд багтсан (сонголтгүй бол бүх хүрээ) — доорх бүх шүүлт
+   * (чарт · газрын зураг · KPI · тайлан) эндээс дамжина. `null` = хязгааргүй.
+   */
+  const habScope = useHabeaScope(user?.username);
+  const pkgs = useMemo(() => scopePkgs(pkgSel, habScope), [pkgSel, habScope]);
   const { wasteSlices, wasteMeasured } = useMemo(() => {
     if (waste.state !== 'ready') return { wasteSlices: [], wasteMeasured: false };
     let measured = false;
@@ -841,8 +862,19 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * ФОКУС — АЛЬ өгөгдлийн самбар нээлттэй вэ (2026-09-06, хэрэглэгчийн
    * хүсэлт). `null` = ХУУДАСНЫ АНХНЫ харагдац.
    */
-  type Focus = 'inc' | 'labor' | Exclude<UzlegKind, 'zahialagch'> | null;
+  type Focus = 'inc' | 'labor' | 'action' | Exclude<UzlegKind, 'zahialagch' | 'guitsetgegchMn'> | null;
   const [focus, setFocus] = useState<Focus>(null);
+  /* ⚠️ 2026-11-02 (хэрэглэгч): «Мэдээлэл» нь товч — дарахад сонголтууд ДООШ задарна (шүүлтүүр шиг). Гадна дарах · Esc хаана. */
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!infoOpen) return undefined;
+    const down = (e: PointerEvent) => { if (!infoRef.current?.contains(e.target as Node)) setInfoOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setInfoOpen(false); };
+    document.addEventListener('pointerdown', down);
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', down); document.removeEventListener('keydown', key); };
+  }, [infoOpen]);
 
   /** Ослын чартууд нээлттэй эсэх — олон газар шалгагддаг тул тусад нь */
   const incOpen = focus === 'inc';
@@ -853,9 +885,11 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   const laborOpen = focus === null || laborFocus;
   const uzlegKind: UzlegKind | null =
-    focus === 'v11' ? 'zahialagch' : focus && focus !== 'inc' && focus !== 'labor' ? focus : null;
-  /** Захиалагчийн үзлэгийн фокус — зүүнд маягтын чартууд, баруунд үл нийцлийн арилгалт (`HseActionPanel`) */
-  const zFocus = focus === 'v11';
+    focus === 'v11' ? 'zahialagch' : focus && focus !== 'inc' && focus !== 'labor' && focus !== 'action' ? focus : null;
+  /** «Action» фокус — HSE_Action-ий чартууд (`HseActionPanel`, 2026-11-02) */
+  const actionFocus = focus === 'action';
+  /** Газрын зургийн шүүлтэд — самбартай ижил кэштэй ачаалагч (нэг л хүсэлт) */
+  const actRows = useAsync(() => (actionFocus ? loadActions() : Promise.resolve(null)), [actionFocus, tick], { keepOn: [tick] });
   const uz = useUzleg(uzlegKind);
   /**
    * ХОЁР МАЯГТ ЗЭРЭГЦЭЭ (2026-09-17, хэрэглэгчийн хүсэлт) — «Захиалагчийн
@@ -863,8 +897,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * маягт ИЖИЛ чартуудаар. Гүйцэтгэгчийн маягтын фокус ганц эх сурвалжтай
    * хэвээр.
    */
-  const dual = false as boolean;
-  const uz2 = useUzleg(dual ? 'zahialagch' : null);
+  const dual = uzlegKind === 'guitsetgegch';
+  /** Зэрэгцээ горимын БАРУУН маягт — 2026-11-03: гүйцэтгэгчийн хоёр маягт (Хятад хэл · Барилгын талбай) */
+  const DUAL2 = 'guitsetgegchMn' as const;
+  const uz2 = useUzleg(dual ? DUAL2 : null);
   /** Зүүн багана агуулгатай эсэх — торны баганын тоог шийднэ */
   const listOpen = true;
   /**
@@ -941,11 +977,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     setCos((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
     setPicked(null);
   }, []);
+  /** «Үл нийцлийн мэдээлэл» чарт дарахад — тухайн хэмжээсийн утгыг сонголтод нэмнэ/хасна */
+  const toggleAct = useCallback((dim: ActDim, key: string) => { setActSel((p) => toggleActSel(p, dim, key)); setPicked(null); }, []);
 
 
   /** Бүх шүүлт + зургийн сонголтыг нэг дор арилгана */
   const clearAll = useCallback(() => {
     setSel(NO_SEL);
+    setActSel(NO_ACT_SEL);
     setPkgs([]);
     setCos([]);
     setPicked(null);
@@ -1064,7 +1103,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       ? (cranes.find((c) => c.link === nn(picked.attrs[C.bufferLink]))?.oid ?? 0)
       : nn(picked.attrs[C.oid]))
     : 0;
-  const pickUzZ = dual && picked?.id === HABEA_UZLEG_LAYER_ID.zahialagch;
+  /** Үл нийцэл (HSE_Action) — зурагт дарвал «Үл нийцлийн мэдээлэл»-ийн БҮХ чарт тэр цэгийн (үзлэгийн) бүх мөрөөр (2026-11-03) */
+  const pickActOid = picked?.id === 'habea:action' ? nn(picked.attrs['objectid']) : 0;
+  const pickUzZ = dual && picked?.id === HABEA_UZLEG_LAYER_ID[DUAL2];
   const pickUzOid = picked && (Object.values(HABEA_UZLEG_LAYER_ID) as string[]).includes(picked.id)
     ? nn(picked.attrs['objectid'])
     : 0;
@@ -1144,7 +1185,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
   /** Фокусын маягтын газрын зургийн давхарга — фокус байхгүй бол `null` */
   const uzLayerId = uzlegKind ? HABEA_UZLEG_LAYER_ID[uzlegKind] : null;
-  const uzLayerId2 = dual ? HABEA_UZLEG_LAYER_ID.zahialagch : null;
+  const uzLayerId2 = dual ? HABEA_UZLEG_LAYER_ID[DUAL2] : null;
 
   /**
    * ҮЗЛЭГ → ГАЗРЫН ЗУРАГ. Үзлэгийн самбарт тоологдсон ЯГ тэр мөрүүдийг зурагт
@@ -1182,12 +1223,20 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const mapVisible = useMemo(() => {
     const uzIds = [...(uzLayerId ? [uzLayerId] : []), ...(uzLayerId2 ? [uzLayerId2] : [])];
     if (focus === 'inc') return ['habea:osol'];
+    /* ⚠️ 2026-11-02: «Action» — HSE_Action-ий цэгүүд */
+    if (focus === 'action') return ['habea:action'];
     if (uzlegKind) return uzIds;
     return visible;
   }, [visible, focus, uzlegKind, uzLayerId, uzLayerId2]);
 
+  /** «Үл нийцлийн мэдээлэл» → газрын зураг: 30 хоног (эсвэл «Огноо» муж) · багц · компани · чартын сонголт (`actionWhere`) */
+  const actWhere = useMemo(
+    () => (actionFocus ? actionWhere(actRows.state === 'ready' ? actRows.data : null, { pkgs, cos, days: sel.day }, actSel, now) : null),
+    [actionFocus, actRows, pkgs, cos, sel.day, actSel, now],
+  );
+
   const layerWhere = useMemo(() => {
-    if (!incOn && !craneOn && !uzWhere && !uzWhere2) return undefined;
+    if (!incOn && !craneOn && !uzWhere && !uzWhere2 && !actWhere) return undefined;
     const ids = fInc.map((x) => x.oid);
     const osol = incOn ? (ids.length ? `objectid IN (${ids.join(',')})` : '1=0') : null;
     const oids = fCrane.map((x) => x.oid).filter((o) => o > 0);
@@ -1201,6 +1250,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const out: Record<string, string | null> = { 'habea:osol': osol, 'habea:crane': kran, 'habea:buffer': buff };
     if (uzLayerId) out[uzLayerId] = uzWhere;
     if (uzLayerId2) out[uzLayerId2] = uzWhere2;
+    if (actWhere) out['habea:action'] = actWhere;
     if (zone) {
       for (const [id, w] of Object.entries(out)) {
         const d = LAYER_BY_ID[id];
@@ -1209,7 +1259,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       }
     }
     return out;
-  }, [incOn, craneOn, fInc, fCrane, uzLayerId, uzWhere, uzLayerId2, uzWhere2, zone]);
+  }, [incOn, craneOn, fInc, fCrane, uzLayerId, uzWhere, uzLayerId2, uzWhere2, actWhere, zone]);
 
   const bufferStyle = useMemo(() => {
     const d = LAYER_BY_ID['habea:buffer'];
@@ -1319,6 +1369,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const coAll = useMemo(() => companyTotals(laborDated), [laborDated]);
   const coOptions = coBase
     .filter((x) => x.ajiltan > 0 || x.tehnik > 0)
+    /* Хүрээтэй аккаунтад — зөвхөн өөрийн багцын гүйцэтгэгч */
+    .filter((x) => !habScope || habScope.includes(PKG_OF_CO.get(x.key) ?? ''))
     .sort((a, b) => b.ajiltan - a.ajiltan);
   /**
    * КОМПАНИАР ХҮНИЙ ТОО — «Техник болон хүн цаг» фокусын БАРУУН чарт.
@@ -1380,8 +1432,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     }
     return [...m.entries()]
       .map(([key, label]) => ({ key, label }))
+      .filter((o) => !habScope || habScope.includes(o.key))
       .sort((a, b) => cmpPkg(a.label, b.label));
-  }, [inc, cranes, labor.rows]);
+  }, [inc, cranes, labor.rows, habScope]);
 
   /* Шүүлтийн чипийн нэр — аль ч эх сурвалжийн түүхий бичиглэлээс */
   const pkgLabels = pkgs.map((k) => pkgOptions.find((o) => o.key === k)?.label ?? k);
@@ -1407,8 +1460,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    * тавигддаг тул ХОЁР чип гарган хэрэглэгчийг эргэлзүүлэхгүй — гүйцэтгэгчийн
    * ганц чипээр төлөөлүүлж, түүнийг арилгахад хоёулаа цуцлагдана.
    */
-  const chips: { dim: Dim2 | null; label: string; value: string; clear: () => void }[] = [];
-  if (pkgs.length) {
+  const chips: { dim: Dim2 | `act:${ActDim}` | null; label: string; value: string; clear: () => void }[] = [];
+  /* Хүрээтэй аккаунтад бүх хүрээ нь анхдагч — зөвхөн өөрөө нарийсгасан үед чип */
+  if (habScope === null ? pkgs.length : pkgSel.some((k) => habScope.includes(k))) {
     chips.push({
       dim: 'pkg', label: DIM_LABEL.pkg, value: pkgLabels.join(', '),
       clear: () => setPkgs([]),
@@ -1434,14 +1488,28 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       });
     }
   });
+  /* «Үл нийцлийн мэдээлэл» чартын сонголтууд */
+  if (actionFocus) {
+    for (const d of ACT_DIMS) {
+      const v = actSel[d];
+      if (!v.length) continue;
+      chips.push({
+        dim: `act:${d}`, label: ACT_DIM_LABEL[d](), value: v.map((k) => actValueLabel(d, k)).join(', '),
+        clear: () => setActSel((p) => ({ ...p, [d]: [] })),
+      });
+    }
+  }
   if (picked) {
     chips.push({
       dim: null,
       label: picked.id === 'habea:osol'
         ? tr('Сонгосон осол')
+        : pickActOid ? tr('Сонгосон цэг')
         : pickUzOid ? tr('Сонгосон үзлэг') : tr('Сонгосон кран'),
       value: picked.id === 'habea:osol'
         ? text(picked.attrs[I.turul], `#${pickOsol}`)
+        : pickActOid
+          ? (actRows.state === 'ready' ? actPickLabel(actRows.data, pickActOid) : `#${pickActOid}`)
         : pickUzOid
           ? (pickUzRow ? `${incDate(pickUzRow.d)} · ${pickUzRow.site}` : `#${pickUzOid}`)
         : text(picked.attrs[C.dugaar], '') || `#${pickCraneOid}`,
@@ -1512,6 +1580,84 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     ? tr('Сонгосон шүүлтэд тохирох бүртгэл алга — дээрх шүүлтийн чипийг (×) арилгаж бүгдийг харна.')
     : tr('Шинэ бүртгэл орж ирэхэд энд автоматаар гарна.');
   const noRecords = <Empty label={tr('Бүртгэл алга')} hint={emptyHint} />;
+
+  /** «Компаниар — монгол, гадаад» — анхны харагдацад зүүнд, хүн хүчний фокуст баруунд (2026-11-02) */
+  const mixCard = (
+    <Section
+      title={tr("Компаниар — монгол, гадаад")}
+      note={mixByCo.length ? tr("гадаадын хувиар · дарж шүүнэ") : undefined}
+      fill
+    >
+      {mixByCo.length
+        ? (
+          <div className={h.mixList}>
+            <div className={h.mixLegend} aria-hidden>
+              <span><i style={{ background: 'var(--c1)' }} />{tr('Монгол')}</span>
+              <span><i style={{ background: 'var(--c2)' }} />{tr('Гадаад')}</span>
+            </div>
+            {mixByCo.map((x) => (
+              <div
+                key={x.key}
+                role="button"
+                tabIndex={0}
+                aria-pressed={cos.includes(x.key)}
+                className={`${h.mixRow} ${h.mixRowClick} ${cos.length && !cos.includes(x.key) ? h.mixRowDim : ''}`}
+                onClick={() => toggleCo(x.key)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCo(x.key); } }}
+              >
+                <span className={h.mixName} title={x.label}>{x.label}</span>
+                <span className={h.mixBar}>
+                  <Stack
+                    legend={false}
+                    items={[
+                      { key: `${x.key}-mn`, label: tr("Монгол"), value: x.mongol, color: 'var(--c1)' },
+                      { key: `${x.key}-fr`, label: tr("Гадаад"), value: x.gadaad, color: 'var(--c2)' },
+                    ]}
+                  />
+                </span>
+                <b className={`${h.mixPct} num`}>{tr("{0}%", num(x.share, 0))}</b>
+              </div>
+            ))}
+          </div>
+        )
+        : <Empty label={tr("Задаргаа бүртгэгдээгүй")} />}
+    </Section>
+  );
+  /** Компаниар хүн-өдөр ба техник — хүн хүчний фокуст ЗҮҮН баганад (2026-11-02) */
+  const coCards = (
+    <>
+      <Section
+        title={tr("Компаниар — хүн-хүч")}
+        note={coBars.length ? tr("дарж шүүнэ") : undefined}
+        fill
+      >
+        {coBars.length
+          ? (
+            <Bars
+              items={coBars}
+              selected={coEff}
+              onSelect={toggleCo}
+            />
+          )
+          : surveyEmpty}
+      </Section>
+      <Section
+        title={tr("Компаниар — техник")}
+        note={coTechBars.length ? tr("нэгж-өдөр · дарж шүүнэ") : undefined}
+        fill
+      >
+        {coTechBars.length
+          ? (
+            <Bars
+              items={coTechBars}
+              selected={coEff}
+              onSelect={toggleCo}
+            />
+          )
+          : surveyEmpty}
+      </Section>
+    </>
+  );
 
   return (
     <div
@@ -1661,45 +1807,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         )}
         {entry === 'reg' && <RegisterAddDialog onClose={() => setEntry(null)} />}
         {entry === 'waste' && <WasteAddDialog onClose={() => setEntry(null)} />}
-        <Section
-          title={tr("Компаниар — монгол, гадаад")}
-          note={mixByCo.length ? tr("гадаадын хувиар · дарж шүүнэ") : undefined}
-          fill
-        >
-          {mixByCo.length
-            ? (
-              <div className={h.mixList}>
-                <div className={h.mixLegend} aria-hidden>
-                  <span><i style={{ background: 'var(--c1)' }} />{tr('Монгол')}</span>
-                  <span><i style={{ background: 'var(--c2)' }} />{tr('Гадаад')}</span>
-                </div>
-                {mixByCo.map((x) => (
-                  <div
-                    key={x.key}
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={cos.includes(x.key)}
-                    className={`${h.mixRow} ${h.mixRowClick} ${cos.length && !cos.includes(x.key) ? h.mixRowDim : ''}`}
-                    onClick={() => toggleCo(x.key)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCo(x.key); } }}
-                  >
-                    <span className={h.mixName} title={x.label}>{x.label}</span>
-                    <span className={h.mixBar}>
-                      <Stack
-                        legend={false}
-                        items={[
-                          { key: `${x.key}-mn`, label: tr("Монгол"), value: x.mongol, color: 'var(--c1)' },
-                          { key: `${x.key}-fr`, label: tr("Гадаад"), value: x.gadaad, color: 'var(--c2)' },
-                        ]}
-                      />
-                    </span>
-                    <b className={`${h.mixPct} num`}>{tr("{0}%", num(x.share, 0))}</b>
-                  </div>
-                ))}
-              </div>
-            )
-            : <Empty label={tr("Задаргаа бүртгэгдээгүй")} />}
-        </Section>
+        {/* ⚠️ 2026-11-02 (хэрэглэгч): «Техник болон хүн цаг» фокуст монгол/гадаад БАРУУН баганад (`mixCard`),
+            зүүнд нь компаниар хүн-өдөр ба техник (`coCards`). Анхны харагдацад хэвээр зүүнд. */}
+        {focus === null ? mixCard : coCards}
         </>)}
 
         {/* ── ЦАМХАГТ КРАН — ТӨЛӨВ — анхны харагдацад ЗҮҮН баганад, «Компаниар —
@@ -1714,7 +1824,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         )}
 
-        {dual && <UzSrcHead title={HABEA.uzleg.v11.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.v11].hue} />}
+        {dual && <UzSrcHead title={tr('Гүйцэтгэгчийн ажлын байрны үзлэг (Хятад хэл)')} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.guitsetgegch].hue} />}
         {uzlegKind && (
           <UzlegLeft
             st={uzF} url={HABEA.uzleg[uzlegKind].url} sel={uzSel} onPick={onUzPick}
@@ -1722,9 +1832,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             photos={!dual}
           />
         )}
-        {zFocus && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {actionFocus && <HseActionPanel part="left" pkgs={pkgs} cos={cos} days={sel.day} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} />}
         {dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
-        {dual && <UzlegPhotos st={uzF} url={HABEA.uzleg.v11.url} sel={uzSel} />}
+        {dual && <UzlegPhotos st={uzF} url={HABEA.uzleg.guitsetgegch.url} sel={uzSel} />}
         {incOpen && (<>
         <Section
           title={tr('Осол, зөрчил — төрлөөр')}
@@ -1881,15 +1991,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           </div>
         )}
 
-        {/* ── ГАЗРЫН ЗУРГИЙН ШҮҮЛТҮҮР (2026-09-15, хэрэглэгчийн хүсэлт) ──
-            Баруун ДЭЭД буланд: зүүн доод нь тайлбар, баруун доод нь сонгосон
-            объектын карт, дээд төв нь 2D/3D, зүүн тал нь хэрэгслийн багана. */}
-        {(pkgOptions.length > 0 || coOptions.length > 0) && (
-          <div className={h.mapFilter} role="group" aria-label={tr('Газрын зургийн шүүлтүүр')}>
-            {filterPills}
-            {coNote && <span className={h.coNote}>{coNote}</span>}
-          </div>
-        )}
+        {/* 2026-11-03 (хэрэглэгч): Огноо · Багц · Компани шүүлтүүр газрын зургаас «Мэдээлэл · Тайлан татах»-ын ДООР зөөгдсөн */}
 
         <div className={o.legend}>
           {mapVisible.slice(0, 8).map((id) => {
@@ -1923,34 +2025,73 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             Тоо нь БҮХ ХУГАЦААНЫ ажилтны нийлбэр (хүн-өдөр) — жагсаалт өдөр бүр
             өөрчлөгдөхгүй байх ёстой. */}
         <div className={h.filters}>
-          <div className={h.fltGroup}>
-          <span className={h.fltHead}>{tr('Мэдээлэл')}</span>
-          <div className={h.focusGrid}>
-          {/* ── ОСЛЫН ЧАРТЫН ШҮҮЛТҮҮР — «Төслийн дэлгэрэнгүй мэдээлэл»-ийн
-              капсул чиптэй ЯГ ИЖИЛ загвар (`dashboardOv.module.css .railItem`):
-              зүүн талд төлөвийн бөгж, дунд нь нэр, баруун талд утга; идэвхтэй
-              үед дүүрэн будагдана. ── */}
-          {FOCUS_CHIPS.map((f) => {
-            const on = focus === f.key;
-            return (
-              <button
-                key={f.key ?? 'all'}
-                type="button"
-                aria-pressed={on}
-                className={`${h.incChip} ${on ? h.incChipOn : ''}`}
-                /* Дахин дарвал анхны харагдац руу буцна */
-                onClick={() => { setFocus(on ? null : f.key); setSel((s) => ({ ...s, ...NO_UZ_SEL })); setPicked(null); }}
-              >
-                <span className={h.incChipLabel}>{f.label()}</span>
-                {f.count(fInc.length) != null && (
-                  <b className={`${h.incChipVal} num`}>{num(f.count(fInc.length) as number)}</b>
-                )}
+          {/* ⚠️ 2026-11-02 (хэрэглэгч): «Мэдээлэл» ба «Тайлан татах» — ХОЁР товч нэг мөрөнд. «Мэдээлэл» дарахад
+              сонголтууд доош задарна (`infoOpen`); сонгоход хаагдана, сонгосныг дахин дарвал анхны харагдац. */}
+          <div className={h.infoBar}>
+            <div className={h.infoWrap} ref={infoRef}>
+              <button type="button" className={`${h.infoBtn} ${focus ? h.infoBtnOn : ''}`}
+                aria-haspopup="listbox" aria-expanded={infoOpen} onClick={() => setInfoOpen((v) => !v)}>
+                {/* ⚠️ 2026-11-02 (хэрэглэгч: «тайлан татах товч шиг адилхан дизайнтай»): `uzlegExport.module.css .trigger`-тэй
+                    ижил — дүрс + нэр төвд, moss өнгө. Сонгосон мэдээллийн нэр товчны нэр болно (сонгоогүй бол «Мэдээлэл»). */}
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+                  <rect x="2" y="2" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                  <rect x="9" y="2" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                  <rect x="2" y="9" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                  <rect x="9" y="9" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                </svg>
+                <span className={h.infoBtnSel}>
+                  {focus ? FOCUS_CHIPS.find((x) => x.key === focus)?.label() : tr('Мэдээлэл')}
+                </span>
+                <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden className={`${h.infoChev} ${infoOpen ? h.infoChevOpen : ''}`}>
+                  <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </button>
-            );
-          })}
+              {infoOpen && (
+                <div className={h.infoMenu} role="listbox" aria-label={tr('Мэдээлэл')}>
+                  {/* ⚠️ 2026-11-02 (хэрэглэгч: «бүлэглэхгүй, анхны харагдацыг refresh дүрсээр эвтэйхэн»): нэг жагсаалт;
+                      толгой мөрийн баруун талд ↻ — анхны харагдац руу (сонголт байхгүй үед идэвхгүй). */}
+                  <div className={h.infoMenuHead}>
+                    <span>{tr('Мэдээлэл')}</span>
+                    <button type="button" className={h.infoReset} disabled={focus === null}
+                      title={tr('Анхны харагдац')} aria-label={tr('Анхны харагдац')}
+                      onClick={() => { setFocus(null); setSel((s) => ({ ...s, ...NO_UZ_SEL })); setActSel(NO_ACT_SEL); setPicked(null); setInfoOpen(false); }}>
+                      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden>
+                        <path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5V5h-2.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  </div>
+                  {FOCUS_CHIPS.map((f) => {
+                    const on = focus === f.key;
+                    const n = f.count(fInc.length);
+                    return (
+                      <button
+                        key={f.key}
+                        type="button"
+                        role="option"
+                        aria-selected={on}
+                        className={`${h.infoItem} ${on ? h.infoItemOn : ''}`}
+                        /* Дахин дарвал анхны харагдац руу буцна */
+                        onClick={() => {
+                          setFocus(on ? null : f.key); setSel((s) => ({ ...s, ...NO_UZ_SEL })); setActSel(NO_ACT_SEL); setPicked(null); setInfoOpen(false);
+                        }}
+                      >
+                        <i className={h.infoDot} style={{ background: infoHue(f.key) }} aria-hidden />
+                        <span className={h.infoItemLabel}>{f.label()}</span>
+                        {n != null && <b className={`${h.infoItemVal} num`}>{num(n)}</b>}
+                        {on && <span className={h.infoCheck} aria-hidden>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {/* ҮЗЛЭГИЙН ТАЙЛАН ТАТАХ (2026-10-06) — асуумж · хугацаа · компани сонгоод PDF / Excel. */}
+            {canEnter && <UzlegExportButton kind={uzlegKind} scope={habScope} />}
           </div>
-          {/* ҮЗЛЭГИЙН ТАЙЛАН ТАТАХ (2026-10-06) — асуумж · хугацаа · компани сонгоод PDF / Excel. */}
-          {canEnter && <UzlegExportButton kind={uzlegKind} />}
+          {/* ── ШҮҮЛТҮҮР — Огноо · Багц · Компани (2026-11-03: газрын зургийн баруун дээд булангаас энд) ── */}
+          <div className={h.fltPills} role="group" aria-label={tr('Шүүлтүүр')}>
+            {filterPills}
+            {coNote && <span className={h.coNote}>{coNote}</span>}
           </div>
 
         </div>
@@ -1999,51 +2140,20 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </Section>
         )}
 
-        {uzlegKind && !dual && !zFocus && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
-        {zFocus && <HseActionPanel pkgs={pkgs} onPkg={togglePkg} now={now} tick={tick} />}
+        {uzlegKind && !dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
+        {actionFocus && <HseActionPanel part="right" pkgs={pkgs} cos={cos} days={sel.day} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} />}
         {dual && (<>
-          <UzSrcHead title={HABEA.uzleg.zahialagch.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.zahialagch].hue} />
+          <UzSrcHead title={HABEA.uzleg[DUAL2].title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID[DUAL2]].hue} />
           <UzlegLeft
-            st={uzF2} url={HABEA.uzleg.zahialagch.url} sel={uzSel} onPick={onUzPick}
+            st={uzF2} url={HABEA.uzleg[DUAL2].url} sel={uzSel} onPick={onUzPick}
             pkgSt={uzNoPkg2} pkgSel={pkgs} onPkg={togglePkg} photos={false}
           />
           <UzlegRight st={uzF2} sel={uzSel} onPick={onUzPick} />
-          <UzlegPhotos st={uzF2} url={HABEA.uzleg.zahialagch.url} sel={uzSel} />
+          <UzlegPhotos st={uzF2} url={HABEA.uzleg[DUAL2].url} sel={uzSel} />
         </>)}
 
-        {/* ── ХҮН ХҮЧНИЙ ФОКУС — БАРУУНД КОМПАНИАР хүний тоо ── */}
-        {laborFocus && (<>
-        <Section
-          title={tr("Компаниар — хүн-өдөр")}
-          note={coBars.length ? tr("дарж шүүнэ") : undefined}
-          fill
-        >
-          {coBars.length
-            ? (
-              <Bars
-                items={coBars}
-                selected={coEff}
-                onSelect={toggleCo}
-              />
-            )
-            : surveyEmpty}
-        </Section>
-        <Section
-          title={tr("Компаниар — техник")}
-          note={coTechBars.length ? tr("нэгж-өдөр · дарж шүүнэ") : undefined}
-          fill
-        >
-          {coTechBars.length
-            ? (
-              <Bars
-                items={coTechBars}
-                selected={coEff}
-                onSelect={toggleCo}
-              />
-            )
-            : surveyEmpty}
-        </Section>
-        </>)}
+        {/* ── ХҮН ХҮЧНИЙ ФОКУС — БАРУУНД монгол/гадаад (2026-11-02; компаниар хүн-өдөр, техник ЗҮҮНД) ── */}
+        {laborFocus && mixCard}
 
         {focus === null && (<>
         {/* ── КРАН — БОСОО хоёр карт ── */}
@@ -2112,19 +2222,20 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </>)}
 
         {uzlegKind && !dual && <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} curYm={curYm} />}
+        {actionFocus && <HseActionPanel part="fin" pkgs={pkgs} cos={cos} days={sel.day} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} />}
         {dual && (<>
           <div className={h.finHalf}>
-            <UzSrcHead title={HABEA.uzleg.v11.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.v11].hue} />
-            <div className={h.finHalfGrid} style={panes.styleFor('fhL')}>
-              <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} curYm={curYm} />
-              <div className={h.gripCol} style={{ gridColumn: '1 / 2', gridRow: '1 / 2', right: -8 }} {...panes.grip('fhL')} />
+            <UzSrcHead title={tr('Гүйцэтгэгчийн ажлын байрны үзлэг (Хятад хэл)')} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.guitsetgegch].hue} />
+            {/* 2026-11-03: долоо хоногийн карт хасагдсан — өдөр/сарын карт хагасаа бүтэн дүүргэнэ (чирэх бариулгүй) */}
+            <div className={`${h.finHalfGrid} ${h.finHalfOne}`}>
+              <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} curYm={curYm} week={false} />
             </div>
           </div>
           <div className={h.finHalf}>
-            <UzSrcHead title={HABEA.uzleg.zahialagch.title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.zahialagch].hue} />
-            <div className={h.finHalfGrid} style={panes.styleFor('fhR')}>
-              <UzlegFin st={uzF2} sel={uzSel} onPick={onUzPick} curYm={curYm} />
-              <div className={h.gripCol} style={{ gridColumn: '1 / 2', gridRow: '1 / 2', right: -8 }} {...panes.grip('fhR')} />
+            <UzSrcHead title={HABEA.uzleg[DUAL2].title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID[DUAL2]].hue} />
+            {/* 2026-11-03: долоо хоногийн карт хасагдсан — өдөр/сарын карт хагасаа бүтэн дүүргэнэ (чирэх бариулгүй) */}
+            <div className={`${h.finHalfGrid} ${h.finHalfOne}`}>
+              <UzlegFin st={uzF2} sel={uzSel} onPick={onUzPick} curYm={curYm} week={false} />
             </div>
           </div>
         </>)}

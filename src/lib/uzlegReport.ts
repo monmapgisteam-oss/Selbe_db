@@ -651,12 +651,22 @@ async function toImg(ref: UzPhotoRef, max: number, mode: UzImgMode, signal?: Abo
 /**
  * Бүх тайлангийн зургийг 4 зэрэгцээгээр татна — явцыг мэдэгдэнэ.
  */
-export async function loadReportImages(
+export function loadReportImages(
   reports: UzReport[],
   opts: { mode: UzImgMode; signal?: AbortSignal; onProgress?: (done: number, total: number) => void },
 ): Promise<{ images: Map<string, UzImg>; failed: string[]; heic: string[] }> {
+  return loadPhotoImages(reportRefs(reports), opts);
+}
+
+/**
+ * Дурын зургийн лавлагааг татаж жижигрүүлнэ (`loadReportImages`-ийн цөм; 2026-11-03 — HSE_Action-ий Excel тайланд).
+ * `max` — урт талын дээд хэмжээ (px).
+ */
+export async function loadPhotoImages(
+  refs: { ref: UzPhotoRef; max: number }[],
+  opts: { mode: UzImgMode; signal?: AbortSignal; onProgress?: (done: number, total: number) => void },
+): Promise<{ images: Map<string, UzImg>; failed: string[]; heic: string[] }> {
   const { mode, signal, onProgress } = opts;
-  const refs = reportRefs(reports);
   const out = new Map<string, UzImg>();
   const failed: string[] = [];
   const heic: string[] = [];

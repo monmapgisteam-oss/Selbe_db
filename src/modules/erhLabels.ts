@@ -70,6 +70,7 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'butets') return tr('Дэд бүтэц');
   if (k === 'hamaaral') return tr('Багцын хамаарал');
   if (k === 'habeaData') return tr('ХАБЭА-ийн бүртгэл');
+  if (k === 'habeaOwn') return tr('ХАБЭА — өөрийн багц');
   if (k === 'sysClose') return tr('Систем хаах');
   if (k === 'docsUpload') return tr('Баримт оруулах');
   if (k === 'docsGroups') return tr('Баримтын бүлэг');

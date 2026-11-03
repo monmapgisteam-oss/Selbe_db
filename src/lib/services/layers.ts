@@ -342,6 +342,21 @@ export const LAYERS: LayerDef[] = [
     get note() { return tr('Survey123 мобайл аппаас'); },
   },
   {
+    id: "habea:uzGmn",
+    n: 0,
+    url: `${HABEA_SVC.uzlegGMn}/FeatureServer/0`,
+    get title() { return tr('Гүйцэтгэгчийн ажлын байрны үзлэг - Барилгын талбай'); },
+    topic: "monitor",
+    geom: "point",
+    hue: "#db2777",
+    marker: "square",
+    size: 7,
+    noZone: true,
+    oid: "objectid",
+    auth: true,
+    get note() { return tr('Survey123 мобайл аппаас'); },
+  },
+  {
     id: "habea:uzZ",
     n: 0,
     url: `${HABEA_SVC.uzlegZahialagch}/FeatureServer/0`,
@@ -475,7 +490,37 @@ export const LAYERS: LayerDef[] = [
     oid: "objectid",
     auth: true,
     get note() { return tr('Survey123 мобайл аппаас'); },
+  },  /* ⚠️ 2026-11-02: «Action» фокус — HSE_Action-ий үл нийцэл бүр нэг цэг (`HABEA.action`, давхарга 2) */
+  {
+    id: "habea:action",
+    n: 0,
+    url: `${ENT_HOSTED}/HSE_Action/FeatureServer/2`,
+    get title() { return tr('Үл нийцлийн арилгалт (Action)'); },
+    topic: "monitor",
+    geom: "point",
+    hue: "#f59e0b",
+    /* 2026-11-03: pin · төлөвөөр өнгө — «Үл нийцэл — төрлөөр» донаттай ИЖИЛ (`HabeaAction.STATUS`) */
+    marker: "pin",
+    size: 11.25, // = 15px (ArcGIS симболын хэмжээ pt-ээр: 15 × 0.75)
+    paint: {
+      field: "esritask_status",
+      values: { "0": "#94a3b8", "1": "#f59e0b", "2": "#3b82f6", "4": "#8b5cf6", "5": "#dc2626", "3": "#16a34a" },
+      get labels() {
+        return {
+          "0": tr('Хуваарилаагүй'), "1": tr('Хуваарилсан'), "2": tr('Гүйцэтгэж байна'),
+          "4": tr('Шалгуулах'), "5": tr('Засвар шаардлагатай'), "3": tr('Дууссан'),
+        };
+      },
+      force: true,
+      defaultHue: "#cbd5e1",
+      get emptyLabel() { return tr('Төлөв тодорхойгүй'); },
+    },
+    noZone: true,
+    oid: "objectid",
+    auth: true,
+    get note() { return tr('HSE_Action'); },
   },
+
 
   /* ─────────── Газар чөлөөлөлт (полигоноор шүүх · тусдаа үйлчилгээ) ─────────── */
   {

@@ -289,6 +289,17 @@ function Pick<T extends string>({ label, value, onChange, opts }: {
 const vOpts = (list: StatOption[]): [string, string][] => list.map((o) => [`v:${o.code}`, o.label]);
 
 /** Гурван сонгогч + идэвхтэй ангиллын тайлбар (`inline` — хажуугийн самбарын карт) */
+/** Өнгөний түлхүүрийн дараалал — ажлын урсгалаар (нэрээр таньна; танихгүй нь араас) */
+const keyRank = (label: string): number => {
+  const t = label.toLowerCase();
+  if (/эхлээгүй/.test(t)) return 0;
+  if (/эхэл/.test(t)) return 1;
+  if (/үргэлж|явагд/.test(t)) return 2;
+  if (/зогс/.test(t)) return 3;
+  if (/дуус/.test(t)) return 4;
+  return 5;
+};
+
 export function StatusBar({
   fill, edit, stat, colorBy, onFill, onEdit, onStat, statOptions, chgOptions, noStat, noChg, pending, inline = false,
   perf = false, onPerf,
@@ -332,12 +343,22 @@ export function StatusBar({
               options={[{ value: 'eng', label: tr('Инженер') }, { value: 'perf', label: tr('Гүйцэтгэл') }]} />
           </div>
         )}
+        {/* ⚠️ 2026-10-30 (хэрэглэгч: «гүйцэтгэлээр харах хэсгийн харагдацыг сайжруул»): өнгөний түлхүүр — гарчигтай
+            хүрээтэй жижиг самбар, 2 баганын тор, ажлын урсгалын дарааллаар (эхлээгүй → эхэлсэн → үргэлжилж байгаа →
+            дууссан, бусад нь араас), «Төлөв ороогүй» хамгийн сүүлд тасархай хүрээтэй. */}
         {perf && statOptions.length > 0 && (
-          <div className={d.stKey}>
-            {statOptions.map((o) => (
-              <span key={o.code}><i style={{ background: o.hue }} aria-hidden />{o.label}</span>
+          <div className={d.stKey} role="list" aria-label={tr('Өнгөний тайлбар')}>
+            <span className={d.stKeyHead}>{tr('Өнгөний тайлбар')}</span>
+            {[...statOptions].sort((a, b) => keyRank(a.label) - keyRank(b.label)).map((o) => (
+              <span key={o.code} className={d.stKeyItem} role="listitem">
+                <i style={{ background: o.hue }} aria-hidden />
+                <span>{o.label}</span>
+              </span>
             ))}
-            <span><i style={{ background: HUE.unk }} aria-hidden />{tr('Төлөв ороогүй')}</span>
+            <span className={`${d.stKeyItem} ${d.stKeyNone}`} role="listitem">
+              <i style={{ background: HUE.unk }} aria-hidden />
+              <span>{tr('Төлөв ороогүй')}</span>
+            </span>
           </div>
         )}
         <div className={d.stForm} role="group" aria-label={tr('Мэдээллийн төлөв')}>

@@ -121,7 +121,14 @@ export function MapTools({
    * заавар: «Ерөнхий дашбоард дээрх зургийн товчны hide/unhide-ыг энэ
    * төсөл дээрх БҮХ зурагтай ижил болго»).
    */
-  const barOn = true;
+  /* ⚠️ 2026-11-03 (хэрэглэгч: «эхний байдал дээр хураасан байлга»): АНХДАГЧ ХУРААГДСАН — бариулаар (▸) нээнэ */
+  const [barOn, setBarOn] = useState(false);
+  /* 2D/3D/BIM сонгогч — мөн анхдагч хураагдсан, бариул (▾) нь нээх зам */
+  const [dimsOn, setDimsOn] = useState(false);
+  /* Хураасан бариул дээр идэвхтэй шүүлт байгааг тэмдэглэнэ (`ActiveFilterChip`-тэй ижил дүрэм) */
+  const { active: activeFilter } = useFilter();
+  const { highlight } = useMap();
+  const filterOn = activeFilterLabel(activeFilter, highlight) != null;
   const r3 = useRender3d();
   const bimPkg = useBimPkg();
   const zoneCount = zone ? zone.split(',').filter(Boolean).length : 0;
@@ -138,6 +145,19 @@ export function MapTools({
       * Зурвасыг хураах/дэлгэх бариул — зургийн зүүн ирмэг дээр.
       */}
 
+    <button
+      type="button"
+      aria-expanded={barOn}
+      className={[s.tab, dock ? s.tabDock : s.toolsTab, barOn ? (dock ? s.tabDockOpen : s.toolsTabOpen) : ''].filter(Boolean).join(' ')}
+      title={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
+      aria-label={barOn ? tr('Товчнуудыг хураах') : tr('Товчнуудыг харуулах')}
+      onClick={() => setBarOn((v) => !v)}
+    >
+      {barOn ? '◂' : '▸'}
+      {!barOn && filterOn && <span className={s.tabDot} aria-hidden />}
+    </button>
+
+    {barOn && (
     <div data-report-skip="" className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`}>
       <ActiveFilterChip />
       {onLayers && (
@@ -187,6 +207,7 @@ export function MapTools({
 
       {children}
     </div>
+    )}
 
     {/**
       * 2D ↔ 3D ↔ BIM — ЗУРВАСААС САЛГАЖ, ГОЛД (хэрэглэгчийн хүсэлт 2026-08-23).
@@ -195,6 +216,18 @@ export function MapTools({
       */}
     {/* 2D/3D/BIM сегментийг хураах бариул — зурвасныхаа дор/дээр */}
 
+    <button
+      type="button"
+      aria-expanded={dimsOn}
+      className={`${s.tab} ${s.dimsTab} ${dimsOn ? s.dimsTabOpen : ''}`}
+      title={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
+      aria-label={dimsOn ? tr('Харагдацын товч хураах') : tr('Харагдацын товч дэлгэх')}
+      onClick={() => setDimsOn((v) => !v)}
+    >
+      {dimsOn ? '▴' : `${(dim ?? '2d').toUpperCase()} ▾`}
+    </button>
+
+    {dimsOn && (
     <div data-report-skip="" className={`${s.dimsBar} mapDims`} role="group" aria-label={tr('Газрын зургийн харагдац')}>
       {dims.map((d) => (
         <button
@@ -245,6 +278,7 @@ export function MapTools({
         </>
       )}
     </div>
+    )}
 
     {setZone && zoneShown && (
       <div

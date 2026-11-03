@@ -23,8 +23,9 @@ console.log('✅ activeFilterLabel: самбарын шүүлт · шууд то
 /* ── Шүүлтгүй үед юу ч зурахгүй; MapTools хэвийн зурагдана ── */
 assert.equal(renderToStaticMarkup(h(ActiveFilterChip)), '');
 const html = renderToStaticMarkup(h(MapTools, { dim: '2d', setDim: () => {} }));
-assert.ok(html.includes('mapToolsBar'), 'зурвас үргэлж харагдах ёстой');
-assert.ok(!html.includes('Товчнуудыг харуулах'), 'хураах бариул үлдсэн');
+/* 2026-11-03 (хэрэглэгч: «эхний байдал дээр хураасан байлга»): зурвас АНХДАГЧ хураагдсан — бариул нь нээх зам */
+assert.ok(!html.includes('mapToolsBar'), 'зурвас анхдагч хураагдсан байх ёстой');
+assert.ok(html.includes('Товчнуудыг харуулах'), 'хураах бариул алга');
 assert.ok(!html.includes('mapFilterChip'), 'шүүлтгүй үед чип гарав');
 console.log('✅ шүүлтгүй: чип алга · зурвас анхдагч хураагдсан, бариул бий');
 

@@ -183,3 +183,30 @@ assert.equal(esc('t\tn\nr\r'), 't\tn\nr\r', 'таб · мөр таслал хэ�
 const ctl = unzipStore(buildXlsx([{ name: 'C', rows: [['x\u0001y']] }]));
 assert.ok(dec.decode(ctl.get('xl/worksheets/sheet1.xml')).includes('>xy</t>'), 'нүдний текстэд удирдлагын тэмдэгт үлдсэн');
 console.log('✅ XML-д хориотой тэмдэгт хасагдав');
+
+/* ── 7. Шигтгэсэн зураг (2026-11-03) — drawing · media · rels · content type · мөрийн өндөр ── */
+const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+const jpg = new Uint8Array([0xff, 0xd8, 0xff, 4, 5]);
+const pz = unzipStore(buildXlsx([
+  { name: 'NoPic', rows: [['a']] },
+  {
+    name: 'Pic', rows: [['h'], ['r1']], heights: { 1: 120 },
+    pics: [{ row: 1, col: 2, bytes: png, png: true, w: 200, h: 100, hPt: 114 }, { row: 1, col: 3, bytes: jpg, png: false, w: 100, h: 100, hPt: 114 }],
+  },
+]));
+const ps2 = dec.decode(pz.get('xl/worksheets/sheet2.xml'));
+assert.ok(ps2.includes('<row r="2" ht="120" customHeight="1">'), 'мөрийн өндөр');
+assert.ok(/<\/sheetData>.*<drawing r:id="rId1"\/><\/worksheet>$/.test(ps2), 'drawing нь хуудасны төгсгөлд');
+assert.ok(!dec.decode(pz.get('xl/worksheets/sheet1.xml')).includes('<drawing'), 'зураггүй хуудсанд drawing байх ёсгүй');
+assert.ok(!pz.has('xl/worksheets/_rels/sheet1.xml.rels'), 'зураггүй хуудсанд rels байх ёсгүй');
+assert.ok(dec.decode(pz.get('xl/worksheets/_rels/sheet2.xml.rels')).includes('Target="../drawings/drawing1.xml"'), 'хуудас → drawing');
+const dr = dec.decode(pz.get('xl/drawings/drawing1.xml'));
+assert.equal((dr.match(/<xdr:oneCellAnchor>/g) ?? []).length, 2, 'хоёр зураг');
+assert.ok(dr.includes('<xdr:col>2</xdr:col>') && dr.includes('r:embed="rId2"'), 'байрлал · embed');
+const drr = dec.decode(pz.get('xl/drawings/_rels/drawing1.xml.rels'));
+assert.ok(drr.includes('Target="../media/image1.png"') && drr.includes('Target="../media/image2.jpeg"'), 'media rels');
+assert.deepEqual([...pz.get('xl/media/image1.png')], [...png], 'png байт');
+const pct = dec.decode(pz.get('[Content_Types].xml'));
+assert.ok(pct.includes('Extension="png"') && pct.includes('Extension="jpeg"') && pct.includes('/xl/drawings/drawing1.xml'), 'content types');
+assert.ok(!dec.decode(plain.get('[Content_Types].xml')).includes('Extension="png"'), 'зураггүй номд зургийн төрөл байх ёсгүй');
+console.log('✅ шигтгэсэн зураг · мөрийн өндөр');
