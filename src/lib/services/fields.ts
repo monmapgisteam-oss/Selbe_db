@@ -212,18 +212,16 @@ export const CASHFLOW_NEW = {
     /** ХО дүн (ЗАХИРАМЖ болон урьдчилсан тооцоолол) — 0909-д ШИНЭ */
     budgetOrder: "ho_dun_zahiramj",
     amountNote: "ho_dungiin_tailbar", // «Гэрээлсэн дүн» г.м.
-    startDate: "ehleh_ognoo",         // Төлөвлөгөөт хугацаа эхлэх
-    endDate: "duusah_ognoo",          // Төлөвлөгөөт хугацаа дуусах
+    startDate: "guits_ehleh",         // Төлөвлөгөөт хугацаа эхлэх (2026-11-04: ганц огнооны багана)
+    endDate: "guits_duusah",          // Төлөвлөгөөт хугацаа дуусах
     orderDate: "zahiramj_ognoo",      // Захирамжийн огноо
     orderNo: "zahiramj_dugaar",       // Захирамжийн дугаар
-    orderTotal: "zahiramj_niit_dun",  // Захирамжийн нийт дүн
     /** Үнэт цаасны эх үүсвэрийн эзлэх хувь (0–1 бутархай) */
     share: "zahiramj_unet_tsaas_huvi",
     client: "zahialagch_hynalt_baig",    // Захиалагчийн хяналтын байгууллага
     contractor: "guitsetgegch",          // Гүйцэтгэгч байгууллага
     contractDate: "geree_ognoo",
     contractNo: "geree_dugaar",          // Гэрээний дугаар
-    contractAmount: "geree_dun",         // Гэрээний дүн
     advanceGuarantee: "urdchilgaa_batalgaa_dun",
     advancePct: "urdchilgaa_huvi",
     advanceDeduct: "urdchilgaa_zh_zardal",
@@ -242,9 +240,6 @@ export const CASHFLOW_NEW = {
     wSection: "heseg_ezleh_huvi",
     /** Төсөлд эзлэх — Excel G (0–1) */
     wProject: "tusul_ezleh_huvi",
-    /** Гэрээ/Хавсралт 5 — төлөвлөгөөт эхлэх/дуусах (Excel H · I) */
-    contractStart: "geree_ehleh",
-    contractEnd: "geree_duusah",
     /** Гүйцэтгэгчийн төлөвлөгөөт эхлэх/дуусах */
     contractorStart: "guits_ehleh",
     contractorEnd: "guits_duusah",
@@ -284,6 +279,17 @@ export const CASHFLOW_NEW = {
  * АЖЛЫН МӨР Л — сарын cashflow мөрүүдийг ХАСНА.
  */
 export const CF_WORK_WHERE = 'cashflow_start IS NULL AND cashflow_id IS NOT NULL';
+
+/**
+ * 2026-11-04 (хэрэглэгч: давхар багана устгана) — `geree_dun`, `zahiramj_niit_dun` хүснэгтээс хасагдсан.
+ * ГЭРЭЭНИЙ ДҮН = «Гэрээлсэн дүн» тэмдэгтэй мөрийн `ho_dun_geree`; ЗАХИРАМЖИЙН НИЙТ = `zahiramj_dugaar`-тай мөрийн `ho_dun_zahiramj`.
+ */
+export const contractAmountOf = (r: Readonly<Record<string, unknown>>): unknown => (
+  String(r[CASHFLOW_NEW.fields.amountNote] ?? '').replace(/\s+/g, ' ').trim() === 'Гэрээлсэн дүн' ? r[CASHFLOW_NEW.fields.budget] : null
+);
+export const orderTotalOf = (r: Readonly<Record<string, unknown>>): unknown => (
+  String(r[CASHFLOW_NEW.fields.orderNo] ?? '').trim() ? r[CASHFLOW_NEW.fields.budgetOrder] : null
+);
 
 /**
  * САРЫН МӨР Л — S-Curve-ийн задаргаа.

@@ -9,7 +9,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { cached } from '@/lib/live';
 import { mnt } from '@/lib/format';
-import { CASHFLOW_NEW, CF_WORK_WHERE } from '@/lib/services';
+import { CASHFLOW_NEW, CF_WORK_WHERE, contractAmountOf } from '@/lib/services';
 import { isContracted } from '@/lib/gdash';
 import { finXlInTotal, FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
 import { cell, table, type KpiIssue, type KpiResult, type Level } from './kpi';
@@ -37,7 +37,7 @@ export type ContractGapRow = {
   contractDate: string;
   /** Захирамжийн ХО төсөв (`ho_dun_zahiramj`), ₮ — null = бөглөөгүй/0 (2026-10-04, толгой) */
   budget: number | null;
-  /** Гэрээний дүн (`geree_dun`), ₮ — null = гэрээтэй (CONTRACTED) боловч дүн бөглөөгүй */
+  /** Гэрээний дүн (`ho_dun_geree`), ₮ — null = гэрээтэй (CONTRACTED) боловч дүн бөглөөгүй */
   contract: number | null;
   /** гэрээ − төсөв, ₮ — аль нэг нь null бол null */
   diff: number | null;
@@ -97,7 +97,7 @@ export function computeContractGap(raw: readonly RawRow[]): ContractGap {
   for (const r of raw) {
     if (!finXlInTotal(r)) continue;
     const budget = money(r[F.budgetOrder]);
-    const contract = money(r[F.contractAmount]);
+    const contract = money(contractAmountOf(r));
     if (!isContracted(r)) { noContract += 1; continue; }
     if (budget == null) noBudget += 1;
     const diff = budget == null || contract == null ? null : contract - budget;
@@ -218,7 +218,7 @@ export const loadContractGapKpi = cached<KpiResult>(async () => {
     rows = await queryFeatures(CASHFLOW_NEW.url, {
       where: CF_WORK_WHERE,
       outFields: [
-        F.detail, F.project, F.pkg, F.pkg2, F.budgetOrder, F.contractAmount,
+        F.detail, F.project, F.pkg, F.pkg2, F.budgetOrder, F.budget,
         F.contractor, F.contractNo, F.contractDate, F.amountNote, FIN_XL_TOTAL_CODE_FIELD,
       ],
       orderBy: `${CASHFLOW_NEW.oid} ASC`,

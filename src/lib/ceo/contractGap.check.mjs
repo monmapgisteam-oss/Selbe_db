@@ -14,7 +14,7 @@
  *  7. «гэрээлсэн X / төсөв Y» ХОЁР ӨӨР популяцийг харьцуулах — төсөв БҮХ
  *     мөрөөс (гэрээгүй 43-ыг оруулаад) бол ~1.5 их наяд хуурамч «хэмнэлт».
  *     Хоёулаа ЗӨВХӨН гэрээтэй мөрөөс; contract − budget = Σover + Σunder.
- *  8. (2026-09-25) ГЭРЭЭТЭЙ = `note === CONTRACTED` — `geree_dun` бөглөгдсөн
+ *  8. (2026-09-25) ГЭРЭЭТЭЙ = `note === CONTRACTED` — дүн бөглөгдсөн
  *     ГЭРЭЭГҮЙ мөр «гэрээ» болохгүй; CONTRACTED боловч дүнгүй мөр жагсаалтад
  *     орно, нийлбэрт орохгүй.
  */
@@ -30,7 +30,7 @@ const F = CASHFLOW_NEW.fields;
 const row = (o) => ({
   [F.detail]: o.work ?? null, [F.project]: o.project ?? null,
   [F.pkg2]: o.pkg2 ?? o.pkg ?? null,
-  [F.budgetOrder]: o.b ?? null, [F.contractAmount]: o.c ?? null,
+  [F.budgetOrder]: o.b ?? null, [F.budget]: o.c ?? null,
   bagts_tuvshin1: o.sec ?? '2',
   [F.contractor]: o.co ?? null, [F.contractNo]: o.no ?? null, [F.contractDate]: o.dt ?? null,
   [F.amountNote]: o.note !== undefined ? o.note : (o.c ? CONTRACTED : null),
@@ -163,7 +163,7 @@ const row = (o) => ({
     row({ work: 'дүнгүй гэрээ', b: 300, c: null, note: CONTRACTED }),      // гэрээтэй, дүн бөглөөгүй
     row({ work: 'жинхэнэ', b: 1000, c: 1200 }),
   ]);
-  assert.equal(g.noContract, 1, 'geree_dun бөглөгдсөн ч CONTRACTED биш → гэрээгүй');
+  assert.equal(g.noContract, 1, 'дүн бөглөгдсөн ч CONTRACTED биш → гэрээгүй');
   assert.deepEqual(g.rows.map((r) => r.work), ['жинхэнэ', 'дүнгүй гэрээ']);
   assert.equal(g.rows[1].contract, null);
   assert.equal(g.rows[1].diff, null, 'дүнгүй → зөрүү null');
@@ -176,7 +176,7 @@ const row = (o) => ({
 /* ══════ 9. 2026-10-04: НИЙТ хүрээ (finXlInTotal) · захирамжийн төсөв · ho_dun_geree үл тоогдоно ══════ */
 {
   const g = computeContractGap([
-    { ...row({ work: 'гэрээ=geree', b: 1100, c: 1000 }), [F.budget]: 1000 },   // ho_dun_geree == geree_dun (амьд хэв)
+    { ...row({ work: 'гэрээ=geree', b: 1100, c: 1000 }), [F.budget]: 1000 },   
     row({ work: 'газар', b: 500, c: 900, sec: '6' }),                          // 6-р хэсэг — хүрээнээс гадуур
   ]);
   assert.equal(g.total, 1, '5·6·7-р хэсэг нийт мөрөнд орохгүй');

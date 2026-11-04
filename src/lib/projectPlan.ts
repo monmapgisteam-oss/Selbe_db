@@ -43,6 +43,7 @@ export type PlanStoredRow = {
   heseg_ezleh_huvi?: number | null;
   /** G — БУТАРХАЙ 0–1 (Excel-ийнхээр; `STORED_WEIGHT`) */
   tusul_ezleh_huvi?: number | null;
+  /** Зөвхөн санах ойд (2026-11-04): хүснэгтэд багана алга — `guits_*` эсвэл Хуваарийн «Гэрээ» огноо */
   geree_ehleh?: number | null;
   geree_duusah?: number | null;
   gazar_ehleh?: number | null;

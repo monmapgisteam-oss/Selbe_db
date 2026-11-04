@@ -18,13 +18,11 @@ export const FIN_XL_ORDER: readonly string[] = [
   'ajil_uilchilgee',
   'ho_dun_zahiramj',
   'ho_dun_geree',
-  'tusuld_ezleh_huvi_dun',
-  'tusuld_ezleh_huvi',
-  'ehleh_ognoo',
-  'duusah_ognoo',
+  'tusul_ezleh_huvi',
+  'guits_ehleh',
+  'guits_duusah',
   'zahiramj_ognoo',
   'zahiramj_dugaar',
-  'zahiramj_niit_dun',
   'zahiramj_unet_tsaas',
   'zahiramj_unet_tsaas_huvi',
   'zahiramj_borluulalt_dun',
@@ -33,7 +31,6 @@ export const FIN_XL_ORDER: readonly string[] = [
   'geree_ognoo',
   'geree_dugaar',
   'guitsetgegch',
-  'geree_dun',
   'guitsetgel_huvi',
   'tezu',
   'ajliin_zurag_tusul',
@@ -47,23 +44,17 @@ export const FIN_XL_ORDER: readonly string[] = [
   'urdchilgaa_zh_zardal',
   'dugaar2',
   'bagts_74',
-  'geree_ehleh',
-  'geree_duusah',
-  'guits_ehleh',
-  'guits_duusah',
   'gazar_ehleh',
   'gazar_duusah',
   'songon_ognoo',
   'ashiglalt_ognoo',
   'sar_mongo_eh',
-  'zahiramj_borluulalt',
   'cashflow_id',
   'cashflow_start',
   'cashflow_end',
   'cashflow_huwi',
   'cashflow_dun',
 ];
-const lzGeree_dun14 = perLocale(() => ([tr('Гэрээний мэдээлэл')]));
 
 const lzGuitsetgegch13 = perLocale(() => ([tr('Гэрээний мэдээлэл')]));
 
@@ -81,7 +72,6 @@ const lzZahiramj_unet_tsaas_huvi7 = perLocale(() => ([tr('Захирамжийн
 
 const lzZahiramj_unet_tsaas6 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
 
-const lzZahiramj_niit_dun5 = perLocale(() => ([tr('Захирамжийн мэдээлэл')]));
 
 const lzZahiramj_dugaar4 = perLocale(() => ([tr('Захирамжийн мэдээлэл')]));
 
@@ -96,11 +86,10 @@ const lzEhleh_ognoo1 = perLocale(() => ([tr('Төлөвлөгөөт хугаца
  * БҮЛГИЙН ЗАМ — Excel-ийн нэгтгэсэн толгойн зурвасууд (дээд → доод).
  */
 export const FIN_XL_GROUP: Record<string, readonly string[]> = {
-  get ehleh_ognoo() { return lzEhleh_ognoo1(); },
-  get duusah_ognoo() { return lzDuusah_ognoo2(); },
+  get guits_ehleh() { return lzEhleh_ognoo1(); },
+  get guits_duusah() { return lzDuusah_ognoo2(); },
   get zahiramj_ognoo() { return lzZahiramj_ognoo3(); },
   get zahiramj_dugaar() { return lzZahiramj_dugaar4(); },
-  get zahiramj_niit_dun() { return lzZahiramj_niit_dun5(); },
   get zahiramj_unet_tsaas() { return lzZahiramj_unet_tsaas6(); },
   get zahiramj_unet_tsaas_huvi() { return lzZahiramj_unet_tsaas_huvi7(); },
   get zahiramj_borluulalt_dun() { return lzZahiramj_borluulalt_dun8(); },
@@ -109,7 +98,6 @@ export const FIN_XL_GROUP: Record<string, readonly string[]> = {
   get geree_ognoo() { return lzGeree_ognoo11(); },
   get geree_dugaar() { return lzGeree_dugaar12(); },
   get guitsetgegch() { return lzGuitsetgegch13(); },
-  get geree_dun() { return lzGeree_dun14(); },
 };
 
 /**
@@ -121,13 +109,11 @@ export const FIN_XL_LEAF: Record<string, string> = {
   get ajil_uilchilgee() { return tr('Ажил, үйлчилгээ'); },
   get ho_dun_zahiramj() { return tr('ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮН (Захирамж болон Урьдчилсан тооцоолол дүн)'); },
   get ho_dun_geree() { return tr('ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮН (Гэрээ болон Урьдчилсан тооцоолол дүн)'); },
-  get tusuld_ezleh_huvi_dun() { return tr('Төсөлд эзлэх хувь'); },
-  get tusuld_ezleh_huvi() { return tr('Төсөлд эзлэх хувь (текст)'); },
-  get ehleh_ognoo() { return tr('Эхлэх'); },
-  get duusah_ognoo() { return tr('Дуусах'); },
+  get tusul_ezleh_huvi() { return tr('Төсөлд эзлэх хувь'); },
+  get guits_ehleh() { return tr('Эхлэх'); },
+  get guits_duusah() { return tr('Дуусах'); },
   get zahiramj_ognoo() { return tr('Захирамжийн огноо'); },
   get zahiramj_dugaar() { return tr('Дугаар'); },
-  get zahiramj_niit_dun() { return tr('Захирамж нийт дүн'); },
   get zahiramj_unet_tsaas() { return tr('Үнэт цаас'); },
   get zahiramj_unet_tsaas_huvi() { return tr('Үнэт цаас %'); },
   get zahiramj_borluulalt_dun() { return tr('Борлуулалт орлого'); },
@@ -136,7 +122,6 @@ export const FIN_XL_LEAF: Record<string, string> = {
   get geree_ognoo() { return tr('Гэрээ байгуулсан огноо'); },
   get geree_dugaar() { return tr('Гэрээний дугаар'); },
   get guitsetgegch() { return tr('Гүйцэтгэгч'); },
-  get geree_dun() { return tr('Гэрээний дүн'); },
   get guitsetgel_huvi() { return tr('Санхүүжсэн гүйцэтгэлийн хувь'); },
   get tezu() { return tr('ТЭЗҮ'); },
   get ajliin_zurag_tusul() { return tr('Ажлын зураг төсөл'); },
@@ -166,13 +151,11 @@ export const FIN_XL_WIDTH: Record<string, number> = {
   ajil_uilchilgee: 340,
   ho_dun_zahiramj: 190,
   ho_dun_geree: 190,
-  tusuld_ezleh_huvi_dun: 118,
-  tusuld_ezleh_huvi: 118,
-  ehleh_ognoo: 108,
-  duusah_ognoo: 108,
+  tusul_ezleh_huvi: 118,
+  guits_ehleh: 108,
+  guits_duusah: 108,
   zahiramj_ognoo: 124,
   zahiramj_dugaar: 104,
-  zahiramj_niit_dun: 168,
   zahiramj_unet_tsaas: 160,
   zahiramj_unet_tsaas_huvi: 104,
   zahiramj_borluulalt_dun: 160,
@@ -181,7 +164,6 @@ export const FIN_XL_WIDTH: Record<string, number> = {
   geree_ognoo: 124,
   geree_dugaar: 170,
   guitsetgegch: 190,
-  geree_dun: 172,
   guitsetgel_huvi: 130,
   tezu: 92,
   ajliin_zurag_tusul: 132,
@@ -229,6 +211,7 @@ export const FIN_XL_PCT: readonly string[] = [
  * 0–1 БУТАРХАЙ хувийн баганууд — `FIN_XL_PCT` (0–100)-аас ТУСДАА (2026-10-21).
  */
 export const FIN_XL_FRACTION: readonly string[] = [
+  'tusul_ezleh_huvi',
   'zahiramj_unet_tsaas_huvi',
   'urdchilgaa_huvi',
 ];
@@ -260,7 +243,7 @@ export const finXlEditText = (v: unknown, name: string): string | null =>
     : null;
 
 /** Зурвас/НИЙТ мөрд НИЙЛБЭР БИШ жигнэсэн дундаж гаргах багана уу — 0–100 хувь (`FIN_XL_PCT`) ба 0–1 бутархай */
-export const finXlIsMean = (name: string): boolean => FIN_XL_PCT.includes(name) || finXlIsFraction(name);
+export const finXlIsMean = (name: string): boolean => FIN_XL_PCT.includes(name) || (finXlIsFraction(name) && name !== 'tusul_ezleh_huvi');
 
 /**
  * Өртгөөр (`FIN_XL_PCT_WEIGHT`) ЖИГНЭСЭН ДУНДАЖ — хадгалсан хэмжээсээрээ (бутархай бол 0–1; ×100-г харагдац хийнэ).
@@ -403,7 +386,7 @@ export const finXlRowHidden = (row: Record<string, unknown>): boolean => (
 /**
  * ХҮСНЭГТЭЭС БҮРМӨСӨН ХАСАГДАХ багана — нуугдсан БИШ, «Нуусан баганыг харуулах»-аар ч гарахгүй.
  */
-export const FIN_XL_DROP: readonly string[] = ['tusuld_ezleh_huvi'];
+export const FIN_XL_DROP: readonly string[] = [];
 
 const HIDE_FROM = 'guitsetgel_huvi';
 export const FIN_XL_HIDE: string[] = FIN_XL_ORDER

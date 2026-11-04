@@ -350,4 +350,12 @@ const srow = (o) => ({
   }
 }
 
+/* 2026-11-04: `geree_*` хүснэгтэд алга — «Гэрээ (хавсралт 5)» ижил мөрийн `guits_*`-ийг авна */
+{
+  const r = toStoredRow({ objectid: 1, dd_kod: '1', guits_ehleh: 100, guits_duusah: 200, geree_ehleh: 5, geree_duusah: 6 });
+  assert.equal(r.guits_ehleh, 100);
+  assert.equal(r.geree_ehleh, 100, 'гэрээний эхлэх = guits_ehleh');
+  assert.equal(r.geree_duusah, 200, 'гэрээний дуусах = guits_duusah');
+}
+
 console.log('projectPlanInputs.check: бүгд ✅');

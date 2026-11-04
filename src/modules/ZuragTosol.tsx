@@ -2,7 +2,7 @@
 
 /**
  * ТЭЗҮ · АЖЛЫН ЗУРАГ ТӨСӨЛ — Excel-ийн шатлалаар (`CASHFLOW_NEW`, `dd_kod`) хоёр үе шатын навч мөрийн
- * төлөвлөгөөт огноо (Гэрээ/Хавсралт 5 — `geree_ehleh`/`geree_duusah`) ба явцыг (`guitsetgel_huvi`, 0–100)
+ * төлөвлөгөөт огноо (`guits_ehleh`/`guits_duusah`) ба явцыг (`guitsetgel_huvi`, 0–100)
  * шинэчлэх хэсэг (2026-10-26, cf-spec «Бусад»).
  */
 
@@ -43,7 +43,7 @@ const NAMES: Names = { oid: CASHFLOW_NEW.oid, cfId: CF_MONTH.id };
 /** Уншиж/дахин шалгах талбарууд — `zuragTosol.toStored`-ийн түлхүүрүүд */
 const OUT = [
   CASHFLOW_NEW.oid, F.ddKod, F.parentKod, F.level, F.phase, F.pkg, F.block, F.detail, F.budget, F.wSection,
-  F.wProject, F.contractStart, F.contractEnd, F.landStart, F.landEnd, F.contractorStart, F.contractorEnd,
+  F.wProject, F.landStart, F.landEnd, F.contractorStart, F.contractorEnd,
   F.progressPct, CF_MONTH.id,
 ];
 /** Excel-ийн мөр (мөнгөний + бүтцийн); сарын мөр хасагдана */
@@ -74,8 +74,8 @@ type PhaseFilter = 'all' | 'tezu' | 'zurag';
 /** Навчны огноо хоосон бол төлөвлөгөөт % хамгийн ойрын өвөг мөрийн огноогоор бодогддог — placeholder-т харуулна */
 function inherited(n: PlanNode): [number | null, number | null] {
   for (let x = n.parent; x && x.row; x = x.parent) {
-    const a = saneDate(x.row.geree_ehleh);
-    const b = saneDate(x.row.geree_duusah);
+    const a = saneDate(x.row.guits_ehleh);
+    const b = saneDate(x.row.guits_duusah);
     if (a != null && b != null) return [a, b];
   }
   return [null, null];
@@ -326,8 +326,8 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
     const changed = pe?.[f] != null;
     const r = n.row!;
     const lonely = (f === 'start' || f === 'end') && (pe?.start != null || pe?.end != null)
-      && (saneDate(r.geree_ehleh) == null) !== (saneDate(r.geree_duusah) == null)
-      && saneDate(f === 'start' ? r.geree_ehleh : r.geree_duusah) == null;
+      && (saneDate(r.guits_ehleh) == null) !== (saneDate(r.guits_duusah) == null)
+      && saneDate(f === 'start' ? r.guits_ehleh : r.guits_duusah) == null;
     const bad = badText(f, v) || lonely;
     return (
       <input
@@ -432,7 +432,7 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                 const wsum = worksWeightSum(n, (c) => res.values.get(c)?.F);
                 const sumBad = wsum != null && Math.abs(wsum - 100) > SUM_TOL;
                 const money = v.E ?? v.EA;
-                const [ia, ib] = ed && (saneDate(r.geree_ehleh) == null || saneDate(r.geree_duusah) == null) ? inherited(n) : [null, null];
+                const [ia, ib] = ed && (saneDate(r.guits_ehleh) == null || saneDate(r.guits_duusah) == null) ? inherited(n) : [null, null];
                 return (
                   <Fragment key={k}>
                   <tr

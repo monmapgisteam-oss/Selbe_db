@@ -72,7 +72,7 @@ export type Budget = {
   total: number;
   /** Захирамжийн нийт дүн, ₮ — `finXlInTotal` хүрээ */
   orderTotal: number;
-  /** Гэрээлсэн дүн, ₮ — `finXlInTotal` ∧ `note === CONTRACTED` мөрийн `geree_dun` (2026-09-21) */
+  /** Гэрээлсэн дүн, ₮ — `finXlInTotal` ∧ `note === CONTRACTED` мөрийн `ho_dun_geree` (2026-11-04) */
   contract: number;
   /** Санхүүжилтийн эх үүсвэр — задраагүй үлдэгдэлтэй */
   sources: { key: string; label: string; value: number }[];
@@ -110,18 +110,26 @@ export const loadBudget = cached<Budget>(async () => {
     CASHFLOW_NEW.url,
     `${FIN_XL_CHART_FIELDS.join(',')},${CF.pkg2},${CF.amountNote}`,
     [
-      sum(CF.budget, 'b'), sum(CF.orderTotal, 'o'), sum(CF.contractAmount, 'c'),
+      sum(CF.budget, 'b'),
       count(CASHFLOW_NEW.oid, 'n'),
       ...CASHFLOW_NEW.sources.map((s, i) => sum(s.field, `s${i}`)),
     ],
     CF_WORK_WHERE,
   );
 
+  /* 2026-11-04: захирамжийн нийт — `zahiramj_dugaar`-тай мөрийн `ho_dun_zahiramj` (`orderTotalOf`-тай ижил дүрэм) */
+  const gOrder = await queryGroup(
+    CASHFLOW_NEW.url,
+    `${FIN_XL_CHART_FIELDS.join(',')},${CF.pkg2},${CF.amountNote}`,
+    [sum(CF.budgetOrder, 'o')],
+    `${CF_WORK_WHERE} AND ${CF.orderNo} IS NOT NULL`,
+  );
+
   const inTotal = g.filter(finXlInTotal);
   const sumOf = (rows: readonly Row[], f: string) => rows.reduce((a, r) => a + Number(r[f] ?? 0), 0);
   const total = sumOf(inTotal, 'b');
-  const orderTotal = sumOf(inTotal, 'o');
-  const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
+  const orderTotal = sumOf(gOrder.filter(finXlInTotal), 'o');
+  const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'b');
   /* ⚠️ 2026-11-03 (хэрэглэгч): эх үүсвэр — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ИЖИЛ амьд нийлбэр
      (`loadProjectSourceTotals`; Σ = төслийн нийт дүн). «Тайлан» · нийтийн хүснэгттэй НЭГ тоо. «Эх үүсвэр задраагүй» мөр хасав. */
   const { loadProjectSourceTotals } = await import('@/lib/projectPlanInputs');
@@ -137,7 +145,7 @@ export const loadBudget = cached<Budget>(async () => {
     orderTotal,
     contract,
     sources: named,
-    cityOutside: { amount: sumOf(city, 'o'), n: city.reduce((a, r) => a + Number(r.n ?? 0), 0) },
+    cityOutside: { amount: sumOf(gOrder.filter((r) => !finXlInTotal(r) && CITY_FUNDED_RE.test(cfLabel(r[CF.amountNote]))), 'o'), n: city.reduce((a, r) => a + Number(r.n ?? 0), 0) },
     byType: tally(
       g,
       (row) => ({ key: finXlChartCat(row), value: Number(row.b ?? 0), n: Number(row.n ?? 0) }),

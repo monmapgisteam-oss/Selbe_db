@@ -520,7 +520,7 @@ export function CashflowPlan({
                 <p className={c.warn}>
                   {tr('Сарын задаргаа уншигдсангүй. Хуудсыг дахин ачаална уу.')}
                 </p>
-              ) : cur.ehleh_ognoo != null && cur.duusah_ognoo != null ? (
+              ) : cur.guits_ehleh != null && cur.guits_duusah != null ? (
                 <p className={c.hint}>
                   {tr('Төлөвлөгөөт хугацаа бөглөгдсөн боловч сарын мөр үүсээгүй байна. Гэрээний бүртгэлд эхлэх/дуусах огноог засаж нийтлэхэд сарууд үүснэ.')}
                 </p>

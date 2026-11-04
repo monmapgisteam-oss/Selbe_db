@@ -785,7 +785,7 @@ async function loadFinDataRaw(): Promise<FinData> {
     contracts.forEach((r) => {
       const k = pkgKeyOf(r[CFN.pkg2]) || pkgKeyOf(r[CFN.pkg]);
       if (!k || k === '0') return;
-      const v = n(r[CFN.contractAmount]) || n(r[CFN.budget]);
+      const v = n(r[CFN.budget]);
       if (!v) return;
       planTotal.set(k, (planTotal.get(k) ?? 0) + v);
     });

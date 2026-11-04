@@ -58,9 +58,8 @@ const near = (a, b, msg) => assert.ok(a != null && Math.abs(a - b) < 1e-6, `${ms
 const CR = (o) => ({
   objectid: o.oid, bagts: o.pkg, bagts_tuvshin1: o.code ?? '2',
   ajil_tuvshin1: '', ajil_tuvshin2: o.t2 ?? '', ajil_tuvshin3: o.t3 ?? '',
-  ajil_uilchilgee: o.name ?? '', ho_dun_geree: o.cost ?? null, ho_dungiin_tailbar: o.note ?? '',
-  geree_dun: o.contract ?? null,
-  guitsetgegch: '', guitsetgel_huvi: o.prog ?? null, ehleh_ognoo: null, duusah_ognoo: null, cashflow_id: o.cf ?? null,
+  ajil_uilchilgee: o.name ?? '', ho_dun_geree: o.contract ?? o.cost ?? null, ho_dungiin_tailbar: o.note ?? '',
+  guitsetgegch: '', guitsetgel_huvi: o.prog ?? null, guits_ehleh: null, guits_duusah: null, cashflow_id: o.cf ?? null,
 });
 const HOUSING = 'ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт';
 const INFRA = 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт';
@@ -164,9 +163,9 @@ ok('IPC-ийн хүснэгтэд гэрээ бүр ЯГ НЭГ удаа', () =>
 });
 
 console.log('\n3. Нийт олголтын хувь — paidShareOf (Тайлан/CEO-тэй нэг, 2026-10-01)');
-ok('(200 + 100) ÷ Cashflow гэрээлсэн (800 + 400) = 25% — гэрээлсэн багцаас гадуурх 300 хувьд орохгүй', () => {
+ok('(200 + 100) ÷ Cashflow гэрээлсэн (800 + 50 + 400) = 24% — гэрээлсэн багцаас гадуурх 300 хувьд орохгүй', () => {
   assert.equal(m.paid.total, 600, 'нийт олгосон — БҮХ гэрээ');
-  near(m.paid.pct, 25, 'урьд нь 50%');
+  near(m.paid.pct, 24, 'гэрээлсэн мөрийн ho_dun_geree (800 + 50 + 400)');
 });
 
 console.log('\n4. ХАБЭА — тайлангүй компани');

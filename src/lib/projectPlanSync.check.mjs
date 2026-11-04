@@ -52,6 +52,16 @@ assert.ok(ups.every((u) => Object.keys(u).sort().join() === 'guitsetgel_huvi,obj
   assert.ok(u.has(2) && u.get(2).gazar_ehleh === null, 'газрын огноо хоосон болгох нь бичигдэнэ');
   assert.ok(!u.has(3) || !('guits_ehleh' in u.get(3)), 'ижил өдөр (цагийн зөрүү) бичигдэхгүй');
 }
+/* 2026-11-04: мөнгөний мөрийн `guits_*` — «Cashflow хуваарилах»-ын хугацаа, Хуваариар дарж бичихгүй; бүтцийн мөрд бичнэ; `geree_*` хэзээ ч бичихгүй */
+{
+  const stored = rows.map((r) => ({ ...r, guits_ehleh: D('2025-05-01'), guits_duusah: D('2025-06-01'), geree_ehleh: D('2025-05-01'), cashflow_id: r.objectid === 3 ? 7 : null }));
+  const linked = buildTree(stored.map((r) => ({ ...r, guits_ehleh: D('2026-01-01'), guits_duusah: null, geree_ehleh: D('2026-01-01') })));
+  const p = { empty: false, tree: linked, result: computePlan(linked, {}, today), inputs: {}, months: [], monthly: new Map(), failed: [], stored };
+  const u = new Map(planProgressUpdates(p).map((x) => [x.objectid, x]));
+  assert.ok(!u.has(3) || (!('guits_ehleh' in u.get(3)) && !('guits_duusah' in u.get(3))), 'мөнгөний мөрийн огноо хөндөгдөхгүй');
+  assert.equal(u.get(2).guits_ehleh, D('2026-01-01'), 'бүтцийн мөрд Хуваарийн огноо бичигдэнэ');
+  assert.ok([...u.values()].every((x) => !('geree_ehleh' in x) && !('geree_duusah' in x)), 'geree_* багана бичихгүй');
+}
 /* ⚠️ 2026-10-29: Нэгтгэл гүйцэтгэл = «Төсөл төлөвлөгөө биелэлт» (`negtgel.negRowsFromPlan`) — 0–100 → 0–1, нэг эх */
 {
   const { negRowsFromPlan, negDisplay, negtgelProjectPct } = await import('./negtgel.ts');

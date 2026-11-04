@@ -13,6 +13,7 @@ import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
   bagtsKey, pkgKeyOf, laborCompanyFields, CF_WORK_WHERE,
+  orderTotalOf,
 } from '@/lib/services';
 import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
 import { paidShareOf, paidPctOf } from '@/lib/paidShare';
@@ -443,7 +444,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     const e = typeMap.get(t) ?? { n: 0, budget: 0, contract: 0 };
     e.n += 1;
     e.budget += nn(r[F.budget]);
-    if (str(r[F.amountNote]) === CONTRACTED) e.contract += nn(r[F.contractAmount]);
+    if (str(r[F.amountNote]) === CONTRACTED) e.contract += nn(r[F.budget]);
     typeMap.set(t, e);
   });
 
@@ -464,11 +465,11 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
      */
     rows: master.filter((r) => !FIN_XL_WORK_SKIP.includes(secOf(r))).length,
     budget: sum(F.budget),
-    orderTotal: sum(F.orderTotal),
+    orderTotal: inTotal.reduce((a, r) => a + nn(orderTotalOf(r)), 0),
     /**
      * ГЭРЭЭЛСЭН ДҮН — ЗӨВХӨН «Гэрээлсэн дүн» (`note === CONTRACTED`) мөрөөр
      * (2026-09-21; `gdash.kpisOf`-ийн `contract`-тай ИЖИЛ дүрэм, 2026-09-08-ны
-     * хэрэглэгчийн шийдвэр). `geree_dun` нь гэрээлэгдээгүй мөрд ч бөглөгдсөн
+     * хэрэглэгчийн шийдвэр). `ho_dun_geree` нь гэрээлэгдээгүй мөрд ч бөглөгдсөн
      * байдаг тул шүүлтгүй `sum` ~33 тэрбумаар их гаргаж, `contractRate` /
      * `paidRate` (`buildFindings`) хоёулаа тэр суурин дээр худал байв.
      */
@@ -498,7 +499,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
       budget: sumAll(F.budget),
       contract: master
         .filter((r) => str(r[F.amountNote]) === CONTRACTED)
-        .reduce((a, r) => a + nn(r[F.contractAmount]), 0),
+        .reduce((a, r) => a + nn(r[F.budget]), 0),
     },
     byBagts,
   };

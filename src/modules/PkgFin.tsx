@@ -25,7 +25,7 @@ import { FIN_PKG_ALIAS, rangePaysOf, type RangePay } from '@/lib/pkgAlias';
 import {
   BUILDING, CASHFLOW_NEW, HO_IPC, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   zoneWhere,
-  hoAmount, hoPayCode } from '@/lib/services';
+  hoAmount, hoPayCode, contractAmountOf, orderTotalOf } from '@/lib/services';
 import { cat, date, mnt, num, pct, monthKey, NO_DATA } from '@/lib/format';
 
 /**
@@ -214,7 +214,7 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
     key: string; label: string; plan: number; given: number; pct: number | null;
     /**
      * ГЭРЭЭЛСЭН ДҮН — ЗӨВХӨН `note === CONTRACTED` («Гэрээлсэн дүн») мөрийн
-     * `geree_dun` нийлбэр (2026-09-21). `plan` нь `geree_dun || ho_dun_geree`
+     * `ho_dun_geree` нийлбэр (2026-11-04). `plan` нь `ho_dun_geree`
      * тул гэрээгүй багцад ч ТӨСВӨӨР бөглөгддөг — «гэрээ байгуулагдсан» гэж
      * уншиж болохгүй. Удирдлагын тайлан (§3/§4) гэрээт ба гэрээгүй багцыг
      * ЭНЭ хоёр талбараар ялгана.
@@ -1027,8 +1027,8 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
   push(tr('Захиалагчийн хяналт'), long(txt(row[C.client])), !!txt(row[C.client]));
   push(tr('Урьдчилсан төсөвт өртөг'), money(row[C.budget]), nn2(row[C.budget]) > 0);
   push(tr('Захирамжийн дугаар'), txt(row[C.orderNo]), !!txt(row[C.orderNo]));
-  push(tr('Захирамжийн нийт дүн'), money(row[C.orderTotal]), nn2(row[C.orderTotal]) > 0);
-  push(tr('Гэрээ байгуулах эрх олгосон'), money(row[C.contractAmount]), nn2(row[C.contractAmount]) > 0);
+  push(tr('Захирамжийн нийт дүн'), money(orderTotalOf(row)), nn2(orderTotalOf(row)) > 0);
+  push(tr('Гэрээ байгуулах эрх олгосон'), money(contractAmountOf(row)), nn2(contractAmountOf(row)) > 0);
 
   /* ЭХ ҮҮСВЭР — дүнтэй нь л. Өнгө нь services.ts-д тодорхойлогдсон. */
   const src = CASHFLOW_NEW.sources

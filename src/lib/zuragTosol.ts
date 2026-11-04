@@ -3,7 +3,7 @@
  * Харагдац: `src/modules/ZuragTosol.tsx`. Тест: `src/lib/zuragTosol.check.mjs`.
  *
  * Хийх зүйл: `CASHFLOW_NEW`-ийн Excel мөрүүдээс (dd_kod) ТЭЗҮ ба Ажлын зураг төсөл үе шатын НАВЧ
- * мөрийн төлөвлөгөөт огноо (`geree_ehleh`/`geree_duusah`) ба явцыг (`guitsetgel_huvi`, 0–100) засна;
+ * мөрийн төлөвлөгөөт огноо (`guits_ehleh`/`guits_duusah`) ба явцыг (`guitsetgel_huvi`, 0–100) засна;
  * багцын зураг төслийн мөрийн доор хэрэглэгчийн нэрлэсэн АЖИЛ нэмнэ (2026-11-03, «+ Ажил нэмэх»): жин нь эцгийн
  * доорх нэмсэн ажлуудад ТЭНЦҮҮ хуваагдана (хэрэглэгч хувь эсвэл дүнгээр өөрчилж болно), төсөв нь эцгийн төсвөөс
  * хувиар оноогдоно (`PlanValues.EA`). Эцгийн утгыг `projectPlan.computePlan` бодно — энд бичихгүй.
@@ -27,8 +27,8 @@ const groupOf = (r: PlanStoredRow): string => `${r.etseg_kod ?? ''}|${bagtsKey(r
 
 /** Засах талбар → хадгалах талбарын нэр (жижиг үсэг, Enterprise). `weight` — нэмсэн ажлын жин (оролт %, хадгалах 0–1) */
 export const FIELD_OF = {
-  start: 'geree_ehleh',
-  end: 'geree_duusah',
+  start: 'guits_ehleh',
+  end: 'guits_duusah',
   pct: 'guitsetgel_huvi',
   weight: 'heseg_ezleh_huvi',
 } as const;
@@ -113,8 +113,8 @@ export function toStored(a: Record<string, unknown>, names: Names): PlanStoredRo
     ho_dun_geree: numIn(a.ho_dun_geree),
     heseg_ezleh_huvi: numIn(a.heseg_ezleh_huvi),
     tusul_ezleh_huvi: numIn(a.tusul_ezleh_huvi),
-    geree_ehleh: dateIn(a.geree_ehleh),
-    geree_duusah: dateIn(a.geree_duusah),
+    geree_ehleh: dateIn(a.guits_ehleh),
+    geree_duusah: dateIn(a.guits_duusah),
     gazar_ehleh: dateIn(a.gazar_ehleh),
     gazar_duusah: dateIn(a.gazar_duusah),
     guits_ehleh: dateIn(a.guits_ehleh),
@@ -163,7 +163,7 @@ export const rowKey = (r: PlanStoredRow): string =>
 export function origText(r: PlanStoredRow, f: FieldKey): string {
   if (f === 'pct') return r.guitsetgel_huvi == null ? '' : String(Math.round(r.guitsetgel_huvi * 1e6) / 1e6);
   if (f === 'weight') return r.heseg_ezleh_huvi == null ? '' : String(Math.round(r.heseg_ezleh_huvi * 1e8) / 1e6);
-  return dayOf(f === 'start' ? r.geree_ehleh : r.geree_duusah);
+  return dayOf(f === 'start' ? r.guits_ehleh : r.guits_duusah);
 }
 
 type Parsed = { ok: true; v: number | null } | { ok: false };
@@ -236,6 +236,9 @@ function merged(r: PlanStoredRow, e: RowEdit | undefined): PlanStoredRow {
   for (const f of Object.keys(e) as FieldKey[]) {
     const ps = parseOf(f, e[f]!);
     if (ps.ok && !(f === 'weight' && ps.v == null)) o[FIELD_OF[f]] = ps.v;
+    /* «Гэрээ (хавсралт 5)» багана санах ойд `guits_*`-ийг дагана (2026-11-04) */
+    if (ps.ok && f === 'start') o.geree_ehleh = ps.v;
+    if (ps.ok && f === 'end') o.geree_duusah = ps.v;
   }
   return o;
 }
@@ -379,8 +382,8 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
       if (!same(f, r[FIELD_OF[f]], ps.v)) out[f] = ps.v;
     }
     if (bad) return null;
-    const s = 'start' in out ? out.start ?? null : saneDate(r.geree_ehleh);
-    const en = 'end' in out ? out.end ?? null : saneDate(r.geree_duusah);
+    const s = 'start' in out ? out.start ?? null : saneDate(r.guits_ehleh);
+    const en = 'end' in out ? out.end ?? null : saneDate(r.guits_duusah);
     if (s != null && en != null && s > en && ('start' in out || 'end' in out)) {
       issues.push({ key, code: r.dd_kod, name: r.ajil_uilchilgee ?? null, kind: 'order' });
       return null;
@@ -444,8 +447,8 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
       blok: m.blok ?? null,
       ajil_uilchilgee: m.ajil_uilchilgee ?? null,
       heseg_ezleh_huvi: m.heseg_ezleh_huvi ?? null,
-      geree_ehleh: m.geree_ehleh ?? null,
-      geree_duusah: m.geree_duusah ?? null,
+      guits_ehleh: m.guits_ehleh ?? null,
+      guits_duusah: m.guits_duusah ?? null,
       guitsetgel_huvi: m.guitsetgel_huvi ?? null,
       [names.cfId]: null,
     });
@@ -530,8 +533,8 @@ export function workAdd(n: PlanNode, tree: PlanTree, name: string): PlanStoredRo
     blok: n.row.blok ?? null,
     ajil_uilchilgee: name.trim(),
     heseg_ezleh_huvi: null,
-    geree_ehleh: null,
-    geree_duusah: null,
+    guits_ehleh: null,
+    guits_duusah: null,
     guitsetgel_huvi: null,
     cashflow_id: null,
   };

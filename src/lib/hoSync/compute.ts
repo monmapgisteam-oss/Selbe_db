@@ -5,10 +5,10 @@
  * өөр утгаар бодогдож явахгүй». Cashflow = гэрээний мэдээллийн ГАНЦ эх; HO-д зөвхөн төлбөрийн мөр (IPC) өөрийн мэдээлэлтэй.
  *
  * Холболт (Cashflow → HO), гэрээ (`geree_kod`) бүрийн БҮХ мөрөнд давтаж бичнэ:
- *   zahiramj_niit_dun → tosov_niit ; zahiramj_unet_tsaas → tosov_unet_tsaas ; zahiramj_borluulalt_dun → tosov_borluulalt ;
- *   zahiramj_niislel_tusuv → tosov_niislel_tosov ; geree_dun → gereet_tosov_niit ; hemnelt_hetrelt = tosov_niit − gereet_tosov_niit ;
+ *   ho_dun_zahiramj → tosov_niit ; zahiramj_unet_tsaas → tosov_unet_tsaas ; zahiramj_borluulalt_dun → tosov_borluulalt ;
+ *   zahiramj_niislel_tusuv → tosov_niislel_tosov ; ho_dun_geree → gereet_tosov_niit ; hemnelt_hetrelt = tosov_niit − gereet_tosov_niit ;
  *   guitsetgegch · geree_dugaar ; zahiramj_ognoo → zahiramj1_ognoo ; zahiramj_dugaar → zahiramj1_dugaar.
- *   (HO-д zahiramj_niit_dun · zahiramj_unet_tsaas_huvi · zahialagch_hynalt_baig талбар БАЙХГҮЙ — холбогдохгүй.)
+ *   (HO-д zahiramj_unet_tsaas_huvi · zahialagch_hynalt_baig талбар БАЙХГҮЙ — холбогдохгүй.)
  * Cashflow-д байхгүй талбар (gereet_* задаргаа, tosol_ner, ajliin_turul, geree_helber, huuliin_undeslel, zahiramj2/3, geree_nemelt) —
  * ХӨНДӨХГҮЙ. `bagts` (холболтын түлхүүр) — хөндөхгүй.
  *
@@ -16,7 +16,7 @@
  * `ho_dungiin_tailbar` = «Гэрээлсэн дүн», үе шат нь HO-ийн ажлын төрөлтэй таарна (ТЭЗҮ/Судалгаа → ТЭЗҮ · Ажлын зураг төсөл;
  * бусад → Барилга угсралт). Cashflow мөргүй гэрээ (ХО-0045) — хөндөхгүй.
  */
-import { HO_IPC, CASHFLOW_NEW } from '@/lib/services';
+import { HO_IPC, CASHFLOW_NEW, orderTotalOf } from '@/lib/services';
 
 export type Row = Record<string, unknown>;
 
@@ -62,8 +62,9 @@ export function hoFromCf(cf: readonly Row[]): Row {
     for (const r of cf) { const v = r[f]; if (v != null && txt(v) !== '') return typeof v === 'string' ? txt(v) : v; }
     return null;
   };
-  const tosov = sum(CF.orderTotal);
-  const geree = sum(CF.contractAmount);
+  let tosov: number | null = null;
+  for (const r of cf) { const v = num(orderTotalOf(r)); if (v != null) tosov = (tosov ?? 0) + v; }
+  const geree = sum(CF.budget);
   /* HO-ийн талбарын төрөл (амьд, 2026-11-03): tosov_niit · gereet_tosov_niit · hemnelt_hetrelt — BigInteger (бүхэл);
      tosov_niislel_tosov — Integer (32 бит, > 2.147 тэрбум багтахгүй → хөндөхгүй); zahiramj1_ognoo — DateOnly («YYYY-MM-DD») */
   const city = sum(CASHFLOW_NEW.sources[2].field);

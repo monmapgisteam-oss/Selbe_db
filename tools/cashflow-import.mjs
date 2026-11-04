@@ -351,7 +351,7 @@ const treeKod = [];
 }
 const kodOf = (i) => (KOD === 'tree' ? treeKod[i] : s(xl[i].B.c));
 
-const DATE_COLS = { H: 'geree_ehleh', I: 'geree_duusah', J: 'guits_ehleh', K: 'guits_duusah', L: 'gazar_ehleh', M: 'gazar_duusah' };
+const DATE_COLS = { J: 'guits_ehleh', K: 'guits_duusah', L: 'gazar_ehleh', M: 'gazar_duusah' };
 
 const items = []; // Excel мөр бүр (7…911) → бичих атрибут
 for (let i = 1; i < xl.length; i += 1) {
@@ -668,7 +668,7 @@ const curveOf = (rows, moneyRows) => {
 /* ═══════════ 5. Тулгалт: хүснэгт ↔ Excel (бичилтийн ДАРАА · `--verify` · dry-run-д одоогийн байдал) ═══════════ */
 const VERIFY_FIELDS = [
   'dd_kod', 'etseg_kod', 'tuvshin', 'uy_shat', 'blok', 'bagts', 'ajil_uilchilgee', 'ho_dun_geree',
-  'heseg_ezleh_huvi', 'tusul_ezleh_huvi', 'geree_ehleh', 'geree_duusah', 'guits_ehleh', 'guits_duusah',
+  'heseg_ezleh_huvi', 'tusul_ezleh_huvi', 'guits_ehleh', 'guits_duusah',
   'gazar_ehleh', 'gazar_duusah', 'guitsetgel_huvi', 'sar_mongo_eh',
 ];
 /** Excel мөр бүрийн хүлээгдэх утга — `moneyIdx` (тааралдсан + шинэ мөнгөний мөр) */
@@ -839,8 +839,7 @@ P(`- **Явц** — мөнгөний мөрийн \`guitsetgel_huvi\` = Excel S 
 P(`- **\`bagts\`** — ${EXCEL_BAGTS ? '`--excel-bagts`: Excel-ийнх бичигдэнэ.' : `багцын түлхүүр өөрчлөгдөх ${keptBagts.length} мөрөнд СИСТЕМИЙН утга үлдэнэ (IPC/газрын зургийн холбоос; Excel-ийнхээр бол \`--excel-bagts\`):`}`);
 for (const { r, t } of keptBagts) P(`   - oid ${r.objectid}: «${md(r.bagts)}» (Excel «${md(t.attrs.bagts)}», мөр ${t.r})`);
 P(`- **Excel-ийн өртөг 0** (мөнгөний мөр) — систем дүн 0: ${updates.filter((u) => !(u.a.ho_dun_geree > 0)).map((u) => `oid ${u.r.objectid} «${md(u.r.bagts)}» ${bn(u.r.ho_dun_geree)} → 0`).join('; ') || '—'}.`);
-P('- **Огноо** — Excel H/I → `geree_*`, J/K → `guits_*`, L/M → `gazar_*` (тогтмол нүд; томьёотой нь null — систем үр удмаас бодно). '
-  + 'Хуучин `ehleh_ognoo`/`duusah_ognoo` (Excel-д багана байхгүй) ХУУЛАГДАНА.');
+P('- **Огноо** — J/K → `guits_*`, L/M → `gazar_*` (тогтмол нүд; томьёотой нь null — систем үр удмаас бодно). ');
 P();
 P('## Тодорхойгүй / тааралдаагүй (хүн шийднэ)');
 P();

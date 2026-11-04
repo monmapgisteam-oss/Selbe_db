@@ -29,7 +29,7 @@ const near = (a, b, msg) => assert.ok(a != null && b != null && Math.abs(a - b) 
        `dun` хоосон мөр (алгасна). HO-ийн гэрээт дүн (gereet_tosov_niit) нь Cashflow-оос ӨӨР. */
 const CF = (o) => ({
   objectid: o.oid, bagts: o.pkg, bagts2: o.pkg2 ?? null, bagts_tuvshin1: o.sec ?? '2',
-  ho_dungiin_tailbar: o.note ?? '', geree_dun: o.contract ?? null, ho_dun_geree: o.cost ?? null,
+  ho_dungiin_tailbar: o.note ?? '', ho_dun_geree: o.contract ?? o.cost ?? null,
 });
 const cf = [
   CF({ oid: 1, pkg: 'БАГЦ-1', note: CONTRACTED, contract: 800 }),

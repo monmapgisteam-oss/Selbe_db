@@ -14,8 +14,8 @@ const idOf = (v: unknown): number | null => {
 };
 const own = (row: Row, key: string) => Object.prototype.hasOwnProperty.call(row, key);
 const same = (a: unknown, b: unknown) => (a ?? null) === (b ?? null);
-const SOURCE_FIELDS = ['ho_dun_geree', 'ehleh_ognoo', 'duusah_ognoo', 'cashflow_huwi', 'cashflow_id'];
-const PARENT_INPUTS = ['cashflow_id', 'ho_dun_geree', 'ehleh_ognoo', 'duusah_ognoo'];
+const SOURCE_FIELDS = ['ho_dun_geree', 'guits_ehleh', 'guits_duusah', 'cashflow_huwi', 'cashflow_id'];
+const PARENT_INPUTS = ['cashflow_id', 'ho_dun_geree', 'guits_ehleh', 'guits_duusah'];
 const MONTH_INPUTS = ['cashflow_id', 'cashflow_start', 'cashflow_end', 'cashflow_huwi', 'cashflow_dun'];
 
 export class FinancePublishConflict extends Error {

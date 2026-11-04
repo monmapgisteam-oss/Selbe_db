@@ -56,8 +56,6 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['ho_dun_geree', CF.budget],
   ['heseg_ezleh_huvi', CF.wSection],
   ['tusul_ezleh_huvi', CF.wProject],
-  ['geree_ehleh', CF.contractStart],
-  ['geree_duusah', CF.contractEnd],
   ['gazar_ehleh', CF.landStart],
   ['gazar_duusah', CF.landEnd],
   ['guits_ehleh', CF.contractorStart],
@@ -106,6 +104,10 @@ export function toStoredRow(a: Record<string, unknown>): PlanStoredRow {
     const v = attrOf(a, f);
     out[k] = TEXT_KEYS.has(k) ? textOrNull(v) : numOrNull(v);
   }
+  /* 2026-11-04: `geree_*` хүснэгтээс хасагдсан — «Гэрээ (хавсралт 5)» багана ижил мөрийн `guits_*`-ийг авна;
+     Барилга угсралтад `linkPlanDates` Хуваарийн «Гэрээ» огноогоор дарна. */
+  out.geree_ehleh = out.guits_ehleh;
+  out.geree_duusah = out.guits_duusah;
   return out as PlanStoredRow;
 }
 

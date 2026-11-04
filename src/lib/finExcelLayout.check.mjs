@@ -17,7 +17,7 @@ console.log('\n1. ХЭМЖЭЭС — 0–100 ба 0–1 жагсаалт зөр�
 check('FIN_XL_PCT нь амьдаар 0–100 байдаг 6 талбар', [...FIN_XL_PCT].sort().join(',')
   === ['guitsetgel_huvi', 'tezu', 'ajliin_zurag_tusul', 'gazar_chuluulult', 'zuwshuurul', 'songon_shalgaruulalt'].sort().join(','));
 check('urdchilgaa_huvi (0–1) FIN_XL_PCT-д БАЙХГҮЙ', !FIN_XL_PCT.includes('urdchilgaa_huvi'));
-check('FIN_XL_FRACTION = үнэт цаасны хувь + урьдчилгааны хувь', FIN_XL_FRACTION.join(',') === 'zahiramj_unet_tsaas_huvi,urdchilgaa_huvi');
+check('FIN_XL_FRACTION = төсөлд эзлэх + үнэт цаасны + урьдчилгааны хувь', FIN_XL_FRACTION.join(',') === 'tusul_ezleh_huvi,zahiramj_unet_tsaas_huvi,urdchilgaa_huvi');
 check('хоёр жагсаалт огтлолцохгүй', FIN_XL_FRACTION.every((f) => !FIN_XL_PCT.includes(f)));
 check('жин нь ХО дүн', FIN_XL_PCT_WEIGHT === 'ho_dun_geree');
 
@@ -40,7 +40,7 @@ console.log('\n2. АМЬД УТГААР — бүтээгдэхүүний фун�
   check('0–100 хувь (FIN_XL_PCT) хэмжээсээ хадгална — 30%·500 + 100%·1 → 30.14',
     Math.abs(finXlWeightedMean([{ guitsetgel_huvi: 30, ho_dun_geree: 500 }, { guitsetgel_huvi: 100, ho_dun_geree: 1 }], 'guitsetgel_huvi') - 30.1397) < 1e-3);
   check('дундаж багана = FIN_XL_PCT + FIN_XL_FRACTION; мөнгө · эзлэх хувийн дүн — нийлбэр',
-    [...FIN_XL_PCT, ...FIN_XL_FRACTION].every(finXlIsMean) && !finXlIsMean(FIN_XL_PCT_WEIGHT) && !finXlIsMean('tusuld_ezleh_huvi_dun'));
+    [...FIN_XL_PCT, ...FIN_XL_FRACTION].filter((n) => n !== 'tusul_ezleh_huvi').every(finXlIsMean) && !finXlIsMean(FIN_XL_PCT_WEIGHT) && !finXlIsMean('ho_dun_zahiramj'));
   /* харагдац (`fmtCell`) · тоон шүүлт (`shareScale`): ×100 */
   check('харагдац ×100 → 16.4% (0.2% БИШ)', finXlFractionText(mean) === pct(16.3564, 1) && finXlFractionText(mean) !== pct(0.1636, 1));
   check('харагдац: амьд max 0.2 → «20.0%»', finXlFractionText(0.2) === pct(20, 1));
@@ -65,11 +65,10 @@ console.log('\n2. АМЬД УТГААР — бүтээгдэхүүний фун�
 }
 
 console.log('\n3. ХАСАГДСАН БАГАНА — хуучирсан текстэн хуулбар');
-check('FIN_XL_DROP = tusuld_ezleh_huvi', FIN_XL_DROP.join(',') === 'tusuld_ezleh_huvi');
-check('FIN_XL_HIDE-д байхгүй (нуугдсан биш, огт багана биш)', !FIN_XL_HIDE.includes('tusuld_ezleh_huvi'));
-check('FIN_XL_ORDER-т ХЭВЭЭР (эрэмбийн хувилбар хөдлөхгүй)', FIN_XL_ORDER.includes('tusuld_ezleh_huvi'));
+check('FIN_XL_DROP хоосон (2026-11-04: давхар багана хүснэгтээс хасагдсан)', FIN_XL_DROP.length === 0);
+for (const n of ['tusuld_ezleh_huvi', 'tusuld_ezleh_huvi_dun', 'zahiramj_borluulalt', 'zahiramj_niit_dun', 'geree_dun', 'ehleh_ognoo', 'duusah_ognoo', 'geree_ehleh', 'geree_duusah']) check(`${n} — баганын эрэмбэд алга`, !FIN_XL_ORDER.includes(n));
 check('urdchilgaa_huvi анхдагчаар нуугдсан хэвээр', FIN_XL_HIDE.includes('urdchilgaa_huvi') && FIN_XL_HIDE.includes('cashflow_id'));
-check('тоон ихэр нуугдахгүй', !FIN_XL_HIDE.includes('tusuld_ezleh_huvi_dun') && !FIN_XL_DROP.includes('tusuld_ezleh_huvi_dun'));
+check('төсөлд эзлэх хувь нуугдахгүй', !FIN_XL_HIDE.includes('tusul_ezleh_huvi') && !FIN_XL_DROP.includes('tusul_ezleh_huvi'));
 
 
 console.log(`\n✅ finExcelLayout.check: ${ok} шалгуур давлаа`);

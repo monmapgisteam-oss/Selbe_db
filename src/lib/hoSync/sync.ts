@@ -19,7 +19,7 @@ const CF = CASHFLOW_NEW.fields;
 async function loadCfContractRows(): Promise<Row[]> {
   return queryFeatures(CASHFLOW_NEW.url, {
     where: `${CF_MONTH.start} IS NULL AND ${CF.amountNote} IS NOT NULL`,
-    outFields: [CASHFLOW_NEW.oid, CF.pkg, CF.phase, CF.amountNote, CF.orderTotal, CF.contractAmount, CF.contractor, CF.contractNo,
+    outFields: [CASHFLOW_NEW.oid, CF.pkg, CF.phase, CF.amountNote, CF.budgetOrder, CF.budget, CF.contractor, CF.contractNo,
       CF.orderDate, CF.orderNo, ...CASHFLOW_NEW.sources.map((s) => s.field)],
   });
 }

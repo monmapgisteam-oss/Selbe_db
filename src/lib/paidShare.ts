@@ -3,7 +3,7 @@
  *
  * ДҮРЭМ (2026-09-21-ний `reportData.loadFinanceRaw`-аас ЯГ шилжүүлсэн):
  *   · хуваарь `contract` = Cashflow-ийн `finXlInTotal` ∧ `ho_dungiin_tailbar === CONTRACTED`
- *     мөрийн `geree_dun` нийлбэр;
+ *     мөрийн `ho_dun_geree` нийлбэр;
  *   · гэрээлсэн багцын түлхүүр = тэр мөрүүдийн `finPkgKey(pkgKeyOf(pkg2|pkg))` (2026-10-09: холбоостой);
  *   · тоологч `paidContracted` = HO төлбөрийн `finPkgKey(pkgKeyOf(bagts))` тэр түлхүүрт орох мөрийн `dun`;
  *   · `paid` = HO-ийн БҮХ мөрийн `dun` (хоосон `dun` АЛГАСНА — null ≠ 0).
@@ -53,7 +53,7 @@ export function paidShareOf(
 ): PaidShare {
   const F = CASHFLOW_NEW.fields;
   const contracted = cfRows.filter((r) => finXlInTotal(r) && str(r[F.amountNote]) === PAID_SHARE_CONTRACTED);
-  const contract = contracted.reduce((a, r) => a + nn(r[F.contractAmount]), 0);
+  const contract = contracted.reduce((a, r) => a + nn(r[F.budget]), 0);
   const keys = new Set<string>();
   for (const r of contracted) {
     for (const k of [pkgKeyOf(r[F.pkg2]), pkgKeyOf(r[F.pkg])]) if (k && k !== '0') keys.add(finPkgKey(k));

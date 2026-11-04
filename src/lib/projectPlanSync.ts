@@ -36,7 +36,6 @@ const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
  *    утгаас зөрвөл бичнэ (хоосон ч — `null`). Өдрөөр жишнэ (цагийн бүсийн шуугиан).
  */
 const DATE_KEYS = [
-  ['geree_ehleh', F.contractStart], ['geree_duusah', F.contractEnd],
   ['guits_ehleh', F.contractorStart], ['guits_duusah', F.contractorEnd],
   ['gazar_ehleh', F.landStart], ['gazar_duusah', F.landEnd],
 ] as const;
@@ -59,7 +58,11 @@ export function planProgressUpdates(plan: ProjectPlan): Record<string, unknown>[
       const w = was.guitsetgel_huvi;
       if (!(w != null && Number.isFinite(w) && Math.abs(w - s) < EPS)) u[F.progressPct] = round6(s);
     }
-    for (const [k, f] of DATE_KEYS) if (!sameDay(was[k], r[k])) u[f] = r[k] ?? null;
+    for (const [k, f] of DATE_KEYS) {
+      /* 2026-11-04: мөнгөний мөрийн `guits_*` нь «Cashflow хуваарилах»-ын төлөвлөгөөт хугацаа — Хуваариар ДАРЖ БИЧИХГҮЙ */
+      if (r.cashflow_id != null && k.startsWith('guits_')) continue;
+      if (!sameDay(was[k], r[k])) u[f] = r[k] ?? null;
+    }
     if (Object.keys(u).length) out.push({ [CASHFLOW_NEW.oid]: r.objectid, ...u });
   }
   return out;

@@ -41,11 +41,10 @@ const row = (o = {}) => ({
   ajil_uilchilgee: 'Ажил',
   ho_dun_geree: null,
   ho_dungiin_tailbar: null,
-  ehleh_ognoo: null,
-  duusah_ognoo: null,
+  guits_ehleh: null,
+  guits_duusah: null,
   guitsetgegch: null,
   geree_dugaar: null,
-  geree_dun: null,
   ...o,
 });
 
@@ -53,27 +52,27 @@ const row = (o = {}) => ({
 const CN = 'Гэрээлсэн дүн';
 {
   for (const amt of [null, '', 0, '0', -5]) {
-    assert.equal(isUncontracted(row({ geree_dun: amt })), true, `дүн=${JSON.stringify(amt)}`);
-    assert.equal(isUncontracted(row({ geree_dun: amt, guitsetgegch: '  ' })), true, 'зайтай гүйцэтгэгч = хоосон');
-    assert.equal(isInconsistent(row({ geree_dun: amt })), false);
+    assert.equal(isUncontracted(row({ ho_dun_geree: amt })), true, `дүн=${JSON.stringify(amt)}`);
+    assert.equal(isUncontracted(row({ ho_dun_geree: amt, guitsetgegch: '  ' })), true, 'зайтай гүйцэтгэгч = хоосон');
+    assert.equal(isInconsistent(row({ ho_dun_geree: amt })), false);
     /* тайлбартай, дүн ЧИНЬ гүйцэтгэгч ЧИНЬ алга — гэрээтэй (нэг предикат), эсрэг зөрүү */
-    assert.equal(isUncontracted(row({ geree_dun: amt, ho_dungiin_tailbar: CN })), false, `тайлбартай, дүн=${JSON.stringify(amt)}`);
-    assert.equal(isNoteOnly(row({ geree_dun: amt, ho_dungiin_tailbar: CN })), true);
-    assert.equal(isInconsistent(row({ geree_dun: amt, ho_dungiin_tailbar: CN })), false, 'хоёулаа алга бол «дутуу» биш, эсрэг зөрүү');
+    assert.equal(isUncontracted(row({ ho_dun_geree: amt, ho_dungiin_tailbar: CN })), false, `тайлбартай, дүн=${JSON.stringify(amt)}`);
+    assert.equal(isNoteOnly(row({ ho_dun_geree: amt, ho_dungiin_tailbar: CN })), true);
+    assert.equal(isInconsistent(row({ ho_dun_geree: amt, ho_dungiin_tailbar: CN })), false, 'хоёулаа алга бол «дутуу» биш, эсрэг зөрүү');
   }
   /* тайлбаргүй мөр — дүн/гүйцэтгэгчтэй ч ГЭРЭЭГҮЙ (бусад харагдацтай нэг) */
-  assert.equal(isUncontracted(row({ geree_dun: 100 })), true);
+  assert.equal(isUncontracted(row({ ho_dun_geree: 100 })), true);
   assert.equal(isUncontracted(row({ guitsetgegch: 'ББСМО ХХК' })), true);
-  assert.equal(isUncontracted(row({ geree_dun: 100, guitsetgegch: 'ББСМО ХХК' })), true);
-  assert.equal(isInconsistent(row({ geree_dun: 100 })), false, 'тайлбаргүй — гэрээгүй, «дутуу» биш');
+  assert.equal(isUncontracted(row({ ho_dun_geree: 100, guitsetgegch: 'ББСМО ХХК' })), true);
+  assert.equal(isInconsistent(row({ ho_dun_geree: 100 })), false, 'тайлбаргүй — гэрээгүй, «дутуу» биш');
   /* тайлбартай — дутуу бүртгэл (нэг нь алга) ба бүрэн */
-  assert.equal(isInconsistent(row({ geree_dun: 100, ho_dungiin_tailbar: CN })), true, 'дүн бий, гүйцэтгэгч алга');
+  assert.equal(isInconsistent(row({ ho_dun_geree: 100, ho_dungiin_tailbar: CN })), true, 'дүн бий, гүйцэтгэгч алга');
   assert.equal(isInconsistent(row({ guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: CN })), true, 'гүйцэтгэгч бий, дүн алга');
-  assert.equal(isInconsistent(row({ geree_dun: 100, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: CN })), false);
-  assert.equal(isNoteOnly(row({ geree_dun: 100, ho_dungiin_tailbar: CN })), false);
-  assert.equal(isNoteOnly(row({ geree_dun: 100 })), false, 'тайлбаргүй бол эсрэг зөрүү биш');
+  assert.equal(isInconsistent(row({ ho_dun_geree: 100, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: CN })), false);
+  assert.equal(isNoteOnly(row({ ho_dun_geree: 100, ho_dungiin_tailbar: CN })), false);
+  assert.equal(isNoteOnly(row({ ho_dun_geree: 100 })), false, 'тайлбаргүй бол эсрэг зөрүү биш');
   /* НЭГ предикат — бүх мөрд `isUncontracted === !isContracted` */
-  for (const o of [{}, { geree_dun: 100 }, { ho_dungiin_tailbar: CN }, { ho_dungiin_tailbar: ' Гэрээлсэн  дүн ' }, { ho_dungiin_tailbar: 'Магадлагдсан дүн', geree_dun: 5 }]) {
+  for (const o of [{}, { ho_dun_geree: 100 }, { ho_dungiin_tailbar: CN }, { ho_dungiin_tailbar: ' Гэрээлсэн  дүн ' }, { ho_dungiin_tailbar: 'Магадлагдсан дүн', ho_dun_geree: 5 }]) {
     assert.equal(isUncontracted(row(o)), !isContracted(row(o)), JSON.stringify(o));
   }
 }
@@ -89,17 +88,17 @@ const CN = 'Гэрээлсэн дүн';
 }
 
 /* ── 2. Бүтэн тооцоо — холимог мөрүүд ── */
-const A = row({ objectid: 1, ajil_uilchilgee: 'A ажил', ho_dun_geree: 100, ehleh_ognoo: NOW - 10 * DAY });
-const B = row({ objectid: 2, ajil_uilchilgee: 'B ажил', ho_dun_geree: 500, ehleh_ognoo: NOW + 30 * DAY });
+const A = row({ objectid: 1, ajil_uilchilgee: 'A ажил', ho_dun_geree: 100, guits_ehleh: NOW - 10 * DAY });
+const B = row({ objectid: 2, ajil_uilchilgee: 'B ажил', ho_dun_geree: 500, guits_ehleh: NOW + 30 * DAY });
 const C = row({ objectid: 3, ajil_uilchilgee: 'C ажил', ho_dun_geree: null });
-const D = row({ objectid: 4, ajil_uilchilgee: 'D гэрээтэй', geree_dun: 900, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
-const E = row({ objectid: 5, ajil_uilchilgee: 'E дүнтэй', geree_dun: 50, ho_dun_geree: 60 });
-const G = row({ objectid: 6, ajil_uilchilgee: 'G гүйцэтгэгчтэй', guitsetgegch: 'Х ХХК', geree_dugaar: 'ХМХ-25/1', ho_dun_geree: 70, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
-const E2 = row({ objectid: 9, ajil_uilchilgee: 'E2 дүнтэй гэрээ', geree_dun: 50, ho_dun_geree: 60, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const D = row({ objectid: 4, ajil_uilchilgee: 'D гэрээтэй', ho_dun_geree: 900, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const E = row({ objectid: 5, ajil_uilchilgee: 'E дүнтэй', ho_dun_geree: 60 });
+const G = row({ objectid: 6, ajil_uilchilgee: 'G гүйцэтгэгчтэй', guitsetgegch: 'Х ХХК', geree_dugaar: 'ХМХ-25/1', ho_dun_geree: null, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const E2 = row({ objectid: 9, ajil_uilchilgee: 'E2 дүнтэй гэрээ', ho_dun_geree: 50, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
 /* Багц 5.3 · 5.4-ийн хэлбэр — тайлбартай атлаа дүн, гүйцэтгэгчгүй: ГЭРЭЭТЭЙ, эсрэг зөрүүний жагсаалтад */
-const N = row({ objectid: 10, ajil_uilchilgee: 'N тайлбар л', bagts: 'БАГЦ-5.3', ho_dun_geree: 300, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
-const H = row({ objectid: 7, ajil_uilchilgee: 'H ажил', bagts: 'БАГЦ-16.2', ho_dun_geree: 20, ehleh_ognoo: NOW - 40 * DAY, duusah_ognoo: NOW + 100 * DAY });
-const I = row({ objectid: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 1, ehleh_ognoo: NOW });
+const N = row({ objectid: 10, ajil_uilchilgee: 'N тайлбар л', bagts: 'БАГЦ-5.3', ho_dun_geree: null, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const H = row({ objectid: 7, ajil_uilchilgee: 'H ажил', bagts: 'БАГЦ-16.2', ho_dun_geree: 20, guits_ehleh: NOW - 40 * DAY, guits_duusah: NOW + 100 * DAY });
+const I = row({ objectid: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 1, guits_ehleh: NOW });
 {
   const k = computeUncontracted([A, B, C, D, E, G, H, I, E2, N], NOW);
   assert.equal(k.value, '6', 'гэрээгүй тоо (A B C E H I)');
@@ -109,16 +108,13 @@ const I = row({ objectid: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 
   assert.ok(k.facts.some((f) => f.includes('681 ₮')), `Σ төсөв (N-ийн 300 орохгүй): ${k.facts}`);
   assert.ok(k.facts.some((f) => f.startsWith('2 ')), `эхэлсэн 2 (A, H; I = яг одоо, өнгөрөөгүй): ${k.facts}`);
   assert.ok(k.facts.some((f) => f.includes('2 дутуу')), `дутуу 2 (G, E2): ${k.facts}`);
-  assert.ok(k.facts.some((f) => f.includes('2 бүртгэлийн зөрүү')), `тайлбар ↔ дүн зөрүү 2 (E, N): ${k.facts}`);
+  assert.ok(k.facts.some((f) => f.includes('1 бүртгэлийн зөрүү')), `тайлбар ↔ дүн зөрүү 1 (N): ${k.facts}`);
   for (const f of k.facts) assert.match(f, /\d/, `факт тоогүй: «${f}»`);
 
-  assert.equal(k.tables.length, 4);
-  assert.deepEqual(k.noteMismatch.map((c) => c.work), ['E дүнтэй'], 'D (CONTRACTED) орохгүй');
-  assert.deepEqual(k.tables[2].rows.map((r) => r[0].v), ['E дүнтэй']);
-  assert.equal(k.tables[2].rows[0][2].v, 50);
+  assert.equal(k.tables.length, 3);
   assert.deepEqual(k.noteOnly.map((c) => c.work), ['N тайлбар л'], 'эсрэг зөрүү — D (бүрэн) орохгүй');
-  assert.equal(k.tables[3].title, '«Гэрээлсэн дүн» тайлбартай боловч гэрээний дүн, гүйцэтгэгчгүй');
-  assert.deepEqual(k.tables[3].rows[0].map((c) => c.v), ['N тайлбар л', 'БАГЦ-5.3', 300, 'Гэрээлсэн дүн']);
+  assert.equal(k.tables[2].title, '«Гэрээлсэн дүн» тайлбартай боловч гэрээний дүн, гүйцэтгэгчгүй');
+  assert.deepEqual(k.tables[2].rows[0].map((c) => c.v), ['N тайлбар л', 'БАГЦ-5.3', null, 'Гэрээлсэн дүн']);
   const [t1, t2] = k.tables;
   assert.equal(t1.cols.length, 7);
   assert.equal(t1.rows.length, 6);
@@ -162,13 +158,13 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
 {
   const NOTE = 'Төслийн хөрөнгө оруулалтаас хасах. Хийгдэхгүй болсон ажил';
   /* гэрээгүй + эхлэх хугацаа өнгөрсөн + том төсөв — хасагдсан тул bad болох ёсгүй */
-  const X = row({ objectid: 10, ajil_uilchilgee: 'X хасагдсан', ho_dun_geree: 20000, ehleh_ognoo: NOW - 5 * DAY, ho_dungiin_tailbar: NOTE });
+  const X = row({ objectid: 10, ajil_uilchilgee: 'X хасагдсан', ho_dun_geree: 20000, guits_ehleh: NOW - 5 * DAY, ho_dungiin_tailbar: NOTE });
   /* гүйцэтгэгчтэй ч дүнгүй (дутуу) + хасуулах — 2-р хүснэгтэд орох ёсгүй */
   const Y = row({ objectid: 11, ajil_uilchilgee: 'Y хасуулах', ho_dun_geree: 30, guitsetgegch: 'Ү ХХК', ho_dungiin_tailbar: NOTE_76 });
   /* гэрээ бүрэн + «хийгдэхгүй» — энэ картын хамрах хүрээнд огт биш */
-  const Z = row({ objectid: 12, ajil_uilchilgee: 'Z гэрээтэй', geree_dun: 900, guitsetgegch: 'З ХХК', ho_dungiin_tailbar: 'хийгдэхгүй' });
+  const Z = row({ objectid: 12, ajil_uilchilgee: 'Z гэрээтэй', ho_dun_geree: null, guitsetgegch: 'З ХХК', ho_dungiin_tailbar: 'хийгдэхгүй' });
   /* гэрээгүй + эхэлсэн + ганц «хасах» үгтэй тайлбар — ХАСАГДСАН БИШ, ердийн гэрээгүй хэвээр (bad) */
-  const W = row({ objectid: 13, ajil_uilchilgee: 'W НӨАТ', ho_dun_geree: 7, ehleh_ognoo: NOW - 3 * DAY, ho_dungiin_tailbar: 'НӨАТ хасах дүн' });
+  const W = row({ objectid: 13, ajil_uilchilgee: 'W НӨАТ', ho_dun_geree: 7, guits_ehleh: NOW - 3 * DAY, ho_dungiin_tailbar: 'НӨАТ хасах дүн' });
 
   const k = computeUncontracted([B, E, X, Y, Z], NOW);
   assert.equal(k.value, '2', 'B ба E гэрээгүй');
@@ -186,8 +182,7 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
   assert.ok(kw.facts.some((f) => f.includes('1 хасагдсан')), `хасагдсан зөвхөн X: ${kw.facts}`);
   assert.deepEqual(kw.tables[0].rows.map((r) => r[0].v), ['W НӨАТ', 'B ажил']);
 
-  assert.equal(k.tables.length, 3, 'гэрээгүй + хасагдсан + тодорхойлолтын зөрүү (E); дутуу бүртгэл алга');
-  assert.deepEqual(k.noteMismatch.map((c) => c.work), ['E дүнтэй']);
+  assert.equal(k.tables.length, 2, 'гэрээгүй + хасагдсан; дутуу бүртгэл алга');
   const [t1, t3] = k.tables;
   assert.deepEqual(t1.rows.map((r) => r[0].v), ['B ажил', 'E дүнтэй']);
   assert.equal(t3.cols.length, 4);
@@ -198,7 +193,7 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
   /* хасагдсан байхгүй бол факт ч, хүснэгт ч нэмэгдэхгүй */
   const k0 = computeUncontracted([B, E], NOW);
   assert.ok(!k0.facts.some((f) => f.includes('хасагдсан')), `хасагдсан факт гарах ёсгүй: ${k0.facts}`);
-  assert.equal(k0.tables.length, 2, 'гэрээгүй + тодорхойлолтын зөрүү (E)');
+  assert.equal(k0.tables.length, 1, 'гэрээгүй');
 }
 
 /* ── 3. Σ төсөв: бүгд төсөвгүй → факт байхгүй (0 ₮ гэж хэвлэхгүй) ── */
@@ -227,7 +222,6 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
   assert.equal(none.value, '—');
   assert.deepEqual(none.facts, []);
   assert.deepEqual(none.tables, []);
-  assert.deepEqual(none.noteMismatch, []);
   assert.deepEqual(none.noteOnly, []);
 }
 

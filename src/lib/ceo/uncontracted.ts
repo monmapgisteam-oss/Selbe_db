@@ -7,7 +7,7 @@
  */
 
 import { cached } from '@/lib/live';
-import { CASHFLOW_NEW } from '@/lib/services';
+import { CASHFLOW_NEW, contractAmountOf } from '@/lib/services';
 import { blank, date, mnt, num } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
 import { FIN_XL_LAND_CODE, FIN_XL_TOTAL_CODE_FIELD, finXlRowHidden } from '@/lib/finExcelLayout';
@@ -90,7 +90,7 @@ export const isUncontracted = (r: CfRaw): boolean => !isContracted(r);
  * Гэрээгүй ч биш, бүрэн гэрээтэй ч биш — өгөгдлийн асуудал.
  */
 export const isInconsistent = (r: CfRaw): boolean => (
-  isContracted(r) && (posOf(r[F.contractAmount]) != null) !== !blank(r[F.contractor])
+  isContracted(r) && (posOf(contractAmountOf(r)) != null) !== !blank(r[F.contractor])
 );
 
 /**
@@ -99,7 +99,7 @@ export const isInconsistent = (r: CfRaw): boolean => (
  * өгөгдлийн эзэнд засуулах жагсаалтад (`noteOnly`) нэрээр гарна.
  */
 export const isNoteOnly = (r: CfRaw): boolean => (
-  isContracted(r) && posOf(r[F.contractAmount]) == null && blank(r[F.contractor])
+  isContracted(r) && posOf(contractAmountOf(r)) == null && blank(r[F.contractor])
 );
 
 export const CANCELLED_NOTE_RE = /хийгдэхгүй|хөрөнгө оруулалт(аас хасах|\s*руу оруулахгүй)/i;
@@ -119,17 +119,16 @@ export function contractOf(r: CfRaw): CfContract {
     note: sOf(r[F.amountNote]),
     contractor: sOf(r[F.contractor]),
     contractNo: sOf(r[F.contractNo]),
-    contractAmount: posOf(r[F.contractAmount]),
+    contractAmount: posOf(contractAmountOf(r)),
     start: posOf(r[F.startDate]),
     end: posOf(r[F.endDate]),
   };
 }
 
 /**
- * Картын үр дүн + ТОДОРХОЙЛОЛТЫН ЗӨРҮҮ (2026-10-09): `noteMismatch` — гэрээний дүнтэй (`geree_dun > 0`)
- * атлаа `gdash.isContracted` биш мөрүүд (хасагдсан ажил орохгүй), дүнгээр буурах.
+ * Картын үр дүн + `noteOnly` — «Гэрээлсэн дүн» тайлбартай боловч бүртгэлгүй мөрүүд.
  */
-export type UncontractedKpi = KpiResult & { noteMismatch: CfContract[]; noteOnly: CfContract[] };
+export type UncontractedKpi = KpiResult & { noteOnly: CfContract[] };
 
 /** Хоосон текст → `null` нүд («—»), эс бөгөөс текст */
 const txt = (s: string): Cell => cell(s || null);
@@ -145,18 +144,16 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
   if (rows.length === 0) {
     return {
       value: num(null), unit, facts: [], level: 'unknown',
-      tables: [], issues: [], asOf: null, failedSources: [], noteMismatch: [], noteOnly: [],
+      tables: [], issues: [], asOf: null, failedSources: [], noteOnly: [],
     };
   }
 
   const none: CfContract[] = [];
   const partial: CfContract[] = [];
   const cancelled: CfContract[] = [];
-  const noteMismatch: CfContract[] = [];
   const noteOnly: CfContract[] = [];
   for (const r of rows) {
     if (finXlRowHidden(r) || String(r[FIN_XL_TOTAL_CODE_FIELD] ?? '').trim() === FIN_XL_LAND_CODE) continue;
-    if (posOf(r[F.contractAmount]) != null && !isContracted(r) && !isCancelled(r)) noteMismatch.push(contractOf(r));
     if (isNoteOnly(r) && !isCancelled(r)) noteOnly.push(contractOf(r));
     const inScope = isUncontracted(r) ? none : isInconsistent(r) ? partial : null;
     if (!inScope) continue;
@@ -183,8 +180,8 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
   facts.push(tr('{0} дутуу бүртгэл', num(inconsistent)));
   /* Хасагдсан нь ховор — 0 бол факт нэмэхгүй (мөрийг дэмий уртасгахгүй) */
   if (cancelled.length > 0) facts.push(tr('{0} хасагдсан ажил', num(cancelled.length)));
-  if (noteMismatch.length + noteOnly.length > 0) {
-    facts.push(tr('{0} бүртгэлийн зөрүү (тайлбар ↔ дүн)', num(noteMismatch.length + noteOnly.length)));
+  if (noteOnly.length > 0) {
+    facts.push(tr('{0} бүртгэлийн зөрүү (тайлбар ↔ дүн)', num(noteOnly.length)));
   }
 
   /*
@@ -246,16 +243,6 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
     ));
   }
 
-  /* ХҮСНЭГТ 4 — тодорхойлолтын зөрүү (2026-10-09): дүнтэй ч «Гэрээлсэн дүн» тайлбаргүй, дүнгээр буурах */
-  const mismatchSorted = [...noteMismatch].sort((a, b) => descNullLast(a.contractAmount, b.contractAmount));
-  if (mismatchSorted.length) {
-    tables.push(table(
-      tr('Гэрээний дүнтэй боловч «Гэрээлсэн дүн» тайлбаргүй'),
-      [tr('Ажил'), tr('Багц'), tr('Гэрээний дүн'), tr('Тайлбар')],
-      mismatchSorted.map((c) => [txt(c.work), txt(c.pkg), cell(c.contractAmount, 'mnt'), txt(c.note)]),
-    ));
-  }
-
   /* ХҮСНЭГТ 5 — ЭСРЭГ зөрүү (2026-10-22, аудит): «Гэрээлсэн дүн» тайлбартай атлаа дүн, гүйцэтгэгчгүй — төсвөөр буурах */
   const noteOnlySorted = [...noteOnly].sort((a, b) => descNullLast(a.budget, b.budget));
   if (noteOnlySorted.length) {
@@ -284,7 +271,6 @@ export function computeUncontracted(rows: readonly CfRaw[], now: number): Uncont
     issues,
     asOf: null,
     failedSources: [],
-    noteMismatch: mismatchSorted,
     noteOnly: noteOnlySorted,
   };
 }

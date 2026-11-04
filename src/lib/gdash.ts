@@ -16,6 +16,7 @@ import { num } from '@/lib/format';
 import {
   CASHFLOW_NEW, CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, HABEA, bagtsKey, isPkgRange,
   BUILDING, laborCompanyFields,
+  orderTotalOf,
 } from '@/lib/services';
 import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD, ubDayKey } from '@/lib/ceo/workforce';
 import { isClearedStatus } from '@/lib/land';
@@ -68,14 +69,14 @@ export const CF = {
   code1: FIN_XL_TOTAL_CODE_FIELD,
   /** Хөрөнгө оруулалтын дүнгийн тайлбар — «Гэрээлсэн дүн» г.м. */
   note: 'ho_dungiin_tailbar',
-  start: 'ehleh_ognoo',
-  end: 'duusah_ognoo',
+  start: 'guits_ehleh',
+  end: 'guits_duusah',
   /**
-   * НИЙТ ХӨРӨНГӨ ОРУУЛАЛТАД ЭЗЛЭХ ХУВЬ (0–100), 78 мөрийн нийлбэр = 100.
+   * НИЙТ ХӨРӨНГӨ ОРУУЛАЛТАД ЭЗЛЭХ ХУВЬ — хүснэгтэд 0–1, `CfRow.share` нь 0–100.
    */
-  share: 'tusuld_ezleh_huvi_dun',
-  contract: 'geree_dun',
-  decree: 'zahiramj_niit_dun',
+  share: 'tusul_ezleh_huvi',
+  contract: 'ho_dun_geree',
+  decree: 'ho_dun_zahiramj',
   /** Гүйцэтгэлийн хувь — ТЕКСТ талбар («19.01») */
   progress: 'guitsetgel_huvi',
   /**
@@ -200,7 +201,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
       'objectid', CF.type, CF.project, CF.pkg, CF.cost, CF.note, CF.detail,
       ...FIN_XL_CHART_FIELDS,
       'ajil_tuvshin3',
-      CF.start, CF.end, CF.share, CF.contract, CF.decree, CF.pkg2,
+      CF.start, CF.end, CF.share, CF.pkg2, CASHFLOW_NEW.fields.orderNo,
       CF.code1, CF.cfId, CASHFLOW_NEW.fields.budgetOrder,
       ...CF_SOURCES.map((s) => s.field),
     ],
@@ -218,8 +219,8 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     note: sOf(r[CF.note]),
     start: dOf(r[CF.start]),
     end: dOf(r[CF.end]),
-    share: nOf(r[CF.share]),
-    decree: nOf(r[CF.decree]),
+    share: nOf(r[CF.share]) * 100,
+    decree: nOf(orderTotalOf(r)),
     progress: lp ? lp.S : null,
     src: CF_SOURCES.map((s) => nOf(r[s.field])),
     stage: Object.fromEntries(Object.values(CASHFLOW_NEW.stages).map((f) => [f, lp ? lp.stages[f] ?? null : null])),

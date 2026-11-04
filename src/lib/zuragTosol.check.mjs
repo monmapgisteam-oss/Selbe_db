@@ -27,13 +27,13 @@ const d = (iso) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1
 const base = [
   { objectid: 10, dd_kod: '1', etseg_kod: null, tuvshin: 0, uy_shat: 'ТЭЗҮ', ajil_uilchilgee: 'ТЭЗҮ', tusul_ezleh_huvi: 0.05 },
   { objectid: 11, dd_kod: '1.1', etseg_kod: '1', tuvshin: 1, uy_shat: 'ТЭЗҮ', bagts: 'БАГЦ 1-6', ajil_uilchilgee: 'ТЭЗҮ боловсруулах', heseg_ezleh_huvi: 1,
-    geree_ehleh: d('2024-04-08'), geree_duusah: d('2024-09-20'), guitsetgel_huvi: 100, cashflow_id: 3 },
+    guits_ehleh: d('2024-04-08'), guits_duusah: d('2024-09-20'), guitsetgel_huvi: 100, cashflow_id: 3 },
   { objectid: 20, dd_kod: '2', etseg_kod: null, tuvshin: 0, uy_shat: 'Ажлын зураг төсөл', ajil_uilchilgee: 'Ажлын зураг төсөл', tusul_ezleh_huvi: 0.1 },
   { objectid: 21, dd_kod: '2.1', etseg_kod: '2', tuvshin: 1, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц 1-4', ajil_uilchilgee: 'Орон сууц', heseg_ezleh_huvi: 1 },
   { objectid: 23, dd_kod: '2.1.10', etseg_kod: '2.1', tuvshin: 2, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-2', ajil_uilchilgee: 'Багц 2 зураг', heseg_ezleh_huvi: 0.5,
-    geree_ehleh: d('2026-01-01'), geree_duusah: d('2026-12-31'), guitsetgel_huvi: 40 },
+    guits_ehleh: d('2026-01-01'), guits_duusah: d('2026-12-31'), guitsetgel_huvi: 40 },
   { objectid: 22, dd_kod: '2.1.9', etseg_kod: '2.1', tuvshin: 2, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-1', ajil_uilchilgee: 'Багц 1 зураг', heseg_ezleh_huvi: 0.5,
-    geree_ehleh: d('2026-01-01'), geree_duusah: d('2026-06-30'), guitsetgel_huvi: null },
+    guits_ehleh: d('2026-01-01'), guits_duusah: d('2026-06-30'), guitsetgel_huvi: null },
 ];
 
 /* ── Эрэмбэ: «2.1.9» < «2.1.10», эцэг хүүхдээсээ өмнө ── */
@@ -62,12 +62,12 @@ assert.equal(dateIn(d('2025-09-25')), d('2025-09-25'));
 
 /* ── toStored: oid/cashflow_id нэр дуудагчаас, хоосон → null ── */
 {
-  const r = toStored({ objectid: 5, dd_kod: ' 2.1 ', cashflow_id: null, guitsetgel_huvi: '', geree_ehleh: d('2026-01-01') }, NAMES);
+  const r = toStored({ objectid: 5, dd_kod: ' 2.1 ', cashflow_id: null, guitsetgel_huvi: '', guits_ehleh: d('2026-01-01') }, NAMES);
   assert.equal(r.objectid, 5);
   assert.equal(r.dd_kod, '2.1');
   assert.equal(r.cashflow_id, null);
   assert.equal(r.guitsetgel_huvi, null, '«» → null');
-  assert.equal(r.geree_ehleh, d('2026-01-01'));
+  assert.equal(r.guits_ehleh, d('2026-01-01'));
 }
 
 /* ── 1. Зөвхөн өөрчлөгдсөн талбар ── */
@@ -82,7 +82,7 @@ const r23 = base.find((r) => r.objectid === 23);
   assert.equal(pendingCount(p), 1, 'ижил утга засварт тоологдохгүй');
   const e = buildEdits(base, p, NAMES);
   assert.deepEqual(e.issues, []);
-  assert.deepEqual(e.updates, [{ objectid: 22, guitsetgel_huvi: 35, geree_duusah: d('2026-07-15') }]);
+  assert.deepEqual(e.updates, [{ objectid: 22, guitsetgel_huvi: 35, guits_duusah: d('2026-07-15') }]);
   assert.deepEqual(e.adds, []);
   /* Анхны утга руу буцаавал засвар алга */
   p = setEdit(p, r22, 'pct', '');
@@ -103,7 +103,7 @@ const r23 = base.find((r) => r.objectid === 23);
   assert.deepEqual(buildEdits(money, setEdit(EMPTY_PENDING, m22, 'pct', '35'), NAMES).updates,
     [{ objectid: 22, guitsetgel_huvi: 35, ajliin_zurag_tusul: 35 }]);
   assert.deepEqual(buildEdits(money, setEdit(EMPTY_PENDING, m22, 'end', '2026-07-15'), NAMES).updates,
-    [{ objectid: 22, geree_duusah: d('2026-07-15') }], 'огноо засварт шатны талбар хөндөгдөхгүй');
+    [{ objectid: 22, guits_duusah: d('2026-07-15') }], 'огноо засварт шатны талбар хөндөгдөхгүй');
 }
 
 /* ── 2. Явцыг арилгах → null (0 БИШ); 0 бичвэл 0 ── */
@@ -182,7 +182,7 @@ const r23 = base.find((r) => r.objectid === 23);
   assert.deepEqual(e.adds[1], {
     dd_kod: '2.1.9.2', etseg_kod: '2.1.9', tuvshin: 3, uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-1', blok: null,
     ajil_uilchilgee: 'Загвар зураг', heseg_ezleh_huvi: 1 / 3,
-    geree_ehleh: d('2026-02-01'), geree_duusah: d('2026-03-31'), guitsetgel_huvi: 50, cashflow_id: null,
+    guits_ehleh: d('2026-02-01'), guits_duusah: d('2026-03-31'), guitsetgel_huvi: 50, cashflow_id: null,
   });
   assert.ok(!('objectid' in e.adds[0]), 'шинэ мөр OID-гүй');
 
@@ -304,7 +304,7 @@ const r23 = base.find((r) => r.objectid === 23);
   const e1 = buildEdits(base, setEdit(EMPTY_PENDING, r22, 'start', '1999-05-01'), NAMES);
   assert.deepEqual(e1.issues.map((i) => i.kind), ['date']);
   assert.deepEqual(e1.updates, []);
-  const r24 = { objectid: 24, dd_kod: '2.1.11', etseg_kod: '2.1', bagts: 'Багц-3', ajil_uilchilgee: 'x', geree_ehleh: null, geree_duusah: null };
+  const r24 = { objectid: 24, dd_kod: '2.1.11', etseg_kod: '2.1', bagts: 'Багц-3', ajil_uilchilgee: 'x', guits_ehleh: null, guits_duusah: null };
   const e2 = buildEdits([...base, r24], setEdit(EMPTY_PENDING, r24, 'start', '1999-05-01'), NAMES);
   assert.deepEqual(e2.issues.map((i) => i.kind), ['date'], 'хадгалсан null — чимээгүй хаягдахгүй');
   /* Ганц огноо — хадгалсан null мөрд зөвхөн эхлэхийг */
@@ -313,9 +313,9 @@ const r23 = base.find((r) => r.objectid === 23);
   /* Хоёр огноог арилгах — зөвшөөрнө */
   let pc = setEdit(EMPTY_PENDING, r22, 'start', '');
   pc = setEdit(pc, r22, 'end', '');
-  assert.deepEqual(buildEdits(base, pc, NAMES).updates, [{ objectid: 22, geree_ehleh: null, geree_duusah: null }]);
+  assert.deepEqual(buildEdits(base, pc, NAMES).updates, [{ objectid: 22, guits_ehleh: null, guits_duusah: null }]);
   /* Зөвхөн явц засахад хуучин ганц огноотой мөр саадгүй */
-  const r25 = { objectid: 25, dd_kod: '2.1.12', etseg_kod: '2.1', bagts: 'Багц-4', ajil_uilchilgee: 'y', geree_ehleh: d('2026-01-01'), geree_duusah: null };
+  const r25 = { objectid: 25, dd_kod: '2.1.12', etseg_kod: '2.1', bagts: 'Багц-4', ajil_uilchilgee: 'y', guits_ehleh: d('2026-01-01'), guits_duusah: null };
   assert.deepEqual(buildEdits([...base, r25], setEdit(EMPTY_PENDING, r25, 'pct', '10'), NAMES).issues, []);
 }
 
@@ -339,8 +339,8 @@ const r23 = base.find((r) => r.objectid === 23);
 
 /* ── 5. Зэрэг засвар ── */
 {
-  const upd = [{ objectid: 22, guitsetgel_huvi: 35 }, { objectid: 23, geree_ehleh: d('2026-02-01') }];
-  const fresh = base.map((r) => (r.objectid === 22 ? { ...r, guitsetgel_huvi: 10 } : r.objectid === 23 ? { ...r, geree_duusah: d('2027-01-01') } : r));
+  const upd = [{ objectid: 22, guitsetgel_huvi: 35 }, { objectid: 23, guits_ehleh: d('2026-02-01') }];
+  const fresh = base.map((r) => (r.objectid === 22 ? { ...r, guitsetgel_huvi: 10 } : r.objectid === 23 ? { ...r, guits_duusah: d('2027-01-01') } : r));
   assert.deepEqual(conflicts(base, fresh, upd, NAMES), ['2.1.9'], 'зөвхөн бидний бичих талбар харьцуулагдана');
   assert.deepEqual(conflicts(base, base, upd, NAMES), []);
   assert.deepEqual(conflicts(base, base.filter((r) => r.objectid !== 23), upd, NAMES), ['2.1.10'], 'устсан мөр');
