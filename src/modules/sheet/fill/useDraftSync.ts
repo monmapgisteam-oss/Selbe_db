@@ -5,7 +5,7 @@ import {
   clearLegacyDrafts, readLegacyDrafts, type RemoteDraftRead,
 } from "@/lib/draftRemote";
 import {
-  clearRemoteDraft, readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX, remoteMax, setFillFrame,
+  readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX, remoteMax, setFillFrame,
 } from "@/lib/fillStore";
 import { t as tr } from "@/lib/i18nCore";
 import { fixCyr } from "@/lib/format";
@@ -1149,7 +1149,9 @@ export function useDraftSync(p: {
       const rem = rr.ok ? rr.draft : null;
       const remote = rem ? parseDraft(rem.payload, 'remote') : null;
       restoreAtRef.current = rem?.at ?? 0;
-      if (rem && !remote) void clearRemoteDraft(pkg.key);
+      /* 2026-11-04: задлагдахгүй алсын ноорогийг УСТГАХГҮЙ (шинэ хувилбарын хэлбэр · хагас бичигдсэн мөр байж болно —
+         бусад хэрэглэгчийн ажил). Анхааруулж орхино; дараагийн хадгалалт илүү шинэ `t`-ээр дарж бичнэ. */
+      if (rem && !remote) console.warn(`[draft] ${pkg.key}: алсын ноорог задлагдсангүй — хөндөхгүй (at=${rem.at})`);
       /*
        * ── ХУУЧИН (`хэрэглэгч|багц`) НООРОГИЙГ НЭГ УДАА ШИЛЖҮҮЛНЭ (2026-09-08) ──
        */
@@ -1319,7 +1321,9 @@ export function useDraftSync(p: {
         }
         draftLiveRef.current = false;
         clearDraftLS(pkg.key);
-        void safeClearRemote(pkg.key);
+        /* 2026-11-04: сүүлд нийлүүлсэн хувилбарыг ТЭГЛЭХЭЭС ӨМНӨ дамжуулна — `safeClearRemote` await-ийн дараа ref-ийг
+           уншдаг тул доорх `lastMergedRef.current = 0` түүнийг хоосон үйлдэл болгож, алсын ноорог 3с тутам дахин ирдэг байв. */
+        void safeClearRemote(pkg.key, lastMergedRef.current || undefined);
         mineRef.current = new Set();
         marksRef.current = new Map();
         doneRef.current = [];
