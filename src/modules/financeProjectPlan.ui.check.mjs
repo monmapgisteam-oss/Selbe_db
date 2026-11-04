@@ -106,7 +106,8 @@ const rows = [
   { dd_kod: '1', etseg_kod: null, uy_shat: 'ТЭЗҮ', ajil_uilchilgee: 'ТЭЗҮ', tusul_ezleh_huvi: 0.4 },
   { dd_kod: '1.1', etseg_kod: '1', uy_shat: 'ТЭЗҮ', bagts: 'Багц-1', ajil_uilchilgee: 'ТЭЗҮ боловсруулах',
     heseg_ezleh_huvi: 1, geree_ehleh: D(2026, 1, 1), geree_duusah: D(2026, 12, 31), guitsetgel_huvi: 30, cashflow_id: 7,
-    zahiramj_unet_tsaas: 1_234_567, zahiramj_niislel_tusuv: 1000 },
+    zahiramj_unet_tsaas: 1_234_567, zahiramj_niislel_tusuv: 1000,
+    guitsetgegch: 'Туршилтын гүйцэтгэгч', zahiramj_unet_tsaas_huvi: 0.2, ho_dun_zahiramj: 7_777_777, bagts_tuvshin1: 'Түвшин-тест' },
   { dd_kod: '2', etseg_kod: null, uy_shat: 'Ажлын зураг төсөл', ajil_uilchilgee: 'Ажлын зураг төсөл', tusul_ezleh_huvi: 0.6 },
   { dd_kod: '2.1', etseg_kod: '2', uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц-2', ajil_uilchilgee: 'Зураг', heseg_ezleh_huvi: 1, cashflow_id: 8,
     zahiramj_unet_tsaas: 7_654_321 },
@@ -129,6 +130,13 @@ check('толгой ба мөр', () => {
     assert.ok(html.includes(s), `толгой: ${s}`);
   }
   assert.ok(html.includes('ТЭЗҮ боловсруулах'), 'түвшин 2 дэлгэгдсэн');
+  /* 2026-11-04 (хэрэглэгч: «ил гарга»): нуугдмал баганууд хүснэгтэд гарна */
+  for (const s of ['Захирамжийн мэдээлэл', 'Гэрээний мэдээлэл', 'Үе шатны хувь', 'Тайлбар, дугаар', 'Түвшин']) {
+    assert.ok(html.includes(s), `шинэ бүлэг: ${s}`);
+  }
+  assert.ok(html.includes('Туршилтын гүйцэтгэгч') && html.includes('Түвшин-тест'), 'хадгалсан бичвэр мөрөнд гарна');
+  assert.ok(html.includes('20.0%') || html.includes('20,0%'), 'бутархай хувь 0.2 нь 20%');
+  assert.ok(html.includes('7,777,777') || html.includes('7777777'), 'хадгалсан мөнгөн дүн гарна');
   assert.ok(!html.includes('Гүн дэд мөр'), 'түвшин 3 анхдагчаар хумигдсан');
   assert.ok(/<td[^>]*>2\.1<\/td>/.test(html), 'Д/Д модны байрлалаас');
   assert.ok(html.includes('—'), 'null → «—»');

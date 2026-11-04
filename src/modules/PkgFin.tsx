@@ -214,7 +214,7 @@ export function pkgFinRows(packs: Pack[], raw: FinData): {
     key: string; label: string; plan: number; given: number; pct: number | null;
     /**
      * ГЭРЭЭЛСЭН ДҮН — ЗӨВХӨН `note === CONTRACTED` («Гэрээлсэн дүн») мөрийн
-     * `ho_dun_geree` нийлбэр (2026-11-04). `plan` нь `ho_dun_geree`
+     * `geree_dun` нийлбэр. `plan` нь `geree_dun || ho_dun_geree`
      * тул гэрээгүй багцад ч ТӨСВӨӨР бөглөгддөг — «гэрээ байгуулагдсан» гэж
      * уншиж болохгүй. Удирдлагын тайлан (§3/§4) гэрээт ба гэрээгүй багцыг
      * ЭНЭ хоёр талбараар ялгана.

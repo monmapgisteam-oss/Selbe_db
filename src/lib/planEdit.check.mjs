@@ -47,6 +47,13 @@ assert.equal(editWhy(node(4), 'orderNo'), null);
   const empty = { code: 'y', row: { objectid: 92 }, children: [{ code: 'y.1', row: { objectid: 93 }, children: [], outside: false }], outside: false };
   assert.equal(editWhy(leaf, 'budget'), null, 'навч — засагдана');
   assert.match(editWhy(par, 'budget'), /Дэд мөр/, 'эцэг — хүүхдээс бодогдоно');
+  /* 2026-11-04: багцын гэрээний мөр засагдана, блок нь засагдахгүй */
+  const pkgRow = { code: 'z', row: { objectid: 94, cashflow_id: 11, ho_dun_geree: 500 }, parent: null, children: [], outside: false };
+  const blockRow = { code: 'z.1', row: { objectid: 95, ho_dun_geree: 500 }, parent: pkgRow, children: [], outside: false };
+  pkgRow.children.push(blockRow);
+  assert.equal(editWhy(pkgRow, 'budget'), null, 'багцын гэрээний дүн засагдана');
+  assert.match(editWhy(blockRow, 'budget'), /хувиар бодогдоно/, 'блокийн дүн засагдахгүй');
+  assert.match(editWhy(pkgRow, 'srcBond') ?? 'none', /none/, 'эх үүсвэрт дэд мөрийн утга алга бол засагдана');
   assert.equal(editWhy(empty, 'srcBond'), null, 'доод мөрөнд утгагүй бол эцэг ч засагдана');
   assert.match(editWhy({ ...leaf, row: { ...leaf.row, objectid: null } }, 'srcNzd'), /хадгалагдаагүй/);
 }

@@ -14,6 +14,7 @@ export type CapKey =
   | 'zovshoorol'
   | 'finEdit'
   | 'finRow'
+  | 'ipcApprove'
   | 'plan'
   | 'planApprove'
   | 'obyemEdit'
@@ -50,6 +51,10 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    * САНХҮҮГИЙН БҮРТГЭЛ — мөр НЭМЭХ ба УСТГАХ эрх.
    */
   { key: 'finRow', icon: 'plus' },
+  /**
+   * IPC БАТАЛГААЖУУЛАХ (2026-11-04) — гарын үсэгтэй IPC-г «Олгосон» болгох, цуцлах.
+   */
+  { key: 'ipcApprove', icon: 'shield' },
   /**
    * ХУВААРЬ ТӨЛӨВЛӨХ — «Хуваарь» харагдацад ажлын эхлэх/дуусах огноог засах.
    */
@@ -137,6 +142,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   zovshoorol: ['zovshoorol'],
   finEdit: ['finance'],
   finRow: ['finance'],
+  ipcApprove: ['finance'],
   plan: ['huvaari'],
   planApprove: ['huvaariBatlah', 'huvaari'],
   obyemEdit: ['guitsetgel'],

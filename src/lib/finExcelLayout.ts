@@ -31,6 +31,7 @@ export const FIN_XL_ORDER: readonly string[] = [
   'geree_ognoo',
   'geree_dugaar',
   'guitsetgegch',
+  'geree_dun',
   'guitsetgel_huvi',
   'tezu',
   'ajliin_zurag_tusul',
@@ -97,6 +98,7 @@ export const FIN_XL_GROUP: Record<string, readonly string[]> = {
   get zahiramj_nzd_nuuts() { return lzZahiramj_nzd_nuuts10(); },
   get geree_ognoo() { return lzGeree_ognoo11(); },
   get geree_dugaar() { return lzGeree_dugaar12(); },
+  get geree_dun() { return [tr('Гэрээний мэдээлэл')]; },
   get guitsetgegch() { return lzGuitsetgegch13(); },
 };
 
@@ -122,6 +124,7 @@ export const FIN_XL_LEAF: Record<string, string> = {
   get geree_ognoo() { return tr('Гэрээ байгуулсан огноо'); },
   get geree_dugaar() { return tr('Гэрээний дугаар'); },
   get guitsetgegch() { return tr('Гүйцэтгэгч'); },
+  get geree_dun() { return tr('Гэрээний дүн'); },
   get guitsetgel_huvi() { return tr('Санхүүжсэн гүйцэтгэлийн хувь'); },
   get tezu() { return tr('ТЭЗҮ'); },
   get ajliin_zurag_tusul() { return tr('Ажлын зураг төсөл'); },
@@ -163,6 +166,7 @@ export const FIN_XL_WIDTH: Record<string, number> = {
   zahiramj_nzd_nuuts: 152,
   geree_ognoo: 124,
   geree_dugaar: 170,
+  geree_dun: 172,
   guitsetgegch: 190,
   guitsetgel_huvi: 130,
   tezu: 92,

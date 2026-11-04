@@ -67,6 +67,30 @@ export type PlanStoredRow = {
   zahiramj_borluulalt_dun?: number | null;
   zahiramj_niislel_tusuv?: number | null;
   zahiramj_nzd_nuuts?: number | null;
+  /** Олгосон дүн · урьдчилгаа (₮) — IPC-ээс систем бичнэ */
+  /** Гэрээний дүн — урьдчилсан төсвөөс (`ho_dun_geree`) тусдаа */
+  geree_dun?: number | null;
+  olgoson_dun?: number | null;
+  urdchilgaa_dun?: number | null;
+  /** Зөвхөн харуулах баганууд (2026-11-04, хэрэглэгч: «ил гарга») — тооцоонд оролцохгүй */
+  ho_dun_zahiramj?: number | null;
+  zahiramj_unet_tsaas_huvi?: number | null;
+  tezu?: number | null;
+  ajliin_zurag_tusul?: number | null;
+  gazar_chuluulult?: number | null;
+  zuwshuurul?: number | null;
+  songon_shalgaruulalt?: number | null;
+  geree_dugaar?: string | null;
+  guitsetgegch?: string | null;
+  zahialagch_hynalt_baig?: string | null;
+  ho_dungiin_tailbar?: string | null;
+  sar_mongo_eh?: string | null;
+  bagts_tuvshin1?: string | null;
+  ajil_tuvshin1?: string | null;
+  bagts_tuvshin2?: string | null;
+  ajil_tuvshin2?: string | null;
+  bagts_tuvshin3?: string | null;
+  ajil_tuvshin3?: string | null;
 };
 
 /** Эх үүсвэрийн талбарууд — `CASHFLOW_NEW.sources`-ийн дараалал (үнэт цаас · төслийн орлого · нийслэлийн төсөв · НЗД нөөц) */
@@ -292,6 +316,49 @@ export function isAddedWork(n: PlanNode): boolean {
   if (n.phase !== 'zurag' || !n.row || !p || n.row.cashflow_id != null) return false;
   const b = keyC(n.row.bagts);
   return !!b && b === keyC(p.bagts);
+}
+
+/** «Гэрээлсэн дүн» бичигдсэн мөр мөн үү */
+const isContractNote = (r: PlanStoredRow | null | undefined): boolean =>
+  String(r?.ho_dungiin_tailbar ?? '').replace(/\s+/g, ' ').trim() === 'Гэрээлсэн дүн';
+
+export type MoneySums = { paid: number | null; advance: number | null; contract: number | null };
+
+/**
+ * МӨР БҮРИЙН НИЙЛБЭР (2026-11-04) — олгосон дүн, урьдчилгаа, гэрээний дүн: өөрийн утга + доод мөрүүд («Нийслэл төсөв» орохгүй).
+ * ТТБ-ийн багана, бүх хуудасны хувь энэ нэг тооцооноос уншина. Үндэс мөр = төслийн нийт.
+ */
+export function moneySums(tree: PlanTree): Map<PlanNode, MoneySums> {
+  const out = new Map<PlanNode, MoneySums>();
+  const add = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : a + b);
+  const go = (n: PlanNode): MoneySums => {
+    const r = n.row;
+    let s: MoneySums = {
+      paid: num(r?.olgoson_dun),
+      advance: num(r?.urdchilgaa_dun),
+      contract: isContractNote(r) ? num(r?.geree_dun) : null,
+    };
+    for (const c of n.children) {
+      const k = go(c);
+      if (c.outside) continue;
+      s = { paid: add(s.paid, k.paid), advance: add(s.advance, k.advance), contract: isContractNote(r) ? s.contract : add(s.contract, k.contract) };
+    }
+    out.set(n, s);
+    return s;
+  };
+  go(tree.root);
+  return out;
+}
+
+/**
+ * БАГЦЫН ГЭРЭЭНИЙ МӨР (2026-11-04) — мөнгөний мөр, өөрийн `ho_dun_geree` > 0, доор нь мөнгөгүй дүнтэй мөрүүд (блок, газар шорооны
+ * ажил). Гэрээний дүн энэ мөрөнд л засагдана; дэд мөрүүд нь дүнгээ хувиар дагана (`hoSync.planBlockBudgets`).
+ */
+export function isSplitParent(n: PlanNode): boolean {
+  const r = n.row;
+  if (!r || r.cashflow_id == null || !(typeof r.ho_dun_geree === 'number' && r.ho_dun_geree > 0)) return false;
+  const kids = n.children.filter((c) => !c.outside);
+  return kids.length > 0 && kids.every((c) => c.row?.cashflow_id == null) && kids.some((c) => (c.row?.ho_dun_geree ?? 0) > 0);
 }
 
 /* ══════════════════ Мод ══════════════════ */

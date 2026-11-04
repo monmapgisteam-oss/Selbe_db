@@ -75,7 +75,7 @@ export const CF = {
    * НИЙТ ХӨРӨНГӨ ОРУУЛАЛТАД ЭЗЛЭХ ХУВЬ — хүснэгтэд 0–1, `CfRow.share` нь 0–100.
    */
   share: 'tusul_ezleh_huvi',
-  contract: 'ho_dun_geree',
+  contract: 'geree_dun',
   decree: 'ho_dun_zahiramj',
   /** Гүйцэтгэлийн хувь — ТЕКСТ талбар («19.01») */
   progress: 'guitsetgel_huvi',
@@ -201,7 +201,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
       'objectid', CF.type, CF.project, CF.pkg, CF.cost, CF.note, CF.detail,
       ...FIN_XL_CHART_FIELDS,
       'ajil_tuvshin3',
-      CF.start, CF.end, CF.share, CF.pkg2, CASHFLOW_NEW.fields.orderNo,
+      CF.start, CF.end, CF.share, CF.contract, CF.pkg2, CASHFLOW_NEW.fields.orderNo,
       CF.code1, CF.cfId, CASHFLOW_NEW.fields.budgetOrder,
       ...CF_SOURCES.map((s) => s.field),
     ],

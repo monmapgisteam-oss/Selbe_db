@@ -1472,6 +1472,8 @@ div.bName:hover { background: var(--surface-2); }
 .ppRo { color: var(--ink-3); }
 /* 2026-11-03: нэмсэн ажлын оноосон төсөв (эцгийн төсөв × жин) */
 .ppAlloc { color: var(--ink-3); font-style: italic; }
+/* 2026-11-04: хадгалсан бичвэрийн багана — урт утга нэг мөрөнд, бүтэн нь title-д */
+.ppText { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ppCellBtn {
   display: block;
   width: 100%;

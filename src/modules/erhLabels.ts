@@ -60,6 +60,7 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'zovshoorol') return tr('Зөвшөөрөл');
   if (k === 'finEdit') return tr('Санхүү — утга');
   if (k === 'finRow') return tr('Санхүү — мөр');
+  if (k === 'ipcApprove') return tr('IPC батлах');
   if (k === 'plan') return tr('Хуваарь зохиох');
   if (k === 'planApprove') return tr('Хуваарь батлах');
   if (k === 'obyemEdit') return tr('Обьём засах');

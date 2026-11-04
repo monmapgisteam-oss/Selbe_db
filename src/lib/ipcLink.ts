@@ -9,7 +9,7 @@
  *
  *     guits_obyem = тухайн агшны ХУРИМТЛАГДСАН обьём (мөр бүрийн Σ блок)
  *     guits_une   = Σ (обьём × нэгж өртөг)          → «байх ЁСТОЙ» ₮
- *     guits_zoruu = олгосон хуримтлал − guits_une   → зөрүү
+ *     guits_zoruu = олгосон хуримтлал − гүйцэтгэлийн хуримтлал (Σ guits_une энэ мөр хүртэл)   → зөрүү
  */
 import { HO_IPC, num, pkgKeyOf } from '@/lib/services';
 
@@ -47,7 +47,17 @@ export type ObyemRow = {
   group?: boolean;
   unit: number | null;
   obyem: readonly (number | null)[];
+  /** Тухайн өдрийн ажил (`bagtsSheet.SheetRow.obyemDay`, 2026-11-04) — байхгүй бол `obyem` */
+  obyemDay?: readonly (number | null)[];
 };
+
+/**
+ * ТУХАЙН ӨДРИЙН АГШИН (2026-11-04, хэрэглэгч: «бөглөлт бүр IPC болно») — `obyemDay`-ээр, хуримтлал биш.
+ * `syncIpcFromFill` AUTO мөрийн `guits_une`/`guits_obyem`-ийг үүгээр бичнэ.
+ */
+export function snapshotDayOf(rows: readonly ObyemRow[], day: string): Snapshot {
+  return snapshotOf(rows.map((r) => ({ group: r.group, unit: r.unit, obyem: r.obyemDay ?? r.obyem })), day);
+}
 
 /**
  * Бөглөх хуудасны мөрүүдээс НЭГ АГШНЫ дүн.

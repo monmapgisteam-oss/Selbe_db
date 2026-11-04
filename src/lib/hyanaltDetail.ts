@@ -7,7 +7,7 @@
 import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { arcgisPost } from '@/lib/query';
 import { TREES } from '@/modules/sheet/bagts.trees';
-import { baseBlankCount, computeAll, firstFrame, lastFrame, loadRows, msToDay, nullFragmentFits } from '@/modules/sheet/bagtsSheet';
+import { baseBlankCount, computeAll, firstFrame, frameRowKeys, lastFrame, loadRows, msToDay, nullFragmentFits, priorObyem } from '@/modules/sheet/bagtsSheet';
 import { describeNegCells, laterAsOf, needsFrameOcc, negTotalAt, overlaySubmission, withFrameOcc } from '@/modules/sheet/sheetFrame';
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
@@ -567,18 +567,29 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
             no: String(x.attributes[sc.f.no] ?? ''),
             work: String(x.attributes[sc.f.work] ?? ''),
           })));
+          /* 2026-11-04: жааз бүр тухайн ӨДРИЙН ажлыг хадгалдаг — «юунаас юу» нь өмнөх жаазуудын хуримтлал (`priorObyem`)
+             дээр энэ өдрийнхийг нэмж бодогдоно; ижил өдрийн өмнөх жааз (`samePrev`) хуримтлалд НЭМЭГДЭНЭ. */
+          const prior = await priorObyem(p, sc, msToDay(at));
+          const fkeys = frameRowKeys(q.features ?? [], sc);
           filled = (q.features ?? []).map((x, ri) => {
             const a = x.attributes;
             const prev = blankSid(x) ? beforePos.get(String(ri)) : before.get(sidsA[ri]);
-            const cells = obs.map((n) => num(a[n]));
-            const beforeVals = obs.map((n) => (prev ? num(prev[n]) : null));
-            const changed = obs.map((n, k) => {
-              const now = cells[k];
-              if (now == null) return false;
+            const pr = prior.get(fkeys[ri]);
+            const dayVals = obs.map((n) => num(a[n]));
+            const beforeVals = obs.map((n, k) => {
+              const extra = sameDay && prev ? num(prev[n]) : null;
+              const base = pr?.[k] ?? null;
+              return base == null && extra == null ? null : (base ?? 0) + (extra ?? 0);
+            });
+            const cells = obs.map((_, k) => (dayVals[k] == null && beforeVals[k] == null ? null : (dayVals[k] ?? 0) + (beforeVals[k] ?? 0)));
+            const sumCum = cells.reduce<number | null>((s, v) => (v == null ? s : (s ?? 0) + v), null);
+            const changed = obs.map((_, k) => {
+              const d = dayVals[k];
+              if (d == null) return false;
               if (prevFailed) return false;
               // Анхны нийтлэлд өмнөх агшин алга — утгатай нүд бүр ШИНЭ
-              if (!prev) return true;
-              return num(prev[n]) !== now;
+              if (!prev && !pr) return true;
+              return d !== 0;
             });
             const ch = tree[ri] ?? '0';
             const group = gunDepth
@@ -597,7 +608,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
                 rid: `${num(a[sc.f.oid]) ?? -1}|${sidsA[ri]}`,
               });
             });
-            if ((num(a[sum]) ?? 0) > 0) filledCount += 1;
+            if ((sumCum ?? 0) > 0) filledCount += 1;
             return {
               cells,
               acts: acts.map((n) => num(a[n])),
@@ -611,7 +622,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
               wD: sc.f.wD ? num(a[sc.f.wD]) : null,
               wE: sc.f.wE ? num(a[sc.f.wE]) : null,
               vol: num(a[sc.f.vol]),
-              sum: num(a[sum]),
+              sum: sumCum,
               unit: sc.f.unit ? num(a[sc.f.unit]) : null,
               money: sc.f.money ? num(a[sc.f.money]) : null,
               plan: sc.f.plan ? num(a[sc.f.plan]) : null,

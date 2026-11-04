@@ -66,7 +66,7 @@ console.log('\n2. АМЬД УТГААР — бүтээгдэхүүний фун�
 
 console.log('\n3. ХАСАГДСАН БАГАНА — хуучирсан текстэн хуулбар');
 check('FIN_XL_DROP хоосон (2026-11-04: давхар багана хүснэгтээс хасагдсан)', FIN_XL_DROP.length === 0);
-for (const n of ['tusuld_ezleh_huvi', 'tusuld_ezleh_huvi_dun', 'zahiramj_borluulalt', 'zahiramj_niit_dun', 'geree_dun', 'ehleh_ognoo', 'duusah_ognoo', 'geree_ehleh', 'geree_duusah']) check(`${n} — баганын эрэмбэд алга`, !FIN_XL_ORDER.includes(n));
+for (const n of ['tusuld_ezleh_huvi', 'tusuld_ezleh_huvi_dun', 'zahiramj_borluulalt', 'zahiramj_niit_dun', 'ehleh_ognoo', 'duusah_ognoo', 'geree_ehleh', 'geree_duusah']) check(`${n} — баганын эрэмбэд алга`, !FIN_XL_ORDER.includes(n));
 check('urdchilgaa_huvi анхдагчаар нуугдсан хэвээр', FIN_XL_HIDE.includes('urdchilgaa_huvi') && FIN_XL_HIDE.includes('cashflow_id'));
 check('төсөлд эзлэх хувь нуугдахгүй', !FIN_XL_HIDE.includes('tusul_ezleh_huvi') && !FIN_XL_DROP.includes('tusul_ezleh_huvi'));
 

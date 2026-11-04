@@ -56,9 +56,9 @@ const CN = 'Гэрээлсэн дүн';
     assert.equal(isUncontracted(row({ ho_dun_geree: amt, guitsetgegch: '  ' })), true, 'зайтай гүйцэтгэгч = хоосон');
     assert.equal(isInconsistent(row({ ho_dun_geree: amt })), false);
     /* тайлбартай, дүн ЧИНЬ гүйцэтгэгч ЧИНЬ алга — гэрээтэй (нэг предикат), эсрэг зөрүү */
-    assert.equal(isUncontracted(row({ ho_dun_geree: amt, ho_dungiin_tailbar: CN })), false, `тайлбартай, дүн=${JSON.stringify(amt)}`);
-    assert.equal(isNoteOnly(row({ ho_dun_geree: amt, ho_dungiin_tailbar: CN })), true);
-    assert.equal(isInconsistent(row({ ho_dun_geree: amt, ho_dungiin_tailbar: CN })), false, 'хоёулаа алга бол «дутуу» биш, эсрэг зөрүү');
+    assert.equal(isUncontracted(row({ geree_dun: amt, ho_dungiin_tailbar: CN })), false, `тайлбартай, дүн=${JSON.stringify(amt)}`);
+    assert.equal(isNoteOnly(row({ geree_dun: amt, ho_dungiin_tailbar: CN })), true);
+    assert.equal(isInconsistent(row({ geree_dun: amt, ho_dungiin_tailbar: CN })), false, 'хоёулаа алга бол «дутуу» биш, эсрэг зөрүү');
   }
   /* тайлбаргүй мөр — дүн/гүйцэтгэгчтэй ч ГЭРЭЭГҮЙ (бусад харагдацтай нэг) */
   assert.equal(isUncontracted(row({ ho_dun_geree: 100 })), true);
@@ -66,13 +66,13 @@ const CN = 'Гэрээлсэн дүн';
   assert.equal(isUncontracted(row({ ho_dun_geree: 100, guitsetgegch: 'ББСМО ХХК' })), true);
   assert.equal(isInconsistent(row({ ho_dun_geree: 100 })), false, 'тайлбаргүй — гэрээгүй, «дутуу» биш');
   /* тайлбартай — дутуу бүртгэл (нэг нь алга) ба бүрэн */
-  assert.equal(isInconsistent(row({ ho_dun_geree: 100, ho_dungiin_tailbar: CN })), true, 'дүн бий, гүйцэтгэгч алга');
+  assert.equal(isInconsistent(row({ geree_dun: 100, ho_dungiin_tailbar: CN })), true, 'дүн бий, гүйцэтгэгч алга');
   assert.equal(isInconsistent(row({ guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: CN })), true, 'гүйцэтгэгч бий, дүн алга');
-  assert.equal(isInconsistent(row({ ho_dun_geree: 100, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: CN })), false);
-  assert.equal(isNoteOnly(row({ ho_dun_geree: 100, ho_dungiin_tailbar: CN })), false);
+  assert.equal(isInconsistent(row({ geree_dun: 100, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: CN })), false);
+  assert.equal(isNoteOnly(row({ geree_dun: 100, ho_dungiin_tailbar: CN })), false);
   assert.equal(isNoteOnly(row({ ho_dun_geree: 100 })), false, 'тайлбаргүй бол эсрэг зөрүү биш');
   /* НЭГ предикат — бүх мөрд `isUncontracted === !isContracted` */
-  for (const o of [{}, { ho_dun_geree: 100 }, { ho_dungiin_tailbar: CN }, { ho_dungiin_tailbar: ' Гэрээлсэн  дүн ' }, { ho_dungiin_tailbar: 'Магадлагдсан дүн', ho_dun_geree: 5 }]) {
+  for (const o of [{}, { geree_dun: 100 }, { ho_dungiin_tailbar: CN }, { ho_dungiin_tailbar: ' Гэрээлсэн  дүн ' }, { ho_dungiin_tailbar: 'Магадлагдсан дүн', geree_dun: 5 }]) {
     assert.equal(isUncontracted(row(o)), !isContracted(row(o)), JSON.stringify(o));
   }
 }
@@ -91,12 +91,12 @@ const CN = 'Гэрээлсэн дүн';
 const A = row({ objectid: 1, ajil_uilchilgee: 'A ажил', ho_dun_geree: 100, guits_ehleh: NOW - 10 * DAY });
 const B = row({ objectid: 2, ajil_uilchilgee: 'B ажил', ho_dun_geree: 500, guits_ehleh: NOW + 30 * DAY });
 const C = row({ objectid: 3, ajil_uilchilgee: 'C ажил', ho_dun_geree: null });
-const D = row({ objectid: 4, ajil_uilchilgee: 'D гэрээтэй', ho_dun_geree: 900, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const D = row({ objectid: 4, ajil_uilchilgee: 'D гэрээтэй', geree_dun: 900, guitsetgegch: 'ББСМО ХХК', ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
 const E = row({ objectid: 5, ajil_uilchilgee: 'E дүнтэй', ho_dun_geree: 60 });
-const G = row({ objectid: 6, ajil_uilchilgee: 'G гүйцэтгэгчтэй', guitsetgegch: 'Х ХХК', geree_dugaar: 'ХМХ-25/1', ho_dun_geree: null, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
-const E2 = row({ objectid: 9, ajil_uilchilgee: 'E2 дүнтэй гэрээ', ho_dun_geree: 50, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const G = row({ objectid: 6, ajil_uilchilgee: 'G гүйцэтгэгчтэй', guitsetgegch: 'Х ХХК', geree_dugaar: 'ХМХ-25/1', geree_dun: null, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const E2 = row({ objectid: 9, ajil_uilchilgee: 'E2 дүнтэй гэрээ', geree_dun: 50, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
 /* Багц 5.3 · 5.4-ийн хэлбэр — тайлбартай атлаа дүн, гүйцэтгэгчгүй: ГЭРЭЭТЭЙ, эсрэг зөрүүний жагсаалтад */
-const N = row({ objectid: 10, ajil_uilchilgee: 'N тайлбар л', bagts: 'БАГЦ-5.3', ho_dun_geree: null, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+const N = row({ objectid: 10, ajil_uilchilgee: 'N тайлбар л', bagts: 'БАГЦ-5.3', geree_dun: null, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
 const H = row({ objectid: 7, ajil_uilchilgee: 'H ажил', bagts: 'БАГЦ-16.2', ho_dun_geree: 20, guits_ehleh: NOW - 40 * DAY, guits_duusah: NOW + 100 * DAY });
 const I = row({ objectid: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 1, guits_ehleh: NOW });
 {

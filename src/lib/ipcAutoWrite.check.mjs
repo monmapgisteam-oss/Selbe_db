@@ -7,9 +7,8 @@ import assert from 'node:assert/strict';
 import { fake, addTable, assertNoUnexpected } from './arcgisFake.mjs';
 
 const { syncIpcFromFill, refreshAutoZoruu } = await import('@/lib/ipcAutoWrite.ts');
-const { HO_IPC, bagtsKey } = await import('@/lib/services.ts');
+const { HO_IPC } = await import('@/lib/services.ts');
 const { register } = await import('@/lib/dataBus.ts');
-const { PKGS } = await import('@/modules/sheet/bagts.pkg.ts');
 
 const C = HO_IPC.contractFields;
 const P = HO_IPC.payFields;
@@ -26,13 +25,14 @@ const row = (o) => T.insert({ [P.kind]: WORK, [P.payDate]: null, [Z]: null, [UNE
 const get = (id) => T.byOid(id);
 const edits = () => fake.log.filter((x) => x.via === 'rest' && x.op === 'applyEdits');
 
-/* K1: гараар IPC-1 (100) → AUTO IPC-2 (50, une 120) → AUTO IPC-3 (10, une 160, зөрүү аль хэдийн 0) */
+/* K1: гараар IPC-1 (100) → AUTO IPC-2 (50, une 120) → AUTO IPC-3 (10, une 40 → хуримтлал 160, зөрүү аль хэдийн 0).
+   2026-11-04: AUTO мөрийн `guits_une` тухайн өдрийн ажил — зөрүү = олгосон хуримтлал − гүйцэтгэлийн хуримтлал */
 const M1 = row({ [P.id]: 'ХО-0001', [C.code]: 'K1', [P.ipcNo]: 1, [P.amount]: 100 })[OID];
 const ADV = row({ [P.id]: 'ХО-0002', [C.code]: 'K1', [P.kind]: HO_IPC.kinds.advance, [P.amount]: 1000 })[OID];
 const A1 = row({ [P.id]: 'AUTO|БАГЦ1|2026-09-01', [C.code]: 'K1', [P.ipcNo]: 2, [P.amount]: 50, [UNE]: 120 })[OID];
-const A2 = row({ [P.id]: 'AUTO|БАГЦ1|2026-09-15', [C.code]: 'K1', [P.ipcNo]: 3, [P.amount]: 10, [UNE]: 160, [Z]: 0 })[OID];
+const A2 = row({ [P.id]: 'AUTO|БАГЦ1|2026-09-15', [C.code]: 'K1', [P.ipcNo]: 3, [P.amount]: 10, [UNE]: 40, [Z]: 0 })[OID];
 /* `dun` хоосон — «хараахан төлөгдөөгүй»: хадгалсан 5 → null (0 БИШ) */
-const A4 = row({ [P.id]: 'AUTO|БАГЦ1|2026-10-01', [C.code]: 'K1', [P.ipcNo]: 4, [P.amount]: null, [UNE]: 170, [Z]: 5 })[OID];
+const A4 = row({ [P.id]: 'AUTO|БАГЦ1|2026-10-01', [C.code]: 'K1', [P.ipcNo]: 4, [P.amount]: null, [UNE]: 10, [Z]: 5 })[OID];
 /* Гараар оруулсан мөрийн буруу зөрүүг ХӨНДӨХГҮЙ */
 const M2 = row({ [P.id]: 'ХО-0003', [C.code]: 'K1', [P.ipcNo]: 5, [P.amount]: 1, [Z]: 999 })[OID];
 /* K2 */
@@ -139,16 +139,8 @@ const B1 = row({ [P.id]: 'AUTO|БАГЦ2|2026-09-01', [C.code]: 'K2', [P.ipcNo]:
   r = await syncIpcFromFill('Багц 999', '2026-10-01');
   assert.equal(r.ok, false);
   assert.match(r.error, /Багц олдсонгүй/);
-  const groups = [...new Set(PKGS.map((p) => p.group))];
-  const blockless = groups.find((g) => {
-    const ps = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(g));
-    return ps.length > 0 && ps.every((p) => p.floors == null);
-  });
-  assert.ok(blockless, 'блокгүй багц PKGS-д олдсонгүй — шалгуурыг шинэчил');
-  r = await syncIpcFromFill(blockless, '2026-10-01');
-  assert.deepEqual(r, { ok: true, op: 'skip', why: 'no-data' }, `блокгүй багц (${blockless}) IPC-д бичих гэж оролдов`);
   assert.equal(fake.log.length, l0, 'хаалтын замууд сүлжээ рүү хандав');
-  console.log(`✅ syncIpcFromFill — буруу огноо · үл мэдэгдэх багц · блокгүй (${blockless}) → сүлжээгүй`);
+  console.log('✅ syncIpcFromFill — буруу огноо · үл мэдэгдэх багц → сүлжээгүй');
 }
 
 assertNoUnexpected(assert);

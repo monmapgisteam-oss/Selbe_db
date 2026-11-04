@@ -89,6 +89,18 @@ export const HO_IPC = {
   url: `${GUITS}/185`,
   oid: "objectid",
   /** `tulult_turul`-ийн утгууд. 2 мөрд хоосон — «ангилагдаагүй» */
+  /** IPC МӨРИЙН ТӨЛӨВ (`ipc_tuluv`, 2026-11-04) — зөвхөн «Олгосон» мөрийн `dun` олгосон дүнд тоологдоно */
+  status: {
+    field: "ipc_tuluv",
+    work: "Гүйцэтгэл",
+    created: "IPC үүссэн",
+    signed: "Гарын үсэг зурсан",
+    paid: "Олгосон",
+    cancelled: "Цуцлагдсан",
+  },
+  /** Гарын үсэгтэй сканы Enterprise item (`IPC barimt` хавтас) */
+  docItem: "ipc_barimt_id",
+  docFolder: "IPC barimt",
   kinds: { advance: "Урьдчилгаа төлбөр", work: "Гүйцэтгэл" },
   /**
    * ГЭРЭЭНИЙ түвшний талбар — `geree_kod` бүрд ДАВТАГДАНА.
@@ -222,6 +234,7 @@ export const CASHFLOW_NEW = {
     contractor: "guitsetgegch",          // Гүйцэтгэгч байгууллага
     contractDate: "geree_ognoo",
     contractNo: "geree_dugaar",          // Гэрээний дугаар
+    contractAmount: "geree_dun",         // Гэрээний дүн — урьдчилсан төсвөөс (`ho_dun_geree`) ТУСДАА (2026-11-04)
     advanceGuarantee: "urdchilgaa_batalgaa_dun",
     advancePct: "urdchilgaa_huvi",
     advanceDeduct: "urdchilgaa_zh_zardal",
@@ -252,6 +265,9 @@ export const CASHFLOW_NEW = {
     handoverDate: "ashiglalt_ognoo",
     /** Сарын мөнгөний эх — 'garaar' (анхдагч, гараар оруулсан сарын мөр) | 'huvaari' (Хуваарь-аас) */
     monthSource: "sar_mongo_eh",
+    /** Олгосон дүн · урьдчилгаа — IPC-ээс систем бичнэ (`hoSync.planPaidSync`), гараар засахгүй */
+    paid: "olgoson_dun",
+    advance: "urdchilgaa_dun",
   },
   /**
    * ШАТНЫ ГҮЙЦЭТГЭЛ — гэрээ бүрийн бэлтгэл ажлын явц (0–100).
@@ -281,11 +297,11 @@ export const CASHFLOW_NEW = {
 export const CF_WORK_WHERE = 'cashflow_start IS NULL AND cashflow_id IS NOT NULL';
 
 /**
- * 2026-11-04 (хэрэглэгч: давхар багана устгана) — `geree_dun`, `zahiramj_niit_dun` хүснэгтээс хасагдсан.
- * ГЭРЭЭНИЙ ДҮН = «Гэрээлсэн дүн» тэмдэгтэй мөрийн `ho_dun_geree`; ЗАХИРАМЖИЙН НИЙТ = `zahiramj_dugaar`-тай мөрийн `ho_dun_zahiramj`.
+ * 2026-11-04 (хэрэглэгч: давхар багана устгана) — `zahiramj_niit_dun` хүснэгтээс хасагдсан; `geree_dun` тусдаа багана хэвээр.
+ * ГЭРЭЭНИЙ ДҮН = «Гэрээлсэн дүн» тэмдэгтэй мөрийн `geree_dun`; ЗАХИРАМЖИЙН НИЙТ = `zahiramj_dugaar`-тай мөрийн `ho_dun_zahiramj`.
  */
 export const contractAmountOf = (r: Readonly<Record<string, unknown>>): unknown => (
-  String(r[CASHFLOW_NEW.fields.amountNote] ?? '').replace(/\s+/g, ' ').trim() === 'Гэрээлсэн дүн' ? r[CASHFLOW_NEW.fields.budget] : null
+  String(r[CASHFLOW_NEW.fields.amountNote] ?? '').replace(/\s+/g, ' ').trim() === 'Гэрээлсэн дүн' ? r[CASHFLOW_NEW.fields.contractAmount] : null
 );
 export const orderTotalOf = (r: Readonly<Record<string, unknown>>): unknown => (
   String(r[CASHFLOW_NEW.fields.orderNo] ?? '').trim() ? r[CASHFLOW_NEW.fields.budgetOrder] : null

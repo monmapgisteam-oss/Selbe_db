@@ -56,8 +56,9 @@ export async function loadWorkUses(): Promise<{ works: WorkUse[]; failed: string
         if (!mats.length) return;
         /* Гүйцэтгэсэн обьём — блокуудын хуримтлагдсан нийлбэр; блокгүй хүснэгтэд `obyem_sum` талбар */
         const fromCalc = calc[i]?.obyemSum ?? null;
-        const raw = sc.f.obyemSum ? row.raw[sc.f.obyemSum] : null;
-        const vol = fromCalc ?? (typeof raw === 'number' && Number.isFinite(raw) ? raw : null);
+        /* 2026-11-04: `obyem_sum` талбар тухайн өдрийн ажил — хуримтлал нь мөрийн `obyem` (санах ойд хуримтлагдсан) */
+        const rawSum = row.obyem.reduce<number | null>((s, v) => (v == null ? s : (s ?? 0) + v), null);
+        const vol = fromCalc ?? rawSum;
         out.push({ mats, vol });
       });
       return out;

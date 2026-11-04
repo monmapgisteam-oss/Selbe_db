@@ -11,8 +11,7 @@
  * Хэрэглэгчийн дүрэм: хэмжилтгүй явц = 0 (null биш); архивгүй — мөр дарж бичигдэнэ; `tolov` талбар байхгүй.
  */
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
-import { sourceSums, type PlanNode, type PlanValues } from '@/lib/projectPlan';
-import { sumPaid } from '@/lib/ipc';
+import { moneySums, sourceSums, type PlanNode, type PlanValues } from '@/lib/projectPlan';
 import type { WorkforceDay } from '@/lib/ceo/workforce';
 import type { LandStatus } from '@/lib/land';
 import { HABEA, SOURCE_FS, buildingKey, pkgKeyOf } from '@/lib/services';
@@ -107,11 +106,12 @@ export function hunHuchRows(day: WorkforceDay | null, companies: readonly { sfx:
 /* ══════════════ 2. Санхүү ══════════════ */
 
 /** Төслийн нийт төсөв = үндэс мөрийн E; олгосон = HO бүх төлбөр (урьдчилгаа + гүйцэтгэл); хувь = олгосон ÷ E */
-export function sanhuuRows(plan: ProjectPlan, hoRows: readonly Record<string, unknown>[]): PubRow[] {
+export function sanhuuRows(plan: ProjectPlan): PubRow[] {
   const root = plan.tree.root;
   const E = plan.result.values.get(root)?.E ?? null;
   const src = sourceSums(plan.tree).get(root);
-  const paid = sumPaid(hoRows);
+  /* 2026-11-04: «Төсөл төлөвлөгөө биелэлт»-ийн `olgoson_dun` нийлбэр — бүх хуудастай нэг тоо */
+  const paid = moneySums(plan.tree).get(root)?.paid ?? null;
   return [{
     niit_tosov_dun: E,
     tosov_unet_tsaas: src?.zahiramj_unet_tsaas ?? null,

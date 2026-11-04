@@ -25,7 +25,7 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   chanar: ['chanarAuthor', 'chanarReview'],
   butets: ['butets'],
   zovshoorol: ['zovshoorol'],
-  fin: ['finEdit', 'finRow', 'cfSwitch'],
+  fin: ['finEdit', 'finRow', 'ipcApprove', 'cfSwitch'],
   gazar: ['gazar'],
   hamaaral: ['hamaaral'],
   habea: ['habeaData', 'habeaOwn'],
@@ -91,6 +91,7 @@ export const capLabel = (k: CapKey): string => {
   if (k === 'butets') return tr('Инженерийн дэд бүтцийн засвар');
   if (k === 'zovshoorol') return tr('Зөвшөөрөл засах');
   if (k === 'finEdit') return tr('Санхүүгийн бүртгэл — утга засах');
+  if (k === 'ipcApprove') return tr('IPC баталгаажуулах');
   if (k === 'finRow') return tr('Санхүүгийн бүртгэл — мөр нэмэх');
   if (k === 'gazar') return tr('Газрын төлөв засах');
   if (k === 'hamaaral') return tr('Багцын хамаарал засах');
@@ -171,6 +172,9 @@ export const capNote = (k: CapKey): string => {
   }
   if (k === 'finEdit') {
     return tr('«Санхүүжилт» харагдацын Cashflow (/173) хүснэгтийн нүдний утга ба Cashflow хуваарилалтыг засах. Энэ нь дашбоардын санхүүгийн тооны эх сурвалж тул нэг нүд засахад 02, 08 дашбоард, тайлан бүгд дагаж өөрчлөгдөнө. IPC нь гүйцэтгэлийн батлалтаас автоматаар үүсдэг — энэ эрхээр засагдахгүй.');
+  }
+  if (k === 'ipcApprove') {
+    return tr('Гарын үсэгтэй IPC-г баталгаажуулж «Олгосон» болгох, IPC болон гэрээ цуцлах. IPC үүсгэсэн хүн өөрөө баталгаажуулах боломжгүй.');
   }
   if (k === 'finRow') {
     return tr('Cashflow хүснэгтэд шинэ мөр нэмэх. Байгаа мөрийн утгыг засахад «утга засах» эрх тусдаа хэрэгтэй. Мөр устгах боломжгүй.');

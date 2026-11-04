@@ -663,6 +663,30 @@ export function staleSubmissionKeys(
 }
 
 /**
+ * ЖААЗАНД БИЧИХ ӨДРИЙН АЖИЛ (2026-11-04) = шинэ хуримтлал − ачаалсан хуримтлал. Нүд цэвэрлэгдсэн (`null`) бол хуримтлал
+ * 0 болтол хасна. Хөвөгч таслалын шуугианаас 6 оронгоор бөөрөнхийлнө.
+ */
+export const dayObyem = (cum: number | null | undefined, base: number | null | undefined): number | null => {
+  const c = cum ?? null;
+  if (c == null) return base == null || base === 0 ? null : Math.round(-base * 1e6) / 1e6;
+  return Math.round((c - (base ?? 0)) * 1e6) / 1e6;
+};
+/** Мөрийн өдрийн ажлын нийлбэр (`obyem_sum` талбар) — блок бүрийн `dayObyem` */
+export function dayObyemSum(
+  sc: Pick<Schema, "obyem">,
+  cum: readonly (number | null)[],
+  base?: readonly (number | null)[],
+): number | null {
+  let s: number | null = null;
+  sc.obyem.forEach((col, b) => {
+    if (!col) return;
+    const v = dayObyem(cum[b], base?.[b]);
+    if (v != null) s = (s ?? 0) + v;
+  });
+  return s;
+}
+
+/**
  * АРХИВЫН ЖААЗ УГСРАНА — мөр бүрийн `attributes` (`FillNew.publish`-ийн
  * `adds` угсралтын ЯГ ХУУЛБАР). Үйлчилгээ рүү бичихгүй — `applyAdds`-д өгөх
  * бэлэн мөрүүдийг л буцаана.
@@ -721,7 +745,8 @@ export function buildFrame(
       a[sc.plan[b]] = c[i].plan[b];
       // Хуримтлагдсан обьём — хувийн ЭХ СУРВАЛЖ. Талбаргүй блок бий тул
       // шалгаж байж бичнэ; бүлгийн мөрд хоосон (нэгж нь зөрдөг).
-      if (sc.obyem[b]) a[sc.obyem[b]!] = c[i].obyem[b];
+      /* 2026-11-04: жаазанд тухайн ӨДРИЙН ажил бичигдэнэ (хуримтлал биш) — `dayObyem` */
+      if (sc.obyem[b]) a[sc.obyem[b]!] = dayObyem(c[i].obyem[b], r.obyemBase?.[b]);
       if (sc.start[b]) a[sc.start[b]!] = c[i].startSrc[b] === "agg" ? null : c[i].start[b];
       if (sc.end[b]) a[sc.end[b]!] = c[i].endSrc[b] === "agg" ? null : c[i].end[b];
       /*
@@ -738,7 +763,7 @@ export function buildFrame(
     if (sc.f.hunHuch) a[sc.f.hunHuch] = r.hun;
     if (sc.f.mashin) a[sc.f.mashin] = r.mashin;
     // ОБЬЁМЫН НИЙЛБЭР — талбар байвал л бичнэ (шинэ багана, 10/10 багцад бий)
-    if (sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum)) a[sc.f.obyemSum] = c[i].obyemSum;
+    if (sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum)) a[sc.f.obyemSum] = dayObyemSum(sc, c[i].obyem, r.obyemBase);
     /*
      * МӨНГӨН ДҮН (excel H) — ДЭЛГЭЦ ДЭЭР БОДОГДДОГ УТГЫГ АРХИВТ Ч БИЧНЭ.
      */

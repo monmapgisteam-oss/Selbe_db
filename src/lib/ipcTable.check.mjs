@@ -349,4 +349,16 @@ const contract = (o = {}) => ({
   assert.equal(ipcNumbers([aSep], dayOf).get(aSep), 1, 'өмнөх IPC огт алга → 1');
 }
 
+/* 2026-11-04: олон багцтай гэрээний багц бүрийн задаргаа */
+{
+  const { packageRows } = await import('./ipcTable.ts');
+  const cf = (o) => ({ objectid: o.id, bagts: o.pkg, uy_shat: 'Барилга угсралт', ho_dungiin_tailbar: 'Гэрээлсэн дүн', geree_dun: o.v, ho_dun_zahiramj: o.v, zahiramj_dugaar: 'А/1', zahiramj_unet_tsaas: o.bond ?? null });
+  const rows = [cf({ id: 1, pkg: 'Багц-10', v: 60, bond: 36 }), cf({ id: 2, pkg: 'БАГЦ-11', v: 40 }), cf({ id: 3, pkg: 'Багц-12', v: 5 })];
+  const b = { title: 'БАГЦ-10,  БАГЦ-11', workType: 'ГИШСүлжээ' };
+  const got = packageRows(b, rows);
+  if (got.map((r) => r.pkg).join() !== 'Багц-10,БАГЦ-11') throw new Error('багц таарсангүй: ' + got.map((r) => r.pkg));
+  if (got[0].contract !== 60 || got[0].bond !== 36 || got[0].order !== 60 || got[1].bond !== null || got[1].paid !== null) throw new Error('утга буруу');
+  if (packageRows({ title: 'Багц-10', workType: 'ГИШСүлжээ' }, rows).length !== 0) throw new Error('нэг багцтай гэрээнд задаргаа гарахгүй');
+}
+
 console.log('ipcTable.check ✓');

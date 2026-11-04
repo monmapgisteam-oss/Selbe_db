@@ -14,7 +14,7 @@ import { t as tr } from './i18nCore';
 import { applyAll } from './tableWrite';
 import { invalidate } from './dataBus';
 import { CASHFLOW_NEW, pkgKeyOf } from './services';
-import { isAddedWork, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
+import { isAddedWork, isSplitParent, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 
 const F = CASHFLOW_NEW.fields;
 const DAY = 86_400_000;
@@ -53,8 +53,11 @@ export function editWhy(n: PlanNode, k: PlanEditKey): string | null {
   if (PLAN_EDIT[k].kind === 'money') {
     /* 2026-11-03: нэмсэн ажлын мөнгө — эцгийн төсвөөс жингээр оноогдоно (энд бичвэл бүлгийн жингийн дүрэм эвдэрнэ) */
     if (isAddedWork(n)) return tr('Эцэг мөрийн төсвөөс жингээр оноогдоно — «ТЭЗҮ · Ажлын зураг төсөл» хуудсанд хувь эсвэл дүнгээр өөрчилнө');
-    /* Доод мөрүүдэд утга бичигдсэн бол энэ мөр нийлбэр — засагдахгүй */
     const key = PLAN_EDIT[k].key;
+    /* 2026-11-04: багцын гэрээний дүн энэ мөрөнд засагдана, дэд мөрүүд нь хувиар дагана, IPC автоматаар шинэчлэгдэнэ */
+    if (k === 'budget' && isSplitParent(n)) return null;
+    if (k === 'budget' && n.parent && isSplitParent(n.parent)) return tr('Багцын гэрээний дүнгээс хувиар бодогдоно');
+    /* Доод мөрүүдэд утга бичигдсэн бол энэ мөр нийлбэр — засагдахгүй */
     const below = (x: PlanNode): boolean => x.children.some((c) => !c.outside && (c.row?.[key] != null || below(c)));
     return below(n) ? tr('Дэд мөрүүдээс бодогдоно') : null;
   }

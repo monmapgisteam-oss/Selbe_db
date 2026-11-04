@@ -7,9 +7,8 @@ import { bagtsKey, pkgKeyOf, HO_IPC, num } from '@/lib/services';
 import { agsFetch } from '@/modules/sheet/ags';
 import { invalidate } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
-import { snapshotOf, LINK_FIELDS } from '@/lib/ipcLink';
-import { dayOf, planAuto, autoContractFor, isAuto, autoZoruu, sheetsVerdict, type AutoPlan, type SheetRead } from '@/lib/ipcAuto';
-import { isBlocklessBagts } from '@/lib/negtgelWrite';
+import { snapshotDayOf, LINK_FIELDS } from '@/lib/ipcLink';
+import { dayOf, planAuto, autoContractFor, isAuto, isLockedRow, autoZoruu, sheetsVerdict, type AutoPlan, type SheetRead } from '@/lib/ipcAuto';
 import { uniqueBlockCounts } from '@/lib/blockProgress';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -37,12 +36,11 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     /* ── 1. Тухайн багцын БҮХ хуудасны тэр өдрийн дүнг нийлүүлнэ ── */
     const wanted: Pkg[] = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
     if (!wanted.length) return { ok: false, error: tr('Багц олдсонгүй: {0}', bagts) };
-    if (isBlocklessBagts(bagts)) return { ok: true, op: 'skip', why: 'no-data' };
 
     let obyem: number | null = null;
     let une: number | null = null;
     const reads: SheetRead[] = [];
-    const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p).catch(() => null)));
+    const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p, p.floors == null ? { synthetic: true } : {}).catch(() => null)));
     const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));
 
     for (const [i, pkg] of wanted.entries()) {
@@ -58,7 +56,8 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
       const { rows } = await loadRows(pkg, sc, upTo, need, { strict: true });
       if (!rows.length) { reads.push('missing'); continue; }
       reads.push('read');
-      const s = snapshotOf(rows, day);
+      /* 2026-11-04: тухайн өдрийн ажил (хуримтлал биш) — жааз бүр IPC-ийн дүн */
+      const s = snapshotDayOf(rows, day);
       if (s.obyem != null) obyem = (obyem ?? 0) + s.obyem;
       if (s.une != null) une = (une ?? 0) + s.une;
     }
@@ -234,7 +233,7 @@ export async function refreshAutoZoruu(
       x == null || y == null ? x === y : Math.abs(x - y) < 0.5;
     const upd: Row[] = [];
     for (const r of rows) {
-      if (!isAuto(r) || (want != null && String(r[C.code] ?? '').trim() !== want)) continue;
+      if (!isAuto(r) || isLockedRow(r) || (want != null && String(r[C.code] ?? '').trim() !== want)) continue;
       const oid = num(r[HO_IPC.oid]);
       if (oid == null) continue;
       const z = autoZoruu(rows, r, num(r[LINK_FIELDS.une]));

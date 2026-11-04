@@ -131,7 +131,7 @@ export async function computePublicTables(): Promise<{ tables: Partial<PublicTab
   } else {
     const p = plan.value;
     if (p.failed.length) failed.push(`plan: ${p.failed.join(', ')}`);
-    if (ho.status === 'fulfilled') tables.sanhuu = sanhuuRows(p, ho.value); else fail('sanhuu', ho.reason);
+    if (ho.status === 'fulfilled') tables.sanhuu = sanhuuRows(p); else fail('sanhuu', ho.reason);
     tables.niigem = niigemRows(p);
     /* Явц — барилга, гүйцэтгэгч, бүлэг унавал тэр хэсэг хоосон, хүснэгт бичигдэнэ (явц нь төлөвлөгөөнөөс) */
     const buildings = bld.status === 'fulfilled' ? bld.value : new Map<string, PubBuilding>();

@@ -30,7 +30,7 @@ const F = CASHFLOW_NEW.fields;
 const row = (o) => ({
   [F.detail]: o.work ?? null, [F.project]: o.project ?? null,
   [F.pkg2]: o.pkg2 ?? o.pkg ?? null,
-  [F.budgetOrder]: o.b ?? null, [F.budget]: o.c ?? null,
+  [F.budgetOrder]: o.b ?? null, [F.contractAmount]: o.c ?? null,
   bagts_tuvshin1: o.sec ?? '2',
   [F.contractor]: o.co ?? null, [F.contractNo]: o.no ?? null, [F.contractDate]: o.dt ?? null,
   [F.amountNote]: o.note !== undefined ? o.note : (o.c ? CONTRACTED : null),

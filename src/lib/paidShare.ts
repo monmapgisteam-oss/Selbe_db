@@ -3,15 +3,19 @@
  *
  * ДҮРЭМ (2026-09-21-ний `reportData.loadFinanceRaw`-аас ЯГ шилжүүлсэн):
  *   · хуваарь `contract` = Cashflow-ийн `finXlInTotal` ∧ `ho_dungiin_tailbar === CONTRACTED`
- *     мөрийн `ho_dun_geree` нийлбэр;
- *   · гэрээлсэн багцын түлхүүр = тэр мөрүүдийн `finPkgKey(pkgKeyOf(pkg2|pkg))` (2026-10-09: холбоостой);
- *   · тоологч `paidContracted` = HO төлбөрийн `finPkgKey(pkgKeyOf(bagts))` тэр түлхүүрт орох мөрийн `dun`;
+ *     мөрийн `geree_dun` нийлбэр;
+ *   · тоологч `paidContracted` (2026-11-04) = тэр мөрүүдийн `olgoson_dun` нийлбэр — «Төсөл төлөвлөгөө биелэлт» нэг эх;
  *   · `paid` = HO-ийн БҮХ мөрийн `dun` (хоосон `dun` АЛГАСНА — null ≠ 0).
  */
 import type { Row } from '@/lib/query';
-import { CASHFLOW_NEW, HO_IPC, hoAmount, pkgKeyOf } from '@/lib/services';
+import { CASHFLOW_NEW, hoAmount } from '@/lib/services';
 import { finXlInTotal } from '@/lib/finExcelLayout';
-import { finPkgKey } from '@/lib/pkgAlias';
+
+/**
+ * ГЭРЭЭЛСЭН ХУВЬ · ОЛГОСОН ХУВЬ (ТӨСӨЛД) — төслийн нийт дүнд (2026-11-04, хэрэглэгч).
+ */
+export const shareOfTotal = (v: number | null | undefined, total: number | null | undefined): number | null =>
+  (v == null || total == null || !Number.isFinite(total) || total <= 0 ? null : (v / total) * 100);
 
 /** `gdash.CONTRACTED`-тай ИЖИЛ утга — gdash-ийн хүнд импортоос зайлсхийж энд давтав (тест шалгана) */
 export const PAID_SHARE_CONTRACTED = 'Гэрээлсэн дүн';
@@ -53,21 +57,15 @@ export function paidShareOf(
 ): PaidShare {
   const F = CASHFLOW_NEW.fields;
   const contracted = cfRows.filter((r) => finXlInTotal(r) && str(r[F.amountNote]) === PAID_SHARE_CONTRACTED);
-  const contract = contracted.reduce((a, r) => a + nn(r[F.budget]), 0);
-  const keys = new Set<string>();
-  for (const r of contracted) {
-    for (const k of [pkgKeyOf(r[F.pkg2]), pkgKeyOf(r[F.pkg])]) if (k && k !== '0') keys.add(finPkgKey(k));
-  }
+  const contract = contracted.reduce((a, r) => a + nn(r[F.contractAmount]), 0);
   let paid = 0;
-  let paidContracted = 0;
+  const paidContracted = contracted.reduce((a, r) => a + nn(r[F.paid]), 0);
   let paidKnown = 0;
   for (const r of hoRows) {
     const n = hoAmount(r as Row);
     if (n == null) continue;
     paidKnown += 1;
     paid += n;
-    const k = pkgKeyOf(r[HO_IPC.contractFields.pkg]);
-    if (k && keys.has(finPkgKey(k))) paidContracted += n;
   }
   return {
     contract,

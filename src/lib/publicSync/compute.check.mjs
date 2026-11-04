@@ -103,9 +103,10 @@ check('guitsetgel — гүйцэтгэгч, огноо, айл, давхар', (
 });
 
 /* ══════════ §3 ══════════ */
+/* 2026-11-04: олгосон дүн `olgoson_dun`-ийн нийлбэрээс (IPC-ийн `dun`-ийг hoSync бичдэг) */
+const planPaid = assemblePlan(rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, olgoson_dun: 400 } : r)), { actual: { blocks: null, universe: null, infra: null }, sched: null, land: new Map() }, D(2026, 7, 2));
 check('sanhuu — E, эх үүсвэр, олгосон, хувь', () => {
-  const ho = [{ dun: 300, tulult_turul: 'Урьдчилгаа төлбөр' }, { dun: 100, tulult_turul: 'Гүйцэтгэл' }, { dun: null }];
-  const [s] = sanhuuRows(plan, ho);
+  const [s] = sanhuuRows(planPaid);
   const E = plan.result.values.get(plan.tree.root).E;
   assert.equal(s.niit_tosov_dun, E);
   assert.equal(E, 1150, 'E = 100 + 1000 + 50 — «Нийслэл төсөв» хэсэг (20 + 7) эцгийн нийлбэрт орохгүй (Excel E718)');

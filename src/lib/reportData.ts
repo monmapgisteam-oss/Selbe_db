@@ -444,7 +444,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     const e = typeMap.get(t) ?? { n: 0, budget: 0, contract: 0 };
     e.n += 1;
     e.budget += nn(r[F.budget]);
-    if (str(r[F.amountNote]) === CONTRACTED) e.contract += nn(r[F.budget]);
+    if (str(r[F.amountNote]) === CONTRACTED) e.contract += nn(r[F.contractAmount]);
     typeMap.set(t, e);
   });
 
@@ -499,7 +499,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
       budget: sumAll(F.budget),
       contract: master
         .filter((r) => str(r[F.amountNote]) === CONTRACTED)
-        .reduce((a, r) => a + nn(r[F.budget]), 0),
+        .reduce((a, r) => a + nn(r[F.contractAmount]), 0),
     },
     byBagts,
   };

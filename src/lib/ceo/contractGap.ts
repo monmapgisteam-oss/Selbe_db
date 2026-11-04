@@ -37,7 +37,7 @@ export type ContractGapRow = {
   contractDate: string;
   /** Захирамжийн ХО төсөв (`ho_dun_zahiramj`), ₮ — null = бөглөөгүй/0 (2026-10-04, толгой) */
   budget: number | null;
-  /** Гэрээний дүн (`ho_dun_geree`), ₮ — null = гэрээтэй (CONTRACTED) боловч дүн бөглөөгүй */
+  /** Гэрээний дүн (`geree_dun`), ₮ — null = гэрээтэй (CONTRACTED) боловч дүн бөглөөгүй */
   contract: number | null;
   /** гэрээ − төсөв, ₮ — аль нэг нь null бол null */
   diff: number | null;
@@ -218,7 +218,7 @@ export const loadContractGapKpi = cached<KpiResult>(async () => {
     rows = await queryFeatures(CASHFLOW_NEW.url, {
       where: CF_WORK_WHERE,
       outFields: [
-        F.detail, F.project, F.pkg, F.pkg2, F.budgetOrder, F.budget,
+        F.detail, F.project, F.pkg, F.pkg2, F.budgetOrder, F.contractAmount,
         F.contractor, F.contractNo, F.contractDate, F.amountNote, FIN_XL_TOTAL_CODE_FIELD,
       ],
       orderBy: `${CASHFLOW_NEW.oid} ASC`,

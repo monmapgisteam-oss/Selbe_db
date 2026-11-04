@@ -28,7 +28,7 @@ const ok = (name, fn) => { fn(); n += 1; console.log('  ✓', name); };
 /* ── Хуурамч өгөгдөл (`paidShare.check.mjs`-ийн хэлбэр) ── */
 const CF = (o) => ({
   objectid: o.oid, bagts: o.pkg, bagts2: o.pkg2 ?? null, bagts_tuvshin1: o.sec ?? '2',
-  ho_dungiin_tailbar: o.note ?? '', ho_dun_geree: o.contract ?? null,
+  ho_dungiin_tailbar: o.note ?? '', geree_dun: o.contract ?? null,
 });
 const cf = [
   CF({ oid: 1, pkg: 'БАГЦ-1', note: PAID_SHARE_CONTRACTED, contract: 800 }),

@@ -137,7 +137,7 @@ function splitAnd(w) {
     if (w[i] === "'") { q = !q; continue; }
     if (q) continue;
     const m = /^\s+AND\s+/i.exec(w.slice(i));
-    if (m) { parts.push(w.slice(start, i)); i += m[0].length - 1; start = i + 1; }
+    if (m && !/BETWEEN\s+timestamp\s+'[^']*'$/i.test(w.slice(start, i))) { parts.push(w.slice(start, i)); i += m[0].length - 1; start = i + 1; }
   }
   parts.push(w.slice(start));
   return parts.map((s) => s.trim()).filter(Boolean);
@@ -153,6 +153,11 @@ function clause(c) {
   if (m) { const [, f, v] = m; return (r) => String(r[f] ?? '').toLowerCase() === lit(v); }
   m = /^(\w+)\s+(NOT\s+)?LIKE\s+N?'((?:[^']|'')*)'$/i.exec(c);
   if (m) { const [, f, not, p] = m; const re = likeRe(p); return (r) => re.test(String(r[f] ?? '')) !== !!not; }
+  /* 2026-11-04: `fld IS NULL` · `fld IS NOT NULL` · `fld BETWEEN timestamp 'a' AND timestamp 'b'` (`bagtsSheet.dayFilter`) */
+  m = /^(\w+)\s+IS\s+(NOT\s+)?NULL$/i.exec(c);
+  if (m) { const [, f, not] = m; return (r) => (r[f] == null) !== !!not; }
+  m = /^(\w+)\s+BETWEEN\s+timestamp\s+'([^']+)'\s+AND\s+timestamp\s+'([^']+)'$/i.exec(c);
+  if (m) { const [, f, a0, b0] = m; const lo = tsMs(a0), hi = tsMs(b0); return (r) => r[f] != null && Number(r[f]) >= lo && Number(r[f]) <= hi; }
   m = /^(\w+)\s+IN\s*\(([^)]*)\)$/i.exec(c);
   if (m) {
     const [, f, list] = m;

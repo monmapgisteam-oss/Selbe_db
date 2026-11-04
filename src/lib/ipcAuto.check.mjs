@@ -276,7 +276,23 @@ const P = HO_IPC.payFields;
   const { readFileSync } = await import('node:fs');
   const W = readFileSync('src/lib/ipcAutoWrite.ts', 'utf8');
   assert.ok(W.includes("const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));") && !W.includes('contractCodeOf('), 'syncIpcFromFill warn-ийг хаяхгүй (F6)');
-  assert.ok(W.includes("if (isBlocklessBagts(bagts)) return { ok: true, op: 'skip', why: 'no-data' };"), 'блокгүй багц — no-data (F2)');
+  assert.ok(!W.includes('isBlocklessBagts'), '2026-11-04: блокгүй багц ч обьём × нэгж үнээр бодогдоно');
+  /* 2026-11-04: IPC-д орсон мөрийг шинэчлэхгүй, ижил өдөр шинэ мөр; олон багцтай гэрээг олно */
+  {
+    const m = await import('./ipcAuto.ts');
+    const a = { pkg: 'Багц 2', day: '2026-10-11', code: 'Багц-2', obyem: 1, une: 2 };
+    const base = { [P.id]: 'AUTO|БАГЦ2|2026-10-11', [C.pkg]: 'Багц 2', [C.code]: 'Багц-2' };
+    assert.equal(m.planAuto([base], a).op, 'update', 'төлөвгүй мөр шинэчлэгдэнэ');
+    assert.equal(m.planAuto([{ ...base, ipc_tuluv: 'Гүйцэтгэл' }], a).op, 'update', '«Гүйцэтгэл» мөр шинэчлэгдэнэ');
+    const locked = m.planAuto([{ ...base, ipc_tuluv: 'IPC үүссэн' }], a);
+    assert.equal(locked.op, 'insert', 'IPC-д орсон мөр шинэчлэгдэхгүй');
+    assert.equal(locked.attrs[P.id], 'AUTO|БАГЦ2|2026-10-11|2', 'давтагдашгүй ID');
+    assert.equal(locked.attrs.ipc_tuluv, 'Гүйцэтгэл');
+    const multi = [{ [P.id]: 'ХО-1', [C.pkg]: 'БАГЦ-10,  БАГЦ-11', [C.code]: 'БАГЦ-10,11', [C.workType]: 'ГИШСүлжээ' }];
+    assert.equal(m.contractFor(multi, 'БАГЦ10').code, 'БАГЦ-10,11', 'олон багцтай гэрээг олно');
+    assert.equal(m.contractFor(multi, 'БАГЦ11').code, 'БАГЦ-10,11');
+    assert.equal(m.contractFor(multi, 'БАГЦ12').code, '');
+  }
   assert.ok(W.includes("if (!cols.length) { reads.push('no-obyem'); continue; }"), 'обьёмгүй хуудас «дутуу» биш (F2)');
   assert.ok(W.includes("if (!upTo) { reads.push('unpublished'); continue; }"), 'жаазгүй хуудас «unpublished» (аудит №6)');
   assert.ok(W.includes('const verdict = sheetsVerdict(reads);') && W.includes('if (!verdict.go) return verdict.result;'), 'шийдвэр sheetsVerdict-ээр (аудит №6)');

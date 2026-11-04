@@ -27,7 +27,11 @@ export type DerivedSys = ScopedSys;
 /**
  * ХУВААРИЛАЛТААС ГАРДАГГҮЙ таван эрх — зөвхөн нэрээр, унтраалгаар олгоно.
  */
+<<<<<<< HEAD
 export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'sysClose', 'docsUpload', 'docsGroups', 'zuragEdit', 'cfSwitch'];
+=======
+export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'ipcApprove', 'gazar', 'hamaaral', 'habeaData', 'habeaOwn', 'sysClose', 'docsUpload', 'docsGroups', 'zuragEdit', 'cfSwitch'];
+>>>>>>> 1c12f479 (feat(ipc): IPC үүсгэх дараалал · гэрээ үүсгэх/цуцлах · жааз тухайн өдрийн ажлыг хадгална · олгосон дүн ТТБ-д)
 
 /** Эрх аль системийн хуваарилалтаас гардаг вэ — энгийн эрхэд `null` */
 export function capSystem(cap: CapKey): DerivedSys | null {

@@ -29,11 +29,11 @@ const near = (a, b, msg) => assert.ok(a != null && b != null && Math.abs(a - b) 
        `dun` хоосон мөр (алгасна). HO-ийн гэрээт дүн (gereet_tosov_niit) нь Cashflow-оос ӨӨР. */
 const CF = (o) => ({
   objectid: o.oid, bagts: o.pkg, bagts2: o.pkg2 ?? null, bagts_tuvshin1: o.sec ?? '2',
-  ho_dungiin_tailbar: o.note ?? '', ho_dun_geree: o.contract ?? o.cost ?? null,
+  ho_dungiin_tailbar: o.note ?? '', geree_dun: o.contract ?? null, ho_dun_geree: o.cost ?? null, olgoson_dun: o.paid ?? null,
 });
 const cf = [
-  CF({ oid: 1, pkg: 'БАГЦ-1', note: CONTRACTED, contract: 800 }),
-  CF({ oid: 2, pkg: 'БАГЦ-2', note: CONTRACTED, contract: 1200 }),
+  CF({ oid: 1, pkg: 'БАГЦ-1', note: CONTRACTED, contract: 800, paid: 300 }),
+  CF({ oid: 2, pkg: 'БАГЦ-2', note: CONTRACTED, contract: 1200, paid: 300 }),
   CF({ oid: 3, pkg: 'БАГЦ-3', note: 'Урьдчилсан тооцоо', contract: 500, cost: 600 }),
   CF({ oid: 4, pkg: 'БАГЦ-9', note: CONTRACTED, contract: 999, sec: '5' }),
 ];
@@ -77,8 +77,8 @@ ok('2026-10-09: бүх `dun` хоосон HO мөр → pct null, paidKnown 0 (�
 
 ok('2026-10-09: холбоостой багц (HO «Багц-8.1» → «Багц 8», HO «Багц-7» ↔ Cashflow «БАГЦ-7.1») гэрээлсэнд тоологдоно', () => {
   const cfA = [
-    CF({ oid: 11, pkg: 'Багц 8', note: CONTRACTED, contract: 400 }),
-    CF({ oid: 12, pkg: 'БАГЦ-7.1', note: CONTRACTED, contract: 600 }),
+    CF({ oid: 11, pkg: 'Багц 8', note: CONTRACTED, contract: 400, paid: 32 }),
+    CF({ oid: 12, pkg: 'БАГЦ-7.1', note: CONTRACTED, contract: 600, paid: 187 }),
   ];
   const hoA = [
     HO({ oid: 11, code: 'Багц-8.1', pkg: 'Багц-8.1', dun: 32 }),
@@ -108,11 +108,11 @@ ok('«IPC» хуудасны толгой — Cashflow-ийн хувь, HO-ий�
   assert.equal(h.other, 90, 'хувьд ороогүй олголт тусад нь');
   assert.notEqual(t.paidPct, h.pct, 'HO-ийн хувь (урьдын 26.47%-ийн хэлбэр) өөр байх ёстой — тест утга учиртай');
 });
-ok('«IPC» — loadFinance уналтад HO-ийн хувь «HO хүснэгтээр» нөөц', () => {
+ok('2026-11-04: «IPC» — loadFinance уналтад нөөц томьёогоор хувь гаргахгүй', () => {
   const t = ipcTotals(contractBlocks(groupHo(ho)));
   const h = ipcHeadShare(t, null);
   assert.equal(h.src, 'ho');
-  assert.equal(h.pct, t.paidPct);
+  assert.equal(h.pct, null, 'нэг томьёо ачаалагдах хүртэл хувь харуулахгүй');
 });
 
 console.log('\n3. Дуудагчид томьёогоо давтаагүй');

@@ -55,7 +55,7 @@ import {
   loadMonthlyMoney, monthSourceOf, confirmAndSwitch, switchPhaseWhy, PKG_KEYS, SRC_HUVAARI, CF_SWITCH_CAP, type MonthlyMoney,
 } from '@/lib/monthlyMoney';
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
-import { isAddedWork, sourceSums, SOURCE_KEYS, type PlanNode, type PlanValues, type BlockStatus, type SourceKey, type SourceSums } from '@/lib/projectPlan';
+import { isAddedWork, moneySums, sourceSums, SOURCE_KEYS, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus, type SourceKey, type SourceSums } from '@/lib/projectPlan';
 import {
   MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
   importCutoff, pkgOptions, savePlanValue, type FillFilter, type PlanEditKey, type PlanFilter,
@@ -785,7 +785,7 @@ async function loadFinDataRaw(): Promise<FinData> {
     contracts.forEach((r) => {
       const k = pkgKeyOf(r[CFN.pkg2]) || pkgKeyOf(r[CFN.pkg]);
       if (!k || k === '0') return;
-      const v = n(r[CFN.budget]);
+      const v = n(r[CFN.contractAmount]) || n(r[CFN.budget]);
       if (!v) return;
       planTotal.set(k, (planTotal.get(k) ?? 0) + v);
     });
@@ -1143,11 +1143,25 @@ export function huvMonthRows(money: MonthlyMoney | null | undefined): Map<number
 const loadProjectPlanLazy = (): Promise<ProjectPlan> =>
   import('@/lib/projectPlanInputs').then((m) => m.loadProjectPlan());
 
-type PpKind = 'money' | 'w' | 'date' | 'pct';
+type PpKind = 'money' | 'w' | 'date' | 'pct' | 'frac' | 'text';
 /** `k` — `PlanValues`-ийн багана (E…W) эсвэл эх үүсвэрийн талбар (`sourceSums`, 2026-11-03) */
-type PpCol = { k: Exclude<keyof PlanValues, 'status'> | SourceKey; label: string; kind: PpKind; title?: string };
+type PpRawKey = Extract<keyof PlanStoredRow, string>;
+/** Олгосон санхүүжилтийн багана — `moneySums`-аас (2026-11-04) */
+type PpCalcKey = 'mContract' | 'mPaid' | 'mAdvance' | 'mPctTotal' | 'mPctContract';
+type PpCol = { k: Exclude<keyof PlanValues, 'status'> | SourceKey | PpRawKey | PpCalcKey; label: string; kind: PpKind; title?: string; raw?: true };
+const CALC_KEYS: readonly string[] = ['mContract', 'mPaid', 'mAdvance', 'mPctTotal', 'mPctContract'];
+const calcVal = (k: string, m: MoneySums | undefined, E: number | null | undefined): number | null => {
+  if (!m) return null;
+  if (k === 'mContract') return m.contract;
+  if (k === 'mPaid') return m.paid;
+  if (k === 'mAdvance') return m.advance;
+  if (k === 'mPctTotal') return m.paid != null && E ? (m.paid / E) * 100 : null;
+  return m.paid != null && m.contract ? (m.paid / m.contract) * 100 : null;
+};
 type PpGroup = { label: string | null; cols: PpCol[] };
 const isSourceKey = (k: PpCol['k']): k is SourceKey => (SOURCE_KEYS as readonly string[]).includes(k);
+/** Хадгалсан утгыг шууд харуулах багана (2026-11-04, хэрэглэгч: «ил гарга») */
+const rawCol = (k: PpRawKey, label: string, kind: PpKind): PpCol => ({ k, label, kind, raw: true });
 
 /**
  * Excel-ийн үндсэн хуудасны баганууд (E…W), дарааллаар нь. Эх үүсвэрийн 4 багана (захирамжийн дүнгийн задаргаа,
@@ -1180,10 +1194,70 @@ function ppGroups(): PpGroup[] {
         pctCol('V', tr('Гүйцэтгэгч'), 'S / P'), pctCol('W', tr('Өмнө долоо хоног'), 'S / R'),
       ],
     },
+    {
+      label: tr('Олгосон санхүүжилт'),
+      cols: [
+        { k: 'mContract', label: tr('Гэрээний дүн'), kind: 'money' },
+        { k: 'mPaid', label: tr('Олгосон дүн'), kind: 'money' },
+        { k: 'mAdvance', label: tr('Урьдчилгаа'), kind: 'money' },
+        { k: 'mPctTotal', label: tr('Олгосон хувь (төсөлд)'), kind: 'pct' },
+        { k: 'mPctContract', label: tr('Олгосон хувь (гэрээнд)'), kind: 'pct' },
+      ],
+    },
+    {
+      label: tr('Захирамжийн мэдээлэл'),
+      cols: [
+        rawCol('ho_dun_zahiramj', tr('Хөрөнгө оруулалтын дүн (захирамж)'), 'money'),
+        rawCol('zahiramj_unet_tsaas_huvi', tr('Үнэт цаасны хувь'), 'frac'),
+        rawCol('zahiramj_ognoo', tr('Захирамжийн огноо'), 'date'),
+        rawCol('zahiramj_dugaar', tr('Захирамжийн дугаар'), 'text'),
+      ],
+    },
+    {
+      label: tr('Гэрээний мэдээлэл'),
+      cols: [
+        rawCol('geree_ognoo', tr('Гэрээ байгуулсан огноо'), 'date'),
+        rawCol('geree_dugaar', tr('Гэрээний дугаар'), 'text'),
+        rawCol('guitsetgegch', tr('Гүйцэтгэгч'), 'text'),
+        rawCol('zahialagch_hynalt_baig', tr('Захиалагчийн хяналт'), 'text'),
+        rawCol('ashiglalt_ognoo', tr('Ашиглалтад оруулах огноо'), 'date'),
+      ],
+    },
+    {
+      label: tr('Үе шатны хувь'),
+      cols: [
+        rawCol('tezu', tr('ТЭЗҮ'), 'pct'),
+        rawCol('ajliin_zurag_tusul', tr('Ажлын зураг төсөл'), 'pct'),
+        rawCol('gazar_chuluulult', tr('Газар чөлөөлөлт'), 'pct'),
+        rawCol('zuwshuurul', tr('Зөвшөөрөл'), 'pct'),
+        rawCol('songon_shalgaruulalt', tr('Сонгон шалгаруулалт'), 'pct'),
+      ],
+    },
+    {
+      label: tr('Тайлбар, дугаар'),
+      cols: [
+        rawCol('ho_dungiin_tailbar', tr('Дүнгийн тайлбар'), 'text'),
+        rawCol('sar_mongo_eh', tr('Сарын мөнгөний эх сурвалж'), 'text'),
+      ],
+    },
+    {
+      label: tr('Түвшин'),
+      cols: [
+        rawCol('bagts_tuvshin1', tr('Багц, 1-р түвшин'), 'text'),
+        rawCol('ajil_tuvshin1', tr('Ажил, 1-р түвшин'), 'text'),
+        rawCol('bagts_tuvshin2', tr('Багц, 2-р түвшин'), 'text'),
+        rawCol('ajil_tuvshin2', tr('Ажил, 2-р түвшин'), 'text'),
+        rawCol('bagts_tuvshin3', tr('Багц, 3-р түвшин'), 'text'),
+        rawCol('ajil_tuvshin3', tr('Ажил, 3-р түвшин'), 'text'),
+      ],
+    },
   ];
 }
 
-const ppFmt = (kind: PpKind, v: number | null): string => {
+const ppFmt = (kind: PpKind, v: number | string | null): string => {
+  if (kind === 'text') return v == null || v === '' ? '—' : String(v);
+  if (typeof v === 'string') return v;
+  if (kind === 'frac') return pct(v == null ? null : v * 100, 1);
   if (kind === 'money') return num(v);
   if (kind === 'w') return pct(v, 2);
   if (kind === 'date') return date(v);
@@ -1389,16 +1463,20 @@ export function ProjectPlanTable({
 
   /** Эх үүсвэрийн нийлбэр мөр бүрд (өөрийнх › хүүхдүүдийн нийлбэр) */
   const srcOf = useMemo(() => sourceSums(tree), [tree]);
+  /** Олгосон дүн · урьдчилгаа · гэрээний дүн — мөр бүрт нийлбэрээр */
+  const moneyOf = useMemo(() => moneySums(tree), [tree]);
   const valCells = (v: PlanValues | undefined, blk: boolean, src: SourceSums | undefined, n?: PlanNode) => cols.map((c) => {
     /* 2026-11-03: нэмсэн ажлын төсөвт өртөг — эцгийн төсвөөс жингээр оноосон (бүдэг налуу; нийлбэрт орохгүй) */
     const alloc = c.k === 'E' && v?.E == null && v?.EA != null && !!n && isAddedWork(n);
-    const x = isSourceKey(c.k) ? src?.[c.k] ?? null : alloc ? v!.EA : v ? v[c.k] : null;
+    const x = CALC_KEYS.includes(c.k) ? calcVal(c.k, n ? moneyOf.get(n) : undefined, v?.E)
+      : c.raw ? (n?.row?.[c.k as PpRawKey] as number | string | null | undefined) ?? null
+      : isSourceKey(c.k) ? src?.[c.k] ?? null : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status'>] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;
     return (
       <td
         key={c.k}
-        className={`${f.cellNum} ${c.kind === 'date' ? f.ppDate : ''} ${alloc ? f.ppAlloc : ''}`}
-        title={st ? ppStatusText(st) : alloc ? tr('Эцэг мөрийн төсвөөс жингээр оноосон') : undefined}
+        className={`${c.kind === 'text' ? f.ppText : f.cellNum} ${c.kind === 'date' ? f.ppDate : ''} ${alloc ? f.ppAlloc : ''}`}
+        title={st ? ppStatusText(st) : alloc ? tr('Эцэг мөрийн төсвөөс жингээр оноосон') : c.kind === 'text' && x != null ? String(x) : undefined}
       >
         {st && <i className={`${f.ppDot} ${st === 'done' ? f.ppDone : st === 'started' ? f.ppOn : f.ppNot}`} aria-hidden />}
         {ppFmt(c.kind, x)}
@@ -1649,7 +1727,7 @@ export function ProjectPlanTable({
               <td className={`${f.ppFz0} ${f.ppNo}`} />
               <td className={`${f.ppFz1} ${f.ppPkg}`} />
               <td className={`${f.ppFz2} ${f.ppName}`}>{tr('Төслийн нийт')}</td>
-              {valCells(rootV, false, srcOf.get(tree.root))}
+              {valCells(rootV, false, srcOf.get(tree.root), tree.root)}
               <td className={f.ppMoney} />
             </tr>
             {vis.map((n) => {
@@ -1796,7 +1874,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         money={money}
       />
       ) : (
-      <IpcTable contracts={groupHo(d.ipc)} />
+      <IpcTable contracts={groupHo(d.ipc)} cfRows={d.cashflow} />
       )}
     </>
   );

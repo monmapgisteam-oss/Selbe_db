@@ -7,7 +7,8 @@
  * цөөн баганаар.
  */
 import { t as tr } from '@/lib/i18nCore';
-import { HO_IPC, hoAmount, hoPayCode, hoSaving, num } from '@/lib/services';
+import { CASHFLOW_NEW, HO_IPC, hoAmount, hoPayCode, hoSaving, num, orderTotalOf } from '@/lib/services';
+import { cfMatches, hoPkgParts, phasesOf } from '@/lib/hoSync/compute';
 import type { HoContract } from '@/lib/ipc';
 import { LINK_FIELDS } from '@/lib/ipcLink';
 import { dayKey } from '@/lib/format';
@@ -249,6 +250,8 @@ export type ContractBlock = {
   /** Гүйцэтгэлийн төлбөрийн нийт */
   workTotal: number | null;
   savingMismatch: boolean;
+  /** Гэрээний бүх түүхий мөр — IPC үүсгэх самбарт */
+  pays: readonly Row[];
 };
 
 /**
@@ -273,7 +276,8 @@ function mergeHead(pays: readonly Row[]): Row {
 
 export function contractBlocks(cs: readonly HoContract[]): ContractBlock[] {
   return cs.map((c) => {
-    const rows = payRows(c.pays);
+    /* 2026-11-04: олгоогүй IPC баримт нь «IPC ҮҮСГЭХ» самбарт харагдана, төлбөрийн карт биш */
+    const rows = payRows(c.pays.filter((r) => !(String(r[P.id] ?? '').startsWith('IPC|') && num(r[P.amount]) == null)));
     /*
      *    Урьд нь `c.pays[0]` гэсэн НЭГ «толгой мөр» сонгодог байв. `groupHo`
      *    тэр загвараа 2026-09-11-нд яг ЭНЭ шалтгаанаар орхисон: нэг мөрөнд
@@ -302,6 +306,7 @@ export function contractBlocks(cs: readonly HoContract[]): ContractBlock[] {
       details: details(h),
       advanceTotal: c.advanceTotal,
       workTotal: c.workTotal,
+      pays: c.pays,
       savingMismatch: stored != null && calc != null && Math.abs(stored - calc) > 0.5,
     };
   });
@@ -447,5 +452,48 @@ export function ipcHeadShare(
   if (share) {
     return { src: 'cashflow', contract: share.contract, pct: share.pct, other: share.paidOther !== 0 ? share.paidOther : null };
   }
-  return { src: 'ho', contract: null, pct: t.paidPct, other: t.paidOther != null && t.paidOther !== 0 ? t.paidOther : null };
+  /* 2026-11-04: өөрийн нөөц томьёо хасагдсан — нэг томьёо ачаалагдах хүртэл хувь харуулахгүй */
+  return { src: 'ho', contract: null, pct: null, other: t.paidOther != null && t.paidOther !== 0 ? t.paidOther : null };
+}
+
+/* ─────────────────────── ОЛОН БАГЦТАЙ ГЭРЭЭНИЙ ЗАДАРГАА ─────────────────────── */
+
+/** Гэрээний нэг багцын мөр — «Төсөл төлөвлөгөө биелэлт»-ийн (`CASHFLOW_NEW`) утга */
+export type PackageRow = {
+  key: string;
+  pkg: string;
+  contract: number | null;
+  order: number | null;
+  bond: number | null;
+  sales: number | null;
+  city: number | null;
+  nzd: number | null;
+  paid: number | null;
+};
+
+/**
+ * ОЛОН БАГЦТАЙ ГЭРЭЭНИЙ БАГЦ БҮРИЙН МӨР (2026-11-04, хэрэглэгч: «бүрэн харагддаг болго») — IPC-ийн нэг гэрээ
+ * Cashflow-д багц бүрээр бичигддэг. Холболтын дүрэм нь `hoSync`-тэй ИЖИЛ (`cfMatches`). Нэг багцтай гэрээнд хоосон.
+ */
+export function packageRows(b: Pick<ContractBlock, 'title' | 'workType'>, cfRows: readonly Record<string, unknown>[]): PackageRow[] {
+  const parts = hoPkgParts(b.title);
+  if (parts.length < 2) return [];
+  const phases = phasesOf(b.workType);
+  const C = CASHFLOW_NEW.fields;
+  const n = (v: unknown): number | null => {
+    if (v == null || v === '') return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
+  return cfRows.filter((r) => cfMatches(r, parts, phases)).map((r) => ({
+    key: String(r[CASHFLOW_NEW.oid] ?? r[C.pkg] ?? ''),
+    pkg: String(r[C.pkg] ?? ''),
+    contract: n(r[C.contractAmount]),
+    order: n(orderTotalOf(r)),
+    bond: n(r.zahiramj_unet_tsaas),
+    sales: n(r.zahiramj_borluulalt_dun),
+    city: n(r.zahiramj_niislel_tusuv),
+    nzd: n(r.zahiramj_nzd_nuuts),
+    paid: n(r.olgoson_dun),
+  }));
 }

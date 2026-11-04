@@ -72,8 +72,31 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['zahiramj_borluulalt_dun', 'zahiramj_borluulalt_dun'],
   ['zahiramj_niislel_tusuv', 'zahiramj_niislel_tusuv'],
   ['zahiramj_nzd_nuuts', 'zahiramj_nzd_nuuts'],
+  ['geree_dun', CF.contractAmount],
+  ['olgoson_dun', CF.paid],
+  ['urdchilgaa_dun', CF.advance],
+  /* Зөвхөн харуулах баганууд (2026-11-04) */
+  ['ho_dun_zahiramj', 'ho_dun_zahiramj'],
+  ['zahiramj_unet_tsaas_huvi', 'zahiramj_unet_tsaas_huvi'],
+  ['tezu', 'tezu'],
+  ['ajliin_zurag_tusul', 'ajliin_zurag_tusul'],
+  ['gazar_chuluulult', 'gazar_chuluulult'],
+  ['zuwshuurul', 'zuwshuurul'],
+  ['songon_shalgaruulalt', 'songon_shalgaruulalt'],
+  ['geree_dugaar', 'geree_dugaar'],
+  ['guitsetgegch', 'guitsetgegch'],
+  ['zahialagch_hynalt_baig', 'zahialagch_hynalt_baig'],
+  ['ho_dungiin_tailbar', 'ho_dungiin_tailbar'],
+  ['sar_mongo_eh', 'sar_mongo_eh'],
+  ['bagts_tuvshin1', 'bagts_tuvshin1'],
+  ['ajil_tuvshin1', 'ajil_tuvshin1'],
+  ['bagts_tuvshin2', 'bagts_tuvshin2'],
+  ['ajil_tuvshin2', 'ajil_tuvshin2'],
+  ['bagts_tuvshin3', 'bagts_tuvshin3'],
+  ['ajil_tuvshin3', 'ajil_tuvshin3'],
 ];
-const TEXT_KEYS = new Set<keyof PlanStoredRow>(['dd_kod', 'etseg_kod', 'uy_shat', 'bagts', 'blok', 'ajil_uilchilgee', 'zahiramj_dugaar']);
+const TEXT_KEYS = new Set<keyof PlanStoredRow>(['dd_kod', 'etseg_kod', 'uy_shat', 'bagts', 'blok', 'ajil_uilchilgee', 'zahiramj_dugaar',
+  'geree_dugaar', 'guitsetgegch', 'zahialagch_hynalt_baig', 'ho_dungiin_tailbar', 'sar_mongo_eh', 'bagts_tuvshin1', 'ajil_tuvshin1', 'bagts_tuvshin2', 'ajil_tuvshin2', 'bagts_tuvshin3', 'ajil_tuvshin3']);
 
 /** Атрибутыг нэрээр — эхлээд яг, дараа нь том/жижиг үсэг үл ялган */
 function attrOf(a: Record<string, unknown>, name: string): unknown {

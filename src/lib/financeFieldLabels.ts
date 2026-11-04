@@ -23,6 +23,7 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
   get zahiramj_niislel_tusuv() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр нийслэлийн төсөвийн'); },
   get zahiramj_nzd_nuuts() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр НЗД нөөц хөрөнгө'); },
   get zahialagch_hynalt_baig() { return tr('Захиалагчийн хяналт хийх байгууллага'); },
+  get geree_dun() { return tr('Гэрээний дүн'); },
   get guitsetgegch() { return tr('Гүйцэтгэгч байгууллага'); },
   get geree_ognoo() { return tr('Гэрээ байгуулсан огноо'); },
   get geree_dugaar() { return tr('Гэрээний дугаар'); },

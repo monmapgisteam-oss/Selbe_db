@@ -37,6 +37,16 @@ export function findAutoRow(
   }) ?? null;
 }
 
+/** Олон багцтай `bagts` («БАГЦ-10, БАГЦ-11») — мөр энэ багцынх мөн үү */
+export const rowHasPkg = (r: Row, pkgKey: string): boolean =>
+  String(r[C.pkg] ?? '').split(',').some((p) => pkgKeyOf(p) === pkgKey);
+
+/** IPC-д орсон (түгжигдсэн) мөр — `dun`, `guits_une`, `guits_zoruu` дахин бодогдохгүй (2026-11-04) */
+export const isLockedRow = (r: Row): boolean => {
+  const s = String(r[HO_IPC.status.field] ?? '').trim();
+  return s !== '' && s !== HO_IPC.status.work;
+};
+
 /** Мөрийн ID-гийн угтвар — автоматаар үүссэн мөрийг таних цорын ганц тэмдэг */
 export const AUTO_PREFIX = 'AUTO|';
 
@@ -102,7 +112,7 @@ export function contractFor(rows: readonly Row[], pkgKey: string): { code: strin
   const by = new Map<string, ContractCand>();
   for (const r of rows) {
     if (isAuto(r)) continue;
-    if (pkgKeyOf(r[C.pkg]) !== pkgKey) continue;
+    if (!rowHasPkg(r, pkgKey)) continue;
     const code = String(r[C.code] ?? '').trim();
     if (!code) continue;
     const c = by.get(code) ?? { code, workType: '', hasWork: false };
@@ -130,7 +140,7 @@ export function autoContractFor(rows: readonly Row[], pkgKey: string): { code: s
   }
   if (!prev || prev.code === base.code) return base;
   const p = prev;
-  const manual = rows.some((r) => !isAuto(r) && pkgKeyOf(r[C.pkg]) === pkgKey && String(r[C.code] ?? '').trim() === p.code);
+  const manual = rows.some((r) => !isAuto(r) && rowHasPkg(r, pkgKey) && String(r[C.code] ?? '').trim() === p.code);
   if (!manual) return base;
   return {
     code: p.code,
@@ -164,11 +174,13 @@ export type AutoIpc = {
 /**
  * ArcGIS-д НЭМЭХ шинэ мөрийн талбарууд.
  */
-export function autoInsert(a: AutoIpc): Record<string, unknown> {
+export function autoInsert(a: AutoIpc, seq = 1): Record<string, unknown> {
   const key = pkgKeyOf(a.pkg);
   const year = Number(a.day.slice(0, 4));
   return {
-    [P.id]: autoId(key, a.day),
+    /* Ижил өдрийн мөр IPC-д орсон бол шинэ мөр — `AUTO|багц|өдөр|2` */
+    [P.id]: seq > 1 ? `${autoId(key, a.day)}|${seq}` : autoId(key, a.day),
+    [HO_IPC.status.field]: HO_IPC.status.work,
     [C.code]: a.code,
     [C.pkg]: a.pkg,
     [P.kind]: HO_IPC.kinds.work,
@@ -227,10 +239,28 @@ export function cumPaidThrough(rows: readonly Row[], cur: Row): number | null {
 /**
  * AUTO МӨРИЙН ЗӨРҮҮ = олгосон ХУРИМТЛАЛ (энэ мөр хүртэл) − `une`.
  */
+/**
+ * ГЭРЭЭНИЙ ГҮЙЦЭТГЭЛИЙН (`guits_une`) ХУРИМТЛАЛ — `cur` мөрийг ОРУУЛААД, `cur`-ийн утгыг `une`-ээр (2026-11-04: AUTO мөр
+ * тухайн өдрийн ажлыг хадгалдаг тул зөрүү хуримтлалаар жишигдэнэ).
+ */
+export function cumUneThrough(rows: readonly Row[], cur: Row, une: number | null): number | null {
+  const code = codeOf(cur);
+  const day = (r: Row): number => payMs(r[P.payDate]);
+  let acc: number | null = une;
+  for (const r of rows) {
+    if (r === cur || !isAuto(r) || codeOf(r) !== code) continue;
+    if (day(r) > day(cur) || (day(r) === day(cur) && (num(r[HO_IPC.oid]) ?? 0) > (num(cur[HO_IPC.oid]) ?? 0))) continue;
+    const v = num(r[LINK_FIELDS.une]);
+    if (v != null) acc = (acc ?? 0) + v;
+  }
+  return acc;
+}
+
 export function autoZoruu(rows: readonly Row[], cur: Row, une: number | null): number | null {
   if (une == null || num(cur[P.amount]) == null) return null;
   const paid = cumPaidThrough(rows, cur);
-  return paid == null ? null : paid - une;
+  const cum = cumUneThrough(rows, cur, une);
+  return paid == null || cum == null ? null : paid - cum;
 }
 
 /**
@@ -264,10 +294,12 @@ export function planAuto(rows: readonly Row[], a: AutoIpc): AutoPlan {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(a.day)) return { op: 'skip', why: 'bad-day' };
   if (a.obyem == null && a.une == null) return { op: 'skip', why: 'no-data' };
 
-  const cur = findAutoRow(rows, key, a.day);
+  /* 2026-11-04: IPC-д орсон мөрийг шинэчлэхгүй; ижил өдөр дахин бөглөвөл шинэ «Гүйцэтгэл» мөр */
+  const same = rows.filter((r) => isAuto(r) && pkgKeyOf(r[C.pkg]) === key && autoDay(r) === a.day);
+  const cur = same.find((r) => !isLockedRow(r));
   return cur
     ? { op: 'update', attrs: autoUpdate(cur, a, rows) }
-    : { op: 'insert', attrs: autoInsert(a) };
+    : { op: 'insert', attrs: autoInsert(a, same.length + 1) };
 }
 
 /**

@@ -72,7 +72,7 @@ export type Budget = {
   total: number;
   /** Захирамжийн нийт дүн, ₮ — `finXlInTotal` хүрээ */
   orderTotal: number;
-  /** Гэрээлсэн дүн, ₮ — `finXlInTotal` ∧ `note === CONTRACTED` мөрийн `ho_dun_geree` (2026-11-04) */
+  /** Гэрээлсэн дүн, ₮ — `finXlInTotal` ∧ `note === CONTRACTED` мөрийн `geree_dun` */
   contract: number;
   /** Санхүүжилтийн эх үүсвэр — задраагүй үлдэгдэлтэй */
   sources: { key: string; label: string; value: number }[];
@@ -110,7 +110,7 @@ export const loadBudget = cached<Budget>(async () => {
     CASHFLOW_NEW.url,
     `${FIN_XL_CHART_FIELDS.join(',')},${CF.pkg2},${CF.amountNote}`,
     [
-      sum(CF.budget, 'b'),
+      sum(CF.budget, 'b'), sum(CF.contractAmount, 'c'),
       count(CASHFLOW_NEW.oid, 'n'),
       ...CASHFLOW_NEW.sources.map((s, i) => sum(s.field, `s${i}`)),
     ],
@@ -129,7 +129,7 @@ export const loadBudget = cached<Budget>(async () => {
   const sumOf = (rows: readonly Row[], f: string) => rows.reduce((a, r) => a + Number(r[f] ?? 0), 0);
   const total = sumOf(inTotal, 'b');
   const orderTotal = sumOf(gOrder.filter(finXlInTotal), 'o');
-  const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'b');
+  const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
   /* ⚠️ 2026-11-03 (хэрэглэгч): эх үүсвэр — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ИЖИЛ амьд нийлбэр
      (`loadProjectSourceTotals`; Σ = төслийн нийт дүн). «Тайлан» · нийтийн хүснэгттэй НЭГ тоо. «Эх үүсвэр задраагүй» мөр хасав. */
   const { loadProjectSourceTotals } = await import('@/lib/projectPlanInputs');

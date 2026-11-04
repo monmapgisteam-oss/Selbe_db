@@ -576,7 +576,11 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m)));
+<<<<<<< HEAD
   assert.equal(PLAIN_CAPS.length, 11, `энгийн эрх ЯГ 11 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
+=======
+  assert.equal(PLAIN_CAPS.length, 13, `энгийн эрх ЯГ 13 байх ёстой (2026-11-04: + ipcApprove), олдсон: ${PLAIN_CAPS.length}`);
+>>>>>>> 1c12f479 (feat(ipc): IPC үүсгэх дараалал · гэрээ үүсгэх/цуцлах · жааз тухайн өдрийн ажлыг хадгална · олгосон дүн ТТБ-д)
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
@@ -599,7 +603,7 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
   const placed = Object.values(PANE_CAPS).flat();
   assert.deepEqual([...placed].sort(), [...all].sort(), 'PANE_CAPS: эрх бүр ЯГ нэг хуудсанд байх ёстой');
   assert.deepEqual(PANE_CAPS.huvaari, ['plan', 'planApprove'], 'Хуваарийн эрх: зохиогч + батлагч нэг хуудсанд');
-  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'cfSwitch'], 'Санхүү: утга + мөр + сарын мөнгө шилжүүлэх нэг хуудсанд');
+  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'ipcApprove', 'cfSwitch'], 'Санхүү: утга + мөр + сарын мөнгө шилжүүлэх нэг хуудсанд');
   for (const c of all) assert.ok(PANE_CAPS[paneOfCap(c)].includes(c), `paneOfCap(${c}) буруу`);
   for (const [lf, fn] of [['src/modules/capText.ts', 'capLabel'], ['src/modules/erhLabels.ts', 'capLabelShort']]) {
     const lsrc = readCode(lf);

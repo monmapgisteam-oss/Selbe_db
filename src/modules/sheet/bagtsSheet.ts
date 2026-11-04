@@ -52,6 +52,13 @@ export type SheetRow = {
    */
   obyem: (number | null)[];
   /**
+   * 2026-11-04 (хэрэглэгч: «тухайн өдрийнхийг л хадгална»): үйлчилгээний `*_obyem` нь тэр ӨДРИЙН ажил; `obyem` нь
+   * санах ойд ХУРИМТЛАЛ (өмнөх жаазуудын нийлбэр + энэ өдрийнх — `priorObyem`). `obyemDay` = энэ жаазанд хадгалсан утга,
+   * `obyemBase` = ачаалсан хуримтлал (засвараас өмнөх) — жааз бичихэд өдрийн ажил = шинэ хуримтлал − энэ (`sheetFrame.dayObyem`).
+   */
+  obyemDay?: (number | null)[];
+  obyemBase?: (number | null)[];
+  /**
    * Үйлчилгээнээс ирсэн БҮХ талбар, хэвээрээ. Архивын шинэ хуулбар үүсгэхэд
    * (нийтлэх бүрд бүтэн хуудас доор нь нэмэгддэг) энэ мөрийг суурь болгож,
    * зөвхөн бодогдсон талбаруудыг дарж бичнэ — ингэснээр код мэддэггүй
@@ -253,6 +260,68 @@ function rowKey(f: Feature, sc: Schema): string {
   const no = String(f.attributes[sc.f.no] ?? "").trim();
   const work = String(f.attributes[sc.f.work] ?? "").trim();
   return `${no} ¦ ${work}`;
+}
+
+/** Жаазны мөр бүрийн түлхүүр — `rowKey` + давхардлын дугаар (ижил № ба нэртэй мөрүүд ялгарна) */
+export function frameRowKeys(feats: readonly Feature[], sc: Schema): string[] {
+  const seen = new Map<string, number>();
+  return feats.map((f) => {
+    const k = rowKey(f, sc);
+    const n = seen.get(k) ?? 0;
+    seen.set(k, n + 1);
+    return `${k} #${n}`;
+  });
+}
+
+/**
+ * ӨМНӨХ ЖААЗУУДЫН ХУРИМТЛАЛ (2026-11-04, хэрэглэгч: «бөглөлт бүр тухайн өдрийнхийг л хадгална, нийлбэр архиваар бодогдоно»).
+ * `day`-ээс ӨМНӨХ өдрүүдийн жааз бүрийн `*_obyem` (тэр өдрийн ажил) мөрийн түлхүүрээр нийлбэрлэгдэнэ. Нэг өдөрт хоёр жааз
+ * бол `lastFrame`-ийн дүрмээр сүүлийн бүтэн нь л тоологдоно (`loadRows`-той ижил). Обьёмын багана эсвэл огнооны талбаргүй
+ * хуудсанд хоосон. Кэш: 5 минут, энэ модулийн бичилт бүрт хаягдана.
+ */
+const priorCache = new Map<string, { at: number; p: Promise<Map<string, (number | null)[]>> }>();
+const PRIOR_TTL = 5 * 60_000;
+export function dropPriorCache(pkgKey?: string): void {
+  if (pkgKey == null) { priorCache.clear(); return; }
+  for (const k of [...priorCache.keys()]) if (k.startsWith(`${pkgKey}|`)) priorCache.delete(k);
+}
+export function priorObyem(pkg: Pkg, sc: Schema, day: string): Promise<Map<string, (number | null)[]>> {
+  const fld = sc.f.fillDate;
+  const cols = sc.obyem.filter((x): x is string => !!x);
+  if (!fld || !cols.length) return Promise.resolve(new Map());
+  const ck = `${pkg.key}|${day}`;
+  const hit = priorCache.get(ck);
+  if (hit && Date.now() - hit.at < PRIOR_TTL) return hit.p;
+  const p = (async () => {
+    const feats = await fetchFrame(pkg, sc, `${fld} < timestamp '${day} 00:00:00'`, [sc.f.oid, sc.f.no, sc.f.work, fld, ...cols]);
+    const byDay = new Map<string, Feature[]>();
+    for (const f of feats) {
+      const d = msToDay(num(f.attributes[fld]));
+      if (!d) continue;
+      const list = byDay.get(d);
+      if (list) list.push(f); else byDay.set(d, [f]);
+    }
+    const expect = (TREES[pkg.key] ?? "").length;
+    const out = new Map<string, (number | null)[]>();
+    for (const d of [...byDay.keys()].sort()) {
+      const frame = lastFrame(byDay.get(d)!, sc.f.no, expect, sc.f.work);
+      const keys = frameRowKeys(frame, sc);
+      frame.forEach((f, i) => {
+        const a = f.attributes;
+        let acc = out.get(keys[i]);
+        if (!acc) { acc = sc.obyem.map(() => null); out.set(keys[i], acc); }
+        sc.obyem.forEach((col, b) => {
+          if (!col) return;
+          const v = num(a[col]);
+          if (v != null) acc![b] = (acc![b] ?? 0) + v;
+        });
+      });
+    }
+    return out;
+  })();
+  priorCache.set(ck, { at: Date.now(), p });
+  p.catch(() => { if (priorCache.get(ck)?.p === p) priorCache.delete(ck); });
+  return p;
 }
 
 /**
@@ -633,6 +702,12 @@ export async function loadRows(
 }> {
   const tree = TREES[pkg.key] ?? "";
   if (tree.length > 0 && !fields?.length) loadBaseKeys(pkg, sc).catch(() => {});
+  /* Обьём татаж буй бол огнооны талбар ЗААВАЛ — хуримтлалыг (`priorObyem`) бодоход жаазны өдөр хэрэгтэй */
+  const obColsAll = sc.obyem.filter((x): x is string => !!x);
+  if (fields?.length && sc.f.fillDate && !fields.includes(sc.f.fillDate)) {
+    const fl = fields;
+    if (obColsAll.some((c) => fl.includes(c))) fields = [...fl, sc.f.fillDate];
+  }
   const persist = !!opts?.persist && !atDay && !opts?.strict && !!fields?.length;
   const { where, feats } = persist
     ? await persistedFrame(`${pkg.url}|${tree.length}`, fields, () => probeSheet(pkg, sc), async (sig) => {
@@ -828,6 +903,8 @@ export async function loadRows(
   let asOf: number | null = null;
   let snapshot: number | null = null;
   const rows: SheetRow[] = [];
+  const frameKeys = frameRowKeys(feats2, sc);
+  const rowKeysOut: string[] = [];
   feats2.forEach((f, k) => {
     const a = f.attributes;
     const oid = Number(a[sc.f.oid]);
@@ -849,6 +926,7 @@ export async function loadRows(
        (`gun.check.mjs`) тул гурван эх сурвалжийн аль нь ч ижил үр дүн өгнө. */
     const depth = depthArr[k];
     const group = k + 1 < depthArr.length && depthArr[k + 1] > depth;
+    rowKeysOut.push(frameKeys[k]);
     rows.push({
       oid,
       no,
@@ -879,6 +957,18 @@ export async function loadRows(
       hun: sc.f.hunHuch ? num(a[sc.f.hunHuch]) : null,
       mashin: sc.f.mashin ? num(a[sc.f.mashin]) : null,
     });
+  });
+  /* 2026-11-04: `*_obyem` нь тухайн ӨДРИЙН ажил — санах ойд хуримтлал болгоно (өмнөх жаазуудын нийлбэр + энэ өдрийнх) */
+  const wantOb = obColsAll.length > 0 && (!fields?.length || obColsAll.every((c) => fields.includes(c)));
+  const frameDay = snapshot == null ? null : msToDay(snapshot);
+  const prior = wantOb && frameDay && sc.f.fillDate ? await priorObyem(pkg, sc, frameDay) : null;
+  rows.forEach((r, i) => {
+    r.obyemDay = r.obyem.slice();
+    if (prior) {
+      const pr = prior.get(rowKeysOut[i]);
+      if (pr) r.obyem = r.obyem.map((v, b) => (v == null && pr[b] == null ? null : (v ?? 0) + (pr[b] ?? 0)));
+    }
+    r.obyemBase = r.obyem.slice();
   });
   return { rows, asOf, snapshot, frameLen: rows.length, rawFrameLen: feats2.length };
 }
@@ -1638,6 +1728,7 @@ export async function applyAdds(
    */
   written?: number[],
 ): Promise<{ added: number; firstOid: number | null }> {
+  dropPriorCache(pkg.key);
   let added = 0;
   let firstOid: number | null = null;
   let touched = 0;
@@ -1708,6 +1799,7 @@ export async function applyAdds(
  * ХАГАС БИЧИГДСЭН ЖААЗЫГ АРХИВААС УСТГАНА.
  */
 export async function applyDeletes(pkg: Pkg, oids: number[]): Promise<number> {
+  dropPriorCache(pkg.key);
   const ids = oids.filter((x) => Number.isInteger(x) && x > 0);
   if (!ids.length) return 0;
   let gone = 0;
@@ -1732,6 +1824,7 @@ export async function applyUpdates(
   pkg: Pkg,
   updates: Record<string, unknown>[],
 ): Promise<void> {
+  dropPriorCache(pkg.key);
   let written = 0;
   try {
   for (let i = 0; i < updates.length; i += 500) {

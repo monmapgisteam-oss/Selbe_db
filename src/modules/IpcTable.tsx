@@ -3,34 +3,23 @@
 /**
  * IPC — ОЛГОСОН САНХҮҮЖИЛТ, ГЭРЭЭГЭЭР БҮЛЭГЛЭСЭН УНШИГДАХУЙЦ ХАРАГДАЦ.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { mnt, num, pct, dayKey } from '@/lib/format';
 import {
-  contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount, ipcNumbers, ipcHeadShare,
-  type ContractBlock, type Detail, type PayRow, type SortKey,
+  contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount, ipcHeadShare, packageRows,
+  type ContractBlock, type Detail, type PackageRow, type PayRow, type SortKey,
 } from '@/lib/ipcTable';
 import { finFieldLabel } from '@/lib/financeFieldLabels';
 import { useAsync } from '@/lib/useAsync';
 import { loadFinance } from '@/lib/reportData';
 import { paidPctOf } from '@/lib/paidShare';
 import type { HoContract } from '@/lib/ipc';
-import { pkgKeyOf } from '@/lib/services';
-import { AUTO_PREFIX } from '@/lib/ipcAuto';
-import { IpcDocDialog, hasIpcDoc } from '@/components/IpcDocDialog';
-import { loadSheetStarts, sheetsOf } from '@/lib/ipcDocLoad';
-import { lateSheetsOf, type IpcSheetStart } from '@/lib/ipcDoc';
 import { useTip } from '@/components/ui';
+import { IpcFlowPanel, ContractCancelButton, ContractDialog, type CardPick } from './IpcFlow';
+import { useAuth } from '@/components/AuthGate';
+import { hasCap } from '@/lib/caps';
 import s from './ipcTable.module.css';
-
-/**
- * ГҮЙЦЭТГЭЛЭЭС ҮҮССЭН (AUTO) мөрийн өдөр — `AUTO|<багц>|YYYY-MM-DD` (2026-09-29).
- */
-const autoDayOf = (r: PayRow): string | null => {
-  if (!r.id.startsWith(AUTO_PREFIX)) return null;
-  const m = /(\d{4}-\d{2}-\d{2})$/.exec(r.id);
-  return m ? m[1] : null;
-};
 
 const money = (v: number | null): string => {
   if (v == null) return '—';
@@ -179,6 +168,56 @@ function Details({ b }: { b: ContractBlock }) {
   );
 }
 
+/**
+ * ОЛОН БАГЦТАЙ ГЭРЭЭНИЙ БАГЦ БҮРИЙН ЗАДАРГАА — утга нь «Төсөл төлөвлөгөө биелэлт»-ээс.
+ */
+function PackageTable({ rows }: { rows: readonly PackageRow[] }) {
+  if (rows.length < 2) return null;
+  const COLS: { k: keyof PackageRow; label: string }[] = [
+    { k: 'contract', label: tr('Гэрээний дүн') },
+    { k: 'order', label: tr('Захирамжийн дүн') },
+    { k: 'bond', label: tr('Үнэт цаас') },
+    { k: 'sales', label: tr('Төслийн орлого') },
+    { k: 'city', label: tr('Нийслэлийн төсөв') },
+    { k: 'nzd', label: tr('НЗД нөөц') },
+    { k: 'paid', label: tr('Олгосон дүн') },
+  ];
+  const total = (k: keyof PackageRow): number | null => {
+    let s: number | null = null;
+    for (const r of rows) { const v = r[k]; if (typeof v === 'number') s = (s ?? 0) + v; }
+    return s;
+  };
+  return (
+    <div className={s.pkgWrap}>
+      <h4 className={s.dGrpTitle}>{tr('БАГЦ БҮРИЙН ЗАДАРГАА')}</h4>
+      <div className={s.pkgScroll}>
+        <table className={s.pkgTbl}>
+          <thead>
+            <tr>
+              <th>{tr('Багц')}</th>
+              {COLS.map((c) => <th key={c.k} className={s.pkgNum}>{c.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td>{r.pkg}</td>
+                {COLS.map((c) => <td key={c.k} className={s.pkgNum}>{money(r[c.k] as number | null)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>{tr('Нийт')}</th>
+              {COLS.map((c) => <th key={c.k} className={s.pkgNum}>{money(total(c.k))}</th>)}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────────── ТӨЛБӨРИЙН КАРТ ─────────────────────── */
 
 /**
@@ -196,24 +235,27 @@ function Line({ k, v, cls }: { k: string; v: string; cls?: string }) {
   );
 }
 
-/** Нээлттэй IPC баримтын цонх — картаас */
-type DocAsk = { packKey: string; packName: string; month: string; ipcNo: number };
-
-function PayCard({ r, ipcNo, onDoc, late }: {
+function PayCard({ r, pick }: {
   r: PayRow;
-  /** Гэрээний дараалсан IPC дугаар (`ipcTable.ipcNumbers`) — AUTO картын «IPC-NN» */
-  ipcNo?: number;
-  /** IPC баримт татах (2026-09-29) — AUTO картад л */
-  onDoc?: () => void;
-  late?: string[];
+  /** IPC үүсгэх чекбокс (2026-11-04) — зөвхөн сонгогдоогүй «Гүйцэтгэл» картад */
+  pick?: CardPick;
 }) {
+  const perf = r.oid != null ? pick?.row(r.oid) : undefined;
   return (
-    <article className={`${s.card} ${r.advance ? s.cardAdv : ''}`}>
+    <article className={`${s.card} ${r.advance ? s.cardAdv : ''} ${perf && pick?.on(r.oid as number) ? s.cardOn : ''}`}>
       {/* ── ТОЛГОЙ: IPC дугаар + ХУГАЦАА ── */}
       <header className={s.cardHd}>
-        <span className={r.advance ? s.tagAdv : s.tagIpc}>
-          {onDoc && ipcNo ? `IPC-${String(ipcNo).padStart(2, '0')}` : r.code}
-        </span>
+        {perf && pick && (
+          <input
+            type="checkbox"
+            className={s.cardPick}
+            aria-label={tr('IPC-д оруулах')}
+            checked={pick.on(r.oid as number)}
+            disabled={pick.disabled}
+            onChange={() => pick.toggle(r.oid as number)}
+          />
+        )}
+        <span className={r.advance ? s.tagAdv : s.tagIpc}>{r.code}</span>
         <span className={s.cardDate}>
           {r.date != null && r.date !== ''
             ? payDate(r.date)
@@ -230,6 +272,7 @@ function PayCard({ r, ipcNo, onDoc, late }: {
         <h5 className={s.sect}>{tr('Бодит гүйцэтгэл')}</h5>
         <Line k={tr('Обьём')} v={vol(r.obyem)} />
         <Line k={tr('Мөнгөн дүн')} v={money(r.une)} />
+        {perf && (perf.une ?? 0) < 0 && <Line k={tr('Анхааруулга')} v={tr('дүн сөрөг')} cls={s.over} />}
 
         {/* ── ОЛГОЛТ ── картын ГОЛ тоо, томоор */}
         <div className={s.sep} />
@@ -245,50 +288,18 @@ function PayCard({ r, ipcNo, onDoc, late }: {
       </div>
 
       <footer className={s.cardFt}>{r.id}</footer>
-      {late && late.length > 0 && (
-        <p className={s.lateNote} role="note">
-          {tr('⚠ {0} хуудасны анхны батлагдсан гүйцэтгэл энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул энэ IPC-ийн тайлант гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.', late.join(', '))}
-        </p>
-      )}
-      {onDoc && (
-        <button type="button" className={s.docBtn} onClick={onDoc}
-          title={tr('Сар бүрийн гүйцэтгэлээс Хүснэгт 7 · Гүйцэтгэл-1 · Хавсралт 12-ыг PDF-ээр')}>
-          {tr('IPC баримт татах (PDF)')}
-        </button>
-      )}
     </article>
   );
 }
 
-/**
- * ОЛОН ХУУДАСТАЙ багцуудын хуудас бүрийн ЭХНИЙ агшин (`ipcDocLoad.loadSheetStarts`) —
- * орой эхэлсэн хуудсын анхааруулга (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- */
-function useSheetStarts(packKeys: readonly string[]): Map<string, IpcSheetStart[]> {
-  const [m, setM] = useState<Map<string, IpcSheetStart[]>>(() => new Map());
-  const key = packKeys.join('|');
-  useEffect(() => {
-    let alive = true;
-    const keys = key ? key.split('|') : [];
-    void Promise.all(keys.map((k) => loadSheetStarts(k)
-      .then((v): [string, IpcSheetStart[]] => [k, v])
-      .catch(() => null)))
-      .then((xs) => {
-        if (alive) setM(new Map(xs.filter((x): x is [string, IpcSheetStart[]] => x != null)));
-      });
-    return () => { alive = false; };
-  }, [key]);
-  return m;
-}
-
-/* ─────────────────────── ҮНДСЭН ХАРАГДАЦ ─────────────────────── */
-
-export function IpcTable({ contracts }: { contracts: HoContract[] }) {
+export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; cfRows?: readonly Record<string, unknown>[] }) {
   const [sort, setSort] = useState<SortKey>('paid');
   /** Хаагдсан бүлгүүд — анхдагчаар БҮГД НЭЭЛТТЭЙ */
   const [shut, setShut] = useState<Set<string>>(new Set());
-  /** Нээлттэй IPC баримтын цонх (2026-09-29) */
-  const [doc, setDoc] = useState<DocAsk | null>(null);
+  const [newContract, setNewContract] = useState(false);
+  const { user } = useAuth();
+  const canCreate = hasCap(user?.username, 'finEdit');
+  const canApprove = hasCap(user?.username, 'ipcApprove');
 
   const blocks = useMemo(() => contractBlocks(contracts), [contracts]);
   const sorted = useMemo(() => sortBlocks(blocks, sort), [blocks, sort]);
@@ -302,12 +313,6 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
       paidOther: finQ.data.paidOther,
     }
     : null), [t, finQ.state, finQ.data]);
-  const multiPacks = useMemo(() => [...new Set(blocks
-    .filter((b) => b.rows.some((r) => autoDayOf(r) != null))
-    .map((b) => pkgKeyOf(b.code))
-    .filter((k) => k && sheetsOf(k).length > 1))].sort(), [blocks]);
-  const starts = useSheetStarts(multiPacks);
-
   const keyMap = useMemo(() => {
     const m = new Map<ContractBlock, string>();
     const seen = new Map<string, number>();
@@ -345,14 +350,14 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
             {head.src === 'cashflow' ? (
               <>
                 {' · '}{tr('гэрээлсэн дүн {0} (Cashflow)', money(head.contract))}
-                {head.pct != null && <> · {tr('гэрээнд эзлэх {0}', pct(head.pct))}</>}
+                {head.pct != null && <> · {tr('олгосон хувь (гэрээнд) {0}', pct(head.pct))}</>}
                 {head.other != null && (
                   <> · {tr('гэрээлсэн багцаас гадуур олгосон {0} (хувьд ороогүй)', money(head.other))}</>
                 )}
               </>
             ) : (
               <>
-                {head.pct != null && <> · {tr('гэрээнд эзлэх {0} (HO хүснэгтээр)', pct(head.pct))}</>}
+                
                 {head.other != null && (
                   <> · {tr('гэрээт дүн тодорхойгүй гэрээнд олгосон {0} (хувьд ороогүй)', money(head.other))}</>
                 )}
@@ -374,6 +379,7 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
             <option value="contract">{tr('Гэрээт төсвөөр')}</option>
             <option value="pkg">{tr('Багцын нэрээр')}</option>
           </select>
+          {canCreate && <button type="button" className={s.btn} onClick={() => setNewContract(true)}>{tr('Гэрээ үүсгэх')}</button>}
           <button type="button" className={s.btn} onClick={toggleAll}>
             {allShut ? tr('Бүгдийг дэлгэх') : tr('Бүгдийг хураах')}
           </button>
@@ -398,23 +404,24 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
               {open && (
                 <>
                   <Details b={b} />
-                  <div className={s.cards}>
-                    {(() => {
-                      const packKey = pkgKeyOf(b.code);
-                      const docOk = hasIpcDoc(packKey);
-                      const nos = ipcNumbers(b.rows, autoDayOf);
-                      const st = starts.get(packKey);
-                      return b.rows.map((r) => {
-                        const day = docOk ? autoDayOf(r) : null;
-                        const no = nos.get(r);
-                        const late = day && st ? lateSheetsOf(st, day.slice(0, 7)) : undefined;
-                        return (
-                          <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} ipcNo={no} late={late}
-                            onDoc={day ? () => setDoc({ packKey, packName: b.title, month: day.slice(0, 7), ipcNo: no ?? 1 }) : undefined} />
-                        );
-                      });
-                    })()}
-                  </div>
+                  <PackageTable rows={packageRows(b, cfRows)} />
+                  <IpcFlowPanel
+                    code={b.code}
+                    contractNo={b.contractNo}
+                    contractor={b.contractor}
+                    pays={b.pays}
+                    contract={b.contractTotal}
+                    paid={b.paidTotal}
+                    canCreate={canCreate}
+                    canApprove={canApprove}
+                  >
+                    {(pick) => (
+                      <div className={s.cards}>
+                        {b.rows.map((r) => <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} pick={pick} />)}
+                      </div>
+                    )}
+                  </IpcFlowPanel>
+                  {canApprove && b.code && <div className={s.flowBar}><ContractCancelButton code={b.code} pays={b.pays} cfRows={cfRows} /></div>}
                 </>
               )}
             </section>
@@ -422,10 +429,7 @@ export function IpcTable({ contracts }: { contracts: HoContract[] }) {
         })}
       </div>
 
-      {doc && (
-        <IpcDocDialog packKey={doc.packKey} packName={doc.packName} month={doc.month} ipcNo={doc.ipcNo}
-          onClose={() => setDoc(null)} />
-      )}
+      {newContract && <ContractDialog cfRows={cfRows} onClose={() => setNewContract(false)} />}
 
       {!showObyem && (
         <p className={s.note}>
