@@ -7803,7 +7803,6 @@ const en: Record<string, string> = {
   "Баталгаажуулах": "Approve",
   "IPC-{0}-г цуцлах баримт нээх үү? Эх баримт устахгүй.": "Open a cancellation document for IPC-{0}? The original stays.",
   "Цуцлалт нээх": "Open cancellation",
-  "Өсөлт": "Increase",
   "Цуцлалт": "Cancellation",
   "Скан оруулах": "Upload scan",
   "Цуцлах": "Cancel",
