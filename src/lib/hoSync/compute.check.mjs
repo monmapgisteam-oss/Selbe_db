@@ -15,6 +15,11 @@ assert.deepEqual(hoPkgParts('БАГЦ 1- 4'), ['1-4']);
 assert.deepEqual(hoPkgParts('Багц-1-4'), ['1-4']);
 assert.deepEqual(hoPkgParts('БАГЦ-10,  БАГЦ-11, БАГЦ-13, БАГЦ-15'), ['10', '11', '13', '15']);
 assert.deepEqual(hoPkgParts(null), []);
+/* 2026-11-05: дэд багцын зураас = цэг (хуудас «Багц 4-1» ↔ Cashflow «Багц-4.1»); өсөх хос = диапазон хэвээр */
+assert.deepEqual(hoPkgParts('Багц 4-1'), ['4.1']);
+assert.deepEqual(hoPkgParts('Багц-4.1'), ['4.1']);
+assert.deepEqual(hoPkgParts('БАГЦ 4-2, Багц-4.1'), ['4.2', '4.1']);
+assert.deepEqual(hoPkgParts('БАГЦ 1-4'), ['1-4'], 'диапазон хэвээр');
 assert.deepEqual(phasesOf('ТЭЗҮ,Судалгаа'), ['ТЭЗҮ', 'Ажлын зураг төсөл']);
 assert.deepEqual(phasesOf('ГИШСүлжээ'), ['Барилга угсралт']);
 assert.deepEqual(phasesOf('Барилга угсралт'), ['Барилга угсралт']);

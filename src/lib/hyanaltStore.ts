@@ -1765,13 +1765,13 @@ export async function apply(a: {
         ipcOk = !ipcErr;
       }
       try {
-        const { syncPlanProgress } = await import('./projectPlanSync');
+        const { syncPlanProgress, planSyncWarn } = await import('./projectPlanSync');
         const ps = await syncPlanProgress();
-        if (!ps.ok) {
-          console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл бичигдсэнгүй:', ps.error);
-          warns.push(tr('Батлагдлаа, гэхдээ «Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэлийн хувь хүснэгтэд бичигдсэнгүй ({0}). Дараагийн батлалтаар нөхөгдөнө.', ps.error));
-        } else if ('skipped' in ps) {
-          console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл алгасагдлаа:', ps.skipped);
+        /* 2026-11-05 (аудит №1): алгассан/хэсэгчилсэн бичилт ч хэрэглэгчид харагдана — урьд нь зөвхөн console */
+        const pw = planSyncWarn(ps);
+        if (pw) {
+          console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл:', pw);
+          warns.push(tr('Батлагдлаа, гэхдээ {0}', pw));
         }
       } catch (e) {
         console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл бичих алдаа:', e);

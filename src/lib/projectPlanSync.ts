@@ -8,10 +8,12 @@
  */
 import { useEffect } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { CASHFLOW_NEW } from '@/lib/services';
+import { CASHFLOW_NEW, bagtsKey } from '@/lib/services';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate, subscribeData, type DataKey } from '@/lib/dataBus';
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
+import type { PlanNode } from '@/lib/projectPlan';
+import { PKGS } from '@/modules/sheet/bagts.pkg';
 
 const F = CASHFLOW_NEW.fields;
 /** Зөрүүгийн хүлцэл (хувийн нэгж) — хөвөгч таслалын шуугианаар дахин бичихгүй */
@@ -30,14 +32,47 @@ const DAY = 86_400_000;
 const sameDay = (a: number | null | undefined, b: number | null | undefined) =>
   (a == null ? b == null : b != null && Math.floor(a / DAY) === Math.floor(b / DAY));
 
+/**
+ * УНАСАН ЭХИЙН ХҮРЭЭ (2026-11-05, аудит №1): `failed` бүгд БАГЦЫН түвшний (`schedule:<хуудас>` · `land:<багц>`) бол тэдгээр
+ * багцын түлхүүрүүд (`bagtsKey`) — бусад багцын мөр бичигдэж болно; төслийн түвшний эх (`blockProgress` · `parcels` ·
+ * `landTotal` …) унасан бол `null` — юу ч бичихгүй. Урьд нь нэг хуудасны «Б.» мөр дутуу байхад л 182-ын бүх мөр мөнхөд
+ * бичигдэхгүй байв.
+ */
+export function failedScope(failed: readonly string[]): Set<string> | null {
+  const out = new Set<string>();
+  for (const f of failed) {
+    const m = /^(schedule|land):(.+)$/.exec(f);
+    if (!m) return null;
+    if (m[1] === 'land') { out.add(bagtsKey(m[2])); continue; }
+    const pkg = PKGS.find((p) => p.key === m[2]);
+    if (!pkg) return null;
+    out.add(bagtsKey(pkg.group));
+  }
+  return out;
+}
+
+/** Унасан багцын мөрүүд БА тэдгээрийн өвөг мөрүүд (Σ F·X дутуу хүүхдээр буруу) — бичигдэхгүй */
+function taintedNodes(plan: ProjectPlan, scope: ReadonlySet<string>): Set<PlanNode> {
+  const out = new Set<PlanNode>();
+  if (!scope.size) return out;
+  for (const n of plan.tree.nodes) {
+    if (!n.pkg || !scope.has(bagtsKey(n.pkg))) continue;
+    for (let p: PlanNode | null = n; p && !out.has(p); p = p.parent) out.add(p);
+  }
+  return out;
+}
+
 /** Бичих мөрүүд (цэвэр — тестлэгдэнэ): `[{ objectid, guitsetgel_huvi?, <огноо>? }]` — зөрсөн талбар л */
 export function planProgressUpdates(plan: ProjectPlan): Record<string, unknown>[] {
-  if (plan.empty || plan.failed.length) return [];
+  if (plan.empty) return [];
+  const scope = failedScope(plan.failed);
+  if (!scope) return [];
+  const tainted = taintedNodes(plan, scope);
   const stored = new Map((plan.stored ?? []).map((r) => [r.objectid, r]));
   const out: Record<string, unknown>[] = [];
   for (const n of plan.tree.nodes) {
     const r = n.row;
-    if (!r || r.objectid == null) continue;
+    if (!r || r.objectid == null || tainted.has(n)) continue;
     const was = stored.get(r.objectid) ?? r;
     const u: Record<string, unknown> = {};
     const s = plan.result.values.get(n)?.S;
@@ -56,9 +91,18 @@ export function planProgressUpdates(plan: ProjectPlan): Record<string, unknown>[
 }
 
 export type PlanSyncResult =
-  | { ok: true; n: number }
+  /** `partial` — зарим багцын эх уншигдаагүй тул тэдгээрийн мөр (ба өвөг) бичигдээгүй; хүний унших жагсаалт */
+  | { ok: true; n: number; partial?: string }
   | { ok: true; n: 0; skipped: string }
   | { ok: false; error: string };
+
+/** Хэрэглэгчид харуулах анхааруулга — бүрэн бичигдсэн бол `null` (`hyanaltStore` · `huvaariBatlah` нэг текст) */
+export function planSyncWarn(r: PlanSyncResult): string | null {
+  if (!r.ok) return tr('«Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэлийн хувь хүснэгтэд бичигдсэнгүй ({0}). Дараагийн бичилтээр дахин оролдоно.', r.error);
+  if ('skipped' in r) return tr('«Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэлийн хувь бичигдсэнгүй: {0}. Эхийг засаагүй бол дараагийн бичилтээр ч бичигдэхгүй.', r.skipped);
+  if (r.partial) return tr('«Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэлийн хувь ХЭСЭГЧЛЭН бичигдлээ — уншигдаагүй эх: {0}. Тэдгээр багц ба өвөг мөрүүд нь хуучин утгатай үлдэв.', r.partial);
+  return null;
+}
 
 /**
  * Өөрийн invalidate — `startPlanSync`-ийн автобусын захиалагч үүнийг ДАХИН синк гэж ойлгохгүй (гогцоогүй; бусад
@@ -81,7 +125,7 @@ export async function syncPlanProgress(opts: { fresh?: boolean } = {}): Promise<
     const { loadProjectPlan } = await import('@/lib/projectPlanInputs');
     const plan = await loadProjectPlan();
     if (plan.empty) return { ok: true, n: 0, skipped: tr('Төсөл төлөвлөгөөний мөр алга') };
-    if (plan.failed.length) {
+    if (plan.failed.length && !failedScope(plan.failed)) {
       return { ok: true, n: 0, skipped: tr('Зарим эх уншигдсангүй ({0})', plan.failed.join(', ')) };
     }
     const ups = planProgressUpdates(plan);
@@ -91,7 +135,7 @@ export async function syncPlanProgress(opts: { fresh?: boolean } = {}): Promise<
       n += r.n;
     }
     if (n > 0) invalidateQuiet('CASHFLOW_NEW');
-    return { ok: true, n };
+    return plan.failed.length ? { ok: true, n, partial: plan.failed.join(', ') } : { ok: true, n };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -105,24 +149,35 @@ const BOOT_DELAY_MS = 20_000;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let inflight: Promise<PlanSyncResult> | null = null;
 let again = false;
-/** Эрхгүй (403) — энэ сешнд дахин оролдохгүй */
+/**
+ * Эрхгүй (403) — `DISABLE_MS` хүртэл дахин оролдохгүй (2026-11-05, аудит: урьд нь сешн дуустал — токен сэргэсэн,
+ * эрх нэмэгдсэн ч дахин ажиллахгүй байв)
+ */
+const DISABLE_MS = 10 * 60_000;
 let disabled: string | null = null;
+let disabledUntil = 0;
 let last: PlanSyncResult | null = null;
 
 export const planSyncLast = (): PlanSyncResult | null => last;
-export const planSyncDisabled = (): string | null => disabled;
+export const planSyncDisabled = (): string | null => (disabled && Date.now() < disabledUntil ? disabled : null);
 
 const isForbidden = (e: string): boolean => /\b(403|499|498)\b|эрхгүй|permission|not authorized|token/i.test(e);
 
-/** Нэг удаагийн синк — зэрэг дуудвал нэг л ажиллагаа; явж байхад дахин хүсвэл дараа нь дахин ажиллана */
-export function runPlanSync(): Promise<PlanSyncResult> {
+/**
+ * Нэг удаагийн синк — зэрэг дуудвал нэг л ажиллагаа; явж байхад дахин хүсвэл дараа нь дахин ажиллана.
+ * `fresh` — батлалтын дараа (кэшээр биш шинээр уншина, `syncPlanProgress`); автобусаас анхдагч `false`.
+ */
+export function runPlanSync(opts: { fresh?: boolean } = {}): Promise<PlanSyncResult> {
   if (inflight) { again = true; return inflight; }
   inflight = (async (): Promise<PlanSyncResult> => {
-    if (disabled) return { ok: false, error: `disabled: ${disabled}` };
-    const res = await syncPlanProgress({ fresh: false });
+    const off = planSyncDisabled();
+    if (off) return { ok: false, error: `disabled: ${off}` };
+    const res = await syncPlanProgress({ fresh: opts.fresh ?? false });
     if (!res.ok) {
-      if (isForbidden(res.error)) disabled = res.error;
+      if (isForbidden(res.error)) { disabled = res.error; disabledUntil = Date.now() + DISABLE_MS; }
       console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл (автомат) бичигдсэнгүй:', res.error);
+    } else if ('skipped' in res || res.partial) {
+      console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл бүрэн бичигдсэнгүй:', 'skipped' in res ? res.skipped : res.partial);
     }
     last = res;
     return res;

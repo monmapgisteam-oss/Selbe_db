@@ -41,6 +41,38 @@ assert.equal(planProgressUpdates(plan({ '1.1': { S: 40.00000001 } })).some((u) =
 
 assert.deepEqual(planProgressUpdates(plan({}, ['parcels'])), [], 'эх унасан → юу ч бичихгүй');
 assert.deepEqual(planProgressUpdates({ ...plan(), empty: true }), [], 'хоосон төлөвлөгөө → юу ч бичихгүй');
+
+/* 2026-11-05 (аудит №1): БАГЦЫН түвшний эх унасан бол зөвхөн тэр багцын мөр ба өвгүүд нь бичигдэхгүй — бусад нь бичигдэнэ */
+{
+  const { failedScope, planSyncWarn } = await import('./projectPlanSync.ts');
+  assert.equal(failedScope(['parcels']), null, 'төслийн түвшний эх → бүгд зогсоно');
+  assert.equal(failedScope(['schedule:b1_9f', 'blockProgress']), null, 'холимог → бүгд зогсоно');
+  assert.equal(failedScope(['schedule:no_such']), null, 'үл мэдэх хуудас → бүгд зогсоно');
+  assert.deepEqual([...failedScope(['schedule:b1_9f', 'land:БАГЦ2'])], ['БАГЦ1', 'БАГЦ2'], 'хуудас → бүлгийн түлхүүр · газар → түлхүүр');
+  assert.deepEqual([...failedScope([])], [], 'унаагүй → хоосон хүрээ');
+
+  const rows2 = [
+    { objectid: 10, dd_kod: '5', etseg_kod: null, uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт', guitsetgel_huvi: 0 },
+    { objectid: 11, dd_kod: '5.1', etseg_kod: '5', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'А', bagts: 'Багц 1', heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 0 },
+    { objectid: 12, dd_kod: '5.2', etseg_kod: '5', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Б', bagts: 'Багц 2', heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 0 },
+  ];
+  const t2 = buildTree(rows2);
+  const mk = (failed) => ({
+    empty: false, tree: t2, inputs: {}, months: [], monthly: new Map(), failed,
+    result: computePlan(t2, { override: (n) => ({ '5.1': { S: 30 }, '5.2': { S: 70 } })[n.row?.dd_kod] }, today),
+  });
+  const all = new Map(planProgressUpdates(mk([])).map((u) => [u.objectid, u.guitsetgel_huvi]));
+  assert.deepEqual([...all.keys()].sort(), [10, 11, 12], 'унаагүй → гурвуулаа');
+  const part = new Map(planProgressUpdates(mk(['schedule:b1_9f'])).map((u) => [u.objectid, u.guitsetgel_huvi]));
+  assert.deepEqual([...part.keys()], [12], 'Багц 1 унасан → Багц 1 (11) ба өвөг (10) бичигдэхгүй, Багц 2 бичигдэнэ');
+  assert.equal(part.get(12), 70);
+  assert.deepEqual(planProgressUpdates(mk(['schedule:b1_9f', 'landTotal'])), [], 'төслийн түвшний эх давхар унавал бүгд зогсоно');
+
+  assert.equal(planSyncWarn({ ok: true, n: 3 }), null, 'бүрэн → анхааруулгагүй');
+  assert.match(planSyncWarn({ ok: true, n: 1, partial: 'schedule:b1_9f' }), /ХЭСЭГЧЛЭН.*schedule:b1_9f/, 'хэсэгчилсэн');
+  assert.match(planSyncWarn({ ok: true, n: 0, skipped: 'x' }), /бичигдсэнгүй: x/, 'алгассан');
+  assert.match(planSyncWarn({ ok: false, error: 'e' }), /\(e\)/, 'унасан');
+}
 assert.ok(ups.every((u) => Object.keys(u).sort().join() === 'guitsetgel_huvi,objectid'), 'зөвхөн guitsetgel_huvi + objectid');
 
 {
