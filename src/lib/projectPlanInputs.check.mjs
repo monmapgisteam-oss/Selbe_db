@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   toStoredRow, compareDdKod, sortPlanRows,
-  blockActualOf, pkgActualOf, blockPlannedOf, makeSchedules, monthlyOf, makeDateSpans, linkPlanDates,
+  blockActualOf, prepActualOf, pkgActualOf, blockPlannedOf, makeSchedules, monthlyOf, makeDateSpans, linkPlanDates,
   makeParcelIndex, parcelHits, landPctOf, landPctMap, landKeyOf, landKeysOf, landOf, landLayerIdsOf, EMPTY_AREA_PCT,
   assemblePlan, emptyPlan, planMonths, liveProgressOf, __test,
 } from './projectPlanInputs.ts';
@@ -74,7 +74,25 @@ const near = (a, b, tol, msg) => {
   assert.equal(pk('БАГЦ 1- 4'), undefined, 'диапазон «1-4» ≠ Багц 14');
   assert.equal(pk('Багц-6.3'), undefined, 'бөглөх хуудасгүй багц → мэдэхгүй');
   assert.equal(pkgActualOf({ blocks, universe, infra: null })('Багц-5.1'), null);
-  console.log('✅ 2. бодит гүйцэтгэл — түлхүүр, 0 vs мэдэхгүй vs унасан');
+
+  /* 2026-11-05: Бэлтгэл ажлын блок — «А. Бэлтгэл ажил» (`prep`: тусдаа `PrepMap`, `blocks`-оос хамааралгүй): бичлэгтэй →
+     утга (хоосон нүд 0); «Б.» хоосон тул `blocks`-д байхгүй блок ч `prep`-ээс (Багц-4.2 6/6 = 80); бичлэггүй атлаа
+     хуваарьт → 0; хуваарьт ч үгүй → undefined; эх унасан/алга → null */
+  const prep = new Map([
+    ['БАГЦ1|5/1', 87.5],
+    ['БАГЦ42|6/1', null],
+    ['БАГЦ42|6/6', 80],
+  ]);
+  const pa = prepActualOf({ blocks, universe, infra, prep });
+  assert.equal(pa('Багц-1', '5/1'), 87.5, 'А. мөрийн ялагч нүд');
+  assert.equal(pa('Багц-4.2', '6/1'), 0, 'хуудас байгаа, А. нүд хоосон → 0');
+  assert.equal(pa('Багц-4.2', '6/6'), 80, '«Б.» хоосон (blocks-д алга) блок ч А. утгаа авна');
+  assert.equal(pa('Багц-4.2', '5/1'), 0, 'хуваарьт байгаа, бичлэггүй → 0');
+  assert.equal(pa('Багц-4.2', '6/9'), undefined, 'хуваарьт ч үгүй → undefined (хадгалсан утга)');
+  assert.equal(prepActualOf({ blocks, universe, infra, prep: null })('Багц-1', '5/1'), null, 'эх унасан → null');
+  assert.equal(prepActualOf({ blocks, universe, infra })('Багц-1', '5/1'), null, 'prep алга → null');
+  assert.equal(prepActualOf({ blocks, universe: null, infra, prep })('Багц-4.2', '5/1'), null, 'хуваарь унасан, бичлэггүй → null');
+  console.log('✅ 2. бодит гүйцэтгэл — түлхүүр, 0 vs мэдэхгүй vs унасан · бэлтгэлийн «А.»');
 }
 
 /* ══════════ 3. Хуваарь — блок тус бүрээр ══════════ */
@@ -168,7 +186,7 @@ const srow = (o) => ({
       { objectid: 5, dd_kod: '2.1.2', etseg_kod: '2.1', uy_shat: 'Барилга угсралт', bagts: 'Багц-9.1', ajil_uilchilgee: 'хуудасгүй', guits_ehleh: D('2025-02-01'), guits_duusah: D('2025-03-01') },
     ]);
     const L = new Map(linkPlanDates(t, ds).map((r) => [r.objectid, r]));
-    assert.equal(L.get(1).gazar_ehleh, null, 'газрын огноо хоосон');
+    assert.equal(L.get(1).gazar_ehleh, D('2025-01-01'), '2026-11-04: «Газар чөлөөлөлтийн огноо» хуудсанд оруулсан огноо хадгалагдана');
     assert.equal(L.get(1).geree_ehleh, D('2025-01-01'), 'бусад үе шатны гэрээний огноо хөндөгдөхгүй');
     assert.equal(L.get(2).geree_ehleh, null, 'барилга угсралтын эцэг мөр хоосон');
     assert.deepEqual([L.get(4).guits_ehleh, L.get(4).guits_duusah, L.get(4).geree_ehleh], [D('2026-01-01'), D('2026-02-10'), null], 'блок = Хуваарь (хоосон ч)');
@@ -311,6 +329,19 @@ const srow = (o) => ({
   assert.equal(g2.S, null, 'газрын мэдээлэлгүй блок null');
   const inf = p.result.values.get(p.tree.nodes[find((n) => n.phase === 'barilga' && n.sub === 'barilga' && n.pkg === 'Багц-5.1' && !n.children.length)]);
   assert.equal(inf.S, 36, 'блокгүй багц (Багц-5.1 → БАГЦ51)');
+  /* 2026-11-04: «Газар чөлөөлөлт» үе шатын мөр — төслийн нийт талбарын тоогоор (landTotal), багцын мөр хэвээр */
+  {
+    const iPh = find((n) => n.depth === 1 && n.phase === 'gazar');
+    assert.ok(iPh >= 0, 'газар чөлөөлөлтийн үе шатын мөр');
+    const pw = p.result.values.get(p.tree.nodes[iPh]);
+    const pt = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, land, landTotal: 91.4 }, today);
+    const vt = pt.result.values.get(pt.tree.nodes[iPh]);
+    assert.equal(vt.S, 91.4, 'үе шатын мөр = landTotal');
+    assert.notEqual(pw.S, 91.4, 'landTotal-гүй бол жигнэлт');
+    assert.equal(pt.result.values.get(pt.tree.nodes[find((n) => n.phase === 'gazar' && n.pkg === 'Багц-1' && n.blok === '5/1' && !n.children.length)]).S, 80, 'блокийн мөр хэвээр');
+    const pn = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, land, landTotal: null }, today);
+    assert.equal(pn.result.values.get(pn.tree.nodes[iPh]).S, pw.S, 'landTotal null = жигнэлт');
+  }
   /* сарын цуваа */
   assert.equal(p.months.length, planMonths(p.result).length);
   assert.ok(p.months.length > 12, 'сарын тэнхлэг төслийн мужаар');

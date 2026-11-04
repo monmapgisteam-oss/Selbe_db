@@ -261,7 +261,8 @@ const GRAINS = [
 /** Нэг барилгын явц — баруун самбарт, блок сонгосон үед */
 function BlockTrend({ hist, blockKey }: { hist: BlockHistory; blockKey: string }) {
   const [grain, setGrain] = useState('month');
-  const pts = progressSeries(hist, [blockKey], grain === 'day' ? 'day' : 'month');
+  /* 2026-11-04: 'latest' — дашбоардын муруй · бөгжтэй ИЖИЛ (анхдагч 'peak' буурсан хэмжилтийг нуудаг) */
+  const pts = progressSeries(hist, [blockKey], grain === 'day' ? 'day' : 'month', 'latest');
   if (pts.length < 2) return null;
 
   return (

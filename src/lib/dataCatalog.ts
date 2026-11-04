@@ -550,6 +550,7 @@ function finEntries(): CatEntry[] {
   const ipc = parseUrl(HO_IPC.url);
   const finEditors = (): Editor[] => [
     { cap: 'finEdit', text: tr('Санхүүгийн бүртгэл — утга засах') },
+    { cap: 'ipcCreate', text: tr('IPC үүсгэх') },
     { cap: 'ipcApprove', text: tr('IPC баталгаажуулах') },
     { cap: 'finRow', text: tr('Санхүүгийн бүртгэл — мөр нэмэх') },
   ];
@@ -564,7 +565,7 @@ function finEntries(): CatEntry[] {
       group: 'fin',
       aliases: [],
       styleSrc: [],
-      views: sortViews(['finance', 'pkgFin', 'pkgProg', 'gdash', 'dashboard', 'tailan', 'schem', 'zuragTosol', 'tuvshin6']),
+      views: sortViews(['finance', 'pkgFin', 'pkgProg', 'gdash', 'dashboard', 'tailan', 'schem', 'zuragTosol', 'gazarOgnoo', 'zahiramj', 'songon', 'zovshoorolTtb', 'ashiglalt', 'tuvshin6']),
       purpose: () => tr('Гэрээ бүрийн төсөв, гэрээний дүн, шатны гүйцэтгэл ба сарын санхүүжилтийн төлөвлөгөө.'),
       chain: () => [
         S(tr('Санхүүгийн ажилтан (finEdit · finRow) засна')),
@@ -575,6 +576,10 @@ function finEntries(): CatEntry[] {
       editors: () => [
         ...finEditors(),
         { cap: 'zuragEdit', text: tr('ТЭЗҮ, зураг төсөл засах') },
+        { cap: 'zahiramjEdit', text: tr('Захирамж оруулах') },
+        { cap: 'songonEdit', text: tr('Сонгон шалгаруулалт оруулах') },
+        { cap: 'zovshoorolTtbEdit', text: tr('Зөвшөөрөл (төлөвлөгөө) оруулах') },
+        { cap: 'ashiglaltEdit', text: tr('Ашиглалтад оруулах огноо оруулах') },
         { cap: 'cfSwitch', text: tr('Сарын мөнгө — Гараар → Хуваарь шилжүүлэх') },
       ],
       note: () => tr('Устгасан мөрийг порталаас буцаах арга байхгүй (хувилбарын түүх асаагүй).'),

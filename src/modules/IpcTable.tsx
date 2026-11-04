@@ -300,7 +300,7 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
   const [shut, setShut] = useState<Set<string>>(new Set());
   const [newContract, setNewContract] = useState(false);
   const { user } = useAuth();
-  const canCreate = hasCap(user?.username, 'finEdit');
+  const canCreate = hasCap(user?.username, 'ipcCreate');
   const canApprove = hasCap(user?.username, 'ipcApprove');
 
   const blocks = useMemo(() => contractBlocks(contracts), [contracts]);

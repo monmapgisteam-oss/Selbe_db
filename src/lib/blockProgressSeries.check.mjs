@@ -88,4 +88,29 @@ for (const grain of ['month', 'day']) {
   assert.equal(latestMean(pm, universeKeys(pm, uni, ['БАГЦ9'])).pct, 25);
 }
 
+/* 2026-11-04: ДАШБОАРДЫН ХОЁР МУРУЙ НЭГ ТОО — «Гүйцэтгэлийн явц» (`projTrendPoints`) ба «Барилга угсралтын явц»
+   хоёул 'latest': сарын сүүлийн цэг == бөгж (`latestMean`); анхдагч 'peak' буурсан хэмжилтийг (A|1 50→40) нуудаг тул
+   өөр тоо (32 ↔ 24) зурдаг байв. `dashboardNumbers.check` эх кодыг нь хамгаална. */
+{
+  const peak = progressSeries(hist, keys, 'month').at(-1).overall;
+  const latest = progressSeries(hist, keys, 'month', 'latest').at(-1).overall;
+  assert.notEqual(peak, latest, 'peak ≠ latest — дашбоардын хоёр самбар зөрөх шалтгаан');
+  assert.equal(latest, latestMean(pmOf(hist), keys).pct, 'сарын цувааны сүүлийн цэг == бөгж');
+  /* Нэг блокийн муруй (`BuildingPanel.BlockTrend`) ч 'latest' — буурсан хэмжилт харагдана */
+  assert.equal(progressSeries(hist, ['A|1'], 'month', 'latest').at(-1).overall, 40, 'сүүлийн утга 40 (peak 50 биш)');
+  assert.equal(progressSeries(hist, ['A|1'], 'day', 'latest').at(-1).overall, 40);
+}
+
+/* 2026-11-04: блокийн төсвөөр жигнэнэ; бөгж ба цувааны сүүлийн цэг ижил; жин алга бол тэнцүү */
+{
+  const h = new Map([['A|1', [{ date: '2026-03-01', pct: 100 }]], ['A|2', []]]);
+  const w = new Map([['A|1', 300], ['A|2', 100]]);
+  const k = ['A|1', 'A|2'];
+  assert.equal(latestMean(pmOf(h), k, w).pct, 75, '300/400 → 75%');
+  assert.equal(latestMean(pmOf(h), k, null).pct, 50, 'жингүй → тэнцүү');
+  assert.equal(latestMean(pmOf(h), k, new Map([['A|1', 300]])).pct, 50, 'жингүй блок — мэдэгдэж буй жингийн дундаж');
+  assert.equal(progressSeries(h, k, 'day', 'latest', w).at(-1).overall, 75, 'цуваа ижил жинтэй');
+  assert.equal(progressSeries(h, k, 'day', 'latest', null).at(-1).overall, 50);
+}
+
 console.log('blockProgressSeries.check: OK');

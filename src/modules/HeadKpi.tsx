@@ -73,7 +73,7 @@ export function HeadKpi({ bagts, extra }: {
     { v: h == null ? dots(hq) : hVal(h, h.population, (n) => num(n)), unit: tr('хүн'), label: tr('Хамрагдах хүн ам'), q: hq },
     {
       v: p.actual != null ? num(p.actual, 1) : dots(pq), unit: '%', q: pq,
-      label: tr('Биет гүйцэтгэл (багцаар)'),
+      label: tr('Барилгын явц'),
       title: tr('Барилга угсралтын биет гүйцэтгэл — багц бүрийн сүүлийн сарын хэмжилт, багцын ХО дүнгээр жигнэсэн (05. Багцын гүйцэтгэлтэй ижил)'),
       lead: true,
     },

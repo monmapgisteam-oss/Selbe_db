@@ -2,6 +2,7 @@
 import { buildPhys, type PhysHistory } from '@/lib/finPhys';
 import { housingSeries, HOUSING_PKGS } from '@/lib/gdash';
 import { MAP_PKG_ALIAS } from '@/lib/pkgAlias';
+import { cachedBlockWeights } from '@/lib/blockProgress';
 import type { ProgressPoint } from '@/lib/execPeriodCalc';
 
 export function execProgressPoints(
@@ -12,7 +13,7 @@ export function execProgressPoints(
 ): { housing: ProgressPoint[]; packs: Map<string, ProgressPoint[]> } {
   const days = [...new Set([...hist.values()].flatMap((pts) => pts.map((p) => p.date.slice(0, 10))))]
     .filter((d) => d && d <= today).sort();
-  const p = buildPhys(hist, days, today.slice(0, 7), universe, 'day');
+  const p = buildPhys(hist, days, today.slice(0, 7), universe, 'day', cachedBlockWeights());
   const packs = new Map<string, ProgressPoint[]>();
   for (const [key, pts] of p.phys) {
     packs.set(key, [...pts].map(([at, v]) => ({ at, v })));

@@ -204,7 +204,8 @@ const near = (a, b, tol, msg) => {
 const fx = JSON.parse(readFileSync(new URL('./projectPlan.fixture.json', import.meta.url), 'utf8'));
 const fromSerial = (s) => (s == null ? null : (s - 25569) * DAY);
 const str = (i) => (i == null ? null : fx.strs[i]);
-const stored = fx.rows.map((r) => ({
+const stored = fx.rows.map((r, i) => ({
+  objectid: i + 1,
   dd_kod: r[0], etseg_kod: r[1], uy_shat: r[2], bagts: str(r[3]), blok: r[4], ajil_uilchilgee: str(r[5]),
   ho_dun_geree: r[6], heseg_ezleh_huvi: r[7], tusul_ezleh_huvi: r[8],
   geree_ehleh: fromSerial(r[9]), geree_duusah: fromSerial(r[10]),
@@ -262,7 +263,8 @@ const stored = fx.rows.map((r) => ({
   assert.equal(b1[b1.length - 1].status, 'none', 'ашиглалт: marks = null → мэдээлэлгүй (алга БИШ)');
   const l2e = buildL2(plan, pkgs.slice(0, 1), new Map(), TODAY);
   assert.equal(l2e[l2e.length - 1].status, 'missing', 'ашиглалтын огноо уншигдсан ч алга → улаан');
-  const l2m = buildL2(plan, pkgs.slice(0, 1), new Map([[pkgs[0].node.code, { tender: null, handover: D('2028-06-22'), order: D('2025-06-27'), orderNo: 'А/736' }]]), TODAY);
+  /* 2026-11-05: marks — мөрийн objectid-оор (dd_kod давхардсан: 5.2.1.1.1 долоон багцад ижил) */
+  const l2m = buildL2(plan, pkgs.slice(0, 1), new Map([[pkgs[0].node.row.objectid, { tender: null, handover: D('2028-06-22'), order: D('2025-06-27'), orderNo: 'А/736' }]]), TODAY);
   assert.equal(l2m[l2m.length - 1].at, D('2028-06-22'));
   assert.equal(l2m[l2m.length - 1].status, 'upcoming');
   const ord = l2m.find((r) => r.id === 'L2.2.1');
@@ -270,6 +272,12 @@ const stored = fx.rows.map((r) => ({
   assert.equal(ord.at, D('2025-06-27'));
   assert.equal(ord.status, 'done', 'гарсан захирамж ✓');
   assert.equal(buildL2(plan, pkgs.slice(0, 1), new Map(), TODAY).find((r) => r.id === 'L2.2.1').status, 'missing', 'захирамж алга → улаан');
+  /* кодоор түлхүүрлэсэн (хуучин) эсвэл ӨӨР мөрийн objectid-тэй mark — энэ багцад ХАМААРАХГҮЙ */
+  const other = plan.tree.nodes.find((n) => n.code === pkgs[0].node.code && n !== pkgs[0].node) ?? pkgs[1].node;
+  const l2x = buildL2(plan, pkgs.slice(0, 1), new Map([[pkgs[0].node.code, { tender: null, handover: D('2028-06-22'), order: D('2025-06-27'), orderNo: 'А/736' }],
+    [other.row.objectid, { tender: null, handover: D('2029-01-01'), order: D('2025-01-01'), orderNo: 'А/1' }]]), TODAY);
+  assert.equal(l2x.find((r) => r.id === 'L2.2.1').status, 'missing', 'код/өөр мөрийн mark авахгүй');
+  assert.equal(l2x[l2x.length - 1].at, null);
 
   /* ── Төлөв · огноо: мэдэгдэхгүй гүйцэтгэлтэй зурвас «late» болохгүй; өвгөөс зөвхөн хадгалсан ижил баганын хос ── */
   const planNo = assemblePlan(stored, { actual: { blocks: new Map(), universe: new Map(), infra: new Map() }, sched: null, land: new Map() }, TODAY);

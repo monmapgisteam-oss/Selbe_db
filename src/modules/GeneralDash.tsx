@@ -19,6 +19,7 @@ import { loadLandStatus } from '@/lib/land';
 import { loadFillPkgProgress, loadHeadline } from '@/lib/live';
 import { loadBagtsRows } from '@/lib/execData';
 import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
+import { loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
 import { loadFinData, typePhysNow, INFRA_TYPE, aggregateMonths } from '@/modules/Finance';
 import { loadHoRows } from '@/lib/ipc';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
@@ -41,7 +42,7 @@ import {
   loadCfPlan, cfPlanGaps, cfGapsText, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
   chartTypeCost, chartSourceMerged, xMatch,
   type XDim,
-  grainOf, kpisOf, progressLabel, inPeriod, yearsOf, periodActive, activeSubPkgTypes, effectivePeriod,
+  grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes, effectivePeriod,
   type Grain,
   NO_PERIOD, isContracted,
   type CfRow, type Period, type SubBar, type SubPkg, type TimePoint,
@@ -726,6 +727,9 @@ function KpiStrip({
   const landPct = land.state === 'ready' ? land.data.pct : null;
   const wbsQ = useAsync(loadNegtgelPct, []);
   const wbsPct = wbsQ.state === 'ready' ? wbsQ.data : null;
+  /* 2026-11-04: шүүлтгүй үед нийт төсөв = ТТБ-ийн Төслийн нийт E (дашбоард · тайлантай ИЖИЛ); уншигдаагүй бол мөрийн нийлбэр */
+  const budgetQ = useAsync(loadProjectBudgetTotal, []);
+  const budgetTotal = budgetQ.state === 'ready' ? budgetQ.data : null;
 
   const k = useMemo(() => {
     const sel = rows.filter((r) => inPeriod(r, period) && (xs == null || xMatch(r, xs.dim, xs.key)));
@@ -738,8 +742,8 @@ function KpiStrip({
       : 0;
     const whole = !periodActive(period) && xs == null;
     const outOfTotal = sel.length > 0 && sel.every((r) => !r.inTotal);
-    return { ...kpisOf(sel, csum, landPct, whole ? wbsPct : null), whole, outOfTotal };
-  }, [rows, period, contracts, landPct, xs, wbsPct]);
+    return { ...kpisOf(sel, csum, whole ? wbsPct : null, whole ? budgetTotal : null), whole, outOfTotal };
+  }, [rows, period, contracts, xs, wbsPct, budgetTotal]);
   /** Шүүлтгүй ба нэгтгэл хараахан ирээгүй — «…» */
   const progWait = k.whole && wbsQ.state === 'loading';
 
@@ -756,7 +760,7 @@ function KpiStrip({
         <Stat
           icon="chart"
           value={progWait ? '…' : k.progress == null ? '—' : pct(k.progress)}
-          label={progWait ? tr('Гүйцэтгэлийн хувь') : progressLabel(k.progressSrc)}
+          label={tr('Төслийн нийт явц')}
         />
         <Stat icon="layers" value={num(k.packages)} label={tr('Багц ажил (гэрээний мөр)')} />
         <Stat icon="grid" value={num(k.types)} label={tr('Нийт төрлийн тоо')} />
@@ -1082,7 +1086,7 @@ function FinCharts({
         * «Төсөв, гэрээлсэн дүн»-ий hover панель руу нэгдсэн.
         */}
       <Section
-        title={tr('Төслийн гүйцэтгэл')}
+        title={tr('Төслийн нийт явц')}
         note={housingAt ? tr('сүүлийн хэмжилт: {0}', housingAt) : undefined}
       >
         <Data q={wbs} minH={150}>

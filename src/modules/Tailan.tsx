@@ -375,7 +375,7 @@ function TailanFull() {
           value={extra?.projectPct ?? null}
           loading={!extra && !failed}
           note={extra && <>
-            {tr('Орон сууцны гүйцэтгэл')} {pct(extra.overall.pct, 2)} · {tr('Барилга угсралтын гүйцэтгэл (блокийн дундаж)')} {pct(extra.progress.overall, 2)}
+            {tr('Барилгын явц')} {pct(extra.overall.pct, 2)}
           </>}
         />
 
@@ -446,8 +446,7 @@ function TailanFull() {
                       <KpiRow items={[
                         { label: tr('Орон сууцны блок'), value: num(blocks) },
                         { label: tr('Өрхийн орон сууц'), value: ail },
-                        { label: tr('Орон сууцны гүйцэтгэл (багцаар, төсвийн жинтэй)'), value: pct(x.overall.pct, 2) },
-                        { label: tr('Барилга угсралтын гүйцэтгэл (блокийн энгийн дундаж)'), value: pct(x.progress.overall, 2) },
+                        { label: tr('Барилгын явц'), value: pct(x.overall.pct, 2) },
                         { label: tr('Захирамжаар батлагдсан'), value: `${bn(x.finance.orderTotal)} ₮` },
                         { label: tr('Гэрээгээр байгуулагдсан'), value: `${bn(x.finance.contractAmount)} ₮` },
                         { label: tr('Бодитоор олгосон'), value: mnt(x.finance.paid) },
@@ -471,12 +470,8 @@ function TailanFull() {
                           <tr><td>{tr('Орон сууцны блок')}</td><td className={r.num}>{num(blocks)}</td></tr>
                           <tr><td>{tr('Өрхийн орон сууц')}</td><td className={r.num}>{ail}</td></tr>
                           <tr>
-                            <td title={tr('Орон сууцны багц бүрийн блокийн дундаж гүйцэтгэлийг багцын төсвийн жингээр нэгтгэсэн (3-р хэсэг)')}>{tr('Орон сууцны гүйцэтгэл (багцаар, төсвийн жинтэй)')}</td>
+                            <td title={tr('Орон сууцны блокуудын гүйцэтгэлийг төсвөөр нь жигнэсэн (3-р хэсэг)')}>{tr('Барилгын явц')}</td>
                             <td className={r.num}>{pct(x.overall.pct, 2)}</td>
-                          </tr>
-                          <tr>
-                            <td title={tr('Хяналтын бүх блокийн энгийн дундаж (6-р хэсэг)')}>{tr('Барилга угсралтын гүйцэтгэл (блокийн энгийн дундаж)')}</td>
-                            <td className={r.num}>{pct(x.progress.overall, 2)}</td>
                           </tr>
                           <tr>
                             <td>{tr('Захирамжаар батлагдсан дүн')}</td>
@@ -493,7 +488,7 @@ function TailanFull() {
                         </tbody>
                       </ResizableTable>
                       <p className={r.note}>
-                        {tr('Орон сууцны гүйцэтгэл (багцаар, төсвийн жинтэй) нь')} {num(x.overall.rows)} {tr('блокийг багцынх нь төсвийн жингээр тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын')} {num(x.progress.blocks)} {tr('блокийн энгийн дундаж (6-р хэсэг).')}
+                        {tr('Барилгын явц нь {0} блокийг төсвөөр нь жигнэсэн дүн (3-р хэсэг).', num(x.overall.rows))}
                       </p>
                     </section>
 
@@ -709,7 +704,7 @@ function TailanFull() {
                     <section id="full-6" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('6. Барилга угсралтын гүйцэтгэл')}</h2>
                       <p className={r.intro}>
-                        {tr('Хяналтын {0} блокийн нийт гүйцэтгэлийн энгийн дундаж {1} байна{2}{3}. 6.2-р хүснэгтийн үе шатын дундаж нь зөвхөн тайлагнасан {4} блокоор тооцогдоно.',
+                        {tr('Хяналтын {0} блокийн төсвөөр жигнэсэн нийт гүйцэтгэл {1} байна{2}{3}. 6.2-р хүснэгтийн үе шатын дундаж нь зөвхөн тайлагнасан {4} блокоор тооцогдоно.',
                           num(x.progress.blocks), pct(x.progress.overall, 2),
                           x.progress.date ? tr(' (сүүлийн тайлагнал {0})', x.progress.date) : '',
                           x.progress.blocks > x.progress.reported ? tr('; тайлагнаагүй {0} блок 0%-иар тооцогдсон', num(x.progress.blocks - x.progress.reported)) : '',

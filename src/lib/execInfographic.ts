@@ -4,7 +4,6 @@
  * A4 is the minimum height. Longer reports grow instead of clipping findings.
  */
 import { LATE_GAP, householdsLabel, type ExecReport } from '@/lib/execReport';
-import { progressSub } from '@/lib/gdash';
 import { coverageNote, coverageOk } from '@/lib/planProgress';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, PRINT_COLORS } from '@/lib/format';
@@ -240,7 +239,7 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
   const tiles: [string, string, string?][] = [
     [tr('Нийт төсөв'), money(g.budget), tr('Excel-ийн нийт хамрах хүрээ')],
     [tr('Нийт гэрээлсэн дүн'), money(g.contract), g.budget > 0 ? tr('төсвийн {0}', pct(g.contract / g.budget * 100, 1)) : undefined],
-    [tr('Төслийн гүйцэтгэл'), pct(g.progress, 1), [progressSub(g.progressSrc), g.progressPlan == null ? '' : tr('төлөвлөгөө {0}', pct(g.progressPlan, 1))].filter(Boolean).join(' · ')],
+    [tr('Төслийн нийт явц'), pct(g.progress, 1), [tr('Нэгтгэл гүйцэтгэлээр'), g.progressPlan == null ? '' : tr('төлөвлөгөө {0}', pct(g.progressPlan, 1))].filter(Boolean).join(' · ')],
     [tr('Олгосон санхүүжилт'), money(f.given), f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1))],
     [tr('Газар чөлөөлөлт'), pct(g.landPct, 1), tr('{0} нэгж талбар үлдсэн', num(g.land.remaining))],
     [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(p.blocks), householdsLabel(p))],

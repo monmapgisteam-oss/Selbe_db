@@ -96,6 +96,15 @@ import { cfMonthAxis } from '../lib/services.ts';
     axis, '2026-04', new Map([['БАГЦ7', ['БАГЦ7|A', 'БАГЦ7|B', 'БАГЦ7|C', 'БАГЦ7|D']]]),
   );
   assert.equal(r.phys.get('БАГЦ7').get('2026-03'), 25, '4 блокийн 1 нь 100% → 25% (100% БИШ)');
+  /* 2026-11-04: блокийн төсвөөр жигнэнэ; жингүй блок — мэдэгдэж буй жингийн дундаж; жин алга бол тэнцүү */
+  const wh = new Map([['Багц 7|A', [{ date: '2026-03-01', pct: 100 }]]]);
+  const wu = new Map([['БАГЦ7', ['БАГЦ7|A', 'БАГЦ7|B']]]);
+  const w1 = buildPhys(wh, axis, '2026-04', wu, 'month', new Map([['БАГЦ7|A', 300], ['БАГЦ7|B', 100]]));
+  assert.equal(w1.phys.get('БАГЦ7').get('2026-03'), 75, 'A 300 / нийт 400 → 75%');
+  const w2 = buildPhys(wh, axis, '2026-04', wu, 'month', new Map([['БАГЦ7|A', 300]]));
+  assert.equal(w2.phys.get('БАГЦ7').get('2026-03'), 50, 'B жингүй → A-ийн жинтэй тэнцүү');
+  const w3 = buildPhys(wh, axis, '2026-04', wu, 'month', new Map());
+  assert.equal(w3.phys.get('БАГЦ7').get('2026-03'), 50, 'хоосон жин → тэнцүү');
   console.log('phys.check: блокийн хуваарь ok (тайлагнаагүй блок/багц 0%)');
 }
 

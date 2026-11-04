@@ -24,6 +24,11 @@ export type ViewKey =
   | "tuh"
   | "bagtsHamaaral"
   | "zuragTosol"
+  | "gazarOgnoo"
+  | "zahiramj"
+  | "songon"
+  | "zovshoorolTtb"
+  | "ashiglalt"
   | "tuvshin6"
   | "finance"
   | "habea"
@@ -263,6 +268,64 @@ export const VIEWS: {
     standalone: true,
   },
   /**
+   * ГАЗАР ЧӨЛӨӨЛӨЛТИЙН ОГНОО (2026-11-04) — «Газар чөлөөлөлт» үе шатын навч мөрийн `gazar_ehleh`/`gazar_duusah`.
+   * Засах нь `zuragEdit` эрхээр; эрхгүй хүн харна.
+   */
+  {
+    key: "gazarOgnoo",
+    get title() { return tr('Газар чөлөөлөлтийн огноо'); },
+    get desc() { return tr('Газар чөлөөлөлт үе шатын мөр бүрийн эхлэх, дуусах огноог оруулах.'); },
+    icon: "file",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
+   * ҮЕ ШАТНЫ МЭДЭЭЛЭЛ ОРУУЛАХ 4 ХУУДАС (2026-11-04) — `Guitsetgel_talbe/182`-ийн захирамж · сонгон · зөвшөөрөл · ашиглалт
+   * талбарууд; тус бүр өөрийн эрхээр (`capText.PANE_CAPS.uyShat`).
+   */
+  {
+    key: "zahiramj",
+    get title() { return tr('Захирамж'); },
+    get desc() { return tr('Багц бүрийн захирамжийн огноо, дугаар оруулах.'); },
+    icon: "file",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  {
+    key: "songon",
+    get title() { return tr('Сонгон шалгаруулалт'); },
+    get desc() { return tr('Багц бүрийн сонгон шалгаруулалт, гэрээ байгуулсан огноо, явц оруулах.'); },
+    icon: "file",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  {
+    key: "zovshoorolTtb",
+    get title() { return tr('Зөвшөөрөл (төлөвлөгөө)'); },
+    get desc() { return tr('Багцын зөвшөөрлүүдийг мөрөөр нэмж огноо, явц оруулах — «Төсөл төлөвлөгөө биелэлт»-д хадгалагдана.'); },
+    icon: "file",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  {
+    key: "ashiglalt",
+    get title() { return tr('Ашиглалтад оруулах'); },
+    get desc() { return tr('Багц бүрийн ашиглалтад оруулах огноо оруулах.'); },
+    icon: "file",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  /**
    * 6 ТҮВШНИЙ ХУВААРЬ (2026-10-26) — docs/Level planning_261021-ийн L1–L6; `projectPlan` + Хуваарь + бөглөх хуудас.
    */
   {
@@ -432,7 +495,7 @@ export const HOME_SECTIONS: {
   { id: "mgmt", get title() { return tr('Удирдлага'); }, all: true, views: [] },
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged", "tuvshin6"] },
-  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zuragTosol", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
+  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zuragTosol", "gazarOgnoo", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
 
@@ -441,7 +504,7 @@ export const HOME_SECTIONS: {
  */
 export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
-  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "tuvshin6", "zuragTosol"] },
+  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "tuvshin6", "zuragTosol", "gazarOgnoo", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt"] },
   { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "ma"] },
   {
     id: "monitor",

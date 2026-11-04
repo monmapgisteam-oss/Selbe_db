@@ -24,7 +24,7 @@ import {
   inPeriod, yearsOf, sCurve, kpisOf, chartTypeCost,
   chartSourceCount, chartNoteAmount, grainOf, CONTRACTED, CF_SOURCES,
   cashflowCurve, housingMoney, fillMonths,
-  housingPct, housingSeries, pkgCostWeight, cfWeightRow, CF, contractedScope, housingPlanSeries,
+  housingPct, housingSeries, pkgCostWeight, pkgCostTotal, cfWeightRow, CF, contractedScope, housingPlanSeries,
   isContracted, planScope, pts, gapPts, gapPtsWord, planScopeNote, effectivePeriod, periodActive,
 } from './gdash.ts';
 
@@ -114,30 +114,21 @@ const P = (o = {}) => ({ years: [], quarters: [], months: [], ...o });
   assert.deepEqual(ys, [2024, 2025, 2026, 2027]);
 }
 
-/* ── 4. Гүйцэтгэлийн хувь — ЗУРГААН ШАТНЫ ЖИГНЭСЭН НИЙЛБЭР ── */
+/* ── 4. Гүйцэтгэлийн хувь — ЗӨВХӨН «Нэгтгэл гүйцэтгэл» (2026-11-04: 182-ын 6 шатны нөөц томьёо хасагдсан) ── */
 {
   const rows = [
     buildRow({ oid: 1, cost: 900, progress: 10 }),
     buildRow({ oid: 2, cost: 100, progress: 100 }),
-    buildRow({ oid: 3, cost: 1000, progress: null }), // ХЭМЖИГДЭЭГҮЙ
+    buildRow({ oid: 3, cost: 1000, progress: null }),
   ];
-  const k = kpisOf(rows, 0);
+  assert.equal(kpisOf(rows, 0, 29.62).progress, 29.62, 'нэгтгэлийн тоо шууд');
+  assert.equal(kpisOf(rows, 0, 0).progress, 0, 'жинхэнэ 0 хэвээр');
+  assert.equal(kpisOf(rows, 0).progress, null, '⚠️ нэгтгэлгүй бол null — мөрийн хувиас ӨӨР тоо зохиохгүй');
+  assert.ok(!('progressSrc' in kpisOf(rows, 0)), 'эх нь нэг тул progressSrc байхгүй');
 
-  /* Барилга угсралт: (900×10 + 100×100) / 1000 = 19%; жин нь 79% →
-     төслийн гүйцэтгэл = 19 × 0.79 = 15.01%. Бусад шат хэмжигдээгүй. */
-  assert.equal(Math.round(k.progress * 100) / 100, 15.01);
-  assert.notEqual(Math.round(k.progress), 19, 'бүтэн 19% гэж хэлэхгүй — жин 79%');
-
-  /* Хэмжигдээгүй 1000 нь шатны хуваарьт ОРООГҮЙ ч төсөвт ОРНО */
-  assert.equal(k.budget, 2000);
-  assert.ok(!('progressCovered' in k) && !('progressAmount' in k), 'үхмэл талбар буцаж ирэхгүй');
-
-  const z = kpisOf([buildRow({ cost: 100, progress: 0 }), buildRow({ cost: 100, progress: 100 })], 0);
-  assert.equal(Math.round(z.progress * 100) / 100, 39.5, '50% × 79 жин');
-
-  /* ГАЗАР ЧӨЛӨӨЛӨЛТ нь тусдаа эхээс — 3% жинтэй нэмэгдэнэ */
-  const g = kpisOf(rows, 0, 100);
-  assert.ok(Math.abs(g.progress - (15.01 + 3)) < 1e-9, 'газрын 3% жин нэмэгдэнэ');
+  /* Төсөв мөрүүдээс хэвээр */
+  assert.equal(kpisOf(rows, 0).budget, 2000);
+  assert.ok(!('progressCovered' in kpisOf(rows, 0)) && !('progressAmount' in kpisOf(rows, 0)), 'үхмэл талбар буцаж ирэхгүй');
 }
 
 /* ── 4а. НИЙТ ТӨСӨВ — Excel-ийн хамрах хүрээ (`=+I8+I21`) ── */
@@ -149,6 +140,12 @@ const P = (o = {}) => ({ years: [], quarters: [], months: [], ...o });
   assert.equal(k.budget, 1000, 'нийлбэрт ороогүй мөр төсөвт нэмэгдэхгүй');
   assert.equal(k.packages, 2, 'мөрийн тоо нь БҮГД — хамрах хүрээ хамаарахгүй');
 
+  /* 2026-11-04: нийт төсөв — ТТБ-ийн Төслийн нийт E өгвөл тэр (шүүлтгүй үед); өгөөгүй бол мөрийн нийлбэр БҮХЭЛ ₮ */
+  const frac = [buildRow({ oid: 1, cost: 1000.37 }), buildRow({ oid: 2, cost: 0.4 })];
+  assert.equal(kpisOf(frac, 0).budget, 1001, 'блокийн бутархай ₮ — нийлбэрийг бүхэлтгэнэ');
+  assert.equal(kpisOf(frac, 0, null, 1002).budget, 1002, 'ТТБ-ийн Төслийн нийт E давамгайлна');
+  assert.equal(kpisOf(frac, 0, null, null).budget, 1001, 'ТТБ уншигдаагүй (null) → мөрийн нийлбэр');
+
   /*
    * АЖЛЫН БУС МӨР ТООЛОГДОХГҮЙ (2026-09-10, хэрэглэгч: «78 биш 74»).
    */
@@ -158,12 +155,6 @@ const P = (o = {}) => ({ years: [], quarters: [], months: [], ...o });
   ], 0);
   assert.equal(k2.packages, 1, 'ажлын бус мөр «Багц ажлын тоо»-нд тоологдов');
   assert.equal(k2.budget, 200, 'ажлын бус мөр МӨНГӨН нийлбэрээс буруу хасагдав');
-}
-
-/* ── 4б. Нэг ч шат хэмжигдээгүй бол хувь нь `null` (0 БИШ) ── */
-{
-  const k = kpisOf([row({ cost: 500 })], 0);
-  assert.equal(k.progress, null);
 }
 
 /* ── 5. S-муруй — хуримтлал, БУУРАХГҮЙ, эцсийн цэг = хувийн нийлбэр ── */
@@ -418,12 +409,17 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
     { [CF.pkg2]: 'Багц 2', [CF.cost]: 600, [CF.code1]: '1' },
     { [CF.pkg2]: 'БАГЦ 1-4', [CF.cost]: 5000, [CF.code1]: '1' },
     { [CF.pkg2]: 'Багц 3.1', [CF.cost]: 999, [CF.code1]: '7' },
+    { [CF.pkg2]: '', [CF.pkg]: '', [CF.cost]: 70, [CF.code1]: '1' },
   ];
   const cost = pkgCostWeight(raw.map(cfWeightRow));
   assert.equal(cost.get('БАГЦ1'), 400, 'нэг багцын олон гэрээ нийлбэр');
   assert.equal(cost.get('БАГЦ2'), 600);
   assert.equal(cost.has('БАГЦ14'), false, 'диапазон мөр «Багц 14»-т наалдав');
   assert.equal(cost.has('БАГЦ31'), false, '«Нийт»-ийн гадна (7-р хэсэг) мөр жинд орлоо');
+  assert.equal(cost.has(''), false, 'багцгүй мөр жинд орохгүй');
+  /* 2026-11-04: төслийн НИЙТ төсөв (жингийн хуваарь) — диапазон ба багцгүй мөр ОРНО, «Нийт»-ийн гадна мөр орохгүй */
+  assert.equal(pkgCostTotal(raw.map(cfWeightRow)), 300 + 100 + 600 + 5000 + 70, 'pkgCostTotal = Σ finXlInTotal ho_dun_geree');
+  assert.ok(pkgCostTotal(raw.map(cfWeightRow)) > [...cost.values()].reduce((a, b) => a + b, 0), 'Σ pkgCostWeight < төслийн нийт (диапазон 5000 + багцгүй 70)');
 
   /* ӨРТГӨӨР ЖИГНЭНЭ, блокоор биш: 400₮·10% + 600₮·60% = 40% (блокоор 4·10+20·60 → 51.7) */
   assert.equal(housingPct([

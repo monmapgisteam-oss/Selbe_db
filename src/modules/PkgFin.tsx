@@ -139,16 +139,20 @@ function mergePkgMonths(
  * Санхүүгийн өгөгдлийг холбоостой хувилбар болгоно — хуудасны БҮХ хэсэг
  * (жагсаалт, KPI, карт, сарын график, төлбөрийн жагсаалт) нэг л тоо харуулна.
  */
-function aliasFin(d: FinData): FinData {
+export function aliasFin(d: FinData): FinData {
   const C = CASHFLOW_NEW.fields;
   const HC = HO_IPC.contractFields;
   const hits = (m: Map<string, unknown>) => [...m.keys()].some((k) => k in FIN_PKG_ALIAS);
   if (!hits(d.planTotal) && !hits(d.givenTotal)) return d;
 
   type R = FinData['contracts'][number];
+  /* 2026-11-04: талбарт АЛИАСЫН ТҮЛХҮҮРИЙГ (`a.key`) бичнэ — энэ хуудсанд талбар ЗӨВХӨН `pkgKeyOf`-оор түлхүүр болж
+     хэрэглэгдэнэ (`pkgSrcKey`, `rowsByKey`, `contractMonths`), харагдах нэр нь багцаас (`Pack.name`, «Багц 7.1»).
+     Урьд нь `a.label` бичдэг байсан тул «Багц 7.1» → БАГЦ71 ≠ БАГЦ7 болж Багц 7.1 жагсаалт, удирдлагын тайлангийн
+     04, CEO картаас алга болсон. */
   const reRow = (r: R, field: string): R => {
     const a = FIN_PKG_ALIAS[pkgKeyOf(r[field])];
-    return a ? { ...r, [field]: a.label, __bagtsSrc: String(r[field] ?? '') } : r;
+    return a ? { ...r, [field]: a.key, __bagtsSrc: String(r[field] ?? '') } : r;
   };
   const tgt = (k: string) => FIN_PKG_ALIAS[k]?.key ?? k;
   const mergeNum = (m: Map<string, number>) => {

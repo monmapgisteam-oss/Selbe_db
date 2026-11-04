@@ -121,10 +121,50 @@ frame('2026-01-20', [[1, 1], [null, null]]);
 {
   const det = readFileSync('src/lib/hyanaltDetail.ts', 'utf8');
   assert.ok(det.includes('priorObyem(p, sc, msToDay(at))'), 'hyanaltDetail: «юунаас юу» өмнөх жаазуудын хуримтлалаар');
+  /* 2026-11-04: өдрийн сүүлийн жааз өдрийн БҮХ ажлыг хадгалдаг тул ижил өдрийн өмнөх жааз (`samePrev`) хуримтлалд НЭМЭГДЭХГҮЙ */
+  assert.ok(!det.includes('sameDay && prev') && det.includes('const beforeVals = obs.map((_, k) => pr?.[k] ?? null);'),
+    'hyanaltDetail: ижил өдрийн өмнөх жаазыг суурьт нэмэхгүй — loadRows/priorObyem-тэй нэг дүрэм');
   const w = readFileSync('src/lib/ipcAutoWrite.ts', 'utf8');
   assert.ok(w.includes('snapshotDayOf(rows, day)') && !w.includes('snapshotOf(rows, day)'), 'ipcAutoWrite: AUTO мөр өдрийн дүнгээр');
   const mu = readFileSync('src/lib/materialUsage.ts', 'utf8');
   assert.ok(!mu.includes('row.raw[sc.f.obyemSum]'), 'materialUsage: хадгалсан obyem_sum (өдрийнх) хуримтлал гэж уншихгүй');
   console.log('✅ бичигчид — шинэ дүрмээр');
+}
+
+/* ── 6. ИЖИЛ ӨДРИЙН ХОЁР ДАХЬ БАТЛАЛТ (2026-11-04) — сүүлийн жааз өдрийн БҮХ ажлыг хадгална ──
+ * Урьд нь `obyemBase` нь ижил өдрийн эхний жаазыг оруулсан хуримтлал байсан тул 2 дахь жааз зөвхөн ӨСӨЛТИЙГ хадгалж,
+ * `lastFrame`/`priorObyem`/`snapshotDayOf` (өдөрт сүүлийн жаазыг л тоолдог) эхний жаазны ажлыг АЛДДАГ байв. */
+{
+  const r = await loadRows(pkg, sc, '2026-01-20');
+  const sh = r.rows.find((x) => x.no === '1');
+  assert.equal(sh.frameDay, '2026-01-20', 'ачаалсан жаазны өдөр');
+  assert.deepEqual(sh.obyemPrior, [7, 3], 'өмнөх ӨДРҮҮДИЙН хуримтлал (энэ өдрийн 1,1 ороогүй)');
+  assert.deepEqual(sh.obyemBase, [8, 4], 'ачаалсан хуримтлал хэвээр');
+  const rows = r.rows.map((x) => ({ ...x, obyem: x.obyem.slice(), act: x.act.slice() }));
+  const sh2 = rows.find((x) => x.no === '1');
+  sh2.obyem = [11, 4]; // 8 → 11 (өдрийн ӨСӨЛТ 3, өдрийн БҮХ ажил 1+3 = 4); 4 хэвээр (өдрийн ажил 1)
+  /* ИЖИЛ өдөр (01-20) дахин бичнэ — суурь = өмнөх өдрүүд → жааз өдрийн бүх ажлыг хадгална */
+  const same = buildFrame(rows, sc, 2, null, [true, true], D('2026-01-20') + 15 * 3600_000);
+  const s1 = same.find((a) => a.no === '1');
+  const s2 = same.find((a) => a.no === '2');
+  assert.equal(s1.o0, 4, '⚠️ өдрийн БҮХ ажил 11 − 7 = 4 (өсөлт 3 биш)');
+  assert.equal(s1.o1, 1, 'өөрчлөгдөөгүй нүд эхний жаазны ажлаа (1) хадгална — 0 биш');
+  assert.equal(s1.osum, 5);
+  assert.deepEqual([s2.o0, s2.o1], [0, 0], 'энэ өдөр ажилгүй мөр 0');
+  /* ӨӨР өдөр бичвэл суурь = ачаалсан хуримтлал (3-р хэсэгтэй ижил) */
+  const next = buildFrame(rows, sc, 2, null, [true, true], D('2026-02-01'));
+  assert.equal(next.find((a) => a.no === '1').o0, 3, 'өөр өдөр: өсөлт 11 − 8 = 3');
+  /* 2 дахь жаазыг архивт нэмээд — хуримтлал, өмнөх өдрүүд, IPC-ийн өдрийн дүн бүгд зөв */
+  for (const a of same) T.insert({ ...a, objectid: undefined });
+  dropPriorCache(pkg.key);
+  const r2 = await loadRows(pkg, sc, '2026-01-20');
+  const sh3 = r2.rows.find((x) => x.no === '1');
+  assert.deepEqual(sh3.obyemDay, [4, 1], 'сүүлийн жааз = өдрийн бүх ажил');
+  assert.deepEqual(sh3.obyem, [11, 4], 'хуримтлал = 7+4, 3+1 — эхний жаазны ажил алдагдаагүй');
+  assert.deepEqual(sh3.obyemPrior, [7, 3]);
+  const pr = await priorObyem(pkg, sc, '2026-01-25');
+  assert.deepEqual(pr.get('1 ¦ Шороо #0'), [11, 4], 'priorObyem: 01-20-ны сүүлийн жааз өдрийн бүх ажилтай');
+  assert.equal(snapshotDayOf(r2.rows, '2026-01-20').une, (4 + 1) * 10, 'IPC AUTO мөр = өдрийн БҮХ ажил × нэгж үнэ');
+  console.log('✅ ижил өдрийн 2 дахь жааз — өдрийн бүх ажил · хуримтлал · priorObyem · snapshotDayOf');
 }
 console.log('perDay.check: OK');

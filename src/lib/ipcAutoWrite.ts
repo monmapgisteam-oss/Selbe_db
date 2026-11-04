@@ -53,7 +53,9 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
         .filter((x): x is string => !!x);
       const upTo = await latestDayUpTo(pkg.url, sc.f.fillDate, at);
       if (!upTo) { reads.push('unpublished'); continue; }
-      const { rows } = await loadRows(pkg, sc, upTo, need, { strict: true });
+      /* 2026-11-04: жааз бүр ТУХАЙН ӨДРИЙН ажил — тэр өдөр жаазгүй хуудас 0 оролцоотой (өмнөх өдрийн жаазны ажил дахин тоологдохгүй) */
+      if (upTo !== at) { reads.push('no-frame'); continue; }
+      const { rows } = await loadRows(pkg, sc, at, need, { strict: true });
       if (!rows.length) { reads.push('missing'); continue; }
       reads.push('read');
       /* 2026-11-04: тухайн өдрийн ажил (хуримтлал биш) — жааз бүр IPC-ийн дүн */
@@ -125,6 +127,7 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
 /**
  * Хуудасны `day`-ээс ХОЙШГҮЙ хамгийн сүүлийн жаазны огноо (`YYYY-MM-DD`,
  * UTC — `bagtsSheet.dayFilter`/`msToDay`-тай ижил). Жааз байхгүй бол `null`.
+ * `day`-тэй тэнцвэл тэр өдөр жааз БИЙ (`syncIpcFromFill` зөвхөн тэр үед уншина).
  */
 async function latestDayUpTo(url: string, fld: string, day: string): Promise<string | null> {
   const j = await agsFetch(`${url}/query`, {

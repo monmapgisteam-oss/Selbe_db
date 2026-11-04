@@ -19,7 +19,7 @@ import { cached } from '@/lib/live';
  * ӨДӨР ТУТАМ ЗАСАГДДАГ хүснэгтийн кэшийн хугацаа.
  */
 const LIVE_TTL = 60_000;
-import { loadBlockHistory, loadBlockUniverse, loadInfraHistory, loadInfraUniverse } from '@/lib/blockProgress';
+import { cachedBlockWeights, loadBlockHistory, loadBlockUniverse, loadInfraHistory, loadInfraUniverse } from '@/lib/blockProgress';
 import { loadPlanCurveCached, planPctAt, measureDayOf, planCoverage, coverageOk, type PlanCurve, type PlanPoint } from '@/lib/planProgress';
 import { buildPhys, type PhysAtMap } from '@/lib/finPhys';
 import {
@@ -818,7 +818,7 @@ async function loadFinDataRaw(): Promise<FinData> {
     const nowYm = monthKey();
     const hist = new Map([...histB, ...histI]);
     const universe = new Map([...universeB, ...universeI]);
-    const { phys, physCnt, physAt, physN } = buildPhys(hist, axis, nowYm, universe);
+    const { phys, physCnt, physAt, physN } = buildPhys(hist, axis, nowYm, universe, 'month', cachedBlockWeights());
     planProjectCache = planCurveCache ? projectPlanOf({ contracts, phys, physN }, planCurveCache) : null;
     return {
       contracts, planTotal, given, givenTotal, phys, physCnt, physAt, physN,
@@ -1150,12 +1150,17 @@ type PpRawKey = Extract<keyof PlanStoredRow, string>;
 type PpCalcKey = 'mContract' | 'mPaid' | 'mAdvance' | 'mPctTotal' | 'mPctContract';
 type PpCol = { k: Exclude<keyof PlanValues, 'status'> | SourceKey | PpRawKey | PpCalcKey; label: string; kind: PpKind; title?: string; raw?: true };
 const CALC_KEYS: readonly string[] = ['mContract', 'mPaid', 'mAdvance', 'mPctTotal', 'mPctContract'];
-const calcVal = (k: string, m: MoneySums | undefined, E: number | null | undefined): number | null => {
+/**
+ * Олгосон санхүүжилтийн баганын утга. `rootE` — Төслийн нийт мөрийн E: «Олгосон хувь (төсөлд)» мөр бүрт
+ * олгосон ÷ ТӨСЛИЙН нийт төсөв (2026-11-04; урьд нь мөрийн өөрийн E-д хуваадаг тул зөвхөн Төслийн нийт мөр л
+ * төсөлд эзлэх хувь байв). «Олгосон хувь (гэрээнд)» — олгосон ÷ мөрийн гэрээний дүн, хэвээр.
+ */
+export const ppCalcVal = (k: string, m: MoneySums | undefined, rootE: number | null | undefined): number | null => {
   if (!m) return null;
   if (k === 'mContract') return m.contract;
   if (k === 'mPaid') return m.paid;
   if (k === 'mAdvance') return m.advance;
-  if (k === 'mPctTotal') return m.paid != null && E ? (m.paid / E) * 100 : null;
+  if (k === 'mPctTotal') return m.paid != null && rootE ? (m.paid / rootE) * 100 : null;
   return m.paid != null && m.contract ? (m.paid / m.contract) * 100 : null;
 };
 type PpGroup = { label: string | null; cols: PpCol[] };
@@ -1465,10 +1470,12 @@ export function ProjectPlanTable({
   const srcOf = useMemo(() => sourceSums(tree), [tree]);
   /** Олгосон дүн · урьдчилгаа · гэрээний дүн — мөр бүрт нийлбэрээр */
   const moneyOf = useMemo(() => moneySums(tree), [tree]);
+  /** Төслийн нийт E — «Олгосон хувь (төсөлд)»-ийн хуваарь мөр бүрт (2026-11-04) */
+  const rootE = result.values.get(tree.root)?.E;
   const valCells = (v: PlanValues | undefined, blk: boolean, src: SourceSums | undefined, n?: PlanNode) => cols.map((c) => {
     /* 2026-11-03: нэмсэн ажлын төсөвт өртөг — эцгийн төсвөөс жингээр оноосон (бүдэг налуу; нийлбэрт орохгүй) */
     const alloc = c.k === 'E' && v?.E == null && v?.EA != null && !!n && isAddedWork(n);
-    const x = CALC_KEYS.includes(c.k) ? calcVal(c.k, n ? moneyOf.get(n) : undefined, v?.E)
+    const x = CALC_KEYS.includes(c.k) ? ppCalcVal(c.k, n ? moneyOf.get(n) : undefined, rootE)
       : c.raw ? (n?.row?.[c.k as PpRawKey] as number | string | null | undefined) ?? null
       : isSourceKey(c.k) ? src?.[c.k] ?? null : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status'>] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;

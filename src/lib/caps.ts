@@ -14,6 +14,7 @@ export type CapKey =
   | 'zovshoorol'
   | 'finEdit'
   | 'finRow'
+  | 'ipcCreate'
   | 'ipcApprove'
   | 'plan'
   | 'planApprove'
@@ -31,6 +32,10 @@ export type CapKey =
   | 'docsUpload'
   | 'docsGroups'
   | 'zuragEdit'
+  | 'zahiramjEdit'
+  | 'songonEdit'
+  | 'zovshoorolTtbEdit'
+  | 'ashiglaltEdit'
   | 'cfSwitch';
 
 /**
@@ -51,6 +56,10 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    * САНХҮҮГИЙН БҮРТГЭЛ — мөр НЭМЭХ ба УСТГАХ эрх.
    */
   { key: 'finRow', icon: 'plus' },
+  /**
+   * IPC ҮҮСГЭХ (2026-11-04) — чеклэсэн гүйцэтгэлээс IPC үүсгэх, гарын үсэгтэй скан оруулах, гэрээ үүсгэх.
+   */
+  { key: 'ipcCreate', icon: 'plus' },
   /**
    * IPC БАТАЛГААЖУУЛАХ (2026-11-04) — гарын үсэгтэй IPC-г «Олгосон» болгох, цуцлах.
    */
@@ -104,6 +113,14 @@ export const CAPS: { key: CapKey; icon: string }[] = [
   /** ТЭЗҮ · ЗУРАГ ТӨСӨЛ ЗАСАХ (2026-10-26) — навч мөрийн огноо, явц; батлагчгүй, аккаунтаар. */
   { key: 'zuragEdit', icon: 'pen' },
   /**
+   * ҮЕ ШАТНЫ МЭДЭЭЛЭЛ ОРУУЛАХ (2026-11-04) — `Guitsetgel_talbe/182`-ийн захирамж · сонгон шалгаруулалт · зөвшөөрөл ·
+   * ашиглалтын талбарыг тус тусын хуудсанд засах; батлагчгүй, аккаунтаар.
+   */
+  { key: 'zahiramjEdit', icon: 'pen' },
+  { key: 'songonEdit', icon: 'pen' },
+  { key: 'zovshoorolTtbEdit', icon: 'pen' },
+  { key: 'ashiglaltEdit', icon: 'pen' },
+  /**
    * САРЫН МӨНГӨ ГАРААР → ХУВААРЬ (2026-10-26) — гэрээний гараар оруулсан сарын мөрийг УСТГАЖ Хуваарийн обьём × нэгж
    * өртгөөр тооцох (`monthlyMoney.switchToHuvaari`). Буцаахгүй — «Төлөвлөлтийн ахлах инженер»-т олгоно.
    */
@@ -142,6 +159,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   zovshoorol: ['zovshoorol'],
   finEdit: ['finance'],
   finRow: ['finance'],
+  ipcCreate: ['finance'],
   ipcApprove: ['finance'],
   plan: ['huvaari'],
   planApprove: ['huvaariBatlah', 'huvaari'],
@@ -158,7 +176,11 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   sysClose: [],
   docsUpload: [],
   docsGroups: [],
-  zuragEdit: ['zuragTosol'],
+  zuragEdit: ['zuragTosol', 'gazarOgnoo'],
+  zahiramjEdit: ['zahiramj'],
+  songonEdit: ['songon'],
+  zovshoorolTtbEdit: ['zovshoorolTtb'],
+  ashiglaltEdit: ['ashiglalt'],
   cfSwitch: ['finance'],
 };
 

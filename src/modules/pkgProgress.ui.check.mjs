@@ -285,6 +285,43 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.equal(r1.contract, 400);
   assert.equal(r1.pct, 25, 'олгосон 100 ÷ гэрээлсэн 400 = 25% (урьд нь ÷ төлөвлөгөө 1000 = 10%)');
   assert.equal(r2.pct, null, 'гэрээгүй багц — «—»');
+
+  /* ── 2026-11-04: «Багц 7.1» (Cashflow/HO түлхүүр БАГЦ71 → газрын зургийн багц БАГЦ7) мөр АЛГА болдог байв —
+        aliasFin талбарт шошго «Багц 7.1» бичиж, pkgKeyOf → БАГЦ71 ≠ БАГЦ7. Одоо алиасын ТҮЛХҮҮРЭЭР. ── */
+  const { HO_IPC, pkgKeyOf } = await import('@/lib/services.ts');
+  const { hoTotals } = await import('@/lib/ipc.ts');
+  const { FIN_PKG_ALIAS, rangePaysOf } = await import('@/lib/pkgAlias.ts');
+  for (const [src, a] of Object.entries(FIN_PKG_ALIAS)) assert.equal(pkgKeyOf(a.key), a.key, `${src}: алиасын түлхүүр ${a.key} өөрөө түлхүүр биш`);
+  const HC = HO_IPC.contractFields, P = HO_IPC.payFields;
+  const pay = (pkg, dun) => ({ [HC.pkg]: pkg, [P.amount]: dun });
+  const fin71 = {
+    contracts: [
+      { bagts: 'Багц-7.1', geree_dun: 23_373, ho_dun_geree: 23_373, ho_dungiin_tailbar: 'Гэрээлсэн дүн', bagts_tuvshin1: '7.1' },
+      { bagts: 'Багц 1', geree_dun: 400, ho_dun_geree: 400, ho_dungiin_tailbar: 'Гэрээлсэн дүн', bagts_tuvshin1: '2' },
+    ],
+    planTotal: new Map([['БАГЦ71', 23_373], ['БАГЦ1', 400]]),
+    givenTotal: new Map([['БАГЦ71', 1_868], ['БАГЦ1', 100]]),
+    given: new Map([['БАГЦ71', new Map([['2026-10', 1_868]])]]), phys: new Map(), physCnt: new Map(), physAt: new Map(),
+    pays: [pay('Багц-7.1', 1_868), pay('Багц-1', 100), pay('Багц-1-4', 876)],
+  };
+  const pf71 = pkgFinRows(packs, fin71);
+  const r7 = pf71.rows.find((r) => r.key === 'БАГЦ7');
+  assert.ok(r7, 'БАГЦ7 (Багц 7.1) мөр алга');
+  assert.equal(r7.label, pk('БАГЦ7').name, 'нэр нь багцынх хэвээр');
+  assert.equal(r7.contract, 23_373);
+  assert.equal(r7.given, 1_868, 'БАГЦ71-ийн олголт БАГЦ7 мөрд');
+  assert.equal(r7.pct, (1_868 / 23_373) * 100);
+  assert.ok(!pf71.rows.some((r) => r.key === 'БАГЦ71'), 'БАГЦ71 тусдаа мөр үүсэхгүй');
+  /* Σ мөр + олон багц хамарсан олголт = hoTotals(pays).paid (удирдлагын тайлангийн 04 толгойтой тэнцүү) */
+  const paid71 = hoTotals(fin71.pays).paid;
+  assert.equal(pf71.rows.reduce((s, r) => s + r.given, 0) + rangePaysOf(fin71.pays).reduce((s, r) => s + r.amount, 0), paid71);
+  assert.equal(paid71, 1_868 + 100 + 876);
+  /* сарын цуваа ч ИЖИЛ түлхүүрээр (contractMonths → given.get) — Багц 7.1-ийн график 0 биш */
+  const { aliasFin } = await import('@/modules/PkgFin.tsx');
+  const a71 = aliasFin(fin71);
+  const row71 = a71.contracts.find((r) => r.__bagtsSrc === 'Багц-7.1');
+  assert.ok(row71 && pkgKeyOf(row71.bagts) === 'БАГЦ7', 'aliasFin: талбар алиасын түлхүүртэй таарна');
+  assert.equal(contractMonths(row71, a71).find((m) => m.label === '2026-10')?.given, 1_868, 'Багц 7.1 сарын олголт БАГЦ7 түлхүүрээр олдоно');
 }
 
 {

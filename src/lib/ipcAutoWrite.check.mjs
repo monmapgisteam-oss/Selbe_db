@@ -143,5 +143,53 @@ const B1 = row({ [P.id]: 'AUTO|БАГЦ2|2026-09-01', [C.code]: 'K2', [P.ipcNo]:
   console.log('✅ syncIpcFromFill — буруу огноо · үл мэдэгдэх багц → сүлжээгүй');
 }
 
+/* ── 9. ХОЁР ХУУДАСТАЙ БАГЦ · ӨӨР ӨДӨР (2026-11-04) — нөгөө хуудасны ӨМНӨХ өдрийн жааз дахин тоологдохгүй ──
+ * Амьд: AUTO|БАГЦ1|2026-09-03 зөв 58,402,563 ₮ атал хуучин зам 8,771,170,049 (= 9F@09-03 + 12F@07-08) өгдөг байв. */
+{
+  const { PKGS } = await import('@/modules/sheet/bagts.pkg.ts');
+  const { GUITS } = await import('@/lib/services/env.ts');
+  const D = (s) => Date.parse(`${s}T12:00:00Z`);
+  const mk = (n, blk) => {
+    const url = `${GUITS}/9${n}`;
+    const ob = `F${blk}_obyem`;
+    const T2 = addTable(url, { oid: 'objectid', fields: ['objectid', 'F_', 'ажил', 'gun', 'обьём', 'нэгж_өртөг', 'buglusun_ognoo', `F${blk}_гүйцэтгэл`, `F${blk}_төлөвлөгөөт`, ob] });
+    PKGS.push({ key: `tst_${n}`, group: 'Багц Т', floors: 9, name: `Багц Т · ${n}`, label: `Багц Т · ${n}`, url });
+    /** жааз: 2 мөр — тэр ӨДРИЙН ажил (`*_obyem`) */
+    const frame = (day, v1, v2) => {
+      T2.insert({ F_: '1', 'ажил': 'Шороо', gun: 0, 'обьём': 100, 'нэгж_өртөг': 10, buglusun_ognoo: D(day), [ob]: v1 });
+      T2.insert({ F_: '2', 'ажил': 'Бетон', gun: 0, 'обьём': 50, 'нэгж_өртөг': 20, buglusun_ognoo: D(day), [ob]: v2 });
+    };
+    return { T2, frame };
+  };
+  const A = mk('a', '5_1');
+  const B = mk('b', '6_1');
+  A.frame('2026-07-08', 100, null);   // 1 000 ₮
+  A.frame('2026-09-03', 5, 1);        // 50 + 20 = 70 ₮ — ЭНЭ өдрийн дүн
+  B.frame('2026-07-08', 200, null);   // 4 000 ₮ — өмнөх өдөр, 09-03-нд ОРОХГҮЙ
+  row({ [P.id]: 'ХО-0100', [C.pkg]: 'Багц Т', [C.code]: 'KT', [C.workType]: 'Барилга угсралт', [P.ipcNo]: 1, [P.amount]: 100 });
+  const r = await syncIpcFromFill('Багц Т', '2026-09-03');
+  assert.equal(r.ok, true, `бичигдэх ёстой: ${r.error ?? ''}`);
+  assert.equal(r.op, 'insert');
+  assert.equal(r.warn, undefined, 'нөгөө хуудас тэр өдөр жаазгүй — анхааруулгагүй (хэвийн)');
+  const a = T.rows.find((x) => x[P.id] === 'AUTO|БАГЦТ|2026-09-03');
+  assert.ok(a, 'AUTO мөр үүссэн');
+  assert.equal(a[UNE], 70, '⚠️ зөвхөн тэр өдрийн жааз: 5×10 + 1×20 = 70 (4 070 БИШ — 12F-ийн 07-08 дахин тоологдохгүй)');
+  assert.equal(a['guits_obyem'], 6);
+  assert.equal(a[C.code], 'KT');
+  /* Хоёр хуудас хоёулаа тэр өдөр жаазгүй — батлагдсан хуудас жаазтай байх ёстой тул ok:false (хуучин зам 07-08-ыг бичих байсан) */
+  const none = await syncIpcFromFill('Багц Т', '2026-09-04');
+  assert.equal(none.ok, false);
+  assert.match(none.error, /жаазгүй/);
+  assert.ok(!T.rows.some((x) => x[P.id] === 'AUTO|БАГЦТ|2026-09-04'), 'мөр үүсээгүй');
+  /* Нөгөө хуудас ОГТ нийтлэгдээгүй — хэвээр: 0 оролцоо + анхааруулга */
+  B.T2.rows.length = 0;
+  A.frame('2026-09-05', 2, null);
+  const unpub = await syncIpcFromFill('Багц Т', '2026-09-05');
+  assert.equal(unpub.ok, true);
+  assert.ok(unpub.warn && unpub.warn.includes('огт илгээгдээгүй'), 'нийтлэгдээгүй хуудасны анхааруулга хэвээр');
+  assert.equal(T.rows.find((x) => x[P.id] === 'AUTO|БАГЦТ|2026-09-05')[UNE], 20);
+  console.log('✅ 2 хуудас · өөр өдөр — нөгөө хуудасны өмнөх жааз дахин тоологдохгүй (70, 4 070 биш)');
+}
+
 assertNoUnexpected(assert);
 console.log('✅ ipcAutoWrite: зан үйлийн шалгуур давлаа');

@@ -288,6 +288,17 @@ const P = HO_IPC.payFields;
     assert.equal(locked.op, 'insert', 'IPC-д орсон мөр шинэчлэгдэхгүй');
     assert.equal(locked.attrs[P.id], 'AUTO|БАГЦ2|2026-10-11|2', 'давтагдашгүй ID');
     assert.equal(locked.attrs.ipc_tuluv, 'Гүйцэтгэл');
+    /* 2026-11-05: өдрийн бүх ажил 2, 5 — түгжигдсэн мөрд 0.4, 1 орсон → шинэ мөр зөвхөн үлдэгдэл 0.6, 1 */
+    const day2 = m.planAuto([{ ...base, ipc_tuluv: 'Олгосон', guits_une: 1, guits_obyem: 0.4 }], a);
+    assert.equal(day2.op, 'insert');
+    assert.equal(day2.attrs.guits_une, 1, 'ижил өдрийн IPC-д орсон дүн хасагдана');
+    assert.ok(Math.abs(day2.attrs.guits_obyem - 0.6) < 1e-9);
+    const two = m.planAuto([
+      { ...base, ipc_tuluv: 'Олгосон', guits_une: 1, guits_obyem: 0.4 },
+      { ...base, [P.id]: 'AUTO|БАГЦ2|2026-10-11|2', ipc_tuluv: 'IPC үүссэн', guits_une: 0.5, guits_obyem: 0.1 },
+    ], a);
+    assert.equal(two.attrs[P.id], 'AUTO|БАГЦ2|2026-10-11|3');
+    assert.ok(Math.abs(two.attrs.guits_une - 0.5) < 1e-9, 'хоёр түгжигдсэн мөрийн нийлбэр хасагдана');
     const multi = [{ [P.id]: 'ХО-1', [C.pkg]: 'БАГЦ-10,  БАГЦ-11', [C.code]: 'БАГЦ-10,11', [C.workType]: 'ГИШСүлжээ' }];
     assert.equal(m.contractFor(multi, 'БАГЦ10').code, 'БАГЦ-10,11', 'олон багцтай гэрээг олно');
     assert.equal(m.contractFor(multi, 'БАГЦ11').code, 'БАГЦ-10,11');
@@ -295,6 +306,10 @@ const P = HO_IPC.payFields;
   }
   assert.ok(W.includes("if (!cols.length) { reads.push('no-obyem'); continue; }"), 'обьёмгүй хуудас «дутуу» биш (F2)');
   assert.ok(W.includes("if (!upTo) { reads.push('unpublished'); continue; }"), 'жаазгүй хуудас «unpublished» (аудит №6)');
+  /* 2026-11-04: жааз бүр тухайн өдрийн ажил — өмнөх өдрийн жаазыг (`upTo < at`) дахин тоолохгүй, тэр өдрийн жаазыг л уншина */
+  assert.ok(W.includes("if (upTo !== at) { reads.push('no-frame'); continue; }")
+    && W.includes('loadRows(pkg, sc, at, need, { strict: true })') && !W.includes('loadRows(pkg, sc, upTo'),
+    'ipcAutoWrite: тэр өдөр жаазгүй хуудас «no-frame» (0 оролцоо), өмнөх өдрийн жааз уншигдахгүй');
   assert.ok(W.includes('const verdict = sheetsVerdict(reads);') && W.includes('if (!verdict.go) return verdict.result;'), 'шийдвэр sheetsVerdict-ээр (аудит №6)');
   assert.ok(W.includes('const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));')
     && W.includes('if (sc && sc.bld.length > 0 && weights[i] === 0) continue;'), 'давхардсан хуудас IPC-д алгасагдана (2026-10-26)');
@@ -341,6 +356,23 @@ const P = HO_IPC.payFields;
   v = sheetsVerdict(['missing']);
   assert.ok(!v.go && !v.result.ok, 'нэг хуудас уншигдаагүй → ok:false');
   console.log('✅ ipcAuto 2026-10-09 (аудит №6): sheetsVerdict — огт нийтлэгдээгүй хуудас 0 оролцоотой');
+}
+
+/* ══ 2026-11-04: sheetsVerdict — тэр өдөр жаазгүй хуудас (`no-frame`) 0 оролцоотой, анхааруулгагүй ══
+ * Хоёр хуудастай багцад (Багц 1 · 9F/12F) нөгөө хуудас ӨӨР өдөр бөглөгдсөн бол түүний өмнөх жааз дахин тоологдож
+ * AUTO|БАГЦ1|2026-09-03 = 58,402,563 биш 8,771,170,049 болж байв. Одоо тэр хуудас тэр өдөр 0 оролцоотой. */
+{
+  let v = sheetsVerdict(['read', 'no-frame']);
+  assert.ok(v.go && v.warn == null, '⚠️ нөгөө хуудас тэр өдөр жаазгүй — бичилт үргэлжилнэ, анхааруулгагүй (хэвийн тохиолдол)');
+  v = sheetsVerdict(['no-frame', 'read', 'unpublished']);
+  assert.ok(v.go && v.warn && v.warn.includes('огт илгээгдээгүй'), 'no-frame + unpublished — unpublished-ийн анхааруулга хэвээр');
+  v = sheetsVerdict(['read', 'no-frame', 'missing']);
+  assert.ok(!v.go && !v.result.ok && v.result.error.includes('бөглөгдөөгүй'), 'missing хэвээр хаана');
+  v = sheetsVerdict(['no-frame', 'no-frame']);
+  assert.ok(!v.go && !v.result.ok && v.result.error.includes('жаазгүй'), '⚠️ нэг ч хуудас тэр өдөр жаазгүй → ok:false (батлагдсан хуудас өөрийн жаазтай байх ёстой)');
+  v = sheetsVerdict(['no-frame', 'no-obyem']);
+  assert.ok(!v.go && !v.result.ok, 'no-frame + обьёмгүй → уншигдсан зүйлгүй → ok:false (no-data биш)');
+  console.log('✅ ipcAuto 2026-11-04: sheetsVerdict — тэр өдөр жаазгүй хуудас 0 оролцоотой');
 }
 
 console.log('ipcAuto.check ✓');

@@ -60,7 +60,7 @@ for (const fn of ['setInterval', 'setTimeout']) {
 
 const React = (await import('react')).default;
 const { renderToStaticMarkup } = await import('react-dom/server');
-const { huvMonthRows, ProjectPlanTable, isCfMonthCol } = await import('@/modules/Finance');
+const { huvMonthRows, ProjectPlanTable, isCfMonthCol, ppCalcVal } = await import('@/modules/Finance');
 const { assemblePlan } = await import('@/lib/projectPlanInputs');
 const { SRC_HUVAARI, SRC_MANUAL } = await import('@/lib/monthlyMoney');
 
@@ -179,6 +179,18 @@ check('харагдацын сонголт ба баганын шүүлт (2026-
   assert.match(html, /<option value=""[^>]*>Бүгд<\/option>/, 'багцын сонголт «Бүгд»-ээр эхэлнэ');
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
   assert.match(src, /<ProjectPlanView[\s\S]{0,300}canEdit=\{canEdit\}/, 'засах эрх (finEdit) дамжина');
+});
+
+check('ppCalcVal (2026-11-04) — «Олгосон хувь (төсөлд)» = олгосон ÷ ТӨСЛИЙН нийт E мөр бүрт; «(гэрээнд)» = ÷ мөрийн гэрээ', () => {
+  const m = { paid: 50, advance: 10, contract: 200 };
+  assert.equal(ppCalcVal('mPctTotal', m, 1000), 5, 'мөрийн өөрийн E (200) биш — Төслийн нийт 1000-д хуваана');
+  assert.equal(ppCalcVal('mPctContract', m, 1000), 25, 'гэрээнд: 50 ÷ 200');
+  assert.equal(ppCalcVal('mPctTotal', m, null), null, 'Төслийн нийт E алга → null (0 биш)');
+  assert.equal(ppCalcVal('mPctTotal', { paid: null, advance: null, contract: 200 }, 1000), null, 'олгоогүй → null');
+  assert.equal(ppCalcVal('mPaid', m, 1000), 50);
+  assert.equal(ppCalcVal('mAdvance', m, 1000), 10);
+  assert.equal(ppCalcVal('mContract', m, 1000), 200);
+  assert.equal(ppCalcVal('mContract', undefined, 1000), null);
 });
 
 /* ══════════ §3 Эх кодын хамгаалалт ══════════ */

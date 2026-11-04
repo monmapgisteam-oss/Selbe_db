@@ -147,6 +147,16 @@ const contract = (o = {}) => ({
   /* Нэгдсэн мөрүүд огт байхгүй үед хуучин зан хэвээр */
   const plain = payRows([pay(1, work, 20, { [P.ipcNo]: 1, [LINK_FIELDS.obyem]: 7, [LINK_FIELDS.une]: 18, [LINK_FIELDS.zoruu]: 2 })]);
   assert.deepEqual([plain[0].obyem, plain[0].une, plain[0].zoruu, plain[0].days], [7, 18, 2, []]);
+  /* 2026-11-04: IPC-д ороогүй 0 ₮ «Гүйцэтгэл» AUTO мөр (AUTO|БАГЦ33|2026-09-09 — тэр өдөр жаазгүй) карт болохгүй */
+  const zero = payRows([
+    pay(1, work, 100, { [P.ipcNo]: 1, [P.payDate]: '2026-08-26', [S.field]: S.paid }),
+    auto(7, '2026-09-09', null, 0, 0, S.work),        // 0 ₮, холбогдоогүй → нуугдана
+    auto(8, '2026-09-10', null, 0, 0, null),           // төлөвгүй (= «Гүйцэтгэл») → нуугдана
+    auto(9, '2026-09-11', null, null, null, S.work),   // хэмжигдээгүй (null ≠ 0) → харагдана
+    auto(10, '2026-09-12', 2, 0, 0, S.created),        // 0 ₮ ч IPC-д орсон → харагдана
+    auto(11, '2026-09-13', null, 30, 3, S.work),       // дүнтэй → харагдана
+  ]);
+  assert.deepEqual(zero.map((x) => x.oid), [1, 10, 9, 11], '⚠️ 0 ₮ холбогдоогүй AUTO мөр (7, 8) карт болохгүй; null ба IPC-д орсон мөр үлдэнэ');
 }
 
 /* ══ 1b. ЗАХИРАМЖ ба ОН — мөрөнд гарна ══ */

@@ -11,7 +11,7 @@ import { VIEWS, type ViewKey } from '@/lib/services';
 
 /** Хажуугийн цэсний засах эрхийн хуудас — `UserAdmin`-ы `pane` id */
 export type ErhPane =
-  | 'guits' | 'huvaari' | 'ajil' | 'obyem' | 'chanar' | 'butets' | 'zovshoorol' | 'fin' | 'gazar' | 'hamaaral' | 'habea' | 'zurag' | 'sys';
+  | 'guits' | 'huvaari' | 'ajil' | 'obyem' | 'chanar' | 'butets' | 'zovshoorol' | 'fin' | 'ipc' | 'gazar' | 'hamaaral' | 'habea' | 'zurag' | 'uyShat' | 'sys';
 
 /**
  * ХУУДАС → ЭРХҮҮД. Дараалал = хажуугийн цэсний дараалал («Гүйцэтгэлийн урсгалын
@@ -25,11 +25,13 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   chanar: ['chanarAuthor', 'chanarReview'],
   butets: ['butets'],
   zovshoorol: ['zovshoorol'],
-  fin: ['finEdit', 'finRow', 'ipcApprove', 'cfSwitch'],
+  fin: ['finEdit', 'finRow', 'cfSwitch'],
+  ipc: ['ipcCreate', 'ipcApprove'],
   gazar: ['gazar'],
   hamaaral: ['hamaaral'],
   habea: ['habeaData', 'habeaOwn'],
   zurag: ['zuragEdit'],
+  uyShat: ['zahiramjEdit', 'songonEdit', 'zovshoorolTtbEdit', 'ashiglaltEdit'],
   sys: ['sysClose', 'docsUpload', 'docsGroups'],
 };
 
@@ -67,10 +69,12 @@ export const paneLabel = (p: ErhPane): string => {
   if (p === 'butets') return tr('Инженерийн дэд бүтцийн засварын эрх');
   if (p === 'zovshoorol') return tr('Зөвшөөрөл засах');
   if (p === 'fin') return tr('Санхүүгийн бүртгэлийн эрх');
+  if (p === 'ipc') return tr('IPC-ийн эрх');
   if (p === 'gazar') return tr('Газрын төлөв засах');
   if (p === 'hamaaral') return tr('Багцын хамаарал засах');
   if (p === 'habea') return tr('ХАБЭА-ийн бүртгэл оруулах');
   if (p === 'zurag') return tr('ТЭЗҮ, зураг төсөл засах');
+  if (p === 'uyShat') return tr('Үе шатны мэдээлэл оруулах');
   if (p === 'sys') return tr('Систем түр хаах');
   return p;
 };
@@ -91,14 +95,19 @@ export const capLabel = (k: CapKey): string => {
   if (k === 'butets') return tr('Инженерийн дэд бүтцийн засвар');
   if (k === 'zovshoorol') return tr('Зөвшөөрөл засах');
   if (k === 'finEdit') return tr('Санхүүгийн бүртгэл — утга засах');
+  if (k === 'ipcCreate') return tr('IPC үүсгэх');
   if (k === 'ipcApprove') return tr('IPC баталгаажуулах');
   if (k === 'finRow') return tr('Санхүүгийн бүртгэл — мөр нэмэх');
   if (k === 'gazar') return tr('Газрын төлөв засах');
   if (k === 'hamaaral') return tr('Багцын хамаарал засах');
   if (k === 'habeaData') return tr('ХАБЭА-ийн бүртгэл оруулах');
   if (k === 'habeaOwn') return tr('ХАБЭА — багцаар харах');
-  if (k === 'zuragEdit') return tr('ТЭЗҮ, зураг төсөл засах');
+  if (k === 'zuragEdit') return tr('ТЭЗҮ, зураг төсөл, газар чөлөөлөлтийн огноо засах');
   if (k === 'cfSwitch') return tr('Сарын мөнгө — Гараар → Хуваарь шилжүүлэх');
+  if (k === 'zahiramjEdit') return tr('Захирамж оруулах');
+  if (k === 'songonEdit') return tr('Сонгон шалгаруулалт оруулах');
+  if (k === 'zovshoorolTtbEdit') return tr('Зөвшөөрөл (төлөвлөгөө) оруулах');
+  if (k === 'ashiglaltEdit') return tr('Ашиглалтад оруулах огноо оруулах');
   if (k === 'sysClose') return tr('Систем түр хаах');
   if (k === 'docsUpload') return tr('Баримт бичгийн сан — PDF оруулах');
   if (k === 'docsGroups') return tr('Баримт бичгийн сан — бүлэг үүсгэх');
@@ -121,9 +130,11 @@ const paneSummary = (p: ErhPane): string => {
   if (p === 'butets') return tr('Багц тус бүрд инженерийн шугамын атрибут (урт, бүс, баримт) засах аккаунтыг томилно.');
   if (p === 'zovshoorol') return tr('Зөвшөөрөл нэмэх, засах, устгах эрх — аккаунтаар олгоно.');
   if (p === 'fin') return tr('Cashflow хүснэгтийн утга засах ба мөр нэмэх эрх — аккаунтаар, тус тусад нь олгоно.');
+  if (p === 'ipc') return tr('IPC үүсгэх ба батлах эрх — аккаунтаар, тус тусад нь олгоно.');
   if (p === 'gazar') return tr('Нэгж талбарын төлөв, явцын мэдээ, эзэмшигчийг засах эрх — аккаунтаар олгоно.');
   if (p === 'hamaaral') return tr('Багц хоорондын хамаарлын холбоо нэмэх, устгах эрх — аккаунтаар олгоно.');
   if (p === 'zurag') return tr('ТЭЗҮ ба ажлын зураг төслийн навч мөрийн огноо, явцыг засах эрх — аккаунтаар олгоно.');
+  if (p === 'uyShat') return tr('«Төсөл төлөвлөгөө биелэлт»-ийн захирамж, сонгон шалгаруулалт, зөвшөөрөл, ашиглалтын мэдээллийг тус тусын хуудсанд оруулах 4 эрх — аккаунтаар, тус тусад нь олгоно.');
   if (p === 'habea') return tr('ХАБЭА хуудасны «Бусад үзүүлэлт» ба «Хог хаягдал»-д бүртгэл нэмэх, үзлэгийн тайлан татах эрх, мөн зөвхөн өөрийн багц харах хязгаар — аккаунтаар олгоно.');
   if (p === 'sys') return tr('Порталыг бусад хэрэглэгчдэд түр хааж («Систем түр хаагдсан» цонх), дахин нээх эрх — аккаунтаар олгоно.');
   return '';
@@ -173,8 +184,11 @@ export const capNote = (k: CapKey): string => {
   if (k === 'finEdit') {
     return tr('«Санхүүжилт» харагдацын Cashflow (/173) хүснэгтийн нүдний утга ба Cashflow хуваарилалтыг засах. Энэ нь дашбоардын санхүүгийн тооны эх сурвалж тул нэг нүд засахад 02, 08 дашбоард, тайлан бүгд дагаж өөрчлөгдөнө. IPC нь гүйцэтгэлийн батлалтаас автоматаар үүсдэг — энэ эрхээр засагдахгүй.');
   }
+  if (k === 'ipcCreate') {
+    return tr('Чеклэсэн гүйцэтгэлээс IPC үүсгэх, гарын үсэгтэй скан оруулах, гэрээ үүсгэх.');
+  }
   if (k === 'ipcApprove') {
-    return tr('Гарын үсэгтэй IPC-г баталгаажуулж «Олгосон» болгох, IPC болон гэрээ цуцлах. IPC үүсгэсэн хүн өөрөө баталгаажуулах боломжгүй.');
+    return tr('Гарын үсэгтэй IPC-г баталгаажуулж «Олгосон» болгох, IPC болон гэрээ цуцлах.');
   }
   if (k === 'finRow') {
     return tr('Cashflow хүснэгтэд шинэ мөр нэмэх. Байгаа мөрийн утгыг засахад «утга засах» эрх тусдаа хэрэгтэй. Мөр устгах боломжгүй.');
@@ -192,7 +206,19 @@ export const capNote = (k: CapKey): string => {
     return tr('Заасан багцын мөрөнд нэмсэн аккаунт ХАБЭА хуудсанд зөвхөн тэр багцын мэдээллийг харна. Хүснэгтэд байхгүй аккаунт бүх багцыг харна.');
   }
   if (k === 'zuragEdit') {
-    return tr('«ТЭЗҮ · Ажлын зураг төсөл» дээр навч мөрийн эхлэх, дуусах огноо ба явцын хувийг засах, багцад дэд шат нэмэх. Батлагч байхгүй. Эрхгүй хүн зөвхөн харна.');
+    return tr('«ТЭЗҮ · Ажлын зураг төсөл» дээр навч мөрийн эхлэх, дуусах огноо ба явцын хувийг засах, багцад дэд шат нэмэх; «Газар чөлөөлөлтийн огноо» дээр огноо засах. Батлагч байхгүй. Эрхгүй хүн зөвхөн харна.');
+  }
+  if (k === 'zahiramjEdit') {
+    return tr('«Захирамж» хуудсанд багц бүрийн захирамжийн огноо, дугаар оруулах. Батлагч байхгүй.');
+  }
+  if (k === 'songonEdit') {
+    return tr('«Сонгон шалгаруулалт» хуудсанд багц бүрийн сонгон шалгаруулалтын огноо, гэрээ байгуулсан огноо, явцыг оруулах. Батлагч байхгүй.');
+  }
+  if (k === 'zovshoorolTtbEdit') {
+    return tr('«Зөвшөөрөл (төлөвлөгөө)» хуудсанд багцын зөвшөөрлийн мөр нэмэх, устгах, огноо, явц оруулах. Батлагч байхгүй.');
+  }
+  if (k === 'ashiglaltEdit') {
+    return tr('«Ашиглалтад оруулах» хуудсанд багц бүрийн ашиглалтад оруулах огноог оруулах. Батлагч байхгүй.');
   }
   if (k === 'cfSwitch') {
     return tr('Гэрээний гараар оруулсан сарын мөрийг УСТГАЖ, сарын мөнгийг Хуваарийн сарын обьём × нэгж өртгөөр тооцоолно. Буцаах боломжгүй.');

@@ -31,7 +31,7 @@ if (!g.navigator) g.navigator = {};
 g.fetch = () => Promise.reject(new Error('execReport.ui.check: сүлжээгүй'));
 process.on('unhandledRejection', noop);
 
-const { negtgelProjectPlan, execFindings, execFacts, householdsMissingOf } = await import('./execReport.ts');
+const { negtgelProjectPlan, execFindings, execFacts, householdsMissingOf, execFinRanges } = await import('./execReport.ts');
 
 let n = 0;
 const ok = (name, fn) => { fn(); n += 1; console.log('  ✓', name); };
@@ -65,7 +65,7 @@ ok('negtgelProjectPlan = Σ 1-р түвшний (төсөлд эзлэх × тө
 /* ── 2. Дүгнэлт — хуваарийн хамралт < 95% бол хоцрогдол/түрүүлэлт ДҮГНЭХГҮЙ ── */
 const base = (prog) => ({
   gdash: {
-    budget: 100, contract: 95, progress: 38.9, progressSrc: 'negtgel', progressPlan: 71.85, packages: 74, types: 7, landPct: null,
+    budget: 100, contract: 95, progress: 38.9, progressPlan: 71.85, packages: 74, types: 7, landPct: null,
     land: { total: 0, cleared: 0, remaining: 0, areaM2: 0, byStatus: [], reasons: [] },
     hse: { date: '2026-10-20', workers: 10, equipment: 2, manHours: 80 }, byType: [], bySource: [],
   },
@@ -74,7 +74,7 @@ const base = (prog) => ({
     actual: 24.55, planned: 34.19, gap: 9.64, actualLag: 24.55, planExcluded: [], planCoverage: 59.08, planFailed: 0,
     packs: [], levels: [], ...prog,
   },
-  fin: { planTotal: 0, given: null, givenContracted: 0, givenOther: 0, share: null, remain: null, rows: [] },
+  fin: { planTotal: 0, given: null, givenContracted: 0, givenOther: 0, share: null, remain: null, rows: [], ranges: [], givenUnlisted: 0 },
   zov: { total: 0, ok: 0, wait: 0, no: 0, unknown: 0, byBagts: [], issues: [] },
   fetchedAt: 0,
 });
@@ -136,6 +136,37 @@ ok('householdsMissingOf: AIL_TOO хоосон полигон + полигонг�
   assert.equal(householdsMissingOf(keys, ['Б1|1', 'Б1|2'], 1), 3, 'хоосон 1 + полигонгүй 2');
   assert.equal(householdsMissingOf(keys, [], 9), 4, 'дээд хязгаар — блокийн тоо');
   assert.ok(ER.includes('householdsMissingOf(lvKeys, uniqueBlocks(bld.rows).map((b) => b.key), bld.householdsMissing)'), 'prog.householdsMissing полигонгүй блокийг тоолно');
+});
+
+/* ── 2026-11-04: 04-ийн хүснэгт толгойтойгоо тэнцүү — олон багц хамарсан олголт тусдаа мөр ── */
+const { HO_IPC } = await import('./services.ts');
+const { hoTotals } = await import('./ipc.ts');
+ok('execFinRanges: Σ мөр + Σ диапазон + givenUnlisted = hoTotals(pays).paid («Багц-1-4» 876,465,164)', () => {
+  const HC = HO_IPC.contractFields, P = HO_IPC.payFields;
+  const pay = (pkg, dun) => ({ [HC.pkg]: pkg, [P.amount]: dun });
+  const pays = [pay('Багц-1', 70_000), pay('Багц-2', 143_000), pay('Багц-7.1', 1_868), pay('Багц-1-4', 876_465_164), pay('Багц-1-4', null)];
+  const rows = [{ given: 70_000 }, { given: 143_000 }, { given: 1_868 }];
+  const paid = hoTotals(pays).paid;
+  const r = execFinRanges(rows, pays, paid);
+  assert.equal(r.ranges.length, 1);
+  assert.equal(r.ranges[0].label, 'Багц-1-4');
+  assert.deepEqual(r.ranges[0].members, ['БАГЦ1', 'БАГЦ2', 'БАГЦ3', 'БАГЦ4']);
+  assert.equal(rows.reduce((s, x) => s + x.given, 0) + r.ranges.reduce((s, x) => s + x.given, 0) + r.givenUnlisted, paid, 'Σ мөр + диапазон = толгойн «Олгосон»');
+  assert.equal(r.givenUnlisted, 0);
+  /* багц жагсаалтад алга түлхүүрийн олголт → givenUnlisted (хүснэгт толгойтойгоо тэнцүү хэвээр) */
+  const r2 = execFinRanges(rows.slice(0, 2), pays, paid);
+  assert.equal(r2.givenUnlisted, 1_868);
+  assert.equal(execFinRanges(rows, pays, null).givenUnlisted, 0, 'олголт уншигдаагүй → 0');
+});
+ok('дэлгэц · PDF · AI баримт — диапазон мөр ба мөргүй олголт гардаг', () => {
+  assert.match(UI, /x\.fin\.ranges\.map\(\(g\) => \(/);
+  assert.match(UI, /x\.fin\.givenUnlisted > 0 &&/);
+  const PDF = strip(readFileSync(new URL('./execPdf.ts', import.meta.url), 'utf8'));
+  assert.match(PDF, /\.\.\.f\.ranges\.map\(\(g\): TableCell\[\] => \[/);
+  assert.match(PDF, /f\.givenUnlisted > 0 \?/);
+  const t = execFacts({ ...base({}), fin: { ...base({}).fin, ranges: [{ label: 'Багц-1-4', given: 876465164, members: ['БАГЦ1'] }], givenUnlisted: 5 } });
+  assert.ok(t.includes('- Багц-1-4 (хэд хэдэн багц хамарсан олголт): олгосон 876,465,164 ₮'), t);
+  assert.ok(t.includes('- Багцын мөрд ороогүй олголт: 5 ₮'), t);
 });
 
 console.log(`execReport.ui.check: ${n} шалгуур ✅`);

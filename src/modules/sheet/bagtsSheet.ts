@@ -59,6 +59,12 @@ export type SheetRow = {
   obyemDay?: (number | null)[];
   obyemBase?: (number | null)[];
   /**
+   * ӨМНӨХ ӨДРҮҮДИЙН хуримтлал (`priorObyem`, энэ жаазны өдрийнхийг ОРУУЛААГҮЙ) ба энэ жаазны өдөр (`YYYY-MM-DD`, UTC).
+   * Ижил өдөр дахин бичихэд суурь нь энэ — өдрийн СҮҮЛИЙН жааз өдрийн БҮХ ажлыг хадгална (`sheetFrame.buildFrame`).
+   */
+  obyemPrior?: (number | null)[];
+  frameDay?: string | null;
+  /**
    * Үйлчилгээнээс ирсэн БҮХ талбар, хэвээрээ. Архивын шинэ хуулбар үүсгэхэд
    * (нийтлэх бүрд бүтэн хуудас доор нь нэмэгддэг) энэ мөрийг суурь болгож,
    * зөвхөн бодогдсон талбаруудыг дарж бичнэ — ингэснээр код мэддэггүй
@@ -964,11 +970,12 @@ export async function loadRows(
   const prior = wantOb && frameDay && sc.f.fillDate ? await priorObyem(pkg, sc, frameDay) : null;
   rows.forEach((r, i) => {
     r.obyemDay = r.obyem.slice();
-    if (prior) {
-      const pr = prior.get(rowKeysOut[i]);
-      if (pr) r.obyem = r.obyem.map((v, b) => (v == null && pr[b] == null ? null : (v ?? 0) + (pr[b] ?? 0)));
-    }
+    const pr = prior?.get(rowKeysOut[i]);
+    if (pr) r.obyem = r.obyem.map((v, b) => (v == null && pr[b] == null ? null : (v ?? 0) + (pr[b] ?? 0)));
     r.obyemBase = r.obyem.slice();
+    /* Ижил өдөр дахин бичихэд суурь = өмнөх өдрүүд л (энэ жаазны өдрийн ажил шинэ жаазанд бүтнээрээ орно) */
+    r.obyemPrior = pr ? pr.slice() : sc.obyem.map(() => null);
+    r.frameDay = frameDay;
   });
   return { rows, asOf, snapshot, frameLen: rows.length, rawFrameLen: feats2.length };
 }

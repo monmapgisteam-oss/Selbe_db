@@ -20,6 +20,18 @@ const pays = [
   auto({ oid: 5, day: '2026-10-11', une: 118 }),
 ];
 
+/* 2026-11-04: IPC үүсгэх/цуцлах/урьдчилгааны огноо ОРОН НУТГИЙН өдөр (`dayKey`) — бөглөх хуудастай нэг дүрэм; UTC (`toISOString`) биш:
+   шөнийн 0–8 цагт UTC өдөр нэгээр хоцордог байв */
+{
+  const { readFileSync } = await import('node:fs');
+  const ui = readFileSync('src/modules/IpcFlow.tsx', 'utf8');
+  assert.ok(ui.includes('const today = (): string => dayKey(Date.now());'), 'IpcFlow: today() = dayKey (орон нутгийн өдөр)');
+  assert.ok(!ui.includes('toISOString().slice(0, 10)'), 'IpcFlow: UTC өдөр хэрэглэхгүй');
+  const { dayKey } = await import('./format.ts');
+  const ub = new Date(2026, 10, 4, 1, 30); // орон нутгийн 2026-11-04 01:30 — UTC-ээр 11-03 байж болно
+  assert.equal(dayKey(ub.getTime()), '2026-11-04', 'dayKey орон нутгийн хуанлийн өдөр');
+}
+
 /* Төлөв */
 assert.equal(statusOf(pays[0]), 'Олгосон', 'dun-тэй хуучин мөр');
 assert.equal(statusOf(pays[2]), 'Гүйцэтгэл', 'AUTO мөр');
@@ -54,15 +66,13 @@ const after = [
   { objectid: 9, created_user: 'a', ...c.adds[0] },
 ];
 let d = docRows(after)[0];
-assert.deepEqual([d.no, d.status, d.total, d.createdBy, d.isCancel], [3, 'IPC үүссэн', 220, 'a', false]);
-assert.equal(approveWhy(d, 'b'), 'status', 'скангүй баталгаажуулахгүй');
+assert.deepEqual([d.no, d.status, d.total, d.isCancel], [3, 'IPC үүссэн', 220, false]);
+assert.equal(approveWhy(d), 'status', 'скангүй баталгаажуулахгүй');
 const signed = { ...after[after.length - 1], ...signIpc(d, 'item1') };
 const after2 = [...after.slice(0, -1), signed];
 d = docRows(after2)[0];
 assert.equal(d.status, 'Гарын үсэг зурсан');
-assert.equal(approveWhy(d, 'a'), 'same-user', 'үүсгэсэн хүн баталгаажуулахгүй');
-assert.equal(approveWhy(d, 'A'), 'same-user', 'том жижиг үсэг хамаагүй');
-assert.equal(approveWhy(d, 'b'), null);
+assert.equal(approveWhy(d), null, '2026-11-04: нэг хүн үүсгэж баталж болно');
 const ap = approveIpc(d, after2);
 assert.deepEqual(ap[0], { objectid: 9, dun: 220, ipc_tuluv: 'Олгосон' }, 'dun баримтын нийлбэрээс автоматаар');
 assert.deepEqual(ap.slice(1).map((u) => u.objectid), [3, 4]);

@@ -60,6 +60,7 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'zovshoorol') return tr('Зөвшөөрөл');
   if (k === 'finEdit') return tr('Санхүү — утга');
   if (k === 'finRow') return tr('Санхүү — мөр');
+  if (k === 'ipcCreate') return tr('IPC үүсгэх');
   if (k === 'ipcApprove') return tr('IPC батлах');
   if (k === 'plan') return tr('Хуваарь зохиох');
   if (k === 'planApprove') return tr('Хуваарь батлах');
@@ -76,7 +77,11 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'sysClose') return tr('Систем хаах');
   if (k === 'docsUpload') return tr('Баримт оруулах');
   if (k === 'docsGroups') return tr('Баримтын бүлэг');
-  if (k === 'zuragEdit') return tr('ТЭЗҮ, зураг төсөл');
+  if (k === 'zuragEdit') return tr('ТЭЗҮ, зураг төсөл, газар чөлөөлөлтийн огноо');
+  if (k === 'zahiramjEdit') return tr('Захирамж');
+  if (k === 'songonEdit') return tr('Сонгон шалгаруулалт');
+  if (k === 'zovshoorolTtbEdit') return tr('Зөвшөөрөл (төлөвлөгөө)');
+  if (k === 'ashiglaltEdit') return tr('Ашиглалтад оруулах');
   if (k === 'cfSwitch') return tr('Сарын мөнгө → Хуваарь');
   return k;
 };

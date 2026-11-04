@@ -7,7 +7,7 @@
  * бол барилга ӨӨР барилгын гүйцэтгэлийг зүүнэ.
  */
 import assert from 'node:assert/strict';
-import { loadBlockProgress } from './blockProgress.ts';
+import { loadBlockProgress, loadPrepProgress } from './blockProgress.ts';
 
 if (process.env.SELBE_LIVE_SKIP) {
   console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
@@ -52,6 +52,16 @@ for (const [key, cell] of prog) {
     assert.match(p.no, /^Б[1-5]$/, `${key}: дэд үе шатны № буруу (${p.no})`);
     assert.ok(p.pct == null || (p.pct >= 0 && p.pct <= 100), `${key}/${p.no}: ${p.pct}`);
   }
+}
+{
+  /* 2026-11-05: «А. Бэлтгэл ажил» мөрийн явц — тусдаа map; бөглөөгүй null, эсвэл 0–100 (цэвэр дүрэм `blockProgressCutoff.check`-д);
+     «Б.» хоосон блок ч орно (Багц-4.2 6/6: Б. хоосон, А. = 80) */
+  const prep = await loadPrepProgress();
+  for (const [key, v] of prep) assert.ok(v == null || (Number.isFinite(v) && v >= 0 && v <= 100), `${key}: prep буруу (${v})`);
+  const withPrep = [...prep].filter(([, v]) => v != null);
+  assert.ok(withPrep.length > 0, '«А. Бэлтгэл ажил» мөр нэг ч блокт уншигдсангүй (Багц-1 · 4.1 · 4.2 бөглөгдсөн байх ёстой)');
+  for (const k of prog.keys()) assert.ok(prep.has(k), `${k}: compute-д байгаа блок computePrep-д алга`);
+  console.log(`prep: ${withPrep.length}/${prep.size} блокт утгатай · compute ${prog.size}`);
 }
 
 // 3. ТҮЛХҮҮР-ТААРУУЛАЛТ — гол чиглэл нь ГҮЙЦЭТГЭЛ → ДАВХАРГА.

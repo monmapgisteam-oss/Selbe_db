@@ -5,7 +5,7 @@ import { PKGS, loadSchema, SYNTHETIC_BLOCK, type Pkg, type Schema } from './bagt
 import { msToDay, normDayMs } from './bagtsSheet';
 import { levelFromNo } from './ags';
 import { TREES } from './bagts.trees';
-import { TASK_SHEET, bagtsKey, buildingKey, normalizeTaskNo, constructionWhere } from '@/lib/services';
+import { TASK_SHEET, bagtsKey, buildingKey, normalizeTaskNo, constructionWhere, prepWhere } from '@/lib/services';
 import { arcgisPost, isRateLimit } from '@/lib/query';
 
 /** Урт хэлбэрийн НЭГ мөр — нэг ажлын, нэг блокийн, нэг агшны бүртгэл. */
@@ -53,7 +53,7 @@ export type SheetRowOpts = {
   /** Зөвхөн энэ блокийн БАГАНЫГ татна («5/1») — хүсэлт хамаагүй хөнгөн болно. */
   block?: string | null;
   /**
-   * Зөвхөн `Б.` ба `Б1…Б5` мөр. Газрын зургийн гүйцэтгэлд ЭНЭ хэрэгтэй:
+   * Зөвхөн `Б.` ба `Б1…Б5` мөр (2026-11-05-аас «А.» Бэлтгэл ажлын мөр ч). Газрын зургийн гүйцэтгэлд ЭНЭ хэрэгтэй:
    * навч ажлууд (1,370 мөр × 20 блок = 27 мянган цэг) огт татагдахгүй.
    */
   constructionOnly?: boolean;
@@ -217,8 +217,10 @@ export async function loadSheetRows(opts: SheetRowOpts = {}): Promise<SheetRow[]
         .filter((x): x is string => !!x)
       : [];
 
+    /* 2026-11-05: «А. Бэлтгэл ажил» мөрийг ч хамт (`blockProgress.compute` → `prep`, ТТБ 5.1.3.1.x блокийн явц);
+       `history`/дэд үе шат нормчилсон №-өөр түлхүүрлэдэг тул нэмэлт мөр тэдэнд нөлөөлөхгүй */
     const where = constructionOnly
-      ? `(${sc.f.no} IN (${subList}) OR ${constructionWhere(sc.f.no)})`
+      ? `(${sc.f.no} IN (${subList}) OR ${constructionWhere(sc.f.no)} OR ${prepWhere(sc.f.no)})`
         + ` AND ${sc.f.fillDate} IS NOT NULL`
       : `${sc.f.fillDate} IS NOT NULL`;
 

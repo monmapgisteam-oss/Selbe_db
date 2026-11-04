@@ -10,12 +10,12 @@
 
 import { cached, loadFillPkgProgress } from '@/lib/live';
 import type { SourceKey } from '@/lib/projectPlan';
-import { loadProjectSourceTotals } from '@/lib/projectPlanInputs';
+import { loadProjectSourceTotals, loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, chartSourceMerged, isContracted,
-  planScopeNote, type ProgressSrc,
+  planScopeNote,
 } from '@/lib/gdash';
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
@@ -23,7 +23,7 @@ import { loadNegtgelFull, negtgelProjectPct, type NegtgelRow, type NegtgelCalc }
 import { loadPlanCurveCached, coverageOk } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf, hoAmount, HO_IPC } from '@/lib/services';
-import { finPkgKey } from '@/lib/pkgAlias';
+import { finPkgKey, rangePaysOf } from '@/lib/pkgAlias';
 import { loadBuildings, uniqueBlocks } from '@/modules/BuildingPanel';
 import { levelCounts } from '@/lib/blockProgress';
 import { buildPacks, blockCount } from '@/modules/Bagts';
@@ -44,11 +44,6 @@ export type ExecReport = {
     contract: number;
     /** Төслийн нийт гүйцэтгэл (`Negtgel_guitsetgel`, унавал 6 шатны бодолт), 0–100; хэмжигдээгүй бол null */
     progress: number | null;
-    /**
-     * `progress`-ийн эх (2026-09-25) — дэлгэц · PDF · PNG · AI баримт шошгоо
-     * ҮҮНЭЭС авна (`gdash.progressLabel`/`progressSub`).
-     */
-    progressSrc: ProgressSrc;
     progressPlan: number | null;
     packages: number;
     types: number;
@@ -129,6 +124,13 @@ export type ExecReport = {
       contracted: boolean;
       rangePaid?: string;
     }[];
+    /**
+     * ОЛОН БАГЦ ХАМАРСАН олголт («Багц-1-4» г.м., `pkgAlias.rangePaysOf`) — багцын мөрд ордоггүй тул ТУСДАА мөр
+     * (2026-11-04): Σ `rows.given` + Σ `ranges.given` + `givenUnlisted` = `given` (толгойн «Олгосон»).
+     */
+    ranges: { label: string; given: number; members: string[] }[];
+    /** Багцын мөр ч, диапазон мөр ч биш олголт (багц жагсаалтад алга) — 0 бол хүснэгт толгойтойгоо тэнцүү */
+    givenUnlisted: number;
   };
   /** Зөвшөөрөл — үйлчилгээ холбогдоогүй бол `null` (мэдээлэлгүй ≠ 0) */
   zov: {
@@ -180,7 +182,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
 
   /* ── 01. Ерөнхий дашбоард — `GeneralDash.KpiStrip`-тэй ИЖИЛ ── */
   const csum = cf.reduce((s, r) => (r.inTotal && isContracted(r) ? s + (contracts.get(r.oid) ?? 0) : s), 0);
-  const k = kpisOf(cf, csum, land.pct, wbsPct);
+  /* 2026-11-04: нийт төсөв = ТТБ-ийн Төслийн нийт E (дашбоард · тайлантай ИЖИЛ) */
+  const k = kpisOf(cf, csum, wbsPct, await loadProjectBudgetTotal().catch(() => null));
   const catPct = new Map<string, number>();
   if (actual != null) catPct.set('ОРОН СУУЦНЫ ХОРООЛОЛ', actual);
   const infra = typePhysNow(fin, cf, INFRA_TYPE, nowYm);
@@ -223,6 +226,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     rangePaid: r.rangePaid,
   }));
   const finGivenContracted = finance.paidContracted;
+  const finRanges = execFinRanges(finRows, fin.pays, finGiven);
   if (finGiven != null) {
     const HC = HO_IPC.contractFields;
     const rowKeys = new Set(finRows.filter((r) => r.contracted).map((r) => r.key));
@@ -287,8 +291,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   });
   return {
     gdash: {
-      budget: k.budget, contract: k.contract, progress: k.progress, progressSrc: k.progressSrc,
-      progressPlan: k.progressSrc === 'negtgel' ? wbs?.plan ?? null : null,
+      budget: k.budget, contract: k.contract, progress: k.progress,
+      progressPlan: wbsPct != null ? wbs?.plan ?? null : null,
       packages: k.packages, types: k.types, landPct: land.pct,
       land: {
         total: land.total, cleared: land.cleared, remaining: land.remaining, areaM2: land.areaM2,
@@ -331,10 +335,27 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       share: finGiven != null ? paidPctOf(finance.paidContracted, finance.contractAmount) : null,
       remain: finGiven == null ? null : Math.max(0, csum - finGivenContracted),
       rows: finRows,
+      ranges: finRanges.ranges,
+      givenUnlisted: finRanges.givenUnlisted,
     },
     zov,
     fetchedAt: Date.now(),
   };
+}
+
+/**
+ * 04-ИЙН ХҮСНЭГТИЙГ ТОЛГОЙТОЙ НЬ ТЭНЦҮҮЛЭХ (2026-11-04): олон багц хамарсан олголт («Багц-1-4» 876 сая ₮) багцын мөрд
+ * ордоггүй тул тусдаа мөр; үлдэх зөрүү (`givenUnlisted` — багц жагсаалтад байхгүй түлхүүрийн олголт) тэмдэглэлээр.
+ * Σ `rows.given` + Σ `ranges.given` + `givenUnlisted` = `given` (`hoTotals(pays).paid`).
+ */
+export function execFinRanges(
+  rows: ReadonlyArray<{ given: number }>,
+  pays: ReadonlyArray<Record<string, unknown>>,
+  given: number | null,
+): Pick<ExecReport['fin'], 'ranges' | 'givenUnlisted'> {
+  const ranges = rangePaysOf(pays).map((r) => ({ label: r.label, given: r.amount, members: r.members }));
+  const listed = rows.reduce((s, r) => s + r.given, 0) + ranges.reduce((s, r) => s + r.given, 0);
+  return { ranges, givenUnlisted: given == null ? 0 : Math.max(0, given - listed) };
 }
 
 /**
@@ -620,7 +641,7 @@ export function execFacts(x: ExecReport): string {
   L.push(`## 01. Ерөнхий дашбоард`);
   L.push(`Нийт төсөв: ${num(x.gdash.budget)} ₮`);
   L.push(`Нийт гэрээлсэн дүн: ${num(x.gdash.contract)} ₮`);
-  L.push(`Гүйцэтгэлийн хувь (${x.gdash.progressSrc === 'negtgel' ? 'нэгтгэл гүйцэтгэлээр' : '6 шатаар — нэгтгэл гүйцэтгэл уншигдаагүй'}): ${x.gdash.progress == null ? 'мэдээлэлгүй' : pct(x.gdash.progress, 1)}`);
+  L.push(`Гүйцэтгэлийн хувь (нэгтгэл гүйцэтгэлээр): ${x.gdash.progress == null ? 'мэдээлэлгүй' : pct(x.gdash.progress, 1)}`);
   if (x.gdash.progressPlan != null) L.push(`Гүйцэтгэлийн хувийн өөрийн төлөвлөгөө (нэгтгэл гүйцэтгэл): ${pct(x.gdash.progressPlan, 1)}`);
   L.push(`Багц ажлын тоо: ${x.gdash.packages}; төрлийн тоо: ${x.gdash.types}`);
   L.push(`Газар чөлөөлөлт: ${x.gdash.landPct == null ? 'мэдээлэлгүй' : pct(x.gdash.landPct, 1)} (нийт ${x.gdash.land.total}, чөлөөлсөн ${x.gdash.land.cleared}, үлдсэн ${x.gdash.land.remaining})`);
@@ -651,6 +672,8 @@ export function execFacts(x: ExecReport): string {
       ? `- ${cl(r.label)}: гэрээлсэн ${r.plan > 0 ? `${num(r.plan)} ₮` : 'мэдээлэлгүй (гэрээний дүн бөглөгдөөгүй)'}, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`
       : `- ${cl(r.label)}: ГЭРЭЭ БАЙГУУЛААГҮЙ (төсөв ${num(r.budget)} ₮), олгосон ${num(r.given)} ₮`);
   }
+  for (const g of x.fin.ranges) L.push(`- ${cl(g.label)} (хэд хэдэн багц хамарсан олголт): олгосон ${num(g.given)} ₮`);
+  if (x.fin.givenUnlisted > 0) L.push(`- Багцын мөрд ороогүй олголт: ${num(x.fin.givenUnlisted)} ₮`);
   L.push(`## Зөвшөөрөл`);
   if (!x.zov) L.push(`Мэдээлэлгүй (үйлчилгээ холбогдоогүй).`);
   else {

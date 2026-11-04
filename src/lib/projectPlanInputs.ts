@@ -5,6 +5,7 @@
  * (`PlanInputs`). Энэ файл тэдгээр callback-ыг системийн эх сурвалжуудаас бэлдэнэ:
  *
  *   blockActual(pkg, blok)        — бөглөх хуудасны блокийн «Б.» гүйцэтгэл (`blockProgress`)
+ *   prepActual(pkg, blok)         — Бэлтгэл ажлын (5.1.3.1.x) блокийн «А. Бэлтгэл ажил» гүйцэтгэл (`loadPrepProgress`, 2026-11-05)
  *   pkgActual(pkg)                — блокгүй багцын (5.x · 6.x · 7.1 · 10) «Б.» гүйцэтгэл (`loadInfraProgress`)
  *   blockPlanned(pkg, blok, asOf) — Хуваарийн төлөвлөгөөт % дурын өдрөөр (`bagtsSheet.planCurve`, блок тус бүрээр)
  *   land(pkg, blok)               — газар чөлөөлөлт % = чөлөөлөгдсөн ÷ нийт нэгж талбарын ТОО (орон зайн огтлолцол)
@@ -13,7 +14,8 @@
  * оролтуудыг цуглуулж `computePlan` + `monthlySeries`-ийг бодно.
  */
 import {
-  buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday, sourceSums,
+  buildTree, computePlan, isNonBlockText, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday, sourceSums,
+  planBudgetTotal,
   type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree, type SourceSums,
 } from './projectPlan';
 import {
@@ -21,15 +23,15 @@ import {
   bagtsKey, buildingKey, pkgKeyOf, isConstructionNo, normalizeTaskNo,
 } from './services';
 import {
-  loadBlockProgress, loadBlockUniverse, loadInfraProgress,
-  type BlockProgressMap, type BlockUniverse, type PkgProgress,
+  loadBlockProgress, loadBlockUniverse, loadInfraProgress, loadPrepProgress,
+  type BlockProgressMap, type BlockUniverse, type PkgProgress, type PrepMap,
 } from './blockProgress';
 import { PKGS, SYNTHETIC_BLOCK, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, planCurve, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { planFields } from './planProgress';
 import { countPlanRows, loadPkgPlan, planPctFromMonths, type PkgPlan } from './huvaariObyem';
 import { queryFeatures, arcgisPost } from './query';
-import { isClearedStatus } from './land';
+import { isClearedStatus, loadLandStatus } from './land';
 import { cached, SESSION_TTL_MS } from './live';
 import { register } from './dataBus';
 import { t as tr } from './i18nCore';
@@ -66,6 +68,7 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['zahiramj_ognoo', CF.orderDate],
   ['zahiramj_dugaar', CF.orderNo],
   ['ashiglalt_ognoo', CF.handoverDate],
+  ['songon_ognoo', CF.tenderDate],
   ['created_date', 'created_date'],
   /* Эх үүсвэр (2026-11-03) — «Төсөл төлөвлөгөө биелэлт»-ийн баганад; нэр нь `CASHFLOW_NEW.sources`-тэй ижил */
   ['zahiramj_unet_tsaas', 'zahiramj_unet_tsaas'],
@@ -182,6 +185,17 @@ export async function loadProjectSourceTotals(): Promise<SourceSums> {
   return sourceSums(tree).get(tree.root)!;
 }
 
+/**
+ * ТӨСЛИЙН НИЙТ ТӨСӨВ (бүхэл ₮) — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн E, хөнгөн (зөвхөн хүснэгтийн
+ * мөрүүд). `live.loadBudget.total` · `reportData.finance.budget` · `gdash.kpisOf.budget` энэ тоог харуулна (2026-11-04:
+ * ажлын мөрийн нийлбэр блокийн бутархай ₮-өөс 1 ₮ дутуу гардаг байв). Мөр алга бол null.
+ */
+export async function loadProjectBudgetTotal(): Promise<number | null> {
+  const rows = await loadPlanRows();
+  if (!rows.length) return null;
+  return planBudgetTotal(buildTree(rows));
+}
+
 /* ══════════════════ 2. Бодит гүйцэтгэл (бөглөх хуудас) ══════════════════ */
 
 /** Бодит гүйцэтгэлийн эх — `blockActualOf`/`pkgActualOf`-ийн оролт */
@@ -192,6 +206,8 @@ export type ActualSources = {
   universe: BlockUniverse | null;
   /** Блокгүй багцын гүйцэтгэл (`bagtsKey` → `PkgProgress`) — `null` = унасан */
   infra: Map<string, PkgProgress> | null;
+  /** Блок бүрийн «А. Бэлтгэл ажил» (`computePrep`, 2026-11-05) — `null`/алга = унасан */
+  prep?: PrepMap | null;
 };
 
 /** `${bagtsKey}|${блок}` — `blockProgress`-ийн түлхүүр */
@@ -213,6 +229,23 @@ export function blockActualOf(src: ActualSources): NonNullable<PlanInputs['block
 }
 
 /**
+ * БЭЛТГЭЛ АЖЛЫН БЛОКИЙН БОДИТ ГҮЙЦЭТГЭЛ (0–100) — «А. Бэлтгэл ажил» мөр (`PrepMap`, 2026-11-05). «Б.» хоосон блок ч орно.
+ *   · эх унасан → `null`
+ *   · блокийн бичлэг байгаа → утга (хуудас байгаа атлаа нүд хоосон = 0)
+ *   · бичлэггүй атлаа хуваарьт байгаа блок → 0 (`blockActualOf`-ийн дүрэм)
+ *   · хуваарьт ч үгүй → `undefined` (хадгалсан `guitsetgel_huvi`)
+ */
+export function prepActualOf(src: ActualSources): NonNullable<PlanInputs['prepActual']> {
+  return (pkg, blok) => {
+    if (!src.prep) return null;
+    const k = blockKeyOf(pkg, blok);
+    if (src.prep.has(k)) { const v = src.prep.get(k); return v != null && Number.isFinite(v) ? v : 0; }
+    if (!src.universe) return null;
+    return src.universe.get(bagtsKey(pkg))?.includes(k) ? 0 : undefined;
+  };
+}
+
+/**
  * БЛОКГҮЙ НАВЧНЫ (дэд бүтэц) БОДИТ ГҮЙЦЭТГЭЛ — блокгүй багцын бөглөх хуудас (5.x · 6.x · 7.1 · 10).
  */
 export function pkgActualOf(src: ActualSources): NonNullable<PlanInputs['pkgActual']> {
@@ -226,16 +259,18 @@ export function pkgActualOf(src: ActualSources): NonNullable<PlanInputs['pkgActu
 }
 
 async function fetchActual(): Promise<{ src: ActualSources; failed: string[] }> {
-  const [b, u, i] = await Promise.allSettled([loadBlockProgress(), loadBlockUniverse(), loadInfraProgress()]);
+  const [b, u, i, p] = await Promise.allSettled([loadBlockProgress(), loadBlockUniverse(), loadInfraProgress(), loadPrepProgress()]);
   const failed: string[] = [];
   if (b.status === 'rejected') failed.push('blockProgress');
   if (u.status === 'rejected') failed.push('blockUniverse');
   if (i.status === 'rejected') failed.push('infraProgress');
+  if (p.status === 'rejected') failed.push('prepProgress');
   return {
     src: {
       blocks: b.status === 'fulfilled' ? b.value : null,
       universe: u.status === 'fulfilled' ? u.value : null,
       infra: i.status === 'fulfilled' ? i.value : null,
+      prep: p.status === 'fulfilled' ? p.value : null,
     },
     failed,
   };
@@ -492,7 +527,7 @@ export function linkPlanDates(tree: PlanTree, spans: DateSpans | null): PlanStor
   for (const n of tree.nodes) {
     const r = n.row;
     if (!r) continue;
-    const x: PlanStoredRow = { ...r, gazar_ehleh: null, gazar_duusah: null };
+    const x: PlanStoredRow = { ...r };
     if (n.phase === 'barilga' && spans) {
       const sp = n.children.length ? undefined : spans.get(r.bagts, n.blok ?? r.blok, n.sub ?? 'barilga');
       if (sp !== null) {
@@ -917,7 +952,7 @@ export async function landCountMap(pkgKeys: Iterable<string>): Promise<Map<strin
 /** Модны газар чөлөөлөлтийн навчнууд → хэрэгтэй түлхүүрүүд */
 export function landKeysOf(tree: PlanTree): string[] {
   const out = new Set<string>();
-  for (const n of tree.nodes) if (n.phase === 'gazar' && !n.children.length) out.add(landKeyOf(n.pkg, n.blok));
+  for (const n of tree.nodes) if (n.phase === 'gazar' && !n.children.length && !isNonBlockText(n)) out.add(landKeyOf(n.pkg, n.blok));
   return [...out];
 }
 
@@ -958,14 +993,20 @@ export function makeInputs(src: {
   actual: ActualSources;
   sched: BlockSchedules | null;
   land: ReadonlyMap<string, number | null>;
+  landTotal?: number | null;
 }): PlanInputs {
+  const lt = src.landTotal;
   return {
     blockActual: blockActualOf(src.actual),
+    prepActual: prepActualOf(src.actual),
     pkgActual: pkgActualOf(src.actual),
     blockPlanned: blockPlannedOf(src.sched),
     pkgPlanned: pkgPlannedOf(src.sched),
     pkgSpan: pkgSpanOf(src.sched),
     land: landOf(src.land),
+    /* 2026-11-04 (хэрэглэгч): «Газар чөлөөлөлт» үе шатын мөр = бүх нэгж талбарын тоогоор (`loadLandStatus`, «Газар чөлөөлөлт»
+       хуудас · тайлан · нийтийн вэбтэй НЭГ тоо) — багцын мөрүүдийн жигнэлт биш. Багц/блокийн мөрүүд хэвээр. */
+    ...(lt == null ? {} : { override: (n: PlanNode) => (n.depth === 1 && n.phase === 'gazar' ? { S: lt } : undefined) }),
   };
 }
 
@@ -1015,6 +1056,8 @@ export function assemblePlan(
   src: {
     actual: ActualSources; sched: BlockSchedules | null; land: ReadonlyMap<string, number | null>;
     dates?: DateSpans | null;
+    /** Төслийн газар чөлөөлөлт % (бүх нэгж талбарын тоогоор) — үе шатын мөрийг дарна; `undefined`/`null` = жигнэлт */
+    landTotal?: number | null;
   },
   today: number = ubToday(),
   failed: string[] = [],
@@ -1037,8 +1080,10 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
   const rows = await loadPlanRows();
   if (!rows.length) return emptyPlan(today);
   const keys = landKeysOf(buildTree(rows));
-  const [a, s, l] = await Promise.allSettled([loadActual(), loadSchedules(), prepareLand(keys)]);
+  const [a, s, l, lt] = await Promise.allSettled([loadActual(), loadSchedules(), prepareLand(keys), loadLandStatus()]);
   const failed: string[] = [];
+  const landTotal = lt.status === 'fulfilled' ? lt.value.pct : null;
+  if (lt.status !== 'fulfilled') failed.push('landTotal');
   const actual: ActualSources = a.status === 'fulfilled'
     ? a.value.src
     : { blocks: null, universe: null, infra: null };
@@ -1048,7 +1093,7 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
   if (s.status === 'fulfilled') failed.push(...s.value.failed); else failed.push('schedule');
   const land = l.status === 'fulfilled' ? l.value.pcts : new Map<string, number | null>();
   if (l.status === 'fulfilled') failed.push(...l.value.failed); else failed.push('land');
-  return assemblePlan(rows, { actual, sched, land, dates }, today, failed);
+  return assemblePlan(rows, { actual, sched, land, dates, landTotal }, today, failed);
 }
 
 /* ══════════════════ 5. Гэрээний АМЬД гүйцэтгэл (дашбоард · ТУХ · Нэгтгэл) ══════════════════ */

@@ -75,4 +75,43 @@ assert.ok(ups.every((u) => Object.keys(u).sort().join() === 'guitsetgel_huvi,obj
   assert.equal(rows.length, 4);
   void negtgelProjectPct;
 }
+/* 2026-11-05: автомат урсгал — өөрийн invalidate автобусын захиалагчид «дуугүй» (гогцоогүй); startPlanSync зогсоогч таймерыг цэвэрлэнэ */
+{
+  const { __test, startPlanSync, schedulePlanSync } = await import('./projectPlanSync.ts');
+  const { register, subscribeData, invalidate } = await import('./dataBus.ts');
+  register(() => {}, ['CASHFLOW_NEW']);
+  const seen = [];
+  const off = subscribeData(() => seen.push(__test.isMuted()));
+  __test.invalidateQuiet('CASHFLOW_NEW');
+  invalidate('CASHFLOW_NEW');
+  off();
+  assert.deepEqual(seen, [true, false], 'өөрийн бичилтийн invalidate — muted; бусдынх — биш');
+  assert.equal(__test.isMuted(), false, 'дараа нь буцаад хэвийн');
+
+  assert.equal(typeof startPlanSync(), 'function', 'window алга (сервер) → хоосон зогсоогч');
+  const timers = [];
+  const realSet = globalThis.setTimeout, realClear = globalThis.clearTimeout;
+  globalThis.setTimeout = (fn, ms) => { const id = { fn, ms }; timers.push(id); return id; };
+  globalThis.clearTimeout = (id) => { const i = timers.indexOf(id); if (i >= 0) timers.splice(i, 1); };
+  globalThis.window = {};
+  try {
+    const stop = startPlanSync();
+    assert.equal(timers.length, 1, 'нээгдэхэд нэг удаа товлоно');
+    assert.equal(timers[0].ms, 20_000, 'эхний ачаалалтын дараа (20 с)');
+    invalidate('CASHFLOW_NEW');
+    assert.equal(timers.length, 1, 'автобусын бичилт — дахин товлоно (хуучныг цуцалж)');
+    assert.equal(timers[0].ms, 15_000, 'debounce 15 с');
+    __test.invalidateQuiet('CASHFLOW_NEW');
+    assert.equal(timers[0].ms, 15_000, 'өөрийн invalidate — товлолт хөндөгдөхгүй');
+    schedulePlanSync(5);
+    assert.equal(timers.length, 1);
+    assert.equal(timers[0].ms, 5, 'хуудасны хадгалалтын дараа шууд дуудвал — шинэ товлолт');
+    stop();
+    assert.equal(timers.length, 0, 'зогсоогч таймерыг цэвэрлэнэ');
+    invalidate('CASHFLOW_NEW');
+    assert.equal(timers.length, 0, 'зогссоны дараа автобус сонсохгүй');
+  } finally {
+    globalThis.setTimeout = realSet; globalThis.clearTimeout = realClear; delete globalThis.window;
+  }
+}
 console.log('projectPlanSync.check: бүгд ✅');

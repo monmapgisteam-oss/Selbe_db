@@ -3,15 +3,57 @@
  *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/blockProgressCutoff.check.mjs
  */
 import assert from 'node:assert/strict';
-import { compute, history, progressCutoff, isFutureDay, mapKeyIssues, pkgProgressOf, winnerCells } from './blockProgress.ts';
+import { compute, computePrep, history, progressCutoff, isFutureDay, mapKeyIssues, pkgProgressOf, winnerCells } from './blockProgress.ts';
 import { buildPhys } from './finPhys.ts';
-import { TASK_SHEET, buildingKey } from './services.ts';
+import { TASK_SHEET, buildingKey, isPrepNo, prepWhere } from './services.ts';
 import { kpiComplete } from './ceo/kpi.ts';
 
 const TS = TASK_SHEET.fields;
 const row = (bagts, block, date, pct, no = TASK_SHEET.constructionNo) => ({
   [TS.bagts]: bagts, [TS.no]: no, [TS.work]: 'Барилга угсралтын ажил', [TS.date]: date, [TS.block]: block, [TS.progress]: pct,
 });
+
+/* ── 0. (2026-11-05) «А. Бэлтгэл ажил» мөр → `computePrep` (тусдаа map): кирилл «А.» ба латин «A.» нэг түлхүүр («сүүлийн нүд
+      ялна»); нүд хоосон → null; «Б.»-гүй блок `compute`-д орохгүй ч `computePrep`-д ОРНО (Багц-4.2 6/6); `compute`-д prep
+      талбар БАЙХГҮЙ; `history` (цуваа) А-гийн мөрийг үл тоомсорлоно ── */
+{
+  const today = '2026-11-05';
+  assert.equal(TASK_SHEET.prepNo, 'А.', 'кирилл А');
+  assert.ok(isPrepNo('А.') && isPrepNo('A.') && isPrepNo('А') && isPrepNo('A. БЭЛТГЭЛ АЖИЛ'), 'хоёр үсэг хоёулаа');
+  assert.ok(!isPrepNo('Б.') && !isPrepNo('А1') && !isPrepNo('A1') && !isPrepNo(''), 'Б. · А1 · хоосон биш');
+  assert.match(prepWhere('dugaar'), /dugaar = N'А' OR dugaar LIKE N'А\.%' OR dugaar = N'A' OR dugaar LIKE N'A\.%'/, 'SQL: кирилл + латин');
+  const rows = [
+    row('Багц 1', '5/1', '2026-10-01', 0.5),
+    row('Багц 1', '5/1', '2026-09-01', 0.6, 'А.'),     /* кирилл, хуучин */
+    row('Багц 1', '5/1', '2026-10-01', 0.875, 'A.'),   /* латин, сүүлийн — ялна */
+    row('Багц 1', '5/2', '2026-10-01', 0.2),
+    row('Багц 1', '5/2', '2026-10-01', null, 'А.'),    /* нүд хоосон */
+    row('Багц 1', '5/3', '2026-10-01', 0.3),           /* А мөр огт алга */
+    row('Багц 1', '5/4', '2026-10-01', 1, 'A.'),       /* Б.-гүй — блок орохгүй (урьдын дүрэм) */
+    row('Багц 1', '5/5', '2026-10-01', 0.4),
+    row('Багц 1', '5/5', '2026-10-20', 0.9, 'А. БЭЛТГЭЛ АЖИЛ'), /* № дотор нэртэй */
+    row('Багц 1', '5/5', '2026-11-20', 1, 'А.'),       /* ирээдүйн огноо — орохгүй */
+  ];
+  const pm = compute(rows, today);
+  const pp = computePrep(rows, today);
+  const k = (b) => buildingKey('Багц 1', b);
+  assert.equal(pp.get(k('5/1')), 87.5, 'латин A. сүүлийн нүд ялна (кирилл А. 60 биш)');
+  assert.equal(pm.get(k('5/1'))?.overall, 50, 'Б. хэвээр');
+  assert.equal('prep' in pm.get(k('5/1')), false, 'compute-д prep талбар байхгүй (тусдаа map)');
+  assert.equal(pp.get(k('5/2')), null, 'нүд хоосон → null');
+  assert.ok(pp.has(k('5/2')), 'нүд хоосон ч блок орно');
+  assert.equal(pp.get(k('5/3')), null, 'А мөргүй → null');
+  assert.equal(pm.has(k('5/4')), false, 'Б.-гүй блок compute-д орохгүй');
+  assert.equal(pp.get(k('5/4')), 100, 'Б.-гүй блок computePrep-д ОРНО (Багц-4.2 6/6 дүрэм)');
+  assert.equal(pp.get(k('5/5')), 90, '«А. БЭЛТГЭЛ АЖИЛ» нормчлогдоно; ирээдүйн нүд орохгүй');
+  assert.deepEqual(pm.get(k('5/1'))?.phases, [], 'А мөр дэд үе шатад орохгүй');
+  const w = winnerCells(rows, today);
+  assert.deepEqual([...w.get(k('5/1')).keys()].sort(), ['А.', 'Б.'], 'латин A. → кирилл А. нэг түлхүүр');
+  const h = history(rows, today);
+  assert.deepEqual(h.get(k('5/1'))?.map((p) => p.pct), [50], 'түүх: Б. л (А. орохгүй)');
+  assert.equal(h.has(k('5/4')), false);
+  console.log('blockProgressCutoff.check: «А. Бэлтгэл ажил» → computePrep OK');
+}
 
 /* ── 1. Таслалт ── */
 {

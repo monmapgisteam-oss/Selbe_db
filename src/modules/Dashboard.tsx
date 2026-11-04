@@ -927,7 +927,7 @@ function IndStrip({ d }: { d: DashData }) {
     { icon: 'frame', label: tr('Төслийн нийт талбай'), v: h ? hVal(h, h.areaHa, (n) => tr('{0} га', num(n, 1))) : dots(d.headline), q: d.headline },
     { icon: 'users', label: tr('Хамрагдах хүн ам'), v: h ? hVal(h, h.population, (n) => num(n)) : dots(d.headline), q: d.headline },
     { icon: 'building', label: tr('Барилгын блок'), v: blocks != null ? num(blocks) : dots(d.bagts), q: d.bagts },
-    { icon: 'chart', label: tr('Биет гүйцэтгэл (багцаар)'), v: overall != null ? pct(overall, 1) : dots(d.fin), q: d.fin },
+    { icon: 'chart', label: tr('Барилгын явц'), v: overall != null ? pct(overall, 1) : dots(d.fin), q: d.fin },
     { icon: 'polygon', label: tr('Газар чөлөөлөлт'), v: clearedPct != null ? pct(clearedPct, 1) : dots(d.land), q: d.land },
   ];
   return (
@@ -1062,12 +1062,14 @@ function EnvLeft({ d }: { d: DashData }) {
 
 /**
  * Блокуудын түүхээс ТӨСЛИЙН сарын гүйцэтгэл — envhub-ийн «Жилээр» муруйн дүйцэл.
+ * 2026-11-04: 'latest' (блок бүрийн тухайн үеийн сүүлийн утга, төсвөөр жигнэсэн) — «Барилга угсралтын явц» самбар,
+ * бөгж (`latestMean`), санхүүгийн `physNow`-той ИЖИЛ; урьд нь анхдагч 'peak' өөр тоо зурдаг байв (2026-09: 21.8 ↔ 21.2).
  */
 function projTrendPoints(
   h: BlockHistory,
   keys: Iterable<string>,
 ): { label: string; value: number; note?: string }[] {
-  return progressSeries(h, keys, 'month').map((p) => ({
+  return progressSeries(h, keys, 'month', 'latest').map((p) => ({
     label: p.label,
     value: p.overall,
     // Сарын шошго бодит хэмжилтийн огноог нуудаг — уншилтын мөрөнд буцаана
@@ -1079,7 +1081,7 @@ function projTrendPoints(
 function EnvRight({ d }: { d: DashData }) {
   return (
     <aside className={o.envr} aria-label={tr('Явц ба санхүүжилт')}>
-      <Panel title={tr('Гүйцэтгэлийн явц')} note={tr('блокийн дундаж · сараар')}>
+      <Panel title={tr('Гүйцэтгэлийн явц')} note={tr('төсвөөр жигнэсэн · сараар')}>
         <Data q={d.hist} loading={tr('Татаж байна…')}>
           {(h) => {
             // Хамрах хүрээ нь 7 багцын БҮХ блок (тайлангүйг нь 0%) — тайлагнасан
@@ -1237,7 +1239,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
       <Panel title={tr('Төслийн цар хүрээ')}>
         <Stats cols={2}>
           <Stat accent color={HUE[0]} value={h == null ? dots(d.headline) : hVal(h, h.areaHa, (v) => num(v, 1))} unit={tr('га')} label={tr('Төслийн талбай')} />
-          <Stat accent color={HUE[1]} value={prog.actual != null ? num(prog.actual, 1) : d.fin.state === 'loading' ? '…' : '—'} unit="%" label={tr('Биет гүйцэтгэл (багцаар)')} />
+          <Stat accent color={HUE[1]} value={prog.actual != null ? num(prog.actual, 1) : d.fin.state === 'loading' ? '…' : '—'} unit="%" label={tr('Барилгын явц')} />
           <Stat accent color={HUE[2]} value={h == null ? dots(d.headline) : hVal(h, h.investTotal, (v) => num(v))} unit={tr('₮')} label={tr('Нийт төсөв')} />
           <Stat accent color={HUE[3]} value={blocks == null ? dots(bagts) : num(blocks)} unit={tr('блок')} label={tr('Орон сууцны блок')} />
           <Stat accent color={HUE[4]} value={ail == null ? dots(bagts) : num(ail)} unit={tr('өрх')} label={tr('Айл өрх')} />
@@ -2130,9 +2132,9 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
           </Stats>
       </Panel>
 
-      <Panel title={tr('Блокийн дундаж гүйцэтгэл')}
+      <Panel title={tr('Барилгын явц')}
              note={ring && ring.total ? tr('{0}/{1} блок тайлагнасан', num(ring.blocks), num(ring.total)) : undefined}>
-        <RingCard value={avg} label={tr('блокийн дундаж')} color={cat(0)} />
+        <RingCard value={avg} label={tr('Барилгын явц')} color={cat(0)} />
       </Panel>
 
       <Panel title={tr('Багц бүрийн явц')} note={SRC_SHEET()}>

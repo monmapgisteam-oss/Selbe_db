@@ -121,6 +121,12 @@ export function toStored(a: Record<string, unknown>, names: Names): PlanStoredRo
     guits_duusah: dateIn(a.guits_duusah),
     guitsetgel_huvi: numIn(a.guitsetgel_huvi),
     cashflow_id: numIn(a[names.cfId]),
+    /* Үе шатны milestone огноо (2026-11-04, «Захирамж · Сонгон · Ашиглалт» хуудсууд) */
+    geree_ognoo: dateIn(a.geree_ognoo),
+    zahiramj_ognoo: dateIn(a.zahiramj_ognoo),
+    zahiramj_dugaar: strIn(a.zahiramj_dugaar),
+    ashiglalt_ognoo: dateIn(a.ashiglalt_ognoo),
+    songon_ognoo: dateIn(a.songon_ognoo),
   };
 }
 
@@ -273,8 +279,9 @@ const withoutDeleted = (base: readonly PlanStoredRow[], p: Pending): PlanStoredR
 /**
  * ЖИН ТЭНЦҮҮ ХУВААХ — ажил нэмсэн эсвэл устгасан эцэг бүрийн доорх БҮХ нэмсэн ажил (хадгалсан + шинэ) 1/k жин авна.
  * Буцаах: хадгалсан мөрийн objectid → жин, шинэ мөрийн `rowKey` → жин. Хэрэглэгчийн бичсэн жин дараа нь давуулна.
+ * (`uyShat.ts` — «Зөвшөөрөл (ТТБ)» хуудас мөн ашиглана.)
  */
-function splitWeights(base: readonly PlanStoredRow[], p: Pending): { saved: Map<number, number>; adds: Map<string, number> } {
+export function splitWeights(base: readonly PlanStoredRow[], p: Pending): { saved: Map<number, number>; adds: Map<string, number> } {
   const del = new Set(p.deletes ?? []);
   const groups = new Set(p.adds.map(groupOf));
   for (const r of base) if (r.objectid != null && del.has(r.objectid)) groups.add(groupOf(r));
@@ -500,11 +507,12 @@ const nameKey = (v: unknown) => String(v ?? '').toLowerCase().replace(/[^0-9a-z�
  * АЖИЛ НЭМЭХ боломж (2026-11-03) — Ажлын зураг төсөл үе шатын, БАГЦТАЙ, үе шатын толгой биш, өөрөө нэмсэн ажил
  * биш мөр; хүүхэдгүй эсвэл хүүхэд нь бүгд нэмсэн ажил. Бүлгийн мөрийн (хүүхэд нь багцууд) доор НЭМЭХГҮЙ.
  */
-export function canAddWork(n: PlanNode): boolean {
-  if (n.phase !== 'zurag' || n.depth < 2 || !n.row || !String(n.row.bagts ?? '').trim()) return false;
+export function canAddWorkIn(n: PlanNode, phase: PhaseKind): boolean {
+  if (n.phase !== phase || n.depth < 2 || !n.row || !String(n.row.bagts ?? '').trim()) return false;
   if (isAddedWork(n)) return false;
   return n.children.every(isAddedWork);
 }
+export const canAddWork = (n: PlanNode): boolean => canAddWorkIn(n, 'zurag');
 
 /** Шинэ ажлын нэр буруу эсэх — хоосон · `null` = зөв, 'dup' = энэ эцгийн доор ижил нэртэй ажил бий */
 export function workNameWhy(n: PlanNode, name: string): 'empty' | 'dup' | null {
@@ -517,8 +525,8 @@ export function workNameWhy(n: PlanNode, name: string): 'empty' | 'dup' | null {
  * ШИНЭ АЖЛЫН МӨР (бичихгүй — `Pending.adds`-д орно). Жинг `effectiveRows`/`buildEdits` тэнцүү хуваана.
  * Код = «<эцэг>.<n>» — модонд (засвартай мөрүүд оролцсон) АШИГЛАГДААГҮЙ дараагийн дугаар.
  */
-export function workAdd(n: PlanNode, tree: PlanTree, name: string): PlanStoredRow | null {
-  if (!canAddWork(n) || !n.row || workNameWhy(n, name)) return null;
+export function workAdd(n: PlanNode, tree: PlanTree, name: string, phase: PhaseKind = 'zurag'): PlanStoredRow | null {
+  if (!canAddWorkIn(n, phase) || !n.row || workNameWhy(n, name)) return null;
   const used = new Set(tree.byCode.keys());
   let k = n.children.length + 1;
   while (used.has(`${n.code}.${k}`)) k += 1;

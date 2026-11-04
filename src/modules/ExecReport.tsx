@@ -21,7 +21,7 @@ import { useAsync } from '@/lib/useAsync';
 import { invalidateAll } from '@/lib/dataBus';
 import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel } from '@/lib/execReport';
 import { money } from '@/lib/execInfographic';
-import { progressSub, planScopeNote } from '@/lib/gdash';
+import { planScopeNote } from '@/lib/gdash';
 import { coverageOk, coverageNote } from '@/lib/planProgress';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { downloadExecPdf, downloadInfographic } from '@/lib/execPdf';
@@ -213,13 +213,13 @@ export function ExecReport() {
           meta={<>{date && <>{tr('Огноо:')} {date}</>}{x && <> {tr('· Өгөгдөл:')} {dateTime(x.fetchedAt)}</>}</>}
           title={tr('Сэлбэ 20 минутын хотын удирдлагын тайлан')}
           sub={tr('Ерөнхий дашбоард · Багцын гүйцэтгэл · Багцын санхүү · Зөвшөөрөл')}
-          figLabel={tr('Орон сууцны гүйцэтгэл')}
+          figLabel={tr('Барилгын явц')}
           value={x?.prog.actual ?? null}
           plan={x?.prog.planned ?? null}
           loading={q.state === 'loading'}
           note={x && <>
             {tr('Төлөвлөсөн')} {pct(x.prog.planned, 1)}{coverageNote(x.prog.planCoverage) ? ` (${coverageNote(x.prog.planCoverage)})` : ''}
-            {' · '}{tr('Төслийн гүйцэтгэл')} {pct(x.gdash.progress, 1)}
+            {' · '}{tr('Төслийн нийт явц')} {pct(x.gdash.progress, 1)}
             {x.gdash.progressPlan != null ? ` (${tr('төлөвлөгөө {0}', pct(x.gdash.progressPlan, 1))})` : ''}
           </>}
         />
@@ -251,12 +251,10 @@ export function ExecReport() {
                       desc: tr('Гүйцэтгэгчтэй байгуулсан гэрээгээр баталгаажсан дүн. Төсөвтэй харьцуулсан зөрүү нь хараахан гэрээлээгүй ажил.'),
                     },
                     {
-                      label: tr('Төслийн гүйцэтгэл'),
+                      label: tr('Төслийн нийт явц'),
                       value: x.gdash.progress == null ? '—' : pct(x.gdash.progress, 1),
-                      sub: progressSub(x.gdash.progressSrc),
-                      desc: x.gdash.progressSrc === 'negtgel'
-                        ? tr('Нэгтгэл гүйцэтгэлийн хүснэгтэд ТЭЗҮ-гээс төсөл хүлээлгэн өгөх хүртэлх үе шатыг төсөлд эзлэх хувиар нь нэгтгэсэн дүн.')
-                        : tr('Нэгтгэл гүйцэтгэл уншигдаагүй тул Cashflow-ийн 6 шатны гүйцэтгэлийг тогтоосон жингээр нэгтгэсэн нөөц дүн.'),
+                      sub: tr('Нэгтгэл гүйцэтгэлээр'),
+                      desc: tr('Нэгтгэл гүйцэтгэлийн хүснэгтэд ТЭЗҮ-гээс төсөл хүлээлгэн өгөх хүртэлх үе шатыг төсөлд эзлэх хувиар нь нэгтгэсэн дүн.'),
                     },
                     {
                       label: tr('Багц ажлын тоо'),
@@ -541,6 +539,21 @@ export function ExecReport() {
                           <td className={e.warn}>{tr('Гэрээ байгуулаагүй ажил ({0} багц)', num(finNone.length))}</td>
                           <td className={`${r.num} ${e.warn}`}>—</td>
                           <td className={`${r.num} ${e.warn}`}>{num(0)}</td>
+                          <td className={`${r.num} ${e.warn}`}>—</td>
+                        </tr>
+                      )}
+                      {/* 2026-11-04: олон багц хамарсан олголт — тусдаа мөр, Σ мөр = толгойн «Олгосон» */}
+                      {x.fin.ranges.map((g) => (
+                        <tr key={`range:${g.label}`}>
+                          <td>{tr('{0} (хэд хэдэн багц хамарсан олголт)', g.label)}</td>
+                          <td className={r.num}>—</td><td className={r.num}>{num(g.given)}</td><td className={r.num}>—</td>
+                        </tr>
+                      ))}
+                      {x.fin.givenUnlisted > 0 && (
+                        <tr>
+                          <td className={e.warn}>{tr('Багцын мөрд ороогүй олголт')}</td>
+                          <td className={`${r.num} ${e.warn}`}>—</td>
+                          <td className={`${r.num} ${e.warn}`}>{num(x.fin.givenUnlisted)}</td>
                           <td className={`${r.num} ${e.warn}`}>—</td>
                         </tr>
                       )}

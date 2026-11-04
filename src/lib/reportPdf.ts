@@ -143,13 +143,12 @@ export function buildReportDoc(
         [th(tr('Үзүүлэлт')), th(tr('Утга'), true)],
         [td(tr('Орон сууцны блок')), td(num(blocks), true)],
         [td(tr('Өрхийн орон сууц')), td(ail, true)],
-        [td(tr('Орон сууцны гүйцэтгэл (багцаар, төсвийн жинтэй)')), td(pct(overall.pct, 2), true)],
-        [td(tr('Барилга угсралтын гүйцэтгэл (блокийн энгийн дундаж)')), td(pct(progress.overall, 2), true)],
+        [td(tr('Барилгын явц')), td(pct(overall.pct, 2), true)],
         [td(tr('Захирамжаар батлагдсан дүн')), td(tr('{0} ₮', bn(finance.orderTotal)), true)],
         [td(tr('Гэрээгээр байгуулагдсан дүн')), td(tr('{0} ₮', bn(finance.contractAmount)), true)],
         [td(tr('Бодитоор олгосон санхүүжилт'), false, TOTAL), td(finance.paid == null ? '—' : tr('{0} ₮', bn(finance.paid)), true, TOTAL)],
       ] }, layout: tableLayout },
-      note(tr('Орон сууцны гүйцэтгэл (багцаар, төсвийн жинтэй) нь {0} блокийг багцынх нь төсвийн жингээр тооцсон дүн (3-р хэсэг); барилга угсралтын гүйцэтгэл нь хяналтын {1} блокийн энгийн дундаж (6-р хэсэг).', num(overall.rows), num(progress.blocks))),
+      note(tr('Барилгын явц нь {0} блокийг төсвөөр нь жигнэсэн дүн (3-р хэсэг).', num(overall.rows))),
 
       ...section('2', tr('Орон сууцны багцууд'),
         (d.bestBagts != null && d.worstBagts != null && d.bestBagts.pct - d.worstBagts.pct > BAGTS_GAP_PTS
@@ -214,7 +213,7 @@ export function buildReportDoc(
       ] }, layout: tableLayout },
 
       ...section('6', tr('Барилга угсралтын гүйцэтгэл'),
-        tr('Хяналтын {0} блокийн нийт гүйцэтгэлийн энгийн дундаж {1} байна{2}{3}. 6.2-р хүснэгтийн үе шатын дундаж нь зөвхөн тайлагнасан {4} блокоор тооцогдоно.', num(progress.blocks), pct(progress.overall, 2), progress.date ? tr(' (сүүлийн тайлагнал {0})', progress.date) : '', progress.blocks > progress.reported ? tr('; тайлагнаагүй {0} блок 0%-иар тооцогдсон', num(progress.blocks - progress.reported)) : '', num(progress.reported))
+        tr('Хяналтын {0} блокийн төсвөөр жигнэсэн нийт гүйцэтгэл {1} байна{2}{3}. 6.2-р хүснэгтийн үе шатын дундаж нь зөвхөн тайлагнасан {4} блокоор тооцогдоно.', num(progress.blocks), pct(progress.overall, 2), progress.date ? tr(' (сүүлийн тайлагнал {0})', progress.date) : '', progress.blocks > progress.reported ? tr('; тайлагнаагүй {0} блок 0%-иар тооцогдсон', num(progress.blocks - progress.reported)) : '', num(progress.reported))
         + (d.startedPhases.length || d.notStartedPhases.length
           ? `${d.startedPhases.length ? tr(' Одоогоор «{0}» үе шат эхэлсэн', d.startedPhases.map((x) => tr(x)).join('», «')) : ''}${d.notStartedPhases.length ? tr(' бөгөөд үлдсэн {0} үе шат хараахан эхлээгүй байна', num(d.notStartedPhases.length)) : ''}.`
           : '')),

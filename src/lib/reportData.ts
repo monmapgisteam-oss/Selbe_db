@@ -8,14 +8,14 @@ import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import type { SourceKey } from '@/lib/projectPlan';
-import { loadProjectSourceTotals } from '@/lib/projectPlanInputs';
+import { loadProjectSourceTotals, loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
   bagtsKey, pkgKeyOf, laborCompanyFields, CF_WORK_WHERE,
   orderTotalOf,
 } from '@/lib/services';
-import { housingPct, pkgCostWeight, cfWeightRow } from '@/lib/gdash';
+import { housingPct, pkgCostWeight, pkgCostTotal, cfWeightRow } from '@/lib/gdash';
 import { paidShareOf, paidPctOf } from '@/lib/paidShare';
 import { finPkgKey } from '@/lib/pkgAlias';
 import { loadNegtgelPct } from '@/lib/negtgel';
@@ -229,12 +229,14 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   ]);
 
   /** багцын түлхүүр → урьдчилсан төсөвт өртөг, ₮ */
-  const budget = pkgCostWeight(cf.map(cfWeightRow));
+  const weightRows = cf.map(cfWeightRow);
+  const budget = pkgCostWeight(weightRows);
 
   /* багц → БҮХ блокийн дундаж (0–100, тайлагнаагүй блок 0%) ба блокийн тоо (`byPkg` дээр). */
 
-  /* Төсвийн НИЙТ дүн — жинг 0–1 болгож нормчилох хуваарь */
-  const budgetAll = [...budget.values()].reduce((a, b) => a + b, 0);
+  /* Төслийн НИЙТ төсөв — жингийн хуваарь. 2026-11-04: диапазон/багцгүй мөр орсон (`pkgCostTotal`) —
+     урьд нь Σ `budget` (багцтай мөр л) тул орон сууцны жин 79.4% гарч байв, үнэн нь 74.43%. */
+  const budgetAll = pkgCostTotal(weightRows);
 
   const raw = [...byPkg.entries()].map(([pkg, m]) => ({
     label: labels.get(pkg) ?? pkg,
@@ -350,7 +352,7 @@ async function loadProgressRaw(): Promise<ReportExtra['progress']> {
     });
   /* багц бүрийн хувь — `pkgProgressOf` (§2 `joinBagts` · §3 `loadOverall` · Дашбоардтай НЭГ функц) */
   const byPkg = pkgProgressOf(map, uni);
-  /* нийт — блокийн энгийн дундаж, тайлангүй 0% (`latestMean` — Дашбоардын бөгжтэй НЭГ) */
+  /* нийт — блокийн төсвөөр жигнэсэн дундаж, тайлангүй 0% (`latestMean` — Дашбоардын бөгжтэй НЭГ) */
   const mean0 = latestMean(map, keys);
 
   /*
@@ -398,10 +400,11 @@ export const loadFinance = cached(loadFinanceRaw, 5 * 60_000, ['CASHFLOW_NEW', '
 
 async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   const F = CASHFLOW_NEW.fields;
-  const [rows, ho, ps] = await Promise.all([
+  const [rows, ho, ps, official] = await Promise.all([
     queryFeatures(CASHFLOW_NEW.url, { where: CF_WORK_WHERE, outFields: ['*'] }),
     queryFeatures(HO_IPC.url, { outFields: [HO_IPC.payFields.amount, HO_IPC.contractFields.pkg] }),
     loadProjectSourceTotals(),
+    loadProjectBudgetTotal(),
   ]);
 
   /** Гэрээний мөрүүд (78) — шүүлт хэрэггүй, мөр бүр нэг гэрээ */
@@ -464,7 +467,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
      * БАГЦ АЖЛЫН ТОО = 74 (2026-09-15-ны залруулга).
      */
     rows: master.filter((r) => !FIN_XL_WORK_SKIP.includes(secOf(r))).length,
-    budget: sum(F.budget),
+    /* 2026-11-04: «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт E (бүхэл ₮) — дашбоард · удирдлагын тайлантай ИЖИЛ */
+    budget: official ?? Math.round(sum(F.budget)),
     orderTotal: inTotal.reduce((a, r) => a + nn(orderTotalOf(r)), 0),
     /**
      * ГЭРЭЭЛСЭН ДҮН — ЗӨВХӨН «Гэрээлсэн дүн» (`note === CONTRACTED`) мөрөөр

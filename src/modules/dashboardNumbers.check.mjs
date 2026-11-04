@@ -55,4 +55,17 @@ const pkgFin = readFileSync(new URL('./PkgFin.tsx', import.meta.url), 'utf8');
 assert.match(pkgFin, /const gap = lag \? lag\.gap : null;/, 'PkgFin-ийн зөрүү planned − (бүх багцын) actual руу буцав');
 assert.ok(!/planPctAt\(plan\.months/.test(exec), 'удирдлагын тайлан PlanCurve.months-ыг шууд уншиж байна');
 
+/* 4 — (2026-11-04) явцын муруйнууд бүгд 'latest' — «Гүйцэтгэлийн явц» (projTrendPoints) · «Барилга угсралтын явц»
+       · блокийн муруй (BuildingPanel.BlockTrend) бөгж (`latestMean`)-тэй нэг тоо; анхдагч 'peak' зөрүү зурдаг байв
+       (2026-09: 21.8% ↔ 21.2%). Тооцоо нь `blockProgressSeries.check`-д. */
+assert.match(src, /return progressSeries\(h, keys, 'month', 'latest'\)\.map/, 'projTrendPoints анхдагч peak горимд буцав');
+assert.equal((src.match(/progressSeries\(/g) ?? []).length, (src.match(/progressSeries\([\s\S]{0,160}?'latest'/g) ?? []).length,
+  'Dashboard: progressSeries дуудлага бүр latest горимтой');
+const bp = readFileSync(new URL('./BuildingPanel.tsx', import.meta.url), 'utf8');
+assert.match(bp, /progressSeries\(hist, \[blockKey\], grain === 'day' \? 'day' : 'month', 'latest'\)/, 'BlockTrend peak горимд буцав');
+
+/* 5 — (2026-11-04) «Олгосон хувь (төсөлд)» мөр бүрт Төслийн нийт E-д хуваана (мөрийн өөрийн E биш) */
+assert.match(fin, /const rootE = result\.values\.get\(tree\.root\)\?\.E;/, 'ТТБ: rootE алга');
+assert.match(fin, /ppCalcVal\(c\.k, n \? moneyOf\.get\(n\) : undefined, rootE\)/, 'ТТБ: олгосон хувь мөрийн өөрийн E-д хуваагдаж байна');
+
 console.log('dashboardNumbers.check.mjs — БҮГД ТЭНЦЛЭЭ');

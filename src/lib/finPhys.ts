@@ -47,6 +47,8 @@ export type PhysHistory = Map<string, { date: string; pct: number | null }[]>;
  * @param nowYm ОРОН НУТГИЙН одоогийн сар — түүнээс хойш цэг гарахгүй
  * @param universe багц → блокийн түлхүүрүүд (`blockProgress.loadBlockUniverse`). Өгөөгүй
  *   бол хуваарь нь зөвхөн утгатай блокууд (тест/нөөц) — тайлагнаагүй багц мэдэгдэхгүй.
+ * @param weights блокийн жин `БАГЦ|блок` → төсөв (2026-11-04: `pkgProgressOf`-ийн ижил дүрэм — жингүй блок нь
+ *   мэдэгдэж буй жингийн дундаж, жин огт алга бол тэнцүү).
  */
 export function buildPhys(
   hist: PhysHistory,
@@ -54,6 +56,7 @@ export function buildPhys(
   nowYm: string,
   universe?: ReadonlyMap<string, readonly string[]>,
   grain: 'month' | 'day' = 'month',
+  weights: ReadonlyMap<string, number> | null = null,
 ): PhysBuild {
   const keyLength = grain === 'day' ? 10 : 7;
   /* багц → блок → [огноо, %] */
@@ -96,12 +99,12 @@ export function buildPhys(
     /*
      * Бичилттэй блокууд — ХООСОН (`null`, цэвэрлэгдсэн) бичилт ч бичилт.
      */
-    const members: { d: string; g: number | null }[][] = [];
+    const members: { b: string; arr: { d: string; g: number | null }[] }[] = [];
     const all = new Set(uniOf.get(k) ?? []);
     let anyVal = false;
     for (const [b, arr0] of blocks) {
       if (!arr0.length) continue;
-      members.push([...arr0].sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0)));
+      members.push({ b, arr: [...arr0].sort((x, y) => (x.d < y.d ? -1 : x.d > y.d ? 1 : 0)) });
       all.add(b);
       if (arr0.some((e) => e.g != null)) anyVal = true;
     }
@@ -109,6 +112,13 @@ export function buildPhys(
     if (n > 0) physN.set(k, n);
     /* Огт тайлагнаагүй (утгатай бичилт нэг ч алга) — цэг гаргахгүй, `physN`-ээр 0% */
     if (!anyVal) continue;
+    /* жин: мэдэгдэж буй блокуудын жин; жингүй блок — тэдгээрийн дундаж (эсвэл 1) */
+    let known = 0, kn = 0;
+    if (weights) for (const b of all) { const w = weights.get(`${k}|${b}`); if (w != null && w > 0) { known += w; kn += 1; } }
+    const fill = kn ? known / kn : 1;
+    const wOf = (b: string): number => { const w = kn ? weights?.get(`${k}|${b}`) : null; return w != null && w > 0 ? w : fill; };
+    let wsum = 0;
+    for (const b of all) wsum += wOf(b);
     const byMon = new Map<string, number>();
     const cntMon = new Map<string, number>();
     const atMon = new Map<string, string>();
@@ -118,7 +128,7 @@ export function buildPhys(
       let fresh = false; // тухайн сард ШИНЭ бичилт бий эсэх (дүрэм 2)
       let reported = false; // known value on/before this point, even if subsequently cleared
       let at = '';
-      for (const arr of members) {
+      for (const { b, arr } of members) {
         /* тухайн сарын эцэс хүртэлх хамгийн сүүлийн бичилт — `null` ч байж болно (2026-10-12) */
         let best: { d: string; g: number | null } | null = null;
         for (const e of arr) {
@@ -127,14 +137,14 @@ export function buildPhys(
           if (e.g != null) reported = true;
         }
         if (!best) continue; // хараахан тайлагнаагүй — 0% (дүрэм 1)
-        if (best.g != null) sum += best.g;
+        if (best.g != null) sum += wOf(b) * best.g;
         if (best.d.slice(0, keyLength) === label) fresh = true;
         if (best.d > at) at = best.d;
       }
       // Explicit clearing after a known value must stop carry-forward of the old
       // percentage. Null-only history before the first measurement stays absent.
       if (!fresh || !reported) continue;
-      byMon.set(label, sum / n);
+      byMon.set(label, sum / wsum);
       cntMon.set(label, n);
       atMon.set(label, at);
     }

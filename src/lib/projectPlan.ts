@@ -60,6 +60,8 @@ export type PlanStoredRow = {
   zahiramj_dugaar?: string | null;
   /** Ашиглалтад оруулах огноо */
   ashiglalt_ognoo?: number | null;
+  /** Сонгон шалгаруулалтын огноо — L2 milestone-ийн нөөц эх (2026-11-04, «Сонгон шалгаруулалт» хуудас) */
+  songon_ognoo?: number | null;
   /** Мөр үүсгэсэн агшин (сервер) — импортын мөрийг гараар нэмсэнээс ялгана (`planEdit.isManualRow`) */
   created_date?: number | null;
   /** Захирамжийн дүнгийн эх үүсвэр (₮) — `CASHFLOW_NEW.sources`; зөвхөн өөрийн мөрд харагдана, нийлбэрлэхгүй (2026-11-03) */
@@ -125,8 +127,18 @@ export function sourceSums(tree: PlanTree): Map<PlanNode, SourceSums> {
   return roll;
 }
 
+/**
+ * ТӨСЛИЙН НИЙТ ТӨСӨВ — Төслийн нийт мөрийн E (`computePlan`-ийн дүрэм: өөрийнх › хүүхдүүдийн нийлбэр), БҮХЭЛ ₮.
+ * 2026-11-04: дашбоард · тайлан · удирдлагын тайлан ажлын мөрийн нийлбэрийг (блокийн бутархай ₮-тэй) тус тусдаа
+ * бодож 1 ₮ зөрдөг байв — бүгд ЭНЭ тоог харуулна. Мөр алга (E null) бол null.
+ */
+export function planBudgetTotal(tree: PlanTree): number | null {
+  const E = computePlan(tree, {}).values.get(tree.root)?.E;
+  return E == null ? null : Math.round(E);
+}
+
 export type PlanNode = {
-  /** `dd_kod` (үндэс бол `''`) */
+  /** `dd_kod` (үндэс бол `''`) — ДАВХАРДАЖ болно (`PlanTree.byCode`) */
   code: string;
   /** Эх мөр — синтетик үндэст `null` */
   row: PlanStoredRow | null;
@@ -159,6 +171,11 @@ export type PlanTree = {
   root: PlanNode;
   /** Үндэсгүй, урьдчилсан дарааллаар */
   nodes: PlanNode[];
+  /**
+   * `dd_kod` → мөр. Код ДАВХАРДСАН бол (Excel-ийн импорт: «3» = Газар чөлөөлөлт ба Зөвшөөрөл; блокийн 5.2.1.1.1–20
+   * 7 багцад ижил …) ЭХНИЙХ — оролтын (`orderPlanRows`) дарааллаар эхэнд ирсэн мөр, тогтмол. Нэг утгатай мөрийг
+   * `objectid`-оор (`PlanStoredRow.objectid`) хай; `issues` давхардсан кодыг жагсаана.
+   */
   byCode: Map<string, PlanNode>;
   /** Бүтцийн анхааруулга (давхардсан код, олдоогүй эцэг, хосгүй мөр) */
   issues: string[];
@@ -196,6 +213,13 @@ export type BlockStatus = 'notStarted' | 'started' | 'done';
 export type PlanInputs = {
   /** Барилга угсралт ажлын блокийн бодит гүйцэтгэл (бөглөх хуудас · blockProgress) */
   blockActual?: (pkg: string | null, blok: string, node: PlanNode) => number | null | undefined;
+  /**
+   * БЭЛТГЭЛ АЖЛЫН (`sub === 'beltgel'`) блокийн бодит гүйцэтгэл (2026-11-05) — бөглөх хуудасны «А. Бэлтгэл ажил»
+   * мөрөөс (`blockProgress.compute` → `prep`, «Б.»-тэй нэг «сүүлийн нүд ялна» дүрэм). `0` = хуудасны хуваарьт байгаа
+   * атлаа бөглөөгүй; `null` = эх унасан; `undefined` = хуудасгүй блок → хадгалсан `guitsetgel_huvi`.
+   * Блокгүй бэлтгэлийн мөр (5.1.1 · 5.1.2 · Багц-16…) энэ callback-аар ОРОХГҮЙ — хадгалсан `guitsetgel_huvi` хэвээр.
+   */
+  prepActual?: (pkg: string | null, blok: string, node: PlanNode) => number | null | undefined;
   /** Барилга угсралт ажлын блокгүй навчны (дэд бүтэц) бодит гүйцэтгэл */
   pkgActual?: (pkg: string | null, node: PlanNode) => number | null | undefined;
   /** Блокийн гүйцэтгэгчийн төлөвлөгөөт хувь `asOf` өдрөөр (Хуваарь · planProgress) */
@@ -297,6 +321,9 @@ export function phaseKind(name: string | null | undefined): PhaseKind {
   return 'other';
 }
 
+/** `blok` баганад блокийн код биш бичвэр («Бүгд») — багцын хүрээгээр холбохгүй, хадгалсан утга (2026-11-04) */
+export const isNonBlockText = (n: PlanNode): boolean => !n.blok && !!String(n.row?.blok ?? '').trim();
+
 /** Блокийн код мөн үү («5/1», «29/3», «6/8») */
 export const isBlockCode = (v: unknown): boolean => /^\s*\d+\s*\/\s*\d+\s*$/.test(String(v ?? ''));
 
@@ -307,13 +334,16 @@ const keyC = (v: unknown) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨ
 const keyD = (v: unknown) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 /**
- * НЭМСЭН АЖИЛ (2026-11-03, «ТЭЗҮ · Ажлын зураг төсөл» хуудасны «+ Ажил нэмэх») — Ажлын зураг төсөл үе шатын,
- * ЭЦЭГТЭЙГЭЭ ИЖИЛ БАГЦТАЙ, мөнгөгүй (`cashflow_id` хоосон) мөр. Хүснэгтийн бусад мөр энэ үе шатад эцгээсээ өөр
- * багцтай тул андуурагдахгүй. Жин нь хадгалсан «Хэсэгт эзлэх»; төсөв нь эцгийн төсвөөс хувиар оноогдоно (`EA`).
+ * НЭМСЭН АЖИЛ (2026-11-03, «ТЭЗҮ · Ажлын зураг төсөл» хуудасны «+ Ажил нэмэх»; 2026-11-04 «Зөвшөөрөл (ТТБ)» хуудасны
+ * «+ Зөвшөөрөл нэмэх») — Ажлын зураг төсөл эсвэл Зөвшөөрөл үе шатын, ЭЦЭГТЭЙГЭЭ ИЖИЛ БАГЦТАЙ, мөнгөгүй (`cashflow_id`
+ * хоосон) мөр. Хүснэгтийн бусад мөр эдгээр үе шатад эцгээсээ өөр багцтай тул андуурагдахгүй. Жин нь хадгалсан
+ * «Хэсэгт эзлэх»; төсөв нь эцгийн төсвөөс хувиар оноогдоно (`EA`).
  */
+export const ADDED_WORK_PHASES: readonly PhaseKind[] = ['zurag', 'zovshoorol'];
+
 export function isAddedWork(n: PlanNode): boolean {
   const p = n.parent?.row;
-  if (n.phase !== 'zurag' || !n.row || !p || n.row.cashflow_id != null) return false;
+  if (!ADDED_WORK_PHASES.includes(n.phase) || !n.row || !p || n.row.cashflow_id != null) return false;
   const b = keyC(n.row.bagts);
   return !!b && b === keyC(p.bagts);
 }
@@ -321,6 +351,23 @@ export function isAddedWork(n: PlanNode): boolean {
 /** «Гэрээлсэн дүн» бичигдсэн мөр мөн үү */
 const isContractNote = (r: PlanStoredRow | null | undefined): boolean =>
   String(r?.ho_dungiin_tailbar ?? '').replace(/\s+/g, ' ').trim() === 'Гэрээлсэн дүн';
+
+/**
+ * СОНГОН ШАЛГАРУУЛАЛТ ДУУССАН ЭСЭХ (2026-11-05) — гэрээ байгуулагдсан бол сонгон шалгаруулалт 100%. Өөрийн эсвэл ӨВГИЙН
+ * мөрийн `songon_ognoo`/`geree_ognoo` өнөөдрөөс хойш биш, эсвэл тэдгээрийн ихэр (Барилга угсралтын МӨНГӨНИЙ мөр,
+ * `cashflow_id`-тай) `geree_ognoo`-той / «Гэрээлсэн дүн» тэмдэгтэй. Блокийн навч багцынхаа гэрээг дагана —
+ * `levelPlan.buildL2`-ийн «Сонгон шалгаруулалт (гэрээ байгуулсан)» milestone-той нэг дүрэм. Хадгалсан `guitsetgel_huvi`
+ * 0 хэвээр байсан 168 навч гэрээтэй 25 багцад 0% харуулдаг байв.
+ */
+export function tenderSigned(n: PlanNode, today: number): boolean {
+  const past = (v: unknown): boolean => { const d = saneDate(v); return d != null && Math.floor(d / DAY) * DAY <= today; };
+  for (let x: PlanNode | null = n; x && x.row; x = x.parent) {
+    if (past(x.row.songon_ognoo) || past(x.row.geree_ognoo)) return true;
+    const t = x.twin?.row;
+    if (t && t.cashflow_id != null && (past(t.geree_ognoo) || isContractNote(t))) return true;
+  }
+  return false;
+}
 
 export type MoneySums = { paid: number | null; advance: number | null; contract: number | null };
 
@@ -414,6 +461,12 @@ export function buildTree(rows: readonly PlanStoredRow[]): PlanTree {
     seen.set(code, list);
     if (!byCode.has(code)) byCode.set(code, n);
   });
+  /* Давхардсан код — анхааруулга л (мод угсрагдана; `byCode` эхнийхийг өгнө) */
+  const dups = [...seen].filter(([, list]) => list.length > 1);
+  if (dups.length) {
+    issues.push(tr('dd_kod давхардсан — {0} код, {1} мөр (кодоор хайхад эхний мөр): {2}',
+      dups.length, dups.reduce((s, [, l]) => s + l.length, 0), dups.map(([c, l]) => `${c} ×${l.length}`).join(', ')));
+  }
 
   /* Эцэг холбох */
   for (const n of all) {
@@ -466,7 +519,8 @@ export function buildTree(rows: readonly PlanStoredRow[]): PlanTree {
       }
       const b = String(r.bagts ?? '').trim();
       const bl = String(r.blok ?? '').trim();
-      c.blok = bl || (isBlockCode(b) ? b.replace(/\s/g, '') : null);
+      /* 2026-11-04 (хэрэглэгч): барилгын давхарга эх — блок нь «5/1» хэлбэрийн код л; «Бүгд» г.м. бичвэр блок БИШ (багцын мөр) */
+      c.blok = isBlockCode(bl) ? bl.replace(/\s/g, '') : isBlockCode(b) ? b.replace(/\s/g, '') : null;
       c.pkg = b && !isBlockCode(b) ? b : n.pkg;
       c.outside = OUTSIDE_RX.test(String(r.ajil_uilchilgee ?? ''));
       nodes.push(c);
@@ -547,7 +601,7 @@ export type PlanResult = {
   today: number;
   /** Мөр бүрийн утга (үндэс оролцоно — `tree.root`) */
   values: Map<PlanNode, PlanValues>;
-  /** `dd_kod`-оор */
+  /** `dd_kod`-оор — давхардсан код бол `tree.byCode`-ийн ЭХНИЙ мөрийнх (оролтын дараалал) */
   get: (code: string) => PlanValues | undefined;
 };
 
@@ -592,12 +646,19 @@ function leafValue(n: PlanNode, m: Metric, today: number, inputs: PlanInputs): n
     case 'Q': return plannedLeaf(n, today + 7 * DAY, inputs);
     case 'R': return plannedLeaf(n, today - 7 * DAY, inputs);
     case 'S': {
+      /* 2026-11-05: Бэлтгэл ажлын БЛОКИЙН мөр — бөглөх хуудасны «А.» мөрөөс; `undefined` бол хадгалсан утга руу */
+      if (n.phase === 'barilga' && n.sub === 'beltgel' && n.blok) {
+        const v = inputs.prepActual?.(n.pkg, n.blok, n);
+        if (v !== undefined) return frac(v);
+      }
       if (n.phase === 'barilga' && n.sub === 'barilga') {
         const v = n.blok ? inputs.blockActual?.(n.pkg, n.blok, n) : inputs.pkgActual?.(n.pkg, n);
         if (v !== undefined) return frac(v);
-      } else if (n.phase === 'gazar') {
+      } else if (n.phase === 'gazar' && !isNonBlockText(n)) {
         const v = inputs.land?.(n.pkg, n.blok, n);
         if (v !== undefined) return frac(v);
+      } else if (n.phase === 'songon' && tenderSigned(n, today)) {
+        return 1;
       }
       return frac(num(r.guitsetgel_huvi));
     }

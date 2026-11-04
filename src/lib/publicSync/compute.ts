@@ -7,14 +7,14 @@
  *   · санхүү — үндэс мөрийн E (урьдчилсан төсөвт өртөг), 4 эх үүсвэр (`sourceSums`), HO-ийн олгосон (`sumPaid`);
  *   · хүн хүч — ХАБЭА маягтын сүүлийн өдөр (`groupDays`), компани бүр + нийт;
  *   · газар — нэгж талбарын тоо/чөлөөлсөн (`landCountMap`, `loadLandStatus`);
- *   · нийгэм — модны «Нийгмийн дэд бүтэц» хэсгийн хүүхдүүд; эх үүсвэр — `SOURCE_FS`.
+ *   · нийгэм — модны «Барилга угсралт ажил» салааны «Нийгмийн дэд бүтэц» хэсгийн хүүхдүүд; эх үүсвэр — `SOURCE_FS`.
  * Хэрэглэгчийн дүрэм: хэмжилтгүй явц = 0 (null биш); архивгүй — мөр дарж бичигдэнэ; `tolov` талбар байхгүй.
  */
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
 import { moneySums, sourceSums, type PlanNode, type PlanValues } from '@/lib/projectPlan';
 import type { WorkforceDay } from '@/lib/ceo/workforce';
 import type { LandStatus } from '@/lib/land';
-import { HABEA, SOURCE_FS, buildingKey, pkgKeyOf } from '@/lib/services';
+import { HABEA, SOURCE_FS, buildingKey, isPkgRange, pkgKeyOf } from '@/lib/services';
 
 export type PubVal = string | number | null;
 export type PubRow = Record<string, PubVal>;
@@ -138,12 +138,22 @@ export type GuitsetgelInputs = {
 };
 
 const bagtsOf = (n: PlanNode): string => String(n.row?.bagts ?? '').trim();
+/** «Барилга угсралт ажил» хэсгийн мөр (`sub === 'barilga'`) — «Бэлтгэл ажил» (5.1.x) ба бусад үе шат орохгүй */
+const inWorks = (n: PlanNode): boolean => n.phase === 'barilga' && n.sub === 'barilga';
 /**
  * БАГЦЫН мөр — өөрөө багцтай, эцэг нь багцгүй; «Барилга угсралт ажил» хэсэг дотор (`sub === 'barilga'`).
  * «Бэлтгэл ажил» (5.1.x) хэсэгт ижил багцын мөрүүд давхар байдаг — тэдгээр ОРОХГҮЙ (давхар код, давхар айл).
+ * 2026-11-04: олон багц хамарсан мөр («БАГЦ 1- 4», «БАГЦ-6.1, 6.2» — `isPkgRange`) багц БИШ: урьд нь «1.4»,
+ * «6.1,6.2» код болж нийтлэгдэж байв.
  */
 export const isPkgNode = (n: PlanNode): boolean =>
-  n.phase === 'barilga' && n.sub === 'barilga' && !n.blok && !!bagtsOf(n) && !(n.parent && bagtsOf(n.parent));
+  inWorks(n) && !n.blok && !!bagtsOf(n) && !isPkgRange(bagtsOf(n)) && !(n.parent && bagtsOf(n.parent));
+/**
+ * ДЭД БАГЦЫН мөр — багцтай эцгийн (жишээ «Багц-16») багцтай, блокгүй хүүхэд (БАГЦ-16.1 … 17.7).
+ * `isPkgNode` эцэгтэй тул хасдаг — эцгийнх нь доор `tuvshin: 'bagts'`, `etseg_kod` = эцгийн код гэж нийтэлнэ.
+ */
+export const isSubPkgNode = (n: PlanNode): boolean =>
+  inWorks(n) && !n.blok && !!bagtsOf(n) && !isPkgRange(bagtsOf(n)) && !!n.parent && isPkgNode(n.parent);
 
 const span = (v: PlanValues | undefined, a: keyof PlanValues, b: keyof PlanValues): [number | null, number | null] =>
   [ms(v?.[a] as number | null), ms(v?.[b] as number | null)];
@@ -197,6 +207,18 @@ export function guitsetgelRows(plan: ProjectPlan, inp: GuitsetgelInputs): PubRow
       guits: inp.contractors.get(key) ?? null, pct: v?.S, dates: contractDates(v), ail,
     }));
     pkgRows.push(...blockRows);
+    /* Дэд багц (Багц-16 → 16.1 … 17.7) — өөрийн гэрээ, гүйцэтгэгч, явцтай; эцгийн код доор */
+    for (const s of n.children.filter(isSubPkgNode)) {
+      const sb = bagtsOf(s);
+      const sc = pubPkgCode(sb);
+      if (!sc || seen.has(sc)) continue;
+      seen.add(sc);
+      const sv = result.values.get(s);
+      pkgRows.push(row({
+        kod: sc, etseg: code, tuvshin: 'bagts', ner: txt(s.row?.ajil_uilchilgee) || sb,
+        guits: inp.contractors.get(pkgKeyOf(sb)) ?? null, pct: sv?.S, dates: contractDates(sv),
+      }));
+    }
     if (!blocks.length) {
       for (const g of inp.groups.get(code) ?? []) {
         pkgRows.push(row({ kod: `${code}-G${g.no}`, etseg: code, tuvshin: 'buleg', ner: g.name, pct: g.pct, dates: [g.start, g.end] }));
@@ -221,9 +243,11 @@ export function gazarRows(
   codeOfKey: (pkgKey: string) => string,
 ): PubRow[] {
   const out: PubRow[] = [];
+  /* Нэгж талбаргүй багц (давхарга нэг ч парцел хамраагүй — Багц 12, 13, 15, 18) = чөлөөлөх газаргүй → 100%
+     («Төсөл төлөвлөгөө биелэлт»-ийн `EMPTY_AREA_PCT`-тэй нэг дүрэм, 2026-11-04); нийт/чөлөөлсөн 0 хэвээр */
   const r = (code: string, total: number, cleared: number): PubRow => ({
     bagts_kod: code, niit_negj_talbar_too: total, choloolson_too: cleared,
-    choloolson_huvi: total > 0 ? Math.round((cleared / total) * 1000) / 10 : 0,
+    choloolson_huvi: total > 0 ? Math.round((cleared / total) * 1000) / 10 : 100,
   });
   if (status) out.push(r(PUB_TOTAL, status.total, status.resolved));
   for (const [k, c] of perPkg) {
@@ -249,8 +273,13 @@ export const niigemCapacity = (name: string): number | null => {
   return m ? numOr(m[1]) : null;
 };
 
+/**
+ * «Нийгмийн дэд бүтэц» хэсэг — ЗӨВХӨН «Барилга угсралт ажил» салаанаас (2026-11-04): ижил нэртэй хэсэг зураг төсөл
+ * (2.4), газар чөлөөлөлт, зөвшөөрөл, сонгон шалгаруулалт, бэлтгэл ажил үе шатанд ч байдаг тул эхний олдсон (2.4)
+ * хэсгийн зураг төслийн явц (100%) барилгын явц мэт нийтлэгдэж байв.
+ */
 export function niigemRows(plan: ProjectPlan): PubRow[] {
-  const sect = plan.tree.nodes.find((n) => /нийгмийн дэд бүтэц/i.test(txt(n.row?.ajil_uilchilgee)) && n.children.length > 0);
+  const sect = plan.tree.nodes.find((n) => inWorks(n) && /нийгмийн дэд бүтэц/i.test(txt(n.row?.ajil_uilchilgee)) && n.children.length > 0);
   if (!sect) return [];
   return sect.children.map((n) => {
     const v = plan.result.values.get(n);

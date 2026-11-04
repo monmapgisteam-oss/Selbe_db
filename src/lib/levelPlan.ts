@@ -533,7 +533,7 @@ export function ganttAxis(rows: readonly GRow[], today: number): Axis | null {
   return axisOf(ds, 1);
 }
 
-/** Milestone-ийн огноо — `dd_kod`-оор */
+/** Milestone-ийн огноо — мөрийн `objectid`-оор (2026-11-05: `dd_kod` 34 кодод давхардсан тул кодоор хайвал буруу мөр авна) */
 export type Mark = {
   /** `songon_ognoo` */
   tender: number | null;
@@ -544,7 +544,8 @@ export type Mark = {
   /** `zahiramj_dugaar` («А/736») */
   orderNo?: string | null;
 };
-export type Marks = ReadonlyMap<string, Mark>;
+/** `PlanStoredRow.objectid` → Mark */
+export type Marks = ReadonlyMap<number, Mark>;
 
 const nameOf = (n: PlanNode): string => String(n.row?.ajil_uilchilgee ?? '').trim();
 
@@ -643,7 +644,8 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     let k = 0;
     const next = () => `${id}.${++k}`;
     const son = idx.get('songon')?.get(pk.key);
-    const mk = (n: PlanNode | undefined) => (n ? marks?.get(n.code) : undefined);
+    /* мөрийн objectid-оор — `dd_kod` давхардсан (5.2.1.1.1 долоон багцад, «3» хоёр үе шатад) тул кодоор биш */
+    const mk = (n: PlanNode | undefined) => (n?.row?.objectid != null ? marks?.get(n.row.objectid) : undefined);
     /* Захирамж — мөрийн өөрийн `zahiramj_*` (гараар засагдана) › тусдаа уншсан milestone */
     const own = [pk.node, son].find((n) => n?.row?.zahiramj_ognoo != null || !!n?.row?.zahiramj_dugaar)?.row;
     const ord = [mk(pk.node), mk(son)].find((m) => m?.order != null) ?? mk(pk.node) ?? mk(son);
@@ -864,19 +866,19 @@ const attr = (a: Record<string, unknown>, name: string): unknown => {
 /**
  * Milestone-ийн огноо — `songon_ognoo` · `ashiglalt_ognoo` (импортын шинэ талбар) ба захирамж (`zahiramj_ognoo` ·
  * `zahiramj_dugaar` — мөнгөний мөрд импорт ХАДГАЛДАГ). `loadProjectPlan` эдгээрийг уншдаггүй тул тусад нь НЭГ
- * асуулгаар (зөвхөн утгатай мөр).
+ * асуулгаар (зөвхөн утгатай мөр). Түлхүүр — `objectid` (кодоор бол давхардсан кодын өөр мөрийн огноо ирнэ).
  */
-async function fetchMarks(): Promise<Map<string, Mark>> {
+async function fetchMarks(): Promise<Map<number, Mark>> {
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
     where: `${F.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL AND (${F.tenderDate} IS NOT NULL OR ${F.handoverDate} IS NOT NULL`
       + ` OR ${F.orderDate} IS NOT NULL OR ${F.orderNo} IS NOT NULL)`,
-    outFields: [F.ddKod, F.tenderDate, F.handoverDate, F.orderDate, F.orderNo],
+    outFields: [CASHFLOW_NEW.oid, F.ddKod, F.tenderDate, F.handoverDate, F.orderDate, F.orderNo],
   });
-  const out = new Map<string, Mark>();
+  const out = new Map<number, Mark>();
   for (const r of rows) {
     const a = r as Record<string, unknown>;
-    const k = String(attr(a, F.ddKod) ?? '').trim();
-    if (!k || out.has(k)) continue;
+    const k = Number(attr(a, CASHFLOW_NEW.oid));
+    if (!Number.isFinite(k) || out.has(k)) continue;
     const no = String(attr(a, F.orderNo) ?? '').trim();
     out.set(k, {
       tender: dateIn(attr(a, F.tenderDate)), handover: dateIn(attr(a, F.handoverDate)),

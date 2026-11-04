@@ -249,7 +249,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           <p className={s.heroSub}>{tr('Багцын хяналтын самбар')}</p>
         </div>
         <div className={s.heroFig}>
-          <span className={s.eyebrow}>{tr('Орон сууцны гүйцэтгэл')}</span>
+          <span className={s.eyebrow}>{tr('Барилгын явц')}</span>
           <span className={s.heroNum}>{pct(m.hero.actual)}</span>
           <span className={s.meterGap}><Meter value={m.hero.actual} plan={m.hero.planContract} /></span>
           <span className={s.heroNote}>

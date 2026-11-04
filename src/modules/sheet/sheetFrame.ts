@@ -9,7 +9,7 @@
  * ЦЭВЭР функц болж, гурван газраас (FillNew · hyanaltStore.apply ·
  * hyanaltDetail) НЭГ эх сурвалжаар дуудагдана.
  */
-import { cellObyem, cellPct, computeAll, dayToMs, fmtInc, incCell, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
+import { cellObyem, cellPct, computeAll, dayToMs, fmtInc, incCell, msToDay, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
 import type { Schema } from "./bagts.pkg";
 import type { NewRow, SubmissionPayload } from "@/lib/submission";
 import { t as tr } from "@/lib/i18nCore";
@@ -724,6 +724,15 @@ export function buildFrame(
   const c = computeAll(rows, nBld, asOf, pending, pendDate, hasObyem, planPct, "abs", sc.synthetic);
 
   /*
+   * ӨДРИЙН АЖЛЫН СУУРЬ (2026-11-04): бичих өдөр ачаалсан жаазны өдөртэй ИЖИЛ бол суурь = ӨМНӨХ өдрүүдийн хуримтлал
+   * (`obyemPrior`) — ингэснээр өдрийн СҮҮЛИЙН жааз өдрийн БҮХ ажлыг хадгална (`lastFrame` · `priorObyem` · `snapshotDayOf`
+   * бүгд өдөрт сүүлийн жаазыг л тоолдог). Өөр өдөр бол ачаалсан хуримтлал (`obyemBase`).
+   */
+  const writeDay = msToDay(fillMs);
+  const baseOf = (r: SheetRow): (number | null)[] | undefined =>
+    (r.frameDay && r.frameDay === writeDay && r.obyemPrior ? r.obyemPrior : r.obyemBase);
+
+  /*
    * АЖЛЫН КОД (`Des_dugaar`) — ЗӨВХӨН ДУТУУ мөрд олгоно.
    */
   let nextDes = 0;
@@ -746,7 +755,7 @@ export function buildFrame(
       // Хуримтлагдсан обьём — хувийн ЭХ СУРВАЛЖ. Талбаргүй блок бий тул
       // шалгаж байж бичнэ; бүлгийн мөрд хоосон (нэгж нь зөрдөг).
       /* 2026-11-04: жаазанд тухайн ӨДРИЙН ажил бичигдэнэ (хуримтлал биш) — `dayObyem` */
-      if (sc.obyem[b]) a[sc.obyem[b]!] = dayObyem(c[i].obyem[b], r.obyemBase?.[b]);
+      if (sc.obyem[b]) a[sc.obyem[b]!] = dayObyem(c[i].obyem[b], baseOf(r)?.[b]);
       if (sc.start[b]) a[sc.start[b]!] = c[i].startSrc[b] === "agg" ? null : c[i].start[b];
       if (sc.end[b]) a[sc.end[b]!] = c[i].endSrc[b] === "agg" ? null : c[i].end[b];
       /*
@@ -763,7 +772,7 @@ export function buildFrame(
     if (sc.f.hunHuch) a[sc.f.hunHuch] = r.hun;
     if (sc.f.mashin) a[sc.f.mashin] = r.mashin;
     // ОБЬЁМЫН НИЙЛБЭР — талбар байвал л бичнэ (шинэ багана, 10/10 багцад бий)
-    if (sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum)) a[sc.f.obyemSum] = dayObyemSum(sc, c[i].obyem, r.obyemBase);
+    if (sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum)) a[sc.f.obyemSum] = dayObyemSum(sc, c[i].obyem, baseOf(r));
     /*
      * МӨНГӨН ДҮН (excel H) — ДЭЛГЭЦ ДЭЭР БОДОГДДОГ УТГЫГ АРХИВТ Ч БИЧНЭ.
      */

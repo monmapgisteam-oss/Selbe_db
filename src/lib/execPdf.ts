@@ -20,7 +20,7 @@ import {
 import { TOLOV } from '@/lib/zovshoorol';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { buildInfographic, toPng, money } from '@/lib/execInfographic';
-import { progressSub, gapPts, planScopeNote } from '@/lib/gdash';
+import { gapPts, planScopeNote } from '@/lib/gdash';
 import { coverageNote, coverageOk } from '@/lib/planProgress';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import { execSections, execSectionNo, execSectionTitle, type ExecSectionKey } from '@/lib/execSections';
@@ -291,14 +291,14 @@ export async function buildExecDoc(
             { text: T(dataAt), style: 'coverFactL' },
           ] },
           { stack: [{ text: tr('{0} ажлын багц', num(g.packages)), style: 'coverFactV' }, { text: tr('{0} төрөл', num(g.types)).toUpperCase(), style: 'coverFactL' }] },
-          { stack: [{ text: g.progressSrc === 'negtgel' ? tr('Нэгтгэл гүйцэтгэл') : tr('6 үе шат'), style: 'coverFactV' }, { text: tr('Жигнэсэн гүйцэтгэлийн хэмжилт').toUpperCase(), style: 'coverFactL' }] },
+          { stack: [{ text: tr('Нэгтгэл гүйцэтгэл'), style: 'coverFactV' }, { text: tr('Жигнэсэн гүйцэтгэлийн хэмжилт').toUpperCase(), style: 'coverFactL' }] },
         ],
         columnGap: 18,
       },
       {
         margin: [0, 48, 0, 0],
         columns: [
-          { stack: [{ text: g.progress == null ? '—' : pct(g.progress, 1), style: 'coverKpiV' }, { text: g.progressSrc === 'negtgel' ? tr('Төслийн нийт гүйцэтгэл') : tr('Төслийн нийт гүйцэтгэл (6 шатаар)'), style: 'coverKpiL' }] },
+          { stack: [{ text: g.progress == null ? '—' : pct(g.progress, 1), style: 'coverKpiV' }, { text: tr('Төслийн нийт явц'), style: 'coverKpiL' }] },
           { stack: [{ text: T(money(g.budget)), style: 'coverKpiV' }, { text: tr('Нийт төсөв'), style: 'coverKpiL' }] },
         ],
         columnGap: 24,
@@ -318,7 +318,7 @@ export async function buildExecDoc(
       kpiRow([
         { label: tr('Нийт төсөв'), value: money(g.budget), sub: `${num(g.budget)} ₮` },
         { label: tr('Нийт гэрээлсэн дүн'), value: money(g.contract), sub: g.budget > 0 ? tr('төсвийн {0}', pct((g.contract / g.budget) * 100, 1)) : undefined },
-        { label: tr('Төслийн гүйцэтгэл'), value: g.progress == null ? '—' : pct(g.progress, 1), sub: progressSub(g.progressSrc) },
+        { label: tr('Төслийн нийт явц'), value: g.progress == null ? '—' : pct(g.progress, 1), sub: tr('Нэгтгэл гүйцэтгэлээр') },
       ]),
       kpiRow([
         { label: tr('Газар чөлөөлөлт'), value: g.landPct == null ? '—' : pct(g.landPct, 1), sub: tr('{0} / {1} нэгж талбар', num(g.land.cleared), num(g.land.total)) },
@@ -532,6 +532,13 @@ export async function buildExecDoc(
         ...(finNone.length ? [[
           td(tr('Гэрээ байгуулаагүй ажил ({0} багц)', num(finNone.length)), false, AMBER),
           td('—', true), td(num(0), true), td('—', true),
+        ] as TableCell[]] : []),
+        /* 2026-11-04: олон багц хамарсан олголт — тусдаа мөр, Σ мөр = толгойн «Олгосон» (дэлгэцтэй ижил) */
+        ...f.ranges.map((g): TableCell[] => [
+          td(tr('{0} (хэд хэдэн багц хамарсан олголт)', g.label)), td('—', true), td(num(g.given), true), td('—', true),
+        ]),
+        ...(f.givenUnlisted > 0 ? [[
+          td(tr('Багцын мөрд ороогүй олголт'), false, AMBER), td('—', true), td(num(f.givenUnlisted), true), td('—', true),
         ] as TableCell[]] : []),
         [tdBold(tr('Нийт')), tdBold(num(f.planTotal), true), tdBold(num(f.given), true),
           tdBold(f.share == null ? '—' : pct(f.share, 1), true)],

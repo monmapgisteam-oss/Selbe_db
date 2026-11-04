@@ -85,6 +85,8 @@ export function payRows(pays: readonly Row[]): PayRow[] {
   for (const r of pays) {
     const no = num(r[P.ipcNo]);
     if (isAuto(r) && no != null && perfByNo.has(no) && hasPay(no)) continue;
+    /* 2026-11-04: IPC-д ороогүй, 0 ₮ «Гүйцэтгэл» AUTO мөр (тэр өдөр жаазгүй үлдэгдэл) карт болохгүй */
+    if (isAuto(r) && no == null && num(r[LINK_FIELDS.une]) === 0 && statusOf(r) === HO_IPC.status.work) continue;
     (r[P.kind] === HO_IPC.kinds.advance ? adv : work).push(r);
   }
   const ordNo = (r: Row): number => {

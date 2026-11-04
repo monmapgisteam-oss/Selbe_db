@@ -20,7 +20,6 @@ import {
 } from '@/lib/services';
 import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD, ubDayKey } from '@/lib/ceo/workforce';
 import { isClearedStatus } from '@/lib/land';
-import { stageProjectPct } from '@/lib/negtgel';
 import {
   FIN_XL_TOTAL_CODE_FIELD, FIN_XL_TOTAL_SKIP, FIN_XL_CHART_FIELDS, finXlChartCat,
   FIN_XL_WORK_SKIP,
@@ -692,6 +691,17 @@ export function pkgCostWeight(
 }
 
 /**
+ * ТӨСЛИЙН НИЙТ ТӨСӨВ (₮) — «Нийт»-ийн хүрээний БҮХ мөрийн ХО дүн (2026-11-04): диапазон («БАГЦ 1- 4»)
+ * ба багцгүй мөр ч орно. `pkgCostWeight`-ийн нийлбэр эдгээрийг хасдаг (157.3 тэрбум) тул багцын
+ * «төслийн төсөвт эзлэх жин»-ийн ХУВААРЬ энэ — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт E-тэй нэг тоо.
+ */
+export function pkgCostTotal(rows: Iterable<{ pkg: unknown; cost: number; inTotal: boolean }>): number {
+  let sum = 0;
+  for (const r of rows) if (r.inTotal && r.cost > 0) sum += r.cost;
+  return sum;
+}
+
+/**
  * ОРОН СУУЦНЫ БИЕТ ГҮЙЦЭТГЭЛИЙН САРЫН ЦУВАА — `pkgShared.aggregateMonths`-ийн цөм
  * (2026-09-30-нд ЭНД шилжсэн: цэвэр функц тул `gdash.check`-ээр шалгагдана).
  *
@@ -1080,12 +1090,8 @@ export type Kpi = {
    * НИЙТ ГЭРЭЭЛСЭН ДҮН — ЗӨВХӨН гэрээлэгдсэн мөрийн `Geree_erh_dun`-ийн нийлбэр.
    */
   contract: number;
-  /** Гүйцэтгэлийн хувь — нэгтгэл гүйцэтгэл эсвэл 6 шатны өртгөөр ЖИГНЭСЭН дундаж (`progressSrc`) */
+  /** Гүйцэтгэлийн хувь — зөвхөн «Нэгтгэл гүйцэтгэл» (ТТБ-ийн Төслийн нийт мөр); уншигдаагүй/шүүлттэй бол null (2026-11-04) */
   progress: number | null;
-  /**
-   * `progress` ХААНААС ирсэн бэ (2026-09-25).
-   */
-  progressSrc: ProgressSrc;
   /**
    * БАГЦ АЖЛЫН ТОО — шүүлтэд багтсан МӨРИЙН тоо.
    */
@@ -1094,24 +1100,15 @@ export type Kpi = {
   types: number;
 };
 
-/** Гүйцэтгэлийн хувийн эх — `Kpi.progressSrc` */
-export type ProgressSrc = 'negtgel' | 'stage';
-
-/** Индикаторын шошго — эхэд тохирсон (6 шатны бодолтыг нэгтгэлийн нэрээр гаргахгүй) */
-export const progressLabel = (src: ProgressSrc): string => (src === 'negtgel'
-  ? tr('Гүйцэтгэлийн хувь')
-  : tr('Гүйцэтгэлийн хувь (6 шатаар)'));
-
-/** Тайлангийн дэд тайлбар — эхэд тохирсон */
-export const progressSub = (src: ProgressSrc): string => (src === 'negtgel'
-  ? tr('Нэгтгэл гүйцэтгэлээр')
-  : tr('6 шатны жигнэсэн хувь'));
-
+/**
+ * `budgetTotal` — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт E (`loadProjectBudgetTotal`), ШҮҮЛТГҮЙ үед л өгнө
+ * (2026-11-04: мөрийн нийлбэр блокийн бутархай ₮-өөс 1 ₮ дутуу); өгөөгүй бол мөрийн нийлбэр, бүхэл ₮.
+ */
 export function kpisOf(
   rows: CfRow[],
   contractSum: number,
-  landPct: number | null = null,
   wbsPct: number | null = null,
+  budgetTotal: number | null = null,
 ): Kpi {
   let budget = 0;
   const types = new Set<string>();
@@ -1121,18 +1118,10 @@ export function kpisOf(
     if (r.type) types.add(r.type);
   }
 
-  /*
-   * ГҮЙЦЭТГЭЛИЙН ХУВЬ — «Нэгтгэл гүйцэтгэл»-ийн ТӨСЛИЙН НИЙТ мөртэй ИЖИЛ
-   * (2026-09-08, хэрэглэгчийн заавар: «шинэ source»).
-   */
-  const stagePct = wbsPct
-    ?? stageProjectPct(rows.map((r) => ({ budget: r.cost, pct: r.stage })), landPct);
-
   return {
-    budget,
+    budget: budgetTotal ?? Math.round(budget),
     contract: contractSum,
-    progress: stagePct,
-    progressSrc: wbsPct != null ? 'negtgel' : 'stage',
+    progress: wbsPct,
     packages: rows.filter((r) => r.isWork).length,
     types: types.size,
   };

@@ -6,12 +6,11 @@
 
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { mnt } from '@/lib/format';
+import { dayKey, mnt } from '@/lib/format';
 import { askConfirm } from '@/lib/confirm';
 import { invalidate } from '@/lib/dataBus';
 import { applyAll } from '@/lib/tableWrite';
 import { queryFeatures } from '@/lib/query';
-import { currentUser } from '@/lib/who';
 import { CASHFLOW_NEW, HO_IPC, num } from '@/lib/services';
 import { entUploadPdf } from '@/lib/entDocs';
 import { runHoSync } from '@/lib/hoSync/sync';
@@ -28,8 +27,9 @@ import s from './ipcTable.module.css';
 const S = HO_IPC.status;
 const CF = CASHFLOW_NEW.fields;
 const money = (v: number | null | undefined): string => (v == null ? '—' : `${mnt(v)}`);
-const today = (): string => new Date().toISOString().slice(0, 10);
-const FIN_CAP = { cap: 'finEdit' } as const;
+/* 2026-11-04: ОРОН НУТГИЙН хуанлийн өдөр (`dayKey`) — бөглөх хуудасны өдөртэй (`ajilApply.todayLocalMs`) нэг дүрэм; UTC биш */
+const today = (): string => dayKey(Date.now());
+const CREATE_CAP = { cap: 'ipcCreate' } as const;
 const APPROVE_CAP = { cap: 'ipcApprove' } as const;
 
 /** Төлөвийн нэр — `tr` статик тул нэг бүрчлэн */
@@ -107,7 +107,7 @@ export function IpcFlowPanel({
     ];
     const msg = `${tr('{0} багцын {1} гүйцэтгэлээс IPC үүсгэх үү? Дүн: {2}', sel[0]?.pkg ?? '', sel.length, money(total))}${warn.length ? ` ${warn.join(' ')}` : ''}`;
     if (!(await askConfirm(msg, { ok: tr('IPC үүсгэх') }))) return;
-    await applyAll(HO_IPC.url, HO_IPC.oid, e, FIN_CAP);
+    await applyAll(HO_IPC.url, HO_IPC.oid, e, CREATE_CAP);
     setPicked(new Set());
     invalidate('HO_IPC');
   });
@@ -122,15 +122,13 @@ export function IpcFlowPanel({
     if (!d) return;
     void run(async () => {
       const { item } = await entUploadPdf(file, docTitle(code, d), ['selbe-ipc'], HO_IPC.docFolder);
-      await applyAll(HO_IPC.url, HO_IPC.oid, { updates: [signIpc(d, item.id)] }, FIN_CAP);
+      await applyAll(HO_IPC.url, HO_IPC.oid, { updates: [signIpc(d, item.id)] }, CREATE_CAP);
       invalidate('HO_IPC');
     });
   };
 
   const approve = (d: IpcDocRow) => run(async () => {
-    const why = approveWhy(d, currentUser());
-    if (why === 'same-user') { setErr(tr('IPC үүсгэсэн хүн өөрөө баталгаажуулах боломжгүй.')); return; }
-    if (why) { setErr(tr('Гарын үсэгтэй сканыг эхлээд оруулна уу.')); return; }
+    if (approveWhy(d)) { setErr(tr('Гарын үсэгтэй сканыг эхлээд оруулна уу.')); return; }
     const q = d.isCancel ? tr('IPC-{0}-ийн цуцлалтыг баталгаажуулах уу?', d.no) : tr('IPC-{0}-г баталгаажуулах уу? {1} олгосон дүнд нэмэгдэнэ.', d.no, money(d.total));
     if (!(await askConfirm(q, { ok: tr('Баталгаажуулах') }))) return;
     await applyAll(HO_IPC.url, HO_IPC.oid, { updates: approveIpc(d, pays) }, APPROVE_CAP);
@@ -291,7 +289,7 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
     }
     setBusy(true);
     try {
-      await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: contractUpdates(c) }, FIN_CAP);
+      await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: contractUpdates(c) }, CREATE_CAP);
       invalidate('CASHFLOW_NEW');
       await runHoSync();
       const adv = c.items.filter((i) => (i.advance ?? 0) > 0);
@@ -304,7 +302,7 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
         const first = nextIpcNo(pays);
         await applyAll(HO_IPC.url, HO_IPC.oid, {
           adds: adv.map((i, k) => createAdvance(code, String(i.row[CF.pkg] ?? ''), i.advance as number, first + k, today())),
-        }, FIN_CAP);
+        }, CREATE_CAP);
         invalidate('HO_IPC');
       }
       onClose();

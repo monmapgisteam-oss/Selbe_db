@@ -475,7 +475,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
       let filled: Filled[] = [];
       let filledCount = 0;
       const changes: Change[] = [];
-      /** Суурь нь ИЖИЛ ӨДРИЙН өмнөх жааз уу (доорх `samePrev`) */
+      /** Жишсэн суурь нь ИЖИЛ ӨДРИЙН өмнөх жааз уу (доорх `samePrev`) — зөвхөн `compared`-д; хуримтлалд НЭМЭГДЭХГҮЙ (2026-11-04) */
       let sameDay = false;
       const sum = sc.f.obyemSum;
       if (sum) {
@@ -567,8 +567,9 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
             no: String(x.attributes[sc.f.no] ?? ''),
             work: String(x.attributes[sc.f.work] ?? ''),
           })));
-          /* 2026-11-04: жааз бүр тухайн ӨДРИЙН ажлыг хадгалдаг — «юунаас юу» нь өмнөх жаазуудын хуримтлал (`priorObyem`)
-             дээр энэ өдрийнхийг нэмж бодогдоно; ижил өдрийн өмнөх жааз (`samePrev`) хуримтлалд НЭМЭГДЭНЭ. */
+          /* 2026-11-04: жааз бүр тухайн ӨДРИЙН ажлыг хадгалдаг — «юунаас юу» нь өмнөх ӨДРҮҮДИЙН хуримтлал (`priorObyem`)
+             дээр энэ өдрийнхийг нэмж бодогдоно. Өдрийн сүүлийн жааз өдрийн БҮХ ажлыг хадгалдаг (`buildFrame`-ийн
+             `obyemPrior` суурь) тул ижил өдрийн өмнөх жааз (`samePrev`) хуримтлалд НЭМЭГДЭХГҮЙ — `loadRows`/`priorObyem`-тэй нэг дүрэм. */
           const prior = await priorObyem(p, sc, msToDay(at));
           const fkeys = frameRowKeys(q.features ?? [], sc);
           filled = (q.features ?? []).map((x, ri) => {
@@ -576,11 +577,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
             const prev = blankSid(x) ? beforePos.get(String(ri)) : before.get(sidsA[ri]);
             const pr = prior.get(fkeys[ri]);
             const dayVals = obs.map((n) => num(a[n]));
-            const beforeVals = obs.map((n, k) => {
-              const extra = sameDay && prev ? num(prev[n]) : null;
-              const base = pr?.[k] ?? null;
-              return base == null && extra == null ? null : (base ?? 0) + (extra ?? 0);
-            });
+            const beforeVals = obs.map((_, k) => pr?.[k] ?? null);
             const cells = obs.map((_, k) => (dayVals[k] == null && beforeVals[k] == null ? null : (dayVals[k] ?? 0) + (beforeVals[k] ?? 0)));
             const sumCum = cells.reduce<number | null>((s, v) => (v == null ? s : (s ?? 0) + v), null);
             const changed = obs.map((_, k) => {

@@ -102,6 +102,46 @@ check('guitsetgel — гүйцэтгэгч, огноо, айл, давхар', (
   for (const r of g) assert.ok(!('tolov' in r), 'tolov талбар байхгүй (хэрэглэгчийн шийдвэр)');
 });
 
+/* 2026-11-04: диапазон мөр багц биш; «Багц-16»-ийн дэд багц (16.1 … 17.7) эцгийн доор; «Нийгмийн дэд бүтэц» зураг төслийн
+   хэсэг (2.4) барилгын (5.2.4) өмнө байдаг — явц барилгынхаас */
+const rows2 = [
+  { dd_kod: '2', etseg_kod: null, uy_shat: 'Зураг төсөл', ajil_uilchilgee: 'Зураг төсөл', tusul_ezleh_huvi: 0.05 },
+  { dd_kod: '2.4', etseg_kod: '2', uy_shat: 'Зураг төсөл', ajil_uilchilgee: 'НИЙГМИЙН ДЭД БҮТЭЦ (Нийслэл төсөв)', heseg_ezleh_huvi: 1 },
+  { dd_kod: '2.4.1', etseg_kod: '2.4', uy_shat: 'Зураг төсөл', bagts: 'БАГЦ - 19.1', ajil_uilchilgee: '960 хүүхдийн сургууль', heseg_ezleh_huvi: 1, guitsetgel_huvi: 100 },
+  ...rows,
+  { dd_kod: '5.2.1.8', etseg_kod: '5.2.1', uy_shat: 'Барилга угсралт', bagts: 'БАГЦ 1- 4', ajil_uilchilgee: 'Суурийн холболтын ажил', heseg_ezleh_huvi: 0.1, ho_dun_geree: 80 },
+  { dd_kod: '5.2.2', etseg_kod: '5.2', uy_shat: 'Барилга угсралт', bagts: 'Багц-16', ajil_uilchilgee: 'ГАДНА ТОХИЖИЛТ, ӨНДӨРЖИЛТ', heseg_ezleh_huvi: 0.2 },
+  { dd_kod: '5.2.2.1', etseg_kod: '5.2.2', uy_shat: 'Барилга угсралт', bagts: 'БАГЦ-16.1', ajil_uilchilgee: 'Өндөржилтийн ажил БАГЦ 1', heseg_ezleh_huvi: 0.5, ho_dun_geree: 9, guitsetgel_huvi: 30,
+    geree_ehleh: D(2026, 4, 1), geree_duusah: D(2027, 4, 1) },
+  { dd_kod: '5.2.2.2', etseg_kod: '5.2.2', uy_shat: 'Барилга угсралт', bagts: 'БАГЦ-17.1', ajil_uilchilgee: 'Гадна тохижилтийн ажил БАГЦ 1', heseg_ezleh_huvi: 0.5, ho_dun_geree: 7 },
+  { dd_kod: '5.2.3.1.9', etseg_kod: '5.2.3', uy_shat: 'Барилга угсралт', bagts: 'БАГЦ-6.1, 6.2', ajil_uilchilgee: 'Төгөл дэд станц өргөтгөх', heseg_ezleh_huvi: 0.1, ho_dun_geree: 4 },
+];
+const plan2 = assemblePlan(rows2, { actual: { blocks, universe, infra: new Map() }, sched: null, land: new Map() }, D(2026, 11, 3));
+const g2 = guitsetgelRows(plan2, { buildings: new Map(), contractors: new Map([['БАГЦ161', 'Смарткрафт']]), groups: new Map() });
+const byKod2 = new Map(g2.map((r) => [r.kod, r]));
+check('guitsetgel — диапазон мөр багц биш («1.4», «6.1,6.2» код гарахгүй)', () => {
+  assert.ok(!byKod2.has('1.4'), '«БАГЦ 1- 4» → «1.4» код нийтлэгдэв');
+  assert.ok(!byKod2.has('6.1,6.2'), '«БАГЦ-6.1, 6.2» → «6.1,6.2» код нийтлэгдэв');
+  assert.ok(!g2.some((r) => /,|^1\.4$/.test(String(r.kod))), 'диапазон код алга');
+  assert.equal(byKod2.get('1').tuvshin, 'bagts', 'энгийн багц хэвээр');
+});
+check('guitsetgel — дэд багц 16.1/17.1 нь «16»-ийн доор, багц түвшин, өөрийн гүйцэтгэгч/явц/огноо', () => {
+  assert.equal(byKod2.get('16').tuvshin, 'bagts');
+  assert.equal(byKod2.get('16').etseg_kod, PUB_BUILD);
+  const s = byKod2.get('16.1');
+  assert.ok(s, '16.1 мөр нийтлэгдэх ёстой');
+  assert.equal(s.etseg_kod, '16');
+  assert.equal(s.tuvshin, 'bagts');
+  assert.equal(s.guitsetgegch_ner, 'Смарткрафт');
+  assert.equal(s.guitsetgel_huvi, 30);
+  assert.equal(s.ehleh_ognoo, D(2026, 4, 1));
+  assert.equal(byKod2.get('17.1').etseg_kod, '16', '17.x ч «Багц-16»-ийн хүүхэд (модны бүтэц)');
+  assert.equal(byKod2.get('17.1').guitsetgel_huvi, 0, 'хэмжилтгүй 0');
+  const i16 = g2.findIndex((r) => r.kod === '16');
+  assert.ok(g2.findIndex((r) => r.kod === '16.1') === i16 + 1 && g2.findIndex((r) => r.kod === '17.1') === i16 + 2, 'эцгийн шууд дараа');
+  assert.equal(g2.filter((r) => r.tuvshin === 'bagts').length, 7, '1 · 5.1 · 16 · 16.1 · 17.1 · 19.1 · 20.6');
+});
+
 /* ══════════ §3 ══════════ */
 /* 2026-11-04: олгосон дүн `olgoson_dun`-ийн нийлбэрээс (IPC-ийн `dun`-ийг hoSync бичдэг) */
 const planPaid = assemblePlan(rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, olgoson_dun: 400 } : r)), { actual: { blocks: null, universe: null, infra: null }, sched: null, land: new Map() }, D(2026, 7, 2));
@@ -167,6 +207,16 @@ check('niigem — төрөл, хүчин чадал, явц, огноо', () => 
   assert.equal(r[1].huchin_chadal, null);
   assert.equal(r[1].guitsetgel_huvi, 0, 'хэмжилтгүй 0');
 });
+check('niigem — ижил нэртэй зураг төслийн хэсэг (2.4) өмнө байсан ч барилгын (5.2.4) явц', () => {
+  const first = plan2.tree.nodes.find((n) => /нийгмийн дэд бүтэц/i.test(String(n.row?.ajil_uilchilgee ?? '')) && n.children.length > 0);
+  assert.equal(first.phase, 'zurag', 'модонд зураг төслийн хэсэг эхэнд (амьд: 2.4 → 5.2.4)');
+  assert.equal(plan2.result.values.get(first.children[0]).S, 100, 'зураг төслийн 19.1 = 100%');
+  const r = niigemRows(plan2);
+  assert.equal(r.length, 2);
+  assert.equal(r[0].bagts_kod, '19.1');
+  assert.equal(r[0].guitsetgel_huvi, 12.5, 'барилгын явц (зураг төслийн 100 биш)');
+  assert.equal(r[1].guitsetgel_huvi, 0);
+});
 check('ehUusver — текстээс тоо, төлөв, нэгж', () => {
   const r = ehUusverRows([
     { torol: 'Усан хангамжийн эх үүсвэр', 'нэр': 'Хайлаастын  2000м3 усан сан​', 'хангах_хувь': '80%​', 'нийт_чадал': '6322.4​' },
@@ -187,12 +237,14 @@ check('ehUusver — текстээс тоо, төлөв, нэгж', () => {
 check('gazar — төсөл + багц, хувь', () => {
   const r = gazarRows(
     { total: 2088, areaM2: 0, cleared: 1945, cleaned: 0, remaining: 143, resolved: 1945, pct: 93.2, byStatus: [], reasons: [] },
-    new Map([['БАГЦ1', { total: 400, cleared: 300 }], ['БАГЦ99', { total: 1, cleared: 0 }]]),
-    (k) => (k === 'БАГЦ1' ? '1' : ''),
+    new Map([['БАГЦ1', { total: 400, cleared: 300 }], ['БАГЦ99', { total: 1, cleared: 0 }], ['БАГЦ12', { total: 0, cleared: 0 }]]),
+    (k) => (k === 'БАГЦ1' ? '1' : k === 'БАГЦ12' ? '12' : ''),
   );
-  assert.equal(r.length, 2, 'кодгүй түлхүүр орохгүй');
+  assert.equal(r.length, 3, 'кодгүй түлхүүр орохгүй');
   assert.deepEqual(r[0], { bagts_kod: PUB_TOTAL, niit_negj_talbar_too: 2088, choloolson_too: 1945, choloolson_huvi: 93.2 });
   assert.deepEqual(r[1], { bagts_kod: '1', niit_negj_talbar_too: 400, choloolson_too: 300, choloolson_huvi: 75 });
+  /* 2026-11-04: нэгж талбаргүй багц = чөлөөлөх газаргүй → 100% (ТТБ `EMPTY_AREA_PCT`-тэй нэг) */
+  assert.deepEqual(r[2], { bagts_kod: '12', niit_negj_talbar_too: 0, choloolson_too: 0, choloolson_huvi: 100 });
 });
 check('diffRows — зөрсөн мөр л, stamp өөрчлөлттэй мөрд, илүү мөр устгана, түлхүүргүй нэг мөр', () => {
   const now = D(2026, 11, 3);

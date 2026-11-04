@@ -127,11 +127,12 @@ export const loadBudget = cached<Budget>(async () => {
 
   const inTotal = g.filter(finXlInTotal);
   const sumOf = (rows: readonly Row[], f: string) => rows.reduce((a, r) => a + Number(r[f] ?? 0), 0);
-  const total = sumOf(inTotal, 'b');
   const orderTotal = sumOf(gOrder.filter(finXlInTotal), 'o');
   const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
-  const { loadProjectSourceTotals } = await import('@/lib/projectPlanInputs');
-  const ps = await loadProjectSourceTotals();
+  const { loadProjectSourceTotals, loadProjectBudgetTotal } = await import('@/lib/projectPlanInputs');
+  const [ps, official] = await Promise.all([loadProjectSourceTotals(), loadProjectBudgetTotal()]);
+  /* 2026-11-04: нийт төсөв = «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт E (бүхэл ₮); мөр алга бол ажлын мөрийн нийлбэр */
+  const total = official ?? Math.round(sumOf(inTotal, 'b'));
   const named: { key: string; label: string; value: number }[] = CASHFLOW_NEW.sources
     .map((s) => ({ key: s.field as string, label: s.label as string, value: ps[s.field as SourceKey] ?? 0 }))
     .filter((x) => x.value > 0)

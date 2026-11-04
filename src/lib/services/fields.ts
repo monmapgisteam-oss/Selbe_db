@@ -457,6 +457,12 @@ export const TASK_SHEET = {
   /** Барилга угсралтын ажлын үе шатын № — нийт гүйцэтгэлийн мөр */
   constructionNo: 'Б.',
   /**
+   * «А. Бэлтгэл ажил» мөрийн № (КИРИЛЛ А). Зарим хуудсанд (b2_12f · b32_9f) латин «A.» гэж бичигдсэн тул
+   * мөр таних газар `isPrepNo` / `prepWhere`-ийг (хоёр үсгийг хоёуланг) хэрэглэнэ — 2026-11-05, ТТБ 5.1.3.1.x
+   * блокийн мөрийн явц энэ мөрөөс (`blockProgress.compute` → `prep`).
+   */
+  prepNo: 'А.',
+  /**
    * Барилга угсралтын ДЭД үе шатууд (Б1…Б5) — «Гүйцэтгэл толгой ажлаар»
    * жагсаалт ЯГ эдгээр таваас бүрдэнэ:
    *   Б1 Барилгын ажил · Б2 Халаалт агаар сэлгэлт · Б3 Цэвэр бохир ус
@@ -504,6 +510,21 @@ export const constructionWhere = (field: string): string => {
   const letter = TASK_SHEET.constructionNo.replace(/\./g, ''); // «Б.» → «Б»
   return `(${field} = N'${letter}' OR ${field} LIKE N'${letter}.%')`;
 };
+
+/** «А. Бэлтгэл ажил» мөрийн үсгүүд — кирилл «А» ба латин «A» (хуудас бүрд өөр бичигдсэн) */
+const PREP_LETTERS: readonly string[] = [TASK_SHEET.prepNo.replace(/\./g, ''), 'A'];
+
+/** Энэ мөр нь «А. БЭЛТГЭЛ АЖИЛ» мөн үү (кирилл «А.» эсвэл латин «A.»)? */
+export const isPrepNo = (raw: unknown): boolean => {
+  const no = normalizeTaskNo(raw);
+  return PREP_LETTERS.some((l) => no === `${l}.`);
+};
+
+/**
+ * «А. Бэлтгэл ажил» мөрийг барих ArcGIS SQL предикат — `isPrepNo`-гийн серверийн тал (хоёр үсэг хоёулаа).
+ */
+export const prepWhere = (field: string): string =>
+  `(${PREP_LETTERS.map((l) => `${field} = N'${l}' OR ${field} LIKE N'${l}.%'`).join(' OR ')})`;
 
 /**
  * Багцын нэр гурван эх сурвалжид гурван янз бичигдсэн:

@@ -294,12 +294,21 @@ export function planAuto(rows: readonly Row[], a: AutoIpc): AutoPlan {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(a.day)) return { op: 'skip', why: 'bad-day' };
   if (a.obyem == null && a.une == null) return { op: 'skip', why: 'no-data' };
 
-  /* 2026-11-04: IPC-д орсон мөрийг шинэчлэхгүй; ижил өдөр дахин бөглөвөл шинэ «Гүйцэтгэл» мөр */
+  /* 2026-11-04: IPC-д орсон мөрийг шинэчлэхгүй; ижил өдөр дахин бөглөвөл шинэ «Гүйцэтгэл» мөр.
+     2026-11-05: өдрийн сүүлийн жааз өдрийн БҮХ ажлыг хадгалдаг тул шинэ мөрд ижил өдрийн ТҮГЖИГДСЭН мөрүүдийн дүнг
+     хасна — IPC-д орсон хэсэг давхар тоологдохгүй. */
   const same = rows.filter((r) => isAuto(r) && pkgKeyOf(r[C.pkg]) === key && autoDay(r) === a.day);
   const cur = same.find((r) => !isLockedRow(r));
-  return cur
-    ? { op: 'update', attrs: autoUpdate(cur, a, rows) }
-    : { op: 'insert', attrs: autoInsert(a, same.length + 1) };
+  if (cur) return { op: 'update', attrs: autoUpdate(cur, a, rows) };
+  const lockedSum = (f: string): number => same.reduce((s, r) => s + (num(r[f]) ?? 0), 0);
+  const rest: AutoIpc = same.length
+    ? {
+      ...a,
+      une: a.une == null ? null : a.une - lockedSum(LINK_FIELDS.une),
+      obyem: a.obyem == null ? null : a.obyem - lockedSum(LINK_FIELDS.obyem),
+    }
+    : a;
+  return { op: 'insert', attrs: autoInsert(rest, same.length + 1) };
 }
 
 /**
@@ -308,8 +317,10 @@ export function planAuto(rows: readonly Row[], a: AutoIpc): AutoPlan {
  *   · `missing`     — бүдүүвч уншигдаагүй / жааз олдсон ч мөргүй (түр алдаа байж болно → дахин оролдоно)
  *   · `no-obyem`    — обьёмын баганагүй хуудас (IPC-д оролцох тоо байхгүй)
  *   · `unpublished` — тэр өдөр хүртэл ОГТ нийтлэгдээгүй хуудас (жааз байхгүй)
+ *   · `no-frame`    — өмнө нь нийтлэгдсэн ч ЯГ тэр өдөр жаазгүй хуудас (2026-11-04: жааз бүр тухайн өдрийн ажил тул
+ *                     өмнөх өдрийн жаазыг дахин тоолохгүй — тэр өдөр 0 оролцоотой, уншигдсан гэж үзнэ)
  */
-export type SheetRead = 'read' | 'missing' | 'no-obyem' | 'unpublished';
+export type SheetRead = 'read' | 'missing' | 'no-obyem' | 'unpublished' | 'no-frame';
 
 export type SheetsVerdict =
   | { go: true; warn: string | null }
@@ -325,15 +336,19 @@ export function sheetsVerdict(xs: readonly SheetRead[]): SheetsVerdict {
   const missing = cnt('missing');
   const noObyem = cnt('no-obyem');
   const unpub = cnt('unpublished');
+  const noFrame = cnt('no-frame');
   if (!read && !missing && noObyem === n) return { go: false, result: { ok: true, op: 'skip', why: 'no-data' } };
   if (!read) {
+    /* Батлагдсан хуудас өөрийн жаазтай байх ёстой — нэг ч хуудас уншигдаагүй бол хаалттай (fail-closed) */
     return {
       go: false,
       result: {
         ok: false,
         error: unpub
           ? tr('«Гүйцэтгэл бөглөх» хуудаснаас батлагдсан гүйцэтгэл уншигдсангүй — {0} хуудаснаас {1} нь энэ өдөр хүртэл огт илгээгдээгүй.', n, unpub)
-          : tr('«Гүйцэтгэл бөглөх» хуудаснаас батлагдсан гүйцэтгэл уншигдсангүй'),
+          : noFrame
+            ? tr('«Гүйцэтгэл бөглөх» хуудаснаас батлагдсан гүйцэтгэл уншигдсангүй — {0} хуудаснаас {1} нь энэ өдөр жаазгүй.', n, noFrame)
+            : tr('«Гүйцэтгэл бөглөх» хуудаснаас батлагдсан гүйцэтгэл уншигдсангүй'),
       },
     };
   }

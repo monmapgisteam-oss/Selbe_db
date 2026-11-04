@@ -82,7 +82,6 @@ export type IpcDocRow = {
   /** Баримтын дүн — үүсэх үед хөлдсөн (`guits_une`) */
   total: number | null;
   docItem: string;
-  createdBy: string;
   /** Урьдчилгааны баримт уу */
   advance: boolean;
   /** Цуцлалтын баримт уу */
@@ -100,7 +99,6 @@ export function docRows(pays: readonly Row[]): IpcDocRow[] {
     status: statusOf(r),
     total: num(r[LINK_FIELDS.une]),
     docItem: txt(r[HO_IPC.docItem]),
-    createdBy: txt(r.created_user),
     advance: r[P.kind] === HO_IPC.kinds.advance,
     isCancel: txt(r[P.id]).endsWith(CANCEL_SUFFIX),
   })).sort((a, b) => a.no - b.no || a.oid - b.oid);
@@ -178,11 +176,10 @@ export const signIpc = (d: IpcDocRow, itemId: string): Row => ({
   [S.field]: S.signed,
 });
 
-/** Баталгаажуулах боломжгүй шалтгаан; `null` = болно */
-export function approveWhy(d: IpcDocRow, user: string | null | undefined): 'status' | 'no-doc' | 'same-user' | null {
+/** Баталгаажуулах боломжгүй шалтгаан; `null` = болно. Нэг хүн үүсгэж баталж болно (2026-11-04: батлагчид цаасан дээр гарын үсэг зурдаг) */
+export function approveWhy(d: IpcDocRow): 'status' | 'no-doc' | null {
   if (d.status !== S.signed) return 'status';
   if (!d.docItem) return 'no-doc';
-  if (d.createdBy && user && d.createdBy.toLowerCase() === user.toLowerCase()) return 'same-user';
   return null;
 }
 

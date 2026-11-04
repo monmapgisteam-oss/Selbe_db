@@ -20,13 +20,13 @@ const { loadLocaleDict, setLocale } = await import('./i18nCore.ts');
 const packs = Array.from({ length: 7 }, (_, i) => ({ key: `b${i}`, name: `Багц ${i + 1}`, kind: 'build', blocks: 16, households: 1100, householdsMissing: 0, progress: i ? 12 + i * 9 : null }));
 const report = {
   gdash: {
-    budget: 2987654321000, contract: 2456987654000, progress: 38.9, progressPlan: 71.9, progressSrc: 'negtgel', packages: 74, types: 7, landPct: 86.2,
+    budget: 2987654321000, contract: 2456987654000, progress: 38.9, progressPlan: 71.9, packages: 74, types: 7, landPct: 86.2,
     land: { total: 2380, cleared: 2052, remaining: 328, areaM2: 1894052, byStatus: [{ label: PARCEL_CLEARED, n: 2052, areaM2: 1500000 }, { label: 'Чөлөөлөөгүй', n: 328, areaM2: 394052 }], reasons: [{ label: 'Нөхөх олговрын хэлэлцээр хийгдэж байгаа', n: 120 }, { label: 'Өмчлөл болон эзэмшлийн маргаантай', n: 98 }, { label: 'Бусад', n: 110 }] },
     hse: { date: '2026-10-27', workers: 1284, equipment: 156, manHours: 10272 },
     byType: ['Орон сууцны барилга угсралт', 'Инженерийн дэд бүтэц', 'Авто зам', 'Ногоон байгууламж'].map((label, i) => ({ label, cost: 800123456789 / (i + 1), contract: 600123456789 / (i + 1), perf: i ? 20 + i * 7 : null, n: 10, contracted: 8 })), bySource: [],
   },
   prog: { blocks: 112, households: 7700, householdsMissing: 0, noData: 16, asOf: '2026-10-27', actual: 36.8, actualLag: 36.8, planned: 52.1, gap: 15.3, planCoverage: 100, planFailed: 0, planExcluded: [], packs, levels: [{ label: 'Эхлээгүй', range: '0%', n: 16, color: PRINT_COLORS.ink3 }, { label: 'Хийгдэж буй', range: '1–99%', n: 96, color: PRINT_COLORS.data }] },
-  fin: { planTotal: 2456987654000, given: 530876543210, givenContracted: 524908765432, givenOther: 5967777778, share: 21.4, remain: 1932078888568, rows: packs.map((p, i) => ({ key: p.key, label: p.name, plan: 300000000000, budget: 350000000000, given: 20000000000 + i * 5000000000, pct: (20000000000 + i * 5000000000) / 3000000000, contracted: true })) },
+  fin: { planTotal: 2456987654000, given: 530876543210, givenContracted: 524908765432, givenOther: 5967777778, share: 21.4, remain: 1932078888568, rows: packs.map((p, i) => ({ key: p.key, label: p.name, plan: 300000000000, budget: 350000000000, given: 20000000000 + i * 5000000000, pct: (20000000000 + i * 5000000000) / 3000000000, contracted: true })), ranges: [], givenUnlisted: 0 },
   zov: { total: 68, ok: 52, wait: 12, no: 4, unknown: 0, byBagts: packs.map((p) => ({ bagts: p.name, total: 10, ok: 7, wait: 2, no: 1, unknown: 0 })), issues: [{ bagts: 'Багц 2', ner: 'Барилга угсралтын ажлыг эхлүүлэх зөвшөөрөл', baiguullaga: 'Нийслэлийн хот байгуулалт, хөгжлийн газар', tolov: 'Хүлээгдэж буй', shat: 1 }, { bagts: 'Багц 5', ner: 'Техникийн нөхцөл', baiguullaga: 'Улаанбаатар дулааны сүлжээ', tolov: 'Зөвшөөрөөгүй', shat: 2 }] }, fetchedAt: 0,
 };
 const period = { key: '30d', from: '2026-09-28', to: '2026-10-28' };

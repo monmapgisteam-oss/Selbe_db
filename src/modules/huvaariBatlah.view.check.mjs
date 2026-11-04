@@ -16,7 +16,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { CAP_HOST_VIEW, CAPS, capViewsOf } from '@/lib/caps';
-import { VIEW_BY_KEY, HOME_SECTIONS } from '@/lib/services';
+import { VIEW_BY_KEY, HOME_SECTIONS, NAV_GROUPS } from '@/lib/services';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 /**
@@ -153,6 +153,13 @@ console.log('✅ planApprove — дараалал БА хуваарь хоёул
     'services.ts: `huvaariBatlah` нь standalone байх ёстой — зураг/каталоггүй');
   assert.ok(HOME_SECTIONS.some((g) => g.views.includes('huvaariBatlah')),
     'services.ts: `huvaariBatlah` нь HOME_SECTIONS-д алга — нүүрт «Бусад хэсэг» болж унана');
+  /* 2026-11-04: зүүн цэсний «Миний ажил» харагдац бүр нүүрийн сэдэвт — ТТБ оруулах 5 хуудас «Бусад хэсэг»-т унадаг байв */
+  const build = HOME_SECTIONS.find((g) => g.id === 'build');
+  for (const k of ['gazarOgnoo', 'zahiramj', 'songon', 'zovshoorolTtb', 'ashiglalt']) {
+    assert.ok(build.views.includes(k), `views.ts: «${k}» нь «Хэрэгжилт» (zuragTosol-той нэг) сэдэвт байх ёстой`);
+  }
+  const home = new Set(HOME_SECTIONS.flatMap((g) => g.views));
+  for (const g of NAV_GROUPS) for (const k of g.views) assert.ok(home.has(k), `views.ts: «${k}» HOME_SECTIONS-д алга — нүүрт «Бусад хэсэг» болж унана`);
 }
 console.log('✅ харагдац — VIEWS · standalone · HOME_SECTIONS');
 

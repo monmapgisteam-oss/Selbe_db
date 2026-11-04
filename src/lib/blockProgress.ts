@@ -5,12 +5,14 @@
  * № баганын Б-ийн МӨРҮҮДИЙГ авна:
  *   «Б.»       → нийт гүйцэтгэл (Бэлтгэл ажил ОРОХГҮЙ)
  *   «Б1»…«Б5»  → дэд үе шатууд (барилгын · халаалт · ус · цахилгаан · холбоо)
+ *   «А.»       → Бэлтгэл ажлын гүйцэтгэл (`prep`, 2026-11-05) — ТТБ 5.1.3.1.x блокийн мөрийн S энэ нүднээс
+ *                (`projectPlanInputs.prepActualOf`); латин «A.» бичигдсэн хуудсыг ч кирилл «А.» түлхүүрт нэгтгэнэ
  * Эх excel өөрөө дэд үе шатын жингээр бодсон дүн тул энд дахин жигнэхгүй.
  *
  * Нүд бүрээр ХАМГИЙН СҮҮЛИЙН огноог авна: бөглөх хуудас нь өөрчилсөн нүдээ
  * л шинэ огноогоор нэмдэг тул нэг барилгын нүднүүд өөр өөр огноотой байж болно.
  */
-import { TASK_SHEET, PROGRESS_LEVELS, buildingKey, blockKey, normalizeTaskNo, isConstructionNo } from './services';
+import { TASK_SHEET, PROGRESS_LEVELS, buildingKey, blockKey, normalizeTaskNo, isConstructionNo, isPrepNo } from './services';
 import { loadSheetRows, sheetBlockKeys, sheetBlocklessKeys } from '@/modules/sheet/sheetRows';
 import { childIndexes, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import type { Schema } from '@/modules/sheet/bagts.pkg';
@@ -124,6 +126,11 @@ export type BlockProgress = {
   /** Б1…Б5 — № дарааллаар. Бөглөгдөөгүй бол `pct: null`. */
   phases: SubPhase[];
 };
+/**
+ * `${БАГЦ}|${блок}` → «А. Бэлтгэл ажил» мөрийн ялагч нүд 0–100 (бөглөөгүй `null`). `BlockProgressMap`-аас ТУСДАА:
+ * «Б.» хоосон блок (Багц-4.2 6/6, 2026-11-05) `compute`-д орохгүй ч бэлтгэл ажлын утгаа алдах ёсгүй.
+ */
+export type PrepMap = Map<string, number | null>;
 /** `${БАГЦ}|${блок}` → гүйцэтгэл. (`MapCanvas`-д ArcGIS-ийн `Map`-ыг дарсан тул alias.) */
 export type BlockProgressMap = Map<string, BlockProgress>;
 
@@ -191,7 +198,8 @@ export function winnerCells(
   rows.forEach((r, seq) => {
     const c = cellOf(r, seq, today);
     if (!c) return;
-    const no = normalizeTaskNo(r[TS.no]);
+    /* латин «A.» (b2_12f · b32_9f) → кирилл «А.» — нэг түлхүүр, нэг ялагч */
+    const no = isPrepNo(r[TS.no]) ? TASK_SHEET.prepNo : normalizeTaskNo(r[TS.no]);
     const k = buildingKey(r[TS.bagts], r[TS.block]);
     const cells = st.get(k) ?? new Map<string, CellState>();
     const s = cells.get(no) ?? new Map<string, Cell>();
@@ -212,7 +220,8 @@ export function winnerCells(
 }
 
 /**
- * Блок бүрийн «Б.» мөрийн СҮҮЛИЙН утга — ЗӨВХӨН бөглөх хуудсаас.
+ * Блок бүрийн «Б.» мөрийн СҮҮЛИЙН утга — ЗӨВХӨН бөглөх хуудсаас. «Б.» хоосон блок орохгүй (урьдын дүрэм);
+ * `prep` — «А. Бэлтгэл ажил» мөрийн ялагч нүд (бөглөөгүй бол `null`).
  */
 export function compute(rows: Record<string, unknown>[], today: string = progressCutoff()): BlockProgressMap {
   const out: BlockProgressMap = new Map();
@@ -229,6 +238,16 @@ export function compute(rows: Record<string, unknown>[], today: string = progres
       })).filter((p) => p.name),
     });
   }
+  return out;
+}
+
+/**
+ * Блок бүрийн «А. Бэлтгэл ажил» мөрийн СҮҮЛИЙН утга (`winnerCells` — «Б.»-тэй нэг дүрэм). Ямар нэг нүдтэй блок бүр орно,
+ * «Б.» хоосон ч; А мөргүй/нүд хоосон → `null` (`projectPlanInputs.prepActualOf` → 0).
+ */
+export function computePrep(rows: Record<string, unknown>[], today: string = progressCutoff()): PrepMap {
+  const out: PrepMap = new Map();
+  for (const [k, cells] of winnerCells(rows, today)) out.set(k, cells.get(TASK_SHEET.prepNo)?.pct ?? null);
   return out;
 }
 
@@ -297,22 +316,36 @@ export type SeriesPoint = {
 export type SeriesMode = 'peak' | 'latest';
 
 /**
- * Блокуудын СҮҮЛИЙН хэмжигдсэн гүйцэтгэлийн дундаж — `progressSeries(…, 'latest')`-ийн
+ * Түлхүүрүүдийн жин (2026-11-04): төсөв; жингүй блок — мэдэгдэж буй жингийн дундаж; жин огт алга бол тэнцүү (`pkgProgressOf`-ийн дүрэм).
+ */
+function weightOf(keys: readonly string[], weights: ReadonlyMap<string, number> | null): (k: string) => number {
+  let known = 0, kn = 0;
+  if (weights) for (const k of keys) { const w = weights.get(k); if (w != null && w > 0) { known += w; kn += 1; } }
+  const fill = kn ? known / kn : 1;
+  return (k) => { const w = kn ? weights?.get(k) : null; return w != null && w > 0 ? w : fill; };
+}
+
+/**
+ * Блокуудын СҮҮЛИЙН хэмжигдсэн гүйцэтгэлийн ТӨСВӨӨР ЖИГНЭСЭН дундаж — `progressSeries(…, 'latest')`-ийн
  * СҮҮЛИЙН цэгтэй ЯГ таарах «одоо»-гийн тоо.
  */
 export function latestMean(
   pm: BlockProgressMap,
   keys: Iterable<string>,
+  weights: ReadonlyMap<string, number> | null = blockWeights,
 ): { pct: number | null; blocks: number; total: number } {
-  let sum = 0, n = 0, total = 0;
-  for (const k of new Set(keys)) {
-    total += 1;
+  const list = [...new Set(keys)];
+  const wOf = weightOf(list, weights);
+  let sum = 0, wsum = 0, n = 0;
+  for (const k of list) {
+    const w = wOf(k);
+    wsum += w;
     const c = pm.get(k);
     if (c == null || !Number.isFinite(c.overall)) continue;
-    sum += c.overall;
+    sum += w * c.overall;
     n += 1;
   }
-  return { pct: total ? sum / total : null, blocks: n, total };
+  return { pct: list.length ? sum / wsum : null, blocks: n, total: list.length };
 }
 
 /** Багцын гүйцэтгэл — `pkgProgressOf`-ийн мөр */
@@ -326,9 +359,9 @@ export type PkgProgress = {
 };
 
 /**
- * БЛОКИЙН ЖИН — `buildingKey` → «Хэсэгт эзлэх» (Excel F, 0–1) — CASHFLOW_NEW-ийн блокийн мөрөөс (2026-11-03,
- * хэрэглэгч: «1–4-ийг зас» — багцын явц ТТБ-тэй ЗӨРДӨГ байв: ТТБ Excel-ийн жингээр (9 давхар 4.458 · 12 давхар 5.813),
- * самбар энгийн дундажаар). Одоо `pkgProgressOf` энэ жингээр нэгтгэнэ → ТТБ = самбар = тайлан = бөглөх хуудас.
+ * БЛОКИЙН ЖИН — `buildingKey` → блокийн төсөв (`ho_dun_geree`) — CASHFLOW_NEW-ийн блокийн мөрөөс (2026-11-04: хадгалсан
+ * `heseg_ezleh_huvi` блокийн мөрүүдэд хоосон болсон тул жин ачаалагдахгүй байв; ТТБ ч мөн төсвөөр жигнэдэг: `budgetShare`).
+ * `pkgProgressOf`, `buildPhys` энэ жингээр нэгтгэнэ → блокийн жин ТТБ = самбар = тайлан.
  * Уншигдаагүй / жингүй бол энгийн дундаж (урьдын зан).
  */
 let blockWeights: ReadonlyMap<string, number> | null = null;
@@ -336,7 +369,7 @@ let blockWeights: ReadonlyMap<string, number> | null = null;
 export const cachedBlockWeights = (): ReadonlyMap<string, number> | null => blockWeights;
 
 /**
- * БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ — тухайн багцын БҮХ блокийн ЖИНЛЭСЭН дундаж (`weights`: Excel F; жингүй блок —
+ * БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ — тухайн багцын БҮХ блокийн ЖИНЛЭСЭН дундаж (`weights`: блокийн төсөв; жингүй блок —
  * мэдэгдэж буй жингийн дундаж; жин огт байхгүй бол энгийн дундаж), 0–100; тайлагнаагүй блок 0%.
  * Түлхүүр нь `bagtsKey` («БАГЦ1», «БАГЦ41»). ТТБ-ийн багцын S-тэй ИЖИЛ байх ёстой (`loadBlockWeights`).
  */
@@ -444,7 +477,7 @@ export function mapKeyIssues(
 const monthOf = (d: string) => d.slice(0, 7);
 
 /**
- * As-of цуваа: огноо бүрд хамрах хүрээний БҮХ блокийн дундаж.
+ * As-of цуваа: огноо бүрд хамрах хүрээний БҮХ блокийн төсвөөр жигнэсэн дундаж.
  *
  * `keys` — зөвхөн эдгээр блокоор (газрын зургийн давхаргад БАЙГАА блокууд).
  */
@@ -453,8 +486,12 @@ export function progressSeries(
   keys: Iterable<string>,
   grain: 'day' | 'month',
   mode: SeriesMode = 'peak',
+  weights: ReadonlyMap<string, number> | null = blockWeights,
 ): SeriesPoint[] {
   const keyList = [...new Set(keys)];
+  const wOf = weightOf(keyList, weights);
+  const wsum = keyList.reduce((a, k) => a + wOf(k), 0);
+  const weighted = keyList.flatMap((k) => { const h = hist.get(k); return h ? [{ h, w: wOf(k) }] : []; });
   const mine = keyList.map((k) => hist.get(k)).filter((h): h is HistoryPoint[] => h != null);
   const dates = [...new Set(mine.flatMap((h) => h.map((p) => p.date)))].sort();
   if (!dates.length) return [];
@@ -486,12 +523,11 @@ export function progressSeries(
 
   const at = (asOf: string) => {
     let sum = 0, n = 0;
-    for (const h of mine) {
+    for (const { h, w } of weighted) {
       const v = mode === 'latest' ? latest(h, asOf) : peak(h, asOf);
-      if (v != null && Number.isFinite(v)) { sum += v; n += 1; }
+      if (v != null && Number.isFinite(v)) { sum += w * v; n += 1; }
     }
-    const den = keyList.length;
-    return { date: asOf, overall: den ? sum / den : 0, blocks: n };
+    return { date: asOf, overall: wsum ? sum / wsum : 0, blocks: n };
   };
 
   // Keep explicit clearing after measured history in latest mode (same as finPhys).
@@ -594,6 +630,14 @@ export const loadBlockProgress: () => Promise<BlockProgressMap> = memo(
 );
 
 /**
+ * Блок бүрийн «А. Бэлтгэл ажил» гүйцэтгэл — `loadBlockProgress`-тэй НЭГ мөрүүдээс (`loadRows`), тусдаа map (`computePrep`).
+ */
+export const loadPrepProgress: () => Promise<PrepMap> = memo(
+  async () => computePrep(await loadRows()),
+  ['BAGTS_SHEET'],
+);
+
+/**
  * КЭШГҮЙ хувилбар — ЗӨВХӨН хүснэгт рүү БИЧИХ зам (`negtgelAuto.syncNegtgel`).
  */
 export async function loadBlockProgressFresh(): Promise<BlockProgressMap> {
@@ -603,18 +647,18 @@ export async function loadBlockProgressFresh(): Promise<BlockProgressMap> {
 /**
  * БАГЦ БҮРИЙН БЛОКИЙН ХУВААРЬ (`BlockUniverse`) — бөглөх хуудсуудын бүдүүвчээс.
  */
-/** Блокийн жин (Excel F) — CASHFLOW_NEW-ийн блокийн мөрөөс; `cachedBlockWeights`-ийг дүүргэнэ */
+/** Блокийн жин (төсөв) — CASHFLOW_NEW-ийн блокийн мөрөөс; `cachedBlockWeights`-ийг дүүргэнэ */
 export const loadBlockWeights: () => Promise<ReadonlyMap<string, number>> = memo(async () => {
   const { CASHFLOW_NEW, CF_MONTH, bagtsKey: bk } = await import('./services');
   const { queryFeatures } = await import('./query');
   const CF = CASHFLOW_NEW.fields;
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
-    where: `${CF.block} IS NOT NULL AND ${CF_MONTH.start} IS NULL`,
-    outFields: [CF.pkg, CF.block, CF.wSection],
+    where: `${CF.block} IS NOT NULL AND ${CF.budget} > 0 AND ${CF_MONTH.start} IS NULL`,
+    outFields: [CF.pkg, CF.block, CF.budget],
   });
   const out = new Map<string, number>();
   for (const r of rows) {
-    const w = Number(r[CF.wSection]);
+    const w = Number(r[CF.budget]);
     const bl = t(r[CF.block]).trim();
     if (!bk(r[CF.pkg]) || !bl || !Number.isFinite(w) || w <= 0) continue;
     const k = buildingKey(r[CF.pkg], bl);

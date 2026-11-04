@@ -15,6 +15,7 @@ import { queryFeatures } from '@/lib/query';
 import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
+import { schedulePlanSync } from '@/lib/projectPlanSync';
 import { awaitingReload, parseCell } from '@/lib/finEdit';
 import { hasCap, subscribeCaps, type CapKey } from '@/lib/caps';
 import { setNavDirty } from '@/lib/navGuard';
@@ -300,6 +301,8 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
       }
       const { n } = await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: e.updates, adds: e.adds, deletes: e.deletes }, { cap: ZURAG_CAP });
       invalidate('CASHFLOW_NEW');
+      /* ТТБ-ийн `guitsetgel_huvi` (эцэг мөрүүд ч) системийн тооцоог дагана — 2026-11-05 */
+      schedulePlanSync();
       setPubFrom(rows);
       setMsg(tr('{0} мөр хадгалагдав', n));
     } catch (x) {
