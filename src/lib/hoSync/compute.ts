@@ -159,8 +159,10 @@ function missingContracts(
   cfRows: readonly Row[],
   byContract: ReadonlyMap<string, Row[]>,
   matched: ReadonlyMap<string, number[]>,
+  /** Цуцлагдсан гэрээний Cashflow мөрүүд — эзэнтэй, шинэ гэрээ үүсгэхгүй (2026-11-05 аудит) */
+  cancelledUsed: readonly number[] = [],
 ): Row[] {
-  const used = new Set([...matched.values()].flat());
+  const used = new Set([...[...matched.values()].flat(), ...cancelledUsed]);
   const groups = new Map<string, Row[]>();
   for (const r of cfRows) {
     const oid = Number(r[CASHFLOW_NEW.oid]);
@@ -256,13 +258,15 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
   const updates: Row[] = [];
   const matched = new Map<string, number[]>();
   const unmatched: string[] = [];
+  const cancelledUsed: number[] = [];
   for (const [code, rows] of byContract) {
-    /* Гэрээ бүхлээрээ цуцлагдсан бол хөндөхгүй */
-    if (contractCancelled(rows)) continue;
     /* 2026-11-04: багц бүрийн мөртэй гэрээ — гэрээний БҮХ мөрийн багцыг нэгтгэнэ (эхний мөрийнх биш) */
     const parts = [...new Set(rows.flatMap((r) => hoPkgParts(r[HC.pkg])))];
     const phases = phasesOf(rows.map((r) => txt(r[HC.workType])).find(Boolean) ?? '');
     const cf = cfRows.filter((r) => cfMatches(r, parts, phases));
+    /* Гэрээ бүхлээрээ цуцлагдсан бол хөндөхгүй — гэхдээ Cashflow мөрүүд нь «эзэнгүй» гэж ШИНЭ гэрээ үүсгэхгүй
+       (2026-11-05 аудит: гаднаас цуцалсан гэрээнд давхар ХО мөр үүсдэг байв) */
+    if (contractCancelled(rows)) { cancelledUsed.push(...cf.map((r) => Number(r[CASHFLOW_NEW.oid]))); continue; }
     if (!cf.length) { unmatched.push(code); continue; }
     matched.set(code, cf.map((r) => Number(r[CASHFLOW_NEW.oid])));
     const want = hoFromCf(cf);
@@ -272,5 +276,5 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
       if (Object.keys(upd).length) updates.push({ [HO_IPC.oid]: r[HO_IPC.oid], ...upd });
     }
   }
-  return { updates, adds: missingContracts(hoRows, cfRows, byContract, matched), matched, unmatched };
+  return { updates, adds: missingContracts(hoRows, cfRows, byContract, matched, cancelledUsed), matched, unmatched };
 }

@@ -537,8 +537,8 @@ export async function buildExecDoc(
         ...f.ranges.map((g): TableCell[] => [
           td(tr('{0} (хэд хэдэн багц хамарсан олголт)', g.label)), td('—', true), td(num(g.given), true), td('—', true),
         ]),
-        ...(f.givenUnlisted > 0 ? [[
-          td(tr('Багцын мөрд ороогүй олголт'), false, AMBER), td('—', true), td(num(f.givenUnlisted), true), td('—', true),
+        ...(f.givenUnlisted > 0 || f.planUnlisted > 0 ? [[
+          td(tr('Багцын мөрд ороогүй гэрээ, олголт'), false, AMBER), td(f.planUnlisted > 0 ? num(f.planUnlisted) : '—', true), td(f.givenUnlisted > 0 ? num(f.givenUnlisted) : '—', true), td('—', true),
         ] as TableCell[]] : []),
         [tdBold(tr('Нийт')), tdBold(num(f.planTotal), true), tdBold(num(f.given), true),
           tdBold(f.share == null ? '—' : pct(f.share, 1), true)],

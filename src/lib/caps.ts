@@ -447,10 +447,11 @@ export function hasCap(username: string | null | undefined, cap: CapKey): boolea
 
 /**
  * АВТОМАТ SYNC-ИЙН ЭРХ — санхүүгийн хүснэгт (Cashflow, HO) ба нийтийн хүснэгтэд хэрэглэгчийн токеноор бичих тул
- * зөвхөн санхүү засах эсвэл IPC батлах эрхтэй хүний сешн ажиллуулна. Хэрэглэгч тодорхойгүй бол ажиллахгүй.
+ * зөвхөн санхүү засах, IPC батлах эсвэл IPC/гэрээ үүсгэх эрхтэй хүний сешн ажиллуулна (2026-11-05 аудит: «Гэрээ үүсгэх»
+ * нь `runHoSync`-оор HO мөрөө үүсгэдэг тул `ipcCreate` ч орно). Хэрэглэгч тодорхойгүй бол ажиллахгүй.
  */
 export const canAutoSync = (username: string | null | undefined): boolean =>
-  !!username && (hasCap(username, 'finEdit') || hasCap(username, 'ipcApprove'));
+  !!username && (hasCap(username, 'finEdit') || hasCap(username, 'ipcApprove') || hasCap(username, 'ipcCreate'));
 
 /**
  * Хэрэглэгчийн эрхийн ЖАГСААЛТЫГ БҮТНЭЭР солино.

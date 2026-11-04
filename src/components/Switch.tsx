@@ -30,7 +30,7 @@ export function Switch({ checked, onChange, off, on, title, disabled = false, la
       aria-label={label ?? `${off} / ${on}`}
       title={title}
       disabled={disabled}
-      className={`${s.sw} ${checked ? s.on : ''}`}
+      className={s.sw}
       onClick={() => onChange(!checked)}
     >
       <span className={`${s.opt} ${!checked ? s.optOn : ''}`}>{off}</span>

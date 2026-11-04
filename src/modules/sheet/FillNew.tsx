@@ -883,7 +883,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    */
   const maQ = useAsync(view ? async () => [] as Awaited<ReturnType<typeof loadMa>> : loadMa, [view]);
   /* 2026-10-30: материалын үндсэн норм — ажлын материалын мөрөнд «×норм» (уншигдахгүй бол нормгүй харуулна) */
-  const nootsQ = useAsync(async () => { try { return await loadNoots(); } catch { return []; } }, []);
+  const nootsQ = useAsync(async () => {
+    try { return await loadNoots(); } catch (e) { console.warn('[selbe] материалын норм (material_noots) уншигдсангүй — нормгүй үргэлжилнэ:', e); return []; }
+  }, []);
   const matNorms = useMemo(() => new Map(nootsQ.state === 'ready' ? nootsSummary(nootsQ.data).map((x) => [x.name, x.norm] as const) : []), [nootsQ]);
   const maBlock = useMemo(() => {
     const m = new Map<number, string>();

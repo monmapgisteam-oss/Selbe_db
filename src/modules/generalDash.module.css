@@ -861,3 +861,8 @@
   border-top-color: transparent;
   border-bottom-color: color-mix(in oklab, var(--tl-curve), #000 var(--chart-callout-shade, 0%));
 }
+
+/* 2026-11-05 (UI аудит): 1400px-ээс нарийн дэлгэцэд сар 2–12 далд гүйлгээнд үлддэг байв — эвхэгдэнэ */
+@media (max-width: 1400px) {
+  .filters { flex-wrap: wrap; overflow-x: visible; }
+}

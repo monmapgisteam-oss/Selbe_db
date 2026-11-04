@@ -74,7 +74,7 @@ const base = (prog) => ({
     actual: 24.55, planned: 34.19, gap: 9.64, actualLag: 24.55, planExcluded: [], planCoverage: 59.08, planFailed: 0,
     packs: [], levels: [], ...prog,
   },
-  fin: { planTotal: 0, given: null, givenContracted: 0, givenOther: 0, share: null, remain: null, rows: [], ranges: [], givenUnlisted: 0 },
+  fin: { planTotal: 0, given: null, givenContracted: 0, givenOther: 0, share: null, remain: null, rows: [], ranges: [], givenUnlisted: 0, planUnlisted: 0 },
   zov: { total: 0, ok: 0, wait: 0, no: 0, unknown: 0, byBagts: [], issues: [] },
   fetchedAt: 0,
 });
@@ -160,10 +160,12 @@ ok('execFinRanges: Σ мөр + Σ диапазон + givenUnlisted = hoTotals(pa
 });
 ok('дэлгэц · PDF · AI баримт — диапазон мөр ба мөргүй олголт гардаг', () => {
   assert.match(UI, /x\.fin\.ranges\.map\(\(g\) => \(/);
-  assert.match(UI, /x\.fin\.givenUnlisted > 0 &&/);
+  /* 2026-11-05 (аудит): жагсаалтад ороогүй ГЭРЭЭЛСЭН дүн ч тэр мөрөнд — Σ мөр = толгойн «Гэрээлсэн» */
+  assert.match(UI, /\(x\.fin\.givenUnlisted > 0 \|\| x\.fin\.planUnlisted > 0\) &&/);
+  assert.match(UI, /x\.fin\.planUnlisted > 0 \? num\(x\.fin\.planUnlisted\) : '—'/);
   const PDF = strip(readFileSync(new URL('./execPdf.ts', import.meta.url), 'utf8'));
   assert.match(PDF, /\.\.\.f\.ranges\.map\(\(g\): TableCell\[\] => \[/);
-  assert.match(PDF, /f\.givenUnlisted > 0 \?/);
+  assert.match(PDF, /f\.givenUnlisted > 0 \|\| f\.planUnlisted > 0 \?/);
   const t = execFacts({ ...base({}), fin: { ...base({}).fin, ranges: [{ label: 'Багц-1-4', given: 876465164, members: ['БАГЦ1'] }], givenUnlisted: 5 } });
   assert.ok(t.includes('- Багц-1-4 (хэд хэдэн багц хамарсан олголт): олгосон 876,465,164 ₮'), t);
   assert.ok(t.includes('- Багцын мөрд ороогүй олголт: 5 ₮'), t);

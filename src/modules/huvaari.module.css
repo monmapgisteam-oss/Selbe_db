@@ -211,9 +211,9 @@
   background: var(--surface);
   border-bottom: 1px solid var(--line-strong);
 }
-.gSide { --des-w: 60px; --ham-w: 100px; --date-w: 72px; --days-w: 40px; --work-min: 170px; --res-w: 44px; }
-.cGs { --date-w: var(--w-gs, 72px); }
-.cGe { --date-w: var(--w-ge, 72px); }
+.gSide { --des-w: 60px; --ham-w: 100px; --date-w: 80px; --days-w: 40px; --work-min: 170px; --res-w: 44px; }
+.cGs { --date-w: var(--w-gs, 80px); }
+.cGe { --date-w: var(--w-ge, 80px); }
 .cPs { --date-w: var(--w-ps, 72px); }
 .cPe { --date-w: var(--w-pe, 72px); }
 .cAs { --date-w: var(--w-as, 72px); }

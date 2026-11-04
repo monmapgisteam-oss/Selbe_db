@@ -413,7 +413,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.tileValLong { font-size: 13.5px; letter-spacing: -0.02em; }
+/* 2026-11-05 (UI аудит): урт дүн («2,495,841,880,529») дунд нь таслагдаж байв — нэг мөр, нарийн самбарт жижиг фонт */
+.tileValLong { font-size: 13.5px; letter-spacing: -0.02em; white-space: nowrap; }
+@media (max-width: 1200px) { .tileValLong { font-size: 11.5px; } }
 
 .tileVal i { font-style: normal; font-size: 12px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
 

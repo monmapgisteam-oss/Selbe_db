@@ -95,7 +95,7 @@
 }
 .sectionTitle {
   min-width: min-content;
-  flex: 1;
+  flex: 1 1 auto;
   font-size: 12px;
   line-height: 1.4;
   font-weight: 600;
@@ -104,7 +104,9 @@
   color: var(--ink);
 }
 .sectionNote {
-  flex-shrink: 0;
+  /* 2026-11-05 (UI аудит): нарийн самбарт тайлбар гарчгийг дарж байв — шахагдаж таслагдана */
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

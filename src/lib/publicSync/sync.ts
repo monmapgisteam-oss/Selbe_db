@@ -242,7 +242,7 @@ let last: PublicSyncResult | null = null;
 export const publicSyncLast = (): PublicSyncResult | null => last;
 export const publicSyncDisabled = (): string | null => disabled;
 
-const isForbidden = (e: unknown): boolean => /\b(403|499|498)\b|эрхгүй|permission|not authorized|token/i.test(e instanceof Error ? e.message : String(e));
+const isForbidden = (e: unknown): boolean => /\b(403|499|498)\b|эрхгүй|permission|not authorized|token required|invalid token/i.test(e instanceof Error ? e.message : String(e));
 
 /** Нэг удаагийн синк — зэрэг дуудвал нэг л ажиллагаа; явж байхад дахин хүсвэл дараа нь дахин ажиллана */
 export function runPublicSync(): Promise<PublicSyncResult> {

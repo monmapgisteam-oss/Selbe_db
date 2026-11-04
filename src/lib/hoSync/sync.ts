@@ -5,7 +5,7 @@
  * зөрүүгүй тул дахин бичихгүй — гогцоогүй). 403 бол энэ сешнд дахин оролдохгүй.
  */
 import { useEffect } from 'react';
-import { subscribeData, invalidate } from '@/lib/dataBus';
+import { subscribeData, invalidate, writeEpoch } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
 import { applyAll } from '@/lib/tableWrite';
 import { canAutoSync } from '@/lib/caps';
@@ -69,7 +69,22 @@ export const hoUnassignedText = (): string => last?.unassigned.join(', ') ?? '';
  */
 export const hoSyncErrorText = (): string => (last?.error && last.error !== 'no-cap' ? last.error : '');
 
-const isForbidden = (e: unknown): boolean => /\b(403|499|498)\b|эрхгүй|permission|not authorized|token/i.test(e instanceof Error ? e.message : String(e));
+const isForbidden = (e: unknown): boolean => /\b(403|499|498)\b|эрхгүй|permission|not authorized|token required|invalid token/i.test(e instanceof Error ? e.message : String(e));
+
+/**
+ * 2026-11-05 (аудит): өөрийн бичилтийн invalidate автобусаар өөрийгөө дахин сэрээхгүй (`projectPlanSync`-тэй нэг хэв) —
+ * batch дотор мэдэгдэл хойшилдог тул бичилтийн үеэр (`writeEpoch`) таньна.
+ */
+let ownEpoch = -1;
+function invalidateQuiet(...keys: Parameters<typeof invalidate>): void {
+  invalidate(...keys);
+  ownEpoch = writeEpoch();
+}
+
+/** Явж буй синк дууссаны ДАРАА шинээр нэг удаа ажиллуулна — сая бичсэн гэрээг тэр синк хараагүй байж болно (IpcFlow) */
+export function runHoSyncAfter(): Promise<HoSyncResult> {
+  return inflight ? inflight.then(() => runHoSync()) : runHoSync();
+}
 
 export function runHoSync(): Promise<HoSyncResult> {
   if (inflight) { again = true; return inflight; }
@@ -84,7 +99,7 @@ export function runHoSync(): Promise<HoSyncResult> {
       if (blocks.length) {
         await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: blocks });
         res.blocks = blocks.length;
-        invalidate('CASHFLOW_NEW');
+        invalidateQuiet('CASHFLOW_NEW');
       }
       const p = await computeHoSync();
       res.unmatched = p.unmatched;
@@ -92,7 +107,7 @@ export function runHoSync(): Promise<HoSyncResult> {
         await applyAll(HO_IPC.url, HO_IPC.oid, { updates: p.updates, adds: p.adds });
         res.updated = p.updates.length;
         res.added = p.adds.length;
-        invalidate('HO_IPC');
+        invalidateQuiet('HO_IPC');
       }
       /* IPC → ТТБ: олгосон дүн, урьдчилгаа. Зөрүүгүй бол бичихгүй (гогцоогүй) */
       const [hoNow, cfNow] = await Promise.all([
@@ -104,7 +119,7 @@ export function runHoSync(): Promise<HoSyncResult> {
       if (ps.updates.length) {
         await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: ps.updates });
         res.paid = ps.updates.length;
-        invalidate('CASHFLOW_NEW');
+        invalidateQuiet('CASHFLOW_NEW');
       }
     } catch (e) {
       res.error = e instanceof Error ? e.message : String(e);
@@ -131,7 +146,7 @@ export function scheduleHoSync(delay = DEBOUNCE_MS): void {
 /** Портал нээгдэхэд нэг удаа + бичилт бүрийн дараа (dataBus) */
 export function startHoSync(): () => void {
   if (typeof window === 'undefined') return () => {};
-  const unsub = subscribeData(() => scheduleHoSync());
+  const unsub = subscribeData(() => { if (writeEpoch() !== ownEpoch) scheduleHoSync(); });
   scheduleHoSync(BOOT_DELAY_MS);
   return () => { unsub(); if (timer) { clearTimeout(timer); timer = null; } };
 }

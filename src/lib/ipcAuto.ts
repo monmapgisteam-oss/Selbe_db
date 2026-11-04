@@ -332,7 +332,9 @@ export function planAuto(rows: readonly Row[], a: AutoIpc): AutoPlan {
     (v == null ? null : Math.round((v - locked.reduce((s, r) => s + (num(r[f]) ?? 0), 0)) * 1e6) / 1e6);
   const net: AutoIpc = locked.length ? { ...a, obyem: less(a.obyem, LINK_FIELDS.obyem), une: less(a.une, LINK_FIELDS.une) } : a;
   if (cur) return { op: 'update', attrs: autoUpdate(cur, net, rows) };
-  if (locked.length && !net.obyem && !net.une) return { op: 'skip', why: 'no-data' };
+  /* 2026-11-05 (аудит): түгжигдсэн мөр бүхэл тоогоор хадгалагдсан тул үлдэгдэл ±0.5 ₮ · ±0.001 дотор = шинэ ажилгүй
+     (хоосон «Гүйцэтгэл» карт үүсгэхгүй) */
+  if (locked.length && Math.abs(net.obyem ?? 0) < 1e-3 && Math.abs(net.une ?? 0) < 0.5) return { op: 'skip', why: 'no-data' };
   return { op: 'insert', attrs: autoInsert(net, same.length + 1) };
 }
 

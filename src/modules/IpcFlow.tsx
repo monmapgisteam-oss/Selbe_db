@@ -13,7 +13,7 @@ import { applyAll } from '@/lib/tableWrite';
 import { queryFeatures } from '@/lib/query';
 import { CASHFLOW_NEW, HO_IPC, num } from '@/lib/services';
 import { entUploadPdf } from '@/lib/entDocs';
-import { runHoSync } from '@/lib/hoSync/sync';
+import { runHoSyncAfter } from '@/lib/hoSync/sync';
 import { cfMatches, hoPkgParts, phasesOf } from '@/lib/hoSync/compute';
 import { userError } from '@/components/ui';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
@@ -326,7 +326,10 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
         setCfSaved(true);
         invalidate('CASHFLOW_NEW');
       }
-      const sync = await runHoSync();
+      /* 2026-11-05 (аудит): явж буй синк сая бичсэн Cashflow мөрийг хараагүй байж болно — дууссаны дараа шинээр */
+      const sync = await runHoSyncAfter();
+      if (sync.error === 'no-cap') throw new Error(tr('IPC-ийн хүснэгтэд гэрээ үүсгэх эрх алга — «IPC үүсгэх» эсвэл «Санхүү засах» эрх хэрэгтэй.'));
+      if (sync.error?.startsWith('disabled:')) throw new Error(tr('IPC-ийн синк түр хаалттай (эрхийн алдаа): {0}. 10 минутын дараа дахин оролдоно уу.', sync.error.slice(10)));
       if (sync.error) throw new Error(sync.error);
       const adv = c.items.filter((i) => (i.advance ?? 0) > 0);
       if (adv.length) {

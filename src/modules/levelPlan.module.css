@@ -292,6 +292,9 @@
   height: 100%;
   background: var(--data);
 }
+/* 2026-11-05 (UI аудит): «явж буй» төлөв — өөрийн загваргүй байв */
+.stRun .gFill { background: var(--data); }
+.stRun { border-color: color-mix(in oklab, var(--data) 60%, transparent); }
 .stDone .gFill { background: var(--gantt-done); }
 .stDone { border-color: color-mix(in oklab, var(--gantt-done) 60%, transparent); }
 .stLate .gFill,

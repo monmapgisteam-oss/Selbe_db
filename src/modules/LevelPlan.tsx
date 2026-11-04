@@ -377,7 +377,8 @@ function Gantt({ rows, today, vo, mw: MW = SCALE_MW.month }: { rows: GRow[]; tod
     <LevelButtons deep={deep} vo={vo} off={filtering} />
     <div className={s.card}>
       <div className={s.scroll}>
-        <table className={s.gt}>
+        {/* 2026-11-05 (UI аудит): өргөн = баганын нийлбэр — fixed layout баганыг дахин хуваарилж sticky нэр «ЭХЛЭХ»-ийг дардаг байв */}
+        <table className={s.gt} style={{ width: 674 + W }}>
           <colgroup>
             <col style={{ width: 72 }} />
             <col style={{ width: 280 }} />

@@ -149,8 +149,9 @@
 
 .period { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); }
 .periodLabel { color: var(--ink-3); }
-.periodOn { background: var(--data); color: #fff; border-color: var(--data); }
-.periodOn:hover:not(:disabled) { background: var(--data); color: #fff; }
+/* 2026-11-05 (UI аудит): бичвэрийн өнгө `--surface` — харанхуй горимд цайвар `--data` дээр бараан, цайварт цагаан */
+.periodOn { background: var(--data); color: var(--surface); border-color: var(--data); }
+.periodOn:hover:not(:disabled) { background: var(--data); color: var(--surface); }
 .periodInput {
   height: 30px; padding: 0 8px; font: inherit; font-size: 12px; color: var(--ink);
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px;

@@ -238,7 +238,7 @@ function AreaTip({
             {share != null && <span className="num">{share.toFixed(1)}%</span>}
             {delta != null && (
               <span className="num" style={{ color: delta.sign !== 0 ? 'var(--data)' : 'var(--ink-3)' }}>
-                {delta.sign > 0 ? '▲' : delta.sign < 0 ? '▼' : '='} {delta.text}
+                {delta.sign > 0 ? `▲ ${delta.text}` : delta.sign < 0 ? `▼ ${delta.text}` : tr('өөрчлөлтгүй')}
               </span>
             )}
           </span>

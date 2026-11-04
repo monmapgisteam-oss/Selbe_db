@@ -10,7 +10,7 @@
 
 import { cached, loadFillPkgProgress } from '@/lib/live';
 import type { SourceKey } from '@/lib/projectPlan';
-import { loadProjectSourceTotals, loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
+import { loadProjectSourceTotals, loadProjectBudgetTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
@@ -131,6 +131,8 @@ export type ExecReport = {
     ranges: { label: string; given: number; members: string[] }[];
     /** Багцын мөр ч, диапазон мөр ч биш олголт (багц жагсаалтад алга) — 0 бол хүснэгт толгойтойгоо тэнцүү */
     givenUnlisted: number;
+    /** Багцын мөрд ороогүй ГЭРЭЭЛСЭН дүн = `planTotal − Σ rows.plan` (2026-11-05 аудит: Багц-6.10, олон багц хамарсан ТЭЗҮ гэрээ) — Σ мөр = толгой */
+    planUnlisted: number;
   };
   /** Зөвшөөрөл — үйлчилгээ холбогдоогүй бол `null` (мэдээлэлгүй ≠ 0) */
   zov: {
@@ -204,6 +206,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   /* 2026-11-03 (хэрэглэгч): дүн — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ИЖИЛ (Σ = төслийн нийт дүн);
      ажлын тоо/гэрээт — мөрүүдээс */
   const ps = await loadProjectSourceTotals().catch(() => null);
+  const planRootP = await loadProjectPlan().then((p) => (p.empty ? null : p.result.values.get(p.tree.root)?.P ?? null)).catch(() => null);
   const bySource = chartSourceMerged(cf.filter((r) => r.inTotal)).map((b) => ({
     label: sentenceCase(b.label), amount: ps?.[b.key as SourceKey] ?? b.value, contracted: b.sub, n: b.count ?? 0,
   }));
@@ -292,7 +295,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   return {
     gdash: {
       budget: k.budget, contract: k.contract, progress: k.progress,
-      progressPlan: wbsPct != null ? wbs?.plan ?? null : null,
+      /* 2026-11-05 (аудит): нэгтгэлд төлөвлөгөө алга бол «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн P (хүлээн авагчийн тайлантай нэг тоо) */
+      progressPlan: (wbsPct != null ? wbs?.plan ?? null : null) ?? planRootP,
       packages: k.packages, types: k.types, landPct: land.pct,
       land: {
         total: land.total, cleared: land.cleared, remaining: land.remaining, areaM2: land.areaM2,
@@ -337,6 +341,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       rows: finRows,
       ranges: finRanges.ranges,
       givenUnlisted: finRanges.givenUnlisted,
+      planUnlisted: Math.max(0, csum - finRows.reduce((s, r) => s + r.plan, 0)),
     },
     zov,
     fetchedAt: Date.now(),

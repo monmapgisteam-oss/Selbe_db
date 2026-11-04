@@ -549,10 +549,10 @@ export function ExecReport() {
                           <td className={r.num}>—</td><td className={r.num}>{num(g.given)}</td><td className={r.num}>—</td>
                         </tr>
                       ))}
-                      {x.fin.givenUnlisted > 0 && (
+                      {(x.fin.givenUnlisted > 0 || x.fin.planUnlisted > 0) && (
                         <tr>
-                          <td className={e.warn}>{tr('Багцын мөрд ороогүй олголт')}</td>
-                          <td className={`${r.num} ${e.warn}`}>—</td>
+                          <td className={e.warn}>{tr('Багцын мөрд ороогүй гэрээ, олголт')}</td>
+                          <td className={`${r.num} ${e.warn}`}>{x.fin.planUnlisted > 0 ? num(x.fin.planUnlisted) : '—'}</td>
                           <td className={`${r.num} ${e.warn}`}>{num(x.fin.givenUnlisted)}</td>
                           <td className={`${r.num} ${e.warn}`}>—</td>
                         </tr>

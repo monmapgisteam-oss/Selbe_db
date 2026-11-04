@@ -10,7 +10,9 @@ import { useEffect } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { CASHFLOW_NEW, bagtsKey } from '@/lib/services';
 import { applyAll } from '@/lib/tableWrite';
-import { invalidate, subscribeData, type DataKey } from '@/lib/dataBus';
+import { invalidate, subscribeData, writeEpoch, type DataKey } from '@/lib/dataBus';
+import { canAutoSync } from '@/lib/caps';
+import { currentUser } from '@/lib/who';
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
 import type { PlanNode } from '@/lib/projectPlan';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
@@ -109,9 +111,18 @@ export function planSyncWarn(r: PlanSyncResult): string | null {
  * захиалагч — `publicSync` · `hoSync` · дэлгэц — хэвийн сонсоно). `invalidate` захиалагчдыг СИНХРОН дууддаг.
  */
 let muted = false;
+/**
+ * 2026-11-05 (аудит): `batchInvalidate` дотор дуудагдвал мэдэгдэл batch дууссаны ДАРАА (muted буцсан хойно) ирдэг тул
+ * өөрийн бичилтийн ҮЕИЙГ (`writeEpoch`) санаж — тэр үеийн мэдэгдлийг захиалагч үл тоомсорлоно; дараагийн жинхэнэ
+ * бичилт үеийг ахиулдаг тул алдагдахгүй.
+ */
+let ownEpoch = -1;
+/** Өөрийн мэдэгдэл үү (захиалагч алгасна) */
+const isOwnNotice = (): boolean => muted || writeEpoch() === ownEpoch;
 function invalidateQuiet(...keys: DataKey[]): void {
   muted = true;
   try { invalidate(...keys); } finally { muted = false; }
+  ownEpoch = writeEpoch();
 }
 
 /**
@@ -161,7 +172,8 @@ let last: PlanSyncResult | null = null;
 export const planSyncLast = (): PlanSyncResult | null => last;
 export const planSyncDisabled = (): string | null => (disabled && Date.now() < disabledUntil ? disabled : null);
 
-const isForbidden = (e: string): boolean => /\b(403|499|498)\b|эрхгүй|permission|not authorized|token/i.test(e);
+/* 2026-11-05 (аудит): зөвхөн эрхийн алдаа — «token» гэсэн дурын үгээр (түр сэргээлт) хаахгүй */
+const isForbidden = (e: string): boolean => /\b(403|499|498)\b|эрхгүй|permission|not authorized|token required|invalid token/i.test(e);
 
 /**
  * Нэг удаагийн синк — зэрэг дуудвал нэг л ажиллагаа; явж байхад дахин хүсвэл дараа нь дахин ажиллана.
@@ -172,6 +184,9 @@ export function runPlanSync(opts: { fresh?: boolean } = {}): Promise<PlanSyncRes
   inflight = (async (): Promise<PlanSyncResult> => {
     const off = planSyncDisabled();
     if (off) return { ok: false, error: `disabled: ${off}` };
+    /* 2026-11-05 (аудит): автомат бичилт зөвхөн санхүү/IPC эрхтэй сешнээс — `hoSync`/`publicSync`-тэй нэг дүрэм
+       (батлалтын шууд зам `syncPlanProgress` хаалтгүй — батлагч бичих ёстой) */
+    if (!canAutoSync(currentUser())) return { ok: true, n: 0, skipped: 'no-cap' };
     const res = await syncPlanProgress({ fresh: opts.fresh ?? false });
     if (!res.ok) {
       if (isForbidden(res.error)) { disabled = res.error; disabledUntil = Date.now() + DISABLE_MS; }
@@ -196,7 +211,7 @@ export function schedulePlanSync(delay = DEBOUNCE_MS): void {
 /** Портал нээгдэхэд нэг удаа + бичилт бүрийн дараа (dataBus; өөрийн бичилт орохгүй) — зогсоогч буцаана */
 export function startPlanSync(): () => void {
   if (typeof window === 'undefined') return () => {};
-  const unsub = subscribeData(() => { if (!muted) schedulePlanSync(); });
+  const unsub = subscribeData(() => { if (!isOwnNotice()) schedulePlanSync(); });
   schedulePlanSync(BOOT_DELAY_MS);
   return () => {
     unsub();
@@ -210,4 +225,4 @@ export function usePlanSync(on: boolean): void {
 }
 
 /** Тест/дотоод хэрэглээнд */
-export const __test = { isMuted: () => muted, invalidateQuiet };
+export const __test = { isMuted: () => muted, isOwnNotice, invalidateQuiet };
