@@ -575,8 +575,6 @@ function plannedLeaf(n: PlanNode, asOf: number, inputs: PlanInputs): number | nu
     const v = inputs.blockPlanned(n.pkg, n.blok, asOf, n);
     if (v !== undefined) return frac(v);
   }
-  /* ⚠️ 2026-10-29 (хэрэглэгч: «гүйцэтгэлийн хүснэгттэй холбо, хүснэгтгүйг хоосол»): блокгүй багцын барилга угсралт —
-     гүйцэтгэлийн хүснэгтийн Хуваариас; хүснэгтгүй багц `null` (гэрээний огнооны шугаман хувь ГАРГАХГҮЙ) */
   if (n.phase === 'barilga' && n.sub === 'barilga' && !n.blok && inputs.pkgPlanned) {
     const v = inputs.pkgPlanned(n.pkg, asOf, n);
     if (v !== undefined) return frac(v);
@@ -649,11 +647,6 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
   const F = new Map<PlanNode, number | null>();
   F.set(root, 1);
   const busy = new Set<PlanNode>();
-  /**
-   * ⚠️ 2026-11-03 (хэрэглэгч: «Excel-ийг бүрэн автомат болго»): нэг эцгийн доорх (нийлбэрт орох) БҮХ мөр төсөвт өртөгтэй
-   * бол Хэсэгт эзлэх = мөрийн төсөвт өртөг ÷ тэдгээрийн нийлбэр — хадгалсан жингээс ДЭЭГҮҮР (төсөв өөрчлөгдөхөд дагана).
-   * Аль нэг мөр төсөвгүй бол хадгалсан жин (бичмэгц томьёо автоматаар ажиллана). Үе шатны мөр (үндсийн хүүхэд) — хамаарахгүй.
-   */
   const budgetShare = (n: PlanNode): number | null => {
     const p = n.parent;
     if (inputs.excelWeights || !p || p === root || n.outside) return null;
@@ -701,8 +694,6 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
      дууддаг — чиглэл нь ҮРГЭЛЖ эцэг рүү тул дугуйрахгүй. ── */
   const G = new Map<PlanNode, number | null>();
   G.set(root, 1);
-  /* ⚠️ 2026-11-03 (хэрэглэгч: бүрэн автомат): үе шатны мөр (үндсийн хүүхэд) — хадгалсан бодлогын жин; бусад мөр — ҮРГЭЛЖ
-     Хэсэгт эзлэх × эцэг мөрийн Төсөлд эзлэх (хадгалсан утга зөвхөн F бодогдохгүй үед). */
   function gOf(n: PlanNode): number | null {
     if (G.has(n)) return G.get(n)!;
     const own = wt(n.row!.tusul_ezleh_huvi);
@@ -738,7 +729,6 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
   const agg = new Map<PlanNode, (number | null)[]>();
   for (const n of [...post, root]) {
     const own = DF.map(([k]) => (n.row ? saneDate(n.row[k]) : null));
-    /* ⚠️ 2026-10-29: блокгүй барилга угсралтын НАВЧНЫ гүйцэтгэгчийн муж — гүйцэтгэлийн хүснэгтийн Хуваариас (`pkgSpan`) */
     if (!n.children.length && n.phase === 'barilga' && n.sub === 'barilga' && !n.blok && inputs.pkgSpan) {
       const sp = inputs.pkgSpan(n.pkg, n);
       if (sp !== undefined) { own[4] = sp?.[0] ?? null; own[5] = sp?.[1] ?? null; }

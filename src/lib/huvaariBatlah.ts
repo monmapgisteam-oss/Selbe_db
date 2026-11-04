@@ -1265,9 +1265,6 @@ export async function decidePlan(args: {
     });
     if (!editOk(j.updateResults)) { undo(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') }; }
     invalidate('HUVAARI_BATLAH');
-    /* ⚠️ 2026-10-29 (хэрэглэгч: «төлөвлөхөд шууд ордог байх ёстой»): батлагдсан хуваарийн (төлөвлөгөө · гэрээ) огноог
-       «Төсөл төлөвлөгөө биелэлт»-ийн хүснэгтэд (CASHFLOW_NEW `geree_*` · `guits_*`) бичнэ (`projectPlanSync`). Шийдвэрийг
-       САТААЛГҮЙ ард нь — унавал дараагийн батлалт зөрсөн мөрийг дахин тулгаж нөхнө. */
     if (args.approve) {
       void import('./projectPlanSync')
         .then((m) => m.syncPlanProgress())

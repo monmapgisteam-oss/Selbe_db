@@ -101,7 +101,6 @@ export function UzlegExportButton({ kind, scope = null }: {
   /** ХАБЭА харах хүрээ (`habeaScope`, `habeaPkgKey` түлхүүр) — `null` = бүх багц; өгвөл тайланд зөвхөн тэр багцууд (2026-11-03) */
   scope?: readonly string[] | null;
 }) {
-  /* ⚠️ 2026-11-02: 'action' — HSE_Action-ий тайлан (`ActionExportDialog`), асуумжийн жагсаалтын «Action» хавтангаас */
   const [open, setOpen] = useState<'uz' | 'action' | null>(null);
   return (
     <>
@@ -109,7 +108,6 @@ export function UzlegExportButton({ kind, scope = null }: {
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
           <path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12v1.5h10V12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        {/* ⚠️ 2026-11-02 (хэрэглэгч): «Мэдээлэл»-ийн хажууд товч нэр — цонхны гарчиг бүтэн хэвээр */}
         {tr('Тайлан татах')}
       </button>
       {open === 'uz' && <UzlegExportDialog initialKind={kind ?? 'zahialagch'} scope={scope} onClose={() => setOpen(null)} onAction={() => setOpen('action')} />}
@@ -341,7 +339,6 @@ function UzlegExportDialog({ initialKind, scope, onClose, onAction }: {
                   </button>
                 );
               })}
-              {/* ⚠️ 2026-11-02 (хэрэглэгч): HSE_Action-ий тайлан — тусдаа цонх (хугацаа · багц · PDF/Excel) */}
               {onAction && (
                 <button type="button" role="radio" aria-checked={false} disabled={lock}
                   className={x.form} title={tr('Үл нийцлийн арилгалт (HSE Action)')} onClick={onAction}>

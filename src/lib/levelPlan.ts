@@ -462,8 +462,6 @@ export type WeightedPhases = { gs: readonly SubGroup[]; w: number | null };
 /**
  * Багцын дэд үе шат (L3) — блокуудынхыг НЭГТГЭНЭ (цэвэр): эхлэх = MIN, дуусах = MAX; жин, гүйцэтгэл, төлөвлөгөөт хувь
  * = БЛОКИЙН ЖИНГЭЭР (F) жигнэсэн дундаж. Нэрээр (№ + нэр) тааруулна.
- * ⚠️ 2026-10-30 (хэрэглэгч: «Нэгтгэлтэй таарах ёстой»): урьд нь энгийн дундаж байсан тул том/жижиг блок адил тоологдож,
- *    «Барилга угсралт — нийт» (Σ F·S) мөртэй зөрдөг байв. Жингүй блок (F = null) байвал энгийн дундаж руу шилжинэ.
  */
 export function mergePhases(list: readonly (readonly SubGroup[] | WeightedPhases)[]): SubGroup[] {
   type Pair = { v: number; w: number };
@@ -583,7 +581,6 @@ function barRow(
 /**
  * L1 — МАСТЕР: төслийн нийт (+ гэрээний дуусах), барилга угсралтын чиглэл бүр (+ гэрээний дуусах).
  * Багцгүй бүлэг чиглэлийн (Инженерийн дэд бүтэц) дэд бүлгүүд нэг түвшин доош.
- * ⚠️ 2026-10-30: «Үе шат» хэсэг хасагдсан — `Level planning_261021` загварт L1 нь төслийн нийт ба чиглэлүүд л.
  */
 export function buildL1(plan: ProjectPlan, today: number): GRow[] {
   const { tree, result: res } = plan;
@@ -620,11 +617,6 @@ const ADDENDUM_RX = /нэмэлт\s*гэрээ/i;
 /**
  * L2 — ҮЕ ШАТ / MILESTONE: төслийн ерөнхий + багц бүрийн 7 мөр
  * (захирамж · зураг төсөл · сонгон · зөвшөөрөл · барилга · гэрээ дуусах · ашиглалт).
- * ⚠️ 2026-10-30 (`Level planning_261021` загвар):
- *    · «Төслийн ерөнхий» = ТЭЗҮ · Өндөржилтийн захирамж (өндөржилтийн мөрийн `zahiramj_*`) · Өндөржилтийн нэмэлт
- *      гэрээ (нэр нь «нэмэлт гэрээ» агуулсан мөр, `geree_ognoo`; гараар нэмнэ — алга бол «мэдээлэлгүй»);
- *    · «Газар чөлөөлөлт» мөр хасагдсан (загварт алга, газрын огноо хоосон);
- *    · сонгон шалгаруулалт = ГЭРЭЭ БАЙГУУЛСАН огноо (`geree_ognoo`: сонгон шалгаруулалтын мөр › барилгын багцын мөр).
  */
 export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Marks | null, today: number): GRow[] {
   const { tree, result: res } = plan;
@@ -958,7 +950,6 @@ async function fetchSheetDetail(): Promise<SheetDetail> {
   const failed: string[] = [];
   const got = await Promise.all(PKGS.map(async (pkg, order) => {
     try {
-      /* ⚠️ 2026-10-30: блокгүй хуудас (шугам сүлжээ · дэд бүтэц) — «Хуваарь»-тай ижил синтетик «Ажил» блокоор (`infraDetail`) */
       const sc = await loadSchema(pkg, pkg.floors != null ? {} : { synthetic: true });
       if (!sc.bld.length) return null;
       const fields = [...new Set([...planFields(sc), ...sc.act, ...sc.obyem].filter((x): x is string => !!x))];
@@ -1057,7 +1048,6 @@ export function visibleHeat(
   const needle = q.trim().toLowerCase();
   if (!needle) {
     return secs.map((sec) => {
-      /* ⚠️ 2026-10-30: хураасан багц — «Багцын нийт»/«Өсөх дүн» үлдэнэ (бүх багцыг нэг дор харьцуулна) */
       if (collapsedPkg.has(sec.pkg.key)) return { ...sec, rows: sec.rows.filter((r) => r.kind === 'total' || r.kind === 'cum') };
       const rows: HRow[] = [];
       let hide = false;
@@ -1099,7 +1089,6 @@ export const BAR_TEXT: Record<BarStatus, () => string> = {
   todo: () => tr('Эхлээгүй'),
   none: () => tr('Мэдээлэл байхгүй'),
 };
-/* ⚠️ 2026-10-30 (загвар): огноогүй milestone — «хийгдээгүй» (улаан); гүйцэтгэл мэдэгдэхгүй — «мэдээлэл байхгүй» (саарал) */
 export const MS_TEXT: Record<MsStatus, () => string> = {
   done: () => tr('Биелсэн'),
   late: () => tr('Хугацаа хэтэрсэн'),

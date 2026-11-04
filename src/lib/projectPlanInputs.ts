@@ -369,10 +369,6 @@ const WHOLE_PKG_RE = /^бүгд$/i;
 
 /**
  * `blockPlanned` callback — хуваарьгүй/уншигдаагүй блок `null` (шугаман руу УНАХГҮЙ — файлын толгой).
- * ⚠️ 2026-10-29 (хэрэглэгч: «холбо, Хуваарь удахгүй хийгдэхэд хуваарьтай болох ёстой»): блок нь «Бүгд» (багц бүхэлдээ,
- *    жиш. Багц-4.1 «Өндөржилтөөс гарах газар шорооны ажил») бөгөөд Хуваарьт хараахан алга бол `undefined` → хөдөлгүүр
- *    гүйцэтгэгчийн (түүнгүй бол гэрээний) огнооны хооронд жигд бодно. Хуваарьт `buildingKey(багц, 'Бүгд')` түлхүүрээр
- *    хуваарь орж ирмэгц (`sched.has`) түүнийг авна. Хуваарь уншигдаагүй (`sched` null) бол урьдын адил `null`.
  */
 export function blockPlannedOf(sched: BlockSchedules | null): NonNullable<PlanInputs['blockPlanned']> {
   return (pkg, blok, asOf) => {
@@ -436,19 +432,6 @@ export function monthlyOf(ob: PkgPlan | null | undefined): PlanSheet['monthly'] 
 
 /* ══════════════════ 3б. Хуваарийн ОГНОО — гэрээ · гүйцэтгэгч (2026-10-29) ══════════════════ */
 
-/**
- * ⚠️ 2026-10-29 (хэрэглэгч: «газар чөлөөлөлтийн бүх огноог хоосон болго; гэрээ, гүйцэтгэгчийн огноог хоосон ч хамаагүй
- *    холбо — удахгүй гэрээ, төлөвлөлтийн бүх хуваарь орно, төлөвлөхөд шууд ордог байх ёстой; Хуваарьт төлөвлөх
- *    боломжгүй багцын огноог хоосон болго»):
- *    · `gazar_*` — БҮХ мөрөнд хоосон (газрын давхаргад чөлөөлсөн огноо алга);
- *    · «Барилга угсралт» үе шатны НАВЧ мөр — бөглөх хуудасны (Хуваарь) блокийн дэд модны огноо: «Б.» → барилга, «А.» →
- *      бэлтгэл; `guits_*` = төлөвлөгөөт эхлэх/дуусах (`start`/`end`), `geree_*` = гэрээний (`gStart`/`gEnd`). Хуудсанд
- *      хоосон бол ХООСОН (Excel-ийн огноо руу буцахгүй). Блокгүй мөр / «Бүгд» = багцын бүх блокийн MIN/MAX;
- *    · бөглөх хуудасгүй (Хуваарьт төлөвлөх боломжгүй) багц, олон багцын мөр — хоосон;
- *    · үе шатны эцэг мөр — хоосон (дэлгэц хүүхдүүдийн MIN/MAX-аар бодно, `computePlan` D);
- *    · хуудас УНШИГДААГҮЙ багц — хадгалсан огноо ХЭВЭЭР (уналт ≠ хоосон).
- *    Бусад үе шатны (ТЭЗҮ · зураг · зөвшөөрөл · сонгон …) гэрээ/гүйцэтгэгчийн огноо хөндөгдөхгүй.
- */
 type Span = [number | null, number | null];
 export type DateSpan = { geree: Span; guits: Span };
 export type DateSpans = {
@@ -526,15 +509,10 @@ export function linkPlanDates(tree: PlanTree, spans: DateSpans | null): PlanStor
 /**
  * Хуваарийн хуудсуудыг уншина — `planProgress.loadPlanCurve`-тэй ИЖИЛ уншилт (`planFields`, `persist` кэш,
  * сарын задаргаа `HUVAARI_OBYEM` хоосон бол асуухгүй).
- * ⚠️ 2026-10-29: блокгүй хуудсыг (5.x · 6.x · 7.1 · 10) ч уншина — зөвхөн огнооны мужид (`makeDateSpans`); блокийн
- *    төлөвлөгөөт % (`makeSchedules`) урьдын адил блоктой хуудсаар л. Гэрээний огнооны багана (`gStart`/`gEnd`) нэмж татна.
  */
 async function fetchSchedules(): Promise<{ sched: BlockSchedules; spans: DateSpans; failed: string[]; failedGroups: string[] }> {
   const failed: string[] = [];
   const emptyP = countPlanRows().then((c) => c === 0).catch(() => false);
-  /* ⚠️ 2026-10-29 (irgediin + tezu нэгтгэл): БЛОКГҮЙ хүснэгт (5.x · 6.x · 7.1 · 10) ч — «Хуваарь»-тай ИЖИЛ синтетик нэг
-     блок («Ажил»): огнооны муж (`makeDateSpans`) ба блокгүй багцын төлөвлөгөөт % (`pkgPlannedOf`) хоёуланд. Гэрээний
-     огнооны багана (`gStart`/`gEnd`) нэмж татна. */
   const got = await Promise.all(PKGS.map(async (pkg, order): Promise<(PlanSheet & { order: number; blocks: boolean }) | null> => {
     const blocks = pkg.floors != null;
     try {
@@ -782,11 +760,6 @@ export function landLayerIdsOf(pk: string): string[] {
 
 /**
  * Түлхүүр бүрийн хувь (цэвэр). `null` = эх УНАСАН (нэгж талбар · барилгын дүрс · багцын давхарга уншигдаагүй).
- * ⚠️ 2026-10-29 (хэрэглэгч: «системд гарч байгаа утгыг шууд оруул»): эх БҮРЭН уншигдсан ч тухайн түлхүүрт хүрээний
- *    дүрс АЛГА (барилгын дүрс олдохгүй блок · газрын давхаргагүй дэд бүтэц/нийгмийн объект · олон/хоосон багц) бол
- *    түлхүүр Map-д ОРОХГҮЙ → `landOf` `undefined` → хөдөлгүүр хүснэгтэд хадгалсан `guitsetgel_huvi`-г авна
- *    (`projectPlan.leafValue`). Урьд нь `null` тул 15 мөр «—» гардаг байв. Эх унасан үед `null` хэвээр — хуучин
- *    хадгалсан утгаар амьд хувийг хуурахгүй.
  */
 export function landPctMap(src: LandSources, keys: Iterable<string>): Map<string, number | null> {
   const out = new Map<string, number | null>();
@@ -1025,10 +998,6 @@ export type ProjectPlan = {
    * Хоосон биш бол тэр эхийн мөрүүд `null` — дэлгэц «бүрэн биш»-ийг ил харуулна.
    */
   failed: string[];
-  /**
-   * ⚠️ 2026-10-29: ХҮСНЭГТЭД хадгалсан мөрүүд (холбосон огноо тавихаас ӨМНӨХ) — `projectPlanSync` зөрүүг үүнээс бодно.
-   *    `tree`-ийн мөрүүд нь холбосон огноотой (`linkPlanDates`).
-   */
   stored?: readonly PlanStoredRow[];
 };
 
@@ -1045,7 +1014,6 @@ export function assemblePlan(
   rows: readonly PlanStoredRow[],
   src: {
     actual: ActualSources; sched: BlockSchedules | null; land: ReadonlyMap<string, number | null>;
-    /** ⚠️ 2026-10-29: Хуваарийн огноо (`linkPlanDates`) — өгөөгүй бол хадгалсан огноо хэвээр (тест/хуучин дуудагч) */
     dates?: DateSpans | null;
   },
   today: number = ubToday(),
