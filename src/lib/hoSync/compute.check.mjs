@@ -161,9 +161,19 @@ assert.equal(p.updates.find((u) => u.objectid === 16), undefined);
   assert.deepEqual(by.get(2), { objectid: 2, olgoson_dun: 20, urdchilgaa_dun: 20 });
   assert.deepEqual(by.get(3), { objectid: 3, olgoson_dun: 250, urdchilgaa_dun: 200 }, 'нэг багцтай гэрээ — бичиглэл зөрсөн мөр ч орно');
   assert.deepEqual(by.get(4), { objectid: 4, olgoson_dun: null, urdchilgaa_dun: null }, 'төлбөргүй бол хоосолно');
-  /* Олон багц нэг мөрөнд — оноогдоогүй */
+  /* Олон багц нэг мөрөнд — гэрээний дүнгийн жингээр хуваагдана (60 : 40), төлбөр хасагдахгүй */
   const un = planPaidSync([row({ objectid: 9, murun_id: 'ХО-0044', bagts: 'Багц-10, БАГЦ-11', dun: 5 })], c.slice(0, 2));
-  assert.deepEqual(un.unassigned, ['ХО-0044']);
+  assert.deepEqual(un.unassigned, []);
+  assert.deepEqual(un.updates.map((u) => u.olgoson_dun), [3, 2], 'дүн жингээр, нийлбэр бүтэн');
+  /* Гэрээний мөр огт олдоогүй — оноогдоогүй хэвээр */
+  const none = planPaidSync([row({ objectid: 9, murun_id: 'ХО-0045', geree_kod: 'Алга', bagts: 'Багц-99', dun: 5 })], c.slice(0, 2));
+  assert.deepEqual(none.unassigned, ['ХО-0045']);
+  /* Цуцлагдсан гэрээг AUTO мөр сэргээхгүй */
+  const dead = planHoSync([
+    row({ objectid: 20, murun_id: 'ХО-20', geree_kod: 'Ц', bagts: 'Багц-10', ipc_tuluv: 'Цуцлагдсан' }),
+    row({ objectid: 21, murun_id: 'AUTO|БАГЦ10|2026-01-02', geree_kod: 'Ц', bagts: 'Багц-10', ipc_tuluv: 'Гүйцэтгэл' }),
+  ], c.slice(0, 2));
+  assert.equal(dead.matched.has('Ц'), false, 'AUTO мөртэй ч цуцлагдсан хэвээр');
   /* Дахин бичихгүй */
   const done = c.map((r) => { const u = by.get(r.objectid); return u ? { ...r, ...u } : r; });
   assert.deepEqual(planPaidSync(h, done).updates, [], 'зөрүүгүй бол бичихгүй');

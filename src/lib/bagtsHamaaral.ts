@@ -32,7 +32,7 @@ export type DepState = { deps: Dep[]; at: number | null };
 export async function loadLegacyDeps(): Promise<DepState> {
   const { readRemoteDraft, getAuth, tableUrl } = await import('./draftRemote');
   if (!(await getAuth())) throw new Error(tr('нэвтрээгүй эсвэл токен дууссан'));
-  if (!(await tableUrl(false))) {
+  if (!(await tableUrl())) {
     throw new Error(tr('«{0}» хүснэгт олдсонгүй эсвэл эзэн нь танигдсангүй — багцын хамаарлыг уншиж чадсангүй', 'Selbe_Guitsetgel_Draft'));
   }
   const r = await readRemoteDraft(HAMAARAL_KEY);

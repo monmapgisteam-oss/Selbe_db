@@ -270,6 +270,8 @@ export type ContractBlock = {
   contractNo: string;
   /** Гэрээт төсөв — гэрээнд НЭГ УДАА */
   contractTotal: number | null;
+  /** Гэрээ бүхлээрээ цуцлагдсан — нийт дүнд орохгүй */
+  cancelled?: boolean;
   /** Олгосон нийт (урьдчилгаа + гүйцэтгэл) */
   paidTotal: number | null;
   /** `paidTotal / contractTotal` × 100 — 0–100. `pct` 100-аар үржүүлдэггүй */
@@ -333,6 +335,7 @@ export function contractBlocks(cs: readonly HoContract[]): ContractBlock[] {
       workType: c.workType,
       contractNo: c.contractNo,
       contractTotal: c.contractTotal,
+      cancelled: c.cancelled,
       paidTotal: c.paidTotal,
       paidPct: c.paidPct,
       rows,
@@ -460,7 +463,7 @@ export function ipcTotals(bs: readonly ContractBlock[]): IpcTotals {
     }
   }
   return {
-    contracts: bs.length,
+    contracts: bs.filter((b) => !b.cancelled).length,
     pays,
     contract,
     paid,

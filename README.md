@@ -12,6 +12,7 @@
    Нууц (`ARCGIS_ADMIN_TOKEN`) зөвхөн `.env.development.local`-д — репод хэзээ ч бичихгүй.
 4. `npm run dev` — порт **8123**, зөвхөн `127.0.0.1` (нэвтрэлт унтраалттай үеийн dev токен LAN-д багцаар ил гарахгүй).
    Өөр worktree-д зэрэг ажиллуулахдаа портыг өгнө: `npx next dev -H 127.0.0.1 -p 5001`.
+   Нэвтрэлт унтраалттай (`NEXT_PUBLIC_AUTH_OFF=1`) горимд admin токен зөвхөн уншина, бичилт ба автомат sync хаалттай.
 5. Локал AI: `npm --prefix agent-proxy ci`, дараа нь тусдаа терминалд `npm run agent:dev`.
    Реле зөвхөн `127.0.0.1:8787`-д сонсож, 8123/8199 локал эхийг зөвшөөрнө; production-ийн
    байгууллагын нэвтрэлт/тунелийн тохиргоог өөрчлөхгүй. Claude Code-д нэвтэрсэн эсвэл
@@ -20,13 +21,13 @@
 ## Ажил дуусахад давах шалгалт
 
 ```
-npx tsc --noEmit
-npm run lint                   # 0 алдаа, warning нь --max-warnings хязгаараас хэтрэхгүй
+npm run typecheck
+npm run lint                   # 0 алдаа, 0 warning
 npm test                       # нэгж шалгуурууд (src · docs · tools доторх *.check.mjs)
-node tools/i18n-extract.mjs    # дутуу 0, илүүдэл 0
+npm run i18n:check             # дутуу 0, илүүдэл 0
 ```
 
-- `npm run test:strict` — амьд шалгуур алгасагдах байвал (токен хүчингүй, Enterprise хүрэгдэхгүй) унана.
+- `npm run test:strict` — амьд шалгуурыг (`test:agent`, `test:drift` г.м.) хамт ажиллуулна; алгасагдах байвал (токен хүчингүй, Enterprise хүрэгдэхгүй) унана. `main` руу нэгтгэхийн өмнө ажиллуулна.
   Enterprise хүрэгддэг сүлжээнд л; GitHub Actions-д биш.
 - `npm run test:all` — дээр нь agent-proxy реле шаарддаг амьд шалгуурууд (`cd agent-proxy && npm i`).
 - `next build`-ийг хөгжүүлэгчийн репод ажиллуулахгүй (dev серверийн кэшийг эвдэнэ) — CI (`test.yml`) build хийнэ.

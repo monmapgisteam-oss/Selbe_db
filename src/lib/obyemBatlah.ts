@@ -5,7 +5,7 @@
  */
 
 import { GUITS } from '@/lib/services/env';
-import { AUTH, ROLE_BY_USER, roleForUser } from './services';
+import { AUTH, roleForUser } from './services';
 import { obyemAclReady, obyemScope } from './obyemAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
@@ -91,8 +91,6 @@ export type ObyemSubmission = {
   payload: string;
 };
 
-const TITLE = 'Selbe_Obyem_Batlah';
-const TABLE_NAME = 'obyem_batlah';
 
 /** Талбарын нэр — амьд үйлчилгээтэй ЯГ тохирно */
 export const F = {
@@ -123,127 +121,17 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
   }
 }
 
-const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
-
-/** Хатуу тохиргооны super админууд — хүснэгтийн эзэн эдний нэг байх ёстой */
-const SUPER_OWNERS = new Set(
-  Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u.toLowerCase()),
-);
-
-/**
- * ХУУЧИН ЭЗЭД — `ROLE_BY_USER`-ээс хасагдсан ч хүснэгтийг үүсгэсэн байж
- * болох аккаунтууд (2026-09-11, `permsRemote.FORMER_TABLE_OWNERS`-ийн загвар).
- */
-const FORMER_TABLE_OWNERS: string[] = [];
-const TABLE_OWNERS = new Set([
-  ...SUPER_OWNERS,
-  ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase()),
-]);
-
-let tableUrlCache: string | undefined;
-/** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — шинээр үүсгэхийг хориглоно */
-let ownerMismatch = false;
-
-async function findTableUrl(token: string): Promise<string | null> {
-  const search = await arcgisPost(`${restBase()}/search`, {
-    q: `title:"${TITLE}" type:"Feature Service"`,
-    token,
-    num: '100',
-  });
-  const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
-  const same = results.filter((x) => x.title === TITLE && x.url);
-  const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
-  if (String(hit?.access ?? '') === 'public') {
-    console.error(
-      `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч`,
-      'батлах мөрийг засаж чадна. AGOL дээр Share-ийг «Organization» болгоно уу.',
-    );
-  }
-  ownerMismatch = !hit && same.length > 0;
-  if (ownerMismatch) {
-    console.error(
-      `[selbe] ${TITLE} хүснэгтийн эзэн танигдсангүй:`,
-      same.map((x) => x.owner).join(', '), '— super-т reassign хийнэ үү',
-    );
-  }
-  return hit?.url ? `${hit.url}/0` : null;
-}
-
-/**
- * Хүснэгт үүсгэх (publish эрхтэй super admin).
- */
-async function createTable(token: string, user: string): Promise<string | null> {
-  const createParameters = {
-    name: TITLE,
-    serviceDescription: tr('Сэлбэ порталын инженерийн төлөвлөсөн обьёмын батлах урсгал'),
-    hasStaticData: false,
-    maxRecordCount: 10000,
-    capabilities: 'Query,Editing,Create,Update,Delete',
-    spatialReference: { wkid: 102100 },
-    allowGeometryUpdates: false,
-    units: 'esriMeters',
-  };
-  const created = await arcgisPost(
-    `${restBase()}/content/users/${encodeURIComponent(user)}/createService`,
-    { token, createParameters: JSON.stringify(createParameters), outputType: 'featureService' },
-  );
-  const serviceUrl = created.encodedServiceURL as string | undefined;
-  const itemId = created.itemId as string | undefined;
-  if (!serviceUrl || !itemId) return null;
-
-  const adminUrl = serviceUrl.replace('/rest/services/', '/rest/admin/services/');
-  const table = {
-    tables: [{
-      name: TABLE_NAME,
-      type: 'Table',
-      objectIdField: 'objectid',
-      fields: [
-        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
-        { name: F.pkgKey, type: 'esriFieldTypeString', length: 64, nullable: false, editable: true },
-        { name: F.pkgGroup, type: 'esriFieldTypeString', length: 128, nullable: true, editable: true },
-        { name: F.status, type: 'esriFieldTypeString', length: 32, nullable: false, editable: true },
-        { name: F.author, type: 'esriFieldTypeString', length: 256, nullable: true, editable: true },
-        { name: F.authorSent, type: 'esriFieldTypeDate', nullable: true, editable: true },
-        { name: F.approver, type: 'esriFieldTypeString', length: 256, nullable: true, editable: true },
-        { name: F.approverAt, type: 'esriFieldTypeDate', nullable: true, editable: true },
-        { name: F.reason, type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
-        { name: F.note, type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
-        { name: F.cellCount, type: 'esriFieldTypeInteger', nullable: true, editable: true },
-        { name: F.payload, type: 'esriFieldTypeString', length: 1048576, nullable: true, editable: true },
-      ],
-    }],
-  };
-  await arcgisPost(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
-  await arcgisPost(
-    `${restBase()}/content/users/${encodeURIComponent(user)}/items/${itemId}/share`,
-    { token, org: 'true', everyone: 'false' },
-  );
-  return `${serviceUrl}/0`;
-}
-
 /**
  * Хүснэгтийн URL — олох, эс бөгөөс (super) үүсгэх.
  */
-async function tableUrl(canCreate: boolean): Promise<string | null> {
-  if (tableUrlCache) return tableUrlCache;
-  const direct: string | null = `${GUITS}/193`;
-  if (direct) {
-    tableUrlCache = direct;
-    return direct;
-  }
-  const auth = await getToken();
-  if (!auth) return null;
-  let url = await findTableUrl(auth.token);
-  if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase()))
-    url = await createTable(auth.token, auth.user);
-  if (url) tableUrlCache = url;
-  return url;
+async function tableUrl(): Promise<string> {
+  return `${GUITS}/193`;
 }
 
 /** Хүснэгт бэлэн эсэх — харагдац дээр шалтгааныг ил хэлэхэд */
-export async function obyemTableReady(canCreate = false): Promise<boolean> {
+export async function obyemTableReady(): Promise<boolean> {
   try {
-    return (await tableUrl(canCreate)) != null;
+    return (await tableUrl()) != null;
   } catch {
     return false;
   }
@@ -297,9 +185,9 @@ function sameAsLogin(name: string): { ok: false; error: string } | null {
 }
 
 async function query(where: string, outFields: string, strict = false): Promise<Attrs[]> {
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) {
-    if (strict && (ownerMismatch || (AUTH.appId && !(await getToken()))))
+    if (strict && AUTH.appId && !(await getToken()))
       throw new Error(tr('Батлах хүснэгт олдсонгүй — админд хандана уу.'));
     return [];
   }
@@ -433,7 +321,7 @@ export async function submitObyem(args: {
     if (sc !== null && !sc.includes(args.pkgGroup))
       return { ok: false, error: tr('Энэ багцад обьём илгээх эрхгүй.') };
   }
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const already = await loadPending(args.pkgKey);
   if (already) {
@@ -571,7 +459,7 @@ export async function claimObyem(args: { oid: number; approver: string }): Promi
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   const own = sameAsLogin(me);
   if (own) return own;
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   try {
     const cur0 = (await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.pkgGroup}`))[0];
@@ -647,7 +535,7 @@ export async function releaseObyemClaim(args: { oid: number; approver: string })
   const me = args.approver.trim().toLowerCase();
   if (!me) return;
   try {
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return;
     const cur = await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS);
     if (!cur.length || claimHolder(cur[0]) !== me) return;
@@ -666,7 +554,7 @@ export async function releaseObyemClaim(args: { oid: number; approver: string })
 export async function markObyemPartial(args: { oid: number; approver: string; claimAt?: number }): Promise<{ ok: boolean; error?: string; existing?: string }> {
   const me = args.approver.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const mark = `${PARTIAL_MARK}:${me}`;
   const fields = `${CLAIM_FIELDS},${F.reason},${F.author},${F.pkgGroup}`;
@@ -708,7 +596,7 @@ export async function markObyemPartial(args: { oid: number; approver: string; cl
  * ХАГАС БИЧИЛТИЙН ТЭМДЭГ АРИЛГАХ — үндсэн өгөгдөлд НЭГ Ч мөр бичигдээгүй унасан үед (2026-10-06).
  */
 export async function clearObyemPartial(oid: number, owner?: string): Promise<boolean> {
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return false;
   try {
     const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status},${F.reason}`);
@@ -757,7 +645,7 @@ export async function decideObyem(args: {
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   const own = sameAsLogin(me);
   if (own) return own;
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup},${F.reason},${F.note}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
@@ -865,7 +753,7 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
   let url: string;
   let cur: Attrs[];
   try {
-    const u = await tableUrl(false);
+    const u = await tableUrl();
     if (!u) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
     url = u;
     cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.pkgGroup},${F.reason},${F.approver},${F.approverAt}`);
@@ -957,7 +845,7 @@ export async function withdrawObyem(args: { oid: number; me: string }): Promise<
   if (AUTH.appId && typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   const me = (meNow ?? args.me).trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   try {
     const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver},${F.approverAt},${F.reason}`);
@@ -1047,7 +935,7 @@ export async function countObyemPending(username: string | null | undefined): Pr
       if (!me || !capsRemoteReady() || !obyemAclReady()) return null;
       if (!hasCap(me, 'obyemApprove')) return 0;
     }
-    if (!(await obyemTableReady(false))) return null;
+    if (!(await obyemTableReady())) return null;
     const sc = AUTH.appId ? obyemScope(me, 'approver') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
     const rows = await loadBadgePending();

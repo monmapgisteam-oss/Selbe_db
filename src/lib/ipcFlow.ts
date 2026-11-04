@@ -242,14 +242,16 @@ export type NewContract = {
   items: { row: Row; amount: number; advance: number | null }[];
 };
 
-export type ContractWhy = 'no-number' | 'empty' | 'amount' | 'taken' | 'dup-number';
+export type ContractWhy = 'no-number' | 'empty' | 'amount' | 'advance' | 'taken' | 'dup-number';
 
 /** Гэрээ үүсгэх боломжгүй шалтгаан; `null` = болно */
 export function contractWhy(c: NewContract, cfRows: readonly Row[]): ContractWhy | null {
   const no = txt(c.no);
   if (!no) return 'no-number';
   if (!c.items.length) return 'empty';
-  if (c.items.some((i) => !(i.amount > 0) || (i.advance != null && i.advance < 0))) return 'amount';
+  if (c.items.some((i) => !(i.amount > 0))) return 'amount';
+  /* «5 сая» мэт бичвэр NaN болно — `< 0` түүнийг барихгүй тул урвуугаар шалгана */
+  if (c.items.some((i) => i.advance != null && !(i.advance >= 0))) return 'advance';
   if (c.items.some((i) => txt(i.row[CF.amountNote]) === CONTRACTED)) return 'taken';
   if (cfRows.some((r) => txt(r[CF.contractNo]) === no)) return 'dup-number';
   return null;

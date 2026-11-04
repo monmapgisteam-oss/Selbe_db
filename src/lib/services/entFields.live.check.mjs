@@ -3,7 +3,6 @@
  *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/services/entFields.live.check.mjs
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { F as HUVAARI_F } from '../huvaariBatlah.ts';
 import { F as OBYEM_F } from '../obyemBatlah.ts';
 import { F as AJIL_F } from '../ajilBatlah.ts';
@@ -15,18 +14,14 @@ if (process.env.SELBE_LIVE_SKIP) {
   process.exit(0);
 }
 
-const src = (f) => readFileSync(f, 'utf8');
-/** `createTable`-ийн `fields: [ { name: '…' } ]` — `entFields.check`-тэй ИЖИЛ уншилт */
-const tableFieldsOf = (f) => [...src(f).matchAll(/\{\s*name:\s*'([^']+)',\s*type:\s*'esriFieldType/g)].map((m) => m[1]);
-
 const ALLOW_MISSING = { 192: new Set(['zovshoorson_mor']) };
 
 const TABLES = [
   { name: 'huvaari', url: `${GUITS}/192`, id: 192, fields: Object.values(HUVAARI_F) },
   { name: 'obyem', url: `${GUITS}/193`, id: 193, fields: Object.values(OBYEM_F) },
   { name: 'ajil', url: `${GUITS}/189`, id: 189, fields: Object.values(AJIL_F) },
-  { name: 'perms', url: `${SYS_PERMS}/230`, id: 230, fields: tableFieldsOf('src/lib/permsRemote.ts') },
-  { name: 'draft', url: `${GUITS}/191`, id: 191, fields: tableFieldsOf('src/lib/draftRemote.ts') },
+  { name: 'perms', url: `${SYS_PERMS}/230`, id: 230, fields: ['objectid', 'username', 'role', 'views', 'docs'] },
+  { name: 'draft', url: `${GUITS}/191`, id: 191, fields: ['objectid', 'dkey', 'usr', 'pkg', 'at', 'payload'] },
 ];
 
 const errs = [];

@@ -577,8 +577,13 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
             const prev = blankSid(x) ? beforePos.get(String(ri)) : before.get(sidsA[ri]);
             const pr = prior.get(fkeys[ri]);
             const dayVals = obs.map((n) => num(a[n]));
-            const beforeVals = obs.map((_, k) => pr?.[k] ?? null);
-            const cells = obs.map((_, k) => (dayVals[k] == null && beforeVals[k] == null ? null : (dayVals[k] ?? 0) + (beforeVals[k] ?? 0)));
+            const beforeVals = obs.map((n, k) => {
+              const extra = sameDay && prev ? num(prev[n]) : null;
+              const base = pr?.[k] ?? null;
+              return base == null && extra == null ? null : (base ?? 0) + (extra ?? 0);
+            });
+            /* Жааз тухайн өдрийн НИЙТ ажлыг хадгалдаг — хуримтлал = өмнөх өдрүүд + энэ жааз (ижил өдрийн өмнөхийг НЭМЭХГҮЙ) */
+            const cells = obs.map((_, k) => (dayVals[k] == null && pr?.[k] == null ? null : (dayVals[k] ?? 0) + (pr?.[k] ?? 0)));
             const sumCum = cells.reduce<number | null>((s, v) => (v == null ? s : (s ?? 0) + v), null);
             const changed = obs.map((_, k) => {
               const d = dayVals[k];
@@ -586,6 +591,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
               if (prevFailed) return false;
               // Анхны нийтлэлд өмнөх агшин алга — утгатай нүд бүр ШИНЭ
               if (!prev && !pr) return true;
+              if (sameDay && prev) return d !== (num(prev[obs[k]]) ?? 0);
               return d !== 0;
             });
             const ch = tree[ri] ?? '0';

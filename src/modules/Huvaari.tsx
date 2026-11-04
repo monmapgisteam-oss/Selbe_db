@@ -336,6 +336,7 @@ export function Huvaari({
   const partialRef = useRef<number | null>(null);
   const lostWriteRef = useRef<number | null>(null);
   const wroteSomeRef = useRef<number | null>(null);
+  const scrollToOid = useRef<{ oid: number; blk: number } | null>(null);
   const frameMovedRef = useRef<number | null>(null);
   const claimAtRef = useRef<number | null>(null);
   const failStepRef = useRef<{ oid: number; step: 'dates' | 'obyem'; written?: number; total?: number } | null>(null);
@@ -1459,7 +1460,7 @@ export function Huvaari({
     const t = window.setTimeout(() => setChainN(0), 6000);
     return () => window.clearTimeout(t);
   }, [chainN, chainSeq]);
-  useEffect(() => { if (!chainN) setChainUnbal0(null); }, [chainN]);
+  if (!chainN && chainUnbal0 !== null) setChainUnbal0(null);
   /** Гинжээр ШИНЭЭР тэнцэхгүй болсон мөрийн тоо (`chainUnbal0`) */
   const chainUnbalN = chainUnbal0 ? [...unbalRows.keys()].filter((o) => !chainUnbal0.has(o)).length : 0;
   useEffect(() => { if (modal == null) undoOpenRef.current = null; }, [modal]);
@@ -2025,7 +2026,7 @@ export function Huvaari({
   /* ══════════════ ХУВААЛЦСАН НООРОГ — ArcGIS дээр (2026-09-23; `useSharedDraft`) ══════════════ */
   const {
     hdSt, hdUsers, hdLabel, hdReadyKey, hdTimerRef, hdFlushRef, hdClearRef, hdSkipUnlockOnceRef,
-    hdMapsRef, hdMeta, meRef, askSwitch, hdResetRestore, hdRetryRestore, hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced, hdOrphan,
+    hdMapsRef, hdMeta, hdMetaView, meRef, askSwitch, hdResetRestore, hdRetryRestore, hdSubmitBegin, hdSubmitEnd, hdDiscard, hdUnsynced, hdOrphan,
     hdStoreMode, hdStoreNote, hdCtxRef, hdReadyRef, hdKeyRef,
   } = useSharedDraft({
     kind, pkgKey: pkg.key, user, status, canEdit: canEditRole, locked, previewing, approving, pending,
@@ -2423,7 +2424,7 @@ export function Huvaari({
     const live = () => my === flowSeq.current && key === pkgKeyRef.current && k0 === kindRef.current;
     setFlowReady(null); setPending((p0) => (p0 && p0.pkgKey === key ? p0 : null)); setLastDecision(null);
     try {
-      const st = await planTableState(status === 'off' || roleForUser(user?.username) === 'super');
+      const st = await planTableState();
       if (!live()) return;
       const ready = st.ok;
       flowThrewRef.current = !ready && st.why === 'error';
@@ -2431,11 +2432,9 @@ export function Huvaari({
       setFlowWhy(ready ? '' : (
         st.why === 'auth'
           ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
-          : st.why === 'owner'
-            ? tr('Батлах хүснэгт байгаа ч эзэмшигч нь танигдахгүй байна — админд мэдэгдэнэ үү.')
-            : st.why === 'error'
-              ? tr('Порталын хайлт амжилтгүй: {0}', friendlyError({ message: st.detail ?? '' }))
-              : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')
+          : st.why === 'error'
+            ? tr('Порталын хайлт амжилтгүй: {0}', friendlyError({ message: st.detail ?? '' }))
+            : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')
       ));
       const other: PlanKind = kind === 'plan' ? 'geree' : 'plan';
       const both = ready ? await loadPendingBoth(pkg.key) : null;
@@ -2476,6 +2475,8 @@ export function Huvaari({
       setPending((p0) => (p0 && p0.pkgKey === key ? p0 : null));
       setLastDecision(null);
     }
+    // Нэвтрэлт солигдоход (user, status) урсгалыг дахин ачаална
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pkg.key, kind, user, status, pkgKeyRef, kindRef, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setOkRows, refetchBg, subSyncOkRef, hdKeyRef, hdReadyRef, hdCtxRef]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -3320,7 +3321,6 @@ export function Huvaari({
    * ДАРААГИЙН ЗӨВШӨӨРӨӨГҮЙ МӨР (2026-09-25 аудит, UX): ~1,400 мөрийн виртуал
    * жагсаалтад улаан мөрийг гүйлгэж хайх шаардлагагүй — сонгоод гүйлгэнэ.
    */
-  const scrollToOid = useRef<{ oid: number; blk: number } | null>(null);
   /** Мөрийн тэмдэг: хяналтад — батлагчийн сонголт; гүйцэтгэгчид — буцаасан шийдвэр */
   const reviewSet = useMemo(() => new Set(reviewOids), [reviewOids]);
   /** Буцаасан тэмдэг ИДЭВХТЭЙ юу — яг тэр шийдвэр сүүлийнх, ноорог байгаа */
@@ -5137,7 +5137,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     changedBlks={marking ? reviewBlks.get(r.oid) : undefined}
                     onPickBlk={marking ? (b) => goToRow(r.oid, b) : undefined}
                     blkOn={blk}
-                    editedBy={(() => { const m = hdMeta.current.get(kS(r.oid, blk)); return m && m.user !== meRef.current ? m : null; })()}
+                    editedBy={(() => { const m = hdMetaView.get(kS(r.oid, blk)); return m && m.user !== (user?.username ?? '').trim().toLowerCase() ? m : null; })()}
                     /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
                     added={r.oid < 0}
                     onAdd={r.group && canAddRow && !locked && !allOn
@@ -5473,7 +5473,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               {(() => {
                 const me = (user?.username ?? '').trim().toLowerCase();
                 const last = new Map<number, { at: number; user: string }>();
-                for (const [k, m] of hdMeta.current) {
+                for (const [k, m] of hdMetaView) {
                   const p = parseKey(k);
                   if (!p) continue;
                   let oid: number | undefined;

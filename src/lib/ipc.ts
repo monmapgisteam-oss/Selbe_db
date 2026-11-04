@@ -58,6 +58,8 @@ export type HoContract = {
   code: string;
   /** `pkgKeyOf(bagts)` — багц↔гэрээ холбоосын түлхүүр. ДИАПАЗОН мөрд `''` */
   key: string;
+  /** Гэрээ бүхлээрээ цуцлагдсан — нийт дүнд орохгүй */
+  cancelled: boolean;
   /** `bagts` түүхий утга — ХАРАГДАХ нэр */
   pkg: string;
   project: string;
@@ -112,6 +114,16 @@ function pickField(pays: readonly Row[], field: string, warn: boolean): unknown 
 /** Кодгүй бүлгийн дотоод түлхүүрийн угтвар — `geree_kod`-д хэзээ ч гарахгүй тэмдэгт */
 const NO_CODE_KEY = '\u0000';
 
+/**
+ * ГЭРЭЭ ЦУЦЛАГДСАН УУ — гараар оруулсан (AUTO биш) мөрүүд бүгд «Цуцлагдсан». AUTO мөр нь гэрээг сэргээхгүй.
+ * Зөвхөн AUTO мөртэй бол тэдгээрээр шийднэ.
+ */
+export function contractCancelled(pays: readonly Row[]): boolean {
+  const heads = pays.filter((r) => !str(r[P.id]).startsWith('AUTO|'));
+  const set = heads.length ? heads : pays;
+  return set.length > 0 && set.every((r) => str(r[HO_IPC.status.field]).trim() === HO_IPC.status.cancelled);
+}
+
 export function groupHo(rows: readonly Row[]): HoContract[] {
   const byCode = new Map<string, Row[]>();
   rows.forEach((r, i) => {
@@ -127,11 +139,14 @@ export function groupHo(rows: readonly Row[]): HoContract[] {
     const code = key.startsWith(NO_CODE_KEY) ? '' : key;
     const pick = (f: string, warn = true) => pickField(pays, f, warn);
     const pkg = pick(C.pkg, false);
-    const budgetTotal = num(pick(C.budgetTotal));
-    const contractTotal = num(pick(C.contractTotal));
+    /* Цуцлагдсан гэрээ нийт дүнд орохгүй — мөрүүд нь карт дээр харагдсаар */
+    const cancelled = contractCancelled(pays);
+    const budgetTotal = cancelled ? null : num(pick(C.budgetTotal));
+    const contractTotal = cancelled ? null : num(pick(C.contractTotal));
     const paidTotal = sumPaid(pays);
     out.push({
       code,
+      cancelled,
       key: pkgKeyOf(pkg),
       pkg: str(pkg),
       project: str(pick(C.project)),
@@ -218,7 +233,7 @@ export function hoTotals(rows: readonly Row[]): HoTotals {
   const paid = sumPaid(rows);
   const paidC = acc((c) => (c.contractTotal != null ? c.paidTotal : null));
   return {
-    contracts: cs.length,
+    contracts: cs.filter((c) => !c.cancelled).length,
     pays: rows.filter((r) => hoAmount(r) != null).length,
     budget: acc((c) => c.budgetTotal),
     contract,

@@ -14,7 +14,10 @@ import assert from 'node:assert/strict';
 import {
   pubPkgCode, guitsetgelRows, sanhuuRows, hunHuchRows, niigemRows, ehUusverRows, gazarRows, PUB_TOTAL, PUB_BUILD,
 } from './compute.ts';
-import { diffRows } from './sync.ts';
+import { diffRows, emptyWipe } from './sync.ts';
+assert.equal(emptyWipe([{ a: 1 }], []), true, 'хоосон үр дүн хүснэгтийг хоослохгүй');
+assert.equal(emptyWipe([], []), false);
+assert.equal(emptyWipe([{ a: 1 }], [{ a: 2 }]), false);
 import { assemblePlan } from '@/lib/projectPlanInputs';
 
 let n = 0;

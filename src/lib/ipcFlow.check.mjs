@@ -3,6 +3,7 @@
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ipcFlow.check.mjs
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   approveIpc, approveWhy, canCancel, contractCancel, contractCancelWhy, contractUpdates, contractWhy, createAdvance, createCancel,
   createIpc, docRows, docTitle, nextIpcNo, overContract, perfRows, perfTotal, signIpc, statusOf,
@@ -141,5 +142,15 @@ assert.equal(cn.cf[0].geree_dun, null, 'гэрээний дүн арилна');
 assert.ok(!('ho_dun_geree' in cn.cf[0]), 'урьдчилсан төсөв хөндөгдөхгүй');
 assert.ok(!('ho_dun_geree' in up[0]), 'гэрээ үүсгэхэд урьдчилсан төсөв хөндөгдөхгүй');
 assert.equal(cn.cf[0].ho_dungiin_tailbar, null);
+
+assert.equal(contractWhy({ ...one, items: one.items.map((i) => ({ ...i, advance: Number.NaN })) }, cf), 'advance', '«5 сая» мэт бичвэр хаягдахгүй');
+assert.equal(contractWhy({ ...one, items: one.items.map((i) => ({ ...i, advance: -1 })) }, cf), 'advance');
+assert.equal(contractWhy({ ...one, items: one.items.map((i) => ({ ...i, advance: 0 })) }, cf), null);
+{
+  const src = readFileSync('src/modules/IpcFlow.tsx', 'utf8');
+  assert.ok(src.includes('cfMatches(r, parts, phases)'), 'гэрээ цуцлахад ижил багцын өөр үе шатны гэрээ хөндөгдөхгүй');
+  assert.ok(!src.includes('toISOString'), 'IPC-ийн огноо локал өдрөөр');
+  assert.equal((src.match(/await freshPays\(code, pays\)/g) ?? []).length, 3, 'IPC үүсгэх, батлах, цуцлахын өмнө дахин уншина');
+}
 
 console.log('ipcFlow.check ✓');

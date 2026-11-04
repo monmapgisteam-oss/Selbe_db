@@ -149,9 +149,10 @@ frame('2026-01-20', [[1, 1], [null, null]]);
 {
   const det = readFileSync('src/lib/hyanaltDetail.ts', 'utf8');
   assert.ok(det.includes('priorObyem(p, sc, msToDay(at))'), 'hyanaltDetail: «юунаас юу» өмнөх жаазуудын хуримтлалаар');
-  /* 2026-11-04: өдрийн сүүлийн жааз өдрийн БҮХ ажлыг хадгалдаг тул ижил өдрийн өмнөх жааз (`samePrev`) хуримтлалд НЭМЭГДЭХГҮЙ */
-  assert.ok(!det.includes('sameDay && prev') && det.includes('const beforeVals = obs.map((_, k) => pr?.[k] ?? null);'),
-    'hyanaltDetail: ижил өдрийн өмнөх жаазыг суурьт нэмэхгүй — loadRows/priorObyem-тэй нэг дүрэм');
+  /* 2026-11-04: өдрийн сүүлийн жааз өдрийн БҮХ ажлыг хадгалдаг тул ижил өдрийн өмнөх жааз (`samePrev`) хуримтлалд НЭМЭГДЭХГҮЙ
+     (2026-11-05: «юунаас» суурь `beforeVals` нь ижил өдрийн өмнөх жаазыг харуулна, харин хуримтлал `cells` = өмнөх өдрүүд + энэ жааз) */
+  assert.ok(det.includes('(dayVals[k] ?? 0) + (pr?.[k] ?? 0)') && !det.includes('(dayVals[k] ?? 0) + (beforeVals[k] ?? 0)'),
+    'hyanaltDetail: ижил өдрийн өмнөх жаазыг хуримтлалд нэмэхгүй — loadRows/priorObyem-тэй нэг дүрэм');
   const w = readFileSync('src/lib/ipcAutoWrite.ts', 'utf8');
   assert.ok(w.includes('snapshotDayOf(rows, day)') && !w.includes('snapshotOf(rows, day)'), 'ipcAutoWrite: AUTO мөр өдрийн дүнгээр');
   const mu = readFileSync('src/lib/materialUsage.ts', 'utf8');
@@ -183,7 +184,7 @@ frame('2026-01-20', [[1, 1], [null, null]]);
   const next = buildFrame(rows, sc, 2, null, [true, true], D('2026-02-01'));
   assert.equal(next.find((a) => a.no === '1').o0, 3, 'өөр өдөр: өсөлт 11 − 8 = 3');
   /* 2 дахь жаазыг архивт нэмээд — хуримтлал, өмнөх өдрүүд, IPC-ийн өдрийн дүн бүгд зөв */
-  for (const a of same) T.insert({ ...a, objectid: undefined });
+  const added6 = same.map((a) => T.insert({ ...a, objectid: undefined }));
   dropPriorCache(pkg.key);
   const r2 = await loadRows(pkg, sc, '2026-01-20');
   const sh3 = r2.rows.find((x) => x.no === '1');
@@ -194,5 +195,38 @@ frame('2026-01-20', [[1, 1], [null, null]]);
   assert.deepEqual(pr.get('1 ¦ Шороо #0'), [11, 4], 'priorObyem: 01-20-ны сүүлийн жааз өдрийн бүх ажилтай');
   assert.equal(snapshotDayOf(r2.rows, '2026-01-20').une, (4 + 1) * 10, 'IPC AUTO мөр = өдрийн БҮХ ажил × нэгж үнэ');
   console.log('✅ ижил өдрийн 2 дахь жааз — өдрийн бүх ажил · хуримтлал · priorObyem · snapshotDayOf');
+  /* дараагийн хэсэг анхны 01-20 жаазаар (хуримтлал 8, 4) ажиллана — 2 дахь жаазыг буцаана */
+  T.edit({ deletes: added6.map((r) => r.objectid) });
+  dropPriorCache(pkg.key);
+}
+
+/* ── 6b. Нэг өдрийн хэд хэдэн жааз — сүүлийнх нь өдрийн НИЙТ ажлыг хадгална (бичих → ачаалах бүтэн тойрог) ── */
+{
+  const write = async (day, delta) => {
+    dropPriorCache(pkg.key);
+    const r = await loadRows(pkg, sc);
+    const rows = r.rows.map((x) => ({ ...x, obyem: x.obyem.slice(), act: x.act.slice() }));
+    const row = rows.find((x) => x.no === '1');
+    row.obyem[0] = (row.obyem[0] ?? 0) + delta;
+    const fr = buildFrame(rows, sc, 2, null, [true, true], D(day));
+    const v = (no) => { const f = fr.find((a) => a.no === no); return [f.o0, f.o1]; };
+    frame(day, [v('1'), v('2')]);
+  };
+  const at = async (day) => {
+    dropPriorCache(pkg.key);
+    const r = await loadRows(pkg, sc, day);
+    return { cum: r.rows.find((x) => x.no === '1').obyem[0], day: r.rows.find((x) => x.no === '1').obyemDay[0], une: snapshotDayOf(r.rows, day).une };
+  };
+  await write('2026-03-01', 5);
+  assert.deepEqual(await at('2026-03-01'), { cum: 13, day: 5, une: 50 }, 'эхний жааз: 8 + 5');
+  await write('2026-03-01', 2);
+  assert.deepEqual(await at('2026-03-01'), { cum: 15, day: 7, une: 70 }, 'ижил өдрийн хоёр дахь жааз: өмнөх 5 устахгүй');
+  await write('2026-03-01', 0);
+  assert.deepEqual(await at('2026-03-01'), { cum: 15, day: 7, une: 70 }, 'өөрчлөлтгүй жааз (нэмэлт ажил, комисс) өдрийн ажлыг тэглэхгүй');
+  await write('2026-03-02', 1);
+  assert.deepEqual(await at('2026-03-02'), { cum: 16, day: 1, une: 10 }, 'дараагийн өдөр: зөвхөн тэр өдрийн ажил');
+  const det = readFileSync('src/lib/hyanaltDetail.ts', 'utf8');
+  assert.ok(det.includes('(dayVals[k] ?? 0) + (pr?.[k] ?? 0)'), 'hyanaltDetail: ижил өдрийн өмнөх жаазыг хуримтлалд нэмэхгүй');
+  console.log('✅ нэг өдрийн олон жааз — ажил алдагдахгүй');
 }
 console.log('perDay.check: OK');

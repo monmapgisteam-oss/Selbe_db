@@ -299,6 +299,22 @@ const P = HO_IPC.payFields;
     ], a);
     assert.equal(two.attrs[P.id], 'AUTO|БАГЦ2|2026-10-11|3');
     assert.ok(Math.abs(two.attrs.guits_une - 0.5) < 1e-9, 'хоёр түгжигдсэн мөрийн нийлбэр хасагдана');
+    /* Жааз өдрийн нийт ажлыг хадгалдаг — IPC-д орсон дүнг хасаж зөвхөн нэмэгдсэнийг бичнэ */
+    const paidBase = { ...base, ipc_tuluv: 'IPC үүссэн', guits_obyem: 1, guits_une: 50 };
+    const more = m.planAuto([paidBase], { ...a, obyem: 3, une: 70 });
+    assert.equal(more.attrs.guits_une, 20, 'нэмэгдсэн ажил л, 50 давхар төлөгдөхгүй');
+    assert.equal(more.attrs.guits_obyem, 2);
+    assert.deepEqual(m.planAuto([paidBase], { ...a, obyem: 1, une: 50 }), { op: 'skip', why: 'no-data' }, 'нэмэгдсэн ажилгүй бол шинэ мөр үүсэхгүй');
+    const gone = m.planAuto([{ ...paidBase, ipc_tuluv: 'Цуцлагдсан' }], { ...a, obyem: 3, une: 70 });
+    assert.equal(gone.attrs.guits_une, 70, 'цуцлагдсан мөрийн дүн хасагдахгүй');
+    /* Цуцалсан гэрээнд шинэ гүйцэтгэл холбогдохгүй */
+    const c1 = { [P.id]: 'ХО-1', [C.pkg]: 'Багц 2', [C.code]: 'Хуучин', ipc_tuluv: 'Цуцлагдсан' };
+    const c2 = { [P.id]: 'ХО-2', [C.pkg]: 'Багц 2', [C.code]: 'Шинэ' };
+    assert.equal(m.contractFor([c1], 'БАГЦ2').code, '', 'зөвхөн цуцлагдсан гэрээ сонгогдохгүй');
+    assert.equal(m.contractFor([c1, c2], 'БАГЦ2').code, 'Шинэ');
+    assert.equal(m.autoContractFor([c1, c2, { [P.id]: 'AUTO|БАГЦ2|2026-10-01', [C.pkg]: 'Багц 2', [C.code]: 'Хуучин' }], 'БАГЦ2').code, 'Шинэ', 'өмнөх AUTO мөр цуцалсан гэрээнд буцаахгүй');
+    const W2 = readFileSync('src/lib/ipcAutoWrite.ts', 'utf8');
+    assert.ok(W2.includes("if (upTo !== at) { reads.push('no-frame'); continue; }"), 'тэр өдөр жаазгүй хуудасны хуучин ажил давхар тоологдохгүй');
     const multi = [{ [P.id]: 'ХО-1', [C.pkg]: 'БАГЦ-10,  БАГЦ-11', [C.code]: 'БАГЦ-10,11', [C.workType]: 'ГИШСүлжээ' }];
     assert.equal(m.contractFor(multi, 'БАГЦ10').code, 'БАГЦ-10,11', 'олон багцтай гэрээг олно');
     assert.equal(m.contractFor(multi, 'БАГЦ11').code, 'БАГЦ-10,11');
@@ -319,7 +335,7 @@ const P = HO_IPC.payFields;
     const b12 = ['6/1', '6/2', '6/3', '6/4', '6/5', '6/6', '6/7', '6/8'];
     assert.deepEqual(uniqueBlockCounts([b9, b12]), [14, 0], '4-2: 12F жин 0 → IPC-д алгасна');
   }
-  assert.ok(W.includes('const warns = [cw, verdict.warn]'), 'нийтлэгдээгүй хуудасны warn дуудагчид хүрнэ (аудит №6)');
+  assert.ok(W.includes('const warns = [cw, verdict.warn, unitWarn]'), 'нийтлэгдээгүй хуудасны warn дуудагчид хүрнэ (аудит №6)');
   assert.ok(/\} finally \{\s*(?:\/\*[^]*?\*\/\s*)?if \(tried\) invalidate\('HO_IPC'\);/.test(W), 'refreshAutoZoruu finally-д зарлана (R6)');
   const L = readFileSync('src/lib/ipcDocLoad.ts', 'utf8');
   assert.ok(L.includes('const cf = autoContractFor(hoRows, packKey);') && L.includes('cands.find((c) => c.code === cf.code)'), 'ipcDocLoad AUTO-той ижил гэрээ сонгоно (F6)');

@@ -47,6 +47,10 @@ export const isLockedRow = (r: Row): boolean => {
   return s !== '' && s !== HO_IPC.status.work;
 };
 
+/** Цуцлагдсан мөр — шинэ гүйцэтгэл түүнд холбогдохгүй */
+export const isCancelledRow = (r: Row): boolean =>
+  String(r[HO_IPC.status.field] ?? '').trim() === HO_IPC.status.cancelled;
+
 /** Мөрийн ID-гийн угтвар — автоматаар үүссэн мөрийг таних цорын ганц тэмдэг */
 export const AUTO_PREFIX = 'AUTO|';
 
@@ -111,7 +115,7 @@ export function contractFor(rows: readonly Row[], pkgKey: string): { code: strin
   if (!pkgKey) return { code: '', warn: null };
   const by = new Map<string, ContractCand>();
   for (const r of rows) {
-    if (isAuto(r)) continue;
+    if (isAuto(r) || isCancelledRow(r)) continue;
     if (!rowHasPkg(r, pkgKey)) continue;
     const code = String(r[C.code] ?? '').trim();
     if (!code) continue;
@@ -132,7 +136,7 @@ export function autoContractFor(rows: readonly Row[], pkgKey: string): { code: s
   if (!pkgKey) return base;
   let prev: { code: string; day: string } | null = null;
   for (const r of rows) {
-    if (!isAuto(r) || pkgKeyOf(r[C.pkg]) !== pkgKey) continue;
+    if (!isAuto(r) || isCancelledRow(r) || pkgKeyOf(r[C.pkg]) !== pkgKey) continue;
     const code = String(r[C.code] ?? '').trim();
     if (!code) continue;
     const day = autoDay(r) ?? '';
@@ -140,7 +144,7 @@ export function autoContractFor(rows: readonly Row[], pkgKey: string): { code: s
   }
   if (!prev || prev.code === base.code) return base;
   const p = prev;
-  const manual = rows.some((r) => !isAuto(r) && rowHasPkg(r, pkgKey) && String(r[C.code] ?? '').trim() === p.code);
+  const manual = rows.some((r) => !isAuto(r) && !isCancelledRow(r) && rowHasPkg(r, pkgKey) && String(r[C.code] ?? '').trim() === p.code);
   if (!manual) return base;
   return {
     code: p.code,
@@ -322,16 +326,14 @@ export function planAuto(rows: readonly Row[], a: AutoIpc): AutoPlan {
      хасна — IPC-д орсон хэсэг давхар тоологдохгүй. */
   const same = rows.filter((r) => isAuto(r) && pkgKeyOf(r[C.pkg]) === key && autoDay(r) === a.day);
   const cur = same.find((r) => !isLockedRow(r));
-  if (cur) return { op: 'update', attrs: autoUpdate(cur, a, rows) };
-  const lockedSum = (f: string): number => same.reduce((s, r) => s + (num(r[f]) ?? 0), 0);
-  const rest: AutoIpc = same.length
-    ? {
-      ...a,
-      une: a.une == null ? null : a.une - lockedSum(LINK_FIELDS.une),
-      obyem: a.obyem == null ? null : a.obyem - lockedSum(LINK_FIELDS.obyem),
-    }
-    : a;
-  return { op: 'insert', attrs: autoInsert(rest, same.length + 1) };
+  /* Жааз өдрийн НИЙТ ажлыг хадгалдаг — IPC-д орсон мөрийн дүнг хасаж зөвхөн нэмэгдсэн ажлыг бичнэ (давхар төлбөргүй) */
+  const locked = same.filter((r) => isLockedRow(r) && !isCancelledRow(r));
+  const less = (v: number | null, f: string): number | null =>
+    (v == null ? null : Math.round((v - locked.reduce((s, r) => s + (num(r[f]) ?? 0), 0)) * 1e6) / 1e6);
+  const net: AutoIpc = locked.length ? { ...a, obyem: less(a.obyem, LINK_FIELDS.obyem), une: less(a.une, LINK_FIELDS.une) } : a;
+  if (cur) return { op: 'update', attrs: autoUpdate(cur, net, rows) };
+  if (locked.length && !net.obyem && !net.une) return { op: 'skip', why: 'no-data' };
+  return { op: 'insert', attrs: autoInsert(net, same.length + 1) };
 }
 
 /**

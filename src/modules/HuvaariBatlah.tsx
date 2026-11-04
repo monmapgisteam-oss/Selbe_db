@@ -114,17 +114,15 @@ export function HuvaariBatlah({
     setSt({ k: 'loading' });
     void (async () => {
       try {
-        const t = await planTableState(status === 'off' || isSuper);
+        const t = await planTableState();
         if (!alive) return;
         if (!t.ok) {
           setSt({ k: 'blocked', why:
             t.why === 'auth'
               ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
-              : t.why === 'owner'
-                ? tr('Батлах хүснэгт байгаа ч эзэмшигч нь танигдахгүй байна — админд мэдэгдэнэ үү.')
-                : t.why === 'error'
-                  ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
-                  : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.') });
+              : t.why === 'error'
+                ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
+                : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.') });
           return;
         }
         const rows = await loadAllPending();

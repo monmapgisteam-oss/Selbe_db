@@ -10,9 +10,8 @@
 
 import { SYS_PERMS } from '@/lib/services/env';
 import { installEntInterceptor } from '@/lib/entInterceptor';
-import { AUTH, ROLE_BY_USER, type Role, type ViewKey } from './services';
+import { AUTH, BOOTSTRAP_SUPER, ROLE_BY_USER, type Role, type ViewKey } from './services';
 import { arcgisPost } from '@/lib/query';
-import { ensureFreshToken } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import type { Grant } from './scopedAcl';
 import { UNSAFE_KEY } from './caps';
@@ -111,8 +110,6 @@ export type ChanarRow = {
   grants?: Grant[];
 };
 
-const TITLE = 'Selbe_Permissions';
-const TABLE_NAME = 'permissions';
 /** Урсгалын томилгооны мөрийн `username` угтвар — эрхийн мөрөөс ялгана */
 const FLOW_PREFIX = '__flow__:';
 /** Нэмэлт эрхийн мөрийн `username` угтвар — эрх ба урсгалын мөрөөс ялгана */
@@ -195,27 +192,7 @@ export type TypeRow = { role: string; tpl: unknown };
  *   · `stage` — урсгалын мөрөнд шат алга
  *   · `user`  — угтварын дараа нэр хоосон эсвэл аюултай нэр (`__proto__` г.м.)
  */
-export type MalformedRow = { key: string; reason: 'json' | 'stage' | 'user' | 'space'; oid?: number };
-
-let tableUrlCache: string | undefined;
-
-/** IdentityManager-аас идэвхтэй token авах (нэвтрээгүй бол null) */
-async function getToken(): Promise<{ token: string; user: string } | null> {
-  try {
-    await ensureFreshToken();
-    const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
-    const cred = esriId.findCredential(`${AUTH.portalUrl.replace(/\/+$/, '')}/sharing`);
-    if (!cred?.token) return null;
-    return { token: cred.token, user: (cred.userId as string) ?? '' };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * ArcGIS REST дуудлага.
- */
-const req = (url: string, params: Record<string, string>) => arcgisPost(url, params, { token: 'org' });
+export type MalformedRow = { key: string; reason: 'json' | 'stage' | 'user' | 'space' | 'untrusted'; oid?: number };
 
 const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 
@@ -223,13 +200,6 @@ const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
 const SUPER_OWNERS = new Set(
   Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u),
 );
-const FORMER_TABLE_OWNERS: string[] = [];
-const TABLE_OWNERS = new Set([...SUPER_OWNERS, ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase())]);
-/** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт олдсон — шинээр үүсгэхийг хориглоно */
-let ownerMismatch = false;
-/** Танигдаагүй эздийн нэрс (сүүлийн хайлт) — админд ИЛ хэлэхэд */
-let mismatchOwners: string[] = [];
-export const permsOwnerMismatch = (): string[] => (ownerMismatch ? mismatchOwners : []);
 let tablePublic = false;
 /** Эрхийн хүснэгт нийтэд нээлттэй эсэх — UserAdmin-ы анхааруулга */
 export const permsTablePublic = (): boolean => tablePublic;
@@ -263,98 +233,11 @@ async function probeEntExposure(layerUrl: string): Promise<void> {
 }
 
 /**
- * Хүснэгтийн URL олох — байгаа item-ээс.
- */
-async function findTableUrl(token: string): Promise<string | null> {
-  const search = await req(`${restBase()}/search`, {
-    q: `title:"${TITLE}" type:"Feature Service"`,
-    token,
-    num: '100',
-  });
-  const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
-  const same = results.filter((x) => x.title === TITLE && x.url);
-  const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
-  tablePublic = String(hit?.access ?? '') === 'public';
-  if (tablePublic) {
-    console.error(
-      `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч эрхийн мөр засаж чадна.`,
-      'AGOL дээр item-ийн Share-ийг «Organization» болгоно уу.',
-    );
-  }
-  ownerMismatch = !hit && same.length > 0;
-  mismatchOwners = ownerMismatch ? [...new Set(same.map((x) => String(x.owner ?? '?')))] : [];
-  if (ownerMismatch) {
-    console.error(
-      `[selbe] ${TITLE} хүснэгтийн эзэн танигдсангүй: ${mismatchOwners.join(', ')}.`,
-      'Энэ нэр кодын super жагсаалтад (ROLE_BY_USER) алга тул БҮХ хэрэглэгчийн remote эрх унтарсан.',
-      `Засвар: (а) AGOL дээр item-ийн эзнийг одоогийн super-т шилжүүлэх (Change owner), ЭСВЭЛ (б) src/lib/permsRemote.ts-ийн FORMER_TABLE_OWNERS-д '${mismatchOwners.join("', '")}' нэмж дахин байршуулах.`,
-    );
-  }
-  return hit?.url ? `${hit.url}/0` : null;
-}
-
-/** Хүснэгт үүсгэх (publish эрхтэй super admin) — service + table definition */
-async function createTable(token: string, user: string): Promise<string | null> {
-  const createParameters = {
-    name: TITLE,
-    serviceDescription: tr('Сэлбэ порталын хэрэглэгчийн эрх'),
-    hasStaticData: false,
-    maxRecordCount: 10000,
-    capabilities: 'Query,Editing,Create,Update,Delete',
-    spatialReference: { wkid: 102100 },
-    allowGeometryUpdates: false,
-    units: 'esriMeters',
-  };
-  const created = await req(`${restBase()}/content/users/${encodeURIComponent(user)}/createService`, {
-    token,
-    createParameters: JSON.stringify(createParameters),
-    outputType: 'featureService',
-  });
-  const serviceUrl = created.encodedServiceURL as string | undefined;
-  const itemId = created.itemId as string | undefined;
-  if (!serviceUrl || !itemId) return null;
-
-  const adminUrl = serviceUrl.replace('/rest/services/', '/rest/admin/services/');
-  const table = {
-    tables: [{
-      name: TABLE_NAME,
-      type: 'Table',
-      objectIdField: 'objectid',
-      fields: [
-        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
-        { name: 'username', type: 'esriFieldTypeString', length: 256, nullable: false, editable: true },
-        { name: 'role', type: 'esriFieldTypeString', length: 32, nullable: true, editable: true },
-        { name: 'views', type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
-        { name: 'docs', type: 'esriFieldTypeSmallInteger', nullable: true, editable: true },
-      ],
-    }],
-  };
-  await req(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
-  // Байгууллага даяар УНШИХ эрх нээх
-  await req(`${restBase()}/content/users/${encodeURIComponent(user)}/items/${itemId}/share`, {
-    token, org: 'true', everyone: 'false',
-  });
-  return `${serviceUrl}/0`;
-}
-
-/**
  * Хүснэгтийн URL-ыг тодорхойлох — олох, эс бөгөөс (super) үүсгэх.
  */
-async function tableUrl(canCreate: boolean): Promise<string | null> {
-  if (tableUrlCache) return tableUrlCache;
-  const direct: string | null = `${SYS_PERMS}/230`;
-  if (direct) {
-    tableUrlCache = direct;
-    if (typeof document !== 'undefined') void probeEntExposure(direct);
-    return direct;
-  }
-  const auth = await getToken();
-  if (!auth) return null;
-  let url = await findTableUrl(auth.token);
-  if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase())) {
-    url = await createTable(auth.token, auth.user);
-  }
-  if (url) tableUrlCache = url;
+async function tableUrl(): Promise<string> {
+  const url = `${SYS_PERMS}/230`;
+  if (typeof document !== 'undefined') void probeEntExposure(url);
   return url;
 }
 
@@ -366,7 +249,31 @@ async function layer(url: string): Promise<FeatureLayerInst> {
   return new FeatureLayer({ url });
 }
 
-type RawAttrs = { objectid?: number; username?: string; role?: string; views?: string; docs?: number };
+type RawAttrs = { objectid?: number; username?: string; role?: string; views?: string; docs?: number; last_edited_user?: string | null };
+
+/**
+ * ИТГЭМЖЛЭГДСЭН SUPER-УУД. `last_edited_user`-ийг сервер өөрөө тавьдаг тул хуурамчлагдахгүй: super мөрийг итгэмжлэгдсэн
+ * хүн (анхны админ, эсвэл гинжээр итгэмжлэгдсэн super) сүүлд бичсэн бол л хүчинтэй. Хүснэгт байгууллагад засагдахаар нээлттэй
+ * үед ч өөртөө `role:'super'` бичсэн мөр эрх өгөхгүй. Талбар огт ирээгүй (`undefined`) мөрийг шалгах боломжгүй тул итгэнэ.
+ */
+export function trustedSupers(rows: readonly { user: string; editor?: string | null }[], roots: readonly string[]): Set<string> {
+  const lc = (s: string) => s.trim().toLowerCase();
+  const chain = new Set(roots.map(lc));
+  const out = new Set<string>();
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const r of rows) {
+      const u = lc(r.user);
+      if (out.has(u)) continue;
+      if (r.editor === undefined || (r.editor != null && chain.has(lc(r.editor)))) {
+        out.add(u);
+        chain.add(u);
+        grew = true;
+      }
+    }
+  }
+  return out;
+}
 
 /**
  * БҮХ мөрийг хуудаслаж татна.
@@ -388,9 +295,7 @@ async function queryAllRows(fl: FeatureLayerInst, where: string): Promise<RawAtt
 /**
  * Бүх мөрийг татаж, ЭРХ ба УРСГАЛЫН томилгоо болгон ялгана.
  */
-export async function fetchAll(
-  canCreate = false,
-): Promise<{
+export async function fetchAll(): Promise<{
   perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[];
   huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[]; ajil: AjilRow[];
   butets: ButetsRow[]; habea: HabeaRow[]; types: TypeRow[];
@@ -398,7 +303,7 @@ export async function fetchAll(
   sys: SysState | null;
 } | null> {
   try {
-    const url = await tableUrl(canCreate);
+    const url = await tableUrl();
     if (!url) return null;
     const fl = await layer(url);
     const rows = await queryAllRows(fl, '1=1');
@@ -413,6 +318,7 @@ export async function fetchAll(
     const habeaBy = new Map<string, HabeaRow>();
     const typesBy = new Map<string, TypeRow>();
     const malformed: MalformedRow[] = [];
+    const superRows: { user: string; raw: string; editor?: string | null; oid?: number }[] = [];
     let sys: SysState | null = null;
     /** Одоо уншиж буй мөрийн OBJECTID — цэвэрлэгээний товчинд (2026-10-19) */
     let curOid: number | undefined;
@@ -521,6 +427,9 @@ export async function fetchAll(
         } catch { views = []; bad(raw, 'json'); }
       }
       if (UNSAFE_KEY.has(lu)) { bad(raw, 'user'); continue; }
+      if (a.role === 'super' && !removed) {
+        superRows.push({ user: lu, raw, ...(a.last_edited_user !== undefined ? { editor: a.last_edited_user } : {}), ...(typeof curOid === 'number' ? { oid: curOid } : {}) });
+      }
       perms[lu] = {
         username: raw.trim(),
         role: (a.role as Role) || null,
@@ -528,6 +437,13 @@ export async function fetchAll(
         docs: a.docs === 1 || (a.docs as unknown) === true,
         ...(removed ? { removed: true } : {}),
       };
+    }
+    const okSupers = trustedSupers(superRows, [BOOTSTRAP_SUPER, ...SUPER_OWNERS]);
+    for (const r of superRows) {
+      if (okSupers.has(r.user)) continue;
+      console.error('[selbe] Итгэмжлэгдээгүй хүн бичсэн super мөрийг хэрэгсэхгүй болгов:', r.raw);
+      perms[r.user] = { ...perms[r.user], role: null, views: [], docs: false };
+      malformed.push({ key: r.raw, reason: 'untrusted', ...(r.oid !== undefined ? { oid: r.oid } : {}) });
     }
     return {
       perms,
@@ -610,7 +526,7 @@ function assertViewsFit(usernameKey: string, attrs: Record<string, unknown>): vo
 async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>): Promise<boolean> {
   try {
     assertViewsFit(usernameKey, attrs);
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) { noteWriteError(tr('Эрхийн хүснэгт олдсонгүй эсвэл хандах эрхгүй байна.')); return false; }
     const fl = await layer(url);
     const oids = await findOids(fl, usernameKey);
@@ -636,7 +552,7 @@ async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>):
 /** Түлхүүрт таарах БҮХ мөрийг устгана (давхардал ч бас) */
 async function removeByKey(usernameKey: string): Promise<boolean> {
   try {
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) { noteWriteError(tr('Эрхийн хүснэгт олдсонгүй эсвэл хандах эрхгүй байна.')); return false; }
     const fl = await layer(url);
     const oids = await findOids(fl, usernameKey);
@@ -659,7 +575,7 @@ async function removeByKey(usernameKey: string): Promise<boolean> {
 export async function removeMalformedRow(oid: number, expectKey: string): Promise<boolean> {
   try {
     if (!Number.isInteger(oid) || oid <= 0) return false;
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) { noteWriteError(tr('Эрхийн хүснэгт олдсонгүй эсвэл хандах эрхгүй байна.')); return false; }
     const fl = await layer(url);
     const rows = await queryAllRows(fl, `objectid = ${oid}`);
@@ -691,7 +607,7 @@ async function readViewsByKey(key: string): Promise<string | null | undefined> {
 /** Нэг түлхүүрийн их OID-тай МӨРИЙГ бүтнээр — `undefined` = уншиж чадсангүй, `null` = мөр алга */
 async function readRowByKey(key: string): Promise<RawAttrs | null | undefined> {
   try {
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return undefined;
     const fl = await layer(url);
     const rows = await queryAllRows(fl, `LOWER(username) = '${key.trim().toLowerCase().replace(/'/g, "''")}'`);

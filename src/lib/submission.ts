@@ -972,7 +972,7 @@ const OUT_FIELDS = ['objectid', 'dkey', 'at', 'payload'];
 async function readUrl(): Promise<{ ok: true; url: string | null } | { ok: false; error: string }> {
   const auth = await getAuth();
   if (!auth) return { ok: false, error: tr('Нэвтрээгүй тул илгээлтийг уншиж чадсангүй') };
-  return { ok: true, url: await tableUrl(false) };
+  return { ok: true, url: await tableUrl() };
 }
 
 
@@ -1227,7 +1227,7 @@ async function saveSubmissionInner(
   try {
     const auth = await getAuth();
     if (!auth) return { ok: false, error: tr('Нэвтрээгүй тул илгээлт хадгалагдсангүй') };
-    const url = await tableUrl(true);
+    const url = await tableUrl();
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
     const dkey = subKey(pkgKey, payload.fillMs);
@@ -1473,7 +1473,7 @@ export async function closeSubmission(
 ): Promise<{ ok: boolean; error?: string; changed?: boolean }> {
   if (!Number.isInteger(oid) || oid <= 0) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
   try {
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
     const res = await fl.queryFeatures({
@@ -1529,7 +1529,7 @@ export async function markArchiving(
   if (!Number.isInteger(oid) || oid <= 0) return { ok: false, error: tr('Илгээлтийн мөр №{0} олдсонгүй', oid) };
   try {
     const me = ((await getAuth())?.user ?? '').toLowerCase();
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
     const res = await fl.queryFeatures({ where: `objectid = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });
@@ -1628,7 +1628,7 @@ const updOk = (r: { updateFeatureResults?: { error?: unknown; objectId?: unknown
 export async function markRegistered(sheetOid: number): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!Number.isInteger(sheetOid) || sheetOid <= 0) return { ok: true };
   try {
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return { ok: false, error: tr('Илгээлтийн хүснэгт олдсонгүй') };
     const fl = await layer(url);
     const res = await fl.queryFeatures({
@@ -1688,7 +1688,7 @@ const cellSig = (p: Pick<SubmissionPayload, 'cells' | 'dates'>): string =>
 
 /** Толгойн мөр OBJECTID-оор (JS API давхарга) */
 async function headAt(oid: number): Promise<{ fl: Awaited<ReturnType<typeof layer>>; a: RowAttrs } | null> {
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return null;
   const fl = await layer(url);
   const res = await fl.queryFeatures({ where: `objectid = ${oid}`, outFields: OUT_FIELDS, returnGeometry: false });

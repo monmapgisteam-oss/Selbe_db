@@ -5,7 +5,7 @@
  */
 
 import { GUITS } from '@/lib/services/env';
-import { AUTH, ROLE_BY_USER, roleForUser } from './services';
+import { AUTH, roleForUser } from './services';
 import { ajilAclReady, ajilScope } from './ajilAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
@@ -98,9 +98,6 @@ function sameAsLogin(name: string): { ok: false; error: string } | null {
   return null;
 }
 
-const TITLE = 'Selbe_Ajil_Batlah_csv';
-
-const LAYER_ID = 219;
 
 /**
  * Талбарын нэр — амьд үйлчилгээтэй ЯГ тохирно.
@@ -133,67 +130,11 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
   }
 }
 
-const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
-
-/** Хатуу тохиргооны super админууд — хүснэгтийн эзэн эдний нэг байх ёстой */
-const SUPER_OWNERS = new Set(
-  Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u.toLowerCase()),
-);
-
-/**
- * ХУУЧИН ЭЗЭД — `ROLE_BY_USER`-ээс хасагдсан ч хүснэгтийг үүсгэсэн байж
- * болох аккаунтууд (`obyemBatlah.FORMER_TABLE_OWNERS`-ийн загвар).
- */
-const FORMER_TABLE_OWNERS: string[] = [];
-const TABLE_OWNERS = new Set([
-  ...SUPER_OWNERS,
-  ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase()),
-]);
-
-let tableUrlCache: string | undefined;
-/** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — анхааруулга */
-let ownerMismatch = false;
-
-async function findTableUrl(token: string): Promise<string | null> {
-  const search = await arcgisPost(`${restBase()}/search`, {
-    q: `title:"${TITLE}" type:"Feature Service"`,
-    token,
-    num: '100',
-  });
-  const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
-  const same = results.filter((x) => x.title === TITLE && x.url);
-  const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
-  if (String(hit?.access ?? '') === 'public') {
-    console.error(
-      `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч`,
-      'батлах мөрийг засаж чадна. AGOL дээр Share-ийг «Organization» болгоно уу.',
-    );
-  }
-  ownerMismatch = !hit && same.length > 0;
-  if (ownerMismatch) {
-    console.error(
-      `[selbe] ${TITLE} хүснэгтийн эзэн танигдсангүй:`,
-      same.map((x) => x.owner).join(', '), '— super-т reassign хийнэ үү',
-    );
-  }
-  return hit?.url ? `${hit.url}/${LAYER_ID}` : null;
-}
-
 /**
  * Хүснэгтийн URL.
  */
-async function tableUrl(): Promise<string | null> {
-  if (tableUrlCache) return tableUrlCache;
-  const direct: string | null = `${GUITS}/189`;
-  if (direct) {
-    tableUrlCache = direct;
-    return direct;
-  }
-  const auth = await getToken();
-  if (!auth) return null;
-  const url = await findTableUrl(auth.token);
-  if (url) tableUrlCache = url;
-  return url;
+async function tableUrl(): Promise<string> {
+  return `${GUITS}/189`;
 }
 
 /**
@@ -203,11 +144,10 @@ export type AjilTableState = {
   ok: boolean;
   /**
    * `auth`   — ArcGIS-д нэвтрээгүй (токен алга)
-   * `owner`  — ижил нэртэй хүснэгт бий ч эзэн нь танигдахгүй
    * `none`   — хүснэгт олдсонгүй (AGOL дээр нийтлэх шаардлагатай)
    * `error`  — порталын хайлт алдаа өгсөн (мессеж нь `detail`-д)
    */
-  why: 'ok' | 'auth' | 'owner' | 'none' | 'error';
+  why: 'ok' | 'auth' | 'none' | 'error';
   detail?: string;
 };
 
@@ -216,7 +156,7 @@ export async function ajilTableState(): Promise<AjilTableState> {
     if (!(await getToken())) return { ok: false, why: 'auth' };
     const url = await tableUrl();
     if (url) return { ok: true, why: 'ok' };
-    return { ok: false, why: ownerMismatch ? 'owner' : 'none' };
+    return { ok: false, why: 'none' };
   } catch (e) {
     return { ok: false, why: 'error', detail: String((e as Error)?.message ?? e) };
   }

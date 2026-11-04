@@ -40,6 +40,8 @@ export type Snapshot = {
   obyem: number | null;
   /** Σ (обьём × нэгж өртөг), ₮ */
   une: number | null;
+  /** Ажилтай ч нэгж үнэгүй мөрийн тоо — эдгээр нь `une`-д ороогүй (0 бол талбар байхгүй) */
+  noUnit?: number;
 };
 
 /** `snapshotOf`-ийн шаарддаг ХАМГИЙН БАГА мөрийн хэлбэр (`bagtsSheet.SheetRow`-ийн дэд олонлог) */
@@ -65,16 +67,17 @@ export function snapshotDayOf(rows: readonly ObyemRow[], day: string): Snapshot 
 export function snapshotOf(rows: readonly ObyemRow[], day: string): Snapshot {
   let obyem: number | null = null;
   let une: number | null = null;
+  let noUnit = 0;
   for (const r of rows) {
     if (r.group) continue;
     let sum: number | null = null;
     for (const v of r.obyem) { if (v != null) sum = (sum ?? 0) + v; }
     if (sum == null) continue;
     obyem = (obyem ?? 0) + sum;
-    if (r.unit == null) continue;
+    if (r.unit == null) { if (sum !== 0) noUnit += 1; continue; }
     une = (une ?? 0) + sum * r.unit;
   }
-  return { day, obyem, une };
+  return { day, obyem, une, ...(noUnit ? { noUnit } : {}) };
 }
 
 /**

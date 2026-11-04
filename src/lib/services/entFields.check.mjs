@@ -9,8 +9,6 @@ import { F as OBYEM_F } from '../obyemBatlah.ts';
 import { F as AJIL_F } from '../ajilBatlah.ts';
 
 const src = (f) => readFileSync(f, 'utf8');
-/** `createTable`-ийн `fields: [ { name: '…' } ]` — шууд мөрөөр бичсэн талбарууд */
-const tableFieldsOf = (f) => [...src(f).matchAll(/\{\s*name:\s*'([^']+)',\s*type:\s*'esriFieldType/g)].map((m) => m[1]);
 /** `tableUrl`-ийн шууд хаяг — `${GUITS}/192` г.м. (`services/env.ts`-ийн үйлчилгээний суурь) */
 const DIRECT = /\$\{(GUITS|SYS_PERMS|BAGTS_AJLUUD|SELBE_ET|HET|GAZAR_CH|HAB_KRAN|IRGED|IOT_EX)\}\/\d+/;
 
@@ -18,8 +16,8 @@ const TABLES = [
   { file: 'src/lib/huvaariBatlah.ts', fields: Object.values(HUVAARI_F), oid: HUVAARI_F.oid },
   { file: 'src/lib/obyemBatlah.ts', fields: Object.values(OBYEM_F), oid: OBYEM_F.oid },
   { file: 'src/lib/ajilBatlah.ts', fields: Object.values(AJIL_F), oid: AJIL_F.oid },
-  { file: 'src/lib/permsRemote.ts', fields: tableFieldsOf('src/lib/permsRemote.ts'), oid: 'objectid' },
-  { file: 'src/lib/draftRemote.ts', fields: tableFieldsOf('src/lib/draftRemote.ts'), oid: 'objectid' },
+  { file: 'src/lib/permsRemote.ts', fields: ['objectid', 'username', 'role', 'views', 'docs'], oid: 'objectid' },
+  { file: 'src/lib/draftRemote.ts', fields: ['objectid', 'dkey', 'usr', 'pkg', 'at', 'payload'], oid: 'objectid' },
 ];
 
 const errs = [];

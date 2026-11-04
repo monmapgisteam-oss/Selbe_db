@@ -446,6 +446,13 @@ export function hasCap(username: string | null | undefined, cap: CapKey): boolea
 }
 
 /**
+ * АВТОМАТ SYNC-ИЙН ЭРХ — санхүүгийн хүснэгт (Cashflow, HO) ба нийтийн хүснэгтэд хэрэглэгчийн токеноор бичих тул
+ * зөвхөн санхүү засах эсвэл IPC батлах эрхтэй хүний сешн ажиллуулна. Хэрэглэгч тодорхойгүй бол ажиллахгүй.
+ */
+export const canAutoSync = (username: string | null | undefined): boolean =>
+  !!username && (hasCap(username, 'finEdit') || hasCap(username, 'ipcApprove'));
+
+/**
  * Хэрэглэгчийн эрхийн ЖАГСААЛТЫГ БҮТНЭЭР солино.
  */
 /**

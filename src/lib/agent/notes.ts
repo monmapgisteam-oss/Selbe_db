@@ -74,7 +74,7 @@ export const AGENT_NOTES: Record<string, AgentNote> = {
       get blok() { return tr('Блокийн дугаар («5/9»)'); },
       get bar_comp() { return tr('Барилгын компани (гүйцэтгэгч)'); },
       get davhar() { return tr('Давхрын тоо'); },
-      get ail_too() { return tr('Айлын тоо (өрх) — төслийн нийт 8,575'); },
+      get ail_too() { return tr('Айлын тоо (өрх) — нийт дүнг нийлбэрээр бодож гарга'); },
       get torol() { return tr('Барилгын төрөл'); },
     },
     get warn() { return tr('⚠️ Энэ давхаргад гүйцэтгэлийн ХУВЬ БАЙХГҮЙ — зөвхөн геометр ба таних тэмдэг ') +

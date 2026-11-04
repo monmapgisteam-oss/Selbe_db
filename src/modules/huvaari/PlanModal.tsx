@@ -1,6 +1,7 @@
 'use client';
 
-import { Fragment, type KeyboardEvent as KEvt, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type KeyboardEvent as KEvt, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { fixCyr, num } from '@/lib/format';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
@@ -544,7 +545,7 @@ function PlanModalBody({
     || mvAll.size !== months.size || [...mvAll].some(([k, v]) => months.get(k) !== v)
     || !sameRes(mrAll, res)
   );
-  useLayoutEffect(() => { mdDirtyRef.current = mdDirty; });
+  useSyncRef(mdDirtyRef, mdDirty);
   const obArg = { months: total == null ? null : mv, res: obyem && !xLock && (mrDirty || mrHas) ? mr : null };
   const obBlks = takt > 0 ? [blk] : [...selB];
   /** Бодит огноо тавигдах блокууд (2026-09-29) — сонгосон бүгд, алхамаас үл хамаарна */

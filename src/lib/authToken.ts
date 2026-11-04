@@ -3,6 +3,7 @@
  */
 
 import { arcgisPost as queryPost } from '@/lib/query';
+import { t as tr } from '@/lib/i18nCore';
 import { clearMetaCache } from '@/lib/metaCache';
 import { AUTH } from '@/lib/services/env';
 
@@ -59,6 +60,10 @@ export function devTokenFor(o: { nodeEnv: string | undefined; appId: string; hos
   const t = (o.token ?? '').trim();
   return t || null;
 }
+/** ArcGIS-ийн бичих төгсгөл — dev токеноор ХЭЗЭЭ Ч явахгүй (унших зориулалттай) */
+const WRITE_ENDPOINT = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|calculate|append|truncate|createService|addToDefinition|updateDefinition|deleteFromDefinition|addItem|updateItem|deleteItem|share|unshare|delete)\/?$/i;
+export const isWriteEndpoint = (url: string): boolean => WRITE_ENDPOINT.test(url.split('?')[0]);
+export const DEV_WRITE_BLOCKED = (): string => tr('Нэвтрэлт унтраалттай dev горимд бичилт хаалттай — production өгөгдөл хөндөгдөхгүй.');
 export function devToken(): string | null {
   return devTokenFor({
     nodeEnv: process.env.NODE_ENV,
@@ -79,6 +84,14 @@ export async function registerDevToken(server: string): Promise<boolean> {
   try {
     const { default: esriId } = await import('@arcgis/core/identity/IdentityManager');
     esriId.registerToken({ server, token: t, expires: Date.now() + 2 * 3_600_000 });
+    /* JS API-ийн бичилт (`FeatureLayer.applyEdits`) ч dev токеноор явахгүй — `query.ts`-ийн хаалттай ижил */
+    const { default: esriConfig } = await import('@arcgis/core/config');
+    esriConfig.request.interceptors?.push({
+      urls: server,
+      before: (p: { url: string }) => {
+        if (isWriteEndpoint(p.url)) throw new Error(DEV_WRITE_BLOCKED());
+      },
+    });
     return true;
   } catch {
     return false; /* JS API ачаалагдаагүй (Node/тест) */

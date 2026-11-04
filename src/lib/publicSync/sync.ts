@@ -12,6 +12,8 @@ import { useEffect } from 'react';
 import { subscribeData } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
 import { applyAll } from '@/lib/tableWrite';
+import { canAutoSync } from '@/lib/caps';
+import { currentUser } from '@/lib/who';
 import { loadProjectPlan, landCountMap } from '@/lib/projectPlanInputs';
 import { loadHoRows, groupHo } from '@/lib/ipc';
 import { loadWorkforceDays } from '@/lib/ceo/workforce';
@@ -118,8 +120,9 @@ export async function computePublicTables(): Promise<{ tables: Partial<PublicTab
   ]);
   const fail = (name: string, e: unknown) => failed.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
 
-  if (days.status === 'fulfilled') tables.hunHuch = hunHuchRows(days.value[0] ?? null);
-  else fail('hunHuch', days.reason);
+  if (days.status !== 'fulfilled') fail('hunHuch', days.reason);
+  else if (!days.value[0]) failed.push('hunHuch: хоосон');
+  else tables.hunHuch = hunHuchRows(days.value[0]);
 
   if (src.status === 'fulfilled') tables.ehUusver = ehUusverRows(src.value);
   else fail('ehUusver', src.reason);
@@ -133,20 +136,26 @@ export async function computePublicTables(): Promise<{ tables: Partial<PublicTab
     if (p.failed.length) failed.push(`plan: ${p.failed.join(', ')}`);
     if (ho.status === 'fulfilled') tables.sanhuu = sanhuuRows(p); else fail('sanhuu', ho.reason);
     tables.niigem = niigemRows(p);
-    /* Явц — барилга, гүйцэтгэгч, бүлэг унавал тэр хэсэг хоосон, хүснэгт бичигдэнэ (явц нь төлөвлөгөөнөөс) */
-    const buildings = bld.status === 'fulfilled' ? bld.value : new Map<string, PubBuilding>();
+    /* Явц — барилга, гүйцэтгэгч, бүлгийн аль нэг унавал хагас өгөгдлөөр бичихгүй, хүснэгт хэвээр үлдэнэ */
     if (bld.status !== 'fulfilled') fail('buildings', bld.reason);
-    const contractors = ho.status === 'fulfilled' ? await loadContractors().catch(() => new Map<string, string>()) : new Map<string, string>();
-    const groups = grp.status === 'fulfilled' ? grp.value.groups : new Map<string, PubGroup[]>();
+    if (ho.status !== 'fulfilled') fail('contractors', ho.reason);
     if (grp.status === 'fulfilled') failed.push(...grp.value.failed); else fail('groups', grp.reason);
-    tables.guitsetgel = guitsetgelRows(p, { buildings, contractors, groups });
+    const contractors = ho.status === 'fulfilled'
+      ? await loadContractors().catch((e: unknown) => { fail('contractors', e); return null; })
+      : null;
+    if (bld.status === 'fulfilled' && grp.status === 'fulfilled' && !grp.value.failed.length && contractors && !p.failed.length) {
+      tables.guitsetgel = guitsetgelRows(p, { buildings: bld.value, contractors, groups: grp.value.groups });
+    }
     /* Газар — багцын түлхүүр → код (модны багцын мөрүүдээс) */
     const codeOf = new Map<string, string>();
     for (const n of p.tree.nodes) if (isPkgNode(n)) codeOf.set(pkgKeyOf(n.row?.bagts), pubPkgCode(n.row?.bagts));
     try {
-      const per = await landCountMap(codeOf.keys());
-      tables.gazar = gazarRows(land.status === 'fulfilled' ? land.value : null, per, (k) => codeOf.get(k) ?? '');
-      if (land.status !== 'fulfilled') fail('landStatus', land.reason);
+      if (land.status !== 'fulfilled') {
+        fail('landStatus', land.reason);
+      } else {
+        const per = await landCountMap(codeOf.keys());
+        tables.gazar = gazarRows(land.value, per, (k) => codeOf.get(k) ?? '');
+      }
     } catch (e) {
       fail('gazar', e);
     }
@@ -200,6 +209,10 @@ export function diffRows(
   return { adds, updates, deletes };
 }
 
+/** Хоосон үр дүн байгаа бүх мөрийг устгах гэж байна уу — эх нь амжилттай ч хоосон ирвэл хүснэгтийг хоослохгүй */
+export const emptyWipe = (current: readonly unknown[], wanted: readonly unknown[]): boolean =>
+  wanted.length === 0 && current.length > 0;
+
 const HAS_STAMP: Record<keyof PublicTables, boolean> = {
   hunHuch: false, sanhuu: true, guitsetgel: true, gazar: true, niigem: true, ehUusver: true,
 };
@@ -207,6 +220,7 @@ const HAS_STAMP: Record<keyof PublicTables, boolean> = {
 async function writeTable(t: keyof PublicTables, wanted: readonly PubRow[], now: number): Promise<TableDiff> {
   const url = tableUrl(t);
   const current = await queryFeatures(url, { outFields: ['*'], orderBy: `${SELBE_PUBLIC.oid} ASC` });
+  if (emptyWipe(current, wanted)) throw new Error('хоосон үр дүнгээр бүх мөрийг устгахгүй');
   const d = diffRows(current, wanted, PUBLIC_KEYS[t], HAS_STAMP[t], now);
   if (d.adds.length || d.updates.length || d.deletes.length) {
     await applyAll(url, SELBE_PUBLIC.oid, { adds: d.adds, updates: d.updates, deletes: d.deletes });
@@ -237,6 +251,7 @@ export function runPublicSync(): Promise<PublicSyncResult> {
     const now = Date.now();
     const res: PublicSyncResult = { at: now, tables: {}, failed: [] };
     if (disabled) { res.failed.push(`disabled: ${disabled}`); return res; }
+    if (!canAutoSync(currentUser())) { res.failed.push('no-cap'); last = res; return res; }
     try {
       const { tables, failed } = await computePublicTables();
       res.failed.push(...failed);

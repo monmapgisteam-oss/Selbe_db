@@ -3,7 +3,8 @@
 /**
  * IPC — ОЛГОСОН САНХҮҮЖИЛТ, ГЭРЭЭГЭЭР БҮЛЭГЛЭСЭН УНШИГДАХУЙЦ ХАРАГДАЦ.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
+import { hoUnassignedText, subscribeHoSync } from '@/lib/hoSync/sync';
 import { t as tr } from '@/lib/i18nCore';
 import { mnt, num, pct, dayKey } from '@/lib/format';
 import {
@@ -299,6 +300,7 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
   /** Хаагдсан бүлгүүд — анхдагчаар БҮГД НЭЭЛТТЭЙ */
   const [shut, setShut] = useState<Set<string>>(new Set());
   const [newContract, setNewContract] = useState(false);
+  const unassigned = useSyncExternalStore(subscribeHoSync, hoUnassignedText, () => '');
   const { user } = useAuth();
   const canCreate = hasCap(user?.username, 'ipcCreate');
   const canApprove = hasCap(user?.username, 'ipcApprove');
@@ -431,6 +433,7 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
         })}
       </div>
 
+      {unassigned && <p className={s.warn} role="alert">{tr('Гэрээний мөрт оноогдоогүй төлбөр олголтын дүнд ороогүй: {0}', unassigned)}</p>}
       {newContract && <ContractDialog cfRows={cfRows} onClose={() => setNewContract(false)} />}
 
       {!showObyem && (

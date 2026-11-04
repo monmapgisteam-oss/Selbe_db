@@ -8,6 +8,8 @@ import { useEffect } from 'react';
 import { subscribeData, invalidate } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
 import { applyAll } from '@/lib/tableWrite';
+import { canAutoSync } from '@/lib/caps';
+import { currentUser } from '@/lib/who';
 import { HO_IPC, CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
 import { buildTree } from '@/lib/projectPlan';
 import { sortPlanRows, toStoredRow } from '@/lib/projectPlanInputs';
@@ -51,6 +53,10 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let disabled: string | null = null;
 let last: HoSyncResult | null = null;
 export const hoSyncLast = (): HoSyncResult | null => last;
+const watchers = new Set<() => void>();
+export const subscribeHoSync = (cb: () => void): (() => void) => { watchers.add(cb); return () => { watchers.delete(cb); }; };
+/** Гэрээний мөрт оноогдоогүй төлбөрүүд — `useSyncExternalStore`-ийн тогтвортой утга */
+export const hoUnassignedText = (): string => last?.unassigned.join(', ') ?? '';
 
 const isForbidden = (e: unknown): boolean => /\b(403|499|498)\b|эрхгүй|permission|not authorized|token/i.test(e instanceof Error ? e.message : String(e));
 
@@ -59,6 +65,7 @@ export function runHoSync(): Promise<HoSyncResult> {
   inflight = (async (): Promise<HoSyncResult> => {
     const res: HoSyncResult = { at: Date.now(), blocks: 0, paid: 0, unassigned: [], updated: 0, added: 0, unmatched: [], error: null };
     if (disabled) { res.error = `disabled: ${disabled}`; return res; }
+    if (!canAutoSync(currentUser())) { res.error = 'no-cap'; return res; }
     try {
       /* Багцын дүн → блокууд. Дараагийн тооцоонд зөрүүгүй тул дахин бичихгүй (гогцоогүй) */
       const blocks = await computeBlockBudgets();
@@ -93,6 +100,7 @@ export function runHoSync(): Promise<HoSyncResult> {
       console.warn('[hoSync] HO ← Cashflow:', res.error);
     }
     last = res;
+    watchers.forEach((cb) => cb());
     return res;
   })().finally(() => {
     inflight = null;

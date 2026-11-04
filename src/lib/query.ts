@@ -1,6 +1,6 @@
 import { t as tr } from '@/lib/i18nCore';
 import {
-  tokenParam, ensureFreshToken, isTokenError, describeArcgisError, refreshAfterTokenError, isPortalUrl,
+  tokenParam, devToken, isWriteEndpoint, DEV_WRITE_BLOCKED, ensureFreshToken, isTokenError, describeArcgisError, refreshAfterTokenError, isPortalUrl,
   lastRefreshFail, sessionDead,
 } from '@/lib/authToken';
 import { writeEpoch } from '@/lib/dataBus';
@@ -165,6 +165,10 @@ async function attemptRequest(
   const hostOk = always ? isOrgUrl(full) || isPortalUrl(full) : isOrgUrl(full);
   const userTok = hostOk ? tokenParam() : {};
   if (always && !hostOk) warnForeignHost(full);
+  /* Dev токен ЗӨВХӨН уншина — admin токеноор production-д бичихгүй */
+  if (userTok.token && userTok.token === devToken() && !readReq && isWriteEndpoint(full)) {
+    throw new ArcGISError(DEV_WRITE_BLOCKED(), full);
+  }
   const body = always
     ? { f: 'json', ...p, ...userTok }
     : { f: 'json', ...userTok, ...p };
