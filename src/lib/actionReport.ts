@@ -10,10 +10,6 @@
  *           3) Дэлгэрэнгүй — ажил бүр нэг блок (огноо · багц · компани · асуулт · зэрэг · төлөв · хариуцагч ·
  *              дуусах хугацаа · тайлбар · хянагчийн шийдвэр)
  *   Excel — «Тойм» (нийт + төрлөөр хүснэгтүүд) ба «Action» (бүх мөр, шүүлттэй толгой)
- *
- * ⚠️ Талбарын нэрс амьд метадатаас (`HSE_Action/FeatureServer/2`, 2026-10-26); төлөвийн код → нэр нь `esritask_status`
- *    домэйн (0–5) ЯГ. Асуултын текст Survey123-ын HTML-тэй («<b>8.</b> …») — `cleanLabel`-ээр цэвэрлэнэ.
- * ⚠️ `null ≠ 0`: огноо/төлөв хоосон бол «—», тоололд «тодорхойгүй» гэж тусад нь.
  */
 import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
 import { arcgisPost, queryFeatures, type Row } from '@/lib/query';
@@ -99,7 +95,7 @@ export const toActionItem = (r: Row): ActionItem => ({
   srcGid: str(r.src_globalid),
 });
 
-/** Бүх ажил — шинэ нь эхэнд. ⚠️ Дуудагч нэвтрэлтийг шалгана (`UzlegExport`). */
+/** Бүх ажил — шинэ нь эхэнд. Дуудагч нэвтрэлтийг шалгана (`UzlegExport`). */
 export async function loadActionItems(signal?: AbortSignal): Promise<ActionItem[]> {
   const rows = await queryFeatures(HABEA.action.url, { where: '1=1', outFields: FIELDS, orderBy: 'objectid', signal });
   return rows.map(toActionItem).sort((a, b) => b.d - a.d || b.oid - a.oid);

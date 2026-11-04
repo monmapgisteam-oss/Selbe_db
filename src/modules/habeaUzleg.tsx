@@ -334,7 +334,6 @@ export async function queryFormOrSource(
 
 const loadPrivate = async (url: string): Promise<Row[]> => {
   const auth = await getAuth();
-  /* ⚠️ 2026-11-02: нэвтрэлт унтраалттай ЛОКАЛ dev-д dev токеноор уншина (`authToken.devToken` — production-д үргэлж null) */
   if (!auth && !devToken()) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   return queryFormOrSource(url, { outFields: ['*'] });
 };
@@ -458,7 +457,6 @@ export function loadWeekScores(now: Date = new Date()): Promise<WeekScores> {
 
 async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promise<WeekScores> {
   const auth = await getAuth();
-  /* ⚠️ 2026-11-02: нэвтрэлт унтраалттай ЛОКАЛ dev-д dev токеноор уншина (`authToken.devToken` — production-д үргэлж null) */
   if (!auth && !devToken()) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   const where = `(${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)})`;
   const groupBy = `${U.site},${U.company}`;
@@ -985,7 +983,6 @@ type UzPhotoSet = { items: UzPhoto[]; failed: number };
 async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhotoSet> {
   if (!rows.length) return { items: [], failed: 0 };
   const auth = await getAuth();
-  /* ⚠️ 2026-11-02: нэвтрэлт унтраалттай ЛОКАЛ dev-д dev токеноор уншина (`authToken.devToken` — production-д үргэлж null) */
   if (!auth && !devToken()) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   const OID_BATCH = 100;
   const groups: {

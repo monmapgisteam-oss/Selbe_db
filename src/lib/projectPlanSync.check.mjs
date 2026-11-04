@@ -43,7 +43,6 @@ assert.deepEqual(planProgressUpdates(plan({}, ['parcels'])), [], 'эх унас�
 assert.deepEqual(planProgressUpdates({ ...plan(), empty: true }), [], 'хоосон төлөвлөгөө → юу ч бичихгүй');
 assert.ok(ups.every((u) => Object.keys(u).sort().join() === 'guitsetgel_huvi,objectid'), 'зөвхөн guitsetgel_huvi + objectid');
 
-/* ⚠️ 2026-10-29: холбосон огноо — хүснэгтийн (stored) утгаас зөрвөл бичнэ, хоосон ч */
 {
   const stored = rows.map((r) => ({ ...r, gazar_ehleh: r.objectid === 2 ? D('2025-01-01') : null, guits_ehleh: r.objectid === 3 ? D('2025-05-01') : null }));
   const linked = buildTree(stored.map((r) => ({ ...r, gazar_ehleh: null, guits_ehleh: r.objectid === 3 ? D('2025-05-01') + 3_600_000 : null })));
@@ -62,7 +61,6 @@ assert.ok(ups.every((u) => Object.keys(u).sort().join() === 'guitsetgel_huvi,obj
   assert.equal(u.get(2).guits_ehleh, D('2026-01-01'), 'бүтцийн мөрд Хуваарийн огноо бичигдэнэ');
   assert.ok([...u.values()].every((x) => !('geree_ehleh' in x) && !('geree_duusah' in x)), 'geree_* багана бичихгүй');
 }
-/* ⚠️ 2026-10-29: Нэгтгэл гүйцэтгэл = «Төсөл төлөвлөгөө биелэлт» (`negtgel.negRowsFromPlan`) — 0–100 → 0–1, нэг эх */
 {
   const { negRowsFromPlan, negDisplay, negtgelProjectPct } = await import('./negtgel.ts');
   const p = plan();

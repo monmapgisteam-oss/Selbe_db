@@ -403,17 +403,11 @@ export type NegtgelFull = {
   tree?: 'excel' | 'code';
   stored: NegRaw[];
   src: NegSources | null;
-  /**
-   * ⚠️ 2026-10-29: эх — `'plan'` = «Төсөл төлөвлөгөө биелэлт» (CASHFLOW_NEW + амьд эх, `projectPlanInputs`). Тэр үед
-   *    `oid` нь CASHFLOW_NEW-ийн objectid тул 187 рүү засвар нийтлэх ЗАМ ХААЛТТАЙ (`TusulNegtgel`).
-   */
   source?: 'plan' | 'negtgel';
 };
 
 /**
  * «Төсөл төлөвлөгөө биелэлт» → Нэгтгэл гүйцэтгэлийн мөр (цэвэр — тестлэгдэнэ).
- * ⚠️ 2026-10-29 (хэрэглэгч: «Нэгтгэл гүйцэтгэл мөн холбогдох ёстой — өртөг, жин ч төсөл төлөвлөгөөний биелэлттэй»):
- *    бүх багана НЭГ эхээс — `computePlan`-ийн E…W (0–100 → 0–1). Огноо: H/I → гэрээ, L/M → гүйцэтгэгч, J/K → газар.
  */
 export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectPlan): (NegRaw & { auto: boolean; how: string })[] {
   const fr = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? null : v / 100);
@@ -493,8 +487,6 @@ export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: s
  * (2026-09-25, `negtgelAuto.ts`-ийн толгойг үз).
  */
 async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
-  /* ⚠️ 2026-10-29: «Төсөл төлөвлөгөө биелэлт»-ээс (`negRowsFromPlan`) — 187-ийн тусдаа тооцоо зөвхөн нөөц (төлөвлөгөөний
-     мөр алга / ачаалалт унасан). Хоёр таб НЭГ тоо харуулна; дашбоардын «Нэгтгэл» хувь ч үүнийг дагана. */
   try {
     const { loadProjectPlan } = await import('@/lib/projectPlanInputs');
     const plan = await loadProjectPlan();

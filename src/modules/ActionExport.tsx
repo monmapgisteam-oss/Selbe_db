@@ -7,9 +7,6 @@
  *   1. Хугацаа — сүүлийн 7 хоног · сүүлийн 30 хоног (сар) · огноо сонгох · бүгд
  *   2. Багц    — олон сонголт (хоосон = бүх багц), хугацаандаа тоотой
  *   Формат    — PDF (нийт → төрлөөр чарт → дэлгэрэнгүй жагсаалт) эсвэл Excel (Тойм · Action)
- *
- * ⚠️ Өдрийн хил УЛААНБААТАРЫН цагаар (`UzlegExport`-ийн `dayStr`/`dayStart`/`dayEnd`-тэй ижил дүрэм).
- * ⚠️ Огноогүй ажил «Бүгд»-д л орно (бусад хугацаанд аль өдөрт хамаарахыг мэдэхгүй).
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -117,7 +114,6 @@ export function ActionExportDialog({ scope = null, onClose, onBack }: {
         download(`${base}.pdf`, new Blob([bytes], { type: 'application/pdf' }));
         setDone(tr('Татагдлаа: {0}', `${base}.pdf`));
       } else {
-        /* ⚠️ 2026-11-03 (хэрэглэгч): Excel — зөвхөн «Action» хуудас, ажил бүрийн зураг шигтгэсэн */
         setBusy(tr('Зургийг хайж байна…'));
         const photos = await loadActionPhotos(chosen);
         const refs = [...new Map([...photos.values()].flat().map((p) => [p.url, p])).values()].map((ref) => ({ ref, max: 640 }));

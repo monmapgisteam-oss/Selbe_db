@@ -178,7 +178,6 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelDat
   }
 
   const look = lvl === 5 || lvl === 6;
-  /* ⚠️ 2026-10-30 (загвар): L5/L6 ч БҮХ багц нэг дор — анхдагчаар багцын нийт л (хураасан, `LOOK_FOLD`) */
   const shown: PkgInfo[] = pk ? pkgs.filter((p) => p.key === pk) : pkgs;
   /* Түвшин солиход хураалт эхлээс — мөрийн ID-ууд түвшин бүрд өөр */
   const pickLvl = (l: Level) => { setLvl(l); setFold(l === 5 || l === 6 ? LOOK_FOLD : FOLD0); };

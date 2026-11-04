@@ -1764,9 +1764,6 @@ export async function apply(a: {
         }
         ipcOk = !ipcErr;
       }
-      /* ⚠️ 2026-10-29 (хэрэглэгч: «хүснэгт өөрөө шинэчлэгдэх ёстой»): «Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэлийн хувийг
-         CASHFLOW_NEW-ийн `guitsetgel_huvi`-д бичнэ (`projectPlanSync`-ийн ⚠️). Унавал батлалт хэвээр — шар мөрөөр хэлнэ;
-         дараагийн батлалт зөрсөн мөрийг дахин тулгаж нөхнө. */
       try {
         const { syncPlanProgress } = await import('./projectPlanSync');
         const ps = await syncPlanProgress();

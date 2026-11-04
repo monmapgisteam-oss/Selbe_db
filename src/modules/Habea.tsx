@@ -660,7 +660,6 @@ const FOCUS_CHIPS: {
   { key: 'pump', label: UZLEG_SHORT.pump, count: () => null },
   { key: 'gondola', label: UZLEG_SHORT.gondola, count: () => null },
   { key: 'tower', label: UZLEG_SHORT.tower, count: () => null },
-  /* ⚠️ 2026-11-02 (хэрэглэгч): HSE_Action-ийг захиалагчийн үзлэгээс салгаж ТУСДАА шүүлтүүр болгов */
   { key: 'action', label: () => tr('Үл нийцлийн мэдээлэл'), count: () => null },
 ];
 
@@ -857,7 +856,6 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
    */
   type Focus = 'inc' | 'labor' | 'action' | Exclude<UzlegKind, 'zahialagch' | 'guitsetgegchMn'> | null;
   const [focus, setFocus] = useState<Focus>(null);
-  /* ⚠️ 2026-11-02 (хэрэглэгч): «Мэдээлэл» нь товч — дарахад сонголтууд ДООШ задарна (шүүлтүүр шиг). Гадна дарах · Esc хаана. */
   const [infoOpen, setInfoOpen] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1230,7 +1228,6 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const mapVisible = useMemo(() => {
     const uzIds = [...(uzLayerId ? [uzLayerId] : []), ...(uzLayerId2 ? [uzLayerId2] : [])];
     if (focus === 'inc') return ['habea:osol'];
-    /* ⚠️ 2026-11-02: «Action» — HSE_Action-ий цэгүүд */
     if (focus === 'action') return ['habea:action'];
     if (uzlegKind) return uzIds;
     return visible;
@@ -1842,8 +1839,6 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         )}
         {entry === 'reg' && <RegisterAddDialog onClose={() => setEntry(null)} />}
         {entry === 'waste' && <WasteAddDialog onClose={() => setEntry(null)} />}
-        {/* ⚠️ 2026-11-02 (хэрэглэгч): «Техник болон хүн цаг» фокуст монгол/гадаад БАРУУН баганад (`mixCard`),
-            зүүнд нь компаниар хүн-өдөр ба техник (`coCards`). Анхны харагдацад хэвээр зүүнд. */}
         {focus === null ? mixCard : coCards}
         </>)}
 
@@ -2062,14 +2057,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             Тоо нь БҮХ ХУГАЦААНЫ ажилтны нийлбэр (хүн-өдөр) — жагсаалт өдөр бүр
             өөрчлөгдөхгүй байх ёстой. */}
         <div className={h.filters}>
-          {/* ⚠️ 2026-11-02 (хэрэглэгч): «Мэдээлэл» ба «Тайлан татах» — ХОЁР товч нэг мөрөнд. «Мэдээлэл» дарахад
-              сонголтууд доош задарна (`infoOpen`); сонгоход хаагдана, сонгосныг дахин дарвал анхны харагдац. */}
           <div className={h.infoBar}>
             <div className={h.infoWrap} ref={infoRef}>
               <button type="button" className={`${h.infoBtn} ${focus ? h.infoBtnOn : ''}`}
                 aria-haspopup="listbox" aria-expanded={infoOpen} onClick={() => setInfoOpen((v) => !v)}>
-                {/* ⚠️ 2026-11-02 (хэрэглэгч: «тайлан татах товч шиг адилхан дизайнтай»): `uzlegExport.module.css .trigger`-тэй
-                    ижил — дүрс + нэр төвд, moss өнгө. Сонгосон мэдээллийн нэр товчны нэр болно (сонгоогүй бол «Мэдээлэл»). */}
                 <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
                   <rect x="2" y="2" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
                   <rect x="9" y="2" width="5" height="5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" />
@@ -2085,8 +2076,6 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               </button>
               {infoOpen && (
                 <div className={h.infoMenu} role="listbox" aria-label={tr('Мэдээлэл')}>
-                  {/* ⚠️ 2026-11-02 (хэрэглэгч: «бүлэглэхгүй, анхны харагдацыг refresh дүрсээр эвтэйхэн»): нэг жагсаалт;
-                      толгой мөрийн баруун талд ↻ — анхны харагдац руу (сонголт байхгүй үед идэвхгүй). */}
                   <div className={h.infoMenuHead}>
                     <span>{tr('Мэдээлэл')}</span>
                     <button type="button" className={h.infoReset} disabled={focus === null}

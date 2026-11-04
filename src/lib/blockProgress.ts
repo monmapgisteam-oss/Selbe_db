@@ -338,7 +338,7 @@ export const cachedBlockWeights = (): ReadonlyMap<string, number> | null => bloc
 /**
  * БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ — тухайн багцын БҮХ блокийн ЖИНЛЭСЭН дундаж (`weights`: Excel F; жингүй блок —
  * мэдэгдэж буй жингийн дундаж; жин огт байхгүй бол энгийн дундаж), 0–100; тайлагнаагүй блок 0%.
- * Түлхүүр нь `bagtsKey` («БАГЦ1», «БАГЦ41»). ⚠️ ТТБ-ийн багцын S-тэй ИЖИЛ байх ёстой (`loadBlockWeights`).
+ * Түлхүүр нь `bagtsKey` («БАГЦ1», «БАГЦ41»). ТТБ-ийн багцын S-тэй ИЖИЛ байх ёстой (`loadBlockWeights`).
  */
 export function pkgProgressOf(
   pm: BlockProgressMap, universe: BlockUniverse, weights: ReadonlyMap<string, number> | null = blockWeights,

@@ -112,7 +112,6 @@ assert.ok(!habea.includes('onSaved={() => regs.retry'), 'бүртгэл хадг
 {
   const act = readFileSync(new URL('./HabeaAction.tsx', import.meta.url), 'utf8');
   assert.ok(act.includes('useAsync(() => loadActions(), [tick], { keepOn: [tick] })'), 'HseActionPanel tick-ээр дахин татна');
-  /* ⚠️ 2026-11-02: «Action» тусдаа фокус — гурван хэсэг (left · right · fin) бүгд tick дамжуулна */
   for (const part of ['left', 'right', 'fin']) {
     assert.ok(habea.includes(`<HseActionPanel part="${part}" pkgs={pkgs} cos={cos} days={sel.day} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />`), `Habea tick дамжуулна (${part})`);
   }

@@ -747,7 +747,6 @@ textarea.input { height: auto; min-height: 62px; padding: 7px 9px; }
 .stView { margin-bottom: 8px; }
 .stView > [role='radiogroup'] { display: grid; width: 100%; grid-template-columns: 1fr 1fr; }
 /* «Гүйцэтгэлээр» харагдацын өнгөний түлхүүр */
-/* ⚠️ 2026-10-30: хүрээтэй самбар · 2 баганын тор · гарчиг (хэрэглэгч: «харагдацыг сайжруул») */
 .stKey {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
