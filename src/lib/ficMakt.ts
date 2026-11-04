@@ -41,10 +41,12 @@ export type FmRow = {
   decidedAt: number | null;
 };
 
-const F = {
+/** FIC/М-акт хүснэгтийн талбарууд — `tools/data-audit.mjs` схемийн тулгалтад ч (2026-11-04) */
+export const FM_F = {
   kind: 'kind', maNo: 'ma_no', docNo: 'doc_no', docDate: 'doc_date', pdfItem: 'pdf_item', pdfName: 'pdf_name',
   status: 'status', reason: 'reason', uploadedBy: 'uploaded_by', uploadedAt: 'uploaded_at', decidedBy: 'decided_by', decidedAt: 'decided_at',
 } as const;
+const F = FM_F;
 export const FM_REASON_MAX = 2000;
 
 const str = (v: unknown): string => (v == null ? '' : String(v).trim());

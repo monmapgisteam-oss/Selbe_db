@@ -50,25 +50,10 @@ async function pool(items, worker) {
   return out;
 }
 
-const { LAYERS, layerUrl, oidOf, ENT_HOSTED } = await import('./../services.ts');
+const { LAYERS, layerUrl, ENT_HOSTED } = await import('./../services.ts');
 const { DATASETS } = await import('./datasets.ts');
-const { AGENT_NOTES } = await import('./notes.ts');
-
-/* ── Кодод нэрлэсэн талбаруудыг цуглуулах ── */
-
-function declaredFields(l) {
-  const f = new Set([oidOf(l)]);
-  if (l.qty?.field) f.add(l.qty.field);
-  if (l.paint?.field) f.add(l.paint.field);
-  if (l.breaks?.field) f.add(l.breaks.field);
-  if (l.zoneField) f.add(l.zoneField);
-  for (const x of l.facets ?? []) f.add(x.field);
-  for (const k of Object.keys(AGENT_NOTES[l.id]?.fields ?? {})) f.add(k);
-  if (!l.noZone && !l.zoneField) f.add('zone_id');
-  return [...f];
-}
-
-const declaredDatasetFields = (d) => [...new Set([d.oid ?? 'objectid', ...Object.keys(d.fields ?? {})])];
+/* Кодод нэрлэсэн талбарууд · нэр жишилт · орхигдсон давхарга — `driftLib.ts` (2026-11-04: data-audit-тай хуваалцсан) */
+const { declaredFields, declaredDatasetFields, normLayerName: norm, IGNORED_LAYERS: IGNORED } = await import('./driftLib.ts');
 
 /* ── 1–2. Эх сурвалж бүрийг шалгах ── */
 
@@ -113,16 +98,7 @@ await pool(targets, async (t) => {
 
 const knownUrls = new Set(LAYERS.map((l) => layerUrl(l)));
 
-const norm = (s) => String(s).replace(/_/g, ' ').toLowerCase().replace(/[^0-9a-zа-яөү]/gi, '');
 const knownNames = new Set(LAYERS.map((l) => norm(l.title)));
-
-/**
- * САНААТАЙ ОРХИГДСОН ДАВХАРГУУД — «бүртгэлд алга» гэж мэдээлэхгүй.
- */
-const IGNORED = new Set([
-  'Цамхагт_кран_0813',
-  'Цамхагт_кран_бүс_0813',
-].map(norm));
 
 const entSvcs = [...new Set(LAYERS.map((l) => layerUrl(l))
   .filter((u) => u.startsWith(`${ENT_HOSTED}/`) && /\/FeatureServer\/\d+$/.test(u))

@@ -17,8 +17,8 @@ export type HoSyncResult = { at: number; blocks: number; paid: number; unassigne
 
 const CF = CASHFLOW_NEW.fields;
 
-/** Cashflow-ийн гэрээлсэн ажлын мөрүүд (сарын мөргүй) */
-async function loadCfContractRows(): Promise<Row[]> {
+/** Cashflow-ийн гэрээлсэн ажлын мөрүүд (сарын мөргүй) — `tools/data-audit.mjs` ч уншина (2026-11-04) */
+export async function loadCfContractRows(): Promise<Row[]> {
   return queryFeatures(CASHFLOW_NEW.url, {
     where: `${CF_MONTH.start} IS NULL AND (${CF.amountNote} IS NOT NULL OR ${CF.paid} IS NOT NULL OR ${CF.advance} IS NOT NULL)`,
     outFields: [CASHFLOW_NEW.oid, CF.pkg, CF.phase, CF.detail, CF.amountNote, CF.budgetOrder, CF.contractAmount, CF.paid, CF.advance, CF.contractor, CF.contractNo,

@@ -1,5 +1,10 @@
 /** IoT-ийн ТООН БУС мэдээлэл — DevEUI, нэгж, давтамж, босгын үндэслэл. */
 import { SENSORS, parseTs } from '../src/lib/sensors.ts';
+import { installTokenInjection, installWriteGuard, loadAdminTokens } from './liveFetch.mjs';
+
+/* 2026-11-04: `*.check.mjs` биш тул ts-alias токен залгахгүй — үйлчилгээ org-only бол 499 болдог байв */
+installWriteGuard({ stubAppTables: false });
+installTokenInjection(loadAdminTokens());
 
 let bad = 0;
 const chk = (n, p, d = '') => { if (!p) bad++; console.log(`  ${p ? '✅' : '❌'} ${n}${d ? ' · ' + d : ''}`); };

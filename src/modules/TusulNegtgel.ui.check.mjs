@@ -18,7 +18,13 @@ const { createElement: h } = React;
 const { renderToStaticMarkup } = await import('react-dom/server');
 const { LocaleProvider } = await import('@/lib/i18n');
 const { ThemeProvider } = await import('@/lib/theme');
-const { Tree } = await import('./TusulNegtgel.tsx');
+const { Tree, SyncNotice } = await import('./TusulNegtgel.tsx');
+
+const notice = (props) => renderToStaticMarkup(h(LocaleProvider, null, h(ThemeProvider, null,
+  h(SyncNotice, { live: true, sync: null, onDone() {}, ...props }))));
+assert.match(notice({ source: 'negtgel', failed: ['Төсөл төлөвлөгөө биелэлт'] }), /нөөц нэгтгэлийн утгыг харуулж байна/);
+assert.match(notice({ source: 'negtgel', failed: ['Төсөл төлөвлөгөө биелэлт'] }), /role="status"/);
+assert.equal(notice({ source: 'plan', failed: [] }), '', 'Healthy primary data has no fallback warning');
 
 /* ── Жижиг мод: 2 үе шат, нэг нь 6 түвшин хүртэл ── */
 const rows = [

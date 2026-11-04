@@ -46,7 +46,8 @@ export type MaRow = {
   edited: number | null;
 };
 
-const F = {
+/** МА хүснэгтийн талбарууд — `tools/data-audit.mjs` схемийн тулгалтад ч (2026-11-04) */
+export const MA_F = {
   oid: 'objectid', gid: 'globalid', pkg: 'pkg', pkgLabel: 'pkg_label', contractorName: 'contractor_name',
   materialName: 'material_name', subDocNo: 'sub_doc_no', recvDate: 'recv_date', respNo: 'resp_no', respDate: 'resp_date',
   /* 2026-10-29: `works` (4000 тэмдэгт ≈ 300 ажил) → `works_all` (25000); хуучин `works` талбарыг 2026-10-30 устгасан */
@@ -54,6 +55,7 @@ const F = {
   apprName: 'appr_name', apprPos: 'appr_pos', revName: 'rev_name', revPos: 'rev_pos', ackName: 'ack_name', ackPos: 'ack_pos',
   prepName: 'prep_name', prepPos: 'prep_pos', recvByName: 'recv_by_name', recvByPos: 'recv_by_pos', created: 'created_date', edited: 'last_edited_date',
 } as const;
+const F = MA_F;
 
 const str = (v: unknown): string => (v == null ? '' : String(v).trim());
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
