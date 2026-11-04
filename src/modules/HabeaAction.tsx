@@ -182,6 +182,21 @@ export function actPickLabel(rows: readonly ActionRow[] | null, oid: number): st
     .filter(Boolean).join(' · ');
 }
 
+/** Зурагт дарсан цэгийн картын мөрүүд (бүх мөр нь нэг үзлэгийнх) */
+export function actPickRows(rows: readonly ActionRow[] | null, oid: number): [string, string][] {
+  const hit = rows ? pickedRows(rows, oid) : [];
+  const r = hit[0];
+  if (!r) return [];
+  const rowsOut: [string, string][] = [
+    [tr('Огноо'), r.d ? date(r.d) : ''],
+    [tr('Багц'), r.site ? tr(habeaPkgLabel(r.site)) : ''],
+    [tr('Компани'), r.company],
+    [tr('Асуумж'), shortSurvey(r.survey)],
+    [tr('Үл нийцэл'), num(hit.length)],
+  ];
+  return rowsOut.filter(([, v]) => v);
+}
+
 /** Чипэнд харуулах утгын нэр — төлөвийн кодыг нэрээр */
 export function actValueLabel(dim: ActDim, key: string): string {
   if (dim === 'status') return STATUS.find((s) => String(s.code) === key)?.label() ?? key;
@@ -361,7 +376,7 @@ function ActionList({ rows, openOid = null }: { rows: ActionRow[]; openOid?: num
  *   fin   → өдрөөр (цуваа)
  * Ачаалагч нэг (`loadActions` кэштэй) тул гурван хэсэг нэг л хүсэлт.
  */
-export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel, onSel, now, tick, pickOid = 0 }: {
+export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel, onSel, now, tick, pickOid = 0, scope = null }: {
   part: 'left' | 'right' | 'fin';
   /** Хуудасны «Багц» шүүлт (`habeaPkgKey`) — хоосон = бүгд */
   pkgs: string[];
@@ -379,12 +394,15 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel
   tick: number;
   /** Газрын зурагт дарсан цэгийн `objectid` (0 = сонголтгүй) — бүх чарт тэр цэгийн (эх үзлэгийн) бүх үл нийцлээр (`pickedRows`) */
   pickOid?: number;
+  /** ХАБЭА харах хүрээ (`habeaScope`) — `null` = бүх багц. «Багцаар» чарт өөрийн сонголтоор шүүгддэггүй тул мөрийг эндээс хязгаарлана */
+  scope?: readonly string[] | null;
 }) {
   const st = useAsync(() => loadActions(), [tick], { keepOn: [tick] });
 
   const view = useMemo(() => {
     if (st.state !== 'ready') return null;
-    const data = pickOid ? pickedRows(st.data, pickOid) : st.data;
+    const scoped = scope ? st.data.filter((r) => scope.includes(r.pkgK)) : st.data;
+    const data = pickOid ? pickedRows(scoped, pickOid) : scoped;
     const sc: ActScope = { pkgs, cos, days };
     const all = inWindow(data, now, sel, sc);
     /** Тухайн чартын мөрүүд — өөрийн хэмжээсээс бусад бүх шүүлтээр */
@@ -435,7 +453,7 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel
       hint: s.hint(),
     }));
     return { rows, total: rows.length, major, known: knownN, done: doneN, status, pkgBars, surveyBars, daySeries, stageBars, openN: open.length };
-  }, [st, pkgs, cos, days, sel, now, pickOid]);
+  }, [st, pkgs, cos, days, sel, now, pickOid, scope]);
 
   if (st.state === 'loading') return <Section title={tr('Үл нийцлийн арилгалт')}><Loading /></Section>;
   if (st.state === 'error') {

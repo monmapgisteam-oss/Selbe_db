@@ -202,4 +202,25 @@ assert.deepEqual(rateByMonth([], inc, { ymOf, pkgOfCo: PKG_OF_CO, pkgs: null }).
 }
 console.log('✅ ослын компани → гүйцэтгэгч: ил зураглал 6/6 (2026-10-22)');
 
+/* ── Хүн хүчний багц — мөрийн bagts_* баганаас (2026-11-04) ── */
+{
+  const { laborPkgOfCo, laborPkgRaw, ltiFreeHoursFor } = await import('./habeaRate.ts');
+  const key = (s) => s.replace(/[^0-9А-ЯӨҮ]/giu, '').toUpperCase();
+  const cos = [{ sfx: 'HHDMGK', bagts: 'Багц -1' }, { sfx: 'MK', bagts: 'Багц -4.1' }, { sfx: 'MMSE', bagts: null }];
+  const base = laborPkgOfCo([], key, cos);
+  assert.equal(base.get('HHDMGK'), key('Багц -1'), 'мөргүй → бүртгэлийн багц');
+  assert.equal(base.has('MMSE'), false, 'багцгүй гүйцэтгэгч ордоггүй');
+  const m = laborPkgOfCo([{ bagts_mk: 'Багц -4.1' }, { bagts_mk: 'Багц -4.2' }, { bagts_mk: null }], key, cos);
+  assert.equal(m.get('MK'), key('Багц -4.2'), 'мөрийн баганаас, сүүлийн бөглөгдсөн утга');
+  assert.equal(laborPkgOfCo([{ bagts_mk: 'kod_41' }], key, cos).get('MK'), key('Багц -4.1'), 'багцын нэр биш код → бүртгэлийн багц');
+  assert.equal(laborPkgRaw({ bagts_mk: 'Багц -4.1' }, { sfx: 'MK' }), 'Багц -4.1');
+  const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const d1 = Date.UTC(2026, 5, 1); const d2 = Date.UTC(2026, 5, 2); const d3 = Date.UTC(2026, 5, 3);
+  const hd = [{ ms: d1, total: 10, byCo: { MK: 6, P: 4 } }, { ms: d2, total: 10, byCo: { MK: 5, P: 5 } }, { ms: d3, total: 10, byCo: null }];
+  assert.equal(ltiFreeHoursFor(hd, [], dayOf, d3, ['MK']).hours, 11, 'тэр гүйцэтгэгчийн хуваарилсан цаг; хуваарилаагүй өдөр ордоггүй');
+  assert.equal(ltiFreeHoursFor(hd, [{ d: d1, type: 'Ноцтой осол' }], dayOf, d3, ['MK']).hours, 5, 'сүүлийн ХЧТА ослоос хойш');
+  assert.equal(ltiFreeHoursFor(hd, [{ d: 0, type: 'Ноцтой осол' }], dayOf, d3, ['MK']).hours, null, 'огноогүй ХЧТА — мэдэгдэхгүй');
+  console.log('✅ хүн хүч: багц мөрийн баганаас · багцын ХЧТА-гүй цаг');
+}
+
 console.log('habeaRate.check: OK');

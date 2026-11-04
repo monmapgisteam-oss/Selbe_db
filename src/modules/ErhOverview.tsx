@@ -20,6 +20,7 @@ import { subscribeObyemAcl } from '@/lib/obyemAcl';
 import { subscribeChanarAcl } from '@/lib/chanarAcl';
 import { subscribeAjilAcl } from '@/lib/ajilAcl';
 import { subscribeButetsAcl } from '@/lib/butetsAcl';
+import { subscribeHabeaAcl } from '@/lib/habeaAcl';
 import { BUTETS_PACKS } from '@/lib/butetsPacks';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { allAclReady, liveErhSource, lockMsg } from '@/lib/aclOps';
@@ -48,6 +49,7 @@ export function ErhOverview({
   useEffect(() => subscribeChanarAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeAjilAcl(() => tick((n) => n + 1)), []);
   useEffect(() => subscribeButetsAcl(() => tick((n) => n + 1)), []);
+  useEffect(() => subscribeHabeaAcl(() => tick((n) => n + 1)), []);
 
   const [mode, setMode] = useState<'matrix' | 'user'>('matrix');
 
@@ -255,6 +257,7 @@ export function ErhOverview({
                   bagts: l.bagts?.map((k) => BUTETS_PACKS.find((x) => x.key === k)?.name ?? k) ?? null,
                 }))}
               />
+              <UserRoles title={tr('ХАБЭА — багцаар харах')} kind="habea" lines={u.habea} />
 
               {u.caps.length > 0 && (
                 <div className={s.aclRole}>

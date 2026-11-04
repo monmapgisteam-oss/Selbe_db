@@ -13,11 +13,13 @@ export const ROLE_CAPS = {
   ajil: { editor: 'addRow', approver: 'ajilApprove' },
   chanar: { author: 'chanarAuthor', tuh: 'chanarReview', chanar: 'chanarReview', habea: 'chanarReview', tug: 'chanarReview', cheng: 'chanarReview' },
   butets: { editor: 'butets' },
+  /* 2026-11-04: ХАБЭА-д зөвхөн заасан багцаа харах — эрх нэмэхгүй, хязгаарлана (`habeaAcl`) */
+  habea: { viewer: 'habeaOwn' },
 } as const satisfies Record<string, Readonly<Record<string, CapKey>>>;
 
 /** Үүрэгтэй таван систем */
 export type ScopedSys = keyof typeof ROLE_CAPS;
-export const SCOPED_SYSTEMS: readonly ScopedSys[] = ['huvaari', 'obyem', 'ajil', 'chanar', 'butets'];
+export const SCOPED_SYSTEMS: readonly ScopedSys[] = ['huvaari', 'obyem', 'ajil', 'chanar', 'butets', 'habea'];
 
 /** Хуваарилалтаас гардаг эрхийн систем — 2026-10-23: QAQC (үүрэггүй систем) хасагдсан */
 export type DerivedSys = ScopedSys;
@@ -25,7 +27,7 @@ export type DerivedSys = ScopedSys;
 /**
  * ХУВААРИЛАЛТААС ГАРДАГГҮЙ таван эрх — зөвхөн нэрээр, унтраалгаар олгоно.
  */
-export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'habeaOwn', 'sysClose', 'docsUpload', 'docsGroups', 'zuragEdit', 'cfSwitch'];
+export const PLAIN_CAPS: readonly CapKey[] = ['zovshoorol', 'finEdit', 'finRow', 'gazar', 'hamaaral', 'habeaData', 'sysClose', 'docsUpload', 'docsGroups', 'zuragEdit', 'cfSwitch'];
 
 /** Эрх аль системийн хуваарилалтаас гардаг вэ — энгийн эрхэд `null` */
 export function capSystem(cap: CapKey): DerivedSys | null {

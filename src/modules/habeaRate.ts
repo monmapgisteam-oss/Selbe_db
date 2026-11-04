@@ -80,6 +80,35 @@ const workersOf = (r: Row, sfx: string): number => {
 };
 
 /**
+ * ГҮЙЦЭТГЭГЧИЙН БАГЦ — МӨРИЙН `bagts_<sfx>` БАГАНААС (2026-11-04, хэрэглэгч: «олон баганаас уншаад бусад газрын зарчмаар»).
+ * Амьд: 7 гүйцэтгэгчийн багана 292 мөрийн бүгдэд бөглөгдсөн. Бичлэг байхгүй/багцын нэр биш бол бүртгэлийн `bagts`-ээр;
+ * багцын баганагүй гүйцэтгэгч (MMSE, SC …) ЭНД ОРОХГҮЙ.
+ */
+export const laborPkgRaw = (r: Row, c: { sfx: string; bagts?: string | null }): string => {
+  const raw = String(r[laborCompanyFields(c.sfx).bagts] ?? '').trim();
+  return /баг/i.test(raw) ? raw : (c.bagts ?? '');
+};
+
+/** Гүйцэтгэгч → багцын түлхүүр. Хамгийн сүүлийн мөрийн утга давамгайлна (`rows` — эхнээс сүүл рүү) */
+export function laborPkgOfCo(
+  rows: readonly Row[],
+  keyOf: (raw: string) => string,
+  companies: readonly { sfx: string; bagts?: string | null }[] = HABEA.labor.companies,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const c of companies) {
+    let raw = c.bagts ?? '';
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      const v = laborPkgRaw(rows[i], { sfx: c.sfx });
+      if (v) { raw = v; break; }
+    }
+    const k = raw ? keyOf(raw) : '';
+    if (k) out.set(c.sfx, k);
+  }
+  return out;
+}
+
+/**
  * ӨДӨР БҮРИЙН ХҮН-ЦАГ. Огноогүй ба `Hun_tsag` хоосон/≤0 мөр ОРОХГҮЙ.
  */
 export function hoursByDay(rows: readonly Row[]): HourDay[] {
@@ -260,6 +289,31 @@ export const isLtiType = (type: string): boolean => {
  * СҮҮЛИЙН LTI-ЭЭС ХОЙШ ажилласан хүн-цаг — Σ `Hun_tsag`, `Ognoo` > сүүлийн LTI-ийн ӨДӨР.
  * LTI огт алга бол төслийн эхнээс (урьдын Σ-тэй ижил).
  */
+/**
+ * БАГЦ/ГҮЙЦЭТГЭГЧИЙН ХЧТА-ГҮЙ ЦАГ (2026-11-04) — `ltiFreeHours`-ийн дүрэм, гэхдээ `sfxs`-ийн хуваарилсан хүн-цаг
+ * (`HourDay.byCo`) ба ЗӨВХӨН тэдний ослоор. Ажилтны тоогүй өдрийн цаг хуваарилагдахгүй тул орохгүй.
+ */
+export function ltiFreeHoursFor(
+  days: readonly HourDay[],
+  incidents: readonly { d: number; type: string }[],
+  dayOf: (ms: number) => string,
+  now: number,
+  sfxs: readonly string[],
+): { hours: number | null; since: number | null; undatedLti: boolean; futureLti: number } {
+  const all = incidents.filter((x) => isLtiType(x.type));
+  const futureLti = all.filter((x) => x.d > now).length;
+  const lti = all.filter((x) => !(x.d > now));
+  if (lti.some((x) => !(x.d > 0))) return { hours: null, since: null, undatedLti: true, futureLti };
+  const since = lti.length ? Math.max(...lti.map((x) => x.d)) : null;
+  const cut = since == null ? null : dayOf(since);
+  let hours = 0;
+  for (const day of days) {
+    if (!day.byCo || (cut != null && dayOf(day.ms) <= cut)) continue;
+    for (const sfx of sfxs) hours += day.byCo[sfx] ?? 0;
+  }
+  return { hours, since, undatedLti: false, futureLti };
+}
+
 export function ltiFreeHours(
   labor: readonly Row[],
   incidents: readonly { d: number; type: string }[],

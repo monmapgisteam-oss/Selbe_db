@@ -751,8 +751,10 @@ function PortalContent(
    */
   const { setOrtho, view: mapView } = useMap();
   useEffect(() => {
-    setOrtho(view !== 'gdash' && view !== 'dashboard' && view !== 'plan' && view !== 'dedButets' && view !== 'hesegET');
-  }, [view, setOrtho]);
+    /* Дэд бүтэц: 3D-д ортофото дээр (мешгүй), 2D-д урьдын адил саарал суурь дээр */
+    if (view === 'dedButets') { setOrtho(dim === '3d'); return; }
+    setOrtho(view !== 'gdash' && view !== 'dashboard' && view !== 'plan' && view !== 'hesegET');
+  }, [view, dim, setOrtho]);
   /* Суурь зураг: дэд бүтэц — LIGHT GRAY CANVAS, бусад — хиймэл дагуул */
   useEffect(() => {
     applyViewBasemap(mapView, view === 'dedButets' || view === 'hesegET' ? 'gray-vector' : 'satellite', view);

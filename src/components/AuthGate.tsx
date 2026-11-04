@@ -371,7 +371,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       for (const k of [
         'selbe-perms-v1', 'selbe-caps-v1', 'selbe-roletypes-cache-v1',
         'selbe-guitsetgel-acl-v1', 'selbe-huvaari-acl-v1', 'selbe-obyem-acl-v1', 'selbe-ajil-acl-v1',
-        'selbe-chanar-acl-v1', 'selbe-qaqc-acl-v1', 'selbe-butets-acl-v1',
+        'selbe-chanar-acl-v1', 'selbe-qaqc-acl-v1', 'selbe-butets-acl-v1', 'selbe-habea-acl-v1',
       ]) {
         try { localStorage.removeItem(k); } catch { /* хувийн горим */ }
       }

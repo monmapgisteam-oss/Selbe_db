@@ -49,6 +49,10 @@ import {
   butetsAclReady, butetsFailedUsers, listButetsAssigns, removeButetsAssign, retryButetsAssign,
   setButetsGrants, type ButetsRole,
 } from './butetsAcl';
+import {
+  HABEA_PKGS, habeaAclReady, habeaFailedUsers, listHabeaAssigns, removeHabeaAssign, retryHabeaAssign,
+  setHabeaGrants, type HabeaRole,
+} from './habeaAcl';
 
 /** Бичилтийн үр дүн — `scopedAcl.AclWrite`-тай ижил хэлбэр */
 export type Write = { ok: boolean; error?: string; sync?: Promise<boolean>; granted?: Promise<boolean> };
@@ -111,7 +115,7 @@ export function subscribeAclPending(fn: () => void): () => void {
  */
 export const allAclReady = (): boolean => remoteReady() && capsRemoteReady() && flowAclReady()
   && huvaariAclReady() && obyemAclReady() && chanarAclReady()
-  && ajilAclReady() && butetsAclReady();
+  && ajilAclReady() && butetsAclReady() && habeaAclReady();
 
 /** Түгжээний зурвас — панелуудын ЯГ ижил текст */
 export const lockMsg = (): string => tr('Эрхийн хүснэгт уншигдсангүй — засвар хаалттай, дахин ачаална уу.');
@@ -265,6 +269,13 @@ export const SCOPED_SYS: Record<ScopedSys, SysSpec> = {
     roleCaps: ROLE_CAPS.butets, roles: Object.keys(ROLE_CAPS.butets),
     universe: () => BUTETS_PACKS.map((p) => p.key),
   },
+  habea: {
+    list: listHabeaAssigns, failedUsers: habeaFailedUsers, ready: habeaAclReady,
+    setGrants: (u, g) => setHabeaGrants(u, g as Grant<HabeaRole>[]),
+    removeNoRevoke: (u) => removeHabeaAssign(u, false),
+    retry: (u, g) => retryHabeaAssign(u, g),
+    roleCaps: ROLE_CAPS.habea, roles: Object.keys(ROLE_CAPS.habea), universe: () => [...HABEA_PKGS],
+  },
 };
 
 /**
@@ -278,8 +289,9 @@ export function liveErhSource(): ErhSource {
   const chanar = listChanarAssigns();
   const ajil = listAjilAssigns();
   const butets = listButetsAssigns();
+  const habea = listHabeaAssigns();
   const known = new Set(users.map((u) => u.toLowerCase()));
-  const rows: { user: string }[][] = [flow, huvaari, obyem, chanar, ajil, butets];
+  const rows: { user: string }[][] = [flow, huvaari, obyem, chanar, ajil, butets, habea];
   const gone = [...new Set(rows.flatMap((l) => l.map((a) => a.user)))]
     .filter((u) => !known.has(u.toLowerCase()) || portalMissing(u));
   const typeStage: Record<string, Stage> = {};
@@ -313,6 +325,7 @@ export function liveErhSource(): ErhSource {
     chanar,
     ajil,
     butets,
+    habea,
     caps: Object.fromEntries(users.map((u) => [u.toLowerCase(),
       roleForUser(u) === 'super' && !isCodeSuper(u) ? capsStored(u) : capsOf(u)])),
     views: Object.fromEntries(users.map((u) => {
@@ -338,6 +351,9 @@ function removeAllMsg(sys: ScopedSys, user: string): string {
   }
   if (sys === 'chanar') {
     return tr('«{0}»-г чанарын баримтын хуваарилалтаас бүрэн хасах уу? «Чанарын баримт ирүүлэх» ба «Чанарын баримт хянах» эрх нь мөн буцаагдана.', user);
+  }
+  if (sys === 'habea') {
+    return tr('«{0}»-г ХАБЭА-ийн багцын хязгаараас бүрэн хасах уу? Хассаны дараа тэр аккаунт ХАБЭА хуудсанд БҮХ багцыг харна.', user);
   }
   return tr('«{0}»-г дэд бүтцийн засварын хуваарилалтаас бүрэн хасах уу? «Инженерийн дэд бүтцийн засвар» эрх нь мөн буцаагдана.', user);
 }

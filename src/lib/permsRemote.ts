@@ -86,6 +86,14 @@ export type ButetsRow = {
   grants?: Grant[];
 };
 
+/** ХАБЭА харах багцын хуваарилалтын нэг мөр — `__habea__:` угтвартай (2026-11-04) */
+export type HabeaRow = {
+  user: string;
+  roles: string[];
+  bagts: string[];
+  grants?: Grant[];
+};
+
 export type AjilRow = {
   user: string;
   roles: string[];
@@ -121,6 +129,7 @@ const CHANAR_PREFIX = '__chanar__:';
 const AJIL_PREFIX = '__ajil__:';
 /** Дэд бүтцийн засварын багцын хуваарилалтын угтвар — нэмэлт ажлынхаас ялгана */
 const BUTETS_PREFIX = '__butets__:';
+const HABEA_PREFIX = '__habea__:';
 /**
  * ЭРХИЙН ТӨРЛИЙН ЗАГВАРЫН угтвар (2026-09-25) — `__type__:injener` г.м.
  */
@@ -172,7 +181,7 @@ export function parseSysState(raw: string | null | undefined): SysState | null {
 export function isSpacedKey(raw: string): boolean {
   const lu = raw.trim().toLowerCase();
   if (raw.toLowerCase() !== lu) return true;
-  const pre = [SYS_PREFIX, TYPE_PREFIX, AJIL_PREFIX, BUTETS_PREFIX, CHANAR_PREFIX, OBYEM_PREFIX, HUVAARI_PREFIX, QAQC_PREFIX, CAP_PREFIX, FLOW_PREFIX]
+  const pre = [SYS_PREFIX, TYPE_PREFIX, AJIL_PREFIX, BUTETS_PREFIX, HABEA_PREFIX, CHANAR_PREFIX, OBYEM_PREFIX, HUVAARI_PREFIX, QAQC_PREFIX, CAP_PREFIX, FLOW_PREFIX]
     .find((p) => lu.startsWith(p));
   return pre != null && lu.slice(pre.length) !== lu.slice(pre.length).trim();
 }
@@ -384,7 +393,7 @@ export async function fetchAll(
 ): Promise<{
   perms: Record<string, RemoteRow>; flow: FlowRow[]; caps: CapRow[];
   huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[]; ajil: AjilRow[];
-  butets: ButetsRow[]; types: TypeRow[];
+  butets: ButetsRow[]; habea: HabeaRow[]; types: TypeRow[];
   malformed: MalformedRow[];
   sys: SysState | null;
 } | null> {
@@ -401,6 +410,7 @@ export async function fetchAll(
     const chanarBy = new Map<string, ChanarRow>();
     const ajilBy = new Map<string, AjilRow>();
     const butetsBy = new Map<string, ButetsRow>();
+    const habeaBy = new Map<string, HabeaRow>();
     const typesBy = new Map<string, TypeRow>();
     const malformed: MalformedRow[] = [];
     let sys: SysState | null = null;
@@ -419,8 +429,8 @@ export async function fetchAll(
       bagts: Array.isArray(d.bagts) ? d.bagts : [],
       ...(Array.isArray(d.grants) ? { grants: d.grants } : {}),
     });
-    const SCOPED: [string, Map<string, AjilRow | ButetsRow | ChanarRow | ObyemRow | HuvaariRow>][] = [
-      [AJIL_PREFIX, ajilBy], [BUTETS_PREFIX, butetsBy], [CHANAR_PREFIX, chanarBy], [OBYEM_PREFIX, obyemBy], [HUVAARI_PREFIX, huvaariBy],
+    const SCOPED: [string, Map<string, AjilRow | ButetsRow | HabeaRow | ChanarRow | ObyemRow | HuvaariRow>][] = [
+      [AJIL_PREFIX, ajilBy], [BUTETS_PREFIX, butetsBy], [HABEA_PREFIX, habeaBy], [CHANAR_PREFIX, chanarBy], [OBYEM_PREFIX, obyemBy], [HUVAARI_PREFIX, huvaariBy],
     ];
     rowLoop: for (const a of rows) {
       if (!a.username) continue;
@@ -528,6 +538,7 @@ export async function fetchAll(
       chanar: [...chanarBy.values()],
       ajil: [...ajilBy.values()],
       butets: [...butetsBy.values()],
+      habea: [...habeaBy.values()],
       types: [...typesBy.values()],
       malformed,
       sys,
@@ -759,7 +770,7 @@ export async function capRead(user: string): Promise<string[] | null> {
 /** `scopedAcl`-ийн систем бүрийн угтвар */
 const SCOPED_PREFIX = {
   huvaari: HUVAARI_PREFIX, obyem: OBYEM_PREFIX, chanar: CHANAR_PREFIX,
-  ajil: AJIL_PREFIX, butets: BUTETS_PREFIX,
+  ajil: AJIL_PREFIX, butets: BUTETS_PREFIX, habea: HABEA_PREFIX,
 } as const;
 export type ScopedKind = keyof typeof SCOPED_PREFIX;
 
@@ -928,3 +939,5 @@ export function ajilRemove(user: string): Promise<boolean> { return scopedRemove
 /** Дэд бүтцийн засварын хуваарилалт — бичих / арилгах */
 export function butetsUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('butets', user, roles, bagts, grants); }
 export function butetsRemove(user: string): Promise<boolean> { return scopedRemove('butets', user); }
+export function habeaUpsert(user: string, roles: string[], bagts: string[], grants?: Grant[]): Promise<boolean> { return scopedUpsert('habea', user, roles, bagts, grants); }
+export function habeaRemove(user: string): Promise<boolean> { return scopedRemove('habea', user); }

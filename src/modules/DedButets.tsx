@@ -1118,6 +1118,10 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
             clearToken={clearToken}
             onPick={editMode ? onMapPick : undefined}
             bare
+            noMesh
+            extrudeM={1}
+            tubeM={0.2}
+            pointM={1}
           />
 
           <MapTools

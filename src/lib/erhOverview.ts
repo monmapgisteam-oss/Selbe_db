@@ -39,6 +39,7 @@ export type ErhSource = {
    */
   ajil?: ScopedRow[];
   butets?: ScopedRow[];
+  habea?: ScopedRow[];
   /**
    * Хатуу `super` аккаунтууд (2026-09-24). `roleForUser`-ыг ЭНД
    *    импортлохгүй (дээрх шалтгаан) — дуудагч өгнө. СОНГОМОЛ: хуучин тест
@@ -79,6 +80,8 @@ export type UserErh = {
   ajil: RoleLine[];
   /** Дэд бүтцийн засвар — багц нь `BUTETS_PACKS` түлхүүр */
   butets: RoleLine[];
+  /** ХАБЭА харах багцын хязгаар */
+  habea: RoleLine[];
   caps: string[];
   views: { open: number; total: number };
   /** Ямар нэг эрх байгаа эсэх — «юу ч хийхгүй» аккаунтыг ялгана */
@@ -119,6 +122,7 @@ export function userErh(src: ErhSource, user: string): UserErh {
   const chanar = lines(src.chanar);
   const ajil = lines(src.ajil ?? []);
   const butets = lines(src.butets ?? []);
+  const habea = lines(src.habea ?? []);
   const caps = src.caps[k] ?? [];
   const views = src.views[k] ?? { open: 0, total: 0 };
   const superUser = (src.supers ?? []).some((x) => norm(x) === k);
@@ -130,7 +134,7 @@ export function userErh(src: ErhSource, user: string): UserErh {
   };
   const unknownBagts = unknownOf([
     f?.bagts,
-    ...rawGrants(src.huvaari), ...rawGrants(src.obyem), ...rawGrants(src.chanar), ...rawGrants(src.ajil ?? []),
+    ...rawGrants(src.huvaari), ...rawGrants(src.obyem), ...rawGrants(src.chanar), ...rawGrants(src.ajil ?? []), ...rawGrants(src.habea ?? []),
   ]);
 
   return {
@@ -143,10 +147,11 @@ export function userErh(src: ErhSource, user: string): UserErh {
     chanar,
     ajil,
     butets,
+    habea,
     caps,
     views,
     any: superUser || !!f || huvaari.length > 0 || obyem.length > 0 || chanar.length > 0
-      || ajil.length > 0 || butets.length > 0 || caps.length > 0,
+      || ajil.length > 0 || butets.length > 0 || habea.length > 0 || caps.length > 0,
     unknownBagts,
     hvType: src.hvType?.[k] ?? null,
     viewRole: (src.viewRoles ?? []).some((x) => norm(x) === k),

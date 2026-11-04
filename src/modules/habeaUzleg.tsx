@@ -79,13 +79,24 @@ const UZ_OPTIONAL: ReadonlySet<string> = new Set<string>([
 const FAILED_DOMAINS: Domains = Object.freeze({}) as Domains;
 const FAILED_META: UzMeta = Object.freeze({ dom: FAILED_DOMAINS, missing: [], failed: true });
 const metaCache = new Map<string, Promise<UzMeta>>();
+/** Survey123-ийн `_form` харагдацын эх үйлчилгээ — `_form` биш бол өөрөө */
+const formSource = (url: string): string => url.replace(/_form\/FeatureServer/, '/FeatureServer');
+
 function loadDomains(url: string, kind: UzlegKind): Promise<UzMeta> {
   let p = metaCache.get(url);
   if (!p) {
     type Meta = {
       fields?: { name?: string; domain?: { type?: string; codedValues?: { code?: unknown; name?: string }[] } | null }[];
     };
-    p = arcgisPost<Meta>(url, { f: 'json' }, { timeoutMs: 30_000 })
+    /* `_form` хаалттай аккаунтад эх үйлчилгээнээс (`queryFormOrSource`-тай ижил) — эс бөгөөс багц кодоороо үлдэж
+       `habeaPkgKey` таарахгүй, багцаар хязгаарласан аккаунтад үзлэг алга болно */
+    const readMeta = (u: string) => arcgisPost<Meta>(u, { f: 'json' }, { timeoutMs: 30_000 });
+    p = readMeta(url)
+      .catch((e: unknown) => {
+        const src = formSource(url);
+        if (src === url) throw e;
+        return readMeta(src);
+      })
       .then((j): UzMeta => {
         const out: Domains = {};
         const names = new Set<string>();
@@ -305,11 +316,27 @@ const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
 /**
  * НЭВТЭРСЭН ХЭРЭГЛЭГЧИЙН ТОКЕНТОЙ ачаалалт.
  */
+/**
+ * `_form` ХАРАГДАЦ УНШИГДАХГҮЙ БОЛ ЭХ ҮЙЛЧИЛГЭЭНЭЭС (2026-11-04). Survey123-ийн `_form` харагдац зөвхөн зарим аккаунтад
+ * нээлттэй (403) — багцын аккаунтад хүн хүч огт татагдахгүй байв. Талбарууд ижил. Эх нь ч хаалттай бол АНХНЫ алдаа.
+ */
+export async function queryFormOrSource(
+  url: string, opts: Parameters<typeof queryFeatures>[1],
+): Promise<Row[]> {
+  try {
+    return await queryFeatures(url, opts);
+  } catch (e) {
+    const src = formSource(url);
+    if (src === url) throw e;
+    try { return await queryFeatures(src, opts); } catch { throw e; }
+  }
+}
+
 const loadPrivate = async (url: string): Promise<Row[]> => {
   const auth = await getAuth();
   /* ⚠️ 2026-11-02: нэвтрэлт унтраалттай ЛОКАЛ dev-д dev токеноор уншина (`authToken.devToken` — production-д үргэлж null) */
   if (!auth && !devToken()) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
-  return queryFeatures(url, { outFields: ['*'] });
+  return queryFormOrSource(url, { outFields: ['*'] });
 };
 
 const loaders: Record<UzlegKind, () => Promise<Row[]>> = {

@@ -69,6 +69,7 @@ import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import * as rendererJsonUtils from '@arcgis/core/renderers/support/jsonUtils';
 import { num, pct, date, text, dateLocale } from '@/lib/format';
 import { registerMapView } from '@/lib/mapShots';
+import { TUBE_NEAR_SCALE, extrudeRenderer, flatLineRenderer, pillarRenderer, tubeElevation, tubeRenderer } from './extrude3d';
 import s from './map.module.css';
 
 /**
@@ -1451,6 +1452,10 @@ export const MapCanvas = memo(function MapCanvas({
   sketchVertex,
   onSketchVertex,
   scene,
+  noMesh = false,
+  extrudeM,
+  tubeM,
+  pointM,
   children,
 }: {
   dim: Dim;
@@ -1557,6 +1562,14 @@ export const MapCanvas = memo(function MapCanvas({
    * 3D горимд зурах IntegratedMesh багц. Байхгүй бол аппын үндсэн `SCENE`.
    */
   scene?: readonly { key: string; title: string; url: string }[];
+  /** 3D-д IntegratedMesh зурахгүй (мөн меш харьцуулах товчгүй) — «Инженерийн дэд бүтэц» (2026-11-04) */
+  noMesh?: boolean;
+  /** 3D-д дэд бүтцийн (`infra:`) ПОЛИГОНЫГ энэ өндрөөр (м) босгоно — өнгө нь одоогийн рендерерээс; 2D-д нөлөөгүй */
+  extrudeM?: number;
+  /** 3D-д дэд бүтцийн ШУГАМЫГ энэ голчтой (м) хоолой болгоно — өнгө хэвээр; 2D-д нөлөөгүй */
+  tubeM?: number;
+  /** 3D-д дэд бүтцийн ЦЭГИЙГ энэ хэмжээтэй (м) цилиндр болгоно — өнгө хэвээр; 2D-д нөлөөгүй */
+  pointM?: number;
   children?: ReactNode;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -1845,7 +1858,7 @@ export const MapCanvas = memo(function MapCanvas({
   const alwaysOnKey = (alwaysOn ?? []).join(',');
 
   /** Энэ харагдацын 3D меш багц — заагаагүй бол сонгосон хувилбар (`meshVer`) */
-  const sceneList = scene ?? MESH_VERSIONS[meshVer].layers;
+  const sceneList = noMesh ? [] : (scene ?? MESH_VERSIONS[meshVer].layers);
   const sceneKey = sceneList.map((m) => m.key).join(',');
 
 
@@ -2050,7 +2063,7 @@ export const MapCanvas = memo(function MapCanvas({
     /**
      * 3D МЕШ ХАРЬЦУУЛАХ — ХУУЧИН (Сэлбэ 1, 2) ↔ ШИНЭ (`Selbe_mesh_0917`).
      */
-    if (dim === '3d') {
+    if (dim === '3d' && !noMesh) {
       const sv = view as __esri.SceneView;
 
       const swBtn3 = document.createElement('div');
@@ -2289,16 +2302,18 @@ export const MapCanvas = memo(function MapCanvas({
       if (tabAdopt) {
         (view as __esri.SceneView).camera = INITIAL_CAMERA_3D() as never;
       }
+      /* Мешгүй 3D (дэд бүтэц): хазайлтыг ИЛ заана — хүрээ рүү шилжихэд дээрээс харсан 2D шиг зураг болохгүй (2026-11-04) */
+      const homeTarget = (e: __esri.Extent) => (noMesh && dim === '3d' ? { target: e, tilt: INITIAL_CAMERA_3D().tilt, heading: 0 } : e);
       if (reused && !tabAdopt) {
         /* хэрэглэгчийн камер хэвээр */
       } else if (homeExtentCache) {
-        view.goTo(homeExtentCache, { animate: false }).catch(() => {});
+        view.goTo(homeTarget(homeExtentCache), { animate: false }).catch(() => {});
       } else {
         extentOf(layerUrl(ZONE_LAYER), view)
           .then((e) => {
             if (e && !view.destroyed) {
               homeExtentCache = e.expand(1.1);
-              view.goTo(homeExtentCache, { animate: false }).catch(() => {});
+              view.goTo(homeTarget(homeExtentCache), { animate: false }).catch(() => {});
             }
           })
           .catch((e) => console.error('[selbe] эхлэх хүрээг тодорхойлж чадсангүй:', e));
@@ -3969,6 +3984,67 @@ export const MapCanvas = memo(function MapCanvas({
     prevVisRef.current = on;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleKey, alwaysOnKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, bare, ortho, pulseLayer, meshVer]);
+
+  /**
+   * ДЭД БҮТЦИЙН ПОЛИГОНЫГ БОСГОХ · ШУГАМЫГ ХООЛОЙ · ЦЭГИЙГ ЦИЛИНДР БОЛГОХ, ЗӨВХӨН 3D (2026-11-04).
+   *
+   * АЧААЛАЛ: 74 давхарга · 6,140 шугам. Хоолойн мэш ЗӨВХӨН ойрт (`tubeNear`); алсад хөнгөн шугам — эхний харагдац
+   * хоолой босгодоггүй. Давхарга асаах/унтраахад БҮГДИЙГ биш, ЗӨВХӨН өөрчлөгдсөнийг дахин зурна (`applied3d`).
+   * Анхны рендерер `applied3d`-д; `layerStyle` солигдоход сэргээгдэнэ — дээрх effect-ийн `styleBackup` босгоогүйг хадгална
+   * (React цэвэрлэгээг бүх effect-ийн өмнө гүйцэтгэдэг).
+   */
+  const [tubeNear, setTubeNear] = useState(false);
+  useEffect(() => {
+    const v = viewRef.current as __esri.SceneView | null;
+    if (!v || !ready || dim !== '3d' || !tubeM) return;
+    const h = reactiveUtils.watch(
+      () => (v.stationary ? v.scale : null),
+      (sc) => { if (sc != null) setTubeNear(sc <= TUBE_NEAR_SCALE); },
+      { initial: true },
+    );
+    return () => h.remove();
+  }, [dim, ready, tubeM]);
+
+  const applied3d = useRef(new globalThis.Map<string, {
+    l: FeatureLayer; orig: FeatureLayer['renderer']; elev: FeatureLayer['elevationInfo']; mine: FeatureLayer['renderer']; key: string;
+  }>());
+  useEffect(() => {
+    const applied = applied3d.current;
+    return () => {
+      for (const { l, orig, elev } of applied.values()) {
+        if (l.destroyed) continue;
+        l.renderer = orig;
+        l.elevationInfo = elev;
+      }
+      applied.clear();
+    };
+  }, [dim, ready, extrudeM, tubeM, pointM, layerStyle]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || dim !== '3d' || (!extrudeM && !tubeM && !pointM)) return;
+    for (const id of visibleKey ? visibleKey.split(',') : []) {
+      if (!id.startsWith('infra:')) continue;
+      const geom = LAYER_BY_ID[id]?.geom;
+      if (!(geom === 'area' && extrudeM) && !(geom === 'line' && tubeM) && !(geom === 'point' && pointM)) continue;
+      const l = mapLayer(map, id) as FeatureLayer | null;
+      if (!l?.renderer) continue;
+      const key = geom === 'line' ? `line:${tubeNear}` : String(geom);
+      const cur = applied3d.current.get(id);
+      const ours = !!cur && l.renderer === cur.mine;
+      if (ours && cur.key === key) continue;
+      /* `layerStyle` effect дарж бичсэн бол тэр нь шинэ суурь */
+      const orig = ours ? cur.orig : l.renderer;
+      const elev = ours ? cur.elev : l.elevationInfo;
+      const base = (orig as NonNullable<FeatureLayer['renderer']>).clone();
+      let mine: FeatureLayer['renderer'];
+      if (geom === 'area') mine = extrudeRenderer(base, extrudeM as number);
+      else if (geom === 'point') mine = pillarRenderer(base, pointM as number);
+      else mine = tubeNear ? tubeRenderer(base, tubeM as number) : flatLineRenderer(base, 1);
+      l.renderer = mine;
+      l.elevationInfo = (geom === 'line' && tubeNear ? tubeElevation(tubeM as number) : elev) as never;
+      applied3d.current.set(id, { l, orig, elev, mine, key });
+    }
+  }, [dim, ready, extrudeM, tubeM, pointM, visibleKey, layerStyle, tubeNear]);
 
   /**
    * ТУНГАЛАГ — давхарга бүрийн `opacity`-г override-оор тавина. Override байхгүй

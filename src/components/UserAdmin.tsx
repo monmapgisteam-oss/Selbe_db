@@ -42,12 +42,14 @@ import { HuvaariAcl } from '@/modules/HuvaariAcl';
 import { ObyemAcl } from '@/modules/ObyemAcl';
 import { ChanarAcl } from '@/modules/ChanarAcl';
 import { DedButetsAcl } from '@/modules/DedButetsAcl';
+import { HabeaViewAcl } from '@/modules/HabeaViewAcl';
 import { AjilAcl } from '@/modules/AjilAcl';
 import { listChanarAssigns, purgeChanarAssign, subscribeChanarAcl } from '@/lib/chanarAcl';
 import { listHuvaariAssigns, purgeHuvaariAssign, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { listObyemAssigns, purgeObyemAssign, subscribeObyemAcl } from '@/lib/obyemAcl';
 import { listAjilAssigns, purgeAjilAssign, subscribeAjilAcl } from '@/lib/ajilAcl';
 import { listButetsAssigns, purgeButetsAssign, subscribeButetsAcl } from '@/lib/butetsAcl';
+import { listHabeaAssigns, purgeHabeaAssign, subscribeHabeaAcl } from '@/lib/habeaAcl';
 import {
   purgeAssign, stageOfUser, subscribeAcl,
 } from '@/lib/guitsetgelAcl';
@@ -162,7 +164,7 @@ export type Draft = {
  * ХЭРЭГЛЭГЧИЙН ЭРХ УДИРДЛАГА — зөвхөн super admin-д.
  */
 /** Бүтэн өргөнтэй хуудсууд — «Эрхийн төрөл» ба «багц × үүрэг/шат» хүснэгттэй 7 хуудас (2026-09-30) */
-const WIDE_PANES: ReadonlySet<string> = new Set(['types', 'guits', 'huvaari', 'ajil', 'obyem', 'chanar', 'butets']);
+const WIDE_PANES: ReadonlySet<string> = new Set(['types', 'guits', 'huvaari', 'ajil', 'obyem', 'chanar', 'butets', 'habea']);
 
 export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [users, setUsers] = useState<UserPerm[]>([]);
@@ -340,6 +342,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => subscribeChanarAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeAjilAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeButetsAcl(() => setAclN((n) => n + 1)), []);
+  useEffect(() => subscribeHabeaAcl(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeAclPending(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeTypeLock(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribePortalPresence(() => setAclN((n) => n + 1)), []);
@@ -581,8 +584,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           const chOk = await purgeChanarAssign(uname);
           const ajOk = await purgeAjilAssign(uname);
           const btOk = await purgeButetsAssign(uname);
+          const hbOk = await purgeHabeaAssign(uname);
           const capOk = await setCaps(uname, [], { absolute: true });
-          if (flowOk && hvOk && obOk && chOk && ajOk && btOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
+          if (flowOk && hvOk && obOk && chOk && ajOk && btOk && hbOk && capOk) ok += 1; else { fail += 1; failed.push(uname); }
           continue;
         }
         if (!d.isNew && !listUsers().some((x) => x.username.toLowerCase() === key)) { gone.push(uname); continue; }
@@ -651,6 +655,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       [listObyemAssigns().some((a) => a.user === key), paneLabel('obyem')],
       [listAjilAssigns().some((a) => a.user === key), paneLabel('ajil')],
       [listButetsAssigns().some((a) => a.user === key), paneLabel('butets')],
+      [listHabeaAssigns().some((a) => a.user === key), paneLabel('habea')],
       [listChanarAssigns().some((a) => a.user === key), paneLabel('chanar')],
     ];
     const stuck = orphan.find(([hit]) => hit);
@@ -848,6 +853,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                 : pane === 'obyem' ? <ObyemAcl />
                   : pane === 'chanar' ? <ChanarAcl />
                       : pane === 'butets' ? <DedButetsAcl />
+                        : pane === 'habea' ? <><PlainCapAcl cap="habeaData" /><HabeaViewAcl /></>
                         : PANE_CAPS[pane].map((c) => <PlainCapAcl key={c} cap={c} />)}
           </>
         ) : pane === 'types' ? (

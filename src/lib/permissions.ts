@@ -498,6 +498,14 @@ async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<bo
     console.error('[selbe] дэд бүтцийн засварын хуваарилалтын синк амжилтгүй:', e);
   }
 
+  // 11) ХАБЭА харах багцын хуваарилалт (`__habea__:`) → habeaAcl.ts
+  try {
+    const hb = await import('./habeaAcl');
+    hb._syncRemoteHabea(remote.habea ?? []);
+  } catch (e) {
+    console.error('[selbe] ХАБЭА харах хуваарилалтын синк амжилтгүй:', e);
+  }
+
   // 11) Эрхийн төрлийн загвар (`__type__:`) → roleTypes.ts (2026-09-25)
   try {
     const rt = await import('./roleTypes');

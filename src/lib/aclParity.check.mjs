@@ -170,8 +170,9 @@ console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public банн�
   /* 2026-09-16: 6 дахь нь чанарын баримт (`__chanar__:`);
      2026-09-22: 7 дахь нь нэмэлт ажил (`__ajil__:`);
      2026-09-23: 8 дахь нь дэд бүтцийн засвар (`__butets__:`);
-     2026-09-25: 9 дэх нь эрхийн төрлийн загвар (`__type__:`) */
-  assert.equal(logged.length, 9,
+     2026-09-25: 9 дэх нь эрхийн төрлийн загвар (`__type__:`);
+     2026-11-04: 10 дахь нь ХАБЭА харах (`__habea__:`) */
+  assert.equal(logged.length, 10,
     `initRemote-ийн 8 ACL синк + хуваарь харах модуль бүр console.error-той байх ёстой, олдсон: ${logged.length}`);
   /* caps нь trusted-ыг дамжуулна */
   assert.ok(/_syncRemoteCaps\(remote\.caps,\s*trusted\)/.test(body),
@@ -215,7 +216,7 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
   const grantsWrites = (src.match(/grants \? \{ roles, bagts, grants \} : \{ roles, bagts \}/g) ?? []).length;
   assert.equal(grantsWrites, 1, `upsert: grants бичилт НЭГ туслахад (scopedUpsert) байх ёстой, олдсон: ${grantsWrites}`);
   assert.ok(/export function scopedUpsert\([\s\S]*?SCOPED_PREFIX\[kind\][\s\S]*?grants \? \{ roles, bagts, grants \}/.test(src), 'scopedUpsert: SCOPED_PREFIX-ээр grants бичихгүй байна');
-  for (const k of ['huvaari', 'obyem', 'chanar', 'ajil', 'butets']) {
+  for (const k of ['huvaari', 'obyem', 'chanar', 'ajil', 'butets', 'habea']) {
     assert.ok(src.includes(`return scopedUpsert('${k}', user, roles, bagts, grants);`), `${k}Upsert: scopedUpsert-ээр явахгүй байна`);
     assert.ok(src.includes(`return scopedRemove('${k}', user);`), `${k}Remove: scopedRemove-ээр явахгүй байна`);
   }
@@ -329,8 +330,8 @@ console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд ш�
 
   /* (е) revoke=false — таван системийн `removeNoRevoke` бүр `, false)` дамжуулна */
   const noRev = src.match(/removeNoRevoke: \(u\) => remove\w+Assign\(u, false\)/g) ?? [];
-  assert.equal(noRev.length, 5,
-    `${f}: таван системийн removeNoRevoke бүр revoke=false байх ёстой, олдсон: ${noRev.length}`);
+  assert.equal(noRev.length, 6,
+    `${f}: зургаан системийн removeNoRevoke бүр revoke=false байх ёстой, олдсон: ${noRev.length}`);
 
   /* (ё) `runOp` — `r.ok` шалгалт ЯГ НЭГ, await-ын ӨМНӨ; түгжээ дарах агшинд */
   const ro = src.slice(src.indexOf('export async function runOp('));
@@ -575,14 +576,14 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m)));
-  assert.equal(PLAIN_CAPS.length, 12, `энгийн эрх ЯГ 12 байх ёстой (2026-11-03: + habeaOwn), олдсон: ${PLAIN_CAPS.length}`);
+  assert.equal(PLAIN_CAPS.length, 11, `энгийн эрх ЯГ 11 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
-  assert.equal(derived.size, 9, `гаргалгаатай эрх 9 байх ёстой, олдсон: ${derived.size}`);
+  assert.equal(derived.size, 10, `гаргалгаатай эрх 10 байх ёстой (2026-11-04: + habeaOwn), олдсон: ${derived.size}`);
   for (const c of all) assert.equal(isDerivedCap(c), derived.has(c), `isDerivedCap(${c}) буруу`);
 }
-console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 9 ∪ энгийн 7 = CAPS');
+console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаатай 10 ∪ энгийн 11 = CAPS');
 
 /* ══════════ 12b. capText — НЭГ УРСГАЛ = НЭГ ХУУДАС (2026-09-30) ══════════ */
 {

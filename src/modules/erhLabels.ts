@@ -12,11 +12,12 @@ import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import type { Stage } from '@/lib/hyanalt';
 
 /** Үүрэгтэй систем (тойм, карт) */
-export type ScopedKind = 'huvaari' | 'obyem' | 'chanar' | 'ajil' | 'butets';
+export type ScopedKind = 'huvaari' | 'obyem' | 'chanar' | 'ajil' | 'butets' | 'habea';
 
 /** Үүргийн монгол нэр — дэд систем бүрд өөр */
 export const roleLabel = (kind: ScopedKind, role: string): string => {
   if (kind === 'huvaari') return role === 'author' ? tr('Зохиогч') : tr('Батлагч');
+  if (kind === 'habea') return tr('Багцаар харах');
   if (kind === 'ajil') return role === 'editor' ? tr('Мөр нэмэгч') : tr('Батлагч');
   if (kind === 'chanar') {
     if (role === 'author') return tr('Гүйцэтгэгч');
@@ -70,7 +71,7 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'butets') return tr('Дэд бүтэц');
   if (k === 'hamaaral') return tr('Багцын хамаарал');
   if (k === 'habeaData') return tr('ХАБЭА-ийн бүртгэл');
-  if (k === 'habeaOwn') return tr('ХАБЭА — өөрийн багц');
+  if (k === 'habeaOwn') return tr('ХАБЭА — багцаар харах');
   if (k === 'sysClose') return tr('Систем хаах');
   if (k === 'docsUpload') return tr('Баримт оруулах');
   if (k === 'docsGroups') return tr('Баримтын бүлэг');
