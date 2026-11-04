@@ -33,7 +33,6 @@ export function extrudeSymbol(sym: unknown, meters: number): unknown {
 
 /**
  * ШУГАМ → 3D ХООЛОЙ (2026-11-04, «3d symbol болгомоор») — `line-3d` + `path`, голч МЕТРЭЭР (пикселээр боломжгүй).
- * Өнгө хэвээр. ⚠️ Хоолойд тасархай хээ байхгүй: «буцах»/«өгөх» шугам ижил өнгөтэй бол ялгагдахгүй.
  */
 export function tubeSymbol(sym: unknown, meters: number): unknown {
   const s = sym as { type?: string; color?: Rgb | null; data?: CimRef } | null | undefined;
@@ -108,7 +107,6 @@ function mapSymbols<R>(renderer: R, fn: (sym: unknown) => unknown): R {
 export const extrudeRenderer = <R>(renderer: R, meters: number): R => mapSymbols(renderer, (x) => extrudeSymbol(x, meters));
 export const tubeRenderer = <R>(renderer: R, meters: number): R => mapSymbols(renderer, (x) => tubeSymbol(x, meters));
 export const flatLineRenderer = <R>(renderer: R, px: number): R => mapSymbols(renderer, (x) => flatLineSymbol(x, px));
-/** ⚠️ Хэмжээний `visualVariables`-ийг (`scaledDot`: масштабаар 3.5–13) хасна — биет дээр МЕТР болж биетийг томруулна */
 export const pillarRenderer = <R>(renderer: R, meters: number): R => {
   mapSymbols(renderer, (x) => pillarSymbol(x, meters));
   (renderer as { visualVariables?: unknown }).visualVariables = null;

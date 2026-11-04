@@ -307,12 +307,6 @@
   align-items: stretch;
 }
 .infoBar > * { flex: 1 1 0; min-width: 0; }
-/*
- * Огноо · Багц · Компани — «Мэдээлэл · Тайлан татах»-ын доор (2026-11-03). Капсулын оронд ТАЛБАРЫН МӨР:
- * бүтэн өргөн, шошго зүүн талд тогтмол өргөнтэй, утга ба ▾ баруун ирмэгт — гурван мөрийн утга нэг баганад
- * тэгшрэнэ. ⚠️ `MultiSelect`/`DateRangePill`-ийн CSS модулийн нэр хэшлэгддэг тул БҮТЦЭЭР нь (div > span · button)
- * зөвхөн энэ хайрцагт дарж бичнэ — бусад хуудасны капсул хэвээр.
- */
 .fltPills {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -339,7 +333,6 @@
 }
 .fltPills .coNote { padding-left: 2px; }
 .infoWrap { position: relative; }
-/* ⚠️ 2026-11-02: «Тайлан татах» (`uzlegExport.module.css .trigger`)-тэй ЯГ ижил загвар */
 .infoBtn {
   font: inherit;
   font-size: 12px;
@@ -370,7 +363,6 @@
 @media (prefers-reduced-motion: reduce) {
   .infoBtn, .infoChev { transition: none; }
 }
-/* ⚠️ 2026-11-02: цэс — бүлэг гарчиг · өнгөт цэг · чек · нарийн зааг */
 .infoMenu {
   position: absolute;
   z-index: 30;

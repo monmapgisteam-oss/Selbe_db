@@ -130,8 +130,6 @@ export const loadBudget = cached<Budget>(async () => {
   const total = sumOf(inTotal, 'b');
   const orderTotal = sumOf(gOrder.filter(finXlInTotal), 'o');
   const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
-  /* ⚠️ 2026-11-03 (хэрэглэгч): эх үүсвэр — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ИЖИЛ амьд нийлбэр
-     (`loadProjectSourceTotals`; Σ = төслийн нийт дүн). «Тайлан» · нийтийн хүснэгттэй НЭГ тоо. «Эх үүсвэр задраагүй» мөр хасав. */
   const { loadProjectSourceTotals } = await import('@/lib/projectPlanInputs');
   const ps = await loadProjectSourceTotals();
   const named: { key: string; label: string; value: number }[] = CASHFLOW_NEW.sources

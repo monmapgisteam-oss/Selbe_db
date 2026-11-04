@@ -490,7 +490,7 @@ export const LAYERS: LayerDef[] = [
     oid: "objectid",
     auth: true,
     get note() { return tr('Survey123 мобайл аппаас'); },
-  },  /* ⚠️ 2026-11-02: «Action» фокус — HSE_Action-ий үл нийцэл бүр нэг цэг (`HABEA.action`, давхарга 2) */
+  },
   {
     id: "habea:action",
     n: 0,
