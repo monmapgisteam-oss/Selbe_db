@@ -31,6 +31,7 @@ import {
 } from '@/lib/reportData';
 import { ResizableTable } from '@/components/ResizableTable';
 import { ExecReport } from '@/modules/ExecReport';
+import { AudienceReport } from '@/modules/AudienceReport';
 import { ReportContents, ReportHero } from './ReportContents';
 import { Segmented } from '@/components/Switch';
 import r from './report.module.css';
@@ -196,16 +197,26 @@ function ReportWaiting({ steps, secs }: { steps: { label: string; done: boolean 
 }
 
 /**
- * ХОЁР ГОРИМ (2026-09-17):
+ * ГУРВАН ГОРИМ (2026-09-17 · 2026-11-05):
  *   · «Дэлгэрэнгүй тайлан» — доорх 10 хэсэгтэй ерөнхий тайлан (хэвээр)
  *   · «Удирдлагын тайлан» — `ExecReport`: 01 · 05 · 04 · Зөвшөөрөл дөрвөн
  *     эхийн товч хувилбар, инфографик ба AI дүгнэлттэй
+ *   · «Хүлээн авагчийн тайлан» — `AudienceReport`: Хотын дарга · Иргэдийн Төлөөлөгчдийн Хурал ·
+ *     Төлөөлөн удирдах зөвлөл, нэг тооцооноос график + автомат тайлбар
  */
+type TailanMode = 'full' | 'exec' | 'aud';
+
 export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
-  const [mode, setModeRaw] = useState<'full' | 'exec'>('exec');
+  const [mode, setModeRaw] = useState<TailanMode>('exec');
   /** Ерөнхий тайлан нэг удаа нээгдсэн эсэх — тэр хойно mount хэвээр (доорх 2026-10-06) */
   const [fullSeen, setFullSeen] = useState(false);
-  const setMode = (m: 'full' | 'exec') => { if (m === 'full') setFullSeen(true); setModeRaw(m); };
+  /** Хүлээн авагчийн тайлан — мөн нэг удаа нээгдсэний дараа mount хэвээр */
+  const [audSeen, setAudSeen] = useState(false);
+  const setMode = (m: TailanMode) => {
+    if (m === 'full') setFullSeen(true);
+    if (m === 'aud') setAudSeen(true);
+    setModeRaw(m);
+  };
   const { hostRef, ...side } = useSideResize('tailan');
   const bq = useBuildings();
   const packs = useMemo<Pack[]>(() => buildPacks(bq.state === 'ready' ? bq.data.rows : null), [bq]);
@@ -218,10 +229,15 @@ export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
         {/* Горим сэлгэгч — ТУХ-ын шүүлтүүрийн сегменттэй ижил хэлбэр. */}
         <div className={r.filters}>
           <Segmented value={mode} onChange={setMode} label={tr('Тайлангийн горим')}
-            options={[{ value: 'exec', label: tr('Удирдлагын тайлан') }, { value: 'full', label: tr('Дэлгэрэнгүй тайлан') }]} />
+            options={[
+              { value: 'exec', label: tr('Удирдлагын тайлан') },
+              { value: 'full', label: tr('Дэлгэрэнгүй тайлан') },
+              { value: 'aud', label: tr('Хүлээн авагчийн тайлан') },
+            ]} />
         </div>
         <div style={{ display: mode === 'exec' ? 'contents' : 'none' }}><ExecReport /></div>
         {fullSeen && <div style={{ display: mode === 'full' ? 'contents' : 'none' }}><TailanFull /></div>}
+        {audSeen && <div style={{ display: mode === 'aud' ? 'contents' : 'none' }}><AudienceReport /></div>}
       </div>
       <div className={r.side}>
         <TuhMap dim={dim} setDim={setDim} sel={null} packs={packs} onPickPkg={onPickPkg} />
