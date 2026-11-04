@@ -116,7 +116,10 @@ for (const [g, group] of byGroup) {
   const mine = autoRows.filter((r) => bagtsKey(r.bagts) === g).sort((a, b) => autoDay(a).localeCompare(autoDay(b)));
   const cumAt = (day) => group.reduce((acc, s) => { const fr = frameAt(s, day); if (!fr) return acc; const x = frameSums(s, fr); return { une: acc.une + x.une, obyem: acc.obyem + x.obyem }; }, { une: 0, obyem: 0 });
   /* Суурийн өдөр — анхны AUTO мөрийн өдөр (жаазтай), эс бөгөөс ₮-тэй анхны жааз */
-  let baseDay = mine.map(autoDay).find((d) => group.some((s) => frameAt(s, d)) && cumAt(d).une > 0) ?? null;
+  /* Суурь = олгосон нийт дүнд ХҮРСЭН эхний AUTO өдөр (жаазтай); хүрээгүй бол сүүлийн AUTO өдөр */
+  const paidTotal = old.length ? old[old.length - 1].cum : 0;
+  const cands = mine.map(autoDay).filter((d) => group.some((s) => frameAt(s, d)) && cumAt(d).une > 0);
+  let baseDay = cands.find((d) => cumAt(d).une >= paidTotal) ?? cands[cands.length - 1] ?? null;
   if (!baseDay) baseDay = [...new Set(group.flatMap((s) => s.frames.map((f) => f.day)))].sort().find((d) => cumAt(d).une > 0) ?? null;
   const U = baseDay ? cumAt(baseDay).une : 0;
   const fOf = old.map((o) => (U > 0 ? o.cum / U : NaN));

@@ -798,6 +798,7 @@ const en: Record<string, string> = {
   "Гүйцэтгэл хамгийн бага арван блок (анхаарал шаардсан ажлууд)": "The ten lowest-progress blocks — works needing attention",
   "Гүйцэтгэл, санхүү, газар, дэд бүтэц, ХАБЭА-гийн өгөгдөл нэгтгэж байна…": "Consolidating progress, finance, land, infrastructure and HSE data…",
   "Гүйцэтгэл: өмнөх дүнгээр · шинэчилж байна…": "Progress: previous figures · refreshing…",
+  "Гүйцэтгэлийн өдөр": "Work dates",
   "Гүйцэтгэлийг татаж чадсангүй: {0}": "Could not load the progress: {0}",
   "Гүйцэтгэлийг тооцоолж байна…": "Computing progress…",
   "Гүйцэтгэлийн зөрүү": "Progress variance",

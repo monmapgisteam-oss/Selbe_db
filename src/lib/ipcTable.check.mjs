@@ -123,6 +123,32 @@ const contract = (o = {}) => ({
   assert.equal(e[0].zoruu, null, '⚠️ 0 БИШ — «зөрүү 0» нь «таарсан» гэсэн үг');
 }
 
+/* ══ 1c. НЭГ IPC = НЭГ КАРТ (2026-11-04) — олгосон гүйцэтгэл төлбөрийн мөрд нэгдэнэ ══ */
+{
+  const S = HO_IPC.status;
+  const auto = (oid, day, no, une, obyem, st) => pay(oid, work, null, {
+    [P.id]: `AUTO|БАГЦ1|${day}`, [P.payDate]: day, [P.ipcNo]: no, [LINK_FIELDS.une]: une, [LINK_FIELDS.obyem]: obyem, [S.field]: st,
+  });
+  const r = payRows([
+    pay(1, work, 100, { [P.ipcNo]: 1, [P.payDate]: '2026-08-26', [S.field]: S.paid }),
+    auto(2, '2026-08-20', 1, 60, 10, S.paid),
+    auto(3, '2026-08-26', 1, 45, 5, S.paid),
+    auto(4, '2026-09-09', null, 30, 3, S.work),       // IPC-д ороогүй — тусдаа карт хэвээр
+    auto(5, '2026-09-20', 2, 20, 2, S.created),       // IPC үүссэн ч олгоогүй — тусдаа карт хэвээр
+    auto(6, '2026-09-30', 3, 15, 1, S.paid),          // «Олгосон» ч төлбөрийн мөргүй — тусдаа карт хэвээр
+  ]);
+  assert.deepEqual(r.map((x) => x.oid), [1, 5, 6, 4], '⚠️ олгосон гүйцэтгэл (2, 3) тусдаа карт болохгүй');
+  assert.equal(r[0].obyem, 15, 'обьём = 10 + 5');
+  assert.equal(r[0].une, 105, '₮ = 60 + 45');
+  assert.equal(r[0].zoruu, -5, 'зөрүү = олгосон 100 − гүйцэтгэл 105');
+  assert.deepEqual(r[0].days, ['2026-08-20', '2026-08-26'], 'орсон өдрүүд');
+  assert.deepEqual(r.slice(1).map((x) => x.days), [[], [], []], 'нэгдээгүй мөрд өдөр байхгүй');
+  assert.equal(r[3].une, 30, 'тусдаа карт өөрийн дүнтэй');
+  /* Нэгдсэн мөрүүд огт байхгүй үед хуучин зан хэвээр */
+  const plain = payRows([pay(1, work, 20, { [P.ipcNo]: 1, [LINK_FIELDS.obyem]: 7, [LINK_FIELDS.une]: 18, [LINK_FIELDS.zoruu]: 2 })]);
+  assert.deepEqual([plain[0].obyem, plain[0].une, plain[0].zoruu, plain[0].days], [7, 18, 2, []]);
+}
+
 /* ══ 1b. ЗАХИРАМЖ ба ОН — мөрөнд гарна ══ */
 {
   const r = payRows([pay(1, work, 20, {

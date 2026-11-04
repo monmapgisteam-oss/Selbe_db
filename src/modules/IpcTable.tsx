@@ -272,6 +272,8 @@ function PayCard({ r, pick }: {
         <h5 className={s.sect}>{tr('Бодит гүйцэтгэл')}</h5>
         <Line k={tr('Обьём')} v={vol(r.obyem)} />
         <Line k={tr('Мөнгөн дүн')} v={money(r.une)} />
+        {/* 2026-11-04: нэг IPC = нэг карт — олгосон гүйцэтгэлийн өдрүүд энд */}
+        {r.days.length > 0 && <Line k={tr('Гүйцэтгэлийн өдөр')} v={r.days.join(', ')} />}
         {perf && (perf.une ?? 0) < 0 && <Line k={tr('Анхааруулга')} v={tr('дүн сөрөг')} cls={s.over} />}
 
         {/* ── ОЛГОЛТ ── картын ГОЛ тоо, томоор */}

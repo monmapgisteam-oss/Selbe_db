@@ -11,12 +11,21 @@ import { CASHFLOW_NEW, HO_IPC, hoAmount, hoPayCode, hoSaving, num, orderTotalOf 
 import { cfMatches, hoPkgParts, phasesOf } from '@/lib/hoSync/compute';
 import type { HoContract } from '@/lib/ipc';
 import { LINK_FIELDS } from '@/lib/ipcLink';
+import { isAuto } from '@/lib/ipcAuto';
+import { statusOf } from '@/lib/ipcFlow';
 import { dayKey } from '@/lib/format';
 
 type Row = Record<string, unknown>;
 
 const P = HO_IPC.payFields;
 const C = HO_IPC.contractFields;
+
+/** `guilgee_ognoo` → `YYYY-MM-DD` (DateOnly мөр эсвэл epoch); танихгүй бол `''` */
+const payDayOf = (v: unknown): string => {
+  if (typeof v === 'number') return Number.isFinite(v) ? dayKey(v) : '';
+  const m = /^\d{4}-\d{2}-\d{2}/.exec(String(v ?? ''));
+  return m ? m[0] : '';
+};
 
 /* ─────────────────────── ТӨЛБӨРИЙН МӨР ─────────────────────── */
 
@@ -52,6 +61,11 @@ export type PayRow = {
    * ЗАХИРАМЖИЙН ДУГААР — «А/250».
    */
   orderNo: string;
+  /**
+   * Энэ IPC-д орсон ОЛГОСОН гүйцэтгэлийн өдрүүд (2026-11-04, хэрэглэгч: «нэг IPC = нэг карт»). Олгосон AUTO мөр
+   * тусдаа карт болохгүй — обьём, ₮ нь төлбөрийн мөрд нийлнэ. Хоосон = нэгдсэн гүйцэтгэлгүй.
+   */
+  days: string[];
 };
 
 /**
@@ -60,7 +74,17 @@ export type PayRow = {
 export function payRows(pays: readonly Row[]): PayRow[] {
   const adv: Row[] = [];
   const work: Row[] = [];
+  /* Олгосон IPC-ийн гүйцэтгэл (AUTO, `ipc_dugaar`-тай, «Олгосон») → тэр дугаарын төлбөрийн мөрд нэгдэнэ */
+  const perfByNo = new Map<number, Row[]>();
   for (const r of pays) {
+    const no = num(r[P.ipcNo]);
+    if (isAuto(r) && no != null && statusOf(r) === HO_IPC.status.paid) perfByNo.set(no, [...(perfByNo.get(no) ?? []), r]);
+  }
+  const hasPay = (no: number): boolean =>
+    pays.some((r) => !isAuto(r) && r[P.kind] !== HO_IPC.kinds.advance && num(r[P.ipcNo]) === no && hoAmount(r) != null);
+  for (const r of pays) {
+    const no = num(r[P.ipcNo]);
+    if (isAuto(r) && no != null && perfByNo.has(no) && hasPay(no)) continue;
     (r[P.kind] === HO_IPC.kinds.advance ? adv : work).push(r);
   }
   const ordNo = (r: Row): number => {
@@ -85,21 +109,29 @@ export function payRows(pays: readonly Row[]): PayRow[] {
   const out: PayRow[] = [];
 
   const push = (r: Row, advance: boolean, cum: number | null): void => {
+    const no = num(r[P.ipcNo]);
+    const perf = !advance && !isAuto(r) && no != null ? perfByNo.get(no) ?? [] : [];
+    const sum = (f: string): number | null =>
+      perf.reduce<number | null>((a, x) => { const v = num(x[f]); return v == null ? a : (a ?? 0) + v; }, null);
+    const amount = hoAmount(r);
+    const obyem = perf.length ? sum(LINK_FIELDS.obyem) : num(r[LINK_FIELDS.obyem]);
+    const une = perf.length ? sum(LINK_FIELDS.une) : num(r[LINK_FIELDS.une]);
     out.push({
       oid: num(r[HO_IPC.oid]),
       id: String(r[P.id] ?? ''),
       code: hoPayCode(r),
       advance,
-      ipcNo: num(r[P.ipcNo]),
+      ipcNo: no,
       date: r[P.payDate] ?? null,
-      amount: hoAmount(r),
+      amount,
       cum,
-      obyem: num(r[LINK_FIELDS.obyem]),
-      une: num(r[LINK_FIELDS.une]),
-      zoruu: num(r[LINK_FIELDS.zoruu]),
+      obyem,
+      une,
+      zoruu: perf.length ? (amount == null || une == null ? null : amount - une) : num(r[LINK_FIELDS.zoruu]),
       year: num(r[P.year]),
       kind: String(r[P.kind] ?? ''),
       orderNo: String(r[C.order1No] ?? ''),
+      days: [...new Set(perf.map((x) => payDayOf(x[P.payDate])).filter(Boolean))].sort(),
     });
   };
 
