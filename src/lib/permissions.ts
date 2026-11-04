@@ -375,14 +375,17 @@ export async function retryDirty(onlyMine = false): Promise<number> {
 }
 
 /**
- * ArcGIS хүснэгтээс эрхийг татаж cache-д хийнэ. Super admin (`canCreate` = итгэмжлэгдсэн сешн) анх
- * дуудахад хүснэгт байхгүй бол автоматаар үүсгэнэ. Нэвтэрсний дараа дуудна.
- * ArcGIS байхгүй/алдаа бол `localStorage`-ийн cache хэвээр (offline).
+ * ArcGIS хүснэгтээс (`SYS_Selbe_Permissions/230`) эрхийг татаж cache-д хийнэ. Нэвтэрсний дараа дуудна.
+ * ArcGIS байхгүй/алдаа бол `localStorage`-ийн cache хэвээр (offline) — гэхдээ super-ийн эх (`_setTableSupers`) тавигдахгүй
+ * тул ХЭН Ч нэвтрэхгүй (fail-closed, `roles.ts`); `AuthGate` шалтгааныг (`permsRemote.remoteFetchError`) харуулна.
+ *
+ * 2026-11-05 (аудит №2): ХҮСНЭГТИЙГ ЭНЭ КОД ҮҮСГЭДЭГГҮЙ — урьд нь «super анх дуудахад автоматаар үүсгэнэ» гэж бичсэн ч
+ * тийм зам байгаагүй. Хүснэгт алга бол админ Enterprise-д гараар үүсгэнэ (талбар: username · role · views · docs).
  *
  * Буцаана: remote амжилттай уншигдсан эсэх (админ панел offline тэмдэг харуулна).
  */
 /**
- * @param canCreate хүснэгт байхгүй бол үүсгэх эрх (зөвхөн нэвтрэх агшны хатуу super)
+ * @param canCreate ХЭРЭГЛЭГДЭХГҮЙ (түүхэн нэр — `trusted`-ийн анхдагч утга л); хүснэгт үүсгэхгүй
  * @param trusted  dirty-set-ийг дахин илгээж, давхарлах эрх (хатуу super-ийн сешн).
  */
 export async function initRemote(canCreate: boolean, trusted: boolean = canCreate): Promise<boolean> {

@@ -4,7 +4,7 @@
  * IPC — ОЛГОСОН САНХҮҮЖИЛТ, ГЭРЭЭГЭЭР БҮЛЭГЛЭСЭН УНШИГДАХУЙЦ ХАРАГДАЦ.
  */
 import { useMemo, useState, useSyncExternalStore } from 'react';
-import { hoUnassignedText, subscribeHoSync } from '@/lib/hoSync/sync';
+import { hoSyncErrorText, hoUnassignedText, subscribeHoSync } from '@/lib/hoSync/sync';
 import { t as tr } from '@/lib/i18nCore';
 import { mnt, num, pct, dayKey } from '@/lib/format';
 import {
@@ -301,6 +301,8 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
   const [shut, setShut] = useState<Set<string>>(new Set());
   const [newContract, setNewContract] = useState(false);
   const unassigned = useSyncExternalStore(subscribeHoSync, hoUnassignedText, () => '');
+  /* 2026-11-05 (аудит №3): HO ← Cashflow синкийн алдаа — урьд нь зөвхөн console; олгосон дүн 182-т хоцорсныг хэн ч мэддэггүй байв */
+  const syncErr = useSyncExternalStore(subscribeHoSync, hoSyncErrorText, () => '');
   const { user } = useAuth();
   const canCreate = hasCap(user?.username, 'ipcCreate');
   const canApprove = hasCap(user?.username, 'ipcApprove');
@@ -434,6 +436,7 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
       </div>
 
       {unassigned && <p className={s.warn} role="alert">{tr('Гэрээний мөрт оноогдоогүй төлбөр олголтын дүнд ороогүй: {0}', unassigned)}</p>}
+      {syncErr && <p className={s.warn} role="alert">{tr('Төлбөрийн дүнг «Төсөл төлөвлөгөө биелэлт»-д бичих автомат холболт унав ({0}) — олгосон хувь хоцорч болно; 10 минутын дараа дахин оролдоно.', syncErr)}</p>}
       {newContract && <ContractDialog cfRows={cfRows} onClose={() => setNewContract(false)} />}
 
       {!showObyem && (

@@ -8,7 +8,7 @@ import { AUTH } from '@/lib/services/env';
 import { BOOTSTRAP_SUPER, isCodeSuper, roleForUser, type Role } from '@/lib/services/roles';
 import { initRemote, hasAccess, roleOf, remoteReady, closedFor, subscribe as subscribePerms } from '@/lib/permissions';
 import { subscribeCaps } from '@/lib/caps';
-import type { SysState } from '@/lib/permsRemote';
+import { remoteFetchError, type SysState } from '@/lib/permsRemote';
 import { dateTime } from '@/lib/format';
 import { setCurrentUser } from '@/lib/who';
 import { ENT_SERVER, installEntInterceptor } from '@/lib/entInterceptor';
@@ -460,6 +460,8 @@ export function AuthNotice() {
                   {tr('Эрхийн жагсаалтыг уншиж чадсангүй — таны эрх ХАСАГДААГҮЙ байж магадгүй. Холболтоо шалгаад хуудсыг дахин ачаална уу. Давтагдвал админд хандана уу.')}
                 </p>
                 <p className={s.error}>{tr('Хэрэглэгч:')} {user?.username || '—'}</p>
+                {/* 2026-11-05 (аудит №2): шалтгаан — сүлжээ · 403 · хүснэгт (230) алга — админ ялгаж засна */}
+                {remoteFetchError() && <p className={s.error}>{tr('Шалтгаан:')} {remoteFetchError()}</p>}
                 <RecheckButton recheck={recheckPerms} />
               </>
             ) : (

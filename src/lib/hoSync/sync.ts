@@ -50,13 +50,24 @@ export async function computeHoSync(): Promise<HoSyncPlan> {
 let inflight: Promise<HoSyncResult> | null = null;
 let again = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * Эрхгүй (403) — `DISABLE_MS` хүртэл дахин оролдохгүй (2026-11-05, аудит №3: урьд нь сешн дуустал — токен сэргэсэн ч
+ * `olgoson_dun` дахин бичигдэхгүй, алдаа нь хэрэглэгчид харагдахгүй байв)
+ */
+const DISABLE_MS = 10 * 60_000;
 let disabled: string | null = null;
+let disabledUntil = 0;
 let last: HoSyncResult | null = null;
 export const hoSyncLast = (): HoSyncResult | null => last;
 const watchers = new Set<() => void>();
 export const subscribeHoSync = (cb: () => void): (() => void) => { watchers.add(cb); return () => { watchers.delete(cb); }; };
 /** Гэрээний мөрт оноогдоогүй төлбөрүүд — `useSyncExternalStore`-ийн тогтвортой утга */
 export const hoUnassignedText = (): string => last?.unassigned.join(', ') ?? '';
+/**
+ * Сүүлийн синкийн АЛДАА — хэрэглэгчид харуулахаар (`IpcTable`); `no-cap` (эрхгүй хэрэглэгч — хэвийн) бол хоосон.
+ * `useSyncExternalStore`-ийн тогтвортой утга.
+ */
+export const hoSyncErrorText = (): string => (last?.error && last.error !== 'no-cap' ? last.error : '');
 
 const isForbidden = (e: unknown): boolean => /\b(403|499|498)\b|эрхгүй|permission|not authorized|token/i.test(e instanceof Error ? e.message : String(e));
 
@@ -64,7 +75,8 @@ export function runHoSync(): Promise<HoSyncResult> {
   if (inflight) { again = true; return inflight; }
   inflight = (async (): Promise<HoSyncResult> => {
     const res: HoSyncResult = { at: Date.now(), blocks: 0, paid: 0, unassigned: [], updated: 0, added: 0, unmatched: [], error: null };
-    if (disabled) { res.error = `disabled: ${disabled}`; return res; }
+    if (disabled && Date.now() < disabledUntil) { res.error = `disabled: ${disabled}`; return res; }
+    disabled = null;
     if (!canAutoSync(currentUser())) { res.error = 'no-cap'; return res; }
     try {
       /* Багцын дүн → блокууд. Дараагийн тооцоонд зөрүүгүй тул дахин бичихгүй (гогцоогүй) */
@@ -96,7 +108,7 @@ export function runHoSync(): Promise<HoSyncResult> {
       }
     } catch (e) {
       res.error = e instanceof Error ? e.message : String(e);
-      if (isForbidden(e)) disabled = res.error;
+      if (isForbidden(e)) { disabled = res.error; disabledUntil = Date.now() + DISABLE_MS; }
       console.warn('[hoSync] HO ← Cashflow:', res.error);
     }
     last = res;

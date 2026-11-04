@@ -34,9 +34,14 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** «Багц-1» · «БАГЦ 1- 4» · «БАГЦ-10,  БАГЦ-11» → ['1'] · ['1-4'] · ['10', '11'] — багцын кодууд (жижиг үсэг, зайгүй) */
+/**
+ * «Багц-1» · «БАГЦ 1- 4» · «БАГЦ-10,  БАГЦ-11» → ['1'] · ['1-4'] · ['10', '11'] — багцын кодууд (жижиг үсэг, зайгүй).
+ * 2026-11-05 (аудит №10): ДЭД багцын зураасыг цэг болгоно — хуудас/HO «Багц 4-1» ↔ Cashflow «Багц-4.1» нэг код ('4.1');
+ * «1-4» шиг ӨСӨХ хос нь диапазон (`isPkgRange`-тай ижил дүрэм) тул хэвээр.
+ */
 export function hoPkgParts(v: unknown): string[] {
   return String(v ?? '').toLowerCase().split(',').map((p) => p.replace(/багц/g, '').replace(/\s+/g, '').replace(/^-+/, '').replace(/​/g, ''))
+    .map((p) => p.replace(/^(\d+)-(\d+)$/, (m, a: string, b: string) => (Number(b) > Number(a) ? m : `${a}.${b}`)))
     .filter(Boolean);
 }
 

@@ -3162,7 +3162,7 @@ export function Huvaari({
               if (lostWriteRef.current === approving) lostWriteRef.current = null;
             }
             setNote(r.ok
-              ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.')
+              ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.') + (r0.ok && r0.warn ? ` ${r0.warn}` : '')
               : '');
             if (!r.ok) {
               setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'));
@@ -3230,7 +3230,7 @@ export function Huvaari({
           if (lostWriteRef.current === oid) lostWriteRef.current = null;
           setPreviewing(false);
           setOkRows(new Set());
-          setNote(tr('Хуваарь батлагдаж эх хуудсанд бичигдлээ.'));
+          setNote(tr('Хуваарь батлагдаж эх хуудсанд бичигдлээ.') + (r0.ok && r0.warn ? ` ${r0.warn}` : ''));
         }
         await refreshFlow({ noRefetch: true });
       } catch (e) {

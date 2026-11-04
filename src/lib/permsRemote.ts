@@ -233,13 +233,17 @@ async function probeEntExposure(layerUrl: string): Promise<void> {
 }
 
 /**
- * Хүснэгтийн URL-ыг тодорхойлох — олох, эс бөгөөс (super) үүсгэх.
+ * Хүснэгтийн URL — тогтмол `SYS_PERMS/230`. ҮҮСГЭДЭГГҮЙ (2026-11-05, аудит №2: хуучин тайлбар «эс бөгөөс үүсгэх» худал байв).
  */
 async function tableUrl(): Promise<string> {
   const url = `${SYS_PERMS}/230`;
   if (typeof document !== 'undefined') void probeEntExposure(url);
   return url;
 }
+
+/** `fetchAll`-ын сүүлийн уншилтын АЛДАА (амжилттай бол `null`) — `AuthGate` «эрхийн жагсаалт уншигдсангүй»-д шалтгаан болгож харуулна */
+let lastFetchError: string | null = null;
+export const remoteFetchError = (): string | null => lastFetchError;
 
 type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default;
 type FeatureLayerInst = InstanceType<FeatureLayerMod>;
@@ -438,6 +442,7 @@ export async function fetchAll(): Promise<{
         ...(removed ? { removed: true } : {}),
       };
     }
+    lastFetchError = null;
     const okSupers = trustedSupers(superRows, [BOOTSTRAP_SUPER, ...SUPER_OWNERS]);
     for (const r of superRows) {
       if (okSupers.has(r.user)) continue;
@@ -459,7 +464,8 @@ export async function fetchAll(): Promise<{
       malformed,
       sys,
     };
-  } catch {
+  } catch (e) {
+    lastFetchError = e instanceof Error ? e.message : String(e);
     return null;
   }
 }

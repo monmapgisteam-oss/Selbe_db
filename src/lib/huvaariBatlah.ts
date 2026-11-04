@@ -1152,10 +1152,18 @@ export async function decidePlan(args: {
     if (!editOk(j.updateResults)) { undo(); return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') }; }
     invalidate('HUVAARI_BATLAH');
     if (args.approve) {
-      void import('./projectPlanSync')
-        .then((m) => m.syncPlanProgress())
-        .then((r) => { if (!r.ok) console.warn('[selbe] төсөл төлөвлөгөөний огноо бичигдсэнгүй:', r.error); })
-        .catch((e) => console.warn('[selbe] төсөл төлөвлөгөөний огноо бичих алдаа:', e));
+      /*
+       * 2026-11-05 (аудит №4): урьд нь fire-and-forget — батлагч «бичигдлээ» гэж харсан ч 182-ын огноо/хувь бичигдээгүй
+       * байж болно, 403 нь `runPlanSync`-ийн хаалтыг тойрч батлалт бүрт давтагддаг байв. Одоо хүлээж, дүнг `warn`-д.
+       */
+      try {
+        const m = await import('./projectPlanSync');
+        const pw = m.planSyncWarn(await m.runPlanSync({ fresh: true }));
+        if (pw) warn = warn ? `${warn} · ${pw}` : pw;
+      } catch (e) {
+        console.warn('[selbe] төсөл төлөвлөгөөний огноо бичих алдаа:', e);
+        warn = [warn, tr('«Төсөл төлөвлөгөө биелэлт»-ийн огноо/хувь бичигдсэнгүй ({0}).', errText(e))].filter(Boolean).join(' · ');
+      }
     }
     return { ok: true, warn };
   } catch (e) {
