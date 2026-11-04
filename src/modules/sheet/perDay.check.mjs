@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fake, addTable } from '@/lib/arcgisFake.mjs';
 import { loadRows, priorObyem, dropPriorCache, frameRowKeys } from './bagtsSheet.ts';
-import { buildFrame, dayObyem, dayObyemSum } from './sheetFrame.ts';
+import { buildFrame, dayObyem, dayObyemSum, frameBase } from './sheetFrame.ts';
 import { snapshotDayOf, snapshotOf } from '@/lib/ipcLink';
 
 const D = (s) => Date.parse(`${s}T00:00:00Z`);
@@ -105,6 +105,34 @@ frame('2026-01-20', [[1, 1], [null, null]]);
   assert.equal(f2.o1, 0);
   assert.equal(f1.a0, 0.11, 'хувь хуримтлалаар хэвээр: 11 ÷ 100');
   console.log('✅ buildFrame — өдрийн ажил · цэвэрлэлт · хувь хуримтлалаар');
+
+  /* НЭГ ӨДРИЙН 2 ДАХЬ НИЙТЛЭЛ — эхний нийтлэлийн өдрийн ажил ШИНЭ жаазанд бүтнээрээ орно (өдрөөс сүүлийн жааз л тоологддог) */
+  const sameDay = buildFrame(rows, sc, 2, null, [true, true], D('2026-01-20') + 15 * 3600_000);
+  const s1 = sameDay.find((a) => a.no === '1');
+  const s2 = sameDay.find((a) => a.no === '2');
+  assert.equal(s1.o0, 4, 'нэг өдөр: 11 − (8 − 1) = 1 (өглөөний) + 3 (шинэ)');
+  assert.equal(s1.o1, 1, 'өөрчлөлтгүй блок — өглөөний 1 хэвээр');
+  assert.equal(s1.osum, 5);
+  assert.equal(s2.o0, -9, 'энэ өдөр ажилгүй мөр — өмнөх өдрүүдийн 9-ийг цэвэрлэв');
+  assert.equal(s2.o1, 0);
+  assert.equal(frameBase(sh, sc, D('2026-01-21')), sh.obyemBase, 'өөр өдөр — ачаалсан хуримтлал хэвээр');
+  assert.deepEqual(frameBase(sh, sc, D('2026-01-20')), [7, 3], 'нэг өдөр — өдрийн ажил суурьгүй');
+  assert.equal(frameBase({ raw: {}, obyemBase: undefined, obyemDay: undefined }, sc, D('2026-01-20')), undefined, 'шинэ мөр — суурьгүй');
+  /* дахин ачаалбал (өдрийн сүүлийн жааз) хуримтлал алдагдахгүй */
+  const pm = D('2026-01-20') + 15 * 3600_000;
+  const added = [
+    T.insert({ no: 'Б', work: 'БАРИЛГА', gun: 0, fill: pm, vol: null, unit: null, o0: null, o1: null, osum: null }),
+    T.insert({ no: '1', work: 'Шороо', gun: 1, fill: pm, vol: 100, unit: 10, o0: s1.o0, o1: s1.o1, osum: s1.osum }),
+    T.insert({ no: '2', work: 'Бетон', gun: 1, fill: pm, vol: 50, unit: 20, o0: s2.o0, o1: s2.o1, osum: 0 }),
+  ];
+  dropPriorCache(pkg.key);
+  const again = await loadRows(pkg, sc, '2026-01-20');
+  assert.deepEqual(again.rows.find((x) => x.no === '1').obyem, [11, 4], 'дахин ачаалахад хуримтлал 11, 4 — өглөөний 1 алдагдаагүй');
+  assert.deepEqual(again.rows.find((x) => x.no === '2').obyem, [0, 4], 'цэвэрлэсэн блок 0');
+  /* дараагийн хэсгүүд анхны 01-20 жаазаар ажиллана — үдээс хойшхи жаазыг буцаана */
+  T.edit({ deletes: added.map((r) => r.objectid) });
+  dropPriorCache(pkg.key);
+  console.log('✅ buildFrame — нэг өдрийн 2 дахь жааз өдрийн бүх ажлыг авч явна');
 }
 
 /* ── 4. IPC-ийн агшин — өдрийнх ба хуримтлал ── */

@@ -125,8 +125,10 @@ export function PlanEditCell({
   );
 }
 
-type Draft = { name: string; weight: string; pct: string };
-const EMPTY: Draft = { name: '', weight: '', pct: '' };
+type Draft = { id: number; name: string; weight: string; pct: string };
+/* 2026-11-04: мөр бүр тогтмол `id`-тэй — `key={i}` үед мөр устгахад фокус/IME бичилт дараагийн мөрд үсэрдэг байв */
+let draftSeq = 0;
+const blank = (): Draft => ({ id: ++draftSeq, name: '', weight: '', pct: '' });
 
 /**
  * ДЭД МӨР НЭМЭХ самбар. Дэд мөргүй мөрийн доор — ШИНЭ БҮЛЭГ (жин оруулна, нийлбэр 100%); байгаа мөрүүдийн дунд —
@@ -141,7 +143,7 @@ export function AddRowsPanel({
   onDone: (n: number) => void;
 }) {
   const group = isNewGroup(parent);
-  const [items, setItems] = useState<Draft[]>([{ ...EMPTY }]);
+  const [items, setItems] = useState<Draft[]>(() => [blank()]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const name = String(parent.row?.ajil_uilchilgee ?? '').trim() || parent.code;
@@ -205,7 +207,7 @@ export function AddRowsPanel({
         </thead>
         <tbody>
           {items.map((x, i) => (
-            <tr key={i}>
+            <tr key={x.id}>
               <td><input className={f.ppCellIn} value={x.name} aria-label={tr('Ажлын нэр')} onChange={(e) => set(i, 'name', e.target.value)} /></td>
               {group && (
                 <td><input className={f.ppCellIn} inputMode="decimal" value={x.weight} aria-label={tr('Жин %')} onChange={(e) => set(i, 'weight', e.target.value)} /></td>
@@ -223,7 +225,7 @@ export function AddRowsPanel({
         </tbody>
       </table>
       <div className={f.ppAddFt}>
-        <button type="button" className={f.ppMini} onClick={() => setItems((xs) => [...xs, { ...EMPTY }])}>{tr('Мөр нэмэх')}</button>
+        <button type="button" className={f.ppMini} onClick={() => setItems((xs) => [...xs, blank()])}>{tr('Мөр нэмэх')}</button>
         {sum != null && (
           <span className={Math.abs(sum - 100) > 0.01 ? f.ppAddWarn : undefined}>
             {tr('Жингийн нийлбэр: {0}%', Math.round(sum * 100) / 100)}

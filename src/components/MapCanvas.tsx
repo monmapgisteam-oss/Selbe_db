@@ -3033,7 +3033,8 @@ export const MapCanvas = memo(function MapCanvas({
       abort?.abort();
       if (!view.destroyed) {
         view.ui.remove(expand);
-        tools.forEach((t) => { if (t.analysis) sv.analyses.remove(t.analysis); });
+        /* 2026-11-04: remove-ийн дараа destroy — эс бөгөөс 2D↔3D сэлгэх бүрд 6 Analysis handle-тайгаа хоцорч гоожно */
+        tools.forEach((t) => { if (t.analysis) { sv.analyses.remove(t.analysis); t.analysis.destroy(); t.analysis = null; } });
       }
       expand.destroy();
     };
@@ -3266,7 +3267,7 @@ export const MapCanvas = memo(function MapCanvas({
       if (!view.destroyed) {
         view.ui.remove(expandV);
         view.ui.remove(expandS);
-        if (vma) sv.analyses.remove(vma);
+        if (vma) { sv.analyses.remove(vma); vma.destroy(); vma = null; }
       }
       expandV.destroy();
       expandS.destroy();

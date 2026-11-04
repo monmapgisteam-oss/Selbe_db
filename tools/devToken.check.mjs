@@ -22,6 +22,14 @@ assert.match(cfg, /NEXT_DEV_ARCGIS_TOKEN: process\.env\.NODE_ENV === 'developmen
   'next.config.mjs: NEXT_DEV_ARCGIS_TOKEN нь development + AUTH_OFF үед л, бусад үед хоосон байх ёстой');
 console.log('  ✓ next.config — development + AUTH_OFF үед л, бусад үед хоосон');
 
+/* ── 1b. dev сервер ЗӨВХӨН 127.0.0.1-д сонсоно (2026-11-04) — `next dev` анхдагчаар бүх интерфэйст сонсдог тул
+ *    нэг сүлжээний өөр машин `/_next/static/chunks/*.js`-ээс dev токеныг уншиж чадах байв; хөтчийн localhost хаалт
+ *    (`devTokenFor`) багцын АГУУЛГЫГ хамгаалахгүй. */
+const pkgJson = JSON.parse(read('package.json'));
+assert.match(String(pkgJson.scripts?.dev ?? ''), /(^|\s)-H 127\.0\.0\.1(\s|$)/,
+  'package.json: `next dev` зөвхөн 127.0.0.1-д сонсох ёстой (-H 127.0.0.1) — dev токен LAN-д багцаар ил гарахгүй');
+console.log('  ✓ package.json — dev сервер зөвхөн 127.0.0.1-д сонсоно');
+
 /* ── 2. authToken.devToken — гурван хаалт ── */
 const at = read('src/lib/authToken.ts');
 assert.match(at, /export function devTokenFor\([\s\S]{0,300}o\.nodeEnv !== 'development' \|\| o\.appId\) return null;/, 'devTokenFor: development ба appId хаалт');

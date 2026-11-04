@@ -34,7 +34,8 @@ import { cat, date, mnt, num, pct, monthKey, NO_DATA } from '@/lib/format';
 const remainMnt = (v: number | null | undefined): string =>
   v == null || !Number.isFinite(v) ? '—' : v === 0 ? tr('0 ₮') : mnt(v);
 import { hoTotals } from '@/lib/ipc';
-import { paidShareOf, type PaidShare } from '@/lib/paidShare';
+/* «Олгосон хувь» — удирдлагын тайлан · IPC · CEO-той НЭГ томьёо (2026-11-04: давхар хуулбарыг хасав) */
+import { paidPctOf, paidShareOf, type PaidShare } from '@/lib/paidShare';
 import { PackLayers } from '@/components/PackLayers';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
@@ -198,12 +199,6 @@ function pkgGivenTotal(rows: FinData['contracts'], d: FinData): number {
   }
   return s;
 }
-
-/**
- * «ОЛГОСОН ХУВЬ» — олгосон ÷ гэрээлсэн дүн × 100 (0–100), гэрээлсэн дүн 0 бол `null`.
- */
-export const paidPctOf = (given: number, contract: number): number | null =>
-  contract > 0 ? (given / contract) * 100 : null;
 
 /**
  * БАГЦ БҮРИЙН САНХҮҮЖИЛТ — «Багц бүрийн санхүүжилт» жагсаалт ба дээд KPI-тай

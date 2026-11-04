@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "selbe-agent",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "agent:dev"],
+      "port": 8787
+    },
+    {
       "name": "selbe",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
@@ -10,7 +16,7 @@
     {
       "name": "selbe-claude-8199",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["next", "dev", "-p", "8199"],
+      "runtimeArgs": ["next", "dev", "-H", "127.0.0.1", "-p", "8199"],
       "env": { "NEXT_DIST_DIR": ".next-claude-dev" },
       "port": 8199
     }

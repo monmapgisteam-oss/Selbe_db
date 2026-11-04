@@ -264,9 +264,13 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
 /* ── 5. 2026-10-01 (ШИЙДВЭР): «Багцын санхүү»-гийн «олгосон хувь» = олгосон ÷ ГЭРЭЭЛСЭН ДҮН
       (`gdash.contractedScope`) — удирдлагын тайлантай нэг хуваарь, шошго «гэрээний дүнгийн %» ── */
 {
-  const { pkgFinRows, paidPctOf } = await import('@/modules/PkgFin.tsx');
+  const { pkgFinRows } = await import('@/modules/PkgFin.tsx');
+  const { paidPctOf } = await import('@/lib/paidShare.ts');
   assert.equal(paidPctOf(25, 100), 25);
   assert.equal(paidPctOf(25, 0), null, 'гэрээлсэн дүн 0 — хувь зохиохгүй');
+  /* PkgFin-д тусдаа хуулбар байхгүй — удирдлагын тайлантай НЭГ томьёо (`paidShare.paidPctOf`) */
+  const pkgFinSrc = (await import('node:fs')).readFileSync('src/modules/PkgFin.tsx', 'utf8');
+  assert.ok(!/export const paidPctOf/.test(pkgFinSrc) && /import \{[^}]*\bpaidPctOf\b[^}]*\} from '@\/lib\/paidShare'/.test(pkgFinSrc), 'PkgFin: paidPctOf-ийг paidShare-аас импортолно');
   const fin = {
     contracts: [
       /* Багц 1: гэрээлсэн 400 + гэрээгүй мөрийн ХО 600 (төлөвлөгөөнд орно, хуваарьт ОРОХГҮЙ) */

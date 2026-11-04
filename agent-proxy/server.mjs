@@ -320,7 +320,9 @@ const server = createServer(async (req, res) => {
       const failKey = TRUSTED_PROXY
         ? `authfail:${ip}`
         : `authfail:${ip}:${tokenHash(token).slice(0, 16)}`;
-      const ipFailCapped = Boolean(TRUSTED_PROXY) || !/^(127\.|::1$|::ffff:127\.)/.test(ip);
+      /* 2026-11-04: loopback-ийг ч хязгаарлана — TRUSTED_PROXY-гүй тунелийн ард бүх хүсэлт 127.0.0.1-ээс ирэх тул
+         үүнийг алгасвал санамсаргүй токен эргэлдүүлэгч бүр шинэ `authfail:…:<hash>` сав авч порталыг хязгааргүй цохидог байв. */
+      const ipFailCapped = true;
       if (limiter.full(failKey, LIMITS.authFail) || (ipFailCapped && limiter.full(`authfailip:${ip}`, LIMITS.authFailIp))) {
         json(res, 429, { error: "Хэт олон амжилтгүй нэвтрэлт — түр хүлээгээд дахин оролдоно уу.", retryable: true });
         return;

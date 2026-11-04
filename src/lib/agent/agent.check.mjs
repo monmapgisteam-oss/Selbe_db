@@ -83,29 +83,43 @@ async function startRelay() {
   relay = spawn(process.execPath, ['agent-proxy/server.mjs'], {
     env: {
       ...process.env,
+      AGENT_BACKEND: 'api',
       PORT: String(RELAY_PORT),
       ALLOW_ORIGIN: 'http://localhost:8123',
       ANTHROPIC_API_KEY: 'sk-ant-test-key',
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${MOCK_PORT}`,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   });
-  relay.stderr.on('data', (d) => process.stderr.write(`[relay] ${d}`));
-
-  for (let i = 0; i < 60; i++) {
+  let output = '';
+  let stopped = null;
+  const capture = (d) => { output = (output + d).slice(-4000); };
+  relay.stdout.on('data', capture);
+  relay.stderr.on('data', (d) => { capture(d); process.stderr.write(`[relay] ${d}`); });
+  relay.once('error', (e) => { stopped = e.message; });
+  relay.once('exit', (code, signal) => { stopped = `exit=${code}, signal=${signal}`; });
+  const configuredMs = Number(process.env.AGENT_TEST_STARTUP_MS);
+  const timeoutMs = Number.isFinite(configuredMs) && configuredMs > 0 ? configuredMs : 60_000;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (stopped) throw new Error(`Реле эхлэхдээ зогслоо (${stopped})\n${output}`);
     try {
-      const r = await fetch(`http://127.0.0.1:${RELAY_PORT}/health`);
+      const r = await fetch(`http://127.0.0.1:${RELAY_PORT}/health`, {
+        signal: AbortSignal.timeout(Math.max(1, Math.min(1000, deadline - Date.now()))),
+      });
       if (r.ok) return r.json();
     } catch {
       /* хараахан асаагүй */
     }
     await sleep(100);
   }
-  throw new Error('Реле асаагүй');
+  throw new Error(`Реле ${timeoutMs} мс-д бэлэн болсонгүй${stopped ? ` (${stopped})` : ''}\n${output}`);
 }
 
 async function stopRelay() {
   if (!relay) return;
+  if (!relay.pid || relay.exitCode !== null || relay.signalCode !== null) { relay = null; return; }
   const done = new Promise((r) => relay.once('exit', r));
   relay.kill();
   await done;

@@ -9,7 +9,7 @@
  * ЦЭВЭР функц болж, гурван газраас (FillNew · hyanaltStore.apply ·
  * hyanaltDetail) НЭГ эх сурвалжаар дуудагдана.
  */
-import { cellObyem, cellPct, computeAll, dayToMs, fmtInc, incCell, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
+import { cellObyem, cellPct, computeAll, dayToMs, fmtInc, incCell, msToDay, numLoose, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
 import type { Schema } from "./bagts.pkg";
 import type { NewRow, SubmissionPayload } from "@/lib/submission";
 import { t as tr } from "@/lib/i18nCore";
@@ -671,6 +671,25 @@ export const dayObyem = (cum: number | null | undefined, base: number | null | u
   if (c == null) return base == null || base === 0 ? null : Math.round(-base * 1e6) / 1e6;
   return Math.round((c - (base ?? 0)) * 1e6) / 1e6;
 };
+/**
+ * ЖААЗ БИЧИХ СУУРЬ. Шинэ жааз ачаалсан жаазтай НЭГ ӨДӨР (fillMs-ийн өдөр = ачаалсан жаазын `fillDate`-ийн өдөр) бол
+ * тэр өдрийн ажил (`obyemDay`) суурьд ОРОХГҮЙ — `priorObyem`/`loadRows` өдөр бүрээс СҮҮЛИЙН жаазыг л тоолдог тул шинэ
+ * жааз өдрийн БҮХ ажлыг авч явах ёстой. Эс бөгөөс нэг өдрийн 2 дахь нийтлэл эхний нийтлэлийн ажлыг хуримтлалаас гээдэг
+ * (10:00-д 10 → 15:00-д +5 → дахин ачаалахад 5). Өөр өдөр бол ачаалсан хуримтлал (`obyemBase`) хэвээр.
+ */
+export function frameBase(
+  r: Pick<SheetRow, "raw" | "obyemBase" | "obyemDay">,
+  sc: Pick<Schema, "f">,
+  fillMs: number,
+): (number | null)[] | undefined {
+  const base = r.obyemBase;
+  if (!base) return undefined;
+  const loadedMs = sc.f.fillDate ? numLoose(r.raw?.[sc.f.fillDate]) : null;
+  if (loadedMs == null || msToDay(loadedMs) !== msToDay(fillMs)) return base;
+  const day = r.obyemDay;
+  if (!day) return base;
+  return base.map((b, i) => (b == null && day[i] == null ? null : (b ?? 0) - (day[i] ?? 0)));
+}
 /** Мөрийн өдрийн ажлын нийлбэр (`obyem_sum` талбар) — блок бүрийн `dayObyem` */
 export function dayObyemSum(
   sc: Pick<Schema, "obyem">,
@@ -734,6 +753,8 @@ export function buildFrame(
   return rows.map((r, i) => {
     // Мэддэггүй багана ч хуулбарт үлдэхийн тулд БҮХ талбараас эхэлнэ.
     const a: Record<string, unknown> = { ...r.raw };
+    /* 2026-11-04: нэг өдрийн 2 дахь жааз — тэр өдрийн ажил суурьд орохгүй (`frameBase`) */
+    const base = frameBase(r, sc, fillMs);
     for (let b = 0; b < nBld; b++) {
       /*
        * `act[b]` нь обьём ÷ мөрийн Обьём — хуваарь буруу эсвэл хуримтлалыг
@@ -746,7 +767,7 @@ export function buildFrame(
       // Хуримтлагдсан обьём — хувийн ЭХ СУРВАЛЖ. Талбаргүй блок бий тул
       // шалгаж байж бичнэ; бүлгийн мөрд хоосон (нэгж нь зөрдөг).
       /* 2026-11-04: жаазанд тухайн ӨДРИЙН ажил бичигдэнэ (хуримтлал биш) — `dayObyem` */
-      if (sc.obyem[b]) a[sc.obyem[b]!] = dayObyem(c[i].obyem[b], r.obyemBase?.[b]);
+      if (sc.obyem[b]) a[sc.obyem[b]!] = dayObyem(c[i].obyem[b], base?.[b]);
       if (sc.start[b]) a[sc.start[b]!] = c[i].startSrc[b] === "agg" ? null : c[i].start[b];
       if (sc.end[b]) a[sc.end[b]!] = c[i].endSrc[b] === "agg" ? null : c[i].end[b];
       /*
@@ -763,7 +784,7 @@ export function buildFrame(
     if (sc.f.hunHuch) a[sc.f.hunHuch] = r.hun;
     if (sc.f.mashin) a[sc.f.mashin] = r.mashin;
     // ОБЬЁМЫН НИЙЛБЭР — талбар байвал л бичнэ (шинэ багана, 10/10 багцад бий)
-    if (sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum)) a[sc.f.obyemSum] = dayObyemSum(sc, c[i].obyem, r.obyemBase);
+    if (sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum)) a[sc.f.obyemSum] = dayObyemSum(sc, c[i].obyem, base);
     /*
      * МӨНГӨН ДҮН (excel H) — ДЭЛГЭЦ ДЭЭР БОДОГДДОГ УТГЫГ АРХИВТ Ч БИЧНЭ.
      */
