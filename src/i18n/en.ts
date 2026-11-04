@@ -7755,7 +7755,6 @@ const en: Record<string, string> = {
   "Энэ нэмсэн ажлын мөрийг устгах (хадгалахад)": "Delete this added work row (on save)",
   "Ажил нэмэх": "Add work",
   "«+ Ажил нэмэх» — багцын зураг төслийн мөрийн доор нэрээр ажил нэмнэ; «Төсөл төлөвлөгөө биелэлт» хүснэгтэд хадгалагдаж тэр хуудсанд ч харагдана. Жин нь ажлуудад тэнцүү хуваагдана, хувь эсвэл дүнгээр өөрчилж болно. Ажлын төсөвт өртөг = эцэг мөрийн төсөв × жин; эцэг мөрийн төсөв өөрчлөгдөхгүй.": "“+ Add work” adds a named work under a package's working-design row; it is saved in the “Project plan and performance” table and also appears on that page. Weights are split equally among the works and can be changed as a percentage or amount. Work budget = parent row's budget × weight; the parent row's budget does not change.",
-<<<<<<< HEAD
   "«{0}»-г ХАБЭА-ийн багцын хязгаараас бүрэн хасах уу? Хассаны дараа тэр аккаунт ХАБЭА хуудсанд БҮХ багцыг харна.": "Remove «{0}» from the HSE package limit entirely? After removal that account sees ALL packages on the HSE page.",
   "ХАБЭА харах багцын хуваарилалт": "HSE view package assignment",
   "«ХАБЭА-ийн бүртгэл оруулах» нь эрх олгоно; «ХАБЭА — багцаар харах» хүснэгт нь ХЯЗГААРЛАНА: хүснэгтэд нэмсэн аккаунт зөвхөн заасан багцаа харна.": "«HSE data entry» grants a right; the «HSE — view by package» table RESTRICTS: an account added to it sees only the given packages.",
@@ -7768,7 +7767,6 @@ const en: Record<string, string> = {
   "Багцаар харах": "View by package",
   "Энэ багцад гүйцэтгэгчийн хүн хүчний бүртгэл алга": "No contractor workforce records for this package",
   "Хүн хүчний мэдээлэл татагдсангүй": "Workforce data could not be loaded",
-=======
   "Хөрөнгө оруулалтын дүн (захирамж)": "Investment amount (order)",
   "Үнэт цаасны хувь": "Bond share",
   "Үе шатны хувь": "Stage progress",
@@ -7822,7 +7820,6 @@ const en: Record<string, string> = {
   "IPC БАРИМТ": "IPC DOCUMENTS",
   "IPC-д оруулах": "Include in IPC",
   "дүн сөрөг": "amount is negative",
->>>>>>> 1c12f479 (feat(ipc): IPC үүсгэх дараалал · гэрээ үүсгэх/цуцлах · жааз тухайн өдрийн ажлыг хадгална · олгосон дүн ТТБ-д)
 };
 
 export default en;

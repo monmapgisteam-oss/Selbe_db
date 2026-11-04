@@ -576,11 +576,7 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m)));
-<<<<<<< HEAD
-  assert.equal(PLAIN_CAPS.length, 11, `энгийн эрх ЯГ 11 байх ёстой, олдсон: ${PLAIN_CAPS.length}`);
-=======
-  assert.equal(PLAIN_CAPS.length, 13, `энгийн эрх ЯГ 13 байх ёстой (2026-11-04: + ipcApprove), олдсон: ${PLAIN_CAPS.length}`);
->>>>>>> 1c12f479 (feat(ipc): IPC үүсгэх дараалал · гэрээ үүсгэх/цуцлах · жааз тухайн өдрийн ажлыг хадгална · олгосон дүн ТТБ-д)
+  assert.equal(PLAIN_CAPS.length, 12, `энгийн эрх ЯГ 12 байх ёстой (2026-11-04: + ipcApprove; habeaOwn гаргалгаатай болсон), олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
