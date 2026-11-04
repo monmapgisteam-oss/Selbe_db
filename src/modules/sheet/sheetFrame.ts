@@ -9,7 +9,7 @@
  * ЦЭВЭР функц болж, гурван газраас (FillNew · hyanaltStore.apply ·
  * hyanaltDetail) НЭГ эх сурвалжаар дуудагдана.
  */
-import { cellObyem, cellPct, computeAll, dayToMs, fmtInc, incCell, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
+import { cellObyem, cellPct, computeAll, dayToMs, fmtInc, incCell, msToDay, parseInc, synNoVol, type SheetRow } from "./bagtsSheet";
 import type { Schema } from "./bagts.pkg";
 import type { NewRow, SubmissionPayload } from "@/lib/submission";
 import { t as tr } from "@/lib/i18nCore";
@@ -731,7 +731,10 @@ export function buildFrame(
     for (const r of rows) if (r.des != null && r.des > nextDes) nextDes = r.des;
   }
 
+  const fillDay = msToDay(fillMs);
   return rows.map((r, i) => {
+    /* Ижил өдрийн жааз өмнөхийг орлоно — суурь нь тэр өдрөөс өмнөх хуримтлал, эс бөгөөс өмнөх ажил устана */
+    const obyemBase = r.frameDay && r.frameDay === fillDay && r.obyemPrior ? r.obyemPrior : r.obyemBase;
     // Мэддэггүй багана ч хуулбарт үлдэхийн тулд БҮХ талбараас эхэлнэ.
     const a: Record<string, unknown> = { ...r.raw };
     for (let b = 0; b < nBld; b++) {
@@ -746,7 +749,7 @@ export function buildFrame(
       // Хуримтлагдсан обьём — хувийн ЭХ СУРВАЛЖ. Талбаргүй блок бий тул
       // шалгаж байж бичнэ; бүлгийн мөрд хоосон (нэгж нь зөрдөг).
       /* 2026-11-04: жаазанд тухайн ӨДРИЙН ажил бичигдэнэ (хуримтлал биш) — `dayObyem` */
-      if (sc.obyem[b]) a[sc.obyem[b]!] = dayObyem(c[i].obyem[b], r.obyemBase?.[b]);
+      if (sc.obyem[b]) a[sc.obyem[b]!] = dayObyem(c[i].obyem[b], obyemBase?.[b]);
       if (sc.start[b]) a[sc.start[b]!] = c[i].startSrc[b] === "agg" ? null : c[i].start[b];
       if (sc.end[b]) a[sc.end[b]!] = c[i].endSrc[b] === "agg" ? null : c[i].end[b];
       /*
@@ -763,7 +766,7 @@ export function buildFrame(
     if (sc.f.hunHuch) a[sc.f.hunHuch] = r.hun;
     if (sc.f.mashin) a[sc.f.mashin] = r.mashin;
     // ОБЬЁМЫН НИЙЛБЭР — талбар байвал л бичнэ (шинэ багана, 10/10 багцад бий)
-    if (sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum)) a[sc.f.obyemSum] = dayObyemSum(sc, c[i].obyem, r.obyemBase);
+    if (sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum)) a[sc.f.obyemSum] = dayObyemSum(sc, c[i].obyem, obyemBase);
     /*
      * МӨНГӨН ДҮН (excel H) — ДЭЛГЭЦ ДЭЭР БОДОГДДОГ УТГЫГ АРХИВТ Ч БИЧНЭ.
      */

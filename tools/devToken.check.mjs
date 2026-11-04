@@ -60,4 +60,19 @@ assert.equal(devTokenFor({ ...base, token: '  ' }), null, 'хоосон токе
 assert.deepEqual(tokenParam(), {}, 'хөтчгүй үед токенгүй');
 console.log('  ✓ ажиллагаа — localhost л; LAN/домэйн/SSR/production/нэвтрэлт асаалттай → токенгүй');
 
+{
+  const { isWriteEndpoint } = await import('../src/lib/authToken.ts');
+  assert.equal(isWriteEndpoint('https://x/FeatureServer/0/applyEdits'), true);
+  assert.equal(isWriteEndpoint('https://x/FeatureServer/0/applyEdits?f=json'), true);
+  assert.equal(isWriteEndpoint('https://x/sharing/rest/content/users/u/items/1/delete'), true);
+  assert.equal(isWriteEndpoint('https://x/FeatureServer/0/query'), false);
+  const q = readFileSync('src/lib/query.ts', 'utf8');
+  assert.ok(q.includes('userTok.token === devToken() && !readReq && isWriteEndpoint(full)'), 'query.ts: dev токеноор бичихгүй');
+  const a = readFileSync('src/lib/authToken.ts', 'utf8');
+  assert.ok(a.includes('if (isWriteEndpoint(p.url)) throw new Error(DEV_WRITE_BLOCKED())'), 'JS API-ийн бичилт ч хаалттай');
+  const pt = readFileSync('src/components/Portal.tsx', 'utf8');
+  assert.ok(pt.includes("usePublicSync(auth.status === 'signed-in');") && pt.includes("useHoSync(auth.status === 'signed-in');"), 'нэвтрэлт унтраалттай үед sync асахгүй');
+  assert.ok(/"dev": "next dev -H 127\.0\.0\.1/.test(readFileSync('package.json', 'utf8')), 'dev сервер зөвхөн localhost');
+}
+
 console.log('✅ devToken.check: dev токен зөвхөн локал dev сервер, нэвтрэлт унтраалттай үед');

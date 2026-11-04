@@ -575,22 +575,20 @@ function FmColumn({ kind, maNo, state, rows, canAuthor, canReview, me, onChanged
             <span className={s.cardNo}>{day(d.docDate)} · {d.uploadedBy}</span>
             {d.status !== 'pending' && <span className={s.cardNo}>{tr('Шийдвэрлэсэн: {0} · {1}', d.decidedBy, day(d.decidedAt))}</span>}
             {d.reason && <p className={s.pre}>{d.reason}</p>}
-            {d.status === 'pending' && canReview && !mine && (() => {
-              const noText = !(reason[d.oid] ?? '').trim();
-              const vBtn = (v: Verdict) => (
-                <button type="button" className={s.ghostBtn} disabled={busy || (v !== 'A' && noText)}
-                  title={v !== 'A' && noText ? tr('{0} — эхлээд санал/шалтгаанаа бичнэ үү', verdictLabel(v)) : verdictLabel(v)}
-                  aria-label={verdictLabel(v)} onClick={() => { void decide(d, v); }}>{v}</button>
-              );
-              return (
+            {d.status === 'pending' && canReview && !mine && (
                 <div className={s.addForm}>
                   <input className={s.input} value={reason[d.oid] ?? ''} onChange={(e) => setReason((m) => ({ ...m, [d.oid]: e.target.value }))}
                     placeholder={tr('Санал (AN) / буцаах шалтгаан (R)')} aria-label={tr('Санал (AN) / буцаах шалтгаан (R)')}
                     disabled={busy} maxLength={FM_REASON_MAX} />
-                  {vBtn('A')}{vBtn('AN')}{vBtn('R')}
+                  {(['A', 'AN', 'R'] as const).map((v) => (
+                    <button key={v} type="button" className={s.ghostBtn}
+                      disabled={busy || (v !== 'A' && !(reason[d.oid] ?? '').trim())}
+                      title={v !== 'A' && !(reason[d.oid] ?? '').trim()
+                        ? tr('{0} — эхлээд санал/шалтгаанаа бичнэ үү', verdictLabel(v)) : verdictLabel(v)}
+                      aria-label={verdictLabel(v)} onClick={() => { void decide(d, v); }}>{v}</button>
+                  ))}
                 </div>
-              );
-            })()}
+            )}
             {d.status === 'pending' && mine && <span className={s.note}>{tr('Өөр хянагч батална.')}</span>}
           </div>
         );

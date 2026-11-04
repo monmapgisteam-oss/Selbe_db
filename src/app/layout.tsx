@@ -90,6 +90,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="mn" suppressHydrationWarning>
       <head>
+        {/* Газрын зураг, реле, нэвтрэлтэд нөлөөлөхгүй хамгаалалт. script-src, connect-src-ийг хөтчөөр туршсаны дараа нэмнэ */}
+        <meta httpEquiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'" />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
       <body>

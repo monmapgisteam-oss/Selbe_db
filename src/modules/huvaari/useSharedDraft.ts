@@ -183,6 +183,7 @@ export function useSharedDraft({
   const hdMapsRef = useLatest({ draft, ham, aDraft, resDraft, obDraft, obRes: obResDraft });
   /** Нүд → хэн хэзээ (локал мета) */
   const hdMeta = useRef(new Map<string, { at: number; user: string }>());
+  const [hdMetaView, setHdMetaView] = useState<ReadonlyMap<string, { at: number; user: string }>>(() => new Map());
   /** Хассан нүд → агшин (tombstone, 7 хоног) */
   const hdDel = useRef(new Map<string, number>());
   /** Сүүлд тулгасан нүдүүд — диффийн суурь ба `hdLocal`-ийн эх */
@@ -383,6 +384,7 @@ export function useSharedDraft({
     }
     hdPrev.current = cur;
     if (hdOverAgg.current.n) hdOverFlush();
+    if (changed) setHdMetaView(new Map(hdMeta.current));
     return changed;
   }, [hdStamp, hdKeyRef, obStateRef, hdWritableRef, hdMapsRef, hdCtxRef, meRef, hdOverFlush]);
   /** Алдааны дараах дахин оролдлого — backoff-той */
@@ -400,11 +402,13 @@ export function useSharedDraft({
     const entries: HDEntries = new Map();
     /* Хуучирсан нүд — эх мета-тайгаа; доорх `hdPrev` ижил түлхүүрт дарна */
     for (const [k, e] of hdStale.current) entries.set(k, { val: e.val, bv: e.bv, at: e.at, user: e.user });
+    let metaChanged = false;
     for (const [k, c] of hdPrev.current) {
       let m = hdMeta.current.get(k);
-      if (!m) { m = { at: now, user: meRef.current }; hdMeta.current.set(k, m); }
+      if (!m) { m = { at: now, user: meRef.current }; hdMeta.current.set(k, m); metaChanged = true; }
       entries.set(k, { val: c.val, bv: c.bv, at: m.at, user: m.user });
     }
+    if (metaChanged) setHdMetaView(new Map(hdMeta.current));
     const rk = new Map<number, HDRowKey>();
     const ctxRows = hdCtxRef.current.rows;
     for (const k of entries.keys()) {
@@ -511,6 +515,7 @@ export function useSharedDraft({
     }
     hdSeen.current = seen;
     hdMeta.current = meta;
+    setHdMetaView(new Map(meta));
     hdDel.current = del;
     hdStale.current = st;
     hdCleared.current = Math.max(hdCleared.current, d.cleared ?? 0);
@@ -637,6 +642,7 @@ export function useSharedDraft({
       const del = new Map(hdDel.current);
       for (const [k, a] of mark.keys) if ((del.get(k) ?? -1) < a) del.set(k, a);
       hdMeta.current = new Map(); hdDel.current = del; hdPrev.current = new Map();
+      setHdMetaView(new Map());
       hdExpectEmpty.current = hdReady.current === key;
       hdCleared.current = Math.max(hdCleared.current, mark.ts);
       hdLastSig.current = '';
@@ -778,6 +784,7 @@ export function useSharedDraft({
     hdReady.current = null;
     setHdReadyKey(null);
     hdMeta.current = new Map(); hdDel.current = new Map(); hdPrev.current = new Map(); hdStale.current = new Map();
+    setHdMetaView(new Map());
     hdCleared.current = 0;
     /* 2026-10-04: ажиглалт · хоосролтын хүлээлт · түгжээний өр — түлхүүр бүрт шинээр */
     hdSeen.current = new Map(); hdExpectEmpty.current = false; hdOwed.current = false; hdLocalSeen.current = 0;
@@ -922,6 +929,7 @@ export function useSharedDraft({
     const mvRef = <V,>(m: Map<string, V>): Map<string, V> => new Map([...m].map(([k, v]) => [mvKey(k), v]));
     hdPrev.current = mvRef(hdPrev.current);
     hdMeta.current = mvRef(hdMeta.current);
+    setHdMetaView(new Map(hdMeta.current));
     hdSeen.current = mvRef(hdSeen.current);
     hdRemapHold.current = { draft: cur.draft };
     setDraft(mv(cur.draft)); setHam(mv(cur.ham)); setADraft(mv(cur.aDraft)); setResDraft(mv(cur.resDraft));
@@ -955,6 +963,7 @@ export function useSharedDraft({
       for (const k of cur.keys()) {
         if (!hdMeta.current.has(k)) hdMeta.current.set(k, { at: now || (now = hdStamp()), user: meRef.current });
       }
+      if (now) setHdMetaView(new Map(hdMeta.current));
       hdPrev.current = cur;
       return;
     }
@@ -1132,7 +1141,7 @@ export function useSharedDraft({
           || ((hdSt.st === 'big' || hdSt.st === 'local') && dirtyN > 0);
 
   return {
-    hdSt, hdUsers, hdLabel, hdReadyKey, hdReady, hdLastSeenAt, hdFlushRef, hdClearRef,
+    hdSt, hdUsers, hdLabel, hdReadyKey, hdReady, hdLastSeenAt, hdFlushRef, hdClearRef, hdMetaView,
     hdTimerRef: hdTimer, hdSkipUnlockOnceRef: hdSkipUnlockOnce, hdMapsRef, hdMeta, meRef, hdKeyRef, hdWritableRef, canEditRef,
     askSwitch, hdClear, hdResetRestore, hdRetryRestore,
     hdOrphan,

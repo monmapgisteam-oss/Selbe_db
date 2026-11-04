@@ -422,6 +422,9 @@ export function pendingAutoOf(pays: readonly Row[]): TuhIpcReview | null {
   let latest: string | null = null;
   for (const r of pays) {
     if (!isAuto(r) || hoAmount(r) != null) continue;
+    /* Батлахад `dun` зөвхөн баримтын мөрд бичигддэг — AUTO мөрийн төлөвөөр олгосон, цуцалсныг хасна */
+    const st = s(r[HO_IPC.status.field]).trim();
+    if (st === HO_IPC.status.paid || st === HO_IPC.status.cancelled) continue;
     count += 1;
     const v = numOf(r[LINK_FIELDS.une]);
     if (v != null) une = (une ?? 0) + v;

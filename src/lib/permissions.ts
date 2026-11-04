@@ -375,7 +375,7 @@ export async function retryDirty(onlyMine = false): Promise<number> {
 }
 
 /**
- * ArcGIS хүснэгтээс эрхийг татаж cache-д хийнэ. Super admin (`canCreate`) анх
+ * ArcGIS хүснэгтээс эрхийг татаж cache-д хийнэ. Super admin (`canCreate` = итгэмжлэгдсэн сешн) анх
  * дуудахад хүснэгт байхгүй бол автоматаар үүсгэнэ. Нэвтэрсний дараа дуудна.
  * ArcGIS байхгүй/алдаа бол `localStorage`-ийн cache хэвээр (offline).
  *
@@ -388,16 +388,16 @@ export async function retryDirty(onlyMine = false): Promise<number> {
 export async function initRemote(canCreate: boolean, trusted: boolean = canCreate): Promise<boolean> {
   const fetched = _beginRemoteFetch();
   try {
-    return await initRemoteInner(canCreate, trusted);
+    return await initRemoteInner(trusted);
   } finally {
     fetched();
   }
 }
 
-async function initRemoteInner(canCreate: boolean, trusted: boolean): Promise<boolean> {
+async function initRemoteInner(trusted: boolean): Promise<boolean> {
   const { fetchAll } = await import('./permsRemote');
   const typesMark = _typesMark();
-  const remote = await fetchAll(canCreate);
+  const remote = await fetchAll();
   if (!remote) return false; // ArcGIS алга — cache хэвээр
   malformedRows = remote.malformed ?? [];
 
@@ -643,7 +643,10 @@ function baseline(username: string): Access | null {
 export function hasAccess(username?: string | null): boolean {
   if (!username) return false;
   if (isHardSuper(username)) return true;
-  const ov = loadStore()[username.trim().toLowerCase()];
+  /* Энгийн объектын түлхүүр: `constructor` · `__proto__` нэр удамшсан утгаар эрх авах ёсгүй */
+  const store = loadStore();
+  const uKey = username.trim().toLowerCase();
+  const ov = Object.hasOwn(store, uKey) ? store[uKey] : undefined;
   if (ov?.removed) return false;
   if (roleForUser(username)) return true;
   return remoteLoaded && !!ov;

@@ -253,7 +253,7 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
   /** Домэйны кодууд — ачаалагдсан эсэх нь үйлчилгээ хүрэх эсэхийн шалгуур */
   const [dom, setDom] = useState<{ code: string; name: string }[] | null>(null);
   const [week, setWeek] = useState(() => String(lastFullWeek().no));
-  const [metric, setMetric] = useState<string>(W.kinds[0].metric);
+  const [selectedMetric, setMetric] = useState<string>(W.kinds[0].metric);
   const [cols, setCols] = useState<Record<string, string>>({});
   const [prior, setPrior] = useState<{ before: number; sig: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -280,10 +280,9 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
     const rest = (dom ?? []).filter((c) => !used.has(c.code)).map((c) => ({ metric: c.code, label: c.name.trim() }));
     return [...card, ...rest];
   }, [dom, W.kinds]);
+  const metric = kinds.some((k) => k.metric === selectedMetric)
+    ? selectedMetric : kinds[0]?.metric ?? selectedMetric;
   const metricOk = kinds.some((k) => k.metric === metric);
-  useEffect(() => {
-    if (dom && kinds.length && !metricOk) setMetric(kinds[0].metric);
-  }, [dom, kinds, metricOk]);
   const weekN = /^\d+$/.test(week.trim()) ? Number(week) : null;
   const weekOk = isWeekNo(weekN);
   const parsed = Object.fromEntries(W.pkgCols.map(([c]) => [c, cellOf(cols[c])]));

@@ -11,6 +11,8 @@ import { loadPublicEnv, devLocal, adminToken, liveStatus } from './liveEnv.mjs';
 const ENTRY = String(process.argv[1] ?? '').replace(/\\/g, '/');
 const IS_CHECK = /\.check\.mjs$/i.test(ENTRY);
 
+/* Шалгуурууд локал `.env.development.local`-ын нэвтрэлт унтраах тохиргооноос хамаарахгүй */
+if (IS_CHECK) process.env.NEXT_PUBLIC_AUTH_OFF ||= '0';
 const HAD_HJ = !!process.env.NEXT_PUBLIC_ENT_DATA;
 const envRead = loadPublicEnv(process.env);
 if (!envRead && !HAD_HJ) {

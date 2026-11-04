@@ -434,9 +434,9 @@ function PortalContent(
   /* Зүүн цэсний «Гарах» мөрөнд (`ViewRail.onSignOut`) */
   const auth = useAuth();
   /* Нийтийн вэбийн 6 хүснэгт — систем бичилт хийх бүрт ба нээгдэхэд автоматаар шинэчилнэ (2026-11-03, `lib/publicSync`) */
-  usePublicSync(auth.status === 'signed-in' || auth.status === 'off');
+  usePublicSync(auth.status === 'signed-in');
   /* HO (185) гэрээний түвшний талбар ← Cashflow (182) — ганц эх (2026-11-03, `lib/hoSync`) */
-  useHoSync(auth.status === 'signed-in' || auth.status === 'off');
+  useHoSync(auth.status === 'signed-in');
   const { clear: clearFilter, active: filterActive } = useFilter();
   const filterActiveRef = useRef(filterActive != null);
   useEffect(() => { filterActiveRef.current = filterActive != null; }, [filterActive]);

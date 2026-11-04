@@ -40,6 +40,7 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     let obyem: number | null = null;
     let une: number | null = null;
     const reads: SheetRead[] = [];
+    let noUnit = 0;
     const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p, p.floors == null ? { synthetic: true } : {}).catch(() => null)));
     const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));
 
@@ -53,6 +54,8 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
         .filter((x): x is string => !!x);
       const upTo = await latestDayUpTo(pkg.url, sc.f.fillDate, at);
       if (!upTo) { reads.push('unpublished'); continue; }
+      /* Энэ хуудас тэр өдөр жаазгүй — хуучин жаазны ажил аль хэдийн өөрийн өдрийн мөрд орсон, дахин тоолохгүй */
+      if (upTo !== at) { reads.push('read'); continue; }
       const { rows } = await loadRows(pkg, sc, upTo, need, { strict: true });
       if (!rows.length) { reads.push('missing'); continue; }
       reads.push('read');
@@ -60,6 +63,7 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
       const s = snapshotDayOf(rows, day);
       if (s.obyem != null) obyem = (obyem ?? 0) + s.obyem;
       if (s.une != null) une = (une ?? 0) + s.une;
+      noUnit += s.noUnit ?? 0;
     }
 
     const verdict = sheetsVerdict(reads);
@@ -73,7 +77,8 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
 
     /* ── 3. Шийдвэр ── */
     const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));
-    const warns = [cw, verdict.warn].filter((x): x is string => !!x);
+    const unitWarn = noUnit ? tr('{0} мөр нэгж үнэгүй тул IPC дүнд ороогүй — нэгж үнийг бөглөнө үү.', noUnit) : null;
+    const warns = [cw, verdict.warn, unitWarn].filter((x): x is string => !!x);
     const wx = warns.length ? { warn: warns.join(' · ') } : {};
     const plan = planAuto(rows, { pkg: bagts, day: at, code, obyem, une });
     if (plan.op === 'skip') {

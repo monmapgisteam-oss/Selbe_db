@@ -741,9 +741,7 @@ function LayerDashboard({
   const idRef = useRef(d.id);
   useSyncRef(idRef, d.id);
   useEffect(() => () => { if (selRef.current != null && ownsHighlight(hlRef.current, idRef.current)) setHighlight(null); }, [setHighlight]);
-  useEffect(() => {
-    if (sel != null && !ownsHighlight(highlight, d.id)) setSel(null);
-  }, [highlight, sel, d.id]);
+  if (sel != null && !ownsHighlight(highlight, d.id)) setSel(null);
   const selKey = `${d.id}|${zone ?? ''}`;
   const prevLayerRef = useRef(selKey);
   useEffect(() => {
@@ -979,9 +977,7 @@ function PickedZone({
   const hlRef = useRef(highlight);
   useSyncRef(hlRef, highlight);
   useEffect(() => () => { if (selStRef.current != null && ownsHighlight(hlRef.current, BUILT_LAYER.id)) setHighlight(null); }, [setHighlight]);
-  useEffect(() => {
-    if (selSt != null && !ownsHighlight(highlight, BUILT_LAYER.id)) setSelSt(null);
-  }, [highlight, selSt]);
+  if (selSt != null && !ownsHighlight(highlight, BUILT_LAYER.id)) setSelSt(null);
   const prevIdRef = useRef(id);
   useEffect(() => {
     if (prevIdRef.current === id) return;
@@ -1112,9 +1108,7 @@ function PickedFeature({
   const idRef = useRef(def.id);
   useSyncRef(idRef, def.id);
   useEffect(() => () => { if (activeRef.current != null && ownsHighlight(hlRef.current, idRef.current)) setHighlight(null); }, [setHighlight]);
-  useEffect(() => {
-    if (active != null && !ownsHighlight(highlight, def.id)) setActive(null);
-  }, [highlight, active, def.id]);
+  if (active != null && !ownsHighlight(highlight, def.id)) setActive(null);
   const prevAttrsRef = useRef(attrs);
   useEffect(() => {
     if (prevAttrsRef.current === attrs) return;

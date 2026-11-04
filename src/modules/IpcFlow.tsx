@@ -15,7 +15,7 @@ import { currentUser } from '@/lib/who';
 import { CASHFLOW_NEW, HO_IPC, num } from '@/lib/services';
 import { entUploadPdf } from '@/lib/entDocs';
 import { runHoSync } from '@/lib/hoSync/sync';
-import { hoPkgParts } from '@/lib/hoSync/compute';
+import { cfMatches, hoPkgParts, phasesOf } from '@/lib/hoSync/compute';
 import { userError } from '@/components/ui';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import { downloadIpcFlowPdf } from '@/lib/ipcFlowPdf';
@@ -28,7 +28,19 @@ import s from './ipcTable.module.css';
 const S = HO_IPC.status;
 const CF = CASHFLOW_NEW.fields;
 const money = (v: number | null | undefined): string => (v == null ? '—' : `${mnt(v)}`);
-const today = (): string => new Date().toISOString().slice(0, 10);
+/** Өнөөдөр — ЛОКАЛ хуанлийн өдөр (UTC-ээр өглөө 8 цагаас өмнө өмнөх өдөр гардаг) */
+const today = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+/** Гэрээний мөрүүдийг сервероос ШИНЭЭР уншина — бичихийн өмнө, өөр хэрэглэгчийн өөрчлөлтийг харахын тулд */
+const freshPays = async (code: string, pays: readonly Row[]): Promise<readonly Row[]> => (code
+  ? queryFeatures(HO_IPC.url, {
+    where: `${HO_IPC.contractFields.code} = N'${code.replace(/'/g, "''")}'`,
+    outFields: ['*'],
+    orderBy: `${HO_IPC.oid} ASC`,
+  })
+  : pays);
 const FIN_CAP = { cap: 'finEdit' } as const;
 const APPROVE_CAP = { cap: 'ipcApprove' } as const;
 
@@ -98,16 +110,27 @@ export function IpcFlowPanel({
     }
   };
 
+  const changed = () => {
+    setPicked(new Set());
+    invalidate('HO_IPC');
+    setErr(tr('Энэ хооронд өөр хэрэглэгч өөрчилсөн байна. Шинэчилсэн мэдээллийг шалгаад дахин оролдоно уу.'));
+  };
+
   const create = () => run(async () => {
     const e = createIpc(code, pays, sel, today());
     if (typeof e === 'string') { setErr(e === 'pkg' ? tr('Нэг IPC-д нэг багцын гүйцэтгэлийг л сонгоно.') : tr('Сонгоогүй гүйцэтгэлийг чеклэнэ үү.')); return; }
     const warn = [
       ...(sel.some((r) => (r.delta ?? 0) < 0) ? [tr('Сонгосон гүйцэтгэлд дүн буурсан мөр байна.')] : []),
+      ...(sel.some((r) => r.une == null) ? [tr('Сонгосон гүйцэтгэлд дүнгүй мөр байна. Нэгж үнийг бөглөхгүй бол тэр ажил IPC дүнд орохгүй.')] : []),
       ...(overContract(paid, total, contract) ? [tr('Энэ IPC-тэй хамт олгосон дүн гэрээний дүнгээс хэтэрнэ.')] : []),
     ];
     const msg = `${tr('{0} багцын {1} гүйцэтгэлээс IPC үүсгэх үү? Дүн: {2}', sel[0]?.pkg ?? '', sel.length, money(total))}${warn.length ? ` ${warn.join(' ')}` : ''}`;
     if (!(await askConfirm(msg, { ok: tr('IPC үүсгэх') }))) return;
-    await applyAll(HO_IPC.url, HO_IPC.oid, e, FIN_CAP);
+    const fresh = await freshPays(code, pays);
+    const sel2 = perfRows(fresh).filter((r) => r.status === S.work && picked.has(r.oid));
+    const e2 = sel2.length === sel.length && perfTotal(sel2) === total ? createIpc(code, fresh, sel2, today()) : null;
+    if (!e2 || typeof e2 === 'string') { changed(); return; }
+    await applyAll(HO_IPC.url, HO_IPC.oid, e2, FIN_CAP);
     setPicked(new Set());
     invalidate('HO_IPC');
   });
@@ -133,13 +156,19 @@ export function IpcFlowPanel({
     if (why) { setErr(tr('Гарын үсэгтэй сканыг эхлээд оруулна уу.')); return; }
     const q = d.isCancel ? tr('IPC-{0}-ийн цуцлалтыг баталгаажуулах уу?', d.no) : tr('IPC-{0}-г баталгаажуулах уу? {1} олгосон дүнд нэмэгдэнэ.', d.no, money(d.total));
     if (!(await askConfirm(q, { ok: tr('Баталгаажуулах') }))) return;
-    await applyAll(HO_IPC.url, HO_IPC.oid, { updates: approveIpc(d, pays) }, APPROVE_CAP);
+    const fresh = await freshPays(code, pays);
+    const d2 = docRows(fresh).find((x) => x.oid === d.oid);
+    if (!d2 || approveWhy(d2, currentUser())) { changed(); return; }
+    await applyAll(HO_IPC.url, HO_IPC.oid, { updates: approveIpc(d2, fresh) }, APPROVE_CAP);
     invalidate('HO_IPC');
   });
 
   const cancel = (d: IpcDocRow) => run(async () => {
     if (!(await askConfirm(tr('IPC-{0}-г цуцлах баримт нээх үү? Эх баримт устахгүй.', d.no), { ok: tr('Цуцлалт нээх'), danger: true }))) return;
-    await applyAll(HO_IPC.url, HO_IPC.oid, { adds: [createCancel(code, d, today())] }, APPROVE_CAP);
+    const docs2 = docRows(await freshPays(code, pays));
+    const d2 = docs2.find((x) => x.oid === d.oid);
+    if (!d2 || !canCancel(d2, docs2)) { changed(); return; }
+    await applyAll(HO_IPC.url, HO_IPC.oid, { adds: [createCancel(code, d2, today())] }, APPROVE_CAP);
     invalidate('HO_IPC');
   });
 
@@ -221,10 +250,12 @@ export function ContractCancelButton({ code, pays, cfRows }: { code: string; pay
     setBusy(true);
     setErr(null);
     try {
-      const parts = new Set(pays.flatMap((r) => hoPkgParts(r[HO_IPC.contractFields.pkg])));
+      /* Зөвхөн ЭНЭ гэрээний мөрүүд — дугаараар, эсвэл багц БА үе шатаар (`hoSync`-ийн ижил дүрэм); ижил багцын өөр гэрээ хөндөгдөхгүй */
+      const parts = [...new Set(pays.flatMap((r) => hoPkgParts(r[HO_IPC.contractFields.pkg])))];
+      const phases = phasesOf(pays.map((r) => String(r[HO_IPC.contractFields.workType] ?? '').trim()).find(Boolean) ?? '');
       const nos = new Set(pays.map((r) => String(r[HO_IPC.contractFields.contractNo] ?? '').trim()).filter(Boolean));
       const rows = cfRows.filter((r) => String(r[CF.amountNote] ?? '').trim() === 'Гэрээлсэн дүн'
-        && (nos.has(String(r[CF.contractNo] ?? '').trim()) || parts.has(hoPkgParts(r[CF.pkg])[0] ?? '')));
+        && (nos.size ? nos.has(String(r[CF.contractNo] ?? '').trim()) : cfMatches(r, parts, phases)));
       const e = contractCancel(pays, rows);
       await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: e.cf }, APPROVE_CAP);
       await applyAll(HO_IPC.url, HO_IPC.oid, { updates: e.ho }, APPROVE_CAP);
@@ -264,8 +295,11 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
   const [items, setItems] = useState<Item[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const options = useMemo(() => cfRows.filter((r) => String(r[CF.amountNote] ?? '').trim() !== 'Гэрээлсэн дүн' && String(r[CF.pkg] ?? '').trim()), [cfRows]);
-  const rowOf = (oid: number) => cfRows.find((r) => Number(r[CASHFLOW_NEW.oid]) === oid);
+  /** Гэрээ Cashflow-д хадгалагдсан — дахин оролдоход зөвхөн урьдчилгааны алхам явна */
+  const [cfSaved, setCfSaved] = useState(false);
+  const [cfFirst] = useState(cfRows);
+  const options = useMemo(() => cfFirst.filter((r) => String(r[CF.amountNote] ?? '').trim() !== 'Гэрээлсэн дүн' && String(r[CF.pkg] ?? '').trim()), [cfFirst]);
+  const rowOf = (oid: number) => cfFirst.find((r) => Number(r[CASHFLOW_NEW.oid]) === oid);
   const toggle = (oid: number) => setItems((xs) => (xs.some((x) => x.oid === oid)
     ? xs.filter((x) => x.oid !== oid)
     : [...xs, { oid, amount: '', advance: '' }]));
@@ -280,26 +314,31 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
       date,
       items: items.map((x) => ({ row: rowOf(x.oid) as Row, amount: parseNum(x.amount) ?? 0, advance: parseNum(x.advance) })),
     };
-    const why = contractWhy(c, cfRows);
+    const why = cfSaved ? (c.items.some((i) => i.advance != null && !(i.advance >= 0)) ? 'advance' : null) : contractWhy(c, cfRows);
     if (why) {
       setErr(why === 'no-number' ? tr('Гэрээний дугаарыг оруулна уу.')
         : why === 'empty' ? tr('Багц сонгоно уу.')
           : why === 'amount' ? tr('Багц бүрийн гэрээний дүнг зөв оруулна уу.')
+            : why === 'advance' ? tr('Урьдчилгааг зөвхөн тоогоор оруулна уу. Жишээ нь 5000000.')
             : why === 'taken' ? tr('Сонгосон багц өөр гэрээтэй байна.')
               : tr('Ийм дугаартай гэрээ бүртгэлтэй байна.'));
       return;
     }
     setBusy(true);
     try {
-      await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: contractUpdates(c) }, FIN_CAP);
-      invalidate('CASHFLOW_NEW');
-      await runHoSync();
+      if (!cfSaved) {
+        await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: contractUpdates(c) }, FIN_CAP);
+        setCfSaved(true);
+        invalidate('CASHFLOW_NEW');
+      }
+      const sync = await runHoSync();
+      if (sync.error) throw new Error(sync.error);
       const adv = c.items.filter((i) => (i.advance ?? 0) > 0);
       if (adv.length) {
         const ho = await queryFeatures(HO_IPC.url, { outFields: ['*'], orderBy: `${HO_IPC.oid} ASC` });
         const head = ho.find((r) => String(r[HO_IPC.contractFields.contractNo] ?? '').trim() === no.trim());
         const code = String(head?.[HO_IPC.contractFields.code] ?? '').trim();
-        if (!code) throw new Error(tr('IPC-д гэрээ үүссэнгүй. Урьдчилгааг дараа оруулна уу.'));
+        if (!code) throw new Error(tr('Гэрээ хадгалагдсан ч IPC-д хараахан үүсээгүй. Цонхыг хаалгүй «Хадгалах»-ыг дахин дарж урьдчилгааг бичнэ үү.'));
         const pays = ho.filter((r) => String(r[HO_IPC.contractFields.code] ?? '').trim() === code);
         const first = nextIpcNo(pays);
         await applyAll(HO_IPC.url, HO_IPC.oid, {
@@ -316,7 +355,7 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
   };
 
   return (
-    <div className={s.dlgBack} role="presentation" onClick={() => { if (!busy) onClose(); }}>
+    <div className={s.dlgBack} role="presentation" onClick={() => { if (!busy && !cfSaved) onClose(); }}>
       <div className={s.dlg} role="dialog" aria-modal="true" aria-label={tr('Гэрээ үүсгэх')} onClick={(e) => e.stopPropagation()}>
         <h3 className={s.dlgTitle}>{tr('Гэрээ үүсгэх')}</h3>
         <div className={s.dlgForm}>
@@ -341,11 +380,11 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
                 const it = items.find((x) => x.oid === oid);
                 return (
                   <tr key={oid}>
-                    <td><input type="checkbox" aria-label={String(r[CF.pkg] ?? '')} checked={!!it} onChange={() => toggle(oid)} /></td>
+                    <td><input type="checkbox" aria-label={String(r[CF.pkg] ?? '')} checked={!!it} disabled={cfSaved} onChange={() => toggle(oid)} /></td>
                     <td>{String(r[CF.pkg] ?? '')}</td>
                     <td className={s.dlgName} title={String(r[CF.detail] ?? '')}>{String(r[CF.detail] ?? '')}</td>
                     <td className={s.pkgNum}>
-                      {it ? <input className={s.dlgNum} inputMode="decimal" aria-label={tr('Гэрээний дүн')} value={it.amount} onChange={(e) => set(oid, 'amount', e.target.value)} /> : money(num(r[CF.budget]))}
+                      {it ? <input className={s.dlgNum} inputMode="decimal" aria-label={tr('Гэрээний дүн')} disabled={cfSaved} value={it.amount} onChange={(e) => set(oid, 'amount', e.target.value)} /> : money(num(r[CF.budget]))}
                     </td>
                     <td className={s.pkgNum}>
                       {it && <input className={s.dlgNum} inputMode="decimal" aria-label={tr('Урьдчилгаа')} value={it.advance} onChange={(e) => set(oid, 'advance', e.target.value)} />}

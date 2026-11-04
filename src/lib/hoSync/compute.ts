@@ -17,6 +17,7 @@
  * бусад → Барилга угсралт). Cashflow мөргүй гэрээ (ХО-0045) — хөндөхгүй.
  */
 import { HO_IPC, CASHFLOW_NEW, orderTotalOf } from '@/lib/services';
+import { contractCancelled } from '@/lib/ipc';
 import { isSplitParent, type PlanTree } from '@/lib/projectPlan';
 
 export type Row = Record<string, unknown>;
@@ -212,16 +213,20 @@ export function planPaidSync(hoRows: readonly Row[], cfRows: readonly Row[]): Pa
     const v = num(r[HO_IPC.payFields.amount]);
     if (v == null) continue;
     const ids = matched.get(txt(r[HC.code])) ?? [];
-    let oid: number | null = null;
-    if (ids.length === 1) [oid] = ids;
-    else if (ids.length > 1) {
-      const parts = hoPkgParts(r[HC.pkg]);
-      const hit = parts.length === 1 ? ids.filter((i) => hoPkgParts(byOid.get(i)?.[CF.pkg])[0] === parts[0]) : [];
-      if (hit.length === 1) [oid] = hit;
-    }
-    if (oid == null) { unassigned.push(txt(r[HO_IPC.payFields.id]) || String(r[HO_IPC.oid])); continue; }
-    paid.set(oid, (paid.get(oid) ?? 0) + v);
-    if (r[HO_IPC.payFields.kind] === HO_IPC.kinds.advance) adv.set(oid, (adv.get(oid) ?? 0) + v);
+    if (!ids.length) { unassigned.push(txt(r[HO_IPC.payFields.id]) || String(r[HO_IPC.oid])); continue; }
+    /* Олон мөрд таарвал мөрийн багцынхад, тэдгээрт гэрээний дүнгийн жингээр хуваана — төлбөр хасагдахгүй */
+    const parts = hoPkgParts(r[HC.pkg]);
+    const inPkg = ids.filter((i) => parts.includes(hoPkgParts(byOid.get(i)?.[CF.pkg])[0] ?? ''));
+    const targets = inPkg.length ? inPkg : ids;
+    const weights = targets.map((i) => Math.max(num(byOid.get(i)?.[CF.contractAmount]) ?? 0, 0));
+    const tw = weights.reduce((a, w) => a + w, 0);
+    let left = v;
+    targets.forEach((oid, k) => {
+      const share = k === targets.length - 1 ? left : Math.round((tw > 0 ? v * weights[k] / tw : v / targets.length) * 100) / 100;
+      left -= share;
+      paid.set(oid, (paid.get(oid) ?? 0) + share);
+      if (r[HO_IPC.payFields.kind] === HO_IPC.kinds.advance) adv.set(oid, (adv.get(oid) ?? 0) + share);
+    });
   }
   const updates: Row[] = [];
   for (const r of cfRows) {
@@ -248,7 +253,7 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
   const unmatched: string[] = [];
   for (const [code, rows] of byContract) {
     /* Гэрээ бүхлээрээ цуцлагдсан бол хөндөхгүй */
-    if (rows.every((r) => txt(r[HO_IPC.status.field]) === HO_IPC.status.cancelled)) continue;
+    if (contractCancelled(rows)) continue;
     /* 2026-11-04: багц бүрийн мөртэй гэрээ — гэрээний БҮХ мөрийн багцыг нэгтгэнэ (эхний мөрийнх биш) */
     const parts = [...new Set(rows.flatMap((r) => hoPkgParts(r[HC.pkg])))];
     const phases = phasesOf(rows.map((r) => txt(r[HC.workType])).find(Boolean) ?? '');

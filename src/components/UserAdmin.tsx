@@ -24,7 +24,7 @@ import {
   type UserBase,
   type UserPerm,
 } from '@/lib/permissions';
-import { permsOwnerMismatch, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
+import { permsTableOrgEditable, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
 import { userError } from '@/components/ui';
 import { askConfirm } from '@/lib/confirm';
 import { lastSuperWarn, superDemoteMsg, superGrantMsg } from './UserTypeSection';
@@ -232,8 +232,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const draftsRef = useRef(drafts);
 
   useSyncRef(draftsRef, drafts);
-  const typesDirtyRef = useRef(false);
-  const onTypesDirty = useCallback((d: boolean) => { typesDirtyRef.current = d; }, []);
+  const [typesDirty, onTypesDirty] = useState(false);
+  const typesDirtyRef = useRef(typesDirty);
+  useSyncRef(typesDirtyRef, typesDirty);
   const anyUnsaved = () => draftsRef.current.size > 0 || typesDirtyRef.current;
   /** F5/таб хаахад хадгалаагүй ноорог чимээгүй алдагдахаас сэргийлнэ */
   useEffect(() => {
@@ -267,7 +268,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     onClose();
   };
   const goPane = (k: typeof pane) => {
-    if (k !== pane && pane === 'types' && typesDirtyRef.current) {
+    if (k !== pane && pane === 'types' && typesDirty) {
       void askConfirm(tr('Эрхийн төрлийн загварт хадгалаагүй өөрчлөлт байна. Хадгалалгүй шилжих үү?'), { danger: true, ok: tr('Хадгалалгүй шилжих') })
         .then((yes) => { if (yes) setPane(k); });
       return;
@@ -895,13 +896,9 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
               {tr('⚠️ ArcGIS хүснэгтээс уншиж чадсангүй — доорх жагсаалт энэ хөтчийн түр санах ойноос. Өөрчлөлт түр энэ хөтчид хадгалагдаж, холболт сэргэхэд автоматаар илгээгдэнэ.')}
             </div>
           )}
-          {permsOwnerMismatch().length > 0 && (
+          {permsTableOrgEditable() && !permsTablePublic() && (
             <div className={s.addErr} role="alert">
-              {tr('🔴 Эрхийн хүснэгтийн эзэн «{0}» нь итгэмжлэгдсэн эзний жагсаалтад алга тул БҮХ хэрэглэгчийн эрх, хуваарилалт уншигдахгүй байна. Засвар: порталд хүснэгтийн эзнийг одоогийн админд шилжүүлэх (Change owner), эсвэл хөгжүүлэгчид мэдэгдэж энэ нэрийг итгэмжлэгдсэн эзний жагсаалтад нэмүүлнэ.', permsOwnerMismatch().join(', '))}
-              <details>
-                <summary>{tr('Дэлгэрэнгүй')}</summary>
-                {'Selbe_Permissions · permsRemote.ts · FORMER_TABLE_OWNERS'}
-              </details>
+              {tr('🔴 Эрхийн хүснэгт байгууллагад засагдахаар нээлттэй байна — байгууллагын гишүүн REST-ээр мөр бичиж чадна. Super мөрийг систем шалгадаг ч бусад эрхийн мөрийг хамгаалахын тулд хүснэгтийн засах эрхийг хязгаарлана уу.')}
             </div>
           )}
           {permsTablePublic() && (

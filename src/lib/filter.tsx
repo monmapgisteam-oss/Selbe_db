@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMap } from '@/components/MapCanvas';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { ZONE_LAYER, type FilterScope } from '@/lib/services';
@@ -62,9 +62,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   const activeRef = useRef(active);
   useSyncRef(activeRef, active);
 
-  useEffect(() => {
-    if (active && highlight.where !== active.where) setActive(null);
-  }, [highlight.where, active]);
+  if (active && highlight.where !== active.where) setActive(null);
 
   /**
    * Төлөв ба газрын зураг ХАМТ өөрчлөгдөнө.

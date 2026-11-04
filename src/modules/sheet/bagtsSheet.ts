@@ -59,6 +59,12 @@ export type SheetRow = {
   obyemDay?: (number | null)[];
   obyemBase?: (number | null)[];
   /**
+   * `obyemPrior` = ачаалсан жаазны ӨДРӨӨС өмнөх хуримтлал, `frameDay` = тэр жаазны өдөр. Ижил өдрийн дараагийн жааз
+   * өмнөхийг ОРЛОДОГ тул (`lastFrame`) түүний суурь нь `obyemBase` биш `obyemPrior` — өдрийн нийт ажил хадгалагдана.
+   */
+  obyemPrior?: (number | null)[];
+  frameDay?: string | null;
+  /**
    * Үйлчилгээнээс ирсэн БҮХ талбар, хэвээрээ. Архивын шинэ хуулбар үүсгэхэд
    * (нийтлэх бүрд бүтэн хуудас доор нь нэмэгддэг) энэ мөрийг суурь болгож,
    * зөвхөн бодогдсон талбаруудыг дарж бичнэ — ингэснээр код мэддэггүй
@@ -964,11 +970,11 @@ export async function loadRows(
   const prior = wantOb && frameDay && sc.f.fillDate ? await priorObyem(pkg, sc, frameDay) : null;
   rows.forEach((r, i) => {
     r.obyemDay = r.obyem.slice();
-    if (prior) {
-      const pr = prior.get(rowKeysOut[i]);
-      if (pr) r.obyem = r.obyem.map((v, b) => (v == null && pr[b] == null ? null : (v ?? 0) + (pr[b] ?? 0)));
-    }
+    const pr = prior?.get(rowKeysOut[i]);
+    if (pr) r.obyem = r.obyem.map((v, b) => (v == null && pr[b] == null ? null : (v ?? 0) + (pr[b] ?? 0)));
     r.obyemBase = r.obyem.slice();
+    r.obyemPrior = r.obyem.map((_, b) => pr?.[b] ?? null);
+    r.frameDay = prior ? frameDay : null;
   });
   return { rows, asOf, snapshot, frameLen: rows.length, rawFrameLen: feats2.length };
 }

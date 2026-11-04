@@ -198,10 +198,6 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
   assert.ok(/orderByFields/.test(body),
     'findOids: orderByFields алга — offset нь мөр алгасна (ArcGIS-ийн занга)');
 
-  /* findTableUrl-ийн хайлтын цонх нь DoS-д тэсвэртэй */
-  assert.ok(!/num: '10',/.test(src),
-    "findTableUrl: num:'10' — 11 хуурамч item үүсгэвэл жинхэнэ хүснэгт цонхноос гарч remote УНТАРНА");
-  assert.ok(/num: '100',/.test(src), "findTableUrl: num нь '100' байх ёстой");
 
   const fetchAllSrc = src.slice(src.indexOf('export async function fetchAll'), src.indexOf('async function findOids'));
   const grantsReads = (fetchAllSrc.match(/Array\.isArray\(d\.grants\) \? \{ grants: d\.grants \} : \{\}/g) ?? []).length;

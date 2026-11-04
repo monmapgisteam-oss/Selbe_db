@@ -21,13 +21,19 @@ const MAX_TURNS = 6;
 
 const QUESTION_TIMEOUT_MS = 360_000;
 
+/** Хэрэглэгчийн токен зөвхөн https эсвэл локал реле рүү явна */
+export function relayUrlOk(u: string): boolean {
+  return /^https:\/\//i.test(u) || /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(u);
+}
+
 /**
  * Реле сервер — env-ээр солино, эс бөгөөс локал dev.
  */
 export const AGENT_APIS: readonly string[] = (process.env.NEXT_PUBLIC_AGENT_API ?? '')
   .split(',')
   .map((u) => u.trim().replace(/\/+$/, ''))
-  .filter(Boolean);
+  .filter(Boolean)
+  .filter((u) => relayUrlOk(u));
 /** Дэлгэц/логт харуулах — бүх хаяг */
 export const AGENT_API = AGENT_APIS.join(', ');
 

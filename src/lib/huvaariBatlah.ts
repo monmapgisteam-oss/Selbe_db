@@ -5,7 +5,7 @@
  */
 
 import { GUITS } from '@/lib/services/env';
-import { AUTH, ROLE_BY_USER, roleForUser } from './services';
+import { AUTH, roleForUser } from './services';
 import { huvaariAclReady, huvaariScope } from './huvaariAcl';
 import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/authToken';
@@ -188,8 +188,6 @@ export function remapPayload(
   return { pay, map };
 }
 
-const TITLE = 'Selbe_Huvaari_Batlah';
-const TABLE_NAME = 'huvaari_batlah';
 
 /** Талбарын нэр — амьд үйлчилгээтэй ЯГ тохирно */
 export const F = {
@@ -251,52 +249,6 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
   }
 }
 
-const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
-
-/** Хатуу тохиргооны super админууд — хүснэгтийн эзэн эдний нэг байх ёстой */
-const SUPER_OWNERS = new Set(
-  Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u.toLowerCase()),
-);
-
-/**
- * ХУУЧИН ЭЗЭД — `ROLE_BY_USER`-ээс хасагдсан ч хүснэгтийг үүсгэсэн байж
- * болох аккаунтууд (2026-09-11, `permsRemote.FORMER_TABLE_OWNERS`-ийн загвар).
- */
-const FORMER_TABLE_OWNERS: string[] = [];
-const TABLE_OWNERS = new Set([
-  ...SUPER_OWNERS,
-  ...FORMER_TABLE_OWNERS.map((u) => u.toLowerCase()),
-]);
-
-let tableUrlCache: string | undefined;
-/** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — шинээр үүсгэхийг хориглоно */
-let ownerMismatch = false;
-
-async function findTableUrl(token: string): Promise<string | null> {
-  const search = await arcgisPost(`${restBase()}/search`, {
-    q: `title:"${TITLE}" type:"Feature Service"`,
-    token,
-    num: '100',
-  });
-  const results = (search.results as Array<{ url?: string; title?: string; owner?: string; access?: string }>) ?? [];
-  const same = results.filter((x) => x.title === TITLE && x.url);
-  const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
-  if (String(hit?.access ?? '') === 'public') {
-    console.error(
-      `[selbe] ${TITLE} хүснэгт НИЙТЭД (public) нээлттэй — нэвтрээгүй хэн ч`,
-      'батлах мөрийг засаж чадна. AGOL дээр Share-ийг «Organization» болгоно уу.',
-    );
-  }
-  ownerMismatch = !hit && same.length > 0;
-  if (ownerMismatch) {
-    console.error(
-      `[selbe] ${TITLE} хүснэгтийн эзэн танигдсангүй:`,
-      same.map((x) => x.owner).join(', '), '— super-т reassign хийнэ үү',
-    );
-  }
-  return hit?.url ? `${hit.url}/0` : null;
-}
-
 /**
  * `aguulga` талбарын урт (тэмдэгт). 2026-09-29: `base` (2026-09-21) нэмэгдсэнээс
  * хойш «бүх мөр багтана» гэсэн таамаг худал — `submitPlan` илгээхийн өмнө шалгана.
@@ -306,75 +258,10 @@ export const PAYLOAD_MAX = 1_048_576;
 export const REASON_MAX = 2000;
 
 /**
- * Хүснэгт үүсгэх (publish эрхтэй super admin).
- */
-async function createTable(token: string, user: string): Promise<string | null> {
-  const createParameters = {
-    name: TITLE,
-    serviceDescription: tr('Сэлбэ порталын хуваарийн батлах урсгал'),
-    hasStaticData: false,
-    maxRecordCount: 10000,
-    capabilities: 'Query,Editing,Create,Update,Delete',
-    spatialReference: { wkid: 102100 },
-    allowGeometryUpdates: false,
-    units: 'esriMeters',
-  };
-  const created = await arcgisPost(
-    `${restBase()}/content/users/${encodeURIComponent(user)}/createService`,
-    { token, createParameters: JSON.stringify(createParameters), outputType: 'featureService' },
-  );
-  const serviceUrl = created.encodedServiceURL as string | undefined;
-  const itemId = created.itemId as string | undefined;
-  if (!serviceUrl || !itemId) return null;
-
-  const adminUrl = serviceUrl.replace('/rest/services/', '/rest/admin/services/');
-  const table = {
-    tables: [{
-      name: TABLE_NAME,
-      type: 'Table',
-      objectIdField: 'objectid',
-      fields: [
-        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
-        { name: F.pkgKey, type: 'esriFieldTypeString', length: 64, nullable: false, editable: true },
-        { name: F.pkgGroup, type: 'esriFieldTypeString', length: 128, nullable: true, editable: true },
-        { name: F.status, type: 'esriFieldTypeString', length: 32, nullable: false, editable: true },
-        { name: F.author, type: 'esriFieldTypeString', length: 256, nullable: true, editable: true },
-        { name: F.authorSent, type: 'esriFieldTypeDate', nullable: true, editable: true },
-        { name: F.approver, type: 'esriFieldTypeString', length: 256, nullable: true, editable: true },
-        { name: F.approverAt, type: 'esriFieldTypeDate', nullable: true, editable: true },
-        { name: F.reason, type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
-        { name: F.note, type: 'esriFieldTypeString', length: 2048, nullable: true, editable: true },
-        { name: F.rowCount, type: 'esriFieldTypeInteger', nullable: true, editable: true },
-        { name: F.payload, type: 'esriFieldTypeString', length: PAYLOAD_MAX, nullable: true, editable: true },
-        { name: F.okRows, type: 'esriFieldTypeString', length: 65536, nullable: true, editable: true },
-      ],
-    }],
-  };
-  await arcgisPost(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
-  await arcgisPost(
-    `${restBase()}/content/users/${encodeURIComponent(user)}/items/${itemId}/share`,
-    { token, org: 'true', everyone: 'false' },
-  );
-  return `${serviceUrl}/0`;
-}
-
-/**
  * Хүснэгтийн URL — олох, эс бөгөөс (super) үүсгэх.
  */
-async function tableUrl(canCreate: boolean): Promise<string | null> {
-  if (tableUrlCache) return tableUrlCache;
-  const direct: string | null = `${GUITS}/192`;
-  if (direct) {
-    tableUrlCache = direct;
-    return direct;
-  }
-  const auth = await getToken();
-  if (!auth) return null;
-  let url = await findTableUrl(auth.token);
-  if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase()))
-    url = await createTable(auth.token, auth.user);
-  if (url) tableUrlCache = url;
-  return url;
+async function tableUrl(): Promise<string> {
+  return `${GUITS}/192`;
 }
 
 /**
@@ -384,28 +271,27 @@ export type PlanTableState = {
   ok: boolean;
   /**
    * `auth`   — ArcGIS-д нэвтрээгүй (токен алга)
-   * `owner`  — ижил нэртэй хүснэгт бий ч эзэн нь танигдахгүй
    * `none`   — хүснэгт олдсонгүй (super нэвтрэхэд үүснэ)
    * `error`  — порталын хайлт алдаа өгсөн (мессеж нь `detail`-д)
    */
-  why: 'ok' | 'auth' | 'owner' | 'none' | 'error';
+  why: 'ok' | 'auth' | 'none' | 'error';
   detail?: string;
 };
 
-export async function planTableState(canCreate = false): Promise<PlanTableState> {
+export async function planTableState(): Promise<PlanTableState> {
   try {
     if (!(await getToken())) return { ok: false, why: 'auth' };
-    const url = await tableUrl(canCreate);
+    const url = await tableUrl();
     if (url) return { ok: true, why: 'ok' };
-    return { ok: false, why: ownerMismatch ? 'owner' : 'none' };
+    return { ok: false, why: 'none' };
   } catch (e) {
     return { ok: false, why: 'error', detail: String((e as Error)?.message ?? e) };
   }
 }
 
 /** Хүснэгт бэлэн эсэх — хуучин дуудагчдад зориулсан нимгэн бүрхүүл */
-export async function planTableReady(canCreate = false): Promise<boolean> {
-  return (await planTableState(canCreate)).ok;
+export async function planTableReady(): Promise<boolean> {
+  return (await planTableState()).ok;
 }
 
 type Attrs = Record<string, unknown>;
@@ -483,7 +369,7 @@ let okRowsName: string = F.okRows;
 async function okRowsFieldLen(): Promise<number> {
   if (okRowsLenCache > 0) return okRowsLenCache;
   if (okRowsMissAt && Date.now() - okRowsMissAt < OK_ROWS_MISS_TTL) return 0;
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return -1;
   try {
     const j = await arcgisPost(url, {});
@@ -520,7 +406,7 @@ export { serverNow, clockOffsetOf };
  */
 export async function syncServerClock(url?: string): Promise<void> {
   let u: string | null | undefined = url;
-  if (!u) { try { u = await tableUrl(false); } catch { return; } }
+  if (!u) { try { u = await tableUrl(); } catch { return; } }
   if (!u) return;
   return syncClockAt(u, F.oid);
 }
@@ -547,9 +433,9 @@ export async function okRowsField(): Promise<boolean> {
 }
 
 async function query(where: string, outFields: string, strict = false): Promise<Attrs[]> {
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) {
-    if (strict && (ownerMismatch || (AUTH.appId && !(await getToken()))))
+    if (strict && AUTH.appId && !(await getToken()))
       throw new Error(tr('Батлах хүснэгт олдсонгүй — админд хандана уу.'));
     return [];
   }
@@ -678,7 +564,7 @@ async function lastOidsBy(url: string, where: string): Promise<number[]> {
   }).filter((x) => Number.isInteger(x));
 }
 async function loadLastFast(): Promise<PlanSubmission[]> {
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return [];
   let kinds: Map<number, PlanPayloadKind> | null = new Map();
   let oids: number[];
@@ -1074,7 +960,7 @@ export async function submitPlan(args: {
     if (sc !== null && !sc.includes(pkgGroup))
       return { ok: false, error: tr('Энэ багцад хуваарь илгээх эрхгүй.') };
   }
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const already = await loadPending(args.pkgKey, args.payload.kind);
   if (already) {
@@ -1160,7 +1046,7 @@ export async function decidePlan(args: {
   let url: string;
   let cur: Attrs[];
   try {
-    const u = await tableUrl(false);
+    const u = await tableUrl();
     if (!u) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
     url = u;
     cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup},${F.reason}`);
@@ -1432,7 +1318,7 @@ export async function claimPlan(args: { oid: number; approver: string; author?: 
   }
   const own = sameAsLogin(me);
   if (own) return own;
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const fields = `${F.oid},${F.status},${F.approver},${F.approverAt},${F.author},${F.pkgGroup}`;
   const cur = await query(`${F.oid} = ${Number(args.oid)}`, fields);
@@ -1482,7 +1368,7 @@ export async function renewPlanClaim(args: { oid: number; approver: string; clai
   if (own) return own;
   const fields = `${F.oid},${F.status},${F.approver},${F.approverAt}`;
   try {
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
     const read = async () => (await query(`${F.oid} = ${Number(args.oid)}`, fields))[0] ?? null;
     const cur = await read();
@@ -1517,7 +1403,7 @@ export async function releasePlanClaim(args: { oid: number; approver: string }):
   const me = args.approver.trim().toLowerCase();
   if (!me) return;
   try {
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return;
     const cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.approver},${F.approverAt}`);
     if (!cur.length || claimHolder(cur[0]) !== me) return;
@@ -1536,7 +1422,7 @@ export async function releasePlanClaim(args: { oid: number; approver: string }):
 export async function markPlanPartial(args: { oid: number; approver: string; claimAt?: number }): Promise<{ ok: boolean; error?: string; existing?: string }> {
   const me = args.approver.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
   const mark = `${PARTIAL_MARK}:${me}`;
   const fields = `${F.oid},${F.status},${F.approver},${F.approverAt},${F.reason}`;
@@ -1575,7 +1461,7 @@ export async function markPlanPartial(args: { oid: number; approver: string; cla
  * ХАГАС БИЧИЛТИЙН ТЭМДЭГ АРИЛГАХ (2026-10-01) — эх хуудсанд НЭГ Ч мөр бичигдээгүй унасан үед.
  */
 export async function clearPlanPartial(oid: number, owner?: string): Promise<boolean> {
-  const url = await tableUrl(false);
+  const url = await tableUrl();
   if (!url) return false;
   try {
     const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status},${F.reason}`);
@@ -1634,7 +1520,7 @@ export async function returnStuckPlan(args: { oid: number; approver: string; rea
   let url: string;
   let cur: Attrs[];
   try {
-    const u = await tableUrl(false);
+    const u = await tableUrl();
     if (!u) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
     url = u;
     cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.pkgGroup},${F.reason},${F.approver},${F.approverAt}`);
@@ -1720,7 +1606,7 @@ export async function withdrawPlan(args: {
   let url: string;
   let cur: Attrs[];
   try {
-    const u = await tableUrl(false);
+    const u = await tableUrl();
     if (!u) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
     url = u;
     cur = await query(`${F.oid} = ${Number(args.oid)}`, `${F.oid},${F.status},${F.author},${F.approver},${F.approverAt},${F.reason}`);
@@ -1830,7 +1716,7 @@ export async function countPlanPending(username: string | null | undefined): Pro
     if (AUTH.appId) {
       if (!me || !huvaariAclReady()) return null;
     }
-    if (!(await planTableState(false)).ok) return null;
+    if (!(await planTableState()).ok) return null;
     const sc = AUTH.appId ? huvaariScope(me, 'approver') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
     const rows = await loadBadgePending();
@@ -1862,7 +1748,7 @@ export async function countPlanReturned(username: string | null | undefined): Pr
     if (AUTH.appId) {
       if (!huvaariAclReady()) return null;
     }
-    if (!(await planTableState(false)).ok) return null;
+    if (!(await planTableState()).ok) return null;
     const sc = AUTH.appId ? huvaariScope(me, 'author') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
     const rows = await loadBadgeLast();
@@ -1901,7 +1787,7 @@ export async function countPlanApproved(username: string | null | undefined): Pr
     if (AUTH.appId) {
       if (!huvaariAclReady()) return null;
     }
-    if (!(await planTableState(false)).ok) return null;
+    if (!(await planTableState()).ok) return null;
     const sc = AUTH.appId ? huvaariScope(me, 'author') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
     const rows = await loadBadgeLast();

@@ -513,6 +513,12 @@ ok('хянагдаж буй — `dun` хоосон AUTO л; олгосон AUTO 
   ];
   assert.deepEqual(pendingAutoOf(pays), { count: 2, une: 100, oldest: '2026-09-09', latest: '2026-09-20' });
   assert.equal(pendingAutoOf([PAY(40, '2026-08-15', 1)]), null);
+  /* Батлахад AUTO мөрийн `dun` хоосон хэвээр — төлөвөөр хасагдана */
+  const autoSt = (st) => ({ murun_id: 'AUTO|БАГЦ2|2026-09-09', guits_une: 10, ipc_tuluv: st });
+  assert.equal(pendingAutoOf([autoSt('Олгосон')]), null, 'олгосон ажил хүлээгдэхгүй');
+  assert.equal(pendingAutoOf([autoSt('Цуцлагдсан')]), null, 'цуцалсан ажил хүлээгдэхгүй');
+  assert.equal(pendingAutoOf([autoSt('Гүйцэтгэл')]).count, 1, 'IPC-д ороогүй ажил хүлээгдэнэ');
+  assert.equal(pendingAutoOf([autoSt('IPC үүссэн')]).count, 1, 'олгоогүй IPC хүлээгдэнэ');
   const x = ipcOf('БАГЦ1', [HC({ total: 100, paid: 40, pays })], ipcNos);
   assert.equal(x.review.count, 2);
   assert.equal(x.lastPaidDate, '2026-08-15', 'AUTO нь «сүүлд олгосон» биш');

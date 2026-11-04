@@ -67,7 +67,7 @@ const LOCKED = () => tr('систем хаалттай эсвэл эрх түг�
 
 async function layerUrl(): Promise<string | null> {
   if (urlOverride !== undefined) return urlOverride;
-  return tableUrl(false);
+  return tableUrl();
 }
 
 /* ══════════════ Багана бэлэн эсэх (fallback) ══════════════ */

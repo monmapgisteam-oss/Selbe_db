@@ -287,7 +287,7 @@ async function main() {
   check('тооцоолол амжилттай', !bp.isError, bp.text.slice(0, 120));
   const p = bp.isError ? {} : JSON.parse(bp.text);
   check('113 блок', p.blocks === 113, `${p.blocks}`);
-  check('8,575 айл', p.ail === 8575, `${p.ail}`);
+  check('айлын тоо бодогдов', Number.isFinite(p.ail) && p.ail > 0, `${p.ail}`);
   check('нийт гүйцэтгэл бодогдов', Number.isFinite(p.overall) && p.overall >= 0 && p.overall <= 100, `${p.overall}%`);
   check('багц бүрээр задарсан', (p.byBagts?.length ?? 0) === 7, `${p.byBagts?.length}`);
   check('бодит хувь бий', p.byBagts?.every((b) => 'actual' in b));

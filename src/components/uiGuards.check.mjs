@@ -79,8 +79,8 @@ console.log('✅ irged:reach буфер хуудаслалттай');
   assert.match(ag, /if \(!alive\) return;\s*setPermsRead\(remoteOk \|\| !!hard\);/, '`setPermsRead` нь `alive`-ийн ДАРАА');
   assert.match(ag, /let superTablesOnce: Promise<void> \| null = null;/, 'модулийн түвшний нэг амлалт алга');
   assert.match(ag, /if \(!ok\) superTablesOnce = null;/, 'унасан бол дараагийн нэвтрэлтэд дахин оролдох ёстой');
-  assert.equal((ag.match(/planTableReady\(true\)/g) ?? []).length, 1, '`planTableReady(true)` зөвхөн `ensureSuperTables`-д');
-  assert.equal((ag.match(/obyemTableReady\(true\)/g) ?? []).length, 1, '`obyemTableReady(true)` зөвхөн `ensureSuperTables`-д');
+  assert.equal((ag.match(/planTableReady\(\)/g) ?? []).length, 1, '`planTableReady(true)` зөвхөн `ensureSuperTables`-д');
+  assert.equal((ag.match(/obyemTableReady\(\)/g) ?? []).length, 1, '`obyemTableReady(true)` зөвхөн `ensureSuperTables`-д');
 }
 console.log('✅ AuthGate: alive шалгалт · хүснэгт үүсгэлт нэг удаа');
 

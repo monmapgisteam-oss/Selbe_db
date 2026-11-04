@@ -151,11 +151,9 @@ export function AjilBatlah() {
           setSt({ k: 'blocked', why:
             t.why === 'auth'
               ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
-              : t.why === 'owner'
-                ? tr('Батлах хүснэгт байгаа ч эзэмшигч нь танигдахгүй байна — админд мэдэгдэнэ үү.')
-                : t.why === 'error'
-                  ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
-                  : tr('Нэмэлт ажлын батлах хүснэгт олдсонгүй — админд мэдэгдэнэ үү.') });
+              : t.why === 'error'
+                ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
+                : tr('Нэмэлт ажлын батлах хүснэгт олдсонгүй — админд мэдэгдэнэ үү.') });
           return;
         }
         const [rows, approved, returned] = await Promise.all([loadAllPending(), loadAllApproved(), loadAllReturned(30).catch(() => [])]);

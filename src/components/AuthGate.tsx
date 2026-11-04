@@ -37,11 +37,11 @@ function ensureSuperTables(): Promise<void> {
       let ok = true;
       try {
         const { planTableReady } = await import('@/lib/huvaariBatlah');
-        ok = (await planTableReady(true)) && ok;
+        ok = (await planTableReady()) && ok;
       } catch { ok = false; /* хүснэгт үүсээгүй — «Хуваарь» хуудас шалтгааныг хэлнэ */ }
       try {
         const { obyemTableReady } = await import('@/lib/obyemBatlah');
-        ok = (await obyemTableReady(true)) && ok;
+        ok = (await obyemTableReady()) && ok;
       } catch { ok = false; /* хүснэгт үүсээгүй — хуудас шалтгааныг хэлнэ */ }
       if (!ok) superTablesOnce = null;
     })();

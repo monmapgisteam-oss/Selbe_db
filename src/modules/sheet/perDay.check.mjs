@@ -127,4 +127,33 @@ frame('2026-01-20', [[1, 1], [null, null]]);
   assert.ok(!mu.includes('row.raw[sc.f.obyemSum]'), 'materialUsage: хадгалсан obyem_sum (өдрийнх) хуримтлал гэж уншихгүй');
   console.log('✅ бичигчид — шинэ дүрмээр');
 }
+/* ── 6. Нэг өдрийн хэд хэдэн жааз — сүүлийнх нь өдрийн НИЙТ ажлыг хадгална ── */
+{
+  const write = async (day, delta) => {
+    dropPriorCache(pkg.key);
+    const r = await loadRows(pkg, sc);
+    const rows = r.rows.map((x) => ({ ...x, obyem: x.obyem.slice(), act: x.act.slice() }));
+    const row = rows.find((x) => x.no === '1');
+    row.obyem[0] = (row.obyem[0] ?? 0) + delta;
+    const fr = buildFrame(rows, sc, 2, null, [true, true], D(day));
+    const v = (no) => { const f = fr.find((a) => a.no === no); return [f.o0, f.o1]; };
+    frame(day, [v('1'), v('2')]);
+  };
+  const at = async (day) => {
+    dropPriorCache(pkg.key);
+    const r = await loadRows(pkg, sc, day);
+    return { cum: r.rows.find((x) => x.no === '1').obyem[0], day: r.rows.find((x) => x.no === '1').obyemDay[0], une: snapshotDayOf(r.rows, day).une };
+  };
+  await write('2026-03-01', 5);
+  assert.deepEqual(await at('2026-03-01'), { cum: 13, day: 5, une: 50 }, 'эхний жааз: 8 + 5');
+  await write('2026-03-01', 2);
+  assert.deepEqual(await at('2026-03-01'), { cum: 15, day: 7, une: 70 }, 'ижил өдрийн хоёр дахь жааз: өмнөх 5 устахгүй');
+  await write('2026-03-01', 0);
+  assert.deepEqual(await at('2026-03-01'), { cum: 15, day: 7, une: 70 }, 'өөрчлөлтгүй жааз (нэмэлт ажил, комисс) өдрийн ажлыг тэглэхгүй');
+  await write('2026-03-02', 1);
+  assert.deepEqual(await at('2026-03-02'), { cum: 16, day: 1, une: 10 }, 'дараагийн өдөр: зөвхөн тэр өдрийн ажил');
+  const det = readFileSync('src/lib/hyanaltDetail.ts', 'utf8');
+  assert.ok(det.includes('(dayVals[k] ?? 0) + (pr?.[k] ?? 0)'), 'hyanaltDetail: ижил өдрийн өмнөх жаазыг хуримтлалд нэмэхгүй');
+  console.log('✅ нэг өдрийн олон жааз — ажил алдагдахгүй');
+}
 console.log('perDay.check: OK');

@@ -6,14 +6,12 @@
 
 import { GUITS } from '@/lib/services/env';
 import { installEntInterceptor } from '@/lib/entInterceptor';
-import { AUTH, ROLE_BY_USER } from './services';
-import { arcgisPost } from '@/lib/query';
+import { AUTH } from './services';
 import { ensureFreshToken } from '@/lib/authToken';
 import { t as tr } from '@/lib/i18nCore';
 import { currentUser } from './who';
 
 const TITLE = 'Selbe_Guitsetgel_Draft';
-const TABLE_NAME = 'drafts';
 
 /**
  * ХАДГАЛАХ ДЭЭД ХЭМЖЭЭ (тэмдэгт). Талбарын урт 100,000 тул түүнээс доогуур
@@ -27,10 +25,6 @@ export const REMOTE_MAX = 80_000;
  */
 export const draftWriteLocked = (): boolean =>
   typeof window !== 'undefined' && !!AUTH.appId && !currentUser();
-
-let tableUrlCache: string | undefined;
-/** Ижил нэртэй боловч танигдахгүй эзэнтэй хүснэгт — шинээр үүсгэхийг хориглоно */
-let ownerMismatch = false;
 
 /** IdentityManager-аас идэвхтэй token + нэвтэрсэн хэрэглэгч */
 export async function getAuth(): Promise<{ token: string; user: string } | null> {
@@ -47,105 +41,10 @@ export async function getAuth(): Promise<{ token: string; user: string } | null>
 }
 
 /**
- * ArcGIS REST дуудлага.
- */
-const req = (url: string, params: Record<string, string>) => arcgisPost(url, params, { token: 'org' });
-
-const restBase = () => `${AUTH.portalUrl.replace(/\/+$/, '')}/sharing/rest`;
-
-/** Хүснэгтийг үүсгэж болох (ба эзэмших) эрхтэй хүмүүс — хатуу тохиргооны super */
-const TABLE_OWNERS = new Set(
-  Object.entries(ROLE_BY_USER).filter(([, r]) => r === 'super').map(([u]) => u.toLowerCase()),
-);
-
-/**
- * Хүснэгтийн URL — байгаа item-ээс.
- */
-async function findTableUrl(token: string): Promise<string | null> {
-  const search = await req(`${restBase()}/search`, {
-    q: `title:"${TITLE}" type:"Feature Service"`,
-    token,
-    num: '100',
-  });
-  const results = (search.results as Array<{ url?: string; title?: string; owner?: string }>) ?? [];
-  const same = results.filter((x) => x.title === TITLE && x.url);
-  const hit = same.find((x) => TABLE_OWNERS.has(String(x.owner ?? '').toLowerCase()));
-  ownerMismatch = !hit && same.length > 0;
-  if (ownerMismatch) {
-    console.error(
-      `[selbe] ${TITLE} хүснэгтийн эзэн танигдсангүй:`,
-      same.map((x) => x.owner).join(', '),
-      '— одоогийн super-т reassign хийнэ үү',
-    );
-  }
-  return hit?.url ? `${hit.url}/0` : null;
-}
-
-/** Хүснэгт үүсгэх — зөвхөн publish эрхтэй super admin эхэлж нээхэд */
-async function createTable(token: string, user: string): Promise<string | null> {
-  const createParameters = {
-    name: TITLE,
-    serviceDescription: tr('«Гүйцэтгэл бөглөх»-ийн нийтлэгдээгүй ноорог'),
-    hasStaticData: false,
-    maxRecordCount: 2000,
-    capabilities: 'Query,Editing,Create,Update,Delete',
-    spatialReference: { wkid: 102100 },
-    allowGeometryUpdates: false,
-    units: 'esriMeters',
-  };
-  const created = await req(`${restBase()}/content/users/${encodeURIComponent(user)}/createService`, {
-    token,
-    createParameters: JSON.stringify(createParameters),
-    outputType: 'featureService',
-  });
-  const serviceUrl = created.encodedServiceURL as string | undefined;
-  const itemId = created.itemId as string | undefined;
-  if (!serviceUrl || !itemId) return null;
-
-  const adminUrl = serviceUrl.replace('/rest/services/', '/rest/admin/services/');
-  const table = {
-    tables: [{
-      name: TABLE_NAME,
-      type: 'Table',
-      objectIdField: 'objectid',
-      fields: [
-        { name: 'objectid', type: 'esriFieldTypeOID', nullable: false, editable: false },
-        /* Мөрийн ганц түлхүүр — БАГЦЫН түлхүүр (2026-09-08). */
-        { name: 'dkey', type: 'esriFieldTypeString', length: 512, nullable: false, editable: true },
-        /* Задалсан хэсгүүд — зөвхөн админ хүснэгтийг нүдээр шалгахад */
-        { name: 'usr', type: 'esriFieldTypeString', length: 256, nullable: true, editable: true },
-        { name: 'pkg', type: 'esriFieldTypeString', length: 256, nullable: true, editable: true },
-        { name: 'at', type: 'esriFieldTypeDouble', nullable: true, editable: true },
-        { name: 'payload', type: 'esriFieldTypeString', length: 100000, nullable: true, editable: true },
-      ],
-    }],
-  };
-  await req(`${adminUrl}/addToDefinition`, { token, addToDefinition: JSON.stringify(table) });
-  /* Байгууллага даяар — уншихад бүгд, бичихэд ArcGIS-ийн editor эрх шийднэ */
-  await req(`${restBase()}/content/users/${encodeURIComponent(user)}/items/${itemId}/share`, {
-    token, org: 'true', everyone: 'false',
-  });
-  return `${serviceUrl}/0`;
-}
-
-/**
  * Хүснэгтийн URL — олох, эс бөгөөс (super) үүсгэх.
  */
-export async function tableUrl(canCreate: boolean): Promise<string | null> {
-  if (tableUrlCache) return tableUrlCache;
-  const direct: string | null = `${GUITS}/191`;
-  if (direct) {
-    tableUrlCache = direct;
-    return direct;
-  }
-  const auth = await getAuth();
-  if (!auth) return null;
-  let url = await findTableUrl(auth.token);
-  if (!url && canCreate && !ownerMismatch && TABLE_OWNERS.has(auth.user.toLowerCase())) {
-    url = await createTable(auth.token, auth.user);
-  }
-  if (url) tableUrlCache = url;
-  return url;
+export async function tableUrl(): Promise<string> {
+  return `${GUITS}/191`;
 }
 
 type FeatureLayerMod = typeof import('@arcgis/core/layers/FeatureLayer').default;
@@ -199,7 +98,7 @@ export async function readRemoteDraftAt(pkgKey: string): Promise<number | null |
   try {
     const auth = await getAuth();
     if (!auth) return null;
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return null;
     const fl = await layer(url);
     const res = await fl.queryFeatures({
@@ -223,7 +122,7 @@ export type LegacyDraft = { at: number; payload: string; user: string };
 
 export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
   try {
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return [];
     const fl = await layer(url);
     const res = await fl.queryFeatures({
@@ -250,7 +149,7 @@ export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
 export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
   if (draftWriteLocked()) return false;
   try {
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return false;
     const fl = await layer(url);
     const res = await fl.queryFeatures({
@@ -275,7 +174,7 @@ async function readRemoteDraftRaw(pkgKey: string): Promise<RemoteDraft | null> {
   try {
     const auth = await getAuth();
     if (!auth) return null;
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return null;
     const fl = await layer(url);
     const res = await fl.queryFeatures({
@@ -346,13 +245,11 @@ export async function saveRemoteDraft(
   try {
     const auth = await getAuth();
     if (!auth) return { ok: false, error: tr('нэвтрээгүй эсвэл токен дууссан') };
-    const url = await tableUrl(true);
+    const url = await tableUrl();
     if (!url) {
       return {
         ok: false,
-        error: ownerMismatch
-          ? tr('«{0}» хүснэгтийн эзэн танигдсангүй — super-т reassign хийнэ үү', TITLE)
-          : tr('«{0}» хүснэгт олдсонгүй — super админ нэг удаа нэвтэрч үүсгэнэ', TITLE),
+        error: tr('«{0}» хүснэгт олдсонгүй — super админ нэг удаа нэвтэрч үүсгэнэ', TITLE),
       };
     }
     const fl = await layer(url);
@@ -420,7 +317,7 @@ export async function clearRemoteDraft(pkgKey: string): Promise<boolean> {
   try {
     const auth = await getAuth();
     if (!auth) return false;
-    const url = await tableUrl(false);
+    const url = await tableUrl();
     if (!url) return false;
     const fl = await layer(url);
     const found = await fl.queryFeatures({

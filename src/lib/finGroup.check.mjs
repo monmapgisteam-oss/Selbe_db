@@ -90,7 +90,7 @@ const total = (out) => out.reduce((a, p) => a + p.count, 0);
   assert.equal(total(out), 3, 'төлбөрийн мөр АЛДАГДААГҮЙ');
   assert.deepEqual(out.map((p) => p.pkg), ['Багц-4.1', 'Багц-9']);
   assert.deepEqual(out[0].rows.map((r) => r.oid), [1, 2]);
-  const wrong = buildGroups([{ objectid: 9, [CF.pkg74]: 'БАГЦ-4' }], 'ho');
+  const wrong = buildGroups([{ objectid: 9, bagts_74: 'БАГЦ-4' }], 'ho');
   assert.equal(wrong[0].key, NO_PKG);
 }
 
