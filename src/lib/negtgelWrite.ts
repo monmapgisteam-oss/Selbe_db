@@ -117,14 +117,14 @@ async function frameHead(h: Hit, sheetOid: number): Promise<boolean> {
 /**
  * «Б.» мөрийн нэгдсэн утгууд — хуудасны өөрийн хэмжээсээр (гүйцэтгэл 0–1).
  */
-type BRow = { act: number | null; plan: number | null; at: number | null };
+export type BRow = { act: number | null; plan: number | null; at: number | null };
 
 /**
  * Нэг хуудасны обьём — `at` агшны (өдрийн сүүлийн бүтэн жааз, `loadRows`-ийн `dayFilter` · `lastFrame` — хянагчийн
  * харагдацтай нэг зам) навч мөрүүдээс (`constructionObyem`). `at == null` (тэр хүртэл нийтлэгдээгүй хуудас) бол
  * одоогийн (суурь) жааз — төлөвлөгөөт обьём нь багцын дүнд орно, бодит нь `null`.
  */
-async function sheetObyem(p: Pkg, at: number | null): Promise<ObyemPair | null> {
+export async function sheetObyem(p: Pkg, at: number | null): Promise<ObyemPair | null> {
   try {
     const fsc = await fillSchema(p);
     const { rows } = await loadRows(p, fsc, at == null ? undefined : msToDay(at), obyemFields(fsc));
@@ -138,7 +138,7 @@ async function sheetObyem(p: Pkg, at: number | null): Promise<ObyemPair | null> 
 /**
  * Нэг хуудасны «Б.» мөр — `dateWhere`-д таарах ХАМГИЙН СҮҮЛИЙН жаазнаас.
  */
-async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Promise<BRow | null> {
+export async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Promise<BRow | null> {
   const cols = [sc.f.no, sc.f.act, sc.f.plan, fill]
     .filter(Boolean) as string[];
   const q = (await post(`${p.url}/query`, {

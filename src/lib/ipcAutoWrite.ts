@@ -8,13 +8,12 @@ import { agsFetch } from '@/modules/sheet/ags';
 import { invalidate } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
 import { snapshotDayOf, LINK_FIELDS } from '@/lib/ipcLink';
-import { dayOf, planAuto, autoContractFor, isAuto, isLockedRow, autoZoruu, sheetsVerdict, type AutoPlan, type SheetRead } from '@/lib/ipcAuto';
+import { dayOf, planAuto, autoContractFor, planAutoZoruu, sheetsVerdict, type AutoPlan, type SheetRead } from '@/lib/ipcAuto';
 import { uniqueBlockCounts } from '@/lib/blockProgress';
 import { t as tr } from '@/lib/i18nCore';
 
 type Row = Record<string, unknown>;
 
-const C = HO_IPC.contractFields;
 const P = HO_IPC.payFields;
 
 export type AutoResult =
@@ -231,18 +230,9 @@ export async function refreshAutoZoruu(
       if (!q.exceededTransferLimit || fs.length === 0) break;
       offset += fs.length;
     }
+    /* Цэвэр тооцоо — `ipcAuto.planAutoZoruu` (2026-11-04: data-audit зөвхөн уншихдаа ч ижил дүрэм) */
     const Z = LINK_FIELDS.zoruu;
-    const same = (x: number | null, y: number | null) =>
-      x == null || y == null ? x === y : Math.abs(x - y) < 0.5;
-    const upd: Row[] = [];
-    for (const r of rows) {
-      if (!isAuto(r) || isLockedRow(r) || (want != null && String(r[C.code] ?? '').trim() !== want)) continue;
-      const oid = num(r[HO_IPC.oid]);
-      if (oid == null) continue;
-      const z = autoZoruu(rows, r, num(r[LINK_FIELDS.une]));
-      if (same(z, num(r[Z]))) continue;
-      upd.push({ [HO_IPC.oid]: oid, [Z]: z });
-    }
+    const upd: Row[] = planAutoZoruu(rows, code).map(({ oid, to }) => ({ [HO_IPC.oid]: oid, [Z]: to }));
     for (let i = 0; i < upd.length; i += 500) {
       const part = upd.slice(i, i + 500);
       tried = true;

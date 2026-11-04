@@ -4,6 +4,11 @@
  * `loadSensors`-ийн гаргасантай харьцуулна.
  */
 import { SENSORS, loadSensors, parseTs, ubDay, outOfRange, HIGHER_IS_GOOD } from '../src/lib/sensors.ts';
+import { installTokenInjection, installWriteGuard, loadAdminTokens } from './liveFetch.mjs';
+
+/* 2026-11-04: `*.check.mjs` биш тул ts-alias токен залгахгүй — үйлчилгээ org-only бол 499 болдог байв */
+installWriteGuard({ stubAppTables: false });
+installTokenInjection(loadAdminTokens());
 
 const ok = (b) => (b ? '✅' : '❌');
 let bad = 0;

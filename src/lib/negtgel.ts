@@ -403,6 +403,7 @@ export type NegtgelFull = {
   tree?: 'excel' | 'code';
   stored: NegRaw[];
   src: NegSources | null;
+  /** `negtgel` = 182 уншигдаагүй/хоосон тул 187-ийн нөөц; `failed`-д үндсэн эхийг заавал тэмдэглэнэ. */
   source?: 'plan' | 'negtgel';
 };
 
@@ -502,22 +503,23 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
   const stored = await A.loadNegRaw();
   let calcRows: Awaited<ReturnType<typeof A.computeNegAuto>> | null = null;
   let sync: Promise<NegSyncState> | null = null;
-  let failed: string[] = [];
+  // 187 бүрэн уншигдсан ч 182-ын уналт арилахгүй: UI мэдэгдэнэ, нөөц үр дүн кэшлэгдэхгүй.
+  const failed: string[] = [tr('Төсөл төлөвлөгөө биелэлт')];
   let src: NegSources | null = null;
   try {
     src = await A.loadNegSources();
-    failed = src.partial ?? [];
+    failed.push(...(src.partial ?? []));
     calcRows = A.computeNegAuto(stored, src);
     sync = A.syncNegtgel();
   } catch (e) {
     console.warn('[negtgel] системийн эх уншигдсангүй — хүснэгтийн утгаар', e);
-    failed = e instanceof A.NegSourceError ? e.failed : [tr('Системийн эх')];
+    failed.push(...(e instanceof A.NegSourceError ? e.failed : [tr('Системийн эх')]));
   }
   const use = calcRows ?? stored.map((r) => ({
     ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэл (Excel)'),
   }));
   const { rows, calc } = negDisplay(use);
-  return { rows, calc, live: calcRows != null, sync, failed, tree: A.negTreeSource(), stored, src: calcRows ? src : null };
+  return { rows, calc, live: calcRows != null, sync, failed, tree: A.negTreeSource(), stored, src: calcRows ? src : null, source: 'negtgel' };
 }
 
 let fullP: Promise<NegtgelFull> | null = null;

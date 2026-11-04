@@ -214,7 +214,6 @@ export const CASHFLOW_NEW = {
      */
     pkg: "bagts",
     pkg2: "bagts",
-    pkg74: "bagts_74",
     detail: "ajil_uilchilgee",       // Ажил, үйлчилгээ (ажлын бүтэн нэр)
     /**
      * ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮН (гэрээ болон урьдчилсан тооцоолол) — БҮХ мөнгөн
@@ -235,9 +234,6 @@ export const CASHFLOW_NEW = {
     contractDate: "geree_ognoo",
     contractNo: "geree_dugaar",          // Гэрээний дугаар
     contractAmount: "geree_dun",         // Гэрээний дүн — урьдчилсан төсвөөс (`ho_dun_geree`) ТУСДАА (2026-11-04)
-    advanceGuarantee: "urdchilgaa_batalgaa_dun",
-    advancePct: "urdchilgaa_huvi",
-    advanceDeduct: "urdchilgaa_zh_zardal",
     progressPct: "guitsetgel_huvi",
     /** Д/Д — Excel B («5.2.1.1») */
     ddKod: "dd_kod",

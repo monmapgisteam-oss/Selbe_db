@@ -539,9 +539,11 @@ export function buildEdits(
 
 /* ══════════════════ Сүлжээ ══════════════════ */
 
-const FIELDS = [
+/** 186-ийн кодод нэрлэсэн талбарууд — `tools/data-audit.mjs` схемийн тулгалтад ч (2026-11-04) */
+export const OBYEM_FIELDS = [
   'objectid', 'dkey', 'des_dugaar', 'blok', 'sar', 'sar_txt', 'obyem', 'niit_obyem',
 ];
+const FIELDS = OBYEM_FIELDS;
 
 /**
  * САРЫН НӨӨЦИЙН ТАЛБАР үйлчилгээнд БАЙНА УУ (2026-09-24) — `hyanalt.ts`-ийн

@@ -264,6 +264,29 @@ export function autoZoruu(rows: readonly Row[], cur: Row, une: number | null): n
 }
 
 /**
+ * `guits_zoruu`-г ДАХИН БОДОХОД өөрчлөгдөх AUTO мөрүүд (2026-11-04, `ipcAutoWrite.refreshAutoZoruu`-аас задлав — цэвэр,
+ * `tools/data-audit.mjs` зөвхөн уншихдаа ч ашиглана). ЗӨВХӨН AUTO · түгжээгүй мөр; `code` өгвөл тэр гэрээ л.
+ * `same`: хоёулаа тоо бол |Δ| < 0.5 ижил; аль нэг нь null бол яг тэнцүү байх ёстой.
+ */
+export function planAutoZoruu(rows: readonly Row[], code?: string): { oid: number; from: number | null; to: number | null }[] {
+  const want = code === undefined ? null : String(code).trim();
+  const Z = LINK_FIELDS.zoruu;
+  const same = (x: number | null, y: number | null) =>
+    x == null || y == null ? x === y : Math.abs(x - y) < 0.5;
+  const out: { oid: number; from: number | null; to: number | null }[] = [];
+  for (const r of rows) {
+    if (!isAuto(r) || isLockedRow(r) || (want != null && String(r[C.code] ?? '').trim() !== want)) continue;
+    const oid = num(r[HO_IPC.oid]);
+    if (oid == null) continue;
+    const z = autoZoruu(rows, r, num(r[LINK_FIELDS.une]));
+    const stored = num(r[Z]);
+    if (same(z, stored)) continue;
+    out.push({ oid, from: stored, to: z });
+  }
+  return out;
+}
+
+/**
  * БАЙГАА автомат мөрийг ШИНЭЧЛЭХ талбарууд.
  */
 export function autoUpdate(

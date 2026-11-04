@@ -130,11 +130,7 @@ const lzFieldsCashflow2 = perLocale(() => ({
       get [CASHFLOW_NEW.fields.contractDate]() { return tr('Гэрээ байгуулсан огноо — «2024-04-08» гэсэн МӨР (epoch БИШ)'); },
       get [CASHFLOW_NEW.fields.contractNo]() { return tr('Гэрээний дугаар. Олон ажилд ХООСОН (null ≠ «гэрээгүй»).'); },
       get [CASHFLOW_NEW.fields.contractAmount]() { return tr('Гэрээний дүн, ₮'); },
-      get [CASHFLOW_NEW.fields.advanceGuarantee]() { return tr('Урьдчилгаа төлбөрийн баталгааны дүн, ₮'); },
-      get [CASHFLOW_NEW.fields.advancePct]() { return tr('Урьдчилгаа төлбөрийн хувь'); },
-      get [CASHFLOW_NEW.fields.advanceDeduct]() { return tr('Урьдчилгаанаас суутгасан захиалагчийн хяналтын зардал — ⚠️ ТЕКСТ талбар, тоо БИШ'); },
       get [CASHFLOW_NEW.fields.progressPct]() { return tr('Гэрээний гүйцэтгэлийн хувь — ⚠️ ТЕКСТ талбар («100», «55»), тоо БИШ'); },
-      get [CASHFLOW_NEW.fields.pkg74]() { return tr('«Багц 74» — тусдаа бүлэглэлтийн талбар'); },
       ...Object.fromEntries(
         CASHFLOW_NEW.sources.map((s) => [
           s.field, tr('Захирамжийн дүнгийн эх үүсвэр — {0}, ₮', s.label),

@@ -177,6 +177,7 @@ export function TusulNegtgel() {
         <>
           <SyncNotice
             live={d.live}
+            source={d.source}
             failed={d.failed}
             sync={d.sync}
             onDone={() => { dropNegtgelFull(); q.retry?.(); }}
@@ -421,8 +422,9 @@ function EditInput({ v, budget, onCommit }: { v: number | null; budget: boolean;
 /**
  * СИНКИЙН МЭДЭГДЭЛ (2026-09-25).
  */
-function SyncNotice({ live, failed, sync, onDone }: {
+export function SyncNotice({ live, source, failed, sync, onDone }: {
   live: boolean;
+  source?: NegtgelFull['source'];
   failed: string[];
   sync: Promise<NegSyncState> | null;
   onDone: () => void;
@@ -444,7 +446,9 @@ function SyncNotice({ live, failed, sync, onDone }: {
       </p>
     );
   }
-  const partialNote = failed.length
+  const partialNote = source === 'negtgel'
+    ? <p className={n.syncNote} role="status">{tr('Үндсэн тооцоо уншигдсангүй — нөөц нэгтгэлийн утгыг харуулж байна. Дараагийн нээлтэд дахин шалгана.')}</p>
+    : failed.length
     ? <p className={n.syncNote} role="status">{tr('Хэсэгчлэн уншигдсан: {0} — зарим төлөвлөгөөт хувь дутуу байж болно. Дараагийн нээлтэд дахин уншина.', failed.join(', '))}</p>
     : null;
   if (!st || st.kind === 'off' || st.kind === 'ok') return partialNote;
