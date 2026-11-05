@@ -81,7 +81,7 @@ import { HAM_MAX, prepareSave, remapRowsFull } from './huvaari/savePrep';
 import { FlowBox } from './huvaari/FlowBox';
 import { AddBox, BlockRow, HowtoHint, TaskRow, type CellVia } from './huvaari/TaskRow';
 import { PlanModal } from './huvaari/PlanModal';
-import { PkgPctButton } from './huvaari/PkgPct';
+import { MainSpanButton } from './huvaari/MainSpan';
 import { AnalysisPanel, type AnaTab } from './huvaari/AnalysisPanel';
 import { useAnalysis } from './huvaari/useAnalysis';
 import { useGroupPlan } from './huvaari/useGroupPlan';
@@ -4271,8 +4271,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {tr('Дахин хийх')}
           </button>
         )}
-        {/* 2026-11-05: багцын сарын САНХҮҮЖИЛТИЙН хувь — «Cashflow хуваарилах»-аас энд шилжсэн (`huvaari/PkgPct`) */}
-        {!review && <PkgPctButton group={pkg.group} canEdit={hasCap(user?.username, 'finEdit')} />}
+        {/* 2026-11-05: «Үндсэн хугацаа» — гэрээ бүрийн төсөөллийн хуваарь (огноо + сарын хувь); «Cashflow хуваарилах»-ыг орлосон */}
+        {!review && <MainSpanButton canEdit={hasCap(user?.username, 'finEdit')} />}
         {/* PDF ТАТАХ (2026-09-30) — дэлгэц дээрх хуваарийг ижил загвараар (`savePdf`) */}
         {sc && visible.length > 0 && (
           <span className={h.pdfWrap} ref={pdfRef}>

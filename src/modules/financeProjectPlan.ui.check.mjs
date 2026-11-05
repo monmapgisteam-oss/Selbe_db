@@ -10,7 +10,7 @@
  *   §3 эх кодын хамгаалалт — `publish` 'huvaari' гэрээний сарыг нэмэх/устгахгүй
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 /* ══════════ 0. Хөтөчийн хамгийн бага глобалууд (импортоос ӨМНӨ) ══════════ */
 const g = globalThis;
@@ -194,30 +194,29 @@ check('ppCalcVal (2026-11-04) — «Олгосон хувь (төсөлд)» = �
 });
 
 /* ══════════ §3 Эх кодын хамгаалалт ══════════ */
-check('CashflowPlan — canSwitch · money дамжина', () => {
+/* 2026-11-05 (хэрэглэгч): «Cashflow хувиарлах» таб ХАСАГДСАН — гэрээ бүрийн сарын хувь «Үндсэн хугацаа»-нд
+   (`huvaari/MainSpan`: Хуваарь ба Санхүүжилт хуудасны товч). */
+check('«Cashflow хувиарлах» таб алга — «Үндсэн хугацаа» товч Санхүүжилт ба Хуваарь хуудсанд', () => {
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  assert.match(src, /<CashflowPlan[\s\S]{0,400}canSwitch=\{canSwitch\}[\s\S]{0,60}money=\{money\}/);
+  assert.doesNotMatch(src, /CashflowPlan|tab === 'plan'|Cashflow хувиарлах'\)/, 'хуучин таб үлдсэн');
+  assert.match(src, /type FinTab = 'ipc' \| 'proj';/);
+  assert.match(src, /<MainSpanButton canEdit=\{canEdit\} \/>/, 'Санхүүжилт: товч finEdit эрхээр');
+  const hv = readFileSync(new URL('./Huvaari.tsx', import.meta.url), 'utf8');
+  assert.match(hv, /<MainSpanButton canEdit=\{hasCap\(user\?\.username, 'finEdit'\)\} \/>/, 'Хуваарь: товч');
+  assert.ok(!existsSync(new URL('./CashflowPlan.tsx', import.meta.url)), 'CashflowPlan.tsx устсан байх ёстой');
 });
 
-check('шилжүүлэлт — хоёр харагдац НЭГ урсгалаар (preview · 2 цонх · expect)', () => {
-  const cfp = readFileSync(new URL('./CashflowPlan.tsx', import.meta.url), 'utf8');
-  for (const [name, src] of [['CashflowPlan', cfp]]) {
-    assert.match(src, /confirmAndSwitch\(\{/, `${name}: confirmAndSwitch`);
-    assert.doesNotMatch(src, /switchToHuvaari\(/, `${name}: шууд switchToHuvaari дуудахгүй (preview-гүй зам)`);
-  }
-});
-
-check('CashflowPlan — monthsError үед «Хуваарь руу шилжүүлэх» хаалттай', () => {
-  const cfp = readFileSync(new URL('./CashflowPlan.tsx', import.meta.url), 'utf8');
-  assert.match(cfp, /const doSwitch = async \(\) => \{[\s\S]{0,600}\|\| monthsError\) return;/, 'doSwitch-ийн хамгаалалт');
-  assert.match(cfp, /disabled=\{locked \|\| dirty > 0 \|\| !curSwitchable \|\| monthsError\}/, 'товч хаалттай');
+check('шилжүүлэлт — «Төсөл төлөвлөгөө биелэлт» НЭГ урсгалаар (preview · цонх · expect)', () => {
+  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
+  assert.match(src, /confirmAndSwitch\(\{/, 'confirmAndSwitch');
+  assert.doesNotMatch(src, /switchToHuvaari\(/, 'шууд switchToHuvaari дуудахгүй (preview-гүй зам)');
 });
 
 
 check('tablist — таб бүр roving tabIndex-тэй', () => {
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
   const tabs = src.split('role="tab"').slice(1).map((s) => s.slice(0, 400));
-  assert.ok(tabs.length >= 3);
+  assert.equal(tabs.length, 2, 'хоёр таб: Төсөл төлөвлөгөө биелэлт · Төлбөрийн акт (IPC)');
   for (const t of tabs) assert.match(t, /^[\s\S]*?tabIndex=\{tab === '(\w+)' \? 0 : -1\}[\s\S]*?aria-selected=\{tab === '\1'\}/, t.slice(0, 160));
 });
 

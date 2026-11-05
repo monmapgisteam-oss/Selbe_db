@@ -426,4 +426,42 @@ console.log('✅ хяналт №2 — S-муруйн цоорхойн анха�
 }
 console.log('✅ 2026-11-05 — багцын сарын хувь Хуваарьт: хувь × ХО дүн · гараар хувийг зөөх урсгал');
 
+/* ── 10. (2026-11-05) «Үндсэн хугацаа» — ГЭРЭЭГЭЭР («CF:<id>») түлхүүрлэсэн сарын хувь: хуудасгүй багц, ТЭЗҮ/зураг төсөл ── */
+{
+  const { toPkgPct } = await import('@/lib/huvaariObyem.ts');
+  const all = toPkgPct([
+    { attributes: { bagts: 'CF:21', sar_txt: '2026-11', obyem: 40 } },
+    { attributes: { bagts: 'CF:21', sar_txt: '2026-12', obyem: 60 } },
+    { attributes: { bagts: 'CF:22', sar_txt: '2026-11', obyem: 100 } },
+    { attributes: { bagts: 'БАГЦ1', sar_txt: '2026-11', obyem: 100 } },
+    { attributes: { bagts: 'CF:х', sar_txt: '2026-11', obyem: 5 } },
+  ]);
+  const byId = MM.pctByIdOf(all);
+  assert.deepEqual([...byId.keys()].sort(), [21, 22], '«CF:<id>» түлхүүртэй мөр л (багцын түлхүүр, эвдэрсэн түлхүүр орохгүй)');
+  const money = [
+    { id: 21, pkg: 'БАГЦ8', cost: 2000, source: 'huvaari' },   /* хүснэгтгүй багц */
+    { id: 22, pkg: '', cost: null, source: 'huvaari' },          /* багцгүй, ХО дүнгүй */
+    { id: 23, pkg: 'БАГЦ9', cost: 500, source: 'huvaari' },     /* хувь оруулаагүй, хуудасгүй */
+    { id: 24, pkg: 'БАГЦ8', cost: 300, source: 'garaar' },      /* ижил багцын гараар гэрээ — хөндөгдөхгүй */
+  ];
+  const manual = [{ id: 24, start: Date.UTC(2026, 10, 1, 12), pct: 10, amount: 30 }, { id: 21, start: Date.UTC(2026, 10, 1, 12), pct: 99, amount: 1 }];
+  const r = MM.buildMonthlyMoney(money, manual, new Map(), new Set(['БАГЦ1']), byId);
+  assert.deepEqual([...r.contracts.get(21).months], [['2026-11', 800], ['2026-12', 1200]], 'хуудасгүй багц: сарын мөнгө = хувь × ХО дүн');
+  assert.equal(r.contracts.get(21).state, 'ok');
+  assert.equal(r.contracts.get(22).state, 'sharedNoCost', 'ХО дүнгүй — ₮ бодогдохгүй');
+  assert.equal(r.contracts.get(23).state, 'noSheet', 'хувь оруулаагүй, хуудасгүй — хуучин төлөв (цоорхойд нэрлэгдэнэ)');
+  assert.deepEqual(r.gaps.missing.sort(), [22, 23]);
+  assert.deepEqual(r.rows.filter((x) => x.id === 21).map((x) => x.amount), [800, 1200], 'гараар мөр (id 21) S-муруйд орохгүй');
+  assert.equal(r.rows.filter((x) => x.id === 24).length, 1, 'гараар гэрээ хэвээр');
+  /* хувийн хүснэгт УНШИГДААГҮЙ (null) — хуудасгүй 'huvaari' гэрээ `failed` (хоосон гэж худал хэлэхгүй) */
+  const f = MM.buildMonthlyMoney(money, manual, new Map(), new Set(['БАГЦ1']), null);
+  assert.equal(f.contracts.get(21).state, 'failed');
+  assert.deepEqual(f.gaps.failed.sort(), [21, 22, 23]);
+  /* өгөөгүй (undefined) — хуучин зан төлөв */
+  const o = MM.buildMonthlyMoney(money, manual, new Map(), new Set(['БАГЦ1']));
+  assert.equal(o.contracts.get(21).state, 'noSheet');
+  assert.equal(o.contracts.get(22).state, 'noKey');
+}
+console.log('✅ 2026-11-05 — «Үндсэн хугацаа»: гэрээгээр түлхүүрлэсэн сарын хувь (хуудас шаардахгүй)');
+
 console.log('monthlyMoney.check — бүгд давлаа');

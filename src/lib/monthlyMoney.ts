@@ -17,7 +17,7 @@ import { cfStartKeyOf, type CfPlanRow } from '@/lib/gdash';
 import { PKGS, loadSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
 import { planFields } from '@/lib/planProgress';
-import { countPlanRows, loadPkgPct, loadPkgPlan, monthStart, savePkgPct, type PkgPlan } from '@/lib/huvaariObyem';
+import { cfIdOfPctKey, countPlanRows, loadPkgPct, loadPkgPlan, monthStart, savePkgPct, type PkgPlan, type PkgPct } from '@/lib/huvaariObyem';
 
 /* ══════════════════ Эх ══════════════════ */
 
@@ -224,6 +224,12 @@ export function buildMonthlyMoney(
   sheets: ReadonlyMap<string, PkgMoney>,
   /** PKGS-д хуудастай багцын түлхүүрүүд — `noSheet` ба `empty`-г ялгана (анхдагч: PKGS) */
   sheetKeys: ReadonlySet<string> = PKG_KEYS,
+  /**
+   * ГЭРЭЭНИЙ «Үндсэн хугацаа»-ны сарын хувь (`Cashflow_ID` → «YYYY-MM» → 0–100; `pctByIdOf`, 2026-11-05) — хүснэгтгүй багц,
+   * ТЭЗҮ/зураг төсөл зэрэг БҮХ гэрээнд: сарын мөнгө = хувь × ХО дүн. `null` = хувийн хүснэгт уншигдсангүй (тэр гэрээнүүд
+   * `failed`, хоосон гэж худал хэлэхгүй); өгөөгүй бол хуучин зан төлөв.
+   */
+  pctById?: ReadonlyMap<number, ReadonlyMap<string, number>> | null,
 ): MonthlyMoney {
   const issues: string[] = [];
   const contracts = new Map<number, ContractMoney>();
@@ -245,10 +251,28 @@ export function buildMonthlyMoney(
     c.months.set(k, (c.months.get(k) ?? 0) + r.amount);
   }
 
+  /* ── 'huvaari': гэрээний «Үндсэн хугацаа»-ны сарын хувь (гэрээгээр) — хуудас шаардахгүй ── */
+  const byPct = new Set<number>();
+  for (const c of contracts.values()) {
+    if (c.source !== SRC_HUVAARI) continue;
+    const m = pctById?.get(c.id);
+    if (!m?.size) continue;
+    byPct.add(c.id);
+    if (c.cost == null) {
+      c.state = 'sharedNoCost';
+      issues.push(tr('Гэрээ {0}: ХО дүнгүй тул Хуваарийн сарын хувиас ₮ бодогдсонгүй', c.id));
+      continue;
+    }
+    for (const [k, v] of m) c.months.set(k, (c.cost * v) / 100);
+    c.state = 'ok';
+  }
+
   /* ── 'huvaari': багцын цувааг гэрээнд оноох ── */
   const byPkg = new Map<string, ContractMoney[]>();
   for (const c of contracts.values()) {
-    if (c.source !== SRC_HUVAARI) continue;
+    if (c.source !== SRC_HUVAARI || byPct.has(c.id)) continue;
+    /* хувийн хүснэгт уншигдаагүй — хуудасгүй гэрээний сарын хувь мэдэгдэхгүй (хоосон биш) */
+    if (pctById === null && (!c.pkg || !sheetKeys.has(c.pkg))) { c.state = 'failed'; continue; }
     if (!c.pkg) { c.state = 'noKey'; issues.push(tr('Гэрээ {0}: багцын дугааргүй (эсвэл олон багцын) мөр — Хуваарь-аас сарын мөнгө бодогдохгүй', c.id)); continue; }
     if (!sheetKeys.has(c.pkg)) { c.state = 'noSheet'; issues.push(tr('Гэрээ {0}: {1} багцад бөглөх хуудас алга — Хуваарь-аас сарын мөнгө бодогдохгүй', c.id, c.pkg)); continue; }
     byPkg.set(c.pkg, [...(byPkg.get(c.pkg) ?? []), c]);
@@ -332,6 +356,16 @@ export function buildMonthlyMoney(
   return { contracts, pkgs, rows, issues, gaps };
 }
 
+/** Хуваарийн сарын хувийн бүх мөр (`loadPkgPct().pct`) → `Cashflow_ID` → сар → хувь («CF:<id>» түлхүүртэй нь л) */
+export function pctByIdOf(all: PkgPct): Map<number, Map<string, number>> {
+  const out = new Map<number, Map<string, number>>();
+  for (const [k, m] of all) {
+    const id = cfIdOfPctKey(k);
+    if (id != null && m.size) out.set(id, m);
+  }
+  return out;
+}
+
 /** PKGS-д хуудастай багцын түлхүүрүүд */
 export const PKG_KEYS: ReadonlySet<string> = new Set(PKGS.map((p) => bagtsKey(p.group)));
 
@@ -354,13 +388,13 @@ export const loadMoneyRows = cached<MoneyRow[]>(async () => {
 /**
  * Багцуудын ТООЦООЛСОН сарын мөнгө (зөвхөн `keys`-д байгаа багц — 'huvaari' гэрээтэй нь).
  */
-export async function loadSheetMoney(keys: ReadonlySet<string>): Promise<Map<string, PkgMoney>> {
+export async function loadSheetMoney(keys: ReadonlySet<string>, pctGiven?: PkgPct): Promise<Map<string, PkgMoney>> {
   const out = new Map<string, PkgMoney>();
   /* 2026-11-05: багцын сарын хувьтай багц — хуудас, обьём унших ШААРДЛАГАГҮЙ (сарын мөнгө = хувь × ХО дүн).
      Хувийн хүснэгт уншигдахгүй бол бүх багц «уншигдсангүй» (хоосон гэж ХУДАЛ хэлэхгүй). */
-  let pctAll: Awaited<ReturnType<typeof loadPkgPct>>['pct'];
+  let pctAll: PkgPct;
   try {
-    pctAll = (await loadPkgPct()).pct;
+    pctAll = pctGiven ?? (await loadPkgPct()).pct;
   } catch (e) {
     console.warn('[selbe] сарын мөнгө: Хуваарийн сарын хувь уншигдсангүй', e);
     return failedSheets(keys);
@@ -413,6 +447,17 @@ export async function loadSheetMoney(keys: ReadonlySet<string>): Promise<Map<str
   return out;
 }
 
+/* Хуваарийн сарын хувийн кэш — 186-ын бичилтээр (`HUVAARI_OBYEM`) унана; уналт кэшлэгдэхгүй */
+let pctP: { at: number; p: Promise<PkgPct> } | null = null;
+register(() => { pctP = null; }, ['HUVAARI_OBYEM']);
+function loadPctCached(): Promise<PkgPct> {
+  if (pctP && Date.now() - pctP.at <= SESSION_TTL_MS) return pctP.p;
+  const p = loadPkgPct().then((x) => x.pct);
+  pctP = { at: Date.now(), p };
+  p.catch(() => { if (pctP?.p === p) pctP = null; });
+  return p;
+}
+
 /* Кэш — түлхүүрийн олонлогоор; ЗӨВХӨН бүрэн (уналтгүй) үр дүн (`live.cached`-ын `keep` дүрэм) */
 const sheetMoneyCache = new Map<string, { at: number; p: Promise<Map<string, PkgMoney>> }>();
 register(() => { sheetMoneyCache.clear(); }, ['HUVAARI_OBYEM', 'BAGTS_SHEET', 'CASHFLOW_NEW']);
@@ -463,15 +508,24 @@ export async function loadMonthlyMoney(manual: readonly CfPlanRow[]): Promise<Mo
     return r;
   }
   const keys = huvaariPkgKeys(money);
+  const anyHuv = money.some((m) => m.source === SRC_HUVAARI);
+  /* Гэрээний «Үндсэн хугацаа»-ны сарын хувь — 'huvaari' гэрээ байвал л; уншигдахгүй бол null (тэр гэрээнүүд `failed`) */
+  let pctAll: PkgPct | null | undefined;
+  if (anyHuv) {
+    try { pctAll = await loadPctCached(); } catch (e) {
+      console.warn('[selbe] сарын мөнгө: Хуваарийн сарын хувь уншигдсангүй', e);
+      pctAll = null;
+    }
+  }
   let sheets: Map<string, PkgMoney>;
   try {
-    sheets = keys.size ? await loadSheetMoneyCached(keys) : new Map<string, PkgMoney>();
+    sheets = !keys.size ? new Map<string, PkgMoney>() : pctAll === null ? failedSheets(keys) : await loadSheetMoneyCached(keys);
   } catch (e) {
     console.warn('[selbe] сарын мөнгө: Хуваарийн хуудас уншигдсангүй — гараар цуваа хэвээр', e);
     sheets = failedSheets(keys);
   }
-  const r = buildMonthlyMoney(money, manual, sheets);
-  if ([...sheets.values()].some((x) => x.failed.length)) { r.gaps.partial = true; partial.add(r); partial.add(r.rows); }
+  const r = buildMonthlyMoney(money, manual, sheets, PKG_KEYS, pctAll === undefined ? undefined : pctAll === null ? null : pctByIdOf(pctAll));
+  if (pctAll === null || [...sheets.values()].some((x) => x.failed.length)) { r.gaps.partial = true; partial.add(r); partial.add(r.rows); }
   return r;
 }
 

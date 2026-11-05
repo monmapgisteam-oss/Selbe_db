@@ -1,14 +1,14 @@
 'use client';
 
 import {
-  useState, useEffect, useMemo, useRef, useCallback, useId, type MouseEvent, type ReactNode,
+  useState, useEffect, useMemo, useRef, useId, type MouseEvent, type ReactNode,
 } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import {
   Data, Empty, userError, tabFocusNav,
 } from '@/components/ui';
 import { askConfirm } from '@/lib/confirm';
-import { CashflowPlan } from '@/modules/CashflowPlan';
+import { MainSpanButton } from '@/modules/huvaari/MainSpan';
 import { useAsync } from '@/lib/useAsync';
 import {
   queryFeatures, arcgisPost,
@@ -33,9 +33,6 @@ import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { MAP_PKG_ALIAS } from '@/lib/pkgAlias';
 import { loadHoRows, groupHo, type HoContract } from '@/lib/ipc';
 import {
-  setFinNavDirty,
-} from '@/lib/finEdit';
-import {
   finXlRowHidden, finXlChartCat,
 } from '@/lib/finExcelLayout';
 import {
@@ -52,7 +49,7 @@ import {
 import { useAuth } from '@/components/AuthGate';
 import { IpcTable } from '@/modules/IpcTable';
 import {
-  loadMonthlyMoney, monthSourceOf, confirmAndSwitch, switchPhaseWhy, PKG_KEYS, SRC_HUVAARI, CF_SWITCH_CAP, type MonthlyMoney,
+  monthSourceOf, confirmAndSwitch, switchPhaseWhy, PKG_KEYS, SRC_HUVAARI, CF_SWITCH_CAP, type MonthlyMoney,
 } from '@/lib/monthlyMoney';
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
 import { isAddedWork, moneySums, sourceSums, SOURCE_KEYS, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus, type SourceKey, type SourceSums } from '@/lib/projectPlan';
@@ -1094,16 +1091,6 @@ const cfIdOf = (v: unknown): number | null => {
 /** Тооцоолсон ('huvaari') сарын СИНТЕТИК мөрийн тэмдэг — OID-гүй, засагдахгүй */
 const HUV_ROW = '__huv';
 
-/** Сарын мөр → `monthlyMoney`-ийн оролт (`gdash.CfPlanRow`) — `CashflowPlan.manualOf`-тэй ижил дүрэм */
-const manualCfRows = (rows: readonly Row[]) => rows
-  .map((r) => {
-    const amt = r[CF_MONTH.amount];
-    const pc = r[CF_MONTH.pct];
-    const numOr = (v: unknown) => (v == null || String(v).trim() === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
-    return { id: cfIdOf(r[CF_MONTH.id]) ?? -1, start: cfIdOf(r[CF_MONTH.start]), pct: numOr(pc), amount: numOr(amt) };
-  })
-  .filter((r) => r.id > 0 && r.start != null);
-
 /**
  * 5-р түвшний сарын дэд мөрд утгаа харуулах багана мөн эсэх (`cashflow_*`).
  */
@@ -1764,7 +1751,7 @@ export function ProjectPlanTable({
 }
 
 /** Санхүүжилтийн табууд */
-type FinTab = 'ipc' | 'plan' | 'proj';
+type FinTab = 'ipc' | 'proj';
 
 /**
  * Санхүүжилт — Cashflow ба IPC-ийн БҮРЭН хүснэгт (график огт байхгүй).
@@ -1777,24 +1764,6 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
   const canEdit = hasCap(user?.username, 'finEdit');
   const canSwitch = hasCap(user?.username, CF_SWITCH_CAP);
 
-  /**
-   * САРЫН МӨНГӨ — 'huvaari' гэрээний тооцоолсон сарууд (`monthlyMoney`).
-   */
-  const srcField = CASHFLOW_NEW.fields.monthSource;
-  const huvIds = useMemo(() => {
-    const s = new Set<number>();
-    for (const w of d.cashflow) {
-      const id = cfIdOf(w[CF_MONTH.id]);
-      if (id != null && monthSourceOf(w[srcField]) === SRC_HUVAARI) s.add(id);
-    }
-    return s;
-  }, [d.cashflow, srcField]);
-  const hasHuv = huvIds.size > 0;
-  const moneyQ = useAsync<MonthlyMoney | null>(
-    () => (hasHuv ? loadMonthlyMoney(manualCfRows(d.cfMonths)) : Promise.resolve(null)),
-    [hasHuv, d.cfMonths],
-  );
-  const money: MonthlyMoney | null | undefined = !hasHuv ? null : moneyQ.state === 'ready' ? moneyQ.data : undefined;
 
   /**
    * Урьд нь Cashflow (76 мөр) ба IPC (90 мөр) нэг хуудсанд дараалж
@@ -1803,14 +1772,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
    * дээдийг нь өнгөрөх шаардлагатай байлаа. Нэг мөчид НЭГ хүснэгт.
    */
   const [tab, setTab] = useState<FinTab>('proj');
-  const planDirty = useRef(false);
-  const onPlanDirty = useCallback((v: boolean) => { planDirty.current = v; setFinNavDirty('plan', v); }, []);
-  const switchTab = async (t: FinTab) => {
-    if (t === tab) return;
-    if (tab === 'plan' && planDirty.current
-      && !(await askConfirm(tr('Cashflow хувиарлалтад хадгалаагүй засвар байна. Таб солибол алдагдана. Үргэлжлүүлэх үү?'), { danger: true, ok: tr('Таб солих') }))) return;
-    setTab(t);
-  };
+  const switchTab = (t: FinTab) => { if (t !== tab) setTab(t); };
 
   return (
     <>
@@ -1845,17 +1807,9 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           >
             {tr('Төлбөрийн акт (IPC)')}
           </button>
-          <button
-            type="button"
-            role="tab"
-            tabIndex={tab === 'plan' ? 0 : -1}
-            aria-selected={tab === 'plan'}
-            className={`${f.tab} ${tab === 'plan' ? f.tabOn : ''}`}
-            onClick={() => void switchTab('plan')}
-          >
-            {tr('Cashflow хувиарлах')}
-          </button>
         </div>
+        {/* 2026-11-05: «Cashflow хувиарлах» таб хасагдсан — гэрээ бүрийн сарын хувь «Үндсэн хугацаа»-нд (Хуваарь хуудсанд ч мөн) */}
+        <MainSpanButton canEdit={canEdit} />
       </header>
 
       {tab === 'proj' ? (
@@ -1867,18 +1821,6 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
         canSwitch={canSwitch}
         canEdit={canEdit}
         onSaved={onSaved}
-      />
-      ) : tab === 'plan' ? (
-      <CashflowPlan
-        key="plan"
-        canEdit={canEdit}
-        works={d.cashflow}
-        months={d.cfMonths}
-        monthsError={d.cfMonthsError}
-        onSaved={onSaved}
-        onDirty={onPlanDirty}
-        canSwitch={canSwitch}
-        money={money}
       />
       ) : (
       <IpcTable contracts={groupHo(d.ipc)} cfRows={d.cashflow} />

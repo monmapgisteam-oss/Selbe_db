@@ -53,7 +53,7 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 {
   const RAW = /String\(\(?(\w+)(?: as Error)?\)?\??\.message (?:\|\||\?\?) \1\)/;
   for (const f of [
-    'components/IpcDocDialog.tsx', 'modules/AjilBatlah.tsx', 'modules/CashflowPlan.tsx',
+    'components/IpcDocDialog.tsx', 'modules/AjilBatlah.tsx', 'modules/huvaari/MainSpan.tsx',
     'modules/DedButets.tsx', 'modules/DedButetsBatch.tsx', 'modules/DedButetsEdit.tsx', 'modules/Finance.tsx',
     'modules/Gazar.tsx', 'modules/GazarEdit.tsx', 'modules/Guitsetgel.tsx', 'modules/Huvaari.tsx',
     'modules/HuvaariBatlah.tsx', 'modules/sheet/FillNew.tsx', 'modules/ZovshoorolEdit.tsx',

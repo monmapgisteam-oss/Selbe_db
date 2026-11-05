@@ -816,3 +816,15 @@ export async function savePkgPct(pkg: string, name: string, next: ReadonlyMap<st
   if (!e.adds.length && !e.updates.length && !e.deletes.length && !dups.length) return [0, 0, 0];
   return applyPlanEdits(e);
 }
+
+/**
+ * ГЭРЭЭНИЙ сарын хувийн түлхүүр (`bagts` талбарт) — «CF:<Cashflow_ID>» (2026-11-05, «Үндсэн хугацаа»): гүйцэтгэлийн
+ * хүснэгтгүй багц, ТЭЗҮ/зураг төслийн гэрээ, олон багц хамарсан ажил бүгд ГЭРЭЭГЭЭРЭЭ түлхүүрлэгдэнэ (багцын нэр
+ * давхцдаг: «Багц 18»-ын зураг төсөл ба барилга угсралт). Эхний 21 гэрээ багцын түлхүүрээр («БАГЦ1») хадгалагдсан — хэвээр.
+ */
+export const cfPctKey = (cashflowId: number): string => `CF:${cashflowId}`;
+/** «CF:<id>» → id; өөр хэлбэр бол null */
+export const cfIdOfPctKey = (key: string): number | null => {
+  const m = /^CF:(\d+)$/.exec(key.trim());
+  return m ? Number(m[1]) : null;
+};
