@@ -472,10 +472,13 @@ export function mergePhases(list: readonly (readonly SubGroup[] | WeightedPhases
   for (const it of items) for (const g of it.gs) {
     const k = `${g.no}|${g.name}`;
     const w = allW ? it.w! : 1;
+    /* 2026-11-05: гүйцэтгэл/төлөвлөгөө — блокийн жин × дэд үе шатын жин. Жин ба гүйцэтгэлийг тус тусад нь
+       дундажлахад Σ(жин × гүйцэтгэл) ≠ «Барилга угсралт — нийт» (9 багц бүгд зөрж байв) */
+    const wa = w * (g.weight != null && g.weight > 0 ? g.weight : 1);
     const x = acc.get(k) ?? { g, wt: [], a: [], p: [], s: null, e: null };
     if (g.weight != null) x.wt.push({ v: g.weight, w });
-    if (g.actual != null) x.a.push({ v: g.actual, w });
-    if (g.planned != null) x.p.push({ v: g.planned, w });
+    if (g.actual != null) x.a.push({ v: g.actual, w: wa });
+    if (g.planned != null) x.p.push({ v: g.planned, w: wa });
     if (g.start != null && (x.s == null || g.start < x.s)) x.s = g.start;
     if (g.end != null && (x.e == null || g.end > x.e)) x.e = g.end;
     acc.set(k, x);
@@ -709,10 +712,18 @@ export function buildL3(
     rows.push(barRow(res, pk.node, `${id}.2.1`, tr('Барилга угсралт — нийт'), 2, today, { strong: true }));
     if (detail) {
       /* Блоктой — блок бүрийн «Б.»-ийн дэд үе шат, блокийн жингээр (F); блокгүй (шугам сүлжээ) — «Ажил» блокийнх */
+      /* 2026-11-05: ТАЙЛАНГҮЙ блок (хуудсанд «Б.» алга) — «нийт» мөр түүнийг 0% гэж жигнэдэг тул дэд үе шатад ч 0%-аар
+         (бүтэц нь тайлантай блокийнх) оруулна; урьд нь орхигдож Σ(жин × гүйцэтгэл) нийтээс их гарч байв (Багц 3.1 0.5↔0.05) */
+      const got = pk.blocks.map((b) => ({ b, gs: detail.get(blockKeyFor(b.pkg, b.blok!))?.phases }));
+      const tpl = got.find((x) => x.gs)?.gs;
       const list: WeightedPhases[] = pk.blocks.length
-        ? pk.blocks.flatMap((b) => {
-          const gs = detail.get(blockKeyFor(b.pkg, b.blok!))?.phases;
-          return gs ? [{ gs, w: res.values.get(b)?.F ?? null }] : [];
+        ? got.flatMap(({ b, gs }) => {
+          const bv = res.values.get(b);
+          const w = bv?.F ?? null;
+          /* хуудсанд мөр нь бий, гүйцэтгэл нь бөглөгдөөгүй блок — блокийн S (0) шиг 0%-аар */
+          if (gs) return [{ gs: bv?.S == null ? gs : gs.map((g) => (g.actual == null ? { ...g, actual: 0 } : g)), w }];
+          if (!tpl) return [];
+          return [{ gs: tpl.map((g) => ({ no: g.no, name: g.name, weight: g.weight, start: null, end: null, actual: 0, planned: null })), w }];
         })
         : [infraDetail(detail, pk)?.phases].filter((x): x is SubGroup[] => !!x).map((gs) => ({ gs, w: null }));
       if (!list.length && pk.blocks.length) rows.push({ t: 'note', id: `${id}.2.0`, name: tr('Бөглөх хуудасны дэд үе шат олдсонгүй'), depth: 2 });

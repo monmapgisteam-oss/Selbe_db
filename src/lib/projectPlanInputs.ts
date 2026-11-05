@@ -531,11 +531,18 @@ export function linkPlanDates(tree: PlanTree, spans: DateSpans | null): PlanStor
     if (!r) continue;
     const x: PlanStoredRow = { ...r };
     if (n.phase === 'barilga' && spans) {
-      const sp = n.children.length ? undefined : spans.get(r.bagts, n.blok ?? r.blok, n.sub ?? 'barilga');
-      if (sp !== null) {
-        const v = sp ?? EMPTY_SPAN;
-        x.geree_ehleh = v.geree[0]; x.geree_duusah = v.geree[1];
-        x.guits_ehleh = v.guits[0]; x.guits_duusah = v.guits[1];
+      if (n.children.length) {
+        /* 2026-11-05: ЭЦЭГ мөр — 182-д хадгалсан ГЭРЭЭНИЙ огноо (H/I) хэвээр (урьд нь хоослогдож 374 мөрийн H/I ба L2-ийн
+           «Гэрээний дуусах» 59/59 алга болж байв); ГҮЙЦЭТГЭГЧИЙН огноо (L/M) урьдын адил хоослогдож блокуудын Хуваариас
+           MIN/MAX-аар нэгтгэгдэнэ */
+        x.guits_ehleh = null; x.guits_duusah = null;
+      } else {
+        const sp = spans.get(r.bagts, n.blok ?? r.blok, n.sub ?? 'barilga');
+        if (sp !== null) {
+          const v = sp ?? EMPTY_SPAN;
+          x.geree_ehleh = v.geree[0]; x.geree_duusah = v.geree[1];
+          x.guits_ehleh = v.guits[0]; x.guits_duusah = v.guits[1];
+        }
       }
     }
     out.set(r, x);

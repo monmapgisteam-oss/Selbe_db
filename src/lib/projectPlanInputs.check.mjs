@@ -180,7 +180,7 @@ const srow = (o) => ({
     assert.equal(ds.get('Багц-4.1', '5/1', 'barilga'), null, 'хуудас уншигдаагүй → null (хадгалсан хэвээр)');
     const t = buildTree([
       { objectid: 1, dd_kod: '1', uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: 'Газар', gazar_ehleh: D('2025-01-01'), gazar_duusah: D('2025-06-01'), geree_ehleh: D('2025-01-01'), geree_duusah: D('2025-12-31') },
-      { objectid: 2, dd_kod: '2', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт', geree_ehleh: D('2025-01-01'), geree_duusah: D('2027-12-31') },
+      { objectid: 2, dd_kod: '2', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт', geree_ehleh: D('2025-01-01'), geree_duusah: D('2027-12-31'), guits_ehleh: D('2025-01-01'), guits_duusah: D('2027-12-31') },
       { objectid: 3, dd_kod: '2.1', etseg_kod: '2', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралтын ажил' },
       { objectid: 4, dd_kod: '2.1.1', etseg_kod: '2.1', uy_shat: 'Барилга угсралт', bagts: 'Багц-4.2', blok: '5/1', ajil_uilchilgee: 'блок', geree_ehleh: D('2025-01-01'), guits_ehleh: D('2025-02-01'), guits_duusah: D('2025-03-01') },
       { objectid: 5, dd_kod: '2.1.2', etseg_kod: '2.1', uy_shat: 'Барилга угсралт', bagts: 'Багц-9.1', ajil_uilchilgee: 'хуудасгүй', guits_ehleh: D('2025-02-01'), guits_duusah: D('2025-03-01') },
@@ -188,7 +188,8 @@ const srow = (o) => ({
     const L = new Map(linkPlanDates(t, ds).map((r) => [r.objectid, r]));
     assert.equal(L.get(1).gazar_ehleh, D('2025-01-01'), '2026-11-04: «Газар чөлөөлөлтийн огноо» хуудсанд оруулсан огноо хадгалагдана');
     assert.equal(L.get(1).geree_ehleh, D('2025-01-01'), 'бусад үе шатны гэрээний огноо хөндөгдөхгүй');
-    assert.equal(L.get(2).geree_ehleh, null, 'барилга угсралтын эцэг мөр хоосон');
+    assert.equal(L.get(2).geree_ehleh, D('2025-01-01'), '2026-11-05: барилга угсралтын эцэг мөрийн хадгалсан ГЭРЭЭНИЙ огноо хэвээр (Хуваарь зөвхөн навчид)');
+    assert.deepEqual([L.get(2).guits_ehleh, L.get(2).guits_duusah], [null, null], 'эцэг мөрийн гүйцэтгэгчийн огноо хоосон — блокуудын Хуваариас нэгтгэгдэнэ');
     assert.deepEqual([L.get(4).guits_ehleh, L.get(4).guits_duusah, L.get(4).geree_ehleh], [D('2026-01-01'), D('2026-02-10'), null], 'блок = Хуваарь (хоосон ч)');
     assert.deepEqual([L.get(5).guits_ehleh, L.get(5).guits_duusah], [null, null], 'хуудасгүй багц хоосон');
     const keep = new Map(linkPlanDates(t, null).map((r) => [r.objectid, r]));

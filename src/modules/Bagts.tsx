@@ -207,7 +207,9 @@ export function PackKpi({
       { v: fin == null ? '…' : has ? mnt(fin.given) : '—', l: tr('олгосон санхүүжилт'), c: 'var(--good-ink)' },
       { v: fin == null ? '…' : share == null ? '—' : pct(share, 1), l: tr('олгосон — гэрээний дүнгийн %'), c: 'var(--data)' },
       {
-        v: fin == null ? '…' : has ? mnt(Math.max(0, fin.plan - fin.given)) : '—',
+        /* 2026-11-05: PkgFin.TsKpi · PkgFinCard · ExecReport §4-тэй НЭГ томьёо (гэрээлсэн − гэрээт олголт); урьд нь
+           төлөвлөгөө − олголт байж 26 багцад зөрж байв */
+        v: fin == null ? '…' : fin.contract > 0 ? mnt(Math.max(0, fin.contract - fin.givenContracted)) : '—',
         l: tr('олгогдоогүй үлдэгдэл'),
         c: 'var(--warn-ink)',
       },

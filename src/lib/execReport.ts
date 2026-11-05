@@ -335,7 +335,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     fin: {
       planTotal: csum, given: finGiven,
       givenContracted: finGivenContracted,
-      givenOther: finGiven == null ? 0 : Math.max(0, finGiven - finGivenContracted),
+      givenOther: finGiven == null || finGiven - finGivenContracted < 0.5 ? 0 : finGiven - finGivenContracted,
       share: finGiven != null ? paidPctOf(finance.paidContracted, finance.contractAmount) : null,
       remain: finGiven == null ? null : Math.max(0, csum - finGivenContracted),
       rows: finRows,
@@ -360,7 +360,7 @@ export function execFinRanges(
 ): Pick<ExecReport['fin'], 'ranges' | 'givenUnlisted'> {
   const ranges = rangePaysOf(pays).map((r) => ({ label: r.label, given: r.amount, members: r.members }));
   const listed = rows.reduce((s, r) => s + r.given, 0) + ranges.reduce((s, r) => s + r.given, 0);
-  return { ranges, givenUnlisted: given == null ? 0 : Math.max(0, given - listed) };
+  return { ranges, givenUnlisted: given == null || given - listed < 0.5 ? 0 : given - listed };
 }
 
 /**

@@ -345,7 +345,8 @@ function companyTotals(rows: Row[], pkgOfCo: ReadonlyMap<string, string>) {
       code: c.code,
       label: c.label,
       bagtsK: pkgOfCo.get(c.sfx) ?? '',
-      ajiltan: rows.reduce((s, r) => s + nn(r[f.niitAjiltan]), 0),
+      /* 2026-11-05: `niit_ajiltan_<sfx>` хоосон/0 бол монгол + гадаад (`laborState` · `hoursByDay`-тай ижил нөөц) */
+      ajiltan: rows.reduce((s, r) => s + (nn(r[f.niitAjiltan]) || nn(r[f.mongol]) + nn(r[f.gadaad])), 0),
       tehnik: rows.reduce((s, r) => s + nn(r[f.niitTehnik]), 0),
       mongol: rows.reduce((s, r) => s + nn(r[f.mongol]), 0),
       gadaad: rows.reduce((s, r) => s + nn(r[f.gadaad]), 0),
@@ -375,9 +376,13 @@ function byDaySeries(rows: Row[], sfxs: readonly string[] | null, key: 'niitAjil
       for (const { sfx, f } of list) {
         if (!companyReported(r, sfx)) continue;
         const v = r[f[key]];
-        if (v == null || v === '') continue;
-        const x = Number(v);
-        if (!Number.isFinite(x)) continue;
+        let x = v == null || v === '' ? null : Number(v);
+        /* 2026-11-05: ажилтан — `niit` хоосон/0 бол монгол + гадаад (`companyReported`-той ижил нөөц) */
+        if (key === 'niitAjiltan' && !(x != null && x > 0)) {
+          const mg = nn(r[f.mongol]) + nn(r[f.gadaad]);
+          if (mg > 0) x = mg;
+        }
+        if (x == null || !Number.isFinite(x)) continue;
         sum = (sum ?? 0) + x;
       }
       return { d: nn(r[L.ognoo]), value: sum };

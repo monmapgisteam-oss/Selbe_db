@@ -206,7 +206,7 @@ const ALL: Dataset[] = [
     url: BOUNDARY.plan.url,
     view: 'plan',
     get synonyms() { return lzSynonyms4(); },
-    get note() { return tr('Төслийн нийт талбай = энэ давхаргын Hec_area талбар (га) — геометрээс дахин тооцохгүй.'); },
+    get note() { return tr('Төслийн нийт талбай = энэ давхаргын hec_area талбар (га) — геометрээс дахин тооцохгүй.'); },
   },
 
   /* ─────────── ЭМЗЭГ — зөвшөөрөл гартал хаалттай ─────────── */

@@ -20,7 +20,7 @@ import { setNavDirty } from '@/lib/navGuard';
 import { askConfirm } from '@/lib/confirm';
 import { useAuth } from '@/components/AuthGate';
 import { Data, userError } from '@/components/ui';
-import { buildTree, computePlan, type PlanNode } from '@/lib/projectPlan';
+import { buildTree, computePlan, ubToday, type PlanNode } from '@/lib/projectPlan';
 import { dayOf, displayCodes, rowKey, toStored, type Names } from '@/lib/zuragTosol';
 import {
   badText, buildEdits, conflicts, effectiveRows, inSection, isEditable, pendingCount, setEdit, textOf,
@@ -43,7 +43,7 @@ const WHERE = `${F.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`;
 
 const loadRows = cached(async () => ({
   rows: await queryFeatures(CASHFLOW_NEW.url, { where: WHERE, outFields: OUT, orderBy: `${CASHFLOW_NEW.oid} ASC` }),
-  at: Date.now(),
+  at: ubToday(), // 2026-11-05: УБ-ын өдөр — `Date.now()` UTC-ээр таслагдаж 00:00–08:00-д төлөвлөгөө 1 өдөр хоцорч байв
 }), 5 * 60_000, ['CASHFLOW_NEW']);
 
 const nameOf = (n: PlanNode): string => String(n.row?.ajil_uilchilgee ?? '');

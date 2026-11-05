@@ -300,7 +300,13 @@ const stored = fx.rows.map((r, i) => ({
   const det = new Map([['БАГЦ1|5/1', { phases: [{ no: 'Б1', name: 'Барилгын ажил', weight: 77.5, start: D('2025-08-01'), end: D('2027-04-24'), actual: 37 }], groups: [] }]]);
   const l3d = buildL3(plan, pkgs.slice(0, 1), det, TODAY);
   const ph = l3d.find((r) => r.t === 'bar' && r.name === 'Барилгын ажил');
-  assert.equal(ph?.w, 77.5, 'дэд үе шат жинтэй');
+  near(ph?.w, 77.5, 1e-9, 'дэд үе шат жинтэй');
+  /* 2026-11-05: тайлангүй блок (детальгүй) — «нийт»-тэй ижил 0%-аар жигнэгдэнэ; жин × гүйцэтгэлийн Σ = Σ F·S */
+  assert.ok(ph.actual != null && ph.actual < 37 && ph.actual > 0, 'тайлангүй блокууд 0%-аар жигнэгдэнэ');
+  const one = buildL3(plan, pkgs.slice(0, 1), new Map(pkgs[0].blocks.map((bk) => [blockKeyFor(bk.pkg, bk.blok), { phases: [{ no: 'Б1', name: 'Б1', weight: 60, start: null, end: null, actual: 50 }, { no: 'Б2', name: 'Б2', weight: 40, start: null, end: null, actual: 10 }], groups: [] }])), TODAY);
+  const sub = one.filter((r) => r.t === 'bar' && !r.strong && r.depth === 2 && r.w != null && r.id.startsWith('L3.1.2.'));
+  assert.equal(sub.length, 2);
+  near(sub.reduce((x, r) => x + (r.w / 100) * r.actual, 0), 0.6 * 50 + 0.4 * 10, 1e-9, 'Σ(жин × дэд үе шат) — блок бүрд ижил бол блокийн утга');
 
   /* ── L4: блокийн сарын өсөлт = хуваарийн сарын хувь; нийлбэр = эцсийн хуримтлал ── */
   const l4 = buildL4(plan, pkgs.slice(0, 1))[0];

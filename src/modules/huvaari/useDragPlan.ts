@@ -6,7 +6,7 @@ import { remapMonths, type MonthRes, type PkgPlan, type PkgRes } from '@/lib/huv
 import type { Schema } from '@/modules/sheet/bagts.pkg';
 import { kM, kN, kS } from '@/lib/huvaariDraft';
 import { MAX_DAYS, type Drag, type DragMode } from './types';
-import { directWorks, obKey, sameMonths, sameRes, sameSpan } from './util';
+import { groupWorks, obKey, sameMonths, sameRes, sameSpan } from './util';
 
 /**
  * ЗУРВАС ЧИРЭХ ХӨДӨЛГҮҮР — pointer down/move/up · `commit` (гинжтэй) · цуцлах агшин
@@ -136,7 +136,7 @@ export function useDragPlan({
     grp.current = null;
     if (r.group) {
       const g = r.spans[blk];
-      if (chain && mode === 'new' && onGroupRange && directWorks(plan, plan.findIndex((x) => x.oid === r.oid)).length > 0) {
+      if (chain && mode === 'new' && onGroupRange && groupWorks(plan, plan.findIndex((x) => x.oid === r.oid)).length > 0) {
         /* Огноогүй (эсвэл хоосон хэсэг) — сүүдэр муж чирнэ; өгөгдөл хөндөхгүй, тавихад цонх тэр мужаар нээгдэнэ */
         e.preventDefault();
         e.stopPropagation();

@@ -162,7 +162,7 @@ export function buildSystemPrompt(scope: AgentScope): string {
     tr('guitsetgegch=гүйцэтгэгч · ognoo=огноо · ajiltan=ажилтан · tehnik=техник · zogsool=зогсоол ·'),
     tr('nogoon=ногоон · dulaan=дулаан · us=ус · tsahilgaan=цахилгаан · holboo=холбоо'),
     '',
-    tr('Төслийн нийт талбайг ds:boundary давхаргын Hec_area талбараас асууж ав (хатуу тогтмол байхгүй).'),
+    tr('Төслийн нийт талбайг ds:boundary давхаргын hec_area талбараас асууж ав (хатуу тогтмол байхгүй).'),
     tr('Порталын харагдацууд: {0}.', views.map((v) => `${v.title} (${v.key})`).join(', ')),
     '',
     tr('## Хатуу дүрэм'),

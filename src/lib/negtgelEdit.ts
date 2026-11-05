@@ -242,7 +242,9 @@ export type NegTotal = Record<TotKey | 'perfG' | 'perfGch' | 'perfGu' | 'perfWk'
 export function negTotals(top: ReadonlyArray<{ p: number | null } & Record<TotKey, number | null>>): NegTotal {
   let p = 0;
   const t = { planG: 0, planGch: 0, planGu: 0, planNw: 0, planPw: 0, act: 0 } as Record<TotKey, number>;
-  const nul = new Set<TotKey>();
+  /* 2026-11-05: Excel-ийн 6-р мөр ба ТТБ-ийн `projectPlan.rollup`-тай ИЖИЛ — утгагүй (хуваарьгүй) үе шат 0 гэж
+     тоологдоно; урьд нь нэг ч null бол нийт «—» гарч ТТБ-ийн Төслийн нийт мөртэй зөрж байв. Нэг ч утгагүй бол null */
+  const known = { planG: 0, planGch: 0, planGu: 0, planNw: 0, planPw: 0, act: 0 } as Record<TotKey, number>;
   let weighted = false;
   for (const r of top) {
     if (r.p == null) continue;
@@ -251,7 +253,9 @@ export function negTotals(top: ReadonlyArray<{ p: number | null } & Record<TotKe
     p += ip;
     for (const k of TOT_KEYS) {
       const v = r[k];
-      if (v == null) { if (ip > 0) nul.add(k); } else t[k] += ip * v;
+      if (v == null) continue;
+      t[k] += ip * v;
+      known[k] += ip;
     }
   }
   if (!weighted || !(p > 0)) {
@@ -262,7 +266,7 @@ export function negTotals(top: ReadonlyArray<{ p: number | null } & Record<TotKe
   }
   const norm = p < 0.9995 || p > 1.0005 ? p : 1;
   const out = { p } as NegTotal;
-  for (const k of TOT_KEYS) out[k] = nul.has(k) ? null : t[k] / norm;
+  for (const k of TOT_KEYS) out[k] = known[k] > 0 ? t[k] / norm : null;
   for (const { perf, plan } of PERF) out[perf] = perfOf(out.act, out[plan]);
   return out;
 }

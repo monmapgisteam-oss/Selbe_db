@@ -30,6 +30,21 @@ export function directWorks(plan: readonly PlanRow[], at: number): number[] {
   return out;
 }
 
+/**
+ * БҮЛГЭЭР ТӨЛӨВЛӨХ АЖЛУУД (2026-11-05, хэрэглэгч: «барилгыг 15 бүлгээр, бусад багцыг ерөнхий том бүлгээр төлөвлөнө») —
+ * шууд ажилтай бүлэгт шууд ажлууд (`directWorks`, урьдын адил); зөвхөн дэд бүлэгтэй ТОМ бүлэгт доторх БҮХ навч ажил
+ * мөрийн дарааллаар (дэд бүлэг дэд бүлгээр). Батлагдаагүй нэмэлт мөр (сөрөг oid) ороогүй.
+ */
+export function groupWorks(plan: readonly PlanRow[], at: number): number[] {
+  const direct = directWorks(plan, at);
+  if (direct.length) return direct;
+  const out: number[] = [];
+  const d0 = plan[at]?.depth;
+  if (d0 == null) return out;
+  for (let k = at + 1; k < plan.length && plan[k].depth > d0; k++) if (!plan[k].group && plan[k].oid >= 0) out.push(k);
+  return out;
+}
+
 /** Бүлэгт дэд бүлэг бий эсэх (том бүлэг) */
 export function hasSubGroup(plan: readonly PlanRow[], at: number): boolean {
   const d0 = plan[at]?.depth;

@@ -14,7 +14,7 @@ import { orderByDeps, remapMonths, scheduleByMoney, splitByPct, type PkgPlan } f
 import type { Schema } from '@/modules/sheet/bagts.pkg';
 import type { SheetRow } from '@/modules/sheet/bagtsSheet';
 import type { PlanKind } from './types';
-import { directWorks, obKey, sameMonths } from './util';
+import { directWorks, groupWorks, obKey, sameMonths } from './util';
 
 export function useGroupPlan({
   plan, rowsAll, n, sc, kind, busy, locked, canEdit, obState, obPlan, obOf, obFullRef, applyChanges, setErr, setNote, setObDraft,
@@ -50,8 +50,8 @@ export function useGroupPlan({
   const groupSchedule = useCallback((oid: number, sp: Span, pct: Map<string, number>) => {
     const at = plan.findIndex((x) => x.oid === oid);
     if (at < 0 || !plan[at].group) return null;
-    /* Зөвхөн ШУУД ажлууд — дэд бүлгийн ажлууд өөрийн бүлгээсээ төлөвлөгдөнө (том бүлэг тэднийг дарахгүй) */
-    const leaves = directWorks(plan, at);
+    /* Шууд ажилтай бүлэгт ШУУД ажлууд; зөвхөн дэд бүлэгтэй том бүлэгт доторх бүх ажил (`groupWorks`, 2026-11-05) */
+    const leaves = groupWorks(plan, at);
     if (!leaves.length) return null;
     const order = orderByDeps(leaves.map((k) => ({ code: plan[k].des, deps: plan[k].deps.map((d) => d.code) }))).map((i) => leaves[i]);
     const sched = scheduleByMoney(sp, pct, order.map((k) => ({ money: moneyOf(k), vol: plan[k].vol })));

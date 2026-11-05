@@ -160,8 +160,9 @@ const base = () => [
   ]);
   near(T.p, 0.9, 'Σ жин');
   near(T.act, (0.5 * 0.4 + 0.4 * 0.1) / 0.9, 'S — Σ жингээр нормчилсон');
-  assert.equal(T.planGu, null, 'жинтэй үе шатны P хоосон → нийт null');
-  assert.equal(T.perfGu, null);
+  near(T.planGu, (0.4 * 0.3) / 0.9, '2026-11-05: жинтэй үе шатны P хоосон → 0 гэж тоологдоно (Excel 6-р мөр · ТТБ-тэй ижил)');
+  near(T.perfGu, T.act / T.planGu, 'V = S ÷ P');
+  assert.equal(E.negTotals([{ p: 1, act: 0, planG: null, planGch: null, planGu: null, planNw: null, planPw: null }]).planG, null, 'нэг ч утгагүй → null');
   near(T.perfG, T.act / T.planG, 'T = S ÷ N');
   const one = E.negTotals([{ p: 1, act: 0, planG: 0, planGch: null, planGu: null, planNw: null, planPw: null }]);
   assert.equal(one.perfG, 0, 'N = 0 → биелэлт 0');

@@ -64,7 +64,7 @@ export const AGENT_NOTES: Record<string, AgentNote> = {
       get urh_too() { return tr('Өрхийн тоо'); },
     },
     get warn() { return tr('Бүсийн кодын талбар нь `ZONE_ID` БИШ, `RefName_1`. Мөн `GAZAR_GA`-ийн нийлбэр (≈131 га) нь төслийн албан ёсны талбай БИШ — ') +
-      tr('төслийн нийт талбайг хилийн давхаргын (ds:boundary) Hec_area талбараас асууж ав — хатуу тогтмол байхгүй.'); },
+      tr('төслийн нийт талбайг хилийн давхаргын (ds:boundary) hec_area талбараас асууж ав — хатуу тогтмол байхгүй.'); },
   },
 
   "mon:building": {

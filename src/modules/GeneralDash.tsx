@@ -19,7 +19,8 @@ import { loadLandStatus } from '@/lib/land';
 import { loadFillPkgProgress, loadHeadline } from '@/lib/live';
 import { loadBagtsRows } from '@/lib/execData';
 import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
-import { loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
+import { loadProjectBudgetTotal, loadProjectSourceTotals } from '@/lib/projectPlanInputs';
+import type { SourceKey } from '@/lib/projectPlan';
 import { loadFinData, typePhysNow, INFRA_TYPE, aggregateMonths } from '@/modules/Finance';
 import { loadHoRows } from '@/lib/ipc';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
@@ -1060,7 +1061,16 @@ function FinCharts({
   }, [wbs, rows, housingNow]);
 
   const c1 = useMemo(() => chartTypeCost(rType, pkgPct, catPct, contracts), [rType, pkgPct, catPct, contracts]);
-  const c3 = useMemo(() => chartSourceMerged(rSrc), [rSrc]);
+  /* 2026-11-05: шүүлтгүй үед эх үүсвэрийн дүн = ТТБ-ийн Төслийн нийт мөр (`sourceSums`) — ExecReport · Тайлан · loadBudget-тэй
+     ИЖИЛ; урьд нь зөвхөн ажлын мөрийн нийлбэр (2 233 ↔ 2 496 тэрбум) байв. Шүүлттэй үед мөрийн нийлбэр хэвээр */
+  const srcTotQ = useAsync(loadProjectSourceTotals, []);
+  const srcTot = srcTotQ.state === 'ready' ? srcTotQ.data : null;
+  const srcWhole = !periodActive(period) && (xs == null || xs.dim === 'source');
+  const c3 = useMemo(() => {
+    const bs = chartSourceMerged(rSrc);
+    if (!srcWhole || !srcTot) return bs;
+    return bs.map((b) => { const v = srcTot[b.key as SourceKey]; return v == null ? b : { ...b, value: v }; });
+  }, [rSrc, srcWhole, srcTot]);
 
   return (
     <>

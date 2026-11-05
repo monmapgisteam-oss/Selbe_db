@@ -83,8 +83,11 @@ export const loadVariance: () => Promise<Variance> = cached(
         // Зөвхөн НАВЧ ажил — бүлгийн мөр нь нэгтгэл тул давхар тоологдоно
         if (r.group || r.vol == null || r.vol <= 0 || r.unit == null || r.unit <= 0) continue;
         const sum = r.obyem.reduce<number>((a, v) => a + (v ?? 0), 0);
-        const over = r.obyem.reduce<number>((a, v) => a + Math.max(0, (v ?? 0) - r.vol!), 0);
-        if (over <= Math.max(1e-9, Math.abs(r.vol) * 1e-9)) continue;
+        /* 2026-11-05: блок бүрийн хэтрэлт босгоос (0.001 нэгж эсвэл обьёмын 1/100 000) их байж тоологдоно — урьд нь
+           хуримтлал = обьём үеийн бутархайн зөрүү (950.09999 ↔ 950.09919) «хэтэрсэн» болж 743 ажлын 447 нь <1 000 ₮ байв */
+        const tol = Math.max(1e-3, Math.abs(r.vol) * 1e-5);
+        const over = r.obyem.reduce<number>((a, v) => { const d = (v ?? 0) - r.vol!; return d > tol ? a + d : a; }, 0);
+        if (over <= 0) continue;
         out.push({
           pkg: pkg.group, sheet: pkg.label, no: String(r.no ?? ''), work: r.work, vol: r.vol * Math.max(1, r.obyem.length), sum,
           over, unit: r.unit, mnt: over * r.unit,

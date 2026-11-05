@@ -5435,7 +5435,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               no: plan[x.k].no, work: plan[x.k].work, money: moneyOf(x.k), span: x.span, months: x.months,
             }))
             : undefined}
-          onPlanGroup={modalRow.group && kind === 'plan' && obState === 'ok' && modalGroup?.direct ? (sp, pct, bs) => { forgetDrag(); planGroup(modalRow.oid, sp, pct, bs); } : undefined}
+          onPlanGroup={modalRow.group && kind === 'plan' && obState === 'ok' && (modalGroup?.direct || modalGroup?.sub) ? (sp, pct, bs) => { forgetDrag(); planGroup(modalRow.oid, sp, pct, bs); } : undefined}
           groupCurve={modalGroup?.curve ?? null}
           groupSub={!!modalGroup?.sub && !modalGroup?.direct}
           onUndo={markUndo}

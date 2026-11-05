@@ -4,9 +4,9 @@
  * БҮС/БАГЦЫН НЭГДСЭН ТОЙМ — БҮХ эх сурвалжийг нэг дор шүүнэ.
  */
 
-import { count, nPrefixUnicode, queryGroup, queryStats, sqlStr, type Stat } from '@/lib/query';
+import { count, nPrefixUnicode, queryFeatures, queryGroup, queryStats, sqlStr, type Stat } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
-import { PKG_BY_BAGTS, bagtsKey, zoneWhere, type LayerDef } from '@/lib/services';
+import { BLOCK_LAYER, BUILDING, PKG_BY_BAGTS, bagtsKey, zoneWhere, type LayerDef } from '@/lib/services';
 import { layerTotals, qtyText, whereFor } from '@/lib/totals';
 import { allowedDatasets, allowedLayers, type AgentScope } from './registry';
 import type { Dataset } from './datasets';
@@ -103,6 +103,7 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
 
     const w = zoneWhere(l, zone);
     if (w != null) { filterable.push({ l, where: nPrefixUnicode(whereFor(l, zone)) }); continue; }
+    if (l.id === BLOCK_LAYER) continue; // доор `bagts`-аар тусад нь тоолно
     skipped++;
   }
 
@@ -116,6 +117,19 @@ export async function zoneOverview(input: string, scope: AgentScope): Promise<Ov
   const sources: OverviewRow[] = [];
   let empty = 0;
   let failed = 0;
+
+  /* 2026-11-05: барилгын блокийн давхарга `noZone` тул дээрх шүүлтэд орохгүй — `bagts` талбараар багцын блокуудыг тоолно
+     (урьд нь «Багц 2»-ын тойм 26 блокоо огт оруулдаггүй байв) */
+  const blockLayer = layers.find((l) => l.id === BLOCK_LAYER);
+  if (blockLayer && !filterable.some((x) => x.l.id === BLOCK_LAYER)) {
+    try {
+      const bf = BUILDING.fields;
+      const rows = await queryFeatures(BUILDING.url, { outFields: [BUILDING.oid, bf.bagts] });
+      const n = rows.filter((r) => bagtsKey(String(r[bf.bagts] ?? '')) === key).length;
+      if (n) sources.push({ id: blockLayer.id, title: blockLayer.title, n });
+      else skipped++; // багц биш бүс — урьдын адил «шүүх боломжгүй»
+    } catch { failed++; }
+  }
 
   for (const r of layerResults) {
     if (r.status === 'rejected') { failed++; continue; }

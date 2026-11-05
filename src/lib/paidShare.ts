@@ -67,11 +67,13 @@ export function paidShareOf(
     paidKnown += 1;
     paid += n;
   }
+  /* 2026-11-05: хөвөгч тооны үлдэгдэл (0.00006 ₮) «гадуур олголт» мэт гардаг байв — хагас төгрөгөөс бага бол 0 */
+  const other = paid - paidContracted;
   return {
     contract,
     paid,
     paidContracted,
-    paidOther: paid - paidContracted,
+    paidOther: Math.abs(other) < 0.5 ? 0 : other,
     pct: paidKnown ? paidPctOf(paidContracted, contract) : null,
     paidKnown,
   };
