@@ -241,7 +241,7 @@ reset(); db.parents = [];
 await assert.rejects(MM.switchToHuvaari(11, io), /олдсонгүй/);
 reset(); db.parents.push({ ...db.parents[0], objectid: 12 });
 await assert.rejects(MM.switchToHuvaari(11, io), /давхардсан/);
-reset({ bagts: 'БАГЦ-16.1' });
+reset({ bagts: 'БАГЦ-6.9' }); // хүснэгтгүй багц (2026-11-05: 16.x хүснэгттэй болсон)
 await assert.rejects(MM.switchToHuvaari(11, io), /хуудас алга/);
 assert.equal(posts.length, 0, 'хуудасгүй багц — бичихгүй');
 await assert.rejects(MM.switchToHuvaari(0, io), /буруу/);

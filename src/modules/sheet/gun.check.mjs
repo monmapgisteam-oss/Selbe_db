@@ -151,12 +151,23 @@ if (liveSkip) {
   };
 
   let aligned = 0;
+  let gunOnly = 0;
   for (const pkg of PKGS) {
     const sc = await loadSchema(pkg).catch(() => null);
     if (!sc) continue;
     const r = await loadRows(pkg, sc).catch(() => null);
     if (!r) continue;
     const t = TREES[pkg.key] ?? '';
+    if (!t) {
+      /* 2026-11-05: ЗУРАГЛАЛГҮЙ хүснэгт (ганц «Үндсэн хугацаа» мөртэй шинэ 40) — гүн ЗӨВХӨН `gun` баганаас гарна,
+         байрлалын зэрэгцүүлэлт хэрэглэгдэхгүй. Тиймээс мөр БҮР `gun`-тай, эхний мөр 0 гүнтэй, үсрэлтгүй байх ёстой. */
+      assert.ok(sc.f.gun, `${pkg.key}: зураглалгүй хүснэгтэд «gun» багана алга — мөрийн гүн гарах эхгүй`);
+      assert.ok(r.rows.length > 0, `${pkg.key}: зураглалгүй хүснэгт хоосон — суурь мөр алга`);
+      r.rows.forEach((x, i) => assert.ok(Number.isInteger(x.depth) && x.depth >= 0 && (i === 0 ? x.depth === 0 : x.depth <= r.rows[i - 1].depth + 1),
+        `${pkg.key} мөр ${i}: «gun» гүн ${x.depth} буруу`));
+      gunOnly += 1;
+      continue;
+    }
     const dep = (i) => {
       const c = t[i] ?? '0';
       return c >= 'A' && c <= 'E' ? c.charCodeAt(0) - 65 : Number(c);
@@ -192,7 +203,7 @@ if (liveSkip) {
     assert.equal(d[ni], d[ni - 1], `${pkg.key}: шинэ мөр ах дүүгээсээ өөр гүнд`);
     aligned += 1;
   }
-  console.log(`✅ мөр нэмэх зэрэгцүүлэлт ${aligned}/${PKGS.length} багцад зөв (багана нэмээгүй)`);
+  console.log(`✅ мөр нэмэх зэрэгцүүлэлт ${aligned}/${PKGS.length - gunOnly} зураглалтай багцад зөв (багана нэмээгүй) · зураглалгүй ${gunOnly} хүснэгт «gun»-аар`);
 
   console.log(`\ngun.check: ok · «gun» багана ${withGun}/${PKGS.length} багцад`);
 }

@@ -35,7 +35,7 @@ assert.deepEqual(missing, [], `каталогт ороогүй LAYERS id: ${miss
 
 /* ── 5. Bagts_* ── */
 for (const p of PKGS) assert.ok(byId.has(`bagts:${p.key}`), `Bagts хуудас дутуу: ${p.key}`);
-assert.equal(PKGS.length, 24, `Bagts_* хуудасны тоо өөрчлөгдсөн: ${PKGS.length}`);
+assert.equal(PKGS.length, 64, `Bagts_* хуудасны тоо өөрчлөгдсөн: ${PKGS.length}`);
 assert.ok(![...byId.keys()].some((id) => id.startsWith('qaqc')), 'QAQC мөр каталогт үлдсэн');
 
 /* ── 3. шатлалын холбоос ── */
