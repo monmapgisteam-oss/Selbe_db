@@ -17,7 +17,7 @@ import { cfStartKeyOf, type CfPlanRow } from '@/lib/gdash';
 import { PKGS, loadSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
 import { planFields } from '@/lib/planProgress';
-import { countPlanRows, loadPkgPlan, monthStart, type PkgPlan } from '@/lib/huvaariObyem';
+import { countPlanRows, loadPkgPct, loadPkgPlan, monthStart, savePkgPct, type PkgPlan } from '@/lib/huvaariObyem';
 
 /* ══════════════════ Эх ══════════════════ */
 
@@ -117,6 +117,11 @@ export type PkgMoney = {
   sheets: string[];
   /** Уншигдаагүй хуудсууд — хоосон биш бол цуваа ДУТУУ, ашиглахгүй */
   failed: string[];
+  /**
+   * БАГЦЫН САРЫН ХУВЬ («YYYY-MM» → 0–100; `huvaariObyem.loadPkgPct`, 2026-11-05) — байвал сарын мөнгө = хувь × гэрээний
+   * ХО дүн (нийлбэр ХО дүнтэй тэнцэнэ), обьём × нэгж өртгийн `byMonth` хэрэглэгдэхгүй.
+   */
+  pct?: Map<string, number>;
 };
 
 /** Хуудсуудын цувааг нэг багц болгоно */
@@ -255,6 +260,20 @@ export function buildMonthlyMoney(
       issues.push(tr('{0}: хуудас уншигдсангүй ({1}) — тооцоолсон сарын мөнгө гарахгүй', key, pm.failed.join(', ')));
       continue;
     }
+    /* 2026-11-05: багцын САРЫН ХУВЬ Хуваарьт байвал — сарын мөнгө = хувь × гэрээний ХО дүн (нийлбэр = ХО дүн × Σхувь/100).
+       Багцаа хуваалцсан гэрээ бүр ӨӨРИЙН ХО дүнгээр; ХО дүнгүй гэрээнд ₮ бодогдохгүй (null ≠ 0). */
+    if (pm?.pct?.size) {
+      for (const c of list) {
+        if (c.cost == null) {
+          c.state = 'sharedNoCost';
+          issues.push(tr('Гэрээ {0}: ХО дүнгүй тул Хуваарийн сарын хувиас ₮ бодогдсонгүй', c.id));
+          continue;
+        }
+        for (const [k, v] of pm.pct) c.months.set(k, (c.cost * v) / 100);
+        c.state = c.months.size ? 'ok' : 'empty';
+      }
+      continue;
+    }
     if (pm && pm.noUnit) issues.push(tr('{0}: нэгж өртөггүй {1} нүдний обьём ₮-д тооцогдсонгүй', key, pm.noUnit));
     if (pm && pm.noRow) issues.push(tr('{0}: хуудсанд олдоогүй ажлын кодтой {1} нүд алгасагдав', key, pm.noRow));
     for (const c of list) { c.noUnit = pm?.noUnit ?? 0; c.noRow = pm?.noRow ?? 0; }
@@ -337,11 +356,26 @@ export const loadMoneyRows = cached<MoneyRow[]>(async () => {
  */
 export async function loadSheetMoney(keys: ReadonlySet<string>): Promise<Map<string, PkgMoney>> {
   const out = new Map<string, PkgMoney>();
-  const wanted = PKGS.filter((p) => keys.has(bagtsKey(p.group)));
+  /* 2026-11-05: багцын сарын хувьтай багц — хуудас, обьём унших ШААРДЛАГАГҮЙ (сарын мөнгө = хувь × ХО дүн).
+     Хувийн хүснэгт уншигдахгүй бол бүх багц «уншигдсангүй» (хоосон гэж ХУДАЛ хэлэхгүй). */
+  let pctAll: Awaited<ReturnType<typeof loadPkgPct>>['pct'];
+  try {
+    pctAll = (await loadPkgPct()).pct;
+  } catch (e) {
+    console.warn('[selbe] сарын мөнгө: Хуваарийн сарын хувь уншигдсангүй', e);
+    return failedSheets(keys);
+  }
+  const rest = new Set<string>();
+  for (const k of keys) {
+    const m = pctAll.get(k);
+    if (m?.size && PKG_KEYS.has(k)) out.set(k, { ...mergeSheetMoney(k, []), pct: new Map(m) });
+    else rest.add(k);
+  }
+  const wanted = PKGS.filter((p) => rest.has(bagtsKey(p.group)));
   if (!wanted.length) return out;
   const cnt = await countPlanRows();
   if (cnt === 0) {
-    for (const k of keys) if (PKG_KEYS.has(k)) out.set(k, mergeSheetMoney(k, []));
+    for (const k of rest) if (PKG_KEYS.has(k)) out.set(k, mergeSheetMoney(k, []));
     return out;
   }
   const schemas = await Promise.all(wanted.map((p) => loadSchema(p).catch(() => null)));
@@ -489,6 +523,8 @@ export type SwitchPreview = {
   noRow: number;
   /** Уншигдаагүй хуудсууд */
   failed: string[];
+  /** Багцын сарын хувийн нийлбэр (0–100) — Хуваарьт сарын хувь байвал; үгүй бол байхгүй (2026-11-05) */
+  pctSum?: number;
 };
 
 /** `PkgMoney` → `SwitchPreview` (цэвэр) */
@@ -496,6 +532,12 @@ export function judgePreview(pkg: string, pm: PkgMoney | undefined): SwitchPrevi
   if (!pm) return { pkg, verdict: 'failed', total: null, months: 0, noUnit: 0, noRow: 0, failed: [pkg] };
   const base = { pkg, months: pm.byMonth.size, noUnit: pm.noUnit, noRow: pm.noRow, failed: [...pm.failed] };
   if (pm.failed.length) return { ...base, verdict: 'failed', total: null };
+  /* Багцын сарын хувь — ₮ нь гэрээний ХО дүнгээс хамаарах тул нийт ₮ энд тодорхойгүй (null), хувийн нийлбэрийг хэлнэ */
+  if (pm.pct?.size) {
+    let ps = 0;
+    for (const v of pm.pct.values()) ps += v;
+    return { ...base, months: pm.pct.size, verdict: 'ok', total: null, pctSum: ps };
+  }
   if (!pm.byMonth.size) return { ...base, verdict: 'empty', total: null };
   let total = 0;
   for (const v of pm.byMonth.values()) total += v;
@@ -522,12 +564,15 @@ export type SwitchIo = {
   applyEdits: (body: Record<string, string>) => Promise<ArcgisBody>;
   /** Багцын тооцоолсон сарын мөнгө (`previewSwitch`) */
   preview: (pkg: string) => Promise<SwitchPreview>;
+  /** Багцын сарын хувийг Хуваарьт бичнэ (`huvaariObyem.savePkgPct`) — гараар хувийг шилжүүлэхэд (2026-11-05) */
+  savePct?: (pkg: string, name: string, next: ReadonlyMap<string, number | null>) => Promise<unknown>;
 };
 
 const defaultIo: SwitchIo = {
   query: (where, outFields) => queryFeatures(CASHFLOW_NEW.url, { where, outFields, orderBy: `${CASHFLOW_NEW.oid} ASC` }),
   applyEdits: (body) => arcgisPost(`${CASHFLOW_NEW.url}/applyEdits`, body),
   preview: previewSwitch,
+  savePct: savePkgPct,
 };
 
 /** Нэг хүсэлтээр устгах сарын мөрийн дээд хязгаар — хуудаславал атом алдагдана (`tableWrite.applyAll`) */
@@ -605,6 +650,7 @@ const tg = (v: number): string => Math.round(v).toLocaleString('en-US');
 
 /** Тооцооны төлвийг хүнд ойлгомжтой хэлнэ (батлуулах цонх · алдаа) */
 export function previewText(p: SwitchPreview): string {
+  if (p.pctSum != null && p.verdict === 'ok') return tr('Хуваарийн сарын хувь {0} сард нийт {1}% — сарын мөнгө = хувь × ХО дүн', p.months, (Math.round(p.pctSum * 100) / 100).toLocaleString('en-US'));
   if (p.verdict === 'failed') return tr('Хуваарийн бөглөх хуудас уншигдсангүй ({0}) — тооцоолсон сарын мөнгө тодорхойгүй', p.failed.join(', ') || p.pkg);
   if (p.verdict === 'empty') return tr('Хуваарьт нэгж өртөгтэй сарын обьём АЛГА — шилжүүлбэл энэ гэрээний сарын мөнгө ХООСОН болж S-муруйд орохгүй');
   if (p.verdict === 'incomplete') {
@@ -711,6 +757,20 @@ export async function switchToHuvaari(cashflowId: number, io: SwitchIo = default
   }
 }
 
+/**
+ * Гараар сарын мөрүүд → «YYYY-MM» → хувь (0–100). Хувьгүй (null/хоосон) мөр орохгүй; нэг сард хэд хэдэн мөр бол нийлбэр.
+ */
+export function manualPctOf(rows: readonly Row[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const pc = numOrNull(r[CF_MONTH.pct]);
+    const k = cfStartKeyOf(r[CF_MONTH.start]);
+    if (pc == null || !k) continue;
+    out.set(k, (out.get(k) ?? 0) + pc);
+  }
+  return out;
+}
+
 /* ══════════════════ Шилжүүлэлтийн НЭГДСЭН урсгал (батлуулах цонхтой) ══════════════════ */
 
 /** Батлуулах цонх — `confirm.askConfirm`-ийн хэлбэр (React-гүй байлгахын тулд дуудагч өгнө) */
@@ -758,6 +818,36 @@ export async function confirmAndSwitch(a: SwitchFlowArgs): Promise<SwitchFlowRes
     a.onBusy?.(false);
   }
   if (pv.verdict === 'failed') return { kind: 'refused', msg: `${previewText(pv)} — ${tr('шилжүүлэхгүй')}` };
+  /* 2026-11-05 (хэрэглэгч: «гараар бичсэн датаг Хуваарь руу оруулаад солих»): Хуваарьт багцын сарын хувь хараахан алга,
+     гараар мөрүүд хувьтай бол — хувийг Хуваарь руу ЗӨӨЖ (сарын мөнгө хэвээр: хувь × ХО дүн), дараа нь эхийг солино. */
+  if (pv.pctSum == null && io.savePct) {
+    a.onBusy?.(true);
+    let manual: Map<string, number>;
+    try {
+      manual = manualPctOf(await io.query(`(${CF_MONTH_WHERE}) AND ${CF_MONTH.id} = ${a.cashflowId}`, [CASHFLOW_NEW.oid, CF_MONTH.start, CF_MONTH.pct]));
+    } finally {
+      a.onBusy?.(false);
+    }
+    if (manual.size) {
+      let ps = 0;
+      for (const v of manual.values()) ps += v;
+      if (!(await a.ask(
+        tr('«{0}» гэрээний гараар бичсэн {1} сарын хувь (нийт {2}%, {3}) Хуваарь руу шилжиж, «Cashflow хуваарилах»-аас хасагдана. Сарын мөнгө хэвээр (хувь × ХО дүн); хувийг цаашид Хуваарь дээр засна. Гараар мөрүүд устна, буцаах боломжгүй. Шилжүүлэх үү?',
+          a.name, manual.size, (Math.round(ps * 100) / 100).toLocaleString('en-US'), a.manualTotal == null ? '—' : a.money(a.manualTotal)),
+        { ok: tr('Шилжүүлэх'), danger: true, title: tr('Хуваарь руу шилжүүлэх') },
+      ))) return { kind: 'cancel' };
+      a.onBusy?.(true);
+      try {
+        await io.savePct(a.pkg, a.name, manual);
+        const pv2 = await io.preview(a.pkg);
+        if (pv2.pctSum == null) return { kind: 'refused', msg: tr('Сарын хувь Хуваарьт бичигдсэн эсэх баталгаажсангүй — шилжүүлээгүй, дахин оролдоно уу') };
+        const result = await switchToHuvaari(a.cashflowId, io, { expect: { verdict: pv2.verdict, total: pv2.total } });
+        return { kind: 'done', result };
+      } finally {
+        a.onBusy?.(false);
+      }
+    }
+  }
   if (!(await a.ask(
     tr('«{0}» гэрээний гараар оруулсан {1} сарын мөр (нийт {2}) УСТАЖ, сарын мөнгө Хуваарийн сарын обьём × нэгж өртгөөр тооцоологдоно: {3}. Буцаах боломжгүй. Шилжүүлэх үү?',
       a.name, a.manualRows, a.manualTotal == null ? '—' : a.money(a.manualTotal), previewText(pv)),

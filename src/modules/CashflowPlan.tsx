@@ -234,6 +234,9 @@ export function CashflowPlan({
     for (const r of sorted) {
       const wid = idOf(r[CF_MONTH.id]);
       if (wid == null) continue;
+      /* 2026-11-05 (хэрэглэгч): «Хуваарь» эхтэй гэрээ (гүйцэтгэлийн хүснэгттэй багц) энд ХАРАГДАХГҮЙ — сарын хувь нь
+         Хуваарь дээр засагдана; нэг багц хоёр газар хоёр төлөвлөгөөтэй болохгүй */
+      if (huvIds.has(wid)) continue;
       const chain: string[] = [];
       for (let d = 0; d < NF.length; d += 1) {
         const n = sOf(r[NF[d]]);
@@ -249,9 +252,9 @@ export function CashflowPlan({
       out.push({ kind: 'work', row: r, id: wid });
     }
     return out;
-  }, [sorted]);
+  }, [sorted, huvIds]);
 
-  const cur = sel == null ? null : sorted.find((r) => idOf(r[CF_MONTH.id]) === sel) ?? null;
+  const cur = sel == null || huvIds.has(sel) ? null : sorted.find((r) => idOf(r[CF_MONTH.id]) === sel) ?? null;
   const curMonths = sel == null ? [] : byWork.get(sel) ?? [];
   const curCost = costOf(cur);
   const curSum = sel == null ? null : sumOf(sel);
@@ -394,6 +397,7 @@ export function CashflowPlan({
       if (fl.kind === 'cancel') return;
       const r = fl.result;
       setMsg(r.already ? tr('Аль хэдийн Хуваарь эхтэй') : tr('Хуваарь руу шилжүүлэв · {0} сарын мөр устгав', r.deleted));
+      setSel(null);
       onSaved();
     } catch (e) {
       setErr(userError(e));
@@ -620,7 +624,7 @@ export function CashflowPlan({
                 : !curPkgOk
                 ? tr('Энэ гэрээний багцад Хуваарийн бөглөх хуудас алга')
                 : curPhaseWhy != null ? curPhaseWhy
-                : dirty > 0 ? tr('Эхлээд засвараа хадгална уу') : tr('Гараар сарын мөрийг устгаж, сарын мөнгийг Хуваарь-аас тооцоолно')}
+                : dirty > 0 ? tr('Эхлээд засвараа хадгална уу') : tr('Гараар бичсэн сарын хувийг Хуваарь руу шилжүүлж, энэ жагсаалтаас хасна — цаашид Хуваарь дээр засна')}
               onClick={() => { void doSwitch(); }}
             >
               {switching ? tr('Шилжүүлж байна…') : tr('Хуваарь руу шилжүүлэх')}

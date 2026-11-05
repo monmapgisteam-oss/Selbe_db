@@ -349,4 +349,81 @@ assert.doesNotMatch(gs, /уншигдсангүй/, 'хүрээнээс гаду
 assert.match(cfGapsText({ partial: true, failed: [], missing: [], noUnit: 0, noRow: 0 }), /уншигдсангүй/);
 console.log('✅ хяналт №2 — S-муруйн цоорхойн анхааруулга');
 
+/* ── 9. (2026-11-05) Багцын сарын хувь Хуваарьт — сарын мөнгө = хувь × ХО дүн; гараар хувийг Хуваарь руу зөөх ── */
+{
+  const money = [
+    { id: 11, pkg: 'БАГЦ1', cost: 1000, source: 'huvaari' },
+    { id: 12, pkg: 'БАГЦ2', cost: null, source: 'huvaari' },
+    { id: 13, pkg: 'БАГЦ31', cost: 500, source: 'garaar' },
+  ];
+  const pct = new Map([['2026-10', 18.5], ['2026-11', 81.5]]);
+  const sheets = new Map([
+    ['БАГЦ1', { key: 'БАГЦ1', byMonth: new Map([['2026-10', 999_999]]), noUnit: 3, noRow: 2, sheets: [], failed: [], pct }],
+    ['БАГЦ2', { key: 'БАГЦ2', byMonth: new Map(), noUnit: 0, noRow: 0, sheets: [], failed: [], pct }],
+  ]);
+  const manual = [{ id: 11, start: Date.UTC(2026, 8, 1, 12), pct: 50, amount: 500 }, { id: 13, start: Date.UTC(2026, 9, 1, 12), pct: 40, amount: 200 }];
+  const r = MM.buildMonthlyMoney(money, manual, sheets, new Set(['БАГЦ1', 'БАГЦ2', 'БАГЦ31']));
+  const c1 = r.contracts.get(11);
+  assert.deepEqual([...c1.months], [['2026-10', 185], ['2026-11', 815]], 'сарын мөнгө = хувь × ХО дүн (обьём × нэгж өртгийн byMonth хэрэглэгдэхгүй)');
+  assert.equal(c1.state, 'ok');
+  assert.equal([...c1.months.values()].reduce((a, v) => a + v, 0), 1000, 'нийлбэр = ХО дүн (Σхувь 100)');
+  assert.equal(r.contracts.get(12).state, 'sharedNoCost', 'ХО дүнгүй — ₮ бодогдохгүй (0 биш)');
+  assert.equal(r.contracts.get(12).months.size, 0);
+  assert.ok(r.issues.some((x) => x.includes('ХО дүнгүй')), r.issues.join(' | '));
+  assert.deepEqual(r.rows.filter((x) => x.id === 11).map((x) => [x.pct, x.amount]), [[18.5, 185], [81.5, 815]], 'S-муруйн мөр — гараар мөр (id 11) орохгүй');
+  assert.equal(r.rows.filter((x) => x.id === 13).length, 1, 'гараар гэрээ хэвээр');
+  /* урьдчилсан тооцоо — хувьтай багц 'ok', нийт ₮ тодорхойгүй (null), хувийн нийлбэр мэдэгдэнэ */
+  const pv = MM.judgePreview('БАГЦ1', sheets.get('БАГЦ1'));
+  assert.deepEqual([pv.verdict, pv.total, pv.pctSum, pv.months], ['ok', null, 100, 2]);
+  assert.match(MM.previewText(pv), /сарын хувь 2 сард нийт 100%/);
+  assert.equal(MM.judgePreview('БАГЦ31', { key: 'БАГЦ31', byMonth: new Map(), noUnit: 0, noRow: 0, sheets: [], failed: [] }).pctSum, undefined);
+  /* manualPctOf — хувьгүй мөр орохгүй, 0 орно, нэг сарын мөрүүд нийлнэ */
+  const mp = MM.manualPctOf([
+    { cashflow_start: Date.UTC(2026, 9, 1, 12), cashflow_huwi: 18.5 },
+    { cashflow_start: Date.UTC(2026, 10, 1, 12), cashflow_huwi: null },
+    { cashflow_start: Date.UTC(2026, 11, 1, 12), cashflow_huwi: 0 },
+    { cashflow_start: Date.UTC(2026, 9, 15, 12), cashflow_huwi: 1.5 },
+  ]);
+  assert.deepEqual([...mp], [['2026-10', 20], ['2026-12', 0]]);
+  /* нэгдсэн урсгал — Хуваарьт хувь алга, гараар хувьтай → хувийг ЗӨӨЖ дараа нь эхийг солино */
+  const calls = [];
+  let saved = null;
+  const io = {
+    query: async (where, outFields) => {
+      calls.push(where);
+      if (where.includes('cashflow_start IS NOT NULL')) {
+        return outFields.includes('cashflow_huwi')
+          ? [{ objectid: 501, cashflow_start: Date.UTC(2026, 9, 1, 12), cashflow_huwi: 30 }, { objectid: 502, cashflow_start: Date.UTC(2026, 10, 1, 12), cashflow_huwi: 70 }]
+          : [{ objectid: 501 }, { objectid: 502 }];
+      }
+      return [{ objectid: 9, cashflow_id: 11, bagts: 'Багц-1', sar_mongo_eh: null, uy_shat: 'Барилга угсралт' }];
+    },
+    applyEdits: async () => ({ updateResults: [{ success: true }], deleteResults: [{ success: true }, { success: true }] }),
+    preview: async (pkg) => (saved
+      ? MM.judgePreview(pkg, { key: pkg, byMonth: new Map(), noUnit: 0, noRow: 0, sheets: [], failed: [], pct: saved })
+      : MM.judgePreview(pkg, { key: pkg, byMonth: new Map(), noUnit: 0, noRow: 0, sheets: [], failed: [] })),
+    savePct: async (pkg, name, next) => { saved = new Map([...next].filter(([, v]) => v != null)); calls.push(`savePct ${pkg} ${[...next].join(';')}`); },
+  };
+  const asked = [];
+  const fl = await MM.confirmAndSwitch({
+    cashflowId: 11, name: 'Багц-1 · Барилга угсралт', pkg: 'БАГЦ1', phase: 'Барилга угсралт', manualRows: 2, manualTotal: 1000,
+    money: (v) => `${v} ₮`, ask: async (m) => { asked.push(m); return true; }, io,
+  });
+  assert.equal(fl.kind, 'done');
+  assert.equal(fl.result.deleted, 2);
+  assert.equal(asked.length, 1, 'нэг л батлуулах цонх');
+  assert.match(asked[0], /гараар бичсэн 2 сарын хувь \(нийт 100%, 1000 ₮\) Хуваарь руу шилжиж/);
+  assert.ok(calls.some((x) => x.startsWith('savePct БАГЦ1 2026-10,30;2026-11,70')), calls.join(' | '));
+  /* цуцалбал юу ч бичигдэхгүй */
+  saved = null;
+  const n0 = calls.length;
+  const no = await MM.confirmAndSwitch({
+    cashflowId: 11, name: 'x', pkg: 'БАГЦ1', phase: 'Барилга угсралт', manualRows: 2, manualTotal: null,
+    money: String, ask: async () => false, io,
+  });
+  assert.equal(no.kind, 'cancel');
+  assert.ok(!calls.slice(n0).some((x) => x.startsWith('savePct')), 'цуцалсан — хувь бичигдээгүй');
+}
+console.log('✅ 2026-11-05 — багцын сарын хувь Хуваарьт: хувь × ХО дүн · гараар хувийг зөөх урсгал');
+
 console.log('monthlyMoney.check — бүгд давлаа');

@@ -701,3 +701,118 @@ export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, num
   }
   return [a, u, dl];
 }
+
+/* ══════════════════ Багцын сарын хувь (2026-11-05) ══════════════════ */
+
+/**
+ * БАГЦЫН САРЫН ХУВЬ — гүйцэтгэлийн хүснэгттэй багцын САНХҮҮЖИЛТИЙН сарын төлөвлөгөө (0–100, нийлбэр 100) Хуваарьт
+ * хадгалагдана (хэрэглэгч 2026-11-05: «гараар бичсэн датаг Хуваарь руу оруулаад солих» — «Cashflow хуваарилах»-аас хасав).
+ * Ижил 186 хүснэгтэд ТУСДАА төрлөөр (`turul = 'sar_huvi'`): `bagts` = багцын түлхүүр (`bagtsKey`, «БАГЦ1»),
+ * `des_dugaar`/`blok` хоосон, `obyem` = тэр сарын хувь. Сарын мөнгө = хувь × ХО дүн (`monthlyMoney`).
+ * Ажил бүрийн огноо/сарын обьёмын мөрүүд (`turul = 'tolovlolt'`) үүнд ХОЛБОГДОХГҮЙ — хөндөгдөхгүй.
+ */
+export const TURUL_PCT = 'sar_huvi';
+
+/** `dkey` — багц · сар бүрд ганц мөр */
+export const pctDkeyOf = (pkg: string, sar: string): string => `${pkg}|${TURUL_PCT}|${sar}`;
+
+/** Багцын түлхүүр → «YYYY-MM» → хувь (0–100) */
+export type PkgPct = Map<string, Map<string, number>>;
+
+/** Түүхий `features` → бүтэц. Гэмтэлтэй мөрийг алгасна; давхар `dkey` бол СҮҮЛИЙНХ (OID өсөхөөр) */
+export function toPkgPct(feats: readonly { attributes: Record<string, unknown> }[]): PkgPct {
+  const out: PkgPct = new Map();
+  for (const f of feats) {
+    const a = f.attributes;
+    const pkg = String(a.bagts ?? '').trim();
+    const sar = sarKeyOf(a);
+    const v = a.obyem == null ? NaN : Number(a.obyem);
+    if (!pkg || monthStart(sar) == null || !Number.isFinite(v)) continue;
+    let m = out.get(pkg);
+    if (!m) { m = new Map(); out.set(pkg, m); }
+    m.set(sar, v);
+  }
+  return out;
+}
+
+const PCT_FIELDS = ['objectid', 'dkey', 'bagts', 'sar', 'sar_txt', 'obyem'];
+
+/** Бүх багцын сарын хувь + `dkey → ObjectID` (бичилтэд). Алдаа шидэгдэнэ — дуудагч «уншигдсангүй» гэж үзнэ (хоосон БИШ). */
+export async function loadPkgPct(): Promise<{ pct: PkgPct; oids: Map<string, number>; dups: number[] }> {
+  const feats: { attributes: Record<string, unknown> }[] = [];
+  for (let off = 0; ; ) {
+    const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
+      where: `turul = '${TURUL_PCT}'`,
+      outFields: PCT_FIELDS.join(','),
+      orderByFields: 'objectid ASC',
+      resultOffset: String(off),
+      resultRecordCount: '2000',
+      returnGeometry: 'false',
+    });
+    const f = (j.features ?? []) as { attributes: Record<string, unknown> }[];
+    feats.push(...f);
+    if (!f.length || (!j.exceededTransferLimit && f.length < 2000)) break;
+    off += f.length;
+  }
+  const oids = new Map<string, number>();
+  const dups: number[] = [];
+  for (const f of feats) {
+    const a = f.attributes;
+    const oid = Number(a.objectid);
+    const pkg = String(a.bagts ?? '').trim();
+    const sar = sarKeyOf(a);
+    if (!Number.isInteger(oid) || !pkg || monthStart(sar) == null) continue;
+    const k = pctDkeyOf(pkg, sar);
+    const old = oids.get(k);
+    if (old != null) dups.push(old);
+    oids.set(k, oid);
+  }
+  return { pct: toPkgPct(feats), oids, dups };
+}
+
+/**
+ * Нэг багцын сарын хувийг ОРЛУУЛАХ багц (цэвэр — тестлэгдэнэ). `next`-д `null`/NaN утгатай сар УСТАНА (хоосон сар
+ * хадгалагдахгүй); `next`-д байхгүй хуучин сар мөн устна. Утга өөрчлөгдөөгүй сар илгээгдэхгүй.
+ */
+export function pctEdits(
+  pkg: string,
+  name: string,
+  cur: ReadonlyMap<string, number>,
+  oids: ReadonlyMap<string, number>,
+  next: ReadonlyMap<string, number | null>,
+): PlanEdits {
+  const out: PlanEdits = { adds: [], updates: [], deletes: [] };
+  const seen = new Set<string>();
+  for (const [sar, v] of next) {
+    if (monthStart(sar) == null) continue;
+    seen.add(sar);
+    const k = pctDkeyOf(pkg, sar);
+    const oid = oids.get(k);
+    if (v == null || !Number.isFinite(v)) {
+      if (oid != null) out.deletes.push(oid);
+      continue;
+    }
+    if (oid == null) {
+      out.adds.push({ attributes: {
+        dkey: k, turul: TURUL_PCT, bagts: pkg, bagts_ner: name, sar: sarDateOnly(sar), sar_txt: sar, obyem: v, negj: '%',
+      } });
+    } else if (!(Math.abs((cur.get(sar) ?? NaN) - v) < 1e-9)) {
+      out.updates.push({ attributes: { objectid: oid, obyem: v } });
+    }
+  }
+  for (const sar of cur.keys()) {
+    if (seen.has(sar)) continue;
+    const oid = oids.get(pctDkeyOf(pkg, sar));
+    if (oid != null) out.deletes.push(oid);
+  }
+  return out;
+}
+
+/** Нэг багцын сарын хувийг хадгална — ШИНЭЭР уншиж зөрүүг л бичнэ. Буцаах нь (нэмсэн, шинэчилсэн, устгасан). */
+export async function savePkgPct(pkg: string, name: string, next: ReadonlyMap<string, number | null>): Promise<[number, number, number]> {
+  const { pct, oids, dups } = await loadPkgPct();
+  const e = pctEdits(pkg, name, pct.get(pkg) ?? new Map(), oids, next);
+  e.dups = dups;
+  if (!e.adds.length && !e.updates.length && !e.deletes.length && !dups.length) return [0, 0, 0];
+  return applyPlanEdits(e);
+}

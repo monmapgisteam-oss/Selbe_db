@@ -452,3 +452,31 @@ console.log('huvaariObyem.check: ok — splitByPct ✓');
   }
 }
 console.log('huvaariObyem.check: ok — scheduleByMoney · orderByDeps · remapMonths ✓');
+
+/* ── (2026-11-05) Багцын сарын хувь — `turul = 'sar_huvi'` мөрүүд ── */
+{
+  const H = await import('./huvaariObyem.ts');
+  assert.equal(H.TURUL_PCT, 'sar_huvi');
+  assert.equal(H.pctDkeyOf('БАГЦ1', '2026-10'), 'БАГЦ1|sar_huvi|2026-10');
+  const feats = [
+    { attributes: { objectid: 1, bagts: 'БАГЦ1', sar_txt: '2026-10', obyem: 30 } },
+    { attributes: { objectid: 2, bagts: 'БАГЦ1', sar: '2026-11-01', obyem: 70 } },
+    { attributes: { objectid: 3, bagts: 'БАГЦ2', sar_txt: '2026-10', obyem: 0 } },
+    { attributes: { objectid: 4, bagts: '', sar_txt: '2026-10', obyem: 5 } },
+    { attributes: { objectid: 5, bagts: 'БАГЦ1', sar_txt: 'муу', obyem: 5 } },
+    { attributes: { objectid: 6, bagts: 'БАГЦ1', sar_txt: '2026-12', obyem: null } },
+  ];
+  const pp = H.toPkgPct(feats);
+  assert.deepEqual([...pp.get('БАГЦ1')], [['2026-10', 30], ['2026-11', 70]], 'гэмтэлтэй мөр алгасагдана, DateOnly сар уншигдана');
+  assert.deepEqual([...pp.get('БАГЦ2')], [['2026-10', 0]], 'ил 0 хадгалагдана');
+  const oids = new Map([['БАГЦ1|sar_huvi|2026-10', 1], ['БАГЦ1|sar_huvi|2026-11', 2]]);
+  const e = H.pctEdits('БАГЦ1', 'Багц 1', pp.get('БАГЦ1'), oids, new Map([['2026-10', 30], ['2026-11', 60], ['2026-12', 10], ['2027-01', null]]));
+  assert.deepEqual(e.updates, [{ attributes: { objectid: 2, obyem: 60 } }], 'өөрчлөгдсөн сар л');
+  assert.equal(e.adds.length, 1);
+  assert.deepEqual(e.adds[0].attributes, { dkey: 'БАГЦ1|sar_huvi|2026-12', turul: 'sar_huvi', bagts: 'БАГЦ1', bagts_ner: 'Багц 1', sar: '2026-12-01', sar_txt: '2026-12', obyem: 10, negj: '%' });
+  assert.deepEqual(e.deletes, [], 'хоосон шинэ сар — нэмэхгүй, устгах зүйлгүй');
+  const e2 = H.pctEdits('БАГЦ1', 'Багц 1', pp.get('БАГЦ1'), oids, new Map([['2026-10', null]]));
+  assert.deepEqual(e2.deletes.sort(), [1, 2], 'хоосолсон сар ба жагсаалтад үгүй хуучин сар устна');
+  assert.deepEqual([e2.adds.length, e2.updates.length], [0, 0]);
+  console.log('huvaariObyem.check: ok — багцын сарын хувь (toPkgPct · pctEdits) ✓');
+}
