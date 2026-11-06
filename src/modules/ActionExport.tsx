@@ -18,7 +18,7 @@ import { friendlyError } from '@/components/ui';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import { getAuth } from '@/lib/draftRemote';
 import { devToken } from '@/lib/authToken';
-import { buildActionPdf, buildActionXlsx, loadActionItems, loadActionPhotos, summarize, type ActionItem } from '@/lib/actionReport';
+import { buildActionPdf, buildActionXlsx, loadActionItems, loadActionPhotos, reportPkgs, summarize, type ActionItem } from '@/lib/actionReport';
 import { loadPhotoImages } from '@/lib/uzlegReport';
 import { XLSX_MIME } from '@/lib/xlsx';
 import { habeaPkgKey } from './habeaUzleg';
@@ -105,8 +105,9 @@ export function ActionExportDialog({ scope = null, onClose, onBack }: {
     if (!chosen.length) return;
     setErr(''); setDone('');
     try {
-      const meta = { period, pkgs, now };
-      const base = `HSE Non-Compliance Report ${preset === 'all' ? 'бүх хугацаа' : `${from}–${to}`}${pkgs.length === 1 ? ` ${pkgs[0]}` : ''}`;
+      const shownPkgs = reportPkgs(pkgs, scope, chosen);
+      const meta = { period, pkgs: shownPkgs, now };
+      const base = `HSE Non-Compliance Report ${preset === 'all' ? 'бүх хугацаа' : `${from}–${to}`}${shownPkgs.length === 1 ? ` ${shownPkgs[0]}` : ''}`;
       if (fmt === 'pdf') {
         setBusy(tr('PDF үүсгэж байна…'));
         let logo: string | null = null;

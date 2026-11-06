@@ -52,7 +52,7 @@ import { MultiSelect } from '@/components/MultiSelect';
 import { DateRangePill } from '@/components/DateRangePill';
 import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError, type SeriesLineDef } from '@/components/ui';
 import { UzlegExportButton } from './UzlegExport';
-import { useHabeaScope, scopePkgs } from './habeaScope';
+import { useHabeaScope, scopePkgs, canDownloadHabea } from './habeaScope';
 import { loadHabeaRegisters, loadHabeaWaste, loadIsOrgAdmin, loadWasteCanCreate, HABEA_POLL_MS, HABEA_TTL_MS } from '@/lib/habeaRegisters';
 import { HabeaCardGrips } from './HabeaCardGrips';
 import { AddButton, RegisterAddDialog, WasteAddDialog } from './HabeaEntry';
@@ -2130,7 +2130,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               )}
             </div>
             {/* ҮЗЛЭГИЙН ТАЙЛАН ТАТАХ (2026-10-06) — асуумж · хугацаа · компани сонгоод PDF / Excel. */}
-            {canEnter && <UzlegExportButton kind={uzlegKind} scope={habScope} />}
+            {canDownloadHabea(canEnter, habScope) && <UzlegExportButton kind={uzlegKind} scope={habScope} />}
           </div>
           {/* ── ШҮҮЛТҮҮР — Огноо · Багц · Компани (2026-11-03: газрын зургийн баруун дээд булангаас энд) ── */}
           <div className={h.fltPills} role="group" aria-label={tr('Шүүлтүүр')}>

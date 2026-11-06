@@ -12,10 +12,10 @@
  *   Excel — «Тойм» (нийт + төрлөөр хүснэгтүүд) ба «Action» (бүх мөр, шүүлттэй толгой)
  */
 import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
-import { arcgisPost, queryFeatures, type Row } from '@/lib/query';
+import { queryFeatures, type Row } from '@/lib/query';
 import { HABEA } from '@/lib/services';
 import {
-  cleanLabel, fmtDate, fmtDateTime, guidKey, loadUzAttachments, attUrl, uzPhotoRef, type UzPhotoRef, type UzImg,
+  cleanLabel, fmtDate, fmtDateTime, guidKey, loadUzAttachments, attUrl, postFormOrSource, uzPhotoRef, type UzPhotoRef, type UzImg,
 } from '@/lib/uzlegReport';
 import { buildXlsx, type XlsxCell, type XlsxPic, type XlsxSheet } from '@/lib/xlsx';
 
@@ -128,7 +128,7 @@ async function oidsByGid(url: string, gids: string[], signal?: AbortSignal): Pro
     if (signal?.aborted) break;
     const chunk = gids.slice(i, i + 100);
     try {
-      const j = await arcgisPost<{ features?: { attributes?: Row }[] }>(`${url}/query`, {
+      const j = await postFormOrSource<{ features?: { attributes?: Row }[] }>(url, '/query', {
         f: 'json',
         where: `globalid IN (${chunk.map((g) => `'{${g}}'`).join(',')})`,
         outFields: 'objectid,globalid',
@@ -237,6 +237,15 @@ export type ActionReportMeta = {
   pkgs: string[];
   now: number;
 };
+
+/**
+ * Тайлангийн «Багц» мөр: сонголт хэвээр. Сонголтгүй бол хязгаартай аккаунтад файлд орсон багцууд — «Бүх багц» гэж ташаа
+ * бичихгүй (2026-11-06). Хязгааргүй аккаунтад хоосон (= бүх багц).
+ */
+export function reportPkgs(sel: readonly string[], scope: readonly string[] | null, items: readonly { site: string }[]): string[] {
+  if (sel.length || !scope) return [...sel];
+  return [...new Set(items.map((x) => x.site || '—'))].sort((a, b) => a.localeCompare(b, 'mn', { numeric: true }));
+}
 
 /* ═════════════════ PDF ═════════════════ */
 

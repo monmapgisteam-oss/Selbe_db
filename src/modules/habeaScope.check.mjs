@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { scopePkgs, NO_PKG, habeaViewScope } from './habeaScope.ts';
+import { scopePkgs, NO_PKG, habeaViewScope, canDownloadHabea } from './habeaScope.ts';
 import { filterUzleg, habeaPkgKey } from './habeaUzleg.tsx';
 import { AUTH } from '@/lib/services';
 
@@ -59,6 +59,24 @@ assert.ok(habea.includes('scope={habScope} />'), '«Үл нийцлийн мэд
 assert.ok(habea.includes('(!habScope || canEnter)'), '«Бусад үзүүлэлт» — төслийн нийт тоо');
 assert.ok(habea.includes('queryFormOrSource(HABEA.labor.url'), 'хүн хүч: _form 403 бол эх үйлчилгээ');
 console.log('✅ Habea: «багцаар» чартууд хүрээгээр хязгаарлагдсан');
+
+/* ── Тайлан татах (2026-11-06): хүснэгтэд багц оноогдсон аккаунт нэмэлт эрхгүйгээр, зөвхөн өөрийн багцыг ── */
+assert.equal(canDownloadHabea(false, ['A']), true, 'багцын аккаунт — habeaData эрхгүй ч товч харагдана');
+assert.equal(canDownloadHabea(true, ['A']), true, 'хоёр эрхтэй');
+assert.equal(canDownloadHabea(true, null), true, 'бүртгэл оруулагч — өмнөх шигээ');
+assert.equal(canDownloadHabea(false, null), false, 'хүснэгтэд байхгүй, эрхгүй аккаунт — өмнөх шигээ товчгүй');
+assert.equal(canDownloadHabea(false, []), false, 'хүрээ уншигдаагүй/эвдэрсэн — татах зүйлгүй');
+assert.ok(habea.includes('canDownloadHabea(canEnter, habScope) && <UzlegExportButton kind={uzlegKind} scope={habScope} />'), 'товч хүрээгээ цонхонд дамжуулна');
+{
+  const uzx = readFileSync(new URL('./UzlegExport.tsx', import.meta.url), 'utf8');
+  assert.ok(uzx.includes('(!scope || scope.includes(r.bagtsK)) && (r.d > 0'), 'үзлэгийн тайлан: мөр хүрээгээр');
+  assert.ok(uzx.includes('<ActionExportDialog scope={scope}'), 'үл нийцлийн тайланд хүрээ дамжина');
+  const acx = readFileSync(new URL('./ActionExport.tsx', import.meta.url), 'utf8');
+  assert.ok(acx.includes('scope.includes(habeaPkgKey(r.site))'), 'үл нийцлийн тайлан: мөр хүрээгээр');
+  const acr = readFileSync(new URL('../lib/actionReport.ts', import.meta.url), 'utf8');
+  assert.ok(acr.includes("postFormOrSource<{ features?: { attributes?: Row }[] }>(url, '/query'"), '_form хаалттай аккаунтад эх үзлэгийн зураг эх үйлчилгээнээс');
+}
+console.log('✅ Тайлан татах: багцын аккаунт · хүрээгээр шүүлт · _form хаалттай');
 
 /* ── Хүснэгтэд байгаа аккаунт л хязгаарлагдана; мөргүй аккаунт бүгдийг харна ── */
 {

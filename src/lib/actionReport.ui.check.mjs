@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { installDom } from './audienceReport.fixture.mjs';
 
 installDom();
-const { summarize } = await import('./actionReport.ts');
+const { summarize, reportPkgs } = await import('./actionReport.ts');
 
 const now = Date.UTC(2026, 10, 6);
 const row = (status, due) => ({ status, due, sevCode: null });
@@ -20,4 +20,12 @@ assert.equal(s.unknown, 1);
 const src = readFileSync(new URL('./actionReport.ts', import.meta.url), 'utf8');
 assert.match(src, /tile\('Дуусах хугацаагүй', String\(s\.noDue\)/, 'PDF-ийн нүд');
 assert.match(readFileSync(new URL('../modules/ActionExport.tsx', import.meta.url), 'utf8'), /num\(sum\.noDue\)/, 'цонхны тойм');
+/* «Багц» мөр: хязгаартай аккаунтын файлд «Бүх багц» гэж бичихгүй */
+const sites = [{ site: 'Багц 2.1' }, { site: 'Багц 2' }, { site: 'Багц 2' }, { site: '' }];
+assert.deepEqual(reportPkgs([], null, sites), [], 'хязгааргүй, сонголтгүй → бүх багц (хоосон)');
+assert.deepEqual(reportPkgs(['Багц 1'], null, sites), ['Багц 1'], 'сонголт хэвээр');
+assert.deepEqual(reportPkgs(['Багц 2.1'], ['БАГЦ2'], sites), ['Багц 2.1'], 'хязгаартай, сонголттой → сонголт');
+assert.deepEqual(reportPkgs([], ['БАГЦ2'], sites), ['—', 'Багц 2', 'Багц 2.1'], 'хязгаартай, сонголтгүй → файлд орсон багцууд');
+assert.match(readFileSync(new URL('../modules/ActionExport.tsx', import.meta.url), 'utf8'), /reportPkgs\(pkgs, scope, chosen\)/, 'цонх хүрээгээ дамжуулна');
+
 console.log('✅ actionReport.ui.check: OK');
