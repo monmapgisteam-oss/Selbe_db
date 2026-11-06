@@ -20,7 +20,6 @@ const norm = (s: string) => s.replace(/[\s-]/g, '').replace(/\./g, '').toLowerCa
 
 async function companyOf(bagts: string): Promise<string> {
   if (!COMPANY) {
-    let ok = false;
     const map = new Map<string, string>();
     try {
       const j = (await arcgisPost(`${BUILDING.url}/query`, {
@@ -35,11 +34,12 @@ async function companyOf(bagts: string): Promise<string> {
         const v = String(f.attributes[BUILDING.fields.contractor] ?? '').trim();
         if (k && v && !map.has(k)) map.set(k, v);
       }
-      ok = true;
-    } catch {
-      /* сүлжээ унасан — кэшлэхгүй, дараагийн удаа дахин оролдоно */
+    } catch (e) {
+      /* Эрхгүй данс (гүйцэтгэгч) — байнгын төлөв, бүртгэлийг хаахгүй: хоосон компани, тойрог хуваагдахгүй */
+      if (/permission|forbidden|not authorized|token required|\b403\b|\b499\b/i.test(String((e as Error)?.message ?? e))) return '';
+      /* Уншилт унасан — '' («гүйцэтгэгчгүй») гэж бүртгэвэл тойрог хуваагдана; кэшлэхгүй, илгээлтийг буцааж дахин оролдуулна */
+      throw new Error(tr('Гүйцэтгэгч компанийг уншиж чадсангүй ({0}) — дахин оролдоно уу.', String((e as Error)?.message ?? e)));
     }
-    if (!ok) return '';
     COMPANY = map;
   }
   return COMPANY.get(norm(bagts)) ?? '';

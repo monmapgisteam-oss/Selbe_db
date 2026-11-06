@@ -260,7 +260,14 @@ export function FillRows({
                           );
                         if (!canPerf) return say((perfWhy ?? RO.noPerf));
                         const mb = r.des != null ? maBlock?.get(r.des) : undefined;
-                        if (mb) return say(mb);
+                        if (mb) {
+                          if (dirty && clearLocked && editing && !busy && !restoring) {
+                            void askConfirm(tr('Энэ ажлын материал баталгаажуулалт (MA) батлагдаагүй — илгээгээгүй утгыг арилгах уу?'), { ok: tr('Утгыг арилгах') })
+                              .then((yes) => { if (yes) clearLocked(r, bi); else say(mb); });
+                            return;
+                          }
+                          return say(mb);
+                        }
                         if (okLock) {
                           if (dirty && clearLocked && editing && !busy && !restoring) {
                             void askConfirm(tr('Хянагч энэ нүдийг ЗӨВШӨӨРСӨН (ногоон ✓) — илгээгээгүй утгыг буцаах уу?'), { ok: tr('Утгыг арилгах') })
@@ -522,7 +529,7 @@ export function FillRows({
                       return (
                         <td
                           key={`x${x.key}`}
-                          className={cls(`${x.kind === "int" || x.kind === "pct" ? "num " : ""}${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)}
+                          className={cls(`${x.kind === "int" || x.kind === "num" || x.kind === "pct" ? "num " : ""}${extraCls(x.kind)}${xi === 0 ? " xFirst" : ""}`)}
                           style={x.wStyle}
                           {...ro(RO.extra)}
                           title={v.title ?? RO.extra}

@@ -3,6 +3,7 @@
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/materialUsage.check.mjs
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { entryName, entryText, parseEntry, parseMats, setEntryNorm } from './materialAjil.ts';
 import { computeUsage } from './materialUsage.ts';
 import { TOLOV, usageFixes } from './materialNoots.ts';
@@ -36,6 +37,16 @@ assert.equal(u.get('Цемент').used, null, 'норм алга — тоо г�
 assert.equal(u.get('Цемент').partial, true);
 assert.equal(computeUsage([], defaults, true).get('Бетон').partial, true, 'хүснэгт уншигдаагүй — бүгд дутуу');
 
+/* Эхлээгүй ажил (обьёмгүй, гүйцэтгэлгүй) = 0, «дутуу» биш; гүйцэтгэлтэй обьёмгүй ажил (хувиар хэмжсэн) — «дутуу» хэвээр */
+u = computeUsage([{ mats: ['Бетон'], vol: 2, started: true }, { mats: ['Бетон'], vol: null, started: false }], defaults);
+assert.deepEqual(u.get('Бетон'), { used: 2.04, partial: false }, 'эхлээгүй ажил зарцуулалтыг хоосон болгохгүй');
+u = computeUsage([{ mats: ['Бетон'], vol: null, started: false }], defaults);
+assert.deepEqual(u.get('Бетон'), { used: 0, partial: false }, 'ганц эхлээгүй ажил — мэдэгдэж буй 0');
+u = computeUsage([{ mats: ['Бетон'], vol: 2, started: true }, { mats: ['Бетон'], vol: null, started: true }], defaults);
+assert.equal(u.get('Бетон').partial, true, 'хувиар хэмжсэн гүйцэтгэлтэй ажил — бүрэн мэт харуулахгүй');
+u = computeUsage([{ mats: ['Цемент'], vol: null, started: false }], defaults);
+assert.equal(u.get('Цемент').partial, true, 'норм алга бол эхлээгүй ажил ч «дутуу»');
+
 /* 3. Нөөцөд бичих — эхний мөрд нийт, бусдад null; бүх мөрд нэг төлөв */
 const row = (o) => ({ oid: 1, name: 'Бетон', inQty: 10, usedQty: null, unit: 'м3', status: TOLOV.open, mirId: 'a', norm: 1.02, ...o });
 const rows = [row({ oid: 5, inQty: 6 }), row({ oid: 2, inQty: 4 })];
@@ -46,5 +57,12 @@ fx = usageFixes(rows, new Map([['Бетон', { used: 12, partial: true }]]));
 assert.ok(fx.every((x) => x.status === TOLOV.open && x.used == null), '«дутуу» зарцуулалт — нийт null, «Дууссан» болохгүй');
 fx = usageFixes([row({ oid: 2, inQty: 4, usedQty: 3, status: TOLOV.open })], new Map([['Бетон', { used: 3, partial: false }]]));
 assert.deepEqual(fx, [], 'өөрчлөлтгүй бол бичихгүй');
+
+/* Блокгүй хүснэгтийн материал — бөглөх бүдүүвчээр уншина (обьём `obyem_sum`-д) */
+{
+  const src = readFileSync(new URL('./materialUsage.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('await fillSchema(pkg)') && !src.includes('loadSchema('), 'loadWorkUses: fillSchema');
+  assert.ok(src.includes('sc.obyem.map((f) => !!f)') && src.includes('sc.synthetic'), 'computeAll: hasObyem · synthetic');
+}
 
 console.log('✅ materialUsage: бүх шалгуур давлаа');

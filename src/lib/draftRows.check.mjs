@@ -20,7 +20,7 @@ import assert from 'node:assert/strict';
 import { makeFake } from './draftRows.fake.mjs';
 import {
   addAttrs, buildFrame, cellToCols, colsToCell, COL, gcCandidates, groupsOf, perfFromRows, perfToRows, pickGeneration, planFromRows,
-  planToRows, ROW_FIELDS, seriesRead, stampWant, subFromRows, subToRows, viewOf, perfDkey, planDkey, subDkey, diffRows, SYN_BASE,
+  planToRows, ROW_FIELDS, seriesRead, stampRow, stampWant, subFromRows, subToRows, viewOf, perfDkey, planDkey, subDkey, diffRows, SYN_BASE,
 } from './draftRows.ts';
 import {
   rowsTestHooks, rowsReady, perfRead, perfSave, planRead, planReadAt, planSave, setFillFrame, migrateAll, verifyAll,
@@ -115,6 +115,53 @@ const frame1 = buildFrame(FR1, ['5/1', '5/2']);
   const other = perfFromRows({ ...w.hdr }, view, new Map(), frame1, NOW);
   const oAt = new Map(other.byAt);
   ok(oAt.get('101:0') === T + 7 && oAt.get('101:0:s') === T + 7, 'зураггүй уншигч — мөрийн at (бүлгүүдийн ДЭЭД)');
+  /* Эзэн: нэг мөрийн утга ба огноо өөр хүнийх — зураггүй хөтөч эзнийг таамагладаг тул «минийх» гэж тоолох ёсгүй */
+  {
+    const owners = { cells: [['101:0', '10']], dates: [['101:0:s', '2026-11-01']], by: [['101:0', 'alice'], ['101:0:s', 'bob']], byAt: [['101:0', T], ['101:0:s', T + D]] };
+    const wo = perfToRows({ t: T + D, mode: 'inc', rowKeys: [], ...owners }, frame1, new Map(), NOW);
+    const vo = viewOf(toAttrs(wo.rows, base), 'guitsetgel');
+    const fresh0 = new Map([...vo].map(([k, a]) => [k, stampRow(undefined, a, groupsOf('guitsetgel', String(a[COL.turul]), k))]));
+    const rd = perfFromRows({ ...wo.hdr }, vo, fresh0, frame1, NOW);
+    eq(sortP(rd.byGuess), sortP(['101:0', '101:0:s']), 'зураггүй хөтөч — хоёр бүлгийн эзэн таамаг');
+    eq(sortP(perfFromRows({ ...wo.hdr }, vo, new Map(), frame1, NOW).byGuess), sortP(['101:0', '101:0:s']), 'зураг огт алга — мөн таамаг');
+    const exact = new Map([...vo].map(([k, a]) => [k, wo.rows.get(k) ? stampWant(undefined, a, wo.rows.get(k), groupsOf('guitsetgel', String(a[COL.turul]), k)) : undefined]));
+    eq(perfFromRows({ ...wo.hdr }, vo, exact, frame1, NOW).byGuess, undefined, 'бичигч өөрөө — эзэн ЯГ, таамаггүй');
+    const one = perfToRows({ t: T, mode: 'inc', rowKeys: [], cells: [['101:0', '10']], by: [['101:0', 'alice']], byAt: [['101:0', T]], bt: [['101:0', T]] }, frame1, new Map(), NOW);
+    const v1 = viewOf(toAttrs(one.rows, base), 'guitsetgel');
+    const s1 = new Map([...v1].map(([k, a]) => [k, stampRow(undefined, a, groupsOf('guitsetgel', String(a[COL.turul]), k))]));
+    eq(perfFromRows({ ...one.hdr }, v1, s1, frame1, NOW).byGuess, undefined, 'мөрөнд ганц нүд — мөрийн usr түүний эзэн');
+    /* Хоёр уншилтын хооронд ганц бүлэг өөрчлөгдсөн — мөрийн usr түүний эзэн (таамаг биш) */
+    const wk = [...vo.keys()].find((k) => k.startsWith('w:'));
+    const aw = vo.get(wk);
+    const prevSt = stampRow(undefined, { ...aw, [COL.ps]: null }, groupsOf('guitsetgel', 'ajil', wk));
+    const nextSt = stampRow(prevSt, aw, groupsOf('guitsetgel', 'ajil', wk));
+    eq(nextSt[COL.ps]?.[3], undefined, 'ганц шинэ бүлэг — таамаг биш');
+    /* Зураггүй хөтөч өөр мөр хадгалсны дараа — уншсан таамаг `Want.gs`-ээр дахин бичигдэж «яг» болж, бусдын нүд «минийх» болж устах ёсгүй */
+    const echo = perfToRows({ ...rd, t: T + 2 * D }, frame1, new Map(), NOW);
+    const echoed = new Map([...vo].map(([k, a]) => [k, echo.rows.get(k) ? stampWant(fresh0.get(k), a, echo.rows.get(k), groupsOf('guitsetgel', String(a[COL.turul]), k)) : fresh0.get(k)]));
+    eq(sortP(perfFromRows({ ...wo.hdr }, vo, echoed, frame1, NOW).byGuess), sortP(['101:0', '101:0:s']), 'дахин хадгалсан ч таамаг хэвээр');
+    /* Өөрөө утгаа өөрчилсөн (гарын үсэг өөр) — тэр бүлгийн эзэн ЯГ */
+    {
+      const mineD = { ...rd, t: T + 3 * D, cells: [['101:0', '11']], by: [['101:0', 'bob'], ['101:0:s', 'bob']], byGuess: undefined };
+      const mw = perfToRows(mineD, frame1, new Map(), NOW);
+      const mv = viewOf(toAttrs(mw.rows, base), 'guitsetgel');
+      const after = new Map([...mv].map(([k, a]) => [k, mw.rows.get(k) ? stampWant(fresh0.get(k), a, mw.rows.get(k), groupsOf('guitsetgel', String(a[COL.turul]), k)) : fresh0.get(k)]));
+      eq(perfFromRows({ ...mw.hdr }, mv, after, frame1, NOW).byGuess, ['101:0:s'], 'өөрчилсөн бүлэг ЯГ, огноо таамаг хэвээр');
+    }
+    ok(mergeDrafts({ ...rd, byGuess: ['101:0'] }, { ...rd, byGuess: ['101:0:s'] }).byGuess.length === 2, 'хоёр хуулбарын таамаг нэгдэнэ');
+  }
+  /* Тэмдэг: зөвхөн тэмдэглэсэн нүдэнд — мөрийн бусад нүдэнд тархахгүй; битгүй (хуучин) мөрд хуучин зан төлөв */
+  {
+    const hd = { t: T, mode: 'inc', rowKeys: [], cells: [['101:0', '10']], dates: [['101:0:s', '2026-11-01']], hold: [['101:0', T, 1]] };
+    const wh = perfToRows(hd, frame1, new Map(), NOW);
+    const vh = viewOf(toAttrs(wh.rows, base), 'guitsetgel');
+    eq(perfFromRows({ ...wh.hdr }, vh, new Map(), frame1, NOW).hold, [['101:0', T, 1]], 'утгын тэмдэг огноонд тархахгүй');
+    const wh2 = perfToRows({ ...hd, hold: [['101:0:s', T, 0]] }, frame1, new Map(), NOW);
+    const vh2 = viewOf(toAttrs(wh2.rows, base), 'guitsetgel');
+    eq(perfFromRows({ ...wh2.hdr }, vh2, new Map(), frame1, NOW).hold, [['101:0:s', T, 0]], 'огнооны тэмдэг утгад тархахгүй');
+    const old = new Map([...vh].map(([k, a]) => [k, k.startsWith('w:') ? { ...a, [COL.stSeq]: null } : a]));
+    eq(sortP(perfFromRows({ ...wh.hdr }, old, new Map(), frame1, NOW).hold), sortP([['101:0', T, 1], ['101:0:s', T, 1]]), 'битгүй хуучин мөр — мөрийн түвшин');
+  }
   /* Хоосон ноорог → зөвхөн толгой; баримтын хувилбар mergeDrafts-тэй нийцнэ */
   ok(mergeDrafts(back, d) != null, 'mergeDrafts нийцэл');
   console.log('✅ 1. Гүйцэтгэлийн ноорог — эх хуудасны баганаар эргэлт');

@@ -3,7 +3,7 @@
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ulsiinKomiss.check.mjs
  */
 import assert from 'node:assert/strict';
-import { KOMISS_NO, KOMISS_WORK, findKomissRow, komissDepSource } from './ulsiinKomiss.ts';
+import { KOMISS_NO, KOMISS_WORK, findKomissRow, komissDepSource, withDes } from './ulsiinKomiss.ts';
 import { appendRootLeaf } from '@/modules/sheet/sheetFrame.ts';
 
 const rows = [
@@ -27,6 +27,14 @@ console.log('✅ findKomissRow');
 assert.equal(komissDepSource(rows), 3);
 assert.equal(komissDepSource([{ oid: 1, no: 'A', work: 'A', depth: 0, group: true, des: 7 }]), 7, 'дэд бүтэц — ганц үндсэн');
 assert.equal(komissDepSource([]), null);
+/* Шинэ хуудас — кодгүй мөрүүдэд `buildFrame`-ийн дүрмээр код олгосны дараа «Б.»-ийн код тодорхой (хамаарал хоосон үлдэхгүй) */
+{
+  const fresh = [{ oid: 1, no: 'Б.', work: 'Б', depth: 0, group: true, des: null }, { oid: 2, no: '1', work: 'x', depth: 1, group: false, des: null }];
+  assert.equal(komissDepSource(fresh), null, 'кодгүй — эх код алга');
+  assert.equal(komissDepSource(withDes(fresh)), 1, 'код олгосны дараа «Б.» = 1');
+  assert.deepEqual(withDes([{ oid: 1, des: 5 }, { oid: 2, des: null }, { oid: 3, des: 2 }]).map((r) => r.des), [5, 6, 2], 'байгаа код хөндөгдөхгүй, шинэ нь дээд кодоос цааш');
+  assert.equal(fresh[0].des, null, 'эх мөрийг өөрчлөхгүй');
+}
 console.log('✅ komissDepSource');
 
 /* 3. appendRootLeaf — төгсгөлд, гүн 0, жин 0, хамаарал */

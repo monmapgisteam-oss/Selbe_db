@@ -75,11 +75,12 @@ assert.equal(sameFrame(fr('y'), fr('y')), true, 'ижил жааз — true');
 assert.equal(sameFrame(fr('y'), fr('z')), false, 'нэг түүхий атрибут зөрвөл — false (Хуваарийн applyUpdates)');
 console.log('✅ жааз тулгах');
 
-/* ── 2. Өдөр — ЛОКАЛ өдөр, ямар ч цагийн бүсэд ── */
-const T = new Date(2026, 8, 24, 13, 45).getTime();   // локал 2026-09-24 13:45
+/* ── 2. Өдөр — Улаанбаатарын өдөр, хөтчийн ямар ч цагийн бүсэд ── */
+const T = Date.UTC(2026, 8, 24, 5, 45);   // Улаанбаатар 2026-09-24 13:45
 const today = Date.UTC(2026, 8, 24);
-assert.equal(todayLocalMs(T), today, 'локал өдөр → Date.UTC(y,m,d)');
-assert.equal(todayLocalMs(new Date(2026, 8, 24, 0, 30).getTime()), today, 'локал 00:30 ч мөн өнөөдөр (UTC-ээр өчигдөр байж болно)');
+assert.equal(todayLocalMs(T), today, 'Улаанбаатарын өдөр → Date.UTC(y,m,d)');
+assert.equal(todayLocalMs(Date.UTC(2026, 8, 23, 16, 30)), today, 'Улаанбаатар 00:30 ч мөн өнөөдөр (UTC-ээр өчигдөр)');
+assert.equal(todayLocalMs(Date.UTC(2026, 8, 23, 15, 59)), Date.UTC(2026, 8, 23), 'Улаанбаатар 23:59 — өчигдөр (хөтчийн цагийн бүсээс үл хамаарна)');
 assert.equal(fillMsFor(T, null), today, 'жаазгүй — өнөөдөр');
 assert.equal(fillMsFor(T, Date.UTC(2026, 8, 20, 9)), today, 'хуучин жааз — өнөөдөр');
 assert.equal(fillMsFor(T, Date.UTC(2026, 8, 24, 3)), today, 'өнөөдрийн жааз — өнөөдөр (нэг өдрийн 2 дахь жааз, lastFrame ялгана)');

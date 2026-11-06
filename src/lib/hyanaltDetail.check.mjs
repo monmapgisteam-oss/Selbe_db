@@ -10,6 +10,9 @@ const src = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
 const det = src('./hyanaltDetail.ts');
 const fn = det.slice(det.indexOf('async function loadStaged('));
+assert.ok((fn.match(/actOver\[b\]/g) ?? []).length >= 2, 'хянагчийн «Өөрчлөгдсөн нүд»-д 100%-иас хэтэрсэн тэмдэг (`Change.over`) алга');
+assert.ok(src('../modules/Guitsetgel.tsx').includes('c.over &&'), 'Guitsetgel: хэтрэлтийн тэмдэг харагдахгүй');
+assert.ok(det.includes('sc.f.gun, sc.f.des, ...obs'), 'жааз уншихад ажлын код алга — `frameRowKeys` хуримтлалтай тулгагдахгүй');
 assert.ok(fn.length > 0, 'loadStaged олдсонгүй');
 const occ = fn.indexOf('needsFrameOcc(pl, loaded.rows)');
 const with_ = fn.indexOf('withFrameOcc(pl,');

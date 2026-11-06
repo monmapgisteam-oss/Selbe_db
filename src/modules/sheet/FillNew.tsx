@@ -341,6 +341,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     return st != null && st !== "company";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, aclN]);
+  /** Гүйцэтгэгч компани — инженерээс дээш шатны нэрийг харуулахгүй («Илгээсэн ажил» табтай нэг дүрэм) */
+  const hideStage = useMemo(() => stageOfUser(user?.username) === "company",
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, aclN]);
   /** Бөглөх эрхгүй шалтгаан — батлагч › «зөвхөн харна» › томилгоогүй (мөр нэмэх эрхтэй ч) › хориг (`reviewLock`) */
   const noPerfWhy = isZahiral ? RO.zahiralView
     : reviewerOnly ? RO.reviewerView
@@ -1195,10 +1199,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const ownerOf = (k: string) => (mineRef.current.has(k) ? meKey : byMap.get(k));
       const memMine = [...Object.keys(pending), ...Object.keys(pendDate)].filter((k) => !!meKey && ownerOf(k) === meKey);
       setBusy(true);
-      let stored: string[] | null = null;
+      let stored: Awaited<ReturnType<typeof storedMine>> = null;
       try { stored = await storedMine(pkg.key, soid); } finally { setBusy(false); }
       if (stored === null) { warn(tr('Ноорогийг ArcGIS-ээс уншиж чадсангүй — буцаасан илгээлттэй холилдох эсэхийг шалгаж чадсангүй. Дахин оролдоно уу.')); return; }
-      const mine = [...new Set([...memMine, ...stored])];
+      /* Эзэн нь таамаг нүд (энэ сешнд өөрөө бичээгүй бол) «минийх» биш — бусдын нүдийг устгахгүй */
+      const guess = stored.guess;
+      const mine = [...new Set([...memMine.filter((k) => mineRef.current.has(k) || !guess.has(k)), ...stored.keys])];
       if (mine.length) {
         if (!(await askConfirm(tr('Таны илгээгээгүй {0} нүд ноорогт байна (өнөөдрийн эсвэл өөр өдрийн ажил). Буцаасан илгээлтийн засвартай холилдохгүйн тулд эхлээд тэдгээрийг ноорогоос устгана — бусдын нүд хөндөгдөхгүй. Устгаад үргэлжлүүлэх үү?', mine.length), { ok: tr('Устгаад үргэлжлүүлэх'), danger: true }))) return;
         dropMine(pkg.key, mine);
@@ -1353,6 +1359,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * «НИЙТЛЭХ» = ИЛГЭЭХ (2026-09-04-нөөс).
    */
   const readySig = `${pkg.key}|${todayFillMs}|${dirtyCount}`;
+  /** MA хаалгатай ажлын ноорог нүднүүд (MA батлагдахаас өмнө бичигдсэн) — илгээгдэхгүй; ажлын нэрсийг буцаана */
+  const maBadRows = useCallback((): string[] => {
+    if (!maBlock.size) return [];
+    const byOid = new Map(rowsAll.map((r) => [r.oid, r] as const));
+    const names = new Set<string>();
+    for (const k of Object.keys(pending)) {
+      const r = byOid.get(Number(k.slice(0, k.indexOf(":"))));
+      if (r?.des != null && maBlock.has(r.des)) names.add(`${r.no} ${fixCyr(r.work)}`.trim());
+    }
+    return [...names];
+  }, [maBlock, rowsAll, pending]);
   const [readyAt, setReadyAt] = useState<string | null>(null);
   const sendReady = dirtyCount === 0 || (!editing && readyAt === readySig);
   const readyIssue = useCallback((): { msg: string; keepOpen: boolean } | null => {
@@ -1371,13 +1388,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       return c > 0 && okLockAt(Number(k.slice(0, c)), Number(k.slice(c + 1)));
     }).length;
     if (okBadN) return out(tr('Хянагчийн ЗӨВШӨӨРСӨН (ногоон ✓) {0} нүдэнд өөрчлөлт байна — тэр нүд засагдахгүй тул утгыг нь буцаагаад «Дуусгах»-ыг дахин дарна уу.', okBadN), true);
+    {
+      const maBad = maBadRows();
+      if (maBad.length) return out(tr('Материал баталгаажуулалт (MA) батлагдаагүй ажилд ноорог нүд байна: {0}. Нүдийг дарж утгыг нь арилгаад «Дуусгах»-ыг дахин дарна уу.', maBad.join('; ')), true);
+    }
     const off = offTgtKeys([...Object.keys(pending), ...Object.keys(pendDate)]);
     if (off.length) return out(tr('Ноорогийн {0} нүд өөр ажилд (өнөөдрийн эсвэл өөр өдрийн бөглөлт) хамаарах тул буцаасан илгээлтийн засвартай хамт илгээсэнгүй. Хуудсыг дахин ачаалж (ноорог хадгалагдсан) тэр илгээлтийг дахин сонгоно уу.', off.length));
     if (!canSubmitNow) return out(tr('Таны хэсэг дууссан бол «Дуусгасан» дарна уу — илгээхийн өмнө {0} дуусгах ёстой.', waitingOn.join(', ')));
     if (tgtMismatch && draftTgt) return out(tr('Энэ ноорог {0}-ны буцаасан илгээлтийн засвар — «Өмнөх өдрийн илгээлт буцаасан» мэдэгдлээс тэр илгээлтийг сонгоод илгээнэ үү, эсвэл ноорогоо устгана уу.', msToDay(draftTgt[1])));
     return null;
   }, [dirtyCount, noEdit, canPerf, pending, pendDate, asOf, asOfOrig, noPerfWhy, restoringUi, staged, hyLoading, hyErr,
-    okLockAt, offTgtKeys, canSubmitNow, waitingOn, tgtMismatch, draftTgt]);
+    okLockAt, maBadRows, offTgtKeys, canSubmitNow, waitingOn, tgtMismatch, draftTgt]);
   const pubAskRef = useRef(false);
   const publish = useCallback(async () => {
     if (busy || dirtyCount === 0 || !sc) return;
@@ -1414,6 +1435,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         warn(tr('Хянагчийн ЗӨВШӨӨРСӨН (ногоон ✓) {0} нүдэнд илгээгээгүй утга байсныг буцаав — тэр нүд дахин засагдахгүй. Шалгаад «Илгээх»-ийг дахин дарна уу.', okBad.length));
         return;
       }
+    }
+    {
+      const maBad = maBadRows();
+      if (maBad.length) { warn(tr('Материал баталгаажуулалт (MA) батлагдаагүй ажилд ноорог нүд байна: {0}. Нүдийг дарж утгыг нь арилгаад «Дуусгах»-ыг дахин дарна уу.', maBad.join('; '))); return; }
     }
     {
       const off = offTgtKeys([...Object.keys(pending), ...Object.keys(pendDate)]);
@@ -1870,7 +1895,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       (rv.ok ? done : warn)((!rv.ok
         ? tr('Илгээлт хадгалагдлаа ({0} нүд) · ⚠️ хяналтад бүртгэгдсэнгүй: {1}', nCells, rv.error)
         : rv.reused
-          ? tr('Энэ өдрийн илгээлт ШИНЭЧЛЭГДЛЭЭ ({0}) · {1} нүд — хянагч ({2}) шинэ агуулгыг харна.', rv.id, nCells, reviewStage ? STAGE_LABEL[reviewStage] : '')
+          ? hideStage && reviewStage !== "engineer"
+            ? tr('Энэ өдрийн илгээлт ШИНЭЧЛЭГДЛЭЭ ({0}) · {1} нүд — хянагч шинэ агуулгыг харна.', rv.id, nCells)
+            : tr('Энэ өдрийн илгээлт ШИНЭЧЛЭГДЛЭЭ ({0}) · {1} нүд — хянагч ({2}) шинэ агуулгыг харна.', rv.id, nCells, reviewStage ? STAGE_LABEL[reviewStage] : '')
           : tr('Хяналтад илгээв ({0}) · {1} нүд', rv.id, nCells))
         + (rcWarn ? ' · ' + rcWarn : ''));
     } catch (e) {
@@ -1879,7 +1906,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       pubEpochRef.current += 1;
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, sendReady, canPerf, noEdit, rows, done, reviewStage, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
+  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, sendReady, canPerf, noEdit, rows, done, reviewStage, hideStage, maBadRows, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
     /* 2026-10-04 аудит */
     stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts,
     /* 2026-10-09 */
@@ -2213,7 +2240,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
       <FillNotices
         locked={locked} submitFailed={submitFailed} resend={resend} resending={resending} unmovedWarn={unmovedWarn}
-        subReadErr={subReadErr} inReview={inReview} reviewStage={reviewStage} otherDaysInReview={otherDaysInReview}
+        subReadErr={subReadErr} inReview={inReview} reviewStage={reviewStage} hideStage={hideStage} otherDaysInReview={otherDaysInReview}
         otherDaysReturned={otherDaysReturned} noEdit={noEdit} busy={busy} resumedOid={resumedOid}
         resumeReturned={resumeReturned} returned={returnedStaged}
         canAct={permPerf && !reviewerOnly} reviewLockDays={reviewLockDays}

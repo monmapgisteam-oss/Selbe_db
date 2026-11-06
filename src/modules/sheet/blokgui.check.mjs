@@ -397,7 +397,7 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
  */
 {
   const { resolveSchema } = await import('./bagts.pkg.ts');
-  const { extraCols, extraVal, readExtraPref, writeExtraPref, extraPrefKey } = await import('./fill/extraCols.ts');
+  const { extraCols, extraNum, extraVal, fullExtraCols, readExtraPref, writeExtraPref, extraPrefKey } = await import('./fill/extraCols.ts');
   const F = (name, type = 'esriFieldTypeDouble') => ({ name, type });
   const base = [F('objectid', 'esriFieldTypeOID'), F('globalid', 'esriFieldTypeGlobalID'), F('f_', 'esriFieldTypeString'),
     F('Ажил', 'esriFieldTypeString'), F('Обьём'), F('мөнгөн_дүн')];
@@ -448,6 +448,25 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   const st = extraVal(col('cre'), r({ created_date: Date.UTC(2026, 9, 8, 3, 7) }));
   assert.match(st.text, /^\d{4}-\d{2}-\d{2}$/);
   assert.match(st.title, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/, 'бүтэн цаг tooltip-д');
+
+  /* (г) Тодорхойгүй багана — үйлчилгээний төрөл · alias · тоон хэлбэр · хуудсанд хамааралгүй блокийн үлдэгдэл */
+  {
+    const sc6 = { ...resolveSchema([...base, F('f6_1_гүйцэтгэл'), F('f6_1_төлөвлөгөөт_гүйцэтгэл')], { fill: true }),
+      meta: new Map([['f68', { name: 'f68', type: 'esriFieldTypeDate', alias: 'F68' }], ['мөнгөн_дүн__шинэ', { name: 'мөнгөн_дүн__шинэ', type: 'esriFieldTypeDouble', alias: 'Мөнгөн дүн- Шинэ' }]]) };
+    const raw6 = { f68: 1788307200000, 'мөнгөн_дүн__шинэ': 14228954139, 'нэгж_өртөг__шинэ': 2166.94307692, 'хувийн_жин_шинэ1': 0.77958263, 'f5_3_блок___9_давхар_дуусах': 1788307200000, 'f6_1_x': 5 };
+    const xc = fullExtraCols(sc6, [{ raw: raw6 }]);
+    const at6 = (f) => xc.find((c) => c.field === f);
+    assert.equal(at6('f68').kind, 'day', 'огнооны төрөлтэй талбар — огноо');
+    assert.equal(extraVal(at6('f68'), { raw: raw6 }).text, '2026-09-02', 'f68 огноогоор (Улаанбаатарын шөнө дунд)');
+    assert.equal(at6('мөнгөн_дүн__шинэ').label(), 'Мөнгөн дүн- Шинэ', 'alias шошго');
+    assert.equal(extraVal(at6('мөнгөн_дүн__шинэ'), { raw: raw6 }).text, '14,228,954,139', 'мөнгө мянгатын таслалтай, бүтэн');
+    assert.equal(extraVal(at6('нэгж_өртөг__шинэ'), { raw: raw6 }).text, '2,166.94');
+    assert.equal(at6('хувийн_жин_шинэ1').kind, 'pct', 'хувийн жин — хувь');
+    assert.equal(extraVal(at6('хувийн_жин_шинэ1'), { raw: raw6 }).text, '78%');
+    assert.equal(at6('f5_3_блок___9_давхар_дуусах'), undefined, 'энэ хуудасны блокуудад ороогүй блокийн үлдэгдэл харагдахгүй');
+    assert.equal(extraNum(at6('мөнгөн_дүн__шинэ'), { raw: raw6 }), 14228954139, 'Excel-д тоон утга');
+    assert.equal(extraNum(at6('f68'), { raw: raw6 }), null, 'огноо тоон нүд биш');
+  }
 
   /* Сонголт — localStorage алга/шидэх үед анхдагч АСААЛТТАЙ, унахгүй */
   const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');

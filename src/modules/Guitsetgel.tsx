@@ -658,6 +658,7 @@ function Submitted({
                       {c.from === c.to && c.toPct !== undefined
                         ? <>{c.fromPct == null ? '—' : pcs(c.fromPct)} → <b>{c.toPct == null ? '—' : pcs(c.toPct)}</b>{incTag(c.incPct, pcs)}</>
                         : <>{c.from == null ? '—' : qty(c.from)} → <b>{qty(c.to)}</b>{incTag(c.inc, qty)}</>}
+                      {c.over && <span className={`${s.badge} ${s.bBack}`}>{tr('100%-иас хэтэрсэн')}</span>}
                     </span>
                   </button>
                 ))}

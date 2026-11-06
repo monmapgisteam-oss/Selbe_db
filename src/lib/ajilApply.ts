@@ -13,6 +13,8 @@ import { AJIL_STATUS, ajilClaimOther, claimAjil, loadHead, loadPayloadStamped, m
 import { obyemBusyFor } from './obyemBatlah';
 import { claimHolderOf as planClaimHolderOf, loadPending as loadPlanPending, partialBy as planPartialBy, type PlanSubmission } from './huvaariBatlah';
 import type { NewRow } from './submission';
+import { ubToday } from './projectPlan';
+import { serverNow, syncServerClock } from './serverClock';
 import { isLostWrite } from './lostWrite';
 
 /* ══════════════════ ЦЭВЭР ХЭСЭГ (тест: ajilApply.check.mjs) ══════════════════ */
@@ -113,11 +115,10 @@ export const dayStartUtc = (ms: number): number => {
 };
 
 /**
- * ӨНӨӨДӨР — ЛОКАЛ хуанлийн өдөр, `Date.UTC(y,m,d)` хэлбэрээр.
+ * ӨНӨӨДӨР — Улаанбаатарын хуанлийн өдөр (хөтчийн цагийн бүсээс үл хамаарна), `Date.UTC(y,m,d)` хэлбэрээр.
  */
 export const todayLocalMs = (nowMs: number): number => {
-  const d = new Date(nowMs);
-  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return ubToday(nowMs);
 };
 
 /**
@@ -496,7 +497,8 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
   }
 
   /* A.6 — өдөр */
-  const fillMs = fillMsFor(Date.now(), loaded.snapshot);
+  await syncServerClock();
+  const fillMs = fillMsFor(serverNow(), loaded.snapshot);
 
   /* A.7 — жааз; сарын задаргаанаас төлөвлөгөөт хувь (`hyanaltStore`-той ижил closure) */
   const { loadPkgPlan, planPctFromMonths } = await import('@/lib/huvaariObyem');

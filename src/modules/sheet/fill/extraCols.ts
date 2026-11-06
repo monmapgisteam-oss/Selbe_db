@@ -3,7 +3,7 @@ import { normDayMs, numLoose, type SheetRow } from "../bagtsSheet";
 import { t as tr } from "@/lib/i18nCore";
 
 /** Утгын төрөл — хэлбэржүүлэлт ба баганын өргөний ангилал (`c-xn` · `c-xt` · `c-xd` · `c-xp` · `c-xu`) */
-export type ExtraKind = "int" | "text" | "day" | "stamp" | "pct" | "user";
+export type ExtraKind = "int" | "num" | "text" | "day" | "stamp" | "pct" | "user";
 
 export type ExtraCol = {
   /** React түлхүүр ба шалгуурын нэр */
@@ -65,6 +65,10 @@ const KNOWN_RAW: Record<string, () => string> = {
 /** ArcGIS-ийн автоматаар үүсгэдэг талбарууд — ХЭЗЭЭ Ч харуулахгүй */
 const AUTO_RE = /^(objectid|fid|globalid|creationdate|creator|editdate|editor|created_user|created_date|last_edited_user|last_edited_date|shape|shape__area|shape__length|shape_area|shape_length)$/i;
 const DATE_RE = /ognoo|огноо|ehleh|duusah|эхлэх|дуусах|date/i;
+/** 0–1 бутархайгаар хадгалагддаг талбарууд (хувийн жин · гүйцэтгэл · биелэлт) */
+const PCT_RE = /хувь|хувийн_*жин|гүйцэтгэл|гүйцтэгэл|биелэлт|биеэлэлт/i;
+/** Блокийн талбарын нэр (`resolveSchema`-ийн `f<цуваа>_<дугаар>_`) */
+const BLOCK_RE = /^f(\d+)_(\d+)_/i;
 /** Өргөний түлхүүр — ASCII (CSS хувьсагчийн нэр), талбарын нэрээс тогтвортой */
 const hashKey = (s: string) => {
   let h = 0;
@@ -99,6 +103,9 @@ export function fullExtraCols(sc: Schema | null | undefined, rows: readonly Shee
       if (seen.has(k)) continue;
       seen.add(k);
       if (AUTO_RE.test(k) || skipLo.has(k.toLowerCase())) continue;
+      /* Энэ хуудасны блокуудад ороогүй блокийн үлдэгдэл багана — амьд өгөгдөл биш */
+      const bm = BLOCK_RE.exec(k);
+      if (bm && !sc.bld.includes(`${bm[1]}/${bm[2]}`)) continue;
       order.push(k);
     }
   }
@@ -119,10 +126,15 @@ export function fullExtraCols(sc: Schema | null | undefined, rows: readonly Shee
     } else {
       const vals = rows.map((r) => r.raw?.[field]).filter((v) => v != null && v !== "");
       const allNum = vals.length > 0 && vals.every((v) => typeof v === "number");
-      kind = allNum ? (DATE_RE.test(field) ? "day" : "int") : DATE_RE.test(field) && vals.length === 0 ? "day" : "text";
+      const meta = sc.meta?.get(field.toLowerCase());
+      kind = meta?.type === "esriFieldTypeDate" ? "day"
+        : allNum ? (DATE_RE.test(field) ? "day" : PCT_RE.test(field) ? "pct" : "num")
+        : DATE_RE.test(field) && vals.length === 0 ? "day" : "text";
       key = hashKey(field);
       const raw = KNOWN_RAW[field.toLowerCase()];
-      const plain = field.replace(/_+/g, " ").trim();
+      /* Үйлчилгээний уншигдах нэр (alias) байвал түүгээр */
+      const alias = meta?.alias?.trim();
+      const plain = alias && alias !== field ? alias : field.replace(/_+/g, " ").trim();
       label = raw ?? (() => plain);
     }
     if (used.has(key)) key = hashKey(`${field}#${out.length}`);
@@ -153,6 +165,11 @@ export function extraVal(col: ExtraCol, r: SheetRow): { text: string; title?: st
       const n = numLoose(v);
       return n == null ? { text: "" } : { text: String(n) };
     }
+    case "num": {
+      const n = numLoose(v);
+      if (n == null) return { text: "" };
+      return { text: n.toLocaleString("en-US", { maximumFractionDigits: Math.abs(n) >= 1 ? 2 : 6 }), title: String(n) };
+    }
     case "pct": {
       const n = numLoose(v);
       if (n == null) return { text: "" };
@@ -172,9 +189,15 @@ export function extraVal(col: ExtraCol, r: SheetRow): { text: string; title?: st
   }
 }
 
+/** Тоон баганын түүхий утга — Excel-д тоон нүдээр бичихэд (`sheetXlsx`); тоон биш багана эсвэл хоосон бол null */
+export function extraNum(col: ExtraCol, r: SheetRow): number | null {
+  if (col.kind !== "int" && col.kind !== "num" && col.kind !== "pct") return null;
+  return numLoose(r.raw?.[col.field]);
+}
+
 /** Баганын өргөний ангилал (`sheet.module.css` — `.b32 .c-x*`) */
 export const extraCls = (k: ExtraKind) =>
-  k === "text" ? "c-xt" : k === "user" ? "c-xu" : k === "pct" ? "c-xp" : k === "int" ? "c-xn" : "c-xd";
+  k === "text" ? "c-xt" : k === "user" ? "c-xu" : k === "pct" ? "c-xp" : k === "int" || k === "num" ? "c-xn" : "c-xd";
 
 /* ── Харагдах эсэх — хэрэглэгч тус бүрд хөтөчид санана (анхдагч АСААЛТТАЙ) ── */
 export const extraPrefKey = (user: string | null | undefined) => `selbe-fill-extra:${user ?? ""}`;

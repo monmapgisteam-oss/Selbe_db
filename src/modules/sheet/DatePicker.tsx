@@ -9,6 +9,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as RKeyboardEvent } from "react";
 import { t as tr, perLocale } from "@/lib/i18nCore";
 import { parseDayInput } from "@/lib/dateInput";
+import { ubToday } from "@/lib/projectPlan";
+import { serverNow } from "@/lib/serverClock";
 import st from "./sheet.module.css";
 
 const DAY = 86_400_000;
@@ -16,11 +18,8 @@ const DAY = 86_400_000;
 const WD = perLocale(() => [tr('Да'), tr('Мя'), tr('Лх'), tr('Пү'), tr('Ба'), tr('Бя'), tr('Ня')]);
 
 const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-/** Орон нутгийн «өнөөдөр»-ийг UTC шөнө дунд болгож буулгана. */
-const todayMs = () => {
-  const d = new Date();
-  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-};
+/** Улаанбаатарын «өнөөдөр» — бөглөх өдөртэй (`nowFillMs`) нэг дүрэм, UTC шөнө дунд. */
+const todayMs = () => ubToday(serverNow());
 
 export type PickerProps = {
   /** «YYYY-MM-DD» эсвэл "" (огноогүй) */
@@ -34,7 +33,7 @@ export type PickerProps = {
    * «Эхлэх» нүдэнд бичсэн хоног нь огноо сонгоход дуусахыг хамт тавина; «Дуусах»
    * нүдэнд «Тавих» дарахад эхлэхээс тооцно. Өгөөгүй бол мөр гарахгүй (asOf).
    */
-  days?: { value: string; onChange: (v: string) => void; onApply: () => void; canApply: boolean };
+  days?: { value: string; onChange: (v: string) => void; onApply: (typed: string | null) => void; canApply: (typed: string | null) => boolean };
   noClear?: boolean;
 };
 
@@ -121,6 +120,8 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
   const arrowedRef = useRef(false);
   const typedDay = parseDayInput(typed);
   const typedBad = typed.trim() !== '' && typedDay == null;
+  /* Хоногийн «Тавих» — гараар бичсэн (Enter дараагүй) огноог дамжуулна; буруу бичвэртэй бол идэвхгүй */
+  const daysOk = !!days && !typedBad && days.canApply(typedDay);
   const typeKey = (e: RKeyboardEvent<HTMLInputElement>) => {
     const arrow = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1
       : e.key === "ArrowUp" ? -7 : e.key === "ArrowDown" ? 7 : 0;
@@ -289,11 +290,11 @@ export default function DatePicker({ value, anchor, onPick, onClose, days, noCle
               value={days.value}
               aria-label={tr('Үргэлжлэх хоног')}
               onChange={(e) => days.onChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && days.canApply) { e.preventDefault(); days.onApply(); } }}
+              onKeyDown={(e) => { if (e.key === "Enter" && daysOk) { e.preventDefault(); days.onApply(typedDay); } }}
             />
             {tr('хоног')}
           </label>
-          <button className={st.calBtn} disabled={!days.canApply} onClick={days.onApply}
+          <button className={st.calBtn} disabled={!daysOk} onClick={() => days.onApply(typedDay)}
             title={tr('Эхлэх огноо + хоног → дуусах огноо')}>
             {tr('Тавих')}
           </button>

@@ -17,6 +17,7 @@ import { invalidate } from "@/lib/dataBus";
 import { isLostWrite } from "@/lib/lostWrite";
 import { ArcGISError } from "@/lib/query";
 import { DAY, spanFrac } from "@/lib/plan";
+import { saneDate } from "@/lib/projectPlan";
 import { persistedFrame, probeStats, sigFrom, type Sig } from "@/lib/sheetCache";
 import { normCell } from "./paste";
 
@@ -268,11 +269,15 @@ function rowKey(f: Feature, sc: Schema): string {
   return `${no} ¦ ${work}`;
 }
 
-/** Жаазны мөр бүрийн түлхүүр — `rowKey` + давхардлын дугаар (ижил № ба нэртэй мөрүүд ялгарна) */
+/**
+ * Жаазны мөр бүрийн түлхүүр — АЖЛЫН КОД (`Des_dugaar`) байвал түүгээр, эс бөгөөс `rowKey`; + давхардлын дугаар.
+ * Код нь жаазаас жаазад тогтвортой тул ижил № ба нэртэй шинэ мөр нэмэгдэхэд хуримтлал өөр мөрөнд шилжихгүй.
+ */
 export function frameRowKeys(feats: readonly Feature[], sc: Schema): string[] {
   const seen = new Map<string, number>();
   return feats.map((f) => {
-    const k = rowKey(f, sc);
+    const des = sc.f.des ? num(f.attributes[sc.f.des]) : null;
+    const k = des != null ? `код ${des}` : rowKey(f, sc);
     const n = seen.get(k) ?? 0;
     seen.set(k, n + 1);
     return `${k} #${n}`;
@@ -299,7 +304,7 @@ export function priorObyem(pkg: Pkg, sc: Schema, day: string): Promise<Map<strin
   const hit = priorCache.get(ck);
   if (hit && Date.now() - hit.at < PRIOR_TTL) return hit.p;
   const p = (async () => {
-    const feats = await fetchFrame(pkg, sc, `${fld} < timestamp '${day} 00:00:00'`, [sc.f.oid, sc.f.no, sc.f.work, fld, ...cols]);
+    const feats = await fetchFrame(pkg, sc, `${fld} < timestamp '${day} 00:00:00'`, [sc.f.oid, sc.f.no, sc.f.work, fld, ...(sc.f.des ? [sc.f.des] : []), ...cols]);
     const byDay = new Map<string, Feature[]>();
     for (const f of feats) {
       const d = msToDay(num(f.attributes[fld]));
@@ -714,6 +719,11 @@ export async function loadRows(
     const fl = fields;
     if (obColsAll.some((c) => fl.includes(c))) fields = [...fl, sc.f.fillDate];
   }
+  /* Мөрийн түлхүүр (`frameRowKeys`) нь ажлын кодоор — хуримтлалыг тулгахад код ЗААВАЛ */
+  if (fields?.length && sc.f.des && !fields.includes(sc.f.des)) {
+    const fl = fields;
+    if (obColsAll.some((c) => fl.includes(c))) fields = [...fl, sc.f.des];
+  }
   const persist = !!opts?.persist && !atDay && !opts?.strict && !!fields?.length;
   const { where, feats } = persist
     ? await persistedFrame(`${pkg.url}|${tree.length}`, fields, () => probeSheet(pkg, sc), async (sig) => {
@@ -788,7 +798,8 @@ export async function loadRows(
       const r = await loadRows(pkg, sc, prev, fields, opts);
       return { ...r, truncated: { day: curDay, rows: got, need, shownDay: prev } };
     };
-    if (expect > 0 && feats2.length < expect) {
+    /* Зураглалгүй (`TREES`-д байхгүй) хуудсанд бүтэн уртыг суурь (`IS NULL`) жаазаас л мэднэ — анхны огноотой жааз ч хамгаалагдана */
+    if (expect > 0 ? feats2.length < expect : feats2.length > 0 && !!sc.f.fillDate) {
       let need = 0;
       try {
         const ref = await loadBaseKeys(pkg, sc, rootNo);
@@ -993,9 +1004,12 @@ export const planAt = (
    * Лавлах огноо. `null` = ЭНЭ ХУУДСАНД огноо ОГТ тохируулаагүй.
    */
   asOf: number | null,
-  s: number | null,
-  e: number | null,
+  s0: number | null,
+  e0: number | null,
 ): number | null => {
+  /* Эвдэрсэн огноо (1899 · 1909 г.м.) — огноогүйтэй адил; 1899-д дууссан гэж 100% тоолохгүй */
+  const s = saneDate(s0);
+  const e = saneDate(e0);
   if (asOf == null || s == null || e == null) return null;
   if (e < s) return null;
   return spanFrac({ start: s, end: e }, asOf);
@@ -1005,9 +1019,10 @@ export const planAt = (
  * ГҮЙЦЭТГЭЛИЙГ 1-ЭЭР ТАСЛАХ — ЗӨВХӨН нэгтгэлийн зам дээр.
  */
 /**
- * «100%-ИАС ИХ» ТУГИЙН БОСГО — хөвөгч цэгийн хүлцэлтэй (2026-09-30).
+ * «100%-ИАС ИХ» ТУГИЙН БОСГО — бөөрөнхийлсөн Обьёмын хүлцэлтэй (0.01%; 2026-09-30, 2026-11-06).
  */
-const ACT_OVER = 1 + 1e-9;
+export const OVER_TOL = 1e-4;
+const ACT_OVER = 1 + OVER_TOL;
 
 const clamp1 = (v: number | null): number | null =>
   v == null ? null : v > 1 ? 1 : v;

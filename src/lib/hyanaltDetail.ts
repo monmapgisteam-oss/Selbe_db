@@ -79,6 +79,8 @@ export type Change = {
    */
   rid?: string;
   neg?: true;
+  /** Нийт нь мөрийн Обьём (100%)-оос ХЭТЭРСЭН — бөглөх хуудасны `actOver`-той нэг дүрэм; хянагчид тэмдэглэнэ */
+  over?: true;
 };
 
 /** `to − (from ?? 0)`; шинэ утга `null` бол `null` (`null ≠ 0` — «мэдээлэлгүй»). */
@@ -286,6 +288,7 @@ async function loadStaged(
     const pctFrom: (number | null)[] = [];
     const pctTo: (number | null)[] = [];
     const negs: boolean[] = [];
+    const overs: boolean[] = [];
     for (let b = 0; b < nBld; b += 1) {
       if (colOf[b] < 0) {
         if (!touched.has(`${r.oid}:${b}`)) continue;
@@ -305,6 +308,7 @@ async function loadStaged(
           incPct: deltaOf(fromA0, toA0),
           rid: `${r.oid}|${sids[i]}`,
           ...(negTotalAt(r, b) ? { neg: true as const } : {}),
+          ...(c[i].actOver[b] ? { over: true as const } : {}),
         });
         continue;
       }
@@ -319,6 +323,7 @@ async function loadStaged(
       pctTo.push(toA);
       changed.push(touched.has(`${r.oid}:${b}`) && (from !== to || fromA !== toA));
       negs.push(negTotalAt(r, b));
+      overs.push(c[i].actOver[b]);
     }
     changed.forEach((yes, k) => {
       if (!yes) return;
@@ -336,6 +341,7 @@ async function loadStaged(
         incPct: deltaOf(pctFrom[k], pctTo[k]),
         rid: `${r.oid}|${sids[i]}`,
         ...(negs[k] ? { neg: true as const } : {}),
+        ...(overs[k] ? { over: true as const } : {}),
       });
     });
     return {
@@ -484,7 +490,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
           const obs = sc.obyem.filter(Boolean) as string[];
           const acts = sc.obyem.map((o, i) => (o ? sc.act[i] : null)).filter(Boolean) as string[];
           const cols = [sc.f.oid, sc.f.no, sc.f.work, sc.f.wC, sc.f.wD, sc.f.wE, sc.f.vol, sum,
-            sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, sc.f.gun, ...obs, ...acts]
+            sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, sc.f.gun, sc.f.des, ...obs, ...acts]
             .filter(Boolean) as string[];
           const feats: { attributes: Record<string, unknown> }[] = [];
           for (let off = 0; ; ) {

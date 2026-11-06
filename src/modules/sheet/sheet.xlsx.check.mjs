@@ -38,6 +38,21 @@ const base = {
 const val = (cell) => (cell != null && typeof cell === 'object' ? cell.v : cell);
 const sty = (cell) => (cell != null && typeof cell === 'object' ? cell.s ?? {} : {});
 
+/* Ажлын нэр — дэлгэцтэй (`fixCyr`) ижил; «Бусад талбар»-ын тоо — тоон нүд */
+{
+  assert.ok(fs.readFileSync(new URL('./fill/useRows.ts', import.meta.url), 'utf8').includes('+ fixCyr(r.work)'), 'шүүлтийн бүлгийн шошго — fixCyr');
+  const rx = row(21, '1.3', 'Гараашийн шаланд тємєр сараалж', false, 1, { raw: { 'мөнгөн_дүн__шинэ': 2817026, 'хувийн_жин_шинэ': 0.0211473, 'des_dugaar': 1234 } });
+  const cx = computeAll([rx], 2, asOf, {}, {}, [true, true]);
+  const ex = (key, field, kind) => ({ key, field, kind, label: () => key, wKey: key, wStyle: {} });
+  const extraN = [ex('m', 'мөнгөн_дүн__шинэ', 'num'), ex('w', 'хувийн_жин_шинэ', 'pct'), ex('d', 'des_dugaar', 'int')];
+  const cells = buildRow({ ...base, rowsAll: [rx], calc: cx, extra: extraN, pending: {} }, 0);
+  assert.equal(val(cells[1]), 'Гараашийн шаланд төмөр сараалж', 'экспорт: «є» → «ө»');
+  const tail = cells.slice(-3);
+  assert.deepEqual(tail.map(val), [2817026, 0.0211473, 1234], 'тоон багана — тоон нүд (текст биш)');
+  assert.ok(String(sty(tail[1]).numFmt).includes('%'), 'хувь — хувийн формат');
+  assert.equal(sty(tail[2]).numFmt, '0', 'код — таслалгүй');
+}
+
 /* ── 1. Толгой — 4 мөр · 14 + 8 + 1 багана · нэгдсэн нүд ── */
 {
   const h = buildHeader(sc, bands, extra);

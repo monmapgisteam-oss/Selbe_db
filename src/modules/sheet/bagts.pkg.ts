@@ -160,6 +160,8 @@ export type Schema = {
    * блокийн массивт «нэг блок» болгон ороосон эсэх.
    */
   synthetic: boolean;
+  /** Үйлчилгээний талбарын мета (жижиг үсгээр нэр → төрөл · alias) — «Бусад талбар»-т; `loadSchema` дүүргэнэ */
+  meta?: ReadonlyMap<string, FieldMeta>;
 
   /** Мөрийн скаляр талбарууд. Байхгүй бол `null`. */
   f: {
@@ -233,7 +235,7 @@ export type Schema = {
   };
 };
 
-export type FieldMeta = { name: string; type?: string };
+export type FieldMeta = { name: string; type?: string; alias?: string };
 
 /**
  * Синтетик блокийн шошго (2026-09-23). `tr`-ээр ОРУУЛАХГҮЙ — `obKey(des,
@@ -453,7 +455,7 @@ export function loadSchema(pkg: Pkg, opts: ResolveOpts = {}): Promise<Schema> {
   const hit = cache.get(ck);
   if (hit) return hit;
   const p = fieldsOf(pkg)
-    .then((fields) => resolveSchema(fields, opts))
+    .then((fields) => ({ ...resolveSchema(fields, opts), meta: new Map(fields.map((x) => [x.name.toLowerCase(), x] as const)) }))
     .catch((e) => {
       cache.delete(ck);
       throw e;

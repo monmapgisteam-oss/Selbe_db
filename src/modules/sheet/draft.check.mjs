@@ -445,6 +445,13 @@ console.log('✅ өнчин илгээлт хуудас дахин нээхэд 
   /* resumeReturned — хадгалсан ноорог (локал + алс) шалгана, өөрийн нүдийг ИЛ зөвшөөрлөөр хаяна */
   const res = between('const resumeReturned = useCallback(async (soid: number) => {', 'const rr = await readSubmissionByOid(soid);');
   assert.ok(res.includes('await storedMine(pkg.key, soid)'), 'resumeReturned хадгалсан ноорогийг шалгахгүй байна');
+  assert.ok(res.includes('!guess.has(k)'), 'эзэн нь таамаг нүд «минийх» болж устгагдаж байна');
+  /* MA хаалга — бичихээс гадна ноорогт үлдсэн нүд ч илгээгдэхгүй; нүдийг арилгах зам нээлттэй */
+  const rdy = between('const readyIssue = useCallback(', 'const pubAskRef = useRef(false);');
+  assert.ok(rdy.includes('maBadRows()'), '«Дуусгах» MA хаалгатай нүдийг шалгахгүй байна');
+  const pubMa = between('const publish = useCallback(async () => {', 'const dNow = nowFillMs();');
+  assert.ok(pubMa.includes('maBadRows()'), '«Илгээх» MA хаалгатай нүдийг шалгахгүй байна');
+  assert.ok(SRC.includes('(!isOkLocked(r, b) && !maBlocked(r)) || !(key in pending)'), 'MA хаалгатай ноорог нүдийг арилгах зам алга');
   assert.ok(res.includes('if (stored === null)') && res.includes('return; }'), 'ноорог уншигдахгүй үед зогсохгүй байна');
   assert.ok(res.includes('await askConfirm(') && res.includes('dropMine(pkg.key, mine);'), 'өөрийн нүдийг зөвшөөрлөөр хаях зам алга');
   assert.ok(res.includes('if (reviewerOnly || !permPerf)'), 'батлагч буцаалтыг сонгож чадаж байна');

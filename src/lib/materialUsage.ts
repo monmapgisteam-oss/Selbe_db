@@ -1,4 +1,4 @@
-import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { computeAll, loadRows } from '@/modules/sheet/bagtsSheet';
 import { parseEntry, matsOf } from '@/lib/materialAjil';
 
@@ -8,8 +8,11 @@ import { parseEntry, matsOf } from '@/lib/materialAjil';
  *   Норм — ажлын тусгай норм («Арматур=0.15»), эс бөгөөс материалын ҮНДСЭН норм (`material_noots.norm`).
  */
 
-/** Нэг ажил — материалын бичлэгүүд ба гүйцэтгэсэн обьём */
-export type WorkUse = { mats: readonly string[]; vol: number | null };
+/**
+ * Нэг ажил — материалын бичлэгүүд ба гүйцэтгэсэн обьём. `started` — ажилд гүйцэтгэл бүртгэгдсэн эсэх: обьёмгүй ч
+ * `started === false` бол эхлээгүй ажил (хэмжигдээгүй гүйцэтгэл = 0), үнэн/өгөөгүй бол зарцуулалт тодорхойгүй («дутуу»).
+ */
+export type WorkUse = { mats: readonly string[]; vol: number | null; started?: boolean };
 /** Материал бүрийн зарцуулалт — `used` нь мэдэгдэх ажлуудын нийлбэр (байхгүй бол null) */
 export type MatUse = { used: number | null; partial: boolean };
 
@@ -30,7 +33,13 @@ export function computeUsage(
       const e = parseEntry(s);
       const u = get(e.name);
       const norm = e.norm ?? defaults.get(e.name) ?? null;
-      if (w.vol == null || norm == null) { u.partial = true; continue; }
+      if (norm == null) { u.partial = true; continue; }
+      /* Эхлээгүй ажил — мэдэгдэж буй 0; хувиар хэмжсэн (обьёмгүй) гүйцэтгэлтэй ажил — тодорхойгүй */
+      if (w.vol == null) {
+        if (w.started === false) u.used = u.used ?? 0;
+        else u.partial = true;
+        continue;
+      }
       u.used = (u.used ?? 0) + w.vol * norm;
     }
   }
@@ -44,9 +53,9 @@ export async function loadWorkUses(): Promise<{ works: WorkUse[]; failed: string
   const failed: string[] = [];
   const got = await Promise.all(PKGS.map(async (pkg) => {
     try {
-      const sc = await loadSchema(pkg);
+      const sc = await fillSchema(pkg);
       const r = await loadRows(pkg, sc, undefined, undefined, { persist: true });
-      const calc = computeAll(r.rows, sc.bld.length, r.asOf);
+      const calc = computeAll(r.rows, sc.bld.length, r.asOf, {}, {}, sc.obyem.map((f) => !!f), undefined, 'abs', sc.synthetic);
       const out: WorkUse[] = [];
       r.rows.forEach((row, i) => {
         if (row.group) return;
@@ -57,7 +66,8 @@ export async function loadWorkUses(): Promise<{ works: WorkUse[]; failed: string
         /* 2026-11-04: `obyem_sum` талбар тухайн өдрийн ажил — хуримтлал нь мөрийн `obyem` (санах ойд хуримтлагдсан) */
         const rawSum = row.obyem.reduce<number | null>((s, v) => (v == null ? s : (s ?? 0) + v), null);
         const vol = fromCalc ?? rawSum;
-        out.push({ mats, vol });
+        const pos = (v: number | null) => v != null && v > 0;
+        out.push({ mats, vol, started: pos(vol) || row.act.some(pos) || row.obyem.some(pos) });
       });
       return out;
     } catch {

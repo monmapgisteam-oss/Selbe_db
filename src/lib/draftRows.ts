@@ -43,6 +43,8 @@ export const SYN_BASE = 1_000_000_000_000;
  * дахин экспортлогдоно, `planFromRows` ч хэрэглэнэ). Сөрөг, int32-т багтана (`mur_oid` Integer).
  */
 export const planSynOid = (des: number): number => -(1_000_000_000 + Math.abs(Math.trunc(des)));
+/** Тэмдэглэсэн нүдний бүлэг → `ajil` мөрийн `tuluv_seq`-ийн бит (утга · эхлэх · дуусах) */
+const HOLD_BIT = { v: 1, s: 2, e: 4 } as const;
 /** `mur_key`-ийн дээд урт — notebook-ийн `mur_key` String(160) */
 export const KEY_MAX = 160;
 
@@ -151,7 +153,7 @@ export function groupsOf(kind: NKind, t: string, k: string): string[][] {
   if (kind === 'guitsetgel') {
     if (k.startsWith('b:s:')) return [[COL.ps]];
     if (k.startsWith('b:e:')) return [[COL.pe]];
-    return [[COL.ob, COL.act, COL.niit], [COL.ps], [COL.pe], [COL.bt], [COL.st, COL.stAt]];
+    return [[COL.ob, COL.act, COL.niit], [COL.ps], [COL.pe], [COL.bt], [COL.st, COL.stAt, COL.stSeq]];
   }
   if (kind === 'plan' || kind === 'geree' || kind === 'huvaari_ilgeelt') {
     const span = kind === 'geree' ? [COL.gs, COL.ge] : [COL.ps, COL.pe];
@@ -178,8 +180,8 @@ const groupSig = (a: Attrs, l: Set<string>, cols: readonly string[]): string =>
 
 /* ══════════════ Бүлгийн агшин (зурагтай жишиж гаргах) ══════════════ */
 
-/** `[гарын үсэг, агшин, хэрэглэгч]` */
-export type Stamp = [string, number, string];
+/** `[гарын үсэг, агшин, хэрэглэгч, таамаг]` — 4 дэх нь 1 бол эзэн нь мөрийн `usr`-аас ТААМАГЛАСАН (`stampRow`) */
+export type Stamp = [string, number, string, 1?];
 export type Stamps = Record<string, Stamp>;
 /**
  * МӨРИЙН БҮЛЭГ БҮРИЙН АГШИН — өмнөх зурагтай (`prev`) жишинэ: бүлгийн утга ӨӨРЧЛӨГДСӨН (эсвэл анх) бол мөрийн `at`/`usr`,
@@ -191,11 +193,14 @@ export function stampRow(prev: Stamps | undefined, a: Attrs, groups: string[][])
   const at = num(a[COL.at]) ?? 0;
   const u = typeof a[COL.usr] === 'string' ? (a[COL.usr] as string).toLowerCase() : '';
   const out: Stamps = {};
+  /* Зураггүй хоёр ба түүнээс олон утгын бүлэг — мөрийн ганц `usr` алиных нь эзэн болохыг мэдэхгүй (таамаг) */
+  const unseen = groups.filter((g) => !g.includes(COL.bt) && !g.includes(COL.st) && present(a, l, g)
+    && prev?.[g.join(',')]?.[0] !== groupSig(a, l, g)).length;
   for (const g of groups) {
     const name = g.join(',');
     const s = groupSig(a, l, g);
     const p = prev?.[name];
-    out[name] = p && p[0] === s ? p : [s, at, u];
+    out[name] = p && p[0] === s ? p : unseen > 1 ? [s, at, u, 1] : [s, at, u];
   }
   return out;
 }
@@ -209,10 +214,19 @@ export function stampWant(prev: Stamps | undefined, a: Attrs, w: Want, groups: s
   for (const g of groups) {
     const name = g.join(',');
     const x = w.gs[name];
-    if (x) st[name] = [groupSig(a, l, g), x[0], x[1]];
+    if (!x) continue;
+    const sig = groupSig(a, l, g);
+    /* Өөрчлөгдөөгүй бүлэгт `Want.gs`-ийн эзэн нь уншсан таамгийн цуурай — хадгалсан ч ЯГ болохгүй (`storedMine`) */
+    const p = prev?.[name];
+    st[name] = p?.[3] === 1 && p[0] === sig && p[2] === (cutUser(x[1]) ?? '') ? [sig, x[0], x[1], 1] : [sig, x[0], x[1]];
   }
   return st;
 }
+/** Бүлгийн эзэн таамаг уу — зурагт тэмдэглэсэн, эсвэл зураггүй мөрд утгын хоёр+ бүлэг зэрэг байгаа */
+const guessed = (st: Stamps | undefined, cols: readonly string[], a: Attrs, l: Set<string>): boolean => {
+  if (st) return st[cols.join(',')]?.[3] === 1;
+  return ([[COL.ob, COL.act, COL.niit], [COL.ps], [COL.pe]] as const).filter((g) => present(a, l, g)).length > 1;
+};
 const stampOf = (st: Stamps | undefined, cols: readonly string[], a: Attrs): { at: number; u: string } => {
   const s = st?.[cols.join(',')];
   return s ? { at: s[1], u: s[2] } : { at: num(a[COL.at]) ?? 0, u: typeof a[COL.usr] === 'string' ? (a[COL.usr] as string).toLowerCase() : '' };
@@ -841,7 +855,7 @@ export function perfToRows(
     const m = /^(-?\d+):(\d+)(?::([se]))?$/.exec(k);
     return m ? { oid: Number(m[1]), b: Number(m[2]), g: (m[3] ?? 'v') as 'v' | 's' | 'e' } : null;
   };
-  const W_COLS = [COL.ob, COL.act, COL.niit, COL.ps, COL.pe, COL.bt, COL.st, COL.stAt];
+  const W_COLS = [COL.ob, COL.act, COL.niit, COL.ps, COL.pe, COL.bt, COL.st, COL.stAt, COL.stSeq];
   const ensure = (k: string, t: Turul, oid: number, b: number | null, cols: readonly string[], isBase = false): Want => {
     let w = rows.get(k);
     if (!w) {
@@ -885,11 +899,13 @@ export function perfToRows(
   for (const [k, at, force] of d.hold ?? []) {
     const s = split(k);
     const w = s ? rows.get(`w:${idOf(s.oid).id}:${s.b}`) : undefined;
-    if (!w || !live.has(k)) continue;
+    if (!s || !w || !live.has(k)) continue;
     const prevF = w.a[COL.st] === 'albadsan';
     w.a[COL.st] = force === 1 || prevF ? 'albadsan' : 'barisan';
     const p = num(w.a[COL.stAt]);
     w.a[COL.stAt] = p == null ? at : Math.min(p, at);
+    /* Аль нүд тэмдэглэгдсэн — `ajil` мөрд `tuluv_seq` нь бүлгийн битүүд (`HOLD_BIT`); мөрийн бусад нүдэнд тархахгүй */
+    w.a[COL.stSeq] = (num(w.a[COL.stSeq]) ?? 0) | HOLD_BIT[s.g];
   }
   /* Tombstone */
   for (const [k, t] of d.del ?? []) {
@@ -982,6 +998,7 @@ export function perfFromRows(
   const by: [string, string][] = [];
   const byAt: [string, number][] = [];
   const bt: [string, number][] = [];
+  const byGuess: string[] = [];
   const hold: [string, number, 0 | 1][] = [];
   const del = new Map<string, number>();
   const rcpt: Rcpt[] = [];
@@ -1091,6 +1108,7 @@ export function perfFromRows(
         const ck = `${oid}:${b}`;
         const s = stampOf(st, [COL.ob, COL.act, COL.niit], a);
         cells.push([ck, v]); byAt.push([ck, s.at]); if (s.u) by.push([ck, s.u]);
+        if (guessed(st, [COL.ob, COL.act, COL.niit], a, l)) byGuess.push(ck);
         keys.push(ck);
       }
     }
@@ -1100,12 +1118,18 @@ export function perfFromRows(
       const dk = `${oid}:${b}:${g}`;
       const s = stampOf(st, [col], a);
       dates.push([dk, ms != null ? msToYmd(ms) : '']); byAt.push([dk, s.at]); if (s.u) by.push([dk, s.u]);
+      if (guessed(st, [col], a, l)) byGuess.push(dk);
       keys.push(dk);
     }
     const btv = num(a[COL.bt]);
     if (btv != null) for (const kk of keys) bt.push([kk, btv]);
     if (a[COL.st] === 'barisan' || a[COL.st] === 'albadsan') {
-      for (const kk of keys) hold.push([kk, num(a[COL.stAt]) ?? 0, a[COL.st] === 'albadsan' ? 1 : 0]);
+      /* `tuluv_seq`-гүй (хуучин) мөрд тэмдэг мөрийн түвшинд — бүх нүдэнд */
+      const bits = num(a[COL.stSeq]);
+      for (const kk of keys) {
+        const g = /:([se])$/.exec(kk)?.[1] as 's' | 'e' | undefined;
+        if (bits == null || (bits & HOLD_BIT[g ?? 'v'])) hold.push([kk, num(a[COL.stAt]) ?? 0, a[COL.st] === 'albadsan' ? 1 : 0]);
+      }
     }
   }
   const live = new Set([...cells.map(([k]) => k), ...dates.map(([k]) => k)]);
@@ -1117,6 +1141,7 @@ export function perfFromRows(
     rowKeys: [...rowKeys].filter(([o]) => liveOids.has(o)).sort((x, y) => x[0] - y[0]),
     ...(by.length ? { by } : {}),
     ...(byAt.length ? { byAt } : {}),
+    ...(byGuess.length ? { byGuess } : {}),
     ...(del.size ? { del: [...del] } : {}),
     ...(rcpt.length ? { rcpt: packRcpt(rcpt) } : {}),
     ...(bt.length ? { bt } : {}),

@@ -4,6 +4,7 @@ import { computeAll, parentIndexes, type SheetRow } from "../bagtsSheet";
 import { loadAddedKeys as loadAjilAddedKeys, addedKeyOf, type AddedKey } from '@/lib/ajilBatlah';
 import { loadBlockProgress, loadBlockUniverse, pkgProgressOf } from "@/lib/blockProgress";
 import { useAsync } from "@/lib/useAsync";
+import { fixCyr } from "@/lib/format";
 import { bagtsKey, buildingKey, isConstructionNo } from "@/lib/services";
 import { inputToMs, type Calc, type SheetView } from "./util";
 
@@ -136,7 +137,7 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
   );
 
   const labelOf = (r: SheetRow, pad = 0) =>
-    "\u00A0".repeat(pad) + (r.no ? `${r.no} ` : "") + r.work;
+    "\u00A0".repeat(pad) + (r.no ? `${r.no} ` : "") + fixCyr(r.work);
 
   /**
    * ЭЦЭГ бүлгүүд — үе шат (А./Б.), дэд үе шат (Б1…Б5) ба ангилал (1, 2, 3…).

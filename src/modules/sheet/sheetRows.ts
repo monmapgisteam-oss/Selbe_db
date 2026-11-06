@@ -359,6 +359,28 @@ export async function sheetBlockKeys(): Promise<Map<string, string[]>> {
   return new Map([...acc].map(([k, s]) => [k, [...s]]));
 }
 
+/** 40 хүснэгтийн (id 194–233) түр суурь ажлын нэр */
+export const BASE_ROW_WORK = 'Үндсэн хугацаа';
+
+/**
+ * ЗӨВХӨН СУУРЬ МӨРТЭЙ ХҮСНЭГТ ҮҮ — «Үндсэн хугацаа»-наас өөр обьёмтой ажил алга, гүйцэтгэл ч бичигдээгүй. Уншилт унавал
+ * `false` (урьдын зан: хуваарьт орно), дутуу өгөгдлөөр багцыг чимээгүй хасахгүй.
+ */
+async function isBaseOnlySheet(pkg: Pkg, sc: Schema): Promise<boolean> {
+  const { vol, work } = sc.f;
+  const act = sc.act[0];
+  if (!vol || !work || !act) return false;
+  try {
+    const j = await arcgisPost(`${pkg.url}/query`, {
+      where: `(${vol} > 0 AND ${work} <> N'${BASE_ROW_WORK}') OR ${act} > 0`,
+      returnCountOnly: 'true',
+    }) as { count?: number };
+    return j.count === 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * БЛОКГҮЙ БАГЦЫН ХУВААРЬ — `bagtsKey` → [`buildingKey(group, SYNTHETIC_BLOCK)`].
  */
@@ -367,6 +389,9 @@ export async function sheetBlocklessKeys(): Promise<Map<string, string[]>> {
   await Promise.all(PKGS.filter((p) => p.floors == null).map(async (pkg) => {
     const sc = await schemaOf(pkg, true);
     if (!sc?.synthetic || !sc.f.fillDate || !sc.act[0]) return;
+    /* Зөвхөн түр «Үндсэн хугацаа» мөртэй хүснэгт (төсөөллийн хуваарь) биет хэмжилтийн хуваарьт ОРОХГҮЙ: 0% гэж тоолбол
+       хоцрогдол, дэд бүтцийн дундаж, удирдлагын оноо хуурамчаар унана. Ажлууд нэмэгдмэгц өөрөө орно. */
+    if (await isBaseOnlySheet(pkg, sc)) return;
     out.set(bagtsKey(pkg.group), [buildingKey(pkg.group, SYNTHETIC_BLOCK)]);
   }));
   return out;

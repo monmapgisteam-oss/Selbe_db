@@ -282,4 +282,13 @@ assert.equal(openReviewRow([], 500, TAG), null);
   console.log('✅ reviewLockState — groupWorks · recheck · харагддаггүй мөр · буцаалтын засвар');
 }
 
+/* Компанийн уншилт унасан — '' («гүйцэтгэгчгүй») гэж бүртгэхгүй (тойрог хуваагдана); submitForReview-ийн try алдааг буцаана */
+{
+  const src = readFileSync(new URL('./hyanaltSubmit.ts', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('async function companyOf'), src.indexOf('/* ── Бүртгэлийн дугаар'));
+  assert.ok(/catch \(e\) \{[\s\S]*throw new Error/.test(fn), 'companyOf: уншилт унахад шидэх ёстой');
+  assert.ok(!/if \(!ok\) return ''/.test(fn), "companyOf: уншилт унахад '' буцаах ёсгүй");
+  console.log('✅ companyOf — уншилт унахад илгээлт амжилтгүй, компаниар тойрог хуваагдахгүй');
+}
+
 console.log('hyanaltSubmit.check.mjs — БҮГД ТЭНЦЛЭЭ');

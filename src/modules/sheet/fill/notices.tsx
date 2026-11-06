@@ -18,7 +18,7 @@ function returnLine(info: ReturnInfo | null | undefined): string {
 export function FillNotices({
   locked, submitFailed, resend, resending, unmovedWarn, subReadErr, inReview, reviewStage,
   otherDaysInReview, otherDaysReturned, noEdit, busy, resumedOid, resumeReturned, returned,
-  canAct = true, reviewLockDays = [], hyErr = null, frameTrunc = null, returnInfo = null,
+  canAct = true, reviewLockDays = [], hyErr = null, frameTrunc = null, returnInfo = null, hideStage = false,
 }: {
   locked: boolean; submitFailed: boolean; resend: () => Promise<void>; resending: boolean;
   unmovedWarn: string[]; subReadErr: string | null; inReview: boolean; reviewStage: FlowT['reviewStage'];
@@ -29,6 +29,8 @@ export function FillNotices({
   hyErr?: string | null;
   frameTrunc?: { day: string; rows: number; need: number; shownDay: string } | null;
   returnInfo?: ReturnInfo | null;
+  /** Гүйцэтгэгч компани — инженерээс дээш шатны нэрийг харахгүй («Илгээсэн ажил» табтай нэг дүрэм) */
+  hideStage?: boolean;
 }) {
   return (
     <>
@@ -71,7 +73,9 @@ export function FillNotices({
       )}
       {!locked && !submitFailed && inReview && (
         <p className={st.lockNote}>
-          {tr('Энэ өдрийн илгээлт хяналтад байна — {0}. 7 шат бүрэн батлагдаж архивлагдтал шинээр бөглөх, дахин илгээх боломжгүй; хянагч буцаавал засаж дахин илгээнэ.', reviewStage ? STAGE_LABEL[reviewStage] : '')}
+          {hideStage && reviewStage !== 'engineer'
+            ? tr('Энэ өдрийн илгээлт хяналтад байна. 7 шат бүрэн батлагдаж архивлагдтал шинээр бөглөх, дахин илгээх боломжгүй; хянагч буцаавал засаж дахин илгээнэ.')
+            : tr('Энэ өдрийн илгээлт хяналтад байна — {0}. 7 шат бүрэн батлагдаж архивлагдтал шинээр бөглөх, дахин илгээх боломжгүй; хянагч буцаавал засаж дахин илгээнэ.', reviewStage ? STAGE_LABEL[reviewStage] : '')}
         </p>
       )}
       {!locked && otherDaysInReview.length > 0 && (

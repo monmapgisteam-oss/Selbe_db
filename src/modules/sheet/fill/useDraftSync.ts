@@ -1750,22 +1750,23 @@ export function useDraftSync(p: {
     if (!t) return [];
     return keys.filter((k) => offTarget(t, mineRef.current.has(k) ? meKey : byMapRef.current.get(k), meKey, tgtsRef.current));
   }, [meKey]);
-  const storedMine = useCallback(async (want: string, soid: number): Promise<string[] | null> => {
-    if (!meKey) return [];
+  const storedMine = useCallback(async (want: string, soid: number): Promise<{ keys: string[]; guess: ReadonlySet<string> } | null> => {
+    if (!meKey) return { keys: [], guess: new Set() };
     const rr = await readRemoteDraft(want);
     if (!rr.ok) return null;
     const remote = rr.draft ? parseDraft(rr.draft.payload, 'remote') : null;
     const d = mergeDrafts(readDraft(want), remote);
-    if (!d) return [];
+    if (!d) return { keys: [], guess: new Set() };
     /* логик цагийг урагшлуулна — дараагийн `dropMine`-ийн tombstone эдгээр хуулбараас ХОЖУУ байна (`stamp`) */
     seeClock(d);
     let e: [string, number, number, number] | undefined = tgtsRef.current.get(meKey);
     for (const x of d.tgt ?? []) if (x[0] === meKey && (!e || x[3] > e[3])) e = x;
-    if (e && e[1] === soid) return [];
+    const guess = new Set(d.byGuess ?? []);
+    if (e && e[1] === soid) return { keys: [], guess };
     const by = new Map<string, string>();
     for (const [k, u] of d.by ?? []) by.set(k, String(u).trim().toLowerCase());
     const forced = new Set((d.hold ?? []).filter((h) => h[2] === 1).map((h) => h[0]));
-    return [...d.cells, ...(d.dates ?? [])].map(([k]) => k).filter((k) => by.get(k) === meKey && !forced.has(k));
+    return { keys: [...d.cells, ...(d.dates ?? [])].map(([k]) => k).filter((k) => by.get(k) === meKey && !forced.has(k) && !guess.has(k)), guess };
   }, [meKey, seeClock]);
   const dropMine = useCallback((want: string, keys: readonly string[]) => {
     if (!keys.length || pkgKeyRef.current !== want) return;

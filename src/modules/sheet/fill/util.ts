@@ -1,17 +1,16 @@
 import type { SheetRow, computeAll } from "../bagtsSheet";
 import type { Overlay } from "../sheetFrame";
 import { t as tr } from "@/lib/i18nCore";
+import { ubToday } from "@/lib/projectPlan";
+import { serverNow } from "@/lib/serverClock";
 import st from "../sheet.module.css";
 
 export const cls = (names: string) =>
   names.split(/\s+/).filter(Boolean).map((n) => st[n] || n).join(" ");
 
 export { synNoVol } from "../bagtsSheet";
-/** ӨНӨӨДРИЙН бөглөх өдөр — `Date.UTC(локал он, сар, өдөр)` (`todayFillMs`). */
-export const nowFillMs = () => {
-  const n = new Date();
-  return Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
-};
+/** ӨНӨӨДРИЙН бөглөх өдөр — Улаанбаатарын хуанлийн өдөр, серверийн цагаар (`todayFillMs`), хөтчийн цагийн бүсээс үл хамаарна. */
+export const nowFillMs = () => ubToday(serverNow());
 /** 0..1 → хувь. Бүлгийн нийлбэр бутархай тул аравны нэг хүртэл. */
 export const pc = (v: number | null, dec = 0) =>
   v == null ? "" : (v * 100).toFixed(dec).replace(/\.0+$/, "") + "%";

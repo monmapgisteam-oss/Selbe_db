@@ -1886,6 +1886,7 @@ export async function retryPendingRegistrations(
           const { syncIpcFromFill } = await import('./ipcAutoWrite');
           const ipc = await syncIpcFromFill(cur[F.bagts], ar.day);
           ipcOk = ipc.ok && !ipcSkipIsFailure(ipc);
+          if (ipc.ok && ipc.warn) console.warn('[selbe] IPC нөхөлт:', ipc.warn);
           if (ipc.ok && !ipcOk) console.warn('[selbe] IPC нөхөлт алгасагдлаа:', ipc.why);
           if (!ipc.ok) console.warn('[selbe] IPC нөхөж чадсангүй:', ipc.error);
         }

@@ -4,7 +4,8 @@
 import type { SheetRow, Calc } from "../bagtsSheet";
 import type { Band } from "../bagts.bands";
 import { negjOf, unitLabel } from "../negj";
-import { extraVal, type ExtraCol } from "./extraCols";
+import { extraNum, extraVal, type ExtraCol } from "./extraCols";
+import { fixCyr } from "@/lib/format";
 import { t as tr } from "@/lib/i18nCore";
 import { buildXlsx, downloadXlsx, type XlsxCell, type XlsxMerge, type XlsxSheet, type XlsxStyle } from "@/lib/xlsx";
 
@@ -117,7 +118,7 @@ function txtCell(v: string, opts: { bold?: boolean; fill?: string; indent?: numb
 
 /** `ExtraCol.kind` → баганын өргөн (тэмдэгт) — `sheet.module.css` `.b32 { --w-x* }`-тэй ойролцоо (px ÷ 7.5) */
 const extraW = (k: ExtraCol["kind"]): number =>
-  k === "text" ? 20 : k === "user" ? 17 : k === "int" ? 11 : 13;
+  k === "text" ? 20 : k === "user" ? 17 : k === "int" || k === "num" ? 11 : 13;
 
 /**
  * Толгой — `SheetHead`-ийн ЯГ тэр бүтэц:
@@ -192,7 +193,7 @@ export function buildRow(inp: FillXlsxInput, i: number): XlsxCell[] | null {
   const gf = g ? C_GROUP : undefined;
   const negj = g ? null : unitLabel(negjOf(r.work)) || null;
   const noTitle = /\s/.test(r.no);
-  const workTxt = r.work || (noTitle ? r.no : "");
+  const workTxt = fixCyr(r.work || (noTitle ? r.no : ""));
   const out: XlsxCell[] = [
     txtCell(r.no, { bold: g, fill: gf, align: "right" }),
     txtCell(workTxt, { bold: g, fill: gf, indent: r.depth }),
@@ -245,8 +246,12 @@ export function buildRow(inp: FillXlsxInput, i: number): XlsxCell[] | null {
   /* Шинэчлэгдсэн огноо — зөвхөн ЭХНИЙ мөрд (`i === 0`), өөрчилсөн бол ноорогийн өнгө */
   out.push(txtCell(i === 0 ? day(inp.asOf) : "", { bold: g, fill: i === 0 && inp.asOf !== inp.asOfOrig ? C_DIRTY : gf, align: "right" }));
   for (const x of extra) {
-    const v = extraVal(x, r);
-    out.push(txtCell(v.text, { bold: g, fill: gf, align: x.kind === "int" || x.kind === "pct" ? "right" : undefined }));
+    /* Тоон багана — тоон нүд (нийлбэрлэгдэнэ), дэлгэцийн бичвэр биш */
+    const n = extraNum(x, r);
+    if (x.kind === "pct") out.push(pctCell(n, wtFmt(n), { bold: g, fill: gf }));
+    else if (x.kind === "num") out.push(qtyCell(n, { bold: g, fill: gf }));
+    else if (x.kind === "int") out.push(n == null ? txtCell("", { bold: g, fill: gf, align: "right" }) : { v: n, s: sty({ bold: g, fill: gf, numFmt: "0", align: "right" }) });
+    else out.push(txtCell(extraVal(x, r).text, { bold: g, fill: gf }));
   }
   return out;
 }

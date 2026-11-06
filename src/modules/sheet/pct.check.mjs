@@ -81,4 +81,11 @@ assert.equal(cOver[0].act[0], 1.5, 'нүдэнд 150% ХЭВЭЭР — алда�
 assert.equal(cOver[0].actAgg[0], 1, 'нэгтгэлд 100%-иар таслагдана');
 assert.equal(cOver[0].actOver[0], true, 'анхааруулгын туг асна');
 
+/* Бөөрөнхийлсөн Обьём — 100.0028% нь хэтрэлт биш; жинхэнэ хэтрэлт туг асаасан хэвээр */
+{
+  const near = [{ oid: 1, no: '1', work: 'x', depth: 0, group: false, wC: null, wD: null, vol: 10.6667, plannedVol: null, unit: null, money: null, act: [null], obyem: [10.667], raw: {}, start: [null], end: [null], gStart: [null], gEnd: [null], aStart: [null], aEnd: [null], hun: null, mashin: null, des: null, ham: null }];
+  assert.equal(computeAll(near, 1, null, {}, {}, [true])[0].actOver[0], false, 'бөөрөнхийллийн зөрүү тугалахгүй');
+  assert.equal(computeAll([{ ...near[0], obyem: [10.68] }], 1, null, {}, {}, [true])[0].actOver[0], true, '100.12% — туг асна');
+}
+
 console.log('pct.check: ok — дүрэм ✓ хоёр чиглэл ✓ Обьёмгүй мөр ✓ 100%+ ✓');

@@ -9,6 +9,7 @@ import { AUTH } from './services';
 import { currentUser } from './who';
 import { huvaariScope } from './huvaariAcl';
 import { fillMsFor, sameFrame } from './ajilApply';
+import { serverNow, syncServerClock } from './serverClock';
 import type { SheetRow } from '@/modules/sheet/bagtsSheet';
 
 export const KOMISS_WORK = 'Улсын комисс';
@@ -32,6 +33,16 @@ export function komissDepSource(rows: readonly SheetRow[]): number | null {
   const roots = rows.filter((r) => r.depth === 0 && r.group);
   const last = roots[roots.length - 1];
   return last?.des ?? null;
+}
+
+/**
+ * Кодгүй мөрүүдэд ажлын код олгоно — `buildFrame`-ийн ЯГ дүрэм (дээрээс доош, дээд кодоос цааш) тул жаазанд ижил код бичигдэнэ.
+ * Шинэ хуудсанд кодууд анхны жаазан дээр л үүсдэг тул хамаарлын эх кодыг жааз бичихээс ӨМНӨ мэдэхэд хэрэгтэй.
+ */
+export function withDes(rows: readonly SheetRow[]): SheetRow[] {
+  let next = 0;
+  for (const r of rows) if (r.des != null && r.des > next) next = r.des;
+  return rows.map((r) => (r.des != null ? r : { ...r, des: (next += 1) }));
 }
 
 export type EnsureResult = { ok: true; added: boolean } | { ok: false; error: string };
@@ -118,14 +129,16 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
   }
   if (!loaded.rows.length) return { ok: false, error: tr('{0}: хуудсанд мөр алга — эх хүснэгтийг эхлээд ачаална уу.', pkg.label) };
 
-  const src = komissDepSource(loaded.rows);
+  const based = sc.f.des ? withDes(loaded.rows) : loaded.rows;
+  const src = komissDepSource(based);
   const rows = appendRootLeaf(
-    loaded.rows,
+    based,
     { oid: -1, no: KOMISS_NO, work: KOMISS_WORK, ham: src != null ? `${src}FS0` : null },
     sc, nBld,
   );
 
-  const fillMs = fillMsFor(Date.now(), loaded.snapshot);
+  await syncServerClock();
+  const fillMs = fillMsFor(serverNow(), loaded.snapshot);
   const { loadPkgPlan, planPctFromMonths } = await import('@/lib/huvaariObyem');
   let obPlan: Awaited<ReturnType<typeof loadPkgPlan>>['plan'] | null = null;
   try { obPlan = (await loadPkgPlan(pkg.key)).plan; } catch { obPlan = null; }

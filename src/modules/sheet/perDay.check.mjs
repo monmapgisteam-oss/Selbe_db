@@ -60,6 +60,14 @@ frame('2026-01-20', [[1, 1], [null, null]]);
   await priorObyem(pkg, sc, '2026-01-20');
   assert.equal(fake.count('rest', 'query'), q0 + 1, 'кэш хаягдсаны дараа дахин татна');
   assert.deepEqual(frameRowKeys([{ attributes: { no: '1', work: 'x' } }, { attributes: { no: '1', work: 'x' } }], sc), ['1 ¦ x #0', '1 ¦ x #1'], 'давхар мөр ялгарна');
+  /* Ажлын кодтой хуудас — ижил № ба нэртэй мөрийг өмнө нь нэмсэн ч код тогтвортой тул түлхүүр гулсахгүй */
+  const scD = { ...sc, f: { ...sc.f, des: 'des_dugaar' } };
+  const row = (des, no = '1', work = 'x') => ({ attributes: { no, work, des_dugaar: des } });
+  const before = frameRowKeys([row(7)], scD);
+  const after = frameRowKeys([row(99), row(7)], scD);
+  assert.equal(after[1], before[0], 'хуучин мөрийн түлхүүр хэвээр — хуримтлал шинэ мөрөнд очихгүй');
+  assert.notEqual(after[0], before[0], 'шинэ мөр хуучны түлхүүрийг авахгүй');
+  assert.deepEqual(frameRowKeys([row(null), row(null)], scD), ['1 ¦ x #0', '1 ¦ x #1'], 'кодгүй мөр — № ба нэрээр');
   console.log('✅ priorObyem — өмнөх жаазуудын нийлбэр · ижил өдрийн сүүлийн жааз · кэш');
 }
 
@@ -229,4 +237,25 @@ frame('2026-01-20', [[1, 1], [null, null]]);
   assert.ok(det.includes('(dayVals[k] ?? 0) + (pr?.[k] ?? 0)'), 'hyanaltDetail: ижил өдрийн өмнөх жаазыг хуримтлалд нэмэхгүй');
   console.log('✅ нэг өдрийн олон жааз — ажил алдагдахгүй');
 }
+/* ── Зураглалгүй (`TREES`-д байхгүй) шинэ хуудас — анхны огноотой жааз тасарвал суурь жаазаар илэрнэ ── */
+{
+  const U2 = 'https://gis.selbecity.mn/map/rest/services/Hosted/Test_sheet2/FeatureServer/9';
+  const pkg2 = { key: 'tst2', url: U2, group: 'Багц Т2', label: 'Багц Т2', floors: 9 };
+  const T2 = addTable(U2, { oid: 'objectid' });
+  const put = (day, nos) => nos.forEach((no) => T2.insert({ no, work: `А${no}`, gun: no === 'Б' ? 0 : 1, fill: day ? D(day) : null, vol: 10, unit: 1, o0: null, o1: null, osum: null }));
+  put(null, ['Б', '1', '2']);
+  /* суурь л — бүтэн */
+  assert.equal((await loadRows(pkg2, sc)).rows.length, 3, 'суурь жааз');
+  put('2026-02-01', ['Б', '1']);
+  await assert.rejects(() => loadRows(pkg2, sc, undefined, undefined, { strict: true }), /дутуу/, 'анхны огноотой жааз тасарсан — бичихгүй');
+  await assert.rejects(() => loadRows(pkg2, sc), /дутуу/, 'өмнөх бүтэн жаазгүй — чимээгүй харуулахгүй');
+  put('2026-02-02', ['Б', '1', '2']);
+  assert.equal((await loadRows(pkg2, sc)).rows.length, 3, 'бүтэн жааз хэвийн');
+  put('2026-02-03', ['Б', '1']);
+  const fb = await loadRows(pkg2, sc);
+  assert.equal(fb.rows.length, 3, 'тасарсан жааз — өмнөх өдрийн бүтэн жаазыг харуулна');
+  assert.equal(fb.truncated?.day, '2026-02-03');
+  console.log('✅ зураглалгүй хуудас — тасарсан анхны жааз илэрнэ');
+}
+
 console.log('perDay.check: OK');

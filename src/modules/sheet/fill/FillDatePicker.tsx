@@ -36,17 +36,18 @@ export function FillDatePicker({ pick, setPick, busy, say, setAsOf, commitDate, 
             setPick(null);
           }}
           days={pick.kind === "asOf" ? undefined : (() => {
-            /* Эхлэх ms — ноорог эсвэл хадгалагдсан утга */
+            /* Эхлэх — «Эхлэх» нүдэнд гараар бичсэн огноо, эс бөгөөс ноорог эсвэл хадгалагдсан утга */
             const sKey = `${pick.row.oid}:${pick.b}:s`;
-            const sRaw = pick.kind === "s" ? pick.value : (pendDate[sKey] ?? dt(pick.row.start[pick.b] ?? null));
-            const s0 = inputToMs(sRaw);
+            const sRawOf = (typed: string | null) => (pick.kind === "s" ? (typed || pick.value) :(pendDate[sKey] ?? dt(pick.row.start[pick.b] ?? null)));
             const n = Math.floor(Number(pick.days));
             return {
               value: pick.days,
               onChange: (v: string) => setPick((cur) => (cur ? { ...cur, days: v } : cur)),
-              canApply: n >= 1 && s0 != null,
-              onApply: () => {
+              canApply: (typed: string | null) => n >= 1 && inputToMs(sRawOf(typed)) != null,
+              onApply: (typed: string | null) => {
                 if (busy) { say(RO.busy); return; }
+                const sRaw = sRawOf(typed);
+                const s0 = inputToMs(sRaw);
                 if (!(n >= 1) || s0 == null) { say(tr("Эхлэх огноог эхлээд сонгоно")); return; }
                 if (pick.kind === "s") commitDate(pick.row, pick.b, "s", sRaw);
                 commitDate(pick.row, pick.b, "e", dt(endOf(s0, n)));

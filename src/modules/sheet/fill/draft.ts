@@ -46,6 +46,11 @@ export type Draft = {
    */
   by?: [string, string][];
   /**
+   * ЭЗЭН НЬ ТААМАГ НҮДҮҮД — мөрийн горимд нэг мөрийн утга ба огноо ганц `usr`-тай тул өөрийн зураггүй хөтөч `by`-г
+   * таамагладаг (`draftRows.stampRow`). Эдгээрийг «минийх» гэж тоолж ноорогоос устгахгүй (`storedMine`).
+   */
+  byGuess?: string[];
+  /**
    * «ДУУСГАСАН» ГЭЖ ТЭМДЭГЛЭСЭН ХҮМҮҮС — нэр → дарсан агшин (ms).
    */
   done?: [string, number][];
@@ -378,6 +383,7 @@ export const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | nul
     }
     if (d.dates != null && !Array.isArray(d.dates)) d.dates = undefined;
     if (d.by != null && !Array.isArray(d.by)) d.by = undefined;
+    if (d.byGuess != null && !Array.isArray(d.byGuess)) d.byGuess = undefined;
     if (d.done != null && !Array.isArray(d.done)) d.done = undefined;
     /* 2026-10-01: «дуусгасан/дахин засах» тэмдэг — эвдэрсэн элементийг л хаяна */
     if (d.marks != null) {
@@ -619,6 +625,7 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     asOfAt: asOfOld ? older.asOfAt : newer.asOfAt,
     rowKeys: [...rowKeys].sort((x, y) => x[0] - y[0]),
     by: by.size ? [...by] : undefined,
+    byGuess: older.byGuess?.length || newer.byGuess?.length ? [...new Set([...(older.byGuess ?? []), ...(newer.byGuess ?? [])])] : undefined,
     done: newer.done != null || older.done != null || newer.marks != null || older.marks != null ? [...done] : undefined,
     marks: marks.size || newer.marks != null || older.marks != null ? [...marks.values()] : undefined,
     byAt: byAt.size ? [...byAt] : undefined,

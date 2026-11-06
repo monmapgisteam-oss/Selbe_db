@@ -1,6 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { Schema } from "../bagts.pkg";
-import { fmtInc, incCell, parseInc, type SheetRow } from "../bagtsSheet";
+import { OVER_TOL, fmtInc, incCell, parseInc, type SheetRow } from "../bagtsSheet";
 import { isAmbiguousComma, normCell, parseGrid, planPaste } from "../paste";
 import { t as tr } from "@/lib/i18nCore";
 import { RO, cellKey, pc, qty, qtyRaw, synNoVol, type EditCell, type EditCol } from "./util";
@@ -18,9 +18,8 @@ let accNext: ReadonlySet<string> = NO_ACC;
 /**
  * «ХЭТЭРСЭН ҮҮ» — хөвөгч цэгийн хүлцэлтэй (2026-09-30).
  */
-const EPS = 1e-9;
-const overVol = (x: number, vol: number) => x > vol * (1 + EPS);
-const overPct = (x: number) => x > 1 + EPS;
+const overVol = (x: number, vol: number) => x > vol * (1 + OVER_TOL);
+const overPct = (x: number) => x > 1 + OVER_TOL;
 
 export type PastePrev = {
   startI: number; startB: number; grid: string[][]; rows: SheetRow[];
@@ -332,7 +331,7 @@ export function useCellEdit(p: {
   };
   const clearLocked = (r: SheetRow, b: number): boolean => {
     const key = cellKey(r.oid, b);
-    if (!isOkLocked(r, b) || !(key in pending)) return false;
+    if ((!isOkLocked(r, b) && !maBlocked(r)) || !(key in pending)) return false;
     setPending((pv) => {
       if (!(key in pv)) return pv;
       const n = { ...pv };
