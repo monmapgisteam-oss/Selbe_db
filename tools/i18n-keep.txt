@@ -202,7 +202,7 @@
 @dyn modules/Dashboard.tsx  tr(r.origin)
 # [data]+[const] багцын нэр (PKG_ROWS / өгөгдөл) — дээрх багцын хэсэг
 @dyn modules/Dashboard.tsx  tr(r.label)
-@dyn modules/Dashboard.tsx  tr(x.key)
+@dyn modules/Dashboard.tsx  tr(pkgGroupLabel(x.key))
 @dyn modules/Dashboard.tsx  tr(x.label)
 
 # [const] Gazar OV_GROUPS мөрүүд — давхаргын нэр (LAYERS.title) en.ts
