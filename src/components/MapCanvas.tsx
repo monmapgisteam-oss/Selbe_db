@@ -69,6 +69,8 @@ import { webmapStyleOf, loadWebmapStyle } from '@/lib/webmapStyle';
 import * as rendererJsonUtils from '@arcgis/core/renderers/support/jsonUtils';
 import { num, pct, date, text, dateLocale } from '@/lib/format';
 import { registerMapView } from '@/lib/mapShots';
+import { formLayerPending, isFormUrl, resolveFormLayer } from './formLayer';
+import { formSource } from '@/lib/uzlegReport';
 import { TUBE_NEAR_SCALE, extrudeRenderer, flatLineRenderer, pillarRenderer, tubeElevation, tubeRenderer } from './extrude3d';
 import s from './map.module.css';
 
@@ -1346,7 +1348,9 @@ export function MapProvider({ children }: { children: ReactNode }) {
 
   const zoomToLayer = useCallback((id: string) => {
     const d = LAYER_BY_ID[id];
-    if (d) goTo(layerUrl(d), '1=1');
+    if (!d) return;
+    /* `_form` давхарга: нээлттэй хаяг нь тогтоогдоогүй бол түүгээр хүрээ асуухгүй (`zoomToWhere`-тэй ижил) */
+    void resolveFormLayer(d).then(() => { if (!formLayerPending(d)) void goTo(layerUrl(d), '1=1'); });
   }, [goTo]);
 
   const zoomToZone = useCallback((zone: string) => {
@@ -1365,6 +1369,9 @@ export function MapProvider({ children }: { children: ReactNode }) {
     if (!d || !view || view.destroyed) return;
     const t = ++flyToken.current;
     try {
+      /* `_form` давхарга: нээлттэй хаяг нь тогтоогдоогүй бол түүгээр хүрээ асуухгүй */
+      await resolveFormLayer(d);
+      if (formLayerPending(d)) return;
       const e = await extentOf(layerUrl(d), view, where);
       if (flyToken.current !== t) return;
       if (!e || view.destroyed) return;
@@ -1857,7 +1864,17 @@ export const MapCanvas = memo(function MapCanvas({
   }, []);
 
   /** Массивыг эффектийн хамааралд өгч болохгүй (лавлагаа нь рендер бүрт шинэ) */
-  const visibleKey = visible.join(',');
+  /* `_form` давхарга нээлттэй хаяг нь тогтоогдтол зурагт гарахгүй (`formLayer`) */
+  const [, setFormTick] = useState(0);
+  const visibleKey = visible.filter((id) => !formLayerPending(LAYER_BY_ID[id])).join(',');
+  const formWaitKey = visible.filter((id) => formLayerPending(LAYER_BY_ID[id])).join(',');
+  useEffect(() => {
+    if (!formWaitKey) return;
+    let alive = true;
+    void Promise.all(formWaitKey.split(',').map((id) => resolveFormLayer(LAYER_BY_ID[id])))
+      .then(() => { if (alive) setFormTick((n) => n + 1); });
+    return () => { alive = false; };
+  }, [formWaitKey]);
   const alwaysOnKey = (alwaysOn ?? []).join(',');
 
   /** Энэ харагдацын 3D меш багц — заагаагүй бол сонгосон хувилбар (`meshVer`) */
@@ -3812,6 +3829,18 @@ export const MapCanvas = memo(function MapCanvas({
 
     return () => { alive = false; };
   }, [ready, visibleKey, dim, zone, layerWhere]);
+
+  /* `_form` хаалттай давхаргын инстанц — ачаалахаас ӨМНӨ эх үйлчилгээ рүү (дараагийн effect ил болгоно) */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    for (const id of visibleKey ? visibleKey.split(',') : []) {
+      const d = LAYER_BY_ID[id];
+      if (!d?.url) continue;
+      const l = mapLayer(map, id) as FeatureLayer | null;
+      if (l && isFormUrl(String(l.url)) && !isFormUrl(d.url)) l.url = formSource(String(l.url));
+    }
+  }, [ready, visibleKey]);
 
   /* Харагдац ба БҮСИЙН шүүлт */
   useEffect(() => {
