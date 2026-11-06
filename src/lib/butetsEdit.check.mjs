@@ -322,6 +322,36 @@ assert.deepEqual(
   'SR нь хариуны ҮНДЭСНЭЭС геометрт залгагдах ЁСТОЙ',
 );
 
+/* ── Z, M: хэлбэр хадгалах ба буцаах нь энэ геометрээс бичдэг тул алдагдаж болохгүй ── */
+assert.equal(asked.body.get('returnZ'), 'true', 'Z асуухгүй бол хадгалахад өндөр арилна');
+assert.equal(asked.body.get('returnM'), 'true', 'M асуухгүй бол хадгалахад хэмжүүр арилна');
+{
+  const realFetchZ = globalThis.fetch;
+  const answer = (geometry) => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ spatialReference: SR, features: [{ geometry }] }),
+    });
+    return loadGeometry(meta, 12);
+  };
+  try {
+    const zm = await answer({ hasZ: true, hasM: true, paths: [[[1, 2, 7, 9], [3, 4, 8, null]]] });
+    assert.deepEqual(zm.paths, [[[1, 2, 7, 9], [3, 4, 8, null]]], 'бодит M, Z хэвээр');
+    assert.equal(zm.hasZ, true);
+    assert.equal(zm.hasM, true);
+
+    const noM = await answer({ hasZ: true, hasM: true, rings: [[[1, 2, 7, null], [3, 4, 8, null], [1, 2, 7, null]]] });
+    assert.deepEqual(noM.rings, [[[1, 2, 7], [3, 4, 8], [1, 2, 7]]], 'хоосон M хасагдаж Z үлдэнэ');
+    assert.equal(noM.hasZ, true);
+    assert.ok(!('hasM' in noM), 'хоосон M-ийг SDK 0 болгохгүйн тулд hasM арилна');
+
+    const onlyM = await answer({ hasM: true, paths: [[[1, 2, null], [3, 4, null]]] });
+    assert.deepEqual(onlyM.paths, [[[1, 2], [3, 4]]], 'Z-гүй давхаргад M-ийн байрлал өөр');
+  } finally {
+    globalThis.fetch = realFetchZ;
+  }
+}
+
 /* ── Бичилт ── */
 
 let put = null;

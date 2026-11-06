@@ -147,7 +147,7 @@ export function SuitLayerCatalog({
                         </button>
 
                         {/* Симбол — газрын зурагтай ИЖИЛ (геометр · өнгө · шугамын хээ) */}
-                        <LayerSwatch d={swatchDef(l)} />
+                        <LayerSwatch d={swatchDef(l)} hue={`rgb(${l.color.join(',')})`} />
 
                         <button type="button" className={c.rowMain} onClick={() => toggle(l.key)}>
                           <span className={c.rowTitle}>{l.title}</span>

@@ -4,7 +4,8 @@
  */
 import assert from 'node:assert/strict';
 import { suitBlocks } from './suitReport.ts';
-import { INDICATORS, PARKING, GREEN } from '../../../lib/analysis/config.ts';
+import { peakDemand, peakVehicles, DEMAND_SCALE } from './simulation.ts';
+import { INDICATORS, PARKING, GREEN, DENSITY_BY_TYPE } from '../../../lib/analysis/config.ts';
 import { urbanScore } from '../../../lib/analysis/score.ts';
 
 const ind = INDICATORS.map((i) => ({ ...i }));
@@ -47,5 +48,32 @@ for (let k = 0; k < out.length; k++) {
   if (b.kind === 'p' && /^(Хүснэгт|График) \d+\./.test(b.text)) assert.ok(b.keep && out[k + 1].keep, b.text);
 }
 assert.ok(!JSON.stringify(out).includes('—'), 'зураас үгүй');
+
+/* Норм хамаарахгүй бүсийн төрөл хангалтын хуваарьт орохгүй: FAR-т 1 бүс л дүгнэгдэнэ */
+{
+  const naRows = [zone('A-1', Object.keys(DENSITY_BY_TYPE)[0], 10), zone('D-1', 'Газар чөлөөлөлт дутуу', 10)];
+  assert.equal(naRows[1].parts.far.norm.na, true, 'энэ төрөлд FAR норм хамаарахгүй');
+  assert.ok(naRows[1].parts.far.value != null, 'утга байгаа хэрнээ дүгнэгдэхгүй');
+  const naOut = suitBlocks({
+    rows: naRows, scored: naRows, ranked: naRows, sim: naRows, indicators: ind, parking: { ...PARKING }, green: { ...GREEN },
+    popBasis: 'resident', traffic: null, netLabel: 'Төлөвлөгөө', indicatorName: 'Ногоон талбай',
+  });
+  const farName = ind.find((i) => i.id === 'far');
+  const farRows = naOut.filter((b) => b.kind === 'table').flatMap((b) => b.rows)
+    .filter((r) => String(r[0]).includes(farName.short) && /\d+ \/ \d+/.test(String(r[3])));
+  assert.equal(farRows.length, 1, 'FAR-ын хангалтын мөр олдсонгүй');
+  assert.equal(farRows[0][3], '1 / 1', 'норм хамаарахгүй бүс хуваарьт орж ирэв');
+}
+
+/* Зогсоол: хэрэгцээгүй бүс тооцоонд ороогүйг нэрэнд нь хэлнэ · эрэлт дэлгэцийн үржүүлэгчгүй */
+{
+  const text = JSON.stringify(out);
+  assert.ok(text.includes('Хэрэгцээтэй бүсэд төлөвлөсөн (ил / далд)'), 'зогсоолын мөрийн нэр');
+  assert.ok(!text.includes('Төлөвлөгөөнд тусгагдсан (ил / далд)'), 'хэрэгцээтэй бүсийн дүнг төлөвлөгөөний нийт гэж нэрлэв');
+  const zones = [{ residentPop: 1000, capacityPop: 100 }];
+  assert.equal(peakDemand(zones), Math.round(375 * 0.05), 'эрэлт = аялал × 0.05');
+  assert.equal(peakVehicles(zones), Math.round(375 * 0.05 * DEMAND_SCALE), 'симуляцын тоо = эрэлт × үржүүлэгч');
+  assert.ok(text.includes(`машин ${peakDemand(rows).toLocaleString('en-US')} орчим`) || text.includes(`машин ${peakDemand(rows)} орчим`), 'тайланд үржүүлэгчгүй эрэлт');
+}
 
 console.log('✅ suitReport — 3 бүлэг · эрэмбэ (null байргүй) · хүртээмжийн норм · нэр/тайлбар keep');

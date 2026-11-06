@@ -347,7 +347,8 @@ const cyc = (ergelt, oid, over) => ({
 
   assert.ok(!fine.has('zovOk'), '«Зөвшөөрсөн» картад бүлгийн анхааруулга давхардав');
   assert.ok(fine.get('zovNo')?.length, 'танигдаагүй төлөв өөрийн картдаа буусангүй');
-  assert.ok(fine.get('zovWait')?.length, 'огноогүй хүлээлт өөрийн картдаа буусангүй');
+  /* «Хүлээгдэж буй» төлөвт огноо оруулахыг маягт хориглодог (`zovshoorol`) — арилгах боломжгүй анхааруулга гарах ёсгүй */
+  assert.ok(!fine.has('zovWait'), 'огноогүй хүлээлт анхааруулга болж буув');
   assert.ok(fine.get('barNo')?.length, 'тайлангүй блок өөрийн картдаа буусангүй');
   assert.ok(fine.get('habInc')?.length, 'осол зөрчил өөрийн картдаа буусангүй');
   assert.ok(fine.get('finPaid')?.length, 'олголтын хэтрэлт өөрийн картдаа буусангүй');

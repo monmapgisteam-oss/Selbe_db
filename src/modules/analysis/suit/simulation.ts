@@ -114,7 +114,16 @@ export const TRIP_DURATION_H = 0.05;
 export const DEMAND_SCALE = 2.8;
 
 /**
- * Оргил цагт сүлжээнд ЗЭРЭГ байх машины тоо (Little-ийн хууль: L = λ × W).
+ * Оргил цагт сүлжээнд ЗЭРЭГ байх машины тооцоот эрэлт (Little-ийн хууль: L = λ × W) —
+ * дэлгэцийн үржүүлэгчгүй. Хэрэглэгчид «эрэлт» гэж харуулах тоо.
+ */
+export function peakDemand(zones: { residentPop: number; capacityPop: number }[]): number {
+  const trips = zones.reduce((a, z) => a + zoneTrips(z), 0);
+  return Math.round(trips * TRIP_DURATION_H);
+}
+
+/**
+ * Симуляцын машины тоо — Little-ийн эрэлт × `DEMAND_SCALE`.
  * Симуляцын «машины тоо» энэ таамгаас гарна — гараар өгсөн дугуй тоо БИШ.
  */
 export function peakVehicles(zones: { residentPop: number; capacityPop: number }[]): number {

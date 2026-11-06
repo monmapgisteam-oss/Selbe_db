@@ -154,7 +154,8 @@ function bruteMark(net, tolM = 1.0, cover = 0.85) {
   assert.ok(suit.includes('net={netSel}'), 'тээврийн самбарт сүлжээ сонгогч');
   assert.ok(suit.includes('indicators={indicators}'), 'эрэмбийн CSV-д үзүүлэлтүүд');
   const panel = here('./SimulationPanel.tsx');
-  assert.ok(panel.includes("tr('Машин: эрэлт {0} → таг {1}'"));
+  assert.ok(panel.includes("tr('Машин: эрэлт {0} × дэлгэцийн үржүүлэгч {1} ≈ {2} → таг {3}'"), 'эрэлт ба дэлгэцийн үржүүлэгч тусдаа');
+  assert.ok(suit.includes('demandBase: peakDemand(rows)'), 'эрэлт дэлгэцийн үржүүлэгчгүй');
   assert.ok(panel.includes("tr('Гэрлэн дохио: {0} уулзвар ачаалагдсан'"));
   const tp = here('./TransportPanel.tsx');
   assert.ok(tp.includes('<NetSelector net={net} />'));

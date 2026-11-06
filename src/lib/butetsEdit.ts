@@ -229,7 +229,24 @@ export async function loadRow(meta: LayerMeta, oid: number): Promise<Row | null>
 }
 
 /**
+ * M бүхэлдээ хоосон бол геометрээс хасна: SDK-ийн vertex засвар хоосон M-ийг 0 болгодог,
+ * хассан үед сервер хоосноор нь үлдээнэ. Бодит M-тэй геометр хэвээр.
+ */
+function dropEmptyM(g: Record<string, unknown>): Record<string, unknown> {
+  if (!g.hasM) return g;
+  const parts = (g.paths ?? g.rings) as number[][][] | undefined;
+  if (!Array.isArray(parts)) return g;
+  const at = g.hasZ ? 3 : 2;
+  if (parts.some((part) => part.some((c) => c[at] != null))) return g;
+  const { hasM: _hasM, ...rest } = g;
+  const key = g.paths ? 'paths' : 'rings';
+  return { ...rest, [key]: parts.map((part) => part.map((c) => c.slice(0, at))) };
+}
+
+/**
  * ОБЪЕКТЫН ГЕОМЕТРИЙГ ТАТНА — vertex засварт зурагт буулгах.
+ * Z, M-тэй нь авна: хэлбэр хадгалах ба буцаах бичилт энэ геометрээс гардаг тул
+ * Z, M-гүй бол давхаргын өндөр, хэмжүүр чимээгүй арилна.
  */
 export async function loadGeometry(meta: LayerMeta, oid: number): Promise<unknown | null> {
   if (!Number.isFinite(oid)) return null;
@@ -240,11 +257,13 @@ export async function loadGeometry(meta: LayerMeta, oid: number): Promise<unknow
     where: oidWhere(meta, oid),
     outFields: meta.oidField,
     returnGeometry: 'true',
+    returnZ: 'true',
+    returnM: 'true',
     outSR: '102100',
   });
   const g = j.features?.[0]?.geometry;
   if (!g) return null;
-  return { ...g, spatialReference: j.spatialReference ?? { wkid: 102100 } };
+  return { ...dropEmptyM(g), spatialReference: j.spatialReference ?? { wkid: 102100 } };
 }
 
 /**

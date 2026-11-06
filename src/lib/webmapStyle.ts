@@ -39,4 +39,4 @@ export function loadWebmapStyle(): Promise<void> {
 const norm = (u: string) => decodeURIComponent(u).replace(/\/+$/, "").toLowerCase();
 
 /** Давхаргын үйлчилгээний URL → webmap-ийн загвар (ачаалагдаагүй/байхгүй бол undefined) */
-export const webmapStyleOf = (url: string): WebmapStyle | undefined => S?.[norm(url)];
+export const webmapStyleOf = (url: string): WebmapStyle | undefined => S?.[url] ?? S?.[norm(url)];

@@ -9,6 +9,7 @@ import { LAYER_BY_ID, layerUrl, oidOf, ZONE_LAYER, ZONE_FIELDS, zoneCanon, zoneT
 import { polygonCenterlinesAsync } from '@/lib/polygonCenterlineAsync';
 import { queryPageSafe } from '@/lib/planOverlap';
 import { register } from '@/lib/dataBus';
+import { subscribeTotals } from '@/lib/totals';
 
 /**
  * «ХЭСЭГЧИЛСЭН ЕТ» → 01 ЕРӨНХИЙ ТӨЛӨВЛӨГӨӨНИЙ ӨӨРЧЛӨЛТ (2026-10-13, хэрэглэгчийн заавар).
@@ -266,6 +267,7 @@ async function centerlines(fs: Feat[]): Promise<{ features: Feat[]; resolutionM:
 
 let changeCache: Promise<ChangeResult> | null = null;
 register(() => { changeCache = null; }, []);
+subscribeTotals(() => { changeCache = null; });
 const CHANGE_TIMEOUT_MS = 4 * 60_000;
 
 export function computeChange(): Promise<ChangeResult> {

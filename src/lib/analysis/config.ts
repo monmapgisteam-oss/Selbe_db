@@ -85,9 +85,12 @@ const SPECIAL_LAYERS: MapLayerDef[] = [
 ];
 const SPECIAL_KEYS = new Set(SPECIAL_LAYERS.map((s) => s.key));
 
-/** Порталын каталогийн бүх давхарга (тусгайг хасаад) → context давхарга */
+/**
+ * Порталын каталогийн бүх давхарга (тусгайг хасаад) → context давхарга.
+ * `sb:1` хасагдана: оноололд хэрэглэгддэггүй нэгтгэсэн полигон бөгөөд `GREEN_LAYERS`-тэй ижил нэртэй.
+ */
 const DERIVED_LAYERS: MapLayerDef[] = [...PLAN_LAYER_IDS, ...MONITOR_LAYER_IDS]
-  .filter((id) => !SPECIAL_KEYS.has(id) && LAYER_BY_ID[id])
+  .filter((id) => !SPECIAL_KEYS.has(id) && id !== 'sb:1' && LAYER_BY_ID[id])
   .map((id) => {
     const d = LAYER_BY_ID[id];
     return {

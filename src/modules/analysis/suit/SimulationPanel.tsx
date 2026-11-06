@@ -6,7 +6,7 @@ import { Card } from './Layout';
 import { Icon } from '@/components/Icon';
 import { rovingTab, tabFocusNav } from '@/components/ui';
 import {
-  SIM_KINDS, POP_BASES, TRANSIT_NORM_M, simDef, simMetric, simRange, simNorm,
+  SIM_KINDS, POP_BASES, TRANSIT_NORM_M, DEMAND_SCALE, simDef, simMetric, simRange, simNorm,
   type SimKind, type PopBasis,
 } from './simulation';
 import { Timeline } from './Timeline';
@@ -52,7 +52,10 @@ export type RoadState = {
   signalsFailed?: boolean;
   /** Сүлжээг (дохиотой нь) дахин татах */
   onRetry?: () => void;
+  /** Симуляцын машины тоо — `demandBase` × `DEMAND_SCALE` */
   demand?: number;
+  /** Little-ийн хуулиар тооцсон эрэлт — дэлгэцийн үржүүлэгчгүй */
+  demandBase?: number;
   cap?: number;
   /** Бусад сүлжээний багтаамж хараахан ачаалагдаагүй — таг түр зуурын */
   capPending?: boolean;
@@ -462,13 +465,14 @@ function RoadStatus({ road }: { road?: RoadState }) {
 
   return (
     <>
-      {road.demand != null && road.cap != null && (
+      {road.demand != null && road.demandBase != null && road.cap != null && (
         <p
           className={c.desc}
           style={{ marginTop: 6 }}
-          title={tr('Эрэлт — бүсийн хүн амаас (Little-ийн хууль). Таг — машинтай бүх сүлжээний хамгийн бага багтаамж; бүх сүлжээ ИЖИЛ тагтай тул харьцуулалт шударга.')}
+          title={tr('Эрэлт — бүсийн хүн амаас (Little-ийн хууль). Дэлгэцийн үржүүлэгч нь симуляцад урсгалыг нягт харуулах утга бөгөөд эрэлтэд ороогүй. Таг — машинтай бүх сүлжээний хамгийн бага багтаамж; бүх сүлжээ ИЖИЛ тагтай тул харьцуулалт шударга.')}
         >
-          {tr('Машин: эрэлт {0} → таг {1}', nf0(road.demand), nf0(road.cap))}
+          {/* «≈»: хоёр тоо тус тусдаа бүхэлчлэгддэг (1,071 × 2.8 = 2,998.8, симуляцын тоо 2,997) */}
+          {tr('Машин: эрэлт {0} × дэлгэцийн үржүүлэгч {1} ≈ {2} → таг {3}', nf0(road.demandBase), String(DEMAND_SCALE), nf0(road.demand), nf0(road.cap))}
           {road.capFailed ? ` ${tr('(бусад сүлжээний багтаамж татагдсангүй — таг нь мэдэгдэж буйгаас)')}` : road.capPending ? ` ${tr('(бусад сүлжээ ачаалж байна)')}` : ''}
         </p>
       )}

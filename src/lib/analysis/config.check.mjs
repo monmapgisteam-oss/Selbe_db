@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  INDICATORS, CATEGORIES, SCORE_LEVELS, STRICT_NORM, NORM_FAIL_MAX,
+  INDICATORS, CATEGORIES, SCORE_LEVELS, STRICT_NORM, NORM_FAIL_MAX, MAP_LAYERS, GREEN_LAYER_KEY,
 } from './config.ts';
 
 let n = 0;
@@ -77,6 +77,14 @@ ok('NORM_FAIL_MAX < «Дунд»-ын доод босго, STRICT_NORM boolean',
   }
   assert.equal(SCORE_LEVELS[SCORE_LEVELS.length - 1].min, 0);
   assert.ok(SCORE_LEVELS[0].max > 100, '100 оноо дээд түвшинд багтахгүй');
+});
+
+ok('анализын давхаргын цэсэнд нэг нэр давтагдахгүй, ногоон нь тооцооны эхтэй ижил', () => {
+  const titles = MAP_LAYERS.map((l) => l.title);
+  const dup = titles.filter((x, i) => titles.indexOf(x) !== i);
+  assert.deepEqual(dup, [], `давхардсан нэр: ${dup.join(', ')}`);
+  assert.ok(!MAP_LAYERS.some((l) => l.key === 'sb:1'), 'нэгтгэсэн `sb:1` цэсэнд үлдэв');
+  assert.ok(MAP_LAYERS.some((l) => l.key === GREEN_LAYER_KEY), 'тооцооны ногоон давхарга цэснээс алга');
 });
 
 console.log(`✅ config.check: ${n} шалгалт давлаа`);

@@ -119,12 +119,12 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
               </button>
               <dl className={`${c.stats} ${showChange ? '' : c.statsPair}`}>
                 <div>
-                  <dt>{tr('Хуучин ЕТ')}</dt>
+                  <dt>{tr('Хуучин ерөнхий төлөвлөгөө')}</dt>
                   <dd>{r.oldMeasurementAvailable && r.old != null ? fmt(it.key, r.old) : '—'}</dd>
                   {r.boundary?.oldIn != null && r.old != null && <BoundarySplit inside={r.boundary.oldIn} total={r.old} />}
                 </div>
                 <div>
-                  <dt>{tr('Хэсэгчилсэн ЕТ')}</dt>
+                  <dt>{tr('Хэсэгчилсэн ерөнхий төлөвлөгөө')}</dt>
                   <dd>{r.nextMeasurementAvailable ? fmt(it.key, r.nextCmp) : '—'}</dd>
                   {r.boundary && r.nextMeasurementAvailable && <BoundarySplit inside={r.boundary.nextIn} total={r.nextCmp} />}
                 </div>
@@ -170,8 +170,8 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
           <thead>
             <tr>
               <th>{tr('Ангилал')}</th>
-              <th>{tr('Хуучин ЕТ')}</th>
-              <th>{tr('Хэсэгчилсэн ЕТ')}</th>
+              <th>{tr('Хуучин ерөнхий төлөвлөгөө')}</th>
+              <th>{tr('Хэсэгчилсэн ерөнхий төлөвлөгөө')}</th>
               <th>{tr('Өөрчлөлт')}</th>
             </tr>
           </thead>
@@ -187,7 +187,7 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                     <span className={s.swatch} style={{ background: it.hue }} aria-hidden />
                     {it.title()}
                     {/* Хуучин талын хүрээ — «Олон нийтийн бүс» дотор уу, бүтэн үү */}
-                    {r.oldScope === 'red' && <small>{tr('Хуучин: ОНБ · шинэ: бүтэн')}</small>}
+                    {r.oldScope === 'red' && <small>{tr('Хуучин: Олон нийтийн бүс · шинэ: бүтэн')}</small>}
                     {r.oldScope === 'khil' && <small>{tr('Сэлбэ 1 хил дотор')}</small>}
                     {r.oldScope === 'all' && <small>{it.key === 'zone' ? tr('Бүх бүс') : tr('Бүтэн төлөвлөгөө')}</small>}
                     {r.boundary && <small>{tr('Сэлбэ 1 хилээр задалсан')}</small>}

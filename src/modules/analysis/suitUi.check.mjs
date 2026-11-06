@@ -69,4 +69,39 @@ assert.ok(!suit.includes("nf(Number(a['Барилгын_нийт_талбай_m2
     'багц · горим солигдоход `rebind` эффект алга');
 }
 
+/* Норм хамаарахгүй бүс: hover ба сонгогчид ✗ болж тоологдохгүй; картанд өөр төрлийн хязгаар хэвлэхгүй */
+{
+  const urban = read('./suit/Urban.tsx');
+  const detail = read('./SuitDetail.tsx');
+  assert.ok(suit.includes('if (!p || p.value == null || p.norm?.na) continue;'), 'hover: норм хамаарахгүй нь ✗ болов');
+  assert.ok(urban.includes('if (!p || p.value == null || p.norm?.na) continue;'), 'сонгогч: норм хамаарахгүй нь хуваарьт орв');
+  assert.ok(/eff\.na \? \(\s*<span>\{tr\('норм хамаарахгүй'\)\}<\/span>/.test(detail), 'карт: «норм хамаарахгүй» хязгааргүй');
+}
+
+/* Тайлангийн зураг: «Бодит» ба «Улаан бүсийн барилга» төлөв бүсийг алга болгохгүй */
+{
+  assert.ok(suit.includes("(!!shotView || (!bareReal && (!locPublicOnly || LOCATION_ZONE_TYPES.includes(r.type))))"), 'зурагт бүс алга болно');
+  assert.ok(suit.includes('zoneFaint={locPublicOnly && !shotView}'), 'зурагт бүс бүдэг');
+  assert.ok(suit.includes('roadTile={bareReal && !shotView}'), 'зурагт замын суурь үлдэнэ');
+  assert.ok(suit.includes('layerOn={shotView && bareReal ? { ...layerOn, [BUILDING_LAYER]: true } : layerOn}'), 'зурагт барилга унтарна');
+  assert.ok(suit.includes('if (locPublicOnly && !shotView) {'), 'зурагт барилга шүүгдэнэ');
+}
+
+/* Тээврийн будалт зөвхөн дулаан бодитоор зурагдаж буй үед бүдгэрнэ */
+assert.ok(suit.includes("transportFaint={heatOn && !!heat?.length && dim === '2d'}"), 'дулаангүй үед будалт бүдэгрэв');
+
+/* Жагсаалтын өнгө газрын зурагтай ижил (`SuitMap.rendererFor` нь `d.color`-оор буддаг) */
+assert.ok(read('./suit/LayerCatalog.tsx').includes('<LayerSwatch d={swatchDef(l)} hue={`rgb(${l.color.join(\',\')})`} />'), 'жагсаалтын өнгө зөрнө');
+
+/* Зогсоол · байршлын шошго тоотой таарна */
+{
+  const urban = read('./suit/Urban.tsx');
+  assert.ok(!urban.includes("tr('Ерөнхий төлөвлөгөөнд тусгагдсан"), 'хэрэгцээтэй бүсийн дүнг төлөвлөгөөний нийт гэж нэрлэв');
+  assert.ok(urban.includes("tr('Хэрэгцээтэй бүсэд төлөвлөсөн =')"), 'зогсоолын томьёоны нэр');
+  assert.ok(urban.includes("tr('Оргил цагийн урсгал')") && !urban.includes("tr('Өдрийн урсгал')"), 'оргил цагийн тоог өдрийн гэж нэрлэв');
+}
+
+/* Барилгын дугаар хүсэлтэд орно: `oid` үүнээс уншигдаж, сонголт ба түлхүүрт хэрэглэгддэг */
+assert.ok(read('./suit/buildings.ts').includes("outFields: ['objectid', F.purpose,"), 'objectid outFields-д алга');
+
 console.log('suitUi.check: OK');

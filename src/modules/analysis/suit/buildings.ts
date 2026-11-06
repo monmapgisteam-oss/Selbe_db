@@ -51,7 +51,7 @@ const F = TRANSPORT_FIELDS;
 
 const pageQuery = (offset: number) => new URLSearchParams({
   where: '1=1',
-  outFields: [F.purpose, F.population, F.capacity, F.zone, F.block].join(','),
+  outFields: ['objectid', F.purpose, F.population, F.capacity, F.zone, F.block].join(','),
   returnGeometry: 'true',
   returnCentroid: 'true',
   // Ерөнхийлөлт — 175 кБ → 98 кБ, барилгын хэлбэр нүдэнд ижил

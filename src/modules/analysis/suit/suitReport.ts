@@ -14,7 +14,7 @@ import { competitionRanks } from './rankUtil';
 import { normLine } from './format';
 import type { Row } from './model';
 import {
-  simMetric, simDef, peakVehicles, zoneTrips, TRANSIT_NORM_M, POP_BASES,
+  simMetric, simDef, peakDemand, DEMAND_SCALE, zoneTrips, TRANSIT_NORM_M, POP_BASES,
   type PopBasis,
 } from './simulation';
 import type { TrafficStats } from './TrafficOverlay';
@@ -171,11 +171,11 @@ export function suitBlocks(x: SuitReportInput, shots: SuitShots = {}): DocBlock[
       : x.parking.source === 'population' ? tr(' · 1000 хүнд {0}', String(x.parking.per1000)) : '';
     table(
       tr('Зогсоолын хэрэгцээ'),
-      tr('Хэрэгцээг «{0}»{1} аргаар тооцов. Ерөнхий төлөвлөгөөнд тусгагдсан зогсоол хэрэгцээний {2} хувийг хангана.', method, coef, pct == null ? tr('тодорхойгүй') : fmt(pct, 0)),
+      tr('Хэрэгцээг «{0}»{1} аргаар тооцов. Хэрэгцээтэй бүсэд төлөвлөсөн зогсоол хэрэгцээний {2} хувийг хангана.', method, coef, pct == null ? tr('тодорхойгүй') : fmt(pct, 0)),
       [tr('Үзүүлэлт'), tr('Утга')],
       [
         [tr('Шаардлагатай зогсоол'), fmt(need)],
-        [tr('Төлөвлөгөөнд тусгагдсан (ил / далд)'), tr('{0} ({1} / {2})', fmt(supply), fmt(il), fmt(dald))],
+        [tr('Хэрэгцээтэй бүсэд төлөвлөсөн (ил / далд)'), tr('{0} ({1} / {2})', fmt(supply), fmt(il), fmt(dald))],
         [tr('Хэрэгцээ хангасан хувь'), pct == null ? '' : `${fmt(pct, 0)}%`],
         [gap == null || gap >= 0 ? tr('Илүүдэл') : tr('Дутагдал'), gap == null ? '' : fmt(Math.abs(gap))],
         [tr('Дутагдалтай бүс'), fmt(short)],
@@ -235,7 +235,7 @@ export function suitBlocks(x: SuitReportInput, shots: SuitShots = {}): DocBlock[
     const bad: { id: string; gap: number }[] = [];
     for (const r of x.scored) {
       const q = r.parts[i.id];
-      if (!q || q.value == null) continue;
+      if (!q || q.value == null || q.norm?.na) continue;
       total++;
       if (passesNorm(q.value, q.norm)) pass++;
       else {
@@ -373,8 +373,8 @@ export function suitBlocks(x: SuitReportInput, shots: SuitShots = {}): DocBlock[
     const list = simTop('road', true);
     const trips = x.rows.reduce((a, r) => a + zoneTrips(r), 0);
     out.push({ kind: 'h', level: 2, text: d.label });
-    p(tr('Замын сүлжээ: {0}. Оргил цагийн аялал үүсгэлт {1} аялал/ц; сүлжээнд зэрэг явах машин {2} орчим (Little-ийн хууль, бүсийн хүн амаас).',
-      x.netLabel, fmt(trips), fmt(peakVehicles(x.rows))));
+    p(tr('Замын сүлжээ: {0}. Оргил цагийн аялал үүсгэлт {1} аялал/ц; сүлжээнд зэрэг явах машин {2} орчим (Little-ийн хууль, бүсийн хүн амаас). Симуляц дэлгэцэд урсгалыг нягт харуулахын тулд энэ тоог {3} дахин үржүүлдэг.',
+      x.netLabel, fmt(trips), fmt(peakDemand(x.rows)), String(DEMAND_SCALE)));
     img('road', tr('Оргил цагийн аялал үүсгэлт, аялал/ц ({0})', HEAT_KEY));
     if (x.traffic) {
       p(tr('Симуляцын агшин: {0} машин, дундаж хурд {1} км/ц, чөлөөт урсгалын {2}%.',

@@ -584,16 +584,19 @@ const progColor = (v: number): [number, number, number] => {
 
 /**
  * `mon:building` давхаргын renderer — блок бүрийг НИЙТ ГҮЙЦЭТГЭЛЭЭР өнгөлнө
- * («Б. Барилга угсралтын ажил» мөрийн утга). Мэдээлэлгүй блок → бүдэг саарал.
+ * («Б. Барилга угсралтын ажил» мөрийн утга). Хэмжилтгүй блок = 0% (`progColor(0)`).
+ * Бүдэг саарал нь зөвхөн гүйцэтгэл огт татагдаагүй үед (`failed`).
  */
-const buildingProgressRenderer = (prog: BlockProgressMap): RendererProp => ({
+const buildingProgressRenderer = (prog: BlockProgressMap, failed = false): RendererProp => ({
   type: 'unique-value',
   // `bagtsKey`/`blockKey`-ийн Arcade хувилбар — тэмдэгт хасаж том үсгээр.
   valueExpression:
     `Upper(Replace(Replace(Replace($feature.${BUILDING.fields.bagts}, " ", ""), ".", ""), "-", ""))` +
     ` + "|" + Split(Trim($feature.${BUILDING.fields.block}), " ")[0]`,
-  defaultSymbol: { type: 'simple-fill', color: c('#94a3b8', 0.22), outline: { color: c('#94a3b8', 0.9), width: ow(0.8) } },
-  defaultLabel: tr('Мэдээлэлгүй'),
+  defaultSymbol: failed
+    ? { type: 'simple-fill', color: c('#94a3b8', 0.22), outline: { color: c('#94a3b8', 0.9), width: ow(0.8) } }
+    : { type: 'simple-fill', color: [...progColor(0), 0.62], outline: { color: [...progColor(0), 1], width: ow(1) } },
+  defaultLabel: failed ? tr('Гүйцэтгэл ачаалагдсангүй') : '0%',
   uniqueValueInfos: [...prog.entries()].map(([key, p]) => {
     const [r, g, b] = progColor(p.overall);
     return {
@@ -1733,7 +1736,7 @@ export const MapCanvas = memo(function MapCanvas({
   const busVer = useSyncExternalStore(subscribeData, dataVersion, () => 0);
   /** Гүйцэтгэлийн өнгө КЭШЭЭС будагдсан — амьд дүн ирмэгц false болно */
   const [progStale, setProgStale] = useState(false);
-  /** Амьд гүйцэтгэл татаж чадаагүй — блокууд саарал «мэдээлэлгүй» төлөвт */
+  /** Амьд гүйцэтгэл татаж чадаагүй — блокууд саарал төлөвт */
   const [progError, setProgError] = useState(false);
 
   const register = useContext(RegisterCtx);
@@ -3443,7 +3446,11 @@ export const MapCanvas = memo(function MapCanvas({
           : svm.pointSymbol) as never,
     });
     gl.add(graphic);
-    try { svm.update([graphic]); } catch { /* геометр танигдсангүй */ }
+    /* Vertex-ээр л засна: дүрс дээр дарахад (`toggleToolOnClick`) эсвэл гадуур дараад буцаж дарахад
+       (`defaultUpdateOptions`) SDK-ийн «transform» хайрцаг нээгддэг */
+    const vertexOnly = { tool: 'reshape', toggleToolOnClick: false } as const;
+    svm.defaultUpdateOptions = vertexOnly;
+    try { svm.update([graphic], vertexOnly); } catch { /* геометр танигдсангүй */ }
   }, [reshapeToken, sketchTick]);
 
   const onMapContextRef = useRef(onMapContext);
@@ -4157,7 +4164,7 @@ export const MapCanvas = memo(function MapCanvas({
      * Сүүлийн амжилттай дүнгээр ШУУД будна (stale-while-revalidate) — амьд
      * татаж дуустал (~7с) блокууд саарал хүлээлгэдэг байсныг арилгана. Амьд
      * дүн ирмэгц дарж шинэчилнэ; ТАТАЛТ АЛДВАЛ кэшийг ч хаяж саарал
-     * «мэдээлэлгүй» төлөвт буцаана — хуучин тоо дэлгэцэд үлдэхгүй зарчим.
+     * төлөвт буцаана — хуучин тоо дэлгэцэд үлдэхгүй зарчим.
      */
     const cached = cachedBlockProgress();
     if (cached) {
@@ -4179,7 +4186,7 @@ export const MapCanvas = memo(function MapCanvas({
         setBlockProg(null);
         setProgStale(false);
         const empty: BlockProgressMap = new globalThis.Map();
-        layer.renderer = buildingProgressRenderer(empty) as unknown as __esri.Renderer;
+        layer.renderer = buildingProgressRenderer(empty, true) as unknown as __esri.Renderer;
         setProgError(true); // «Гүйцэтгэл ачаалагдсангүй» тэмдэг ил гарна
       });
     return () => { alive = false; };
@@ -4368,13 +4375,13 @@ export const MapCanvas = memo(function MapCanvas({
         </div>
       )}
 
-      {/* Амьд гүйцэтгэл огт татагдсангүй — блокууд саарал «мэдээлэлгүй» өнгөөр
+      {/* Амьд гүйцэтгэл огт татагдсангүй — блокууд саарал өнгөөр
           байгааг ил хэлнэ (хуучирсан өнгө «баталгаатай» мэт үлдээхгүй зарчим) */}
       {progError && (
         <div className={`${s.float} ${s.floatBL} ${s.warn}`} role="alert">
           <b className={s.warnTitle}>{tr('Гүйцэтгэл ачаалагдсангүй')}</b>
           <span>
-            {tr('Блокийн гүйцэтгэлийн амьд дүн татагдсангүй тул блокууд «мэдээлэлгүй» саарал өнгөөр харагдаж байна.')}
+            {tr('Блокийн гүйцэтгэлийн амьд дүн татагдсангүй тул блокууд саарал өнгөөр харагдаж байна.')}
           </span>
         </div>
       )}
@@ -4473,7 +4480,8 @@ function MapTip({
     // Гүйцэтгэл нь «Гүйцэтгэл бөглөх»-ийн as-of утгаас (өнгөтэй нэг эх сурвалж),
     // shapefile-ийн хуучирсан GUITS_HV БИШ.
     const blk = text(attrs[F.block]);
-    const g = prog?.get(buildingKey(attrs[F.bagts], blk))?.overall ?? null;
+    /* Татагдсан жагсаалтад байхгүй блок = хэмжилтгүй = 0%; `prog` алга бол татагдаагүй */
+    const g = prog ? (prog.get(buildingKey(attrs[F.bagts], blk))?.overall ?? 0) : null;
     rows.push({ k: tr('Блок'), v: blk });
     rows.push({ k: tr('Гүйцэтгэл'), v: g == null ? '—' : pct(g, 0) });
     rows.push({ k: tr('Айл'), v: attrs[F.households] == null ? '—' : num(Number(attrs[F.households])) });

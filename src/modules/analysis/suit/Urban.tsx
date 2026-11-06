@@ -156,7 +156,7 @@ export function IndicatorPicker({
               let pass = 0, total = 0;
               for (const r of rows) {
                 const p = r.parts[i.id];
-                if (!p || p.value == null) continue;
+                if (!p || p.value == null || p.norm?.na) continue;
                 total++;
                 if (passesNorm(p.value, p.norm)) pass++;
               }
@@ -389,20 +389,20 @@ export function Parking({
         </div>
         <div className={s.parkHeadTxt}>
           <b>{tr('Хэрэгцээ хангасан хувь')}</b>
-          <span>{tr('Төлөвлөгөөнд')} <b>{nf(supply)}</b> {tr('· шаардлагатай')} <b>{nf(need)}</b> {tr('зогсоол')}</span>
+          <span>{tr('Хэрэгцээтэй бүсэд төлөвлөсөн')} <b>{nf(supply)}</b> {tr('· шаардлагатай')} <b>{nf(need)}</b> {tr('зогсоол')}</span>
         </div>
       </div>
 
       <FillBar
         pct={pct}
         label={tr('Хэрэгцээ хангасан хувь')}
-        hint={tr('Ерөнхий төлөвлөгөөнд тусгагдсан зогсоол нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна')}
+        hint={tr('Хэрэгцээтэй бүсэд төлөвлөсөн зогсоол нийт хэрэгцээний хэдэн хувийг хангаж байгааг харуулна')}
       />
       <div className={s.parkScale}><span>0%</span><span>{tr('Норм 100%')}</span></div>
 
       <Formula>
         {tr('Хэрэгцээ =')} {needExpr} = <b>{nf(need)}</b> {tr('зогсоол')}<br />
-        {tr('Ерөнхий төлөвлөгөөнд тусгагдсан =')} {nf(il)} {tr('ил +')} {nf(dald)} {tr('далд =')} <b>{nf(supply)}</b> {tr('зогсоол')}<br />
+        {tr('Хэрэгцээтэй бүсэд төлөвлөсөн =')} {nf(il)} {tr('ил +')} {nf(dald)} {tr('далд =')} <b>{nf(supply)}</b> {tr('зогсоол')}<br />
         {tr('Хангалт =')} {nf(supply)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${Math.round(pct)}%`}</b>
       </Formula>
 
@@ -706,7 +706,7 @@ export function Location({ pts, sel, onSel, radius, setRadius, publicOnly, setPu
           <span>{tr('Хамгийн ойр барилга')}</span>
           <b>{near.length ? tr('{0} м', Math.round(near[0].d)) : '—'}</b>
         </div>
-        <div><span>{tr('Өдрийн урсгал')}</span><b>{nf(flow)} {tr('/ц')}</b></div>
+        <div><span>{tr('Оргил цагийн урсгал')}</span><b>{nf(flow)} {tr('/ц')}</b></div>
         <div><span>{tr('Ижил зориулалт')}</span><b>{rivals}</b></div>
         <div><span>{radius} {tr('м доторх')}</span><b>{list.length} {tr('барилга')}</b></div>
       </div>

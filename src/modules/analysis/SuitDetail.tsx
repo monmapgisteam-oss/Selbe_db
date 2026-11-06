@@ -294,6 +294,8 @@ export function SuitDetail({
                   <div className={s.mNorm}>
                     {ind.ref || ind.weight <= 0 ? (
                       <span>{tr('лавлагаа')}{hasNorm(eff) ? ` · ${normText(eff, nf)}` : tr(' · оноололд ороогүй')}</span>
+                    ) : eff.na ? (
+                      <span>{tr('норм хамаарахгүй')}</span>
                     ) : (
                       <span className={pass == null ? undefined : 'ok'}>
                         {pass == null ? tr('өгөгдөлгүй') : pass ? tr('✓ норм') : tr('✗ норм')} {normText(eff, nf)}

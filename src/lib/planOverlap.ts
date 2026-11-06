@@ -154,8 +154,9 @@ export type InfraFeat = { feature: string; type: string; layer: string; geom: Ge
  * Давхаргын нэрсийг үйлчилгээний метадатаас (Pro скрипт шиг НЭРЭЭР ангилна).
  */
 let infraCache: Promise<{ feats: InfraFeat[]; failed: string[] }> | null = null;
-register(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); }, []);
-subscribeTotals(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); });
+/* Хөтчийн хадгалалтыг ч хамт хаяна — үгүй бол «Шинэчлэх»-ийн дараа 24 цагийн хуучин үр дүн буцаж уншигдана */
+register(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); void clearOverlapStore(); }, []);
+subscribeTotals(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); void clearOverlapStore(); });
 /**
  * Инженерийн давхарга (`infra:N`) → төрөл (`OVERLAP_TYPES` түлхүүр) — `loadInfra` ачаалсны дараа дүүрнэ.
  * Газрын зургийг төрлөөр шүүхэд (03-ийн төрөл сонголт, `Portal`) ашиглана.
@@ -251,10 +252,13 @@ async function readStored(side: OverlapSide): Promise<OverlapResult | null> {
     failed: v.failed,
   };
 }
-async function writeStored(r: OverlapResult): Promise<void> {
+/** Хадгалалт устгагдсан удаа — устгахаас өмнө эхэлсэн тооцоо хуучин үр дүнгээ бичихгүй */
+let storeEpoch = 0;
+async function writeStored(r: OverlapResult, epoch: number): Promise<void> {
   if (r.failed.length) return;
   const db = await idb();
   if (!db) return;
+  if (epoch !== storeEpoch) { db.close(); return; }
   const v: Stored = {
     v: STORE_VER, at: Date.now(), cells: r.cells, failed: r.failed,
     pieces: r.pieces.map((p) => ({ feature: p.feature, type: p.type, layer: p.layer, cat: p.cat, poly: p.poly, lengthM: p.lengthM, g: p.geometry.toJSON() })),
@@ -272,6 +276,7 @@ async function writeStored(r: OverlapResult): Promise<void> {
 }
 /** Хадгалсан үр дүнг устгана (дараагийн нээлтэд дахин бодно) */
 export async function clearOverlapStore(): Promise<void> {
+  storeEpoch += 1;
   resultCache.clear();
   displayCache = new WeakMap();
   const db = await idb();
@@ -342,6 +347,7 @@ export function computeOverlap(side: OverlapSide, onStep?: (msg: string) => void
   const late = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(tr('Тооцоо хэт удаж байна ({0} мин) — дахин нээж оролдоно уу.', OVERLAP_TIMEOUT_MS / 60_000))), OVERLAP_TIMEOUT_MS);
   });
+  const epoch = storeEpoch;
   const work = (async (): Promise<OverlapResult> => {
     const stored = await readStored(side).catch(() => null);
     if (stored) return stored;
@@ -394,7 +400,7 @@ export function computeOverlap(side: OverlapSide, onStep?: (msg: string) => void
       if (done % 10 === 0) step(tr('Давхцлыг тооцоолж байна… {0}%', Math.round((done / jobs.length) * 100)));
     });
     const out: OverlapResult = { side, cells: [...acc.values()], pieces, zones, failed: [...infraFailed, ...zoneFailed, ...cats.flatMap((x) => x.failed)] };
-    void writeStored(out).catch(() => {});
+    void writeStored(out, epoch).catch(() => {});
     return out;
   })();
   const p = Promise.race([work, late]).finally(() => clearTimeout(timer));

@@ -428,7 +428,7 @@ export function PlanOverlapPanel({
               <h4>{tr('Бүс тус бүрийн давхцал')}</h4>
               <span>{display ? num(display.zones.length) : '…'} {tr('бүс')}</span>
             </div>
-            <p className={s.note}>{shown.length || selectedTitle ? tr('Сонгосон ангилал, давхаргын хүрээнд') : tr('Хэсэгчилсэн ЕТ-ийн бүх ангиллаар')}</p>
+            <p className={s.note}>{shown.length || selectedTitle ? tr('Сонгосон ангилал, давхаргын хүрээнд') : tr('Хэсэгчилсэн ерөнхий төлөвлөгөөний бүх ангиллаар')}</p>
             {displayError && <p className={s.err}>{tr('Бүсийн давхцлыг тооцоолж чадсангүй')}: {displayError}</p>}
             {!display && !displayError && <p className={s.wait} role="status"><span className={s.spin} aria-hidden />{tr('Бүс тус бүрийн давхцлыг тооцоолж байна…')}</p>}
             {display && <ol className={s.zoneList}>

@@ -24,7 +24,7 @@ export function HesegPanel({
 }) {
   return (
     <div className={s.wrap}>
-      <nav className={s.tabs} aria-label={tr('Хэсэгчилсэн ЕТ')}>
+      <nav className={s.tabs} aria-label={tr('Хэсэгчилсэн ерөнхий төлөвлөгөө')}>
         {TABS.map((x) => (
           <button
             key={x.key}

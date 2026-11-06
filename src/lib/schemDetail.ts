@@ -222,14 +222,6 @@ function zovPart(src: SchemSources, pkg: string | null): Part {
       at: 'zovNo',
     });
   }
-  const waitNoDate = mine.filter((z) => z.tolov === TOLOV.wait && z.ognoo == null);
-  if (waitNoDate.length) {
-    p.issues.push({
-      text: tr('{0} хүлээгдэж буй зөвшөөрөлд огноо алга.', waitNoDate.length),
-      tone: 'warn',
-      at: 'zovWait',
-    });
-  }
   return p;
 }
 

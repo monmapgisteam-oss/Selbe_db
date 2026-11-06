@@ -33,7 +33,7 @@ import { Shell, Card } from './suit/Layout';
 import { Simulation } from './suit/SimulationPanel';
 import { useSimClock } from './suit/Timeline';
 import {
-  simMetric, simRange, simNorm, simColor, simDef, peakVehicles,
+  simMetric, simRange, simNorm, simColor, simDef, peakVehicles, peakDemand,
   type SimKind, type PopBasis,
 } from './suit/simulation';
 import { assignLoads } from './suit/roadNet';
@@ -308,15 +308,15 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     }
 
     /**
-     * «Байршил» картын чагт — улаан бүсийн барилга.
+     * «Байршил» картын чагт — улаан бүсийн барилга. Тайлангийн зурагт хамаарахгүй.
      */
-    if (locPublicOnly) {
+    if (locPublicOnly && !shotView) {
       if (!locPts.length) return '1=0';
       parts.push(`objectid IN (${locPts.map((p) => p.oid).join(',')})`);
     }
 
     return parts.length ? parts.join(' AND ') : null;
-  }, [bldCats, bldOff, catOff, rows, locPublicOnly, locPts]);
+  }, [bldCats, bldOff, catOff, rows, locPublicOnly, locPts, shotView]);
 
   /** Эрэмбэд орох бүс — оноолсон бүсээс ангиллын шүүлтээр (динамик). */
   const rankRows = useMemo(() => scoredRows.filter((r) => !catOff.has(r.type)), [scoredRows, catOff]);
@@ -583,11 +583,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
    * зам + трафик + хэрэглэгчийн vector tile суурь үлдэнэ.
    */
   const bareReal = roadMode && netKind === 'real';
-  /** Бүс газрын зурагт харагдах эсэх — ангиллын шүүлтээр (унтраасан нь бүдгэрнэ) */
+  /**
+   * Бүс газрын зурагт харагдах эсэх — ангиллын шүүлтээр (унтраасан нь бүдгэрнэ).
+   * Тайлангийн зураг (`shotView`) бүсийн оноог тайлбарладаг тул «Бодит» ба «Улаан бүсийн барилга» хамаарахгүй.
+   */
   const shown = useCallback(
-    (r: MapRow) => !bareReal && !catOff.has(r.type)
-      && (!locPublicOnly || LOCATION_ZONE_TYPES.includes(r.type)),
-    [catOff, bareReal, locPublicOnly],
+    (r: MapRow) => !catOff.has(r.type)
+      && (!!shotView || (!bareReal && (!locPublicOnly || LOCATION_ZONE_TYPES.includes(r.type)))),
+    [catOff, bareReal, locPublicOnly, shotView],
   );
 
   /* ── Hover панелийн HTML (эх аппын адил мөрөөр) ── */
@@ -614,7 +617,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
     for (const i of indicators) {
       if (i.ref || i.weight <= 0) continue;
       const p = row.parts[i.id];
-      if (!p || p.value == null) continue;
+      if (!p || p.value == null || p.norm?.na) continue;
       total++;
       if (passesNorm(p.value, p.norm ?? i)) pass++;
       else failed.push({ name: i.short, v: nf(p.value, i.decimals) + (i.unit ? ` ${i.unit}` : '') });
@@ -787,6 +790,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
         setStage: setSignalStage,
       },
       demand: peakCars,
+      demandBase: peakDemand(rows),
       cap: carCap,
       capPending,
       capFailed,
@@ -936,7 +940,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
               shown={shown}
               selected={selectedLive}
               onSelect={setSelected}
-              layerOn={layerOn}
+              layerOn={shotView && bareReal ? { ...layerOn, [BUILDING_LAYER]: true } : layerOn}
               opacity={opacity}
               zoneTip={zoneTip}
               buildingTip={buildingTip}
@@ -951,14 +955,14 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
                 onStats: setTrafficStats,
               } : undefined}
               transportPaint={shotView ? null : transportPaint}
-              transportFaint={mapStyle === 'heat'}
+              transportFaint={heatOn && !!heat?.length && dim === '2d'}
               heat={shotView ? null : heat}
-              roadTile={bareReal}
+              roadTile={bareReal && !shotView}
               bldWhere={bldWhere}
               bldFocus={bldFocus}
               bldPick={mode === 'urban' || mode === 'indicator' ? locPick : null}
               onBldClick={mode === 'urban' || mode === 'indicator' ? setLocPick : undefined}
-              zoneFaint={locPublicOnly}
+              zoneFaint={locPublicOnly && !shotView}
             />
 
             {/* Каталог — «Ерөнхий төлөвлөгөө»-тэй ижил ЗҮҮН талын БҮТЭН ӨНДӨР

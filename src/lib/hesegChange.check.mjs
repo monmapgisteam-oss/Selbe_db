@@ -1,5 +1,6 @@
 /** Offline regression: actual ArcGIS geometries, independent of service credentials. */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import Polygon from '@arcgis/core/geometry/Polygon.js';
 import Polyline from '@arcgis/core/geometry/Polyline.js';
 import * as geometryEngine from '@arcgis/core/geometry/geometryEngine.js';
@@ -131,4 +132,11 @@ const yAt = (lat) => 6378137 * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) /
 close(strayMargin(5000, yAt(47.9)), 5000 / Math.cos((47.9 * Math.PI) / 180));
 close(strayMargin(5000, 0), 5000);
 assert.deepEqual(dedupeZoneCodes([{ oid: 12, code: 'X-13' }, { oid: 20, code: 'K-6' }, { oid: 47, code: 'X-13' }, { oid: 5 }, { oid: 6 }]).map((f) => f.oid), [12, 20, 5, 6]);
+{
+  const source = readFileSync(new URL('./hesegChange.ts', import.meta.url), 'utf8');
+  assert.ok(source.includes('subscribeTotals(() => { changeCache = null; });'), 'A layer edit must drop the change comparison, as in hesegNeed and planOverlap');
+  const panel = readFileSync(new URL('../components/HesegChange.tsx', import.meta.url), 'utf8');
+  assert.ok(!panel.includes('ОНБ'), 'The panel must write the zone name in full');
+  assert.ok(panel.includes("tr('Хуучин: Олон нийтийн бүс · шинэ: бүтэн')"), 'The old-side scope note is missing');
+}
 console.log('hesegChange: complete/partial deltas, missing-versus-zero measurements, centerline statistics, source maps, all zones and full old masterplan green comparison passed');
