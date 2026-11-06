@@ -31,7 +31,7 @@ if (!g.navigator) g.navigator = {};
 g.fetch = () => Promise.reject(new Error('execReport.ui.check: сүлжээгүй'));
 process.on('unhandledRejection', noop);
 
-const { negtgelProjectPlan, execFindings, execFacts, householdsMissingOf, execFinRanges } = await import('./execReport.ts');
+const { negtgelProjectPlan, execFindings, execFacts, householdsMissingOf, execFinRanges, execNoneUnlisted, execAppendix } = await import('./execReport.ts');
 
 let n = 0;
 const ok = (name, fn) => { fn(); n += 1; console.log('  ✓', name); };
@@ -169,6 +169,46 @@ ok('дэлгэц · PDF · AI баримт — диапазон мөр ба мө
   const t = execFacts({ ...base({}), fin: { ...base({}).fin, ranges: [{ label: 'Багц-1-4', given: 876465164, members: ['БАГЦ1'] }], givenUnlisted: 5 } });
   assert.ok(t.includes('- Багц-1-4 (хэд хэдэн багц хамарсан олголт): олгосон 876,465,164 ₮'), t);
   assert.ok(t.includes('- Багцын мөрд ороогүй олголт: 5 ₮'), t);
+});
+
+ok('2026-11-06: хэмжигдээгүй явц AI баримтад 0% («мэдээлэлгүй» биш)', () => {
+  const x = { ...base({ packs: [{ key: 'БАГЦ5', name: 'Багц 5', kind: 'infra', blocks: 0, households: 0, householdsMissing: 0, progress: null }] }) };
+  x.gdash = { ...x.gdash, byType: [{ label: 'Төрөл', cost: 1, contract: 0, perf: null, n: 1, contracted: 0 }] };
+  const t = execFacts(x);
+  assert.ok(t.includes('- Багц 5: 0.0%'), t);
+  assert.ok(t.includes('- Төрөл: 1 / 0 / 0.0%'), t);
+});
+ok('2026-11-06: сүүлийн 30 хоногийн осол дүгнэлтэд — амь насанд ноцтой бол улаан, нэрсээр; хуучин осол тоологдохгүй', () => {
+  const at = Date.UTC(2026, 10, 5);
+  const x = { ...base({}), fetchedAt: at, incidents: [
+    { ognoo: at - 5 * 86400000, bagts: 'Багц-1', turul: 'Эд хөрөнгийн хохирол' },
+    { ognoo: at - 24 * 86400000, bagts: 'Багц-2', turul: 'Амь нас эрсдэж болзошгүй байсан осол' },
+    { ognoo: at - 90 * 86400000, bagts: 'Багц-4.1', turul: 'Ноцтой осол' },
+  ] };
+  const f = execFindings(x).find((y) => y.area === 'Хөдөлмөрийн аюулгүй байдал');
+  assert.equal(f.sev, 'bad');
+  assert.ok(f.text.includes('2 осол, зөрчил') && f.text.includes('Багц-2 · Амь нас'), f.text);
+  assert.equal(f.items.length, 2);
+  assert.ok(!execFindings({ ...x, incidents: [x.incidents[2]] }).some((y) => y.area === 'Хөдөлмөрийн аюулгүй байдал'), 'хуучин осол');
+  assert.ok(!execFindings(base({})).some((y) => y.area === 'Хөдөлмөрийн аюулгүй байдал'), 'бүртгэлгүй оролт');
+});
+ok('2026-11-06: багцын мөрд ороогүй гэрээгүй ажил хавсралтад нэрээрээ', () => {
+  const row = (o) => ({ isWork: true, note: 'Урьдчилсан дүн', cost: 10, pkg: '', pkg2: '', name: '', ...o });
+  const cf = [
+    row({ pkg2: 'БАГЦ 1- 4', name: 'Суурийн холболтын ажил', cost: 82596282000 }),
+    row({ pkg2: 'Багц-16.1', name: 'Өндөржилт' }),
+    row({ pkg2: 'Багц-8', name: '110кВ', cost: 55392097774 }),
+    row({ pkg2: 'Багц-9', cost: 0 }),
+    row({ pkg2: 'Багц-3.2', note: 'Гэрээлсэн дүн', cost: 5 }),
+    row({ pkg2: 'Газар', isWork: false, cost: 5 }),
+    row({ pkg2: '', name: 'Төслийн түвшний ажил', cost: 65081070000 }),
+  ];
+  const un = execNoneUnlisted(cf, new Set(['БАГЦ161']));
+  assert.deepEqual(un.map((u) => u.budget), [82596282000, 65081070000, 55392097774], 'мөнгөтэй, гэрээгүй, жагсаалтад ороогүй л');
+  assert.equal(un[0].label, 'БАГЦ 1- 4 · Суурийн холболтын ажил');
+  const app = execAppendix({ ...base({}), fin: { ...base({}).fin, noneUnlisted: un } }, []);
+  assert.equal(app[0].kind, 'finNone');
+  assert.ok(app[0].title.includes('3 багц, ажил') && app[0].items[0].includes('82,596,282,000'), JSON.stringify(app[0]));
 });
 
 console.log(`execReport.ui.check: ${n} шалгуур ✅`);

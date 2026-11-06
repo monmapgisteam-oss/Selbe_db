@@ -104,7 +104,7 @@ ok('санхүү — бүтэн дүн (2026-09-01 дүрэм), сарын ол�
   assert.ok(und.sections[1].text[2].endsWith('хуримтлагдсан олголт 530,870,000,000 ₮; огноогүй төлбөр 30,000,000,000 ₮ графикт ороогүй (нийт олголт 560,870,000,000 ₮).'), und.sections[1].text[2]);
   const ipc = mayor.sections[2];
   assert.equal(ipc.chart.kind, 'bars', 'нэг нийлбэрийн хувь утгагүй — тусдаа багана');
-  assert.deepEqual(ipc.chart.items.map((x) => x.label), ['Гүйцэтгэл', 'IPC үүссэн', 'Гарын үсэг зурсан', 'Олгосон']);
+  assert.deepEqual(ipc.chart.items.map((x) => x.label), ['IPC-д ороогүй гүйцэтгэл', 'IPC үүссэн', 'Гарын үсэг зурсан', 'Олгосон']);
   assert.ok(ipc.text[0].includes('12,000,000,000 ₮') && ipc.text[1].includes('13,000,000,000 ₮'), ipc.text.join(' '));
   const fp = mayor.sections[3];
   assert.deepEqual(fp.chart.items.map((b) => b.label), ['Багц 5.1', 'Багц 1', 'Багц 2'], 'олголт эхэлсэн багц хувиар буурах');
@@ -260,6 +260,94 @@ ok('заавал биш эх бүгд унасан — хэсэг бүр «мэ�
   assert.equal(m.sections[11].chart.items[4].value, null, 'саад уншигдаагүй → null (0 биш)');
   assert.equal(m.sections[0].chart.items[0].value, '31.7%', 'төлөвлөгөөний мод алга → нэгтгэл гүйцэтгэл');
   assert.ok(!/явцгүй/.test(allText(m)));
+});
+ok('2026-11-06: хавсралтын мөрүүд «Нийт»-тэй тэнцэнэ — багцын мөрд ороогүй гэрээ, олголт', () => {
+  const r = buildReport('mayor', inputsFixture({ x: { ...i.x, fin: { ...i.x.fin, planUnlisted: 8438911256, givenUnlisted: 5 } } })).appendix.rows;
+  assert.deepEqual(r.at(-2), ['Багцын мөрд ороогүй гэрээ, олголт', '8,438,911,256', '5', '—', '—']);
+  assert.ok(!mayor.appendix.rows.some((x) => x[0] === 'Багцын мөрд ороогүй гэрээ, олголт'), 'үлдэгдэлгүй бол мөр гарахгүй');
+});
+ok('2026-11-06: анхаарах жагсаалт — нэрс `items`-д байсан ч багц нэг л удаа, хүнд зэрэг мөрөнд шилжинэ; зөвшөөрлийн хураангуй давхардахгүй', () => {
+  const pack = { key: 'БАГЦ31', name: 'Багц 3.1', kind: 'build', blocks: 11, households: 0, householdsMissing: 0, progress: 0.05 };
+  const zov = { total: 4, ok: 2, wait: 2, no: 0, unknown: 0, byBagts: [], issues: [
+    { bagts: 'Багц 1', ner: 'Түр цахилгаан', baiguullaga: 'УБЦТС', tolov: 'Хүлээгдэж буй', shat: 2 },
+    { bagts: 'Багц 2', ner: 'Галын дүгнэлт', baiguullaga: 'ОБЕГ', tolov: 'Хүлээгдэж буй', shat: 2 },
+  ] };
+  const items = attentionItems(inputsFixture({ lag: [], x: { ...i.x, zov, prog: { ...i.x.prog, packs: [pack] } } }));
+  const of31 = items.filter((it) => /Багц 3\.1|5%-иас доош/.test(it.text));
+  assert.equal(of31.length, 1, JSON.stringify(of31));
+  assert.equal(of31[0].tone, 'bad', '«5%-иас доош» дүгнэлтийн улаан зэрэг мөрөнд шилжинэ');
+  assert.ok(!items.some((it) => /зөвшөөрөл хүлээгдэж байна/.test(it.text)), 'нэрлэсэн мөр байхад хураангуй гарахгүй');
+  assert.equal(items.filter((it) => /УБЦТС|ОБЕГ/.test(it.text)).length, 2);
+});
+ok('2026-11-06: шийдвэрийн жагсаалт — зөвлөмжид нэрс дагалдана', () => {
+  const pack = { key: 'БАГЦ31', name: 'Багц 3.1', kind: 'build', blocks: 11, households: 0, householdsMissing: 0, progress: 0.05 };
+  const dec = buildReport('board', inputsFixture({ x: { ...i.x, prog: { ...i.x.prog, packs: [pack] } } })).sections.at(-1).chart.items;
+  assert.ok(dec.some((it) => it.text.includes('Эдгээр багцын') && it.text.endsWith('(Багц 3.1)')), JSON.stringify(dec));
+});
+ok('2026-11-06: осол — сонгосон хугацааны мөр 7.2-т нэрээрээ, эрсдэлийн тоонд; уншигдаагүй бол ил хэлнэ', () => {
+  const at = Date.UTC(2026, 9, 12, 5);
+  const inc = [{ ognoo: at, bagts: 'Багц-2', turul: 'Амь нас эрсдэж болзошгүй байсан осол' }, { ognoo: Date.UTC(2020, 0, 1), bagts: 'Багц-1', turul: 'Эд хөрөнгийн хохирол' }];
+  const period = { key: 'prevMonth', from: '2026-10-01', to: '2026-10-31' };
+  const rep = buildReport('mayor', inputsFixture({ period, x: { ...i.x, incidents: inc } }));
+  const wf = rep.sections.find((s) => s.key === 'workforce');
+  assert.ok(wf.text[0].includes('1 осол, зөрчил') && wf.text[0].includes('Багц-2 · Амь нас эрсдэж болзошгүй байсан осол') && !wf.text[0].includes('Багц-1'), wf.text[0]);
+  assert.ok(wf.text.length <= 3);
+  assert.equal(rep.sections.find((s) => s.key === 'risk').chart.items.at(-1).value, 1);
+  const none = buildReport('mayor', inputsFixture({ x: { ...i.x, incidents: null } })).sections.find((s) => s.key === 'workforce');
+  assert.ok(none.text[0].includes('уншигдаагүй'), 'null ≠ 0 осол');
+});
+ok('2026-11-06: IPC — эхний багана нь IPC-д ороогүй гүйцэтгэл, олгосон нь урьдчилгаа/гүйцэтгэлээр; баримтгүй үед «0 ₮ хүлээж буй» гэж хэлэхгүй', () => {
+  const s = buildReport('mayor', inputsFixture({ ipc: { work: 229e9, created: 0, signed: 0, paid: 530e9, advance: 314e9, perfPaid: 216e9 } })).sections.find((x) => x.key === 'ipc');
+  assert.deepEqual(s.chart.items.map((b) => b.label), ['IPC-д ороогүй гүйцэтгэл', 'IPC үүссэн', 'Гарын үсэг зурсан', 'Олгосон — урьдчилгаа', 'Олгосон — гүйцэтгэлийн төлбөр']);
+  assert.ok(s.text[0].includes('урьдчилгаа 314,000,000,000 ₮'), s.text[0]);
+  assert.ok(!s.text.join(' ').includes('Олголт хүлээж буй'), s.text.join(' '));
+  assert.ok(s.text.length <= 3);
+});
+ok('2026-11-06: нийгмийн объект — эхлэх хугацаа өнгөрсөн/болоогүй/огноогүй, нийт төсөвт ордоггүй дүн, ижил нэр кодоор ялгарна', () => {
+  const niigem = [
+    { name: '960 хүүхдийн сургууль', pct: 0, bagts: '19.1', start: Date.UTC(2026, 7, 1) },
+    { name: '240 хүүхдийн цэцэрлэг', pct: 0, bagts: '20.1', start: Date.UTC(2099, 3, 1) },
+    { name: '240 хүүхдийн цэцэрлэг', pct: 0, bagts: '20.2', start: null },
+  ];
+  const byType = [{ label: 'Нийгмийн дэд бүтэц', cost: 176063132660, contract: 0, perf: null, n: 12, contracted: 0 }];
+  const s = buildReport('council', inputsFixture({ niigem, x: { ...i.x, gdash: { ...i.x.gdash, byType } } })).sections.find((x) => x.key === 'social');
+  const t = s.text.join(' ');
+  assert.ok(t.includes('эхлэх хугацаа өнгөрсөн 1 (960 хүүхдийн сургууль), хугацаа болоогүй 1, огноогүй 1'), t);
+  assert.ok(t.includes('176,063,132,660 ₮ нь төслийн нийт төсөвт ордоггүй'), t);
+  assert.ok(s.chart.items.some((b) => b.label === '240 хүүхдийн цэцэрлэг · 20.1'));
+  assert.ok(s.chart.items.some((b) => b.label === '960 хүүхдийн сургууль'), 'давхардалгүй нэр кодгүй');
+});
+ok('2026-11-06: «Хамгийн өндөр олголт» — төсвийн багахан хэсгийн гэрээ тэргүүлэхгүй', () => {
+  const rows = [
+    { key: 'БАГЦ82', label: 'Багц 8.2', plan: 323040989, budget: 55.7e9, given: 323040989, pct: 100, contracted: true },
+    { key: 'БАГЦ32', label: 'Багц 3.2', plan: 187.9e9, budget: 187.9e9, given: 65.6e9, pct: 34.9, contracted: true },
+  ];
+  const s = buildReport('mayor', inputsFixture({ x: { ...i.x, fin: { ...i.x.fin, rows } } })).sections.find((x) => x.key === 'finPacks');
+  assert.ok(s.text[1].includes('Хамгийн өндөр олголттой багц Багц 3.2'), s.text[1]);
+  assert.equal(s.chart.items[0].label, 'Багц 8.2', 'чарт хувиар хэвээр');
+  assert.equal(s.chart.items.find((b) => b.hot).label, 'Багц 3.2');
+});
+ok('2026-11-06: бүх олголттой багц төсвийн багахан хэсгийн гэрээтэй — «олголт эхэлсэн багц алга» гэж худал хэлэхгүй', () => {
+  const rows = [{ key: 'БАГЦ82', label: 'Багц 8.2', plan: 323040989, budget: 55.7e9, given: 323040989, pct: 100, contracted: true }];
+  const s = buildReport('mayor', inputsFixture({ x: { ...i.x, fin: { ...i.x.fin, rows } } })).sections.find((x) => x.key === 'finPacks');
+  assert.ok(s.text[1].includes('Хамгийн өндөр олголттой багц Багц 8.2'), s.text[1]);
+  assert.equal(s.chart.items.find((b) => b.hot).label, 'Багц 8.2');
+});
+ok('2026-11-06: хоцорсон багцын осол анхаарах жагсаалтаас алга болохгүй', () => {
+  const at = i.x.fetchedAt - 86400000;
+  const pack = { key: 'БАГЦ32', name: 'Багц 3.2', kind: 'build', blocks: 12, households: 0, householdsMissing: 0, progress: 29.9 };
+  const lag = [{ key: 'БАГЦ32', label: 'Багц 3.2', planned: 61.5, actual: 29.9, gap: 31.6, coverage: 100 }];
+  const items = attentionItems(inputsFixture({ lag, x: { ...i.x, prog: { ...i.x.prog, packs: [pack] }, incidents: [{ ognoo: at, bagts: 'Багц 3.2', turul: 'Ноцтой осол' }] } }));
+  assert.ok(items.some((it) => it.text.includes('хоцорсон') && it.text.startsWith('Багц 3.2')), JSON.stringify(items));
+  assert.ok(items.some((it) => it.text.includes('Багц 3.2 · Ноцтой осол') && it.tone === 'bad'), JSON.stringify(items));
+});
+ok('2026-11-06: хугацаа өнгөрсөн ижил нэртэй объект бичвэрт кодоор ялгарна', () => {
+  const niigem = [
+    { name: '240 хүүхдийн цэцэрлэг', pct: 0, bagts: '20.1', start: Date.UTC(2026, 0, 1) },
+    { name: '240 хүүхдийн цэцэрлэг', pct: 0, bagts: '20.2', start: Date.UTC(2026, 0, 1) },
+  ];
+  const t = buildReport('council', inputsFixture({ niigem })).sections.find((x) => x.key === 'social').text.join(' ');
+  assert.ok(t.includes('(240 хүүхдийн цэцэрлэг · 20.1, 240 хүүхдийн цэцэрлэг · 20.2)'), t);
 });
 ok('progressOf — null/NaN → 0, тоо хэвээр', () => {
   assert.equal(progressOf(null), 0); assert.equal(progressOf(undefined), 0); assert.equal(progressOf(NaN), 0); assert.equal(progressOf(12.5), 12.5);

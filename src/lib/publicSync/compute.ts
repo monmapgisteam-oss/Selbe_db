@@ -128,6 +128,8 @@ export function sanhuuRows(plan: ProjectPlan): PubRow[] {
 export type PubBuilding = { ail: number | null; davhar: number | null };
 /** Инженерийн багцын бөглөх хуудасны БҮЛЭГ (gun 1) — сүүлийн агшин */
 export type PubGroup = { no: string; name: string; pct: number | null; start: number | null; end: number | null };
+/** Бүлгийн мөр болох нэр — хоосон ба 40 хүснэгтийн түр суурь мөр («Үндсэн хугацаа») нийтийн хүснэгтэд гарахгүй */
+export const isPubGroupName = (name: string): boolean => !!name && name !== 'Үндсэн хугацаа';
 export type GuitsetgelInputs = {
   /** `buildingKey` → айл/давхар (барилгын давхарга) */
   buildings: ReadonlyMap<string, PubBuilding>;

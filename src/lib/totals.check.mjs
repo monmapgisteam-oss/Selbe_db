@@ -173,4 +173,12 @@ assert.ok(st.some((s) => s.statisticType === 'count' && s.onStatisticField === L
   assert.match(VP, /useLazyTotals\(zone, \[d\.id\]\)/, 'сонгосон давхаргын самбар өөрийнхөө тоог (каталогийн 33 давхарга тоймд байхгүй)');
 }
 
+/* 2026-11-06: бүсийн полигон уншигдаагүй — `noZone` давхарга төслийн нийтийг бүсийнх гэж харуулах/кэшлэхгүй (алдаа → `failed`, кэш алга) */
+{
+  const T = readFileSync('src/lib/totals.ts', 'utf8');
+  assert.match(T, /loadZoneAoi\(zone\)\.catch\(\(e: unknown\) => \{ aoiErr = e as Error; return null; \}\)/, 'полигоны алдаа хадгалагдана');
+  assert.match(T, /if \(aoiErr && d\.noZone\) throw aoiErr;/, '`noZone` давхарга алдаатай тоологдоно');
+  assert.doesNotMatch(T, /loadZoneAoi\(zone\)\.catch\(\(\) => null\)/, 'чимээгүй null буцав');
+}
+
 console.log('totals.check: OK');

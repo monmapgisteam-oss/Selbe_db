@@ -460,11 +460,14 @@ export function usePlanTotalsLive(
 
     void (async () => {
       let firstErr: Error | null = null;
-      const aoi = sp && zone ? await loadZoneAoi(zone).catch(() => null) : null;
+      let aoiErr: Error | null = null;
+      const aoi = sp && zone ? await loadZoneAoi(zone).catch((e: unknown) => { aoiErr = e as Error; return null; }) : null;
       if (!alive) return;
       await Promise.all(ids.map(async (id) => {
         const d = LAYER_BY_ID[id];
         try {
+          /* Бүсийн полигон уншигдсангүй — `noZone` давхаргад шүүлт байхгүй: төслийн нийт дүнг бүсийнх гэж харуулахгүй/кэшлэхгүй */
+          if (aoiErr && d.noZone) throw aoiErr;
           const r = aoi && d.noZone
             ? await layerTotals(d, withLayerWhere(d, null), aoi)
             : await layerTotals(d, whereFor(d, zone));

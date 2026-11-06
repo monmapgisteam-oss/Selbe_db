@@ -46,7 +46,13 @@ export type ReportExtra = {
     weightSum: number;
     /** Тооцоонд орсон БЛОКИЙН тоо */
     rows: number;
+    /** Хуваарийн төлөвлөгөөт хувь, 0–100 — хамрах хүрээ хангалттай (`coverageOk`) үед л; эс бөгөөс `null` (`withPlans`) */
+    plannedTotal?: number | null;
+    /** Төлөвлөгөөнөөс хоцорсон нэгж хувь — дүгнэж болох бөгөөд `LATE_GAP`-аас багагүй үед л */
+    lag?: number | null;
     stages: {
+      /** Багцын түлхүүр (`bagtsKey`) — төлөвлөгөөг тааруулахад */
+      key?: string;
       label: string;
       /** Тухайн багцын блокийн тоо */
       rows: number;
@@ -239,6 +245,7 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   const budgetAll = pkgCostTotal(weightRows);
 
   const raw = [...byPkg.entries()].map(([pkg, m]) => ({
+    key: pkg,
     label: labels.get(pkg) ?? pkg,
     rows: m.total,
     money: budget.get(pkg) ?? 0,
@@ -265,6 +272,41 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
     weightSum,
     rows: stages.reduce((a, s) => a + s.rows, 0),
     stages,
+  };
+}
+
+/** Хуваарийн төлөвлөгөө — хамрах хүрээ хангалттай багц (`byKey`) ба төслийн нийт (`total`, `lag`) */
+export type OverallPlans = { byKey: ReadonlyMap<string, number>; total: number | null; lag: number | null };
+
+/** Төлөвлөгөөг §3-ын багцын мөр ба нийт мөрөнд суулгана (цэвэр) */
+export function withPlans(overall: ReportExtra['overall'], plans: OverallPlans | null): ReportExtra['overall'] {
+  if (!plans) return overall;
+  return {
+    ...overall,
+    plannedTotal: plans.total,
+    lag: plans.lag,
+    stages: overall.stages.map((s) => ({ ...s, planned: (s.key ? plans.byKey.get(s.key) : undefined) ?? null })),
+  };
+}
+
+/** `Finance.lagOf`/`projectLagNow` — хүлээн авагчийн тайлантай НЭГ эх, НЭГ хамрах хүрээний дүрэм (`coverageOk`) */
+async function loadOverallPlans(): Promise<OverallPlans> {
+  const [{ loadFinData, pkgMonthsMap, lagOf, lagJudged, projectLagNow }, { loadPlanCurveCached, coverageOk }, { LATE_GAP }] = await Promise.all([
+    import('@/modules/Finance'), import('@/lib/planProgress'), import('@/lib/execReport'),
+  ]);
+  const [plan, fin] = await Promise.all([loadPlanCurveCached(), loadFinData()]);
+  const byKey = new Map<string, number>();
+  pkgMonthsMap(fin).forEach((months, k) => {
+    const l = lagOf(months);
+    if (l && lagJudged(l)) byKey.set(k, l.planned);
+  });
+  const now = projectLagNow(fin, plan);
+  /* Хуваарьгүй багц хасагдсан бол төлөвлөгөө нь орон сууцны бүх багцын гүйцэтгэлтэй (`overall.pct`) нэг хүрээнд биш */
+  const ok = coverageOk(now.coverage) && !now.excluded.length;
+  return {
+    byKey,
+    total: ok ? now.planned : null,
+    lag: ok && now.gap != null && now.gap >= LATE_GAP ? now.gap : null,
   };
 }
 
@@ -422,10 +464,10 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
    */
   const inTotal = master.filter(finXlInTotal);
   const sum = (f: string) => inTotal.reduce((a, r) => a + nn(r[f]), 0);
-  /** Бүх мөрөөр (хамрах хүрээнээс гадуурх ч) — задаргааны хүснэгтэд */
-  const sumAll = (f: string) => master.reduce((a, r) => a + nn(r[f]), 0);
   const secOf = (r: Record<string, unknown>) =>
     String(r[FIN_XL_TOTAL_CODE_FIELD] ?? '').trim();
+  /** Хамрах хүрээнээс гадуурх мөр ч орно — «Ажлын төрлөөр» задаргаа ба түүний НИЙТ мөр */
+  const shownRows = master.filter((r) => !FIN_XL_ROW_HIDE.includes(secOf(r)));
 
 
   /*
@@ -500,8 +542,9 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
      * тул НИЙТ нь ч бүх мөрөөр (2026-09-15).
      */
     byTypeTotal: {
-      budget: sumAll(F.budget),
-      contract: master
+      /* Мөрүүдтэй ижил хүрээ: нуугдсан (`FIN_XL_ROW_HIDE`) хэсэг нийт дүнд орохгүй */
+      budget: shownRows.reduce((a, r) => a + nn(r[F.budget]), 0),
+      contract: shownRows
         .filter((r) => str(r[F.amountNote]) === CONTRACTED)
         .reduce((a, r) => a + nn(r[F.contractAmount]), 0),
     },
@@ -519,6 +562,8 @@ async function loadInfra(): Promise<ReportExtra['infra']> {
       if (!d) return null;
       try {
         const t = await layerTotals(d, '1=1');
+        /* Газар чөлөөлөлтийн талбай — §4-тэй НЭГ дүрэм (полигоны нөхөлт, хуваагдсан талбар нэг удаа) */
+        if (id === 'land:left') return { unit: d.qty?.unit ?? '', ...t, q: (await loadLandStatus()).areaM2 };
         return { unit: d.qty?.unit ?? '', ...t };
       } catch (e) {
         throw new Error(tr('{0}: давхарга уншигдсангүй ({1})', d.title, String((e as Error)?.message ?? e)));
@@ -612,10 +657,11 @@ export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000,
   ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL', 'BUILDING', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL']);
 
 async function loadReportExtraRaw(): Promise<ReportExtra> {
-  const [o, p, f, i, h, l, s, w] = await Promise.allSettled([
+  const [o, p, f, i, h, l, s, w, pl] = await Promise.allSettled([
     loadOverall(), loadProgress(), loadFinance(), loadInfra(), loadHabeaSummary(),
     loadLand(), loadSocial(),
     loadNegtgelPct(),
+    loadOverallPlans(),
   ]);
   /**
    * Урьд нь унасан эх сурвалж бүр `{ pct: 0, paid: 0, blocks: 0, … }` болж,
@@ -643,7 +689,8 @@ async function loadReportExtraRaw(): Promise<ReportExtra> {
   }
 
   return {
-    overall: (o as PromiseFulfilledResult<Awaited<ReturnType<typeof loadOverall>>>).value,
+    /* Төлөвлөгөө заавал биш — уншигдаагүй бол багцын төлөвлөгөөт хувь «—» хэвээр */
+    overall: withPlans((o as PromiseFulfilledResult<Awaited<ReturnType<typeof loadOverall>>>).value, pl.status === 'fulfilled' ? pl.value : null),
     land: (l as PromiseFulfilledResult<Awaited<ReturnType<typeof loadLand>>>).value,
     social: (s as PromiseFulfilledResult<Awaited<ReturnType<typeof loadSocial>>>).value,
     progress: (p as PromiseFulfilledResult<Awaited<ReturnType<typeof loadProgress>>>).value,
@@ -715,7 +762,7 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
    */
   const buildWeight = x.overall.weightSum;
   const buildActual = x.overall.pct;
-  const buildLag = null as number | null;
+  const buildLag = x.overall.lag ?? null;
 
   const byBagts = x.progress.byBagts;
   const ext = bagtsRows ? bagtsExtremes(bagtsRows) : null;
@@ -736,15 +783,18 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
 
   const peakMonth = null;
 
-  const split = x.habea.byCompany.filter((c) => c.mongol != null && c.gadaad != null);
-  const splitWorkers = split.reduce((a, c) => a + c.workers, 0);
+  /* Гадаадын тоо хоосон — дотоодын тоо нийт ажилтантай тэнцэх бол 0 (маягт 0-г хоосон үлдээдэг); §9-ийн нийлбэрүүдтэй НЭГ олонлог */
+  const split = x.habea.byCompany.filter((c) => c.mongol != null && (c.gadaad != null || c.mongol === c.workers));
+  const splitWorkers = split.reduce((a, c) => a + (c.mongol ?? 0) + (c.gadaad ?? 0), 0);
   const mongolShare = splitWorkers > 0
     ? (split.reduce((a, c) => a + (c.mongol ?? 0), 0) / splitWorkers) * 100
     : null;
 
-  const heavyStage = x.overall.stages.length
+  const topStage = x.overall.stages.length
     ? x.overall.stages.reduce((a, s) => (s.weight > a.weight ? s : a))
     : null;
+  /* «голчлон түүнээс хамаарна» — зөвхөн орон сууцны жингийн дийлэнхийг (>50%) эзэлсэн багцад */
+  const heavyStage = topStage && topStage.weight > x.overall.weightSum / 2 ? topStage : null;
   const startedPhases = x.progress.phases.filter((p) => p.pct > 0).map((p) => p.name);
   const notStartedPhases = x.progress.phases.filter((p) => p.pct <= 0).map((p) => p.name);
   const srcTotal = x.finance.sources.reduce((a, s) => a + s.value, 0);
@@ -758,7 +808,7 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
   const f: string[] = [];
 
   if (x.progress.blocks > 0) {
-    f.push(tr('Барилга угсралтын ажлын ХО-оор жигнэсэн гүйцэтгэл {0} байна ({1} блокийн хэмжилтийг багцаар нь ХО дүнгийн жингээр нэгтгэсэн). Эдгээр багц төслийн төсвийн {2}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлнө.', pct(buildActual, 2), num(x.overall.rows), pct(buildWeight, 1)));
+    f.push(tr('Барилга угсралтын ажлын төсвөөр жигнэсэн гүйцэтгэл {0} байна ({1} блокийн хэмжилтийг багцаар нь төсвийн жингээр нэгтгэсэн). Эдгээр багц төслийн төсвийн {2}-ийг эзэлдэг тул нийт гүйцэтгэлд шууд нөлөөлнө.', pct(buildActual, 2), num(x.overall.rows), pct(buildWeight, 1)));
   }
 
   if (bestBagts && worstBagts && bestBagts.bagts !== worstBagts.bagts) {

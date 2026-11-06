@@ -370,24 +370,24 @@ export async function buildExecDoc(
         ...g.byType.map((t): TableCell[] => [
           td(tr(t.label)), td(num(t.n), true), td(num(t.contracted), true),
           td(num(t.cost), true), td(t.contract > 0 ? num(t.contract) : '—', true),
-          td(t.perf == null ? '—' : pct(t.perf, 1), true),
+          td(pct(t.perf ?? 0, 1), true),
         ]),
         [tdBold(tr('Нийт')), tdBold(num(g.byType.reduce((a, t) => a + t.n, 0)), true),
           tdBold(num(g.byType.reduce((a, t) => a + t.contracted, 0)), true),
           tdBold(num(g.byType.reduce((a, t) => a + t.cost, 0)), true),
           tdBold(num(g.byType.reduce((a, t) => a + t.contract, 0)), true), tdBold('', true)],
       ] }, layout: tableLayout },
-      note(tr('Нийт төсөв нь орон сууцны хороолол ба ГИШС-ийн хүрээгээр тооцогдсон; хүснэгт нь гэрээний бүх мөрийг хамарна. Газар чөлөөлөлт зэрэг ажлын төрлийн гүйцэтгэлийн хувь нь гэрээт дүнгээс үл хамааран биет хэмжигдэхүүнээр тооцогддог тул гэрээгүй ч гүйцэтгэлтэй байж болно.')),
+      note(tr('Нийт төсөв нь «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт дүн; хүснэгт нь нийт төсөвт ордоггүй нийгмийн дэд бүтцийн мөрүүдийг ч хамарна. Гүйцэтгэлийн хувь нь биет хэмжилтээр; хэмжигдээгүй бол 0%.')),
 
       ...(g.bySource.length ? [
-        { text: tr('Захирамжийн эх үүсвэр'), style: 'caption', pageBreak: 'before' } as Content,
+        { text: tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)'), style: 'caption', pageBreak: 'before' } as Content,
         barChart(g.bySource.map((s) => ({
           label: tr(s.label),
           value: s.amount,
           text: `${srcSum ? pct((s.amount / srcSum) * 100, 1) : '—'} · ${num(s.amount)} ₮`,
         })), { nameW: 150, valW: 150 }),
         { table: { headerRows: 1, widths: ['*', 40, 100, 110, 46], body: [
-          [th(tr('Эх үүсвэр')), th(tr('Ажил'), true), th(tr('Гэрээт дүн (төг)'), true), th(tr('Захирамжийн дүн (төг)'), true), th(tr('Хувь'), true)],
+          [th(tr('Эх үүсвэр')), th(tr('Мөр'), true), th(tr('Гэрээт ажлын эх үүсвэр (төг)'), true), th(tr('Төслийн нийт дүн (төг)'), true), th(tr('Хувь'), true)],
           ...g.bySource.map((s): TableCell[] => [
             td(tr(s.label)), td(num(s.n), true), td(num(s.contracted), true), td(num(s.amount), true),
             td(srcSum ? pct((s.amount / srcSum) * 100, 1) : '—', true),
@@ -396,7 +396,7 @@ export async function buildExecDoc(
             tdBold(num(g.bySource.reduce((a, s) => a + s.contracted, 0)), true),
             tdBold(num(srcSum), true), tdBold(srcSum ? '100.0%' : '—', true)],
         ] }, layout: tableLayout } as Content,
-        note(tr('Хувь нь захирамжийн нийт дүнд эзлэх жин; захирамжийн дүн бүх ажилд бүрэн бүртгэгдээгүй тул нийт төсвөөс бага гарна.')),
+        note(tr('«Төслийн нийт дүн» нь «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн эх үүсвэр; нийлбэр нь нийт төсөвтэй тэнцүү, хувь нь түүнд эзлэх жин. «Гэрээт ажлын эх үүсвэр» нь гэрээт ажлын мөрийн эх үүсвэрийн дүн тул «Нийт гэрээлсэн дүн»-гээс ялгаатай. «Мөр» нь эх үүсвэр бүрийн мөрийн тоо — олон эх үүсвэртэй ажил эх үүсвэр бүрд тоологдоно.')),
       ] : []),
 
       /* ══════════ 2. ГАЗАР ЧӨЛӨӨЛӨЛТ ══════════ */
@@ -433,7 +433,7 @@ export async function buildExecDoc(
         kpiRow([
           { label: tr('Ажиллаж буй хүн'), value: num(g.hse.workers), sub: g.hse.date ? tr('сүүлийн бүртгэл {0}', g.hse.date) : undefined },
           { label: tr('Техник хэрэгсэл'), value: num(g.hse.equipment), sub: tr('нэгж') },
-          { label: tr('Хүн цаг (нийт)'), value: num(g.hse.manHours), sub: tr('сүүлийн бүртгэлийн агшны байдлаар') },
+          { label: tr('Хүн цаг (ажилтан × 8 цаг, тооцоолсон)'), value: num(g.hse.manHours), sub: tr('сүүлийн бүртгэлийн агшны байдлаар') },
         ]),
         note(tr('Тоо нь өдөр тутмын хуримтлал биш, сүүлийн бүртгэлийн агшны байдал.')),
       ] : [note(tr('ХАБ-ын бүртгэл алга, мэдээлэлгүй.'))]),
@@ -468,14 +468,13 @@ export async function buildExecDoc(
       cap(deltas ? `${tr('Багц тус бүрийн биет гүйцэтгэл')} · ${tr('өөрчлөлт {0} → {1}', deltas.period.from, deltas.period.to)}` : tr('Багц тус бүрийн биет гүйцэтгэл')),
       barChart(buildPk.map((k) => {
         const t = packTrendOf(deltas, k.key, false);
-        return { label: k.name, value: k.progress, text: `${k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1)}${t ? ` · ${t.text}` : ''}` };
+        return { label: k.name, value: k.progress ?? 0, text: `${pct(k.progress ?? 0, 1)}${t ? ` · ${t.text}` : ''}` };
       }), { nameW: 110, valW: deltas ? 120 : 70, max: 100 }),
       { table: { headerRows: 1, widths: ['*', 60, 70, 80], body: [
         [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Гүйцэтгэл'), true)],
         ...buildPk.map((k): TableCell[] => [
           td(k.name), td(num(k.blocks), true), td(householdsLabel(k), true),
-          td(k.progress == null ? tr('мэдээлэлгүй') : pct(k.progress, 1), true,
-            k.progress != null && k.progress < 5 ? RED : undefined),
+          td(pct(k.progress ?? 0, 1), true, (k.progress ?? 0) < 5 ? RED : undefined),
         ]),
         [tdBold(tr('Нийт')), tdBold(num(p.blocks), true), tdBold(householdsLabel(p), true),
           tdBold(p.actual == null ? '—' : pct(p.actual, 1), true)],
@@ -490,8 +489,8 @@ export async function buildExecDoc(
       /* ══════════ 4. САНХҮҮЖИЛТ ══════════ */
       { text: '', pageBreak: 'before' },
       ...h2('fin',
-        tr('{0} багц ({1} гэрээт) — инженерийн шугам сүлжээ, нийгмийн дэд бүтэц зэргийг хамарна',
-          num(f.rows.length), num(f.rows.filter((r) => r.contracted).length))),
+        tr('Зурагт давхаргатай {0} багц ({1} гэрээт) — инженерийн шугам сүлжээ, нийгмийн дэд бүтэц зэргийг хамарна. Хураангуйн {2} нь гэрээний ажлын мөрийн тоо.',
+          num(f.rows.length), num(f.rows.filter((r) => r.contracted).length), num(g.packages))),
       lead(tr('Гэрээлсэн нийт дүнгийн {0}-д санхүүжилт олгогдсон байна.{1}{2}',
         f.share == null ? '—' : pct(f.share, 1),
         finZero.length
@@ -603,9 +602,10 @@ export async function buildExecDoc(
           if (a.kind === 'finNone') {
             return [head, { table: { headerRows: 1, widths: ['*', 130], body: [
               [th(tr('Багц')), th(tr('Төсөвт өртөг (төг)'), true)],
-              ...finNone.map((r): TableCell[] => [td(r.label), td(num(r.budget), true)]),
-              [tdBold(tr('Нийт')), tdBold(num(finNone.reduce((s, r) => s + r.budget, 0)), true)],
-            ] }, layout: tableLayout }];
+              ...[...finNone, ...(x.fin.noneUnlisted ?? [])].map((r): TableCell[] => [td(r.label), td(num(r.budget), true)]),
+              [tdBold(tr('Нийт')), tdBold(num([...finNone, ...(x.fin.noneUnlisted ?? [])].reduce((s, r) => s + r.budget, 0)), true)],
+            ] }, layout: tableLayout },
+            note(tr('Жагсаалтад нийт төсөвт ордоггүй нийгмийн дэд бүтцийн мөрүүд орсон тул нийлбэр нь «нийт төсөв − гэрээлсэн дүн»-гээс ялгаатай.'))];
           }
           return [head, { ul: a.items.map(T), style: 'findingItem' }];
         }),

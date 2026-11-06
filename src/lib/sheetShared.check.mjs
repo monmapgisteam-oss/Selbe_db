@@ -14,7 +14,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sharedFields, decide } from './sheetShared.ts';
+import { sharedFields, decide, isBaseRowSheet } from './sheetShared.ts';
 
 const sc = {
   f: {
@@ -61,4 +61,13 @@ assert.match(readFileSync('src/lib/execTriage.ts', 'utf8'), /loadSheetShared\(pk
 for (const f of ['src/lib/execTriage.ts']) {
   assert.doesNotMatch(readFileSync(f, 'utf8'), /[^\w.]loadRows\s*\(/, `${f}: \`loadRows\`-ийг шууд дуудахгүй`);
 }
+/* 6. Суурь мөртэй хуудас («— / 1») обьёмын самбарт гарахгүй; бодит ажилтай эсвэл бөглөсөн хуудас гарна */
+const rowOf = (work, vol, obyem = [null]) => ({ work, vol, obyem });
+assert.equal(isBaseRowSheet([rowOf('НЭВТРЭХ СУВАГ', null), rowOf('Үндсэн хугацаа', 1)]), true, 'суурь мөр');
+assert.equal(isBaseRowSheet([rowOf('Б', null), rowOf('Үндсэн хугацаа', 1), rowOf('Улсын комисс', null)]), true, 'обьёмгүй нэмэлт мөр хөндөхгүй');
+assert.equal(isBaseRowSheet([rowOf('Үндсэн хугацаа', 1), rowOf('Газрын ажил', 120)]), false, 'жинхэнэ ажил нэмэгдсэн');
+assert.equal(isBaseRowSheet([rowOf('Үндсэн хугацаа', 1, [0.5])]), false, 'обьём бөглөсөн');
+assert.equal(isBaseRowSheet([rowOf('Газрын ажил', 120)]), false);
+assert.equal(isBaseRowSheet([]), false, 'хоосон хуудас суурь биш');
+assert.match(SRC, /if \(sheets\.every\(\(s\) => isBaseRowSheet\(s\.rows\)\)\) return;/, 'loadPkgObyem суурь мөртэй багцыг алгасна');
 console.log('sheetShared.check: OK');

@@ -90,8 +90,10 @@ export function ActionExportDialog({ scope = null, onClose, onBack }: {
   const pkgCounts = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of inRange) { const k = r.site || '—'; m.set(k, (m.get(k) ?? 0) + 1); }
+    /* Сонгосон багц энэ хугацаанд action-гүй бол 0 тоотойгоор үлдэнэ — шүүлт нуугдахгүй */
+    for (const k of pkgs) if (!m.has(k)) m.set(k, 0);
     return [...m.entries()].sort((p, q) => p[0].localeCompare(q[0], 'mn', { numeric: true }));
-  }, [inRange]);
+  }, [inRange, pkgs]);
   const chosen = useMemo(
     () => (pkgs.length ? inRange.filter((r) => pkgs.includes(r.site || '—')) : inRange),
     [inRange, pkgs],
@@ -215,8 +217,8 @@ export function ActionExportDialog({ scope = null, onClose, onBack }: {
               <section className={x.step}>
                 <h3 className={x.stepHead}><i>3</i>{tr('Тойм')}</h3>
                 <p className={x.note}>
-                  {tr('{0} ажил · {1} дууссан · {2} нээлттэй · {3} хугацаа хэтэрсэн · ноцтой {4} · бага зэргийн {5}',
-                    num(sum.total), num(sum.done), num(sum.open), num(sum.overdue), num(sum.major), num(sum.minor))}
+                  {tr('{0} ажил · {1} дууссан · {2} нээлттэй · {3} хугацаа хэтэрсэн · {6} дуусах хугацаагүй · ноцтой {4} · бага зэргийн {5}',
+                    num(sum.total), num(sum.done), num(sum.open), num(sum.overdue), num(sum.major), num(sum.minor), num(sum.noDue))}
                 </p>
               </section>
             </>

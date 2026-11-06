@@ -8,7 +8,7 @@ import { loadExecDeltas } from '@/lib/execPeriod';
 import type { ExecPeriod } from '@/lib/execPeriodCalc';
 import { loadProjectPlan, type ProjectPlan } from '@/lib/projectPlanInputs';
 import type { PlanNode } from '@/lib/projectPlan';
-import { loadHoRows, type Row } from '@/lib/ipc';
+import { loadHoRows, hoTotals, type Row } from '@/lib/ipc';
 import { perfRows, docRows } from '@/lib/ipcFlow';
 import { HO_IPC } from '@/lib/services';
 import { loadFinData, pkgMonthsMap, lagOf, type MonthPt } from '@/modules/Finance';
@@ -52,7 +52,6 @@ export function ipcStatusTotals(rows: readonly Row[], paid: number | null): NonN
   for (const p of perfRows(rows)) if (p.status === S.work) work += p.une ?? 0;
   let created = 0, signed = 0, paidDocs = 0;
   for (const d of docRows(rows)) {
-    if (d.isCancel) continue;
     if (d.status === S.created) created += d.total ?? 0;
     else if (d.status === S.signed) signed += d.total ?? 0;
     else if (d.status === S.paid) paidDocs += d.total ?? 0;
@@ -113,11 +112,11 @@ export async function loadAudienceInputs(period: ExecPeriod, user: string, now: 
     x,
     d: deltas,
     ...ph,
-    ipc: hoRows ? ipcStatusTotals(hoRows, x.fin.given) : null,
+    ipc: hoRows ? { ...ipcStatusTotals(hoRows, x.fin.given), advance: hoTotals(hoRows).advance, perfPaid: hoTotals(hoRows).work } : null,
     lag: fp ? lagInputs(x.prog.packs, pkgMonthsMap(fp[1])) : [],
     saad: ov ? ov.filter((o) => !o.failed).map((o) => ({ key: o.key, name: o.name, n: o.oids.length })) : null,
     hseDays: w ? [...w.detail.days].sort((a, b) => a.key.localeCompare(b.key)).map((r) => ({ key: r.key, workers: r.workers, technik: r.technik })) : null,
-    niigem: pl && !pl.empty ? niigemRows(pl).map((r) => ({ name: txt(r.ner), pct: fin(r.guitsetgel_huvi), bagts: txt(r.bagts_kod) })) : null,
+    niigem: pl && !pl.empty ? niigemRows(pl).map((r) => ({ name: txt(r.ner), pct: fin(r.guitsetgel_huvi), bagts: txt(r.bagts_kod), start: fin(r.ehleh_ognoo) })) : null,
     cashOutlook: cfRows ? cashOutlookOf(cfRows, monthKey(now)) : null,
     today: dayKey(now),
     period,

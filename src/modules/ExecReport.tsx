@@ -336,10 +336,10 @@ export function ExecReport() {
                   fmt={money}
                   items={x.gdash.byType.map((t, i) => ({
                     label: tr(t.label), value: t.cost, hot: i === 0,
-                    text: `${money(t.cost)}${t.perf == null ? '' : ` · ${pct(t.perf, 1)}`}`,
+                    text: `${money(t.cost)} · ${pct(t.perf ?? 0, 1)}`,
                   }))}
                 />
-                <Cap no="1.2">{tr('Ажлын төрлөөр (төсөв, гэрээлсэн дүн, гүйцэтгэл)')}</Cap>
+                <Cap no={period ? '1.3' : '1.2'}>{tr('Ажлын төрлөөр (төсөв, гэрээлсэн дүн, гүйцэтгэл)')}</Cap>
                 <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
                   <thead><tr><th>{tr('Төрөл')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Гэрээт')}</th><th className={r.num}>{tr('Төсөв (₮)')}</th><th className={r.num}>{tr('Гэрээлсэн (₮)')}</th><th className={r.num}>{tr('Гүйц.')}</th></tr></thead>
                   <tbody>
@@ -347,7 +347,7 @@ export function ExecReport() {
                       <tr key={t.label}>
                         <td>{tr(t.label)}</td><td className={r.num}>{num(t.n)}</td><td className={r.num}>{num(t.contracted)}</td>
                         <td className={r.num}>{num(t.cost)}</td><td className={r.num}>{t.contract > 0 ? num(t.contract) : '—'}</td>
-                        <td className={r.num}>{t.perf == null ? '—' : pct(t.perf, 1)}</td>
+                        <td className={r.num}>{pct(t.perf ?? 0, 1)}</td>
                       </tr>
                     ))}
                     <tr className={r.total}>
@@ -360,21 +360,21 @@ export function ExecReport() {
                     </tr>
                   </tbody>
                 </table></div>
-                <p className={r.note}>{tr('Нийт төсөв нь орон сууцны хороолол ба ГИШС-ийн хүрээгээр; доорх хүснэгт нь гэрээний бүх мөрийг хамарна.')}</p>
+                <p className={r.note}>{tr('Нийт төсөв нь «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт дүн; дээрх хүснэгт нь нийт төсөвт ордоггүй нийгмийн дэд бүтцийн мөрүүдийг ч хамарна.')}</p>
 
                 {x.gdash.bySource.length > 0 && (() => {
                   const srcTotal = x.gdash.bySource.reduce((a, s) => a + s.amount, 0);
                   return (
                     <>
-                      <Fig no="1.2">{tr('Захирамжийн эх үүсвэр')}</Fig>
+                      <Fig no="1.2">{tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)')}</Fig>
                       <KpiRow cols={2} items={x.gdash.bySource.map((s) => ({
                         label: tr(s.label),
                         value: money(s.amount),
-                        sub: tr('{0} · {1} ажил', srcTotal ? pct((s.amount / srcTotal) * 100, 1) : '—', num(s.n)),
+                        sub: tr('{0} · {1} мөр', srcTotal ? pct((s.amount / srcTotal) * 100, 1) : '—', num(s.n)),
                       }))} />
-                      <Cap no="1.3">{tr('Захирамжийн эх үүсвэр')}</Cap>
+                      <Cap no={period ? '1.4' : '1.3'}>{tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)')}</Cap>
                       <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
-                        <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Гэрээт')}</th><th className={r.num}>{tr('Дүн (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
+                        <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Мөр')}</th><th className={r.num}>{tr('Гэрээт ажлын эх үүсвэр (₮)')}</th><th className={r.num}>{tr('Төслийн нийт дүн (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
                         <tbody>
                           {x.gdash.bySource.map((s) => (
                             <tr key={s.label}>
@@ -388,7 +388,7 @@ export function ExecReport() {
                           <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.n, 0))}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.contracted, 0))}</td><td className={r.num}>{num(srcTotal)}</td><td className={r.num}>{srcTotal ? '100.0%' : '—'}</td></tr>
                         </tbody>
                       </table></div>
-                      <p className={r.note}>{tr('Хувь нь захирамжийн нийт дүнд эзлэх жин; захирамжийн дүн бүх ажилд бүрэн бүртгэгдээгүй тул нийт төсвөөс бага.')}</p>
+                      <p className={r.note}>{tr('«Төслийн нийт дүн» нь «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн эх үүсвэр; нийлбэр нь нийт төсөвтэй тэнцүү, хувь нь түүнд эзлэх жин. «Гэрээт ажлын эх үүсвэр» нь гэрээт ажлын мөрийн эх үүсвэрийн дүн тул «Нийт гэрээлсэн дүн»-гээс ялгаатай. «Мөр» нь эх үүсвэр бүрийн мөрийн тоо — олон эх үүсвэртэй ажил эх үүсвэр бүрд тоологдоно.')}</p>
                     </>
                   );
                 })()}
@@ -432,7 +432,7 @@ export function ExecReport() {
                         <KpiRow items={[
                           { label: tr('Ажиллаж буй хүн'), value: num(x.gdash.hse.workers) },
                           { label: tr('Техник хэрэгсэл'), value: num(x.gdash.hse.equipment) },
-                          { label: tr('Хүн цаг'), value: num(x.gdash.hse.manHours) },
+                          { label: tr('Хүн цаг (ажилтан × 8 цаг, тооцоолсон)'), value: num(x.gdash.hse.manHours) },
                         ]} />
                         <p className={r.note}>{tr('Тоо нь өдөр тутмын хуримтлал биш, сүүлийн бүртгэлийн агшны байдал.')}</p>
                       </>

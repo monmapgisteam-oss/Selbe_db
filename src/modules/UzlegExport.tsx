@@ -192,8 +192,10 @@ function UzlegExportDialog({ initialKind, scope, onClose, onAction }: {
       const c = ready.rows[i].company || '—';
       m.set(c, (m.get(c) ?? 0) + 1);
     }
+    /* Сонгосон компани энэ хугацаанд үзлэггүй бол 0 тоотойгоор үлдэнэ — шүүлт нуугдахгүй */
+    for (const c of cos) if (!m.has(c)) m.set(c, 0);
     return [...m.entries()].map(([key, n]) => ({ key, n })).sort((p, q) => q.n - p.n || p.key.localeCompare(q.key, 'mn'));
-  }, [ready, inRange]);
+  }, [ready, inRange, cos]);
   const list = useMemo(() => {
     if (!ready) return [] as number[];
     return inRange

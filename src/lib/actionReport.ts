@@ -190,17 +190,22 @@ export async function loadActionPhotos(items: readonly ActionItem[], signal?: Ab
 /* ═════════════════ Нэгтгэл ═════════════════ */
 
 export type ActionSummary = {
-  total: number; done: number; open: number; overdue: number; unknown: number; major: number; minor: number;
+  /** `noDue` — нээлттэй боловч дуусах хугацаагүй (хугацаа хэтэрсэн эсэх нь дүгнэгдэхгүй) */
+  total: number; done: number; open: number; overdue: number; noDue: number; unknown: number; major: number; minor: number;
 };
 export function summarize(items: readonly ActionItem[], now: number): ActionSummary {
-  let done = 0; let open = 0; let overdue = 0; let unknown = 0; let major = 0; let minor = 0;
+  let done = 0; let open = 0; let overdue = 0; let noDue = 0; let unknown = 0; let major = 0; let minor = 0;
   for (const x of items) {
     if (x.status == null) unknown += 1;
     else if (x.status === DONE) done += 1;
-    else { open += 1; if (x.due != null && x.due < now) overdue += 1; }
+    else {
+      open += 1;
+      if (x.due == null) noDue += 1;
+      else if (x.due < now) overdue += 1;
+    }
     if (x.sevCode === 'major') major += 1; else if (x.sevCode === 'minor') minor += 1;
   }
-  return { total: items.length, done, open, overdue, unknown, major, minor };
+  return { total: items.length, done, open, overdue, noDue, unknown, major, minor };
 }
 
 export type Bucket = { label: string; value: number; color?: string };
@@ -338,7 +343,8 @@ export function buildActionPdf(items: readonly ActionItem[], meta: ActionReportM
           [tile('Нийт үл нийцэл', String(s.total)), tile('Дууссан', `${s.done} (${pctTxt(s.done, s.total)})`, '#16a34a'),
             tile('Нээлттэй', String(s.open), '#f59e0b')],
           [tile('Хугацаа хэтэрсэн', String(s.overdue), s.overdue ? '#d62839' : INK),
-            tile('Ноцтой үл нийцэл', String(s.major), '#d62839'), tile('Бага зэргийн үл нийцэл', String(s.minor), '#ff7f0e')],
+            tile('Дуусах хугацаагүй', String(s.noDue), s.noDue ? '#f59e0b' : INK), tile('Ноцтой үл нийцэл', String(s.major), '#d62839')],
+          [tile('Бага зэргийн үл нийцэл', String(s.minor), '#ff7f0e'), { text: '' }, { text: '' }],
         ],
       },
       layout: { hLineWidth: () => 3, vLineWidth: () => 3, hLineColor: () => '#ffffff', vLineColor: () => '#ffffff' },

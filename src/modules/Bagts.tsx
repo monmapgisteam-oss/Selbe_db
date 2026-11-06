@@ -7,6 +7,7 @@ import { useMap } from '@/components/MapCanvas';
 import { Section, Note, Bars, Rows, Data } from '@/components/ui';
 import { uniqueBlocks, type Block } from '@/modules/BuildingPanel';
 import { useAsync, type Async } from '@/lib/useAsync';
+import { register } from '@/lib/dataBus';
 import { layerTotals, qtyText } from '@/lib/totals';
 import {
   BUILDING, LAYER_BY_ID, PKG_BY_BAGTS, bagtsKey, parcelOidsWhere, BLOCK_LAYER,
@@ -402,11 +403,9 @@ export function BlocksCard({
         items={p.blocks.map((b) => ({
           key: String(b.oid),
           label: b.blok || '—',
-          value: b.progress ?? null,
-          color: levelColor(b.progress),
-          display: b.progress == null
-            ? tr('мэдээлэлгүй')
-            : tr('{0}{1}', pct(b.progress, 1), b.floors ? tr(' · {0} давхар', b.floors) : ''),
+          value: b.progress ?? 0,
+          color: levelColor(b.progress ?? 0),
+          display: tr('{0}{1}', pct(b.progress ?? 0, 1), b.floors ? tr(' · {0} давхар', b.floors) : ''),
         }))}
       />
     </Section>
@@ -459,9 +458,10 @@ export function LayersCard({ p }: { p: Pack }) {
 }
 
 /* Давхарга бүрийн нийлбэрийн сесс-кэш (2026-08-21 гүйцэтгэлийн аудит):
-   нэг багцыг дахин сонгоход ижил stat-асуулгууд дахин явдаг байв. Дүн нь
-   сессийн турш тогтвортой; амжилтгүйг кэшлэхгүй. */
+   нэг багцыг дахин сонгоход ижил stat-асуулгууд дахин явдаг байв. «Шинэчлэх» ба
+   хэл солих үед цэвэрлэгдэнэ (`register`); амжилтгүйг кэшлэхгүй. */
 const pkgTotalCache = new Map<string, Promise<{ title: string; n: number; qty: string | null }>>();
+register(() => { pkgTotalCache.clear(); }, []);
 
 /** Сонгосон багцын давхарга бүрийн тоо ба хэмжээ — сонголт солигдох бүрд */
 function usePkgTotals(ids: string[]): Async<{ title: string; n: number; qty: string | null }[]> {

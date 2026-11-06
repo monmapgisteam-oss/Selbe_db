@@ -41,9 +41,10 @@ ok('хэсэг бүр svg (515pt) — chartSvg/splitSpec-тэй ижил, ₮ �
     assert.ok(svgs.every((s) => s.width === PDF_CONTENT_W));
     const js = JSON.stringify(docs[a].content);
     assert.ok(!js.includes('₮'), `${a}: ₮ үлдэв`);
+    assert.ok(!js.includes('→'), `${a}: Roboto-д байхгүй «→» үлдэв`);
     for (const s of rep.sections) {
       assert.ok(js.includes(`${s.no}. ${s.title}`.replace(/₮/g, 'төг')), `${a}: гарчиг ${s.no} алга`);
-      for (const t of s.text) assert.ok(js.includes(JSON.stringify(t.replace(/₮/g, 'төг')).slice(1, -1)), `${a}: өгүүлбэр алга — ${t}`);
+      for (const t of s.text) assert.ok(js.includes(JSON.stringify(t.replace(/₮/g, 'төг').replace(/→/g, '–')).slice(1, -1)), `${a}: өгүүлбэр алга — ${t}`);
     }
   }
 });
@@ -63,7 +64,7 @@ ok('нүүр — хүлээн авагч, гарчиг, дэд гарчиг, о�
   const c = docs.mayor.content;
   assert.equal(c[0].text, 'ХОТЫН ДАРГА');
   assert.equal(c[1].text, 'Сэлбэ ухаалаг хотын төслийн тайлан — Хотын даргад');
-  assert.equal(c[2].columns[0].text, 'Хугацаа 2026-10-01 → 2026-10-31 · Үүсгэсэн 2026-11-05 · Тэст Хэрэглэгч');
+  assert.equal(c[2].columns[0].text, 'Хугацаа 2026-10-01 – 2026-10-31 · Үүсгэсэн 2026-11-05 · Тэст Хэрэглэгч', 'Roboto-д «→» байхгүй');
   const js = JSON.stringify(c);
   assert.ok(js.includes('Автоматаар үүссэн — гараар оруулсан мэдээлэлгүй'));
   assert.ok(js.includes('"text":"31.7%","fontSize":18') && js.includes('ТӨСЛИЙН НИЙТ ЯВЦ'), 'нүүрний гол тоо');

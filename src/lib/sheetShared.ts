@@ -65,6 +65,20 @@ export function loadSheetShared(pkg: Pkg, kind: SheetKind): Promise<SharedSheet>
 /** Багцын АМЬД обьём — `null` = багцын аль нэг хуудас уншигдсангүй (дуудагч нэгтгэлийн `/190` руу буцна) */
 export type PkgObyem = { key: string; label: string } & ObyemPair;
 
+/** 2026-11-05-ны 40 хүснэгтийн (id 194–233) түр суурь мөрийн нэр — багцын ажлууд батлагдах хүртэл ганц энэ мөртэй */
+const BASE_ROW_WORK = 'Үндсэн хугацаа';
+
+/**
+ * ХУУДАС ЗӨВХӨН СУУРЬ МӨРТЭЙ ЭСЭХ (цэвэр — `sheetShared.check`): обьём бөглөгдөөгүй, төлөвлөгөөт обьёмтой мөр нь зөвхөн
+ * «Үндсэн хугацаа» (обьём 1 нь хуваарийн орлуулагч, биет хэмжигдэхүүн биш). Ийм багц обьёмын самбарт «— / 1» баганаар гардаггүй.
+ */
+export const isBaseRowSheet = (rows: readonly Pick<SheetRow, 'work' | 'vol' | 'obyem'>[]): boolean => {
+  const planned = rows.filter((r) => r.vol != null && r.vol > 0);
+  return planned.length > 0
+    && planned.every((r) => r.work.replace(/\s+/g, ' ').trim() === BASE_ROW_WORK)
+    && rows.every((r) => r.obyem.every((o) => o == null));
+};
+
 /**
  * БАГЦ БҮРИЙН ОБЬЁМ — бөглөх хуудасны СҮҮЛИЙН жаазны навч мөрүүдээс (`blockProgress.constructionObyem` · `sumObyemParts`).
  */
@@ -82,6 +96,7 @@ export const loadPkgObyem = cached<Map<string, PkgObyem | null>>(async () => {
       const sheets = (await Promise.all(g.pkgs.map((p) => loadSheetShared(p, 'variance'))))
         .filter((s) => !!s.sc.f.fillDate);
       if (!sheets.length) { out.set(key, { key, label: g.label, volume: null, volumePlan: null }); return; }
+      if (sheets.every((s) => isBaseRowSheet(s.rows))) return;
       const w = uniqueBlockCounts(sheets.map((s) => s.sc.bld));
       const sum = sumObyemParts(sheets.map((s, i) => ({ n: w[i], ...constructionObyem(s.rows, s.sc.obyem) })));
       out.set(key, { key, label: g.label, ...sum });

@@ -237,7 +237,7 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
   P.text(M + 20, 119, per ? tr('өөрчлөлт {0} → {1}', per.from, per.to) : tr('Тайлан'), { size: 12, fill: TRACK });
 
   const tiles: [string, string, string?][] = [
-    [tr('Нийт төсөв'), money(g.budget), tr('Excel-ийн нийт хамрах хүрээ')],
+    [tr('Нийт төсөв'), money(g.budget), tr('«Төсөл төлөвлөгөө биелэлт» — Төслийн нийт')],
     [tr('Нийт гэрээлсэн дүн'), money(g.contract), g.budget > 0 ? tr('төсвийн {0}', pct(g.contract / g.budget * 100, 1)) : undefined],
     [tr('Төслийн нийт явц'), pct(g.progress, 1), [tr('Нэгтгэл гүйцэтгэлээр'), g.progressPlan == null ? '' : tr('төлөвлөгөө {0}', pct(g.progressPlan, 1))].filter(Boolean).join(' · ')],
     [tr('Олгосон санхүүжилт'), money(f.given), f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1))],
@@ -271,7 +271,8 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
     if (status) cy = P.paragraph(cx, cy, cw, status, 12, late ? BAD : INK3) + 14;
     const packs = p.packs.filter((k) => k.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1));
     // Four months keep 12px percentages legible alongside names and deltas.
-    const measured = S ? S.months.map((m, i) => ({ m, i })).filter(({ i }) => S.housingActual[i] != null || S.packs.some((sp) => sp.values[i] != null)).slice(-4) : [];
+    const shownKeys = new Set(packs.map((k) => k.key));
+    const measured = S ? S.months.map((m, i) => ({ m, i })).filter(({ i }) => S.housingActual[i] != null || S.packs.some((sp) => shownKeys.has(sp.key) && sp.values[i] != null)).slice(-4) : [];
     if (S && per && measured.length) {
       cy = P.label(cx, cy, cw, tr('Сараар — хэмжилттэй сарууд, багц бүр'));
       const pick = (vals: readonly (number | null)[]) => measured.map(({ i }) => vals[i] ?? null);
@@ -283,8 +284,8 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
     } else {
       cy = P.label(cx, cy, cw, tr('Багц тус бүрийн биет гүйцэтгэл'));
       for (const k of packs) {
-        cy = P.pair(cx, cy, cw, k.name, `${pct(k.progress, 1)}${packTrendOf(deltas, k.key) ? `  ${packTrendOf(deltas, k.key)!.text}` : ''}`);
-        P.bar(cx, cy - 4, cw, k.progress == null ? null : k.progress / 100); cy += 12;
+        cy = P.pair(cx, cy, cw, k.name, `${pct(k.progress ?? 0, 1)}${packTrendOf(deltas, k.key) ? `  ${packTrendOf(deltas, k.key)!.text}` : ''}`);
+        P.bar(cx, cy - 4, cw, (k.progress ?? 0) / 100); cy += 12;
       }
       if (!packs.length) cy = P.label(cx, cy, cw, tr('мэдээлэлгүй'));
     }
@@ -336,7 +337,7 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
     const h1 = P.metric(cx, cy, hw, tr('Ажиллаж буй хүн'), num(g.hse.workers));
     const h2 = P.metric(cx + hw + 18, cy, hw, tr('Техник хэрэгсэл'), num(g.hse.equipment));
     cy = Math.max(h1, h2) + 12;
-    cy = P.pair(cx, cy, cw, tr('Хүн цаг'), num(g.hse.manHours));
+    cy = P.pair(cx, cy, cw, tr('Хүн цаг (тооцоолсон)'), num(g.hse.manHours));
     cy = P.label(cx, cy + 12, cw, tr('Тоо нь өдөр тутмын хуримтлал биш, сүүлийн бүртгэлийн агшны байдал.'));
     if (deltas) {
       cy = P.label(cx, cy + 8, cw, tr('Хугацааны өөрчлөлт'));
@@ -365,7 +366,7 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
     if (!g.byType.length) return P.label(cx, cy, cw, tr('мэдээлэлгүй'));
     for (const t of g.byType.slice(0, 7)) {
       cy = P.paragraph(cx, cy, cw - 70, tr(t.label), 13, INK2);
-      P.text(cx + cw, cy - 5, pct(t.perf, 1), { size: 13, weight: 700, anchor: 'end', maxW: 65 });
+      P.text(cx + cw, cy - 5, pct(t.perf ?? 0, 1), { size: 13, weight: 700, anchor: 'end', maxW: 65 });
       cy = P.pair(cx, cy + 3, cw, tr('Төсөв'), money(t.cost));
       cy = P.pair(cx, cy - 3, cw, tr('Гэрээ'), money(t.contract));
       P.bar(cx, cy - 2, cw, t.cost > 0 ? t.contract / t.cost : null); cy += 15;

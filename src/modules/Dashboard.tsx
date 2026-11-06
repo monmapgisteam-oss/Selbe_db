@@ -23,12 +23,12 @@ import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
   LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
-  PKG_BY_FAMILY, PKG_BY_BAGTS, PROGRESS_LEVELS, bagtsKey, cfMonthAxis, type PkgFamily,
+  PKG_BY_FAMILY, PKG_BY_BAGTS, PROGRESS_LEVELS, bagtsKey, pkgKeyOf, cfMonthAxis, type PkgFamily,
 } from '@/lib/services';
 /* (2026-08-21) analysis/config·data·costs·score импортууд `@/lib/execData` руу
    нүүсэн — үлдсэн дуудагч нь тэнд байгаа useSuitability байсан. */
 import {
-  loadFinData, lagOf, lagJudged, lagSeriesOf, pkgMonthsMap, physLatest, projectPlanScope, planScopeNote,
+  loadFinData, lagOf, lagJudged, lagSeriesOf, pkgMonthsMap, physLatest, physNowOf, projectPlanScope, planScopeNote,
   type FinData, type MonthPt,
 } from '@/modules/Finance';
 import { coverageNote } from '@/lib/planProgress';
@@ -39,7 +39,7 @@ import {
   type BlockProgressMap, type BlockHistory,
 } from '@/lib/blockProgress';
 import { sumBy, maxOf } from '@/lib/agg';
-import { loadLandStatus, statusKey, statusRawsWhere, type LandStatus } from '@/lib/land';
+import { loadLandStatus, statusKey, statusRawsWhere, parcelAreasDeduped, landuseText, PARCEL_SHAPE_AREA, type LandStatus } from '@/lib/land';
 import { cat, mnt, num, pct, shades, CAT_LIGHT, NO_DATA, km, monthKey, text } from '@/lib/format';
 import { BAGTS_ORIGIN } from '@/lib/brief';
 import {
@@ -48,6 +48,7 @@ import {
   type Headline, type SocialLive, type Budget, type PkgProgressRow,
 } from '@/lib/live';
 import { loadPkgObyem, type PkgObyem } from '@/lib/sheetShared';
+import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import o from './dashboardOv.module.css';
 import { HeadKpi, ERR_MARK, dots, hVal, FailVal, type AsyncLike, type Dots } from './HeadKpi';
@@ -158,22 +159,19 @@ function Panel({ title, note, grow, children }: {
 const BF = BUILDING.fields;
 
 /**
- * НЭГЖ ТАЛБАРЫН ТАЛБАЙ (м²) — `area`, хоосон бол `alt`; хоёулаа хоосон бол `null`.
+ * НЭГЖ ТАЛБАРЫН ТАЛБАЙ (м²) — «Нийт талбай»-тай НЭГ дүрэм (`land.parcelAreasDeduped`: полигоны нөхөлт, хуваагдсан талбар нэг удаа).
  */
-const parcelAreaOf = (r: Row, area: string, alt: string): number | null => {
-  const v = (x: unknown): number | null => {
-    if (x == null || (typeof x === 'string' && x.trim() === '')) return null;
-    const n = Number(x);
-    return Number.isFinite(n) ? n : null;
-  };
-  return v(r[area]) ?? v(r[alt]);
+const parcelAreaLookup = (rows: readonly Row[]): ((r: Row) => number | null) => {
+  const areas = parcelAreasDeduped(rows);
+  const by = new Map(rows.map((r, i) => [r, areas[i]]));
+  return (r) => by.get(r) ?? null;
 };
 const PL = PARCEL_LEFT.fields;
 
 export { useBagtsTable, useSuitability } from '@/lib/execData';
 export type { BagtsRow, SuitSummary } from '@/lib/execData';
 import { useBagtsTable, buildProgressOf, ailTotal, ailLabel, type BagtsRow } from '@/lib/execData';
-import { pkgCostWeight, cfWeightRow, contractedScope, gapPtsWord, pts as ptsFmt } from '@/lib/gdash';
+import { pkgCostWeight, cfWeightRow, contractedScope, gapPtsWord, HOUSING_PKGS, pts as ptsFmt } from '@/lib/gdash';
 
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
 
@@ -183,7 +181,7 @@ function useFinData(): Async<FinData> {
 
 const loadLeftParcels = cached<Row[]>(
   () => queryFeatures(PARCEL_LEFT.url, {
-    outFields: [PL.progress, PL.block, PL.status, PL.area, PL.areaAlt, PL.landuse, PL.note],
+    outFields: [PL.progress, PL.block, PL.status, PL.area, PL.areaAlt, PL.parcelNo, PARCEL_SHAPE_AREA, PL.landuse, PL.landuseFull, PL.note],
   }),
   SESSION_TTL_MS,
   ['PARCEL_LEFT'],
@@ -761,9 +759,13 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
   const nowYm = monthKey();
   /**
    * Багцын биет гүйцэтгэл — «одоо» хүртэлх сүүлийн бөглөгдсөн сарын утга,
-   * багцын ХО дүнгээр жигнэсэн (2026-09-30: `gdash.housingPct` — өмнө нь блокийн тоогоор).
+   * багцын ХО дүнгээр жигнэсэн (`Finance.physNowOf` — `physNow`-той НЭГ томьёо; тайлагнаагүй багц 0%).
    */
-  const pkgPct = (match: (k: string) => boolean): number | null => pkgPhys(f, match).actual;
+  const pkgPct = (match: (k: string) => boolean): number | null => {
+    if (!f) return null;
+    const keys = new Set([...f.phys.keys(), ...(f.physN?.keys() ?? [])].filter(match));
+    return physNowOf(f, keys, nowYm)?.pct ?? null;
+  };
   const overall = f ? physNow(f, nowYm) : null;
   const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
   const ail = b ? ailLabel(b) : null;
@@ -1107,7 +1109,7 @@ function EnvRight({ d }: { d: DashData }) {
             const rows = [
               { key: 'total', label: tr('Урьдчилсан төсөв'), value: bg.total },
               { key: 'order', label: tr('Захирамжаар'), value: bg.orderTotal },
-              { key: 'contract', label: tr('Гэрээ байгуулах эрх'), value: bg.contract },
+              { key: 'contract', label: tr('Гэрээ байгуулсан дүн'), value: bg.contract },
             ].filter((x) => x.value > 0);
             return rows.length ? (
               <Bars
@@ -1570,8 +1572,8 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
       </Panel>
 
 
-      {/* ТӨЛӨВЛӨГӨӨ vs ОЛГОСОН — санхүүгийн явц сараар */}
-      <Panel title={tr('Санхүүжилт — сараар')} note={tr('төлөвлөгөө · олгосон ₮')}>
+      {/* ОЛГОСОН — санхүүжилт сараар */}
+      <Panel title={tr('Санхүүжилт — сараар')} note={tr('олгосон ₮')}>
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
             const pts = (months ?? [])
@@ -1616,7 +1618,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
                 max={100}
                 items={heatBars(rows, (x) => ({
                   key: x.key,
-                  label: tr(x.key),
+                  label: tr(pkgGroupLabel(x.key)),
                   value: x.pct,
                   display: pct(x.pct, 1),
                 }))}
@@ -1657,7 +1659,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
           муруй давхарлавал хэрэглэгч аль нь аль болохыг өнгөөр л таамаглана. */}
       <Panel
         title={tr('Төлөвлөгөө vs бодит — сараар')}
-        note={srcNote(tr('төслийн биет % (ХО жинтэй)'), SRC_SHEET) + (scopeNote ? ` · ${scopeNote}` : '')}
+        note={srcNote(tr('төслийн биет % (хөрөнгө оруулалтын дүнгээр жигнэсэн)'), SRC_SHEET) + (scopeNote ? ` · ${scopeNote}` : '')}
       >
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
@@ -1686,7 +1688,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
         <Data q={fin} loading={tr('Татаж байна…')}>
           {(fd) => {
             const b = bagts.state === 'ready' ? bagts.data : null;
-            const rows = pkgLagRows(fd, (k) => b?.find((r) => r.key === k)?.label ?? k)
+            const rows = pkgLagRows(fd, (k) => b?.find((r) => r.key === k)?.label ?? pkgGroupLabel(k))
               .filter((x) => x.actual != null && x.planned != null)
               .map((x) => ({
                 key: x.key, label: x.label,
@@ -1718,7 +1720,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
           {(fd) => {
             const b = bagts.state === 'ready' ? bagts.data : null;
             const rows: { key: string; label: string; d: number }[] = [];
-            pkgLagRows(fd, (k) => b?.find((r) => r.key === k)?.label ?? k).forEach((x) => {
+            pkgLagRows(fd, (k) => b?.find((r) => r.key === k)?.label ?? pkgGroupLabel(k)).forEach((x) => {
               const ms = x.months.filter((m) => m.label <= nowYm && m.phys != null);
               if (ms.length < 2) return;
               rows.push({ key: x.key, label: x.label, d: (ms[ms.length - 1].phys as number) - (ms[ms.length - 2].phys as number) });
@@ -1816,7 +1818,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
           хоцрогдол өсөж байгаагаас дээр. */}
       <Panel
         title={tr('Хоцрогдлын өөрчлөлт — сараар')}
-        note={srcNote(tr('төл. − бодит, төслийн % (ХО жинтэй)'), SRC_SHEET) + (scopeNote ? ` · ${scopeNote}` : '')}
+        note={srcNote(tr('төл. − бодит, төслийн % (хөрөнгө оруулалтын дүнгээр жигнэсэн)'), SRC_SHEET) + (scopeNote ? ` · ${scopeNote}` : '')}
       >
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
@@ -1981,6 +1983,9 @@ function zeroBlocksByPkg(pm: BlockProgressMap, rows: readonly BagtsRow[] | null)
   });
   return byPkg;
 }
+
+/** Бөглөх хуудасны түлхүүр («СУУРИЙНХОЛБОЛТЫНАЖИЛ») → уншигдах нэр (`PKGS.group`) */
+const pkgGroupLabel = (k: string): string => PKGS.find((p) => bagtsKey(p.group) === k)?.group ?? k;
 
 /** Багц бүрийн төлөвлөгөө / бодит / хоцрогдол — `pkgLagRows`-ийн мөр */
 type PkgLagRow = {
@@ -2257,8 +2262,9 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
       <Panel title={tr('Төлөвлөгөө vs бодит — багцаар')} note={srcNote(tr('биет · хуваарийн төлөвлөгөө'), SRC_SHEET)}>
         <Data q={fin} loading={tr('Татаж байна…')}>
           {(fd) => {
+            /* Орон сууцны хэсэг — зөвхөн орон сууцны багц (хуудастай бүх багц биш) */
             const withPlan = pkgLagRows(fd, (k) => rows.find((r) => r.key === k)?.label ?? k)
-              .filter((x) => x.actual != null || x.planned != null);
+              .filter((x) => HOUSING_PKGS.includes(x.key) && (x.actual != null || x.planned != null));
             if (!withPlan.length) return <Empty label={tr('Бүртгэл хоосон байна.')} />;
             return (
               <Bars
@@ -2527,7 +2533,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                   }))}
                 />
                 <p className={o.note}>
-                  {tr('Нийт')} <b>{num(totHa, 2)} {tr('га')}</b>{tr('. Талбарын ТОО ба ТАЛБАЙ зөрдөг: үлдсэн талбарууд тоогоор их, талбайгаар бага.')}
+                  {tr('Нийт')} <b>{num(totHa, 2)} {tr('га')}</b>.
                 </p>
               </>
             );
@@ -2577,7 +2583,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               { key: 'b4', label: tr('700–1,000 м²'), min: 700, max: 1000 },
               { key: 'b5', label: tr('1,000 м²-ээс дээш'), min: 1000, max: Infinity },
             ];
-            const parcelArea = (r: Row) => parcelAreaOf(r, PL.area, PL.areaAlt);
+            const parcelArea = parcelAreaLookup(rows);
             const left = rows.filter((r) => String(r[PL.status] ?? '').trim() !== PARCEL_CLEARED);
             const counts = BUCKETS.map((b) => ({
               ...b,
@@ -2618,7 +2624,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               { key: 'f4', label: tr('700–1,000 м²'), min: 700, max: 1000 },
               { key: 'f5', label: tr('1,000 м²-ээс дээш'), min: 1000, max: Infinity },
             ];
-            const parcelArea = (r: Row) => parcelAreaOf(r, PL.area, PL.areaAlt);
+            const parcelArea = parcelAreaLookup(rows);
             const done = rows.filter((r) => String(r[PL.status] ?? '').trim() === PARCEL_CLEARED);
             const counts = BUCKETS.map((b) => ({
               ...b,
@@ -2656,7 +2662,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
               { key: 'a4', label: tr('700–1,000 м²'), min: 700, max: 1000 },
               { key: 'a5', label: tr('1,000 м²-ээс дээш'), min: 1000, max: Infinity },
             ];
-            const parcelArea = (r: Row) => parcelAreaOf(r, PL.area, PL.areaAlt);
+            const parcelArea = parcelAreaLookup(rows);
             const list = BUCKETS.map((b) => {
               const inB = rows.filter((r) => {
                 const a2 = parcelArea(r);
@@ -2687,7 +2693,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
             const m = new Map<string, number>();
             rows
               .forEach((r) => {
-                const v = String(r[PL.landuse] ?? '').trim();
+                const v = landuseText(r[PL.landuseFull], r[PL.landuse]);
                 if (!v) return;
                 m.set(v, (m.get(v) ?? 0) + 1);
               });
@@ -3916,7 +3922,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
                 items={[
                   { key: tr('1,000 хүнд ногдох дулаан'),
                     value: h == null ? dots(d.headline) : h.population > 0 ? tr('{0} МВт', num(heatMw / (h.population / 1000), 2)) : '—' },
-                  { key: tr('1 өрхөд ногдох цахилгаан'),
+                  { key: tr('1 өрхөд ногдох цахилгаан (бүх хэрэглэгчийн чадал)'),
                     value: ailT == null ? dots(d.bagts) : ailFull ? tr('{0} кВт', num((elMw * 1000) / ailFull, 2)) : '—' },
                   { key: tr('1 хүнд ногдох ус'),
                     value: h == null ? dots(d.headline) : h.population > 0 ? tr('{0} л/хоног', num((waterM3 * 1000) / h.population, 0)) : '—' },
@@ -4010,7 +4016,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
         </p>
       </Panel>
   
-      <Panel title={tr('Санхүүжилтийн эх үүсвэр (захирамжаар)')}>
+      <Panel title={tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)')}>
         {bg.sources.length <= 3 ? (
           <Donut
             items={bg.sources.map((s, i) => ({
@@ -4018,7 +4024,7 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
               color: cat(i),
               display: mnt(s.value),
             }))}
-            center={num(bg.orderTotal)}
+            center={num(bg.total)}
             centerLabel={tr('₮')}
             size="lg"
             leaders
@@ -4048,8 +4054,13 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
             }))}
           />
         )}
+        {sumBy(bg.byType, (t) => t.value) - bg.total > 0.5 && (
+          <p className={o.note}>
+            {tr('Төрлүүдийн нийлбэр нийт төсвөөс {0}-өөр их: нийт төсөвт ордоггүй мөрүүд (нийгмийн дэд бүтэц) энд орсон.', tug(sumBy(bg.byType, (t) => t.value) - bg.total))}
+          </p>
+        )}
       </Panel>
-  
+
 
       {/* ══ ХӨРӨНГӨ ОРУУЛАЛТЫН ГУРВАН НЭМЭЛТ ЗҮСЭЛТ ══
           Бүгд аль хэдийн татсан `budget`-ээс — шинэ хүсэлтгүй. */}
@@ -4085,9 +4096,12 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
           гүйлгэхэд «цөөн багц дийлэнхийг эзэлж байна уу» гэдэг харагддаггүй.
           Гурван бүлэгт хуваавал төвлөрөл нэг харцаар уншигдана: эхний гурав
           дийлэнхийг эзэлж байвал эрсдэл тэдгээрт төвлөрсөн гэсэн үг. */}
-      <Panel title={tr('Төсвийн төвлөрөл — багцаар')} note={tr('багцын задаргааны нийлбэрээс')}>
+      <Panel title={tr('Төсвийн төвлөрөл — багцаар')} note={tr('багцын задаргааны нийлбэрээс · олон багц хамарсан ба багцгүй мөрөөс бусад')}>
         {bg.byPkg.length < 3 ? <Empty label={tr('Багцын задаргаа бүртгэгдээгүй.')} /> : (() => {
-          const sorted = [...bg.byPkg].sort((a2, b2) => b2.value - a2.value);
+          /* Диапазон («БАГЦ 1- 4») ба багцгүй мөр нь багц биш — «N багц»-д ба бүлгүүдэд орвол төвлөрөл гажна */
+          const sorted = bg.byPkg
+            .filter((x) => pkgKeyOf(x.label) && x.label !== tr('Багц тодорхойлоогүй'))
+            .sort((a2, b2) => b2.value - a2.value);
           const tot = sumBy(sorted, (x) => x.value);
           if (!tot) return <Empty label={tr('Багцын задаргаа бүртгэгдээгүй.')} />;
           const slice = (from: number, to: number) => sumBy(sorted.slice(from, to), (x) => x.value);
@@ -4442,11 +4456,8 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
       <Panel title={tr('Төсөвт эзлэх нийгмийн дэд бүтэц')} note={tr('НИЙТ ба нийгмийн дэд бүтцийн төсөвт өртөгөөс')}>
         <Data q={d.budget} loading={tr('Татаж байна…')}>
           {(bg2) => {
-            const socKeys = new Set(socLayers.map((p) => p.key));
-            const socSum = sumBy(
-              bg2.byPkg.filter((b) => socKeys.has(bagtsKey(b.label))),
-              (b) => b.value,
-            );
+            /* Ажлын төрлөөс — давхаргагүй 20.6–20.9 багц ч орно («Ажлын төрлөөр» самбартай НЭГ дүн) */
+            const socSum = bg2.byType.find((t) => t.key === 'НИЙГМИЙН ДЭД БҮТЭЦ')?.value ?? 0;
             if (!bg2.total || !socSum) return <Empty label={tr('Нийгмийн багцын төсөв бүртгэгдээгүй.')} />;
             const base = bg2.total + socSum;
             const list = [

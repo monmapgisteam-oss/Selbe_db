@@ -4,7 +4,7 @@
  */
 
 import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
-import { LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF, IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM, ELEVATION_URL, HO_IPC, CASHFLOW_NEW, TUSUL_NEGTGEL, BAGTS_NEGTGEL, HABEA, layerUrl, type LayerDef, type ViewKey } from '@/lib/services';
+import { LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF, IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM, ELEVATION_URL, HO_IPC, CASHFLOW_NEW, TUSUL_NEGTGEL, BAGTS_NEGTGEL, HABEA, GUITS, layerUrl, type LayerDef, type ViewKey } from '@/lib/services';
 import { HYANALT } from '@/lib/hyanalt';
 import { URL as ZOV_URL } from '@/lib/zovshoorol';
 import { HUVAARI_OBYEM } from '@/lib/huvaariObyem';
@@ -185,6 +185,7 @@ const PURPOSE_BY_ID: Record<string, (title: string) => string> = {
   'habea:uzV11': () => tr('Ажлын байрны ХАБЭА-ын үзлэг (V1.1) — Survey123 маягт.'),
   'habea:uzG': () => tr('Гүйцэтгэгчийн хийсэн ажлын байрны үзлэг — Survey123 маягт.'),
   'habea:uzZ': () => tr('Захиалагчийн хийсэн ажлын байрны үзлэг — Survey123 маягт.'),
+  'habea:action': () => tr('Үзлэгээс гарсан үл нийцлийн арилгалт — төлөв, зэрэг, дуусах хугацаа, хариуцагч.'),
   'habea:crane': () => tr('Цамхагт краны байршил ба төлөв (одоо байгаа / буусан).'),
   'habea:buffer': () => tr('Цамхагт краны аюулгүйн бүсийн полигон.'),
   'irged:toilet': () => tr('Гэр хорооллын нүхэн жорлон — иргэдэд хүрэх үр өгөөжийн «өмнө» байдал.'),
@@ -198,6 +199,7 @@ function purposeOf(ids: string[], title: string): string {
     if (f) return f(title);
   }
   const id = ids[0] ?? '';
+  if (id.startsWith('habea:uz')) return tr('ХАБЭА-ын үзлэгийн маягт (Survey123): {0}.', title);
   if (id.startsWith('src:')) return tr('Эх үүсвэрийн байгууламж — төрлөөр шүүсэн харагдац: {0}.', title);
   if (id.startsWith('infra:')) return tr('Инженерийн шугам сүлжээний давхарга: {0}.', title);
   if (id.startsWith('pkg:')) return tr('Багцын ажлын хамрах талбай: {0}.', title);
@@ -271,6 +273,16 @@ const EXTRA_VIEWS: Record<string, ViewKey[]> = {
   'habea:uzV11': ['habea'],
   'habea:uzG': ['habea'],
   'habea:uzZ': ['habea'],
+  'habea:uzGmn': ['habea'],
+  'habea:uzEnv': ['habea'],
+  'habea:uzCold': ['habea'],
+  'habea:uzFire': ['habea'],
+  'habea:uzHazard': ['habea'],
+  'habea:uzAutocrane': ['habea'],
+  'habea:uzPump': ['habea'],
+  'habea:uzGondola': ['habea'],
+  'habea:uzTower': ['habea'],
+  'habea:action': ['habea'],
   'irged:toilet': ['irged'],
   'irged:built': ['irged'],
   'ersdel:sample': ['ersdel'],
@@ -502,9 +514,9 @@ function guitsEntries(): CatEntry[] {
     {
       id: 'obyem-batlah',
       name: tr('Инженерийн обьём батлах урсгал'),
-      service: 'Selbe_Obyem_Batlah',
-      layer: 'obyem_batlah',
-      url: null,
+      service: 'Guitsetgel_talbe',
+      layer: '193',
+      url: `${GUITS}/193`,
       kind: 'table',
       group: 'guits',
       aliases: [],
@@ -522,7 +534,6 @@ function guitsEntries(): CatEntry[] {
         { cap: 'obyemApprove', text: tr('Инженерийн обьём батлах') },
         { cap: '__obyem__', text: tr('Багцын хуваарилалт') },
       ],
-      note: () => tr('Хүснэгтийг super админы токеноор код өөрөө үүсгэнэ (createService).'),
     },
     {
       id: 'consolidated',
@@ -637,9 +648,9 @@ function huvaariEntries(): CatEntry[] {
     {
       id: 'huvaari-batlah',
       name: tr('Хуваарь батлах урсгал'),
-      service: 'Selbe_Huvaari_Batlah',
-      layer: 'huvaari_batlah',
-      url: null,
+      service: 'Guitsetgel_talbe',
+      layer: '192',
+      url: `${GUITS}/192`,
       kind: 'table',
       group: 'huvaari',
       aliases: [],
@@ -658,14 +669,13 @@ function huvaariEntries(): CatEntry[] {
         { cap: 'planApprove', text: tr('Хуваарь батлах') },
         { cap: '__huvaari__', text: tr('Багцын хуваарилалт') },
       ],
-      note: () => tr('Хүснэгтийг super админы токеноор код өөрөө үүсгэнэ (createService).'),
     },
     {
       id: 'ajil-batlah',
       name: tr('Нэмэлт ажил батлах урсгал'),
-      service: 'Selbe_Ajil_Batlah_csv',
-      layer: '219',
-      url: null,
+      service: 'Guitsetgel_talbe',
+      layer: '189',
+      url: `${GUITS}/189`,
       kind: 'table',
       group: 'huvaari',
       aliases: [],
@@ -683,7 +693,6 @@ function huvaariEntries(): CatEntry[] {
         { cap: 'ajilApprove', text: tr('Нэмэлт ажил батлах') },
         { cap: '__ajil__', text: tr('Багцын хуваарилалт') },
       ],
-      note: () => tr('Хэрэглэгч CSV-ээс нийтэлсэн — код үүсгэхгүй, зөвхөн хайж олно.'),
     },
   ];
 }
@@ -819,7 +828,7 @@ function otherEntries(): CatEntry[] {
     },
     {
       id: 'et-closed',
-      name: tr('Хуучин ерөнхий төлөвлөгөөний үйлчилгээ (ЕТ 07-21)'),
+      name: tr('Хуучин ерөнхий төлөвлөгөөний үйлчилгээ (Ерөнхий төлөвлөгөө 07-21)'),
       service: 'Selbe_ET_20260721',
       layer: null,
       url: et,

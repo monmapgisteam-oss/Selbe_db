@@ -15,11 +15,11 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, chartSourceMerged, isContracted,
-  planScopeNote,
+  planScopeNote, HOUSING_PKGS, type CfRow,
 } from '@/lib/gdash';
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
-import { loadNegtgelFull, negtgelProjectPct, type NegtgelRow, type NegtgelCalc } from '@/lib/negtgel';
+import { loadNegtgelFull, negtgelActualFailed, negtgelProjectPct, type NegtgelRow, type NegtgelCalc } from '@/lib/negtgel';
 import { loadPlanCurveCached, coverageOk } from '@/lib/planProgress';
 import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf, hoAmount, HO_IPC } from '@/lib/services';
@@ -33,6 +33,7 @@ import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
 import { loadFinance } from '@/lib/reportData';
 import { paidPctOf } from '@/lib/paidShare';
+import { loadSafetyRows, RECENT_DAYS } from '@/lib/ceo/safety';
 import { arcgisToken, relayFetch, RelayError } from '@/lib/agent/client';
 
 /* ═══════════════ Төрөл ═══════════════ */
@@ -77,6 +78,8 @@ export type ExecReport = {
     /** Бөглөгдөөгүй блок */
     noData: number;
     asOf: string;
+    /** Орон сууцны багцуудын сүүлийн хэмжилтээс хамгийн хуучин нь */
+    asOfOldest?: string;
     /** Орон сууцны биет гүйцэтгэл — ХО дүнгээр жигнэсэн (`gdash.housingPct`, 2026-09-30), одоогийн сар хүртэлх сүүлийн хэмжилт */
     actual: number | null;
     /** Хуваарийн төлөвлөгөө — `actual`-ийн хэмжилтийн огноонд завсарласан (2026-09-25) */
@@ -133,6 +136,8 @@ export type ExecReport = {
     givenUnlisted: number;
     /** Багцын мөрд ороогүй ГЭРЭЭЛСЭН дүн = `planTotal − Σ rows.plan` (2026-11-05 аудит: Багц-6.10, олон багц хамарсан ТЭЗҮ гэрээ) — Σ мөр = толгой */
     planUnlisted: number;
+    /** Багцын мөрд ороогүй ГЭРЭЭГҮЙ ажил (`execNoneUnlisted`) — хавсралтад нэрлэгдэнэ */
+    noneUnlisted?: { label: string; budget: number }[];
   };
   /** Зөвшөөрөл — үйлчилгээ холбогдоогүй бол `null` (мэдээлэлгүй ≠ 0) */
   zov: {
@@ -146,6 +151,8 @@ export type ExecReport = {
    * толгойн «Огноо» (зурсан агшин) ≠ өгөгдлийн агшин; `Tailan`-ийн `fetchedAt`-тай ижил.
    */
   fetchedAt: number;
+  /** Осол, зөрчлийн бүртгэл (`ceo/safety.loadSafetyRows`); `null` = уншигдаагүй */
+  incidents?: { ognoo: number | null; bagts: string; turul: string }[] | null;
 };
 
 /* ═══════════════ Ачаалагч ═══════════════ */
@@ -154,7 +161,7 @@ export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
   ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL']);
 
 async function loadExecReportRaw(): Promise<ExecReport> {
-  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance, wbs] = await Promise.all([
+  const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance, wbs, safety] = await Promise.all([
     loadGdashCf(),
     loadContractSum(),
     loadLandStatus(),
@@ -166,8 +173,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     loadHseNow().catch(() => null),
     loadFinance(),
     loadNegtgelFull()
-      .then((f) => ({ pct: negtgelProjectPct(f.rows, f.calc), plan: negtgelProjectPlan(f.rows, f.calc) }))
+      .then((f) => ({ pct: negtgelActualFailed(f.failed) ? null : negtgelProjectPct(f.rows, f.calc), plan: negtgelProjectPlan(f.rows, f.calc) }))
       .catch(() => null),
+    loadSafetyRows().catch(() => null),
   ]);
   const wbsPct = wbs?.pct ?? null;
 
@@ -178,6 +186,15 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   let lastM: { label: string; physAt?: string | null } | null = null;
   for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) lastM = m;
   const physAsOf = lastM ? (lastM.physAt ?? lastM.label) : '';
+  /* Орон сууцны багц бүрийн сүүлийн хэмжилтээс хамгийн хуучин нь — `physAsOf` бол зөвхөн хамгийн шинэ багцынх */
+  const physOldest = (() => {
+    let old = '';
+    for (const k of HOUSING_PKGS) {
+      const at = [...(fin.physAt?.get(k)?.values() ?? [])].filter(Boolean).sort().pop();
+      if (at && (!old || at < old)) old = at;
+    }
+    return old;
+  })();
   const lagNow = projectLagNow(fin, plan, nowYm, dayKey(Date.now()));
   const planned: number | null = lagNow.planned;
   const gap = lagNow.gap;
@@ -311,7 +328,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       blocks: lvKeys.size, households: bld.households,
       householdsMissing: bld.blocks > 0 && bld.householdsMissing >= bld.blocks ? lvKeys.size
         : householdsMissingOf(lvKeys, uniqueBlocks(bld.rows).map((b) => b.key), bld.householdsMissing),
-      noData: lvNoData, asOf: physAsOf,
+      noData: lvNoData, asOf: physAsOf, asOfOldest: physOldest,
       actual, planned, gap,
       actualLag: lagNow.actual, planExcluded: lagNow.excluded,
       planCoverage: lagNow.coverage,
@@ -342,10 +359,26 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       ranges: finRanges.ranges,
       givenUnlisted: finRanges.givenUnlisted,
       planUnlisted: Math.max(0, csum - finRows.reduce((s, r) => s + r.plan, 0)),
+      /* Гэрээтэй багцын мөр өөр мөрийг нуухгүй: «Багц 8.2» (зураг төслийн гэрээ) ба гэрээгүй «Багц-8» нэг түлхүүртэй */
+      noneUnlisted: execNoneUnlisted(cf, new Set(finRows.filter((r) => !r.contracted).map((r) => r.key))),
     },
     zov,
+    incidents: safety ? safety.map((r) => ({ ognoo: r.ognoo, bagts: r.bagts, turul: r.turul })) : null,
     fetchedAt: Date.now(),
   };
+}
+
+/**
+ * БАГЦЫН МӨРД ОРООГҮЙ ГЭРЭЭГҮЙ АЖИЛ (цэвэр — тест): газрын зургийн багц жагсаалт (`pkgFinRows`) зөвхөн давхаргатай багцыг
+ * авдаг тул диапазон нэртэй мөр («БАГЦ 1- 4»), багцгүй мөр, давхаргагүй багц («Багц-8», «БАГЦ-7.2») хавсралтаас чимээгүй
+ * алдагддаг байв. Мөнгөтэй, «Гэрээлсэн дүн» биш ажлын мөр — жагсаалтад түлхүүрээрээ ороогүй бол энд нэрлэгдэнэ.
+ */
+export function execNoneUnlisted(cf: readonly CfRow[], listed: ReadonlySet<string>): { label: string; budget: number }[] {
+  return cf
+    .filter((r) => r.isWork && !isContracted(r) && r.cost > 0
+      && ![pkgKeyOf(r.pkg2), pkgKeyOf(r.pkg)].some((k) => k && k !== '0' && listed.has(finPkgKey(k))))
+    .map((r) => ({ label: [r.pkg2 || r.pkg, r.name].filter((s) => s && s !== '0').join(' · '), budget: r.cost }))
+    .sort((a, b) => b.budget - a.budget);
 }
 
 /**
@@ -417,6 +450,12 @@ export type ExecFinding = {
  */
 export const LATE_GAP = 5;
 
+/** Хүний амь, эрүүл мэндэд ноцтой төрөл — `Habea.LIFE_RISK`-тай НЭГ дүрэм */
+const INCIDENT_SEVERE = /амь|ноцтой|үйлдвэрлэлийн/i;
+/** Ослын мөрийн нэр — «2026-10-12 · Багц-2 · Амь нас эрсдэж болзошгүй байсан осол» */
+export const incidentLabel = (r: { ognoo: number | null; bagts: string; turul: string }): string =>
+  [r.ognoo == null ? '' : dayKey(r.ognoo), r.bagts, r.turul].filter(Boolean).join(' · ');
+
 /**
  * АНХААРАХ АСУУДЛУУД — амьд тооноос үүсэх бүтэцтэй мөрүүд.
  */
@@ -449,6 +488,23 @@ export function execFindings(x: ExecReport): ExecFinding[] {
     }
   } else {
     out.push({ sev: 'info', area: A_ZOV, text: tr('Зөвшөөрлийн бүртгэл холбогдоогүй тул энэ тайланд зөвшөөрлийн мэдээлэл ороогүй.') });
+  }
+
+  /* ── Осол, зөрчил — сүүлийн 30 хоног (`ceo/safety.RECENT_DAYS`) ── */
+  const recentInc = (x.incidents ?? [])
+    .filter((r) => r.ognoo != null && r.ognoo <= x.fetchedAt && x.fetchedAt - r.ognoo <= RECENT_DAYS * 86_400_000)
+    .sort((a, b) => (b.ognoo ?? 0) - (a.ognoo ?? 0));
+  if (recentInc.length) {
+    const severe = recentInc.find((r) => INCIDENT_SEVERE.test(r.turul));
+    out.push({
+      sev: severe ? 'bad' : 'warn',
+      area: tr('Хөдөлмөрийн аюулгүй байдал'),
+      text: severe
+        ? tr('Сүүлийн {0} хоногт {1} осол, зөрчил бүртгэгдсэн; хамгийн ноцтой нь {2}.', num(RECENT_DAYS), num(recentInc.length), incidentLabel(severe))
+        : tr('Сүүлийн {0} хоногт {1} осол, зөрчил бүртгэгдсэн; хамгийн сүүлийнх нь {2}.', num(RECENT_DAYS), num(recentInc.length), incidentLabel(recentInc[0])),
+      advice: tr('Ослын шалтгааныг тодруулж, давтагдахаас сэргийлэх арга хэмжээ ба хариуцагчийг тогтоох.'),
+      items: recentInc.map(incidentLabel),
+    });
   }
 
   /* ── Санхүүжилт ── */
@@ -593,11 +649,12 @@ export function execAppendix(x: ExecReport, findings: readonly ExecFinding[]): E
       items: zero.map((r) => `${r.label} · ${r.plan > 0 ? `${num(r.plan)} ₮` : tr('гэрээний дүн бөглөгдөөгүй')}`),
     });
   }
-  if (none.length) {
+  const unlisted = x.fin.noneUnlisted ?? [];
+  if (none.length || unlisted.length) {
     out.push({
       no: out.length + 1, kind: 'finNone',
-      title: tr('Гэрээ байгуулаагүй {0} багц (төсөвт өртгөөр)', num(none.length)),
-      items: none.map((r) => `${r.label} · ${num(r.budget)} ₮`),
+      title: tr('Гэрээ байгуулаагүй {0} багц, ажил (төсөвт өртгөөр)', num(none.length + unlisted.length)),
+      items: [...none, ...unlisted].map((r) => `${r.label} · ${num(r.budget)} ₮`),
     });
   }
   for (const f of findings) {
@@ -655,7 +712,7 @@ export function execFacts(x: ExecReport): string {
   L.push(`ХАБ (сүүлийн бүртгэл ${x.gdash.hse?.date || '—'}): ${x.gdash.hse ? `ажиллаж буй хүн ${x.gdash.hse.workers ?? '—'}, техник ${x.gdash.hse.equipment ?? '—'}, хүн цаг ${x.gdash.hse.manHours ?? '—'}` : 'мэдээлэлгүй'}`);
   L.push(`Ажлын төрлөөр (төсөв / гэрээлсэн / гүйцэтгэл):`);
   const cl = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/^\s*#+\s*/, '').trim();
-  for (const t of x.gdash.byType) L.push(`- ${cl(t.label)}: ${num(t.cost)} / ${num(t.contract)} / ${t.perf == null ? '—' : pct(t.perf, 1)} (${t.n} ажил, ${t.contracted} гэрээлсэн)`);
+  for (const t of x.gdash.byType) L.push(`- ${cl(t.label)}: ${num(t.cost)} / ${num(t.contract)} / ${pct(t.perf ?? 0, 1)} (${t.n} ажил, ${t.contracted} гэрээлсэн)`);
   L.push(`## 05. Багцын гүйцэтгэл (орон сууцны барилга угсралт)`);
   const hh = x.prog.blocks > 0 && x.prog.householdsMissing >= x.prog.blocks
     ? 'мэдээлэлгүй'
@@ -668,7 +725,7 @@ export function execFacts(x: ExecReport): string {
   if (x.prog.planExcluded.length) {
     L.push(`Төлөвлөгөө ба зөрүү ЗӨВХӨН хуваарьтай багцаар (зөрүүний бодит тал ${x.prog.actualLag == null ? '—' : pct(x.prog.actualLag, 1)}); хуваарьгүй тул хасагдсан: ${x.prog.planExcluded.join(', ')}`);
   }
-  for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${p.progress == null ? 'мэдээлэлгүй' : pct(p.progress, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${householdsLabel(p)} өрх)` : ''}`);
+  for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${pct(p.progress ?? 0, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${householdsLabel(p)} өрх)` : ''}`);
   L.push(`Блокийн түвшин: ${x.prog.levels.map((l) => `${l.label} ${l.range}: ${l.n}`).join('; ')}`);
   L.push(`## 04. Багцын санхүү`);
   L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${x.fin.given == null ? 'мэдээлэлгүй' : `${num(x.fin.given)} ₮`} (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${x.fin.remain == null ? 'мэдээлэлгүй' : `${num(x.fin.remain)} ₮`}`);
@@ -693,7 +750,7 @@ const SYSTEM = `Чи «Сэлбэ ухаалаг хот» төслийн уди�
 
 ХАТУУ ДҮРЭМ:
 1. ЗӨВХӨН өгөгдсөн тоог хэрэглэ. Тоо зохиохгүй, таамаглахгүй, гаднын мэдлэг нэмэхгүй.
-2. «мэдээлэлгүй» гэсэн зүйлийг 0 гэж бүү ойлго — «мэдээлэл алга» гэж ил хэл.
+2. Гүйцэтгэлийн хэмжигдээгүй хувь 0%-иар өгөгдсөн — 0% гэж хэл. Бусад «мэдээлэлгүй» гэсэн зүйлийг 0 гэж бүү ойлго — «мэдээлэл алга» гэж ил хэл.
 3. Хувь нь өгөгдсөн хэлбэрээрээ (аравтын нэг орон) — бүхэлчлэхгүй.
 4. Бүтэц: (а) «Гол дүгнэлт» — 3–5 өгүүлбэр; (б) «Анхаарах асуудал» — хамгийн ихдээ 5 зүйл, чухлаас нь эхэлж; (в) «Санал болгох шийдвэр» — 2–4 зүйл, тус бүр нэг өгүүлбэр.
 5. Markdown ГАРЧИГ, ТОД, ХҮСНЭГТ хэрэглэхгүй — зөвхөн энгийн текст, мөр бүр «•»-ээр эхэлсэн жагсаалт. Хэсгийн нэрийг мөрийн эхэнд том үсгээр, ард нь хоёр цэг.

@@ -20,16 +20,17 @@ const isDay = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}
  */
 export function periodOf(key: ExecPeriodKey, now: number, custom?: { from?: string; to?: string }): ExecPeriod {
   const today = dayKey(now);
-  const d = new Date(now);
-  // Inclusive local calendar days, including today (also safe across DST).
-  const startOfLast = (days: number) => dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() - days + 1).getTime());
+  /* Улаанбаатарын хуанли (`dayKey`-тэй ижил); UTC үдээр хооронд нь бодож, хөтчийн бүсээс хамаарахгүй */
+  const [y, m, dd] = today.split('-').map(Number);
+  const ymdOf = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+  const startOfLast = (days: number) => ymdOf(Date.UTC(y, m - 1, dd - days + 1, 12));
   if (key === '7d') return { key, from: startOfLast(7), to: today };
-  if (key === 'thisMonth') return { key, from: dayKey(new Date(d.getFullYear(), d.getMonth(), 1).getTime()), to: today };
+  if (key === 'thisMonth') return { key, from: ymdOf(Date.UTC(y, m - 1, 1, 12)), to: today };
   if (key === 'prevMonth') {
     return {
       key,
-      from: dayKey(new Date(d.getFullYear(), d.getMonth() - 1, 1).getTime()),
-      to: dayKey(new Date(d.getFullYear(), d.getMonth(), 0).getTime()),
+      from: ymdOf(Date.UTC(y, m - 2, 1, 12)),
+      to: ymdOf(Date.UTC(y, m - 1, 0, 12)),
     };
   }
   if (key === 'custom' && isDay(custom?.from) && isDay(custom?.to) && custom.from <= custom.to) {

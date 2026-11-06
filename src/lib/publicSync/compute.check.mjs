@@ -12,7 +12,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  pubPkgCode, guitsetgelRows, sanhuuRows, hunHuchRows, niigemRows, ehUusverRows, gazarRows, PUB_TOTAL, PUB_BUILD,
+  pubPkgCode, guitsetgelRows, sanhuuRows, hunHuchRows, niigemRows, ehUusverRows, gazarRows, isPubGroupName, PUB_TOTAL, PUB_BUILD,
 } from './compute.ts';
 import { diffRows, emptyWipe } from './sync.ts';
 assert.equal(emptyWipe([{ a: 1 }], []), true, 'хоосон үр дүн хүснэгтийг хоослохгүй');
@@ -275,6 +275,12 @@ check('diffRows — зөрсөн мөр л, stamp өөрчлөлттэй мөр�
   /* тоо ↔ мөр, null ↔ '' ижил */
   const e = diffRows([{ objectid: 1, kod: '1', v: '40', w: '' }], [{ kod: '1', v: 40, w: null }], ['kod'], false, now);
   assert.equal(e.updates.length, 0);
+});
+
+check('бүлгийн мөр: суурь мөр «Үндсэн хугацаа» нийтийн хүснэгтэд гарахгүй', () => {
+  assert.equal(isPubGroupName('Үндсэн хугацаа'), false, '`14-G1` мөр гарахгүй');
+  assert.equal(isPubGroupName(''), false);
+  assert.equal(isPubGroupName('Шугам татах ажил'), true);
 });
 
 console.log(`publicSync.compute: ${n} шалгуур давлаа`);

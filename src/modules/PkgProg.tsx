@@ -639,8 +639,8 @@ export function PkgProg({ dim, setDim }: {
           <>
             <CatChart
               packs={packs}
-              housing={finQ.state === 'ready' ? physNow(finQ.data, monthKey()) : finQ.state === 'error' ? null : undefined}
-              infra={finQ.state === 'ready' ? infraPhysNow(finQ.data)?.pct ?? null : finQ.state === 'error' ? null : undefined}
+              housing={finQ.state === 'ready' ? physNow(finQ.data, monthKey()) ?? 0 : finQ.state === 'error' ? null : undefined}
+              infra={finQ.state === 'ready' ? infraPhysNow(finQ.data)?.pct ?? 0 : finQ.state === 'error' ? null : undefined}
             />
             {allPack && q.state === 'ready' && <LevelsCard pm={q.data.prog} keys={q.data.keys} ovByCat={ovByCat} />}
             {/* ТӨСЛИЙН НИЙТ давхцсан үлдсэн нэгж талбар — хэрэглэгчийн
@@ -875,7 +875,7 @@ function TsPackList({
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   flexWrap: 'wrap', justifyContent: 'flex-end',
                 }}>
-                  {execPct == null ? '—' : pct(execPct, 1)}
+                  {pct(execPct ?? 0, 1)}
                   {lvl && lag && (
                     <b
                       className={`${ts.gapBadge} ${lvl === 'red' ? ts.gapRed : ts.gapYellow}`}
@@ -923,7 +923,7 @@ function CatChart({ packs, housing, infra }: {
   packs: Pack[];
   /**
    * Орон сууцны (барилга угсралт) биет хувь — `physNow` (ХО дүнгээр жигнэсэн,
-   * `gdash.housingPct`). `undefined` = ачаалж байна («…»), `null` = мэдээлэлгүй.
+   * `gdash.housingPct`). `undefined` = ачаалж байна («…»), `null` = татагдсангүй (хэмжигдээгүй = 0%).
    */
   housing: number | null | undefined;
   infra?: number | null;
@@ -941,7 +941,7 @@ function CatChart({ packs, housing, infra }: {
       if (p.kind !== 'build') continue;
       for (const b of p.blocks) if (b.progress != null) pcts.push(b.progress);
     }
-    const mean = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
+    const mean = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : 0;
     return { c, n: list.length, mean, wait: false };
   });
   return (
@@ -957,7 +957,7 @@ function CatChart({ packs, housing, infra }: {
           label: `${r.c.name()} · ${num(r.n)}`,
           value: r.mean,
           color: cat(i),
-          display: r.wait ? '…' : r.mean == null ? tr('мэдээлэлгүй') : pct(r.mean, 1),
+          display: r.wait ? '…' : r.mean == null ? tr('татагдсангүй') : pct(r.mean, 1),
         }))}
       />
     </Section>

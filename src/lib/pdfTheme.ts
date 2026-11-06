@@ -20,7 +20,7 @@ export const AMBER = PRINT_COLORS.warn;    // --warn
 /**
  * Roboto-д байхгүй тэмдэгтийг PDF-д орлуулна.
  */
-export const T = (s: string) => s.replace(/₮/g, tr('төг'));
+export const T = (s: string) => s.replace(/₮/g, tr('төг')).replace(/→/g, '–');
 
 export const tableLayout: CustomTableLayout = {
   hLineColor: (i, node) => (i === 1 || i === node.table.body.length ? RULE2 : RULE),

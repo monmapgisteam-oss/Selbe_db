@@ -85,4 +85,21 @@ const urls = cat.map((e) => e.url).filter(Boolean).map((u) => decodeURIComponent
 const dupUrl = urls.filter((x, i) => urls.indexOf(x) !== i);
 assert.deepEqual(dupUrl, [], `нэг хаяг хоёр мөрөнд: ${dupUrl.join(', ')}`);
 
+/* 2026-11-06: батлах урсгалын хүснэгтүүд — кодын бодит хаяг; «код өөрөө үүсгэнэ» гэсэн худал тэмдэглэлгүй */
+for (const [id, layer] of [['ajil-batlah', '189'], ['huvaari-batlah', '192'], ['obyem-batlah', '193']]) {
+  const e = cat.find((x) => x.id === id);
+  assert.ok(e, `${id} алга`);
+  assert.equal(e.service, 'Guitsetgel_talbe', `${id}: хуучин үйлчилгээний нэр`);
+  assert.equal(e.layer, layer, `${id}: давхарга`);
+  assert.ok(e.url?.endsWith(`/Guitsetgel_talbe/FeatureServer/${layer}`), `${id}: хаяг ${e.url}`);
+  assert.ok(!/createService|хайж олно/.test(e.note ?? ''), `${id}: хуучин тэмдэглэл`);
+}
+/* 2026-11-06: ХАБЭА-ын 10 эх — «Хяналт» уншдаг; «ерөнхий төлөвлөгөөний давхарга» биш */
+for (const id of ['habea:action', 'habea:uzGmn', 'habea:uzEnv', 'habea:uzCold', 'habea:uzFire', 'habea:uzHazard', 'habea:uzAutocrane', 'habea:uzPump', 'habea:uzGondola', 'habea:uzTower']) {
+  const e = cat.find((x) => x.id === `lyr:${id}`);
+  assert.ok(e, `${id} каталогт алга`);
+  assert.ok(e.views.includes('habea'), `${id}: ХАБЭА харагдац алга`);
+  assert.ok(!/Ерөнхий төлөвлөгөөний давхарга/.test(e.purpose()), `${id}: ${e.purpose()}`);
+}
+
 console.log(`✓ dataCatalog: ${cat.length} мөр · LAYERS ${LAYERS.length}/${LAYERS.length} · хаалттай ${cat.filter((e) => e.closed).length}`);

@@ -21,7 +21,7 @@ import { loadLandStatus } from '@/lib/land';
 import { loadSchema, PKGS } from '@/modules/sheet/bagts.pkg';
 import { BUILDING, SELBE_PUBLIC, SOURCE_FS, buildingKey, pkgKeyOf, bagtsKey } from '@/lib/services';
 import {
-  PUBLIC_KEYS, ehUusverRows, gazarRows, guitsetgelRows, hunHuchRows, isPkgNode, niigemRows, pubPkgCode, sanhuuRows,
+  PUBLIC_KEYS, ehUusverRows, gazarRows, guitsetgelRows, hunHuchRows, isPkgNode, isPubGroupName, niigemRows, pubPkgCode, sanhuuRows,
   type PubBuilding, type PubGroup, type PubRow, type PublicTables,
 } from './compute';
 
@@ -93,7 +93,7 @@ async function loadInfraGroups(): Promise<{ groups: Map<string, PubGroup[]>; fai
         if (dayOf(r[fill]) !== dayOf(lastDay)) break;
         const name = String(r[work] ?? '').replace(/\s+/g, ' ').trim();
         const no = String((des ? r[des] : null) ?? r[sc.f.oid] ?? '').trim() || String(list.length + 1);
-        if (!name || seen.has(no)) continue;
+        if (!isPubGroupName(name) || seen.has(no)) continue;
         seen.add(no);
         const a = act ? r[act] : null;
         const p = a == null || a === '' || !Number.isFinite(Number(a)) ? null : Number(a) * 100;

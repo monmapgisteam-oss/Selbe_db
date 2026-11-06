@@ -882,9 +882,7 @@ const moneyBars = (
      */
     if (i.perf !== undefined) {
       hint.push(TIP_RULE);
-      hint.push(i.perf == null
-        ? tr('Гүйцэтгэл хэмжигдээгүй')
-        : `${tr('Бодит гүйцэтгэл')}: ${pct(i.perf, 1)}`);
+      hint.push(`${tr('Бодит гүйцэтгэл')}: ${pct(i.perf ?? 0, 1)}`);
       if (i.fin != null && (i.perf == null || Math.abs(i.fin - i.perf) > 0.05)) {
         hint.push(`${tr('Төлөвлөгөөний биелэлт')}: ${pct(i.fin, 1)}`);
       }
@@ -929,9 +927,7 @@ const countBars = (
      */
     if (i.perf !== undefined) {
       hint.push(TIP_RULE);
-      hint.push(i.perf == null
-        ? tr('Гүйцэтгэл хэмжигдээгүй')
-        : `${tr('Бодит гүйцэтгэл')}: ${pct(i.perf, 1)}`);
+      hint.push(`${tr('Бодит гүйцэтгэл')}: ${pct(i.perf ?? 0, 1)}`);
       /*
        * ТӨЛӨВЛӨГӨӨНИЙ БИЕЛЭЛТ — гэрээний амьд явцын (`gdash.CfRow.progress`, 2026-10-27; урьд `guitsetgel_huvi`) жигнэсэн дундаж.
        */
@@ -1112,10 +1108,10 @@ function FinCharts({
         </Data>
       </Section>
 
-      <Section title={tr('Захирамжийн эх үүсвэр')}>
+      <Section title={srcWhole && srcTot ? tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)') : tr('Санхүүжилтийн эх үүсвэр')}>
         <Bars
           color={BAR_HUE}
-          items={moneyBars(c3, undefined, tr('Захирамжийн нийт дүнгийн'))}
+          items={moneyBars(c3, undefined, tr('Эх үүсвэрийн нийт дүнгийн'))}
           limit={8}
           selected={onX('source')}
           onSelect={pickX('source')}
@@ -1674,7 +1670,7 @@ function PkgWorkList({
         onClick={() => setOpen((v) => !v)}
       >
         <span className={g.pkgCaret}>{open ? '▾' : '▸'}</span>
-        <span className={g.pkgTitle}>{tr('{0} багц', num(works.length))}</span>
+        <span className={g.pkgTitle}>{tr('{0} багц ажил', num(works.length))}</span>
         <span className={`${g.pkgCount} num`}>{onCount}/{works.length}</span>
       </button>
       {open && (
@@ -2014,7 +2010,7 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
                     ? tr('Нийт барилга (одоо {0} · шинэ {1})', num(existing), num(fresh))
                     : builtFailed
                       ? tr('Нийт барилга (одоо {0} · шинэ {1})', '—', '—')
-                      : tr('Нийт барилга (ЕТ)')}
+                      : tr('Нийт барилга (Ерөнхий төлөвлөгөө)')}
                   accent
                 />
                 <Stat
@@ -2057,7 +2053,7 @@ function HseCard() {
           <Stats cols={3}>
             <Stat value={num(d.workers)} label={tr('Ажиллаж буй хүн')} accent />
             <Stat value={num(d.equipment)} label={tr('Техник хэрэгсэл')} />
-            <Stat value={num(d.manHours)} label={tr('Хүн цаг')} />
+            <Stat value={num(d.manHours)} label={tr('Хүн цаг (ажилтан × 8 цаг, тооцоолсон)')} />
           </Stats>
         ))}
       </Data>
