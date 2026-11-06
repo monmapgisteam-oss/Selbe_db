@@ -35,10 +35,10 @@ assert.deepEqual(
   STATUS_LIST, Object.keys(PARCEL_STATUS_HUES),
   'маягтын төлөв нь газрын зургийн будалттай ЯГ таарах ёстой',
 );
-assert.equal(STATUS_LIST.length, 9, 'есөн төлөв — шинэ нэмэгдвэл зураг шалга');
+assert.equal(STATUS_LIST.length, 10, 'арван төлөв — шинэ нэмэгдвэл зураг шалга');
 assert.ok(STATUS_LIST.includes(PARCEL_CLEARED), `төлөв алга: ${PARCEL_CLEARED}`);
 for (const s of ['зөвшилцөх', 'гэрээлсэн', 'татгалзсан', 'үлдэх саналтай',
-  'үнийн дүн зөвшөөрөөгүй', 'маргаантай', 'дүйцүүлсэн', 'АТД']) {
+  'үнийн дүн зөвшөөрөөгүй', 'маргаантай', 'дүйцүүлсэн', 'АТД', 'цэвэрлэх']) {
   assert.ok(STATUS_LIST.includes(s), `шалтгаан алга: ${s}`);
 }
 for (const s of ['Цэвэрлэсэн нэгж талбар', 'Үлдсэн нэгж талбар']) {

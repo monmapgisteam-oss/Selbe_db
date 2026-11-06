@@ -660,6 +660,7 @@ export const PARCEL_STATUS_HUES: Record<string, string> = {
   татгалзсан: "#dc2626",
   маргаантай: "#e11d48",
   АТД: "#7c3aed",
+  цэвэрлэх: "#14b8a6",
 };
 
 export const PARCEL_PROGRESS_HUES: Record<string, string> = {
