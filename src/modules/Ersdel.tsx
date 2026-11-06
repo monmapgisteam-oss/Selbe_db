@@ -1499,8 +1499,9 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                     <>
                       <div className={e.ringBox}>
                         <Ring value={Math.min(100, (aqi / 500) * 100)} size="md"
-                          color={band.color} label={tr('АЧИ')} decimals={0} text={num(aqi)} />
+                          color={band.color} label={tr('Индекс')} decimals={0} text={num(aqi)} />
                         <p className={e.ringNote}>
+                          <span className={e.ringSub}>{tr('Агаарын чанарын индекс')}</span>
                           <b className="num">{num(aqi)}</b> <span>{band.label}</span>
                           <span className={e.ringSub}>
                             {tr('PM2.5 дундаж {0} µg/м³', num(avgOf(air, 'pm25'), 1))}
@@ -1676,7 +1677,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                   <>
                     <Stats cols={3}>
                       <Stat value={num(AIR_LEVELS[level].pm25)} unit={tr('µg/м³')} label="PM2.5" />
-                      <Stat value={num(AIR_LEVELS[level].aqi)} unit="" label={tr('АЧИ')} />
+                      <Stat value={num(AIR_LEVELS[level].aqi)} unit="" label={tr('Агаарын чанарын индекс')} />
                       <Stat value={num(AIR_LEVELS[level].inversion)} unit={tr('м')} label={tr('Инверси')} />
                       <Stat value={num(AIR_LEVELS[level].wind, 1)} unit={tr('м/с')} label={tr('Хувилбарын салхи')} />
                       <Stat value={num(AIR_LEVELS[level].plume)} unit={tr('м')} label={tr('Сэвсгэрийн суурь урт')} />

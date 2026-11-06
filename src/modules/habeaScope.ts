@@ -5,11 +5,12 @@
  * (`habeaAcl`) багц оноосон аккаунт ЗӨВХӨН тэр багцын мэдээллийг харна.
  *   · хатуу super · нэвтрэлт унтраалттай орчин · хүснэгтэд байхгүй → хязгааргүй (`null`)
  *   · хүснэгтэд байгаа → заасан багцууд
+ *   · хуваарилалт уншигдаагүй эсвэл мөр нь эвдэрсэн → юу ч биш (`[]`, бусад ACL-ийн fail-closed дүрэм)
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { AUTH, roleForUser } from '@/lib/services';
-import { hasHabeaViewer, habeaViewerScope, subscribeHabeaAcl } from '@/lib/habeaAcl';
+import { habeaAclReady, habeaRowBroken, hasHabeaViewer, habeaViewerScope, subscribeHabeaAcl } from '@/lib/habeaAcl';
 import { habeaPkgKey } from './habeaUzleg';
 
 /**
@@ -19,6 +20,7 @@ import { habeaPkgKey } from './habeaUzleg';
 export function habeaViewScope(user: string | null | undefined): string[] | null {
   if (!user || !AUTH.appId) return null;
   if (roleForUser(user) === 'super') return null;
+  if (!habeaAclReady() || habeaRowBroken(user)) return [];
   if (!hasHabeaViewer(user)) return null;
   const own = habeaViewerScope(user);
   if (own === null) return null;

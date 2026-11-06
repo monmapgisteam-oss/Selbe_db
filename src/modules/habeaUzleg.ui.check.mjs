@@ -74,7 +74,7 @@ assert.equal(weekLabel('52', true), weekLabel('52'), 'жилгүй түлхүү�
 }
 
 /* ══════════ 4b. Зэрэг талбар бүрээр · огноогүй долоо хоног (2026-10-09) ══════════ */
-assert.ok(uz.includes("const known = (f: string) => r[f] != null && r[f] !== ''"), 'sevHas: талбар бүрээр');
+assert.ok(uz.includes("const known = (f: string) => !badCnt && r[f] != null && r[f] !== ''"), 'sevHas: талбар бүрээр');
 assert.ok(uz.includes('x.sevHas[k] ? s + x[k] : s'), 'severity: зэрэг бүр өөрийн тугаар');
 assert.ok(uz.includes("week: d > 0 ? uzWeekKey(d) : ''"), 'огноогүй мөр долоо хоноггүй');
 assert.ok(uz.includes("tr('Заалтын тоо мэдэгдэхгүй')") && uz.includes("tr('({0} үзлэг тоогүй)'"), 'тоогүй үзлэг ил');
@@ -113,8 +113,55 @@ assert.ok(!habea.includes('onSaved={() => regs.retry'), 'бүртгэл хадг
   const act = readFileSync(new URL('./HabeaAction.tsx', import.meta.url), 'utf8');
   assert.ok(act.includes('useAsync(() => loadActions(), [tick], { keepOn: [tick] })'), 'HseActionPanel tick-ээр дахин татна');
   for (const part of ['left', 'right', 'fin']) {
-    assert.ok(habea.includes(`<HseActionPanel part="${part}" pkgs={pkgs} cos={cos} days={sel.day} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />`), `Habea tick дамжуулна (${part})`);
+    assert.ok(habea.includes(`<HseActionPanel part="${part}" pkgs={pkgs} cos={cos} days={sel.day} months={sel.month} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />`), `Habea tick ба сар дамжуулна (${part})`);
   }
+  assert.ok(act.includes("tr('Үл нийцэл — төлөвөөр')") && !act.includes("tr('Үл нийцэл — төрлөөр')"), 'донат нь төлөв харуулдаг — нэр нь «төлөвөөр»');
+}
+
+/* ══════════ 9. Аудит 2026-11-06 ══════════ */
+{
+  const { norm, uzValueLabel } = await import('./habeaUzleg.tsx');
+  /* «Аюулыг илрүүлэх үзлэг» — амьд objectid 67: тугууд залгагдсан 1010/101, нийт 4 → чартад орохгүй, «тоогүй» гэж ил */
+  const raw = { objectid: 67, site: 'b12', cnt_high: 1010, cnt_medium: 101, cnt_low: 0, cnt_fixed: 0, cnt_obs: 0, cnt_findings: 4 };
+  const bad = norm(raw, {}, 'hazard');
+  assert.deepEqual([bad.major, bad.minor, bad.obs, bad.conf, bad.na], [0, 0, 0, 0, 0], 'итгэмжгүй мөр нийлбэрт орохгүй');
+  assert.equal(Object.values(bad.sevHas).some(Boolean), false, '«{0} үзлэг тоогүй»-д тоологдоно');
+  const ok = norm({ ...raw, cnt_high: 2, cnt_medium: 2 }, {}, 'hazard');
+  assert.deepEqual([ok.major, ok.minor], [2, 2], 'зөв мөр хэвээр');
+  assert.equal(ok.sevHas.major, true);
+  assert.equal(norm({ objectid: 1, cnt_major: 5000 }, {}, 'v11').major, 5000, 'нийтийн талбаргүй маягт хөндөгдөхгүй');
+  /* Чипийн нэр — маягтын зэргийн нэрээр */
+  assert.notEqual(uzValueLabel('sev', 'major', 'hazard'), uzValueLabel('sev', 'major', 'v11'), 'аюулын маягтын чип «Өндөр эрсдэлтэй»');
+  assert.notEqual(uzValueLabel('sev', 'major', 'env'), uzValueLabel('sev', 'major'), 'байгаль орчин «Үл нийцэл»');
+  assert.equal(uzValueLabel('sev', 'zzz'), 'zzz');
+  assert.equal(uzValueLabel('day', '2026-01-01', 'hazard'), '2026-01-01');
+  assert.ok(habea.includes('uzValueLabel(ud, x, uzlegKind ?? undefined)'), 'Habea: маягтын төрөл дамжуулна');
+
+  /* Шинэчлэл: tick ба dataBus, хуучин мөр дэлгэцэд үлдэнэ */
+  assert.ok(uz.includes('}, [kind, tries, tick, bus]);'), 'useUzleg шинэчлэлийг дагана');
+  assert.ok(uz.includes("cur.kind === kind && cur.st.state === 'ready' ? cur :"), 'дахин таталтад мөр үлдэнэ');
+  assert.ok(habea.includes('useUzleg(uzlegKind, tick)') && habea.includes('useUzleg(dual ? DUAL2 : null, tick)'), 'Habea tick дамжуулна');
+
+  /* `_form` хаалттай аккаунт: зургийн жагсаалт эх үйлчилгээнээс */
+  assert.ok(uz.includes("postFormOrSource<{ attachmentGroups?: typeof groups }>(url, '/queryAttachments'"), 'зургийн жагсаалт');
+
+  /* Шинэчлэл унахад хуудас буухгүй — сүүлийн өгөгдөл + тайлбар */
+  assert.ok(habea.includes("qRaw.state !== 'ready' && lastHabea"), 'сүүлийн амжилттай өгөгдөл үлдэнэ');
+  assert.ok(habea.includes("tr('Шинэчилж чадсангүй — сүүлд татсан мэдээлэл харагдаж байна: {0}'"), 'тайлбар ил');
+
+  /* KPI — шүүлтээс үл хамааран нэг эх (гүйцэтгэгчийн багана) + нэгж */
+  assert.ok(!habea.includes('labor.cum') && !habea.includes('laborFiltered'), 'толгойн нийлбэр рүү салаалахгүй');
+  assert.ok(habea.includes("tr('хүн-өдөр')") && habea.includes("tr('нэгж-өдөр')"), 'KPI-н нэгж');
+
+  /* Товчлолгүй */
+  assert.ok(!habea.includes("tr('Огноогүй ХЧТА") && !habea.includes("tr('{0} ХЧТА"), 'ХЧТА товчлол UI-д алга');
+
+  /* Огнооны мужийн чип өдөр бүрийг жагсаахгүй */
+  assert.ok(habea.includes("ud === 'day' && (rangeOn || v.length > DAY_CHIP_MAX)"), 'өдрийн чип');
+
+  /* Бөглөсөн маягт Esc/ард дарахад шууд алга болохгүй */
+  const ent = readFileSync(new URL('./HabeaEntry.tsx', import.meta.url), 'utf8');
+  assert.ok(ent.includes('askConfirm(') && (ent.match(/dirty=\{/g) ?? []).length === 2, 'хоёр цонх dirty дамжуулна');
 }
 
 console.log('habeaUzleg.ui.check: OK');

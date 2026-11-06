@@ -12,8 +12,9 @@
  *     Дүн / Summary → Баталгаажуулах хэсэг; хариулт өнгөтэй, зураг НҮДЭНД шигтгэсэн.
  */
 import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
-import { arcgisPost, type Row } from '@/lib/query';
+import { arcgisPost, type ArcgisBody, type ArcgisReqOpts, type Row } from '@/lib/query';
 import { authToken, ensureFreshToken, refreshAfterTokenError } from '@/lib/authToken';
+import { HABEA } from '@/lib/services';
 
 /* ═════════════════ Метадата ═════════════════ */
 
@@ -53,11 +54,30 @@ export const cleanLabel = (s: string): string => s
   .replace(/\s+/g, ' ')
   .trim();
 
+/** Survey123-ийн `_form` харагдацын эх үйлчилгээ — `_form` биш бол өөрөө */
+export const formSource = (url: string): string => url.replace(/_form\/FeatureServer/, '/FeatureServer');
+
+/**
+ * `_form` ХАРАГДАЦ ХААЛТТАЙ АККАУНТАД ЭХ ҮЙЛЧИЛГЭЭНЭЭС (`habeaUzleg.queryFormOrSource`-ийн дүрэм) — мета, хавсралт, байршилд.
+ * Эх нь ч хаалттай бол АНХНЫ алдаа.
+ */
+export async function postFormOrSource<T extends ArcgisBody>(
+  layerUrl: string, suffix: string, params: Record<string, string>, opts?: ArcgisReqOpts,
+): Promise<T> {
+  try {
+    return await arcgisPost<T>(`${layerUrl}${suffix}`, params, opts);
+  } catch (e) {
+    const src = formSource(layerUrl);
+    if (src === layerUrl) throw e;
+    try { return await arcgisPost<T>(`${src}${suffix}`, params, opts); } catch { throw e; }
+  }
+}
+
 /** Давхаргын талбарууд (alias, домэйнтэй). Алдаа кэшлэгдэхгүй. */
 export function loadUzFields(url: string): Promise<UzField[]> {
   let p = metaCache.get(url);
   if (!p) {
-    p = arcgisPost<RawMeta>(url, { f: 'json' }, { timeoutMs: 30_000 }).then((j) => (j.fields ?? [])
+    p = postFormOrSource<RawMeta>(url, '', { f: 'json' }, { timeoutMs: 30_000 }).then((j) => (j.fields ?? [])
       .filter((f) => f.name)
       .map((f) => ({
         name: String(f.name),
@@ -137,7 +157,9 @@ export type UzReport = {
   pkg: string;
   company: string;
   score: { e: number; a: number } | null;
-  counts: Record<'major' | 'minor' | 'obs' | 'conf' | 'na', number | null>;
+  counts: Record<CntKey, number | null>;
+  /** Зэргийн нэрс маягтаар ялгаатай (`HABEA.uzleg.fieldsBy`: байгаль орчин, аюул илрүүлэх) — PDF-ийн гарчигт */
+  sevLabels: Record<CntKey, string>;
   header: [string, string][];
   sections: UzSection[];
   /** «Дүн / Summary» — `cnt_*` ба `sc_*` талбарууд дарааллаараа */
@@ -149,6 +171,37 @@ export type UzReport = {
 };
 
 export type UzAttachment = { id: number; keywords: string; contentType: string };
+
+/* ═════════════════ Маягтын зэргийн тоо (`cnt_*`) ═════════════════ */
+
+type CntKey = 'major' | 'minor' | 'obs' | 'conf' | 'na';
+
+/**
+ * МАЯГТЫН ТООН ТАЛБАРУУД — `HABEA.uzleg.fieldsBy`. Дуудагч маягтын төрлийг дамжуулдаггүй тул «major» талбараар нь танина
+ * (`cnt_nc` · `cnt_high`), эс бөгөөс ерөнхий `fields`. '' = тэр зэрэг энэ маягтад байхгүй.
+ */
+const cntFieldsOf = (has: (name: string) => boolean): Record<CntKey, string> => {
+  const m = Object.values(HABEA.uzleg.fieldsBy).find((x) => has(x.major)) ?? HABEA.uzleg.fields;
+  return { major: m.major, minor: m.minor, obs: m.obs, conf: m.conf, na: m.na };
+};
+
+/** Зэргийн нэрс — `habeaUzleg.SEV_LABELS`-тэй нэг утга; тайлан монгол хэлээр хэвлэгддэг */
+const SEV_TEXT: Readonly<Record<string, Record<CntKey, string>>> = {
+  cnt_major: { major: 'Ноцтой', minor: 'Бага зэргийн', obs: 'Ажиглалт, талбайд зассан', conf: 'Нийцсэн', na: 'Хамааралгүй' },
+  cnt_nc: { major: 'Үл нийцэл', minor: 'Бага зэргийн', obs: 'Ажиглалт, талбайд зассан', conf: 'Нийцсэн', na: 'Хамааралгүй' },
+  cnt_high: { major: 'Өндөр эрсдэлтэй', minor: 'Дунд түвшний', obs: 'Бага түвшний', conf: 'Талбайд зассан', na: 'Ажиглалт хийсэн' },
+};
+
+/**
+ * МӨРИЙН ТОО ИТГЭМЖГҮЙ ЮУ — зэргийн тоонуудын нийлбэр маягтын өөрийн нийт (`cnt_findings`, «Аюулыг илрүүлэх үзлэг»)-ээс ИХ бол.
+ * Survey123-ийн тооцоо 2 ба түүнээс олон илрүүлэлттэй мөрт тугуудыг ЗАЛГАЖ хадгалсан (1,0,1,0 → 1010; амьд objectid 67) —
+ * залгасан утга үргэлж нийтээс их тул бүгд баригдана. Нийтийн талбаргүй маягтад шалгахгүй.
+ */
+export function cntOverTotal(r: Row, names: readonly string[]): boolean {
+  const total = numOrNull(r.cnt_findings);
+  if (total == null) return false;
+  return names.reduce((s, n) => s + (n ? numOrNull(r[n]) ?? 0 : 0), 0) > total;
+}
 
 /** Хавсралт → тайлангийн зургийн лавлагаа (дуудагч `image/*`-ийг шүүнэ; HEIC тэмдэглэгээтэй) */
 export const uzPhotoRef = (a: UzAttachment, url: string): UzPhotoRef => ({
@@ -277,6 +330,9 @@ export function buildUzReport(
   },
 ): UzReport {
   const byName = new Map(fields.map((f) => [f.name, f]));
+  const cntF = cntFieldsOf((n) => byName.has(n));
+  const cntNames = Object.values(cntF);
+  const badCnt = cntOverTotal(r, cntNames);
   const answers = fields.filter((f) => isAnswerDomain(f.dom));
   const answerNames = new Set(answers.map((f) => f.name));
   /* Асуултад хамаарах талбарууд — асуултын нэрээр эхэлсэн (хамгийн урт таарлыг сонгоно) */
@@ -366,7 +422,7 @@ export function buildUzReport(
   const summary: UzReport['summary'] = [];
   fields.forEach((f, i) => {
     if (answerNames.has(f.name) || relatedNames.has(f.name) || SYSTEM_RE.test(f.name)) return;
-    if (SUMMARY_RE.test(f.name)) { summary.push({ label: f.alias, value: numOrNull(r[f.name]) }); return; }
+    if (SUMMARY_RE.test(f.name)) { summary.push({ label: f.alias, value: badCnt && cntNames.includes(f.name) ? null : numOrNull(r[f.name]) }); return; }
     if (/_other$/i.test(f.name) && byName.has(f.name.replace(/_other$/i, ''))) return;
     const t = fieldText(f, r, byName);
     if (i > lastQ && lastQ >= 0) { tail.push({ f, row: { label: f.alias, value: t, photos: [] } }); return; }
@@ -394,9 +450,13 @@ export function buildUzReport(
     signatures.splice(pos, 0, row);
   }
 
-  const cnt = (k: string) => numOrNull(r[`cnt_${k}`]);
   const all = sections.flatMap((s) => s.items);
   const tally = (c: AnsCls): number | null => (answers.length ? all.filter((x) => x.cls === c).length : null);
+  /* Маягтад байхгүй зэрэг — мэдэгдэхгүй (0 биш); итгэмжгүй мөрийн тоо — мэдэгдэхгүй (хуудастай нэг дүрэм) */
+  const cnt = (k: CntKey): number | null => {
+    if (!cntF[k] || badCnt) return null;
+    return numOrNull(r[cntF[k]]) ?? tally(k);
+  };
   const e = numOrNull(r.sc_all_earned); const a = numOrNull(r.sc_all_appl);
   const inspField = byName.get('inspector');
   const inspector = inspField ? fieldText(inspField, r, byName) : String(r.inspector ?? '').trim();
@@ -414,13 +474,8 @@ export function buildUzReport(
     pkg: meta.pkg,
     company: meta.company,
     score: e != null && a != null ? { e, a } : null,
-    counts: {
-      major: cnt('major') ?? tally('major'),
-      minor: cnt('minor') ?? tally('minor'),
-      obs: cnt('obs') ?? tally('obs'),
-      conf: cnt('conf') ?? tally('conf'),
-      na: cnt('na') ?? tally('na'),
-    },
+    counts: { major: cnt('major'), minor: cnt('minor'), obs: cnt('obs'), conf: cnt('conf'), na: cnt('na') },
+    sevLabels: SEV_TEXT[cntF.major] ?? SEV_TEXT.cnt_major,
     header,
     sections: [...sections.filter((s) => s.items.length), ...(meta.extra ?? [])],
     summary,
@@ -438,9 +493,9 @@ export async function loadUzAttachments(url: string, oids: number[]): Promise<Ma
   const out = new Map<number, UzAttachment[]>();
   for (let i = 0; i < oids.length; i += 100) {
     const chunk = oids.slice(i, i + 100);
-    const j = await arcgisPost<{
+    const j = await postFormOrSource<{
       attachmentGroups?: { parentObjectId: number; attachmentInfos?: { id: number; keywords?: string; contentType?: string }[] }[];
-    }>(`${url}/queryAttachments`, {
+    }>(url, '/queryAttachments', {
       f: 'json',
       objectIds: chunk.join(','),
       returnMetadata: 'false',
@@ -463,8 +518,8 @@ export async function loadUzLocations(url: string, oids: number[]): Promise<Map<
   try {
     for (let i = 0; i < oids.length; i += 200) {
       const chunk = oids.slice(i, i + 200);
-      const j = await arcgisPost<{ objectIdFieldName?: string; features?: { attributes?: Row; geometry?: { x?: number; y?: number } }[] }>(
-        `${url}/query`,
+      const j = await postFormOrSource<{ objectIdFieldName?: string; features?: { attributes?: Row; geometry?: { x?: number; y?: number } }[] }>(
+        url, '/query',
         { f: 'json', objectIds: chunk.join(','), outFields: 'objectid', returnGeometry: 'true', outSR: '4326' },
         { token: 'org' },
       );
@@ -550,6 +605,14 @@ const abortErr = () => new DOMException('Aborted', 'AbortError');
  * ХАВСРАЛТЫН БАЙТ — POST, токен БИЕЭР (2026-10-09).
  */
 export async function fetchAttachment(url: string, signal?: AbortSignal): Promise<Blob | null> {
+  const b = await fetchAttachmentAt(url, signal);
+  if (b) return b;
+  /* `_form` хаалттай аккаунтад — эх үйлчилгээний ижил хавсралт (`postFormOrSource`) */
+  const src = formSource(url);
+  return src === url ? null : fetchAttachmentAt(src, signal);
+}
+
+async function fetchAttachmentAt(url: string, signal?: AbortSignal): Promise<Blob | null> {
   await ensureFreshToken();
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (signal?.aborted) throw abortErr();
@@ -753,6 +816,7 @@ function reportContent(rep: UzReport, img: Map<string, UzImg>, logo: string | nu
     out.push(...blocks.slice(1));
   };
   const c = rep.counts;
+  const sl = rep.sevLabels;
   const cn = (v: number | null) => (v == null ? '—' : String(v));
   const out: Obj[] = [
     ...(logo ? [{ svg: logo, width: 150, margin: [0, 0, 0, 10], ...(first ? {} : { pageBreak: 'before' }) }] : (first ? [] : [{ text: '', pageBreak: 'before' }])),
@@ -763,8 +827,8 @@ function reportContent(rep: UzReport, img: Map<string, UzImg>, logo: string | nu
         widths: ['*', '*', '*'],
         body: [[
           { text: [{ text: 'Оноо  ', bold: true }, pctText(rep.score)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
-          { text: [{ text: 'Ноцтой  ', bold: true }, cn(c.major)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
-          { text: [{ text: 'Бага зэргийн  ', bold: true }, cn(c.minor)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
+          { text: [{ text: `${sl.major}  `, bold: true }, cn(c.major)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
+          { text: [{ text: `${sl.minor}  `, bold: true }, cn(c.minor)], fillColor: BAND, fontSize: 9.5, margin: [4, 5, 4, 5] },
         ]],
       },
       layout: 'noBorders',
@@ -774,7 +838,7 @@ function reportContent(rep: UzReport, img: Map<string, UzImg>, logo: string | nu
         widths: ['*', '*'],
         body: [
           ...rep.header.map(([k, v]) => [{ text: k, bold: true, fontSize: 9.5 }, { text: v, fontSize: 9.5, alignment: 'right', fillColor: '#f5f7fb' }]),
-          [{ text: 'Ажиглалт, талбайд зассан / Нийцсэн / Хамааралгүй', bold: true, fontSize: 9.5 }, { text: `${cn(c.obs)} / ${cn(c.conf)} / ${cn(c.na)}`, fontSize: 9.5, alignment: 'right', fillColor: '#f5f7fb' }],
+          [{ text: `${sl.obs} / ${sl.conf} / ${sl.na}`, bold: true, fontSize: 9.5 }, { text: `${cn(c.obs)} / ${cn(c.conf)} / ${cn(c.na)}`, fontSize: 9.5, alignment: 'right', fillColor: '#f5f7fb' }],
         ],
       },
       layout: { hLineWidth: () => 0.6, vLineWidth: () => 0, hLineColor: () => LINE, paddingTop: () => 5, paddingBottom: () => 5 },
@@ -783,7 +847,7 @@ function reportContent(rep: UzReport, img: Map<string, UzImg>, logo: string | nu
   ];
 
   if (flagged.length) {
-    pushWithBand(band('Үл нийцэл (Flagged items)', `Ноцтой ${cn(c.major)}, Бага зэргийн ${cn(c.minor)}`), flagged.map((it) => itemBlock(it, true)));
+    pushWithBand(band('Үл нийцэл (Flagged items)', `${sl.major} ${cn(c.major)}, ${sl.minor} ${cn(c.minor)}`), flagged.map((it) => itemBlock(it, true)));
   }
   /* Жишээ тайлангийн дагуу зургийн дугаар хэсгүүдэд дахин 1-ээс эхэлнэ */
   photoNo = 0;

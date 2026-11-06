@@ -6,6 +6,7 @@
  */
 import type { Row } from '@/lib/query';
 import { HABEA, laborCompanyFields } from '@/lib/services';
+import { ubDayKey } from '@/lib/ceo/workforce';
 
 /** Давтамжийн суурь — 1 сая хүн-цаг */
 export const RATE_BASE = 1_000_000;
@@ -227,6 +228,8 @@ export function rateByMonth(
 /**
  * БАГЦААР — хүн-цаг нь хуваарилсан ТООЦОО. Ажилтны багана БАЙХГҮЙ багцын осол
  * (`pkgOfCo`-д үгүй) давтамжгүй — `unmatched`-д тоологдоно.
+ * Хүртвэр ба хуваарь НЭГ хугацааных: багцын эхний–сүүлийн хүн-цагтай өдрийн гадуурх ба огноогүй осол (`rateByMonth`-ийн дүрэм)
+ * мөн `unmatched`-д. Хугацааны ДОТОРХ хүн-цаггүй өдрийн осол тоологдоно.
  * Эрэмбэ: давтамж буурахаар.
  */
 export function rateByPkg(
@@ -235,21 +238,30 @@ export function rateByPkg(
   pkgOfCo: ReadonlyMap<string, string>,
   labelOf: (pkgKey: string) => string,
   cos: ReadonlySet<string> | null = null,
+  dayOf: (ms: number) => string = ubDayKey,
 ): { items: RateItem[]; unmatched: number } {
   const hours = new Map<string, number>();
+  const span = new Map<string, { lo: string; hi: string }>();
   for (const day of days) {
     if (!day.byCo) continue;
+    const dk = dayOf(day.ms);
     for (const [sfx, h] of Object.entries(day.byCo)) {
       if (cos && !cos.has(sfx)) continue;
       const k = pkgOfCo.get(sfx);
       if (!k) continue;
       hours.set(k, (hours.get(k) ?? 0) + h);
+      if (!(h > 0)) continue;
+      const sp = span.get(k);
+      if (!sp) span.set(k, { lo: dk, hi: dk });
+      else { if (dk < sp.lo) sp.lo = dk; if (dk > sp.hi) sp.hi = dk; }
     }
   }
   const n = new Map<string, number>();
   let unmatched = 0;
   for (const x of incs) {
-    if (!x.bagtsK || !(hours.get(x.bagtsK) ?? 0)) { unmatched += 1; continue; }
+    const sp = x.bagtsK ? span.get(x.bagtsK) : undefined;
+    const dk = x.d > 0 ? dayOf(x.d) : '';
+    if (!sp || !dk || dk < sp.lo || dk > sp.hi) { unmatched += 1; continue; }
     n.set(x.bagtsK, (n.get(x.bagtsK) ?? 0) + 1);
   }
   const items = [...hours.entries()]

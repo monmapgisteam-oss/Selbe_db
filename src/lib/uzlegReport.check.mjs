@@ -293,4 +293,65 @@ console.log('✅ cleanLabel (entity) · rasterTypeOf (svg/html inline БИШ) ·
   assert.deepEqual(bare.get(G1).items[0].photos, [], 'хавсралтгүй дуудлага — хоосон зураг');
   console.log('✅ аюулыг илрүүлэх үзлэг — uniquerowid || globalid · илрүүлэлтийн зураг (2026-10-22)');
 }
+/* ── 2026-11-06: тоо маягтын өөрийн талбараас (`HABEA.uzleg.fieldsBy`), нэрс маягтаар, итгэмжгүй мөр хуудастай нэг дүрмээр ── */
+{
+  const { cntOverTotal } = await import('@/lib/uzlegReport.ts');
+  const M = { pkg: '', company: '', date: 0 };
+  const num = (name) => F(name, name, 'esriFieldTypeInteger');
+  const hzF = ['cnt_high', 'cnt_medium', 'cnt_low', 'cnt_fixed', 'cnt_obs', 'cnt_findings'].map(num);
+  const hzRow = { cnt_high: 2, cnt_medium: 1, cnt_low: 3, cnt_fixed: 4, cnt_obs: 5, cnt_findings: 15 };
+  const hz = buildUzReport('X', hzF, hzRow, 1, [], (id) => `u/${id}`, M);
+  assert.deepEqual(hz.counts, { major: 2, minor: 1, obs: 3, conf: 4, na: 5 }, 'аюулын маягт: cnt_high… талбараас (null биш)');
+  assert.equal(hz.sevLabels.major, 'Өндөр эрсдэлтэй');
+  assert.equal(hz.sevLabels.na, 'Ажиглалт хийсэн');
+  const envF = ['cnt_nc', 'cnt_ok', 'cnt_na'].map(num);
+  const env = buildUzReport('X', envF, { cnt_nc: 7, cnt_ok: 8, cnt_na: 9 }, 2, [], (id) => `u/${id}`, M);
+  assert.deepEqual(env.counts, { major: 7, minor: null, obs: null, conf: 8, na: 9 }, 'байгаль орчин: cnt_nc · cnt_ok; байхгүй зэрэг мэдэгдэхгүй');
+  assert.equal(env.sevLabels.major, 'Үл нийцэл');
+  assert.equal(rep.sevLabels.major, 'Ноцтой', 'бусад маягт хэвээр');
+  /* Амьд objectid 67: хөрвүүлэлтэд тугууд залгагдсан 1,0,1,0 → 1010; 0,1,0,1 → 101; нийт 4 */
+  const joined = { cnt_high: 1010, cnt_medium: 101, cnt_low: 0, cnt_fixed: 0, cnt_obs: 0, cnt_findings: 4 };
+  assert.equal(cntOverTotal(joined, ['cnt_high', 'cnt_medium', 'cnt_low', 'cnt_fixed', 'cnt_obs']), true);
+  assert.equal(cntOverTotal(hzRow, ['cnt_high', 'cnt_medium', 'cnt_low', 'cnt_fixed', 'cnt_obs']), false, 'нийлбэр = нийт — итгэмжтэй');
+  assert.equal(cntOverTotal({ cnt_major: 999 }, ['cnt_major', '']), false, 'нийтийн талбаргүй маягтад шалгахгүй');
+  const bad = buildUzReport('X', hzF, joined, 3, [], (id) => `u/${id}`, M);
+  assert.deepEqual(bad.counts, { major: null, minor: null, obs: null, conf: null, na: null }, 'итгэмжгүй мөр 1010 гэж хэвлэгдэхгүй');
+  assert.equal(bad.summary.find((x) => x.label === 'cnt_high').value, null, 'Дүн / Summary-д ч');
+  assert.equal(bad.summary.find((x) => x.label === 'cnt_findings').value, 4, 'нийт хэвээр');
+  const pdf = JSON.stringify(buildUzPdf([hz], new Map(), null).content);
+  assert.ok(pdf.includes('Өндөр эрсдэлтэй') && pdf.includes('Бага түвшний / Талбайд зассан / Ажиглалт хийсэн'), 'PDF-ийн гарчиг маягтын нэрээр');
+  assert.ok(!pdf.includes('Ноцтой'), 'аюулын маягтад «Ноцтой» гарахгүй');
+  console.log('✅ тайлангийн тоо — маягтын талбар · нэр · итгэмжгүй мөр');
+}
+
+/* ── 2026-11-06: `_form` хаалттай аккаунт — мета, хавсралт, байршил, зураг эх үйлчилгээнээс ── */
+{
+  const { formSource, fetchAttachment, loadUzAttachments, loadUzFields, loadUzLocations } = await import('@/lib/uzlegReport.ts');
+  assert.equal(formSource('https://h/rest/services/Hosted/svc_form/FeatureServer/0'), 'https://h/rest/services/Hosted/svc/FeatureServer/0');
+  assert.equal(formSource('https://h/rest/services/Hosted/svc/FeatureServer/0'), 'https://h/rest/services/Hosted/svc/FeatureServer/0');
+  const realFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (input) => {
+    const u = String(input?.url ?? input);
+    seen.push(u);
+    const json = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
+    if (u.includes('_form/')) return json({ error: { code: 403, message: 'denied' } });
+    if (u.includes('/attachments/')) return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    if (u.endsWith('/queryAttachments')) return json({ attachmentGroups: [{ parentObjectId: 5, attachmentInfos: [{ id: 7, keywords: 'k', contentType: 'image/jpeg' }] }] });
+    if (u.endsWith('/query')) return json({ objectIdFieldName: 'objectid', features: [{ attributes: { objectid: 5 }, geometry: { x: 106.9, y: 47.9 } }] });
+    return json({ fields: [{ name: 'a', alias: 'A', type: 'esriFieldTypeString' }] });
+  };
+  try {
+    const L = 'https://h.test/rest/services/Hosted/svc_form/FeatureServer/0';
+    assert.deepEqual((await loadUzFields(L)).map((x) => x.name), ['a'], 'мета');
+    assert.equal((await loadUzAttachments(L, [5])).get(5)[0].id, 7, 'хавсралтын жагсаалт');
+    assert.equal((await loadUzLocations(L, [5])).get(5), '47.900000, 106.900000', 'байршил');
+    const blob = await fetchAttachment(`${L}/5/attachments/7`);
+    assert.equal(blob?.size, 3, 'зургийн байт');
+    assert.ok(seen.some((u) => u.includes('svc/FeatureServer/0/5/attachments/7')), 'эх үйлчилгээний хаяг');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  console.log('✅ `_form` хаалттай — эх үйлчилгээнээс');
+}
 console.log('✅ uzlegReport — бүх шалгалт давлаа');

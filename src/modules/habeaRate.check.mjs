@@ -73,14 +73,25 @@ const inc = [
   const p41 = r.items.find((x) => x.key === 'P41');
   assert.ok(Math.abs(p1.hours - (300 + 1000)) < 1e-9);
   assert.ok(Math.abs(p41.hours - (700 + 1000)) < 1e-9);
-  /* P1-ийн 3 осол бүгд тоологдоно (багцаар огноо шаардахгүй) */
-  assert.equal(p1.incidents, 3);
-  assert.equal(p41.incidents, 2);
+  /* P1-ийн 3 ослоос зөвхөн хүн-цагийн хугацааны доторх 1 нь; хугацаанаас өмнөх ба огноогүй нь `unmatched`-д (`rateByMonth`-тэй ижил) */
+  assert.equal(p1.incidents, 1);
+  assert.equal(p41.incidents, 1, '09-05 нь P41-ийн сүүлийн хүн-цагтай өдрөөс (09-02) хойш');
+  assert.equal(r.unmatched, 3, 'хугацаанаас гадуурх ба огноогүй осол ил тоологдоно');
   assert.equal(p1.label, 'L-P1');
   assert.ok(r.items[0].rate >= r.items[1].rate, 'давтамж буурахаар');
   /* Ажилтны баганагүй багцын осол — давтамжгүй, `unmatched`-д */
   const r2 = rateByPkg(days, [{ d: day('2026-08-01'), bagtsK: 'P21' }], PKG_OF_CO, (k) => k);
   assert.equal(r2.unmatched, 1);
+  /* Хугацааны ДОТОРХ хүн-цаггүй өдрийн осол (2026-08-20) тоологдоно; сүүлийн өдрийн ОРОЙН осол цагаар биш өдрөөр харьцуулагдана */
+  const late = rateByPkg(days, [{ d: Date.parse('2026-09-02T23:30:00+08:00'), bagtsK: 'P1' }, { d: day('2026-09-03'), bagtsK: 'P1' }], PKG_OF_CO, (k) => k);
+  assert.equal(late.items.find((x) => x.key === 'P1').incidents, 1, 'сүүлийн өдрийн осол орно, дараагийн өдрийнх орохгүй');
+  assert.equal(late.unmatched, 1);
+  /* Багц бүр ӨӨРИЙН хугацаагаар: P2 зөвхөн 9 сард хүн-цагтай бол 8 сарын осол тоологдохгүй */
+  const d2 = hoursByDay([row('2026-08-10', 1000, 10, 0), row('2026-09-02', 2000, 10, 10)]);
+  const own = rateByPkg(d2, [{ d: day('2026-08-20'), bagtsK: 'P41' }, { d: day('2026-08-20'), bagtsK: 'P1' }], PKG_OF_CO, (k) => k);
+  assert.equal(own.items.find((x) => x.key === 'P41').incidents, 0, 'P41-ийн хүн-цаг 9 сараас');
+  assert.equal(own.items.find((x) => x.key === 'P1').incidents, 1);
+  assert.equal(own.unmatched, 1);
 }
 /* ── 2026-10-09: ТАСРАЛТГҮЙ сарын тэнхлэг — хүн-цаггүй завсрын сар `rate: null` (цоорхой, 0 биш) ── */
 {

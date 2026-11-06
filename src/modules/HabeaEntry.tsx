@@ -15,6 +15,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { HABEA } from '@/lib/services';
 import { friendlyError, Loading } from '@/components/ui';
 import { useFocusTrap } from '@/lib/useFocusTrap';
+import { askConfirm } from '@/lib/confirm';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import {
   addRegister, addWaste, entryFieldLabel, habeaEntConfigured, HabeaEntSignInRequired, HabeaLostWrite, isWeekNo, lastFullWeek, loadEntryFields,
@@ -69,17 +70,29 @@ export function AddButton({ onClick, disabled = false, note }: { onClick?: () =>
   return disabled && note ? <span title={note}>{btn}</span> : btn;
 }
 
-function Shell({ title, busy, onClose, children, foot }: {
-  title: string; busy: boolean; onClose: () => void; children: React.ReactNode; foot: React.ReactNode;
+function Shell({ title, busy, dirty, onClose, children, foot }: {
+  title: string; busy: boolean;
+  /** Бөглөсөн утга байна — Esc эсвэл ард дарахад шууд хаяхгүй, асууна */
+  dirty: boolean;
+  onClose: () => void; children: React.ReactNode; foot: React.ReactNode;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const downOnBack = useRef(false);
+  const asking = useRef(false);
   useFocusTrap(boxRef);
+  const softClose = useCallback(async () => {
+    if (!dirty) { onClose(); return; }
+    if (asking.current) return;
+    asking.current = true;
+    const yes = await askConfirm(tr('Бөглөсөн мэдээлэл хадгалагдахгүй. Хаах уу?'), { danger: true, ok: tr('Хаах') });
+    asking.current = false;
+    if (yes) onClose();
+  }, [dirty, onClose]);
   useEffect(() => {
-    const k = (ev: KeyboardEvent) => { if (ev.key === 'Escape' && !busy) onClose(); };
+    const k = (ev: KeyboardEvent) => { if (ev.key === 'Escape' && !busy) void softClose(); };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [busy, onClose]);
+  }, [busy, softClose]);
   return (
     <div
       className={x.back}
@@ -88,7 +101,7 @@ function Shell({ title, busy, onClose, children, foot }: {
       onMouseUp={(ev) => {
         const both = downOnBack.current && ev.target === ev.currentTarget;
         downOnBack.current = false;
-        if (both && !busy) onClose();
+        if (both && !busy) void softClose();
       }}
     >
       <div ref={boxRef} className={`${x.box} ${e.box}`} role="dialog" aria-modal="true" aria-label={title}>
@@ -113,6 +126,8 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
   const item = kinds.find((k) => k.key === kind) ?? kinds[0];
   const [fields, setFields] = useState<EntryField[] | null>(null);
   const [vals, setVals] = useState<Record<string, string>>({});
+  /** Ачаалахад автоматаар бөглөгдсөн утгууд (огноо · дугаар) — эдгээрээс зөрвөл хэрэглэгч бөглөсөн гэсэн үг */
+  const [initVals, setInitVals] = useState<Record<string, string>>({});
   /** Санал болгосон дугаар — хэрэглэгч өөрчлөөгүй бол хадгалахын ЯГ ӨМНӨ дахин бодно */
   const [seqHint, setSeqHint] = useState<{ name: string; value: string } | null>(null);
   const [gid, setGid] = useState(newGlobalId);
@@ -148,7 +163,7 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
           const n = await nextNumber(t, seq.name).catch(() => null);
           if (n != null) { init[seq.name] = String(n); hint = { name: seq.name, value: String(n) }; }
         }
-        if (alive) { setFields(fs); setVals(init); setSeqHint(hint); }
+        if (alive) { setFields(fs); setVals(init); setInitVals(init); setSeqHint(hint); }
       })
       .catch((ex: unknown) => { if (alive) setErr(friendlyError(ex)); });
     return () => { alive = false; };
@@ -156,6 +171,7 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
 
   const dateField = fields?.find((f) => f.type === 'date' && f.name === item?.date) ?? fields?.find((f) => f.type === 'date');
   const ok = !!fields && (!dateField || !!vals[dateField.name]);
+  const dirty = !!fields?.some((f) => (vals[f.name] ?? '') !== (initVals[f.name] ?? ''));
 
   const save = async () => {
     if (!fields || item?.table == null) return;
@@ -187,6 +203,7 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
     <Shell
       title={tr('Бүртгэл нэмэх')}
       busy={busy}
+      dirty={dirty}
       onClose={onClose}
       foot={(
         <>
@@ -316,6 +333,7 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
     <Shell
       title={tr('Хог хаягдал оруулах')}
       busy={busy}
+      dirty={Object.values(cols).some((v) => v.trim() !== '')}
       onClose={onClose}
       foot={(
         <>

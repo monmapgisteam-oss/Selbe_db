@@ -7,8 +7,13 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { scopePkgs, NO_PKG } from './habeaScope.ts';
+import { scopePkgs, NO_PKG, habeaViewScope } from './habeaScope.ts';
 import { filterUzleg, habeaPkgKey } from './habeaUzleg.tsx';
+import { AUTH } from '@/lib/services';
+
+/* ── Хуваарилалт УНШИГДААГҮЙ үед хязгаартай аккаунт бүгдийг харахгүй (синкээс ӨМНӨ — энэ файлын эхэнд) ── */
+AUTH.appId ||= 'test-app';
+assert.deepEqual(habeaViewScope('anyone'), [], 'синкгүй → юу ч биш (хязгааргүй биш)');
 
 /* ── scopePkgs ── */
 assert.deepEqual(scopePkgs([], null), [], 'хязгааргүй, сонголтгүй → шүүлтгүй');
@@ -70,4 +75,30 @@ console.log('✅ Habea: «багцаар» чартууд хүрээгээр х�
   assert.equal(A.habeaViewerScope('ball'), null, '«бүх багц» = хязгааргүй');
   assert.equal(A.hasHabeaViewer('uta'), false, 'хүснэгтэд байхгүй → хязгааргүй');
   console.log('✅ habeaAcl: заасан багц · олон багц · бүх багц · хүснэгтэд байхгүй');
+}
+
+/* ── 2026-11-06: хязгаар уншигдаагүй/эвдэрсэн бол fail-closed ── */
+{
+  const A = await import('@/lib/habeaAcl.ts');
+  A._syncRemoteHabea([
+    { user: 'Good', grants: [{ role: 'viewer', bagts: ['Багц 1'] }] },
+    { user: 'noBagts', grants: [{ role: 'viewer', bagts: [] }] },
+    { user: 'badRole', grants: [{ role: 'zzz', bagts: ['Багц 1'] }] },
+  ]);
+  assert.equal(A.habeaAclReady(), true);
+  assert.equal(A.habeaRowBroken('good'), false, 'хүчинтэй мөр');
+  assert.equal(A.habeaRowBroken('noBagts'), true, 'багцгүй мөр — хязгааргүй биш');
+  assert.equal(A.habeaRowBroken('BADROLE '), true, 'танигдаагүй үүрэг; том/жижиг үсэг, зай үл хамаарна');
+  assert.equal(A.habeaRowBroken('uta'), false, 'мөргүй аккаунт — эвдэрсэн биш');
+  assert.equal(A.habeaRowBroken(null), false);
+  assert.deepEqual(habeaViewScope('good'), [habeaPkgKey('Багц 1')], 'хүчинтэй мөр → багц');
+  assert.deepEqual(habeaViewScope('noBagts'), [], 'эвдэрсэн мөр → юу ч биш');
+  assert.deepEqual(habeaViewScope('badRole'), [], 'эвдэрсэн мөр → юу ч биш');
+  assert.equal(habeaViewScope('uta'), null, 'мөргүй аккаунт → хязгааргүй');
+  assert.equal(habeaViewScope(null), null);
+  /* Зайтай түлхүүр мөрөө алддаг (`isSpacedKey`) — угтварын дараах зайтай ч тэр аккаунт эвдэрсэн, «хязгааргүй» биш */
+  assert.equal(A.malformedHabeaUser('__habea__:Bob'), 'bob');
+  assert.equal(A.malformedHabeaUser(' __HABEA__: bob '), 'bob');
+  assert.equal(A.malformedHabeaUser('__ajil__:bob'), null);
+  console.log('✅ habeaAcl: эвдэрсэн мөр таних');
 }

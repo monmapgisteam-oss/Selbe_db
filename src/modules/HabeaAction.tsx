@@ -24,7 +24,7 @@ import { ubDayKey } from '@/lib/ceo/workforce';
 import { cleanLabel, rasterTypeOf } from '@/lib/uzlegReport';
 import h from './habea.module.css';
 import { num, pct, date } from '@/lib/format';
-import { habeaPkgKey, habeaPkgLabel, AttPhoto } from './habeaUzleg';
+import { habeaPkgKey, habeaPkgLabel, inSel, AttPhoto } from './habeaUzleg';
 
 const A = HABEA.action;
 
@@ -198,17 +198,22 @@ export function actValueLabel(dim: ActDim, key: string): string {
  * үлдэгдлийг ч агуулдаг тул тэр сонголт бусад чарт, газрын зурагт бүрэн тусна (2026-11-03).
  */
 const inWindow = (rows: readonly ActionRow[], now: number, sel?: ActSel, sc?: ActScope) => {
-  /* Хуудасны «Огноо» шүүлтүүр сонгосон бол 30 хоногийн оронд ТЭР МУЖ (2026-11-03) */
-  if (sc?.days.length) {
-    const set = new Set(sc.days);
-    return rows.filter((r) => r.d != null && r.d <= now && set.has(ubDayKey(r.d)));
+  /* Хуудасны «Огноо» шүүлтүүр (эсвэл сарын сонголт) идэвхтэй бол 30 хоногийн оронд ТЭР МУЖ (2026-11-03) */
+  if (sc?.days.length || sc?.months?.length) {
+    return rows.filter((r) => r.d != null && r.d <= now && inDates(r.d, sc));
   }
   const from = sel?.stage.length ? -Infinity : now - WINDOW_DAYS * 86_400_000;
   return rows.filter((r) => r.d != null && r.d >= from && r.d <= now);
 };
 
-/** Хуудасны шүүлтүүр (зүүн баганын Огноо · Багц · Компани) — хоосон = бүгд */
-export type ActScope = { pkgs: readonly string[]; cos: readonly string[]; days: readonly string[] };
+/** Хуудасны шүүлтүүр (зүүн баганын Огноо · Багц · Компани, бусад фокуст сонгосон сар) — хоосон = бүгд */
+export type ActScope = { pkgs: readonly string[]; cos: readonly string[]; days: readonly string[]; months?: readonly string[] };
+
+/** Хуудасны өдөр ба сарын сонголтод багтах уу (`Habea.incPass`-ийн дүрэм) */
+const inDates = (ms: number, sc: ActScope): boolean => {
+  const k = ubDayKey(ms);
+  return inSel(sc.days, k) && inSel(sc.months ?? NONE, k.slice(0, 7));
+};
 
 /** Багц · компани + сонголтоор шүүх; `skip` — тухайн чартын ӨӨРИЙН хэмжээс (шүүлтэд оруулахгүй) */
 const passes = (r: ActionRow, sc: ActScope, sel: ActSel, now: number, skip?: ActDim | 'pkg') =>
@@ -364,7 +369,7 @@ function ActionList({ rows, openOid = null }: { rows: ActionRow[]; openOid?: num
  *   fin   → өдрөөр (цуваа)
  * Ачаалагч нэг (`loadActions` кэштэй) тул гурван хэсэг нэг л хүсэлт.
  */
-export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel, onSel, now, tick, pickOid = 0, scope = null }: {
+export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = NONE, onPkg, sel, onSel, now, tick, pickOid = 0, scope = null }: {
   part: 'left' | 'right' | 'fin';
   /** Хуудасны «Багц» шүүлт (`habeaPkgKey`) — хоосон = бүгд */
   pkgs: string[];
@@ -372,6 +377,8 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel
   cos?: readonly string[];
   /** Хуудасны «Огноо» шүүлт — өдрийн түлхүүрүүд (`ubDayKey`); өгвөл 30 хоногийн цонхыг орлоно */
   days?: readonly string[];
+  /** Хуудасны сарын сонголт («YYYY-MM») — идэвхтэй чип энд ч шүүнэ */
+  months?: readonly string[];
   onPkg: (key: string) => void;
   /** Чартын хөндлөн шүүлт (`Habea`-ийн төлөв) */
   sel: ActSel;
@@ -391,7 +398,7 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel
     if (st.state !== 'ready') return null;
     const scoped = scope ? st.data.filter((r) => scope.includes(r.pkgK)) : st.data;
     const data = pickOid ? pickedRows(scoped, pickOid) : scoped;
-    const sc: ActScope = { pkgs, cos, days };
+    const sc: ActScope = { pkgs, cos, days, months };
     const all = inWindow(data, now, sel, sc);
     /** Тухайн чартын мөрүүд — өөрийн хэмжээсээс бусад бүх шүүлтээр */
     const rowsFor = (skip?: ActDim | 'pkg') => all.filter((r) => passes(r, sc, sel, now, skip));
@@ -430,9 +437,8 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel
     /* Шатлал — НЭЭЛТТЭЙ үл нийцэл үзлэгийн огнооноос хэд дэх долоо хоногтоо (30 хоногийн цонхоор БИШ — 4-р шат
        нь хуучин үлдэгдлийг ч хамарна; өдрийн сонголтыг үл тооно, өөрийн сонголтоор шүүгдэхгүй) */
     const noDay = { ...sel, day: [] };
-    const daySet = days.length ? new Set(days) : null;
     const open = data.filter((r) => r.d != null && r.d <= now && r.status !== DONE
-      && (!daySet || daySet.has(ubDayKey(r.d))) && passes(r, sc, noDay, now, 'stage'));
+      && inDates(r.d, sc) && passes(r, sc, noDay, now, 'stage'));
     const stageN = ESCALATION.map(() => 0);
     for (const r of open) stageN[stageOf(r.d ?? now, now)] += 1;
     const stageBars = ESCALATION.map((s, i) => ({
@@ -441,7 +447,7 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel
       hint: s.hint(),
     }));
     return { rows, total: rows.length, major, known: knownN, done: doneN, status, pkgBars, surveyBars, daySeries, stageBars, openN: open.length };
-  }, [st, pkgs, cos, days, sel, now, pickOid, scope]);
+  }, [st, pkgs, cos, days, months, sel, now, pickOid, scope]);
 
   if (st.state === 'loading') return <Section title={tr('Үл нийцлийн арилгалт')}><Loading /></Section>;
   if (st.state === 'error') {
@@ -455,7 +461,7 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel
 
   const donePct = view.known > 0 ? (view.done / view.known) * 100 : null;
   /** Хамрах хугацааны тайлбар — «Огноо» шүүлтүүр сонгосон бол тэр муж, эс бөгөөс 30 хоногийн цонх */
-  const span = days.length ? tr('сонгосон хугацаа') : tr('сүүлийн {0} хоног', num(WINDOW_DAYS));
+  const span = days.length || months.length ? tr('сонгосон хугацаа') : tr('сүүлийн {0} хоног', num(WINDOW_DAYS));
   if (part === 'right') {
     return (
       <>
@@ -494,7 +500,7 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, onPkg, sel
   return (
     <>
       <Section
-        title={tr('Үл нийцэл — төрлөөр')}
+        title={tr('Үл нийцэл — төлөвөөр')}
         note={`${span} · ${donePct == null ? tr('ноцтой {0}', num(view.major)) : tr('{0} дууссан', pct(donePct, 0))}`}
         tone="primary"
       >

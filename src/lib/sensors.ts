@@ -66,6 +66,11 @@ export type Metric = {
    */
   rawValid?: { min: number; max: number; lowNote?: string };
   /**
+   * ТУХАЙН МӨРИЙН ӨӨР ТАЛБАРЫН физик муж — гадуур бол энэ заалт ч МЭДРЭГЧИЙН ГЭМТЭЛ (`rawValid`-тэй ижил: цэг болохгүй, `fault`).
+   * Хөрсний мэдрэгч гэмтэхдээ чийг 654.36 ба температур −1 гэж зэрэг бичдэг; −1 нь дангаараа боломжит утга тул өөрийнхөөрөө баригддаггүй.
+   */
+  faultWith?: { field: string; min: number; max: number };
+  /**
    * Түүхий заалтыг ХАРАГДАХ утга болгох хувиргалт.
    */
   derive?: (raw: number) => number;
@@ -160,6 +165,7 @@ export const SENSORS: SensorDef[] = [
         get note() { return tr('Мэдрэгч булагдсан гүн дэх хөрсний температур.'); },
         alert: { value: 25, get note() { return tr('Үндэсний бүс хэт халсан'); } },
         valid: { min: -40, max: 80 },
+        faultWith: { field: 'payload_decoded_data_moisture', min: 0, max: 100 },
       },
       {
         key: 'electricity', get label() { return tr('Хөрсний цахилгаан дамжуулах чадал'); }, field: 'payload_decoded_data_electricity',
@@ -501,6 +507,15 @@ function summarize(
   });
 }
 
+/** Мөрийн өөр талбар мужаас гадуур уу (`Metric.faultWith`) */
+export const siblingFault = (r: Record<string, unknown>, m: Pick<Metric, 'faultWith'>): boolean => {
+  const fw = m.faultWith;
+  const v = fw ? r[fw.field] : null;
+  if (!fw || v == null || v === '') return false;
+  const x = Number(v);
+  return Number.isFinite(x) && (x < fw.min || x > fw.max);
+};
+
 /**
  * Нэг мэдрэгч — хэмжигдэхүүн ТУС БҮРД тусдаа query.
  *
@@ -516,7 +531,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
       const [rows, total] = await Promise.all([
         queryFeatures(def.url, {
           where,
-          outFields: ['received_datetime', m.field],
+          outFields: ['received_datetime', m.field, ...(m.faultWith ? [m.faultWith.field] : [])],
           orderBy: 'objectid DESC',
           limit,
         }),
@@ -534,6 +549,10 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
         if (v == null || v === '') continue;
         const raw = Number(v);
         if (!Number.isFinite(raw)) continue;
+        if (siblingFault(r, m)) {
+          if (badAt == null || t > badAt) { badAt = t; badLow = false; }
+          continue;
+        }
         if (m.rawValid && (raw < m.rawValid.min || raw > m.rawValid.max)) {
           if (badAt == null || t > badAt) { badAt = t; badLow = raw < m.rawValid.min; }
           continue;

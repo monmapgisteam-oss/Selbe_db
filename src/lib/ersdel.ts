@@ -290,7 +290,7 @@ const AIR_METRICS = [
     warn: 10, bad: 20,
   },
   {
-    key: 'aqi', get label() { return tr('АЧИ (агаарын чанарын индекс)'); }, unit: '', dp: 0,
+    key: 'aqi', get label() { return tr('Агаарын чанарын индекс'); }, unit: '', dp: 0,
     get note() { return tr('PM2.5-аас US EPA-ийн эвдрэлийн цэгээр бодов. 100-аас дээш — эмзэг бүлэгт хортой.'); },
     warn: 100, bad: 150,
   },
@@ -694,7 +694,7 @@ export const scenarioNote = (h: HazardKey, lv: LevelKey): string => {
       p.period, p.rain, p.peak, p.rise);
   }
   const p = AIR_LEVELS[lv];
-  return tr('Инверси {0} м · салхи {1} м/с · PM2.5 {2} µg/м³ · АЧИ {3} · {4} цаг үргэлжилнэ',
+  return tr('Инверси {0} м · салхи {1} м/с · PM2.5 {2} µg/м³ · агаарын чанарын индекс {3} · {4} цаг үргэлжилнэ',
     p.inversion, p.wind, p.pm25, p.aqi, p.hours);
 };
 

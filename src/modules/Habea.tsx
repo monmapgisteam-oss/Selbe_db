@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { useAsync } from '@/lib/useAsync';
+import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
 import { loadCodedMaps, codedName, type CodedMaps } from '@/lib/codedDomain';
 import {
@@ -276,10 +276,8 @@ type LaborRow = {
 function laborState(rows: Row[]): {
   rows: LaborRow[];
   asOf: number | null;
-  cum: { ajiltan: number; tehnik: number };
 } {
-  const ZERO = { ajiltan: 0, tehnik: 0 };
-  if (!rows.length) return { rows: [], asOf: null, cum: ZERO };
+  if (!rows.length) return { rows: [], asOf: null };
   const dOf = (r: Row) => nn(r[L.ognoo]) || nn(r['created_date']);
   /**
    * Survey123 дээр эхлүүлээд бөглөж дуусаагүй маягтууд `Ognoo` нь хоосон,
@@ -310,19 +308,7 @@ function laborState(rows: Row[]): {
     })
     .filter((x) => x.ajiltan > 0 || x.tehnik > 0);
 
-  /**
-   * ТӨСЛИЙН ЭХНЭЭС ХУРИМТЛАГДСАН нийлбэр — маягтын ТОЛГОЙН талбаруудаас
-   * (`Niit_ajiltan`, `Hun_tsag`, `Niit_tehnik`) бүх бүртгэлээр.
-   */
-  const cum = rows.reduce<{ ajiltan: number; tehnik: number }>(
-    (a, r) => ({
-      ajiltan: a.ajiltan + nn(r[L.niitAjiltan]),
-      tehnik: a.tehnik + nn(r[L.niitTehnik]),
-    }),
-    { ajiltan: 0, tehnik: 0 },
-  );
-
-  return { rows: comp, asOf, cum };
+  return { rows: comp, asOf };
 }
 
 
@@ -717,6 +703,16 @@ const UZ_DIM: Record<UzDim, SelDim> = {
   week: 'uzWeek', day: 'day', month: 'month',
 };
 
+/** Өдрийн чипэнд бүгдийг жагсаах дээд тоо — үүнээс олон бол эхлэл–төгсгөл */
+const DAY_CHIP_MAX = 3;
+/** Огнооны муж → «эхлэл – төгсгөл»; чартаас сонгосон олон өдөр тасралттай байж болох тул тоог нь нэмнэ */
+const dayChipValue = (days: readonly string[], range: boolean): string => {
+  let lo = days[0];
+  let hi = days[0];
+  for (const k of days) { if (k < lo) lo = k; if (k > hi) hi = k; }
+  return range ? `${lo} – ${hi}` : `${lo} – ${hi} · ${tr('{0} өдөр', num(days.length))}`;
+};
+
 /** Хүний уншиж болох нэр — идэвхтэй шүүлтийн чипэнд гарна */
 const DIM_LABEL: Record<Dim2, string> = {
   get pkg() { return tr('Багц'); },
@@ -768,7 +764,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       document.removeEventListener('visibilitychange', onShow);
     };
   }, []);
-  const q = useAsync<HabeaData>(loadHabea, [tick], { keepOn: [tick] });
+  const qRaw = useAsync<HabeaData>(loadHabea, [tick], { keepOn: [tick] });
+  /* Дахин таталт унахад хуудас буухгүй — сүүлд амжилттай татсан өгөгдөл үлдэж, KPI-н дээр тайлбар гарна (`refreshErr`) */
+  const [lastHabea, setLastHabea] = useState<HabeaData | null>(null);
+  if (qRaw.state === 'ready' && qRaw.data !== lastHabea) setLastHabea(qRaw.data);
+  const q: Async<HabeaData> = qRaw.state !== 'ready' && lastHabea
+    ? { state: 'ready', data: lastHabea, error: null, retry: qRaw.retry }
+    : qRaw;
+  const refreshErr = qRaw.state === 'error' && lastHabea ? qRaw.error : null;
   const weekKey = prevWeek(new Date(now)).start.getTime();
   /* Өмнөх долоо хоногийн оноо — (талбай × компани) нүд, шүүлт нь санах ойд. */
   const weekScores = useAsync(() => loadWeekScores(new Date(now)), [weekKey, tick], { keepOn: [tick] });
@@ -886,7 +889,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const actionFocus = focus === 'action';
   /** Газрын зургийн шүүлтэд — самбартай ижил кэштэй ачаалагч (нэг л хүсэлт) */
   const actRows = useAsync(() => (actionFocus ? loadActions() : Promise.resolve(null)), [actionFocus, tick], { keepOn: [tick] });
-  const uz = useUzleg(uzlegKind);
+  const uz = useUzleg(uzlegKind, tick);
   /**
    * ХОЁР МАЯГТ ЗЭРЭГЦЭЭ (2026-09-17, хэрэглэгчийн хүсэлт) — «Захиалагчийн
    * ажлын байрны үзлэг» фокуст зүүн талд V1.1, баруун талд захиалагчийн
@@ -896,7 +899,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const dual = uzlegKind === 'guitsetgegch';
   /** Зэрэгцээ горимын БАРУУН маягт — 2026-11-03: гүйцэтгэгчийн хоёр маягт (Хятад хэл · Барилгын талбай) */
   const DUAL2 = 'guitsetgegchMn' as const;
-  const uz2 = useUzleg(dual ? DUAL2 : null);
+  const uz2 = useUzleg(dual ? DUAL2 : null, tick);
   /** Зүүн багана агуулгатай эсэх — торны баганын тоог шийднэ */
   const listOpen = true;
   /**
@@ -1241,9 +1244,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** «Үл нийцлийн мэдээлэл» → газрын зураг: 30 хоног (эсвэл «Огноо» муж) · багц · компани · чартын сонголт (`actionWhere`) */
   const actWhere = useMemo(
     () => (actionFocus
-      ? (actionWhere(actRows.state === 'ready' ? actRows.data : null, { pkgs, cos, days: sel.day }, actSel, now) ?? (habScope ? '1=0' : null))
+      ? (actionWhere(actRows.state === 'ready' ? actRows.data : null, { pkgs, cos, days: sel.day, months: sel.month }, actSel, now) ?? (habScope ? '1=0' : null))
       : null),
-    [actionFocus, actRows, pkgs, cos, sel.day, actSel, now, habScope],
+    [actionFocus, actRows, pkgs, cos, sel.day, sel.month, actSel, now, habScope],
   );
 
   const layerWhere = useMemo(() => {
@@ -1384,13 +1387,12 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     [laborDated, habScope, pkgOfCo],
   );
   /**
-   * ХҮН ХҮЧНИЙ KPI (2026-11-04) — шүүлтгүй үед толгойн нийлбэр; шүүлттэй үед сонгосон гүйцэтгэгчийн БАГАНЫН нийлбэр
-   * (`coAll` огноог дагасан). Урьд нь шүүлт идэвхтэй бол «—» байв. Гүйцэтгэгчгүй багц → «—».
+   * ХҮН ХҮЧНИЙ KPI (2026-11-06) — ҮРГЭЛЖ гүйцэтгэгчийн БАГАНЫН нийлбэр (`coAll` огноог дагасан), шүүлттэй ч шүүлтгүй ч
+   * нэг эх: толгойн `Niit_*` компаниар задардаггүй тул шүүлт асаахад тоо үсэрч, доорх «Компаниар» чартуудтай зөрдөг байв.
+   * Гүйцэтгэгчгүй багц → «—».
    */
-  const laborFiltered = pkgs.length > 0 || cos.length > 0 || sel.day.length > 0 || sel.month.length > 0;
   const laborKpi = (k: 'ajiltan' | 'tehnik'): string => {
     if (laborFailed || coEff?.length === 0) return '—';
-    if (!laborFiltered) return num(labor.cum[k]);
     return num(coAll.filter((x) => !coEff || coEff.includes(x.key)).reduce((a, x) => a + x[k], 0));
   };
   /** ХЧТА-гүй цаг — сонгосон багц/гүйцэтгэгчийн хуваарилсан хүн-цагаар, тэдний ослоор */
@@ -1480,7 +1482,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /**
    * ШҮҮЛТҮҮРИЙН МӨРИЙН ТАЙЛБАР — хамгийн чухлыг нь ганцыг.
    */
-  const coNote = pkgs.length && !cos.length && coEff?.length === 0
+  const coNote = habScope?.length === 0
+    ? tr('ХАБЭА харах багц оноогдоогүй эсвэл эрхийн мэдээлэл уншигдсангүй')
+    : pkgs.length && !cos.length && coEff?.length === 0
     ? tr('Энэ багцад гүйцэтгэгчийн хүн хүчний бүртгэл алга')
     : (pkgEff && pkgEff.size === 0) || (coEff && coEff.length === 0)
     ? tr('Сонгосон багц ба компани таарахгүй — үр дүн хоосон')
@@ -1518,7 +1522,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const v = sel[d];
     if (v.length) {
       chips.push({
-        dim: d, label: DIM_LABEL[d], value: v.map((x) => uzValueLabel(ud, x)).join(', '),
+        dim: d, label: DIM_LABEL[d],
+        value: ud === 'day' && (rangeOn || v.length > DAY_CHIP_MAX)
+          ? dayChipValue(v, rangeOn)
+          : v.map((x) => uzValueLabel(ud, x, uzlegKind ?? undefined)).join(', '),
         clear: () => setSel((s) => ({ ...s, [d]: [] })),
       });
     }
@@ -1705,19 +1712,25 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     >
       {/* ── KPI зурвас — бүтэн өргөн, зургаан үзүүлэлт ── */}
       <div className={h.kpi}>
+        {refreshErr && (
+          <div className={h.photoNote} role="alert" style={{ gridColumn: '1 / -1' }}>
+            {tr('Шинэчилж чадсангүй — сүүлд татсан мэдээлэл харагдаж байна: {0}', friendlyError(refreshErr))}{' '}
+            {q.retry && <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>}
+          </div>
+        )}
         {q.data.failed.length > 0 && (
           <div className={h.photoNote} role="alert" style={{ gridColumn: '1 / -1' }}>
             {tr('Татагдаагүй эх: {0}', q.data.failed.join(' · '))}{' '}
             {q.retry && <button type="button" className={h.retry} onClick={q.retry}>{tr('Дахин оролдох')}</button>}
           </div>
         )}
-        {/* ── Эхний ГУРВАН үзүүлэлт нь ТӨСЛИЙН ЭХНЭЭС хуримтлагдсан нийлбэр
-            (маягтын толгойн `Niit_ajiltan` · `Hun_tsag` · `Niit_tehnik`) — бүх
-            бүртгэлээр нийлүүлсэн.
-            Толгойн талбар компаниар задардаггүй тул шүүлттэй үед гүйцэтгэгчийн баганаас (`laborKpi`, `ltiShown`). */}
+        {/* ── Эхний ГУРВАН үзүүлэлт нь ТӨСЛИЙН ЭХНЭЭС хуримтлагдсан нийлбэр — бүх бүртгэлээр нийлүүлсэн.
+            Хүн хүч, техник: өдрийн тоонуудын нийлбэр тул нэгж нь хүн-өдөр · нэгж-өдөр (`laborKpi`, гүйцэтгэгчийн баганаас);
+            цаг: толгойн `Hun_tsag`, шүүлттэй үед гүйцэтгэгчийн хуваарилсан цаг (`ltiShown`). */}
         {kpiTile(KPI_LOOK.people,
           laborKpi('ajiltan'),
           tr('Нийт ажилласан хүн хүч'),
+          laborKpi('ajiltan') === '—' ? undefined : tr('хүн-өдөр'),
         )}
         {kpiTile(KPI_LOOK.hours,
           laborFailed || incFailed || sel.day.length || sel.month.length || coEff?.length === 0 || ltiShown.hours == null ? '—' : num(ltiShown.hours),
@@ -1725,14 +1738,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           undefined,
           [
             ltiShown.undatedLti
-              ? tr('Огноогүй ХЧТА осол бүртгэгдсэн — тооцох боломжгүй')
+              ? tr('Огноогүй хөдөлмөрийн чадвар түр алдсан осол бүртгэгдсэн — тооцох боломжгүй')
               : '',
-            ltiShown.futureLti > 0 ? tr('{0} ХЧТА осол ирээдүйн огноотой — тооцоонд ороогүй', num(ltiShown.futureLti)) : '',
+            ltiShown.futureLti > 0 ? tr('{0} хөдөлмөрийн чадвар түр алдсан осол ирээдүйн огноотой — тооцоонд ороогүй', num(ltiShown.futureLti)) : '',
           ].filter(Boolean).join(' · ') || undefined,
           undefined,
           ltiShown.undatedLti,
         )}
-        {kpiTile(KPI_LOOK.tech, laborKpi('tehnik'), tr('Нийт ажилласан техникийн тоо'))}
+        {kpiTile(KPI_LOOK.tech, laborKpi('tehnik'), tr('Нийт ажилласан техникийн тоо'), laborKpi('tehnik') === '—' ? undefined : tr('нэгж-өдөр'))}
         {kpiTile(KPI_LOOK.crane,
           craneFailed ? '—' : craneUp === fCrane.length ? num(fCrane.length) : `${num(craneUp)}/${num(fCrane.length)}`,
           tr('Кран'),
@@ -1867,7 +1880,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             photos={!dual}
           />
         )}
-        {actionFocus && <HseActionPanel part="left" pkgs={pkgs} cos={cos} days={sel.day} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />}
+        {actionFocus && <HseActionPanel part="left" pkgs={pkgs} cos={cos} days={sel.day} months={sel.month} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />}
         {dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
         {dual && <UzlegPhotos st={uzF} url={HABEA.uzleg.guitsetgegch.url} sel={uzSel} />}
         {incOpen && (<>
@@ -2172,7 +2185,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         )}
 
         {uzlegKind && !dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
-        {actionFocus && <HseActionPanel part="right" pkgs={pkgs} cos={cos} days={sel.day} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />}
+        {actionFocus && <HseActionPanel part="right" pkgs={pkgs} cos={cos} days={sel.day} months={sel.month} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />}
         {dual && (<>
           <UzSrcHead title={HABEA.uzleg[DUAL2].title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID[DUAL2]].hue} />
           <UzlegLeft
@@ -2253,7 +2266,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </>)}
 
         {uzlegKind && !dual && <UzlegFin st={uzF} sel={uzSel} onPick={onUzPick} curYm={curYm} />}
-        {actionFocus && <HseActionPanel part="fin" pkgs={pkgs} cos={cos} days={sel.day} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />}
+        {actionFocus && <HseActionPanel part="fin" pkgs={pkgs} cos={cos} days={sel.day} months={sel.month} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />}
         {dual && (<>
           <div className={h.finHalf}>
             <UzSrcHead title={tr('Гүйцэтгэгчийн ажлын байрны үзлэг (Хятад хэл)')} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID.guitsetgegch].hue} />

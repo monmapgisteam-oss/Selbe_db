@@ -9,12 +9,13 @@
  * `HABEA.uzleg`). `block` нь одоогоор чартад ордоггүй.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures, queryGroup, count, sum, arcgisPost, type Row } from '@/lib/query';
 import { getAuth } from '@/lib/draftRemote';
 import { devToken } from '@/lib/authToken';
-import { attachmentFileName, fetchAttachment, rasterTypeOfBlob } from '@/lib/uzlegReport';
+import { attachmentFileName, cntOverTotal, fetchAttachment, formSource, postFormOrSource, rasterTypeOfBlob } from '@/lib/uzlegReport';
+import { dataVersion, subscribeData } from '@/lib/dataBus';
 import { HABEA, bagtsKey } from '@/lib/services';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
@@ -79,8 +80,6 @@ const UZ_OPTIONAL: ReadonlySet<string> = new Set<string>([
 const FAILED_DOMAINS: Domains = Object.freeze({}) as Domains;
 const FAILED_META: UzMeta = Object.freeze({ dom: FAILED_DOMAINS, missing: [], failed: true });
 const metaCache = new Map<string, Promise<UzMeta>>();
-/** Survey123-ийн `_form` харагдацын эх үйлчилгээ — `_form` биш бол өөрөө */
-const formSource = (url: string): string => url.replace(/_form\/FeatureServer/, '/FeatureServer');
 
 function loadDomains(url: string, kind: UzlegKind): Promise<UzMeta> {
   let p = metaCache.get(url);
@@ -269,7 +268,7 @@ export const habeaPkgLabel = (raw: string): string => (PKG2_RE.test(raw) ? tr('�
 export const habeaPkgKey = (raw: unknown): string =>
   (PKG2_RE.test(String(raw ?? '')) ? bagtsKey('Багц 2') : bagtsKey(raw));
 
-const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
+export const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
   const F = fieldsOf(kind);
   /**
    * Домэйны код → нэр; «Бусад» (`other`) сонгосон үед жинхэнэ нэр нь
@@ -283,7 +282,10 @@ const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
   };
   const site = named(F.site, F.siteOther);
   const d = nn(r[F.ognoo]);
-  const known = (f: string) => r[f] != null && r[f] !== '';
+  /* Итгэмжгүй тоотой мөр — зэрэг бүр «мэдэгдэхгүй» (чартад орохгүй, «{0} үзлэг тоогүй»-д ил тоологдоно) */
+  const badCnt = cntOverTotal(r, [F.major, F.minor, F.obs, F.conf, F.na]);
+  const known = (f: string) => !badCnt && r[f] != null && r[f] !== '';
+  const cntOf = (f: string) => (badCnt ? 0 : nn(r[f]));
   const sevHas: Record<SevKey, boolean> = {
     major: known(F.major), minor: known(F.minor), obs: known(F.obs), conf: known(F.conf), na: known(F.na),
   };
@@ -303,11 +305,11 @@ const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
     d,
     sevKnown,
     sevHas,
-    major: nn(r[F.major]),
-    minor: nn(r[F.minor]),
-    obs: nn(r[F.obs]),
-    conf: nn(r[F.conf]),
-    na: nn(r[F.na]),
+    major: cntOf(F.major),
+    minor: cntOf(F.minor),
+    obs: cntOf(F.obs),
+    conf: cntOf(F.conf),
+    na: cntOf(F.na),
   };
 };
 
@@ -644,18 +646,12 @@ export function uzPickRows(r: UzlegRow): [string, string][] {
   return rows.filter(([, v]) => v !== '—');
 }
 
-export const uzValueLabel = (d: UzDim, v: string): string => {
+export const uzValueLabel = (d: UzDim, v: string, kind?: UzlegKind): string => {
   /* Долоо хоног нь КОДООР (`w3`) хадгалагдана — чипэнд хүний нэрээр. */
   if (d === 'week') return weekLabel(v, true);
   if (d !== 'sev') return v;
-  const m: Record<string, string> = {
-    major: tr('Ноцтой үл нийцэл'),
-    minor: tr('Бага зэргийн үл нийцэл'),
-    obs: tr('Ажиглалт'),
-    conf: tr('Нийцсэн'),
-    na: tr('Хамааралгүй'),
-  };
-  return m[v] ?? v;
+  /* Зэргийн нэр маягтаар ялгаатай (`SEV_LABELS`) — чип нь донатын нэртэй ижил */
+  return (SEV_KEYS as readonly string[]).includes(v) ? sevLabel(kind, v as SevKey) : v;
 };
 
 const SEV_OF: Record<string, (x: UzlegRow) => number> = {
@@ -725,15 +721,18 @@ export async function loadUzlegBoth(kind: UzlegKind): Promise<{ raw: Row[]; rows
 const UZ_IDLE: State = { state: 'idle' };
 const UZ_LOADING: State = { state: 'loading' };
 
-export function useUzleg(kind: UzlegKind | null): State {
+export function useUzleg(kind: UzlegKind | null, tick = 0): State {
   const [st, setSt] = useState<{ kind: UzlegKind | null; st: State }>({ kind: null, st: { state: 'idle' } });
   const [tries, setTries] = useState(0);
+  /* Хуудасны давтан шинэчлэл (`tick`) ба хүснэгт рүү бичилт (`dataBus`) — `useAsync`-ийн `keepOn`-той ижил */
+  const bus = useSyncExternalStore(subscribeData, dataVersion, () => 0);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!kind) { setSt({ kind: null, st: { state: 'idle' } }); return undefined; }
     let alive = true;
-    setSt({ kind, st: { state: 'loading' } });
+    /* Ижил маягтын дахин таталтад хуучин мөр дэлгэцэд үлдэнэ — шинэ нь ирэхэд чимээгүй солигдоно; алдвал доорх `error` */
+    setSt((cur) => (cur.kind === kind && cur.st.state === 'ready' ? cur : { kind, st: { state: 'loading' } }));
     Promise.all([loaders[kind](), loadDomains(HABEA.uzleg[kind].url, kind)])
       .then(([rows, meta]) => {
         if (alive) {
@@ -752,7 +751,7 @@ export function useUzleg(kind: UzlegKind | null): State {
         }
       });
     return () => { alive = false; };
-  }, [kind, tries]);
+  }, [kind, tries, tick, bus]);
 
   if (!kind) return UZ_IDLE;
   return st.kind === kind ? st.st : UZ_LOADING;
@@ -994,7 +993,7 @@ async function loadUzPhotos(url: string, rows: UzlegRow[]): Promise<UzPhotoSet> 
   for (let i = 0; i < rows.length; i += OID_BATCH) {
     const chunk = rows.slice(i, i + OID_BATCH);
     try {
-      const j = await arcgisPost<{ attachmentGroups?: typeof groups }>(`${url}/queryAttachments`, {
+      const j = await postFormOrSource<{ attachmentGroups?: typeof groups }>(url, '/queryAttachments', {
         f: 'json',
         objectIds: chunk.map((x) => x.oid).join(','),
         attachmentTypes: 'image/jpeg,image/png,image/gif,image/webp,image/heic',
