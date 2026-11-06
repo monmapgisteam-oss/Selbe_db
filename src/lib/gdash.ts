@@ -284,9 +284,9 @@ export const loadCfPlan = cached<CfPlanRow[]>(async () => {
 /**
  * `loadCfPlan`-ын ЦООРХОЙ — S-муруйгаас дутсан 'huvaari' гэрээ (`monthlyMoney.MoneyGaps`-ийн хэлбэр).
  *   partial — мөнгөний мөр / хуудас уншигдсангүй; failed — хуудас унасан гэрээ; missing — тооцоолсон сар гараагүй гэрээ;
- *   noUnit / noRow — ₮-д ороогүй нүд.
+ *   short — гэрээтэй ч сарын дүнгийн нийлбэр гэрээний дүнд хүрээгүй; noUnit / noRow — ₮-д ороогүй нүд.
  */
-export type CfPlanGaps = { partial: boolean; failed: number[]; missing: number[]; noUnit: number; noRow: number };
+export type CfPlanGaps = { partial: boolean; failed: number[]; missing: number[]; short?: number[]; noUnit: number; noRow: number };
 export const cfPlanGaps = (rows: readonly CfPlanRow[] | null | undefined): CfPlanGaps | null =>
   (rows && cfPlanGapsOf ? cfPlanGapsOf(rows) : null);
 
@@ -307,6 +307,11 @@ export function cfGapsText(
   if (ids.length) {
     const names = ids.slice(0, 3).map((id) => nameOf(id) || `#${id}`);
     parts.push(tr('Хуваарь эхтэй {0} гэрээ ороогүй ({1})', ids.length, ids.length > 3 ? `${names.join(', ')}…` : names.join(', ')));
+  }
+  const shorts = keep(gaps.short ?? []);
+  if (shorts.length) {
+    const names = shorts.slice(0, 3).map((id) => nameOf(id) || `#${id}`);
+    parts.push(tr('{0} гэрээний сарын хувийн нийлбэр 100% биш ({1})', shorts.length, shorts.length > 3 ? `${names.join(', ')}…` : names.join(', ')));
   }
   const cells = gaps.noUnit + gaps.noRow;
   if (cells > 0) parts.push(tr('{0} нүдний обьём ₮-д ороогүй (нэгж өртөггүй / хуудсанд олдоогүй)', num(cells)));

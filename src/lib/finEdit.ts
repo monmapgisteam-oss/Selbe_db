@@ -38,9 +38,8 @@ export const SERVER_RO = /^(objectid|globalid|shape|shape__|creationdate|creator
  * 00:00–07:59-ийн огноо ӨМНӨХ өдөр болно.
  */
 export function localDay(ms: number): string {
-  const d = new Date(ms);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  /* Улаанбаатарын хуанли (UTC+8) — хөтчийн бүсээс хамаарахгүй */
+  return new Date(ms + 8 * 3_600_000).toISOString().slice(0, 10);
 }
 
 /**

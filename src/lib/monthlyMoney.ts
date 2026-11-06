@@ -13,10 +13,10 @@ import { invalidate, register } from '@/lib/dataBus';
 import { isLostWrite } from '@/lib/lostWrite';
 import { requireCap } from '@/lib/who';
 import type { CapKey } from '@/lib/caps';
-import { cfStartKeyOf, type CfPlanRow } from '@/lib/gdash';
+import { CONTRACTED, cfStartKeyOf, type CfPlanRow } from '@/lib/gdash';
 import { PKGS, loadSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
-import { planFields } from '@/lib/planProgress';
+import { PLAN_COVERAGE_MIN, planFields } from '@/lib/planProgress';
 import { cfIdOfPctKey, countPlanRows, loadPkgPct, loadPkgPlan, monthStart, savePkgPct, type PkgPlan, type PkgPct } from '@/lib/huvaariObyem';
 
 /* ══════════════════ Эх ══════════════════ */
@@ -40,9 +40,13 @@ export type MoneyRow = {
   id: number;
   /** Багцын түлхүүр (`pkgKeyOf`) — диапазон/хоосон бол '' */
   pkg: string;
-  /** ХО дүн (₮) — хоосон/0/NaN бол null */
+  /** Сарын мөнгөний суурь (₮) — `moneyBaseOf`; хоосон/0/NaN бол null */
   cost: number | null;
   source: MonthSource;
+  /** Үе шат нь «Барилга угсралт» — багцын сарын хувь зөвхөн энэ гэрээнд (`MainSpan.pctKeyFor`-той нэг дүрэм). `false` л хасна. */
+  build?: boolean;
+  /** «Гэрээлсэн дүн» тэмдэгтэй — гэрээ байгуулагдсан */
+  contracted?: boolean;
 };
 
 const numOrNull = (v: unknown): number | null => {
@@ -51,17 +55,32 @@ const numOrNull = (v: unknown): number | null => {
   return Number.isFinite(x) ? x : null;
 };
 
+/**
+ * САРЫН МӨНГӨНИЙ СУУРЬ: гэрээ байгуулагдсан бол гэрээний дүн (`geree_dun`), эс бөгөөс төсөв (`ho_dun_geree`). Уншихад л сонгоно —
+ * «Гэрээ үүсгэх» төсвийг хөндөхгүй тул нийт төсөв хэвээр; гэрээ цуцлахад суурь төсөв рүү буцна.
+ */
+export function moneyBaseOf(r: Readonly<Record<string, unknown>>): number | null {
+  const F = CASHFLOW_NEW.fields;
+  if (String(r[F.amountNote] ?? '').trim() === CONTRACTED) {
+    const geree = numOrNull(r[F.contractAmount]);
+    if (geree != null && geree > 0) return geree;
+  }
+  return numOrNull(r[F.budget]);
+}
+
 /** Мөнгөний мөр → `MoneyRow`. `Cashflow_ID`-гүй мөр (бүтцийн) → null (`Number(null) = 0` занга). */
 export function moneyRowOf(r: Readonly<Record<string, unknown>>): MoneyRow | null {
   const F = CASHFLOW_NEW.fields;
   const id = numOrNull(r[CF_MONTH.id]);
   if (id == null || !(id > 0)) return null;
-  const cost = numOrNull(r[F.budget]);
+  const cost = moneyBaseOf(r);
   return {
     id,
     pkg: pkgKeyOf(r[F.pkg]),
     cost: cost != null && cost > 0 ? cost : null,
     source: monthSourceOf(r[F.monthSource]),
+    build: isSwitchPhase(r[F.phase]),
+    contracted: String(r[F.amountNote] ?? '').trim() === CONTRACTED,
   };
 }
 
@@ -159,6 +178,10 @@ export type ContractMoney = {
   source: MonthSource;
   pkg: string;
   cost: number | null;
+  /** `MoneyRow.build` */
+  build?: boolean;
+  /** `MoneyRow.contracted` */
+  contracted?: boolean;
   /** «YYYY-MM» → ₮. 'garaar' — дүнтэй (`Cashflow_dun` ≠ null) сарын мөрүүдийн нийлбэр */
   months: Map<string, number>;
   state: ContractState;
@@ -182,6 +205,8 @@ export type MoneyGaps = {
   failed: number[];
   /** Тооцоолсон сар ГАРААГҮЙ бусад 'huvaari' гэрээ (empty · noKey · noSheet · sharedNoCost) */
   missing: number[];
+  /** Гэрээ байгуулагдсан ч сарын дүнгийн нийлбэр гэрээний дүнгээс `100 − PLAN_COVERAGE_MIN` хувиас илүү зөрсөн (сар огт оруулаагүй ч орно) */
+  short: number[];
   /** Нэгж өртөггүй тул ₮-д ороогүй нүд (багц тус бүрийг НЭГ удаа) */
   noUnit: number;
   /** Хуудсанд олдоогүй ажлын кодтой нүд (багц тус бүрийг НЭГ удаа) */
@@ -190,7 +215,7 @@ export type MoneyGaps = {
 
 /** Цоорхой байгаа эсэх */
 export const hasMoneyGaps = (g: MoneyGaps | null | undefined): boolean =>
-  !!g && (g.partial || g.failed.length > 0 || g.missing.length > 0 || g.noUnit > 0 || g.noRow > 0);
+  !!g && (g.partial || g.failed.length > 0 || g.missing.length > 0 || g.short.length > 0 || g.noUnit > 0 || g.noRow > 0);
 
 export type MonthlyMoney = {
   /** `Cashflow_ID` → гэрээний цуваа */
@@ -226,7 +251,7 @@ export function buildMonthlyMoney(
   sheetKeys: ReadonlySet<string> = PKG_KEYS,
   /**
    * ГЭРЭЭНИЙ «Үндсэн хугацаа»-ны сарын хувь (`Cashflow_ID` → «YYYY-MM» → 0–100; `pctByIdOf`, 2026-11-05) — хүснэгтгүй багц,
-   * ТЭЗҮ/зураг төсөл зэрэг БҮХ гэрээнд: сарын мөнгө = хувь × ХО дүн. `null` = хувийн хүснэгт уншигдсангүй (тэр гэрээнүүд
+   * ТЭЗҮ/зураг төсөл зэрэг БҮХ гэрээнд: сарын мөнгө = хувь × хөрөнгө оруулалтын дүн. `null` = хувийн хүснэгт уншигдсангүй (тэр гэрээнүүд
    * `failed`, хоосон гэж худал хэлэхгүй); өгөөгүй бол хуучин зан төлөв.
    */
   pctById?: ReadonlyMap<number, ReadonlyMap<string, number>> | null,
@@ -236,7 +261,7 @@ export function buildMonthlyMoney(
   for (const m of money) {
     if (contracts.has(m.id)) { issues.push(tr('Cashflow_ID давхардсан: {0}', m.id)); continue; }
     contracts.set(m.id, {
-      id: m.id, source: m.source, pkg: m.pkg, cost: m.cost, months: new Map(),
+      id: m.id, source: m.source, pkg: m.pkg, cost: m.cost, build: m.build, contracted: m.contracted, months: new Map(),
       state: m.source === SRC_HUVAARI ? 'empty' : 'manual', share: null, noUnit: 0, noRow: 0,
     });
   }
@@ -260,7 +285,7 @@ export function buildMonthlyMoney(
     byPct.add(c.id);
     if (c.cost == null) {
       c.state = 'sharedNoCost';
-      issues.push(tr('Гэрээ {0}: ХО дүнгүй тул Хуваарийн сарын хувиас ₮ бодогдсонгүй', c.id));
+      issues.push(tr('Гэрээ {0}: хөрөнгө оруулалтын дүнгүй тул Хуваарийн сарын хувиас ₮ бодогдсонгүй', c.id));
       continue;
     }
     for (const [k, v] of m) c.months.set(k, (c.cost * v) / 100);
@@ -288,9 +313,11 @@ export function buildMonthlyMoney(
        Багцаа хуваалцсан гэрээ бүр ӨӨРИЙН ХО дүнгээр; ХО дүнгүй гэрээнд ₮ бодогдохгүй (null ≠ 0). */
     if (pm?.pct?.size) {
       for (const c of list) {
+        /* Багцын хувь нь барилгын гэрээнийх: өөрийн хувь оруулаагүй зураг төсөл, ТЭЗҮ-ийн гэрээ түүнийг өвлөхгүй */
+        if (c.build === false) { c.state = 'empty'; continue; }
         if (c.cost == null) {
           c.state = 'sharedNoCost';
-          issues.push(tr('Гэрээ {0}: ХО дүнгүй тул Хуваарийн сарын хувиас ₮ бодогдсонгүй', c.id));
+          issues.push(tr('Гэрээ {0}: хөрөнгө оруулалтын дүнгүй тул Хуваарийн сарын хувиас ₮ бодогдсонгүй', c.id));
           continue;
         }
         for (const [k, v] of pm.pct) c.months.set(k, (c.cost * v) / 100);
@@ -309,7 +336,7 @@ export function buildMonthlyMoney(
       const tot = withCost.reduce((a, c) => a + (c.cost ?? 0), 0);
       shares = new Map(withCost.map((c) => [c, tot > 0 ? (c.cost ?? 0) / tot : 0]));
       for (const c of list) if (c.cost == null) c.state = 'sharedNoCost';
-      issues.push(tr('{0}: {1} гэрээ нэг багцын Хуваарийг хуваалцана — ХО дүнгийн харьцаагаар хуваав', key, list.length));
+      issues.push(tr('{0}: {1} гэрээ нэг багцын Хуваарийг хуваалцана — хөрөнгө оруулалтын дүнгийн харьцаагаар хуваав', key, list.length));
     }
     for (const [c, sh] of shares) {
       c.share = sh;
@@ -343,11 +370,18 @@ export function buildMonthlyMoney(
     pkgs.set(c.pkg, m);
   }
   /* ── Цоорхой (`MoneyGaps`) ── */
-  const gaps: MoneyGaps = { partial: false, failed: [], missing: [], noUnit: 0, noRow: 0 };
+  const gaps: MoneyGaps = { partial: false, failed: [], missing: [], short: [], noUnit: 0, noRow: 0 };
   for (const c of contracts.values()) {
-    if (c.source !== SRC_HUVAARI) continue;
-    if (c.state === 'failed') gaps.failed.push(c.id);
-    else if (c.state !== 'ok') gaps.missing.push(c.id);
+    if (c.source === SRC_HUVAARI) {
+      if (c.state === 'failed') gaps.failed.push(c.id);
+      else if (c.state !== 'ok') gaps.missing.push(c.id);
+    }
+    /* Гэрээтэй ажил: төлөвлөгөө бүрэн байх ёстой. Босго нь гүйцэтгэгчийн хуваарийн `PLAN_COVERAGE_MIN`-тай нэг. Гэрээгүй ажил хамаарахгүй. */
+    if (c.contracted && c.cost != null && (c.state === 'ok' || c.state === 'manual')) {
+      let sum = 0;
+      for (const v of c.months.values()) sum += v;
+      if (Math.abs((sum / c.cost) * 100 - 100) > 100 - PLAN_COVERAGE_MIN) gaps.short.push(c.id);
+    }
   }
   for (const key of byPkg.keys()) {
     const pm = sheets.get(key);
@@ -375,12 +409,12 @@ export const huvaariPkgKeys = (money: readonly MoneyRow[]): Set<string> =>
 
 /* ══════════════════ Сүлжээ — унших ══════════════════ */
 
-/** Мөнгөний мөрүүд (78) — зөвхөн хэрэгтэй 4 талбар */
+/** Мөнгөний мөрүүд (78) — зөвхөн хэрэгтэй талбарууд */
 export const loadMoneyRows = cached<MoneyRow[]>(async () => {
   const F = CASHFLOW_NEW.fields;
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
     where: CF_WORK_WHERE,
-    outFields: [CASHFLOW_NEW.oid, CF_MONTH.id, F.pkg, F.budget, F.monthSource],
+    outFields: [CASHFLOW_NEW.oid, CF_MONTH.id, F.pkg, F.phase, F.budget, F.contractAmount, F.amountNote, F.monthSource],
   });
   return rows.map(moneyRowOf).filter((x): x is MoneyRow => x != null);
 }, SESSION_TTL_MS, ['CASHFLOW_NEW']);
@@ -390,7 +424,7 @@ export const loadMoneyRows = cached<MoneyRow[]>(async () => {
  */
 export async function loadSheetMoney(keys: ReadonlySet<string>, pctGiven?: PkgPct): Promise<Map<string, PkgMoney>> {
   const out = new Map<string, PkgMoney>();
-  /* 2026-11-05: багцын сарын хувьтай багц — хуудас, обьём унших ШААРДЛАГАГҮЙ (сарын мөнгө = хувь × ХО дүн).
+  /* 2026-11-05: багцын сарын хувьтай багц — хуудас, обьём унших ШААРДЛАГАГҮЙ (сарын мөнгө = хувь × хөрөнгө оруулалтын дүн).
      Хувийн хүснэгт уншигдахгүй бол бүх багц «уншигдсангүй» (хоосон гэж ХУДАЛ хэлэхгүй). */
   let pctAll: PkgPct;
   try {
@@ -704,7 +738,7 @@ const tg = (v: number): string => Math.round(v).toLocaleString('en-US');
 
 /** Тооцооны төлвийг хүнд ойлгомжтой хэлнэ (батлуулах цонх · алдаа) */
 export function previewText(p: SwitchPreview): string {
-  if (p.pctSum != null && p.verdict === 'ok') return tr('Хуваарийн сарын хувь {0} сард нийт {1}% — сарын мөнгө = хувь × ХО дүн', p.months, (Math.round(p.pctSum * 100) / 100).toLocaleString('en-US'));
+  if (p.pctSum != null && p.verdict === 'ok') return tr('Хуваарийн сарын хувь {0} сард нийт {1}% — сарын мөнгө = хувь × хөрөнгө оруулалтын дүн', p.months, (Math.round(p.pctSum * 100) / 100).toLocaleString('en-US'));
   if (p.verdict === 'failed') return tr('Хуваарийн бөглөх хуудас уншигдсангүй ({0}) — тооцоолсон сарын мөнгө тодорхойгүй', p.failed.join(', ') || p.pkg);
   if (p.verdict === 'empty') return tr('Хуваарьт нэгж өртөгтэй сарын обьём АЛГА — шилжүүлбэл энэ гэрээний сарын мөнгө ХООСОН болж S-муруйд орохгүй');
   if (p.verdict === 'incomplete') {

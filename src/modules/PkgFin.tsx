@@ -82,6 +82,16 @@ const pkgSrcKey = (
 };
 
 /**
+ * САРД ХУВААРИЛАГДААГҮЙ ОЛГОЛТ, ₮: олгосон нийт − сарын цувааны нийлбэр (огноогүй, эсвэл багцгүй мөр). Бөөрөнхийллийн үлдэгдэл 0.
+ * График, жагсаалт энэ үлдэгдэлгүй бол дээрх «Олгосон санхүүжилт»-тай таарахгүй.
+ */
+export function undatedGiven(total: number | null, months: readonly { given: number }[] | null): number {
+  if (total == null || !months) return 0;
+  const left = total - months.reduce((a, m) => a + m.given, 0);
+  return left >= 1 ? left : 0;
+}
+
+/**
  * НЭГ БАГЦЫН БҮХ ГЭРЭЭГ нэг сарын цуваа болгон НЭГТГЭНЭ.
  */
 function mergePkgMonths(
@@ -455,9 +465,13 @@ export function PkgFin({ dim, setDim }: {
     if (finQ.state !== 'ready') return null;
     const C = CASHFLOW_NEW.fields;
     const m = new Map<string, (typeof finQ.data.contracts)[number]>();
+    /* Багцын ажил гүйцэтгэх гэрээ («Барилга угсралт») давамгай — зураг төслийн мөр OID-оор эхэлсэн ч гарахгүй */
+    const isBuild = (r: (typeof finQ.data.contracts)[number]): boolean => String(r[C.phase] ?? '').trim() === 'Барилга угсралт';
     finQ.data.contracts.forEach((r) => {
       [pkgKeyOf(r[C.pkg2]), pkgKeyOf(r[C.pkg])].forEach((k) => {
-        if (k && k !== '0' && !m.has(k)) m.set(k, r);
+        if (!k || k === '0') return;
+        const cur = m.get(k);
+        if (!cur || (isBuild(r) && !isBuild(cur))) m.set(k, r);
       });
     });
     return m;
@@ -748,7 +762,7 @@ export function PkgFin({ dim, setDim }: {
             <PkgFinCard p={active} fin={activeFin} />
             <PkgFinDetail row={finRow?.get(active.key) ?? null} loading={!finRow} />
             <PkgPays p={active} finQ={finQ} />
-            <PkgMonths p={active} finMap={finMap} />
+            <PkgMonths p={active} finMap={finMap} given={givenMap?.get(active.key) ?? null} />
           </>
         ) : (
           /* Дэд бүтцийн багц — хөрөнгө оруулалт ба гэрээний задаргаа */
@@ -756,7 +770,7 @@ export function PkgFin({ dim, setDim }: {
             <InvestCard p={active} />
             <PkgFinDetail row={finRow?.get(active.key) ?? null} loading={!finRow} />
             <PkgPays p={active} finQ={finQ} />
-            <PkgMonths p={active} finMap={finMap} />
+            <PkgMonths p={active} finMap={finMap} given={givenMap?.get(active.key) ?? null} />
           </>
         )}
       </div>
@@ -1027,7 +1041,7 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
   push(tr('Урьдчилсан төсөвт өртөг'), money(row[C.budget]), nn2(row[C.budget]) > 0);
   push(tr('Захирамжийн дугаар'), txt(row[C.orderNo]), !!txt(row[C.orderNo]));
   push(tr('Захирамжийн нийт дүн'), money(orderTotalOf(row)), nn2(orderTotalOf(row)) > 0);
-  push(tr('Гэрээ байгуулах эрх олгосон'), money(contractAmountOf(row)), nn2(contractAmountOf(row)) > 0);
+  push(tr('Гэрээ байгуулсан дүн'), money(contractAmountOf(row)), nn2(contractAmountOf(row)) > 0);
 
   /* ЭХ ҮҮСВЭР — дүнтэй нь л. Өнгө нь services.ts-д тодорхойлогдсон. */
   const src = CASHFLOW_NEW.sources
@@ -1078,8 +1092,9 @@ function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
 
   const acts = useMemo(() => {
     if (finQ.state !== 'ready') return null;
+    /* Зөвхөн олгосон мөр: олгоогүй гүйцэтгэл (AUTO), гэрээний толгой мөр төлбөр биш */
     return finQ.data.pays
-      .filter((r) => pkgKeyOf(r[HC.pkg]) === p.key)
+      .filter((r) => pkgKeyOf(r[HC.pkg]) === p.key && hoAmount(r) != null)
       .map((r) => ({
         code: hoPayCode(r),
         /** `tulult_turul` — урьдчилгаа | гүйцэтгэл | хоосон(2) */
@@ -1096,7 +1111,6 @@ function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
   if (!acts || !acts.length) return <Section title={tr('Олгосон төлбөр')}><Empty label={tr('Төлбөр бүртгэгдээгүй')} /></Section>;
 
   const paidTotal = acts.reduce((a, x) => a + (x.amount ?? 0), 0);
-  const withAmt = acts.filter((x) => x.amount != null).length;
 
   const kindSum = (test: (k: string) => boolean) =>
     acts.reduce((a, x) => (x.amount != null && test(x.kind) ? a + x.amount : a), 0);
@@ -1114,7 +1128,7 @@ function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
     <>
       <Section
         title={tr('Олгосон төлбөр')}
-        note={tr('{0} төлбөр · {1} дүнтэй', String(acts.length), String(withAmt))}
+        note={tr('{0} төлбөр', String(acts.length))}
       >
         {/* Төлбөр бүр: код ба гүйлгээний огноо — утга нь олгосон дүн. */}
         <Rows
@@ -1124,7 +1138,7 @@ function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
               : x.code,
             value: (
               <span className="num">
-                {x.amount == null ? tr('дүнгүй') : mnt(x.amount)}
+                {mnt(x.amount)}
                 {x.payDate ? (
                   <small className={ts.actPeriod}>{date(x.payDate)}</small>
                 ) : null}
@@ -1164,16 +1178,19 @@ function PkgPays({ p, finQ }: { p: Pack; finQ: Async<FinData> }) {
  * СОНГОСОН БАГЦЫН САР БҮРИЙН САНХҮҮЖИЛТ.
  */
 function PkgMonths({
-  p, finMap,
+  p, finMap, given,
 }: {
   p: Pack;
   finMap: Map<string, ReturnType<typeof contractMonths>> | null;
+  /** Багцын олгосон нийт дүн — сард хуваарилагдаагүй үлдэгдлийг (огноогүй олголт) харуулахад */
+  given: number | null;
 }) {
   const months = finMap?.get(p.key) ?? null;
   const rows = (months ?? []).filter((m) => m.given > 0);
+  const undated = undatedGiven(given, months);
 
   if (!finMap) return <Section title={tr('Сар бүрийн санхүүжилт')}><Loading /></Section>;
-  if (!rows.length) return <Section title={tr('Сар бүрийн санхүүжилт')}><Empty label={tr('Олголт бүртгэгдээгүй')} /></Section>;
+  if (!rows.length && undated === 0) return <Section title={tr('Сар бүрийн санхүүжилт')}><Empty label={tr('Олголт бүртгэгдээгүй')} /></Section>;
 
   return (
     <Section
@@ -1181,10 +1198,13 @@ function PkgMonths({
       note={tr('{0} сар · олгосон', num(rows.length))}
     >
       <Rows
-        items={rows.map((m) => ({
-          key: m.label,
-          value: <span className="num">{mnt(m.given)}</span>,
-        }))}
+        items={[
+          ...rows.map((m) => ({
+            key: m.label,
+            value: <span className="num">{mnt(m.given)}</span>,
+          })),
+          ...(undated > 0 ? [{ key: tr('Огноогүй'), value: <span className="num">{mnt(undated)}</span> }] : []),
+        ]}
       />
     </Section>
   );
@@ -1386,6 +1406,7 @@ function FinCard({
   }
   const lag = months ? lagOf(months) : null;
   const lvl = lagLevelOf(lag);
+  const undated = undatedGiven(givenShown, months);
 
   /**
    * KPI — ГЭРЭЭНИЙ дүн ба IPC-ийн олгосон акт (₮), тэдгээрийн ЗӨРҮҮ; мөн
@@ -1499,9 +1520,11 @@ function FinCard({
             <span><i className={ts.legSolid} style={{ background: 'var(--data)' }} />{tr('Олгосон санхүүжилт')}</span>
             {!finOnly && <span><i className={ts.legDash} />{tr('Биет гүйцэтгэл')}</span>}
             {!finOnly && projExcl.length > 0 && <span>{planScopeNote(projExcl)}</span>}
+            {undated > 0 && <span>{tr('Огноогүй олголт {0} муруйн эхэнд орсон', mnt(undated))}</span>}
           </div>
           <ComboChart
             items={months}
+            base={undated}
             height={chartH}
             lagMonth={finOnly ? undefined : lag?.month}
             lagLvl={finOnly ? null : lvl}

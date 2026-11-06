@@ -51,7 +51,7 @@ import { IpcTable } from '@/modules/IpcTable';
 import {
   monthSourceOf, confirmAndSwitch, switchPhaseWhy, PKG_KEYS, SRC_HUVAARI, CF_SWITCH_CAP, type MonthlyMoney,
 } from '@/lib/monthlyMoney';
-import type { ProjectPlan } from '@/lib/projectPlanInputs';
+import type { LiveProgress, ProjectPlan } from '@/lib/projectPlanInputs';
 import { isAddedWork, moneySums, sourceSums, SOURCE_KEYS, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus, type SourceKey, type SourceSums } from '@/lib/projectPlan';
 import {
   MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
@@ -201,9 +201,12 @@ export function ComboChart({
   lagLvl,
   hidePhys = false,
   contract = null,
+  base = 0,
 }: {
   items: MonthPt[];
   height?: number;
+  /** Сард хуваарилагдаагүй (огноогүй) олголт, ₮ — өссөн муруй үүнээс эхэлнэ */
+  base?: number;
   /**
    * ГЭРЭЭНИЙ НИЙТ ДҮН, ₮ — биет % -ийг ₮ тэнхлэгт буулгах суурь.
    */
@@ -225,7 +228,7 @@ export function ComboChart({
   /*
    * ── Өссөн S-муруйн өгөгдөл — ₮ ТЭНХЛЭГ: олгосон санхүүжилт · биет гүйцэтгэл.
    */
-  const cums = items.reduce<number[]>((a, it) => { a.push((a[a.length - 1] ?? 0) + it.given); return a; }, []);
+  const cums = items.reduce<number[]>((a, it) => { a.push((a[a.length - 1] ?? base) + it.given); return a; }, []);
   /** Биет нь ӨӨРИЙН %-ийн тэнхлэгтэй эсэх — `contract` */
   const ownAxis = !(contract != null && Number.isFinite(contract) && contract > 0);
   const physVal = (p: number | null): number | null => (
@@ -1127,8 +1130,13 @@ export function huvMonthRows(money: MonthlyMoney | null | undefined): Map<number
    ТӨСӨЛ ТӨЛӨВЛӨГӨӨ БИЕЛЭЛТ — Excel (261007 V3)-ийн үндсэн хуудас (2026-10-26) */
 
 /** Ачаалагч — динамик импорт (импорт) */
-const loadProjectPlanLazy = (): Promise<ProjectPlan> =>
-  import('@/lib/projectPlanInputs').then((m) => m.loadProjectPlan());
+/** `live` — гэрээ бүрийн амьд үе шатны хувь (`liveProgressOf`): Нэгтгэл, дашбоард, ТУХ ижил утгыг уншина */
+type PlanWithLive = ProjectPlan & { live: Map<number, LiveProgress> };
+const loadProjectPlanLazy = (): Promise<PlanWithLive> =>
+  import('@/lib/projectPlanInputs').then(async (m) => {
+    const plan = await m.loadProjectPlan();
+    return { ...plan, live: m.liveProgressOf(plan) };
+  });
 
 type PpKind = 'money' | 'w' | 'date' | 'pct' | 'frac' | 'text';
 /** `k` — `PlanValues`-ийн багана (E…W) эсвэл эх үүсвэрийн талбар (`sourceSums`, 2026-11-03) */
@@ -1154,6 +1162,8 @@ type PpGroup = { label: string | null; cols: PpCol[] };
 const isSourceKey = (k: PpCol['k']): k is SourceKey => (SOURCE_KEYS as readonly string[]).includes(k);
 /** Хадгалсан утгыг шууд харуулах багана (2026-11-04, хэрэглэгч: «ил гарга») */
 const rawCol = (k: PpRawKey, label: string, kind: PpKind): PpCol => ({ k, label, kind, raw: true });
+/** «Үе шатны хувь» бүлгийн баганууд — утга нь үе шатны мөрөөс (`stageLive`) */
+const STAGE_FIELDS: ReadonlySet<string> = new Set(['tezu', 'ajliin_zurag_tusul', 'gazar_chuluulult', 'zuwshuurul', 'songon_shalgaruulalt']);
 
 /**
  * Excel-ийн үндсэн хуудасны баганууд (E…W), дарааллаар нь. Эх үүсвэрийн 4 багана (захирамжийн дүнгийн задаргаа,
@@ -1174,7 +1184,7 @@ function ppGroups(): PpGroup[] {
     { label: tr('ОСНАУГ / Газар чөлөөлөлт · бодит'), cols: [{ k: 'J', label: tr('Эхлэх'), kind: 'date' }, { k: 'K', label: tr('Дуусах'), kind: 'date' }] },
     {
       label: tr('Төлөвлөгөөт хувь'),
-      cols: [pctCol('N', tr('Гэрээ')), pctCol('O', tr('Газар чөлөөлөлт')), pctCol('P', tr('Гүйцэтгэгч'))],
+      cols: [pctCol('N', tr('Гэрээ')), pctCol('O', tr('Газар чөлөөлөлт')), pctCol('P', tr('Гүйцэтгэгч (огноогүй ажил 0%)'))],
     },
     { label: null, cols: [pctCol('Q', tr('Ирэх долоо хоног'), '+7')] },
     { label: null, cols: [pctCol('R', tr('Өмнө долоо хоног'), '−7')] },
@@ -1270,7 +1280,7 @@ function ProjectPlanView(props: {
   canEdit: boolean;
   onSaved: () => void;
 }) {
-  const q = useAsync<ProjectPlan>(loadProjectPlanLazy, []);
+  const q = useAsync<PlanWithLive>(loadProjectPlanLazy, []);
   return (
     <section className={`${f.reg} ${f.ppReg}`}>
       <Data q={q} loading={tr('Төсөл төлөвлөгөө тооцоолж байна…')}>
@@ -1288,7 +1298,8 @@ function ProjectPlanView(props: {
 export function ProjectPlanTable({
   plan, works, months, monthsError, canSwitch, canEdit = false, onSaved,
 }: {
-  plan: ProjectPlan;
+  /** `live` өгөөгүй бол «Үе шатны хувь» хадгалсан утгаа харуулна */
+  plan: ProjectPlan & { live?: PlanWithLive['live'] };
   works: Row[];
   months: Row[];
   monthsError: boolean;
@@ -1459,11 +1470,18 @@ export function ProjectPlanTable({
   const moneyOf = useMemo(() => moneySums(tree), [tree]);
   /** Төслийн нийт E — «Олгосон хувь (төсөлд)»-ийн хуваарь мөр бүрт (2026-11-04) */
   const rootE = result.values.get(tree.root)?.E;
+  /* «Үе шатны хувь»: мөнгөний мөрийн хадгалсан утгыг ямар ч синк шинэчилдэггүй — тухайн үе шатны мөрийн S (Нэгтгэл, дашбоардтай нэг утга).
+     Тэр багцад үе шатны мөр алга (жишээ нь ТЭЗҮ) бол хадгалсан утга. */
+  const stageLive = (k: PpCol['k'], n?: PlanNode): number | null => {
+    if (!STAGE_FIELDS.has(k)) return null;
+    const id = n?.row?.cashflow_id;
+    return id == null ? null : plan.live?.get(id)?.stages[k] ?? null;
+  };
   const valCells = (v: PlanValues | undefined, blk: boolean, src: SourceSums | undefined, n?: PlanNode) => cols.map((c) => {
     /* 2026-11-03: нэмсэн ажлын төсөвт өртөг — эцгийн төсвөөс жингээр оноосон (бүдэг налуу; нийлбэрт орохгүй) */
     const alloc = c.k === 'E' && v?.E == null && v?.EA != null && !!n && isAddedWork(n);
     const x = CALC_KEYS.includes(c.k) ? ppCalcVal(c.k, n ? moneyOf.get(n) : undefined, rootE)
-      : c.raw ? (n?.row?.[c.k as PpRawKey] as number | string | null | undefined) ?? null
+      : c.raw ? (stageLive(c.k, n) ?? (n?.row?.[c.k as PpRawKey] as number | string | null | undefined) ?? null)
       : isSourceKey(c.k) ? src?.[c.k] ?? null : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status'>] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;
     return (
@@ -1809,7 +1827,8 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           </button>
         </div>
         {/* 2026-11-05: «Cashflow хувиарлах» таб хасагдсан — гэрээ бүрийн сарын хувь «Үндсэн хугацаа»-нд (Хуваарь хуудсанд ч мөн) */}
-        <MainSpanButton canEdit={canEdit} />
+        {/* Энэ хуудас бүх гэрээг харуулдаг тул хүрээгүй */}
+        <MainSpanButton canEdit={canEdit} scope={null} />
       </header>
 
       {tab === 'proj' ? (

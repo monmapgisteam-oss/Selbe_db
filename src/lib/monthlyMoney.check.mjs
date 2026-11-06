@@ -31,7 +31,7 @@ assert.equal(MM.monthSourceOf(' Huvaari '), 'huvaari');
 assert.equal(MM.monthSourceOf('xyz'), 'garaar');
 assert.equal(MM.moneyRowOf({ cashflow_id: null, bagts: 'БАГЦ-1' }), null, 'cashflow_id-гүй (бүтцийн) мөр');
 assert.deepEqual(MM.moneyRowOf({ cashflow_id: 11, bagts: 'БАГЦ-1', ho_dun_geree: 1000, sar_mongo_eh: 'huvaari' }),
-  { id: 11, pkg: 'БАГЦ1', cost: 1000, source: 'huvaari' });
+  { id: 11, pkg: 'БАГЦ1', cost: 1000, source: 'huvaari', build: false, contracted: false });
 assert.equal(MM.moneyRowOf({ cashflow_id: 3, bagts: 'БАГЦ 1-4', ho_dun_geree: 0 }).pkg, '', 'диапазон → түлхүүргүй');
 assert.equal(MM.moneyRowOf({ cashflow_id: 3, bagts: 'БАГЦ 1-4', ho_dun_geree: 0 }).cost, null, '0 ХО дүн → null');
 console.log('✅ эх · мөнгөний мөр');
@@ -92,7 +92,7 @@ assert.ok(h.issues.some((s) => s.includes('БАГЦ1')), 'нэгжгүй/олд�
 assert.equal(h.contracts.get(2).noUnit, 1, 'гэрээнд нэгжгүй нүдний тоо');
 assert.equal(h.contracts.get(2).noRow, 1, 'гэрээнд олдоогүй нүдний тоо');
 assert.equal(h.contracts.get(1).noUnit, 0, 'гараар гэрээ — 0');
-assert.deepEqual(h.gaps, { partial: false, failed: [], missing: [], noUnit: 1, noRow: 1 });
+assert.deepEqual(h.gaps, { partial: false, failed: [], missing: [], short: [], noUnit: 1, noRow: 1 });
 assert.equal(MM.hasMoneyGaps(h.gaps), true);
 assert.equal(MM.hasMoneyGaps(g.gaps), false, 'гараар л — цоорхойгүй');
 console.log('✅ хуваарь гэрээ — обьём × нэгж өртөг, гараар мөр үл тоогдоно');
@@ -369,7 +369,7 @@ console.log('✅ хяналт №2 — S-муруйн цоорхойн анха�
   assert.equal([...c1.months.values()].reduce((a, v) => a + v, 0), 1000, 'нийлбэр = ХО дүн (Σхувь 100)');
   assert.equal(r.contracts.get(12).state, 'sharedNoCost', 'ХО дүнгүй — ₮ бодогдохгүй (0 биш)');
   assert.equal(r.contracts.get(12).months.size, 0);
-  assert.ok(r.issues.some((x) => x.includes('ХО дүнгүй')), r.issues.join(' | '));
+  assert.ok(r.issues.some((x) => x.includes('хөрөнгө оруулалтын дүнгүй')), r.issues.join(' | '));
   assert.deepEqual(r.rows.filter((x) => x.id === 11).map((x) => [x.pct, x.amount]), [[18.5, 185], [81.5, 815]], 'S-муруйн мөр — гараар мөр (id 11) орохгүй');
   assert.equal(r.rows.filter((x) => x.id === 13).length, 1, 'гараар гэрээ хэвээр');
   /* урьдчилсан тооцоо — хувьтай багц 'ok', нийт ₮ тодорхойгүй (null), хувийн нийлбэр мэдэгдэнэ */
@@ -463,5 +463,43 @@ console.log('✅ 2026-11-05 — багцын сарын хувь Хуваарь�
   assert.equal(o.contracts.get(22).state, 'noKey');
 }
 console.log('✅ 2026-11-05 — «Үндсэн хугацаа»: гэрээгээр түлхүүрлэсэн сарын хувь (хуудас шаардахгүй)');
+
+/* ── 2026-11-06: сарын мөнгөний суурь = гэрээний дүн; гэрээтэй ажлын дутуу төлөвлөгөө анхааруулгад; багцын хувийг зураг төсөл өвлөхгүй ── */
+{
+  const base = { cashflow_id: 48, bagts: 'БАГЦ-14', ho_dun_geree: 9_341_862_391, sar_mongo_eh: 'huvaari', uy_shat: 'Барилга угсралт' };
+  assert.equal(MM.moneyRowOf(base).cost, 9_341_862_391, 'гэрээгүй — төсөв');
+  assert.equal(MM.moneyRowOf({ ...base, geree_dun: 8_400_000_000, ho_dungiin_tailbar: 'Урьдчилсан дүн' }).cost, 9_341_862_391, 'тэмдэггүй geree_dun — төсөв хэвээр');
+  const signed = MM.moneyRowOf({ ...base, geree_dun: 8_400_000_000, ho_dungiin_tailbar: 'Гэрээлсэн дүн' });
+  assert.equal(signed.cost, 8_400_000_000, 'гэрээ байгуулсан — гэрээний дүн');
+  assert.equal(signed.contracted, true);
+  assert.equal(signed.build, true);
+  assert.equal(MM.moneyRowOf({ ...base, geree_dun: null, ho_dungiin_tailbar: 'Гэрээлсэн дүн' }).cost, 9_341_862_391, 'дүнгүй бол төсөв');
+  const pctOf = new Map([[13, new Map([['2026-08', 0.7]])], [14, new Map([['2026-08', 97]])], [15, new Map([['2026-08', 0.7]])]]);
+  const money = [
+    { id: 13, pkg: 'БАГЦ31', cost: 1000, source: 'huvaari', contracted: true },
+    { id: 14, pkg: 'БАГЦ2', cost: 1000, source: 'huvaari', contracted: true },
+    { id: 15, pkg: 'БАГЦ5', cost: 1000, source: 'huvaari' },
+    { id: 3, pkg: '', cost: 1000, source: 'garaar', contracted: true },
+    { id: 59, pkg: 'БАГЦ18', cost: 1000, source: 'garaar' },
+  ];
+  const r = MM.buildMonthlyMoney(money, [], new Map(), new Set(), pctOf);
+  assert.deepEqual(r.gaps.short.sort((a, b) => a - b), [3, 13], '0.7% ба сар оруулаагүй гэрээ орно; 97% босгоос дотор; гэрээгүй ажил орохгүй');
+  assert.equal(MM.hasMoneyGaps(r.gaps), true);
+  const { cfGapsText: txt } = await import('@/lib/gdash.ts');
+  assert.match(txt(r.gaps, (id) => (id === 13 ? 'Багц-3.1' : null)), /2 гэрээний сарын хувийн нийлбэр 100% биш \(#3, Багц-3\.1\)|2 гэрээний сарын хувийн нийлбэр 100% биш \(Багц-3\.1, #3\)/);
+  assert.equal(txt(r.gaps, undefined, (id) => id === 59), null, 'хүрээнээс гадуур гэрээ хэлэхгүй');
+  /* Багцын хувь */
+  const pm = { key: 'БАГЦ71', byMonth: new Map(), noUnit: 0, noRow: 0, sheets: [], failed: [], pct: new Map([['2026-09', 100]]) };
+  const list = [
+    { id: 4, pkg: 'БАГЦ71', cost: 500, source: 'huvaari', build: false },
+    { id: 12, pkg: 'БАГЦ71', cost: 1000, source: 'huvaari', build: true },
+  ];
+  const q = MM.buildMonthlyMoney(list, [], new Map([['БАГЦ71', pm]]), new Set(['БАГЦ71']));
+  assert.equal(q.contracts.get(12).months.get('2026-09'), 1000, 'барилгын гэрээ — багцын хувь');
+  assert.equal(q.contracts.get(4).months.size, 0, 'зураг төслийн гэрээ өвлөхгүй');
+  assert.equal(q.contracts.get(4).state, 'empty');
+  assert.deepEqual(q.gaps.missing, [4]);
+}
+console.log('✅ 2026-11-06 — суурь гэрээний дүн · дутуу төлөвлөгөө · багцын хувь өвлөхгүй');
 
 console.log('monthlyMoney.check — бүгд давлаа');
