@@ -108,3 +108,39 @@ const deferred = () => {
   assert.ok(mc.includes('if (!sess) return null;'), 'countMaPending: Enterprise сешнгүй → null (null ≠ 0)');
   console.log('✅ тэмдгийн шошго · MA тоолуур');
 }
+
+/* subscribeNavBadges — эрх (`__cap__:`) ба чанарын хуваарилалт ирэхэд тоог дахин бодно; бөөн дохио → нэг тооцоо */
+{
+  const { subscribeNavBadges } = await import('@/components/navBadges');
+  const win = new EventTarget();
+  const had = globalThis.window;
+  globalThis.window = win;
+  const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
+  let n = 0;
+  const off = subscribeNavBadges(() => { n += 1; }, 5);
+  await wait(20);
+  const capEvent = 'selbe-caps-change';
+  const aclEvent = 'selbe-chanar-acl-change';
+  win.dispatchEvent(new Event(capEvent));
+  win.dispatchEvent(new Event(capEvent));
+  win.dispatchEvent(new Event(aclEvent));
+  await wait(30);
+  assert.equal(n, 1, 'гурван дохио → нэг дахин тооцоо');
+  win.dispatchEvent(new Event(aclEvent));
+  await wait(30);
+  assert.equal(n, 2, 'чанарын хуваарилалтын дохио → дахин тооцоо');
+  off();
+  win.dispatchEvent(new Event(capEvent));
+  win.dispatchEvent(new Event(aclEvent));
+  await wait(30);
+  assert.equal(n, 2, 'тайлсны дараа дуудагдахгүй');
+  /* Тайлсны дараа ачаалал дуусвал захиалга үлдэхгүй */
+  let m = 0;
+  subscribeNavBadges(() => { m += 1; }, 5)();
+  await wait(20);
+  win.dispatchEvent(new Event(capEvent));
+  await wait(30);
+  assert.equal(m, 0, 'ачаалал дуусахаас өмнө тайлсан ч захиалга үлдэхгүй');
+  if (had === undefined) delete globalThis.window; else globalThis.window = had;
+  console.log('✅ subscribeNavBadges: эрх · чанарын хуваарилалт → тэмдэг дахин тоологдоно');
+}

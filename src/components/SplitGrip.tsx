@@ -83,6 +83,19 @@ function parseSides(v: unknown): Sides {
 }
 
 /**
+ * Талын хувьсагчийн БОДИТ өргөн (px) — түр элементээр хэмжинэ. Хувьсагч `clamp(272px, 16vw, 560px)` гэсэн бичвэрээрээ
+ * уншигддаг тул `parseFloat` нь NaN өгч, эхний чирэлт 180px руу үсэрдэг байв.
+ */
+export function measureSide(host: HTMLElement, varName: string): number {
+  const probe = document.createElement('div');
+  probe.style.cssText = `position:absolute;visibility:hidden;height:0;padding:0;border:0;width:var(${varName})`;
+  host.appendChild(probe);
+  const w = probe.getBoundingClientRect().width;
+  host.removeChild(probe);
+  return Math.round(w) || MIN;
+}
+
+/**
  * @param key      localStorage-ийн түлхүүр — дашбоард бүрд ӨӨР.
  * @param hasRight Баруун тал байгаа эсэх (зарим дашбоард зөвхөн зүүнтэй).
  */
@@ -127,11 +140,7 @@ export function useSideResize(key: string, hasRight = true) {
       const varName = s === 'l' ? '--side-l' : '--side-r';
       // Эхлэх өргөнийг ХЭМЖЭЭД нь уншина: хувьсагч тавиагүй үед CSS-ийн анхны
       // утга (дэлгэцийн хэмжээнээс хамаарна) хүчинтэй байдаг.
-      const w0 =
-        cur.current[s] ??
-        Math.round(
-          parseFloat(getComputedStyle(host).getPropertyValue(varName)) || MIN,
-        );
+      const w0 = cur.current[s] ?? measureSide(host, varName);
       const grip = e.currentTarget;
       drag.current = { s, x: e.clientX, w: w0 };
       grip.setPointerCapture(e.pointerId);
@@ -194,11 +203,7 @@ export function useSideResize(key: string, hasRight = true) {
     e.preventDefault();
     const host = hostRef.current;
     const varName = s === 'l' ? '--side-l' : '--side-r';
-    const base =
-      cur.current[s] ??
-      (host
-        ? Math.round(parseFloat(getComputedStyle(host).getPropertyValue(varName)) || MIN)
-        : MIN);
+    const base = cur.current[s] ?? (host ? measureSide(host, varName) : MIN);
     // Баруун тал эсрэг чиглэлтэй — сум нь заагийг зөөнө, өргөнийг биш.
     const px = Math.min(MAX, Math.max(MIN, base + d * (s === 'l' ? 1 : -1)));
     const next = { ...cur.current, [s]: px };

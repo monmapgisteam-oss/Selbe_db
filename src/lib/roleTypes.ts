@@ -63,7 +63,7 @@ export const HV_ROW = 'huvaari:scope';
 /**
  * «Хуваарь харах»-ыг админ ШИЙДСЭН гэсэн тэмдэг — хадгалсан загварын `seen`-д (ViewKey, `cleanTpl`-ийн `VIEW_KEYS` шүүлтийг давна).
  */
-const HUVAARI_MARK: ViewKey = 'huvaari';
+export const HUVAARI_MARK: ViewKey = 'huvaari';
 
 
 export type SettingRow = {
@@ -217,6 +217,13 @@ const VIEWS_AFTER_TEMPLATES: readonly string[] = ['tuh'];
 const LEGACY_SEEN = (): ViewKey[] => tplViewKeys().filter((k) => !VIEWS_AFTER_TEMPLATES.includes(k));
 
 /**
+ * Загварын ноорогийн `seen` — админ ЗӨВХӨН `keys`-ийг шийдсэн: бусад шинэ хуудасны тэмдэг хэвээр үлдэнэ
+ * (хамаагүй нүд засахад «шинэ хуудас» сануулга алга болдог байв).
+ */
+export const seenWith = (t: TypeTpl, keys: readonly ViewKey[] = []): ViewKey[] =>
+  [...new Set([...(t.seen ?? LEGACY_SEEN()), ...keys])];
+
+/**
  * ХАДГАЛСАН загвар «мэдээгүй» (хадгалах агшинд каталогт байгаагүй) харагдацууд.
  */
 export function unseenViews(role: Role): ViewKey[] {
@@ -339,7 +346,8 @@ export function tplOf(role: Role): TypeTpl {
 export async function saveTpl(role: Role, tpl: TypeTpl): Promise<boolean> {
   const cleaned = cleanTpl(role, tpl);
   if (!cleaned || !isTypeRole(role)) return false;
-  const clean: TypeTpl = { ...cleaned, seen: tplSeenKeys() };
+  /* Анхны хадгалалт (ноорогт `seen` алга) — бүгдийг шийдсэн; хадгалсан загварт ноорогийн `seen` (`seenWith`) */
+  const clean: TypeTpl = { ...cleaned, seen: cleaned.seen ?? tplSeenKeys() };
   const before = writtenAt.get(role);
   writtenAt.set(role, ++tick);
   let ok = false;

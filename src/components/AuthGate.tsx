@@ -18,6 +18,7 @@ import {
   reopenSessionDead, retrySession, sessionDead, subscribeSessionDead, registerDevToken,
 } from '@/lib/authToken';
 import { hasUnsavedWork } from '@/components/LocaleToggle';
+import { armSignOutCleanup } from '@/lib/signOutCleanup';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import s from './auth.module.css';
 
@@ -376,16 +377,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try { localStorage.removeItem(k); } catch { /* хувийн горим */ }
       }
     };
-    if (hasUnsavedWork()) {
-      window.addEventListener('pagehide', () => {
-        try { esriId.destroyCredentials(); } catch { /* хуудас гарч байна */ }
-        clearPermsCache();
-      }, { once: true });
-      watchNavCancel(cancelSignOut, 2_000);
-    } else {
-      esriId.destroyCredentials();
+    /* Итгэмжлэлийг хуудас БОДИТООР гарах үед л устгана — хөтчийн «Хуудаснаас гарах уу?» асуултад «Үлдэх» сонгосон
+       хэрэглэгч итгэмжлэлгүй үлдэхгүй. `Гүйцэтгэл`-ийн хяналтын ноорог synthetic beforeunload-д харагддаггүй тул урьдчилан мэдэх боломжгүй. */
+    armSignOutCleanup(() => {
+      try { esriId.destroyCredentials(); } catch { /* хуудас гарч байна */ }
       clearPermsCache();
-    }
+    });
+    watchNavCancel(cancelSignOut, 2_000);
     const back = encodeURIComponent(location.origin + location.pathname);
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign(

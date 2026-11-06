@@ -26,4 +26,15 @@ const c = renderToStaticMarkup(h(Ring, { value: null, text: '0 AQI' }));
 assert.equal(center(c), '—', 'null үед text гаргаж болохгүй (null ≠ 0)');
 assert.ok(!c.includes('aria-valuenow'));
 
-console.log('✅ Ring: text → голын бичвэр · aria-valuetext · null үед «—»');
+/* Дуусаагүй ажил «100%» гэж бичигдэхгүй */
+const pctOf = (value, decimals) => center(renderToStaticMarkup(h(Ring, { value, decimals })));
+assert.equal(pctOf(99.4), '99%');
+assert.equal(pctOf(99.5), '99%', '99.5 дуусаагүй');
+assert.equal(pctOf(99.99), '99%', '99.99 дуусаагүй');
+assert.equal(pctOf(100), '100%', 'бүрэн дууссан нь 100%');
+assert.equal(pctOf(99.96, 1), '99.9%', 'decimals өгсөн ч 100.0 болохгүй');
+assert.equal(pctOf(99.6, 1), '99.6%');
+assert.equal(pctOf(0), '0.0%', '0% хэвээр');
+assert.equal(pctOf(47.42), '47%', 'ердийн дугуйлалт хэвээр');
+
+console.log('✅ Ring: text → голын бичвэр · aria-valuetext · null үед «—» · дуусаагүй нь 100% биш');

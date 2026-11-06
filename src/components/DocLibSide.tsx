@@ -130,8 +130,9 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
     }
     setOpen((o) => new Set(o).add(upGroup.current));
     if (fileRef.current) fileRef.current.value = '';
-    if (errs.length) throw new Error(errs.join('\n'));
+    /* Анхааруулга (байгууллагад хуваалцаагүй г.м.) нөгөө файлын алдаанд дарагдахгүй */
     if (notes.length) setNote(notes.join('\n'));
+    if (errs.length) throw new Error(errs.join('\n'));
   });
 
   const removePdf = (d: EntPdf) => run(async () => {

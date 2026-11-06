@@ -68,4 +68,21 @@ assert.match(bp, /progressSeries\(hist, \[blockKey\], grain === 'day' \? 'day' :
 assert.match(fin, /const rootE = result\.values\.get\(tree\.root\)\?\.E;/, 'ТТБ: rootE алга');
 assert.match(fin, /ppCalcVal\(c\.k, n \? moneyOf\.get\(n\) : undefined, rootE\)/, 'ТТБ: олгосон хувь мөрийн өөрийн E-д хуваагдаж байна');
 
+/* 6 — (2026-11-06) самбарын тулгалт */
+assert.match(src, /physNowOf\(f, keys, nowYm\)\?\.pct/, '«Шугам сүлжээ» · «Цахилгаан» зурвас ХО дүнгээр жигнэсэн `physNowOf`-оор биш');
+assert.match(src, /HOUSING_PKGS\.includes\(x\.key\) && \(x\.actual != null \|\| x\.planned != null\)/, 'орон сууцны хэсгийн «Төлөвлөгөө vs бодит» бүх багцыг харуулав');
+assert.match(src, /label: tr\(pkgGroupLabel\(x\.key\)\)/, '«Багцаар — биет гүйцэтгэл» түүхий түлхүүрээр');
+assert.match(src, /bg2\.byType\.find\(\(t\) => t\.key === 'НИЙГМИЙН ДЭД БҮТЭЦ'\)/, 'нийгмийн төсөв давхаргын жагсаалтаас (20.6–20.9 дутна)');
+assert.ok(!src.includes('Гэрээ байгуулах эрх'), 'гэрээлсэн дүн «эрх» гэж нэрлэгдэв');
+assert.ok(!src.includes('(захирамжаар)'), 'эх үүсвэр нь Төслийн нийт дүн — захирамжийн дүн биш');
+assert.match(src, /landuseText\(r\[PL\.landuseFull\], r\[PL\.landuse\]\)/, 'зориулалт нэгтгэсэн бүтэн нэрээр биш');
+assert.match(src, /const parcelArea = parcelAreaLookup\(rows\);/, 'хэмжээний самбар `land.parcelAreasDeduped`-ээр биш');
+assert.ok(!src.includes('тоогоор их, талбайгаар бага'), 'амьд тоотой зөрдөг өгүүлбэр буцав');
+/* Шүүлттэй үед эх үүсвэрийн дүн мөрийн нийлбэр — гарчиг «төслийн нийт» гэж хэлэхгүй; гэрээт эх үүсвэр нь тоо биш, мөнгө */
+const gdSrc = readFileSync(new URL('./GeneralDash.tsx', import.meta.url), 'utf8');
+assert.match(gdSrc, /title=\{srcWhole && srcTot \? tr\('Санхүүжилтийн эх үүсвэр \(төслийн нийт дүнгээр\)'\) : tr\('Санхүүжилтийн эх үүсвэр'\)\}/, 'шүүлттэй үед гарчиг буруу');
+const exSrc = readFileSync(new URL('./ExecReport.tsx', import.meta.url), 'utf8');
+assert.ok(!exSrc.includes('«Ажил», «Гэрээт» нь мөрийн тоо'), '«Гэрээт» багана мөнгө — мөрийн тоо гэж тайлбарлав');
+assert.ok(exSrc.includes("tr('Гэрээт ажлын эх үүсвэр (₮)')") && exSrc.includes("tr('Төслийн нийт дүн (₮)')"), 'эх үүсвэрийн хүснэгтийн багана PDF-тэй ижил нэргүй');
+
 console.log('dashboardNumbers.check.mjs — БҮГД ТЭНЦЛЭЭ');

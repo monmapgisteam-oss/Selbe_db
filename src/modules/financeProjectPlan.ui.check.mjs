@@ -60,7 +60,7 @@ for (const fn of ['setInterval', 'setTimeout']) {
 
 const React = (await import('react')).default;
 const { renderToStaticMarkup } = await import('react-dom/server');
-const { huvMonthRows, ProjectPlanTable, isCfMonthCol, ppCalcVal } = await import('@/modules/Finance');
+const { huvMonthRows, ProjectPlanTable, ComboChart, isCfMonthCol, ppCalcVal } = await import('@/modules/Finance');
 const { assemblePlan } = await import('@/lib/projectPlanInputs');
 const { SRC_HUVAARI, SRC_MANUAL } = await import('@/lib/monthlyMoney');
 
@@ -145,6 +145,35 @@ check('толгой ба мөр', () => {
   assert.ok(!html.includes('Хуваарь руу шилжүүлэх'), 'эрхгүй бол товчгүй');
 });
 
+check('«Үе шатны хувь» (2026-11-06) — үе шатны мөрийн амьд утга; мөр алга бол хадгалсан утга', () => {
+  const r2 = rows.map((r) => (r.dd_kod === '1.1' ? { ...r, zuwshuurul: 61.5, tezu: 44.5 } : r));
+  const p2 = assemblePlan(r2, { actual: { blocks: null, universe: null, infra: null }, sched: null, land: new Map() }, D(2026, 7, 2));
+  const html = (pl) => renderToStaticMarkup(React.createElement(ProjectPlanTable, { plan: pl, works, months, monthsError: false, canSwitch: false, onSaved: noop }));
+  assert.ok(html(p2).includes('61.5%') || html(p2).includes('61,5%'), '`live` өгөөгүй — хадгалсан утга');
+  const shown = html({ ...p2, live: new Map([[7, { S: 30, stages: { zuwshuurul: 33.25, tezu: null } }]]) });
+  assert.ok(shown.includes('33.3%') || shown.includes('33,3%'), 'үе шатны мөрийн S');
+  assert.ok(!shown.includes('61.5%') && !shown.includes('61,5%'), 'хуучирсан утга харагдахгүй');
+  assert.ok(shown.includes('44.5%') || shown.includes('44,5%'), 'үе шатны мөргүй (ТЭЗҮ) — хадгалсан утга');
+});
+
+/* 2026-11-06: олгосон нийт ба сарын цувааны зөрүү — график, сарын жагсаалт дээрх дүнтэй таарна; төлбөрийн жагсаалтад зөвхөн олгосон мөр */
+{
+  const { undatedGiven } = await import('@/modules/PkgFin');
+  check('огноогүй олголт', () => {
+    assert.equal(undatedGiven(100, [{ given: 30 }, { given: 40 }]), 30);
+    assert.equal(undatedGiven(70.4, [{ given: 70 }]), 0, '1 ₮-өөс бага үлдэгдэл');
+    assert.equal(undatedGiven(60, [{ given: 70 }]), 0, 'сөрөг суурьгүй');
+    assert.equal(undatedGiven(null, []), 0);
+    assert.equal(undatedGiven(100, null), 0);
+    const pf = readFileSync(new URL('./PkgFin.tsx', import.meta.url), 'utf8');
+    assert.ok(pf.includes('base={undated}'), 'график огноогүй дүнгээс эхэлнэ');
+    assert.ok(pf.includes('=== p.key && hoAmount(r) != null'), '«Олгосон төлбөр» — олгоогүй мөргүй');
+    assert.ok(pf.includes("isBuild(r) && !isBuild(cur)"), '«Гэрээний мэдээлэл» — барилга угсралтын мөр давамгай');
+    const html = renderToStaticMarkup(React.createElement(ComboChart, { items: [{ label: '2026-01', given: 10, phys: null, physAt: null }, { label: '2026-02', given: 5, phys: null, physAt: null }], base: 1000, hidePhys: true }));
+    assert.ok(html.includes('1,015') || html.includes('1015') || html.includes('1,000'), 'тэнхлэг суурийг багтаана');
+  });
+}
+
 check('эх үүсвэрийн баганууд (2026-11-03) — толгой, мөрийн утга, эцэг/нийт нийлбэр', () => {
   const html = render(false);
   for (const s of ['Эх үүсвэр (захирамж)', 'Үнэт цаас', 'Төслийн орлого', 'Нийслэлийн төсөв', 'НЗД нөөц']) {
@@ -200,9 +229,9 @@ check('«Cashflow хувиарлах» таб алга — «Үндсэн хуг
   const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(src, /CashflowPlan|tab === 'plan'|Cashflow хувиарлах'\)/, 'хуучин таб үлдсэн');
   assert.match(src, /type FinTab = 'ipc' \| 'proj';/);
-  assert.match(src, /<MainSpanButton canEdit=\{canEdit\} \/>/, 'Санхүүжилт: товч finEdit эрхээр');
+  assert.match(src, /<MainSpanButton canEdit=\{canEdit\} scope=\{null\} \/>/, 'Санхүүжилт: товч finEdit эрхээр');
   const hv = readFileSync(new URL('./Huvaari.tsx', import.meta.url), 'utf8');
-  assert.match(hv, /<MainSpanButton canEdit=\{hasCap\(user\?\.username, 'finEdit'\)\} \/>/, 'Хуваарь: товч');
+  assert.match(hv, /<MainSpanButton canEdit=\{hasCap\(user\?\.username, 'finEdit'\)\}/, 'Хуваарь: товч');
   assert.ok(!existsSync(new URL('./CashflowPlan.tsx', import.meta.url)), 'CashflowPlan.tsx устсан байх ёстой');
 });
 

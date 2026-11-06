@@ -10,14 +10,29 @@ const L = 'en-US';
 export const dateLocale = (): string => (getLocale() === 'en' ? 'en-US' : 'mn-MN');
 
 /**
- * Огноо + цаг — тайлангийн толгойд, ОРОН НУТГИЙН цагаар `YYYY-MM-DD HH:mm`.
+ * ХАРУУЛАХ ЦАГИЙН БҮС — төслийн бүх огноо Улаанбаатарын цагаар (шүүлтүүрүүдтэй ижил), хөтчийн бүсээс хамаарахгүй.
+ */
+const UB_TZ = 'Asia/Ulaanbaatar';
+const UB_OFFSET_MS = 8 * 3_600_000;
+/** UTC аргуудаар (`getUTC*`) уншихад Улаанбаатарын ханын цаг өгөх `Date` */
+const ubWall = (d: Date): Date => new Date(d.getTime() + UB_OFFSET_MS);
+/** Бүсгүй огноо-цаг («2026-07-14 10:00») — хөтчийн биш, Улаанбаатарын цаг гэж уншина */
+const toDate = (v: number | string): Date => {
+  if (typeof v === 'number') return new Date(v);
+  const s = String(v);
+  return new Date(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s) ? `${s.replace(' ', 'T')}+08:00` : s);
+};
+
+/**
+ * Огноо + цаг — тайлангийн толгойд, УЛААНБААТАРЫН цагаар `YYYY-MM-DD HH:mm`.
  */
 export function dateTime(v: number | string | null | undefined): string {
   if (v == null || v === '') return '—';
-  const dt = typeof v === 'number' ? new Date(v) : new Date(String(v));
+  const dt = toDate(v);
   if (Number.isNaN(dt.getTime())) return String(v);
+  const w = ubWall(dt);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}`;
+  return `${w.getUTCFullYear()}-${p(w.getUTCMonth() + 1)}-${p(w.getUTCDate())} ${p(w.getUTCHours())}:${p(w.getUTCMinutes())}`;
 }
 
 const NF = new Map<number, Intl.NumberFormat>();
@@ -58,13 +73,14 @@ export function mnt(v: number | null | undefined): string {
 /** Огноо: ArcGIS epoch (мс), "2026-07-14" эсвэл DateOnly */
 export function date(v: number | string | null | undefined): string {
   if (v == null || v === '') return '—';
-  const dt = typeof v === 'number' ? new Date(v) : new Date(String(v));
+  const dt = toDate(v);
   if (Number.isNaN(dt.getTime())) return String(v);
   const loc = dateLocale();
   const f = dfOf(loc);
   if (loc !== 'en-US' && !f.resolvedOptions().locale.startsWith('mn')) {
+    const w = ubWall(dt);
     const p = (n: number) => String(n).padStart(2, '0');
-    return `${dt.getFullYear()}.${p(dt.getMonth() + 1)}.${p(dt.getDate())}`;
+    return `${w.getUTCFullYear()}.${p(w.getUTCMonth() + 1)}.${p(w.getUTCDate())}`;
   }
   return f.format(dt);
 }
@@ -72,27 +88,27 @@ const DF = new Map<string, Intl.DateTimeFormat>();
 function dfOf(loc: string): Intl.DateTimeFormat {
   let f = DF.get(loc);
   if (!f) {
-    f = new Intl.DateTimeFormat(loc, { year: 'numeric', month: '2-digit', day: '2-digit' });
+    f = new Intl.DateTimeFormat(loc, { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: UB_TZ });
     DF.set(loc, f);
   }
   return f;
 }
 
 /**
- * ӨДРИЙН ТҮЛХҮҮР — epoch (мс) → «YYYY-MM-DD» ОРОН НУТГИЙН огноогоор.
+ * ӨДРИЙН ТҮЛХҮҮР — epoch (мс) → «YYYY-MM-DD» УЛААНБААТАРЫН огноогоор.
  */
 export function dayKey(ms: number): string {
-  const d = new Date(ms);
+  const d = ubWall(new Date(ms));
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
 }
 
 /**
- * САРЫН ТҮЛХҮҮР — «YYYY-MM» ОРОН НУТГИЙН огноогоор. Оролтгүй бол ӨНӨӨДӨР.
+ * САРЫН ТҮЛХҮҮР — «YYYY-MM» УЛААНБААТАРЫН огноогоор. Оролтгүй бол ӨНӨӨДӨР.
  */
 export function monthKey(ms: number = Date.now()): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const d = ubWall(new Date(ms));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 /** ArcGIS-ийн хоосон утга: null, "" эсвэл зөвхөн зай */

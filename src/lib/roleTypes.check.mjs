@@ -129,9 +129,23 @@ console.log('✅ roleTypeApply — зөвхөн setUser; ErhTypes-д scope мө�
   /* saveTpl — сүлжээгүй тул унана (false), гэхдээ seen-ийг ЗААВАЛ бичих ёстой — эх кодоор */
   assert.equal(await saveTpl('injener', { on: ['view:gdash'], home: 'gdash' }), false, 'сүлжээгүй — false');
   const rt = fs.readFileSync('src/lib/roleTypes.ts', 'utf8');
-  assert.ok(rt.includes('const clean: TypeTpl = { ...cleaned, seen: tplSeenKeys() };'), 'saveTpl: seen = одоогийн каталог + хуваарийн тэмдэг');
+  assert.ok(rt.includes('const clean: TypeTpl = { ...cleaned, seen: cleaned.seen ?? tplSeenKeys() };'), 'saveTpl: ноорогийн seen, анхны хадгалалтад одоогийн каталог + хуваарийн тэмдэг');
+  /* Хамаагүй нүд засахад шинэ хуудасны тэмдэг арилахгүй — зөвхөн шийдсэн хуудас `seen`-д орно */
+  const { seenWith, tplSeenKeys, HUVAARI_MARK, planViewDecided } = await import('@/lib/roleTypes.ts');
+  const unseenIn = (seen) => tplViewKeys().filter((k) => !seen.includes(k));
+  const legacy = tplOf('injener');
+  assert.equal(legacy.seen, undefined, 'хуучин загвар seen-гүй');
+  const afterOther = seenWith(legacy, ['irged']);
+  assert.deepEqual(unseenIn(afterOther), ['tuh'], '`view:irged` солиход `tuh` шинэ хэвээр');
+  assert.ok(!planViewDecided({ ...legacy, seen: afterOther }, true), 'хамаагүй нүд «Хуваарь харах»-ыг шийдэхгүй');
+  assert.deepEqual(unseenIn(seenWith(legacy, ['tuh'])), [], '`view:tuh` өөрийг нь шийдвэл тэмдэг арилна');
+  assert.deepEqual(unseenIn(seenWith(tplOf('menejer'))), ['plan'], 'нүүр цонх г.м. (decided хоосон) — тэмдэг хэвээр');
+  assert.ok(planViewDecided({ ...legacy, seen: seenWith(legacy, [HUVAARI_MARK]) }, true), '«Хуваарь харах» сонгогч шийднэ');
+  assert.deepEqual(unseenIn(seenWith(legacy, tplSeenKeys())), [], 'баганын тэмдэг дарвал бүгд шийдэгдэнэ');
   /* ErhTypes — баганын/мөрийн тэмдэг */
   const ui = fs.readFileSync('src/modules/ErhTypes.tsx', 'utf8');
+  assert.ok(!ui.includes('seen: tplSeenKeys()'), 'ErhTypes.put: seen-ийг бүхэлд нь автоматаар дарах ёсгүй');
+  assert.ok(ui.includes('onClick={() => put(r, cur(r), tplSeenKeys())}'), 'ErhTypes: баганын тэмдэг дарахад л бүгдийг шийднэ');
   assert.ok(ui.includes("tr('шинэ хуудас — загварт тохируулаагүй')") && ui.includes('unseenOf(r)'), 'ErhTypes: «шинэ хуудас» тэмдэг алга');
   /* Шинэ аккаунтын анхдагч — одоогийн төрөл (хуучин tolovlolt БИШ) */
   assert.ok(isTypeRole(NEW_ACCOUNT_ROLE) && NEW_ACCOUNT_ROLE !== 'super', `NEW_ACCOUNT_ROLE төрлийн жагсаалтад байх ёстой: ${NEW_ACCOUNT_ROLE}`);

@@ -299,13 +299,15 @@ function pkgIssues(
 ): PkgIssue[] {
   const out: PkgIssue[] = [];
 
-  /* ── Чанарын баримт — тухайн төрлийн хянагч БҮГД зөвшөөрөх ёстой ── */
+  /* ── Чанарын баримт — FIC · М-актыг багцын АЛЬ НЭГ хянагч шийдвэрлэнэ (`ficMakt.decideFm`, `ChanarAcl`-ийн дүрэм):
+     зохиогчоос өөр хянагч огт байхгүй бол л гацна, зарим үүрэг дутуу нь зөвлөмж ── */
   const cA = chanar.author ?? [];
   if (cA.length) {
-    const missing = ['tuh', 'chanar', 'habea', 'tug', 'cheng']
-      .filter((r) => noOther(cA, chanar[r] ?? []));
+    const reviewers = ['tuh', 'chanar', 'habea', 'tug', 'cheng'];
+    const missing = reviewers.filter((r) => noOther(cA, chanar[r] ?? []));
+    const stuck = cA.some((a) => !reviewers.some((r) => (chanar[r] ?? []).some((u) => u !== a)));
     if (missing.length) {
-      out.push({ tone: 'warn', key: 'chanarNoReviewer', args: [bagts, missing.join(', ')], cols: missing.map((r) => `chanar:${r}`) });
+      out.push({ tone: 'warn', key: stuck ? 'chanarNoReviewer' : 'chanarRoleGap', args: [bagts, missing.join(', ')], cols: missing.map((r) => `chanar:${r}`) });
     }
   }
   for (const c of reviewerClashes(chanar as Partial<Record<Reviewer, string[]>>, cA)) {

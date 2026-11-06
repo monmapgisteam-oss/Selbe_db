@@ -350,9 +350,13 @@ console.log('✅ 2026-09-29 — нэмэлт ажил засах · олон б�
  * хэллэг ЗӨВХӨН бусад өөрчлөлт огт байхгүй үед. */
 {
   const V = readCode('src/modules/HuvaariBatlah.tsx');
-  assert.ok(/otherN: Object\.keys\(p\.actual\)\.length \+ Object\.keys\(p\.res\)\.length \+ Object\.keys\(p\.obres \?\? \{\}\)\.length/.test(V),
-    'HuvaariBatlah: бодит огноо/нөөцийн өөрчлөлт тоологдохгүй');
-  assert.ok(/fig\.depsN \|\| fig\.obyemN \|\| fig\.otherN\s*\?\s*tr\('Огнооны өөрчлөлт алга'\)\s*:\s*tr\('Огнооны өөрчлөлт алга — эх хуудас аль хэдийн ижил байна\.'\)/.test(V),
+  const L = readCode('src/lib/huvaariBatlah.ts');
+  assert.ok(/actualN: Object\.keys\(p\.actual\)\.length/.test(L) && /resN: Object\.keys\(p\.res\)\.length \+ Object\.keys\(p\.obres \?\? \{\}\)\.length/.test(L),
+    'queueFigures: бодит огноо/нөөцийн өөрчлөлт тоологдохгүй');
+  assert.ok(/queueFigures\(p\)/.test(V) && /fig\.spansN === 0 && fig\.removedN === 0/.test(V),
+    'HuvaariBatlah: огноо арилгасан илгээлтэд «огнооны өөрчлөлт алга» гэж хэлж байна');
+  assert.ok(/fig\.depsN \|\| fig\.obyemN \|\| fig\.actualN \|\| fig\.resN\s*\?\s*tr\('Огнооны өөрчлөлт алга'\)\s*:\s*tr\('Огнооны өөрчлөлт алга — эх хуудас аль хэдийн ижил байна\.'\)/.test(V),
     'HuvaariBatlah: сарын обьёмтой саналд «эх хуудас аль хэдийн ижил» гэж хэлж байна');
+  assert.ok(/tr\('Бодит огноо \{0\} мөр'/.test(V) && /tr\('Нөөц \{0\} мөр'/.test(V), 'HuvaariBatlah: бодит огноо, нөөцийн өөрчлөлтийг нэрлэхгүй байна');
 }
 console.log('✅ 2026-09-30 — огноогүй санал (сарын обьём/уялдаа) «ижил» гэж худал хэлэхгүй');

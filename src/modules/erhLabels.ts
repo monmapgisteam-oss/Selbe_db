@@ -114,7 +114,10 @@ const issueBase = (i: PkgIssue): string => {
     return tr('{0}: {1} нь мөр нэмэгч БА батлагч хоёулаа — нэмэлт ажил гацна.', i.args[0], i.args[1]);
   }
   if (i.key === 'chanarNoReviewer') {
-    return tr('{0}: чанарын баримтын хянагч дутуу ({1}) — тухайн төрлийн хянагч бүгд зөвшөөрөх ёстой тул ирүүлсэн баримт хэзээ ч батлагдахгүй.', i.args[0], chanarRoleNames(i.args[1]));
+    return tr('{0}: зохиогчоос өөр хянагч томилоогүй ({1}) — энэ багцын FIC · М-актыг хэн ч шийдвэрлэж чадахгүй.', i.args[0], chanarRoleNames(i.args[1]));
+  }
+  if (i.key === 'chanarRoleGap') {
+    return tr('{0}: чанарын баримтын {1} үүрэгт зохиогчоос өөр хүн томилоогүй — FIC · М-актыг бусад хянагч шийдвэрлэж чадна; үүргийг нөхөхийг зөвлөнө.', i.args[0], chanarRoleNames(i.args[1]));
   }
   if (i.key === 'chanarOneManRoles') {
     return tr('{0}: {3} нь {2} үүргийн цорын ганц хянагч ({1}) — нэг хүн зөвхөн нэг үүргээр хянадаг тул баримт гацна.', i.args[0], i.args[1], chanarRoleNames(i.args[2]), i.args[3]);

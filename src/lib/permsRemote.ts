@@ -207,6 +207,11 @@ export const permsTablePublic = (): boolean => tablePublic;
 let tableOrgEditable = false;
 /** Эрхийн хүснэгт байгууллагад засагдахаар нээлттэй эсэх (Enterprise) — UserAdmin-ы анхааруулга */
 export const permsTableOrgEditable = (): boolean => tableOrgEditable;
+let editorFieldAbsent = false;
+/** Хүснэгтийн мөрүүдэд `last_edited_user` огт ирээгүй эсэх — `trustedSupers` super мөрийг шалгаж чадахгүй (UserAdmin-ы анхааруулга) */
+export const permsEditorFieldAbsent = (): boolean => editorFieldAbsent;
+export const noEditorField = (rows: readonly { last_edited_user?: string | null }[]): boolean =>
+  rows.length > 0 && rows.every((r) => r.last_edited_user === undefined);
 let exposureProbed = false;
 type LayerMetaLite = { capabilities?: unknown; serviceItemId?: unknown };
 async function probeEntExposure(layerUrl: string): Promise<void> {
@@ -311,6 +316,7 @@ export async function fetchAll(): Promise<{
     if (!url) return null;
     const fl = await layer(url);
     const rows = await queryAllRows(fl, '1=1');
+    editorFieldAbsent = noEditorField(rows);
     const perms: Record<string, RemoteRow> = {};
     const flowBy = new Map<string, FlowRow>();
     const capsBy = new Map<string, CapRow>();
@@ -836,7 +842,8 @@ export function scopedUpsert(
   return upsertByKey(key, {
     username: key,
     role: null,
-    views: JSON.stringify(grants ? { roles, bagts, grants } : { roles, bagts }),
+    /* `grants`-тай бол давхар хуулбар бичихгүй (`views` 2048 тэмдэгт) — `scopedAcl` `grants`-ыг түрүүлж уншина */
+    views: JSON.stringify(grants ? { grants } : { roles, bagts }),
     docs: 0,
   });
 }

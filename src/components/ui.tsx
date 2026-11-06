@@ -2002,6 +2002,14 @@ export function Trend({
 
 /* ── Цагираг ── */
 
+/** Дуусаагүй ажил «100%» гэж бичигдэхгүй: дугуйлалт 100 болвол доош тайрна (99.6 → 99) */
+function ringPct(v: number, decimals: number): string {
+  const s = v.toFixed(decimals);
+  if (v >= 100 || Number(s) < 100) return s;
+  const k = 10 ** decimals;
+  return (Math.floor(v * k) / k).toFixed(decimals);
+}
+
 /**
  * Цагираг.
  *
@@ -2035,7 +2043,7 @@ export function Ring({
   const has = value != null && Number.isFinite(value);
   const v = has ? Math.max(0, Math.min(100, value)) : 0;
   const circ = 2 * Math.PI * mid;
-  const shown = has ? (text ?? `${v.toFixed(decimals ?? (v < 10 ? 1 : 0))}%`) : '—';
+  const shown = has ? (text ?? `${ringPct(v, decimals ?? (v < 10 ? 1 : 0))}%`) : '—';
   const k = size / 112;
   const fs = Math.min(size * 0.18, (ri * 2 - 8) / Math.max(shown.length * 0.64, 1));
 

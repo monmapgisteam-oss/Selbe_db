@@ -252,6 +252,22 @@ async function countPlanNews(username: string | null): Promise<number | null> {
 /**
  * ТЭМДЭГ ДАХИН ТООЛОХ ДОХИО — `Portal` `refreshBadges`-ээ өгнө, тайлах функц буцаана.
  */
-export function subscribeNavBadges(_cb: () => void): () => void {
-  return () => {};
+export function subscribeNavBadges(cb: () => void, quietMs = 400): () => void {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  /* Бөөн бичилт олон дохио өгдөг — сүүлийнхийн дараа НЭГ удаа тоолно */
+  const kick = () => {
+    clearTimeout(timer);
+    timer = setTimeout(cb, quietMs);
+  };
+  const offs: (() => void)[] = [];
+  void Promise.all([import('@/lib/caps'), import('@/lib/chanarAcl')]).then(([caps, chanar]) => {
+    if (stopped) return;
+    offs.push(caps.subscribeCaps(kick), chanar.subscribeChanarAcl(kick));
+  }, () => { /* модуль ачаалагдсангүй — 3 минутын шинэчлэл хэвээр */ });
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+    for (const off of offs) off();
+  };
 }

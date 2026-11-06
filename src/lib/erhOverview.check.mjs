@@ -225,11 +225,19 @@ console.log('✅ эрэмбэ — эрхтэй нь эхэнд');
     { user: 't', grants: [{ role: 'tuh', bagts: ['*'] }, { role: 'habea', bagts: [G0] }] },
     { user: 'q', grants: [{ role: 'chanar', bagts: [G0] }, { role: 'tug', bagts: [G0] }, { role: 'cheng', bagts: [G0] }] },
   ] };
-  assert.ok(!pkgErh(full, G0).issues.some((i) => i.key === 'chanarNoReviewer'), 'бүрэн томилогдсон → гацаагүй');
+  assert.ok(!pkgErh(full, G0).issues.some((i) => i.key === 'chanarNoReviewer' || i.key === 'chanarRoleGap'), 'бүрэн томилогдсон → гацаагүй');
+  /* FIC · М-актыг аль нэг хянагч шийдвэрлэнэ (`ficMakt.decideFm`): зарим үүрэг дутуу нь гацаа биш, зөвлөмж */
   const noTug = { ...full, chanar: full.chanar.map((r) => ({ ...r, grants: r.grants.filter((g) => g.role !== 'tug') })) };
-  assert.equal(pkgErh(noTug, G0).issues.find((i) => i.key === 'chanarNoReviewer')?.args[1], 'tug', '⚠️ ТУГ дутуу → MA батлагдахгүй');
+  assert.equal(pkgErh(noTug, G0).issues.find((i) => i.key === 'chanarRoleGap')?.args[1], 'tug', 'ТУГ дутуу → зөвлөмж');
+  assert.ok(!pkgErh(noTug, G0).issues.some((i) => i.key === 'chanarNoReviewer'), 'өөр хянагч бий → «хэн ч шийдвэрлэхгүй» гэхгүй');
   const noCheng = { ...full, chanar: full.chanar.map((r) => ({ ...r, grants: r.grants.filter((g) => g.role !== 'cheng') })) };
-  assert.equal(pkgErh(noCheng, G0).issues.find((i) => i.key === 'chanarNoReviewer')?.args[1], 'cheng', '⚠️ ЧХ инженер дутуу → MA эхлэхгүй (2-р үе шат)');
+  assert.equal(pkgErh(noCheng, G0).issues.find((i) => i.key === 'chanarRoleGap')?.args[1], 'cheng', 'ЧХ инженер дутуу → зөвлөмж');
+  const oneReviewer = { ...empty(), chanar: [
+    { user: 'g', grants: [{ role: 'author', bagts: [G0] }] },
+    { user: 'c', grants: [{ role: 'chanar', bagts: [G0] }] },
+  ] };
+  const oneI = pkgErh(oneReviewer, G0).issues.filter((i) => i.key.startsWith('chanar'));
+  assert.deepEqual(oneI.map((i) => [i.key, i.args[1]]), [['chanarRoleGap', 'tuh, habea, tug, cheng']], 'ганц хянагчтай багц гацаагүй (ChanarAcl-ийн дүрэм)');
   assert.deepEqual(pkgErh(full, G0).chanar.tuh, ['t']);
   assert.equal(pkgErh(empty(), G0).issues.some((i) => i.key === 'chanarNoReviewer'), false, 'зохиогчгүй бол анхааруулахгүй');
   const u = userErh(full, 't');
@@ -277,8 +285,8 @@ console.log('✅ матриц — 19 багана, багц бүр мөр');
   assert.equal(tone(ch, 'chanar:tuh'), null, 'томилогдсон хянагч хэвийн');
   assert.equal(tone(ch, 'chanar:chanar'), 'warn', 'дутуу хянагч шар');
   assert.equal(tone(ch, 'chanar:habea'), 'warn');
-  assert.equal(tone(ch, 'chanar:tug'), 'warn', 'ТУГ дутуу → шар (MA · NCR л хүлээнэ)');
-  assert.equal(tone(ch, 'chanar:cheng'), 'warn', 'ЧХ инженер дутуу → шар (MA л хүлээнэ)');
+  assert.equal(tone(ch, 'chanar:tug'), 'warn', 'ТУГ дутуу → шар (зөвлөмж)');
+  assert.equal(tone(ch, 'chanar:cheng'), 'warn', 'ЧХ инженер дутуу → шар (зөвлөмж)');
   assert.equal(tone(ch, 'chanar:author'), null);
 
   /* Issue бүр `cols`-тай — баганагүй issue матрицад харагдахгүй */

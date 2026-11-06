@@ -133,7 +133,8 @@ export function ResizableColumns({
   }, [def]);
 
   const save = useCallback(() => {
-    try { localStorage.setItem(LS + id, JSON.stringify(size.current)); } catch { /* хувийн горим */ }
+    /* Одоо алга (каталог хаалттай) баганын хадгалсан өргөнийг дарж устгахгүй */
+    try { localStorage.setItem(LS + id, JSON.stringify({ ...readSaved(id), ...size.current })); } catch { /* хувийн горим */ }
   }, [id]);
 
   /* Зурагдалтаас өмнө: дутуу талыг сэргээх, алга болсныг цэвэрлэх (толгой) */

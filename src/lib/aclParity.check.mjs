@@ -209,9 +209,9 @@ console.log('✅ permissions.initRemote — 8 синк бүр console.error, cap
     assert.ok(scopedList.includes(`[${pfx}, `), `fetchAll: ${pfx} нийтлэг (grants уншдаг) задлалаар явахгүй байна`);
   }
   /* Бичих тал ч гурвуулаа — уншилт бичилттэйгээ тэнцүү байх ёстой */
-  const grantsWrites = (src.match(/grants \? \{ roles, bagts, grants \} : \{ roles, bagts \}/g) ?? []).length;
+  const grantsWrites = (src.match(/grants \? \{ grants \} : \{ roles, bagts \}/g) ?? []).length;
   assert.equal(grantsWrites, 1, `upsert: grants бичилт НЭГ туслахад (scopedUpsert) байх ёстой, олдсон: ${grantsWrites}`);
-  assert.ok(/export function scopedUpsert\([\s\S]*?SCOPED_PREFIX\[kind\][\s\S]*?grants \? \{ roles, bagts, grants \}/.test(src), 'scopedUpsert: SCOPED_PREFIX-ээр grants бичихгүй байна');
+  assert.ok(/export function scopedUpsert\([\s\S]*?SCOPED_PREFIX\[kind\][\s\S]*?grants \? \{ grants \}/.test(src), 'scopedUpsert: SCOPED_PREFIX-ээр grants бичихгүй байна');
   for (const k of ['huvaari', 'obyem', 'chanar', 'ajil', 'butets', 'habea']) {
     assert.ok(src.includes(`return scopedUpsert('${k}', user, roles, bagts, grants);`), `${k}Upsert: scopedUpsert-ээр явахгүй байна`);
     assert.ok(src.includes(`return scopedRemove('${k}', user);`), `${k}Remove: scopedRemove-ээр явахгүй байна`);

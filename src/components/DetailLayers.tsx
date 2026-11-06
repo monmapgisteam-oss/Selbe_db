@@ -75,7 +75,7 @@ export function CompareLabels({ on, leading, trailing }: { on: boolean; leading:
   }, [view]);
   if (!host) return null;
   return createPortal(<>
-    <span className={compareStyle.label}>{on ? `${tr('Зүүн')}: ${leading}` : tr('Хэсэгчилсэн ЕТ')}</span>
+    <span className={compareStyle.label}>{on ? `${tr('Зүүн')}: ${leading}` : tr('Хэсэгчилсэн ерөнхий төлөвлөгөө')}</span>
     {on && <span className={compareStyle.label}>{tr('Баруун')}: {trailing}</span>}
   </>, host);
 }

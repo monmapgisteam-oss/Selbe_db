@@ -24,7 +24,7 @@ import {
   type UserBase,
   type UserPerm,
 } from '@/lib/permissions';
-import { permsTableOrgEditable, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
+import { permsEditorFieldAbsent, permsTableOrgEditable, permsTablePublic, takeWriteError } from '@/lib/permsRemote';
 import { userError } from '@/components/ui';
 import { askConfirm } from '@/lib/confirm';
 import { lastSuperWarn, superDemoteMsg, superGrantMsg } from './UserTypeSection';
@@ -898,17 +898,14 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           )}
           {permsTableOrgEditable() && !permsTablePublic() && (
             <div className={s.addErr} role="alert">
-              {tr('🔴 Эрхийн хүснэгт байгууллагад засагдахаар нээлттэй байна — байгууллагын гишүүн REST-ээр мөр бичиж чадна. Super мөрийг систем шалгадаг ч бусад эрхийн мөрийг хамгаалахын тулд хүснэгтийн засах эрхийг хязгаарлана уу.')}
+              {permsEditorFieldAbsent()
+                ? tr('🔴 Эрхийн хүснэгтийг (Selbe_Permissions) байгууллагын БҮХ хэрэглэгч засаж чадна — хэн ч өөрийгөө «super» болгож чадна. Порталд хүснэгтийн засах эрхийг (Editing) зөвхөн админ бүлэгт үлдээнэ үү.')
+                : tr('🔴 Эрхийн хүснэгт байгууллагад засагдахаар нээлттэй байна — байгууллагын гишүүн REST-ээр мөр бичиж чадна. Super мөрийг систем шалгадаг ч бусад эрхийн мөрийг хамгаалахын тулд хүснэгтийн засах эрхийг хязгаарлана уу.')}
             </div>
           )}
           {permsTablePublic() && (
             <div className={s.addErr} role="alert">
               {tr('🔴 Эрхийн хүснэгт (Selbe_Permissions) НИЙТЭД нээлттэй байна — нэвтрээгүй хэн ч эрх засаж чадна. Порталд хүснэгтийн хуваалцах тохиргоог (Share) «Organization» болгоно уу.')}
-            </div>
-          )}
-          {!permsTablePublic() && permsTableOrgEditable() && (
-            <div className={s.addErr} role="alert">
-              {tr('🔴 Эрхийн хүснэгтийг (Selbe_Permissions) байгууллагын БҮХ хэрэглэгч засаж чадна — хэн ч өөрийгөө «super» болгож чадна. Порталд хүснэгтийн засах эрхийг (Editing) зөвхөн админ бүлэгт үлдээнэ үү.')}
             </div>
           )}
         </header>

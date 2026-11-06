@@ -637,7 +637,7 @@ export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<Tas
                     key: `${i}:${h.name}`,
                     label: h.name,
                     value: h.progress ?? null,
-                    display: h.progress == null ? tr('мэдээлэлгүй') : pct(h.progress, 0),
+                    display: h.progress == null ? pct(0, 0) : h.progress < 100 && h.progress >= 99.5 ? pct(99, 0) : pct(h.progress, 0),
                   }))}
                 />
               </Section>

@@ -17,7 +17,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { mnt, num } from './format.ts';
+import { mnt, num, date, dateTime, dayKey, monthKey } from './format.ts';
 import { money as suitMoney } from '../modules/analysis/suit/format.ts';
 
 /* ── 1. Хэлбэр — бүтэн, таслалтай, нэгжтэй ── */
@@ -76,5 +76,19 @@ const hits = [];
   }
 })(join(ROOT, 'src'));
 assert.deepEqual(hits, [], `Мөнгөний ТОВЧЛОЛ буцаж орсон байна:\n  ${hits.join('\n  ')}`);
+
+/* ── 6. Огноо Улаанбаатарын цагаар — хөтчийн бүсээс хамаарахгүй (TZ=America/New_York ба TZ=Asia/Tokyo-оор ч ажиллуулж шалгасан) ── */
+const lateUtc = Date.UTC(2026, 0, 31, 16, 30); // UB: 2026-02-01 00:30
+assert.equal(dayKey(lateUtc), '2026-02-01', 'UTC 16:30 нь UB-д дараа өдөр');
+assert.equal(monthKey(lateUtc), '2026-02', 'сарын зааг UB-аар');
+assert.equal(dateTime(lateUtc), '2026-02-01 00:30');
+assert.equal(dateTime('2026-07-14 10:05'), '2026-07-14 10:05', 'бүсгүй бичвэр UB цаг гэж уншигдана');
+assert.equal(dateTime('2026-07-14T10:05:00+08:00'), '2026-07-14 10:05');
+assert.equal(dayKey(Date.UTC(2026, 0, 31, 15, 59)), '2026-01-31', '23:59 UB');
+assert.match(date(lateUtc), /2026\D+0?2\D+0?1\b/, `date: ${date(lateUtc)}`);
+assert.match(date('2026-07-14'), /2026\D+0?7\D+14\b/, `DateOnly өдөр шилжихгүй: ${date('2026-07-14')}`);
+assert.equal(date(null), '—');
+assert.equal(dateTime(''), '—');
+assert.equal(date('гараар бичсэн'), 'гараар бичсэн', 'огноо биш бичвэр хэвээр');
 
 console.log('format.check.mjs — БҮГД ТЭНЦЛЭЭ');

@@ -388,11 +388,11 @@ function PortalContent(
     if (hesegTab === 'change') {
       return [
         ...(hesegSwipe ? [{ key: 'now', title: tr('Ерөнхий төлөвлөгөө'), items: layerItems(hesegPick?.oldLayers ?? OLD_ET_LAYERS) }] : []),
-        { key: 'next', title: tr('Хэсэгчилсэн ЕТ'), items: layerItems(hesegPick?.layers ?? DETAIL_NEXT_LAYERS) },
+        { key: 'next', title: tr('Хэсэгчилсэн ерөнхий төлөвлөгөө'), items: layerItems(hesegPick?.layers ?? DETAIL_NEXT_LAYERS) },
       ];
     }
     if (hesegTab === 'overlap' && (hesegSwipe || (!overlapSel && !overlapShown.length))) {
-      return [{ key: 'next', title: tr('Хэсэгчилсэн ЕТ'), items: layerItems(DETAIL_NEXT_LAYERS) }];
+      return [{ key: 'next', title: tr('Хэсэгчилсэн ерөнхий төлөвлөгөө'), items: layerItems(DETAIL_NEXT_LAYERS) }];
     }
     if (hesegTab === 'need') {
       return [
@@ -400,7 +400,7 @@ function PortalContent(
           key: system.key, title: system.title, hue: system.hue, ids: system.ids.filter((id) => needExistingIds.includes(id)),
         })).filter((system) => system.ids.length > 0) }] : []),
         ...(!needSelection.type && !needSelection.zone && !needSelection.priorityOnly
-          ? [{ key: 'next', title: tr('Хэсэгчилсэн ЕТ'), items: layerItems(DETAIL_NEXT_LAYERS) }] : []),
+          ? [{ key: 'next', title: tr('Хэсэгчилсэн ерөнхий төлөвлөгөө'), items: layerItems(DETAIL_NEXT_LAYERS) }] : []),
       ];
     }
     return [];
@@ -1063,8 +1063,8 @@ function PortalContent(
                     <SwipeToggle on={hesegSwipe} setOn={setHesegSwipe} />
                     <CompareLabels
                       on={hesegSwipe}
-                      leading={hesegTab === 'change' ? tr('Хуучин ЕТ') : hesegTab === 'overlap' ? tr('Хэсэгчилсэн ЕТ') : tr('Одоо байгаа инженерийн дэд бүтэц')}
-                      trailing={hesegTab === 'change' ? tr('Хэсэгчилсэн ЕТ') : hesegTab === 'overlap' ? tr('Сонгосон давхцал') : tr('Шинээр нэмэгдэх хэрэгцээ')}
+                      leading={hesegTab === 'change' ? tr('Хуучин ерөнхий төлөвлөгөө') : hesegTab === 'overlap' ? tr('Хэсэгчилсэн ерөнхий төлөвлөгөө') : tr('Одоо байгаа инженерийн дэд бүтэц')}
+                      trailing={hesegTab === 'change' ? tr('Хэсэгчилсэн ерөнхий төлөвлөгөө') : hesegTab === 'overlap' ? tr('Сонгосон давхцал') : tr('Шинээр нэмэгдэх хэрэгцээ')}
                     />
                   </ErrorBoundary>
                 )}

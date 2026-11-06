@@ -12,19 +12,18 @@ import { MA_CATEGORIES, MA_REQUIRED, type MaCategory } from '@/lib/chanarTemplat
 /** epoch мс → `YYYY-MM-DD`; хоосон бол «—» */
 export const ymd = (ms: number | null | undefined): string => {
   if (!ms) return '—';
-  const d = new Date(ms);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  /* Улаанбаатарын хуанли (UTC+8) — `format.date`-тэй ижил, хөтчийн бүсээс хамаарахгүй */
+  return new Date(ms + 8 * 3_600_000).toISOString().slice(0, 10);
 };
 
 /** epoch мс → `<input type=date>`-ийн утга (хоосон бол '') */
 export const toDateInput = (ms: number | null | undefined): string => (ms ? ymd(ms) : '');
 
-/** `<input type=date>`-ийн утга → epoch мс (орон нутгийн шөнө дунд); хоосон/буруу → null */
+/** `<input type=date>`-ийн утга → epoch мс (Улаанбаатарын шөнө дунд); хоосон/буруу → null */
 export const fromDateInput = (v: string): number | null => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v ?? '').trim());
   if (!m) return null;
-  const ms = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - 8 * 3_600_000;
   return Number.isFinite(ms) ? ms : null;
 };
 

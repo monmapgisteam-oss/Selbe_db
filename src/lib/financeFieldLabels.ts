@@ -79,7 +79,7 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
   get dun() { return tr('Дүн (₮)'); },
   get guilgee_ognoo() { return tr('Гүйлгээ хийсэн огноо'); },
   get hul_turiin_san() { return tr('Төрийн сан дээр хүлээгдэж буй'); },
-  get hul_ho_helts() { return tr('ХО хэлтэст хүргүүлсэн хүлээгдэж буй'); },
+  get hul_ho_helts() { return tr('Хөрөнгө оруулалтын хэлтэст хүргүүлсэн хүлээгдэж буй'); },
   get hul_zahialagch() { return tr('Захиалагчийн хяналтад хүлээгдэж буй'); },
 
   /*

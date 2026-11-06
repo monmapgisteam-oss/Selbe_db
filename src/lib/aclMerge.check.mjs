@@ -76,6 +76,7 @@ const w2 = HV.setHuvaariGrants
 assert.ok(w2.ok, w2.error);
 await w2.sync; await settle();
 eq(sorted(fake.json('__huvaari__:', U).grants[0].bagts), sorted([P0, P1, P2]), 'ArcGIS: P1 (нөгөө админ) хадгалагдав');
+eq(Object.keys(fake.json('__huvaari__:', U)), ['grants'], 'ArcGIS: grants-тай мөрөнд давхар roles · bagts бичигдэхгүй (views 2048 тэмдэгт)');
 eq(sorted(HV.listHuvaariAssigns().find((a) => a.user === U).grants[0].bagts), sorted([P0, P1, P2]), 'локал нэгтгэгдэв');
 
 /* ── Dirty → tombstone (2026-10-09, аудит №6) ──

@@ -99,7 +99,7 @@ export const VIEWS: {
    */
   {
     key: "hesegET",
-    get title() { return tr('Хэсэгчилсэн ЕТ'); },
+    get title() { return tr('Хэсэгчилсэн ерөнхий төлөвлөгөө'); },
     get desc() { return tr('Ерөнхий төлөвлөгөөний өөрчлөлт, одоо байгаа дэд бүтэцтэй давхцал, нэмэлт хэрэгцээ'); },
     icon: "sections",
     hue: "#0d9488",

@@ -84,4 +84,13 @@ console.log('✅ irged:reach буфер хуудаслалттай');
 }
 console.log('✅ AuthGate: alive шалгалт · хүснэгт үүсгэлт нэг удаа');
 
+/* 5. DocLibSide — нэг файлын алдаа нөгөө файлын «хуваалцаагүй» анхааруулгыг дарахгүй */
+{
+  const dl = strip(read('./DocLibSide.tsx'));
+  const up = dl.slice(dl.indexOf('const upload = '), dl.indexOf('const removePdf = '));
+  assert.ok(up.indexOf('setNote(notes') > 0 && up.indexOf('setNote(notes') < up.indexOf('throw new Error(errs'),
+    'upload: setNote нь throw-оос ӨМНӨ байх ёстой');
+}
+console.log('✅ DocLibSide: анхааруулга алдаанд дарагдахгүй');
+
 console.log('\nuiGuards.check: ok');

@@ -3,6 +3,7 @@
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/syncGuards.check.mjs
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const mem = new Map();
 globalThis.window = globalThis;
@@ -15,10 +16,21 @@ globalThis.addEventListener = () => {};
 globalThis.removeEventListener = () => {};
 globalThis.dispatchEvent = () => true;
 
-const { trustedSupers } = await import('./permsRemote.ts');
+const { trustedSupers, noEditorField } = await import('./permsRemote.ts');
 const CAPS = await import('./caps.ts');
 const { relayUrlOk } = await import('./agent/client.ts');
 const P = await import('./permissions.ts');
+
+/* ── Хүснэгт засагдахаар нээлттэй үеийн ГАНЦ анхааруулга: текст нь `trustedSupers`-ийн бодит шалгалтыг дагана ── */
+assert.equal(noEditorField([{ username: 'a' }, { username: 'b' }]), true, 'талбар огт ирээгүй → super мөрийг шалгаж чадахгүй');
+assert.equal(noEditorField([{ username: 'a', last_edited_user: null }]), false, 'null = талбар бий');
+assert.equal(noEditorField([{ username: 'a', last_edited_user: 'x' }]), false);
+assert.equal(noEditorField([]), false, 'мөргүй → мэдэхгүй, анхдагч текст');
+{
+  const ua = readFileSync(new URL('../components/UserAdmin.tsx', import.meta.url), 'utf8');
+  assert.equal((ua.match(/permsTableOrgEditable\(\)/g) ?? []).length, 1, 'UserAdmin: зөрчилтэй хоёр улаан анхааруулга нэг нөхцөл дээр гарах ёсгүй');
+  assert.ok(ua.includes('permsEditorFieldAbsent()'), 'UserAdmin: текст нь бодит шалгалтаас хамаарна');
+}
 
 /* ── Super мөрийн гинж ── */
 const roots = ['Admin'];

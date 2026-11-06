@@ -17,7 +17,7 @@ import { listUsers, remoteReady, roleOf, subscribe } from '@/lib/permissions';
 import {
   TYPE_ORDER, isStoredTpl, saveTpl, settingGroups, subscribeTypes, tplOf, tplViewKeys, typeLabel, typesReady,
   unseenViews, roleAccess, type TypeTpl,
-  HV_ROW, hvScopeOf, planViewDecided, tplSeenKeys, withHvScope, type HvScope, type SettingRow,
+  HUVAARI_MARK, HV_ROW, hvScopeOf, planViewDecided, seenWith, tplSeenKeys, withHvScope, type HvScope, type SettingRow,
 } from '@/lib/roleTypes';
 import { huvaariAclReady, listHuvaariAssigns, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { isWorkflowView } from '@/lib/caps';
@@ -73,9 +73,10 @@ export function ErhTypes({ remote, onDirty }: {
     return () => onDirty?.(false);
   }, [hasDirty, onDirty]);
 
-  const put = (r: Role, t: TypeTpl) => {
+  /** @param decided админ энэ үйлдлээр шийдсэн хуудсууд — бусад шинэ хуудасны тэмдэг арилахгүй */
+  const put = (r: Role, t: TypeTpl, decided: readonly ViewKey[] = []) => {
     setMsg('');
-    const next = isStoredTpl(r) ? { ...t, seen: tplSeenKeys() } : t;
+    const next = isStoredTpl(r) ? { ...t, seen: seenWith(t, decided) } : t;
     setDrafts((d) => ({ ...d, [r]: next }));
   };
   /** Хадгалсан загварт тохируулаагүй (хадгалсны дараа нэмэгдсэн) харагдацууд — ноорог тооцно */
@@ -86,11 +87,11 @@ export function ErhTypes({ remote, onDirty }: {
   const viewTitle = (k: string): string => VIEWS.find((v) => v.key === k)?.title ?? k;
   const flip = (r: Role, id: string, v: boolean) => {
     const t = cur(r);
-    put(r, { ...t, on: v ? [...new Set([...t.on, id])] : t.on.filter((x) => x !== id) });
+    put(r, { ...t, on: v ? [...new Set([...t.on, id])] : t.on.filter((x) => x !== id) }, id.startsWith('view:') ? [id.slice(5) as ViewKey] : []);
   };
   const allowed = (_r: Role, id: string): boolean => id !== 'admin' && !id.startsWith('huvaari:');
   const hvIds = (r: Role): string[] => cur(r).on.filter((id) => id.startsWith('huvaari:'));
-  const setHv = (r: Role, v: HvScope) => { const t = cur(r); put(r, { ...t, on: withHvScope(t.on, v) }); };
+  const setHv = (r: Role, v: HvScope) => { const t = cur(r); put(r, { ...t, on: withHvScope(t.on, v) }, [HUVAARI_MARK]); };
   /** «Хуваарь харах» шийдэгдээгүй (энэ тохиргооноос ӨМНӨ хадгалсан) багана — анхдагч утга үйлчилж байна */
   const hvUndecided = (r: Role): boolean => !planViewDecided(cur(r), isStoredTpl(r));
   /** Тэр төрлийн хэдэн хүнд «Хуваарийн эрх»-ийн тэр үүрэг бий (уншигдаагүй бол `null`) */
@@ -204,7 +205,7 @@ export function ErhTypes({ remote, onDirty }: {
                         className={s.newBadge}
                         disabled={busy}
                         title={tr('Энэ загварыг хадгалсны дараа нэмэгдсэн хуудас: {0}. Чеклэх, эсвэл энд дарж «тохируулсан» гэж тэмдэглээд «Хадгалах» дарна уу.', unseenOf(r).map(viewTitle).join(', '))}
-                        onClick={() => put(r, cur(r))}
+                        onClick={() => put(r, cur(r), tplSeenKeys())}
                       >
                         {tr('шинэ хуудас — загварт тохируулаагүй')}
                       </button>
@@ -218,12 +219,12 @@ export function ErhTypes({ remote, onDirty }: {
                     <div className={s.headBtns}>
                       <button type="button" className={s.mini} disabled={busy}
                         aria-label={`${tr('бүгд')} — ${typeLabel(r)}`}
-                        onClick={() => put(r, { ...cur(r), on: [...allIds.filter((id) => allowed(r, id)), ...hvIds(r)] })}>
+                        onClick={() => put(r, { ...cur(r), on: [...allIds.filter((id) => allowed(r, id)), ...hvIds(r)] }, tplViewKeys())}>
                         {tr('бүгд')}
                       </button>
                       <button type="button" className={s.mini} disabled={busy}
                         aria-label={`${tr('арилгах')} — ${typeLabel(r)}`}
-                        onClick={() => put(r, { ...cur(r), on: cur(r).on.filter((id) => !allowed(r, id)) })}>
+                        onClick={() => put(r, { ...cur(r), on: cur(r).on.filter((id) => !allowed(r, id)) }, tplViewKeys())}>
                         {tr('арилгах')}
                       </button>
                     </div>
