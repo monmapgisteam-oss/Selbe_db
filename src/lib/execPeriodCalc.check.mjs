@@ -18,7 +18,7 @@ import {
 
 let n = 0;
 const ok = (name, fn) => { fn(); n += 1; console.log('  ✓', name); };
-const D = (y, m, d, h = 12) => new Date(y, m - 1, d, h).getTime(); // локал
+const D = (y, m, d, h = 12) => Date.UTC(y, m - 1, d, h) - 8 * 3_600_000; // Улаанбаатарын цаг
 const NOW = D(2026, 10, 28);
 
 console.log('\n1. Хугацаа');
@@ -27,8 +27,8 @@ ok('7/30 calendar days include both boundaries and exclude the preceding day', (
     for (const now of [NOW, D(2026, 1, 3), D(2024, 3, 1)]) {
       const p = periodOf(key, now);
       assert.equal((Date.parse(p.to) - Date.parse(p.from)) / 86400000 + 1, days);
-      const start = new Date(`${p.from}T00:00:00`).getTime();
-      const end = new Date(`${p.to}T23:59:59`).getTime();
+      const start = Date.parse(`${p.from}T00:00:00+08:00`);
+      const end = Date.parse(`${p.to}T23:59:59+08:00`);
       const result = computeExecDeltas({ housing: [], packs: [], days: [], zov: [], givenTotal: 111,
         pays: [{ at: start - 1, amount: 100 }, { at: start, amount: 10 }, { at: end, amount: 1 }] }, p);
       assert.equal(result.given.delta, 11);

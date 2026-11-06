@@ -41,7 +41,7 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
 /* ── §2 Огноо ── */
 {
-  const ms = new Date(2026, 9, 4, 14, 5).getTime();
+  const ms = Date.parse('2026-10-04T14:05:00+08:00'); // Улаанбаатарын цаг — хөтчийн/CI-ийн бүсээс хамаарахгүй
   assert.equal(dateTime(ms), '2026-10-04 14:05');
   setLocale('en');
   assert.equal(dateTime(ms), '2026-10-04 14:05', 'англид ч ижил — MM/DD биш');

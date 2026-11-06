@@ -117,8 +117,9 @@ const deferred = () => {
   globalThis.window = win;
   const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
   let n = 0;
+  await Promise.all([import('@/lib/caps'), import('@/lib/chanarAcl')]);
   const off = subscribeNavBadges(() => { n += 1; }, 5);
-  await wait(20);
+  await wait(100);
   const capEvent = 'selbe-caps-change';
   const aclEvent = 'selbe-chanar-acl-change';
   win.dispatchEvent(new Event(capEvent));

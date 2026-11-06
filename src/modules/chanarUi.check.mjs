@@ -103,10 +103,10 @@ const mk = (o) => ({
 {
   assert.equal(nextCheck(null), 'OK'); assert.equal(nextCheck('OK'), 'NA'); assert.equal(nextCheck('NA'), 'X'); assert.equal(nextCheck('X'), null);
   assert.equal(checkLabel('NA'), 'N/A'); assert.equal(checkLabel(null), '—'); assert.equal(checkLabel('OK'), 'OK');
-  const ms = new Date(2026, 8, 28).getTime();
+  const ms = Date.parse('2026-09-28T00:00:00+08:00');
   assert.equal(toDateInput(ms), '2026-09-28');
   assert.equal(toDateInput(null), '');
-  assert.equal(fromDateInput('2026-09-28'), ms, 'орон нутгийн шөнө дунд');
+  assert.equal(fromDateInput('2026-09-28'), ms, 'Улаанбаатарын шөнө дунд');
   assert.equal(fromDateInput(''), null); assert.equal(fromDateInput('28/09/2026'), null);
   assert.equal(ymd(null), '—');
   assert.deepEqual(linesToList(' а \n\nб\n'), ['а', 'б']);

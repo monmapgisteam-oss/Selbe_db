@@ -290,10 +290,10 @@ assert.equal(got[1].lag, null);
   assert.equal(g2[1].label, 'Багц 4', 'тэнцэх мөргүй бол эхнийх');
 }
 
-/* ── ymOf: lagOf-ийн nowYm-тэй ижил — ОРОН НУТГИЙН сар (2026-09-21, `monthKey`) ── */
-assert.equal(ymOf(new Date(2026, 8, 6).getTime()), '2026-09');
-assert.equal(ymOf(new Date(2026, 0, 31, 23, 59).getTime()), '2026-01');
-assert.equal(ymOf(new Date(2026, 1, 1, 0, 30).getTime()), '2026-02', 'сарын 1-ний шөнө ӨМНӨХ сар болохгүй');
+/* ── ymOf: lagOf-ийн nowYm-тэй ижил — Улаанбаатарын сар (2026-09-21, `monthKey`) ── */
+assert.equal(ymOf(Date.parse('2026-09-06T00:00:00+08:00')), '2026-09');
+assert.equal(ymOf(Date.parse('2026-01-31T23:59:00+08:00')), '2026-01');
+assert.equal(ymOf(Date.parse('2026-02-01T00:30:00+08:00')), '2026-02', 'сарын 1-ний шөнө ӨМНӨХ сар болохгүй');
 
 /* ── finCurveMissing: бичилттэй багцын шалтгаан ялгарна, failedSources нэртэй ── */
 const r7 = computeSchedule(
