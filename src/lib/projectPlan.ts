@@ -369,6 +369,12 @@ export function tenderSigned(n: PlanNode, today: number): boolean {
   return false;
 }
 
+/** Сонгон шалгаруулалтын навчны явц яагаад түгжигдсэн — хадгалсан утгыг `tenderSigned` дардаг тул оруулсан утга алга болно */
+export const tenderLockWhy = (n: PlanNode, today: number): string | null =>
+  (n.phase === 'songon' && !n.children.length && tenderSigned(n, today)
+    ? tr('Гэрээ байгуулагдсан тул сонгон шалгаруулалт 100% — систем бодно')
+    : null);
+
 export type MoneySums = { paid: number | null; advance: number | null; contract: number | null };
 
 /**

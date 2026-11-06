@@ -166,4 +166,11 @@ assert.ok(/return spanFrac\(\{ start: s, end: e \}, asOf\);/.test(SHEET),
   assert.equal(coverageNote(100), '');
 }
 
+/* ── 2026-11-06 (аудит): Хуудсын бүтэц өөрчлөгдөхөд хуваарийн кэш хаягдана ── */
+{
+  const BP = fs.readFileSync('src/lib/blockProgress.ts', 'utf8');
+  assert.ok(BP.includes("memo(sheetBlocklessKeys, ['BAGTS_SHEET'])"), 'loadInfraUniverse кэш BAGTS_SHEET-ээр хаягдана');
+  assert.ok(/return u;\s*\}, \['BAGTS_SHEET', 'CASHFLOW_NEW'\]\)/.test(BP), 'loadBlockUniverse кэш BAGTS_SHEET · CASHFLOW_NEW-ээр хаягдана');
+}
+
 console.log('planProgress.check: ok — ажлын хуваарь ✓ бүлэг дэд ажлаасаа ✓ задаргаа ✓ нэгж холихгүй ✓ мужаар тасарна ✓ planPctAt ✓');

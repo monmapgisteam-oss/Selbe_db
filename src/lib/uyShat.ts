@@ -15,7 +15,7 @@
  */
 import type { CapKey } from './caps';
 import { packagesOf } from './levelPlan';
-import { isAddedWork, saneDate, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
+import { isAddedWork, saneDate, tenderLockWhy, ubToday, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 import {
   canAddWorkIn, dayOf, parseDay, parsePct, rowKey, sortByKod, splitWeights, workAdd, workNameWhy,
   type Names, type Pending,
@@ -75,10 +75,14 @@ export function rowsOf(page: PageDef, tree: PlanTree): PlanNode[] {
 
 const isPkgRow = (n: PlanNode): boolean => !!n.row && !!String(n.row.bagts ?? '').trim() && !n.blok;
 
+/** Талбар түгжигдсэн шалтгаан — гэрээтэй сонгон шалгаруулалтын явц (`tenderLockWhy`); `null` = түгжээгүй */
+export const fieldLockWhy = (n: PlanNode, f: FieldDef, today: number = ubToday()): string | null =>
+  (f.kind === 'pct' ? tenderLockWhy(n, today) : null);
+
 /** Мөрд засагдах талбарууд */
-export function editableFields(page: PageDef, n: PlanNode): FieldDef[] {
+export function editableFields(page: PageDef, n: PlanNode, today: number = ubToday()): FieldDef[] {
   if (!n.row) return [];
-  return page.fields.filter((f) => (f.on === 'row' ? true : f.on === 'leaf' ? n.children.length === 0 : isPkgRow(n)));
+  return page.fields.filter((f) => (f.on === 'row' ? true : f.on === 'leaf' ? n.children.length === 0 : isPkgRow(n)) && !fieldLockWhy(n, f, today));
 }
 
 /** Багцын мөрийн доор мөр нэмж болох уу (Зөвшөөрөл) */

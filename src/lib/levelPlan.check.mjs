@@ -401,7 +401,11 @@ const stored = fx.rows.map((r, i) => ({
   assert.equal(forecastEnd(S, 30, S), null, 'эхлээгүй/эхний өдөр');
   assert.equal(forecastEnd(S, 0.0001, S + 99 * DAY), null, '2100 оноос хэтэрвэл null (saneDate)');
   const bar = { t: 'bar', id: 'x', name: 'x', depth: 0, start: S, end: S + 10 * DAY, actual: 50, planned: null, status: 'run', fc: D('2030-06-01') };
-  assert.ok(gAx([bar], S).n > 12 * 4, 'тэнхлэг таамгийг багтаана');
+  const near24 = { ...bar, end: D('2029-01-01') };
+  assert.ok(gAx([near24], S).n > 12 * 4, '24 сарын дотор таамаг тэнхлэгт багтана');
+  const far = { ...bar, fc: D('2089-08-28') };
+  assert.equal(gAx([far], S).n, gAx([{ ...bar, fc: null }], S).n, '24 сараас хэтэрсэн таамаг тэнхлэгийг сунгахгүй (2089 → 65 жил)');
+  assert.ok(!/Одоогийн хурдаар/.test(readFileSync('src/modules/LevelPlan.tsx', 'utf8')), 'багана дундаж хурдыг «одоогийн» гэж нэрлэхгүй');
 
   const TODAY = D('2026-10-21');
   const actual = { blocks: new Map([['БАГЦ1|5/1', { overall: 40, date: '2026-10-01', phases: [] }]]), universe: new Map(), infra: new Map() };
@@ -414,6 +418,39 @@ const stored = fx.rows.map((r, i) => ({
   assert.ok(wb[4].rows.some((r) => r[0]?.v === 'Багцын нийт'), 'L5 — багцын нийт');
   const w = wb[3].rows[0].length;
   assert.ok(wb[3].rows.every((r) => r.length <= w), 'мөр толгойноос урт биш');
+}
+
+/* ══ Нэгтгэл мөрд таамаггүй · гэрээтэй блокгүй багцын дуусах огноо 182-оос ══ */
+{
+  const { makeDateSpans, toStoredRow } = await import('./projectPlanInputs.ts');
+  const TODAY = D('2026-11-05');
+  const row = (objectid, dd_kod, etseg_kod, ajil_uilchilgee, o = {}) => toStoredRow({ objectid, dd_kod, etseg_kod, ajil_uilchilgee, uy_shat: 'Барилга угсралт', ...o });
+  const span = (a, z) => ({ guits_ehleh: D(a), guits_duusah: D(z) });
+  const rows = [
+    row(1, '5', null, 'Барилга угсралт'),
+    row(2, '5.2', '5', 'Барилга угсралт ажил'),
+    row(3, '5.2.1', '5.2', 'Шугам сүлжээ'),
+    row(4, '5.2.1.1', '5.2.1', 'Гэрээтэй', { bagts: 'Багц-7.1', ho_dun_geree: 10, geree_ognoo: D('2026-01-01'), ...span('2026-01-01', '2026-12-31') }),
+    row(5, '5.2.1.2', '5.2.1', 'Хугацаа хэтэрсэн', { bagts: 'Багц-6.3', ho_dun_geree: 10, geree_dugaar: 'Г/1', ...span('2026-01-01', '2026-07-28') }),
+    row(6, '5.2.1.3', '5.2.1', 'Гэрээгүй', { bagts: 'Багц-8', ho_dun_geree: 10, ...span('2026-01-01', '2029-08-01') }),
+  ];
+  const hit = (S) => new Map([['БАГЦ71', { pct: S, blocks: 1, total: 1 }], ['БАГЦ63', { pct: 0, blocks: 1, total: 1 }], ['БАГЦ8', { pct: 0, blocks: 1, total: 1 }]]);
+  const plan = assemblePlan(rows, { actual: { blocks: new Map(), universe: new Map(), infra: hit(40) }, sched: null, land: new Map(), dates: makeDateSpans([]) }, TODAY);
+  assert.equal(plan.result.get('5.2.1.1').I, null, 'тооцооны H/I хөндөгдөөгүй (N, O, P өөрчлөгдөхгүй)');
+  const pk = packagesOf(plan.tree);
+  const l2 = buildL2(plan, pk, new Map(), TODAY);
+  const ms = (j) => l2.filter((r) => r.id.startsWith(`L2.${j + 2}.`) && r.name === 'Гэрээний дуусах огноо')[0];
+  assert.equal(ms(0).at, D('2026-12-31'), 'гэрээтэй — 182-ын дуусах огноо');
+  assert.equal(ms(0).status, 'upcoming');
+  assert.equal(ms(1).status, 'late', 'дуугаар гэрээтэй, огноо өнгөрсөн, 0% → хугацаа хэтэрсэн («Хийгдээгүй» биш)');
+  assert.equal(ms(2).at, null, 'гэрээгүй багцын төлөвлөгөөт огноо «Гэрээний дуусах» болохгүй');
+  assert.equal(ms(2).status, 'missing');
+  const l1 = buildL1(plan, TODAY);
+  assert.equal(l1.find((r) => r.id === 'L1.2.1.0').at, D('2026-12-31'), 'чиглэл — хамгийн хожуу гэрээтэй дуусах');
+  assert.ok(l1.filter((r) => r.t === 'bar').every((r) => r.fc == null), 'L1 нэгтгэл мөрүүд таамаггүй');
+  const planB = assemblePlan(rows, { actual: { blocks: new Map(), universe: new Map(), infra: hit(40) }, sched: { has: () => true, at: () => 50, prime: () => {}, keys: () => [], span: () => [D('2026-01-01'), D('2026-12-31')] }, land: new Map(), dates: makeDateSpans([]) }, TODAY);
+  const b0 = buildL3(planB, packagesOf(planB.tree).slice(0, 1), null, TODAY).find((r) => r.t === 'bar' && r.name === 'Барилга угсралт — нийт');
+  assert.ok(b0.fc != null, 'багцын мөр таамагтай хэвээр');
 }
 
 console.log('levelPlan.check ✓');

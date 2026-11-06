@@ -13,7 +13,7 @@
 import assert from 'node:assert/strict';
 import { buildTree, computePlan, isAddedWork } from './projectPlan.ts';
 import {
-  PAGES, badText, buildEdits, canAddRow, canDeleteRow, conflicts, editableFields, effectiveRows, origText, pendingCount,
+  PAGES, badText, buildEdits, canAddRow, canDeleteRow, conflicts, editableFields, effectiveRows, fieldLockWhy, origText, pendingCount,
   rowAdd, rowsOf, setEdit, textOf,
 } from './uyShat.ts';
 import { EMPTY_PENDING } from './zuragTosol.ts';
@@ -55,7 +55,14 @@ const byCode = (c) => tree.byCode.get(c);
   assert.deepEqual(editableFields(PAGES.songon, byCode('4')).map((f) => f.key), [], 'үе шатын толгой засагдахгүй');
   assert.deepEqual(editableFields(PAGES.songon, byCode('4.1')).map((f) => f.key), ['songon_ognoo', 'geree_ognoo'], 'блоктой багц: огноо л');
   assert.deepEqual(editableFields(PAGES.songon, byCode('4.1.1')).map((f) => f.key), ['guitsetgel_huvi'], 'блок: явц л');
-  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2')).map((f) => f.key), ['songon_ognoo', 'geree_ognoo', 'guitsetgel_huvi'], 'блокгүй багц: бүгд');
+  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-01-01')).map((f) => f.key), ['songon_ognoo', 'geree_ognoo', 'guitsetgel_huvi'], 'блокгүй багц, сонгон хараахан болоогүй: бүгд');
+  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-05-02')).map((f) => f.key), ['songon_ognoo', 'geree_ognoo'], 'сонгон/гэрээ болсон: явц системээс (100) — оруулсан утга дарагддаг');
+  const pctF = PAGES.songon.fields.find((f) => f.kind === 'pct');
+  assert.match(fieldLockWhy(byCode('4.2'), pctF, d('2025-05-02')), /Гэрээ байгуулагдсан/, 'шалтгаан хэлнэ');
+  assert.equal(fieldLockWhy(byCode('4.2'), pctF, d('2025-01-01')), null);
+  /* Алдаатай явц оруулсны дараа огноо бичвэл нүд түгжигдэж оруулга нуугдан хадгалалтыг хаадаг байв — оруулсан утгатай нүд нээлттэй */
+  const uiSrc = (await import('node:fs')).readFileSync(new URL('../modules/UyShatOruulah.tsx', import.meta.url), 'utf8');
+  assert.match(uiSrc, /const ed = fields\.includes\(f\) \|\| \(pend\.edits\[k\] as Record<string, string> \| undefined\)\?\.\[f\.key\] != null;/, 'оруулсан утгатай түгжигдсэн нүд засагдсаар');
 
   const v = rowsOf(PAGES.zovshoorolTtb, tree);
   assert.deepEqual(v.map((n) => n.row.dd_kod), ['3', '3.2', '3.2.1', '3.2.2']);

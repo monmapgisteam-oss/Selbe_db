@@ -673,7 +673,7 @@ export const loadBlockUniverse: () => Promise<BlockUniverse> = memo(async () => 
      унавал энгийн дундаж (урьдын зан), хуваарь өөрөө унахгүй */
   const [u] = await Promise.all([sheetBlockKeys(), loadBlockWeights().catch(() => null)]);
   return u;
-});
+}, ['BAGTS_SHEET', 'CASHFLOW_NEW']);
 
 /**
  * Багц бүрийн гүйцэтгэл (`pkgProgressOf`) — хэмжилт + хуваарийг хамт ачаална.
@@ -697,7 +697,7 @@ export const loadInfraHistory: () => Promise<BlockHistory> = memo(
 );
 
 /** Блокгүй багцын хуваарь (`sheetBlocklessKeys`) — `loadBlockUniverse`-тэй ижил хэлбэр */
-export const loadInfraUniverse: () => Promise<BlockUniverse> = memo(sheetBlocklessKeys);
+export const loadInfraUniverse: () => Promise<BlockUniverse> = memo(sheetBlocklessKeys, ['BAGTS_SHEET']);
 
 /**
  * Блокгүй багц бүрийн гүйцэтгэл (0–100) — `loadPkgProgress`-тэй ижил хэлбэр (`bagtsKey` → `PkgProgress`).

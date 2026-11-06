@@ -524,7 +524,7 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
 
 let fullP: Promise<NegtgelFull> | null = null;
 let fullAt = 0;
-register(() => { fullP = null; }, ['BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'TUSUL_NEGTGEL', 'CASHFLOW_NEW']);
+register(() => { fullP = null; }, ['BAGTS_SHEET', 'HUVAARI_OBYEM', 'BUILDING', 'PARCEL_LEFT', 'TUSUL_NEGTGEL', 'CASHFLOW_NEW']);
 
 export function dropNegtgelFull(): void {
   fullP = null;
@@ -570,8 +570,15 @@ export function negtgelProjectPct(
   return w > 0 ? sum : null;
 }
 
-/** Төслийн нийт гүйцэтгэл — шууд ачаалж бодно (индикаторуудад) */
+/**
+ * Гүйцэтгэлд нөлөөлөх эх унасан уу — унасан хуудсын блокууд 0 мэт тооцогдож төслийн хувь БАГА гардаг (32.44 → 17.48);
+ * Хуваарийн уналт (`schedule:…`) зөвхөн төлөвлөгөөт хувьд нөлөөлнө.
+ */
+export const negtgelActualFailed = (failed: readonly string[]): boolean => failed.some((x) => !x.startsWith('schedule'));
+
+/** Төслийн нийт гүйцэтгэл — шууд ачаалж бодно (индикаторуудад). Эх унасан бол `null` — дутуу тоо харуулахгүй */
 export async function loadNegtgelPct(): Promise<number | null> {
-  const { rows, calc } = await loadNegtgelFull();
+  const { rows, calc, failed } = await loadNegtgelFull();
+  if (negtgelActualFailed(failed)) return null;
   return negtgelProjectPct(rows, calc);
 }

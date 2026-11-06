@@ -11,7 +11,7 @@
  *   L6 Өдөр тутмын         — блокийн мөр = сарын хувь ÷ сарын өдрийн тоо; дэд бүлэг шугаман
  */
 import {
-  saneDate, type PhaseKind, type PlanNode, type PlanTree, type PlanValues,
+  saneDate, ubToday, type PhaseKind, type PlanNode, type PlanTree, type PlanValues,
 } from './projectPlan';
 import { SHEET_PKGS, loadProjectPlan, type ProjectPlan } from './projectPlanInputs';
 import { CASHFLOW_NEW, CF_MONTH, bagtsKey, buildingKey, pkgKeyOf, isConstructionNo } from './services';
@@ -526,11 +526,14 @@ export type GRow =
   | { t: 'ms'; id: string; name: string; depth: number; at: number | null; status: MsStatus }
   | { t: 'note'; id: string; name: string; depth: number };
 
-/** Гантын мөрүүдийн тэнхлэг */
+/** Тэнхлэгт багтах таамгийн дээд хязгаар — мөрийн дуусах огнооноос хойш 24 сар (2089 оны таамаг 65 жилийн тэнхлэг гаргадаг байв) */
+const FC_AXIS_MAX_DAYS = 730;
+
+/** Гантын мөрүүдийн тэнхлэг; хязгаараас хэтэрсэн таамаг баганад үлдэнэ, тэнхлэгийг сунгахгүй (тэмдэг нь зурагдахгүй) */
 export function ganttAxis(rows: readonly GRow[], today: number): Axis | null {
   const ds: (number | null)[] = [today];
   for (const r of rows) {
-    if (r.t === 'bar') ds.push(r.start, r.end, r.fc ?? null);
+    if (r.t === 'bar') ds.push(r.start, r.end, r.fc != null && r.end != null && r.fc <= r.end + FC_AXIS_MAX_DAYS * DAY ? r.fc : null);
     else if (r.t === 'ms') ds.push(r.at);
   }
   return axisOf(ds, 1);
@@ -554,7 +557,7 @@ const nameOf = (n: PlanNode): string => String(n.row?.ajil_uilchilgee ?? '').tri
 
 function barRow(
   res: ProjectPlan['result'], n: PlanNode, id: string, name: string, depth: number, today: number,
-  opts: { strong?: boolean; phase?: PhaseKind } = {},
+  opts: { strong?: boolean; phase?: PhaseKind; noFc?: boolean } = {},
 ): GRow {
   const v = res.values.get(n);
   const phase = opts.phase ?? n.phase;
@@ -578,7 +581,22 @@ function barRow(
   return {
     t: 'bar', id, name, depth, start: s, end: e, actual, planned,
     status: barStatus(s, e, actual, planned, today, !alt), strong: opts.strong, inh, alt,
-    fc: forecastEnd(s, actual, today),
+    /* Нэгтгэл мөрд таамаг БАЙХГҮЙ: олон багц эхлээгүй тул хурд нь утгагүй, багцаасаа ч эрт дуусах огноо гардаг байв */
+    fc: opts.noFc ? null : forecastEnd(s, actual, today),
+  };
+}
+
+/**
+ * Гэрээтэй (`geree_ognoo`/`geree_dugaar`) мөрийн 182-д хадгалсан дуусах огноо — `linkPlanDates` блокгүй навчны H/I-г хуудасны
+ * хоосон гэрээний огноогоор дардаг тул milestone түүхий мөрөөс уншина. Төлөвлөгөөт хувь (N/O) үүнээс хамаарахгүй.
+ * Гэрээгүй мөрийн огноо нь төлөвлөгөө тул «Гэрээний дуусах огноо» болохгүй.
+ */
+function signedEnds(plan: ProjectPlan): (n: PlanNode) => number | null {
+  const byOid = new Map((plan.stored ?? []).map((r) => [r.objectid, r] as const));
+  return (n) => {
+    const r = n.row;
+    if (!r || (r.geree_ognoo == null && !String(r.geree_dugaar ?? '').trim())) return null;
+    return saneDate(byOid.get(r.objectid)?.guits_duusah);
   };
 }
 
@@ -590,7 +608,13 @@ export function buildL1(plan: ProjectPlan, today: number): GRow[] {
   const { tree, result: res } = plan;
   const rows: GRow[] = [];
   const rv = res.values.get(tree.root);
-  rows.push(barRow(res, tree.root, 'L1.1', tr('Төслийн нийт'), 0, today, { strong: true, phase: 'other' }));
+  const signedEnd = signedEnds(plan);
+  /** Чиглэлийн хамгийн хожуу гэрээний дуусах огноо (`signedEnd`) */
+  const latestSigned = (n: PlanNode): number | null => n.children.reduce<number | null>((hi, c) => {
+    const v = latestSigned(c);
+    return v != null && (hi == null || v > hi) ? v : hi;
+  }, signedEnd(n));
+  rows.push(barRow(res, tree.root, 'L1.1', tr('Төслийн нийт'), 0, today, { strong: true, phase: 'other', noFc: true }));
   rows.push({ t: 'ms', id: 'L1.1.1', name: tr('Гэрээний дуусах огноо'), depth: 1, at: rv?.I ?? null, status: milestoneStatus(rv?.I ?? null, doneOf(rv?.S), today) });
   const works = worksNode(tree);
   if (works) {
@@ -598,12 +622,13 @@ export function buildL1(plan: ProjectPlan, today: number): GRow[] {
     works.children.forEach((d, i) => {
       const id = `L1.2.${i + 1}`;
       const v = res.values.get(d);
-      rows.push(barRow(res, d, id, nameOf(d), 1, today, { strong: true }));
-      rows.push({ t: 'ms', id: `${id}.0`, name: tr('Гэрээний дуусах огноо'), depth: 2, at: v?.I ?? null, status: milestoneStatus(v?.I ?? null, doneOf(v?.S), today) });
+      const ctEnd = v?.I ?? latestSigned(d);
+      rows.push(barRow(res, d, id, nameOf(d), 1, today, { strong: true, noFc: true }));
+      rows.push({ t: 'ms', id: `${id}.0`, name: tr('Гэрээний дуусах огноо'), depth: 2, at: ctEnd, status: milestoneStatus(ctEnd, doneOf(v?.S), today) });
       if (!isPkgKey(ownKey(d))) {
         d.children
           .filter((c) => c.children.length && !isPkgKey(ownKey(c)))
-          .forEach((c, j) => rows.push(barRow(res, c, `${id}.${j + 1}`, nameOf(c), 2, today)));
+          .forEach((c, j) => rows.push(barRow(res, c, `${id}.${j + 1}`, nameOf(c), 2, today, { noFc: true })));
       }
     });
   }
@@ -626,6 +651,7 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
   const { tree, result: res } = plan;
   const rows: GRow[] = [];
   const idx = phaseIndex(tree);
+  const signedEnd = signedEnds(plan);
   rows.push({ t: 'section', id: 'L2.1', name: tr('Төслийн ерөнхий'), depth: 0 });
   let i = 0;
   const tezu = tree.root.children.find((p) => p.phase === 'tezu');
@@ -680,7 +706,8 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     const cv = res.values.get(pk.node);
     const built = doneOf(cv?.S);
     rows.push(barRow(res, pk.node, next(), tr('Барилга ажил'), 1, today, { strong: true }));
-    rows.push({ t: 'ms', id: next(), name: tr('Гэрээний дуусах огноо'), depth: 1, at: cv?.I ?? null, status: milestoneStatus(cv?.I ?? null, built, today) });
+    const ctEnd = cv?.I ?? signedEnd(pk.node);
+    rows.push({ t: 'ms', id: next(), name: tr('Гэрээний дуусах огноо'), depth: 1, at: ctEnd, status: milestoneStatus(ctEnd, built, today) });
     const ho = pk.node.row?.ashiglalt_ognoo ?? mk(pk.node)?.handover ?? null;
     rows.push({
       t: 'ms', id: next(), name: tr('Ашиглалтад оруулах'), depth: 1, at: ho,
@@ -959,7 +986,7 @@ export type SheetDetail = {
  * Бөглөх хуудсуудын дэд бүлэг (L3 · L5 · L6) — L1/L2/L4 нээхэд ТАТАХГҮЙ (харагдац тэр табыг нээхэд л дуудна).
  */
 async function fetchSheetDetail(): Promise<SheetDetail> {
-  const today = Date.now();
+  const today = ubToday();
   const failed: string[] = [];
   const got = await Promise.all(PKGS.map(async (pkg, order) => {
     try {

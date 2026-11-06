@@ -5,7 +5,7 @@ import { t as tr } from './i18nCore';
 import { applyAll } from './tableWrite';
 import { invalidate } from './dataBus';
 import { CASHFLOW_NEW, pkgKeyOf } from './services';
-import { isAddedWork, isSplitParent, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
+import { isAddedWork, isSplitParent, tenderLockWhy, ubToday, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 
 const F = CASHFLOW_NEW.fields;
 const DAY = 86_400_000;
@@ -39,7 +39,7 @@ const oidOf = (n: PlanNode): number | null => {
 };
 
 /** Засах боломжгүй шалтгаан; `null` = засаж болно */
-export function editWhy(n: PlanNode, k: PlanEditKey): string | null {
+export function editWhy(n: PlanNode, k: PlanEditKey, today: number = ubToday()): string | null {
   if (oidOf(n) == null) return tr('Мөр хүснэгтэд хадгалагдаагүй');
   if (PLAN_EDIT[k].kind === 'money') {
     /* 2026-11-03: нэмсэн ажлын мөнгө — эцгийн төсвөөс жингээр оноогдоно (энд бичвэл бүлгийн жингийн дүрэм эвдэрнэ) */
@@ -55,7 +55,7 @@ export function editWhy(n: PlanNode, k: PlanEditKey): string | null {
   if (k !== 'pct') return null;
   if (!MANUAL_PHASES.has(n.phase)) return tr('Энэ үе шатын гүйцэтгэл системээс бодогдоно');
   if (n.children.length) return tr('Дэд мөрүүдээс бодогдоно');
-  return null;
+  return tenderLockWhy(n, today);
 }
 
 /**

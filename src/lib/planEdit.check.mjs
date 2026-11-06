@@ -40,6 +40,22 @@ assert.match(editWhy(node(4), 'pct'), /Дэд мөр/, 'дэд мөртэй мө
 assert.match(editWhy(node(8), 'pct'), /системээс/, 'барилга угсралтын гүйцэтгэл системээс');
 assert.equal(editWhy(node(8), 'handoverDate'), null, 'огноо бүх мөрд засагдана');
 assert.equal(editWhy(node(4), 'orderNo'), null);
+/* 2026-11-06: гэрээ байгуулагдсан сонгон шалгаруулалтын навч — S = 100 (`tenderSigned`), оруулсан утга дарагдаж алга болдог байв */
+{
+  const T = Date.UTC(2026, 10, 6);
+  const t = buildTree([
+    { objectid: 1, dd_kod: '4', etseg_kod: null, tuvshin: 0, uy_shat: 'Сонгон шалгаруулалт', ajil_uilchilgee: 'Сонгон шалгаруулалт' },
+    { objectid: 2, dd_kod: '4.1', etseg_kod: '4', tuvshin: 1, uy_shat: 'Сонгон шалгаруулалт', bagts: 'Багц-1', ajil_uilchilgee: 'Багц-1', geree_ognoo: Date.UTC(2026, 0, 1) },
+    { objectid: 3, dd_kod: '4.1.1', etseg_kod: '4.1', tuvshin: 2, uy_shat: 'Сонгон шалгаруулалт', bagts: 'Багц-1', blok: '5/1', ajil_uilchilgee: '5/1' },
+    { objectid: 4, dd_kod: '4.2', etseg_kod: '4', tuvshin: 1, uy_shat: 'Сонгон шалгаруулалт', bagts: 'Багц-2', ajil_uilchilgee: 'Багц-2', songon_ognoo: Date.UTC(2027, 0, 1) },
+  ]);
+  const by = (o) => t.nodes.find((n) => n.row.objectid === o);
+  assert.match(editWhy(by(3), 'pct', T), /Гэрээ байгуулагдсан/, 'багцын гэрээ өнгөрсөн → блокийн навч түгжигдэнэ');
+  assert.equal(editWhy(by(4), 'pct', T), null, 'огноо ирээгүй → засагдана');
+  assert.match(editWhy(by(4), 'pct', Date.UTC(2027, 0, 2)), /Гэрээ байгуулагдсан/, 'огноо өнгөрсөн → түгжигдэнэ');
+  assert.match(editWhy(by(2), 'pct', T), /Дэд мөр/, 'эцэг — дэд мөрөөс');
+  assert.equal(editWhy(by(3), 'contractDate', T), null, 'огноо засагдсаар');
+}
 /* 2026-11-03: төсөвт өртөг ба эх үүсвэр — доод мөрөнд утга бичигдсэн бол эцэг мөр нийлбэр (засагдахгүй), навчинд засагдана */
 {
   const leaf = { code: 'x.1', row: { objectid: 91, ho_dun_geree: 100 }, children: [], outside: false };

@@ -395,7 +395,7 @@ function Gantt({ rows, today, vo, mw: MW = SCALE_MW.month }: { rows: GRow[]; tod
               <th>{tr('Эхлэх')}</th>
               <th>{tr('Дуусах')}</th>
               <th className={s.r}>{tr('Гүйцэтгэл')}</th>
-              <th title={tr('Одоогийн хурдаар үргэлжилбэл дуусах огноо')}>{tr('Таамаг дуусах')}</th>
+              <th title={tr('Эхэлснээс хойших дундаж хурдаар үргэлжилбэл дуусах огноо (багцын түвшнээс доош)')}>{tr('Таамаг дуусах')}</th>
               <th className={s.cTl}><AxisHead ax={ax} nowX={nowX} today={today} mw={MW} /></th>
             </tr>
           </thead>

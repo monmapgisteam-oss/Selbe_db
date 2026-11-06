@@ -25,7 +25,7 @@ import { Data, userError } from '@/components/ui';
 import { buildTree, computePlan, ubToday, type PlanNode } from '@/lib/projectPlan';
 import { EMPTY_PENDING, dayOf, displayCodes, dropAdd, rowKey, toStored, toggleDelete, type Names, type Pending } from '@/lib/zuragTosol';
 import {
-  PAGES, badText, buildEdits, canAddRow, canDeleteRow, conflicts, editableFields, effectiveRows, pendingCount, rowAdd, rowsOf,
+  PAGES, badText, buildEdits, canAddRow, canDeleteRow, conflicts, editableFields, effectiveRows, fieldLockWhy, pendingCount, rowAdd, rowsOf,
   setEdit, textOf, workNameWhy, type FieldDef, type Issue, type PageKey,
 } from '@/lib/uyShat';
 import s from './zuragTosol.module.css';
@@ -360,11 +360,12 @@ function Body({ page, rows, at }: { page: PageKey; rows: Row[]; at: number }) {
                       {isNew && <span className={s.badge}>{tr('шинэ')}</span>}
                     </td>
                     {cols.map((f) => {
-                      const ed = fields.includes(f);
+                      /* Оруулсан утгатай нүд түгжигдсэн ч нээлттэй үлдэнэ — алдаатай оруулга харагдахгүй болж хадгалалтыг хааж болохгүй */
+                      const ed = fields.includes(f) || (pend.edits[k] as Record<string, string> | undefined)?.[f.key] != null;
                       const raw = r[f.key];
                       const shown = f.kind === 'date' ? (dayOf(raw as number | null) || '—')
                         : f.kind === 'pct' ? pct(v.S, 1) : (raw == null || raw === '' ? '—' : String(raw));
-                      return <td key={f.key} className={f.kind === 'pct' ? s.r : undefined}>{ed ? input(n, f) : shown}</td>;
+                      return <td key={f.key} className={f.kind === 'pct' ? s.r : undefined} title={ed ? undefined : fieldLockWhy(n, f) ?? undefined}>{ed ? input(n, f) : shown}</td>;
                     })}
                     {showPct && <td className={s.r}>{pct(v.S, 1)}</td>}
                     {canEdit && P.addRows && (

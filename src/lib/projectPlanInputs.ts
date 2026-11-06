@@ -20,7 +20,7 @@ import {
 } from './projectPlan';
 import {
   CASHFLOW_NEW, CF_MONTH, BUILDING, PARCEL_LEFT, PKG_BY_BAGTS, LAYER_BY_ID,
-  bagtsKey, buildingKey, pkgKeyOf, isConstructionNo, normalizeTaskNo,
+  bagtsKey, buildingKey, pkgKeyOf, isConstructionNo, isPrepNo,
 } from './services';
 import {
   loadBlockProgress, loadBlockUniverse, loadInfraProgress, loadPrepProgress,
@@ -246,11 +246,27 @@ export function prepActualOf(src: ActualSources): NonNullable<PlanInputs['prepAc
 }
 
 /**
+ * ОЛОН БАГЦЫН НЭРТЭЙ МӨР → ӨӨРИЙН ХҮСНЭГТ — `bagts` нь «БАГЦ 1- 4» · «БАГЦ-6.1, 6.2» тул `pkgKeyOf` хоосон, гэвч энэ мөрийн
+ * ажилд тусгай хүснэгт бий (нэр · дүн · огноо ижил): `cashflow_id` → `Pkg.group`. Бусад диапазон мөрд хамаарахгүй, багцын
+ * жагсаалт (`pkgKeyOf`, `isPkgRange`) хөндөгдөхгүй.
+ */
+export const CF_SHEET_GROUP: ReadonlyMap<number, string> = new Map([
+  [18, 'Суурийн холболтын ажил'],
+  [42, 'Төгөл дэд станцын зам сүвлэх ажил'],
+]);
+
+/** Хүснэгтийг хайх багцын нэр — барилга угсралтын мөр `CF_SHEET_GROUP`-д байвал тэр бүлэг, эс бөгөөс мөрийн `bagts` */
+export function sheetPkgOf<T>(pkg: T, n?: PlanNode | null): T | string {
+  const id = n?.phase === 'barilga' && n.sub === 'barilga' ? n.row?.cashflow_id : null;
+  return (id != null ? CF_SHEET_GROUP.get(id) : undefined) ?? pkg;
+}
+
+/**
  * БЛОКГҮЙ НАВЧНЫ (дэд бүтэц) БОДИТ ГҮЙЦЭТГЭЛ — блокгүй багцын бөглөх хуудас (5.x · 6.x · 7.1 · 10).
  */
 export function pkgActualOf(src: ActualSources): NonNullable<PlanInputs['pkgActual']> {
-  return (pkg) => {
-    const pk = pkgKeyOf(pkg);
+  return (pkg, n) => {
+    const pk = pkgKeyOf(sheetPkgOf(pkg, n));
     if (!pk) return undefined;
     if (!src.infra) return null;
     const v = src.infra.get(pk);
@@ -435,7 +451,8 @@ function sheetKindOf(pkg: string | null | undefined): 'blockless' | 'block' | 'n
 
 /** `pkgPlanned` — блокгүй хүснэгт → Хуваарийн синтетик блок; хүснэгтгүй → null; бусад → undefined (хуучин дүрэм) */
 export function pkgPlannedOf(sched: BlockSchedules | null): NonNullable<PlanInputs['pkgPlanned']> {
-  return (pkg, asOf) => {
+  return (pkg0, asOf, n) => {
+    const pkg = sheetPkgOf(pkg0, n);
     const kind = sheetKindOf(pkg);
     if (kind === 'none') return null;
     if (kind !== 'blockless') return undefined;
@@ -445,7 +462,8 @@ export function pkgPlannedOf(sched: BlockSchedules | null): NonNullable<PlanInpu
 
 /** `pkgSpan` — `pkgPlannedOf`-тэй ижил салаа: хүснэгтийн Хуваарийн муж · хүснэгтгүй → null · бусад → undefined */
 export function pkgSpanOf(sched: BlockSchedules | null): NonNullable<PlanInputs['pkgSpan']> {
-  return (pkg) => {
+  return (pkg0, n) => {
+    const pkg = sheetPkgOf(pkg0, n);
     const kind = sheetKindOf(pkg);
     if (kind === 'none') return null;
     if (kind !== 'blockless') return undefined;
@@ -493,7 +511,7 @@ export function makeDateSpans(sheets: readonly PlanSheet[], failedGroups: readon
     const g = bagtsKey(sh.group);
     groups.add(g);
     for (const sub of ['barilga', 'beltgel'] as const) {
-      const ri = sh.rows.findIndex((r) => (sub === 'barilga' ? isConstructionNo(r.no) : normalizeTaskNo(r.no) === 'А.'));
+      const ri = sh.rows.findIndex((r) => (sub === 'barilga' ? isConstructionNo(r.no) : isPrepNo(r.no)));
       if (ri < 0) continue;
       let end = ri + 1;
       while (end < sh.rows.length && sh.rows[end].depth > sh.rows[ri].depth) end += 1;
@@ -537,7 +555,7 @@ export function linkPlanDates(tree: PlanTree, spans: DateSpans | null): PlanStor
            MIN/MAX-аар нэгтгэгдэнэ */
         x.guits_ehleh = null; x.guits_duusah = null;
       } else {
-        const sp = spans.get(r.bagts, n.blok ?? r.blok, n.sub ?? 'barilga');
+        const sp = spans.get(sheetPkgOf(r.bagts, n), n.blok ?? r.blok, n.sub ?? 'barilga');
         if (sp !== null) {
           const v = sp ?? EMPTY_SPAN;
           x.geree_ehleh = v.geree[0]; x.geree_duusah = v.geree[1];
@@ -562,9 +580,14 @@ async function fetchSchedules(): Promise<{ sched: BlockSchedules; spans: DateSpa
     try {
       const sc = await loadSchema(pkg, blocks ? {} : { synthetic: true });
       if (!sc.bld.length) return null; // огнооны баганагүй хуудас — хуваарьгүй
+      /* Сарын задаргаа уншигдаагүй бол багц шугаман руу ЧИМЭЭГҮЙ унахгүй — хуудас уншигдаагүйтэй адил (`failed`) */
       const obP: Promise<PkgPlan | null> = emptyP
         .then((empty) => (empty ? null : loadPkgPlan(pkg.key).then((x) => x.plan)))
-        .catch(() => null);
+        .catch((e) => {
+          failed.push(pkg.key);
+          console.warn(`[selbe] төслийн төлөвлөгөө: ${pkg.key} сарын задаргаа уншигдсангүй`, e);
+          return null;
+        });
       const fields = [...new Set([...planFields(sc), ...sc.gStart, ...sc.gEnd].filter((x): x is string => !!x))];
       const r = await loadRows(pkg, sc, undefined, fields, { persist: true });
       const ob = await obP;
@@ -586,7 +609,7 @@ async function fetchSchedules(): Promise<{ sched: BlockSchedules; spans: DateSpa
   return {
     sched: makeSchedules(ok), // блокгүй (синтетик «Ажил») хуудас ч — pkgPlannedOf · pkgSpanOf үүнээс уншина
     spans: makeDateSpans(ok, failedGroups),
-    failed: failed.map((k) => `schedule:${k}`),
+    failed: [...new Set(failed)].map((k) => `schedule:${k}`), // сүлжээ тасрахад мөр ба сарын задаргаа хоёулаа унана — нэг хуудас нэг удаа
     failedGroups,
   };
 }
@@ -1127,9 +1150,11 @@ export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
     const v = plan.result.values.get(n)?.S;
     return v == null || !Number.isFinite(v) ? null : v;
   };
+  /* `bagtsKey` БИШ: «БАГЦ 1- 4» ба «БАГЦ-14» хоёул БАГЦ14 болж бие биеийн үе шатын хувийг авдаг байв */
+  const keyOf = (n: PlanNode): string => pkgKeyOf(n.pkg) || String(n.pkg ?? '').trim();
   const top = new Map<string, PlanNode>();
   for (const n of plan.tree.nodes) {
-    const pk = bagtsKey(n.pkg);
+    const pk = keyOf(n);
     if (!pk) continue;
     const k = `${n.phase}|${pk}`;
     const cur = top.get(k);
@@ -1140,7 +1165,7 @@ export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
     const id = n.row?.cashflow_id;
     if (id == null || out.has(id)) continue;
     const S = sOf(n);
-    const pk = bagtsKey(n.pkg);
+    const pk = keyOf(n);
     const stages: Record<string, number | null> = { [ST.build]: S };
     for (const [ph, f] of PHASE_FIELD) {
       const t = pk ? top.get(`${ph}|${pk}`) : undefined;

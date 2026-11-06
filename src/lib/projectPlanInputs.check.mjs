@@ -17,8 +17,9 @@ import {
   toStoredRow, compareDdKod, sortPlanRows,
   blockActualOf, prepActualOf, pkgActualOf, blockPlannedOf, makeSchedules, monthlyOf, makeDateSpans, linkPlanDates,
   makeParcelIndex, parcelHits, landPctOf, landPctMap, landKeyOf, landKeysOf, landOf, landLayerIdsOf, EMPTY_AREA_PCT,
-  assemblePlan, emptyPlan, planMonths, liveProgressOf, __test,
+  assemblePlan, emptyPlan, planMonths, liveProgressOf, pkgPlannedOf, pkgSpanOf, CF_SHEET_GROUP, __test,
 } from './projectPlanInputs.ts';
+import { bagtsKey } from './services.ts';
 import { buildTree, ubToday } from './projectPlan.ts';
 import { planCurve } from '@/modules/sheet/bagtsSheet.ts';
 
@@ -171,6 +172,9 @@ const srow = (o) => ({
     assert.deepEqual(ds.get('Багц-4.2', '5/1', 'barilga').guits, [D('2026-01-01'), D('2026-02-10')], 'Б. дэд мод MIN/MAX');
     assert.deepEqual(ds.get('Багц-4.2', '5/1', 'barilga').geree, [null, null], 'гэрээний огноо хоосон → хоосон');
     assert.deepEqual(ds.get('Багц-4.2', '5/1', 'beltgel').guits, [D('2025-01-01'), D('2025-01-31')], 'А. мөр → бэлтгэл');
+    /* 10 хуудасны 9-д дугаар ЛАТИН «A» — кирилл жиших үед бэлтгэлийн огноо алга болж 5.1-ийн төлөвлөгөөт хувь 3.44 байв */
+    const latin = { ...nine, group: 'Багц 1', rows: nine.rows.map((r) => (r.oid === 1 ? { ...r, no: 'A. БЭЛТГЭЛ АЖИЛ' } : r)) };
+    assert.deepEqual(makeDateSpans([latin]).get('Багц-1', '5/1', 'beltgel').guits, [D('2025-01-01'), D('2025-01-31')], 'латин A. мөр → бэлтгэл');
     assert.deepEqual(ds.get('Багц-4.2', '6/1', 'barilga').guits, [null, null], 'огноогүй блок → хоосон');
     assert.deepEqual(ds.get('Багц-4.2', '6/2', 'barilga').guits, [null, null], 'урвуу · sane биш хос хаягдана');
     assert.deepEqual(ds.get('Багц-4.2', 'Бүгд', 'barilga').guits, [D('2026-01-01'), D('2026-02-10')], '«Бүгд» = багцын MIN/MAX');
@@ -194,6 +198,41 @@ const srow = (o) => ({
     assert.deepEqual([L.get(5).guits_ehleh, L.get(5).guits_duusah], [null, null], 'хуудасгүй багц хоосон');
     const keep = new Map(linkPlanDates(t, null).map((r) => [r.objectid, r]));
     assert.equal(keep.get(4).guits_ehleh, D('2025-02-01'), 'Хуваарь уншигдаагүй → хадгалсан хэвээр');
+  }
+  /* 2026-11-06: мөр ба сарын задаргаа хоёулаа унавал нэг хуудас `failed`-д НЭГ удаа (мэдэгдэлд давхардахгүй) */
+  assert.match(readFileSync(new URL('./projectPlanInputs.ts', import.meta.url), 'utf8'), /failed: \[\.\.\.new Set\(failed\)\]\.map\(\(k\) => `schedule:\$\{k\}`\)/, 'schedule: түлхүүр давхардахгүй');
+  /* 2026-11-06: олон багцын нэртэй мөр (`cashflow_id` 18 · 42) өөрийн хүснэгттэйгээ холбогдоно; бусад диапазон мөр хэвээр */
+  {
+    const G = 'Суурийн холболтын ажил';
+    assert.equal(CF_SHEET_GROUP.get(18), G);
+    const sheet = {
+      key: 'suuri', group: G, bld: ['Ажил'],
+      rows: [
+        srow({ oid: 1, no: 'Б', depth: 0, group: true, start: [null], end: [null] }),
+        srow({ oid: 2, no: '1', depth: 1, start: [D('2026-05-30')], end: [D('2026-12-30')] }),
+      ],
+    };
+    const t = buildTree([
+      { objectid: 1, dd_kod: '5', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт' },
+      { objectid: 2, dd_kod: '5.2', etseg_kod: '5', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт ажил' },
+      { objectid: 3, dd_kod: '5.2.8', etseg_kod: '5.2', uy_shat: 'Барилга угсралт', bagts: 'БАГЦ 1- 4', cashflow_id: 18, ajil_uilchilgee: G, ho_dun_geree: 10 },
+      { objectid: 4, dd_kod: '5.2.9', etseg_kod: '5.2', uy_shat: 'Барилга угсралт', bagts: 'БАГЦ 1- 6', cashflow_id: 99, ajil_uilchilgee: 'Өөр диапазон', ho_dun_geree: 10, guits_ehleh: D('2026-01-01'), guits_duusah: D('2026-02-01') },
+    ]);
+    const ds = makeDateSpans([sheet]);
+    const L = new Map(linkPlanDates(t, ds).map((r) => [r.objectid, r]));
+    assert.deepEqual([L.get(3).guits_ehleh, L.get(3).guits_duusah], [D('2026-05-30'), D('2026-12-30')], 'мөр 18 — хүснэгтийн огноо');
+    assert.deepEqual([L.get(4).guits_ehleh, L.get(4).guits_duusah], [null, null], 'бусад диапазон мөр — урьдын дүрэм');
+    const n18 = t.nodes.find((n) => n.row.objectid === 3);
+    const n99 = t.nodes.find((n) => n.row.objectid === 4);
+    const infra = new Map([[bagtsKey(G), { pct: 50, blocks: 1, total: 1 }]]);
+    const pa = pkgActualOf({ blocks: new Map(), universe: new Map(), infra });
+    assert.equal(pa('БАГЦ 1- 4', n18), 50, 'мөр 18 — хүснэгтийн гүйцэтгэл');
+    assert.equal(pa('БАГЦ 1- 4'), undefined, 'зангилаагүй/бусад — диапазон хоосон түлхүүр');
+    assert.equal(pa('БАГЦ 1- 6', n99), undefined);
+    const sc = makeSchedules([sheet]);
+    near(pkgPlannedOf(sc)('БАГЦ 1- 4', D('2026-12-30'), n18), 100, 1e-9, 'мөр 18 — хүснэгтийн төлөвлөгөө');
+    assert.equal(pkgPlannedOf(sc)('БАГЦ 1- 6', D('2026-12-30'), n99), undefined);
+    assert.deepEqual(pkgSpanOf(sc)('БАГЦ 1- 4', n18), [D('2026-05-30'), D('2026-12-30')], 'мөр 18 — L/M');
   }
   console.log('✅ 3. хуваарь — блок бүрээр, хуваарьгүй null, 9F давамгайлал, алдаатай огноо, огнооны муж');
 }
@@ -375,6 +414,22 @@ const srow = (o) => ({
     assert.equal(lv.get(12).S, vG.S);
     assert.equal(lv.get(12).stages.guitsetgel_huvi, vG.S);
     assert.equal(liveProgressOf(emptyPlan(today)).size, 0, 'хоосон төлөв → хоосон');
+    /* 2026-11-06: «БАГЦ 1- 4» ба «БАГЦ-14» үе шатын хувиа хуваалцахгүй (bagtsKey хоёуланд БАГЦ14) */
+    {
+      const R = (objectid, dd_kod, etseg_kod, uy_shat, o = {}) => ({ objectid, dd_kod, etseg_kod, uy_shat, ajil_uilchilgee: `w${objectid}`, ...o });
+      const r2 = [
+        R(1, '4', null, 'Зөвшөөрөл'),
+        R(2, '4.1', '4', 'Зөвшөөрөл', { bagts: 'БАГЦ 1- 4', guitsetgel_huvi: 100, heseg_ezleh_huvi: 0.5 }),
+        R(3, '4.2', '4', 'Зөвшөөрөл', { bagts: 'БАГЦ-14', guitsetgel_huvi: 20, heseg_ezleh_huvi: 0.5 }),
+        R(4, '5', null, 'Барилга угсралт'),
+        R(5, '5.2', '5', 'Барилга угсралт', { ajil_uilchilgee: 'Барилга угсралт ажил' }),
+        R(6, '5.2.1', '5.2', 'Барилга угсралт', { bagts: 'БАГЦ 1- 4', cashflow_id: 71 }),
+        R(7, '5.2.2', '5.2', 'Барилга угсралт', { bagts: 'БАГЦ-14', cashflow_id: 72 }),
+      ];
+      const lv2 = liveProgressOf(assemblePlan(r2, { actual: { blocks: new Map(), universe: new Map(), infra: new Map() }, sched: null, land: new Map() }, today));
+      assert.equal(lv2.get(71).stages.zuwshuurul, 100, '«БАГЦ 1- 4» — өөрийн зөвшөөрөл');
+      assert.equal(lv2.get(72).stages.zuwshuurul, 20, '«БАГЦ-14» — өөрийн зөвшөөрөл');
+    }
     console.log('✅ 6. liveProgressOf — cashflow_id → амьд S · үе шатны хувь');
   }
 }

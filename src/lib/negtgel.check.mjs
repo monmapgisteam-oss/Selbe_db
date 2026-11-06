@@ -513,6 +513,14 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('./negtgel.ts', import.meta.url), 'utf8');
   assert.ok(src.includes('if (!negtgelComplete(v) && fullP === mine) fullP = null;'), 'loadNegtgelFull бүрэн бус үр дүнг кэшэд үлдээж байна');
+  /* 2026-11-06: хуудас унасан бол төслийн хувь БАГА тоо биш, null (17.48 ↔ 32.44); Хуваарийн уналт гүйцэтгэлд нөлөөлөхгүй */
+  const { negtgelActualFailed } = await import('./negtgel.ts');
+  assert.equal(negtgelActualFailed([]), false);
+  assert.equal(negtgelActualFailed(['blockProgress']), true);
+  assert.equal(negtgelActualFailed(['schedule:b1_9f']), false);
+  assert.equal(negtgelActualFailed(['schedule', 'land:БАГЦ161']), true);
+  assert.ok(/if \(negtgelActualFailed\(failed\)\) return null;/.test(src), 'loadNegtgelPct уналтад null');
+  assert.ok(/'HUVAARI_OBYEM'[^\]]*\]\);/.test(src.slice(src.indexOf('fullP = null; }, ['))), 'кэш сарын задаргаа бичигдэхэд хаягдана');
   console.log('negtgel 2026-10-01: ok — бүрэн бус үр дүн кэшлэгдэхгүй · уналтын нэр');
 }
 
