@@ -283,9 +283,10 @@ export function ipcPdfDoc(doc: IpcDoc, meta: IpcMeta): TDocumentDefinitions {
     ...doc.notes.map((n) => `* ${NOTE_MN[n]}`),
     ...(late.length ? [`* ${late.join(', ')} хуудасны эхний агшин энэ сард — өмнөх IPC саруудад хэмжигдээгүй тул тайлант үеийн гүйцэтгэлд гэрээний эхнээс хуримтлагдсан ажил орсон.`] : []),
   ];
-  const notes: Obj[] = lines.length
+  /* Хуудас бүрд ШИНЭ объект: pdfmake текстийн зангилааг байрлуулахдаа дуусгадаг тул нэг объект 2, 3-р хуудсанд хоосон зурагдана */
+  const notes = (): Obj[] => (lines.length
     ? [{ text: lines.join('\n'), fontSize: 6, color: '#777777', margin: [0, 6, 0, 0] }]
-    : [];
+    : []);
   return {
     pageSize: 'A4',
     pageOrientation: 'landscape',
@@ -293,11 +294,11 @@ export function ipcPdfDoc(doc: IpcDoc, meta: IpcMeta): TDocumentDefinitions {
     defaultStyle: { fontSize: 8 },
     info: { title: doc.docNo },
     content: [
-      ...page7(doc, meta), ...notes,
+      ...page7(doc, meta), ...notes(),
       { text: '', pageBreak: 'after' },
-      ...pageG1(doc, meta), ...notes,
+      ...pageG1(doc, meta), ...notes(),
       { text: '', pageBreak: 'after' },
-      ...pageH12(doc, meta), ...notes,
+      ...pageH12(doc, meta), ...notes(),
     ] as unknown as Content[],
   };
 }

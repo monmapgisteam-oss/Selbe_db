@@ -34,13 +34,13 @@ function writeSaved(packKey: string, v: Saved): void {
 
 const NOTE_UI = (n: IpcNote): string => ({
   noPrev: tr('Системд өмнөх сарын батлагдсан гүйцэтгэл алга — тайлант үеийн гүйцэтгэл нь эхнээсээ хуримтлагдсан дүн.'),
-  noAdvance: tr('ХО-д урьдчилгааны бүртгэл алга — урьдчилгаа ба эргэн төлөлт 0.'),
+  noAdvance: tr('Хөрөнгө оруулалтын хүснэгтэд урьдчилгааны бүртгэл алга — урьдчилгаа ба эргэн төлөлт 0.'),
   negative: tr('Энэ сарын гүйцэтгэл өмнөх сараас буурсан (засвар) — сөрөг дүн.'),
   over: tr('Хуримтлагдсан гүйцэтгэл гэрээний дүнгээс давсан.'),
 }[n]);
 
 const SIGNER_LABELS = (): [keyof IpcSigners, string][] => [
-  ['approve', tr('Батлав — НЗДТГ-ын хөрөнгө оруулалтын хэлтсийн дарга')],
+  ['approve', tr('Батлав — Нийслэлийн Засаг Даргын Тамгын Газрын хөрөнгө оруулалтын хэлтсийн дарга')],
   ['ceo', tr('Гүйцэтгэх захирал')],
   ['chiefAcc', tr('Ерөнхий нягтлан бодогч')],
   ['hoSpec', tr('Хөрөнгө оруулалтын хэлтсийн мэргэжилтэн')],
@@ -175,14 +175,14 @@ export function IpcDocDialog({ packKey, packName, month: month0, ipcNo: ipcNo0, 
           <button type="button" className={s.x} onClick={onClose} aria-label={tr('Хаах')} disabled={busy}>×</button>
         </div>
         <p className={s.sub}>
-          {tr('Хүснэгт 7 · Гүйцэтгэл-1 · Хавсралт №12 — тухайн сарын батлагдсан гүйцэтгэлээс (обьём × нэгж өртөг) ба ХО-гийн гэрээнээс. Сард нэг баримт.')}
+          {tr('Хүснэгт 7 · Гүйцэтгэл-1 · Хавсралт №12 — тухайн сарын батлагдсан гүйцэтгэлээс (обьём × нэгж өртөг) ба хөрөнгө оруулалтын гэрээнээс. Сард нэг баримт.')}
         </p>
 
         {err && <p className={s.err} role="alert">{err}</p>}
         {!src && !err && <p className={s.sub}>{tr('Гүйцэтгэлийн архивыг уншиж байна…')}</p>}
         {src && !src.months.length && <p className={s.err}>{tr('Энэ багцад батлагдсан гүйцэтгэл алга.')}</p>}
         {src?.warn && <p className={s.note}>⚠ {src.warn}</p>}
-        {src && src.contract == null && <p className={s.err}>{tr('ХО-д энэ багцын гэрээний дүн бүртгэгдээгүй — баримт гаргах боломжгүй.')}</p>}
+        {src && src.contract == null && <p className={s.err}>{tr('Хөрөнгө оруулалтын хүснэгтэд энэ багцын гэрээний дүн бүртгэгдээгүй — баримт гаргах боломжгүй.')}</p>}
 
         {src && src.months.length > 0 && (
           <div className={s.grid}>

@@ -129,7 +129,8 @@ export function payRows(pays: readonly Row[]): PayRow[] {
       cum,
       obyem,
       une,
-      zoruu: perf.length ? (amount == null || une == null ? null : amount - une) : num(r[LINK_FIELDS.zoruu]),
+      /* Бүхэл ₮-ээр: 1 ₮-өөс бага бөөрөнхийллийн үлдэгдэл улаан «0 ₮» эсвэл «-1 ₮» болж харагддаг байв */
+      zoruu: perf.length ? (amount == null || une == null ? null : Math.round(amount - une) + 0) : num(r[LINK_FIELDS.zoruu]),
       year: num(r[P.year]),
       kind: String(r[P.kind] ?? ''),
       orderNo: String(r[C.order1No] ?? ''),
@@ -328,9 +329,11 @@ export function contractBlocks(cs: readonly HoContract[]): ContractBlock[] {
     const h = mergeHead(c.pays);
     const stored = num(h[C.saving]);
     const calc = hoSaving(h);
+    /* Олон багцтай гэрээ: `c.pkg` нь эхний мөрийн багц л тул гарчиг нь гэрээний код */
+    const many = new Set(c.pays.flatMap((r) => hoPkgParts(r[C.pkg]))).size > 1;
     return {
       code: c.code,
-      title: c.pkg || c.code || rows[0]?.id || '—',
+      title: (many && c.code) || c.pkg || c.code || rows[0]?.id || '—',
       contractor: c.contractor,
       workType: c.workType,
       contractNo: c.contractNo,
@@ -511,18 +514,27 @@ export type PackageRow = {
 /**
  * ОЛОН БАГЦТАЙ ГЭРЭЭНИЙ БАГЦ БҮРИЙН МӨР (2026-11-04, хэрэглэгч: «бүрэн харагддаг болго») — IPC-ийн нэг гэрээ
  * Cashflow-д багц бүрээр бичигддэг. Холболтын дүрэм нь `hoSync`-тэй ИЖИЛ (`cfMatches`). Нэг багцтай гэрээнд хоосон.
+ * Багцууд нь гэрээний БҮХ мөрөөс (`pays`): мөр бүр өөрийн багцтай тул гарчгаас олох боломжгүй.
  */
-export function packageRows(b: Pick<ContractBlock, 'title' | 'workType'>, cfRows: readonly Record<string, unknown>[]): PackageRow[] {
-  const parts = hoPkgParts(b.title);
+export function packageRows(
+  b: Pick<ContractBlock, 'title' | 'workType'> & Partial<Pick<ContractBlock, 'pays' | 'contractNo'>>,
+  cfRows: readonly Record<string, unknown>[],
+): PackageRow[] {
+  const parts = [...new Set([...hoPkgParts(b.title), ...(b.pays ?? []).flatMap((r) => hoPkgParts(r[HO_IPC.contractFields.pkg]))])];
   if (parts.length < 2) return [];
   const phases = phasesOf(b.workType);
   const C = CASHFLOW_NEW.fields;
+  const no = String(b.contractNo ?? '').trim();
+  const sameNo = (r: Record<string, unknown>): boolean => {
+    const x = String(r[C.contractNo] ?? '').trim();
+    return !no || !x || x === no;
+  };
   const n = (v: unknown): number | null => {
     if (v == null || v === '') return null;
     const x = Number(v);
     return Number.isFinite(x) ? x : null;
   };
-  return cfRows.filter((r) => cfMatches(r, parts, phases)).map((r) => ({
+  return cfRows.filter((r) => cfMatches(r, parts, phases) && sameNo(r)).map((r) => ({
     key: String(r[CASHFLOW_NEW.oid] ?? r[C.pkg] ?? ''),
     pkg: String(r[C.pkg] ?? ''),
     contract: n(r[C.contractAmount]),

@@ -317,9 +317,10 @@ export type AutoPlan =
 export function planAuto(rows: readonly Row[], a: AutoIpc): AutoPlan {
   const key = pkgKeyOf(a.pkg);
   if (!key) return { op: 'skip', why: 'no-pkg' };
+  /* Бичих дүнгүй бол гэрээгүй багц алдаа биш: хувиар л бөглөсөн блокгүй хуудас батлагдаж, бүртгэл хүлээгдэж үлдэхгүй */
+  if (a.obyem == null && a.une == null) return { op: 'skip', why: 'no-data' };
   if (!a.code) return { op: 'skip', why: 'no-code' };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(a.day)) return { op: 'skip', why: 'bad-day' };
-  if (a.obyem == null && a.une == null) return { op: 'skip', why: 'no-data' };
 
   /* 2026-11-04: IPC-д орсон мөрийг шинэчлэхгүй; ижил өдөр дахин бөглөвөл шинэ «Гүйцэтгэл» мөр.
      2026-11-05: өдрийн сүүлийн жааз өдрийн БҮХ ажлыг хадгалдаг тул шинэ мөрд ижил өдрийн ТҮГЖИГДСЭН мөрүүдийн дүнг
@@ -351,7 +352,7 @@ export type SheetRead = 'read' | 'missing' | 'no-obyem' | 'unpublished' | 'no-fr
 
 export type SheetsVerdict =
   | { go: true; warn: string | null }
-  | { go: false; result: { ok: true; op: 'skip'; why: 'no-data' } | { ok: false; error: string } };
+  | { go: false; result: { ok: true; op: 'skip'; why: 'no-data'; warn: string } | { ok: false; error: string } };
 
 /**
  * Хуудсуудын төлвөөс IPC бичих эсэхийг шийднэ — цэвэр функц (`ipcAuto.check.mjs`).
@@ -364,7 +365,7 @@ export function sheetsVerdict(xs: readonly SheetRead[]): SheetsVerdict {
   const noObyem = cnt('no-obyem');
   const unpub = cnt('unpublished');
   const noFrame = cnt('no-frame');
-  if (!read && !missing && noObyem === n) return { go: false, result: { ok: true, op: 'skip', why: 'no-data' } };
+  if (!read && !missing && noObyem === n) return { go: false, result: { ok: true, op: 'skip', why: 'no-data', warn: tr('Гүйцэтгэлийн хүснэгтэд обьёмын багана олдсонгүй тул батлагдсан гүйцэтгэлээс IPC мөр үүссэнгүй.') } };
   if (!read) {
     /* Батлагдсан хуудас өөрийн жаазтай байх ёстой — нэг ч хуудас уншигдаагүй бол хаалттай (fail-closed) */
     return {

@@ -11,23 +11,24 @@ import { askConfirm } from '@/lib/confirm';
 import { invalidate } from '@/lib/dataBus';
 import { applyAll } from '@/lib/tableWrite';
 import { queryFeatures } from '@/lib/query';
-import { CASHFLOW_NEW, HO_IPC, num } from '@/lib/services';
-import { entUploadPdf } from '@/lib/entDocs';
+import { CASHFLOW_NEW, CF_MONTH, HO_IPC, num } from '@/lib/services';
+import { contractCancelled } from '@/lib/ipc';
+import { entDeletePdf, entSession, entUploadPdf } from '@/lib/entDocs';
 import { runHoSyncAfter } from '@/lib/hoSync/sync';
 import { cfMatches, hoPkgParts, phasesOf } from '@/lib/hoSync/compute';
 import { userError } from '@/components/ui';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import { downloadIpcFlowPdf } from '@/lib/ipcFlowPdf';
 import {
-  approveIpc, approveWhy, canCancel, contractCancel, contractCancelWhy, contractUpdates, contractWhy, createAdvance, createCancel,
-  createIpc, docRows, docTitle, nextIpcNo, overContract, perfRows, perfTotal, signIpc, type IpcDocRow, type NewContract, type PerfRow, type Row,
+  approveIpc, approveWhy, contractCancel, contractCancelWhy, contractUpdates, contractWhy, createAdvance, deleteIpc, deleteWhy,
+  createIpc, docRows, docTitle, dupDocNos, nextIpcNo, overContract, parseMoney, perfRows, perfTotal, signIpc, type ContractWhy, type IpcDocRow, type NewContract, type PerfRow, type Row,
 } from '@/lib/ipcFlow';
 import s from './ipcTable.module.css';
 
 const S = HO_IPC.status;
 const CF = CASHFLOW_NEW.fields;
 const money = (v: number | null | undefined): string => (v == null ? '—' : `${mnt(v)}`);
-/* 2026-11-04: ОРОН НУТГИЙН хуанлийн өдөр (`dayKey`) — бөглөх хуудасны өдөртэй (`ajilApply.todayLocalMs`) нэг дүрэм; UTC биш */
+/* 2026-11-04: Улаанбаатарын хуанлийн өдөр (`dayKey`) — бөглөх хуудасны өдөртэй (`ajilApply.todayLocalMs`) нэг дүрэм; UTC биш */
 const today = (): string => dayKey(Date.now());
 /** Гэрээний мөрүүдийг сервероос ШИНЭЭР уншина — бичихийн өмнө, өөр хэрэглэгчийн өөрчлөлтийг харахын тулд */
 const freshPays = async (code: string, pays: readonly Row[]): Promise<readonly Row[]> => (code
@@ -130,6 +131,13 @@ export function IpcFlowPanel({
     await applyAll(HO_IPC.url, HO_IPC.oid, e2, CREATE_CAP);
     setPicked(new Set());
     invalidate('HO_IPC');
+    /* Хоёр хэрэглэгч зэрэг үүсгэвэл нэг дугаар авч болно (сервер давхардлыг хорихгүй) — мөр устгахгүй, ил хэлнэ */
+    const no = Number(e2.adds[0][HO_IPC.payFields.ipcNo]);
+    /* IPC аль хэдийн бичигдсэн: энэ уншилт унавал «алдаа» гэж хэлэхгүй */
+    const after = await freshPays(code, pays).catch(() => null);
+    if (after && dupDocNos(after).includes(no)) {
+      setErr(tr('IPC-{0} дугаартай өөр баримт зэрэг үүссэн байна. Баталгаажуулахаас өмнө админд мэдэгдэнэ үү.', no));
+    }
   });
 
   const pdf = (d: IpcDocRow) => run(async () => {
@@ -141,15 +149,18 @@ export function IpcFlowPanel({
     const d = fileFor.current;
     if (!d) return;
     void run(async () => {
-      const { item } = await entUploadPdf(file, docTitle(code, d), ['selbe-ipc'], HO_IPC.docFolder);
-      await applyAll(HO_IPC.url, HO_IPC.oid, { updates: [signIpc(d, item.id)] }, CREATE_CAP);
+      /* Дэлгэцийн мөр хуучирсан байж болно — баталгаажсан баримтын төлөвийг буцаахгүй */
+      const d2 = docRows(await freshPays(code, pays)).find((x) => x.oid === d.oid);
+      if (!d2 || d2.status !== S.created) { changed(); return; }
+      const { item } = await entUploadPdf(file, docTitle(code, d2), ['selbe-ipc'], HO_IPC.docFolder);
+      await applyAll(HO_IPC.url, HO_IPC.oid, { updates: [signIpc(d2, item.id)] }, CREATE_CAP);
       invalidate('HO_IPC');
     });
   };
 
   const approve = (d: IpcDocRow) => run(async () => {
     if (approveWhy(d)) { setErr(tr('Гарын үсэгтэй сканыг эхлээд оруулна уу.')); return; }
-    const q = d.isCancel ? tr('IPC-{0}-ийн цуцлалтыг баталгаажуулах уу?', d.no) : tr('IPC-{0}-г баталгаажуулах уу? {1} олгосон дүнд нэмэгдэнэ.', d.no, money(d.total));
+    const q = tr('IPC-{0}-г баталгаажуулах уу? {1} олгосон дүнд нэмэгдэнэ. Баталсны дараа устгах, буцаах боломжгүй.', d.no, money(d.total));
     if (!(await askConfirm(q, { ok: tr('Баталгаажуулах') }))) return;
     const fresh = await freshPays(code, pays);
     const d2 = docRows(fresh).find((x) => x.oid === d.oid);
@@ -158,13 +169,22 @@ export function IpcFlowPanel({
     invalidate('HO_IPC');
   });
 
-  const cancel = (d: IpcDocRow) => run(async () => {
-    if (!(await askConfirm(tr('IPC-{0}-г цуцлах баримт нээх үү? Эх баримт устахгүй.', d.no), { ok: tr('Цуцлалт нээх'), danger: true }))) return;
-    const docs2 = docRows(await freshPays(code, pays));
-    const d2 = docs2.find((x) => x.oid === d.oid);
-    if (!d2 || !canCancel(d2, docs2)) { changed(); return; }
-    await applyAll(HO_IPC.url, HO_IPC.oid, { adds: [createCancel(code, d2, today())] }, APPROVE_CAP);
+  const remove = (d: IpcDocRow) => run(async () => {
+    if (!(await askConfirm(tr('IPC-{0}-г устгах уу? Холбогдсон гүйцэтгэлүүд дахин сонгож болох болно.', d.no), { ok: tr('Устгах'), danger: true }))) return;
+    const fresh = await freshPays(code, pays);
+    const d2 = docRows(fresh).find((x) => x.oid === d.oid);
+    if (!d2 || deleteWhy(d2, fresh)) { changed(); return; }
+    await applyAll(HO_IPC.url, HO_IPC.oid, deleteIpc(d2, fresh), canCreate ? CREATE_CAP : APPROVE_CAP);
     invalidate('HO_IPC');
+    /* Баримт устсан: скан файл үлдсэн бол бүртгэлгүй хог болохгүй гэж арилгана; унавал баримтад нөлөөгүй, ил хэлнэ */
+    if (d2.docItem) {
+      try {
+        const owner = entSession()?.user;
+        if (owner) await entDeletePdf(d2.docItem, owner);
+      } catch (e) {
+        setErr(tr('Баримт устсан ч скан файл устсангүй ({0}). Баримт бичгийн сангаас гараар устгана уу.', userError(e)));
+      }
+    }
   });
 
   return (
@@ -194,7 +214,7 @@ export function IpcFlowPanel({
               {docs.map((d) => (
                 <tr key={d.oid}>
                   <td>
-                    {d.isCancel ? tr('Цуцлалт') : d.advance ? tr('Урьдчилгаа') : tr('IPC')}
+                    {d.advance ? tr('Урьдчилгаа') : tr('IPC')}
                     {' '}{String(d.no).padStart(2, '0')}
                   </td>
                   <td>{d.pkg}</td>
@@ -213,8 +233,8 @@ export function IpcFlowPanel({
                     {d.status === S.signed && canApprove && (
                       <button type="button" className={s.btn} disabled={busy} onClick={() => void approve(d)}>{tr('Баталгаажуулах')}</button>
                     )}
-                    {canApprove && canCancel(d, docs) && (
-                      <button type="button" className={s.btn} disabled={busy} onClick={() => void cancel(d)}>{tr('Цуцлах')}</button>
+                    {(canCreate || canApprove) && !deleteWhy(d, pays) && (
+                      <button type="button" className={s.btn} disabled={busy} onClick={() => void remove(d)}>{tr('Устгах')}</button>
                     )}
                   </td>
                 </tr>
@@ -240,22 +260,35 @@ export function ContractCancelButton({ code, pays, cfRows }: { code: string; pay
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (contractCancelWhy(pays)) return null;
+  /* Зөвхөн ЭНЭ гэрээний мөрүүд (`planHoSync`-тэй нэг дүрэм) — дугаараар, эсвэл дугааргүй мөрийн багц БА үе шатаар; ижил багцын өөр дугаартай гэрээ хөндөгдөхгүй.
+     Цуцлагдсан дугаартай гэрээ дугааргүй мөрийг эзэмшихгүй: тэр нь дахин байгуулсан шинэ гэрээ */
+  const parts = [...new Set(pays.flatMap((r) => hoPkgParts(r[HO_IPC.contractFields.pkg])))];
+  const phases = phasesOf(pays.map((r) => String(r[HO_IPC.contractFields.workType] ?? '').trim()).find(Boolean) ?? '');
+  const nos = new Set(pays.map((r) => String(r[HO_IPC.contractFields.contractNo] ?? '').trim()).filter(Boolean));
+  const dead = contractCancelled(pays);
+  const rows = cfRows.filter((r) => {
+    if (String(r[CF.amountNote] ?? '').trim() !== 'Гэрээлсэн дүн') return false;
+    const no = String(r[CF.contractNo] ?? '').trim();
+    return no ? nos.has(no) : (!nos.size || !dead) && cfMatches(r, parts, phases);
+  });
+  /* Бүрэн цуцлагдсан гэрээнд товч алга; хагас цуцлагдсан (182 бичигдээгүй үлдсэн) бол дахин оролдоно */
+  if (dead && !rows.length) return null;
   const go = async () => {
     if (!(await askConfirm(tr('«{0}» гэрээг цуцлах уу? Мөрүүд устахгүй, «Цуцлагдсан» төлөвтэй болно. Урьдчилсан төсөвт өртөг өөрчлөгдөхгүй.', code), { ok: tr('Цуцлах'), danger: true }))) return;
     setBusy(true);
     setErr(null);
     try {
-      /* Зөвхөн ЭНЭ гэрээний мөрүүд — дугаараар, эсвэл багц БА үе шатаар (`hoSync`-ийн ижил дүрэм); ижил багцын өөр гэрээ хөндөгдөхгүй */
-      const parts = [...new Set(pays.flatMap((r) => hoPkgParts(r[HO_IPC.contractFields.pkg])))];
-      const phases = phasesOf(pays.map((r) => String(r[HO_IPC.contractFields.workType] ?? '').trim()).find(Boolean) ?? '');
-      const nos = new Set(pays.map((r) => String(r[HO_IPC.contractFields.contractNo] ?? '').trim()).filter(Boolean));
-      const rows = cfRows.filter((r) => String(r[CF.amountNote] ?? '').trim() === 'Гэрээлсэн дүн'
-        && (nos.size ? nos.has(String(r[CF.contractNo] ?? '').trim()) : cfMatches(r, parts, phases)));
       const e = contractCancel(pays, rows);
-      await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: e.cf }, APPROVE_CAP);
+      /* IPC эхэлнэ: дараагийн алхам унавал гэрээ «Цуцлагдсан», 182 хэвээр — `planHoSync` давхар гэрээ үүсгэхгүй, товч дахин гарна */
       await applyAll(HO_IPC.url, HO_IPC.oid, { updates: e.ho }, APPROVE_CAP);
-      invalidate('CASHFLOW_NEW');
       invalidate('HO_IPC');
+      try {
+        await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: e.cf }, APPROVE_CAP);
+      } catch (x) {
+        setErr(tr('IPC-ийн мөрүүд цуцлагдсан ч «Төсөл төлөвлөгөө биелэлт»-ийн гэрээний мэдээлэл арилсангүй ({0}). «Гэрээ цуцлах»-ыг дахин дарна уу.', userError(x)));
+        return;
+      }
+      invalidate('CASHFLOW_NEW');
     } catch (x) {
       setErr(userError(x));
     } finally {
@@ -271,13 +304,6 @@ export function ContractCancelButton({ code, pays, cfRows }: { code: string; pay
 }
 
 type Item = { oid: number; amount: string; advance: string };
-
-const parseNum = (t: string): number | null => {
-  const v = t.replace(/[\s,]/g, '');
-  if (!v) return null;
-  const x = Number(v);
-  return Number.isFinite(x) ? x : NaN;
-};
 
 /**
  * ГЭРЭЭ ҮҮСГЭХ ЦОНХ — нэг ба олон багцтай гэрээ. Cashflow-д бичээд `hoSync` IPC-ийн гэрээг үүсгэнэ,
@@ -299,7 +325,13 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
     ? xs.filter((x) => x.oid !== oid)
     : [...xs, { oid, amount: '', advance: '' }]));
   const set = (oid: number, k: 'amount' | 'advance', v: string) => setItems((xs) => xs.map((x) => (x.oid === oid ? { ...x, [k]: v } : x)));
-  const sum = items.reduce((a, x) => a + (parseNum(x.amount) || 0), 0);
+  const sum = items.reduce((a, x) => a + (parseMoney(x.amount) || 0), 0);
+  const whyText = (why: ContractWhy): string => (why === 'no-number' ? tr('Гэрээний дугаарыг оруулна уу.')
+    : why === 'empty' ? tr('Багц сонгоно уу.')
+      : why === 'amount' ? tr('Багц бүрийн гэрээний дүнг зөв оруулна уу.')
+        : why === 'advance' ? tr('Урьдчилгааг зөвхөн тоогоор оруулна уу. Жишээ нь 5000000.')
+          : why === 'taken' ? tr('Сонгосон багц өөр гэрээтэй байна.')
+            : tr('Ийм дугаартай гэрээ бүртгэлтэй байна.'));
 
   const save = async () => {
     setErr(null);
@@ -307,21 +339,31 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
       no,
       contractor,
       date,
-      items: items.map((x) => ({ row: rowOf(x.oid) as Row, amount: parseNum(x.amount) ?? 0, advance: parseNum(x.advance) })),
+      items: items.map((x) => ({ row: rowOf(x.oid) as Row, amount: parseMoney(x.amount) ?? 0, advance: parseMoney(x.advance) })),
     };
-    const why = cfSaved ? (c.items.some((i) => i.advance != null && !(i.advance >= 0)) ? 'advance' : null) : contractWhy(c, cfRows);
+    const why: ContractWhy | null = cfSaved ? (c.items.some((i) => i.advance != null && !(i.advance >= 0)) ? 'advance' : null) : contractWhy(c, cfRows);
     if (why) {
-      setErr(why === 'no-number' ? tr('Гэрээний дугаарыг оруулна уу.')
-        : why === 'empty' ? tr('Багц сонгоно уу.')
-          : why === 'amount' ? tr('Багц бүрийн гэрээний дүнг зөв оруулна уу.')
-            : why === 'advance' ? tr('Урьдчилгааг зөвхөн тоогоор оруулна уу. Жишээ нь 5000000.')
-            : why === 'taken' ? tr('Сонгосон багц өөр гэрээтэй байна.')
-              : tr('Ийм дугаартай гэрээ бүртгэлтэй байна.'));
+      setErr(whyText(why));
       return;
     }
     setBusy(true);
     try {
       if (!cfSaved) {
+        /* Цонх нээгдсэний дараа өөр хэрэглэгч багцыг гэрээлсэн эсвэл дугаарыг авсан байж болно — бичихийн өмнө шинээр шалгана */
+        const [cfNow, hoNow] = await Promise.all([
+          queryFeatures(CASHFLOW_NEW.url, { where: `${CF_MONTH.start} IS NULL`, outFields: [CASHFLOW_NEW.oid, CF.amountNote, CF.contractNo] }),
+          queryFeatures(HO_IPC.url, { outFields: [HO_IPC.oid, HO_IPC.contractFields.contractNo] }),
+        ]);
+        const nowOf = new Map(cfNow.map((r) => [Number(r[CASHFLOW_NEW.oid]), r] as const));
+        if (c.items.some((i) => !nowOf.has(Number(i.row[CASHFLOW_NEW.oid])))) {
+          setErr(tr('Энэ хооронд өөр хэрэглэгч өөрчилсөн байна. Шинэчилсэн мэдээллийг шалгаад дахин оролдоно уу.'));
+          return;
+        }
+        const why2 = contractWhy({ ...c, items: c.items.map((i) => ({ ...i, row: { ...i.row, ...nowOf.get(Number(i.row[CASHFLOW_NEW.oid])) } })) }, cfNow, hoNow);
+        if (why2) {
+          setErr(whyText(why2));
+          return;
+        }
         await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: contractUpdates(c) }, CREATE_CAP);
         setCfSaved(true);
         invalidate('CASHFLOW_NEW');
@@ -334,7 +376,9 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
       const adv = c.items.filter((i) => (i.advance ?? 0) > 0);
       if (adv.length) {
         const ho = await queryFeatures(HO_IPC.url, { outFields: ['*'], orderBy: `${HO_IPC.oid} ASC` });
-        const head = ho.find((r) => String(r[HO_IPC.contractFields.contractNo] ?? '').trim() === no.trim());
+        /* Цуцлагдсан гэрээний мөр биш — урьдчилгаа шинэ гэрээнд очно */
+        const head = ho.find((r) => String(r[HO_IPC.contractFields.contractNo] ?? '').trim() === no.trim()
+          && String(r[S.field] ?? '').trim() !== S.cancelled);
         const code = String(head?.[HO_IPC.contractFields.code] ?? '').trim();
         if (!code) throw new Error(tr('Гэрээ хадгалагдсан ч IPC-д хараахан үүсээгүй. Цонхыг хаалгүй «Хадгалах»-ыг дахин дарж урьдчилгааг бичнэ үү.'));
         const pays = ho.filter((r) => String(r[HO_IPC.contractFields.code] ?? '').trim() === code);

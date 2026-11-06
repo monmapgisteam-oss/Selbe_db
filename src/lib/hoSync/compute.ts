@@ -179,12 +179,14 @@ function missingContracts(
     if (m) id = Math.max(id, Number(m[1]));
   }
   const adds: Row[] = [];
-  for (const rows of groups.values()) {
+  for (const [key, rows] of groups) {
     const pkg = [...new Set(rows.map((r) => txt(r[CF.pkg])).filter(Boolean))].join(', ');
     const part = hoPkgParts(pkg)[0];
     if (!part) continue;
     const phase = txt(rows[0][CF.phase]);
-    const code = codes.has(pkg) ? `${pkg} · ${phase}` : pkg;
+    /* Цуцлагдсан гэрээг дахин, дахин гэрээлэхэд код нь өмнөх гэрээнийхтэй нийлэхгүй — дугаар нэмнэ (тогтмол хэвээр) */
+    const withPhase = `${pkg} · ${phase}`;
+    const code = !codes.has(pkg) ? pkg : !codes.has(withPhase) ? withPhase : `${withPhase} · ${key}`;
     codes.add(code);
     id += 1;
     adds.push({
@@ -248,6 +250,17 @@ export function planPaidSync(hoRows: readonly Row[], cfRows: readonly Row[]): Pa
   return { updates, unassigned };
 }
 
+/**
+ * Багц · үе шатаар тохирсон мөрүүдээс ЭНЭ гэрээнийхийг сонгоно: дугаар нь ижил мөр (дугааргүй гэрээнд дугааргүй мөр). Ийм мөр огт
+ * алга бол 182-т дугаар засагдсан гэж үзэж (`hoFromCf` шинэ дугаарыг HO-д бичнэ) өөр гэрээний дугааргүй мөрүүдийг авна.
+ */
+function ownCfRows(cf: readonly Row[], nos: ReadonlySet<string>, otherNos: ReadonlySet<string>): Row[] {
+  const noOf = (r: Row): string => txt(r[CF.contractNo]);
+  /* Нотолгоо нь дугаар: хамт байгаа дугааргүй мөр нь дугаар засагдсаныг нуухгүй */
+  const exact = cf.some((r) => (nos.size ? nos.has(noOf(r)) : !noOf(r)));
+  return cf.filter((r) => (exact ? !noOf(r) || nos.has(noOf(r)) : !otherNos.has(noOf(r))));
+}
+
 export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSyncPlan {
   const byContract = new Map<string, Row[]>();
   for (const r of hoRows) {
@@ -255,6 +268,7 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
     if (!code) continue;
     byContract.set(code, [...(byContract.get(code) ?? []), r]);
   }
+  const nosOf = (rows: readonly Row[]): Set<string> => new Set(rows.map((r) => txt(r[HC.contractNo])).filter(Boolean));
   const updates: Row[] = [];
   const matched = new Map<string, number[]>();
   const unmatched: string[] = [];
@@ -263,10 +277,17 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
     /* 2026-11-04: багц бүрийн мөртэй гэрээ — гэрээний БҮХ мөрийн багцыг нэгтгэнэ (эхний мөрийнх биш) */
     const parts = [...new Set(rows.flatMap((r) => hoPkgParts(r[HC.pkg])))];
     const phases = phasesOf(rows.map((r) => txt(r[HC.workType])).find(Boolean) ?? '');
-    const cf = cfRows.filter((r) => cfMatches(r, parts, phases));
+    const fit = cfRows.filter((r) => cfMatches(r, parts, phases));
+    const nos = nosOf(rows);
     /* Гэрээ бүхлээрээ цуцлагдсан бол хөндөхгүй — гэхдээ Cashflow мөрүүд нь «эзэнгүй» гэж ШИНЭ гэрээ үүсгэхгүй
-       (2026-11-05 аудит: гаднаас цуцалсан гэрээнд давхар ХО мөр үүсдэг байв) */
-    if (contractCancelled(rows)) { cancelledUsed.push(...cf.map((r) => Number(r[CASHFLOW_NEW.oid]))); continue; }
+       (2026-11-05 аудит: гаднаас цуцалсан гэрээнд давхар ХО мөр үүсдэг байв). Өөр дугаартай мөр бол цуцлагдсаны дараа байгуулсан ШИНЭ гэрээ — эзэмшихгүй */
+    if (contractCancelled(rows)) {
+      cancelledUsed.push(...fit.filter((r) => { const no = txt(r[CF.contractNo]); return nos.size ? nos.has(no) : !no; }).map((r) => Number(r[CASHFLOW_NEW.oid])));
+      continue;
+    }
+    const otherNos = new Set<string>();
+    for (const [c2, r2] of byContract) if (c2 !== code) for (const n of nosOf(r2)) otherNos.add(n);
+    const cf = ownCfRows(fit, nos, otherNos);
     if (!cf.length) { unmatched.push(code); continue; }
     matched.set(code, cf.map((r) => Number(r[CASHFLOW_NEW.oid])));
     const want = hoFromCf(cf);

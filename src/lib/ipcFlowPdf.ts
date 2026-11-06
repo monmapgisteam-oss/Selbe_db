@@ -23,7 +23,7 @@ export function ipcFlowPdfDoc(o: {
   rows: readonly PerfRow[];
 }): Record<string, unknown> {
   const { code, contractNo, contractor, doc, rows } = o;
-  const title = doc.isCancel ? 'IPC ЦУЦЛАЛТЫН БАРИМТ' : doc.advance ? 'УРЬДЧИЛГАА ТӨЛБӨРИЙН БАРИМТ' : 'IPC БАРИМТ';
+  const title = doc.advance ? 'УРЬДЧИЛГАА ТӨЛБӨРИЙН БАРИМТ' : 'IPC БАРИМТ';
   const hdr = ['№', 'Огноо', 'Гүйцэтгэлийн бүртгэл', 'Дүн, ₮'].map((text, i) => ({
     text, bold: true, alignment: i > 2 ? 'right' : 'left', fillColor: '#eeeeee',
   }));

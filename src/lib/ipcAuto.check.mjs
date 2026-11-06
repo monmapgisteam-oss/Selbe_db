@@ -156,6 +156,8 @@ const P = HO_IPC.payFields;
   });
   assert.equal(noCode.op, 'skip');
   assert.equal(noCode.why, 'no-code', '⚠️ кодгүй мөр ҮҮСГЭХГҮЙ');
+  /* 2026-11-06: гэрээгүй блокгүй багцыг хувиар л бөглөсөн — бичих дүнгүй тул алдаа биш, бүртгэл хүлээгдэж үлдэхгүй */
+  assert.equal(planAuto([], { pkg: 'Багц-3.3', code: '', day: '2026-09-09', obyem: null, une: null }).why, 'no-data');
 
   /* contractCodeOf — БАЙГАА мөрөөс код олно */
   const rows = [
@@ -321,6 +323,8 @@ const P = HO_IPC.payFields;
     assert.equal(m.contractFor(multi, 'БАГЦ12').code, '');
   }
   assert.ok(W.includes("if (!cols.length) { reads.push('no-obyem'); continue; }"), 'обьёмгүй хуудас «дутуу» биш (F2)');
+  /* 2026-11-06: блокгүй хуудасны `obyem_sum` зөвхөн бөглөх бүдүүвчид — `synthetic` бол IPC мөр чимээгүй алга болдог */
+  assert.ok(W.includes('p.floors == null ? { fill: true } : {}'), 'блокгүй хуудас бөглөх бүдүүвчээр');
   assert.ok(W.includes("if (!upTo) { reads.push('unpublished'); continue; }"), 'жаазгүй хуудас «unpublished» (аудит №6)');
   /* 2026-11-04: жааз бүр тухайн өдрийн ажил — өмнөх өдрийн жаазыг (`upTo < at`) дахин тоолохгүй, тэр өдрийн жаазыг л уншина */
   assert.ok(W.includes("if (upTo !== at) { reads.push('no-frame'); continue; }")
@@ -361,6 +365,7 @@ const P = HO_IPC.payFields;
   /* бүгд обьёмын баганагүй — no-data (F2 хэвээр) */
   v = sheetsVerdict(['no-obyem', 'no-obyem']);
   assert.ok(!v.go && v.result.ok && v.result.op === 'skip' && v.result.why === 'no-data', 'бүгд обьёмгүй → no-data');
+  assert.ok(v.result.warn, 'обьёмын багана алга — чимээгүй алгасахгүй, батлагчид хэлнэ');
   /* юу ч уншигдаагүй — батлагдсан хуудасны өөрийн жааз байх ёстой тул АЛДАА (fail-closed), no-data биш */
   v = sheetsVerdict(['unpublished', 'unpublished']);
   assert.ok(!v.go && !v.result.ok && v.result.error.includes('огт илгээгдээгүй'), 'бүгд нийтлэгдээгүй → ok:false, шалтгаан ил');

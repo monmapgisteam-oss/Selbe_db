@@ -40,7 +40,8 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     let une: number | null = null;
     const reads: SheetRead[] = [];
     let noUnit = 0;
-    const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p, p.floors == null ? { synthetic: true } : {}).catch(() => null)));
+    /* Блокгүй хуудас: `obyem_sum` зөвхөн бөглөх бүдүүвчид (`fill`) орно; `synthetic` бол IPC мөр чимээгүй алга болдог */
+    const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p, p.floors == null ? { fill: true } : {}).catch(() => null)));
     const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));
 
     for (const [i, pkg] of wanted.entries()) {
@@ -82,6 +83,10 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     const plan = planAuto(rows, { pkg: bagts, day: at, code, obyem, une });
     if (plan.op === 'skip') {
       if (plan.why === 'no-data') return { ok: true, op: 'skip', why: plan.why, ...wx };
+      /* Блокгүй багцад гэрээ хараахан алга (шинэ 40 хүснэгт г.м.): актлах гэрээ байхгүй — батлалтыг гацаахгүй. Өмнөх мөнгө хэвээр */
+      if (plan.why === 'no-code' && wanted.every((p) => p.floors == null)) {
+        return { ok: true, op: 'skip', why: 'no-data', warn: [...warns, tr('{0} багцад гэрээ бүртгэгдээгүй тул IPC мөр үүссэнгүй.', bagts)].join(' · ') };
+      }
       const error = plan.why === 'no-code'
         ? tr('IPC мөр бичсэнгүй: {0} багцын гэрээний код HO хүснэгтэд олдсонгүй', bagts)
         : plan.why === 'no-pkg'

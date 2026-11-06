@@ -129,4 +129,14 @@ console.log('✅ дараагийн сар — эргэн төлөлт · хяз
 }
 console.log('✅ орой эхэлсэн хуудасны анхааруулга (lateSheetsOf)');
 
+/* ── 2026-11-06: анхааруулга гурван хуудас бүрд ТУСДАА объект — pdfmake нэг объектыг эхний байрлалд дуусгадаг ── */
+{
+  const { ipcPdfDoc, EMPTY_SIGNERS } = await import('./ipcPdf.ts');
+  const def = ipcPdfDoc(buildIpcDoc({ ...base, advance: null, months: [m1], month: '2025-12', recoveryFrom: null }), { capacity: '', signers: EMPTY_SIGNERS });
+  const notes = def.content.filter((x) => typeof x?.text === 'string' && x.text.startsWith('* '));
+  assert.equal(notes.length, 3, 'гурван хуудас бүрд тайлбар');
+  assert.equal(new Set(notes).size, 3, 'нэг объект давтагдахгүй');
+}
+console.log('✅ PDF-ийн тайлбар хуудас бүрд');
+
 console.log('\nipcDoc.check: ok');

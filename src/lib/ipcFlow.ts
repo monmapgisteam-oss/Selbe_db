@@ -6,11 +6,12 @@
  *   2. «IPC үүссэн»        — багц сонгож, гүйцэтгэлүүдийг чеклээд нэг IPC-д нэгтгэсэн (`IPC|…` мөр, дүн нь хөлдсөн);
  *   3. «Гарын үсэг зурсан» — PDF-д гарын үсэг зуруулж скан оруулсан (`ipc_barimt_id`);
  *   4. «Олгосон»           — баталгаажсан: IPC мөрийн `dun` бичигдэж `olgoson_dun`-д орно.
- * IPC хэзээ ч устахгүй, засагдахгүй: цуцлах бол шинэ «Цуцлалт» баримт нээж мөн энэ дарааллаар явна.
+ * Батлаагүй баримтыг (1–3) устгаж болно, гүйцэтгэлүүд чөлөөлөгдөнө. Баталсан баримт устахгүй, засагдахгүй, цуцлахгүй (2026-11-06, хэрэглэгч).
  */
-import { CASHFLOW_NEW, HO_IPC, num } from '@/lib/services';
+import { CASHFLOW_NEW, HO_IPC, num, pkgKeyOf } from '@/lib/services';
 import { LINK_FIELDS } from '@/lib/ipcLink';
 import { isAuto } from '@/lib/ipcAuto';
+import { parseCell } from '@/lib/finEdit';
 
 export type Row = Record<string, unknown>;
 
@@ -21,7 +22,6 @@ const CF = CASHFLOW_NEW.fields;
 
 /** IPC баримтын мөрийн ID-ийн угтвар */
 export const DOC_PREFIX = 'IPC|';
-const CANCEL_SUFFIX = '|C';
 
 const txt = (v: unknown): string => String(v ?? '').replace(/\s+/g, ' ').trim();
 const dayOf = (v: unknown): string => {
@@ -84,8 +84,6 @@ export type IpcDocRow = {
   docItem: string;
   /** Урьдчилгааны баримт уу */
   advance: boolean;
-  /** Цуцлалтын баримт уу */
-  isCancel: boolean;
 };
 
 /** Гэрээний IPC баримтууд, дугаараар */
@@ -100,15 +98,21 @@ export function docRows(pays: readonly Row[]): IpcDocRow[] {
     total: num(r[LINK_FIELDS.une]),
     docItem: txt(r[HO_IPC.docItem]),
     advance: r[P.kind] === HO_IPC.kinds.advance,
-    isCancel: txt(r[P.id]).endsWith(CANCEL_SUFFIX),
   })).sort((a, b) => a.no - b.no || a.oid - b.oid);
 }
 
-/** Дараагийн IPC дугаар — цуцлагдсан дугаар ч дахин ашиглагдахгүй */
+/** Дараагийн IPC дугаар — хамгийн их дугаар + 1 (устгасан сүүлийн дугаар дахин ашиглагдана) */
 export function nextIpcNo(pays: readonly Row[]): number {
   let m = 0;
   for (const r of pays) { const n = num(r[P.ipcNo]); if (n != null && n > m) m = n; }
   return m + 1;
+}
+
+/** Хоёр хэрэглэгч зэрэг авсан IPC дугаарууд — нэг дугаартай нэгээс олон энгийн баримт */
+export function dupDocNos(pays: readonly Row[]): number[] {
+  const seen = new Map<number, number>();
+  for (const d of docRows(pays)) seen.set(d.no, (seen.get(d.no) ?? 0) + 1);
+  return [...seen].filter(([, n]) => n > 1).map(([no]) => no);
 }
 
 const docId = (code: string, no: number): string => `${DOC_PREFIX}${code}|${no}`;
@@ -130,7 +134,8 @@ export function createIpc(
 ): FlowEdit | string {
   if (!selected.length) return 'empty';
   if (selected.some((r) => r.status !== S.work)) return 'locked';
-  const pkgs = new Set(selected.map((r) => r.pkg));
+  /* Багцын түлхүүрээр: «Багц 1» ба «Багц-1» нэг багц */
+  const pkgs = new Set(selected.map((r) => pkgKeyOf(r.pkg) || r.pkg));
   if (pkgs.size !== 1) return 'pkg';
   const no = nextIpcNo(pays);
   const pkg = selected[0].pkg;
@@ -164,9 +169,9 @@ export function createAdvance(code: string, pkg: string, amount: number, no: num
 }
 
 /** Item-ийн нэр — `IPC_<geree_kod>_IPC-06_<огноо>` */
-export function docTitle(code: string, d: Pick<IpcDocRow, 'no' | 'day' | 'isCancel'>): string {
+export function docTitle(code: string, d: Pick<IpcDocRow, 'no' | 'day'>): string {
   const safe = code.replace(/[|\\/:*?"<>,]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return `IPC_${safe}_${d.isCancel ? 'Tsutslalt-' : ''}IPC-${String(d.no).padStart(2, '0')}_${d.day}`;
+  return `IPC_${safe}_IPC-${String(d.no).padStart(2, '0')}_${d.day}`;
 }
 
 /** Скан оруулсан — «Гарын үсэг зурсан» */
@@ -184,45 +189,33 @@ export function approveWhy(d: IpcDocRow): 'status' | 'no-doc' | null {
 }
 
 /**
- * БАТАЛГААЖУУЛАХ. Энгийн баримт: `dun` = баримтын дүн, гүйцэтгэлүүд «Олгосон».
- * Цуцлалт: эх баримт «Цуцлагдсан», олгосон байсан бол сөрөг `dun`, гүйцэтгэлүүд чөлөөлөгдөнө.
+ * БАТАЛГААЖУУЛАХ: `dun` = баримтын дүн, гүйцэтгэлүүд «Олгосон». Буцаах зам байхгүй.
  */
 export function approveIpc(d: IpcDocRow, pays: readonly Row[]): Row[] {
-  if (!d.isCancel) {
-    const out: Row[] = [{ [HO_IPC.oid]: d.oid, [P.amount]: d.total, [S.field]: S.paid }];
-    for (const r of pays) {
-      if (isAuto(r) && num(r[P.ipcNo]) === d.no) out.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [S.field]: S.paid });
-    }
-    return out;
-  }
-  const origin = pays.find((r) => isDocRow(r) && num(r[P.ipcNo]) === d.no && !txt(r[P.id]).endsWith(CANCEL_SUFFIX));
-  const paid = origin ? num(origin[P.amount]) : null;
-  const out: Row[] = [{ [HO_IPC.oid]: d.oid, [P.amount]: paid == null ? null : -paid, [S.field]: S.paid }];
-  if (origin) out.push({ [HO_IPC.oid]: num(origin[HO_IPC.oid]), [S.field]: S.cancelled });
+  const out: Row[] = [{ [HO_IPC.oid]: d.oid, [P.amount]: d.total, [S.field]: S.paid }];
   for (const r of pays) {
-    if (isAuto(r) && num(r[P.ipcNo]) === d.no) out.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [P.ipcNo]: null, [S.field]: S.work });
+    if (isAuto(r) && num(r[P.ipcNo]) === d.no) out.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [S.field]: S.paid });
   }
   return out;
 }
 
-/** Цуцлалтын баримт нээх боломжтой юу — энгийн, цуцлагдаагүй, цуцлалт нээгдээгүй */
-export function canCancel(d: IpcDocRow, docs: readonly IpcDocRow[]): boolean {
-  if (d.isCancel || d.status === S.cancelled) return false;
-  return !docs.some((x) => x.isCancel && x.no === d.no);
+/**
+ * Устгах боломжгүй шалтгаан; `null` = болно. Баталсан баримт (мөнгө нь `dun`-д бичигдсэн) устахгүй. Мөр олдохгүй бол
+ * төлөвөөр. Төлөв нь «Олгосон» боловч `dun` хоосон мөр бол мөнгөнд ороогүй: өмнөх цуцлалтын дарааллын үлдэгдэл, устгаж болно.
+ */
+export function deleteWhy(d: IpcDocRow, pays: readonly Row[]): 'paid' | null {
+  const row = pays.find((r) => num(r[HO_IPC.oid]) === d.oid);
+  if (!row) return d.status === S.paid ? 'paid' : null;
+  return num(row[P.amount]) != null ? 'paid' : null;
 }
 
-/** Цуцлалтын баримт — эх баримтын дугаартай, дүн нь сөрөг */
-export function createCancel(code: string, d: IpcDocRow, day: string): Row {
-  return {
-    [P.id]: `${docId(code, d.no)}${CANCEL_SUFFIX}`,
-    [C.code]: code,
-    [C.pkg]: d.pkg,
-    [P.kind]: d.advance ? HO_IPC.kinds.advance : HO_IPC.kinds.work,
-    [P.ipcNo]: d.no,
-    [P.payDate]: day,
-    [LINK_FIELDS.une]: d.total == null ? null : -d.total,
-    [S.field]: S.created,
-  };
+/** УСТГАХ: баримтын мөр устаж, түүнд холбогдсон гүйцэтгэлүүд дахин сонгож болох болно */
+export function deleteIpc(d: IpcDocRow, pays: readonly Row[]): { deletes: number[]; updates: Row[] } {
+  const updates: Row[] = [];
+  for (const r of pays) {
+    if (isAuto(r) && num(r[P.ipcNo]) === d.no) updates.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [P.ipcNo]: null, [S.field]: S.work });
+  }
+  return { deletes: [d.oid], updates };
 }
 
 /** Гэрээний дүнгээс хэтрэх үү — анхааруулга (нэмэлт гэрээ байж болох тул хориглохгүй) */
@@ -244,8 +237,20 @@ export type NewContract = {
 
 export type ContractWhy = 'no-number' | 'empty' | 'amount' | 'advance' | 'taken' | 'dup-number';
 
-/** Гэрээ үүсгэх боломжгүй шалтгаан; `null` = болно */
-export function contractWhy(c: NewContract, cfRows: readonly Row[]): ContractWhy | null {
+/** Дүнгийн бичвэр → тоо. Хоосон бол `null`, таних боломжгүй бол NaN. Таслалын дүрэм нь санхүүгийн хүснэгттэй ижил (`finEdit.parseCell`). */
+export function parseMoney(t: string): number | null {
+  try {
+    return parseCell(t, 'esriFieldTypeDouble', '') as number | null;
+  } catch {
+    return Number.NaN;
+  }
+}
+
+/**
+ * Гэрээ үүсгэх боломжгүй шалтгаан; `null` = болно.
+ * @param hoRows IPC-ийн мөрүүд — цуцлагдсан гэрээний дугаар ч орно: ийм дугаартай шинэ гэрээг `planHoSync` цуцлагдсан гэрээнийх гэж үзнэ
+ */
+export function contractWhy(c: NewContract, cfRows: readonly Row[], hoRows: readonly Row[] = []): ContractWhy | null {
   const no = txt(c.no);
   if (!no) return 'no-number';
   if (!c.items.length) return 'empty';
@@ -254,6 +259,7 @@ export function contractWhy(c: NewContract, cfRows: readonly Row[]): ContractWhy
   if (c.items.some((i) => i.advance != null && !(i.advance >= 0))) return 'advance';
   if (c.items.some((i) => txt(i.row[CF.amountNote]) === CONTRACTED)) return 'taken';
   if (cfRows.some((r) => txt(r[CF.contractNo]) === no)) return 'dup-number';
+  if (hoRows.some((r) => txt(r[C.contractNo]) === no)) return 'dup-number';
   return null;
 }
 
@@ -271,7 +277,8 @@ export function contractUpdates(c: NewContract): Row[] {
 
 /** Гэрээ цуцлах боломжтой юу — IPC үүссэн, олгосон мөргүй */
 export function contractCancelWhy(pays: readonly Row[]): 'has-ipc' | null {
-  return pays.some((r) => num(r[P.amount]) != null || isDocRow(r) || (isAuto(r) && statusOf(r) !== S.work))
+  /* «Цуцлагдсан» AUTO мөр зөвхөн гэрээ цуцлахаас үүснэ — хагас цуцлагдсан гэрээг дахин оролдох боломжтой */
+  return pays.some((r) => num(r[P.amount]) != null || isDocRow(r) || (isAuto(r) && statusOf(r) !== S.work && statusOf(r) !== S.cancelled))
     ? 'has-ipc' : null;
 }
 

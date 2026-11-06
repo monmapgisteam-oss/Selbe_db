@@ -395,6 +395,29 @@ const contract = (o = {}) => ({
   if (got.map((r) => r.pkg).join() !== 'Багц-10,БАГЦ-11') throw new Error('багц таарсангүй: ' + got.map((r) => r.pkg));
   if (got[0].contract !== 60 || got[0].bond !== 36 || got[0].order !== 60 || got[1].bond !== null || got[1].paid !== null) throw new Error('утга буруу');
   if (packageRows({ title: 'Багц-10', workType: 'ГИШСүлжээ' }, rows).length !== 0) throw new Error('нэг багцтай гэрээнд задаргаа гарахгүй');
+  /* 2026-11-06: мөр бүр өөрийн багцтай гэрээ — багцууд БҮХ мөрөөс; гарчиг нь гэрээний код */
+  const pays = [{ objectid: 1, bagts: 'Багц-10' }, { objectid: 2, bagts: 'БАГЦ-11' }];
+  const got2 = packageRows({ title: 'Багц-10', workType: 'ГИШСүлжээ', pays, contractNo: 'У/1' }, rows);
+  if (got2.map((r) => r.pkg).join() !== 'Багц-10,БАГЦ-11') throw new Error('мөрүүдээс багц олдсонгүй: ' + got2.map((r) => r.pkg));
+  if (packageRows({ title: 'Багц-10', workType: 'ГИШСүлжээ', pays: [{ bagts: 'Багц 10' }, { bagts: 'Багц-10' }] }, rows).length !== 0) throw new Error('хоёр бичлэг нэг багц');
+  const other = rows.map((r) => ({ ...r, geree_dugaar: 'Өөр/1' }));
+  if (packageRows({ title: 'Багц-10', workType: 'ГИШСүлжээ', pays, contractNo: 'У/1' }, other).length !== 0) throw new Error('өөр дугаартай мөр задаргаанд орохгүй');
+  const { contractBlocks } = await import('./ipcTable.ts');
+  const blk = (pkg, list) => contractBlocks([{ code: 'БАГЦ-10,11', pkg, contractor: '', workType: '', contractNo: '', pays: list, contractTotal: null, paidTotal: null, paidPct: null, advanceTotal: null, workTotal: null }])[0];
+  if (blk('Багц-10', pays).title !== 'БАГЦ-10,11') throw new Error('олон багцтай гэрээний гарчиг');
+  if (blk('Багц 1', [{ bagts: 'Багц 1' }, { bagts: 'Багц-1' }]).title !== 'Багц 1') throw new Error('нэг багцын гарчиг хэвээр');
+}
+
+/* 2026-11-06: 1 ₮-өөс бага бөөрөнхийллийн үлдэгдэл зөрүү биш (улаан «0 ₮», «-1 ₮» гардаг байв) */
+{
+  const { payRows } = await import('./ipcTable.ts');
+  const zOf = (dun, une) => payRows([
+    { objectid: 1, murun_id: 'ХО-1', tulult_turul: 'Гүйцэтгэл', ipc_dugaar: 2, dun },
+    { objectid: 2, murun_id: 'AUTO|Б|2026-01-01', tulult_turul: 'Гүйцэтгэл', ipc_dugaar: 2, guits_une: une, ipc_tuluv: 'Олгосон' },
+  ])[0].zoruu;
+  if (!Object.is(zOf(100, 99.62), 0)) throw new Error('эерэг үлдэгдэл: ' + zOf(100, 99.62));
+  if (!Object.is(zOf(100, 100.5), 0)) throw new Error('сөрөг хагас: ' + zOf(100, 100.5));
+  if (zOf(100, 90) !== 10) throw new Error('жинхэнэ зөрүү хэвээр');
 }
 
 console.log('ipcTable.check ✓');
