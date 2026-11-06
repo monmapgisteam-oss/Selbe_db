@@ -1,7 +1,7 @@
 import { type PointerEvent as PEvt, useCallback, useEffect, useRef, useState } from 'react';
 import { useLatest } from './useLatest';
 import { DAY, endOf, spanDays, type PlanRow, type Span } from '@/lib/plan';
-import { propagate } from '@/lib/deps';
+import { effSpan, propagate } from '@/lib/deps';
 import { remapMonths, type MonthRes, type PkgPlan, type PkgRes } from '@/lib/huvaariObyem';
 import type { Schema } from '@/modules/sheet/bagts.pkg';
 import { kM, kN, kS } from '@/lib/huvaariDraft';
@@ -14,6 +14,8 @@ import { groupWorks, obKey, sameMonths, sameRes, sameSpan } from './util';
  */
 const TAP_PX = 8;
 const DRAG_PX = 4;
+/** Чирэлтийг буцаах муж — мөрийн хадгалагдсан утга (`Drag.own`); сүүдрийн чирэлтэд `orig` */
+const ownOf = (d: Drag): Span | null => (d.own !== undefined ? d.own : d.orig);
 
 export function useDragPlan({
   plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
@@ -135,7 +137,9 @@ export function useDragPlan({
     if (r.oid < 0) return;
     grp.current = null;
     if (r.group) {
-      const g = r.spans[blk];
+      /* Өөрийн огноогүй бүлгийн зурвас хүүхдээс зурагддаг (`effAt`) — чирэлт ч тэр мужаас эхэлнэ */
+      const gi = plan.findIndex((x) => x.oid === r.oid);
+      const g = (gi >= 0 ? effSpan(plan, gi, blk) : null) ?? r.spans[blk];
       if (chain && mode === 'new' && onGroupRange && groupWorks(plan, plan.findIndex((x) => x.oid === r.oid)).length > 0) {
         /* Огноогүй (эсвэл хоосон хэсэг) — сүүдэр муж чирнэ; өгөгдөл хөндөхгүй, тавихад цонх тэр мужаар нээгдэнэ */
         e.preventDefault();
@@ -180,7 +184,7 @@ export function useDragPlan({
     dragTouched.current = new Set([r.oid]);
     snapAll.current = new Map(plan.map((x) => [x.oid, x.spans] as const));
     setDrag({
-      oid: r.oid, mode, anchor: k, orig: r.spans[blk], origMonths, origRes,
+      oid: r.oid, mode, anchor: k, orig: grp.current?.g ?? r.spans[blk], own: r.spans[blk], origMonths, origRes,
       snap: new Map(plan.map((x) => [x.oid, x.spans[blk]] as const)),
       obSnap: new Map(obDraft), obResSnap: new Map(obResDraft),
     });
@@ -327,7 +331,7 @@ export function useDragPlan({
         });
       }
       undoRef.current = {
-        oid: drag.oid, blk, span: drag.orig, months: null, res: null, snap: drag.snap ?? null,
+        oid: drag.oid, blk, span: ownOf(drag), months: null, res: null, snap: drag.snap ?? null,
         touched: new Set(dragTouched.current),
         obSnap: drag.obSnap ?? null, obResSnap: drag.obResSnap ?? null,
         snapAll: snapAll.current,
@@ -363,7 +367,7 @@ export function useDragPlan({
          * чирэлт нь ч цуцлагдана гэж ойлгоно. Одоо яг тэгнэ.
          */
         undoRef.current = {
-          oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null, res: drag.origRes ?? null, snap: drag.snap ?? null,
+          oid: drag.oid, blk, span: ownOf(drag), months: drag.origMonths ?? null, res: drag.origRes ?? null, snap: drag.snap ?? null,
           touched: new Set(dragTouched.current),
           obSnap: drag.obSnap ?? null, obResSnap: drag.obResSnap ?? null,
           snapAll: snapAll.current,
@@ -381,7 +385,7 @@ export function useDragPlan({
     grp.current = null;
     if (drag && moved.current && !busy && !locked) {
       rollback({
-        oid: drag.oid, blk, span: drag.orig, months: drag.origMonths ?? null, res: drag.origRes ?? null, snap: drag.snap ?? null,
+        oid: drag.oid, blk, span: ownOf(drag), months: drag.origMonths ?? null, res: drag.origRes ?? null, snap: drag.snap ?? null,
         touched: new Set(dragTouched.current),
         obSnap: drag.obSnap ?? null, obResSnap: drag.obResSnap ?? null,
         snapAll: snapAll.current,

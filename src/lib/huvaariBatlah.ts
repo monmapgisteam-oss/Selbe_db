@@ -135,6 +135,44 @@ export type PlanPayload = {
 };
 
 /**
+ * ДАРААЛЛЫН МӨРИЙН ТОО — илгээлт сервер дээрх суурьтай (`base`) ЮУГААРАА зөрөхийг тоолно. Агуулга нь мөрийн БҮХ блокийг
+ * агуулдаг тул хөндөгдөөгүй блокыг тоолохгүй; огноо арилгасан блок, цэвэрлэсэн сарыг ч тоолно. Суурьгүй хуучин илгээлтэд
+ * хоосон биш утга бүр өөрчлөлт. Батлагчийн хяналтаас гадуур — бичилт, шийдвэрт оролцохгүй.
+ */
+export function queueFigures(p: PlanPayload): {
+  spansN: number; removedN: number; from: number | null; to: number | null;
+  depsN: number; obyemN: number; actualN: number; resN: number;
+} {
+  let spansN = 0;
+  let removedN = 0;
+  let from: number | null = null;
+  let to: number | null = null;
+  for (const [oid, arr] of Object.entries(p.spans)) {
+    const was = p.base?.spans[oid] ?? [];
+    (Array.isArray(arr) ? arr : []).forEach((x, b) => {
+      const w = was[b] ?? null;
+      if (x?.start === w?.start && x?.end === w?.end) return;
+      if (!x) { removedN += 1; return; }
+      spansN += 1;
+      if (from == null || x.start < from) from = x.start;
+      if (to == null || x.end > to) to = x.end;
+    });
+  }
+  let obyemN = 0;
+  for (const [k, months] of Object.entries(p.obyem)) {
+    const was = p.base?.obyem[k] ?? {};
+    for (const sar of new Set([...Object.keys(months), ...Object.keys(was)])) if (months[sar] !== was[sar]) obyemN += 1;
+  }
+  return {
+    spansN, removedN, from, to,
+    depsN: Object.keys(p.deps).length,
+    obyemN,
+    actualN: Object.keys(p.actual).length,
+    resN: Object.keys(p.res).length + Object.keys(p.obres ?? {}).length,
+  };
+}
+
+/**
  * ИЛГЭЭЛТИЙН `oid`-ЫГ ОДООГИЙН ЖААЗ РУУ ЗӨӨНӨ — ажлын кодоор (2026-09-29).
  */
 export function remapPayload(

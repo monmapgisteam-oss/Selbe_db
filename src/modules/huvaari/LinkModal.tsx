@@ -3,10 +3,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useFocusTrap } from '@/lib/useFocusTrap';
-import { sameDep, type DepType } from '@/lib/deps';
+import { sameDep, type Dep, type DepType } from '@/lib/deps';
 import type { PlanRow } from '@/lib/plan';
 import { LagInput } from './PlanModal';
 import h from '../huvaari.module.css';
+
+/**
+ * «Тавих» / «Уялдаа устгах» дарахад солигдох ОДООГИЙН уялдаанууд. `collapse` (бүх блок сонгосон) — энэ урд ажлын блок тус бүрийн
+ * уялдаа ч нэг болж нийлнэ; бусад үед сонгосон блокуудын уялдаа. Цонх ба `Huvaari` нэг дүрмээр.
+ */
+export function linksReplaced(deps: readonly Dep[], code: number, blks: number[] | null, collapse?: boolean): Dep[] {
+  const ids = blks ?? [undefined];
+  return deps.filter((d) => (collapse ? d.code === code : ids.some((b) => sameDep(d, { code, blk: b }))));
+}
 
 /**
  * ХОЛБОХ ЦОНХ — шугамаар чирж холбосны дараа гарна (2026-09-22, хэрэглэгч:
@@ -16,13 +25,15 @@ import h from '../huvaari.module.css';
  * (дугуй/шатлалын шалгуур тэнд). Урд ажил аль хэдийн уялдаанд байвал утгыг
  * нь урьдчилан дүүргэж ЗАСНА.
  */
-export function LinkModal({ src, dst, blks, blocks, onClose, onApply, onRemove }: {
+export function LinkModal({ src, dst, blks, collapse, blocks, onClose, onApply, onRemove }: {
   src: PlanRow;
   dst: PlanRow;
   /**
    * Уялдааны блокууд — `null` = бүх блок (2026-09-24).
    */
   blks: number[] | null;
+  /** Бүх блок сонгосон — блок тус бүрийн уялдаа нэг болж нийлнэ (`linksReplaced`) */
+  collapse?: boolean;
   blocks: string[];
   onClose: () => void;
   onApply: (type: DepType, lag: number) => void;
@@ -38,6 +49,9 @@ export function LinkModal({ src, dst, blks, blocks, onClose, onApply, onRemove }
     ? ids.map((b) => dst.deps.find((d) => sameDep(d, { code: src.des as number, blk: b }))).find((d) => d != null)
     : undefined;
   const blkName = (b: number) => blocks[b] ?? String(b + 1);
+  const replaced = src.des != null ? linksReplaced(dst.deps, src.des, blks, collapse) : [];
+  /* Цонхонд урьдчилан дүүргэсэн утгаас өөр уялдаа дарагдах гэж байвал — хэрэглэгчид ил хэлнэ */
+  const hidden = replaced.some((d) => d.type !== cur?.type || d.lag !== cur?.lag);
   const [type, setType] = useState<DepType>(cur?.type ?? 'FS');
   const [lag, setLag] = useState<number>(cur?.lag ?? 0);
   const name = (r: PlanRow) => `${r.des ?? '—'} · ${r.work || r.no}`;
@@ -86,8 +100,13 @@ export function LinkModal({ src, dst, blks, blocks, onClose, onApply, onRemove }
           <LagInput value={lag} onCommit={setLag} />
           <span className={h.mdDepD}>{tr('хоног')}</span>
         </div>
+        {hidden && (
+          <p className={h.muted} role="note">
+            {tr('Одоогийн уялдаа «Тавих» дарахад солигдоно: {0}', replaced.map((d) => `${d.blk != null ? blkName(d.blk) : tr('бүх блок')} — ${d.type} ${d.lag}`).join('; '))}
+          </p>
+        )}
         <footer className={h.mdFoot}>
-          {cur && onRemove && (
+          {replaced.length > 0 && onRemove && (
             <button type="button" className={h.discard} onClick={onRemove}>{tr('Уялдаа устгах')}</button>
           )}
           <span className={h.spacer} />

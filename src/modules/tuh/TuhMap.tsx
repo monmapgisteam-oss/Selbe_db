@@ -3,7 +3,7 @@
 /**
  * ТУХ — СИСТЕМИЙН ГАЗРЫН ЗУРАГ (баруун багана, байнга харагдана).
  */
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
@@ -42,6 +42,15 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
   const { zoomToWhere, setHighlight } = useMap();
   useEffect(() => { setHighlight(null); }, [setHighlight]);
   useEffect(() => () => setHighlight(null), [setHighlight]);
+  /* Газрын зургаас сонгосон блокийн багц — өөр багц руу шилжихэд (жагсаалт, «Бүх багц руу») тодруулга цэвэрлэгдэнэ; эс бөгөөс
+     3D-д шүүлтэд AND-лагдаж шинэ багцын блок алга болж, 2D-д бүдгэрнэ */
+  const pickedPkg = useRef<string | null>(null);
+  const selPkg = sel?.pkgKey ?? null;
+  useEffect(() => {
+    if (selPkg === pickedPkg.current) return;
+    pickedPkg.current = null;
+    setHighlight(null);
+  }, [selPkg, setHighlight]);
 
   /** Сонгосон багцын газрын зургийн илэрхийлэл — давхарга + шүүлт */
   const target = useMemo(() => {
@@ -89,10 +98,11 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
 
   const onMapPick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     const b = pickedBuilding(attrs, layerId);
-    if (!b) { onPickPkg(null); setHighlight(null); return; }
+    if (!b) { pickedPkg.current = null; onPickPkg(null); setHighlight(null); return; }
     const oid = Number(attrs?.[BUILDING.oid]);
     if (Number.isFinite(oid)) setHighlight(`${BUILDING.oid} = ${oid}`, BLOCK_LAYER);
-    onPickPkg(bagtsKey(b.bagts) || null);
+    pickedPkg.current = bagtsKey(b.bagts) || null;
+    onPickPkg(pickedPkg.current);
   }, [onPickPkg, setHighlight]);
 
   return (

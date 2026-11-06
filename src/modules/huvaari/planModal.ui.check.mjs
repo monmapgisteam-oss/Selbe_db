@@ -206,3 +206,34 @@ console.log('✓ PlanModal SSR: combobox · алхмаар хуулах товч
   assert.ok(!/blkChip|coDot/.test(html), 'чип/цэг өгөөгүй бол алга');
 }
 console.log('✓ TaskRow SSR: data-col · нөгөө таб · блокийн чип · хамтран засагч');
+
+/* Бүлгийн цонх — төлөвлөгдсөн бүлгийг нээгээд юу ч засаагүй бол «хадгалаагүй» гэж асуухгүй */
+{
+  const { readFileSync } = await import('node:fs');
+  const SRC = readFileSync(new URL('./PlanModal.tsx', import.meta.url), 'utf8');
+  assert.match(SRC, /\(gEdit && \(\(spanDirty && !prefilled\) \|\| gpDirty\)\)/, 'mdDirty нээгдэх үеийн хувьтай тулгана; эцгийн мужаар урьдчилан дүүргэсэн огноо өөрчлөлт биш');
+  assert.ok(!/gEdit && \(spanDirty \|\| gp\.size > 0\)/.test(SRC), 'урьдчилан дүүргэсэн хувь «өөрчлөлт» биш');
+}
+console.log('✓ PlanModal: төлөвлөгдсөн бүлгийн хоосон нээлт — өөрчлөлтгүй');
+
+/* Холбох цонх — блок тус бүрийн өөр уялдаа дарагдах гэж байвал ил хэлж, устгах товчтой */
+{
+  const { LinkModal, linksReplaced } = await import('@/modules/huvaari/LinkModal');
+  const deps = [{ code: 5, type: 'FS', lag: 3, blk: 0 }, { code: 5, type: 'SS', lag: 7, blk: 1 }, { code: 9, type: 'FS', lag: 0 }];
+  assert.deepEqual(linksReplaced(deps, 5, null, true).length, 2, 'бүх блок — энэ урд ажлын бүх уялдаа');
+  assert.deepEqual(linksReplaced(deps, 5, null).length, 0, 'collapse-гүй null — блокгүй уялдаа л');
+  assert.deepEqual(linksReplaced(deps, 5, [0, 3]), [deps[0]], 'сонгосон блокийнх л');
+  const src = { ...row([null]), oid: 8, des: 5, work: 'Урд' };
+  const dst = { ...row([null]), oid: 9, des: 6, work: 'Хойд', deps };
+  const rend = (blks, collapse) => renderToStaticMarkup(React.createElement(LinkModal, { src, dst, blks, collapse, blocks: ['B1', 'B2', 'B3'], onClose: noop, onApply: noop, onRemove: noop }));
+  let html = rend(null, true);
+  assert.ok(html.includes('Одоогийн уялдаа') && html.includes('B1 — FS 3') && html.includes('B2 — SS 7'), 'бүх блок: хоёр уялдаа ил');
+  assert.ok(html.includes('Уялдаа устгах'), 'бүх блок: устгах товч');
+  html = rend([0, 1]);
+  assert.ok(html.includes('B2 — SS 7'), '2 блок: урьдчилан дүүргээгүй утга ил');
+  html = rend([0]);
+  assert.ok(!html.includes('Одоогийн уялдаа') && html.includes('Уялдаа устгах'), 'нэг блок: дүүргэсэн утга өөрөө — анхааруулгагүй');
+  html = rend([2]);
+  assert.ok(!html.includes('Одоогийн уялдаа') && !html.includes('Уялдаа устгах'), 'уялдаагүй блок — шинэ холбоос');
+}
+console.log('✓ LinkModal: дарагдах уялдаа ил, устгах товч');

@@ -214,7 +214,8 @@ export const rowStore: HDStore = {
     const r = await planRead(key, { full: opt?.full, bld: opt?.ctx?.bld });
     return r.ok && r.draft ? { ...r, draft: alignToFrame(r.draft, opt?.ctx ?? null) } : r;
   },
-  save: (key, d, opt) => planSave(key, collapseCells(d, opt.ctx), { ctx: opt.ctx, expectAt: opt.expectAt }),
+  /* Hook «алсын хувилбаргүй»-г 0-ээр хадгалдаг, `planReadAt` мөргүй түлхүүрт `null` буцаана — хоёр нь нэг утга (JSON замын `?? 0`-тэй адил) */
+  save: (key, d, opt) => planSave(key, collapseCells(d, opt.ctx), { ctx: opt.ctx, expectAt: opt.expectAt === 0 ? null : opt.expectAt }),
   submitted: (key, d, ctx, oid) => planWriteSubmitted(key, collapseCells(d, ctx), ctx, oid),
 };
 

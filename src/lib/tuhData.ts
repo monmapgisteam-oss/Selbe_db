@@ -9,7 +9,8 @@ import {
 import type { LiveProgress } from '@/lib/projectPlanInputs';
 import { finXlChartCat, FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
 import { cfStartKeyOf, type CfPlanRow } from '@/lib/gdash';
-import type { HoContract } from '@/lib/ipc';
+import { moneyBaseOf } from '@/lib/monthlyMoney';
+import { sumPaid, sumPaidByKind, type HoContract } from '@/lib/ipc';
 import { autoDay, dayOf, isAuto } from '@/lib/ipcAuto';
 import { LINK_FIELDS } from '@/lib/ipcLink';
 import { hoPkgKey } from '@/lib/pkgAlias';
@@ -78,7 +79,7 @@ export const TUH_STATUS: { key: TuhStatus; icon: string; label: () => string; to
   { key: 'run', icon: '●', label: () => tr('Хийгдэж байна'), tone: 'good' },
   { key: 'late', icon: '▲', label: () => tr('Хоцорсон'), tone: 'warn' },
   { key: 'todo', icon: '◌', label: () => tr('Эхлээгүй'), tone: 'bad' },
-  { key: 'unknown', icon: '?', label: () => tr('Мэдээлэлгүй'), tone: 'mute' },
+  { key: 'unknown', icon: '?', label: () => tr('Хэмжигдээгүй'), tone: 'mute' },
   { key: 'stopped', icon: '■', label: () => tr('Зогссон'), tone: 'bad' },
   { key: 'none', icon: '○', label: () => tr('Гэрээлээгүй'), tone: 'mute' },
 ];
@@ -94,9 +95,22 @@ export function statusOf(p: { contracted: boolean; progress: number | null; gap:
   if (!p.contracted) return 'none';
   if (p.progress != null && p.progress >= 100) return 'done';
   if (p.progress == null) return p.nullAs ?? 'todo';
-  if (p.progress <= 0) return 'todo';
+  /* Зөрүүг ЭХЛЭЭД — 0%-тай ч төлөвлөгөөнөөс хоцорсон бол «Хоцорсон» (бага ажилласан нь бага хоцорсон болж харагдахгүй) */
   if (p.gap != null && p.gap >= TUH_LATE_GAP) return 'late';
+  if (p.progress <= 0) return 'todo';
   return 'run';
+}
+
+/**
+ * ГҮЙЦЭТГЭГЧИЙН ХУВААРИЙН ЗӨРҮҮГӨӨР ДҮГНЭХ ҮҮ. Бүрэн хуваарь — тийм. Дутуу хуваарь төлөвлөгөөг ДООГУУР гаргадаг (огноогүй нүд 0)
+ * тул бодит гүйцэтгэл түүнээс ч `TUH_LATE_GAP`-аар доогуур бол хоцролт нь баттай; зөвхөн «түрүүлсэн» зөрүү найдваргүй. Гэхдээ
+ * төлөвлөгөө гэрээ эхлэхээс хойш өсөөгүй (`planAtStart` ≥ `planned` — огноотой хэсэг гэрээний эхлэлээс өмнө дууссан) бол
+ * хуваарь хуучирсан тул нотолгоо биш.
+ */
+export function contractorGapCounts(p: { gap: number; planned: number; covOk: boolean; planAtStart: number | null }): boolean {
+  if (p.covOk) return true;
+  if (p.gap < TUH_LATE_GAP) return false;
+  return !(p.planAtStart != null && p.planAtStart >= p.planned - 0.01);
 }
 
 /**
@@ -282,7 +296,7 @@ export function cfPlanPctAt(
 
 /** Багцын гэрээнүүд → `cfPlanPctAt`-ийн оролт */
 export const cfItemsOf = (p: TuhPkg): { id: number; cost: number }[] => p.rows
-  .map((r) => ({ id: numOf(r.cashflow_id) ?? -1, cost: numOf(r[CASHFLOW_NEW.fields.budget]) ?? 0 }))
+  .map((r) => ({ id: numOf(r.cashflow_id) ?? -1, cost: moneyBaseOf(r) ?? 0 }))
   .filter((x) => x.id > 0);
 
 /* ══════════════════════ 7 ХОНОГИЙН АХИЦ ══════════════════════ */
@@ -374,8 +388,11 @@ export function earned(bac: number | null, actual: number | null, planContract: 
 /** Хүлээгдэж буй дүнгийн талбарууд (HO_IPC) — одоогоор бүгд хоосон; хоосон бол `null` */
 export const HO_PENDING = HO_IPC.pendingFields;
 
+/** ТУХ-ын мөрд онооогдсон гэрээ. `jointTotal` — олон багцын нэгдсэн гэрээний НИЙТ дүн (`splitJointHo`); энгийн гэрээнд алга */
+export type TuhHoContract = HoContract & { jointTotal?: number };
+
 export type TuhIpc = {
-  contracts: HoContract[];
+  contracts: TuhHoContract[];
   contractTotal: number | null;
   paid: number | null;
   paidPct: number | null;
@@ -438,7 +455,7 @@ export function pendingAutoOf(pays: readonly Row[]): TuhIpcReview | null {
 /**
  * Багцын IPC нэгтгэл — `groupHo`-ийн гэрээнүүдийг `pkgKey`-ээр шүүнэ.
  */
-export function ipcOf(pkgKey: string | null, all: readonly HoContract[], ipcNumbers: (pays: readonly Row[]) => number[]): TuhIpc | null {
+export function ipcOf(pkgKey: string | null, all: readonly TuhHoContract[], ipcNumbers: (pays: readonly Row[]) => number[]): TuhIpc | null {
   if (pkgKey === '') return null;
   const cs = pkgKey == null ? [...all] : all.filter((c) => c.key === pkgKey);
   if (!cs.length) return null;
@@ -552,10 +569,50 @@ export function keyOwners(pkgs: readonly TuhPkg[]): { owner: Map<string, string>
 }
 
 /**
- * HO гэрээ бүрийг ЯГ НЭГ ТУХ мөрд оноох — зураг төслийн гэрээ (`isDesignHo`) зураг
- * төслийн мөрд (байвал), бусад нь түлхүүрийн эзэнд (`keyOwners`).
+ * ОЛОН БАГЦЫН НЭГДСЭН ГЭРЭЭГ БАГЦ БҮРД ЗАДЛАХ («БАГЦ-10,11,13,15») — төлбөрийн мөр бүр өөрийн багцтай, багц бүрийн гэрээний
+ * дүн гэрээний мөрд бий (`costOf`). Гишүүн бүр өөрийн мөрүүд, өөрийн дүнтэй тул олголт давхар тоологдохгүй. Багц тодорхойгүй
+ * төлбөр байвал эсвэл багцуудын дүн гэрээний нийт дүнтэй тэнцэхгүй бол хуваах үндэсгүй — гэрээг хэвээр үлдээнэ.
  */
-export function assignHo(pkgs: readonly TuhPkg[], contracts: readonly HoContract[]): Map<string, HoContract[]> {
+export function splitJointHo(c: HoContract, costOf: (key: string) => number | null | undefined): TuhHoContract[] {
+  const C = HO_IPC.contractFields;
+  const total = c.contractTotal;
+  if (c.cancelled || total == null) return [c];
+  const byKey = new Map<string, Row[]>();
+  for (const r of c.pays) {
+    const k = pkgKeyOf(r[C.pkg]);
+    if (!k) return [c];
+    const arr = byKey.get(k);
+    if (arr) arr.push(r); else byKey.set(k, [r]);
+  }
+  if (byKey.size < 2) return [c];
+  const costs = [...byKey.keys()].map((k) => costOf(k) ?? null);
+  if (costs.some((x) => x == null || !(x > 0))) return [c];
+  if (Math.abs((costs as number[]).reduce((a, b) => a + b, 0) - total) >= 1) return [c];
+  return [...byKey].map(([key, pays], i) => {
+    const contractTotal = costs[i] as number;
+    const paidTotal = sumPaid(pays);
+    return {
+      ...c,
+      key,
+      pkg: s(pays[0][C.pkg]),
+      budgetTotal: null,
+      contractTotal,
+      saving: null,
+      pays,
+      advanceTotal: sumPaidByKind(pays, HO_IPC.kinds.advance),
+      workTotal: sumPaidByKind(pays, HO_IPC.kinds.work),
+      paidTotal,
+      paidPct: paidTotal == null ? null : (paidTotal / contractTotal) * 100,
+      jointTotal: total,
+    };
+  });
+}
+
+/**
+ * HO гэрээ бүрийг ЯГ НЭГ ТУХ мөрд оноох — зураг төслийн гэрээ (`isDesignHo`) зураг
+ * төслийн мөрд (байвал), бусад нь түлхүүрийн эзэнд (`keyOwners`). Нэгдсэн гэрээ гишүүн багц бүрд өөрийн хэсгээрээ (`splitJointHo`).
+ */
+export function assignHo(pkgs: readonly TuhPkg[], contracts: readonly HoContract[]): Map<string, TuhHoContract[]> {
   const { owner, design } = keyOwners(pkgs);
   const keyOf = (c: HoContract) => (c.key ? hoPkgKey(c.key) : '');
   const designRows = pkgs.filter((p) => p.group === 'design').map((p) => ({ key: p.key, norm: searchNorm(p.code) }));
@@ -576,12 +633,15 @@ export function assignHo(pkgs: readonly TuhPkg[], contracts: readonly HoContract
     }
     return best?.key;
   };
-  const out = new Map<string, HoContract[]>();
-  for (const c of contracts) {
-    const to = (isDesignHo(c) ? designFor(c) : undefined) ?? (c.key ? owner.get(c.key) : undefined);
-    if (!to) continue;
-    const arr = out.get(to);
-    if (arr) arr.push(c); else out.set(to, [c]);
+  const costOf = (k: string) => pkgs.find((p) => p.key === owner.get(k))?.cost;
+  const out = new Map<string, TuhHoContract[]>();
+  for (const c0 of contracts) {
+    for (const c of isDesignHo(c0) ? [c0] : splitJointHo(c0, costOf)) {
+      const to = (isDesignHo(c) ? designFor(c) : undefined) ?? (c.key ? owner.get(c.key) : undefined);
+      if (!to) continue;
+      const arr = out.get(to);
+      if (arr) arr.push(c); else out.set(to, [c]);
+    }
   }
   return out;
 }
@@ -590,6 +650,8 @@ export function assignHo(pkgs: readonly TuhPkg[], contracts: readonly HoContract
 
 /** Хуваарийн мөрийн хэрэгтэй хэсэг — `bagtsSheet.SheetRow`-ийн дэд олонлог */
 export type PlanLikeRow = {
+  /** № баганын бичвэр — зарим хуудас үе шатын нэрийг ЭНД бичсэн («A. Бэлтгэл ажил», `work` хоосон) */
+  no?: string;
   work: string;
   depth: number;
   group: boolean;
@@ -732,6 +794,14 @@ export function commissionOf(rows: readonly PlanLikeRow[]): number | null {
   return out;
 }
 
+/** Мөрийн нэр — `work`; хоосон бүлгийн мөрд № баганад бичсэн нэр («1», «А» шиг дугаар нэр биш) */
+export const rowName = (r: Pick<PlanLikeRow, 'no' | 'work' | 'group'>): string => {
+  const w = r.work.trim();
+  if (w || !r.group) return w;
+  const n = (r.no ?? '').trim();
+  return /\p{L}{3,}/u.test(n) ? n : '';
+};
+
 /**
  * ГОЛ ҮЕ ШАТ — хуваарийн ДЭЭД түвшний (хамгийн бага гүн) мөрүүд, дуусгалтаараа.
  */
@@ -740,9 +810,10 @@ export function milestonesOf(rows: readonly PlanLikeRow[]): { name: string; end:
   const top = Math.min(...rows.map((r) => r.depth));
   const out: { name: string; end: number | null; start: number | null; act: number | null }[] = [];
   rows.forEach((r, i) => {
-    if (r.depth !== top || !r.work.trim()) return;
+    const name = rowName(r);
+    if (r.depth !== top || !name) return;
     const sp = rowSpan(rows, i);
-    out.push({ name: r.work.trim(), start: sp.start, end: sp.end, act: rowAct(r) });
+    out.push({ name, start: sp.start, end: sp.end, act: rowAct(r) });
   });
   return out;
 }

@@ -20,6 +20,38 @@ export function criticalFloat(rows: readonly PlanRow[], b: number): Map<number, 
   rows.forEach((r, i) => { if (!r.group && r.spans[b]) leaves.push(i); });
   const out = new Map<number, number>();
   if (!leaves.length) return out;
+  const succ = succOf(rows, b);
+  const end = Math.max(...leaves.map((i) => rows[i].spans[b]!.end));
+  const lf = new Map<number, number>(leaves.map((i) => [i, end]));
+  const dur = (i: number) => (spanDays(rows[i].spans[b]!) - 1) * DAY;
+  for (let pass = 0; pass < leaves.length + 2; pass++) {
+    let moved = false;
+    for (const p of leaves) {
+      let v = end;
+      for (const s of succ.get(p) ?? []) {
+        /* Бүлэг хойдох — гинж бүлгийг БҮХЭЛД НЬ жигд шилжүүлдэг тул зөвшөөрөгдөх хоцрол = навчуудын хамгийн бага нөөц:
+           хамгийн хожуу эхлэх = бүлгийн эхлэл + min(LS − эхлэл). Ганц навчид LS-тэй ижил. */
+        const st = (j: number) => rows[j].spans[b]!.start;
+        const ls = Math.min(...s.js.map(st)) + Math.min(...s.js.map((j) => lf.get(j)! - dur(j) - st(j)));
+        const lim = s.type === 'FS' ? ls - (1 + s.lag) * DAY : ls - s.lag * DAY + dur(p);
+        if (lim < v) v = lim;
+      }
+      if (v !== lf.get(p)) { lf.set(p, v); moved = true; }
+    }
+    if (!moved) break;
+  }
+  for (const i of leaves) out.set(i, Math.round((lf.get(i)! - rows[i].spans[b]!.end) / DAY));
+  return out;
+}
+
+/**
+ * Блокт ОГНООТОЙ ажлуудыг холбосон уялдаа бий эсэх. Алга бол `criticalFloat` зөвхөн «блокийн сүүлийн өдөр дуусдаг ажил»-ыг
+ * гаргана — энэ нь эгзэгтэй зам биш тул самбар жагсаалт, улаан хүрээ зурахгүй. Огноогүй мөрийн уялдаа тоологдохгүй.
+ */
+export const hasCriticalLinks = (rows: readonly PlanRow[], b: number): boolean => succOf(rows, b).size > 0;
+
+/** Урд навч → хойд навчууд: блок `b`-ийн уялдааны сүлжээ */
+function succOf(rows: readonly PlanRow[], b: number): Map<number, { js: number[]; type: 'FS' | 'SS'; lag: number }[]> {
   const byCode = codeIndex(rows as PlanRow[]);
   /* код → тэр кодын навч ажлууд (бүлэг бол доорх навчууд) */
   const leafOf = (i: number): number[] => {
@@ -50,27 +82,7 @@ export function criticalFloat(rows: readonly PlanRow[], b: number): Map<number, 
       }
     }
   });
-  const end = Math.max(...leaves.map((i) => rows[i].spans[b]!.end));
-  const lf = new Map<number, number>(leaves.map((i) => [i, end]));
-  const dur = (i: number) => (spanDays(rows[i].spans[b]!) - 1) * DAY;
-  for (let pass = 0; pass < leaves.length + 2; pass++) {
-    let moved = false;
-    for (const p of leaves) {
-      let v = end;
-      for (const s of succ.get(p) ?? []) {
-        /* Бүлэг хойдох — гинж бүлгийг БҮХЭЛД НЬ жигд шилжүүлдэг тул зөвшөөрөгдөх хоцрол = навчуудын хамгийн бага нөөц:
-           хамгийн хожуу эхлэх = бүлгийн эхлэл + min(LS − эхлэл). Ганц навчид LS-тэй ижил. */
-        const st = (j: number) => rows[j].spans[b]!.start;
-        const ls = Math.min(...s.js.map(st)) + Math.min(...s.js.map((j) => lf.get(j)! - dur(j) - st(j)));
-        const lim = s.type === 'FS' ? ls - (1 + s.lag) * DAY : ls - s.lag * DAY + dur(p);
-        if (lim < v) v = lim;
-      }
-      if (v !== lf.get(p)) { lf.set(p, v); moved = true; }
-    }
-    if (!moved) break;
-  }
-  for (const i of leaves) out.set(i, Math.round((lf.get(i)! - rows[i].spans[b]!.end) / DAY));
-  return out;
+  return succ;
 }
 
 /* ══════════════════ Батлагдсантай харьцуулах ══════════════════ */

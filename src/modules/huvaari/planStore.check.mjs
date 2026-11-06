@@ -123,6 +123,13 @@ const noAt = (x) => strip({ ...x, entries: new Map([...x.entries].map(([k, v]) =
   f.metaDown = false;
   ok((await prepareStore(hdKey('plan', 'b71'), { canWrite: true, ctx: null })).mode === 'rows' && (await rowsReady()).mode === 'rows', 'сэргэмэгц rows');
   ok(legacyPending(1_800_000_000_000.25) && !legacyPending(1_800_000_000_000) && !legacyPending(null) && !legacyPending(undefined), 'legacyPending — бутархай хувилбар');
+  /* Анхны бичилт: hook «алсын хувилбаргүй»-г 0-ээр илгээнэ — мөргүй түлхүүрт зөрчил БИШ */
+  const first = await rowStore.save(hdKey('plan', 'b71'), hd([[kH(1), e('1FS', NOW)]]), { expectAt: 0, ctx: null });
+  ok(first.ok && !first.conflict, 'expectAt: 0 + мөргүй түлхүүр — анхны бичилт бичигдэнэ');
+  const atNow = await rowStore.readAt(hdKey('plan', 'b71'));
+  ok(atNow != null, 'анхны бичилтийн дараа хувилбартай');
+  const stale = await rowStore.save(hdKey('plan', 'b71'), hd([[kH(1), e('2FS', NOW + 1)]]), { expectAt: 0, ctx: null });
+  ok(!stale.ok && stale.conflict, 'мөртэй түлхүүрт expectAt: 0 — зөрчил хэвээр');
   console.log('✅ 3. Горим — blob · rows-wait · rows');
 }
 

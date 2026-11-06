@@ -104,7 +104,7 @@ async function readSheet(sheet: Pkg): Promise<PlanLikeRow[]> {
   const sc = await loadSchema(sheet, { synthetic: true });
   const r = await loadRows(sheet, sc, undefined, schedFields(sc));
   return r.rows.map((x) => ({
-    work: x.work, depth: x.depth, group: x.group,
+    no: x.no, work: x.work, depth: x.depth, group: x.group,
     start: x.start, end: x.end, act: x.act, hun: x.hun, mashin: x.mashin,
   }));
 }

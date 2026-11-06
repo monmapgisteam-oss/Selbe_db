@@ -42,4 +42,14 @@ assert.deepEqual(groupWorks(plan, 9), [10]);
 assert.deepEqual(groupWorks(plan, 11), [], 'ажлын мөр — бүлэг биш');
 assert.deepEqual(groupWorks(plan, 99), [], 'индекс олдоогүй');
 
+/* Өөрийн огноогүй бүлгийн зурвасыг чирэх — хүүхдээс бодсон мужаас эхэлнэ; буцаахад хадгалагдсан (хоосон) утга сэргэнэ */
+{
+  const { readFileSync } = await import('node:fs');
+  const SRC = readFileSync(new URL('./useDragPlan.ts', import.meta.url), 'utf8');
+  assert.match(SRC, /const g = \(gi >= 0 \? effSpan\(plan, gi, blk\) : null\) \?\? r\.spans\[blk\]/, 'бүлгийн чирэлт effSpan-аас');
+  assert.match(SRC, /orig: grp\.current\?\.g \?\? r\.spans\[blk\], own: r\.spans\[blk\]/, 'orig — бодсон муж, own — хадгалагдсан');
+  assert.equal((SRC.match(/span: drag\.orig/g) ?? []).length, 0, 'буцаалт түүхий `orig`-оор бичихгүй');
+  assert.equal((SRC.match(/span: ownOf\(drag\)/g) ?? []).length, 3, 'гурван буцаалтын зам');
+}
+
 console.log('✅ groupWorks — шууд ажилтай бүлэг хэвээр, том бүлэг бүх навчаар');

@@ -107,6 +107,9 @@ export function AnalysisPanel({
         )
       )}
 
+      {tab === 'crit' && !crit && (
+        <p className={h.muted}>{tr('{0} блокт огноотой ажлуудыг холбосон уялдаа алга — эгзэгтэй зам бодогдохгүй.', blkName)}</p>
+      )}
       {tab === 'crit' && crit && (
         <>
           <p className={h.muted}>

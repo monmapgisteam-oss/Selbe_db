@@ -662,7 +662,7 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
   const legend = () => ({
     columns: [
       ...key(sw(C.good), stText('done')),
-      ...key(sw(C.data), stText('run')),
+      ...key(sw(ST_FILL.run), stText('run')),
       ...key(sw(C.bad), stText('late')),
       ...key(sw(C.todo), tr('Төлөвлөсөн (эхлээгүй · хэмжигдээгүй)')),
       ...key(sw(C.plan, { color: C.plan, fillOpacity: 0.07, lineColor: C.plan, lineWidth: 0.7, dash: { length: 2.2, space: 1.6 } }), tr('Огноогүй — бүлгийн хугацаа')),

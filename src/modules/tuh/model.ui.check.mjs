@@ -15,6 +15,7 @@
  *         хувьд ороогүй олголт, хянагдаж буй AUTO IPC, ачаалж байхад «…», хоосон хэсэг хураагдсан.
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 process.env.TZ = 'Asia/Ulaanbaatar';
 
@@ -284,6 +285,72 @@ console.log('\n8. Зурагдах (SSR)');
     assert.ok(!hf.includes('хамарсан'), 'бүрэн хуваарьт хамралтын тэмдэглэл нэмэхгүй');
   });
 }
+
+console.log('\n17. Гэрээгүй мөр — EV/PV бодохгүй; нэгдсэн гэрээ; ашиглалтын огноо хоцролтод орохгүй');
+{
+  const React = (await import('react')).default;
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const { Overview } = await import('./Overview.tsx');
+  const { PkgDetail } = await import('./PkgDetail.tsx');
+  const { commissionText, usesHandover } = await import('./model.ts');
+  const extra = CR({ oid: 70, pkg: 'БАГЦ-14', t2: INFRA, t3: 'Инженерийн бэлтгэл ажил', cost: 900, note: 'Урьдчилсан дүн', prog: 100 });
+  const mx = buildModel(input({ fin: { ...fin, contracts: [...fin.contracts, extra] } }));
+  const un = mx.rows.find((x) => x.p.pkgKey === 'БАГЦ14');
+  ok('гэрээгүй — EV/PV null, шошго «Төсөвт дүн»', () => {
+    assert.equal(un.p.contracted, false);
+    assert.equal(un.ev.ev, null);
+    const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: un, m: mx, onBack: noop, onOpen: noop }));
+    assert.ok(hd.includes('<dt>Төсөвт дүн</dt>') && !hd.includes('<dt>Гэрээний нийт дүн</dt>'));
+  });
+  ok('KPI тайлбар — гэрээлсэн / нийт', () => {
+    const hv = renderToStaticMarkup(React.createElement(Overview, { m: mx, contractTotal: 1, onOpen: noop }));
+    const n = mx.rows.filter((x) => x.p.contracted).length;
+    assert.ok(hv.includes(`${n} / ${mx.rows.length} багц гэрээлсэн`));
+  });
+  ok('муруйгүй ч хэмжигдсэн багц — «өгөгдөл алга» гэхгүй', () => {
+    const measured = { ...b71, progress: 36.27, prog: null, planFailed: 0 };
+    const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: measured, m, onBack: noop, onOpen: noop }));
+    assert.ok(hd.includes('хуваарийн муруй алга') && !hd.includes('Гүйцэтгэлийн өгөгдөл алга'));
+    const none = renderToStaticMarkup(React.createElement(PkgDetail, { r: { ...measured, progress: null }, m, onBack: noop, onOpen: noop }));
+    assert.ok(!none.includes('хуваарийн муруй алга'), 'хэмжигдээгүй — хэвийн график/тайлбар');
+  });
+  const JP = [PAY('Ж', 'Багц-7.1', 40, '2026-08-01', 1), PAY('Ж', 'БАГЦ-1', 60, '2026-08-02', 1)];
+  const joint = { ...HC({ code: 'БАГЦ-1,7.1', key: 'БАГЦ1', pkg: 'БАГЦ-1', total: 1500, paid: 100, pays: JP }), cancelled: false };
+  const mj = buildModel(input({ fin: { ...fin, contractsHo: [joint] } }));
+  ok('нэгдсэн гэрээ — гишүүн бүр өөрийн хэсэг, нийт олголт хөдлөхгүй', () => {
+    const a = mj.rows.find((x) => x.p.key === 'БАГЦ1');
+    const b = mj.rows.find((x) => x.p.pkgKey === 'БАГЦ71' && x.p.group !== 'design');
+    assert.deepEqual([a.ipc.contractTotal, a.ipc.paid, b.ipc.contractTotal, b.ipc.paid], [1000, 60, 500, 40]);
+    const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: a, m: mj, onBack: noop, onOpen: noop }));
+    assert.ok(hd.includes('Нэгдсэн гэрээ БАГЦ-1,7.1 — нийт 1,500 ₮'), 'нэгдсэн гэрээ ил');
+  });
+  const when = Date.UTC(2027, 8, 30);
+  const hc = fin.contracts.map((c) => (c.objectid === 11 ? { ...c, ashiglalt_ognoo: when, guits_duusah: Date.UTC(2027, 3, 24) } : c));
+  ok('хуваарийн мөр огноогүй — 182-ын төлөвлөсөн огноо харагдана, хоцролт хоосон', () => {
+    const mh = buildModel(input({ fin: { ...fin, contracts: hc } }));
+    const r = mh.rows.find((x) => x.p.key === 'БАГЦ1');
+    assert.equal(r.handover, when);
+    assert.equal(r.delay, null, 'төлөвлөсөн огноо хоцролт биш');
+    assert.ok(usesHandover(mh, r));
+    assert.notEqual(commissionText(mh, r), '—');
+    const hv = renderToStaticMarkup(React.createElement(Overview, { m: mh, contractTotal: 1, onOpen: noop }));
+    assert.ok(hv.includes('Төсөл төлөвлөгөө биелэлт — төлөвлөсөн огноо'));
+    assert.ok(hv.includes('<span>Төлөвлөсөн ашиглалтад оруулах огноо</span>'), 'карт дээр ч төлөвлөсөн огноо гэж нэрлэнэ');
+  });
+  ok('хуваарийн огноотой — тэр огноо давамгай, хоцролт бодогдоно', () => {
+    const at = Date.UTC(2027, 5, 1);
+    const mh = buildModel(input({ fin: { ...fin, contracts: hc }, commission: new Map([['БАГЦ1', at]]) }));
+    const r = mh.rows.find((x) => x.p.key === 'БАГЦ1');
+    assert.equal(usesHandover(mh, r), false);
+    assert.ok(r.delay > 0);
+  });
+}
+
+ok('газрын зураг — өөр багц руу шилжихэд сонгосон блокийн тодруулга цэвэрлэгдэнэ (эх код)', () => {
+  const SRC = readFileSync(new URL('./TuhMap.tsx', import.meta.url), 'utf8');
+  assert.match(SRC, /if \(selPkg === pickedPkg\.current\) return;\s+pickedPkg\.current = null;\s+setHighlight\(null\);/);
+  assert.match(SRC, /pickedPkg\.current = bagtsKey\(b\.bagts\) \|\| null;\s+onPickPkg\(pickedPkg\.current\);/, 'газрын зургийн сонголт өөрийн тодруулгаа цэвэрлэхгүй');
+});
 
 assert.equal(monthKey(Date.UTC(2026, 4, 31, 16)), '2026-06', 'TZ = УБ');
 console.log(`\nmodel.ui.check: ${n} шалгуур ✅`);

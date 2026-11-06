@@ -13,7 +13,7 @@ import {
   calDaysBetween,
   type TuhGroup, type TuhStatus,
 } from '@/lib/tuhData';
-import { lz, depRows, commissionText, type TuhModel, type TuhRow } from './model';
+import { lz, depRows, commissionText, jointNote, usesHandover, type TuhModel, type TuhRow } from './model';
 import { Legend, Gantt, GANTT_LEGEND, type GanttRow, type BarSt } from './charts';
 /* Системийн карт — график бүр `ui.Section`-д (бусад харагдацтай ижил хүрээ) */
 import { Section as Card, Meter } from '@/components/ui';
@@ -265,7 +265,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гэрээний нийт дүн')}</span>
           <span className={s.statValue}>{wrapNum(lz(m, 'budget')(mnt(contractTotal)))}</span>
-          <span className={s.statNote} title={tr('Гэрээний бүртгэлийн бүх мөр — зураг төсөл, олон багцын нэгдсэн гэрээ ч орно')}>{tr('{0} багц', num(m.rows.length))}</span>
+          <span className={s.statNote} title={tr('Дүн нь гэрээ байгуулагдсан мөрүүдийн нийлбэр; бусад мөр гэрээлээгүй')}>{tr('{0} / {1} багц гэрээлсэн', num(m.rows.filter((r) => r.p.contracted).length), num(m.rows.length))}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Орон сууцны гүйцэтгэл төлөвлөгөөнөөс (pp)')}</span>
@@ -345,7 +345,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                     <small>{pct(r.progress, 2)}</small>
                   </td>
                   <td>{date(r.p.end)}</td>
-                  <td><b>{commissionText(m, r)}</b><small>{tr('Хуваарийн «Улсын комисс»')}</small></td>
+                  <td><b>{commissionText(m, r)}</b><small>{usesHandover(m, r) ? tr('Төсөл төлөвлөгөө биелэлт — төлөвлөсөн огноо') : tr('Хуваарийн «Улсын комисс»')}</small></td>
                   <td className={`${s.num} ${r.delay != null && r.delay > 0 ? s.bad : ''}`}>
                     {lz(m, 'commission')(r.delay == null ? '—' : tr('{0} хоног', `${r.delay > 0 ? '+' : ''}${num(r.delay)}`))}
                   </td>
@@ -401,7 +401,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                   <tr key={r.p.key}>
                     <td><button type="button" className={s.rowLink} onClick={() => onOpen(r.p.key)}>{r.p.code}</button></td>
                     <td>{ipc.contracts.length > 1 ? tr('{0} гэрээ', num(ipc.contracts.length)) : (ipc.contracts[0]?.contractor || '—')}</td>
-                    <td className={s.num}>{mnt(ipc.contractTotal)}</td>
+                    <td className={s.num}>{mnt(ipc.contractTotal)}{jointNote(ipc) && <small>{jointNote(ipc)}</small>}</td>
                     <td style={{ minWidth: 180 }}>
                       <span className={s.meterGap}><Meter value={ipc.paidPct} plan={r.progress} /></span>
                       <small>{mnt(ipc.paid)} · {pct(ipc.paidPct)}</small>
@@ -491,7 +491,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                       <div className={s.wide}><span>{tr('Дүн')}</span><b>{mnt(r.p.cost)}</b></div>
                       <div><span>{tr('Дуусах')}</span><b>{date(r.p.end)}</b></div>
                       {r.p.group === 'housing' && (
-                        <div><span>{tr('Хамгийн эрт ашиглалтад')}</span><b>{commissionText(m, r)}</b></div>
+                        <div><span>{usesHandover(m, r) ? tr('Төлөвлөсөн ашиглалтад оруулах огноо') : tr('Хамгийн эрт ашиглалтад')}</span><b>{commissionText(m, r)}</b></div>
                       )}
                       <div className={s.wide}><span>{tr('Сүүлд тайлагнасан')}</span><b><ReportAge r={r} /></b></div>
                       <div className={s.wide}><span>{tr('Ерөнхий гүйцэтгэгч')}</span><b>{r.p.contractor || '—'}</b></div>

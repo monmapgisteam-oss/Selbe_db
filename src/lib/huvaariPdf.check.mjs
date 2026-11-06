@@ -226,3 +226,19 @@ console.log('✓ huvaariPdf: задарсан гүн бүлгийн зурвас
   assert.ok(s.includes('50%'), 'энгийн хувь хэвээр');
 }
 console.log('✓ huvaariPdf: 100%-иас давсан гүйцэтгэл түүхийгээр хэвлэгдэнэ');
+
+/* ── Тайлбарын «явж байгаа» өнгө — зурвасын өнгөтэй ижил ── */
+{
+  const now = D('2026-10-10');
+  const doc = buildHuvaariDoc(input([grp('2026-10-01', '2026-10-31'), task(1, '2026-10-01', '2026-10-20', { st: 'run', act: 0.4 })], now, { months: 1, active: false, paper: 'A3' }));
+  const legend = doc.header(1, 1).stack.find((c) => Array.isArray(c.columns) && c.columns.some((x) => x.canvas));
+  assert.ok(legend, 'тайлбар олдсонгүй');
+  const at = legend.columns.findIndex((x) => /явж/i.test(String(x.text ?? '')));
+  assert.ok(at > 0, 'тайлбарт «явж байгаа» алга');
+  const swatch = legend.columns[at - 1].canvas[0].color;
+  const fills = [];
+  JSON.stringify(doc.content, (k, v) => { if (v && v.type === 'rect' && v.fillOpacity === 0.3) fills.push(v.color); return v; });
+  assert.ok(fills.length > 0, 'явж буй зурвас алга');
+  assert.ok(fills.every((c) => c === swatch), `тайлбар ${swatch} ≠ зурвас ${fills[0]}`);
+}
+console.log('✓ huvaariPdf: «явж байгаа» тайлбар = зурвасын өнгө');

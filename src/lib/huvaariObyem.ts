@@ -210,6 +210,8 @@ export function scheduleByMoney(
         left -= take;
         skip();
       }
+      /* Нийтдээ хэт бага мөнгөтэй ажил (`rest ≤ eps`) давталтанд орохгүй — одоогийн сард */
+      if (!alloc.size) alloc.set(keys[mi], rest);
     } else alloc.set(keys[mi], 0);
     const used = [...alloc.keys()];
     const first = monthStart(used[0])!;
@@ -805,6 +807,29 @@ export function pctEdits(
     const oid = oids.get(pctDkeyOf(pkg, sar));
     if (oid != null) out.deletes.push(oid);
   }
+  return out;
+}
+
+/**
+ * Шинээр уншсан сарын хувь + ЗӨВХӨН хэрэглэгчийн зассан сарууд → орлуулах багц (цэвэр). Цонх нээлттэй үед өөр хүний
+ * бичсэн, засаагүй сар хуучин утгаараа дарагдахгүй. `null` = тэр сарыг устгана.
+ */
+export function pctPatched(fresh: ReadonlyMap<string, number>, patch: ReadonlyMap<string, number | null>): Map<string, number | null> {
+  const out = new Map<string, number | null>(fresh);
+  for (const [k, v] of patch) out.set(k, v);
+  return out;
+}
+
+/** Зассан саруудыг шинээр уншсан утгын дээр бичнэ. Буцаах нь — хадгалсны дараах бүтэн сарын хувь. */
+export async function patchPkgPct(pkg: string, name: string, patch: ReadonlyMap<string, number | null>): Promise<Map<string, number>> {
+  const { pct, oids, dups } = await loadPkgPct();
+  const cur = pct.get(pkg) ?? new Map<string, number>();
+  const next = pctPatched(cur, patch);
+  const e = pctEdits(pkg, name, cur, oids, next);
+  e.dups = dups;
+  if (e.adds.length || e.updates.length || e.deletes.length || dups.length) await applyPlanEdits(e);
+  const out = new Map<string, number>();
+  for (const [k, v] of next) if (v != null) out.set(k, v);
   return out;
 }
 

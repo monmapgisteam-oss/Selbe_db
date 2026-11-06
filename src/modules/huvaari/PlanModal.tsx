@@ -393,6 +393,9 @@ function PlanModalBody({
     for (const [k, v] of groupCurve) if (v > 0) out.set(k, Math.round((v / groupMoney) * 10000) / 100);
     return out;
   });
+  /** Нээгдэх үеийн хувь — өөрчлөгдөөгүй бол хаахад «хадгалаагүй» гэж асуухгүй */
+  const [gp0] = useState(gp);
+  const gpDirty = gp.size !== gp0.size || [...gp].some(([k, v]) => gp0.get(k) !== v);
   /**
    * Мөр/блок солигдоход ХАДГАЛАГДСАНАА суурь болгоно.
    */
@@ -539,7 +542,7 @@ function PlanModalBody({
   const extraOnly = extraDirty && (!spanDirty || prefilled) && !mvDirty && !mrDirty;
   const mdDirty = canEdit && (
     (dEdit && spanDirty && !prefilled)
-    || (gEdit && (spanDirty || gp.size > 0))
+    || (gEdit && ((spanDirty && !prefilled) || gpDirty))
     || depsDirty
     || actDirty
     || mvAll.size !== months.size || [...mvAll].some(([k, v]) => months.get(k) !== v)

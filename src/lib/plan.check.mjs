@@ -99,6 +99,9 @@ assert.equal(c0.from, null);
   /* null ≠ 0 — огноогүй бол null */
   assert.equal(planAt(null, s, e), null);
   assert.equal(planAt(s, null, e), null);
+  /* Эвдэрсэн огноо (1899 · 1909) — огноогүйтэй адил, «дууссан» гэж тоолохгүй */
+  assert.equal(planAt(s, d('1899-12-30'), d('1899-12-30')), null, '1899 — хуваарьгүй');
+  assert.equal(planAt(s, d('1909-10-01'), e), null, 'эхлэх нь эвдэрсэн');
   /* Урвуу муж — унахгүй, 0/1 */
   assert.doesNotThrow(() => planAt(s, e + 5 * DAY, s));
 }

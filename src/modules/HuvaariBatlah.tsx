@@ -35,7 +35,7 @@ import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { Huvaari, showPlanReason } from '@/modules/Huvaari';
 import {
-  BLIND_NOTE_SRC, claimHolderOf, decidePlan, serverNow, loadAllPending, loadLastPerPkg, loadPayload, partialBy, planTableState, returnStuckPlan, withdrawPlan, PLAN_STATUS, REASON_MAX,
+  BLIND_NOTE_SRC, claimHolderOf, decidePlan, serverNow, loadAllPending, loadLastPerPkg, loadPayload, partialBy, planTableState, queueFigures, returnStuckPlan, withdrawPlan, PLAN_STATUS, REASON_MAX,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 import s from './guitsetgel.module.css';
@@ -651,18 +651,7 @@ function Row({
      UI дээр хоёр дахь анхдагч бодвол хоёр нь зөрч болно. Энэ нь lazy
      татах ГОЛ шалтгаан, зөвхөн гүйцэтгэлийн асуудал биш. ── */
   const fig = useMemo(() => {
-    if (!p) return null;
-    const entries = Object.entries(p.spans);
-    const live = entries.flatMap(([, a]) => (Array.isArray(a) ? a : []).filter((x) => x != null));
-    return {
-      rowsN: entries.length,
-      spansN: live.length,
-      from: live.length ? Math.min(...live.map((x) => x!.start)) : null,
-      to: live.length ? Math.max(...live.map((x) => x!.end)) : null,
-      depsN: Object.keys(p.deps).length,
-      obyemN: Object.values(p.obyem).reduce((n, m) => n + Object.keys(m).length, 0),
-      otherN: Object.keys(p.actual).length + Object.keys(p.res).length + Object.keys(p.obres ?? {}).length,
-    };
+    return p ? queueFigures(p) : null;
   }, [p]);
 
   return (
@@ -719,27 +708,35 @@ function Row({
               <span className={s.meta}>
                 {p!.kind === 'geree' ? tr('Төрөл: Гэрээ') : tr('Төрөл: Төлөвлөгөө')}
               </span>
-              {fig.spansN === 0 ? (
+              {fig.spansN === 0 && fig.removedN === 0 && (
                 <span className={s.meta}>
-                  {fig.depsN || fig.obyemN || fig.otherN
+                  {fig.depsN || fig.obyemN || fig.actualN || fig.resN
                     ? tr('Огнооны өөрчлөлт алга')
                     : tr('Огнооны өөрчлөлт алга — эх хуудас аль хэдийн ижил байна.')}
                 </span>
-              ) : (
+              )}
+              {fig.spansN > 0 && (
                 <>
-                  <span className={s.meta}>
-                    {tr('Ажил {0} · зурвас {1}', num(fig.rowsN), num(fig.spansN))}
-                  </span>
+                  <span className={s.meta}>{tr('Өөрчлөгдсөн зурвас {0}', num(fig.spansN))}</span>
                   {fig.from != null && fig.to != null && (
                     <span className={s.meta}>{`${msToDay(fig.from)} → ${msToDay(fig.to)}`}</span>
                   )}
                 </>
+              )}
+              {fig.removedN > 0 && (
+                <span className={s.meta}>{tr('Огноо арилгасан зурвас {0}', num(fig.removedN))}</span>
               )}
               {fig.depsN > 0 && (
                 <span className={s.meta}>{tr('Уялдаа {0}', num(fig.depsN))}</span>
               )}
               {fig.obyemN > 0 && (
                 <span className={s.meta}>{tr('Сарын обьём {0} нүд', num(fig.obyemN))}</span>
+              )}
+              {fig.actualN > 0 && (
+                <span className={s.meta}>{tr('Бодит огноо {0} мөр', num(fig.actualN))}</span>
+              )}
+              {fig.resN > 0 && (
+                <span className={s.meta}>{tr('Нөөц {0} мөр', num(fig.resN))}</span>
               )}
             </div>
           )}

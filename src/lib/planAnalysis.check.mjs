@@ -3,7 +3,7 @@
  *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/planAnalysis.check.mjs
  */
 import assert from 'node:assert/strict';
-import { criticalFloat, baselineDelays, planIssues, sumResByMonth, sameShapeGroups } from './planAnalysis.ts';
+import { criticalFloat, hasCriticalLinks, baselineDelays, planIssues, sumResByMonth, sameShapeGroups } from './planAnalysis.ts';
 
 const d = (n) => Date.UTC(2026, 9, n);
 const sp = (a, b) => ({ start: d(a), end: d(b) });
@@ -97,5 +97,16 @@ const G = (i, work = 'G') => ({ i, oid: 100 + i, no: 'G', des: null, deps: [], w
   assert.equal(f.get(3), 0, "B эгзэгтэй");
   assert.equal(f.get(0), 0, "P эгзэгтэй — хоцорвол бүлэг бүхэлдээ (B ч) шилжинэ; хуучин тооцоо 9 хоногийн худал нөөц өгдөг байв");
   assert.ok(f.get(2) > 0, "A нөөцтэй");
+}
+/* ── Уялдаагүй блок — эгзэгтэй зам бодогдохгүй (2026-11-06) ── */
+{
+  const none = [G(0), row(1, 1, [], sp(1, 30)), row(2, 2, [], sp(1, 30)), row(3, 3, [], sp(1, 29))];
+  assert.equal(hasCriticalLinks(none, 0), false, 'уялдаагүй — ижил өдөр дуусах нь зам биш');
+  const undated = [G(0), row(1, 1, [], sp(1, 30)), row(2, 2, [{ code: 1, type: 'FS', lag: 0 }], null)];
+  assert.equal(hasCriticalLinks(undated, 0), false, 'огноогүй мөрийн автомат уялдаа (Улсын комисс 10FS0) тоологдохгүй');
+  const linked = [G(0), row(1, 1, [], sp(1, 10)), row(2, 2, [{ code: 1, type: 'FS', lag: 0 }], sp(11, 30))];
+  assert.equal(hasCriticalLinks(linked, 0), true, 'огноотой хоёр ажлын уялдаа');
+  const xb = [G(0), row(1, 1, [], sp(1, 10)), row(2, 2, [{ code: 1, type: 'FS', lag: 0, blk: 0, src: 1 }], sp(20, 25))];
+  assert.equal(hasCriticalLinks(xb, 0), false, 'блок хоорондын уялдаа энэ блокийн сүлжээ биш');
 }
 console.log('planAnalysis.check: ok');

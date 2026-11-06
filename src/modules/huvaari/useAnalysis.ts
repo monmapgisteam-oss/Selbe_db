@@ -9,7 +9,7 @@ import { useCallback, useMemo } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { fixCyr } from '@/lib/format';
 import { spanDays, type PlanRow, type Span } from '@/lib/plan';
-import { baselineDelays, criticalFloat, planIssues, sumResByMonth } from '@/lib/planAnalysis';
+import { baselineDelays, criticalFloat, hasCriticalLinks, planIssues, sumResByMonth } from '@/lib/planAnalysis';
 import type { MonthRes } from '@/lib/huvaariObyem';
 import { buildXlsx, downloadXlsx, type XlsxCell } from '@/lib/xlsx';
 import { fileDate } from '@/lib/csvFile';
@@ -41,7 +41,8 @@ export function useAnalysis({
     }) : null),
     [ana, plan, blk, unbalRows, kind, refSpanOf],
   );
-  const anaCrit = useMemo(() => (ana === 'crit' ? criticalFloat(plan, blk) : null), [ana, plan, blk]);
+  /* Уялдаагүй блокт `null` — самбар «бодогдохгүй» гэж хэлнэ, хуанлид улаан хүрээ зурахгүй (ноорог уялдаа `plan`-д орсон) */
+  const anaCrit = useMemo(() => (ana === 'crit' && hasCriticalLinks(plan, blk) ? criticalFloat(plan, blk) : null), [ana, plan, blk]);
   const critOids = useMemo(() => {
     if (!anaCrit) return null;
     const s = new Set<number>();

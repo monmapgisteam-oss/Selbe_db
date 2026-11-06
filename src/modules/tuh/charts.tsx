@@ -62,7 +62,7 @@ export const GANTT_LEGEND = () => [
   { key: 'run', label: tr('Хийгдэж байна'), color: 'var(--gantt-run)', kind: 'box' as const },
   { key: 'late', label: tr('Хоцорсон'), color: 'var(--gantt-late)', kind: 'box' as const },
   { key: 'todo', label: tr('Эхлээгүй'), color: 'var(--gantt-todo)', kind: 'box' as const },
-  { key: 'none', label: tr('Гэрээлээгүй / мэдээлэлгүй'), color: 'var(--ink-3)', kind: 'hatch' as const },
+  { key: 'none', label: tr('Гэрээлээгүй / хэмжигдээгүй'), color: 'var(--ink-3)', kind: 'hatch' as const },
 ];
 
 /**

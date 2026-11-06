@@ -73,13 +73,28 @@ ok('contractsOf — бүх гэрээ, үе шат → дугаараар; ХО 
 
 ok('эх код — огноо + сарын хувь л; гүйцэтгэлийн хувь бөглөхгүй; finEdit эрх; давхар төлөвлөгөөний хаалт', () => {
   assert.ok(!/guitsetgel_huvi|progressPct/.test(SRC), 'гүйцэтгэлийн хувь энд бөглөгдөх ёсгүй');
-  assert.match(SRC, /savePkgPct\(d\.key,/, 'сарын хувь гэрээний түлхүүрээр');
+  assert.match(SRC, /patchPkgPct\(d\.key,/, 'сарын хувь гэрээний түлхүүрээр, зассан сарууд л');
+  assert.ok(SRC.indexOf("requireCap('finEdit')") < SRC.indexOf('patchPkgPct(d.key,'), 'эрх шалгалт хувь бичихээс ӨМНӨ');
+  assert.match(SRC, /dirty && !\(await askConfirm\(/, '«Буцах» хадгалаагүй өөрчлөлтийг асууна');
   assert.match(SRC, /applyAll\(CASHFLOW_NEW\.url, CASHFLOW_NEW\.oid, \{ updates: \[\{ \[CASHFLOW_NEW\.oid\]: d\.oid, \.\.\.upd \}\] \}, \{ cap: 'finEdit' \}\)/);
   assert.match(SRC, /upd\[F\.startDate\] = startMs; upd\[F\.endDate\] = endMs;/, 'огноо — Төлөвлөгөөт хугацааны талбар');
   assert.match(SRC, /if \(pctDirty && !base\.huv\) upd\[F\.monthSource\] = SRC_HUVAARI;/, 'анх хувь оруулахад эх «Хуваарь» болно');
   assert.match(SRC, /if \(left\.length\) throw new Error\(/, 'хуучин гараар мөр үлдсэн бол хадгалахгүй');
   const inputs = SRC.match(/<input[^>]*>/g) ?? [];
   assert.ok(inputs.every((x) => /type="date"|inputMode="decimal"/.test(x)), 'чөлөөт текстийн талбар алга');
+});
+
+ok('monthsOutside — огнооноос гадуурх сар; хил тодорхойгүй бол тэр талаас шалгахгүй', () => {
+  assert.deepEqual(M.monthsOutside(['2026-09', '2026-10', '2026-12', '2027-01'], '2026-10', '2026-12'), ['2026-09', '2027-01']);
+  assert.deepEqual(M.monthsOutside(['2026-09', '2027-01'], null, '2026-12'), ['2027-01']);
+  assert.deepEqual(M.monthsOutside(['2026-09'], null, null), []);
+});
+
+ok('contractsInScope — харах эрхтэй багцын гэрээ л; null = бүгд; диапазон мөр хүрээтэй хэрэглэгчид харагдахгүй', () => {
+  const cs = [{ id: 1, pkgKey: 'БАГЦ1' }, { id: 2, pkgKey: 'БАГЦ41' }, { id: 3, pkgKey: '' }];
+  assert.deepEqual(M.contractsInScope(cs, ['Багц 4-1']).map((c) => c.id), [2], 'PKG_GROUPS-ийн нэр ↔ pkgKeyOf');
+  assert.deepEqual(M.contractsInScope(cs, null).map((c) => c.id), [1, 2, 3]);
+  assert.deepEqual(M.contractsInScope(cs, []).map((c) => c.id), []);
 });
 
 console.log(`\n✅ mainSpan: ${n} шалгуур давлаа`);

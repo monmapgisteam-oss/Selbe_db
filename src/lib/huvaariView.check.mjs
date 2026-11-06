@@ -174,7 +174,7 @@ const agree = (u, tag) => eq(hvRow(u).open, views(u).includes('huvaari'), `${tag
   agree(U.ed, tag);
   ok((await run(OPS.scopedCellOp('huvaari', U.ed, 'author', g3, true))).ok, `${tag} зохиогч нэмэх`);
   const row = fake.json('__huvaari__:', U.ed);
-  ok(row.grants.every((g) => g.role !== 'viewer') && !row.roles.includes('viewer'), `${tag} бичилтийн дараа мөрөнд viewer алга`);
+  ok(row.grants.every((g) => g.role !== 'viewer') && !('roles' in row), `${tag} бичилтийн дараа мөрөнд viewer алга`);
   eq(HV.huvaariScope(U.ed, 'author'), [g1, g3], `${tag} зохиогч g1 · g3`);
 
   const st = hvRow(U.tan).sources.find((x) => x.sys === 'type');

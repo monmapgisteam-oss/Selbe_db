@@ -17,10 +17,12 @@ import { userError } from '@/components/ui';
 import { queryFeatures } from '@/lib/query';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
-import { CASHFLOW_NEW, CF_MONTH, CF_MONTH_WHERE, CF_WORK_WHERE, pkgKeyOf } from '@/lib/services';
+import { bagtsKey, CASHFLOW_NEW, CF_MONTH, CF_MONTH_WHERE, CF_WORK_WHERE, pkgKeyOf } from '@/lib/services';
 import { cfStartKeyOf } from '@/lib/gdash';
-import { isSwitchPhase, monthSourceOf, PKG_KEYS, SRC_HUVAARI } from '@/lib/monthlyMoney';
-import { cfPctKey, loadPkgPct, monthStart, savePkgPct, type PkgPct } from '@/lib/huvaariObyem';
+import { isSwitchPhase, moneyBaseOf, monthSourceOf, PKG_KEYS, SRC_HUVAARI } from '@/lib/monthlyMoney';
+import { cfPctKey, loadPkgPct, monthStart, patchPkgPct, type PkgPct } from '@/lib/huvaariObyem';
+import { askConfirm } from '@/lib/confirm';
+import { requireCap } from '@/lib/who';
 import { parseDay } from '@/lib/zuragTosol';
 import s from '@/modules/ipcTable.module.css';
 import c from '@/modules/cfplan.module.css';
@@ -34,6 +36,8 @@ export type Contract = {
   oid: number;
   phase: string;
   pkgLabel: string;
+  /** Багцын түлхүүр (`pkgKeyOf`) — диапазон/хоосон бол '' */
+  pkgKey: string;
   name: string;
   cost: number | null;
   huv: boolean;
@@ -76,6 +80,17 @@ export function pctMonths(pct: ReadonlyMap<string, number>, from: string | null,
   return lo && hi ? monthRange(lo, hi) : [];
 }
 
+/** Эхлэх…дуусах саруудаас гадуурх сарууд; хил тодорхойгүй бол тэр талаас шалгахгүй */
+export const monthsOutside = (keys: readonly string[], from: string | null, to: string | null): string[] =>
+  keys.filter((k) => (from != null && k < from) || (to != null && k > to));
+
+/** Жагсаалтын хүрээ: `null` = бүх багц; бусад үед харах эрхтэй багцуудын (`huvaariViewScope`) гэрээ л */
+export function contractsInScope(rows: readonly Contract[], scope: readonly string[] | null): Contract[] {
+  if (scope == null) return [...rows];
+  const keys = new Set(scope.map(bagtsKey));
+  return rows.filter((r) => keys.has(r.pkgKey));
+}
+
 /** Үе шатын дараалал — жагсаалтын эрэмбэ */
 const PHASE_ORDER = ['ТЭЗҮ', 'Ажлын зураг төсөл', 'Барилга угсралт'];
 const phaseRank = (p: string): number => { const i = PHASE_ORDER.indexOf(p); return i < 0 ? PHASE_ORDER.length : i; };
@@ -101,10 +116,11 @@ export function contractsOf(works: readonly Row[], all: PkgPct): Contract[] {
     const phase = String(w[F.phase] ?? '').trim();
     const pkg = pkgKeyOf(w[F.pkg]);
     const key = pctKeyFor(id, pkg, isSwitchPhase(phase), all);
-    const cost = Number(w[F.budget]);
+    const cost = Number(moneyBaseOf(w));
     out.push({
       id, oid, phase,
       pkgLabel: String(w[F.pkg2] ?? w[F.pkg] ?? '').trim(),
+      pkgKey: pkg,
       name: String(w.ajil_uilchilgee ?? '').trim(),
       cost: Number.isFinite(cost) && cost > 0 ? cost : null,
       huv: monthSourceOf(w[F.monthSource]) === SRC_HUVAARI,
@@ -121,7 +137,7 @@ async function loadContracts(): Promise<Contract[]> {
   const [works, pp] = await Promise.all([
     queryFeatures(CASHFLOW_NEW.url, {
       where: CF_WORK_WHERE,
-      outFields: [CASHFLOW_NEW.oid, CF_MONTH.id, F.pkg, F.pkg2, F.phase, F.budget, F.monthSource, F.startDate, F.endDate, 'ajil_uilchilgee'],
+      outFields: [CASHFLOW_NEW.oid, CF_MONTH.id, F.pkg, F.pkg2, F.phase, F.budget, F.contractAmount, F.amountNote, F.monthSource, F.startDate, F.endDate, 'ajil_uilchilgee'],
       orderBy: `${CASHFLOW_NEW.oid} ASC`,
     }),
     loadPkgPct(),
@@ -137,7 +153,12 @@ const sumOf = (m: ReadonlyMap<string, number>): number | null => {
 };
 
 /** «Хуваарь» хуудасны товч — бүх гэрээний «Үндсэн хугацаа» */
-export function MainSpanButton({ canEdit }: { canEdit: boolean }) {
+export function MainSpanButton({ canEdit, scope }: {
+  /** Санхүү засах эрх — порталын хэмжээний тул бүх гэрээг харна, засна */
+  canEdit: boolean;
+  /** Харах хүрээ (`huvaariViewScope`) — `null` = бүх багц; `canEdit` бол хамаарахгүй */
+  scope: readonly string[] | null;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -145,21 +166,23 @@ export function MainSpanButton({ canEdit }: { canEdit: boolean }) {
         title={tr('Гэрээ (багц) бүрийн төсөөллийн хуваарь: эхлэх/дуусах огноо ба сарын хувь — санхүүжилтийн S-муруйн эх')}>
         {tr('Үндсэн хугацаа')}
       </button>
-      {open && <MainSpanList canEdit={canEdit} onClose={() => setOpen(false)} />}
+      {open && <MainSpanList canEdit={canEdit} scope={canEdit ? null : scope} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function MainSpanList({ canEdit, onClose }: { canEdit: boolean; onClose: () => void }) {
+function MainSpanList({ canEdit, scope, onClose }: { canEdit: boolean; scope: readonly string[] | null; onClose: () => void }) {
   const [rows, setRows] = useState<Contract[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState<number | null>(null);
   const [tick, setTick] = useState(0);
+  /* Эцэг зурагдах бүрд `huvaariViewScope` шинэ массив өгдөг — цонх нээгдэх үеийнхээр тогтооно (дахин татахгүй) */
+  const [scope0] = useState(scope);
   useEffect(() => {
     let on = true;
-    loadContracts().then((x) => { if (on) { setRows(x); setErr(null); } }, (e) => { if (on) setErr(userError(e)); });
+    loadContracts().then((x) => { if (on) { setRows(contractsInScope(x, scope0)); setErr(null); } }, (e) => { if (on) setErr(userError(e)); });
     return () => { on = false; };
-  }, [tick]);
+  }, [tick, scope0]);
   const cur = sel == null ? null : rows?.find((r) => r.id === sel) ?? null;
   if (cur) {
     return <MainSpanDialog key={cur.id} d={cur} canEdit={canEdit} onClose={() => { setSel(null); setTick((n) => n + 1); }} />;
@@ -168,7 +191,7 @@ function MainSpanList({ canEdit, onClose }: { canEdit: boolean; onClose: () => v
     <div className={s.dlgBack} role="presentation" onClick={onClose}>
       <div className={s.dlg} role="dialog" aria-modal="true" aria-label={tr('Үндсэн хугацаа')} onClick={(e) => e.stopPropagation()}>
         <h3 className={s.dlgTitle}>{tr('Үндсэн хугацаа — гэрээ бүрийн төсөөллийн хуваарь')}</h3>
-        <p className={c.hint}>{tr('Гэрээг дарж эхлэх/дуусах огноо, сарын хувийг оруулна. Сарын мөнгө = сарын хувь × ХО дүн. Ажлууд батлагдаж гүйцэтгэлийн хүснэгтэд орсны дараа хуваарийг ажил бүрээр жинхэнээр төлөвлөнө.')}</p>
+        <p className={c.hint}>{tr('Гэрээг дарж эхлэх/дуусах огноо, сарын хувийг оруулна. Сарын мөнгө = сарын хувь × хөрөнгө оруулалтын дүн. Ажлууд батлагдаж гүйцэтгэлийн хүснэгтэд орсны дараа хуваарийг ажил бүрээр жинхэнээр төлөвлөнө.')}</p>
         {rows == null ? (
           err ? <p className={c.warn} role="alert">{err}</p> : <p className={c.hint}>{tr('Уншиж байна…')}</p>
         ) : (
@@ -176,7 +199,7 @@ function MainSpanList({ canEdit, onClose }: { canEdit: boolean; onClose: () => v
             <table className={c.tbl}>
               <thead>
                 <tr>
-                  <th>{tr('Багц')}</th><th>{tr('Ажил')}</th><th className={c.r}>{tr('ХО дүн')}</th>
+                  <th>{tr('Багц')}</th><th>{tr('Ажил')}</th><th className={c.r}>{tr('Хөрөнгө оруулалтын дүн')}</th>
                   <th>{tr('Эхлэх')}</th><th>{tr('Дуусах')}</th><th className={c.r}>{tr('Сарын хувийн нийлбэр')}</th>
                 </tr>
               </thead>
@@ -239,6 +262,7 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
   const textOf = (k: string): string => (k in pend ? pend[k] : base.pct.has(k) ? String(base.pct.get(k)) : '');
   const sum = months.reduce((a, k) => a + (numOf(textOf(k)) ?? 0), 0);
   const any = months.some((k) => numOf(textOf(k)) != null);
+  const outside = monthsOutside(months.filter((k) => (numOf(textOf(k)) ?? 0) !== 0), startMs == null ? null : cfStartKeyOf(startMs) || null, endMs == null ? null : cfStartKeyOf(endMs) || null);
   const datesDirty = startTxt !== dayText(base.start) || endTxt !== dayText(base.end);
   const dirty = Object.keys(pend).length + (datesDirty ? 1 : 0);
   const editable = canEdit && !busy;
@@ -253,7 +277,7 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
     setErr(null);
     setMsg(null);
     try {
-      const pctDirty = Object.keys(pend).length > 0;
+      const pctDirty = months.some((k) => k in pend);
       /* «Гараар» эхтэй гэрээнд хуучин гараар сарын мөр үлдсэн бол давхар төлөвлөгөө үүсгэхгүй */
       if (pctDirty && !base.huv) {
         const left = await queryFeatures(CASHFLOW_NEW.url, {
@@ -262,8 +286,11 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
         });
         if (left.length) throw new Error(tr('Энэ гэрээнд хуучин гараар оруулсан {0} сарын мөр үлдсэн байна — админд мэдэгдэж шилжүүлнэ үү.', left.length));
       }
-      const next = new Map<string, number | null>(months.map((k) => [k, numOf(textOf(k))]));
-      if (pctDirty) await savePkgPct(d.key, d.pkgLabel || d.name, next);
+      /* Сонгосон саруудын зөвхөн ЗАССАН нь — цонх нээлттэй үед өөр хүний бичсэн сарыг дарахгүй */
+      const patch = new Map<string, number | null>(months.filter((k) => k in pend).map((k) => [k, numOf(pend[k])]));
+      /* `patchPkgPct` өөрөө эрх шалгадаггүй — хувь бичигдээд огноо эрхгүйгээр унахаас хамгаална */
+      requireCap('finEdit');
+      const saved = pctDirty ? await patchPkgPct(d.key, d.pkgLabel || d.name, patch) : null;
       const upd: Row = {};
       if (datesDirty) { upd[F.startDate] = startMs; upd[F.endDate] = endMs; }
       if (pctDirty && !base.huv) upd[F.monthSource] = SRC_HUVAARI;
@@ -271,9 +298,7 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
         await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: [{ [CASHFLOW_NEW.oid]: d.oid, ...upd }] }, { cap: 'finEdit' });
         invalidate('CASHFLOW_NEW');
       }
-      const pct = new Map<string, number>();
-      for (const [k, v] of next) if (v != null) pct.set(k, v);
-      setBase({ start: startMs, end: endMs, pct: pctDirty ? pct : base.pct, huv: base.huv || pctDirty });
+      setBase({ start: startMs, end: endMs, pct: saved ?? base.pct, huv: base.huv || pctDirty });
       setPend({});
       setStartTxt(dayText(startMs));
       setEndTxt(dayText(endMs));
@@ -289,7 +314,7 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
     <div className={s.dlgBack} role="presentation" onClick={() => { if (!busy && !dirty) onClose(); }}>
       <div className={s.dlg} role="dialog" aria-modal="true" aria-label={tr('Үндсэн хугацаа')} onClick={(e) => e.stopPropagation()}>
         <h3 className={s.dlgTitle}>{tr('Үндсэн хугацаа — {0}', [d.pkgLabel, d.name].filter(Boolean).join(' · '))}</h3>
-        <p className={c.sub}>{d.phase} · {tr('ХО дүн: {0}', mnt(d.cost))}</p>
+        <p className={c.sub}>{d.phase} · {tr('Хөрөнгө оруулалтын дүн: {0}', mnt(d.cost))}</p>
         {d.cost == null && <p className={c.warn}>{tr('Гэрээний дүнгүй — ₮ бодогдохгүй')}</p>}
         <div className={s.dlgForm}>
           <label>{tr('Эхлэх огноо')}
@@ -342,6 +367,9 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
         {any && Math.abs(sum - 100) >= 0.01 && (
           <p className={c.warn}>{tr('⚠ Нийлбэр 100% биш ({0}%) — үлдэгдэл нь S-муруйд орохгүй.', num(sum, 2))}</p>
         )}
+        {outside.length > 0 && (
+          <p className={c.warn}>{tr('⚠ Эхлэх, дуусах огнооноос гадуурх сард хувь байна: {0}.', outside.join(', '))}</p>
+        )}
         {err && <p className={c.warn} role="alert">{err}</p>}
         {msg && <p className={c.hint} role="status">{msg}</p>}
         <div className={c.bar}>
@@ -351,7 +379,11 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
               <button type="button" className={c.clear} onClick={() => setExt(([a, b]) => [a, b + 1])}>{tr('+ дараагийн сар')}</button>
             </>
           )}
-          <button type="button" className={c.clear} disabled={busy} onClick={onClose}>{tr('Буцах')}</button>
+          <button type="button" className={c.clear} disabled={busy}
+            onClick={async () => {
+              if (dirty && !(await askConfirm(tr('Хадгалаагүй өөрчлөлтийг хаях уу?'), { danger: true, ok: tr('Хаях') }))) return;
+              onClose();
+            }}>{tr('Буцах')}</button>
           {canEdit && (
             <button type="button" className={c.save} disabled={!editable || !dirty} onClick={() => { void save(); }}>
               {busy ? tr('Хадгалж байна…') : tr('Хадгалах ({0})', dirty)}

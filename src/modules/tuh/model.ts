@@ -1,7 +1,8 @@
 /**
  * ТУХ — АЧААЛСАН ӨГӨГДЛИЙГ НЭГ ЗАГВАР БОЛГОХ (харагдац зөвхөн үүнийг уншина).
  */
-import { monthKey, date } from '@/lib/format';
+import { monthKey, date, dayKey, mnt } from '@/lib/format';
+import { CASHFLOW_NEW } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { housingPct, pkgCostWeight, cfWeightRow, type CfPlanRow } from '@/lib/gdash';
 import { ipcNumbers } from '@/lib/ipc';
@@ -19,7 +20,7 @@ import type { Pack } from '@/modules/Bagts';
 import { upstreamOf, downstreamOf, type PkgDep } from '@/lib/workDeps';
 import { sheetsOf } from './tuhSchedule';
 import {
-  buildTuhPkgs, progressOf, statusOf, type LiveMap, weekDelta, cfPlanPctAt, cfItemsOf,
+  buildTuhPkgs, progressOf, statusOf, contractorGapCounts, type LiveMap, weekDelta, cfPlanPctAt, cfItemsOf,
   ipcOf, earned, calDaysBetween, bagtsKey, keyOwners, assignHo, measDayOf,
   lastReportOf, reportAge,
   type TuhPkg, type TuhStatus, type TuhIpc, type CommissionPartial,
@@ -72,6 +73,11 @@ export type TuhRow = {
    * Дэлгэцэд «— (1/2 хуудас)» (`commissionText`). `null` = дутуу биш.
    */
   commissionPartial: CommissionPartial | null;
+  /**
+   * «Төсөл төлөвлөгөө биелэлт»-ийн «Ашиглалтад оруулах огноо» (хүснэгт 182) — ТӨЛӨВЛӨСӨН огноо: хуваарийн мөр огноогүй үед
+   * харагдана; хоцролтод (`delay`) ОРОХГҮЙ.
+   */
+  handover: number | null;
   /** Улсын комисс − гэрээт дуусах (хоног; эерэг = хоцорно) */
   delay: number | null;
   blocks: number | null;
@@ -165,12 +171,33 @@ export function depRows(m: Pick<TuhModel, 'rows' | 'deps'>, key: string, dir: 'u
 /**
  * Улсын комиссын огнооны ДЭЛГЭЦИЙН текст.
  */
-export function commissionText(m: Pick<TuhModel, 'loading'>, r: Pick<TuhRow, 'commission' | 'commissionPartial'>): string {
+export function commissionText(m: Pick<TuhModel, 'loading'>, r: Pick<TuhRow, 'commission' | 'commissionPartial' | 'handover'>): string {
   if (r.commissionPartial) {
     return `— ${tr('({0}/{1} хуудас)', r.commissionPartial.dated, r.commissionPartial.sheets)}`;
   }
-  return lz(m, 'commission')(date(r.commission));
+  return lz(m, 'commission')(date(usesHandover(m, r) ? r.handover : r.commission));
 }
+
+/** Нэгдсэн гэрээний тайлбар (`splitJointHo`) — энгийн гэрээнд '' */
+export const jointNote = (ipc: Pick<TuhIpc, 'contracts'>): string => {
+  const c = ipc.contracts.find((x) => x.jointTotal != null);
+  return c ? tr('Нэгдсэн гэрээ {0} — нийт {1}', c.code || c.contractNo || '—', mnt(c.jointTotal)) : '';
+};
+
+/** Хуваарийн мөр огноогүй (ачаалж дууссан), «Төсөл төлөвлөгөө биелэлт»-д төлөвлөсөн огноо бий */
+export const usesHandover = (m: Pick<TuhModel, 'loading'>, r: Pick<TuhRow, 'commission' | 'commissionPartial' | 'handover'>): boolean =>
+  r.commission == null && !r.commissionPartial && r.handover != null && !m.loading.has('commission');
+
+/** Мөрүүдийн хамгийн хожуу «Ашиглалтад оруулах огноо» (мс) */
+const handoverOf = (rows: readonly Record<string, unknown>[]): number | null => {
+  let out: number | null = null;
+  for (const c of rows) {
+    const v = c[CASHFLOW_NEW.fields.handoverDate];
+    const x = typeof v === 'number' ? v : v ? Date.parse(String(v)) : NaN;
+    if (Number.isFinite(x) && x > 0 && (out == null || x > out)) out = x;
+  }
+  return out;
+};
 
 const countDocs = (docs: TuhDoc[]): DocCount | null => {
   if (!docs.length) return null;
@@ -262,6 +289,12 @@ export function buildModel(input: {
       : progress != null && planContractor != null ? progress - planContractor : null;
     const planCov = series?.length ? planCoverage(series) : null;
     const covOk = coverageOk(planCov);
+    const useLag = lag != null && !!series?.length && contractorGapCounts({
+      gap: lag.gap,
+      planned: lag.planned,
+      covOk,
+      planAtStart: p.start != null ? planPctAt(series, dayKey(p.start)) : null,
+    });
     const items = cfItemsOf(p);
     const planContract = cfPlan ? cfPlanPctAt(cfPlan, items, measDayOf(months, nowYm, today)) : null;
     const gapContract = progress != null && planContract != null ? progress - planContract : null;
@@ -313,14 +346,15 @@ export function buildModel(input: {
       status: statusOf({
         contracted: p.contracted,
         progress,
-        gap: lag && covOk ? lag.gap : gapContract != null ? -gapContract : null,
+        gap: useLag ? lag.gap : gapContract != null ? -gapContract : null,
         nullAs: p.group === 'design' ? 'unknown' : 'todo',
       }),
-      statusBasis: lag && covOk ? 'contractor' as const : gapContract != null ? 'contract' as const : null,
+      statusBasis: useLag ? 'contractor' as const : gapContract != null ? 'contract' as const : null,
       week,
       ipc,
       commission: comm,
       commissionPartial: commPartial,
+      handover: housing ? handoverOf(p.rows) : null,
       delay: calDaysBetween(p.end, comm),
       blocks: packs ? (pack?.blocks.length ?? 0) : null,
       households: packs ? (pack?.households ?? 0) : null,
@@ -330,7 +364,8 @@ export function buildModel(input: {
       ma,
       mir,
       docs: mine,
-      ev: earned(p.cost, progress, planContract, covOk ? planContractor : null),
+      /* Гэрээгүй мөрийн дүн нь урьдчилсан төсөв — түүгээр EV/PV/SPI бодохгүй */
+      ev: earned(p.contracted ? p.cost : null, progress, planContract, covOk ? planContractor : null),
       prog,
       months: allMonths,
       lag,

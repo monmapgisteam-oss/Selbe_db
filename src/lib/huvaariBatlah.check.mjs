@@ -27,8 +27,31 @@ globalThis.dispatchEvent = () => true;
 
 const {
   PLAN_STATUS, parsePayload, parseOkRows, decidePlan, withdrawPlan, claimPlan, submitPlan, claimHolderOf, PAYLOAD_MAX,
-  encodePayload,
+  encodePayload, queueFigures,
 } = await import('@/lib/huvaariBatlah.ts');
+
+/* ── Дарааллын тоо — суурьтай зөрүү (2026-11-06) ── */
+{
+  const D = (iso) => Date.parse(`${iso}T00:00:00Z`);
+  const sp = (a, b) => ({ start: D(a), end: D(b) });
+  const pay = (o) => ({ kind: 'plan', spans: {}, deps: {}, obyem: {}, actual: {}, res: {}, ...o });
+  /* Огноо ба сарын задаргааг бүхэлд нь арилгасан — «ижил байна» гэж хэлэхгүй */
+  const cleared = queueFigures(pay({
+    spans: { 500: [null] }, obyem: { '1234|Блок': {} },
+    base: { spans: { 500: [sp('2027-03-01', '2027-05-31')] }, deps: {}, obyem: { '1234|Блок': { '2027-03': 10, '2027-04': 60, '2027-05': 30 } } },
+  }));
+  assert.deepEqual([cleared.spansN, cleared.removedN, cleared.obyemN, cleared.from], [0, 1, 3, null], 'арилгасан блок · цэвэрлэсэн сар тоологдоно');
+  /* Нэг блок 4 хоног шилжсэн — хөндөөгүй блок тоо, хугацааны мужид орохгүй */
+  const moved = queueFigures(pay({
+    spans: { 500: [sp('2027-01-09', '2027-02-08'), sp('2028-06-01', '2028-07-31'), sp('2029-01-01', '2029-02-01')] },
+    base: { spans: { 500: [sp('2027-01-05', '2027-02-04'), sp('2028-06-01', '2028-07-31'), sp('2029-01-01', '2029-02-01')] }, deps: {}, obyem: {} },
+  }));
+  assert.deepEqual([moved.spansN, moved.removedN, moved.from, moved.to], [1, 0, D('2027-01-09'), D('2027-02-08')], 'өөрчлөгдсөн блок л');
+  /* Суурьгүй хуучин илгээлт — хоосон биш утга бүр өөрчлөлт; бодит огноо, нөөцийг нэрлэнэ */
+  const old = queueFigures(pay({ spans: { 1: [sp('2027-01-01', '2027-01-10'), null] }, obyem: { 'a|b': { '2027-01': 5 } }, actual: { 1: { start: [null], end: [null] } }, res: { 2: { hun: 1, mashin: null } }, obres: { 'a|b': {} } }));
+  assert.deepEqual([old.spansN, old.removedN, old.obyemN, old.actualN, old.resN], [1, 0, 1, 1, 2]);
+  console.log('✓ queueFigures — суурьтай зөрүү, арилгасан блок');
+}
 
 {
   const ENT = String(process.env.NEXT_PUBLIC_ENT_DATA ?? '').replace(/\/+$/, '');

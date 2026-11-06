@@ -41,6 +41,8 @@ export type Zoom = keyof typeof ZOOM;
 export type DragMode = 'new' | 'move' | 'l' | 'r';
 export type Drag = {
   oid: number; mode: DragMode; anchor: number; orig: Span | null;
+  /** Мөрийн ХАДГАЛАГДСАН муж (`orig` нь бүлэгт хүүхдээс бодсон байж болно) — буцаахад яг үүнийг сэргээнэ */
+  own?: Span | null;
   /** чирэлтээс өмнөх сарын задаргаа — буцаахад (2026-09-17) */
   origMonths?: Map<string, number> | null;
   /** чирэлтээс өмнөх сарын НӨӨЦ (2026-09-24) — `origMonths`-тай зэрэгцээ */

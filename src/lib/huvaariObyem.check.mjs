@@ -416,6 +416,10 @@ console.log('huvaariObyem.check: ok — splitByPct ✓');
   const clip = scheduleByMoney(span('2026-10-15', '2026-11-10'), new Map([['2026-10', 50], ['2026-11', 50]]), [{ money: 1, vol: 2 }, { money: 1, vol: 2 }]);
   assert.equal(day(clip[0].span.start), '2026-10-15', 'бүлгийн эхлэлээр хавчина');
   assert.equal(day(clip[1].span.end), '2026-11-10', 'бүлгийн төгсгөлөөр хавчина');
+  /* Нийтдээ хэт бага мөнгөтэй ажил (eps-ээс бага) — алдаа шидэхгүй, обьём бүтэн (Багц 4-2 · 12F «Б.») */
+  const tiny = scheduleByMoney(sp, pct, [{ money: 1e12, vol: 10 }, { money: 1e-6, vol: 3 }]);
+  assert.ok(tiny[1].span.start <= tiny[1].span.end, 'хэт бага мөнгөтэй ажилд муж гарна');
+  assert.ok(balanced(tiny[1].months, 3), 'хэт бага мөнгөтэй ажлын обьём бүтнээрээ');
 }
 
 /* ── Уялдаагаар дараалуулах ── */
@@ -478,5 +482,9 @@ console.log('huvaariObyem.check: ok — scheduleByMoney · orderByDeps · remapM
   const e2 = H.pctEdits('БАГЦ1', 'Багц 1', pp.get('БАГЦ1'), oids, new Map([['2026-10', null]]));
   assert.deepEqual(e2.deletes.sort(), [1, 2], 'хоосолсон сар ба жагсаалтад үгүй хуучин сар устна');
   assert.deepEqual([e2.adds.length, e2.updates.length], [0, 0]);
-  console.log('huvaariObyem.check: ok — багцын сарын хувь (toPkgPct · pctEdits) ✓');
+  /* Зассан сарууд л — өөр хүний шинэ утгыг дарахгүй, засаагүй сар устахгүй */
+  const fresh = new Map([['2026-10', 25], ['2026-11', 70], ['2026-12', 5]]);
+  const patched = H.pctPatched(fresh, new Map([['2026-11', 60], ['2026-12', null], ['2027-01', 15]]));
+  assert.deepEqual([...patched], [['2026-10', 25], ['2026-11', 60], ['2026-12', null], ['2027-01', 15]]);
+  console.log('huvaariObyem.check: ok — багцын сарын хувь (toPkgPct · pctEdits · pctPatched) ✓');
 }

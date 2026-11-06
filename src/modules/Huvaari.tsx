@@ -86,7 +86,7 @@ import { AnalysisPanel, type AnaTab } from './huvaari/AnalysisPanel';
 import { useAnalysis } from './huvaari/useAnalysis';
 import { useGroupPlan } from './huvaari/useGroupPlan';
 import { sameShapeGroups } from '@/lib/planAnalysis';
-import { LinkModal } from './huvaari/LinkModal';
+import { LinkModal, linksReplaced } from './huvaari/LinkModal';
 import { Segmented, Switch, Toggle } from '@/components/Switch';
 
 export type { HuvaariReview } from './huvaari/types';
@@ -4272,7 +4272,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           </button>
         )}
         {/* 2026-11-05: «Үндсэн хугацаа» — гэрээ бүрийн төсөөллийн хуваарь (огноо + сарын хувь); «Cashflow хуваарилах»-ыг орлосон */}
-        {!review && <MainSpanButton canEdit={hasCap(user?.username, 'finEdit')} />}
+        {!review && <MainSpanButton canEdit={hasCap(user?.username, 'finEdit')} scope={huvaariViewScope(user?.username)} />}
         {/* PDF ТАТАХ (2026-09-30) — дэлгэц дээрх хуваарийг ижил загвараар (`savePdf`) */}
         {sc && visible.length > 0 && (
           <span className={h.pdfWrap} ref={pdfRef}>
@@ -5370,15 +5370,15 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           src={linkRows.s}
           dst={linkRows.t}
           blks={linkAsk.dblks}
+          collapse={linkAsk.collapse}
           blocks={sc?.bld ?? []}
           onClose={() => setLinkAsk(null)}
           onRemove={() => {
             const { s, t } = linkRows;
             setLinkAsk(null);
             if (s.des == null) return;
-            const code = s.des;
-            const ids = linkAsk.dblks ?? [undefined];
-            applyModal(t.oid, null, t.deps.filter((d) => !ids.some((b) => sameDep(d, { code, blk: b }))), null);
+            const gone = linksReplaced(t.deps, s.des, linkAsk.dblks, linkAsk.collapse);
+            applyModal(t.oid, null, t.deps.filter((d) => !gone.includes(d)), null);
           }}
           onApply={(type, lag) => {
             const { s, t } = linkRows;
@@ -5387,9 +5387,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             const code = s.des;
             /* Ижил (код, блок)-ийн хуучин уялдааг сольж бичнэ — нэг хос нэг удаа. */
             const ids = linkAsk.dblks ?? [undefined];
-            const keep = t.deps.filter((d) => (linkAsk.collapse
-              ? d.code !== code
-              : !ids.some((b) => sameDep(d, { code, blk: b }))));
+            const gone = linksReplaced(t.deps, code, linkAsk.dblks, linkAsk.collapse);
+            const keep = t.deps.filter((d) => !gone.includes(d));
             const add: Dep[] = ids.map((b) => ({ code, type, lag, ...(b != null ? { blk: b } : {}) }));
             applyModal(t.oid, null, [...keep, ...add], null);
           }}

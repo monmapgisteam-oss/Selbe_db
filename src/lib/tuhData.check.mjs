@@ -22,9 +22,9 @@
 process.env.TZ = 'Asia/Ulaanbaatar';
 import assert from 'node:assert/strict';
 const {
-  groupOf, statusOf, buildTuhPkgs, progressOf, cfPlanPctAt, weekDelta, earned,
+  groupOf, statusOf, contractorGapCounts, buildTuhPkgs, progressOf, cfPlanPctAt, weekDelta, earned,
   rowSpan, commissionOf, milestonesOf, resourcesOf, daysBetween, calDaysBetween, elapsedPct,
-  ipcOf, keyOwners, assignHo, isDesignHo, mergeCommission, measDayOf, firstFilled,
+  ipcOf, keyOwners, assignHo, splitJointHo, isDesignHo, mergeCommission, measDayOf, firstFilled,
   searchNorm, matchesSearch, lateFirst, rowProgress, pendingAutoOf,
   pickCommission, keyedCache, lastReportOf, reportAge, heatWinterYear, TUH_STATUS,
 } = await import('./tuhData.ts');
@@ -66,6 +66,21 @@ ok('хэмжигдээгүй → эхлээгүй (0 гэж таамаглахг
   assert.equal(statusOf({ contracted: true, progress: null, gap: null }), 'todo'));
 ok('≥ 5 pp хоцорсон', () => assert.equal(statusOf({ contracted: true, progress: 20, gap: 5 }), 'late'));
 ok('< 5 pp — хийгдэж байна', () => assert.equal(statusOf({ contracted: true, progress: 20, gap: 4.9 }), 'run'));
+ok('0% ч төлөвлөгөөнөөс ≥ 5 pp хоцорсон — хоцорсон', () => assert.equal(statusOf({ contracted: true, progress: 0, gap: 21.67 }), 'late'));
+ok('0%, зөрүү бага — эхлээгүй', () => assert.equal(statusOf({ contracted: true, progress: 0, gap: 1.29 }), 'todo'));
+ok('дутуу хуваарь: баттай хоцролт тоологдоно, «түрүүлсэн» ба хуучирсан хуваарь тоологдохгүй', () => {
+  /* Багц-1: 33.0 / 56.6, хамралт 84.3 — гэрээний эхэнд төлөвлөгөө 0 */
+  assert.equal(contractorGapCounts({ gap: 23.62, planned: 56.61, covOk: false, planAtStart: 0 }), true);
+  /* Багц-3.3: дутуу хуваарьтай «түрүүлсэн» */
+  assert.equal(contractorGapCounts({ gap: -21.58, planned: 8.58, covOk: false, planAtStart: 0 }), false);
+  /* Багц-4.2: босгоос бага */
+  assert.equal(contractorGapCounts({ gap: 2, planned: 12.37, covOk: false, planAtStart: 0 }), false);
+  /* Багц-3.1: огноотой ажил гэрээ эхлэхээс өмнө дууссан — төлөвлөгөө хавтгай */
+  assert.equal(contractorGapCounts({ gap: 32.58, planned: 32.63, covOk: false, planAtStart: 32.63 }), false);
+  assert.equal(contractorGapCounts({ gap: 32.58, planned: 32.63, covOk: false, planAtStart: null }), true, 'гэрээний эхлэлгүй');
+  /* Бүрэн хуваарь — хоёр чиглэлд */
+  assert.equal(contractorGapCounts({ gap: -3, planned: 50, covOk: true, planAtStart: 50 }), true);
+});
 ok('«Зогссон» ХЭЗЭЭ Ч оноогдохгүй', () => {
   for (const c of [true, false]) for (const p of [null, 0, 10, 100]) for (const g of [null, 0, 50]) {
     assert.notEqual(statusOf({ contracted: c, progress: p, gap: g }), 'stopped');
@@ -240,6 +255,17 @@ ok('calDaysBetween — хуанлийн өдрөөр, цагийг үл тоон
   assert.equal(calDaysBetween(null, ub), null);
 });
 ok('гол үе шат = дээд түвшний мөрүүд', () => assert.deepEqual(milestonesOf(sheet).map((x) => x.name), ['Барилга угсралт', 'Улсын комисс']));
+ok('гол үе шат — нэр № баганад бичсэн бүлэг (ажил хоосон); «А» шиг дугаар нэр биш', () => {
+  const G2 = (no, work, depth) => ({ ...R(work, depth, true, [], [], []), no });
+  const rows = [
+    G2('A. Бэлтгэл ажил', '', 0), R('Талбайн камер', 1, false, [d(1)], [d(5)], []),
+    G2('Б. БАРИЛГА УГСРАЛТЫН АЖИЛ', '', 0), R('Дээвэр', 1, false, [d(10)], [d(20)], []),
+    G2('В', '', 0), R('Хашаа', 1, false, [d(21)], [d(22)], []),
+  ];
+  const ms = milestonesOf(rows);
+  assert.deepEqual(ms.map((x) => x.name), ['A. Бэлтгэл ажил', 'Б. БАРИЛГА УГСРАЛТЫН АЖИЛ']);
+  assert.equal(ms[1].end, d(20), 'огноо нь доторх ажлуудаас');
+});
 ok('хүн/техник — навч мөрүүдийн нийлбэр; бүгд хоосон бол null', () => {
   assert.deepEqual(resourcesOf(sheet), { hun: 14, mashin: 3 });
   assert.deepEqual(resourcesOf(sheet.slice(0, 2)), { hun: null, mashin: null });
@@ -437,7 +463,7 @@ ok('nullAs: зураг төслийн хэмжигдээгүй → «unknown»; 
   assert.equal(statusOf({ contracted: true, progress: 0, gap: null, nullAs: 'unknown' }), 'todo');
   assert.equal(statusOf({ contracted: true, progress: null, gap: null }), 'todo');
   assert.equal(statusOf({ contracted: false, progress: null, gap: null, nullAs: 'unknown' }), 'none');
-  assert.ok(TUH_STATUS.some((x) => x.key === 'unknown' && x.label() === 'Мэдээлэлгүй'));
+  assert.ok(TUH_STATUS.some((x) => x.key === 'unknown' && x.label() === 'Хэмжигдээгүй'));
 });
 
 console.log('\n16. Гэрээний мөрийн гүйцэтгэл — АМЬД (projectPlanInputs.loadLiveProgress), хадгалсан талбар биш');
@@ -493,6 +519,31 @@ ok('isDesignHo — таслалаар нийлсэн төрөл: бүх хэсэ
     assert.equal(x.contracts.length, 1);
     assert.equal(ipcOf(null, [], ipcNos), null);
     assert.equal(ipcOf('', [hd81], ipcNos), null, 'хоосон түлхүүр — урьдын адил null');
+  });
+}
+
+console.log('\n17б. Олон багцын нэгдсэн гэрээ — багц бүрд өөрийн хэсэг');
+{
+  const pays = [
+    { bagts: 'Багц-10', dun: 30, tulult_turul: 'Урьдчилгаа' }, { bagts: 'БАГЦ-11', dun: 15, tulult_turul: 'Урьдчилгаа' }, { bagts: 'БАГЦ-11', dun: 5, tulult_turul: 'Гүйцэтгэл' },
+  ];
+  const joint = { ...HC({ code: 'БАГЦ-10,11', key: 'БАГЦ10', pkg: 'Багц-10', total: 150, paid: 50 }), pays, cancelled: false };
+  const costs = { БАГЦ10: 100, БАГЦ11: 50 };
+  const parts = splitJointHo(joint, (k) => costs[k]);
+  ok('багц бүрт өөрийн дүн, өөрийн олголт; нийлбэр давхардахгүй', () => {
+    assert.deepEqual(parts.map((c) => [c.key, c.contractTotal, c.paidTotal, c.jointTotal]), [['БАГЦ10', 100, 30, 150], ['БАГЦ11', 50, 20, 150]]);
+    assert.equal(parts[1].paidPct, 40);
+    assert.equal(parts[0].paidTotal + parts[1].paidTotal, joint.paidTotal);
+  });
+  ok('хуваах үндэсгүй бол гэрээ хэвээр — дүн тэнцэхгүй, дүнгүй багц, цуцлагдсан, ганц багц', () => {
+    assert.deepEqual(splitJointHo(joint, (k) => (k === 'БАГЦ10' ? 100 : 49)), [joint]);
+    assert.deepEqual(splitJointHo(joint, (k) => (k === 'БАГЦ10' ? 150 : null)), [joint]);
+    const cx = { ...joint, cancelled: true };
+    assert.deepEqual(splitJointHo(cx, (k) => costs[k]), [cx]);
+    const one = { ...joint, pays: pays.slice(0, 1) };
+    assert.deepEqual(splitJointHo(one, (k) => costs[k]), [one]);
+    const noKey = { ...joint, pays: [...pays, { bagts: '', dun: 1 }] };
+    assert.deepEqual(splitJointHo(noKey, (k) => costs[k]), [noKey]);
   });
 }
 
