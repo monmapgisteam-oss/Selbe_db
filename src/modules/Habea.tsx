@@ -1730,7 +1730,6 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {kpiTile(KPI_LOOK.people,
           laborKpi('ajiltan'),
           tr('Нийт ажилласан хүн хүч'),
-          laborKpi('ajiltan') === '—' ? undefined : tr('хүн-өдөр'),
         )}
         {kpiTile(KPI_LOOK.hours,
           laborFailed || incFailed || sel.day.length || sel.month.length || coEff?.length === 0 || ltiShown.hours == null ? '—' : num(ltiShown.hours),
@@ -1745,7 +1744,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           undefined,
           ltiShown.undatedLti,
         )}
-        {kpiTile(KPI_LOOK.tech, laborKpi('tehnik'), tr('Нийт ажилласан техникийн тоо'), laborKpi('tehnik') === '—' ? undefined : tr('нэгж-өдөр'))}
+        {kpiTile(KPI_LOOK.tech, laborKpi('tehnik'), tr('Нийт ажилласан техникийн тоо'))}
         {kpiTile(KPI_LOOK.crane,
           craneFailed ? '—' : craneUp === fCrane.length ? num(fCrane.length) : `${num(craneUp)}/${num(fCrane.length)}`,
           tr('Кран'),

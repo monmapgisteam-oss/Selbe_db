@@ -149,9 +149,9 @@ assert.ok(!habea.includes('onSaved={() => regs.retry'), 'бүртгэл хадг
   assert.ok(habea.includes("qRaw.state !== 'ready' && lastHabea"), 'сүүлийн амжилттай өгөгдөл үлдэнэ');
   assert.ok(habea.includes("tr('Шинэчилж чадсангүй — сүүлд татсан мэдээлэл харагдаж байна: {0}'"), 'тайлбар ил');
 
-  /* KPI — шүүлтээс үл хамааран нэг эх (гүйцэтгэгчийн багана) + нэгж */
+  /* KPI — шүүлтээс үл хамааран нэг эх (гүйцэтгэгчийн багана); тооны хажууд нэгж бичихгүй (хэрэглэгч 2026-11-06) */
   assert.ok(!habea.includes('labor.cum') && !habea.includes('laborFiltered'), 'толгойн нийлбэр рүү салаалахгүй');
-  assert.ok(habea.includes("tr('хүн-өдөр')") && habea.includes("tr('нэгж-өдөр')"), 'KPI-н нэгж');
+  assert.ok(!habea.includes("tr('хүн-өдөр')") && !habea.includes("tr('нэгж-өдөр')"), 'KPI-д нэгж алга');
 
   /* Товчлолгүй */
   assert.ok(!habea.includes("tr('Огноогүй ХЧТА") && !habea.includes("tr('{0} ХЧТА"), 'ХЧТА товчлол UI-д алга');
