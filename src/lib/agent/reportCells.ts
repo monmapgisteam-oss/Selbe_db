@@ -65,7 +65,7 @@ export function parseCell(raw: string): Parsed | null {
     if (n != null) {
       return { kind: 'pct', value: Number((n / 100).toFixed(10)), unit: '%', dec: decOf(body), text: s };
     }
-    return null;
+    return { kind: 'text', value: s, dec: 0, text: s };
   }
 
   /* Мөнгө — «2,660,000,000 ₮» */
@@ -73,7 +73,7 @@ export function parseCell(raw: string): Parsed | null {
   if (m) {
     const n = toNum(s.slice(0, m.index).trim());
     if (n != null) return { kind: 'money', value: n, unit: '₮', dec: 0, text: s };
-    return null;
+    return { kind: 'text', value: s, dec: 0, text: s };
   }
 
   /* Хэмжээ — «1,788 м²» */

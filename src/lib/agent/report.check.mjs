@@ -11,6 +11,7 @@ import { buildChatPdf } from '@/lib/agent/reportPdf';
 import { buildChatDocx, DOCX_MIME } from '@/lib/agent/reportDocx';
 import { buildChatXlsx } from '@/lib/agent/reportXlsx';
 import { colHeader, csvTable, typeTable } from '@/lib/agent/reportCells';
+import { chartValText } from '@/lib/agent/chart';
 import { planSteps } from '@/lib/agent/plan';
 
 let pass = 0;
@@ -72,6 +73,10 @@ console.log('\n2. Хазгай оролт — чат унахгүй');
   ok('дан хашлага гацаахгүй', parseBlocks(['```', 'Текст'].join('\n')).length === 1);
   ok('хоосон оролт', parseBlocks('').length === 0);
   ok('эвдэрсэн JSON-той график spec null', parseBlocks('```chart\n{буруу\n```').find((x) => x.kind === 'chart').spec === null);
+  ok('графикийн утга хувьтай', chartValText(45.6, '%') === '45.6%');
+  ok('графикийн утга мөнгөтэй, бүтнээр', chartValText(1234567890, '₮') === '1,234,567,890 ₮');
+  ok('графикийн утга нэгжгүй', chartValText(12) === '12');
+  ok('графикийн цоорхой', chartValText(null, '%') === '—');
 }
 
 console.log('\n3. ```report задлалт');
@@ -166,6 +171,19 @@ console.log('\n7a. Нүдний төрөл — текст биш ТОО');
 
   const date = typeTable({ name: 'a', head: ['Багц', 'Огноо'], rows: [['a', '2026-10-09'], ['b', '2026-09-01']] });
   ok('огноо ТЕКСТ хэвээр', date.cols[1].kind === 'text');
+
+  const odd = typeTable({ name: 'a', head: ['Багц', 'Зөрүү', 'Төлөв'], rows: [
+    ['Багц 1', '+5.2%', 'Хоцорсон 3%'], ['Багц 2', '−3.1%', 'ok'], ['Багц 3', '≈12%', 'дутуу 5,000 ₮'],
+  ] });
+  ok('«+5.2%» нүд хоосроогүй', odd.rows[0][1] === '+5.2%' && odd.cols[1].kind === 'text');
+  ok('«−3.1%» холимог баганад текстээрээ', odd.rows[1][1] === '−3.1%');
+  ok('текст баганын «Хоцорсон 3%» хоосроогүй', odd.rows[0][2] === 'Хоцорсон 3%');
+  ok('«дутуу 5,000 ₮» хоосроогүй', odd.rows[2][2] === 'дутуу 5,000 ₮');
+  for (const s of ['12.3% → 45.6%', '≥ 95%', '50–60%', '+1,000,000 ₮']) {
+    const one = typeTable({ name: 'a', head: ['Утга'], rows: [[s]] });
+    ok(`«${s}» текстээрээ үлдэв`, one.rows[0][0] === s && one.cols[0].kind === 'text');
+  }
+  ok('CSV-д ч утга үлдэнэ', csvTable(odd).rows[0][1] === '+5.2%');
 }
 
 console.log('\n7b. CSV — нэгж толгойд, хувь 0–100');

@@ -11,7 +11,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  computeReview, fillAgeByPkg, fillAgeLevel, dayMs, FILL_STALE_DAYS,
+  computeReview, fillAgeByPkg, fillAgeLevel, dayMs, FILL_STALE_DAYS, neverFilledPkgs, BASE_SHEET_ROWS,
 } from './review.ts';
 
 /* 2026-09-06 10:00 Улаанбаатар (UTC+8) */
@@ -146,6 +146,32 @@ const pend = (ajil, bagts, owner, days, who, extra = {}) => ({
   assert.ok(String(rows[300][0].v).includes('50'), rows[300][0].v);
   assert.equal(r.value, '19');
   assert.equal(r.issues.length, pending.filter((p) => p.days > 7).length);
+}
+
+/* ── 7. Хэзээ ч бөглөөгүй багц — суурь хуудас тооцогдохгүй, хоног зохиохгүй, эхэнд ── */
+{
+  const fills = [{ pkg: 'Багц 2', lastFill: '2026-09-01', ageDays: 5 }];
+  const sheets = [
+    { pkg: 'Багц 6.4', rows: 357, dated: 0 },
+    { pkg: 'Багц 4-2', rows: 1593, dated: 0 },   // 12 давхар — бөглөөгүй
+    { pkg: 'Багц 4-2', rows: 1500, dated: 40 },  // 9 давхар — бөглөсөн
+    { pkg: 'Багц 2', rows: 900, dated: 0 },      // түүхэд огноотой — бөглөсөн
+    { pkg: 'Сууриин хуудас', rows: 2, dated: 0 },
+    { pkg: 'Багц 6.10', rows: 3, dated: 0 },
+  ];
+  assert.deepEqual(neverFilledPkgs(sheets, fills), ['Багц 6.4', 'Багц 6.10'], 'зөвхөн ажлын мөртэй, огноогүй багц');
+  assert.equal(BASE_SHEET_ROWS, 2);
+
+  const r = computeReview({ pending: [], fills, neverFilled: ['Багц 6.4'], failedSources: [] });
+  const t = r.tables[1];
+  assert.deepEqual(t.rows[0].map((c) => c.v), ['Багц 6.4', 'хэзээ ч бөглөөгүй', null], 'эхний мөр, хоног зохиогоогүй');
+  assert.equal(t.rows[1][0].v, 'Багц 2');
+  assert.ok(r.facts.includes('1 багц хэзээ ч бөглөөгүй'), r.facts);
+  assert.ok(r.facts.includes('бөглөлт хамгийн хуучин 5 хоног (Багц 2)'), 'насны баримт хэмжсэн багцаар хэвээр');
+  assert.equal(r.issues[0].text, 'Багц 6.4 — хэзээ ч бөглөөгүй');
+  assert.equal(r.level, 'bad', 'бөглөөгүй багц ногоон самбарт нуугдахгүй');
+  assert.equal(computeReview({ pending: [], fills, failedSources: [] }).level, 'good', 'бөглөөгүй багцгүй бол хэвээр');
+  assert.equal(computeReview({ pending: null, fills, neverFilled: ['Багц 6.4'], failedSources: [] }).level, 'unknown');
 }
 
 console.log('review.check: OK');

@@ -13,7 +13,7 @@ import { dataVersion, subscribeData } from '@/lib/dataBus';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { CEO_KPIS, type CeoKpiDef } from '@/lib/ceo/registry';
 import { kpisAt, fineOf } from '@/lib/ceo/schemMap';
-import { ALL_PKG, filterResult, pkgOptions } from '@/lib/ceo/filter';
+import { ALL_PKG, filterResult, issueNamesPkg, pkgColOf, pkgOptions } from '@/lib/ceo/filter';
 import type { Cell, DetailTable, KpiResult } from '@/lib/ceo/kpi';
 import { LEVEL_MARK, LEVEL_TONE, levelLabel, type Level } from '@/lib/kpiLevels';
 import {
@@ -279,11 +279,13 @@ export function KpiDetail({
 
       {pkg && d && (
         <p className={s.dScope}>
-          {tr('Жагсаалт: {0} · дээрх тоо нь төслийн нийт', pkg)}
+          {d.tables.length === 0 || d.tables.some((t) => pkgColOf(t) >= 0)
+            ? tr('Жагсаалт: {0} · дээрх тоо нь төслийн нийт', pkg)
+            : tr('Жагсаалт багцаар шүүгдээгүй · дээрх тоо ба доорх жагсаалт нь төслийн нийт')}
         </p>
       )}
 
-      {pkg && d && d.tables.length === 0 && raw && raw.tables.length > 0 && (
+      {pkg && d && d.tables.length === 0 && !d.issues.some((is) => issueNamesPkg(is.text)) && raw && raw.tables.length > 0 && (
         <p className={s.dNote}>{tr('{0}-д энэ үзүүлэлтээр асуудалтай мөр алга.', pkg)}</p>
       )}
 
@@ -308,14 +310,16 @@ export function KpiDetail({
             <ul className={s.dIssues}>
               {d.issues.map((is, i) => (
                 <li key={i} className={s.dIssue} style={{ ['--h']: LEVEL_TONE[is.tone] } as CSSProperties}>
-                  {is.text}
+                  {pkg && !issueNamesPkg(is.text) ? tr('{0} · төслийн нийт', is.text) : is.text}
                 </li>
               ))}
             </ul>
           )}
 
           {/* ЗАДАРГАА — асуудалтай мөр БҮР нэрээрээ */}
-          {d.tables.map((t) => <Table key={t.title} t={t} />)}
+          {d.tables.map((t) => (
+            <Table key={t.title} t={pkg && pkgColOf(t) < 0 ? { ...t, title: tr('{0} · төслийн нийт', t.title) } : t} />
+          ))}
 
           {/*
             * ЭХ СУРВАЛЖ — «—» нь ҮЙЛЧИЛГЭЭ УНАСНААС уу, үнэхээр байхгүйгээс үү

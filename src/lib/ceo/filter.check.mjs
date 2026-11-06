@@ -13,7 +13,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  ALL_PKG, filterResult, filterTable, isPkgSummary, pkgColOf, pkgOptions, rowInPkg, samePkg,
+  ALL_PKG, filterResult, filterTable, isPkgSummary, issueNamesPkg, pkgColOf, pkgOptions, rowInPkg, samePkg,
 } from './filter.ts';
 
 const cell = (v) => ({ v });
@@ -163,3 +163,52 @@ console.log('ceo/filter.check.mjs — БҮГД ТЭНЦЛЭЭ');
 }
 
 console.log('ceo/filter.check.mjs — сонгогчийн шүүлт ч ТЭНЦЛЭЭ');
+
+/* ── 11. Багцын мөр ЗӨВХӨН нэгтгэсэн хүснэгтэд — тэр мөр ҮЛДЭНЭ («алга» гэж худал хэлэхгүй) ── */
+{
+  const late = T('Багц бүрээр', ['Багц', 'Сар', 'Зөрүү пп'], [[cell('Багц-3.2'), cell('2026-10'), cell(-33.9)]]);
+  const noData = T('Хэмжилтгүй багц', ['Багц', 'Шалтгаан'], [[cell('Багц 6.4'), cell('хуваарь алга')]]);
+  const r = { value: '1', unit: '', facts: [], level: 'bad', tables: [late, noData], issues: [], asOf: null, failedSources: [] };
+  const own = filterResult(r, 'Багц-3.2');
+  assert.deepEqual(own.tables.map((t) => t.title), ['Багц бүрээр'], 'нэгтгэлийн мөр үлдэв');
+  assert.equal(own.tables[0].rows[0][2].v, -33.9);
+  assert.deepEqual(filterResult(r, 'Багц 6.4').tables.map((t) => t.title), ['Хэмжилтгүй багц'], 'нэгтгэлд мөргүй багцад нэгтгэл гарахгүй');
+  assert.deepEqual(filterResult(r, 'Багц 99').tables, [], 'аль ч хүснэгтэд мөргүй бол хоосон');
+  const both = filterResult({ ...r, tables: [T('Багц бүрээр', ['Багц'], [[cell('Багц 6.4')]]), noData] }, 'Багц 6.4');
+  assert.deepEqual(both.tables.map((t) => t.title), ['Хэмжилтгүй багц'], 'өөрийн мөртэй хүснэгт байвал нэгтгэл нуугдсан хэвээр');
+}
+
+/* ── 12. Давхцлын мөрийн нэр — багцын хэсгээр («Багц 6.4 · цахилгааны шугам Багц4» = Багц 6.4) ── */
+{
+  const ov = T('Давхцсан үлдсэн нэгж талбар', ['Багц', 'Нэгж талбар'], [
+    [cell('Багц 6.4 · цахилгааны шугам Багц4'), cell(42)],
+    [cell('Багц 6.4 · Холбоо'), cell(32)],
+    [cell('Багц 16.1 · Өндөржилт — Багц 1'), cell(8)],
+    [cell('Багц 5.1'), cell(4)],
+    [cell('Багц 1'), cell(2)],
+  ]);
+  assert.equal(filterTable(ov, 'Багц-6.4').rows.length, 2, 'давхаргын бүх мөр');
+  assert.equal(filterTable(ov, 'Багц 6.4 · Холбоо').rows.length, 2, 'сонголт нийлмэл нэртэй ч ижил');
+  assert.equal(filterTable(ov, 'БАГЦ-16.1').rows.length, 1);
+  assert.deepEqual(filterTable(ov, 'Багц 1').rows.map((x) => x[0].v), ['Багц 1'], '«— Багц 1» гэсэн сүүл нь Багц 1 БИШ');
+  assert.equal(filterTable(ov, 'Багц 5.1').rows.length, 1, 'нэмэлтгүй нэр хэвээр');
+  assert.deepEqual(pkgOptions([{ tables: [ov] }]), ['Багц 1', 'Багц 5.1', 'Багц 6.4', 'Багц 16.1'], 'сонгогчид багцын нэр л');
+  assert.ok(!samePkg('Багц 1-4 · ТЭЗҮ'.split(' · ')[0], 'Багц 14'), 'диапазон хамгаалалт хэвээр');
+}
+
+/* ── 13. Багц дурдаагүй анхааруулга — төслийн нийтийнх гэж танигдана ── */
+assert.equal(issueNamesPkg('татгалзсан: 22 талбар'), false);
+assert.equal(issueNamesPkg('Багц 3.2 — төл. 63.8%'), true);
+{
+  /* «{багц}-д мөр алга» тэмдэглэл: төслийн нийтийн анхааруулга үлдсэн ч үнэн, багцаа нэрлэсэн анхааруулга үлдвэл худал */
+  const base = { value: '1', unit: '', facts: [], level: 'warn', tables: [T('Хэмжилтгүй багц', ['Багц'], [[cell('Багц 1')]])], asOf: null, failedSources: [] };
+  const wide = filterResult({ ...base, issues: [{ tone: 'warn', text: 'татгалзсан: 22 талбар' }] }, 'Багц 2');
+  assert.deepEqual(wide.tables, []);
+  assert.equal(wide.issues.length, 1);
+  assert.ok(!wide.issues.some((i) => issueNamesPkg(i.text)), 'мөргүй багц — тэмдэглэл гарна');
+  const named = filterResult({ ...base, issues: [{ tone: 'bad', text: 'Багц 2 — хэзээ ч бөглөөгүй' }] }, 'Багц 2');
+  assert.deepEqual(named.tables, []);
+  assert.ok(named.issues.some((i) => issueNamesPkg(i.text)), 'багцын асуудалтай — тэмдэглэл гарахгүй');
+}
+
+console.log('ceo/filter.check.mjs — нэгтгэл ба давхцлын мөр ТЭНЦЛЭЭ');

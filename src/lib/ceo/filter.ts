@@ -18,7 +18,13 @@ export const pkgColOf = (t: DetailTable): number => t.cols.indexOf(tr('Багц'
  * Тухайн мөр сонгосон багцад хамаарах уу?
  */
 export const rowInPkg = (row: readonly Cell[], col: number, pkg: string): boolean =>
-  samePkg(row[col]?.v, pkg);
+  samePkg(pkgPart(row[col]?.v), pkgPart(pkg));
+
+/**
+ * Нэрийн БАГЦЫН хэсэг — « · »-гийн өмнөх: «Багц 6.4 · цахилгааны шугам Багц4» → «Багц 6.4»
+ * (давхцлын хүснэгтийн мөрийн нэр нь давхаргын гарчгаас тогтдог).
+ */
+export const pkgPart = (v: unknown): unknown => (typeof v === 'string' ? v.split(' · ')[0] : v);
 
 /**
  * ХОЁР БАГЦЫН НЭР НЭГ БАГЦ МӨН ҮҮ — ДИАПАЗОНЫГ ТООЦСОН (2026-09-21).
@@ -44,6 +50,11 @@ export const isPkgSummary = (t: DetailTable): boolean => (
 export function filterTable(t: DetailTable, pkg: string): DetailTable | null {
   if (!pkg) return t;
   if (isPkgSummary(t)) return null;
+  return pkgRowsOf(t, pkg);
+}
+
+/** Хүснэгтийн тэр багцын мөрүүд; `Багц` баганагүй бол хэвээр, мөр алга бол `null` */
+function pkgRowsOf(t: DetailTable, pkg: string): DetailTable | null {
   const col = pkgColOf(t);
   if (col < 0) return t;
   const src = t.rowsFull ?? t.rows;
@@ -52,6 +63,9 @@ export function filterTable(t: DetailTable, pkg: string): DetailTable | null {
   const cut = capRows(rows, t.cols.length);
   return { title: t.title, cols: t.cols, rows: cut };
 }
+
+/** Анхааруулга багц дурдсан уу — дурдаагүй нь багцаар шүүгдэхгүй, ТӨСЛИЙН НИЙТийнх */
+export const issueNamesPkg = (text: string): boolean => /Багц/i.test(text);
 
 /**
  * Анхааруулгын текстийг ХЭСГҮҮД болгож задлана — багцын нэр НЭГ ХЭСЭГ болно.
@@ -63,11 +77,14 @@ const issueSegments = (text: string): string[] => text.split(/[·—\n]/);
  */
 export function filterResult(r: KpiResult, pkg: string): KpiResult {
   if (!pkg) return r;
-  const tables = r.tables.map((t) => filterTable(t, pkg)).filter((t): t is DetailTable => t != null);
-  const issues = r.issues.filter((i) => {
-    const mentions = /Багц/i.test(i.text);
-    return !mentions || issueSegments(i.text).some((s) => samePkg(s, pkg));
-  });
+  /* Багцын мөр ЗӨВХӨН нэгтгэсэн хүснэгтэд байвал тэр мөрийг үлдээнэ — эс бөгөөс «асуудалтай мөр алга» гэж ХУДАЛ хэлнэ */
+  const hasOwn = r.tables.some((t) => !isPkgSummary(t) && pkgColOf(t) >= 0 && pkgRowsOf(t, pkg) != null);
+  const tables = r.tables
+    .map((t) => (isPkgSummary(t) && !hasOwn ? pkgRowsOf(t, pkg) : filterTable(t, pkg)))
+    .filter((t): t is DetailTable => t != null);
+  const issues = r.issues.filter((i) => (
+    !issueNamesPkg(i.text) || issueSegments(i.text).some((s) => samePkg(s, pkgPart(pkg)))
+  ));
   return { ...r, tables, issues };
 }
 
@@ -83,7 +100,7 @@ export function pkgOptions(results: readonly KpiResult[]): string[] {
       for (const row of t.rows) {
         const raw = row[col]?.v;
         if (raw == null || typeof raw === 'number') continue;
-        const label = String(raw).trim();
+        const label = String(pkgPart(raw)).trim();
         if (!label || label === '—' || label.startsWith('…')) continue;
         /*
          * Шалгуур: «Багц» + ТОО (цэг/зураастай дэд дугаар зөвшөөрнө) —

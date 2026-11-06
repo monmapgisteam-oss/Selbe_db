@@ -109,7 +109,7 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'compute',
     get description() { return tr('ArcGIS дээр БАЙХГҮЙ, кодод ТООЦООЛОГДДОГ үзүүлэлтүүд. ') +
-      tr('`building_progress` — бөглөх хуудсаар бодсон БОДИТ гүйцэтгэл: ТӨСЛИЙН НИЙТ гүйцэтгэл (`project` — нэгтгэл, Ерөнхий дашбоардын «Гүйцэтгэлийн хувь»), орон сууцны ХО-жинтэй хувь (`housing` — Дашбоардын «Барилгын явц»), блокийн жигнэсэн дундаж (`overall`), багц бүрийн ') +
+      tr('`building_progress` — бөглөх хуудсаар бодсон БОДИТ гүйцэтгэл: ТӨСЛИЙН НИЙТ гүйцэтгэл (`project` — нэгтгэл, Ерөнхий дашбоардын «Гүйцэтгэлийн хувь»), орон сууцны дүнгээр жигнэсэн хувь (`housing` — Дашбоардын «Барилгын явц»), блокийн жигнэсэн дундаж (`overall`), багц бүрийн ') +
       tr('задаргаа, хамгийн хоцорсон блокууд, гүйцэтгэгч компани. ') +
       tr('⚠️ Барилгын НИЙТ гүйцэтгэлийг асуувал ЭНЭ ХЭРЭГСЛИЙГ ашигла — `mon:building`-ийн `GUITS_HV`-ийн ') +
       tr('дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог). ') +
@@ -148,6 +148,16 @@ async function fieldsOf(url: string, fresh = false, signal?: AbortSignal): Promi
   const fields = body.fields ?? [];
   metaCache.set(url, { at: Date.now(), fields });
   return fields;
+}
+
+/**
+ * Талбарын БОДИТ нэр — том/жижиг үсэг үл хамаарна (үйлчилгээ ч тийм: `ZONE_ID` = `zone_id`); алга бол `null`.
+ */
+export function realField(name: string, known: Iterable<string>): string | null {
+  const all = [...known];
+  if (all.includes(name)) return name;
+  const low = name.toLowerCase();
+  return all.find((f) => f.toLowerCase() === low) ?? null;
 }
 
 /**
@@ -318,7 +328,7 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
     ...(input.outFields ?? []),
     ...orderFields,
   ];
-  const missing = (set: Set<string>) => used.filter((f) => f && f !== '*' && !set.has(f));
+  const missing = (set: Set<string>) => used.filter((f) => f && f !== '*' && realField(f, set) == null);
   let bad = missing(known);
   if (bad.length) {
     known = new Set((await fieldsOf(url, true, signal)).map((f) => f.name));
@@ -336,15 +346,23 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
     );
   }
 
+  /* Үйлчилгээний БОДИТ бичиглэлээр явуулна (хариуны түлхүүр ч тэр бичиглэлтэй) */
+  const real = (f: string) => realField(f, known) ?? f;
+  const groupBy = input.groupBy ? real(input.groupBy) : input.groupBy;
+  const orderBy = input.orderBy
+    ?.split(',')
+    .map((t) => t.trim().replace(/^\S+/, real))
+    .join(', ');
+
   try {
     if (input.stats?.length) {
       const stats: Stat[] = input.stats.map((s, i) => {
         const fn = STAT_FN[s.op];
         if (!fn) throw new Error(tr('Танихгүй үйлдэл: {0}', s.op));
-        return fn(s.field, s.as || `${s.op}_${i}`);
+        return fn(real(s.field), s.as || `${s.op}_${i}`);
       });
-      if (input.groupBy) {
-        const g = await queryGroupEx(url, input.groupBy, stats, where, undefined, signal);
+      if (groupBy) {
+        const g = await queryGroupEx(url, groupBy, stats, where, undefined, signal);
         let rows = g.rows;
         const capped = rows.length > MAX_GROUPS;
         if (capped) {
@@ -360,7 +378,7 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
         return ok({
           source: src.id,
           where,
-          groupBy: input.groupBy,
+          groupBy,
           truncated: g.truncated || capped,
           ...(g.truncated
             ? { warning: tr('⚠️ Бүлгүүд ТАЙРАГДСАН — нийт дүн дутуу. Шүүлтээ нарийсга, эсвэл дутуу гэдгийг хэрэглэгчид ил хэл.') }
@@ -381,8 +399,8 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
     const limit = Math.min(Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 10), MAX_ROWS);
     const rows = await queryFeatures(url, {
       where,
-      outFields: input.outFields?.length ? input.outFields : undefined,
-      orderBy: input.orderBy,
+      outFields: input.outFields?.length ? input.outFields.map((f) => (f === '*' ? f : real(f))) : undefined,
+      orderBy,
       limit,
       signal,
     });

@@ -13,7 +13,7 @@ import {
   scorePerf, scoreFin, scoreLand, scoreHse, scoreLevel, dimLevel, scorePermit,
   totalOf, groupByType, projectDims, meanOf, DIMS, workIssues,
   statusCounts, dimStatusCounts, passFilter, NO_FILTER, workStatus, statusByType, perfNoCurve, workDimLevel,
-  perfPartial, scoreAlerts, perfNotStarted,
+  perfPartial, scoreAlerts, perfNotStarted, overlapOfKeys,
 } from './scorecard.ts';
 
 const DAY = 86_400_000;
@@ -300,6 +300,23 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   const src = readFileSync(new URL('./scorecardLoad.ts', import.meta.url), 'utf8');
   assert.ok(src.includes('lagUnknown ? perfNoCurve()'), 'scorecardLoad перф салаа perfNoCurve-ийг дуудахгүй байна');
   assert.ok(/\(b\) => b\.failed\.length === 0\);/.test(src), 'loadScoreBase хэсэгчилсэн үр дүнг кэшлэхгүй (keep)');
+}
+
+/* ── Газрын давхцал — зургийн түлхүүрүүдийн НЭГДЭЛ (Холбоо · Багц 7.1 · Багц 8) ── */
+{
+  const { mapPkgKeySet } = await import('../pkgAlias.ts');
+  const ids = new Map([
+    ['БАГЦ61', new Set([1, 2])],
+    ['БАГЦ1ХОЛБОО', new Set([2, 3, 4])],
+    ['БАГЦ7', new Set([7, 8])],
+    ['БАГЦ63', null],
+  ]);
+  assert.equal(overlapOfKeys(ids, mapPkgKeySet(['БАГЦ61'])), 4, 'Багц 6.1 + Багц 6.1 · Холбоо, давхардалгүй');
+  assert.equal(overlapOfKeys(ids, mapPkgKeySet(['БАГЦ71'])), 2, 'Багц 7.1 → зургийн БАГЦ7');
+  assert.equal(overlapOfKeys(ids, mapPkgKeySet(['БАГЦ63'])), -1, 'тооцогдоогүй түлхүүр → −1');
+  assert.equal(overlapOfKeys(ids, mapPkgKeySet(['БАГЦ8'])), undefined, 'давхцалгүй');
+  assert.equal(overlapOfKeys(ids, new Set()), undefined, 'багцгүй ажил');
+  assert.ok(mapPkgKeySet(['БАГЦ8']).has('БАГЦ82'), 'Багц 8-ын зураглал нь Багц 8.2');
 }
 
 console.log('scorecard.check ✓');

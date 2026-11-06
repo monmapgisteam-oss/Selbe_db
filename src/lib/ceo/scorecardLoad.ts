@@ -7,7 +7,7 @@ import { loadGdashCf, loadContractSum, isContracted } from '@/lib/gdash';
 import { loadLandStatus } from '@/lib/land';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
 import { bagtsKey, pkgKeyOf } from '@/lib/services';
-import { finPkgKey } from '@/lib/pkgAlias';
+import { finPkgKey, mapPkgKeySet } from '@/lib/pkgAlias';
 import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
 import { pkgFinRows } from '@/modules/PkgFin';
@@ -17,7 +17,7 @@ import { FIN_XL_LAND_CODE, FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadWorkforceKpi, type WorkforceKpi } from './workforce';
 import { loadZov, summarize as summarizeZov } from '@/lib/zovshoorol';
 import {
-  DIMS, scorePerf, perfNoCurve, perfNotStarted, scoreFin, scoreLand, scorePermit, scoreHse, totalOf,
+  DIMS, overlapOfKeys, scorePerf, perfNoCurve, perfNotStarted, scoreFin, scoreLand, scorePermit, scoreHse, totalOf,
   type Dim, type DimScore, type WorkScore, type Inspection,
 } from './scorecard';
 
@@ -159,24 +159,23 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
 
 export type LandExtra = {
   landPct: number | null;
-  overlaps: Map<string, number>;
+  /** Газрын зургийн багцын түлхүүр → давхцсан талбарын OID; `null` = тооцогдоогүй */
+  overlaps: Map<string, Set<number> | null>;
   failed: boolean;
 };
 
 /** Газар чөлөөлөлт — багц бүрийн давхцсан чөлөөлөгдөөгүй нэгж талбар */
 export const loadScoreLand = cached(async (): Promise<LandExtra> => {
   const [status, overlaps] = await Promise.all([loadLandStatus(), loadPkgOverlaps()]);
-  const ids = new Map<string, Set<number>>();
+  const m = new Map<string, Set<number> | null>();
   const bad = new Set<string>();
   for (const o of overlaps) {
     if (o.failed) { bad.add(o.key); continue; }
-    const s = ids.get(o.key) ?? new Set<number>();
+    const s = m.get(o.key) ?? new Set<number>();
     for (const id of o.oids) s.add(id);
-    ids.set(o.key, s);
+    m.set(o.key, s);
   }
-  const m = new Map<string, number>();
-  for (const [k, s] of ids) m.set(k, s.size);
-  for (const k of bad) m.set(k, -1);
+  for (const k of bad) m.set(k, null);
   return { landPct: status.pct, overlaps: m, failed: bad.size > 0 };
 }, 5 * 60_000, ['PARCEL_LEFT'], (x) => !x.failed);
 
@@ -197,14 +196,16 @@ export function assemble(base: ScoreBase, x: Extras): WorkScore[] {
   const foot = new Set(base.footprints);
   return base.works.map((w) => {
     const none: DimScore = { score: null, facts: [] };
-    const ov = x.land && w.key ? x.land.overlaps.get(w.key) : undefined;
+    /* Газрын зургийн түлхүүрүүд: «Багц 6.1» + БАГЦ1ХОЛБОО · «Багц 7.1» → БАГЦ7 · «Багц 8» → БАГЦ82 */
+    const mapKeys = w.key ? mapPkgKeySet([w.key]) : new Set<string>();
+    const ov = x.land ? overlapOfKeys(x.land.overlaps, mapKeys) : undefined;
     const dims: Record<Dim, DimScore> = {
       perf: w.perf,
       fin: w.fin,
       land: w.cancelled || !x.land ? none : scoreLand({
         isLandWork: w.isLandWork,
         landPct: x.land.landPct,
-        hasFootprint: !!w.key && foot.has(w.key),
+        hasFootprint: [...mapKeys].some((k) => foot.has(k)),
         overlap: ov == null ? 0 : ov < 0 ? null : ov,
         overlapFailed: ov != null && ov < 0,
       }),

@@ -14,7 +14,8 @@ import { queryAll, STAGE_ORDER, type Stage } from '@/lib/hyanalt';
 import { toRow } from '@/lib/hyanaltStore';
 import { groupWorks, pendingAging, STAGE_LABEL, type Pending } from '@/lib/hyanaltGroup';
 import { loadBlockHistory, loadInfraHistory, type BlockHistory } from '@/lib/blockProgress';
-import { PKGS } from '@/modules/sheet/bagts.pkg';
+import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
+import { count, queryStats } from '@/lib/query';
 import { bagtsKey } from '@/lib/services';
 import { TH } from '@/lib/schem';
 import { REVIEW_STALE_DAYS, reviewAgeLevel, type Level } from '@/lib/kpiLevels';
@@ -101,6 +102,25 @@ export function fillAgeByPkg(history: BlockHistory, now: number): FillAge[] {
   return out.sort((a, b) => b.ageDays - a.ageDays || a.pkg.localeCompare(b.pkg, 'mn'));
 }
 
+/**
+ * СУУРЬ МӨРТЭЙ хуудасны дээд мөрийн тоо — ажлын мөр хараахан ороогүй хуудас «бөглөөгүй» тооцогдохгүй.
+ */
+export const BASE_SHEET_ROWS = 2;
+
+/** Нэг бөглөх хуудас: нийт мөр ба бөглөсөн огноотой мөр */
+export type SheetFill = { pkg: string; rows: number; dated: number };
+
+/**
+ * ХЭЗЭЭ Ч БӨГЛӨӨГҮЙ багцууд — ажлын мөртэй хуудастай, гэвч НЭГ ч хуудсанд бөглөсөн огноо алга.
+ * Нас нь хэмжигдэхгүй (хоног зохиохгүй), тусдаа төлөв.
+ */
+export function neverFilledPkgs(sheets: readonly SheetFill[], fills: readonly FillAge[]): string[] {
+  const filled = new Set(fills.map((f) => f.pkg));
+  for (const s of sheets) if (s.dated > 0) filled.add(s.pkg);
+  const out = new Set(sheets.filter((s) => s.rows > BASE_SHEET_ROWS && !filled.has(s.pkg)).map((s) => s.pkg));
+  return [...out].sort((a, b) => a.localeCompare(b, 'mn', { numeric: true }));
+}
+
 /* ══════════════ Нэгтгэл ══════════════ */
 
 export type ReviewInput = {
@@ -108,6 +128,8 @@ export type ReviewInput = {
   pending: Pending[] | null;
   /** Багцаар бөглөлтийн нас — эх уншигдаагүй бол `null` */
   fills: FillAge[] | null;
+  /** Хэзээ ч бөглөөгүй багцууд (`neverFilledPkgs`) */
+  neverFilled?: string[];
   failedSources: string[];
 };
 
@@ -123,6 +145,7 @@ export function computeReview(input: ReviewInput): KpiResult {
   const { failedSources } = input;
   const pending = input.pending ? input.pending.slice().sort((a, b) => b.days - a.days) : null;
   const fills = input.fills ? input.fills.slice().sort((a, b) => b.ageDays - a.ageDays) : null;
+  const never = input.neverFilled ?? [];
 
   /* ── А. Хүлээгдэл ── */
   const worstDays: number | null = pending == null ? null : (pending[0]?.days ?? 0);
@@ -146,6 +169,7 @@ export function computeReview(input: ReviewInput): KpiResult {
     facts.push(tr('шатаар: {0}', STAGE_ORDER
       .map((s) => `${STAGE_LABEL[s]} ${byStage[s]}`).join(' · ')));
   }
+  if (never.length) facts.push(tr('{0} багц хэзээ ч бөглөөгүй', never.length));
   if (oldest) facts.push(tr('бөглөлт хамгийн хуучин {0} хоног ({1})', oldest.ageDays, oldest.pkg));
 
   /* ── Хүснэгтүүд — БҮРЭН, нэртэй ── */
@@ -169,7 +193,10 @@ export function computeReview(input: ReviewInput): KpiResult {
     tables.push(table(
       tr('Бөглөлтийн нас — багцаар'),
       [tr('Багц'), tr('Сүүлд бөглөсөн'), tr('Хоног')],
-      fills.map((f) => [cell(f.pkg), cell(f.lastFill), cell(f.ageDays, 'day')]),
+      [
+        ...never.map((pkg) => [cell(pkg), cell(tr('хэзээ ч бөглөөгүй')), cell(null, 'day')]),
+        ...fills.map((f) => [cell(f.pkg), cell(f.lastFill), cell(f.ageDays, 'day')]),
+      ],
     ));
   }
 
@@ -179,6 +206,7 @@ export function computeReview(input: ReviewInput): KpiResult {
       tone: 'bad',
       text: tr('{0} · {1} — {2} дээр {3} хоног', p.work.ajil, p.work.bagts, p.who, p.days),
     })),
+    ...never.map((pkg): KpiIssue => ({ tone: 'bad', text: tr('{0} — хэзээ ч бөглөөгүй', pkg) })),
     ...(fills ?? [])
       .filter((f) => f.ageDays >= FILL_STALE_DAYS.bad)
       .map((f): KpiIssue => ({
@@ -191,7 +219,7 @@ export function computeReview(input: ReviewInput): KpiResult {
     value: num(worstDays),
     unit: tr('хоног хамгийн урт хүлээлт'),
     facts,
-    level: pending == null ? 'unknown' : worstOf([reviewAgeLevel(worstDays), fillAgeLevel(maxFillAge)]),
+    level: pending == null ? 'unknown' : worstOf([reviewAgeLevel(worstDays), fillAgeLevel(maxFillAge), never.length ? 'bad' : 'neutral']),
     tables,
     issues,
     asOf: latestFillMs,
@@ -201,20 +229,39 @@ export function computeReview(input: ReviewInput): KpiResult {
 
 /* ══════════════ Ачаалагч ══════════════ */
 
+/** Хуудас бүрийн мөрийн тоо; уншигдаагүй хуудас `null` */
+async function sheetFillOf(p: (typeof PKGS)[number]): Promise<SheetFill | null> {
+  try {
+    const { f } = await loadSchema(p, { fill: true });
+    if (!f.fillDate) return null;
+    const a = await queryStats(p.url, [count(f.oid, 'n_rows'), count(f.fillDate, 'n_dated')]);
+    const get = (k: string) => Number(a[k] ?? a[k.toUpperCase()] ?? 0);
+    return { pkg: p.group, rows: get('n_rows'), dated: get('n_dated') };
+  } catch {
+    return null;
+  }
+}
+
 export const loadReviewKpi: () => Promise<KpiResult> = cached(async () => {
   const now = Date.now();
   const names = [tr('Гүйцэтгэлийн хяналт'), tr('Гүйцэтгэл бөглөх')];
-  const [rv, fh] = await Promise.allSettled([
-    queryAll().then((attrs) => pendingAging(groupWorks(attrs.map(toRow)), now)),
-    Promise.all([loadBlockHistory(), loadInfraHistory()]).then(([b, i]) => fillAgeByPkg(new Map([...b, ...i]), now)),
+  const [rv, fh, sheets] = await Promise.all([
+    Promise.allSettled([queryAll().then((attrs) => pendingAging(groupWorks(attrs.map(toRow)), now))]).then(([x]) => x),
+    Promise.allSettled([
+      Promise.all([loadBlockHistory(), loadInfraHistory()]).then(([b, i]) => fillAgeByPkg(new Map([...b, ...i]), now)),
+    ]).then(([x]) => x),
+    Promise.all(PKGS.map(sheetFillOf)),
   ]);
   const { failed } = settled<unknown>([rv, fh], names);
   if (failed.length === names.length) {
     throw new Error(`ceo/review: ${failed.join(', ')} — ${tr('татагдсангүй')}`);
   }
+  const fills = fh.status === 'fulfilled' ? fh.value : null;
+  const read = sheets.filter((s): s is SheetFill => s != null);
   return computeReview({
     pending: rv.status === 'fulfilled' ? rv.value : null,
-    fills: fh.status === 'fulfilled' ? fh.value : null,
-    failedSources: failed,
+    fills,
+    neverFilled: fills ? neverFilledPkgs(read, fills) : [],
+    failedSources: read.length < sheets.length ? [...failed, tr('Бөглөх хуудасны мөрийн тоо')] : failed,
   });
 }, 5 * 60_000, ['HYANALT', 'BAGTS_SHEET'], kpiComplete);

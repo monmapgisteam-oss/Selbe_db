@@ -346,7 +346,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
         <h2 className={s.title}>{tr('Багц ажлын оноо')}</h2>
         <span className={s.legend}>
           {tr('≥{0} хэвийн · {1}–{2} анхааруулга · <{1} эрсдэлтэй (ХАБЭА: ≥{3} · {4}–{5} · <{4}) · «хүлээгдэж» дата ороогүй · «—» хамааралгүй', SCORE_GOOD, SCORE_WARN, SCORE_GOOD - 1, HSE_GOOD, HSE_WARN, HSE_GOOD - 1)}
-          {' · '}{tr('Газар: чөлөөлөлтийн ажилд ≥{0} · {1}–{2}; бусад ажилд давхцал 0 хэвийн · ≥1 эрсдэлтэй · Ерөнхий төлөвлөгөө: ≥{3} · {4}–{5}', 95, 80, 94, 65, 45, 64)}
+          {' · '}{tr('Газар: төслийн ба бүлгийн дундаж оноо ≥{0} · {1}–{2}; багц ажилд давхцал 0 хэвийн · ≥1 эрсдэлтэй', 95, 80, 94)}
         </span>
       </header>
 
@@ -541,7 +541,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
                 <div><dt>{tr('Урьдчилсан төсөвт өртөг')}</dt><dd className="num">{mnt(sel.cost)}</dd></div>
                 <div><dt>{tr('Гэрээний дүн')}</dt><dd className="num">{sel.contract == null ? tr('гэрээгүй') : mnt(sel.contract)}</dd></div>
               </dl>
-              <p className={s.hint}>{tr('Нийт оноо = доорх 6 бүлгийн оноотой хэсгүүдийн дундаж. «хүлээгдэж» ба «—» бүлэг дунджид орохгүй.')}</p>
+              <p className={s.hint}>{tr('Нийт оноо = доорх 5 бүлгийн оноотой хэсгүүдийн дундаж. «хүлээгдэж» ба «—» бүлэг дунджид орохгүй.')}</p>
 
               {/* ── ЗААВАЛ ШИЙДВЭРЛЭХ АСУУДАЛ — эрэмбээр (`workIssues`) ── */}
               <section className={s.issues} aria-label={tr('Заавал шийдвэрлэх асуудал')}>
@@ -622,7 +622,7 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
               <h3 className={s.kpiHead}>
                 <span>{tr('{0} — эх үзүүлэлтүүд', defs[dim].title)}</span>
                 <span className={s.kpiRule}>
-                  {tr('Карт бүрийн гол тоо нь ТӨСЛИЙН НИЙТ; доорх жагсаалт нь «{0}»-ээр шүүгдсэн. Дэлгэрэнгүйг «Харагдац руу орох»-оор.', sel.pkgLabel || tr('бүх багц'))}
+                  {tr('Карт бүрийн гол тоо нь ТӨСЛИЙН НИЙТ; «төслийн нийт» гэж тэмдэглээгүй жагсаалт нь «{0}»-ээр шүүгдсэн. Дэлгэрэнгүйг «Харагдац руу орох»-оор.', sel.pkgLabel || tr('бүх багц'))}
                 </span>
               </h3>
               {defs[dim].kpis.length === 0 && (

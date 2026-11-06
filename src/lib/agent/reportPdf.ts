@@ -6,7 +6,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { isNumeric } from '@/lib/agent/format';
 import { headingOf, type MdBlock } from '@/lib/agent/blocks';
-import type { ChartSpec } from '@/lib/agent/chart';
+import { chartValText as valText, type ChartSpec } from '@/lib/agent/chart';
 import type { ReportDoc } from '@/lib/agent/report';
 import { ACCENT, INK, INK2, MUTED, PAPER, RULE, SURF, T, tableLayout, th } from '@/lib/pdfTheme';
 
@@ -34,14 +34,6 @@ function runs(text: string): Content[] {
 const plain = (s: string) => T(s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1'));
 
 /* ── График ── */
-
-/** Тоог шошго болгоно — нэгж өгөгдсөн бол хамт */
-function valText(v: number | null, unit?: string): string {
-  if (v == null) return '—';
-  const s = num(v, Number.isInteger(v) ? 0 : 1);
-  if (!unit) return s;
-  return unit === '%' ? `${s}%` : `${s} ${unit}`;
-}
 
 /**
  * ХЭВТЭЭ ЗУРВАС — `bar`/`column`/`pie`/`stack`/`gauge` бүгд үүгээр.

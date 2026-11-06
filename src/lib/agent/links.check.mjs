@@ -35,6 +35,10 @@ console.log('\n2. Эрхээр шүүгдэх');
   ok('«pkgFin» эрхэд санхүүгийн жор ОРНО', fin.includes('ds:ipc') && fin.includes('ds:cashflow2'));
   const none = recipeLines(() => false);
   ok('эх сурвалжгүй үед зөвхөн эрхгүй жорууд үлдэнэ', none.length > 0 && !none.join('\n').includes('ds:'));
+  const safety = recipeLines((id) => resolveSource(id, ['habea']) != null).join('\n');
+  ok('осол → `habea:osol`, ажилтан → `ds:habea`', /Осол, зөрчил\?» → `habea:osol`/.test(safety) && /ажилтан, техник\?» → `ds:habea`/.test(safety));
+  const map = dataMapLines((id) => resolveSource(id, ['pkgFin']) != null).join('\n');
+  ok('IPC-ийн төлөв «бүртгэгддэггүй» гэж хэлэгдэхгүй', !map.includes('актын төлөв') && map.includes('ipc_tuluv'));
 }
 
 console.log('\n3. Зургийн бүтэц');

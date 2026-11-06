@@ -310,6 +310,26 @@ export type LandInput = {
   overlapFailed: boolean;
 };
 
+/**
+ * Багц ажлын давхцсан талбарын ТОО — түлхүүрүүдийн (`pkgAlias.mapPkgKeySet`) OID-ийн НЭГДЭЛ.
+ * `undefined` = давхцалгүй · `-1` = аль нэг түлхүүр тооцогдоогүй (`ids`-д `null`).
+ */
+export function overlapOfKeys(
+  ids: ReadonlyMap<string, ReadonlySet<number> | null>,
+  keys: Iterable<string>,
+): number | undefined {
+  const union = new Set<number>();
+  let found = false;
+  for (const k of keys) {
+    const s = ids.get(k);
+    if (s === undefined) continue;
+    if (s === null) return -1;
+    found = true;
+    for (const id of s) union.add(id);
+  }
+  return found ? union.size : undefined;
+}
+
 export function scoreLand(i: LandInput): DimScore {
   if (i.isLandWork) {
     if (i.landPct == null) return NONE;

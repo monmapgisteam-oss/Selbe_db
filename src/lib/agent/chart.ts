@@ -1,6 +1,15 @@
 /**
  * АГЕНТЫН ГРАФИКИЙН ТОДОРХОЙЛОЛТ — задлан шинжлэх ЦЭВЭР логик.
  */
+import { num as fmtNum } from '@/lib/format';
+
+/** Утгын шошго — нэгж өгөгдсөн бол хамт; дэлгэц ба PDF НЭГ дүрэм */
+export function chartValText(v: number | null, unit?: string): string {
+  if (v == null) return '—';
+  const s = fmtNum(v, Number.isInteger(v) ? 0 : 1);
+  if (!unit) return s;
+  return unit === '%' ? `${s}%` : `${s} ${unit}`;
+}
 
 /** Агентын гаргах графикийн төрлүүд */
 export const CHART_TYPES = ['bar', 'column', 'line', 'pie', 'stack', 'gauge'] as const;

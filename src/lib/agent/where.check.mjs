@@ -8,7 +8,7 @@
  * (`ZONE_ID = 'Багц-1'`) байсан → «0 барилга» гэх мэт худал тоо.
  */
 import assert from 'node:assert/strict';
-import { nPrefixUnicode, runTool } from '@/lib/agent/tools';
+import { nPrefixUnicode, realField, runTool } from '@/lib/agent/tools';
 
 let pass = 0;
 const eq = (name, got, want) => {
@@ -54,6 +54,52 @@ try {
   assert.ok(q, 'асуулга явсангүй');
   eq('ArcGIS руу явсан where', q.where, "ZONE_ID = N'Багц-1'");
   eq('хариунд буцаасан where (загварт харагдах)', JSON.parse(out.text).where, "ZONE_ID = N'Багц-1'");
+} finally {
+  globalThis.fetch = realFetch;
+}
+
+console.log('\n2a. query_feature — талбарын нэр том/жижиг үсэг хамаарахгүй, БОДИТ нэрээр явна');
+sent.length = 0;
+globalThis.fetch = async (url, init) => {
+  const body = new URLSearchParams(String(init?.body ?? ''));
+  sent.push({
+    url: String(url),
+    group: body.get('groupByFieldsForStatistics'),
+    stats: body.get('outStatistics'),
+    outFields: body.get('outFields'),
+    order: body.get('orderByFields'),
+  });
+  const json = String(url).endsWith('/query')
+    ? { features: [{ attributes: { n: 3 } }] }
+    : { fields: [{ name: 'objectid', type: 'esriFieldTypeOID' }, { name: 'zone_id', type: 'esriFieldTypeString' }] };
+  return { ok: true, status: 200, json: async () => json };
+};
+try {
+  eq('realField — том үсэг → бодит нэр', realField('ZONE_ID', ['objectid', 'zone_id']), 'zone_id');
+  eq('realField — ижил бичиглэл эхэлж', realField('Zone_ID', ['zone_id', 'Zone_ID']), 'Zone_ID');
+  eq('realField — алга бол null', realField('zone', ['zone_id']), null);
+
+  const out = await runTool('query_feature', {
+    id: 'zone',
+    groupBy: 'ZONE_ID',
+    stats: [{ op: 'count', field: 'OBJECTID', as: 'n' }],
+  }, 'all');
+  assert.ok(!out.isError, `том үсгээр унав: ${out.text}`);
+  const q = sent.find((s) => s.url.endsWith('/query'));
+  eq('groupBy бодит нэрээр', q.group, 'zone_id');
+  eq('stats бодит нэрээр', JSON.parse(q.stats)[0].onStatisticField, 'objectid');
+
+  sent.length = 0;
+  const list = await runTool('query_feature', {
+    id: 'zone', outFields: ['ZONE_ID'], orderBy: 'ZONE_ID DESC, OBJECTID',
+  }, 'all');
+  assert.ok(!list.isError, `жагсаалт унав: ${list.text}`);
+  const q2 = sent.find((s) => s.url.endsWith('/query'));
+  assert.ok(q2.outFields.includes('zone_id') && !q2.outFields.includes('ZONE_ID'), q2.outFields);
+  eq('orderBy бодит нэрээр, чиглэл хэвээр', q2.order, 'zone_id DESC, objectid');
+
+  const bad = await runTool('query_feature', { id: 'zone', groupBy: 'ZONE', stats: [{ op: 'count', field: 'objectid' }] }, 'all');
+  assert.ok(bad.isError && bad.text.includes('ZONE'), 'үнэхээр байхгүй нэр алдаа хэвээр');
 } finally {
   globalThis.fetch = realFetch;
 }
