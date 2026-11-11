@@ -4,7 +4,7 @@
  * IPC ҮҮСГЭХ ДАРААЛАЛ · ГЭРЭЭ ҮҮСГЭХ (2026-11-04). Дүрэм нь `lib/ipcFlow.ts`-д (цэвэр, тестлэгдэнэ).
  */
 
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { dayKey, mnt } from '@/lib/format';
 import { askConfirm } from '@/lib/confirm';
@@ -84,6 +84,13 @@ export function IpcFlowPanel({
   const fileFor = useRef<IpcDocRow | null>(null);
   const fileEl = useRef<HTMLInputElement>(null);
 
+  /* 2026-11-11: нэгж үнийг хожим тавьсан ажлын мөнгийг чөлөөт гүйцэтгэлд нөхнө — гэрээг нээхэд нэг удаа, IPC үүсгэх эрхтэй хүнд */
+  const repricedRef = useRef('');
+  useEffect(() => {
+    if (!canCreate || repricedRef.current === code) return;
+    repricedRef.current = code;
+    void import('@/lib/ipcAutoWrite').then((m) => m.repriceFreeRows(code)).catch((e) => console.warn('[selbe] нэгж үнийн нөхөлт амжилтгүй:', e));
+  }, [canCreate, code]);
   const perf = useMemo(() => perfRows(pays), [pays]);
   const docs = useMemo(() => docRows(pays), [pays]);
   const free = useMemo(() => perf.filter((r) => r.status === S.work), [perf]);
@@ -120,7 +127,7 @@ export function IpcFlowPanel({
     const warn = [
       ...(sel.some((r) => (r.delta ?? 0) < 0) ? [tr('Сонгосон гүйцэтгэлд дүн буурсан мөр байна.')] : []),
       ...(sel.some((r) => r.une == null) ? [tr('Сонгосон гүйцэтгэлд дүнгүй мөр байна. Нэгж үнийг бөглөхгүй бол тэр ажил IPC дүнд орохгүй.')] : []),
-      ...(overContract(paid, total, contract) ? [tr('Энэ IPC-тэй хамт олгосон дүн гэрээний дүнгээс хэтэрнэ.')] : []),
+      ...(overContract(paid, total, contract, docs.filter((x) => x.status !== S.paid).reduce((a, x) => a + (x.total ?? 0), 0)) ? [tr('Энэ IPC-тэй хамт олгосон ба батлагдаагүй IPC-ийн дүн гэрээний дүнгээс хэтэрнэ.')] : []),
     ];
     const msg = `${tr('{0} багцын {1} гүйцэтгэлээс IPC үүсгэх үү? Дүн: {2}', sel[0]?.pkg ?? '', sel.length, money(total))}${warn.length ? ` ${warn.join(' ')}` : ''}`;
     if (!(await askConfirm(msg, { ok: tr('IPC үүсгэх') }))) return;
@@ -128,7 +135,7 @@ export function IpcFlowPanel({
     const sel2 = perfRows(fresh).filter((r) => r.status === S.work && picked.has(r.oid));
     const e2 = sel2.length === sel.length && perfTotal(sel2) === total ? createIpc(code, fresh, sel2, today()) : null;
     if (!e2 || typeof e2 === 'string') { changed(); return; }
-    await applyAll(HO_IPC.url, HO_IPC.oid, e2, CREATE_CAP);
+    const made = await applyAll(HO_IPC.url, HO_IPC.oid, e2, CREATE_CAP);
     setPicked(new Set());
     invalidate('HO_IPC');
     /* Хоёр хэрэглэгч зэрэг үүсгэвэл нэг дугаар авч болно (сервер давхардлыг хорихгүй) — мөр устгахгүй, ил хэлнэ */
@@ -136,7 +143,20 @@ export function IpcFlowPanel({
     /* IPC аль хэдийн бичигдсэн: энэ уншилт унавал «алдаа» гэж хэлэхгүй */
     const after = await freshPays(code, pays).catch(() => null);
     if (after && dupDocNos(after).includes(no)) {
-      setErr(tr('IPC-{0} дугаартай өөр баримт зэрэг үүссэн байна. Баталгаажуулахаас өмнө админд мэдэгдэнэ үү.', no));
+      /* 2026-11-11 (аудит): ижил дугаартай хоёр баримт бие биеийн гүйцэтгэлийг чөлөөлж/түгждэг (давхар төлбөр). Хожуу үүссэн
+         (их objectid) нь ӨӨРИЙН баримтыг буцаана: баримтаа устгаж, зөвхөн өөрийн сонгосон гүйцэтгэлийг чөлөөлнө */
+      const mine = made.oids[0];
+      const others = docRows(after).filter((x) => x.no === no && x.oid !== mine).map((x) => x.oid);
+      if (mine != null && others.length && others.every((o) => o < mine)) {
+        await applyAll(HO_IPC.url, HO_IPC.oid, {
+          deletes: [mine],
+          updates: sel2.map((r) => ({ [HO_IPC.oid]: r.oid, [HO_IPC.payFields.ipcNo]: null, [S.field]: S.work })),
+        }, CREATE_CAP);
+        invalidate('HO_IPC');
+        setErr(tr('IPC-{0} дугаарыг өөр хэрэглэгч зэрэг авсан тул таны баримтыг буцаалаа. Дахин үүсгэнэ үү.', no));
+      } else {
+        setErr(tr('IPC-{0} дугаартай өөр баримт зэрэг үүссэн байна. Баталгаажуулахаас өмнө админд мэдэгдэнэ үү.', no));
+      }
     }
   });
 
@@ -165,7 +185,7 @@ export function IpcFlowPanel({
     const fresh = await freshPays(code, pays);
     const d2 = docRows(fresh).find((x) => x.oid === d.oid);
     if (!d2 || approveWhy(d2)) { changed(); return; }
-    await applyAll(HO_IPC.url, HO_IPC.oid, { updates: approveIpc(d2, fresh) }, APPROVE_CAP);
+    await applyAll(HO_IPC.url, HO_IPC.oid, { updates: approveIpc(d2, fresh, today()) }, APPROVE_CAP);
     invalidate('HO_IPC');
   });
 

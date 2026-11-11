@@ -711,6 +711,15 @@ export async function loadInfraProgress(fresh = false): Promise<Map<string, PkgP
   return pkgProgressOf(compute(rows), uni);
 }
 
+/**
+ * ТУХАЙН ӨДРИЙН БАЙДЛААРХ гүйцэтгэл (2026-11-11, хэрэглэгч: «архивт өмнөх долоо хоногийн гүйцэтгэл») — бөглөх хуудасны
+ * архиваас (ижил мөрүүд, огнооны таслалтаар): блокийн «Б.», бэлтгэлийн «А.», блокгүй багц. Шинэ хүснэгт хэрэггүй.
+ */
+export async function loadProgressAt(day: string): Promise<{ blocks: BlockProgressMap; prep: PrepMap; infra: Map<string, PkgProgress> }> {
+  const [rows, infraRows, uni] = await Promise.all([loadRows(), loadInfraRows(), loadInfraUniverse()]);
+  return { blocks: compute(rows, day), prep: computePrep(rows, day), infra: pkgProgressOf(compute(infraRows, day), uni) };
+}
+
 /** Блок бүрийн «Б.» мөрийн бүх огноо — цаг хугацааны цувааны эх. */
 export const loadBlockHistory: () => Promise<BlockHistory> = memo(
   async () => history(await loadRows()),

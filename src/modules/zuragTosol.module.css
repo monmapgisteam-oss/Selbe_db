@@ -326,3 +326,21 @@
 .inpName { width: min(320px, 100%); }
 .addForm td { background: color-mix(in oklab, var(--data) 5%, transparent); }
 .addFormIn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* ── Зургийн бүртгэл (2026-11-11, `ZuragBurtgel.tsx`) ── */
+.tbl td.zNm { white-space: normal; min-width: 260px; max-width: 460px; color: var(--ink); }
+.tbl td.zIss { white-space: normal; max-width: 340px; color: var(--ink-3); font-size: 11px; }
+.zSub { display: block; font-size: 10.5px; color: var(--ink-3); }
+.zLink {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: var(--data);
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.zLink:hover { color: var(--ink); }

@@ -193,7 +193,8 @@ const r23 = base.find((r) => r.objectid === 23);
   const tw = buildTree(effectiveRows(base, pw));
   const rw = computePlan(tw, {}, d('2026-04-01'));
   assert.ok(Math.abs(worksWeightSum(tw.byCode.get('2.1.9'), (c) => rw.values.get(c).F) - 116.666667) < 1e-4, 'нийлбэр 100% биш → анхааруулга');
-  assert.equal(worksWeightSum(tw.byCode.get('2.1'), (c) => rw.values.get(c).F), null, 'хүүхэд нь багцууд — хамаарахгүй');
+  /* 2026-11-11: зураг төслийн бүлэг бүрийн жин засагддаг болсон — хүүхэд нь багцууд ч нийлбэр шалгагдана (100%) */
+  assert.ok(Math.abs(worksWeightSum(tw.byCode.get('2.1'), (c) => rw.values.get(c).F) - 100) < 1e-6, 'хүүхэд нь багцууд — нийлбэр 100%');
   pw = setEdit(pw, a1, 'weight', '');
   assert.ok(!('weight' in (pw.edits[rowKey(a1)] ?? {})), 'хоосон жин засвар биш');
   assert.equal(parseWeight('12,5').v, 0.125);

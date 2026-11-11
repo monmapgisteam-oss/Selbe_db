@@ -236,6 +236,9 @@ export type NegtgelCalc = {
   planNextWk?: number | null;
   planPrevWk?: number | null;
   perfWk?: number | null;
+  /** 2026-11-11: өмнөх 7 хоногийн гүйцэтгэл (бөглөлтийн архиваас) ба 7 хоногийн өсөлт, 0–100 */
+  actPrevWk?: number | null;
+  gainWk?: number | null;
   /** Гэрээ/Хавсралт 5 — төлөвлөгөөт эхлэх/дуусах (ms) */
   ctStart?: number | null;
   ctEnd?: number | null;
@@ -410,10 +413,19 @@ export type NegtgelFull = {
 /**
  * «Төсөл төлөвлөгөө биелэлт» → Нэгтгэл гүйцэтгэлийн мөр (цэвэр — тестлэгдэнэ).
  */
-export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectPlan): (NegRaw & { auto: boolean; how: string })[] {
+/** Нэгтгэлийн мөр — 2026-11-11: `actPw` өмнөх 7 хоногийн гүйцэтгэл (архиваас), `gainWk` = act − actPw (0–1) */
+export type NegPlanRow = NegRaw & { auto: boolean; how: string; actPw?: number | null; gainWk?: number | null };
+
+export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectPlan): NegPlanRow[] {
   const fr = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? null : v / 100);
   const ymd = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? '' : new Date(v).toISOString().slice(0, 10));
-  const out: (NegRaw & { auto: boolean; how: string })[] = [];
+  const out: NegPlanRow[] = [];
+  /* Өмнөх 7 хоног (архиваас) ба 7 хоногийн өсөлт — `prevWeek` алга бол хоосон */
+  const weekOf = (n: import('@/lib/projectPlan').PlanNode, s: number | null | undefined): { actPw: number | null; gainWk: number | null } => {
+    const pw = plan.prevWeek?.get(n);
+    const a = fr(pw), b = fr(s);
+    return { actPw: a, gainWk: a != null && b != null ? b - a : null };
+  };
   for (const n of plan.tree.nodes) {
     const r = n.row;
     if (!r || r.objectid == null) continue;
@@ -436,6 +448,7 @@ export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectP
       actStart: ymd(v?.J), actEnd: ymd(v?.K),
       auto: live,
       how: live ? tr('Төсөл төлөвлөгөө биелэлт — системээс') : tr('Төсөл төлөвлөгөө биелэлт'),
+      ...weekOf(n, v?.S),
     });
   }
   return out;
@@ -445,7 +458,7 @@ export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectP
  * Бодсон мөрүүд → табын мөр ба тооцоо (0–100). 2026-10-15: `loadNegtgelFullRaw`-оос гаргав — засварын
  * загварыг (`TusulNegtgel`) ижил замаар зурна.
  */
-export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: string }>): { rows: NegtgelRow[]; calc: Map<number, NegtgelCalc> } {
+export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: string; actPw?: number | null; gainWk?: number | null }>): { rows: NegtgelRow[]; calc: Map<number, NegtgelCalc> } {
   const pc = (v: number | null) => (v == null ? null : v * 100);
   const rows: NegtgelRow[] = [];
   const calc = new Map<number, NegtgelCalc>();
@@ -471,6 +484,8 @@ export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: s
       planNextWk: pc(r.planNw),
       planPrevWk: pc(r.planPw),
       perfWk: pc(r.perfWk),
+      actPrevWk: pc(r.actPw ?? null),
+      gainWk: pc(r.gainWk ?? null),
       ctStart: r.ctStart ?? null,
       ctEnd: r.ctEnd ?? null,
       exStart: r.exStart ?? '',

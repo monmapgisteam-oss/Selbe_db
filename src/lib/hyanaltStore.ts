@@ -1232,7 +1232,26 @@ async function archiveSubmission(
    */
   let fillMs = pl.fillMs;
   const lastDay = loaded.snapshot != null ? msToDay(loaded.snapshot) : '';
-  if (lastDay && lastDay >= msToDay(fillMs)) fillMs = fillMsFor(serverNow(), loaded.snapshot);
+  /*
+   * 2026-11-11 (хэрэглэгч: «анх бөглөснөөр бичих нь зөв»): архивт илүү хожуу өдрийн жааз байсан ч жаазыг БӨГЛӨСӨН өдрөөр нь
+   * бичнэ — урьд нь батлах өдөр рүү шилждэг байсан тул 3-нд бөглөсөн ажил 6-ны ажил болж, сар дамжвал мөнгө буруу сард ордог байв.
+   *   · ижил өдөр (сүүлийн жааз = бөглөсөн өдөр) — өдрийн нийт ажлыг агуулсан жааз (`buildFrame`-ийн `obyemPrior` дүрэм);
+   *   · хожуу жаазтай — ЗӨВХӨН нэмэлт обьёмын илгээлт (огнооны засвар · шинэ мөргүй) БА тэр өдөр жааз байхгүй үед; бичсэний дараа
+   *     хожуу жаазнуудын хадгалсан хувийг шинэчилнэ (`frameRepair.refreshStoredProgress`). Бусад тохиолдолд хуучин дүрэм
+   *     (батлах өдөр): хуваарийн огноо, шинэ мөр «одоогийн» (хамгийн сүүлийн огнооны) жаазанд орох ёстой.
+   */
+  let backDated = false;
+  if (lastDay && lastDay >= msToDay(fillMs)) {
+    let keep = lastDay === msToDay(fillMs);
+    if (!keep && incPl && !ov.dateKeys.length && ov.rows.length === loaded.rows.length && sc.f.fillDate) {
+      try {
+        const j = await agsFetch(`${pkg.url}/query`, { where: dayFilter(sc.f.fillDate, msToDay(fillMs)), returnCountOnly: String(true) });
+        keep = Number(j?.count) === 0;
+        backDated = keep;
+      } catch { keep = false; }
+    }
+    if (!keep) fillMs = fillMsFor(serverNow(), loaded.snapshot);
+  }
 
   /* ── САРЫН ЗАДАРГАА — дэлгэцтэй ИЖИЛ томъёо ────────────────────────
    */
@@ -1422,6 +1441,16 @@ async function archiveSubmission(
   } catch (e) {
     const w = tr('Бичсэний дараах зэрэгцээ бичилтийн шалгалт унав ({0}) — архив бичигдсэн.', String((e as Error)?.message ?? e));
     postWarn = postWarn ? `${postWarn} · ${w}` : w;
+  }
+  /* Бөглөсөн өдрөөр (хожуу жаазны өмнө) бичсэн бол хожуу жаазнуудын хадгалсан гүйцэтгэлийн хувийг шинэчилнэ — унавал анхааруулга */
+  if (backDated) {
+    try {
+      const { refreshStoredProgress } = await import('./frameRepair');
+      await refreshStoredProgress(pkg, sc, msToDay(fillMs));
+    } catch (e) {
+      const w = tr('Хожуу өдрийн бөглөлтүүдийн хадгалсан хувь шинэчлэгдсэнгүй ({0}) — админд мэдэгдэнэ үү.', String((e as Error)?.message ?? e));
+      postWarn = postWarn ? `${postWarn} · ${w}` : w;
+    }
   }
   archivedSet(seenKey, { oid: firstOid ?? 0, day: msToDay(fillMs) });
   const fin = await closeAfterArchive(subOid, staged, plAll, firstOid ?? 0, pkg.name, { row: cur.__oid, day: msToDay(fillMs) });

@@ -85,6 +85,17 @@ export const BUILDING = {
  * 2,005.71 · хэмнэлт 84.49 · олгосон НИЙТ 530.87 (урьдчилгаа 314.01 +
  * гүйцэтгэл 216.86) = гэрээнд эзлэх 26.5%.
  */
+/**
+ * ЗУРАГ ТӨСЛИЙН БҮРТГЭЛ (2026-11-11, хэрэглэгч) — Excel «ЗУРАГ ТӨСӨЛ-LOG»-ийн «Ажлын зураг төсөл» ба «ТӨСӨВ» хуудсууд нэг
+ * хүснэгтэд (`buleg`: 001…004 зураг, 005 төсөв). Мөр бүрийн PDF — Enterprise item (`pdf_item_id`), `docFolder` фолдерт.
+ */
+export const ZURAG_BURTGEL = {
+  url: `${GUITS}/234`,
+  oid: "objectid",
+  docFolder: "zurag pdf",
+  tag: "selbe-zurag",
+} as const;
+
 export const HO_IPC = {
   url: `${GUITS}/185`,
   oid: "objectid",

@@ -86,7 +86,7 @@ function toneOf(
 
 type ColKey = 'code' | 'bagts' | 'name' | 'budget' | 'inSection' | 'inProject'
   | 'ctStart' | 'ctEnd' | 'exStart' | 'exEnd' | 'actStart' | 'actEnd'
-  | 'planG' | 'planGch' | 'planGu' | 'planNw' | 'planPw' | 'act' | 'perfG' | 'perfGch' | 'perfGu' | 'perfWk';
+  | 'planG' | 'planGch' | 'planGu' | 'planNw' | 'planPw' | 'act' | 'actPw' | 'gainWk' | 'perfG' | 'perfGch' | 'perfGu' | 'perfWk';
 
 /**
  * ТОЛГОЙН БҮЛЭГ — Excel-ийн 4-р мөрөнд ХЭВТЭЭ нэгтгэсэн нүд (H4:I4 · J4:K4 · L4:M4), 5-р мөрөнд дэд толгой.
@@ -121,6 +121,9 @@ const COLS: { key: ColKey; label: () => string; w: number; grp?: GrpKey }[] = [
   { key: 'planNw', label: () => tr('Төлөвлөгөөт хувь Next week'), w: 150 },
   { key: 'planPw', label: () => tr('Төлөвлөгөөт хувь Өмнө долоо хоног'), w: 170 },
   { key: 'act', label: () => tr('Гүйцэтгэлийн хувь'), w: 150 },
+  /* 2026-11-11: бөглөлтийн архиваас — өнөөдрөөс 7 хоногийн өмнөх гүйцэтгэл ба тэр хугацааны өсөлт */
+  { key: 'actPw', label: () => tr('Гүйцэтгэлийн хувь Өмнөх 7 хоног'), w: 160 },
+  { key: 'gainWk', label: () => tr('7 хоногийн өсөлт'), w: 130 },
   { key: 'perfG', label: () => tr('Төлөвлөгөө биелэлт Гэрээ'), w: 170 },
   { key: 'perfGch', label: () => tr('Төлөвлөгөө биелэлт Гэрээ-Газар чөлөөлөлт хуулийн маргаан хассан'), w: 220 },
   { key: 'perfGu', label: () => tr('Төлөвлөгөө биелэлт- Гүйцэтгэгч'), w: 170 },
@@ -713,15 +716,19 @@ export function Tree({ rows, calc, edit, toolbar }: {
       const c = calc.get(r.oid);
       return c ? [{
         p: fr(c.inProject), planG: fr(c.planPct), planGch: fr(c.planGch), planGu: fr(c.planGuits),
-        planNw: fr(c.planNextWk), planPw: fr(c.planPrevWk), act: fr(c.actPct),
+        planNw: fr(c.planNextWk), planPw: fr(c.planPrevWk), act: fr(c.actPct), actPw: fr(c.actPrevWk),
       }] : [];
     });
     const T = negTotals(top);
+    /* Өмнөх 7 хоногийн нийт — гүйцэтгэлтэй ижил жигнэлтээр */
+    const Tp = negTotals(top.map((x) => ({ ...x, act: x.actPw })));
     const pc = (v: number | null) => (v == null ? null : v * 100);
     return {
       p: T.p == null ? null : T.p * 100,
       planG: pc(T.planG), planGch: pc(T.planGch), planGu: pc(T.planGu), planNw: pc(T.planNw), planPw: pc(T.planPw),
       act: pc(T.act),
+      actPw: pc(Tp.act),
+      gainWk: T.act != null && Tp.act != null ? pc(T.act - Tp.act) : null,
       perfG: pc(T.perfG),
       perfGch: pc(T.perfGch),
       perfGu: pc(T.perfGu),
@@ -752,6 +759,8 @@ export function Tree({ rows, calc, edit, toolbar }: {
     planNw: p(head.planNw, 2),
     planPw: p(head.planPw, 2),
     act: p(head.act, 2),
+    actPw: p(head.actPw, 2),
+    gainWk: p(head.gainWk, 2),
     perfG: p(head.perfG, 2),
     perfGch: p(head.perfGch, 2),
     perfGu: p(head.perfGu, 2),
@@ -972,6 +981,8 @@ export function Tree({ rows, calc, edit, toolbar }: {
                   case 'planNw': return p(c?.planNextWk, dp);
                   case 'planPw': return p(c?.planPrevWk, dp);
                   case 'act': return p(c?.actPct, 2);
+                  case 'actPw': return p(c?.actPrevWk, 2);
+                  case 'gainWk': return p(c?.gainWk, 2);
                   case 'perfG': return p(c?.perf, dp);
                   case 'perfGch': return p(c?.perfGch, dp);
                   case 'perfGu': return p(c?.perfGuits, dp);

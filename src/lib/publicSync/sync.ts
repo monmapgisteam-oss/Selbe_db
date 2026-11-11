@@ -9,7 +9,7 @@
  *   · `applyAll` dataBus-ийг хөндөхгүй тул өөрийн бичилт дахин синк дуудахгүй (гогцоогүй).
  */
 import { useEffect } from 'react';
-import { subscribeData } from '@/lib/dataBus';
+import { subscribeData, dropCaches } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
 import { applyAll } from '@/lib/tableWrite';
 import { canAutoSync } from '@/lib/caps';
@@ -135,7 +135,8 @@ export async function computePublicTables(): Promise<{ tables: Partial<PublicTab
     const p = plan.value;
     if (p.failed.length) failed.push(`plan: ${p.failed.join(', ')}`);
     if (ho.status === 'fulfilled') tables.sanhuu = sanhuuRows(p); else fail('sanhuu', ho.reason);
-    tables.niigem = niigemRows(p);
+    /* 2026-11-11 (аудит): дутуу уншигдсан төлөвлөгөөгөөр нийгмийн дэд бүтцийг 0% гэж бичихгүй (`guitsetgel`-тэй нэг дүрэм) */
+    if (!p.failed.length) tables.niigem = niigemRows(p);
     /* Явц — барилга, гүйцэтгэгч, бүлгийн аль нэг унавал хагас өгөгдлөөр бичихгүй, хүснэгт хэвээр үлдэнэ */
     if (bld.status !== 'fulfilled') fail('buildings', bld.reason);
     if (ho.status !== 'fulfilled') fail('contractors', ho.reason);
@@ -160,7 +161,8 @@ const same = (a: unknown, b: unknown): boolean => {
   if (b == null || b === '') return false;
   if (typeof a === 'number' || typeof b === 'number') {
     const x = Number(a), y = Number(b);
-    return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x - y) <= 1e-6 * Math.max(1, Math.abs(x), Math.abs(y));
+    /* 2026-11-11 (аудит): том дүнд харьцангуй хүлцэл 2.5 сая ₮ хүрч жижиг өөрчлөлт бичигддэггүй байв — 0.5 ₮-өөс ихгүй */
+    return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x - y) <= Math.min(0.5, 1e-6 * Math.max(1, Math.abs(x), Math.abs(y)));
   }
   return String(a).trim() === String(b).trim();
 };
@@ -243,6 +245,8 @@ export function runPublicSync(): Promise<PublicSyncResult> {
     if (disabled) { res.failed.push(`disabled: ${disabled}`); return res; }
     if (!canAutoSync(currentUser())) { res.failed.push('no-cap'); last = res; return res; }
     try {
+      /* 2026-11-11 (аудит): энэ хөтчийн хуучин кэшээр өөр хэрэглэгчийн шинэ тоог дарж бичихгүй — шинээр уншина */
+      dropCaches();
       const { tables, failed } = await computePublicTables();
       res.failed.push(...failed);
       for (const t of Object.keys(TABLE_ID) as (keyof PublicTables)[]) {

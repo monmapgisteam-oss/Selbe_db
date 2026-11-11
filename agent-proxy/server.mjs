@@ -98,16 +98,18 @@ function verifiedUser(key) {
 }
 /** SQL мөрийн литерал — `'` → `''` */
 const sqlStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
+const AGENT_CAP_REQUIRED = process.env.AGENT_CAP_REQUIRED === "1";
 async function hasPortalRow(token, username) {
   const name = String(username ?? "").trim();
   const lo = name.toLowerCase();
-  const where = lo === name ? `username = ${sqlStr(lo)}` : `username = ${sqlStr(lo)} OR username = ${sqlStr(name)}`;
+  const capKey = `__cap__:${lo}`;
+  const where = `${lo === name ? `username = ${sqlStr(lo)}` : `username = ${sqlStr(lo)} OR username = ${sqlStr(name)}`}${AGENT_CAP_REQUIRED ? ` OR username = ${sqlStr(capKey)}` : ""}`;
   let data;
   try {
     const r = await fetch(`${ARCGIS_PERMS_URL}/query`, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ f: "json", where, outFields: "username,role,views", returnGeometry: "false", resultRecordCount: "5", token }).toString(),
+      body: new URLSearchParams({ f: "json", where, outFields: "username,role,views", returnGeometry: "false", resultRecordCount: "10", token }).toString(),
     });
     data = await r.json();
   } catch {
@@ -116,8 +118,17 @@ async function hasPortalRow(token, username) {
   if (!data || data.error || !Array.isArray(data.features)) {
     return { ok: false, reason: "Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу", status: 503 };
   }
-  const live = data.features.some((f) => f?.attributes && String(f.attributes.views ?? "") !== "removed");
-  return live ? { ok: true } : { ok: false, reason: "Порталд бүртгэлгүй аккаунт — админаас эрх авна уу", status: 403 };
+  const own = data.features.filter((f) => f?.attributes && String(f.attributes.username ?? "").toLowerCase() !== capKey);
+  const live = own.some((f) => String(f.attributes.views ?? "") !== "removed");
+  if (!live) return { ok: false, reason: "Порталд бүртгэлгүй аккаунт — админаас эрх авна уу", status: 403 };
+  /* 2026-11-11: туслах зөвхөн «AI туслах ашиглах» (`aiAgent`) эрхтэй аккаунтад — `AGENT_CAP_REQUIRED=1` үед. Системийн админ үргэлж */
+  if (AGENT_CAP_REQUIRED && !own.some((f) => f.attributes.role === "super")) {
+    const cap = data.features.find((f) => String(f?.attributes?.username ?? "").toLowerCase() === capKey);
+    let caps = [];
+    try { caps = JSON.parse(cap?.attributes?.views || "[]"); } catch { caps = []; }
+    if (!Array.isArray(caps) || !caps.includes("aiAgent")) return { ok: false, reason: "Танд AI туслах ашиглах эрх алга — админаас эрх авна уу", status: 403 };
+  }
+  return { ok: true };
 }
 async function checkArcGIS(token) {
   if (!token) return { ok: false, reason: "Нэвтрэлтийн мэдээлэл алга" };

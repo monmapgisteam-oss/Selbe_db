@@ -36,8 +36,9 @@ import {
 } from '@/lib/deps';
 import {
   loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf,
-  obyemResFields, type MonthRes, type PkgPlan, type PkgRes,
+  obyemResFields, loadPkgWeek, saveWeek, nextWeekStart, type MonthRes, type PkgPlan, type PkgRes, type PkgWeek,
 } from '@/lib/huvaariObyem';
+import { ubToday } from '@/lib/projectPlan';
 import {
   approveGuard, claimHolderOf, claimPlan, decidePlan, isApprovedBy, loadHistory, loadPayload, loadPending, loadPendingBoth, loadSubmissionHead, partialBy, planTableState, PLAN_STATUS, REASON_MAX,
   clearPlanPartial, markPlanApprovedSeen, markPlanPartial, releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
@@ -567,6 +568,8 @@ export function Huvaari({
    * Задаргааны АЧААЛЛЫН ТӨЛӨВ (2026-09-24) — хуваалцсан ноорогийн суурьт.
    */
   const [obState, setObState] = useState<'loading' | 'ok' | 'fail'>('loading');
+  /** Ирэх 7 хоногийн обьём (2026-11-11) — ажлын цонхонд шууд хадгалагдана */
+  const [wkPlan, setWkPlan] = useState<PkgWeek>(new Map());
   const obLoadedRef = useRef(false);
   const retryOb = () => {
     const key = pkg.key;
@@ -775,6 +778,8 @@ export function Huvaari({
     loadPkgPlan(pkg.key)
       .then((r) => { if (alive) { setObPlan(r.plan); setObRes(r.res); setObOids(r.oids); setObDups(r.dups); setObState('ok'); obLoadedRef.current = true; } })
       .catch(() => { if (alive) setObState('fail'); /* задаргаагүйгээр үргэлжилнэ */ });
+    setWkPlan(new Map());
+    loadPkgWeek(pkg.key).then((w) => { if (alive) setWkPlan(w); }).catch(() => { /* долоо хоногийн обьёмгүйгээр үргэлжилнэ */ });
     setKomissNote('');
     hdRemapRef.current = null;
     loadSchema(pkg, { synthetic: true })
@@ -5416,6 +5421,19 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           badBlks={modalBad}
           geree={kind === 'plan' ? refSpanOf(modalRow.oid, blk) : null}
           res={obResOf(modalRow.des, sc.bld[blk] ?? "")}
+          week={kind === 'plan' && !modalRow.group && modalRow.des != null && modalRow.vol != null && modalRow.vol > 0 && !savedView ? (() => {
+            const des = modalRow.des;
+            const blok = sc.bld[blk] ?? '';
+            const start = nextWeekStart(ubToday());
+            const ent = (wkPlan.get(des)?.get(blok) ?? []).find((x) => x.week === start) ?? null;
+            return {
+              start, value: ent?.obyem ?? null, vol: modalRow.vol, canEdit: canEdit && !locked && !busy,
+              save: async (v: number | null) => {
+                await saveWeek({ bagts: pkg.key, bagtsNer: pkg.label, des, ajilNo: modalRow.no, ajilNer: modalRow.work, negj: '', niit: modalRow.vol }, blok, start, v);
+                setWkPlan(await loadPkgWeek(pkg.key));
+              },
+            };
+          })() : null}
           resFields={obResFields}
           xLock={modalRow.group ? undefined : xLockWhy(modalRow.oid, modalRow.des)}
           onClose={undoDragOnClose}

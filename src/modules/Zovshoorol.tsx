@@ -11,6 +11,7 @@ import {
   pendingAgeDays, summarize, type Zov, type ZovDraft, type ZovFilter,
 } from '@/lib/zovshoorol';
 import { hasCap, subscribeCaps } from '@/lib/caps';
+import { ZovPdf } from './ZovPdf';
 import { date } from '@/lib/format';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { useAuth } from '@/components/AuthGate';
@@ -131,6 +132,7 @@ function Detail({ z, canEdit, onEdit, onClose }: {
               <dd>{v}</dd>
             </div>
           ))}
+          <ZovPdf z={z} canEdit={canEdit} />
         </dl>
         {canEdit && (
           <div className={s.actions}>

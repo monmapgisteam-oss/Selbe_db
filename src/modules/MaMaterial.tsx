@@ -17,7 +17,7 @@ import { useAuth } from '@/components/AuthGate';
 import { friendlyError, userError, Loading } from '@/components/ui';
 import { subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { setNavDirty } from '@/lib/navGuard';
-import { loadNoots, nootsSummary, setMaterialNorm, TOLOV, type SyncResult } from '@/lib/materialNoots';
+import { loadNoots, nootsSummary, setMaterialNorm, inPkgStock, matKey, TOLOV, type SyncResult } from '@/lib/materialNoots';
 import { canEditMats, entryName, matsOf, parseEntry, saveWorkMats, setEntryNorm } from '@/lib/materialAjil';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
@@ -33,7 +33,7 @@ const normIn = (t: string): number | null | undefined => {
 };
 
 /** Материалын үндсэн норм засах нүд — Enter/«Хадгалах»-аар бичнэ, дараа нь зарцуулалт дахин бодогдоно (`onSaved`) */
-function NormCell({ name, norm, onSaved }: { name: string; norm: number | null; onSaved: (() => void) | null }) {
+function NormCell({ name, bagts, norm, onSaved }: { name: string; bagts: string; norm: number | null; onSaved: (() => void) | null }) {
   const [v, setV] = useState(norm == null ? '' : String(norm));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -43,7 +43,7 @@ function NormCell({ name, norm, onSaved }: { name: string; norm: number | null; 
   const save = async () => {
     if (n === undefined || !changed) return;
     setBusy(true); setErr('');
-    try { await setMaterialNorm(name, n); onSaved(); } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
+    try { await setMaterialNorm(name, n, bagts); onSaved(); } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
   };
   return (
     <td className={s.num}>
@@ -102,7 +102,7 @@ export function NootsTab({ tick, sync, onSync }: { tick: number; sync: NootsSync
             <table className={s.table}>
               <thead>
                 <tr>
-                  <th>{tr('Материал')}</th><th>{tr('Нэгж')}</th>
+                  <th>{tr('Багц')}</th><th>{tr('Материал')}</th><th>{tr('Нэгж')}</th>
                   <th title={tr('Ажлын 1 нэгжид орох материалын хэмжээ — материал сонгоход ажилд автоматаар дагаж орно')}>{tr('Норм')}</th>
                   <th>{tr('Ирсэн')}</th><th>{tr('Ашигласан')}</th>
                   <th>{tr('Үлдэгдэл')}</th><th>{tr('Төлөв')}</th><th>{tr('Ачаа')}</th>
@@ -110,15 +110,16 @@ export function NootsTab({ tick, sync, onSync }: { tick: number; sync: NootsSync
               </thead>
               <tbody>
                 {sums.length === 0 ? (
-                  <tr className={s.emptyRow}><td colSpan={8}>{tr('Нөөцөд материал алга — MA ба MIR батлагдсаны дараа орно.')}</td></tr>
+                  <tr className={s.emptyRow}><td colSpan={9}>{tr('Нөөцөд материал алга — MA ба MIR батлагдсаны дараа орно.')}</td></tr>
                 ) : sums.map((m) => (
-                  <tr key={m.name} className={s.row}>
+                  <tr key={matKey(m.bagts, m.name)} className={s.row}>
+                    <td>{m.bagts || '—'}</td>
                     <td>{m.name}</td>
                     <td className={m.unitConflict ? s.expired : ''} title={m.unitConflict ? tr('Нэгж зөрүүтэй эсвэл дутуу — нийлбэр, төлөв тооцоогүй') : undefined}>
                       {m.units.join(', ') || '—'}
                       {m.unitConflict && <div>{tr('Нэгж зөрүүтэй')}</div>}
                     </td>
-                    <NormCell key={`${m.name}|${m.norm ?? ''}`} name={m.name} norm={m.norm} onSaved={onSync} />
+                    <NormCell key={`${matKey(m.bagts, m.name)}|${m.norm ?? ''}`} name={m.name} bagts={m.bagts} norm={m.norm} onSaved={onSync} />
                     <PartialQty sum={m.inSum} unknown={m.inUnknown} />
                     <PartialQty sum={m.usedSum} unknown={m.usedUnknown} />
                     <td className={s.num} title={m.rest == null && (m.inUnknown || m.usedUnknown) ? tr('Үлдэгдэл тодорхойгүй — тоо хэмжээгүй ачаа байна') : undefined}>{qty(m.rest)}</td>
@@ -146,10 +147,11 @@ export function AjilMatTab({ tick }: { tick: number }) {
     return { sc, rows: rows.filter((r) => !r.group && r.des != null) };
   }, [pkg, rev]);
   const nq = useAsync(loadNoots, [tick]);
-  const sums = useMemo(() => (nq.state === 'ready' ? nootsSummary(nq.data) : []), [nq]);
-  const names = useMemo(() => sums.map((m) => m.name), [sums]);
+  /* 2026-11-11: зөвхөн ЭНЭ багцын (ба багцгүй) нөөцийн материал сонгогдоно — өөр багцын MA-гаар баталсан материал биш */
+  const sums = useMemo(() => (nq.state === 'ready' ? nootsSummary(nq.data).filter((m) => inPkgStock(m.bagts, pkg.group)) : []), [nq, pkg.group]);
+  const names = useMemo(() => [...new Set(sums.map((m) => m.name))], [sums]);
   /** Материалын үндсэн норм (нөөцөөс) — ажилд сонгоход дагаж орно */
-  const defNorm = useMemo(() => new Map(sums.map((m) => [m.name, m.norm] as const)), [sums]);
+  const defNorm = useMemo(() => new Map([...sums].sort((a, b) => Number(!!a.bagts) - Number(!!b.bagts)).map((m) => [m.name, m.norm] as const)), [sums]);
   const [aclN, setAclN] = useState(0);
   useEffect(() => subscribeHuvaariAcl(() => setAclN((x) => x + 1)), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `aclN` нь хуваарилалт өөрчлөгдсөн дохио
@@ -287,7 +289,7 @@ export function AjilMatTab({ tick }: { tick: number }) {
       </div>
       {!canEdit && <p className={s.note}>{tr('Зөвхөн харна — материал тохируулахад тухайн багцын Хуваарийн зохиогчийн эрх шаардлагатай.')}</p>}
       {canEdit && nq.state === 'ready' && names.length === 0 && (
-        <p className={s.note}>{tr('Нөөцөд материал алга — MA ба MIR батлагдсан материал л сонгогдоно.')}</p>
+        <p className={s.note}>{tr('Энэ багцын нөөцөд материал алга — тухайн багцын MA ба MIR батлагдсан материал л сонгогдоно.')}</p>
       )}
       {nq.state === 'error' && <p className={s.errNote} role="alert">{tr('Материалын нөөц ачаалагдсангүй: {0}', friendlyError(nq.error))}</p>}
       {msg && <p className={msg.kind === 'err' ? s.errNote : s.note} role={msg.kind === 'err' ? 'alert' : undefined}>{msg.text}</p>}

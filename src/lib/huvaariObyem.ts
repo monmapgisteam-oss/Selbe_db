@@ -853,3 +853,137 @@ export const cfIdOfPctKey = (key: string): number | null => {
   const m = /^CF:(\d+)$/.exec(key.trim());
   return m ? Number(m[1]) : null;
 };
+
+/* ══════════════════ ДОЛОО ХОНОГИЙН ОБЬЁМ (2026-11-11) ══════════════════
+ * Хэрэглэгч: «Төлөвлөгөөт хувь next week-ийг сарын төлөвлөгөөнөөс тулгуурлан, хэд хэмжээний ажил хийгдэхийг оруулдаг байх».
+ * Ажил × блок бүрд «ирэх 7 хоногт хийх обьём» — 186-д `turul = 'doloo_hon'`, `sar` = долоо хоногийн Даваа гараг.
+ * Тооцоо (`weekPct`, 2026-11-11 аудитын дараа): зөвхөн ӨНӨӨДРӨӨС ХОЙШХИ 7 ХОНОГИЙН асуултад (ТТБ-ийн «Ирэх долоо хоног»)
+ * нөлөөлнө — өнөөдрийн суурь төлөвлөгөө (сарын обьём › огноо) + оруулсан обьём ÷ нийт обьём (бүтнээр). Өнөөдөр ба өнгөрсөн
+ * өдрийн төлөвлөгөөт хувийг ХӨНДӨХГҮЙ: долоо хоног солигдоход хувь буурахгүй, өнгөрсөн оруулга үлдэгдэл нөлөөгүй. */
+
+export const TURUL_WEEK = 'doloo_hon';
+
+/** Долоо хоногийн эхлэл — Даваа гараг, UTC шөнө дунд */
+export const weekStart = (ms: number): number => {
+  const d = new Date(ms);
+  const back = (d.getUTCDay() + 6) % 7;
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - back);
+};
+/** Ирэх долоо хоногийн Даваа гараг (өнөөдрөөс хойш) */
+export const nextWeekStart = (today: number): number => weekStart(today) + 7 * DAY;
+const ymd = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+
+export const weekDkeyOf = (bagts: string, des: number, blok: string, week: number): string =>
+  `${bagts}|${TURUL_WEEK}|${des}|${blok}|${ymd(week)}`;
+
+/** Нэг долоо хоногийн оруулга */
+export type WeekPlan = { week: number; obyem: number; oid: number | null };
+/** Багц → ажлын код → блок → оруулгууд (долоо хоногоор өсөх) */
+export type PkgWeek = Map<number, Map<string, WeekPlan[]>>;
+
+export function toPkgWeek(feats: readonly { attributes: Record<string, unknown> }[]): PkgWeek {
+  const out: PkgWeek = new Map();
+  for (const f of feats) {
+    const a = f.attributes;
+    const des = Number(a.des_dugaar);
+    const blok = String(a.blok ?? '').trim();
+    const v = Number(a.obyem);
+    const w = /^\d{4}-\d{2}-\d{2}$/.test(String(a.sar ?? '')) ? Date.parse(`${a.sar}T00:00:00Z`) : typeof a.sar === 'number' ? weekStart(a.sar) : NaN;
+    if (!Number.isInteger(des) || !blok || !Number.isFinite(v) || !Number.isFinite(w)) continue;
+    const byB = out.get(des) ?? out.set(des, new Map()).get(des)!;
+    const list = byB.get(blok) ?? byB.set(blok, []).get(blok)!;
+    list.push({ week: w, obyem: v, oid: a.objectid == null ? null : Number(a.objectid) });
+  }
+  for (const byB of out.values()) for (const list of byB.values()) list.sort((x, y) => x.week - y.week);
+  return out;
+}
+
+/**
+ * Ирэх 7 хоногийн оруулгатай ажлын төлөвлөгөөт хувь (0–1). `asOf` нь (өнөөдөр, өнөөдөр + 7 хоног] мужид биш, эсвэл
+ * оруулга алга бол `undefined` — дуудагч суурь төлөвлөгөөгөө хэрэглэнэ. Оруулга: ирэх долоо хоногийнх, байхгүй бол энэ
+ * долоо хоногийнх (өнгөрсөн долоо хоногт «ирэх» гэж оруулсан).
+ * @param base суурь төлөвлөгөө (сарын обьём › огноо) 0–1, `null` = мэдэгдэхгүй (0 гэж үзнэ)
+ */
+export function weekPct(
+  entries: readonly WeekPlan[] | undefined, vol: number | null, asOf: number, base: (t: number) => number | null, today: number,
+): number | undefined {
+  if (!entries?.length || !(vol != null && vol > 0)) return undefined;
+  if (!(asOf > today && asOf <= today + 7 * DAY)) return undefined;
+  const pick = (w: number) => { let hit: WeekPlan | undefined; for (const e of entries) if (e.week === w) hit = e; return hit; };
+  const hit = pick(nextWeekStart(today)) ?? pick(weekStart(today));
+  if (!hit) return undefined;
+  const v = (base(today) ?? 0) + Math.max(0, hit.obyem) / vol;
+  return Math.min(1, Math.max(base(asOf) ?? 0, v));
+}
+
+/** Багцын долоо хоногийн бүх оруулга */
+export async function loadPkgWeek(bagts: string): Promise<PkgWeek> {
+  const feats: { attributes: Record<string, unknown> }[] = [];
+  for (let off = 0; ; ) {
+    const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
+      where: `bagts = '${bagts.replace(/'/g, "''")}' AND turul = '${TURUL_WEEK}'`,
+      outFields: 'objectid,des_dugaar,blok,sar,obyem',
+      orderByFields: 'objectid ASC',
+      resultOffset: String(off),
+      resultRecordCount: '2000',
+      returnGeometry: 'false',
+    });
+    const f = (j.features ?? []) as { attributes: Record<string, unknown> }[];
+    feats.push(...f);
+    if (!f.length || (!j.exceededTransferLimit && f.length < 2000)) break;
+    off += f.length;
+  }
+  return toPkgWeek(feats);
+}
+
+/** Долоо хоногийн мөрийн тоо — 0 бол багц бүрээр асуухгүй (`countPlanRows`-тэй ижил загвар) */
+export async function countWeekRows(): Promise<number | null> {
+  try {
+    const j = await agsFetch(`${HUVAARI_OBYEM}/query`, { where: `turul = '${TURUL_WEEK}'`, returnCountOnly: 'true' }) as { count?: unknown };
+    const c = Number(j.count);
+    return Number.isFinite(c) ? c : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Нэг ажил × блок × долоо хоногийн оруулгыг хадгална (`obyem` null = устгана) — цэвэр ачаа (`weekEdits`) ба бичилт */
+export function weekEdits(meta: WorkMeta, blok: string, week: number, obyem: number | null, oid: number | null): PlanEdits {
+  const out: PlanEdits = { adds: [], updates: [], deletes: [] };
+  if (obyem == null) { if (oid != null) out.deletes.push(oid); return out; }
+  const attributes = {
+    dkey: weekDkeyOf(meta.bagts, meta.des, blok, week),
+    turul: TURUL_WEEK,
+    bagts: meta.bagts,
+    bagts_ner: meta.bagtsNer,
+    des_dugaar: meta.des,
+    ajil_no: meta.ajilNo,
+    ajil_ner: meta.ajilNer,
+    blok,
+    sar: ymd(week),
+    sar_txt: ymd(week),
+    obyem,
+    negj: meta.negj,
+    niit_obyem: meta.niit,
+  };
+  if (oid == null) out.adds.push({ attributes });
+  else out.updates.push({ attributes: { objectid: oid, ...attributes } });
+  return out;
+}
+
+/**
+ * Хадгална — бичихийн өмнө тэр түлхүүрийн мөрүүдийг ШИНЭЭР уншина (2026-11-11 аудит): дэлгэцийн хуучин төлөвөөр давхар мөр
+ * нэмэгддэг байв. Эхний (бага objectid) мөрийг шинэчилж, илүү мөрийг устгана. Обьём нийт обьёмоос их байж болохгүй.
+ */
+export async function saveWeek(meta: WorkMeta, blok: string, week: number, obyem: number | null): Promise<void> {
+  if (obyem != null && (!Number.isFinite(obyem) || obyem < 0)) throw new Error(tr('Обьём 0 буюу түүнээс их тоо байх ёстой.'));
+  if (obyem != null && meta.niit != null && meta.niit > 0 && obyem > meta.niit) throw new Error(tr('Обьём ажлын нийт обьёмоос ({0}) их байж болохгүй.', meta.niit));
+  const dkey = weekDkeyOf(meta.bagts, meta.des, blok, week);
+  const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
+    where: `dkey = '${dkey.replace(/'/g, "''")}' AND turul = '${TURUL_WEEK}'`, outFields: 'objectid', orderByFields: 'objectid ASC', returnGeometry: 'false',
+  });
+  const oids = ((j.features ?? []) as { attributes: Record<string, unknown> }[]).map((f) => Number(f.attributes.objectid)).filter(Number.isFinite);
+  const e = weekEdits(meta, blok, week, obyem, oids[0] ?? null);
+  e.deletes.push(...oids.slice(1));
+  if (e.adds.length || e.updates.length || e.deletes.length) await applyPlanEdits(e);
+}

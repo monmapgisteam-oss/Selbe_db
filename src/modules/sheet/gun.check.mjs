@@ -194,7 +194,8 @@ if (liveSkip) {
     }
     const kr = findKomissRow(r.rows);
     for (let i = 0; i < cur.length; i += 1) {
-      if (map[i] >= 0 && r.rows[map[i]] !== kr) {
+      /* 2026-11-11: зураглалаас ЦААШХИ мөр (хуудсанд хожим нэмэгдсэн хэсэг — «Багц 7.1»-ийн Б19) зураглалд байхгүй, гүн нь `gun`-аас */
+      if (map[i] >= 0 && map[i] < t.length && r.rows[map[i]] !== kr) {
         assert.equal(d[i], r.rows[map[i]].depth, `${pkg.key} i=${i}: хуучин мөрийн гүн гулсав`);
       }
     }

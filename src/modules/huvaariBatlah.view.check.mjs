@@ -126,6 +126,7 @@ console.log('✅ буцаасны дараа — бүтэн дахин унши�
       `caps.ts: CAP_HOST_VIEW.${key} нь массив биш — хоёрдмол хэлбэр capViewsOf-ыг эвдэнэ`);
     if (key === 'sysClose') { assert.deepEqual(CAP_HOST_VIEW[key], [], 'sysClose: харагдацгүй байх ёстой'); continue; }
     if (key === 'docsUpload' || key === 'docsGroups') { assert.deepEqual(CAP_HOST_VIEW[key], [], 'docsUpload: харагдацгүй байх ёстой'); continue; }
+    if (key === 'aiAgent') { assert.deepEqual(CAP_HOST_VIEW[key], [], 'aiAgent: харагдацгүй (туслахын товч)'); continue; }
     assert.ok(CAP_HOST_VIEW[key].length > 0,
       `caps.ts: CAP_HOST_VIEW.${key} хоосон — эрх нь харагдацгүй, чимээгүй утгагүй`);
   }

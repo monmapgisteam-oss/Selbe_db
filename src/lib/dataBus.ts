@@ -31,7 +31,8 @@ export type DataKey =
   | 'AJIL_BATLAH'     // Selbe_Ajil_Batlah_csv — ajilBatlah.ts
   | 'HUVAARI_OBYEM'
   | 'TUSUL_NEGTGEL'
-  | 'MATERIAL_NOOTS';
+  | 'MATERIAL_NOOTS'
+  | 'ZURAG_BURTGEL';  // Zurag_tosol_burtgel — zuragBurtgel.ts (2026-11-11)
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */
 type Slot = { drop: () => void; reads: readonly DataKey[] };
@@ -117,6 +118,16 @@ export function refreshEpoch(): number {
  * БҮХ кэшийг хаяна — нэвтрэлт/хэл солигдох, мөн (2026-10-05) хэрэглэгчийн «Шинэчлэх»
  * товч ба таб удаан нуугдаад буцаж ирэх үед (`Portal`).
  */
+/**
+ * КЭШИЙГ ЧИМЭЭГҮЙ ХАЯХ (2026-11-11, аудит) — бүртгэлтэй бүх кэшийг хаяна, харин захиалагчдад МЭДЭГДЭХГҮЙ (дэлгэц дахин
+ * зурагдахгүй, синк өөрийгөө дахин өдөөхгүй). Нийтийн вэб рүү бичихийн өмнө: өөр хэрэглэгчийн шинэ өгөгдлийг энэ хөтчийн
+ * хуучин кэшээр дарж бичихгүйн тулд.
+ */
+export function dropCaches(): void {
+  writes += 1;
+  for (const s of SLOTS) s.drop();
+}
+
 export function invalidateAll(): void {
   writes += 1;
   for (const s of SLOTS) s.drop();

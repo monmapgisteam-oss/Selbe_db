@@ -23,13 +23,13 @@ import {
   bagtsKey, buildingKey, pkgKeyOf, isConstructionNo, isPrepNo,
 } from './services';
 import {
-  loadBlockProgress, loadBlockUniverse, loadInfraProgress, loadPrepProgress,
+  loadBlockProgress, loadBlockUniverse, loadInfraProgress, loadPrepProgress, loadProgressAt,
   type BlockProgressMap, type BlockUniverse, type PkgProgress, type PrepMap,
 } from './blockProgress';
 import { PKGS, SYNTHETIC_BLOCK, loadSchema } from '@/modules/sheet/bagts.pkg';
-import { loadRows, planCurve, type SheetRow } from '@/modules/sheet/bagtsSheet';
+import { loadRows, planAt, planCurve, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { planFields } from './planProgress';
-import { countPlanRows, loadPkgPlan, planPctFromMonths, type PkgPlan } from './huvaariObyem';
+import { countPlanRows, countWeekRows, loadPkgPlan, loadPkgWeek, planPctFromMonths, weekPct, type PkgPlan, type PkgWeek } from './huvaariObyem';
 import { queryFeatures } from './query';
 import { loadLandStatus } from './land';
 import { cached, SESSION_TTL_MS } from './live';
@@ -306,6 +306,8 @@ export type PlanSheet = {
    * `null` → огнооны шугаман (`planAt`).
    */
   monthly?: (des: number | null, blok: string, start: number | null, end: number | null, asOf: number) => number | null;
+  /** Ирэх 7 хоногийн обьём (2026-11-11, `huvaariObyem.weekPct`) — сарын обьём · огнооны суурин дээр нэмэгдэнэ */
+  weekly?: PkgWeek | null;
 };
 
 /** Блокийн хуваарь — синхрон асуулт (`blockPlanned`), урьдчилж бодох (`prime`) */
@@ -368,10 +370,18 @@ export function makeSchedules(sheets: readonly PlanSheet[]): BlockSchedules {
   const run = (en: Entry, asOfs: readonly number[]) => {
     const { sh, b } = en;
     const label = sh.bld[b];
-    const pp = sh.monthly
+    /* Суурь: сарын обьём › огнооны шугаман. Долоо хоногийн обьёмтой ажил — суурин дээр нэмнэ (2026-11-11) */
+    const baseOf = (row: SheetRow, asOf: number): number | null => {
+      const [s, e] = raw.get(row) ?? [row.start[0], row.end[0]];
+      return sh.monthly?.(row.des, label, s, e, asOf) ?? planAt(asOf, row.start[0] ?? null, row.end[0] ?? null);
+    };
+    const pp = sh.monthly || sh.weekly?.size
       ? (row: SheetRow, _b: number, asOf: number) => {
+        const wk = row.des == null ? undefined : sh.weekly?.get(row.des)?.get(label);
+        if (wk) { const v = weekPct(wk, row.vol, asOf, (t) => baseOf(row, t), ubToday()); if (v !== undefined) return v; }
+        if (!sh.monthly) return null;
         const [s, e] = raw.get(row) ?? [row.start[0], row.end[0]];
-        return sh.monthly!(row.des, label, s, e, asOf);
+        return sh.monthly(row.des, label, s, e, asOf);
       }
       : undefined;
     const cur = planCurve(rowsOf(en), 1, asOfs, pp);
@@ -572,6 +582,7 @@ export function linkPlanDates(tree: PlanTree, spans: DateSpans | null): PlanStor
 async function fetchSchedules(): Promise<{ sched: BlockSchedules; spans: DateSpans; failed: string[]; failedGroups: string[] }> {
   const failed: string[] = [];
   const emptyP = countPlanRows().then((c) => c === 0).catch(() => false);
+  const emptyW = countWeekRows().then((c) => c === 0).catch(() => false);
   const got = await Promise.all(PKGS.map(async (pkg, order): Promise<(PlanSheet & { order: number; blocks: boolean }) | null> => {
     const blocks = pkg.floors != null;
     try {
@@ -586,14 +597,19 @@ async function fetchSchedules(): Promise<{ sched: BlockSchedules; spans: DateSpa
           return null;
         });
       const fields = [...new Set([...planFields(sc), ...sc.gStart, ...sc.gEnd].filter((x): x is string => !!x))];
+      /* Ирэх 7 хоногийн обьём — уншигдаагүй бол зөвхөн тэр нэмэлт алга (сарын/огнооны суурь хэвээр) */
+      const wkP: Promise<PkgWeek | null> = emptyW
+        .then((empty) => (empty ? null : loadPkgWeek(pkg.key)))
+        .catch((e) => { console.warn(`[selbe] төслийн төлөвлөгөө: ${pkg.key} долоо хоногийн обьём уншигдсангүй`, e); return null; });
       const r = await loadRows(pkg, sc, undefined, fields, { persist: true });
       const ob = await obP;
+      const wk = await wkP;
       if (!r.rows.some((row) => isConstructionNo(row.no))) {
         failed.push(pkg.key);
         console.warn(`[selbe] төслийн төлөвлөгөө: ${pkg.key} хуудсанд «Б.» мөр алга`);
         return null;
       }
-      return { key: pkg.key, group: pkg.group, bld: sc.bld, rows: r.rows, monthly: monthlyOf(ob), order, blocks };
+      return { key: pkg.key, group: pkg.group, bld: sc.bld, rows: r.rows, monthly: monthlyOf(ob), weekly: wk, order, blocks };
     } catch (e) {
       failed.push(pkg.key);
       console.warn(`[selbe] төслийн төлөвлөгөө: ${pkg.key} хуваарь уншигдсангүй`, e);
@@ -623,6 +639,8 @@ export function makeInputs(src: {
   actual: ActualSources;
   sched: BlockSchedules | null;
   landTotal?: number | null;
+  /** Зураг төслийн явц багцаар (`zuragBurtgel.zuragPctMap`, 0–100) */
+  zurag?: ReadonlyMap<string, number> | null;
 }): PlanInputs {
   const lt = src.landTotal;
   return {
@@ -632,6 +650,7 @@ export function makeInputs(src: {
     blockPlanned: blockPlannedOf(src.sched),
     pkgPlanned: pkgPlannedOf(src.sched),
     pkgSpan: pkgSpanOf(src.sched),
+    ...(src.zurag?.size ? { zuragActual: (pkg: string | null) => src.zurag!.get(bagtsKey(pkg ?? '')) } : {}),
     /* 2026-11-04 (хэрэглэгч): «Газар чөлөөлөлт» үе шатын мөр = бүх нэгж талбарын тоогоор (`loadLandStatus`, «Газар чөлөөлөлт»
        хуудас · тайлан · нийтийн вэбтэй НЭГ тоо) — багцын мөрүүдийн жигнэлт биш. 2026-11-11: багц/блокийн мөр хувьгүй (`projectPlan.leafValue`). */
     ...(lt == null ? {} : { override: (n: PlanNode) => (n.depth === 1 && n.phase === 'gazar' ? { S: lt } : undefined) }),
@@ -668,6 +687,11 @@ export type ProjectPlan = {
    */
   failed: string[];
   stored?: readonly PlanStoredRow[];
+  /**
+   * ӨМНӨХ 7 ХОНОГИЙН гүйцэтгэл S (0–100) мөр бүрд (2026-11-11) — бөглөх хуудасны архиваас `today − 7` өдрөөр; гараар
+   * оруулдаг үе шат одоогийн утгаараа. Архив уншигдаагүй бол алга (Нэгтгэлд хоосон).
+   */
+  prevWeek?: Map<PlanNode, number | null>;
 };
 
 /** Хоосон төлөв (цэвэр) */
@@ -683,6 +707,7 @@ export function assemblePlan(
   rows: readonly PlanStoredRow[],
   src: {
     actual: ActualSources; sched: BlockSchedules | null;
+    zurag?: ReadonlyMap<string, number> | null;
     dates?: DateSpans | null;
     /** Төслийн газар чөлөөлөлт % (бүх нэгж талбарын тоогоор) — үе шатын мөрийг дарна; `undefined`/`null` = жигнэлт */
     landTotal?: number | null;
@@ -707,7 +732,10 @@ export function assemblePlan(
 export async function loadProjectPlan(today: number = ubToday()): Promise<ProjectPlan> {
   const rows = await loadPlanRows();
   if (!rows.length) return emptyPlan(today);
-  const [a, s, lt] = await Promise.allSettled([loadActual(), loadSchedules(), loadLandStatus()]);
+  const [a, s, lt, zb] = await Promise.allSettled([loadActual(), loadSchedules(), loadLandStatus(), import('./zuragBurtgel').then((m) => m.loadZuragBurtgel().then(m.zuragPctMap))]);
+  /* Зургийн бүртгэл уншигдаагүй бол зураг төслийн мөр хадгалсан утгаараа (эх унасанд тооцохгүй — бусад бичилтийг саатуулахгүй) */
+  const zurag = zb.status === 'fulfilled' ? zb.value : null;
+  if (zb.status === 'rejected') console.warn('[selbe] зургийн бүртгэл уншигдсангүй', zb.reason);
   const failed: string[] = [];
   const landTotal = lt.status === 'fulfilled' ? lt.value.pct : null;
   if (lt.status !== 'fulfilled') failed.push('landTotal');
@@ -718,7 +746,17 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
   const sched = s.status === 'fulfilled' ? s.value.sched : null;
   const dates = s.status === 'fulfilled' ? s.value.spans : null;
   if (s.status === 'fulfilled') failed.push(...s.value.failed); else failed.push('schedule');
-  return assemblePlan(rows, { actual, sched, dates, landTotal }, today, failed);
+  const plan = assemblePlan(rows, { actual, sched, dates, landTotal, zurag }, today, failed);
+  /* Өмнөх 7 хоног — бөглөлтийн архиваас (2026-11-11). Унавал гол тооцоог саатуулахгүй */
+  try {
+    const at = await loadProgressAt(new Date(today - 7 * DAY).toISOString().slice(0, 10));
+    const pw = computePlan(plan.tree, makeInputs({ actual: { ...actual, ...at }, sched: null, landTotal, zurag }), today);
+    plan.prevWeek = new Map(plan.tree.nodes.map((n) => [n, pw.values.get(n)?.S ?? null]));
+    plan.prevWeek.set(plan.tree.root, pw.values.get(plan.tree.root)?.S ?? null);
+  } catch (e) {
+    console.warn('[selbe] өмнөх 7 хоногийн гүйцэтгэл бодогдсонгүй', e);
+  }
+  return plan;
 }
 
 /* ══════════════════ 5. Гэрээний АМЬД гүйцэтгэл (дашбоард · ТУХ · Нэгтгэл) ══════════════════ */

@@ -80,8 +80,9 @@ export function planProgressUpdates(plan: ProjectPlan): Record<string, unknown>[
     if (s != null && Number.isFinite(s)) {
       const w = was.guitsetgel_huvi;
       if (!(w != null && Number.isFinite(w) && Math.abs(w - s) < EPS)) u[F.progressPct] = round6(s);
-    } else if (n.phase === 'gazar' && n.depth > 1 && was.guitsetgel_huvi != null) {
-      /* 2026-11-11 (хэрэглэгч): газар чөлөөлөлтийн багц/блокийн мөр хувьгүй — хуучин хадгалсан хувийг арилгана */
+    } else if (((n.phase === 'gazar' && n.depth > 1) || plan.result.values.get(n)?.skip) && was.guitsetgel_huvi != null) {
+      /* 2026-11-11 (хэрэглэгч): газар чөлөөлөлтийн багц/блокийн мөр ба бөглөх хуудасгүй бэлтгэл ажлын мөр хувьгүй —
+         хуучин хадгалсан хувийг арилгана */
       u[F.progressPct] = null;
     }
     for (const [k, f] of DATE_KEYS) {

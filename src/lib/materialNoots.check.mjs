@@ -120,3 +120,25 @@ assert.ok(/^    requireSyncCap\(\);$/m.test(LIB), 'syncNoots эрх шалган
 assert.ok(/if \(autoOff\) return \{ added: 0/.test(LIB), 'mir_id алга бол шидэхгүй — disabled-аар буцаана');
 
 console.log('✅ materialNoots: бүх шалгуур давлаа');
+
+/* ── 2026-11-11: НӨӨЦ БАГЦААР — өөр багцын MA-гаар баталсан материал өөр багцын ажилд зарцуулагдахгүй ── */
+{
+  const { matKey, inPkgStock, usageFixes } = await import('./materialNoots.ts');
+  const { computeUsage } = await import('./materialUsage.ts');
+  const R = (o) => ({ oid: 1, name: 'Арматур', inQty: 10, usedQty: null, unit: 'тн', status: TOLOV.open, mirId: 'a', norm: 1, bagts: '', ...o });
+  const rows = [R({ oid: 1, bagts: 'Багц 1' }), R({ oid: 2, bagts: 'Багц 3.1', mirId: 'b', inQty: 4 })];
+  const sums = nootsSummary(rows);
+  assert.deepEqual(sums.map((s) => [s.bagts, s.inSum]), [['Багц 1', 10], ['Багц 3.1', 4]], 'нэг нэртэй материал багц бүрт тусдаа');
+  assert.ok(inPkgStock('Багц 1', 'Багц 1') && !inPkgStock('Багц 1', 'Багц 3.1') && inPkgStock('', 'Багц 3.1'), 'өөрийн багц ба багцгүй л сонгогдоно');
+  const defaults = new Map(sums.map((s) => [matKey(s.bagts, s.name), s.norm]));
+  const u = computeUsage([{ mats: ['Арматур'], vol: 4, bagts: 'Багц 3.1' }, { mats: ['Арматур'], vol: 3, bagts: 'Багц 2' }], defaults);
+  assert.equal(u.get(matKey('Багц 3.1', 'Арматур')).used, 4, 'Багц 3.1-ийн ажил өөрийн нөөцөөс');
+  assert.equal(u.get(matKey('Багц 1', 'Арматур')).used, 0, 'Багц 1-ийн нөөц хөндөгдөөгүй');
+  const fx = new Map(usageFixes(rows, u).map((f) => [f.oid, f]));
+  assert.equal(fx.get(2).status, TOLOV.done, 'Багц 3.1: 4 ирсэн, 4 зарцуулсан → дууссан');
+  assert.equal(fx.get(1).status ?? TOLOV.open, TOLOV.open, 'Багц 1 дуусаагүй');
+  const rc2 = receiptsOf([ma()], [mir()], () => 'Багц 1');
+  assert.equal(rc2[0].bagts, 'Багц 1');
+  assert.equal(planSync([row()], rc2).updates[0].bagts, 'Багц 1', 'хуучин мөрийн багц бөглөгдөнө');
+  console.log('materialNoots.check: багцаар ✅');
+}

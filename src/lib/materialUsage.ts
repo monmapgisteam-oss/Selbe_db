@@ -2,6 +2,10 @@ import { PKGS, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { computeAll, loadRows } from '@/modules/sheet/bagtsSheet';
 import { parseEntry, matsOf } from '@/lib/materialAjil';
 
+/* `materialNoots.matKey`-тэй ИЖИЛ (тойрог импортоос зайлсхийж энд давхар) */
+const bKey = (v: unknown): string => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
+const matKey = (bagts: string, name: string): string => (bKey(bagts) ? `${bKey(bagts)}\u00a6${name}` : name);
+
 /**
  * МАТЕРИАЛЫН ЗАРЦУУЛАЛТ (2026-10-30, хэрэглэгчийн шийдвэр) — гүйцэтгэлийн хүснэгтийн ажлын обьёмоос:
  *   ажил бүрийн ГҮЙЦЭТГЭСЭН (хуримтлагдсан) обьём × норм; олон материалтай ажилд материал тус бүрээр тусдаа.
@@ -12,7 +16,7 @@ import { parseEntry, matsOf } from '@/lib/materialAjil';
  * Нэг ажил — материалын бичлэгүүд ба гүйцэтгэсэн обьём. `started` — ажилд гүйцэтгэл бүртгэгдсэн эсэх: обьёмгүй ч
  * `started === false` бол эхлээгүй ажил (хэмжигдээгүй гүйцэтгэл = 0), үнэн/өгөөгүй бол зарцуулалт тодорхойгүй («дутуу»).
  */
-export type WorkUse = { mats: readonly string[]; vol: number | null; started?: boolean };
+export type WorkUse = { mats: readonly string[]; vol: number | null; started?: boolean; /** Ажлын багц (`Pkg.group`) — нөөцийг багцаар ялгахад (2026-11-11) */ bagts?: string };
 /** Материал бүрийн зарцуулалт — `used` нь мэдэгдэх ажлуудын нийлбэр (байхгүй бол null) */
 export type MatUse = { used: number | null; partial: boolean };
 
@@ -31,8 +35,11 @@ export function computeUsage(
   for (const w of works) {
     for (const s of w.mats) {
       const e = parseEntry(s);
-      const u = get(e.name);
-      const norm = e.norm ?? defaults.get(e.name) ?? null;
+      /* Өөрийн багцын нөөц байвал түүнээс, эс бөгөөс багцгүй (нэрээр) нөөцөөс зарцуулна */
+      const own = w.bagts ? matKey(w.bagts, e.name) : e.name;
+      const k = defaults.has(own) ? own : e.name;
+      const u = get(k);
+      const norm = e.norm ?? defaults.get(k) ?? null;
       if (norm == null) { u.partial = true; continue; }
       /* Эхлээгүй ажил — мэдэгдэж буй 0; хувиар хэмжсэн (обьёмгүй) гүйцэтгэлтэй ажил — тодорхойгүй */
       if (w.vol == null) {
@@ -67,7 +74,7 @@ export async function loadWorkUses(): Promise<{ works: WorkUse[]; failed: string
         const rawSum = row.obyem.reduce<number | null>((s, v) => (v == null ? s : (s ?? 0) + v), null);
         const vol = fromCalc ?? rawSum;
         const pos = (v: number | null) => v != null && v > 0;
-        out.push({ mats, vol, started: pos(vol) || row.act.some(pos) || row.obyem.some(pos) });
+        out.push({ mats, vol, started: pos(vol) || row.act.some(pos) || row.obyem.some(pos), bagts: pkg.group });
       });
       return out;
     } catch {

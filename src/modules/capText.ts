@@ -32,7 +32,7 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   habea: ['habeaData', 'habeaOwn'],
   zurag: ['zuragEdit'],
   uyShat: ['zahiramjEdit', 'songonEdit', 'zovshoorolTtbEdit', 'ashiglaltEdit'],
-  sys: ['sysClose', 'docsUpload', 'docsGroups'],
+  sys: ['sysClose', 'docsUpload', 'docsGroups', 'aiAgent'],
 };
 
 /** Хажуугийн цэсний засах эрхийн хуудсууд — «Гүйцэтгэлийн урсгалын эрх»-ийн ДАРААХ 10 */
@@ -104,6 +104,7 @@ export const capLabel = (k: CapKey): string => {
   if (k === 'habeaOwn') return tr('ХАБЭА — багцаар харах');
   if (k === 'zuragEdit') return tr('ТЭЗҮ, зураг төсөл, газар чөлөөлөлтийн огноо засах');
   if (k === 'cfSwitch') return tr('Сарын мөнгө — Гараар → Хуваарь шилжүүлэх');
+  if (k === 'aiAgent') return tr('AI туслах ашиглах');
   if (k === 'zahiramjEdit') return tr('Захирамж оруулах');
   if (k === 'songonEdit') return tr('Сонгон шалгаруулалт оруулах');
   if (k === 'zovshoorolTtbEdit') return tr('Зөвшөөрөл (төлөвлөгөө) оруулах');
@@ -219,6 +220,9 @@ export const capNote = (k: CapKey): string => {
   }
   if (k === 'ashiglaltEdit') {
     return tr('«Ашиглалтад оруулах» хуудсанд багц бүрийн ашиглалтад оруулах огноог оруулах. Батлагч байхгүй.');
+  }
+  if (k === 'aiAgent') {
+    return tr('AI туслахын товч зөвхөн энэ эрхтэй аккаунтад харагдана. Туслах нь тухайн хэрэглэгчийн харах эрхтэй мэдээллээс л хариулна.');
   }
   if (k === 'cfSwitch') {
     return tr('Гэрээний гараар оруулсан сарын мөрийг УСТГАЖ, сарын мөнгийг Хуваарийн сарын обьём × нэгж өртгөөр тооцоолно. Буцаах боломжгүй.');

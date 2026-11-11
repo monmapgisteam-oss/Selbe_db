@@ -366,7 +366,8 @@ console.log(`projectPlan.check: OK (${cells} Excel нүд)`);
 {
   const R = (dd, et, name, extra = {}) => ({ dd_kod: dd, etseg_kod: et, ajil_uilchilgee: name, ...extra });
   const t = buildTree([
-    R('1', null, 'Зураг', { uy_shat: 'Ажлын зураг төсөл', tusul_ezleh_huvi: 0.1 }),
+    /* 2026-11-11: Ажлын зураг төслийн жин гараар засагддаг болсон (хадгалсан жин түрүүлнэ) тул дүрмийг ТЭЗҮ-гээр шалгана */
+    R('1', null, 'ТЭЗҮ', { uy_shat: 'ТЭЗҮ', tusul_ezleh_huvi: 0.1 }),
     R('1.1', '1', 'a', { ho_dun_geree: 100, heseg_ezleh_huvi: 0.666, tusul_ezleh_huvi: 0.0666 }),
     R('1.2', '1', 'b', { ho_dun_geree: 300, heseg_ezleh_huvi: 0.334 }),
     R('1.2.1', '1.2', 'b1', { heseg_ezleh_huvi: 0.4 }),
@@ -541,17 +542,22 @@ console.log('projectPlan.check: Сонгон шалгаруулалт гэрээ
     blockActual: () => 33, pkgActual: () => 44,
     prepActual: (pkg, blok, node) => { calls.push(`${node.code}|${pkg}|${blok}`); return blok === '5/1' ? 87.5 : 0; },
   }, T);
-  assert.deepEqual(calls.sort(), ['5.1.3.1.1.1|Багц-1|5/1', '5.1.3.1.1.2|Багц-1|5/2'], 'зөвхөн бэлтгэлийн блок мөрөнд дуудагдана');
+  assert.deepEqual([...new Set(calls)].sort(), ['5.1.3.1.1.1|Багц-1|5/1', '5.1.3.1.1.2|Багц-1|5/2'], 'зөвхөн бэлтгэлийн блок мөрөнд дуудагдана');
   assert.equal(p.get('5.1.3.1.1.1').S, 87.5, 'бэлтгэлийн блок — «А.» мөрөөс (хадгалсан 100 биш, blockActual 33 биш)');
   assert.equal(p.get('5.1.3.1.1.2').S, 0, 'хуудсанд байгаа, бөглөөгүй блок 0 (null биш)');
-  assert.equal(p.get('5.1.1').S, 60, 'блокгүй навч хадгалсан хэвээр');
+  /* 2026-11-11 (хэрэглэгч): бөглөх хуудасгүй бэлтгэлийн мөр (5.1.1 Газар чөлөөлөлт, 5.1.2) хасагдана — хувь, жингүй */
+  assert.equal(p.get('5.1.1').S, null, 'хуудасгүй бэлтгэлийн навч хасагдана');
+  assert.equal(p.get('5.1.2').skip, true);
+  near(p.get('5.1.3').F, 100, 1e-9, 'үлдсэн мөр бүх жинг авна (хадгалсан 5% ÷ 5%)');
   assert.equal(p.get('5.2.1.1.1').S, 33, 'Барилга угсралт ажлын блок prepActual-аас хамаарахгүй');
-  /* 5.1.3.1.1: F 75 × 87.5 + 25 × 0 = 65.625; 5.1 = 0.9×60 + 0.05×20 + 0.05×65.625 = 58.28125 */
+  /* 5.1.3.1.1: F 75 × 87.5 + 25 × 0 = 65.625; 5.1 = 5.1.3 (бусад хасагдсан) = 65.625 */
   near(p.get('5.1.3.1.1').S, 65.625, 1e-9, 'багц = Σ F·S «А.» явцаар');
   near(p.get('5.1.3').S, 65.625, 1e-9);
-  near(p.get('5.1').S, 58.28125, 1e-9, 'Бэлтгэл ажил эцэг дагана');
+  near(p.get('5.1').S, 65.625, 1e-9, 'Бэлтгэл ажил = зөвхөн «А.»');
   const u = computePlan(t, { prepActual: (_p, blok) => (blok === '5/1' ? undefined : null) }, T);
-  assert.equal(u.get('5.1.3.1.1.1').S, 100, 'undefined → хадгалсан guitsetgel_huvi');
+  /* 2026-11-11: хуудасны хуваарьт ороогүй блок (undefined) — хуудасгүй бэлтгэлийн мөр тул хасагдана (хадгалсан утга биш) */
+  assert.equal(u.get('5.1.3.1.1.1').S, null, 'undefined → хасагдана');
+  assert.equal(u.get('5.1.3.1.1.1').skip, true);
   assert.equal(u.get('5.1.3.1.1.2').S, null, 'null → мэдээлэлгүй');
 }
 console.log('projectPlan.check: Бэлтгэл ажил хадгалсан явцаар · блокийн мөр «А.» мөрөөс OK');

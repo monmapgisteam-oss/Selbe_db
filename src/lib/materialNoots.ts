@@ -34,8 +34,17 @@ export const NOOTS_SVC = `${ENT_HOSTED}/material_noots/FeatureServer`;
 
 export const NF = {
   oid: 'objectid', name: 'material_ner', inQty: 'irsen_hemjee', usedQty: 'ashiglasan_hemjee',
-  unit: 'negj', status: 'tolov', mirId: 'mir_id', norm: 'norm',
+  unit: 'negj', status: 'tolov', mirId: 'mir_id', norm: 'norm', bagts: 'bagts',
 } as const;
+
+/**
+ * БАГЦААР ЯЛГАХ ТҮЛХҮҮР (2026-11-11, хэрэглэгч: «MA багцаар үүсдэг атал нөөц бусад багцын ажилд сонгогддог») — нөөц, норм,
+ * зарцуулалт, төлөв бүгд (багц, материал)-аар. Багцгүй мөр (гараар нэмсэн, хуучин) нь нэрээрээ — аль ч багцад харагдана.
+ */
+const bKey = (v: unknown): string => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
+export const matKey = (bagts: string | null | undefined, name: string): string => (bKey(bagts) ? `${bKey(bagts)}\u00a6${name}` : name);
+/** Энэ багцад сонгож болох материал уу — өөрийн багцынх эсвэл багцгүй */
+export const inPkgStock = (rowBagts: string, pkgGroup: string): boolean => !bKey(rowBagts) || bKey(rowBagts) === bKey(pkgGroup);
 
 /** Төлвийн утга — ӨГӨГДӨЛ тул орчуулагдахгүй */
 export const TOLOV = { done: 'Дууссан', open: 'Дуусаагүй' } as const;
@@ -50,6 +59,8 @@ export type NootsRow = {
   mirId: string;
   /** Материалын үндсэн норм (ажлын 1 нэгжид) — `null` = тавиагүй */
   norm: number | null;
+  /** Багц (`Pkg.group`, MA-гийн багцаас) — хоосон/алга = багцгүй */
+  bagts?: string;
 };
 
 const str = (v: unknown): string => (v == null ? '' : String(v).trim());
@@ -67,6 +78,7 @@ export function nootsRowOf(a: Record<string, unknown>): NootsRow {
     status: str(a[NF.status]),
     mirId: guidKey(a[NF.mirId]),
     norm: num(a[NF.norm]),
+    bagts: str(a[NF.bagts]),
   };
 }
 
@@ -93,13 +105,13 @@ export function mirIdIssue(fields: readonly { name?: string; type?: string; leng
 }
 
 /** Нөөцөд орох ёстой нэг ачаа (MIR) */
-export type Receipt = { mirId: string; name: string; qty: number | null; unit: string };
+export type Receipt = { mirId: string; name: string; qty: number | null; unit: string; bagts?: string };
 
 /**
  * НӨӨЦӨД ОРОХ АЧААНУУД — MIR батлагдсан (A/AN) БА түүний MA (хариу бичгийн сүүлийн хувилбар) батлагдсан.
  * Материалын нэр MA-гийнх (сонголтоос); MA-д нэр байхгүй бол MIR-ийнх.
  */
-export function receiptsOf(mas: readonly MaRow[], mirs: readonly MirRow[]): Receipt[] {
+export function receiptsOf(mas: readonly MaRow[], mirs: readonly MirRow[], bagtsOf?: (ma: MaRow) => string): Receipt[] {
   const maByNo = new Map(latestPerRespNo(mas).filter((m) => m.respNo).map((m) => [m.respNo, m] as const));
   const out: Receipt[] = [];
   const seen = new Set<string>();
@@ -111,7 +123,7 @@ export function receiptsOf(mas: readonly MaRow[], mirs: readonly MirRow[]): Rece
     const name = ma.material || m.material;
     if (!name) continue;
     seen.add(id);
-    out.push({ mirId: id, name, qty: m.qty, unit: m.unit });
+    out.push({ mirId: id, name, qty: m.qty, unit: m.unit, ...(bagtsOf ? { bagts: bagtsOf(ma) } : {}) });
   }
   return out;
 }
@@ -121,7 +133,7 @@ export function receiptsOf(mas: readonly MaRow[], mirs: readonly MirRow[]): Rece
  * ДУТУУ (мэдэгдэх утгуудынх л), `rest` null, төлөв «Дуусаагүй».
  */
 export type NootsSum = {
-  name: string; units: string[]; inSum: number | null; usedSum: number | null; inUnknown: number; usedUnknown: number;
+  name: string; bagts: string; units: string[]; inSum: number | null; usedSum: number | null; inUnknown: number; usedUnknown: number;
   /** Mixed (including missing) units cannot establish a total or completion status. */
   unitConflict: boolean;
   rest: number | null; status: string | null; n: number;
@@ -133,14 +145,16 @@ export function nootsSummary(rows: readonly NootsRow[]): NootsSum[] {
   const m = new Map<string, NootsRow[]>();
   for (const r of rows) {
     if (!r.name) continue;
-    const l = m.get(r.name);
-    if (l) l.push(r); else m.set(r.name, [r]);
+    const k = matKey(r.bagts, r.name);
+    const l = m.get(k);
+    if (l) l.push(r); else m.set(k, [r]);
   }
   const sum = (xs: (number | null)[]): { sum: number | null; unknown: number } => {
     const known = xs.filter((x): x is number => x != null);
     return { sum: known.length ? known.reduce((s, x) => s + x, 0) : null, unknown: xs.length - known.length };
   };
-  return [...m.entries()].map(([name, l]) => {
+  return [...m.values()].map((l) => {
+    const name = l[0].name;
     const i = sum(l.map((r) => r.inQty));
     /* 2026-10-30: зарцуулалт нь материалын НЭГ (эхний) мөрөнд л — бусад мөрийн хоосон утга «тоогүй» БИШ */
     const u = sum(l.map((r) => r.usedQty));
@@ -149,6 +163,7 @@ export function nootsSummary(rows: readonly NootsRow[]): NootsSum[] {
     const partial = i.unknown > 0;
     return {
       name,
+      bagts: l[0].bagts ?? '',
       units: [...new Set(l.map((r) => r.unit.trim()).filter(Boolean))],
       unitConflict,
       inSum: unitConflict ? null : i.sum, usedSum: unitConflict ? null : u.sum, inUnknown: i.unknown, usedUnknown: u.unknown,
@@ -158,12 +173,12 @@ export function nootsSummary(rows: readonly NootsRow[]): NootsSum[] {
       n: l.length,
       norm: l.find((r) => r.norm != null)?.norm ?? null,
     };
-  }).sort((a, b) => a.name.localeCompare(b.name, 'mn'));
+  }).sort((a, b) => a.bagts.localeCompare(b.bagts, 'mn', { numeric: true }) || a.name.localeCompare(b.name, 'mn'));
 }
 
 export type NootsPlan = {
   adds: Receipt[];
-  updates: { oid: number; name: string; qty: number | null; unit: string }[];
+  updates: { oid: number; name: string; qty: number | null; unit: string; bagts?: string }[];
   /** MIR/MA нь батлагдахаа больсон эсвэл ДАВХАРДСАН (`mir_id` ижил, их objectid) мөрүүд */
   deletes: number[];
 };
@@ -185,16 +200,17 @@ export function planSync(rows: readonly NootsRow[], receipts: readonly Receipt[]
   for (const w of receipts) {
     const r = keep.get(w.mirId);
     if (!r) { adds.push(w); continue; }
-    if (r.name !== w.name || r.inQty !== w.qty || r.unit !== w.unit) updates.push({ oid: r.oid, name: w.name, qty: w.qty, unit: w.unit });
+    const bagtsOff = w.bagts != null && (r.bagts ?? '') !== w.bagts;
+    if (r.name !== w.name || r.inQty !== w.qty || r.unit !== w.unit || bagtsOff) updates.push({ oid: r.oid, name: w.name, qty: w.qty, unit: w.unit, ...(w.bagts != null ? { bagts: w.bagts } : {}) });
   }
   return { adds, updates, deletes };
 }
 
 /** Төлөв зөрсөн мөрүүд — материал бүрийн нэгтгэлийн төлвөөр */
 export function statusFixes(rows: readonly NootsRow[]): { oid: number; status: string }[] {
-  const st = new Map(nootsSummary(rows).map((s) => [s.name, s.status] as const));
+  const st = new Map(nootsSummary(rows).map((s) => [matKey(s.bagts, s.name), s.status] as const));
   return rows.flatMap((r) => {
-    const status = st.get(r.name);
+    const status = st.get(matKey(r.bagts, r.name));
     return status != null && status !== r.status ? [{ oid: r.oid, status }] : [];
   });
 }
@@ -208,8 +224,9 @@ export function usageFixes(rows: readonly NootsRow[], usage: ReadonlyMap<string,
   const by = new Map<string, NootsRow[]>();
   for (const r of rows) {
     if (!r.name) continue;
-    const l = by.get(r.name);
-    if (l) l.push(r); else by.set(r.name, [r]);
+    const k = matKey(r.bagts, r.name);
+    const l = by.get(k);
+    if (l) l.push(r); else by.set(k, [r]);
   }
   const out: { oid: number; used: number | null; status: string }[] = [];
   const round = (v: number | null) => (v == null ? null : Math.round(v * 1e6) / 1e6);
@@ -233,7 +250,7 @@ export function usageFixes(rows: readonly NootsRow[], usage: ReadonlyMap<string,
 /* ═══════════════ СЕРВЕР ═══════════════ */
 
 /** `autoOff` — автомат бүртгэл идэвхгүй ШАЛТГААН (`mirIdIssue`); null бол бичиж болно */
-type NootsTable = { url: string; autoOff: string | null };
+type NootsTable = { url: string; autoOff: string | null; hasBagts: boolean };
 let tableCache: NootsTable | null = null;
 /* Хүснэгтийн хаяг · `mir_id` тохирох эсэх — админ талбар нэмсний дараа кэш хуучрахгүй (dataBus.invariant) */
 register(() => { tableCache = null; }, ['MATERIAL_NOOTS']);
@@ -250,7 +267,7 @@ async function nootsTable(): Promise<NootsTable> {
   const have = new Set(fields.map((f) => String(f.name ?? '').toLowerCase()));
   const miss = [NF.name, NF.inQty, NF.usedQty, NF.unit, NF.status].filter((f) => !have.has(f));
   if (miss.length) throw new Error(tr('Материалын нөөцийн хүснэгтэд талбар дутуу: {0}', miss.join(', ')));
-  tableCache = { url, autoOff: mirIdIssue(fields) };
+  tableCache = { url, autoOff: mirIdIssue(fields), hasBagts: have.has(NF.bagts) };
   return tableCache;
 }
 
@@ -293,11 +310,11 @@ async function applyChunks(url: string, kind: 'adds' | 'updates' | 'deletes', it
  * МАТЕРИАЛЫН ҮНДСЭН НОРМ ТАВИХ (2026-10-30) — тэр нэрийн БҮХ мөрд. `null` = арилгана. Эрх — чанарын (`requireSyncCap`).
  * Зарцуулалт дараагийн синкээр (`syncNoots`) дахин бодогдоно.
  */
-export async function setMaterialNorm(name: string, norm: number | null): Promise<number> {
+export async function setMaterialNorm(name: string, norm: number | null, bagts = ''): Promise<number> {
   requireSyncCap();
   if (norm != null && (!Number.isFinite(norm) || norm < 0)) throw new Error(tr('Норм 0-ээс их тоо байх ёстой.'));
   const { url } = await nootsTable();
-  const rows = (await loadNoots()).filter((r) => r.name === name && r.norm !== norm);
+  const rows = (await loadNoots()).filter((r) => matKey(r.bagts, r.name) === matKey(bagts, name) && r.norm !== norm);
   if (!rows.length) return 0;
   try {
     await applyChunks(url, 'updates', rows.map((r) => ({ attributes: { [NF.oid]: r.oid, [NF.norm]: norm } })));
@@ -323,30 +340,38 @@ export function syncNoots(mas: readonly MaRow[], mirs: readonly MirRow[]): Promi
   let wrote = false;
   flight = (async () => {
     requireSyncCap();
-    const { url, autoOff } = await nootsTable();
+    const { url, autoOff, hasBagts } = await nootsTable();
     if (autoOff) return { added: 0, updated: 0, removed: 0, statusFixed: 0, disabled: autoOff };
+    /* Багц — MA-гийн багцаас (`Pkg.group`); хүснэгтэд `bagts` талбар алга бол хуучин (багцгүй) дүрэм */
+    const { PKGS } = await import('@/modules/sheet/bagts.pkg');
+    const bagtsOf = hasBagts ? (ma: MaRow) => PKGS.find((p) => p.key === ma.pkg)?.group ?? ma.pkgLabel ?? '' : undefined;
+    /* 2026-11-11: MIR-ийн эх хоосон уншигдсан атал нөөцөд MIR-ийн мөр байвал юу ч устгахгүй (тохиргоо/уншилтын алдаа нөөцийг арилгадаг байв) */
+    if (!mirs.length && (await loadNoots()).some((r) => r.mirId)) {
+      return { added: 0, updated: 0, removed: 0, statusFixed: 0, disabled: tr('MIR-ийн бүртгэл хоосон уншигдсан тул нөөцийг хөндсөнгүй.') };
+    }
     const apply = (kind: 'adds' | 'updates' | 'deletes', items: unknown[]): Promise<void> => { wrote = true; return applyChunks(url, kind, items); };
-    const plan = planSync(await loadNoots(), receiptsOf(mas, mirs));
+    const plan = planSync(await loadNoots(), receiptsOf(mas, mirs, bagtsOf));
     if (plan.deletes.length) await apply('deletes', plan.deletes);
     if (plan.updates.length) {
       await apply('updates', plan.updates.map((u) => ({ attributes: {
-        [NF.oid]: u.oid, [NF.name]: u.name, [NF.inQty]: u.qty, [NF.unit]: u.unit || null,
+        [NF.oid]: u.oid, [NF.name]: u.name, [NF.inQty]: u.qty, [NF.unit]: u.unit || null, ...(u.bagts != null ? { [NF.bagts]: u.bagts || null } : {}),
       } })));
     }
     if (plan.adds.length) {
       await apply('adds', plan.adds.map((a) => ({ attributes: {
         [NF.name]: a.name, [NF.inQty]: a.qty, [NF.unit]: a.unit || null, [NF.status]: TOLOV.open, [NF.mirId]: `{${a.mirId.toUpperCase()}}`,
+        ...(a.bagts != null ? { [NF.bagts]: a.bagts || null } : {}),
       } })));
     }
     /* Зэрэг бичигдсэн давхардал (хоёр хэрэглэгч ижил агшинд) — дахин уншиж БАГА objectid үлдээнэ */
     let rows = await loadNoots();
-    const dup = planSync(rows, receiptsOf(mas, mirs)).deletes;
+    const dup = planSync(rows, receiptsOf(mas, mirs, bagtsOf)).deletes;
     if (dup.length) { await apply('deletes', dup); rows = await loadNoots(); }
     /* 2026-10-30: ЗАРЦУУЛАЛТ — бүх гүйцэтгэлийн хүснэгтийн ажлуудаас (норм × обьём); хүснэгт уншигдаагүй бол «дутуу» */
     let usage: Map<string, MatUse>;
     try {
       const wu = await loadWorkUses();
-      const defaults = new Map(nootsSummary(rows).map((x) => [x.name, x.norm] as const));
+      const defaults = new Map(nootsSummary(rows).map((x) => [matKey(x.bagts, x.name), x.norm] as const));
       usage = computeUsage(wu.works, defaults, wu.failed.length > 0);
     } catch {
       usage = new Map();

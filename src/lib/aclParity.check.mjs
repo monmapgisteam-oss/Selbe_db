@@ -572,7 +572,7 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m)));
-  assert.equal(PLAIN_CAPS.length, 17, `энгийн эрх ЯГ 17 байх ёстой (2026-11-04: + ipcCreate, ipcApprove, үе шатны 4 эрх; habeaOwn гаргалгаатай болсон), олдсон: ${PLAIN_CAPS.length}`);
+  assert.equal(PLAIN_CAPS.length, 18, `энгийн эрх ЯГ 18 байх ёстой (2026-11-11: + aiAgent; 2026-11-04: + ipcCreate, ipcApprove, үе шатны 4 эрх; habeaOwn гаргалгаатай болсон), олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
@@ -587,7 +587,7 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
   const { WORKFLOW_VIEWS, CAP_HOST_VIEW } = await import('@/lib/caps.ts');
   assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'butets', 'zovshoorol', 'fin', 'ipc', 'gazar', 'hamaaral', 'habea', 'zurag', 'uyShat', 'sys'],
     'capText.ERH_PANES: хажуугийн цэсний 14 хуудас (2026-11-04: + IPC, үе шатны мэдээлэл; 2026-10-26: + ТЭЗҮ · зураг төсөл; 2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл; 2026-10-19: + Систем түр хаах), энэ дарааллаар');
-  assert.deepEqual(PANE_CAPS.sys, ['sysClose', 'docsUpload', 'docsGroups'], 'Систем хуудас: түр хаах · баримт оруулах · баримтын бүлэг');
+  assert.deepEqual(PANE_CAPS.sys, ['sysClose', 'docsUpload', 'docsGroups', 'aiAgent'], 'Систем хуудас: түр хаах · баримт оруулах · баримтын бүлэг · AI туслах (2026-11-11)');
   assert.deepEqual(CAP_HOST_VIEW.sysClose, [], 'sysClose: гэр харагдацгүй');
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))

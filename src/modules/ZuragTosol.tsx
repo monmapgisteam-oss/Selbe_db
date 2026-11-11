@@ -12,7 +12,7 @@ import { num, pct } from '@/lib/format';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
-import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
+import { CASHFLOW_NEW, CF_MONTH, bagtsKey } from '@/lib/services';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
 import { schedulePlanSync } from '@/lib/projectPlanSync';
@@ -26,9 +26,11 @@ import { buildTree, computePlan, ubToday, saneDate, type PlanNode } from '@/lib/
 import {
   EMPTY_PENDING, badText, buildEdits, canAddWork, canDelete, conflicts, dayOf, displayCodes, dropAdd, effectiveRows,
   inSection, isAddedWork, isEditable, origText, pctOfAmount, pendingCount, rowKey, setEdit, textOf, toStored, toggleDelete,
-  workAdd, workNameWhy, worksWeightSum, type EditIssue, type FieldKey, type Names, type Pending,
+  workAdd, workNameWhy, worksWeightSum, weightEditable, type EditIssue, type FieldKey, type Names, type Pending,
 } from '@/lib/zuragTosol';
 import { PARSE_MSG } from './PlanEntry';
+import { ZuragBurtgel } from './ZuragBurtgel';
+import { loadZuragBurtgel, zuragPctMap } from '@/lib/zuragBurtgel';
 import s from './zuragTosol.module.css';
 
 type Row = Record<string, unknown>;
@@ -84,6 +86,13 @@ function inherited(n: PlanNode): [number | null, number | null] {
 
 export function ZuragTosol() {
   const q = useAsync(loadRows, []);
+  /* 2026-11-11: «Зургийн бүртгэл» таб — зураг төслийн баримт, PDF (хүснэгт 234) */
+  const [view, setView] = useState<'plan' | 'log'>('plan');
+  const { user } = useAuth();
+  const [capN, setCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const canEdit = useMemo(() => hasCap(user?.username, ZURAG_CAP), [user, capN]);
   return (
     <div className={s.wrap}>
       <header className={s.head}>
@@ -91,10 +100,17 @@ export function ZuragTosol() {
         <p className={s.sub}>
           {tr('Үе шатын навч мөрийн төлөвлөгөөт хугацаа ба гүйцэтгэлийн хувийг шинэчилнэ. Дээд мөрүүд Excel-ийн томьёогоор автоматаар бодогдоно.')}
         </p>
+        <div className={s.seg} role="tablist" aria-label={tr('Харагдац')}>
+          {([['plan', tr('Явц')], ['log', tr('Зургийн бүртгэл')]] as ['plan' | 'log', string][]).map(([k, t]) => (
+            <button key={k} type="button" role="tab" aria-selected={view === k} className={`${s.segB} ${view === k ? s.segOn : ''}`} onClick={() => setView(k)}>{t}</button>
+          ))}
+        </div>
       </header>
-      <Data q={q} loading={tr('Ачаалж байна…')} minH={240}>
-        {(d) => <Body rows={d.rows} at={d.at} />}
-      </Data>
+      {view === 'log' ? <ZuragBurtgel canEdit={canEdit} /> : (
+        <Data q={q} loading={tr('Ачаалж байна…')} minH={240}>
+          {(d) => <Body rows={d.rows} at={d.at} />}
+        </Data>
+      )}
     </div>
   );
 }
@@ -129,7 +145,11 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
 
   /* Урьдчилсан мод — засвар + шинэ дэд шат оролцсон; эцгийн утга шууд дахин бодогдоно */
   const tree = useMemo(() => buildTree(effectiveRows(base, pend)), [base, pend]);
-  const res = useMemo(() => computePlan(tree, {}, at), [tree, at]);
+  /* 2026-11-11: багцын ажлын зураг төслийн явц «Зургийн бүртгэл»-ээс (магадлалд орсон ÷ нийт) — гараар засахгүй */
+  const zq = useAsync(loadZuragBurtgel, []);
+  const zPct = useMemo(() => (zq.data ? zuragPctMap(zq.data) : null), [zq.data]);
+  const autoPct = (n: PlanNode) => n.phase === 'zurag' && !!zPct?.has(bagtsKey(n.pkg));
+  const res = useMemo(() => computePlan(tree, zPct?.size ? { zuragActual: (pkg) => zPct.get(bagtsKey(pkg)) } : {}, at), [tree, at, zPct]);
   const dcode = useMemo(() => displayCodes(tree), [tree]);
   /** Анхны мөр (засваргүй) — `setEdit`/`textOf` анхны утгатай харьцуулна */
   const origByKey = useMemo(
@@ -267,6 +287,12 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
       const list = e.issues.slice(0, 5).map((i) => `${label(i.code)} — ${ISSUE_TEXT[i.kind]()}`);
       if (e.issues.length > list.length) list.push('…');
       setErr(tr('Хадгалах боломжгүй: {0}', list.join('; ')));
+      return;
+    }
+    /* 2026-11-11: жин засагдсан бүлгийн нийлбэр 100% биш бол хадгалахгүй (бусад бүлгийнх — анхааруулга л) */
+    const editedBad = badSums.filter((g) => g.children.some((c) => c.row != null && pend.edits[rowKey(c.row)]?.weight != null));
+    if (editedBad.length) {
+      setErr(tr('Хадгалах боломжгүй: {0} мөрийн доорх жингийн нийлбэр 100% биш.', editedBad.map((n) => dcode.get(n) ?? n.code).join(', ')));
       return;
     }
     if (!e.updates.length && !e.adds.length && !e.deletes.length) { setPend(EMPTY_PENDING); return; }
@@ -463,7 +489,8 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                         </span>
                       )}
                     </td>
-                    <td className={s.r}>{ed && work ? input(n, 'weight', s.inpPct) : pct(v.F, 1)}</td>
+                    {/* 2026-11-11: зураг төслийн бүх мөрийн жин засагдана (ах дүүгийн нийлбэр 100%) */}
+                    <td className={s.r}>{canEdit && weightEditable(n) ? input(n, 'weight', s.inpPct) : pct(v.F, 1)}</td>
                     <td className={s.r}>
                       {ed && work ? (
                         <input
@@ -490,7 +517,9 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
                     <td>{ed ? input(n, 'start', s.inpDate, dayOf(ia) || 'YYYY-MM-DD') : (dayOf(v.H) || '—')}</td>
                     <td>{ed ? input(n, 'end', s.inpDate, dayOf(ib) || 'YYYY-MM-DD') : (dayOf(v.I) || '—')}</td>
                     <td className={s.r}>{pct(v.N, 1)}</td>
-                    <td className={s.r}>{ed ? input(n, 'pct', s.inpPct) : pct(v.S, 1)}</td>
+                    <td className={s.r} title={autoPct(n) ? tr('«Зургийн бүртгэл»-ээс: магадлалд орсон зураг ÷ нийт зураг') : undefined}>
+                      {ed && !autoPct(n) ? input(n, 'pct', s.inpPct) : pct(v.S, 1)}
+                    </td>
                     <td className={s.r}>{pct(v.T, 1)}</td>
                     {canEdit && (
                       <td className={s.act}>

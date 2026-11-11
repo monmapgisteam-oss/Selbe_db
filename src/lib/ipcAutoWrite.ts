@@ -26,6 +26,69 @@ export type AutoResult =
  * @param bagts тухайн багцын нэр (`Pkg.group` — «Багц 3.3»)
  * @param day   архивт орсон агшны огноо `YYYY-MM-DD`
  */
+/**
+ * НЭГЖ ҮНИЙГ ХОЖИМ ТАВЬСАН АЖЛЫН МӨНГИЙГ НӨХӨХ (2026-11-11, хэрэглэгч зөвшөөрсөн). Жааз бүр тэр өдрийн нэгж үнийг хадгалдаг тул
+ * батлах үед үнэгүй байсан ажил IPC дүнд ороогүй, хожим үнэ тавьсан ч тэр өдрийн мөр дахин бодогддоггүй байв.
+ * Гэрээний IPC-д ОРООГҮЙ («Гүйцэтгэл») AUTO мөр бүрийг: тэр өдрийн обьём × (тэр өдрийн үнэ, хоосон бол ОДООГИЙН үнэ) гэж дахин
+ * бодож, зөрсөн бол `guits_une`-г шинэчилнэ. IPC-д орсон мөр, нэг өдөрт олон мөртэй өдөр, уншигдаагүй хуудастай өдрийг хөндөхгүй.
+ * @returns шинэчилсэн мөрийн тоо
+ */
+export async function repriceFreeRows(code: string): Promise<number> {
+  const rows = (await queryFeatures(HO_IPC.url, { outFields: ['*'], orderBy: `${HO_IPC.oid} ASC` })) as Row[];
+  const C = HO_IPC.contractFields;
+  const mine = rows.filter((r) => String(r[P.id] ?? '').startsWith('AUTO|') && String(r[C.code] ?? '').trim() === code);
+  const dayOfRow = (r: Row) => String(r[P.id]).split('|')[2] ?? '';
+  const free = mine.filter((r) => String(r[HO_IPC.status.field] ?? '').trim() === HO_IPC.status.work);
+  const updates: Record<string, unknown>[] = [];
+  const latestUnits = new Map<string, Map<number, number>>(); // pkg.key → des → одоогийн нэгж үнэ
+  for (const r of free) {
+    const day = dayOf(dayOfRow(r));
+    const bagts = String(r[C.pkg] ?? '');
+    if (!day || !bagts) continue;
+    if (mine.filter((x) => dayOfRow(x) === dayOfRow(r)).length !== 1) continue;
+    const wanted: Pkg[] = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
+    const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p, p.floors == null ? { fill: true } : {}).catch(() => null)));
+    const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));
+    let une: number | null = null;
+    let ok = true;
+    let filled = 0;
+    for (const [i, pkg] of wanted.entries()) {
+      const sc = schemas[i];
+      if (sc && sc.bld.length > 0 && weights[i] === 0) continue;
+      if (!sc?.f.fillDate) { ok = false; break; }
+      const cols = sc.obyem.filter((x): x is string => !!x);
+      if (!cols.length) continue;
+      const need = [sc.f.oid, sc.f.no, sc.f.work, sc.f.gun, sc.f.wC, sc.f.vol, sc.f.unit, sc.f.des, ...cols].filter((x): x is string => !!x);
+      const upTo = await latestDayUpTo(pkg.url, sc.f.fillDate, day);
+      if (upTo !== day) continue;
+      const dayRows = (await loadRows(pkg, sc, day, need, { strict: true })).rows;
+      if (!dayRows.length) { ok = false; break; }
+      if (dayRows.some((x) => !x.group && x.unit == null)) {
+        let units = latestUnits.get(pkg.key);
+        if (!units) {
+          units = new Map();
+          for (const x of (await loadRows(pkg, sc, undefined, need, { strict: true })).rows) if (x.des != null && x.unit != null) units.set(x.des, x.unit);
+          latestUnits.set(pkg.key, units);
+        }
+        for (const x of dayRows) if (!x.group && x.unit == null && x.des != null && units.has(x.des)) { x.unit = units.get(x.des)!; filled += 1; }
+      }
+      const s = snapshotDayOf(dayRows, day);
+      if (s.une != null) une = (une ?? 0) + s.une;
+    }
+    if (!ok || !filled || une == null) continue;
+    const was = num(r[LINK_FIELDS.une]);
+    if (was != null && Math.abs(was - une) < 0.5) continue;
+    updates.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [LINK_FIELDS.une]: une });
+  }
+  if (!updates.length) return 0;
+  const j = await agsFetch(`${HO_IPC.url}/applyEdits`, { updates: JSON.stringify(updates.map((attributes) => ({ attributes }))), rollbackOnFailure: 'true' });
+  const res = (j.updateResults ?? []) as EditRes[];
+  if (res.length !== updates.length || res.some((x) => x.success !== true)) throw new Error(tr('Бичих амжилтгүй'));
+  invalidate('HO_IPC');
+  await refreshAutoZoruu(code).catch(() => undefined);
+  return updates.length;
+}
+
 export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoResult> {
   const at = dayOf(day);
   if (!at) return { ok: false, error: tr('Огноо танигдсангүй: {0}', day) };

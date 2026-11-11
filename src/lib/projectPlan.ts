@@ -200,6 +200,11 @@ export type PlanValues = {
   T: number | null; U: number | null; V: number | null; W: number | null;
   /** Блокийн төлөв (S-ээр) — зөвхөн блокийн мөрөнд */
   status: BlockStatus | null;
+  /**
+   * 2026-11-11 (хэрэглэгч): бөглөх хуудасгүй БЭЛТГЭЛ АЖЛЫН мөр — нийлбэр ба жинд ОРОХГҮЙ (F · S хоосон). Газар чөлөөлөлт,
+   * Буулгалт цэвэрлэгээ, Гадна тохижилт/өндөржилт, Инженерийн дэд бүтэц (5.1.1 · 5.1.2 · 5.1.3.2 · 5.1.3.3).
+   */
+  skip?: true;
 };
 
 /** Блокийн төлөв — 0 → Эхлээгүй, (0,100) → Эхэлсэн, 100 → Дууссан */
@@ -220,6 +225,11 @@ export type PlanInputs = {
    * Блокгүй бэлтгэлийн мөр (5.1.1 · 5.1.2 · Багц-16…) энэ callback-аар ОРОХГҮЙ — хадгалсан `guitsetgel_huvi` хэвээр.
    */
   prepActual?: (pkg: string | null, blok: string, node: PlanNode) => number | null | undefined;
+  /**
+   * АЖЛЫН ЗУРАГ ТӨСЛИЙН навчны явц (2026-11-11) — «Зургийн бүртгэл»-ээс: магадлалд орсон ÷ нийт зураг (багцаар).
+   * `undefined` = бүртгэлд тэр багцын зураг алга → хадгалсан `guitsetgel_huvi`.
+   */
+  zuragActual?: (pkg: string | null, node: PlanNode) => number | undefined;
   /** Барилга угсралт ажлын блокгүй навчны (дэд бүтэц) бодит гүйцэтгэл */
   pkgActual?: (pkg: string | null, node: PlanNode) => number | null | undefined;
   /** Блокийн гүйцэтгэгчийн төлөвлөгөөт хувь `asOf` өдрөөр (Хуваарь · planProgress) */
@@ -662,6 +672,9 @@ function leafValue(n: PlanNode, m: Metric, today: number, inputs: PlanInputs): n
         /* 2026-11-11 (хэрэглэгч): газар чөлөөлөлтийг багц/блокоор хувиар бодохгүй — нэгж талбар олон багцад давхардана.
            Хувь зөвхөн үе шатын мөрөнд (төслийн нийт, `override`) */
         return null;
+      } else if (n.phase === 'zurag' && inputs.zuragActual) {
+        const v = inputs.zuragActual(n.pkg, n);
+        if (v !== undefined) return frac(v);
       } else if (n.phase === 'songon' && tenderSigned(n, today)) {
         return 1;
       }
@@ -695,6 +708,25 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
   const ov = new Map<PlanNode, Partial<Record<Metric, number | null>>>();
   if (inputs.override) for (const n of nodes) { const o = inputs.override(n); if (o) ov.set(n, o); }
 
+  /* ── БЭЛТГЭЛ АЖЛЫН ХАСАГДАХ МӨР (2026-11-11, хэрэглэгч): «Бэлтгэл ажил» = зөвхөн бөглөх хуудасны «А. Бэлтгэл ажил».
+     Доороо хуудасны эхтэй (`prepActual` !== undefined) блок огт байхгүй мөр (үр удамтайгаа) нийлбэр, жинд орохгүй.
+     `prepActual` өгөгдөөгүй (тест, урьдчилан харах) бол хасахгүй. E (төсөв) хөндөгдөхгүй. ── */
+  const skip = new Set<PlanNode>();
+  if (inputs.prepActual) {
+    const memo = new Map<PlanNode, boolean>();
+    const has = (n: PlanNode): boolean => {
+      let v = memo.get(n);
+      if (v === undefined) {
+        v = n.children.length ? n.children.some((c) => !c.outside && has(c)) : !!n.blok && inputs.prepActual!(n.pkg, n.blok, n) !== undefined;
+        memo.set(n, v);
+      }
+      return v;
+    };
+    const mark = (n: PlanNode) => { skip.add(n); n.children.forEach(mark); };
+    for (const n of nodes) if (n.phase === 'barilga' && n.sub === 'beltgel' && !n.outside && !skip.has(n) && !has(n)) mark(n);
+  }
+  const counted = (c: PlanNode) => !c.outside && !skip.has(c);
+
   /* ── E: хадгалсан › (нийлбэрт орох) хүүхдүүдийн нийлбэр ── */
   const E = new Map<PlanNode, number | null>();
   for (const n of [...post, root]) {
@@ -717,7 +749,7 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
     const p = n.parent;
     if (inputs.excelWeights || !p || p === root || n.outside) return null;
     /* хэрэглэгч 2026-11-03: төсөвт өртөг хоосон бол 0 гэж бодно; бүлэгт нэг ч төсөв байхгүй бол (÷0) хадгалсан жин */
-    const sib = p.children.filter((c) => !c.outside);
+    const sib = p.children.filter(counted);
     let tot = 0;
     for (const c of sib) tot += E.get(c) ?? 0;
     return tot > 0 ? (E.get(n) ?? 0) / tot : null;
@@ -732,15 +764,29 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
     const p = n.parent;
     if (inputs.excelWeights || !p || p === root || n.outside) return null;
     let tot = 0;
-    for (const c of p.children) if (!c.outside) tot += twinBudget(c);
+    for (const c of p.children) if (counted(c)) tot += twinBudget(c);
     return tot > 0 ? twinBudget(n) / tot : null;
+  };
+  /* Хадгалсан жин — ах дүүгийн хасагдсан (бэлтгэлийн хуудасгүй, 2026-11-11) мөр байвал үлдсэнүүдийн нийлбэрт хуваана */
+  const storedShare = (n: PlanNode): number | null => {
+    const w = wt(n.row!.heseg_ezleh_huvi);
+    const p = n.parent;
+    if (w == null || !p || p === root || !p.children.some((c) => skip.has(c))) return w;
+    let tot = 0;
+    for (const c of p.children) if (counted(c)) tot += wt(c.row?.heseg_ezleh_huvi) ?? 0;
+    return tot > 0 ? w / tot : w;
   };
   const fOf = (n: PlanNode): number | null => {
     if (F.has(n)) return F.get(n)!;
+    if (skip.has(n)) { F.set(n, null); return null; }
     if (busy.has(n)) return null;
     busy.add(n);
     const r = n.row!;
-    let f = budgetShare(n) ?? twinShare(n) ?? wt(r.heseg_ezleh_huvi);
+    /* 2026-11-11 (хэрэглэгч): Ажлын зураг төслийн жинг «ТЭЗҮ · Ажлын зураг төсөл» хуудсанд гараар засна — ах дүү бүгд
+       хадгалсан жинтэй бол тэр нь төсвийн хувиас түрүүлнэ (нэвтрүүлэхдээ одоогийн тооцоолсон жинг хадгалсан тул хувь өөрчлөгдөөгүй) */
+    const manual = n.phase === 'zurag' && !inputs.excelWeights && n.parent != null && n.parent !== root && !n.outside
+      && n.parent.children.filter(counted).every((c) => wt(c.row?.heseg_ezleh_huvi) != null);
+    let f = manual ? wt(r.heseg_ezleh_huvi) : budgetShare(n) ?? twinShare(n) ?? storedShare(n);
     if (f == null) {
       /* Хадгалсан Төсөлд эзлэх ÷ эцгийнх — ЗӨВХӨН үе шатны мөр ба Excel горимд (автомат горимд эцгийн G томьёогоор
          өөрчлөгдөх тул хуучин G-ээс буцааж бодвол жин хэт томордог — 2026-11-03) */
@@ -820,6 +866,7 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
     const rec = {} as Record<Metric, number | null>;
     for (const m of METRICS) {
       if (o && m in o) { rec[m] = frac(o[m] ?? null); continue; }
+      if (m === 'S' && skip.has(n)) { rec[m] = null; continue; }
       if (n.children.length) rec[m] = rollup(n, (c) => X.get(c)![m], F);
       else rec[m] = n.row ? leafValue(n, m, today, inputs) : null;
     }
@@ -840,6 +887,7 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
       N, O, P, Q: hund(x.Q), R, S,
       T: ratio(S, N), U: ratio(S, O), V: ratio(S, P), W: ratio(S, R),
       status: n.blok ? blockStatus(S) : null,
+      ...(skip.has(n) ? { skip: true as const } : {}),
     });
   }
   return { tree, today, values, get: (code) => { const n = tree.byCode.get(code); return n ? values.get(n) : undefined; } };

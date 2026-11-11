@@ -1143,7 +1143,7 @@ type PpKind = 'money' | 'w' | 'date' | 'pct' | 'frac' | 'text';
 type PpRawKey = Extract<keyof PlanStoredRow, string>;
 /** Олгосон санхүүжилтийн багана — `moneySums`-аас (2026-11-04) */
 type PpCalcKey = 'mContract' | 'mPaid' | 'mAdvance' | 'mPctTotal' | 'mPctContract';
-type PpCol = { k: Exclude<keyof PlanValues, 'status'> | SourceKey | PpRawKey | PpCalcKey; label: string; kind: PpKind; title?: string; raw?: true };
+type PpCol = { k: Exclude<keyof PlanValues, 'status' | 'skip'> | SourceKey | PpRawKey | PpCalcKey; label: string; kind: PpKind; title?: string; raw?: true };
 const CALC_KEYS: readonly string[] = ['mContract', 'mPaid', 'mAdvance', 'mPctTotal', 'mPctContract'];
 /**
  * Олгосон санхүүжилтийн баганын утга. `rootE` — Төслийн нийт мөрийн E: «Олгосон хувь (төсөлд)» мөр бүрт
@@ -1481,8 +1481,8 @@ export function ProjectPlanTable({
     /* 2026-11-03: нэмсэн ажлын төсөвт өртөг — эцгийн төсвөөс жингээр оноосон (бүдэг налуу; нийлбэрт орохгүй) */
     const alloc = c.k === 'E' && v?.E == null && v?.EA != null && !!n && isAddedWork(n);
     const x = CALC_KEYS.includes(c.k) ? ppCalcVal(c.k, n ? moneyOf.get(n) : undefined, rootE)
-      : c.raw ? (stageLive(c.k, n) ?? (n?.row?.[c.k as PpRawKey] as number | string | null | undefined) ?? null)
-      : isSourceKey(c.k) ? src?.[c.k] ?? null : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status'>] : null;
+      : c.raw ? (stageLive(c.k, n) ?? (c.k === 'gazar_chuluulult' ? null : (n?.row?.[c.k as PpRawKey] as number | string | null | undefined)) ?? null)
+      : isSourceKey(c.k) ? src?.[c.k] ?? null : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip'>] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;
     return (
       <td

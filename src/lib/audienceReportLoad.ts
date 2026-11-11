@@ -101,7 +101,9 @@ export async function loadAudienceInputs(period: ExecPeriod, user: string, now: 
     return null;
   };
   const deltas = ok(d, 'deltas');
-  const pl = ok(plan, 'plan');
+  /* 2026-11-11 (аудит): эх нь дутуу уншигдсан төлөвлөгөө (failed) бага хувь анхааруулгагүй хэвлэдэг байв — уншигдаагүйд тооцно */
+  const pl0 = ok(plan, 'plan');
+  const pl = pl0 && pl0.failed.length ? (failed.push('plan'), null) : pl0;
   const hoRows = ok(ho, 'ipc');
   const fp = ok(finPair, 'lag');
   const ov = ok(saad, 'saad');

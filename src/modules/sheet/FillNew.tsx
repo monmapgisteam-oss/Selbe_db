@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fixCyr } from "@/lib/format";
 import { useAsync } from '@/lib/useAsync';
-import { loadNoots, nootsSummary } from '@/lib/materialNoots';
+import { loadNoots, nootsSummary, inPkgStock } from '@/lib/materialNoots';
 import { isApproved, loadMa, maGateOf } from '@/lib/ma';
 import { serverNow, syncServerClock } from '@/lib/serverClock';
 import { dayTagOf, needsRegistration, submitForReview } from '@/lib/hyanaltSubmit';
@@ -890,7 +890,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const nootsQ = useAsync(async () => {
     try { return await loadNoots(); } catch (e) { console.warn('[selbe] материалын норм (material_noots) уншигдсангүй — нормгүй үргэлжилнэ:', e); return []; }
   }, []);
-  const matNorms = useMemo(() => new Map(nootsQ.state === 'ready' ? nootsSummary(nootsQ.data).map((x) => [x.name, x.norm] as const) : []), [nootsQ]);
+  /* 2026-11-11: энэ багцын (ба багцгүй) нөөцийн норм — өөрийн багцынх давамгайлна */
+  const matNorms = useMemo(() => new Map(nootsQ.state === 'ready'
+    ? nootsSummary(nootsQ.data).filter((x) => inPkgStock(x.bagts, pkg.group)).sort((a, b) => Number(!!a.bagts) - Number(!!b.bagts)).map((x) => [x.name, x.norm] as const)
+    : []), [nootsQ, pkg.group]);
   const maBlock = useMemo(() => {
     const m = new Map<number, string>();
     if (view || maQ.state !== 'ready') return m;

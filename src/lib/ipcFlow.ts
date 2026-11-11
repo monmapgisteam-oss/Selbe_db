@@ -191,8 +191,10 @@ export function approveWhy(d: IpcDocRow): 'status' | 'no-doc' | null {
 /**
  * БАТАЛГААЖУУЛАХ: `dun` = баримтын дүн, гүйцэтгэлүүд «Олгосон». Буцаах зам байхгүй.
  */
-export function approveIpc(d: IpcDocRow, pays: readonly Row[]): Row[] {
-  const out: Row[] = [{ [HO_IPC.oid]: d.oid, [P.amount]: d.total, [S.field]: S.paid }];
+export function approveIpc(d: IpcDocRow, pays: readonly Row[], day?: string): Row[] {
+  /* 2026-11-11 (аудит): олгосон огноо = БАТАЛСАН өдөр (үүсгэсэн өдөр биш) — сарын «олгосон» цуваа өмнөх сарыг буцааж өөрчилдөг байв */
+  const paidOn = day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? { [P.payDate]: day, [P.year]: Number(day.slice(0, 4)) } : {};
+  const out: Row[] = [{ [HO_IPC.oid]: d.oid, [P.amount]: d.total, [S.field]: S.paid, ...paidOn }];
   for (const r of pays) {
     /* 2026-11-09: зөвхөн «IPC үүссэн» мөр — ижил дугаартай (зэрэг үүссэн, `dupDocNos`) өөр баримтын баталсан эсвэл чөлөөлөгдсөн мөрийг хөндөхгүй */
     if (isAuto(r) && num(r[P.ipcNo]) === d.no && statusOf(r) === S.created) out.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [S.field]: S.paid });
@@ -220,9 +222,12 @@ export function deleteIpc(d: IpcDocRow, pays: readonly Row[]): { deletes: number
   return { deletes: [d.oid], updates };
 }
 
-/** Гэрээний дүнгээс хэтрэх үү — анхааруулга (нэмэлт гэрээ байж болох тул хориглохгүй) */
-export const overContract = (paid: number | null, add: number | null, contract: number | null): boolean =>
-  contract != null && contract > 0 && (paid ?? 0) + (add ?? 0) > contract;
+/**
+ * Гэрээний дүнгээс хэтрэх үү — анхааруулга (нэмэлт гэрээ байж болох тул хориглохгүй). `pending` — үүссэн боловч батлагдаагүй
+ * IPC-үүдийн дүн (2026-11-11 аудит: тоологддоггүй байсан тул 100-ийн гэрээнд 60 олгосон + 3×20 анхааруулгагүй үүсдэг байв).
+ */
+export const overContract = (paid: number | null, add: number | null, contract: number | null, pending = 0): boolean =>
+  contract != null && contract > 0 && (paid ?? 0) + pending + (add ?? 0) > contract;
 
 /* ─────────────────────── ГЭРЭЭ ҮҮСГЭХ · ЦУЦЛАХ ─────────────────────── */
 

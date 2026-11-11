@@ -41,6 +41,8 @@ import { Icon } from '@/components/Icon';
 import { DocViewer } from '@/components/DocViewer';
 import { LocaleToggle, hasUnsavedWork } from '@/components/LocaleToggle';
 import { AgentButton, AgentLoading } from '@/components/AgentButton';
+import { hasCap, subscribeCaps } from '@/lib/caps';
+import { currentUser } from '@/lib/who';
 import { useTheme } from '@/lib/theme';
 import { useAsync } from '@/lib/useAsync';
 import { FilterProvider, useFilter } from '@/lib/filter';
@@ -458,6 +460,10 @@ function PortalContent(
    */
   const [agentOpen, setAgentOpen] = useState(false);
   const [agentMounted, setAgentMounted] = useState(false);
+  const [agentCapN, setAgentCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setAgentCapN((x) => x + 1)), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `agentCapN` нь эрх өөрчлөгдсөн дохио
+  const agentAllowed = useMemo(() => hasCap(currentUser(), 'aiAgent'), [agentCapN]);
   /** Порталын тусламжийн цонх (2026-09-30, `HelpPanel`) */
   const [helpOpen, setHelpOpen] = useState(false);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
@@ -1213,8 +1219,9 @@ function PortalContent(
       </OverlayBoundary>
 
       {/* AI туслах — бүх харагдацад нэг л удаа (яриа харагдац соливол тасрахгүй) */}
-      <AgentButton open={agentOpen} onToggle={() => { setAgentMounted(true); setAgentOpen(true); }} />
-      {agentMounted && (
+      {/* 2026-11-11: туслах зөвхөн «AI туслах ашиглах» эрхтэй аккаунтад */}
+      {agentAllowed && <AgentButton open={agentOpen} onToggle={() => { setAgentMounted(true); setAgentOpen(true); }} />}
+      {agentAllowed && agentMounted && (
         <OverlayBoundary label={tr('AI туслах нээгдсэнгүй')} onReset={() => setAgentOpen(false)}>
           <AgentChat open={agentOpen} onClose={() => setAgentOpen(false)} scope={navScope} />
         </OverlayBoundary>

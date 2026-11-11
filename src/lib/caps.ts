@@ -36,7 +36,8 @@ export type CapKey =
   | 'songonEdit'
   | 'zovshoorolTtbEdit'
   | 'ashiglaltEdit'
-  | 'cfSwitch';
+  | 'cfSwitch'
+  | 'aiAgent';
 
 /**
  * Панелд харуулах бүртгэл — ЗӨВХӨН түлхүүр.
@@ -126,6 +127,11 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'cfSwitch', icon: 'calendar' },
   /**
+   * AI ТУСЛАХ АШИГЛАХ (2026-11-11, хэрэглэгч: «туслах дээр тусдаа аккаунт тохируулдаг болго») — туслахын товч зөвхөн энэ
+   * эрхтэй аккаунтад харагдана; реле `AGENT_CAP_REQUIRED=1` үед мөн энэ эрхийг шалгана. Админ хэрэглэгч бүрт олгоно.
+   */
+  { key: 'aiAgent', icon: 'bolt' },
+  /**
    * СИСТЕМ ТҮР ХААХ (2026-10-19, нийслэлийн дата төв рүү шилжүүлэх) — порталыг бусад бүх хэрэглэгчид
    * «Систем түр хаагдсан» цонхоор хааж, дахин нээх (`permissions.setSystemClosed`, `__sys__:maintenance` мөр).
    */
@@ -182,6 +188,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   zovshoorolTtbEdit: ['zovshoorolTtb'],
   ashiglaltEdit: ['ashiglalt'],
   cfSwitch: ['finance'],
+  aiAgent: [],
 };
 
 /**

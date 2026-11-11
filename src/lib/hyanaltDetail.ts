@@ -12,7 +12,8 @@ import { describeNegCells, laterAsOf, needsFrameOcc, negTotalAt, overlaySubmissi
 import { readSubmissionByOid, type SubmissionPayload } from '@/lib/submission';
 import { t as tr } from '@/lib/i18nCore';
 import { rowSids } from '@/lib/hyanaltOkCells';
-import { bagtsKey } from '@/lib/services';
+import { bagtsKey, isConstructionNo, isPrepNo } from '@/lib/services';
+import type { FillGainIn } from '@/lib/fillGain';
 
 /** Нэг мөр — «Гүйцэтгэл бөглөх» хуудасны багануудтай ижил бүрэлдэхүүн */
 export type Filled = {
@@ -147,6 +148,11 @@ export type Submission = {
    * ИЛГЭЭЛТИЙН мөрийн OBJECTID — хараахан архивлагдаагүй (staged) харагдац.
    */
   subOid?: number;
+  /**
+   * ЭНЭ БӨГЛӨЛТИЙН ӨСӨЛТИЙН ОРОЛТ (2026-11-11) — «Б.» · «А.» мөрийн блок бүрийн өсөлт. Багц · төслийн хувийг дэлгэц
+   * араас нь бодно (`fillGain.loadFillGain` — ТТБ ачаална, уншилтыг саатуулахгүй). Тооцогдоогүй бол алга.
+   */
+  gain?: FillGainIn | null;
   remapped?: boolean;
   unmoved?: number;
   negative?: number;
@@ -231,6 +237,23 @@ async function loadStaged(
     const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
     return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
   }, "abs", sc.synthetic);
+  /* ── ӨСӨЛТ (2026-11-11): илгээлтээс ӨМНӨХ хуудсыг ижил томьёогоор бодож «Б.» · «А.» мөрийн хувийг жишнэ ── */
+  let gain: FillGainIn | null = null;
+  try {
+    const c0 = computeAll(loaded.rows, nBld, loaded.asOf ?? asOf, {}, {}, hasObyem, undefined, "abs", sc.synthetic);
+    const at = (rows: { no: string }[], pred: (no: string) => boolean) => rows.findIndex((r) => pred(r.no));
+    const dOf = (pred: (no: string) => boolean) => {
+      const i1 = at(ov.rows, pred), i0 = at(loaded.rows, pred);
+      return sc.bld.map((_, b) => {
+        const a1 = i1 >= 0 ? c[i1].act[b] : null;
+        const a0 = i0 >= 0 ? c0[i0].act[b] : null;
+        return a1 == null && a0 == null ? null : (a1 ?? 0) - (a0 ?? 0);
+      });
+    };
+    gain = { group: pkg.group, labels: sc.bld, dB: dOf(isConstructionNo), dA: dOf(isPrepNo), synthetic: sc.synthetic };
+  } catch (e) {
+    console.warn('[selbe] гүйцэтгэлийн өсөлт бодогдсонгүй', e);
+  }
 
   /* Обьёмтой блокуудын дараалал — `blocks`/`cells`/`acts` бүгд ҮҮГЭЭР индекслэгдэнэ. */
   const blocks = sc.bld.filter((_, i) => sc.obyem[i]);
@@ -379,6 +402,7 @@ async function loadStaged(
     filledCount: filled.filter((f) => (f.sum ?? 0) > 0).length,
     changes,
     dateChanges,
+    gain,
     asOfChanged: asOf != null && asOf !== loaded.asOf,
     asOfFrom: loaded.asOf != null ? msToDay(loaded.asOf) : null,
     asOfTo: asOf != null ? msToDay(asOf) : null,
@@ -483,6 +507,9 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
       const changes: Change[] = [];
       /** Жишсэн суурь нь ИЖИЛ ӨДРИЙН өмнөх жааз уу (доорх `samePrev`) — зөвхөн `compared`-д; хуримтлалд НЭМЭГДЭХГҮЙ (2026-11-04) */
       let sameDay = false;
+      /* Өсөлт (2026-11-11): «Б.» · «А.» мөрийн хадгалсан хувь — энэ жааз ба өмнөх жааз */
+      let dB: (number | null)[] | null = null;
+      let dA: (number | null)[] | null = null;
       const sum = sc.f.obyemSum;
       if (sum) {
         const w2 = where;
@@ -541,7 +568,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
               for (let off = 0; ; ) {
                 const pv = (await post(p.url, {
                   where: `${fill} = ${ts(prevAt)}`,
-                  outFields: [sc.f.no, sc.f.work, ...obs].join(','),
+                  outFields: [sc.f.no, sc.f.work, ...obs, ...acts].join(','),
                   returnGeometry: 'false',
                   orderByFields: 'objectid ASC',
                   resultOffset: String(off),
@@ -600,6 +627,15 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
               if (sameDay && prev) return d !== (num(prev[obs[k]]) ?? 0);
               return d !== 0;
             });
+            const noS = String(a[sc.f.no] ?? '').trim();
+            if (isConstructionNo(noS) || isPrepNo(noS)) {
+              const d = acts.map((n) => {
+                const v1 = num(a[n]);
+                const v0 = prev ? num(prev[n]) : null;
+                return v1 == null && v0 == null ? null : (v1 ?? 0) - (v0 ?? 0);
+              });
+              if (isConstructionNo(noS)) dB = d; else dA = d;
+            }
             const ch = tree[ri] ?? '0';
             const group = gunDepth
               ? ri + 1 < gunDepth.length && gunDepth[ri + 1] > gunDepth[ri]
@@ -642,11 +678,19 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
         }
       }
 
+      let gain: FillGainIn | null = null;
+      if ((dB || dA) && !prevFailed) {
+        const labels = sc.bld.filter((_, i) => sc.obyem[i]);
+        const none = labels.map(() => null);
+        gain = { group: p.group, labels, dB: dB ?? none, dA: dA ?? none, synthetic: sc.synthetic };
+      }
+
       return {
         pkgLabel: p.label,
         pkgKey: p.key,
         day: msToDay(at),
         blocks: sc.bld.filter((_, i) => sc.obyem[i]),
+        gain,
         compared: (prevAt != null || sameDay) && !prevFailed,
         prevError: prevFailed,
         rows: nRows,

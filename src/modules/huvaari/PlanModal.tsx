@@ -198,6 +198,8 @@ type PlanModalProps = {
   groupPreview?: (sp: Span, pct: Map<string, number>) => { no: string; work: string; money: number | null; span: Span; months: Map<string, number> | null }[];
   onUndo?: () => () => void;
   returnFocus?: () => HTMLElement | null;
+  /** Ирэх 7 хоногийн обьём (2026-11-11) — ажлын мөрд, идэвхтэй блокоор; `null` = харуулахгүй */
+  week?: WeekBoxProps | null;
   /**
    * «Тавих»/«Арилгах» — огноо · уялдаа · сарын обьём+нөөц · бодит огноо · нөөц
    * НЭГ алхамд (null = хөндөхгүй). `blks` — сонгосон блокууд (2026-09-24):
@@ -215,6 +217,60 @@ type PlanModalProps = {
     actBlks: number[],
   ) => void;
 };
+
+export type WeekBoxProps = {
+  /** Долоо хоногийн Даваа гараг (UTC ms) */
+  start: number;
+  /** Хадгалсан обьём; алга бол null */
+  value: number | null;
+  /** Ажлын нийт обьём — хувийг харуулахад */
+  vol: number;
+  canEdit: boolean;
+  save: (v: number | null) => Promise<void>;
+};
+
+/** Ирэх 7 хоногт хийх обьём — нэг тоо, «Хадгалах» товчоор шууд бичигдэнэ */
+function WeekBox({ start, value, vol, canEdit, save }: WeekBoxProps) {
+  const [txt, setTxt] = useState(value == null ? '' : String(value));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+  const v = txt.trim() === '' ? null : Number(txt.replace(',', '.'));
+  const bad = v != null && (!Number.isFinite(v) || v < 0 || v > vol);
+  const dirty = !bad && v !== value;
+  const go = async () => {
+    if (!dirty || busy) return;
+    setBusy(true); setErr(null); setOk(false);
+    try { await save(v); setOk(true); } catch (x) { setErr(String((x as Error)?.message ?? x)); } finally { setBusy(false); }
+  };
+  return (
+    <div className={h.mdDeps}>
+      <div className={h.mdDepsHead}>
+        {tr('Ирэх 7 хоногт хийх обьём')}
+        <span className={h.mdDepsN}>{msToDay(start)} – {msToDay(start + 6 * DAY)}</span>
+      </div>
+      <p className={h.mdPar}>{tr('«Төсөл төлөвлөгөө биелэлт»-ийн «Ирэх долоо хоног»-ийн төлөвлөгөөт хувь сарын төлөвлөгөөн дээр энэ обьёмыг нэмж бодогдоно.')}</p>
+      <div className={h.mdMonthGrid}>
+        <input
+          type="number" min={0} step="any" className={`${h.numIn} ${h.mdMonthIn}`}
+          value={txt} disabled={!canEdit || busy}
+          aria-label={tr('Ирэх 7 хоногт хийх обьём')}
+          onChange={(ev) => { setTxt(ev.target.value); setOk(false); }}
+          onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); void go(); } }}
+        />
+        <span className={h.mdMonth}>{v != null && !bad ? tr('нийт обьёмын {0}', `${num((v / vol) * 100, 1)}%`) : ''}</span>
+        {canEdit && (
+          <button type="button" className={h.save} disabled={!dirty || busy} onClick={() => void go()}>
+            {busy ? tr('Хадгалж байна…') : tr('Хадгалах')}
+          </button>
+        )}
+      </div>
+      {bad && <p className={h.mdWarn} role="alert">{tr('Обьём 0-ээс ажлын нийт обьём ({0}) хүртэл тоо байх ёстой.', num(vol, 2))}</p>}
+      {err && <p className={h.mdWarn} role="alert">{err}</p>}
+      {ok && <p className={h.mdPar} role="status">{tr('Хадгалагдав')}</p>}
+    </div>
+  );
+}
 
 export function PlanModal(props: PlanModalProps) {
   return <PlanModalBody key={props.r.oid} {...props} />;
@@ -237,7 +293,7 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
-  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup, onUndo, groupMoney, onPlanGroup, groupPreview, initSpan, groupCurve, groupSub, groupCopyTargets, onCopyGroup,
+  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup, onUndo, groupMoney, onPlanGroup, groupPreview, initSpan, groupCurve, groupSub, groupCopyTargets, onCopyGroup, week,
 }: PlanModalProps) {
   const mdRef = useRef<HTMLDivElement>(null);
   useFocusTrap(mdRef, true, returnFocus);
@@ -986,6 +1042,9 @@ function PlanModalBody({
             )}
           </div>
         )}
+
+        {/* ── ИРЭХ 7 ХОНОГИЙН ОБЬЁМ (2026-11-11) — шууд хадгална, ТТБ-ийн «Ирэх долоо хоног»-ийн төлөвлөгөөт хувьд орно ── */}
+        {week && <WeekBox key={`${week.start}|${blk}`} {...week} />}
 
         {/* ── САРЫН ОБЬЁМ ── */}
         {total == null && !r.group && (

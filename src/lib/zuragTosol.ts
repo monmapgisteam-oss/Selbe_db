@@ -305,13 +305,21 @@ export const canDelete = (n: PlanNode): boolean =>
   isAddedWork(n) && n.children.length === 0 && n.row?.objectid != null;
 
 /**
- * Нэмсэн ажлуудын жингийн нийлбэр (%) — эцгийн бүх хүүхэд нэмсэн ажил бол; 100%-аас зөрвөл анхааруулна
- * (ажлуудын төсвийн нийлбэр эцгийн төсөвтэй тэнцэхгүй). Хамаарахгүй бол null.
+ * Жин засагдах мөр (2026-11-11, хэрэглэгч: «зураг төслийн гүйцэтгэл дээр хувийн жин засах») — Ажлын зураг төслийн үе шатын
+ * доорх мөр (үе шатын мөр биш, «Нийслэл төсөв» биш). Ах дүү бүгд жинтэй бол тэр нь төсвийн хувиас түрүүлнэ (`projectPlan.fOf`).
+ */
+export const weightEditable = (n: PlanNode): boolean =>
+  n.phase === 'zurag' && n.depth >= 2 && n.row != null && !n.outside;
+
+/**
+ * Хүүхдүүдийн жингийн нийлбэр (%) — нэмсэн ажлууд, эсвэл жин засагддаг (зураг төслийн) хүүхдүүд; 100%-аас зөрвөл
+ * анхааруулна (хүүхдүүдийн хувь эцгийн хувьтай тэнцэхгүй). Хамаарахгүй бол null.
  */
 export function worksWeightSum(n: PlanNode, f: (c: PlanNode) => number | null | undefined): number | null {
-  if (!n.children.length || !n.children.every(isAddedWork)) return null;
+  const kids = n.children.filter((c) => !c.outside);
+  if (!kids.length || !(kids.every(isAddedWork) || kids.every(weightEditable))) return null;
   let s = 0;
-  for (const c of n.children) s += f(c) ?? 0;
+  for (const c of kids) s += f(c) ?? 0;
   return s;
 }
 

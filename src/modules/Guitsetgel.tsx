@@ -6,7 +6,8 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { dateTime, fixCyr } from '@/lib/format';
+import { dateTime, fixCyr, pct } from '@/lib/format';
+import { fillGainOf, loadFillGain, type FillGain, type FillGainIn } from '@/lib/fillGain';
 import {
   DECISION, F, SF, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
   REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, nextReview,
@@ -154,6 +155,31 @@ const byBagts = (list: Work[]): { bagts: string; items: Work[] }[] => {
   return groups.map(({ bagts, items }) => ({ bagts, items }));
 };
 const fmt = (iso: string | null) => dateTime(iso);
+
+/**
+ * 2026-11-11 (хэрэглэгч): батлаж буй гүйцэтгэл хэдэн хувийн ажил вэ — блок (шууд) · багц · төсөл (ТТБ ачаалсны дараа)
+ * нэмэх нэгж хувь.
+ */
+function GainLine({ g }: { g: FillGainIn }) {
+  const [v, setV] = useState<FillGain>(() => fillGainOf(g.group, g.labels, g.dB, g.dA, g.synthetic, null, null, null));
+  useEffect(() => {
+    let alive = true;
+    loadFillGain(g.group, g.labels, g.dB, g.dA, g.synthetic).then((x) => { if (alive) setV(x); }).catch(() => { /* блокийн өсөлт хэвээр */ });
+    return () => { alive = false; };
+  }, [g]);
+  return (
+    <div className={s.subMuted}>
+      {tr('Энэ гүйцэтгэл:')}{' '}
+      {v.blocks.length
+        ? v.blocks.map((b) => tr('блок {0} {1}', b.block, signed(b.pct, 2))).join(' · ')
+        : tr('блокийн гүйцэтгэл өөрчлөгдөөгүй')}
+      {v.pkg != null && <>{' · '}{tr('багц {0}', signed(v.pkg, 2))}</>}
+      {v.project != null && <>{' · '}{tr('төсөл {0}', signed(v.project, 3))}</>}
+    </div>
+  );
+}
+/** Нэгж хувийг тэмдэгтэй: «+2.35%», «−0.10%» */
+const signed = (v: number, d: number): string => (v > 0 ? `+${pct(v, d)}` : v < 0 ? `−${pct(-v, d)}` : pct(0, d));
 
 /** Компани менежерийн шатыг ОГТ харахгүй */
 const seesManager = (stage: Stage) => stage !== 'company';
@@ -589,6 +615,7 @@ function Submitted({
               </>
             )}
           </div>
+          {data.gain && <GainLine g={data.gain} />}
           {data.prevError && (
             <div className={s.error} role="alert">
               {tr('Өмнөх хувилбарыг уншиж чадсангүй — аль нүд өөрчлөгдсөнийг тодорхойлж чадаагүй тул батлах товч түр хаалттай.')}{' '}
