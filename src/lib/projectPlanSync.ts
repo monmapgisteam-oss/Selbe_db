@@ -133,6 +133,26 @@ function invalidateQuiet(...keys: DataKey[]): void {
  * `fresh` (анхдагч true) — батлалт сая бичигдсэн тул кэшлэгдсэн хуудас/хүснэгтээр биш шинээр уншина; автобусаас
  * (`startPlanSync`) дуудахад бичилт өөрөө кэшээ хүчингүй болгосон тул `false`.
  */
+/**
+ * НЭГТГЭЛ ГҮЙЦЭТГЭЛИЙН ХҮСНЭГТИЙГ (187) ДАГУУЛЖ ШИНЭЧЛЭХ (2026-11-11, `negtgelMirror`) — зөвхөн БҮРЭН уншигдсан
+ * төлөвлөгөөгөөр. Хэзээ ч шидэхгүй: 187 бичигдээгүй нь 182-ын хадгалалтыг ч, батлалтыг ч саатуулахгүй. Эрхгүй (403) бол
+ * `DISABLE_MS` хүртэл дахин оролдохгүй.
+ */
+let mirrorOffUntil = 0;
+async function mirrorToNegtgel(plan: ProjectPlan): Promise<void> {
+  if (Date.now() < mirrorOffUntil) return;
+  try {
+    const { mirrorNegtgel } = await import('@/lib/negtgelMirror');
+    const m = await mirrorNegtgel(plan);
+    if (m.n > 0) invalidateQuiet('TUSUL_NEGTGEL');
+    if (m.only182.length || m.only187.length) console.warn('[selbe] нэгтгэлийн хүснэгт (187): хос олдоогүй мөр —', { only182: m.only182, only187: m.only187 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isForbidden(msg)) mirrorOffUntil = Date.now() + DISABLE_MS;
+    console.warn('[selbe] нэгтгэлийн хүснэгт (187) шинэчлэгдсэнгүй:', msg);
+  }
+}
+
 export async function syncPlanProgress(opts: { fresh?: boolean } = {}): Promise<PlanSyncResult> {
   try {
     if (opts.fresh ?? true) invalidateQuiet('BAGTS_SHEET', 'CASHFLOW_NEW');
@@ -149,6 +169,7 @@ export async function syncPlanProgress(opts: { fresh?: boolean } = {}): Promise<
       n += r.n;
     }
     if (n > 0) invalidateQuiet('CASHFLOW_NEW');
+    if (!plan.failed.length) await mirrorToNegtgel(plan);
     return plan.failed.length ? { ok: true, n, partial: plan.failed.join(', ') } : { ok: true, n };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

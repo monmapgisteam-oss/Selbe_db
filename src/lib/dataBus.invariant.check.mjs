@@ -224,6 +224,10 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
     '2026-11-03: нийтийн вэбийн `selbe_public` 6 хүснэгт — систем ЗӨВХӨН бичдэг (уншдаггүй, DataKey/кэш алга); '
     + 'бичилт бүр хүснэгтийг шууд дахин уншиж тулгадаг (`writeTable`). invalidate() дуудвал өөрийн бичилт автобусаар '
     + 'дахин синк дуудаж ГОГЦОО үүснэ.'],
+  ['src/lib/negtgelMirror.ts',
+    '2026-11-11: Нэгтгэлийн хүснэгтийг (187) «Төсөл төлөвлөгөө биелэлт»-ээр толилно — кэшийг ДУУДАГЧ '
+    + '(`projectPlanSync.mirrorToNegtgel` → `invalidateQuiet(\'TUSUL_NEGTGEL\')`) хүчингүй болгоно: энгийн invalidate() нь '
+    + 'төлөвлөгөөний синкийг өөрөө дахин өдөөж гогцоо үүсгэнэ.'],
 ]);
 
 const WRITER_TOKEN = /(?:^|[^\w$])(?:applyAll|applyUpdates|applyAdds|addRows|updateDecision)\s*\(/m;
