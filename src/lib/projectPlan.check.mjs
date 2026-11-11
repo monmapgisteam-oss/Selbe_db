@@ -184,7 +184,6 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
     blockActual: (pkg, blok) => (blok === '5/1' ? 50 : null),
     pkgActual: () => 20,
     blockPlanned: (pkg, blok, asOf) => { calls.push(asOf); return blok === '5/1' ? 60 : undefined; },
-    land: (pkg, blok) => (blok === '5/1' ? 100 : 0),
   }, today);
   const v = (c) => r.get(c);
   /* E — нийлбэр, «Нийслэл төсөв» хасагдана */
@@ -200,7 +199,7 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   assert.equal(v('5.2.1.2').S, null, 'null ≠ 0');
   near(v('5.2.1').S, 37.5, 1e-9, '0.75×50, 5/2 null нэмэгдэхгүй');
   assert.equal(v('5.2.2').S, 20, 'блокгүй навч → pkgActual');
-  assert.equal(v('2.1.1').S, 100, 'газар чөлөөлөлт → land');
+  assert.equal(v('2.1.1').S, null, 'газар чөлөөлөлтийн блок — хувьгүй (2026-11-11: багцаар бодохгүй)');
   assert.equal(v('1.1').S, 40, 'ТЭЗҮ → хадгалсан guitsetgel_huvi');
   /* P: блок → Хуваарь, Хуваарьгүй (undefined) → өвгийн L/M шугаман */
   assert.equal(v('5.2.1.1').P, 60);
@@ -220,8 +219,8 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   assert.equal(r0.get('2.1').O, null, 'гэрээний муж ч алга → null (0 биш)');
   /* Төлөв */
   assert.equal(v('5.2.1.1').status, 'started');
-  assert.equal(v('2.1.2').status, 'notStarted');
-  assert.equal(v('2.1.1').status, 'done');
+  assert.equal(v('2.1.2').status, null, 'газрын блок — хувьгүй тул төлөвгүй (2026-11-11)');
+  assert.equal(v('2.1.1').status, null);
   /* Сарын цуваа: блок → blockPlanned, эцэг жигнэсэн */
   const ms = monthlySeries(r, monthEnds(D('2026-01-01'), D('2026-03-01')), {
     blockPlanned: (pkg, blok, asOf) => (blok === '5/1' ? (asOf >= D('2026-02-28') ? 40 : 10) : 0),
@@ -402,16 +401,17 @@ console.log('projectPlan.check: автомат жин OK');
   assert.equal(planBudgetTotal(buildTree([R('1', null, 'Зураг', { uy_shat: 'Ажлын зураг төсөл' })])), null, 'төсөвгүй мод null (0 биш)');
 }
 
-/* 2026-11-04: `blok`=«Бүгд» — газрын хувийг багцын хүрээгээр холбохгүй, хадгалсан утга */
+/* 2026-11-11: газар чөлөөлөлтийн багц/блокийн мөр — хадгалсан утга ч, «Бүгд» мөр ч хувьгүй; үе шатын мөрөнд override */
 {
   const t = buildTree([
     { dd_kod: '1', ajil_uilchilgee: 'Газар чөлөөлөлт', heseg_ezleh_huvi: 1 },
     { dd_kod: '1.1', etseg_kod: '1', bagts: 'Багц-4.1', blok: 'Бүгд', ajil_uilchilgee: 'Өндөржилтөөс гарах газар шорооны ажил', guitsetgel_huvi: 0 },
     { dd_kod: '1.2', etseg_kod: '1', bagts: 'Багц-4.1', blok: '5/1', ajil_uilchilgee: '9 давхар' },
   ]);
-  const r = computePlan(t, { land: () => 100 }, Date.UTC(2026, 10, 4));
-  assert.equal(r.get('1.1').S, 0, '«Бүгд» мөр багцын газрын хувь авахгүй');
-  assert.equal(r.get('1.2').S, 100, 'блокийн мөр хэвээр');
+  const r = computePlan(t, { override: (n) => (n.depth === 1 ? { S: 91.4 } : undefined) }, Date.UTC(2026, 10, 4));
+  assert.equal(r.get('1.1').S, null, '«Бүгд» мөр хувьгүй (хадгалсан 0-ийг ч авахгүй)');
+  assert.equal(r.get('1.2').S, null, 'блокийн мөр хувьгүй');
+  assert.equal(r.get('1').S, 91.4, 'үе шатын мөр = төслийн нийт');
 }
 
 /* 2026-11-04: Зөвшөөрөл үе шатын нэмсэн мөр (эцгийн багцтай, мөнгөгүй) — «+ Зөвшөөрөл нэмэх»; Сонгон шалгаруулалтад биш */

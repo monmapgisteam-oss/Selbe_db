@@ -470,7 +470,8 @@ export function ipcOf(pkgKey: string | null, all: readonly TuhHoContract[], ipcN
     const d = s(r[P.payDate]).slice(0, 10);
     if (d && (!lastPaidDate || d > lastPaidDate)) lastPaidDate = d;
   }
-  const nos = ipcNumbers(pays);
+  /* 2026-11-09: зөвхөн ОЛГОСОН (`dun` бичигдсэн) мөрийн дугаар — батлаагүй IPC баримт тоо, «сүүлийн IPC»-д орохгүй */
+  const nos = ipcNumbers(pays.filter((r) => hoAmount(r) != null));
   const pend = sumOrNull(pays.flatMap((r) => Object.values(HO_PENDING).map((f) => numOf(r[f]))));
   return {
     contracts: cs,

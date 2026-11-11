@@ -14,7 +14,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct, dateTime } from '@/lib/format';
 import { PAPER, INK, INK2, INK3, MUTED, RULE, RULE2, SURF, ACCENT, RED, AMBER, T, tableLayout, th, td, tdBold } from '@/lib/pdfTheme';
 import {
-  execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel,
+  execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel, measuredLabel,
   type ExecFinding, type ExecReport, type ExecAppendix,
 } from '@/lib/execReport';
 import { TOLOV } from '@/lib/zovshoorol';
@@ -458,7 +458,7 @@ export async function buildExecDoc(
           p.planned == null ? '—' : pct(p.planned, 1),
           gapText, paceText)),
       kpiRow([
-        { label: tr('Бодит гүйцэтгэл'), value: p.actual == null ? '—' : pct(p.actual, 1), sub: p.asOf ? tr('хэмжилт {0}', p.asOf) : undefined },
+        { label: tr('Бодит гүйцэтгэл'), value: p.actual == null ? '—' : pct(p.actual, 1), sub: measuredLabel(p) || undefined },
         { label: tr('Төлөвлөсөн'), value: p.planned == null ? '—' : pct(p.planned, 1), sub: p.planExcluded.length ? tr('(хуваарьтай багцаар)') : tr('хуваариас') },
         coverageOk(p.planCoverage)
           ? { label: tr('Зөрүү'), value: gapPts(p.gap), sub: p.gap == null ? undefined : p.gap >= LATE_GAP ? tr('төлөвлөгөөнөөс хоцорч байна') : p.gap < 0 ? tr('төлөвлөгөөнөөс түрүүлж байна') : tr('хуваарийн дагуу') }

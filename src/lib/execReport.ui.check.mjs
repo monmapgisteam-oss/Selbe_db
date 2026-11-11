@@ -31,7 +31,7 @@ if (!g.navigator) g.navigator = {};
 g.fetch = () => Promise.reject(new Error('execReport.ui.check: сүлжээгүй'));
 process.on('unhandledRejection', noop);
 
-const { negtgelProjectPlan, execFindings, execFacts, householdsMissingOf, execFinRanges, execNoneUnlisted, execAppendix } = await import('./execReport.ts');
+const { negtgelProjectPlan, execFindings, execFacts, householdsMissingOf, execFinRanges, execNoneUnlisted, execAppendix, measuredLabel } = await import('./execReport.ts');
 
 let n = 0;
 const ok = (name, fn) => { fn(); n += 1; console.log('  ✓', name); };
@@ -209,6 +209,27 @@ ok('2026-11-06: багцын мөрд ороогүй гэрээгүй ажил �
   const app = execAppendix({ ...base({}), fin: { ...base({}).fin, noneUnlisted: un } }, []);
   assert.equal(app[0].kind, 'finNone');
   assert.ok(app[0].title.includes('3 багц, ажил') && app[0].items[0].includes('82,596,282,000'), JSON.stringify(app[0]));
+});
+
+ok('2026-11-09: хэмжилтийн огноо — хамгийн хуучин нь өөр бол хамт (удирдлагын тайлан · PDF · инфографик нэг функц)', () => {
+  assert.equal(measuredLabel({ asOf: '2026-10-28', asOfOldest: '2026-09-29' }), 'хэмжилт 2026-10-28, хамгийн хуучин 2026-09-29');
+  assert.equal(measuredLabel({ asOf: '2026-10-28', asOfOldest: '2026-10-28' }), 'хэмжилт 2026-10-28');
+  assert.equal(measuredLabel({ asOf: '2026-10-28' }), 'хэмжилт 2026-10-28');
+  assert.equal(measuredLabel({ asOf: '' }), '');
+  for (const f of ['../modules/ExecReport.tsx', './execPdf.ts', './execInfographic.ts', './audienceReport.ts']) {
+    assert.ok(readFileSync(new URL(f, import.meta.url), 'utf8').includes('measuredLabel('), `${f}: measuredLabel алга`);
+  }
+});
+
+ok('2026-11-09: хэмжигдээгүй багцын явц 0% («—» биш); UI-д товчлол («ГИШС», «HO хүснэгт», «н.х») ба Excel алга', () => {
+  const src = (f) => readFileSync(new URL(f, import.meta.url), 'utf8');
+  assert.ok(src('../modules/ExecReport.tsx').includes('pct(p.progress ?? 0, 1)'));
+  assert.ok(src('../modules/Tailan.tsx').includes('text: pct(b.progress ?? 0, 2)') && src('../modules/Tailan.tsx').includes('{pct(b.progress ?? 0, 2)}'));
+  assert.equal(src('../modules/Dashboard.tsx').split('display: pct(r.progress ?? 0, 1)').length - 1, 2);
+  const trs = (f) => [...src(f).matchAll(/tr\('([^']*)'/g)].map((m) => m[1]);
+  for (const f of ['../modules/HeadKpi.tsx', '../modules/Dashboard.tsx', '../modules/ExecReport.tsx', './ceo/ipc.ts', './audienceReport.ts']) {
+    for (const t of trs(f)) assert.ok(!/ГИШС|HO хүснэгт|н\.х(?![а-яөү])|Excel/.test(t), `${f}: ${t}`);
+  }
 });
 
 console.log(`execReport.ui.check: ${n} шалгуур ✅`);

@@ -10,7 +10,7 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { dayKey, num, pct } from '@/lib/format';
-import { execFindings, incidentLabel, LATE_GAP, type ExecReport } from '@/lib/execReport';
+import { execFindings, incidentLabel, LATE_GAP, measuredLabel, type ExecReport } from '@/lib/execReport';
 import { coverageOk } from '@/lib/planProgress';
 import { bandOf, type ExecDelta, type ExecDeltas, type ExecPeriod } from '@/lib/execPeriodCalc';
 import { PARCEL_CLEARED, HO_IPC } from '@/lib/services';
@@ -143,6 +143,14 @@ function givenDelta(d: ExecDeltas | null): string | null {
   return tr('Сонгосон хугацаанд ({0} → {1}) {2} олгосон, {3} төлбөр.', d.period.from, d.period.to, money(d.given.delta), num(d.given.count));
 }
 
+/**
+ * 2026-11-09: олгосон хувь ба үлдэгдэл нь гэрээлсэн багцын олголтоос (`fin.givenContracted`) — нийт олголтод (`fin.given`)
+ * гэрээлсэн багцаас гадуурх хэсэг байвал хажууд нь тусад нь хэлнэ (удирдлагын тайлангийн 04-ийн тэмдэглэлтэй нэг өгүүлбэр).
+ */
+const withOutside = (x: ExecReport, s: string): string => (x.fin.givenOther > 0
+  ? `${s} ${tr('Нийт олгосон дүнд гэрээлсэн багцаас гадуурх {0} ₮ олголт (хэд хэдэн багц хамарсан мөр, гэрээлсэн дүнгийн багцад холбогдоогүй төлбөр) орсон — олгосон хувьд ороогүй.', num(x.fin.givenOther))}`
+  : s);
+
 const byDesc = <T,>(arr: readonly T[], v: (t: T) => number): T[] => [...arr].sort((a, b) => v(b) - v(a));
 
 /** Орон сууцны хуваарийн төлөв — «хоцрогдол» · «хуваарийн дагуу» · «түрүүлэлт» · хамралт дутуу */
@@ -161,10 +169,10 @@ export function scheduleStatus(x: ExecReport): { label: string; sentence: string
   }
   const gap = p.planned - actual;
   if (gap >= LATE_GAP) {
-    return { label: tr('хоцрогдол {0} н.х', num(gap, 1)), sentence: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).', num(gap, 1), pct(p.planned, 1), pct(actual, 1)) };
+    return { label: tr('хоцрогдол {0} нэгж хувь', num(gap, 1)), sentence: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).', num(gap, 1), pct(p.planned, 1), pct(actual, 1)) };
   }
   if (gap < 0) {
-    return { label: tr('түрүүлэлт {0} н.х', num(-gap, 1)), sentence: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар түрүүлж байна (төлөвлөгөө {1}, бодит {2}).', num(-gap, 1), pct(p.planned, 1), pct(actual, 1)) };
+    return { label: tr('түрүүлэлт {0} нэгж хувь', num(-gap, 1)), sentence: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар түрүүлж байна (төлөвлөгөө {1}, бодит {2}).', num(-gap, 1), pct(p.planned, 1), pct(actual, 1)) };
   }
   return { label: tr('хуваарийн дагуу'), sentence: tr('Орон сууцны барилга угсралт хуваарийн дагуу явж байна (төлөвлөгөө {0}, бодит {1}).', pct(p.planned, 1), pct(actual, 1)) };
 }
@@ -186,7 +194,7 @@ function kpiSummary(i: ReportInputs, full: boolean): Section {
   const st = scheduleStatus(x);
   const items: KpiItem[] = [
     { label: tr('Төслийн нийт явц'), value: pct(progressOf(projS), 1), sub: projP == null ? tr('Төсөл төлөвлөгөө биелэлт') : tr('төлөвлөгөө {0}', pct(projP, 1)) },
-    { label: tr('Барилгын явц'), value: pct(housing, 1), sub: x.prog.asOf ? (x.prog.asOfOldest && x.prog.asOfOldest !== x.prog.asOf ? tr('хэмжилт {0}, хамгийн хуучин {1}', x.prog.asOf, x.prog.asOfOldest) : tr('хэмжилт {0}', x.prog.asOf)) : undefined, trend: d && d.housing.delta != null ? `${d.housing.delta >= 0 ? '+' : '−'}${abs1(d.housing.delta)} ${tr('н.х')}` : null },
+    { label: tr('Барилгын явц'), value: pct(housing, 1), sub: measuredLabel(x.prog) || undefined, trend: d && d.housing.delta != null ? `${d.housing.delta >= 0 ? '+' : '−'}${abs1(d.housing.delta)} ${tr('нэгж хувь')}` : null },
     { label: tr('Газар чөлөөлөлт'), value: pct(progressOf(x.gdash.landPct), 1), sub: tr('{0} нэгж талбар үлдсэн', num(x.gdash.land.remaining)) },
     { label: tr('Олголт'), value: x.fin.share == null ? tr('мэдээлэлгүй') : pct(x.fin.share, 1), sub: tr('гэрээлсэн дүнгийн'), trend: d && d.given.delta != null ? `${d.given.delta < 0 ? '−' : '+'}${money(Math.abs(d.given.delta))}` : null },
     { label: tr('Хуваарийн төлөв'), value: st.label, sub: x.prog.planned == null ? undefined : tr('төлөвлөгөө {0}', pct(x.prog.planned, 1)) },
@@ -218,9 +226,9 @@ function finFlow(i: ReportInputs, no: string, group: number, withContract: boole
   const band = d && months.length ? bandOf(months, d.period) : null;
   const lastIdx = band ? band[1] : months.length - 1;
   const text = [
-    tr('Нийт төсөв {0}, гэрээлсэн {1} (төсвийн {2}), олгосон {3} (гэрээлсэн дүнгийн {4}).',
+    withOutside(x, tr('Нийт төсөв {0}, гэрээлсэн {1} (төсвийн {2}), олгосон {3} (гэрээлсэн дүнгийн {4}).',
       money(x.gdash.budget), money(x.gdash.contract), x.gdash.budget > 0 ? pct((x.gdash.contract / x.gdash.budget) * 100, 1) : '—',
-      money(x.fin.given), x.fin.share == null ? '—' : pct(x.fin.share, 1)),
+      money(x.fin.given), x.fin.share == null ? '—' : pct(x.fin.share, 1))),
     givenDelta(d) ?? tr('Олгогдоогүй үлдэгдэл {0}.', money(x.fin.remain)),
   ];
   if (lastIdx >= 0 && s) {
@@ -258,7 +266,7 @@ function ipcStatus(i: ReportInputs, no: string, group: number): Section {
       ipcTotals(i) > 0
         ? tr('Олголт хүлээж буй IPC-ийн дүн {0} (үүссэн ба гарын үсэг зурсан).', money(ipcTotals(i)))
         : tr('IPC баримтын шат хоосон (үүссэн ба гарын үсэг зурсан {0}): баримтын бүртгэл 2026-11-04-нөөс эхэлсэн.', money(0)),
-      tr('Олгосон санхүүжилт гэрээлсэн дүнгийн {0}.', x.fin.share == null ? '—' : pct(x.fin.share, 1)),
+      withOutside(x, tr('Олгосон санхүүжилт гэрээлсэн дүнгийн {0}.', x.fin.share == null ? '—' : pct(x.fin.share, 1))),
     ]
     : [tr('IPC-ийн төлөвийн бүртгэл уншигдаагүй тул энэ хэсэг мэдээлэлгүй.'), tr('Олгосон санхүүжилт нийт {0}.', money(x.fin.given))];
   return { key: 'ipc', no, group, title: tr('IPC-ийн төлөв (гүйцэтгэлээс олголт хүртэл)'), chart, text };
@@ -323,6 +331,8 @@ function housingLine(i: ReportInputs, no: string, group: number): Section {
   };
   const st = scheduleStatus(x);
   const text = [st.sentence, ppDelta(tr('Орон сууцны биет гүйцэтгэл'), d, d?.housing.delta) ?? tr('{0} блок, {1} өрх — сүүлийн хэмжилт {2}.', num(x.prog.blocks), num(x.prog.households), x.prog.asOf || '—')];
+  /* 2026-11-09: хамгийн хуучин хэмжилтийн огноо — 1-р хэсгийн (kpiSummary) «хэмжилт …, хамгийн хуучин …»-тэй нэг */
+  if (x.prog.asOfOldest && x.prog.asOf && x.prog.asOfOldest !== x.prog.asOf) text.push(tr('Хамгийн хуучин хэмжилт {0}.', x.prog.asOfOldest));
   if (!months.length) text.push(tr('Сарын цуваа уншигдаагүй тул график мэдээлэлгүй.'));
   else if (x.prog.noData > 0) text.push(tr('{0} блокийн гүйцэтгэл бөглөгдөөгүй тул 0%-иар тооцогдсон.', num(x.prog.noData)));
   return { key: 'housing', no, group, title: tr('Орон сууц — төлөвлөгөө ба бодит явц'), chart, text };
@@ -337,7 +347,7 @@ function packLag(i: ReportInputs, no: string, group: number, infraToo: boolean):
     const late = l && coverageOk(l.coverage) && l.gap >= LATE_GAP;
     return {
       label: p.name, value: progressOf(p.progress), mark: l && coverageOk(l.coverage) ? l.planned : null,
-      text: `${pct(progressOf(p.progress), 1)}${late ? ` · ${tr('хоцрогдол {0} н.х', num(l.gap, 1))}` : ''}`,
+      text: `${pct(progressOf(p.progress), 1)}${late ? ` · ${tr('хоцрогдол {0} нэгж хувь', num(l.gap, 1))}` : ''}`,
     };
   });
   const keys = new Set(packs.map((p) => p.key));
@@ -359,10 +369,12 @@ function packLag(i: ReportInputs, no: string, group: number, infraToo: boolean):
 function infraPacks(i: ReportInputs, no: string, group: number): Section {
   const packs = i.x.prog.packs.filter((p) => p.kind === 'infra');
   const items: BarItem[] = byDesc(packs, (p) => progressOf(p.progress)).map((p, k) => ({ label: p.name, value: progressOf(p.progress), hot: k === 0, text: pct(progressOf(p.progress), 1) }));
-  const avg = packs.length ? packs.reduce((s, p) => s + progressOf(p.progress), 0) / packs.length : 0;
+  /* 2026-11-09: энгийн дундаж (48 багц · 1.8%) биш — удирдлагын тайлангийн 1.2 «Инженерийн дэд бүтэц»-ийн хөрөнгө
+     оруулалтаар жигнэсэн явц (`typePhysNow` → `gdash.byType`, 6.8%); хэмжигдээгүй = 0% */
+  const weighted = progressOf(i.x.gdash.byType.find((t) => /^инженерийн дэд бүтэц$/i.test(t.label.trim()))?.perf);
   const started = packs.filter((p) => progressOf(p.progress) > 0).length;
   const text = [
-    tr('Дэд бүтцийн {0} багцын дундаж явц {1}; {2} багц эхэлсэн.', num(packs.length), pct(avg, 1), num(started)),
+    tr('Инженерийн дэд бүтцийн явц {0} (хөрөнгө оруулалтаар жигнэсэн); {1} багцаас {2} нь эхэлсэн.', pct(weighted, 1), num(packs.length), num(started)),
     items[0] ? tr('Хамгийн өндөр явцтай {0} ({1}), хамгийн бага {2} ({3}).', items[0].label, pct(items[0].value, 1), items[items.length - 1].label, pct(items[items.length - 1].value, 1))
       : tr('Дэд бүтцийн багцын бүртгэл алга тул график мэдээлэлгүй.'),
   ];
@@ -467,7 +479,7 @@ function workforce(i: ReportInputs, no: string, group: number): Section {
   };
   const h = x.gdash.hse;
   const text = [
-    h ? tr('ХАБЭА-ийн сүүлийн бүртгэл {0}: {1} ажилтан, {2} техник хэрэгсэл, {3} хүн цаг.', h.date, num(h.workers), num(h.equipment), num(h.manHours)) : tr('ХАБЭА-ийн бүртгэл олдсонгүй тул ажиллах хүчний тоо мэдээлэлгүй.'),
+    h ? tr('ХАБЭА-ийн сүүлийн бүртгэл {0}: {1} ажилтан, {2} техник хэрэгсэл, {3} хүн цаг (ажилтан × 8 цаг, тооцоолсон).', h.date, num(h.workers), num(h.equipment), num(h.manHours)) : tr('ХАБЭА-ийн бүртгэл олдсонгүй тул ажиллах хүчний тоо мэдээлэлгүй.'),
     nDelta(tr('Ажиллаж буй хүн'), tr('хүнээр'), d, d?.workers) ?? (i.hseDays ? tr('Өдрийн бүртгэл {0} өдөр.', num(i.hseDays.length)) : tr('Өдрийн бүртгэлийн цуваа уншигдаагүй тул график мэдээлэлгүй.')),
   ];
   const t2 = nDelta(tr('Техник хэрэгсэл'), tr('нэгжээр'), d, d?.technik);
@@ -564,7 +576,7 @@ function cashOutlook(i: ReportInputs, no: string, group: number): Section {
   ];
   const text = [
     tr('Сарын төлөвлөгөөний мөр алга тул ирэх саруудын төлөвлөлтийн оронд гэрээлсэн дүнгийн үлдэгдлийг үзүүлэв.'),
-    tr('Гэрээлсэн {0}, олгосон {1}, олгогдоогүй үлдэгдэл {2}.', money(x.fin.planTotal), money(x.fin.given), money(x.fin.remain)),
+    withOutside(x, tr('Гэрээлсэн {0}, олгосон {1}, олгогдоогүй үлдэгдэл {2}.', money(x.fin.planTotal), money(x.fin.given), money(x.fin.remain))),
   ];
   return { key: 'cash', no, group, title: tr('Мөнгөн урсгалын төлөв — гэрээлсэн дүнгийн үлдэгдэл'), chart: { kind: 'bars', unit: 'mnt', items }, text };
 }
@@ -578,7 +590,7 @@ function finThree(i: ReportInputs, no: string, group: number): Section {
   ];
   const text = [
     tr('Төслийн нийт төсөв {0}, үүнээс {1} ({2}) гэрээгээр баталгаажсан.', money(x.gdash.budget), money(x.gdash.contract), x.gdash.budget > 0 ? pct((x.gdash.contract / x.gdash.budget) * 100, 1) : '—'),
-    tr('Бодитоор олгосон санхүүжилт {0} — гэрээлсэн дүнгийн {1}.', money(x.fin.given), x.fin.share == null ? '—' : pct(x.fin.share, 1)),
+    withOutside(x, tr('Бодитоор олгосон санхүүжилт {0} — гэрээлсэн дүнгийн {1}.', money(x.fin.given), x.fin.share == null ? '—' : pct(x.fin.share, 1))),
   ];
   const g = givenDelta(d);
   if (g) text.push(g);

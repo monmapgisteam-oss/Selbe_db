@@ -140,6 +140,20 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const c2 = computeAll([r], 2, null, { '1:0': '2.21' }, {}, [true, true], undefined, 'inc');
   ok(c2[0].actOver[0] === true, '3e: жинхэнэ хэтрэлт тугтай хэвээр');
 }
+{
+  /* 3f (2026-11-09): дэлгэцээс (3 орон) хуулсан хуримтлал — Обьёмоос хагас нэгжээс бага илүү → асуулт · туг алга */
+  reset(false);
+  const r = row(1, 2.09069539, [2, null], [2 / 2.09069539, null]);
+  const { st, api } = harness([r]);
+  ok(api().commit(r, 0, '0.091') === true && asked.length === 0, '3f: 2 + 0.091 = 2.091 ≈ 2.09069539 — «хэтэрсэн» асуулт гарах ёсгүй');
+  ok(st.pending['1:0'] === '0.091', '3f: бичигдэв');
+  ok(computeAll([r], 2, null, { '1:0': '0.091' }, {}, [true, true], undefined, 'inc')[0].actOver[0] === false, '3f: туг асахгүй');
+  /* Жинхэнэ хэтрэлт (2.4 ÷ 0.12) асуулт · тугтай хэвээр */
+  reset(false);
+  const big = row(2, 0.12, [0.1, null], [0.1 / 0.12, null]);
+  ok(harness([big]).api().commit(big, 0, '2.3') === false && asked.length === 1, '3g: 2.4 > 0.12 — асууна');
+  ok(computeAll([big], 2, null, { '2:0': '2.3' }, {}, [true, true], undefined, 'inc')[0].actOver[0] === true, '3g: туг асна');
+}
 
 /* ── 4. Буулгалт — тоо биш / тодорхойгүй утга ИЛ анхааруулгаар ── */
 {

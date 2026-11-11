@@ -5421,7 +5421,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           onClose={undoDragOnClose}
           dragged={dragOpen === modalRow.oid}
           onKeep={keepDragClose}
-          onShiftGroup={modalRow.group ? (d, bs) => shiftGroup(modalRow.oid, d, bs) : undefined}
+          onShiftGroup={modalRow.group ? (d, bs) => { forgetDrag(); shiftGroup(modalRow.oid, d, bs); } : undefined}
           groupMoney={modalGroupMoney}
           groupCopyTargets={modalRow.group && kind === 'plan' && modalGroup?.direct
             ? sameShapeGroups(plan, plan.findIndex((x) => x.oid === modalRow.oid), (i) => directWorks(plan, i))

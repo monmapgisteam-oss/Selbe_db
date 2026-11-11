@@ -1,4 +1,4 @@
-import type { SheetRow, computeAll } from "../bagtsSheet";
+import { QTY_DEC, type SheetRow, type computeAll } from "../bagtsSheet";
 import type { Overlay } from "../sheetFrame";
 import { t as tr } from "@/lib/i18nCore";
 import { ubToday } from "@/lib/projectPlan";
@@ -27,7 +27,7 @@ export const full = (v: number | null) => (v == null ? undefined : (v * 100).toF
 /** Оролтын талбарт тавих бичлэг — мянгатын таслалгүй, задлагдах хэлбэрээр. */
 export const qtyRaw = (v: number | null | undefined) => (v == null ? "" : String(v));
 export const qty = (v: number | null) =>
-  v == null ? "" : Number(v.toFixed(3)).toLocaleString("en-US");
+  v == null ? "" : Number(v.toFixed(QTY_DEC)).toLocaleString("en-US", { maximumFractionDigits: QTY_DEC });
 export const dt = (ms: number | null) =>
   ms == null ? "" : new Date(ms).toISOString().slice(0, 10);
 /** «YYYY-MM-DD» ↔ ms (UTC — үйлчилгээний огноо UTC шөнө дунд). */

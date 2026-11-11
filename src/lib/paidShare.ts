@@ -4,12 +4,17 @@
  * ДҮРЭМ (2026-09-21-ний `reportData.loadFinanceRaw`-аас ЯГ шилжүүлсэн):
  *   · хуваарь `contract` = Cashflow-ийн `finXlInTotal` ∧ `ho_dungiin_tailbar === CONTRACTED`
  *     мөрийн `geree_dun` нийлбэр;
- *   · тоологч `paidContracted` (2026-11-04) = тэр мөрүүдийн `olgoson_dun` нийлбэр — «Төсөл төлөвлөгөө биелэлт» нэг эх;
+ *   · тоологч `paidContracted` (2026-11-09) = HO-ийн мөрүүдээс (`paid`-тай НЭГ эх) гэрээлсэн багцад
+ *     (`finPkgKey(pkgKeyOf(pkg2|pkg))`) хамаарах мөрийн `dun` — удирдлагын тайлангийн 04-ийн багцын мөрүүдийн нийлбэртэй
+ *     ЯГ тэнцэнэ; олон багц хамарсан мөр («Багц-1-4») `paidOther`-д (04-т тусдаа мөр).
+ *     Урьд нь 182-ын `olgoson_dun`-ийг уншдаг байсан тул синк хоцорвол «олгосон 665,426,302,067 ₮ — гэрээлсэн дүнгийн
+ *     26.0%», «гадуур олгосон 134,553,506,676 ₮» гэж зөрдөг байв (амьд, 2026-11-09).
  *   · `paid` = HO-ийн БҮХ мөрийн `dun` (хоосон `dun` АЛГАСНА — null ≠ 0).
  */
 import type { Row } from '@/lib/query';
-import { CASHFLOW_NEW, hoAmount } from '@/lib/services';
+import { CASHFLOW_NEW, HO_IPC, hoAmount, pkgKeyOf } from '@/lib/services';
 import { finXlInTotal } from '@/lib/finExcelLayout';
+import { finPkgKey } from '@/lib/pkgAlias';
 
 /**
  * ГЭРЭЭЛСЭН ХУВЬ · ОЛГОСОН ХУВЬ (ТӨСӨЛД) — төслийн нийт дүнд (2026-11-04, хэрэглэгч).
@@ -58,14 +63,24 @@ export function paidShareOf(
   const F = CASHFLOW_NEW.fields;
   const contracted = cfRows.filter((r) => finXlInTotal(r) && str(r[F.amountNote]) === PAID_SHARE_CONTRACTED);
   const contract = contracted.reduce((a, r) => a + nn(r[F.contractAmount]), 0);
+  const keys = new Set<string>();
+  for (const r of contracted) {
+    for (const k of [pkgKeyOf(r[F.pkg2]), pkgKeyOf(r[F.pkg])]) if (k && k !== '0') keys.add(finPkgKey(k));
+  }
+  /* Олон багц хамарсан мөр («Багц-1-4») `pkgKeyOf`-оор хоосон — гадуурх (`execFinRanges`-ийн тусдаа мөр) */
+  const inContracted = (raw: unknown): boolean => {
+    const k = pkgKeyOf(raw);
+    return !!k && keys.has(finPkgKey(k));
+  };
   let paid = 0;
-  const paidContracted = contracted.reduce((a, r) => a + nn(r[F.paid]), 0);
+  let paidContracted = 0;
   let paidKnown = 0;
   for (const r of hoRows) {
     const n = hoAmount(r as Row);
     if (n == null) continue;
     paidKnown += 1;
     paid += n;
+    if (inContracted(r[HO_IPC.contractFields.pkg])) paidContracted += n;
   }
   /* 2026-11-05: хөвөгч тооны үлдэгдэл (0.00006 ₮) «гадуур олголт» мэт гардаг байв — хагас төгрөгөөс бага бол 0 */
   const other = paid - paidContracted;

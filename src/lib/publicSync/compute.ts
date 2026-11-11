@@ -6,7 +6,7 @@
  *     шатны S, багц/блок = модны мөр; инженерийн багц — бөглөх хуудасны бүлэг (gun 1);
  *   · санхүү — үндэс мөрийн E (урьдчилсан төсөвт өртөг), 4 эх үүсвэр (`sourceSums`), HO-ийн олгосон (`sumPaid`);
  *   · хүн хүч — ХАБЭА маягтын сүүлийн өдөр (`groupDays`), компани бүр + нийт;
- *   · газар — нэгж талбарын тоо/чөлөөлсөн (`landCountMap`, `loadLandStatus`);
+ *   · газар — нэгж талбарын тоо/чөлөөлсөн, зөвхөн төслийн нийтээр (`loadLandStatus`, 2026-11-11);
  *   · нийгэм — модны «Барилга угсралт ажил» салааны «Нийгмийн дэд бүтэц» хэсгийн хүүхдүүд; эх үүсвэр — `SOURCE_FS`.
  * Хэрэглэгчийн дүрэм: хэмжилтгүй явц = 0 (null биш); архивгүй — мөр дарж бичигдэнэ; `tolov` талбар байхгүй.
  */
@@ -112,13 +112,15 @@ export function sanhuuRows(plan: ProjectPlan): PubRow[] {
   const src = sourceSums(plan.tree).get(root);
   /* 2026-11-04: «Төсөл төлөвлөгөө биелэлт»-ийн `olgoson_dun` нийлбэр — бүх хуудастай нэг тоо */
   const paid = moneySums(plan.tree).get(root)?.paid ?? null;
+  /* 2026-11-09: мөнгө бүхэл төгрөгөөр (2,495,841,880,529.33 → 2,495,841,880,529) — нийтийн хүснэгтэд бутархай ₮ бичихгүй */
+  const tg = (v: number | null | undefined): number | null => (v == null || !Number.isFinite(v) ? null : Math.round(v));
   return [{
-    niit_tosov_dun: E,
-    tosov_unet_tsaas: src?.zahiramj_unet_tsaas ?? null,
-    tosov_tosliin_orlogo: src?.zahiramj_borluulalt_dun ?? null,
-    tosov_niislel_tosov: src?.zahiramj_niislel_tusuv ?? null,
-    tosov_nzd_nuuts: src?.zahiramj_nzd_nuuts ?? null,
-    olgoson_sanhuujilt_dun: paid,
+    niit_tosov_dun: tg(E),
+    tosov_unet_tsaas: tg(src?.zahiramj_unet_tsaas),
+    tosov_tosliin_orlogo: tg(src?.zahiramj_borluulalt_dun),
+    tosov_niislel_tosov: tg(src?.zahiramj_niislel_tusuv),
+    tosov_nzd_nuuts: tg(src?.zahiramj_nzd_nuuts),
+    olgoson_sanhuujilt_dun: tg(paid),
     olgoson_huvi: E && paid != null ? Math.round((paid / E) * 1000) / 10 : null,
   }];
 }
@@ -239,24 +241,13 @@ export function guitsetgelRows(plan: ProjectPlan, inp: GuitsetgelInputs): PubRow
 
 /* ══════════════ 4. Газар чөлөөлөлт ══════════════ */
 
-export function gazarRows(
-  status: LandStatus | null,
-  perPkg: ReadonlyMap<string, { total: number; cleared: number }>,
-  codeOfKey: (pkgKey: string) => string,
-): PubRow[] {
-  const out: PubRow[] = [];
-  /* Нэгж талбаргүй багц (давхарга нэг ч парцел хамраагүй — Багц 12, 13, 15, 18) = чөлөөлөх газаргүй → 100%
-     («Төсөл төлөвлөгөө биелэлт»-ийн `EMPTY_AREA_PCT`-тэй нэг дүрэм, 2026-11-04); нийт/чөлөөлсөн 0 хэвээр */
-  const r = (code: string, total: number, cleared: number): PubRow => ({
-    bagts_kod: code, niit_negj_talbar_too: total, choloolson_too: cleared,
-    choloolson_huvi: total > 0 ? Math.round((cleared / total) * 1000) / 10 : 100,
-  });
-  if (status) out.push(r(PUB_TOTAL, status.total, status.resolved));
-  for (const [k, c] of perPkg) {
-    const code = codeOfKey(k);
-    if (code) out.push(r(code, c.total, c.cleared));
-  }
-  return out;
+/** 2026-11-11 (хэрэглэгч): зөвхөн төслийн нийт мөр — нэг нэгж талбар олон багцад хамаардаг тул багцаар хувь бодохгүй */
+export function gazarRows(status: LandStatus | null): PubRow[] {
+  if (!status) return [];
+  return [{
+    bagts_kod: PUB_TOTAL, niit_negj_talbar_too: status.total, choloolson_too: status.resolved,
+    choloolson_huvi: status.total > 0 ? Math.round((status.resolved / status.total) * 1000) / 10 : 100,
+  }];
 }
 
 /* ══════════════ 5. Нийгмийн дэд бүтэц ══════════════ */

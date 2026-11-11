@@ -19,7 +19,7 @@ import { Icon } from '@/components/Icon';
 import { num, pct, dateTime } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { invalidateAll } from '@/lib/dataBus';
-import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel } from '@/lib/execReport';
+import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel, measuredLabel } from '@/lib/execReport';
 import { money } from '@/lib/execInfographic';
 import { planScopeNote } from '@/lib/gdash';
 import { coverageOk, coverageNote } from '@/lib/planProgress';
@@ -242,7 +242,7 @@ export function ExecReport() {
                       value: money(x.gdash.budget),
                       sub: undefined as string | undefined,
                       trend: null as ReturnType<typeof deltaText>,
-                      desc: tr('Орон сууцны хороолол ба ГИШС-ийн хүрээнд батлагдсан төсөвт өртөг.'),
+                      desc: tr('Орон сууцны хороолол ба Гадна инженерийн шугам сүлжээний хүрээнд батлагдсан төсөвт өртөг.'),
                     },
                     {
                       label: tr('Нийт гэрээлсэн дүн'),
@@ -455,7 +455,7 @@ export function ExecReport() {
                       label: tr('Бодит'),
                       value: (x.prog.planExcluded.length ? x.prog.actualLag : x.prog.actual) == null
                         ? '—' : pct(x.prog.planExcluded.length ? x.prog.actualLag : x.prog.actual, 1),
-                      sub: [x.prog.planExcluded.length ? tr('(хуваарьтай багцаар)') : '', x.prog.asOf ? tr('хэмжилт {0}', x.prog.asOf) : '']
+                      sub: [x.prog.planExcluded.length ? tr('(хуваарьтай багцаар)') : '', measuredLabel(x.prog)]
                         .filter(Boolean).join(' · ') || undefined,
                     },
                     {
@@ -480,7 +480,7 @@ export function ExecReport() {
                     items={x.prog.packs.filter((p) => p.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1))
                       .map((p, i) => {
                         const t = packTrendOf(deltas, p.key);
-                        return { label: p.name, value: p.progress, hot: i === 0 && p.progress != null, text: `${pct(p.progress, 1)}${t ? ` ${t.text}` : ''}` };
+                        return { label: p.name, value: p.progress, hot: i === 0 && p.progress != null, text: `${pct(p.progress ?? 0, 1)}${t ? ` ${t.text}` : ''}` };
                       })}
                   />
                   <Cap no={String(execSectionNo('prog'))}>{tr('Блокийн гүйцэтгэлийн түвшин')}</Cap>

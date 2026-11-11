@@ -127,6 +127,8 @@ export function toStored(a: Record<string, unknown>, names: Names): PlanStoredRo
     zahiramj_dugaar: strIn(a.zahiramj_dugaar),
     ashiglalt_ognoo: dateIn(a.ashiglalt_ognoo),
     songon_ognoo: dateIn(a.songon_ognoo),
+    /* Ихрийн «Гэрээлсэн дүн» тэмдэг — сонгон шалгаруулалтын явцын түгжээ (`projectPlan.tenderSigned`) */
+    ho_dungiin_tailbar: strIn(a.ho_dungiin_tailbar),
   };
 }
 

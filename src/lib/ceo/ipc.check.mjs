@@ -187,7 +187,7 @@ assert.equal(epochOf(null), null);
   assert.equal(r.unit, 'олгосон санхүүжилт');
   assert.deepEqual(r.facts, [
     '1 гэрээ · 2 төлбөр', 'урьдчилгаа 314 ₮', 'гүйцэтгэл 216 ₮',
-    'гэрээнд эзлэх 588.9% (HO хүснэгтээр)', 'хэмнэлт 10 ₮',
+    'гэрээнд эзлэх 588.9% («Олгосон санхүүжилт · IPC» хүснэгтээр)', 'хэмнэлт 10 ₮',
   ]);
   const r2 = computeIpc(rows, NOW, { contract: 1000, paidContracted: 250 });
   assert.deepEqual(r2.facts.slice(3, 5), ['гэрээлсэн дүн 1,000 ₮ (Cashflow)', 'гэрээнд эзлэх 25.0%'],

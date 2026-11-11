@@ -14,6 +14,7 @@ import { askConfirm } from '@/lib/confirm';
 import { EntSignIn, useEntSession } from './EntSignIn';
 import { ENT_KEY } from './EntDocs';
 import { Loading, userError } from './ui';
+import { dayKey } from '@/lib/format';
 import { Icon } from './Icon';
 import s from './docviewer.module.css';
 
@@ -149,6 +150,8 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
 
   const toggle = (gid: string) => setOpen((o) => { const n = new Set(o); if (n.has(gid)) n.delete(gid); else n.add(gid); return n; });
 
+  /** PDF-ийн жагсаалт мэдэгдэж буй эсэх — Enterprise тохируулаагүй бол PDF байхгүй нь баталгаатай */
+  const listKnown = listOk || !ENT_PORTAL;
   const gl = groups ?? [];
   const byGroup = new Map<string, EntPdf[]>();
   for (const d of items ?? []) {
@@ -159,16 +162,15 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
   return (
     <>
       {ENT_PORTAL && <EntSignIn onSignedOut={() => { setItems(null); setListOk(false); }} />}
-      {(canEdit || canGroups) && (
-        <div className={s.entRow}>
-          {canGroups && <button type="button" className={s.entBtn} disabled={busy || !groups || groupsFailed} onClick={() => setEdit({ id: null, title: '' })}>
-            {tr('+ Бүлэг нэмэх')}
-          </button>}
-          <button type="button" className={s.entLink} disabled={busy} onClick={() => { void run(reload); }}>
-            {tr('Шинэчлэх')}
-          </button>
-        </div>
-      )}
+      {/* «Шинэчлэх» — БҮХ хэрэглэгчид: жагсаалт ачаалагдаагүй үед дахин оролдох зам (2026-11-09) */}
+      <div className={s.entRow}>
+        {canGroups && <button type="button" className={s.entBtn} disabled={busy || !groups || groupsFailed} onClick={() => setEdit({ id: null, title: '' })}>
+          {tr('+ Бүлэг нэмэх')}
+        </button>}
+        <button type="button" className={s.entLink} disabled={busy} onClick={() => { void run(reload); }}>
+          {tr('Шинэчлэх')}
+        </button>
+      </div>
       {edit?.id === null && editRow}
       <input ref={fileRef} type="file" accept="application/pdf,.pdf" multiple hidden
         onChange={(e) => { void upload(e.target.files); }} />
@@ -184,7 +186,8 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
               <button type="button" className={s.grpToggle} aria-expanded={isOpen} onClick={() => toggle(g.id)}>
                 <span aria-hidden>{isOpen ? '▾' : '▸'}</span>
                 <span className={s.grpTitle}>{g.title}</span>
-                <span className={s.grpN}>{n}</span>
+                {/* Жагсаалт ачаалагдаагүй бол тоо мэдэгдэхгүй — «0» БИШ «—» */}
+                <span className={s.grpN}>{listKnown ? n : '—'}</span>
               </button>
               {canEdit && sess && (
                 <button type="button" className={s.grpAct} disabled={busy} title={tr('Энэ бүлэгт PDF оруулах')}
@@ -226,7 +229,7 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
                         <span className={s.itemText}>
                           <span className={s.itemTitle}>{d.title}</span>
                           <span className={s.itemSub}>
-                            {[d.owner, d.modified ? new Date(d.modified).toLocaleDateString('sv-SE') : '', kb(d.size)].filter(Boolean).join(' · ')}
+                            {[d.owner, d.modified ? dayKey(d.modified) : '', kb(d.size)].filter(Boolean).join(' · ')}
                           </span>
                         </span>
                       </button>
@@ -245,7 +248,9 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
                     </div>
                   );
                 })}
-                {n === 0 && <div className={s.entSub}>{tr('Баримт алга')}</div>}
+                {!listKnown
+                  ? <div className={s.entSub}>{tr('жагсаалт ачаалагдсангүй')}</div>
+                  : n === 0 && <div className={s.entSub}>{tr('Баримт алга')}</div>}
               </div>
             )}
           </section>

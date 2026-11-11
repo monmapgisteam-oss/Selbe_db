@@ -1023,6 +1023,16 @@ export const planAt = (
  */
 export const OVER_TOL = 1e-4;
 const ACT_OVER = 1 + OVER_TOL;
+/** Обьёмын ДЭЛГЭЦИЙН аравтын орон — `fill/util.qty()` энэгээр бөөрөнхийлнө */
+export const QTY_DEC = 3;
+/**
+ * Обьёмын дэлгэцийн НЭГЖИЙН ХАГАС (0.0005; 2026-11-09). Дэлгэцээс хуулж бичсэн хуримтлал Обьёмоос энэ хүртэл илүү
+ * гарч «100%» харагдсаар тугтай болдог байв (2.09069539 → 2.091 · 0.00479951 → 0.0048; Багц 3.2 · 9 давхрын 412 нүд).
+ */
+export const VOL_HALF_UNIT = 0.5 * 10 ** -QTY_DEC;
+/** Хуримтлал мөрийн Обьёмоос ХЭТЭРСЭН үү — харьцангуй хүлцэл (`OVER_TOL`) БА дэлгэцийн нэгжийн хагасаас их илүү */
+export const overVolume = (cum: number, vol: number): boolean =>
+  cum > vol * (1 + OVER_TOL) && cum - vol > VOL_HALF_UNIT;
 
 const clamp1 = (v: number | null): number | null =>
   v == null ? null : v > 1 ? 1 : v;
@@ -1633,7 +1643,10 @@ export function computeAll(
           act[b] = res
             ? res.act
             : cumI != null && rVol != null && rVol > 0 ? cumI / rVol : synthetic && cumI == null ? null : r.act[b];
-          actOver[b] = act[b] != null && act[b]! > ACT_OVER;
+          /* Обьёмоос бодогдсон бол обьёмоор (дэлгэцийн нэгжийн хагасын хүлцэлтэй) — `cumI` бий ба Обьём > 0 үед хувь нь ҮРГЭЛЖ cumI ÷ Обьём */
+          actOver[b] = cumI != null && rVol != null && rVol > 0
+            ? overVolume(cumI, rVol)
+            : act[b] != null && act[b]! > ACT_OVER;
           actAgg[b] = clamp1(act[b]);
           continue;
         }
@@ -1656,7 +1669,10 @@ export function computeAll(
             ? pctEdit
             : cum != null && rVol != null && rVol > 0 ? cum / rVol : synthetic && cum == null ? null : r.act[b];
 
-        actOver[b] = act[b] != null && act[b]! > ACT_OVER;
+        /* Обьёмоос бодогдсон бол обьёмоор (дэлгэцийн нэгжийн хагасын хүлцэлтэй); гараар бичсэн хувь — хувиар */
+        actOver[b] = !cleared && pctEdit == null && cum != null && rVol != null && rVol > 0
+          ? overVolume(cum, rVol)
+          : act[b] != null && act[b]! > ACT_OVER;
         actAgg[b] = clamp1(act[b]);
       }
     }

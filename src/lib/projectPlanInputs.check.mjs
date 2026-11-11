@@ -8,7 +8,7 @@
  *   2. null ≠ 0. Хуваарьтай атлаа тайлагнаагүй блок 0; хуваарьт ч үгүй блок `undefined` (мэдэхгүй); эх унасан → null.
  *   3. ХУВААРЬ БЛОК ТУС БҮРЭЭР. `planCurve`-ийн блокийн ДУНДАЖ биш — блок бүрийн огноогоор; хуваарьгүй блок null
  *      (0 БИШ); 9F/12F-ийн давхардсан шошгод ЭХНИЙ хуудас давамгайлна; алдаатай огноо (эхлэх > дуусах, 1899) хаягдана.
- *   4. ГАЗАР. Нэгж талбарын ТООГООР; зөвхөн хилээр хүрэлцсэн талбар тоологдохгүй; шугам огтолсон талбар тоологдоно.
+ *   4. ГАЗАР (2026-11-11). Хувь зөвхөн үе шатын мөрөнд (төслийн нийт, landTotal); багц/блокийн мөр null.
  *   5. Excel мөр алга → хоосон төлөв (алдаа биш); бүтэн фикстураар adapter-ууд computePlan-д зөв урсана.
  */
 import assert from 'node:assert/strict';
@@ -16,7 +16,6 @@ import { readFileSync } from 'node:fs';
 import {
   toStoredRow, compareDdKod, sortPlanRows,
   blockActualOf, prepActualOf, pkgActualOf, blockPlannedOf, makeSchedules, monthlyOf, makeDateSpans, linkPlanDates,
-  makeParcelIndex, parcelHits, landPctOf, landPctMap, landKeyOf, landKeysOf, landOf, landLayerIdsOf, EMPTY_AREA_PCT,
   assemblePlan, emptyPlan, planMonths, liveProgressOf, pkgPlannedOf, pkgSpanOf, CF_SHEET_GROUP, __test,
 } from './projectPlanInputs.ts';
 import { bagtsKey } from './services.ts';
@@ -237,77 +236,6 @@ const srow = (o) => ({
   console.log('✅ 3. хуваарь — блок бүрээр, хуваарьгүй null, 9F давамгайлал, алдаатай огноо, огнооны муж');
 }
 
-/* ══════════ 4. Газар чөлөөлөлт — нэгж талбарын тоогоор ══════════ */
-{
-  const sq = (x, y, w = 10) => [[[x, y], [x, y + w], [x + w, y + w], [x + w, y], [x, y]]];
-  /* 0: [0,10]², 1: [10,20]×[0,10] (хөрш), 2: [20,30]×[0,10], 3: [0,10]×[20,30] (хол) */
-  const parcels = [
-    { rings: sq(0, 0), cleared: true },
-    { rings: sq(10, 0), cleared: false },
-    { rings: sq(20, 0), cleared: true },
-    { rings: sq(0, 20), cleared: false },
-  ];
-  const idx = makeParcelIndex(parcels);
-  /* footprint [2,8]² — зөвхөн 0-ийн дотор */
-  assert.deepEqual([...parcelHits(idx, [{ rings: sq(2, 2, 6) }])], [0], 'бүрэн багтсан объект');
-  /* footprint [0,10]² — 0-тэй ЯГ ижил, 1-тэй хилээр л хүрэлцэнэ */
-  assert.deepEqual([...parcelHits(idx, [{ rings: sq(0, 0) }])].sort(), [0], 'хилээр хүрэлцсэн хөрш тоологдохгүй');
-  /* footprint [5,15]×[2,8] — 0 ба 1-ийг огтолно */
-  const h = parcelHits(idx, [{ rings: [[[5, 2], [5, 8], [15, 8], [15, 2], [5, 2]]] }]);
-  assert.deepEqual([...h].sort(), [0, 1], 'хоёр талбарыг огтолсон');
-  assert.equal(landPctOf(idx, h), 50, '1 чөлөөлсөн ÷ 2 нийт');
-  /* объект нэгж талбарыг бүрэн агуулна */
-  assert.deepEqual([...parcelHits(idx, [{ rings: sq(-5, -5, 40) }])].sort(), [0, 1, 2, 3], 'том полигон бүгдийг агуулна');
-  /* шугам 1 ба 2-ыг дайрна, 0-ийн хилээр явна */
-  assert.deepEqual([...parcelHits(idx, [{ paths: [[[10, -5], [10, 5], [25, 5]]] }])].sort(), [1, 2], 'шугам: хилээр явсан хэсэг тоологдохгүй');
-  /* цэг */
-  assert.deepEqual([...parcelHits(idx, [{ pt: [5, 25] }])], [3]);
-  assert.deepEqual([...parcelHits(idx, [{ pt: [10, 5] }])], [], 'хил дээрх цэг — хүрэлцэл');
-  assert.equal(landPctOf(idx, new Set()), EMPTY_AREA_PCT, 'нэгж талбаргүй хүрээ');
-  /* түлхүүр ба хувийн зураглал */
-  assert.equal(landKeyOf('Багц-1', '5/1'), 'БАГЦ1|5/1');
-  assert.equal(landKeyOf('БАГЦ-16.1', null), 'P|БАГЦ161');
-  assert.equal(landKeyOf('БАГЦ-6.1, 6.2', null), 'P|', 'олон багц → хоосон түлхүүр');
-  const footprints = new Map([['БАГЦ1|5/1', [{ rings: [[[5, 2], [5, 8], [15, 8], [15, 2], [5, 2]]] }]], ['БАГЦ1|5/2', [{ rings: sq(20, 0) }]]]);
-  const pcts = landPctMap({ parcels: idx, footprints, infra: new Map(), failedPkgs: new Set() },
-    ['БАГЦ1|5/1', 'БАГЦ1|5/2', 'БАГЦ1|5/9', 'P|БАГЦ1', 'P|', 'P|БАГЦ999']);
-  assert.equal(pcts.get('БАГЦ1|5/1'), 50);
-  assert.equal(pcts.get('БАГЦ1|5/2'), 100);
-  assert.ok(!pcts.has('БАГЦ1|5/9'), 'footprint-гүй блок → түлхүүргүй (хадгалсан утга руу)');
-  near(pcts.get('P|БАГЦ1'), 200 / 3, 1e-9, 'багц = бүх блокийн footprint (0,1,2 — 2/3)');
-  assert.ok(!pcts.has('P|'), 'олон/хоосон багц → түлхүүргүй');
-  assert.ok(!pcts.has('P|БАГЦ999'), 'давхарга ба footprint-гүй багц → түлхүүргүй');
-  assert.equal(landPctMap({ parcels: null, footprints, infra: new Map(), failedPkgs: new Set() }, ['БАГЦ1|5/1']).get('БАГЦ1|5/1'), null, 'нэгж талбар унасан → null');
-  {
-    const nf = landPctMap({ parcels: idx, footprints: null, infra: new Map(), failedPkgs: new Set() }, ['БАГЦ1|5/1', 'P|БАГЦ1']);
-    assert.equal(nf.get('БАГЦ1|5/1'), null, 'барилгын дүрс уншигдаагүй → null');
-    assert.equal(nf.get('P|БАГЦ1'), null, 'барилгын дүрс уншигдаагүй (давхаргагүй багц) → null');
-  }
-  /* дэд бүтцийн давхаргатай багц (PKG_BY_BAGTS-д БАГЦ161 бий) — давхарга нь унасан бол null */
-  const inf = landPctMap({ parcels: idx, footprints, infra: new Map([['БАГЦ161', [{ rings: sq(20, 0) }]]]), failedPkgs: new Set(['БАГЦ171']) },
-    ['P|БАГЦ161', 'P|БАГЦ171']);
-  assert.equal(inf.get('P|БАГЦ161'), 100);
-  assert.equal(inf.get('P|БАГЦ171'), null, 'давхарга унасан багц дутуу хүрээгээр бодогдохгүй');
-  /* Excel ↔ каталогийн түлхүүрийн alias (БАГЦ71 → БАГЦ7; БАГЦ6n → БАГЦ6n + БАГЦnХОЛБОО) */
-  const { PKG_BY_BAGTS } = await import('@/lib/services.ts');
-  assert.deepEqual(landLayerIdsOf('БАГЦ71'), PKG_BY_BAGTS['БАГЦ7'], 'Excel «БАГЦ-7.1» = каталогийн Багц 7');
-  assert.ok(PKG_BY_BAGTS['БАГЦ7'].length > 0);
-  assert.deepEqual(landLayerIdsOf('БАГЦ61').sort(), [...PKG_BY_BAGTS['БАГЦ61'], ...PKG_BY_BAGTS['БАГЦ1ХОЛБОО']].sort(),
-    'Багц-6.1 = цахилгаан + холбоо');
-  assert.deepEqual(landLayerIdsOf('БАГЦ161'), PKG_BY_BAGTS['БАГЦ161'], 'alias-гүй багц өөрийнхөөрөө');
-  assert.deepEqual(landLayerIdsOf(''), []);
-  const al = landPctMap({ parcels: idx, footprints, infra: new Map([['БАГЦ71', [{ rings: sq(20, 0) }]]]), failedPkgs: new Set() }, ['P|БАГЦ71']);
-  assert.equal(al.get('P|БАГЦ71'), 100, 'alias-аар давхаргатай багц давхаргаараа бодогдоно');
-  assert.equal(landOf(pcts)('Багц-1', '5/1'), 50);
-  assert.equal(landOf(pcts)('Багц-1', '29/9'), undefined, 'дүрсгүй → undefined (хадгалсан утга)');
-  assert.equal(landOf(new Map([['БАГЦ1|5/1', null]]))('Багц-1', '5/1'), null, 'эх унасан → null');
-  /* хотгор (U) нэгж талбарын дотоод цэг дотор нь */
-  const U = [[[0, 0], [0, 10], [3, 10], [3, 3], [7, 3], [7, 10], [10, 10], [10, 0], [0, 0]]];
-  const ip = __test.interiorPoint(U);
-  assert.ok(ip && __test.strictlyIn(U, ip[0], ip[1]), 'хотгор хэлбэрийн дотоод цэг');
-  console.log('✅ 4. газар — тоогоор, хүрэлцэл ≠ огтлолцол, footprint/давхарга, унасан → null');
-}
-
 /* ══════════ 5. Нэгтгэл — фикстур ба хоосон төлөв ══════════ */
 {
   const today = D('2026-10-26');
@@ -315,7 +243,7 @@ const srow = (o) => ({
   assert.equal(e.empty, true);
   assert.equal(e.tree.nodes.length, 0);
   { const a = ubToday(); const t0 = emptyPlan().result.today; assert.ok([a, ubToday()].includes(t0), 'emptyPlan today = ubToday()'); }
-  assert.equal(assemblePlan([], { actual: { blocks: null, universe: null, infra: null }, sched: null, land: new Map() }, today).empty, true,
+  assert.equal(assemblePlan([], { actual: { blocks: null, universe: null, infra: null }, sched: null }, today).empty, true,
     'Excel мөр алга → хоосон төлөв (алдаа биш)');
 
   const fx = JSON.parse(readFileSync(new URL('./projectPlan.fixture.json', import.meta.url), 'utf8'));
@@ -330,11 +258,8 @@ const srow = (o) => ({
     gazar_ehleh: fromSerial(r[13]), gazar_duusah: fromSerial(r[14]),
   }));
   const tree = buildTree(rows);
-  const keys = landKeysOf(tree);
-  assert.ok(keys.includes('БАГЦ42|6/8') && keys.includes('P|БАГЦ161'), 'газрын навчны түлхүүрүүд');
-  assert.ok(keys.includes('P|'), 'олон багцын газрын навч хоосон түлхүүртэй (холбогдохгүй)');
 
-  /* stub: Багц 1-ийн бүх блок 50%, Багц-5.1 36%; хуваарь: Багц 1·5/1 л; газар: Багц 1·5/1 = 80 */
+  /* stub: Багц 1-ийн бүх блок 50%, Багц-5.1 36%; хуваарь: Багц 1·5/1 л */
   const universe = new Map([['БАГЦ1', ['5/1', '5/2'].map((b) => `БАГЦ1|${b}`)]]);
   const blocks = new Map([['БАГЦ1|5/1', { overall: 50, date: '2026-10-01', phases: [] }]]);
   const infra = new Map([['БАГЦ51', { pct: 36, blocks: 1, total: 1 }]]);
@@ -345,8 +270,7 @@ const srow = (o) => ({
       srow({ oid: 2, no: '1', depth: 1, start: [D('2026-01-01')], end: [D('2027-12-31')] }),
     ],
   }]);
-  const land = new Map([['БАГЦ1|5/1', 80]]);
-  const p = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, land }, today, ['x']);
+  const p = assemblePlan(rows, { actual: { blocks, universe, infra }, sched }, today, ['x']);
   assert.equal(p.empty, false);
   assert.deepEqual(p.failed, ['x']);
   const find = (pred) => tree.nodes.findIndex(pred);
@@ -364,23 +288,24 @@ const srow = (o) => ({
   near(v.Q, sched.at('Багц 1', '5/1', today + 7 * DAY), 1e-12, 'Q = +7 хоног');
   near(v.R, sched.at('Багц 1', '5/1', today - 7 * DAY), 1e-12, 'R = −7 хоног');
   const g = p.result.values.get(p.tree.nodes[find((n) => n.phase === 'gazar' && n.pkg === 'Багц-1' && n.blok === '5/1' && !n.children.length)]);
-  assert.equal(g.S, 80, 'газар чөлөөлөлтийн блок');
+  /* 2026-11-11: багц/блокоор газрын хувь бодохгүй (хадгалсан утга ч биш) */
+  assert.equal(g.S, null, 'газар чөлөөлөлтийн блок — хувьгүй');
   const g2 = p.result.values.get(p.tree.nodes[find((n) => n.phase === 'gazar' && n.pkg === 'Багц-1' && n.blok === '5/2' && !n.children.length)]);
-  assert.equal(g2.S, null, 'газрын мэдээлэлгүй блок null');
+  assert.equal(g2.S, null, 'газар чөлөөлөлтийн блок — хувьгүй');
   const inf = p.result.values.get(p.tree.nodes[find((n) => n.phase === 'barilga' && n.sub === 'barilga' && n.pkg === 'Багц-5.1' && !n.children.length)]);
   assert.equal(inf.S, 36, 'блокгүй багц (Багц-5.1 → БАГЦ51)');
-  /* 2026-11-04: «Газар чөлөөлөлт» үе шатын мөр — төслийн нийт талбарын тоогоор (landTotal), багцын мөр хэвээр */
+  /* 2026-11-04: «Газар чөлөөлөлт» үе шатын мөр — төслийн нийт талбарын тоогоор (landTotal); 2026-11-11: багцын мөр хувьгүй */
   {
     const iPh = find((n) => n.depth === 1 && n.phase === 'gazar');
     assert.ok(iPh >= 0, 'газар чөлөөлөлтийн үе шатын мөр');
     const pw = p.result.values.get(p.tree.nodes[iPh]);
-    const pt = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, land, landTotal: 91.4 }, today);
+    const pt = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, landTotal: 91.4 }, today);
     const vt = pt.result.values.get(pt.tree.nodes[iPh]);
     assert.equal(vt.S, 91.4, 'үе шатын мөр = landTotal');
-    assert.notEqual(pw.S, 91.4, 'landTotal-гүй бол жигнэлт');
-    assert.equal(pt.result.values.get(pt.tree.nodes[find((n) => n.phase === 'gazar' && n.pkg === 'Багц-1' && n.blok === '5/1' && !n.children.length)]).S, 80, 'блокийн мөр хэвээр');
-    const pn = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, land, landTotal: null }, today);
-    assert.equal(pn.result.values.get(pn.tree.nodes[iPh]).S, pw.S, 'landTotal null = жигнэлт');
+    assert.equal(pw.S, null, 'landTotal-гүй бол хувьгүй (багцын мөрүүд null)');
+    assert.equal(pt.result.values.get(pt.tree.nodes[find((n) => n.phase === 'gazar' && n.pkg === 'Багц-1' && n.blok === '5/1' && !n.children.length)]).S, null, 'блокийн мөр хувьгүй');
+    const pn = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, landTotal: null }, today);
+    assert.equal(pn.result.values.get(pn.tree.nodes[iPh]).S, null, 'landTotal null = хувьгүй');
   }
   /* сарын цуваа */
   assert.equal(p.months.length, planMonths(p.result).length);
@@ -401,7 +326,7 @@ const srow = (o) => ({
     tree.nodes[iG].row.cashflow_id = 12;
     /* давхар cashflow_id — pre-order-ийн ЭХНИЙХ (багцын мөр) ялна, блок биш */
     tree.nodes[bi].row.cashflow_id = 11;
-    const p2 = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, land }, today);
+    const p2 = assemblePlan(rows, { actual: { blocks, universe, infra }, sched }, today);
     const lv = liveProgressOf(p2);
     assert.deepEqual([...lv.keys()].sort(), [11, 12], 'зөвхөн cashflow_id-тай мөр');
     const vB = p2.result.values.get(p2.tree.nodes[iB]);
@@ -409,7 +334,8 @@ const srow = (o) => ({
     assert.equal(lv.get(11).S, vB.S, 'S = мөрийн computePlan S (блокуудын Σ F·X: 5/1 = 50, 5/2 = 0)');
     assert.ok(vB.S != null && vB.S > 0 && vB.S < 50, 'багцын S блокуудын жигнэлт');
     assert.equal(lv.get(11).stages.guitsetgel_huvi, vB.S, 'build = өөрийн S');
-    assert.equal(lv.get(11).stages.gazar_chuluulult, vG.S, 'газар = багцын газрын ДЭЭД мөрийн S');
+    assert.equal(lv.get(11).stages.gazar_chuluulult, null, 'газар — багцаар хувьгүй (2026-11-11)');
+    assert.equal(vG.S, null);
     assert.equal(lv.get(11).stages.tezu, null, 'Багц-1-д ТЭЗҮ-ийн мөргүй → null (0 биш)');
     assert.equal(lv.get(12).S, vG.S);
     assert.equal(lv.get(12).stages.guitsetgel_huvi, vG.S);
@@ -426,7 +352,7 @@ const srow = (o) => ({
         R(6, '5.2.1', '5.2', 'Барилга угсралт', { bagts: 'БАГЦ 1- 4', cashflow_id: 71 }),
         R(7, '5.2.2', '5.2', 'Барилга угсралт', { bagts: 'БАГЦ-14', cashflow_id: 72 }),
       ];
-      const lv2 = liveProgressOf(assemblePlan(r2, { actual: { blocks: new Map(), universe: new Map(), infra: new Map() }, sched: null, land: new Map() }, today));
+      const lv2 = liveProgressOf(assemblePlan(r2, { actual: { blocks: new Map(), universe: new Map(), infra: new Map() }, sched: null }, today));
       assert.equal(lv2.get(71).stages.zuwshuurul, 100, '«БАГЦ 1- 4» — өөрийн зөвшөөрөл');
       assert.equal(lv2.get(72).stages.zuwshuurul, 20, '«БАГЦ-14» — өөрийн зөвшөөрөл');
     }

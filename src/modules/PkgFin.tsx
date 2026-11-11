@@ -828,6 +828,7 @@ function TsKpi({ packs, fin, share }: {
     return {
       planned, actual, gap, given,
       share: share.pct,
+      givenContracted,
       /** Олгогдоогүй үлдэгдэл ₮ — 2026-10-04: ГЭРЭЭЛСЭН − гэрээлсэн багцын олголт (удирдлагын
           тайлангийн `fin.remain`-тэй нэг); урьд нь төлөвлөгөө (гэрээ ЭСВЭЛ төсөв) − багцын олголт */
       remain: given == null ? null : Math.max(0, share.contract - givenContracted),
@@ -836,7 +837,9 @@ function TsKpi({ packs, fin, share }: {
   const items = [
       { v: num(packs.length), l: tr('нийт төслийн тоо'), h: tr('Багцын бүртгэлд буй бүх багц ажил — гэрээ, санхүүжилт бүртгэгдээгүй багц ч орно') },
       { v: t == null ? '…' : mnt(t.given), l: tr('олгосон санхүүжилт') },
-      { v: t == null ? '…' : t.share == null ? '—' : pct(t.share, 1), l: tr('олгосон — гэрээний дүнгийн %') },
+      { v: t == null ? '…' : t.share == null ? '—' : pct(t.share, 1), l: tr('олгосон — гэрээний дүнгийн %'),
+        /* 2026-11-09: хувийн тоологчийг хажууд нь — нийт олголтоос (зүүн хавтан) ялгаатай бол ойлгомжтой */
+        h: t == null || t.share == null ? '' : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(t.givenContracted), pct(t.share, 1)) },
       { v: t == null ? '…' : remainMnt(t.remain), l: tr('олгогдоогүй үлдэгдэл') },
   ];
   return (

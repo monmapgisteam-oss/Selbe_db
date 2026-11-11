@@ -84,6 +84,12 @@ ok('эх код — огноо + сарын хувь л; гүйцэтгэлий�
   assert.ok(inputs.every((x) => /type="date"|inputMode="decimal"/.test(x)), 'чөлөөт текстийн талбар алга');
 });
 
+ok('2026-11-09: хүрээнээс гарсан сарын засвар «Хадгалах (n)»-д тоологдохгүй; юу ч бичээгүй бол «Хадгалагдав» гэхгүй', () => {
+  assert.ok(SRC.includes('Object.keys(pend).filter((k) => months.includes(k)).length + (datesDirty ? 1 : 0)'), 'dirty — зөвхөн хүрээн доторх сар');
+  assert.ok(!SRC.includes('Object.keys(pend).length'), 'бүх pend түлхүүрийг тоолохгүй');
+  assert.ok(SRC.includes("if (pctDirty || Object.keys(upd).length) setMsg(tr('Хадгалагдав'));"), 'бичсэн үед л «Хадгалагдав»');
+});
+
 ok('monthsOutside — огнооноос гадуурх сар; хил тодорхойгүй бол тэр талаас шалгахгүй', () => {
   assert.deepEqual(M.monthsOutside(['2026-09', '2026-10', '2026-12', '2027-01'], '2026-10', '2026-12'), ['2026-09', '2027-01']);
   assert.deepEqual(M.monthsOutside(['2026-09', '2027-01'], null, '2026-12'), ['2027-01']);

@@ -39,7 +39,23 @@ assert.equal(live.get(1), 67.75, 'эцэг дагаж шинэчлэгдэнэ')
 /* хүлцэл дотор — бичихгүй */
 assert.equal(planProgressUpdates(plan({ '1.1': { S: 40.00000001 } })).some((u) => u.objectid === 2), false, 'хөвөгч таслалын шуугиан');
 
-assert.deepEqual(planProgressUpdates(plan({}, ['parcels'])), [], 'эх унасан → юу ч бичихгүй');
+assert.deepEqual(planProgressUpdates(plan({}, ['landTotal'])), [], 'эх унасан → юу ч бичихгүй');
+
+/* 2026-11-11: газар чөлөөлөлтийн багц/блокийн мөрийн хуучин хадгалсан хувь арилна; үе шатын мөр төслийн нийтээр */
+{
+  const g = buildTree([
+    { objectid: 21, dd_kod: '2', etseg_kod: null, uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: 'Газар чөлөөлөлт', guitsetgel_huvi: 80 },
+    { objectid: 22, dd_kod: '2.1', etseg_kod: '2', uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: 'Багц-1', bagts: 'Багц-1', heseg_ezleh_huvi: 1, guitsetgel_huvi: 75 },
+    { objectid: 23, dd_kod: '2.1.1', etseg_kod: '2.1', uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: '5/1', bagts: 'Багц-1', blok: '5/1', heseg_ezleh_huvi: 1, guitsetgel_huvi: 50 },
+    { objectid: 24, dd_kod: '2.1.2', etseg_kod: '2.1', uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: '5/2', bagts: 'Багц-1', blok: '5/2', heseg_ezleh_huvi: 0, guitsetgel_huvi: null },
+  ]);
+  const r = computePlan(g, { override: (n) => (n.depth === 1 ? { S: 91.4 } : undefined) }, today);
+  const u = new Map(planProgressUpdates({ empty: false, tree: g, result: r, inputs: {}, months: [], monthly: new Map(), failed: [] }).map((x) => [x.objectid, x]));
+  assert.equal(u.get(21).guitsetgel_huvi, 91.4, 'үе шатын мөр = төслийн нийт');
+  assert.ok('guitsetgel_huvi' in u.get(22) && u.get(22).guitsetgel_huvi === null, 'багцын мөрийн хуучин хувь арилна');
+  assert.equal(u.get(23).guitsetgel_huvi, null, 'блокийн мөрийн хуучин хувь арилна');
+  assert.ok(!u.has(24), 'аль хэдийн хоосон мөр бичигдэхгүй');
+}
 assert.deepEqual(planProgressUpdates({ ...plan(), empty: true }), [], 'хоосон төлөвлөгөө → юу ч бичихгүй');
 
 /* 2026-11-05 (аудит №1): БАГЦЫН түвшний эх унасан бол зөвхөн тэр багцын мөр ба өвгүүд нь бичигдэхгүй — бусад нь бичигдэнэ */
@@ -48,7 +64,8 @@ assert.deepEqual(planProgressUpdates({ ...plan(), empty: true }), [], 'хоос�
   assert.equal(failedScope(['parcels']), null, 'төслийн түвшний эх → бүгд зогсоно');
   assert.equal(failedScope(['schedule:b1_9f', 'blockProgress']), null, 'холимог → бүгд зогсоно');
   assert.equal(failedScope(['schedule:no_such']), null, 'үл мэдэх хуудас → бүгд зогсоно');
-  assert.deepEqual([...failedScope(['schedule:b1_9f', 'land:БАГЦ2'])], ['БАГЦ1', 'БАГЦ2'], 'хуудас → бүлгийн түлхүүр · газар → түлхүүр');
+  assert.deepEqual([...failedScope(['schedule:b1_9f', 'schedule:b2_9f'])], ['БАГЦ1', 'БАГЦ2'], 'хуудас → бүлгийн түлхүүр');
+  assert.equal(failedScope(['land:БАГЦ2']), null, '2026-11-11: багцын газрын эх байхгүй — үл мэдэх эх → бүгд зогсоно');
   assert.deepEqual([...failedScope([])], [], 'унаагүй → хоосон хүрээ');
 
   const rows2 = [

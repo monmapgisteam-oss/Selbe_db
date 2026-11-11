@@ -10,6 +10,7 @@
  */
 import assert from 'node:assert/strict';
 import { cfMonthAxis, MONTH_AXIS_FROM } from '@/lib/services.ts';
+import { monthKey } from '@/lib/format.ts';
 
 const ok = [];
 const t = (name, fn) => { fn(); ok.push(name); };
@@ -47,6 +48,18 @@ t('хэтэрвэл СҮҮЛИЙН 120 сар — төгсгөл нь одоо (
   assert.equal(big.length, 120);
   assert.equal(big[big.length - 1], '2040-05');
   assert.equal(big[0], '2030-06');
+});
+
+/* ── Улаанбаатарын сар (2026-11-09) — хостын бүсээс үл хамаарна (CI нь UTC) ── */
+t('2026-11-30T20:00Z = УБ 12-01 04:00 → төгсгөл 2026-12 (monthKey-тэй ижил)', () => {
+  const ms = Date.parse('2026-11-30T20:00:00Z');
+  const ax = cfMonthAxis(new Date(ms));
+  assert.equal(ax[ax.length - 1], '2026-12');
+  assert.equal(ax[ax.length - 1], monthKey(ms));
+});
+t('2026-11-30T15:59Z = УБ 11-30 23:59 → төгсгөл 2026-11', () => {
+  const ax = cfMonthAxis(new Date(Date.parse('2026-11-30T15:59:00Z')));
+  assert.equal(ax[ax.length - 1], '2026-11');
 });
 
 /* ── Бүтэц ── */

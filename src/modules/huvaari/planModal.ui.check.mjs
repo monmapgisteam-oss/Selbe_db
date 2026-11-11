@@ -237,3 +237,12 @@ console.log('✓ PlanModal: төлөвлөгдсөн бүлгийн хоосон
   assert.ok(!html.includes('Одоогийн уялдаа') && !html.includes('Уялдаа устгах'), 'уялдаагүй блок — шинэ холбоос');
 }
 console.log('✓ LinkModal: дарагдах уялдаа ил, устгах товч');
+
+/* 2026-11-09: «Бүлгийг шилжүүлэх» дараа модал хаагдахад (`undoDragOnClose`) чирэлт ба шилжүүлэлт буцаагдахгүй —
+   хуулах, «Доторх ажилд тараах»-тай адил `forgetDrag()` дуудна */
+{
+  const { readFileSync } = await import('node:fs');
+  const H = readFileSync('src/modules/Huvaari.tsx', 'utf8');
+  assert.ok(H.includes('(d, bs) => { forgetDrag(); shiftGroup(modalRow.oid, d, bs); }'), 'onShiftGroup forgetDrag дуудна');
+}
+console.log('✓ PlanModal: бүлэг шилжүүлэхэд чирэлт мартагдана');

@@ -194,7 +194,8 @@ export function approveWhy(d: IpcDocRow): 'status' | 'no-doc' | null {
 export function approveIpc(d: IpcDocRow, pays: readonly Row[]): Row[] {
   const out: Row[] = [{ [HO_IPC.oid]: d.oid, [P.amount]: d.total, [S.field]: S.paid }];
   for (const r of pays) {
-    if (isAuto(r) && num(r[P.ipcNo]) === d.no) out.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [S.field]: S.paid });
+    /* 2026-11-09: зөвхөн «IPC үүссэн» мөр — ижил дугаартай (зэрэг үүссэн, `dupDocNos`) өөр баримтын баталсан эсвэл чөлөөлөгдсөн мөрийг хөндөхгүй */
+    if (isAuto(r) && num(r[P.ipcNo]) === d.no && statusOf(r) === S.created) out.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [S.field]: S.paid });
   }
   return out;
 }
@@ -213,7 +214,8 @@ export function deleteWhy(d: IpcDocRow, pays: readonly Row[]): 'paid' | null {
 export function deleteIpc(d: IpcDocRow, pays: readonly Row[]): { deletes: number[]; updates: Row[] } {
   const updates: Row[] = [];
   for (const r of pays) {
-    if (isAuto(r) && num(r[P.ipcNo]) === d.no) updates.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [P.ipcNo]: null, [S.field]: S.work });
+    /* 2026-11-09: «Олгосон» мөр чөлөөлөгдөхгүй — ижил дугаартай (зэрэг үүссэн, `dupDocNos`) баталсан баримтынх байж болно */
+    if (isAuto(r) && num(r[P.ipcNo]) === d.no && statusOf(r) !== S.paid) updates.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [P.ipcNo]: null, [S.field]: S.work });
   }
   return { deletes: [d.oid], updates };
 }

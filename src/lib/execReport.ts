@@ -698,6 +698,15 @@ export const householdsLabel = (p: { blocks: number; households: number; househo
   p.blocks > 0 && p.householdsMissing >= p.blocks ? '—'
     : p.householdsMissing > 0 ? `${num(p.households)} (${tr('дутуу')})` : num(p.households);
 
+/**
+ * «хэмжилт {сүүлийн}, хамгийн хуучин {эхний}» — хэмжилтийн огноо (2026-11-09: бүх тайланд нэг хэлбэр,
+ * `audienceReport` · удирдлагын тайлан · PDF · инфографик); огноо алга бол ''.
+ */
+export const measuredLabel = (p: { asOf?: string | null; asOfOldest?: string | null }): string =>
+  !p.asOf ? ''
+    : p.asOfOldest && p.asOfOldest !== p.asOf ? tr('хэмжилт {0}, хамгийн хуучин {1}', p.asOf, p.asOfOldest)
+      : tr('хэмжилт {0}', p.asOf);
+
 export function execFacts(x: ExecReport): string {
   const L: string[] = [];
   L.push(`## 01. Ерөнхий дашбоард`);
@@ -728,7 +737,7 @@ export function execFacts(x: ExecReport): string {
   for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${pct(p.progress ?? 0, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${householdsLabel(p)} өрх)` : ''}`);
   L.push(`Блокийн түвшин: ${x.prog.levels.map((l) => `${l.label} ${l.range}: ${l.n}`).join('; ')}`);
   L.push(`## 04. Багцын санхүү`);
-  L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${x.fin.given == null ? 'мэдээлэлгүй' : `${num(x.fin.given)} ₮`} (${x.fin.share == null ? '—' : pct(x.fin.share, 1)}); үлдэгдэл: ${x.fin.remain == null ? 'мэдээлэлгүй' : `${num(x.fin.remain)} ₮`}`);
+  L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${x.fin.given == null ? 'мэдээлэлгүй' : `${num(x.fin.given)} ₮`} (гэрээлсэн багцад ${num(x.fin.givenContracted)} ₮ — ${x.fin.share == null ? '—' : pct(x.fin.share, 1)}${x.fin.givenOther > 0 ? `; гэрээлсэн багцаас гадуурх ${num(x.fin.givenOther)} ₮ хувьд ороогүй` : ''}); үлдэгдэл: ${x.fin.remain == null ? 'мэдээлэлгүй' : `${num(x.fin.remain)} ₮`}`);
   for (const r of x.fin.rows) {
     L.push(r.contracted
       ? `- ${cl(r.label)}: гэрээлсэн ${r.plan > 0 ? `${num(r.plan)} ₮` : 'мэдээлэлгүй (гэрээний дүн бөглөгдөөгүй)'}, олгосон ${num(r.given)} ₮ (${r.pct == null ? '—' : pct(r.pct, 1)})`

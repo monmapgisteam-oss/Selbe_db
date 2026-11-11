@@ -71,11 +71,13 @@ const CO_RE: [RegExp, string][] = [
   [/нутгийн\s*буян/i, 'NBG'],
   [/монкон/i, 'MK'],
   [/професионал/i, 'P'],
-  [/mmse|ммсе/i, 'MMSE'],
-  [/smart\s*craft/i, 'SC'],
-  [/оснааг/i, 'OSNAAG'],
+  /* Үзлэгийн маягтын домэйн шошго («"Эм Эм Эс Инженеринг" ХХК», «"Смарт крафт" ХХК», «Нийслэлийн ОСНААУГ») ба
+     код (`mms` · `smart_craft` · `osnaaug` — `habeaUzleg.CO_SFX`) хоёуланг таана (2026-11-09) */
+  [/mmse|ммсе|эм\s*эм\s*эс|^\s*mms\s*$/i, 'MMSE'],
+  [/smart[\s_]*craft|смарт\s*крафт/i, 'SC'],
+  [/оснааг|оснаа?уг|osnaa?ug/i, 'OSNAAG'],
 ];
-const coSfxOf = (name: string): string => CO_RE.find(([re]) => re.test(name))?.[1] ?? '';
+export const coSfxOf =(name: string): string => CO_RE.find(([re]) => re.test(name))?.[1] ?? '';
 
 const toRow = (r: Row): ActionRow => {
   const site = String(r.site ?? '').trim();

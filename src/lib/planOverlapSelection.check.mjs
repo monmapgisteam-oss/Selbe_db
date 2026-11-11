@@ -21,9 +21,10 @@ assert.deepEqual(visibleOverlapItems(items, 'next', ['road'], row), [], 'A saved
 assert.deepEqual(visibleOverlapItems(items, 'now', ['build'], row), [], 'An overlap selection cannot leak onto the other comparison side');
 assert.equal(visibleOverlapItems(items, 'next', ['build', 'road'], null).length, 3, 'Clearing selection restores all activated categories');
 {
-  /* Refresh and layer edits must reach the browser store, or a 24-hour-old result is read back. */
+  /* Refresh and layer edits must reach the browser store, or a 24-hour-old result is read back.
+     2026-11-09: only the refresh button (Portal.refreshData) and layer edits clear it, not the generic data-bus slot. */
   const source = readFileSync(new URL('./planOverlap.ts', import.meta.url), 'utf8');
-  assert.ok(source.includes('void clearOverlapStore(); }, []);'), 'The data bus path must clear the browser store');
+  assert.ok(!/register\(\(\) => \{[^\n]*clearOverlapStore/.test(source), 'The generic data bus slot must not clear the browser store (the refresh button does, in Portal)');
   assert.ok(source.includes('void clearOverlapStore(); });'), 'The layer edit path must clear the browser store');
   assert.ok(source.includes('if (epoch !== storeEpoch) { db.close(); return; }'), 'A run started before the clear must not write its old result back');
 }

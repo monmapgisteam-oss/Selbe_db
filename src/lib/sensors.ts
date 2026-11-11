@@ -474,8 +474,8 @@ function dailyDiffPoints(points: Reading[]): Reading[] {
   return out;
 }
 
-/** Цувааны нэгдсэн үзүүлэлт — суурь ба уламжлал хоёулаа үүгээр бүтнэ */
-function summarize(
+/** Цувааны нэгдсэн үзүүлэлт — суурь ба уламжлал хоёулаа үүгээр бүтнэ (шалгалтад экспортлов) */
+export function summarize(
   m: Metric, pts: Reading[], total: number | null, all: Reading[] = pts, badAt: number | null = null,
   higherIsGood = false,
   badLow = false,
@@ -486,6 +486,9 @@ function summarize(
   const badLast = badAt != null && (lastOk == null || badAt > lastOk.t);
   const last = badLast ? null : lastOk;
   const lastAt = badLast ? badAt : (lastOk?.t ?? null);
+  /* Сүүлийн заалт физик мужаас гадуур бол «сүүлийн заалт» болгож ХАРУУЛАХГҮЙ (`null` → «—»), `fault` хэвээр (2026-11-09) */
+  const bad = outOfRange(m, last?.v ?? null);
+  const latest = bad ? null : (last?.v ?? null);
   const f = m.forecast && !badLast ? fit(clean) : null;
   const a = m.alert;
   return liveCopy(m, {
@@ -494,15 +497,15 @@ function summarize(
       a ? (higherIsGood ? (x: Reading) => x.v < a.value : (x: Reading) => x.v >= a.value) : undefined,
       higherIsGood,
     ),
-    latest: last?.v ?? null,
+    latest,
     latestAt: lastAt,
     ageHours: lastAt != null ? (Date.now() - lastAt) / 3_600_000 : null,
     total,
     min: vals.length ? Math.min(...vals) : null,
     max: vals.length ? Math.max(...vals) : null,
     avg: vals.length ? vals.reduce((s2, x) => s2 + x, 0) / vals.length : null,
-    trend: f ? { perHour: f.perHour, etaHours: eta(last?.v ?? null, f.perHour, m.alert, lastAt != null ? (Date.now() - lastAt) / 3_600_000 : null) } : null,
-    fault: badLast || outOfRange(m, last?.v ?? null),
+    trend: f ? { perHour: f.perHour, etaHours: eta(latest, f.perHour, m.alert, lastAt != null ? (Date.now() - lastAt) / 3_600_000 : null) } : null,
+    fault: badLast || bad,
     faultNote: badLast && badLow ? (m.rawValid?.lowNote ?? null) : null,
   });
 }

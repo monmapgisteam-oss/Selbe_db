@@ -120,7 +120,7 @@ const ROWS = [
   assert.deepEqual(k.facts, [
     '+16 хүн өмнөх тайлангаас (+1.1%)',
     'техник 72',
-    'хүн-цаг 11,776',
+    'хүн цаг 11,776 (ажилтан × 8 цаг, тооцоолсон)',
     '2026-09-03 · өмнөх 2026-09-02',
     '1 компани тайлангүй — нийт дутуу',
   ]);
@@ -220,7 +220,7 @@ const ROWS = [
   assert.equal(k.tables[1].rows[0][3].v, 7200);
   // Хүн-цаг хоосон бол баримтад орохгүй; бүх Tehnik_ хоосон → техник null, «техник 0» БИШ
   const k2 = computeWorkforce([row(D3, { MK: { w: 10 } }), row(D2, { MK: { w: 10 } })], ub(2026, 9, 4));
-  assert.ok(!k2.facts.some((f) => f.startsWith('хүн-цаг')));
+  assert.ok(!k2.facts.some((f) => f.startsWith('хүн цаг')));
   assert.equal(k2.detail.technik, null, 'бүх Tehnik_ хоосон → null');
   assert.equal(k2.detail.workersLatest, 10, 'ажилтан тусдаа тугаар — null биш');
   assert.deepEqual(k2.facts, ['0 хүн өмнөх тайлангаас (0.0%)', '2026-09-03 · өмнөх 2026-09-02']);

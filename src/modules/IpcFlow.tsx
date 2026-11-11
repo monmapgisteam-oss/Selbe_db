@@ -13,7 +13,7 @@ import { applyAll } from '@/lib/tableWrite';
 import { queryFeatures } from '@/lib/query';
 import { CASHFLOW_NEW, CF_MONTH, HO_IPC, num } from '@/lib/services';
 import { contractCancelled } from '@/lib/ipc';
-import { entDeletePdf, entSession, entUploadPdf } from '@/lib/entDocs';
+import { entDeletePdf, entSearch, entUploadPdf } from '@/lib/entDocs';
 import { runHoSyncAfter } from '@/lib/hoSync/sync';
 import { cfMatches, hoPkgParts, phasesOf } from '@/lib/hoSync/compute';
 import { userError } from '@/components/ui';
@@ -179,8 +179,12 @@ export function IpcFlowPanel({
     /* Баримт устсан: скан файл үлдсэн бол бүртгэлгүй хог болохгүй гэж арилгана; унавал баримтад нөлөөгүй, ил хэлнэ */
     if (d2.docItem) {
       try {
-        const owner = entSession()?.user;
-        if (owner) await entDeletePdf(d2.docItem, owner);
+        /* 2026-11-09: эзэн нь скан оруулсан хэрэглэгч (одоогийнх биш) — item-ийн мэдээллээс (`chanarDocs`, `docLib`-тэй адил).
+           Enterprise сешнгүй бол `entSearch` алдаа өгч, доор «гараар устгана уу» гэж ил хэлнэ */
+        const id = d2.docItem;
+        const it = /^\w+$/.test(id) ? (await entSearch(`id:${id}`)).find((x) => x.id === id) : undefined;
+        if (!it?.owner) throw new Error(tr('Файл (item) устгагдсангүй.'));
+        await entDeletePdf(it.id, it.owner);
       } catch (e) {
         setErr(tr('Баримт устсан ч скан файл устсангүй ({0}). Баримт бичгийн сангаас гараар устгана уу.', userError(e)));
       }

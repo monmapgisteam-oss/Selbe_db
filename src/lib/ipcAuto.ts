@@ -327,15 +327,17 @@ export function planAuto(rows: readonly Row[], a: AutoIpc): AutoPlan {
      хасна — IPC-д орсон хэсэг давхар тоологдохгүй. */
   const same = rows.filter((r) => isAuto(r) && pkgKeyOf(r[C.pkg]) === key && autoDay(r) === a.day);
   const cur = same.find((r) => !isLockedRow(r));
-  /* Жааз өдрийн НИЙТ ажлыг хадгалдаг — IPC-д орсон мөрийн дүнг хасаж зөвхөн нэмэгдсэн ажлыг бичнэ (давхар төлбөргүй) */
-  const locked = same.filter((r) => isLockedRow(r) && !isCancelledRow(r));
+  /* Жааз өдрийн НИЙТ ажлыг хадгалдаг — тэр өдрийн БУСАД (цуцлагдаагүй) мөрийн дүнг хасаж зөвхөн нэмэгдсэн ажлыг бичнэ
+     (давхар төлбөргүй). 2026-11-09: зөвхөн түгжигдсэнийг биш — IPC устгагдаж сул болсон `|2` мөрийг ч хасна, эс бөгөөс
+     эхний мөр өдрийн нийтийг авч `|2` өөрийн хэсгээ хадгалан давхар тоологдоно. */
+  const others = same.filter((r) => r !== cur && !isCancelledRow(r));
   const less = (v: number | null, f: string): number | null =>
-    (v == null ? null : Math.round((v - locked.reduce((s, r) => s + (num(r[f]) ?? 0), 0)) * 1e6) / 1e6);
-  const net: AutoIpc = locked.length ? { ...a, obyem: less(a.obyem, LINK_FIELDS.obyem), une: less(a.une, LINK_FIELDS.une) } : a;
+    (v == null ? null : Math.round((v - others.reduce((s, r) => s + (num(r[f]) ?? 0), 0)) * 1e6) / 1e6);
+  const net: AutoIpc = others.length ? { ...a, obyem: less(a.obyem, LINK_FIELDS.obyem), une: less(a.une, LINK_FIELDS.une) } : a;
   if (cur) return { op: 'update', attrs: autoUpdate(cur, net, rows) };
   /* 2026-11-05 (аудит): түгжигдсэн мөр бүхэл тоогоор хадгалагдсан тул үлдэгдэл ±0.5 ₮ · ±0.001 дотор = шинэ ажилгүй
      (хоосон «Гүйцэтгэл» карт үүсгэхгүй) */
-  if (locked.length && Math.abs(net.obyem ?? 0) < 1e-3 && Math.abs(net.une ?? 0) < 0.5) return { op: 'skip', why: 'no-data' };
+  if (others.length && Math.abs(net.obyem ?? 0) < 1e-3 && Math.abs(net.une ?? 0) < 0.5) return { op: 'skip', why: 'no-data' };
   return { op: 'insert', attrs: autoInsert(net, same.length + 1) };
 }
 

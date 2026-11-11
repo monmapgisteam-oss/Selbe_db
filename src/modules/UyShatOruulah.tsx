@@ -38,6 +38,8 @@ const OUT = [
   CASHFLOW_NEW.oid, F.ddKod, F.parentKod, F.level, F.phase, F.pkg, F.block, F.detail, F.budget, F.wSection,
   F.wProject, F.landStart, F.landEnd, F.contractorStart, F.contractorEnd, F.progressPct, CF_MONTH.id,
   F.orderDate, F.orderNo, F.tenderDate, F.contractDate, F.handoverDate,
+  /* 2026-11-09: ихрийн «Гэрээлсэн дүн» — `tenderSigned` уншина; алга бол Багц-5.3 · 5.4-ийн явц энд засагдаж үндсэн хүснэгт 100-гаар дардаг байв */
+  F.amountNote,
 ];
 const WHERE = `${F.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`;
 

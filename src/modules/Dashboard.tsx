@@ -1189,7 +1189,7 @@ function EnvRight({ d }: { d: DashData }) {
                   label: r.label,
                   value: r.progress ?? null,
                   color: r.progress == null ? NO_DATA : 'var(--data)',
-                  display: r.progress == null ? '—' : pct(r.progress, 1),
+                  display: pct(r.progress ?? 0, 1),
                 }))}
             />
           )}
@@ -2152,7 +2152,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
             key: r.key,
             label: r.label,
             value: r.progress ?? null,
-            display: pct(r.progress, 1),
+            display: pct(r.progress ?? 0, 1),
             color: r.progress == null ? NO_DATA : heat(r.progress, 100),
           }))}
         />
@@ -4462,7 +4462,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
             const base = bg2.total + socSum;
             const list = [
               { key: 'soc', label: tr('Нийгмийн дэд бүтэц'), v: socSum },
-              { key: 'rest', label: tr('НИЙТ (Орон сууцны хороолол+ГИШС)'), v: bg2.total },
+              { key: 'rest', label: tr('НИЙТ (Орон сууцны хороолол + Гадна инженерийн шугам сүлжээ)'), v: bg2.total },
             ].filter((x) => x.v > 0);
             return (
               <Donut

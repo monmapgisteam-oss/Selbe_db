@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  cellObyem, cellPct, computeAll, editPct, isPctEdit,
+  VOL_HALF_UNIT, cellObyem, cellPct, computeAll, editPct, isPctEdit, overVolume,
 } from './bagtsSheet.ts';
 
 /** Хамгийн бага SheetRow — тооцоонд оролцох талбарууд л */
@@ -86,6 +86,22 @@ assert.equal(cOver[0].actOver[0], true, 'анхааруулгын туг асн�
   const near = [{ oid: 1, no: '1', work: 'x', depth: 0, group: false, wC: null, wD: null, vol: 10.6667, plannedVol: null, unit: null, money: null, act: [null], obyem: [10.667], raw: {}, start: [null], end: [null], gStart: [null], gEnd: [null], aStart: [null], aEnd: [null], hun: null, mashin: null, des: null, ham: null }];
   assert.equal(computeAll(near, 1, null, {}, {}, [true])[0].actOver[0], false, 'бөөрөнхийллийн зөрүү тугалахгүй');
   assert.equal(computeAll([{ ...near[0], obyem: [10.68] }], 1, null, {}, {}, [true])[0].actOver[0], true, '100.12% — туг асна');
+}
+
+/* Дэлгэцийн нэгжийн хагас (2026-11-09) — `qty()` 3 оронтой тул 0.0005 хүртэлх илүү «100%» харагдаж тугтай болдог байв */
+{
+  const over = (vol, ob, edits = {}, mode) => computeAll([row({ vol, obyem: [ob] })], 1, null, edits, {}, [true], undefined, mode)[0].actOver[0];
+  assert.equal(VOL_HALF_UNIT, 0.0005, 'хагас нэгж = 0.5 · 10^-QTY_DEC');
+  assert.equal(over(2.09069539, 2.091), false, '2.091 ÷ 2.09069539 (+0.0003) — туг асахгүй');
+  assert.equal(over(0.00479951, 0.0048), false, '0.0048 ÷ 0.00479951 (+0.0000005, харьцангуй 0.01%) — туг асахгүй');
+  assert.equal(over(0.00479951, 0.0048, {}, 'inc'), false, 'нэмэлтийн горимд ч мөн');
+  assert.equal(over(1, 1.0006), true, 'хагас нэгжээс их илүү — туг асна');
+  assert.equal(over(0.12, 2.4), true, 'жинхэнэ хэтрэлт 2.4 ÷ 0.12');
+  assert.equal(over(0.12, 2.4, {}, 'inc'), true);
+  assert.equal(over(0.00479951, 0.0048, { '1:0': '%100.02' }), true, 'гараар бичсэн хувь — хувиар хэвээр');
+  assert.equal(overVolume(2.09069539, 2.091), false);
+  assert.equal(overVolume(0.12, 2.4), false, 'дараалал: (хуримтлал, Обьём)');
+  assert.equal(overVolume(2.4, 0.12), true);
 }
 
 console.log('pct.check: ok — дүрэм ✓ хоёр чиглэл ✓ Обьёмгүй мөр ✓ 100%+ ✓');

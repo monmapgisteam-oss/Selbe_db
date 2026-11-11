@@ -536,7 +536,7 @@ function TailanFull() {
                           .map((b) => ({
                             label: tr(b.label),
                             value: b.progress,
-                            text: pct(b.progress, 2),
+                            text: pct(b.progress ?? 0, 2),
                             hot: b.key === bestRow?.key,
                           }))}
                       />
@@ -558,7 +558,7 @@ function TailanFull() {
                               <td className={r.num}>{num(b.blocks)}</td>
                               <td className={r.num}>{ailCell(b)}</td>
                               <td className={r.num}>{budgetOf(b.key) > 0 ? bn(budgetOf(b.key)) : '—'}</td>
-                              <td className={r.num}>{pct(b.progress, 2)}</td>
+                              <td className={r.num}>{pct(b.progress ?? 0, 2)}</td>
                             </tr>
                           ))}
                           <tr className={r.total}>

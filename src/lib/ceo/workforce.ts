@@ -350,7 +350,7 @@ export function computeWorkforce(rows: Row[], now: number): WorkforceKpi {
       : tr('{0} хүн өмнөх тайлангаас ({1})', `${sgn}${num(delta)}`, `${sgn}${pct(deltaPct)}`));
   }
   if (latest.technik != null) facts.push(tr('техник {0}', num(latest.technik)));
-  if (latest.header.manHours != null) facts.push(tr('хүн-цаг {0}', num(latest.header.manHours)));
+  if (latest.header.manHours != null) facts.push(tr('хүн цаг {0} (ажилтан × 8 цаг, тооцоолсон)', num(latest.header.manHours)));
   facts.push(prev ? tr('{0} · өмнөх {1}', latest.key, prev.key) : latest.key);
   if (unreported.length) facts.push(tr('{0} компани тайлангүй — нийт дутуу', unreported.length));
 

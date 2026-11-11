@@ -178,4 +178,36 @@ const byCode = (c) => tree.byCode.get(c);
   console.log('✅ 4. зэрэг засвар');
 }
 
+/* ── 5. Ихрийн «Гэрээлсэн дүн» хуудасны модонд хүрнэ (2026-11-09) ──
+   `OUT`-д `ho_dungiin_tailbar` алга, `toStored` хөрвүүлдэггүй байсан тул 4.3.2.3 (Багц-5.3) · 4.3.2.4 (Багц-5.4)-ийн явц
+   энэ хуудсанд засагдаж, үндсэн хүснэгт 100-гаар түгжиж автомат синк оруулсан утгыг дардаг байв */
+{
+  const { toStored } = await import('./zuragTosol.ts');
+  const { tenderLockWhy } = await import('./projectPlan.ts');
+  const T = d('2026-11-09');
+  const raw = (note) => [
+    { objectid: 1, dd_kod: '4', uy_shat: 'Сонгон шалгаруулалт', ajil_uilchilgee: 'Сонгон шалгаруулалт', tuvshin: 0 },
+    { objectid: 2, dd_kod: '4.1', etseg_kod: '4', ajil_uilchilgee: 'Орон сууц', tuvshin: 1 },
+    { objectid: 3, dd_kod: '4.1.1', etseg_kod: '4.1', bagts: 'Багц-5.3', ajil_uilchilgee: 'Орон сууц', tuvshin: 2, guitsetgel_huvi: 0 },
+    { objectid: 5, dd_kod: '5', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт', tuvshin: 0 },
+    { objectid: 6, dd_kod: '5.2', etseg_kod: '5', ajil_uilchilgee: 'Барилга угсралт ажил', tuvshin: 1, heseg_ezleh_huvi: 1 },
+    { objectid: 7, dd_kod: '5.2.1', etseg_kod: '5.2', ajil_uilchilgee: 'Орон сууц', tuvshin: 2 },
+    { objectid: 8, dd_kod: '5.2.1.1', etseg_kod: '5.2.1', bagts: 'Багц-5.3', ajil_uilchilgee: 'Орон сууц', tuvshin: 3, ho_dun_geree: 100, cashflow_id: 11, ho_dungiin_tailbar: note },
+  ];
+  const pageTree = (note) => buildTree(raw(note).map((r) => toStored(r, N)));
+  const leaf = (t) => t.byCode.get('4.1.1');
+  const signed = pageTree(' Гэрээлсэн  дүн ');
+  assert.equal(leaf(signed).twin, signed.byCode.get('5.2.1.1'), 'ихэр');
+  assert.equal(signed.byCode.get('5.2.1.1').row.ho_dungiin_tailbar, 'Гэрээлсэн  дүн', 'toStored тэмдгийг дамжуулна');
+  assert.match(tenderLockWhy(leaf(signed), T) ?? '', /Гэрээ байгуулагдсан/, 'ихрийн «Гэрээлсэн дүн» — явц түгжигдэнэ');
+  const pctF = PAGES.songon.fields.find((f) => f.kind === 'pct');
+  assert.ok(!editableFields(PAGES.songon, leaf(signed), T).includes(pctF), 'хуудсанд явц засагдахгүй');
+  assert.equal(tenderLockWhy(leaf(pageTree(null)), T), null, 'тэмдэггүй — нээлттэй');
+  assert.equal(tenderLockWhy(leaf(pageTree('Урьдчилсан дүн')), T), null, 'өөр тайлбар — нээлттэй');
+  /* Хуудас тэр талбарыг үйлчилгээнээс уншина */
+  const uiSrc = (await import('node:fs')).readFileSync(new URL('../modules/UyShatOruulah.tsx', import.meta.url), 'utf8');
+  assert.match(/const OUT = \[([\s\S]*?)\];/.exec(uiSrc)?.[1] ?? '', /\bF\.amountNote\b/, '`OUT`-д «Гэрээлсэн дүн» тэмдэг');
+  console.log('✅ 5. ихрийн «Гэрээлсэн дүн» — сонгон шалгаруулалтын явц хуудсанд түгжигдэнэ');
+}
+
 console.log('uyShat.check: OK');

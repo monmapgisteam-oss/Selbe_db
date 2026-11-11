@@ -8,7 +8,7 @@
  *   §3 `sanhuuRows` — E, 4 эх үүсвэр, олгосон, хувь = олгосон ÷ E
  *   §4 `hunHuchRows` — компани бүр + нийт; багцгүй компанийн холбоос
  *   §5 `niigemRows` · `ehUusverRows` — нэрнээс төрөл/хүчин чадал/төлөв; үл үзэгдэх тэмдэгт
- *   §6 `gazarRows` · `diffRows` — зөрсөн мөр л бичигдэнэ, stamp зөвхөн өөрчлөлттэй мөрд, илүү мөр устгана
+ *   §6 `gazarRows` (зөвхөн төслийн нийт) · `diffRows` — зөрсөн мөр л бичигдэнэ, stamp зөвхөн өөрчлөлттэй мөрд, илүү мөр устгана
  */
 import assert from 'node:assert/strict';
 import {
@@ -58,7 +58,7 @@ const blocks = new Map([
   ['БАГЦ1|5/1', { overall: 40, date: '2026-10-01', phases: [] }],
 ]);
 const universe = new Map([['БАГЦ1', ['БАГЦ1|5/1', 'БАГЦ1|5/2']]]);
-const plan = assemblePlan(rows, { actual: { blocks, universe, infra: new Map([['БАГЦ51', { pct: 36, blocks: 1, total: 1 }]]) }, sched: null, land: new Map() }, D(2026, 11, 3));
+const plan = assemblePlan(rows, { actual: { blocks, universe, infra: new Map([['БАГЦ51', { pct: 36, blocks: 1, total: 1 }]]) }, sched: null }, D(2026, 11, 3));
 
 const g = guitsetgelRows(plan, {
   buildings: new Map([['БАГЦ1|5/1', { ail: 71, davhar: 9 }], ['БАГЦ1|5/2', { ail: 117, davhar: 12 }]]),
@@ -119,7 +119,7 @@ const rows2 = [
   { dd_kod: '5.2.2.2', etseg_kod: '5.2.2', uy_shat: 'Барилга угсралт', bagts: 'БАГЦ-17.1', ajil_uilchilgee: 'Гадна тохижилтийн ажил БАГЦ 1', heseg_ezleh_huvi: 0.5, ho_dun_geree: 7 },
   { dd_kod: '5.2.3.1.9', etseg_kod: '5.2.3', uy_shat: 'Барилга угсралт', bagts: 'БАГЦ-6.1, 6.2', ajil_uilchilgee: 'Төгөл дэд станц өргөтгөх', heseg_ezleh_huvi: 0.1, ho_dun_geree: 4 },
 ];
-const plan2 = assemblePlan(rows2, { actual: { blocks, universe, infra: new Map() }, sched: null, land: new Map() }, D(2026, 11, 3));
+const plan2 = assemblePlan(rows2, { actual: { blocks, universe, infra: new Map() }, sched: null }, D(2026, 11, 3));
 const g2 = guitsetgelRows(plan2, { buildings: new Map(), contractors: new Map([['БАГЦ161', 'Смарткрафт']]), groups: new Map() });
 const byKod2 = new Map(g2.map((r) => [r.kod, r]));
 check('guitsetgel — диапазон мөр багц биш («1.4», «6.1,6.2» код гарахгүй)', () => {
@@ -147,7 +147,7 @@ check('guitsetgel — дэд багц 16.1/17.1 нь «16»-ийн доор, б�
 
 /* ══════════ §3 ══════════ */
 /* 2026-11-04: олгосон дүн `olgoson_dun`-ийн нийлбэрээс (IPC-ийн `dun`-ийг hoSync бичдэг) */
-const planPaid = assemblePlan(rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, olgoson_dun: 400 } : r)), { actual: { blocks: null, universe: null, infra: null }, sched: null, land: new Map() }, D(2026, 7, 2));
+const planPaid = assemblePlan(rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, olgoson_dun: 400 } : r)), { actual: { blocks: null, universe: null, infra: null }, sched: null }, D(2026, 7, 2));
 check('sanhuu — E, эх үүсвэр, олгосон, хувь', () => {
   const [s] = sanhuuRows(planPaid);
   const E = plan.result.values.get(plan.tree.root).E;
@@ -161,6 +161,16 @@ check('sanhuu — E, эх үүсвэр, олгосон, хувь', () => {
   assert.equal(s.olgoson_sanhuujilt_dun, 400, 'урьдчилгаа + гүйцэтгэл');
   assert.equal(s.olgoson_huvi, Math.round((400 / 1150) * 1000) / 10);
   assert.ok(!('geree_dun' in s), 'гэрээний дүн өгөхгүй');
+});
+check('2026-11-09: sanhuu — мөнгө бүхэл төгрөг (амьд E 2,495,841,880,529.33 бичигддэг байв)', () => {
+  const frac = rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, ho_dun_geree: 1000.33, zahiramj_unet_tsaas: 600.6, olgoson_dun: 400.4 } : r));
+  const [s] = sanhuuRows(assemblePlan(frac, { actual: { blocks: null, universe: null, infra: null }, sched: null }, D(2026, 7, 2)));
+  for (const k of ['niit_tosov_dun', 'tosov_unet_tsaas', 'tosov_tosliin_orlogo', 'tosov_niislel_tosov', 'olgoson_sanhuujilt_dun']) {
+    assert.ok(s[k] == null || Number.isInteger(s[k]), `${k} = ${s[k]} бутархай`);
+  }
+  assert.equal(s.niit_tosov_dun, 1150);
+  assert.equal(s.tosov_unet_tsaas, 631);
+  assert.equal(s.olgoson_sanhuujilt_dun, 400);
 });
 
 /* ══════════ §4 ══════════ */
@@ -237,17 +247,10 @@ check('ehUusver — текстээс тоо, төлөв, нэгж', () => {
 });
 
 /* ══════════ §6 ══════════ */
-check('gazar — төсөл + багц, хувь', () => {
-  const r = gazarRows(
-    { total: 2088, areaM2: 0, cleared: 1945, cleaned: 0, remaining: 143, resolved: 1945, pct: 93.2, byStatus: [], reasons: [] },
-    new Map([['БАГЦ1', { total: 400, cleared: 300 }], ['БАГЦ99', { total: 1, cleared: 0 }], ['БАГЦ12', { total: 0, cleared: 0 }]]),
-    (k) => (k === 'БАГЦ1' ? '1' : k === 'БАГЦ12' ? '12' : ''),
-  );
-  assert.equal(r.length, 3, 'кодгүй түлхүүр орохгүй');
-  assert.deepEqual(r[0], { bagts_kod: PUB_TOTAL, niit_negj_talbar_too: 2088, choloolson_too: 1945, choloolson_huvi: 93.2 });
-  assert.deepEqual(r[1], { bagts_kod: '1', niit_negj_talbar_too: 400, choloolson_too: 300, choloolson_huvi: 75 });
-  /* 2026-11-04: нэгж талбаргүй багц = чөлөөлөх газаргүй → 100% (ТТБ `EMPTY_AREA_PCT`-тэй нэг) */
-  assert.deepEqual(r[2], { bagts_kod: '12', niit_negj_talbar_too: 0, choloolson_too: 0, choloolson_huvi: 100 });
+check('gazar — зөвхөн төслийн нийт (2026-11-11: багцаар хувь бодохгүй)', () => {
+  const r = gazarRows({ total: 2088, areaM2: 0, cleared: 1945, cleaned: 0, remaining: 143, resolved: 1945, pct: 93.2, byStatus: [], reasons: [] });
+  assert.deepEqual(r, [{ bagts_kod: PUB_TOTAL, niit_negj_talbar_too: 2088, choloolson_too: 1945, choloolson_huvi: 93.2 }]);
+  assert.deepEqual(gazarRows(null), [], 'эх унасан → мөргүй');
 });
 check('diffRows — зөрсөн мөр л, stamp өөрчлөлттэй мөрд, илүү мөр устгана, түлхүүргүй нэг мөр', () => {
   const now = D(2026, 11, 3);

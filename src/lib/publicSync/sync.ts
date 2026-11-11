@@ -14,14 +14,14 @@ import { queryFeatures } from '@/lib/query';
 import { applyAll } from '@/lib/tableWrite';
 import { canAutoSync } from '@/lib/caps';
 import { currentUser } from '@/lib/who';
-import { loadProjectPlan, landCountMap } from '@/lib/projectPlanInputs';
+import { loadProjectPlan } from '@/lib/projectPlanInputs';
 import { loadHoRows, groupHo } from '@/lib/ipc';
 import { loadWorkforceDays } from '@/lib/ceo/workforce';
 import { loadLandStatus } from '@/lib/land';
 import { loadSchema, PKGS } from '@/modules/sheet/bagts.pkg';
-import { BUILDING, SELBE_PUBLIC, SOURCE_FS, buildingKey, pkgKeyOf, bagtsKey } from '@/lib/services';
+import { BUILDING, SELBE_PUBLIC, SOURCE_FS, buildingKey, bagtsKey } from '@/lib/services';
 import {
-  PUBLIC_KEYS, ehUusverRows, gazarRows, guitsetgelRows, hunHuchRows, isPkgNode, isPubGroupName, niigemRows, pubPkgCode, sanhuuRows,
+  PUBLIC_KEYS, ehUusverRows, gazarRows, guitsetgelRows, hunHuchRows, isPubGroupName, niigemRows, pubPkgCode, sanhuuRows,
   type PubBuilding, type PubGroup, type PubRow, type PublicTables,
 } from './compute';
 
@@ -146,19 +146,9 @@ export async function computePublicTables(): Promise<{ tables: Partial<PublicTab
     if (bld.status === 'fulfilled' && grp.status === 'fulfilled' && !grp.value.failed.length && contractors && !p.failed.length) {
       tables.guitsetgel = guitsetgelRows(p, { buildings: bld.value, contractors, groups: grp.value.groups });
     }
-    /* Газар — багцын түлхүүр → код (модны багцын мөрүүдээс) */
-    const codeOf = new Map<string, string>();
-    for (const n of p.tree.nodes) if (isPkgNode(n)) codeOf.set(pkgKeyOf(n.row?.bagts), pubPkgCode(n.row?.bagts));
-    try {
-      if (land.status !== 'fulfilled') {
-        fail('landStatus', land.reason);
-      } else {
-        const per = await landCountMap(codeOf.keys());
-        tables.gazar = gazarRows(land.value, per, (k) => codeOf.get(k) ?? '');
-      }
-    } catch (e) {
-      fail('gazar', e);
-    }
+    /* Газар — зөвхөн төслийн нийт (2026-11-11) */
+    if (land.status !== 'fulfilled') fail('landStatus', land.reason);
+    else tables.gazar = gazarRows(land.value);
   }
   return { tables, failed };
 }

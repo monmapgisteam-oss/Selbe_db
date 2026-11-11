@@ -323,6 +323,17 @@ ok('⚠️ «сүүлд олгосон» огноо — AUTO (дүнгүй) мө
   assert.equal(x.lastPaidDate, '2026-08-15');
   assert.equal(x.lastIpc, 1);
 });
+ok('2026-11-09: батлаагүй IPC баримт (dun хоосон) тоо, «сүүлийн IPC»-д орохгүй', () => {
+  const x = ipcOf('БАГЦ1', [HC({ total: 100, paid: 70, pays: [PAY(40, '2026-08-15', 1), PAY(30, '2026-09-15', 3), PAY(null, '2026-10-01', 4), PAY(null, '2026-10-01', 4)] })], ipcNos);
+  assert.deepEqual(x.ipcNos, [1, 3]);
+  assert.equal(x.lastIpc, 3, 'IPC-04 батлаагүй');
+});
+{
+  const { readFileSync } = await import('node:fs');
+  const model = readFileSync(new URL('../modules/tuh/model.ts', import.meta.url), 'utf8');
+  ok('2026-11-09: ТУХ-ийн нийт IPC тоо — зөвхөн олгосон', () =>
+    assert.ok(model.includes('ipcNumbers(c.pays.filter((r) => hoAmount(r) != null))')));
+}
 ok('гэрээний талбар — утгатай эхний мөрөөс (толгой мөр AUTO байж болно)', () => {
   const rows = [{ tosov_niislel_tosov: null }, { tosov_niislel_tosov: '' }, { tosov_niislel_tosov: 5e9 }];
   assert.equal(firstFilled(rows, 'tosov_niislel_tosov'), 5e9);

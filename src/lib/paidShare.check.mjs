@@ -90,6 +90,20 @@ ok('2026-10-09: холбоостой багц (HO «Багц-8.1» → «Баг�
   assert.equal(a.paidOther, 5, 'зөвхөн диапазон мөр гадуур');
 });
 
+ok('2026-11-09: тоологч HO-оос — 182-ын `olgoson_dun` хоцорсон (синк хийгдээгүй) ч хувь, гадуурх олголт зөрөхгүй', () => {
+  /* Амьд (2026-11-09): HO 665,426,302,067 ₮, 182-ын olgoson_dun 530,872,795,391 ₮ → «гадуур 134,553,506,676 ₮» гэж худал гардаг байв */
+  const stale = cf.map((r) => ({ ...r, olgoson_dun: r.olgoson_dun == null ? null : 1 }));
+  const a = paidShareOf(stale, ho);
+  assert.equal(a.paidContracted, s.paidContracted);
+  assert.equal(a.paidOther, s.paidOther);
+  assert.equal(a.paidContracted + a.paidOther, a.paid, 'тоологч + гадуурх = нийт олгосон');
+});
+ok('2026-11-09: олон багцын мөр («Багц-1-2») гишүүд нь гэрээлсэн ч гадуурх — удирдлагын тайлангийн 04-т тусдаа мөр (`execFinRanges`)', () => {
+  const a = paidShareOf(cf, [...ho, HO({ oid: 7, code: 'Багц-1-2', pkg: 'Багц-1-2', dun: 70 })]);
+  assert.equal(a.paidContracted, 600);
+  assert.equal(a.paidOther, 160, '«Багц-1-2» 70 + «Багц-1-4» 40 + гэрээгүй «Багц-3» 50');
+});
+
 console.log('\n2. Ижил оролт → бүх дуудагч ЯГ нэг утга');
 const ref = { contract: s.contract, paidContracted: s.paidContracted };
 ok('Тайлан (buildFindings.paidRate) / удирдлагын тайлан (fin.share) — paidPctOf(finance)', () => {

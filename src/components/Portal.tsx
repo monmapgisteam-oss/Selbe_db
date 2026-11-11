@@ -213,9 +213,10 @@ const isOnline = (): boolean => navigator.onLine;
 
 /** Таб ЭНЭ хугацаанаас удаан нуугдаад буцаж ирвэл бүх кэшийг хаяна (`live.SESSION_TTL_MS`-тэй ижил) */
 const AWAY_REFRESH_MS = 5 * 60_000;
+/** «Өгөгдөл: HH:MM» — Улаанбаатарын цагаар (+8 цаг, UTC уншилт; `format.dateTime`-тэй ижил), хөтчийн бүсээс үл хамаарна */
 const hhmm = (ms: number): string => {
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const d = new Date(ms + 8 * 3_600_000);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 };
 
 /**
@@ -550,6 +551,8 @@ function PortalContent(
       { danger: true, ok: tr('Шинэчлэх') },
     ))) return;
     refreshDeferredRef.current = false;
+    /* Давхцлын 24 цагийн хөтчийн хадгалалт — зөвхөн энэ товчоор (`planOverlap` слот нь зөвхөн санах ой) */
+    void import('@/lib/planOverlap').then((m) => m.clearOverlapStore()).catch(() => {});
     invalidateAll();
   }, []);
   useEffect(() => {

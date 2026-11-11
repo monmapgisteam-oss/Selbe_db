@@ -3,7 +3,7 @@
  * Values come from ExecReport / ExecDeltas; this module only lays them out.
  * A4 is the minimum height. Longer reports grow instead of clipping findings.
  */
-import { LATE_GAP, householdsLabel, type ExecReport } from '@/lib/execReport';
+import { LATE_GAP, householdsLabel, measuredLabel, type ExecReport } from '@/lib/execReport';
 import { coverageNote, coverageOk } from '@/lib/planProgress';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, PRINT_COLORS } from '@/lib/format';
@@ -258,7 +258,7 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
     y = bottom + GAP;
   }
 
-  const progress = panel(M, y, CW, '01', tr('Багцын гүйцэтгэл'), p.asOf ? tr('хэмжилт {0}', p.asOf) : '', (cx, cy, cw) => {
+  const progress = panel(M, y, CW, '01', tr('Багцын гүйцэтгэл'), measuredLabel(p), (cx, cy, cw) => {
     cy = P.label(cx, cy, cw, tr('Орон сууцны барилга угсралт — төлөвлөгөө ба бодит'));
     const actual = p.planExcluded.length ? p.actualLag : p.actual;
     const judged = coverageOk(p.planCoverage), late = judged && p.gap != null && p.gap >= LATE_GAP;

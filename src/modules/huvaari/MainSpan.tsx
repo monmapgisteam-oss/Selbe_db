@@ -264,7 +264,8 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
   const any = months.some((k) => numOf(textOf(k)) != null);
   const outside = monthsOutside(months.filter((k) => (numOf(textOf(k)) ?? 0) !== 0), startMs == null ? null : cfStartKeyOf(startMs) || null, endMs == null ? null : cfStartKeyOf(endMs) || null);
   const datesDirty = startTxt !== dayText(base.start) || endTxt !== dayText(base.end);
-  const dirty = Object.keys(pend).length + (datesDirty ? 1 : 0);
+  /* 2026-11-09: хүрээнээс гарсан сарын засвар бичигдэхгүй тул тоолохгүй — «Хадгалах (1)» хоосон хадгалалт болохгүй */
+  const dirty = Object.keys(pend).filter((k) => months.includes(k)).length + (datesDirty ? 1 : 0);
   const editable = canEdit && !busy;
 
   const save = async () => {
@@ -302,7 +303,8 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
       setPend({});
       setStartTxt(dayText(startMs));
       setEndTxt(dayText(endMs));
-      setMsg(tr('Хадгалагдав'));
+      /* Юу ч бичигдээгүй бол «Хадгалагдав» гэж хэлэхгүй */
+      if (pctDirty || Object.keys(upd).length) setMsg(tr('Хадгалагдав'));
     } catch (e) {
       setErr(userError(e));
     } finally {

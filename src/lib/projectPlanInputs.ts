@@ -8,18 +8,18 @@
  *   prepActual(pkg, blok)         — Бэлтгэл ажлын (5.1.3.1.x) блокийн «А. Бэлтгэл ажил» гүйцэтгэл (`loadPrepProgress`, 2026-11-05)
  *   pkgActual(pkg)                — блокгүй багцын (5.x · 6.x · 7.1 · 10) «Б.» гүйцэтгэл (`loadInfraProgress`)
  *   blockPlanned(pkg, blok, asOf) — Хуваарийн төлөвлөгөөт % дурын өдрөөр (`bagtsSheet.planCurve`, блок тус бүрээр)
- *   land(pkg, blok)               — газар чөлөөлөлт % = чөлөөлөгдсөн ÷ нийт нэгж талбарын ТОО (орон зайн огтлолцол)
+ *   landTotal                     — газар чөлөөлөлт % — зөвхөн төслийн нийтээр (`loadLandStatus`); багцаар бодохгүй (2026-11-11)
  *
  * ба `loadProjectPlan` — CASHFLOW_NEW-ийн Excel мөрүүдийг (dd_kod IS NOT NULL) уншиж мод угсраад,
  * оролтуудыг цуглуулж `computePlan` + `monthlySeries`-ийг бодно.
  */
 import {
-  buildTree, computePlan, isNonBlockText, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday, sourceSums,
+  buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday, sourceSums,
   planBudgetTotal,
   type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree, type SourceSums,
 } from './projectPlan';
 import {
-  CASHFLOW_NEW, CF_MONTH, BUILDING, PARCEL_LEFT, PKG_BY_BAGTS, LAYER_BY_ID,
+  CASHFLOW_NEW, CF_MONTH,
   bagtsKey, buildingKey, pkgKeyOf, isConstructionNo, isPrepNo,
 } from './services';
 import {
@@ -30,12 +30,9 @@ import { PKGS, SYNTHETIC_BLOCK, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, planCurve, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { planFields } from './planProgress';
 import { countPlanRows, loadPkgPlan, planPctFromMonths, type PkgPlan } from './huvaariObyem';
-import { queryFeatures, arcgisPost } from './query';
-import { isClearedStatus, loadLandStatus } from './land';
+import { queryFeatures } from './query';
+import { loadLandStatus } from './land';
 import { cached, SESSION_TTL_MS } from './live';
-import { register } from './dataBus';
-import { t as tr } from './i18nCore';
-import { subscribeTotals } from './totals';
 
 const DAY = 86_400_000;
 
@@ -615,408 +612,9 @@ async function fetchSchedules(): Promise<{ sched: BlockSchedules; spans: DateSpa
 }
 const loadSchedules = cached(fetchSchedules, SESSION_TTL_MS, ['BAGTS_SHEET', 'HUVAARI_OBYEM'], (v) => !v.failed.length);
 
-/* ══════════════════ 4. Газар чөлөөлөлт % (нэгж талбарын тоогоор) ══════════════════ */
-
-/** Нэгж талбаргүй хүрээний хувь — чөлөөлөх газар байхгүй тул 100 (дээрх) */
-export const EMPTY_AREA_PCT = 100;
-/** Хүрэлцэл ялгах хүлцэл (м) — `parcelOverlap.GEN_M`-тэй ижил */
-const TOL = 0.1;
-/** Огтлолцлын проекц — нэгж талбарын давхаргынх (UTM 48N, метр) */
-const WKID = 32648;
-
-type Box = [number, number, number, number];
-/** Нэг нэгж талбар — цагиргууд (нүхтэй ч) + төлөв */
-export type LandParcel = { rings: number[][][]; cleared: boolean };
-/** Хүрээний нэг объект — полигон · шугам · цэг */
-export type LandShape = { rings?: number[][][]; paths?: number[][][]; pt?: number[] };
-
-const bboxOf = (parts: number[][][]): Box => {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const r of parts) for (const [x, y] of r) {
-    if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y;
-  }
-  return [x0, y0, x1, y1];
-};
-const boxHit = (a: Box, b: Box, e: number) => a[0] <= b[2] + e && b[0] <= a[2] + e && a[1] <= b[3] + e && b[1] <= a[3] + e;
-
-/** Цэг цагиргуудын ДОТОР уу — even-odd (нүх зөв) */
-function inRings(rings: number[][][], x: number, y: number): boolean {
-  let inside = false;
-  for (const r of rings) {
-    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
-      const xi = r[i][0], yi = r[i][1], xj = r[j][0], yj = r[j][1];
-      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-  }
-  return inside;
-}
-/** Цэгээс хэрчим хүртэлх зайн квадрат */
-function segDist2(ax: number, ay: number, bx: number, by: number, px: number, py: number): number {
-  const dx = bx - ax, dy = by - ay;
-  const L = dx * dx + dy * dy;
-  let t = L ? ((px - ax) * dx + (py - ay) * dy) / L : 0;
-  t = t < 0 ? 0 : t > 1 ? 1 : t;
-  const qx = ax + t * dx - px, qy = ay + t * dy - py;
-  return qx * qx + qy * qy;
-}
-/** Цэг дүрсийн ДОТОР, хилээс `TOL`-оос ХОЛ уу — хилээр хүрэлцсэн нь огтлолцол БИШ */
-function strictlyIn(rings: number[][][], x: number, y: number): boolean {
-  if (!inRings(rings, x, y)) return false;
-  const t2 = TOL * TOL;
-  for (const r of rings) for (let k = 1; k < r.length; k += 1) {
-    if (segDist2(r[k - 1][0], r[k - 1][1], r[k][0], r[k][1], x, y) <= t2) return false;
-  }
-  return true;
-}
-/**
- * Хоёр хэрчим ЖИНХЭНЭ огтлолцох уу — төгсгөл бүр нөгөө шугамаас `TOL`-оос хол, эсрэг талд.
- */
-function properCross(a: number[], b: number[], c: number[], d: number[]): boolean {
-  const side = (p: number[], q: number[], r: number[]) => {
-    const dx = q[0] - p[0], dy = q[1] - p[1];
-    const L = Math.hypot(dx, dy);
-    if (!L) return 0;
-    const s = (dx * (r[1] - p[1]) - dy * (r[0] - p[0])) / L; // r-ийн pq шугамаас тэмдэгтэй зай
-    return s > TOL ? 1 : s < -TOL ? -1 : 0;
-  };
-  const o1 = side(a, b, c), o2 = side(a, b, d), o3 = side(c, d, a), o4 = side(c, d, b);
-  return o1 * o2 < 0 && o3 * o4 < 0;
-}
-
-/**
- * Нэгж талбарын ДОТООД цэг — хамгийн урт ирмэгийн дундаас дотогш 2·TOL; нимгэн бол хоёр дахь, … эцэст нь null.
- */
-function interiorPoint(rings: number[][][]): number[] | null {
-  const edges: [number, number[], number[]][] = [];
-  for (const r of rings) for (let k = 1; k < r.length; k += 1) {
-    const l = Math.hypot(r[k][0] - r[k - 1][0], r[k][1] - r[k - 1][1]);
-    if (l > 4 * TOL) edges.push([l, r[k - 1], r[k]]);
-  }
-  edges.sort((p, q) => q[0] - p[0]);
-  for (const [l, a, b] of edges.slice(0, 6)) {
-    const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-    const nx = -(b[1] - a[1]) / l, ny = (b[0] - a[0]) / l;
-    for (const s of [1, -1]) {
-      const x = mx + s * nx * 2 * TOL, y = my + s * ny * 2 * TOL;
-      if (strictlyIn(rings, x, y)) return [x, y];
-    }
-  }
-  return null;
-}
-
-/** Нэгж талбарын индекс — торон (grid) хайлттай */
-export type ParcelIndex = {
-  parcels: readonly LandParcel[];
-  boxes: Box[];
-  inner: (number[] | null)[];
-  near: (bb: Box) => number[];
-};
-
-const CELL = 100; // м
-
-/** Нэгж талбаруудыг индекслэнэ (цэвэр) */
-export function makeParcelIndex(parcels: readonly LandParcel[]): ParcelIndex {
-  const boxes = parcels.map((p) => bboxOf(p.rings));
-  const inner = parcels.map((p) => interiorPoint(p.rings));
-  const grid = new Map<string, number[]>();
-  const cells = (bb: Box, fn: (k: string) => void) => {
-    const x0 = Math.floor((bb[0] - TOL) / CELL), x1 = Math.floor((bb[2] + TOL) / CELL);
-    const y0 = Math.floor((bb[1] - TOL) / CELL), y1 = Math.floor((bb[3] + TOL) / CELL);
-    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 40_000) { fn('*'); return; }
-    for (let x = x0; x <= x1; x += 1) for (let y = y0; y <= y1; y += 1) fn(`${x},${y}`);
-  };
-  boxes.forEach((bb, i) => {
-    if (!Number.isFinite(bb[0])) return;
-    cells(bb, (k) => { const a = grid.get(k); if (a) a.push(i); else grid.set(k, [i]); });
-  });
-  const near = (bb: Box): number[] => {
-    const out = new Set<number>();
-    let all = false;
-    cells(bb, (k) => {
-      if (k === '*') { all = true; return; }
-      for (const i of grid.get(k) ?? []) out.add(i);
-    });
-    if (all) boxes.forEach((_, i) => out.add(i));
-    return [...out].filter((i) => boxHit(boxes[i], bb, TOL));
-  };
-  return { parcels, boxes, inner, near };
-}
-
-/**
- * Хүрээний объектуудтай ДОТООД огтлолцолтой нэгж талбарын индексүүд (цэвэр — тестлэгдэнэ).
- *   · объектын хэрчим нэгж талбарын ирмэгийг жинхэнэ огтолно, эсвэл объектын орой/хэрчмийн дунд нэгж
- *     талбарын ДОТОР (хилээс TOL-оос хол) — шугам, полигоны хил, бүрэн багтсан объект;
- *   · полигон объект нэгж талбарын дотоод цэгийг агуулна — нэгж талбар объект дотор бүрэн багтсан.
- */
-export function parcelHits(idx: ParcelIndex, shapes: readonly LandShape[]): Set<number> {
-  const hit = new Set<number>();
-  const segHits = (a: number[], b: number[]) => {
-    const bb: Box = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])];
-    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    for (const i of idx.near(bb)) {
-      if (hit.has(i)) continue;
-      const rings = idx.parcels[i].rings;
-      if (strictlyIn(rings, a[0], a[1]) || strictlyIn(rings, b[0], b[1]) || strictlyIn(rings, mid[0], mid[1])) {
-        hit.add(i);
-        continue;
-      }
-      outer: for (const r of rings) for (let k = 1; k < r.length; k += 1) {
-        if (properCross(a, b, r[k - 1], r[k])) { hit.add(i); break outer; }
-      }
-    }
-  };
-  for (const s of shapes) {
-    if (s.pt) {
-      const [x, y] = s.pt;
-      for (const i of idx.near([x, y, x, y])) if (strictlyIn(idx.parcels[i].rings, x, y)) hit.add(i);
-      continue;
-    }
-    const parts = s.rings ?? s.paths ?? [];
-    for (const p of parts) for (let k = 1; k < p.length; k += 1) segHits(p[k - 1], p[k]);
-    if (s.rings?.length) {
-      const bb = bboxOf(s.rings);
-      for (const i of idx.near(bb)) {
-        if (hit.has(i)) continue;
-        const ip = idx.inner[i];
-        if (ip && strictlyIn(s.rings, ip[0], ip[1])) hit.add(i);
-      }
-    }
-  }
-  return hit;
-}
-
-/** Огтлолцлоос хувь (0–100): чөлөөлсөн ÷ нийт; нэгж талбаргүй бол `EMPTY_AREA_PCT` */
-export function landPctOf(idx: ParcelIndex, hits: ReadonlySet<number>): number {
-  if (!hits.size) return EMPTY_AREA_PCT;
-  let c = 0;
-  for (const i of hits) if (idx.parcels[i].cleared) c += 1;
-  return (c / hits.size) * 100;
-}
-
-/** Газрын навчны түлхүүр — блок бол `buildingKey`, эс бөгөөс `P|<pkgKeyOf>` («» = олон багц → холбохгүй) */
-export const landKeyOf = (pkg: string | null | undefined, blok: string | null | undefined): string =>
-  (blok ? blockKeyOf(pkg, blok) : `P|${pkgKeyOf(pkg)}`);
-
-/** Газар чөлөөлөлтийн эх — хүрээ ба нэгж талбар */
-export type LandSources = {
-  /** `null` = нэгж талбар уншигдаагүй */
-  parcels: ParcelIndex | null;
-  /** `buildingKey` → footprint-ууд; `null` = барилгын давхарга уншигдаагүй */
-  footprints: Map<string, LandShape[]> | null;
-  /** `bagtsKey` → дэд бүтцийн давхаргын объектууд; давхарга нь унасан багц `failedPkgs`-д */
-  infra: Map<string, LandShape[]>;
-  failedPkgs: ReadonlySet<string>;
-};
-
-/**
- * Excel-ийн багцын түлхүүр → каталогийн (`PKG_BY_BAGTS`) НЭМЭЛТ түлхүүрүүд.
- */
-const LAND_PKG_ALIAS: Readonly<Record<string, readonly string[]>> = {
-  БАГЦ71: ['БАГЦ7'],
-  БАГЦ61: ['БАГЦ1ХОЛБОО'],
-  БАГЦ62: ['БАГЦ2ХОЛБОО'],
-  БАГЦ63: ['БАГЦ3ХОЛБОО'],
-  БАГЦ64: ['БАГЦ4ХОЛБОО'],
-};
-
-/** Багцын (`pkgKeyOf`) газрын хүрээний давхаргын id-ууд — өөрийнх + `LAND_PKG_ALIAS` */
-export function landLayerIdsOf(pk: string): string[] {
-  if (!pk) return [];
-  return [...new Set([pk, ...(LAND_PKG_ALIAS[pk] ?? [])].flatMap((k) => PKG_BY_BAGTS[k] ?? []))];
-}
-
-/**
- * Түлхүүр бүрийн хувь (цэвэр). `null` = эх УНАСАН (нэгж талбар · барилгын дүрс · багцын давхарга уншигдаагүй).
- */
-export function landPctMap(src: LandSources, keys: Iterable<string>): Map<string, number | null> {
-  const out = new Map<string, number | null>();
-  const idx = src.parcels;
-  for (const k of new Set(keys)) {
-    if (!idx) { out.set(k, null); continue; }
-    /** `null` = эх унасан, `[]` = дүрс алга */
-    let shapes: LandShape[] | null;
-    if (!k.startsWith('P|')) {
-      shapes = src.footprints ? src.footprints.get(k) ?? [] : null;
-    } else {
-      const pk = k.slice(2);
-      if (!pk) shapes = [];
-      else if (src.failedPkgs.has(pk)) shapes = null;
-      else if (landLayerIdsOf(pk).length) shapes = src.infra.get(pk) ?? [];
-      else if (src.footprints) {
-        const fs: LandShape[] = [];
-        for (const [bk, f] of src.footprints) if (bk.slice(0, bk.indexOf('|')) === pk) fs.push(...f);
-        shapes = fs;
-      } else shapes = null;
-    }
-    if (shapes == null) out.set(k, null);
-    else if (shapes.length) out.set(k, landPctOf(idx, parcelHits(idx, shapes)));
-  }
-  return out;
-}
-
-/** `land` callback — бэлдсэн хувиас; эх унасан `null`, дүрсгүй (Map-д алга) `undefined` → хадгалсан утга */
-export function landOf(pcts: ReadonlyMap<string, number | null>): NonNullable<PlanInputs['land']> {
-  return (pkg, blok) => {
-    const k = landKeyOf(pkg, blok);
-    return pcts.has(k) ? pcts.get(k) ?? null : undefined;
-  };
-}
-
-type Geo = { rings?: number[][][]; paths?: number[][][]; x?: number; y?: number; points?: number[][] };
-type Feat = { attributes?: Record<string, unknown>; geometry?: Geo };
-
-/**
- * Давхаргын объектуудыг геометртэй нь ХУУДАСЛАН татна.
- */
-async function fetchGeoFeats(url: string, where: string, outFields: string[], gen: boolean): Promise<Feat[]> {
-  let order: string | null = null;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const out: Feat[] = [];
-    let restart = false;
-    for (let page = 0; page < 200; page += 1) {
-      const params: Record<string, string> = {
-        where,
-        ...(outFields.length ? { outFields: outFields.join(',') } : {}),
-        returnGeometry: 'true',
-        outSR: String(WKID),
-        ...(gen ? { maxAllowableOffset: String(TOL) } : {}),
-        ...(order ? { orderByFields: order, resultOffset: String(out.length) } : {}),
-      };
-      const j = await arcgisPost<{ features?: Feat[]; exceededTransferLimit?: boolean; objectIdFieldName?: string }>(`${url}/query`, params);
-      const fs = j.features ?? [];
-      if (!order && j.exceededTransferLimit) {
-        order = `${j.objectIdFieldName || 'objectid'} ASC`;
-        restart = true;
-        break;
-      }
-      out.push(...fs);
-      if (!j.exceededTransferLimit) return out;
-      if (!fs.length) break;
-    }
-    if (!restart) throw new Error(tr('ArcGIS: {0} давхарга бүрэн татагдсангүй', url));
-  }
-  throw new Error(tr('ArcGIS: {0} давхарга бүрэн татагдсангүй', url));
-}
-
-const shapeOf = (g: Geo | undefined): LandShape[] => {
-  if (!g) return [];
-  if (g.rings?.length) return [{ rings: g.rings }];
-  if (g.paths?.length) return [{ paths: g.paths }];
-  if (typeof g.x === 'number' && typeof g.y === 'number') return [{ pt: [g.x, g.y] }];
-  if (g.points?.length) return g.points.map((p) => ({ pt: p }));
-  return [];
-};
-
-async function fetchParcels(): Promise<ParcelIndex> {
-  const fs = await fetchGeoFeats(PARCEL_LEFT.url, '1=1', [PARCEL_LEFT.fields.status], false);
-  const parcels: LandParcel[] = [];
-  for (const f of fs) {
-    const rings = f.geometry?.rings;
-    if (!rings?.length) continue;
-    parcels.push({ rings, cleared: isClearedStatus(attrOf(f.attributes ?? {}, PARCEL_LEFT.fields.status)) });
-  }
-  return makeParcelIndex(parcels);
-}
-const loadParcels = cached(fetchParcels, SESSION_TTL_MS, ['PARCEL_LEFT']);
-
-/** Барилгын footprint — `buildingKey` → объектууд (нэг түлхүүрт ХОЁР feature байж болно — `buildingKey`) */
-async function fetchFootprints(): Promise<Map<string, LandShape[]>> {
-  const F = BUILDING.fields;
-  const fs = await fetchGeoFeats(BUILDING.url, '1=1', [F.bagts, F.block], true);
-  const out = new Map<string, LandShape[]>();
-  for (const f of fs) {
-    const a = f.attributes ?? {};
-    const b = attrOf(a, F.bagts), bl = attrOf(a, F.block);
-    if (!bagtsKey(b) || !String(bl ?? '').trim()) continue;
-    const k = buildingKey(b, bl);
-    const arr = out.get(k) ?? [];
-    arr.push(...shapeOf(f.geometry));
-    out.set(k, arr);
-  }
-  return out;
-}
-const loadFootprints = cached(fetchFootprints, SESSION_TTL_MS, ['BUILDING']);
-
-/**
- * Дэд бүтцийн давхаргын геометр — давхарга бүрд НЭГ удаа.
- */
-const layerGeomCache = new Map<string, Promise<LandShape[]>>();
-register(() => { layerGeomCache.clear(); landMemo = null; }, []);
-subscribeTotals(() => { layerGeomCache.clear(); landMemo = null; });
-function layerShapes(id: string): Promise<LandShape[]> {
-  const hit = layerGeomCache.get(id);
-  if (hit) return hit;
-  const d = LAYER_BY_ID[id];
-  const p = d?.url
-    ? fetchGeoFeats(d.url, d.where || '1=1', [], true).then((fs) => fs.flatMap((f) => shapeOf(f.geometry)))
-    : Promise.reject(new Error(tr('ArcGIS: {0} давхарга бүрэн татагдсангүй', id)));
-  layerGeomCache.set(id, p);
-  p.catch(() => { if (layerGeomCache.get(id) === p) layerGeomCache.delete(id); });
-  return p;
-}
-
-/**
- * БАГЦ БҮРИЙН НЭГЖ ТАЛБАРЫН ТОО — нийт / чөлөөлсөн (2026-11-03, нийтийн вэбийн `selbe_public_gazar`).
- * `landPctMap`-тай ИЖИЛ эх, ижил огтлолцол (`parcelHits`): `P|<pkgKey>` түлхүүр → дэд бүтцийн давхарга эсвэл
- * тэр багцын барилгын footprint-ууд. Эх унасан бол шидэнэ; дүрсгүй багц Map-д орохгүй.
- */
-export async function landCountMap(pkgKeys: Iterable<string>): Promise<Map<string, { total: number; cleared: number }>> {
-  const [idx, foot] = await Promise.all([loadParcels(), loadFootprints()]);
-  const out = new Map<string, { total: number; cleared: number }>();
-  for (const pk of new Set(pkgKeys)) {
-    if (!pk) continue;
-    let shapes: LandShape[];
-    if (landLayerIdsOf(pk).length) {
-      shapes = (await Promise.all(landLayerIdsOf(pk).map(layerShapes))).flat();
-    } else {
-      shapes = [];
-      for (const [bk, f] of foot) if (bk.slice(0, bk.indexOf('|')) === pk) shapes.push(...f);
-    }
-    if (!shapes.length) continue;
-    const hits = parcelHits(idx, shapes);
-    let cleared = 0;
-    for (const i of hits) if (idx.parcels[i]?.cleared) cleared += 1;
-    out.set(pk, { total: hits.size, cleared });
-  }
-  return out;
-}
-
-/** Модны газар чөлөөлөлтийн навчнууд → хэрэгтэй түлхүүрүүд */
-export function landKeysOf(tree: PlanTree): string[] {
-  const out = new Set<string>();
-  for (const n of tree.nodes) if (n.phase === 'gazar' && !n.children.length && !isNonBlockText(n)) out.add(landKeyOf(n.pkg, n.blok));
-  return [...out];
-}
-
-let landMemo: { parcels: ParcelIndex | null; foot: Map<string, LandShape[]> | null; sig: string; res: Promise<{ pcts: Map<string, number | null>; failed: string[] }> } | null = null;
-
-async function prepareLand(keys: string[]): Promise<{ pcts: Map<string, number | null>; failed: string[] }> {
-  if (!keys.length) return { pcts: new Map(), failed: [] };
-  const [pr, fr] = await Promise.allSettled([loadParcels(), loadFootprints()]);
-  const parcels = pr.status === 'fulfilled' ? pr.value : null;
-  const foot = fr.status === 'fulfilled' ? fr.value : null;
-  const sig = keys.join(';');
-  if (landMemo && landMemo.parcels === parcels && landMemo.foot === foot && landMemo.sig === sig && parcels && foot) return landMemo.res;
-  const res = (async () => {
-    const failed: string[] = [];
-    if (!parcels) failed.push('parcels');
-    if (!foot) failed.push('footprints');
-    const infra = new Map<string, LandShape[]>();
-    const failedPkgs = new Set<string>();
-    if (parcels) {
-      const pks = [...new Set(keys.filter((k) => k.startsWith('P|')).map((k) => k.slice(2)))].filter((pk) => landLayerIdsOf(pk).length);
-      await Promise.all(pks.map(async (pk) => {
-        const got = await Promise.allSettled(landLayerIdsOf(pk).map(layerShapes));
-        if (got.some((g) => g.status === 'rejected')) { failedPkgs.add(pk); failed.push(`land:${pk}`); return; }
-        infra.set(pk, got.flatMap((g) => (g.status === 'fulfilled' ? g.value : [])));
-      }));
-    }
-    return { pcts: landPctMap({ parcels, footprints: foot, infra, failedPkgs }, keys), failed };
-  })();
-  landMemo = { parcels, foot, sig, res };
-  res.then((r) => { if (r.failed.length && landMemo?.res === res) landMemo = null; }, () => { if (landMemo?.res === res) landMemo = null; });
-  return res;
-}
+/* 2026-11-11 (хэрэглэгч): газар чөлөөлөлтийг БАГЦААР хувиар бодохгүй — нэг нэгж талбар олон багцад хамаардаг тул давхардана.
+   Хувь зөвхөн төслийн нийтээр (`loadLandStatus`, үе шатын мөрийг `landTotal` дарна); багцын давхардлыг «Газар чөлөөлөлт» хуудасны
+   саадын жагсаалт (`pkgSaad.loadPkgOverlaps`) харуулна. */
 
 /* ══════════════════ 5. Нэгтгэл — ачаалагч ══════════════════ */
 
@@ -1024,7 +622,6 @@ async function prepareLand(keys: string[]): Promise<{ pcts: Map<string, number |
 export function makeInputs(src: {
   actual: ActualSources;
   sched: BlockSchedules | null;
-  land: ReadonlyMap<string, number | null>;
   landTotal?: number | null;
 }): PlanInputs {
   const lt = src.landTotal;
@@ -1035,9 +632,8 @@ export function makeInputs(src: {
     blockPlanned: blockPlannedOf(src.sched),
     pkgPlanned: pkgPlannedOf(src.sched),
     pkgSpan: pkgSpanOf(src.sched),
-    land: landOf(src.land),
     /* 2026-11-04 (хэрэглэгч): «Газар чөлөөлөлт» үе шатын мөр = бүх нэгж талбарын тоогоор (`loadLandStatus`, «Газар чөлөөлөлт»
-       хуудас · тайлан · нийтийн вэбтэй НЭГ тоо) — багцын мөрүүдийн жигнэлт биш. Багц/блокийн мөрүүд хэвээр. */
+       хуудас · тайлан · нийтийн вэбтэй НЭГ тоо) — багцын мөрүүдийн жигнэлт биш. 2026-11-11: багц/блокийн мөр хувьгүй (`projectPlan.leafValue`). */
     ...(lt == null ? {} : { override: (n: PlanNode) => (n.depth === 1 && n.phase === 'gazar' ? { S: lt } : undefined) }),
   };
 }
@@ -1067,7 +663,7 @@ export type ProjectPlan = {
   /** Мөр бүрийн сарын хуримтлагдсан төлөвлөгөөт % (0–100) — `months`-той ижил урт */
   monthly: Map<PlanNode, (number | null)[]>;
   /**
-   * УНШИГДААГҮЙ эх сурвалжууд (`blockProgress` · `schedule:b1_9f` · `parcels` · `land:БАГЦ161` …).
+   * УНШИГДААГҮЙ эх сурвалжууд (`blockProgress` · `schedule:b1_9f` · `landTotal` …).
    * Хоосон биш бол тэр эхийн мөрүүд `null` — дэлгэц «бүрэн биш»-ийг ил харуулна.
    */
   failed: string[];
@@ -1086,7 +682,7 @@ export function emptyPlan(today: number = ubToday()): ProjectPlan {
 export function assemblePlan(
   rows: readonly PlanStoredRow[],
   src: {
-    actual: ActualSources; sched: BlockSchedules | null; land: ReadonlyMap<string, number | null>;
+    actual: ActualSources; sched: BlockSchedules | null;
     dates?: DateSpans | null;
     /** Төслийн газар чөлөөлөлт % (бүх нэгж талбарын тоогоор) — үе шатын мөрийг дарна; `undefined`/`null` = жигнэлт */
     landTotal?: number | null;
@@ -1111,8 +707,7 @@ export function assemblePlan(
 export async function loadProjectPlan(today: number = ubToday()): Promise<ProjectPlan> {
   const rows = await loadPlanRows();
   if (!rows.length) return emptyPlan(today);
-  const keys = landKeysOf(buildTree(rows));
-  const [a, s, l, lt] = await Promise.allSettled([loadActual(), loadSchedules(), prepareLand(keys), loadLandStatus()]);
+  const [a, s, lt] = await Promise.allSettled([loadActual(), loadSchedules(), loadLandStatus()]);
   const failed: string[] = [];
   const landTotal = lt.status === 'fulfilled' ? lt.value.pct : null;
   if (lt.status !== 'fulfilled') failed.push('landTotal');
@@ -1123,9 +718,7 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
   const sched = s.status === 'fulfilled' ? s.value.sched : null;
   const dates = s.status === 'fulfilled' ? s.value.spans : null;
   if (s.status === 'fulfilled') failed.push(...s.value.failed); else failed.push('schedule');
-  const land = l.status === 'fulfilled' ? l.value.pcts : new Map<string, number | null>();
-  if (l.status === 'fulfilled') failed.push(...l.value.failed); else failed.push('land');
-  return assemblePlan(rows, { actual, sched, land, dates, landTotal }, today, failed);
+  return assemblePlan(rows, { actual, sched, dates, landTotal }, today, failed);
 }
 
 /* ══════════════════ 5. Гэрээний АМЬД гүйцэтгэл (дашбоард · ТУХ · Нэгтгэл) ══════════════════ */
@@ -1180,4 +773,4 @@ export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
 export const loadLiveProgress = (): Promise<Map<number, LiveProgress>> => loadProjectPlan().then(liveProgressOf);
 
 /* Тест/дотоод хэрэглээнд */
-export const __test = { cleanSpan, interiorPoint, properCross, strictlyIn, attrOf };
+export const __test = { cleanSpan, attrOf };

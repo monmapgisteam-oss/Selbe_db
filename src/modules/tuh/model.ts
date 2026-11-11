@@ -2,7 +2,7 @@
  * ТУХ — АЧААЛСАН ӨГӨГДЛИЙГ НЭГ ЗАГВАР БОЛГОХ (харагдац зөвхөн үүнийг уншина).
  */
 import { monthKey, date, dayKey, mnt } from '@/lib/format';
-import { CASHFLOW_NEW } from '@/lib/services';
+import { CASHFLOW_NEW, hoAmount } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { housingPct, pkgCostWeight, cfWeightRow, type CfPlanRow } from '@/lib/gdash';
 import { ipcNumbers } from '@/lib/ipc';
@@ -381,7 +381,8 @@ export function buildModel(input: {
 
   const tot = ipcTotals(contractBlocks(fin.contractsHo));
   const share = paidShareOf(fin.contracts, fin.pays);
-  const ipcCount = fin.contractsHo.reduce((a, c) => a + ipcNumbers(c.pays).length, 0);
+  /* 2026-11-09: зөвхөн олгосон (`dun` бичигдсэн) IPC — `ipcOf`-той нэг дүрэм, батлаагүй баримт тоологдохгүй */
+  const ipcCount = fin.contractsHo.reduce((a, c) => a + ipcNumbers(c.pays.filter((r) => hoAmount(r) != null)).length, 0);
 
   /* Hero-гийн төлөвлөгөөний жин ба багцын олонлог — `physNow`-тэй нэг (доорх 2026-10-06) */
   const costW = pkgCostWeight(fin.contracts.map(cfWeightRow));

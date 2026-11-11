@@ -88,6 +88,16 @@ const del = deleteIpc(unpaid, after2);
 assert.deepEqual(del.deletes, [9]);
 assert.deepEqual(del.updates, [{ objectid: 3, ipc_dugaar: null, ipc_tuluv: 'Гүйцэтгэл' }, { objectid: 4, ipc_dugaar: null, ipc_tuluv: 'Гүйцэтгэл' }], 'гүйцэтгэлүүд чөлөөлөгдөнө');
 assert.equal(deleteWhy({ ...unpaid, oid: 777, status: 'Олгосон' }, after2), 'paid', 'мөр олдохгүй бол төлөвөөр');
+/* 2026-11-09: ижил дугаартай хоёр баримт (зэрэг үүссэн) — батлаагүйг устгахад баталсныхаа «Олгосон» мөрийг чөлөөлөхгүй */
+{
+  const mixed = paidRows.map((r) => (r.objectid === 4 ? { ...r, ipc_tuluv: 'IPC үүссэн' } : r));
+  const twin = { objectid: 10, murun_id: 'IPC|Багц-2|3', ipc_dugaar: 3, ipc_tuluv: 'IPC үүссэн', guits_une: 120 };
+  const rows2 = [...mixed, twin];
+  const dTwin = docRows(rows2).find((x) => x.oid === 10);
+  assert.deepEqual(deleteIpc(dTwin, rows2).updates.map((u) => u.objectid), [4], '«Олгосон» мөр (3) чөлөөлөгдөхгүй');
+  const ap2 = approveIpc({ ...dTwin, status: 'Гарын үсэг зурсан', docItem: 'x' }, [...rows2, { ...pays.find((r) => r.objectid === 5), ipc_dugaar: 3, ipc_tuluv: 'Гүйцэтгэл' }]);
+  assert.deepEqual(ap2.slice(1).map((u) => u.objectid), [4], 'зөвхөн «IPC үүссэн» мөр «Олгосон» болно');
+}
 const oldCancel = { objectid: 20, murun_id: 'IPC|Багц-2|3|C', ipc_dugaar: 3, dun: null, ipc_tuluv: 'Олгосон' };
 assert.equal(deleteWhy(docRows([oldCancel])[0], [oldCancel]), null, '«Олгосон» боловч dun хоосон хуучин мөр устана');
 
@@ -152,6 +162,10 @@ assert.equal(contractWhy({ ...one, items: one.items.map((i) => ({ ...i, advance:
   assert.ok(src.includes('cfNow, hoNow'), 'гэрээ үүсгэхийн өмнө 182, 185-г шинээр шалгана');
   assert.ok(src.includes('freshPays(code, pays).catch(() => null)'), 'IPC бичигдсэний дараах уншилт унавал алдаа гэж хэлэхгүй');
   assert.ok(src.includes('(!nos.size || !dead) && cfMatches(r, parts, phases)'), 'идэвхтэй гэрээ цуцлахад дугааргүй мөр нь цэвэрлэгдэнэ; цуцлагдсан дугаартай гэрээ хөндөхгүй');
+  /* 2026-11-09: скан файл ЭЗНИЙ нэрээр устгагдана (одоогийн хэрэглэгч биш); сешнгүй бол чимээгүй үлдээхгүй */
+  assert.ok(src.includes('await entDeletePdf(it.id, it.owner)'), 'скан item-ийн эзнээр устгана');
+  assert.ok(!src.includes('entSession()?.user'), 'одоогийн хэрэглэгчийг эзэн гэж үзэхгүй');
+  assert.ok(!/if \(owner\) await entDeletePdf/.test(src), 'сешнгүй бол «гараар устгана уу» гэж хэлнэ');
 }
 
 /* 2026-11-06: «Багц 1» ба «Багц-1» нэг багц — нэг IPC-д орно; өөр багц хэвээр хоригдоно */

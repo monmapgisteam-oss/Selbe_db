@@ -1,6 +1,6 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { Schema } from "../bagts.pkg";
-import { OVER_TOL, fmtInc, incCell, parseInc, type SheetRow } from "../bagtsSheet";
+import { OVER_TOL, fmtInc, incCell, overVolume, parseInc, type SheetRow } from "../bagtsSheet";
 import { isAmbiguousComma, normCell, parseGrid, planPaste } from "../paste";
 import { t as tr } from "@/lib/i18nCore";
 import { RO, cellKey, pc, qty, qtyRaw, synNoVol, type EditCell, type EditCol } from "./util";
@@ -16,9 +16,10 @@ const NO_ACC: ReadonlySet<string> = new Set();
 let accNext: ReadonlySet<string> = NO_ACC;
 
 /**
- * «ХЭТЭРСЭН ҮҮ» — хөвөгч цэгийн хүлцэлтэй (2026-09-30).
+ * «ХЭТЭРСЭН ҮҮ» — хөвөгч цэгийн хүлцэлтэй (2026-09-30); обьём нь дэлгэцийн нэгжийн хагасаас их илүү байх ёстой
+ * (2026-11-09, `bagtsSheet.overVolume` — `actOver` тугтай нэг дүрэм).
  */
-const overVol = (x: number, vol: number) => x > vol * (1 + OVER_TOL);
+const overVol = overVolume;
 const overPct = (x: number) => x > 1 + OVER_TOL;
 
 export type PastePrev = {

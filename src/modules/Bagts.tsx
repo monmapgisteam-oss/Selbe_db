@@ -174,7 +174,9 @@ export function PackKpi({
   const scope = active ? [active] : packs;
   const blocks = scope.reduce((s, p) => s + blockCount(p), 0);
   const households = scope.reduce((s, p) => s + p.households, 0);
-  const progress = active ? active.progress : project?.pct ?? null;
+  /* Багцын хэмжилтгүй гүйцэтгэл = 0% (эзний дүрэм, 2026-11-09) — `PackKpi`-д сонгосон багц нь зөвхөн ачаалалт
+     амжилттай (`pkgPct`-тэй) үед ирдэг тул `null` нь ачаалалт бус ХЭМЖИЛТГҮЙ гэсэн үг; төслийн нэгтгэл хэвээр */
+  const progress = active ? active.progress ?? 0 : project?.pct ?? null;
   const progressLoading = !active && !!project?.loading;
   const layers = scope.filter((p) => p.kind === 'infra').reduce((s, p) => s + p.layerIds.length, 0);
 

@@ -154,7 +154,7 @@ export function computeIpc(rows: readonly Row[], now: number, ref: IpcContractRe
     tr('Гэрээний санхүүжилт'),
     [
       tr('Гэрээний код'), tr('Багц'), tr('Гүйцэтгэгч'), tr('Ажлын төрөл'),
-      tr('Төсөвт өртөг'), tr('Гэрээт төсөв (HO хүснэгтээр)'), tr('Олгосон'), tr('Гэрээнд эзлэх'),
+      tr('Төсөвт өртөг'), tr('Гэрээт төсөв («Олгосон санхүүжилт · IPC» хүснэгтээр)'), tr('Олгосон'), tr('Гэрээнд эзлэх'),
     ],
     byPct.map((c): Cell[] => [
       cell(c.code || '—'), cell(c.pkg || '—'), cell(c.contractor || '—'),
@@ -239,7 +239,7 @@ export function computeIpc(rows: readonly Row[], now: number, ref: IpcContractRe
           tr('гэрээлсэн дүн {0} (Cashflow)', mnt(ref.contract)),
           tr('гэрээнд эзлэх {0}', pct(refPct)),
         ]
-        : [tr('гэрээнд эзлэх {0} (HO хүснэгтээр)', pct(s.paidPct))]),
+        : [tr('гэрээнд эзлэх {0} («Олгосон санхүүжилт · IPC» хүснэгтээр)', pct(s.paidPct))]),
       tr('хэмнэлт {0}', mnt(s.saving)),
     ],
     level: ipcLevel(s),

@@ -234,8 +234,6 @@ export type PlanInputs = {
    * `null` = хүснэгтгүй/хуваарьгүй тул ХООСОН (хадгалсан `guits_*`-ийг ч үл тоомсорлоно); `undefined` = хадгалсан утга.
    */
   pkgSpan?: (pkg: string | null, node: PlanNode) => [number, number] | null | undefined;
-  /** Газар чөлөөлөлт үе шатын навчны % (нэгж талбарын ТООГООР), `blok` нь null байж болно */
-  land?: (pkg: string | null, blok: string | null, node: PlanNode) => number | null | undefined;
   /**
    * ДАРАХ утга — мөрийн хэмжүүрийг шууд өгнө (Excel-тэй тулгах шалгалт, гар оруулга).
    * Объектод түлхүүр БАЙВАЛ (утга нь null ч) тэр нь ЭЦСИЙН — хүүхдээс бодохгүй.
@@ -660,9 +658,10 @@ function leafValue(n: PlanNode, m: Metric, today: number, inputs: PlanInputs): n
       if (n.phase === 'barilga' && n.sub === 'barilga') {
         const v = n.blok ? inputs.blockActual?.(n.pkg, n.blok, n) : inputs.pkgActual?.(n.pkg, n);
         if (v !== undefined) return frac(v);
-      } else if (n.phase === 'gazar' && !isNonBlockText(n)) {
-        const v = inputs.land?.(n.pkg, n.blok, n);
-        if (v !== undefined) return frac(v);
+      } else if (n.phase === 'gazar' && n.depth > 1) {
+        /* 2026-11-11 (хэрэглэгч): газар чөлөөлөлтийг багц/блокоор хувиар бодохгүй — нэгж талбар олон багцад давхардана.
+           Хувь зөвхөн үе шатын мөрөнд (төслийн нийт, `override`) */
+        return null;
       } else if (n.phase === 'songon' && tenderSigned(n, today)) {
         return 1;
       }

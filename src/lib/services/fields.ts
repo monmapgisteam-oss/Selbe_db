@@ -387,8 +387,12 @@ export const MONTH_AXIS_FROM = "2025-09";
 export function cfMonthAxis(now: Date = new Date()): string[] {
   const out: string[] = [];
   const [fy, fm] = MONTH_AXIS_FROM.split("-").map(Number);
-  const nowYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const span = (now.getFullYear() - fy) * 12 + (now.getMonth() + 1 - fm) + 1;
+  /* Улаанбаатарын сар (`format.monthKey`-тэй ижил: +8 цаг, UTC уншилт) — хөтчийн бүсээс үл хамаарна (2026-11-09) */
+  const ub = new Date(now.getTime() + 8 * 3_600_000);
+  const ny = ub.getUTCFullYear();
+  const nm = ub.getUTCMonth() + 1;
+  const nowYm = `${ny}-${String(nm).padStart(2, "0")}`;
+  const span = (ny - fy) * 12 + (nm - fm) + 1;
   const limit = Math.min(120, Math.max(1, span));
   if (span > 120) console.warn(`[cfMonthAxis] ${MONTH_AXIS_FROM}…${nowYm} = ${span} сар > 120 — тэнхлэг таслагдав`);
   const skip = Math.max(0, span - limit);

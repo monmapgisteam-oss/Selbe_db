@@ -154,8 +154,10 @@ export type InfraFeat = { feature: string; type: string; layer: string; geom: Ge
  * Давхаргын нэрсийг үйлчилгээний метадатаас (Pro скрипт шиг НЭРЭЭР ангилна).
  */
 let infraCache: Promise<{ feats: InfraFeat[]; failed: string[] }> | null = null;
-/* Хөтчийн хадгалалтыг ч хамт хаяна — үгүй бол «Шинэчлэх»-ийн дараа 24 цагийн хуучин үр дүн буцаж уншигдана */
-register(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); void clearOverlapStore(); }, []);
+/* Санах ойн кэш — ерөнхий слотоор (2026-11-09). 24 цагийн хөтчийн хадгалалтыг энд арилгахгүй: `invalidateAll` нь табд
+   5 минутаас хойш буцаж ирэх ба хэл солих бүрд дуудагддаг. Хадгалалтыг «Шинэчлэх» товч (`Portal.refreshData`) ба геометрийн
+   засвар (`subscribeTotals`) арилгана. */
+register(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); }, []);
 subscribeTotals(() => { infraCache = null; resultCache.clear(); displayCache = new WeakMap(); void clearOverlapStore(); });
 /**
  * Инженерийн давхарга (`infra:N`) → төрөл (`OVERLAP_TYPES` түлхүүр) — `loadInfra` ачаалсны дараа дүүрнэ.

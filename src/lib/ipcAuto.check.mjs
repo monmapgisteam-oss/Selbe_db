@@ -309,6 +309,23 @@ const P = HO_IPC.payFields;
     assert.deepEqual(m.planAuto([paidBase], { ...a, obyem: 1, une: 50 }), { op: 'skip', why: 'no-data' }, 'нэмэгдсэн ажилгүй бол шинэ мөр үүсэхгүй');
     const gone = m.planAuto([{ ...paidBase, ipc_tuluv: 'Цуцлагдсан' }], { ...a, obyem: 3, une: 70 });
     assert.equal(gone.attrs.guits_une, 70, 'цуцлагдсан мөрийн дүн хасагдахгүй');
+    /* 2026-11-09: AUTO 1000 → IPC → 1300 (|2 = 300) → IPC устгав → дахин батлав: эхний мөр 1000 хэвээр, нийт 1300 */
+    {
+      const r1 = { ...base, [HO_IPC.oid]: 1, ipc_tuluv: 'Гүйцэтгэл', guits_obyem: 1, guits_une: 1000 };
+      const r2 = { ...base, [HO_IPC.oid]: 2, [P.id]: 'AUTO|БАГЦ2|2026-10-11|2', ipc_tuluv: 'Гүйцэтгэл', guits_obyem: 0.3, guits_une: 300 };
+      const re = m.planAuto([r1, r2], { ...a, obyem: 1.3, une: 1300 });
+      assert.equal(re.op, 'update');
+      assert.equal(re.attrs[HO_IPC.oid], 1);
+      assert.equal(re.attrs.guits_une, 1000, 'түгжээгүй |2 мөрийн дүн ч хасагдана — өдрийн нийт 1300-аас давахгүй');
+      assert.ok(Math.abs(re.attrs.guits_obyem - 1) < 1e-9);
+      /* түгжигдсэн + сул мөр холимог: шинэчлэх мөр бусдын нийлбэрийг хасна */
+      const mix = m.planAuto([{ ...r1, ipc_tuluv: 'Олгосон' }, r2], { ...a, obyem: 1.5, une: 1500 });
+      assert.equal(mix.op, 'update');
+      assert.equal(mix.attrs[HO_IPC.oid], 2);
+      assert.equal(mix.attrs.guits_une, 500);
+      /* цуцлагдсан мөр хасагдахгүй */
+      assert.equal(m.planAuto([{ ...r1, ipc_tuluv: 'Цуцлагдсан' }, r2], { ...a, obyem: 1.3, une: 1300 }).attrs.guits_une, 1300);
+    }
     /* Цуцалсан гэрээнд шинэ гүйцэтгэл холбогдохгүй */
     const c1 = { [P.id]: 'ХО-1', [C.pkg]: 'Багц 2', [C.code]: 'Хуучин', ipc_tuluv: 'Цуцлагдсан' };
     const c2 = { [P.id]: 'ХО-2', [C.pkg]: 'Багц 2', [C.code]: 'Шинэ' };

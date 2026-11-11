@@ -87,7 +87,7 @@ ok('хураангуй — төслийн нийт явц · төлөвлөгө�
   assert.equal(s.chart.items[1].value, '24.6%');
   assert.equal(s.chart.items[2].value, '82.4%');
   assert.equal(s.chart.items[3].value, '25.0%');
-  assert.equal(s.chart.items[4].value, 'хоцрогдол 9.6 н.х');
+  assert.equal(s.chart.items[4].value, 'хоцрогдол 9.6 нэгж хувь');
   assert.ok(s.text[0].includes('31.7%') && s.text[0].includes('45.2%'), s.text[0]);
   assert.ok(s.text[1].includes('24.6%') && s.text[1].includes('82.4%') && s.text[1].includes('500') && s.text[1].includes('412'), s.text[1]);
 });
@@ -123,18 +123,18 @@ ok('үе шат — модны мөрүүд + Бэлтгэл ажил ба ба�
 });
 ok('орон сууц — хоцрогдол 5 н.х босго, хамралт; багц бүрийн хоцрогдол', () => {
   const st = scheduleStatus(i.x);
-  assert.equal(st.label, 'хоцрогдол 9.6 н.х');
+  assert.equal(st.label, 'хоцрогдол 9.6 нэгж хувь');
   assert.ok(st.sentence.includes('9.6 нэгж хувиар хоцорч байна (төлөвлөгөө 34.2%, бодит 24.6%)'), st.sentence);
   assert.equal(scheduleStatus({ ...i.x, prog: { ...i.x.prog, planCoverage: 60 } }).label, 'хамрах хүрээ 60%');
   assert.equal(scheduleStatus({ ...i.x, prog: { ...i.x.prog, planned: 25 } }).label, 'хуваарийн дагуу');
-  assert.equal(scheduleStatus({ ...i.x, prog: { ...i.x.prog, planned: 20 } }).label, 'түрүүлэлт 4.6 н.х');
+  assert.equal(scheduleStatus({ ...i.x, prog: { ...i.x.prog, planned: 20 } }).label, 'түрүүлэлт 4.6 нэгж хувь');
   assert.deepEqual(latePacks(i).map((l) => l.key), ['БАГЦ2'], 'хамралт 60% багц хоцрогдолд орохгүй');
   assert.deepEqual(stalledPacks(i.x).map((p) => p.key), ['БАГЦ3', 'БАГЦ4'], 'null явц = 0% → 5%-иас доош');
   const s = mayor.sections[6];
   const b3 = s.chart.items.find((b) => b.label === 'Багц 3');
   assert.equal(b3.value, 0); assert.equal(b3.text, '0.0%');
   const b2 = s.chart.items.find((b) => b.label === 'Багц 2');
-  assert.equal(b2.mark, 30.4); assert.equal(b2.text, '18.4% · хоцрогдол 12.0 н.х');
+  assert.equal(b2.mark, 30.4); assert.equal(b2.text, '18.4% · хоцрогдол 12.0 нэгж хувь');
   const b4 = s.chart.items.find((b) => b.label === 'Багц 4');
   assert.equal(b4.mark, null, 'хамралт дутуу хуваарийн төлөвлөгөө тэмдэглэгдэхгүй');
   /* Зөвхөн хуваарь нь ШАЛГАГДАХ багц дүгнэгдэнэ — бусдыг «хуваарийн дагуу» гэж ойлгуулахгүй */
@@ -143,7 +143,11 @@ ok('орон сууц — хоцрогдол 5 н.х босго, хамралт;
   assert.equal(s.text[2], '2 орон сууцны багц 5%-иас доош явцтай.');
 });
 ok('дэд бүтэц · нийгмийн дэд бүтэц · газар · саад · эрсдэл · ажиллах хүч', () => {
-  assert.ok(mayor.sections[7].text[0].includes('2 багцын дундаж явц 26.8%; 2 багц эхэлсэн'), mayor.sections[7].text[0]);
+  /* 2026-11-09: энгийн дундаж (26.8%) биш — `gdash.byType`-ийн жигнэсэн явц; мөр алга = 0% */
+  assert.ok(mayor.sections[7].text[0].includes('Инженерийн дэд бүтцийн явц 0.0% (хөрөнгө оруулалтаар жигнэсэн); 2 багцаас 2 нь эхэлсэн'), mayor.sections[7].text[0]);
+  const infraT = [...i.x.gdash.byType, { label: 'Инженерийн дэд бүтэц', cost: 446873239895, contract: 177136000919, perf: 6.763485591485408, n: 26, contracted: 18 }];
+  const infraS = buildReport('mayor', inputsFixture({ x: { ...i.x, gdash: { ...i.x.gdash, byType: infraT } } })).sections.find((x) => x.key === 'infra');
+  assert.ok(infraS.text[0].startsWith('Инженерийн дэд бүтцийн явц 6.8%'), infraS.text[0]);
   const soc = mayor.sections[8];
   assert.ok(soc.text[0].includes('3 объектоос 1 нь эхэлсэн, 0 нь дууссан'), soc.text[0]);
   assert.equal(soc.text[1], 'Хамгийн өндөр явцтай объект «Сургууль 960 хүүхэд» 15.0%.');
@@ -197,6 +201,13 @@ ok('Иргэдийн Төлөөлөгчдийн Хурал — өрх · ний�
   assert.ok(f3.text[0].includes('84.1%'), f3.text[0]);
   assert.equal(council.sections[3].chart.series.length, 2);
 });
+ok('2026-11-09: олгосон хувийн хажууд гэрээлсэн багцаас гадуурх олголт — байвал хэлнэ, 0 бол хэлэхгүй', () => {
+  const note = 'гэрээлсэн багцаас гадуурх 5,970,000,000 ₮ олголт';
+  const f3 = buildReport('council', i).sections.find((s) => s.key === 'finThree');
+  assert.ok(f3.text.some((t) => t.includes('гэрээлсэн дүнгийн 25.0%') && t.includes(note)), f3.text.join(' | '));
+  const none = buildReport('council', inputsFixture({ x: { ...i.x, fin: { ...i.x.fin, givenOther: 0 } } })).sections.find((s) => s.key === 'finThree');
+  assert.ok(!none.text.some((t) => t.includes('гадуурх')), none.text.join(' | '));
+});
 
 console.log('\n4. Хугацааны өөрчлөлт — байвал орно, үгүй бол орохгүй');
 ok('өөрчлөлттэй — орон сууц · олголт · ажиллах хүч · техник', () => {
@@ -207,7 +218,7 @@ ok('өөрчлөлттэй — орон сууц · олголт · ажилла
   assert.ok(t.includes('Ажиллаж буй хүн өмнөх бүртгэлээс (2026-09-30 → 2026-10-30) 111 хүнээр өссөн.'), t);
   assert.ok(t.includes('Техник хэрэгсэл өмнөх бүртгэлээс (2026-09-30 → 2026-10-30) 11 нэгжээр өссөн.'), t);
   assert.ok(t.includes('Сонгосон хугацаанд хамгийн их олголт Багц 1 багцад — 20,000,000,000 ₮.'), t);
-  assert.equal(mayor.sections[0].chart.items[1].trend, '+2.7 н.х');
+  assert.equal(mayor.sections[0].chart.items[1].trend, '+2.7 нэгж хувь');
   assert.equal(mayor.sections[0].chart.items[3].trend, '+30,870,000,000 ₮');
   const neg = buildReport('mayor', inputsFixture({ d: { ...i.d, given: { ...i.d.given, delta: -5e9 } } }));
   assert.equal(neg.sections[0].chart.items[3].trend, '−5,000,000,000 ₮', 'сөрөг өөрчлөлт «+-» биш');

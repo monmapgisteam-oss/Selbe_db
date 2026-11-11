@@ -35,18 +35,17 @@ const sameDay = (a: number | null | undefined, b: number | null | undefined) =>
   (a == null ? b == null : b != null && Math.floor(a / DAY) === Math.floor(b / DAY));
 
 /**
- * УНАСАН ЭХИЙН ХҮРЭЭ (2026-11-05, аудит №1): `failed` бүгд БАГЦЫН түвшний (`schedule:<хуудас>` · `land:<багц>`) бол тэдгээр
- * багцын түлхүүрүүд (`bagtsKey`) — бусад багцын мөр бичигдэж болно; төслийн түвшний эх (`blockProgress` · `parcels` ·
+ * УНАСАН ЭХИЙН ХҮРЭЭ (2026-11-05, аудит №1): `failed` бүгд БАГЦЫН түвшний (`schedule:<хуудас>`) бол тэдгээр
+ * багцын түлхүүрүүд (`bagtsKey`) — бусад багцын мөр бичигдэж болно; төслийн түвшний эх (`blockProgress` ·
  * `landTotal` …) унасан бол `null` — юу ч бичихгүй. Урьд нь нэг хуудасны «Б.» мөр дутуу байхад л 182-ын бүх мөр мөнхөд
  * бичигдэхгүй байв.
  */
 export function failedScope(failed: readonly string[]): Set<string> | null {
   const out = new Set<string>();
   for (const f of failed) {
-    const m = /^(schedule|land):(.+)$/.exec(f);
+    const m = /^schedule:(.+)$/.exec(f);
     if (!m) return null;
-    if (m[1] === 'land') { out.add(bagtsKey(m[2])); continue; }
-    const pkg = PKGS.find((p) => p.key === m[2]);
+    const pkg = PKGS.find((p) => p.key === m[1]);
     if (!pkg) return null;
     out.add(bagtsKey(pkg.group));
   }
@@ -81,6 +80,9 @@ export function planProgressUpdates(plan: ProjectPlan): Record<string, unknown>[
     if (s != null && Number.isFinite(s)) {
       const w = was.guitsetgel_huvi;
       if (!(w != null && Number.isFinite(w) && Math.abs(w - s) < EPS)) u[F.progressPct] = round6(s);
+    } else if (n.phase === 'gazar' && n.depth > 1 && was.guitsetgel_huvi != null) {
+      /* 2026-11-11 (хэрэглэгч): газар чөлөөлөлтийн багц/блокийн мөр хувьгүй — хуучин хадгалсан хувийг арилгана */
+      u[F.progressPct] = null;
     }
     for (const [k, f] of DATE_KEYS) {
       /* 2026-11-04: мөнгөний мөрийн `guits_*` нь «Cashflow хуваарилах»-ын төлөвлөгөөт хугацаа — Хуваариар ДАРЖ БИЧИХГҮЙ */
