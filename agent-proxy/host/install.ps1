@@ -84,7 +84,10 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 $atStartup = New-ScheduledTaskTrigger -AtStartup
 $atStartup.Delay = 'PT30S'
 $atLogon = New-ScheduledTaskTrigger -AtLogOn -User $user
-$triggers = @($atStartup, $atLogon)
+# ⚠️ 2026-11-13: ХАРУУЛ — 5 минут тутам. Реле өөрөө зогсвол (жишээ нь 04:24-д код 0xC000013A-аар хаагдсан)
+#    RestartCount ажилладаггүй тул дараагийн 5 минутад дахин асна. `MultipleInstances IgnoreNew` тул ажиллаж байхад юу ч хийхгүй.
+$watch = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 5)
+$triggers = @($atStartup, $atLogon, $watch)
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType S4U -RunLevel Limited
 
 # ⚠️ S4U нь зарим Azure AD / бодлогоор хязгаарласан машин дээр бүртгэгдэхгүй байж
@@ -97,7 +100,7 @@ function Register-Relay([string]$name, $action) {
     Write-Host "✓ $name бүртгэгдлээ — PC асмагц (нэвтрэхгүйгээр) асна"
   } catch {
     $fallback = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
-    Register-ScheduledTask -TaskName $name -Action $action -Trigger $atLogon `
+    Register-ScheduledTask -TaskName $name -Action $action -Trigger @($atLogon, $watch) `
       -Settings $settings -Principal $fallback -Force | Out-Null
     Write-Warning "$name — S4U бүртгэгдсэнгүй ($($_.Exception.Message))."
     Write-Warning "  → зөвхөн НЭВТРЭХЭД асна. PC асаад нэвтрэх хүртэл AI ажиллахгүй."
