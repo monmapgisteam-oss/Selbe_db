@@ -16,6 +16,7 @@ import {
   estimateInputTokens, reserveTokens, settleTokens, utf8Bytes,
   THINKING_UPDATES_BETA, thinkingUpdatesFor,
 } from "./rateLimit.mjs";
+import { publicConfig, sanitizePublic, sanitizeAdmin, createDayCounter, buildPublicSystem, buildAdminSystem } from "./publicChat.mjs";
 
 /**
  * АРЫН ХӨДӨЛГҮҮР (2026-09-17):
@@ -215,8 +216,14 @@ const MAX_BODY = 2 * 1024 * 1024;
 
 const client = new Anthropic();
 
-const cors = (res, origin) => {
-  if (origin && ALLOWED.includes(origin))
+/** НИЙТИЙН ЧАТ (2026-11-14) — `publicChat.mjs` */
+const PUB = publicConfig(process.env);
+/** Нээлттэй замууд — `/public-chat` (асуулт хариулт) ба `/public-admin` (админы мэдээний ноорог) */
+const openKind = (url) => { const u = String(url ?? "").split("?")[0]; return u === "/public-chat" ? "pub" : u === "/public-admin" ? "adm" : null; };
+const isPublicPath = (url) => openKind(url) !== null;
+
+const cors = (res, origin, url) => {
+  if (origin && (ALLOWED.includes(origin) || (isPublicPath(url) && PUB.origins.includes(origin))))
     res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -279,7 +286,7 @@ const inflight = createConcurrency();
 
 const server = createServer(async (req, res) => {
   const origin = req.headers.origin;
-  cors(res, origin);
+  cors(res, origin, req.url);
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -299,6 +306,11 @@ const server = createServer(async (req, res) => {
       return;
     }
     json(res, ready.ok ? 200 : 503, { ok: ready.ok });
+    return;
+  }
+
+  if (req.method === "POST" && isPublicPath(req.url)) {
+    await publicChat(req, res, origin, openKind(req.url));
     return;
   }
 
@@ -372,6 +384,87 @@ const server = createServer(async (req, res) => {
     release();
   }
 });
+
+/* ═══════════════ НИЙТИЙН ЧАТ — нэвтрэлтгүй, зөвхөн нийтийн хүснэгт, хатуу хязгаар ═══════════════ */
+
+const pubHour = createLimiter({ windowMs: 60 * 60 * 1000 });
+const pubInflight = createConcurrency();
+/** Нээлттэй замын тохиргоо — нийтийн чат ба админы AI тус тусдаа хязгаартай */
+const OPEN = {
+  pub: { label: "public", perHour: PUB.perHour, day: createDayCounter(), perDay: PUB.perDay, effort: PUB.effort, sanitize: sanitizePublic, build: buildPublicSystem, maxTokens: 2000, unit: "асуулт" },
+  adm: { label: "admin", perHour: PUB.admin.perHour, day: createDayCounter(), perDay: PUB.admin.perDay, effort: PUB.admin.effort, sanitize: sanitizeAdmin, build: buildAdminSystem, maxTokens: 6000, unit: "хүсэлт" },
+};
+/** Нээлттэй замууд зэрэг ажиллах дээд тоо (нийт) — дотоод хэрэглэгчдийн дарааллыг эзлэхгүй */
+const PUB_CONCURRENT = 2;
+async function publicChat(req, res, origin, kind) {
+  const K = OPEN[kind];
+  if (!origin || !PUB.origins.includes(origin)) {
+    json(res, 403, { error: "Энэ эх сурвалжид зөвшөөрөл алга" });
+    return;
+  }
+  const ip = clientIp(req);
+  if (pubHour.full(`${kind}:${ip}`, K.perHour)) {
+    json(res, 429, { error: `Нэг цагт ${K.perHour} ${K.unit} илгээж болно — түр хүлээгээд дахин оролдоно уу.`, retryable: true });
+    return;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(await readBody(req));
+  } catch (e) {
+    json(res, e?.status === 413 ? 413 : 400, { error: e?.status === 413 ? e.message : "Хүсэлтийг уншиж чадсангүй" });
+    return;
+  }
+  const clean = K.sanitize(payload);
+  if (!clean.ok) {
+    json(res, 400, { error: clean.error });
+    return;
+  }
+  const release = pubInflight.acquire(`${kind}:${ip}`, 1);
+  if (!release) {
+    json(res, 429, { error: "Өмнөх асуултын хариуг хүлээнэ үү.", retryable: true });
+    return;
+  }
+  const releaseAll = pubInflight.acquire("pub:*", PUB_CONCURRENT);
+  if (!releaseAll) {
+    release();
+    json(res, 429, { error: "Туслах завгүй байна — хэдэн секундийн дараа дахин оролдоно уу.", retryable: true });
+    return;
+  }
+  try {
+    if (K.day.hit(K.perDay)) {
+      json(res, 429, { error: `Өнөөдрийн хязгаар дууслаа — маргааш дахин оролдоно уу.`, retryable: false });
+      return;
+    }
+    pubHour.hit(`${kind}:${ip}`, K.perHour);
+    const system = K.build(clean.context);
+    const ac = new AbortController();
+    res.on("close", () => { if (!res.writableEnded) ac.abort(); });
+    const t0 = Date.now();
+    let out;
+    if (BACKEND === "claude-code") {
+      const bin = claudeBin();
+      if (!bin) { json(res, 503, { error: "Туслах түр ажиллахгүй байна.", retryable: true }); return; }
+      out = await callClaudeCode({ system, messages: clean.messages, tools: [], model: MODEL, effort: K.effort, bin, signal: ac.signal });
+    } else {
+      out = await client.messages.create({
+        model: MODEL, max_tokens: K.maxTokens,
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+        messages: clean.messages,
+      }, { signal: ac.signal });
+    }
+    const reply = (out.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    console.log(`[agent-proxy:${K.label}] ${ip} ${out.cached ? "кэш" : `${Date.now() - t0}мс`} · өнөөдөр ${K.day.count()}/${K.perDay}`);
+    json(res, 200, { reply: reply || "Хариу гарсангүй — асуултаа өөрөөр бичээд дахин оролдоно уу." });
+  } catch (err) {
+    if (res.writableEnded || res.destroyed) return;
+    const status = err instanceof ClaudeCodeError && err.status === 429 ? 429 : 502;
+    console.error(`[agent-proxy:${K.label}]`, ip, err?.message);
+    json(res, status, { error: "Туслах хариу өгч чадсангүй — дахин оролдоно уу.", retryable: true });
+  } finally {
+    releaseAll();
+    release();
+  }
+}
 
 /**
  * `/chat`-ийн үлдсэн хэсэг (бие унших → шалгах → төсөв урьдчилан хасах → дээд үйлчилгээ).
@@ -550,5 +643,7 @@ server.listen(PORT, '127.0.0.1', () => {
     `[agent-proxy] http://localhost:${PORT}  хөдөлгүүр=${BACKEND}  загвар=${MODEL}  effort=${EFFORT}`,
   );
   console.log(`[agent-proxy] зөвшөөрсөн эх: ${ALLOWED.join(", ")}`);
+  console.log(`[agent-proxy] нийтийн чат (/public-chat): ${PUB.origins.join(", ")} · IP-д цагт ${PUB.perHour} · өдөрт нийт ${PUB.perDay}`);
+  console.log(`[agent-proxy] админы AI (/public-admin): IP-д цагт ${PUB.admin.perHour} · өдөрт нийт ${PUB.admin.perDay}`);
   console.log(`[agent-proxy] өдрийн төсөв: ${DAILY_TOKEN_BUDGET ? `${DAILY_TOKEN_BUDGET} токен/хэрэглэгч` : "унтраалттай"} · заавар гарын үсэг: ${PROMPT_HMAC ? "асаалттай" : "унтраалттай"}`);
 });
