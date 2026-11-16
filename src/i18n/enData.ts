@@ -96,6 +96,12 @@ const enData: Record<string, string> = {
   "маргаантай": "disputed",
   "дүйцүүлсэн": "compensated in kind",
   "цэвэрлэх": "to be cleaned up",
+  /* 2026-11-16: шинэ 7 төлөв (`PARCEL_STATUS_HUES`) */
+  "Цэвэрлэгээ": "Clean-up",
+  "Үнэлгээ зөвшөөрөөгүй": "Valuation not agreed",
+  "Хамтран ажиллах АННБ иргэн": "Citizens cooperating (apartment redevelopment)",
+  "Павилон": "Pavilion",
+  "Газрын зөрчил, маргаан, зөвшилцөх": "Land violation, dispute, negotiation",
   /* Эх үүсвэрийн давхаргын гарчиг — `services.ts`-ийн `tr(type)` (төрөл бүрд
      тусдаа давхарга) ДИНАМИКААР дамждаг тул extractor харахгүй (2026-09-25). */
   "Дулааны эх үүсвэр": "Heat source",

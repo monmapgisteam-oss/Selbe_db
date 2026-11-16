@@ -28,7 +28,7 @@ for (const v of [
   assert.ok(isClearedStatus(v), `«${v}» нь чөлөөлсөн гэж танигдах ёстой`);
   assert.equal(statusKey(v), PARCEL_CLEARED, `«${v}» → нэг түлхүүр`);
 }
-for (const v of ['зөвшилцөх', 'Бүрэн чөлөөлөөгүй', 'Бүрэн', '', null, undefined, '—']) {
+for (const v of ['Цэвэрлэгээ', 'зөвшилцөх', 'Бүрэн чөлөөлөөгүй', 'Бүрэн', '', null, undefined, '—']) {
   assert.ok(!isClearedStatus(v), `«${v}» нь чөлөөлсөн БИШ`);
 }
 assert.equal(statusKey(' гэрээлсэн. '), 'гэрээлсэн.', 'бусад төлөвийн цэгийг хасахгүй');

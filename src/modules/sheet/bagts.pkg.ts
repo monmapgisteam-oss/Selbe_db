@@ -26,6 +26,13 @@ export type Pkg = {
   name: string;
   label: string;
   url: string;
+  /**
+   * ХААСАН БЛОК (2026-11-16, хэрэглэгч «чи шилжүүл») — үйлчилгээнд багана нь байгаа ч ЭНЭ хуудсанд блок гэж тооцохгүй.
+   * Багц 4-2 · 9 давхар: 12 давхарын 6/1–6/8 блокийн гүйцэтгэл андуурч энд бөглөгдөж байсныг 12 давхарын хуудас (164)
+   * руу шилжүүлсэн — цаашид зөвхөн тэнд. Хуучин бөглөлт энэ хүснэгтэд түүх болж хэвээр, хаалттай блокийн нүдийг илгээлт
+   * алгасна (`overlaySubmission`: `b >= nBld`).
+   */
+  hideBlocks?: readonly string[];
 };
 
 export const PKGS: Pkg[] = [
@@ -37,7 +44,7 @@ export const PKGS: Pkg[] = [
   { key: "b32_9f", group: 'Багц 3.2', floors: 9, name: 'Багц 3.2 · 9 давхар', get label() { return tr('Багц 3.2 · 9 давхар'); }, url: `${GUITS}/158` },
   { key: "b33_9f", group: 'Багц 3.3', floors: 9, name: 'Багц 3.3 · 9 давхар', get label() { return tr('Багц 3.3 · 9 давхар'); }, url: `${GUITS}/159` },
   { key: "b41_9f", group: 'Багц 4-1', floors: 9, name: 'Багц 4-1 · 9 давхар', get label() { return tr('Багц 4-1 · 9 давхар'); }, url: `${GUITS}/160` },
-  { key: "b42_9f", group: 'Багц 4-2', floors: 9, name: 'Багц 4-2 · 9 давхар', get label() { return tr('Багц 4-2 · 9 давхар'); }, url: `${GUITS}/162` },
+  { key: "b42_9f", group: 'Багц 4-2', floors: 9, name: 'Багц 4-2 · 9 давхар', get label() { return tr('Багц 4-2 · 9 давхар'); }, url: `${GUITS}/162`, hideBlocks: ['6/1', '6/2', '6/3', '6/4', '6/5', '6/6', '6/7', '6/8'] },
   { key: "b42_12f", group: 'Багц 4-2', floors: 12, name: 'Багц 4-2 · 12 давхар', get label() { return tr('Багц 4-2 · 12 давхар'); }, url: `${GUITS}/164` },
 
   /*
@@ -251,6 +258,8 @@ export type ResolveOpts = {
    * ГҮЙЦЭТГЭЛ БӨГЛӨХ бүдүүвч (2026-10-09) — `synthetic`-ийг АГУУЛНА.
    */
   fill?: boolean;
+  /** Блок гэж тооцохгүй баганууд (`Pkg.hideBlocks`) */
+  hideBlocks?: readonly string[];
 };
 
 /** Харьцуулахад бэлдэх: жижиг үсэг, доогуур зураас/зай хасах */
@@ -316,8 +325,10 @@ export function resolveSchema(fields: FieldMeta[], opts: ResolveOpts = {}): Sche
   }
 
   // Блок гэж тооцох нөхцөл: гүйцэтгэл БА төлөвлөгөөт хоёул бий.
+  const hidden = new Set(opts.hideBlocks ?? []);
   const bld = order
     .filter(({ key }) => {
+      if (hidden.has(key)) return false;
       const s = blocks.get(key)!;
       return s.act.length > 0 && s.plan.length > 0;
     })
@@ -455,7 +466,7 @@ export function loadSchema(pkg: Pkg, opts: ResolveOpts = {}): Promise<Schema> {
   const hit = cache.get(ck);
   if (hit) return hit;
   const p = fieldsOf(pkg)
-    .then((fields) => ({ ...resolveSchema(fields, opts), meta: new Map(fields.map((x) => [x.name.toLowerCase(), x] as const)) }))
+    .then((fields) => ({ ...resolveSchema(fields, { ...opts, hideBlocks: pkg.hideBlocks }), meta: new Map(fields.map((x) => [x.name.toLowerCase(), x] as const)) }))
     .catch((e) => {
       cache.delete(ck);
       throw e;
