@@ -69,3 +69,6 @@ docs/chanar/
 docs/Төсөл Гүйцэтгэл_*.xlsx
 # Нэгтгэлийн Excel (локал ажлын файл, 2026-10-21 — репод оруулахгүй)
 docs/negtgel_guitsetgel.xlsx
+# Мастер төлөвлөгөө ба зураг төслийн Excel (локал ажлын файл, 2026-11-16 — репод оруулахгүй)
+docs/master tolovlogoo/
+docs/zurag/

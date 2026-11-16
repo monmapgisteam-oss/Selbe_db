@@ -1248,17 +1248,6 @@ function ppGroups(): PpGroup[] {
         rawCol('sar_mongo_eh', tr('Сарын мөнгөний эх сурвалж'), 'text'),
       ],
     },
-    {
-      label: tr('Түвшин'),
-      cols: [
-        rawCol('bagts_tuvshin1', tr('Багц, 1-р түвшин'), 'text'),
-        rawCol('ajil_tuvshin1', tr('Ажил, 1-р түвшин'), 'text'),
-        rawCol('bagts_tuvshin2', tr('Багц, 2-р түвшин'), 'text'),
-        rawCol('ajil_tuvshin2', tr('Ажил, 2-р түвшин'), 'text'),
-        rawCol('bagts_tuvshin3', tr('Багц, 3-р түвшин'), 'text'),
-        rawCol('ajil_tuvshin3', tr('Ажил, 3-р түвшин'), 'text'),
-      ],
-    },
   ];
 }
 

@@ -106,24 +106,23 @@ const cfLabel = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 export const loadBudget = cached<Budget>(async () => {
   const CF = CASHFLOW_NEW.fields;
   const { CONTRACTED } = await import('@/lib/gdash');
-  const g = await queryGroup(
-    CASHFLOW_NEW.url,
-    `${FIN_XL_CHART_FIELDS.join(',')},${CF.pkg2},${CF.amountNote}`,
-    [
-      sum(CF.budget, 'b'), sum(CF.contractAmount, 'c'),
-      count(CASHFLOW_NEW.oid, 'n'),
-      ...CASHFLOW_NEW.sources.map((s, i) => sum(s.field, `s${i}`)),
+  /* 2026-11-16: ангилал (`FIN_XL_CHART_FIELDS`) хүснэгтийн багана биш, модноос бодогддог (`cfClass`) тул серверээр
+     бүлэглэх боломжгүй — ажлын мөрүүдийг (≈70) уншиж, мөр бүрийг нэг «бүлэг» болгоно (доорх нийлбэр, `tally` хэвээр). */
+  const raw = await queryFeatures(CASHFLOW_NEW.url, {
+    where: CF_WORK_WHERE,
+    outFields: [
+      CASHFLOW_NEW.oid, ...FIN_XL_CHART_FIELDS, CF.pkg2, CF.amountNote, CF.budget, CF.contractAmount,
+      CF.budgetOrder, CF.orderNo, ...CASHFLOW_NEW.sources.map((s) => s.field),
     ],
-    CF_WORK_WHERE,
-  );
+  });
+  const numOf = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const g: Row[] = raw.map((r) => ({
+    ...r, b: numOf(r[CF.budget]), c: numOf(r[CF.contractAmount]), n: 1,
+    ...Object.fromEntries(CASHFLOW_NEW.sources.map((s, i) => [`s${i}`, numOf(r[s.field])])),
+  }));
 
   /* 2026-11-04: захирамжийн нийт — `zahiramj_dugaar`-тай мөрийн `ho_dun_zahiramj` (`orderTotalOf`-тай ижил дүрэм) */
-  const gOrder = await queryGroup(
-    CASHFLOW_NEW.url,
-    `${FIN_XL_CHART_FIELDS.join(',')},${CF.pkg2},${CF.amountNote}`,
-    [sum(CF.budgetOrder, 'o')],
-    `${CF_WORK_WHERE} AND ${CF.orderNo} IS NOT NULL`,
-  );
+  const gOrder: Row[] = raw.filter((r) => r[CF.orderNo] != null).map((r) => ({ ...r, o: numOf(r[CF.budgetOrder]) }));
 
   const inTotal = g.filter(finXlInTotal);
   const sumOf = (rows: readonly Row[], f: string) => rows.reduce((a, r) => a + Number(r[f] ?? 0), 0);

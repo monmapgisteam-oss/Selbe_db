@@ -87,12 +87,6 @@ export type PlanStoredRow = {
   zahialagch_hynalt_baig?: string | null;
   ho_dungiin_tailbar?: string | null;
   sar_mongo_eh?: string | null;
-  bagts_tuvshin1?: string | null;
-  ajil_tuvshin1?: string | null;
-  bagts_tuvshin2?: string | null;
-  ajil_tuvshin2?: string | null;
-  bagts_tuvshin3?: string | null;
-  ajil_tuvshin3?: string | null;
 };
 
 /** Эх үүсвэрийн талбарууд — `CASHFLOW_NEW.sources`-ийн дараалал (үнэт цаас · төслийн орлого · нийслэлийн төсөв · НЗД нөөц) */

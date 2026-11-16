@@ -435,9 +435,14 @@ export async function queryFeatures(
     token?: string;
   } = {},
 ): Promise<Row[]> {
+  /* Cashflow-ийн ангиллын 6 талбар — серверээс асуухгүй, хариунд залгана (доорх `cfClassLoad`) */
+  const asked = opts.outFields ?? ['*'];
+  const virt = CF_CLASS_URL.test(url) && asked.some((f) => f === '*' || CF_CLASS_NAMES.has(f));
+  const fields = virt ? asked.filter((f) => !CF_CLASS_NAMES.has(f)) : asked;
+  if (virt && !fields.includes('*') && !fields.includes('objectid')) fields.push('objectid');
   const params: Record<string, string> = {
     where: opts.where ?? '1=1',
-    outFields: (opts.outFields ?? ['*']).join(','),
+    outFields: fields.join(','),
     returnGeometry: 'false',
     ...spatial(opts.aoi),
     ...(opts.token ? { token: opts.token } : {}),
@@ -474,7 +479,38 @@ export async function queryFeatures(
     order = `${res.oidField} ASC`;
     res = await collect();
   }
+  if (virt) {
+    const { attachCfClass } = await import('./cfClass');
+    attachCfClass(res.rows, await cfClassLoad(url, opts.token));
+  }
   return res.rows;
+}
+
+/* ══════════════════ Cashflow-ийн ангилал (`cfClass`) — тооцоолсон 6 талбар ══════════════════
+ * `Guitsetgel_talbe/182`-ийн «Багц/Ажил 1–3-р түвшин» нь хүснэгтийн багана БИШ (2026-11-16): `queryFeatures` тэдгээрийг
+ * `outFields`-оос хасаж серверээс асуухгүй, хариуны мөр бүрд модноос бодсон утгыг ИЖИЛ нэрээр залгана. Серверийн
+ * `where`/`groupBy`-д эдгээр нэрийг хэрэглэж БОЛОХГҮЙ (багана алга). */
+const CF_CLASS_URL = /\/Guitsetgel_talbe\/FeatureServer\/182\/?$/i;
+const CF_CLASS_NAMES: ReadonlySet<string> = new Set([
+  'bagts_tuvshin1', 'ajil_tuvshin1', 'bagts_tuvshin2', 'ajil_tuvshin2', 'bagts_tuvshin3', 'ajil_tuvshin3',
+]);
+const CF_CLASS_TTL_MS = 30_000;
+let cfClassHit: { url: string; at: number; epoch: number; p: Promise<ReadonlyMap<number, import('./cfClass').CfClass>> } | null = null;
+
+/** Ангиллын зураглал — богино кэштэй (нэг дэлгэцийн зэрэгцээ уншилтууд нэг хүсэлт хуваална); бичилтийн дараа шинэчлэгдэнэ */
+function cfClassLoad(url: string, token?: string) {
+  const epoch = writeEpoch();
+  if (cfClassHit && cfClassHit.url === url && cfClassHit.epoch === epoch && Date.now() - cfClassHit.at < CF_CLASS_TTL_MS) return cfClassHit.p;
+  const p = (async () => {
+    const m = await import('./cfClass');
+    const rows = await queryFeatures(url, {
+      where: m.CF_CLASS_SOURCE_WHERE, outFields: [...m.CF_CLASS_SOURCE_FIELDS], orderBy: 'objectid ASC', ...(token ? { token } : {}),
+    });
+    return m.cfClassFromRows(rows);
+  })();
+  cfClassHit = { url, at: Date.now(), epoch, p };
+  p.catch(() => { if (cfClassHit?.p === p) cfClassHit = null; });
+  return p;
 }
 
 export type ExtentBox ={ xmin: number; ymin: number; xmax: number; ymax: number; wkid: number };

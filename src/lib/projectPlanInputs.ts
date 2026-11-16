@@ -88,15 +88,9 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['zahialagch_hynalt_baig', 'zahialagch_hynalt_baig'],
   ['ho_dungiin_tailbar', 'ho_dungiin_tailbar'],
   ['sar_mongo_eh', 'sar_mongo_eh'],
-  ['bagts_tuvshin1', 'bagts_tuvshin1'],
-  ['ajil_tuvshin1', 'ajil_tuvshin1'],
-  ['bagts_tuvshin2', 'bagts_tuvshin2'],
-  ['ajil_tuvshin2', 'ajil_tuvshin2'],
-  ['bagts_tuvshin3', 'bagts_tuvshin3'],
-  ['ajil_tuvshin3', 'ajil_tuvshin3'],
 ];
 const TEXT_KEYS = new Set<keyof PlanStoredRow>(['dd_kod', 'etseg_kod', 'uy_shat', 'bagts', 'blok', 'ajil_uilchilgee', 'zahiramj_dugaar',
-  'geree_dugaar', 'guitsetgegch', 'zahialagch_hynalt_baig', 'ho_dungiin_tailbar', 'sar_mongo_eh', 'bagts_tuvshin1', 'ajil_tuvshin1', 'bagts_tuvshin2', 'ajil_tuvshin2', 'bagts_tuvshin3', 'ajil_tuvshin3']);
+  'geree_dugaar', 'guitsetgegch', 'zahialagch_hynalt_baig', 'ho_dungiin_tailbar', 'sar_mongo_eh']);
 
 /** Атрибутыг нэрээр — эхлээд яг, дараа нь том/жижиг үсэг үл ялган */
 function attrOf(a: Record<string, unknown>, name: string): unknown {
