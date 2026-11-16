@@ -14,7 +14,7 @@ import { orderByDeps, remapMonths, scheduleByMoney, splitByPct, type PkgPlan } f
 import type { Schema } from '@/modules/sheet/bagts.pkg';
 import type { SheetRow } from '@/modules/sheet/bagtsSheet';
 import type { PlanKind } from './types';
-import { directWorks, groupWorks, obKey, sameMonths } from './util';
+import { groupWorks, obKey, sameMonths } from './util';
 
 export function useGroupPlan({
   plan, rowsAll, n, sc, kind, busy, locked, canEdit, obState, obPlan, obOf, obFullRef, applyChanges, setErr, setNote, setObDraft,
@@ -50,7 +50,7 @@ export function useGroupPlan({
   const groupSchedule = useCallback((oid: number, sp: Span, pct: Map<string, number>) => {
     const at = plan.findIndex((x) => x.oid === oid);
     if (at < 0 || !plan[at].group) return null;
-    /* Шууд ажилтай бүлэгт ШУУД ажлууд; зөвхөн дэд бүлэгтэй том бүлэгт доторх бүх ажил (`groupWorks`, 2026-11-05) */
+    /* Зөвхөн 3-р давхрын (төлөвлөх) бүлэгт — доторх бүх ажил (`groupWorks`, 2026-11-13) */
     const leaves = groupWorks(plan, at);
     if (!leaves.length) return null;
     const order = orderByDeps(leaves.map((k) => ({ code: plan[k].des, deps: plan[k].deps.map((d) => d.code) }))).map((i) => leaves[i]);
@@ -64,32 +64,37 @@ export function useGroupPlan({
    * дүнг сонгосон блокууд бүгдэд ижил тавина. Огноо нь сарын мөнгөөс тул уялдааны гинж (`propagate`) хэрэглэхгүй (дараалал
    * нь уялдаагаар аль хэдийн). Нэг `applyChanges` тул нэг Ctrl+Z-ээр буцна. Обьёмгүй ажилд зөвхөн огноо.
    */
-  const planGroup = useCallback((oid: number, sp: Span, pct: Map<string, number>, blks: number[]) => {
-    if (busy || locked || !canEdit || kind !== 'plan' || !sc) return;
-    const sched = groupSchedule(oid, sp, pct);
-    if (!sched) return;
+  const planGroups = useCallback((items: readonly { oid: number; sp: Span; pct: Map<string, number> }[], blks: number[]): number => {
+    if (busy || locked || !canEdit || kind !== 'plan' || !sc) return 0;
     const bs = blks.filter((b) => b >= 0 && b < n);
     const ov = new Map<number, (Span | null)[]>();
     const jobs: { des: number; blok: string; months: Map<string, number>; sp: Span }[] = [];
-    sched.forEach(({ k, span: wsp, months }) => {
-      const r = plan[k];
-      const next = r.spans.slice();
-      while (next.length < n) next.push(null);
-      for (const b of bs) next[b] = { start: wsp.start, end: wsp.end };
-      ov.set(k, next);
-      if (obState !== 'ok' || r.des == null || !months) return;
-      for (const b of bs) {
-        const blok = sc.bld[b];
-        if (blok) jobs.push({ des: r.des!, blok, months, sp: wsp });
-      }
-    });
-    if (!ov.size) { setNote(tr('Бүлэгт төлөвлөх ажил алга.')); return; }
+    /* 2026-11-16: олон бүлгийг НЭГ алхмаар (багц хооронд хуулах) — нэг Ctrl+Z */
+    for (const it of items) {
+      const sched = groupSchedule(it.oid, it.sp, it.pct);
+      if (!sched) continue;
+      sched.forEach(({ k, span: wsp, months }) => {
+        const r = plan[k];
+        const next = r.spans.slice();
+        while (next.length < n) next.push(null);
+        for (const b of bs) next[b] = { start: wsp.start, end: wsp.end };
+        ov.set(k, next);
+        if (obState !== 'ok' || r.des == null || !months) return;
+        for (const b of bs) {
+          const blok = sc.bld[b];
+          if (blok) jobs.push({ des: r.des!, blok, months, sp: wsp });
+        }
+      });
+    }
+    if (!ov.size) { setNote(tr('Бүлэгт төлөвлөх ажил алга.')); return 0; }
     setErr('');
     const undoKeys = jobs.map((j) => obKey(j.des, j.blok));
     const ch = propagate(plan, n, ov);
+    const workAt = new Map<number, number>();
+    plan.forEach((x, i) => { if (!x.group && x.des != null && !workAt.has(x.des)) workAt.set(x.des, i); });
     /* Гинж бүлгийн дэд модыг шилжүүлсэн бол (бүлгийн түвшний уялдаа) сарыг ЭЦСИЙН мужид буулгана */
     for (const j of jobs) {
-      const k = plan.findIndex((x) => x.des === j.des && !x.group);
+      const k = workAt.get(j.des) ?? -1;
       const b = sc.bld.indexOf(j.blok);
       const fin = k >= 0 && b >= 0 ? ch.get(k)?.[b] ?? null : null;
       if (fin && (fin.start !== j.sp.start || fin.end !== j.sp.end)) {
@@ -115,7 +120,11 @@ export function useGroupPlan({
       });
     }
     setNote(tr('Бүлгийн {0} ажилд {1} блокт огноо ба сарын обьём тавигдлаа.', num(ov.size), num(bs.length)));
+    return ov.size;
   }, [busy, locked, canEdit, kind, sc, plan, n, obState, obPlan, obFullRef, groupSchedule, applyChanges, setErr, setNote, setObDraft]);
+  const planGroup = useCallback((oid: number, sp: Span, pct: Map<string, number>, blks: number[]) => {
+    planGroups([{ oid, sp, pct }], blks);
+  }, [planGroups]);
 
   /**
    * ЗАГВАР ХУУЛАХ (2026-10-29) — төлөвлөсөн жижиг бүлгийн шууд ажлуудын огноо (сонгосон блокууд) ба сарын обьёмыг ижил
@@ -126,7 +135,7 @@ export function useGroupPlan({
     if (busy || locked || !canEdit || kind !== 'plan' || !sc) return;
     const src = plan.findIndex((x) => x.oid === srcOid);
     if (src < 0) return;
-    const sw = directWorks(plan, src);
+    const sw = groupWorks(plan, src);
     const bs = blks.filter((b) => b >= 0 && b < n);
     const ov = new Map<number, (Span | null)[]>();
     /* Сарын обьём — гинжийн (`propagate`) ДАРААХ эцсийн мужаар бодогдоно (доор) */
@@ -134,7 +143,7 @@ export function useGroupPlan({
     targets.forEach((tOid, ti) => {
       const t = plan.findIndex((x) => x.oid === tOid);
       if (t < 0) return;
-      const tw = directWorks(plan, t);
+      const tw = groupWorks(plan, t);
       if (tw.length !== sw.length) return;
       const shift = step * (ti + 1) * DAY;
       sw.forEach((k, w) => {
@@ -186,5 +195,5 @@ export function useGroupPlan({
     setNote(tr('{0} бүлэгт загвар хуулагдлаа ({1} ажил).', num(targets.length), num(ov.size)));
   }, [busy, locked, canEdit, kind, sc, plan, n, obState, obOf, obPlan, obFullRef, applyChanges, setErr, setNote, setObDraft]);
 
-  return { moneyOf, groupSchedule, planGroup, copyGroup };
+  return { moneyOf, groupSchedule, planGroup, planGroups, copyGroup };
 }

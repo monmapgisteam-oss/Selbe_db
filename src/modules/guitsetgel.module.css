@@ -907,3 +907,20 @@
 }
 .okBanner > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .saving { margin-top: 6px; font-size: 0.8rem; color: var(--ink-2); }
+
+/* 2026-11-16: зөвшөөрвөл нэмэгдэх гүйцэтгэл — багц · төсөл тод */
+.gainBox {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px;
+  margin: 2px 0 8px; padding: 9px 12px;
+  border-left: 3px solid var(--good);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: color-mix(in oklab, var(--good) 9%, transparent);
+  font-size: 13px; color: var(--ink);
+}
+.gainHead { flex-basis: 100%; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.gainRow { display: inline-flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+.gainLbl { color: var(--ink-3); }
+.gainRow b { font-size: 16px; }
+.gainUp { color: var(--good-ink, var(--good)); }
+.gainFromTo { color: var(--ink-3); font-size: 12px; }
+.gainBlocks { flex-basis: 100%; font-size: 11.5px; color: var(--ink-3); overflow-wrap: anywhere; }

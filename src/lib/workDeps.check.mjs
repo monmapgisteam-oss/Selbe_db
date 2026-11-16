@@ -236,3 +236,35 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   assert.equal(fr[0].bagts_hamaaral, json);
   console.log('✅ бүдүүвч · архивын жаазад дамжина');
 }
+
+/* ══════════ 2026-11-13: уялдааны төрөл · хоног, зөвхөн 3-р давхрын бүлэг ══════════ */
+{
+  const W = await import('./workDeps.ts');
+  const refs = W.parseRefs('[{"p":"b1_9f","k":"3 ¦ Рам","t":"SS","l":5},{"p":"b51","k":"Б1 ¦ ДХТ","t":"FS","l":0}]');
+  assert.deepEqual(refs, [{ p: 'b1_9f', k: '3 ¦ Рам', t: 'SS', l: 5 }, { p: 'b51', k: 'Б1 ¦ ДХТ' }], 'FS · 0 хоног шахагдана');
+  assert.deepEqual(W.parseRefs(W.refsJson(refs)), refs, 'буцаан уншина');
+  assert.throws(() => W.parseRefs('[{"p":"b1","k":"x","t":"XX"}]'), 'буруу төрөл');
+  assert.throws(() => W.parseRefs('[{"p":"b1","k":"x","l":1.5}]'), 'бутархай хоног');
+  assert.equal(W.depLabel({}), 'FS');
+  assert.equal(W.depLabel({ t: 'SS', l: 3 }), 'SS+3');
+  assert.equal(W.depLabel({ l: -2 }), 'FS-2');
+  /* төрөл сольход ижил бүлгийн холбоос солигдоно, давхардахгүй */
+  const next = W.applyRefChange([{ p: 'b51', k: 'Б1 ¦ ДХТ' }], { add: [{ p: 'b51', k: 'Б1 ¦ ДХТ', t: 'SS', l: 2 }], remove: [] });
+  assert.deepEqual(next, [{ p: 'b51', k: 'Б1 ¦ ДХТ', t: 'SS', l: 2 }]);
+  assert.equal(W.sameRefs([{ p: 'b51', k: 'x' }], [{ p: 'b51', k: 'x', t: 'SS' }]), false, 'төрөл өөрчлөгдвөл өөр');
+
+  /* Холбож болох мөр: А. Бэлтгэлийн ажил · 3-р давхрын бүлэг; бусад нь үгүй */
+  const rows = [
+    R(1, 'А.', 'Бэлтгэл', 0, true), R(2, '1', 'Хашаа', 1, false, 1),
+    R(3, 'Б.', 'Барилга угсралт', 0, true), R(4, 'Б1', 'Барилгын ажил', 1, true),
+    R(5, '1', 'Суурь', 2, true), R(6, '1', 'Ухах', 3, false, 2),
+    R(7, '2', 'Рам', 2, true), R(8, '1', '1-р давхар', 3, true), R(9, '1', 'Цутгах', 4, false, 3),
+  ];
+  const g = W.buildGraph([{ p: 'b1_9f', rows, field: true }]);
+  const ok = W.linkableIds(g, 'b1_9f');
+  const nos = (set) => [...set].map((id) => g.nodes.get(id).oid).sort((a, b) => a - b);
+  assert.deepEqual(nos(ok), [1, 2, 5, 7], 'А. бүлэг ба ажил (3-р давхаргүй салбар) · Суурь · Рам');
+  const secs = W.linkSectionsOf(g, 'b1_9f');
+  assert.deepEqual(secs.map((s) => s.items.map((id) => g.nodes.get(id).oid)), [[1], [2], [5, 7]], 'эцгээр хэсэглэнэ');
+  console.log('✅ уялдааны төрөл · хоног · 3-р давхрын бүлэг');
+}

@@ -7,7 +7,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { dateTime, fixCyr, pct } from '@/lib/format';
-import { fillGainOf, loadFillGain, type FillGain, type FillGainIn } from '@/lib/fillGain';
+import { fillGainOf, loadFillGain, loadFillNow, type FillGain, type FillGainIn, type FillNow } from '@/lib/fillGain';
 import {
   DECISION, F, SF, missingDirectorFields, OWNER, STAGE_ORDER, STATUS,
   REVIEW_STAGES, REVIEW_STATUS, RETURNED_STATUS, nextReview,
@@ -160,21 +160,46 @@ const fmt = (iso: string | null) => dateTime(iso);
  * 2026-11-11 (хэрэглэгч): батлаж буй гүйцэтгэл хэдэн хувийн ажил вэ — блок (шууд) · багц · төсөл (ТТБ ачаалсны дараа)
  * нэмэх нэгж хувь.
  */
-function GainLine({ g }: { g: FillGainIn }) {
+function GainLine({ g, pending }: {
+  g: FillGainIn;
+  /** Батлагдаагүй (хуудсанд хараахан ороогүй) илгээлт — «одоо → батлахад» харуулна */
+  pending: boolean;
+}) {
   const [v, setV] = useState<FillGain>(() => fillGainOf(g.group, g.labels, g.dB, g.dA, g.synthetic, null, null, null));
+  const [now, setNow] = useState<FillNow | null>(null);
+  /** Ачаалал дууссан оролт — өөр илгээлт ирэхэд дахин «…» */
+  const [done, setDone] = useState<FillGainIn | null>(null);
+  const wait = done !== g;
   useEffect(() => {
     let alive = true;
-    loadFillGain(g.group, g.labels, g.dB, g.dA, g.synthetic).then((x) => { if (alive) setV(x); }).catch(() => { /* блокийн өсөлт хэвээр */ });
+    void Promise.allSettled([
+      loadFillGain(g.group, g.labels, g.dB, g.dA, g.synthetic).then((x) => { if (alive) setV(x); }),
+      pending ? loadFillNow(g.group, g.synthetic).then((x) => { if (alive) setNow(x); }) : Promise.resolve(),
+    ]).finally(() => { if (alive) setDone(g); });
     return () => { alive = false; };
-  }, [g]);
+  }, [g, pending]);
+  /* 2026-11-16 (хэрэглэгч: «гүйцэтгэл зөвшөөрөхөд багцад хэдэн хувь нэмэгдэх нь харагдахгүй байна») — тод хайрцаг */
+  const row = (label: string, base: number | null | undefined, inc: number | null, d: number) => (
+    <span className={s.gainRow}>
+      <span className={s.gainLbl}>{label}</span>
+      {inc == null
+        ? <b>{wait ? '…' : '—'}</b>
+        : <b className={inc > 0 ? s.gainUp : undefined}>{signed(inc, d)}</b>}
+      {pending && base != null && inc != null && (
+        <span className={s.gainFromTo}>{tr('{0} → {1}', pct(base, d), pct(base + inc, d))}</span>
+      )}
+    </span>
+  );
   return (
-    <div className={s.subMuted}>
-      {tr('Энэ гүйцэтгэл:')}{' '}
-      {v.blocks.length
-        ? v.blocks.map((b) => tr('блок {0} {1}', b.block, signed(b.pct, 2))).join(' · ')
-        : tr('блокийн гүйцэтгэл өөрчлөгдөөгүй')}
-      {v.pkg != null && <>{' · '}{tr('багц {0}', signed(v.pkg, 2))}</>}
-      {v.project != null && <>{' · '}{tr('төсөл {0}', signed(v.project, 3))}</>}
+    <div className={s.gainBox} role="status">
+      <span className={s.gainHead}>{pending ? tr('Зөвшөөрвөл нэмэгдэх гүйцэтгэл') : tr('Энэ гүйцэтгэлээр нэмэгдсэн')}</span>
+      {row(tr('Багц'), now?.pkg, v.pkg, 2)}
+      {row(tr('Төсөл'), now?.project, v.project, 3)}
+      <span className={s.gainBlocks}>
+        {v.blocks.length
+          ? v.blocks.map((b) => tr('блок {0} {1}', b.block, signed(b.pct, 2))).join(' · ')
+          : tr('блокийн гүйцэтгэл өөрчлөгдөөгүй')}
+      </span>
     </div>
   );
 }
@@ -200,7 +225,19 @@ function statusLabel(st: Status, stage: Stage): string {
   return tr('Хянагдаж байна');
 }
 
-const companyReason = (r: Row) => r[F.engineerReason];
+/**
+ * ШАЛТГААНЫ ТОВЧ ХЭЛБЭР (2026-11-16, хэрэглэгч: «энэ урт анхааруулгыг устга») — хуучин бүртгэлийн «| Зөвшөөрөгдөөгүй N нүд:
+ * нүд1; нүд2 …» жагсаалтыг тоо болгож товчилно (нүднүүд хүснэгтэд улаанаар харагддаг). Хүний бичсэн хэсэг хэвээр.
+ */
+const shortReason = (t: unknown): string => {
+  const v = String(t ?? '').trim();
+  const m = /^(.*?)\s*\|?\s*Зөвшөөрөгдөөгүй (\d+) нүд:.*$/s.exec(v);
+  if (!m) return v;
+  const cnt = tr('Зөвшөөрөгдөөгүй {0} нүд', m[2]);
+  return m[1].trim() ? `${m[1].trim()} · ${cnt}` : cnt;
+};
+
+const companyReason = (r: Row) => shortReason(r[F.engineerReason]);
 
 /* ══════════ Түүх ══════════ */
 
@@ -437,7 +474,7 @@ function History({ cycles, stage }: { cycles: Row[]; stage: Stage }) {
                     {st.reason && (
                       <div className={s.why}>
                         <span className={s.whyLabel}>{tr('Шалтгаан')}</span>
-                        {st.reason}
+                        {shortReason(st.reason)}
                       </div>
                     )}
                   </div>
@@ -615,7 +652,7 @@ function Submitted({
               </>
             )}
           </div>
-          {data.gain && <GainLine g={data.gain} />}
+          {data.gain && <GainLine g={data.gain} pending={data.subOid != null} />}
           {data.prevError && (
             <div className={s.error} role="alert">
               {tr('Өмнөх хувилбарыг уншиж чадсангүй — аль нүд өөрчлөгдсөнийг тодорхойлж чадаагүй тул батлах товч түр хаалттай.')}{' '}
@@ -631,11 +668,6 @@ function Submitted({
             <div className={s.subWarn} role="alert">
               {tr('{0} нүдний нэмэлт нийт дүнг сөрөг болгоно (суурь утгаас их хасалт) тул батлах боломжгүй — доорх нүд(ийг) гүйцэтгэгчээр залруулуулж дахин илгээүүлнэ үү:', String(data.negative))}
               {(data.negCells?.length ?? 0) > 0 && <div>{data.negCells!.join('; ')}</div>}
-            </div>
-          )}
-          {data.asOfChanged && (
-            <div className={s.subWarn}>
-              {tr('«Шинэчлэгдсэн огноо» өөрчлөгдөнө ({0} → {1}) — батлахад БҮХ мөрийн төлөвлөгөөт гүйцэтгэл дахин бодогдоно.', data.asOfFrom ?? '—', data.asOfTo ?? '—')}
             </div>
           )}
           {data.dateChanges.length > 0 && (
@@ -942,13 +974,8 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
    */
   const badText = () => {
     if (!bad.length) return reason.trim();
-    const list = bad
-      .slice(0, 12)
-      .map((c) => `${c.block} · ${fixCyr(c.work)} → ${c.from === c.to && c.toPct !== undefined ? (c.toPct == null ? '—' : pcs(c.toPct)) : qty(c.to)}`)
-      .join("; ");
-    const more = bad.length > 12 ? ` … +${bad.length - 12}` : "";
-    const head = tr("Зөвшөөрөгдөөгүй {0} нүд: ", String(bad.length));
-    return [reason.trim(), head + list + more].filter(Boolean).join(" | ");
+    /* 2026-11-16: нүдний урт жагсаалт бичихгүй — тоо л (нүднүүд хүснэгтэд улаанаар харагдана) */
+    return [reason.trim(), tr('Зөвшөөрөгдөөгүй {0} нүд', String(bad.length))].filter(Boolean).join(' · ');
   };
   const mine = !readOnly && work.owner === stage && st !== STATUS.transferred;
 
@@ -1120,7 +1147,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
                       {upperOfMe ? STATUS_LABEL[RETURNED_STATUS[upperOfMe]] : ''}:{' '}
                     </span>
                     <span className={s.reasonText}>
-                      {upperOfMe ? String((cur as Record<string, unknown>)[SF[upperOfMe].reason] ?? '') : ''}
+                      {upperOfMe ? shortReason((cur as Record<string, unknown>)[SF[upperOfMe].reason]) : ''}
                     </span>
                   </div>
                   <textarea

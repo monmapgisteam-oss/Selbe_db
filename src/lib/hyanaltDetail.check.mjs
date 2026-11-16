@@ -107,7 +107,8 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
       'hyanaltStore: архивын огноо ухрахгүй');
     assert.ok(det.includes('const asOf = laterAsOf(ov.asOf, loaded.asOf);') && det.includes('asOfChanged: asOf != null && asOf !== loaded.asOf,'),
       'hyanaltDetail: хянагч архивт бичигдэх огноог харна');
-    assert.ok(G.includes("data.asOfFrom ?? '—', data.asOfTo ?? '—'"), 'Guitsetgel: «хуучин → шинэ»');
+    /* 2026-11-16 (хэрэглэгч: «устга»): «Шинэчлэгдсэн огноо өөрчлөгдөнө» анхааруулга хянагчид харагдахгүй */
+    assert.ok(!G.includes('data.asOfChanged &&'), 'Guitsetgel: огнооны анхааруулга хасагдсан');
     console.log('✅ аудит 2026-10-22 — дахин илгээх шалгалттай · ЯГ бичих утга · огноо ухрахгүй (эх код)');
   }
 }

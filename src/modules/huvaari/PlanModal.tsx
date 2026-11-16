@@ -15,6 +15,7 @@ import { DateField } from './DateField';
 import { HAM_MAX } from './savePrep';
 import { MAX_DAYS } from './types';
 import h from '../huvaari.module.css';
+import { evenPct } from './copyPkg';
 
 /* ══════════════════ POPUP ХУАНЛИ ══════════════════ */
 
@@ -174,6 +175,8 @@ type PlanModalProps = {
   /** ЭНЭ блокийн хадгалагдсан/ноорог сарын НӨӨЦ (2026-09-24) */
   res: Map<string, MonthRes>;
   xLock?: string;
+  /** Гараар төлөвлөгдөхгүй мөрийн шалтгаан (3-р давхрын бүлгээс автомат, 2026-11-13) — огноо, сарын обьём, уялдаа хаалттай */
+  planLock?: string;
   /** Сарын хүснэгтэд нөөцийн талбар бий эсэх — `false` бол анхааруулна (`null` = мэдэхгүй) */
   resFields: { hun: boolean | null; mashin: boolean | null };
   onClose: () => void;
@@ -293,7 +296,7 @@ function initActual(r: PlanRow, blk: number): { aa: string; az: string } {
 
 function PlanModalBody({
   r, par, blocks, blk, initSel, takt, canEdit, onBlk, onTakt, cands, hasHam, hamKeep, hasActual, obyem = true, months, res, resFields, onClose, onApply,
-  badBlks, geree, returnFocus, xLock, dragged, onKeep, onShiftGroup, onUndo, groupMoney, onPlanGroup, groupPreview, initSpan, groupCurve, groupSub, groupCopyTargets, onCopyGroup, week,
+  badBlks, geree, returnFocus, xLock, planLock, dragged, onKeep, onShiftGroup, onUndo, groupMoney, onPlanGroup, groupPreview, initSpan, groupCurve, groupSub, groupCopyTargets, onCopyGroup, week,
 }: PlanModalProps) {
   const mdRef = useRef<HTMLDivElement>(null);
   useFocusTrap(mdRef, true, returnFocus);
@@ -386,7 +389,7 @@ function PlanModalBody({
    * ОГНОО ЗАСАХ ЭРХ. Бүлгийн муж нь дэд ажлуудаасаа бодогддог
    * (2026-09-06) тул гараар засагдахгүй — уялдаа нь харин засагдана.
    */
-  const dEdit = canEdit && !r.group;
+  const dEdit = canEdit && !r.group && !planLock;
   /** Бүлгээр төлөвлөх горим — бүлгийн огноо · сарын хувь засагдана (доторх ажилд тараана), бүлгийн өөрийн муж хадгалагдахгүй */
   const gEdit = canEdit && r.group && obyem && !!onPlanGroup;
 
@@ -451,7 +454,9 @@ function PlanModalBody({
   });
   /** Нээгдэх үеийн хувь — өөрчлөгдөөгүй бол хаахад «хадгалаагүй» гэж асуухгүй */
   const [gp0] = useState(gp);
-  const gpDirty = gp.size !== gp0.size || [...gp].some(([k, v]) => gp0.get(k) !== v);
+  /** Хувийг гараар зассан эсэх — засаагүй бол автомат бөглөлт «хадгалаагүй» гэж тооцогдохгүй, огноо солигдоход дахин бөглөгдөнө */
+  const [gpTouched, setGpTouched] = useState(false);
+  const gpDirty = gpTouched && (gp.size !== gp0.size || [...gp].some(([k, v]) => gp0.get(k) !== v));
   /**
    * Мөр/блок солигдоход ХАДГАЛАГДСАНАА суурь болгоно.
    */
@@ -669,6 +674,16 @@ function PlanModalBody({
   };
 
   const gpSum = mKeys.reduce((acc, k) => acc + (gp.get(k) ?? 0), 0);
+  /*
+   * САРЫН ХУВЬ АВТОМАТ (2026-11-16, хэрэглэгч: «автоматаар гарч ирнэ, гараар засах боломжтой») — огноо оруулмагц сар бүрт
+   * жигд хувь бөглөгдөнө. Нээхэд хадгалсан хувь (нийлбэр 100) байвал хэвээр; гараар засаагүй бол огноо солигдоход дахин.
+   */
+  const [gpSig, setGpSig] = useState<string | null>(null);
+  const mSig = mKeys.join(',');
+  if (gEdit && !gpTouched && mKeys.length > 0 && gpSig !== mSig) {
+    setGpSig(mSig);
+    if (gpSig !== null || Math.abs(gpSum - 100) > 0.005) setGp(evenPct(mKeys));
+  }
   const gpOk = gEdit && ms1 != null && ms2 != null && !bad && !spanLong && badTxt.size === 0
     && mKeys.length > 0 && Math.abs(gpSum - 100) <= 0.005;
   /** Загвар хуулах — сонгосон бүлгүүд ба бүлэг хоорондын алхам (хоног) */
@@ -867,7 +882,8 @@ function PlanModalBody({
         )}
 
 
-        {r.group && !gEdit && (
+        {planLock && <p className={h.mdPar}>{planLock}</p>}
+        {r.group && !gEdit && !planLock && (
           <p className={h.mdPar}>
             {tr('Бүлгийн хугацаа нь доторх ажлуудынхаа хамгийн эрт эхлэх — хамгийн сүүл дуусахаар ӨӨРӨӨ бодогдоно. Гараар засахгүй: ажлуудаа зөөвөл бүлэг дагана.')}
           </p>
@@ -923,6 +939,7 @@ function PlanModalBody({
                       onChange={(e) => {
                         const t = e.target.value.trim();
                         const v = Number(t);
+                        setGpTouched(true);
                         setGp((m) => {
                           const out = new Map(m);
                           if (t === '' || !Number.isFinite(v) || v < 0 || v > 100) out.delete(k);
@@ -1083,7 +1100,7 @@ function PlanModalBody({
                         type="number"
                         className={`${h.numIn} ${h.mdMonthIn}`}
                         value={mv.get(k) ?? ''}
-                        disabled={!canEdit}
+                        disabled={!canEdit || !!planLock}
                         min={0}
                         step="0.01"
                         aria-label={tr('{0}-ны обьём', k)}
@@ -1136,7 +1153,7 @@ function PlanModalBody({
                   <p className={h.mdPar}>
                     {tr('{0}-ыг оруулахгүй нийлбэр', mFocus)}: <b className="num">{num(mvSum - (mv.get(mFocus) ?? 0), 2)}</b>
                     {' · '}{tr('үлдэгдэл')}: <b className="num">{num(mRest, 2)}</b>
-                    {mRest > 0 && canEdit && (
+                    {mRest > 0 && canEdit && !planLock && (
                       <>
                         {' '}
                         <button type="button" className={h.mdSnap}
@@ -1201,19 +1218,19 @@ function PlanModalBody({
             </div>
             {dl.map((d, j) => (
               <div key={j} className={h.mdDepRow}>
-                <DepPicker value={d.code} cands={cands} disabled={!canEdit}
+                <DepPicker value={d.code} cands={cands} disabled={!canEdit || !!planLock}
                   onPick={(code) => setDl((v) => v.map((x, k) => (k === j ? { ...x, code } : x)))} />
-                <select className={h.select} value={d.type} disabled={!canEdit}
+                <select className={h.select} value={d.type} disabled={!canEdit || !!planLock}
                   title={tr('FS — урд ажил дуусмагц · SS — урд ажилтай зэрэг эхэлнэ')}
                   onChange={(e) => setDl((v) => v.map((x, k) => (k === j ? { ...x, type: e.target.value as DepType } : x)))}>
                   <option value="FS">{tr('дуусаад (FS)')}</option>
                   <option value="SS">{tr('зэрэг (SS)')}</option>
                 </select>
-                <LagInput value={d.lag} disabled={!canEdit}
+                <LagInput value={d.lag} disabled={!canEdit || !!planLock}
                   onCommit={(n) => setDl((v) => v.map((x, k) => (k === j ? { ...x, lag: n } : x)))} />
                 <span className={h.mdDepD}>{tr('хоног')}</span>
                 {blocks.length > 1 && (
-                  <select className={h.select} value={d.blk ?? ''} disabled={!canEdit}
+                  <select className={h.select} value={d.blk ?? ''} disabled={!canEdit || !!planLock}
                     title={tr('Аль блокт үйлчлэх — хоосон бол бүх блокт')}
                     onChange={(e) => setDl((v) => v.map((x, k) => {
                       if (k !== j) return x;
@@ -1230,7 +1247,7 @@ function PlanModalBody({
                   </select>
                 )}
                 {blocks.length > 1 && d.blk != null && (
-                  <select className={h.select} value={d.src ?? ''} disabled={!canEdit}
+                  <select className={h.select} value={d.src ?? ''} disabled={!canEdit || !!planLock}
                     aria-label={tr('Урд ажлын блок')}
                     title={tr('Урд ажлын аль блокийн огноогоор — хоосон бол ижил блок')}
                     onChange={(e) => setDl((v) => v.map((x, k) => {
@@ -1243,7 +1260,7 @@ function PlanModalBody({
                     {blocks.map((name, b) => <option key={name} value={b}>{tr('{0}-аас', name)}</option>)}
                   </select>
                 )}
-                {canEdit && (
+                {canEdit && !planLock && (
                   <button type="button" className={h.mdDepX} aria-label={tr('Уялдаа устгах')}
                     onClick={() => setDl((v) => v.filter((_, k) => k !== j))}>×</button>
                 )}
@@ -1260,7 +1277,7 @@ function PlanModalBody({
             {canEdit && depsTooLong && (
               <span className={h.mdParWork} role="alert">{tr('Уялдааны бичиглэл {0} тэмдэгт — талбарт {1} хүртэл багтана. Блок цөөлөх эсвэл бүх блокийг сонгож нэг уялдаа болгоно уу.', num(hamLen), num(HAM_MAX))}</span>
             )}
-            {canEdit && (
+            {canEdit && !planLock && (
               <button type="button" className={h.tlZoomB} disabled={!cands.length}
                 onClick={() => setDl((v) => [...v, { code: cands[0].code, type: 'FS', lag: 0 }])}>
                 + {tr('Уялдаа нэмэх')}

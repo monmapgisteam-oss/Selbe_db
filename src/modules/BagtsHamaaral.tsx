@@ -11,8 +11,8 @@ import { hasCap, subscribeCaps } from '@/lib/caps';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { bagtsKey } from '@/lib/services';
 import {
-  dependentsOf, legacyCovered, legacyPkgKey, nodeMatches, pkgPairs, refOf, sectionsOf,
-  type Edge, type NodeId, type RefChange, type WNode, type WorkGraph,
+  LAG_MAX, depLabel, dependentsOf, legacyCovered, legacyPkgKey, linkSectionsOf, nodeMatches, pkgPairs, refKind, refLag, refOf,
+  type Edge, type NodeId, type RefChange, type WNode, type WorkGraph, type WorkRef,
 } from '@/lib/workDeps';
 import { dropWorkCache, loadWorkData, saveWorkLinks, sheetsOfPkgKey } from '@/lib/workDepsRemote';
 import { loadLegacyDeps, removeLegacyDeps, type Dep } from '@/lib/bagtsHamaaral';
@@ -193,7 +193,7 @@ export function BagtsHamaaral() {
         <p className={s.eyebrow}>{tr('ТУХ · багцын хяналт')}</p>
         <h1>{tr('Багцын хамаарал')} <small className={s.total}>{tr('{0} холбоо', num(total))}</small></h1>
         <p className={s.heroSub}>
-          {tr('Нэг багцын ажил өөр багцуудын аль ажлаас хамаардгийг харуулна. Зөвхөн мэдээлэл — хуваарийн огноонд нөлөөлөхгүй.')}
+          {tr('Багцуудын 3-р давхрын бүлгүүдийг FS (урд нь дуусаад) эсвэл SS (зэрэг эхэлнэ) уялдаагаар холбоно. Зөвхөн мэдээлэл — хуваарийн огноонд нөлөөлөхгүй.')}
         </p>
       </section>
 
@@ -305,7 +305,7 @@ export function BagtsHamaaral() {
       {/* ── Засвар: А → ажил → Б ── */}
       <div ref={editorRef} className={s.grid}>
         <section className={s.card}>
-          <h2 className={s.cardTitle}>{tr('Хамаарах ажил (А)')}</h2>
+          <h2 className={s.cardTitle}>{tr('Хамаарах бүлэг (А)')}</h2>
           <div className={s.filters}>
             <select className={s.select} value={pA} aria-label={tr('Багц (А)')}
               onChange={(e) => {
@@ -351,7 +351,7 @@ function WorkPicker({ g, p, q, sel, onSel, flt }: {
   /** Тоймын шүүлт — зөвхөн энэ хуудаснаас хамаардаг ажлууд */
   flt: string | null;
 }) {
-  const secs = useMemo(() => sectionsOf(g, p).map((sec) => ({
+  const secs = useMemo(() => linkSectionsOf(g, p).map((sec) => ({
     ...sec,
     items: sec.items.filter((id) => {
       const n = g.nodes.get(id)!;
@@ -435,6 +435,7 @@ function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen, onDirty }
               const label = t ? nodeLabel(t) : e.ref.k;
               return (
                 <span key={`${e.ref.p}|${e.ref.k}|${e.ref.o ?? 0}`} className={t ? s.chip : s.chipBad} title={t ? undefined : whyText(e)}>
+                  <b className={s.mute}>{depLabel(e.ref)}</b>
                   {t ? (
                     <button type="button" className={s.chipLink} onClick={() => onOpen(t.id)}>{label}</button>
                   ) : (
@@ -498,23 +499,37 @@ function PrereqPicker({ g, n, p, busy, onSave, onDirty }: {
     return m;
   }, [g, n.id, p]);
   /**
-   * Хүлээгдэж буй сонголт — ЭНЭ графын агшинд (`base`). Хадгалсны дараа шинэ граф ирэхэд (`base !== g`) хаягдаж,
-   * серверийн төлөв харагдана; түүнээс өмнө хэрэглэгчийн сонголт хэвээр (анивчихгүй).
+   * Хүлээгдэж буй сонголт — ЭНЭ графын агшинд (`base`): бүлэг → уялдааны төрөл · хоног. Хадгалсны дараа шинэ граф ирэхэд
+   * (`base !== g`) хаягдаж, серверийн төлөв харагдана; түүнээс өмнө хэрэглэгчийн сонголт хэвээр (анивчихгүй).
    */
-  const [pick, setPick] = useState<{ base: WorkGraph; set: Set<NodeId> } | null>(null);
-  const chosen = pick && pick.base === g ? pick.set : new Set(cur.keys());
+  type Opt = { t: 'FS' | 'SS'; l: number };
+  const curOpts = useMemo(() => new Map([...cur].map(([id, e]) => [id, { t: refKind(e.ref), l: refLag(e.ref) } as Opt])), [cur]);
+  const [pick, setPick] = useState<{ base: WorkGraph; map: Map<NodeId, Opt> } | null>(null);
+  const chosen = pick && pick.base === g ? pick.map : curOpts;
   const toggle = (ids: NodeId[], on: boolean) => {
-    const next = new Set(chosen);
-    for (const id of ids) { if (on) next.add(id); else next.delete(id); }
-    setPick({ base: g, set: next });
+    const next = new Map(chosen);
+    for (const id of ids) { if (on) { if (!next.has(id)) next.set(id, curOpts.get(id) ?? { t: 'FS', l: 0 }); } else next.delete(id); }
+    setPick({ base: g, map: next });
   };
+  const setOpt = (id: NodeId, o: Partial<Opt>) => {
+    const next = new Map(chosen);
+    const was = next.get(id);
+    if (!was) return;
+    next.set(id, { ...was, ...o });
+    setPick({ base: g, map: next });
+  };
+  const refFor = (id: NodeId, o: Opt): WorkRef => ({ ...refOf(g.nodes.get(id)!), ...(o.t === 'SS' ? { t: 'SS' as const } : {}), ...(o.l ? { l: o.l } : {}) });
   const loop = useMemo(() => dependentsOf(g, n.id), [g, n.id]);
   const errOf = useCallback((id: NodeId) => (cur.has(id) || !loop.has(id) ? null
     : tr('Дугуй хамаарал үүснэ — тэр ажил энэ ажлаас (дамжуулан) хамаардаг')), [cur, loop]);
-  const secs = useMemo(() => sectionsOf(g, p).map((sec) => ({
+  const secs = useMemo(() => linkSectionsOf(g, p).map((sec) => ({
     ...sec, items: sec.items.filter((id) => nodeMatches(g.nodes.get(id)!, q)),
   })).filter((sec) => sec.items.length), [g, p, q]);
-  const add = [...chosen].filter((id) => !cur.has(id));
+  /* Шинэ эсвэл төрөл/хоног нь өөрчлөгдсөн холбоос — нэмнэ (ижил бүлгийнхийг сольж бичнэ, `applyRefChange`) */
+  const add = [...chosen].filter(([id, o]) => {
+    const c = curOpts.get(id);
+    return !c || c.t !== o.t || c.l !== o.l;
+  }).map(([id]) => id);
   const rm = [...cur.keys()].filter((id) => !chosen.has(id));
   const dirty = add.length + rm.length > 0;
   const narrow = !!q.trim();
@@ -545,12 +560,32 @@ function PrereqPicker({ g, n, p, busy, onSave, onDirty }: {
               {sec.items.map((id) => {
                 const w = g.nodes.get(id)!;
                 const e = errOf(id);
+                const o = chosen.get(id);
                 return (
-                  <label key={id} className={s.checkRow} title={e ?? undefined}>
-                    <input type="checkbox" checked={chosen.has(id)} disabled={busy || (!!e && !chosen.has(id))}
-                      onChange={(ev) => toggle([id], ev.target.checked)} />
-                    <span className={e && !chosen.has(id) ? s.mute : undefined}>{nodeLabel(w)}</span>
-                  </label>
+                  <div key={id} className={s.checkRow}>
+                    <label className={s.checkLabel} title={e ?? undefined}>
+                      <input type="checkbox" checked={!!o} disabled={busy || (!!e && !o)}
+                        onChange={(ev) => toggle([id], ev.target.checked)} />
+                      <span className={e && !o ? s.mute : undefined}>{nodeLabel(w)}</span>
+                    </label>
+                    {o && (
+                      <span className={s.depOpts}>
+                        <select className={s.select} value={o.t} disabled={busy} aria-label={tr('Уялдааны төрөл')}
+                          title={tr('FS — урд ажил дуусмагц · SS — урд ажилтай зэрэг эхэлнэ')}
+                          onChange={(ev) => setOpt(id, { t: ev.target.value as 'FS' | 'SS' })}>
+                          <option value="FS">{tr('дуусаад (FS)')}</option>
+                          <option value="SS">{tr('зэрэг (SS)')}</option>
+                        </select>
+                        <input className={s.lagIn} type="number" step={1} min={-LAG_MAX} max={LAG_MAX} value={o.l} disabled={busy}
+                          aria-label={tr('Хоцрогдол (хоног)')} title={tr('Хоцрогдол (хоног)')}
+                          onChange={(ev) => {
+                            const v = Math.trunc(Number(ev.target.value));
+                            setOpt(id, { l: Number.isFinite(v) ? Math.max(-LAG_MAX, Math.min(LAG_MAX, v)) : 0 });
+                          }} />
+                        <span className={s.mute}>{tr('хоног')}</span>
+                      </span>
+                    )}
+                  </div>
                 );
               })}
             </details>
@@ -561,7 +596,7 @@ function PrereqPicker({ g, n, p, busy, onSave, onDirty }: {
         <button type="button" className={s.primaryBtn} disabled={!dirty || busy}
           onClick={() => {
             void onSave(n, {
-              add: add.map((id) => refOf(g.nodes.get(id)!)),
+              add: add.map((id) => refFor(id, chosen.get(id)!)),
               remove: rm.map((id) => cur.get(id)!.ref),
             });
           }}>

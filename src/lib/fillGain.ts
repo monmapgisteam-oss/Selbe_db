@@ -91,6 +91,26 @@ export function fillGainOf(
   return { blocks, pkg, project };
 }
 
+/** Багц · төслийн ОДООГИЙН гүйцэтгэл, нэгж хувь (0–100) — «одоо → батлахад» харуулахад; тооцогдоогүй бол null */
+export type FillNow = { pkg: number | null; project: number | null };
+
+/**
+ * ОДООГИЙН гүйцэтгэл (2026-11-16, хэрэглэгч: «гүйцэтгэл зөвшөөрөхөд багцад хэдэн хувь нэмэгдэх нь харагдахгүй байна») —
+ * багц: `pkgProgressOf` (блоктой) эсвэл блокгүй багцын хувь; төсөл: ТТБ-ийн Төслийн нийт S. Батлагдаагүй илгээлт хуудсанд
+ * ороогүй тул энэ нь «батлахаас өмнөх» утга.
+ */
+export async function loadFillNow(group: string, synthetic: boolean): Promise<FillNow> {
+  const [{ loadPkgProgress, loadInfraProgress }, { loadProjectPlan }] = await Promise.all([
+    import('@/lib/blockProgress'), import('@/lib/projectPlanInputs'),
+  ]);
+  const [pp, plan] = await Promise.allSettled([synthetic ? loadInfraProgress() : loadPkgProgress(), loadProjectPlan()]);
+  const pkg = pp.status === 'fulfilled' ? pp.value.get(bagtsKey(group))?.pct ?? null : null;
+  const project = plan.status === 'fulfilled' && !plan.value.empty
+    ? plan.value.result.values.get(plan.value.tree.root)?.S ?? null
+    : null;
+  return { pkg, project };
+}
+
 /** Хянагчийн уншилтаас ирэх оролт (`hyanaltDetail.Submission.gain`) */
 export type FillGainIn = { group: string; labels: readonly string[]; dB: readonly (number | null)[]; dA: readonly (number | null)[]; synthetic: boolean };
 
