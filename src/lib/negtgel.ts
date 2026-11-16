@@ -231,6 +231,9 @@ export type NegtgelCalc = {
   auto?: boolean;
   /** Эцгийнхээ нийлбэрт ОРОХГҮЙ мөр — Excel-ийн томьёонд ороогүй (`negtgelTree.NEG_TREE.outside`) */
   outside?: boolean;
+  /** Төслийн нийтэд тооцох — өөрийн утга (0 · 1 · хоосон) ба өвгөөс өвлөсөн «Тооцохгүй» (2026-11-16) */
+  inTotal?: number | null;
+  noTotal?: boolean;
   /** Урьдчилсан төсөвт өртөг, ₮ (эх хүснэгтийнх) */
   budget?: number | null;
   planNextWk?: number | null;
@@ -408,6 +411,11 @@ export type NegtgelFull = {
   src: NegSources | null;
   /** `negtgel` = 182 уншигдаагүй/хоосон тул 187-ийн нөөц; `failed`-д үндсэн эхийг заавал тэмдэглэнэ. */
   source?: 'plan' | 'negtgel';
+  /** Төслийн нийт мөрийн хувиуд (0–100) — ТТБ-ийн үндэс мөр («Төслийн нийтэд тооцохгүй» хасагдсан) */
+  root?: {
+    act: number | null; actPw: number | null;
+    planG: number | null; planGch: number | null; planGu: number | null; planNw: number | null; planPw: number | null;
+  };
 };
 
 /**
@@ -441,6 +449,8 @@ export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectP
       p: fr(v?.G),
       budget: v?.E ?? null,
       outside: n.outside,
+      inTotal: r.niit_tootsoh ?? null,
+      ...(v?.noTotal ? { noTotal: true } : {}),
       act: fr(v?.S), planG: fr(v?.N), planGch: fr(v?.O), planGu: fr(v?.P), planNw: fr(v?.Q), planPw: fr(v?.R),
       perfG: fr(v?.T), perfGch: fr(v?.U), perfGu: fr(v?.V), perfWk: fr(v?.W),
       ctStart: v?.H ?? null, ctEnd: v?.I ?? null,
@@ -480,6 +490,8 @@ export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: s
       perfGuits: pc(r.perfGu),
       auto: r.auto ?? false,
       outside: r.outside,
+      inTotal: r.inTotal,
+      noTotal: r.noTotal,
       budget: r.budget,
       planNextWk: pc(r.planNw),
       planPrevWk: pc(r.planPw),
@@ -509,7 +521,12 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
     if (!plan.empty) {
       const use = negRowsFromPlan(plan);
       const { rows, calc } = negDisplay(use);
-      return { rows, calc, live: true, sync: null, failed: plan.failed, tree: 'excel', stored: use, src: null, source: 'plan' };
+      const rv = plan.result.values.get(plan.tree.root);
+      const root = {
+        act: rv?.S ?? null, actPw: plan.prevWeek?.get(plan.tree.root) ?? null,
+        planG: rv?.N ?? null, planGch: rv?.O ?? null, planGu: rv?.P ?? null, planNw: rv?.Q ?? null, planPw: rv?.R ?? null,
+      };
+      return { rows, calc, live: true, sync: null, failed: plan.failed, tree: 'excel', stored: use, src: null, source: 'plan', root };
     }
   } catch (e) {
     console.warn('[negtgel] «Төсөл төлөвлөгөө биелэлт» уншигдсангүй — 187-ийн тооцоогоор', e);

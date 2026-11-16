@@ -52,6 +52,8 @@ export type PlanStoredRow = {
   guits_duusah?: number | null;
   /** S — 0–100 (зөвхөн ТЭЗҮ · Зураг төсөл · Зөвшөөрөл · Сонгон шалгаруулалтын навчинд) */
   guitsetgel_huvi?: number | null;
+  /** Төслийн нийтэд тооцох — 0 = Тооцохгүй (зөвхөн Төслийн нийт S-ээс хасна), 1/хоосон = Тооцно */
+  niit_tootsoh?: number | null;
   cashflow_id?: number | null;
   /** Гэрээ байгуулсан огноо — L2 «Сонгон шалгаруулалт (гэрээ байгуулсан)» */
   geree_ognoo?: number | null;
@@ -217,6 +219,13 @@ export type PlanValues = {
    * Буулгалт цэвэрлэгээ, Гадна тохижилт/өндөржилт, Инженерийн дэд бүтэц (5.1.1 · 5.1.2 · 5.1.3.2 · 5.1.3.3).
    */
   skip?: true;
+  /**
+   * 2026-11-16 (хэрэглэгч): «Төслийн нийтэд тооцохгүй» мөр (үр удамтайгаа) — эцэг, бүлгийн нийлбэрт ХЭВЭЭР, зөвхөн
+   * Төслийн нийт S-д орохгүй. Ийм мөр нэг ч байхгүй бол `noTotal` · `GT` хоёулаа алга.
+   */
+  noTotal?: true;
+  /** Төслийн нийт S-д эзлэх үр дүнтэй жин (0–100) — хасагдсан мөр 0, бусад нь G-ийг дахин хуваасан */
+  GT?: number | null;
 };
 
 /** Блокийн төлөв — 0 → Эхлээгүй, (0,100) → Эхэлсэн, 100 → Дууссан */
@@ -629,6 +638,8 @@ export type PlanResult = {
   values: Map<PlanNode, PlanValues>;
   /** `dd_kod`-оор — давхардсан код бол `tree.byCode`-ийн ЭХНИЙ мөрийнх (оролтын дараалал) */
   get: (code: string) => PlanValues | undefined;
+  /** «Төслийн нийтэд тооцохгүй» хамгийн дээд мөрүүд ба замын жин (0–1), 1-р түвшний жингийн нийлбэр — сарын цувааны үндэст */
+  noTotal?: { tops: [PlanNode, number][]; W: number };
 };
 
 /** Навчны огноо — өөрийнх, эс бөгөөс хамгийн ойрын өвөг мөрийн (хоёулаа байгаа) */
@@ -685,6 +696,7 @@ function leafValue(n: PlanNode, m: Metric, today: number, inputs: PlanInputs): n
            Хувь зөвхөн үе шатын мөрөнд (төслийн нийт, `override`) */
         return null;
       } else if (n.phase === 'zurag' && inputs.zuragActual) {
+        /* 2026-11-16 (хэрэглэгч): жинхэнэ эх «Зургийн бүртгэл»; бүртгэлд зураггүй багц ч гүйцэтгэлд бодогдоно — хадгалсан хувиар */
         const v = inputs.zuragActual(n.pkg, n);
         if (v !== undefined) return frac(v);
       } else if (n.phase === 'songon' && tenderSigned(n, today)) {
@@ -918,6 +930,55 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
     X.set(n, rec);
   }
 
+  /* ── ТӨСЛИЙН НИЙТЭД ТООЦОХГҮЙ (2026-11-16, хэрэглэгч: «мөрийн өөрийн бодолт хэвээр, хасвал бүх үр дүнгээс
+     хасагдана»). `niit_tootsoh` = 0 мөр үр удамтайгаа эцэг, бүлгийн нийлбэрт ХЭВЭЭР; Төслийн нийт мөрийн БҮХ хувиас
+     (N…S, тэдгээрээс T…W) хасагдаж, үлдсэн мөрүүдийн жингээр дахин хуваагдана:
+     X' = (X − Σ w·x) · W ÷ (W − Σ w), w = замын F-үүдийн үржвэр. Тухайн үзүүлэлт нь дарагдсан (`override`) өвгийн
+     доорх мөр нийтэд тусдаа ордоггүй тул тэр үзүүлэлтэд хасахгүй. ── */
+  const noTotal = new Set<PlanNode>();
+  const tops: [PlanNode, number][] = [];
+  const lostM = {} as Record<Metric, number>;
+  const goneM = {} as Record<Metric, number>;
+  for (const m of METRICS) { lostM[m] = 0; goneM[m] = 0; }
+  let Wt = 0;
+  const markNT = (x: PlanNode) => { noTotal.add(x); x.children.forEach(markNT); };
+  const walkNT = (n: PlanNode, w: number, blk: ReadonlySet<Metric>) => {
+    for (const c of n.children) {
+      if (!counted(c)) continue;
+      const f = F.get(c) ?? null;
+      if (f == null) continue;
+      if (n === root) Wt += f;
+      const cw = w * f;
+      if (c.row?.niit_tootsoh === 0) {
+        markNT(c);
+        tops.push([c, cw]);
+        const x = X.get(c)!;
+        for (const m of METRICS) {
+          if (blk.has(m)) continue;
+          lostM[m] += cw;
+          goneM[m] += cw * (x[m] ?? 0);
+        }
+        continue;
+      }
+      if (!c.children.length) continue;
+      const o = ov.get(c);
+      const ob = o ? METRICS.filter((m) => m in o) : [];
+      walkNT(c, cw, ob.length ? new Set([...blk, ...ob]) : blk);
+    }
+  };
+  walkNT(root, 1, new Set());
+  const kOf = (m: Metric): number | null => (lostM[m] > 0 ? (Wt - lostM[m] > 1e-9 ? Wt / (Wt - lostM[m]) : null) : 1);
+  const kT = kOf('S');
+  if (tops.length) {
+    const rx = X.get(root)!;
+    for (const m of METRICS) {
+      if (!(lostM[m] > 0)) continue;
+      const k = kOf(m);
+      rx[m] = rx[m] == null || k == null ? null : Math.max(0, (rx[m]! - goneM[m]) * k);
+    }
+  }
+  const lost = tops.length;
+
   const values = new Map<PlanNode, PlanValues>();
   for (const n of [root, ...nodes]) {
     const x = X.get(n)!;
@@ -933,9 +994,16 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
       T: ratio(S, N), U: ratio(S, O), V: ratio(S, P), W: ratio(S, R),
       status: n.blok ? blockStatus(S) : null,
       ...(skip.has(n) ? { skip: true as const } : {}),
+      ...(lost > 0 ? {
+        GT: noTotal.has(n) ? 0 : hund(G.get(n) == null || kT == null ? null : G.get(n)! * kT),
+        ...(noTotal.has(n) ? { noTotal: true as const } : {}),
+      } : {}),
     });
   }
-  return { tree, today, values, get: (code) => { const n = tree.byCode.get(code); return n ? values.get(n) : undefined; } };
+  return {
+    tree, today, values, get: (code) => { const n = tree.byCode.get(code); return n ? values.get(n) : undefined; },
+    ...(tops.length ? { noTotal: { tops, W: Wt } } : {}),
+  };
 }
 
 /* ══════════════════ Сарын хуримтлагдсан цуваа («…сараар») ══════════════════ */
@@ -978,6 +1046,17 @@ export function monthlySeries(
       return n.row ? plannedLeaf(n, t, inputs) : null;
     });
     out.set(n, s);
+  }
+  /* 2026-11-16: «Төслийн нийтэд тооцохгүй» — үндсэн цуваанаас хасч дахин жигнэнэ (`computePlan`-тай ижил) */
+  const nt = res.noTotal;
+  if (nt) {
+    const lost = nt.tops.reduce((a, [, w]) => a + w, 0);
+    const k = nt.W - lost > 1e-9 ? nt.W / (nt.W - lost) : null;
+    out.set(root, out.get(root)!.map((v, i) => {
+      if (v == null || k == null) return null;
+      const gone = nt.tops.reduce((a, [n, w]) => a + w * (out.get(n)![i] ?? 0), 0);
+      return Math.max(0, (v - gone) * k);
+    }));
   }
   for (const [n, s] of out) out.set(n, s.map(hund));
   return out;
