@@ -546,7 +546,7 @@ export function GeneralDash({
               <Timeline points={cfCurve} grain={grainOf(period)} total={cfTotal} mode={cfMode} />
             ))}
           </Data>
-          {cfGate.state === 'ready' && cfGapsNote && <div role="status"><Note>{cfGapsNote}</Note></div>}
+          {cfGate.state === 'ready' && cfGapsNote && <div role="status" className={g.warnNote}><Note>{cfGapsNote}</Note></div>}
         </Section>
       </div>
       </div>
@@ -1084,6 +1084,12 @@ function FinCharts({
           selected={onX('type')}
           onSelect={pickX('type')}
         />
+        <p className={g.foot}>
+          <span className={g.tlKey}>
+            <b style={{ background: BAR_HUE }} />{tr('Гэрээлсэн')}
+            <b style={{ background: 'var(--warn)' }} />{tr('Биелэлт')}
+          </span>
+        </p>
       </Section>
 
       {/*
@@ -1820,7 +1826,7 @@ function LandCard({
                 />
               )}
 
-            <h4 className={g.sub}>{tr('Ажлын төрлөөр давхцаж буй')}</h4>
+            {reason != null && <h4 className={g.sub}>{tr('Ажлын төрлөөр давхцаж буй')}</h4>}
             {reason == null ? null
               : ov == null || byReason.state === 'loading' ? (
               <p className={g.wait}>{tr('Давхцлыг тооцож байна…')}</p>
@@ -1998,6 +2004,9 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
                 + (netMissing ? ` ${tr('(дутуу: {0} давхарга)', num(netMissing))}` : ''),
             });
           }
+          if (existing != null && fresh != null) {
+            lines.unshift({ key: 'built', label: tr('Одоо байгаа · шинэ барилга'), text: `${num(existing)} · ${num(fresh)}` });
+          }
           const zones = cnt('zone');
           if (zones != null) lines.push({ key: 'zone', label: tr('Хот төлөвлөлтийн бүс'), text: num(zones) });
 
@@ -2006,12 +2015,7 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
               <Stats cols={2}>
                 <Stat
                   value={cnt('et:24') == null ? '—' : num(cnt('et:24')!)}
-                  label={existing != null && fresh != null
-                    ? tr('Нийт барилга (одоо {0} · шинэ {1})', num(existing), num(fresh))
-                    : builtFailed
-                      ? tr('Нийт барилга (одоо {0} · шинэ {1})', '—', '—')
-                      : tr('Нийт барилга (Ерөнхий төлөвлөгөө)')}
-                  accent
+                  label={tr('Нийт барилга')}
                 />
                 <Stat
                   value={started.state === 'ready' ? num(started.data) : started.state === 'error' ? '—' : '…'}
@@ -2050,11 +2054,14 @@ function HseCard() {
       {denied ? <Empty icon="shield" label={tr('Танд энэ хэсгийг харах эрх олгогдоогүй')} /> : (
       <Data q={hse} minH={130}>
         {(d) => (d == null ? <Empty label={tr('Бүртгэл алга')} /> : (
-          <Stats cols={3}>
-            <Stat value={num(d.workers)} label={tr('Ажиллаж буй хүн')} accent />
-            <Stat value={num(d.equipment)} label={tr('Техник хэрэгсэл')} />
-            <Stat value={num(d.manHours)} label={tr('Хүн цаг (ажилтан × 8 цаг, тооцоолсон)')} />
-          </Stats>
+          <>
+            <Stats cols={3}>
+              <Stat value={num(d.workers)} label={tr('Ажиллаж буй хүн')} />
+              <Stat value={num(d.equipment)} label={tr('Техник хэрэгсэл')} />
+              <Stat value={num(d.manHours)} label={tr('Хүн цаг')} />
+            </Stats>
+            <p className={g.foot}>{tr('Хүн цаг = ажилтан × 8 цаг (тооцоолсон)')}</p>
+          </>
         ))}
       </Data>
       )}
