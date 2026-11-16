@@ -222,7 +222,7 @@ const agree = (u, tag) => eq(hvRow(u).open, views(u).includes('huvaari'), `${tag
   const aj = strip(fs.readFileSync('src/modules/huvaari/useAjil.ts', 'utf8'));
   ok(/if \(!canAddRow\) continue;/.test(aj), '§4 нэмэлт ажил — мөр нэмэх эрхгүй бол бичихгүй');
   const dp = strip(fs.readFileSync('src/modules/huvaari/useDragPlan.ts', 'utf8'));
-  ok(/if \(!canEdit \|\| locked \|\| busy\)/.test(dp), '§4 чирэлт — засах эрхгүй бол хөдлөхгүй');
+  ok(/if \(!canEdit \|\| locked \|\| busy(?: \|\| [^)]+\))?\)/.test(dp), '§4 чирэлт — засах эрхгүй бол хөдлөхгүй');
   const pm = strip(fs.readFileSync('src/modules/huvaari/PlanModal.tsx', 'utf8'));
   ok(/if \(!canEdit \|\| applyOff\) return;/.test(pm), '§4 PlanModal «Тавих» — засах эрхгүй бол хаалттай');
   const hb = strip(fs.readFileSync('src/lib/huvaariBatlah.ts', 'utf8'));
