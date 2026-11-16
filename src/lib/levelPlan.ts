@@ -14,9 +14,12 @@ import {
   saneDate, ubToday, type PhaseKind, type PlanNode, type PlanTree, type PlanValues,
 } from './projectPlan';
 import { SHEET_PKGS, loadProjectPlan, type ProjectPlan } from './projectPlanInputs';
-import { CASHFLOW_NEW, CF_MONTH, bagtsKey, buildingKey, pkgKeyOf, isConstructionNo } from './services';
+import { CASHFLOW_NEW, CF_MONTH, bagtsKey, blockKey, buildingKey, pkgKeyOf, isConstructionNo } from './services';
 import { PKGS, SYNTHETIC_BLOCK, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, computeAll, childIndexes, type Calc, type SheetRow } from '@/modules/sheet/bagtsSheet';
+import { toPlanRows } from '@/modules/huvaari/util';
+import { codeIndex, effSpan } from './deps';
+import { buildGraph } from './workDeps';
 import { planFields } from './planProgress';
 import { queryFeatures } from './query';
 import { cached, SESSION_TTL_MS } from './live';
@@ -492,6 +495,200 @@ export function mergePhases(list: readonly (readonly SubGroup[] | WeightedPhases
   }));
 }
 
+/* ══════════════════ 7б. Ажлын холбоос — 6 түвшин бүрт (2026-11-13) ══════════════════ */
+
+/**
+ * Ажлын холбоосын төгсгөл — хуудасны багц (`bagtsKey(PKGS.group)`), блок (`blockKey`; null — блокгүй, багц хоорондын
+ * холбоос), дэд үе шат (Б1…Б5, `phaseKey`), дэд бүлэг (Б1-ийн хүүхэд эсвэл Б2…Б5). «Б.»-ээс гадуурх мөрд phase/group null.
+ */
+export type LinkEnd = { pkg: string; blok: string | null; phase: string | null; group: string | null };
+/**
+ * Ажлын нэг холбоос — Хуваарийн уялдаа (`hamaaral`, блок бүрээр) эсвэл багц хоорондын (`bagts_hamaaral`).
+ * `id` — ажлын холбоосын ялгах тэмдэг (блокоор давтагдсаныг нэг тоолно).
+ */
+export type WorkLink = { id: string; a: LinkEnd; b: LinkEnd; ss: boolean; viol: boolean };
+/**
+ * Түвшний мөр хоорондын холбоос. `from`/`to` — мөрийн `lk`-ийн нэр дэвшигчид, нарийнаас бүдүүн рүү: харагдацад ЭХНИЙ
+ * харагдаж буй мөр сонгогдоно (хураасан блокийн дэд бүлгийн холбоос блок дээр гарна). `ids`/`ss`/`viol` — ажлын холбоос.
+ */
+export type RowLink = { from: string[]; to: string[]; ids: Set<string>; ss: Set<string>; viol: Set<string> };
+
+/** Дэд үе шат / бүлгийн түлхүүр — `mergePhases`-ийн (№ + нэр) тааруулалттай ижил */
+export const phaseKey = (no: unknown, name: unknown): string => `${String(no ?? '').trim()}|${String(name ?? '').trim()}`;
+
+/** Мөр бүрийн дэд үе шат ба дэд бүлэг — `blockDetail`-ийн phases/groups-ийн задаргаатай ижил */
+function phaseGroupOf(rows: readonly SheetRow[]): { phase: (string | null)[]; group: (string | null)[] } {
+  const phase: (string | null)[] = rows.map(() => null);
+  const group: (string | null)[] = rows.map(() => null);
+  const bi = rows.findIndex((r) => isConstructionNo(r.no));
+  if (bi < 0) return { phase, group };
+  const kids = childIndexes(rows as SheetRow[]);
+  const mark = (i: number, ph: string, gr: string) => {
+    phase[i] = ph;
+    group[i] = gr;
+    for (const k of kids[i]) mark(k, ph, gr);
+  };
+  for (const k of kids[bi]) {
+    const ph = phaseKey(rows[k].no, rows[k].work);
+    if (isB1(rows[k].no) && kids[k].length) {
+      phase[k] = ph;
+      for (const g of kids[k]) mark(g, ph, phaseKey(rows[g].no, rows[g].work));
+    } else mark(k, ph, ph);
+  }
+  return { phase, group };
+}
+
+/**
+ * Нэг хуудасны Хуваарийн уялдаа (цэвэр) — блок бүрээр, «Хуваарь»-ын сумны дүрмээр: хамаарагчийн блок `b`, урьдчилагчийнх
+ * `src ?? b`; зөрчил — FS: эхлэх < дуусах + 1 + lag, SS: эхлэх < эхлэх + lag.
+ */
+export function sheetLinks(rows: readonly SheetRow[], pkg: string, bld: readonly string[]): WorkLink[] {
+  const { phase, group } = phaseGroupOf(rows);
+  const n = bld.length;
+  const pr = toPlanRows(rows as SheetRow[], n);
+  const byCode = codeIndex(pr);
+  const ends = new Map<string, LinkEnd>();
+  const end = (i: number, b: number): LinkEnd => {
+    const k = `${i}:${b}`;
+    let e = ends.get(k);
+    if (!e) { e = { pkg, blok: blockKey(bld[b]), phase: phase[i], group: group[i] }; ends.set(k, e); }
+    return e;
+  };
+  const out: WorkLink[] = [];
+  pr.forEach((r, i) => {
+    r.deps.forEach((dep, j) => {
+      const pi = byCode.get(dep.code);
+      if (pi == null || pi === i) return;
+      const id = `${pkg}:${r.oid}:${j}`;
+      const bs = dep.blk != null ? [dep.blk] : Array.from({ length: n }, (_, b) => b);
+      for (const b of bs) {
+        const sb = dep.src ?? b;
+        if (b < 0 || b >= n || sb < 0 || sb >= n) continue;
+        const ts = effSpan(pr, i, b);
+        const ps = effSpan(pr, pi, sb);
+        const need = ps ? (dep.type === 'FS' ? ps.end + (1 + dep.lag) * DAY : ps.start + dep.lag * DAY) : null;
+        out.push({ id, a: end(pi, sb), b: end(i, b), ss: dep.type === 'SS', viol: !!ts && need != null && ts.start < need });
+      }
+    });
+  });
+  return out;
+}
+
+/** Багц хоорондын холбоосын хуудас — `p` = `PKGS.key`, `bham` = `bagts_hamaaral` талбарын нэр (алга бол null) */
+export type CrossSheet = { p: string; pkg: string; rows: readonly SheetRow[]; bld: readonly string[]; bham: string | null };
+
+/**
+ * Багц хоорондын ажлын холбоос (`bagts_hamaaral`, цэвэр) — блокгүй, FS. Зөрчил: хамаарагчийн хамгийн эрт эхлэх <
+ * урьдчилагчийн хамгийн хожуу дуусах + 1 өдөр (блокуудаар).
+ */
+export function crossLinks(sheets: readonly CrossSheet[]): WorkLink[] {
+  const g = buildGraph(sheets.map((sh) => ({
+    p: sh.p,
+    field: !!sh.bham,
+    rows: sh.rows.map((r) => ({
+      oid: r.oid, no: r.no, work: r.work, depth: r.depth, group: r.group, des: r.des,
+      val: sh.bham ? r.raw?.[sh.bham] ?? null : undefined,
+    })),
+  })));
+  const info = new Map(sheets.map((sh) => {
+    const n = sh.bld.length;
+    const pr = toPlanRows(sh.rows as SheetRow[], n);
+    const span = (i: number): [number | null, number | null] => {
+      let lo: number | null = null, hi: number | null = null;
+      for (let b = 0; b < n; b += 1) {
+        const s = effSpan(pr, i, b);
+        if (!s) continue;
+        if (lo == null || s.start < lo) lo = s.start;
+        if (hi == null || s.end > hi) hi = s.end;
+      }
+      return [lo, hi];
+    };
+    return [sh.p, { sh, pg: phaseGroupOf(sh.rows), span }] as const;
+  }));
+  const at = new Map<string, { p: string; i: number }>();
+  for (const [p, ids] of g.bySheet) ids.forEach((id, i) => at.set(id, { p, i }));
+  const endOf = (id: string): (LinkEnd & { s: number | null; e: number | null }) | null => {
+    const x = at.get(id);
+    const inf = x && info.get(x.p);
+    if (!x || !inf) return null;
+    const [s, e] = inf.span(x.i);
+    return { pkg: inf.sh.pkg, blok: null, phase: inf.pg.phase[x.i], group: inf.pg.group[x.i], s, e };
+  };
+  const out: WorkLink[] = [];
+  for (const [dep, edges] of g.pre) {
+    const b = endOf(dep);
+    if (!b) continue;
+    for (const ed of edges) {
+      const a = ed.to ? endOf(ed.to) : null;
+      if (!a) continue;
+      const viol = a.e != null && b.s != null && b.s < a.e + DAY;
+      out.push({ id: `x:${dep}>${ed.to}`, a, b, ss: false, viol });
+    }
+  }
+  return out;
+}
+
+/** Багцын хуудасны түлхүүр (`bagtsKey(PKGS.group)`) — блокийн мөрийн `pkg`-ээс, блокгүй бол багцын мөрийнхөөс */
+export const sheetKeyOf = (pk: PkgInfo): string => bagtsKey((pk.blocks[0] ?? pk.node).pkg ?? '');
+
+/** Түвшин бүрийн мөрийн `lk` — `buildL*`/`buildLook` эдгээрээр тэмдэглэнэ */
+export const LK = {
+  node: (n: PlanNode) => `n:${n.index}`,
+  pkg: (pk: PkgInfo) => `p:${sheetKeyOf(pk)}`,
+  phase: (pk: PkgInfo, ph: string) => `f:${sheetKeyOf(pk)}#${ph}`,
+  block: (b: PlanNode) => `b:${blockKeyFor(b.pkg, b.blok ?? '')}`,
+  group: (b: PlanNode, gr: string) => `g:${blockKeyFor(b.pkg, b.blok ?? '')}#${gr}`,
+};
+
+/** Төгсгөлийн мөрийн нэр дэвшигчид (нарийнаас бүдүүн) — `LK`-тай ижил хэлбэр */
+function candidatesOf(e: LinkEnd, lvl: number, l1: ReadonlyMap<string, string[]>): string[] {
+  const p = `p:${e.pkg}`;
+  if (lvl === 1) return l1.get(e.pkg) ?? [];
+  if (lvl === 2) return [p];
+  if (lvl === 3) return e.phase ? [`f:${e.pkg}#${e.phase}`, p] : [p];
+  const out: string[] = [];
+  const bk = e.blok != null ? `${e.pkg}|${e.blok}` : null;
+  if (lvl >= 5 && bk && e.group) out.push(`g:${bk}#${e.group}`);
+  if (bk) out.push(`b:${bk}`);
+  if (e.phase) out.push(`f:${e.pkg}#${e.phase}`);
+  out.push(p);
+  return out;
+}
+
+/**
+ * Түвшний мөр хоорондын холбоос (цэвэр) — ажлын холбоосыг нэр дэвшигчийн хосоор нэгтгэнэ. L1-д багцын мөр байхгүй тул
+ * багцын модны өвгүүдээр (чиглэл · дэд чиглэл).
+ */
+export function levelLinks(links: readonly WorkLink[], lvl: number, pkgs: readonly PkgInfo[]): RowLink[] {
+  const l1 = new Map<string, string[]>();
+  if (lvl === 1) {
+    for (const pk of pkgs) {
+      const chain: string[] = [];
+      for (let x: PlanNode | null = pk.node; x; x = x.parent) chain.push(LK.node(x));
+      l1.set(sheetKeyOf(pk), chain);
+    }
+  }
+  const memo = new Map<LinkEnd, string[]>();
+  const cand = (e: LinkEnd) => {
+    let c = memo.get(e);
+    if (!c) { c = candidatesOf(e, lvl, l1); memo.set(e, c); }
+    return c;
+  };
+  const m = new Map<string, RowLink>();
+  for (const w of links) {
+    const from = cand(w.a);
+    const to = cand(w.b);
+    if (!from.length || !to.length) continue;
+    const k = `${from.join(',')}>${to.join(',')}`;
+    let x = m.get(k);
+    if (!x) { x = { from, to, ids: new Set(), ss: new Set(), viol: new Set() }; m.set(k, x); }
+    x.ids.add(w.id);
+    if (w.ss) x.ss.add(w.id);
+    if (w.viol) x.viol.add(w.id);
+  }
+  return [...m.values()];
+}
+
 /** Блокийн түлхүүр — Excel-ийн «Багц-4.2» + «6/1» → «БАГЦ42|6/1» (`projectPlanInputs.blockKeyOf`-тэй ижил) */
 export const blockKeyFor = (pkg: string | null | undefined, blok: string): string => buildingKey(pkg ?? '', blok);
 
@@ -522,6 +719,8 @@ export type GRow =
     alt?: boolean;
     /** Дуусах огнооны таамаг (`forecastEnd`) */
     fc?: number | null;
+    /** Холбоосын түлхүүр (`LK`, `levelLinks`) */
+    lk?: string;
   }
   | { t: 'ms'; id: string; name: string; depth: number; at: number | null; status: MsStatus }
   | { t: 'note'; id: string; name: string; depth: number };
@@ -557,7 +756,7 @@ const nameOf = (n: PlanNode): string => String(n.row?.ajil_uilchilgee ?? '').tri
 
 function barRow(
   res: ProjectPlan['result'], n: PlanNode, id: string, name: string, depth: number, today: number,
-  opts: { strong?: boolean; phase?: PhaseKind; noFc?: boolean } = {},
+  opts: { strong?: boolean; phase?: PhaseKind; noFc?: boolean; lk?: string } = {},
 ): GRow {
   const v = res.values.get(n);
   const phase = opts.phase ?? n.phase;
@@ -583,6 +782,7 @@ function barRow(
     status: barStatus(s, e, actual, planned, today, !alt), strong: opts.strong, inh, alt,
     /* Нэгтгэл мөрд таамаг БАЙХГҮЙ: олон багц эхлээгүй тул хурд нь утгагүй, багцаасаа ч эрт дуусах огноо гардаг байв */
     fc: opts.noFc ? null : forecastEnd(s, actual, today),
+    ...(opts.lk ? { lk: opts.lk } : {}),
   };
 }
 
@@ -623,12 +823,12 @@ export function buildL1(plan: ProjectPlan, today: number): GRow[] {
       const id = `L1.2.${i + 1}`;
       const v = res.values.get(d);
       const ctEnd = v?.I ?? latestSigned(d);
-      rows.push(barRow(res, d, id, nameOf(d), 1, today, { strong: true, noFc: true }));
+      rows.push(barRow(res, d, id, nameOf(d), 1, today, { strong: true, noFc: true, lk: LK.node(d) }));
       rows.push({ t: 'ms', id: `${id}.0`, name: tr('Гэрээний дуусах огноо'), depth: 2, at: ctEnd, status: milestoneStatus(ctEnd, doneOf(v?.S), today) });
       if (!isPkgKey(ownKey(d))) {
         d.children
           .filter((c) => c.children.length && !isPkgKey(ownKey(c)))
-          .forEach((c, j) => rows.push(barRow(res, c, `${id}.${j + 1}`, nameOf(c), 2, today, { noFc: true })));
+          .forEach((c, j) => rows.push(barRow(res, c, `${id}.${j + 1}`, nameOf(c), 2, today, { noFc: true, lk: LK.node(c) })));
       }
     });
   }
@@ -705,7 +905,7 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     }
     const cv = res.values.get(pk.node);
     const built = doneOf(cv?.S);
-    rows.push(barRow(res, pk.node, next(), tr('Барилга ажил'), 1, today, { strong: true }));
+    rows.push(barRow(res, pk.node, next(), tr('Барилга ажил'), 1, today, { strong: true, lk: LK.pkg(pk) }));
     const ctEnd = cv?.I ?? signedEnd(pk.node);
     rows.push({ t: 'ms', id: next(), name: tr('Гэрээний дуусах огноо'), depth: 1, at: ctEnd, status: milestoneStatus(ctEnd, built, today) });
     const ho = pk.node.row?.ashiglalt_ognoo ?? mk(pk.node)?.handover ?? null;
@@ -736,7 +936,7 @@ export function buildL3(
     else if (!zur.children.length) rows.push(barRow(res, zur, `${id}.1.1`, tr('Зураг төсөл'), 2, today));
     else zur.children.forEach((c, k) => rows.push(barRow(res, c, `${id}.1.${k + 1}`, nameOf(c), 2, today)));
     rows.push({ t: 'section', id: `${id}.2`, name: tr('Барилга угсралт'), depth: 1 });
-    rows.push(barRow(res, pk.node, `${id}.2.1`, tr('Барилга угсралт — нийт'), 2, today, { strong: true }));
+    rows.push(barRow(res, pk.node, `${id}.2.1`, tr('Барилга угсралт — нийт'), 2, today, { strong: true, lk: LK.pkg(pk) }));
     if (detail) {
       /* Блоктой — блок бүрийн «Б.»-ийн дэд үе шат, блокийн жингээр (F); блокгүй (шугам сүлжээ) — «Ажил» блокийнх */
       /* 2026-11-05: ТАЙЛАНГҮЙ блок (хуудсанд «Б.» алга) — «нийт» мөр түүнийг 0% гэж жигнэдэг тул дэд үе шатад ч 0%-аар
@@ -759,6 +959,7 @@ export function buildL3(
         start: g.start, end: g.end, actual: g.actual, planned: g.planned ?? null,
         status: barStatus(g.start, g.end, g.actual, g.planned ?? null, today),
         fc: forecastEnd(g.start, g.actual, today),
+        lk: LK.phase(pk, phaseKey(g.no, g.name)),
       }));
     }
   });
@@ -781,6 +982,8 @@ export type HRow = {
   sum?: number | null;
   /** Нүдний оронд харагдах тайлбар («Хуваарь хуваарилагдаагүй») — бүх нүд null үед */
   note?: string;
+  /** Холбоосын түлхүүр (`LK`, `levelLinks`) */
+  lk?: string;
 };
 /** `note` — багцын тооцооны арга (толгойд), `methodNote` */
 export type HSection = { pkg: PkgInfo; rows: HRow[]; note?: string };
@@ -820,7 +1023,7 @@ function infraRows(detail: ReadonlyMap<string, BlockDetail> | null, pk: PkgInfo,
     const cells = cols.map((c) => (dated ? linearShare(g.weight, g.start, g.end, c.from, c.days) : null));
     return {
       id: `${id}.g${gi + 1}`, name: g.name || g.no, kind: 'group', w: g.weight,
-      start: g.start, end: g.end, actual: g.actual, cells,
+      start: g.start, end: g.end, actual: g.actual, cells, lk: LK.phase(pk, phaseKey(g.no, g.name)),
       ...(withSum ? { sum: sumAll(cells) } : {}),
       ...(dated ? {} : { note: tr('Хуваарь хуваарилагдаагүй') }),
     };
@@ -839,9 +1042,9 @@ export function buildL4(plan: ProjectPlan, pkgs: readonly PkgInfo[], detail: Rea
     const id = `L4.${j + 1}`;
     const cum = monthly.get(pk.node) ?? empty;
     const rows: HRow[] = [
-      hRowOf(res, pk.node, `${id}.0`, tr('Багцын нийт'), 'total', increments(cum)),
+      { ...hRowOf(res, pk.node, `${id}.0`, tr('Багцын нийт'), 'total', increments(cum)), lk: LK.pkg(pk) },
       { ...hRowOf(res, pk.node, `${id}.c`, tr('Өсөх дүн'), 'cum', [...cum]), actual: null, start: null, end: null },
-      ...pk.blocks.map((b, k) => hRowOf(res, b, `${id}.${k + 1}`, b.blok!, 'block', increments(monthly.get(b) ?? empty))),
+      ...pk.blocks.map((b, k) => ({ ...hRowOf(res, b, `${id}.${k + 1}`, b.blok!, 'block', increments(monthly.get(b) ?? empty)), lk: LK.block(b) })),
       ...infraRows(detail, pk, id, mcols, false),
     ];
     return { pkg: pk, rows, note: methodNote(plan, pk) };
@@ -865,17 +1068,17 @@ export function buildLook(
   return pkgs.map((pk, j) => {
     const id = `L${cols[0]?.days === 1 ? 6 : 5}.${j + 1}`;
     const tot = hRowOf(res, pk.node, `${id}.0`, tr('Багцын нийт'), 'total', seriesCells(pk.node));
-    const rows: HRow[] = [{ ...tot, sum: sumAll(tot.cells) }];
+    const rows: HRow[] = [{ ...tot, sum: sumAll(tot.cells), lk: LK.pkg(pk) }];
     pk.blocks.forEach((b, k) => {
       const br = hRowOf(res, b, `${id}.${k + 1}`, b.blok!, 'block', seriesCells(b));
-      rows.push({ ...br, sum: sumAll(br.cells) });
+      rows.push({ ...br, sum: sumAll(br.cells), lk: LK.block(b) });
       if (!withGroups || !detail) return;
       const d = detail.get(blockKeyFor(b.pkg, b.blok!));
       d?.groups.forEach((g, gi) => {
         const cells = cols.map((c) => linearShare(g.weight, g.start, g.end, c.from, c.days));
         rows.push({
           id: `${id}.${k + 1}.${gi + 1}`, name: g.name || g.no, kind: 'group', w: g.weight,
-          start: g.start, end: g.end, actual: g.actual, cells, sum: sumAll(cells),
+          start: g.start, end: g.end, actual: g.actual, cells, sum: sumAll(cells), lk: LK.group(b, phaseKey(g.no, g.name)),
         });
       });
     });
@@ -980,10 +1183,12 @@ export type SheetDetail = {
   blocks: Map<string, BlockDetail>;
   /** Уншигдаагүй хуудсууд (`sheet:b1_9f`) — тэр багцын блокууд дэд бүлэггүй */
   failed: string[];
+  /** Ажлын холбоос — Хуваарийн уялдаа (`sheetLinks`) ба багц хоорондын (`crossLinks`); 6 түвшин бүрт `levelLinks`-ээр */
+  links: WorkLink[];
 };
 
 /**
- * Бөглөх хуудсуудын дэд бүлэг (L3 · L5 · L6) — L1/L2/L4 нээхэд ТАТАХГҮЙ (харагдац тэр табыг нээхэд л дуудна).
+ * Бөглөх хуудсуудын дэд бүлэг (L3 · L5 · L6) ба ажлын холбоос (6 түвшин бүрт, 2026-11-13 — тиймээс L1/L2-т ч ачаална).
  */
 async function fetchSheetDetail(): Promise<SheetDetail> {
   const today = ubToday();
@@ -992,10 +1197,10 @@ async function fetchSheetDetail(): Promise<SheetDetail> {
     try {
       const sc = await loadSchema(pkg, pkg.floors != null ? {} : { synthetic: true });
       if (!sc.bld.length) return null;
-      const fields = [...new Set([...planFields(sc), ...sc.act, ...sc.obyem].filter((x): x is string => !!x))];
+      const fields = [...new Set([...planFields(sc), ...sc.act, ...sc.obyem, sc.f.des, sc.f.ham, sc.f.bham].filter((x): x is string => !!x))];
       const r = await loadRows(pkg, sc, undefined, fields, { persist: true });
       const calc = computeAll(r.rows, sc.bld.length, today, {}, {}, sc.obyem.map((f) => !!f));
-      return { group: pkg.group, bld: sc.bld, rows: r.rows, calc, order };
+      return { p: pkg.key, group: pkg.group, bld: sc.bld, rows: r.rows, calc, order, bham: sc.f.bham ?? null };
     } catch (e) {
       failed.push(pkg.key);
       console.warn(`[selbe] 6 түвшний хуваарь: ${pkg.key} бөглөх хуудас уншигдсангүй`, e);
@@ -1006,7 +1211,11 @@ async function fetchSheetDetail(): Promise<SheetDetail> {
   const ok = got
     .filter((x): x is NonNullable<typeof x> => !!x && !bad.has(bagtsKey(x.group)))
     .sort((a, b) => a.order - b.order);
-  return { blocks: sheetDetails(ok), failed: failed.map((k) => `sheet:${k}`) };
+  const links = [
+    ...ok.flatMap((x) => sheetLinks(x.rows, bagtsKey(x.group), x.bld)),
+    ...crossLinks(ok.map((x) => ({ p: x.p, pkg: bagtsKey(x.group), rows: x.rows, bld: x.bld, bham: x.bham }))),
+  ];
+  return { blocks: sheetDetails(ok), failed: failed.map((k) => `sheet:${k}`), links };
 }
 export const loadSheetDetail = cached(fetchSheetDetail, SESSION_TTL_MS, ['BAGTS_SHEET'], (v) => !v.failed.length);
 

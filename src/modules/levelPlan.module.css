@@ -143,6 +143,25 @@
 }
 
 /* ══════════════════ Гант ══════════════════ */
+.lkWrap { position: relative; }
+/* Холбоосын сум — «Хуваарь»-ын `.dep*`-тэй ижил; sticky баганын (z 1) доор, зурвасын дээр */
+.lkSvg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.lkLine {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ink-2) 65%, transparent);
+  stroke-width: 1.2;
+}
+.lkBad { fill: none; stroke: var(--bad); stroke-width: 1.5; }
+.lkHit { fill: none; stroke: transparent; stroke-width: 8; pointer-events: stroke; }
+.lkArrN { fill: color-mix(in srgb, var(--ink-2) 65%, transparent); }
+.lkArrB { fill: var(--bad); }
 .gt {
   border-collapse: separate;
   border-spacing: 0;

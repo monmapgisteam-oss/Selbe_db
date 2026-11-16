@@ -453,4 +453,57 @@ const stored = fx.rows.map((r, i) => ({
   assert.ok(b0.fc != null, 'багцын мөр таамагтай хэвээр');
 }
 
+/* ══════════ 9. Ажлын холбоос (2026-11-13) — 6 түвшин бүрт, Хуваарийн уялдаа + багц хоорондын ══════════ */
+{
+  const { sheetLinks, crossLinks, levelLinks, phaseKey } = await import('./levelPlan.ts');
+  const r = (no, work, depth, des, ham, s0, e0, s1 = null, e1 = null, raw = {}) => ({
+    oid: des, no, work, depth, group: false, des, ham, start: [s0, s1], end: [e0, e1], raw,
+  });
+  const rows = [
+    r('А.', 'Бэлтгэл', 0, 1, null, D('2026-01-01'), D('2026-01-31')),
+    r('Б.', 'Барилга', 0, 2, null, null, null),
+    r('Б1', 'Карказ', 1, 3, null, null, null),
+    r('1', 'Суурь', 2, 4, '1FS', D('2026-02-01'), D('2026-03-31'), D('2026-02-01'), D('2026-03-31')),
+    r('2', 'Хана', 2, 5, '4FS', D('2026-04-01'), D('2026-05-31'), D('2026-04-01'), D('2026-05-31')),
+    r('Б2', 'Дотор', 1, 6, null, null, null),
+    r('1', 'Шал', 2, 7, '5FS,4SS@2', D('2026-06-01'), D('2026-06-30'), D('2026-05-15'), D('2026-06-30')),
+  ];
+  rows.forEach((x) => { if (['Б.', 'Б1', 'Б2'].includes(x.no)) x.group = true; });
+  const w = sheetLinks(rows, 'БАГЦ1', ['1', '2']);
+  assert.equal(w.length, 7, 'блок бүрээр: 1FS ×2, 4FS ×2, 5FS ×2, 4SS@2 ×1');
+  const shal = w.filter((x) => x.b.group === phaseKey('Б2', 'Дотор') && !x.ss);
+  assert.deepEqual(shal.map((x) => x.viol), [false, true], '5FS: 1-р блок 06.01 ≥ 06.01, 2-р блок 05.15 < 06.01');
+  assert.ok(w.every((x) => x.a.blok === x.b.blok || x.ss), 'ижил блок (src алга)');
+
+  const pk = { key: 'БАГЦ1', node: { pkg: 'Багц-1', index: 0, parent: null }, blocks: [], label: '', dir: null };
+  const l3 = levelLinks(w, 3, [pk]);
+  const b1b2 = l3.find((x) => x.from[0] === `f:БАГЦ1#${phaseKey('Б1', 'Карказ')}` && x.to[0] === `f:БАГЦ1#${phaseKey('Б2', 'Дотор')}`);
+  assert.equal(b1b2.ids.size, 2, 'L3: блокоор давтагдсан ажлын холбоос нэг тоологдоно (5FS + 4SS)');
+  assert.equal(b1b2.ss.size, 1);
+  assert.equal(b1b2.viol.size, 1);
+  assert.deepEqual(l3.find((x) => x.from[0] === 'p:БАГЦ1').to, [`f:БАГЦ1#${phaseKey('Б1', 'Карказ')}`, 'p:БАГЦ1'], '«Б.»-ээс гадуурх мөр → багцын мөр');
+  const l5 = levelLinks(w, 5, [pk]).find((x) => x.to[0] === `g:БАГЦ1|2#${phaseKey('Б2', 'Дотор')}`);
+  assert.deepEqual(l5.to, [`g:БАГЦ1|2#${phaseKey('Б2', 'Дотор')}`, 'b:БАГЦ1|2', `f:БАГЦ1#${phaseKey('Б2', 'Дотор')}`, 'p:БАГЦ1'],
+    'L5: дэд бүлэг › блок › дэд үе шат › багц');
+  assert.deepEqual(levelLinks(w, 1, [pk])[0].from, ['n:0'], 'L1: багцын модны өвгүүд');
+  assert.deepEqual(levelLinks(w, 2, [pk]).map((x) => x.from), [['p:БАГЦ1']], 'L2: багц доторх нь өөр рүүгээ (сумгүй)');
+
+  const other = [
+    r('Б.', 'Барилга', 0, 1, null, null, null),
+    r('1', 'Дулаан', 1, 2, null, D('2026-05-01'), D('2026-07-31'), null, null,
+      { bagts_hamaaral: JSON.stringify([{ p: 'a', k: '2 ¦ Хана' }]) }),
+  ];
+  other[0].group = true;
+  const x = crossLinks([
+    { p: 'a', pkg: 'БАГЦ1', rows, bld: ['1', '2'], bham: 'bagts_hamaaral' },
+    { p: 'b', pkg: 'БАГЦ2', rows: other, bld: ['Ажил'], bham: 'bagts_hamaaral' },
+  ]);
+  assert.equal(x.length, 1, 'багц хоорондын нэг холбоос');
+  assert.equal(x[0].a.pkg, 'БАГЦ1');
+  assert.equal(x[0].b.pkg, 'БАГЦ2');
+  assert.equal(x[0].a.blok, null, 'блокгүй');
+  assert.equal(x[0].viol, true, 'Дулаан 05.01 < Хана 05.31 + 1');
+  assert.deepEqual(levelLinks(x, 2, [pk])[0].to, ['p:БАГЦ2'], 'L2: багцын мөр хооронд');
+}
+
 console.log('levelPlan.check ✓');
