@@ -17,9 +17,9 @@ import { userError } from '@/components/ui';
 import { queryFeatures } from '@/lib/query';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
-import { bagtsKey, CASHFLOW_NEW, CF_MONTH, CF_MONTH_WHERE, CF_WORK_WHERE, pkgKeyOf } from '@/lib/services';
+import { bagtsKey, CASHFLOW_NEW, CF_MONTH, CF_WORK_WHERE, pkgKeyOf } from '@/lib/services';
 import { cfStartKeyOf } from '@/lib/gdash';
-import { isSwitchPhase, moneyBaseOf, monthSourceOf, PKG_KEYS, SRC_HUVAARI } from '@/lib/monthlyMoney';
+import { isSwitchPhase, moneyBaseOf, PKG_KEYS } from '@/lib/monthlyMoney';
 import { cfPctKey, loadPkgPct, monthStart, patchPkgPct, type PkgPct } from '@/lib/huvaariObyem';
 import { askConfirm } from '@/lib/confirm';
 import { requireCap } from '@/lib/who';
@@ -123,7 +123,7 @@ export function contractsOf(works: readonly Row[], all: PkgPct): Contract[] {
       pkgKey: pkg,
       name: String(w.ajil_uilchilgee ?? '').trim(),
       cost: Number.isFinite(cost) && cost > 0 ? cost : null,
-      huv: monthSourceOf(w[F.monthSource]) === SRC_HUVAARI,
+      huv: true,
       start: msOrNull(w[F.startDate]),
       end: msOrNull(w[F.endDate]),
       key,
@@ -137,7 +137,7 @@ async function loadContracts(): Promise<Contract[]> {
   const [works, pp] = await Promise.all([
     queryFeatures(CASHFLOW_NEW.url, {
       where: CF_WORK_WHERE,
-      outFields: [CASHFLOW_NEW.oid, CF_MONTH.id, F.pkg, F.pkg2, F.phase, F.budget, F.contractAmount, F.amountNote, F.monthSource, F.startDate, F.endDate, 'ajil_uilchilgee'],
+      outFields: [CASHFLOW_NEW.oid, CF_MONTH.id, F.pkg, F.pkg2, F.phase, F.budget, F.contractAmount, F.amountNote, F.startDate, F.endDate, 'ajil_uilchilgee'],
       orderBy: `${CASHFLOW_NEW.oid} ASC`,
     }),
     loadPkgPct(),
@@ -279,14 +279,6 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
     setMsg(null);
     try {
       const pctDirty = months.some((k) => k in pend);
-      /* «Гараар» эхтэй гэрээнд хуучин гараар сарын мөр үлдсэн бол давхар төлөвлөгөө үүсгэхгүй */
-      if (pctDirty && !base.huv) {
-        const left = await queryFeatures(CASHFLOW_NEW.url, {
-          where: `(${CF_MONTH_WHERE}) AND ${CF_MONTH.id} = ${d.id} AND (${CF_MONTH.pct} IS NOT NULL OR ${CF_MONTH.amount} IS NOT NULL)`,
-          outFields: [CASHFLOW_NEW.oid],
-        });
-        if (left.length) throw new Error(tr('Энэ гэрээнд хуучин гараар оруулсан {0} сарын мөр үлдсэн байна — админд мэдэгдэж шилжүүлнэ үү.', left.length));
-      }
       /* Сонгосон саруудын зөвхөн ЗАССАН нь — цонх нээлттэй үед өөр хүний бичсэн сарыг дарахгүй */
       const patch = new Map<string, number | null>(months.filter((k) => k in pend).map((k) => [k, numOf(pend[k])]));
       /* `patchPkgPct` өөрөө эрх шалгадаггүй — хувь бичигдээд огноо эрхгүйгээр унахаас хамгаална */
@@ -294,7 +286,6 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
       const saved = pctDirty ? await patchPkgPct(d.key, d.pkgLabel || d.name, patch) : null;
       const upd: Row = {};
       if (datesDirty) { upd[F.startDate] = startMs; upd[F.endDate] = endMs; }
-      if (pctDirty && !base.huv) upd[F.monthSource] = SRC_HUVAARI;
       if (Object.keys(upd).length) {
         await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: [{ [CASHFLOW_NEW.oid]: d.oid, ...upd }] }, { cap: 'finEdit' });
         invalidate('CASHFLOW_NEW');

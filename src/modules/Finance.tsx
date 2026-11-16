@@ -49,7 +49,7 @@ import {
 import { useAuth } from '@/components/AuthGate';
 import { IpcTable } from '@/modules/IpcTable';
 import {
-  monthSourceOf, confirmAndSwitch, switchPhaseWhy, PKG_KEYS, SRC_HUVAARI, CF_SWITCH_CAP, type MonthlyMoney,
+  SRC_HUVAARI, type MonthlyMoney,
 } from '@/lib/monthlyMoney';
 import type { LiveProgress, ProjectPlan } from '@/lib/projectPlanInputs';
 import { isAddedWork, moneySums, ownSourceTotal, sourceGap, sourceSums, SOURCE_KEYS, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus, type SourceKey, type SourceSums } from '@/lib/projectPlan';
@@ -1080,15 +1080,6 @@ export const lagJudged = (lag: { coverage?: number | null } | null | undefined):
 export const lagLevelOf = (lag: { gap: number; coverage?: number | null } | null | undefined): 'red' | 'yellow' | null =>
   (lag && lagJudged(lag) ? lagLevel(lag.gap) : null);
 
-/**
- * `Cashflow_ID` — хоосон бол `null`.
- */
-const cfIdOf = (v: unknown): number | null => {
-  if (v == null || String(v).trim() === '') return null;
-  const x = Number(v);
-  return Number.isFinite(x) ? x : null;
-};
-
 /* ═══ САРЫН МӨНГӨНИЙ ЭХ — «Гараар» / «Хуваарь» (2026-10-26, `monthlyMoney`-ийн толгой) ═══ */
 
 /** Тооцоолсон ('huvaari') сарын СИНТЕТИК мөрийн тэмдэг — OID-гүй, засагдахгүй */
@@ -1164,8 +1155,6 @@ type PpGroup = { label: string | null; cols: PpCol[] };
 const isSourceKey = (k: PpCol['k']): k is SourceKey => (SOURCE_KEYS as readonly string[]).includes(k);
 /** Хадгалсан утгыг шууд харуулах багана (2026-11-04, хэрэглэгч: «ил гарга») */
 const rawCol = (k: PpRawKey, label: string, kind: PpKind): PpCol => ({ k, label, kind, raw: true });
-/** «Үе шатны хувь» бүлгийн баганууд — утга нь үе шатны мөрөөс (`stageLive`) */
-const STAGE_FIELDS: ReadonlySet<string> = new Set(['tezu', 'ajliin_zurag_tusul', 'gazar_chuluulult', 'zuwshuurul', 'songon_shalgaruulalt']);
 
 /**
  * Excel-ийн үндсэн хуудасны баганууд (E…W), дарааллаар нь. Эх үүсвэрийн 4 багана (захирамжийн дүнгийн задаргаа,
@@ -1231,21 +1220,11 @@ function ppGroups(): PpGroup[] {
         rawCol('ashiglalt_ognoo', tr('Ашиглалтад оруулах огноо'), 'date'),
       ],
     },
-    {
-      label: tr('Үе шатны хувь'),
-      cols: [
-        rawCol('tezu', tr('ТЭЗҮ'), 'pct'),
-        rawCol('ajliin_zurag_tusul', tr('Ажлын зураг төсөл'), 'pct'),
-        rawCol('gazar_chuluulult', tr('Газар чөлөөлөлт'), 'pct'),
-        rawCol('zuwshuurul', tr('Зөвшөөрөл'), 'pct'),
-        rawCol('songon_shalgaruulalt', tr('Сонгон шалгаруулалт'), 'pct'),
-      ],
-    },
+    /* 2026-11-16 (хэрэглэгч): «Үе шатны хувь» бүлэг хасагдсан — хүснэгтээс 5 багана устсан; үе шатны хувь тухайн үе шатны мөрөнд харагдана */
     {
       label: tr('Тайлбар, дугаар'),
       cols: [
         rawCol('ho_dungiin_tailbar', tr('Дүнгийн тайлбар'), 'text'),
-        rawCol('sar_mongo_eh', tr('Сарын мөнгөний эх сурвалж'), 'text'),
       ],
     },
   ];
@@ -1268,10 +1247,6 @@ const ppStatusText = (s: BlockStatus): string =>
  * «Төсөл төлөвлөгөө биелэлт» таб — ачаалагч.
  */
 function ProjectPlanView(props: {
-  works: Row[];
-  months: Row[];
-  monthsError: boolean;
-  canSwitch: boolean;
   canEdit: boolean;
   onSaved: () => void;
 }) {
@@ -1291,14 +1266,10 @@ function ProjectPlanView(props: {
 }
 
 export function ProjectPlanTable({
-  plan, works, months, monthsError, canSwitch, canEdit = false, onSaved,
+  plan, canEdit = false,
 }: {
   /** `live` өгөөгүй бол «Үе шатны хувь» хадгалсан утгаа харуулна */
   plan: ProjectPlan & { live?: PlanWithLive['live'] };
-  works: Row[];
-  months: Row[];
-  monthsError: boolean;
-  canSwitch: boolean;
   /** Гараар оруулах утга засах, мөр нэмэх/устгах (`finEdit`) */
   canEdit?: boolean;
   onSaved: () => void;
@@ -1351,107 +1322,8 @@ export function ProjectPlanTable({
   if (keep) vis.push(...tree.nodes.filter((n) => keep.has(n)));
   else walk(tree.root);
 
-  /* ── Сарын мөнгөний эх — мөнгөний мөр (`cashflow_id`) бүрд ── */
-  const F = CASHFLOW_NEW.fields;
-  const workBy = useMemo(() => {
-    const m = new Map<number, Row>();
-    for (const w of works) {
-      const id = cfIdOf(w[CF_MONTH.id]);
-      if (id != null && !m.has(id)) m.set(id, w);
-    }
-    return m;
-  }, [works]);
-  /**
-   * Гэрээ бүрийн ГАРААР сарын мөрийн тоо ба нийт ₮ (`Cashflow_dun`) — батлуулах цонхны «N сарын мөр (нийт X) устана».
-   */
-  const monthCnt = useMemo(() => {
-    const m = new Map<number, { n: number; total: number | null }>();
-    for (const r of months) {
-      const id = cfIdOf(r[CF_MONTH.id]);
-      if (id == null) continue;
-      const c = m.get(id) ?? { n: 0, total: null };
-      c.n += 1;
-      const raw = r[CF_MONTH.amount];
-      const v = raw == null || String(raw).trim() === '' ? null : Number(raw);
-      if (v != null && Number.isFinite(v)) c.total = (c.total ?? 0) + v;
-      m.set(id, c);
-    }
-    return m;
-  }, [months]);
-
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const busyRef = useRef(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-
-  /**
-   * «ГАРААР → ХУВААРЬ» — гараар сарын мөр УСТАНА, буцаахгүй. Шалгалт (эрх · мөнгөний мөр ганц · багц хуудастай ·
-   * үе шат · атом бичилт · алдагдсан хариуг дахин уншиж батлах) бүгд `switchToHuvaari` дотор.
-   */
-  const doSwitch = async (id: number, w: Row) => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    const pkgText = String(w[F.pkg] ?? '').trim() || '—';
-    const ajil = String(w.ajil_uilchilgee ?? '').trim() || '—';
-    const mc = monthCnt.get(id);
-    setErr(null);
-    setMsg(null);
-    try {
-      const fl = await confirmAndSwitch({
-        cashflowId: id,
-        name: tr('{0} · {1} (Cashflow_ID {2})', pkgText, ajil, id),
-        pkg: pkgKeyOf(w[F.pkg]),
-        phase: w[F.phase],
-        manualRows: mc?.n ?? 0,
-        manualTotal: mc?.total ?? null,
-        money: mnt,
-        ask: askConfirm,
-        onBusy: (b) => setBusyId(b ? id : null),
-      });
-      if (fl.kind === 'refused') { setErr(fl.msg); return; }
-      if (fl.kind === 'cancel') return;
-      const r = fl.result;
-      setMsg(r.already ? tr('Аль хэдийн Хуваарь эхтэй') : tr('Хуваарь руу шилжүүлэв · {0} сарын мөр устгав', r.deleted));
-      onSaved();
-    } catch (e) {
-      setErr(userError(e));
-    } finally {
-      busyRef.current = false;
-      setBusyId(null);
-    }
-  };
-
-  const moneyCell = (n: PlanNode) => {
-    const id = n.row?.cashflow_id;
-    if (id == null) return <td className={f.ppMoney} />;
-    const w = workBy.get(id);
-    if (!w) {
-      return <td className={f.ppMoney} title={tr('Гэрээний бүртгэлд Cashflow_ID {0} мөр алга', id)}>—</td>;
-    }
-    const huv = monthSourceOf(w[F.monthSource]) === SRC_HUVAARI;
-    const srcText = huv ? tr('Хуваарь') : tr('Гараар');
-    const pkgOk = PKG_KEYS.has(pkgKeyOf(w[F.pkg]));
-    const why = !pkgOk
-      ? tr('Энэ гэрээний багцад Хуваарийн бөглөх хуудас алга — шилжүүлэх боломжгүй')
-      : switchPhaseWhy(w[F.phase])
-        ?? (monthsError ? tr('Сарын задаргаа уншигдсангүй — хуудсыг дахин ачаална уу') : undefined);
-    return (
-      <td className={f.ppMoney}>
-        <span className={`${f.ppSrc} ${huv ? f.ppSrcHuv : ''}`} title={tr('Сарын мөнгө: {0}', srcText)}>{srcText}</span>
-        {canSwitch && !huv && (
-          <button
-            type="button"
-            className={f.ppSwitch}
-            disabled={busyId != null || !!why}
-            title={why}
-            onClick={() => void doSwitch(id, w)}
-          >
-            {busyId === id ? tr('Шилжүүлж байна…') : tr('Хуваарь руу шилжүүлэх')}
-          </button>
-        )}
-      </td>
-    );
-  };
 
   const rowCls = (n: PlanNode): string => [
     n.depth === 1 ? f.ppL1 : n.depth === 2 ? f.ppL2 : '',
@@ -1473,19 +1345,12 @@ export function ProjectPlanTable({
   const moneyOf = useMemo(() => moneySums(tree), [tree]);
   /** Төслийн нийт E — «Олгосон хувь (төсөлд)»-ийн хуваарь мөр бүрт (2026-11-04) */
   const rootE = result.values.get(tree.root)?.E;
-  /* «Үе шатны хувь»: мөнгөний мөрийн хадгалсан утгыг ямар ч синк шинэчилдэггүй — тухайн үе шатны мөрийн S (Нэгтгэл, дашбоардтай нэг утга).
-     Тэр багцад үе шатны мөр алга (жишээ нь ТЭЗҮ) бол хадгалсан утга. */
-  const stageLive = (k: PpCol['k'], n?: PlanNode): number | null => {
-    if (!STAGE_FIELDS.has(k)) return null;
-    const id = n?.row?.cashflow_id;
-    return id == null ? null : plan.live?.get(id)?.stages[k] ?? null;
-  };
   const valCells = (v: PlanValues | undefined, blk: boolean, src: SourceSums | undefined, n?: PlanNode) => cols.map((c) => {
     /* 2026-11-03: нэмсэн ажлын төсөвт өртөг — эцгийн төсвөөс жингээр оноосон (бүдэг налуу; нийлбэрт орохгүй) */
     const alloc = c.k === 'E' && v?.E == null && v?.EA != null && !!n && isAddedWork(n);
     const x = CALC_KEYS.includes(c.k) ? ppCalcVal(c.k, n ? moneyOf.get(n) : undefined, rootE)
       : SRC_CALC.includes(c.k) ? (c.k === 'mSrcTot' ? srcTotOf(n, src) : sourceGap(srcTotOf(n, src), v?.E))
-      : c.raw ? (stageLive(c.k, n) ?? (c.k === 'gazar_chuluulult' ? null : (n?.row?.[c.k as PpRawKey] as number | string | null | undefined)) ?? null)
+      : c.raw ? ((n?.row?.[c.k as PpRawKey] as number | string | null | undefined) ?? null)
       : isSourceKey(c.k) ? srcOwn(n, src, c.k) : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip' | 'noTotal' | 'GT'>] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;
     return (
@@ -1744,7 +1609,6 @@ export function ProjectPlanTable({
               {groups.map((g, gi) => (g.label
                 ? <th key={gi} colSpan={g.cols.length} className={f.ppGrp}>{g.label}</th>
                 : <th key={gi} rowSpan={2} className={f.ppHd} title={g.cols[0].title}>{g.cols[0].label}</th>))}
-              <th rowSpan={2} className={f.ppHd}>{tr('Сарын мөнгө')}</th>
             </tr>
             <tr>
               {groups.filter((g) => g.label).flatMap((g) => g.cols).map((c) => (
@@ -1762,7 +1626,6 @@ export function ProjectPlanTable({
               <td className={`${f.ppFz1} ${f.ppPkg}`} />
               <td className={`${f.ppFz2} ${f.ppName}`}>{tr('Төслийн нийт')}</td>
               {valCells(rootV, false, srcOf.get(tree.root), tree.root)}
-              <td className={f.ppMoney} />
             </tr>
             {vis.map((n) => {
               const r = n.row!;
@@ -1773,7 +1636,6 @@ export function ProjectPlanTable({
                   <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
                   {nameCell(n)}
                   {valCells(v, !!n.blok, srcOf.get(n), n)}
-                  {moneyCell(n)}
                 </tr>
               );
             })}
@@ -1802,7 +1664,6 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
   useEffect(() => subscribeCaps(() => setTick((n) => n + 1)), []);
   void tick;
   const canEdit = hasCap(user?.username, 'finEdit');
-  const canSwitch = hasCap(user?.username, CF_SWITCH_CAP);
 
 
   /**
@@ -1856,10 +1717,6 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
       {tab === 'proj' ? (
       <ProjectPlanView
         key="proj"
-        works={d.cashflow}
-        months={d.cfMonths}
-        monthsError={d.cfMonthsError}
-        canSwitch={canSwitch}
         canEdit={canEdit}
         onSaved={onSaved}
       />

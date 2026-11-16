@@ -78,7 +78,8 @@ export function moneyRowOf(r: Readonly<Record<string, unknown>>): MoneyRow | nul
     id,
     pkg: pkgKeyOf(r[F.pkg]),
     cost: cost != null && cost > 0 ? cost : null,
-    source: monthSourceOf(r[F.monthSource]),
+    /* 2026-11-16 (хэрэглэгч: «ямар ч тэмдэг хэрэггүй»): бүх ажлын сарын мөнгө ҮРГЭЛЖ Хуваариас — `sar_mongo_eh` уншихгүй */
+    source: SRC_HUVAARI,
     build: isSwitchPhase(r[F.phase]),
     contracted: String(r[F.amountNote] ?? '').trim() === CONTRACTED,
   };
@@ -414,7 +415,7 @@ export const loadMoneyRows = cached<MoneyRow[]>(async () => {
   const F = CASHFLOW_NEW.fields;
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
     where: CF_WORK_WHERE,
-    outFields: [CASHFLOW_NEW.oid, CF_MONTH.id, F.pkg, F.phase, F.budget, F.contractAmount, F.amountNote, F.monthSource],
+    outFields: [CASHFLOW_NEW.oid, CF_MONTH.id, F.pkg, F.phase, F.budget, F.contractAmount, F.amountNote],
   });
   return rows.map(moneyRowOf).filter((x): x is MoneyRow => x != null);
 }, SESSION_TTL_MS, ['CASHFLOW_NEW']);

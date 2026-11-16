@@ -126,12 +126,12 @@ const render = (canSwitch, ws = works) => renderToStaticMarkup(React.createEleme
 check('толгой ба мөр', () => {
   const html = render(false);
   for (const s of ['Д/Д', 'Багц', 'Ажлын нэр', 'Урьдчилсан төсөвт өртөг', 'Хэсэгт эзлэх', 'Төсөлд эзлэх',
-    'Төлөвлөгөөт хувь', 'Гүйцэтгэлийн хувь', 'Биелэлт', 'Сарын мөнгө', 'Төслийн нийт']) {
+    'Төлөвлөгөөт хувь', 'Гүйцэтгэлийн хувь', 'Биелэлт', 'Төслийн нийт']) {
     assert.ok(html.includes(s), `толгой: ${s}`);
   }
   assert.ok(html.includes('ТЭЗҮ боловсруулах'), 'түвшин 2 дэлгэгдсэн');
   /* 2026-11-04 (хэрэглэгч: «ил гарга»): нуугдмал баганууд хүснэгтэд гарна */
-  for (const s of ['Захирамжийн мэдээлэл', 'Гэрээний мэдээлэл', 'Үе шатны хувь', 'Тайлбар, дугаар', 'Түвшин']) {
+  for (const s of ['Захирамжийн мэдээлэл', 'Гэрээний мэдээлэл', 'Тайлбар, дугаар', 'Түвшин']) {
     assert.ok(html.includes(s), `шинэ бүлэг: ${s}`);
   }
   assert.ok(html.includes('Туршилтын гүйцэтгэгч'), 'хадгалсан бичвэр мөрөнд гарна');
@@ -141,19 +141,8 @@ check('толгой ба мөр', () => {
   assert.ok(/<td[^>]*>2\.1<\/td>/.test(html), 'Д/Д модны байрлалаас');
   assert.ok(html.includes('—'), 'null → «—»');
   assert.ok(html.includes('30.0%') || html.includes('30,0%'), 'S = хадгалсан guitsetgel_huvi (0–100, ×100 үгүй)');
-  assert.ok(html.includes('Гараар') && html.includes('Хуваарь'), 'сарын мөнгөний эхийн тэмдэг');
-  assert.ok(!html.includes('Хуваарь руу шилжүүлэх'), 'эрхгүй бол товчгүй');
-});
-
-check('«Үе шатны хувь» (2026-11-06) — үе шатны мөрийн амьд утга; мөр алга бол хадгалсан утга', () => {
-  const r2 = rows.map((r) => (r.dd_kod === '1.1' ? { ...r, zuwshuurul: 61.5, tezu: 44.5 } : r));
-  const p2 = assemblePlan(r2, { actual: { blocks: null, universe: null, infra: null }, sched: null, land: new Map() }, D(2026, 7, 2));
-  const html = (pl) => renderToStaticMarkup(React.createElement(ProjectPlanTable, { plan: pl, works, months, monthsError: false, canSwitch: false, onSaved: noop }));
-  assert.ok(html(p2).includes('61.5%') || html(p2).includes('61,5%'), '`live` өгөөгүй — хадгалсан утга');
-  const shown = html({ ...p2, live: new Map([[7, { S: 30, stages: { zuwshuurul: 33.25, tezu: null } }]]) });
-  assert.ok(shown.includes('33.3%') || shown.includes('33,3%'), 'үе шатны мөрийн S');
-  assert.ok(!shown.includes('61.5%') && !shown.includes('61,5%'), 'хуучирсан утга харагдахгүй');
-  assert.ok(shown.includes('44.5%') || shown.includes('44,5%'), 'үе шатны мөргүй (ТЭЗҮ) — хадгалсан утга');
+  /* 2026-11-16 (хэрэглэгч): «Сарын мөнгө» багана, «Гараар/Хуваарь» тэмдэг, шилжүүлэх товч хасагдсан — бүх ажил Хуваариас */
+  assert.ok(!html.includes('Сарын мөнгө') && !html.includes('Хуваарь руу шилжүүлэх'), 'сарын мөнгөний багана, товч алга');
 });
 
 /* 2026-11-06: олгосон нийт ба сарын цувааны зөрүү — график, сарын жагсаалт дээрх дүнтэй таарна; төлбөрийн жагсаалтад зөвхөн олгосон мөр */
@@ -187,18 +176,6 @@ check('эх үүсвэрийн баганууд (2026-11-03) — толгой, �
   assert.ok(!/<td[^>]*>1[,. \s]?000[,. \s]?000<\/td>/.test(html), 'бичигдээгүй эх үүсвэр 0 биш (null → «—»)');
 });
 
-check('шилжүүлэх товч — эрхтэй, зөвхөн гараар гэрээнд', () => {
-  const html = render(true);
-  const cnt = html.split('Хуваарь руу шилжүүлэх').length - 1;
-  assert.equal(cnt, 1, "'huvaari' гэрээнд товч гарахгүй, 'garaar'-д нэг");
-  const btn = (h) => h.match(/<button[^>]*>Хуваарь руу шилжүүлэх<\/button>/)?.[0] ?? '';
-  assert.match(btn(html), /disabled=""/, 'хоосон үе шат — хаалттай');
-  assert.match(btn(html), /тодорхойгүй/, 'шалтгааныг title-д');
-  const ws2 = [{ ...works[0], uy_shat: 'Барилга угсралт' }, works[1]];
-  assert.doesNotMatch(btn(render(true, ws2)), /disabled=""/, '«Барилга угсралт» — нээлттэй');
-  const ws3 = [{ ...works[0], uy_shat: 'Ажлын зураг төсөл' }, works[1]];
-  assert.match(btn(render(true, ws3)), /disabled=""/, 'зураг төслийн гэрээ — хаалттай');
-});
 
 check('харагдацын сонголт ба баганын шүүлт (2026-10-30)', () => {
   const html = render(false);
@@ -233,12 +210,6 @@ check('«Cashflow хувиарлах» таб алга — «Үндсэн хуг
   const hv = readFileSync(new URL('./Huvaari.tsx', import.meta.url), 'utf8');
   assert.match(hv, /<MainSpanButton canEdit=\{hasCap\(user\?\.username, 'finEdit'\)\}/, 'Хуваарь: товч');
   assert.ok(!existsSync(new URL('./CashflowPlan.tsx', import.meta.url)), 'CashflowPlan.tsx устсан байх ёстой');
-});
-
-check('шилжүүлэлт — «Төсөл төлөвлөгөө биелэлт» НЭГ урсгалаар (preview · цонх · expect)', () => {
-  const src = readFileSync(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  assert.match(src, /confirmAndSwitch\(\{/, 'confirmAndSwitch');
-  assert.doesNotMatch(src, /switchToHuvaari\(/, 'шууд switchToHuvaari дуудахгүй (preview-гүй зам)');
 });
 
 

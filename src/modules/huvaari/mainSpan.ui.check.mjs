@@ -67,7 +67,7 @@ ok('contractsOf — бүх гэрээ, үе шат → дугаараар; ХО 
   const c50 = cs.find((c) => c.id === 50);
   assert.deepEqual([c50.key, c50.huv, c50.cost, [...c50.pct]], ['CF:50', true, 1000, [['2026-11', 40], ['2026-12', 60]]]);
   const c4 = cs.find((c) => c.id === 4);
-  assert.deepEqual([c4.key, c4.huv, c4.cost, c4.pct.size, c4.start], ['CF:4', false, null, 0, null]);
+  assert.deepEqual([c4.key, c4.huv, c4.cost, c4.pct.size, c4.start], ['CF:4', true, null, 0, null]);
   assert.equal(cs.find((c) => c.id === 12).key, 'БАГЦ1');
 });
 
@@ -78,8 +78,8 @@ ok('эх код — огноо + сарын хувь л; гүйцэтгэлий�
   assert.match(SRC, /dirty && !\(await askConfirm\(/, '«Буцах» хадгалаагүй өөрчлөлтийг асууна');
   assert.match(SRC, /applyAll\(CASHFLOW_NEW\.url, CASHFLOW_NEW\.oid, \{ updates: \[\{ \[CASHFLOW_NEW\.oid\]: d\.oid, \.\.\.upd \}\] \}, \{ cap: 'finEdit' \}\)/);
   assert.match(SRC, /upd\[F\.startDate\] = startMs; upd\[F\.endDate\] = endMs;/, 'огноо — Төлөвлөгөөт хугацааны талбар');
-  assert.match(SRC, /if \(pctDirty && !base\.huv\) upd\[F\.monthSource\] = SRC_HUVAARI;/, 'анх хувь оруулахад эх «Хуваарь» болно');
-  assert.match(SRC, /if \(left\.length\) throw new Error\(/, 'хуучин гараар мөр үлдсэн бол хадгалахгүй');
+  /* 2026-11-16 (хэрэглэгч): сарын мөнгөний эхийн тэмдэг (`sar_mongo_eh`) хасагдсан — бүх ажил Хуваариас */
+  assert.ok(!/monthSource|SRC_HUVAARI|CF_MONTH_WHERE/.test(SRC), 'эхийн тэмдэг, гараар сарын мөр уншихгүй/бичихгүй');
   const inputs = SRC.match(/<input[^>]*>/g) ?? [];
   assert.ok(inputs.every((x) => /type="date"|inputMode="decimal"/.test(x)), 'чөлөөт текстийн талбар алга');
 });
