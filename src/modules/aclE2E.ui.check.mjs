@@ -1,7 +1,7 @@
 /**
  * ЭРХИЙН UI ДАВХАРГЫН E2E — ✕ / «+» / «Хадгалах» ЯГ АЛЬ op-ыг, ЯМАР багц · үүрэг ·
  * аккаунтаар дууддагийг хуурамч ArcGIS дээр шалгана (2026-09-30).
- *   node --experimental-transform-types --import./tools/ts-alias.mjs src/modules/aclE2E.ui.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs --import ./tools/test-users.mjs src/modules/aclE2E.ui.check.mjs
  *
  * АРГА: DOM-гүй «мини рендерер» — React-ийн dispatcher (`H`)-ийг түр сольж функц
  *    бүрэлдэхүүнийг шууд дуудна (useState · useRef · useEffect … — төлөв нь зам бүрд

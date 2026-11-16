@@ -15,6 +15,7 @@ import {
 import { mnt, pct, date, text, dayKey } from '@/lib/format';
 import { paidPctOf } from '@/lib/paidShare';
 import { isAuto } from '@/lib/ipcAuto';
+import { isDocRow } from '@/lib/ipcFlow';
 import type { Level } from '@/lib/kpiLevels';
 import { cell, table, type KpiResult, type KpiIssue, type Cell } from './kpi';
 
@@ -91,7 +92,8 @@ export function summarize(rows: readonly Row[]): IpcSummary {
   }
   return {
     ...hoTotals(rows),
-    noAmount: rows.filter((r) => !isAuto(r) && hoAmount(r) == null).length,
+    /* 2026-11-16: IPC баримтын мөр (`IPC|…`) дүнгээ «Олгосон» шатанд л авдаг — батлагдаагүй IPC «дүнгүй» биш */
+    noAmount: rows.filter((r) => !isAuto(r) && !isDocRow(r) && hoAmount(r) == null).length,
     noCode: cs.filter((c) => !c.code).length,
     unlinked: un.length,
     unlinkedPaid,

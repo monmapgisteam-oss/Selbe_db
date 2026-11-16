@@ -1,6 +1,6 @@
 /**
  * ИНЖЕНЕРИЙН ТӨЛӨВЛӨСӨН ОБЬЁМЫН ЭРХИЙН ЛОГИК ШАЛГУУР — offline.
- *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/obyemAcl.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/obyemAcl.check.mjs
  *
  * Хамгаалж буй дүрмүүд:
  *   1. Хуваарилагдаагүй → fail-closed (`[]`).

@@ -49,7 +49,7 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'zovshoorol', icon: 'file' },
   /**
-   * САНХҮҮГИЙН БҮРТГЭЛ — Cashflow (/173) ба IPC (/172) хүснэгтийн нүдний утга
+   * САНХҮҮГИЙН БҮРТГЭЛ — Cashflow (/182) ба IPC (/185) хүснэгтийн нүдний утга
    * засах эрх.
    */
   { key: 'finEdit', icon: 'calc' },

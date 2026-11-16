@@ -1,6 +1,6 @@
 /**
  * ХУВААРИЙН ЭРХИЙН ЛОГИК ШАЛГУУР — offline (ArcGIS-гүй орчинд ажиллана).
- *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/huvaariAcl.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/huvaariAcl.check.mjs
  *
  * Хамгаалж буй дүрмүүд:
  *   1. Хуваарилагдаагүй → fail-closed (`[]`).

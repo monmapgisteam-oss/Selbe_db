@@ -234,7 +234,7 @@ export const FIN_XL_PCT_WEIGHT = 'ho_dun_geree';
 /** Бутархай (0–1) хувийн талбар уу (`FIN_XL_FRACTION`) */
 export const finXlIsFraction = (name: string): boolean => FIN_XL_FRACTION.includes(name);
 
-/** Харагдац · засвар · тоон шүүлтийн хэмжээс — бутархай талбарт 100, бусдад 1 (`finFilter.rowMatches`-ийн `scale`) */
+/** Харагдац · засвар · тоон шүүлтийн хэмжээс — бутархай талбарт 100, бусдад 1 (тоон шүүлтийн `scale`) */
 export const finXlScale = (name: string): number => (finXlIsFraction(name) ? 100 : 1);
 
 /** Бутархай утгын ХАРАГДАХ текст — `pct()` 100-аар ҮРЖҮҮЛДЭГГҮЙ тул ×100 (0.2 → «20.0%», «0.2%» БИШ) */

@@ -1,6 +1,6 @@
 /**
  * «ХУВААРЬ» ХАРАХ ХҮРЭЭ — хуурамч ArcGIS дээр (2026-10-26, хэрэглэгчийн шийдвэр).
- *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/huvaariView.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/huvaariView.check.mjs
  *
  * Хамгаалж буй шийдвэрүүд:
  *   §1 эрхийн төрлийн «Хуваарь харах» (Бүх багц · Өөрийн багц · Үгүй) — анхдагч утгууд; хадгалсан загварт тэмдэггүй бол

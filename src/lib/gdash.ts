@@ -232,7 +232,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     budgetOrder: nnOf(r[CASHFLOW_NEW.fields.budgetOrder]),
     };
   });
-}, SESSION_TTL_MS, ['CASHFLOW_NEW', 'BAGTS_SHEET']);
+}, SESSION_TTL_MS, ['CASHFLOW_NEW', 'BAGTS_SHEET', 'HUVAARI_OBYEM']);
 
 /* ══════════════════════ САРЫН ТӨЛӨВЛӨГӨӨ (S-МУРУЙ) ══════════════════════ */
 

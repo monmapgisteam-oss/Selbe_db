@@ -2,7 +2,7 @@
 #    Dependabot-ийн PR нь secret авдаггүй (`test.yml` — амьд шалгуур алгасна, нэгж шалгуур + build хэвээр явна).
 #    `next`-ийн МАЖОР (16+) шинэчлэлтийг хаана: `output: 'export'` · eslint-config-next · React 19-ийн нийцлийг
 #    гараар шалгаж шилжинэ (`npm audit fix --force` нь next@16 санал болгодог — тэр нь санаатай алхам, автомат биш).
-#    PR-ыг merge хийх эсэхийг хүн шийднэ (CLAUDE.md: commit/merge-ийг автоматаар хийхгүй).
+#    PR-ыг merge хийх эсэхийг хүн шийднэ (commit/merge-ийг автоматаар хийхгүй).
 version: 2
 updates:
   - package-ecosystem: npm

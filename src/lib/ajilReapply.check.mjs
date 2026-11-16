@@ -1,6 +1,6 @@
 /**
  * «БАТЛАГДСАН · БУУЛГААГҮЙ» НЭМЭЛТ АЖЛЫГ ДАХИН БУУЛГАХ — сүлжээгүй (2026-10-01).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/ajilReapply.check.mjs
+ *   node --experimental-transform-types --import ./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/ajilReapply.check.mjs
  *
  * Хамгаалж буй дүрмүүд (хэрэглэгч: бүгдийг зас):
  *   1. Илрүүлэлт (`classifyStuck`): зөвхөн `approved` («Буулгасан» = `applied` нь

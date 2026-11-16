@@ -306,10 +306,14 @@ export const canDelete = (n: PlanNode): boolean =>
 
 /**
  * Жин засагдах мөр (2026-11-11, хэрэглэгч: «зураг төслийн гүйцэтгэл дээр хувийн жин засах») — Ажлын зураг төслийн үе шатын
- * доорх мөр (үе шатын мөр биш, «Нийслэл төсөв» биш). Ах дүү бүгд жинтэй бол тэр нь төсвийн хувиас түрүүлнэ (`projectPlan.fOf`).
+ * доорх мөр (үе шатын мөр биш, «Нийслэл төсөв» биш). 2026-11-16 (хэрэглэгч): ах дүүгийн аль нэг нь мөнгөтэй бол жин мөнгөөр
+ * автоматаар бодогдоно (`projectPlan.fOf`) — гараар засагдахгүй; мөнгөгүй бүлэгт л.
  */
+const hasMoney = (n: PlanNode): boolean =>
+  (typeof n.row?.ho_dun_geree === 'number' && n.row.ho_dun_geree > 0) || n.children.some((c) => !c.outside && hasMoney(c));
 export const weightEditable = (n: PlanNode): boolean =>
-  n.phase === 'zurag' && n.depth >= 2 && n.row != null && !n.outside;
+  n.phase === 'zurag' && n.depth >= 2 && n.row != null && !n.outside
+  && !(n.parent?.children ?? []).some((c) => !c.outside && hasMoney(c));
 
 /**
  * Хүүхдүүдийн жингийн нийлбэр (%) — нэмсэн ажлууд, эсвэл жин засагддаг (зураг төслийн) хүүхдүүд; 100%-аас зөрвөл

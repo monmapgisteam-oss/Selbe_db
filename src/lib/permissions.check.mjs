@@ -1,6 +1,6 @@
 /**
  * ЭРХИЙН STORE-ийн ЛОГИК ШАЛГУУР — offline (ArcGIS-гүй орчинд ажиллана).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/permissions.check.mjs
+ *   node --experimental-transform-types --import ./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/permissions.check.mjs
  *
  * Хамгаалж буй алдаанууд (2026-08-27-ны аудитаар илэрсэн):
  *   1. Хасагдсан ViewKey (`bagts`, `monitor`) хадгалагдсан эрхэд үлдэж

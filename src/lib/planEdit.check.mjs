@@ -155,3 +155,24 @@ assert.equal(isEmptyVal('orderNo', 0), false);
 assert.equal(isEmptyVal('orderNo', '  '), true);
 
 console.log('planEdit.check ✓');
+
+/* 2026-11-16: 4 эх үүсвэр дээд мөрөнд засагдана (доод мөр утгатай ч); мөнгөн дүн доод мөрөөс бодогдоно; нийт · хуваарилаагүй */
+{
+  const { editWhy } = await import('./planEdit.ts');
+  const { ownSourceTotal, sourceGap, computePlan } = await import('./projectPlan.ts');
+  const t = buildTree([
+    { objectid: 1, dd_kod: '5', uy_shat: 'Барилга угсралт', zahiramj_unet_tsaas: 600, zahiramj_borluulalt_dun: 400 },
+    { objectid: 2, dd_kod: '5.1', etseg_kod: '5', ajil_uilchilgee: 'Багц 1', ho_dun_geree: 300, zahiramj_unet_tsaas: 50 },
+    { objectid: 3, dd_kod: '5.2', etseg_kod: '5', ajil_uilchilgee: 'Багц 2', ho_dun_geree: 500 },
+  ]);
+  const top = t.byCode.get('5');
+  assert.equal(editWhy(top, 'srcBond'), null, 'доод мөр эх үүсвэртэй ч дээд мөрийн эх үүсвэр засагдана');
+  assert.match(editWhy(top, 'budget'), /Дэд мөрүүдээс/, 'дээд мөрийн мөнгөн дүн доод мөрүүдийн нийлбэр');
+  assert.equal(ownSourceTotal(top.row), 1000, 'өөрийн 4 эх үүсвэр л — доод мөрийн 50 нэмэгдэхгүй');
+  assert.equal(ownSourceTotal(t.byCode.get('5.2').row), null, 'эх үүсвэргүй → null');
+  const E = computePlan(t, {}).values.get(top).E;
+  assert.equal(E, 800, 'мөнгөн дүн = 300 + 500');
+  assert.equal(sourceGap(1000, E), 200, 'хуваарилаагүй = 1000 − 800');
+  assert.equal(sourceGap(null, E), null);
+}
+console.log('planEdit.check: эх үүсвэр · хуваарилаагүй ✓');

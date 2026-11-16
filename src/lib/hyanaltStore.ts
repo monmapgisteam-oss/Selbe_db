@@ -386,7 +386,8 @@ function absorbDone(pairs: Iterable<readonly [number, string]>): void {
     fresh += 1;
   }
   if (!doneSeeded) { doneSeeded = true; return; }
-  if (fresh > 0) invalidate('BAGTS_SHEET', 'BAGTS_NEGTGEL', 'HO_IPC', 'HYANALT');
+  /* CASHFLOW_NEW — батлагч сешн 182-ын гүйцэтгэлийг бичдэг (`syncPlanProgress`); бусад сешнд ТТБ хуучин үлдэхгүй */
+  if (fresh > 0) invalidate('BAGTS_SHEET', 'BAGTS_NEGTGEL', 'HO_IPC', 'HYANALT', 'CASHFLOW_NEW');
 }
 const absorbRows = (rows: readonly Row[]): void =>
   absorbDone(rows.map((r) => [r.__oid, String(r[F.status] ?? '')] as const));

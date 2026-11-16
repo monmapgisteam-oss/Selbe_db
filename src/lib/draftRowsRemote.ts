@@ -22,7 +22,7 @@ import type { PlanPayload } from '@/lib/huvaariBatlah';
 
 export const DRAFT_ROWS_ENABLED = true;
 
-/** Нэг applyEdits хэсгийн дээд засвар (CLAUDE.md: 500) */
+/** Нэг applyEdits хэсгийн дээд засвар (ArcGIS: 500) */
 const CHUNK = 500;
 /** Бүтэн уншилтын давтамж — устгагдсан мөрийг зургаас арилгана */
 const FULL_EVERY = 5 * 60_000;

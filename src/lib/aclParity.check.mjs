@@ -1,6 +1,6 @@
 /**
  * ЭРХИЙН ДЭД СИСТЕМҮҮДИЙН ТЭГШ БАЙДАЛ — offline эх кодын гэрээ.
- *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/aclParity.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/aclParity.check.mjs
  *
  * Эрхийн систем нь БАРАГ ИЖИЛ дөрвөн ACL модуль (`guitsetgel` · `qaqc` ·
  * `huvaari` · `obyem`) ба UserAdmin доторх ГУРВАН БАРАГ ИЖИЛ салаанаас
