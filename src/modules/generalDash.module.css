@@ -94,7 +94,6 @@
   min-height: 0;
   overflow: hidden;
 }
-.kpis { flex: none; }
 
 /* ── Газрын зураг ── */
 .hero {
@@ -170,20 +169,6 @@
   font-weight: 600;
 }
 
-/* Цуцлах — эгнээний төгсгөлд */
-.fClear {
-  flex: none;
-  padding: 1px 7px;
-  font: inherit;
-  font-size: 11px;
-  color: var(--ink-3);
-  background: transparent;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.fClear:hover { color: var(--bad-ink); border-color: var(--bad); }
-
 .catPanel {
   position: absolute;
   inset: 0 auto 0 178px;
@@ -196,7 +181,8 @@
 }
 
 .kpis {
-  padding: 8px 10px;
+  flex: none;
+  padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
   background: var(--surface);
@@ -205,7 +191,7 @@
 
 /* ── Картын дэд гарчиг ба энгийн жагсаалт ── */
 .sub {
-  margin: 12px 0 5px;
+  margin: 10px 0 4px;
   font-size: 11px;
   line-height: 1.3;
   font-weight: 600;
@@ -230,11 +216,22 @@
 
 .wait { margin: 4px 0; font-size: 12px; color: var(--ink-3); }
 
+/* Картын доод тайлбар — домог, тооцооны томьёо */
+.foot { margin: 6px 0 0; font-size: 11px; line-height: 1.3; color: var(--ink-3); }
+
+/* Муруйн доорх анхааруулга — тод, анхаарал татна */
+.warnNote { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--warn); }
+.warnNote p { margin: 0; color: var(--warn-ink); }
+
+/*
+ * ЗҮҮН БАГАНЫН КАРТУУД — баганын БҮТЭН өндрийг хуваан эзэлнэ, доор хоосон зай үлдэхгүй.
+ */
+.left > section { flex: 1 0 auto; display: flex; flex-direction: column; }
+.left > section > :global(.barsList) { flex: 1 1 auto; justify-content: space-around; }
+
 /*
  * ИНДИКАТОРЫН ЗУРВАС — НАМХАН, өргөн нь хэвээр.
  */
-.kpis { padding: 6px 8px; }
-
 .shell :global(.statsGrid) { gap: 1px; }
 .shell :global(.statCard) { padding: 4px 10px; gap: 2px; }
 .shell :global(.statNum) { font-size: 15px; }
@@ -271,9 +268,6 @@
   letter-spacing: 0.04em;
   color: var(--ink);
 }
-
-/* Картын дотоод дэд гарчиг мөн адил */
-.sub { font-size: 11px; margin: 10px 0 4px; }
 
 /*
  * ЗУРГИЙН ДЭЭРХ ТОВЧНУУД — ЖИЖИГ (2026-09-04, хэрэглэгчийн хүсэлт).
@@ -315,6 +309,8 @@
   position: relative;
   height: 132px;
   padding-top: 20px;
+  /* Доод цэгийн шошго (цэгээс ДООШ) тэнхлэгийн оны бичвэртэй давхцахгүй */
+  margin-bottom: 14px;
 }
 
 .tlBars { display: flex; align-items: flex-end; gap: 4px; height: 100%; }
