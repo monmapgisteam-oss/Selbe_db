@@ -588,3 +588,58 @@ console.log('projectPlan.check: Бэлтгэл ажил хадгалсан яв�
   near(v.get('5.2').F, 400 / 475 * 100, 1e-9);
 }
 console.log('projectPlan.check: хасагдсан бэлтгэлийн төсөв жинд орохгүй OK');
+
+/* ══════════ 2026-11-16: «Төслийн нийтэд тооцох» (`niit_tootsoh`) — зөвхөн Төслийн нийт S-ээс хасна ══════════ */
+{
+  const rows = [
+    { dd_kod: '1', uy_shat: 'ТЭЗҮ', ho_dun_geree: 100 },
+    { dd_kod: '1.1', etseg_kod: '1', ajil_uilchilgee: 'ТЭЗҮ А', ho_dun_geree: 50, guitsetgel_huvi: 100 },
+    { dd_kod: '1.2', etseg_kod: '1', ajil_uilchilgee: 'ТЭЗҮ Б', ho_dun_geree: 50, guitsetgel_huvi: 0 },
+    { dd_kod: '2', uy_shat: 'Ажлын зураг төсөл', ho_dun_geree: 300 },
+    { dd_kod: '2.1', etseg_kod: '2', ajil_uilchilgee: 'Зураг', ho_dun_geree: 300, guitsetgel_huvi: 40 },
+  ];
+  const base = computePlan(buildTree(rows), {}, d('2026-07-02'));
+  /* F: 1 = 100/400, 2 = 300/400; 1 = 0.5·100 + 0.5·0 = 50; нийт = 0.25·50 + 0.75·40 = 42.5 */
+  near(base.values.get(base.tree.root).S, 42.5, 1e-9, 'хасалтгүй нийт');
+  assert.equal(base.values.get(base.tree.root).GT, undefined, 'хасалтгүй бол GT алга');
+
+  const flag = rows.map((r) => (r.dd_kod === '1.2' ? { ...r, niit_tootsoh: 0 } : r));
+  const res = computePlan(buildTree(flag), {}, d('2026-07-02'));
+  const v = (c) => res.get(c);
+  /* Бусад бодолт ХЭВЭЭР */
+  near(v('1').S, 50, 1e-9, 'бүлгийн хувь хэвээр (1.2 нь бүлэгт орно)');
+  near(v('1.2').F, 50, 1e-9, 'жин хэвээр');
+  near(v('1').G, 25, 1e-9, 'төсөлд эзлэх хэвээр');
+  /* Нийт: 1.2-ын жин 0.125 хасагдана → (42.5 − 0.125·0) ÷ 0.875 */
+  near(res.values.get(res.tree.root).S, 42.5 / 0.875, 1e-9, 'нийтээс хасч дахин жигнэнэ');
+  assert.equal(v('1.2').noTotal, true);
+  assert.equal(v('1.2').GT, 0, 'хасагдсан мөрийн үр дүнтэй жин 0');
+  near(v('2.1').GT, 75 / 0.875, 1e-9, 'бусдынх дахин хуваагдана');
+  { const { GT: _g, ...same } = v('1'); assert.deepEqual(same, { ...base.get('1') }, 'бүлгийн мөрийн бүх утга хэвээр'); }
+
+  /* Бүлэг бүхэлдээ хасагдвал үр удам нь ч */
+  const g = rows.map((r) => (r.dd_kod === '1' ? { ...r, niit_tootsoh: 0 } : r));
+  const rg = computePlan(buildTree(g), {}, d('2026-07-02'));
+  near(rg.values.get(rg.tree.root).S, 40, 1e-9, 'зөвхөн 2-р үе шат үлдэнэ');
+  assert.equal(rg.get('1.1').noTotal, true, 'үр удам өвлөнө');
+  near(rg.get('1').S, 50, 1e-9, 'бүлгийн хувь хэвээр');
+
+  /* 1 = Тооцно / хоосон — өөрчлөлтгүй */
+  const one = computePlan(buildTree(rows.map((r) => ({ ...r, niit_tootsoh: 1 }))), {}, d('2026-07-02'));
+  near(one.values.get(one.tree.root).S, 42.5, 1e-9, '1 = Тооцно');
+  /* Төлөвлөгөөт хувь (N…R) ба сарын цуваа ч хасагдана — 1.2 дууссан (100%), 2.1 эхлээгүй (0%) */
+  const dt = (r) => (r.dd_kod === '1.2' ? { ...r, geree_ehleh: d('2026-01-01'), geree_duusah: d('2026-02-01') }
+    : r.dd_kod === '2.1' ? { ...r, geree_ehleh: d('2027-01-01'), geree_duusah: d('2027-12-31') }
+    : r.dd_kod === '1.1' ? { ...r, geree_ehleh: d('2026-01-01'), geree_duusah: d('2026-02-01') } : r);
+  const pb = computePlan(buildTree(rows.map(dt)), {}, d('2026-07-02'));
+  const pf = computePlan(buildTree(flag.map(dt)), {}, d('2026-07-02'));
+  near(pb.values.get(pb.tree.root).N, 25, 1e-9, 'хасалтгүй: 0.25 · 100');
+  near(pf.values.get(pf.tree.root).N, 0.125 * 100 / 0.875, 1e-9, 'N-ээс ч хасагдана: 1.1-ийн 0.125 · 100 ÷ 0.875');
+  near(pf.values.get(pf.tree.root).T, pf.values.get(pf.tree.root).S / pf.values.get(pf.tree.root).N * 100, 1e-9, 'нийт биелэлт = S′ ÷ N′');
+  assert.equal(pf.get('1').N, pb.get('1').N, 'бүлгийн төлөвлөгөө хэвээр');
+  const months = monthEnds(d('2026-01-01'), d('2026-03-01'));
+  const mb = monthlySeries(pb, months), mf = monthlySeries(pf, months);
+  near(mf.get(pf.tree.root)[2], 0.125 * 100 / 0.875, 1e-9, 'сарын цуваа ч хасагдана');
+  assert.deepEqual(mf.get(pf.tree.byCode.get('1')), mb.get(pb.tree.byCode.get('1')), 'бүлгийн цуваа хэвээр');
+  console.log('projectPlan.check: Төслийн нийтэд тооцохгүй мөр зөвхөн нийтээс хасагдана OK');
+}

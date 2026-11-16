@@ -1486,7 +1486,7 @@ export function ProjectPlanTable({
     const x = CALC_KEYS.includes(c.k) ? ppCalcVal(c.k, n ? moneyOf.get(n) : undefined, rootE)
       : SRC_CALC.includes(c.k) ? (c.k === 'mSrcTot' ? srcTotOf(n, src) : sourceGap(srcTotOf(n, src), v?.E))
       : c.raw ? (stageLive(c.k, n) ?? (c.k === 'gazar_chuluulult' ? null : (n?.row?.[c.k as PpRawKey] as number | string | null | undefined)) ?? null)
-      : isSourceKey(c.k) ? srcOwn(n, src, c.k) : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip'>] : null;
+      : isSourceKey(c.k) ? srcOwn(n, src, c.k) : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip' | 'noTotal' | 'GT'>] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;
     return (
       <td

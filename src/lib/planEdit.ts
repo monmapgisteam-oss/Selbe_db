@@ -216,6 +216,14 @@ const write = async (edit: Parameters<typeof applyAll>[2]) => {
   return r;
 };
 
+/**
+ * «Төслийн нийтэд тооцох» (2026-11-16, хэрэглэгч) — 1 Тооцно · 0 Тооцохгүй. Зөвхөн Төслийн нийт гүйцэтгэлийн хувьд
+ * нөлөөлнө (`computePlan`); бусад бодолт хэвээр.
+ */
+export function saveInTotal(oid: number, v: 0 | 1) {
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inTotal]: v }] });
+}
+
 /** Нэг утга засна */
 export function savePlanValue(n: PlanNode, k: PlanEditKey, value: unknown) {
   const why = editWhy(n, k);

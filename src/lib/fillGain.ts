@@ -127,7 +127,8 @@ export async function loadFillGain(
   ]);
   const [u, w, p] = await Promise.allSettled([loadBlockUniverse(), loadBlockWeights(), loadProjectPlan()]);
   const plan = p.status === 'fulfilled' && !p.value.empty
-    ? { nodes: p.value.tree.nodes, gOf: (n: Node) => p.value.result.values.get(n as never)?.G ?? null }
+    /* 2026-11-16: «Төслийн нийтэд тооцохгүй» мөр байвал үр дүнтэй жин (`GT`) — хасагдсан мөрийн өсөлт төсөлд 0 */
+    ? { nodes: p.value.tree.nodes, gOf: (n: Node) => { const v = p.value.result.values.get(n as never); return v ? (v.GT !== undefined ? v.GT : v.G) : null; } }
     : null;
   return fillGainOf(group, labels, deltaB, deltaA, synthetic,
     u.status === 'fulfilled' ? u.value : null, w.status === 'fulfilled' ? w.value : null, plan);

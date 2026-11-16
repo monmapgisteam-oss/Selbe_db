@@ -57,20 +57,20 @@ const html = renderToStaticMarkup(h(LocaleProvider, null, h(ThemeProvider, null,
 const thead = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
 const trs = thead.split('<tr').slice(1);
 assert.equal(trs.length, 3, 'толгой 3 мөр (гарчиг · бүлэг · дэд)');
-assert.match(trs[0], /colSpan="24"[^>]*><span class="thTitleTxt">ТӨСЛИЙН ГҮЙЦЭТГЭЛ</, 'гарчиг бүх 24 баганаар, бичиг нь зүүн ирмэгтээ наалдана');
+assert.match(trs[0], /colSpan="25"[^>]*><span class="thTitleTxt">ТӨСЛИЙН ГҮЙЦЭТГЭЛ</, 'гарчиг бүх 25 баганаар, бичиг нь зүүн ирмэгтээ наалдана');
 const grp = [...trs[1].matchAll(/<th[^>]*colSpan="2"[^>]*>([^<]+)</g)].map((m) => m[1]);
 assert.deepEqual(grp, ['Гэрээ/Хавсралт 5', 'Гүйцэтгэгч', 'ОСНАУГ/Газар чөлөөлөлт/ хуулийн маргаан/Өндөржилт нөлөөлөл'], 'бүлгийн нэгтгэсэн 3 нүд');
 const tall = [...trs[1].matchAll(/<th[^>]*rowSpan="2"/g)].length;
-assert.equal(tall, 18, '24 − 6 дэд багана = 18 босоо нэгтгэсэн нүд');
+assert.equal(tall, 19, '25 − 6 дэд багана = 19 босоо нэгтгэсэн нүд (2026-11-16: «Төслийн нийтэд тооцох»)');
 const sub = [...trs[2].matchAll(/<th[^>]*>([^<]+)</g)].map((m) => m[1]);
 assert.deepEqual(sub, ['Төлөвлөгөөт эхлэх', 'Төлөвлөгөөт дуусах', 'Төлөвлөгөөт эхлэх', 'Төлөвлөгөөт дуусах', 'Бодит Эхлэх', 'Бодит дуусах'], '5-р мөрийн 6 дэд толгой');
 /* Excel-ийн B…W дараалал — 2-р мөрийн босоо нүд ба бүлгүүд */
 const order = [...trs[1].matchAll(/<th[^>]*>([^<]+)</g)].map((m) => m[1]);
-assert.deepEqual(order.slice(0, 7), ['Д/Д', 'Багцын дугаар', 'Ажлын нэр', 'Урьдчилсан төсөвт өртөг', 'Хэсэгт эзлэх', 'Төсөлд эзлэх хувь', 'Гэрээ/Хавсралт 5']);
+assert.deepEqual(order.slice(0, 8), ['Д/Д', 'Багцын дугаар', 'Ажлын нэр', 'Урьдчилсан төсөвт өртөг', 'Хэсэгт эзлэх', 'Төсөлд эзлэх хувь', 'Төслийн нийтэд тооцох', 'Гэрээ/Хавсралт 5']);
 assert.equal(order.at(-1), 'Төлөвлөгөө биелэлт Weekly', 'сүүлийн багана W');
 const iAct = order.indexOf('Гүйцэтгэлийн хувь');
 assert.deepEqual(order.slice(iAct, iAct + 3), ['Гүйцэтгэлийн хувь', 'Гүйцэтгэлийн хувь Өмнөх 7 хоног', '7 хоногийн өсөлт'], '2026-11-11: өмнөх 7 хоног · өсөлт гүйцэтгэлийн ард');
-console.log('✅ толгой: гарчиг · 3 нэгтгэсэн бүлэг · 18 босоо · 6 дэд · B…W дараалал');
+console.log('✅ толгой: гарчиг · 3 нэгтгэсэн бүлэг · 19 босоо · 6 дэд · B…W дараалал');
 
 /* ── 3. Outline 6 товч ── */
 const lv = html.slice(html.indexOf('class="levels"'), html.indexOf('</span>', html.indexOf('class="levels"')));

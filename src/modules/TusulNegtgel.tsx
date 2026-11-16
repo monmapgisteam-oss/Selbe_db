@@ -19,6 +19,8 @@ import {
 } from '@/lib/negtgelEdit';
 import { useAuth } from '@/components/AuthGate';
 import { roleForUser } from '@/lib/services';
+import { hasCap, subscribeCaps } from '@/lib/caps';
+import { saveInTotal } from '@/lib/planEdit';
 import n from './negtgel.module.css';
 /* Баруун товшилтын цэс ба сонголтын тэмдэг — Санхүүжилтийн хүснэгттэй НЭГ загвар */
 import f from './finance.module.css';
@@ -84,7 +86,7 @@ function toneOf(
 
 /* ═══════════════ БАГАНА — нуух / өргөсгөх (2026-09-25) ═══════════════ */
 
-type ColKey = 'code' | 'bagts' | 'name' | 'budget' | 'inSection' | 'inProject'
+type ColKey = 'code' | 'bagts' | 'name' | 'budget' | 'inSection' | 'inProject' | 'inTotal'
   | 'ctStart' | 'ctEnd' | 'exStart' | 'exEnd' | 'actStart' | 'actEnd'
   | 'planG' | 'planGch' | 'planGu' | 'planNw' | 'planPw' | 'act' | 'actPw' | 'gainWk' | 'perfG' | 'perfGch' | 'perfGu' | 'perfWk';
 
@@ -109,6 +111,8 @@ const COLS: { key: ColKey; label: () => string; w: number; grp?: GrpKey }[] = [
   { key: 'budget', label: () => tr('Урьдчилсан төсөвт өртөг'), w: 140 },
   { key: 'inSection', label: () => tr('Хэсэгт эзлэх'), w: 104 },
   { key: 'inProject', label: () => tr('Төсөлд эзлэх хувь'), w: 130 },
+  /* 2026-11-16 (хэрэглэгч): зөвхөн Төслийн нийт гүйцэтгэлийн хувиас хасах сонголт — бусад бодолт хэвээр */
+  { key: 'inTotal', label: () => tr('Төслийн нийтэд тооцох'), w: 140 },
   { key: 'ctStart', label: () => tr('Төлөвлөгөөт эхлэх'), w: 110, grp: 'ct' },
   { key: 'ctEnd', label: () => tr('Төлөвлөгөөт дуусах'), w: 110, grp: 'ct' },
   { key: 'exStart', label: () => tr('Төлөвлөгөөт эхлэх'), w: 110, grp: 'ex' },
@@ -190,7 +194,7 @@ export function TusulNegtgel() {
               {tr('Хүснэгтийн мөрүүд Excel-ийн модтой таарахгүй байна — модыг кодоор угсарлаа; эцэг-хүүхдийн холбоо Excel-ээс зөрж болно.')}
             </p>
           )}
-          <NegBody d={d} onDirty={setDirty} reloadFailed={held != null && q.state === 'error'} />
+          <NegBody d={d} onDirty={setDirty} reloadFailed={held != null && q.state === 'error'} onReload={() => { dropNegtgelFull(); q.retry?.(); }} />
         </>
       )}
     </Data>
@@ -226,8 +230,10 @@ export type NegEditApi = {
 /**
  * ЗАСАХ ГОРИМЫН ЦАРЦААСАН СУУРЬ (2026-10-19, аудит).
  */
-function NegBody({ d: live, onDirty, reloadFailed }: {
+function NegBody({ d: live, onDirty, reloadFailed, onReload }: {
   d: NegtgelFull;
+  /** Хүснэгтэд бичсний дараа дахин уншина */
+  onReload: () => void;
   /** Нийтлээгүй засвартай эсэх — эцэг `NegBody`-г уналтад салгахгүй (`TusulNegtgel`) */
   onDirty: (v: boolean) => void;
   /** Засвартай үед арын дахин уншилт унасан */
@@ -235,6 +241,11 @@ function NegBody({ d: live, onDirty, reloadFailed }: {
 }) {
   const { role, user, status } = useAuth();
   const canEdit = live.source !== 'plan' && (status === 'off' ? role === 'super' : roleForUser(user?.username) === 'super');
+  /* «Төслийн нийтэд тооцох» — «Төсөл төлөвлөгөө биелэлт»-д (182) бичих эрх (`finEdit`) */
+  const [capN, setCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио
+  const canTotal = useMemo(() => live.source === 'plan' && hasCap(user?.username, 'finEdit'), [live.source, user, capN]);
   const [edit, setEdit] = useState(false);
   const [edits, setEdits] = useState<Map<number, Partial<Record<NegEditKey, number | null>>>>(() => new Map());
   const [saving, setSaving] = useState(false);
@@ -386,7 +397,22 @@ function NegBody({ d: live, onDirty, reloadFailed }: {
         </p>
       )}
       {msg && <p className={`${n.syncNote} ${msg.ok ? n.msgOk : n.msgErr}`} role={msg.ok ? 'status' : 'alert'}>{msg.text}</p>}
-      <Tree rows={view.rows} calc={view.calc} edit={edit ? api : undefined} toolbar={toolbar} />
+      <Tree
+        rows={view.rows}
+        calc={view.calc}
+        edit={edit ? api : undefined}
+        toolbar={toolbar}
+        root={d.root}
+        onTotal={canTotal ? async (oid, v) => {
+          try {
+            await saveInTotal(oid, v);
+            setMsg({ ok: true, text: v ? tr('Төслийн нийтэд тооцно — хадгалагдлаа') : tr('Төслийн нийтэд тооцохгүй — хадгалагдлаа') });
+            onReload();
+          } catch (e) {
+            setMsg({ ok: false, text: userError(e) });
+          }
+        } : undefined}
+      />
     </>
   );
 }
@@ -488,14 +514,19 @@ export function SyncNotice({ live, source, failed, sync, onDone }: {
   );
 }
 
-export function Tree({ rows, calc, edit, toolbar }: {
+export function Tree({ rows, calc, edit, toolbar, root, onTotal }: {
   rows: NegtgelRow[];
   calc: Map<number, NegtgelCalc>;
   edit?: NegEditApi;
+  /** ТТБ-ийн үндэс мөрийн гүйцэтгэл (0–100) — «Төслийн нийтэд тооцохгүй» мөр байвал нийт мөр эндээс */
+  root?: NegtgelFull['root'];
+  /** «Төслийн нийтэд тооцох» сонголтыг хадгална — эрхгүй бол алга (зөвхөн харах) */
+  onTotal?: (oid: number, v: 0 | 1) => Promise<void>;
   /** «Засах» · «Нийтлэх» товчнууд — хэрэгслийн мөрийн баруун талд */
   toolbar?: ReactNode;
 }) {
   const { parent, kids } = useMemo(() => negtgelTree(rows), [rows]);
+  const [totBusy, setTotBusy] = useState<number | null>(null);
 
   /** Хураалттай бүлгүүд (oid) */
   const [closed, setClosed] = useState<Set<number>>(() => new Set(
@@ -722,6 +753,23 @@ export function Tree({ rows, calc, edit, toolbar }: {
     const T = negTotals(top);
     /* Өмнөх 7 хоногийн нийт — гүйцэтгэлтэй ижил жигнэлтээр */
     const Tp = negTotals(top.map((x) => ({ ...x, act: x.actPw })));
+    /* 2026-11-16: «Төслийн нийтэд тооцохгүй» мөр байвал нийт мөрийн БҮХ хувь ТТБ-ийн үндэс мөрөөс (хасагдсан, дахин
+       жигнэсэн); биелэлт = гүйцэтгэл ÷ төлөвлөгөө */
+    if (root != null && rows.some((r) => calc.get(r.oid)?.noTotal)) {
+      const pf = (a: number | null, b: number | null) => (a == null || b == null ? null : b ? (a / b) * 100 : 0);
+      const { act, actPw } = root;
+      return {
+        p: T.p == null ? null : T.p * 100,
+        planG: root.planG, planGch: root.planGch, planGu: root.planGu, planNw: root.planNw, planPw: root.planPw,
+        act,
+        actPw,
+        gainWk: act != null && actPw != null ? act - actPw : null,
+        perfG: pf(act, root.planG),
+        perfGch: pf(act, root.planGch),
+        perfGu: pf(act, root.planGu),
+        perfWk: pf(act, root.planPw),
+      };
+    }
     const pc = (v: number | null) => (v == null ? null : v * 100);
     return {
       p: T.p == null ? null : T.p * 100,
@@ -734,7 +782,7 @@ export function Tree({ rows, calc, edit, toolbar }: {
       perfGu: pc(T.perfGu),
       perfWk: pc(T.perfWk),
     };
-  }, [rows, calc]);
+  }, [rows, calc, root]);
 
   /**
    * ТООНЫ ХЭЛБЭР — Excel-ийн форматаар: гүйцэтгэл үргэлж 2 орон; үе шат ба
@@ -975,6 +1023,7 @@ export function Tree({ rows, calc, edit, toolbar }: {
                   case 'budget': return c?.budget ? num(c.budget) : '';
                   case 'inSection': return p(c?.inSection, 2);
                   case 'inProject': return p(c?.inProject, r.depth <= 1 ? 0 : leafDeep ? 3 : 2);
+                  case 'inTotal': return c?.outside || !c?.noTotal ? '' : c.inTotal === 0 ? tr('Тооцохгүй') : tr('Тооцохгүй (дээд мөр)');
                   case 'planG': return p(c?.planPct, dp);
                   case 'planGch': return p(c?.planGch, dp);
                   case 'planGu': return p(c?.planGuits, dp);
@@ -1037,6 +1086,26 @@ export function Tree({ rows, calc, edit, toolbar }: {
                       );
                     }
                     const cls = k === 'code' || k === 'bagts' ? n.code : n.num;
+                    if (k === 'inTotal' && onTotal && !edit && !c?.outside && !(c?.noTotal && c.inTotal !== 0)) {
+                      return (
+                        <td key={k} className={`${fzc(k)} ${n.code}`} style={sty(k)}>
+                          <select
+                            className={`${n.totSel} ${c?.inTotal === 0 ? n.totOff : ''}`}
+                            value={c?.inTotal === 0 ? '0' : '1'}
+                            disabled={totBusy != null}
+                            aria-label={tr('Төслийн нийтэд тооцох')}
+                            onChange={(e) => {
+                              const v = e.target.value === '0' ? 0 : 1;
+                              setTotBusy(r.oid);
+                              void onTotal(r.oid, v).finally(() => setTotBusy(null));
+                            }}
+                          >
+                            <option value="1">{tr('Тооцно')}</option>
+                            <option value="0">{tr('Тооцохгүй')}</option>
+                          </select>
+                        </td>
+                      );
+                    }
                     if (edit) {
                       const mark = edit.edited(r.oid, k) ? `${f.cellDirty} ${n.dirty}` : edit.derived(r.oid, k) ? n.cellCalc : '';
                       if (edit.can(r.oid, k)) {

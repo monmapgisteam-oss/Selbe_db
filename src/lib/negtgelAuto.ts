@@ -75,6 +75,10 @@ export type NegRaw = NegVals & {
   budget: number | null;
   /** Excel-ийн эцгийн томьёонд ОРООГҮЙ мөр (`NEG_TREE.outside`) */
   outside?: boolean;
+  /** Төслийн нийтэд тооцох — хүснэгтийн өөрийн утга (0 · 1 · хоосон), 182-оос л (2026-11-16) */
+  inTotal?: number | null;
+  /** Энэ мөр эсвэл өвөг нь «Тооцохгүй» — Төслийн нийт гүйцэтгэлд орохгүй (`PlanValues.noTotal`) */
+  noTotal?: boolean;
   /** Үе шат (`PHASE`) */
   phase?: string;
   /** Гэрээ/Хавсралт 5 — төлөвлөгөөт эхлэх/дуусах (ms) — Excel H · I */

@@ -72,7 +72,6 @@ const ISSUE_TEXT: Record<EditIssue['kind'], () => string> = {
   missing: () => tr('мөр олдсонгүй — дахин ачаална уу'),
 };
 
-type PhaseFilter = 'all' | 'tezu' | 'zurag';
 
 /** Навчны огноо хоосон бол төлөвлөгөөт % хамгийн ойрын өвөг мөрийн огноогоор бодогддог — placeholder-т харуулна */
 function inherited(n: PlanNode): [number | null, number | null] {
@@ -98,10 +97,10 @@ export function ZuragTosol() {
       <header className={s.head}>
         <h1 className={s.h1}>{tr('ТЭЗҮ · Ажлын зураг төсөл')}</h1>
         <p className={s.sub}>
-          {tr('Үе шатын навч мөрийн төлөвлөгөөт хугацаа ба гүйцэтгэлийн хувийг шинэчилнэ. Дээд мөрүүд Excel-ийн томьёогоор автоматаар бодогдоно.')}
+          {tr('ТЭЗҮ-ийн төлөвлөгөөт хугацаа ба гүйцэтгэлийн хувийг шинэчилнэ. Ажлын зураг төслийн гүйцэтгэл «Зургийн бүртгэл»-ээс автоматаар бодогдоно.')}
         </p>
         <div className={s.seg} role="tablist" aria-label={tr('Харагдац')}>
-          {([['plan', tr('Явц')], ['log', tr('Зургийн бүртгэл')]] as ['plan' | 'log', string][]).map(([k, t]) => (
+          {([['plan', tr('ТЭЗҮ')], ['log', tr('Зургийн бүртгэл')]] as ['plan' | 'log', string][]).map(([k, t]) => (
             <button key={k} type="button" role="tab" aria-selected={view === k} className={`${s.segB} ${view === k ? s.segOn : ''}`} onClick={() => setView(k)}>{t}</button>
           ))}
         </div>
@@ -121,7 +120,6 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [phase, setPhase] = useState<PhaseFilter>('all');
   const [find, setFind] = useState('');
   /** Хураасан мөрүүд (`dd_kod`) */
   const [shut, setShut] = useState<ReadonlySet<string>>(() => new Set());
@@ -173,7 +171,8 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
     const r = base.find((x) => x.objectid === o);
     return r ? `${r.bagts ?? ''} · ${r.ajil_uilchilgee ?? ''}`.trim() : String(o);
   }), [base, pend.deletes]);
-  const phases = tree.root.children.filter(inSection);
+  /* 2026-11-16 (хэрэглэгч): «Ажлын зураг төсөл» хуучин хувилбар — зөвхөн ТЭЗҮ; зураг төсөл «Зургийн бүртгэл» табад */
+  const phases = tree.root.children.filter((n) => inSection(n) && n.phase === 'tezu');
 
   const dirty = reloading ? 0 : pendingCount(pend);
   useEffect(() => {
@@ -187,7 +186,7 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
 
   /** Харагдах мөрүүд — үе шатын шүүлт, хайлт (тааралдсан мөр + өвгүүд), хураалт */
   const visible = useMemo(() => {
-    const want = (n: PlanNode) => (phase === 'all' ? inSection(n) : n.phase === phase);
+    const want = (n: PlanNode) => inSection(n) && n.phase === 'tezu';
     const needle = find.trim().toLowerCase();
     if (needle) {
       const hit = new Set<PlanNode>();
@@ -209,7 +208,7 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
     };
     walk(tree.root);
     return out;
-  }, [tree, dcode, phase, find, shut]);
+  }, [tree, dcode, find, shut]);
 
   const label = (code: string | null) => {
     const n = code ? tree.byCode.get(code) : undefined;
@@ -392,18 +391,6 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
 
       <div className={s.card}>
         <div className={s.tools}>
-          <div className={s.seg} role="tablist" aria-label={tr('Үе шат')}>
-            {([['all', tr('Бүгд')], ['tezu', tr('ТЭЗҮ')], ['zurag', tr('Ажлын зураг төсөл')]] as [PhaseFilter, string][]).map(([k, t]) => (
-              <button
-                key={k}
-                type="button"
-                role="tab"
-                aria-selected={phase === k}
-                className={`${s.segB} ${phase === k ? s.segOn : ''}`}
-                onClick={() => setPhase(k)}
-              >{t}</button>
-            ))}
-          </div>
           <input
             className={s.search}
             type="search"

@@ -60,6 +60,7 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['guits_ehleh', CF.contractorStart],
   ['guits_duusah', CF.contractorEnd],
   ['guitsetgel_huvi', CF.progressPct],
+  ['niit_tootsoh', CF.inTotal],
   ['cashflow_id', CF_MONTH.id],
   ['geree_ognoo', CF.contractDate],
   ['zahiramj_ognoo', CF.orderDate],
