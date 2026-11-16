@@ -6,7 +6,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { fixCyr } from '@/lib/format';
 import { msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { parseDeps } from '@/lib/deps';
-import type { PlanRow, Span, Status } from '@/lib/plan';
+import { PLAN_DEPTH, type PlanRow, type Span, type Status } from '@/lib/plan';
 import { balanced, monthsOf, type MonthRes } from '@/lib/huvaariObyem';
 import type { PlanKind } from './types';
 
@@ -31,17 +31,72 @@ export function directWorks(plan: readonly PlanRow[], at: number): number[] {
 }
 
 /**
- * БҮЛГЭЭР ТӨЛӨВЛӨХ АЖЛУУД (2026-11-05, хэрэглэгч: «барилгыг 15 бүлгээр, бусад багцыг ерөнхий том бүлгээр төлөвлөнө») —
- * шууд ажилтай бүлэгт шууд ажлууд (`directWorks`, урьдын адил); зөвхөн дэд бүлэгтэй ТОМ бүлэгт доторх БҮХ навч ажил
- * мөрийн дарааллаар (дэд бүлэг дэд бүлгээр). Батлагдаагүй нэмэлт мөр (сөрөг oid) ороогүй.
+ * ТӨЛӨВЛӨХ ТҮВШИН (2026-11-13, хэрэглэгч: «зөвхөн 3-р давхрын бүлгээр төлөвлөнө, бусад нь автомат») — `PLAN_DEPTH`
+ * (`lib/plan`). Огноо, сарын хувь, уялдааг зөвхөн энэ бүлгүүдэд тавина; доторх ажлууд тэдгээрээс тарна, дээд бүлгүүд
+ * доорхоосоо нэгтгэгдэнэ. 3-р давхрын бүлэггүй салбарын ажил (жиш. «А. Бэлтгэл ажил», задаргаагүй хүснэгт) гараар хэвээр.
  */
-export function groupWorks(plan: readonly PlanRow[], at: number): number[] {
-  const direct = directWorks(plan, at);
-  if (direct.length) return direct;
+export { PLAN_DEPTH };
+
+/** Төлөвлөх (3-р давхрын) бүлэг мөн эсэх */
+export const isPlanUnit = (r: PlanRow | undefined): boolean => !!r && r.group && r.depth === PLAN_DEPTH;
+
+/** `k` мөрийг агуулах төлөвлөх бүлгийн индекс (өөрөө бол өөрөө); алга бол -1 */
+export function planUnitOf(plan: readonly PlanRow[], k: number): number {
+  const r = plan[k];
+  if (!r) return -1;
+  if (isPlanUnit(r)) return k;
+  if (r.depth <= PLAN_DEPTH) return -1;
+  for (let i = k - 1, d = r.depth; i >= 0; i--) {
+    const x = plan[i];
+    if (x.depth >= d || !x.group) continue;
+    if (isPlanUnit(x)) return i;
+    d = x.depth;
+    if (d < PLAN_DEPTH) return -1;
+  }
+  return -1;
+}
+
+/** Төлөвлөх бүлгийн доторх БҮХ навч ажил мөрийн дарааллаар (батлагдаагүй нэмэлт мөр — сөрөг oid — ороогүй) */
+export function unitWorks(plan: readonly PlanRow[], at: number): number[] {
   const out: number[] = [];
   const d0 = plan[at]?.depth;
   if (d0 == null) return out;
   for (let k = at + 1; k < plan.length && plan[k].depth > d0; k++) if (!plan[k].group && plan[k].oid >= 0) out.push(k);
+  return out;
+}
+
+/** «Бүлгээр төлөвлөх»-ийн ажлууд — зөвхөн төлөвлөх бүлэгт (`unitWorks`), бусад бүлэгт хоосон */
+export function groupWorks(plan: readonly PlanRow[], at: number): number[] {
+  return isPlanUnit(plan[at]) ? unitWorks(plan, at) : [];
+}
+
+/**
+ * Гараар төлөвлөгдөх эсэх: төлөвлөх бүлэг — тийм; түүний доторх мөр — үгүй (тарна); доороо төлөвлөх бүлэгтэй дээд
+ * бүлэг — үгүй (нэгтгэгдэнэ); төлөвлөх бүлэггүй салбарын мөр — тийм (урьдын адил).
+ */
+export function manualPlannable(plan: readonly PlanRow[], k: number): boolean {
+  const r = plan[k];
+  if (!r) return false;
+  if (isPlanUnit(r)) return true;
+  if (planUnitOf(plan, k) >= 0) return false;
+  if (r.group) {
+    for (let i = k + 1; i < plan.length && plan[i].depth > r.depth; i++) if (isPlanUnit(plan[i])) return false;
+  }
+  return true;
+}
+
+/**
+ * Гараар төлөвлөгдөхгүй мөрүүд: oid → шалтгаан (цонх, анхааруулгад). Хоосон бол төлөвлөх бүлэггүй хүснэгт.
+ */
+export function planLocks(plan: readonly PlanRow[]): Map<number, string> {
+  const out = new Map<number, string>();
+  plan.forEach((r, k) => {
+    if (manualPlannable(plan, k)) return;
+    const u = planUnitOf(plan, k);
+    out.set(r.oid, u >= 0
+      ? tr('Огноо, сарын обьём нь 3-р давхрын «{0}» бүлгийн төлөвлөлтөөс автоматаар бодогдоно — тэр бүлгийг нээж төлөвлөнө үү.', `${plan[u].no} ${workName(plan[u])}`.trim())
+      : tr('Огноо нь доорх 3-р давхрын бүлгүүдээс автоматаар бодогдоно — тэдгээрийг төлөвлөнө үү.'));
+  });
   return out;
 }
 

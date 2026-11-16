@@ -56,7 +56,7 @@ import h from './huvaari.module.css';
 import {
   MAX_DAYS, PL_ROW, type ADraft, type Draft, type Drag, type HuvaariReview, type PlanKind, type ResDraft, type Zoom,
 } from './huvaari/types';
-import { directWorks, hasSubGroup,
+import { directWorks, hasSubGroup, isPlanUnit, planLocks, unitWorks, PLAN_DEPTH,
   aggExtra, dayToMs, groupSplits, hasDatedLeaf, inScope, obKey, obyemOutsideSpan, remapOids, rowSpan, sameMonths, sameRes, sameSpan, short, stText, toPlanRows,
   unbalancedBlocks, unbalancedObyem, workName,
 } from './huvaari/util';
@@ -88,6 +88,8 @@ import { useAnalysis } from './huvaari/useAnalysis';
 import { useGroupPlan } from './huvaari/useGroupPlan';
 import { sameShapeGroups } from '@/lib/planAnalysis';
 import { LinkModal, linksReplaced } from './huvaari/LinkModal';
+import { CopyFromPkg } from './huvaari/CopyFromPkg';
+import { sourceUnitPlans, unitKey } from './huvaari/copyPkg';
 import { Segmented, Switch, Toggle } from '@/components/Switch';
 
 export type { HuvaariReview } from './huvaari/types';
@@ -895,6 +897,8 @@ export function Huvaari({
 
   /** Ажлын код → мөрийн индекс — уялдааны бодолт, сум, зөрчилд нэг эх сурвалж */
   const byCode = useMemo(() => codeIndex(plan), [plan]);
+  /** Гараар төлөвлөгдөхгүй мөр → шалтгаан (зөвхөн 3-р давхрын бүлгээр төлөвлөнө, 2026-11-13) */
+  const locks = useMemo(() => planLocks(plan), [plan]);
 
   /**
    * Нийт ноорог — огноо · уялдаа · сарын обьёмын аль нэгийг нь хөндсөн.
@@ -1784,6 +1788,7 @@ export function Huvaari({
     if (!canEdit || locked || busy || kind !== 'plan') return;
     e.preventDefault();
     e.stopPropagation();
+    if (locks.has(r.oid)) { setErr(tr('Уялдааг зөвхөн 3-р давхрын бүлгүүдийн хооронд тавина.')); return; }
     if (r.des == null) {
       setErr(tr('Энэ ажилд код алга — хамаарлын урд ажил болж чадахгүй.'));
       return;
@@ -1845,6 +1850,7 @@ export function Huvaari({
       const t = Number.isInteger(ti) ? plan[ti] : undefined;
       if (!t) { setErr(tr('Хамаарал холбогдсонгүй — хуанлийн мөр (зурвасын эгнээ) дээр тавина уу.')); return; }
       if (t.oid < 0) { setErr(tr('Энэ мөр батлагдаагүй нэмэлт ажил — батлагдсаны дараа уялдаа тавина.')); return; }
+      if (locks.has(t.oid)) { setErr(tr('Уялдааг зөвхөн 3-р давхрын бүлгүүдийн хооронд тавина.')); return; }
       if (hierRelated(plan, ti, r.i)) { setErr(tr('Өөрийн бүлэг/дэд ажилтайгаа холбож болохгүй — гинжин эргэлт үүснэ.')); return; }
       if (t.des != null && reaches(plan, byCode, t.des, r.des as number /* дээр `r.des == null` таслагдсан */)) {
         setErr(tr('Дугуй хамаарал үүсэх тул холбож болохгүй.'));
@@ -2023,7 +2029,7 @@ export function Huvaari({
   }, [busy, locked, canEdit, plan, n, kind, applyChanges, setErr, setNote]);
 
   /* ══════════════ БҮЛГЭЭР ТӨЛӨВЛӨХ · ЗАГВАР ХУУЛАХ (2026-10-29) — `huvaari/useGroupPlan` ══════════════ */
-  const { moneyOf, groupSchedule, planGroup, copyGroup } = useGroupPlan({
+  const { moneyOf, groupSchedule, planGroup, planGroups, copyGroup } = useGroupPlan({
     plan, rowsAll, n, sc, kind, busy, locked, canEdit, obState, obPlan, obOf, obFullRef, applyChanges, setErr, setNote, setObDraft,
   });
 
@@ -2075,8 +2081,47 @@ export function Huvaari({
     scrollEl: () => scrollRef.current,
     onGroupRange: (oid, span) => { setGrpRange({ oid, span }); setModal(oid); },
     obFullRef,
+    planLocked: (oid) => kind === 'plan' && locks.has(oid),
   });
   const popUndo = () => setUndoSnap((s) => (s.u.length ? { u: s.u.slice(0, -1), r: s.r } : s));
+
+  /**
+   * БАГЦ ХООРОНД ХУУЛАХ (2026-11-16) — эх хуудасны 3-р давхрын бүлгүүдийн огноо · сарын хувийг энэ хуудасны ижил нэртэй
+   * бүлгүүдэд `shiftDays` хоногоор шилжүүлж тавина (нэг алхам, нэг Ctrl+Z). Алдаа бол мессеж, амжилттай бол `null`.
+   */
+  const [copyOpen, setCopyOpen] = useState(false);
+  const copyFromPkg = useCallback(async (srcKey: string, shiftDays: number, allBlocks: boolean): Promise<string | null> => {
+    const src = PKGS.find((p) => p.key === srcKey);
+    if (!src || !sc) return tr('Багц олдсонгүй.');
+    try {
+      const sc2 = await loadSchema(src, { synthetic: true });
+      const { rows: r2 } = await loadRows(src, sc2);
+      const p2 = toPlanRows(r2, sc2.bld.length, 'plan');
+      const money2 = (k: number): number | null => {
+        const r = r2[p2[k]?.i ?? -1];
+        const m = r?.money ?? (r?.vol != null && r?.unit != null ? r.vol * r.unit : null);
+        return m != null && Number.isFinite(m) ? m : null;
+      };
+      const plans = sourceUnitPlans(p2, sc2.bld.length, money2, shiftDays);
+      const items: { oid: number; sp: Span; pct: Map<string, number> }[] = [];
+      let miss = 0;
+      plan.forEach((r, i) => {
+        if (!isPlanUnit(r)) return;
+        const u = plans.get(unitKey(plan, i));
+        if (u) items.push({ oid: r.oid, sp: u.span, pct: u.pct }); else miss += 1;
+      });
+      if (!items.length) return tr('«{0}» багцад энэ хуудастай ижил нэртэй, огноотой бүлэг олдсонгүй.', src.label);
+      forgetDrag();
+      const k = planGroups(items, allBlocks ? sc.bld.map((_, b) => b) : [blk]);
+      if (!k) return tr('Хуулах ажил олдсонгүй.');
+      setNote(miss
+        ? tr('«{0}»-аас {1} бүлэг хуулагдлаа ({2} ажил) · {3} бүлэг таарсангүй.', src.label, num(items.length), num(k), num(miss))
+        : tr('«{0}»-аас {1} бүлэг хуулагдлаа ({2} ажил).', src.label, num(items.length), num(k)));
+      return null;
+    } catch (e) {
+      return userError(e);
+    }
+  }, [sc, plan, blk, planGroups, forgetDrag, setNote]);
   const onCancel = () => {
     const had = !!drag && undoDragSeenRef.current && !busy && !locked;
     undoSkipRef.current = true;
@@ -2625,6 +2670,29 @@ export function Huvaari({
       setErr(obOutMsg);
       return;
     }
+    /*
+     * БАТЛАХЫН ӨМНӨ ШАЛГАХ (2026-11-16): төлөвлөлт эхэлсэн блок бүрд (аль нэг 3-р давхрын бүлэг огноотой) ажилтай бүх
+     * 3-р давхрын бүлэг огноотой байх ёстой — дутуу бол илгээхгүй, жагсаана.
+     */
+    if (kind === 'plan') {
+      const units = plan.map((_, i) => i).filter((i) => isPlanUnit(plan[i]) && unitWorks(plan, i).length > 0);
+      const miss: { msg: string; oid: number; b: number }[] = [];
+      for (let b = 0; b < n; b++) {
+        if (!units.some((i) => effSpan(plan, i, b))) continue;
+        for (const i of units) {
+          if (effSpan(plan, i, b)) continue;
+          const r = plan[i];
+          miss.push({ msg: `${`${r.no} ${fixCyr(r.work)}`.trim()}${n > 1 ? ` (${sc?.bld[b] ?? String(b + 1)})` : ''}`, oid: r.oid, b });
+        }
+      }
+      if (miss.length) {
+        setErr(tr('Төлөвлөөгүй {0} бүлэг байна — бүгдийг төлөвлөөд илгээнэ үү.', num(miss.length)));
+        setErrList([{ msg: tr('Төлөвлөөгүй бүлэг — дарж тухайн бүлэг рүү очно:') }, ...miss.slice(0, 30),
+          ...(miss.length > 30 ? [{ msg: tr('… ба {0}', num(miss.length - 30)) }] : [])]);
+        setFlowBox(null);
+        return;
+      }
+    }
     {
       const have = new Set(rows.map((r) => r.oid));
       const stale = new Set([...draft.keys(), ...ham.keys(), ...aDraft.keys(), ...resDraft.keys()].filter((o) => !have.has(o)));
@@ -2678,7 +2746,7 @@ export function Huvaari({
     }
   }, [dirtyN, dirtyRows, busy, previewing, canEdit, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft, kind, hdClearRef, xLockCheck,
     hdSubmitBegin, hdSubmitEnd, setErr, setBusy, setNote, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setBackMarks,
-    unbalRows, obOut, obOutMsg, setErrList, setFlowBox, setProgress, obNotReady, obState, obResDraft, frameOld, orphanOb]);
+    unbalRows, obOut, obOutMsg, setErrList, setFlowBox, setProgress, obNotReady, obState, obResDraft, frameOld, orphanOb, n]);
 
   /**
    * ИЛГЭЭГДСЭН АГУУЛГЫГ НООРОГТ БУУЛГАХ — урьдчилан харах ба батлах ХОЁУЛАА
@@ -3814,9 +3882,9 @@ export function Huvaari({
     if (at < 0) return null;
     const direct = directWorks(plan, at);
     const sub = hasSubGroup(plan, at);
-    const ks: number[] = [];
-    if (direct.length) ks.push(...direct);
-    else for (let k = at + 1; k < plan.length && plan[k].depth > modalRow.depth; k++) if (!plan[k].group) ks.push(k);
+    const ks: number[] = isPlanUnit(plan[at]) ? unitWorks(plan, at) : [];
+    if (!ks.length && direct.length) ks.push(...direct);
+    else if (!ks.length) for (let k = at + 1; k < plan.length && plan[k].depth > modalRow.depth; k++) if (!plan[k].group) ks.push(k);
     let money = 0;
     let any = false;
     const curve = new Map<string, number>();
@@ -4120,6 +4188,20 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   );
                 })}
               </span>
+            )}
+            {/* 2026-11-16: зөвхөн 3-р давхрын (төлөвлөх) бүлгүүд — бүлгийг дэлгэж ажлуудыг харна */}
+            {kind === 'plan' && locks.size > 0 && (
+              <button type="button" className={`${h.tlZoomB} ${lvl === PLAN_DEPTH ? h.lvOn : ''}`} aria-pressed={lvl === PLAN_DEPTH}
+                title={tr('Зөвхөн 3-р давхрын (төлөвлөх) бүлгүүдийг харуулна — бүлгийг дэлгэж ажлуудыг харна')}
+                onClick={() => setLevel(lvl === PLAN_DEPTH ? (lvls[lvls.length - 1] ?? 0) + 1 : PLAN_DEPTH)}>
+                {tr('Төлөвлөх бүлгүүд')}
+              </button>
+            )}
+            {kind === 'plan' && locks.size > 0 && canEdit && !locked && (
+              <button type="button" className={h.tlZoomB} disabled={busy} onClick={() => setCopyOpen(true)}
+                title={tr('Өөр багцын 3-р давхрын бүлгүүдийн төлөвлөлтийг энэ хуудсанд хуулна')}>
+                {tr('Өөр багцаас хуулах')}
+              </button>
             )}
 
             <span className={h.tbSep} aria-hidden />
@@ -5318,7 +5400,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                                   onPointerDown={(e) => onDown(e, r, 'r')} />
                               )}
                               {/* ХОЛБОХ БАРИУЛ — баруун захын дугуй; чирээд нөгөө мөр дээр тавина (2026-09-22). */}
-                              {canEdit && !locked && kind === 'plan' && (
+                              {canEdit && !locked && kind === 'plan' && !locks.has(r.oid) && (
                                 <span className={h.plLink}
                                   onPointerDown={(e) => startLink(e, r)}
                                   title={tr('Хамаарал холбох — чирээд дараагийн ажлын мөр дээр тавина (FS)')} />
@@ -5370,6 +5452,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         </Section>
       )}
 
+      {copyOpen && sc && (
+        <CopyFromPkg pkgs={PKGS.filter((p) => p.key !== pkg.key)} blocks={sc.bld} blk={blk}
+          onClose={() => setCopyOpen(false)} onCopy={copyFromPkg} />
+      )}
       {linkAsk && linkRows && (
         <LinkModal
           src={linkRows.s}
@@ -5436,13 +5522,14 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           })() : null}
           resFields={obResFields}
           xLock={modalRow.group ? undefined : xLockWhy(modalRow.oid, modalRow.des)}
+          planLock={kind === 'plan' ? locks.get(modalRow.oid) : undefined}
           onClose={undoDragOnClose}
           dragged={dragOpen === modalRow.oid}
           onKeep={keepDragClose}
-          onShiftGroup={modalRow.group ? (d, bs) => { forgetDrag(); shiftGroup(modalRow.oid, d, bs); } : undefined}
+          onShiftGroup={modalRow.group && !(kind === 'plan' && locks.has(modalRow.oid)) ? (d, bs) => { forgetDrag(); shiftGroup(modalRow.oid, d, bs); } : undefined}
           groupMoney={modalGroupMoney}
-          groupCopyTargets={modalRow.group && kind === 'plan' && modalGroup?.direct
-            ? sameShapeGroups(plan, plan.findIndex((x) => x.oid === modalRow.oid), (i) => directWorks(plan, i))
+          groupCopyTargets={kind === 'plan' && isPlanUnit(modalRow)
+            ? sameShapeGroups(plan, plan.findIndex((x) => x.oid === modalRow.oid), (i) => (isPlanUnit(plan[i]) ? unitWorks(plan, i) : []))
               .map((i) => ({ oid: plan[i].oid, label: `${plan[i].no} ${fixCyr(plan[i].work)}`.trim() }))
             : undefined}
           onCopyGroup={(targets, step, bs) => { forgetDrag(); copyGroup(modalRow.oid, targets, step, bs); }}
@@ -5452,7 +5539,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               no: plan[x.k].no, work: plan[x.k].work, money: moneyOf(x.k), span: x.span, months: x.months,
             }))
             : undefined}
-          onPlanGroup={modalRow.group && kind === 'plan' && obState === 'ok' && (modalGroup?.direct || modalGroup?.sub) ? (sp, pct, bs) => { forgetDrag(); planGroup(modalRow.oid, sp, pct, bs); } : undefined}
+          onPlanGroup={kind === 'plan' && obState === 'ok' && isPlanUnit(modalRow) ? (sp, pct, bs) => { forgetDrag(); planGroup(modalRow.oid, sp, pct, bs); } : undefined}
           groupCurve={modalGroup?.curve ?? null}
           groupSub={!!modalGroup?.sub && !modalGroup?.direct}
           onUndo={markUndo}

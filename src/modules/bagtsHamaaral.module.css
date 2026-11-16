@@ -260,3 +260,8 @@
   .card { padding: 10px 12px; }
   .listBox { max-height: 50vh; }
 }
+
+/* 2026-11-13: уялдааны төрөл · хоног (сонгосон бүлгийн мөрөнд) */
+.checkLabel { display: flex; gap: 8px; align-items: flex-start; flex: 1 1 auto; min-width: 0; cursor: pointer; }
+.depOpts { display: inline-flex; gap: 6px; align-items: center; flex: none; flex-wrap: wrap; }
+.lagIn { width: 4.5em; font: inherit; padding: 2px 6px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--ink); }

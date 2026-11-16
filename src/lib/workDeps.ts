@@ -4,13 +4,29 @@
 import { t as tr } from '@/lib/i18nCore';
 import { fixCyr } from '@/lib/format';
 import { rowKeyOf, rowOccOf } from '@/modules/sheet/sheetFrame';
+import { PLAN_DEPTH } from '@/lib/plan';
 
 /** Талбарын нэр (Enterprise — жижиг үсгээр; `bagts.pkg.resolveSchema` `f.bham`) */
 export const WORK_DEPS_FIELD = 'bagts_hamaaral';
 /** Талбарын урт (админы Notebook-оор нэмэх String 8000) */
 export const WORK_DEPS_MAX = 8000;
 
-export type WorkRef = { p: string; k: string; o?: number; n?: number; d?: number };
+/**
+ * Холбоос: `p` хуудас · `k` мөрийн түлхүүр · `o`/`n` давтамж · `d` ажлын код; `t` — уялдааны төрөл (2026-11-13: `'SS'` =
+ * зэрэг эхэлнэ, байхгүй = FS — урд нь дуусаад), `l` — хоцрогдол хоногоор (байхгүй = 0).
+ */
+export type WorkRef = { p: string; k: string; o?: number; n?: number; d?: number; t?: 'SS'; l?: number };
+
+/** Уялдааны төрөл · хоног (холбоосоос) */
+export const refKind = (r: Pick<WorkRef, 't'>): 'FS' | 'SS' => (r.t === 'SS' ? 'SS' : 'FS');
+export const refLag = (r: Pick<WorkRef, 'l'>): number => r.l ?? 0;
+/** «FS» · «SS+3» · «FS-2» */
+export const depLabel = (r: Pick<WorkRef, 't' | 'l'>): string => {
+  const l = refLag(r);
+  return `${refKind(r)}${l ? (l > 0 ? `+${l}` : String(l)) : ''}`;
+};
+/** Хоцрогдлын хязгаар (хоног) */
+export const LAG_MAX = 3650;
 export type RefChange = { add: readonly WorkRef[]; remove: readonly WorkRef[] };
 
 /** Хуудасны мөр (`bagtsSheet.SheetRow`-ийн хэрэгтэй хэсэг + талбарын түүхий утга `val`) */
@@ -37,6 +53,8 @@ const compact = (r: WorkRef): WorkRef => {
   if (r.o) o.o = r.o;
   if (r.n != null && r.n > 1) o.n = r.n;
   if (r.d != null) o.d = r.d;
+  if (r.t === 'SS') o.t = 'SS';
+  if (r.l) o.l = r.l;
   return o;
 };
 
@@ -62,9 +80,14 @@ export function parseRefs(raw: unknown): WorkRef[] {
       && typeof e.p === 'string' && !!e.p.trim() && typeof e.k === 'string' && !!e.k.trim()
       && (e.o === undefined || isInt(e.o, 0)) && (e.n === undefined || isInt(e.n, 1))
       && (e.d === undefined || (typeof e.d === 'number' && Number.isFinite(e.d)))
+      && (e.t === undefined || e.t === 'FS' || e.t === 'SS')
+      && (e.l === undefined || (typeof e.l === 'number' && Number.isInteger(e.l) && Math.abs(e.l) <= LAG_MAX))
       && ((e.o as number | undefined) ?? 0) < ((e.n as number | undefined) ?? 1);
     if (!ok) throw new Error(tr('Ажлын хамаарлын бичлэг эвдэрсэн байна (буруу холбоос)'));
-    const r = compact({ p: e.p as string, k: e.k as string, o: e.o as number | undefined, n: e.n as number | undefined, d: e.d as number | undefined });
+    const r = compact({
+      p: e.p as string, k: e.k as string, o: e.o as number | undefined, n: e.n as number | undefined, d: e.d as number | undefined,
+      t: e.t === 'SS' ? 'SS' : undefined, l: e.l as number | undefined,
+    });
     const id = refId(r);
     if (seen.has(id)) continue;
     seen.add(id);
@@ -304,7 +327,7 @@ export function rebaseChange(g: Pick<WorkGraph, 'nodes' | 'index' | 'failed'>, c
   const add = c.add.map((r) => {
     const t = target(r);
     const n = t ? g.nodes.get(t) : undefined;
-    return n ? refOf(n) : r;
+    return n ? compact({ ...refOf(n), t: r.t, l: r.l }) : r;
   });
   const addIds = new Set(add.map(refId));
   const hit = new Set([...add, ...c.remove].map(target).filter((x): x is NodeId => !!x));
@@ -404,6 +427,48 @@ export function sectionsOf(g: Pick<WorkGraph, 'bySheet' | 'nodes'>, p: string): 
   for (const id of g.bySheet.get(p) ?? []) {
     const n = g.nodes.get(id)!;
     if (n.group) continue;
+    const key = n.parent ?? '';
+    let s = at.get(key);
+    if (!s) { s = { id: n.parent, items: [] }; at.set(key, s); out.push(s); }
+    s.items.push(id);
+  }
+  return out;
+}
+
+/**
+ * ХОЛБОЖ БОЛОХ МӨРҮҮД (2026-11-13, хэрэглэгч: «багцын хамаарлыг мөн 3-р давхрын бүлгүүдээр FS/SS-тэй холбоно») —
+ * Хуваарийн төлөвлөх дүрэмтэй ИЖИЛ (`huvaari/util.manualPlannable`): 3-р давхрын бүлэг; 3-р давхрын бүлэг доторх мөр ба
+ * доороо 3-р давхрын бүлэгтэй дээд бүлэг — үгүй; 3-р давхрын бүлэггүй салбарын мөр (А. Бэлтгэл · задаргаагүй хүснэгт) — тийм.
+ */
+export function linkableIds(g: Pick<WorkGraph, 'bySheet' | 'nodes'>, p: string): Set<NodeId> {
+  const ids = g.bySheet.get(p) ?? [];
+  const isUnit = (n: WNode) => n.group && n.depth === PLAN_DEPTH;
+  const above = new Set<NodeId>();
+  for (const id of ids) {
+    const n = g.nodes.get(id)!;
+    if (!isUnit(n)) continue;
+    for (let a = n.parent; a; a = g.nodes.get(a)?.parent ?? null) above.add(a);
+  }
+  const out = new Set<NodeId>();
+  for (const id of ids) {
+    const n = g.nodes.get(id)!;
+    if (isUnit(n)) { out.add(id); continue; }
+    let inUnit = false;
+    for (let a = n.parent; a && !inUnit; a = g.nodes.get(a)?.parent ?? null) inUnit = isUnit(g.nodes.get(a)!);
+    if (inUnit || above.has(id)) continue;
+    out.add(id);
+  }
+  return out;
+}
+
+/** Холбож болох мөрүүд эцэг бүлгээр нь хэсэглэсэн (`linkableIds`) — сонгогчид */
+export function linkSectionsOf(g: Pick<WorkGraph, 'bySheet' | 'nodes'>, p: string): Section[] {
+  const ok = linkableIds(g, p);
+  const out: Section[] = [];
+  const at = new Map<string, Section>();
+  for (const id of g.bySheet.get(p) ?? []) {
+    if (!ok.has(id)) continue;
+    const n = g.nodes.get(id)!;
     const key = n.parent ?? '';
     let s = at.get(key);
     if (!s) { s = { id: n.parent, items: [] }; at.set(key, s); out.push(s); }

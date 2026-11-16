@@ -20,7 +20,10 @@ const ownOf = (d: Drag): Span | null => (d.own !== undefined ? d.own : d.orig);
 export function useDragPlan({
   plan, blk, n, applyChanges, canEdit, locked, busy, sc, obOf, obResOf, obDraft, obResDraft,
   setObDraft, setObResDraft, obPlan, obRes, drag, setDrag, setSel, setModal, dayAt, msAt, hdMeta, meRef, chain, scrollEl, onGroupRange, obFullRef,
+  planLocked,
 }: {
+  /** Гараар төлөвлөгдөхгүй мөр (3-р давхрын бүлгээс автомат, 2026-11-13) — чирэхгүй, дарахад цонх л нээгдэнэ */
+  planLocked?: (oid: number) => boolean;
   /** Бүлгийн хоосон хэсэгт чирж тавьсан шинэ муж — цонхыг тэр мужаар нээнэ (бүлгээр төлөвлөх, 2026-10-29) */
   onGroupRange?: (oid: number, span: Span) => void;
   /** Сарын задаргааны «бүтэн» хуулбар (`Huvaari.obFullRef`) — бүлгийн чирэлтээр шинэ задаргаа тавихад хуучныг устгана */
@@ -133,7 +136,7 @@ export function useDragPlan({
       press.current = { oid: r.oid, x: e.clientX, y: e.clientY, ev: e.nativeEvent };
     };
     if (press.current?.ev !== e.nativeEvent) press.current = null;
-    if (!canEdit || locked || busy) { openBar(); return; }
+    if (!canEdit || locked || busy || planLocked?.(r.oid)) { openBar(); return; }
     if (r.oid < 0) return;
     grp.current = null;
     if (r.group) {
