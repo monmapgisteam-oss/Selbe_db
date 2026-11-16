@@ -84,7 +84,7 @@ export const kindLabel = (k: CatKind): string =>
         : tr('зураг');
 
 /**
- * УСТГАГДСАН (400) ҮЙЛЧИЛГЭЭНҮҮД — CLAUDE.md-ийн «ArcGIS REST-ийн занга».
+ * УСТГАГДСАН (400) ҮЙЛЧИЛГЭЭНҮҮД — ArcGIS REST-ийн занга.
  */
 export const CLOSED_SERVICES = [
   'Selbe_guitsetgel_consolidated',

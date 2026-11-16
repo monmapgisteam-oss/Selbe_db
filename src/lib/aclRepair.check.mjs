@@ -1,6 +1,6 @@
 /**
  * ЭРХИЙН ЗАСВАРЫН ЗАМУУД — хуурамч ArcGIS дээр (2026-10-01, «хэрэглэгч: бүгдийг зас»).
- *   node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/aclRepair.check.mjs
+ *   node --experimental-transform-types --import ./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/aclRepair.check.mjs
  *
  * Хамгаалж буй шийдвэрүүд:
  *   §1 урсгалтай 6 харагдац ЗӨВХӨН хуваарилалтаар (`permissions.workflowViewsOf`) — хадгалсан

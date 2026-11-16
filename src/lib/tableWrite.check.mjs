@@ -9,7 +9,7 @@
  *   3. Серверийн талбар (`OBJECTID` · `GlobalID` · `Shape__*`) нэмэх мөрөөр явж хүсэлт бүхэлдээ унах.
  *   4. `geometry` АТРИБУТ болж явах (ArcGIS татгалзана).
  *   5. Атомын бус илгээлт — гурван төрөл НЭГ `applyEdits`, `rollbackOnFailure=true`.
- *   6. 200-аар ирдэг `{error}` биеийг амжилт гэж үзэх (CLAUDE.md «ArcGIS REST занга»).
+ *   6. 200-аар ирдэг `{error}` биеийг амжилт гэж үзэх (ArcGIS REST-ийн занга).
  */
 import assert from 'node:assert/strict';
 import { applyAll } from '@/lib/tableWrite';

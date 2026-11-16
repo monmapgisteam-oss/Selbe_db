@@ -5,7 +5,7 @@
  * хязгааргүй, `*` = бүх багц, `BUTETS_PACKS` нь «Дэд бүтэц» хуудасны 23 багцтай
  * ижил (soc/site-гүй, зөвхөн `infra:*`).
  *
- * Ажиллуулах: node --experimental-transform-types --import ./tools/ts-alias.mjs src/lib/butetsAcl.check.mjs
+ * Ажиллуулах: node --experimental-transform-types --import ./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/butetsAcl.check.mjs
  */
 import assert from 'node:assert/strict';
 

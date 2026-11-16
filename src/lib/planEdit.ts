@@ -48,7 +48,9 @@ export function editWhy(n: PlanNode, k: PlanEditKey, today: number = ubToday()):
     /* 2026-11-04: багцын гэрээний дүн энэ мөрөнд засагдана, дэд мөрүүд нь хувиар дагана, IPC автоматаар шинэчлэгдэнэ */
     if (k === 'budget' && isSplitParent(n)) return null;
     if (k === 'budget' && n.parent && isSplitParent(n.parent)) return tr('Багцын гэрээний дүнгээс хувиар бодогдоно');
-    /* Доод мөрүүдэд утга бичигдсэн бол энэ мөр нийлбэр — засагдахгүй */
+    /* 2026-11-16 (хэрэглэгч): 4 эх үүсвэр ДЭЭД мөрөнд бичигдэнэ — доод мөр утгатай ч засагдана (дээш нийлүүлэхгүй) */
+    if (k !== 'budget') return null;
+    /* Доод мөрүүдэд мөнгөн дүн бичигдсэн бол энэ мөрийн мөнгөн дүн нийлбэр — засагдахгүй */
     const below = (x: PlanNode): boolean => x.children.some((c) => !c.outside && (c.row?.[key] != null || below(c)));
     return below(n) ? tr('Дэд мөрүүдээс бодогдоно') : null;
   }

@@ -1,6 +1,6 @@
 /**
  * ХЯНАГЧИЙН ХАРАГДАЦ = БАТЛАЛТ — хуучин илгээлтийн давтамжийг ижил дүрмээр нөхнө (2026-10-04).
- *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/hyanaltDetail.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/hyanaltDetail.check.mjs
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -123,7 +123,7 @@ console.log('✅ hyanaltDetail — огноогүй хэлтэрхий (нэмэ
 
 /* Approved archive identity (2026-10-21): run the actual reader against fake
    ArcGIS SDK/fetch, including two real sheets whose OBJECTIDs overlap.
-   Standalone, offline: node --experimental-transform-types src/lib/hyanaltDetail.check.mjs */
+   Standalone, offline: node --experimental-transform-types --import ./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/hyanaltDetail.check.mjs */
 process.env.NEXT_PUBLIC_ENT_DATA = 'https://archive.test/rest/services/Hosted';
 process.env.NEXT_PUBLIC_PORTAL_URL = 'https://archive.test/portal';
 process.env.NEXT_PUBLIC_ALLOWED_ORG_ID = 'archive-test';

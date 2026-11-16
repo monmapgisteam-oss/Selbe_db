@@ -1,6 +1,6 @@
 /**
  * ХОЁР АДМИН ЗЭРЭГ — эрх/багцын бичилт бие биенийхээ өөрчлөлтийг АРЧИХГҮЙ (2026-10-04).
- *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/aclMerge.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/aclMerge.check.mjs
  */
 import assert from 'node:assert/strict';
 import { fake, settle } from './aclE2E.fake.mjs';

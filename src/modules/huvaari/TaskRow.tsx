@@ -612,18 +612,15 @@ function HamCell({
 
 /* ══════════════════ «ХЭРХЭН» ЗААВАР (2026-10-08) ══════════════════ */
 
-const HOWTO_LS = 'selbe-huvaari-howto';
-
 /**
  * Хүснэгтийн НЭГ УДААГИЙН «Хэрхэн» заавар — жижиг «?» товч + popover. 2026-10-23 (UX аудит P5): өөрөө НЭЭГДЭХГҮЙ (урьд нь анх удаа нээгдэж хуваарийг таглаж байв),
- * «Ойлголоо» дарахад `localStorage`-д тэмдэглэгдэж дахин өөрөө гарахгүй; «?»-ээр хүссэн үедээ.
+ * «?»-ээр хүссэн үедээ нээнэ.
  */
 export function HowtoHint() {
   const [open, setOpen] = useState(false);
   const [right, setRight] = useState(false);
   const dismiss = () => {
     setOpen(false);
-    try { localStorage.setItem(HOWTO_LS, '1'); } catch { /* хаалттай орчин */ }
   };
   return (
     <span className={h.howto}>

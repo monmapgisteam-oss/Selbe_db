@@ -128,6 +128,24 @@ export function sourceSums(tree: PlanTree): Map<PlanNode, SourceSums> {
 }
 
 /**
+ * МӨРИЙН ӨӨРИЙН 4 ЭХ ҮҮСВЭРИЙН НИЙЛБЭР (2026-11-16, хэрэглэгч: «дээд мөрөнд 4 эх үүсвэрийг бичнэ, нийт нь тэдгээрийн нийлбэр;
+ * багцын мөнгө дээш нийлж эх үүсвэр болохгүй») — доод мөрөөс нийлүүлэхгүй. Нэг ч эх үүсвэр бичигдээгүй бол null.
+ */
+export function ownSourceTotal(r: PlanStoredRow | null | undefined): number | null {
+  if (!r) return null;
+  let s = 0, any = false;
+  for (const k of SOURCE_KEYS) { const v = num(r[k]); if (v != null) { s += v; any = true; } }
+  return any ? s : null;
+}
+
+/**
+ * ХУВААРИЛААГҮЙ ҮЛДЭГДЭЛ = эх үүсвэрийн нийт − мөнгөн дүн (E: өөрийнх › доод мөрүүдийн нийлбэр). Багцуудад мөнгө бичих
+ * тусам багасна; сөрөг = эх үүсвэрээс илүү хуваарилсан. Эх үүсвэргүй мөрд null.
+ */
+export const sourceGap = (total: number | null, e: number | null | undefined): number | null =>
+  (total == null ? null : total - (e ?? 0));
+
+/**
  * ТӨСЛИЙН НИЙТ ТӨСӨВ — Төслийн нийт мөрийн E (`computePlan`-ийн дүрэм: өөрийнх › хүүхдүүдийн нийлбэр), БҮХЭЛ ₮.
  * 2026-11-04: дашбоард · тайлан · удирдлагын тайлан ажлын мөрийн нийлбэрийг (блокийн бутархай ₮-тэй) тус тусдаа
  * бодож 1 ₮ зөрдөг байв — бүгд ЭНЭ тоог харуулна. Мөр алга (E null) бол null.
@@ -741,18 +759,50 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
     E.set(n, any ? s : null);
   }
 
+  /*
+   * ── W: ЖИНГИЙН төсөв (2026-11-16, хэрэглэгч) — хасагдсан (`skip`) мөрийн эзлэх хэсгийг эцгийн төсвөөс хасна. «Талбайн
+   *    бэлтгэл ажил»-ын 130.7 тэрбум нь гадна тохижилт, инженерийн бэлтгэлийг ч агуулдаг атлаа тэдгээр хасагдсан тул бүх төсөв
+   *    нь үлдсэн (орон сууцны) бэлтгэлд очиж жин хэт өндөр байв. Хувь = ах дүүгийн дотор жин бодох дүрэм (төсөв › ихрийн
+   *    төсөв › хадгалсан › тэнцүү), хасагдсаныг тооцолгүй. Хасагдсан үр удамгүй мөрд W = E. ──
+   */
+  const keepMemo = new Map<PlanNode, number>();
+  const keepOf = (n: PlanNode): number => {
+    const hit = keepMemo.get(n);
+    if (hit !== undefined) return hit;
+    let k = 1;
+    if (skip.has(n)) k = 0;
+    else {
+      const kids = n.children.filter((c) => !c.outside);
+      const ks = kids.map(keepOf);
+      if (ks.some((x) => x < 1)) {
+        const tw = (c: PlanNode): number => (c.twin && c.parent?.twin !== c.twin ? E.get(c.twin) ?? 0 : 0);
+        const by = (f: (c: PlanNode) => number): number[] | null => {
+          const v = kids.map(f);
+          const tot = v.reduce((a, x) => a + x, 0);
+          return tot > 0 ? v.map((x) => x / tot) : null;
+        };
+        const sh = by((c) => E.get(c) ?? 0) ?? by(tw) ?? by((c) => wt(c.row?.heseg_ezleh_huvi) ?? 0) ?? kids.map(() => 1 / kids.length);
+        k = sh.reduce((a, s, i) => a + s * ks[i], 0);
+      }
+    }
+    keepMemo.set(n, k);
+    return k;
+  };
+  const W = (n: PlanNode): number | null => { const e = E.get(n); return e == null ? null : e * keepOf(n); };
+
   /* ── F (0–1): хадгалсан › G/G_эцэг (үе шат) › E/E_эцэг › хосын F ── */
   const F = new Map<PlanNode, number | null>();
   F.set(root, 1);
   const busy = new Set<PlanNode>();
   const budgetShare = (n: PlanNode): number | null => {
     const p = n.parent;
-    if (inputs.excelWeights || !p || p === root || n.outside) return null;
+    /* 2026-11-13 (хэрэглэгч): ҮЕ ШАТНЫ жин ч төсвөөр — Excel-ийн тогтмол «Төсөлд эзлэх» (зураг 10% г.м.) хэрэглэхгүй */
+    if (inputs.excelWeights || !p || n.outside) return null;
     /* хэрэглэгч 2026-11-03: төсөвт өртөг хоосон бол 0 гэж бодно; бүлэгт нэг ч төсөв байхгүй бол (÷0) хадгалсан жин */
     const sib = p.children.filter(counted);
     let tot = 0;
-    for (const c of sib) tot += E.get(c) ?? 0;
-    return tot > 0 ? (E.get(n) ?? 0) / tot : null;
+    for (const c of sib) tot += W(c) ?? 0;
+    return tot > 0 ? (W(n) ?? 0) / tot : null;
   };
   /**
    * 2026-11-03 (хэрэглэгч): бүлэгт өөрийн төсөв байхгүй бол — мөр бүрийн Барилга угсралтын ижил багц/блокийн мөрийн (ихэр)
@@ -786,7 +836,8 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
        хадгалсан жинтэй бол тэр нь төсвийн хувиас түрүүлнэ (нэвтрүүлэхдээ одоогийн тооцоолсон жинг хадгалсан тул хувь өөрчлөгдөөгүй) */
     const manual = n.phase === 'zurag' && !inputs.excelWeights && n.parent != null && n.parent !== root && !n.outside
       && n.parent.children.filter(counted).every((c) => wt(c.row?.heseg_ezleh_huvi) != null);
-    let f = manual ? wt(r.heseg_ezleh_huvi) : budgetShare(n) ?? twinShare(n) ?? storedShare(n);
+    /* 2026-11-16 (хэрэглэгч): мөнгөтэй бүлэгт жин ҮРГЭЛЖ мөнгөөр — гараар оруулсан жин зөвхөн мөнгөгүй бүлэгт */
+    let f = budgetShare(n) ?? (manual ? wt(r.heseg_ezleh_huvi) : twinShare(n) ?? storedShare(n));
     if (f == null) {
       /* Хадгалсан Төсөлд эзлэх ÷ эцгийнх — ЗӨВХӨН үе шатны мөр ба Excel горимд (автомат горимд эцгийн G томьёогоор
          өөрчлөгдөх тул хуучин G-ээс буцааж бодвол жин хэт томордог — 2026-11-03) */
@@ -809,7 +860,7 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
   function gOf(n: PlanNode): number | null {
     if (G.has(n)) return G.get(n)!;
     const own = wt(n.row!.tusul_ezleh_huvi);
-    let g: number | null = n.parent === root || inputs.excelWeights ? own : null;
+    let g: number | null = inputs.excelWeights ? own : null;
     if (g == null) {
       const f = fOf(n);
       const gp = gOf(n.parent!);

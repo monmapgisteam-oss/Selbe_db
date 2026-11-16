@@ -224,7 +224,7 @@ type DashData = {
   land: Async<LandStatus>;
   /** Толгойн амьд үзүүлэлт — талбай, хүн ам, нийт ХО, ногоон */
   headline: Async<Headline>;
-  /** Төслийн төсөв — cashflow_0813 /173 (олон нийтийн бүсгүй) */
+  /** Төслийн төсөв — Cashflow /182 (олон нийтийн бүсгүй) */
   budget: Async<Budget>;
   /** Нийгмийн барилгууд — test_data давхаргуудаас амьд тоо/хүчин чадал */
   social: Async<SocialLive>;

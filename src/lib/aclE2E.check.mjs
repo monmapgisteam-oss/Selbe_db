@@ -1,6 +1,6 @@
 /**
  * ЭРХИЙН ТОХИРГОО БҮРИЙН E2E ШАЛГУУР — хуурамч ArcGIS дээр (2026-09-30).
- *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/aclE2E.check.mjs
+ *   node --experimental-transform-types --import./tools/ts-alias.mjs --import ./tools/test-users.mjs src/lib/aclE2E.check.mjs
  *
  * ОРЧИН (`aclE2E.fake.mjs`): `Selbe_Permissions` хүснэгтийг санах ойд дуурайна
  *    (`FeatureLayer.queryFeatures/applyEdits` + `search`). АМЬД ArcGIS РУУ ЮУ Ч ЯВАХГҮЙ.
