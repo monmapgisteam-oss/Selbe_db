@@ -37,7 +37,7 @@ const F = CASHFLOW_NEW.fields;
 const NAMES: Names = { oid: CASHFLOW_NEW.oid, cfId: CF_MONTH.id };
 const OUT = [
   CASHFLOW_NEW.oid, F.ddKod, F.parentKod, F.level, F.phase, F.pkg, F.block, F.detail, F.budget, F.wSection,
-  F.wProject, F.landStart, F.landEnd, F.contractorStart, F.contractorEnd, F.progressPct, CF_MONTH.id,
+  F.landStart, F.landEnd, F.contractorStart, F.contractorEnd, F.progressPct, CF_MONTH.id,
 ];
 const WHERE = `${F.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`;
 

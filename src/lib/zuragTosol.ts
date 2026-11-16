@@ -37,11 +37,6 @@ export type FieldKey = keyof typeof FIELD_OF;
 /** Мөр бүрийн засвар — ХЭРЭГЛЭГЧИЙН БИЧСЭН ТЕКСТ (задлалт хадгалахад) */
 export type RowEdit = Partial<Record<FieldKey, string>>;
 
-/**
- * МӨНГӨНИЙ мөрийн (`cashflow_id` бий) явцыг ШАТНЫ талбарт ДАВХАР бичнэ — ТЭЗҮ → `tezu`, Ажлын зураг төсөл → `ajliin_zurag_tusul`.
- */
-export const STAGE_FIELD_OF: Partial<Record<PhaseKind, string>> = { tezu: 'tezu', zurag: 'ajliin_zurag_tusul' };
-
 /** Мөрийн үе шат — өөрийн `uy_shat`, байхгүй бол эцгүүдийнхээс (`etseg_kod`) */
 export function rowPhase(base: readonly PlanStoredRow[], r: PlanStoredRow): PhaseKind {
   const byKod = new Map(base.map((x) => [x.dd_kod ?? '', x] as const));
@@ -436,8 +431,6 @@ export function buildEdits(base: readonly PlanStoredRow[], p: Pending, names: Na
     if (!ch || !Object.keys(ch).length) continue;
     const u: Record<string, unknown> = { [names.oid]: r.objectid };
     for (const f of Object.keys(ch) as FieldKey[]) u[FIELD_OF[f]] = ch[f];
-    const stage = 'pct' in ch && r.cashflow_id != null ? STAGE_FIELD_OF[rowPhase(base, r)] : undefined;
-    if (stage) u[stage] = ch.pct ?? null;
     updates.push(u);
   }
 

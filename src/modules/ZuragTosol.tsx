@@ -46,7 +46,7 @@ const NAMES: Names = { oid: CASHFLOW_NEW.oid, cfId: CF_MONTH.id };
 /** Уншиж/дахин шалгах талбарууд — `zuragTosol.toStored`-ийн түлхүүрүүд */
 const OUT = [
   CASHFLOW_NEW.oid, F.ddKod, F.parentKod, F.level, F.phase, F.pkg, F.block, F.detail, F.budget, F.wSection,
-  F.wProject, F.landStart, F.landEnd, F.contractorStart, F.contractorEnd,
+  F.landStart, F.landEnd, F.contractorStart, F.contractorEnd,
   F.progressPct, CF_MONTH.id,
 ];
 /** Excel-ийн мөр (мөнгөний + бүтцийн); сарын мөр хасагдана */

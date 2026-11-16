@@ -200,11 +200,14 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
       'objectid', CF.type, CF.project, CF.pkg, CF.cost, CF.note, CF.detail,
       ...FIN_XL_CHART_FIELDS,
       'ajil_tuvshin3',
-      CF.start, CF.end, CF.share, CF.contract, CF.pkg2, CASHFLOW_NEW.fields.orderNo,
+      CF.start, CF.end, CF.contract, CF.pkg2, CASHFLOW_NEW.fields.orderNo,
       CF.code1, CF.cfId, CASHFLOW_NEW.fields.budgetOrder,
       ...CF_SOURCES.map((s) => s.field),
     ],
   }), loadLiveProgressLazy()]);
+  /* 2026-11-16: «Төсөлд эзлэх» хадгалсан багана биш — нийтэд орох мөрийн төсөвт өртөг ÷ тэдгээрийн нийлбэр (жин төсвөөр) */
+  const inTot = (r: Row) => !FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1]));
+  const costSum = rows.reduce((a, r) => a + (inTot(r) ? nOf(r[CF.cost]) : 0), 0);
   return rows.map((r: Row): CfRow => {
     const cfId = dOf(r[CF.cfId]);
     const lp = live && cfId != null ? live.get(cfId) ?? null : null;
@@ -218,7 +221,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     note: sOf(r[CF.note]),
     start: dOf(r[CF.start]),
     end: dOf(r[CF.end]),
-    share: nOf(r[CF.share]) * 100,
+    share: inTot(r) && costSum > 0 ? (nOf(r[CF.cost]) / costSum) * 100 : 0,
     decree: nOf(orderTotalOf(r)),
     progress: lp ? lp.S : null,
     src: CF_SOURCES.map((s) => nOf(r[s.field])),

@@ -37,11 +37,19 @@ function check(list: ApplyResult[], label: string, expected: number): number[] {
 /**
  * Серверийн талбаруудыг хасна.
  */
-const clean = (a: Record<string, unknown>): Record<string, unknown> => {
+const clean = (a: Record<string, unknown>, drop?: RegExp): Record<string, unknown> => {
   const o: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(a)) if (!SERVER_FIELDS.test(k)) o[k] = v;
+  for (const [k, v] of Object.entries(a)) if (!SERVER_FIELDS.test(k) && !drop?.test(k)) o[k] = v;
   return o;
 };
+
+/**
+ * Cashflow-ийн хүснэгтийн (`Guitsetgel_talbe/182`) ТООЦООЛСОН талбарууд — хүснэгтэд багана байхгүй (2026-11-16): ангиллын 6
+ * (`cfClass`) ба Д/Д-ээс гардаг 3 (эцэг код · түвшин · үе шат). Мөр нэмэх/засах кодууд эдгээрийг атрибутад үлдээсэн ч
+ * серверт ИЛГЭЭХГҮЙ.
+ */
+const CF_URL = /\/Guitsetgel_talbe\/FeatureServer\/182\/?$/i;
+const CF_VIRTUAL = /^(etseg_kod|tuvshin|uy_shat|(bagts|ajil)_tuvshin[123])$/;
 
 /**
  * НЭМЭХ · ЗАСАХ · УСТГАХ гурвыг НЭГ `applyEdits` хүсэлтээр — АТОМААР.
@@ -64,17 +72,18 @@ export async function applyAll(
   },
   opts?: { cap?: CapKey },
 ): Promise<EditResult> {
+  const drop = CF_URL.test(url) ? CF_VIRTUAL : undefined;
   const adds = (edit.adds ?? []).map((a) => {
     const { geometry, ...attrs } = a;
     return geometry == null
-      ? { attributes: clean(attrs) }
-      : { attributes: clean(attrs), geometry };
+      ? { attributes: clean(attrs, drop) }
+      : { attributes: clean(attrs, drop), geometry };
   });
   const updates = (edit.updates ?? []).map((a) => {
     const { geometry, ...rest } = a;
     const oid = rest[oidField];
     if (typeof oid !== 'number') throw new Error(tr('Мөрийн дугаар алга — засварыг илгээх боломжгүй'));
-    const f: Record<string, unknown> = { attributes: { ...clean(rest), [oidField]: oid } };
+    const f: Record<string, unknown> = { attributes: { ...clean(rest, drop), [oidField]: oid } };
     if (geometry != null) f.geometry = geometry;
     return f;
   });

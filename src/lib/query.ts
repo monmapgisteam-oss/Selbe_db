@@ -439,7 +439,7 @@ export async function queryFeatures(
   const asked = opts.outFields ?? ['*'];
   const virt = CF_CLASS_URL.test(url) && asked.some((f) => f === '*' || CF_CLASS_NAMES.has(f));
   const fields = virt ? asked.filter((f) => !CF_CLASS_NAMES.has(f)) : asked;
-  if (virt && !fields.includes('*') && !fields.includes('objectid')) fields.push('objectid');
+  if (virt && !fields.includes('*')) for (const f of ['objectid', 'dd_kod']) if (!fields.includes(f)) fields.push(f);
   const params: Record<string, string> = {
     where: opts.where ?? '1=1',
     outFields: fields.join(','),
@@ -480,8 +480,8 @@ export async function queryFeatures(
     res = await collect();
   }
   if (virt) {
-    const { attachCfClass } = await import('./cfClass');
-    attachCfClass(res.rows, await cfClassLoad(url, opts.token));
+    const { attachCfVirtual } = await import('./cfClass');
+    attachCfVirtual(res.rows, await cfClassLoad(url, opts.token));
   }
   return res.rows;
 }
@@ -493,9 +493,11 @@ export async function queryFeatures(
 const CF_CLASS_URL = /\/Guitsetgel_talbe\/FeatureServer\/182\/?$/i;
 const CF_CLASS_NAMES: ReadonlySet<string> = new Set([
   'bagts_tuvshin1', 'ajil_tuvshin1', 'bagts_tuvshin2', 'ajil_tuvshin2', 'bagts_tuvshin3', 'ajil_tuvshin3',
+  /* Д/Д-ээс гардаг (`cfClass.cfDerive`) */
+  'etseg_kod', 'tuvshin', 'uy_shat',
 ]);
 const CF_CLASS_TTL_MS = 30_000;
-let cfClassHit: { url: string; at: number; epoch: number; p: Promise<ReadonlyMap<number, import('./cfClass').CfClass>> } | null = null;
+let cfClassHit: { url: string; at: number; epoch: number; p: Promise<import('./cfClass').CfVirtual> } | null = null;
 
 /** Ангиллын зураглал — богино кэштэй (нэг дэлгэцийн зэрэгцээ уншилтууд нэг хүсэлт хуваална); бичилтийн дараа шинэчлэгдэнэ */
 function cfClassLoad(url: string, token?: string) {
@@ -506,7 +508,7 @@ function cfClassLoad(url: string, token?: string) {
     const rows = await queryFeatures(url, {
       where: m.CF_CLASS_SOURCE_WHERE, outFields: [...m.CF_CLASS_SOURCE_FIELDS], orderBy: 'objectid ASC', ...(token ? { token } : {}),
     });
-    return m.cfClassFromRows(rows);
+    return m.cfVirtualFromRows(rows);
   })();
   cfClassHit = { url, at: Date.now(), epoch, p };
   p.catch(() => { if (cfClassHit?.p === p) cfClassHit = null; });

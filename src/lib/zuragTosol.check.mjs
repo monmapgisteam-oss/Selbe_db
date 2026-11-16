@@ -91,17 +91,17 @@ const r23 = base.find((r) => r.objectid === 23);
   assert.deepEqual(buildEdits(base, p, NAMES).updates, []);
 }
 
-/* ── 1б. 2026-10-26 (аудит): МӨНГӨНИЙ мөрийн явц шатны талбарт ДАВХАР (ТУХ/Нэгтгэлтэй нэг тоо); бүтцийн мөрд үгүй ── */
+/* ── 1б. 2026-11-16: үе шатны хувийн хуулбар багана (`tezu` · `ajliin_zurag_tusul`) хасагдсан — явц зөвхөн `guitsetgel_huvi`-д бичигдэнэ ── */
 {
   const r11 = base.find((r) => r.objectid === 11);
   assert.equal(rowPhase(base, r11), 'tezu');
   assert.equal(rowPhase(base, { dd_kod: '2.1.9', etseg_kod: '2.1' }), 'zurag', 'эцгийн uy_shat');
   assert.deepEqual(buildEdits(base, setEdit(EMPTY_PENDING, r11, 'pct', '60'), NAMES).updates,
-    [{ objectid: 11, guitsetgel_huvi: 60, tezu: 60 }]);
+    [{ objectid: 11, guitsetgel_huvi: 60 }]);
   const money = base.map((r) => (r.objectid === 22 ? { ...r, cashflow_id: 9 } : r));
   const m22 = money.find((r) => r.objectid === 22);
   assert.deepEqual(buildEdits(money, setEdit(EMPTY_PENDING, m22, 'pct', '35'), NAMES).updates,
-    [{ objectid: 22, guitsetgel_huvi: 35, ajliin_zurag_tusul: 35 }]);
+    [{ objectid: 22, guitsetgel_huvi: 35 }]);
   assert.deepEqual(buildEdits(money, setEdit(EMPTY_PENDING, m22, 'end', '2026-07-15'), NAMES).updates,
     [{ objectid: 22, guits_duusah: d('2026-07-15') }], 'огноо засварт шатны талбар хөндөгдөхгүй');
 }
