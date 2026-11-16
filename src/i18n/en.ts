@@ -8132,7 +8132,10 @@ const en: Record<string, string> = {
   "PDF үүсгэв — {0}, {1} → {2}.": "PDF created — {0}, {1} → {2}.",
   "Сонгосон хүлээн авагчийн тайланг PDF хэлбэрээр татах": "Download the report for the selected audience as PDF",
   "Тайлан дэлгэцэд харагдахгүй — «PDF татах» дарахад сонгосон хүлээн авагч, хугацаагаар автоматаар үүснэ. Хотын дарга: дэлгэрэнгүй (9 бүлэг, хавсралт хүснэгттэй); Иргэдийн Төлөөлөгчдийн Хурал: хураангуй (5 хэсэг); Төлөөлөн удирдах зөвлөл: хураангуй (7 хэсэг, хавсралт хүснэгттэй). Гараар оруулах мэдээлэлгүй.": "The report is not shown on screen — pressing «Download PDF» generates it automatically for the selected audience and period. City Mayor: detailed (9 chapters, with an appendix table); Citizens' Representatives Khural: summary (5 sections); Board of Directors: summary (7 sections, with an appendix table). No manual input.",
-  "Нэг ч объектын барилга угсралт эхлээгүй (явц 0%).": "Construction has not started on any facility (progress 0%)."
+  "Нэг ч объектын барилга угсралт эхлээгүй (явц 0%).": "Construction has not started on any facility (progress 0%).",
+  "{0} ажлын холбоос": "{0} work links",
+  "{0} нь зөрчилтэй — хамаарагч ажил урьдчилагчаасаа эрт эхэлсэн": "{0} violated — the dependent work starts before its predecessor allows",
+  "Ажлын холбоос — Хуваарийн уялдаа ба багц хоорондын хамаарал, мөрөөр нэгтгэсэн (улаан = зөрчилтэй)": "Work links — schedule dependencies and cross-package links, rolled up by row (red = violated)"
 };
 
 export default en;

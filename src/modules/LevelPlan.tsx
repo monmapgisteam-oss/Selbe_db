@@ -7,7 +7,7 @@
  *   хоцорсон `--bad`, дууссан `--good`, мэдээлэлгүй — зураас); L4 сарын · L5 7 хоногийн · L6 өдрийн heatmap.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { pct } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
@@ -15,10 +15,10 @@ import { Data, userError } from '@/components/ui';
 import { buildXlsx, downloadXlsx } from '@/lib/xlsx';
 import {
   BAR_TEXT, DAY, MS_TEXT, activeRange, buildL1, buildL2, buildL3, buildL4, buildLook, dayCols, dayOfLocal, failLabel, fmtDay,
-  fmtMD, fmtMonth, ganttAxis, gParents, hBlockParents, heatLevel, levelWorkbook, loadLevelData, loadSheetDetail, monthIdx,
+  fmtMD, fmtMonth, ganttAxis, gParents, hBlockParents, heatLevel, levelLinks, levelWorkbook, loadLevelData, loadSheetDetail, monthIdx,
   notDone, packagesOf, visibleGantt, visibleHeat, weekCols, xMonths,
   type Axis, type BarStatus, type BlockDetail, type Col, type GFilter, type GRow, type HRow, type HSection, type LevelData,
-  type MsStatus, type PkgInfo,
+  type MsStatus, type PkgInfo, type RowLink,
 } from '@/lib/levelPlan';
 import s from './levelPlan.module.css';
 
@@ -167,6 +167,10 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelDat
   const pkgs = useMemo(() => packagesOf(d.plan.tree), [d.plan.tree]);
   const today = dayOfLocal(d.at);
   useEffect(() => { writeUrl(lvl, pk); }, [lvl, pk]);
+  /* Ажлын холбоос (2026-11-13) — 6 түвшин бүрт; бөглөх хуудсаас (L1/L2-т ч ачаална, ачаалагдтал сумгүй) */
+  const sq = useAsync(loadSheetDetail, []);
+  const work = sq.state === 'ready' ? sq.data.links : null;
+  const links = useMemo(() => (work ? levelLinks(work, lvl, pkgs) : []), [work, lvl, pkgs]);
 
   if (d.plan.empty) {
     return (
@@ -290,24 +294,24 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelDat
       {xlsErr && <div className={s.warn} role="alert">{xlsErr}</div>}
       <p className={s.lvlSub}>{LEVEL_SUB[lvl]()}</p>
 
-      {lvl === 1 && <Gantt rows={buildL1(d.plan, today)} today={today} vo={vo} mw={SCALE_MW[scale]} />}
-      {lvl === 2 && <Gantt rows={buildL2(d.plan, shown, d.marks, today)} today={today} vo={vo} mw={SCALE_MW[scale]} />}
+      {lvl === 1 && <Gantt rows={buildL1(d.plan, today)} links={links} today={today} vo={vo} mw={SCALE_MW[scale]} />}
+      {lvl === 2 && <Gantt rows={buildL2(d.plan, shown, d.marks, today)} links={links} today={today} vo={vo} mw={SCALE_MW[scale]} />}
       {lvl === 3 && (
         <WithSheet>
-          {(det) => <Gantt rows={buildL3(d.plan, shown, det, today)} today={today} vo={vo} mw={SCALE_MW[scale]} />}
+          {(det) => <Gantt rows={buildL3(d.plan, shown, det, today)} links={links} today={today} vo={vo} mw={SCALE_MW[scale]} />}
         </WithSheet>
       )}
       {lvl === 4 && (
         <WithSheet>
-          {(det) => <MonthHeat d={d} pkgs={shown} det={det} today={today} vo={vo} />}
+          {(det) => <MonthHeat d={d} pkgs={shown} det={det} links={links} today={today} vo={vo} />}
         </WithSheet>
       )}
       {look && groups && (
         <WithSheet>
-          {(det) => <LookHeat d={d} pkgs={shown} det={det} groups daily={lvl === 6} today={today} vo={vo} />}
+          {(det) => <LookHeat d={d} pkgs={shown} det={det} links={links} groups daily={lvl === 6} today={today} vo={vo} />}
         </WithSheet>
       )}
-      {look && !groups && <LookHeat d={d} pkgs={shown} det={null} groups={false} daily={lvl === 6} today={today} vo={vo} />}
+      {look && !groups && <LookHeat d={d} pkgs={shown} det={null} links={links} groups={false} daily={lvl === 6} today={today} vo={vo} />}
 
       <Legend lvl={lvl} />
     </div>
@@ -352,11 +356,14 @@ const BAR_CLS: Record<BarStatus, string> = {
 const MS_CLS: Record<MsStatus, string> = {
   done: s.msDone, late: s.msLate, upcoming: s.msUp, missing: s.msMissing, none: s.msNone,
 };
-function Gantt({ rows, today, vo, mw: MW = SCALE_MW.month }: { rows: GRow[]; today: number; vo: ViewOpts; mw?: number }) {
+function Gantt({ rows, links = [], today, vo, mw: MW = SCALE_MW.month }: {
+  rows: GRow[]; links?: readonly RowLink[]; today: number; vo: ViewOpts; mw?: number;
+}) {
   /* Тэнхлэг БҮТЭН мөрөөр — шүүх/хураахад огнооны хүрээ үсрэхгүй */
   const ax = useMemo(() => ganttAxis(rows, today), [rows, today]);
   const parents = useMemo(() => gParents(rows), [rows]);
   const depthOf = useMemo(() => new Map(rows.map((r) => [r.id, r.depth] as const)), [rows]);
+  const wRef = useRef<HTMLDivElement>(null);
   if (!rows.length || !ax) return <div className={s.hint}>{tr('Харуулах мөр алга')}</div>;
   const filtering = !!vo.q.trim() || vo.gf !== 'all';
   const folded = (id: string) => isFolded(vo.fold, id, depthOf.get(id) ?? 0);
@@ -378,7 +385,8 @@ function Gantt({ rows, today, vo, mw: MW = SCALE_MW.month }: { rows: GRow[]; tod
     <div className={s.card}>
       <div className={s.scroll}>
         {/* 2026-11-05 (UI аудит): өргөн = баганын нийлбэр — fixed layout баганыг дахин хуваарилж sticky нэр «ЭХЛЭХ»-ийг дардаг байв */}
-        <table className={s.gt} style={{ width: 674 + W }}>
+        <div ref={wRef} className={s.lkWrap} style={{ width: TL_X + W }}>
+        <table className={s.gt} style={{ width: TL_X + W }}>
           <colgroup>
             <col style={{ width: 72 }} />
             <col style={{ width: 280 }} />
@@ -408,9 +416,93 @@ function Gantt({ rows, today, vo, mw: MW = SCALE_MW.month }: { rows: GRow[]; tod
             ))}
           </tbody>
         </table>
+        {links.length > 0 && <LinkLayer wRef={wRef} sig={`${vis.map((r) => r.id).join(',')}|${MW}`} links={links} />}
+        </div>
       </div>
     </div>
     </>
+  );
+}
+
+/** Цаг хугацааны баганын зүүн зах (px) — өмнөх 6 баганын өргөний нийлбэр (`colgroup`) */
+const TL_X = 674;
+
+/**
+ * ХОЛБООСЫН СУМ (2026-11-13, хэрэглэгч: «6 түвшин бүр дээр ажлуудыг хооронд нь холбоотой») — «Хуваарь»-ын сумтай ижил
+ * зурлага (FS: урьдчилагчийн баруун захаас хамаарагчийн зүүн зах руу; SS: хоёр зүүн зах), зөрчилтэй бол улаан.
+ * Байрлалыг хүснэгтээс хэмжинэ: мөр — `tr[data-lk]`, хэвтээ муж — тэр мөрийн `[data-x]` (гантын зурвас, heatmap-ийн
+ * утгатай нүд). Холбоосын төгсгөл бүрд ЭХНИЙ харагдаж буй мөр (`RowLink.from/to`); нэг мөр рүү буусан нь зурагдахгүй.
+ */
+type LinkGeo = { y: number; x0: number; x1: number; name: string };
+function LinkLayer({ wRef, sig, links }: { wRef: RefObject<HTMLDivElement | null>; sig: string; links: readonly RowLink[] }) {
+  const [geo, setGeo] = useState<{ rows: Map<string, LinkGeo>; w: number; h: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = wRef.current;
+    if (!el) return;
+    const o = el.getBoundingClientRect();
+    const rows = new Map<string, LinkGeo>();
+    el.querySelectorAll<HTMLTableRowElement>('tr[data-lk]').forEach((tr) => {
+      const xs = tr.querySelectorAll<HTMLElement>('[data-x]');
+      if (!xs.length) return;
+      const b = tr.getBoundingClientRect();
+      const f = xs[0].getBoundingClientRect();
+      const l = xs[xs.length - 1].getBoundingClientRect();
+      rows.set(tr.dataset.lk!, { y: b.top - o.top + b.height / 2, x0: f.left - o.left, x1: l.right - o.left, name: tr.dataset.nm ?? '' });
+    });
+    const t = el.querySelector('table');
+    setGeo({ rows, w: t?.offsetWidth ?? el.offsetWidth, h: t?.offsetHeight ?? el.offsetHeight });
+  }, [wRef, sig]);
+  const paths = useMemo(() => {
+    if (!geo) return [];
+    const m = new Map<string, { a: LinkGeo; b: LinkGeo; ids: Set<string>; ss: Set<string>; viol: Set<string> }>();
+    for (const l of links) {
+      const f = l.from.find((k) => geo.rows.has(k));
+      const t = l.to.find((k) => geo.rows.has(k));
+      if (!f || !t || f === t) continue;
+      const k = `${f}>${t}`;
+      const x = m.get(k);
+      if (!x) { m.set(k, { a: geo.rows.get(f)!, b: geo.rows.get(t)!, ids: new Set(l.ids), ss: new Set(l.ss), viol: new Set(l.viol) }); continue; }
+      l.ids.forEach((id) => x.ids.add(id));
+      l.ss.forEach((id) => x.ss.add(id));
+      l.viol.forEach((id) => x.viol.add(id));
+    }
+    return [...m].map(([key, { a, b, ids, ss, viol }]) => {
+      const tx = b.x0;
+      let d: string;
+      if (ss.size < ids.size) {
+        const sx = a.x1;
+        d = tx >= sx + 10
+          ? `M ${sx} ${a.y} h 6 V ${b.y} H ${tx}`
+          : `M ${sx} ${a.y} h 8 v ${b.y > a.y ? 12 : -12} H ${tx - 8} V ${b.y} H ${tx}`;
+      } else {
+        const sx = a.x0;
+        d = `M ${sx} ${a.y} H ${Math.min(sx, tx) - 8} V ${b.y} H ${tx}`;
+      }
+      const tip = [
+        `${a.name} → ${b.name}`,
+        tr('{0} ажлын холбоос', ids.size) + (ss.size ? ` (SS ${ss.size})` : ''),
+        viol.size ? tr('{0} нь зөрчилтэй — хамаарагч ажил урьдчилагчаасаа эрт эхэлсэн', viol.size) : null,
+      ].filter(Boolean).join(' · ');
+      return { key, d, bad: viol.size > 0, tip };
+    });
+  }, [geo, links]);
+  if (!geo || !paths.length) return null;
+  return (
+    <svg className={s.lkSvg} width={geo.w} height={geo.h} aria-hidden>
+      <defs>
+        {[s.lkArrN, s.lkArrB].map((c, k) => (
+          <marker key={c} id={`lvLkArr${k}`} viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5.5" markerHeight="5.5" orient="auto">
+            <path d="M0 0 L6 3 L0 6 z" className={c} />
+          </marker>
+        ))}
+      </defs>
+      {paths.map((p) => (
+        <g key={p.key}>
+          <path d={p.d} className={p.bad ? s.lkBad : s.lkLine} markerEnd={`url(#lvLkArr${p.bad ? 1 : 0})`} />
+          <path d={p.d} className={s.lkHit}><title>{p.tip}</title></path>
+        </g>
+      ))}
+    </svg>
   );
 }
 
@@ -523,7 +615,7 @@ function GanttRow({ r, ax, nowX, W, MW, fold }: {
   const fcLate = r.fc != null && r.end != null && r.fc > r.end;
   const fx = r.fc != null ? xMonths(ax, r.fc) * MW : null;
   return (
-    <tr className={`${s.row} ${r.strong ? s.strongRow : ''}`}>
+    <tr className={`${s.row} ${r.strong ? s.strongRow : ''}`} data-lk={r.lk} data-nm={r.lk ? r.name : undefined}>
       <td className={s.cId}>{r.id}</td>
       <td className={s.cName} style={ind} title={r.name}>
         <Caret fold={fold} />{r.name}{r.w != null && <span className={s.w}> ({pct(r.w, 1)})</span>}
@@ -537,6 +629,7 @@ function GanttRow({ r, ax, nowX, W, MW, fold }: {
       {tl(has ? (
         <>
           <span
+            data-x=""
             className={`${s.gBar} ${BAR_CLS[r.status]} ${r.inh || r.alt ? s.inh : ''}`}
             style={{ left: x0, width: Math.max(3, x1 - x0) }}
             title={tip}
@@ -556,8 +649,8 @@ function GanttRow({ r, ax, nowX, W, MW, fold }: {
 
 type HeatCol = { key: string; label: string; now: boolean };
 
-function MonthHeat({ d, pkgs, det, today, vo }: {
-  d: LevelData; pkgs: PkgInfo[]; det: ReadonlyMap<string, BlockDetail> | null; today: number; vo: ViewOpts;
+function MonthHeat({ d, pkgs, det, links, today, vo }: {
+  d: LevelData; pkgs: PkgInfo[]; det: ReadonlyMap<string, BlockDetail> | null; links: readonly RowLink[]; today: number; vo: ViewOpts;
 }) {
   const secs = useMemo(() => buildL4(d.plan, pkgs, det), [d.plan, pkgs, det]);
   const months = d.plan.months;
@@ -570,14 +663,14 @@ function MonthHeat({ d, pkgs, det, today, vo }: {
   const tm = monthIdx(today);
   const cols: HeatCol[] = months.slice(lo, hi + 1).map((m) => ({ key: String(m), label: fmtMonth(m), now: monthIdx(m) === tm }));
   const cut = secs.map((x) => ({ ...x, rows: x.rows.map((r) => ({ ...r, cells: r.cells.slice(lo, hi + 1) })) }));
-  return <Heat secs={cut} cols={cols} dec={1} sum={false} vo={vo} />;
+  return <Heat secs={cut} cols={cols} dec={1} sum={false} vo={vo} links={links} />;
 }
 
 function LookHeat({
-  d, pkgs, det, groups, daily, today, vo,
+  d, pkgs, det, links, groups, daily, today, vo,
 }: {
-  d: LevelData; pkgs: PkgInfo[]; det: ReadonlyMap<string, BlockDetail> | null; groups: boolean; daily: boolean; today: number;
-  vo: ViewOpts;
+  d: LevelData; pkgs: PkgInfo[]; det: ReadonlyMap<string, BlockDetail> | null; links: readonly RowLink[]; groups: boolean; daily: boolean;
+  today: number; vo: ViewOpts;
 }) {
   const colsDef: Col[] = useMemo(() => (daily ? dayCols(today, 14) : weekCols(today, 12)), [daily, today]);
   const secs = useMemo(() => buildLook(d.plan, pkgs, det, colsDef, groups), [d.plan, pkgs, det, colsDef, groups]);
@@ -587,12 +680,15 @@ function LookHeat({
     label: c.days === 1 ? fmtMD(c.from) : `${fmtMD(c.from)}–${fmtMD(c.from + (c.days - 1) * DAY)}`,
     now: i === 0,
   }));
-  return <Heat secs={secs} cols={cols} dec={daily ? 3 : 2} sum vo={vo} />;
+  return <Heat secs={secs} cols={cols} dec={daily ? 3 : 2} sum vo={vo} links={links} />;
 }
 
 const KIND_CLS: Record<HRow['kind'], string> = { total: s.hTotal, cum: s.hCum, block: s.hBlock, group: s.hGroup };
 
-function Heat({ secs, cols, dec, sum, vo }: { secs: HSection[]; cols: HeatCol[]; dec: number; sum: boolean; vo: ViewOpts }) {
+function Heat({ secs, cols, dec, sum, vo, links }: {
+  secs: HSection[]; cols: HeatCol[]; dec: number; sum: boolean; vo: ViewOpts; links: readonly RowLink[];
+}) {
+  const wRef = useRef<HTMLDivElement>(null);
   const filtering = !!vo.q.trim();
   /* Хураасан багц · блок — `Fold` (`p:` · `b:` угтвартай түлхүүр) → `visibleHeat`-ийн олонлог */
   const pkgSet = new Set(secs.filter((x) => isFolded(vo.fold, `p:${x.pkg.key}`, 0)).map((x) => x.pkg.key));
@@ -613,6 +709,7 @@ function Heat({ secs, cols, dec, sum, vo }: { secs: HSection[]; cols: HeatCol[];
     <LevelButtons deep={deep} vo={vo} off={filtering} />
     <div className={s.card}>
       <div className={s.scroll}>
+        <div ref={wRef} className={s.lkWrap}>
         <table className={s.ht}>
           <thead>
             <tr>
@@ -635,6 +732,14 @@ function Heat({ secs, cols, dec, sum, vo }: { secs: HSection[]; cols: HeatCol[];
             ))}
           </tbody>
         </table>
+        {links.length > 0 && (
+          <LinkLayer
+            wRef={wRef}
+            sig={`${vis.flatMap((x) => x.rows.map((r) => r.id)).join(',')}|${cols.map((c) => c.key).join(',')}`}
+            links={links}
+          />
+        )}
+        </div>
       </div>
     </div>
     </>
@@ -674,7 +779,7 @@ function HeatRowView({ r, cols, dec, sum, fold }: {
   const cum = r.kind === 'cum';
   const max = cum ? 0 : Math.max(0, ...r.cells.map((v) => (v == null ? 0 : v)));
   return (
-    <tr className={`${s.hRow} ${KIND_CLS[r.kind]}`}>
+    <tr className={`${s.hRow} ${KIND_CLS[r.kind]}`} data-lk={r.lk} data-nm={r.lk ? r.name : undefined}>
       <td className={s.hName} title={r.name}><Caret fold={fold} />{r.name}</td>
       <td className={s.r}>{r.w == null ? '' : pct(r.w, 1)}</td>
       <td className={s.num}>{r.start == null ? '' : fmtDay(r.start)}</td>
@@ -692,6 +797,7 @@ function HeatRowView({ r, cols, dec, sum, fold }: {
         return (
           <td
             key={i}
+            data-x=""
             className={`${s.hc} ${a > 0.55 ? s.hotInk : ''} ${now}`}
             style={{ background: `color-mix(in oklab, var(--lv, var(--data)) ${Math.round(12 + a * 73)}%, transparent)` }}
           >
@@ -705,6 +811,16 @@ function HeatRowView({ r, cols, dec, sum, fold }: {
 
 /* ══════════════════ Тайлбар ══════════════════ */
 
+/** Сумны тайлбар — 6 түвшин бүрт */
+function LinkLegend() {
+  return (
+    <span className={s.lgItem}>
+      <svg width="26" height="10" aria-hidden><path d="M1 5 H24" className={s.lkLine} /><path d="M20 2 L25 5 L20 8 z" className={s.lkArrN} /></svg>
+      {tr('Ажлын холбоос — Хуваарийн уялдаа ба багц хоорондын хамаарал, мөрөөр нэгтгэсэн (улаан = зөрчилтэй)')}
+    </span>
+  );
+}
+
 function Legend({ lvl }: { lvl: Level }) {
   if (lvl <= 3) {
     return (
@@ -716,6 +832,7 @@ function Legend({ lvl }: { lvl: Level }) {
         <span className={s.lgItem}><span className={`${s.lgBar} ${s.stTodo} ${s.inh}`} />{tr('Тасархай = өвөг мөрийн огноо (өөрийн хуваарьгүй)')}</span>
         <span className={s.lgItem}><span className={`${s.lgMs} ${s.msUp}`} />{tr('Milestone')}</span>
         <span className={s.lgItem}><span className={s.lgNow} />{tr('Өнөөдөр')}</span>
+        <LinkLegend />
         <p className={s.foot}>
           {tr('Барилгын ажлын эхлэх огноо = гүйцэтгэгчийн бодит төлөвлөгөөт эхлэх (багцын хамгийн эрт блок). «Хоцорсон» = төлөвлөгөөт хувиас {0}-аас дээш пунктээр доогуур.', 10)}
         </p>
@@ -734,6 +851,7 @@ function Legend({ lvl }: { lvl: Level }) {
       </span>
       <span className={s.lgItem}><span className={s.na}>—</span>&nbsp;{tr('мэдээлэлгүй (хуваарь алга)')}</span>
       <span className={s.lgItem}>{tr('Хоосон нүд = тухайн хугацаанд ажилгүй')}</span>
+      <LinkLegend />
       <p className={s.foot}>
         {lvl === 4 && tr('Нүд = тухайн сард төлөвлөсөн гүйцэтгэл (мөрийн нийт ажлын %). Блок — Хуваарийн сарын төлөвлөгөө; багцын нийт — блокуудын жигнэсэн нийлбэр; «Өсөх дүн» — хуримтлагдсан.')}
         {lvl === 5 && tr('Блокийн мөр: L4-ийн сарын хувийг өдөрт тэнцүү хувааж 7 хоногоор (Да–Ня) нэгтгэсэн. Дэд бүлэг: блокийн нийт ажлын хэдэн хувь тухайн хугацаанд хийгдэхээр төлөвлөгдсөн (бөглөх хуудасны төлөвлөгөөт эхлэх/дуусах, шугаман).')}
