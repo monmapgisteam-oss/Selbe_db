@@ -224,6 +224,14 @@ export function saveInTotal(oid: number, v: 0 | 1) {
   return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inTotal]: v }] });
 }
 
+/**
+ * «Үе шатны гүйцэтгэлд тооцох» (2026-11-17, хэрэглэгч) — 1 Тооцно · 0 Тооцохгүй. Унтраасан мөр эцэг мөрүүдийн (үе шат,
+ * Төслийн нийт) нийлбэр ба жингээс хасагдана; өөрийн бодолт хэвээр (`computePlan` · `noPhase`).
+ */
+export function saveInPhase(oid: number, v: 0 | 1) {
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inPhase]: v }] });
+}
+
 /** Нэг утга засна */
 export function savePlanValue(n: PlanNode, k: PlanEditKey, value: unknown) {
   const why = editWhy(n, k);

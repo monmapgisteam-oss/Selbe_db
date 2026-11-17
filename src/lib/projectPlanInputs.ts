@@ -60,12 +60,12 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['guits_duusah', CF.contractorEnd],
   ['guitsetgel_huvi', CF.progressPct],
   ['niit_tootsoh', CF.inTotal],
+  ['uy_shat_tootsoh', CF.inPhase],
   ['cashflow_id', CF_MONTH.id],
   ['geree_ognoo', CF.contractDate],
   ['zahiramj_ognoo', CF.orderDate],
   ['zahiramj_dugaar', CF.orderNo],
   ['ashiglalt_ognoo', CF.handoverDate],
-  ['songon_ognoo', CF.tenderDate],
   ['created_date', 'created_date'],
   /* Эх үүсвэр (2026-11-03) — «Төсөл төлөвлөгөө биелэлт»-ийн баганад; нэр нь `CASHFLOW_NEW.sources`-тэй ижил */
   ['zahiramj_unet_tsaas', 'zahiramj_unet_tsaas'],
@@ -152,7 +152,7 @@ export function sortPlanRows(rows: readonly PlanStoredRow[]): PlanStoredRow[] {
  */
 async function fetchPlanRows(): Promise<PlanStoredRow[]> {
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
-    where: `${CF.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`,
+    where: `${CF.ddKod} IS NOT NULL`,
     outFields: [...new Set(STORED_FIELDS.map(([, f]) => f))],
     orderBy: `${CF.ddKod} ASC, ${CASHFLOW_NEW.oid} ASC`,
   });

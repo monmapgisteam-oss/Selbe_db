@@ -47,7 +47,7 @@ assert.equal(editWhy(node(4), 'orderNo'), null);
     { objectid: 1, dd_kod: '4', etseg_kod: null, tuvshin: 0, uy_shat: 'Сонгон шалгаруулалт', ajil_uilchilgee: 'Сонгон шалгаруулалт' },
     { objectid: 2, dd_kod: '4.1', etseg_kod: '4', tuvshin: 1, uy_shat: 'Сонгон шалгаруулалт', bagts: 'Багц-1', ajil_uilchilgee: 'Багц-1', geree_ognoo: Date.UTC(2026, 0, 1) },
     { objectid: 3, dd_kod: '4.1.1', etseg_kod: '4.1', tuvshin: 2, uy_shat: 'Сонгон шалгаруулалт', bagts: 'Багц-1', blok: '5/1', ajil_uilchilgee: '5/1' },
-    { objectid: 4, dd_kod: '4.2', etseg_kod: '4', tuvshin: 1, uy_shat: 'Сонгон шалгаруулалт', bagts: 'Багц-2', ajil_uilchilgee: 'Багц-2', songon_ognoo: Date.UTC(2027, 0, 1) },
+    { objectid: 4, dd_kod: '4.2', etseg_kod: '4', tuvshin: 1, uy_shat: 'Сонгон шалгаруулалт', bagts: 'Багц-2', ajil_uilchilgee: 'Багц-2', geree_ognoo: Date.UTC(2027, 0, 1) },
   ]);
   const by = (o) => t.nodes.find((n) => n.row.objectid === o);
   assert.match(editWhy(by(3), 'pct', T), /Гэрээ байгуулагдсан/, 'багцын гэрээ өнгөрсөн → блокийн навч түгжигдэнэ');

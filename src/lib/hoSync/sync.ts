@@ -22,7 +22,7 @@ const CF = CASHFLOW_NEW.fields;
 /** Cashflow-ийн гэрээлсэн ажлын мөрүүд (сарын мөргүй) — `tools/data-audit.mjs` ч уншина (2026-11-04) */
 export async function loadCfContractRows(): Promise<Row[]> {
   return queryFeatures(CASHFLOW_NEW.url, {
-    where: `${CF_MONTH.start} IS NULL AND (${CF.amountNote} IS NOT NULL OR ${CF.paid} IS NOT NULL OR ${CF.advance} IS NOT NULL)`,
+    where: `(${CF.amountNote} IS NOT NULL OR ${CF.paid} IS NOT NULL OR ${CF.advance} IS NOT NULL)`,
     outFields: [CASHFLOW_NEW.oid, CF.pkg, CF.phase, CF.detail, CF.amountNote, CF.budgetOrder, CF.contractAmount, CF.paid, CF.advance, CF.contractor, CF.contractNo,
       CF.orderDate, CF.orderNo, ...CASHFLOW_NEW.sources.map((s) => s.field)],
   });
@@ -31,7 +31,7 @@ export async function loadCfContractRows(): Promise<Row[]> {
 /** Багцын дүнг дагах дэд мөрийн засвар — «Төсөл төлөвлөгөө биелэлт»-ийн мөрүүдээс (бичилтгүй) */
 export async function computeBlockBudgets(): Promise<Row[]> {
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
-    where: `${CF.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`,
+    where: `${CF.ddKod} IS NOT NULL`,
     outFields: [CASHFLOW_NEW.oid, CF.ddKod, CF.parentKod, CF.level, CF.phase, CF.pkg, CF.block, CF.detail, CF.budget, CF_MONTH.id],
     orderBy: `${CF.ddKod} ASC, ${CASHFLOW_NEW.oid} ASC`,
   });

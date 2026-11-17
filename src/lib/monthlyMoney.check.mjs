@@ -21,14 +21,8 @@ import assert from 'node:assert/strict';
 globalThis.fetch = async (u) => { throw new Error(`mock: сүлжээ хориотой ${u}`); };
 
 const MM = await import('@/lib/monthlyMoney.ts');
-const { isLostWrite } = await import('@/lib/lostWrite.ts');
-const { ArcGISError } = await import('@/lib/query.ts');
 
 /* ── 1. эх ── */
-assert.equal(MM.monthSourceOf(null), 'garaar');
-assert.equal(MM.monthSourceOf(''), 'garaar');
-assert.equal(MM.monthSourceOf(' Huvaari '), 'huvaari');
-assert.equal(MM.monthSourceOf('xyz'), 'garaar');
 assert.equal(MM.moneyRowOf({ cashflow_id: null, bagts: 'БАГЦ-1' }), null, 'cashflow_id-гүй (бүтцийн) мөр');
 assert.deepEqual(MM.moneyRowOf({ cashflow_id: 11, bagts: 'БАГЦ-1', ho_dun_geree: 1000, sar_mongo_eh: 'huvaari' }),
   { id: 11, pkg: 'БАГЦ1', cost: 1000, source: 'huvaari', build: false, contracted: false });
@@ -120,44 +114,11 @@ assert.deepEqual(e.gaps.failed, [12], 'S-муруйгаас дутсан — у�
 assert.deepEqual(e.gaps.missing.sort(), [10, 11, 13], 'S-муруйгаас дутсан — тооцоолсон сар алга');
 console.log('✅ тооцоологдохгүй төлвүүд — null ≠ 0');
 
-/* ── 4. шилжүүлэлтийн бие ── */
-const body = MM.buildSwitchEdits(11, [79, 80]);
-assert.equal(body.rollbackOnFailure, 'true');
-assert.deepEqual(JSON.parse(body.updates), [{ attributes: { objectid: 11, sar_mongo_eh: 'huvaari' } }]);
-assert.equal(body.deletes, '79,80');
-assert.equal(MM.buildSwitchEdits(11, []).deletes, undefined);
-assert.equal(MM.judgeSwitch({ updateResults: [{ success: true }], deleteResults: [{ success: true }, { success: true }] }, 1, 2).verdict, 'ok');
-assert.equal(MM.judgeSwitch({ updateResults: [{ success: false, error: { description: 'x' } }], deleteResults: [] }, 1, 2).verdict, 'refused');
-assert.equal(MM.judgeSwitch({ updateResults: [{ success: true }], deleteResults: [{ success: true }] }, 1, 2).verdict, 'unsure', 'дутуу хариу');
-assert.equal(MM.judgeSwitch({ updateResults: [{}], deleteResults: [{ success: true }, { success: true }] }, 1, 2).verdict, 'unsure', 'success талбаргүй');
-console.log('✅ шилжүүлэлтийн бие · хариуны дүгнэлт');
-
-/* ── 4б. урьдчилсан тооцоо ── */
-assert.equal(MM.judgePreview('БАГЦ1', undefined).verdict, 'failed');
-assert.equal(MM.judgePreview('БАГЦ71', failedPm).verdict, 'failed');
-assert.equal(MM.judgePreview('БАГЦ71', failedPm).total, null);
-const pvEmpty = MM.judgePreview('БАГЦ2', MM.mergeSheetMoney('БАГЦ2', []));
-assert.equal(pvEmpty.verdict, 'empty');
-assert.equal(pvEmpty.total, null, 'хоосон — null, 0 биш');
-const pvInc = MM.judgePreview('БАГЦ1', pm);
-assert.equal(pvInc.verdict, 'incomplete', 'нэгжгүй/олдоогүй нүдтэй');
-assert.equal(pvInc.total, 15500);
-assert.equal(pvInc.months, 2);
-const pvOk = MM.judgePreview('БАГЦ1', MM.mergeSheetMoney('БАГЦ1', [{ sheet: 'x', money: { byMonth: new Map([['2026-10', 7]]), noUnit: 0, noRow: 0 } }]));
-assert.equal(pvOk.verdict, 'ok');
-assert.match(MM.previewText(pvOk), /7/);
+/* ── 4. Хуваарийн үе шатын шалгуур (2026-11-17: «Гараар → Хуваарь» шилжүүлэлт хасагдсан — бүх ажил Хуваариас) ── */
 assert.equal(MM.isSwitchPhase(null), false);
 assert.equal(MM.isSwitchPhase(''), false);
 assert.equal(MM.isSwitchPhase(' Барилга угсралт '), true);
 assert.equal(MM.isSwitchPhase('Ажлын зураг төсөл'), false);
-assert.equal(MM.switchPhaseWhy('Барилга угсралт'), null);
-assert.match(MM.switchPhaseWhy(null), /тодорхойгүй/);
-assert.match(MM.switchPhaseWhy('Ажлын зураг төсөл'), /Ажлын зураг төсөл/);
-assert.equal(MM.sameVerdict({ verdict: 'incomplete', total: 15500 }, pvInc), true);
-assert.equal(MM.sameVerdict({ verdict: 'incomplete', total: 15500.4 }, pvInc), true, '±1 ₮');
-assert.equal(MM.sameVerdict({ verdict: 'incomplete', total: 15000 }, pvInc), false);
-assert.equal(MM.sameVerdict({ verdict: 'incomplete', total: 15500 }, pvEmpty), false, 'дутуу → хоосон');
-assert.equal(MM.sameVerdict({ verdict: 'empty', total: null }, pvEmpty), true);
 /* хуудасны уншилт бүхэлдээ унасан — багц бүр failed, хуудасгүй түлхүүр орохгүй */
 const fs0 = MM.failedSheets(new Set(['БАГЦ1', 'БАГЦ16']));
 assert.ok(fs0.has('БАГЦ1') && !fs0.has('БАГЦ16'));
@@ -167,173 +128,7 @@ const fsMm = MM.buildMonthlyMoney([mk(40, 'БАГЦ1', 100, 'huvaari'), mk(41, '
 assert.equal(fsMm.contracts.get(40).state, 'failed');
 assert.deepEqual(fsMm.gaps.failed, [40]);
 assert.equal(fsMm.rows.length, 1, "'garaar' гэрээний мөр хэвээр — S-муруй унахгүй");
-console.log('✅ урьдчилсан тооцоо · үе шатын шалгуур');
-
-/* ── 5. шилжүүлэлт — хуурамч сервер ── */
-let db;
-let posts;
-let mode;
-let pv;
-const reset = (o = {}) => {
-  db = {
-    parents: [{ objectid: 11, cashflow_id: 11, bagts: 'БАГЦ-1', sar_mongo_eh: null, uy_shat: 'Барилга угсралт', ...o }],
-    months: [{ objectid: 79 }, { objectid: 80 }],
-    others: [],
-  };
-  posts = [];
-  mode = 'ok';
-  pv = pvOk;
-};
-const io = {
-  query: async (where) => {
-    if (mode === 'readFail' && posts.length) throw new TypeError('Failed to fetch');
-    /* багцын бусад мөнгөний мөр (өрсөлдөгч 'huvaari' гэрээ) — cashflow_id шүүлтгүй */
-    if (!/cashflow_id = 11/.test(where)) return [...db.parents, ...db.others].map((x) => ({ ...x }));
-    return /cashflow_start IS NOT NULL/.test(where) ? db.months.map((x) => ({ ...x })) : db.parents.map((x) => ({ ...x }));
-  },
-  preview: async () => pv,
-  applyEdits: async (b) => {
-    posts.push(b);
-    const del = b.deletes ? b.deletes.split(',') : [];
-    if (mode === 'refuse') return { updateResults: [{ success: false, error: { description: 'Field error' } }], deleteResults: [] };
-    /* бичилт серверт СУУНА */
-    db.parents[0].sar_mongo_eh = JSON.parse(b.updates)[0].attributes.sar_mongo_eh;
-    db.months = db.months.filter((m) => !del.includes(String(m.objectid)));
-    if (mode === 'lost' || mode === 'readFail') throw new ArcGISError('timeout', 'x/applyEdits');
-    if (mode === 'partial') return { updateResults: [{ success: true }], deleteResults: [] };
-    /* өөр хэрэглэгч хуучин 'garaar' хуудаснаас шинэ сарын мөр нэмэв, хариу дутуу */
-    if (mode === 'racePartial') { db.months.push({ objectid: 95 }); return { updateResults: [{ success: true }], deleteResults: [] }; }
-    return { updateResults: [{ success: true }], deleteResults: del.map(() => ({ success: true })) };
-  },
-};
-
-reset();
-let r = await MM.switchToHuvaari(11, io);
-assert.deepEqual(r, { deleted: 2, already: false, verified: false, preview: pvOk });
-assert.equal(posts.length, 1, 'НЭГ атом хүсэлт');
-assert.deepEqual(posts[0], MM.buildSwitchEdits(11, [79, 80]));
-console.log('✅ энгийн шилжүүлэлт — нэг хүсэлт');
-
-reset({ sar_mongo_eh: 'huvaari' }); db.months = [];
-r = await MM.switchToHuvaari(11, io);
-assert.deepEqual(r, { deleted: 0, already: true, verified: false, preview: null });
-assert.equal(posts.length, 0, 'аль хэдийн шилжсэн — бичихгүй');
-
-reset(); mode = 'refuse';
-await assert.rejects(MM.switchToHuvaari(11, io), (err) => !isLostWrite(err) && /Field error/.test(err.message));
-assert.equal(db.months.length, 2, 'татгалзсан — юу ч өөрчлөгдөөгүй');
-console.log('✅ тодорхой татгалзал');
-
-reset(); mode = 'lost';
-r = await MM.switchToHuvaari(11, io);
-assert.deepEqual(r, { deleted: 2, already: false, verified: true, preview: pvOk }, 'хариу алдагдсан ч серверт суусан — дахин уншиж батлав');
-reset(); mode = 'partial';
-r = await MM.switchToHuvaari(11, io);
-assert.equal(r.verified, true, 'дутуу хариу → дахин уншилт');
-reset(); mode = 'racePartial';
-r = await MM.switchToHuvaari(11, io);
-assert.equal(r.verified, true, 'шинээр нэмэгдсэн сарын мөр — илгээсэн OID-ууд алга тул амжилт');
-reset(); mode = 'readFail';
-await assert.rejects(MM.switchToHuvaari(11, io), (err) => isLostWrite(err) && err.lost === true);
-console.log('✅ хариу алдагдсан — дахин уншиж батална / тодорхойгүй бол lost');
-
-reset(); db.parents = [];
-await assert.rejects(MM.switchToHuvaari(11, io), /олдсонгүй/);
-reset(); db.parents.push({ ...db.parents[0], objectid: 12 });
-await assert.rejects(MM.switchToHuvaari(11, io), /давхардсан/);
-reset({ bagts: 'БАГЦ-6.9' }); // хүснэгтгүй багц (2026-11-05: 16.x хүснэгттэй болсон)
-await assert.rejects(MM.switchToHuvaari(11, io), /хуудас алга/);
-assert.equal(posts.length, 0, 'хуудасгүй багц — бичихгүй');
-await assert.rejects(MM.switchToHuvaari(0, io), /буруу/);
-console.log('✅ хамгаалалт — олдоогүй · давхардсан · хуудасгүй · буруу дугаар');
-
-/* ── 6. (хяналт) хоосон/дутуу/уншигдаагүй тооцоо · үе шат · хуваалцсан багц ── */
-reset(); pv = pvEmpty;
-await assert.rejects(MM.switchToHuvaari(11, io), (err) => MM.isSwitchIncomplete(err) && err.preview === pvEmpty);
-assert.equal(posts.length, 0, 'хоосон тооцоо — гараар мөр УСТГАХГҮЙ');
-assert.equal(db.months.length, 2);
-reset(); pv = pvInc;
-await assert.rejects(MM.switchToHuvaari(11, io), (err) => MM.isSwitchIncomplete(err));
-assert.equal(posts.length, 0, 'дутуу тооцоо — батлалтгүй бичихгүй');
-reset(); pv = pvEmpty;
-await assert.rejects(MM.switchToHuvaari(11, io, { allowIncomplete: true }), (err) => MM.isSwitchIncomplete(err));
-assert.equal(posts.length, 0, 'батласан дүгнэлтгүй (expect) allowIncomplete — бичихгүй');
-reset(); pv = pvEmpty;
-r = await MM.switchToHuvaari(11, io, { allowIncomplete: true, expect: { verdict: 'empty', total: null } });
-assert.equal(r.deleted, 2, 'хоёр дахь батлалтын дараа л');
-assert.equal(r.preview, pvEmpty);
-/* хяналт №2: «дутуу, 15,500 ₮» гэж батласан, сервер одоо «хоосон» — татгалзана */
-reset(); pv = pvEmpty;
-await assert.rejects(MM.switchToHuvaari(11, io, { allowIncomplete: true, expect: { verdict: 'incomplete', total: 15500 } }), /өөрчлөгдсөн/);
-assert.equal(posts.length, 0, 'батласнаас өөр тооцоо — гараар мөр УСТГАХГҮЙ');
-reset(); pv = pvOk;
-await assert.rejects(MM.switchToHuvaari(11, io, { expect: { verdict: 'ok', total: 999 } }), /өөрчлөгдсөн/);
-assert.equal(posts.length, 0, "'ok' ч нийт нь зөрвөл бичихгүй");
-reset({ uy_shat: null });
-await assert.rejects(MM.switchToHuvaari(11, io), /тодорхойгүй/);
-assert.equal(posts.length, 0, 'хоосон uy_shat — бичихгүй (хяналт №2)');
-reset(); pv = MM.judgePreview('БАГЦ1', undefined);
-await assert.rejects(MM.switchToHuvaari(11, io, { allowIncomplete: true }), (err) => !MM.isSwitchIncomplete(err) && /уншигдсангүй/.test(err.message));
-assert.equal(posts.length, 0, 'уншигдаагүй — allowIncomplete-ээр ч бичихгүй');
-reset({ uy_shat: 'Ажлын зураг төсөл' });
-await assert.rejects(MM.switchToHuvaari(11, io), /Барилга угсралт/);
-assert.equal(posts.length, 0, 'зураг төслийн гэрээ — бичихгүй');
-reset({ uy_shat: 'Барилга угсралт' });
-r = await MM.switchToHuvaari(11, io);
-assert.equal(r.deleted, 2);
-reset(); db.others = [{ objectid: 30, cashflow_id: 30, bagts: 'Багц 1', sar_mongo_eh: 'huvaari' }];
-await assert.rejects(MM.switchToHuvaari(11, io), /нэг л гэрээнд/);
-assert.equal(posts.length, 0, 'багцын хуудас аль хэдийн өөр гэрээнд — бичихгүй');
-reset(); db.others = [{ objectid: 31, cashflow_id: 31, bagts: 'БАГЦ-1', sar_mongo_eh: null }, { objectid: 32, cashflow_id: 32, bagts: 'БАГЦ-2', sar_mongo_eh: 'huvaari' }];
-r = await MM.switchToHuvaari(11, io);
-assert.equal(r.deleted, 2, 'гараар хөрш / өөр багцын huvaari — саадгүй');
-console.log('✅ хяналт — хоосон/дутуу тооцоо · үе шат · нэг багц = нэг гэрээ');
-
-/* ── 7. (хяналт №2) нэгдсэн урсгал `confirmAndSwitch` ── */
-const asks = [];
-let answers = [];
-const ask = async (msg, o) => { asks.push({ msg, o }); return answers.shift() ?? false; };
-const busy = [];
-const flow = (o = {}) => MM.confirmAndSwitch({
-  cashflowId: 11, name: 'Багц-1 · Барилга', pkg: 'БАГЦ1', phase: 'Барилга угсралт', manualRows: 2, manualTotal: 1234,
-  money: (v) => `${v} ₮`, ask, io, onBusy: (b) => busy.push(b), ...o,
-});
-reset(); asks.length = 0;
-let fl = await flow({ phase: '' });
-assert.equal(fl.kind, 'refused');
-assert.match(fl.msg, /тодорхойгүй/);
-assert.equal(asks.length, 0, 'үе шат тодорхойгүй — цонх ч нээгдэхгүй');
-reset(); asks.length = 0; pv = MM.judgePreview('БАГЦ1', undefined);
-fl = await flow();
-assert.equal(fl.kind, 'refused', "'failed' тооцоо — цонхгүй татгалзана");
-assert.equal(asks.length, 0);
-reset(); asks.length = 0; answers = [false];
-fl = await flow();
-assert.equal(fl.kind, 'cancel');
-assert.match(asks[0].msg, /1234 ₮/, 'устах гараар нийтийг нэрлэнэ');
-assert.match(asks[0].msg, /7/, 'тооцоолсон нийтийг нэрлэнэ');
-assert.equal(posts.length, 0);
-reset(); asks.length = 0; answers = [true];
-fl = await flow();
-assert.equal(fl.kind, 'done');
-assert.equal(fl.result.deleted, 2);
-assert.equal(asks.length, 1, "'ok' — нэг цонх");
-reset(); asks.length = 0; pv = pvInc; answers = [true, false];
-fl = await flow();
-assert.equal(fl.kind, 'cancel', 'дутуу — 2-р цонхонд цуцалсан');
-assert.equal(asks.length, 2);
-assert.equal(posts.length, 0);
-reset(); asks.length = 0; pv = pvInc; answers = [true, true];
-fl = await flow();
-assert.equal(fl.kind, 'done', 'дутуу — хоёр батлалтын дараа');
-/* батласны дараа сервер «хоосон» буцаав — preview эхэндээ дутуу, дараа нь хоосон */
-reset(); asks.length = 0; answers = [true, true];
-let calls = 0;
-const io2 = { ...io, preview: async () => (calls++ === 0 ? pvInc : pvEmpty) };
-await assert.rejects(flow({ io: io2 }), /өөрчлөгдсөн/);
-assert.equal(posts.length, 0, 'батласан «дутуу» ≠ «хоосон» — устгахгүй');
-assert.equal(busy.at(-1), false, 'busy буцаж унтарна');
-console.log('✅ хяналт №2 — нэгдсэн урсгал (үе шат · тооцоо · 2 цонх · батласан дүгнэлт)');
+console.log('✅ үе шатын шалгуур · уншигдаагүй хуудас');
 
 /* ── 8. (хяналт №2) S-муруйн цоорхойн анхааруулга (`gdash.cfGapsText`) ── */
 const { cfGapsText } = await import('@/lib/gdash.ts');
@@ -373,58 +168,8 @@ console.log('✅ хяналт №2 — S-муруйн цоорхойн анха�
   assert.deepEqual(r.rows.filter((x) => x.id === 11).map((x) => [x.pct, x.amount]), [[18.5, 185], [81.5, 815]], 'S-муруйн мөр — гараар мөр (id 11) орохгүй');
   assert.equal(r.rows.filter((x) => x.id === 13).length, 1, 'гараар гэрээ хэвээр');
   /* урьдчилсан тооцоо — хувьтай багц 'ok', нийт ₮ тодорхойгүй (null), хувийн нийлбэр мэдэгдэнэ */
-  const pv = MM.judgePreview('БАГЦ1', sheets.get('БАГЦ1'));
-  assert.deepEqual([pv.verdict, pv.total, pv.pctSum, pv.months], ['ok', null, 100, 2]);
-  assert.match(MM.previewText(pv), /сарын хувь 2 сард нийт 100%/);
-  assert.equal(MM.judgePreview('БАГЦ31', { key: 'БАГЦ31', byMonth: new Map(), noUnit: 0, noRow: 0, sheets: [], failed: [] }).pctSum, undefined);
-  /* manualPctOf — хувьгүй мөр орохгүй, 0 орно, нэг сарын мөрүүд нийлнэ */
-  const mp = MM.manualPctOf([
-    { cashflow_start: Date.UTC(2026, 9, 1, 12), cashflow_huwi: 18.5 },
-    { cashflow_start: Date.UTC(2026, 10, 1, 12), cashflow_huwi: null },
-    { cashflow_start: Date.UTC(2026, 11, 1, 12), cashflow_huwi: 0 },
-    { cashflow_start: Date.UTC(2026, 9, 15, 12), cashflow_huwi: 1.5 },
-  ]);
-  assert.deepEqual([...mp], [['2026-10', 20], ['2026-12', 0]]);
-  /* нэгдсэн урсгал — Хуваарьт хувь алга, гараар хувьтай → хувийг ЗӨӨЖ дараа нь эхийг солино */
-  const calls = [];
-  let saved = null;
-  const io = {
-    query: async (where, outFields) => {
-      calls.push(where);
-      if (where.includes('cashflow_start IS NOT NULL')) {
-        return outFields.includes('cashflow_huwi')
-          ? [{ objectid: 501, cashflow_start: Date.UTC(2026, 9, 1, 12), cashflow_huwi: 30 }, { objectid: 502, cashflow_start: Date.UTC(2026, 10, 1, 12), cashflow_huwi: 70 }]
-          : [{ objectid: 501 }, { objectid: 502 }];
-      }
-      return [{ objectid: 9, cashflow_id: 11, bagts: 'Багц-1', sar_mongo_eh: null, uy_shat: 'Барилга угсралт' }];
-    },
-    applyEdits: async () => ({ updateResults: [{ success: true }], deleteResults: [{ success: true }, { success: true }] }),
-    preview: async (pkg) => (saved
-      ? MM.judgePreview(pkg, { key: pkg, byMonth: new Map(), noUnit: 0, noRow: 0, sheets: [], failed: [], pct: saved })
-      : MM.judgePreview(pkg, { key: pkg, byMonth: new Map(), noUnit: 0, noRow: 0, sheets: [], failed: [] })),
-    savePct: async (pkg, name, next) => { saved = new Map([...next].filter(([, v]) => v != null)); calls.push(`savePct ${pkg} ${[...next].join(';')}`); },
-  };
-  const asked = [];
-  const fl = await MM.confirmAndSwitch({
-    cashflowId: 11, name: 'Багц-1 · Барилга угсралт', pkg: 'БАГЦ1', phase: 'Барилга угсралт', manualRows: 2, manualTotal: 1000,
-    money: (v) => `${v} ₮`, ask: async (m) => { asked.push(m); return true; }, io,
-  });
-  assert.equal(fl.kind, 'done');
-  assert.equal(fl.result.deleted, 2);
-  assert.equal(asked.length, 1, 'нэг л батлуулах цонх');
-  assert.match(asked[0], /гараар бичсэн 2 сарын хувь \(нийт 100%, 1000 ₮\) Хуваарь руу шилжиж/);
-  assert.ok(calls.some((x) => x.startsWith('savePct БАГЦ1 2026-10,30;2026-11,70')), calls.join(' | '));
-  /* цуцалбал юу ч бичигдэхгүй */
-  saved = null;
-  const n0 = calls.length;
-  const no = await MM.confirmAndSwitch({
-    cashflowId: 11, name: 'x', pkg: 'БАГЦ1', phase: 'Барилга угсралт', manualRows: 2, manualTotal: null,
-    money: String, ask: async () => false, io,
-  });
-  assert.equal(no.kind, 'cancel');
-  assert.ok(!calls.slice(n0).some((x) => x.startsWith('savePct')), 'цуцалсан — хувь бичигдээгүй');
 }
-console.log('✅ 2026-11-05 — багцын сарын хувь Хуваарьт: хувь × ХО дүн · гараар хувийг зөөх урсгал');
+console.log('✅ 2026-11-05 — багцын сарын хувь Хуваарьт: хувь × ХО дүн');
 
 /* ── 10. (2026-11-05) «Үндсэн хугацаа» — ГЭРЭЭГЭЭР («CF:<id>») түлхүүрлэсэн сарын хувь: хуудасгүй багц, ТЭЗҮ/зураг төсөл ── */
 {

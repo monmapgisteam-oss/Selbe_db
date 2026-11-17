@@ -649,11 +649,11 @@ export async function loadBlockProgressFresh(): Promise<BlockProgressMap> {
  */
 /** Блокийн жин (төсөв) — CASHFLOW_NEW-ийн блокийн мөрөөс; `cachedBlockWeights`-ийг дүүргэнэ */
 export const loadBlockWeights: () => Promise<ReadonlyMap<string, number>> = memo(async () => {
-  const { CASHFLOW_NEW, CF_MONTH, bagtsKey: bk } = await import('./services');
+  const { CASHFLOW_NEW, bagtsKey: bk } = await import('./services');
   const { queryFeatures } = await import('./query');
   const CF = CASHFLOW_NEW.fields;
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
-    where: `${CF.block} IS NOT NULL AND ${CF.budget} > 0 AND ${CF_MONTH.start} IS NULL`,
+    where: `${CF.block} IS NOT NULL AND ${CF.budget} > 0`,
     outFields: [CF.pkg, CF.block, CF.budget],
   });
   const out = new Map<string, number>();

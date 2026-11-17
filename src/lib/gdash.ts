@@ -14,7 +14,7 @@ import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import {
-  CASHFLOW_NEW, CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, HABEA, bagtsKey, isPkgRange,
+  CASHFLOW_NEW, CF_WORK_WHERE, HABEA, bagtsKey, isPkgRange,
   BUILDING, laborCompanyFields,
   orderTotalOf,
 } from '@/lib/services';
@@ -180,13 +180,6 @@ const nnOf = (v: unknown): number | null => {
   return Number.isFinite(x) ? x : null;
 };
 const sOf = (v: unknown): string => String(v ?? '').trim();
-/** Хувь — ТЕКСТЭЭС тоо руу; хоосон бол `null` (0 БИШ) */
-const pOf = (v: unknown): number | null => {
-  const t = String(v ?? '').trim();
-  if (!t) return null;
-  const x = Number(t);
-  return Number.isFinite(x) ? x : null;
-};
 
 const dOf = (v: unknown): number | null => {
   const x = Number(v);
@@ -254,22 +247,11 @@ export type CfPlanRow = {
 };
 
 /**
- * ГАРААР ОРУУЛСАН сарын мөрүүд л (`CF_MONTH_WHERE`) — `sar_mongo_eh`-ээс үл хамааран.
+ * ГАРААР ОРУУЛСАН сарын мөр — одоо байхгүй.
  */
-export const loadCfPlanManual = cached<CfPlanRow[]>(async () => {
-  const rows = await queryFeatures(CF.url, {
-    where: CF_MONTH_WHERE,
-    outFields: [CF_MONTH.id, CF_MONTH.start, CF_MONTH.pct, CF_MONTH.amount],
-  });
-  return rows
-    .map((r: Row): CfPlanRow => ({
-      id: nOf(r[CF_MONTH.id]),
-      start: dOf(r[CF_MONTH.start]),
-      pct: pOf(r[CF_MONTH.pct]),
-      amount: pOf(r[CF_MONTH.amount]),
-    }))
-    .filter((r) => r.id > 0 && r.start != null && (r.pct != null || r.amount != null));
-}, SESSION_TTL_MS, ['CASHFLOW_NEW']);
+/* 2026-11-17 (хэрэглэгч): гараар сарын мөр хүснэгтэд БАЙХГҮЙ (сарын мөнгөний 4 багана хасагдсан) — сарын мөнгө зөвхөн
+   Хуваариас (`monthlyMoney.withHuvaari`). Дуудагчдын гэрээг хадгалахын тулд хоосон жагсаалт буцаана. */
+export const loadCfPlanManual = async (): Promise<CfPlanRow[]> => [];
 
 /**
  * ҮР ДҮНТЭЙ сарын төлөвлөгөө — `cashflowCurve` · ТУХ (`tuhData.cfPlanPctAt`) · ерөнхий дашбоард үүнийг уншина.

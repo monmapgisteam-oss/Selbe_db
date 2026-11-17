@@ -14,7 +14,7 @@ import {
   saneDate, ubToday, type PhaseKind, type PlanNode, type PlanTree, type PlanValues,
 } from './projectPlan';
 import { SHEET_PKGS, loadProjectPlan, type ProjectPlan } from './projectPlanInputs';
-import { CASHFLOW_NEW, CF_MONTH, bagtsKey, blockKey, buildingKey, pkgKeyOf, isConstructionNo } from './services';
+import { CASHFLOW_NEW, bagtsKey, blockKey, buildingKey, pkgKeyOf, isConstructionNo } from './services';
 import { PKGS, SYNTHETIC_BLOCK, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, computeAll, childIndexes, type Calc, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { toPlanRows } from '@/modules/huvaari/util';
@@ -740,8 +740,6 @@ export function ganttAxis(rows: readonly GRow[], today: number): Axis | null {
 
 /** Milestone-ийн огноо — мөрийн `objectid`-оор (2026-11-05: `dd_kod` 34 кодод давхардсан тул кодоор хайвал буруу мөр авна) */
 export type Mark = {
-  /** `songon_ognoo` */
-  tender: number | null;
   /** `ashiglalt_ognoo` */
   handover: number | null;
   /** `zahiramj_ognoo` (L2 «Захирамж») */
@@ -889,7 +887,7 @@ export function buildL2(plan: ProjectPlan, pkgs: readonly PkgInfo[], marks: Mark
     if (son) {
       const v = res.values.get(son);
       const signed = son.row?.geree_ognoo ?? pk.node.row?.geree_ognoo ?? null;
-      const at = signed ?? mk(son)?.tender ?? mk(pk.node)?.tender ?? v?.I ?? null;
+      const at = signed ?? v?.I ?? null;
       /* Гэрээ байгуулсан огноо өнгөрсөн = сонгон шалгаруулалт дууссан */
       const done = signed != null && signed <= today ? true : doneOf(v?.S);
       rows.push({
@@ -1105,15 +1103,15 @@ const attr = (a: Record<string, unknown>, name: string): unknown => {
 };
 
 /**
- * Milestone-ийн огноо — `songon_ognoo` · `ashiglalt_ognoo` (импортын шинэ талбар) ба захирамж (`zahiramj_ognoo` ·
+ * Milestone-ийн огноо — `ashiglalt_ognoo` (импортын шинэ талбар) ба захирамж (`zahiramj_ognoo` ·
  * `zahiramj_dugaar` — мөнгөний мөрд импорт ХАДГАЛДАГ). `loadProjectPlan` эдгээрийг уншдаггүй тул тусад нь НЭГ
  * асуулгаар (зөвхөн утгатай мөр). Түлхүүр — `objectid` (кодоор бол давхардсан кодын өөр мөрийн огноо ирнэ).
  */
 async function fetchMarks(): Promise<Map<number, Mark>> {
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
-    where: `${F.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL AND (${F.tenderDate} IS NOT NULL OR ${F.handoverDate} IS NOT NULL`
+    where: `${F.ddKod} IS NOT NULL AND (${F.handoverDate} IS NOT NULL`
       + ` OR ${F.orderDate} IS NOT NULL OR ${F.orderNo} IS NOT NULL)`,
-    outFields: [CASHFLOW_NEW.oid, F.ddKod, F.tenderDate, F.handoverDate, F.orderDate, F.orderNo],
+    outFields: [CASHFLOW_NEW.oid, F.ddKod, F.handoverDate, F.orderDate, F.orderNo],
   });
   const out = new Map<number, Mark>();
   for (const r of rows) {
@@ -1122,7 +1120,7 @@ async function fetchMarks(): Promise<Map<number, Mark>> {
     if (!Number.isFinite(k) || out.has(k)) continue;
     const no = String(attr(a, F.orderNo) ?? '').trim();
     out.set(k, {
-      tender: dateIn(attr(a, F.tenderDate)), handover: dateIn(attr(a, F.handoverDate)),
+      handover: dateIn(attr(a, F.handoverDate)),
       order: dateIn(attr(a, F.orderDate)), orderNo: no || null,
     });
   }

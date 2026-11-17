@@ -438,7 +438,7 @@ console.log('projectPlan.check: автомат жин OK');
 }
 console.log('projectPlan.check: Зөвшөөрлийн нэмсэн мөр OK');
 
-/* ── 2026-11-05: Сонгон шалгаруулалт — гэрээ байгуулагдсан бол 100% (хадгалсан 0 биш): өөрийн/өвгийн `songon_ognoo`/`geree_ognoo`,
+/* ── 2026-11-05: Сонгон шалгаруулалт — гэрээ байгуулагдсан бол 100% (хадгалсан 0 биш): өөрийн/өвгийн `geree_ognoo`,
       эсвэл ихэр (Барилга угсралтын мөнгөний мөр) `geree_ognoo` / «Гэрээлсэн дүн». Блокийн навч багцынхаа гэрээг дагана. ── */
 {
   const T = Date.UTC(2026, 10, 5);
@@ -453,8 +453,8 @@ console.log('projectPlan.check: Зөвшөөрлийн нэмсэн мөр OK');
     { dd_kod: '4.1.2', etseg_kod: '4.1', bagts: 'Багц-2', ajil_uilchilgee: 'Орон сууц', guitsetgel_huvi: 0 },
     /* ихэр гэрээгүй — хадгалсан утга */
     { dd_kod: '4.1.3', etseg_kod: '4.1', bagts: 'Багц-3', ajil_uilchilgee: 'Орон сууц', guitsetgel_huvi: 30 },
-    /* өөрийн songon_ognoo ирээдүйд — хадгалсан; өнгөрсөн бол 100 */
-    { dd_kod: '4.1.4', etseg_kod: '4.1', bagts: 'Багц-4', ajil_uilchilgee: 'Орон сууц', guitsetgel_huvi: 10, songon_ognoo: Date.UTC(2027, 0, 1) },
+    /* өөрийн geree_ognoo ирээдүйд — хадгалсан; өнгөрсөн бол 100 */
+    { dd_kod: '4.1.4', etseg_kod: '4.1', bagts: 'Багц-4', ajil_uilchilgee: 'Орон сууц', guitsetgel_huvi: 10, geree_ognoo: Date.UTC(2027, 0, 1) },
     { dd_kod: '4.1.5', etseg_kod: '4.1', bagts: 'Багц-5', ajil_uilchilgee: 'Орон сууц', guitsetgel_huvi: 10, geree_ognoo: Date.UTC(2026, 10, 4, 16) },
     { dd_kod: '5', uy_shat: 'Барилга угсралт', tusul_ezleh_huvi: 0.9 },
     { dd_kod: '5.2', etseg_kod: '5', ajil_uilchilgee: 'Барилга угсралт ажил', heseg_ezleh_huvi: 1 },
@@ -474,7 +474,7 @@ console.log('projectPlan.check: Зөвшөөрлийн нэмсэн мөр OK');
   assert.ok(tenderSigned(by('4.1.1.1'), T), 'блок навч — багцын ихрийн «Гэрээлсэн дүн»');
   assert.ok(tenderSigned(by('4.1.2'), T), 'ихрийн geree_ognoo (тэмдэггүй)');
   assert.ok(!tenderSigned(by('4.1.3'), T), 'гэрээгүй');
-  assert.ok(!tenderSigned(by('4.1.4'), T), 'ирээдүйн songon_ognoo');
+  assert.ok(!tenderSigned(by('4.1.4'), T), 'ирээдүйн geree_ognoo');
   assert.ok(tenderSigned(by('4.1.4'), Date.UTC(2027, 0, 1)), 'тэр өдөр ирэхэд');
   assert.ok(tenderSigned(by('4.1.5'), T), 'өөрийн geree_ognoo (өдрийн дотор цагтай) — өнөөдөр');
   const r = computePlan(t, {}, T);

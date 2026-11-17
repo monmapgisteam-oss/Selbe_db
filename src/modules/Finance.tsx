@@ -27,7 +27,7 @@ import {
 } from '@/lib/gdash';
 import {
   CASHFLOW_NEW, HO_IPC, pkgKeyOf, cfMonthAxis, hoAmount,
-  CF_WORK_WHERE, CF_MONTH_WHERE, CF_MONTH, bagtsKey,
+  CF_WORK_WHERE, CF_MONTH, bagtsKey,
 } from '@/lib/services';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { MAP_PKG_ALIAS } from '@/lib/pkgAlias';
@@ -55,7 +55,7 @@ import type { LiveProgress, ProjectPlan } from '@/lib/projectPlanInputs';
 import { isAddedWork, moneySums, ownSourceTotal, sourceGap, sourceSums, SOURCE_KEYS, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus, type SourceKey, type SourceSums } from '@/lib/projectPlan';
 import {
   MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
-  importCutoff, pkgOptions, savePlanValue, type FillFilter, type PlanEditKey, type PlanFilter,
+  importCutoff, pkgOptions, savePlanValue, saveInTotal, saveInPhase, type FillFilter, type PlanEditKey, type PlanFilter,
 } from '@/lib/planEdit';
 import { AddRowsPanel, EDIT_LABEL, PlanEditCell } from '@/modules/PlanEntry';
 import f from './finance.module.css';
@@ -563,15 +563,8 @@ const loadCashflowNewRows = cached(
 /**
  * САРЫН ЗАДАРГАА — S-муруйн төлөвлөгөө (`Cashflow_final`-ийн доторх мөрүүд).
  */
-const loadCfMonthRows = cached(
-  () => queryFeatures(CASHFLOW_NEW.url, {
-    where: CF_MONTH_WHERE,
-    outFields: ['*'],
-    orderBy: `cashflow_id ASC, cashflow_start ASC, ${CASHFLOW_NEW.oid} ASC`,
-  }),
-  LIVE_TTL,
-  ['CASHFLOW_NEW'],
-);
+/* 2026-11-17 (хэрэглэгч): гараар сарын мөр хүснэгтэд байхгүй — сарын задаргаа зөвхөн Хуваариас тооцоолсон (`huvMonthRows`) */
+const loadCfMonthRows = async (): Promise<Row[]> => [];
 
 /**
  * ХУВААРИЙН МУРУЙН МОДУЛ-ТҮВШНИЙ КЭШ — `lagOf` СИНХРОН тул үүнээс уншина.
@@ -1230,6 +1223,15 @@ function ppGroups(): PpGroup[] {
   ];
 }
 
+/** Нуусан баганын түлхүүрүүд — хөтөчийн хадгалалт (алга/эвдэрсэн бол бүгд харагдана) */
+const PP_COLS_LS = 'selbe.ttb.cols.v1';
+function readHiddenCols(): ReadonlySet<string> {
+  try {
+    const j: unknown = JSON.parse(localStorage.getItem(PP_COLS_LS) ?? '[]');
+    return new Set(Array.isArray(j) ? j.filter((x): x is string => typeof x === 'string') : []);
+  } catch { return new Set(); }
+}
+
 const ppFmt = (kind: PpKind, v: number | string | null): string => {
   if (kind === 'text') return v == null || v === '' ? '—' : String(v);
   if (typeof v === 'string') return v;
@@ -1275,7 +1277,23 @@ export function ProjectPlanTable({
   onSaved: () => void;
 }) {
   const { tree, result } = plan;
-  const groups = useMemo(() => ppGroups(), []);
+  /* ── БАГАНА СОНГОХ (2026-11-17, хэрэглэгч: «checkлэсэн баганууд харагддаг хэсэг») — тэмдэглэсэн багана л харагдана;
+     сонголт хөтөчид хадгалагдана (`PP_COLS_LS`). Зөвхөн «Бүрэн хүснэгт» харагдацад. ── */
+  const allGroups = useMemo(() => ppGroups(), []);
+  const [hiddenCols, setHiddenCols] = useState<ReadonlySet<string>>(() => readHiddenCols());
+  const setHidden = (next: ReadonlySet<string>) => {
+    setHiddenCols(next);
+    try { localStorage.setItem(PP_COLS_LS, JSON.stringify([...next])); } catch { /* хадгалалт хаалттай — зөвхөн энэ удаа */ }
+  };
+  const toggleCols = (keys: readonly string[], show: boolean) => {
+    const next = new Set(hiddenCols);
+    for (const k of keys) { if (show) next.delete(k); else next.add(k); }
+    setHidden(next);
+  };
+  const groups = useMemo(
+    () => allGroups.map((g) => ({ ...g, cols: g.cols.filter((c) => !hiddenCols.has(c.k)) })).filter((g) => g.cols.length > 0),
+    [allGroups, hiddenCols],
+  );
   const cols = useMemo(() => groups.flatMap((g) => g.cols), [groups]);
 
   /** Д/Д — модны байрлалаас (толгой) */
@@ -1329,6 +1347,8 @@ export function ProjectPlanTable({
     n.depth === 1 ? f.ppL1 : n.depth === 2 ? f.ppL2 : '',
     n.blok ? f.ppBlk : '',
     n.outside ? f.ppOut : '',
+    /* «Тооцохгүй» мөр (өөрөө эсвэл дээд мөр нь унтарсан) — бүдгэрнэ */
+    result.values.get(n)?.noTotal || result.values.get(n)?.noPhase ? f.ppDim : '',
   ].filter(Boolean).join(' ');
 
   /** Эх үүсвэрийн нийлбэр — зөвхөн Төслийн нийт мөрөнд (дээд мөрүүдийн бичсэн утгын нийлбэр) */
@@ -1351,7 +1371,7 @@ export function ProjectPlanTable({
     const x = CALC_KEYS.includes(c.k) ? ppCalcVal(c.k, n ? moneyOf.get(n) : undefined, rootE)
       : SRC_CALC.includes(c.k) ? (c.k === 'mSrcTot' ? srcTotOf(n, src) : sourceGap(srcTotOf(n, src), v?.E))
       : c.raw ? ((n?.row?.[c.k as PpRawKey] as number | string | null | undefined) ?? null)
-      : isSourceKey(c.k) ? srcOwn(n, src, c.k) : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip' | 'noTotal' | 'GT'>] : null;
+      : isSourceKey(c.k) ? srcOwn(n, src, c.k) : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip' | 'noTotal' | 'noPhase' | 'GT'>] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;
     return (
       <td
@@ -1377,6 +1397,48 @@ export function ProjectPlanTable({
       setErr(userError(e));
       return false;
     }
+  };
+  /**
+   * ТӨЛӨВ — «Төслийн нийтэд тооцох» (2026-11-16, хэрэглэгч: «хамгийн урд талд төлөв сонгох хэсэг»): Тооцно · Тооцохгүй.
+   * «Тооцохгүй» мөр хувиа өөрийн мөрөнд бодсоор, зөвхөн Төслийн нийт мөрийн хувиас хасагдана (үр удам нь дагана).
+   * «Нэгтгэл гүйцэтгэл»-ийн сонголттой НЭГ талбар (`niit_tootsoh`, `planEdit.saveInTotal`).
+   */
+  const [stBusy, setStBusy] = useState<number | null>(null);
+  const statusCell = (n: PlanNode) => {
+    const oid = n.row?.objectid;
+    if (n.outside || oid == null) return <td className={f.ppSt} />;
+    const v = result.values.get(n);
+    /* унтраалга: 1 — төслийн нийтэд · 2 — үе шатны гүйцэтгэлд. Дээд мөр унтарсан бол дагаж унтарна (өөрөө солигдохгүй) */
+    const phOwn = n.row?.uy_shat_tootsoh === 0;
+    const phInh = !phOwn && !!v?.noPhase;
+    const totOwn = n.row?.niit_tootsoh === 0;
+    const totInh = (!totOwn && !!v?.noTotal) || phOwn || phInh;
+    const sw = (kind: 'tot' | 'ph', own: boolean, inh: boolean) => {
+      const on = !own && !inh;
+      const name = kind === 'tot' ? tr('Төслийн нийтэд тооцох') : tr('Барилга угсралтын гүйцэтгэлд тооцох');
+      return (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label={name}
+          className={`${f.ppSw} ${on ? f.ppSwOn : ''}`}
+          disabled={!canEdit || inh || stBusy != null}
+          title={`${name}: ${inh ? tr('дээд мөр эсвэл нөгөө унтраалга унтарсан тул хасагдсан') : on ? tr('Тооцно') : tr('Тооцохгүй')}`}
+          onClick={() => {
+            const next = own ? 1 : 0;
+            setErr(null);
+            setMsg(null);
+            setStBusy(oid);
+            (kind === 'tot' ? saveInTotal(oid, next) : saveInPhase(oid, next))
+              .then(() => setMsg(tr('{0}: {1} — хадгалагдлаа', name, next ? tr('Тооцно') : tr('Тооцохгүй'))))
+              .catch((er: unknown) => setErr(userError(er)))
+              .finally(() => setStBusy(null));
+          }}
+        />
+      );
+    };
+    return <td className={f.ppSt}><span className={f.ppSwPair}>{sw('tot', totOwn, totInh)}{sw('ph', phOwn, phInh)}</span></td>;
   };
   const doDelete = async (n: PlanNode) => {
     const name = String(n.row?.ajil_uilchilgee ?? '').trim();
@@ -1429,6 +1491,7 @@ export function ProjectPlanTable({
   );
   const filterRow = (rest: ReactNode) => (
     <tr className={f.ppFlt}>
+      <th className={f.ppSt} />
       <th className={`${f.ppFz0} ${f.ppNo}`} />
       <th className={`${f.ppFz1} ${f.ppPkg}`}>
         <select
@@ -1494,6 +1557,53 @@ export function ProjectPlanTable({
             </button>
           ))}
         </div>
+        {mode === 'full' && (
+          <details className={f.ppCols}>
+            <summary className={f.tab}>
+              {hiddenCols.size ? tr('Багана ({0} нуусан)', hiddenCols.size) : tr('Багана')}
+            </summary>
+            <div className={f.ppColsBox}>
+              <div className={f.ppColsAct}>
+                <button type="button" className={f.tab} onClick={() => setHidden(new Set())}>{tr('Бүгдийг харуулах')}</button>
+                <button type="button" className={f.tab} onClick={() => setHidden(new Set(allGroups.flatMap((g) => g.cols.map((c) => c.k as string))))}>{tr('Бүгдийг нуух')}</button>
+              </div>
+              {allGroups.map((g, gi) => {
+                const keys = g.cols.map((c) => c.k as string);
+                const on = keys.filter((k) => !hiddenCols.has(k)).length;
+                /* бүлэггүй багана — дан мөр; бүлэгтэй — хураагддаг (бүлгийн нэр дээр дарж дэлгэнэ) */
+                if (!g.label) {
+                  return g.cols.map((c) => (
+                    <label key={c.k} className={f.ppColsHd}>
+                      <input type="checkbox" checked={!hiddenCols.has(c.k)} onChange={(e) => toggleCols([c.k], e.target.checked)} />
+                      {c.label}
+                    </label>
+                  ));
+                }
+                return (
+                  <details key={gi} className={f.ppColsGrp}>
+                    <summary className={f.ppColsSum}>
+                      <input
+                        type="checkbox"
+                        aria-label={g.label}
+                        checked={on === keys.length}
+                        ref={(el) => { if (el) el.indeterminate = on > 0 && on < keys.length; }}
+                        onChange={(e) => toggleCols(keys, e.target.checked)}
+                      />
+                      <span>{g.label}</span>
+                      <span className={f.ppColsCnt}>{on}/{keys.length}</span>
+                    </summary>
+                    {g.cols.map((c) => (
+                      <label key={c.k} className={f.ppColsIt}>
+                        <input type="checkbox" checked={!hiddenCols.has(c.k)} onChange={(e) => toggleCols([c.k], e.target.checked)} />
+                        {c.label}
+                      </label>
+                    ))}
+                  </details>
+                );
+              })}
+            </div>
+          </details>
+        )}
         {err && <p role="alert" className={f.editErr}>{err}</p>}
         {msg && <p role="status" className={f.editOk}>{msg}</p>}
       </div>
@@ -1523,6 +1633,7 @@ export function ProjectPlanTable({
         <table className={`${f.tbl} ${f.ppTbl}`}>
           <thead>
             <tr>
+              <th className={f.ppSt} title={tr('Тооцох эсэх: зүүн — Төслийн нийт гүйцэтгэлд · баруун — Барилга угсралтын гүйцэтгэлд')}><span className={f.ppSwPair}><span>{tr('Төслийн нийтэд')}</span><span>{tr('Барилга угсралтад')}</span></span></th>
               <th className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
               <th className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
               <th className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>
@@ -1551,6 +1662,7 @@ export function ProjectPlanTable({
               const why = canEdit && MANUAL_PHASES.has(n.phase) ? addWhy(tree, n) : null;
               return (
                 <tr key={n.index} className={rowCls(n)}>
+                  {statusCell(n)}
                   <td className={`${f.ppFz0} ${f.ppNo}`}>{ddOf.get(n)}</td>
                   <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
                   {nameCell(n)}
@@ -1603,6 +1715,7 @@ export function ProjectPlanTable({
         <table className={`${f.tbl} ${f.ppTbl}`}>
           <thead>
             <tr>
+              <th rowSpan={2} className={f.ppSt} title={tr('Тооцох эсэх: зүүн — Төслийн нийт гүйцэтгэлд · баруун — Барилга угсралтын гүйцэтгэлд')}><span className={f.ppSwPair}><span>{tr('Төслийн нийтэд')}</span><span>{tr('Барилга угсралтад')}</span></span></th>
               <th rowSpan={2} className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
               <th rowSpan={2} className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
               <th rowSpan={2} className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>
@@ -1617,11 +1730,11 @@ export function ProjectPlanTable({
             </tr>
             {filterRow(<>
               {cols.map((c) => <th key={c.k} />)}
-              <th />
             </>)}
           </thead>
           <tbody>
             <tr className={f.ppTot}>
+              <td className={f.ppSt} />
               <td className={`${f.ppFz0} ${f.ppNo}`} />
               <td className={`${f.ppFz1} ${f.ppPkg}`} />
               <td className={`${f.ppFz2} ${f.ppName}`}>{tr('Төслийн нийт')}</td>
@@ -1632,6 +1745,7 @@ export function ProjectPlanTable({
               const v = result.values.get(n);
               return (
                 <tr key={n.index} className={rowCls(n)}>
+                  {statusCell(n)}
                   <td className={`${f.ppFz0} ${f.ppNo}`}>{ddOf.get(n)}</td>
                   <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
                   {nameCell(n)}

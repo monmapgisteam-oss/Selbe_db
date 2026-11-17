@@ -25,7 +25,7 @@ export type PageKey = 'zahiramj' | 'songon' | 'zovshoorolTtb' | 'ashiglalt';
 
 /** Нэг оруулах талбар: `key` — `PlanStoredRow`-ийн түлхүүр = `Guitsetgel_talbe/182`-ийн талбарын нэр */
 export type FieldDef = {
-  key: 'zahiramj_ognoo' | 'zahiramj_dugaar' | 'songon_ognoo' | 'geree_ognoo' | 'ashiglalt_ognoo'
+  key: 'zahiramj_ognoo' | 'zahiramj_dugaar' | 'geree_ognoo' | 'ashiglalt_ognoo'
   | 'guits_ehleh' | 'guits_duusah' | 'guitsetgel_huvi';
   kind: 'date' | 'text' | 'pct';
   /** Аль мөрд засагдах вэ: `pkg` — багцтай, блокгүй мөр; `leaf` — хүүхэдгүй мөр; `row` — бүх мөр */
@@ -50,7 +50,7 @@ export const PAGES: Record<PageKey, PageDef> = {
   songon: {
     key: 'songon', phase: 'songon', cap: 'songonEdit',
     fields: [
-      { key: 'songon_ognoo', kind: 'date', on: 'pkg' }, { key: 'geree_ognoo', kind: 'date', on: 'pkg' },
+      { key: 'geree_ognoo', kind: 'date', on: 'pkg' },
       { key: 'guitsetgel_huvi', kind: 'pct', on: 'leaf' },
     ],
   },

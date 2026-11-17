@@ -39,7 +39,7 @@ const OUT = [
   CASHFLOW_NEW.oid, F.ddKod, F.parentKod, F.level, F.phase, F.pkg, F.block, F.detail, F.budget, F.wSection,
   F.landStart, F.landEnd, F.contractorStart, F.contractorEnd, F.progressPct, CF_MONTH.id,
 ];
-const WHERE = `${F.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`;
+const WHERE = `${F.ddKod} IS NOT NULL`;
 
 const loadRows = cached(async () => ({
   rows: await queryFeatures(CASHFLOW_NEW.url, { where: WHERE, outFields: OUT, orderBy: `${CASHFLOW_NEW.oid} ASC` }),

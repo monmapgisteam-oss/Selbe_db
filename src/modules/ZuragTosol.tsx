@@ -50,7 +50,7 @@ const OUT = [
   F.progressPct, CF_MONTH.id,
 ];
 /** Excel-ийн мөр (мөнгөний + бүтцийн); сарын мөр хасагдана */
-const WHERE = `${F.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`;
+const WHERE = `${F.ddKod} IS NOT NULL`;
 
 const loadRows = cached(async () => ({
   rows: await queryFeatures(CASHFLOW_NEW.url, { where: WHERE, outFields: OUT, orderBy: `${CASHFLOW_NEW.oid} ASC` }),
@@ -310,7 +310,7 @@ function Body({ rows, at }: { rows: Row[]; at: number }) {
         ...(codes.length ? [`${F.ddKod} IN (${codes.map(sqlStr).join(',')})`] : []),
       ];
       const fresh = (await queryFeatures(CASHFLOW_NEW.url, {
-        where: `${CF_MONTH.start} IS NULL AND (${parts.join(' OR ')})`,
+        where: `(${parts.join(' OR ')})`,
         outFields: OUT,
         orderBy: `${CASHFLOW_NEW.oid} ASC`,
       })).map((r) => toStored(r, NAMES));

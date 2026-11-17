@@ -115,7 +115,7 @@ export function cfVirtualFromRows(rows: readonly Record<string, unknown>[]): CfV
 
 /** Модыг угсрахад хэрэгтэй багана — `query.ts` ангиллын эхийг ЭНЭ жагсаалтаар уншина */
 export const CF_CLASS_SOURCE_FIELDS = ['objectid', 'dd_kod', 'bagts', 'blok', 'ajil_uilchilgee', 'cashflow_id'] as const;
-export const CF_CLASS_SOURCE_WHERE = 'dd_kod IS NOT NULL AND cashflow_start IS NULL';
+export const CF_CLASS_SOURCE_WHERE = 'dd_kod IS NOT NULL';
 
 const cmpKod = (a: string | null | undefined, b: string | null | undefined): number => {
   const x = String(a ?? '').split('.'), y = String(b ?? '').split('.');

@@ -1331,6 +1331,21 @@ div.bName:hover { background: var(--surface-2); }
   padding: 7px 12px;
   border-bottom: 1px solid var(--line);
 }
+/* Багана сонгох — тэмдэглэсэн багана л харагдана */
+.ppCols { position: relative; }
+.ppCols > summary { list-style: none; cursor: pointer; }
+.ppCols > summary::-webkit-details-marker { display: none; }
+.ppColsBox { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; width: 290px; max-height: 70vh; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.28); }
+.ppColsAct { display: flex; gap: 6px; margin-bottom: 6px; }
+.ppColsGrp { margin: 0; padding: 0; border: 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ppColsHd, .ppColsIt { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 1.5; cursor: pointer; }
+.ppColsHd { font-weight: 400; color: var(--ink); }
+.ppColsSum { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 1.5; font-weight: 600; color: var(--ink); cursor: pointer; list-style: none; }
+.ppColsSum::-webkit-details-marker { display: none; }
+.ppColsSum::after { content: '▸'; margin-left: auto; color: var(--ink-3); font-size: 10px; }
+.ppColsGrp[open] > .ppColsSum::after { content: '▾'; }
+.ppColsCnt { color: var(--ink-3); font-weight: 400; font-size: 11px; }
+.ppColsIt { padding-left: 18px; color: var(--ink-2, var(--ink)); }
 .ppBarLbl { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .ppBar .editErr,
 .ppBar .editOk { margin: 0; }
@@ -1355,6 +1370,21 @@ div.bName:hover { background: var(--surface-2); }
 .ppTbl thead tr:first-child th.ppGrp { vertical-align: middle; }
 
 /* Царцсан баганууд */
+/* Төлөв — «Төслийн нийтэд тооцох» сонголт (хамгийн зүүн багана, царцаахгүй) */
+.ppTbl .ppSt { width: 128px; min-width: 128px; max-width: 128px; padding-left: 4px; padding-right: 4px; }
+/* Хоёр унтраалга зэрэгцээ: 1 — төслийн нийт · 2 — үе шат */
+.ppSwPair { display: grid; grid-template-columns: 1fr 1fr; justify-items: center; align-items: center; }
+.ppSwPair > span { text-align: center; font-size: 10px; line-height: 1.15; white-space: normal; }
+/* Унтраалга — асаалттай = төслийн нийтэд тооцно */
+.ppSw { position: relative; display: block; width: 26px; height: 14px; padding: 0; border: 0; border-radius: 999px; background: color-mix(in oklab, var(--ink-3) 45%, transparent); cursor: pointer; transition: background 0.15s ease; }
+.ppSw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); transition: transform 0.15s ease; }
+.ppSwOn { background: var(--ok, #22c55e); }
+.ppSwOn::after { transform: translateX(12px); }
+.ppSw:disabled { cursor: default; opacity: 0.55; }
+.ppSw:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .ppSw, .ppSw::after { transition: none; } }
+/* «Тооцохгүй» мөр — бүдэг (унтраалга өөрөө бүдгэрэхгүй) */
+.ppTbl tbody tr.ppDim td:not(.ppSt) { opacity: 0.45; }
 .ppTbl .ppNo { width: 72px; min-width: 72px; max-width: 72px; }
 .ppTbl .ppPkg { width: 86px; min-width: 86px; max-width: 86px; overflow: hidden; text-overflow: ellipsis; }
 .ppTbl .ppName { width: 320px; min-width: 320px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }

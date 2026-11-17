@@ -54,6 +54,8 @@ export type PlanStoredRow = {
   guitsetgel_huvi?: number | null;
   /** Төслийн нийтэд тооцох — 0 = Тооцохгүй (зөвхөн Төслийн нийт S-ээс хасна), 1/хоосон = Тооцно */
   niit_tootsoh?: number | null;
+  /** Үе шатны гүйцэтгэлд тооцох — 0 = Тооцохгүй (эцэг мөрүүдийн нийлбэр, жингээс хасна; өөрийн бодолт хэвээр), 1/хоосон = Тооцно */
+  uy_shat_tootsoh?: number | null;
   cashflow_id?: number | null;
   /** Гэрээ байгуулсан огноо — L2 «Сонгон шалгаруулалт (гэрээ байгуулсан)» */
   geree_ognoo?: number | null;
@@ -224,6 +226,11 @@ export type PlanValues = {
    * Төслийн нийт S-д орохгүй. Ийм мөр нэг ч байхгүй бол `noTotal` · `GT` хоёулаа алга.
    */
   noTotal?: true;
+  /**
+   * 2026-11-17 (хэрэглэгч): «Үе шатны гүйцэтгэлд тооцохгүй» мөр (`uy_shat_tootsoh` = 0) ба түүний үр удам — өөрийн хувь
+   * бодогдсоор, эцэг мөрүүдийн (үе шат, Төслийн нийт) нийлбэр ба жинд орохгүй; жин нь үлдсэн ах дүүд хуваагдана.
+   */
+  noPhase?: true;
   /** Төслийн нийт S-д эзлэх үр дүнтэй жин (0–100) — хасагдсан мөр 0, бусад нь G-ийг дахин хуваасан */
   GT?: number | null;
 };
@@ -383,7 +390,7 @@ const isContractNote = (r: PlanStoredRow | null | undefined): boolean =>
 
 /**
  * СОНГОН ШАЛГАРУУЛАЛТ ДУУССАН ЭСЭХ (2026-11-05) — гэрээ байгуулагдсан бол сонгон шалгаруулалт 100%. Өөрийн эсвэл ӨВГИЙН
- * мөрийн `songon_ognoo`/`geree_ognoo` өнөөдрөөс хойш биш, эсвэл тэдгээрийн ихэр (Барилга угсралтын МӨНГӨНИЙ мөр,
+ * мөрийн `geree_ognoo` өнөөдрөөс хойш биш, эсвэл тэдгээрийн ихэр (Барилга угсралтын МӨНГӨНИЙ мөр,
  * `cashflow_id`-тай) `geree_ognoo`-той / «Гэрээлсэн дүн» тэмдэгтэй. Блокийн навч багцынхаа гэрээг дагана —
  * `levelPlan.buildL2`-ийн «Сонгон шалгаруулалт (гэрээ байгуулсан)» milestone-той нэг дүрэм. Хадгалсан `guitsetgel_huvi`
  * 0 хэвээр байсан 168 навч гэрээтэй 25 багцад 0% харуулдаг байв.
@@ -391,7 +398,7 @@ const isContractNote = (r: PlanStoredRow | null | undefined): boolean =>
 export function tenderSigned(n: PlanNode, today: number): boolean {
   const past = (v: unknown): boolean => { const d = saneDate(v); return d != null && Math.floor(d / DAY) * DAY <= today; };
   for (let x: PlanNode | null = n; x && x.row; x = x.parent) {
-    if (past(x.row.songon_ognoo) || past(x.row.geree_ognoo)) return true;
+    if (past(x.row.geree_ognoo)) return true;
     const t = x.twin?.row;
     if (t && t.cashflow_id != null && (past(t.geree_ognoo) || isContractNote(t))) return true;
   }
@@ -749,6 +756,18 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
     const mark = (n: PlanNode) => { skip.add(n); n.children.forEach(mark); };
     for (const n of nodes) if (n.phase === 'barilga' && n.sub === 'beltgel' && !n.outside && !skip.has(n) && !has(n)) mark(n);
   }
+  /* ── ҮЕ ШАТНЫ ГҮЙЦЭТГЭЛД ТООЦОХГҮЙ (2026-11-17, хэрэглэгч) — `uy_shat_tootsoh` = 0 мөр: `skip`-тэй ижил замаар эцгийн
+     нийлбэр, жингээс хасагдана (жингийн төсөв `keepOf` үлдсэн ах дүүд), ГЭХДЭЭ өөрийн S ба үр удмын бодолт хэвээр —
+     зөвхөн тэр мөр өөрөө `skip`-д орно, үр удам нь биш (`soft`: S-ийг хоослохгүй, `values.skip` тавихгүй). ── */
+  const soft = new Set<PlanNode>();
+  const noPhase = new Set<PlanNode>();
+  for (const n of nodes) {
+    if (n.row?.uy_shat_tootsoh !== 0 || n.outside || skip.has(n)) continue;
+    soft.add(n);
+    skip.add(n);
+    const markNP = (x: PlanNode) => { noPhase.add(x); x.children.forEach(markNP); };
+    markNP(n);
+  }
   const counted = (c: PlanNode) => !c.outside && !skip.has(c);
 
   /* ── E: хадгалсан › (нийлбэрт орох) хүүхдүүдийн нийлбэр ── */
@@ -923,7 +942,7 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
     const rec = {} as Record<Metric, number | null>;
     for (const m of METRICS) {
       if (o && m in o) { rec[m] = frac(o[m] ?? null); continue; }
-      if (m === 'S' && skip.has(n)) { rec[m] = null; continue; }
+      if (m === 'S' && skip.has(n) && !soft.has(n)) { rec[m] = null; continue; }
       if (n.children.length) rec[m] = rollup(n, (c) => X.get(c)![m], F);
       else rec[m] = n.row ? leafValue(n, m, today, inputs) : null;
     }
@@ -993,7 +1012,8 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
       N, O, P, Q: hund(x.Q), R, S,
       T: ratio(S, N), U: ratio(S, O), V: ratio(S, P), W: ratio(S, R),
       status: n.blok ? blockStatus(S) : null,
-      ...(skip.has(n) ? { skip: true as const } : {}),
+      ...(skip.has(n) && !soft.has(n) ? { skip: true as const } : {}),
+      ...(noPhase.has(n) ? { noPhase: true as const } : {}),
       ...(lost > 0 ? {
         GT: noTotal.has(n) ? 0 : hund(G.get(n) == null || kT == null ? null : G.get(n)! * kT),
         ...(noTotal.has(n) ? { noTotal: true as const } : {}),

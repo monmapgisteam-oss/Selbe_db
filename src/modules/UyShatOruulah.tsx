@@ -37,11 +37,11 @@ const NAMES: Names = { oid: CASHFLOW_NEW.oid, cfId: CF_MONTH.id };
 const OUT = [
   CASHFLOW_NEW.oid, F.ddKod, F.parentKod, F.level, F.phase, F.pkg, F.block, F.detail, F.budget, F.wSection,
   F.landStart, F.landEnd, F.contractorStart, F.contractorEnd, F.progressPct, CF_MONTH.id,
-  F.orderDate, F.orderNo, F.tenderDate, F.contractDate, F.handoverDate,
+  F.orderDate, F.orderNo, F.contractDate, F.handoverDate,
   /* 2026-11-09: ихрийн «Гэрээлсэн дүн» — `tenderSigned` уншина; алга бол Багц-5.3 · 5.4-ийн явц энд засагдаж үндсэн хүснэгт 100-гаар дардаг байв */
   F.amountNote,
 ];
-const WHERE = `${F.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`;
+const WHERE = `${F.ddKod} IS NOT NULL`;
 
 const loadRows = cached(async () => ({
   rows: await queryFeatures(CASHFLOW_NEW.url, { where: WHERE, outFields: OUT, orderBy: `${CASHFLOW_NEW.oid} ASC` }),
@@ -66,7 +66,6 @@ const SUB: Record<PageKey, () => string> = {
 const FIELD_LABEL: Record<FieldDef['key'], () => string> = {
   zahiramj_ognoo: () => tr('Захирамжийн огноо'),
   zahiramj_dugaar: () => tr('Захирамжийн дугаар'),
-  songon_ognoo: () => tr('Сонгон шалгаруулалтын огноо'),
   geree_ognoo: () => tr('Гэрээ байгуулсан огноо'),
   ashiglalt_ognoo: () => tr('Ашиглалтад оруулах огноо'),
   guits_ehleh: () => tr('Эхлэх'),
@@ -239,7 +238,7 @@ function Body({ page, rows, at }: { page: PageKey; rows: Row[]; at: number }) {
         ...(codes.length ? [`${F.ddKod} IN (${codes.map(sqlStr).join(',')})`] : []),
       ];
       const fresh = (await queryFeatures(CASHFLOW_NEW.url, {
-        where: `${CF_MONTH.start} IS NULL AND (${parts.join(' OR ')})`,
+        where: `(${parts.join(' OR ')})`,
         outFields: OUT,
         orderBy: `${CASHFLOW_NEW.oid} ASC`,
       })).map((r) => toStored(r, NAMES));

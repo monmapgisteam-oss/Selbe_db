@@ -228,6 +228,8 @@ export const CASHFLOW_NEW = {
     detail: "ajil_uilchilgee",       // Ажил, үйлчилгээ (ажлын бүтэн нэр)
     /** Төслийн нийтэд тооцох — 1 Тооцно · 0 Тооцохгүй · хоосон = Тооцно (2026-11-16, хэрэглэгч Enterprise-д нэмсэн) */
     inTotal: "niit_tootsoh",
+    /** Үе шатны гүйцэтгэлд тооцох — 1 Тооцно · 0 Тооцохгүй · хоосон = Тооцно (2026-11-17, хэрэглэгч Enterprise-д нэмсэн) */
+    inPhase: "uy_shat_tootsoh",
     /**
      * ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮН (гэрээ болон урьдчилсан тооцоолол) — БҮХ мөнгөн
      * тооцооны эх. Хуучин `Urdch_tusuwt_urtug`-ийн залгамжлагч.
@@ -303,7 +305,7 @@ export const CASHFLOW_NEW = {
 /**
  * АЖЛЫН МӨР Л — сарын cashflow мөрүүдийг ХАСНА.
  */
-export const CF_WORK_WHERE = 'cashflow_start IS NULL AND cashflow_id IS NOT NULL';
+export const CF_WORK_WHERE = 'cashflow_id IS NOT NULL';
 
 /**
  * 2026-11-04 (хэрэглэгч: давхар багана устгана) — `zahiramj_niit_dun` хүснэгтээс хасагдсан; `geree_dun` тусдаа багана хэвээр.
@@ -319,7 +321,8 @@ export const orderTotalOf = (r: Readonly<Record<string, unknown>>): unknown => (
 /**
  * САРЫН МӨР Л — S-Curve-ийн задаргаа.
  */
-export const CF_MONTH_WHERE = 'cashflow_start IS NOT NULL';
+/* 2026-11-17: сарын мөр хүснэгтэд байхгүй (сарын мөнгөний 4 багана хасагдсан) — `CF_MONTH`-ийн `start`…`amount` нь зөвхөн
+   Хуваариас тооцоолсон сарын мөрийн САНАХ ОЙН түлхүүр, серверийн талбар БИШ. */
 
 /** Сарын задаргааны талбарууд — `Cashflow_final` дотор */
 export const CF_MONTH = {

@@ -31,7 +31,7 @@ const base = [
   row(40, '4', null, { uy_shat: 'Сонгон шалгаруулалт', name: 'Сонгон шалгаруулалт', tuvshin: 0 }),
   row(41, '4.1', '4', { bagts: 'Багц-1', name: 'Багц-1', tuvshin: 1 }),
   row(42, '4.1.1', '4.1', { bagts: 'Багц-1', blok: '5/1', name: '5/1', tuvshin: 2, guitsetgel_huvi: 0 }),
-  row(43, '4.2', '4', { bagts: 'Багц-2', name: 'Багц-2', tuvshin: 1, guitsetgel_huvi: 100, songon_ognoo: d('2025-05-01') }),
+  row(43, '4.2', '4', { bagts: 'Багц-2', name: 'Багц-2', tuvshin: 1, guitsetgel_huvi: 100, geree_ognoo: d('2025-05-01') }),
   row(50, '5', null, { uy_shat: 'Барилга угсралт', name: 'Барилга угсралт', tuvshin: 0 }),
   row(52, '5.2', '5', { name: 'Барилга угсралт ажил', tuvshin: 1, heseg_ezleh_huvi: 0.95 }),
   row(53, '5.2.1', '5.2', { name: 'Орон сууц', tuvshin: 2 }),
@@ -53,10 +53,10 @@ const byCode = (c) => tree.byCode.get(c);
   const s = rowsOf(PAGES.songon, tree);
   assert.deepEqual(s.map((n) => n.row.dd_kod), ['4', '4.1', '4.1.1', '4.2'], 'Сонгон: үе шатын мод');
   assert.deepEqual(editableFields(PAGES.songon, byCode('4')).map((f) => f.key), [], 'үе шатын толгой засагдахгүй');
-  assert.deepEqual(editableFields(PAGES.songon, byCode('4.1')).map((f) => f.key), ['songon_ognoo', 'geree_ognoo'], 'блоктой багц: огноо л');
+  assert.deepEqual(editableFields(PAGES.songon, byCode('4.1')).map((f) => f.key), ['geree_ognoo'], 'блоктой багц: огноо л');
   assert.deepEqual(editableFields(PAGES.songon, byCode('4.1.1')).map((f) => f.key), ['guitsetgel_huvi'], 'блок: явц л');
-  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-01-01')).map((f) => f.key), ['songon_ognoo', 'geree_ognoo', 'guitsetgel_huvi'], 'блокгүй багц, сонгон хараахан болоогүй: бүгд');
-  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-05-02')).map((f) => f.key), ['songon_ognoo', 'geree_ognoo'], 'сонгон/гэрээ болсон: явц системээс (100) — оруулсан утга дарагддаг');
+  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-01-01')).map((f) => f.key), ['geree_ognoo', 'guitsetgel_huvi'], 'блокгүй багц, сонгон хараахан болоогүй: бүгд');
+  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-05-02')).map((f) => f.key), ['geree_ognoo'], 'сонгон/гэрээ болсон: явц системээс (100) — оруулсан утга дарагддаг');
   const pctF = PAGES.songon.fields.find((f) => f.kind === 'pct');
   assert.match(fieldLockWhy(byCode('4.2'), pctF, d('2025-05-02')), /Гэрээ байгуулагдсан/, 'шалтгаан хэлнэ');
   assert.equal(fieldLockWhy(byCode('4.2'), pctF, d('2025-01-01')), null);
@@ -101,12 +101,12 @@ const byCode = (c) => tree.byCode.get(c);
 
   /* Сонгон: явц 0–100, null ≠ 0 */
   const S = PAGES.songon;
-  const FP = S.fields[2];
+  const FP = S.fields[1];
   const r42 = base.find((x) => x.objectid === 42);
   assert.deepEqual(buildEdits(S, base, setEdit(EMPTY_PENDING, r42, FP, ''), N).updates, [{ objectid: 42, guitsetgel_huvi: null }], '0 → хоосон = null');
   assert.deepEqual(buildEdits(S, base, setEdit(EMPTY_PENDING, r42, FP, '101'), N).issues, [{ code: '4.1.1', kind: 'pct' }]);
   const r43 = base.find((x) => x.objectid === 43);
-  assert.deepEqual(buildEdits(S, base, setEdit(EMPTY_PENDING, r43, S.fields[1], '2025-06-01'), N).updates, [{ objectid: 43, geree_ognoo: d('2025-06-01') }]);
+  assert.deepEqual(buildEdits(S, base, setEdit(EMPTY_PENDING, r43, S.fields[0], '2025-06-01'), N).updates, [{ objectid: 43, geree_ognoo: d('2025-06-01') }]);
 
   /* Зөвшөөрөл: огнооны хос */
   const Z = PAGES.zovshoorolTtb;

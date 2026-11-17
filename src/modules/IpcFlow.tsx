@@ -11,7 +11,7 @@ import { askConfirm } from '@/lib/confirm';
 import { invalidate } from '@/lib/dataBus';
 import { applyAll } from '@/lib/tableWrite';
 import { queryFeatures } from '@/lib/query';
-import { CASHFLOW_NEW, CF_MONTH, HO_IPC, num } from '@/lib/services';
+import { CASHFLOW_NEW, HO_IPC, num } from '@/lib/services';
 import { contractCancelled } from '@/lib/ipc';
 import { entDeletePdf, entSearch, entUploadPdf } from '@/lib/entDocs';
 import { runHoSyncAfter } from '@/lib/hoSync/sync';
@@ -375,7 +375,7 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
       if (!cfSaved) {
         /* Цонх нээгдсэний дараа өөр хэрэглэгч багцыг гэрээлсэн эсвэл дугаарыг авсан байж болно — бичихийн өмнө шинээр шалгана */
         const [cfNow, hoNow] = await Promise.all([
-          queryFeatures(CASHFLOW_NEW.url, { where: `${CF_MONTH.start} IS NULL`, outFields: [CASHFLOW_NEW.oid, CF.amountNote, CF.contractNo] }),
+          queryFeatures(CASHFLOW_NEW.url, { where: '1=1', outFields: [CASHFLOW_NEW.oid, CF.amountNote, CF.contractNo] }),
           queryFeatures(HO_IPC.url, { outFields: [HO_IPC.oid, HO_IPC.contractFields.contractNo] }),
         ]);
         const nowOf = new Map(cfNow.map((r) => [Number(r[CASHFLOW_NEW.oid]), r] as const));
