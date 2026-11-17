@@ -38,7 +38,7 @@ import {
   BLIND_NOTE_SRC, claimHolderOf, decidePlan, serverNow, loadAllPending, loadLastPerPkg, loadPayload, partialBy, planTableState, queueFigures, returnStuckPlan, withdrawPlan, PLAN_STATUS, REASON_MAX,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
-import s from './guitsetgel.module.css';
+import s from './huvaariBatlah.module.css';
 import { Loading, userError } from '@/components/ui';
 import { askConfirm } from '@/lib/confirm';
 

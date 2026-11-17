@@ -81,6 +81,7 @@ export function MapTools({
   zone,
   setZone,
   dock = false,
+  fixed = false,
   children,
 }: {
   dim: Dim;
@@ -109,6 +110,8 @@ export function MapTools({
    * ХЭВТЭЭ ТОЛГОЙ болно (2026-09-15).
    */
   dock?: boolean;
+  /** ҮРГЭЛЖ ДЭЛГЭЭТЭЙ — хураах бариулгүй (Ерөнхий дашбоард: «хураах шаардлагагүй»). Анхдагч: хураагддаг хэвээр. */
+  fixed?: boolean;
   /** Харагдацын ӨӨРИЙН товчнууд — «Полигон зурах», «Дулаан» гэх мэт */
   children?: ReactNode;
 }) {
@@ -121,9 +124,9 @@ export function MapTools({
    * заавар: «Ерөнхий дашбоард дээрх зургийн товчны hide/unhide-ыг энэ
    * төсөл дээрх БҮХ зурагтай ижил болго»).
    */
-  const [barOn, setBarOn] = useState(false);
+  const [barOn, setBarOn] = useState(!!fixed);
   /* 2D/3D/BIM сонгогч — мөн анхдагч хураагдсан, бариул (▾) нь нээх зам */
-  const [dimsOn, setDimsOn] = useState(false);
+  const [dimsOn, setDimsOn] = useState(!!fixed);
   /* Хураасан бариул дээр идэвхтэй шүүлт байгааг тэмдэглэнэ (`ActiveFilterChip`-тэй ижил дүрэм) */
   const { active: activeFilter } = useFilter();
   const { highlight } = useMap();
@@ -144,6 +147,7 @@ export function MapTools({
       * Зурвасыг хураах/дэлгэх бариул — зургийн зүүн ирмэг дээр.
       */}
 
+    {!fixed && (
     <button
       type="button"
       aria-expanded={barOn}
@@ -155,6 +159,7 @@ export function MapTools({
       {barOn ? '◂' : '▸'}
       {!barOn && filterOn && <span className={s.tabDot} aria-hidden />}
     </button>
+    )}
 
     {barOn && (
     <div data-report-skip="" className={`${s.tools} mapToolsBar ${dock ? s.toolsDock : ''}`}>
@@ -215,6 +220,7 @@ export function MapTools({
       */}
     {/* 2D/3D/BIM сегментийг хураах бариул — зурвасныхаа дор/дээр */}
 
+    {!fixed && (
     <button
       type="button"
       aria-expanded={dimsOn}
@@ -225,6 +231,7 @@ export function MapTools({
     >
       {dimsOn ? '▴' : `${(dim ?? '2d').toUpperCase()} ▾`}
     </button>
+    )}
 
     {dimsOn && (
     <div data-report-skip="" className={`${s.dimsBar} mapDims`} role="group" aria-label={tr('Газрын зургийн харагдац')}>

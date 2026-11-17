@@ -23,7 +23,7 @@ import { hasCap, subscribeCaps } from '@/lib/caps';
 import { saveInTotal } from '@/lib/planEdit';
 import n from './negtgel.module.css';
 /* Баруун товшилтын цэс ба сонголтын тэмдэг — Санхүүжилтийн хүснэгттэй НЭГ загвар */
-import f from './finance.module.css';
+import f from './negtgelFin.module.css';
 
 /** Гүн бүрийн нэмэлт догол (px) */
 const INDENT = 12;

@@ -18,7 +18,7 @@ import type { ScopedSys } from '@/lib/aclRoleCaps';
 import {
   flowCellOp, lockMsg, scopedCellOp, type AclOp,
 } from '@/lib/aclOps';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 /** Засах нүдний багана — матрицын 19 (`MATRIX_COLS`) + дэд бүтцийн «Засварлагч» */
 export type EditCol = { sys: 'flow' | ScopedSys; role: string };

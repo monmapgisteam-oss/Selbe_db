@@ -23,6 +23,12 @@
    * ОРОН СУУЦНЫ БИЕТ ЯВЦЫН МУРУЙ (2026-09-10-ны ХОЁР ДАХЬ засвар).
    */
   --tl-phys: var(--c5);
+  /*
+   * ХҮРЭЭ БҮДЭГ — зөвхөн энэ хуудсанд (порталын анхдагчийн ~гуравны нэг): карт дэвсгэрээрээ ялгардаг тул тод хүрээ илүүц.
+   * `--ink`-ээс гаргасан тул цайвар/харанхуй хоёр горимд ажиллана.
+   */
+  --line: color-mix(in oklab, var(--ink) 4%, transparent);
+  --line-strong: color-mix(in oklab, var(--ink) 8%, transparent);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -38,7 +44,9 @@
   flex: 1 1 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--side-r);
-  grid-template-areas: 'main right';
+  /* Доод чарт — БҮТЭН өргөн (баруун баганын доогуур ч), зүүн баруун ирмэгт тулна */
+  grid-template-areas: 'main right' 'curve curve';
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
   min-height: 0;
   --side-l: clamp(280px, 17vw, 560px);
@@ -52,27 +60,32 @@
 /*
  * ЗҮҮН + ТӨВ + МУРУЙ — НЭГ БАГАНА (2026-09-10).
  */
-.main {
-  grid-area: main;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-}
+/* `.main` нь хайрцаг үүсгэхгүй — `.top` ба `.curve` шууд `.body`-ийн торны нүд болно */
+.main { display: contents; }
 .top {
   position: relative;
   display: grid;
   grid-template-columns: var(--side-l) minmax(0, 1fr);
   grid-template-areas: 'left center';
+  grid-area: main;
   gap: 10px;
-  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
 }
 .left { grid-area: left; }
 .right { grid-area: right; }
 .center { grid-area: center; }
-.curve { flex: none; min-width: 0; }
+/* z-index — баруун баганын чирэх бариулын зураас чартын ДЭЭГҮҮР гарахгүй */
+.curve { grid-area: curve; min-width: 0; position: relative; z-index: 6; }
+/*
+ * ЧИРЭХ БАРИУЛЫН ЗУРААС — хоёр талд ИЖИЛ: багана ба зургийн хоорондох 10px зайн ЯГ ГОЛД
+ * (урьд нь баганын ирмэг дээр суудаг тул баруунд картын хүрээтэй наалдаж, зүүнд зайтай харагддаг байв).
+ */
+.top > [role='separator'] { left: var(--side-l); }
+/* grid-row: 1 — баруун зураас ДЭЭД эгнээний өндрөөр л (зүүнтэй ижил урт), доод чарт руу үргэлжлэхгүй */
+.body > [role='separator'] { right: var(--side-r); grid-row: 1 / 2; grid-column: 1 / -1; }
+/* Зураас ХАРАГДАХГҮЙ — хулгана дээр нь очих/чирэх үед л тодорно (чирэх боломж хэвээр) */
+.shell [role='separator']:not(:hover):not(:focus-visible)::after { background: transparent; }
 
 .left, .right {
   display: flex;
@@ -119,10 +132,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 0 18px;
-  padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--surface);
+  /* Гадна хүрээгүй — шахмал бүр өөрийн хүрээтэй тул давхар хүрээ болдог байв */
+  padding: 0;
 }
 
 /* Нэг хэмжээсийн бүлэг — нэр + шахмалууд */
@@ -180,13 +191,16 @@
   box-shadow: var(--shadow);
 }
 
-.kpis {
-  flex: none;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-xl);
-  background: var(--surface);
-}
+/*
+ * ҮЗҮҮЛЭЛТИЙН ЗУРВАС — ГАДНА ХҮРЭЭГҮЙ (хавтан бүр өөрийн хүрээтэй тул давхар хайрцаг болдог байв),
+ * өргөн дэлгэцэд 6 хавтан НЭГ эгнээнд — хавтан доторх хоосон зай багасна.
+ */
+.kpis { flex: none; }
+.shell .kpis :global(.statsGrid) { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+/* Төв багана НАРИЙН үед (талын баганыг өргөсгөсөн ч) 3×2 — тоо мөр хугарахгүй */
+.kpis { container-type: inline-size; }
+@container (max-width: 1150px) { .shell .kpis :global(.statsGrid) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.shell .kpis :global(.statNum) { white-space: nowrap; }
 
 
 /* ── Картын дэд гарчиг ба энгийн жагсаалт ── */
@@ -219,13 +233,15 @@
 /* Картын доод тайлбар — домог, тооцооны томьёо */
 .foot { margin: 6px 0 0; font-size: 11px; line-height: 1.3; color: var(--ink-3); }
 
-/* Муруйн доорх анхааруулга — тод, анхаарал татна */
-.warnNote { margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--warn); }
-.warnNote p { margin: 0; color: var(--warn-ink); }
-
 /*
  * ЗҮҮН БАГАНЫН КАРТУУД — баганын БҮТЭН өндрийг хуваан эзэлнэ, доор хоосон зай үлдэхгүй.
  */
+/*
+ * ЗҮҮН БАГАНЫН ГҮЙЛГЭХ ЗУРВАС — ГАДНА (зүүн) талд, баруун баганын ТОЛИН тусгал: ингэснээр багана ба
+ * газрын зургийн хоорондох зай хоёр талд ЯГ ИЖИЛ (урьд нь зурвасын нөөц зай зүүн талын завсрыг өргөсгөдөг байв).
+ */
+.left { direction: rtl; }
+.left > * { direction: ltr; }
 .left > section { flex: 1 0 auto; display: flex; flex-direction: column; }
 .left > section > :global(.barsList) { flex: 1 1 auto; justify-content: space-around; }
 
@@ -235,6 +251,19 @@
 .shell :global(.statsGrid) { gap: 1px; }
 .shell :global(.statCard) { padding: 4px 10px; gap: 2px; }
 .shell :global(.statNum) { font-size: 15px; }
+/* Үзүүлэлтийн зурвасын тоо — ТОМ (гол үзүүлэлт; хажуугийн картын тоо 15px хэвээр) */
+.shell .kpis :global(.statNum) { font-size: 20px; line-height: 1.15; }
+.shell .kpis :global(.statCard) { padding: 6px 12px; }
+/*
+ * БАРУУН БАГАНЫН КАРТ ДОТОРХ ХАВТАН — ХҮРЭЭГҮЙ (карт өөрөө хүрээтэй тул давхар хайрцаг болдог байв), тоо ТОМ.
+ */
+.shell .right :global(.statCard) { padding: 2px 0; border: 0; background: transparent; }
+.shell .right :global(.statNum) { font-size: 20px; line-height: 1.15; }
+/* Хавтангууд картын өргөнийг ЖИГД хуваана: агуулга голлосон, хооронд нь нарийн зааг — баруун талд хоосон зай үлдэхгүй */
+.shell .right :global(.statsGrid) { gap: 0; padding: 4px 0; }
+.shell .right :global(.statCard) { padding: 4px 8px; justify-items: center; text-align: center; border-radius: 0; }
+.shell .right :global(.statCard) + :global(.statCard) { border-left: 1px solid var(--line); }
+.right .foot { text-align: center; }
 /*
  * Мөрийн эзлэх өндөр = үсгийн хэмжээ × `line-height`. 9.5 × 1.25 = 11.9px
  * байсныг 10.8 × 1.1 = 11.9px болгов — үсэг том, өндөр ЯГ ТЭР ХЭВЭЭР.
@@ -272,7 +301,46 @@
 /*
  * ЗУРГИЙН ДЭЭРХ ТОВЧНУУД — ЖИЖИГ (2026-09-04, хэрэглэгчийн хүсэлт).
  */
-.shell { --tools-w: 132px; --tools-top: 88px; }
+/* Товчнууд ҮРГЭЛЖ дэлгээтэй (хураах бариулгүй): зүүн дээд буланд багана, дээд төвд 2D/3D/BIM — хоёулаа ирмэгээс 12px */
+.shell { --tools-w: 132px; --tools-top: 12px; }
+.shell :global(.mapToolsBar) { left: 12px; }
+.shell :global(.mapDims) { top: 12px; }
+/*
+ * НЭЭГДЭХ ЦОНХНУУД (Давхарга · Тунгалаг · Бүс) — товчны баганын ХАЖУУД, зургийн дээд/доод ирмэгээс 12px дотор:
+ * зургаас ХАЛИХГҮЙ, урт жагсаалт цонхон ДОТРОО гүйлгэгдэнэ (урьд нь доод хэсэг зургийн ирмэгээр таслагддаг байв).
+ */
+.shell { --pop-l: calc(12px + var(--tools-w) + 8px); }
+.shell .hero .catPanel {
+  top: 12px;
+  bottom: 12px;
+  left: var(--pop-l);
+  right: auto;
+  width: min(340px, calc(100% - var(--pop-l) - 12px));
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+}
+.shell .hero :global(.mapOpacity),
+.shell .hero [class*='zonePanel'] {
+  top: 12px;
+  left: var(--pop-l);
+  /* Гурван цонх ИЖИЛ өргөнтэй */
+  width: min(340px, calc(100% - var(--pop-l) - 12px));
+  max-width: none;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+}
+/* Нарийн зурагт цонх 2D/3D/BIM зурвасын ДЭЭР гарна — цонхны толгой, хаах товч дарагдахгүй */
+.shell .hero .catPanel,
+.shell .hero :global(.mapOpacity),
+.shell .hero [class*='zonePanel'] { z-index: 10; }
+/*
+ * ДАВХАРГА + ТУНГАЛАГ ЗЭРЭГ НЭЭЛТТЭЙ — давхцахгүй: Давхарга ДЭЭД 55%, Тунгалаг түүний ДООР 45% хүртэл (хооронд 12px), тус бүр дотроо гүйлгэгдэнэ.
+ */
+.shell .hero:has(> :global(.mapOpacity)) .catPanel { bottom: auto; height: calc(55% - 18px); max-height: none; }
+/* Тунгалаг нь Давхаргын ЯГ ДООР (12px зайтай) — хооронд том хоосон зай үлдэхгүй */
+.shell .hero:has(> .catPanel) > :global(.mapOpacity) { top: calc(55% + 6px); bottom: auto; max-height: calc(45% - 18px); }
 .shell :global(.mapToolsBar) { gap: 2px; }
 .shell :global(.mapToolsBtn) { padding: 4px 8px; font-size: 11px; gap: 6px; }
 .shell :global(.mapToolsBtn) svg { width: 13px; height: 13px; }
@@ -830,7 +898,7 @@
 @media (max-width: 1180px) {
   .body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'main' 'right';
+    grid-template-areas: 'main' 'curve' 'right';
     grid-template-rows: auto;
     grid-auto-rows: auto;
   }

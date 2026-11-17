@@ -39,7 +39,7 @@ import { paidPctOf, paidShareOf, type PaidShare } from '@/lib/paidShare';
 import { PackLayers } from '@/components/PackLayers';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
-import f from './finance.module.css';
+import f from './pkgFinBase.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import ts from './pkgFin.module.css';
 

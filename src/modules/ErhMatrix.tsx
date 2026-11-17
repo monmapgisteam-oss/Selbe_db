@@ -13,7 +13,7 @@ import {
 import { useAclRunner } from './useAclRunner';
 import { colLabel, roleLabel, sysTitle } from './erhLabels';
 import { ErhCellEditor, type EditCol } from './ErhCellEditor';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 /** Баганын бүлгүүд — толгойн эхний мөр */
 const groupsOf = (cols: MatrixCol[]): { sys: MatrixSys; n: number }[] => {

@@ -73,6 +73,52 @@
   --side-r: clamp(292px, 17vw, 600px);
 }
 
+/*
+ * ══ 2026-11-17 — ЕРӨНХИЙ ДАШБОАРДТАЙ ИЖИЛ НИЙТЛЭГ ЗАСВАР (энэ цэсний ӨӨРИЙН CSS-д; класс хуваалцахгүй) ══
+ *  1. ХҮРЭЭ БҮДЭГ — порталын анхдагчийн ~гуравны нэг (`--ink`-ээс тул хоёр горимд ажиллана).
+ *  2. Чирэх бариулын зураас ХАРАГДАХГҮЙ — хулгана очих/чирэх үед л тодорно.
+ *  3. Газрын зургийн товчнууд ҮРГЭЛЖ дэлгээтэй (`MapTools fixed`): зүүн дээд буланд багана, дээд төвд 2D/3D/BIM, ирмэгээс 12px.
+ *  4. Нээгдэх цонхнууд (Давхарга · Тунгалаг · Бүс) товчны баганын хажууд, зураг ДОТОР багтана, дотроо гүйлгэгдэнэ;
+ *     Давхарга + Тунгалаг зэрэг нээлттэй бол Давхарга дээд 55%, Тунгалаг яг доор нь.
+ */
+.shell {
+  --line: color-mix(in oklab, var(--ink) 4%, transparent);
+  --line-strong: color-mix(in oklab, var(--ink) 8%, transparent);
+  --tools-top: 12px;
+  --pop-l: calc(12px + var(--tools-w, 176px) + 8px);
+}
+.shell [role='separator']:not(:hover):not(:focus-visible)::after { background: transparent; }
+/* Мөр-чартын нэрийн өмнөх ӨНГӨТ ЦЭГГҮЙ — бүх мөр нэг өнгөтэй тул цэг юу ч заахгүй */
+.shell :global(.barsList) [class*='barDot'] { display: none; }
+.shell :global(.mapToolsBar) { left: 12px; }
+.shell :global(.mapDims) { top: 12px; }
+.shell .hero .catPanel {
+  top: 12px;
+  bottom: 12px;
+  left: var(--pop-l);
+  right: auto;
+  width: min(340px, calc(100% - var(--pop-l) - 12px));
+  min-width: 0;
+  max-width: none;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+}
+.shell .hero :global(.mapOpacity),
+.shell .hero [class*='zonePanel'] {
+  top: 12px;
+  left: var(--pop-l);
+  width: min(340px, calc(100% - var(--pop-l) - 12px));
+  max-width: none;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+}
+.shell .hero .catPanel,
+.shell .hero :global(.mapOpacity),
+.shell .hero [class*='zonePanel'] { z-index: 10; }
+.shell .hero:has(> :global(.mapOpacity)) .catPanel { bottom: auto; height: calc(55% - 18px); max-height: none; }
+.shell .hero:has(> .catPanel) > :global(.mapOpacity) { top: calc(55% + 6px); bottom: auto; max-height: calc(45% - 18px); }
+
 @media (max-width: 1680px) {
   .shell { --side-l: 252px; --side-r: 268px; }
 
@@ -358,78 +404,6 @@
   min-height: 0;
 }
 
-.head {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-@media (max-width: 900px) {
-  .head { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-/**
- * Нүд бүр ӨӨР ТООНЫ мөртэй (шошго · утга · [зурвас] · [дэд мөр]) тул
- * `space-between` нь чөлөөт зайг мөрүүдийн ХООРОНД тарааж, ТОО нүд болгонд
- * өөр өндөрт хөвдөг байв: «159.6 га» доод ирмэгт, «8,575 өрх» дунд, «4.18 %»
- * дээд хэсэгт. Таван тоог хооронд нь харьцуулах ёстой зурваст энэ нь хамгийн
- * муу — нүд нэг шугам дагаж уншиж чадахгүй. Одоо шошго+утга ДЭЭД талд наалдаж,
- * үлдсэнийг нь `.tileVal { margin-bottom: auto }` доод ирмэг рүү түлхэнэ.
- */
-.tile {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 5px;
-  text-align: left;
-  padding: 12px 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-xl);
-}
-
-.tileLabel { order: -1; }
-
-/* Гол үзүүлэлт (нийт гүйцэтгэл) — ГАНЦ онцлох хавтан */
-.tileLead { box-shadow: inset 0 2px 0 var(--accent); }
-
-.tileVal {
-  display: flex;
-  align-items: baseline;
-  justify-content: flex-start;
-  flex-wrap: nowrap;
-  gap: 0 4px;
-  min-width: 0;
-  margin-bottom: auto;
-}
-
-.tileVal b {
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.05;
-  letter-spacing: -0.04em;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-
-/* 2026-11-05 (UI аудит): урт дүн («2,495,841,880,529») дунд нь таслагдаж байв — нэг мөр, нарийн самбарт жижиг фонт */
-.tileValLong { font-size: 13.5px; letter-spacing: -0.02em; white-space: nowrap; }
-@media (max-width: 1200px) { .tileValLong { font-size: 11.5px; } }
-
-.tileVal i { font-style: normal; font-size: 12px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
-
-/* envhub eyebrow — `order:-1`-ээр нүдний дээд мөр болно */
-.tileLabel {
-  width: 100%;
-  text-align: left;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--eyebrow-ls);
-  line-height: var(--eyebrow-lh);
-  color: var(--ink-3);
-}
 
 
 
@@ -643,10 +617,6 @@
 
 }
 
-@media (max-width: 620px) {
-  .head { grid-template-columns: repeat(2, 1fr); }
-
-}
 
 /* ══════════════════════════════════════════════════════════════════
    2026-08-18: envhub-ийн НЭГ ДЭЛГЭЦИЙН хэмжих хэрэгслийн бүтэц (100%
@@ -691,9 +661,23 @@
 
 .envr { grid-area: envr; }
 
+/*
+ * ХАЖУУГИЙН БАГАНА ГҮЙЛГЭГДЭНЭ (2026-11-17) — картууд баганын өндрөөс хэтрэхэд доод хэсэг таслагдаж, хүрэх аргагүй байв.
+ * Зүүн баганын гүйлгэх зурвас ГАДНА (зүүн) талд — баруун баганын толин тусгал, зураг хүртэлх зай хоёр талд ижил.
+ * Нарийн дэлгэцэд (≤1180px) багана урсгалд ордог тул зөвхөн ширээний шатлалд.
+ */
+@media (min-width: 1181px) {
+  /* Ерөнхий дашбоардын баганатай ЯГ ИЖИЛ: порталын нийтлэг нарийн гүйлгэх зурвас (`scrollbar-width` тавихгүй — тавибал хөтчийн бүдүүн саарал зурвас гарна) */
+  .envl, .envr { overflow: auto; scrollbar-gutter: stable; }
+  .envl { direction: rtl; }
+  .envl > * { direction: ltr; }
+}
+
 .envl > .panel, .envr > .panel { flex: none; }
 
-.envl > .envGrow, .envr > .envGrow { flex: 1; min-height: 120px; }
+/* 2026-11-17: `flex: 1` (basis 0) нь сүүлийн картыг агуулгаасаа НАМ болтол шахаж, мөрүүд нь картын ХҮРЭЭНЭЭС ГАДУУР
+   гардаг байв. Одоо карт агуулгаасаа доош шахагдахгүй (shrink 0), илүү зай байвал л сунана; багана өөрөө гүйлгэгдэнэ. */
+.envl > .envGrow, .envr > .envGrow { flex: 1 0 auto; min-height: 120px; }
 
 /* Тоймын багана мөн адил: гүйлт нь картад БИШ, баганад */
 .envGrow .panelBody { flex: 1; min-height: 0; overflow: visible; }
@@ -713,10 +697,11 @@
   overflow: hidden;
 }
 
-.indCell { display: flex; flex-direction: column; padding: 14px 18px; background: var(--surface); min-width: 0; }
+/* 2026-11-17: нүдний дотоод зай ШАХУУ (14×18 → 8×14, гарчгийн 2 мөрийн нөөц өндөргүй) — зурвас намсаж, зураг өндөрсөнө */
+.indCell { display: flex; flex-direction: column; gap: 4px; padding: 8px 14px; background: var(--surface); min-width: 0; }
 
 /* Гарчигт ХОЁР мөрийн зай нөөцөлнө — зэрэгцээ нүдний тоо нэг шугамд эгнэнэ */
-.indLabel { display: block; min-height: 28px; font-size: 11px; line-height: 1.35; font-weight: 600; letter-spacing: var(--eyebrow-ls); text-transform: uppercase; color: var(--ink-3); }
+.indLabel { display: block; font-size: 11px; line-height: 1.35; font-weight: 600; letter-spacing: var(--eyebrow-ls); text-transform: uppercase; color: var(--ink-3); }
 
 .indBottom { margin-top: auto; display: flex; align-items: center; gap: 8px; }
 
@@ -926,6 +911,18 @@
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+}
+/*
+ * ДООД БҮТЭН ӨРГӨН ЧАРТ (2026-11-17) — «Санхүүжилт — сараар» · «Төлөвлөгөө vs бодит» · «Санхүүжилтийн хуримтлал» хамгийн доод талд, зүүнээс баруун хүртэл
+ * (баганад шахагдаж шошго давхцдаг байв). 4 дэх мөр; хажуугийн баганууд 2–3-р мөрөнд хэвээр.
+ */
+/* Доод мөрийн чартууд ЗЭРЭГЦЭЭ — тэнцүү өргөнтэй баганууд (1 чарт бол бүтэн өргөн) */
+.zBottom { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.zBottom > * { min-width: 0; }
+@media (max-width: 1180px) { .zBottom { grid-auto-flow: row; } }
+@media (min-width: 1181px) {
+  .shell[data-detail='1'][data-sec='schedule'] { grid-template-rows: auto auto minmax(320px, 1fr) auto; }
+  .shell[data-detail='1'][data-sec='schedule'] .zBottom { grid-column: 1 / -1; grid-row: 4; }
 }
 .shell[data-detail='1'][data-sec='schedule'] .zLeft { grid-column: 1; }
 .shell[data-detail='1'][data-sec='schedule'] .zRight { grid-column: 3; }

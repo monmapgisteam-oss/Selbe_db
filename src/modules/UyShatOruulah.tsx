@@ -28,7 +28,7 @@ import {
   PAGES, badText, buildEdits, canAddRow, canDeleteRow, conflicts, editableFields, effectiveRows, fieldLockWhy, pendingCount, rowAdd, rowsOf,
   setEdit, textOf, workNameWhy, type FieldDef, type Issue, type PageKey,
 } from '@/lib/uyShat';
-import s from './zuragTosol.module.css';
+import s from './uyShat.module.css';
 
 type Row = Record<string, unknown>;
 

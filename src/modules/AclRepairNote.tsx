@@ -24,7 +24,7 @@ import { useAclRunner } from './useAclRunner';
 import { askConfirm } from '@/lib/confirm';
 import { PANE_CAPS, type ErhPane } from './capText';
 import { capLabelShort } from './erhLabels';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 /** Хуудас → хуваарилалтын систем (`null` — аккаунтаар олгодог энгийн эрхийн хуудас) */
 export const repairSysOf = (pane: ErhPane): RepairSys | null => {

@@ -26,7 +26,7 @@ import {
 import { roleOf } from '@/lib/permissions';
 import { busyGate, classifyStuck, materializeAdds, mayReapply, parentsCheck } from '@/lib/ajilApply';
 import { hasCap, subscribeCaps } from '@/lib/caps';
-import s from './guitsetgel.module.css';
+import s from './ajilBatlah.module.css';
 import { Loading, userError } from '@/components/ui';
 import { setNavDirty } from '@/lib/navGuard';
 import { REASON_MAX, serverNow } from '@/lib/huvaariBatlah';

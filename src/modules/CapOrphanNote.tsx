@@ -9,7 +9,7 @@ import type { CapKey } from '@/lib/caps';
 import { aclPendingFor, allAclReady, capDirectOp, liveErhSource, regrantOp } from '@/lib/aclOps';
 import { missingCaps, orphanCaps, userErh } from '@/lib/erhOverview';
 import { useAclRunner } from './useAclRunner';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 export function CapOrphanNote({ cap }: { cap: CapKey }) {
   const { busy, err, run } = useAclRunner();
