@@ -1086,7 +1086,7 @@ export function Tree({ rows, calc, edit, toolbar, root, onTotal }: {
                       );
                     }
                     const cls = k === 'code' || k === 'bagts' ? n.code : n.num;
-                    if (k === 'inTotal' && onTotal && !edit && !c?.outside && !(c?.noTotal && c.inTotal !== 0)) {
+                    if (k === 'inTotal' && onTotal && !edit && r.oid > 0 && !c?.outside && !(c?.noTotal && c.inTotal !== 0)) {
                       return (
                         <td key={k} className={`${fzc(k)} ${n.code}`} style={sty(k)}>
                           <select

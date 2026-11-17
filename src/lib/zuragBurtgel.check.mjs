@@ -28,12 +28,12 @@ const rows = [
   z({ oid: 5, bagts: 'Багц 2', rec: D('2026-05-11'), pdf: 'abc' }),
 ];
 const st = zuragPkgStats(rows);
-assert.deepEqual(st.get('БАГЦ1'), { total: 2, magadlal: 1, received: 0, pdf: 0 }, 'төсөв орохгүй; «Багц 1,2» тоологдоно');
-assert.deepEqual(st.get('БАГЦ2'), { total: 2, magadlal: 1, received: 1, pdf: 1 });
-assert.deepEqual(st.get('БАГЦ32'), { total: 1, magadlal: 1, received: 0, pdf: 0 }, 'дэд бүлгийн багц түрүүлнэ; давтан магадлал тоологдоно');
+assert.deepEqual(st.get('БАГЦ1'), { total: 2, magadlal: 1, received: 0, pdf: 0, pct: 80 }, 'төсөв орохгүй; «Багц 1,2» тоологдоно');
+assert.deepEqual(st.get('БАГЦ2'), { total: 2, magadlal: 1, received: 1, pdf: 1, pct: 180 }, 'магадлал 80 + хүлээж авсан 100');
+assert.deepEqual(st.get('БАГЦ32'), { total: 1, magadlal: 1, received: 0, pdf: 0, pct: 80 }, 'дэд бүлгийн багц түрүүлнэ; давтан магадлал тоологдоно');
 assert.ok(!st.has('БАГЦ31'));
 const pm = zuragPctMap(rows);
-assert.equal(pm.get('БАГЦ1'), 50);
+assert.equal(pm.get('БАГЦ1'), 40, '2026-11-17: төлөвийн хувийн дундаж — (80 + 0) ÷ 2');
 assert.deepEqual(groupZ(rows).map((g) => g.buleg), ['003. АЖЛЫН ЗУРАГ', '005. ТӨСӨВ']);
 
 const t = buildTree([
@@ -42,6 +42,49 @@ const t = buildTree([
   { objectid: 3, dd_kod: '2.2', etseg_kod: '2', bagts: 'БАГЦ-16.1', ajil_uilchilgee: 'b', heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100 },
 ]);
 const r = computePlan(t, { zuragActual: (pkg) => pm.get(String(pkg ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '')) });
-assert.equal(r.get('2.1').S, 50, 'бүртгэлтэй багц — бүртгэлийн хувь');
+assert.equal(r.get('2.1').S, 40, 'бүртгэлтэй багц — бүртгэлийн хувь');
 assert.equal(r.get('2.2').S, 100, 'бүртгэлгүй — хадгалсан');
+/* ── 2026-11-16: төсвийн багцаар нэгтгэх ── */
+{
+  const { pkgNums, docPkgs, groupByBudget } = await import('./zuragBurtgel.ts');
+  assert.deepEqual(pkgNums('Багц 1,2'), ['1', '2']);
+  assert.deepEqual(pkgNums('Багц 3-1'), ['3.1']);
+  assert.deepEqual(pkgNums('Багц 3.1'), ['3.1']);
+  assert.deepEqual(pkgNums('17.1'), ['17.1']);
+  assert.deepEqual(pkgNums('Бүх багц'), []);
+  assert.deepEqual(pkgNums('Байхгүй'), []);
+  const z = (oid, o) => ({ oid, turul: 'zurag', bagts: '', dedBuleg: '', ner: '', ...o });
+  const t = (oid, o) => ({ oid, turul: 'tosov', bagts: '', dedBuleg: '', ner: '', ...o });
+  assert.deepEqual(docPkgs(z(1, { bagts: 'Багц 3-1', dedBuleg: '300.40. БАГЦ 3-2' })), ['3.2'], 'зураг — дэд бүлгийн багц түрүүлнэ');
+  assert.deepEqual(docPkgs(t(1, { ner: 'Багц 1,2-ын гадна цахилгаан хангамж' })), ['1', '2'], 'төсөв — багана хоосон бол нэрээс');
+  assert.deepEqual(docPkgs(t(1, { ner: 'Багц 3-ын Гадна цахилгаан' })), ['3']);
+  assert.deepEqual(docPkgs(t(1, { ner: 'ХТП,РП-ны барилга угсралт' })), [], 'нэрэнд багцгүй');
+  const rows = [
+    t(1, { bagts: 'Багц 1' }), t(2, { bagts: 'Багц 1,2' }), t(3, { bagts: 'Багц 3' }), t(4, { bagts: '17.1' }), t(5, { ner: 'Эх үүсвэр' }),
+    z(11, { bagts: 'Багц 1' }), z(12, { bagts: 'Багц 2' }), z(13, { bagts: 'Багц 3-1' }), z(14, { bagts: '17.1' }), z(15, { bagts: '6.1' }), z(16, { bagts: 'Байхгүй' }),
+  ];
+  const g = groupByBudget(rows);
+  const of = (k) => g.find((x) => x.key === k);
+  assert.deepEqual(g.map((x) => x.key), ['1', '1,2', '3', '6.1', '17.1', ''], 'багцын дугаараар; багцгүй сүүлд');
+  assert.deepEqual(of('1').zurag.map((r) => r.oid), [11], 'Багц 1 — зөвхөн Багц 1-ийн зураг (17.1 биш)');
+  assert.deepEqual(of('1,2').zurag.map((r) => r.oid), [11, 12], '«Багц 1,2» төсөв — Багц 1 + Багц 2-ын зураг');
+  assert.deepEqual(of('3').zurag.map((r) => r.oid), [13], 'дэд багц 3.1 ∈ Багц 3');
+  assert.deepEqual(of('6.1').tosov, [], 'төсөвгүй багц — өөрийн бүлэг');
+  assert.deepEqual(of('').tosov.map((r) => r.oid), [5]);
+  assert.deepEqual(of('').zurag.map((r) => r.oid), [16]);
+}
+/* ── 2026-11-17: төлөв ── */
+{
+  const { deriveTolov, tolovAvg, tolovPct, zuragGereePct } = await import('./zuragBurtgel.ts');
+  const none = { batlagdsan_ognoo: null, magadlal_ognoo: null, davtan_magadlal_ognoo: null, huleej_avsan_ognoo: null, guitsetgegchid_ogson_ognoo: null };
+  assert.equal(deriveTolov(none), 'ehleegui');
+  assert.equal(deriveTolov({ ...none, batlagdsan_ognoo: 1 }), 'magadlal', 'ХБХСГ-аар батлагдсан ч тооцогдоно');
+  assert.equal(deriveTolov({ ...none, magadlal_ognoo: 1, huleej_avsan_ognoo: 2 }), 'huleej_avsan');
+  assert.deepEqual(['ehleegui', 'magadlal', 'huleej_avsan'].map(tolovPct), [0, 80, 100]);
+  assert.equal(toZRow({ objectid: 1, magadlal_ognoo: 5, tolov: 'ehleegui' }).tolov, 'ehleegui', 'хадгалсан төлөв огнооноос түрүүлнэ');
+  assert.equal(toZRow({ objectid: 1, magadlal_ognoo: 5, tolov: 'xx' }).tolov, 'magadlal', 'танигдаагүй утга — огнооноос');
+  assert.equal(tolovAvg([]), null);
+  const g = zuragGereePct([toZRow({ objectid: 1, geree_dugaar: 'А-1', tolov: 'huleej_avsan' }), toZRow({ objectid: 2, geree_dugaar: 'А-1' }), toZRow({ objectid: 3 })]);
+  assert.equal(g.get('А1'), 50, 'гэрээгээр: (100 + 0) ÷ 2; гэрээгүй мөр орохгүй');
+}
 console.log('zuragBurtgel.check: бүгд ✅');

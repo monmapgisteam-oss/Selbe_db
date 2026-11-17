@@ -434,13 +434,15 @@ export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectP
     const a = fr(pw), b = fr(s);
     return { actPw: a, gainWk: a != null && b != null ? b - a : null };
   };
+  /* Зохиомол мөр (Зургийн бүртгэлийн бүлэг — хүснэгтэд байхгүй) сөрөг дугаараар харагдана; засагдахгүй */
+  let vOid = 0;
   for (const n of plan.tree.nodes) {
     const r = n.row;
-    if (!r || r.objectid == null) continue;
+    if (!r || (r.objectid == null && !r.virtual)) continue;
     const v = plan.result.values.get(n);
     const live = !n.children.length && (n.phase === 'barilga' && n.sub === 'barilga' || n.phase === 'gazar');
     out.push({
-      oid: r.objectid,
+      oid: r.objectid ?? (vOid -= 1),
       code: r.dd_kod ?? '',
       name: r.ajil_uilchilgee ?? '',
       bagts: r.bagts ?? '',
