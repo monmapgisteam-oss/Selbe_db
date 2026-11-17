@@ -599,6 +599,26 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
   /* 1 = Тооцно / хоосон — өөрчлөлтгүй */
   const one = computePlan(buildTree(rows.map((r) => ({ ...r, niit_tootsoh: 1 }))), {}, d('2026-07-02'));
   near(one.values.get(one.tree.root).S, 42.5, 1e-9, '1 = Тооцно');
+  /* 2026-11-17 (хэрэглэгч: «барилга угсралт унтраахад төслийн нийт дагаж унтарч байна — алдаатай»): хоёр унтраалга БИЕ ДААСАН.
+     «Барилга угсралтад тооцохгүй» (uy_shat_tootsoh = 0) мөр зөвхөн эцэг мөрийн хувиас хасагдана; Төслийн нийт ХЭВЭЭР. */
+  {
+    const ph = computePlan(buildTree(rows.map((r) => (r.dd_kod === '1.2' ? { ...r, uy_shat_tootsoh: 0 } : r))), {}, d('2026-07-02'));
+    near(ph.get('1').S, 100, 1e-9, 'эцэг мөр: 1.2 хасагдаж зөвхөн 1.1 (100%)');
+    near(ph.values.get(ph.tree.root).S, 42.5, 1e-9, 'Төслийн нийт ХЭВЭЭР — 1.2 нийтэд орсоор');
+    assert.equal(ph.get('1.2').noPhase, true);
+    assert.equal(ph.get('1.2').noTotal, undefined, 'нөгөө унтраалга дагахгүй');
+    assert.equal(ph.values.get(ph.tree.root).GT, undefined, 'нийтээс юу ч хасагдаагүй');
+    near(ph.get('1').G, 25, 1e-9, 'төсөлд эзлэх хэвээр');
+    const both = computePlan(buildTree(rows.map((r) => (r.dd_kod === '1.2' ? { ...r, uy_shat_tootsoh: 0, niit_tootsoh: 0 } : r))), {}, d('2026-07-02'));
+    near(both.get('1').S, 100, 1e-9, 'хоёулаа унтарсан: эцэг мөрөөс хасагдана');
+    near(both.values.get(both.tree.root).S, 42.5 / 0.875, 1e-9, 'хоёулаа унтарсан: нийтээс ч хасагдана');
+    assert.equal(both.get('1.2').noTotal, true);
+    const tot = computePlan(buildTree(flag), {}, d('2026-07-02'));
+    assert.equal(tot.get('1.2').noPhase, undefined, '«Төслийн нийтэд» унтраахад «Барилга угсралтад» дагахгүй');
+    const ms = monthEnds(d('2026-01-01'), d('2026-03-01'));
+    const mPh = monthlySeries(ph, ms), mBase = monthlySeries(base, ms);
+    assert.deepEqual(mPh.get(ph.tree.root), mBase.get(base.tree.root), 'сарын цуваа: Төслийн нийт хэвээр');
+  }
   /* Төлөвлөгөөт хувь (N…R) ба сарын цуваа ч хасагдана — 1.2 дууссан (100%), 2.1 эхлээгүй (0%) */
   const dt = (r) => (r.dd_kod === '1.2' ? { ...r, geree_ehleh: d('2026-01-01'), geree_duusah: d('2026-02-01') }
     : r.dd_kod === '2.1' ? { ...r, geree_ehleh: d('2027-01-01'), geree_duusah: d('2027-12-31') }

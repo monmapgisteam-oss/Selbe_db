@@ -598,6 +598,11 @@ export type PlanResult = {
   get: (code: string) => PlanValues | undefined;
   /** «Төслийн нийтэд тооцохгүй» хамгийн дээд мөрүүд ба замын жин (0–1), 1-р түвшний жингийн нийлбэр — сарын цувааны үндэст */
   noTotal?: { tops: [PlanNode, number][]; W: number };
+  /**
+   * 2026-11-17: «Барилга угсралтад тооцохгүй» мөртэй үед — ТӨСЛИЙН НИЙТ мөрийн бодолт (тэр унтраалгыг үл харгалзсан бүтэн
+   * мод). Мөрүүдийн утга үүнээс БИШ; `monthlySeries` Төслийн нийт мөрийн цувааг эндээс авна.
+   */
+  total?: PlanResult;
 };
 
 /** Навчны огноо — өөрийнх, эс бөгөөс хамгийн ойрын өвөг мөрийн (хоёулаа байгаа) */
@@ -685,6 +690,29 @@ function rollup(n: PlanNode, val: (c: PlanNode) => number | null, F: Map<PlanNod
  * `ubToday()` — дуудагч цагтай `Date.now()` өгвөл УБ-ын 00:00–08:00-д өчигдөр болно).
  */
 export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: number = ubToday()): PlanResult {
+  const b = computeCore(tree, inputs, today, true);
+  if (!tree.nodes.some((n) => n.row?.uy_shat_tootsoh === 0 && !n.outside)) return b;
+  /* 2026-11-17 (хэрэглэгч: «барилга угсралт унтраахад төслийн нийт дагаж унтарч байна — алдаатай»): хоёр унтраалга
+     БИЕ ДААСАН. «Барилга угсралтад тооцохгүй» мөр зөвхөн эцэг мөрүүдийн (бүлэг, үе шат) хувиас хасагдана; Төслийн нийт
+     мөр тэр унтраалгыг үл харгалзан бүтэн модоор бодогдоно (`a`) — түүнээс зөвхөн «Төслийн нийтэд тооцохгүй» мөр хасагдана. */
+  const a = computeCore(tree, inputs, today, false);
+  const values = new Map<PlanNode, PlanValues>();
+  values.set(tree.root, a.values.get(tree.root)!);
+  for (const n of tree.nodes) {
+    const { GT: _gt, noTotal: _nt, ...rest } = b.values.get(n)!;
+    void _gt; void _nt;
+    const va = a.values.get(n)!;
+    values.set(n, { ...rest, G: va.G, ...(va.GT !== undefined ? { GT: va.GT } : {}), ...(va.noTotal ? { noTotal: true as const } : {}) });
+  }
+  return {
+    tree, today, values, get: (code) => { const n = tree.byCode.get(code); return n ? values.get(n) : undefined; },
+    ...(a.noTotal ? { noTotal: a.noTotal } : {}),
+    total: a,
+  };
+}
+
+/** `computePlan`-ийн цөм. `usePhase` = false бол «Барилга угсралтад тооцохгүй» (`uy_shat_tootsoh`) унтраалгыг үл харгалзана. */
+function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase: boolean): PlanResult {
   const { root, nodes } = tree;
   const post = [...nodes].reverse(); // хүүхэд эцгээсээ өмнө
   const ov = new Map<PlanNode, Partial<Record<Metric, number | null>>>();
@@ -713,7 +741,7 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
   const soft = new Set<PlanNode>();
   const noPhase = new Set<PlanNode>();
   for (const n of nodes) {
-    if (n.row?.uy_shat_tootsoh !== 0 || n.outside || skip.has(n)) continue;
+    if (!usePhase || n.row?.uy_shat_tootsoh !== 0 || n.outside || skip.has(n)) continue;
     soft.add(n);
     skip.add(n);
     const markNP = (x: PlanNode) => { noPhase.add(x); x.children.forEach(markNP); };
@@ -1005,6 +1033,12 @@ export function monthlySeries(
   } = {},
 ): Map<PlanNode, (number | null)[]> {
   const { root, nodes } = res.tree;
+  /* 2026-11-17: Төслийн нийт мөрийн цуваа — бүтэн модны бодолтоос (`computePlan`-тай ижил) */
+  if (res.total) {
+    const rows = monthlySeries({ ...res, total: undefined, noTotal: undefined }, months, inputs);
+    rows.set(root, monthlySeries(res.total, months, inputs).get(root)!);
+    return rows;
+  }
   const F = new Map<PlanNode, number | null>();
   for (const n of nodes) F.set(n, frac(res.values.get(n)!.F));
   const out = new Map<PlanNode, (number | null)[]>();

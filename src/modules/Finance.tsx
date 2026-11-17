@@ -1384,11 +1384,12 @@ export function ProjectPlanTable({
     const oid = n.row?.objectid;
     if (n.outside || oid == null) return <td className={f.ppSt} />;
     const v = result.values.get(n);
-    /* унтраалга: 1 — төслийн нийтэд · 2 — үе шатны гүйцэтгэлд. Дээд мөр унтарсан бол дагаж унтарна (өөрөө солигдохгүй) */
+    /* унтраалга: 1 — төслийн нийтэд · 2 — барилга угсралтын (эцэг мөрүүдийн) гүйцэтгэлд. Дээд мөрийн ИЖИЛ унтраалга унтарсан бол дагана */
     const phOwn = n.row?.uy_shat_tootsoh === 0;
     const phInh = !phOwn && !!v?.noPhase;
     const totOwn = n.row?.niit_tootsoh === 0;
-    const totInh = (!totOwn && !!v?.noTotal) || phOwn || phInh;
+    /* 2026-11-17 (хэрэглэгч): хоёр унтраалга бие даасан — нэгийг унтраахад нөгөө нь дагахгүй */
+    const totInh = !totOwn && !!v?.noTotal;
     const sw = (kind: 'tot' | 'ph', own: boolean, inh: boolean) => {
       const on = !own && !inh;
       const name = kind === 'tot' ? tr('Төслийн нийтэд тооцох') : tr('Барилга угсралтын гүйцэтгэлд тооцох');
@@ -1400,7 +1401,7 @@ export function ProjectPlanTable({
           aria-label={name}
           className={`${f.ppSw} ${on ? f.ppSwOn : ''}`}
           disabled={!canEdit || inh || stBusy != null}
-          title={`${name}: ${inh ? tr('дээд мөр эсвэл нөгөө унтраалга унтарсан тул хасагдсан') : on ? tr('Тооцно') : tr('Тооцохгүй')}`}
+          title={`${name}: ${inh ? tr('дээд мөр унтарсан тул хасагдсан') : on ? tr('Тооцно') : tr('Тооцохгүй')}`}
           onClick={() => {
             const next = own ? 1 : 0;
             setErr(null);

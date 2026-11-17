@@ -3158,7 +3158,7 @@ const en: Record<string, string> = {
   "Тооцно": "Counted",
   "Тооцохгүй": "Not counted",
   "Барилга угсралтын гүйцэтгэлд тооцох": "Count in construction progress",
-  "дээд мөр эсвэл нөгөө унтраалга унтарсан тул хасагдсан": "excluded because a parent row or the other switch is off",
+  "дээд мөр унтарсан тул хасагдсан": "excluded because the parent row is switched off",
   "{0}: {1} — хадгалагдлаа": "{0}: {1} — saved",
   "Тооцох эсэх: зүүн — Төслийн нийт гүйцэтгэлд · баруун — Барилга угсралтын гүйцэтгэлд": "Counted in: left — project total · right — construction progress",
   "Төслийн нийтэд": "In project total",
