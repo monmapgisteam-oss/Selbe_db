@@ -55,7 +55,7 @@ import type { LiveProgress, ProjectPlan } from '@/lib/projectPlanInputs';
 import { isAddedWork, moneySums, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus } from '@/lib/projectPlan';
 import {
   MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
-  importCutoff, pkgOptions, savePlanValue, saveInTotal, saveInPhase, type FillFilter, type PlanEditKey, type PlanFilter,
+  importCutoff, pkgOptions, savePlanValue, saveInTotal, saveInPhase, savePhaseWeight, type FillFilter, type PlanEditKey, type PlanFilter,
 } from '@/lib/planEdit';
 import { AddRowsPanel, EDIT_LABEL, PlanEditCell } from '@/modules/PlanEntry';
 import f from './finance.module.css';
@@ -1149,6 +1149,54 @@ const rawCol = (k: PpRawKey, label: string, kind: PpKind): PpCol => ({ k, label,
 /**
  * Үндсэн баганууд (E…W), дарааллаар нь. 2026-11-17 (хэрэглэгч): 4 эх үүсвэрийг бүр хасав.
  */
+/**
+ * ҮЕ ШАТНЫ ЖИНГИЙН НҮД (2026-11-17, хэрэглэгч) — үе шатын мөрийн «Хэсэгт эзлэх»-ийг гараар тогтмол болгоно. Хоосон
+ * үлдээвэл үлдэгдлийг (100% − тогтмолуудын нийлбэр) төсвөөрөө авна. Харагдах утга — бодогдсон жин.
+ */
+function PhaseWeightCell({ shown, stored, canEdit, onSave, onError }: {
+  shown: number | null;
+  /** Хадгалсан тогтмол жин (0–1) эсвэл null */
+  stored: number | null;
+  canEdit: boolean;
+  onSave: (pct: number | null) => Promise<boolean>;
+  onError: (msg: string) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const fixed = stored != null;
+  const title = fixed ? tr('Тогтмол жин — гараар оруулсан') : tr('Томьёогоор: 100% − тогтмол жингүүдийн нийлбэр, төсвөөр');
+  if (!canEdit) return <td className={f.cellNum} title={title}>{pct(shown, 2)}</td>;
+  const commit = async () => {
+    if (text == null) return;
+    const t = text.trim().replace('%', '').replace(',', '.');
+    const v = t === '' ? null : Number(t);
+    if (v != null && !(Number.isFinite(v) && v >= 0 && v <= 100)) { onError(tr('Жин 0–100 хооронд байх ёстой')); return; }
+    const was = stored == null ? null : Math.round(stored * 1e6) / 1e4;
+    if (v === was) { setText(null); return; }
+    if (await onSave(v)) setText(null);
+  };
+  if (text == null) {
+    return (
+      <td className={f.cellNum} title={title}>
+        <button type="button" className={f.ppCellBtn} aria-label={tr('Хэсэгт эзлэх — засах')}
+          onClick={() => setText(stored == null ? '' : String(Math.round(stored * 1e6) / 1e4))}>
+          {pct(shown, 2)}{fixed ? '' : ' ƒ'}
+        </button>
+      </td>
+    );
+  }
+  return (
+    <td className={f.cellNum}>
+      <input
+        className={f.ppCellIn} type="text" inputMode="decimal" autoFocus value={text}
+        aria-label={tr('Хэсэгт эзлэх, %')} placeholder={tr('хоосон = томьёо')}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void commit(); } else if (e.key === 'Escape') { e.preventDefault(); setText(null); } }}
+        onBlur={() => void commit()}
+      />
+    </td>
+  );
+}
+
 function ppGroups(): PpGroup[] {
   const pctCol = (k: PpCol['k'], label: string, title?: string): PpCol => ({ k, label, kind: 'pct', title });
   return [
@@ -1638,7 +1686,26 @@ export function ProjectPlanTable({
                   <td className={`${f.ppFz0} ${f.ppNo}`}>{ddOf.get(n)}</td>
                   <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
                   {nameCell(n)}
-                  <td className={f.cellNum}>{pct(v?.F ?? null, 2)}</td>
+                  {n.parent === tree.root && !n.outside && typeof r.objectid === 'number' ? (
+                    <PhaseWeightCell
+                      shown={v?.F ?? null}
+                      stored={typeof r.heseg_ezleh_huvi === 'number' ? r.heseg_ezleh_huvi : null}
+                      canEdit={canEdit}
+                      onError={setErr}
+                      onSave={async (w) => {
+                        setErr(null);
+                        setMsg(null);
+                        try {
+                          await savePhaseWeight(r.objectid as number, w);
+                          setMsg(tr('Хадгаллаа: {0} · {1}', n.code, tr('Хэсэгт эзлэх')));
+                          return true;
+                        } catch (e) {
+                          setErr(userError(e));
+                          return false;
+                        }
+                      }}
+                    />
+                  ) : <td className={f.cellNum}>{pct(v?.F ?? null, 2)}</td>}
                   {PLAN_EDIT_KEYS.map((k) => (
                     <Fragment key={k}>
                       <PlanEditCell

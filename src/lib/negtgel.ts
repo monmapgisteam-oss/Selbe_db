@@ -611,7 +611,9 @@ export const negtgelActualFailed = (failed: readonly string[]): boolean => faile
 
 /** Төслийн нийт гүйцэтгэл — шууд ачаалж бодно (индикаторуудад). Эх унасан бол `null` — дутуу тоо харуулахгүй */
 export async function loadNegtgelPct(): Promise<number | null> {
-  const { rows, calc, failed } = await loadNegtgelFull();
+  const { rows, calc, failed, root } = await loadNegtgelFull();
   if (negtgelActualFailed(failed)) return null;
-  return negtgelProjectPct(rows, calc);
+  /* 2026-11-17: «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн S (унтраалга, тогтмол жин тооцсон) — нэг тоо.
+     1-р түвшний нийлбэр (`negtgelProjectPct`) «Төслийн нийтэд тооцохгүй» мөрийг хасдаггүй тул зөрдөг байв */
+  return root?.act ?? negtgelProjectPct(rows, calc);
 }

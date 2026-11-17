@@ -8044,7 +8044,13 @@ const en: Record<string, string> = {
   "Бөглөсөн өдрийн жаазны хадгалах хувийг өмнөх жаазтай тулгаж чадсангүй ({0}) — админд мэдэгдэнэ үү.": "Could not compare the saved frame percentage of the filled day with the previous frame ({0}) — please notify the admin.",
   "{0} багц ажлын төсөв, гэрээний дүнг ажлын төрлөөр харуулав.": "Budget and contract amounts of {0} work packages, by work type.",
   "Энэ хүснэгт нь ажлын бүх мөрийг төрлөөр задалсан тул нийлбэр нь төслийн нийт төсвөөс {0} ₮-өөр их: зөрүү нь нийт төсөвт ордоггүй мөрүүд (нийгмийн дэд бүтэц).": "This table breaks down every work row by type, so its total exceeds the project total budget by {0} ₮: the difference is rows not counted in the total budget (social infrastructure).",
-  "Гэрээ, санхүүжилт": "Contract and financing"
+  "Гэрээ, санхүүжилт": "Contract and financing",
+  "Жин 0–100 хооронд байх ёстой": "Weight must be between 0 and 100",
+  "Тогтмол жин — гараар оруулсан": "Fixed weight — entered by hand",
+  "Томьёогоор: 100% − тогтмол жингүүдийн нийлбэр, төсвөөр": "By formula: 100% − sum of fixed weights, split by budget",
+  "Хэсэгт эзлэх — засах": "Share in section — edit",
+  "Хэсэгт эзлэх, %": "Share in section, %",
+  "хоосон = томьёо": "empty = formula"
 };
 
 export default en;

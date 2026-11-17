@@ -233,6 +233,15 @@ export function saveInPhase(oid: number, v: 0 | 1) {
   return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inPhase]: v }] });
 }
 
+/**
+ * ҮЕ ШАТНЫ ТОГТМОЛ ЖИН (2026-11-17, хэрэглэгч) — үе шатын мөрийн «Хэсэгт эзлэх»-ийг хувиар (0–100) хадгална; `null` =
+ * тогтмол жингүй (үлдэгдлийг төсвөөрөө хуваана). Тооцоо — `projectPlan.budgetShare`.
+ */
+export function savePhaseWeight(oid: number, pct: number | null) {
+  if (pct != null && !(pct >= 0 && pct <= 100)) throw new Error(tr('Жин 0–100 хооронд байх ёстой'));
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.wSection]: pct == null ? null : pct / 100 }] });
+}
+
 /** Нэг утга засна */
 export function savePlanValue(n: PlanNode, k: PlanEditKey, value: unknown) {
   const why = editWhy(n, k);

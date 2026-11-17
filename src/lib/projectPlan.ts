@@ -797,10 +797,26 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
   const busy = new Set<PlanNode>();
   const budgetShare = (n: PlanNode): number | null => {
     const p = n.parent;
-    /* 2026-11-13 (хэрэглэгч): ҮЕ ШАТНЫ жин ч төсвөөр — Excel-ийн тогтмол «Төсөлд эзлэх» (зураг 10% г.м.) хэрэглэхгүй */
     if (inputs.excelWeights || !p || n.outside) return null;
     /* хэрэглэгч 2026-11-03: төсөвт өртөг хоосон бол 0 гэж бодно; бүлэгт нэг ч төсөв байхгүй бол (÷0) хадгалсан жин */
     const sib = p.children.filter(counted);
+    /* ── ҮЕ ШАТНЫ ТОГТМОЛ ЖИН (2026-11-17, хэрэглэгч: «төсөвт өртгийг сольсон ч хатуу хувьтай, бусад нь томьёотой»).
+       Үе шатын мөрд «Хэсэгт эзлэх» (`heseg_ezleh_huvi`) ХАДГАЛСАН бол тэр нь тогтмол жин (төсвөөс хамаарахгүй);
+       хадгалаагүй үе шатууд (Барилга угсралт) ҮЛДЭГДЛИЙГ (100% − тогтмолуудын нийлбэр) төсвөөрөө хуваана.
+       Нэг ч үе шатад жин хадгалаагүй бол хуучнаараа — бүгд төсвөөр (2026-11-13). ── */
+    if (p === root) {
+      const fixedOf = (c: PlanNode): number | null => wt(c.row?.heseg_ezleh_huvi);
+      if (sib.some((c) => fixedOf(c) != null)) {
+        const own = fixedOf(n);
+        if (own != null) return own;
+        let fixed = 0, free = 0;
+        for (const c of sib) { const w = fixedOf(c); if (w != null) fixed += w; else free += W(c) ?? 0; }
+        const rest = Math.max(0, 1 - fixed);
+        if (free > 0) return rest * ((W(n) ?? 0) / free);
+        const nFree = sib.filter((c) => fixedOf(c) == null).length;
+        return nFree ? rest / nFree : 0;
+      }
+    }
     let tot = 0;
     for (const c of sib) tot += W(c) ?? 0;
     return tot > 0 ? (W(n) ?? 0) / tot : null;
@@ -879,7 +895,9 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
     const own = E.get(n) ?? null;
     const pa = n.parent ? EA.get(n.parent) ?? null : null;
     const f = F.get(n) ?? null;
-    EA.set(n, own ?? (pa != null && f != null && !n.outside ? pa * f : null));
+    /* 2026-11-17: үе шатны ТОГТМОЛ жин мөнгө биш — мөнгөгүй үе шатад (Зөвшөөрөл г.м.) төсөв оноохгүй (урьдын адил 0) */
+    const phaseNoMoney = n.parent === root && own == null && !inputs.excelWeights;
+    EA.set(n, own ?? (phaseNoMoney ? (pa != null && f != null && !n.outside ? 0 : null) : pa != null && f != null && !n.outside ? pa * f : null));
   }
 
   /* ── H…M: хадгалсан › үр удмын MIN эхлэх / MAX дуусах ── */

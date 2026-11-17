@@ -171,7 +171,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     loadHseNow().catch(() => null),
     loadFinance(),
     loadNegtgelFull()
-      .then((f) => ({ pct: negtgelActualFailed(f.failed) ? null : negtgelProjectPct(f.rows, f.calc), plan: negtgelProjectPlan(f.rows, f.calc) }))
+      .then((f) => ({ pct: negtgelActualFailed(f.failed) ? null : f.root?.act ?? negtgelProjectPct(f.rows, f.calc), plan: f.root?.planG ?? negtgelProjectPlan(f.rows, f.calc) }))
       .catch(() => null),
     loadSafetyRows().catch(() => null),
   ]);

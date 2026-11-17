@@ -635,3 +635,31 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
   assert.deepEqual(mf.get(pf.tree.byCode.get('1')), mb.get(pb.tree.byCode.get('1')), 'бүлгийн цуваа хэвээр');
   console.log('projectPlan.check: Төслийн нийтэд тооцохгүй мөр зөвхөн нийтээс хасагдана OK');
 }
+
+/* ── ҮЕ ШАТНЫ ТОГТМОЛ ЖИН (2026-11-17, хэрэглэгч): «Хэсэгт эзлэх» хадгалсан үе шат тогтмол, бусад нь үлдэгдлийг төсвөөр ── */
+{
+  const R = (dd, et, name, extra = {}) => ({ dd_kod: dd, etseg_kod: et, ajil_uilchilgee: name, ...extra });
+  const mk = (bud6, w) => buildTree([
+    R('1', null, 'ТЭЗҮ', { uy_shat: 'ТЭЗҮ', heseg_ezleh_huvi: w?.[0] ?? null, guitsetgel_huvi: 100 }),
+    R('2', null, 'Зураг', { uy_shat: 'Ажлын зураг төсөл', heseg_ezleh_huvi: w?.[1] ?? null, ho_dun_geree: 50, guitsetgel_huvi: 50 }),
+    R('3', null, 'Барилга', { uy_shat: 'Барилга угсралт' }),
+    R('3.1', '3', 'a', { ho_dun_geree: bud6, guitsetgel_huvi: 20 }),
+    R('4', null, 'Хүлээлгэн өгөх', { uy_shat: 'Төслийг хүлээлгэн өгөх', heseg_ezleh_huvi: w?.[2] ?? null }),
+  ]);
+  const t = mk(950, [0.05, 0.10, 0.01]);
+  const p = computePlan(t, {});
+  near(p.get('1').F, 5, 1e-9, 'ТЭЗҮ тогтмол 5% (төсөвгүй ч)');
+  near(p.get('2').F, 10, 1e-9, 'Зураг тогтмол 10% (төсөв нь 5% байсан ч)');
+  near(p.get('4').F, 1, 1e-9, 'тогтмол 1%');
+  near(p.get('3').F, 84, 1e-9, 'Барилга = 100 − 16');
+  near(p.values.get(t.root).S, 0.05 * 100 + 0.10 * 50 + 0.84 * 20, 1e-9, 'нийт = Σ жин × хувь');
+  near(p.get('3.1').F, 100, 1e-9, 'доод мөр төсвөөр хэвээр');
+  const p2 = computePlan(mk(5000, [0.05, 0.10, 0.01]), {});
+  near(p2.get('2').F, 10, 1e-9, 'төсөв өөрчлөгдсөн ч тогтмол жин хөдлөхгүй');
+  near(p2.get('3').F, 84, 1e-9);
+  const p0 = computePlan(mk(950, null), {});
+  near(p0.get('2').F, 5, 1e-9, 'жин хадгалаагүй бол бүгд төсвөөр (хуучин дүрэм): 50/1000');
+  near(p0.get('3').F, 95, 1e-9);
+  assert.equal(p0.get('1').F, 0, 'төсөвгүй үе шат 0');
+  console.log('projectPlan.check: үе шатны тогтмол жин OK');
+}
