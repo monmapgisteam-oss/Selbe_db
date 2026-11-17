@@ -33,6 +33,8 @@ import { countPlanRows, countWeekRows, loadPkgPlan, loadPkgWeek, planPctFromMont
 import { queryFeatures } from './query';
 import { loadLandStatus } from './land';
 import { cached, SESSION_TTL_MS } from './live';
+import { gereeOverride } from './zuragBurtgel';
+import { withRegistryRows } from './zuragPlan';
 
 const DAY = 86_400_000;
 
@@ -150,7 +152,7 @@ export function sortPlanRows(rows: readonly PlanStoredRow[]): PlanStoredRow[] {
 /**
  * Excel-ийн БҮХ мөр — мөнгөний + бүтцийн (`dd_kod IS NOT NULL`), сарын мөр ОРОХГҮЙ.
  */
-async function fetchPlanRows(): Promise<PlanStoredRow[]> {
+export async function fetchPlanRows(): Promise<PlanStoredRow[]> {
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
     where: `${CF.ddKod} IS NOT NULL`,
     outFields: [...new Set(STORED_FIELDS.map(([, f]) => f))],
@@ -629,8 +631,11 @@ export function makeInputs(src: {
   landTotal?: number | null;
   /** Зураг төслийн явц багцаар (`zuragBurtgel.zuragPctMap`, 0–100) */
   zurag?: ReadonlyMap<string, number> | null;
+  /** Зураг төслийн явц ГЭРЭЭГЭЭР (`zuragBurtgel.zuragGereePct`, 0–100) — гэрээ нь таарсан ТЭЗҮ · зураг төслийн мөрийг дарна */
+  zuragGeree?: ReadonlyMap<string, number> | null;
 }): PlanInputs {
   const lt = src.landTotal;
+  const zg = src.zuragGeree?.size ? gereeOverride(src.zuragGeree) : null;
   return {
     blockActual: blockActualOf(src.actual),
     prepActual: prepActualOf(src.actual),
@@ -641,7 +646,9 @@ export function makeInputs(src: {
     ...(src.zurag?.size ? { zuragActual: (pkg: string | null) => src.zurag!.get(bagtsKey(pkg ?? '')) } : {}),
     /* 2026-11-04 (хэрэглэгч): «Газар чөлөөлөлт» үе шатын мөр = бүх нэгж талбарын тоогоор (`loadLandStatus`, «Газар чөлөөлөлт»
        хуудас · тайлан · нийтийн вэбтэй НЭГ тоо) — багцын мөрүүдийн жигнэлт биш. 2026-11-11: багц/блокийн мөр хувьгүй (`projectPlan.leafValue`). */
-    ...(lt == null ? {} : { override: (n: PlanNode) => (n.depth === 1 && n.phase === 'gazar' ? { S: lt } : undefined) }),
+    ...(lt == null && !zg ? {} : {
+      override: (n: PlanNode) => (lt != null && n.depth === 1 && n.phase === 'gazar' ? { S: lt } : zg?.(n)),
+    }),
   };
 }
 
@@ -680,6 +687,8 @@ export type ProjectPlan = {
    * оруулдаг үе шат одоогийн утгаараа. Архив уншигдаагүй бол алга (Нэгтгэлд хоосон).
    */
   prevWeek?: Map<PlanNode, number | null>;
+  /** Зураг төслийн явц БАГЦААР (бүртгэлийн төлөвөөс, 0–100) — багцын «Зураг төсөл» үе шатны хувьд (`liveProgressOf`) */
+  zuragPkg?: ReadonlyMap<string, number> | null;
 };
 
 /** Хоосон төлөв (цэвэр) */
@@ -696,6 +705,7 @@ export function assemblePlan(
   src: {
     actual: ActualSources; sched: BlockSchedules | null;
     zurag?: ReadonlyMap<string, number> | null;
+    zuragGeree?: ReadonlyMap<string, number> | null;
     dates?: DateSpans | null;
     /** Төслийн газар чөлөөлөлт % (бүх нэгж талбарын тоогоор) — үе шатын мөрийг дарна; `undefined`/`null` = жигнэлт */
     landTotal?: number | null;
@@ -720,9 +730,12 @@ export function assemblePlan(
 export async function loadProjectPlan(today: number = ubToday()): Promise<ProjectPlan> {
   const rows = await loadPlanRows();
   if (!rows.length) return emptyPlan(today);
-  const [a, s, lt, zb] = await Promise.allSettled([loadActual(), loadSchedules(), loadLandStatus(), import('./zuragBurtgel').then((m) => m.loadZuragBurtgel().then(m.zuragPctMap))]);
+  const [a, s, lt, zb] = await Promise.allSettled([loadActual(), loadSchedules(), loadLandStatus(), import('./zuragBurtgel').then((m) => m.loadZuragBurtgel().then((r) => ({ pkg: m.zuragPctMap(r), rows: r })))]);
   /* Зургийн бүртгэл уншигдаагүй бол зураг төслийн мөр хадгалсан утгаараа (эх унасанд тооцохгүй — бусад бичилтийг саатуулахгүй) */
-  const zurag = zb.status === 'fulfilled' ? zb.value : null;
+  const zurag = zb.status === 'fulfilled' ? zb.value.pkg : null;
+  /* 2026-11-17 (хэрэглэгч: «ТТБ-ийн зургийн хэсгийг зургийн бүртгэлийн жагсаалтын дагуу оруул») — гэрээ нь бүртгэлд байгаа
+     ТЭЗҮ · зураг төслийн мөрийн доор бүртгэлийн бүлэг · дэд бүлэг зохиомол мөр болж орно; хувь нь төлөвөөс */
+  const planRows = zb.status === 'fulfilled' ? withRegistryRows(rows, zb.value.rows) : rows;
   if (zb.status === 'rejected') console.warn('[selbe] зургийн бүртгэл уншигдсангүй', zb.reason);
   const failed: string[] = [];
   const landTotal = lt.status === 'fulfilled' ? lt.value.pct : null;
@@ -734,7 +747,8 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
   const sched = s.status === 'fulfilled' ? s.value.sched : null;
   const dates = s.status === 'fulfilled' ? s.value.spans : null;
   if (s.status === 'fulfilled') failed.push(...s.value.failed); else failed.push('schedule');
-  const plan = assemblePlan(rows, { actual, sched, dates, landTotal, zurag }, today, failed);
+  const plan = assemblePlan(planRows, { actual, sched, dates, landTotal, zurag }, today, failed);
+  plan.zuragPkg = zurag;
   /* Өмнөх 7 хоног — бөглөлтийн архиваас (2026-11-11). Унавал гол тооцоог саатуулахгүй */
   try {
     const at = await loadProgressAt(new Date(today - 7 * DAY).toISOString().slice(0, 10));
@@ -788,7 +802,9 @@ export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
     const stages: Record<string, number | null> = { [ST.build]: S };
     for (const [ph, f] of PHASE_FIELD) {
       const t = pk ? top.get(`${ph}|${pk}`) : undefined;
-      stages[f] = t ? sOf(t) : null;
+      /* 2026-11-17: ТТБ-ийн зураг төслийн хэсэг бүртгэлийн жагсаалтаар (багцын мөргүй) — багцын зургийн хувь бүртгэлээс */
+      const zp = ph === 'zurag' ? plan.zuragPkg?.get(bagtsKey(n.pkg ?? '')) : undefined;
+      stages[f] = zp !== undefined ? zp : t ? sOf(t) : null;
     }
     out.set(id, { S, stages });
   }
