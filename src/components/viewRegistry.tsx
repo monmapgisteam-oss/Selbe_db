@@ -29,7 +29,6 @@ const LOAD = {
   tuh: () => import('@/modules/Tuh').then((m) => m.Tuh),
   bagtsHamaaral: () => import('@/modules/BagtsHamaaral').then((m) => m.BagtsHamaaral),
   zuragTosol: () => import('@/modules/ZuragTosol').then((m) => m.ZuragTosol),
-  gazarOgnoo: () => import('@/modules/GazarOgnoo').then((m) => m.GazarOgnoo),
   zahiramj: () => import('@/modules/UyShatOruulah').then((m) => m.Zahiramj),
   songon: () => import('@/modules/UyShatOruulah').then((m) => m.Songon),
   zovshoorolTtb: () => import('@/modules/UyShatOruulah').then((m) => m.ZovshoorolTtb),
@@ -75,7 +74,6 @@ const Tailan = dynamic(() => LOAD.tailan(), { ssr: false, loading: ViewLoading }
 const Tuh = dynamic(() => LOAD.tuh(), { ssr: false, loading: ViewLoading });
 const BagtsHamaaral = dynamic(() => LOAD.bagtsHamaaral(), { ssr: false, loading: ViewLoading });
 const ZuragTosol = dynamic(() => LOAD.zuragTosol(), { ssr: false, loading: ViewLoading });
-const GazarOgnoo = dynamic(() => LOAD.gazarOgnoo(), { ssr: false, loading: ViewLoading });
 const Zahiramj = dynamic(() => LOAD.zahiramj(), { ssr: false, loading: ViewLoading });
 const Songon = dynamic(() => LOAD.songon(), { ssr: false, loading: ViewLoading });
 const ZovshoorolTtb = dynamic(() => LOAD.zovshoorolTtb(), { ssr: false, loading: ViewLoading });
@@ -151,7 +149,6 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   ),
   bagtsHamaaral: () => <BagtsHamaaral />,
   zuragTosol: () => <ZuragTosol />,
-  gazarOgnoo: () => <GazarOgnoo />,
   zahiramj: () => <Zahiramj />,
   songon: () => <Songon />,
   zovshoorolTtb: () => <ZovshoorolTtb />,

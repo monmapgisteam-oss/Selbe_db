@@ -259,9 +259,6 @@ export const CASHFLOW_NEW = {
     /** Гүйцэтгэгчийн төлөвлөгөөт эхлэх/дуусах */
     contractorStart: "guits_ehleh",
     contractorEnd: "guits_duusah",
-    /** Газар чөлөөлөлтийн эхлэх/дуусах */
-    landStart: "gazar_ehleh",
-    landEnd: "gazar_duusah",
     /** Сонгон шалгаруулалтын огноо */
     tenderDate: "songon_ognoo",
     /** Ашиглалтад өгөх огноо */

@@ -24,7 +24,6 @@ export type ViewKey =
   | "tuh"
   | "bagtsHamaaral"
   | "zuragTosol"
-  | "gazarOgnoo"
   | "zahiramj"
   | "songon"
   | "zovshoorolTtb"
@@ -268,20 +267,6 @@ export const VIEWS: {
     standalone: true,
   },
   /**
-   * ГАЗАР ЧӨЛӨӨЛӨЛТИЙН ОГНОО (2026-11-04) — «Газар чөлөөлөлт» үе шатын навч мөрийн `gazar_ehleh`/`gazar_duusah`.
-   * Засах нь `zuragEdit` эрхээр; эрхгүй хүн харна.
-   */
-  {
-    key: "gazarOgnoo",
-    get title() { return tr('Газар чөлөөлөлтийн огноо'); },
-    get desc() { return tr('Газар чөлөөлөлт үе шатын мөр бүрийн эхлэх, дуусах огноог оруулах.'); },
-    icon: "file",
-    hue: "#0f766e",
-    layers: [],
-    initial: [],
-    standalone: true,
-  },
-  /**
    * ҮЕ ШАТНЫ МЭДЭЭЛЭЛ ОРУУЛАХ 4 ХУУДАС (2026-11-04) — `Guitsetgel_talbe/182`-ийн захирамж · сонгон · зөвшөөрөл · ашиглалт
    * талбарууд; тус бүр өөрийн эрхээр (`capText.PANE_CAPS.uyShat`).
    */
@@ -495,7 +480,7 @@ export const HOME_SECTIONS: {
   { id: "mgmt", get title() { return tr('Удирдлага'); }, all: true, views: [] },
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged", "tuvshin6"] },
-  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zuragTosol", "gazarOgnoo", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
+  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
 
@@ -504,7 +489,7 @@ export const HOME_SECTIONS: {
  */
 export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
-  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "tuvshin6", "zuragTosol", "gazarOgnoo", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt"] },
+  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "tuvshin6", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt"] },
   { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "ma"] },
   {
     id: "monitor",

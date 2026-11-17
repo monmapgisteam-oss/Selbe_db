@@ -32,10 +32,13 @@ const near = (a, b, tol, msg) => {
   if (a == null || b == null) return assert.equal(a, b, msg);
   assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} ≠ ${b}`);
 };
+/* Фикстурын `ov` массив нь Excel-ийн N…S дарааллаар (O-той) — O хасагдсан тул алгасна */
 const MET = ['N', 'O', 'P', 'Q', 'R', 'S'];
 
 /* ── Фикстур → хадгалах мөр (0–100) ── */
-const XL_DATE = { H: 'H', I: 'I', J: 'L', K: 'M', L: 'J', M: 'K' };
+/* 2026-11-17 (хэрэглэгч): Excel-ийн L/M (газар чөлөөлөлтийн огноо) · O · U багана системээс хасагдсан — тулгахгүй */
+const XL_DATE = { H: 'H', I: 'I', J: 'L', K: 'M' };
+const XL_GONE = new Set(['L', 'M', 'O', 'U']);
 const s = (i) => (i == null ? null : fx.strs[i]);
 const stored = fx.rows.map((r) => ({
   dd_kod: r[0], etseg_kod: r[1], uy_shat: r[2], bagts: s(r[3]), blok: r[4], ajil_uilchilgee: s(r[5]),
@@ -44,13 +47,12 @@ const stored = fx.rows.map((r) => ({
   tusul_ezleh_huvi: r[8],
   geree_ehleh: fromSerial(r[9]), geree_duusah: fromSerial(r[10]),
   guits_ehleh: fromSerial(r[11]), guits_duusah: fromSerial(r[12]),
-  gazar_ehleh: fromSerial(r[13]), gazar_duusah: fromSerial(r[14]),
 }));
 const ovOf = (withAnom) => (n) => {
   const a = fx.ov[n.code];
   const o = {};
-  if (a) MET.forEach((m, i) => { if (a[i] !== 'x') o[m] = a[i] == null ? null : a[i] * 100; });
-  if (withAnom && fx.anom[n.code]) for (const [m, v] of Object.entries(fx.anom[n.code])) o[m] = v * 100;
+  if (a) MET.forEach((m, i) => { if (m !== 'O' && a[i] !== 'x') o[m] = a[i] == null ? null : a[i] * 100; });
+  if (withAnom && fx.anom[n.code]) for (const [m, v] of Object.entries(fx.anom[n.code])) if (m !== 'O') o[m] = v * 100;
   return Object.keys(o).length ? o : undefined;
 };
 
@@ -63,12 +65,13 @@ assert.deepEqual(tree.root.children.map((p) => p.phase),
 /* ── 1. Excel-тэй тулгалт (гажуу нүдийг Excel-ийн утгаар дарж) ── */
 const TODAY = d('2026-10-07');
 const res = computePlan(tree, { override: ovOf(true), excelWeights: true }, TODAY);
-const DATE = new Set(['H', 'I', 'J', 'K', 'L', 'M']);
+const DATE = new Set(['H', 'I', 'J', 'K']);
 let cells = 0;
 for (const [code, exp] of Object.entries(fx.expect)) {
   const v = code === '' ? res.values.get(tree.root) : res.get(code);
   assert.ok(v, `мөр ${code}`);
   for (const [c, ex] of Object.entries(exp)) {
+    if (XL_GONE.has(c)) continue;
     let ours = DATE.has(c) ? v[XL_DATE[c]] : v[c];
     if (DATE.has(c)) ours = toSerial(ours);
     else if (c !== 'E' && ours != null) ours /= 100;
@@ -77,14 +80,13 @@ for (const [code, exp] of Object.entries(fx.expect)) {
     cells++;
   }
 }
-assert.ok(cells >= 380, `тулгасан нүд ${cells}`);
+assert.ok(cells >= 300, `тулгасан нүд ${cells}`); // 2026-11-17: газар чөлөөлөлтийн 4 багана хасагдсан (380 → 311)
 
 /* Гол тоонууд — нүдээр харж болохуйц (Excel-ийн дэлгэц дээрх) */
 const root = res.values.get(tree.root);
 near(root.E, 2_495_841_880_529.33, 1e-2, 'E6 төслийн төсөв');
 near(root.G, 100, 1e-9, 'G6 = Σ үе шатын G');
 near(root.N, 71.853, 1e-3, 'N6 Гэрээ');
-near(root.O, 63.731, 1e-3, 'O6 Газар чөлөөлөлт');
 near(root.P, 59.395, 1e-3, 'P6 Гүйцэтгэгч');
 near(root.S, 39.341, 1e-3, 'S6 Гүйцэтгэл');
 near(root.T, 54.752, 1e-3, 'T6 = S/N');
@@ -211,7 +213,6 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   /* N: навч огноогүй → өвгийн H/I; T = S/N */
   assert.equal(v('1.1').N, 100);
   near(v('1.1').T, 40, 1e-9);
-  assert.equal(v('1.1').O, 100, 'газрын огноогүй → гэрээний муж');
   assert.equal(v('1.1').P, 100, 'гүйцэтгэгчийн огноогүй → гэрээний муж');
   assert.equal(v('1.1').Q, 100);
   assert.equal(v('1').P, 100, 'үе шатын P = Σ F·P');
@@ -219,7 +220,6 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   const r0 = computePlan(t, { override: (n) => (n.code === '1.1' ? { N: 0, S: 10 } : undefined) }, today);
   assert.equal(r0.get('1.1').T, 0, 'IF(N=0,0,…)');
   assert.equal(r0.get('2.1').P, null, 'огноогүй мод → null');
-  assert.equal(r0.get('2.1').O, null, 'гэрээний муж ч алга → null (0 биш)');
   /* Төлөв */
   assert.equal(v('5.2.1.1').status, 'started');
   assert.equal(v('2.1.2').status, null, 'газрын блок — хувьгүй тул төлөвгүй (2026-11-11)');

@@ -28,8 +28,6 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
   get guitsetgel_huvi() { return tr('Санхүүжсэн гүйцэтгэлийн хувь'); },
   get guits_ehleh() { return tr('Гүйцэтгэгч — эхлэх'); },
   get guits_duusah() { return tr('Гүйцэтгэгч — дуусах'); },
-  get gazar_ehleh() { return tr('Газар чөлөөлөлт — эхлэх'); },
-  get gazar_duusah() { return tr('Газар чөлөөлөлт — дуусах'); },
   get songon_ognoo() { return tr('Сонгон шалгаруулалтын огноо'); },
   get ashiglalt_ognoo() { return tr('Ашиглалтад оруулах огноо'); },
   get sar_mongo_eh() { return tr('Сарын мөнгөний эх сурвалж'); },

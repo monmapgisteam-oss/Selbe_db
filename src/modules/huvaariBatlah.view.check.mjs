@@ -156,7 +156,7 @@ console.log('✅ planApprove — дараалал БА хуваарь хоёул
     'services.ts: `huvaariBatlah` нь HOME_SECTIONS-д алга — нүүрт «Бусад хэсэг» болж унана');
   /* 2026-11-04: зүүн цэсний «Миний ажил» харагдац бүр нүүрийн сэдэвт — ТТБ оруулах 5 хуудас «Бусад хэсэг»-т унадаг байв */
   const build = HOME_SECTIONS.find((g) => g.id === 'build');
-  for (const k of ['gazarOgnoo', 'zahiramj', 'songon', 'zovshoorolTtb', 'ashiglalt']) {
+  for (const k of ['zahiramj', 'songon', 'zovshoorolTtb', 'ashiglalt']) {
     assert.ok(build.views.includes(k), `views.ts: «${k}» нь «Хэрэгжилт» (zuragTosol-той нэг) сэдэвт байх ёстой`);
   }
   const home = new Set(HOME_SECTIONS.flatMap((g) => g.views));

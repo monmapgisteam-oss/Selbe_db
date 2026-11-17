@@ -453,11 +453,10 @@ export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectP
       outside: n.outside,
       inTotal: r.niit_tootsoh ?? null,
       ...(v?.noTotal ? { noTotal: true } : {}),
-      act: fr(v?.S), planG: fr(v?.N), planGch: fr(v?.O), planGu: fr(v?.P), planNw: fr(v?.Q), planPw: fr(v?.R),
-      perfG: fr(v?.T), perfGch: fr(v?.U), perfGu: fr(v?.V), perfWk: fr(v?.W),
+      act: fr(v?.S), planG: fr(v?.N), planGch: null, planGu: fr(v?.P), planNw: fr(v?.Q), planPw: fr(v?.R),
+      perfG: fr(v?.T), perfGch: null, perfGu: fr(v?.V), perfWk: fr(v?.W),
       ctStart: v?.H ?? null, ctEnd: v?.I ?? null,
       exStart: ymd(v?.L), exEnd: ymd(v?.M),
-      actStart: ymd(v?.J), actEnd: ymd(v?.K),
       auto: live,
       how: live ? tr('Төсөл төлөвлөгөө биелэлт — системээс') : tr('Төсөл төлөвлөгөө биелэлт'),
       ...weekOf(n, v?.S),
@@ -526,7 +525,7 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
       const rv = plan.result.values.get(plan.tree.root);
       const root = {
         act: rv?.S ?? null, actPw: plan.prevWeek?.get(plan.tree.root) ?? null,
-        planG: rv?.N ?? null, planGch: rv?.O ?? null, planGu: rv?.P ?? null, planNw: rv?.Q ?? null, planPw: rv?.R ?? null,
+        planG: rv?.N ?? null, planGch: null, planGu: rv?.P ?? null, planNw: rv?.Q ?? null, planPw: rv?.R ?? null,
       };
       return { rows, calc, live: true, sync: null, failed: plan.failed, tree: 'excel', stored: use, src: null, source: 'plan', root };
     }

@@ -128,8 +128,8 @@ export async function mirrorNegtgel(plan: import('@/lib/projectPlanInputs').Proj
   const fr = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? null : v / 100);
   const v = plan.result.values.get(plan.tree.root);
   const vals: Partial<NegVals> = {
-    act: fr(v?.S), planG: fr(v?.N), planGch: fr(v?.O), planGu: fr(v?.P), planNw: fr(v?.Q), planPw: fr(v?.R),
-    perfG: fr(v?.T), perfGch: fr(v?.U), perfGu: fr(v?.V), perfWk: fr(v?.W),
+    act: fr(v?.S), planG: fr(v?.N), planGch: null, planGu: fr(v?.P), planNw: fr(v?.Q), planPw: fr(v?.R),
+    perfG: fr(v?.T), perfGch: null, perfGu: fr(v?.V), perfWk: fr(v?.W),
   };
   const roots = negRootOf(stored) ?? [];
   const m = mirrorUpdates(rows, stored, { vals, stored: roots.length === 1 ? roots[0] : null });

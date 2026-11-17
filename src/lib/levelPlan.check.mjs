@@ -112,12 +112,12 @@ const near = (a, b, tol, msg) => {
   assert.equal(milestoneStatus(null, null, T), 'missing', 'огноо алга → гүйцэтгэлээс үл хамааран улаан');
   assert.equal(milestoneStatus(D('2026-12-01'), null, T), 'upcoming');
 
-  const v = { H: D('2024-01-01'), I: D('2024-06-01'), J: null, K: null, L: D('2025-01-01'), M: D('2026-01-01'), N: 1, O: 2, P: 3 };
+  const v = { H: D('2024-01-01'), I: D('2024-06-01'), L: D('2025-01-01'), M: D('2026-01-01'), N: 1, P: 3 };
   assert.deepEqual(spanOf(v, 'barilga'), [D('2025-01-01'), D('2026-01-01')], 'барилга → гүйцэтгэгчийн огноо');
   assert.deepEqual(spanOf(v, 'zurag'), [D('2024-01-01'), D('2024-06-01')], 'зураг → гэрээний огноо');
-  assert.deepEqual(spanOf(v, 'gazar'), [D('2024-01-01'), D('2024-06-01')], 'газрын огноо алга → гэрээ');
+  assert.deepEqual(spanOf(v, 'gazar'), [D('2024-01-01'), D('2024-06-01')], 'газар чөлөөлөлт → гэрээний огноо (газрын хуваарь 2026-11-17-нд хасагдсан)');
   assert.equal(plannedOf(v, 'barilga'), 3);
-  assert.equal(plannedOf(v, 'gazar'), 2);
+  assert.equal(plannedOf(v, 'gazar'), 1, 'газар → N (гэрээ)');
   assert.equal(plannedOf(v, 'tezu'), 1);
   assert.equal(dateIn('2025-09-25'), D('2025-09-25'));
   assert.equal(dateIn(D('2025-09-25')), D('2025-09-25'));
@@ -209,7 +209,6 @@ const stored = fx.rows.map((r, i) => ({
   dd_kod: r[0], etseg_kod: r[1], uy_shat: r[2], bagts: str(r[3]), blok: r[4], ajil_uilchilgee: str(r[5]),
   ho_dun_geree: r[6], heseg_ezleh_huvi: r[7], tusul_ezleh_huvi: r[8],
   geree_ehleh: fromSerial(r[9]), geree_duusah: fromSerial(r[10]),
-  gazar_ehleh: fromSerial(r[11]), gazar_duusah: fromSerial(r[12]),
   guits_ehleh: fromSerial(r[13]), guits_duusah: fromSerial(r[14]),
 }));
 {

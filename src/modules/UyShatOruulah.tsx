@@ -36,7 +36,7 @@ const F = CASHFLOW_NEW.fields;
 const NAMES: Names = { oid: CASHFLOW_NEW.oid, cfId: CF_MONTH.id };
 const OUT = [
   CASHFLOW_NEW.oid, F.ddKod, F.parentKod, F.level, F.phase, F.pkg, F.block, F.detail, F.budget, F.wSection,
-  F.landStart, F.landEnd, F.contractorStart, F.contractorEnd, F.progressPct, CF_MONTH.id,
+  F.contractorStart, F.contractorEnd, F.progressPct, CF_MONTH.id,
   F.orderDate, F.orderNo, F.contractDate, F.handoverDate,
   /* 2026-11-09: ихрийн «Гэрээлсэн дүн» — `tenderSigned` уншина; алга бол Багц-5.3 · 5.4-ийн явц энд засагдаж үндсэн хүснэгт 100-гаар дардаг байв */
   F.amountNote,

@@ -56,8 +56,6 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['ajil_uilchilgee', CF.detail],
   ['ho_dun_geree', CF.budget],
   ['heseg_ezleh_huvi', CF.wSection],
-  ['gazar_ehleh', CF.landStart],
-  ['gazar_duusah', CF.landEnd],
   ['guits_ehleh', CF.contractorStart],
   ['guits_duusah', CF.contractorEnd],
   ['guitsetgel_huvi', CF.progressPct],
@@ -637,14 +635,14 @@ export function makeInputs(src: {
 }
 
 /**
- * Сарын тэнхлэг — төслийн огнооны мужаас (H/J/L MIN … I/K/M MAX, үндсэн мөрийн бодогдсон утга).
+ * Сарын тэнхлэг — төслийн огнооны мужаас (H/L MIN … I/M MAX, үндсэн мөрийн бодогдсон утга).
  * Огноо огт алга бол хоосон.
  */
 export function planMonths(res: PlanResult): number[] {
   const v = res.values.get(res.tree.root);
   if (!v) return [];
-  const lo = [v.H, v.J, v.L].filter((x): x is number => x != null);
-  const hi = [v.I, v.K, v.M].filter((x): x is number => x != null);
+  const lo = [v.H, v.L].filter((x): x is number => x != null);
+  const hi = [v.I, v.M].filter((x): x is number => x != null);
   if (!lo.length || !hi.length) return [];
   const from = Math.min(...lo), to = Math.max(...hi);
   return to < from ? [] : monthEnds(from, to);

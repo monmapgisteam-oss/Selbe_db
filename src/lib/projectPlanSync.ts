@@ -28,7 +28,6 @@ const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
 const DATE_KEYS = [
   ['guits_ehleh', F.contractorStart], ['guits_duusah', F.contractorEnd],
-  ['gazar_ehleh', F.landStart], ['gazar_duusah', F.landEnd],
 ] as const;
 const DAY = 86_400_000;
 const sameDay = (a: number | null | undefined, b: number | null | undefined) =>

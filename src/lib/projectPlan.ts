@@ -19,8 +19,9 @@ import { t as tr } from '@/lib/i18nCore';
 /* ══════════════════ Төрлүүд ══════════════════ */
 
 /** Хувийн 6 багана (Excel N…S) */
-export type Metric = 'N' | 'O' | 'P' | 'Q' | 'R' | 'S';
-export const METRICS: readonly Metric[] = ['N', 'O', 'P', 'Q', 'R', 'S'];
+/* 2026-11-17 (хэрэглэгч): «Газар чөлөөлөлт» хуваарь (J/K огноо · O төлөвлөгөөт хувь · U биелэлт) бүр хасагдсан */
+export type Metric = 'N' | 'P' | 'Q' | 'R' | 'S';
+export const METRICS: readonly Metric[] = ['N', 'P', 'Q', 'R', 'S'];
 
 /** L0 үе шат — `uy_shat`-аас таньна */
 export type PhaseKind =
@@ -46,8 +47,6 @@ export type PlanStoredRow = {
   /** Зөвхөн санах ойд (2026-11-04): хүснэгтэд багана алга — `guits_*` эсвэл Хуваарийн «Гэрээ» огноо */
   geree_ehleh?: number | null;
   geree_duusah?: number | null;
-  gazar_ehleh?: number | null;
-  gazar_duusah?: number | null;
   guits_ehleh?: number | null;
   guits_duusah?: number | null;
   /** S — 0–100 (зөвхөн ТЭЗҮ · Зураг төсөл · Зөвшөөрөл · Сонгон шалгаруулалтын навчинд) */
@@ -160,11 +159,10 @@ export type PlanValues = {
   /** 0–100 */
   G: number | null;
   H: number | null; I: number | null;
-  J: number | null; K: number | null;
   L: number | null; M: number | null;
-  N: number | null; O: number | null; P: number | null;
+  N: number | null; P: number | null;
   Q: number | null; R: number | null; S: number | null;
-  T: number | null; U: number | null; V: number | null; W: number | null;
+  T: number | null; V: number | null; W: number | null;
   /** Блокийн төлөв (S-ээр) — зөвхөн блокийн мөрөнд */
   status: BlockStatus | null;
   /**
@@ -606,7 +604,7 @@ export type PlanResult = {
 };
 
 /** Навчны огноо — өөрийнх, эс бөгөөс хамгийн ойрын өвөг мөрийн (хоёулаа байгаа) */
-function spanOf(n: PlanNode, a: 'geree' | 'gazar' | 'guits'): [number | null, number | null] {
+function spanOf(n: PlanNode, a: 'geree' | 'guits'): [number | null, number | null] {
   for (let x: PlanNode | null = n; x && x.row; x = x.parent) {
     const s = saneDate(x.row[`${a}_ehleh`]);
     const e = saneDate(x.row[`${a}_duusah`]);
@@ -616,9 +614,9 @@ function spanOf(n: PlanNode, a: 'geree' | 'gazar' | 'guits'): [number | null, nu
 }
 
 /**
- * O · P-ийн муж — өөрийн төрлийн (`gazar` / `guits`) огноо навч ба өвөгт алга бол ГЭРЭЭНИЙ (H/I) муж.
+ * P-ийн муж — гүйцэтгэгчийн (`guits`) огноо навч ба өвөгт алга бол ГЭРЭЭНИЙ (H/I) муж.
  */
-function spanOrGeree(n: PlanNode, a: 'gazar' | 'guits'): [number | null, number | null] {
+function spanOrGeree(n: PlanNode, a: 'guits'): [number | null, number | null] {
   const sp = spanOf(n, a);
   return sp[0] != null && sp[1] != null ? sp : spanOf(n, 'geree');
 }
@@ -641,7 +639,6 @@ function leafValue(n: PlanNode, m: Metric, today: number, inputs: PlanInputs): n
   const r = n.row!;
   switch (m) {
     case 'N': { const [s, e] = spanOf(n, 'geree'); return frac(linearPlanned(s, e, today)); }
-    case 'O': { const [s, e] = spanOrGeree(n, 'gazar'); return frac(linearPlanned(s, e, today)); }
     case 'P': return plannedLeaf(n, today, inputs);
     case 'Q': return plannedLeaf(n, today + 7 * DAY, inputs);
     case 'R': return plannedLeaf(n, today - 7 * DAY, inputs);
@@ -889,7 +886,6 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
   const D = new Map<PlanNode, (number | null)[]>();
   const DF: [keyof PlanStoredRow, 'min' | 'max'][] = [
     ['geree_ehleh', 'min'], ['geree_duusah', 'max'],
-    ['gazar_ehleh', 'min'], ['gazar_duusah', 'max'],
     ['guits_ehleh', 'min'], ['guits_duusah', 'max'],
   ];
   /* `agg` — үр удмын бүх утгын min/max (Excel MIN(H529:H903) нь бүх үр удмыг хамардаг) */
@@ -898,7 +894,7 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
     const own = DF.map(([k]) => (n.row ? saneDate(n.row[k]) : null));
     if (!n.children.length && n.phase === 'barilga' && n.sub === 'barilga' && !n.blok && inputs.pkgSpan) {
       const sp = inputs.pkgSpan(n.pkg, n);
-      if (sp !== undefined) { own[4] = sp?.[0] ?? null; own[5] = sp?.[1] ?? null; }
+      if (sp !== undefined) { own[2] = sp?.[0] ?? null; own[3] = sp?.[1] ?? null; }
     }
     const a: (number | null)[] = DF.map(() => null);
     for (const c of n.children) {
@@ -981,15 +977,15 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
   for (const n of [root, ...nodes]) {
     const x = X.get(n)!;
     const d = D.get(n)!;
-    const S = hund(x.S), N = hund(x.N), O = hund(x.O), P = hund(x.P), R = hund(x.R);
+    const S = hund(x.S), N = hund(x.N), P = hund(x.P), R = hund(x.R);
     values.set(n, {
       E: E.get(n) ?? null,
       EA: EA.get(n) ?? null,
       F: hund(F.get(n) ?? null),
       G: hund(G.get(n) ?? null),
-      H: d[0], I: d[1], J: d[2], K: d[3], L: d[4], M: d[5],
-      N, O, P, Q: hund(x.Q), R, S,
-      T: ratio(S, N), U: ratio(S, O), V: ratio(S, P), W: ratio(S, R),
+      H: d[0], I: d[1], L: d[2], M: d[3],
+      N, P, Q: hund(x.Q), R, S,
+      T: ratio(S, N), V: ratio(S, P), W: ratio(S, R),
       status: n.blok ? blockStatus(S) : null,
       ...(skip.has(n) && !soft.has(n) ? { skip: true as const } : {}),
       ...(noPhase.has(n) ? { noPhase: true as const } : {}),

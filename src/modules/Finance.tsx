@@ -1157,10 +1157,9 @@ function ppGroups(): PpGroup[] {
     { label: null, cols: [{ k: 'G', label: tr('Төсөлд эзлэх'), kind: 'w' }] },
     { label: tr('Гэрээ (хавсралт 5)'), cols: [{ k: 'H', label: tr('Эхлэх'), kind: 'date' }, { k: 'I', label: tr('Дуусах'), kind: 'date' }] },
     { label: tr('Гүйцэтгэгч · төлөвлөгөөт'), cols: [{ k: 'L', label: tr('Эхлэх'), kind: 'date' }, { k: 'M', label: tr('Дуусах'), kind: 'date' }] },
-    { label: tr('ОСНАУГ / Газар чөлөөлөлт · бодит'), cols: [{ k: 'J', label: tr('Эхлэх'), kind: 'date' }, { k: 'K', label: tr('Дуусах'), kind: 'date' }] },
     {
       label: tr('Төлөвлөгөөт хувь'),
-      cols: [pctCol('N', tr('Гэрээ')), pctCol('O', tr('Газар чөлөөлөлт')), pctCol('P', tr('Гүйцэтгэгч (огноогүй ажил 0%)'))],
+      cols: [pctCol('N', tr('Гэрээ')), pctCol('P', tr('Гүйцэтгэгч (огноогүй ажил 0%)'))],
     },
     { label: null, cols: [pctCol('Q', tr('Ирэх долоо хоног'), '+7')] },
     { label: null, cols: [pctCol('R', tr('Өмнө долоо хоног'), '−7')] },
@@ -1168,7 +1167,7 @@ function ppGroups(): PpGroup[] {
     {
       label: tr('Биелэлт'),
       cols: [
-        pctCol('T', tr('Гэрээ'), 'S / N'), pctCol('U', tr('Газар чөлөөлөлт'), 'S / O'),
+        pctCol('T', tr('Гэрээ'), 'S / N'),
         pctCol('V', tr('Гүйцэтгэгч'), 'S / P'), pctCol('W', tr('Өмнө долоо хоног'), 'S / R'),
       ],
     },

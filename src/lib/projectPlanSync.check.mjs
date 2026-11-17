@@ -93,11 +93,11 @@ assert.deepEqual(planProgressUpdates({ ...plan(), empty: true }), [], 'хоос�
 assert.ok(ups.every((u) => Object.keys(u).sort().join() === 'guitsetgel_huvi,objectid'), 'зөвхөн guitsetgel_huvi + objectid');
 
 {
-  const stored = rows.map((r) => ({ ...r, gazar_ehleh: r.objectid === 2 ? D('2025-01-01') : null, guits_ehleh: r.objectid === 3 ? D('2025-05-01') : null }));
-  const linked = buildTree(stored.map((r) => ({ ...r, gazar_ehleh: null, guits_ehleh: r.objectid === 3 ? D('2025-05-01') + 3_600_000 : null })));
+  const stored = rows.map((r) => ({ ...r, guits_ehleh: r.objectid === 3 ? D('2025-05-01') : null }));
+  const linked = buildTree(stored.map((r) => ({ ...r, guits_ehleh: r.objectid === 3 ? D('2025-05-01') + 3_600_000 : null })));
   const p = { empty: false, tree: linked, result: computePlan(linked, {}, today), inputs: {}, months: [], monthly: new Map(), failed: [], stored };
   const u = new Map(planProgressUpdates(p).map((x) => [x.objectid, x]));
-  assert.ok(u.has(2) && u.get(2).gazar_ehleh === null, 'газрын огноо хоосон болгох нь бичигдэнэ');
+  assert.ok(!u.has(2) || !('gazar_ehleh' in u.get(2)), 'газрын огноо бичигдэхгүй (2026-11-17-нд хасагдсан)');
   assert.ok(!u.has(3) || !('guits_ehleh' in u.get(3)), 'ижил өдөр (цагийн зөрүү) бичигдэхгүй');
 }
 /* 2026-11-04: мөнгөний мөрийн `guits_*` — «Cashflow хуваарилах»-ын хугацаа, Хуваариар дарж бичихгүй; бүтцийн мөрд бичнэ; `geree_*` хэзээ ч бичихгүй */

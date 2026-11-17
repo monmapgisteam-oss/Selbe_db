@@ -110,8 +110,6 @@ export function toStored(a: Record<string, unknown>, names: Names): PlanStoredRo
     tusul_ezleh_huvi: numIn(a.tusul_ezleh_huvi),
     geree_ehleh: dateIn(a.guits_ehleh),
     geree_duusah: dateIn(a.guits_duusah),
-    gazar_ehleh: dateIn(a.gazar_ehleh),
-    gazar_duusah: dateIn(a.gazar_duusah),
     guits_ehleh: dateIn(a.guits_ehleh),
     guits_duusah: dateIn(a.guits_duusah),
     guitsetgel_huvi: numIn(a.guitsetgel_huvi),

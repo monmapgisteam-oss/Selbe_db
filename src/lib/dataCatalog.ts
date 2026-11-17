@@ -576,7 +576,7 @@ function finEntries(): CatEntry[] {
       group: 'fin',
       aliases: [],
       styleSrc: [],
-      views: sortViews(['finance', 'pkgFin', 'pkgProg', 'gdash', 'dashboard', 'tailan', 'schem', 'zuragTosol', 'gazarOgnoo', 'zahiramj', 'songon', 'zovshoorolTtb', 'ashiglalt', 'tuvshin6']),
+      views: sortViews(['finance', 'pkgFin', 'pkgProg', 'gdash', 'dashboard', 'tailan', 'schem', 'zuragTosol', 'zahiramj', 'songon', 'zovshoorolTtb', 'ashiglalt', 'tuvshin6']),
       purpose: () => tr('Гэрээ бүрийн төсөв, гэрээний дүн, шатны гүйцэтгэл ба сарын санхүүжилтийн төлөвлөгөө.'),
       chain: () => [
         S(tr('Санхүүгийн ажилтан (finEdit · finRow) засна')),

@@ -43,8 +43,6 @@ export const FIN_XL_ORDER: readonly string[] = [
   'urdchilgaa_zh_zardal',
   'dugaar2',
   'bagts_74',
-  'gazar_ehleh',
-  'gazar_duusah',
   'songon_ognoo',
   'ashiglalt_ognoo',
   'sar_mongo_eh',

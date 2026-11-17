@@ -117,10 +117,7 @@ const COLS: { key: ColKey; label: () => string; w: number; grp?: GrpKey }[] = [
   { key: 'ctEnd', label: () => tr('Төлөвлөгөөт дуусах'), w: 110, grp: 'ct' },
   { key: 'exStart', label: () => tr('Төлөвлөгөөт эхлэх'), w: 110, grp: 'ex' },
   { key: 'exEnd', label: () => tr('Төлөвлөгөөт дуусах'), w: 110, grp: 'ex' },
-  { key: 'actStart', label: () => tr('Бодит Эхлэх'), w: 110, grp: 'act' },
-  { key: 'actEnd', label: () => tr('Бодит дуусах'), w: 110, grp: 'act' },
   { key: 'planG', label: () => tr('Төлөвлөгөөт хувь Гэрээ Хавсралт 5'), w: 260 },
-  { key: 'planGch', label: () => tr('Төлөвлөгөөт хувь Гэрээ-Газар чөлөөлөлт хуулийн маргаан хассан Хавсралт 5'), w: 220 },
   { key: 'planGu', label: () => tr('Төлөвлөгөөт хувь Гүйцэтгэгч'), w: 160 },
   { key: 'planNw', label: () => tr('Төлөвлөгөөт хувь Next week'), w: 150 },
   { key: 'planPw', label: () => tr('Төлөвлөгөөт хувь Өмнө долоо хоног'), w: 170 },
@@ -129,7 +126,6 @@ const COLS: { key: ColKey; label: () => string; w: number; grp?: GrpKey }[] = [
   { key: 'actPw', label: () => tr('Гүйцэтгэлийн хувь Өмнөх 7 хоног'), w: 160 },
   { key: 'gainWk', label: () => tr('7 хоногийн өсөлт'), w: 130 },
   { key: 'perfG', label: () => tr('Төлөвлөгөө биелэлт Гэрээ'), w: 170 },
-  { key: 'perfGch', label: () => tr('Төлөвлөгөө биелэлт Гэрээ-Газар чөлөөлөлт хуулийн маргаан хассан'), w: 220 },
   { key: 'perfGu', label: () => tr('Төлөвлөгөө биелэлт- Гүйцэтгэгч'), w: 170 },
   { key: 'perfWk', label: () => tr('Төлөвлөгөө биелэлт Weekly'), w: 150 },
 ];

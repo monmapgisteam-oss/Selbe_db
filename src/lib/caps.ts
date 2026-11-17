@@ -182,7 +182,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   sysClose: [],
   docsUpload: [],
   docsGroups: [],
-  zuragEdit: ['zuragTosol', 'gazarOgnoo'],
+  zuragEdit: ['zuragTosol'],
   zahiramjEdit: ['zahiramj'],
   songonEdit: ['songon'],
   zovshoorolTtbEdit: ['zovshoorolTtb'],

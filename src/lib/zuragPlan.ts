@@ -48,7 +48,7 @@ function budgetOf(n: PlanNode): number | null {
 }
 
 /** Үр удмын (өөрийг оролцуулан) хамгийн эрт эхлэх / хамгийн орой дуусах */
-function spanOf(n: PlanNode, a: 'guits' | 'gazar'): [number | null, number | null] {
+function spanOf(n: PlanNode, a: 'guits'): [number | null, number | null] {
   let lo: number | null = null, hi: number | null = null;
   const walk = (x: PlanNode) => {
     const s = fin(x.row?.[`${a}_ehleh`]), e = fin(x.row?.[`${a}_duusah`]);
@@ -94,7 +94,6 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
     if (!docs.length || !n.row) continue;
     const priced = docs.every((d) => d.ajliinUne != null && d.ajliinUne > 0);
     const [gs, ge] = spanOf(n, 'guits');
-    const [ls, le] = spanOf(n, 'gazar');
     const ms = money.get(n);
     swap.set(n.row, {
       ...n.row,
@@ -103,7 +102,7 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
       /* Гэрээний дүн: бүртгэлд «Ажлын үнэ» бүрэн бөглөгдсөн бол баримтуудаас (доор), эс бөгөөс хуучин мөрүүдийн нийлбэр */
       ...(!priced && ms?.contract != null ? { geree_dun: ms.contract, ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : {}),
       ho_dun_geree: priced ? null : budgetOf(n),
-      guits_ehleh: gs, guits_duusah: ge, geree_ehleh: gs, geree_duusah: ge, gazar_ehleh: ls, gazar_duusah: le,
+      guits_ehleh: gs, guits_duusah: ge, geree_ehleh: gs, geree_duusah: ge,
     });
     dropAll(n);
     const groups = groupZ(docs);

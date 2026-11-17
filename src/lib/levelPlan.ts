@@ -133,29 +133,28 @@ const doneOf = (v: number | null | undefined): boolean | null => (v == null ? nu
 
 /* ══════════════════ 3. Үе шатын огноо ба төлөвлөгөөт хувь ══════════════════ */
 
-type SpanKey = 'contract' | 'land' | 'contractor';
+type SpanKey = 'contract' | 'contractor';
 /**
- * `PlanValues`-ийн огнооны хос (`computePlan`-ийн `DF` дараалал): H/I = `geree_*` (гэрээ),
- * J/K = `gazar_*` (газар чөлөөлөлт), L/M = `guits_*` (гүйцэтгэгч).
+ * `PlanValues`-ийн огнооны хос (`computePlan`-ийн `DF` дараалал): H/I = `geree_*` (гэрээ), L/M = `guits_*` (гүйцэтгэгч).
+ * 2026-11-17 (хэрэглэгч): J/K = `gazar_*` (газар чөлөөлөлтийн хуваарь) бүр хасагдсан.
  */
 const SPAN_COLS: Record<SpanKey, [keyof PlanValues, keyof PlanValues]> = {
   contract: ['H', 'I'],
-  land: ['J', 'K'],
   contractor: ['L', 'M'],
 };
 const SPAN_ORDER: Record<PhaseKind, SpanKey[]> = {
-  barilga: ['contractor', 'contract', 'land'],
-  other: ['contractor', 'contract', 'land'],
-  gazar: ['land', 'contract', 'contractor'],
-  tezu: ['contract', 'contractor', 'land'],
-  zurag: ['contract', 'contractor', 'land'],
-  zovshoorol: ['contract', 'contractor', 'land'],
-  songon: ['contract', 'contractor', 'land'],
-  huleelgeh: ['contract', 'contractor', 'land'],
-  zugshruulelt: ['contract', 'contractor', 'land'],
+  barilga: ['contractor', 'contract'],
+  other: ['contractor', 'contract'],
+  gazar: ['contract', 'contractor'],
+  tezu: ['contract', 'contractor'],
+  zurag: ['contract', 'contractor'],
+  zovshoorol: ['contract', 'contractor'],
+  songon: ['contract', 'contractor'],
+  huleelgeh: ['contract', 'contractor'],
+  zugshruulelt: ['contract', 'contractor'],
 };
 /** Хадгалсан мөрийн баганын угтвар (`${col}_ehleh` / `${col}_duusah`) — `projectPlan.spanOf`-ийнх */
-const STORED_COL: Record<SpanKey, 'geree' | 'gazar' | 'guits'> = { contract: 'geree', land: 'gazar', contractor: 'guits' };
+const STORED_COL: Record<SpanKey, 'geree' | 'guits'> = { contract: 'geree', contractor: 'guits' };
 
 /** Мөрийн зурвасын огноо (`SPAN_ORDER`) — хос бүтэн байх ёстой; алга бол [null, null] */
 export function spanOf(v: PlanValues | undefined, phase: PhaseKind): [number | null, number | null] {
@@ -168,11 +167,10 @@ export function spanOf(v: PlanValues | undefined, phase: PhaseKind): [number | n
   return [null, null];
 }
 
-/** Өнөөдрийн төлөвлөгөөт хувь (0–100): барилга/нийт → P (гүйцэтгэгч), газар → O, бусад → N (гэрээ) */
+/** Өнөөдрийн төлөвлөгөөт хувь (0–100): барилга/нийт → P (гүйцэтгэгч), бусад → N (гэрээ) */
 export function plannedOf(v: PlanValues | undefined, phase: PhaseKind): number | null {
   if (!v) return null;
   if (phase === 'barilga' || phase === 'other') return v.P;
-  if (phase === 'gazar') return v.O;
   return v.N;
 }
 
