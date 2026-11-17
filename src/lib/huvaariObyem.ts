@@ -151,14 +151,18 @@ export function splitByPct(total: number, pct: ReadonlyMap<string, number>): Map
   const out = new Map<string, number>(keys.map((k) => [k, 0]));
   const w = keys.map((k) => Math.max(0, pct.get(k) ?? 0));
   const wsum = w.reduce((a, b) => a + b, 0);
-  const cents = Math.round(total * 100);
+  /* Нэгж: 0.01; обьём нь центийн торонд БАГТАХГҮЙ (0.00524474 т арматур) бол өөрийнх нь нарийвчлалаар (≤ 8 орон) —
+     эс бөгөөс 0.0052 → 0.01 + 0 (191%) эсвэл бүгд 0 болдог байв (2026-11-16) */
+  let scale = 100;
+  while (scale < 1e8 && Math.abs(total * scale - Math.round(total * scale)) > 1e-6 * Math.max(1, total * scale)) scale *= 10;
+  const cents = Math.round(total * scale);
   if (!(wsum > 0) || !(cents > 0)) return out;
   const exact = w.map((x) => (cents * x) / wsum);
   const base = exact.map((x) => Math.floor(x + 1e-9));
   let rest = cents - base.reduce((a, b) => a + b, 0);
   const order = exact.map((x, i) => ({ i, f: x - base[i] })).filter((o) => w[o.i] > 0).sort((a, b) => b.f - a.f || a.i - b.i);
   for (let j = 0; rest > 0 && order.length; j = (j + 1) % order.length, rest--) base[order[j].i] += 1;
-  keys.forEach((k, i) => out.set(k, base[i] / 100));
+  keys.forEach((k, i) => out.set(k, base[i] / scale));
   return out;
 }
 

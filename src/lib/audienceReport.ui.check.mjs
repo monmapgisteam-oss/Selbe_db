@@ -302,7 +302,8 @@ ok('2026-11-06: осол — сонгосон хугацааны мөр 7.2-т �
   const rep = buildReport('mayor', inputsFixture({ period, x: { ...i.x, incidents: inc } }));
   const wf = rep.sections.find((s) => s.key === 'workforce');
   assert.ok(wf.text[0].includes('1 осол, зөрчил') && wf.text[0].includes('Багц-2 · Амь нас эрсдэж болзошгүй байсан осол') && !wf.text[0].includes('Багц-1'), wf.text[0]);
-  assert.ok(wf.text.length <= 3);
+  /* 2026-11-16: техникийн өөрчлөлтийн мөр ослын бүртгэлтэй үед ч хэвлэгдэнэ (урьд нь унадаг байв) → дээд тал 4 мөр */
+  assert.ok(wf.text.length <= 4);
   assert.equal(rep.sections.find((s) => s.key === 'risk').chart.items.at(-1).value, 1);
   const none = buildReport('mayor', inputsFixture({ x: { ...i.x, incidents: null } })).sections.find((s) => s.key === 'workforce');
   assert.ok(none.text[0].includes('уншигдаагүй'), 'null ≠ 0 осол');

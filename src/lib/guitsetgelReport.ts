@@ -3,6 +3,7 @@
  */
 
 import { t as tr } from './i18nCore';
+import { dayKey } from './format';
 import type { DocBlock } from './docx';
 import {
   DECISION, F, OWNER, RETURNED_STATUS, REVIEW_STAGES, REVIEW_STATUS, SF, STAGE_ORDER, STATUS,
@@ -10,13 +11,11 @@ import {
 } from './hyanalt';
 import { pendingAging, STAGE_LABEL, type Work } from './hyanaltGroup';
 
-const p2 = (x: number) => String(x).padStart(2, '0');
 /** ISO → YYYY-MM-DD (огноогүй бол хоосон) */
 const day = (v: string | null | undefined): string => {
   const n = v ? Date.parse(v) : NaN;
-  if (!Number.isFinite(n)) return '';
-  const d = new Date(n);
-  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  /* Улаанбаатарын өдөр (`format.dayKey`) — хөтчийн цагийн бүсээс үл хамаарна */
+  return Number.isFinite(n) ? dayKey(n) : '';
 };
 const txt = (v: unknown): string => String(v ?? '').trim();
 const rank = (w: Work) => STAGE_ORDER.indexOf(OWNER[w.status] ?? 'company');

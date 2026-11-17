@@ -130,7 +130,7 @@ export function payRows(pays: readonly Row[]): PayRow[] {
       obyem,
       une,
       /* Бүхэл ₮-ээр: 1 ₮-өөс бага бөөрөнхийллийн үлдэгдэл улаан «0 ₮» эсвэл «-1 ₮» болж харагддаг байв */
-      zoruu: perf.length ? (amount == null || une == null ? null : Math.round(amount - une) + 0) : num(r[LINK_FIELDS.zoruu]),
+      zoruu: perf.length ? (amount == null || une == null ? null : Math.round(amount - une) + 0) : amount == null ? null : num(r[LINK_FIELDS.zoruu]),
       year: num(r[P.year]),
       kind: String(r[P.kind] ?? ''),
       orderNo: String(r[C.order1No] ?? ''),

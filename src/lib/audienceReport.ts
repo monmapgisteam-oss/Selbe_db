@@ -464,7 +464,10 @@ function riskCounts(i: ReportInputs, no: string, group: number): Section {
   ].map((b) => ({ ...b, text: b.value == null ? tr('мэдээлэлгүй') : num(b.value) }));
   const text = [
     x.zov ? tr('Зөвшөөрөл: {0} хүлээгдэж байна, {1} олгогдоогүй (нийт {2}).', num(x.zov.wait), num(x.zov.no), num(x.zov.total)) : tr('Зөвшөөрлийн бүртгэл холбогдоогүй тул зөвшөөрлийн тоо мэдээлэлгүй.'),
-    tr('Хуваариас хоцорсон {0} багц, 5%-иас доош явцтай {1} багц, газрын саадтай {2} багц.', num(late), num(stalled), num(saad)),
+    /* Газрын саад уншигдаагүй бол «0 багц» БИШ — мэдээлэлгүй (чартын баганатай ижил) */
+    i.saad
+      ? tr('Хуваариас хоцорсон {0} багц, 5%-иас доош явцтай {1} багц, газрын саадтай {2} багц.', num(late), num(stalled), num(saad))
+      : tr('Хуваариас хоцорсон {0} багц, 5%-иас доош явцтай {1} багц; газрын саадын мэдээлэл уншигдаагүй.', num(late), num(stalled)),
     tr('Чөлөөлөгдөөгүй {0} нэгж талбар холбогдох ажлыг эхлүүлэхэд саад болно.', num(x.gdash.land.remaining)),
   ];
   return { key: 'risk', no, group, title: tr('Эрсдэл ба саад'), chart: { kind: 'bars', unit: 'num', items }, text };
@@ -490,7 +493,9 @@ function workforce(i: ReportInputs, no: string, group: number): Section {
     text.unshift(rows.length
       ? tr('Сонгосон хугацаанд ({0} → {1}) {2} осол, зөрчил бүртгэгдсэн: {3}.', i.period.from, i.period.to, num(rows.length), rows.map(incidentLabel).join('; '))
       : tr('Сонгосон хугацаанд ({0} → {1}) осол, зөрчил бүртгэгдээгүй.', i.period.from, i.period.to));
-  } else if (t2) text.push(t2);
+  }
+  /* Техникийн өөрчлөлт — ослын бүртгэлийн төлөвөөс ҮЛ хамааран (урьд нь `else if` тул хэзээ ч хэвлэгддэггүй байв) */
+  if (t2) text.push(t2);
   return { key: 'workforce', no, group, title: tr('Хөдөлмөрийн аюулгүй байдал, эрүүл ахуй — ажиллах хүч'), chart, text };
 }
 

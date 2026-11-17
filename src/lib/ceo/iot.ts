@@ -90,6 +90,8 @@ export type IotSummary = {
   states: IotSensorRow[];
   down: number;
   silent: number;
+  /** Хуучирсан заалттай МЭДРЭГЧИЙН тоо (ядаж нэг хэмжигдэхүүн нь хуучин; `down` · `silent`-тэй ижил нэгж) — картын мөрд; `stale` нь хэмжигдэхүүний тоо */
+  staleSensors: number;
   /**
    * Хуучирсан ХЭМЖИГДЭХҮҮНИЙ тоо (мэдрэгч биш) — унасан/дуугүй мэдрэгчийнх
    * ороогүй. Мэдрэгчээр тоолвол «нэг утга нь шинэ» мэдрэгч далдлагдана.
@@ -155,6 +157,7 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
   const states: IotSensorRow[] = [];
   const metrics: IotMetricRow[] = [];
   let stale = 0;
+  let staleSensors = 0;
   let loaded = 0;
   let sensorsExceeding = 0;
   let asOf: number | null = null;
@@ -179,6 +182,7 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
     let anyFresh = false;
     let anyReading = false;
     let anyFault = false;
+    const staleBefore = stale;
 
     for (const m of sn.series) {
       const age = ageOf(m, now);
@@ -224,6 +228,7 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
     }
 
     if (hitFresh) sensorsExceeding++;
+    if (stale > staleBefore) staleSensors++;
     const state: IotSensorState = !anyReading ? 'silent'
       : !anyFresh ? 'stale'
         : hitFresh ? 'alert' : anyFault ? 'fault' : 'ok';
@@ -249,6 +254,7 @@ export function computeIot(sensors: readonly SensorLive[], now: number): IotSumm
     states,
     down: states.filter((s) => s.state === 'down').length,
     silent: states.filter((s) => s.state === 'silent').length,
+    staleSensors,
     stale,
     metrics,
     asOf,
@@ -318,7 +324,7 @@ export function buildIotKpi(s: IotSummary, failedSources: string[]): KpiResult {
   /* ── Баримт: зөвхөн тоо ── */
   const facts: string[] = [
     tr('{0} / {1} мэдрэгч', s.sensorsExceeding, s.sensors),
-    tr('{0} унасан · {1} дуугүй · {2} хуучирсан', s.down, s.silent, s.stale),
+    tr('{0} унасан · {1} дуугүй · {2} хуучирсан', s.down, s.silent, s.staleSensors),
   ];
   if (s.dry.length) facts.push(tr('хөрс хуурай {0}', s.dry.length));
   if (s.faults.length) facts.push(tr('мэдрэгчийн гэмтэл {0}', s.faults.length));
