@@ -70,7 +70,9 @@ export type PlanStoredRow = {
    * 2026-11-17: ЗОХИОМОЛ мөр — «Зургийн бүртгэл»-ийн бүлэг/дэд бүлэг (`zuragPlan.withRegistryRows`). Хүснэгтэд байхгүй
    * (`objectid` = null), засагдахгүй, хүснэгт рүү бичигдэхгүй.
    */
-  virtual?: true;
+  virtual?: true;
+  /** Зургийн бүртгэлээс үүсгэсэн мөр (`zuragPlan`) — утгууд нь бүртгэлээс, ТТБ-д гараар засагдахгүй */
+  registry?: true;
   /** Захирамжийн дүнгийн эх үүсвэр (₮) — `CASHFLOW_NEW.sources`; зөвхөн өөрийн мөрд харагдана, нийлбэрлэхгүй (2026-11-03) */
   zahiramj_unet_tsaas?: number | null;
   zahiramj_borluulalt_dun?: number | null;

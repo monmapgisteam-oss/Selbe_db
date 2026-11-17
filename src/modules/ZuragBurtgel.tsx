@@ -8,6 +8,7 @@ import { Fragment, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { applyAll } from '@/lib/tableWrite';
+import { syncZuragPlan } from '@/lib/zuragPlanSync';
 import { invalidate } from '@/lib/dataBus';
 import { ZURAG_BURTGEL } from '@/lib/services';
 import { entDeletePdf, entPdfBlob, entSearch, entUploadPdf, type EntPdf } from '@/lib/entDocs';
@@ -161,8 +162,13 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
     void run(async () => {
       await applyAll(ZURAG_BURTGEL.url, ZURAG_BURTGEL.oid, { updates: [{ [ZURAG_BURTGEL.oid]: r.oid, tolov: v }] }, CAP);
       invalidate('ZURAG_BURTGEL');
-      return tr('Төлөв хадгалагдав');
+      return toPlan(tr('Төлөв хадгалагдав'));
     });
+  };
+
+  /** Бүртгэл өөрчлөгдсөний дараа «Төсөл төлөвлөгөө биелэлт»-ийн хүснэгтийг тааруулна; бүтэлгүйтвэл мэдэгдэлд нэмнэ */
+  const toPlan = async (ok: string): Promise<string> => {
+    try { await syncZuragPlan(); return ok; } catch (e) { return `${ok} · ${tr('«Төсөл төлөвлөгөө биелэлт»-д бичигдсэнгүй: {0}', userError(e))}`; }
   };
 
   const run = async (f: () => Promise<string | null>) => {
@@ -239,7 +245,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
       await applyAll(ZURAG_BURTGEL.url, ZURAG_BURTGEL.oid, { updates: [u] }, CAP);
       invalidate('ZURAG_BURTGEL');
       setEdit(null);
-      return tr('Хадгалагдав');
+      return toPlan(tr('Хадгалагдав'));
     });
   };
 
@@ -252,7 +258,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
       }] }, CAP);
       invalidate('ZURAG_BURTGEL');
       setAdd(null);
-      return tr('Зураг нэмэгдэв');
+      return toPlan(tr('Зураг нэмэгдэв'));
     });
   };
 

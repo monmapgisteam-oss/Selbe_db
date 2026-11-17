@@ -33,6 +33,8 @@ export const PLAN_EDIT: Record<PlanEditKey, { key: keyof PlanStoredRow; field: s
 };
 export const PLAN_EDIT_KEYS = Object.keys(PLAN_EDIT) as PlanEditKey[];
 
+/** Зургийн бүртгэлээс үүсгэсэн мөр (ба тэдгээрийн эцэг) — ТТБ-д гараар засахгүй, нэмэхгүй, устгахгүй */
+const ZREG = (): string => tr('Зургийн бүртгэлээс бичигдэнэ — «Зургийн бүртгэл» хуудсанд засна');
 const oidOf = (n: PlanNode): number | null => {
   const v = n.row?.objectid;
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
@@ -40,6 +42,7 @@ const oidOf = (n: PlanNode): number | null => {
 
 /** Засах боломжгүй шалтгаан; `null` = засаж болно */
 export function editWhy(n: PlanNode, k: PlanEditKey, today: number = ubToday()): string | null {
+  if (n.row?.registry) return ZREG();
   if (oidOf(n) == null) return tr('Мөр хүснэгтэд хадгалагдаагүй');
   if (PLAN_EDIT[k].kind === 'money') {
     /* 2026-11-03: нэмсэн ажлын мөнгө — эцгийн төсвөөс жингээр оноогдоно (энд бичвэл бүлгийн жингийн дүрэм эвдэрнэ) */
@@ -88,6 +91,7 @@ function dupBlocked(tree: PlanTree, n: PlanNode): boolean {
 
 /** Дэд мөр нэмэх боломжгүй шалтгаан; `null` = болно */
 export function addWhy(tree: PlanTree, n: PlanNode): string | null {
+  if (n.row?.registry || n.children.some((c) => c.row?.registry)) return ZREG();
   if (oidOf(n) == null) return tr('Мөр хүснэгтэд хадгалагдаагүй');
   if (!MANUAL_PHASES.has(n.phase)) return tr('Энэ үе шатад мөр нэмэхгүй — утга нь системээс бодогдоно');
   if (dupBlocked(tree, n)) return tr('Д/Д давхардсан мөрийн доор нэмэх боломжгүй ({0})', n.code);
@@ -96,6 +100,7 @@ export function addWhy(tree: PlanTree, n: PlanNode): string | null {
 
 /** Устгах боломжгүй шалтгаан; `null` = болно */
 export function deleteWhy(n: PlanNode, cutoff: number | null): string | null {
+  if (n.row?.registry || n.children.some((c) => c.row?.registry)) return ZREG();
   if (oidOf(n) == null) return tr('Мөр хүснэгтэд хадгалагдаагүй');
   if (n.row?.cashflow_id != null) return tr('Сарын мөнгөтэй мөрийг устгахгүй');
   if (n.children.length) return tr('Дэд мөртэй мөрийг устгахгүй');

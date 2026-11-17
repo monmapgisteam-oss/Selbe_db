@@ -152,7 +152,7 @@ export function sortPlanRows(rows: readonly PlanStoredRow[]): PlanStoredRow[] {
 /**
  * Excel-ийн БҮХ мөр — мөнгөний + бүтцийн (`dd_kod IS NOT NULL`), сарын мөр ОРОХГҮЙ.
  */
-async function fetchPlanRows(): Promise<PlanStoredRow[]> {
+export async function fetchPlanRows(): Promise<PlanStoredRow[]> {
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
     where: `${CF.ddKod} IS NOT NULL AND ${CF_MONTH.start} IS NULL`,
     outFields: [...new Set(STORED_FIELDS.map(([, f]) => f))],

@@ -7,8 +7,9 @@
  *   1 ТЭЗҮ                    ← бүртгэлийн «001. …» бүлгийн ДЭД БҮЛГҮҮД (100. ТЭЗҮ · 200. Барилгажилтын төсөл)
  *   2 Ажлын зураг төсөл       ← бусад БҮЛЭГ (002 · 003 · 004 · 005) → тэдгээрийн дэд бүлгүүд
  *
- *   · Үе шатын мөрийн ХАДГАЛСАН доод мөрүүд (гэрээ, багцаар гараар хөтөлдөг хуучин задаргаа) модонд ОРОХГҮЙ — хүснэгтээс
- *     устгахгүй. Оронд нь бүртгэлийн бүлэг · дэд бүлэг ЗОХИОМОЛ мөр (`virtual`, `objectid` = null).
+ *   · Үе шатын доод мөрүүд = бүртгэлээс ҮҮСГЭСЭН мөрүүд (`registry`). Хүснэгтэд ижил Д/Д-тэй мөр байвал түүний
+ *     `objectid`-ийг авна; байхгүй бол ЗОХИОМОЛ (`virtual`, `objectid` = null). Хүснэгтэд бичих — `registryPlanEdits`
+ *     (хэрэглэгч 2026-11-17: «хуучнуудыг устгаад шинийг оруул · бүртгэлд байхгүй утгыг хоосон үлдээ»).
  *   · Дэд бүлгийн доор БАРИМТ БҮР нэг мөр (хэрэглэгч: «зургууд нь байхгүй?») — хувь нь өөрийн төлөвийн хувь, жин тэнцүү.
  *   · МӨНГӨ: үе шатын БҮХ баримт «Ажлын үнэ»-тэй (> 0) болмогц баримтын мөрийн төсөвт өртөг = тэр үнэ, дээд мөрүүд
  *     нийлбэрээр, жин мөнгөөр (`computePlan`-ийн ердийн дүрэм). Нэг л баримт үнэгүй байвал хуучнаараа — баримтын тоогоор
@@ -61,7 +62,7 @@ function spanOf(n: PlanNode, a: 'guits' | 'gazar'): [number | null, number | nul
 
 const virt = (code: string, parent: string, name: string, w: number, docs: readonly ZRow[], leaf: boolean): PlanStoredRow => ({
   objectid: null,
-  virtual: true,
+  registry: true,
   dd_kod: code,
   etseg_kod: parent,
   ajil_uilchilgee: name,
@@ -73,7 +74,13 @@ const virt = (code: string, parent: string, name: string, w: number, docs: reado
  * ТТБ-ийн мөрүүд + бүртгэл → модонд орох мөрүүд. Бүртгэл хоосон бол оролт хэвээр.
  */
 export function withRegistryRows(rows: readonly PlanStoredRow[], z: readonly ZRow[]): PlanStoredRow[] {
-  if (!z.length) return [...rows];
+  return build(rows, z).out;
+}
+
+/** Модонд орох мөрүүд (`out`), бүртгэлээс үүсгэсэн мөрүүд (`gen`), тэдгээрийн үе шатын хадгалсан доод мөрүүд (`old`) */
+function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanStoredRow[]; gen: PlanStoredRow[]; old: PlanStoredRow[] } {
+  const same = { out: [...rows], gen: [], old: [] };
+  if (!z.length) return same;
   const tezu = z.filter((r) => isTezuBuleg(r.buleg));
   const zurag = z.filter((r) => !isTezuBuleg(r.buleg));
   const tree = buildTree(rows);
@@ -105,7 +112,7 @@ export function withRegistryRows(rows: readonly PlanStoredRow[], z: readonly ZRo
     /* Баримт бүр — навч мөр: нэр, өөрийн төлөвийн хувь, тэнцүү жин */
     const leaves = (parent: string, ds: readonly ZRow[]) => {
       ds.forEach((d, k) => add.push({
-        objectid: null, virtual: true, dd_kod: `${parent}.${k + 1}`, etseg_kod: parent,
+        objectid: null, registry: true, dd_kod: `${parent}.${k + 1}`, etseg_kod: parent,
         ajil_uilchilgee: d.ner, bagts: d.bagts || null, heseg_ezleh_huvi: 1 / ds.length, guitsetgel_huvi: tolovPct(d.tolov),
         /* Хэрэглэгч 2026-11-17: гараар оруулсан дүн «урьдчилсан төсөвт өртөг болон IPC рүү хоёуланд нь» — төсөвт өртөг ба
            гэрээний дүн (IPC-ийн олгосон хувийн суурь). Олгосон дүн нь IPC-ээс хэвээр (үе шатын мөрд) */
@@ -129,6 +136,54 @@ export function withRegistryRows(rows: readonly PlanStoredRow[], z: readonly ZRo
       if (named) put(gc, g.subs, gd.length, gl); else leaves(gc, gd);
     });
   }
-  if (!add.length) return [...rows];
-  return [...rows.filter((r) => !drop.has(r)).map((r) => swap.get(r) ?? r), ...add];
+  if (!add.length) return same;
+  /* Хүснэгтэд ижил Д/Д-тэй мөр байвал түүний objectid (эхнийх нь); байхгүй бол зохиомол */
+  const oid = new Map<string, number>();
+  for (const r of drop) if (r.dd_kod && typeof r.objectid === 'number' && !oid.has(r.dd_kod)) oid.set(r.dd_kod, r.objectid);
+  const gen = add.map((r): PlanStoredRow => {
+    const o = oid.get(r.dd_kod ?? '');
+    return o == null ? { ...r, virtual: true } : { ...r, objectid: o };
+  });
+  return { out: [...rows.filter((r) => !drop.has(r)).map((r) => swap.get(r) ?? r), ...gen], gen, old: [...drop] };
+}
+
+/** Хүснэгтэд бичигддэг талбарууд — бүртгэлээс гардаг нь л; бусад нь хоосон */
+export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar'] as const;
+type RKey = (typeof REGISTRY_PLAN_KEYS)[number];
+export type RegistryPlanEdits = {
+  adds: ({ dd_kod: string } & Record<RKey, string | number | null>)[];
+  updates: ({ objectid: number } & Partial<Record<RKey, string | number | null>>)[];
+  deletes: number[];
+};
+
+const eq = (a: unknown, b: unknown): boolean => {
+  const x = a ?? null, y = b ?? null;
+  /* Хүснэгт жинг 8 оронгоор хадгална (0.33333333) — түүнээс нарийн зөрүү зөрүү биш */
+  if (typeof x === 'number' && typeof y === 'number') return Math.abs(x - y) <= 1e-7 * Math.max(1, Math.abs(x), Math.abs(y));
+  return x === y;
+};
+
+/**
+ * ТТБ-ийн хүснэгтийг бүртгэлтэй ТААРУУЛАХ засвар — Д/Д-ээр тулгана: байхгүйг нэмнэ, зөрснийг засна, бүртгэлд байхгүйг
+ * (ба Д/Д давхардсаныг) устгана. Бүртгэлээс гардаггүй утгатай мөр (гэрээ, захирамж, мөнгө — `foreign`) нь бүртгэлийн мөр
+ * биш тул засахгүй — устгаад цэвэр мөр нэмнэ. Бүртгэл хоосон / уншигдаагүй бол засваргүй (юу ч устгахгүй).
+ */
+export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZRow[]): RegistryPlanEdits {
+  const { gen, old } = build(rows, z);
+  const out: RegistryPlanEdits = { adds: [], updates: [], deletes: [] };
+  const foreign = (r: PlanStoredRow) => r.cashflow_id != null || r.geree_dugaar != null || r.guitsetgegch != null || r.olgoson_dun != null
+    || r.urdchilgaa_dun != null || r.ho_dun_zahiramj != null || r.zahiramj_dugaar != null || r.guits_ehleh != null || r.guits_duusah != null;
+  const byOid = new Map<number, PlanStoredRow>();
+  for (const r of old) if (typeof r.objectid === 'number') byOid.set(r.objectid, r);
+  const kept = new Set<number>();
+  for (const g of gen) {
+    const want = Object.fromEntries(REGISTRY_PLAN_KEYS.map((k) => [k, (g[k] as string | number | null | undefined) ?? null])) as Record<RKey, string | number | null>;
+    const s = typeof g.objectid === 'number' ? byOid.get(g.objectid) : undefined;
+    if (!s || foreign(s)) { out.adds.push({ dd_kod: g.dd_kod as string, ...want }); continue; }
+    kept.add(g.objectid as number);
+    const diff = REGISTRY_PLAN_KEYS.filter((k) => !eq(s[k], want[k]));
+    if (diff.length) out.updates.push({ objectid: g.objectid as number, ...Object.fromEntries(diff.map((k) => [k, want[k]])) });
+  }
+  for (const o of byOid.keys()) if (!kept.has(o)) out.deletes.push(o);
+  return out;
 }

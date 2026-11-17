@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import { buildTree, computePlan, moneySums } from './projectPlan.ts';
 import { toZRow } from './zuragBurtgel.ts';
-import { withRegistryRows, isTezuBuleg } from './zuragPlan.ts';
+import { withRegistryRows, registryPlanEdits, isTezuBuleg } from './zuragPlan.ts';
 
 const D = (s) => Date.parse(`${s}T00:00:00Z`);
 const rows = [
@@ -35,14 +35,15 @@ assert.equal(isTezuBuleg('003. АЖЛЫН ЗУРАГ'), false);
 assert.deepEqual(withRegistryRows(rows, []), rows, 'бүртгэл хоосон — хэвээр');
 
 const out = withRegistryRows(rows, docs);
-assert.ok(!out.some((r) => [2, 3, 4].includes(r.objectid)), 'зураг төслийн хуучин бүх доод мөр (бүртгэлд байхгүй гэрээ ч) модонд орохгүй');
+assert.ok(!out.some((r) => ['Гэрээ I', 'хуучин Багц-1', 'Бүртгэлд байхгүй өөр гэрээ'].includes(r.ajil_uilchilgee)), 'зураг төслийн хуучин бүх доод мөр (бүртгэлд байхгүй гэрээ ч) модонд орохгүй');
 assert.ok(out.some((r) => r.objectid === 11), 'ТЭЗҮ-д бүртгэлийн баримтгүй — хөндөгдөхгүй');
-const v = out.filter((r) => r.virtual);
+const v = out.filter((r) => r.registry);
 assert.deepEqual(v.map((r) => `${r.dd_kod}|${r.ajil_uilchilgee}`), [
   '2.1|1. ЗАГВАР ЗУРАГ', '2.1.1|n1',
   '2.2|2. АЖЛЫН ЗУРАГ', '2.2.1|1. БАГЦ 1', '2.2.1.1|n2', '2.2.1.2|n3', '2.2.2|2. БАГЦ 2', '2.2.2.1|n4',
 ], 'үе шатын шууд доор бүлэг → дэд бүлэг → баримт бүр');
-assert.ok(v.every((r) => r.objectid == null), 'зохиомол мөр хүснэгтэд байхгүй');
+assert.deepEqual(v.map((r) => [r.dd_kod, r.objectid, !!r.virtual]), [['2.1', 2, false], ['2.1.1', 3, false], ['2.2', 4, false], ['2.2.1', null, true], ['2.2.1.1', null, true], ['2.2.1.2', null, true], ['2.2.2', null, true], ['2.2.2.1', null, true]],
+  'хүснэгтэд ижил Д/Д-тэй мөр байвал түүний objectid; байхгүй бол зохиомол');
 
 const t = buildTree(out);
 assert.deepEqual(t.issues, []);
@@ -64,7 +65,7 @@ assert.equal(r.get('1').S, 100, 'ТЭЗҮ хуучнаараа');
 
 /* ТЭЗҮ — ганц бүлэг: дэд бүлгүүд шууд үе шатын доор */
 const tz = withRegistryRows(rows, [z(5, '001. ТЭЗҮ, БАРИЛГАЖИЛТЫН ТӨСӨЛ', '100. ТЕЗҮ', 'magadlal'), z(6, '001. ТЭЗҮ, БАРИЛГАЖИЛТЫН ТӨСӨЛ', '200. БАРИЛГАЖИЛТЫН ТӨСӨЛ', 'ehleegui')]);
-assert.deepEqual(tz.filter((x) => x.virtual).map((x) => `${x.dd_kod}|${x.ajil_uilchilgee}`), ['1.1|1. ТЕЗҮ', '1.1.1|n5', '1.2|2. БАРИЛГАЖИЛТЫН ТӨСӨЛ', '1.2.1|n6']);
+assert.deepEqual(tz.filter((x) => x.registry).map((x) => `${x.dd_kod}|${x.ajil_uilchilgee}`), ['1.1|1. ТЕЗҮ', '1.1.1|n5', '1.2|2. БАРИЛГАЖИЛТЫН ТӨСӨЛ', '1.2.1|n6']);
 const rt = computePlan(buildTree(tz), {}, D('2026-07-02'));
 near(rt.get('1').S, 40, 'ТЭЗҮ — (80 + 0) ÷ 2');
 assert.equal(rt.get('1').E, 40, 'ТЭЗҮ-ийн мөнгө хэвээр');
@@ -100,5 +101,28 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   assert.equal(root(after, tAfter).paid, 100, 'олгосон 60 + 40');
   assert.equal(after.get(tAfter.byCode.get('2')).paid, 100, 'үе шатын мөрд шилжсэн');
   assert.equal(after.get(tAfter.byCode.get('2')).contract, 100);
+}
+/* ── Хүснэгтэд бичих: хуучныг устгаж шинийг нэмнэ; дараа нь зөвхөн зөрснийг засна ── */
+{
+  assert.deepEqual(registryPlanEdits(rows, []), { adds: [], updates: [], deletes: [] }, 'бүртгэл хоосон — юу ч устгахгүй');
+  const e = registryPlanEdits(rows, docs);
+  /* 2.1 (гэрээний огноотой) ба 2.2 (огноотой) — бүртгэлийн мөр биш: устгаад цэвэр нэмнэ; 2.1.1 (жин, хувь, багц л) — засна */
+  assert.deepEqual(e.deletes.sort(), [2, 4]);
+  assert.deepEqual(e.adds.map((a) => a.dd_kod), ['2.1', '2.2', '2.2.1', '2.2.1.1', '2.2.1.2', '2.2.2', '2.2.2.1']);
+  assert.deepEqual(e.updates, [{ objectid: 3, ajil_uilchilgee: 'n1', bagts: null, guitsetgel_huvi: 80 }]);
+  const a = e.adds.find((x) => x.dd_kod === '2.2.1.1');
+  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null },
+    'бүртгэлд байхгүй утга хоосон');
+  assert.ok(!e.deletes.includes(1) && !e.deletes.includes(11) && !e.deletes.includes(20), 'үе шатын мөр, бусад үе шат хөндөгдөхгүй');
+  /* Бичигдсэний дараах байдал: дахин тулгахад засвар алга; төлөв өөрчлөгдвөл ганц мөр засна; баримт хасагдвал мөр устана */
+  let oid = 100;
+  const stored = [...rows.filter((r) => !e.deletes.includes(r.objectid)).map((r) => { const u = e.updates.find((x) => x.objectid === r.objectid); return u ? { ...r, ...u } : r; }),
+    ...e.adds.map((x) => ({ ...x, objectid: oid++, etseg_kod: x.dd_kod.replace(/\.\d+$/, '') }))];
+  assert.deepEqual(registryPlanEdits(stored, docs), { adds: [], updates: [], deletes: [] }, 'таарсан — засваргүй');
+  const e2 = registryPlanEdits(stored, docs.map((d) => (d.oid === 3 ? { ...d, tolov: 'magadlal' } : d)));
+  assert.deepEqual(e2, { adds: [], updates: [{ objectid: stored.find((r) => r.dd_kod === '2.2.1.2').objectid, guitsetgel_huvi: 80 }], deletes: [] });
+  const e3 = registryPlanEdits(stored, docs.filter((d) => d.oid !== 4));
+  assert.deepEqual(e3.deletes.sort(), [stored.find((r) => r.dd_kod === '2.2.2').objectid, stored.find((r) => r.dd_kod === '2.2.2.1').objectid].sort());
+  assert.equal(e3.adds.length, 0);
 }
 console.log('zuragPlan.check: бүгд ✅');
