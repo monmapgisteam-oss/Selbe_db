@@ -24,6 +24,12 @@
   border-right: 1px solid var(--line);
 }
 .shellNavMin { --nav: 54px; }
+/* Хураагдсан цэс дээр хулгана очиход — агуулгын ДЭЭГҮҮР дэлгэгдэнэ (хүрээ шилжихгүй) */
+@media (min-width: 1181px) {
+  .dock { transition: width 0.3s ease; }
+  .dockPeek { width: 244px; z-index: 40; box-shadow: var(--shadow); }
+}
+@media (prefers-reduced-motion: reduce) { .dock { transition: none; } }
 .dockNav {
   flex: 1;
   min-height: 0;

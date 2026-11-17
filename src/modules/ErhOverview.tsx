@@ -29,7 +29,7 @@ import { portalCheckStatus } from '@/lib/portalPresence';
 import { bagtsText, capLabelShort, issueText, roleLabel, type ScopedKind } from './erhLabels';
 import { ERH_PANES, paneLabel } from './capText';
 import { ErhMatrix } from './ErhMatrix';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 export function ErhOverview({
   onGo, onOpenUser, drafts,

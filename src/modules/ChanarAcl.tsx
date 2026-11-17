@@ -19,7 +19,7 @@ import { reviewerClashes } from '@/lib/chanarMs';
 import { useAclRunner } from './useAclRunner';
 import { AclGrid, type GridHolder } from './AclGrid';
 import { portalMissing } from '@/lib/portalPresence';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 /** Үүргийн шошго — зурагдах агшинд (`tr()` модулийн түвшинд хэрэглэхгүй) */
 export const chanarRoleLabel = (r: ChanarRole): string => {

@@ -10,7 +10,7 @@ import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
-import { Section, Stats, Stat, Data, Empty, Bars, Note, TIP_RULE, friendlyError } from '@/components/ui';
+import { Section, Stats, Stat, Data, Empty, Bars, TIP_RULE, friendlyError } from '@/components/ui';
 import { CHART, lineSegments, areaPath } from '@/lib/chartStyle';
 import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useAsync, type Async } from '@/lib/useAsync';
@@ -40,7 +40,7 @@ import { mapPkgKeySet, mapPkgLayers } from '@/lib/pkgAlias';
 import { mnt, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
-  loadCfPlan, cfPlanGaps, cfGapsText, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
+  loadCfPlan, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
   chartTypeCost, chartSourceMerged, xMatch,
   type XDim,
   grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes, effectivePeriod,
@@ -212,19 +212,6 @@ export function GeneralDash({
     }
     return m;
   }, [housingNow, finD, cf]);
-  const cfGapsNote = useMemo(() => {
-    if (cfPlan.state !== 'ready') return null;
-    const gaps = cfPlanGaps(cfPlan.data);
-    if (!gaps) return null;
-    if (cf.state !== 'ready') return cfGapsText(gaps);
-    const byId = new Map<number, CfRow>();
-    for (const r of cf.data) if (r.cfId != null && !byId.has(r.cfId)) byId.set(r.cfId, r);
-    return cfGapsText(
-      gaps,
-      (id) => { const r = byId.get(id); return r ? (r.pkg || r.project || null) : null; },
-      (id) => byId.get(id)?.inTotal ?? false,
-    );
-  }, [cfPlan, cf]);
   const cfCurve = useMemo(
     () => cashflowCurve(
       cfPlanInScope, cfTotal, grainOf(period), period, ipcByMonth,
@@ -468,6 +455,7 @@ export function GeneralDash({
             onOpacity={() => setOpOpen((v) => !v)}
             zone={zone}
             setZone={setZone}
+            fixed
           />
           {opOpen && (
             <OpacityPanel
@@ -546,7 +534,6 @@ export function GeneralDash({
               <Timeline points={cfCurve} grain={grainOf(period)} total={cfTotal} mode={cfMode} />
             ))}
           </Data>
-          {cfGate.state === 'ready' && cfGapsNote && <div role="status" className={g.warnNote}><Note>{cfGapsNote}</Note></div>}
         </Section>
       </div>
       </div>
@@ -1922,7 +1909,6 @@ function SaadCard({
           : (
             <Bars
               color="var(--bad)"
-              limit={8}
               selected={cur}
               onSelect={(k) => {
                 const next = k === cur ? null : k;
@@ -2005,7 +1991,10 @@ function PlanCard({ totals }: { totals: ReturnType<typeof usePlanTotals> }) {
             });
           }
           if (existing != null && fresh != null) {
-            lines.unshift({ key: 'built', label: tr('Одоо байгаа · шинэ барилга'), text: `${num(existing)} · ${num(fresh)}` });
+            lines.unshift(
+              { key: 'built-old', label: tr('Одоо байгаа барилга'), text: num(existing) },
+              { key: 'built-new', label: tr('Шинэ барилга'), text: num(fresh) },
+            );
           }
           const zones = cnt('zone');
           if (zones != null) lines.push({ key: 'zone', label: tr('Хот төлөвлөлтийн бүс'), text: num(zones) });

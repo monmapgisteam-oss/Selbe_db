@@ -12,7 +12,7 @@ import { loadFinData, physNow } from '@/modules/Finance';
 import { num, monthKey } from '@/lib/format';
 import { loadHeadline, type Headline } from '@/lib/live';
 import { ailTotal, ailLabel, type BagtsRow } from '@/lib/execData';
-import o from './dashboardOv.module.css';
+import o from './irgedHead.module.css';
 
 /**
  * Утга хараахан алга үед юу харуулах вэ: ачаалж байвал «…», УНАСАН бол «—».

@@ -511,14 +511,17 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
    * ХЭСГИЙН КАРТУУДЫГ БҮСЭД ХУВААРИЛАХ — картын ТООНООС хамаарна.
    */
   const zones = (() => {
-    const empty = { top: null as ReactNode, left: [] as ReactNode[], right: [] as ReactNode[] };
+    const empty = { top: null as ReactNode, left: [] as ReactNode[], right: [] as ReactNode[], bottom: [] as ReactNode[] };
     if (!open.length) return empty;
     // Passed through to click handlers; detailPanels does not invoke selectFlt during render.
     // eslint-disable-next-line react-hooks/refs
     const cards = detailPanels(open[0], d, flt, selectFlt);
     if (!cards.length) return empty;
-    const rest = cards.slice(1);
+    /* `key="zBottom"`-той карт — хамгийн ДООД талд, зүүнээс баруун хүртэл БҮТЭН өргөнөөр (багануудад орохгүй) */
+    const isBottom = (c: ReactNode) => isValidElement(c) && String(c.key ?? '').includes('zBottom');
+    const rest = cards.slice(1).filter((c) => !isBottom(c));
     return {
+      bottom: cards.filter(isBottom),
       top: cards[0],
       left: rest.filter((_, i) => i % 2 === 0),
       right: rest.filter((_, i) => i % 2 === 1),
@@ -572,6 +575,7 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
             onOpacity={() => setOpOpen((v) => !v)}
             zone={zone}
             setZone={setZone}
+            fixed
           />
 
           {opOpen && (
@@ -630,12 +634,13 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
           хөвөгч glass хувилбарыг хэрэглэгч буцаасан; чартуудын шинэ дизайн —
           Bars, донатын 4 зүсмэгийн дүрэм — хэвээр). */}
       {open.length > 0 && (() => {
-        const { top, left, right } = zones;
+        const { top, left, right, bottom } = zones;
         return (
           <>
             {top && <div className={o.zTop}>{top}</div>}
             {left.length > 0 && <div className={o.zLeft}>{left}</div>}
             {right.length > 0 && <div className={o.zRight}>{right}</div>}
+            {bottom.length > 0 && <div className={o.zBottom}>{bottom}</div>}
           </>
         );
       })()}
@@ -1573,7 +1578,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
 
 
       {/* ОЛГОСОН — санхүүжилт сараар */}
-      <Panel title={tr('Санхүүжилт — сараар')} note={tr('олгосон ₮')}>
+      <Panel key="zBottom-1" title={tr('Санхүүжилт — сараар')} note={tr('олгосон ₮')}>
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
             const pts = (months ?? [])
@@ -1658,6 +1663,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
           `aggregateMonths`). Төлөвлөгөө нь hover-ийн `display`-д хамт гарна — хоёр өнгийн
           муруй давхарлавал хэрэглэгч аль нь аль болохыг өнгөөр л таамаглана. */}
       <Panel
+        key="zBottom-2"
         title={tr('Төлөвлөгөө vs бодит — сараар')}
         note={srcNote(tr('төслийн биет % (хөрөнгө оруулалтын дүнгээр жигнэсэн)'), SRC_SHEET) + (scopeNote ? ` · ${scopeNote}` : '')}
       >
@@ -1775,7 +1781,7 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
           санхүүжилтийн хэдэн хувийг олгосон бэ» гэсэн асуултад хариулдаггүй.
           Хуримтлагдсан муруй нь төлөвлөгөөт хуваарийн эсрэг байрлалыг шууд
           харуулна. */}
-      <Panel title={tr('Санхүүжилтийн хуримтлал — сараар')} note={tr('олгосон / гэрээний нийт дүн')}>
+      <Panel key="zBottom-3" title={tr('Санхүүжилтийн хуримтлал — сараар')} note={tr('олгосон / гэрээний нийт дүн')}>
         <Data q={fin} loading={tr('Татаж байна…')}>
           {() => {
             const ms = (months ?? []).filter((m) => m.label <= nowYm);
@@ -1808,35 +1814,6 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
               };
             });
             return <Series items={pts} height={120} unit="%" line />;
-          }}
-        </Data>
-      </Panel>
-
-      {/* ХОЦРОГДЛЫН ӨӨРЧЛӨЛТ — «одоо хэдэн хувь хоцорч байна» гэдгээс илүү
-          чухал асуулт нь «зөрүү ӨСӨЖ байна уу, буурч байна уу». Нэг агшны
-          зөрүү нь чиглэлийг хэлдэггүй: 20% хоцрогдол буурч байгаа нь 10%
-          хоцрогдол өсөж байгаагаас дээр. */}
-      <Panel
-        title={tr('Хоцрогдлын өөрчлөлт — сараар')}
-        note={srcNote(tr('төл. − бодит, төслийн % (хөрөнгө оруулалтын дүнгээр жигнэсэн)'), SRC_SHEET) + (scopeNote ? ` · ${scopeNote}` : '')}
-      >
-        <Data q={fin} loading={tr('Татаж байна…')}>
-          {() => {
-            const lagMap = new Map(lagSeries.filter((x) => lagJudged(x)).map((x) => [x.month, x]));
-            const pts = (months ?? []).filter((m) => m.label <= nowYm).map((m) => {
-              const x = lagMap.get(m.label) ?? null;
-              return {
-                key: m.label,
-                label: m.label.slice(2),
-                /* Сөрөг зөрүү (төлөвлөгөөнөөс УРД) 0 болно — багана сөрөг урттай
-                   байж чадахгүй тул тэмдгийг `display` барина. */
-                value: x ? Math.max(0, x.gap) : null,
-                display: x ? gapLabel(x.planned, x.actual) : tr('мэдээлэлгүй'),
-              };
-            });
-            return pts.filter((p) => p.value != null).length >= 2
-              ? <Series items={pts} height={120} unit="%" />
-              : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;
           }}
         </Data>
       </Panel>
@@ -1889,19 +1866,23 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
               s2.add(k);
               m.set(ym, s2);
             }));
-            const pts = cfMonthAxis()
-              .filter((ym) => ym <= nowYm)
-              .map((ym) => {
-                const n = m.get(ym)?.size ?? 0;
-                return {
-                  key: ym,
-                  label: ym.slice(2),
-                  value: n,
-                  display: tr('{0} багц', num(n)),
-                };
-              });
-            return pts.length >= 2
-              ? <Series items={pts} height={110} unit={tr('багц')} />
+            /* ХЭВТЭЭ мөр-чарт (2026-11-17, хэрэглэгч: «босоо биш хэвтээ, илүү ойлгомжтой»): сар бүр НЭГ мөр — «тайлагнасан / нийт багц»,
+               зураас нь нийт багцад эзлэх хувь. Хамгийн СҮҮЛИЙН сар дээрээ; анхны бүртгэлээс ӨМНӨХ хоосон саруудыг харуулахгүй. */
+            const all = fd.phys.size;
+            const axis = cfMonthAxis().filter((ym) => ym <= nowYm);
+            const first = axis.findIndex((ym) => (m.get(ym)?.size ?? 0) > 0);
+            const pts = (first < 0 ? [] : axis.slice(first)).reverse().map((ym) => {
+              const n = m.get(ym)?.size ?? 0;
+              return {
+                key: ym,
+                label: tr('{0} оны {1}-р сар', ym.slice(0, 4), String(Number(ym.slice(5, 7)))),
+                value: n,
+                display: tr('{0} / {1} багц', num(n), num(all)),
+                ...(n === 0 ? { hint: tr('Энэ сард нэг ч багц тайлагнаагүй') } : {}),
+              };
+            });
+            return pts.length >= 1
+              ? <Bars color="var(--data)" max={all || 1} items={pts} />
               : <Empty label={tr('Цуваа зурах бүртгэл алга')} />;
           }}
         </Data>

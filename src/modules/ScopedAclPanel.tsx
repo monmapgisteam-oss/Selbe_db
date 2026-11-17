@@ -18,7 +18,7 @@ import { grantHolds } from '@/lib/aclGrid';
 import { useAclRunner } from './useAclRunner';
 import { AclGrid, type GridHolder } from './AclGrid';
 import { portalMissing } from '@/lib/portalPresence';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 
 /** Хуваарилалтын мөр — үүрэг бүр өөрийн багцтай */

@@ -16,7 +16,7 @@ import { portalMissing } from '@/lib/portalPresence';
 import { capDirectOp } from '@/lib/aclOps';
 import { useAclRunner } from './useAclRunner';
 import { capLabel, capNote } from './capText';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 export function PlainCapAcl({ cap }: { cap: CapKey }) {
   const [, tick] = useState(0);

@@ -7,7 +7,7 @@
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 /**
  * Багана — үүрэг эсвэл шат.

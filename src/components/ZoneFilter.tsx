@@ -17,7 +17,7 @@ import {
   ZONE_TYPE_EMPTY,
   ZONE_TYPE_EMPTY_HUE,
 } from '@/lib/services';
-import s from '@/modules/dashboard.module.css';
+import s from './zoneFilter.module.css';
 
 /**
  * БҮСИЙН ШҮҮЛТ — ТУСДАА ХЭРЭГЛҮҮР (2026-08-10).

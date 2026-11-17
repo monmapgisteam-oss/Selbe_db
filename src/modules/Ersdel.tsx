@@ -84,7 +84,7 @@ import * as webMercatorUtils from '@arcgis/core/geometry/support/webMercatorUtil
 import * as projectOperator from '@arcgis/core/geometry/operators/projectOperator';
 import SpatialReference from '@arcgis/core/geometry/SpatialReference';
 import { Overlay, type Pick } from './ersdel/Overlay';
-import o from './gazarOv.module.css';
+import o from './ersdelOv.module.css';
 import { Toggle } from '@/components/Switch';
 import e from './ersdel.module.css';
 

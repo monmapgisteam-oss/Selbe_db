@@ -1,0 +1,217 @@
+/**
+ * «ГАЗАР ЧӨЛӨӨЛӨЛТИЙН ОГНОО» цэсний загвар — энэ хэсгийн ӨӨРИЙН файл (2026-11-17): цэс бүр өөрийн CSS-тэй, нэгийг засахад нөгөө нь хөдлөхгүй. Урьд нь zuragTosol.module.css-ээс авдаг байв.
+ */
+/*
+ * ТЭЗҮ · АЖЛЫН ЗУРАГ ТӨСӨЛ — шатлалтай хүснэгт + навч мөрийн оролт.
+ */
+.wrap {
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.head { flex: none; }
+.h1 { margin: 0; font-size: 1.15rem; font-weight: 600; color: var(--ink); }
+.sub { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-3); max-width: 760px; }
+
+/* ── Карт ── */
+.card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.spacer { flex: 1; }
+
+.search {
+  height: 32px;
+  width: 240px;
+  max-width: 100%;
+  padding: 0 10px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--ink);
+  font-size: 12.5px;
+  outline: none;
+}
+.search:focus {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+}
+
+.ro {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  font-weight: 500;
+}
+.ro {
+  color: var(--ink-3);
+  border: 1px solid var(--line-strong);
+}
+
+/* ── Хүснэгт ── */
+.scroll { overflow: auto; max-height: calc(100dvh - 330px); min-height: 240px; }
+.tbl { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 11.5px; }
+.tbl th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  text-align: left;
+  white-space: nowrap;
+  padding: 7px 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-strong);
+}
+.tbl td {
+  padding: 4px 10px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.phaseRow td {
+  background: color-mix(in srgb, var(--data) 10%, var(--surface));
+  color: var(--ink);
+  font-weight: 600;
+}
+.grpRow td { color: var(--ink); font-weight: 500; }
+.leafRow:hover td { background: var(--surface-2); }
+
+.code { font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.tog,
+.togSp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.tog {
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 10px;
+  cursor: pointer;
+}
+.tog:hover { color: var(--ink); background: var(--surface-2); }
+
+.pkg { font-weight: 600; font-size: 11px; color: var(--ink-3); }
+.nm {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Оролт (.pe-field нягт) ── */
+.inp {
+  height: 28px;
+  padding: 0 8px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.inp:focus {
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+}
+.inp::placeholder { color: var(--ink-3); opacity: 0.7; }
+.inpDate { width: 108px; }
+/* Хадгалаагүй засвар — бүдэг шар дэвсгэр */
+.inpDirty { background: color-mix(in oklab, var(--warn) 12%, var(--bg)); }
+.inpBad,
+.inpBad:focus {
+  border-color: var(--bad);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--bad) 16%, transparent);
+}
+
+.hint {
+  margin: 12px;
+  padding: 24px 12px;
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+}
+
+/* ── Доод мөр ── */
+.bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+.err { font-size: 11px; color: var(--bad-ink); }
+.ok { font-size: 11px; color: var(--good-ink); }
+.save,
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--r);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.save {
+  border: 0;
+  background: var(--workspace-accent);
+  color: var(--workspace-accent-ink);
+}
+.save:hover:not(:disabled) { background: var(--workspace-accent-hover); }
+.ghost {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.ghost:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
+.save:disabled,
+.ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 720px) {
+  .wrap { padding: 16px 16px 32px; }
+  .search { width: 100%; }
+  .scroll { max-height: none; }
+}

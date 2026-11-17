@@ -20,7 +20,7 @@ import { dirtyKeys, listUsers, remoteReady, roleOf, subscribe } from '@/lib/perm
 import { capsRemoteReady } from '@/lib/caps';
 import { isCodeSuper, roleForUser } from '@/lib/services';
 import { portalMissing } from '@/lib/portalPresence';
-import s from './guitsetgel.module.css';
+import s from './erhAcl.module.css';
 
 export function GuitsetgelAcl() {
   const [, tick] = useState(0);

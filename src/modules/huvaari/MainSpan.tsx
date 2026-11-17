@@ -24,7 +24,7 @@ import { cfPctKey, loadPkgPct, monthStart, patchPkgPct, type PkgPct } from '@/li
 import { askConfirm } from '@/lib/confirm';
 import { requireCap } from '@/lib/who';
 import { parseDay } from '@/lib/zuragTosol';
-import s from '@/modules/ipcTable.module.css';
+import s from './mainSpan.module.css';
 import c from '@/modules/cfplan.module.css';
 
 type Row = Record<string, unknown>;

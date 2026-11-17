@@ -26,7 +26,7 @@ import {
   badText, buildEdits, conflicts, effectiveRows, inSection, isEditable, pendingCount, setEdit, textOf,
   type DateIssue, type DateKey, type DatePending,
 } from '@/lib/gazarOgnoo';
-import s from './zuragTosol.module.css';
+import s from './gazarOgnoo.module.css';
 
 type Row = Record<string, unknown>;
 

@@ -1,0 +1,215 @@
+/**
+ * «НЭМЭЛТ АЖИЛ БАТЛАХ» цэсний загвар — энэ хэсгийн ӨӨРИЙН файл (2026-11-17): цэс бүр өөрийн CSS-тэй, нэгийг засахад нөгөө нь хөдлөхгүй. Урьд нь guitsetgel.module.css-ээс авдаг байв.
+ */
+/* ═══════════════════════════════════════════════════════════
+   ГҮЙЦЭТГЭЛИЙН ХЯНАЛТ — олон компанид зориулсан жагсаалтын харагдац. */
+
+.wrap { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.spacer { flex: 1; }
+
+/* ══════════ Толгой ══════════ */
+.head {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 12px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.title { font-size: 13px; font-weight: 600; }
+.sub { font-size: 11.5px; color: var(--ink-3); }
+
+/* ══════════ Шүүлтийн зурвас ══════════ */
+.bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 11px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.search {
+  flex: 1; min-width: 190px; max-width: 340px;
+  height: var(--ctl-h-form); box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: 7px;
+  background: var(--bg); color: var(--ink); font-size: 12.5px;
+}
+.search:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
+.select {
+  height: var(--ctl-h-form); box-sizing: border-box;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong); border-radius: 7px;
+  background: var(--bg); color: var(--ink-2); font-size: 12.5px;
+}
+.select:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
+.total { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.clear { font-size: 12px; color: var(--data-ink); padding: 6px 4px; }
+.clear:hover { text-decoration: underline; }
+
+/* ══════════ Их бие ══════════ */
+.body { flex: 1; min-height: 0; overflow: auto; padding: 16px 22px 48px; width: 100%; }
+.empty { padding: 54px 0; text-align: center; color: var(--ink-3); font-size: 12px; border: 1px dashed var(--line-strong); border-radius: var(--r-lg); }
+.note {
+  margin-bottom: 14px; padding: 10px 13px;
+  border: 1px solid var(--line); border-left: 3px solid var(--data);
+  border-radius: var(--r); background: var(--surface);
+  font-size: 12px; color: var(--ink-2);
+}
+
+/* ══════════ Ажлын жагсаалт ══════════ */
+.list {
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface); overflow: hidden;
+}
+.groupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 15px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: 11px; font-weight: 600; line-height: 1.3; color: var(--ink-3);
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+
+.item { border-bottom: 1px solid var(--line); }
+.item:last-child { border-bottom: 0; }
+
+/* Нэг ажлын мөр — товч, уншихад хялбар */
+.itemHead {
+  display: grid;
+  grid-template-columns: 18px 1fr auto auto auto;
+  align-items: center; gap: 12px;
+  width: 100%; padding: 12px 15px; text-align: left;
+  transition: background 0.12s;
+}
+.itemHead:hover { background: var(--surface-2); }
+@media (max-width: 480px) {
+  .itemHead { grid-template-columns: 18px 1fr auto; row-gap: 6px; }
+  .itemHead > .who { grid-column: 2 / -1; }
+  .itemHead > :nth-child(4) { grid-column: 2; justify-self: start; }
+}
+.chev { color: var(--ink-3); font-size: 0.75rem; }
+
+.who { min-width: 0; }
+/* 2026-08-21 аудит: нэг мөрийн «…» ажлын нэр, багц·компанийг иддэг байв —
+   2 мөрөнд бүтэн (бүтэн бичвэр нь мөн title tooltip-д) */
+.ajil {
+  font-weight: 600; font-size: 13px;
+  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+.meta {
+  font-size: 11.5px; color: var(--ink-3);
+  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
+
+.badge {
+  padding: 1px 7px; border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  font-size: 11px; font-weight: 500; white-space: nowrap;
+}
+.bWait { background: color-mix(in oklab, var(--data-ink) 8%, transparent); border-color: color-mix(in oklab, var(--data) 35%, transparent); color: var(--data-ink); }
+
+/* ══════════ Задалсан хэсэг ══════════ */
+.open { background: var(--surface-2); border-top: 1px solid var(--line); }
+
+.actions { padding: 14px 15px; display: flex; flex-direction: column; gap: 10px; }
+.reasonBox {
+  padding: 9px 12px; border-radius: var(--r);
+  background: color-mix(in oklab, var(--bad) 8%, transparent); border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+  font-size: 12px;
+}
+.reasonLabel { color: var(--ink-3); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 14px; border-radius: var(--r);
+  font-size: 12px; font-weight: 600;
+  transition: filter 0.14s, background 0.12s;
+}
+.btn:hover:not(:disabled) { filter: brightness(1.06); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; filter: none; }
+.ok { background: var(--good); color: var(--bg); }
+.bad { background: var(--bad); color: var(--bg); }
+
+.field {
+  width: 100%; padding: 7px 9px; min-height: var(--ctl-h-form); box-sizing: border-box;
+  border: 1px solid var(--line-strong); border-radius: 7px;
+  background: var(--bg); color: var(--ink);
+  font-size: 12.5px; resize: vertical;
+}
+.field:focus { outline: none; border-color: var(--data); box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent); }
+.error { color: var(--bad-ink); font-size: 12px; }
+.ok { background: color-mix(in oklab, var(--good) var(--tint), transparent); color: var(--good-ink); }
+.bad { background: color-mix(in oklab, var(--bad) var(--tint), transparent); color: var(--bad-ink); }
+
+/* Бүлгийн толгойн баруун талын тоо — нэрээс сулхан, тоо нь эгнэнэ */
+.groupCount {
+  flex: none;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ══════════ Нийтэлсэн гүйцэтгэл ══════════ */
+
+.sub {
+  border-top: 1px solid var(--line);
+  padding: 12px 15px;
+}
+
+/* ══════════════ ӨӨРЧЛӨГДСӨН НҮДНИЙ ЖАГСААЛТ ══════════════ */
+.chList { margin: 10px 0 4px; }
+.chHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+}
+.chCount {
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
+  background: color-mix(in oklab, var(--warn) 8%, transparent);
+  color: var(--warn-ink);
+  font-variant-numeric: tabular-nums;
+}
+.chWrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 132px;
+  overflow: auto;
+}
+.chItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 340px;
+  padding: 4px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.chItem:hover { border-color: color-mix(in oklab, var(--warn) 45%, transparent); color: var(--ink); }
+.chBlk {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--warn) var(--tint), transparent);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.chWork { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chVal { flex: none; font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.chItem:hover .chVal { color: var(--ink); }

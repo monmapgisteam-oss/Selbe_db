@@ -1,0 +1,121 @@
+/**
+ * «НЭГТГЭЛ ГҮЙЦЭТГЭЛ» (Гүйцэтгэл цэс)-ийн хүснэгтийн суурь загвар — энэ хэсгийн ӨӨРИЙН файл (2026-11-17). Урьд нь «Санхүүжилт»-ийн finance.module.css-ээс авдаг байсныг САЛГАВ: цэс бүр өөрийн CSS-тэй.
+ */
+/* ══════════════════ САНХҮҮГИЙН БҮРТГЭЛИЙН ЗАСВАР ══════════════════ */
+
+/* «Засах» · «Нийтлэх» · «Болих» — толгойн баруун талд */
+.editBtn {
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.editBtn:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.editBtn:disabled { opacity: 0.4; cursor: default; }
+
+/* Хадгалагдаагүй засвартай үед «Нийтлэх» ИДЭВХТЭЙ өнгөтэй — 257 баганат
+   хүснэгтэд гүйж яваад товчоо олохгүй байх нь бодит эрсдэл. */
+/* Идэвхтэй «Засах» — дүүргэлт БИШ, өтгөн тунгалаг + бүтэн хүрээ. */
+.editBtnOn {
+  color: var(--data-ink);
+  background: color-mix(in oklab, var(--data) 14%, transparent);
+  border-color: color-mix(in oklab, var(--data) 45%, transparent);
+  font-weight: 600;
+}
+.editBtnOn:hover:not(:disabled) { color: var(--data-ink); background: color-mix(in oklab, var(--data) 20%, transparent); }
+
+/*
+ * ЗАССАН НҮД — нийтлэхээс өмнөх өөрчлөлт.
+ */
+.cellDirty {
+  background: color-mix(in srgb, var(--good) 16%, transparent) !important;
+  box-shadow: inset 0 0 0 1.5px var(--good);
+}
+.cellDirty input { font-weight: 600; color: var(--good-ink); }
+/*
+ * СОНГОГДСОН ТОЛГОЙ — Excel-ийн баганы сонголт.
+ */
+.thPick {
+  box-shadow: inset 0 -3px 0 var(--data), inset -1px 0 0 var(--line-strong);
+  color: var(--ink);
+}
+
+/* НИЙТЛЭХ — хадгалах үйлдэл нь горим солихоос ноцтой тул өөр өнгөтэй */
+.pubBtn {
+  border-color: color-mix(in srgb, var(--good) 55%, transparent);
+  background: color-mix(in srgb, var(--good) 16%, transparent);
+  color: var(--good-ink);
+  font-weight: 600;
+}
+.pubBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--good) 26%, transparent);
+  border-color: var(--good);
+}
+.pubBtn:disabled { opacity: 0.4; }
+
+/* ═══════════ ТОЛГОЙН ЦЭС — БАРУУН ТОВШИЛТООР ═══════════ */
+/* Шүүлт ТАВИГДСАН багана — толгойгоос шууд уншигдана */
+.thMenuVeil { position: fixed; inset: 0; z-index: 40; }
+.thMenu {
+  position: fixed;
+  z-index: 41;
+  width: 264px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+}
+.thMenuHead {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+/* Урт утга цэсийг өргөсгөхгүй — тасалж, бүтнийг hover-оос үзнэ */
+/*
+ * БАГАНЫН ҮЙЛДЛҮҮД — цэсний ХАМГИЙН ДООД бүлэг.
+ */
+.thMenuCols {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 6px 2px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.thMenuCols button {
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.thMenuCols button:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
