@@ -7771,6 +7771,7 @@ const en: Record<string, string> = {
   "Газрын саадтай багц": "Packages with land obstructions",
   "Зөвшөөрөл: {0} хүлээгдэж байна, {1} олгогдоогүй (нийт {2}).": "Permits: {0} pending, {1} refused (total {2}).",
   "Зөвшөөрлийн бүртгэл холбогдоогүй тул зөвшөөрлийн тоо мэдээлэлгүй.": "The permit register is not connected, so permit counts have no data.",
+  "Хуваариас хоцорсон {0} багц, 5%-иас доош явцтай {1} багц; газрын саадын мэдээлэл уншигдаагүй.": "{0} packages behind schedule, {1} packages below 5% progress; land obstruction data could not be loaded.",
   "Хуваариас хоцорсон {0} багц, 5%-иас доош явцтай {1} багц, газрын саадтай {2} багц.": "{0} packages behind schedule, {1} packages below 5% progress, {2} packages with land obstructions.",
   "Чөлөөлөгдөөгүй {0} нэгж талбар холбогдох ажлыг эхлүүлэхэд саад болно.": "{0} uncleared parcels block the start of the related work.",
   "Эрсдэл ба саад": "Risks and obstructions",

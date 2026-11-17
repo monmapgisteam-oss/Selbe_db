@@ -191,7 +191,7 @@ export function computeIpc(rows: readonly Row[], now: number, ref: IpcContractRe
         IPC дугаарын цоорхой ── */
   const issues: KpiIssue[] = [];
   for (const r of rows) {
-    if (!isAuto(r) && hoAmount(r) == null) {
+    if (!isAuto(r) && !isDocRow(r) && hoAmount(r) == null) {
       issues.push({
         tone: 'warn',
         text: tr('{0} · {1} — төлбөрийн дүн бүртгэгдээгүй',

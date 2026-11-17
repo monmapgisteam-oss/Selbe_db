@@ -62,8 +62,10 @@ assert.ok(SRC.includes('a.label < startYm || a.label > endYm'),
   'хуудасны цэг нь хуваарийн мужаас гадуур гарах ёсгүй');
 assert.match(SRC, /gRange/,
   'багцын муруй ч мөн мужаараа тасрах ёстой');
-assert.match(SRC, /gArr\[i\]\.s \+= plan \* sh\.nBld;[\s\S]{0,160}return;/,
+assert.match(SRC, /gArr\[i\]\.s \+= plan \* wg;[\s\S]{0,160}return;/,
   'мужаас гадуурх хуудас НЭГТГЭЛД тоологдсоор байх ёстой');
+assert.match(SRC, /loadBlockWeights\(\)/,
+  'багц/төслийн төлөвлөгөөт хувь блокийн ТӨСВӨӨР жигнэгдэх ёстой (бодит гүйцэтгэлтэй ижил жин)');
 
 /* ── 9. Эвдэрсэн огноо мужаас хасагдана ── */
 assert.match(SRC, /OK_LO|sane\(/, 'эвдэрсэн огнооны хамгаалалт үлдэх ёстой');

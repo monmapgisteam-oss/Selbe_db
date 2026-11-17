@@ -1270,6 +1270,19 @@ async function archiveSubmission(
       const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
       return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
     });
+  /* Бөглөсөн өдрөөр (хожуу жаазны өмнө) бичих жааз: хадгалах хувь нь ӨМНӨХ жаазны утга + нэмэлт (`frameRepair.rebaseBackdated`)
+     — эс бөгөөс хожуу өдрүүдийн ажил тэр өдрийн хувьд шингэнэ. Өмнөх жааз уншигдахгүй бол хуучин зан + анхааруулга. */
+  if (backDated) {
+    try {
+      const { frameDayBefore, rebaseBackdated } = await import('./frameRepair');
+      const prevDay = await frameDayBefore(pkg, sc, msToDay(fillMs));
+      const prevRows = prevDay ? (await loadRows(pkg, sc, prevDay, undefined, { strict: true })).rows : [];
+      rebaseBackdated(frame, loaded.rows, prevRows, sc);
+    } catch (e) {
+      const w = tr('Бөглөсөн өдрийн жаазны хадгалах хувийг өмнөх жаазтай тулгаж чадсангүй ({0}) — админд мэдэгдэнэ үү.', String((e as Error)?.message ?? e));
+      cleanupWarn = cleanupWarn ? `${cleanupWarn} · ${w}` : w;
+    }
+  }
   const added = ov.rows.length - loaded.rows.length;
   if (added < 0)
     return {

@@ -474,7 +474,8 @@ function sankhuuPart(src: SchemSources, pkg: string | null): Part {
     },
     {
       label: tr('Олголтын хувь'),
-      value: paid != null && budget != null && budget > 0 ? (paid / budget) * 100 : null,
+      /* Портал даяар НЭГ тодорхойлолт — гэрээлсэн дүнд (`paidShare`); картын үнэлгээ (`finPaid`) ч үүгээр */
+      value: pkg ? null : fin(fi?.paidPct),
       kind: 'pct',
     },
     {

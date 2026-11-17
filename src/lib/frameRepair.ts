@@ -38,6 +38,58 @@ async function frameDaysAfter(pkg: Pkg, sc: Schema, fromDay: string): Promise<st
   return [...days].sort();
 }
 
+/** `day`-ээс ӨМНӨХ хамгийн сүүлийн жаазны өдөр (алга бол `null`) */
+export async function frameDayBefore(pkg: Pkg, sc: Schema, day: string): Promise<string | null> {
+  const fd = sc.f.fillDate;
+  if (!fd) return null;
+  const j = await agsFetch(`${pkg.url}/query`, {
+    where: `${fd} < timestamp '${day} 00:00:00'`,
+    outStatistics: JSON.stringify([{ statisticType: 'max', onStatisticField: fd, outStatisticFieldName: 'mx' }]),
+    returnGeometry: 'false',
+  });
+  const mx = num((j?.features?.[0]?.attributes as Record<string, unknown> | undefined)?.mx);
+  return mx == null ? null : msToDay(mx);
+}
+
+/**
+ * БӨГЛӨСӨН ӨДРИЙН ЖААЗНЫ ХАДГАЛАХ ХУВЬ (2026-11-16, аудит №8). Хожуу жаазтай үед бөглөсөн өдрийн (D) жааз хамгийн сүүлийн
+ * жаазны (L) мөрүүд + илгээлтээр угсрагддаг тул хадгалах хувь нь «L-ийн хуримтлал + нэмэлт» болж, D-ээс ХОЙШ хийгдсэн бусад
+ * ажил D-ийн хувьд шингэдэг байв (амьд: 10-30-ны жаазанд 43.278%, зөв нь 43.076%). Энд нүд бүрийг
+ *     D = ӨМНӨХ жаазны (P) хадгалсан утга + (угсарсан утга − L-ийн хадгалсан утга)
+ * болгоно — нэмэлт нь л P дээр нэмэгдэнэ; хөндөгдөөгүй нүд P-ийн утгаараа. Хадгалсан утгуудтай (түүхэн цуваа) залгаа үлдэхийн
+ * тулд обьёмоос дахин бодохгүй. Мөрийг ажлын кодоор (`des`) тулгана; P-д байхгүй мөрийн суурь 0. Блокийн гүйцэтгэл, мөрийн
+ * гүйцэтгэл, «одоо байгаа»-г л хөндөнө — обьём, огноо, төлөвлөгөөт хувь хэвээр. `frame[i]` ↔ `loaded[i]` (мөрийн тоо ижил).
+ * @returns өөрчилсөн нүдний тоо
+ */
+export function rebaseBackdated(
+  frame: Record<string, unknown>[],
+  loaded: readonly Pick<SheetRow, 'des' | 'raw'>[],
+  prev: readonly Pick<SheetRow, 'des' | 'raw'>[],
+  sc: Pick<Schema, 'act' | 'f'>,
+): number {
+  const desF = sc.f.des;
+  if (!desF || frame.length !== loaded.length) return 0;
+  const fields = [...sc.act, sc.f.act, sc.f.wE].filter((f): f is string => !!f);
+  const prevOf = new Map<number, Record<string, unknown>>();
+  for (const r of prev) if (r.des != null && !prevOf.has(r.des)) prevOf.set(r.des, r.raw ?? {});
+  let n = 0;
+  frame.forEach((a, i) => {
+    const des = loaded[i].des;
+    if (des == null || num(a[desF]) !== des) return;
+    const p = prevOf.get(des);
+    const l = loaded[i].raw ?? {};
+    for (const f of fields) {
+      const built = num(a[f]);
+      if (built == null) continue;
+      const base = p ? num(p[f]) : null;
+      const delta = built - (num(l[f]) ?? 0);
+      const want = base == null && Math.abs(delta) < 1e-9 ? null : Math.max(0, Math.round(((base ?? 0) + delta) * 1e8) / 1e8);
+      if (off(built, want)) { a[f] = want; n += 1; }
+    }
+  });
+  return n;
+}
+
 /** Тэр өдрийн жаазанд обьём бичигдсэн НАВЧ мөр: ажлын код → обьём бичигдсэн БЛОКИЙН индексүүд (цэвэр — тест) */
 export function touchedCodes(rows: readonly Pick<SheetRow, 'group' | 'des' | 'obyemDay'>[]): Map<number, Set<number>> {
   const out = new Map<number, Set<number>>();

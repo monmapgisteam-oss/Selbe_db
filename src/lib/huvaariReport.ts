@@ -9,7 +9,9 @@ import type { HvPdfRow } from './huvaariPdf';
 
 const day = (ms: number | null | undefined): string =>
   ms == null || !Number.isFinite(ms) ? '' : new Date(ms).toISOString().slice(0, 10);
-const pctOf = (a: number | null): string => (a == null ? '' : `${Math.round(a * 100)}%`);
+/* PDF-тэй (`huvaariPdf`) ИЖИЛ: хэсэгчилсэн ажил 1–99% (99.6% ≠ «100%», 0.4% ≠ «0%») */
+const pctOf = (a: number | null): string => (a == null ? ''
+  : `${a > 0 && a < 1 ? Math.min(99, Math.max(1, Math.round(a * 100))) : Math.round(a * 100)}%`);
 
 const ST_LABEL: Record<Status, () => string> = {
   done: () => tr('дууссан'),

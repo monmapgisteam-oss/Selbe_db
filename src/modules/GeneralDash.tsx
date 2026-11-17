@@ -958,9 +958,9 @@ const BAR_HUE = 'var(--data)';
  */
 const WBS_CHART: { label: string; wbs?: string[]; lvl3?: string; housing?: true }[] = [
   { get label() { return tr('ТЭЗҮ, зураг төсөл'); }, wbs: ['1', '2'] },
-  { get label() { return tr('Сонгон шалгаруулалт'); }, wbs: ['4'] },
+  { get label() { return tr('Сонгон шалгаруулалт'); }, wbs: ['5'] },
   { get label() { return tr('Газар чөлөөлөлт'); }, wbs: ['3'] },
-  { get label() { return tr('Гадна инженерийн шугам сүлжээ'); }, wbs: ['5.2.3'] },
+  { get label() { return tr('Гадна инженерийн шугам сүлжээ'); }, wbs: ['6.2.3'] },
   { get label() { return tr('Гадна цахилгаан хангамж'); }, lvl3: 'Гадна цахилгаан холбоо, дохиолол' },
   { get label() { return tr('Орон сууцны барилга угсралт'); }, housing: true },
 ];
@@ -1029,14 +1029,20 @@ function FinCharts({
         }
         let base = 0;
         let top = 0;
+        /* Жингүй (мөнгөгүй) үе шат: жин 0 ч гүйцэтгэлийн хувь нь БИЙ — тэнцүү жингээр дундажлана */
+        let plain = 0;
+        let n = 0;
         for (const c2 of spec.wbs ?? []) {
           const r = byCode.get(c2);
           const k = r ? wbs.data.calc.get(r.oid) : null;
-          if (!k || k.actPct == null || k.inProject == null) continue;
+          if (!k || k.actPct == null) continue;
+          plain += k.actPct;
+          n += 1;
+          if (k.inProject == null) continue;
           base += k.inProject;
           top += k.inProject * k.actPct;
         }
-        return { spec, base, pctVal: base > 0 ? top / base : null };
+        return { spec, base, pctVal: base > 0 ? top / base : n ? plain / n : null };
       })
       .filter((x) => x.pctVal != null)
       .map((x) => ({

@@ -238,14 +238,14 @@ const cyc = (ergelt, oid, over) => ({
     ...EMPTY,
     failed: [],
     bagts: [bagts({ key: 'b1', label: 'Багц 1' }), bagts({ key: 'b2', label: 'Багц 2' })],
-    finance: { budget: 1000, contractAmount: 900, paid: 300, byBagts: { b1: 600 } },
+    finance: { budget: 1000, contractAmount: 900, paid: 300, paidPct: 33.3, byBagts: { b1: 600 } },
   }, 'sankhuu', null);
 
   const t = d.tables.find((x) => x.title === 'Багцаар');
   assert.equal(t.rows[0][1].v, 600, 'багцын төсөв');
   assert.equal(t.rows[1][1].v, null, 'төсөвгүй багц тэг болов — «санхүүжилтгүй» гэсэн худал зураг');
 
-  assert.equal(d.metrics.find((m) => m.label === 'Олголтын хувь').value, 30, 'олголтын хувь');
+  assert.equal(d.metrics.find((m) => m.label === 'Олголтын хувь').value, 33.3, 'олголтын хувь — гэрээлсэн дүнд (`paidPct`), төсөвт биш');
   assert.equal(d.metrics.find((m) => m.label === 'Үлдэгдэл').value, 700, 'үлдэгдэл');
 
   /* Багц сонгоход олголт задардаггүй тул харьцаа ГАРАХГҮЙ */

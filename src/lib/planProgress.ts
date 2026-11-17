@@ -19,8 +19,8 @@ import { PKGS, loadSchema, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, planCurve, msToDay } from '@/modules/sheet/bagtsSheet';
 import { t as tr } from './i18nCore';
 import { pct } from './format';
-import { bagtsKey, isConstructionNo } from './services';
-import { uniqueBlockCounts } from './blockProgress';
+import { bagtsKey, blockKey, isConstructionNo } from './services';
+import { loadBlockWeights, uniqueBlockCounts, weightOf } from './blockProgress';
 import { countPlanRows, loadPkgPlan, planPctFromMonths } from './huvaariObyem';
 import { register } from './dataBus';
 
@@ -263,7 +263,27 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
   const gAcc = new Map<string, { s: number; n: number }[]>();
   const tAcc: { s: number; n: number }[] = axis.map(() => ({ s: 0, n: 0 }));
 
+  /*
+   * ХУУДАСНЫ ЖИН — блокуудынх нь ТӨСВИЙН нийлбэр (`loadBlockWeights`): бодит гүйцэтгэл (`pkgProgressOf`) ба ТТБ-ийн
+   * төлөвлөгөөт хувьтай ИЖИЛ жин. Багцын муруйд жингүй блок — тухайн БАГЦЫН мэдэгдэж буй жингийн дундаж, төслийн
+   * муруйд — БҮХ блокийн дундаж; жин огт алга (уншигдаагүй) бол блокийн тоо (урьдын зан).
+   */
+  const weights = await loadBlockWeights().catch(() => null);
+  const keysOf = (sh: Sheet) => sh.bld.map((b) => `${sh.group}|${blockKey(b)}`);
+  const allW = weightOf(sheets.flatMap(keysOf), weights);
+  const gW = new Map<string, number>();
+  const tW = new Map<string, number>();
+  for (const g of byGroup.values()) {
+    const wOf = weightOf(g.flatMap(keysOf), weights);
+    for (const sh of g) {
+      gW.set(sh.key, keysOf(sh).reduce((s, k) => s + wOf(k), 0));
+      tW.set(sh.key, keysOf(sh).reduce((s, k) => s + allW(k), 0));
+    }
+  }
+
   for (const sh of sheets) {
+    const wg = gW.get(sh.key) ?? sh.nBld;
+    const wt = tW.get(sh.key) ?? sh.nBld;
     const curves = planCurve(sh.rows, sh.nBld, asOfs, sh.planPct);
     const pts: PlanPoint[] = [];
     const gArr = gAcc.get(sh.group) ?? axis.map(() => ({ s: 0, n: 0 }));
@@ -276,19 +296,19 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
       if (plan == null || !Number.isFinite(plan)) return;
       if (a.label < startYm || a.label > endYm) {
         if (!sh.nUniq) return;
-        gArr[i].s += plan * sh.nBld;
-        gArr[i].n += sh.nBld;
-        tAcc[i].s += plan * sh.nBld;
-        tAcc[i].n += sh.nBld;
+        gArr[i].s += plan * wg;
+        gArr[i].n += wg;
+        tAcc[i].s += plan * wt;
+        tAcc[i].n += wt;
         return;
       }
       pts.push({ label: a.label, pct: plan * 100, vol: sh.volByMonth.get(a.label) ?? null });
       if (!sh.nUniq) return;
-      /* Багц/төслийн нэгтгэлд БЛОКИЙН ТООГООР жигнэнэ. */
-      gArr[i].s += plan * sh.nBld;
-      gArr[i].n += sh.nBld;
-      tAcc[i].s += plan * sh.nBld;
-      tAcc[i].n += sh.nBld;
+      /* Багц/төслийн нэгтгэлд блокийн ТӨСВӨӨР жигнэнэ. */
+      gArr[i].s += plan * wg;
+      gArr[i].n += wg;
+      tAcc[i].s += plan * wt;
+      tAcc[i].n += wt;
     });
     if (pts.length) bySheet.set(sh.key, pts);
     gAcc.set(sh.group, gArr);

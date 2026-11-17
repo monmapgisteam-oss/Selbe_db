@@ -318,7 +318,7 @@ export type SeriesMode = 'peak' | 'latest';
 /**
  * Түлхүүрүүдийн жин (2026-11-04): төсөв; жингүй блок — мэдэгдэж буй жингийн дундаж; жин огт алга бол тэнцүү (`pkgProgressOf`-ийн дүрэм).
  */
-function weightOf(keys: readonly string[], weights: ReadonlyMap<string, number> | null): (k: string) => number {
+export function weightOf(keys: readonly string[], weights: ReadonlyMap<string, number> | null): (k: string) => number {
   let known = 0, kn = 0;
   if (weights) for (const k of keys) { const w = weights.get(k); if (w != null && w > 0) { known += w; kn += 1; } }
   const fill = kn ? known / kn : 1;
