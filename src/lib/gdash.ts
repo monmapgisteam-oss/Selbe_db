@@ -84,27 +84,17 @@ export const CF = {
   cfId: 'cashflow_id',
 } as const;
 
-/** Захирамжийн дүнгийн ЭХ ҮҮСВЭРҮҮД — 3-р чартын ангилал (Category) */
-export const CF_SOURCES = [
-  { field: 'zahiramj_niislel_tusuv', get label() { return tr('Нийслэлийн төсөв'); } },
-  { field: 'zahiramj_nzd_nuuts', get label() { return tr('НЗД нөөц хөрөнгө'); } },
-  { field: 'zahiramj_unet_tsaas', get label() { return tr('Үнэт цаасны хөрөнгө'); } },
-  { field: 'zahiramj_borluulalt_dun', get label() { return tr('Төслийн орлого'); } },
-] as const;
-
 /**
  * ХӨНДЛӨН ШҮҮЛТИЙН ХЭМЖЭЭС — чартын мөр дарахад бусад чартыг нарийсгана.
  */
-export type XDim = 'type' | 'source' | 'note';
+export type XDim = 'type' | 'note';
 
 /**
  * Мөр нь сонголтод НИЙЦЭХ эсэх.
  */
 export function xMatch(r: CfRow, dim: XDim, key: string): boolean {
   if (dim === 'type') return r.type === key;
-  if (dim === 'note') return (r.note || tr('Тайлбаргүй')) === key;
-  const i = CF_SOURCES.findIndex((s) => s.field === key);
-  return i >= 0 && r.src[i] > 0;
+  return (r.note || tr('Тайлбаргүй')) === key;
 }
 
 /** «Гэрээ хийсэн» гэдгийг тодорхойлох утга — 2, 3-р чартын дэд цуваа */
@@ -137,8 +127,6 @@ export type CfRow = {
    * Гүйцэтгэлийн хувь, 0–100.
    */
   progress: number | null;
-  /** Эх үүсвэр бүрийн дүн — `CF_SOURCES[i].field` дарааллаар */
-  src: number[];
   /**
    * ШАТНЫ ГҮЙЦЭТГЭЛ — гэрээ бүрийн 6 шатны хувь (`CASHFLOW_NEW.stages`).
    */
@@ -195,7 +183,6 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
       'ajil_tuvshin3',
       CF.start, CF.end, CF.contract, CF.pkg2, CASHFLOW_NEW.fields.orderNo,
       CF.code1, CF.cfId, CASHFLOW_NEW.fields.budgetOrder,
-      ...CF_SOURCES.map((s) => s.field),
     ],
   }), loadLiveProgressLazy()]);
   /* 2026-11-16: «Төсөлд эзлэх» хадгалсан багана биш — нийтэд орох мөрийн төсөвт өртөг ÷ тэдгээрийн нийлбэр (жин төсвөөр) */
@@ -217,7 +204,6 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     share: inTot(r) && costSum > 0 ? (nOf(r[CF.cost]) / costSum) * 100 : 0,
     decree: nOf(orderTotalOf(r)),
     progress: lp ? lp.S : null,
-    src: CF_SOURCES.map((s) => nOf(r[s.field])),
     stage: Object.fromEntries(Object.values(CASHFLOW_NEW.stages).map((f) => [f, lp ? lp.stages[f] ?? null : null])),
     inTotal: !FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1])),
     cfId,
@@ -490,49 +476,6 @@ export function chartTypeCost(
 /**
  * 2-р чарт — ТӨРӨЛ × төслийн ТОО, дотор нь ГЭРЭЭЛСЭН ажлын тоо.
  */
-
-/**
- * 3-р чарт — ЭХ ҮҮСВЭР × төслийн тоо, дотор нь гэрээлсэн тоо.
- */
-export function chartSourceCount(rows: CfRow[]): SubBar[] {
-  return CF_SOURCES.map((s, i) => {
-    let value = 0;
-    let sub = 0;
-    for (const r of rows) {
-      if (r.src[i] <= 0) continue;
-      value += 1;
-      if (isContracted(r)) sub += 1;
-    }
-    return { key: s.field, label: s.label, value, sub };
-  }).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
-}
-
-/**
- * 3б-р чарт — ЭХ ҮҮСВЭР × МӨНГӨН ДҮН (2026-09-04, хэрэглэгчийн хүсэлт).
- */
-export function chartSourceAmount(rows: CfRow[]): SubBar[] {
-  return CF_SOURCES.map((s, i) => {
-    let value = 0;
-    let sub = 0;
-    for (const r of rows) {
-      value += r.src[i];
-      if (isContracted(r)) sub += r.src[i];
-    }
-    return { key: s.field, label: s.label, value, sub };
-  }).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
-}
-
-/**
- * 3в-р чарт — ЭХ ҮҮСВЭР: МӨНГӨ ба ТОО НЭГ чартад (2026-09-06).
- */
-export function chartSourceMerged(rows: CfRow[]): SubBar[] {
-  const cnt = chartSourceCount(rows);
-  const byKey = new Map(cnt.map((c) => [c.key, c]));
-  return chartSourceAmount(rows).map((a) => {
-    const c = byKey.get(a.key);
-    return { ...a, count: c?.value ?? 0, countSub: c?.sub ?? 0 };
-  });
-}
 
 /** 4-р чарт — ХӨРӨНГӨ ОРУУЛАЛТЫН ДҮНГИЙН ТАЙЛБАР × мөнгөн дүн */
 export function chartNoteAmount(rows: CfRow[]): SubBar[] {

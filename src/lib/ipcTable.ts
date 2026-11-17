@@ -207,13 +207,7 @@ const DETAIL_SPEC: readonly {
     title: () => tr('ТӨСӨВ'),
     fields: [
       [C.budgetTotal, 'money'],
-      [C.budgetBond, 'money'],
-      [C.budgetCity, 'money'],
-      [C.budgetSales, 'money'],
       [C.contractTotal, 'money'],
-      [C.contractBond, 'money'],
-      [C.contractCity, 'money'],
-      [C.contractSales, 'money'],
       [C.saving, 'money'],
     ],
   },
@@ -504,10 +498,6 @@ export type PackageRow = {
   pkg: string;
   contract: number | null;
   order: number | null;
-  bond: number | null;
-  sales: number | null;
-  city: number | null;
-  nzd: number | null;
   paid: number | null;
 };
 
@@ -539,10 +529,6 @@ export function packageRows(
     pkg: String(r[C.pkg] ?? ''),
     contract: n(r[C.contractAmount]),
     order: n(orderTotalOf(r)),
-    bond: n(r.zahiramj_unet_tsaas),
-    sales: n(r.zahiramj_borluulalt_dun),
-    city: n(r.zahiramj_niislel_tusuv),
-    nzd: n(r.zahiramj_nzd_nuuts),
     paid: n(r.olgoson_dun),
   }));
 }

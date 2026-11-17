@@ -24,7 +24,7 @@ export async function loadCfContractRows(): Promise<Row[]> {
   return queryFeatures(CASHFLOW_NEW.url, {
     where: `(${CF.amountNote} IS NOT NULL OR ${CF.paid} IS NOT NULL OR ${CF.advance} IS NOT NULL)`,
     outFields: [CASHFLOW_NEW.oid, CF.pkg, CF.phase, CF.detail, CF.amountNote, CF.budgetOrder, CF.contractAmount, CF.paid, CF.advance, CF.contractor, CF.contractNo,
-      CF.orderDate, CF.orderNo, ...CASHFLOW_NEW.sources.map((s) => s.field)],
+      CF.orderDate, CF.orderNo],
   });
 }
 

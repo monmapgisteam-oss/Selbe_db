@@ -53,7 +53,7 @@ export const EXPECT_TYPE = {
   /* hoSync/compute.ts — бүхэл төгрөгөөр бичдэг, огноо нь DateOnly (мөр) */
   'ho:185': {
     tosov_niit: 'BigInteger', gereet_tosov_niit: 'BigInteger', hemnelt_hetrelt: 'BigInteger',
-    tosov_niislel_tosov: 'Integer', zahiramj1_ognoo: 'DateOnly', guilgee_ognoo: 'DateOnly', on_: 'Integer',
+    zahiramj1_ognoo: 'DateOnly', guilgee_ognoo: 'DateOnly', on_: 'Integer',
   },
   /* projectPlanSync.ts — `guitsetgel_huvi`-д ТОО бичдэг */
   'cf:182': { guitsetgel_huvi: ['Double', 'Single'] },
@@ -89,7 +89,7 @@ export function buildTargets() {
   ]));
   out.push(T('cf:182', 'fields', CASHFLOW_NEW.url, [
     CASHFLOW_NEW.oid, ...strs(CASHFLOW_NEW.fields), ...strs(CASHFLOW_NEW.stages),
-    ...CASHFLOW_NEW.sources.map((s) => s.field), ...strs(CF_MONTH), FIN_XL_TOTAL_CODE_FIELD,
+    ...strs(CF_MONTH), FIN_XL_TOTAL_CODE_FIELD,
   ]));
   out.push(T('negtgel:187', 'fields', TUSUL_NEGTGEL.url, [TUSUL_NEGTGEL.oid, ...strs(TUSUL_NEGTGEL.fields)]));
   out.push(T('negtgel:190', 'fields', BAGTS_NEGTGEL.url, [BAGTS_NEGTGEL.oid, ...strs(BAGTS_NEGTGEL.fields)]));

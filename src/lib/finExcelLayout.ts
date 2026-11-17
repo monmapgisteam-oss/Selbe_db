@@ -26,11 +26,6 @@ export const FIN_XL_ORDER: readonly string[] = [
   'guits_duusah',
   'zahiramj_ognoo',
   'zahiramj_dugaar',
-  'zahiramj_unet_tsaas',
-  'zahiramj_unet_tsaas_huvi',
-  'zahiramj_borluulalt_dun',
-  'zahiramj_niislel_tusuv',
-  'zahiramj_nzd_nuuts',
   'geree_ognoo',
   'geree_dugaar',
   'guitsetgegch',
@@ -66,15 +61,10 @@ const lzGeree_dugaar12 = perLocale(() => ([tr('Гэрээний мэдээлэл
 
 const lzGeree_ognoo11 = perLocale(() => ([tr('Гэрээний мэдээлэл')]));
 
-const lzZahiramj_nzd_nuuts10 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
 
-const lzZahiramj_niislel_tusuv9 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
 
-const lzZahiramj_borluulalt_dun8 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
 
-const lzZahiramj_unet_tsaas_huvi7 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
 
-const lzZahiramj_unet_tsaas6 = perLocale(() => ([tr('Захирамжийн мэдээлэл'), tr('Санхүүжилтийн эх үүсвэр')]));
 
 
 const lzZahiramj_dugaar4 = perLocale(() => ([tr('Захирамжийн мэдээлэл')]));
@@ -94,11 +84,6 @@ export const FIN_XL_GROUP: Record<string, readonly string[]> = {
   get guits_duusah() { return lzDuusah_ognoo2(); },
   get zahiramj_ognoo() { return lzZahiramj_ognoo3(); },
   get zahiramj_dugaar() { return lzZahiramj_dugaar4(); },
-  get zahiramj_unet_tsaas() { return lzZahiramj_unet_tsaas6(); },
-  get zahiramj_unet_tsaas_huvi() { return lzZahiramj_unet_tsaas_huvi7(); },
-  get zahiramj_borluulalt_dun() { return lzZahiramj_borluulalt_dun8(); },
-  get zahiramj_niislel_tusuv() { return lzZahiramj_niislel_tusuv9(); },
-  get zahiramj_nzd_nuuts() { return lzZahiramj_nzd_nuuts10(); },
   get geree_ognoo() { return lzGeree_ognoo11(); },
   get geree_dugaar() { return lzGeree_dugaar12(); },
   get geree_dun() { return [tr('Гэрээний мэдээлэл')]; },
@@ -119,11 +104,6 @@ export const FIN_XL_LEAF: Record<string, string> = {
   get guits_duusah() { return tr('Дуусах'); },
   get zahiramj_ognoo() { return tr('Захирамжийн огноо'); },
   get zahiramj_dugaar() { return tr('Дугаар'); },
-  get zahiramj_unet_tsaas() { return tr('Үнэт цаас'); },
-  get zahiramj_unet_tsaas_huvi() { return tr('Үнэт цаас %'); },
-  get zahiramj_borluulalt_dun() { return tr('Борлуулалт орлого'); },
-  get zahiramj_niislel_tusuv() { return tr('Нийслэлийн төсөвийн хөрөнгөөр'); },
-  get zahiramj_nzd_nuuts() { return tr('НЗД нөөц хөрөнгө'); },
   get geree_ognoo() { return tr('Гэрээ байгуулсан огноо'); },
   get geree_dugaar() { return tr('Гэрээний дугаар'); },
   get guitsetgegch() { return tr('Гүйцэтгэгч'); },
@@ -162,11 +142,6 @@ export const FIN_XL_WIDTH: Record<string, number> = {
   guits_duusah: 108,
   zahiramj_ognoo: 124,
   zahiramj_dugaar: 104,
-  zahiramj_unet_tsaas: 160,
-  zahiramj_unet_tsaas_huvi: 104,
-  zahiramj_borluulalt_dun: 160,
-  zahiramj_niislel_tusuv: 172,
-  zahiramj_nzd_nuuts: 152,
   geree_ognoo: 124,
   geree_dugaar: 170,
   geree_dun: 172,
@@ -219,7 +194,6 @@ export const FIN_XL_PCT: readonly string[] = [
  */
 export const FIN_XL_FRACTION: readonly string[] = [
   'tusul_ezleh_huvi',
-  'zahiramj_unet_tsaas_huvi',
   'urdchilgaa_huvi',
 ];
 

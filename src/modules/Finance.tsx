@@ -52,7 +52,7 @@ import {
   SRC_HUVAARI, type MonthlyMoney,
 } from '@/lib/monthlyMoney';
 import type { LiveProgress, ProjectPlan } from '@/lib/projectPlanInputs';
-import { isAddedWork, moneySums, ownSourceTotal, sourceGap, sourceSums, SOURCE_KEYS, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus, type SourceKey, type SourceSums } from '@/lib/projectPlan';
+import { isAddedWork, moneySums, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus } from '@/lib/projectPlan';
 import {
   MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
   importCutoff, pkgOptions, savePlanValue, saveInTotal, saveInPhase, type FillFilter, type PlanEditKey, type PlanFilter,
@@ -1123,13 +1123,11 @@ const loadProjectPlanLazy = (): Promise<PlanWithLive> =>
   });
 
 type PpKind = 'money' | 'w' | 'date' | 'pct' | 'frac' | 'text';
-/** `k` — `PlanValues`-ийн багана (E…W) эсвэл эх үүсвэрийн талбар (`sourceSums`, 2026-11-03) */
+/** `k` — `PlanValues`-ийн багана (E…W) */
 type PpRawKey = Extract<keyof PlanStoredRow, string>;
 /** Олгосон санхүүжилтийн багана — `moneySums`-аас (2026-11-04) */
-type PpCalcKey = 'mContract' | 'mPaid' | 'mAdvance' | 'mPctTotal' | 'mPctContract' | 'mSrcTot' | 'mSrcGap';
-/** Эх үүсвэрийн нийт · хуваарилаагүй (2026-11-16) — `ownSourceTotal` · `sourceGap` */
-const SRC_CALC: readonly string[] = ['mSrcTot', 'mSrcGap'];
-type PpCol = { k: Exclude<keyof PlanValues, 'status' | 'skip'> | SourceKey | PpRawKey | PpCalcKey; label: string; kind: PpKind; title?: string; raw?: true };
+type PpCalcKey = 'mContract' | 'mPaid' | 'mAdvance' | 'mPctTotal' | 'mPctContract';
+type PpCol = { k: Exclude<keyof PlanValues, 'status' | 'skip'> | PpRawKey | PpCalcKey; label: string; kind: PpKind; title?: string; raw?: true };
 const CALC_KEYS: readonly string[] = ['mContract', 'mPaid', 'mAdvance', 'mPctTotal', 'mPctContract'];
 /**
  * Олгосон санхүүжилтийн баганын утга. `rootE` — Төслийн нийт мөрийн E: «Олгосон хувь (төсөлд)» мөр бүрт
@@ -1145,26 +1143,16 @@ export const ppCalcVal = (k: string, m: MoneySums | undefined, rootE: number | n
   return m.paid != null && m.contract ? (m.paid / m.contract) * 100 : null;
 };
 type PpGroup = { label: string | null; cols: PpCol[] };
-const isSourceKey = (k: PpCol['k']): k is SourceKey => (SOURCE_KEYS as readonly string[]).includes(k);
 /** Хадгалсан утгыг шууд харуулах багана (2026-11-04, хэрэглэгч: «ил гарга») */
 const rawCol = (k: PpRawKey, label: string, kind: PpKind): PpCol => ({ k, label, kind, raw: true });
 
 /**
- * Excel-ийн үндсэн хуудасны баганууд (E…W), дарааллаар нь. Эх үүсвэрийн 4 багана (захирамжийн дүнгийн задаргаа,
- * CASHFLOW_NEW-ийн мөрөнд бичигдсэн; хэрэглэгч 2026-11-03: «ил гарга») — E-ийн ард.
+ * Үндсэн баганууд (E…W), дарааллаар нь. 2026-11-17 (хэрэглэгч): 4 эх үүсвэрийг бүр хасав.
  */
 function ppGroups(): PpGroup[] {
   const pctCol = (k: PpCol['k'], label: string, title?: string): PpCol => ({ k, label, kind: 'pct', title });
   return [
     { label: null, cols: [{ k: 'E', label: tr('Урьдчилсан төсөвт өртөг'), kind: 'money' }] },
-    {
-      label: tr('Эх үүсвэр (захирамж)'),
-      cols: [
-        { k: 'mSrcTot', label: tr('Нийт'), kind: 'money', title: tr('Энэ мөрийн 4 эх үүсвэрийн нийлбэр') },
-        { k: 'mSrcGap', label: tr('Хуваарилаагүй'), kind: 'money', title: tr('Нийт − мөнгөн дүн (доорх багцуудад өгсөн)') },
-        ...CASHFLOW_NEW.sources.map((s) => ({ k: s.field as SourceKey, label: s.label, kind: 'money' as const })),
-      ],
-    },
     { label: null, cols: [{ k: 'F', label: tr('Хэсэгт эзлэх'), kind: 'w' }] },
     { label: null, cols: [{ k: 'G', label: tr('Төсөлд эзлэх'), kind: 'w' }] },
     { label: tr('Гэрээ (хавсралт 5)'), cols: [{ k: 'H', label: tr('Эхлэх'), kind: 'date' }, { k: 'I', label: tr('Дуусах'), kind: 'date' }] },
@@ -1198,7 +1186,6 @@ function ppGroups(): PpGroup[] {
       label: tr('Захирамжийн мэдээлэл'),
       cols: [
         rawCol('ho_dun_zahiramj', tr('Хөрөнгө оруулалтын дүн (захирамж)'), 'money'),
-        rawCol('zahiramj_unet_tsaas_huvi', tr('Үнэт цаасны хувь'), 'frac'),
         rawCol('zahiramj_ognoo', tr('Захирамжийн огноо'), 'date'),
         rawCol('zahiramj_dugaar', tr('Захирамжийн дугаар'), 'text'),
       ],
@@ -1351,27 +1338,16 @@ export function ProjectPlanTable({
     result.values.get(n)?.noTotal || result.values.get(n)?.noPhase ? f.ppDim : '',
   ].filter(Boolean).join(' ');
 
-  /** Эх үүсвэрийн нийлбэр — зөвхөн Төслийн нийт мөрөнд (дээд мөрүүдийн бичсэн утгын нийлбэр) */
-  const srcOf = useMemo(() => sourceSums(tree), [tree]);
-  /* 2026-11-16 (хэрэглэгч): мөр бүрд ӨӨРИЙН бичсэн эх үүсвэр — доод мөрийн утга дээш нийлэхгүй; Төслийн нийт мөр нийлбэр */
-  const srcOwn = (n: PlanNode | undefined, src: SourceSums | undefined, k: SourceKey): number | null =>
-    (!n || n === tree.root ? src?.[k] ?? null : typeof n.row?.[k] === 'number' ? (n.row[k] as number) : null);
-  const srcTotOf = (n: PlanNode | undefined, src: SourceSums | undefined): number | null => {
-    if (n && n !== tree.root) return ownSourceTotal(n.row);
-    const xs = SOURCE_KEYS.map((k) => src?.[k]).filter((x): x is number => x != null);
-    return xs.length ? xs.reduce((a, b) => a + b, 0) : null;
-  };
   /** Олгосон дүн · урьдчилгаа · гэрээний дүн — мөр бүрт нийлбэрээр */
   const moneyOf = useMemo(() => moneySums(tree), [tree]);
   /** Төслийн нийт E — «Олгосон хувь (төсөлд)»-ийн хуваарь мөр бүрт (2026-11-04) */
   const rootE = result.values.get(tree.root)?.E;
-  const valCells = (v: PlanValues | undefined, blk: boolean, src: SourceSums | undefined, n?: PlanNode) => cols.map((c) => {
+  const valCells = (v: PlanValues | undefined, blk: boolean, n?: PlanNode) => cols.map((c) => {
     /* 2026-11-03: нэмсэн ажлын төсөвт өртөг — эцгийн төсвөөс жингээр оноосон (бүдэг налуу; нийлбэрт орохгүй) */
     const alloc = c.k === 'E' && v?.E == null && v?.EA != null && !!n && isAddedWork(n);
     const x = CALC_KEYS.includes(c.k) ? ppCalcVal(c.k, n ? moneyOf.get(n) : undefined, rootE)
-      : SRC_CALC.includes(c.k) ? (c.k === 'mSrcTot' ? srcTotOf(n, src) : sourceGap(srcTotOf(n, src), v?.E))
       : c.raw ? ((n?.row?.[c.k as PpRawKey] as number | string | null | undefined) ?? null)
-      : isSourceKey(c.k) ? srcOwn(n, src, c.k) : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip' | 'noTotal' | 'noPhase' | 'GT'>] : null;
+      : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip' | 'noTotal' | 'noPhase' | 'GT'>] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;
     return (
       <td
@@ -1641,17 +1617,13 @@ export function ProjectPlanTable({
               {PLAN_EDIT_KEYS.map((k) => (
                 <Fragment key={k}>
                   <th className={f.ppHd}>{EDIT_LABEL[k]()}</th>
-                  {k === 'budget' && <>
-                    <th className={f.ppHd} title={tr('Энэ мөрийн 4 эх үүсвэрийн нийлбэр')}>{tr('Эх үүсвэрийн нийт')}</th>
-                    <th className={f.ppHd} title={tr('Нийт − мөнгөн дүн (доорх багцуудад өгсөн)')}>{tr('Хуваарилаагүй')}</th>
-                  </>}
                 </Fragment>
               ))}
               {canEdit && <th className={f.ppHd}>{tr('Үйлдэл')}</th>}
             </tr>
             {filterRow(<>
               <th />
-              {PLAN_EDIT_KEYS.map((k) => <Fragment key={k}>{fillSel(k)}{k === 'budget' && <><th /><th /></>}</Fragment>)}
+              {PLAN_EDIT_KEYS.map((k) => <Fragment key={k}>{fillSel(k)}</Fragment>)}
               {canEdit && <th />}
             </>)}
           </thead>
@@ -1673,17 +1645,8 @@ export function ProjectPlanTable({
                         n={n} k={k} canEdit={canEdit} onSave={onSaveVal} onError={setErr}
                         value={k === 'pct' ? v?.S ?? null
                           : k === 'budget' ? v?.E ?? (isAddedWork(n) ? v?.EA ?? null : null)
-                            : PLAN_EDIT[k].kind === 'money' ? srcOwn(n, undefined, PLAN_EDIT[k].key as SourceKey)
-                              : r[PLAN_EDIT[k].key]}
+                            : r[PLAN_EDIT[k].key]}
                       />
-                      {k === 'budget' && (() => {
-                        const tot = srcTotOf(n, undefined);
-                        const gap = sourceGap(tot, v?.E);
-                        return <>
-                          <td className={f.cellNum}>{tot == null ? '' : num(tot)}</td>
-                          <td className={`${f.cellNum} ${gap != null && gap < 0 ? f.ppGapNeg : ''}`}>{gap == null ? '' : num(gap)}</td>
-                        </>;
-                      })()}
                     </Fragment>
                   ))}
                   {canEdit && (
@@ -1738,7 +1701,7 @@ export function ProjectPlanTable({
               <td className={`${f.ppFz0} ${f.ppNo}`} />
               <td className={`${f.ppFz1} ${f.ppPkg}`} />
               <td className={`${f.ppFz2} ${f.ppName}`}>{tr('Төслийн нийт')}</td>
-              {valCells(rootV, false, srcOf.get(tree.root), tree.root)}
+              {valCells(rootV, false, tree.root)}
             </tr>
             {vis.map((n) => {
               const r = n.row!;
@@ -1749,7 +1712,7 @@ export function ProjectPlanTable({
                   <td className={`${f.ppFz0} ${f.ppNo}`}>{ddOf.get(n)}</td>
                   <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
                   {nameCell(n)}
-                  {valCells(v, !!n.blok, srcOf.get(n), n)}
+                  {valCells(v, !!n.blok, n)}
                 </tr>
               );
             })}

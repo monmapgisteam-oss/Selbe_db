@@ -75,11 +75,6 @@ export type PlanStoredRow = {
   virtual?: true;
   /** Зургийн бүртгэлээс үүсгэсэн мөр (`zuragPlan`) — утгууд нь бүртгэлээс, ТТБ-д гараар засагдахгүй */
   registry?: true;
-  /** Захирамжийн дүнгийн эх үүсвэр (₮) — `CASHFLOW_NEW.sources`; зөвхөн өөрийн мөрд харагдана, нийлбэрлэхгүй (2026-11-03) */
-  zahiramj_unet_tsaas?: number | null;
-  zahiramj_borluulalt_dun?: number | null;
-  zahiramj_niislel_tusuv?: number | null;
-  zahiramj_nzd_nuuts?: number | null;
   /** Олгосон дүн · урьдчилгаа (₮) — IPC-ээс систем бичнэ */
   /** Гэрээний дүн — урьдчилсан төсвөөс (`ho_dun_geree`) тусдаа */
   geree_dun?: number | null;
@@ -87,7 +82,6 @@ export type PlanStoredRow = {
   urdchilgaa_dun?: number | null;
   /** Зөвхөн харуулах баганууд (2026-11-04, хэрэглэгч: «ил гарга») — тооцоонд оролцохгүй */
   ho_dun_zahiramj?: number | null;
-  zahiramj_unet_tsaas_huvi?: number | null;
   tezu?: number | null;
   ajliin_zurag_tusul?: number | null;
   gazar_chuluulult?: number | null;
@@ -99,56 +93,6 @@ export type PlanStoredRow = {
   ho_dungiin_tailbar?: string | null;
   sar_mongo_eh?: string | null;
 };
-
-/** Эх үүсвэрийн талбарууд — `CASHFLOW_NEW.sources`-ийн дараалал (үнэт цаас · төслийн орлого · нийслэлийн төсөв · НЗД нөөц) */
-export const SOURCE_KEYS = ['zahiramj_unet_tsaas', 'zahiramj_borluulalt_dun', 'zahiramj_niislel_tusuv', 'zahiramj_nzd_nuuts'] as const;
-export type SourceKey = (typeof SOURCE_KEYS)[number];
-export type SourceSums = Record<SourceKey, number | null>;
-
-/**
- * ЭХ ҮҮСВЭР (2026-11-03, хэрэглэгч) — мөр бүр, эцэг/бүлгийн мөр, Төслийн нийт бүгд АМЬД нийлбэр: модоор (өөрийнх
- * бичигдсэн мөр › хүүхдүүдийн нийлбэр, «Нийслэл төсөв» хэсэг орохгүй — E-тэй ижил дүрэм); хүүхэд бүгд хоосон бол null.
- * Төслийн нийтийн нийлбэр = төслийн нийт дүн байхаар өгөгдлийг тааруулсан: «Газар чөлөөлөлт» (Д/Д 3) мөрөнд эх үүсвэр
- * бичигдээгүй дүнг 4-т тэнцүү бичсэн (нэг удаагийн өгөгдлийн засвар).
- */
-export function sourceSums(tree: PlanTree): Map<PlanNode, SourceSums> {
-  const roll = new Map<PlanNode, SourceSums>();
-  for (const n of [...tree.nodes].reverse().concat(tree.root)) {
-    const r = n.row;
-    const own = !!r && SOURCE_KEYS.some((k) => num(r[k]) != null);
-    const v = {} as SourceSums;
-    for (const k of SOURCE_KEYS) {
-      if (own) { v[k] = num(r![k]); continue; }
-      let s = 0, any = false;
-      for (const c of n.children) {
-        if (c.outside) continue;
-        const x = roll.get(c)?.[k];
-        if (x != null) { s += x; any = true; }
-      }
-      v[k] = any ? s : null;
-    }
-    roll.set(n, v);
-  }
-  return roll;
-}
-
-/**
- * МӨРИЙН ӨӨРИЙН 4 ЭХ ҮҮСВЭРИЙН НИЙЛБЭР (2026-11-16, хэрэглэгч: «дээд мөрөнд 4 эх үүсвэрийг бичнэ, нийт нь тэдгээрийн нийлбэр;
- * багцын мөнгө дээш нийлж эх үүсвэр болохгүй») — доод мөрөөс нийлүүлэхгүй. Нэг ч эх үүсвэр бичигдээгүй бол null.
- */
-export function ownSourceTotal(r: PlanStoredRow | null | undefined): number | null {
-  if (!r) return null;
-  let s = 0, any = false;
-  for (const k of SOURCE_KEYS) { const v = num(r[k]); if (v != null) { s += v; any = true; } }
-  return any ? s : null;
-}
-
-/**
- * ХУВААРИЛААГҮЙ ҮЛДЭГДЭЛ = эх үүсвэрийн нийт − мөнгөн дүн (E: өөрийнх › доод мөрүүдийн нийлбэр). Багцуудад мөнгө бичих
- * тусам багасна; сөрөг = эх үүсвэрээс илүү хуваарилсан. Эх үүсвэргүй мөрд null.
- */
-export const sourceGap = (total: number | null, e: number | null | undefined): number | null =>
-  (total == null ? null : total - (e ?? 0));
 
 /**
  * ТӨСЛИЙН НИЙТ ТӨСӨВ — Төслийн нийт мөрийн E (`computePlan`-ийн дүрэм: өөрийнх › хүүхдүүдийн нийлбэр), БҮХЭЛ ₮.

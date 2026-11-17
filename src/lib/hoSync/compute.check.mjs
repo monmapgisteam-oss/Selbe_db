@@ -49,7 +49,7 @@ assert.deepEqual(p.matched.get('Багц-8'), [6], 'ТЭЗҮ гэрээ ↔ зу
 assert.deepEqual(p.unmatched, ['Багц-99'], 'мөргүй гэрээ хөндөгдөхгүй; кодгүй мөр орохгүй');
 
 const u11 = p.updates.find((u) => u.objectid === 11);
-assert.deepEqual(u11, { objectid: 11, gereet_tosov_niit: 900, tosov_borluulalt: 400, hemnelt_hetrelt: 100 }, 'зөрсөн талбар л; gereet_unet_tsaas · tosol_ner хөндөгдөхгүй');
+assert.deepEqual(u11, { objectid: 11, gereet_tosov_niit: 900, hemnelt_hetrelt: 100 }, 'зөрсөн талбар л; эх үүсвэрийн талбар (tosov_borluulalt …) · tosol_ner хөндөгдөхгүй (2026-11-17)');
 const u12 = p.updates.find((u) => u.objectid === 12);
 assert.equal(u12.tosov_niit, 1000, 'гэрээний бүх мөрөнд давтаж бичнэ');
 assert.equal(u12.gereet_tosov_niit, 900);
@@ -62,8 +62,7 @@ const big = hoFromCf([cf({ zahiramj_dugaar: 'А/1', ho_dun_zahiramj: 1000.6, ger
 assert.equal(big.tosov_niit, 1001);
 assert.equal(big.gereet_tosov_niit, 900);
 assert.equal(big.hemnelt_hetrelt, 100, 'хэмнэлт бүхэл');
-assert.ok(!('tosov_niislel_tosov' in big), '3.8 тэрбум Integer-т багтахгүй → хөндөхгүй');
-assert.equal(hoFromCf([cf({ zahiramj_niislel_tusuv: 533_070_000 })]).tosov_niislel_tosov, 533_070_000);
+assert.ok(!('tosov_niislel_tosov' in big) && !('tosov_unet_tsaas' in big) && !('tosov_borluulalt' in big), '4 эх үүсвэр HO руу бичигдэхгүй (2026-11-17)');
 assert.equal(p.updates.find((u) => u.objectid === 13), undefined, 'нийлбэр таарч байвал бичихгүй (10+20=30 · 6+12=18 · 4+8=12)');
 assert.equal(p.updates.find((u) => u.objectid === 14), undefined, 'Багц-8 таарч байна');
 assert.equal(p.updates.find((u) => u.objectid === 15), undefined);
@@ -264,6 +263,6 @@ assert.equal(p.updates.find((u) => u.objectid === 16), undefined);
 const w = hoFromCf([cfRows[3], cfRows[4]]);
 assert.equal(w.tosov_niit, 30);
 assert.equal(w.guitsetgegch, 'УСУГ', 'бичвэр — эхний утгатай мөрөөс');
-assert.equal(w.tosov_niislel_tosov, null, 'бичигдээгүй эх үүсвэр null (0 биш)');
+assert.ok(!('tosov_niislel_tosov' in w), 'эх үүсвэрийн талбар гарахгүй');
 
 console.log('hoSync.compute: ok');

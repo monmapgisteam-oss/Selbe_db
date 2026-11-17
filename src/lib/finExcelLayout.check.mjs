@@ -17,7 +17,7 @@ console.log('\n1. ХЭМЖЭЭС — 0–100 ба 0–1 жагсаалт зөр�
 check('FIN_XL_PCT нь амьдаар 0–100 байдаг 6 талбар', [...FIN_XL_PCT].sort().join(',')
   === ['guitsetgel_huvi', 'tezu', 'ajliin_zurag_tusul', 'gazar_chuluulult', 'zuwshuurul', 'songon_shalgaruulalt'].sort().join(','));
 check('urdchilgaa_huvi (0–1) FIN_XL_PCT-д БАЙХГҮЙ', !FIN_XL_PCT.includes('urdchilgaa_huvi'));
-check('FIN_XL_FRACTION = төсөлд эзлэх + үнэт цаасны + урьдчилгааны хувь', FIN_XL_FRACTION.join(',') === 'tusul_ezleh_huvi,zahiramj_unet_tsaas_huvi,urdchilgaa_huvi');
+check('FIN_XL_FRACTION = төсөлд эзлэх + урьдчилгааны хувь (үнэт цаасны хувь 2026-11-17-нд хасагдсан)', FIN_XL_FRACTION.join(',') === 'tusul_ezleh_huvi,urdchilgaa_huvi');
 check('хоёр жагсаалт огтлолцохгүй', FIN_XL_FRACTION.every((f) => !FIN_XL_PCT.includes(f)));
 check('жин нь ХО дүн', FIN_XL_PCT_WEIGHT === 'ho_dun_geree');
 
@@ -47,12 +47,12 @@ console.log('\n2. АМЬД УТГААР — бүтээгдэхүүний фун�
   check('0–100 мужид', mean * 100 > 0 && mean * 100 <= 100);
   check('бутархай талбар = FIN_XL_FRACTION', FIN_XL_FRACTION.every(finXlIsFraction) && !FIN_XL_PCT.some(finXlIsFraction));
   check('тоон шүүлтийн хэмжээс: бутархай 100, 0–100 хувь · мөнгө 1',
-    finXlScale('urdchilgaa_huvi') === 100 && finXlScale('zahiramj_unet_tsaas_huvi') === 100
+    finXlScale('urdchilgaa_huvi') === 100 && finXlScale('tusul_ezleh_huvi') === 100
     && finXlScale('guitsetgel_huvi') === 1 && finXlScale(FIN_XL_PCT_WEIGHT) === 1);
   /* засвар (`editTextF`) ×100 → хадгалах (`parseFinanceShare`) ÷100 */
   check('засварын текст ×100: 0.2 → «20», 0.164 → «16.4», 0.07 → «7» (хөвөгч сүүлгүй)',
     finXlEditText(0.2, 'urdchilgaa_huvi') === '20' && finXlEditText(0.164, 'urdchilgaa_huvi') === '16.4'
-    && finXlEditText(0.07, 'zahiramj_unet_tsaas_huvi') === '7');
+    && finXlEditText(0.07, 'tusul_ezleh_huvi') === '7');
   check('засварын текст: 0–100 талбар · тоо биш → null (`editText`-ийн зам)',
     finXlEditText(55, 'guitsetgel_huvi') === null && finXlEditText(null, 'urdchilgaa_huvi') === null
     && finXlEditText('0.2', 'urdchilgaa_huvi') === null && finXlEditText(Number.NaN, 'urdchilgaa_huvi') === null);

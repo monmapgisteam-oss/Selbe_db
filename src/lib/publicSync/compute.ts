@@ -4,14 +4,14 @@
  * selbecity.mn-д өгөх 6 хүснэгтийн мөрүүдийг системийн ИЖИЛ эхээс бодно (өөр томьёо БИШ):
  *   · явц — «Төсөл төлөвлөгөө биелэлт» (`computePlan`): төслийн нийт = үндэс мөрийн S, барилга угсралт = тэр үе
  *     шатны S, багц/блок = модны мөр; инженерийн багц — бөглөх хуудасны бүлэг (gun 1);
- *   · санхүү — үндэс мөрийн E (урьдчилсан төсөвт өртөг), 4 эх үүсвэр (`sourceSums`), HO-ийн олгосон (`sumPaid`);
+ *   · санхүү — үндэс мөрийн E (урьдчилсан төсөвт өртөг), HO-ийн олгосон (`sumPaid`);
  *   · хүн хүч — ХАБЭА маягтын сүүлийн өдөр (`groupDays`), компани бүр + нийт;
  *   · газар — нэгж талбарын тоо/чөлөөлсөн, зөвхөн төслийн нийтээр (`loadLandStatus`, 2026-11-11);
  *   · нийгэм — модны «Барилга угсралт ажил» салааны «Нийгмийн дэд бүтэц» хэсгийн хүүхдүүд; эх үүсвэр — `SOURCE_FS`.
  * Хэрэглэгчийн дүрэм: хэмжилтгүй явц = 0 (null биш); архивгүй — мөр дарж бичигдэнэ; `tolov` талбар байхгүй.
  */
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
-import { moneySums, sourceSums, type PlanNode, type PlanValues } from '@/lib/projectPlan';
+import { moneySums, type PlanNode, type PlanValues } from '@/lib/projectPlan';
 import type { WorkforceDay } from '@/lib/ceo/workforce';
 import type { LandStatus } from '@/lib/land';
 import { HABEA, SOURCE_FS, buildingKey, isPkgRange, pkgKeyOf } from '@/lib/services';
@@ -109,17 +109,12 @@ export function hunHuchRows(day: WorkforceDay | null, companies: readonly { sfx:
 export function sanhuuRows(plan: ProjectPlan): PubRow[] {
   const root = plan.tree.root;
   const E = plan.result.values.get(root)?.E ?? null;
-  const src = sourceSums(plan.tree).get(root);
   /* 2026-11-04: «Төсөл төлөвлөгөө биелэлт»-ийн `olgoson_dun` нийлбэр — бүх хуудастай нэг тоо */
   const paid = moneySums(plan.tree).get(root)?.paid ?? null;
   /* 2026-11-09: мөнгө бүхэл төгрөгөөр (2,495,841,880,529.33 → 2,495,841,880,529) — нийтийн хүснэгтэд бутархай ₮ бичихгүй */
   const tg = (v: number | null | undefined): number | null => (v == null || !Number.isFinite(v) ? null : Math.round(v));
   return [{
     niit_tosov_dun: tg(E),
-    tosov_unet_tsaas: tg(src?.zahiramj_unet_tsaas),
-    tosov_tosliin_orlogo: tg(src?.zahiramj_borluulalt_dun),
-    tosov_niislel_tosov: tg(src?.zahiramj_niislel_tusuv),
-    tosov_nzd_nuuts: tg(src?.zahiramj_nzd_nuuts),
     olgoson_sanhuujilt_dun: tg(paid),
     olgoson_huvi: E && paid != null ? Math.round((paid / E) * 1000) / 10 : null,
   }];

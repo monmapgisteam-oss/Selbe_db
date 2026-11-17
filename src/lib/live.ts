@@ -28,7 +28,6 @@ import {
 import { dayKey } from '@/lib/format';
 import { FIN_XL_CHART_FIELDS, finXlChartCat, finXlInTotal } from '@/lib/finExcelLayout';
 import { sumBy, tally } from '@/lib/agg';
-import type { SourceKey } from '@/lib/projectPlan';
 import { register, type DataKey } from '@/lib/dataBus';
 
 /**
@@ -74,8 +73,6 @@ export type Budget = {
   orderTotal: number;
   /** Гэрээлсэн дүн, ₮ — `finXlInTotal` ∧ `note === CONTRACTED` мөрийн `geree_dun` */
   contract: number;
-  /** Санхүүжилтийн эх үүсвэр — задраагүй үлдэгдэлтэй */
-  sources: { key: string; label: string; value: number }[];
   /**
    * «Нийслэлийн төсвөөс санхүүжих» мөрүүд — төслийн нийт дүнд ОРДОГГҮЙ (нийгмийн байгууламж), ТУСАД НЬ харуулна
    * (2026-11-03, хэрэглэгч: «Нийслэлийн төсвөөс санхүүжих утгууд тусдаа гарах хэрэгтэй»). `amount` — захирамжийн дүн, ₮.
@@ -112,13 +109,12 @@ export const loadBudget = cached<Budget>(async () => {
     where: CF_WORK_WHERE,
     outFields: [
       CASHFLOW_NEW.oid, ...FIN_XL_CHART_FIELDS, CF.pkg2, CF.amountNote, CF.budget, CF.contractAmount,
-      CF.budgetOrder, CF.orderNo, ...CASHFLOW_NEW.sources.map((s) => s.field),
+      CF.budgetOrder, CF.orderNo,
     ],
   });
   const numOf = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const g: Row[] = raw.map((r) => ({
     ...r, b: numOf(r[CF.budget]), c: numOf(r[CF.contractAmount]), n: 1,
-    ...Object.fromEntries(CASHFLOW_NEW.sources.map((s, i) => [`s${i}`, numOf(r[s.field])])),
   }));
 
   /* 2026-11-04: захирамжийн нийт — `zahiramj_dugaar`-тай мөрийн `ho_dun_zahiramj` (`orderTotalOf`-тай ижил дүрэм) */
@@ -128,21 +124,16 @@ export const loadBudget = cached<Budget>(async () => {
   const sumOf = (rows: readonly Row[], f: string) => rows.reduce((a, r) => a + Number(r[f] ?? 0), 0);
   const orderTotal = sumOf(gOrder.filter(finXlInTotal), 'o');
   const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
-  const { loadProjectSourceTotals, loadProjectBudgetTotal } = await import('@/lib/projectPlanInputs');
-  const [ps, official] = await Promise.all([loadProjectSourceTotals(), loadProjectBudgetTotal()]);
+  const { loadProjectBudgetTotal } = await import('@/lib/projectPlanInputs');
+  const official = await loadProjectBudgetTotal();
   /* 2026-11-04: нийт төсөв = «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт E (бүхэл ₮); мөр алга бол ажлын мөрийн нийлбэр */
   const total = official ?? Math.round(sumOf(inTotal, 'b'));
-  const named: { key: string; label: string; value: number }[] = CASHFLOW_NEW.sources
-    .map((s) => ({ key: s.field as string, label: s.label as string, value: ps[s.field as SourceKey] ?? 0 }))
-    .filter((x) => x.value > 0)
-    .sort((a, b) => b.value - a.value);
   const city = g.filter((r) => !finXlInTotal(r) && CITY_FUNDED_RE.test(cfLabel(r[CF.amountNote])));
 
   return {
     total,
     orderTotal,
     contract,
-    sources: named,
     cityOutside: { amount: sumOf(gOrder.filter((r) => !finXlInTotal(r) && CITY_FUNDED_RE.test(cfLabel(r[CF.amountNote]))), 'o'), n: city.reduce((a, r) => a + Number(r.n ?? 0), 0) },
     byType: tally(
       g,

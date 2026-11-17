@@ -177,10 +177,6 @@ function PackageTable({ rows }: { rows: readonly PackageRow[] }) {
   const COLS: { k: keyof PackageRow; label: string }[] = [
     { k: 'contract', label: tr('Гэрээний дүн') },
     { k: 'order', label: tr('Захирамжийн дүн') },
-    { k: 'bond', label: tr('Үнэт цаас') },
-    { k: 'sales', label: tr('Төслийн орлого') },
-    { k: 'city', label: tr('Нийслэлийн төсөв') },
-    { k: 'nzd', label: tr('НЗД нөөц') },
     { k: 'paid', label: tr('Олгосон дүн') },
   ];
   const total = (k: keyof PackageRow): number | null => {

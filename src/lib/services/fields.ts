@@ -134,13 +134,7 @@ export const HO_IPC = {
     contractNo: "geree_dugaar",     // Гэрээний дугаар (37/45)
     amendment: "geree_nemelt",      // «Үгүй» | «Тийм» (37/45)
     budgetTotal: "tosov_niit",      // Нийт төсөвт өртөг /Захирамж/
-    budgetBond: "tosov_unet_tsaas",
-    budgetCity: "tosov_niislel_tosov",
-    budgetSales: "tosov_borluulalt",
     contractTotal: "gereet_tosov_niit",  // Гэрээ байгуулагдсан төсөв
-    contractBond: "gereet_unet_tsaas",
-    contractCity: "gereet_niislel_tosov",
-    contractSales: "gereet_borluulalt",
     saving: "hemnelt_hetrelt",
   },
   /** ТӨЛБӨРИЙН түвшний талбар — мөр БҮРД өөр */
@@ -242,8 +236,6 @@ export const CASHFLOW_NEW = {
     endDate: "guits_duusah",          // Төлөвлөгөөт хугацаа дуусах
     orderDate: "zahiramj_ognoo",      // Захирамжийн огноо
     orderNo: "zahiramj_dugaar",       // Захирамжийн дугаар
-    /** Үнэт цаасны эх үүсвэрийн эзлэх хувь (0–1 бутархай) */
-    share: "zahiramj_unet_tsaas_huvi",
     client: "zahialagch_hynalt_baig",    // Захиалагчийн хяналтын байгууллага
     contractor: "guitsetgegch",          // Гүйцэтгэгч байгууллага
     contractDate: "geree_ognoo",
@@ -291,15 +283,6 @@ export const CASHFLOW_NEW = {
     tender: "songon_shalgaruulalt",
     build: "guitsetgel_huvi",
   },
-  /**
-   * Санхүүжилтийн эх үүсвэр — захирамжийн дүнгийн задаргаа.
-   */
-  sources: [
-    { field: "zahiramj_unet_tsaas", get label() { return tr('Үнэт цаас'); }, color: "#3387b8" },
-    { field: "zahiramj_borluulalt_dun", get label() { return tr('Төслийн орлого'); }, color: "#22c55e" },
-    { field: "zahiramj_niislel_tusuv", get label() { return tr('Нийслэлийн төсөв'); }, color: "#f59e0b" },
-    { field: "zahiramj_nzd_nuuts", get label() { return tr('НЗД нөөц'); }, color: "#a855f7" },
-  ],
 } as const;
 
 /**

@@ -1503,7 +1503,6 @@ div.bName:hover { background: var(--surface-2); }
 /* 2026-11-03: нэмсэн ажлын оноосон төсөв (эцгийн төсөв × жин) */
 .ppAlloc { color: var(--ink-3); font-style: italic; }
 /* Хуваарилаагүй сөрөг — эх үүсвэрээс илүү хуваарилсан (2026-11-16) */
-.ppGapNeg { color: var(--bad-ink); font-weight: 600; }
 /* 2026-11-04: хадгалсан бичвэрийн багана — урт утга нэг мөрөнд, бүтэн нь title-д */
 .ppText { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ppCellBtn {

@@ -17,11 +17,6 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
   get ho_dungiin_tailbar() { return tr('Хөрөнгө оруулалтын дүнгийн тайлбар'); },
   get zahiramj_ognoo() { return tr('Захирамжийн огноо'); },
   get zahiramj_dugaar() { return tr('Захирамжийн дүн дугаар'); },
-  get zahiramj_unet_tsaas() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр үнэт цаасны хөрөнгө'); },
-  get zahiramj_unet_tsaas_huvi() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр нийт хөрөнгөд эзлэх'); },
-  get zahiramj_borluulalt_dun() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр төслийн орлого'); },
-  get zahiramj_niislel_tusuv() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр нийслэлийн төсөвийн'); },
-  get zahiramj_nzd_nuuts() { return tr('Захирамжийн дүн хөрөнгө оруулалтын эх үүсвэр НЗД нөөц хөрөнгө'); },
   get zahialagch_hynalt_baig() { return tr('Захиалагчийн хяналт хийх байгууллага'); },
   get geree_dun() { return tr('Гэрээний дүн'); },
   get guitsetgegch() { return tr('Гүйцэтгэгч байгууллага'); },
@@ -63,14 +58,8 @@ export const FIN_FIELD_LABELS: Record<string, string> = {
   get geree_nemelt() { return tr('Гэрээнд нэмэлт өөрчлөлт орсон эсэх'); },
   /* Нийт төсөвт өртөг /Захирамж/ — дөрвөн эх үүсвэр */
   get tosov_niit() { return tr('Төсөвт өртөг · нийт'); },
-  get tosov_unet_tsaas() { return tr('Төсөвт өртөг · үнэт цаас'); },
-  get tosov_niislel_tosov() { return tr('Төсөвт өртөг · нийслэлийн төсөв'); },
-  get tosov_borluulalt() { return tr('Төсөвт өртөг · борлуулалтын орлого'); },
   /* Гэрээ байгуулагдсан төсөв — ижил дөрвөн эх үүсвэр */
   get gereet_tosov_niit() { return tr('Гэрээт төсөв · нийт'); },
-  get gereet_unet_tsaas() { return tr('Гэрээт төсөв · үнэт цаас'); },
-  get gereet_niislel_tosov() { return tr('Гэрээт төсөв · нийслэлийн төсөв'); },
-  get gereet_borluulalt() { return tr('Гэрээт төсөв · борлуулалтын орлого'); },
   get hemnelt_hetrelt() { return tr('Хэмнэлт / хэтрэлт'); },
   /* Санхүүжилт ба гүйцэтгэлийн төсвийн зарцуулалт */
   get on_() { return tr('Он'); },

@@ -576,13 +576,13 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             </tbody>
           </table>
         </div>
-        <h3>{tr('Гэрээ, санхүүжилтийн эх үүсвэр')}</h3>
+        <h3>{tr('Гэрээ, санхүүжилт')}</h3>
         <div className={s.tableWrap}>
           <table className={s.table}>
             <thead><tr>
               <th>{tr('Код')}</th><th>{tr('Гүйцэтгэгч')}</th><th>{tr('Гэрээ / захирамж')}</th>
               <th className={s.num}>{tr('Батлагдсан төсөв')}</th><th className={s.num}>{tr('Гэрээний дүн')}</th><th className={s.num}>{tr('Хэмнэлт')}</th>
-              <th className={s.num}>{tr('Нийслэлийн төсөв')}</th><th className={s.num}>{tr('Борлуулалтын орлого')}</th><th className={s.num}>{tr('Хүлээгдэж буй')}</th>
+              <th className={s.num}>{tr('Хүлээгдэж буй')}</th>
             </tr></thead>
             <tbody>
               {(r.ipc?.contracts ?? []).map((c) => {
@@ -597,13 +597,11 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
                     <td className={s.num}>{mnt(c.budgetTotal)}</td>
                     <td className={s.num}>{mnt(c.contractTotal)}</td>
                     <td className={s.num}>{mnt(c.saving)}</td>
-                    <td className={s.num}>{mnt(numOf(pick(CF.budgetCity)))}</td>
-                    <td className={s.num}>{mnt(numOf(pick(CF.budgetSales)))}</td>
                     <td className={s.num}>{pend.length ? mnt(pend.reduce((a, b) => a + b, 0)) : '—'}</td>
                   </tr>
                 );
               })}
-              {!r.ipc && <EmptyRow cols={9} />}
+              {!r.ipc && <EmptyRow cols={7} />}
             </tbody>
           </table>
         </div>

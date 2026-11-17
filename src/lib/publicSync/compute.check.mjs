@@ -153,11 +153,8 @@ check('sanhuu — E, эх үүсвэр, олгосон, хувь', () => {
   const E = plan.result.values.get(plan.tree.root).E;
   assert.equal(s.niit_tosov_dun, E);
   assert.equal(E, 1150, 'E = 100 + 1000 + 50 — «Нийслэл төсөв» хэсэг (20 + 7) эцгийн нийлбэрт орохгүй (Excel E718)');
-  /* эх үүсвэр — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр (мөрүүдийн амьд нийлбэр) */
-  assert.equal(s.tosov_unet_tsaas, 630);
-  assert.equal(s.tosov_tosliin_orlogo, 420);
-  assert.equal(s.tosov_niislel_tosov, 100);
-  assert.equal(s.tosov_nzd_nuuts, null, 'бичигдээгүй эх үүсвэр null');
+  /* 2026-11-17 (хэрэглэгч): 4 эх үүсвэрийг бүр хасав — нийтийн хүснэгтэд бичигдэхгүй */
+  for (const k of ['tosov_unet_tsaas', 'tosov_tosliin_orlogo', 'tosov_niislel_tosov', 'tosov_nzd_nuuts']) assert.ok(!(k in s), `${k} бичигдэв`);
   assert.equal(s.olgoson_sanhuujilt_dun, 400, 'урьдчилгаа + гүйцэтгэл');
   assert.equal(s.olgoson_huvi, Math.round((400 / 1150) * 1000) / 10);
   assert.ok(!('geree_dun' in s), 'гэрээний дүн өгөхгүй');
@@ -165,11 +162,10 @@ check('sanhuu — E, эх үүсвэр, олгосон, хувь', () => {
 check('2026-11-09: sanhuu — мөнгө бүхэл төгрөг (амьд E 2,495,841,880,529.33 бичигддэг байв)', () => {
   const frac = rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, ho_dun_geree: 1000.33, zahiramj_unet_tsaas: 600.6, olgoson_dun: 400.4 } : r));
   const [s] = sanhuuRows(assemblePlan(frac, { actual: { blocks: null, universe: null, infra: null }, sched: null }, D(2026, 7, 2)));
-  for (const k of ['niit_tosov_dun', 'tosov_unet_tsaas', 'tosov_tosliin_orlogo', 'tosov_niislel_tosov', 'olgoson_sanhuujilt_dun']) {
+  for (const k of ['niit_tosov_dun', 'olgoson_sanhuujilt_dun']) {
     assert.ok(s[k] == null || Number.isInteger(s[k]), `${k} = ${s[k]} бутархай`);
   }
   assert.equal(s.niit_tosov_dun, 1150);
-  assert.equal(s.tosov_unet_tsaas, 631);
   assert.equal(s.olgoson_sanhuujilt_dun, 400);
 });
 

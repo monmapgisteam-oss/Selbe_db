@@ -80,9 +80,10 @@ assert.match(src, /const parcelArea = parcelAreaLookup\(rows\);/, 'хэмжээ�
 assert.ok(!src.includes('тоогоор их, талбайгаар бага'), 'амьд тоотой зөрдөг өгүүлбэр буцав');
 /* Шүүлттэй үед эх үүсвэрийн дүн мөрийн нийлбэр — гарчиг «төслийн нийт» гэж хэлэхгүй; гэрээт эх үүсвэр нь тоо биш, мөнгө */
 const gdSrc = readFileSync(new URL('./GeneralDash.tsx', import.meta.url), 'utf8');
-assert.match(gdSrc, /title=\{srcWhole && srcTot \? tr\('Санхүүжилтийн эх үүсвэр \(төслийн нийт дүнгээр\)'\) : tr\('Санхүүжилтийн эх үүсвэр'\)\}/, 'шүүлттэй үед гарчиг буруу');
+/* 2026-11-17 (хэрэглэгч): 4 эх үүсвэрийг бүр хасав — дашбоард · удирдлагын тайланд эх үүсвэрийн хэсэг байхгүй */
+assert.ok(!gdSrc.includes('Санхүүжилтийн эх үүсвэр'), 'Ерөнхий дашбоардад эх үүсвэрийн хэсэг буцав');
 const exSrc = readFileSync(new URL('./ExecReport.tsx', import.meta.url), 'utf8');
 assert.ok(!exSrc.includes('«Ажил», «Гэрээт» нь мөрийн тоо'), '«Гэрээт» багана мөнгө — мөрийн тоо гэж тайлбарлав');
-assert.ok(exSrc.includes("tr('Гэрээт ажлын эх үүсвэр (₮)')") && exSrc.includes("tr('Төслийн нийт дүн (₮)')"), 'эх үүсвэрийн хүснэгтийн багана PDF-тэй ижил нэргүй');
+assert.ok(!exSrc.includes('Санхүүжилтийн эх үүсвэр'), 'Удирдлагын тайланд эх үүсвэрийн хэсэг буцав');
 
 console.log('dashboardNumbers.check.mjs — БҮГД ТЭНЦЛЭЭ');

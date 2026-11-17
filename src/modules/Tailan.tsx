@@ -411,7 +411,6 @@ function TailanFull() {
                 const budget = rows.reduce((a, b) => a + budgetOf(b.key), 0);
                 const sorted = [...rows].sort((a, b) => budgetOf(b.key) - budgetOf(a.key));
                 const bagtsAvg = x.overall.pct;
-                const srcTotal = x.finance.sources.reduce((a, s) => a + s.value, 0);
                 const d = buildFindings(x, rows);
                 const bagtsGapWide = d.bestBagts != null && d.worstBagts != null
                   && d.bestBagts.pct - d.worstBagts.pct > BAGTS_GAP_PTS;
@@ -803,43 +802,10 @@ function TailanFull() {
                     <section id="full-7" tabIndex={-1} className={r.section}>
                       <h2 className={r.h2}>{tr('7. Санхүүжилтийн явц')}</h2>
                       <p className={r.intro}>
-                        {tr('{0} багц ажлын санхүүжилт {1} эх үүсвэрээс бүрдэж байна.', num(x.finance.rows), num(x.finance.sources.length))}
-                        {d.topSource && (
-                          <> {tr('Санхүүжилтийн дийлэнх хэсгийг «{0}» эх үүсвэр бүрдүүлж, нийт дүнгийн {1}-ийг эзэлж байна.', tr(d.topSource.label), pct(d.topSource.share, 1))}</>
-                        )}
+                        {tr('{0} багц ажлын төсөв, гэрээний дүнг ажлын төрлөөр харуулав.', num(x.finance.rows))}
                       </p>
-                      <Fig no="7.1">{tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}</Fig>
-                      <RankBars
-                        title={tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}
-                        items={[...x.finance.sources]
-                          .sort((a, b) => b.value - a.value)
-                          .map((s, i) => ({
-                            label: tr(s.label),
-                            value: s.value,
-                            text: `${bn(s.value)} ₮`,
-                            hot: i === 0,
-                          }))}
-                      />
-                      <Cap no="7.1">{tr('Санхүүжилтийн эх үүсвэрийн бүтэц')}</Cap>
-                      <ResizableTable storeKey="tailan.eh-uusver" className={r.table}>
-                        <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Дүн (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
-                        <tbody>
-                          {x.finance.sources.map((s) => (
-                            <tr key={s.label}>
-                              <td>{tr(s.label)}</td>
-                              <td className={r.num}>{bn(s.value)}</td>
-                              <td className={r.num}>{srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—'}</td>
-                            </tr>
-                          ))}
-                          <tr className={r.total}>
-                            <td>{tr('Нийт')}</td>
-                            <td className={r.num}>{bn(srcTotal)}</td>
-                            <td className={r.num}>{srcTotal ? pct(100, 1) : '—'}</td>
-                          </tr>
-                        </tbody>
-                      </ResizableTable>
 
-                      <Cap no="7.2">{tr('Ажлын төрлөөр (төсөв ба гэрээний дүн)')}</Cap>
+                      <Cap no="7.1">{tr('Ажлын төрлөөр (төсөв ба гэрээний дүн)')}</Cap>
                       <ResizableTable storeKey="tailan.torol" className={r.table}>
                         <thead><tr><th>{tr('Төрөл')}</th><th className={r.num}>{tr('Ажил')}</th><th className={r.num}>{tr('Төсөв')}</th><th className={r.num}>{tr('Гэрээлсэн')}</th></tr></thead>
                         <tbody>
@@ -859,9 +825,9 @@ function TailanFull() {
                           </tr>
                         </tbody>
                       </ResizableTable>
-                      {x.finance.byTypeTotal.budget - srcTotal > 0.5 && srcTotal > 0 && (
+                      {x.finance.byTypeTotal.budget - x.finance.budget > 0.5 && x.finance.budget > 0 && (
                         <p className={r.note}>
-                          {tr('7.1-ийн нийт дүн нь төслийн нийт төсөв; энэ хүснэгт нь ажлын бүх мөрийг төрлөөр задалсан тул нийлбэр нь {0} ₮-өөр их: зөрүү нь нийт төсөвт ордоггүй мөрүүд (нийгмийн дэд бүтэц).', bn(x.finance.byTypeTotal.budget - srcTotal))}
+                          {tr('Энэ хүснэгт нь ажлын бүх мөрийг төрлөөр задалсан тул нийлбэр нь төслийн нийт төсвөөс {0} ₮-өөр их: зөрүү нь нийт төсөвт ордоггүй мөрүүд (нийгмийн дэд бүтэц).', bn(x.finance.byTypeTotal.budget - x.finance.budget))}
                         </p>
                       )}
                     </section>

@@ -107,12 +107,6 @@ const lzFieldsIpc = perLocale(() => ({
       get [HO_IPC.contractFields.budgetTotal]() { return tr('Нийт төсөвт өртөг /Захирамж/, ₮ — ⚠️ ГЭРЭЭНИЙ түвшний талбар: {0} бүрд ДАВТАГДАНА. SUM() шууд авбал олон мөртэй гэрээ ДАВХАР тоологдоно; ЭХЛЭЭД {0}-оор бүлэглэж MAX ав.', HO_IPC.contractFields.code); },
       get [HO_IPC.contractFields.contractTotal]() { return tr('Гэрээ байгуулагдсан төсөв, ₮ — ⚠️ ГЭРЭЭНИЙ түвшний, {0} бүрд ДАВТАГДАНА.', HO_IPC.contractFields.code); },
       get [HO_IPC.contractFields.saving]() { return tr('Хэмнэлт/хэтрэлт, ₮ = төсөвт өртөг − гэрээт төсөв. ⚠️ ГЭРЭЭНИЙ түвшний, ДАВТАГДАНА.'); },
-      get [HO_IPC.contractFields.budgetBond]() { return tr('Төсвийн эх үүсвэр — үнэт цаас, ₮ (⚠️ гэрээний түвшний, давтагдана)'); },
-      get [HO_IPC.contractFields.budgetCity]() { return tr('Төсвийн эх үүсвэр — нийслэлийн төсөв, ₮ (⚠️ ихэнх мөрд бөглөгдөөгүй — хоосон нь хэмжигдээгүй, 0 БИШ)'); },
-      get [HO_IPC.contractFields.budgetSales]() { return tr('Төсвийн эх үүсвэр — борлуулалт, ₮ (⚠️ гэрээний түвшний, давтагдана)'); },
-      get [HO_IPC.contractFields.contractBond]() { return tr('Гэрээний эх үүсвэр — үнэт цаас, ₮ (⚠️ гэрээний түвшний, давтагдана)'); },
-      get [HO_IPC.contractFields.contractCity]() { return tr('Гэрээний эх үүсвэр — нийслэлийн төсөв, ₮ (⚠️ гэрээний түвшний, давтагдана)'); },
-      get [HO_IPC.contractFields.contractSales]() { return tr('Гэрээний эх үүсвэр — борлуулалт, ₮ (⚠️ гэрээний түвшний, давтагдана)'); },
       ...Object.fromEntries(
         HO_IPC.emptyFields.map((f) => [f, tr('Хүлээгдэж буй гүйцэтгэл — ⚠️ МЭДЭЭЛЭЛГҮЙ (null эсвэл 0). Уншихгүй.')]),
       ),
@@ -131,16 +125,10 @@ const lzFieldsCashflow2 = perLocale(() => ({
       get [CASHFLOW_NEW.fields.endDate]() { return tr('Төлөвлөгөөт хугацаа дуусах (epoch мс)'); },
       get [CASHFLOW_NEW.fields.orderDate]() { return tr('Захирамжийн огноо (epoch мс)'); },
       get [CASHFLOW_NEW.fields.orderNo]() { return tr('Захирамжийн дугаар — зөвхөн КИРИЛЛ үсэгтэй («А/1309»)'); },
-      get [CASHFLOW_NEW.fields.share]() { return tr('Захирамжийн дүнгийн үнэт цаасны эх үүсвэрийн хувь — 0–1 БУТАРХАЙ (0.46 = 46%)'); },
       get [CASHFLOW_NEW.fields.contractDate]() { return tr('Гэрээ байгуулсан огноо (epoch мс)'); },
       get [CASHFLOW_NEW.fields.contractNo]() { return tr('Гэрээний дугаар. Олон ажилд ХООСОН (null ≠ «гэрээгүй»).'); },
       get [CASHFLOW_NEW.fields.contractAmount]() { return tr('Гэрээний дүн, ₮'); },
       get [CASHFLOW_NEW.fields.progressPct]() { return tr('Гэрээний гүйцэтгэлийн хувь — тоо, 0–100 (99.41 = 99.41%)'); },
-      ...Object.fromEntries(
-        CASHFLOW_NEW.sources.map((s) => [
-          s.field, tr('Захирамжийн дүнгийн эх үүсвэр — {0}, ₮', s.label),
-        ]),
-      ),
     }));
 
 

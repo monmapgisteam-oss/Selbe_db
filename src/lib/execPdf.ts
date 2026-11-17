@@ -189,9 +189,6 @@ export async function buildExecDoc(
   const { started: finStarted, zero: finZero, none: finNone } = execFinSplit(x);
   /** Хавсралт — дугаар ба дараалал `execAppendix`-ээс (дэлгэцтэй ИЖИЛ) */
   const appendix = execAppendix(x, findings);
-  /** Захирамжийн эх үүсвэрүүдийн нийлбэр — хувийн СУУРЬ (нийт төсөв БИШ) */
-  const srcSum = g.bySource.reduce((a, s) => a + s.amount, 0);
-
   const gapText = p.gap == null ? '—'
     : Number(Math.abs(p.gap).toFixed(1)) === 0 ? num(0, 1)
       : `${p.gap > 0 ? '−' : '+'}${num(Math.abs(p.gap), 1)}`;
@@ -378,26 +375,6 @@ export async function buildExecDoc(
           tdBold(num(g.byType.reduce((a, t) => a + t.contract, 0)), true), tdBold('', true)],
       ] }, layout: tableLayout },
       note(tr('Нийт төсөв нь «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт дүн; хүснэгт нь нийт төсөвт ордоггүй нийгмийн дэд бүтцийн мөрүүдийг ч хамарна. Гүйцэтгэлийн хувь нь биет хэмжилтээр; хэмжигдээгүй бол 0%.')),
-
-      ...(g.bySource.length ? [
-        { text: tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)'), style: 'caption', pageBreak: 'before' } as Content,
-        barChart(g.bySource.map((s) => ({
-          label: tr(s.label),
-          value: s.amount,
-          text: `${srcSum ? pct((s.amount / srcSum) * 100, 1) : '—'} · ${num(s.amount)} ₮`,
-        })), { nameW: 150, valW: 150 }),
-        { table: { headerRows: 1, widths: ['*', 40, 100, 110, 46], body: [
-          [th(tr('Эх үүсвэр')), th(tr('Мөр'), true), th(tr('Гэрээт ажлын эх үүсвэр (төг)'), true), th(tr('Төслийн нийт дүн (төг)'), true), th(tr('Хувь'), true)],
-          ...g.bySource.map((s): TableCell[] => [
-            td(tr(s.label)), td(num(s.n), true), td(num(s.contracted), true), td(num(s.amount), true),
-            td(srcSum ? pct((s.amount / srcSum) * 100, 1) : '—', true),
-          ]),
-          [tdBold(tr('Нийт')), tdBold(num(g.bySource.reduce((a, s) => a + s.n, 0)), true),
-            tdBold(num(g.bySource.reduce((a, s) => a + s.contracted, 0)), true),
-            tdBold(num(srcSum), true), tdBold(srcSum ? '100.0%' : '—', true)],
-        ] }, layout: tableLayout } as Content,
-        note(tr('«Төслийн нийт дүн» нь «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн эх үүсвэр; нийлбэр нь нийт төсөвтэй тэнцүү, хувь нь түүнд эзлэх жин. «Гэрээт ажлын эх үүсвэр» нь гэрээт ажлын мөрийн эх үүсвэрийн дүн тул «Нийт гэрээлсэн дүн»-гээс ялгаатай. «Мөр» нь эх үүсвэр бүрийн мөрийн тоо — олон эх үүсвэртэй ажил эх үүсвэр бүрд тоологдоно.')),
-      ] : []),
 
       /* ══════════ 2. ГАЗАР ЧӨЛӨӨЛӨЛТ ══════════ */
       { text: '', pageBreak: 'before' },

@@ -1046,42 +1046,11 @@ function PkgFinDetail({ row, loading }: { row: Record<string, unknown> | null; l
   push(tr('Захирамжийн нийт дүн'), money(orderTotalOf(row)), nn2(orderTotalOf(row)) > 0);
   push(tr('Гэрээ байгуулсан дүн'), money(contractAmountOf(row)), nn2(contractAmountOf(row)) > 0);
 
-  /* ЭХ ҮҮСВЭР — дүнтэй нь л. Өнгө нь services.ts-д тодорхойлогдсон. */
-  const src = CASHFLOW_NEW.sources
-    .map((x) => ({ ...x, v: nn2(row[x.field]) }))
-    .filter((x) => x.v > 0);
-  const srcTotal = src.reduce((a, x) => a + x.v, 0);
-
   return (
     <>
       <Section title={tr('Гэрээний мэдээлэл')}>
         {items.length ? <Rows items={items} /> : <Empty label={tr('Талбарууд хоосон')} />}
       </Section>
-      {src.length === 0 ? (
-        <Section title={tr('Санхүүжилтийн эх үүсвэр')}>
-          <Empty label={tr('Эх үүсвэр бүртгэгдээгүй')} />
-        </Section>
-      ) : (
-        <Section title={tr('Санхүүжилтийн эх үүсвэр')} note={tr('{0} эх үүсвэр', String(src.length))}>
-          <Donut
-            items={src.map((x) => ({
-              key: x.field,
-              label: x.label,
-              value: x.v,
-              color: cat(CASHFLOW_NEW.sources.findIndex((s) => s.field === x.field)),
-              display: mnt(x.v),
-            }))}
-            size="lg"
-            /*
-             *    `stack` — тайлбар нь цагирагийн ДООР бүтэн өргөнөөр жагсана:
-             *    нэр хэдий ч урт байсан багтана, давхцах орон зай ч үгүй.
-             */
-            stack
-            center={mnt(srcTotal)}
-            centerLabel={tr('нийт')}
-          />
-        </Section>
-      )}
     </>
   );
 }

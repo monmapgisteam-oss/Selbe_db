@@ -105,10 +105,6 @@
 
 # [const] gdash.SOURCES шошго (Нийслэлийн төсөв · НЗД нөөц хөрөнгө · Үнэт цаасны хөрөнгө ·
 #         Төслийн орлого …) — тодорхойлолтдоо tr(), en.ts
-@dyn lib/execPdf.ts  tr(s.label)
-@dyn lib/reportPdf.ts  tr(d.topSource.label)
-@dyn modules/ExecReport.tsx  tr(s.label)
-@dyn modules/Tailan.tsx  tr(d.topSource.label)
 
 # [data] багцын нэр өгөгдлөөс (Багц 1 · Багц 3.2 · Багц 4-1 · Багц 4.1 · Багц -4.1 ·
 #        Багц-4.1 · БАГЦ1 …) — бичиглэлийн бүх хувилбар en.ts + enData.ts;

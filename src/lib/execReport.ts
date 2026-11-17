@@ -9,12 +9,11 @@
  */
 
 import { cached, loadFillPkgProgress } from '@/lib/live';
-import type { SourceKey } from '@/lib/projectPlan';
-import { loadProjectSourceTotals, loadProjectBudgetTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
+import { loadProjectBudgetTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
-  loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, chartSourceMerged, isContracted,
+  loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, isContracted,
   planScopeNote, HOUSING_PKGS, type CfRow,
 } from '@/lib/gdash';
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
@@ -68,7 +67,6 @@ export type ExecReport = {
     /**
      * ЗАХИРАМЖИЙН ЭХ ҮҮСВЭР — мөнгө ба ажлын тоо (дүнгээр буурах).
      */
-    bySource: { label: string; amount: number; contracted: number; n: number }[];
   };
   /** 05. Багцын гүйцэтгэл */
   prog: {
@@ -220,13 +218,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       n: b.count ?? 0, contracted: b.countSub ?? 0,
     }))
     .sort((a, b) => b.cost - a.cost);
-  /* 2026-11-03 (хэрэглэгч): дүн — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ИЖИЛ (Σ = төслийн нийт дүн);
-     ажлын тоо/гэрээт — мөрүүдээс */
-  const ps = await loadProjectSourceTotals().catch(() => null);
   const planRootP = await loadProjectPlan().then((p) => (p.empty ? null : p.result.values.get(p.tree.root)?.P ?? null)).catch(() => null);
-  const bySource = chartSourceMerged(cf.filter((r) => r.inTotal)).map((b) => ({
-    label: sentenceCase(b.label), amount: ps?.[b.key as SourceKey] ?? b.value, contracted: b.sub, n: b.count ?? 0,
-  }));
 
   /* ── 04. Багцын санхүү — `PkgFin.pkgFinRows`-тэй ИЖИЛ ── */
   const pf = pkgFinRows(packs, fin);
@@ -322,7 +314,6 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       },
       hse: hse ? { date: hse.date, workers: hse.workers, equipment: hse.equipment, manHours: hse.manHours } : null,
       byType,
-      bySource,
     },
     prog: {
       blocks: lvKeys.size, households: bld.households,

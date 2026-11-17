@@ -1019,29 +1019,6 @@ function EnvLeft({ d }: { d: DashData }) {
         </Data>
       </Panel>
 
-      {/* Санхүүжилтийн ЭХ ҮҮСВЭР — `budget.sources` нь татагдсан мөртлөө
-          хаана ч зурагддаггүй байв (зөвхөн нийлбэр нь KPI-д ордог). */}
-      <Panel title={tr('Санхүүжилтийн эх үүсвэр')} note={tr('₮')}>
-        <Data q={d.budget} loading={tr('Татаж байна…')}>
-          {(bg) => (bg.sources.length ? (
-            <Bars
-              inline
-              color="var(--data)"
-              items={[...bg.sources]
-                .sort((x, y) => y.value - x.value)
-                .slice(0, 6)
-                .map((x) => ({
-                  key: x.key,
-                  label: x.label,
-                  value: x.value,
-                  color: 'var(--data)',
-                  display: mnt(x.value),
-                }))}
-            />
-          ) : <Empty label={tr('Эх үүсвэр задраагүй')} />)}
-        </Data>
-      </Panel>
-
       <Panel title={tr('Нийгмийн байгууламж')} note={tr('багцаар')} grow>
         <Data q={d.social} loading={tr('Татаж байна…')}>
           {(sc) =>
@@ -3995,35 +3972,6 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
         <p className={o.note}>
           {tr('Захирамжгүй')} <b>{tug(Math.max(0, bg.total - bg.orderTotal))}</b> {tr('· гэрээгүй')} <b>{tug(Math.max(0, bg.orderTotal - bg.contract))}</b>.
         </p>
-      </Panel>
-  
-      <Panel title={tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)')}>
-        {bg.sources.length <= 3 ? (
-          <Donut
-            items={bg.sources.map((s, i) => ({
-              key: s.key, label: s.label, value: s.value,
-              color: cat(i),
-              display: mnt(s.value),
-            }))}
-            center={num(bg.total)}
-            centerLabel={tr('₮')}
-            size="lg"
-            leaders
-          />
-        ) : (
-          <Bars
-            inline
-            items={heatBars(
-              [...bg.sources].sort((a, b) => b.value - a.value),
-              (s) => ({
-                key: s.key,
-                label: s.label,
-                value: s.value,
-                display: mnt(s.value),
-              }),
-            )}
-          />
-        )}
       </Panel>
   
       <Panel title={tr('Ажлын төрлөөр — төсөвт өртөг')}>

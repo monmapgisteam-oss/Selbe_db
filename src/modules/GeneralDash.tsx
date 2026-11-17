@@ -19,8 +19,7 @@ import { loadLandStatus } from '@/lib/land';
 import { loadFillPkgProgress, loadHeadline } from '@/lib/live';
 import { loadBagtsRows } from '@/lib/execData';
 import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
-import { loadProjectBudgetTotal, loadProjectSourceTotals } from '@/lib/projectPlanInputs';
-import type { SourceKey } from '@/lib/projectPlan';
+import { loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
 import { loadFinData, typePhysNow, INFRA_TYPE, aggregateMonths } from '@/modules/Finance';
 import { loadHoRows } from '@/lib/ipc';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
@@ -41,7 +40,7 @@ import { mnt, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
   loadCfPlan, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
-  chartTypeCost, chartSourceMerged, xMatch,
+  chartTypeCost, xMatch,
   type XDim,
   grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes, effectivePeriod,
   type Grain,
@@ -979,7 +978,6 @@ function FinCharts({
     [sel, xs],
   );
   const rType = xs && xs.dim !== 'type' ? narrow : sel;
-  const rSrc = xs && xs.dim !== 'source' ? narrow : sel;
   /** Мөр дарах — дахин дарвал тайлагдана */
   const pickX = (dim: XDim) => (k: string) => setXs(
     (v) => (v && v.dim === dim && v.key === k ? null : { dim, key: k }),
@@ -1050,16 +1048,6 @@ function FinCharts({
   }, [wbs, rows, housingNow]);
 
   const c1 = useMemo(() => chartTypeCost(rType, pkgPct, catPct, contracts), [rType, pkgPct, catPct, contracts]);
-  /* 2026-11-05: шүүлтгүй үед эх үүсвэрийн дүн = ТТБ-ийн Төслийн нийт мөр (`sourceSums`) — ExecReport · Тайлан · loadBudget-тэй
-     ИЖИЛ; урьд нь зөвхөн ажлын мөрийн нийлбэр (2 233 ↔ 2 496 тэрбум) байв. Шүүлттэй үед мөрийн нийлбэр хэвээр */
-  const srcTotQ = useAsync(loadProjectSourceTotals, []);
-  const srcTot = srcTotQ.state === 'ready' ? srcTotQ.data : null;
-  const srcWhole = !periodActive(period) && (xs == null || xs.dim === 'source');
-  const c3 = useMemo(() => {
-    const bs = chartSourceMerged(rSrc);
-    if (!srcWhole || !srcTot) return bs;
-    return bs.map((b) => { const v = srcTot[b.key as SourceKey]; return v == null ? b : { ...b, value: v }; });
-  }, [rSrc, srcWhole, srcTot]);
 
   return (
     <>
@@ -1105,16 +1093,6 @@ function FinCharts({
               />
             ))}
         </Data>
-      </Section>
-
-      <Section title={srcWhole && srcTot ? tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)') : tr('Санхүүжилтийн эх үүсвэр')}>
-        <Bars
-          color={BAR_HUE}
-          items={moneyBars(c3, undefined, tr('Эх үүсвэрийн нийт дүнгийн'))}
-          limit={8}
-          selected={onX('source')}
-          onSelect={pickX('source')}
-        />
       </Section>
 
     </>

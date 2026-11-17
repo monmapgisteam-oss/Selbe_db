@@ -14,9 +14,9 @@
  * оролтуудыг цуглуулж `computePlan` + `monthlySeries`-ийг бодно.
  */
 import {
-  buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday, sourceSums,
+  buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday,
   planBudgetTotal,
-  type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree, type SourceSums,
+  type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree,
 } from './projectPlan';
 import {
   CASHFLOW_NEW, CF_MONTH,
@@ -69,17 +69,11 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['zahiramj_dugaar', CF.orderNo],
   ['ashiglalt_ognoo', CF.handoverDate],
   ['created_date', 'created_date'],
-  /* Эх үүсвэр (2026-11-03) — «Төсөл төлөвлөгөө биелэлт»-ийн баганад; нэр нь `CASHFLOW_NEW.sources`-тэй ижил */
-  ['zahiramj_unet_tsaas', 'zahiramj_unet_tsaas'],
-  ['zahiramj_borluulalt_dun', 'zahiramj_borluulalt_dun'],
-  ['zahiramj_niislel_tusuv', 'zahiramj_niislel_tusuv'],
-  ['zahiramj_nzd_nuuts', 'zahiramj_nzd_nuuts'],
   ['geree_dun', CF.contractAmount],
   ['olgoson_dun', CF.paid],
   ['urdchilgaa_dun', CF.advance],
   /* Зөвхөн харуулах баганууд (2026-11-04) */
   ['ho_dun_zahiramj', 'ho_dun_zahiramj'],
-  ['zahiramj_unet_tsaas_huvi', 'zahiramj_unet_tsaas_huvi'],
   ['geree_dugaar', 'geree_dugaar'],
   ['guitsetgegch', 'guitsetgegch'],
   ['zahialagch_hynalt_baig', 'zahialagch_hynalt_baig'],
@@ -161,16 +155,6 @@ export async function fetchPlanRows(): Promise<PlanStoredRow[]> {
   return sortPlanRows(rows.map((r) => toStoredRow(r as Record<string, unknown>)).filter((r) => r.dd_kod));
 }
 const loadPlanRows = cached(fetchPlanRows, SESSION_TTL_MS, ['CASHFLOW_NEW']);
-
-/**
- * ТӨСЛИЙН 4 ЭХ ҮҮСВЭР — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ЯГ ИЖИЛ (`sourceSums` үндэс), хөнгөн:
- * зөвхөн хүснэгтийн мөрүүд (бусад эх уншихгүй). «Төслийн дэлгэрэнгүй мэдээлэл» · «ТУХ» · «Тайлан» энэ тоог харуулна.
- */
-export async function loadProjectSourceTotals(): Promise<SourceSums> {
-  const rows = await loadPlanRows();
-  const tree = buildTree(rows);
-  return sourceSums(tree).get(tree.root)!;
-}
 
 /**
  * ТӨСЛИЙН НИЙТ ТӨСӨВ (бүхэл ₮) — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн E, хөнгөн (зөвхөн хүснэгтийн

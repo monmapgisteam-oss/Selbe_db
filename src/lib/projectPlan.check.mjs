@@ -19,7 +19,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  buildTree, computePlan, isAddedWork, monthlySeries, monthEnds, linearPlanned, blockStatus, phaseKind, ubToday, orderPlanRows, sourceSums,
+  buildTree, computePlan, isAddedWork, monthlySeries, monthEnds, linearPlanned, blockStatus, phaseKind, ubToday, orderPlanRows,
   planBudgetTotal, tenderSigned,
 } from './projectPlan.ts';
 
@@ -332,34 +332,6 @@ assert.equal(phaseKind('Сонгон шалгаруулалт'), 'songon');
   assert.equal(add[add.length - 1].ajil_uilchilgee, 'шинэ');
   const t2 = buildTree(add);
   assert.equal(t2.nodes.find((n) => n.row.ajil_uilchilgee === 'шинэ').parent.row.ajil_uilchilgee, 'з12', 'түвшин 2-ын «2.1.2»');
-}
-
-/* ── 8. Эх үүсвэр (`sourceSums`, 2026-11-03, хэрэглэгч): эцэг мөр ба Төслийн нийт = АМЬД нийлбэр
-      (өөрийнх › хүүхдүүд; «Нийслэл төсөв» хэсэг орохгүй) ── */
-{
-  const R = (dd, et, name, extra = {}) => ({ dd_kod: dd, etseg_kod: et, ajil_uilchilgee: name, ...extra });
-  const t = buildTree([
-    R('1', null, 'ТЭЗҮ', { uy_shat: 'ТЭЗҮ' }),
-    R('1.1', '1', 'a', { zahiramj_unet_tsaas: 100, zahiramj_niislel_tusuv: 5 }),
-    R('1.2', '1', 'b', { zahiramj_unet_tsaas: 50 }),
-    R('1.3', '1', 'c'),
-    R('2', null, 'Зураг', { uy_shat: 'Ажлын зураг төсөл', zahiramj_borluulalt_dun: 7 }),
-    R('2.1', '2', 'd', { zahiramj_borluulalt_dun: 1000 }),
-    R('3', null, 'Газар чөлөөлөлт', { uy_shat: 'Газар чөлөөлөлт', zahiramj_nzd_nuuts: 9 }),
-  ]);
-  const S = sourceSums(t);
-  const by = (c) => S.get(t.byCode.get(c));
-  assert.deepEqual(by('1'), { zahiramj_unet_tsaas: 150, zahiramj_borluulalt_dun: null, zahiramj_niislel_tusuv: 5, zahiramj_nzd_nuuts: null },
-    'эцэг мөр = хүүхдүүдийн нийлбэр; бүх хүүхэд хоосон бол null');
-  assert.equal(by('2').zahiramj_borluulalt_dun, 7, 'эцэгт өөрийнх бичигдсэн бол хүүхдээс бодохгүй (E-тэй ижил)');
-  assert.deepEqual(by('1.1'), { zahiramj_unet_tsaas: 100, zahiramj_borluulalt_dun: null, zahiramj_niislel_tusuv: 5, zahiramj_nzd_nuuts: null },
-    'өөрийн мөр — бичигдсэн нь л, бусад null (0 биш)');
-  assert.equal(by('1.3').zahiramj_unet_tsaas, null, 'хоосон навч null');
-  const root = S.get(t.root);
-  assert.equal(root.zahiramj_unet_tsaas, 150, 'Төслийн нийт = мөрүүдийн нийлбэр');
-  assert.equal(root.zahiramj_borluulalt_dun, 7, 'эцэгт өөрийнх бичигдсэн бол хүүхдийг давхар тоолохгүй');
-  assert.equal(root.zahiramj_niislel_tusuv, 5);
-  assert.equal(root.zahiramj_nzd_nuuts, 9, 'үе шатны мөрт бичсэн утга (Газар чөлөөлөлт) нийтэд орно');
 }
 
 console.log(`projectPlan.check: OK (${cells} Excel нүд)`);

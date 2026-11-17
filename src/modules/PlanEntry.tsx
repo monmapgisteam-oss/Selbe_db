@@ -28,10 +28,6 @@ export const PARSE_MSG: ParseMsg = {
 /** Баганын нэр — i18n-extract статик `tr()`-ийг л олдог тул нэг бүрчлэн */
 export const EDIT_LABEL: Record<PlanEditKey, () => string> = {
   budget: () => tr('Урьдчилсан төсөвт өртөг'),
-  srcBond: () => tr('Үнэт цаас'),
-  srcSales: () => tr('Төслийн орлого'),
-  srcCity: () => tr('Нийслэлийн төсөв'),
-  srcNzd: () => tr('НЗД нөөц'),
   pct: () => tr('Гүйцэтгэлийн хувь'),
   contractDate: () => tr('Гэрээ байгуулсан огноо'),
   orderDate: () => tr('Захирамжийн огноо'),

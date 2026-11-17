@@ -16,15 +16,11 @@ export const MANUAL_PHASES: ReadonlySet<PhaseKind> = new Set<PhaseKind>([
 ]);
 
 /** Засагдах утга — `PlanStoredRow`-ийн түлхүүр, хүснэгтийн талбар, төрөл */
-export type PlanEditKey = 'budget' | 'srcBond' | 'srcSales' | 'srcCity' | 'srcNzd'
+export type PlanEditKey = 'budget'
   | 'pct' | 'contractDate' | 'orderDate' | 'orderNo' | 'handoverDate';
 export const PLAN_EDIT: Record<PlanEditKey, { key: keyof PlanStoredRow; field: string; kind: 'pct' | 'date' | 'text' | 'money' }> = {
   /* 2026-11-03 (хэрэглэгч): урьдчилсан төсөвт өртөг ба 4 эх үүсвэр засагдана — эцэг мөр хүүхдүүдээс нийлж бодогдоно */
   budget: { key: 'ho_dun_geree', field: F.budget, kind: 'money' },
-  srcBond: { key: 'zahiramj_unet_tsaas', field: 'zahiramj_unet_tsaas', kind: 'money' },
-  srcSales: { key: 'zahiramj_borluulalt_dun', field: 'zahiramj_borluulalt_dun', kind: 'money' },
-  srcCity: { key: 'zahiramj_niislel_tusuv', field: 'zahiramj_niislel_tusuv', kind: 'money' },
-  srcNzd: { key: 'zahiramj_nzd_nuuts', field: 'zahiramj_nzd_nuuts', kind: 'money' },
   pct: { key: 'guitsetgel_huvi', field: F.progressPct, kind: 'pct' },
   contractDate: { key: 'geree_ognoo', field: F.contractDate, kind: 'date' },
   orderDate: { key: 'zahiramj_ognoo', field: F.orderDate, kind: 'date' },

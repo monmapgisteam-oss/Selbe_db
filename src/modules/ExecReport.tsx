@@ -361,37 +361,6 @@ export function ExecReport() {
                   </tbody>
                 </table></div>
                 <p className={r.note}>{tr('Нийт төсөв нь «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт дүн; дээрх хүснэгт нь нийт төсөвт ордоггүй нийгмийн дэд бүтцийн мөрүүдийг ч хамарна.')}</p>
-
-                {x.gdash.bySource.length > 0 && (() => {
-                  const srcTotal = x.gdash.bySource.reduce((a, s) => a + s.amount, 0);
-                  return (
-                    <>
-                      <Fig no="1.2">{tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)')}</Fig>
-                      <KpiRow cols={2} items={x.gdash.bySource.map((s) => ({
-                        label: tr(s.label),
-                        value: money(s.amount),
-                        sub: tr('{0} · {1} мөр', srcTotal ? pct((s.amount / srcTotal) * 100, 1) : '—', num(s.n)),
-                      }))} />
-                      <Cap no={period ? '1.4' : '1.3'}>{tr('Санхүүжилтийн эх үүсвэр (төслийн нийт дүнгээр)')}</Cap>
-                      <div className={r.tableScroll} tabIndex={0} role="region" aria-label={tr('Тайлангийн хүснэгт')}><table className={r.table}>
-                        <thead><tr><th>{tr('Эх үүсвэр')}</th><th className={r.num}>{tr('Мөр')}</th><th className={r.num}>{tr('Гэрээт ажлын эх үүсвэр (₮)')}</th><th className={r.num}>{tr('Төслийн нийт дүн (₮)')}</th><th className={r.num}>{tr('Хувь')}</th></tr></thead>
-                        <tbody>
-                          {x.gdash.bySource.map((s) => (
-                            <tr key={s.label}>
-                              <td>{tr(s.label)}</td>
-                              <td className={r.num}>{num(s.n)}</td>
-                              <td className={r.num}>{num(s.contracted)}</td>
-                              <td className={r.num}>{num(s.amount)}</td>
-                              <td className={r.num}>{srcTotal ? pct((s.amount / srcTotal) * 100, 1) : '—'}</td>
-                            </tr>
-                          ))}
-                          <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.n, 0))}</td><td className={r.num}>{num(x.gdash.bySource.reduce((a, s) => a + s.contracted, 0))}</td><td className={r.num}>{num(srcTotal)}</td><td className={r.num}>{srcTotal ? '100.0%' : '—'}</td></tr>
-                        </tbody>
-                      </table></div>
-                      <p className={r.note}>{tr('«Төслийн нийт дүн» нь «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн эх үүсвэр; нийлбэр нь нийт төсөвтэй тэнцүү, хувь нь түүнд эзлэх жин. «Гэрээт ажлын эх үүсвэр» нь гэрээт ажлын мөрийн эх үүсвэрийн дүн тул «Нийт гэрээлсэн дүн»-гээс ялгаатай. «Мөр» нь эх үүсвэр бүрийн мөрийн тоо — олон эх үүсвэртэй ажил эх үүсвэр бүрд тоологдоно.')}</p>
-                    </>
-                  );
-                })()}
               </section>
 
               {/* ── 2. Газар чөлөөлөлт ба талбайн бэлтгэл (ХАБ-тай хамт — PDF-ийн §2-тай ижил) ── */}

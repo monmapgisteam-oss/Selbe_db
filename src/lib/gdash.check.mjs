@@ -22,7 +22,7 @@
 import assert from 'node:assert/strict';
 import {
   inPeriod, yearsOf, sCurve, kpisOf, chartTypeCost,
-  chartSourceCount, chartNoteAmount, grainOf, CONTRACTED, CF_SOURCES,
+  chartNoteAmount, grainOf, CONTRACTED,
   cashflowCurve, housingMoney, fillMonths,
   housingPct, housingSeries, pkgCostWeight, pkgCostTotal, cfWeightRow, CF, contractedScope, housingPlanSeries,
   isContracted, planScope, pts, gapPts, gapPtsWord, planScopeNote, effectivePeriod, periodActive,
@@ -43,7 +43,6 @@ const D = (y, m, d = 1) => Date.UTC(y, m - 1, d);
 const row = (o = {}) => ({
   oid: 1, type: 'A', project: '', pkg: 'Багц -1',
   cost: 100, note: '', start: null, end: null, share: 0, decree: 0, progress: null,
-  src: CF_SOURCES.map(() => 0),
   stage: {},
   inTotal: true,
   isWork: true,
@@ -275,17 +274,6 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   const cv = chartTypeCost(volRows, new Map([['БАГЦ1', 80]]));
   assert.equal(cv[0].perf, 80, 'объёмын хувь давамгайлна');
   assert.equal(cv[0].fin, 10, 'санхүүжсэн нь хэвээр');
-
-  /* Эх үүсвэр — 0 дүнтэй талбар ТООЛОГДОХГҮЙ */
-  const withSrc = [
-    row({ oid: 1, note: CONTRACTED, src: [10, 0, 0, 0] }),
-    row({ oid: 2, note: 'Урьдчилсан дүн', src: [5, 0, 0, 0] }),
-    row({ oid: 3, note: CONTRACTED, src: [0, 0, 0, 0] }),
-  ];
-  const c3 = chartSourceCount(withSrc);
-  assert.equal(c3.length, 1, 'дүнгүй эх үүсвэр чартад гарсан');
-  assert.equal(c3[0].value, 2);
-  assert.equal(c3[0].sub, 1);
 
   /* Тайлбар × мөнгө — хоосон тайлбар нэрлэгдэнэ, унахгүй */
   const c4 = chartNoteAmount([row({ note: '', cost: 7 })]);

@@ -83,7 +83,6 @@ export function buildReportDoc(
   const ailCell = (x: BagtsRow) => ailOf([x]);
   const budget = rows.reduce((a, x) => a + budgetOf(x.key), 0);
   const bagtsAvg = overall.pct;
-  const srcTotal = finance.sources.reduce((a, s) => a + s.value, 0);
 
   /* ── Товч танилцуулга — дэлгэцийн `.lead` блоктой ижил гурван догол ── */
   const lag = d.buildLag != null ? tr(' буюу төлөвлөгөөнөөс {0} нэгж хувиар хоцорч байна', num(d.buildLag, 1)) : '';
@@ -240,17 +239,8 @@ export function buildReportDoc(
       note(tr('Дундаж нь блок бүрийг тэнцүү жинтэйгээр тооцсон; 2-р хэсгийн багцын гүйцэтгэлтэй нэг эх сурвалжаас гарна.')),
 
       ...section('7', tr('Санхүүжилтийн явц'),
-        tr('{0} багц ажлын санхүүжилт {1} эх үүсвэрээс бүрдэж байна.{2}', num(finance.rows), num(finance.sources.length), d.topSource ? tr(' Санхүүжилтийн дийлэнх хэсгийг «{0}» эх үүсвэр бүрдүүлж, нийт дүнгийн {1}-ийг эзэлж байна.', tr(d.topSource.label), pct(d.topSource.share, 1)) : '')),
-      cap('7.1', tr('Санхүүжилтийн эх үүсвэрийн бүтэц')),
-      { table: { headerRows: 1, widths: ['*', 110, 70], body: [
-        [th(tr('Эх үүсвэр')), th(tr('Дүн (төг)'), true), th(tr('Хувь'), true)],
-        ...finance.sources.map((s): TableCell[] => [
-          td(tr(s.label)), td(bn(s.value), true), td(srcTotal ? pct((s.value / srcTotal) * 100, 1) : '—', true),
-        ]),
-        [td(tr('Нийт'), false, TOTAL), td(bn(srcTotal), true, TOTAL), td(srcTotal ? pct(100, 1) : '—', true, TOTAL)],
-      ] }, layout: tableLayout },
-
-      cap('7.2', tr('Ажлын төрлөөр (төсөв ба гэрээний дүн)')),
+        tr('{0} багц ажлын төсөв, гэрээний дүнг ажлын төрлөөр харуулав.', num(finance.rows))),
+      cap('7.1', tr('Ажлын төрлөөр (төсөв ба гэрээний дүн)')),
       { table: { headerRows: 1, widths: ['*', 38, 105, 105], body: [
         [th(tr('Төрөл')), th(tr('Ажил'), true), th(tr('Төсөв'), true), th(tr('Гэрээлсэн'), true)],
         ...finance.byType.map((t): TableCell[] => [
@@ -259,8 +249,8 @@ export function buildReportDoc(
         [td(tr('Нийт'), false, TOTAL), td(num(finance.byType.reduce((a, t) => a + t.n, 0)), true, TOTAL),
           td(bn(finance.byTypeTotal.budget), true, TOTAL), td(bn(finance.byTypeTotal.contract), true, TOTAL)],
       ] }, layout: tableLayout },
-      ...(finance.byTypeTotal.budget - srcTotal > 0.5 && srcTotal > 0
-        ? [note(tr('7.1-ийн нийт дүн нь төслийн нийт төсөв; энэ хүснэгт нь ажлын бүх мөрийг төрлөөр задалсан тул нийлбэр нь {0} ₮-өөр их: зөрүү нь нийт төсөвт ордоггүй мөрүүд (нийгмийн дэд бүтэц).', bn(finance.byTypeTotal.budget - srcTotal)))]
+      ...(finance.byTypeTotal.budget - finance.budget > 0.5 && finance.budget > 0
+        ? [note(tr('Энэ хүснэгт нь ажлын бүх мөрийг төрлөөр задалсан тул нийлбэр нь төслийн нийт төсвөөс {0} ₮-өөр их: зөрүү нь нийт төсөвт ордоггүй мөрүүд (нийгмийн дэд бүтэц).', bn(finance.byTypeTotal.budget - finance.budget)))]
         : []),
 
       ...section('8', tr('Дэд бүтцийн төлөвлөгөөт цар хүрээ'),

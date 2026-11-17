@@ -5,10 +5,10 @@
  * өөр утгаар бодогдож явахгүй». Cashflow = гэрээний мэдээллийн ГАНЦ эх; HO-д зөвхөн төлбөрийн мөр (IPC) өөрийн мэдээлэлтэй.
  *
  * Холболт (Cashflow → HO), гэрээ (`geree_kod`) бүрийн БҮХ мөрөнд давтаж бичнэ:
- *   ho_dun_zahiramj → tosov_niit ; zahiramj_unet_tsaas → tosov_unet_tsaas ; zahiramj_borluulalt_dun → tosov_borluulalt ;
- *   zahiramj_niislel_tusuv → tosov_niislel_tosov ; geree_dun → gereet_tosov_niit ; hemnelt_hetrelt = tosov_niit − gereet_tosov_niit ;
+ *   ho_dun_zahiramj → tosov_niit ; geree_dun → gereet_tosov_niit ; hemnelt_hetrelt = tosov_niit − gereet_tosov_niit ;
+ *   (2026-11-17, хэрэглэгч: 4 эх үүсвэрийг бүр хасна — tosov_unet_tsaas · tosov_borluulalt · tosov_niislel_tosov холбогдохгүй)
  *   guitsetgegch · geree_dugaar ; zahiramj_ognoo → zahiramj1_ognoo ; zahiramj_dugaar → zahiramj1_dugaar.
- *   (HO-д zahiramj_unet_tsaas_huvi · zahialagch_hynalt_baig талбар БАЙХГҮЙ — холбогдохгүй.)
+ *   (HO-д zahialagch_hynalt_baig талбар БАЙХГҮЙ — холбогдохгүй.)
  * Cashflow-д байхгүй талбар (gereet_* задаргаа, tosol_ner, ajliin_turul, geree_helber, huuliin_undeslel, zahiramj2/3, geree_nemelt) —
  * ХӨНДӨХГҮЙ. `bagts` (холболтын түлхүүр) — хөндөхгүй.
  *
@@ -74,11 +74,8 @@ export function hoFromCf(cf: readonly Row[]): Row {
   const geree = sum(CF.contractAmount);
   /* HO-ийн талбарын төрөл (амьд, 2026-11-03): tosov_niit · gereet_tosov_niit · hemnelt_hetrelt — BigInteger (бүхэл);
      tosov_niislel_tosov — Integer (32 бит, > 2.147 тэрбум багтахгүй → хөндөхгүй); zahiramj1_ognoo — DateOnly («YYYY-MM-DD») */
-  const city = sum(CASHFLOW_NEW.sources[2].field);
   const out: Row = {
     [HC.budgetTotal]: intOf(tosov),
-    [HC.budgetBond]: sum(CASHFLOW_NEW.sources[0].field),
-    [HC.budgetSales]: sum(CASHFLOW_NEW.sources[1].field),
     [HC.contractTotal]: intOf(geree),
     [HC.saving]: tosov != null && geree != null ? intOf(tosov - geree) : null,
     [HC.contractor]: first(CF.contractor),
@@ -86,11 +83,9 @@ export function hoFromCf(cf: readonly Row[]): Row {
     [HC.order1Date]: dayOnly(first(CF.orderDate)),
     [HC.order1No]: first(CF.orderNo),
   };
-  if (city == null || Math.abs(city) <= INT32_MAX) out[HC.budgetCity] = intOf(city);
   return out;
 }
 
-const INT32_MAX = 2_147_483_647;
 const intOf = (v: number | null): number | null => (v == null ? null : Math.round(v));
 /** ms (epoch) эсвэл «YYYY-MM-DD» → «YYYY-MM-DD» (UTC өдөр); хоосон → null */
 export const dayOnly = (v: unknown): string | null => {

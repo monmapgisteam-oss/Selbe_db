@@ -7,8 +7,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
-import type { SourceKey } from '@/lib/projectPlan';
-import { loadProjectSourceTotals, loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
+import { loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
@@ -112,7 +111,6 @@ export type ReportExtra = {
     paidOther: number;
     /** Газар чөлөөлөлт, буулгалт цэвэрлэгээ — НИЙТ дүнгээс ГАДУУР, ₮ */
     landBudget: number;
-    sources: { label: string; value: number }[];
     /**
      * Бодитоор олгосон санхүүжилт — `HO_IPC`-ийн БҮХ ТӨЛБӨРИЙН нийлбэр, ₮.
      */
@@ -442,10 +440,9 @@ export const loadFinance = cached(loadFinanceRaw, 5 * 60_000, ['CASHFLOW_NEW', '
 
 async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   const F = CASHFLOW_NEW.fields;
-  const [rows, ho, ps, official] = await Promise.all([
+  const [rows, ho, official] = await Promise.all([
     queryFeatures(CASHFLOW_NEW.url, { where: CF_WORK_WHERE, outFields: ['*'] }),
     queryFeatures(HO_IPC.url, { outFields: [HO_IPC.payFields.amount, HO_IPC.contractFields.pkg] }),
-    loadProjectSourceTotals(),
     loadProjectBudgetTotal(),
   ]);
 
@@ -528,8 +525,6 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     landBudget: master
       .filter((r) => secOf(r) === FIN_XL_LAND_CODE)
       .reduce((a, r) => a + nn(r[F.budget]), 0),
-    /* 2026-11-03 (хэрэглэгч): «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөртэй ИЖИЛ (Σ = төслийн нийт дүн) */
-    sources: CASHFLOW_NEW.sources.map((s) => ({ label: s.label, value: ps[s.field as SourceKey] ?? 0 })),
     paid: share.paidKnown ? paid : null,
     paidPct: share.pct,
     paidContracted,
@@ -722,7 +717,6 @@ export type Findings = {
   startedPhases: string[];
   notStartedPhases: string[];
   /** Хамгийн том санхүүжилтийн эх үүсвэр — 7-р хэсгийн тайлбарт */
-  topSource: { label: string; share: number } | null;
   /** Дэлгэц ба PDF-д ижилхэн гарах дүгнэлтийн өгүүлбэрүүд */
   findings: string[];
 };
@@ -797,13 +791,6 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
   const heavyStage = topStage && topStage.weight > x.overall.weightSum / 2 ? topStage : null;
   const startedPhases = x.progress.phases.filter((p) => p.pct > 0).map((p) => p.name);
   const notStartedPhases = x.progress.phases.filter((p) => p.pct <= 0).map((p) => p.name);
-  const srcTotal = x.finance.sources.reduce((a, s) => a + s.value, 0);
-  const topSrc = x.finance.sources.length
-    ? x.finance.sources.reduce((a, s) => (s.value > a.value ? s : a))
-    : null;
-  const topSource = topSrc && srcTotal
-    ? { label: topSrc.label, share: (topSrc.value / srcTotal) * 100 }
-    : null;
 
   const f: string[] = [];
 
@@ -839,7 +826,7 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
     landLeft, topReason,
     contractRate, paidRate, peakMonth,
     bestBagts, worstBagts, mongolShare,
-    heavyStage, startedPhases, notStartedPhases, topSource,
+    heavyStage, startedPhases, notStartedPhases,
     findings: f,
   };
 }
