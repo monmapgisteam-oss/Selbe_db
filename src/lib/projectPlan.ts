@@ -123,8 +123,14 @@ export type PlanNode = {
   pkg: string | null;
   /** Блок («5/1») — блокийн мөрөнд л */
   blok: string | null;
-  /** «Нийслэл төсөв» — эцгийн E ба N…S нийлбэрт ОРОХГҮЙ */
+  /** «Нийслэл төсөв» — эцгийн E ба N…S нийлбэрт ОРОХГҮЙ (хоёр унтраалга хоёулаа унтраалттай үед; `optIn`) */
   outside: boolean;
+  /**
+   * 2026-11-17 (хэрэглэгч: «унтраалга нэм, тэгээд унтраалттай байлга») — нэрээрээ («Нийслэл төсөв») анхдагчаар ХАСАГДДАГ мөр.
+   * Хоёр унтраалга нь анхдагчаар УНТРААЛТТАЙ (хадгалсан утга 1 биш бол); аль нэгийг асаавал энгийн мөр болж (`outside` = false),
+   * нөгөө унтраалга нь унтраалттай хэвээр ердийн дүрмээр ажиллана.
+   */
+  optIn?: true;
   /**
    * F-ийн ХОС — Барилга угсралт ажлын (төсөвтэй) хэсгийн ижил багц/блокийн мөр.
    * Excel: F86 = F721. Төсөвгүй хэсгүүдийн (Газар чөлөөлөлт, Зөвшөөрөл, Сонгон, Бэлтгэл…)
@@ -513,7 +519,13 @@ export function buildTree(rows: readonly PlanStoredRow[]): PlanTree {
       /* 2026-11-04 (хэрэглэгч): барилгын давхарга эх — блок нь «5/1» хэлбэрийн код л; «Бүгд» г.м. бичвэр блок БИШ (багцын мөр) */
       c.blok = isBlockCode(bl) ? bl.replace(/\s/g, '') : isBlockCode(b) ? b.replace(/\s/g, '') : null;
       c.pkg = b && !isBlockCode(b) ? b : n.pkg;
-      c.outside = OUTSIDE_RX.test(String(r.ajil_uilchilgee ?? ''));
+      if (OUTSIDE_RX.test(String(r.ajil_uilchilgee ?? ''))) {
+        c.optIn = true;
+        const ph = r.uy_shat_tootsoh === 1, tot = r.niit_tootsoh === 1;
+        c.outside = !ph && !tot;
+        /* асаагаагүй унтраалга = 0 (энэ мөрд хоосон утга «унтраалттай» гэсэн үг) */
+        if (!c.outside) c.row = { ...r, uy_shat_tootsoh: ph ? 1 : 0, niit_tootsoh: tot ? 1 : 0 };
+      } else c.outside = false;
       nodes.push(c);
       visit(c, depth + 1);
     }

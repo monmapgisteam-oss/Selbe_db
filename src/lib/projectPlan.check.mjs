@@ -663,3 +663,36 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
   assert.equal(p0.get('1').F, 0, 'төсөвгүй үе шат 0');
   console.log('projectPlan.check: үе шатны тогтмол жин OK');
 }
+
+/* ── «Нийслэл төсөв» мөрийн унтраалга (2026-11-17, хэрэглэгч: «унтраалга нэм, тэгээд унтраалттай байлга») ── */
+{
+  const R = (dd, et, name, extra = {}) => ({ dd_kod: dd, etseg_kod: et, ajil_uilchilgee: name, ...extra });
+  const mk = (flags) => buildTree([
+    R('1', null, 'Барилга', { uy_shat: 'Барилга угсралт' }),
+    R('1.1', '1', 'a', { ho_dun_geree: 300, guitsetgel_huvi: 40 }),
+    R('1.2', '1', 'НИЙГМИЙН ДЭД БҮТЭЦ (Нийслэл төсөв)', { ho_dun_geree: 100, guitsetgel_huvi: 0, ...flags }),
+  ]);
+  const t0 = mk({});
+  const n0 = t0.byCode.get('1.2');
+  assert.equal(n0.outside, true, 'анхдагчаар хасагдсан');
+  assert.equal(n0.optIn, true);
+  const p0 = computePlan(t0, {});
+  assert.equal(p0.values.get(t0.root).E, 300, 'нийт төсөвт орохгүй');
+  near(p0.get('1').S, 40, 1e-9, 'эцгийн хувьд орохгүй');
+  near(p0.values.get(t0.root).S, 40, 1e-9);
+  assert.equal(mk({ uy_shat_tootsoh: 0, niit_tootsoh: 0 }).byCode.get('1.2').outside, true, '0 = унтраалттай');
+  /* «Барилга угсралтад» асаавал эцэгт орно; «Төслийн нийтэд» унтраалттай хэвээр */
+  const t1 = mk({ uy_shat_tootsoh: 1 });
+  const p1 = computePlan(t1, {});
+  assert.equal(t1.byCode.get('1.2').outside, false);
+  near(p1.get('1').S, 30, 1e-9, 'эцэг: 0.75·40 + 0.25·0');
+  assert.equal(p1.get('1.2').noTotal, true, 'нөгөө унтраалга унтраалттай');
+  near(p1.values.get(t1.root).S, 40, 1e-9, 'Төслийн нийтээс хасагдсан хэвээр');
+  /* «Төслийн нийтэд» асаавал нийтэд орно; эцгийн хувьд орохгүй */
+  const t2 = mk({ niit_tootsoh: 1 });
+  const p2 = computePlan(t2, {});
+  near(p2.get('1').S, 40, 1e-9, 'эцгийн хувь хэвээр');
+  assert.equal(p2.get('1.2').noPhase, true);
+  near(p2.values.get(t2.root).S, 30, 1e-9, 'Төслийн нийтэд орсон');
+  console.log('projectPlan.check: «Нийслэл төсөв» мөрийн унтраалга OK');
+}

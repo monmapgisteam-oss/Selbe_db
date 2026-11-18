@@ -1429,14 +1429,17 @@ export function ProjectPlanTable({
   const [stBusy, setStBusy] = useState<number | null>(null);
   const statusCell = (n: PlanNode) => {
     const oid = n.row?.objectid;
-    if (n.outside || oid == null) return <td className={f.ppSt} />;
+    if (oid == null) return <td className={f.ppSt} />;
     const v = result.values.get(n);
+    /* 2026-11-17 (хэрэглэгч): «Нийслэл төсөв» мөрд ч унтраалга — анхдагчаар хоёулаа унтраалттай (`optIn`); доод мөрүүд нь дагана */
+    let outAnc = false;
+    for (let x = n.parent; x && x.row; x = x.parent) if (x.outside) { outAnc = true; break; }
     /* унтраалга: 1 — төслийн нийтэд · 2 — барилга угсралтын (эцэг мөрүүдийн) гүйцэтгэлд. Дээд мөрийн ИЖИЛ унтраалга унтарсан бол дагана */
-    const phOwn = n.row?.uy_shat_tootsoh === 0;
-    const phInh = !phOwn && !!v?.noPhase;
-    const totOwn = n.row?.niit_tootsoh === 0;
+    const phOwn = n.optIn ? n.row?.uy_shat_tootsoh !== 1 : n.row?.uy_shat_tootsoh === 0;
+    const phInh = outAnc || (!phOwn && !!v?.noPhase);
+    const totOwn = n.optIn ? n.row?.niit_tootsoh !== 1 : n.row?.niit_tootsoh === 0;
     /* 2026-11-17 (хэрэглэгч): хоёр унтраалга бие даасан — нэгийг унтраахад нөгөө нь дагахгүй */
-    const totInh = !totOwn && !!v?.noTotal;
+    const totInh = outAnc || (!totOwn && !!v?.noTotal);
     const sw = (kind: 'tot' | 'ph', own: boolean, inh: boolean) => {
       const on = !own && !inh;
       const name = kind === 'tot' ? tr('Төслийн нийтэд тооцох') : tr('Барилга угсралтын гүйцэтгэлд тооцох');
