@@ -88,3 +88,18 @@ assert.equal(r.get('2.2').S, 100, 'бүртгэлгүй — хадгалсан')
   assert.equal(g.get('А1'), 50, 'гэрээгээр: (100 + 0) ÷ 2; гэрээгүй мөр орохгүй');
 }
 console.log('zuragBurtgel.check: бүгд ✅');
+
+/* ── «+ Зураг нэмэх»-ийн багцын жагсаалт — ТТБ-ийн «Барилга угсралт»-ын багцын нэрс (2026-11-17) ── */
+{
+  const { planPkgNames } = await import('./zuragBurtgel.ts');
+  const { strict: a } = await import('node:assert');
+  const rows = [
+    { dd_kod: '2', ajil_uilchilgee: 'Ажлын зураг төсөл' }, { dd_kod: '2.1', bagts: 'Багц 9' },
+    { dd_kod: '6', ajil_uilchilgee: 'Барилга угсралт' },
+    { dd_kod: '6.10', bagts: 'Багц-10' }, { dd_kod: '6.2', bagts: 'Багц-2' }, { dd_kod: '6.2.1', bagts: 'БАГЦ  2' },
+    { dd_kod: '6.1', bagts: 'БАГЦ 1- 4' }, { dd_kod: '6.3', bagts: 'БАГЦ-6.1, 6.2' }, { dd_kod: '6.4', bagts: 'БАГЦ - 19.1' }, { dd_kod: '6.5', bagts: null },
+  ];
+  a.deepEqual(planPkgNames(rows), ['Багц-2', 'БАГЦ - 19.1', 'Багц-10'], 'зөвхөн Барилга угсралт; Д/Д-ийн дарааллаар; давхардал, нэгтгэсэн мөр, хоосон орохгүй');
+  a.deepEqual(planPkgNames([{ dd_kod: '1', ajil_uilchilgee: 'ТЭЗҮ' }]), [], 'үе шат олдоогүй — хоосон (бичих талбар хэвээр)');
+  console.log('zuragBurtgel.check: багцын жагсаалт ✅');
+}
