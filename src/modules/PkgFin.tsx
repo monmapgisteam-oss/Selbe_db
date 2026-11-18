@@ -689,6 +689,7 @@ export function PkgFin({ dim, setDim }: {
         />
 
         <MapTools
+          fixed
           dim={dim}
           setDim={setDim}
           layersOpen={catOpen}

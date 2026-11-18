@@ -6,9 +6,9 @@
   flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 5px;
+  gap: 3px;
   text-align: left;
-  padding: 12px 14px;
+  padding: 8px 14px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
@@ -24,10 +24,11 @@
   min-width: 0;
 }
 
+/* 2026-11-17: тоо ТОМ (13 → 22px) — том хавтанд жижиг тоо байв; хавтангийн дотоод зай шахуу */
 .tileVal b {
-  font-size: 13px;
+  font-size: 22px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -36,6 +37,8 @@
 .tileVal i { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-3); white-space: nowrap; }
 
 /* Environment шошго (10px ink-3) — `order:-1`-ээр нүдний дээд мөр болно */
+/* Тооны доорх тайлбар мөр — жижиг, энгийн үсгээр (гарчигтай андуурагдахгүй) */
+.tileNote { font-size: 11px; line-height: 1.3; color: var(--ink-3); }
 .tileLabel { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: var(--eyebrow-ls); line-height: 1.4; color: var(--ink-3); }
 
 /* ══════════════════ Давхаргын самбар (газрын зураг дээр) ══════════════════ */

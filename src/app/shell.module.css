@@ -24,7 +24,7 @@
   border-right: 1px solid var(--line);
 }
 .shellNavMin { --nav: 54px; }
-/* Хураагдсан цэс дээр хулгана очиход — агуулгын ДЭЭГҮҮР дэлгэгдэнэ (хүрээ шилжихгүй) */
+/* Цэсийг ДАРЖ нээхэд — агуулгын ДЭЭГҮҮР дэлгэгдэнэ (хүрээ шилжихгүй, элемент шахагдахгүй) */
 @media (min-width: 1181px) {
   .dock { transition: width 0.3s ease; }
   .dockPeek { width: 244px; z-index: 40; box-shadow: var(--shadow); }
@@ -50,7 +50,7 @@
   transition: color 0.14s, background 0.14s;
 }
 .navFold:hover { color: var(--ink); background: color-mix(in oklab, var(--ink) 5%, transparent); }
-.shellNavMin .navFold { justify-content: center; padding: 8px 0; }
+.shellNavMin .dock:not(.dockPeek) .navFold { justify-content: center; padding: 8px 0; }
 .navFoldArrow { font-size: 0.85rem; line-height: 1; }
 /* Толгой бүтэн өргөнөөр (навигацийн ДЭЭР) — хүрээний зүүн зайг нөхнө */
 @media (min-width: 1181px) {

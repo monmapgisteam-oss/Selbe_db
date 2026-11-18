@@ -116,6 +116,7 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
         onPick={onMapPick}
       />
       <MapTools
+        fixed
         dim={dim}
         setDim={setDim}
         layersOpen={catOpen}

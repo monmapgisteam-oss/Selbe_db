@@ -394,6 +394,7 @@ export function Irged({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
 
           {/* Toolbar — бусад цонхтой ЯГ ИЖИЛ (нэгдсэн `MapTools`) */}
           <MapTools
+            fixed
             dim={dim}
             setDim={setDim}
             layersOpen={layerOpen}

@@ -1231,3 +1231,50 @@
 }
 .scoreMark { display: inline-block; min-width: 1em; margin-right: 2px; text-align: center; font-weight: 400; }
 @media (prefers-reduced-motion: reduce) { .scoreBar { transition: none; } }
+
+/*
+ * ══ НИЙТЛЭГ ЗАСВАР (2026-11-17) — «ХАБЭА», Ерөнхий дашбоардтай ижил, гэхдээ энэ цэсний ӨӨРИЙН CSS-д ══
+ *  1. ХҮРЭЭ БҮДЭГ — порталын анхдагчийн ~гуравны нэг (`--ink`-ээс тул хоёр горимд ажиллана).
+ *  2. Чирэх бариулын зураас ХАРАГДАХГҮЙ — хулгана очих/чирэх үед л тодорно.
+ *  3. Газрын зургийн товчнууд ҮРГЭЛЖ дэлгээтэй (`MapTools fixed`): зүүн дээд буланд багана, дээд төвд 2D/3D/BIM, ирмэгээс 12px.
+ *  4. Нээгдэх цонхнууд (Давхарга · Тунгалаг · Бүс) товчны баганын хажууд, зураг ДОТОР багтана, дотроо гүйлгэгдэнэ;
+ *     Давхарга + Тунгалаг зэрэг нээлттэй бол Давхарга дээд 55%, Тунгалаг яг доор нь.
+ */
+.shell {
+  --line: color-mix(in oklab, var(--ink) 4%, transparent);
+  --line-strong: color-mix(in oklab, var(--ink) 8%, transparent);
+}
+.shell [role='separator']:not(:hover):not(:focus-visible)::after { background: transparent; }
+.map { --tools-top: 12px; --pop-l: calc(12px + var(--tools-w, 176px) + 8px); }
+.map.map :global(.mapToolsBar) { left: 12px; }
+.map.map :global(.mapDims) { top: 12px; }
+.map.map *:has(> :global(.mapCatalog)) {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: var(--pop-l);
+  right: auto;
+  width: min(340px, calc(100% - var(--pop-l) - 12px));
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  z-index: 10;
+}
+.map.map :global(.mapOpacity),
+.map.map [class*='zonePanel'] {
+  top: 12px;
+  bottom: auto;
+  left: var(--pop-l);
+  right: auto;
+  width: min(340px, calc(100% - var(--pop-l) - 12px));
+  max-width: none;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  z-index: 10;
+}
+.map.map:has(:global(.mapOpacity)) *:has(> :global(.mapCatalog)) { bottom: auto; height: calc(55% - 18px); }
+.map.map:has(:global(.mapCatalog)) :global(.mapOpacity) { top: calc(55% + 6px); max-height: calc(45% - 18px); }

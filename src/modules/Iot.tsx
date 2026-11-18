@@ -243,6 +243,7 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           />
 
           <MapTools
+            fixed
             dim={dim}
             setDim={setDim}
             layersOpen={catOpen}
