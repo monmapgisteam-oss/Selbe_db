@@ -571,6 +571,7 @@ export function PkgProg({ dim, setDim }: {
         />
 
         <MapTools
+          fixed
           dim={dim}
           setDim={setDim}
           layersOpen={catOpen}
@@ -778,17 +779,19 @@ function TsKpi(
   const none = loading && !failed ? '…' : '—';
   const covNote = coverageNote(t?.coverage);
   const items = [
-      { v: num(packs.length), l: tr('нийт төслийн тоо'), h: tr('Багцын бүртгэлд буй бүх багц ажил — гэрээ, санхүүжилт бүртгэгдээгүй багц ч орно') },
+      /* 2026-11-17: гарчиг БОГИНО, ойлгомжтой; нөхцөл/тайлбар нь тооны доорх жижиг мөрөнд (`n`) — урьд нь гарчигт «·»-ээр залгагдаж уншигдахгүй байв */
+      { v: num(packs.length), l: tr('Нийт багц ажил'), h: tr('Багцын бүртгэлд буй бүх багц ажил — гэрээ, санхүүжилт бүртгэгдээгүй багц ч орно'), n: '' },
       {
         v: t?.actual == null ? none : pct(t.actual, 1),
-        l: t?.excluded.length ? `${tr('бодит гүйцэтгэлийн хувь')} ${tr('(хуваарьтай багцаар)')}` : tr('бодит гүйцэтгэлийн хувь'),
+        l: tr('Бодит гүйцэтгэл'),
+        n: t?.excluded.length ? tr('зөвхөн хуваарьтай багцаар') : '',
       },
-      { v: t?.planned == null ? none : pct(t.planned, 1), l: tr('төлөвлөсөн гүйцэтгэлийн хувь') + (covNote ? ` · ${covNote}` : '') },
+      { v: t?.planned == null ? none : pct(t.planned, 1), l: tr('Төлөвлөсөн гүйцэтгэл'), n: covNote ?? '' },
       {
         v: t?.gap == null ? none : gapPts(t.gap),
-        l: tr('гүйцэтгэлийн зөрүүгийн хувь')
-          + (t?.gap != null && !coverageOk(t.coverage) ? ` · ${tr('хуваарь дутуу — дүгнэхгүй')}` : ''),
-    },
+        l: tr('Зөрүү (бодит − төлөвлөсөн)'),
+        n: t?.gap != null && !coverageOk(t.coverage) ? tr('хуваарь дутуу тул дүгнэхгүй') : '',
+      },
   ];
   const errQ: Async<unknown> | null =
     finQ.state === 'error' ? finQ : planQ.state === 'error' ? planQ : null;
@@ -804,6 +807,7 @@ function TsKpi(
         <div key={i.l} className={o.tile} style={{ '--tone': 'var(--data)' } as CSSProperties}>
           <span className={`${o.tileVal} num`} title={'h' in i && i.h ? i.h : i.v}><b>{i.v}</b></span>
           <span className={o.tileLabel}>{i.l}</span>
+          {i.n && <span className={o.tileNote}>{i.n}</span>}
         </div>
       ))}
       {errQ && (

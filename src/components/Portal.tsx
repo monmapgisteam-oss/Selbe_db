@@ -419,24 +419,7 @@ function PortalContent(
       return !v;
     });
   }, []);
-  /* Хураагдсан цэс: хулгана очиход агуулгын ДЭЭГҮҮР дэлгэгдэнэ, холдоход хураагдана (агуулга шилжихгүй) */
-  const [navHover, setNavHover] = useState(false);
-  const dockRef = useRef<HTMLElement | null>(null);
-  const navEnter = useCallback(() => setNavHover(true), []);
-  /* Хураалт — курсор цэсээс ГАДАГШ хөдөлсөн үед л (450мс хүлээгээд). Зүүн ирмэгт тулж цонхноос гарахад хөдөлгөөн ирэхгүй тул нээлттэй үлдэнэ */
-  useEffect(() => {
-    if (!navHover) return undefined;
-    let t: ReturnType<typeof setTimeout> | null = null;
-    const move = (m: MouseEvent) => {
-      const r = dockRef.current?.getBoundingClientRect();
-      const out = !r || m.clientX > r.right || m.clientY < r.top;
-      if (out) t ??= setTimeout(() => setNavHover(false), 450);
-      else if (t) { clearTimeout(t); t = null; }
-    };
-    window.addEventListener('mousemove', move);
-    return () => { window.removeEventListener('mousemove', move); if (t) clearTimeout(t); };
-  }, [navHover]);
-  const navPeek = navMin && navHover;
+  /* Цэс ДАРЖ нээгдэнэ/хаагдана (hover биш). Нээлттэй үед агуулгын ДЭЭГҮҮР дэлгэгдэнэ — хүрээ үргэлж 54px-ийн зайтай, элемент шахагдахгүй */
 
   /**
    * ТУНГАЛАГ — давхарга бүрийн opacity override (0–1) ба тохируулах цонх нээлттэй
@@ -869,13 +852,12 @@ function PortalContent(
         </div>
       )}
       <div
-        className={`${s.shell} ${navMin ? s.shellNavMin : ''}`}
+        className={`${s.shell} ${s.shellNavMin}`}
         inert={!viewAllowed}
       >
         {/* ── ЗҮҮН DOCK: харагдацын жагсаалт (Environment `shell/sidebar.tsx`) ── */}
-        <aside className={`${s.dock} ${navPeek ? s.dockPeek : ''}`} aria-label={tr('Цэс')} ref={dockRef} onMouseEnter={navEnter}>
+        <aside className={`${s.dock} ${navMin ? '' : s.dockPeek}`} aria-label={tr('Цэс')}>
           {/* Цэс хураах/дэлгэх — хураахад зөвхөн дүрс үлдэнэ (54px) */}
-          {!navPeek && (
           <button
             type="button"
             className={s.navFold}
@@ -887,14 +869,13 @@ function PortalContent(
             <span className={s.navFoldArrow} aria-hidden>{navMin ? '»' : '«'}</span>
             {!navMin && <span>{tr('Хураах')}</span>}
           </button>
-          )}
           <div className={s.dockNav}>
             <ErrorBoundary scope="view" label={tr('Цэс нээгдсэнгүй')}>
             <ViewRail
               view={view}
               setView={railSelect}
               navScope={navScope}
-              collapsed={navMin && !navHover}
+              collapsed={navMin}
               onDocs={docsAllowed ? () => setDocsOpen(true) : undefined}
               docsActive={docsOpen}
               onAdmin={isSuper ? () => setAdminOpen(true) : undefined}
