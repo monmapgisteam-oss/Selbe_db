@@ -2862,8 +2862,6 @@ const en: Record<string, string> = {
   "{0} дутуу": "{0} short",
   "Сарын обьёмын нийлбэр нийт обьёмтой тэнцээгүй": "The monthly volumes do not add up to the planned volume",
   "Санхүүжилт — гэрээ, захирамж, эх үүсвэр (дашбоардын эх)": "Financing — contracts, decrees, sources (dashboard source)",
-  "Төслийн ангилал (ОРОН СУУЦНЫ ХОРООЛЛЫН БАРИЛГАЖИЛТ, ИНЖЕНЕРИЙН ДЭД БҮТЭЦ, НИЙГМИЙН ДЭД БҮТЭЦ, «ГАДНА ТОХИЖИЛТ, ӨНДӨРЖИЛТ», ТЭЗҮ ЗУРАГ ТӨСӨЛ, БУСАД). Зарим гэрээнд ХООСОН — «0» гэж бичигдээгүй, NULL.": "Project category (RESIDENTIAL DISTRICT CONSTRUCTION, ENGINEERING INFRASTRUCTURE, SOCIAL INFRASTRUCTURE, “EXTERNAL LANDSCAPING, ELEVATION”, FEASIBILITY STUDY AND DESIGN, OTHER). EMPTY on some contracts — not written as “0”, but NULL.",
-  "Төсөл — богино ангилал": "Project — short category",
   "Нарийвчилсан төрөл — ажлын БҮТЭН нэр": "Detailed type — the FULL work name",
   "Урьдчилсан төсөвт өртөг, ₮ — БҮХ мөнгөн тооцооны эх": "Preliminary budget cost, ₮ — the source of ALL monetary calculations",
   "Хөрөнгө оруулалтын дүнгийн тайлбар («Гэрээлсэн дүн» г.м.)": "Investment amount note (“Contracted amount”, etc.)",

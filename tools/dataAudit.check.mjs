@@ -78,7 +78,9 @@ assert.equal(legacyDiff.status, 'warn');
 assert.ok(legacyDiff.rows.some(r => r['төрөл'] === 'НӨӨЦИЙН НИЙТ %'));
 const badResult = { ...plan.result, values: new Map(plan.result.values) };
 badResult.values.set(planTree.nodes[0], { ...badResult.values.get(planTree.nodes[0]), G: 80 });
-assert.equal(comparePlanNegtgel({ ...plan, result: badResult }, same, total).status, 'diff', 'дэлгэцийн жин үндсэн нийлбэрээс зөрвөл алдаа хэвээр');
+/* 2026-11-18: «Нэгтгэл гүйцэтгэл»-ийн нийт мөр одоо ҮРГЭЛЖ ТТБ-ийн үндэс мөрөөс (1-р түвшний мөрийг өөрөө нэмэхгүй) — мөрийн
+   жин зөрсөн ч дэлгэцийн нийт үндэстэй ижил, тиймээс энэ нь «дэлгэцийн зөрүү» биш */
+assert.equal(comparePlanNegtgel({ ...plan, result: badResult }, same, total).status, 'ok', 'нийт мөр үндэс мөрөөс — жингийн зөрүү дэлгэцийн нийтэд нөлөөлөхгүй');
 
 /* тайлан: мөрийн хязгаар · `|` · дүгнэлт · мэдэгдэж буйг нуухгүй */
 const t = mdTable([{ a: 'x|y', b: null }, { a: 2, c: { k: 1 } }], 1);

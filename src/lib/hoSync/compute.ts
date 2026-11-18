@@ -45,9 +45,11 @@ export function hoPkgParts(v: unknown): string[] {
     .filter(Boolean);
 }
 
+const PH_DESIGN: readonly string[] = ['ТЭЗҮ', 'Ажлын зураг төсөл'];
+const PH_BUILD: readonly string[] = ['Барилга угсралт'];
 /** HO ажлын төрөл → Cashflow үе шат */
 export const phasesOf = (workType: unknown): readonly string[] => (
-  /тэзү|судалгаа/i.test(txt(workType)) ? ['ТЭЗҮ', 'Ажлын зураг төсөл'] : ['Барилга угсралт']
+  /тэзү|судалгаа/i.test(txt(workType)) ? PH_DESIGN : PH_BUILD
 );
 
 /** Cashflow мөр гэрээнд тохирох уу */
@@ -181,7 +183,10 @@ function missingContracts(
     const phase = txt(rows[0][CF.phase]);
     /* Цуцлагдсан гэрээг дахин, дахин гэрээлэхэд код нь өмнөх гэрээнийхтэй нийлэхгүй — дугаар нэмнэ (тогтмол хэвээр) */
     const withPhase = `${pkg} · ${phase}`;
-    const code = !codes.has(pkg) ? pkg : !codes.has(withPhase) ? withPhase : `${withPhase} · ${key}`;
+    /* 2026-11-18: зургийн гэрээ (дугааргүй, нэг баримтын мөр) — код нь үргэлж мөрийн дугаартай: багцын нэртэй ганц код нь
+       багцын бүх баримтын гэрээ мэт уншигддаг байв */
+    const perRow = phase !== 'Барилга угсралт' && key.startsWith('oid:');
+    const code = perRow ? `${withPhase} · ${key}` : !codes.has(pkg) ? pkg : !codes.has(withPhase) ? withPhase : `${withPhase} · ${key}`;
     codes.add(code);
     id += 1;
     adds.push({
@@ -256,6 +261,49 @@ function ownCfRows(cf: readonly Row[], nos: ReadonlySet<string>, otherNos: Reado
   return cf.filter((r) => (exact ? !noOf(r) || nos.has(noOf(r)) : !otherNos.has(noOf(r))));
 }
 
+const nameKey = (v: unknown): string => txt(v).replace(/\s+/g, ' ').toLowerCase();
+const DESIGN_PHASES = PH_DESIGN;
+
+/**
+ * ЗУРГИЙН ГЭРЭЭ = НЭГ БАРИМТЫН МӨР (2026-11-18, хэрэглэгч: «зургийн дүн орох нь зөв»). «Зургийн бүртгэл»-ийн баримт бүр
+ * өөрийн гэрээтэй, гэрээний дугааргүй. Урьд нь ийм гэрээ багц · үе шатаар тохирдог байсан тул багцынхаа БҮХ баримтыг авч,
+ * гэрээ бүрийн дүн багцын нийлбэр болдог байв (ТЭЗҮ-ийн 7 гэрээ тус бүр 3.55 тэрбум; зөв нь 507 сая). Одоо дугааргүй
+ * ТЭЗҮ/зургийн гэрээ ЯГ НЭГ мөртэй тохирно: 1) баримтын нэрээр (`tosol_ner` = `ajil_uilchilgee`), 2) кодын `oid:N`-ээр
+ * (нэр өөрчлөгдсөн үед), 3) багц · үе шатанд ганц мөр байвал тэр. Нэг мөрийг нэг л гэрээ эзэмшинэ.
+ * Буцаах: гэрээний код → мөр (`null` = мөр олдоогүй). Энэ дүрэмд хамаарахгүй гэрээ зураглалд ороогүй.
+ */
+function singleRowPicks(byContract: ReadonlyMap<string, Row[]>, cfRows: readonly Row[]): Map<string, Row | null> {
+  const picks = new Map<string, Row | null>();
+  const pool = new Map<string, Row[]>();
+  for (const [code, rows] of byContract) {
+    if (rows.some((r) => txt(r[HC.contractNo]))) continue;
+    const phases = phasesOf(rows.map((r) => txt(r[HC.workType])).find(Boolean) ?? '');
+    if (phases !== DESIGN_PHASES) continue;
+    const parts = [...new Set(rows.flatMap((r) => hoPkgParts(r[HC.pkg])))];
+    pool.set(code, cfRows.filter((r) => cfMatches(r, parts, phases) && !txt(r[CF.contractNo])));
+    picks.set(code, null);
+  }
+  const taken = new Set<number>();
+  const take = (code: string, find: (free: Row[], all: Row[]) => Row | undefined) => {
+    if (picks.get(code)) return;
+    const all = pool.get(code) ?? [];
+    const row = find(all.filter((r) => !taken.has(Number(r[CASHFLOW_NEW.oid]))), all);
+    if (!row) return;
+    taken.add(Number(row[CASHFLOW_NEW.oid]));
+    picks.set(code, row);
+  };
+  for (const [code] of picks) {
+    const name = nameKey((byContract.get(code) ?? []).map((r) => r[HC.project]).find((v) => txt(v)));
+    if (name) take(code, (free) => free.find((r) => nameKey(r[CF.detail]) === name));
+  }
+  for (const [code] of picks) {
+    const m = /oid:(\d+)$/.exec(code);
+    if (m) take(code, (free) => free.find((r) => Number(r[CASHFLOW_NEW.oid]) === Number(m[1])));
+  }
+  for (const [code] of picks) take(code, (free, all) => (all.length === 1 ? free[0] : undefined));
+  return picks;
+}
+
 export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSyncPlan {
   const byContract = new Map<string, Row[]>();
   for (const r of hoRows) {
@@ -268,6 +316,7 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
   const matched = new Map<string, number[]>();
   const unmatched: string[] = [];
   const cancelledUsed: number[] = [];
+  const single = singleRowPicks(byContract, cfRows);
   for (const [code, rows] of byContract) {
     /* 2026-11-04: багц бүрийн мөртэй гэрээ — гэрээний БҮХ мөрийн багцыг нэгтгэнэ (эхний мөрийнх биш) */
     const parts = [...new Set(rows.flatMap((r) => hoPkgParts(r[HC.pkg])))];
@@ -276,6 +325,20 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
     const nos = nosOf(rows);
     /* Гэрээ бүхлээрээ цуцлагдсан бол хөндөхгүй — гэхдээ Cashflow мөрүүд нь «эзэнгүй» гэж ШИНЭ гэрээ үүсгэхгүй
        (2026-11-05 аудит: гаднаас цуцалсан гэрээнд давхар ХО мөр үүсдэг байв). Өөр дугаартай мөр бол цуцлагдсаны дараа байгуулсан ШИНЭ гэрээ — эзэмшихгүй */
+    if (single.has(code)) {
+      const row = single.get(code);
+      if (contractCancelled(rows)) { if (row) cancelledUsed.push(Number(row[CASHFLOW_NEW.oid])); continue; }
+      if (!row) { unmatched.push(code); continue; }
+      matched.set(code, [Number(row[CASHFLOW_NEW.oid])]);
+      /* Баримтын нэр бүртгэлд өөрчлөгдвөл гэрээний нэр дагана — дараагийн удаа нэрээрээ таарна */
+      const want = { ...hoFromCf([row]), [HC.project]: txt(row[CF.detail]) || null };
+      for (const r of rows) {
+        const upd: Row = {};
+        for (const [f, v] of Object.entries(want)) if (!same(r[f], v)) upd[f] = v;
+        if (Object.keys(upd).length) updates.push({ [HO_IPC.oid]: r[HO_IPC.oid], ...upd });
+      }
+      continue;
+    }
     if (contractCancelled(rows)) {
       cancelledUsed.push(...fit.filter((r) => { const no = txt(r[CF.contractNo]); return nos.size ? nos.has(no) : !no; }).map((r) => Number(r[CASHFLOW_NEW.oid])));
       continue;

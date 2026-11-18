@@ -10,7 +10,6 @@ import {
 } from '../../src/lib/services.ts';
 import { PKGS, PKG_GROUPS, fillSchema, loadSchema } from '../../src/modules/sheet/bagts.pkg.ts';
 import { loadRows } from '../../src/modules/sheet/bagtsSheet.ts';
-import { negRowsFromPlan, negDisplay, negtgelProjectPct } from '../../src/lib/negtgel.ts';
 
 const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 const txt = (v) => (v == null ? '' : String(v).trim());
@@ -280,8 +279,9 @@ export function comparePlanNegtgel(plan, calc, tot187) {
   rows.sort((x, y) => (x.түвшин ?? 99) - (y.түвшин ?? 99) || Math.abs(y.зөрүү ?? 0) - Math.abs(x.зөрүү ?? 0));
   const rootS = plan.result.values.get(plan.tree.root)?.S;
   if (tot187 != null && rootS != null && Math.abs(tot187 * 100 - rootS) > 0.01) rows.unshift({ төрөл: 'НӨӨЦИЙН НИЙТ %', код: '0', түвшин: 0, нэр: 'Төслийн нийт', '187': round(tot187 * 100, 2), '182': round(rootS, 2), зөрүү: round(tot187 * 100 - rootS, 2) });
-  const display = negDisplay(negRowsFromPlan(plan));
-  const current = negtgelProjectPct(display.rows, display.calc);
+  /* 2026-11-18: «Нэгтгэл гүйцэтгэл» хуудасны нийт мөр одоо ҮРГЭЛЖ ТТБ-ийн үндэс мөрөөс (`TusulNegtgel`: `root`) — 1-р
+     түвшний мөрүүдийг өөрөө нэмдэг хуучин томьёо (`negtgelProjectPct`) дэлгэцэд хэрэглэгдэхгүй */
+  const current = rootS ?? null;
   const displayDiff = (rootS == null) !== (current == null)
     || (rootS != null && current != null && Math.abs(rootS - current) > 0.01);
   if (displayDiff) rows.unshift({ төрөл: '182 ↔ дэлгэцийн хөрвүүлэлт', '182': round(rootS), дэлгэц: round(current) });

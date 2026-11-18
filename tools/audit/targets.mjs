@@ -87,10 +87,18 @@ export function buildTargets() {
     HO_IPC.oid, HO_IPC.status.field, HO_IPC.docItem, ...strs(HO_IPC.contractFields), ...strs(HO_IPC.payFields),
     ...HO_IPC.emptyFields, ...strs(HO_IPC.pendingFields), ...strs(LINK_FIELDS),
   ]));
+  /* 2026-11-18: 182-оос устгасан, эсвэл санах ойд бодогддог (`query.ts` · `cfClass`) нэрсийг хүснэгтээс шаардахгүй —
+     урьд нь эдгээрийг «дутуу» гэж худал мэдээлдэг байв */
+  const CF_NOT_STORED = new Set([
+    'bagts_tuvshin1', 'bagts_tuvshin2', 'bagts_tuvshin3', 'ajil_tuvshin1', 'ajil_tuvshin2', 'ajil_tuvshin3',
+    'etseg_kod', 'tuvshin', 'uy_shat', 'tusul_ezleh_huvi', 'songon_ognoo', 'sar_mongo_eh',
+    'tezu', 'ajliin_zurag_tusul', 'gazar_chuluulult', 'zuwshuurul', 'songon_shalgaruulalt',
+    'cashflow_start', 'cashflow_end', 'cashflow_huwi', 'cashflow_dun',
+  ]);
   out.push(T('cf:182', 'fields', CASHFLOW_NEW.url, [
     CASHFLOW_NEW.oid, ...strs(CASHFLOW_NEW.fields), ...strs(CASHFLOW_NEW.stages),
     ...strs(CF_MONTH), FIN_XL_TOTAL_CODE_FIELD,
-  ]));
+  ].filter((f) => !CF_NOT_STORED.has(f))));
   out.push(T('negtgel:187', 'fields', TUSUL_NEGTGEL.url, [TUSUL_NEGTGEL.oid, ...strs(TUSUL_NEGTGEL.fields)]));
   out.push(T('negtgel:190', 'fields', BAGTS_NEGTGEL.url, [BAGTS_NEGTGEL.oid, ...strs(BAGTS_NEGTGEL.fields)]));
   for (const [k, id] of Object.entries(SELBE_PUBLIC.tables)) {

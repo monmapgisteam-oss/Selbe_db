@@ -140,14 +140,42 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
     });
   }
   if (!add.length) return same;
-  /* Хүснэгтэд ижил Д/Д-тэй мөр байвал түүний objectid (эхнийх нь); байхгүй бол зохиомол */
-  const oid = new Map<string, number>();
-  for (const r of drop) if (r.dd_kod && typeof r.objectid === 'number' && !oid.has(r.dd_kod)) oid.set(r.dd_kod, r.objectid);
-  const gen = add.map((r): PlanStoredRow => {
-    const o = oid.get(r.dd_kod ?? '');
-    return o == null ? { ...r, virtual: true } : { ...r, objectid: o };
-  });
+  const ids = matchStored(add, [...drop]);
+  const gen = add.map((r, i): PlanStoredRow => (ids[i] == null ? { ...r, virtual: true } : { ...r, objectid: ids[i] }));
   return { out: [...rows.filter((r) => !drop.has(r)).map((r) => swap.get(r) ?? r), ...gen], gen, old: [...drop] };
+}
+
+const docKey = (r: PlanStoredRow): string => `${String(r.ajil_uilchilgee ?? '').replace(/\s+/g, ' ').trim().toLowerCase()}|${String(r.bagts ?? '').trim().toLowerCase()}`;
+
+/**
+ * БҮРТГЭЛИЙН МӨР ↔ ХҮСНЭГТИЙН МӨР (2026-11-18). Урьд нь зөвхөн Д/Д-ээр тулгадаг байсан тул бүртгэлийн дунд баримт нэмэх /
+ * устгахад дараагийн баримтууд нэг мөрөөр шилжиж, мөр дээрх гэрээний дугаар · гүйцэтгэгч · олгосон дүн ӨӨР баримтынх
+ * болдог байв. Одоо мөр БАРИМТАА дагана:
+ *   1) Д/Д ба нэр хоёулаа ижил мөр — хэвээр;
+ *   2) баримтын мөр — нэр · багц ижил, эзэнгүй үлдсэн мөр (Д/Д нь шинэчлэгдэнэ);
+ *   3) ижил Д/Д-тэй, эзэнгүй үлдсэн мөр (нэр өөрчлөгдсөн баримт, бүлгийн мөр);
+ *   эс бөгөөс шинэ мөр. Буцаах: `add`-тай ижил дараалалтай objectid (`null` = хүснэгтэд алга).
+ */
+function matchStored(add: readonly PlanStoredRow[], stored: readonly PlanStoredRow[]): (number | null)[] {
+  const real = stored.filter((r) => r.dd_kod && typeof r.objectid === 'number');
+  const byDd = new Map<string, PlanStoredRow>();
+  for (const r of real) if (!byDd.has(r.dd_kod as string)) byDd.set(r.dd_kod as string, r);
+  const out: (number | null)[] = add.map(() => null);
+  const used = new Set<number>();
+  const claim = (i: number, r: PlanStoredRow | undefined) => {
+    if (!r || out[i] != null || used.has(r.objectid as number)) return;
+    used.add(r.objectid as number);
+    out[i] = r.objectid as number;
+  };
+  add.forEach((g, i) => { const r = byDd.get(g.dd_kod ?? ''); if (r && docKey(r) === docKey(g)) claim(i, r); });
+  const byDoc = new Map<string, PlanStoredRow[]>();
+  for (const r of real) { const k = docKey(r); byDoc.set(k, [...(byDoc.get(k) ?? []), r]); }
+  add.forEach((g, i) => {
+    if (out[i] != null || g.guitsetgel_huvi === undefined) return;
+    claim(i, (byDoc.get(docKey(g)) ?? []).find((r) => !used.has(r.objectid as number)));
+  });
+  add.forEach((g, i) => claim(i, byDd.get(g.dd_kod ?? '')));
+  return out;
 }
 
 /** Хүснэгтэд бичигддэг талбарууд — бүртгэлээс гардаг нь л; бусад нь хоосон */
@@ -155,7 +183,7 @@ export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi
 type RKey = (typeof REGISTRY_PLAN_KEYS)[number];
 export type RegistryPlanEdits = {
   adds: ({ dd_kod: string } & Record<RKey, string | number | null>)[];
-  updates: ({ objectid: number } & Partial<Record<RKey, string | number | null>>)[];
+  updates: ({ objectid: number; dd_kod?: string } & Partial<Record<RKey, string | number | null>>)[];
   deletes: number[];
 };
 
@@ -174,8 +202,11 @@ const eq = (a: unknown, b: unknown): boolean => {
 export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZRow[]): RegistryPlanEdits {
   const { gen, old } = build(rows, z);
   const out: RegistryPlanEdits = { adds: [], updates: [], deletes: [] };
-  const foreign = (r: PlanStoredRow) => r.cashflow_id != null || r.geree_dugaar != null || r.guitsetgegch != null || r.olgoson_dun != null
-    || r.urdchilgaa_dun != null || r.ho_dun_zahiramj != null || r.zahiramj_dugaar != null || r.guits_ehleh != null || r.guits_duusah != null;
+  /* 2026-11-18: гэрээний дугаар · гүйцэтгэгч · олгосон дүн · урьдчилгаа нь «гадны» шинж БИШ — зургийн гэрээ байгуулах,
+     төлбөр олгоход систем өөрөө баримтын мөрд бичдэг. Урьд нь ийм мөрийг дараагийн бүртгэлийн хадгалалт устгаад хоосон
+     мөр нэмдэг байсан тул гэрээний дугаар арилж, төлбөр гэрээнээсээ тасардаг байв. */
+  const foreign = (r: PlanStoredRow) => r.cashflow_id != null || r.ho_dun_zahiramj != null || r.zahiramj_dugaar != null
+    || r.guits_ehleh != null || r.guits_duusah != null;
   const byOid = new Map<number, PlanStoredRow>();
   for (const r of old) if (typeof r.objectid === 'number') byOid.set(r.objectid, r);
   const kept = new Set<number>();
@@ -194,7 +225,10 @@ export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZR
     if (!s || foreign(s)) { out.adds.push({ dd_kod: g.dd_kod as string, ...want }); continue; }
     kept.add(g.objectid as number);
     const diff = REGISTRY_PLAN_KEYS.filter((k) => !eq(s[k], want[k]));
-    if (diff.length) out.updates.push({ objectid: g.objectid as number, ...Object.fromEntries(diff.map((k) => [k, want[k]])) });
+    const moved = s.dd_kod !== g.dd_kod;
+    if (diff.length || moved) {
+      out.updates.push({ objectid: g.objectid as number, ...(moved ? { dd_kod: g.dd_kod as string } : {}), ...Object.fromEntries(diff.map((k) => [k, want[k]])) });
+    }
   }
   for (const o of byOid.keys()) if (!kept.has(o)) out.deletes.push(o);
   return out;

@@ -260,6 +260,46 @@ assert.equal(p.updates.find((u) => u.objectid === 16), undefined);
   assert.equal(new Set(two.adds.map((a) => a.geree_kod)).size, 2);
 }
 
+
+/* 2026-11-18 ЗУРГИЙН ГЭРЭЭ = НЭГ БАРИМТЫН МӨР: дугааргүй зургийн гэрээ багцынхаа бүх баримтыг авахгүй — нэрээрээ ганц мөр */
+{
+  const d = (o) => cf({ uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц 2', ...o });
+  const rows = [
+    d({ objectid: 11, ajil_uilchilgee: 'Архитектур', geree_dun: 100 }),
+    d({ objectid: 12, ajil_uilchilgee: 'Бүтээц', geree_dun: 200 }),
+    d({ objectid: 13, ajil_uilchilgee: 'Бүтээц', geree_dun: 300 }),
+  ];
+  const first = planHoSync([], rows);
+  assert.deepEqual(first.adds.map((a) => a.geree_kod), ['Багц 2 · Ажлын зураг төсөл · oid:11', 'Багц 2 · Ажлын зураг төсөл · oid:12', 'Багц 2 · Ажлын зураг төсөл · oid:13'],
+    'зургийн гэрээний код үргэлж мөрийн дугаартай');
+  assert.deepEqual(first.adds.map((a) => a.gereet_tosov_niit), [100, 200, 300], 'гэрээ бүр ӨӨРИЙН баримтын дүнтэй');
+  /* хуучин код (мөрийн дугааргүй), багцын нийлбэр бичигдсэн гэрээнүүд — өөрийн мөрийн дүн рүү засагдана */
+  const ho = [
+    { objectid: 1, murun_id: 'ХО-0101', geree_kod: 'Багц 2', bagts: 'Багц 2', ajliin_turul: 'ТЭЗҮ,Судалгаа', tosol_ner: 'Архитектур', gereet_tosov_niit: 600, dun: 40 },
+    { objectid: 2, murun_id: 'ХО-0102', geree_kod: 'Багц 2 · Ажлын зураг төсөл', bagts: 'Багц 2', ajliin_turul: 'ТЭЗҮ,Судалгаа', tosol_ner: 'Бүтээц', gereet_tosov_niit: 600 },
+    { objectid: 3, murun_id: 'ХО-0103', geree_kod: 'Багц 2 · Ажлын зураг төсөл · oid:13', bagts: 'Багц 2', ajliin_turul: 'ТЭЗҮ,Судалгаа', tosol_ner: 'Бүтээц', gereet_tosov_niit: 600, dun: 7 },
+  ];
+  const p = planHoSync(ho, rows);
+  assert.deepEqual([...p.matched], [['Багц 2', [11]], ['Багц 2 · Ажлын зураг төсөл', [12]], ['Багц 2 · Ажлын зураг төсөл · oid:13', [13]]], 'ижил нэртэй хоёр баримт — нэг мөр нэг гэрээ');
+  assert.deepEqual(p.updates.map((u) => [u.objectid, u.gereet_tosov_niit]), [[1, 100], [2, 200], [3, 300]]);
+  assert.deepEqual(p.adds, []);
+  const paid = planPaidSync(ho, rows);
+  assert.deepEqual(paid.updates, [{ objectid: 11, olgoson_dun: 40 }, { objectid: 13, olgoson_dun: 7 }], 'төлбөр зөвхөн өөрийн баримтын мөрд');
+  /* баримтын нэр өөрчлөгдсөн — кодын мөрийн дугаараар олно, гэрээний нэр дагана */
+  const renamed = rows.map((r) => (r.objectid === 13 ? { ...r, ajil_uilchilgee: 'Суурь' } : r));
+  const r2 = planHoSync(ho, renamed);
+  assert.deepEqual(r2.matched.get('Багц 2 · Ажлын зураг төсөл · oid:13'), [13]);
+  assert.ok(r2.updates.some((u) => u.objectid === 3 && u.tosol_ner === 'Суурь'));
+  assert.deepEqual(r2.adds, [], 'нэр өөрчлөгдөхөд давхар гэрээ үүсэхгүй');
+  /* цуцлагдсан зургийн гэрээ зөвхөн өөрийн мөрийг эзэмшинэ — бусад баримтын гэрээг хаахгүй */
+  const dead = planHoSync([{ ...ho[0], ipc_tuluv: 'Цуцлагдсан' }], rows);
+  assert.deepEqual(dead.adds.map((a) => a.tosol_ner), ['Бүтээц', 'Бүтээц']);
+  /* дугаартай зургийн гэрээ хуучнаараа — дугаараар олон мөр */
+  const numbered = rows.map((r) => ({ ...r, geree_dugaar: 'З/1' }));
+  const n = planHoSync([{ objectid: 9, murun_id: 'ХО-0200', geree_kod: 'Багц 2', bagts: 'Багц 2', ajliin_turul: 'ТЭЗҮ,Судалгаа', geree_dugaar: 'З/1' }], numbered);
+  assert.deepEqual(n.matched.get('Багц 2'), [11, 12, 13]);
+}
+
 const w = hoFromCf([cfRows[3], cfRows[4]]);
 assert.equal(w.tosov_niit, 30);
 assert.equal(w.guitsetgegch, 'УСУГ', 'бичвэр — эхний утгатай мөрөөс');
