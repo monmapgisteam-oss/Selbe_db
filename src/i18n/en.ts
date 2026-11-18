@@ -1152,6 +1152,8 @@ const en: Record<string, string> = {
   "Нийт ажилтны тоо (бүх гүйцэтгэгч)": "Total workers (all contractors)",
   "Нийт гүйцэтгэл": "Total progress",
   "Нийт нэгж талбар": "Total parcels",
+  "Нийт нөхөх олговор": "Total compensation",
+  "Олговор олгосон": "Compensated",
   "Нийт талбай": "Total area",
   "Нийт талбай, м²": "Total area, m²",
   "Нийт техник (бүх гүйцэтгэгч)": "Total equipment (all contractors)",

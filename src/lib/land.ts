@@ -98,9 +98,12 @@ export function parcelGroupRows(rows: readonly Row[], field: string = PARCEL_LEF
   rows.forEach((r, i) => {
     const v = r[field];
     const k = v == null ? '\u0000null' : String(v);
-    const g = m.get(k) ?? { [field]: v ?? null, n: 0, a: 0 };
+    const g = m.get(k) ?? { [field]: v ?? null, n: 0, a: 0, c: 0, cn: 0 };
     g.n = Number(g.n) + 1;
     g.a = Number(g.a) + (areas[i] ?? 0);
+    /* Нөхөх олговор: `c` = дүнгийн нийлбэр, `cn` = дүн бүртгэгдсэн талбарын тоо (хоосон ≠ 0) */
+    const comp = r[PARCEL_LEFT.fields.comp];
+    if (comp != null && comp !== '' && Number.isFinite(Number(comp))) { g.c = Number(g.c) + Number(comp); g.cn = Number(g.cn) + 1; }
     m.set(k, g);
   });
   return [...m.values()];
@@ -109,7 +112,7 @@ export function parcelGroupRows(rows: readonly Row[], field: string = PARCEL_LEF
 /** Талбайн тооцоонд хэрэгтэй талбарууд */
 const parcelAreaFields = (): string[] => {
   const F = PARCEL_LEFT.fields;
-  return [...new Set([PARCEL_LEFT.oid, F.status, F.progress, F.area, F.areaAlt, F.parcelNo, PARCEL_SHAPE_AREA])];
+  return [...new Set([PARCEL_LEFT.oid, F.status, F.progress, F.area, F.areaAlt, F.parcelNo, PARCEL_SHAPE_AREA, F.comp])];
 };
 
 /** Нэгж талбарын мөрүүд (талбайн тооцоонд, геометргүй) — `land.ts` ба `Gazar.tsx` (AOI-тай) хуваалцана */
@@ -156,6 +159,10 @@ export type LandStatus = {
   pct: number | null;
   /** Төлөв бүрийн тоо — жагсаалтад байгаа дарааллаар нь */
   byStatus: { label: string; n: number; areaM2: number }[];
+  /** Нөхөх олговрын нийт дүн, ₮ — нэг ч талбарт бүртгэгдээгүй бол `null` (0 БИШ) */
+  comp: number | null;
+  /** Нөхөх олговор бүртгэгдсэн нэгж талбарын тоо */
+  compParcels: number;
   /**
    * ҮЛДСЭН талбарын шалтгаан — тоогоор буурах эрэмбээр.
    */
@@ -213,6 +220,8 @@ export function buildLandStatus(statusRows: Row[], altRows: Row[]): LandStatus {
     if (g) g.areaM2 += add;
     else byStatus.push({ label, n: 0, areaM2: add });
   }
+  const compParcels = statusRows.reduce((s, r) => s + Number(r.cn ?? 0), 0);
+  const comp = compParcels ? statusRows.reduce((s, r) => s + Number(r.c ?? 0), 0) : null;
   const of = (v: string) => byStatus.find((x) => x.label === v)?.n ?? 0;
   const total = byStatus.reduce((s, x) => s + x.n, 0);
   const areaM2 = byStatus.reduce((s, x) => s + x.areaM2, 0);
@@ -236,5 +245,7 @@ export function buildLandStatus(statusRows: Row[], altRows: Row[]): LandStatus {
     pct: total ? (resolved / total) * 100 : null,
     byStatus,
     reasons,
+    comp,
+    compParcels,
   };
 }

@@ -2403,6 +2403,8 @@ function LandDetail({ parcels, land, flt, onFlt }: {
                   { key: tr('Цэвэрлэсэн'), value: tr('{0} талбар', num(ls.cleaned)) },
                   { key: tr('Үлдсэн талбар'), value: tr('{0} талбар', num(ls.remaining)) },
                   { key: tr('Нийт талбай'), value: tr('{0} га', num(ls.areaM2 / 10_000, 2)) },
+                  { key: tr('Нийт нөхөх олговор'), value: mnt(ls.comp) },
+                  { key: tr('Олговор олгосон'), value: tr('{0} талбар', num(ls.compParcels)) },
                 ]}
               />
               <p className={o.note}>
