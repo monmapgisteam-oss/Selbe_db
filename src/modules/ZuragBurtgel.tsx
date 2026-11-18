@@ -14,7 +14,7 @@ import { ZURAG_BURTGEL } from '@/lib/services';
 import { entDeletePdf, entPdfBlob, entSearch, entUploadPdf, type EntPdf } from '@/lib/entDocs';
 import { pdfIndex, pdfsOf, tagsFor, type ZPdfKind } from '@/lib/zuragPdf';
 import { askConfirm } from '@/lib/confirm';
-import { loadZuragBurtgel, bulegLabel, groupByBudget, groupZ, subLabel, toZRow, tolovAvg, Z_TOLOV, type ZRow, type ZTolov } from '@/lib/zuragBurtgel';
+import { loadZuragBurtgel, loadPlanPkgs, bulegLabel, groupByBudget, groupZ, subLabel, toZRow, tolovAvg, Z_TOLOV, type ZRow, type ZTolov } from '@/lib/zuragBurtgel';
 import { queryFeatures } from '@/lib/query';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import { Data, userError } from '@/components/ui';
@@ -107,6 +107,17 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
   const pdfList = (r: ZRow) => (pdfIdx ? pdfsOf(r, pdfIdx) : []);
   const pdfRow = pdfFor == null ? null : rows.find((x) => x.oid === pdfFor) ?? null;
 
+  /* 2026-11-17: багцыг гараар бичихгүй — ТТБ-ийн багцын нэрсээс сонгоно (жагсаалт уншигдаагүй бол бичих талбар хэвээр) */
+  const ppQ = useAsync(loadPlanPkgs, []);
+  const pkgOpts = useMemo(() => (ppQ.data?.length ? ['Бүх багц', ...ppQ.data] : null), [ppQ.data]);
+  /** Багц сонгогч — `cur` жагсаалтад байхгүй (хуучин бичлэг) бол өөрийг нь сонголтод үлдээнэ */
+  const pkgSel = (cur: string, set: (v: string) => void, w?: number) => (
+    <select className={s.inp} style={w ? { width: w } : undefined} value={cur} aria-label={tr('Багц')} onChange={(e) => set(e.target.value)}>
+      <option value="">{tr('Багц сонгоогүй')}</option>
+      {cur && !pkgOpts?.includes(cur) && <option value={cur}>{cur}</option>}
+      {pkgOpts?.map((p) => <option key={p} value={p}>{p}</option>)}
+    </select>
+  );
   const pkgs = useMemo(() => [...new Set(rows.map((r) => r.bagts).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'mn')), [rows]);
   const bulegs = useMemo(() => [...new Set(rows.map((r) => r.buleg).filter(Boolean))], [rows]);
   const shown = useMemo(() => {
@@ -318,7 +329,9 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
                 {bulegs.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
               <input className={s.inp} value={add.ded} placeholder={tr('Дэд бүлэг')} onChange={(e) => setAdd({ ...add, ded: e.target.value })} />
-              <input className={s.inp} value={add.bagts} placeholder={tr('Багц')} onChange={(e) => setAdd({ ...add, bagts: e.target.value })} />
+              {pkgOpts
+                ? pkgSel(add.bagts, (v) => setAdd({ ...add, bagts: v }))
+                : <input className={s.inp} value={add.bagts} placeholder={tr('Багц')} onChange={(e) => setAdd({ ...add, bagts: e.target.value })} />}
               <input className={`${s.inp} ${s.inpName}`} value={add.ner} placeholder={tr('Бичиг баримтын нэр')} onChange={(e) => setAdd({ ...add, ner: e.target.value })} />
               <input className={s.inp} value={add.shifr} placeholder={tr('Шифр')} onChange={(e) => setAdd({ ...add, shifr: e.target.value })} />
               <button type="button" className={s.save} disabled={busy} onClick={saveAdd}>{tr('Нэмэх')}</button>
@@ -442,7 +455,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
                               ) : <span className={`${s.zTolov} ${s[`zT_${r.tolov}`] ?? ''}`}>{tolovLabel(r.tolov)}</span>}
                             </td>
                             <td className={s.code}>{ddOf.get(r.oid) ?? ''}</td>
-                            <td className={s.pkg}>{ed ? inp('bagts', tr('Багц'), 90) : r.bagts}</td>
+                            <td className={s.pkg}>{ed ? (pkgOpts && edit ? pkgSel(edit.v.bagts ?? '', (v) => setEdit({ ...edit, v: { ...edit.v, bagts: v } }), 110) : inp('bagts', tr('Багц'), 90)) : r.bagts}</td>
                             <td className={s.zCell} title={r.gereeDugaar || undefined}>{ed ? inp('gereeDugaar', tr('Гэрээ №')) : r.gereeDugaar}</td>
                             <td className={s.zCell}>{ed ? inp('gereeNer', tr('Гэрээ'), 180) : r.gereeUrl ? <a className={s.zLink} href={r.gereeUrl} target="_blank" rel="noopener noreferrer">{r.gereeNer || tr('Нээх')}</a> : r.gereeNer}</td>
                             <td className={s.zNm}>

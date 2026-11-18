@@ -262,3 +262,6 @@
 /* 2026-11-04: карт дээрх IPC чекбокс */
 .cardPick { width: 16px; height: 16px; margin: 0 6px 0 0; accent-color: var(--data); }
 .cardOn { outline: 2px solid var(--data); outline-offset: -2px; }
+
+/* 2026-11-17: «Зураг» бүлэг — ТЭЗҮ · зураг төслийн гэрээнүүд нэг хураагддаг бүлэгт, дотогш шилжүүлсэн */
+.zGrp { padding-left: 14px; border-top: 1px solid var(--line); }

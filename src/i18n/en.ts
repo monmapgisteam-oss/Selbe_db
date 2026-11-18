@@ -7776,6 +7776,8 @@ const en: Record<string, string> = {
   "Оруулж байна…": "Uploading…",
   "Бүлэг ба баримтын нэрийг бөглөнө үү.": "Fill in the section and document name.",
   "Зураг нэмэгдэв": "Drawing added",
+  "Багц сонгоогүй": "No package selected",
+  "{0} гэрээ · гэрээт {1} · олгосон {2}": "{0} contracts · contracted {1} · paid {2}",
   "Зургийн бүртгэлээс бичигдэнэ — «Зургийн бүртгэл» хуудсанд засна": "Written from the drawing register — edit it on the “Drawing register” page",
   "«Төсөл төлөвлөгөө биелэлт»-д бичигдсэнгүй: {0}": "Not written to “Project plan and progress”: {0}",
   "Нийт баримт": "Total documents",

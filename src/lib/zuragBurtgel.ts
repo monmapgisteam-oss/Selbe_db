@@ -3,7 +3,7 @@
  * Харагдац: `src/modules/ZuragBurtgel.tsx` («ТЭЗҮ · Ажлын зураг төсөл» хуудасны «Зургийн бүртгэл» таб).
  * Цэвэр хэсэг (`toZRow`, `groupZ`, `zuragPkgStats`) тестлэгдэнэ (`zuragBurtgel.check.mjs`).
  */
-import { ZURAG_BURTGEL, bagtsKey } from '@/lib/services';
+import { CASHFLOW_NEW, ZURAG_BURTGEL, bagtsKey } from '@/lib/services';
 import { queryFeatures } from '@/lib/query';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
 
@@ -320,3 +320,31 @@ async function fetchZ(): Promise<ZRow[]> {
   return rows.map(toZRow);
 }
 export const loadZuragBurtgel = cached(fetchZ, SESSION_TTL_MS, ['ZURAG_BURTGEL']);
+
+/**
+ * «+ Зураг нэмэх»-ийн БАГЦЫН ЖАГСААЛТ (хэрэглэгч 2026-11-17: «багцаа ТТБ-ийн нэрийн дагуу сонгох боломж алга, гараар бичвэл
+ * алдах магадлалтай») — «Төсөл төлөвлөгөө биелэлт»-ийн «Барилга угсралт» үе шатын мөрүүдийн багцын нэр, давхардалгүй,
+ * Д/Д-ийн дарааллаар. Олон багц нэг нүдэнд («БАГЦ-6.1, 6.2», «БАГЦ 1- 4») бичсэн нэгтгэсэн мөр ОРОХГҮЙ — нэг сонголт = нэг багц.
+ */
+export function planPkgNames(rows: readonly { dd_kod?: unknown; bagts?: unknown; ajil_uilchilgee?: unknown }[]): string[] {
+  const t = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
+  const top = rows.find((r) => /^\d+$/.test(t(r.dd_kod)) && t(r.ajil_uilchilgee).toLowerCase() === 'барилга угсралт');
+  if (!top) return [];
+  const pre = `${t(top.dd_kod)}.`;
+  const num = (c: string) => c.split('.').map(Number);
+  const cmp = (a: string, b: string) => { const x = num(a), y = num(b); for (let i = 0; i < Math.min(x.length, y.length); i += 1) if (x[i] !== y[i]) return x[i] - y[i]; return x.length - y.length; };
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of [...rows].filter((x) => t(x.dd_kod).startsWith(pre)).sort((a, b) => cmp(t(a.dd_kod), t(b.dd_kod)))) {
+    const name = t(r.bagts);
+    if (!name || /,/.test(name) || /\d\s*[-–]\s+\d/.test(name)) continue;
+    const k = bagtsKey(name);
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(name);
+  }
+  return out;
+}
+export const loadPlanPkgs = cached(async () => planPkgNames(await queryFeatures(CASHFLOW_NEW.url, {
+  where: `${CASHFLOW_NEW.fields.ddKod} IS NOT NULL`,
+  outFields: [CASHFLOW_NEW.fields.ddKod, CASHFLOW_NEW.fields.pkg, CASHFLOW_NEW.fields.detail],
+})), SESSION_TTL_MS, ['CASHFLOW_NEW']);

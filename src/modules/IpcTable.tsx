@@ -4,6 +4,10 @@
  * IPC — ОЛГОСОН САНХҮҮЖИЛТ, ГЭРЭЭГЭЭР БҮЛЭГЛЭСЭН УНШИГДАХУЙЦ ХАРАГДАЦ.
  */
 import { useMemo, useState, useSyncExternalStore } from 'react';
+import { phasesOf } from '@/lib/hoSync/compute';
+import { groupByRegistry } from '@/lib/ipcZurag';
+import { loadZuragBurtgel } from '@/lib/zuragBurtgel';
+import { HO_IPC } from '@/lib/services';
 import { hoSyncErrorText, hoUnassignedText, subscribeHoSync } from '@/lib/hoSync/sync';
 import { t as tr } from '@/lib/i18nCore';
 import { mnt, num, pct, dayKey } from '@/lib/format';
@@ -331,9 +335,82 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
   const liveKeys = useMemo(() => new Set(keyMap.values()), [keyMap]);
   const prune = (p: Set<string>) => new Set([...p].filter((k) => liveKeys.has(k)));
 
+  /* 2026-11-17 (хэрэглэгч: «орох нь зөв, гэхдээ Зураг гэдэг бүлгээр орох ёстой») — ТЭЗҮ · зураг төслийн гэрээнүүд (зургийн
+     бүртгэлийн баримт бүр нэг мөр) барилгын гэрээнүүдтэй холилдохгүй: жагсаалтын төгсгөлд нэг хураагддаг бүлэг, анхдагчаар хураалттай */
+  const [zOpen, setZOpen] = useState(false);
+  /* Дотроо — Зургийн бүртгэлийн бүлэг → дэд бүлгээр (хэрэглэгч: «зураг дотроо бүлэглэхгүй юм уу»); нээсэн бүлгүүд */
+  const [zShown, setZShown] = useState<ReadonlySet<string>>(() => new Set());
+  const zFlip = (k: string) => setZShown((q) => { const n = new Set(q); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const zQ = useAsync(loadZuragBurtgel, []);
+  const isDesign = (b: ContractBlock) => phasesOf(b.workType).includes('ТЭЗҮ');
+  const build = useMemo(() => sorted.filter((b) => !isDesign(b)), [sorted]);
+  const design = useMemo(() => sorted.filter(isDesign), [sorted]);
+  const dTree = useMemo(() => {
+    const f = (b: ContractBlock, k: string) => String(b.pays.map((r) => r[k]).find((v) => v != null && String(v).trim() !== '') ?? '');
+    return groupByRegistry(design, zQ.state === 'ready' ? zQ.data : [], (b) => f(b, HO_IPC.contractFields.project), (b) => f(b, HO_IPC.contractFields.pkg) || b.title);
+  }, [design, zQ.state, zQ.data]);
+  const sumOf = (bs: readonly ContractBlock[]) => tr('{0} гэрээ · гэрээт {1} · олгосон {2}', num(bs.length),
+    money(bs.reduce((a, b) => a + (b.contractTotal ?? 0), 0)), money(bs.reduce((a, b) => a + (b.paidTotal ?? 0), 0)));
+  /** «Зураг» бүлгийн дотоод толгой + (нээлттэй бол) агуулга */
+  const zSect = (k: string, label: string, bs: readonly ContractBlock[], body: () => React.ReactNode) => (
+    <section className={s.blk} key={k}>
+      <button type="button" className={s.gBtn} onClick={() => zFlip(k)} aria-expanded={zShown.has(k)}>
+        <span className={s.caret} aria-hidden="true">{zShown.has(k) ? '▾' : '▸'}</span>
+        <span className={s.gTitle}>{label}</span>
+        <span className={s.gCount}>{sumOf(bs)}</span>
+      </button>
+      {zShown.has(k) && <div className={s.zGrp}>{body()}</div>}
+    </section>
+  );
+  const dSum = useMemo(() => {
+    const add = (k: 'contractTotal' | 'paidTotal') => design.reduce((a, b) => a + (b[k] ?? 0), 0);
+    return { contract: add('contractTotal'), paid: add('paidTotal') };
+  }, [design]);
+
   const allShut = sorted.every((b) => shut.has(keyOf(b)));
   const toggleAll = () => {
     setShut(allShut ? new Set() : new Set(sorted.map((b) => keyOf(b))));
+  };
+
+  const block = (b: ContractBlock) => {
+    const k = keyOf(b);
+      const open = !shut.has(k);
+      return (
+        <section className={s.blk} key={k}>
+          <Head
+            b={b}
+            open={open}
+            onToggle={() => setShut((p) => {
+              const n = prune(p);
+              if (n.has(k)) n.delete(k); else n.add(k);
+              return n;
+            })}
+          />
+          {open && (
+            <>
+              <Details b={b} />
+              <PackageTable rows={packageRows(b, cfRows)} />
+              <IpcFlowPanel
+                code={b.code}
+                contractNo={b.contractNo}
+                contractor={b.contractor}
+                pays={b.pays}
+                contract={b.contractTotal}
+                paid={b.paidTotal}
+                canCreate={canCreate}
+                canApprove={canApprove}
+              >
+                {(pick) => (
+                  <div className={s.cards}>
+                    {b.rows.map((r) => <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} pick={pick} />)}
+                  </div>
+                )}
+              </IpcFlowPanel>
+              {canApprove && b.code && <div className={s.flowBar}><ContractCancelButton code={b.code} pays={b.pays} cfRows={cfRows} /></div>}
+            </>
+          )}
+        </section>
+      );
   };
 
   return (
@@ -389,47 +466,30 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
       </header>
 
       <div className={s.list}>
-        {sorted.map((b) => {
-          const k = keyOf(b);
-          const open = !shut.has(k);
-          return (
-            <section className={s.blk} key={k}>
-              <Head
-                b={b}
-                open={open}
-                onToggle={() => setShut((p) => {
-                  const n = prune(p);
-                  if (n.has(k)) n.delete(k); else n.add(k);
-                  return n;
-                })}
-              />
-              {open && (
-                <>
-                  <Details b={b} />
-                  <PackageTable rows={packageRows(b, cfRows)} />
-                  <IpcFlowPanel
-                    code={b.code}
-                    contractNo={b.contractNo}
-                    contractor={b.contractor}
-                    pays={b.pays}
-                    contract={b.contractTotal}
-                    paid={b.paidTotal}
-                    canCreate={canCreate}
-                    canApprove={canApprove}
-                  >
-                    {(pick) => (
-                      <div className={s.cards}>
-                        {b.rows.map((r) => <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} pick={pick} />)}
-                      </div>
-                    )}
-                  </IpcFlowPanel>
-                  {canApprove && b.code && <div className={s.flowBar}><ContractCancelButton code={b.code} pays={b.pays} cfRows={cfRows} /></div>}
-                </>
-              )}
-            </section>
-          );
-        })}
+        {build.map(block)}
+        {design.length > 0 && (
+          <section className={s.blk}>
+            <button type="button" className={s.gBtn} onClick={() => setZOpen((v) => !v)} aria-expanded={zOpen}>
+              <span className={s.caret} aria-hidden="true">{zOpen ? '▾' : '▸'}</span>
+              <span className={s.gTitle}>{tr('Зураг')}</span>
+              <span className={s.gMeta}>{tr('ТЭЗҮ · Ажлын зураг төсөл')}</span>
+              <span className={s.gCount}>{tr('{0} гэрээ · гэрээт {1} · олгосон {2}', num(design.length), money(dSum.contract), money(dSum.paid))}</span>
+            </button>
+            {zOpen && (
+              <div className={s.zGrp}>
+                {dTree.tree.map((g) => zSect(g.key, g.label, [...g.items, ...g.subs.flatMap((x) => x.items)], () => (
+                  <>
+                    {g.subs.map((x) => zSect(x.key, x.label, x.items, () => x.items.map(block)))}
+                    {g.items.map(block)}
+                  </>
+                )))}
+                {dTree.rest.length > 0 && (dTree.tree.length ? zSect('rest', tr('Бусад'), dTree.rest, () => dTree.rest.map(block)) : dTree.rest.map(block))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
+
 
       {unassigned && <p className={s.warn} role="alert">{tr('Гэрээний мөрт оноогдоогүй төлбөр олголтын дүнд ороогүй: {0}', unassigned)}</p>}
       {syncErr && <p className={s.warn} role="alert">{tr('Төлбөрийн дүнг «Төсөл төлөвлөгөө биелэлт»-д бичих автомат холболт унав ({0}) — олгосон хувь хоцорч болно; 10 минутын дараа дахин оролдоно.', syncErr)}</p>}
