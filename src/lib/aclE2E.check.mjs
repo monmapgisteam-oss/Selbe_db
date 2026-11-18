@@ -31,6 +31,9 @@ const OPS = await import('@/lib/aclOps.ts');
 OPS.setHeldByReader(async () => []);
 const FL = await import('@/lib/guitsetgelAcl.ts');
 const HV = await import('@/lib/huvaariAcl.ts');
+/* 2026-11-18: «нэг багцад нэг зохиогч, нэг батлагч» дүрэм энэ ЕРӨНХИЙ тестэд унтраалттай — олон туршилтын аккаунтад ижил
+   багц олгодог; дүрэм өөрөө `huvaariAclOne.check.mjs`-д шалгагдана */
+HV._setPlanOneRule(false);
 const OB = await import('@/lib/obyemAcl.ts');
 const AJ = await import('@/lib/ajilAcl.ts');
 const CH = await import('@/lib/chanarAcl.ts');

@@ -137,7 +137,21 @@ export const balanced = (
   m: ReadonlyMap<string, number>,
   total: number,
   step = 0.01,
-): boolean => Math.abs(sumMonths(m) - total) <= step / 2 + 1e-9 * Math.max(1, Math.abs(total));
+): boolean => {
+  /* 2026-11-18: нийт обьём центийн торонд багтахгүй (0.004 т) бол алхам нь обьёмын өөрийн нарийвчлал (`splitByPct`-тэй
+     ижил, ≤ 8 орон) — урьд нь 0.01-ийн хагас хүлцлээр 0-ээс 0.009 хүртэлх БҮХ нийлбэр «тэнцсэн» гэж өнгөрдөг байв */
+  let unit = step;
+  const a = Math.abs(total);
+  if (a > 0 && a < step) {
+    let scale = Math.round(1 / step);
+    while (scale < 1e8 && Math.abs(a * scale - Math.round(a * scale)) > 1e-6 * Math.max(1, a * scale)) scale *= 10;
+    unit = 1 / scale;
+  }
+  const s = sumMonths(m);
+  if (Math.abs(s - total) <= unit / 2 + 1e-9 * Math.max(1, a)) return true;
+  /* Цонхонд харагдах 2 оронгоор бөөрөнхийлсөн нийтийг (0.005 → «0.01») оруулсан бол тэнцсэнд тооцно — 0 биш үед л */
+  return unit < step && s > 0 && Math.abs(s - Math.round(total / step) * step) <= 1e-9;
+};
 
 /**
  * БҮЛГЭЭР ТӨЛӨВЛӨХ — хэрэглэгчийн өгсөн сарын хувиар (нийлбэрээрээ хэвийн болгоно) нийт обьёмыг сарууд руу хуваана.
@@ -916,7 +930,10 @@ export function weekPct(
   const pick = (w: number) => { let hit: WeekPlan | undefined; for (const e of entries) if (e.week === w) hit = e; return hit; };
   const hit = pick(nextWeekStart(today)) ?? pick(weekStart(today));
   if (!hit) return undefined;
-  const v = (base(today) ?? 0) + Math.max(0, hit.obyem) / vol;
+  /* 2026-11-18: 7 хоногийн ДОТОРХ өдрүүдэд шугаман — урьд нь маргаашаас эхлэн бүтэн обьём нэмэгдэж, төлөвлөгөөт муруй
+     нэг өдөрт огцом үсэрдэг байв. 7 дахь өдөр (ТТБ-ийн «Ирэх долоо хоног») бүтнээр — хэвээр. */
+  const frac = Math.min(1, (asOf - today) / (7 * DAY));
+  const v = (base(today) ?? 0) + (Math.max(0, hit.obyem) / vol) * frac;
   return Math.min(1, Math.max(base(asOf) ?? 0, v));
 }
 

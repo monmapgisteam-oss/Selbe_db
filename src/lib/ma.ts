@@ -131,7 +131,8 @@ export const isApproved = (v: Verdict | null): boolean => v === 'A' || v === 'AN
  */
 export type MaGate = 'none' | 'ok' | 'blocked';
 export function maGateOf(workKey: string, rows: readonly MaRow[]): { gate: MaGate; mas: MaRow[] } {
-  const mas = latestPerRespNo(rows).filter((r) => r.works.includes(workKey));
+  /* 2026-11-18: шинэ дугаараар дахин ирүүлж солигдсон буцаалт (R) хаалганд тооцогдохгүй — урьд нь ажлыг үүрд хаадаг байв */
+  const mas = effectiveMas(rows).filter((r) => r.works.includes(workKey));
   if (!mas.length) return { gate: 'none', mas };
   return { gate: mas.every((r) => isApproved(r.verdict)) ? 'ok' : 'blocked', mas };
 }
@@ -204,6 +205,16 @@ export function resubmitLinks(rows: readonly MaRow[]): Map<number, ResubLink> {
     }
   }
   return out;
+}
+
+/**
+ * ХҮЧИНТЭЙ MA мөрүүд (2026-11-18) — дугаар бүрийн сүүлийн илгээлт (`latestPerRespNo`), үүнээс ШИНЭ дугаараар дахин ирүүлж
+ * солигдсон буцаалтыг (`resubmitLinks`: R мөрийн дараагийн илгээлт байгаа) хассан.
+ */
+export function effectiveMas(rows: readonly MaRow[]): MaRow[] {
+  const latest = latestPerRespNo(rows);
+  const links = resubmitLinks(latest);
+  return latest.filter((r) => !(r.verdict === 'R' && links.get(r.oid)?.next));
 }
 
 /* ═══════════════ БАРИМТ — геопорталын тусдаа item (`chanarDocs`, 2026-10-29) ═══════════════ */

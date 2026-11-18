@@ -93,6 +93,10 @@ const near = (a, b, tol, msg) => assert.ok(a != null && Math.abs(a - b) <= tol, 
   near(weekPct(e, 100, T + 7 * DAY, base, T), 0.5, 1e-12, 'ирэх 7 хоног = өнөөдрийн суурь + обьём ÷ нийт (бүтнээр, гарагаас үл хамаарна)');
   near(weekPct(e, 100, D('2026-11-09') + 7 * DAY, base, D('2026-11-09')), 0.5, 1e-12, 'Даваа гарагт ч бүтнээр');
   assert.equal(weekPct(e, 100, T, base, T), undefined, 'өнөөдрийн төлөвлөгөөт хувийг хөндөхгүй');
+  /* 2026-11-18: 7 хоногийн доторх өдрүүдэд шугаман — маргааш бүтэн обьём үсэрч нэмэгдэхгүй */
+  near(weekPct(e, 100, T + 1 * DAY, base, T), 0.2 + 0.3 / 7, 1e-12, 'маргааш = суурь + обьёмын 1/7');
+  near(weekPct(e, 100, T + 3.5 * DAY, base, T), 0.35, 1e-12, 'дунд нь = суурь + обьёмын тал');
+  assert.ok(weekPct(e, 100, T + 2 * DAY, base, T) < weekPct(e, 100, T + 5 * DAY, base, T), 'өдөр ахих тусам өснө');
   assert.equal(weekPct(e, 100, T - 7 * DAY, base, T), undefined, 'өнгөрсөн өдрийг хөндөхгүй');
   assert.equal(weekPct(e, 100, T + 30 * DAY, base, T), undefined, '7 хоногоос цааш — суурь');
   assert.equal(weekPct(e, 100, D('2026-11-25') + 7 * DAY, base, D('2026-11-25')), undefined, 'өнгөрсөн долоо хоногийн оруулга үлдэгдэл нөлөөгүй');

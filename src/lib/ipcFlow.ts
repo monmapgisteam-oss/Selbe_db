@@ -289,6 +289,16 @@ export function contractCancelWhy(pays: readonly Row[]): 'has-ipc' | null {
     ? 'has-ipc' : null;
 }
 
+/**
+ * ГЭРЭЭ ЦУЦЛАХ — БИЧИХИЙН ӨМНӨХ ШАЛГАЛТ (2026-11-18, хэрэглэгч: «2-ыг зас»). `fresh` — сервероос САЯ уншсан мөрүүд.
+ * Дэлгэц нээлттэй байх хооронд өөр хүн IPC үүсгэсэн / баталсан бол (`contractCancelWhy`) цуцлахгүй — урьд нь дэлгэцийн
+ * хуучин мөрөөр шийдэж, төлбөр нь олгогдсон гэрээг цуцалдаг байв. Засвар нь ШИНЭ мөрүүдээр (шинээр үүссэн мөр ч орно).
+ */
+export function contractCancelFresh(fresh: readonly Row[], cfRows: readonly Row[]): { ok: false; why: 'has-ipc' } | { ok: true; ho: Row[]; cf: Row[] } {
+  const why = contractCancelWhy(fresh);
+  return why ? { ok: false, why } : { ok: true, ...contractCancel(fresh, cfRows) };
+}
+
 /** Гэрээ цуцлах — HO мөрүүд «Цуцлагдсан», Cashflow-ийн гэрээний мэдээлэл арилна. Мөр устахгүй, урьдчилсан төсөв хөндөгдөхгүй. */
 export function contractCancel(pays: readonly Row[], cfRows: readonly Row[]): { ho: Row[]; cf: Row[] } {
   return {

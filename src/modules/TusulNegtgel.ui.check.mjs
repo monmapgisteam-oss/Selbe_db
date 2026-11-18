@@ -92,6 +92,19 @@ assert.match(total, /43\.00%/, 'нийт өмнөх долоо хоногийн 
 assert.match(total, /55\.81%/, 'Weekly = S ÷ R');
 console.log('✅ нийт мөр: царцсан · Σ G × утга');
 
+/* ── 4б. (2026-11-18) ТТБ-ийн үндэс мөр өгөгдсөн бол нийт мөр ҮРГЭЛЖ түүнээс — «Төслийн нийтэд тооцохгүй» мөр байхгүй ч ── */
+{
+  const root = { act: 31.11, actPw: 30.01, planG: 62.22, planGch: null, planGu: 50.05, planNw: 51, planPw: 48.8 };
+  const html2 = renderToStaticMarkup(h(LocaleProvider, null, h(ThemeProvider, null, h(Tree, { rows, calc, root }))));
+  const body2 = html2.slice(html2.indexOf('<tbody'));
+  const total2 = body2.slice(0, body2.indexOf('</tr>'));
+  assert.match(total2, /31.11%/, 'нийт гүйцэтгэл = ТТБ-ийн Төслийн нийт мөр');
+  assert.match(total2, /62.22%/, 'нийт төлөвлөгөө = ТТБ-ийн Төслийн нийт мөр');
+  assert.match(total2, /50.00%/, 'биелэлт = 31.11 ÷ 62.22');
+  assert.doesNotMatch(total2, /24.00%/, 'өөрөө нэмж бодсон 24.00% гарахгүй');
+  console.log('✅ нийт мөр: ТТБ-ийн үндэс мөрөөс');
+}
+
 /* ── 5. outside тайлбар · огноо ── */
 assert.match(html, /title="[^"]*Excel-ийн томьёонд эцгийнхээ нийлбэрт ороогүй мөр/, 'outside мөрийн тайлбар');
 assert.match(html, />2024-04-08</, 'Гэрээ эхлэх — UTC өдөр');

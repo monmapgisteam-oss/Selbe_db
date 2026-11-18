@@ -27,6 +27,9 @@ const {
   removeHuvaariAssign, purgeHuvaariAssign, listHuvaariAssigns, setHuvaariGrants,
   huvaariGrantsOf,
 } = await import('@/lib/huvaariAcl.ts');
+/* 2026-11-18: «нэг багцад нэг зохиогч, нэг батлагч» дүрэм энэ тестэд унтраалттай — эндхийн тохиолдлууд олон аккаунтад ижил
+   багц олгож ерөнхий механизмыг шалгадаг; дүрэм өөрөө `huvaariAclOne.check.mjs`-д */
+(await import('@/lib/huvaariAcl.ts'))._setPlanOneRule(false);
 const ACL = await import('@/lib/guitsetgelAcl.ts');
 const { ROLE_BY_USER } = await import('@/lib/services.ts');
 const superName = Object.entries(ROLE_BY_USER).find(([, x]) => x === 'super')[0];

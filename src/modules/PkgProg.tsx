@@ -57,6 +57,7 @@ import { cat, shade, num, pct, monthKey, dayKey } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { CHART, lineSegments, monotonePath } from '@/lib/chartStyle';
 import { readParam, writeParams } from '@/lib/urlState';
+import { MaUnapprovedCard } from './MaUnapprovedCard';
 import o from './pkgProgOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { overlapLeftParcels, type Overlap } from '@/lib/parcelOverlap';
@@ -644,6 +645,8 @@ export function PkgProg({ dim, setDim }: {
               infra={finQ.state === 'ready' ? infraPhysNow(finQ.data)?.pct ?? 0 : finQ.state === 'error' ? null : undefined}
             />
             {allPack && q.state === 'ready' && <LevelsCard pm={q.data.prog} keys={q.data.keys} ovByCat={ovByCat} />}
+            {/* 2026-11-18 (хэрэглэгч): материал нь батлагдаагүй атлаа гүйцэтгэл бөглөгдсөн ажил — багцаар */}
+            {allPack && <MaUnapprovedCard />}
             {/* ТӨСЛИЙН НИЙТ давхцсан үлдсэн нэгж талбар — хэрэглэгчийн
                 хүсэлтээр (2026-08-21) ТУСДАА КАРТ болгож БУЦААВ: FinCard-аас
                 хассан нэгдсэн тоо. Багц бүрийн задаргаа нь доорх «Багц N —

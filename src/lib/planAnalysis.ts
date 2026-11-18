@@ -124,12 +124,25 @@ export type Issue = { kind: IssueKind; i: number; b: number; days?: number };
 export function planIssues(
   rows: readonly PlanRow[],
   b: number,
-  opts: { unbal?: ReadonlyMap<number, readonly number[]>; geree?: (i: number) => Span | null; withDeps?: boolean },
+  opts: {
+    unbal?: ReadonlyMap<number, readonly number[]>; geree?: (i: number) => Span | null; withDeps?: boolean;
+    /** Бүлгийн мөрийн идэвхтэй блокийн муж (хуанлийн зурвастай ижил — `effSpan`); өгөөгүй бол бүлгийг шалгахгүй */
+    groupSpan?: (i: number) => Span | null;
+  },
 ): Issue[] {
   const out: Issue[] = [];
   const byCode = codeIndex(rows as PlanRow[]);
   rows.forEach((r, i) => {
-    if (r.group) return;
+    if (r.group) {
+      /* 2026-11-18: бүлгийн уялдааны зөрчил — хуанлид улаан хүрээ гардаг атлаа самбарт тоологддоггүй байв
+         (уялдааг одоо 3-р давхрын БҮЛГҮҮДИЙН хооронд тавьдаг тул энэ нь ердийн тохиолдол) */
+      const gs = opts.withDeps !== false && r.deps.length ? opts.groupSpan?.(i) ?? null : null;
+      if (gs) {
+        const need = requiredStart(rows as PlanRow[], byCode, i, b);
+        if (need != null && gs.start < need) out.push({ kind: 'dep', i, b, days: Math.round((need - gs.start) / DAY) });
+      }
+      return;
+    }
     const sp = r.spans[b] ?? null;
     for (const bb of opts.unbal?.get(r.oid) ?? []) out.push({ kind: 'unbal', i, b: bb });
     if (!sp) {

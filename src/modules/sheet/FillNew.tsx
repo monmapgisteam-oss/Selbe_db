@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fixCyr } from "@/lib/format";
 import { useAsync } from '@/lib/useAsync';
 import { loadNoots, nootsSummary, inPkgStock } from '@/lib/materialNoots';
-import { isApproved, loadMa, maGateOf } from '@/lib/ma';
 import { serverNow, syncServerClock } from '@/lib/serverClock';
 import { dayTagOf, needsRegistration, submitForReview } from '@/lib/hyanaltSubmit';
 import { loadPkgPlan, planPctFromMonths, type PkgPlan } from '@/lib/huvaariObyem';
@@ -880,12 +879,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
 
   const rowsAll = rows;
   const addedOids = useAddedOids(pkg, rowsAll);
-  /**
-   * MA ХААЛГА (`lib/ma.maGateOf`): тухайн ажлыг сонгосон MA-гийн аль нэг нь батлагдаагүй (R эсвэл шийдвэргүй) бол тэр
-   * ажилд гүйцэтгэл бичигдэхгүй — дарах · Enter/Tab · буулгалт · commit бүгд (`useCellEdit.maBlock`). MA-гүй ажил
-   * хязгаарлагдахгүй; MA уншигдаагүй бол хаалгагүй. Хяналтын харагдацад (`view`) MA татахгүй.
-   */
-  const maQ = useAsync(view ? async () => [] as Awaited<ReturnType<typeof loadMa>> : loadMa, [view]);
+  /* 2026-11-18 (хэрэглэгч: «гүйцэтгэл хэсэгт харуулах хэрэггүй … ажиллагаа хэвийн явна»): материал баталгаажуулалтын
+     (MA) түгжээ АВСАН — батлагдаагүй материалтай ажилд ч гүйцэтгэл бөглөнө. Хяналт нь «Багцын гүйцэтгэл» хуудасны
+     «Материал батлагдаагүй хийгдсэн ажил» хэсэгт (`lib/maUnapproved`). Доод давхаргын `maBlock` хоосон үлдэнэ. */
+  const maBlock = useMemo(() => new Map<number, string>(), []);
   /* 2026-10-30: материалын үндсэн норм — ажлын материалын мөрөнд «×норм» (уншигдахгүй бол нормгүй харуулна) */
   const nootsQ = useAsync(async () => {
     try { return await loadNoots(); } catch (e) { console.warn('[selbe] материалын норм (material_noots) уншигдсангүй — нормгүй үргэлжилнэ:', e); return []; }
@@ -894,18 +891,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
   const matNorms = useMemo(() => new Map(nootsQ.state === 'ready'
     ? nootsSummary(nootsQ.data).filter((x) => inPkgStock(x.bagts, pkg.group)).sort((a, b) => Number(!!a.bagts) - Number(!!b.bagts)).map((x) => [x.name, x.norm] as const)
     : []), [nootsQ, pkg.group]);
-  const maBlock = useMemo(() => {
-    const m = new Map<number, string>();
-    if (view || maQ.state !== 'ready') return m;
-    for (const r of rowsAll) {
-      if (r.group || r.des == null) continue;
-      const g = maGateOf(`${pkg.key}:${r.des}`, maQ.data);
-      if (g.gate !== 'blocked') continue;
-      const bad = g.mas.filter((x) => !isApproved(x.verdict)).map((x) => `${x.respNo || tr('(дугааргүй)')} · ${x.material || '—'}`);
-      m.set(r.des, tr('Материал баталгаажуулалт (MA) батлагдаагүй: {0}. Батлагдах хүртэл энэ ажилд гүйцэтгэл бичихгүй.', bad.join(', ')));
-    }
-    return m;
-  }, [view, maQ, rowsAll, pkg.key]);
   /** Бүтэн горимын нэмэлт баганууд (`showExtra`) — Excel татахад харагдацаас үл хамааран бүтнээр */
   const extraAll = useMemo(() => fullExtraCols(sc, rowsAll), [sc, rowsAll]);
   const extra = useMemo(() => (showExtra ? extraAll : []), [showExtra, extraAll]);

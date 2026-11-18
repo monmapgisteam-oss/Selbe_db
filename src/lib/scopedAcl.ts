@@ -158,6 +158,11 @@ export type AclSpec<R extends string> = {
   push: (user: string, roles: R[], bagts: string[], grants: Grant<R>[]) => Promise<boolean>;
   remove: (user: string) => Promise<boolean>;
   read?: (user: string) => Promise<{ row: { roles?: string[]; bagts?: string[]; grants?: Grant<string>[] } | null } | null>;
+  /**
+   * НЭМЭЛТ ДҮРЭМ (2026-11-18) — хадгалахын ӨМНӨ: `user`-ийн шинэ хуваарилалт (`next`) бусад аккаунтын (`others`)
+   * хуваарилалттай зөрчилдвөл алдааны текст, эс бөгөөс `null`. Хуваарь: «нэг багцад нэг зохиогч, нэг батлагч».
+   */
+  conflict?: (user: string, next: readonly Grant<R>[], others: readonly Assign<R>[]) => string | null;
   /** Алдааны мессежүүд — систем бүр өөрийн үгтэй */
   msg: {
     noUser: string;
@@ -446,6 +451,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
     if (!clean.length) return { ok: false, error: spec.msg.noBagts };
 
     const cur = load();
+    const bad = spec.conflict?.(u, clean as Grant<R>[], cur.filter((a) => a.user !== u));
+    if (bad) return { ok: false, error: bad };
     const exists = cur.some((a) => a.user === u);
     const base = cur.find((a) => a.user === u)?.grants ?? [];
     const next = exists

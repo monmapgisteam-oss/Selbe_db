@@ -11,9 +11,9 @@
  *     `objectid`-ийг авна; байхгүй бол ЗОХИОМОЛ (`virtual`, `objectid` = null). Хүснэгтэд бичих — `registryPlanEdits`
  *     (хэрэглэгч 2026-11-17: «хуучнуудыг устгаад шинийг оруул · бүртгэлд байхгүй утгыг хоосон үлдээ»).
  *   · Дэд бүлгийн доор БАРИМТ БҮР нэг мөр (хэрэглэгч: «зургууд нь байхгүй?») — хувь нь өөрийн төлөвийн хувь, жин тэнцүү.
- *   · МӨНГӨ: үе шатын БҮХ баримт «Ажлын үнэ»-тэй (> 0) болмогц баримтын мөрийн төсөвт өртөг = тэр үнэ, дээд мөрүүд
- *     нийлбэрээр, жин мөнгөөр (`computePlan`-ийн ердийн дүрэм). Нэг л баримт үнэгүй байвал хуучнаараа — баримтын тоогоор
- *     жигнэж, үе шатын хуучин нийт дүнг хадгална (дутуу бөглөсөн үед үнэгүй баримт жингүй болж хувь гажихаас сэргийлнэ).
+ *   · МӨНГӨ (2026-11-18): үе шатанд «Ажлын үнэ»-тэй (> 0) баримт НЭГ Ч байвал үнэтэй баримтын мөрийн төсөвт өртөг = тэр
+ *     үнэ, дээд мөрүүд нийлбэрээр, жин мөнгөөр (`computePlan`-ийн ердийн дүрэм); үнэгүй баримт төсөвгүй (жин 0) — бусдын
+ *     төсөв хөндөгдөхгүй. Нэг ч баримт үнэгүй үед хуучнаараа — баримтын тоогоор жигнэж, үе шатын хуучин нийт дүнг хадгална.
  *   · Зохиомол мөрийн гүйцэтгэл = баримтуудын ТӨЛӨВИЙН хувийн дундаж (`tolovAvg`); жин = баримтын тооны хувь. Мөнгө
  *     ашиглахгүй. Үе шатын хувь = тэр үе шатны бүх баримтын дундаж.
  *   · Үе шатын мөрийн МӨНГӨН ДҮН ба ОГНОО хэвээр: хуучин доод мөрүүдийн нийлбэр / хамгийн эрт эхлэх – хамгийн орой дуусах
@@ -92,14 +92,18 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
   for (const n of tree.root.children) {
     const docs = n.phase === 'tezu' ? tezu : n.phase === 'zurag' ? zurag : [];
     if (!docs.length || !n.row) continue;
-    const priced = docs.every((d) => d.ajliinUne != null && d.ajliinUne > 0);
+    /* 2026-11-18 (хэрэглэгч: «1-ийг зас»): урьд нь БҮХ баримт үнэтэй үед л мөнгө ордог байсан — үнэгүй ганц баримт нэмэхэд
+       үе шатын бүх баримтын төсөв хүснэгтээс арилж нийт төсөв буурдаг байв. Одоо НЭГ Ч баримт үнэтэй бол үнэтэй нь
+       өөрийн үнээр, үнэгүй нь төсөвгүй (жин 0) — бусдынх хөндөгдөхгүй. Нэг ч үнэгүй үед л хуучин горим. */
+    const priceOf = (d: ZRow): number | null => (d.ajliinUne != null && d.ajliinUne > 0 ? d.ajliinUne : null);
+    const priced = docs.some((d) => priceOf(d) != null);
     const [gs, ge] = spanOf(n, 'guits');
     const ms = money.get(n);
     swap.set(n.row, {
       ...n.row,
       olgoson_dun: ms?.paid ?? null,
       urdchilgaa_dun: ms?.advance ?? null,
-      /* Гэрээний дүн: бүртгэлд «Ажлын үнэ» бүрэн бөглөгдсөн бол баримтуудаас (доор), эс бөгөөс хуучин мөрүүдийн нийлбэр */
+      /* Гэрээний дүн: бүртгэлд «Ажлын үнэ»-тэй баримт байвал баримтуудаас (доор), эс бөгөөс хуучин мөрүүдийн нийлбэр */
       ...(!priced && ms?.contract != null ? { geree_dun: ms.contract, ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : {}),
       ho_dun_geree: priced ? null : budgetOf(n),
       guits_ehleh: gs, guits_duusah: ge, geree_ehleh: gs, geree_duusah: ge,
@@ -115,7 +119,7 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
         ajil_uilchilgee: d.ner, bagts: d.bagts || null, heseg_ezleh_huvi: 1 / ds.length, guitsetgel_huvi: tolovPct(d.tolov),
         /* Хэрэглэгч 2026-11-17: гараар оруулсан дүн «урьдчилсан төсөвт өртөг болон IPC рүү хоёуланд нь» — төсөвт өртөг ба
            гэрээний дүн (IPC-ийн олгосон хувийн суурь). Олгосон дүн нь IPC-ээс хэвээр (үе шатын мөрд) */
-        ...(priced ? { ho_dun_geree: d.ajliinUne, geree_dun: d.ajliinUne, ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : {}),
+        ...(priceOf(d) != null ? { ho_dun_geree: priceOf(d), geree_dun: priceOf(d), ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : {}),
       }));
     };
     const put = (parent: string, subs: { ded: string; rows: ZRow[] }[], total: number, fallback: string) => {
@@ -175,8 +179,17 @@ export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZR
   const byOid = new Map<number, PlanStoredRow>();
   for (const r of old) if (typeof r.objectid === 'number') byOid.set(r.objectid, r);
   const kept = new Set<number>();
+  /* 2026-11-18: БҮЛГИЙН мөрийн хадгалах хувь = доод баримтуудын төлөвийн хувийн дундаж (урьд нь хоосолдог байсан тул
+     гүйцэтгэл хадгалагч буцааж бичиж, хоёр бичилт ээлжилдэг байв). Модны бодолтод оролцохгүй — бүлгийн хувь хүүхдээс. */
+  const leafPct = gen.filter((x) => typeof x.guitsetgel_huvi === 'number').map((x) => [String(x.dd_kod), x.guitsetgel_huvi as number] as const);
+  const groupPct = (code: string): number | null => {
+    let s = 0, n = 0;
+    for (const [c, v] of leafPct) if (c.startsWith(`${code}.`)) { s += v; n += 1; }
+    return n ? Math.round((s / n) * 1e6) / 1e6 : null;
+  };
   for (const g of gen) {
     const want = Object.fromEntries(REGISTRY_PLAN_KEYS.map((k) => [k, (g[k] as string | number | null | undefined) ?? null])) as Record<RKey, string | number | null>;
+    if (g.guitsetgel_huvi === undefined) want.guitsetgel_huvi = groupPct(String(g.dd_kod));
     const s = typeof g.objectid === 'number' ? byOid.get(g.objectid) : undefined;
     if (!s || foreign(s)) { out.adds.push({ dd_kod: g.dd_kod as string, ...want }); continue; }
     kept.add(g.objectid as number);

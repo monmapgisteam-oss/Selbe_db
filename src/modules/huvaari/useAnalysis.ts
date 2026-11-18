@@ -9,6 +9,7 @@ import { useCallback, useMemo } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { fixCyr } from '@/lib/format';
 import { spanDays, type PlanRow, type Span } from '@/lib/plan';
+import { effSpan } from '@/lib/deps';
 import { baselineDelays, criticalFloat, hasCriticalLinks, planIssues, sumResByMonth } from '@/lib/planAnalysis';
 import type { MonthRes } from '@/lib/huvaariObyem';
 import { buildXlsx, downloadXlsx, type XlsxCell } from '@/lib/xlsx';
@@ -38,6 +39,7 @@ export function useAnalysis({
       unbal: unbalRows,
       geree: kind === 'plan' ? (i) => refSpanOf(plan[i].oid, blk) : undefined,
       withDeps: kind === 'plan',
+      groupSpan: (i) => effSpan(plan, i, blk),
     }) : null),
     [ana, plan, blk, unbalRows, kind, refSpanOf],
   );

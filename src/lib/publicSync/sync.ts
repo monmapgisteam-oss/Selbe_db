@@ -149,6 +149,7 @@ export async function computePublicTables(): Promise<{ tables: Partial<PublicTab
     }
     /* Газар — зөвхөн төслийн нийт (2026-11-11) */
     if (land.status !== 'fulfilled') fail('landStatus', land.reason);
+    else if (!(land.value.total > 0)) fail('landStatus', new Error('нэгж талбар 0 — газар чөлөөлөлтийн тоог шинэчлэхгүй'));
     else tables.gazar = gazarRows(land.value);
   }
   return { tables, failed };

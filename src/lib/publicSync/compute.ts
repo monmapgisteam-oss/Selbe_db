@@ -238,10 +238,12 @@ export function guitsetgelRows(plan: ProjectPlan, inp: GuitsetgelInputs): PubRow
 
 /** 2026-11-11 (хэрэглэгч): зөвхөн төслийн нийт мөр — нэг нэгж талбар олон багцад хамаардаг тул багцаар хувь бодохгүй */
 export function gazarRows(status: LandStatus | null): PubRow[] {
-  if (!status) return [];
+  /* 2026-11-18 (хэрэглэгч: «5-ыг зас»): нэгж талбар 0 ирвэл (давхарга хоосон / дахин импортлогдож буй) «0 талбар, 100%
+     чөлөөлсөн» гэж нийтэлдэг байв — мөр гаргахгүй; `sync` хүснэгтийг хөндөхгүй, хуучин зөв тоо үлдэнэ */
+  if (!status || !(status.total > 0)) return [];
   return [{
     bagts_kod: PUB_TOTAL, niit_negj_talbar_too: status.total, choloolson_too: status.resolved,
-    choloolson_huvi: status.total > 0 ? Math.round((status.resolved / status.total) * 1000) / 10 : 100,
+    choloolson_huvi: Math.round((status.resolved / status.total) * 1000) / 10,
   }];
 }
 

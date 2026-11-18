@@ -52,6 +52,18 @@ const G = (i, work = 'G') => ({ i, oid: 100 + i, no: 'G', des: null, deps: [], w
   const is = planIssues(rows, 0, { unbal: new Map([[2, [0]]]), geree: (i) => (i === 4 ? sp(1, 20) : null) });
   const k = is.map((x) => `${x.kind}:${x.i}${x.days != null ? `:${x.days}` : ''}`);
   assert.deepEqual(k, ['unbal:1', 'dep:2:3', 'nodate:3', 'geree:4:11'], `асуудлууд: ${k.join(' ')}`);
+  /* 2026-11-18: бүлгийн уялдааны зөрчил самбарт тоологдоно (бүлгийн муж өгөгдсөн үед) */
+  const grp = [
+    row(1, 1, [], sp(1, 10)),
+    { ...G(5), deps: [{ code: 1, type: 'FS', lag: 0 }] },
+    row(6, 6, [], sp(5, 12)),
+  ];
+  const noSpan = planIssues(grp, 0, {});
+  assert.equal(noSpan.filter((x) => x.kind === 'dep').length, 0, 'бүлгийн муж өгөөгүй — хуучнаараа');
+  const withSpan = planIssues(grp, 0, { groupSpan: (i) => (i === 1 ? sp(5, 12) : null) });
+  assert.deepEqual(withSpan.filter((x) => x.kind === 'dep').map((x) => x.i), [1], 'бүлэг шаардлагаас өмнө эхэлсэн — зөрчил');
+  assert.equal(planIssues(grp, 0, { groupSpan: (i) => (i === 1 ? sp(11, 20) : null) }).filter((x) => x.kind === 'dep').length, 0, 'шаардлагын дараа эхэлсэн — зөрчилгүй');
+  assert.equal(planIssues(grp, 0, { withDeps: false, groupSpan: () => sp(5, 12) }).filter((x) => x.kind === 'dep').length, 0, 'уялдаа шалгахгүй горим');
 }
 
 /* ── Нөөцийн нийлбэр ── */

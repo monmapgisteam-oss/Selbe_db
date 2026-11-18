@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  approveIpc, approveWhy, contractCancel, contractCancelWhy, contractUpdates, contractWhy, createAdvance, deleteIpc, deleteWhy,
+  approveIpc, approveWhy, contractCancel, contractCancelFresh, contractCancelWhy, contractUpdates, contractWhy, createAdvance, deleteIpc, deleteWhy,
   createIpc, docRows, docTitle, nextIpcNo, overContract, perfRows, perfTotal, signIpc, statusOf,
 } from './ipcFlow.ts';
 
@@ -141,6 +141,19 @@ assert.deepEqual(up[0], {
 assert.equal(contractCancelWhy([{ objectid: 1, murun_id: 'ХО-1', dun: null }]), null);
 assert.equal(contractCancelWhy([{ objectid: 1, dun: 5 }]), 'has-ipc');
 assert.equal(contractCancelWhy([{ objectid: 1, murun_id: 'IPC|Х|1', dun: null }]), 'has-ipc', 'IPC үүссэн бол цуцлахгүй');
+/* 2026-11-18: дарах мөчид шинээр уншсан мөрөөр шийднэ — дэлгэц дээр IPC байхгүй байсан ч сервер дээр үүссэн бол цуцлахгүй */
+{
+  const cfR = [{ objectid: 1, geree_dun: 90, ho_dun_geree: 100 }];
+  const stale = [{ objectid: 7, murun_id: 'ХО-1', dun: null }];
+  assert.equal(contractCancelWhy(stale), null, 'дэлгэцийн хуучин мөрөөр цуцалж болох мэт');
+  const paidNow = [...stale, { objectid: 8, murun_id: 'IPC|Х|1', dun: 500 }];
+  assert.deepEqual(contractCancelFresh(paidNow, cfR), { ok: false, why: 'has-ipc' }, 'сервер дээр төлбөр олгогдсон — цуцлахгүй');
+  assert.deepEqual(contractCancelFresh([...stale, { objectid: 9, murun_id: 'IPC|Х|2', dun: null }], cfR), { ok: false, why: 'has-ipc' }, 'IPC үүссэн (олгоогүй ч) — цуцлахгүй');
+  const okNow = contractCancelFresh([...stale, { objectid: 10, murun_id: 'ХО-2', dun: null }], cfR);
+  assert.equal(okNow.ok, true);
+  assert.deepEqual(okNow.ho.map((r) => r.objectid), [7, 10], 'шинээр нэмэгдсэн мөр ч цуцлагдана');
+  assert.equal(okNow.cf[0].geree_dun, null);
+}
 const cn = contractCancel([{ objectid: 7, murun_id: 'ХО-1' }], [{ objectid: 1, geree_dun: 90, ho_dun_geree: 100 }]);
 assert.deepEqual(cn.ho, [{ objectid: 7, ipc_tuluv: 'Цуцлагдсан' }]);
 assert.equal(cn.cf[0].geree_dun, null, 'гэрээний дүн арилна');
@@ -155,7 +168,8 @@ assert.equal(contractWhy({ ...one, items: one.items.map((i) => ({ ...i, advance:
   const src = readFileSync('src/modules/IpcFlow.tsx', 'utf8');
   assert.ok(src.includes('cfMatches(r, parts, phases)'), 'гэрээ цуцлахад ижил багцын өөр үе шатны гэрээ хөндөгдөхгүй');
   assert.ok(!src.includes('toISOString'), 'IPC-ийн огноо локал өдрөөр');
-  assert.equal((src.match(/await freshPays\(code, pays\)/g) ?? []).length, 5, 'IPC үүсгэх (өмнө, дараа), скан, батлах, цуцлах — дахин уншина');
+  assert.equal((src.match(/await freshPays\(code, pays\)/g) ?? []).length, 6, 'IPC үүсгэх (өмнө, дараа), скан, батлах, устгах, гэрээ цуцлах (2026-11-18) — дахин уншина');
+  assert.ok(src.includes('contractCancelFresh(await freshPays(code, pays), rows)'), 'гэрээ цуцлах шинээр уншсан мөрөөр шийднэ');
   assert.ok(src.includes('d2.status !== S.created'), 'скан оруулахад төлөв шинээр шалгагдана');
   assert.ok(src.indexOf('updates: e.ho') < src.indexOf('updates: e.cf'), 'гэрээ цуцлахад IPC эхэлнэ');
   assert.ok(src.includes('!== S.cancelled'), 'урьдчилгаа цуцлагдсан гэрээнд очихгүй');

@@ -73,6 +73,10 @@ export function planProgressUpdates(plan: ProjectPlan): Record<string, unknown>[
   for (const n of plan.tree.nodes) {
     const r = n.row;
     if (!r || r.objectid == null || tainted.has(n)) continue;
+    /* 2026-11-18 (хэрэглэгч: «ТЭЗҮ, зургийг яагаад бөглөөд байгаа юм»): Зургийн бүртгэлээс үүссэн мөрийн (ТЭЗҮ · Ажлын зураг
+       төслийн бүлэг, баримт) хувийн ЭЗЭН нь «Зургийн бүртгэл»-ийн тааруулалт (`zuragPlan.registryPlanEdits`) — энд
+       бичихгүй. Урьд нь хоёул бичиж, 306 мөрийг ээлжлэн дарж байв. Үе шатын мөр (1, 2) энд хэвээр бичигдэнэ. */
+    if (r.registry) continue;
     const was = stored.get(r.objectid) ?? r;
     const u: Record<string, unknown> = {};
     const s = plan.result.values.get(n)?.S;

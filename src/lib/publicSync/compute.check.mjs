@@ -247,6 +247,8 @@ check('gazar — зөвхөн төслийн нийт (2026-11-11: багцаа�
   const r = gazarRows({ total: 2088, areaM2: 0, cleared: 1945, cleaned: 0, remaining: 143, resolved: 1945, pct: 93.2, byStatus: [], reasons: [] });
   assert.deepEqual(r, [{ bagts_kod: PUB_TOTAL, niit_negj_talbar_too: 2088, choloolson_too: 1945, choloolson_huvi: 93.2 }]);
   assert.deepEqual(gazarRows(null), [], 'эх унасан → мөргүй');
+  /* 2026-11-18: нэгж талбар 0 ирвэл «100%» нийтлэхгүй */
+  assert.deepEqual(gazarRows({ total: 0, areaM2: 0, cleared: 0, cleaned: 0, remaining: 0, resolved: 0, pct: null, byStatus: [], reasons: [] }), [], 'нэгж талбар 0 → мөргүй (100% биш)');
 });
 check('diffRows — зөрсөн мөр л, stamp өөрчлөлттэй мөрд, илүү мөр устгана, түлхүүргүй нэг мөр', () => {
   const now = D(2026, 11, 3);

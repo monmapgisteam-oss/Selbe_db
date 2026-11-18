@@ -642,6 +642,7 @@ console.log('✅ capText — 9 урсгалын хуудас · эрх бүр н
   const OPS = await import('@/lib/aclOps.ts');
   const FL = await import('@/lib/guitsetgelAcl.ts');
   const HV = await import('@/lib/huvaariAcl.ts');
+  HV._setPlanOneRule(false); // 2026-11-18: ерөнхий тест — дүрэм `huvaariAclOne.check.mjs`-д
   const BT = await import('@/lib/butetsAcl.ts');
   const CAPS = await import('@/lib/caps.ts');
   const { ROLE_BY_USER } = await import('@/lib/services.ts');

@@ -20,7 +20,7 @@ import { userError } from '@/components/ui';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import { downloadIpcFlowPdf } from '@/lib/ipcFlowPdf';
 import {
-  approveIpc, approveWhy, contractCancel, contractCancelWhy, contractUpdates, contractWhy, createAdvance, deleteIpc, deleteWhy,
+  approveIpc, approveWhy, contractCancelFresh, contractCancelWhy, contractUpdates, contractWhy, createAdvance, deleteIpc, deleteWhy,
   createIpc, docRows, docTitle, dupDocNos, nextIpcNo, overContract, parseMoney, perfRows, perfTotal, signIpc, type ContractWhy, type IpcDocRow, type NewContract, type PerfRow, type Row,
 } from '@/lib/ipcFlow';
 import s from './ipcTable.module.css';
@@ -302,7 +302,13 @@ export function ContractCancelButton({ code, pays, cfRows }: { code: string; pay
     setBusy(true);
     setErr(null);
     try {
-      const e = contractCancel(pays, rows);
+      /* 2026-11-18: дарах мөчид сервероос дахин уншина — дэлгэц хуучирсан үед төлбөр нь олгогдсон гэрээг цуцлахгүй */
+      const e = contractCancelFresh(await freshPays(code, pays), rows);
+      if (!e.ok) {
+        setErr(tr('Энэ гэрээнд IPC үүссэн эсвэл төлбөр олгогдсон байна — цуцлах боломжгүй. Хуудсыг шинэчилнэ үү.'));
+        invalidate('HO_IPC');
+        return;
+      }
       /* IPC эхэлнэ: дараагийн алхам унавал гэрээ «Цуцлагдсан», 182 хэвээр — `planHoSync` давхар гэрээ үүсгэхгүй, товч дахин гарна */
       await applyAll(HO_IPC.url, HO_IPC.oid, { updates: e.ho }, APPROVE_CAP);
       invalidate('HO_IPC');

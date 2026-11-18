@@ -164,3 +164,21 @@ assert.ok(ups.every((u) => Object.keys(u).sort().join() === 'guitsetgel_huvi,obj
   }
 }
 console.log('projectPlanSync.check: бүгд ✅');
+
+/* 2026-11-18: Зургийн бүртгэлээс үүссэн мөрийн (registry) хувийг гүйцэтгэл хадгалагч БИЧИХГҮЙ — эзэн нь бүртгэлийн тааруулалт */
+{
+  const { buildTree, computePlan } = await import('./projectPlan.ts');
+  const { planProgressUpdates } = await import('./projectPlanSync.ts');
+  const st = [
+    { objectid: 1, dd_kod: '1', ajil_uilchilgee: 'Ажлын зураг төсөл', uy_shat: 'Ажлын зураг төсөл', guitsetgel_huvi: 0 },
+    { objectid: 2, dd_kod: '1.1', etseg_kod: '1', ajil_uilchilgee: 'Бүлэг', heseg_ezleh_huvi: 1, guitsetgel_huvi: null },
+    { objectid: 3, dd_kod: '1.1.1', etseg_kod: '1.1', ajil_uilchilgee: 'Зураг', heseg_ezleh_huvi: 1, guitsetgel_huvi: 10 },
+  ];
+  const mem = st.map((r) => (r.objectid === 1 ? r : { ...r, registry: true, ...(r.objectid === 3 ? { guitsetgel_huvi: 80 } : {}) }));
+  const tree = buildTree(mem);
+  const p = { empty: false, tree, result: computePlan(tree, {}, Date.UTC(2026, 6, 2)), inputs: {}, months: [], monthly: new Map(), failed: [], stored: st };
+  const ups = planProgressUpdates(p);
+  assert.deepEqual(ups.map((u) => u.objectid), [1], 'зөвхөн үе шатын мөр бичигдэнэ — бүртгэлийн бүлэг, баримтын мөр алгасагдана');
+  assert.equal(ups[0].guitsetgel_huvi, 80);
+  console.log('projectPlanSync.check: бүртгэлийн мөрийг алгасна ✅');
+}

@@ -111,6 +111,25 @@ export type Report = {
 /** Хэмжигдээгүй явц = 0% (хэрэглэгчийн дүрэм — «явцгүй» гэж бичихгүй) */
 export const progressOf = (v: number | null | undefined): number => (v == null || !Number.isFinite(v) ? 0 : v);
 
+/**
+ * 2026-11-18 (хэрэглэгч: «4-ийг зас») — ТӨСЛИЙН ТҮВШНИЙ хувь (төслийн нийт явц, газар чөлөөлөлт) `null` = эх өгөгдөл УНШИГДААГҮЙ
+ * (бөглөгдөөгүй биш): «0.0%» гэж хэвлэхгүй, «—». Багц/блокийн хэмжигдээгүй явц 0% хэвээр (`progressOf`).
+ */
+export const pctKnown = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? '—' : pct(v, 1));
+
+/** Уншигдаагүй эхийн нэр — тайлангийн анхааруулгад */
+const FAILED_NAME: Record<string, () => string> = {
+  plan: () => tr('Төсөл төлөвлөгөө биелэлт (гүйцэтгэлийн эх өгөгдөл)'),
+  ipc: () => tr('Төлбөрийн акт (IPC)'),
+  lag: () => tr('хуваарийн хоцрогдол'),
+  saad: () => tr('газрын саад'),
+  hse: () => tr('хүн хүч, ХАБЭА'),
+  cashflow: () => tr('санхүүжилтийн мөрүүд'),
+  deltas: () => tr('өмнөх үеийн харьцуулалт'),
+};
+export const failedNames = (failed: readonly string[] | undefined): string[] =>
+  [...new Set(failed ?? [])].map((k) => FAILED_NAME[k]?.() ?? k);
+
 /** Мөнгө — бүтэн дүн, таслалтай (2026-09-01 дүрэм); мэдээлэлгүй → «мэдээлэлгүй» */
 export const money = (v: number | null | undefined): string => bn(v);
 
@@ -193,17 +212,19 @@ function kpiSummary(i: ReportInputs, full: boolean): Section {
   const housing = progressOf(x.prog.actual);
   const st = scheduleStatus(x);
   const items: KpiItem[] = [
-    { label: tr('Төслийн нийт явц'), value: pct(progressOf(projS), 1), sub: projP == null ? tr('Төсөл төлөвлөгөө биелэлт') : tr('төлөвлөгөө {0}', pct(projP, 1)) },
+    { label: tr('Төслийн нийт явц'), value: pctKnown(projS), sub: projP == null ? tr('Төсөл төлөвлөгөө биелэлт') : tr('төлөвлөгөө {0}', pct(projP, 1)) },
     { label: tr('Барилгын явц'), value: pct(housing, 1), sub: measuredLabel(x.prog) || undefined, trend: d && d.housing.delta != null ? `${d.housing.delta >= 0 ? '+' : '−'}${abs1(d.housing.delta)} ${tr('нэгж хувь')}` : null },
-    { label: tr('Газар чөлөөлөлт'), value: pct(progressOf(x.gdash.landPct), 1), sub: tr('{0} нэгж талбар үлдсэн', num(x.gdash.land.remaining)) },
+    { label: tr('Газар чөлөөлөлт'), value: pctKnown(x.gdash.landPct), sub: tr('{0} нэгж талбар үлдсэн', num(x.gdash.land.remaining)) },
     { label: tr('Олголт'), value: x.fin.share == null ? tr('мэдээлэлгүй') : pct(x.fin.share, 1), sub: tr('гэрээлсэн дүнгийн'), trend: d && d.given.delta != null ? `${d.given.delta < 0 ? '−' : '+'}${money(Math.abs(d.given.delta))}` : null },
     { label: tr('Хуваарийн төлөв'), value: st.label, sub: x.prog.planned == null ? undefined : tr('төлөвлөгөө {0}', pct(x.prog.planned, 1)) },
   ];
   const text = [
-    projP == null
-      ? tr('Төслийн нийт явц {0} («Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр).', pct(progressOf(projS), 1))
-      : tr('Төслийн нийт явц {0}, төлөвлөгөө {1} («Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр).', pct(progressOf(projS), 1), pct(projP, 1)),
-    tr('Барилгын явц {0}, газар чөлөөлөлт {1} ({2} нэгж талбарын {3} нь чөлөөлөгдсөн).', pct(housing, 1), pct(progressOf(x.gdash.landPct), 1), num(x.gdash.land.total), num(x.gdash.land.cleared)),
+    projS == null
+      ? tr('Төслийн нийт явц бодогдсонгүй — эх өгөгдөл бүрэн уншигдаагүй.')
+      : projP == null
+        ? tr('Төслийн нийт явц {0} («Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр).', pct(projS, 1))
+        : tr('Төслийн нийт явц {0}, төлөвлөгөө {1} («Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр).', pct(projS, 1), pct(projP, 1)),
+    tr('Барилгын явц {0}, газар чөлөөлөлт {1} ({2} нэгж талбарын {3} нь чөлөөлөгдсөн).', pct(housing, 1), pctKnown(x.gdash.landPct), num(x.gdash.land.total), num(x.gdash.land.cleared)),
     ppDelta(tr('Барилгын явц'), d, d?.housing.delta) ?? st.sentence,
   ];
   if (full) {
@@ -305,12 +326,13 @@ function phases(i: ReportInputs, no: string, group: number): Section {
     ...i.phases.map((p) => ({ label: p.label, value: progressOf(p.S), mark: p.P, text: p.P == null ? pct(progressOf(p.S), 1) : `${pct(progressOf(p.S), 1)} · ${tr('төлөвлөгөө {0}', pct(p.P, 1))}` })),
     ...i.buildSub.map((p) => ({ label: `— ${p.label}`, value: progressOf(p.S), mark: p.P, text: p.P == null ? pct(progressOf(p.S), 1) : `${pct(progressOf(p.S), 1)} · ${tr('төлөвлөгөө {0}', pct(p.P, 1))}` })),
   ];
-  const projS = progressOf(i.project?.S ?? i.x.gdash.progress);
+  const projS = i.project?.S ?? i.x.gdash.progress;
   const projP = i.project?.P ?? null;
   const sorted = byDesc(i.phases, (p) => progressOf(p.S));
   const text: string[] = [
-    projP == null ? tr('Төслийн нийт явц {0}, {1} үе шат.', pct(projS, 1), num(i.phases.length))
-      : tr('Төслийн нийт явц {0} (төлөвлөгөө {1}), {2} үе шат.', pct(projS, 1), pct(projP, 1), num(i.phases.length)),
+    projS == null ? tr('Төслийн нийт явц бодогдсонгүй — эх өгөгдөл бүрэн уншигдаагүй.')
+      : projP == null ? tr('Төслийн нийт явц {0}, {1} үе шат.', pct(projS, 1), num(i.phases.length))
+        : tr('Төслийн нийт явц {0} (төлөвлөгөө {1}), {2} үе шат.', pct(projS, 1), pct(projP, 1), num(i.phases.length)),
   ];
   if (sorted.length >= 2) {
     text.push(tr('Хамгийн өндөр явцтай үе шат «{0}» {1}, хамгийн бага «{2}» {3}.', sorted[0].label, pct(progressOf(sorted[0].S), 1), sorted[sorted.length - 1].label, pct(progressOf(sorted[sorted.length - 1].S), 1)));
@@ -424,7 +446,7 @@ function landStatus(i: ReportInputs, no: string, group: number): Section {
   const items = g.land.byStatus.filter((b) => b.n > 0).map((b) => ({ label: b.label, value: b.n }));
   const top = g.land.reasons[0];
   const text = [
-    tr('Газар чөлөөлөлт {0}: {1} нэгж талбараас {2} нь чөлөөлөгдсөн, {3} үлдсэн.', pct(progressOf(g.landPct), 1), num(g.land.total), num(g.land.cleared), num(g.land.remaining)),
+    tr('Газар чөлөөлөлт {0}: {1} нэгж талбараас {2} нь чөлөөлөгдсөн, {3} үлдсэн.', pctKnown(g.landPct), num(g.land.total), num(g.land.cleared), num(g.land.remaining)),
     top ? tr('Чөлөөлөгдөөгүй талбарын гол шалтгаан «{0}» ({1} талбар).', top.label, num(top.n)) : tr('Чөлөөлөгдөөгүй талбарын шалтгаан бүртгэгдээгүй.'),
   ];
   const cleared = g.land.byStatus.find((b) => b.label === PARCEL_CLEARED);
@@ -512,6 +534,9 @@ export function attentionItems(i: ReportInputs): ListItem[] {
     if (key) { if (seen.has(key)) return; seen.set(key, it); }
     out.push(it);
   };
+  /* 2026-11-18: уншигдаагүй эх байвал хамгийн эхэнд — «—» гэсэн үзүүлэлт яагаад хоосныг уншигч мэднэ */
+  const lost = failedNames(i.failed);
+  if (lost.length) push(null, { text: tr('Дараах өгөгдөл уншигдаагүй тул холбогдох үзүүлэлт «—» гэж гарсан: {0}. Тайланг дахин үүсгэнэ үү.', lost.join(', ')), tone: 'bad' });
   for (const l of byDesc(latePacks(i), (l) => l.gap)) {
     push(l.key, { text: tr('{0} хуваариас {1} нэгж хувиар хоцорсон (төлөвлөгөө {2}, бодит {3}).', l.label, num(l.gap, 1), pct(l.planned, 1), pct(l.actual, 1)), tone: l.gap >= 10 ? 'bad' : 'warn' });
   }

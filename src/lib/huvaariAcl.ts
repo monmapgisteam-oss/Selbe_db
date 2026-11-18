@@ -29,7 +29,47 @@ export type PlanRole = 'author' | 'approver';
 /** Нэг аккаунтын хуваарийн хуваарилалт */
 export type HuvaariAssign = Assign<PlanRole>;
 
+/**
+ * НЭГ БАГЦАД НЭГ ЗОХИОГЧ, НЭГ БАТЛАГЧ (2026-11-18, хэрэглэгч). Хоёр хүн нэг багцын ноорогийг зэрэг засахад засвар нь бие
+ * биеэ дардаг байсан тул багц бүрд үүрэг тус бүр ГАНЦ аккаунттай. `others` — бусад аккаунтын хуваарилалт (порталд байхгүй
+ * болсон аккаунт тооцогдохгүй). «Бүх багц» нь багц бүртэй давхцана. Цэвэр — `huvaariAcl.check.mjs`.
+ */
+export function planRoleConflict(
+  next: readonly Grant<PlanRole>[], others: readonly HuvaariAssign[],
+): { role: PlanRole; bagts: string; user: string } | null {
+  for (const g of next) {
+    if (g.role !== 'author' && g.role !== 'approver') continue;
+    for (const o of others) {
+      for (const og of o.grants) {
+        if (og.role !== g.role || !g.bagts.length || !og.bagts.length) continue;
+        const mineAll = g.bagts.includes(ALL_BAGTS), theirsAll = og.bagts.includes(ALL_BAGTS);
+        /* давхцсан багц: хоёулаа «бүх багц» → бүх багц; нэг нь «бүх багц» → нөгөөгийн эхний багц; эс бөгөөс огтлолцол */
+        const hit = mineAll && theirsAll ? ALL_BAGTS
+          : mineAll ? og.bagts[0]
+            : theirsAll ? g.bagts[0]
+              : g.bagts.find((b) => og.bagts.includes(b));
+        if (hit != null) return { role: g.role, bagts: hit, user: o.user };
+      }
+    }
+  }
+  return null;
+}
+
+/** Дүрэм асаалттай эсэх — ЗӨВХӨН ерөнхий (бүх системийн) ACL тестүүд унтраана (`_setPlanOneRule`); аппд үргэлж асаалттай */
+let oneRule = true;
+export const _setPlanOneRule = (on: boolean): void => { oneRule = on; };
+
 const acl = makeAcl<PlanRole>({
+  conflict: (_user, next, others) => {
+    if (!oneRule) return null;
+    /* Enterprise порталд АЛГА гэж батлагдсан аккаунт л тооцогдохгүй (жагсаалт уншигдаагүй үед дүрэм сулрахгүй) */
+    const c = planRoleConflict(next, others.filter((o) => !portalMissing(o.user.trim().toLowerCase())));
+    if (!c) return null;
+    const where = c.bagts === ALL_BAGTS ? tr('бүх багц') : tr(c.bagts);
+    return c.role === 'author'
+      ? tr('«{0}»-д зохиогч аль хэдийн томилогдсон: {1}. Нэг багцад нэг зохиогч байна — эхлээд түүнийг хасна уу.', where, c.user)
+      : tr('«{0}»-д батлагч аль хэдийн томилогдсон: {1}. Нэг багцад нэг батлагч байна — эхлээд түүнийг хасна уу.', where, c.user);
+  },
   storeKey: 'selbe-huvaari-acl-v1',
   event: 'selbe-huvaari-acl-change',
   roleCaps: ROLE_CAPS.huvaari,

@@ -70,7 +70,7 @@ const rt = computePlan(buildTree(tz), {}, D('2026-07-02'));
 near(rt.get('1').S, 40, 'ТЭЗҮ — (80 + 0) ÷ 2');
 assert.equal(rt.get('1').E, 40, 'ТЭЗҮ-ийн мөнгө хэвээр');
 assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн баримтгүй — хөндөгдөхгүй');
-/* ── Ажлын үнэ: бүх баримт үнэтэй болмогц мөнгөөр; нэг л үнэгүй бол хуучнаараа ── */
+/* ── Ажлын үнэ (2026-11-18): үнэтэй баримт нэг ч байвал мөнгөөр — үнэгүй баримт төсөвгүй, бусдынх хөндөгдөхгүй ── */
 {
   const zp = (oid, ded, tolov, une) => toZRow({ objectid: oid, buleg: '003. АЖЛЫН ЗУРАГ', ded_buleg: ded, ner: `n${oid}`, tolov, ajliin_une: une });
   const all = [zp(1, '300.10. БАГЦ 1', 'huleej_avsan', 300), zp(2, '300.10. БАГЦ 1', 'ehleegui', 100), zp(3, '300.20. БАГЦ 2', 'magadlal', 600)];
@@ -83,10 +83,41 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   near(ra.get('2').S, 0.4 * 75 + 0.6 * 80, 'үе шат мөнгөөр');
   const part = [zp(1, '300.10. БАГЦ 1', 'huleej_avsan', 300), zp(2, '300.10. БАГЦ 1', 'ehleegui', null)];
   const rp = computePlan(buildTree(withRegistryRows(rows, part)), {}, D('2026-07-02'));
-  assert.equal(rp.get('2').E, 400, 'дутуу бөглөсөн — үе шатын хуучин нийт дүн хэвээр');
+  assert.equal(rp.get('2').E, 300, 'дутуу бөглөсөн — үнэтэй баримтын төсөв хэвээр (үнэгүй нь 0)');
+  assert.equal(rp.get('2.1.1.1').E, 300, 'үнэтэй баримтын төсөв арилахгүй');
+  assert.equal(rp.get('2.1.1.2').E, null, 'үнэгүй баримт төсөвгүй');
+  /* нэг ч баримт үнэгүй үед хуучин горим: үе шатын хуучин нийт дүн, баримтын тоогоор */
+  const none = [zp(1, '300.10. БАГЦ 1', 'huleej_avsan', null), zp(2, '300.10. БАГЦ 1', 'ehleegui', null)];
+  const rn = computePlan(buildTree(withRegistryRows(rows, none)), {}, D('2026-07-02'));
+  assert.equal(rn.get('2').E, 400, 'үнэгүй — үе шатын хуучин нийт дүн хэвээр');
+  near(rn.get('2.1.1').S, 50, 'үнэгүй — баримтын тоогоор');
   const tAll = buildTree(withRegistryRows(rows, all));
   assert.equal(moneySums(tAll).get(tAll.byCode.get('2')).contract, 1000, 'бүрэн бөглөсөн — гэрээний дүн = ажлын үнийн нийлбэр');
-  near(rp.get('2.1.1').S, 50, 'дутуу бөглөсөн — баримтын тоогоор');
+  near(rp.get('2.1.1').S, 100, 'дутуу бөглөсөн — үнэгүй баримт жин 0, үнэтэй нь 100%');
+  /* 2026-11-18: хүснэгтэд бүгд үнэтэй бичигдсэний дараа үнэгүй шинэ баримт нэмэхэд бусдын төсөв АРИЛАХГҮЙ */
+  {
+    const { registryPlanEdits } = await import('./zuragPlan.ts');
+    const base = [
+      { objectid: 1, dd_kod: '2', ajil_uilchilgee: 'Ажлын зураг төсөл', uy_shat: 'Ажлын зураг төсөл' },
+      { objectid: 20, dd_kod: '3', ajil_uilchilgee: 'Барилга угсралт', uy_shat: 'Барилга угсралт', ho_dun_geree: 1000 },
+    ];
+    const first = registryPlanEdits(base, all);
+    let oid = 100;
+    /* хүснэгтээс уншихад эцэг код Д/Д-ээс гардаг (`cfClass.cfDerive`) — энд гараар */
+    const par = (a) => ({ ...a, etseg_kod: a.dd_kod.split('.').slice(0, -1).join('.') });
+    const stored = [...base, ...first.adds.map((a) => ({ ...par(a), objectid: oid++ }))];
+    assert.equal(registryPlanEdits(stored, all).updates.length + registryPlanEdits(stored, all).adds.length + registryPlanEdits(stored, all).deletes.length, 0, 'тааруулсны дараа засваргүй');
+    const plus = [...all, zp(9, '300.20. БАГЦ 2', 'ehleegui', null)];
+    const e2 = registryPlanEdits(stored, plus);
+    assert.equal(e2.deletes.length, 0, 'юу ч устгахгүй');
+    assert.ok(e2.updates.every((u) => !('ho_dun_geree' in u) && !('geree_dun' in u)), 'бусад баримтын төсөв, гэрээний дүн хөндөгдөхгүй');
+    assert.equal(e2.adds.length, 1, 'зөвхөн шинэ баримтын мөр нэмэгдэнэ');
+    assert.equal(e2.adds[0].ho_dun_geree, null, 'шинэ баримт төсөвгүй');
+    const after = [...stored.map((r) => { const u = e2.updates.find((x) => x.objectid === r.objectid); return u ? { ...r, ...u } : r; }), ...e2.adds.map((a) => ({ ...par(a), objectid: oid++ }))];
+    const ep = computePlan(buildTree(withRegistryRows(after, plus)), {}, D('2026-07-02'));
+    assert.equal(ep.get('2').E, 1000, 'үе шатын төсөв хэвээр 1000');
+    assert.equal(ep.values.get(ep.tree.root).E, 2000, 'нийт төсөв буурахгүй');
+  }
 }
 /* ── Олгосон дүн · урьдчилгаа · гэрээний дүн: хуучин гэрээний мөрүүд модноос хасагдсан ч төслийн нийт өөрчлөгдөхгүй ── */
 {
@@ -120,7 +151,15 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
     ...e.adds.map((x) => ({ ...x, objectid: oid++, etseg_kod: x.dd_kod.replace(/\.\d+$/, '') }))];
   assert.deepEqual(registryPlanEdits(stored, docs), { adds: [], updates: [], deletes: [] }, 'таарсан — засваргүй');
   const e2 = registryPlanEdits(stored, docs.map((d) => (d.oid === 3 ? { ...d, tolov: 'magadlal' } : d)));
-  assert.deepEqual(e2, { adds: [], updates: [{ objectid: stored.find((r) => r.dd_kod === '2.2.1.2').objectid, guitsetgel_huvi: 80 }], deletes: [] });
+  /* 2026-11-18: баримтын төлөв өөрчлөгдөхөд түүний мөр ба дээд бүлгүүдийн ДУНДАЖ хамт шинэчлэгдэнэ (бүлгийн хувийг
+     хоослохгүй — гүйцэтгэл хадгалагчтай ээлжлэн дардаг байсныг зогсоов) */
+  const idOf = (c) => stored.find((r) => r.dd_kod === c).objectid;
+  assert.deepEqual(e2, { adds: [], updates: [
+    { objectid: idOf('2.2'), guitsetgel_huvi: 86.666667 },
+    { objectid: idOf('2.2.1'), guitsetgel_huvi: 90 },
+    { objectid: idOf('2.2.1.2'), guitsetgel_huvi: 80 },
+  ], deletes: [] });
+  assert.equal(stored.find((r) => r.dd_kod === '2.2.1').guitsetgel_huvi, 50, 'бүлгийн мөрд дундаж хадгалагдана: (100 + 0) ÷ 2');
   const e3 = registryPlanEdits(stored, docs.filter((d) => d.oid !== 4));
   assert.deepEqual(e3.deletes.sort(), [stored.find((r) => r.dd_kod === '2.2.2').objectid, stored.find((r) => r.dd_kod === '2.2.2.1').objectid].sort());
   assert.equal(e3.adds.length, 0);

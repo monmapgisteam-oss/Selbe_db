@@ -361,6 +361,25 @@ ok('2026-11-06: хугацаа өнгөрсөн ижил нэртэй объек
   const t = buildReport('council', inputsFixture({ niigem })).sections.find((x) => x.key === 'social').text.join(' ');
   assert.ok(t.includes('(240 хүүхдийн цэцэрлэг · 20.1, 240 хүүхдийн цэцэрлэг · 20.2)'), t);
 });
+ok('2026-11-18: уншигдаагүй эх — төслийн нийт явц «0.0%» биш «—», анхааруулга хэвлэгдэнэ', () => {
+  const lost = inputsFixture({ project: null, phases: [], buildSub: [], failed: ['plan'], x: { ...i.x, gdash: { ...i.x.gdash, progress: null, progressPlan: null, landPct: null } } });
+  for (const a of ['mayor', 'council', 'board']) {
+    const r = buildReport(a, lost);
+    const all = JSON.stringify(r);
+    assert.ok(!all.includes('Төслийн нийт явц 0.0%') && !all.includes('Төслийн нийт явц 0,0%'), `${a}: «Төслийн нийт явц 0.0%» хэвлэгдэв`);
+    assert.ok(all.includes('Төслийн нийт явц бодогдсонгүй'), `${a}: уншигдаагүйг хэлээгүй`);
+    const kpi = r.sections.flatMap((s) => (s.chart?.kind === 'kpi' ? s.chart.items : []));
+    const proj = kpi.find((k) => k.label === 'Төслийн нийт явц');
+    if (proj) assert.equal(proj.value, '—', `${a}: KPI «—» биш`);
+    const land = kpi.find((k) => k.label === 'Газар чөлөөлөлт');
+    if (land) assert.equal(land.value, '—', `${a}: газар чөлөөлөлт «—» биш`);
+  }
+  const att = attentionItems(lost);
+  assert.ok(att[0].text.includes('уншигдаагүй') && att[0].text.includes('Төсөл төлөвлөгөө биелэлт') && att[0].tone === 'bad', 'анхааруулга эхэнд');
+  /* хэвийн үед өөрчлөлтгүй */
+  assert.ok(/Төслийн нийт явц 31[.,]7%/.test(JSON.stringify(mayor)), 'хэвийн үед тоо хэвээр');
+  assert.ok(!attentionItems(i).some((x) => x.text.includes('уншигдаагүй тул')), 'бүрэн уншигдсан үед анхааруулгагүй');
+});
 ok('progressOf — null/NaN → 0, тоо хэвээр', () => {
   assert.equal(progressOf(null), 0); assert.equal(progressOf(undefined), 0); assert.equal(progressOf(NaN), 0); assert.equal(progressOf(12.5), 12.5);
 });

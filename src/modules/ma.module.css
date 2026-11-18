@@ -180,6 +180,8 @@
 .cards { display: grid; gap: 12px; }
 .card { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
 .cardOld { margin-top: -6px; border-style: dashed; background: var(--surface-2); }
+/* хаягаар нээсэн хүсэлт (`?ma=`) — түр тодруулга */
+.cardFocus { outline: 2px solid var(--data); outline-offset: 2px; }
 .cardHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: transparent; }
 .cardTitle { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
 .cardTitle b { font-size: 13px; font-weight: 600; }

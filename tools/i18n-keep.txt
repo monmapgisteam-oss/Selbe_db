@@ -230,6 +230,9 @@
 @dyn modules/ViewPanel.tsx  tr(type)
 # [const] PKGS.group / PKGS.name («Багц 1 · 9 давхар») ба Cashflow-ийн багц нэр («Багц 1») — en.ts/enData.ts; байхгүй бол эх
 @dyn modules/BagtsHamaaral.tsx  tr(p.group)
+@dyn lib/huvaariAcl.ts  tr(c.bagts)
+@dyn modules/MaUnapprovedCard.tsx  tr(p.group)
+@dyn modules/MaUnapprovedCard.tsx  tr(sel.group)
 @dyn modules/Guitsetgel.tsx  tr(rest.slice(i + 3))
 @dyn modules/Guitsetgel.tsx  tr(g.bagts)
 @dyn modules/Guitsetgel.tsx  tr(work.bagts)

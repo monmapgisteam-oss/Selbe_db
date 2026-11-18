@@ -14,6 +14,7 @@ import { isAuthorFor, reviewerRolesFor, subscribeChanarAcl } from '@/lib/chanarA
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
 import { fixCyr } from '@/lib/format';
+import { readParam } from '@/lib/urlState';
 import {
   ATT_TYPES, MA_URL, addMaAtt, attTypeLabel, chainOf, deleteMaAtt, ipcReady, isExpired, latestPerRespNo, listMaAtts, loadMa, type StageKey,
   maAttBlob, resubmitLinks, stageLabel, stageStateLabel, verdictLabel, type AttMeta, type AttType, type MaAtt, type MaRow, type Verdict,
@@ -118,6 +119,7 @@ export function Ma() {
   }, [rows, links]);
 
   const [tab, setTab] = useState<'chain' | 'noots' | 'ajil'>('chain');
+  useFocusMa(q.state === 'ready' && tab === 'chain');
   const goTab = async (t: 'chain' | 'noots' | 'ajil') => {
     if (t !== tab) {
       const labels = navDirtyLabels();
@@ -284,6 +286,26 @@ type PopKey = StageKey | 'IPC';
  * НЭГ MA = НЭГ БҮТЭН ПРОЦЕСС = НЭГ МӨР (2026-10-09, хэрэглэгч): зөвхөн шатны товчлуурын эгнээ —
  *   MA → MIR → FIC → М-акт → IPC. Шат дээр ДАРАХАД цонх (popup) нээгдэж тэр шатны мэдээлэл гарна.
  */
+/**
+ * ХАЯГААР ХҮСЭЛТ НЭЭХ (2026-11-18) — `?v=ma&ma=<хариу бичгийн дугаар>`: «Багцын гүйцэтгэл» хуудасны «Материал батлагдаагүй
+ * хийгдсэн ажил» жагсаалтаас ирэхэд тэр хүсэлтийн карт руу гүйлгэж, түр тодруулна. Карт зурагдсаны дараа нэг удаа.
+ */
+function useFocusMa(ready: boolean) {
+  const done = useRef(false);
+  useEffect(() => {
+    if (!ready || done.current) return;
+    const no = readParam('ma');
+    if (!no) return;
+    done.current = true;
+    const el = [...document.querySelectorAll<HTMLElement>('[data-ma-no]')].find((x) => x.dataset.maNo === no);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center' });
+    el.classList.add(s.cardFocus);
+    const t = window.setTimeout(() => el.classList.remove(s.cardFocus), 4000);
+    return () => window.clearTimeout(t);
+  }, [ready]);
+}
+
 function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged, fmErr, link, mirWhy, fmWhy, dupN = 0 }: CardProps) {
   const [pop, setPop] = useState<PopKey | null>(null);
   const chain = chainOf(r.verdict, {
@@ -321,7 +343,7 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
   const title = (k: PopKey) => (k === 'IPC' ? tr('IPC') : `${stageLabel(k)} — ${r.material || r.respNo}`);
 
   return (
-    <article className={`${s.card} ${link?.next ? s.cardOld : ''}`}>
+    <article className={`${s.card} ${link?.next ? s.cardOld : ''}`} data-ma-no={r.respNo || undefined}>
       {link?.next && (
         <p className={s.resubNote}>{tr('Буцаасан — засаж дахин ирүүлсэн: MA {0} (дээрх карт).', link.next.respNo || tr('(дугааргүй)'))}</p>
       )}
