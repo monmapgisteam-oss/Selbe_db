@@ -319,7 +319,7 @@ const sq = (v: string) => v.replace(/'/g, "''");
 
 type GazarData = {
   /** `Tuluv` төлөвөөс: чөлөөлсөн (бүрэн+цэвэрлэсэн) ба үлдсэн */
-  left: { n: number; area: number; cleared: number; cleaned: number; remaining: number; resolved: number };
+  left: { n: number; area: number; cleared: number; cleaned: number; remaining: number; resolved: number; comp: number | null; compN: number };
   /** Төлөв бүрийн ТАЛБАЙ (га) — газрын зурагтай ижил өнгөөр */
   statusAreaBy: StatusBars;
   /** Үлдсэн талбарын ШАЛТГААН (явцын_мэдээ) — тоо/хувь/талбайг тус тусад нь */
@@ -791,6 +791,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         cleaned: cleaned.n,
         remaining: remaining.n,
         resolved: cleared.n + cleaned.n,
+        compN: lStatus.reduce((s, r) => s + Number(r.cn ?? 0), 0),
+        comp: lStatus.some((r) => Number(r.cn ?? 0) > 0) ? lStatus.reduce((s, r) => s + Number(r.c ?? 0), 0) : null,
       },
       statusAreaBy,
       reasons,
@@ -850,6 +852,9 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   <Stat value={ha(d.left.area)} unit={tr('га')} label={tr('Нийт талбай')} />
                   <Stat value={num(d.left.cleared)} unit={tr('талбар')} label={tr('Бүрэн чөлөөлсөн')} />
                   <Stat value={num(d.left.remaining)} unit={tr('талбар')} label={tr('Үлдсэн')} />
+                  <Stat value={d.left.comp == null ? '—' : money(d.left.comp).v}
+                    unit={d.left.comp == null ? undefined : money(d.left.comp).unit} label={tr('Нийт нөхөх олговор')} />
+                  <Stat value={num(d.left.compN)} unit={tr('талбар')} label={tr('Олговор олгосон')} />
                 </Stats>
                 <div className={g.ringBox}>
                   {/* «Чөлөөлсөн» — жинхэнэ САЙН төлөв тул var(--good) (нүүрний ижил цагирагтай нэг өнгө) */}
