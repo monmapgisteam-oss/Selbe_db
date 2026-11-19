@@ -41,7 +41,7 @@ import {
 import { sumBy, maxOf } from '@/lib/agg';
 import { loadLandStatus, statusKey, statusRawsWhere, parcelAreasDeduped, landuseText, PARCEL_SHAPE_AREA, type LandStatus } from '@/lib/land';
 import { cat, mnt, num, pct, shades, CAT_LIGHT, NO_DATA, km, monthKey, text } from '@/lib/format';
-import { BAGTS_ORIGIN } from '@/lib/brief';
+import { bagtsOrigin } from '@/lib/brief';
 import {
   loadHeadline, loadSocial, loadBudget, loadPkgProgress, latestPkgProgress, SESSION_TTL_MS,
   cached,
@@ -2191,7 +2191,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
           зөвхөн Гадаад/Үндэсний гэсэн ангилал (тоо биш). */}
       <Panel title={tr('Гүйцэтгэгчийн бүрэлдэхүүн')}>
         {(() => {
-          const nat = rows.filter((r) => BAGTS_ORIGIN[r.label.trim()] === 'Үндэсний');
+          const nat = rows.filter((r) => bagtsOrigin(r.label) === 'Үндэсний');
           const natBlocks = sumBy(nat, (x) => x.blocks);
           const natT = ailTotal(nat);
           const allT = ailTotal(rows);

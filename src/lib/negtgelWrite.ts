@@ -13,7 +13,7 @@
 import { requireWriter } from './writeGuard';
 import { t as tr } from './i18nCore';
 import { agsFetch } from '@/modules/sheet/ags';
-import { BAGTS_NEGTGEL, bagtsKey, constructionWhere } from './services';
+import { BAGTS_NEGTGEL, bagtsKey, canonPkg, constructionWhere } from './services';
 import { invalidate } from './dataBus';
 import { PKGS, loadSchema, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
@@ -327,12 +327,14 @@ export async function registerApproved(
         return { ok: false, error: tr('«{0}» хуудасны «Б.» гүйцэтгэл {1}% — 0–100-гийн гадна тул нэгтгэлд бичсэнгүй. Хуудасны хэмжээсийг (0–1 эсэх) шалгана уу.', x.p.label, v.toFixed(2)) };
     }
 
-    const nameSql = bagts.replace(/'/g, "''");
+    /* Стандарт нэрээр бичнэ; хайлтад хуучин бичлэгийг ч (шилжээгүй мөр) хамруулна */
+    const canon = canonPkg(bagts);
+    const bagtsIn = `${F.bagts} IN (${[...new Set([canon, bagts])].map((v) => `N'${v.replace(/'/g, "''")}'`).join(', ')})`;
 
     const now = new Date();
     const todayCut = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - 1;
     const prev = (await post(`${BAGTS_NEGTGEL.url}/query`, {
-      where: `${F.bagts} = N'${nameSql}' AND ${F.date} <= ${ts(Math.min(s.at, todayCut))}`,
+      where: `${bagtsIn} AND ${F.date} <= ${ts(Math.min(s.at, todayCut))}`,
       outFields: `${F.date},${F.progress}`,
       returnGeometry: 'false',
       orderByFields: `${F.date} DESC`,
@@ -359,7 +361,7 @@ export async function registerApproved(
     }
 
     const dupQ = (await post(`${BAGTS_NEGTGEL.url}/query`, {
-      where: `${F.bagts} = N'${nameSql}' AND ${dayWhere(F.date, s.at)}`,
+      where: `${bagtsIn} AND ${dayWhere(F.date, s.at)}`,
       outFields: `${BAGTS_NEGTGEL.oid},${F.progress}`,
       returnGeometry: 'false',
       orderByFields: `${BAGTS_NEGTGEL.oid} DESC`,
@@ -421,7 +423,7 @@ export async function registerApproved(
       adds: JSON.stringify([{
         attributes: {
           [F.date]: s.at,
-          [F.bagts]: bagts,
+          [F.bagts]: canon,
           [F.progress]: s.progress,
           [F.planned]: s.planned,
           [F.volume]: s.volume,
@@ -437,7 +439,7 @@ export async function registerApproved(
     const newOid = num(r.objectId);
     if (newOid != null) {
       const tw = (await post(`${BAGTS_NEGTGEL.url}/query`, {
-        where: `${F.bagts} = N'${nameSql}' AND ${dayWhere(F.date, s.at)}`,
+        where: `${bagtsIn} AND ${dayWhere(F.date, s.at)}`,
         outFields: `${BAGTS_NEGTGEL.oid}`,
         returnGeometry: 'false',
         orderByFields: `${BAGTS_NEGTGEL.oid} ASC`,

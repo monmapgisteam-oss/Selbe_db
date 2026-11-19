@@ -300,13 +300,13 @@ export const HABEA = {
      * (Bagts_* талбаргүй — bagts: null).
      */
     companies: [
-      { sfx: "HHDMGK", code: "ХХДМГК", get label() { return tr('Хятадын хоёр дахь металлурги групп корпорац ХХК'); }, bagts: 'Багц -1' },
-      { sfx: "HBZIT", code: "ХБЗИТ", get label() { return tr('Хятадын барилгын зургаадугаар инженерийн товчоо ХХК'); }, bagts: 'Багц -2' },
-      { sfx: "HBTIT", code: "ХБТИТ", get label() { return tr('Хятадын барилгын тавдугаар инженерийн товчоо ХХК'); }, bagts: 'Багц -3.1' },
-      { sfx: "MSK", code: "МСК", get label() { return tr('Морин сувд констракшн ХХК'); }, bagts: 'Багц -3.2' },
-      { sfx: "NBG", code: "НБГ", get label() { return tr('Нутгийн буян групп ХХК'); }, bagts: 'Багц -3.3' },
-      { sfx: "MK", code: "МК", get label() { return tr('Монкон констракшн ХХК'); }, bagts: 'Багц -4.1' },
-      { sfx: "P", code: "П", get label() { return tr('Професионалстрой ХХК'); }, bagts: 'Багц -4.2' },
+      { sfx: "HHDMGK", code: "ХХДМГК", get label() { return tr('Хятадын хоёр дахь металлурги групп корпорац ХХК'); }, bagts: 'Багц-1' },
+      { sfx: "HBZIT", code: "ХБЗИТ", get label() { return tr('Хятадын барилгын зургаадугаар инженерийн товчоо ХХК'); }, bagts: 'Багц-2' },
+      { sfx: "HBTIT", code: "ХБТИТ", get label() { return tr('Хятадын барилгын тавдугаар инженерийн товчоо ХХК'); }, bagts: 'Багц-3.1' },
+      { sfx: "MSK", code: "МСК", get label() { return tr('Морин сувд констракшн ХХК'); }, bagts: 'Багц-3.2' },
+      { sfx: "NBG", code: "НБГ", get label() { return tr('Нутгийн буян групп ХХК'); }, bagts: 'Багц-3.3' },
+      { sfx: "MK", code: "МК", get label() { return tr('Монкон констракшн ХХК'); }, bagts: 'Багц-4.1' },
+      { sfx: "P", code: "П", get label() { return tr('Професионалстрой ХХК'); }, bagts: 'Багц-4.2' },
       { sfx: "MMSE", code: "ММСЕ", label: "MMSE", bagts: null },
       { sfx: "SC", code: "SC", label: "Smart craft", bagts: null },
       { sfx: "OSNAAG", code: "ОСНААГ", get label() { return tr('ОСНААГ'); }, bagts: null },
@@ -376,8 +376,8 @@ export const HABEA = {
      * Багцын багана → хуудасны «Багц» шүүлтийн нэр (`habeaPkgKey`-д).
      */
     pkgCols: [
-      ['bagts1', 'Багц 1'], ['bagts2', 'Багц 2'], ['bagst3_1', 'Багц 3.1'], ['bagst3_2', 'Багц 3.2'],
-      ['bagst3_3', 'Багц 3.3'], ['bagst4_1', 'Багц 4.1'], ['bagst4_2', 'Багц 4.2'],
+      ['bagts1', 'Багц-1'], ['bagts2', 'Багц-2'], ['bagst3_1', 'Багц-3.1'], ['bagst3_2', 'Багц-3.2'],
+      ['bagst3_3', 'Багц-3.3'], ['bagst4_1', 'Багц-4.1'], ['bagst4_2', 'Багц-4.2'],
     ] as [string, string][],
     /** Донатын төрлүүд — ЯГ `Metric` домэйны кодоор, дэлгэцийн нэр ба өнгө */
     kinds: [

@@ -21,8 +21,8 @@ export const hoPkgKey = (k: string): string => HO_PKG_ALIAS[k] ?? k;
  */
 export const MAP_PKG_ALIAS: Readonly<Record<string, { key: string; label: string }>> = {
   /* 2026-11-04 (хэрэглэгч): нэр нь ТТБ-тэй ижил «Багц 7.1»; газрын зургийн давхаргын түлхүүр БАГЦ7 хэвээр */
-  'БАГЦ71': { key: 'БАГЦ7', label: 'Багц 7.1' },
-  'БАГЦ8': { key: 'БАГЦ82', label: 'Багц 8.2' },
+  'БАГЦ71': { key: 'БАГЦ7', label: 'Багц-7.1' },
+  'БАГЦ8': { key: 'БАГЦ82', label: 'Багц-8.2' },
 };
 
 /**

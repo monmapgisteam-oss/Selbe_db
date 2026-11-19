@@ -292,7 +292,7 @@ console.log('✅ UserAdmin.add() — 4 ACL-ийн өнчин мөр бүгд ш�
 
   /* (в) ХҮРЭЭ ТЭЛЭХГҮЙ: ALL_BAGTS-тай grant-д багц нэмбэл хүрээ нь
      бүх багцаас ганц багц руу ХУМИГДАНА — тиймээс шалгаж алгасна. */
-  assert.match(body, /!mine\.bagts\.includes\(ALL_BAGTS\)/,
+  assert.match(body, /!mine\.bagts\.includes\(ALL_BAGTS\)|!scopeHas\(mine\.bagts, /,
     `${f}: ALL_BAGTS-тай grant-д багц нэмбэл хүрээ хумигдана — шалгах ёстой`);
   assert.match(body, /\.trim\(\)\.toLowerCase\(\)/,
     `${f}: addPkgOp нь нэрийг trim().toLowerCase() хийх ёстой`);

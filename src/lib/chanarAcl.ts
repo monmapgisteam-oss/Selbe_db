@@ -4,7 +4,7 @@
  * ЧАНАРЫН БАРИМТЫН (MS · MA · MIR · FIC · NCR) ҮҮРЭГ, БАГЦЫН ХУВААРИЛАЛТ.
  */
 
-import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
+import { makeAcl, scopeHas, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { chanarUpsert, chanarRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
@@ -81,7 +81,7 @@ export function reviewerRolesFor(
   const out: ChanarReviewer[] = [];
   for (const r of CHANAR_REVIEWERS) {
     const sc = acl.scope(user, r);
-    if (sc === null || sc.includes(bagts)) out.push(r);
+    if (scopeHas(sc, bagts)) out.push(r);
   }
   return out;
 }
@@ -89,5 +89,5 @@ export function reviewerRolesFor(
 /** Тухайн багцад гүйцэтгэгч (зохиогч) байх эрхтэй эсэх */
 export function isAuthorFor(user: string | null | undefined, bagts: string): boolean {
   const sc = acl.scope(user, 'author');
-  return sc === null || sc.includes(bagts);
+  return scopeHas(sc, bagts);
 }

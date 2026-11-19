@@ -14,7 +14,7 @@ import { typeHuvaariScope } from './roleTypes';
 import { ownPkgScope } from './huvaariView';
 import { allPkgErh, type ErhSource, type PkgIssue, type ScopedRow } from './erhOverview';
 import { capUsers, capsOf, capsRemoteReady, capsStored, toggleCap, type CapKey } from './caps';
-import { ALL_BAGTS, type Grant } from './scopedAcl';
+import { ALL_BAGTS, scopeHas, type Grant } from './scopedAcl';
 import { ROLE_CAPS, capSystem, isDerivedCap, type ScopedSys } from './aclRoleCaps';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { BUTETS_PACKS } from './butetsPacks';
@@ -307,7 +307,7 @@ export function liveErhSource(): ErhSource {
     if (t === 'all') hvType[u.toLowerCase()] = { scope: 'all', bagts: null };
     else if (t === 'own') {
       const s = ownPkgScope(u);
-      hvType[u.toLowerCase()] = { scope: 'own', bagts: s === null ? null : PKG_GROUPS.filter((g) => s.includes(g)) };
+      hvType[u.toLowerCase()] = { scope: 'own', bagts: s === null ? null : PKG_GROUPS.filter((g) => scopeHas(s, g)) };
     }
   }
   return {
@@ -385,7 +385,7 @@ export function addPkgOp(sys: ScopedSys, user: string, role: string, pkg: string
   const grants: Grant<string>[] = cur ? cur.grants.map((g) => ({ ...g })) : [];
   const mine = grants.find((g) => g.role === role);
   if (!mine) grants.push({ role, bagts: [pkg] });
-  else if (!mine.bagts.includes(ALL_BAGTS) && !mine.bagts.includes(pkg)) {
+  else if (!scopeHas(mine.bagts, pkg)) {
     mine.bagts = [...mine.bagts, pkg];
   } else return null;
   return { user: u, run: () => spec.setGrants(u, grants) };
@@ -848,7 +848,7 @@ export async function flowWaitingFor(users: readonly string[]): Promise<FlowWait
     if (timer) clearTimeout(timer);
   }
   if (!works) return null;
-  const covers = (b: readonly string[], g: string): boolean => b.includes(ALL_BAGTS) || b.includes(g);
+  const covers = (b: readonly string[], g: string): boolean => scopeHas(b, g);
   /* Үлдэх шийдвэрлэгчид — устгагдах · хүснэгтэд алга · порталд алга · «зөвхөн харна»-аас бусад */
   const others = listAssigns().filter((a) => {
     const k = norm(a.user);

@@ -860,7 +860,7 @@ function TsKpi({ packs, fin, share }: {
  * «Багц 6.5 · …» → [6, 5]. Дугааргүй нэр хамгийн сүүлд.
  */
 const pkgNum = (name: string): [number, number] => {
-  const m = /Багц\s*(\d+)(?:[.-](\d+))?/i.exec(name);
+  const m = /Багц[-\s]*(\d+)(?:[.-](\d+))?/i.exec(name);
   return m ? [Number(m[1]), m[2] ? Number(m[2]) : 0] : [9999, 0];
 };
 

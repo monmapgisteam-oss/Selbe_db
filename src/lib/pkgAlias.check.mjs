@@ -40,7 +40,7 @@ assert.equal(finPkgKey('БАГЦ7'), 'БАГЦ7');
 assert.equal(finPkgKey('БАГЦ1'), 'БАГЦ1', 'холбоосгүй → өөрөө');
 assert.equal(FIN_PKG_ALIAS['БАГЦ81'].label, MAP_PKG_ALIAS['БАГЦ8'].label);
 /* 2026-11-04: нэр «Багц 7.1» түлхүүрт нөлөөлөхгүй — түлхүүр нь өөрөө каноник (`pkgKeyOf(key) === key`), нэр чөлөөтэй */
-assert.equal(MAP_PKG_ALIAS['БАГЦ71'].label, 'Багц 7.1');
+assert.equal(MAP_PKG_ALIAS['БАГЦ71'].label, 'Багц-7.1');
 for (const [src, a] of Object.entries(FIN_PKG_ALIAS)) {
   assert.equal(pkgKeyOf(a.key), a.key, `${src} → ${a.key}: алиасын түлхүүр каноник биш`);
   assert.notEqual(a.key, src, `${src}: өөртөө холбосон`);

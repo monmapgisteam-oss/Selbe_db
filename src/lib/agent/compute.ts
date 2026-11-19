@@ -7,7 +7,7 @@
 import { loadBlockProgress, loadBlockUniverse, latestMean, pkgProgressOf, universeKeys } from '@/lib/blockProgress';
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
-import { LAYER_BY_ID, bagtsKey, buildingKey, layerUrl } from '@/lib/services';
+import { LAYER_BY_ID, bagtsKey, buildingKey, canonPkg, layerUrl } from '@/lib/services';
 import { resolveSource, type AgentScope } from './registry';
 
 export type BlockRow = {
@@ -86,7 +86,7 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
   for (const r of rows) {
     const bagts = String(r.bagts ?? '');
     const k = buildingKey(bagts, String(r.blok ?? ''));
-    if (bagts) nameOf.set(bagtsKey(bagts), bagts);
+    if (bagts) nameOf.set(bagtsKey(bagts), canonPkg(bagts));
     if (feat.has(k)) continue;
     feat.set(k, { ail: Number(r.ail_too ?? 0), company: String(r.bar_comp ?? '') });
   }
@@ -120,7 +120,7 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
         bagts: label(pk),
         blocks: m.total,
         reported: m.blocks,
-        ail: blocks.filter((b) => b.bagts === label(pk)).reduce((s, b) => s + b.ail, 0),
+        ail: blocks.filter((b) => bagtsKey(b.bagts) === pk).reduce((s, b) => s + b.ail, 0),
         actual: r1(m.pct),
       }))
       .sort((a, b) => a.actual - b.actual),

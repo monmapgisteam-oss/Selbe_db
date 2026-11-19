@@ -262,11 +262,11 @@ const CO_SFX: Record<string, string> = {
 const PKG2_RE = /^\s*багц\s*-?\s*2(\s*[.\-–]\s*\d[\d.\-–\s]*)?\s*$/i;
 
 /** ХАБЭА-гийн багцын ШОШГО — Багц 2-ын дэд талбай «Багц 2» болно */
-export const habeaPkgLabel = (raw: string): string => (PKG2_RE.test(raw) ? tr('Багц 2') : raw);
+export const habeaPkgLabel = (raw: string): string => (PKG2_RE.test(raw) ? tr('Багц-2') : raw);
 
 /** ХАБЭА-гийн багцын ТҮЛХҮҮР — шүүлт, бүлэглэлт бүгд үүгээр */
 export const habeaPkgKey = (raw: unknown): string =>
-  (PKG2_RE.test(String(raw ?? '')) ? bagtsKey('Багц 2') : bagtsKey(raw));
+  (PKG2_RE.test(String(raw ?? '')) ? bagtsKey('Багц-2') : bagtsKey(raw));
 
 export const norm = (r: Row, dom: Domains, kind: UzlegKind): UzlegRow => {
   const F = fieldsOf(kind);

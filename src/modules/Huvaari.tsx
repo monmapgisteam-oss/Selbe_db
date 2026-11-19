@@ -6,6 +6,7 @@
 
 import { type PointerEvent as PEvt, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { Section, Empty, Loading, Data, friendlyError, userError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariAclReady, huvaariScope, planAdminCanApprove, planApproversOf, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
@@ -268,8 +269,8 @@ export function Huvaari({
     const v = huvaariViewScope(user?.username);
     const e = hasCap(user?.username, 'addRow') ? ajilScope(user?.username, 'editor') : [];
     if (v == null || e == null) return PKG_GROUPS;
-    const mine = new Set([...v, ...e]);
-    return PKG_GROUPS.filter((g) => mine.has(g));
+    const mine = [...v, ...e];
+    return PKG_GROUPS.filter((g) => scopeHas(mine, g));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, status, hvN, capN, ajN, typesN]);
   /**
@@ -302,7 +303,7 @@ export function Huvaari({
     if (!hasCap(user?.username, 'addRow')) return false;
     if (status === 'off' || roleForUser(user?.username) === 'super') return true;
     const sc0 = ajilScope(user?.username, 'editor');
-    return sc0 === null || sc0.includes(pkg.group);
+    return scopeHas(sc0, pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, status, capN, ajN, pkg.group, review]);
   const viewOnly = !review && status !== 'off' && !canEditRole && !canApprove && !canAddRow;
@@ -5519,7 +5520,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             return {
               start, value: ent?.obyem ?? null, vol: modalRow.vol, canEdit: canEdit && !locked && !busy,
               save: async (v: number | null) => {
-                await saveWeek({ bagts: pkg.key, bagtsNer: pkg.label, des, ajilNo: modalRow.no, ajilNer: modalRow.work, negj: '', niit: modalRow.vol }, blok, start, v);
+                await saveWeek({ bagts: pkg.key, bagtsNer: pkg.name, des, ajilNo: modalRow.no, ajilNer: modalRow.work, negj: '', niit: modalRow.vol }, blok, start, v);
                 setWkPlan(await loadPkgWeek(pkg.key));
               },
             };

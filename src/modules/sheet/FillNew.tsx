@@ -53,7 +53,8 @@ import { STAGE_LABEL } from "@/lib/hyanaltGroup";
 import { parseOkCells, resolveOk, rowSids } from "@/lib/hyanaltOkCells";
 import { useAuth } from "@/components/AuthGate";
 import { bagtsFor, bagtsScope, isViewOnly, stageOfUser, subscribeAcl } from "@/lib/guitsetgelAcl";
-import { roleForUser } from "@/lib/services";
+import { pkgTextHas, roleForUser, sameBagts } from "@/lib/services";
+import { scopeHas } from "@/lib/scopedAcl";
 import { roleOf } from "@/lib/permissions";
 import { hasCap, subscribeCaps } from "@/lib/caps";
 import { obyemScope, subscribeObyemAcl } from '@/lib/obyemAcl';
@@ -161,8 +162,8 @@ export function requestFillOpen(r: FillOpenRequest): void { openReq = r; }
  * Хүсэлтийн хуудас — `flow`-ийн тулгалттай ИЖИЛ дүрэм (`pkg.name` нь `Ажлын_нэр`-д).
  */
 function pkgOfReq(r: FillOpenRequest): { pkg: Pkg; guess: boolean } | null {
-  const cand = PKGS.filter((p) => p.group === r.bagts);
-  const hit = cand.find((p) => r.ajil.includes(p.name));
+  const cand = PKGS.filter((p) => sameBagts(p.group, r.bagts));
+  const hit = cand.find((p) => pkgTextHas(r.ajil, p.name));
   if (hit) return { pkg: hit, guess: false };
   return cand[0] ? { pkg: cand[0], guess: cand.length > 1 } : null;
 }
@@ -283,7 +284,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, isZahiral, aclN, obN, capN]);
   const groupOpts = useMemo(
-    () => (myBagts ? PKG_GROUPS.filter((g) => myBagts.includes(g)) : PKG_GROUPS),
+    () => (myBagts ? PKG_GROUPS.filter((g) => scopeHas(myBagts, g)) : PKG_GROUPS),
     [myBagts],
   );
 
@@ -330,7 +331,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (viewOnlyAcl) return false;
     if (isZahiral) return false;
     const cb = bagtsFor(user?.username, "company");
-    return cb === null || cb.includes(pkg.group);
+    return scopeHas(cb, pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, viewOnlyAcl, isZahiral, aclN, pkg.group]);
   const canPerf = permPerf && !reviewLock;
@@ -362,7 +363,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (unrestricted) return true;
     if (!hasCap(user?.username, 'obyemEdit')) return false;
     const sc0 = obyemScope(user?.username, 'editor');
-    return sc0 === null || sc0.includes(pkg.group);
+    return scopeHas(sc0, pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, obN, capN, pkg.group]);
 
@@ -370,7 +371,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     if (unrestricted) return true;
     if (!hasCap(user?.username, 'obyemApprove')) return false;
     const sc0 = obyemScope(user?.username, 'approver');
-    return sc0 === null || sc0.includes(pkg.group);
+    return scopeHas(sc0, pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, unrestricted, obN, capN, pkg.group]);
 

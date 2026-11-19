@@ -20,6 +20,7 @@ import { obyemScope } from './obyemAcl';
 import { butetsScope } from './butetsAcl';
 import { bagtsScope } from './guitsetgelAcl';
 import { bagtsKey, roleForUser } from './services';
+import { scopeHas } from './scopedAcl';
 
 /** `null` = бүх багц; `[]` = юу ч биш; бусад — `PKG_GROUPS`-ийн дэд олонлог */
 type Scope = string[] | null;
@@ -61,13 +62,13 @@ export function huvaariViewScope(user: string | null | undefined): Scope {
   const explicit = union([huvaariScope(user, 'author'), huvaariScope(user, 'approver')]);
   const all = t === 'own' ? union([explicit, ownPkgScope(user)]) : explicit;
   if (all === null) return null;
-  return PKG_GROUPS.filter((g) => all.includes(g));
+  return PKG_GROUPS.filter((g) => scopeHas(all, g));
 }
 
 /** Тэр багцыг харж болох уу */
 export function canViewHuvaari(user: string | null | undefined, group: string): boolean {
   const s = huvaariViewScope(user);
-  return s === null || s.includes(group);
+  return scopeHas(s, group);
 }
 
 _setHuvaariViewReader((u) => {

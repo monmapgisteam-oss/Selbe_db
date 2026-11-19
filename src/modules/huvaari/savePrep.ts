@@ -249,7 +249,7 @@ export async function prepareSave({
       }
       const meta: WorkMeta = {
         bagts: pkg.key,
-        bagtsNer: pkg.label,
+        bagtsNer: pkg.name, // орчуулагдаагүй стандарт нэр (tr-шошго биш)
         des,
         ajilNo: r.no,
         ajilNer: r.work,

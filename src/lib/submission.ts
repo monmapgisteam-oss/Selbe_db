@@ -1105,8 +1105,8 @@ const ZAHIRAL_DENY = () => tr('Ерөнхий захирал гүйцэтгэл�
 
 export async function companyDeny(group: string, allowChief = false): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }] = await Promise.all([
-    import('./services'), import('./who'), import('./guitsetgelAcl'),
+  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }, { scopeHas }] = await Promise.all([
+    import('./services'), import('./who'), import('./guitsetgelAcl'), import('./scopedAcl'),
   ]);
   if (!AUTH.appId) return null;
   const me = currentUser();
@@ -1115,10 +1115,10 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
   if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
   if (await isZahiralUser(me)) return ZAHIRAL_DENY();
   const cb = bagtsFor(me, 'company');
-  if (cb === null || cb.includes(group)) return null;
+  if (scopeHas(cb, group)) return null;
   if (allowChief) {
     const ch = bagtsFor(me, 'chief');
-    if (ch === null || ch.includes(group)) return null;
+    if (scopeHas(ch, group)) return null;
   }
   return tr('Та «{0}» багцын гүйцэтгэгчээр томилогдоогүй тул гүйцэтгэл илгээх эрхгүй.', group);
 }
@@ -1129,8 +1129,8 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
  */
 export async function chiefDeny(group: string): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }] = await Promise.all([
-    import('./services'), import('./who'), import('./guitsetgelAcl'),
+  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }, { scopeHas }] = await Promise.all([
+    import('./services'), import('./who'), import('./guitsetgelAcl'), import('./scopedAcl'),
   ]);
   if (!AUTH.appId) return null;
   const me = currentUser();
@@ -1139,7 +1139,7 @@ export async function chiefDeny(group: string): Promise<string | null> {
   if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
   if (await isZahiralUser(me)) return ZAHIRAL_DENY();
   const ch = bagtsFor(me, 'chief');
-  if (ch === null || ch.includes(group)) return null;
+  if (scopeHas(ch, group)) return null;
   return tr('Та «{0}» багцын эцсийн шатны батлагчаар томилогдоогүй тул үлдэгдэл илгээлт бичих эрхгүй.', group);
 }
 

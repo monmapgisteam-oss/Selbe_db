@@ -6,7 +6,7 @@ import { applyAll } from './tableWrite';
 import { hasCap, type CapKey } from './caps';
 import { currentUser } from './who';
 import { invalidate } from './dataBus';
-import { CASHFLOW_NEW, pkgKeyOf } from './services';
+import { CASHFLOW_NEW, canonPkg, pkgKeyOf } from './services';
 import { isAddedWork, isSplitParent, tenderLockWhy, ubToday, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 
 const F = CASHFLOW_NEW.fields;
@@ -153,7 +153,7 @@ export function newRowAttrs(tree: PlanTree, parent: PlanNode, items: readonly Ne
     [F.parentKod]: parent.code,
     [F.level]: lvl,
     [F.phase]: r.uy_shat ?? null,
-    [F.pkg]: r.bagts ?? parent.pkg ?? null,
+    [F.pkg]: canonPkg(r.bagts ?? parent.pkg ?? null),
     [F.detail]: x.name.trim(),
     /* Хадгалсан жин 0–1 (`projectPlan.STORED_WEIGHT`) */
     [F.wSection]: group ? (x.weight ?? 0) / 100 : 0,

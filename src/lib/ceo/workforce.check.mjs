@@ -145,11 +145,11 @@ const ROWS = [
   assert.ok(!names.some((n) => n.includes('тавдугаар')), 'ХБТИТ хасагдсан');
   assert.ok(!names.includes('MMSE'), 'MMSE хасагдсан');
   const hh = t1.rows[0];
-  assert.deepEqual(hh.slice(1).map((c) => c.v), ['Багц -1', 258, 351, -93, 10, 57, 201]);
+  assert.deepEqual(hh.slice(1).map((c) => c.v), ['Багц-1', 258, 351, -93, 10, 57, 201]);
   // Гадаад хоосон → «—» (null), 0 биш
   const msk = t1.rows[1];
   assert.equal(msk[7].v, null, 'МСК гадаад null');
-  assert.equal(msk[1].v, 'Багц -3.2');
+  assert.equal(msk[1].v, 'Багц-3.2');
   for (const r of t1.rows) assert.equal(r.length, 8);
 
   // Хүснэгт 2: 3 өдөр, огноо шинээс хуучин

@@ -11,7 +11,7 @@
  * тохиолдлыг татгалзана.
  */
 
-import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
+import { makeAcl, scopeHas, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
 import { huvaariUpsert, huvaariRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
@@ -48,7 +48,7 @@ export function planRoleConflict(
         const hit = mineAll && theirsAll ? ALL_BAGTS
           : mineAll ? og.bagts[0]
             : theirsAll ? g.bagts[0]
-              : g.bagts.find((b) => og.bagts.includes(b));
+              : g.bagts.find((b) => scopeHas(og.bagts, b));
         if (hit != null) return { role: g.role, bagts: hit, user: o.user };
       }
     }
@@ -135,7 +135,7 @@ export function requirePlanWrite(group: string | null): void {
   const u = currentUser();
   const ok = (['author', 'approver'] as const).some((role) => {
     const sc = acl.scope(u, role);
-    return group == null ? sc == null || sc.length > 0 : sc == null || sc.includes(group);
+    return group == null ? sc == null || sc.length > 0 : scopeHas(sc, group);
   });
   if (!ok) throw new Error(tr('Энэ багцын хуваарьт бичих эрхгүй — зохиогч эсвэл батлагчаар томилогдсон байх ёстой.'));
 }
@@ -156,7 +156,7 @@ const liveAccount = (u: string): boolean => {
  */
 export const planApproversOf = (group: string): string[] =>
   listHuvaariAssigns()
-    .filter((a) => a.grants.some((g) => g.role === 'approver' && (g.bagts.includes(ALL_BAGTS) || g.bagts.includes(group))))
+    .filter((a) => a.grants.some((g) => g.role === 'approver' && scopeHas(g.bagts, group)))
     .map((a) => a.user)
     .filter(liveAccount)
     .sort();

@@ -1,5 +1,6 @@
 import { t as tr } from '@/lib/i18nCore';
 import { ENT_HOSTED } from '@/lib/services/env';
+import { canonPkg } from '@/lib/services/fields';
 import { arcgisPost } from '@/lib/authToken';
 import { queryFeatures } from '@/lib/query';
 import { invalidate, register } from '@/lib/dataBus';
@@ -200,7 +201,7 @@ export function planSync(rows: readonly NootsRow[], receipts: readonly Receipt[]
   for (const w of receipts) {
     const r = keep.get(w.mirId);
     if (!r) { adds.push(w); continue; }
-    const bagtsOff = w.bagts != null && (r.bagts ?? '') !== w.bagts;
+    const bagtsOff = w.bagts != null && bKey(r.bagts) !== bKey(w.bagts);
     if (r.name !== w.name || r.inQty !== w.qty || r.unit !== w.unit || bagtsOff) updates.push({ oid: r.oid, name: w.name, qty: w.qty, unit: w.unit, ...(w.bagts != null ? { bagts: w.bagts } : {}) });
   }
   return { adds, updates, deletes };
@@ -344,7 +345,7 @@ export function syncNoots(mas: readonly MaRow[], mirs: readonly MirRow[]): Promi
     if (autoOff) return { added: 0, updated: 0, removed: 0, statusFixed: 0, disabled: autoOff };
     /* Багц — MA-гийн багцаас (`Pkg.group`); хүснэгтэд `bagts` талбар алга бол хуучин (багцгүй) дүрэм */
     const { PKGS } = await import('@/modules/sheet/bagts.pkg');
-    const bagtsOf = hasBagts ? (ma: MaRow) => PKGS.find((p) => p.key === ma.pkg)?.group ?? ma.pkgLabel ?? '' : undefined;
+    const bagtsOf = hasBagts ? (ma: MaRow) => PKGS.find((p) => p.key === ma.pkg)?.group ?? canonPkg(ma.pkgLabel ?? '') : undefined;
     /* 2026-11-11: MIR-ийн эх хоосон уншигдсан атал нөөцөд MIR-ийн мөр байвал юу ч устгахгүй (тохиргоо/уншилтын алдаа нөөцийг арилгадаг байв) */
     if (!mirs.length && (await loadNoots()).some((r) => r.mirId)) {
       return { added: 0, updated: 0, removed: 0, statusFixed: 0, disabled: tr('MIR-ийн бүртгэл хоосон уншигдсан тул нөөцийг хөндсөнгүй.') };

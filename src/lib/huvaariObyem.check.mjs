@@ -483,7 +483,7 @@ console.log('huvaariObyem.check: ok — scheduleByMoney · orderByDeps · remapM
   const e = H.pctEdits('БАГЦ1', 'Багц 1', pp.get('БАГЦ1'), oids, new Map([['2026-10', 30], ['2026-11', 60], ['2026-12', 10], ['2027-01', null]]));
   assert.deepEqual(e.updates, [{ attributes: { objectid: 2, obyem: 60 } }], 'өөрчлөгдсөн сар л');
   assert.equal(e.adds.length, 1);
-  assert.deepEqual(e.adds[0].attributes, { dkey: 'БАГЦ1|sar_huvi|2026-12', turul: 'sar_huvi', bagts: 'БАГЦ1', bagts_ner: 'Багц 1', sar: '2026-12-01', sar_txt: '2026-12', obyem: 10, negj: '%' });
+  assert.deepEqual(e.adds[0].attributes, { dkey: 'БАГЦ1|sar_huvi|2026-12', turul: 'sar_huvi', bagts: 'БАГЦ1', bagts_ner: 'Багц-1', sar: '2026-12-01', sar_txt: '2026-12', obyem: 10, negj: '%' });
   assert.deepEqual(e.deletes, [], 'хоосон шинэ сар — нэмэхгүй, устгах зүйлгүй');
   const e2 = H.pctEdits('БАГЦ1', 'Багц 1', pp.get('БАГЦ1'), oids, new Map([['2026-10', null]]));
   assert.deepEqual(e2.deletes.sort(), [1, 2], 'хоосолсон сар ба жагсаалтад үгүй хуучин сар устна');

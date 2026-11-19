@@ -1,4 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { AUTH } from '@/lib/services/env';
 import { currentUser } from '@/lib/who';
 import { huvaariScope } from '@/lib/huvaariAcl';
@@ -73,7 +74,7 @@ export const matsOf = (r: SheetRow): string[] => parseMats(r.raw[MAT_FIELD]);
 export function canEditMats(user: string | null | undefined, group: string): boolean {
   if (!AUTH.appId) return true;
   const sc = huvaariScope(user, 'author');
-  return sc == null || sc.includes(group);
+  return scopeHas(sc, group);
 }
 
 /**

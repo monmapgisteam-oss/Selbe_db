@@ -8,6 +8,7 @@ import { AUTH, roleForUser } from './services';
 import { ajilScope } from './ajilAcl';
 import { hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { currentUser, requireCap } from './who';
 import { AJIL_STATUS, ajilClaimOther, claimAjil, loadHead, loadPayloadStamped, markApplied, releaseAjilClaim } from './ajilBatlah';
 import { obyemBusyFor } from './obyemBatlah';
@@ -196,7 +197,7 @@ export function classifyStuck<T extends StuckLike>(
   const out: StuckItem<T>[] = [];
   for (const x of subs) {
     if (x.status !== AJIL_STATUS.approved) continue;
-    if (o.scope != null && !o.scope.includes(x.pkgGroup)) continue;
+    if (!scopeHas(o.scope, x.pkgGroup)) continue;
     if (!o.knownPkg(x.pkgKey) || o.noParent?.has(x.oid)) {
       out.push({ sub: x, kind: 'orphan', readyAt: null });
       continue;
@@ -392,7 +393,7 @@ async function materializeInner(args: { pkgKey?: string; ajilOid: number; stamp?
     const me = currentUser();
     if (typeof window !== 'undefined' && !me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const sc0 = ajilScope(me, 'approver');
-    if (sc0 !== null && !sc0.includes(head.pkgGroup))
+    if (!scopeHas(sc0, head.pkgGroup))
       return { ok: false, error: tr('Энэ багцын нэмэлт ажлыг батлах эрхгүй.') };
   }
   if (head.status === AJIL_STATUS.applied) return { ok: true, already: true, added: 0 };

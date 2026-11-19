@@ -64,7 +64,7 @@ const render = (d, initial) => renderToStaticMarkup(h(LocaleProvider, null, h(Le
   assert.ok(l1.includes('Өнөөдөр 2026.10.21'), 'өнөөдрийн шугамын шошго');
   /* 2026-10-30: хугацааны хуваарь · таамаг · тайлан */
   for (const t of ['Жил', 'Улирал', 'Сар', 'Таамаг дуусах', 'Excel татах', 'PDF / хэвлэх']) assert.ok(l1.includes(t), t);
-  assert.ok(l1.includes('Багц 4-1 · 9 давхар хуваарь'), 'унасан эх ил (нэрээр)');
+  assert.ok(l1.includes('Багц-4.1 · 9 давхар хуваарь'), 'унасан эх ил (нэрээр)');
   assert.ok(!l1.includes('schedule:b41_9f'), 'дотоод код дэлгэцэнд гарахгүй');
 
   const l2 = render(d, 2);

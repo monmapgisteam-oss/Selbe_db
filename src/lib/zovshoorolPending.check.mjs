@@ -144,7 +144,7 @@ console.log("✅ diffZov: танигдаагүй төлөв · null/'' хэви�
     assert.equal(await saveZov(draft), 42);
     const dupQ = calls.find((c) => c.u.endsWith('/query'));
     assert.ok(dupQ, 'нэмэхийн өмнө давхардлыг серверээс асууна');
-    assert.match(dupQ.p.where, new RegExp(`${F.bagts} = N'Багц 1' AND ${F.shat} = 3`));
+    assert.match(dupQ.p.where, new RegExp(`${F.bagts} IN \\(N'Багц-1', N'Багц 1'\\) AND ${F.shat} = 3`));
     assert.ok(calls.indexOf(dupQ) < calls.indexOf(edits()[0]), 'асуулт бичилтээс ӨМНӨ');
 
     /* нэмэх — зэрэгцээ хэрэглэгч ижил дараалал эзэлсэн → бичихгүй, нэрээр нь хэлнэ */

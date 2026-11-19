@@ -130,11 +130,12 @@ import {
 import { appendHistory, type HistEntry } from './hyanaltHistory';
 import { encodeOkCells } from './hyanaltOkCells';
 import type { ArchivingMark, StagedSubmission, SubmissionPayload } from './submission';
-import { AUTH, bagtsKey, roleForUser } from './services';
+import { AUTH, bagtsKey, canonPkg, canonPkgText, roleForUser, sameBagts } from './services';
 import { roleOf } from './permissions';
 import { currentUser } from './who';
 import { arcgisPost } from './query';
 import { isLostWrite } from './lostWrite';
+import { scopeHas } from './scopedAcl';
 import { serverNow, syncServerClock } from './serverClock';
 import { batchInvalidate, invalidate, register } from './dataBus';
 
@@ -213,7 +214,7 @@ function authz(
     return tr('Та энэ шатны хянагчаар томилогдоогүй байна.');
   }
   const sc = bagtsFor(u, stage);
-  if (sc !== null && !sc.includes(bagts)) {
+  if (!scopeHas(sc, bagts)) {
     return tr('Энэ багц танд хуваарилагдаагүй байна.');
   }
   return selfApprovalDeny(stage, u, hist, same, submitters);
@@ -542,7 +543,7 @@ async function movedSince(oid: number, prev: Row, stage: ReviewStage): Promise<s
   if (keys.some((k) => val(now as Row, k) !== val(prev, k))) return busy(actor(now));
   const so = Number(prev[F.sheetOid]);
   const twin = Number.isInteger(so) && so > 0 && ROWS.find((r) => r.__oid !== oid && Number(r[F.sheetOid]) === so
-    && r[F.bagts] === prev[F.bagts] && Number(r[F.ergelt]) > Number(prev[F.ergelt]));
+    && sameBagts(r[F.bagts], prev[F.bagts]) && Number(r[F.ergelt]) > Number(prev[F.ergelt]));
   if (twin) return busy(actor(twin));
   return null;
 }
@@ -637,7 +638,7 @@ export async function countReviewPending(username: string | null | undefined): P
     else { rows = (await queryAll()).map(toRow); badgeRows = { at: Date.now(), rows }; }
     const { groupWorks } = await import('./hyanaltGroup');
     const ws = groupWorks(rows).filter((w) => w.owner === stage && w.status !== STATUS.transferred
-      && (sc == null || sc.includes(w.bagts)));
+      && scopeHas(sc, w.bagts));
     const blocked = await selfBlocks(ws, me, stage);
     return ws.filter((w) => !blocked.has(w.key)).length;
   } catch {
@@ -2024,7 +2025,7 @@ export async function recheck(
     const base = prev;
     const ergelt = base[F.ergelt] + 1;
     const twin = ROWS.some((r) => r[F.sheetOid] === base[F.sheetOid]
-      && r[F.bagts] === base[F.bagts] && r[F.ergelt] === ergelt);
+      && sameBagts(r[F.bagts], base[F.bagts]) && r[F.ergelt] === ergelt);
     if (twin) { emit(); return { ok: false, error: STALE() }; }
     {
       const moved = await movedSince(oid, prev, by);
@@ -2041,8 +2042,8 @@ export async function recheck(
       [F.id]: nextId(),
       [F.sheetOid]: prev[F.sheetOid],
       [F.ergelt]: ergelt,
-      [F.bagts]: prev[F.bagts],
-      [F.ajil]: prev[F.ajil],
+      [F.bagts]: canonPkg(prev[F.bagts]), // шинэ тойрог — стандарт нэрээр
+      [F.ajil]: canonPkgText(prev[F.ajil]),
       [F.company]: prev[F.company],
       [F.companySent]: sentAt ? Date.parse(sentAt) : null,
       ...Object.fromEntries(REVIEW_STAGES.flatMap((s) => {
@@ -2075,7 +2076,7 @@ export async function recheck(
           const so = Number(fresh[F.sheetOid]);
           lost = (await queryAll()).map(toRow)
             .filter((r) => r.__oid > 0 && r.__oid < mine && Number(r[F.sheetOid]) === so
-              && r[F.bagts] === base[F.bagts] && Number(r[F.ergelt]) === ergelt)
+              && sameBagts(r[F.bagts], base[F.bagts]) && Number(r[F.ergelt]) === ergelt)
             .sort((x, y) => x.__oid - y.__oid)[0];
         } catch (e) {
           console.warn('[selbe] дахин шалгалтын давхар тойргийн шалгалт унав:', e);

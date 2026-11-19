@@ -4,7 +4,7 @@
 import { requireCap } from './who';
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
-import { GUITS } from '@/lib/services';
+import { GUITS, canonPkg } from '@/lib/services';
 import { DAY, spanFrac, type Span } from './plan';
 import { invalidate } from './dataBus';
 import { isLostWrite } from './lostWrite';
@@ -526,7 +526,7 @@ export function buildEdits(
     dkey: dkeyOf(meta.bagts, meta.des, blok, sar),
     turul: TURUL_PLAN,
     bagts: meta.bagts,
-    bagts_ner: meta.bagtsNer,
+    bagts_ner: canonPkg(meta.bagtsNer),
     des_dugaar: meta.des,
     ajil_no: meta.ajilNo,
     ajil_ner: meta.ajilNer,
@@ -831,7 +831,7 @@ export function pctEdits(
     }
     if (oid == null) {
       out.adds.push({ attributes: {
-        dkey: k, turul: TURUL_PCT, bagts: pkg, bagts_ner: name, sar: sarDateOnly(sar), sar_txt: sar, obyem: v, negj: '%',
+        dkey: k, turul: TURUL_PCT, bagts: pkg, bagts_ner: canonPkg(name), sar: sarDateOnly(sar), sar_txt: sar, obyem: v, negj: '%',
       } });
     } else if (!(Math.abs((cur.get(sar) ?? NaN) - v) < 1e-9)) {
       out.updates.push({ attributes: { objectid: oid, obyem: v } });
@@ -995,7 +995,7 @@ export function weekEdits(meta: WorkMeta, blok: string, week: number, obyem: num
     dkey: weekDkeyOf(meta.bagts, meta.des, blok, week),
     turul: TURUL_WEEK,
     bagts: meta.bagts,
-    bagts_ner: meta.bagtsNer,
+    bagts_ner: canonPkg(meta.bagtsNer),
     des_dugaar: meta.des,
     ajil_no: meta.ajilNo,
     ajil_ner: meta.ajilNer,

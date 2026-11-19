@@ -5,10 +5,11 @@
  */
 
 import { GUITS } from '@/lib/services/env';
-import { AUTH, roleForUser } from './services';
+import { AUTH, canonPkg, roleForUser } from './services';
 import { obyemAclReady, obyemScope } from './obyemAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser } from './who';
 import { invalidate } from './dataBus';
@@ -318,7 +319,7 @@ export async function submitObyem(args: {
     const own = sameAsLogin(args.author);
     if (own) return own;
     const sc = obyemScope(meNow ?? args.author, 'editor');
-    if (sc !== null && !sc.includes(args.pkgGroup))
+    if (!scopeHas(sc, args.pkgGroup))
       return { ok: false, error: tr('Энэ багцад обьём илгээх эрхгүй.') };
   }
   const url = await tableUrl();
@@ -329,7 +330,7 @@ export async function submitObyem(args: {
   }
   const attrs: Attrs = {
     [F.pkgKey]: args.pkgKey,
-    [F.pkgGroup]: args.pkgGroup,
+    [F.pkgGroup]: canonPkg(args.pkgGroup),
     [F.status]: OBYEM_STATUS.pending,
     [F.author]: args.author.toLowerCase(),
     [F.authorSent]: Date.now(),
@@ -444,7 +445,7 @@ function obyemAuthzDeny(cur: Attrs, me: string): string | null {
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
     const sc = obyemScope(meNow ?? me, 'approver');
-    if (sc !== null && !sc.includes(String(cur[F.pkgGroup] ?? ''))) return tr('Энэ багцын обьёмыг батлах эрхгүй.');
+    if (!scopeHas(sc, String(cur[F.pkgGroup] ?? ''))) return tr('Энэ багцын обьёмыг батлах эрхгүй.');
   }
   const author = s(cur[F.author])?.trim().toLowerCase() ?? '';
   if (me && author && me === author) return tr('Өөрийн илгээсэн засварыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.');
@@ -653,7 +654,7 @@ export async function decideObyem(args: {
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const sc = obyemScope(meNow ?? me, 'approver');
-    if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
+    if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын обьёмыг батлах эрхгүй.') };
   }
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
@@ -766,7 +767,7 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const who = meNow ?? me;
     const sc = roleForUser(who) === 'super' ? null : obyemScope(who, 'approver');
-    if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
+    if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын обьёмыг батлах эрхгүй.') };
   }
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
@@ -939,7 +940,7 @@ export async function countObyemPending(username: string | null | undefined): Pr
     const sc = AUTH.appId ? obyemScope(me, 'approver') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
     const rows = await loadBadgePending();
-    return rows.filter((x) => (sc == null || sc.includes(x.pkgGroup)) && x.author.trim().toLowerCase() !== me).length;
+    return rows.filter((x) => scopeHas(sc, x.pkgGroup) && x.author.trim().toLowerCase() !== me).length;
   } catch {
     return null;
   }

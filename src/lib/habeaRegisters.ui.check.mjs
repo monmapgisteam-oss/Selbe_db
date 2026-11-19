@@ -132,8 +132,8 @@ try {
     assert.deepEqual(d.weeks, [40, 41], 'хоосон Week → 0-р долоо хоног БИШ');
     assert.equal(d.weekNo, 40, 'өмнөх бүтэн долоо хоног');
     const beton = d.rows.find((r) => r.metric === 'Бетон (рейс)').byPkg;
-    assert.equal(beton['Багц 1'], 2, '40-р долоо хоногийн мөр');
-    assert.equal('Багц 2' in beton, false, 'хоосон нүд 0 болж нэмэгдэхгүй; Week хоосон мөр орохгүй (null ≠ 0)');
+    assert.equal(beton['Багц-1'], 2, '40-р долоо хоногийн мөр');
+    assert.equal('Багц-2' in beton, false, 'хоосон нүд 0 болж нэмэгдэхгүй; Week хоосон мөр орохгүй (null ≠ 0)');
     assert.equal(d.rows.find((r) => r.metric === 'Ахуйн хог (рейс)'), undefined, '41-р долоо хоног орохгүй');
     assert.equal(d.multiYear, false, 'нэг оны өгөгдөл');
     /* 2027-ийн 2-р долоо хоногт (өмнөх = 1) 40, 41 нь өнгөрсөн оных → он ялгагдаагүйг ил хэлнэ */

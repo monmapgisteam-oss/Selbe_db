@@ -3,6 +3,7 @@
  */
 import type { ViewKey } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { register } from '@/lib/dataBus';
 import type { MaRow } from '@/lib/ma';
 import type { MirRow } from '@/lib/mir';
@@ -228,7 +229,7 @@ export async function loadPlanNews(username: string | null): Promise<PlanNews[] 
     const now = Date.now();
     const out: PlanNews[] = [];
     for (const x of rows) {
-      if (x.author.trim().toLowerCase() !== me || (sc != null && !sc.includes(x.pkgGroup))) continue;
+      if (x.author.trim().toLowerCase() !== me || !scopeHas(sc, x.pkgGroup)) continue;
       const kind = x.kind ?? null;
       if (nR > 0 && x.status === m.PLAN_STATUS.returned && !rSeen.has(x.oid)) {
         out.push({ pkgKey: x.pkgKey, kind, oid: x.oid, status: 'returned' });

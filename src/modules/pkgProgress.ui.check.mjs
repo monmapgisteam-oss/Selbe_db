@@ -211,7 +211,7 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
     ],
   };
   assert.deepEqual(projectPlanOf(fin3, pc).map((p) => p.pct), [4, 38], 'хуваарьгүй багц төслийн шугамыг арилгав');
-  assert.deepEqual(projectPlanScope(fin3, pc).excluded, ['Багц 3.3'], 'хасагдсан багц нэрээр — дэд бүтэц (5.1) орохгүй');
+  assert.deepEqual(projectPlanScope(fin3, pc).excluded, ['Багц-3.3'], 'хасагдсан багц нэрээр — дэд бүтэц (5.1) орохгүй');
   const am = aggregateMonths(fin3, pc).find((m) => m.label === m1);
   assert.equal(am.phys, 19, 'толгойн бодит — орон сууцны бүх багцаар (400·20+600·50+1000·0)/2000; 5.1 (30%) орохгүй');
   assert.equal(am.physLag, 38, 'хоцрогдлын бодит — хуваарьтай Б1+Б2-оор');
@@ -219,7 +219,7 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.equal(ln.actual, 38);
   assert.equal(ln.planned, 38, `${m1}-ийн эцсийн төлөвлөгөө`);
   assert.equal(ln.gap, 0, 'хуваарийн дагуу явж буй багцууд — хуваарьгүй багц хоцрогдлыг хэтрүүлэхгүй (хуучнаар 19)');
-  assert.deepEqual(ln.excluded, ['Багц 3.3']);
+  assert.deepEqual(ln.excluded, ['Багц-3.3']);
   assert.equal(ln.planned - ln.actual, ln.gap);
   assert.equal(ln.coverage, 38);
   assert.equal(coverageOk(ln.coverage), false, '38% < 95% — дүгнэхгүй');

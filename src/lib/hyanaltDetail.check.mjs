@@ -249,7 +249,7 @@ try {
   await assert.rejects(loadSubmission('Багц 1', 44), /unregistered_sheet/);
   assert.deepEqual(state.reads, [], 'unknown declared package cannot trigger a legacy floor search');
   submission({ pkgKey: 'b2_12f', archiveOid: 4807 });
-  await assert.rejects(loadSubmission('Багц 1', 44), /Багц 2/);
+  await assert.rejects(loadSubmission('Багц 1', 44), /Багц-2/);
   assert.deepEqual(state.reads, [], 'approved group mismatch stops before archive reads');
 
   frame('b42_12f', 4807, DAY_12);
