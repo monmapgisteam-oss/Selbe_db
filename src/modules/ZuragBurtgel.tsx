@@ -4,6 +4,7 @@
  * ЗУРГИЙН БҮРТГЭЛ (2026-11-11, хэрэглэгч: «ЗУРАГ ТӨСӨЛ-LOG»-ийн загвараар; зураг дээр дарахад PDF нээгдэнэ; PDF-ийг системээр
  * оруулна — Enterprise item болно) — «ТЭЗҮ · Ажлын зураг төсөл» хуудасны таб. Өгөгдөл: хүснэгт 234 (`lib/zuragBurtgel.ts`).
  */
+import { pkgCodeOf } from '@/lib/hoSync/compute';
 import { Fragment, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
@@ -253,6 +254,11 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
         if (n === undefined) throw new Error(e.kind === 'money' ? tr('Ажлын үнийг зөвхөн тоогоор бичнэ үү.') : tr('PDF хуудасны тоог зөвхөн тоогоор бичнэ үү.'));
         u[e.f] = n == null ? null : e.kind === 'int' ? Math.round(n) : n;
       }
+      /* 2026-11-19 (аудит): багц өөрчлөгдвөл стандарт код дагана; хоосон кодтой мөрт нэг удаа бөглөнө */
+      {
+        const code = pkgCodeOf('bagts' in u ? u.bagts : r0.bagts);
+        if ((r0.bagtsKod ?? null) !== code) u.bagts_kod = code;
+      }
       if (Object.keys(u).length === 1) { setEdit(null); return null; }
       await applyAll(ZURAG_BURTGEL.url, ZURAG_BURTGEL.oid, { updates: [u] }, CAP);
       invalidate('ZURAG_BURTGEL');
@@ -265,7 +271,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
     if (!add || !add.ner.trim() || !add.buleg) { setErr(tr('Бүлэг ба баримтын нэрийг бөглөнө үү.')); return; }
     void run(async () => {
       await applyAll(ZURAG_BURTGEL.url, ZURAG_BURTGEL.oid, { adds: [{
-        buleg: add.buleg, ded_buleg: add.ded.trim() || null, bagts: canonPkg(add.bagts.trim()) || null,
+        buleg: add.buleg, ded_buleg: add.ded.trim() || null, bagts: canonPkg(add.bagts.trim()) || null, bagts_kod: pkgCodeOf(add.bagts),
         ner: add.ner.trim(), shifr: add.shifr.trim() || null,
       }] }, CAP);
       invalidate('ZURAG_BURTGEL');

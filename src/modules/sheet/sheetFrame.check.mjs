@@ -370,6 +370,17 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
     }
     src.aStart[0] = null; src.aEnd[1] = null; src.hun = null; src.mashin = null;
   }
+  /* 2026-11-19: бодит огноо хоосон бол бөглөлтөөс — өдрийн ажил > 0 мөрд эхлэх = бөглөсөн өдөр; хуримтлал «Обьём»-д хүрвэл дуусах */
+  {
+    const fr4 = buildFrame(ov.rows, sc, nBld, asOf, hasObyem, fillMs);
+    const worked = fr4.map((a, i) => [a, ov.rows[i]]).filter(([a, r]) => !r.group && typeof a.o0 === 'number' && a.o0 > 0 && r.aStart[0] == null);
+    assert.ok(worked.length > 0, 'фикстурт энэ өдөр ажилласан мөр байх ёстой');
+    for (const [a] of worked) assert.equal(a.as0, fillMs, 'эхлэх = бөглөсөн өдөр');
+    const idle = fr4.map((a, i) => [a, ov.rows[i]]).filter(([a, r]) => !r.group && !(typeof a.o0 === 'number' && a.o0 > 0) && r.aStart[0] == null);
+    for (const [a] of idle) assert.equal(a.as0 ?? null, null, 'ажилгүй мөрд эхлэх огноо тавигдахгүй');
+    const done = fr4.map((a, i) => [a, ov.rows[i]]).filter(([, r]) => !r.group && r.vol > 0 && r.obyem[0] != null && r.obyem[0] >= r.vol && r.aEnd[0] == null);
+    for (const [a] of done) assert.equal(a.ae0, fillMs, 'дуусах = обьём бүрэн болсон өдөр');
+  }
   assert.equal(fr[i4].o0, null, '"" → null (0 биш)');
   assert.equal(fr[i4].osum, null, 'бүх блок хоосон → obyemSum null');
   const add = fr.find((a) => a.work === 'Арматур');

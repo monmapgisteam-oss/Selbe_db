@@ -160,9 +160,9 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   assert.deepEqual(e.adds.map((a) => a.dd_kod), ['2.2.1', '2.2.1.1', '2.2.1.2', '2.2.2', '2.2.2.1']);
   assert.deepEqual(e.updates.map((u) => [u.objectid, u.guits_ehleh, u.guits_duusah]), [[2, null, null], [3, undefined, undefined], [4, null, null]],
     'хуучин огноо хоосолдоно');
-  assert.deepEqual(e.updates.find((u) => u.objectid === 3), { objectid: 3, ajil_uilchilgee: 'n1', bagts: null, guitsetgel_huvi: 80 });
+  assert.deepEqual(e.updates.find((u) => u.objectid === 3), { objectid: 3, ajil_uilchilgee: 'n1', bagts: null, guitsetgel_huvi: 80, zurag_oid: 1 }, '2026-11-19: бүртгэлийн мөрийн ID бичигдэнэ');
   const a = e.adds.find((x) => x.dd_kod === '2.2.1.1');
-  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null, olgoson_dun: null, guits_ehleh: null, guits_duusah: null, geree_ehleh: null, geree_duusah: null },
+  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null, olgoson_dun: null, guits_ehleh: null, guits_duusah: null, geree_ehleh: null, geree_duusah: null, zurag_oid: 2, bagts_kod: null },
     'бүртгэлд байхгүй утга хоосон');
   assert.ok(!e.deletes.includes(1) && !e.deletes.includes(11) && !e.deletes.includes(20), 'үе шатын мөр, бусад үе шат хөндөгдөхгүй');
   /* Бичигдсэний дараах байдал: дахин тулгахад засвар алга; төлөв өөрчлөгдвөл ганц мөр засна; баримт хасагдвал мөр устана */
@@ -220,5 +220,22 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   const ren = registryPlanEdits(stored, plus.map((d) => (d.oid === 2 ? zd(2, 'B2') : d)));
   assert.deepEqual([ren.adds.length, ren.deletes.length], [0, 0]);
   assert.equal(ren.updates.find((u) => u.objectid === idB).ajil_uilchilgee, 'B2');
+}
+/* 2026-11-19: мөр бүртгэлийн ID-аараа (`zurag_oid`) баримтаа дагана — нэр ба байрлал хоёулаа өөрчлөгдсөн ч гэрээ, төлбөр хэвээр */
+{
+  const base = [{ objectid: 1, dd_kod: '2', ajil_uilchilgee: 'Ажлын зураг төсөл', uy_shat: 'Ажлын зураг төсөл' }, { objectid: 20, dd_kod: '3', ajil_uilchilgee: 'Барилга угсралт', uy_shat: 'Барилга угсралт', ho_dun_geree: 1 }];
+  const zd = (oid, ner) => toZRow({ objectid: oid, buleg: '003. АЖЛЫН ЗУРАГ', ded_buleg: '', ner, tolov: 'Батлагдсан', ajliin_une: 10 });
+  let oid = 500;
+  const apply = (rows, e) => [
+    ...rows.filter((r) => !e.deletes.includes(r.objectid)).map((r) => { const u = e.updates.find((x) => x.objectid === r.objectid); return u ? { ...r, ...u } : r; }),
+    ...e.adds.map((x) => ({ ...x, objectid: oid++ })),
+  ].map((r) => ({ ...r, etseg_kod: r.dd_kod.includes('.') ? r.dd_kod.replace(/\.\d+$/, '') : null }));
+  let st = apply(base, registryPlanEdits(base, [zd(7, 'A'), zd(8, 'B')]));
+  const idB = st.find((r) => r.zurag_oid === 8).objectid;
+  st = st.map((r) => (r.objectid === idB ? { ...r, geree_dugaar: 'З/9' } : r));
+  const e = registryPlanEdits(st, [zd(9, 'X'), zd(7, 'A'), zd(8, 'B шинэ нэр')]);
+  assert.deepEqual(e.deletes, [], 'гэрээтэй мөр устахгүй');
+  const u = e.updates.find((x) => x.objectid === idB);
+  assert.deepEqual([u.ajil_uilchilgee, u.dd_kod], ['B шинэ нэр', '2.1.3'], 'нэр, байрлал өөрчлөгдсөн ч мөр баримтаа дагана');
 }
 console.log('zuragPlan.check: бүгд ✅');

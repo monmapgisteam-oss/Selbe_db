@@ -40,9 +40,40 @@ async function companyOf(bagts: string): Promise<string> {
       /* Уншилт унасан — '' («гүйцэтгэгчгүй») гэж бүртгэвэл тойрог хуваагдана; кэшлэхгүй, илгээлтийг буцааж дахин оролдуулна */
       throw new Error(tr('Гүйцэтгэгч компанийг уншиж чадсангүй ({0}) — дахин оролдоно уу.', String((e as Error)?.message ?? e)));
     }
+    /* 2026-11-19 (аудит, «автоматжуулах»): ГЭРЭЭНИЙ гүйцэтгэгч — «Төсөл төлөвлөгөө биелэлт»-ийн «Барилга угсралт»-ын гэрээний
+       мөрөөс (эх нь тэр). Барилгын давхаргад гүйцэтгэгч зөвхөн орон сууцны блокт бий тул дэд бүтцийн багцад (5.x, 6.x …)
+       компани хоосон гардаг байв. Давхаргынх нь зөвхөн гэрээний мөргүй багцад нөөц болно. Уншигдаагүй бол давхаргынх хэвээр. */
+    try {
+      for (const [k, v] of await planContractors()) map.set(k, v);
+    } catch (e) {
+      console.warn('[selbe] «Төсөл төлөвлөгөө биелэлт»-ийн гүйцэтгэгч уншигдсангүй — барилгын давхаргынхаар', e);
+    }
     COMPANY = map;
   }
   return COMPANY.get(norm(bagts)) ?? '';
+}
+
+/** «Төсөл төлөвлөгөө биелэлт» (182)-ийн «Барилга угсралт» үе шатын гүйцэтгэгчтэй мөрүүд → багц (norm) → гүйцэтгэгч */
+async function planContractors(): Promise<Map<string, string>> {
+  const { CASHFLOW_NEW } = await import('./services');
+  const { cfPhaseNames, cfDerive } = await import('./cfClass');
+  const F = CASHFLOW_NEW.fields;
+  const j = (await arcgisPost(`${CASHFLOW_NEW.url}/query`, {
+    where: `${F.ddKod} IS NOT NULL`,
+    outFields: [F.ddKod, F.detail, F.pkg, F.contractor].join(','),
+    returnGeometry: 'false',
+  })) as { features?: { attributes: Attrs }[] };
+  const rows = (j.features ?? []).map((f) => f.attributes);
+  const phases = cfPhaseNames(rows);
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const who = String(r[F.contractor] ?? '').trim();
+    const k = norm(String(r[F.pkg] ?? ''));
+    if (!who || !k || out.has(k)) continue;
+    if (cfDerive(r[F.ddKod], phases).uy_shat !== 'Барилга угсралт') continue;
+    out.set(k, who);
+  }
+  return out;
 }
 
 /* ── Бүртгэлийн дугаар ── */

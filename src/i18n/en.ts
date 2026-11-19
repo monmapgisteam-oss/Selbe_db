@@ -8113,7 +8113,14 @@ const en: Record<string, string> = {
   "Мөнгөний нийлбэрт тооцох": "Count in money totals",
   "Хугацааны нийтэд тооцох": "Count in overall period",
   "Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Үе шатны гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд": "Counted in (from left): project total progress · phase progress · money totals · overall period",
-  "Мөнгө": "Money"
+  "Мөнгө": "Money",
+  "Төлбөрийн акт ↔ Төсөл төлөвлөгөө биелэлт": "Payment certificates ↔ Project plan and performance",
+  "Гүйцэтгэлийн хувь, огноо": "Progress and dates",
+  "Нийтийн вэб": "Public web",
+  "Синкийн төлөв — алдаатай": "Sync status — errors",
+  "Синкийн төлөв": "Sync status",
+  "энэ хөтөч дээр ажиллаагүй": "not run in this browser",
+  "сүүлд {0}": "last {0}"
 };
 
 export default en;

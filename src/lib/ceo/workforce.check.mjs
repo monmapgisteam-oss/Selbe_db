@@ -410,3 +410,15 @@ const ROWS = [
 }
 
 console.log('workforce.check: OK');
+
+/* 2026-11-19 (аудит): «сүүлийн мөр» ч тэр өдрийн бусад компанийн маягтыг нийлүүлнэ — `groupDays`-тэй ИЖИЛ тоо */
+{
+  const { latestLaborRow, laborHeadOf } = await import('./workforce.ts');
+  const day = ub(2026, 11, 18, 10);
+  const a = row(day, { MK: { w: 389, t: 3 } }, {}, false, { oid: 301 });
+  const b = row(day, { HBZIT: { w: 247, t: 2 } }, {}, false, { oid: 302 });
+  const merged = latestLaborRow([a, b]);
+  const g = groupDays([a, b])[0];
+  assert.equal(g.workers, 389 + 247, 'groupDays — хоёр компани нийлнэ');
+  assert.equal(laborHeadOf(merged).workers, g.workers, 'latestLaborRow нь groupDays-тэй ижил тоо');
+}

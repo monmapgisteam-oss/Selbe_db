@@ -66,7 +66,11 @@ export async function financeSummary(scope: AgentScope): Promise<FinanceSummary>
   }
   const [{ loadBudget }, F] = await Promise.all([import('@/lib/live'), import('@/modules/Finance')]);
   const [budget, fin] = await Promise.all([loadBudget(), F.loadFinData()]);
-  return financeSummaryOf(budget, fin.contracts, fin.pays);
+  const out = financeSummaryOf(budget, fin.contracts, fin.pays);
+  /* 2026-11-19 (аудит): дашбоард, тайлантай НЭГ тоо — ТТБ-ийн Төслийн нийт мөр */
+  const { loadProjectMoney } = await import('@/lib/projectPlanInputs');
+  const m = await loadProjectMoney().catch(() => null);
+  return m ? { ...out, contracted: m.contract ?? out.contracted, paid: m.paid ?? out.paid, paidPct: m.paidPct ?? out.paidPct } : out;
 }
 
 /* ══════════════ pkg_plan ══════════════ */

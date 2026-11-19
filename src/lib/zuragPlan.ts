@@ -28,6 +28,7 @@
  */
 import { buildTree, moneySums, type PlanNode, type PlanStoredRow } from './projectPlan';
 import { bulegLabel, groupZ, subLabel, tolovAvg, tolovPct, type ZRow } from './zuragBurtgel';
+import { pkgCodeOf } from './hoSync/compute';
 
 /** ТЭЗҮ-ийн бүлэг — эх Excel-ийн «001. ТЭЗҮ, БАРИЛГАЖИЛТЫН ТӨСӨЛ» */
 export const isTezuBuleg = (buleg: string): boolean => buleg.trim().startsWith('001');
@@ -129,6 +130,8 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
         ajil_uilchilgee: d.ner, bagts: d.bagts || null, heseg_ezleh_huvi: 1 / ds.length, guitsetgel_huvi: tolovPct(d.tolov),
         /* 2026-11-19 (хэрэглэгч: «5 үе шат дууссан бол дууссан»): эхлэх = эхний шатны огноо, дуусах = сүүлийн шатны огноо */
         ...stageSpan(d),
+        /* 2026-11-19 (аудит): тогтвортой холбоос — бүртгэлийн мөр ба багцын код */
+        zurag_oid: d.oid, bagts_kod: pkgCodeOf(d.bagts),
         /* Хэрэглэгч 2026-11-17: гараар оруулсан дүн «урьдчилсан төсөвт өртөг болон IPC рүү хоёуланд нь» — төсөвт өртөг ба
            гэрээний дүн (IPC-ийн олгосон хувийн суурь). Олгосон дүн нь IPC-ээс хэвээр (үе шатын мөрд) */
         /* 2026-11-19 (хэрэглэгч): зургийн мөнгө гэрээний дагуу НЭГ удаа олгогдоно, төлбөрийн актаар дахин олгохгүй — тиймээс
@@ -190,6 +193,10 @@ function matchStored(add: readonly PlanStoredRow[], stored: readonly PlanStoredR
     used.add(r.objectid as number);
     out[i] = r.objectid as number;
   };
+  /* 0) 2026-11-19: бүртгэлийн мөрийн ID (`zurag_oid`) — нэр, Д/Д өөрчлөгдсөн ч баримтаа дагана */
+  const byZ = new Map<number, PlanStoredRow>();
+  for (const r of real) if (typeof r.zurag_oid === 'number' && !byZ.has(r.zurag_oid)) byZ.set(r.zurag_oid, r);
+  add.forEach((g, i) => { if (typeof g.zurag_oid === 'number') claim(i, byZ.get(g.zurag_oid)); });
   add.forEach((g, i) => { const r = byDd.get(g.dd_kod ?? ''); if (r && docKey(r) === docKey(g)) claim(i, r); });
   const byDoc = new Map<string, PlanStoredRow[]>();
   for (const r of real) { const k = docKey(r); byDoc.set(k, [...(byDoc.get(k) ?? []), r]); }
@@ -202,7 +209,7 @@ function matchStored(add: readonly PlanStoredRow[], stored: readonly PlanStoredR
 }
 
 /** Хүснэгтэд бичигддэг талбарууд — бүртгэлээс гардаг нь л; бусад нь хоосон */
-export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar', 'olgoson_dun', 'guits_ehleh', 'guits_duusah', 'geree_ehleh', 'geree_duusah'] as const;
+export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar', 'olgoson_dun', 'guits_ehleh', 'guits_duusah', 'geree_ehleh', 'geree_duusah', 'zurag_oid', 'bagts_kod'] as const;
 type RKey = (typeof REGISTRY_PLAN_KEYS)[number];
 export type RegistryPlanEdits = {
   adds: ({ dd_kod: string } & Record<RKey, string | number | null>)[];

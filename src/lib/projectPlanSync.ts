@@ -6,6 +6,7 @@
  * «ТЭЗҮ · Ажлын зураг төсөл», «Газар чөлөөлөлтийн огноо», «Үе шат оруулах» хуудасны хадгалалт, газар чөлөөлөлт,
  * барилгын давхаргын өөрчлөлтөөс хойш 182-ын `guitsetgel_huvi` 44 мөрд системийн тооноос хоцорч байв.
  */
+import { pkgCodeOf } from './hoSync/compute';
 import { useEffect } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { CASHFLOW_NEW, bagtsKey } from '@/lib/services';
@@ -87,6 +88,11 @@ export function planProgressUpdates(plan: ProjectPlan): Record<string, unknown>[
       /* 2026-11-11 (хэрэглэгч): газар чөлөөлөлтийн багц/блокийн мөр ба бөглөх хуудасгүй бэлтгэл ажлын мөр хувьгүй —
          хуучин хадгалсан хувийг арилгана */
       u[F.progressPct] = null;
+    }
+    /* 2026-11-19 (аудит): багцын стандарт код — `bagts`-аас (тогтвортой холбоос) */
+    {
+      const code = pkgCodeOf(r.bagts);
+      if ((was.bagts_kod ?? null) !== code) u[F.pkgCode] = code;
     }
     for (const [k, f] of DATE_KEYS) {
       /* 2026-11-04: мөнгөний мөрийн `guits_*` нь «Cashflow хуваарилах»-ын төлөвлөгөөт хугацаа — Хуваариар ДАРЖ БИЧИХГҮЙ */
@@ -195,6 +201,9 @@ const DISABLE_MS = 10 * 60_000;
 let disabled: string | null = null;
 let disabledUntil = 0;
 let last: PlanSyncResult | null = null;
+/** 2026-11-19: сүүлийн синкийн агшин — «Синкийн төлөв»-д */
+let lastAt = 0;
+export const planSyncLastAt = (): number => lastAt;
 
 export const planSyncLast = (): PlanSyncResult | null => last;
 export const planSyncDisabled = (): string | null => (disabled && Date.now() < disabledUntil ? disabled : null);
@@ -222,6 +231,7 @@ export function runPlanSync(opts: { fresh?: boolean } = {}): Promise<PlanSyncRes
       console.warn('[selbe] төсөл төлөвлөгөөний гүйцэтгэл бүрэн бичигдсэнгүй:', 'skipped' in res ? res.skipped : res.partial);
     }
     last = res;
+    lastAt = Date.now();
     return res;
   })().finally(() => {
     inflight = null;

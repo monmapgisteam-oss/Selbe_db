@@ -341,11 +341,12 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       })),
     },
     fin: {
-      planTotal: csum, given: finGiven,
+      /* 2026-11-19 (аудит): 1-р хэсгийн «Гэрээлсэн дүн»-тэй ИЖИЛ — ТТБ-ийн Төслийн нийт мөр */
+      planTotal: k.contract ?? csum, given: finGiven,
       givenContracted: finGivenContracted,
       givenOther: finGiven == null || finGiven - finGivenContracted < 0.5 ? 0 : finGiven - finGivenContracted,
-      share: finGiven != null ? paidPctOf(finance.paidContracted, finance.contractAmount) : null,
-      remain: finGiven == null ? null : Math.max(0, csum - finGivenContracted),
+      share: finGiven != null ? finance.paidPct ?? paidPctOf(finance.paidContracted, finance.contractAmount) : null,
+      remain: finGiven == null ? null : Math.max(0, (k.contract ?? csum) - (finance.paid ?? finGivenContracted)),
       rows: finRows,
       ranges: finRanges.ranges,
       givenUnlisted: finRanges.givenUnlisted,

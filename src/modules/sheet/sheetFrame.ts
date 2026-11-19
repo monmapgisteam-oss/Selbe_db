@@ -754,6 +754,7 @@ export function buildFrame(
    * бүгд өдөрт сүүлийн жаазыг л тоолдог). Өөр өдөр бол ачаалсан хуримтлал (`obyemBase`).
    */
   const writeDay = msToDay(fillMs);
+  const writeMs = dayToMs(writeDay);
   const baseOf = (r: SheetRow): (number | null)[] | undefined =>
     (r.frameDay && r.frameDay === writeDay && r.obyemPrior ? r.obyemPrior : undefined);
 
@@ -793,8 +794,14 @@ export function buildFrame(
        * ЗААВАЛ байх ёстой — эс бөгөөс «Хуваарь» тэр мөрөнд бодит огноо
        * бичсэний дараа дараагийн жаазанд алга болно.
        */
-      if (sc.aStart[b]) a[sc.aStart[b]!] = r.aStart[b];
-      if (sc.aEnd[b]) a[sc.aEnd[b]!] = r.aEnd[b];
+      /* 2026-11-19 (аудит, «автоматжуулах»): бодит огноо хоосон бол БӨГЛӨЛТӨӨС бодно — эхлэх = энэ блокт обьём анх бичигдсэн
+         өдөр (өдрийн ажил > 0), дуусах = хуримтлал мөрийн «Обьём»-д хүрсэн өдөр. Гараар оруулсан огноо хэвээр (дарахгүй). */
+      const dayW = dayObyem(c[i].obyem[b], base?.[b]);
+      const cumW = c[i].obyem[b];
+      const autoStart = r.aStart[b] ?? (!r.group && dayW != null && dayW > 0 ? writeMs : null);
+      const autoEnd = r.aEnd[b] ?? (!r.group && cumW != null && r.vol != null && r.vol > 0 && cumW >= r.vol * (1 - 1e-9) ? writeMs : null);
+      if (sc.aStart[b]) a[sc.aStart[b]!] = autoStart;
+      if (sc.aEnd[b]) a[sc.aEnd[b]!] = autoEnd;
     }
     /* ХҮН ХҮЧ · МАШИН МЕХАНИЗМ (2026-09-23) — дээрх -тэй ижил: хэвээр дамжина. */
     if (sc.f.hunHuch) a[sc.f.hunHuch] = r.hun;

@@ -2,6 +2,7 @@
  * БАГЦЫН ЗӨВШӨӨРЛҮҮД — шат дараалсан хяналт.
  */
 
+import { pkgCodeOf } from './hoSync/compute';
 import { agsFetch } from '@/modules/sheet/ags';
 import { GUITS, canonPkg } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
@@ -364,6 +365,8 @@ export type ZovDraft = Omit<Zov, 'oid' | 'tolov'> & {
  */
 const zovAttrs = (d: ZovDraft): Record<string, unknown> => ({
   [F.bagts]: canonPkg(d.bagts), // стандарт нэрээр (2026-11-19)
+  /* 2026-11-19 (аудит): багцын стандарт код — нэрийн бичвэрийн оронд холбоос */
+  bagts_kod: pkgCodeOf(d.bagts),
   [F.shat]: d.shat,
   [F.ner]: d.ner,
   [F.selbe]: d.selbe || null,

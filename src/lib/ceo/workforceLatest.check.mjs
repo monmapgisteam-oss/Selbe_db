@@ -15,12 +15,12 @@ const r = (oid, at, edited, extra = {}) => ({ [OID_FIELD]: oid, [F.ognoo]: at, [
   /* ижил өдөр: OID 255 нь ДАРАА нь засварлагдсан (EditDate их) — тэр ялна */
   const a = r(255, day, Date.UTC(2026, 8, 22));
   const b = r(256, day, Date.UTC(2026, 8, 21));
-  assert.equal(latestLaborRow([b, a]), a, 'EditDate нь OID-оос ТҮРҮҮЛНЭ');
-  assert.equal(latestLaborRow([a, b]), a, 'оролтын дарааллаас хамаарахгүй');
+  assert.equal(latestLaborRow([b, a])?.[OID_FIELD], a[OID_FIELD], 'EditDate нь OID-оос ТҮРҮҮЛНЭ');
+  assert.equal(latestLaborRow([a, b])?.[OID_FIELD], a[OID_FIELD], 'оролтын дарааллаас хамаарахгүй');
   /* EditDate тэнцүү/алга → OID */
   const c = r(300, day, null);
   const d = r(301, day, null);
-  assert.equal(latestLaborRow([d, c]), d, 'EditDate алга бол OID их нь');
+  assert.equal(latestLaborRow([d, c])?.[OID_FIELD], d[OID_FIELD], 'EditDate алга бол OID их нь');
   /* огноо их нь бүхнээс түрүүлнэ */
   const e = r(10, day + 86_400_000, 1);
   assert.equal(latestLaborRow([a, b, e]), e);

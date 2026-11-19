@@ -64,6 +64,8 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['uy_shat_tootsoh', CF.inPhase],
   ['mongo_tootsoh', CF.inMoney],
   ['hugatsaa_tootsoh', CF.inTime],
+  ['bagts_kod', CF.pkgCode],
+  ['zurag_oid', CF.zuragOid],
   ['cashflow_id', CF_MONTH.id],
   ['geree_ognoo', CF.contractDate],
   ['zahiramj_ognoo', CF.orderDate],
@@ -80,7 +82,7 @@ const STORED_FIELDS: [keyof PlanStoredRow, string][] = [
   ['zahialagch_hynalt_baig', 'zahialagch_hynalt_baig'],
   ['ho_dungiin_tailbar', 'ho_dungiin_tailbar'],
 ];
-const TEXT_KEYS = new Set<keyof PlanStoredRow>(['dd_kod', 'etseg_kod', 'uy_shat', 'bagts', 'blok', 'ajil_uilchilgee', 'zahiramj_dugaar',
+const TEXT_KEYS = new Set<keyof PlanStoredRow>(['bagts_kod', 'dd_kod', 'etseg_kod', 'uy_shat', 'bagts', 'blok', 'ajil_uilchilgee', 'zahiramj_dugaar',
   'geree_dugaar', 'guitsetgegch', 'zahialagch_hynalt_baig', 'ho_dungiin_tailbar']);
 
 /** Атрибутыг нэрээр — эхлээд яг, дараа нь том/жижиг үсэг үл ялган */
@@ -177,10 +179,28 @@ export async function loadProjectBudgetTotal(): Promise<number | null> {
  * ОРОХГҮЙ — дашбоардын «олгосон» нь IPC-ийн төлбөр тул хувь нь ижил хүрээнд үлдэнэ. Мөр алга бол null.
  */
 export async function loadProjectContractTotal(): Promise<number | null> {
+  return (await loadProjectMoney())?.contract ?? null;
+}
+
+/**
+ * ТӨСЛИЙН НИЙТ МӨНГӨ — НЭГ ЭХ (2026-11-19, аудит: «гэрээлсэн дүн 4 өөр, олгосон хувь 4 томьёо»). «Төсөл төлөвлөгөө
+ * биелэлт»-ийн Төслийн нийт мөр: төсөв (E), гэрээний дүн, олгосон дүн, урьдчилгаа — мөр бүрийн унтраалгатай
+ * («Мөнгөний нийлбэрт тооцох»). Олгосон хувь = олгосон ÷ гэрээний дүн. Тайлан, дашбоард, AI туслах бүгд ЭНЭ тоог авна.
+ * Газрын нөхөн олговор (`withLandComp`) ТТБ-тэй адил орно — анхдагчаар нийтэд тооцогдохгүй. Мөр алга бол null.
+ */
+export type ProjectMoney = { budget: number | null; contract: number | null; paid: number | null; advance: number | null; paidPct: number | null };
+export async function loadProjectMoney(): Promise<ProjectMoney | null> {
   const rows = await loadPlanRows();
   if (!rows.length) return null;
-  const tree = buildTree(rows);
-  return moneySums(tree).get(tree.root)?.contract ?? null;
+  const comp = await loadLandStatus().then((s) => s.comp, () => null);
+  const tree = buildTree(withLandComp(rows, comp));
+  const m = moneySums(tree).get(tree.root);
+  const budget = planBudgetTotal(tree);
+  const contract = m?.contract ?? null, paid = m?.paid ?? null;
+  return {
+    budget, contract, paid, advance: m?.advance ?? null,
+    paidPct: contract != null && contract > 0 && paid != null ? Math.round((paid / contract) * 1000) / 10 : null,
+  };
 }
 
 /* ══════════════════ 2. Бодит гүйцэтгэл (бөглөх хуудас) ══════════════════ */

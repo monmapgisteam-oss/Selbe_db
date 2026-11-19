@@ -48,6 +48,7 @@ import {
 } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { IpcTable } from '@/modules/IpcTable';
+import { SyncStatus } from '@/modules/SyncStatus';
 import {
   SRC_HUVAARI, type MonthlyMoney,
 } from '@/lib/monthlyMoney';
@@ -1688,6 +1689,7 @@ export function ProjectPlanTable({
         {msg && <p role="status" className={f.editOk}>{msg}</p>}
       </div>
       <ExcludedSummary tree={tree} result={result} />
+      <SyncStatus />
       {plan.failed.length > 0 && (
         <p role="status" className={f.ppWarn}>
           {tr('Зарим эх уншигдсангүй ({0}) — холбогдох мөрүүд «—».', planFailedLabels(plan.failed).join(', '))}

@@ -284,7 +284,17 @@ export function latestLaborRow(rows: readonly Row[]): Row | null {
     };
     if (!best || newer(cand, best)) best = cand;
   }
-  return best ? best.r : null;
+  if (!best) return null;
+  /* 2026-11-19 (аудит: «ажиллах хүчийг хоёр газар өөрөөр тоолдог»): тэр ӨДРИЙН өөр маягтуудыг `groupDays`-тэй ИЖИЛ
+     дүрмээр нийлүүлнэ — нэг өдөр хоёр компани тус тусдаа маягт илгээвэл хоёулаа тоологдоно */
+  const day = ubDayKey(best.at);
+  const top = best;
+  const rest = rows
+    .filter((r) => r !== top.r && (() => { const at = numOrNull(r[F.ognoo]); return at != null && at > 0 && ubDayKey(at) === day; })())
+    .map((r): DayPick => ({ r, at: numOrNull(r[F.ognoo])!, edited: numOrNull(r[EDIT_DATE_FIELD]) ?? 0, oid: numOrNull(r[OID_FIELD]) ?? 0, n: 1 }))
+    .sort((p, q) => (newer(p, q) ? -1 : 1))
+    .map((x) => x.r);
+  return rest.length ? mergeDayRows(top.r, rest) : top.r;
 }
 
 /**

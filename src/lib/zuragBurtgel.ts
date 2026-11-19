@@ -52,6 +52,8 @@ export type ZRow = {
   dedBuleg: string;
   dd: number | null;
   bagts: string;
+  /** 2026-11-19: багцын стандарт код (`bagts_kod`) — хоосон бол null */
+  bagtsKod?: string | null;
   gereeDugaar: string;
   ner: string;
   shifr: string;
@@ -126,6 +128,7 @@ export function toZRow(a: Row): ZRow {
     ogsonAktUrl: url(a.ogson_akt_holboos),
     dd: num(a.dd),
     bagts: str(a.bagts),
+    bagtsKod: a.bagts_kod == null || a.bagts_kod === '' ? null : String(a.bagts_kod),
     gereeDugaar: str(a.geree_dugaar),
     ner: str(a.ner),
     shifr: str(a.shifr),

@@ -7,7 +7,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
-import { loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
+import { loadProjectBudgetTotal, loadProjectContractTotal, loadProjectMoney } from '@/lib/projectPlanInputs';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
@@ -463,6 +463,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     /* 2026-11-19 (аудит): ТТБ-ийн Төслийн нийт «Гэрээний дүн» — ТЭЗҮ · зураг төслийн гэрээ орно */
     loadProjectContractTotal().catch(() => null),
   ]);
+  /* 2026-11-19 (аудит): олгосон дүн ба хувь — ТТБ-ийн Төслийн нийт мөрөөс (нэг эх, унтраалгатай) */
+  const money = await loadProjectMoney().catch(() => null);
 
   /** Гэрээний мөрүүд (78) — шүүлт хэрэггүй, мөр бүр нэг гэрээ */
   const master = rows;
@@ -543,8 +545,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     landBudget: master
       .filter((r) => secOf(r) === FIN_XL_LAND_CODE)
       .reduce((a, r) => a + nn(r[F.budget]), 0),
-    paid: share.paidKnown ? paid : null,
-    paidPct: officialContract != null && share.paidKnown ? paidPctOf(paidContracted, officialContract) : share.pct,
+    paid: money?.paid ?? (share.paidKnown ? paid : null),
+    paidPct: money?.paidPct ?? (officialContract != null && share.paidKnown ? paidPctOf(paidContracted, officialContract) : share.pct),
     paidContracted,
     paidOther: share.paidOther,
     byType: [...typeMap.entries()]

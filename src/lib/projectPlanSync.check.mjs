@@ -47,7 +47,7 @@ assert.deepEqual(planProgressUpdates(plan({}, ['landTotal'])), [], 'эх уна�
     { objectid: 21, dd_kod: '2', etseg_kod: null, uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: 'Газар чөлөөлөлт', guitsetgel_huvi: 80 },
     { objectid: 22, dd_kod: '2.1', etseg_kod: '2', uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: 'Багц-1', bagts: 'Багц-1', heseg_ezleh_huvi: 1, guitsetgel_huvi: 75 },
     { objectid: 23, dd_kod: '2.1.1', etseg_kod: '2.1', uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: '5/1', bagts: 'Багц-1', blok: '5/1', heseg_ezleh_huvi: 1, guitsetgel_huvi: 50 },
-    { objectid: 24, dd_kod: '2.1.2', etseg_kod: '2.1', uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: '5/2', bagts: 'Багц-1', blok: '5/2', heseg_ezleh_huvi: 0, guitsetgel_huvi: null },
+    { objectid: 24, dd_kod: '2.1.2', etseg_kod: '2.1', uy_shat: 'Газар чөлөөлөлт', ajil_uilchilgee: '5/2', bagts: 'Багц-1', bagts_kod: '1', blok: '5/2', heseg_ezleh_huvi: 0, guitsetgel_huvi: null },
   ]);
   const r = computePlan(g, { override: (n) => (n.depth === 1 ? { S: 91.4 } : undefined) }, today);
   const u = new Map(planProgressUpdates({ empty: false, tree: g, result: r, inputs: {}, months: [], monthly: new Map(), failed: [] }).map((x) => [x.objectid, x]));
@@ -181,4 +181,16 @@ console.log('projectPlanSync.check: бүгд ✅');
   assert.deepEqual(ups.map((u) => u.objectid), [1], 'зөвхөн үе шатын мөр бичигдэнэ — бүртгэлийн бүлэг, баримтын мөр алгасагдана');
   assert.equal(ups[0].guitsetgel_huvi, 80);
   console.log('projectPlanSync.check: бүртгэлийн мөрийг алгасна ✅');
+}
+
+/* 2026-11-19: багцын стандарт код — `bagts`-аас, зөрсөн үед л бичнэ */
+{
+  const t = buildTree([
+    { objectid: 31, dd_kod: '6', etseg_kod: null, uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт' },
+    { objectid: 32, dd_kod: '6.1', etseg_kod: '6', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'А', bagts: 'Багц 4-1' },
+    { objectid: 33, dd_kod: '6.2', etseg_kod: '6', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Б', bagts: 'Багц-4.2', bagts_kod: '4.2' },
+  ]);
+  const u = new Map(planProgressUpdates({ empty: false, tree: t, result: computePlan(t, {}, today), inputs: {}, months: [], monthly: new Map(), failed: [] }).map((x) => [x.objectid, x]));
+  assert.equal(u.get(32)?.bagts_kod, '4.1', 'код бичигдэнэ');
+  assert.ok(!u.get(33) || !('bagts_kod' in u.get(33)), 'таарч байвал бичихгүй');
 }

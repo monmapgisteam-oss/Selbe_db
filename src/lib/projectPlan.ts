@@ -59,6 +59,9 @@ export type PlanStoredRow = {
   mongo_tootsoh?: number | null;
   /** Хугацааны нийтэд тооцох — 1 · 0 · хоосон = Тооцно */
   hugatsaa_tootsoh?: number | null;
+  /** 2026-11-19: багцын стандарт код (`pkgCodeOf`) ба «Зургийн бүртгэл»-ийн мөр — тогтвортой холбоос */
+  bagts_kod?: string | null;
+  zurag_oid?: number | null;
   cashflow_id?: number | null;
   /** Гэрээ байгуулсан огноо — L2 «Сонгон шалгаруулалт (гэрээ байгуулсан)» */
   geree_ognoo?: number | null;

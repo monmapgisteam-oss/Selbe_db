@@ -47,6 +47,16 @@ export function hoPkgParts(v: unknown): string[] {
 
 const PH_DESIGN: readonly string[] = ['ТЭЗҮ', 'Ажлын зураг төсөл'];
 const PH_BUILD: readonly string[] = ['Барилга угсралт'];
+/**
+ * БАГЦЫН СТАНДАРТ КОД (2026-11-19, аудит: «хүснэгтүүд нэрийн бичвэрээр холбогддог») — «Багц 4-1» · «БАГЦ-4.1» · «4.1» →
+ * «4.1»; олон багц «Багц 6.1, 6.2» → «6.1,6.2»; муж «Багц 1-4» → «1-4». Тоогүй («Тухайлсан», «Бүх багц») → null.
+ * Хүснэгтүүдийн `bagts_kod` баганад бичигдэж тогтвортой холбоос болно.
+ */
+export const pkgCodeOf = (v: unknown): string | null => {
+  const parts = hoPkgParts(v).filter((p) => /^\d/.test(p));
+  return parts.length ? parts.join(',') : null;
+};
+
 /** HO ажлын төрөл → Cashflow үе шат */
 export const phasesOf = (workType: unknown): readonly string[] => (
   /тэзү|судалгаа/i.test(txt(workType)) ? PH_DESIGN : PH_BUILD
@@ -76,7 +86,11 @@ export function hoFromCf(cf: readonly Row[]): Row {
   const geree = sum(CF.contractAmount);
   /* HO-ийн талбарын төрөл (амьд, 2026-11-03): tosov_niit · gereet_tosov_niit · hemnelt_hetrelt — BigInteger (бүхэл);
      tosov_niislel_tosov — Integer (32 бит, > 2.147 тэрбум багтахгүй → хөндөхгүй); zahiramj1_ognoo — DateOnly («YYYY-MM-DD») */
+  const pkgs = [...new Set(cf.flatMap((r) => hoPkgParts(r[CF.pkg]).filter((p) => /^\d/.test(p))))];
   const out: Row = {
+    /* 2026-11-19: тогтвортой холбоос — багцын код, ганц мөртэй гэрээнд «Төсөл төлөвлөгөө биелэлт»-ийн мөр */
+    [HC.pkgCode]: pkgs.length ? pkgs.join(',') : null,
+    [HC.planOid]: cf.length === 1 ? Number(cf[0][CASHFLOW_NEW.oid]) : null,
     [HC.budgetTotal]: intOf(tosov),
     [HC.contractTotal]: intOf(geree),
     [HC.saving]: tosov != null && geree != null ? intOf(tosov - geree) : null,
@@ -321,6 +335,11 @@ function singleRowPicks(byContract: ReadonlyMap<string, Row[]>, cfRows: readonly
     taken.add(Number(row[CASHFLOW_NEW.oid]));
     picks.set(code, row);
   };
+  /* 0) 2026-11-19: тогтвортой холбоос — гэрээнд хадгалсан «Төсөл төлөвлөгөө биелэлт»-ийн мөр (`ttb_oid`) */
+  for (const [code] of picks) {
+    const id = num((byContract.get(code) ?? []).map((r) => r[HC.planOid]).find((v) => v != null));
+    if (id != null) take(code, (free) => free.find((r) => Number(r[CASHFLOW_NEW.oid]) === id));
+  }
   for (const [code] of picks) {
     const name = nameKey((byContract.get(code) ?? []).map((r) => r[HC.project]).find((v) => txt(v)));
     if (name) take(code, (free) => free.find((r) => nameKey(r[CF.detail]) === name));
