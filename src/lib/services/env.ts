@@ -125,7 +125,9 @@ export const SOURCE_FS = {
  * тавина. Хоосон `appId` дангаараа хангалтгүй: production build дээр
  * тэрхүү тохиргоо ил алдаа болж, чимээгүй нээгдэхээс сэргийлнэ.
  */
-const AUTH_OFF = process.env.NEXT_PUBLIC_AUTH_OFF === "1";
+/* 2026-11-19 (аудит): туг ЗӨВХӨН production БИШ build-д үйлчилнэ. Урьд нь `next build` дээр ч мөрдөгддөг байсан тул
+   `.env.production` / GitHub Variable-д санамсаргүй орвол бүх зочин бүх хуудас ба админ самбарыг нэвтрэлтгүй үзэх байв. */
+const AUTH_OFF = process.env.NEXT_PUBLIC_AUTH_OFF === "1" && process.env.NODE_ENV !== "production";
 const AUTH_APP_ID = AUTH_OFF ? (process.env.NEXT_PUBLIC_AUTH_APP_ID ?? "").trim()
   : req("NEXT_PUBLIC_AUTH_APP_ID", process.env.NEXT_PUBLIC_AUTH_APP_ID);
 export const AUTH = {

@@ -17,6 +17,7 @@ import { useFocusTrap } from '@/lib/useFocusTrap';
 import { useAuth } from '@/components/AuthGate';
 import { Loading, userError } from '@/components/ui';
 import { ZovshoorolEdit } from './ZovshoorolEdit';
+import { ZovPlan } from './ZovPlan';
 import s from './zovshoorol.module.css';
 
 /**
@@ -145,7 +146,28 @@ function Detail({ z, canEdit, onEdit, onClose }: {
   );
 }
 
+/**
+ * ХУУДАС (2026-11-19, хэрэглэгч): үндсэн хэсэг нь «Төсөл төлөвлөгөө биелэлт»-ийн «Зөвшөөрөл» мөрүүд (`ZovPlan`) — эх нь
+ * ганц. Доор нь зөвшөөрлийн баримтын бүртгэл (дугаар, байгууллага, PDF) хуучнаараа; тэр нь уншигдаагүй ч үндсэн хэсэг харагдана.
+ */
 export function Zovshoorol() {
+  const { user } = useAuth();
+  const [capN, setCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  const canEdit = useMemo(
+    () => hasCap(user?.username, 'zovshoorolTtbEdit') || hasCap(user?.username, 'finEdit'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, capN],
+  );
+  return (
+    <>
+      <div className={s.wrap}><ZovPlan canEdit={canEdit} /></div>
+      <ZovRegister />
+    </>
+  );
+}
+
+function ZovRegister() {
   const [rows, setRows] = useState<Zov[] | null>(null);
   const [busy, setBusy] = useState(true);
   /** Сүүлийн ачаалалт унасан шалтгаан (`loadZovResult`) — амжилттай бол `null` */
@@ -238,7 +260,7 @@ export function Zovshoorol() {
     <div className={s.wrap}>
       <header className={s.head}>
         <div className={s.headRow}>
-          <h1 className={s.h1}>{tr('Зөвшөөрлийн хяналт')}</h1>
+          <h1 className={s.h1}>{tr('Зөвшөөрлийн баримтын бүртгэл')}</h1>
           <span className={s.spacer} />
           {busy && (
             <span role="status" style={{ fontSize: 12, color: 'var(--ink-3)' }}>

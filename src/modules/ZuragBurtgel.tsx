@@ -133,7 +133,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
   const groups = useMemo(() => {
     if (!byPkg) return groupZ(shown);
     return groupByBudget(shown).map((g) => ({
-      buleg: g.key ? tr('Багц {0}', g.pkgs.join(', ')) : tr('Багц заагаагүй'),
+      buleg: g.label ? tr(g.label) : g.key ? tr('Багц {0}', g.pkgs.join(', ')) : tr('Багц заагаагүй'),
       subs: [{ ded: tr('Төсөв'), rows: g.tosov }, { ded: tr('Зураг'), rows: g.zurag }].filter((x) => x.rows.length),
     }));
   }, [shown, byPkg]);

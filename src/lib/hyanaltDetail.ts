@@ -155,6 +155,8 @@ export type Submission = {
   gain?: FillGainIn | null;
   remapped?: boolean;
   unmoved?: number;
+  /** `unmoved`-ийн дотроос хуудаснаас хасагдсан блокийн нүд (`Overlay.goneBlock`) */
+  goneBlock?: number;
   negative?: number;
   negCells?: string[];
 };
@@ -410,6 +412,7 @@ async function loadStaged(
     subAt: pl.at,
     remapped: ov.remapped,
     unmoved: ov.unmoved,
+    goneBlock: ov.goneBlock,
     negative: ov.negative,
     negCells: ov.negative > 0 ? describeNegCells(ov.negKeys, ov.rows, sc.bld, ov.negInc) : [],
   };

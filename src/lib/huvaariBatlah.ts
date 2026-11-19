@@ -4,6 +4,7 @@
  * ХУВААРИЙН БАТЛАХ УРСГАЛ — гүйцэтгэгч зохионо, батлагч батална.
  */
 
+import { requireSelf, requireWriter } from './writeGuard';
 import { GUITS } from '@/lib/services/env';
 import { AUTH, roleForUser } from './services';
 import { huvaariAclReady, huvaariScope } from './huvaariAcl';
@@ -1446,6 +1447,8 @@ export async function renewPlanClaim(args: { oid: number; approver: string; clai
  * `pending` хэвээр мөрийг. Алдааг залгина: ямар ч байсан `CLAIM_TTL`-ээр тайлагдана.
  */
 export async function releasePlanClaim(args: { oid: number; approver: string }): Promise<void> {
+  /* Бусдын нэрээр түгжээ чөлөөлөхгүй (2026-11-19, аудит) */
+  try { requireSelf(args.approver); } catch { return; }
   const me = args.approver.trim().toLowerCase();
   if (!me) return;
   try {
@@ -1466,6 +1469,7 @@ export async function releasePlanClaim(args: { oid: number; approver: string }):
  * (2026-10-01, `PARTIAL_MARK`).
  */
 export async function markPlanPartial(args: { oid: number; approver: string; claimAt?: number }): Promise<{ ok: boolean; error?: string; existing?: string }> {
+  try { requireSelf(args.approver); } catch (e) { return { ok: false, error: (e as Error).message }; }
   const me = args.approver.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   const url = await tableUrl();
@@ -1507,6 +1511,7 @@ export async function markPlanPartial(args: { oid: number; approver: string; cla
  * ХАГАС БИЧИЛТИЙН ТЭМДЭГ АРИЛГАХ (2026-10-01) — эх хуудсанд НЭГ Ч мөр бичигдээгүй унасан үед.
  */
 export async function clearPlanPartial(oid: number, owner?: string): Promise<boolean> {
+  try { if (owner != null) requireSelf(owner); else await requireWriter(); } catch { return false; }
   const url = await tableUrl();
   if (!url) return false;
   try {

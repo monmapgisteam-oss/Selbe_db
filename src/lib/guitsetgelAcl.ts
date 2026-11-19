@@ -4,6 +4,7 @@
  * ГҮЙЦЭТГЭЛИЙН УРСГАЛЫН ЭРХ — ХЭН, АЛЬ ШАТАНД, АЛЬ БАГЦАД.
  */
 
+import { requireSuper } from './who';
 import { STAGE_ORDER, type Stage } from './hyanalt';
 import { t as tr } from './i18nCore';
 import {
@@ -260,6 +261,7 @@ export function mergeFlowDelta(base: Assign | null, next: Assign | null, fresh: 
 export function setAssign(
   user: string, stage: Stage, bagts: string[], grant = true,
 ): { ok: boolean; error?: string; sync?: Promise<boolean>; granted?: Promise<boolean> } {
+  requireSuper();
   const u = user.trim().toLowerCase();
   if (!u) return { ok: false, error: tr('Аккаунтын нэрээ бичнэ үү') };
   if (isCodeSuper(u)) {
@@ -321,6 +323,7 @@ export function setAssign(
  *   УРАЛДАЖ, устгагдсан хэрэглэгчийг remote дээр амилуулж болно.
  */
 export function removeAssign(user: string, stage: Stage, revoke = true): { sync: Promise<boolean> } {
+  requireSuper();
   const u = user.trim().toLowerCase();
   if (!u) return { sync: Promise.resolve(false) };
   const before = load();

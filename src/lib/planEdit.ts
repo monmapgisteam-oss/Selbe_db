@@ -3,6 +3,8 @@
  */
 import { t as tr } from './i18nCore';
 import { applyAll } from './tableWrite';
+import { hasCap, type CapKey } from './caps';
+import { currentUser } from './who';
 import { invalidate } from './dataBus';
 import { CASHFLOW_NEW, pkgKeyOf } from './services';
 import { isAddedWork, isSplitParent, tenderLockWhy, ubToday, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
@@ -211,8 +213,8 @@ export function filterPlan(tree: PlanTree, f: PlanFilter): Set<PlanNode> {
 
 /* ══════════════════ Хүснэгтэд бичих ══════════════════ */
 
-const write = async (edit: Parameters<typeof applyAll>[2]) => {
-  const r = await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, edit, { cap: 'finEdit' });
+const write = async (edit: Parameters<typeof applyAll>[2], cap: CapKey = 'finEdit') => {
+  const r = await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, edit, { cap });
   invalidate('CASHFLOW_NEW');
   return r;
 };
@@ -242,23 +244,32 @@ export function savePhaseWeight(oid: number, pct: number | null) {
   return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.wSection]: pct == null ? null : pct / 100 }] });
 }
 
+/**
+ * МӨРИЙН БИЧИХ ЭРХ (2026-11-19): «Зөвшөөрөл» хэсгийн мөрийг «Зөвшөөрөл» хуудаснаас «Зөвшөөрөл (төлөвлөгөө) оруулах»
+ * эрхээр ч бичнэ — «Зөвшөөрөл (төлөвлөгөө)» оруулах хуудастай (`uyShat.PAGES.zovshoorolTtb`) НЭГ эрх. Мөнгөн дүн ба бусад
+ * хэсэг — «Санхүү засах» хэвээр.
+ */
+export const planRowCap = (n: PlanNode, k?: PlanEditKey): CapKey => (
+  n.phase === 'zovshoorol' && (k == null || PLAN_EDIT[k].kind !== 'money') && !hasCap(currentUser(), 'finEdit') ? 'zovshoorolTtbEdit' : 'finEdit'
+);
+
 /** Нэг утга засна */
 export function savePlanValue(n: PlanNode, k: PlanEditKey, value: unknown) {
   const why = editWhy(n, k);
   if (why) throw new Error(why);
-  return write({ updates: [{ [CASHFLOW_NEW.oid]: oidOf(n), [PLAN_EDIT[k].field]: value }] });
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oidOf(n), [PLAN_EDIT[k].field]: value }] }, planRowCap(n, k));
 }
 
 /** Дэд мөрүүд нэмнэ (нэг хүсэлтээр — атомаар) */
 export function addPlanRows(tree: PlanTree, parent: PlanNode, items: readonly NewPlanRow[]) {
   const why = addWhy(tree, parent) ?? newRowsWhy(parent, items);
   if (why) throw new Error(why);
-  return write({ adds: newRowAttrs(tree, parent, items) });
+  return write({ adds: newRowAttrs(tree, parent, items) }, planRowCap(parent));
 }
 
 /** Гараар нэмсэн мөрийг устгана */
 export function deletePlanRow(n: PlanNode, cutoff: number | null) {
   const why = deleteWhy(n, cutoff);
   if (why) throw new Error(why);
-  return write({ deletes: [oidOf(n)!] });
+  return write({ deletes: [oidOf(n)!] }, planRowCap(n));
 }

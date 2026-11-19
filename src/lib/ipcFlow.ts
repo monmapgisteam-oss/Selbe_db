@@ -242,7 +242,7 @@ export type NewContract = {
   items: { row: Row; amount: number; advance: number | null }[];
 };
 
-export type ContractWhy = 'no-number' | 'empty' | 'amount' | 'advance' | 'taken' | 'dup-number';
+export type ContractWhy = 'no-number' | 'empty' | 'amount' | 'advance' | 'advance-over' | 'taken' | 'dup-number';
 
 /** Дүнгийн бичвэр → тоо. Хоосон бол `null`, таних боломжгүй бол NaN. Таслалын дүрэм нь санхүүгийн хүснэгттэй ижил (`finEdit.parseCell`). */
 export function parseMoney(t: string): number | null {
@@ -257,6 +257,9 @@ export function parseMoney(t: string): number | null {
  * Гэрээ үүсгэх боломжгүй шалтгаан; `null` = болно.
  * @param hoRows IPC-ийн мөрүүд — цуцлагдсан гэрээний дугаар ч орно: ийм дугаартай шинэ гэрээг `planHoSync` цуцлагдсан гэрээнийх гэж үзнэ
  */
+/** Аль нэг мөрийн урьдчилгаа өөрийн гэрээний дүнгээс их үү */
+export const advanceOver = (c: Pick<NewContract, 'items'>): boolean => c.items.some((i) => i.advance != null && i.amount > 0 && i.advance > i.amount);
+
 export function contractWhy(c: NewContract, cfRows: readonly Row[], hoRows: readonly Row[] = []): ContractWhy | null {
   const no = txt(c.no);
   if (!no) return 'no-number';
@@ -264,6 +267,9 @@ export function contractWhy(c: NewContract, cfRows: readonly Row[], hoRows: read
   if (c.items.some((i) => !(i.amount > 0))) return 'amount';
   /* «5 сая» мэт бичвэр NaN болно — `< 0` түүнийг барихгүй тул урвуугаар шалгана */
   if (c.items.some((i) => i.advance != null && !(i.advance >= 0))) return 'advance';
+  /* 2026-11-19 (аудит): урьдчилгаа гэрээний дүнгээс их байж болохгүй — урьд нь 1 тэрбумын гэрээнд 5 тэрбумын урьдчилгаа
+     хадгалагдаж, олгосон хувь 500% болдог байв */
+  if (advanceOver(c)) return 'advance-over';
   if (c.items.some((i) => txt(i.row[CF.amountNote]) === CONTRACTED)) return 'taken';
   if (cfRows.some((r) => txt(r[CF.contractNo]) === no)) return 'dup-number';
   if (hoRows.some((r) => txt(r[C.contractNo]) === no)) return 'dup-number';

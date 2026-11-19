@@ -65,13 +65,18 @@ assert.equal(r.get('2.2').S, 100, 'бүртгэлгүй — хадгалсан')
   ];
   const g = groupByBudget(rows);
   const of = (k) => g.find((x) => x.key === k);
-  assert.deepEqual(g.map((x) => x.key), ['1', '1,2', '3', '6.1', '17.1', ''], 'багцын дугаараар; багцгүй сүүлд');
+  assert.deepEqual(g.map((x) => x.key), ['1', '1,2', '3', '6.1', '17.1', '@Байхгүй', ''], 'багцын дугаараар; нэртэй; багцгүй сүүлд');
   assert.deepEqual(of('1').zurag.map((r) => r.oid), [11], 'Багц 1 — зөвхөн Багц 1-ийн зураг (17.1 биш)');
   assert.deepEqual(of('1,2').zurag.map((r) => r.oid), [11, 12], '«Багц 1,2» төсөв — Багц 1 + Багц 2-ын зураг');
   assert.deepEqual(of('3').zurag.map((r) => r.oid), [13], 'дэд багц 3.1 ∈ Багц 3');
   assert.deepEqual(of('6.1').tosov, [], 'төсөвгүй багц — өөрийн бүлэг');
   assert.deepEqual(of('').tosov.map((r) => r.oid), [5]);
-  assert.deepEqual(of('').zurag.map((r) => r.oid), [16]);
+  assert.deepEqual(of('').zurag.map((r) => r.oid), []);
+  /* 2026-11-19: дугааргүй «Багц» утга — өөрийн нэрээр бүлэг («Тухайлсан»), хоосон нь «Багц заагаагүй» */
+  assert.deepEqual([of('@Байхгүй').label, of('@Байхгүй').zurag.map((r) => r.oid)], ['Байхгүй', [16]]);
+  const g2 = groupByBudget([z(21, { bagts: 'Тухайлсан' }), z(22, { bagts: ' тухайлсан ' }), t(23, { bagts: 'Тухайлсан', ner: 'Эх үүсвэрийн төсөв' }), z(24, {}), z(25, { bagts: 'Багц 2' })]);
+  assert.deepEqual(g2.map((x) => [x.key, x.label ?? null, x.tosov.map((r) => r.oid), x.zurag.map((r) => r.oid)]),
+    [['2', null, [], [25]], ['@Тухайлсан', 'Тухайлсан', [23], [21, 22]], ['', null, [], [24]]]);
 }
 /* ── 2026-11-17: төлөв ── */
 {

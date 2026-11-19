@@ -142,7 +142,7 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   assert.deepEqual(e.adds.map((a) => a.dd_kod), ['2.1', '2.2', '2.2.1', '2.2.1.1', '2.2.1.2', '2.2.2', '2.2.2.1']);
   assert.deepEqual(e.updates, [{ objectid: 3, ajil_uilchilgee: 'n1', bagts: null, guitsetgel_huvi: 80 }]);
   const a = e.adds.find((x) => x.dd_kod === '2.2.1.1');
-  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null },
+  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null, olgoson_dun: null },
     'бүртгэлд байхгүй утга хоосон');
   assert.ok(!e.deletes.includes(1) && !e.deletes.includes(11) && !e.deletes.includes(20), 'үе шатын мөр, бусад үе шат хөндөгдөхгүй');
   /* Бичигдсэний дараах байдал: дахин тулгахад засвар алга; төлөв өөрчлөгдвөл ганц мөр засна; баримт хасагдвал мөр устана */
@@ -191,7 +191,9 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   assert.equal(e.updates.find((u) => u.objectid === idB).dd_kod, '2.1.3');
   stored = apply(stored, e);
   const b = stored.find((r) => r.objectid === idB);
-  assert.deepEqual([b.ajil_uilchilgee, b.dd_kod, b.geree_dugaar, b.olgoson_dun], ['B', '2.1.3', 'З/7', 4]);
+  assert.deepEqual([b.ajil_uilchilgee, b.dd_kod, b.geree_dugaar, b.olgoson_dun], ['B', '2.1.3', 'З/7', 4], 'дугаартай мөрийн олгосон дүн (төлбөрийн актаас) хэвээр');
+  /* 2026-11-19: дугааргүй баримтын мөр — «Ажлын үнэ» нь олгосон дүн ч мөн */
+  assert.deepEqual(stored.filter((r) => ['A', 'C', 'X'].includes(r.ajil_uilchilgee)).map((r) => r.olgoson_dun), [10, 10, 10]);
   assert.equal(new Set(stored.map((r) => r.dd_kod)).size, stored.length, 'Д/Д давхардахгүй');
   assert.deepEqual(registryPlanEdits(stored, plus), { adds: [], updates: [], deletes: [] }, 'тогтвортой');
   /* нэр өөрчлөгдсөн баримт — ижил Д/Д-ийн мөр хэвээр (гэрээ хэвээр) */

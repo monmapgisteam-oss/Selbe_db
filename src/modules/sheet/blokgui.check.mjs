@@ -374,6 +374,10 @@ console.log('✅ синтетик блок — анхдагч хоосон · о
   /* (г2) ИЛГЭЭЛТ — `${oid}:0` нүд мөрөнд буух ёстой (unmoved БИШ) */
   const ov = overlaySubmission(rows, { pkgKey: 'b61', cells: [['3:0', '10']], dates: [], rowKeys: [], mode: 'inc' }, sc, 1);
   assert.equal(ov.unmoved, 0, 'синтетик блокийн нүд unmoved болохгүй');
+  /* 2026-11-19: хуудаснаас хасагдсан блокийн нүд (блокийн дугаар баганын тооноос их) — буухгүй, тусдаа тоологдоно */
+  const gone = overlaySubmission(rows, { pkgKey: 'b61', cells: [['3:0', '10'], ['3:6', '4'], ['3:9', '2']], dates: [], rowKeys: [], mode: 'inc' }, sc, 1);
+  assert.deepEqual([gone.unmoved, gone.goneBlock, gone.cellKeys], [2, 2, ['3:0']]);
+  assert.equal(ov.goneBlock, 0);
   assert.deepEqual(ov.cellKeys, ['3:0']);
   assert.equal(ov.rows[2].obyem[0], 35, 'батлахад архивын СҮҮЛИЙН обьём дээр нэмэгдэнэ');
   near(ov.rows[2].act[0], 0.35, 'act = 35/100');

@@ -1,6 +1,8 @@
 /**
  * ГҮЙЦЭТГЭЛЭЭС IPC МӨР БИЧИХ — сүлжээний тал. Цэвэр логик нь `ipcAuto.ts`-д.
  */
+import { requireWriter } from './writeGuard';
+import { requireCap } from './who';
 import { PKGS, loadSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
 import { bagtsKey, pkgKeyOf, HO_IPC, num } from '@/lib/services';
@@ -34,6 +36,8 @@ export type AutoResult =
  * @returns шинэчилсэн мөрийн тоо
  */
 export async function repriceFreeRows(code: string): Promise<number> {
+  /* «IPC үүсгэх» эрхтэй хүн л — урьд нь зөвхөн дэлгэцийн нөхцөлөөр (`IpcFlow` `canCreate`) хамгаалагддаг байв */
+  requireCap('ipcCreate');
   const rows = (await queryFeatures(HO_IPC.url, { outFields: ['*'], orderBy: `${HO_IPC.oid} ASC` })) as Row[];
   const C = HO_IPC.contractFields;
   const mine = rows.filter((r) => String(r[P.id] ?? '').startsWith('AUTO|') && String(r[C.code] ?? '').trim() === code);
@@ -90,6 +94,7 @@ export async function repriceFreeRows(code: string): Promise<number> {
 }
 
 export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoResult> {
+  await requireWriter();
   const at = dayOf(day);
   if (!at) return { ok: false, error: tr('Огноо танигдсангүй: {0}', day) };
 

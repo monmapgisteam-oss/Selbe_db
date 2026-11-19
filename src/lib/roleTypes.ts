@@ -4,6 +4,7 @@
  * ЭРХИЙН ТӨРӨЛ — 11 төрөл (2026-10-23-нд 10-аас — «Төлөвлөлтийн инженер» нэмэгдэв) × ХАРАХ тохиргоо (2026-09-25 · 2026-09-30).
  */
 
+import { requireSuper } from './who';
 import { t as tr } from './i18nCore';
 import { ROLE_ACCESS, VIEWS, type Role, type ViewKey } from './services';
 import { WORKFLOW_VIEWS } from './caps';
@@ -344,6 +345,7 @@ export function tplOf(role: Role): TypeTpl {
  * Загварыг хүснэгтэд бичнэ — амжилттай бол локал хуулбарыг шинэчилнэ.
  */
 export async function saveTpl(role: Role, tpl: TypeTpl): Promise<boolean> {
+  requireSuper();
   const cleaned = cleanTpl(role, tpl);
   if (!cleaned || !isTypeRole(role)) return false;
   /* Анхны хадгалалт (ноорогт `seen` алга) — бүгдийг шийдсэн; хадгалсан загварт ноорогийн `seen` (`seenWith`) */

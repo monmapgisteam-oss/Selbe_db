@@ -175,7 +175,14 @@ export function docPkgs(r: Pick<ZRow, 'turul' | 'bagts' | 'dedBuleg' | 'ner'>): 
 const within = (d: string, b: string): boolean => d === b || d.startsWith(`${b}.`);
 const pkgSort = (a: string, b: string): number => a.localeCompare(b, 'mn', { numeric: true });
 
-export type BudgetGroup = { key: string; pkgs: string[]; tosov: ZRow[]; zurag: ZRow[] };
+/** `label` — багцын дугааргүй ч нэртэй бүлэг («Тухайлсан», «Бүх багц», «Байхгүй»); `key` = '@' + нэр */
+export type BudgetGroup = { key: string; pkgs: string[]; label?: string; tosov: ZRow[]; zurag: ZRow[] };
+
+/** Багцын дугааргүй «Багц» утга → бүлгийн нэр («Тухайлсан» …); хоосон бол null (2026-11-19) */
+const textPkg = (r: Pick<ZRow, 'bagts'>): string | null => {
+  const v = String(r.bagts ?? '').replace(/\s+/g, ' ').trim();
+  return v ? v.charAt(0).toUpperCase() + v.slice(1) : null;
+};
 
 /**
  * Төсвийн багцаар бүлэглэнэ (цэвэр). Дараалал: багцын дугаараар; ганц багц нь хамтынхаас түрүүнд. Төсөвгүй багцын зураг
@@ -183,25 +190,31 @@ export type BudgetGroup = { key: string; pkgs: string[]; tosov: ZRow[]; zurag: Z
  */
 export function groupByBudget(rows: readonly ZRow[]): BudgetGroup[] {
   const by = new Map<string, BudgetGroup>();
-  const at = (pkgs: string[]): BudgetGroup => {
+  /* 2026-11-19 (хэрэглэгч: «тухайлсан барилгуудын зураг»): дугааргүй «Багц» утгатай баримт («Тухайлсан» …) «Багц заагаагүй»
+     биш өөрийн нэрээр бүлэг болно */
+  const at = (pkgs: string[], r?: ZRow): BudgetGroup => {
     const p = [...new Set(pkgs)].sort(pkgSort);
-    const key = p.join(',');
+    const label = !p.length && r ? textPkg(r) : null;
+    const key = label ? `@${label}` : p.join(',');
     let g = by.get(key);
-    if (!g) { g = { key, pkgs: p, tosov: [], zurag: [] }; by.set(key, g); }
+    if (!g) { g = { key, pkgs: p, ...(label ? { label } : {}), tosov: [], zurag: [] }; by.set(key, g); }
     return g;
   };
-  for (const r of rows) if (r.turul === 'tosov') at(docPkgs(r)).tosov.push(r);
+  for (const r of rows) if (r.turul === 'tosov') at(docPkgs(r), r).tosov.push(r);
   const budget = [...by.values()].filter((g) => g.pkgs.length);
   for (const r of rows) {
     if (r.turul !== 'zurag') continue;
     const d = docPkgs(r);
     const hit = d.length ? budget.filter((g) => d.some((x) => g.pkgs.some((b) => within(x, b)))) : [];
     if (hit.length) for (const g of hit) g.zurag.push(r);
-    else at(d).zurag.push(r);
+    else at(d, r).zurag.push(r);
   }
+  /* дараалал: багцын дугаартай → нэртэй («Тухайлсан» …) → багц заагаагүй */
+  const rank = (g: BudgetGroup): number => (!g.key ? 2 : g.label ? 1 : 0);
   return [...by.values()].sort((a, b) => (
-    !a.key || !b.key ? (a.key ? -1 : b.key ? 1 : 0)
-      : pkgSort(a.pkgs[0], b.pkgs[0]) || a.pkgs.length - b.pkgs.length || pkgSort(a.key, b.key)
+    rank(a) - rank(b) || (rank(a) === 0
+      ? pkgSort(a.pkgs[0], b.pkgs[0]) || a.pkgs.length - b.pkgs.length || pkgSort(a.key, b.key)
+      : pkgSort(a.key, b.key))
   ));
 }
 

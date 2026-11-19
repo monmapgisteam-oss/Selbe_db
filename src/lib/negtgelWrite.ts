@@ -10,6 +10,7 @@
  * БАТЛАГДСАН баримт.
  */
 
+import { requireWriter } from './writeGuard';
 import { t as tr } from './i18nCore';
 import { agsFetch } from '@/modules/sheet/ags';
 import { BAGTS_NEGTGEL, bagtsKey, constructionWhere } from './services';
@@ -314,6 +315,7 @@ export async function registerApproved(
   sheetOid: number,
   pkgKey?: string,
 ): Promise<NegtgelResult> {
+  await requireWriter();
   let wrote = false;
   try {
     const s = await summaryOf(bagts, sheetOid, pkgKey);

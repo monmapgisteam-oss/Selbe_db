@@ -1,6 +1,7 @@
 /**
  * ХУВААРИЙН САРЫН ОБЬЁМ — төлөвлөсөн тоо хэмжээг САР ТУТМААР.
  */
+import { requireCap } from './who';
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
 import { GUITS } from '@/lib/services';
@@ -638,6 +639,13 @@ export async function countPlanRows(): Promise<number | null> {
   }
 }
 
+/** Багцын түлхүүр («b1_9f») → багцын нэр → `huvaariAcl.requirePlanWrite` (тойрог импортоос сэргийлж хойшлуулан ачаална) */
+async function requirePlanWriteOf(pkgKey: string | null): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const [{ requirePlanWrite }, { PKGS }] = await Promise.all([import('./huvaariAcl'), import('@/modules/sheet/bagts.pkg')]);
+  requirePlanWrite(pkgKey == null ? null : PKGS.find((p) => p.key === pkgKey)?.group ?? null);
+}
+
 /**
  * Багц засварыг хадгална. Буцаах нь (нэмсэн, шинэчилсэн, устгасан) тоо.
  */
@@ -649,6 +657,15 @@ export type PlanWritePhase = 'all' | 'dups' | 'adds' | 'updates' | 'deletes';
  */
 export type PlanWriteErr = Error & { written?: number; total?: number; phase?: PlanWritePhase };
 export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, number]> {
+  {
+    const keys = new Set<string>();
+    for (const x of [...e.adds, ...e.updates]) {
+      const b = (x.attributes as Record<string, unknown> | undefined)?.bagts ?? x.bagts;
+      if (typeof b === 'string' && b) keys.add(b);
+    }
+    if (keys.size) for (const k of keys) await requirePlanWriteOf(k);
+    else await requirePlanWriteOf(null);
+  }
   const chunk = <T>(a: T[]) => {
     const out: T[][] = [];
     for (let i = 0; i < a.length; i += 500) out.push(a.slice(i, i + 500));
@@ -840,6 +857,7 @@ export function pctPatched(fresh: ReadonlyMap<string, number>, patch: ReadonlyMa
 
 /** Зассан саруудыг шинээр уншсан утгын дээр бичнэ. Буцаах нь — хадгалсны дараах бүтэн сарын хувь. */
 export async function patchPkgPct(pkg: string, name: string, patch: ReadonlyMap<string, number | null>): Promise<Map<string, number>> {
+  requireCap('finEdit');
   const { pct, oids, dups } = await loadPkgPct();
   const cur = pct.get(pkg) ?? new Map<string, number>();
   const next = pctPatched(cur, patch);
@@ -853,6 +871,7 @@ export async function patchPkgPct(pkg: string, name: string, patch: ReadonlyMap<
 
 /** Нэг багцын сарын хувийг хадгална — ШИНЭЭР уншиж зөрүүг л бичнэ. Буцаах нь (нэмсэн, шинэчилсэн, устгасан). */
 export async function savePkgPct(pkg: string, name: string, next: ReadonlyMap<string, number | null>): Promise<[number, number, number]> {
+  requireCap('finEdit');
   const { pct, oids, dups } = await loadPkgPct();
   const e = pctEdits(pkg, name, pct.get(pkg) ?? new Map(), oids, next);
   e.dups = dups;
@@ -997,6 +1016,7 @@ export function weekEdits(meta: WorkMeta, blok: string, week: number, obyem: num
  * нэмэгддэг байв. Эхний (бага objectid) мөрийг шинэчилж, илүү мөрийг устгана. Обьём нийт обьёмоос их байж болохгүй.
  */
 export async function saveWeek(meta: WorkMeta, blok: string, week: number, obyem: number | null): Promise<void> {
+  await requirePlanWriteOf(meta.bagts);
   if (obyem != null && (!Number.isFinite(obyem) || obyem < 0)) throw new Error(tr('Обьём 0 буюу түүнээс их тоо байх ёстой.'));
   if (obyem != null && meta.niit != null && meta.niit > 0 && obyem > meta.niit) throw new Error(tr('Обьём ажлын нийт обьёмоос ({0}) их байж болохгүй.', meta.niit));
   const dkey = weekDkeyOf(meta.bagts, meta.des, blok, week);

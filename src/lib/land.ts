@@ -95,6 +95,12 @@ export function parcelAreasDeduped(rows: readonly Row[]): (number | null)[] {
 export function parcelGroupRows(rows: readonly Row[], field: string = PARCEL_LEFT.fields.status): Row[] {
   const areas = parcelAreasDeduped(rows);
   const m = new Map<string, Row>();
+  /* 2026-11-19 (аудит) НӨХӨХ ОЛГОВОР ДАВХАР ТООЛОГДОХГҮЙ:
+     · хоёр полигонд хуваагдсан нэг нэгж талбар ижил дүнгээ давтвал НЭГ удаа (талбайн `parcelAreasDeduped`-тэй ижил дүрэм);
+     · «ТААРААГҮЙ …» захирамжтай мөрийн дүн өөр талбарт түр бичигдсэн мөнгө — НИЙЛБЭРТ орно, «олговор олгосон талбар»-ын
+       ТООНД орохгүй; · 0 ₮ нь олговор олгосон талбар биш. */
+  const F = PARCEL_LEFT.fields;
+  const compSeen = new Set<string>();
   rows.forEach((r, i) => {
     const v = r[field];
     const k = v == null ? '\u0000null' : String(v);
@@ -102,8 +108,17 @@ export function parcelGroupRows(rows: readonly Row[], field: string = PARCEL_LEF
     g.n = Number(g.n) + 1;
     g.a = Number(g.a) + (areas[i] ?? 0);
     /* Нөхөх олговор: `c` = дүнгийн нийлбэр, `cn` = дүн бүртгэгдсэн талбарын тоо (хоосон ≠ 0) */
-    const comp = r[PARCEL_LEFT.fields.comp];
-    if (comp != null && comp !== '' && Number.isFinite(Number(comp))) { g.c = Number(g.c) + Number(comp); g.cn = Number(g.cn) + 1; }
+    const comp = r[F.comp];
+    if (comp != null && comp !== '' && Number.isFinite(Number(comp)) && Number(comp) > 0) {
+      const no = String(r[F.parcelNo] ?? '').trim();
+      const parked = /^\s*ТААРААГҮЙ/i.test(String(r[F.compOrder] ?? ''));
+      const k = `${no}|${Number(comp)}|${parked ? String(r[F.compOrder]).trim() : ''}`;
+      if (!no || !compSeen.has(k)) {
+        if (no) compSeen.add(k);
+        g.c = Number(g.c) + Number(comp);
+        if (!parked) g.cn = Number(g.cn) + 1;
+      }
+    }
     m.set(k, g);
   });
   return [...m.values()];
@@ -112,7 +127,7 @@ export function parcelGroupRows(rows: readonly Row[], field: string = PARCEL_LEF
 /** Талбайн тооцоонд хэрэгтэй талбарууд */
 const parcelAreaFields = (): string[] => {
   const F = PARCEL_LEFT.fields;
-  return [...new Set([PARCEL_LEFT.oid, F.status, F.progress, F.area, F.areaAlt, F.parcelNo, PARCEL_SHAPE_AREA, F.comp])];
+  return [...new Set([PARCEL_LEFT.oid, F.status, F.progress, F.area, F.areaAlt, F.parcelNo, PARCEL_SHAPE_AREA, F.comp, F.compOrder])];
 };
 
 /** Нэгж талбарын мөрүүд (талбайн тооцоонд, геометргүй) — `land.ts` ба `Gazar.tsx` (AOI-тай) хуваалцана */

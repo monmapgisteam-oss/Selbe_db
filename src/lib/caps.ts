@@ -4,6 +4,7 @@
  * НЭМЭЛТ ЭРХҮҮД (capabilities) — харагдацаас ТУСДАА, нэг бүрчлэн олгодог.
  */
 
+import { requireSuper } from './who';
 import { AUTH, roleForUser, type ViewKey } from './services';
 import type { CapRow } from './permsRemote';
 import { _newerThanSnapshot, _touchSeq } from './scopedAcl';
@@ -470,6 +471,7 @@ export const canAutoSync = (username: string | null | undefined): boolean =>
  *   олгосон) эрх `fresh`-д үлдэж, устгагдсан аккаунтад `__cap__:` мөр наалддаг байв.
  */
 export async function setCaps(username: string, caps: CapKey[], opts?: { absolute?: boolean }): Promise<boolean> {
+  requireSuper();
   const u = username.trim().toLowerCase();
   if (!u) return false;
   const absolute = opts?.absolute === true && caps.length === 0;
@@ -525,6 +527,7 @@ export function mergeCapDelta(base: readonly string[], next: readonly string[], 
 
 /** Нэг эрхийг асаах/унтраах товчлол. */
 export function toggleCap(username: string, cap: CapKey, on: boolean): Promise<boolean> {
+  requireSuper();
   if (!remoteSynced) return Promise.resolve(false);
   const cur = capsStored(username);
   return setCaps(username, on ? [...new Set([...cur, cap])] : cur.filter((c) => c !== cap));

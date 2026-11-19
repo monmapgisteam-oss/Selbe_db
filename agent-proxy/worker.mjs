@@ -402,10 +402,15 @@ async function relayChat(request, env, ctx, { cors, caller, isBot, budgeted, MOD
   const { messages, tools } = clean;
 
   const promptKey = typeof env.PROMPT_HMAC === 'string' ? env.PROMPT_HMAC.trim() : '';
-  if (promptKey && !isBot) {
+  /* 2026-11-19 (аудит): гарын үсэг ЗААВАЛ БИШ болов. Порталын түлхүүр хөтчийн кодод ил байдаг тул энэ шалгалт хэзээ ч
+     хил байгаагүй — жинхэнэ хил нь ArcGIS нэвтрэлт (байгууллагын гишүүн) ба хэрэглэгчийн өдрийн төсөв. Толгой ирээгүй
+     хүсэлтийг хүлээн авна (ингэснээр GitHub Variable `AGENT_PROMPT_HMAC`-ийг устгаж түлхүүрийг кодоос бүр авна); ирсэн бол
+     урьдын адил таарах ёстой (хуучин хуудас нээлттэй үлдсэн хэрэглэгчийн буруу гарын үсгийг барина). */
+  const givenSig = request.headers.get('x-prompt-sig');
+  if (promptKey && !isBot && givenSig) {
     const sysText = system == null ? '' : system;
     const good = typeof sysText === 'string'
-      && secretMatches(request.headers.get('x-prompt-sig'), await hmacHex(promptKey, sysText));
+      && secretMatches(givenSig, await hmacHex(promptKey, sysText));
     if (!good) {
       console.warn('[agent] системийн зааврын гарын үсэг таарсангүй:', caller);
       return json(403, { error: 'Системийн зааврын гарын үсэг таарсангүй — хуудсыг дахин ачаална уу.', retryable: false }, cors);

@@ -8,6 +8,7 @@
  * (өөр газраас нэвтэрсэн ч) үйлчилнэ — `localStorage` шиг нэг browser-т хязгаарлагдахгүй.
  */
 
+import { requireSuper } from './who';
 import { SYS_PERMS } from '@/lib/services/env';
 import { installEntInterceptor } from '@/lib/entInterceptor';
 import { AUTH, BOOTSTRAP_SUPER, ROLE_BY_USER, type Role, type ViewKey } from './services';
@@ -348,6 +349,25 @@ export async function fetchAll(): Promise<{
     const SCOPED: [string, Map<string, AjilRow | ButetsRow | HabeaRow | ChanarRow | ObyemRow | HuvaariRow>][] = [
       [AJIL_PREFIX, ajilBy], [BUTETS_PREFIX, butetsBy], [HABEA_PREFIX, habeaBy], [CHANAR_PREFIX, chanarBy], [OBYEM_PREFIX, obyemBy], [HUVAARI_PREFIX, huvaariBy],
     ];
+    /*
+     * ӨӨРТӨӨ ЭРХ БИЧСЭН МӨР ХҮЧИНГҮЙ (2026-11-19, аудит). Энэ хүснэгтэд админ биш хүн ч бичдэг («Систем түр хаах»,
+     * баримтын бүлэг) тул хүснэгт өөрөө засагдахаар нээлттэй; урьд нь зөвхөн super мөр шалгагддаг байсан — хэн ч өөрийн
+     * нэр дээр эрхийн / нэмэлт эрхийн / томилгооны мөр бичээд дараагийн уншилтаар тэр эрхээ авч чаддаг байв.
+     * Дүрэм: мөрийг ЭЗЭН НЬ ӨӨРӨӨ сүүлд бичсэн (`last_edited_user` = мөрийн хэрэглэгч) бөгөөд тэр хүн итгэмжлэгдсэн super
+     * биш бол мөрийг хэрэгсэхгүй. `last_edited_user`-ийг сервер тавьдаг тул хуурамчлагдахгүй. Бусдын бичсэн мөр хэвээр —
+     * админаас хасагдсан хүний өмнө нь бусдад олгосон эрх унахгүй. Талбар ирээгүй / хоосон бол шалгах боломжгүй — итгэнэ.
+     */
+    const trustedEditors = trustedSupers(
+      rows.filter((r) => r.role === 'super' && r.views !== 'removed' && r.username && !String(r.username).trim().startsWith('__'))
+        .map((r) => ({ user: String(r.username), ...(r.last_edited_user !== undefined ? { editor: r.last_edited_user } : {}) })),
+      [BOOTSTRAP_SUPER, ...SUPER_OWNERS],
+    );
+    for (const r of [BOOTSTRAP_SUPER, ...SUPER_OWNERS]) trustedEditors.add(r.trim().toLowerCase());
+    let editor = '';
+    /** Энэ мөрийг эзэн нь өөрөө бичсэн үү (итгэмжлэгдсэн super-ээс бусад) */
+    const selfWritten = (owner: string): boolean => editor !== '' && editor === owner && !trustedEditors.has(editor);
+    let sysEditor = '';
+
     rowLoop: for (const a of rows) {
       if (!a.username) continue;
       const raw = String(a.username);
@@ -355,13 +375,14 @@ export async function fetchAll(): Promise<{
       if (!lu) continue;
       curOid = typeof a.objectid === 'number' ? a.objectid : undefined;
       if (isSpacedKey(raw)) { bad(raw, 'space'); continue; }
+      editor = typeof a.last_edited_user === 'string' ? a.last_edited_user.trim().toLowerCase() : '';
 
       /* ── Системийн төлөвийн мөр ( 2026-10-19, «Систем түр хаах») ── */
       const sysKey = strip(lu, SYS_PREFIX);
       if (sysKey != null) {
         if (sysKey === SYS_MAINT) {
           const st = parseSysState(a.views);
-          if (st) sys = st; else { sys = null; bad(raw, 'json'); }
+          if (st) { sys = st; sysEditor = editor; } else { sys = null; bad(raw, 'json'); }
         }
         continue;
       }
@@ -382,6 +403,7 @@ export async function fetchAll(): Promise<{
         const user = strip(lu, prefix);
         if (user == null) continue;
         if (!user || UNSAFE_KEY.has(user)) { bad(raw, 'user'); continue rowLoop; }
+        if (selfWritten(user)) { bad(raw, 'untrusted'); continue rowLoop; }
         try {
           const d = JSON.parse(a.views || '{}') as ViewsJson;
           if (!d || typeof d !== 'object') { bad(raw, 'json'); continue rowLoop; }
@@ -396,6 +418,7 @@ export async function fetchAll(): Promise<{
       const cUser = strip(lu, CAP_PREFIX);
       if (cUser != null) {
         if (!cUser || UNSAFE_KEY.has(cUser)) { bad(raw, 'user'); continue; }
+        if (selfWritten(cUser)) { bad(raw, 'untrusted'); continue; }
         try {
           const d = JSON.parse(a.views || '[]') as unknown;
           if (Array.isArray(d)) capsBy.set(cUser, { user: cUser, caps: d as string[] });
@@ -408,6 +431,7 @@ export async function fetchAll(): Promise<{
       const fUser = strip(lu, FLOW_PREFIX);
       if (fUser != null) {
         if (!fUser || UNSAFE_KEY.has(fUser)) { bad(raw, 'user'); continue; }
+        if (selfWritten(fUser)) { bad(raw, 'untrusted'); continue; }
         try {
           const d = JSON.parse(a.views || '{}') as {
             stage?: string; bagts?: string[]; viewOnly?: boolean; autoRole?: boolean;
@@ -437,6 +461,8 @@ export async function fetchAll(): Promise<{
         } catch { views = []; bad(raw, 'json'); }
       }
       if (UNSAFE_KEY.has(lu)) { bad(raw, 'user'); continue; }
+      /* Өөрийн эрхийн мөрийг өөрөө бичсэн — хэрэгсэхгүй (super мөр доорх гинжээр тусдаа шалгагдана) */
+      if (selfWritten(lu) && a.role !== 'super') { bad(raw, 'untrusted'); continue; }
       if (a.role === 'super' && !removed) {
         superRows.push({ user: lu, raw, ...(a.last_edited_user !== undefined ? { editor: a.last_edited_user } : {}), ...(typeof curOid === 'number' ? { oid: curOid } : {}) });
       }
@@ -449,6 +475,12 @@ export async function fetchAll(): Promise<{
       };
     }
     lastFetchError = null;
+    /* «Систем түр хаах» төлөвийг super эсвэл `sysClose` эрхтэй хүн л бичнэ — бусдын бичсэн төлөв хүчингүй (бүх хүнийг
+       түгжихээс сэргийлнэ). Хэн бичсэн нь мэдэгдэхгүй (талбар хоосон) бол хуучнаараа итгэнэ. */
+    if (sys && sysEditor && !trustedEditors.has(sysEditor) && !(capsBy.get(sysEditor)?.caps ?? []).includes('sysClose')) {
+      console.error('[selbe] Эрхгүй хүн бичсэн «систем түр хаах» төлөвийг хэрэгсэхгүй болгов:', sysEditor);
+      sys = null;
+    }
     const okSupers = trustedSupers(superRows, [BOOTSTRAP_SUPER, ...SUPER_OWNERS]);
     for (const r of superRows) {
       if (okSupers.has(r.user)) continue;
@@ -585,6 +617,7 @@ async function removeByKey(usernameKey: string): Promise<boolean> {
  * ЭВДЭРСЭН (ЗАЙТАЙ г.м.) МӨРИЙГ OBJECTID-ООР УСТГАНА — админы «Эрхийн хүснэгтийн цэвэрлэгээ» (2026-10-19).
  */
 export async function removeMalformedRow(oid: number, expectKey: string): Promise<boolean> {
+  requireSuper();
   try {
     if (!Number.isInteger(oid) || oid <= 0) return false;
     const url = await tableUrl();

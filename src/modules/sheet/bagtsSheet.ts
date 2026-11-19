@@ -9,6 +9,7 @@
 // зарим бүлэгт #REF!-ээс болж эвдэрсэн (жишээ нь «БАРИЛГА УГСРАЛТЫН АЖИЛ»
 // мөрийн нүднүүд 4e-05), тиймээс хадгалагдсан утгыг биш, бодсоныг харуулна.
 
+import { requireWriter } from '@/lib/writeGuard';
 import { agsFetch, type Feature } from "./ags";
 import { TREES } from "./bagts.trees";
 import type { Pkg, Schema } from "./bagts.pkg";
@@ -1766,6 +1767,7 @@ export async function applyAdds(
    */
   written?: number[],
 ): Promise<{ added: number; firstOid: number | null }> {
+  await requireWriter();
   dropPriorCache(pkg.key);
   let added = 0;
   let firstOid: number | null = null;
@@ -1837,6 +1839,7 @@ export async function applyAdds(
  * ХАГАС БИЧИГДСЭН ЖААЗЫГ АРХИВААС УСТГАНА.
  */
 export async function applyDeletes(pkg: Pkg, oids: number[]): Promise<number> {
+  await requireWriter();
   dropPriorCache(pkg.key);
   const ids = oids.filter((x) => Number.isInteger(x) && x > 0);
   if (!ids.length) return 0;
@@ -1862,6 +1865,7 @@ export async function applyUpdates(
   pkg: Pkg,
   updates: Record<string, unknown>[],
 ): Promise<void> {
+  await requireWriter();
   dropPriorCache(pkg.key);
   let written = 0;
   try {

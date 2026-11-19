@@ -20,7 +20,7 @@ import { userError } from '@/components/ui';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import { downloadIpcFlowPdf } from '@/lib/ipcFlowPdf';
 import {
-  approveIpc, approveWhy, contractCancelFresh, contractCancelWhy, contractUpdates, contractWhy, createAdvance, deleteIpc, deleteWhy,
+  advanceOver, approveIpc, approveWhy, contractCancelFresh, contractCancelWhy, contractUpdates, contractWhy, createAdvance, deleteIpc, deleteWhy,
   createIpc, docRows, docTitle, dupDocNos, nextIpcNo, overContract, parseMoney, perfRows, perfTotal, signIpc, type ContractWhy, type IpcDocRow, type NewContract, type PerfRow, type Row,
 } from '@/lib/ipcFlow';
 import s from './ipcTable.module.css';
@@ -360,6 +360,7 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
     : why === 'empty' ? tr('Багц сонгоно уу.')
       : why === 'amount' ? tr('Багц бүрийн гэрээний дүнг зөв оруулна уу.')
         : why === 'advance' ? tr('Урьдчилгааг зөвхөн тоогоор оруулна уу. Жишээ нь 5000000.')
+        : why === 'advance-over' ? tr('Урьдчилгаа гэрээний дүнгээс их байж болохгүй.')
           : why === 'taken' ? tr('Сонгосон багц өөр гэрээтэй байна.')
             : tr('Ийм дугаартай гэрээ бүртгэлтэй байна.'));
 
@@ -371,7 +372,9 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
       date,
       items: items.map((x) => ({ row: rowOf(x.oid) as Row, amount: parseMoney(x.amount) ?? 0, advance: parseMoney(x.advance) })),
     };
-    const why: ContractWhy | null = cfSaved ? (c.items.some((i) => i.advance != null && !(i.advance >= 0)) ? 'advance' : null) : contractWhy(c, cfRows);
+    const why: ContractWhy | null = cfSaved
+      ? (c.items.some((i) => i.advance != null && !(i.advance >= 0)) ? 'advance' : advanceOver(c) ? 'advance-over' : null)
+      : contractWhy(c, cfRows);
     if (why) {
       setErr(whyText(why));
       return;

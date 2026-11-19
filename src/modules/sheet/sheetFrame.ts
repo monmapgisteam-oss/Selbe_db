@@ -333,6 +333,11 @@ export type Overlay = {
    * Тулгагдаагүй ЯГ ТЭР түлхүүрүүд (`${oid}:${b}` / `${oid}:${b}:s|e`).
    */
   unmovedKeys: string[];
+  /**
+   * `unmoved`-ийн дотроос ЭНЭ ХУУДСАНД БАЙХГҮЙ БЛОКИЙН нүд (блокийн дугаар нь баганын тооноос их) — илгээснээс хойш блокийг
+   * хуудаснаас хассан (өөр хуудас руу шилжүүлсэн) үед. Мөр таарсан, утга зөв ч буух багана алга (2026-11-19).
+   */
+  goneBlock: number;
   remapped: boolean;
   negative: number;
   negKeys: string[];
@@ -596,6 +601,7 @@ export function overlaySubmission(
     dateKeys,
     unmoved: unmovedKeys.length,
     unmovedKeys,
+    goneBlock: unmovedKeys.filter((k) => { const b = Number(k.split(":")[1]); return Number.isInteger(b) && b >= nBld; }).length,
     remapped: needMap,
     negative: negKeys.length,
     negKeys,

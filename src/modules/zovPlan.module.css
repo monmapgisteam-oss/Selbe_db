@@ -1,0 +1,178 @@
+/* «Зөвшөөрөл» хуудасны үндсэн хэсэг — «Төсөл төлөвлөгөө биелэлт»-ийн «Зөвшөөрөл» мөрүүд (2026-11-19) */
+
+.box {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  margin-bottom: 8px;
+}
+.h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.total {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.total b { font-size: 18px; color: var(--ink); }
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.chip {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chip b { margin-left: 4px; color: var(--ink); }
+.chipOn {
+  border-color: var(--data);
+  background: color-mix(in oklab, var(--data) 14%, transparent);
+  color: var(--ink);
+}
+.chip:focus-visible,
+.link:focus-visible,
+.tog:focus-visible,
+.mini:focus-visible,
+.save:focus-visible {
+  outline: 2px solid var(--data);
+  outline-offset: 1px;
+}
+.link {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--data);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.muted {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.bad {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--bad-ink);
+}
+
+.scroll {
+  max-height: 62vh;
+  overflow: auto;
+}
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tbl th,
+.tbl td {
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+}
+.tbl th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.r { text-align: right !important; white-space: nowrap; }
+.group td { font-weight: 600; }
+.addRow td { background: color-mix(in oklab, var(--data) 8%, transparent); }
+
+.tog {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inNum,
+.inTxt {
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.inNum { width: 72px; text-align: right; }
+.inTxt { width: 100%; min-width: 110px; }
+.inNum:focus-visible,
+.inTxt:focus-visible {
+  outline: 2px solid var(--data);
+  outline-offset: 0;
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ok { background: color-mix(in oklab, var(--good) 20%, transparent); color: var(--good-ink); }
+.part { background: color-mix(in oklab, var(--warn) 24%, transparent); color: var(--warn-ink, var(--ink)); }
+.wait { background: color-mix(in oklab, var(--ink-3) 20%, transparent); color: var(--ink-2); }
+
+.act { white-space: nowrap; text-align: right !important; }
+.mini {
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.mini:hover { background: color-mix(in oklab, var(--data) 12%, transparent); }
+.save {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--data);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.save:disabled,
+.mini:disabled { opacity: 0.5; cursor: default; }

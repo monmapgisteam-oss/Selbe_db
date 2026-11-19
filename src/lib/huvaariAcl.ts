@@ -17,7 +17,8 @@ import { ROLE_CAPS } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
 import { listUsers } from './permissions';
 import { portalMissing } from './portalPresence';
-import { roleForUser } from './services';
+import { AUTH, roleForUser } from './services';
+import { currentUser, writeGuardsOn } from './who';
 
 export { ALL_BAGTS };
 
@@ -122,6 +123,22 @@ export const retryHuvaariAssign = acl.retry;
 /** Тухайн хэрэглэгчийн ХУВААРИЙН багцууд — ТУХАЙН ҮҮРГЭЭР */
 export const huvaariScope = (user: string | null | undefined, role: PlanRole) =>
   acl.scope(user, role);
+
+/**
+ * ХУВААРИЙН ХҮСНЭГТЭД БИЧИХ ЭРХ (2026-11-19, аудит) — тэр багцын зохиогч эсвэл батлагч биш бол шиднэ. Сарын ба долоо
+ * хоногийн обьёмын хадгалалт урьд нь зөвхөн дэлгэцийн товчоор хамгаалагддаг байсан — «Хуваарь»-ийг зөвхөн ХАРАХ эрхтэй хүн
+ * функцийг шууд дуудаж аль ч багцад бичиж чаддаг байв. Нэвтрэлт унтраалттай (локал dev) ба Node орчинд шалгахгүй.
+ * `group` — багцын нэр («Багц 1»); мэдэгдэхгүй бол аль нэг багцад үүрэгтэй байхыг шаардана.
+ */
+export function requirePlanWrite(group: string | null): void {
+  if (!writeGuardsOn() || typeof window === 'undefined' || !AUTH.appId) return;
+  const u = currentUser();
+  const ok = (['author', 'approver'] as const).some((role) => {
+    const sc = acl.scope(u, role);
+    return group == null ? sc == null || sc.length > 0 : sc == null || sc.includes(group);
+  });
+  if (!ok) throw new Error(tr('Энэ багцын хуваарьт бичих эрхгүй — зохиогч эсвэл батлагчаар томилогдсон байх ёстой.'));
+}
 
 /** Тухайн хэрэглэгчид энэ үүрэг байгаа эсэх (багцаас үл хамааран) */
 export const hasPlanRole = acl.hasRole;

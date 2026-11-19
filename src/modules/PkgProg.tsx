@@ -25,6 +25,7 @@ import {
   projectPlanScope, projectLagNow, infraPhysNow, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
+import { loadProjectPlan } from '@/lib/projectPlanInputs';
 import { levelCounts, type BlockProgressMap } from '@/lib/blockProgress';
 import {
   HUE, catOf, aggregateMonths, physNow, progMonthsOf, SR_ONLY, type PackCat,
@@ -274,6 +275,15 @@ export function PkgProg({ dim, setDim }: {
    * огноонд суурилсан сар тутмын өссөн хувь (`loadPlanCurve`).
    */
   const planQ = useAsync(loadPlanCurveCached, []);
+  /* 2026-11-19 (аудит): «Нийгмийн барилга» · «Өндөржилт»-ийн хувь — «Төсөл төлөвлөгөө биелэлт»-ийн «Барилга угсралт ажил»
+     доорх хэсгийн мөрөөс. Урьд нь эдгээр багц блокгүй тул график ҮРГЭЛЖ 0.0% үзүүлдэг байв. */
+  const projQ = useAsync(() => loadProjectPlan(), []);
+  const sectPct = (rx: RegExp): number | null | undefined => {
+    if (projQ.state === 'loading') return undefined;
+    if (projQ.state !== 'ready') return null;
+    const n = projQ.data.tree.nodes.find((x) => x.phase === 'barilga' && x.sub === 'barilga' && rx.test(String(x.row?.ajil_uilchilgee ?? '')));
+    return n ? projQ.data.result.values.get(n)?.S ?? 0 : 0;
+  };
 
   /**
    * Графикийн мөрүүд: тэнхлэг ба ТӨЛӨВЛӨГӨӨ нь ХУВААРИАС, БОДИТ гүйцэтгэл нь
@@ -643,6 +653,8 @@ export function PkgProg({ dim, setDim }: {
               packs={packs}
               housing={finQ.state === 'ready' ? physNow(finQ.data, monthKey()) ?? 0 : finQ.state === 'error' ? null : undefined}
               infra={finQ.state === 'ready' ? infraPhysNow(finQ.data)?.pct ?? 0 : finQ.state === 'error' ? null : undefined}
+              soc={sectPct(/нийгмийн дэд бүтэц/i)}
+              site={sectPct(/өндөржилт/i)}
             />
             {allPack && q.state === 'ready' && <LevelsCard pm={q.data.prog} keys={q.data.keys} ovByCat={ovByCat} />}
             {/* 2026-11-18 (хэрэглэгч): материал нь батлагдаагүй атлаа гүйцэтгэл бөглөгдсөн ажил — багцаар */}
@@ -926,7 +938,7 @@ function TsPackList({
 /**
  * БАГЦ БҮРИЙН САНХҮҮЖИЛТ — төлөвлөгөө, олгосон, олгосон хувь.
  */
-function CatChart({ packs, housing, infra }: {
+function CatChart({ packs, housing, infra, soc, site }: {
   packs: Pack[];
   /**
    * Орон сууцны (барилга угсралт) биет хувь — `physNow` (ХО дүнгээр жигнэсэн,
@@ -934,22 +946,20 @@ function CatChart({ packs, housing, infra }: {
    */
   housing: number | null | undefined;
   infra?: number | null;
+  /** «Төсөл төлөвлөгөө биелэлт»-ийн хэсгийн мөрийн гүйцэтгэл — `undefined` = ачаалж байна, `null` = татагдсангүй */
+  soc?: number | null;
+  site?: number | null;
 }) {
   const rows = PACK_CATS.map((c) => {
     const list = packs.filter((p) => catOf(p) === c.key);
-    const pcts: number[] = [];
     if (c.key === 'build') {
       return { c, n: list.length, mean: housing ?? null, wait: housing === undefined };
     }
     if (c.key === 'infra') {
       return { c, n: list.length, mean: infra ?? null, wait: infra === undefined };
     }
-    for (const p of list) {
-      if (p.kind !== 'build') continue;
-      for (const b of p.blocks) if (b.progress != null) pcts.push(b.progress);
-    }
-    const mean = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : 0;
-    return { c, n: list.length, mean, wait: false };
+    const v = c.key === 'soc' ? soc : site;
+    return { c, n: list.length, mean: v ?? null, wait: v === undefined };
   });
   return (
     <Section

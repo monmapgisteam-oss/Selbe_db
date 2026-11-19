@@ -497,7 +497,11 @@ async function relayChat(req, res, { caller, isBot, budgeted }) {
     return;
   }
   const { messages, tools } = clean;
-  if (PROMPT_HMAC && !isBot) {
+  /* 2026-11-19 (аудит): гарын үсэг ЗААВАЛ БИШ болов. Порталын түлхүүр хөтчийн кодод ил байдаг тул энэ шалгалт хэзээ ч
+     хил байгаагүй — жинхэнэ хил нь ArcGIS нэвтрэлт (байгууллагын гишүүн) ба хэрэглэгчийн өдрийн төсөв. Толгой ирээгүй
+     хүсэлтийг хүлээн авна (ингэснээр GitHub Variable `AGENT_PROMPT_HMAC`-ийг устгаж түлхүүрийг кодоос бүр авна); ирсэн бол
+     урьдын адил таарах ёстой (хуучин хуудас нээлттэй үлдсэн хэрэглэгчийн буруу гарын үсгийг барина). */
+  if (PROMPT_HMAC && !isBot && req.headers["x-prompt-sig"]) {
     const sysText = system == null ? "" : system;
     if (typeof sysText !== "string" || !secretMatches(req.headers["x-prompt-sig"], promptSig(sysText))) {
       console.warn("[agent-proxy] системийн зааврын гарын үсэг таарсангүй:", caller);

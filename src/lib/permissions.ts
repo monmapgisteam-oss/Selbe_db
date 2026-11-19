@@ -27,7 +27,7 @@ import {
 } from './services';
 import { capViewsOf, capsRemoteReady, capsStored, hasCap, isWorkflowView, UNSAFE_KEY } from './caps';
 import { NEW_ACCOUNT_ROLE, _typesMark, roleAccess } from './roleTypes';
-import { currentUser, requireCap } from './who';
+import { currentUser, requireCap, requireSuper, _setWhoRoleReader } from './who';
 import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
 import { _setRoleReader, stageOfUser } from './guitsetgelAcl';
 import type { SysState } from './permsRemote';
@@ -728,6 +728,7 @@ export function roleOf(username?: string | null): Role | null {
   return (remoteLoaded ? ov?.role : null) ?? roleForUser(username);
 }
 _setRoleReader(roleOf);
+_setWhoRoleReader(roleOf);
 
 /** Панелийн жагсаалт — хатуу тохиргооны бүх хэрэглэгч + override-той шинэ хэрэглэгч */
 export function listUsers(): UserPerm[] {
@@ -787,6 +788,7 @@ export function listRemoved(): string[] {
  * · Кодын (тестийн) SUPER — ТАТГАЛЗАНА; өөрийн super-ийг өөрөө устгахгүй.
  */
 export function removeUser(username: string): Promise<boolean> {
+  requireSuper();
   if (isCodeSuper(username)) return Promise.resolve(false);
   const key = username.trim().toLowerCase();
   const role = roleForUser(username);
@@ -829,6 +831,7 @@ export function setUser(
   username: string, access: Access, role: Role | null = null, baseOf?: UserBase,
   opts: { revive?: boolean } = {},
 ): Promise<boolean> {
+  requireSuper();
   const key = username.trim().toLowerCase();
   if (isCodeSuper(username)) return Promise.resolve(true);
   const boot = role === 'super' ? bootstrapOnlySuper() : null;
@@ -925,6 +928,7 @@ export function mergeUserDelta(base: UserBase | null, next: UserBase, fresh: Use
  * Override-ыг устгах — cache + localStorage + ArcGIS хүснэгтээс. Үр дүн: setUser-тэй адил.
  */
 export function clearOverride(username: string, opts: { revive?: boolean } = {}): Promise<boolean> {
+  requireSuper();
   const key = username.trim().toLowerCase();
   const revive = opts.revive === true;
   return serialWrite(key, async () => {

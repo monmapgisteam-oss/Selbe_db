@@ -131,6 +131,10 @@ assert.equal(contractWhy({ ...one, items: [] }, cf), 'empty');
 assert.equal(contractWhy({ ...one, items: [{ row: cf[0], amount: 0, advance: null }] }, cf), 'amount');
 assert.equal(contractWhy({ ...one, items: [{ row: cf[2], amount: 5, advance: null }] }, cf), 'taken', 'нэг багцад хоёр гэрээ оноохгүй');
 assert.equal(contractWhy({ ...one, no: 'Н/1' }, cf), 'dup-number', 'давхар дугаар');
+/* 2026-11-19: урьдчилгаа гэрээний дүнгээс их байж болохгүй (тэнцүү бол болно) */
+assert.equal(contractWhy({ ...one, items: [{ row: cf[0], amount: 90, advance: 91 }] }, cf), 'advance-over');
+assert.equal(contractWhy({ ...one, items: [{ row: cf[0], amount: 90, advance: 90 }] }, cf), null, 'урьдчилгаа = гэрээний дүн');
+assert.equal(contractWhy({ ...many, items: [many.items[0], { row: cf[1], amount: 150, advance: 500 }] }, cf), 'advance-over', 'аль нэг мөр хэтэрсэн ч');
 const up = contractUpdates(many);
 assert.deepEqual(up[0], {
   objectid: 1, geree_dun: 90, geree_dugaar: 'Н/2', guitsetgegch: 'Х',

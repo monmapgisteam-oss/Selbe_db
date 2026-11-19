@@ -14,6 +14,7 @@
  */
 
 import { isCodeSuper, roleForUser } from './services';
+import { requireSuper } from './who';
 import type { CapKey } from './caps';
 
 /** «Бүх багц» — тодорхой багц сонгоогүй гэсэн утга */
@@ -429,6 +430,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    * «Багц 1-д зохиогч, Багц 5-д батлагч» гэж ЯГ томилно.
    */
   const setGrants = (user: string, grants: Grant<R>[], grant = true): AclWrite => {
+    /* 2026-11-19 (аудит): томилгоог зөвхөн системийн админ бичнэ — урьд нь зөвхөн самбарын товч нуугдсан байв */
+    try { requireSuper(); } catch (e) { return { ok: false, error: (e as Error).message }; }
     const u = user.trim().toLowerCase();
     if (!u) return { ok: false, error: spec.msg.noUser };
     if (isCodeSuper(u)) return { ok: false, error: spec.msg.superUser };

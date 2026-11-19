@@ -147,6 +147,25 @@ export function planBlockBudgets(tree: PlanTree): Row[] {
 const SYNC_PHASES: readonly string[] = ['ТЭЗҮ', 'Ажлын зураг төсөл', 'Барилга угсралт'];
 
 /**
+ * «ЗУРГИЙН БҮРТГЭЛ»-ИЙН МӨР (2026-11-19, хэрэглэгч: «зурагт дахиж мөнгө олгохгүй — нэг удаа гэрээний дагуу өгнө, тэр нь
+ * зургийн бүртгэлээс гараар орно · төлбөрийн мэдээлэлд харагдах нь зөв»). ТЭЗҮ · Ажлын зураг төслийн хэсгийн гэрээний
+ * дугааргүй мөр бол бүртгэлийн баримтын мөр. «Ажлын үнэ» нь:
+ *   · «Төсөл төлөвлөгөө биелэлт»-д төсөв, гэрээний дүн, ОЛГОСОН ДҮН — бүртгэлийн синк бичнэ (`zuragPlan`);
+ *   · «Төлбөрийн акт»-д тэр баримтын гэрээний мөрийн гэрээний дүн ба ОЛГОСОН ДҮН (`dun`, төлөв «Олгосон») — `paidFromRegister`.
+ * Ийм мөрийн олгосон дүнг «Төлбөрийн акт»-аас буцааж ДАРЖ БИЧИХГҮЙ (эх нь бүртгэл; багцгүй тул гэрээгүй баримтынх ч хэвээр).
+ */
+export const isRegisterRow = (r: Row): boolean => PH_DESIGN.includes(txt(r[CF.phase])) && !txt(r[CF.contractNo]);
+
+/** Төлбөрийн акт үүсгээгүй мөр үү (актын дугаар, сканы баримт алга) — акттай мөрийн төлбөрийг бүртгэл дарж бичихгүй */
+const noAct = (r: Row): boolean => r[HO_IPC.payFields.ipcNo] == null && r[HO_IPC.docItem] == null;
+
+/** Бүртгэлийн баримтын гэрээний мөрд бичих төлбөр: олгосон дүн = гэрээний дүн («Ажлын үнэ»), төлөв «Олгосон» */
+const paidFromRegister = (row: Row): Row => {
+  const v = num(row[CF.contractAmount]);
+  return v != null && v > 0 ? { [HO_IPC.payFields.amount]: v, [HO_IPC.status.field]: HO_IPC.status.paid } : {};
+};
+
+/**
  * HO-Д БАЙХГҮЙ ГЭРЭЭ (2026-11-04, хэрэглэгч): «Гэрээлсэн дүн» тэмдэгтэй, дүнтэй, ямар ч HO гэрээнд тохироогүй Cashflow мөр →
  * шинэ HO мөр. Нэг гэрээний дугаартай мөрүүд нэг гэрээ. Код нь тогтмол (`bagts`, давхцвал үе шат нэмнэ) тул хоёр хэрэглэгч зэрэг
  * нэмсэн ч нэг гэрээний мөр болж нэгтгэгдэнэ. `planHoSync`-ийн дүрмээр дараагийн удаа таарах тул дахин нэмэгдэхгүй.
@@ -196,6 +215,7 @@ function missingContracts(
       [HC.workType]: phase !== 'Барилга угсралт' ? 'ТЭЗҮ,Судалгаа' : /^[1-4](\.|$)/.test(part) ? 'Барилга угсралт' : 'ГИШСүлжээ',
       [HC.project]: txt(rows[0][CF.detail]) || null,
       ...hoFromCf(rows),
+      ...(perRow && rows.length === 1 ? paidFromRegister(rows[0]) : {}),
     });
   }
   return adds;
@@ -239,6 +259,8 @@ export function planPaidSync(hoRows: readonly Row[], cfRows: readonly Row[]): Pa
   }
   const updates: Row[] = [];
   for (const r of cfRows) {
+    /* Бүртгэлийн баримтын мөрийн олгосон дүнг бүртгэл эзэмшинэ — энд дарж бичихгүй */
+    if (isRegisterRow(r)) continue;
     const oid = Number(r[CASHFLOW_NEW.oid]);
     const u: Row = {};
     const p = paid.get(oid) ?? null;
@@ -331,7 +353,8 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
       if (!row) { unmatched.push(code); continue; }
       matched.set(code, [Number(row[CASHFLOW_NEW.oid])]);
       /* Баримтын нэр бүртгэлд өөрчлөгдвөл гэрээний нэр дагана — дараагийн удаа нэрээрээ таарна */
-      const want = { ...hoFromCf([row]), [HC.project]: txt(row[CF.detail]) || null };
+      /* Нэг мөртэй (акт үүсгээгүй) гэрээнд л олгосон дүнг бүртгэлээс бичнэ — акттай гэрээний төлбөрийг хөндөхгүй */
+      const want = { ...hoFromCf([row]), [HC.project]: txt(row[CF.detail]) || null, ...(rows.length === 1 && noAct(rows[0]) ? paidFromRegister(row) : {}) };
       for (const r of rows) {
         const upd: Row = {};
         for (const [f, v] of Object.entries(want)) if (!same(r[f], v)) upd[f] = v;

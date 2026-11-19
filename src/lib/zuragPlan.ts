@@ -101,7 +101,9 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
     const ms = money.get(n);
     swap.set(n.row, {
       ...n.row,
-      olgoson_dun: ms?.paid ?? null,
+      /* 2026-11-19 (хэрэглэгч: «олгосон дүнд давхар орно»): үнэтэй баримттай үе шатанд олгосон дүн баримтын мөрүүдээс
+         нийлнэ (доор) — үе шатын мөрд өөрийн дүн тавьбал хоёр тоологдоно */
+      olgoson_dun: priced ? null : ms?.paid ?? null,
       urdchilgaa_dun: ms?.advance ?? null,
       /* Гэрээний дүн: бүртгэлд «Ажлын үнэ»-тэй баримт байвал баримтуудаас (доор), эс бөгөөс хуучин мөрүүдийн нийлбэр */
       ...(!priced && ms?.contract != null ? { geree_dun: ms.contract, ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : {}),
@@ -119,7 +121,9 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
         ajil_uilchilgee: d.ner, bagts: d.bagts || null, heseg_ezleh_huvi: 1 / ds.length, guitsetgel_huvi: tolovPct(d.tolov),
         /* Хэрэглэгч 2026-11-17: гараар оруулсан дүн «урьдчилсан төсөвт өртөг болон IPC рүү хоёуланд нь» — төсөвт өртөг ба
            гэрээний дүн (IPC-ийн олгосон хувийн суурь). Олгосон дүн нь IPC-ээс хэвээр (үе шатын мөрд) */
-        ...(priceOf(d) != null ? { ho_dun_geree: priceOf(d), geree_dun: priceOf(d), ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : {}),
+        /* 2026-11-19 (хэрэглэгч): зургийн мөнгө гэрээний дагуу НЭГ удаа олгогдоно, төлбөрийн актаар дахин олгохгүй — тиймээс
+           «Ажлын үнэ» нь ОЛГОСОН ДҮН ч мөн (`hoSync.isRegisterRow`: энэ мөрд төлбөрийн акт гэрээ үүсгэхгүй, дарж бичихгүй) */
+        ...(priceOf(d) != null ? { ho_dun_geree: priceOf(d), geree_dun: priceOf(d), ho_dungiin_tailbar: 'Гэрээлсэн дүн', olgoson_dun: priceOf(d) } : {}),
       }));
     };
     const put = (parent: string, subs: { ded: string; rows: ZRow[] }[], total: number, fallback: string) => {
@@ -141,7 +145,16 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
   }
   if (!add.length) return same;
   const ids = matchStored(add, [...drop]);
-  const gen = add.map((r, i): PlanStoredRow => (ids[i] == null ? { ...r, virtual: true } : { ...r, objectid: ids[i] }));
+  /* Гэрээний дугаартай мөр (гараар байгуулсан гэрээ) төлбөрийн актаар явна — олгосон дүн нь хүснэгтэд байгаа хэвээр,
+     бүртгэлийн «Ажлын үнэ»-ээр дарагдахгүй (`hoSync.isRegisterRow`-ийн нөгөө тал) */
+  const storedBy = new Map<number, PlanStoredRow>();
+  for (const r of drop) if (typeof r.objectid === 'number') storedBy.set(r.objectid, r);
+  const gen = add.map((r, i): PlanStoredRow => {
+    const id = ids[i];
+    if (id == null) return { ...r, virtual: true };
+    const st = storedBy.get(id);
+    return st?.geree_dugaar != null && r.guitsetgel_huvi !== undefined ? { ...r, objectid: id, olgoson_dun: st.olgoson_dun ?? null } : { ...r, objectid: id };
+  });
   return { out: [...rows.filter((r) => !drop.has(r)).map((r) => swap.get(r) ?? r), ...gen], gen, old: [...drop] };
 }
 
@@ -179,7 +192,7 @@ function matchStored(add: readonly PlanStoredRow[], stored: readonly PlanStoredR
 }
 
 /** Хүснэгтэд бичигддэг талбарууд — бүртгэлээс гардаг нь л; бусад нь хоосон */
-export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar'] as const;
+export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar', 'olgoson_dun'] as const;
 type RKey = (typeof REGISTRY_PLAN_KEYS)[number];
 export type RegistryPlanEdits = {
   adds: ({ dd_kod: string } & Record<RKey, string | number | null>)[];

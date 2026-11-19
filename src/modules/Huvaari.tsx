@@ -1954,6 +1954,10 @@ export function Huvaari({
     if (locked || !canEdit) return;
     const cur = plan.find((x) => x.oid === oid);
     if (!cur || cur.group || oid < 0) return;
+    /* 2026-11-19 (аудит): 3-р давхрын бүлгийн доторх ажлын огноо бүлгээс автоматаар тарна — чирэх ба цонх түгжээтэй атал
+       хүснэгтийн нүдэнд бичихэд түгжээ үйлчилдэггүй байв (бичсэн огноо дараагийн бүлгийн төлөвлөлтөөр дарагддаг) */
+    const lockWhy = kind === 'plan' ? locks.get(oid) : undefined;
+    if (lockWhy) return fail(lockWhy);
     /** Нэг блокийн шинэ муж (дүрэм ХЭВЭЭР) — зөрчилд шалтгаан (мөр), өөрчлөлтгүй/хоосон оролтод `null` */
     const ruleAt = (old: Span | null): Span | string | null => {
       let next: Span;
@@ -1995,7 +1999,7 @@ export function Huvaari({
     setErr(skipMsg);
     applyModal(oid, spans, null, null);
     openAfterDate(oid, via);
-  }, [busy, locked, canEdit, plan, blk, n, multiBlks, applyModal, setErr, openAfterDate]);
+  }, [busy, locked, canEdit, plan, blk, n, multiBlks, applyModal, setErr, openAfterDate, kind, locks]);
 
   /**
    * БҮЛГИЙГ ШИЛЖҮҮЛЭХ (2026-10-09, `PlanModal.onShiftGroup`) — бүлгийн доорх НАВЧ ажил бүрийн мужийг сонгосон блокуудад
@@ -5216,9 +5220,9 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     canEdit={canEdit && !locked && kind === 'plan' && !allOn}
                     onHamText={applyHamText}
                     hamKeep={residualDeps(ham.get(r.oid) ?? rowsAll[r.i]?.ham ?? null)}
-                    onDate={!r.group && r.oid >= 0 && !allOn && canEdit && !locked
+                    onDate={!r.group && r.oid >= 0 && !allOn && canEdit && !locked && !(kind === 'plan' && locks.has(r.oid))
                       ? (w, dd, via) => applyDate(r.oid, w, dd, via) : undefined}
-                    onDays={!r.group && r.oid >= 0 && !allOn && canEdit && !locked
+                    onDays={!r.group && r.oid >= 0 && !allOn && canEdit && !locked && !(kind === 'plan' && locks.has(r.oid))
                       ? (d, via) => applyDate(r.oid, 'days', String(d), via) : undefined}
                     edKind={kind}
                     onEditing={(on) => { setCellEdit(on ? r.oid : null); if (on) setSel(r.oid); }}
