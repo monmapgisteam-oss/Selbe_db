@@ -22,7 +22,9 @@ import { cfStartKeyOf } from '@/lib/gdash';
 import { isSwitchPhase, moneyBaseOf, PKG_KEYS } from '@/lib/monthlyMoney';
 import { cfPctKey, loadPkgPct, monthStart, patchPkgPct, type PkgPct } from '@/lib/huvaariObyem';
 import { askConfirm } from '@/lib/confirm';
-import { requireCap } from '@/lib/who';
+import { currentUser } from '@/lib/who';
+import { hasCap } from '@/lib/caps';
+import { canEditMainSpan } from '@/lib/huvaariAcl';
 import { parseDay } from '@/lib/zuragTosol';
 import s from './mainSpan.module.css';
 import c from '@/modules/cfplan.module.css';
@@ -154,7 +156,7 @@ const sumOf = (m: ReadonlyMap<string, number>): number | null => {
 
 /** «Хуваарь» хуудасны товч — бүх гэрээний «Үндсэн хугацаа» */
 export function MainSpanButton({ canEdit, scope }: {
-  /** Санхүү засах эрх — порталын хэмжээний тул бүх гэрээг харна, засна */
+  /** Бүх гэрээг харах эрх («Санхүү засах»). Засах эрхийг гэрээ бүрд `canEditMainSpan` шийднэ (2026-11-19: багцын хуваарийн зохиогч ч засна) */
   canEdit: boolean;
   /** Харах хүрээ (`huvaariViewScope`) — `null` = бүх багц; `canEdit` бол хамаарахгүй */
   scope: readonly string[] | null;
@@ -185,7 +187,7 @@ function MainSpanList({ canEdit, scope, onClose }: { canEdit: boolean; scope: re
   }, [tick, scope0]);
   const cur = sel == null ? null : rows?.find((r) => r.id === sel) ?? null;
   if (cur) {
-    return <MainSpanDialog key={cur.id} d={cur} canEdit={canEdit} onClose={() => { setSel(null); setTick((n) => n + 1); }} />;
+    return <MainSpanDialog key={cur.id} d={cur} canEdit={canEdit || canEditMainSpan(currentUser(), cur.pkgLabel || cur.name)} onClose={() => { setSel(null); setTick((n) => n + 1); }} />;
   }
   return (
     <div className={s.dlgBack} role="presentation" onClick={onClose}>
@@ -281,13 +283,13 @@ function MainSpanDialog({ d, canEdit, onClose }: { d: Contract; canEdit: boolean
       const pctDirty = months.some((k) => k in pend);
       /* Сонгосон саруудын зөвхөн ЗАССАН нь — цонх нээлттэй үед өөр хүний бичсэн сарыг дарахгүй */
       const patch = new Map<string, number | null>(months.filter((k) => k in pend).map((k) => [k, numOf(pend[k])]));
-      /* `patchPkgPct` өөрөө эрх шалгадаггүй — хувь бичигдээд огноо эрхгүйгээр унахаас хамгаална */
-      requireCap('finEdit');
+      /* Хувь бичигдээд огноо эрхгүйгээр унахаас хамгаална — «Санхүү засах» эсвэл тэр багцын хуваарийн зохиогч */
+      if (!canEditMainSpan(currentUser(), d.pkgLabel || d.name)) throw new Error(tr('Энэ багцын «Үндсэн хугацаа»-г засах эрхгүй — «Санхүү засах» эрх эсвэл тэр багцын хуваарийн зохиогч байх ёстой.'));
       const saved = pctDirty ? await patchPkgPct(d.key, d.pkgLabel || d.name, patch) : null;
       const upd: Row = {};
       if (datesDirty) { upd[F.startDate] = startMs; upd[F.endDate] = endMs; }
       if (Object.keys(upd).length) {
-        await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: [{ [CASHFLOW_NEW.oid]: d.oid, ...upd }] }, { cap: 'finEdit' });
+        await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: [{ [CASHFLOW_NEW.oid]: d.oid, ...upd }] }, { cap: hasCap(currentUser(), 'finEdit') ? 'finEdit' : 'plan' });
         invalidate('CASHFLOW_NEW');
       }
       setBase({ start: startMs, end: endMs, pct: saved ?? base.pct, huv: base.huv || pctDirty });

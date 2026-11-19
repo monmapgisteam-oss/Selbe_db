@@ -6,6 +6,11 @@
 import assert from 'node:assert/strict';
 
 globalThis.window ??= globalThis;
+const mem = new Map();
+globalThis.localStorage ??= { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+globalThis.addEventListener ??= () => {};
+globalThis.removeEventListener ??= () => {};
+globalThis.dispatchEvent ??= () => true;
 const who = await import('./who.ts');
 const perms = await import('./permissions.ts');
 const caps = await import('./caps.ts');
@@ -40,6 +45,17 @@ who.setCurrentUser('selbe_et');
 assert.throws(() => requirePlanWrite('Багц 1'), /хуваарьт бичих эрхгүй/);
 assert.throws(() => requirePlanWrite(null), /хуваарьт бичих эрхгүй/);
 await assert.rejects(() => savePkgPct('b1_9f', 'Багц 1', new Map([['2026-11', 10]])), /эрхгүй/);
+/* 2026-11-19: «Үндсэн хугацаа» — «Санхүү засах» эсвэл тэр багцын хуваарийн зохиогч */
+{
+  const { canEditMainSpan } = await import('./huvaariAcl.ts');
+  const { patchPkgPct } = await import('./huvaariObyem.ts');
+  assert.equal(canEditMainSpan('selbe_et', 'Багц-1'), false, 'томилогдоогүй, санхүүгийн эрхгүй');
+  await assert.rejects(() => patchPkgPct('CF:1', 'Багц-1', new Map([['2026-11', 10]])), /Үндсэн хугацаа/);
+  (await import('./huvaariAcl.ts'))._syncRemoteHuvaari([{ user: 'selbe_et', roles: ['author'], bagts: ['Багц 1'] }]);
+  assert.equal(canEditMainSpan('selbe_et', 'Багц-1'), true, 'Багц 1-ийн зохиогч — «Багц-1» гэрээ');
+  assert.equal(canEditMainSpan('selbe_et', 'БАГЦ-16.1'), false, 'өөр багц');
+  assert.equal(canEditMainSpan('manager_3', 'БАГЦ-16.1'), true, 'санхүүгийн эрхтэй (админ)');
+}
 
 /* системийн админ — хамгаалалт саад болохгүй */
 who.setCurrentUser('manager_3');

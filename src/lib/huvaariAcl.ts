@@ -17,7 +17,8 @@ import { ROLE_CAPS } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
 import { listUsers } from './permissions';
 import { portalMissing } from './portalPresence';
-import { AUTH, roleForUser } from './services';
+import { AUTH, bagtsKey, roleForUser } from './services';
+import { hasCap } from './caps';
 import { currentUser, writeGuardsOn } from './who';
 
 export { ALL_BAGTS };
@@ -138,6 +139,20 @@ export function requirePlanWrite(group: string | null): void {
     return group == null ? sc == null || sc.length > 0 : sc == null || sc.includes(group);
   });
   if (!ok) throw new Error(tr('Энэ багцын хуваарьт бичих эрхгүй — зохиогч эсвэл батлагчаар томилогдсон байх ёстой.'));
+}
+
+/**
+ * «ҮНДСЭН ХУГАЦАА»-Г ЗАСАХ ЭРХ (2026-11-19, хэрэглэгч: «бүгдийг Хуваарь руу шилжүүл» — «Үндсэн хугацаа» нь ажилгүй багцын
+ * Хуваарийн ажил). «Санхүү засах» эрхтэй бол бүх гэрээ; эс бөгөөс тэр багцын ХУВААРИЙН ЗОХИОГЧ. `pkg` — гэрээний багцын
+ * нэр («Багц-4.2», «БАГЦ-16.1»); багцын хүрээтэй `bagtsKey`-ээр тулгана. Нэвтрэлт унтраалттай / Node / шалгуурт — зөвшөөрнө.
+ */
+export function canEditMainSpan(user: string | null | undefined, pkg: string): boolean {
+  if (!writeGuardsOn() || typeof window === 'undefined' || !AUTH.appId) return true;
+  if (hasCap(user, 'finEdit')) return true;
+  const sc = acl.scope(user, 'author');
+  if (sc == null) return !!user && acl.hasRole(user, 'author');
+  const k = bagtsKey(pkg);
+  return !!k && sc.some((g) => bagtsKey(g) === k);
 }
 
 /** Тухайн хэрэглэгчид энэ үүрэг байгаа эсэх (багцаас үл хамааран) */

@@ -74,9 +74,11 @@ ok('contractsOf — бүх гэрээ, үе шат → дугаараар; ХО 
 ok('эх код — огноо + сарын хувь л; гүйцэтгэлийн хувь бөглөхгүй; finEdit эрх; давхар төлөвлөгөөний хаалт', () => {
   assert.ok(!/guitsetgel_huvi|progressPct/.test(SRC), 'гүйцэтгэлийн хувь энд бөглөгдөх ёсгүй');
   assert.match(SRC, /patchPkgPct\(d\.key,/, 'сарын хувь гэрээний түлхүүрээр, зассан сарууд л');
-  assert.ok(SRC.indexOf("requireCap('finEdit')") < SRC.indexOf('patchPkgPct(d.key,'), 'эрх шалгалт хувь бичихээс ӨМНӨ');
+  /* 2026-11-19: «Санхүү засах» эсвэл тэр багцын хуваарийн зохиогч (`canEditMainSpan`) */
+  const guard = SRC.indexOf('if (!canEditMainSpan(currentUser(), d.pkgLabel || d.name))');
+  assert.ok(guard > 0 && guard < SRC.indexOf('patchPkgPct(d.key,'), 'эрх шалгалт хувь бичихээс ӨМНӨ');
   assert.match(SRC, /dirty && !\(await askConfirm\(/, '«Буцах» хадгалаагүй өөрчлөлтийг асууна');
-  assert.match(SRC, /applyAll\(CASHFLOW_NEW\.url, CASHFLOW_NEW\.oid, \{ updates: \[\{ \[CASHFLOW_NEW\.oid\]: d\.oid, \.\.\.upd \}\] \}, \{ cap: 'finEdit' \}\)/);
+  assert.match(SRC, /applyAll\(CASHFLOW_NEW\.url, CASHFLOW_NEW\.oid, \{ updates: \[\{ \[CASHFLOW_NEW\.oid\]: d\.oid, \.\.\.upd \}\] \}, \{ cap: hasCap\(currentUser\(\), 'finEdit'\) \? 'finEdit' : 'plan' \}\)/);
   assert.match(SRC, /upd\[F\.startDate\] = startMs; upd\[F\.endDate\] = endMs;/, 'огноо — Төлөвлөгөөт хугацааны талбар');
   /* 2026-11-16 (хэрэглэгч): сарын мөнгөний эхийн тэмдэг (`sar_mongo_eh`) хасагдсан — бүх ажил Хуваариас */
   assert.ok(!/monthSource|SRC_HUVAARI|CF_MONTH_WHERE/.test(SRC), 'эхийн тэмдэг, гараар сарын мөр уншихгүй/бичихгүй');

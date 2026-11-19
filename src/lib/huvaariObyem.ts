@@ -857,7 +857,12 @@ export function pctPatched(fresh: ReadonlyMap<string, number>, patch: ReadonlyMa
 
 /** Зассан саруудыг шинээр уншсан утгын дээр бичнэ. Буцаах нь — хадгалсны дараах бүтэн сарын хувь. */
 export async function patchPkgPct(pkg: string, name: string, patch: ReadonlyMap<string, number | null>): Promise<Map<string, number>> {
-  requireCap('finEdit');
+  /* 2026-11-19: «Санхүү засах» эсвэл тэр багцын хуваарийн зохиогч (`huvaariAcl.canEditMainSpan`) */
+  {
+    const { canEditMainSpan } = await import('./huvaariAcl');
+    const { currentUser } = await import('./who');
+    if (!canEditMainSpan(currentUser(), name)) throw new Error(tr('Энэ багцын «Үндсэн хугацаа»-г засах эрхгүй — «Санхүү засах» эрх эсвэл тэр багцын хуваарийн зохиогч байх ёстой.'));
+  }
   const { pct, oids, dups } = await loadPkgPct();
   const cur = pct.get(pkg) ?? new Map<string, number>();
   const next = pctPatched(cur, patch);

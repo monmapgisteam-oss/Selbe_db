@@ -8100,7 +8100,8 @@ const en: Record<string, string> = {
   "Мөрийн «+» товчоор тэр бүлгийн доор зөвшөөрөл нэмнэ. Бүлгийн хувь, жин автоматаар бодогдоно.": "Use a row's «+» button to add a permit under that group. Group percentages and weights are calculated automatically.",
   "Зөвшөөрлийн баримтын бүртгэл": "Permit document register",
   "Тухайлсан": "Specific buildings",
-  "Байхгүй": "None"
+  "Байхгүй": "None",
+  "Энэ багцын «Үндсэн хугацаа»-г засах эрхгүй — «Санхүү засах» эрх эсвэл тэр багцын хуваарийн зохиогч байх ёстой.": "No permission to edit this package's «Main period» — requires «Edit finance» or being the package schedule author."
 };
 
 export default en;

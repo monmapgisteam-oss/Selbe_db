@@ -913,6 +913,8 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
   }
 
   /* ── H…M: хадгалсан › үр удмын MIN эхлэх / MAX дуусах ── */
+  const minOf = (x: number | null, y: number | null): number | null => (x == null ? y : y == null ? x : Math.min(x, y));
+  const maxOf = (x: number | null, y: number | null): number | null => (x == null ? y : y == null ? x : Math.max(x, y));
   const D = new Map<PlanNode, (number | null)[]>();
   const DF: [keyof PlanStoredRow, 'min' | 'max'][] = [
     ['geree_ehleh', 'min'], ['geree_duusah', 'max'],
@@ -922,9 +924,10 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
   const agg = new Map<PlanNode, (number | null)[]>();
   for (const n of [...post, root]) {
     const own = DF.map(([k]) => (n.row ? saneDate(n.row[k]) : null));
+    /* 2026-11-19 (хэрэглэгч): блокгүй багцын «Үндсэн хугацаа» (хадгалсан) ба Хуваарийн ажлуудын муж — НЭГТГЭНЭ (min/max) */
     if (!n.children.length && n.phase === 'barilga' && n.sub === 'barilga' && !n.blok && inputs.pkgSpan) {
       const sp = inputs.pkgSpan(n.pkg, n);
-      if (sp !== undefined) { own[2] = sp?.[0] ?? null; own[3] = sp?.[1] ?? null; }
+      if (sp) { own[2] = minOf(own[2], sp[0]); own[3] = maxOf(own[3], sp[1]); }
     }
     const a: (number | null)[] = DF.map(() => null);
     for (const c of n.children) {
@@ -937,7 +940,10 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
       });
     }
     agg.set(n, a);
-    D.set(n, own.map((v, i) => v ?? a[i]));
+    /* Гэрээний огноо (H/I) — хадгалсан › үр удмын; ГҮЙЦЭТГЭГЧИЙН төлөвлөгөөт огноо (L/M) — хадгалсан ба үр удмын MIN/MAX
+       (2026-11-19, хэрэглэгч: бүх ажлын хамгийн эрт эхлэх, хамгийн орой дуусах) */
+    const join = n.phase === 'barilga';
+    D.set(n, own.map((v, i) => (join && i === 2 ? minOf(v, a[i]) : join && i === 3 ? maxOf(v, a[i]) : v ?? a[i])));
   }
 
   /* ── N…S: навч — дүрэм/дарах утга, эцэг — Σ F·X ── */
