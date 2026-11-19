@@ -19,7 +19,7 @@ import {
   type BlockProgressMap, type BlockUniverse,
 } from './blockProgress';
 import { text, num } from './format';
-import { BAGTS_ORIGIN } from './brief';
+import { bagtsOrigin } from './brief';
 import { housingPct } from './gdash';
 import { t as tr } from './i18nCore';
 
@@ -111,7 +111,7 @@ export function joinBagts(blocks: Row[], prog: BlockProgressMap, universe: Block
     const k = bagtsKey(name);
     const cur = by.get(k) ?? {
       key: k, label: name, blocks: 0, ail: 0, ailMissing: 0, ailBlocks: 0, contractor: '—',
-      origin: BAGTS_ORIGIN[name.trim()] ?? '—', progress: null, measured: 0, total: 0, missing: 0,
+      origin: bagtsOrigin(name) ?? '—', progress: null, measured: 0, total: 0, missing: 0,
       keys: [],
     };
     by.set(k, cur);

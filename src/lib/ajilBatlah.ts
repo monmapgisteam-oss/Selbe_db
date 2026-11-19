@@ -5,10 +5,11 @@
  */
 
 import { GUITS } from '@/lib/services/env';
-import { AUTH, roleForUser } from './services';
+import { AUTH, canonPkg, roleForUser } from './services';
 import { ajilAclReady, ajilScope } from './ajilAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser, requireCap } from './who';
 import type { NewRow } from './submission';
@@ -651,7 +652,7 @@ export async function submitAjil(args: {
     const own = sameAsLogin(args.author);
     if (own) return own;
     const sc = ajilScope(meNow ?? args.author, 'editor');
-    if (sc !== null && !sc.includes(args.pkgGroup))
+    if (!scopeHas(sc, args.pkgGroup))
       return { ok: false, error: tr('Энэ багцад нэмэлт ажил илгээх эрхгүй.') };
   }
   const url = await tableUrl();
@@ -662,7 +663,7 @@ export async function submitAjil(args: {
   }
   const attrs: Attrs = {
     [F.pkgKey]: args.pkgKey,
-    [F.pkgGroup]: args.pkgGroup,
+    [F.pkgGroup]: canonPkg(args.pkgGroup),
     [F.status]: AJIL_STATUS.pending,
     [F.author]: args.author.toLowerCase(),
     [F.authorSent]: serverNow(),
@@ -748,7 +749,7 @@ export async function decideAjil(args: {
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const sc = ajilScope(meNow ?? me, 'approver');
-    if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
+    if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын нэмэлт ажлыг батлах эрхгүй.') };
   }
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
@@ -968,7 +969,7 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
     if (AUTH.appId) {
       const meNow = currentUser() ?? me;
       const sc = roleForUser(meNow) === 'super' ? null : ajilScope(meNow, 'approver');
-      if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? ''))) {
+      if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? ''))) {
         return { ok: false, error: tr('Энэ багцын нэмэлт ажлыг батлах эрхгүй.') };
       }
     }
@@ -1040,7 +1041,7 @@ export async function updateAjil(args: {
   }
   if (AUTH.appId) {
     const sc = ajilScope(currentUser() ?? me, 'editor');
-    if (sc !== null && !sc.includes(String(cur[0][F.pkgGroup] ?? '')))
+    if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцад нэмэлт ажил илгээх эрхгүй.') };
   }
   const gone = (st: string | null, by: string | null) => (by
@@ -1101,7 +1102,7 @@ export async function countAjilPending(username: string | null | undefined): Pro
     const sc = AUTH.appId ? ajilScope(me, 'approver') : null;
     if (Array.isArray(sc) && sc.length === 0) return 0;
     const rows = await loadBadgePending();
-    return rows.filter((x) => (sc == null || sc.includes(x.pkgGroup)) && x.author !== me).length;
+    return rows.filter((x) => scopeHas(sc, x.pkgGroup) && x.author !== me).length;
   } catch {
     return null;
   }

@@ -20,6 +20,16 @@ import type { CapKey } from './caps';
 /** «Бүх багц» — тодорхой багц сонгоогүй гэсэн утга */
 export const ALL_BAGTS = '*';
 
+/**
+ * Хамрах хүрээнд багц орох уу — `null`/`undefined` = хязгааргүй, `ALL_BAGTS` = бүх багц. Нэрийг `bagtsKey`-ээр
+ * жишнэ: «Багц 4-1» (хуучин эрх) ба «Багц-4.1» (стандарт) нэг багц (2026-11-19). Хоосон нэр хэзээ ч орохгүй.
+ */
+export const scopeHas = (sc: readonly string[] | null | undefined, name: unknown): boolean => {
+  if (sc == null) return true;
+  const k = bagtsKey(name);
+  return sc.some((b) => b === ALL_BAGTS || (k !== '' && bagtsKey(b) === k));
+};
+
 /* ══════════ Remote агшин ба локал бичилтийн дараалал (2026-09-25) ══════════ */
 
 /**

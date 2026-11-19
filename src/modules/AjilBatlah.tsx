@@ -14,9 +14,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { useAuth } from '@/components/AuthGate';
 import { ajilScope, hasAjilRole, subscribeAjilAcl } from '@/lib/ajilAcl';
-import { roleForUser } from '@/lib/services';
+import { roleForUser, sameBagts } from '@/lib/services';
 import { date, dayKey, fixCyr, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import {
@@ -190,7 +191,7 @@ export function AjilBatlah() {
 
   const all = useMemo(() => (st.k === 'ready' ? st.rows : []), [st]);
   const mine = useMemo(
-    () => all.filter((x) => scope == null || scope.includes(x.pkgGroup)),
+    () => all.filter((x) => scopeHas(scope, x.pkgGroup)),
     [all, scope],
   );
   /**
@@ -236,7 +237,7 @@ export function AjilBatlah() {
           || label.toLowerCase().includes(needle)
           || x.author.toLowerCase().includes(needle)
           || (x.note ?? '').toLowerCase().includes(needle))
-        && (!grp || x.pkgGroup === grp);
+        && (!grp || sameBagts(x.pkgGroup, grp));
     });
   }, [mine, q, grp]);
 
@@ -249,8 +250,8 @@ export function AjilBatlah() {
   const returned = useMemo(() => {
     if (st.k !== 'ready') return [];
     const needle = q.trim().toLowerCase();
-    return st.returned.filter((x) => (scope == null || scope.includes(x.pkgGroup))
-      && (!grp || x.pkgGroup === grp)
+    return st.returned.filter((x) => scopeHas(scope, x.pkgGroup)
+      && (!grp || sameBagts(x.pkgGroup, grp))
       && (!needle
         || (PKG_BY_KEY.get(x.pkgKey)?.label ?? x.pkgKey).toLowerCase().includes(needle)
         || x.author.toLowerCase().includes(needle)

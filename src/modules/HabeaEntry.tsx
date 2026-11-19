@@ -55,7 +55,7 @@ function EntGate({ ok }: { ok: boolean }) {
   );
 }
 /** «Багц 3.1» (шүүлтийн түлхүүр) → дэлгэцийн нэр */
-export const pkgColLabel = (name: string) => tr('Багц {0}', name.replace(/^Багц\s*/, ''));
+export const pkgColLabel = (name: string) => tr('Багц {0}', name.replace(/^Багц[-\s]*/, ''));
 
 /**
  * Картын гарчгийн жижиг «+ Нэмэх» товч — ЗӨВХӨН эрхтэйд зурагдана (дуудагч шийднэ).

@@ -546,6 +546,74 @@ export const bagtsKey = (v: unknown) => {
 };
 
 /**
+ * Зураасаар («N-M») бичигдэж болох ДЭД багцын кодууд — `PKGS`-ийн бүлгүүд (+2.3.x). Жагсаалтад алга «N-M» нь
+ * диапазон («Багц 1-4») байж болох тул `canonPkg` хөндөхгүй. `pkgCanon.check` `PKGS`-тэй тулгана.
+ */
+export const PKG_SUB_CODES: ReadonlySet<string> = new Set([
+  '3.1', '3.2', '3.3', '4.1', '4.2', '2.3.1', '2.3.2',
+  '5.1', '5.2', '5.3', '5.4',
+  '6.1', '6.2', '6.3', '6.4', '6.5', '6.6', '6.7', '6.8', '6.10',
+  '7.1', '7.2',
+  '16.1', '16.2', '16.3', '16.4', '16.5', '16.6', '16.7', '16.8',
+  '17.1', '17.2', '17.3', '17.4', '17.5', '17.6', '17.7',
+  '19.1', '19.2', '19.3',
+  '20.1', '20.2', '20.3', '20.4', '20.5', '20.6', '20.7', '20.8', '20.9',
+]);
+
+const PKG_RE = /^багц\s*[-_–]?\s*(\d+(?:\s*[.\-_–]\s*\d+){0,2})$/iu;
+
+/** Ганц багцын нэр → «Багц-N.M»; таарахгүй бол `null` */
+const canonOne = (s: string): string | null => {
+  if (/^БАГЦ\d+$/u.test(s)) return null; // дотоод түлхүүр («БАГЦ41»)
+  const m = s.match(PKG_RE);
+  if (!m) return null;
+  const parts = m[1].split(/\s*[.\-_–]\s*/u).map((p) => String(Number(p)));
+  // Хоёр хэсэгтэй зураасан хэлбэр — мэдэгдэх дэд багц биш бол диапазон гэж үзнэ
+  if (parts.length === 2 && /\d\s*[-–]\s*\d/u.test(m[1]) && !PKG_SUB_CODES.has(parts.join('.'))) return null;
+  if (parts.length > 1 && parts[parts.length - 1] === '0') parts.pop(); // «10.0» → «10»
+  return `Багц-${parts.join('.')}`;
+};
+
+/**
+ * БАГЦЫН НЭРИЙН НЭГ СТАНДАРТ БИЧЛЭГ (2026-11-19): «Багц 4-1»/«БАГЦ-4.1»/«Багц5_1» → «Багц-4.1»/«Багц-5.1»;
+ * «<багц> · үлдэгдэл» шошгын эхийг ч мөн («Багц 4-1 · 9 давхар» → «Багц-4.1 · 9 давхар»). Диапазон/жагсаалт,
+ * дотоод түлхүүр, чөлөөт текст — ХЭВЭЭР. Багцын нэр бичих газар бүр үүгээр дамжина.
+ */
+export function canonPkg(v: string): string;
+export function canonPkg<T>(v: T): T | string;
+export function canonPkg(v: unknown): unknown {
+  if (typeof v !== 'string') return v;
+  const s = v.trim();
+  const one = canonOne(s);
+  if (one != null) return one;
+  const i = s.indexOf('·');
+  if (i > 0) {
+    const head = canonOne(s.slice(0, i).trim());
+    if (head != null) return `${head} · ${s.slice(i + 1).trim()}`;
+  }
+  return v;
+}
+
+/**
+ * Текст доторх БАГЦ бүрийн нэрийг стандарт болгох («Гүйцэтгэл · 2026.09.07 · Багц 4-1 · 9 давхар» → «… · Багц-4.1 · …») —
+ * хуучин/шинэ бичлэгтэй текстийг хооронд нь `includes`-ээр жишихэд.
+ */
+export const canonPkgText = (v: unknown): string =>
+  String(v ?? '').replace(/багц\s*[-_–]?\s*\d+(?:\s*[.\-_–]\s*\d+){0,2}/giu, (t) => canonOne(t) ?? t);
+
+/** Текстэд багцын нэр (эсвэл «<багц> · …» шошго) агуулагдах уу — хуучин/шинэ бичлэг аль аль нь таарна */
+export const pkgTextHas = (text: unknown, name: unknown): boolean => {
+  const n = canonPkgText(name);
+  return n !== '' && canonPkgText(text).includes(n);
+};
+
+/** Хоёр багцын нэр нэг багц уу (`bagtsKey`-ээр; хоосон нь хэзээ ч таарахгүй) */
+export const sameBagts = (a: unknown, b: unknown): boolean => {
+  const k = bagtsKey(a);
+  return k !== '' && k === bagtsKey(b);
+};
+
+/**
  * ОЛОН БАГЦЫГ ХАМАРСАН мөр мөн үү («БАГЦ 1-4», «БАГЦ 1-6\nБАГЦ 8-17»)?
  *
  * Тиймээс багц↔гэрээ тааруулах бүх газар (Санхүүжилт, Барилгын цогц хяналт)

@@ -36,6 +36,11 @@ const superName = Object.entries(ROLE_BY_USER).find(([, x]) => x === 'super')[0]
 
 /* ── 1. Хуваарилагдаагүй → ЮУ Ч ХИЙХГҮЙ (fail-closed) ── */
 _syncRemoteHuvaari([]);
+/* 2026-11-19 (нийлүүлэлт): багцын нэр нэг хэлбэрт («Багц-2») — хүрээ одоогийн хуудасны нэрээр буцаана */
+const { PKG_GROUPS: __G } = await import('@/modules/sheet/bagts.pkg.ts');
+const { bagtsKey: __k } = await import('@/lib/services.ts');
+const canon1 = (x) => __G.find((g) => __k(g) === __k(x)) ?? x;
+const canonG = (xs) => xs.map(canon1);
 assert.deepEqual(huvaariScope('zohiogch_a', 'author'), [], 'хуваарилагдаагүй = хоосон');
 assert.deepEqual(huvaariScope('zohiogch_a', 'approver'), [], 'батлагчаар ч хоосон');
 assert.deepEqual(huvaariScope(null, 'author'), [], 'нэргүй = хоосон');
@@ -46,7 +51,7 @@ console.log('✅ fail-closed');
  * 2. ҮҮРЭГ нь ХҮРЭЭГ ЯЛГАНА — ЭНЭ ФАЙЛЫН ГОЛ ШАЛГУУР
  * ══════════════════════════════════════════════════════════════ */
 _syncRemoteHuvaari([{ user: 'zohiogch_a', roles: ['author'], bagts: ['Багц 2'] }]);
-assert.deepEqual(huvaariScope('zohiogch_a', 'author'), ['Багц 2'], 'зохиогчийн багц');
+assert.deepEqual(huvaariScope('zohiogch_a', 'author'), canonG(['Багц 2']), 'зохиогчийн багц');
 assert.deepEqual(
   huvaariScope('zohiogch_a', 'approver'), [],
   'ЗОХИОГЧ нь БАТЛАГЧ болж болохгүй — үүрэг нь хүрээг ялгана',
@@ -55,7 +60,7 @@ assert.equal(hasPlanRole('zohiogch_a', 'author'), true);
 assert.equal(hasPlanRole('zohiogch_a', 'approver'), false);
 
 _syncRemoteHuvaari([{ user: 'batlagch_b', roles: ['approver'], bagts: ['Багц 5'] }]);
-assert.deepEqual(huvaariScope('batlagch_b', 'approver'), ['Багц 5']);
+assert.deepEqual(huvaariScope('batlagch_b', 'approver'), canonG(['Багц 5']));
 assert.deepEqual(
   huvaariScope('batlagch_b', 'author'), [],
   'БАТЛАГЧ нь ЗОХИОГЧ болж болохгүй',
@@ -63,8 +68,8 @@ assert.deepEqual(
 
 /* Хоёулаа байж БОЛНО — өөрийгөө батлахаас `decidePlan` хамгаална */
 _syncRemoteHuvaari([{ user: 'hoyul', roles: ['author', 'approver'], bagts: ['Багц 1'] }]);
-assert.deepEqual(huvaariScope('hoyul', 'author'), ['Багц 1']);
-assert.deepEqual(huvaariScope('hoyul', 'approver'), ['Багц 1']);
+assert.deepEqual(huvaariScope('hoyul', 'author'), canonG(['Багц 1']));
+assert.deepEqual(huvaariScope('hoyul', 'approver'), canonG(['Багц 1']));
 console.log('✅ ҮҮРЭГ нь ХҮРЭЭГ ялгана');
 
 /* ── 3. «Бүх багц» · том/жижиг үсэг · super ── */
@@ -99,7 +104,7 @@ _syncRemoteHuvaari([
   { user: 'dup', roles: ['author'], bagts: ['Багц 1'] },
   { user: 'dup', roles: ['approver'], bagts: ['Багц 3'] },
 ]);
-assert.deepEqual(huvaariScope('dup', 'approver'), ['Багц 3'], 'давхар мөрд сүүлийнх ялна');
+assert.deepEqual(huvaariScope('dup', 'approver'), canonG(['Багц 3']), 'давхар мөрд сүүлийнх ялна');
 assert.deepEqual(huvaariScope('dup', 'author'), [], 'өмнөх мөрийн үүрэг үлдэв');
 
 _syncRemoteHuvaari([]);
@@ -125,13 +130,13 @@ const w = setHuvaariAssign('injener_x', ['approver'], ['Багц 5']);
 assert.equal(w.ok, true);
 assert.equal(ACL.stageOfUser('injener_x'), 'engineer', 'урсгалын ШАТ хэвээр');
 assert.deepEqual(ACL.bagtsScope('injener_x'), ['Багц 1'], 'урсгалын БАГЦ хэвээр');
-assert.deepEqual(huvaariScope('injener_x', 'approver'), ['Багц 5'], 'хуваарийн багц ӨӨРИЙНХӨӨ');
+assert.deepEqual(huvaariScope('injener_x', 'approver'), canonG(['Багц 5']), 'хуваарийн багц ӨӨРИЙНХӨӨ');
 
 /* Урсгалын ШАТГҮЙ хүн хуваарийн үүрэгтэй байж ЧАДНА */
 ACL._syncRemoteAssigns([]);
 _syncRemoteHuvaari([{ user: 'huv_only', roles: ['approver'], bagts: ['Багц 4'] }]);
 assert.equal(ACL.stageOfUser('huv_only'), null, 'урсгалын шатгүй');
-assert.deepEqual(huvaariScope('huv_only', 'approver'), ['Багц 4'], 'ГЭВЧ хуваарийн батлагч');
+assert.deepEqual(huvaariScope('huv_only', 'approver'), canonG(['Багц 4']), 'ГЭВЧ хуваарийн батлагч');
 console.log('✅ ТУСГААРЛАЛТ — урсгал ↔ хуваарь хамааралгүй');
 
 /* ── 7. Хасалт · үүрэг солих ── */
@@ -148,7 +153,7 @@ _syncRemoteHuvaari([]);
 setHuvaariAssign('sw', ['author'], ['Багц 1'], false);
 assert.equal(setHuvaariAssign('sw', [], ['Багц 1']).ok, false, 'үүрэггүй хуваарилалт үүсэв');
 assert.equal(setHuvaariAssign('sw', ['author'], []).ok, false, 'багцгүй хуваарилалт үүсэв');
-assert.deepEqual(huvaariScope('sw', 'author'), ['Багц 1'], 'татгалзсан оролдлого утга өөрчлөв');
+assert.deepEqual(huvaariScope('sw', 'author'), canonG(['Багц 1']), 'татгалзсан оролдлого утга өөрчлөв');
 console.log('✅ хасалт · үүрэг солих');
 
 /* ══════════════════════════════════════════════════════════════
@@ -162,14 +167,14 @@ _syncRemoteHuvaari([]);
   ], false);
   assert.equal(r.ok, true, 'үүрэг бүрд өөр багц олгож чадсангүй');
 
-  assert.deepEqual(huvaariScope('holimog', 'author'), ['Багц 1'],
+  assert.deepEqual(huvaariScope('holimog', 'author'), canonG(['Багц 1']),
     'зохиогчийн хүрээ');
-  assert.deepEqual(huvaariScope('holimog', 'approver'), ['Багц 5'],
+  assert.deepEqual(huvaariScope('holimog', 'approver'), canonG(['Багц 5']),
     'батлагчийн хүрээ');
 
-  assert.equal(huvaariScope('holimog', 'approver').includes('Багц 1'), false,
+  assert.equal(huvaariScope('holimog', 'approver').includes(canon1('Багц 1')), false,
     'ҮРЖВЭР эргэж ирэв — Багц 1-д батлагч болжээ (тэр багц ГАЦНА)');
-  assert.equal(huvaariScope('holimog', 'author').includes('Багц 5'), false,
+  assert.equal(huvaariScope('holimog', 'author').includes(canon1('Багц 5')), false,
     'ҮРЖВЭР эргэж ирэв — Багц 5-д зохиогч болжээ');
 
   /* Хоёулаа үүрэг нь БАЙГАА — зөвхөн хүрээ нь ялгаатай */
@@ -177,22 +182,22 @@ _syncRemoteHuvaari([]);
   assert.equal(hasPlanRole('holimog', 'approver'), true);
 
   /* Үүрэг заагаагүй `scope` нь БҮХ үүргийн НЭГДЭЛ */
-  assert.deepEqual(huvaariScope('holimog').sort(), ['Багц 1', 'Багц 5'],
+  assert.deepEqual(huvaariScope('holimog').sort(), canonG(['Багц 1', 'Багц 5']).sort(),
     'үүрэг заагаагүй хүрээ нь нэгдэл байх ёстой');
 }
 
 _syncRemoteHuvaari([{ user: 'huuchin', roles: ['author', 'approver'], bagts: ['Багц 2'] }]);
-assert.deepEqual(huvaariScope('huuchin', 'author'), ['Багц 2'], 'хуучин мөр — зохиогч');
-assert.deepEqual(huvaariScope('huuchin', 'approver'), ['Багц 2'], 'хуучин мөр — батлагч');
+assert.deepEqual(huvaariScope('huuchin', 'author'), canonG(['Багц 2']), 'хуучин мөр — зохиогч');
+assert.deepEqual(huvaariScope('huuchin', 'approver'), canonG(['Багц 2']), 'хуучин мөр — батлагч');
 
 /* ШИНЭ хэлбэр ч уншигдана */
 _syncRemoteHuvaari([{
   user: 'shine',
   grants: [{ role: 'author', bagts: ['Багц 3'] }, { role: 'approver', bagts: ['Багц 4'] }],
 }]);
-assert.deepEqual(huvaariScope('shine', 'author'), ['Багц 3'], 'шинэ мөр — зохиогч');
-assert.deepEqual(huvaariScope('shine', 'approver'), ['Багц 4'], 'шинэ мөр — батлагч');
-assert.equal(huvaariScope('shine', 'author').includes('Багц 4'), false,
+assert.deepEqual(huvaariScope('shine', 'author'), canonG(['Багц 3']), 'шинэ мөр — зохиогч');
+assert.deepEqual(huvaariScope('shine', 'approver'), canonG(['Багц 4']), 'шинэ мөр — батлагч');
+assert.equal(huvaariScope('shine', 'author').includes(canon1('Багц 4')), false,
   'шинэ мөрөөс үржвэр гарав');
 
 /* `grantsOf` нь хуваарилалтыг ЯГ ХЭВЭЭР буцаана — панел үүнийг заснаа */
@@ -217,7 +222,7 @@ console.log('✅ үүрэг бүрд ӨӨР багц — үржвэр арилс
   const re = setHuvaariAssign('readd', ['author'], ['Багц 2'], false); // хооронд нь дахин
   assert.equal(re.ok, true);
   await Promise.all([rm.granted, re.sync]);
-  assert.deepEqual(huvaariScope('readd', 'author'), ['Багц 2'], 'сүүлийн хуваарилалт ялна');
+  assert.deepEqual(huvaariScope('readd', 'author'), canonG(['Багц 2']), 'сүүлийн хуваарилалт ялна');
   assert.ok(C.capsStored('readd').includes('plan'),
     'хойшилсон хасалт дахин хуваарилагдсан хүний `plan` эрхийг АРЧИВ');
   assert.ok(C.capsStored('readd').includes('addRow'), 'хамааралгүй эрх хөндөгдөхгүй');

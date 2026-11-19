@@ -618,7 +618,7 @@ export function projectPlanScope(
   if (!pc) return null;
   const sc = planScope(pc.byBagts, pkgCostWeight(fin.contracts.map(cfWeightRow)), housingKeys(fin));
   /* PKGS-д алга (дэд бүтэц г.м.) бол «БАГЦ14» → «Багц 14» */
-  const name = (k: string) => PKGS.find((p) => bagtsKey(p.group) === k)?.group ?? k.replace(/^БАГЦ/, 'Багц ');
+  const name = (k: string) => PKGS.find((p) => bagtsKey(p.group) === k)?.group ?? k.replace(/^БАГЦ/, 'Багц-');
   return { keys: sc.keys, excluded: sc.excluded.map(name) };
 }
 

@@ -346,8 +346,8 @@ const stored = fx.rows.map((r, i) => ({
 {
   assert.equal(failLabel('milestones'), 'Чухал үе шатын огноо');
   assert.equal(failLabel('blockProgress'), 'Блокийн гүйцэтгэл');
-  assert.equal(failLabel('sheet:b1_9f'), 'Багц 1 · 9 давхар бөглөх хуудас');
-  assert.equal(failLabel('schedule:b41_9f'), 'Багц 4-1 · 9 давхар хуваарь');
+  assert.equal(failLabel('sheet:b1_9f'), 'Багц-1 · 9 давхар бөглөх хуудас');
+  assert.equal(failLabel('schedule:b41_9f'), 'Багц-4.1 · 9 давхар хуваарь');
   assert.equal(failLabel('land:БАГЦ1'), 'БАГЦ1 газар чөлөөлөлт');
   assert.equal(failLabel('sheet:zzz'), 'zzz бөглөх хуудас', 'танигдаагүй багц — түлхүүрээр');
   assert.equal(failLabel('somethingNew'), 'somethingNew', 'танигдаагүй код нуугдахгүй');

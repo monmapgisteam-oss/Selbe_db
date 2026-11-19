@@ -10,7 +10,7 @@ import { useAsync } from '@/lib/useAsync';
 import { applyAll } from '@/lib/tableWrite';
 import { syncZuragPlan } from '@/lib/zuragPlanSync';
 import { invalidate } from '@/lib/dataBus';
-import { ZURAG_BURTGEL } from '@/lib/services';
+import { ZURAG_BURTGEL, canonPkg, sameBagts } from '@/lib/services';
 import { entDeletePdf, entPdfBlob, entSearch, entUploadPdf, type EntPdf } from '@/lib/entDocs';
 import { pdfIndex, pdfsOf, tagsFor, type ZPdfKind } from '@/lib/zuragPdf';
 import { askConfirm } from '@/lib/confirm';
@@ -118,11 +118,11 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
       {pkgOpts?.map((p) => <option key={p} value={p}>{p}</option>)}
     </select>
   );
-  const pkgs = useMemo(() => [...new Set(rows.map((r) => r.bagts).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'mn')), [rows]);
+  const pkgs = useMemo(() => [...new Set(rows.map((r) => canonPkg(r.bagts)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'mn')), [rows]);
   const bulegs = useMemo(() => [...new Set(rows.map((r) => r.buleg).filter(Boolean))], [rows]);
   const shown = useMemo(() => {
     const qx = find.trim().toLowerCase();
-    return rows.filter((r) => (!pkg || r.bagts === pkg) && (!noPdf || !pdfIdx || pdfsOf(r, pdfIdx).length === 0)
+    return rows.filter((r) => (!pkg || sameBagts(r.bagts, pkg)) && (!noPdf || !pdfIdx || pdfsOf(r, pdfIdx).length === 0)
       && (!qx || `${r.ner} ${r.shifr} ${r.bagts} ${r.asuudal}`.toLowerCase().includes(qx)));
   }, [rows, find, pkg, noPdf, pdfIdx]);
   /* 2026-11-16 (хэрэглэгч: «төсөв, зургийн бүртгэлийг төсвийн багцын нэрээр нэгтгэнэ») — төсөвтэй бол анхдагч нь багцаар:
@@ -240,8 +240,9 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
       if (!(v.ner ?? '').trim()) throw new Error(tr('Бичиг баримтын нэрийг бичнэ үү.'));
       const u: Record<string, unknown> = { [ZURAG_BURTGEL.oid]: edit.oid };
       for (const e of EF) {
-        const t = (v[e.k] ?? '').trim();
-        if (t === e.get(r0)) continue;
+        const t0 = (v[e.k] ?? '').trim();
+        const t = e.k === 'bagts' ? canonPkg(t0) : t0; // багцын нэр — стандарт бичлэгээр
+        if (t0 === e.get(r0)) continue;
         if (e.kind === 'text') { u[e.f] = t || null; continue; }
         if (e.kind === 'date') {
           const ms = msOf(t);
@@ -264,7 +265,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
     if (!add || !add.ner.trim() || !add.buleg) { setErr(tr('Бүлэг ба баримтын нэрийг бөглөнө үү.')); return; }
     void run(async () => {
       await applyAll(ZURAG_BURTGEL.url, ZURAG_BURTGEL.oid, { adds: [{
-        buleg: add.buleg, ded_buleg: add.ded.trim() || null, bagts: add.bagts.trim() || null,
+        buleg: add.buleg, ded_buleg: add.ded.trim() || null, bagts: canonPkg(add.bagts.trim()) || null,
         ner: add.ner.trim(), shifr: add.shifr.trim() || null,
       }] }, CAP);
       invalidate('ZURAG_BURTGEL');

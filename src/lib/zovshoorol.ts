@@ -3,7 +3,7 @@
  */
 
 import { agsFetch } from '@/modules/sheet/ags';
-import { GUITS } from '@/lib/services';
+import { GUITS, canonPkg } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { invalidate } from '@/lib/dataBus';
 import { requireCap } from '@/lib/who';
@@ -363,7 +363,7 @@ export type ZovDraft = Omit<Zov, 'oid' | 'tolov'> & {
  * НООРОГИЙГ `applyEdits`-ийн бүтэн `attributes` болгоно (ШИНЭ мөрд).
  */
 const zovAttrs = (d: ZovDraft): Record<string, unknown> => ({
-  [F.bagts]: d.bagts,
+  [F.bagts]: canonPkg(d.bagts), // стандарт нэрээр (2026-11-19)
   [F.shat]: d.shat,
   [F.ner]: d.ner,
   [F.selbe]: d.selbe || null,
@@ -400,7 +400,7 @@ async function slotRows(
   oidName: string, bagts: string, shat: number, exceptOid?: number,
 ): Promise<{ oid: number; ner: string }[]> {
   const q = (s: string) => `N'${s.replace(/'/g, "''")}'`;
-  let where = `${F.bagts} = ${q(bagts.trim())} AND ${F.shat} = ${Math.trunc(shat)}`;
+  let where = `${F.bagts} IN (${[...new Set([canonPkg(bagts.trim()), bagts.trim()])].map(q).join(', ')}) AND ${F.shat} = ${Math.trunc(shat)}`;
   if (exceptOid) where += ` AND ${oidName} <> ${Math.trunc(exceptOid)}`;
   const j = await agsFetch(`${URL}/query`, {
     where,

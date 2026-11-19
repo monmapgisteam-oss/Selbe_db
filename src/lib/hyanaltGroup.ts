@@ -3,6 +3,7 @@
  */
 
 import { t as tr } from './i18nCore';
+import { bagtsKey, canonPkgText } from './services';
 import { DECISION, F, OWNER, STATUS, type Row, type Stage, type Status } from './hyanalt';
 
 export type Work = {
@@ -31,7 +32,8 @@ export type Work = {
 /**
  * АЖЛЫН ТҮЛХҮҮР — тойргуудыг НЭГ ажил гэж таних.
  */
-const workKey = (r: Row) => `${r[F.bagts]}|${r[F.ajil]}|${r[F.company]}`;
+// Багц/ажлын нэрийг нормчилно — «Багц 4-1» ба «Багц-4.1» бичлэгийн тойргууд нэг ажил (2026-11-19)
+const workKey = (r: Row) => `${bagtsKey(r[F.bagts])}|${canonPkgText(r[F.ajil])}|${r[F.company]}`;
 
 export function groupWorks(rows: Row[]): Work[] {
   const by = new Map<string, Row[]>();

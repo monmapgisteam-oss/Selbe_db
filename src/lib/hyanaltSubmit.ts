@@ -5,7 +5,7 @@
  * Тэр агшнаас эхлэн ажил талбайн инженерийн дараалалд орно.
  */
 
-import { BUILDING } from './services';
+import { BUILDING, bagtsKey, canonPkg, canonPkgText, pkgTextHas, sameBagts } from './services';
 import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/authToken';
 import { addRows, addedOid, deleteRow, ensureUniqueId, queryAll, F, HYANALT, OWNER, STATUS, type Attrs, type Row, type Status } from './hyanalt';
@@ -142,7 +142,7 @@ export function needsRegistration(
 
 /** Ажлын түлхүүр — `hyanaltGroup.workKey`-тэй ЯГ ИЖИЛ (`багц|ажил|компани`). */
 const workKeyOf = (r: Attrs) =>
-  `${String(r[F.bagts] ?? '')}|${String(r[F.ajil] ?? '')}|${String(r[F.company] ?? '')}`;
+  `${bagtsKey(r[F.bagts])}|${canonPkgText(r[F.ajil])}|${String(r[F.company] ?? '')}`;
 
 /** `hyanaltStore.toRow`-ын `num`-тэй ижил — тоо биш бол 0. */
 const num0 = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -201,10 +201,10 @@ export function reviewLockState(
   const days = new Set<string>();
   const ret = new Set<string>();
   for (const w of groupWorks(rows.map(asRow))) {
-    if (w.bagts !== bagts) continue;
+    if (!sameBagts(w.bagts, bagts)) continue;
     const m = FILL_DAY.exec(w.ajil);
     if (!m) continue;
-    if (sheet && !w.ajil.includes(sheet) && otherSheets.some((n) => n && w.ajil.includes(n))) continue;
+    if (sheet && !pkgTextHas(w.ajil, sheet) && otherSheets.some((n) => n && pkgTextHas(w.ajil, n))) continue;
     if (w.status === STATUS.transferred) continue;
     (w.owner === 'company' ? ret : days).add(m[1]);
   }
@@ -267,23 +267,23 @@ export function hasOpenLegacy(
     rows,
     sheetOid,
     (r) =>
-      String(r[F.bagts] ?? '') === bagts &&
+      sameBagts(r[F.bagts], bagts) &&
       String(r[F.company] ?? '') === company &&
-      String(r[F.ajil] ?? '') === legacyAjil,
+      canonPkgText(r[F.ajil]) === canonPkgText(legacyAjil),
   ).some((r) => String(r[F.status] ?? '') !== STATUS.transferred);
 }
 
 /**
  * Нийтэлсэн гүйцэтгэлийг хяналтад бүртгэнэ.
  *
- * @param bagts    багцын нэр — «Багц 4-2» маягаар
+ * @param bagts    багцын нэр — «Багц-4.2» маягаар (бичихдээ `canonPkg`)
  * @param fillMs   бөглөсөн өдөр (илгээлтийн `payload.fillMs`; батлагдахад
  *                 архивын жаазны `buglusun_ognoo` болно)
  * @param sheetOid ИЛГЭЭЛТИЙН мөрийн OBJECTID (`Selbe_Guitsetgel_Draft`,
  *                 `sub|<pkgKey>`). Архивын дугаар БИШ — гүйцэтгэл нь
  *                 хараахан архивт ороогүй; `hyanaltDetail`/`hyanaltStore`
  *                 үүгээр илгээлтийг олно.
- * @param sheet    ХУУДСЫН нэр («Багц 1 · 9 давхар») — доорх.
+ * @param sheet    ХУУДСЫН нэр («Багц-1 · 9 давхар») — доорх.
  * @returns бүртгэлийн дугаар, эсвэл алдааны мессеж
  */
 export async function submitForReview(
@@ -303,13 +303,13 @@ export async function submitForReview(
     const id = nextId(rows);
     const legacyAjil = `Гүйцэтгэл · ${dayLabel(fillMs)}`;
     const openLegacy = hasOpenLegacy(rows, bagts, company, legacyAjil, sheetOid);
-    const ajil = !sheet || openLegacy ? legacyAjil : `${legacyAjil} · ${sheet}`;
+    const ajil = !sheet || openLegacy ? legacyAjil : `${legacyAjil} · ${canonPkgText(sheet)}`;
     /*
      * ТОЙРГИЙН ДУГААР — тухайн (багц|ажил|компани) түлхүүрийн ХАМГИЙН ИХ + 1.
      */
     const ergelt = rows.reduce((m, r) => {
-      if (String(r[F.bagts] ?? '') !== bagts) return m;
-      if (String(r[F.ajil] ?? '') !== ajil) return m;
+      if (!sameBagts(r[F.bagts], bagts)) return m;
+      if (canonPkgText(r[F.ajil]) !== ajil) return m;
       if (String(r[F.company] ?? '') !== company) return m;
       const n = Number(r[F.ergelt]);
       return Number.isFinite(n) && n > m ? n : m;
@@ -337,7 +337,7 @@ export async function submitForReview(
       [F.id]: id,
       [F.sheetOid]: sheetOid ?? 0,
       [F.ergelt]: ergelt,
-      [F.bagts]: bagts,
+      [F.bagts]: canonPkg(bagts),
       [F.ajil]: ajil,
       [F.company]: company,
       [F.companySent]: serverNow(),

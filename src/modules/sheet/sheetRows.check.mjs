@@ -64,7 +64,7 @@ for (const p of multi) {
 
 
 /* Нэг багцын 9F ба 12F хуудас ИЖИЛ group-тэй тул ижил түлхүүр — санаатай */
-const b2 = PKGS.filter((p) => p.group === 'Багц 2');
+const b2 = PKGS.filter((p) => p.group === 'Багц-2');
 assert.equal(b2.length, 2, 'Багц 2-т 2 хуудас байх ёстой');
 assert.equal(bagtsKey(b2[0].group), bagtsKey(b2[1].group), '9F/12F нэг багцын group ижил түлхүүртэй байх ёстой');
 /* Блокийн код ялгаатай тул buildingKey ялгаатай — өнөөдрийн бодит нөхцөл */

@@ -3,6 +3,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { fixCyr } from '@/lib/format';
 import { msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { parseDeps } from '@/lib/deps';
@@ -297,7 +298,7 @@ export const stText = (st: Status): string => {
  * `null` = хязгааргүй · `[]` = тэр үүргээр хуваарилагдаагүй.
  */
 export const inScope = (scope: string[] | null, group: string): boolean =>
-  scope == null || scope.includes(group);
+  scopeHas(scope, group);
 
 /* ══════════════════ Илгээхийн өмнөх сарын задаргааны хаалт ══════════════════ */
 

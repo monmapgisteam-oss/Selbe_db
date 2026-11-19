@@ -26,11 +26,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { inScope } from '@/lib/scopedAcl';
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
-import { roleForUser, type ViewKey } from '@/lib/services';
+import { roleForUser, sameBagts, type ViewKey } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
@@ -166,7 +166,7 @@ export function HuvaariBatlah({
 
   const all = useMemo(() => (st.k === 'ready' ? st.rows : []), [st]);
   const mine = useMemo(
-    () => all.filter((x) => inScope(scope, x.pkgGroup)),
+    () => all.filter((x) => scopeHas(scope, x.pkgGroup)),
     [all, scope],
   );
   /** Хүрээнээс ГАДНА байгаа эсэх — хоосон төлвийг ялгахад л (ТООГ хэлэхгүй) */
@@ -185,7 +185,7 @@ export function HuvaariBatlah({
           || label.toLowerCase().includes(needle)
           || x.author.toLowerCase().includes(needle)
           || (x.note ?? '').toLowerCase().includes(needle))
-        && (!grp || x.pkgGroup === grp);
+        && (!grp || sameBagts(x.pkgGroup, grp));
     });
   }, [mine, q, grp]);
 

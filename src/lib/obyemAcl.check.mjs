@@ -33,6 +33,11 @@ const superName = Object.entries(ROLE_BY_USER).find(([, x]) => x === 'super')[0]
 
 /* ── 1. Хуваарилагдаагүй → ЮУ Ч ХИЙХГҮЙ (fail-closed) ── */
 _syncRemoteObyem([]);
+/* 2026-11-19 (нийлүүлэлт): багцын нэр нэг хэлбэрт («Багц-2») — хүрээ одоогийн хуудасны нэрээр буцаана */
+const { PKG_GROUPS: __G } = await import('@/modules/sheet/bagts.pkg.ts');
+const { bagtsKey: __k } = await import('@/lib/services.ts');
+const canon1 = (x) => __G.find((g) => __k(g) === __k(x)) ?? x;
+const canonG = (xs) => xs.map(canon1);
 assert.deepEqual(obyemScope('zasvarlagch_a', 'editor'), [], 'хуваарилагдаагүй = хоосон');
 assert.deepEqual(obyemScope('zasvarlagch_a', 'approver'), [], 'батлагчаар ч хоосон');
 assert.deepEqual(obyemScope(null, 'editor'), [], 'нэргүй = хоосон');
@@ -43,7 +48,7 @@ console.log('✅ fail-closed');
  * 2. ҮҮРЭГ нь ХҮРЭЭГ ЯЛГАНА — ЭНЭ ФАЙЛЫН ГОЛ ШАЛГУУР
  * ══════════════════════════════════════════════════════════════ */
 _syncRemoteObyem([{ user: 'zasvarlagch_a', roles: ['editor'], bagts: ['Багц 2'] }]);
-assert.deepEqual(obyemScope('zasvarlagch_a', 'editor'), ['Багц 2'], 'засварлагчийн багц');
+assert.deepEqual(obyemScope('zasvarlagch_a', 'editor'), canonG(['Багц 2']), 'засварлагчийн багц');
 assert.deepEqual(
   obyemScope('zasvarlagch_a', 'approver'), [],
   'ЗАСВАРЛАГЧ нь БАТЛАГЧ болж болохгүй — үүрэг нь хүрээг ялгана',
@@ -52,7 +57,7 @@ assert.equal(hasObyemRole('zasvarlagch_a', 'editor'), true);
 assert.equal(hasObyemRole('zasvarlagch_a', 'approver'), false);
 
 _syncRemoteObyem([{ user: 'batlagch_b', roles: ['approver'], bagts: ['Багц 5'] }]);
-assert.deepEqual(obyemScope('batlagch_b', 'approver'), ['Багц 5']);
+assert.deepEqual(obyemScope('batlagch_b', 'approver'), canonG(['Багц 5']));
 assert.deepEqual(
   obyemScope('batlagch_b', 'editor'), [],
   'БАТЛАГЧ нь ЗАСВАРЛАГЧ болж болохгүй',
@@ -60,8 +65,8 @@ assert.deepEqual(
 
 /* Хоёулаа байж БОЛНО — өөрийгөө батлахаас `decideObyem` хамгаална */
 _syncRemoteObyem([{ user: 'hoyul', roles: ['editor', 'approver'], bagts: ['Багц 1'] }]);
-assert.deepEqual(obyemScope('hoyul', 'editor'), ['Багц 1']);
-assert.deepEqual(obyemScope('hoyul', 'approver'), ['Багц 1']);
+assert.deepEqual(obyemScope('hoyul', 'editor'), canonG(['Багц 1']));
+assert.deepEqual(obyemScope('hoyul', 'approver'), canonG(['Багц 1']));
 console.log('✅ ҮҮРЭГ нь ХҮРЭЭГ ялгана');
 
 /* ── 3. «Бүх багц» · том/жижиг үсэг · super ── */
@@ -103,7 +108,7 @@ _syncRemoteObyem([
   { user: 'dup', roles: ['editor'], bagts: ['Багц 1'] },
   { user: 'dup', roles: ['approver'], bagts: ['Багц 3'] },
 ]);
-assert.deepEqual(obyemScope('dup', 'approver'), ['Багц 3'], 'давхар мөрд сүүлийнх ялна');
+assert.deepEqual(obyemScope('dup', 'approver'), canonG(['Багц 3']), 'давхар мөрд сүүлийнх ялна');
 assert.deepEqual(obyemScope('dup', 'editor'), [], 'өмнөх мөрийн үүрэг үлдэв');
 
 _syncRemoteObyem([]);
@@ -133,19 +138,19 @@ assert.equal(w.ok, true);
 assert.equal(ACL.stageOfUser('injener_x'), 'engineer', 'урсгалын ШАТ хэвээр');
 assert.deepEqual(ACL.bagtsScope('injener_x'), ['Багц 1'], 'урсгалын БАГЦ хэвээр');
 assert.deepEqual(
-  HV.huvaariScope('injener_x', 'author'), ['Багц 4-1'],
+  HV.huvaariScope('injener_x', 'author'), canonG(['Багц 4-1']),
   'ХУВААРИЙН багц хэвээр — обьёмын томилгоо түүнийг дарсан',
 );
-assert.deepEqual(obyemScope('injener_x', 'approver'), ['Багц 5'], 'обьёмын багц ӨӨРИЙНХӨӨ');
+assert.deepEqual(obyemScope('injener_x', 'approver'), canonG(['Багц 5']), 'обьёмын багц ӨӨРИЙНХӨӨ');
 console.log('✅ гурван ACL тусдаа');
 
 /* ── 7. Хуваарилалт нь ХАМГИЙН СҮҮЛИЙН remote-оос ── */
 _syncRemoteObyem([{ user: 'a1', roles: ['editor'], bagts: ['Багц 2'] }]);
-assert.deepEqual(obyemScope('a1', 'editor'), ['Багц 2']);
+assert.deepEqual(obyemScope('a1', 'editor'), canonG(['Багц 2']));
 /* Дараагийн sync-д алга → ХАСАГДСАН (эрх нь өөрөө хадгалагдахгүй) */
 _syncRemoteObyem([{ user: 'a2', roles: ['editor'], bagts: ['Багц 3'] }]);
 assert.deepEqual(obyemScope('a1', 'editor'), [], 'remote-д алга болсон хүн эрхээ хадгалав');
-assert.deepEqual(obyemScope('a2', 'editor'), ['Багц 3']);
+assert.deepEqual(obyemScope('a2', 'editor'), canonG(['Багц 3']));
 console.log('✅ remote = эцсийн үнэн (2)');
 
 console.log('\nobyemAcl.check: ok');

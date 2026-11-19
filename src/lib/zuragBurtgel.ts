@@ -3,7 +3,7 @@
  * Харагдац: `src/modules/ZuragBurtgel.tsx` («ТЭЗҮ · Ажлын зураг төсөл» хуудасны «Зургийн бүртгэл» таб).
  * Цэвэр хэсэг (`toZRow`, `groupZ`, `zuragPkgStats`) тестлэгдэнэ (`zuragBurtgel.check.mjs`).
  */
-import { CASHFLOW_NEW, ZURAG_BURTGEL, bagtsKey } from '@/lib/services';
+import { CASHFLOW_NEW, ZURAG_BURTGEL, bagtsKey, canonPkg } from '@/lib/services';
 import { queryFeatures } from '@/lib/query';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
 
@@ -359,7 +359,7 @@ export function planPkgNames(rows: readonly { dd_kod?: unknown; bagts?: unknown;
     if (!name || /,/.test(name) || /\d\s*[-–]\s+\d/.test(name)) continue;
     const k = bagtsKey(name);
     if (seen.has(k)) continue;
-    seen.add(k); out.push(name);
+    seen.add(k); out.push(canonPkg(name));
   }
   return out;
 }

@@ -5,11 +5,11 @@
  */
 
 import { requireSelf, requireWriter } from './writeGuard';
-import { inScope } from './scopedAcl';
 import { GUITS } from '@/lib/services/env';
-import { AUTH, roleForUser } from './services';
+import { AUTH, canonPkg, roleForUser } from './services';
 import { huvaariAclReady, huvaariScope } from './huvaariAcl';
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { arcgisPost } from '@/lib/authToken';
 import { currentUser } from './who';
 import { invalidate } from './dataBus';
@@ -997,7 +997,7 @@ export async function submitPlan(args: {
     const own = sameAsLogin(args.author);
     if (own) return own;
     const sc = huvaariScope(meNow ?? args.author, 'author');
-    if (!inScope(sc, pkgGroup))
+    if (!scopeHas(sc, pkgGroup))
       return { ok: false, error: tr('Энэ багцад хуваарь илгээх эрхгүй.') };
   }
   const url = await tableUrl();
@@ -1008,7 +1008,7 @@ export async function submitPlan(args: {
   }
   const attrs: Attrs = {
     [F.pkgKey]: args.pkgKey,
-    [F.pkgGroup]: pkgGroup,
+    [F.pkgGroup]: canonPkg(pkgGroup),
     [F.status]: PLAN_STATUS.pending,
     [F.author]: args.author.toLowerCase(),
     [F.authorSent]: serverNow(),
@@ -1098,7 +1098,7 @@ export async function decidePlan(args: {
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const sc = huvaariScope(meNow ?? me, 'approver');
-    if (!inScope(sc, String(cur[0][F.pkgGroup] ?? '')))
+    if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын хуваарийг батлах эрхгүй.') };
   }
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
@@ -1375,7 +1375,7 @@ export async function claimPlan(args: { oid: number; approver: string; author?: 
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const sc = huvaariScope(meNow ?? me, 'approver');
-    if (!inScope(sc, String(cur[0][F.pkgGroup] ?? '')))
+    if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын хуваарийг батлах эрхгүй.') };
   }
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
@@ -1585,7 +1585,7 @@ export async function returnStuckPlan(args: { oid: number; approver: string; rea
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const who = meNow ?? me;
     const sc = roleForUser(who) === 'super' ? null : huvaariScope(who, 'approver');
-    if (!inScope(sc, String(cur[0][F.pkgGroup] ?? '')))
+    if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын хуваарийг батлах эрхгүй.') };
   }
   const author = s(cur[0][F.author])?.trim().toLowerCase() ?? '';
@@ -1774,7 +1774,7 @@ export async function countPlanPending(username: string | null | undefined): Pro
     const rows = await loadBadgePending();
     const now = serverNow();
     return rows.filter((x) => {
-      if (!inScope(sc, x.pkgGroup)) return false;
+      if (!scopeHas(sc, x.pkgGroup)) return false;
       if (x.author.trim().toLowerCase() === me) return false;
       const h = claimHolderOf(x, now);
       return !h || h === me;
@@ -1806,7 +1806,7 @@ export async function countPlanReturned(username: string | null | undefined): Pr
     const rows = await loadBadgeLast();
     return rows.filter((x) => x.status === PLAN_STATUS.returned
       && x.author.trim().toLowerCase() === me
-      && inScope(sc, x.pkgGroup)).length;
+      && scopeHas(sc, x.pkgGroup)).length;
   } catch {
     return null;
   }
@@ -1849,7 +1849,7 @@ export async function countPlanApproved(username: string | null | undefined): Pr
       && x.author.trim().toLowerCase() === me
       && x.approverAt != null && now - x.approverAt < PLAN_APPROVED_TTL
       && !seen.has(x.oid)
-      && inScope(sc, x.pkgGroup)).length;
+      && scopeHas(sc, x.pkgGroup)).length;
   } catch {
     return null;
   }

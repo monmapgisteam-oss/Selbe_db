@@ -18,7 +18,8 @@ import { flowAclReady, isViewOnly, resolveFlowStage, subscribeAcl } from '@/lib/
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { obyemScope, subscribeObyemAcl } from '@/lib/obyemAcl';
 import { initRemote } from '@/lib/permissions';
-import { roleForUser } from '@/lib/services';
+import { canonPkg, roleForUser, sameBagts } from '@/lib/services';
+import { scopeHas } from '@/lib/scopedAcl';
 import { Sheet } from '@/modules/sheet/Sheet';
 import { requestFillOpen } from '@/modules/sheet/FillNew';
 import { navDirtyLabels, setNavDirty } from '@/lib/navGuard';
@@ -1407,7 +1408,7 @@ export function Guitsetgel() {
 
   const works = useMemo(() => {
     const all = groupWorks(rows);
-    return myBagts ? all.filter((w) => myBagts.includes(w.bagts)) : all;
+    return myBagts ? all.filter((w) => scopeHas(myBagts, w.bagts)) : all;
   }, [rows, myBagts]);
 
   /** Нэг ч багц хуваарилагдаагүй — жагсаалт хоосон байгаагийн ШАЛТГААН. */
@@ -1437,7 +1438,7 @@ export function Guitsetgel() {
     })();
   };
 
-  const bagtsList = useMemo(() => optionsOf(works, (w) => w.bagts), [works]);
+  const bagtsList = useMemo(() => optionsOf(works, (w) => canonPkg(w.bagts)), [works]);
   const companyList = useMemo(() => optionsOf(works, (w) => w.company), [works]);
   const statusList = useMemo(() => statusOptions(stage), [stage]);
 
@@ -1452,7 +1453,7 @@ export function Guitsetgel() {
         || w.bagts.toLowerCase().includes(needle)
         || tr(w.bagts).toLowerCase().includes(needle)
         || w.company.toLowerCase().includes(needle))
-      && (!bagts || w.bagts === bagts)
+      && (!bagts || sameBagts(w.bagts, bagts))
       && (!company || w.company === company)
       && (!want || want.includes(w.status)));
   }, [works, q, bagts, company, status, statusList]);

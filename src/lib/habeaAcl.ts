@@ -15,7 +15,7 @@ import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 export { ALL_BAGTS };
 
 /** Хүснэгтэд оноож болох багцууд (2026-11-04, хэрэглэгч: «Багц 5.1-ээс хойших хэрэггүй») — Багц 1 … Багц 4-2 */
-export const HABEA_PKGS: readonly string[] = PKG_GROUPS.filter((g) => /^Багц\s*[1-4](\D|$)/.test(g));
+export const HABEA_PKGS: readonly string[] = PKG_GROUPS.filter((g) => /^Багц\s*[-–]?\s*[1-4](\D|$)/.test(g));
 
 /** Ганц үүрэг */
 export type HabeaRole = 'viewer';

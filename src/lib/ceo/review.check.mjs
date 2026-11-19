@@ -112,13 +112,13 @@ const pend = (ajil, bagts, owner, days, who, extra = {}) => ({
   ]);
   const f = fillAgeByPkg(h, NOW);
   const by = Object.fromEntries(f.map((x) => [x.pkg, x]));
-  assert.equal(by['Багц 1'].lastFill, '2026-09-01', 'null-pct цэг ч огноо');
-  assert.equal(by['Багц 1'].ageDays, 5);
-  assert.equal(by['Багц 3.1'].lastFill, '2026-09-05');
-  assert.equal(by['Багц 3.1'].ageDays, 1);
-  assert.equal(by['Багц 4-1'].lastFill, '2026-08-01', 'буруу огноо алгасагдана');
+  assert.equal(by['Багц-1'].lastFill, '2026-09-01', 'null-pct цэг ч огноо');
+  assert.equal(by['Багц-1'].ageDays, 5);
+  assert.equal(by['Багц-3.1'].lastFill, '2026-09-05');
+  assert.equal(by['Багц-3.1'].ageDays, 1);
+  assert.equal(by['Багц-4.1'].lastFill, '2026-08-01', 'буруу огноо алгасагдана');
   assert.equal(by['ХХХ'].lastFill, '2026-06-01', 'танигдаагүй угтвар түүхийгээрээ үлдэнэ');
-  assert.deepEqual(f.map((x) => x.pkg), ['ХХХ', 'Багц 4-1', 'Багц 1', 'Багц 3.1'], 'нас буурах');
+  assert.deepEqual(f.map((x) => x.pkg), ['ХХХ', 'Багц-4.1', 'Багц-1', 'Багц-3.1'], 'нас буурах');
 }
 
 /* ── 5. Босго ── */

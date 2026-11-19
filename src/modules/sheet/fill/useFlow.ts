@@ -7,6 +7,7 @@ import { OWNER, STATUS, F as HF } from "@/lib/hyanalt";
 import { useHyanaltRows, returnInfoOf, type ReturnInfo } from "@/lib/hyanaltStore";
 import { reviewLockState } from "@/lib/hyanaltSubmit";
 import { nowFillMs, type SheetView } from "./util";
+import { pkgTextHas, sameBagts } from "@/lib/services";
 
 /**
  * Хяналтын урсгалын мөрүүд — энэ хуудасны өнөөдрийн/буцаагдсан мөр, өөр өдрүүдийн байдал.
@@ -29,10 +30,10 @@ export function useFlow({ pkg, view, stagedOid }: { pkg: Pkg; view?: SheetView; 
   const flow = useMemo(() => {
     const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
     const mine = hyRows.filter((r) => {
-      if (r[HF.bagts] !== pkg.group) return false;
+      if (!sameBagts(r[HF.bagts], pkg.group)) return false;
       const ajil = String(r[HF.ajil] ?? '');
-      if (ajil.includes(pkg.name)) return true;
-      return !others.some((p) => ajil.includes(p.name));
+      if (pkgTextHas(ajil, pkg.name)) return true;
+      return !others.some((p) => pkgTextHas(ajil, p.name));
     });
     if (!mine.length) return null;
     const mineToday = mine.filter((r) => String(r[HF.ajil] ?? '').startsWith(todayAjilTag));
@@ -69,9 +70,9 @@ export function useFlow({ pkg, view, stagedOid }: { pkg: Pkg; view?: SheetView; 
     const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
     const lastRound = new Map<number, (typeof hyRows)[number]>();
     for (const r of hyRows) {
-      if (r[HF.bagts] !== pkg.group) continue;
+      if (!sameBagts(r[HF.bagts], pkg.group)) continue;
       const ajil = String(r[HF.ajil] ?? '');
-      if (!ajil.includes(pkg.name) && others.some((p) => ajil.includes(p.name))) continue;
+      if (!pkgTextHas(ajil, pkg.name) && others.some((p) => pkgTextHas(ajil, p.name))) continue;
       const so = Number(r[HF.sheetOid]);
       const k = Number.isInteger(so) && so > 0 ? so : -r.__oid;
       const prev = lastRound.get(k);
@@ -116,9 +117,9 @@ export function useFlow({ pkg, view, stagedOid }: { pkg: Pkg; view?: SheetView; 
     const others = PKGS.filter((p) => p.group === pkg.group && p.key !== pkg.key);
     const lastRound = new Map<number, (typeof hyRows)[number]>();
     for (const r of hyRows) {
-      if (r[HF.bagts] !== pkg.group) continue;
+      if (!sameBagts(r[HF.bagts], pkg.group)) continue;
       const ajil = String(r[HF.ajil] ?? '');
-      if (!ajil.includes(pkg.name) && others.some((p) => ajil.includes(p.name))) continue;
+      if (!pkgTextHas(ajil, pkg.name) && others.some((p) => pkgTextHas(ajil, p.name))) continue;
       const so = Number(r[HF.sheetOid]);
       if (!Number.isInteger(so) || so <= 0) continue;
       const prev = lastRound.get(so);

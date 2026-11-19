@@ -5,6 +5,7 @@
  */
 
 import { t as tr } from '@/lib/i18nCore';
+import { scopeHas } from '@/lib/scopedAcl';
 import { AUTH } from './services';
 import { currentUser } from './who';
 import { huvaariScope } from './huvaariAcl';
@@ -74,7 +75,7 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     const me = currentUser();
     if (typeof window !== 'undefined' && !me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const sc0 = huvaariScope(me, 'author');
-    if (sc0 !== null && !sc0.includes(pkg.group)) return { ok: false, error: tr('Энэ багцын хуваарийг төлөвлөх эрхгүй.') };
+    if (!scopeHas(sc0, pkg.group)) return { ok: false, error: tr('Энэ багцын хуваарийг төлөвлөх эрхгүй.') };
   }
   try {
     const { loadPending } = await import('./huvaariBatlah');

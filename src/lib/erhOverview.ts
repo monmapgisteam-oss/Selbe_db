@@ -14,7 +14,7 @@
 
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { STAGE_ORDER, type Stage } from './hyanalt';
-import { ALL_BAGTS } from './scopedAcl';
+import { ALL_BAGTS, scopeHas } from './scopedAcl';
 import type { CapKey } from './caps';
 import { ROLE_CAPS, SCOPED_SYSTEMS, capSystem, rolesOfCap } from './aclRoleCaps';
 import { reviewerClashes, type Reviewer } from './chanarMs';
@@ -220,8 +220,7 @@ export type PkgIssue = {
 };
 
 /** Тухайн багцад тэр мөр хамаарах уу (`ALL_BAGTS` бүгдэд) */
-const covers = (b: string[], g: string): boolean =>
-  b.includes(ALL_BAGTS) || b.includes(g);
+const covers = (b: string[], g: string): boolean => scopeHas(b, g);
 
 /**
  * Нэг багцын эрхийн зураг ба ЦООРХОЙ.
