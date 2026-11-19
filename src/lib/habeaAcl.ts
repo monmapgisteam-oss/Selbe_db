@@ -24,6 +24,7 @@ export type HabeaAssign = Assign<HabeaRole>;
 
 const ACL_EVENT = 'selbe-habea-acl-change';
 const acl = makeAcl<HabeaRole>({
+  aliases: () => PKG_GROUPS,
   storeKey: 'selbe-habea-acl-v1',
   event: ACL_EVENT,
   roleCaps: ROLE_CAPS.habea,

@@ -13,6 +13,7 @@
  */
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
+import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { ajilUpsert, ajilRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
@@ -26,6 +27,7 @@ export type AjilRole = 'editor' | 'approver';
 export type AjilAssign = Assign<AjilRole>;
 
 const acl = makeAcl<AjilRole>({
+  aliases: () => PKG_GROUPS,
   storeKey: 'selbe-ajil-acl-v1',
   event: 'selbe-ajil-acl-change',
   roleCaps: ROLE_CAPS.ajil,

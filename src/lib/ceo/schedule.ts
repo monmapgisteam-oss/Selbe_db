@@ -14,6 +14,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { num, text, monthKey } from '@/lib/format';
 import { CASHFLOW_NEW, pkgKeyOf } from '@/lib/services';
+import { cfSheetKey } from '@/lib/projectPlanInputs';
 import { FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
 import { coverageOk, type PlanPoint } from '@/lib/planProgress';
 import { levelLabel, type Level } from '@/lib/kpiLevels';
@@ -198,7 +199,8 @@ export function collectPkgLags<R extends Record<string, unknown>>(
   /** түлхүүр → төлөөлөгч мөр (`prefer` тэнцсэн нь давуу) */
   const rep = new Map<string, { r: R; preferred: boolean }>();
   for (const r of contracts) {
-    const key = pkgKeyOf(r[C.pkg2]) || pkgKeyOf(r[C.pkg]);
+    /* 2026-11-19 (аудит): багцгүй/хүрээтэй гэрээ (суурийн холболт · зам сүвлэх · усан сан) — хуваарийн бүлгээр */
+    const key = pkgKeyOf(r[C.pkg2]) || pkgKeyOf(r[C.pkg]) || cfSheetKey(r['cashflow_id']);
     if (!key) continue;
     const preferred = prefer ? prefer(r) : false;
     const cur = rep.get(key);

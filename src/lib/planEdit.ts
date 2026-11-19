@@ -43,6 +43,7 @@ export function editWhy(n: PlanNode, k: PlanEditKey, today: number = ubToday()):
   if (n.row?.registry) return ZREG();
   if (oidOf(n) == null) return tr('Мөр хүснэгтэд хадгалагдаагүй');
   if (PLAN_EDIT[k].kind === 'money') {
+    if (n.row?.landComp) return tr('Нэгж талбаруудын нөхөх олговрын нийлбэрээс бодогдоно — «Газар чөлөөлөлт» өгөгдөлд засна');
     /* 2026-11-03: нэмсэн ажлын мөнгө — эцгийн төсвөөс жингээр оноогдоно (энд бичвэл бүлгийн жингийн дүрэм эвдэрнэ) */
     if (isAddedWork(n)) return tr('Эцэг мөрийн төсвөөс жингээр оноогдоно — «ТЭЗҮ · Ажлын зураг төсөл» хуудсанд хувь эсвэл дүнгээр өөрчилнө');
     const key = PLAN_EDIT[k].key;

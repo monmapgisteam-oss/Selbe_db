@@ -16,6 +16,7 @@
 import {
   buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday,
   planBudgetTotal,
+  moneySums,
   type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree,
 } from './projectPlan';
 import {
@@ -162,7 +163,22 @@ const loadPlanRows = cached(fetchPlanRows, SESSION_TTL_MS, ['CASHFLOW_NEW']);
 export async function loadProjectBudgetTotal(): Promise<number | null> {
   const rows = await loadPlanRows();
   if (!rows.length) return null;
-  return planBudgetTotal(buildTree(rows));
+  /* 2026-11-19 (аудит): ТТБ-тэй НЭГ тоо — газар чөлөөлөлтийн нөхөх олговор (`withLandComp`) энд ч орно. Уншигдаагүй бол хадгалсан мөрөөр */
+  const comp = await loadLandStatus().then((s) => s.comp, () => null);
+  return planBudgetTotal(buildTree(withLandComp(rows, comp)));
+}
+
+/**
+ * ТӨСЛИЙН НИЙТ ГЭРЭЭЛСЭН ДҮН (₮) — ТТБ-ийн Төслийн нийт мөрийн «Гэрээний дүн» (`moneySums`, «Гэрээлсэн дүн» тэмдэгтэй мөрүүд,
+ * үүрлэсэн мөр давхардахгүй). 2026-11-19 (аудит): дашбоард ба тайлан зөвхөн `cashflow_id`-тай ажлын мөрөөс нийлүүлдэг байсан тул
+ * ТЭЗҮ · зураг төслийн 369 гэрээний мөр (11.8 тэрбум ₮) хаягддаг байв (2,034.8 ↔ ТТБ 2,046.5). Газрын нөхөх олговор ЭНД
+ * ОРОХГҮЙ — дашбоардын «олгосон» нь IPC-ийн төлбөр тул хувь нь ижил хүрээнд үлдэнэ. Мөр алга бол null.
+ */
+export async function loadProjectContractTotal(): Promise<number | null> {
+  const rows = await loadPlanRows();
+  if (!rows.length) return null;
+  const tree = buildTree(rows);
+  return moneySums(tree).get(tree.root)?.contract ?? null;
 }
 
 /* ══════════════════ 2. Бодит гүйцэтгэл (бөглөх хуудас) ══════════════════ */
@@ -222,7 +238,19 @@ export function prepActualOf(src: ActualSources): NonNullable<PlanInputs['prepAc
 export const CF_SHEET_GROUP: ReadonlyMap<number, string> = new Map([
   [18, 'Суурийн холболтын ажил'],
   [42, 'Төгөл дэд станцын зам сүвлэх ажил'],
+  /* 2026-11-19 (аудит): багцгүй усан сангийн гэрээ (65.1 тэрбум ₮) хуваарийн хуудастайгаа холбогдоогүй байв */
+  [58, 'Сэлбэ голын усан сан'],
 ]);
+
+/**
+ * Багцын нэр нь ХҮРЭЭТЭЙ эсвэл ХООСОН гэрээний (суурийн холболт · зам сүвлэх · усан сан) түлхүүр — хуваарийн хуудасны бүлгийн
+ * `bagtsKey` («СУУРИЙНХОЛБОЛТЫНАЖИЛ»); жагсаалтад байхгүй бол ''. 6 түвшний хуваарь, удирдлагын хуваарийн карт эдгээрийг урьд нь алгасдаг байв.
+ */
+export const cfSheetKey = (cashflowId: unknown): string => {
+  const id = Number(cashflowId);
+  const g = Number.isFinite(id) ? CF_SHEET_GROUP.get(id) : undefined;
+  return g ? bagtsKey(g) : '';
+};
 
 /** Хүснэгтийг хайх багцын нэр — барилга угсралтын мөр `CF_SHEET_GROUP`-д байвал тэр бүлэг, эс бөгөөс мөрийн `bagts` */
 export function sheetPkgOf<T>(pkg: T, n?: PlanNode | null): T | string {
@@ -608,6 +636,22 @@ const loadSchedules = cached(fetchSchedules, SESSION_TTL_MS, ['BAGTS_SHEET', 'HU
    Хувь зөвхөн төслийн нийтээр (`loadLandStatus`, үе шатын мөрийг `landTotal` дарна); багцын давхардлыг «Газар чөлөөлөлт» хуудасны
    саадын жагсаалт (`pkgSaad.loadPkgOverlaps`) харуулна. */
 
+/**
+ * ГАЗАР ЧӨЛӨӨЛӨЛТИЙН МӨНГӨН ДҮН (2026-11-19, хэрэглэгч: «урьдчилгаанаас бусад дүнрүү нийлбэрийг оруул») — «Газар чөлөөлөлт» үе
+ * шатын ДЭЭД мөрийн (эцэггүй) урьдчилсан төсөвт өртөг · гэрээний дүн · олгосон дүн · захирамжийн дүн = нэгж талбаруудын нөхөх
+ * олговрын нийлбэр (`LandStatus.comp`). Санах ойд л (182-т бичихгүй — IPC-ийн олгосон дүнгийн синк дарж бичихгүй, олговор
+ * өөрчлөгдөхөд шууд дагана). Урьдчилгаа — хадгалсан утга, хоосон бол 0 (2026-11-19, хэрэглэгч: «бодолтод оруул»). Нийлбэр алга (`null`) бол мөр хэвээр. Үе шатын жин тогтмол тул
+ * гүйцэтгэлийн хувь өөрчлөгдөхгүй. Цэвэр — `projectPlanLand.check.mjs`.
+ */
+export function withLandComp(rows: readonly PlanStoredRow[], comp: number | null | undefined): PlanStoredRow[] {
+  if (comp == null || !Number.isFinite(comp)) return [...rows];
+  return rows.map((r) => (/газар\s*чөлөөл/i.test(r.uy_shat ?? '') && !String(r.etseg_kod ?? '').trim()
+    ? { ...r, ho_dun_geree: comp, geree_dun: comp, olgoson_dun: comp, ho_dun_zahiramj: comp, urdchilgaa_dun: r.urdchilgaa_dun ?? 0,
+      /* Гэрээний дүн нийлбэрт орохын тулд (`moneySums` зөвхөн «Гэрээлсэн дүн» тэмдэгтэй мөрийг тоолно) */
+      ho_dungiin_tailbar: 'Гэрээлсэн дүн', landComp: true as const }
+    : r));
+}
+
 /* ══════════════════ 5. Нэгтгэл — ачаалагч ══════════════════ */
 
 /** Оролтуудыг нэгтгэнэ (цэвэр) */
@@ -721,7 +765,8 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
   const zurag = zb.status === 'fulfilled' ? zb.value.pkg : null;
   /* 2026-11-17 (хэрэглэгч: «ТТБ-ийн зургийн хэсгийг зургийн бүртгэлийн жагсаалтын дагуу оруул») — гэрээ нь бүртгэлд байгаа
      ТЭЗҮ · зураг төслийн мөрийн доор бүртгэлийн бүлэг · дэд бүлэг зохиомол мөр болж орно; хувь нь төлөвөөс */
-  const planRows = zb.status === 'fulfilled' ? withRegistryRows(rows, zb.value.rows) : rows;
+  const planRows0 = zb.status === 'fulfilled' ? withRegistryRows(rows, zb.value.rows) : rows;
+  const planRows = withLandComp(planRows0, lt.status === 'fulfilled' ? lt.value.comp : null);
   if (zb.status === 'rejected') console.warn('[selbe] зургийн бүртгэл уншигдсангүй', zb.reason);
   const failed: string[] = [];
   const landTotal = lt.status === 'fulfilled' ? lt.value.pct : null;

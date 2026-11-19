@@ -74,6 +74,8 @@ export type PlanStoredRow = {
   virtual?: true;
   /** Зургийн бүртгэлээс үүсгэсэн мөр (`zuragPlan`) — утгууд нь бүртгэлээс, ТТБ-д гараар засагдахгүй */
   registry?: true;
+  /** «Газар чөлөөлөлт» үе шатын мөр — мөнгөн дүн нэгж талбаруудын нөхөх олговрын нийлбэрээс (`projectPlanInputs.withLandComp`) */
+  landComp?: true;
   /** Олгосон дүн · урьдчилгаа (₮) — IPC-ээс систем бичнэ */
   /** Гэрээний дүн — урьдчилсан төсвөөс (`ho_dun_geree`) тусдаа */
   geree_dun?: number | null;
@@ -667,7 +669,8 @@ function leafValue(n: PlanNode, m: Metric, today: number, inputs: PlanInputs): n
         /* 2026-11-11 (хэрэглэгч): газар чөлөөлөлтийг багц/блокоор хувиар бодохгүй — нэгж талбар олон багцад давхардана.
            Хувь зөвхөн үе шатын мөрөнд (төслийн нийт, `override`) */
         return null;
-      } else if (n.phase === 'zurag' && inputs.zuragActual) {
+      } else if (n.phase === 'zurag' && inputs.zuragActual && !r.registry) {
+        /* 2026-11-19 (аудит): бүртгэлээс үүсгэсэн БАРИМТЫН мөр өөрийн төлөвийн хувьтай (`guitsetgel_huvi`) — багцын дундажаар дарахгүй */
         /* 2026-11-16 (хэрэглэгч): жинхэнэ эх «Зургийн бүртгэл»; бүртгэлд зураггүй багц ч гүйцэтгэлд бодогдоно — хадгалсан хувиар */
         const v = inputs.zuragActual(n.pkg, n);
         if (v !== undefined) return frac(v);

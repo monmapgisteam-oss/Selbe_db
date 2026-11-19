@@ -13,7 +13,7 @@
  * шалтгааныг нь арилгана: нэг газар засвал гурвуулаа засагдана.
  */
 
-import { isCodeSuper, roleForUser } from './services';
+import { bagtsKey, isCodeSuper, roleForUser } from './services';
 import { requireSuper } from './who';
 import type { CapKey } from './caps';
 
@@ -142,6 +142,13 @@ export type AclWrite = {
 
 /** Нэг дэд системийн тохиргоо */
 export type AclSpec<R extends string> = {
+  /**
+   * БАГЦЫН НЭРИЙН ХУВИЛБАРУУД (2026-11-19, аудит). Томилгоонд «Багц-1» · «Багц-4.1» гэж хадгалагдсан, код «Багц 1» · «Багц 4-1»
+   * (`PKG_GROUPS`) гэж хайдаг тул `scope().includes(group)` 0 таардаг байв — супер биш хэрэглэгч «Хуваарь»-т нэг ч багц
+   * хардаггүй, илгээж/баталж чаддаггүй. Өгвөл `scope` томилсон нэр бүрийг `bagtsKey`-ээр таарах ЭНЭ жагсаалтын нэрээр
+   * буцаана (таарахгүй нэр хэвээр). Хадгалсан илгээлтийн нэртэй (`bagts_group`) харьцуулахдаа `inScope`.
+   */
+  aliases?: () => readonly string[];
   /** `localStorage` түлхүүр — систем бүрд ӨӨР байх ЁСТОЙ */
   storeKey: string;
   /** `window` эвентийн нэр — систем бүрд ӨӨР */
@@ -204,6 +211,13 @@ export type Acl<R extends string> = {
    */
   ready: () => boolean;
 };
+
+/**
+ * Багц хүрээнд багтах уу — бичлэгээс үл хамааран (`bagtsKey`: «Багц-4.1» = «Багц 4-1»). `null` = хязгааргүй.
+ * Хадгалсан илгээлтийн `bagts_group` «Багц-1» гэж бичигддэг тул `scope.includes()` биш үүгээр.
+ */
+export const inScope = (sc: readonly string[] | null | undefined, group: string | null | undefined): boolean =>
+  sc == null || (group != null && sc.some((s) => bagtsKey(s) === bagtsKey(group)));
 
 export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   const ROLES = new Set<string>(Object.keys(spec.roleCaps));
@@ -553,7 +567,11 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
     const rel = hasRoles && role != null ? a.grants.filter((g) => g.role === role) : a.grants;
     if (!rel.length) return [];
     if (rel.some((g) => g.bagts.includes(ALL_BAGTS))) return null;
-    return [...new Set(rel.flatMap((g) => g.bagts))];
+    const names = rel.flatMap((g) => g.bagts);
+    if (!spec.aliases) return [...new Set(names)];
+    const canon = new Map<string, string>();
+    for (const a of spec.aliases()) if (!canon.has(bagtsKey(a))) canon.set(bagtsKey(a), a);
+    return [...new Set(names.map((b) => canon.get(bagtsKey(b)) ?? b))];
   };
 
   /** Хуваарилалтыг ЯГ ХЭВЭЭР нь унших — панел засварлахад хэрэгтэй */

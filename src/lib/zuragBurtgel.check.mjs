@@ -29,7 +29,8 @@ const rows = [
 ];
 const st = zuragPkgStats(rows);
 assert.deepEqual(st.get('БАГЦ1'), { total: 2, magadlal: 1, received: 0, pdf: 0, pct: 80 }, 'төсөв орохгүй; «Багц 1,2» тоологдоно');
-assert.deepEqual(st.get('БАГЦ2'), { total: 2, magadlal: 1, received: 1, pdf: 1, pct: 180 }, 'магадлал 80 + хүлээж авсан 100');
+/* 2026-11-19 (аудит): ТӨЛӨВӨӨР — хүлээж авсан баримт магадлалыг давсан тул «магадлалд орсон»-д ч тоологдоно */
+assert.deepEqual(st.get('БАГЦ2'), { total: 2, magadlal: 2, received: 1, pdf: 1, pct: 180 }, 'магадлал 80 + хүлээж авсан 100');
 assert.deepEqual(st.get('БАГЦ32'), { total: 1, magadlal: 1, received: 0, pdf: 0, pct: 80 }, 'дэд бүлгийн багц түрүүлнэ; давтан магадлал тоологдоно');
 assert.ok(!st.has('БАГЦ31'));
 const pm = zuragPctMap(rows);

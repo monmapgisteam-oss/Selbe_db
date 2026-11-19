@@ -26,6 +26,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { inScope } from '@/lib/scopedAcl';
 import { t as tr } from '@/lib/i18nCore';
 import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
@@ -165,7 +166,7 @@ export function HuvaariBatlah({
 
   const all = useMemo(() => (st.k === 'ready' ? st.rows : []), [st]);
   const mine = useMemo(
-    () => all.filter((x) => scope == null || scope.includes(x.pkgGroup)),
+    () => all.filter((x) => inScope(scope, x.pkgGroup)),
     [all, scope],
   );
   /** Хүрээнээс ГАДНА байгаа эсэх — хоосон төлвийг ялгахад л (ТООГ хэлэхгүй) */

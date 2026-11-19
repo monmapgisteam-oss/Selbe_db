@@ -7,7 +7,7 @@ import type {
 } from 'pdfmake/interfaces';
 import type { BagtsRow } from '@/modules/Dashboard';
 import { t as tr } from '@/lib/i18nCore';
-import { buildFindings, BAGTS_GAP_PTS, type ReportExtra } from '@/lib/reportData';
+import { buildFindings, byTypeGapNote, BAGTS_GAP_PTS, type ReportExtra } from '@/lib/reportData';
 import { ailTotal } from '@/lib/execData';
 import { num, pct, dateTime } from '@/lib/format';
 
@@ -249,9 +249,7 @@ export function buildReportDoc(
         [td(tr('Нийт'), false, TOTAL), td(num(finance.byType.reduce((a, t) => a + t.n, 0)), true, TOTAL),
           td(bn(finance.byTypeTotal.budget), true, TOTAL), td(bn(finance.byTypeTotal.contract), true, TOTAL)],
       ] }, layout: tableLayout },
-      ...(finance.byTypeTotal.budget - finance.budget > 0.5 && finance.budget > 0
-        ? [note(tr('Энэ хүснэгт нь ажлын бүх мөрийг төрлөөр задалсан тул нийлбэр нь төслийн нийт төсвөөс {0} ₮-өөр их: зөрүү нь нийт төсөвт ордоггүй мөрүүд (нийгмийн дэд бүтэц).', bn(finance.byTypeTotal.budget - finance.budget)))]
-        : []),
+      ...(byTypeGapNote(finance, bn) ? [note(byTypeGapNote(finance, bn) as string)] : []),
 
       ...section('8', tr('Дэд бүтцийн төлөвлөгөөт цар хүрээ'),
         tr('Ерөнхий төлөвлөгөөний {0} давхаргад {1} объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт {2} м байна. Эдгээр нь төлөвлөгөөний хэмжээ бөгөөд гүйцэтгэлийг илэрхийлэхгүй; бүлгүүдийн талбай хоорондоо давхцдаг тул нийт талбайг гаргаагүй.', num(infra.totals.layers), num(infra.totals.n), num(infra.totals.len))),

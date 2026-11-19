@@ -9,7 +9,7 @@
  */
 
 import { cached, loadFillPkgProgress } from '@/lib/live';
-import { loadProjectBudgetTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
+import { loadProjectBudgetTotal, loadProjectContractTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
@@ -200,7 +200,7 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   /* ── 01. Ерөнхий дашбоард — `GeneralDash.KpiStrip`-тэй ИЖИЛ ── */
   const csum = cf.reduce((s, r) => (r.inTotal && isContracted(r) ? s + (contracts.get(r.oid) ?? 0) : s), 0);
   /* 2026-11-04: нийт төсөв = ТТБ-ийн Төслийн нийт E (дашбоард · тайлантай ИЖИЛ) */
-  const k = kpisOf(cf, csum, wbsPct, await loadProjectBudgetTotal().catch(() => null));
+  const k = kpisOf(cf, csum, wbsPct, await loadProjectBudgetTotal().catch(() => null), await loadProjectContractTotal().catch(() => null));
   const catPct = new Map<string, number>();
   if (actual != null) catPct.set('ОРОН СУУЦНЫ ХОРООЛОЛ', actual);
   const infra = typePhysNow(fin, cf, INFRA_TYPE, nowYm);

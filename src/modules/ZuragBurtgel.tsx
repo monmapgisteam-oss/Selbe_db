@@ -14,7 +14,7 @@ import { ZURAG_BURTGEL } from '@/lib/services';
 import { entDeletePdf, entPdfBlob, entSearch, entUploadPdf, type EntPdf } from '@/lib/entDocs';
 import { pdfIndex, pdfsOf, tagsFor, type ZPdfKind } from '@/lib/zuragPdf';
 import { askConfirm } from '@/lib/confirm';
-import { loadZuragBurtgel, loadPlanPkgs, bulegLabel, groupByBudget, groupZ, subLabel, toZRow, tolovAvg, Z_TOLOV, type ZRow, type ZTolov } from '@/lib/zuragBurtgel';
+import { loadZuragBurtgel, loadPlanPkgs, bulegLabel, groupByBudget, groupZ, subLabel, toZRow, tolovAvg, passedMagadlal, isReceived, Z_TOLOV, type ZRow, type ZTolov } from '@/lib/zuragBurtgel';
 import { queryFeatures } from '@/lib/query';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import { Data, userError } from '@/components/ui';
@@ -162,8 +162,8 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
   );
   const stat = useMemo(() => ({
     total: rows.length,
-    magadlal: rows.filter((r) => r.dates.magadlal_ognoo != null || r.dates.davtan_magadlal_ognoo != null).length,
-    received: rows.filter((r) => r.dates.huleej_avsan_ognoo != null).length,
+    magadlal: rows.filter((r) => passedMagadlal(r.tolov)).length,
+    received: rows.filter((r) => isReceived(r.tolov)).length,
     pdf: pdfIdx ? rows.filter((r) => pdfsOf(r, pdfIdx).length > 0).length : null,
     pct: tolovAvg(rows),
   }), [rows, pdfIdx]);

@@ -200,8 +200,29 @@ const newer = (a: DayPick, b: DayPick): boolean => (
  * Огноогүй/0 огноотой мөр (дуусаагүй маягт) хасагдана; нэг өдөрт олон мөр
  * байвал `newer`-ийн дүрмээр сүүлийнх нь үлдэнэ (толгой).
  */
+/**
+ * НЭГ ӨДРИЙН ОЛОН МӨРИЙГ НЭГТГЭНЭ (2026-11-19, аудит): өөр компаниуд нэг өдөр ТУСДАА маягт бөглөсөн бол (08-21: HBZIT 247 ·
+ * MK 389) сүүлийн мөр л үлддэг байсан тул 400 хүн-өдөр хаягдсан. Суурь нь сүүлийн мөр (`newer`); тэр мөрөнд хоосон КОМПАНИЙН
+ * талбаруудыг тухайн компанийг бөглөсөн хамгийн сүүлийн бусад мөрөөс авна. Ижил компанийг хоёр мөр бөглөсөн бол сүүлийнх ялна.
+ */
+function mergeDayRows(main: Row, others: readonly Row[]): Row {
+  if (!others.length) return main;
+  const out: Row = { ...main };
+  for (const c of COMPANIES) {
+    const fl = laborCompanyFields(c.sfx);
+    const keys = [fl.mongol, fl.gadaad, fl.niitAjiltan, fl.niitTehnik];
+    /* 0 нь «бөглөөгүй» маягтад ч бичигддэг — өөр мөр тэр компанийг 0-ээс их утгаар бөглөсөн бол түүнийг авна */
+    const has = (r: Row) => keys.some((k) => !blank(r[k]) && Number(r[k]) !== 0);
+    if (has(out)) continue;
+    const src = others.find(has);
+    if (src) for (const k of [...keys, fl.bagts]) out[k] = src[k];
+  }
+  return out;
+}
+
 export function groupDays(rows: Row[]): WorkforceDay[] {
   const best = new Map<string, DayPick>();
+  const all = new Map<string, DayPick[]>();
   for (const r of rows) {
     const at = numOrNull(r[F.ognoo]);
     if (at == null || at <= 0) continue;
@@ -209,6 +230,7 @@ export function groupDays(rows: Row[]): WorkforceDay[] {
       r, at, edited: numOrNull(r[EDIT_DATE_FIELD]) ?? 0, oid: numOrNull(r[OID_FIELD]) ?? 0, n: 1,
     };
     const key = ubDayKey(at);
+    (all.get(key) ?? all.set(key, []).get(key)!).push(cand);
     const cur = best.get(key);
     if (!cur) best.set(key, cand);
     else {
@@ -217,9 +239,12 @@ export function groupDays(rows: Row[]): WorkforceDay[] {
       else cur.n = cand.n;
     }
   }
-  return [...best.values()]
-    .sort((a, b) => b.at - a.at)
-    .map((x) => dayOf(x.r, x.at, numOrNull(x.r[OID_FIELD]), x.n));
+  return [...best.entries()]
+    .sort((a, b) => b[1].at - a[1].at)
+    .map(([key, x]) => {
+      const rest = (all.get(key) ?? []).filter((p) => p !== x).sort((p, q) => (newer(p, q) ? -1 : 1)).map((p) => p.r);
+      return dayOf(mergeDayRows(x.r, rest), x.at, numOrNull(x.r[OID_FIELD]), x.n);
+    });
 }
 
 /**

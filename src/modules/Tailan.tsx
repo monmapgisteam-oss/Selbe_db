@@ -27,7 +27,7 @@ import { emailViaEml, emailViaMailto, downloadReportPdf, REPORT_RECIPIENTS } fro
 import {
   useReportExtra, buildFindings, loadReportExtra, type ReportExtra,
   loadOverall, loadProgress, loadFinance, loadLand, loadHabeaSummary,
-  BAGTS_GAP_PTS,
+  BAGTS_GAP_PTS, byTypeGapNote,
 } from '@/lib/reportData';
 import { ResizableTable } from '@/components/ResizableTable';
 import { ExecReport } from '@/modules/ExecReport';
@@ -825,10 +825,8 @@ function TailanFull() {
                           </tr>
                         </tbody>
                       </ResizableTable>
-                      {x.finance.byTypeTotal.budget - x.finance.budget > 0.5 && x.finance.budget > 0 && (
-                        <p className={r.note}>
-                          {tr('Энэ хүснэгт нь ажлын бүх мөрийг төрлөөр задалсан тул нийлбэр нь төслийн нийт төсвөөс {0} ₮-өөр их: зөрүү нь нийт төсөвт ордоггүй мөрүүд (нийгмийн дэд бүтэц).', bn(x.finance.byTypeTotal.budget - x.finance.budget))}
-                        </p>
+                      {byTypeGapNote(x.finance, bn) && (
+                        <p className={r.note}>{byTypeGapNote(x.finance, bn)}</p>
                       )}
                     </section>
 

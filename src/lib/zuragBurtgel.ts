@@ -26,6 +26,12 @@ export const Z_TOLOV = [
 export type ZTolov = (typeof Z_TOLOV)[number]['code'];
 const TOLOV_PCT = new Map<string, number>(Z_TOLOV.map((t) => [t.code, t.pct]));
 export const tolovPct = (t: ZTolov): number => TOLOV_PCT.get(t) ?? 0;
+/**
+ * Магадлалд орсон уу / зохиогчоос хүлээж авсан уу — ТӨЛӨВӨӨР (2026-11-19, аудит: огноогоор тоолдог байсан тул төлөв нь
+ * тэр шатанд хүрсэн боловч огноо нь бөглөгдөөгүй баримт картаас хаягддаг байв — ТЭЗҮ «магадлалд орсон» 3/7, гүйцэтгэл 100%).
+ */
+export const passedMagadlal = (t: ZTolov): boolean => t === 'magadlal' || t === 'huleej_avsan';
+export const isReceived = (t: ZTolov): boolean => t === 'huleej_avsan';
 /** Огнооноос: хүлээж авсан огноотой → хүлээж авсан; магадлал/давтан магадлал/ХБХСГ-аар батлагдсан → магадлалд орсон; эс бөгөөс эхлээгүй */
 export function deriveTolov(d: Record<ZDate, number | null>): ZTolov {
   if (d.huleej_avsan_ognoo != null) return 'huleej_avsan';
@@ -260,8 +266,8 @@ export function zuragPkgStats(rows: readonly ZRow[]): Map<string, { total: numbe
       const s = out.get(k) ?? { total: 0, magadlal: 0, received: 0, pdf: 0, pct: 0 };
       s.total += 1;
       s.pct += tolovPct(r.tolov);
-      if (r.dates.magadlal_ognoo != null || r.dates.davtan_magadlal_ognoo != null) s.magadlal += 1;
-      if (r.dates.huleej_avsan_ognoo != null) s.received += 1;
+      if (passedMagadlal(r.tolov)) s.magadlal += 1;
+      if (isReceived(r.tolov)) s.received += 1;
       if (r.pdfItem) s.pdf += 1;
       out.set(k, s);
     }

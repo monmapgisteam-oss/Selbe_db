@@ -92,6 +92,19 @@ export function parcelAreasDeduped(rows: readonly Row[]): (number | null)[] {
  * Нэгж талбарын мөрүүдийг `field`-ээр (анхдагч: төлөв) БҮЛЭГЛЭНЭ — `queryGroup`-ийн хэлбэр `{ [field], n, a }`.
  * Талбай нь `parcelAreaOf` + хуваагдсан нэгж талбарыг нэг удаа (`parcelAreasDeduped`).
  */
+/**
+ * НЭГ НЭГЖ ТАЛБАРЫН НӨХӨХ ОЛГОВОР, ₮ — нийт (`olgovor_niit`), хоосон бол газар + үл хөдлөх + эд хөрөнгийн нийлбэр (2026-11-19,
+ * аудит: нийт нь хоосон, задаргаа нь бөглөгдсөн 120 сая ₮ нийлбэрээс хаягддаг байв). Бүгд хоосон бол null.
+ */
+export function compOf(r: Row): number | null {
+  const F = PARCEL_LEFT.fields;
+  const n = (v: unknown): number | null => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+  const total = n(r[F.comp]);
+  if (total != null) return total;
+  const parts = [n(r[F.compLand]), n(r[F.compProp]), n(r[F.compGoods])].filter((x): x is number => x != null);
+  return parts.length ? parts.reduce((s, x) => s + x, 0) : null;
+}
+
 export function parcelGroupRows(rows: readonly Row[], field: string = PARCEL_LEFT.fields.status): Row[] {
   const areas = parcelAreasDeduped(rows);
   const m = new Map<string, Row>();
@@ -108,8 +121,8 @@ export function parcelGroupRows(rows: readonly Row[], field: string = PARCEL_LEF
     g.n = Number(g.n) + 1;
     g.a = Number(g.a) + (areas[i] ?? 0);
     /* Нөхөх олговор: `c` = дүнгийн нийлбэр, `cn` = дүн бүртгэгдсэн талбарын тоо (хоосон ≠ 0) */
-    const comp = r[F.comp];
-    if (comp != null && comp !== '' && Number.isFinite(Number(comp)) && Number(comp) > 0) {
+    const comp = compOf(r);
+    if (comp != null && comp > 0) {
       const no = String(r[F.parcelNo] ?? '').trim();
       const parked = /^\s*ТААРААГҮЙ/i.test(String(r[F.compOrder] ?? ''));
       const k = `${no}|${Number(comp)}|${parked ? String(r[F.compOrder]).trim() : ''}`;
@@ -127,7 +140,8 @@ export function parcelGroupRows(rows: readonly Row[], field: string = PARCEL_LEF
 /** Талбайн тооцоонд хэрэгтэй талбарууд */
 const parcelAreaFields = (): string[] => {
   const F = PARCEL_LEFT.fields;
-  return [...new Set([PARCEL_LEFT.oid, F.status, F.progress, F.area, F.areaAlt, F.parcelNo, PARCEL_SHAPE_AREA, F.comp, F.compOrder])];
+  return [...new Set([PARCEL_LEFT.oid, F.status, F.progress, F.area, F.areaAlt, F.parcelNo, PARCEL_SHAPE_AREA, F.comp, F.compOrder,
+    F.compLand, F.compProp, F.compGoods])];
 };
 
 /** Нэгж талбарын мөрүүд (талбайн тооцоонд, геометргүй) — `land.ts` ба `Gazar.tsx` (AOI-тай) хуваалцана */

@@ -7,7 +7,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
-import { loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
+import { loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
@@ -121,7 +121,7 @@ export type ReportExtra = {
     paidPct: number | null;
     byType: { type: string; n: number; budget: number; contract: number }[];
     /** «Ажлын төрлөөр» хүснэгтийн НИЙТ мөр — БҮХ мөрөөр (задаргаатай нийцнэ); `contract` CONTRACTED шүүлттэй */
-    byTypeTotal: { budget: number; contract: number };
+    byTypeTotal: { budget: number; contract: number; outside?: number };
     /** Багцын түлхүүр (`BagtsRow.key`) → урьдчилсан төсөвт өртөг, ₮ */
     byBagts: Record<string, number>;
   };
@@ -215,6 +215,22 @@ const loadPkgLabels = cached(async (): Promise<Map<string, string>> => {
  * §2-ын «Багц хоорондын гүйцэтгэлийн зөрүү их байна» өгүүлбэрийн босго, нэгж хувь — дэлгэц (`Tailan`) ба PDF/мэйл (`reportPdf`) НЭГ.
  */
 export const BAGTS_GAP_PTS = 20;
+
+/**
+ * «Ажлын төрлөөр» хүснэгтийн нийлбэр ↔ төслийн нийт төсвийн зөрүүний ТАЙЛБАР (2026-11-19, аудит: зөрүүг бүхэлд нь «нийгмийн дэд
+ * бүтэц» гэдэг байв — нөгөө хэсэг нь ажлын мөргүй үе шат: ТЭЗҮ, зураг төсөл, газар чөлөөлөлтийн нөхөх олговор). `bn` — дүнгийн формат.
+ * Зөрүүгүй бол null.
+ */
+export function byTypeGapNote(f: Pick<ReportExtra['finance'], 'budget' | 'byTypeTotal'>, bn: (v: number) => string): string | null {
+  if (!(f.budget > 0)) return null;
+  /* Хуучин өгөгдөлд (`outside` алга) — бүх зөрүүг нийт төсөвт ордоггүй мөр гэж үзнэ */
+  const outside = f.byTypeTotal.outside ?? Math.max(0, f.byTypeTotal.budget - f.budget);
+  const missing = f.budget - (f.byTypeTotal.budget - outside);
+  const parts: string[] = [];
+  if (outside > 0.5) parts.push(tr('нийт төсөвт ордоггүй мөрүүд {0} ₮ (нийгмийн дэд бүтэц) энэ хүснэгтэд орсон', bn(outside)));
+  if (missing > 0.5) parts.push(tr('ажлын мөргүй үе шатууд {0} ₮ (ТЭЗҮ, зураг төсөл, газар чөлөөлөлт) орхигдсон', bn(missing)));
+  return parts.length ? tr('Хүснэгтийн нийлбэр төслийн нийт төсвөөс ялгаатай: {0}.', parts.join('; ')) : null;
+}
 
 export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'BUILDING']);
 
@@ -440,10 +456,12 @@ export const loadFinance = cached(loadFinanceRaw, 5 * 60_000, ['CASHFLOW_NEW', '
 
 async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   const F = CASHFLOW_NEW.fields;
-  const [rows, ho, official] = await Promise.all([
+  const [rows, ho, official, officialContract] = await Promise.all([
     queryFeatures(CASHFLOW_NEW.url, { where: CF_WORK_WHERE, outFields: ['*'] }),
     queryFeatures(HO_IPC.url, { outFields: [HO_IPC.payFields.amount, HO_IPC.contractFields.pkg] }),
     loadProjectBudgetTotal(),
+    /* 2026-11-19 (аудит): ТТБ-ийн Төслийн нийт «Гэрээний дүн» — ТЭЗҮ · зураг төслийн гэрээ орно */
+    loadProjectContractTotal().catch(() => null),
   ]);
 
   /** Гэрээний мөрүүд (78) — шүүлт хэрэггүй, мөр бүр нэг гэрээ */
@@ -516,7 +534,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
      * байдаг тул шүүлтгүй `sum` ~33 тэрбумаар их гаргаж, `contractRate` /
      * `paidRate` (`buildFindings`) хоёулаа тэр суурин дээр худал байв.
      */
-    contractAmount: share.contract,
+    contractAmount: officialContract ?? share.contract,
     /**
      * ГАЗАР ЧӨЛӨӨЛӨЛТ, БУУЛГАЛТ ЦЭВЭРЛЭГЭЭ (6-р хэсэг) — НИЙТ дүнгээс
      * ГАДУУР тул тусад нь. Тайлангийн 4-р хэсэг үүнийг уншина: мөнгө
@@ -526,7 +544,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
       .filter((r) => secOf(r) === FIN_XL_LAND_CODE)
       .reduce((a, r) => a + nn(r[F.budget]), 0),
     paid: share.paidKnown ? paid : null,
-    paidPct: share.pct,
+    paidPct: officialContract != null && share.paidKnown ? paidPctOf(paidContracted, officialContract) : share.pct,
     paidContracted,
     paidOther: share.paidOther,
     byType: [...typeMap.entries()]
@@ -539,6 +557,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     byTypeTotal: {
       /* Мөрүүдтэй ижил хүрээ: нуугдсан (`FIN_XL_ROW_HIDE`) хэсэг нийт дүнд орохгүй */
       budget: shownRows.reduce((a, r) => a + nn(r[F.budget]), 0),
+      /** Нийт төсөвт ордоггүй ажлын мөрүүд (нийгмийн дэд бүтэц г.м.) — зөрүүний тайлбарт */
+      outside: shownRows.filter((r) => !finXlInTotal(r)).reduce((a, r) => a + nn(r[F.budget]), 0),
       contract: shownRows
         .filter((r) => str(r[F.amountNote]) === CONTRACTED)
         .reduce((a, r) => a + nn(r[F.contractAmount]), 0),

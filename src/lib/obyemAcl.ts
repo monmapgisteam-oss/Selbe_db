@@ -13,6 +13,7 @@
  */
 
 import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
+import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { obyemUpsert, obyemRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
@@ -26,6 +27,7 @@ export type ObyemRole = 'editor' | 'approver';
 export type ObyemAssign = Assign<ObyemRole>;
 
 const acl = makeAcl<ObyemRole>({
+  aliases: () => PKG_GROUPS,
   storeKey: 'selbe-obyem-acl-v1',
   event: 'selbe-obyem-acl-change',
   roleCaps: ROLE_CAPS.obyem,

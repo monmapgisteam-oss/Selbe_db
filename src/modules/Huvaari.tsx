@@ -1130,6 +1130,11 @@ export function Huvaari({
     }
     return out;
   }, [scoped, collapsed, matchAt]);
+  /**
+   * ТАЙЛАН (Word · PDF)-ИЙН МӨРҮҮД — шүүлтээр, эвхэлтээс ҮЛ хамааран (2026-11-19, аудит: эвхсэн бүлгийн ажлууд «Нийт N ажил»,
+   * төлөвийн тоо, хоцорсон жагсаалтаас хаягддаг байв; «Бүгдийг хураах» үед тайлан «0 ажил» гэдэг байв).
+   */
+  const exportAt = useCallback((b: number) => scoped.filter((r) => matchAt(r, b)), [scoped, matchAt]);
   const [sticky, setSticky] = useState<ReadonlySet<number>>(() => new Set());
   const filtOn = filter !== 'all' || fYear !== 'all' || chips.size > 0;
   const filtKey = `${filter}|${fYear}|${[...chips].sort().join(',')}`;
@@ -3814,23 +3819,24 @@ export function Huvaari({
   }, [effRow, blk, rowSpanAt, plan, kind, byCode, refSpanAt, refSpanOf, now, showRef]);
 
   useEffect(() => setReportSource('huvaari', {
-    blocks: () => huvaariBlocks({ rows: visibleAt(blk).map((r) => rowFor(r, blk)), hasActual }),
+    blocks: () => huvaariBlocks({ rows: exportAt(blk).map((r) => rowFor(r, blk)), hasActual }),
     filters: () => [
       `${tr('Багц')}: ${pkg.label}`,
       `${tr('Хуваарь')}: ${kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө')}`,
       n > 1 && sc?.bld[blk] ? `${tr('Блок')}: ${sc.bld[blk]}` : '',
       previewing ? tr('САНАЛ (урьдчилан харалт)') : !savedView && dirtyRows > 0 ? tr('Хадгалаагүй {0} мөр орсон', num(dirtyRows)) : '',
+      filtOn ? tr('Шүүлт идэвхтэй — зөвхөн шүүлтэд таарсан ажил') : '',
     ].filter(Boolean),
-  }), [visibleAt, blk, rowFor, hasActual, pkg, kind, n, sc, previewing, dirtyRows, savedView]);
+  }), [exportAt, blk, rowFor, hasActual, pkg, kind, n, sc, previewing, dirtyRows, savedView, filtOn]);
 
   const savePdf = useCallback(async () => {
     if (!sc || pdfBusy) return;
     setPdfBusy(true);
     setPdfOpen(false);
     try {
-      const out: HvPdfRow[] = visibleAt(blk).map((r) => rowFor(r, blk));
+      const out: HvPdfRow[] = exportAt(blk).map((r) => rowFor(r, blk));
       const allPdf = !!pdfOpts.allBlocks && multiBlk;
-      const blocks = allPdf ? sc.bld.map((name, b) => ({ block: name, rows: visibleAt(b).map((r) => rowFor(r, b)) })) : undefined;
+      const blocks = allPdf ? sc.bld.map((name, b) => ({ block: name, rows: exportAt(b).map((r) => rowFor(r, b)) })) : undefined;
       const kindLabel = kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө');
       await downloadHuvaariPdf({
         pkg: pkg.label,
@@ -3851,7 +3857,7 @@ export function Huvaari({
     } finally {
       setPdfBusy(false);
     }
-  }, [sc, pdfBusy, visibleAt, rowFor, multiBlk, kind, blk, now, showRef,
+  }, [sc, pdfBusy, exportAt, rowFor, multiBlk, kind, blk, now, showRef,
     pkg, n, hasActual, pdfOpts, setErr, setPdfOpen, previewing, dirtyRows, savedView]);
 
   /** Холбох цонхны хоёр мөр — OID-оор (2026-09-25); аль нэг нь алга бол цонх гарахгүй */

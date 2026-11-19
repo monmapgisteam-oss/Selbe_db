@@ -6,7 +6,7 @@ import { loadFinData, aggregateMonths, pkgMonthsMap, projectPlanOf } from '@/mod
 import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadWorkforceKpi, type WorkforceKpi } from '@/lib/ceo/workforce';
 import { loadZov, TOLOV } from '@/lib/zovshoorol';
-import { HO_IPC, hoAmount, pkgKeyOf } from '@/lib/services';
+import { HO_IPC, hoAmount, hoPayDate, pkgKeyOf } from '@/lib/services';
 import { finPkgKey } from '@/lib/pkgAlias';
 import { dayKey, monthKey } from '@/lib/format';
 import { loadBlockHistory, loadBlockUniverse, loadInfraHistory, loadInfraUniverse } from '@/lib/blockProgress';
@@ -30,8 +30,7 @@ export async function loadExecDeltas(x: ExecReport, period: ExecPeriod): Promise
     loadZov().catch(() => null),
     loadBlockHistory(), loadBlockUniverse(), loadInfraHistory(), loadInfraUniverse(),
   ]);
-  const byKey = pkgMonthsMap(fin);
-  const HP = HO_IPC.payFields;
+  const byKey = pkgMonthsMap(fin);
   const HC = HO_IPC.contractFields;
   const months = aggregateMonths(fin, pc);
   const packs = x.prog.packs.map((p) => ({ key: p.key, label: p.name, kind: p.kind, months: byKey.get(p.key) ?? [] }));
@@ -44,7 +43,7 @@ export async function loadExecDeltas(x: ExecReport, period: ExecPeriod): Promise
     packs: packs.map((p) => ({ key: p.key, label: p.label, points: progress.packs.get(p.key) ?? [] })),
     pays: fin.pays.map((p) => {
       const k = pkgKeyOf(p[HC.pkg]);
-      return { at: msOf(p[HP.payDate]), amount: hoAmount(p), key: k && k !== '0' ? finPkgKey(k) : undefined };
+      return { at: msOf(hoPayDate(p)), amount: hoAmount(p), key: k && k !== '0' ? finPkgKey(k) : undefined };
     }),
     givenTotal: x.fin.given,
     days: wf?.detail.days.map((d) => ({ key: d.key, workers: d.workers, technik: d.technik })) ?? [],

@@ -1042,6 +1042,8 @@ export function kpisOf(
   contractSum: number,
   wbsPct: number | null = null,
   budgetTotal: number | null = null,
+  /** ТТБ-ийн Төслийн нийт «Гэрээний дүн» (`loadProjectContractTotal`) — шүүлтгүй үед л */
+  contractTotal: number | null = null,
 ): Kpi {
   let budget = 0;
   const types = new Set<string>();
@@ -1053,7 +1055,7 @@ export function kpisOf(
 
   return {
     budget: budgetTotal ?? Math.round(budget),
-    contract: contractSum,
+    contract: contractTotal ?? contractSum,
     progress: wbsPct,
     packages: rows.filter((r) => r.isWork).length,
     types: types.size,

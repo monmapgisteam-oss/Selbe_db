@@ -19,7 +19,7 @@ import { loadLandStatus } from '@/lib/land';
 import { loadFillPkgProgress, loadHeadline } from '@/lib/live';
 import { loadBagtsRows } from '@/lib/execData';
 import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
-import { loadProjectBudgetTotal } from '@/lib/projectPlanInputs';
+import { loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
 import { loadFinData, typePhysNow, INFRA_TYPE, aggregateMonths } from '@/modules/Finance';
 import { loadHoRows } from '@/lib/ipc';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
@@ -717,6 +717,8 @@ function KpiStrip({
   /* 2026-11-04: шүүлтгүй үед нийт төсөв = ТТБ-ийн Төслийн нийт E (дашбоард · тайлантай ИЖИЛ); уншигдаагүй бол мөрийн нийлбэр */
   const budgetQ = useAsync(loadProjectBudgetTotal, []);
   const budgetTotal = budgetQ.state === 'ready' ? budgetQ.data : null;
+  const contractQ = useAsync(loadProjectContractTotal, []);
+  const contractTotal = contractQ.state === 'ready' ? contractQ.data : null;
 
   const k = useMemo(() => {
     const sel = rows.filter((r) => inPeriod(r, period) && (xs == null || xMatch(r, xs.dim, xs.key)));
@@ -729,8 +731,8 @@ function KpiStrip({
       : 0;
     const whole = !periodActive(period) && xs == null;
     const outOfTotal = sel.length > 0 && sel.every((r) => !r.inTotal);
-    return { ...kpisOf(sel, csum, whole ? wbsPct : null, whole ? budgetTotal : null), whole, outOfTotal };
-  }, [rows, period, contracts, xs, wbsPct, budgetTotal]);
+    return { ...kpisOf(sel, csum, whole ? wbsPct : null, whole ? budgetTotal : null, whole ? contractTotal : null), whole, outOfTotal };
+  }, [rows, period, contracts, xs, wbsPct, budgetTotal, contractTotal]);
   /** Шүүлтгүй ба нэгтгэл хараахан ирээгүй — «…» */
   const progWait = k.whole && wbsQ.state === 'loading';
 

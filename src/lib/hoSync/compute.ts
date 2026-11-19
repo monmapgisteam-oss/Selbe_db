@@ -159,10 +159,17 @@ export const isRegisterRow = (r: Row): boolean => PH_DESIGN.includes(txt(r[CF.ph
 /** Төлбөрийн акт үүсгээгүй мөр үү (актын дугаар, сканы баримт алга) — акттай мөрийн төлбөрийг бүртгэл дарж бичихгүй */
 const noAct = (r: Row): boolean => r[HO_IPC.payFields.ipcNo] == null && r[HO_IPC.docItem] == null;
 
-/** Бүртгэлийн баримтын гэрээний мөрд бичих төлбөр: олгосон дүн = гэрээний дүн («Ажлын үнэ»), төлөв «Олгосон» */
-const paidFromRegister = (row: Row): Row => {
+/**
+ * Бүртгэлийн баримтын гэрээний мөрд бичих төлбөр: олгосон дүн = гэрээний дүн («Ажлын үнэ»), төлөв «Олгосон». 2026-11-19 (аудит):
+ * гүйлгээний огноо = гэрээний огноо › захирамжийн огноо — огноогүй төлбөр сарын олголтын цуваа, хугацааны тайлангаас хаягддаг байв.
+ */
+const paidFromRegister = (row: Row, ho?: Row): Row => {
   const v = num(row[CF.contractAmount]);
-  return v != null && v > 0 ? { [HO_IPC.payFields.amount]: v, [HO_IPC.status.field]: HO_IPC.status.paid } : {};
+  if (v == null || v <= 0) return {};
+  /* IPC-ийн гүйлгээний огноо «YYYY-MM-DD» (DateOnly) — `ipcAuto`-тэй ижил */
+  /* Гараар бичсэн огноог дарахгүй — HO мөрөнд огноо байвал хэвээр */
+  const at = ho && dayOnly(ho[HO_IPC.payFields.payDate]) ? null : dayOnly(row[CF.contractDate]) ?? dayOnly(row[CF.orderDate]);
+  return { [HO_IPC.payFields.amount]: v, [HO_IPC.status.field]: HO_IPC.status.paid, ...(at != null ? { [HO_IPC.payFields.payDate]: at } : {}) };
 };
 
 /**
@@ -354,7 +361,7 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
       matched.set(code, [Number(row[CASHFLOW_NEW.oid])]);
       /* Баримтын нэр бүртгэлд өөрчлөгдвөл гэрээний нэр дагана — дараагийн удаа нэрээрээ таарна */
       /* Нэг мөртэй (акт үүсгээгүй) гэрээнд л олгосон дүнг бүртгэлээс бичнэ — акттай гэрээний төлбөрийг хөндөхгүй */
-      const want = { ...hoFromCf([row]), [HC.project]: txt(row[CF.detail]) || null, ...(rows.length === 1 && noAct(rows[0]) ? paidFromRegister(row) : {}) };
+      const want = { ...hoFromCf([row]), [HC.project]: txt(row[CF.detail]) || null, ...(rows.length === 1 && noAct(rows[0]) ? paidFromRegister(row, rows[0]) : {}) };
       for (const r of rows) {
         const upd: Row = {};
         for (const [f, v] of Object.entries(want)) if (!same(r[f], v)) upd[f] = v;

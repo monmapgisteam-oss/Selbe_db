@@ -26,7 +26,7 @@ import {
   housingPlanSeries, housingSeries, planScope, pkgCostWeight, cfWeightRow, HOUSING_PKGS,
 } from '@/lib/gdash';
 import {
-  CASHFLOW_NEW, HO_IPC, pkgKeyOf, cfMonthAxis, hoAmount,
+  CASHFLOW_NEW, HO_IPC, pkgKeyOf, cfMonthAxis, hoAmount, hoPayDate,
   CF_WORK_WHERE, CF_MONTH, bagtsKey,
 } from '@/lib/services';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
@@ -783,8 +783,7 @@ async function loadFinDataRaw(): Promise<FinData> {
       planTotal.set(k, (planTotal.get(k) ?? 0) + v);
     });
 
-    const HC = HO_IPC.contractFields;
-    const HP = HO_IPC.payFields;
+    const HC = HO_IPC.contractFields;
     const axis = cfMonthAxis();
     const first = axis[0];
     const last = axis[axis.length - 1];
@@ -796,7 +795,7 @@ async function loadFinDataRaw(): Promise<FinData> {
       const k = pkgKeyOf(r[HC.pkg]);
       if (!k || k === '0') return;
       givenTotal.set(k, (givenTotal.get(k) ?? 0) + amt);
-      const raw = ym(r[HP.payDate]);
+      const raw = ym(hoPayDate(r));
       if (!raw) return; // огноогүй — цувааны гадна (дээрх)
       if (raw < first || raw > last) return;
       const mon = raw;

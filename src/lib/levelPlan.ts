@@ -13,7 +13,7 @@
 import {
   saneDate, ubToday, type PhaseKind, type PlanNode, type PlanTree, type PlanValues,
 } from './projectPlan';
-import { SHEET_PKGS, loadProjectPlan, type ProjectPlan } from './projectPlanInputs';
+import { SHEET_PKGS, cfSheetKey, loadProjectPlan, type ProjectPlan } from './projectPlanInputs';
 import { CASHFLOW_NEW, bagtsKey, blockKey, buildingKey, pkgKeyOf, isConstructionNo } from './services';
 import { PKGS, SYNTHETIC_BLOCK, loadSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, computeAll, childIndexes, type Calc, type SheetRow } from '@/modules/sheet/bagtsSheet';
@@ -213,8 +213,10 @@ export function packagesOf(tree: PlanTree): PkgInfo[] {
   const visit = (n: PlanNode, dir: PlanNode | null) => {
     for (const c of n.children) {
       const d = dir ?? c;
-      const k = ownKey(c);
-      const leafPkg = isPkgKey(k) && c.children.every((x) => { const kx = ownKey(x); return !isPkgKey(kx) || kx === k; });
+      /* Багцгүй/хүрээтэй гэрээ — хуваарийн хуудасны бүлгээр (`cfSheetKey`) */
+      const sk = isPkgKey(ownKey(c)) ? '' : cfSheetKey(c.row?.cashflow_id);
+      const k = sk || ownKey(c);
+      const leafPkg = (isPkgKey(k) || !!sk) && c.children.every((x) => { const kx = ownKey(x); return !isPkgKey(kx) || kx === k; });
       if (leafPkg && !seen.has(k)) {
         seen.add(k);
         const raw = String(c.row?.bagts ?? '').trim();

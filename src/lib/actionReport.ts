@@ -227,6 +227,9 @@ export function bySeverity(items: readonly ActionItem[]): Bucket[] {
   return [
     { label: 'Ноцтой үл нийцэл', value: items.filter((x) => x.sevCode === 'major').length, color: '#d62839' },
     { label: 'Бага зэргийн үл нийцэл', value: items.filter((x) => x.sevCode === 'minor').length, color: '#ff7f0e' },
+    /* 2026-11-19 (аудит): үл нийцэлгүй («no» — байгаль орчны үзлэг 87) ба зэрэггүй зүйл графикаас хаягдаж хувь нь 100%-д хүрдэггүй байв */
+    { label: 'Үл нийцэлгүй', value: items.filter((x) => x.sevCode === 'no').length, color: '#2ca02c' },
+    { label: 'Зэрэг тодорхойгүй', value: items.filter((x) => x.sevCode !== 'major' && x.sevCode !== 'minor' && x.sevCode !== 'no').length, color: '#cbd5e1' },
   ].filter((b) => b.value > 0);
 }
 

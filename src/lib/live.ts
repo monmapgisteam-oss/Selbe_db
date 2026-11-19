@@ -124,8 +124,10 @@ export const loadBudget = cached<Budget>(async () => {
   const sumOf = (rows: readonly Row[], f: string) => rows.reduce((a, r) => a + Number(r[f] ?? 0), 0);
   const orderTotal = sumOf(gOrder.filter(finXlInTotal), 'o');
   const contract = sumOf(inTotal.filter((r) => cfLabel(r[CF.amountNote]) === CONTRACTED), 'c');
-  const { loadProjectBudgetTotal } = await import('@/lib/projectPlanInputs');
+  const { loadProjectBudgetTotal, loadProjectContractTotal } = await import('@/lib/projectPlanInputs');
   const official = await loadProjectBudgetTotal();
+  /* 2026-11-19 (аудит): гэрээлсэн дүн = ТТБ-ийн Төслийн нийт (ТЭЗҮ · зураг төслийн гэрээ орно) */
+  const officialContract = await loadProjectContractTotal().catch(() => null);
   /* 2026-11-04: нийт төсөв = «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт E (бүхэл ₮); мөр алга бол ажлын мөрийн нийлбэр */
   const total = official ?? Math.round(sumOf(inTotal, 'b'));
   const city = g.filter((r) => !finXlInTotal(r) && CITY_FUNDED_RE.test(cfLabel(r[CF.amountNote])));
@@ -133,7 +135,7 @@ export const loadBudget = cached<Budget>(async () => {
   return {
     total,
     orderTotal,
-    contract,
+    contract: officialContract ?? contract,
     cityOutside: { amount: sumOf(gOrder.filter((r) => !finXlInTotal(r) && CITY_FUNDED_RE.test(cfLabel(r[CF.amountNote]))), 'o'), n: city.reduce((a, r) => a + Number(r.n ?? 0), 0) },
     byType: tally(
       g,

@@ -11,7 +11,8 @@
  * тохиолдлыг татгалзана.
  */
 
-import { makeAcl, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
+import { makeAcl, inScope, ALL_BAGTS, type Assign, type Grant } from './scopedAcl';
+import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { huvaariUpsert, huvaariRemove, scopedRead } from './permsRemote';
 import { ROLE_CAPS } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
@@ -72,6 +73,7 @@ const acl = makeAcl<PlanRole>({
       ? tr('«{0}»-д зохиогч аль хэдийн томилогдсон: {1}. Нэг багцад нэг зохиогч байна — эхлээд түүнийг хасна уу.', where, c.user)
       : tr('«{0}»-д батлагч аль хэдийн томилогдсон: {1}. Нэг багцад нэг батлагч байна — эхлээд түүнийг хасна уу.', where, c.user);
   },
+  aliases: () => PKG_GROUPS,
   storeKey: 'selbe-huvaari-acl-v1',
   event: 'selbe-huvaari-acl-change',
   roleCaps: ROLE_CAPS.huvaari,
@@ -136,7 +138,7 @@ export function requirePlanWrite(group: string | null): void {
   const u = currentUser();
   const ok = (['author', 'approver'] as const).some((role) => {
     const sc = acl.scope(u, role);
-    return group == null ? sc == null || sc.length > 0 : sc == null || sc.includes(group);
+    return group == null ? sc == null || sc.length > 0 : inScope(sc, group);
   });
   if (!ok) throw new Error(tr('Энэ багцын хуваарьт бичих эрхгүй — зохиогч эсвэл батлагчаар томилогдсон байх ёстой.'));
 }
