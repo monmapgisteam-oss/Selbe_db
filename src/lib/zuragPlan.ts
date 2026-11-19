@@ -60,6 +60,12 @@ function spanOf(n: PlanNode, a: 'guits'): [number | null, number | null] {
   return [lo, hi];
 }
 
+/** Баримтын 5 шатны огнооны (батлагдсан · магадлал · давтан магадлал · хүлээж авсан · гүйцэтгэгчид өгсөн) хамгийн эрт ба хамгийн орой */
+export function stageSpan(d: Pick<ZRow, 'dates'>): { guits_ehleh: number | null; guits_duusah: number | null } {
+  const v = Object.values(d.dates).filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+  return v.length ? { guits_ehleh: Math.min(...v), guits_duusah: Math.max(...v) } : { guits_ehleh: null, guits_duusah: null };
+}
+
 const virt = (code: string, parent: string, name: string, w: number, docs: readonly ZRow[], leaf: boolean): PlanStoredRow => ({
   objectid: null,
   registry: true,
@@ -108,7 +114,9 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
       /* Гэрээний дүн: бүртгэлд «Ажлын үнэ»-тэй баримт байвал баримтуудаас (доор), эс бөгөөс хуучин мөрүүдийн нийлбэр */
       ...(!priced && ms?.contract != null ? { geree_dun: ms.contract, ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : {}),
       ho_dun_geree: priced ? null : budgetOf(n),
-      guits_ehleh: gs, guits_duusah: ge, geree_ehleh: gs, geree_duusah: ge,
+      /* 2026-11-19 (хэрэглэгч: «бүрэн data source»): гүйцэтгэгчийн огноо — үе шатын хуучин хадгалсан огноо БИШ, баримтуудын
+         5 шатны огнооноос (доод мөрүүд → computePlan MIN/MAX). Баримтад огноо огт алга бол хоосон */
+      guits_ehleh: null, guits_duusah: null, geree_ehleh: gs, geree_duusah: ge,
     });
     dropAll(n);
     const groups = groupZ(docs);
@@ -119,6 +127,8 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
       ds.forEach((d, k) => add.push({
         objectid: null, registry: true, dd_kod: `${parent}.${k + 1}`, etseg_kod: parent,
         ajil_uilchilgee: d.ner, bagts: d.bagts || null, heseg_ezleh_huvi: 1 / ds.length, guitsetgel_huvi: tolovPct(d.tolov),
+        /* 2026-11-19 (хэрэглэгч: «5 үе шат дууссан бол дууссан»): эхлэх = эхний шатны огноо, дуусах = сүүлийн шатны огноо */
+        ...stageSpan(d),
         /* Хэрэглэгч 2026-11-17: гараар оруулсан дүн «урьдчилсан төсөвт өртөг болон IPC рүү хоёуланд нь» — төсөвт өртөг ба
            гэрээний дүн (IPC-ийн олгосон хувийн суурь). Олгосон дүн нь IPC-ээс хэвээр (үе шатын мөрд) */
         /* 2026-11-19 (хэрэглэгч): зургийн мөнгө гэрээний дагуу НЭГ удаа олгогдоно, төлбөрийн актаар дахин олгохгүй — тиймээс
@@ -192,7 +202,7 @@ function matchStored(add: readonly PlanStoredRow[], stored: readonly PlanStoredR
 }
 
 /** Хүснэгтэд бичигддэг талбарууд — бүртгэлээс гардаг нь л; бусад нь хоосон */
-export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar', 'olgoson_dun'] as const;
+export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar', 'olgoson_dun', 'guits_ehleh', 'guits_duusah', 'geree_ehleh', 'geree_duusah'] as const;
 type RKey = (typeof REGISTRY_PLAN_KEYS)[number];
 export type RegistryPlanEdits = {
   adds: ({ dd_kod: string } & Record<RKey, string | number | null>)[];
@@ -218,8 +228,8 @@ export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZR
   /* 2026-11-18: гэрээний дугаар · гүйцэтгэгч · олгосон дүн · урьдчилгаа нь «гадны» шинж БИШ — зургийн гэрээ байгуулах,
      төлбөр олгоход систем өөрөө баримтын мөрд бичдэг. Урьд нь ийм мөрийг дараагийн бүртгэлийн хадгалалт устгаад хоосон
      мөр нэмдэг байсан тул гэрээний дугаар арилж, төлбөр гэрээнээсээ тасардаг байв. */
-  const foreign = (r: PlanStoredRow) => r.cashflow_id != null || r.ho_dun_zahiramj != null || r.zahiramj_dugaar != null
-    || r.guits_ehleh != null || r.guits_duusah != null;
+  /* 2026-11-19: гүйцэтгэгчийн огноо бүртгэлээс бичигддэг болсон тул «гадны» шинж биш */
+  const foreign = (r: PlanStoredRow) => r.cashflow_id != null || r.ho_dun_zahiramj != null || r.zahiramj_dugaar != null;
   const byOid = new Map<number, PlanStoredRow>();
   for (const r of old) if (typeof r.objectid === 'number') byOid.set(r.objectid, r);
   const kept = new Set<number>();

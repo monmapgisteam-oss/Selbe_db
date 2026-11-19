@@ -58,8 +58,25 @@ near(r.get('2.2').S, 60, 'Ажлын зураг — (100 + 0 + 80) ÷ 3');
 near(r.get('2.2').F, 75, 'жин = баримтын тоо 3 ÷ 4');
 near(r.get('2').S, 65, 'үе шат — 4 баримтын дундаж');
 assert.equal(r.get('2').E, 400, 'үе шатын мөнгөн дүн хэвээр — хуучин мөрүүдийн нийлбэр 100 + 300');
-assert.equal(r.get('2').L, D('2025-04-21'), 'эхлэх — хуучин мөрүүдийн хамгийн эрт');
-assert.equal(r.get('2').M, D('2027-03-01'), 'дуусах — хамгийн орой');
+/* 2026-11-19 (хэрэглэгч: «бүрэн data source»): үе шатын гүйцэтгэгчийн огноо — хуучин мөрүүдийнх БИШ, баримтуудын 5 шатны
+   огнооноос; энэ фикстурын баримтуудад огноо алга → хоосон */
+assert.equal(r.get('2').L, null, 'эхлэх — баримтад огноо алга бол хоосон (хуучин 2025-04-21 биш)');
+assert.equal(r.get('2').M, null, 'дуусах — хоосон');
+{
+  const zd = (oid, ded, dates) => toZRow({ objectid: oid, buleg: '003. АЖЛЫН ЗУРАГ', ded_buleg: ded, ner: `d${oid}`, ...dates });
+  const dd = [
+    zd(31, '300.10. БАГЦ 1', { magadlal_ognoo: D('2026-02-01'), huleej_avsan_ognoo: D('2026-05-10') }),
+    zd(32, '300.10. БАГЦ 1', { batlagdsan_ognoo: D('2026-01-15') }),
+    zd(33, '300.20. БАГЦ 2', {}),
+  ];
+  const { stageSpan } = await import('./zuragPlan.ts');
+  assert.deepEqual(stageSpan(dd[0]), { guits_ehleh: D('2026-02-01'), guits_duusah: D('2026-05-10') }, 'эхний шат – сүүлийн шат');
+  assert.deepEqual(stageSpan(dd[2]), { guits_ehleh: null, guits_duusah: null });
+  const t2 = buildTree(withRegistryRows(rows, dd));
+  const r2 = computePlan(t2);
+  const v2 = r2.values.get(t2.nodes.find((n) => n.code === '2'));
+  assert.deepEqual([v2.L, v2.M], [D('2026-01-15'), D('2026-05-10')], 'үе шат = баримтуудын хамгийн эрт эхлэх, хамгийн орой дуусах');
+}
 near(r.get('2').F, 400 / 1440 * 100, 'үе шатын жин мөнгөөр, өөрчлөгдөөгүй');
 assert.equal(r.get('1').S, 100, 'ТЭЗҮ хуучнаараа');
 
@@ -137,12 +154,15 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
 {
   assert.deepEqual(registryPlanEdits(rows, []), { adds: [], updates: [], deletes: [] }, 'бүртгэл хоосон — юу ч устгахгүй');
   const e = registryPlanEdits(rows, docs);
-  /* 2.1 (гэрээний огноотой) ба 2.2 (огноотой) — бүртгэлийн мөр биш: устгаад цэвэр нэмнэ; 2.1.1 (жин, хувь, багц л) — засна */
-  assert.deepEqual(e.deletes.sort(), [2, 4]);
-  assert.deepEqual(e.adds.map((a) => a.dd_kod), ['2.1', '2.2', '2.2.1', '2.2.1.1', '2.2.1.2', '2.2.2', '2.2.2.1']);
-  assert.deepEqual(e.updates, [{ objectid: 3, ajil_uilchilgee: 'n1', bagts: null, guitsetgel_huvi: 80 }]);
+  /* 2026-11-19: огноо бүртгэлээс бичигддэг болсон тул огноотой 2.1, 2.2 «гадны» мөр биш — устгахгүй, байранд нь засна
+     (хуучин огноо хоосолно); 2.1.1 (жин, хувь, багц л) — засна */
+  assert.deepEqual(e.deletes, []);
+  assert.deepEqual(e.adds.map((a) => a.dd_kod), ['2.2.1', '2.2.1.1', '2.2.1.2', '2.2.2', '2.2.2.1']);
+  assert.deepEqual(e.updates.map((u) => [u.objectid, u.guits_ehleh, u.guits_duusah]), [[2, null, null], [3, undefined, undefined], [4, null, null]],
+    'хуучин огноо хоосолдоно');
+  assert.deepEqual(e.updates.find((u) => u.objectid === 3), { objectid: 3, ajil_uilchilgee: 'n1', bagts: null, guitsetgel_huvi: 80 });
   const a = e.adds.find((x) => x.dd_kod === '2.2.1.1');
-  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null, olgoson_dun: null },
+  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null, olgoson_dun: null, guits_ehleh: null, guits_duusah: null, geree_ehleh: null, geree_duusah: null },
     'бүртгэлд байхгүй утга хоосон');
   assert.ok(!e.deletes.includes(1) && !e.deletes.includes(11) && !e.deletes.includes(20), 'үе шатын мөр, бусад үе шат хөндөгдөхгүй');
   /* Бичигдсэний дараах байдал: дахин тулгахад засвар алга; төлөв өөрчлөгдвөл ганц мөр засна; баримт хасагдвал мөр устана */
