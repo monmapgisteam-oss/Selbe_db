@@ -987,7 +987,7 @@ function PortalContent(
         )}
 
         {!isFull && (
-          <div className={s.work} id="main" tabIndex={-1}>
+          <div className={`${s.work} ${planPanel || planDetail ? s.workPlan : ''}`} id="main" tabIndex={-1}>
             {/* ── KPI ЗУРВАС (Environment `.analytics-overview`) — урьд нь самбарын толгойн доор (plan) эсвэл
                 дэлгэцийн доод хүрээнд (бусад) байсан нэгтгэсэн үзүүлэлт. «Хэсэгчилсэн ЕТ»-д байхгүй (урьдын адил). */}
             {!planDetail && (
@@ -1101,6 +1101,7 @@ function PortalContent(
                   zone={zone}
                   setZone={setZone}
                   dock
+                  fixed
                 />
                 </ErrorBoundary>
                 )}

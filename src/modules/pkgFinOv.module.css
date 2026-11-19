@@ -5,10 +5,10 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 5px;
+  justify-content: flex-start;
+  gap: 3px;
   text-align: left;
-  padding: 12px 14px;
+  padding: 8px 14px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
@@ -24,10 +24,11 @@
   min-width: 0;
 }
 
+/* 2026-11-19: тоо ТОМ (13 → 22px) — том хавтанд жижиг тоо байв */
 .tileVal b {
-  font-size: 13px;
+  font-size: 22px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;

@@ -570,3 +570,43 @@
   to   { opacity: 1; transform: translateX(0) }
 }
 
+/*
+ * ══ НИЙТЛЭГ ЗАСВАР (2026-11-19) — «Тохиромжтой байдлын шинжилгээ», Ерөнхий дашбоардтай ижил, энэ цэсний ӨӨРИЙН CSS-д ══
+ *  1. Хүрээ бүдэг · 2. Чирэх зураас харагдахгүй (хулгана очиход л) · 3. Газрын зургийн товч үргэлж дэлгээтэй, ирмэгээс 12px ·
+ *  4. Давхарга · Тунгалаг цонхнууд товчны хажууд, зураг дотор, гүйлгэгдэнэ, зэрэг нээгдэхэд давхцахгүй.
+ */
+.app {
+  --line: color-mix(in oklab, var(--ink) 4%, transparent);
+  --line-strong: color-mix(in oklab, var(--ink) 8%, transparent);
+  --tools-top: 12px;
+  --pop-l: calc(12px + var(--tools-w, 176px) + 8px);
+}
+.resizer:not(:hover):not(.resizerActive):not(:focus-visible) { background: transparent; }
+.resizer:not(:hover):not(.resizerActive):not(:focus-visible)::after { background: transparent; }
+.app.app :global(.mapToolsBar) { left: 12px; }
+.app.app :global(.mapDims) { top: 12px; }
+.app.app .catPanel {
+  top: 12px;
+  bottom: 12px;
+  left: var(--pop-l);
+  width: min(340px, calc(100% - var(--pop-l) - 12px));
+  max-width: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  z-index: 12;
+}
+.app.app :global(.mapOpacity) {
+  top: 12px;
+  bottom: auto;
+  left: var(--pop-l);
+  right: auto;
+  width: min(340px, calc(100% - var(--pop-l) - 12px));
+  max-width: none;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  z-index: 12;
+}
+.app.app *:has(> :global(.mapOpacity)) .catPanel,
+.app.app *:has(> .catPanel) > :global(.mapOpacity) { position: absolute; }
+.app.app *:has(> :global(.mapOpacity)) > .catPanel { bottom: auto; height: calc(55% - 18px); }
+.app.app *:has(> .catPanel) > :global(.mapOpacity) { top: calc(55% + 6px); max-height: calc(45% - 18px); }

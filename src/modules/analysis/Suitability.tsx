@@ -989,6 +989,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
             {/* «Давхарга» товч + 2D/3D/BIM — НЭГ мөрөнд, зүүн доод буланд
                 (Давхарга нь дим товчны ӨМНӨ, «Ерөнхий төлөвлөгөө»-тэй ижил). */}
             <MapTools
+              fixed
               dim={dim}
               setDim={setDim}
               layersOpen={layerCatOpen}
