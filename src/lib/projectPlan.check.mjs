@@ -696,3 +696,29 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
   near(p2.values.get(t2.root).S, 30, 1e-9, 'Төслийн нийтэд орсон');
   console.log('projectPlan.check: «Нийслэл төсөв» мөрийн унтраалга OK');
 }
+
+/* 2026-11-19 (хэрэглэгч): «Мөнгөний нийлбэрт тооцох» ба «Хугацааны нийтэд тооцох» — мөр өөрийнхөө утгыг харуулна, эцгийн
+   нийлбэрт орохгүй; гүйцэтгэлийн жин, хувь хөндөгдөхгүй; бүлэг дээр унтраавал доорх бүх мөр дагана */
+{
+  const Dt = (s) => Date.parse(`${s}T00:00:00Z`);
+  const base = [
+    { objectid: 1, dd_kod: '1', ajil_uilchilgee: 'Үе шат' },
+    { objectid: 2, dd_kod: '1.1', etseg_kod: '1', ajil_uilchilgee: 'А', ho_dun_geree: 100, guitsetgel_huvi: 100, guits_ehleh: Dt('2026-01-01'), guits_duusah: Dt('2026-06-30') },
+    { objectid: 3, dd_kod: '1.2', etseg_kod: '1', ajil_uilchilgee: 'Б', ho_dun_geree: 300, guitsetgel_huvi: 0, guits_ehleh: Dt('2026-03-01'), guits_duusah: Dt('2029-08-01') },
+  ];
+  const run = (rows) => { const t = buildTree(rows); const r = computePlan(t); return { t, r, at: (c) => r.values.get(t.nodes.find((n) => n.code === c)) }; };
+  const a = run(base);
+  const b = run(base.map((x) => (x.objectid === 3 ? { ...x, mongo_tootsoh: 0, hugatsaa_tootsoh: 0 } : x)));
+  assert.equal(a.at('1').E, 400);
+  assert.equal(b.at('1').E, 100, 'мөнгө: Б эцгийн нийлбэрт орохгүй');
+  assert.equal(b.at('1.2').E, 300, 'Б өөрийн дүнгээ харуулна');
+  near(b.at('1.2').F, a.at('1.2').F, 1e-9, 'жин өөрчлөгдөхгүй');
+  near(b.at('1').S, a.at('1').S, 1e-9, 'гүйцэтгэлийн хувь өөрчлөгдөхгүй');
+  assert.equal(b.at('1').M, Dt('2026-06-30'), 'хугацаа: Б-ийн 2029 эцгийн дуусахад орохгүй');
+  assert.equal(a.at('1').M, Dt('2029-08-01'));
+  /* бүлэг дээр унтраавал — доорх мөрүүд бүгд хасагдана */
+  const c = run([{ objectid: 9, dd_kod: '2', ajil_uilchilgee: 'Өөр', ho_dun_geree: 50 }, ...base.map((x) => (x.objectid === 1 ? { ...x, mongo_tootsoh: 0 } : x))]);
+  assert.equal(c.r.values.get(c.t.root).E, 50, 'бүлгийн унтраалга — доорх 400 нийтэд орохгүй');
+  assert.equal(c.at('1').E, 400, 'бүлэг өөрийн нийлбэрийг харуулна');
+  console.log('projectPlan.check: мөнгө ба хугацааны унтраалга OK');
+}

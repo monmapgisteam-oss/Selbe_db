@@ -52,10 +52,10 @@ import {
   SRC_HUVAARI, type MonthlyMoney,
 } from '@/lib/monthlyMoney';
 import type { LiveProgress, ProjectPlan } from '@/lib/projectPlanInputs';
-import { isAddedWork, moneySums, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus } from '@/lib/projectPlan';
+import { isAddedWork, moneySums, noMoney, noTime, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus } from '@/lib/projectPlan';
 import {
   MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
-  importCutoff, pkgOptions, savePlanValue, saveInTotal, saveInPhase, savePhaseWeight, type FillFilter, type PlanEditKey, type PlanFilter,
+  importCutoff, pkgOptions, savePlanValue, saveInTotal, saveInPhase, saveInMoney, saveInTime, savePhaseWeight, type FillFilter, type PlanEditKey, type PlanFilter,
 } from '@/lib/planEdit';
 import { AddRowsPanel, EDIT_LABEL, PlanEditCell } from '@/modules/PlanEntry';
 import f from './finance.module.css';
@@ -1152,6 +1152,48 @@ const rawCol = (k: PpRawKey, label: string, kind: PpKind): PpCol => ({ k, label,
  * ҮЕ ШАТНЫ ЖИНГИЙН НҮД (2026-11-17, хэрэглэгч) — үе шатын мөрийн «Хэсэгт эзлэх»-ийг гараар тогтмол болгоно. Хоосон
  * үлдээвэл үлдэгдлийг (100% − тогтмолуудын нийлбэр) төсвөөрөө авна. Харагдах утга — бодогдсон жин.
  */
+/**
+ * «ТООЦООНД ОРООГҮЙ» ХУРААНГУЙ (2026-11-19, хэрэглэгч: «ТТБ-ийн бодолтыг тохируулдаг, юу хасагдсан нь харагддаг»).
+ * Өөрийн унтраалга нь унтарсан мөр (дээд мөрөөс удамшсан нь биш) — аль нийтээс хасагдсан, мөнгө бол хэдэн ₮.
+ */
+function ExcludedSummary({ tree, result }: { tree: ProjectPlan['tree']; result: ProjectPlan['result'] }) {
+  const rows: { code: string; name: string; what: string[]; money: number | null }[] = [];
+  for (const n of tree.nodes) {
+    const r = n.row;
+    if (!r || r.objectid == null) continue;
+    let anc = false;
+    for (let x = n.parent; x && x.row; x = x.parent) if (x.outside || noMoney(x) || noTime(x) || x.row.niit_tootsoh === 0 || x.row.uy_shat_tootsoh === 0) { anc = true; break; }
+    if (anc) continue;
+    const what: string[] = [];
+    if (n.outside) what.push(tr('бүх нийлбэр'));
+    else {
+      if (r.niit_tootsoh === 0) what.push(tr('төслийн нийт гүйцэтгэл'));
+      if (r.uy_shat_tootsoh === 0) what.push(tr('үе шатны гүйцэтгэл'));
+      if (noMoney(n)) what.push(tr('мөнгөний нийлбэр'));
+      if (noTime(n)) what.push(tr('хугацааны нийт'));
+    }
+    if (!what.length) continue;
+    rows.push({ code: n.code, name: String(r.ajil_uilchilgee ?? ''), what, money: noMoney(n) ? result.values.get(n)?.E ?? null : null });
+  }
+  if (!rows.length) return null;
+  const money = rows.reduce((a, x) => a + (x.money ?? 0), 0);
+  return (
+    <details className={f.ppWarn}>
+      <summary>
+        {tr('Тооцоонд ороогүй: {0} мөр', num(rows.length))}
+        {money > 0 && <> · {tr('төсвөөс хассан {0}', mnt(money))}</>}
+      </summary>
+      <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+        {rows.map((x) => (
+          <li key={x.code}>
+            <b className="num">{x.code}</b> {x.name} — {x.what.join(', ')}{x.money != null && x.money !== 0 ? ` (${mnt(x.money)})` : ''}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function PhaseWeightCell({ shown, stored, canEdit, onSave, onError }: {
   shown: number | null;
   /** Хадгалсан тогтмол жин (0–1) эсвэл null */
@@ -1439,9 +1481,15 @@ export function ProjectPlanTable({
     const totOwn = n.optIn ? n.row?.niit_tootsoh !== 1 : n.row?.niit_tootsoh === 0;
     /* 2026-11-17 (хэрэглэгч): хоёр унтраалга бие даасан — нэгийг унтраахад нөгөө нь дагахгүй */
     const totInh = outAnc || (!totOwn && !!v?.noTotal);
-    const sw = (kind: 'tot' | 'ph', own: boolean, inh: boolean) => {
+    /* 2026-11-19 (хэрэглэгч): 3 · 4 — мөнгөний нийлбэр ба хугацааны нийт. Дээд мөр унтарсан бол доод мөр нь дагана */
+    let monAnc = false, timeAnc = false;
+    for (let x = n.parent; x && x.row; x = x.parent) { if (noMoney(x)) monAnc = true; if (noTime(x)) timeAnc = true; }
+    const monOwn = !n.outside && noMoney(n);
+    const timeOwn = !n.outside && noTime(n);
+    const sw = (kind: 'tot' | 'ph' | 'mon' | 'time', own: boolean, inh: boolean) => {
       const on = !own && !inh;
-      const name = kind === 'tot' ? tr('Төслийн нийтэд тооцох') : tr('Барилга угсралтын гүйцэтгэлд тооцох');
+      const name = kind === 'tot' ? tr('Төслийн нийтэд тооцох') : kind === 'ph' ? tr('Барилга угсралтын гүйцэтгэлд тооцох')
+        : kind === 'mon' ? tr('Мөнгөний нийлбэрт тооцох') : tr('Хугацааны нийтэд тооцох');
       return (
         <button
           type="button"
@@ -1456,7 +1504,7 @@ export function ProjectPlanTable({
             setErr(null);
             setMsg(null);
             setStBusy(oid);
-            (kind === 'tot' ? saveInTotal(oid, next) : saveInPhase(oid, next))
+            (kind === 'tot' ? saveInTotal(oid, next) : kind === 'ph' ? saveInPhase(oid, next) : kind === 'mon' ? saveInMoney(oid, next) : saveInTime(oid, next))
               .then(() => setMsg(tr('{0}: {1} — хадгалагдлаа', name, next ? tr('Тооцно') : tr('Тооцохгүй'))))
               .catch((er: unknown) => setErr(userError(er)))
               .finally(() => setStBusy(null));
@@ -1464,7 +1512,13 @@ export function ProjectPlanTable({
         />
       );
     };
-    return <td className={f.ppSt}><span className={f.ppSwPair}>{sw('tot', totOwn, totInh)}{sw('ph', phOwn, phInh)}</span></td>;
+    return (
+      <td className={f.ppSt}>
+        <span className={f.ppSwPair}>
+          {sw('tot', totOwn, totInh)}{sw('ph', phOwn, phInh)}{sw('mon', monOwn, outAnc || monAnc)}{sw('time', timeOwn, outAnc || timeAnc)}
+        </span>
+      </td>
+    );
   };
   const doDelete = async (n: PlanNode) => {
     const name = String(n.row?.ajil_uilchilgee ?? '').trim();
@@ -1633,6 +1687,7 @@ export function ProjectPlanTable({
         {err && <p role="alert" className={f.editErr}>{err}</p>}
         {msg && <p role="status" className={f.editOk}>{msg}</p>}
       </div>
+      <ExcludedSummary tree={tree} result={result} />
       {plan.failed.length > 0 && (
         <p role="status" className={f.ppWarn}>
           {tr('Зарим эх уншигдсангүй ({0}) — холбогдох мөрүүд «—».', planFailedLabels(plan.failed).join(', '))}
@@ -1659,7 +1714,7 @@ export function ProjectPlanTable({
         <table className={`${f.tbl} ${f.ppTbl}`}>
           <thead>
             <tr>
-              <th className={f.ppSt} title={tr('Тооцох эсэх: зүүн — Төслийн нийт гүйцэтгэлд · баруун — Барилга угсралтын гүйцэтгэлд')}><span className={f.ppSwPair}><span>{tr('Төслийн нийтэд')}</span><span>{tr('Барилга угсралтад')}</span></span></th>
+              <th className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Үе шатны гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд')}><span className={f.ppSwPair}><span>{tr('Нийт')}</span><span>{tr('Үе шат')}</span><span>{tr('Мөнгө')}</span><span>{tr('Хугацаа')}</span></span></th>
               <th className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
               <th className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
               <th className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>
@@ -1747,7 +1802,7 @@ export function ProjectPlanTable({
         <table className={`${f.tbl} ${f.ppTbl}`}>
           <thead>
             <tr>
-              <th rowSpan={2} className={f.ppSt} title={tr('Тооцох эсэх: зүүн — Төслийн нийт гүйцэтгэлд · баруун — Барилга угсралтын гүйцэтгэлд')}><span className={f.ppSwPair}><span>{tr('Төслийн нийтэд')}</span><span>{tr('Барилга угсралтад')}</span></span></th>
+              <th rowSpan={2} className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Үе шатны гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд')}><span className={f.ppSwPair}><span>{tr('Нийт')}</span><span>{tr('Үе шат')}</span><span>{tr('Мөнгө')}</span><span>{tr('Хугацаа')}</span></span></th>
               <th rowSpan={2} className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
               <th rowSpan={2} className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
               <th rowSpan={2} className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>

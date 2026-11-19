@@ -3166,9 +3166,6 @@ const en: Record<string, string> = {
   "Барилга угсралтын гүйцэтгэлд тооцох": "Count in construction progress",
   "дээд мөр унтарсан тул хасагдсан": "excluded because the parent row is switched off",
   "{0}: {1} — хадгалагдлаа": "{0}: {1} — saved",
-  "Тооцох эсэх: зүүн — Төслийн нийт гүйцэтгэлд · баруун — Барилга угсралтын гүйцэтгэлд": "Counted in: left — project total · right — construction progress",
-  "Төслийн нийтэд": "In project total",
-  "Барилга угсралтад": "In construction",
   "Багана ({0} нуусан)": "Columns ({0} hidden)",
   "Бүгдийг харуулах": "Show all",
   "Бүгдийг нуух": "Hide all",
@@ -8105,7 +8102,18 @@ const en: Record<string, string> = {
   "Зөвшөөрлийн баримтын бүртгэл": "Permit document register",
   "Тухайлсан": "Specific buildings",
   "Байхгүй": "None",
-  "Энэ багцын «Үндсэн хугацаа»-г засах эрхгүй — «Санхүү засах» эрх эсвэл тэр багцын хуваарийн зохиогч байх ёстой.": "No permission to edit this package's «Main period» — requires «Edit finance» or being the package schedule author."
+  "Энэ багцын «Үндсэн хугацаа»-г засах эрхгүй — «Санхүү засах» эрх эсвэл тэр багцын хуваарийн зохиогч байх ёстой.": "No permission to edit this package's «Main period» — requires «Edit finance» or being the package schedule author.",
+  "бүх нийлбэр": "all totals",
+  "төслийн нийт гүйцэтгэл": "project total progress",
+  "үе шатны гүйцэтгэл": "phase progress",
+  "мөнгөний нийлбэр": "money totals",
+  "хугацааны нийт": "overall period",
+  "Тооцоонд ороогүй: {0} мөр": "Excluded from totals: {0} rows",
+  "төсвөөс хассан {0}": "{0} removed from the budget",
+  "Мөнгөний нийлбэрт тооцох": "Count in money totals",
+  "Хугацааны нийтэд тооцох": "Count in overall period",
+  "Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Үе шатны гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд": "Counted in (from left): project total progress · phase progress · money totals · overall period",
+  "Мөнгө": "Money"
 };
 
 export default en;

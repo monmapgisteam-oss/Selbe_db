@@ -236,6 +236,16 @@ export function saveInPhase(oid: number, v: 0 | 1) {
   return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inPhase]: v }] });
 }
 
+/** «Мөнгөний нийлбэрт тооцох» (2026-11-19, хэрэглэгч) — 1 Тооцно · 0 Тооцохгүй */
+export function saveInMoney(oid: number, v: 0 | 1) {
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inMoney]: v }] });
+}
+
+/** «Хугацааны нийтэд тооцох» (2026-11-19, хэрэглэгч) — 1 Тооцно · 0 Тооцохгүй */
+export function saveInTime(oid: number, v: 0 | 1) {
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inTime]: v }] });
+}
+
 /**
  * ҮЕ ШАТНЫ ТОГТМОЛ ЖИН (2026-11-17, хэрэглэгч) — үе шатын мөрийн «Хэсэгт эзлэх»-ийг хувиар (0–100) хадгална; `null` =
  * тогтмол жингүй (үлдэгдлийг төсвөөрөө хуваана). Тооцоо — `projectPlan.budgetShare`.

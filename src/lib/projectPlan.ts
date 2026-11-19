@@ -55,6 +55,10 @@ export type PlanStoredRow = {
   niit_tootsoh?: number | null;
   /** Үе шатны гүйцэтгэлд тооцох — 0 = Тооцохгүй (эцэг мөрүүдийн нийлбэр, жингээс хасна; өөрийн бодолт хэвээр), 1/хоосон = Тооцно */
   uy_shat_tootsoh?: number | null;
+  /** Мөнгөний нийлбэрт тооцох — 1 · 0 · хоосон = анхдагч (`noMoney`) */
+  mongo_tootsoh?: number | null;
+  /** Хугацааны нийтэд тооцох — 1 · 0 · хоосон = Тооцно */
+  hugatsaa_tootsoh?: number | null;
   cashflow_id?: number | null;
   /** Гэрээ байгуулсан огноо — L2 «Сонгон шалгаруулалт (гэрээ байгуулсан)» */
   geree_ognoo?: number | null;
@@ -374,6 +378,24 @@ export type MoneySums = { paid: number | null; advance: number | null; contract:
  * МӨР БҮРИЙН НИЙЛБЭР (2026-11-04) — олгосон дүн, урьдчилгаа, гэрээний дүн: өөрийн утга + доод мөрүүд («Нийслэл төсөв» орохгүй).
  * ТТБ-ийн багана, бүх хуудасны хувь энэ нэг тооцооноос уншина. Үндэс мөр = төслийн нийт.
  */
+/**
+ * МӨНГӨНИЙ НИЙЛБЭРТ ТООЦОХГҮЙ (2026-11-19, хэрэглэгч) — мөр өөрийн мөнгийг (ба доорх нийлбэрээ) харуулна, харин эцгийн
+ * төсөв · гэрээ · олгосон дүнгийн нийлбэрт ОРОХГҮЙ. Жин (Хэсэгт эзлэх) хөндөгдөхгүй — гүйцэтгэлд урьдын адил.
+ * `mongo_tootsoh` = 0 → тооцохгүй, 1 → тооцно, хоосон → анхдагч: газар чөлөөлөлтийн үе шат ба «Нийслэл төсөв»-ийн мөр
+ * (нийслэлийн төсвөөс санхүүждэг) ТООЦОХГҮЙ, бусад нь тооцно.
+ */
+export function noMoney(n: PlanNode): boolean {
+  if (n.outside) return true;
+  const v = n.row?.mongo_tootsoh;
+  if (v === 0) return true;
+  if (v === 1) return false;
+  if (n.optIn) return true;
+  return n.depth === 1 && n.phase === 'gazar';
+}
+
+/** ХУГАЦААНЫ НИЙТЭД ТООЦОХГҮЙ (2026-11-19) — мөр өөрийн огноог харуулна, эцгийн эхлэх/дуусахад орохгүй. Хоосон = тооцно */
+export const noTime = (n: PlanNode): boolean => n.outside || n.row?.hugatsaa_tootsoh === 0;
+
 export function moneySums(tree: PlanTree): Map<PlanNode, MoneySums> {
   const out = new Map<PlanNode, MoneySums>();
   const add = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : a + b);
@@ -386,7 +408,7 @@ export function moneySums(tree: PlanTree): Map<PlanNode, MoneySums> {
     };
     for (const c of n.children) {
       const k = go(c);
-      if (c.outside) continue;
+      if (noMoney(c)) continue;
       s = { paid: add(s.paid, k.paid), advance: add(s.advance, k.advance), contract: isContractNote(r) ? s.contract : add(s.contract, k.contract) };
     }
     out.set(n, s);
@@ -775,6 +797,21 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
     E.set(n, any ? s : null);
   }
 
+  /* ── Em: ХАРАГДАХ төсөв (2026-11-19) — E-тэй ижил, гэхдээ «Мөнгөний нийлбэрт тооцохгүй» хүүхэд эцэгтээ нэмэгдэхгүй.
+        Жин (W · F · EA) нь E-гээр — мөнгө хассан ч гүйцэтгэлийн жин өөрчлөгдөхгүй ── */
+  const Em = new Map<PlanNode, number | null>();
+  for (const n of [...post, root]) {
+    const own = n.row ? num(n.row.ho_dun_geree) : null;
+    if (own != null) { Em.set(n, own); continue; }
+    let s = 0, any = false;
+    for (const c of n.children) {
+      if (noMoney(c)) continue;
+      const v = Em.get(c);
+      if (v != null) { s += v; any = true; }
+    }
+    Em.set(n, any ? s : null);
+  }
+
   /*
    * ── W: ЖИНГИЙН төсөв (2026-11-16, хэрэглэгч) — хасагдсан (`skip`) мөрийн эзлэх хэсгийг эцгийн төсвөөс хасна. «Талбайн
    *    бэлтгэл ажил»-ын 130.7 тэрбум нь гадна тохижилт, инженерийн бэлтгэлийг ч агуулдаг атлаа тэдгээр хасагдсан тул бүх төсөв
@@ -934,6 +971,7 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
     }
     const a: (number | null)[] = DF.map(() => null);
     for (const c of n.children) {
+      if (noTime(c)) continue;
       const cv = D.get(c)!, ca = agg.get(c)!;
       DF.forEach(([, op], i) => {
         for (const v of [cv[i], ca[i]]) {
@@ -1018,7 +1056,7 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
     const d = D.get(n)!;
     const S = hund(x.S), N = hund(x.N), P = hund(x.P), R = hund(x.R);
     values.set(n, {
-      E: E.get(n) ?? null,
+      E: Em.get(n) ?? null,
       EA: EA.get(n) ?? null,
       F: hund(F.get(n) ?? null),
       G: hund(G.get(n) ?? null),

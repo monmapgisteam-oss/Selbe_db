@@ -29,7 +29,17 @@ assert.deepEqual(withLandComp(rows, null), rows, 'нийлбэр алга — х
 const tree = buildTree(out);
 const land = tree.nodes.find((n) => n.row?.objectid === 1);
 assert.ok(editWhy(land, 'budget'), 'газрын мөрийн мөнгө гараар засагдахгүй');
-assert.ok(computePlan(tree).values.get(tree.root).E >= 411.5, 'төслийн нийт төсөвт орно');
+/* 2026-11-19 (хэрэглэгч: «газар чөлөөлөлт нийслэлийн төсвөөс — гүйцэтгэлд тооцно, мөнгө нь тооцогдохгүй»): мөр өөрийн
+   дүнгээ харуулна, «Мөнгөний нийлбэрт тооцох» анхдагчаар унтраалттай тул төслийн нийтэд орохгүй; асаавал орно */
+{
+  const r = computePlan(tree);
+  assert.equal(r.values.get(land).E, 411.5, 'газрын мөр өөрийн дүнг харуулна');
+  assert.equal(r.values.get(tree.root).E, 100, 'төслийн нийт төсөвт ОРОХГҮЙ (анхдагч)');
+  const { moneySums } = await import('./projectPlan.ts');
+  assert.equal(moneySums(tree).get(tree.root).paid, null, 'олгосон дүнгийн нийтэд ч орохгүй');
+  const on = buildTree(out.map((x) => (x.objectid === 1 ? { ...x, mongo_tootsoh: 1 } : x)));
+  assert.equal(computePlan(on).values.get(on.root).E, 511.5, 'асаавал нийтэд орно');
+}
 console.log('projectPlanLand.check: OK');
 
 /* Нэгж талбарын олговор: нийт хоосон бол задаргааны нийлбэр (2026-11-19, аудит) */
