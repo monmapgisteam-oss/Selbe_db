@@ -538,3 +538,18 @@
   .identity { padding-left: 96px; }
   .logo { width: 90px; }
 }
+
+/*
+ * ══ НИЙТЛЭГ ЗАСВАР (2026-11-19) — ЗӨВХӨН «Ерөнхий төлөвлөгөө» ба «Хэсэгчилсэн ерөнхий төлөвлөгөө» (`.workPlan`) ══
+ * Бусад цэс бүрхүүлийн энэ хэсгийг хэрэглэдэггүй тул нөлөөлөхгүй. Хүрээ бүдэг · чирэх зураас хулгана очиход л ·
+ * газрын зургийн товч ирмэгээс 12px (дэлгээтэй байдал нь `MapTools fixed`).
+ */
+.workPlan {
+  --line: color-mix(in oklab, var(--ink) 4%, transparent);
+  --line-strong: color-mix(in oklab, var(--ink) 8%, transparent);
+  --tools-top: 12px;
+}
+.workPlan [role='separator']:not(:hover):not(:focus-visible),
+.workPlan [role='separator']:not(:hover):not(:focus-visible)::before,
+.workPlan [role='separator']:not(:hover):not(:focus-visible)::after { background: transparent; }
+.workPlan .map :global(.mapDims) { top: 12px; }
