@@ -72,12 +72,9 @@ docs/negtgel_guitsetgel.xlsx
 # Мастер төлөвлөгөө ба зураг төслийн Excel (локал ажлын файл, 2026-11-16 — репод оруулахгүй)
 docs/master tolovlogoo/
 docs/zurag/
-<<<<<<< HEAD
 # Зураг төслийн LOG Excel (локал ажлын файл, 2026-11-19 — репод оруулахгүй)
 docs/ЗУРАГ ТӨСӨЛ-LOG*.xlsx
-=======
 # Газар чөлөөлөлтийн нөхөх олговрын жагсаалт ба тулгалт (иргэдийн нэр, хаягтай — 2026-11-19, репод оруулахгүй)
 docs/nuhuh_olgovor.xlsx
 docs/gazar_tulgalt.xlsx
 docs/gazar_taaraagui_uldsen.xlsx
->>>>>>> origin/irgediin-hurteemj
