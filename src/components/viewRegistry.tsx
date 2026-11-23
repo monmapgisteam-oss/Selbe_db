@@ -24,6 +24,7 @@ const LOAD = {
   analysis: () => import('@/modules/analysis/Suitability').then((m) => m.Suitability),
   finance: () => import('@/modules/Finance').then((m) => m.Finance),
   guitsetgel: () => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel),
+  hyanaltHugatsaa: () => import('@/modules/Guitsetgel').then((m) => m.HyanaltHugatsaa),
   zovshoorol: () => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol),
   tailan: () => import('@/modules/Tailan').then((m) => m.Tailan),
   tuh: () => import('@/modules/Tuh').then((m) => m.Tuh),
@@ -69,6 +70,7 @@ const DedButets = dynamic(() => LOAD.dedButets(), { ssr: false, loading: ViewLoa
 const Suitability = dynamic(() => LOAD.analysis(), { ssr: false, loading: ViewLoading });
 const Finance = dynamic(() => LOAD.finance(), { ssr: false, loading: ViewLoading });
 const Guitsetgel = dynamic(() => LOAD.guitsetgel(), { ssr: false, loading: ViewLoading });
+const HyanaltHugatsaa = dynamic(() => LOAD.hyanaltHugatsaa(), { ssr: false, loading: ViewLoading });
 const Zovshoorol = dynamic(() => LOAD.zovshoorol(), { ssr: false, loading: ViewLoading });
 const Tailan = dynamic(() => LOAD.tailan(), { ssr: false, loading: ViewLoading });
 const Tuh = dynamic(() => LOAD.tuh(), { ssr: false, loading: ViewLoading });
@@ -163,6 +165,7 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   dedButets: ({ dim, setDim }) => <DedButets dim={dim} setDim={setDim} />,
   zovshoorol: () => <Zovshoorol />,
   guitsetgel: () => <Guitsetgel />,
+  hyanaltHugatsaa: () => <HyanaltHugatsaa />,
   ma: () => <Ma />,
   schem: ({ setView, navScope }) => <Schem setView={setView} navScope={navScope} />,
   sysdoc: ({ setView, navScope }) => <SysDoc setView={setView} navScope={navScope} />,

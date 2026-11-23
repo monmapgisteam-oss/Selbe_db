@@ -15,17 +15,20 @@ const T = addTable(URL0, { fields: ['objectid', 'dkey', 'usr', 'pkg', 'at', 'pay
 const rowsOf = (k) => T.rows.filter((r) => r.dkey === k);
 const lastSdk = () => fake.log.filter((x) => x.via === 'sdk').at(-1);
 
-/* ── 1. Нэвтрээгүй — сүлжээ огт хөндөхгүй, «алдаа биш» гэж ялгана ── */
+/* ── 1. Нэвтрээгүй/токен дууссан — сүлжээ огт хөндөхгүй; «ноорог алга» БИШ «уншиж чадсангүй» (алсын ноорогийг алгасуулахгүй) ── */
 {
   fake.cred = null;
-  assert.equal(await D.readRemoteDraftAt('b32'), null, 'нэвтрээгүй: at = null (undefined БИШ)');
-  assert.deepEqual(await D.readRemoteDraft('b32'), { ok: true, draft: null });
+  assert.equal(await D.readRemoteDraftAt('b32'), undefined, 'токен дууссан: at = undefined («мөр алга» гэсэн null БИШ)');
+  const r0 = await D.readRemoteDraft('b32');
+  assert.equal(r0.ok, false, 'токен дууссан уншилт «ноорог алга» (ok:true) гэж буцав — сэргээлт алсын ноорогийг чимээгүй алгасна');
+  assert.match(r0.error, /нэвтрээгүй|токен/);
+  assert.equal(await D.loadRemoteDraft('b32'), null);
   const s = await D.saveRemoteDraft('b32', 1, '{}');
   assert.equal(s.ok, false);
   assert.match(s.error, /нэвтрээгүй/);
   assert.equal(await D.clearRemoteDraft('b32'), false);
   assert.equal(fake.log.length, 0, 'нэвтрээгүй үед ArcGIS руу хүсэлт явав');
-  console.log('✅ нэвтрээгүй — null / {ok:true,draft:null} / «нэвтрээгүй», сүлжээгүй');
+  console.log('✅ нэвтрээгүй/токен дууссан — undefined / {ok:false} / «нэвтрээгүй», сүлжээгүй');
 }
 
 /* ── 2. Хэт том ноорог — алсад ЯВАХГҮЙ (локалд үлдэнэ) ── */
@@ -153,11 +156,11 @@ const lastSdk = () => fake.log.filter((x) => x.via === 'sdk').at(-1);
   assert.equal(r.ok, false, 'уншилтын алдааг «ноорог алга» гэж нуув');
   assert.equal(await D.readRemoteDraftAt('b32'), undefined, 'уншилт унахад undefined (null БИШ)');
   assert.equal(await D.loadRemoteDraft('b32'), null);
-  assert.deepEqual(await D.readLegacyDrafts('b32'), []);
+  assert.equal(await D.readLegacyDrafts('b32'), null, 'хуучин ноорогийн уншилт унахад null («алга» гэсэн [] БИШ)');
   const s = await D.saveRemoteDraft('b32', 900, '{}');
   assert.equal(s.ok, false, 'урьдчилсан уншилт унахад бичилт амжилттай гэж хэлэв');
   T.failReads = false;
-  console.log('✅ уншилт унав — ok:false / undefined / null / []');
+  console.log('✅ уншилт унав — ok:false / undefined / null / null');
 }
 
 /* ── 12. Устгал — зөвхөн тэр түлхүүрийн БҮХ мөр ── */

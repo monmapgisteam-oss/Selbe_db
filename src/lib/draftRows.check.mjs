@@ -13,6 +13,8 @@
  *   6. Багана алга → JSON горим; хагас → JSON (+ алдаа); сүлжээ → хүлээх.
  *   7. Жааз солигдоход oid зөөлт — код (`des_dugaar`) → шинэ oid; код алга → `mur_oid` + `rowKeys` (hook зөөнө); хуваарь — `rk`.
  *   8. Enterprise-ийн занга — ≤500/хэсэг, толгой СҮҮЛД, 2000 мөрийн хуудаслалт, 200 + `success:false`, `where`-д кирилл үгүй.
+ *  17. Блок НЭРЭЭР (нуугдсан · эрэмбэ · хуучин) · баримтаар дарагдсан tombstone · GC-ийн дүрэм · хуудас хаагдах бичилт ·
+ *      зэрэг хуудаслалт · сэргээлтийн/устгалын цэвэр шийдвэр.
  *  13. Хянагчийн олдвор (2026-10-26) — хугацаа дууссан баримт устна (хуурамч баримт үгүй) · oid дахин ашиглагдсан жааз ·
  *      зөөлтийн tombstone · tombstone-ын блокийн нэр · жааз үл мэдэгдэх блокийн нэр · бүлгээр хоосолох · цувааны CAS.
  */
@@ -21,15 +23,18 @@ import { makeFake } from './draftRows.fake.mjs';
 import {
   addAttrs, buildFrame, cellToCols, colsToCell, COL, gcCandidates, groupsOf, perfFromRows, perfToRows, pickGeneration, planFromRows,
   planToRows, ROW_FIELDS, seriesRead, stampRow, stampWant, subFromRows, subToRows, viewOf, perfDkey, planDkey, subDkey, diffRows, SYN_BASE,
+  gcExpired, beaconPick, GC_MAX, PERF_FIELDS, ROW_TTL,
 } from './draftRows.ts';
 import {
   rowsTestHooks, rowsReady, perfRead, perfSave, planRead, planReadAt, planSave, setFillFrame, migrateAll, verifyAll,
-  phaseB, subRowsFor, subWriteGen, resetRowsCache, planWriteSubmitted, planSyncSubmitted, legacyAndSubHeads,
+  phaseB, subRowsFor, subWriteGen, resetRowsCache, planWriteSubmitted, planSyncSubmitted, legacyAndSubHeads, perfBeacon, gcAllDrafts, BEACON_MAX,
 } from './draftRowsRemote.ts';
 import { prepareStore } from './huvaariStore.ts';
 import { parseHead, headRaw, assembleRows, archivedContent, SUBMISSION_MAX } from './submission.ts';
 import { kS, kH, kA, kR, kM, kN, sig, merge, identityRemap, serialize, hdKey } from './huvaariDraft.ts';
-import { packRcpt, unpackRcpt, mergeDrafts, parseDraft } from '../modules/sheet/fill/draft.ts';
+import {
+  packRcpt, unpackRcpt, mergeDrafts, parseDraft, alignDraftBld, compactDraft, restorePlan, withTimeout, ownKeys,
+} from '../modules/sheet/fill/draft.ts';
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks += 1; };
@@ -805,6 +810,174 @@ function isEmptyRow2(a) { return !a || (a[COL.ob] == null && a[COL.act] == null 
   const hRow = f.all().find((a) => a.dkey === planDkey('plan', 'b42_9f') && a.mur_key === 'h');
   ok(hRow?.[COL.cleared] === T, `tseverlesen_at ухарсангүй (${hRow?.[COL.cleared]})`);
   console.log('✅ 16. Толгойн tseverlesen_at — зөвхөн урагшилна');
+}
+
+/* ══════════ 17. Блок НЭРЭЭР · баримтаар дарагдсан tombstone · GC · хуудас хаагдах бичилт ══════════ */
+{
+  const FR = [{ oid: 101, no: '1.1', work: 'Ухалт', des: 12, depth: 1, group: false }];
+  const base = { dkey: perfDkey('p17'), pkg: 'p17', kind: 'guitsetgel' };
+  const cellsOf = (d) => Object.fromEntries(d.cells);
+  /* [A, B, C] жаазаар бичигдсэн гурван нүд + нэг огноо */
+  const d0 = {
+    t: NOW, mode: 'inc', cells: [['101:0', '1'], ['101:1', '2'], ['101:2', '3']], dates: [['101:2:s', '2026-10-01']], rowKeys: [],
+    byAt: [['101:0', NOW], ['101:1', NOW], ['101:2', NOW], ['101:2:s', NOW]], by: [['101:0', 'bat'], ['101:1', 'bat'], ['101:2', 'bat']],
+  };
+  const rowsABC = toAttrs(perfToRows(d0, buildFrame(FR, ['A', 'B', 'C']), new Map(), NOW).rows, base);
+  const view = viewOf(rowsABC, 'guitsetgel');
+  /* (а) дунд блок (B) нуугдсан — C-ийн нүд B-ийн байранд БУУХГҮЙ; B-ийн нүд хуудасны баганаас гадуур (нэртэйгээ) үлдэнэ */
+  const hid = perfFromRows(null, view, new Map(), buildFrame(FR, ['A', 'C']), NOW);
+  eq(cellsOf(hid), { '101:0': '1', '101:1': '3', '101:2': '2' }, 'нуугдсан дунд блок: A→0, C→1, B→гадуур (2)');
+  eq(hid.bld, ['A', 'C', 'B'], 'ноорогийн блокийн нэрс = жааз + нуугдсан нэр');
+  eq(hid.dates, [['101:1:s', '2026-10-01']], 'огноо ч нэрээр');
+  /* (б) эрэмбэ солигдсон */
+  const ord = perfFromRows(null, view, new Map(), buildFrame(FR, ['C', 'A', 'B']), NOW);
+  eq(cellsOf(ord), { '101:0': '3', '101:1': '1', '101:2': '2' }, 'эрэмбэ солигдсон: нэрээр');
+  eq(ord.bld, ['C', 'A', 'B'], 'эрэмбэ солигдсон: bld = жааз');
+  /* (в) `blok` нэргүй (хуучин) мөр — индексээр, урьдын зан */
+  const leg = perfFromRows(null, viewOf(rowsABC.map((a) => ({ ...a, [COL.blk]: null })), 'guitsetgel'), new Map(), buildFrame(FR, ['A', 'C']), NOW);
+  eq(cellsOf(leg), { '101:0': '1', '101:1': '2', '101:2': '3' }, 'нэргүй хуучин мөр: индекс хэвээр');
+  eq(leg.bld, ['A', 'C'], 'нэргүй хуучин мөр: нэмэлт нэргүй');
+  /* (г) буцааж бичихэд нуугдсан блокийн мөр НЭРЭЭ хадгална; жааз өөрчлөгдөөгүй бол юу ч хөдлөхгүй */
+  const back = perfToRows(hid, buildFrame(FR, ['A', 'C']), new Map(), NOW).rows;
+  eq([back.get('w:d12:1')?.a[COL.blk], back.get('w:d12:2')?.a[COL.blk]], ['C', 'B'], 'буцаах бичилт: C индекс 1, B (нуугдсан) нэртэйгээ');
+  eq(cellsOf(perfFromRows(null, view, new Map(), buildFrame(FR, ['A', 'B', 'C']), NOW)), Object.fromEntries(d0.cells), 'жааз ижил — хөдлөхгүй');
+  /* (д) нэг блокийн хуучин ба шинэ индексийн мөр — ШИНЭ агшинтай нь */
+  const dup = viewOf([
+    ...toAttrs(perfToRows({ ...d0, cells: [['101:2', '3']], dates: [], byAt: [['101:2', NOW]] }, buildFrame(FR, ['A', 'B', 'C']), new Map(), NOW).rows, base),
+    ...toAttrs(perfToRows({ ...d0, cells: [['101:1', '9']], dates: [], byAt: [['101:1', NOW + 5]], bld: undefined }, buildFrame(FR, ['A', 'C']), new Map(), NOW).rows, base, 50),
+  ], 'guitsetgel');
+  const dd = perfFromRows(null, dup, new Map(), buildFrame(FR, ['A', 'C']), NOW);
+  eq(dd.cells, [['101:1', '9']], 'нэг нүдэнд хоёр мөр — шинэ нь');
+  eq(dd.byAt, [['101:1', NOW + 5]], 'агшин ч ялагчийнх');
+
+  /* ноорогийн түвшин (JSON/локал) — `alignDraftBld` · `mergeDrafts` */
+  const dj = { ...d0, bld: ['A', 'B', 'C'], del: [['101:1', NOW - 1]], hold: [['101:2', NOW, 0]], rcpt: packRcpt([['101:2', NOW, '3', NOW - 1]]) };
+  const al = alignDraftBld(dj, ['A', 'C']);
+  eq(cellsOf(al), { '101:0': '1', '101:2': '2', '101:1': '3' }, 'alignDraftBld: нүд нэрээр');
+  eq([al.bld, al.del, al.hold, unpackRcpt(al.rcpt).map((r) => r[0]), al.byAt.map(([k]) => k)],
+    [['A', 'C', 'B'], [['101:2', NOW - 1]], [['101:1', NOW, 0]], ['101:1'], ['101:0', '101:2', '101:1', '101:1:s']], 'alignDraftBld: tombstone · тэмдэг · баримт · агшин бүгд зөөгдөнө');
+  ok(alignDraftBld({ ...d0 }, ['A', 'C']).cells === d0.cells, 'bld-гүй (хуучин) ноорог хөндөгдөхгүй');
+  ok(alignDraftBld(al, ['A', 'C']) === al, 'аль хэдийн тааруулсан — хэвээр');
+  const mg = mergeDrafts({ t: NOW, mode: 'inc', cells: [['101:1', '3']], byAt: [['101:1', NOW]], bld: ['A', 'B', 'C'].slice(0, 2).concat('C').filter((x) => x !== 'B') },
+    { t: NOW + 1, mode: 'inc', cells: [['101:0', '7']], byAt: [['101:0', NOW + 1]], bld: ['C', 'A'] });
+  eq([cellsOf(mg), mg.bld], [{ '101:0': '7' }, ['C', 'A']], 'mergeDrafts: өөр эрэмбийн хоёр ноорог нэг блокийн нүдийг НЭГ түлхүүрт (шинэ нь ялна)');
+  eq(parseDraft(JSON.stringify({ ...d0, bld: ['A', 'A'] }), 'remote').bld, undefined, 'parseDraft: давхар нэртэй bld хаягдана');
+
+  /* Баримтаар дарагдсан tombstone бичигдэхгүй */
+  const fA = buildFrame(FR, ['A', 'B']);
+  const dt = { t: NOW, mode: 'inc', cells: [], dates: [], rowKeys: [], del: [['101:0', NOW - 10], ['101:1', NOW - 10]], rcpt: packRcpt([['101:0', NOW - 5, '1', NOW - 20], ['101:1', NOW - 50, '2', NOW - 60]]) };
+  const wt = perfToRows(dt, fA, new Map(), NOW).rows;
+  ok(!wt.has('x:v:d12:0') && wt.has('r:v:d12:0'), 'баримт (a ≥ tombstone) — `x:` мөр бичигдэхгүй, баримт үлдэнэ');
+  ok(wt.has('x:v:d12:1'), 'баримт tombstone-оос ӨМНӨХ бол tombstone хэвээр');
+  ok(perfToRows({ ...dt, rcpt: packRcpt([['101:0', NOW - 8 * D, '1', NOW - 8 * D]]), del: [['101:0', NOW - 8 * D - 1]] }, fA, new Map(), NOW).rows.size === 0, 'хугацаа дууссан баримт/tombstone хоёулаа бичигдэхгүй');
+  eq(compactDraft({ ...dt }, { max: 80_000, rows: true, now: NOW }).del, [['101:1', NOW - 10]], 'compactDraft(rows): дарагдсан tombstone үлдэхгүй');
+  eq(compactDraft({ ...dt }, { max: 80_000, now: NOW }).del.length, 2, 'compactDraft(JSON): зайтай бол хуучин клиентэд үлдээнэ');
+  {
+    /* серверт аль хэдийн байгаа дарагдсан `x:` мөр дараагийн бичилтэд устна */
+    const f = fresh();
+    setFillFrame('p17', FR, ['A', 'B']);
+    f.seed({ ...addAttrs({ k: 'x:v:d12:0', t: 'ustgal', a: { [COL.oid]: 101, [COL.blkIdx]: 0, [COL.blk]: 'A' }, e: new Set(), at: NOW - 10, u: null, unit: 'x:v:d12:0' }, base) });
+    await perfRead('p17');
+    ok((await perfSave('p17', JSON.stringify(dt))).ok, 'бичнэ');
+    const keys = f.all().map((a) => a.mur_key).sort();
+    eq(keys, ['h', 'r:v:d12:0', 'r:v:d12:1', 'x:v:d12:1'], 'серверийн дарагдсан tombstone устаж, баримт + дарагдаагүй tombstone үлдэнэ');
+  }
+
+  /* GC-ийн дүрэм */
+  const old = NOW - ROW_TTL - 1;
+  const row = (o) => ({ dkey: perfDkey('p17'), mur_turul: 'ajil', mur_key: 'w:d12:0', at: old, ...o });
+  ok(gcExpired(row({ mur_turul: 'ustgal' }), NOW) && gcExpired(row({ mur_turul: 'barimt', [COL.ob]: 5 }), NOW), 'хуучин tombstone · баримт');
+  ok(gcExpired(row({}), NOW) && !gcExpired(row({ [COL.ob]: 0 }), NOW) && !gcExpired(row({ [COL.empty]: COL.ob }), NOW), 'хоосон мөр л (0 утга · ил хоосолсон нь хоосон биш)');
+  ok(!gcExpired(row({ mur_turul: 'ustgal', at: NOW - ROW_TTL + 1000 }), NOW) && !gcExpired(row({ mur_turul: 'ustgal', at: null }), NOW), 'хугацаа дуусаагүй · `at`-гүй — үгүй');
+  ok(!gcExpired(row({ mur_turul: 'tolgoi', mur_key: 'h' }), NOW), 'толгой хэзээ ч үгүй');
+  ok(!gcExpired(row({ dkey: subDkey(7), mur_turul: 'ustgal' }), NOW) && !gcExpired(row({ dkey: 'b41_9f' }), NOW) && !gcExpired(row({ dkey: 'n:hsub:7' }), NOW), 'илгээлтийн мөр · хуучин JSON мөр — хөндөхгүй');
+  ok(gcExpired(row({ dkey: planDkey('plan', 'p17'), mur_turul: 'sar_obyem' }), NOW) && !gcExpired(row({ dkey: planDkey('plan', 'p17'), mur_turul: 'sar_obyem', [COL.too]: 2 }), NOW), 'сарын цуваа: `sar_too`-той бол амьд');
+  {
+    const f = fresh();
+    const far = f.clock + ROW_TTL + D;
+    const mk = (k, t, o = {}) => f.seed({ dkey: perfDkey('p17'), pkg: 'p17', mur_key: k, mur_turul: t, at: far - ROW_TTL - 5, ...o });
+    mk('h', 'tolgoi'); mk('x:v:d12:0', 'ustgal'); mk('r:v:d12:0', 'barimt'); mk('w:d12:0', 'ajil'); mk('w:d12:1', 'ajil', { [COL.ob]: 3 });
+    mk('x:v:d12:1', 'ustgal', { at: far - 1000 });
+    f.seed({ dkey: subDkey(9), pkg: 'p17', mur_key: 'w:d12:0', mur_turul: 'ajil', at: 1 });
+    const dry = await gcAllDrafts({ now: far });
+    eq([dry.expired, dry.deleted, f.all().length, dry.byDkey], [3, 0, 7, { [perfDkey('p17')]: 3 }], 'хуурай: 3 мөр сонгогдоно, юу ч устахгүй');
+    const wr = await gcAllDrafts({ now: far, write: true });
+    eq([wr.deleted, wr.failed, f.all().map((a) => a.mur_key).sort()], [3, 0, ['h', 'w:d12:0', 'w:d12:1', 'x:v:d12:1']], 'бичих: зөвхөн хугацаа дууссан tombstone · баримт · хоосон мөр');
+    ok(f.all().some((a) => a.dkey === subDkey(9)), 'илгээлтийн мөр хөндөгдөөгүй');
+    /* хэрэгсэл (`tools/draft-gc.mjs`) — анхдагчаар бичихгүй; тайлангийн мөр */
+    const tool = await import('../../tools/draft-gc.mjs');
+    const n1 = f.edits.length;
+    const tr0 = await tool.draftGc();
+    eq([tr0.deleted, f.edits.length - n1], [0, 0], 'draft-gc: --write-гүй бол applyEdits огт явахгүй');
+    ok(/устгаагүй/.test(tool.draftGcReport(dry, false)) && /устгасан 3 · унасан 0/.test(tool.draftGcReport(wr, true)), 'draft-gc: тайлан');
+  }
+  {
+    /* нэг бичилтийн GC-ийн дээд — 200 биш, үлдсэн нь дараагийн бичилтэд */
+    const img = new Map(Array.from({ length: GC_MAX + 50 }, (_, i) => [`w:o${i}:0`, [{ objectid: i + 1, mur_turul: 'ajil', mur_key: `w:o${i}:0`, at: old }]]));
+    const dels = (ops) => ops.filter((o) => o.op === 'delete').length;
+    eq(dels(diffRows(img, new Map(), 'guitsetgel', base, { clearAt: NOW, me: 'bat', now: NOW })), GC_MAX, `хуучирсан хоосон мөр нэг бичилтэд ${GC_MAX} хүртэл`);
+    ok(GC_MAX >= 2000, 'GC-ийн дээд ≥ 2000');
+  }
+
+  /* Хуудас хаагдах бичилт — зөвхөн өөрийн сүүлийн нүд, хэмжээний дээдтэй */
+  {
+    const f = fresh();
+    setFillFrame('p17', [...FR, { oid: 102, no: '1.2', work: 'Булалт', des: 13, depth: 1, group: false }], ['A', 'B']);
+    const sent = [];
+    rowsTestHooks({ beacon: (u, p) => { sent.push([u, p]); return true; } });
+    const d1 = { t: NOW, mode: 'inc', cells: [['101:0', '1'], ['102:0', '4']], dates: [], rowKeys: [], byAt: [['101:0', NOW], ['102:0', NOW]], by: [['101:0', 'bat'], ['102:0', 'dorj']] };
+    ok(!perfBeacon('p17', JSON.stringify(d1)), 'зураг уншигдаагүй — явуулахгүй');
+    ok((await perfSave('p17', JSON.stringify(d1))).ok && (await perfRead('p17')).ok, 'бичээд уншина');
+    const d2 = { ...d1, t: NOW + 9, cells: [['101:0', '2'], ['101:1', '5'], ['102:1', '6']], byAt: [['101:0', NOW + 5], ['101:1', NOW + 9], ['102:1', NOW + 7]], by: [['101:0', 'bat'], ['101:1', 'bat'], ['102:1', 'dorj']], del: [['102:0', NOW + 8]] };
+    const n0 = f.edits.length;
+    ok(perfBeacon('p17', JSON.stringify(d2)), 'хуулагдаагүй өөрийн нүдтэй — явуулна');
+    const [u, p] = sent[0];
+    const adds = JSON.parse(p.adds ?? '[]').map((x) => x.attributes.mur_key);
+    const ups = JSON.parse(p.updates ?? '[]');
+    eq([u, adds, ups.length, 'deletes' in p, f.edits.length - n0], [`${URL}/applyEdits`, ['w:d12:1', 'x:v:d13:0'], 1, false, 0], 'өөрийн шинэ нүд (шинэ нь эхэлж) + шинэ tombstone нэмэгдэж, өөрийн хуучин нүд шинэчлэгдэнэ; бусдын нүд · устгал үгүй; ердийн замаар бичихгүй');
+    const want = perfToRows(d2, buildFrame(FR, ['A', 'B']), new Map(), NOW).rows;
+    const ops = [...want.values()].map((w) => ({ op: 'add', k: w.k, unit: w.k, a: w.a }));
+    eq(beaconPick(ops, want, 'bat', () => 100, 150).map((o) => o.k), ['w:d12:1'], 'дээд хэмжээнд багтах хүртэл, шинэ нь эхэлж');
+    eq(beaconPick([{ op: 'delete', k: 'w:d12:0', unit: 'w:d12:0', oid: 1 }], want, 'bat', () => 1, 99), [], 'устгал хэзээ ч орохгүй');
+    ok(BEACON_MAX < 64 * 1024, 'keepalive-ийн 64КБ-аас бага');
+  }
+
+  /* Уншилт — гүйцэтгэлийн ноорог зөвхөн хэрэгтэй баганаа; олон хуудас зэрэг; устгагдсан мөр жагсаалтаар хасагдана */
+  {
+    const f = fresh();
+    f.pageMax = 100;
+    const N = 450;
+    setFillFrame('p17', Array.from({ length: N }, (_, i) => ({ oid: 1000 + i, no: `${i}`, work: `Ажил ${i}`, des: 5000 + i, depth: 0, group: false })), ['A']);
+    const big = { t: NOW, mode: 'inc', cells: Array.from({ length: N }, (_, i) => [`${1000 + i}:0`, String(i + 1)]), dates: [], rowKeys: [] };
+    ok((await perfSave('p17', JSON.stringify(big))).ok, 'бичнэ');
+    const B = new Map();
+    asClient(B, 'dorj');
+    f.queries.length = 0;
+    const r = await perfRead('p17');
+    eq(parseDraft(r.draft.payload, 'remote').cells.length, N, `${N} мөр ${f.pageMax}-ын хуудсаар бүрэн`);
+    ok(PERF_FIELDS.length < ROW_FIELDS.length && !PERF_FIELDS.includes(COL.ham) && PERF_FIELDS.includes(COL.blk) && PERF_FIELDS.includes(COL.ob), 'хуваарийн багана татагдахгүй, гүйцэтгэлийнх бүгд');
+    /* B-ийн зургийг «хуучирсан» болгоод өөр клиент мөр устгана — дараагийн уншилт бүтэн биш, жагсаалтаар хасна */
+    const victim = f.all().find((a) => a.mur_key === 'w:d5007:0').objectid;
+    f.rows.delete(victim);
+    B.get(perfDkey('p17')).fullAt = 0;
+    f.queries.length = 0;
+    const r2 = await perfRead('p17');
+    eq(parseDraft(r2.draft.payload, 'remote').cells.length, N - 1, 'устгагдсан мөр зургаас хасагдана');
+    ok(f.queries.filter((w) => !/last_edited_date|IN \(/.test(w)).length === 1, 'бүтэн дахин уншихгүй — OBJECTID-ын нэг жагсаалт л');
+  }
+  /* Шийдвэрийн цэвэр хэсгүүд */
+  eq([restorePlan('ok'), restorePlan('fail'), restorePlan('timeout')], [
+    { open: true, useRemote: true, retry: false, background: false },
+    { open: true, useRemote: false, retry: true, background: false },
+    { open: true, useRemote: false, retry: false, background: true },
+  ], 'сэргээлт: ямагт нээнэ; уналт → локал + дахин; хугацаа хэтэрсэн → локал + ард үргэлжилнэ');
+  eq(await withTimeout(new Promise((res) => setTimeout(() => res(1), 60)), 5), { late: true }, 'withTimeout: хэтэрвэл late');
+  eq(await withTimeout(Promise.resolve(7), 50), { late: false, v: 7 }, 'withTimeout: амжвал утга');
+  const by = new Map([['1:0', 'bat'], ['2:0', 'dorj'], ['3:0', 'dorj']]);
+  eq(ownKeys(['1:0', '2:0', '3:0', '4:0', '5:0'], by, new Set(['3:0']), 'bat', false), ['1:0', '3:0'], '«ноорог устгах»: өөрийн бичсэн + энэ сешнд гараар хөндсөн нүд л (эзэнгүй нь бусдынх)');
+  eq(ownKeys(['1:0', '2:0', '4:0'], by, new Set(), 'bat', true), ['1:0', '2:0', '4:0'], 'super — бүгд');
+  eq(ownKeys(['1:0', '2:0'], by, new Set(), '', false), [], 'нэвтрээгүй — юу ч биш');
+  console.log('✅ 17. Блок нэрээр · дарагдсан tombstone · GC · хуудас хаагдах бичилт · уншилт · шийдвэр');
 }
 
 console.log(`draftRows.check.mjs — БҮГД ТЭНЦЛЭЭ (${checks} шалгалт)`);

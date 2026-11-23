@@ -1,5 +1,7 @@
 import type { NewRow } from "@/lib/submission";
 import { fmtInc, parseInc } from "../bagtsSheet";
+import { unionBld } from "../sheetFrame";
+import { serverNow } from "@/lib/serverClock";
 
 // ── Нийтлээгүй засварын НООРОГ (localStorage) ──
 // «Гүйцэтгэл бөглөх» (Pivot)-ын хамгаалалттай ижил зорилго: таб санамсаргүй
@@ -116,7 +118,38 @@ export type Draft = {
    * ОДООГИЙН ЖААЗЫГ АНХ ХАРСАН АГШИН — `[жаазны хамгийн бага oid, ms]` (2026-10-11, аудит №7).
    */
   frameSeenAt?: [number, number];
+  /** Блокийн нэрс — түлхүүрийн `b` нь ЭНЭ жагсаалтын индекс (блок нуугдах/эрэмбэ солигдоход нэрээр буулгана); алга = хуучин ноорог */
+  bld?: string[];
 };
+
+/** `Draft.bld`-ийн дээд урт */
+const DRAFT_BLD_MAX = 64;
+const sameBld = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((n, i) => n === b[i]);
+/**
+ * НООРОГИЙН БЛОКИЙГ НЭРЭЭР БУУЛГАНА — бүх түлхүүрийн `b`-г `d.bld[b]` нэрийн `unionBld(cur, d.bld)` дахь индекс болгоно.
+ * `cur`-д алга (нуугдсан) блокийн нүд `cur`-ийн ард үлдэнэ (хуудасны баганад буухгүй, устахгүй). `bld`-гүй ноорог хэвээр.
+ */
+export function alignDraftBld(d: Draft, cur: readonly string[]): Draft {
+  const from = d.bld;
+  if (!from || !cur.length) return d;
+  const target = unionBld(cur, from);
+  if (sameBld(from, target)) return d;
+  const to = from.map((n) => target.indexOf(n));
+  const mk = (k: string): string => {
+    const m = /^(-?\d+):(\d+)((?::[se])?)$/.exec(k);
+    const b = m ? Number(m[2]) : -1;
+    return m && b < from.length ? `${m[1]}:${to[b]}${m[3]}` : k;
+  };
+  const mv = <T extends unknown[]>(l: T[] | undefined): T[] | undefined => l?.map((e) => [mk(String(e[0])), ...e.slice(1)] as T);
+  return {
+    ...d,
+    cells: d.cells.map(([k, v]): [string, string] => [mk(k), v]),
+    dates: mv(d.dates), by: mv(d.by), byAt: mv(d.byAt), del: mv(d.del), bt: mv(d.bt), conv: mv(d.conv), hold: mv(d.hold), datesB: mv(d.datesB),
+    byGuess: d.byGuess?.map(mk),
+    rcpt: d.rcpt ? packRcpt(unpackRcpt(d.rcpt).map((r): Rcpt => [mk(r[0]), r[1], r[2], r[3]])) : undefined,
+    bld: target,
+  };
+}
 
 /**
  * БАРИМТЫН ДҮРЭМ — нэг хуулбар (`v` утга, `w` агшин, `bt` суурь баримт) ба илгээлтийн
@@ -275,8 +308,8 @@ export function rcptAlive(r: Rcpt, now: number, minOid?: number | null, frameSee
  *      үлдэнэ — хуучин (баримт мэдэхгүй) клиентийн шилжилтийн хамгаалалт; том илгээлтийн
  *      дараа хаягдана (урьд нь энэ давхардал ноорогийг `REMOTE_MAX`-аас хэтрүүлдэг байв).
  */
-export function compactDraft(d: Draft, opt: { max: number; minOid?: number | null; now?: number; frameSeenAt?: number | null }): Draft {
-  const now = opt.now ?? Date.now();
+export function compactDraft(d: Draft, opt: { max: number; minOid?: number | null; now?: number; frameSeenAt?: number | null; rows?: boolean }): Draft {
+  const now = opt.now ?? serverNow();
   const fs = opt.frameSeenAt ?? (d.frameSeenAt && opt.minOid != null && d.frameSeenAt[0] === opt.minOid ? d.frameSeenAt[1] : null);
   const rc = unpackRcpt(d.rcpt).filter((r) => rcptAlive(r, now, opt.minOid, fs));
   const rcAt = new Map<string, number>();
@@ -288,7 +321,8 @@ export function compactDraft(d: Draft, opt: { max: number; minOid?: number | nul
     if (a != null && a >= e[1]) sup.push(e); else keep.push(e);
   }
   const base: Draft = { ...d, rcpt: rc.length ? packRcpt(rc) : undefined, del: keep.length ? keep : undefined };
-  if (!sup.length) return base;
+  /* Мөрийн горимд хуучин клиент байхгүй — баримтаар дарагдсан tombstone-ийг огт үлдээхгүй (191-ийн мөр өсөхгүй) */
+  if (!sup.length || opt.rows) return base;
   let size = JSON.stringify(base).length + (keep.length ? 0 : 8);
   const budget = Math.floor(opt.max / 2);
   const add: [string, number][] = [];
@@ -303,7 +337,7 @@ export function compactDraft(d: Draft, opt: { max: number; minOid?: number | nul
 /**
  * 7 ХОНОГООС ХУУЧИН ЛОКАЛ НҮДИЙГ «АЛБАДАН ТЭМДЭГЛЭНЭ» (2026-10-04 дахин аудит, #3, HIGH/MED) — ЦЭВЭР.
  */
-export function holdStaleLocal(d: Draft, now: number = Date.now()): Draft {
+export function holdStaleLocal(d: Draft, now: number = serverNow()): Draft {
   const at = new Map<string, number>(d.byAt ?? []);
   const hold = new Map<string, [string, number, 0 | 1]>((d.hold ?? []).map((h): [string, [string, number, 0 | 1]] => [h[0], h]));
   let n = 0;
@@ -370,7 +404,7 @@ export const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | nul
     const d = JSON.parse(raw) as Draft;
     /* Бүтцийн шалгалт: агшингүй эсвэл нүдгүй бичлэг нь ноорог биш. */
     if (!d.t || !Array.isArray(d.cells)) return null;
-    if (source === 'local' && Date.now() - d.t > LOCAL_DRAFT_TTL_MS) return null;
+    if (source === 'local' && serverNow() - d.t > LOCAL_DRAFT_TTL_MS) return null;
     if (d.adds != null && !Array.isArray(d.adds)) return null;
     if (d.adds) {
       const seen = new Set<number>();
@@ -414,6 +448,7 @@ export const parseDraft = (raw: string, source: 'local' | 'remote'): Draft | nul
     if (d.datesB != null && !Array.isArray(d.datesB)) d.datesB = undefined;
     if (d.asOfB != null && !Number.isFinite(d.asOfB)) d.asOfB = undefined;
     if (d.frameSeenAt != null && !(Array.isArray(d.frameSeenAt) && Number.isInteger(d.frameSeenAt[0]) && Number.isFinite(d.frameSeenAt[1]))) d.frameSeenAt = undefined;
+    if (d.bld != null && !(Array.isArray(d.bld) && d.bld.length <= DRAFT_BLD_MAX && d.bld.every((x) => typeof x === 'string' && x !== '') && new Set(d.bld).size === d.bld.length)) d.bld = undefined;
     if (d.tgt != null) {
       d.tgt = Array.isArray(d.tgt)
         ? (d.tgt as unknown[]).filter((e): e is [string, number, number, number] => Array.isArray(e) && typeof e[0] === 'string'
@@ -455,6 +490,12 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     /* (TS тэмдэглэгээгүй — `draft.check` 4d энэ функцийг JS болгож ажиллуулдаг) */
     if (leg === a) a = { ...leg, mode: 'inc', cells: [...marked] };
     else b = { ...leg, mode: 'inc', cells: [...marked] };
+  }
+  if (a.bld && b.bld) {
+    /* Хоёр талын блокийг НЭРЭЭР нэг жагсаалтад (шинэ талын эрэмбэ эхэлнэ) */
+    const u = a.t <= b.t ? unionBld(b.bld, a.bld) : unionBld(a.bld, b.bld);
+    a = alignDraftBld(a, u);
+    b = alignDraftBld(b, u);
   }
   const [older, newer] = a.t <= b.t ? [a, b] : [b, a];
   const atOld = new Map<string, number>(older.byAt ?? []);
@@ -502,7 +543,7 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
   for (const [k, a] of newer.byAt ?? []) if ((byAt.get(k) ?? 0) < a) byAt.set(k, a);
   const del = new Map<string, number>(older.del ?? []);
   for (const [k, a] of newer.del ?? []) if ((del.get(k) ?? 0) < a) del.set(k, a);
-  const now = Date.now();
+  const now = serverNow();
   const rcpt = new Map<string, [string, number, string, number]>();
   for (const side of [older, newer]) {
     for (const r of side.rcpt ? unpackRcpt(side.rcpt) : []) {
@@ -641,6 +682,7 @@ export const mergeDrafts = (a: Draft | null, b: Draft | null): Draft | null => {
     asOfB: newer.asOf !== undefined && !asOfOld ? newer.asOfB : older.asOfB,
     datesB: datesB.size ? [...datesB] : undefined,
     ...(frameSeenAt ? { frameSeenAt } : {}),
+    ...(newer.bld ?? older.bld ? { bld: newer.bld ?? older.bld } : {}),
   };
 };
 
@@ -655,6 +697,44 @@ export function newReceipts(known: ReadonlyMap<string, Rcpt>, d: Draft): Rcpt[] 
   }
   return out;
 }
+/** Ирээдүйн агшныг логик цагт хүлээн авах дээд зөрүү — буруу цагтай нэг клиент бүгдийн цагийг урагш чирэхгүй */
+export const FUTURE_SKEW_MS = 5 * 60_000;
+/** Алсын уншилтын дээд хүлээлт — хэтэрвэл локал хуулбараар хүснэгтийг нээнэ */
+export const REMOTE_READ_TIMEOUT_MS = 15_000;
+/** Дараалсан ийм олон алдаа/зөрчлийн дараа «ArcGIS-д хадгалагдсангүй» төлөв */
+export const REMOTE_FAIL_MAX = 5;
+/**
+ * СЭРГЭЭЛТИЙН ШИЙДВЭР (цэвэр) — алсын уншилтын үр дүнгээр: хүснэгт ямагт нээгдэнэ; `fail` → локалаар, дахин оролдоно;
+ * `timeout` → локалаар, уншилт ард үргэлжилнэ (дахин эхлүүлэхгүй).
+ */
+export function restorePlan(read: 'ok' | 'fail' | 'timeout'): { open: true; useRemote: boolean; retry: boolean; background: boolean } {
+  return { open: true, useRemote: read === 'ok', retry: read === 'fail', background: read === 'timeout' };
+}
+/** `p`-г `ms` хүртэл хүлээнэ — хэтэрвэл `{ late: true }` (`p` өөрөө үргэлжилнэ) */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<{ late: false; v: T } | { late: true }> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => resolve({ late: true }), ms);
+    p.then((v) => { clearTimeout(t); resolve({ late: false, v }); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+/**
+ * «НООРОГ УСТГАХ»-ЫН ХҮРЭЭ (цэвэр) — `all` (super) биш бол зөвхөн ӨӨРИЙН нүд: `mine`-д байгаа эсвэл сүүлд бичсэн нь `me`.
+ * Эзэн нь мэдэгдэхгүй (хуучин ноорог) нүд бусдынх гэж тооцогдоно — хөндөхгүй.
+ */
+export function ownKeys(keys: Iterable<string>, by: ReadonlyMap<string, string>, mine: ReadonlySet<string>, me: string, all: boolean): string[] {
+  const out: string[] = [];
+  for (const k of new Set(keys)) if (all || mine.has(k) || (!!me && by.get(k) === me)) out.push(k);
+  return out;
+}
+const LEGACY_OK_PREFIX = "selbe-fillnew-legacy-none:";
+const LEGACY_OK_TTL_MS = 7 * 24 * 3600 * 1000;
+/** Хуучин (`хэрэглэгч|багц`) ноорогийн хайлт саяхан хоосон гарсан уу — тийм бол `LIKE '%|багц'` хайлтыг алгасна */
+export const legacyChecked = (pkgKey: string): boolean => {
+  try { const t = Number(localStorage.getItem(LEGACY_OK_PREFIX + pkgKey) ?? 0); return t > 0 && Date.now() - t < LEGACY_OK_TTL_MS; } catch { return false; }
+};
+export const markLegacyChecked = (pkgKey: string) => {
+  try { localStorage.setItem(LEGACY_OK_PREFIX + pkgKey, String(Date.now())); } catch { /* хаалттай сан — дараа дахин хайна */ }
+};
 export const claimMine = (mineAt: number | undefined, at: number | undefined, by: string | undefined, me: string): boolean =>
   at == null || !by || by === me || (mineAt ?? 0) >= at;
 export const editStamp = (clock: number, seen: number | undefined): number =>
@@ -783,7 +863,7 @@ export const readInflight = (pkgKey: string): Inflight | null => {
     if (!raw) return null;
     const o = JSON.parse(raw) as Inflight;
     if (!o || o.v !== 1 || typeof o.nonce !== 'string' || !Number.isFinite(o.fillMs) || !Array.isArray(o.sent)) return null;
-    if (Date.now() - Number(o.at) > DEL_TTL_MS) { localStorage.removeItem(INFLIGHT_PREFIX + pkgKey); return null; }
+    if (serverNow() - Number(o.at) > DEL_TTL_MS) { localStorage.removeItem(INFLIGHT_PREFIX + pkgKey); return null; }
     o.sent = o.sent.filter((e) => Array.isArray(e) && typeof e[0] === 'string' && typeof e[1] === 'string' && Number.isFinite(e[2]));
     o.rk = Array.isArray(o.rk) ? o.rk.filter((e) => Array.isArray(e) && Number.isInteger(e[0]) && typeof e[1] === 'string') : undefined;
     o.occ = Array.isArray(o.occ) ? o.occ.filter((e) => Array.isArray(e) && Number.isInteger(e[0]) && Number.isInteger(e[1]) && Number.isInteger(e[2])) : undefined;

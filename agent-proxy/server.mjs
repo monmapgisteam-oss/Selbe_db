@@ -56,10 +56,11 @@ if (BACKEND === "claude-code") {
 }
 
 /**
- * ArcGIS нэвтрэлт — `worker.mjs`-ийн ижил дүрэм. `ARCGIS_ORG_ID` тохируулсан
- * үед л шаардана.
+ * ArcGIS нэвтрэлт — `worker.mjs`-ийн ижил дүрэм: `/chat` бүрд (ботоос бусад) токен шаардана.
  */
 const ARCGIS_ORG_ID = process.env.ARCGIS_ORG_ID?.trim() || "";
+/** `ARCGIS_ORG_ID`-гүй бол `/chat` хаалттай (fail-closed) — нэвтрэлтгүй локал хөгжүүлэлтэд л `RELAY_DEV_NO_AUTH=1` */
+const DEV_NO_AUTH = !ARCGIS_ORG_ID && process.env.RELAY_DEV_NO_AUTH === "1";
 
 /**
  * ИТГЭМЖЛЭГДСЭН ПРОКСИ (2026-09-25) — `TRUSTED_PROXY=cloudflare|tailscale`.
@@ -330,8 +331,14 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  /* `x-bot-user` зөвхөн `BOT_SECRET` таарсан үед; эс бөгөөс үл тоомсорлож энгийн хэрэглэгч мэт шалгана.
+     Origin толгойгүй хүсэлт (сервер-сервер) ч доорх токены шалгалтыг давна — Origin-оор нэвтрэлт алгасахгүй */
   const isBot = Boolean(BOT_SECRET) && secretMatches(req.headers["x-bot-secret"], BOT_SECRET);
   let caller = `ip:${ip}`;
+  if (!isBot && !ARCGIS_ORG_ID && !DEV_NO_AUTH) {
+    json(res, 503, { error: "Реле нэвтрэлтгүй тохируулагдсан байна — администраторт хандана уу", retryable: false });
+    return;
+  }
   if (isBot) {
     caller = botCaller(req.headers["x-bot-user"]);
   } else if (ARCGIS_ORG_ID) {
@@ -367,7 +374,8 @@ const server = createServer(async (req, res) => {
     json(res, 429, { error: "Хэт олон хүсэлт — минутад 40 хүсэлт", retryable: true });
     return;
   }
-  const budgeted = caller !== "bot" && DAILY_TOKEN_BUDGET > 0;
+  /* бот ч төсөвт тоологдоно (`x-bot-user`-гүй бол нийтийн «bot» сав) */
+  const budgeted = DAILY_TOKEN_BUDGET > 0;
   if (budgeted && budget.over(caller, DAILY_TOKEN_BUDGET)) {
     json(res, 429, { error: BUDGET_MSG, code: "daily_budget", retryable: false });
     return;
@@ -634,11 +642,15 @@ async function callUpstream(res, { caller, system, messages, tools, inputEst, se
 server.listen(PORT, '127.0.0.1', () => {
   if (BACKEND === "claude-code") {
     console.log(`[agent-proxy] хөдөлгүүр=claude-code  ${claudeBin() ?? "⚠️ claude олдсонгүй (CLAUDE_BIN тохируул)"}`);
-    if (!ARCGIS_ORG_ID) console.warn("[agent-proxy] ⚠️ ARCGIS_ORG_ID тохируулаагүй — тунелээр ирсэн хүсэлтийг 403-аар татгалзана (зөвхөн локал).");
   } else if (!process.env.ANTHROPIC_API_KEY) {
     console.warn(
       "[agent-proxy] ⚠️ ANTHROPIC_API_KEY тохируулаагүй байна — хүсэлт бүр татгалзана.",
     );
+  }
+  if (!ARCGIS_ORG_ID) {
+    console.warn(DEV_NO_AUTH
+      ? "[agent-proxy] ⚠️ RELAY_DEV_NO_AUTH=1 — нэвтрэлтгүй локал хөгжүүлэлтийн горим (тунелийн хүсэлт 403)."
+      : "[agent-proxy] ⛔ ARCGIS_ORG_ID тохируулаагүй — /chat 503 (нэвтрэлтгүй локал хөгжүүлэлтэд RELAY_DEV_NO_AUTH=1).");
   }
   if (ARCGIS_ORG_ID && !TRUSTED_PROXY) {
     console.warn("[agent-proxy] ⚠️ TRUSTED_PROXY тохируулаагүй — тунелийн хэрэглэгчид IP-ийн хурдны хязгаарыг нэг түлхүүрээр хуваалцана.");

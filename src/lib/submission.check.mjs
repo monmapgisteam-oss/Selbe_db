@@ -823,4 +823,31 @@ const nextOf = (over = {}) => {
   console.log('✅ 2026-10-26 — илгээлтийн мөр: алдагдалгүй хамгаалалт · хэвшүүлэлт · архивын үе · GC');
 }
 
+/* ── 2026-11-20: блокийн нэрс (`bld`) — задлал, нэгтгэл, үлдэгдэл нэг индексэд ── */
+{
+  const raw = (o) => JSON.stringify({ ...valid(), ...o });
+  assert.deepEqual(parseSubmission(raw({ bld: ['5/1', '6/1', '5/2'] })).bld, ['5/1', '6/1', '5/2']);
+  assert.equal(parseSubmission(raw({})).bld, undefined, 'хуучин илгээлт — `bld` алга');
+  for (const bad of [['5/1', 3], ['5/1', '5/1'], ['', 'x'], 'x'])
+    assert.equal(parseSubmission(raw({ bld: bad })).bld, undefined, `эвдэрсэн bld ${JSON.stringify(bad)} — хаягдана, илгээлт үлдэнэ`);
+  /* хуучин илгээлт бүтэн жагсаалтаар, шинэ нь 6/1 хаагдсаны дараа: нэгтгэл шинийн индекс + хуучинд л байсан нэр */
+  const prev = { ...valid(), adds: [], bld: ['5/1', '6/1', '5/2'], cells: [['12:0', '1'], ['12:1', '2'], ['12:2', '3']], dates: [['12:2:s', '2026-09-01']] };
+  const next = { pkgKey: 'b1_9f', user: 'u', at: 2000, fillMs: FILL, base: 999, asOf: null, adds: [], rowKeys: [[12, '1 ¦ Хашаа']], bld: ['5/1', '5/2'], cells: [['12:1', '9']], dates: [] };
+  const m = mergeSubmission(prev, next);
+  assert.deepEqual(m.bld, ['5/1', '5/2', '6/1']);
+  assert.deepEqual(new Map(m.cells), new Map([['12:0', '1'], ['12:1', '9'], ['12:2', '2']]), '5/2 нэг индекст нэгтгэгдэв, 6/1 алдагдаагүй');
+  assert.deepEqual(m.dates, [['12:1:s', '2026-09-01']]);
+  assert.equal(parseSubmission(JSON.stringify(m)).bld.length, 3, 'хадгалсан нэгтгэл `bld`-тэйгээ уншигдана');
+  /* хуучин (bld-гүй) prev — индекс хэвээр, шинийн жагсаалт */
+  const legM = mergeSubmission({ ...prev, bld: undefined }, next);
+  assert.deepEqual([legM.bld, new Map(legM.cells).get('12:2')], [undefined, '3'], 'шинийн жагсаалтаас гадуурх индекс — хуучин хэвээр (тулгагдаагүй)');
+  const legIn = mergeSubmission({ ...prev, bld: undefined, cells: [['12:0', '1']], dates: [] }, next);
+  assert.deepEqual(legIn.bld, ['5/1', '5/2'], 'хуучин prev-ийн индекс жагсаалтад багтвал шинийнх');
+  /* үлдэгдэл: архивласан хэсэг өөр индексээр байсан ч зөв нүднээс хасна */
+  const cur = { ...valid(), v: 2, mode: 'inc', adds: [], bld: ['5/1', '5/2'], cells: [['12:1', '10']], dates: [] };
+  const arc = { ...cur, bld: ['5/1', '6/1', '5/2'], cells: [['12:2', '4']] };
+  assert.deepEqual(residualAfterArchive(cur, arc).cells, [['12:1', '6']]);
+}
+console.log('✅ 2026-11-20 — илгээлтийн блокийн нэрс: задлал · нэгтгэл · үлдэгдэл');
+
 console.log('submission.check ✓');

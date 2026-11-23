@@ -325,7 +325,8 @@ const handler = {
       return json(429, { error: 'Хэт олон хүсэлт — түр хүлээгээд дахин оролдоно уу.', retryable: true }, cors);
     }
     const dailyBudget = budgetCapFor(env, budgetFromEnv(env.DAILY_TOKEN_BUDGET));
-    const budgeted = caller !== 'bot' && dailyBudget > 0;
+    /* бот ч төсөвт тоологдоно (`x-bot-user`-гүй бол нийтийн «bot» сав) — `server.mjs`-тэй ижил */
+    const budgeted = dailyBudget > 0;
     if (budgeted && await budgetOver(env, caller, dailyBudget)) {
       return json(429, { error: BUDGET_MSG, code: 'daily_budget', retryable: false }, cors);
     }

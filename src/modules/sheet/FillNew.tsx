@@ -26,6 +26,7 @@ import {
   type Schema,
 } from "./bagts.pkg";
 import {
+  alignBlocks,
   buildOidMap,
   mapOldOids,
   moveKeys,
@@ -86,7 +87,7 @@ import { DraftStatus, FilterBar, ObyemToolbar, Participants, PkgPctBadge, Submit
 import { FillNotices, NoticeToast, StickyNotice } from "./fill/notices";
 import { SheetHead } from "./fill/SheetHead";
 import { FillRows } from "./fill/FillRows";
-import { fullExtraCols, extraPrefKey, readExtraPref, writeExtraPref } from "./fill/extraCols";
+import { fullExtraCols, extraPrefKey } from "./fill/extraCols";
 import { FillDatePicker } from "./fill/FillDatePicker";
 import { downloadFillXlsx } from "./fill/sheetXlsx";
 
@@ -478,12 +479,11 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * урьд нь зурагддаггүй мөрийн түвшний талбарууд ЗӨВХӨН УНШИХ төгсгөлийн бүлгээр (`fill/extraCols.ts`).
    */
   const extraKey = extraPrefKey(user?.username);
-  const extraSaved = useMemo(() => readExtraPref(extraKey), [extraKey]);
   const [extraSet, setExtraSet] = useState<{ k: string; on: boolean } | null>(null);
-  const showExtra = extraSet?.k === extraKey ? extraSet.on : extraSaved;
+  /* Орох бүрд «Хураангуй»-гаар нээгдэнэ (хэрэглэгч, 2026-11-23) — өмнөх сонголтыг сэргээхгүй */
+  const showExtra = extraSet?.k === extraKey ? extraSet.on : false;
   const setFullView = useCallback((on: boolean) => {
     setExtraSet({ k: extraKey, on });
-    writeExtraPref(extraKey, on);
   }, [extraKey]);
 
   // ── Crosshair — React state БИШ ──
@@ -725,7 +725,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
             }
           }
         }
-        if (!view && useSub && sub) ds.noteSubReceipts(sub.payload);
+        if (!view && useSub && sub) ds.noteSubReceipts(alignBlocks(sub.payload, schema.bld).sub);
         setRows(ov ? ov.rows : r.rows);
         setAsOf(ov?.asOf ?? r.asOf);
         setAsOfOrig(ov?.asOf ?? r.asOf);
@@ -1067,6 +1067,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     soft, onReceipts, flashCells, visibleKeys,
     stick: stickHere,
     okLock: okLockAt,
+    dropAll: unrestricted,
   });
   useSyncRef(draftSyncRef, draftSync);
   const {
@@ -1316,7 +1317,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         if (!live()) return;
         if (p2 !== act.payload) act = { ...act, payload: p2 };
       }
-      if (act) noteSubReceipts(act.payload);
+      if (act) noteSubReceipts(alignBlocks(act.payload, sc.bld).sub);
       const ov = act ? overlaySubmission(next.rows, act.payload, sc, nBld) : null;
       setUnmovedWarn(ov && ov.unmoved > 0 && act ? describeUnmoved(ov.unmovedKeys, act.payload.rowKeys, sc.bld) : []);
       setBackChg(act && ov ? changedKeys(next.rows, ov, sc.bld) : new Set());
@@ -1733,6 +1734,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         rowKeys,
         rowOcc: rowOccOf(freshRows, usedOids),
         nonces: [nonce],
+        bld: [...sc.bld],
       });
       payload.rowOcc = rowOccOf(freshRows, payload.rowKeys.map(([o]) => o));
       {
@@ -2215,7 +2217,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         <span className={st.tbGrow} aria-hidden />
         <DraftStatus locked={locked} dirtyCount={dirtyCount} noPerf={noPerf} dropDraft={dropDraft} savedAt={savedAt} remoteState={remoteState}
           restoring={restoringUi} offline={offline} localFail={localFail}
-          canDrop={reviewLock && permPerf && !reviewerOnly && !noEdit} />
+          canDrop={reviewLock && permPerf && !reviewerOnly && !noEdit} dropAll={unrestricted} />
       </div>
       {pastePrev && (
         <div className={st.pasteBar} role="status">

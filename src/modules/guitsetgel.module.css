@@ -910,3 +910,11 @@
 .gainUp { color: var(--good-ink, var(--good)); }
 .gainFromTo { color: var(--ink-3); font-size: 12px; }
 .gainBlocks { flex-basis: 100%; font-size: 11.5px; color: var(--ink-3); overflow-wrap: anywhere; }
+
+/* Хяналтын хугацаа — хэн дээр хэд хоног хүлээгдэж буй */
+.waitSum { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.waitHint { margin-left: auto; color: var(--ink-3); font-size: 11px; }
+.waitTable { width: 100%; border-collapse: collapse; font-size: 12px; }
+.waitTable th, .waitTable td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.waitTable th { color: var(--ink-3); font-weight: 600; }
+.waitLate td { color: var(--bad-ink); }

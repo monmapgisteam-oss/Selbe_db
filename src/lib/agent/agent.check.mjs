@@ -88,6 +88,8 @@ async function startRelay() {
       ALLOW_ORIGIN: 'http://localhost:8123',
       ANTHROPIC_API_KEY: 'sk-ant-test-key',
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${MOCK_PORT}`,
+      ARCGIS_ORG_ID: '',
+      RELAY_DEV_NO_AUTH: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,

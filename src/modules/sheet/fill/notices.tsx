@@ -16,9 +16,9 @@ function returnLine(info: ReturnInfo | null | undefined): string {
 }
 
 export function FillNotices({
-  locked, submitFailed, resend, resending, unmovedWarn, subReadErr, inReview, reviewStage,
+  locked, submitFailed, resend, resending, inReview, reviewStage,
   otherDaysInReview, otherDaysReturned, noEdit, busy, resumedOid, resumeReturned, returned,
-  canAct = true, reviewLockDays = [], hyErr = null, frameTrunc = null, returnInfo = null, hideStage = false,
+  canAct = true, reviewLockDays = [], returnInfo = null, hideStage = false,
 }: {
   locked: boolean; submitFailed: boolean; resend: () => Promise<void>; resending: boolean;
   unmovedWarn: string[]; subReadErr: string | null; inReview: boolean; reviewStage: FlowT['reviewStage'];
@@ -34,16 +34,6 @@ export function FillNotices({
 }) {
   return (
     <>
-      {frameTrunc && (
-        <p className={st.lockNote} role="alert">
-          {tr('Архивын сүүлийн жааз ({0}) дундаа тасарсан ({1}/{2} мөр) — доорх тоо {3}-ны бүтэн жаазаас. Тасарсан жааз цэвэрлэгдтэл «Илгээх» хаалттай; газрын дарга дахин «Батлах» дарж эсвэл админ цэвэрлэнэ.', frameTrunc.day, frameTrunc.rows, frameTrunc.need, frameTrunc.shownDay)}
-        </p>
-      )}
-      {hyErr && (
-        <p className={st.lockNote} role="alert">
-          {tr('Хяналтын жагсаалтыг татаж чадсангүй ({0}) — буцаалт ба хянагчийн зөвшөөрсөн (ногоон ✓) нүдний тэмдэглэгээ дутуу байж болзошгүй; идэвхтэй илгээлттэй бол «Илгээх» түр хаалттай. Хуудсыг дахин ачаална уу.', hyErr)}
-        </p>
-      )}
       {!locked && submitFailed && (
         <p className={st.lockNote}>
           {tr('Илгээлт хадгалагдсан ч хяналтын бүртгэл ҮҮССЭНГҮЙ — хянагч үүнийг харахгүй.')}
@@ -52,23 +42,6 @@ export function FillNotices({
               {resending ? tr('Илгээж байна…') : tr('Хяналтад илгээх')}
             </button>
           )}
-        </p>
-      )}
-      {unmovedWarn.length > 0 && (
-        <p className={st.lockNote} role="alert">
-          {tr('Илгээсэн зарим нүдийг хуудсанд буулгаж чадсангүй — мөр нь шинэ мөрүүдэд тулгагдаагүй, эсвэл нэмэлтийн утга нь тоо биш («1,250» · «abc» мэт). Эдгээрийг ДАХИН бөглөж (тоог зөв бичиж) илгээнэ үү, эс бөгөөс газрын дарга батлах үед багц бүхэлдээ гацна: {0}', unmovedWarn.join('; '))}
-        </p>
-      )}
-      {/*
-        * Уншилт унавал overlay хийгдэхгүй тул дэлгэц дээр архивын суурь жааз
-        * (голдуу БҮХ НҮД 0%) харагдана. Урьд нь энэ нь ЧИМЭЭГҮЙ болдог тул
-        * гүйцэтгэгч «илгээсэн ажил минь алга болжээ» гэж дүгнэн дахин
-        * бөглөдөг байв. Одоо 0% нь ҮНЭН үү, эсвэл зүгээр л УНШИГДААГҮЙ юу
-        * гэдгийг хэрэглэгч ялгаж чадна.
-        */}
-      {subReadErr && (
-        <p className={st.lockNote} role="alert">
-          {tr('Илгээсэн ажлыг татаж чадсангүй ({0}) — доорх тоо ДУТУУ байж болзошгүй. Хуудсыг дахин ачаална уу; ажил алдагдаагүй, зөвхөн харагдаагүй байна.', subReadErr)}
         </p>
       )}
       {!locked && !submitFailed && inReview && (

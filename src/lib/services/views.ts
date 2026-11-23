@@ -38,6 +38,7 @@ export type ViewKey =
   | "hesegET"
   | "zovshoorol"
   | "guitsetgel"
+  | "hyanaltHugatsaa"
   | "ma"
   | "schem"
   | "sysdoc";
@@ -407,6 +408,16 @@ export const VIEWS: {
     standalone: true,
   },
   {
+    key: "hyanaltHugatsaa",
+    get title() { return tr('Хяналтын хугацаа'); },
+    get desc() { return tr('Илгээсэн гүйцэтгэл хэн дээр хэд хоног хүлээгдэж буй, шатны хугацаа хэтэрсэн эсэх'); },
+    icon: "calendarCheck",
+    hue: "#7c3aed",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  {
     key: "guitsetgel",
     get title() { return tr('Гүйцэтгэл'); },
     get desc() { return tr('Хийсэн ажлаа бөглөж илгээх, инженер хянах, удирдлага батлах ажлын хуудас (зөвхөн харах бол «Багцын гүйцэтгэл»)'); },
@@ -480,7 +491,7 @@ export const HOME_SECTIONS: {
   { id: "mgmt", get title() { return tr('Удирдлага'); }, all: true, views: [] },
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged", "tuvshin6"] },
-  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
+  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "hyanaltHugatsaa", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
 
@@ -489,7 +500,7 @@ export const HOME_SECTIONS: {
  */
 export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
-  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "huvaari", "tuvshin6", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt"] },
+  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "hyanaltHugatsaa", "huvaari", "tuvshin6", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt"] },
   { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "ma"] },
   {
     id: "monitor",

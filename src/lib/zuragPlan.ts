@@ -159,7 +159,7 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
   if (!add.length) return same;
   const ids = matchStored(add, [...drop]);
   /* Гэрээний дугаартай мөр (гараар байгуулсан гэрээ) төлбөрийн актаар явна — олгосон дүн нь хүснэгтэд байгаа хэвээр,
-     бүртгэлийн «Ажлын үнэ»-ээр дарагдахгүй (`hoSync.isRegisterRow`-ийн нөгөө тал) */
+     бүртгэлийн «Ажлын үнэ»-ээр дарагдахгүй (`hoSync.isRegisterRow`-ийн нөгөө тал — хоосон/зайтай дугаар = дугааргүй) */
   const storedBy = new Map<number, PlanStoredRow>();
   for (const r of drop) if (typeof r.objectid === 'number') storedBy.set(r.objectid, r);
   const gen = add.map((r, i): PlanStoredRow => {
@@ -168,7 +168,7 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
     const st = storedBy.get(id);
     /* 2026-11-20 (засвар): «Төлбөрийн акт»-аар гэрээ байгуулсан (дугаартай) мөрийн гэрээний дүн ба «Гэрээлсэн дүн» тэмдэглэгээ
        ч хэвээр — урьд нь үнэгүй зурагт бүртгэлийн хадгалалт тэдгээрийг хоосолж, гэрээ төлбөрөөсөө тасардаг байв */
-    return st?.geree_dugaar != null && r.guitsetgel_huvi !== undefined
+    return st && String(st.geree_dugaar ?? '').trim() !== '' && r.guitsetgel_huvi !== undefined
       ? { ...r, objectid: id, olgoson_dun: st.olgoson_dun ?? null, geree_dun: st.geree_dun ?? r.geree_dun ?? null, ho_dungiin_tailbar: st.ho_dungiin_tailbar ?? r.ho_dungiin_tailbar ?? null }
       : { ...r, objectid: id };
   });

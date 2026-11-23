@@ -119,6 +119,14 @@ console.log('✅ server.mjs · worker.mjs: минутын тоолол слот�
     'server.mjs: TRUSTED_PROXY алга үед authfail токены хэшээр түлхүүрлэгдэх ёстой');
   assert.ok(!/verified\.(get|set|delete)\(token\b/.test(src), 'server.mjs: verified кэш түүхий токеноор');
   console.log('✅ server.mjs: authfail IP+токены хэш (TRUSTED_PROXY алга) · verified кэш хэшээр');
+  /* ARCGIS_ORG_ID-гүй бол fail-closed (dev туг л нээнэ); бот ч төсөвтэй */
+  assert.match(src, /const DEV_NO_AUTH = !ARCGIS_ORG_ID && process\.env\.RELAY_DEV_NO_AUTH === "1"/, 'server.mjs: dev туг алга');
+  assert.match(src, /if \(!isBot && !ARCGIS_ORG_ID && !DEV_NO_AUTH\) \{\s*json\(res, 503/, 'server.mjs: ORG_ID-гүй үед fail-closed биш');
+  for (const f of ['server.mjs', 'worker.mjs']) {
+    const s = readFileSync(new URL(`../agent-proxy/${f}`, import.meta.url), 'utf8');
+    assert.ok(!/budgeted = caller !== ['"]bot['"]/.test(s), `${f}: бот төсвөөс чөлөөлөгдсөн`);
+  }
+  console.log('✅ server.mjs: ARCGIS_ORG_ID-гүй → 503 (RELAY_DEV_NO_AUTH=1-ээс бусад) · бот төсөвтэй (хоёр реле)');
 }
 {
   const src = readFileSync(new URL('../agent-proxy/worker.mjs', import.meta.url), 'utf8');

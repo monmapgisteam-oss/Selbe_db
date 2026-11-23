@@ -12,6 +12,8 @@ import assert from 'node:assert/strict';
 import { buildTree, computePlan, moneySums } from './projectPlan.ts';
 import { toZRow } from './zuragBurtgel.ts';
 import { withRegistryRows, registryPlanEdits, isTezuBuleg } from './zuragPlan.ts';
+import { isRegisterRow } from './hoSync/compute.ts';
+import { CASHFLOW_NEW } from './services.ts';
 
 const D = (s) => Date.parse(`${s}T00:00:00Z`);
 const rows = [
@@ -220,6 +222,13 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   const ren = registryPlanEdits(stored, plus.map((d) => (d.oid === 2 ? zd(2, 'B2') : d)));
   assert.deepEqual([ren.adds.length, ren.deletes.length], [0, 0]);
   assert.equal(ren.updates.find((u) => u.objectid === idB).ajil_uilchilgee, 'B2');
+  /* хоосон/зайтай дугаар = дугааргүй: олгосон дүнг бүртгэл бичнэ (`hoSync.isRegisterRow`-тай нэг дүрэм — эзэнгүй мөр алга) */
+  for (const no of ['', '  ']) {
+    const blank = stored.map((r) => (r.objectid === idB ? { ...r, geree_dugaar: no, olgoson_dun: 4 } : r));
+    assert.equal(registryPlanEdits(blank, plus).updates.find((u) => u.objectid === idB)?.olgoson_dun, 10, `дугаар ${JSON.stringify(no)} — бүртгэлийн мөр`);
+    const cf = CASHFLOW_NEW.fields;
+    assert.equal(isRegisterRow({ [cf.phase]: 'Ажлын зураг төсөл', [cf.contractNo]: no }), true, 'hoSync ч мөн бүртгэлийн мөр гэж үзнэ');
+  }
 }
 /* 2026-11-19: мөр бүртгэлийн ID-аараа (`zurag_oid`) баримтаа дагана — нэр ба байрлал хоёулаа өөрчлөгдсөн ч гэрээ, төлбөр хэвээр */
 {

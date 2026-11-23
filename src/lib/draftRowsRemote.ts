@@ -4,7 +4,7 @@
  * НООРОГ — ЭХ ХУУДАСНЫ БҮТЦЭЭР, 191-д: ENTERPRISE ДЭЭРХ УНШИЛТ/БИЧИЛТ (2026-10-26).
  */
 
-import { arcgisPost } from '@/lib/query';
+import { arcgisBeacon, arcgisPost } from '@/lib/query';
 import { draftWriteLocked, tableUrl, type RemoteDraftRead, type RemoteSaveResult } from '@/lib/draftRemote';
 import { currentUser } from '@/lib/who';
 import { t as tr } from '@/lib/i18nCore';
@@ -14,8 +14,8 @@ import {
 } from '@/lib/huvaariDraft';
 import { mergeDrafts, parseDraft, type Draft } from '@/modules/sheet/fill/draft';
 import {
-  absorbPerf, absorbPlan, buildFrame, COL, diffRows, KEY_MAX, groupsOf, seriesKey, gcCandidates, hsubDkey, perfDkey, perfFromRows, perfToRows,
-  planDkeyOfLegacy, planFromRows, planToRows, ROW_FIELDS, ROW_TTL, ROW_VERSION, sameSubRow, stampRow, stampWant, subDkey, unitOf, viewOf,
+  absorbPerf, absorbPlan, beaconPick, buildFrame, COL, diffRows, KEY_MAX, groupsOf, seriesKey, gcCandidates, gcExpired, hsubDkey, perfDkey, perfFromRows, perfToRows,
+  PERF_FIELDS, planDkeyOfLegacy, planFromRows, planToRows, ROW_FIELDS, ROW_TTL, ROW_VERSION, sameSubRow, stampRow, stampWant, subDkey, unitOf, VAL_COLS, viewOf,
   type Attrs, type Frame, type FrameRow, type NKind, type Op, type PlanCtx, type Stamps, type Want,
 } from '@/lib/draftRows';
 import type { PlanPayload } from '@/lib/huvaariBatlah';
@@ -24,8 +24,12 @@ export const DRAFT_ROWS_ENABLED = true;
 
 /** Нэг applyEdits хэсгийн дээд засвар (ArcGIS: 500) */
 const CHUNK = 500;
-/** Бүтэн уншилтын давтамж — устгагдсан мөрийг зургаас арилгана */
+/** Устгагдсан мөрийг зургаас арилгах давтамж — зөвхөн OBJECTID-ын жагсаалтаар (бүтэн дахин уншихгүй) */
 const FULL_EVERY = 5 * 60_000;
+/** Зэрэг явах хуудасны тоо (`queryAll`) */
+const PAGE_PAR = 4;
+/** keepalive бичилтийн биеийн дээд (хөтчийн хязгаар ≈ 64КБ; токен · бусад параметрийн нөөцтэй) */
+export const BEACON_MAX = 56_000;
 /** Өөрчлөлтийн курсорын нөөц — бичилтийн хоцрогдол/транзакц */
 const DELTA_SLACK = 120_000;
 /** Баганын шалгалтын кэш — «байхгүй» 5 мин (notebook-ийн дараа дахин ачаалалгүй шилжинэ) */
@@ -39,6 +43,10 @@ const ORPHAN_TTL = 15 * 60_000;
 type Post = (url: string, params: Record<string, string>) => Promise<unknown>;
 let post: Post = (url, params) => arcgisPost(url, params);
 let urlOverride: string | null | undefined;
+/** Сүүлд мэдэгдсэн хүснэгтийн хаяг — хуудас хаагдах үеийн (синхрон) бичилтэд */
+let lastUrl: string | null = null;
+type Beacon = (url: string, params: Record<string, string>) => boolean;
+let beacon: Beacon = (url, params) => arcgisBeacon(url, params);
 let meOverride: string | null | undefined;
 /** Хуучин (`<багц>` · `plan:%`) JSON мөрийн уншигч — тестэд солигдоно */
 type PendIO = (pkgKey: string) => Promise<{ plan: { oid: number; author: string; authorSent: number | null } | null; geree: { oid: number; author: string; authorSent: number | null } | null }>;
@@ -47,9 +55,10 @@ type PayloadIO = (oid: number) => Promise<PlanPayload | null>;
 let payloadIO: PayloadIO | null = null;
 export function rowsTestHooks(p: {
   post?: Post; url?: string | null; me?: string | null; imgs?: Map<string, unknown>; reset?: boolean;
-  pending?: PendIO | null; payload?: PayloadIO | null;
+  pending?: PendIO | null; payload?: PayloadIO | null; beacon?: Beacon;
 }): void {
   if (p.post) post = p.post;
+  if (p.beacon) beacon = p.beacon;
   if (p.url !== undefined) urlOverride = p.url;
   if (p.me !== undefined) meOverride = p.me;
   if (p.imgs) imgs = p.imgs as Map<string, Img>;
@@ -66,8 +75,8 @@ const me = (): string | null => (meOverride !== undefined ? meOverride : (curren
 const LOCKED = () => tr('систем хаалттай эсвэл эрх түгжигдсэн — ноорог зөвхөн энэ хөтчид, нээгдмэгц хуулагдана');
 
 async function layerUrl(): Promise<string | null> {
-  if (urlOverride !== undefined) return urlOverride;
-  return tableUrl();
+  lastUrl = urlOverride !== undefined ? urlOverride : await tableUrl();
+  return lastUrl;
 }
 
 /* ══════════════ Багана бэлэн эсэх (fallback) ══════════════ */
@@ -172,24 +181,54 @@ function byKey(img: Img): Map<string, Attrs[]> {
   return m;
 }
 
-const READ_FIELDS = ['objectid', 'last_edited_date', 'created_date', COL.dkey, COL.usr, COL.pkg, COL.at, ...ROW_FIELDS];
+const SYS_FIELDS = ['objectid', 'last_edited_date', 'created_date', COL.dkey, COL.usr, COL.pkg, COL.at];
+const READ_FIELDS = [...SYS_FIELDS, ...ROW_FIELDS];
+const PERF_READ = [...SYS_FIELDS, ...PERF_FIELDS];
 
-/** Хуудаслалттай асуулга — `orderByFields=objectid` ЗААВАЛ (давхардсан/алдагдсан мөргүй) */
+/** Шүүлтэд таарах бүх OBJECTID (хязгааргүй, нэг хүсэлт) */
+async function queryIds(url: string, where: string): Promise<number[]> {
+  const j = (await post(`${url}/query`, { where, returnIdsOnly: 'true' })) as { objectIds?: unknown[] | null };
+  return (j.objectIds ?? []).filter((x): x is number => typeof x === 'number').sort((a, b) => a - b);
+}
+
+/**
+ * Бүх мөр — эхний хуудас шууд (ихэнх ноорог нэг хүсэлтэд багтана); илүү бол үлдсэнийг OBJECTID-ын багцаар ЗЭРЭГ (`PAGE_PAR`)
+ * татна: офсетоор дараалан хүлээхгүй, завсрын нэмэлт/устгалд мөр давхцахгүй/алгасахгүй. `orderByFields=objectid` ЗААВАЛ.
+ */
 async function queryAll(url: string, where: string, fields: readonly string[]): Promise<Attrs[]> {
-  const out: Attrs[] = [];
-  let off = 0;
-  for (;;) {
-    const j = (await post(`${url}/query`, {
-      where, outFields: fields.join(','), orderByFields: 'objectid ASC', returnGeometry: 'false',
-      resultOffset: String(off), resultRecordCount: '2000',
-    })) as { features?: { attributes?: Attrs }[]; exceededTransferLimit?: boolean };
-    const fs = j.features ?? [];
-    for (const f of fs) if (f.attributes) out.push(f.attributes);
-    if (!fs.length || (fs.length < 2000 && !j.exceededTransferLimit)) break;
-    off += fs.length;
-    if (off > 400_000) throw new Error(tr('Ноорогийн мөр хэт олон'));
+  type Res = { features?: { attributes?: Attrs }[]; exceededTransferLimit?: boolean };
+  const page = async (extra: Record<string, string>): Promise<{ rows: Attrs[]; more: boolean }> => {
+    const j = (await post(`${url}/query`, { where, outFields: fields.join(','), orderByFields: 'objectid ASC', returnGeometry: 'false', ...extra })) as Res;
+    const rows: Attrs[] = [];
+    for (const f of j.features ?? []) if (f.attributes) rows.push(f.attributes);
+    return { rows, more: !!j.exceededTransferLimit };
+  };
+  const first = await page({ resultOffset: '0', resultRecordCount: '2000' });
+  const out = first.rows;
+  if (!out.length || (out.length < 2000 && !first.more)) return out;
+  const have = new Set(out.map((a) => num(a.objectid)));
+  const rest = (await queryIds(url, where)).filter((o) => !have.has(o));
+  if (rest.length > 400_000) throw new Error(tr('Ноорогийн мөр хэт олон'));
+  /* Багцын хэмжээ = серверийн нэг хуудсанд бодитоор өгсөн тоо (дамжуулалтын хязгаарт багтана) */
+  const size = out.length;
+  const chunk = async (ids: number[]): Promise<Attrs[]> => {
+    const got: Attrs[] = [];
+    let need = ids;
+    while (need.length) {
+      const r = await page({ objectIds: need.join(',') });
+      got.push(...r.rows);
+      if (!r.more || !r.rows.length) break;
+      const g = new Set(r.rows.map((a) => num(a.objectid)));
+      need = need.filter((o) => !g.has(o));
+    }
+    return got;
+  };
+  const chunks: number[][] = [];
+  for (let i = 0; i < rest.length; i += size) chunks.push(rest.slice(i, i + size));
+  for (let i = 0; i < chunks.length; i += PAGE_PAR) {
+    for (const part of await Promise.all(chunks.slice(i, i + PAGE_PAR).map(chunk))) out.push(...part);
   }
-  return out;
+  return out.sort((x, y) => (num(x.objectid) ?? 0) - (num(y.objectid) ?? 0));
 }
 
 /**
@@ -234,10 +273,11 @@ async function verOf(url: string, dkey: string, legacyKey: string | null, fresh 
 /** Зургийг ачаална — бүтэн эсвэл өөрчлөлтийн курсороор; бүлгийн агшныг (`stampRow`) шинэчилнэ */
 async function loadImg(url: string, dkey: string, kind: NKind, full: boolean): Promise<Img> {
   const img = imgOf(dkey);
-  const delta = !full && img.loaded && !img.needFull && img.mark > 0 && Date.now() - img.fullAt < FULL_EVERY;
+  const delta = !full && img.loaded && !img.needFull && img.mark > 0;
+  const prune = delta && Date.now() - img.fullAt >= FULL_EVERY;
   const base = `${COL.dkey} = ${q(dkey)}`;
   const where = delta ? `${base} AND last_edited_date >= ${tsSql(img.mark - DELTA_SLACK)}` : base;
-  const got = await queryAll(url, where, READ_FIELDS);
+  const got = await queryAll(url, where, kind === 'guitsetgel' ? PERF_READ : READ_FIELDS);
   if (!delta) img.rows = new Map();
   let mark = delta ? img.mark : 0;
   for (const a of got) {
@@ -249,6 +289,12 @@ async function loadImg(url: string, dkey: string, kind: NKind, full: boolean): P
   }
   img.mark = mark;
   img.loaded = true;
+  if (prune) {
+    /* Өөрчлөлтийн уншилт устгалыг харахгүй — ДАРАА нь OBJECTID-ын жагсаалтаар алга болсон мөрийг хасна (эрэмбэ: шинэ мөр хасагдахгүй) */
+    const ids = new Set(await queryIds(url, base));
+    for (const o of [...img.rows.keys()]) if (!ids.has(o)) img.rows.delete(o);
+    img.fullAt = Date.now();
+  }
   if (!delta) { img.fullAt = Date.now(); img.needFull = false; }
   /* Бүлгийн агшин — давхардлыг нийлүүлсэн харагдацаар */
   for (const [k, a] of viewOf(img.rows.values(), kind)) img.stamps.set(k, stampRow(img.stamps.get(k), a, groupsOf(kind, String(a[COL.turul] ?? ''), k)));
@@ -373,11 +419,16 @@ async function writeDiff(
   const hDup: Op[] = hk.slice(1).map((a) => ({ op: 'delete', k: 'h', unit: 'h', oid: num(a.objectid) ?? 0 }));
   const writes = ops.filter((o) => o.op !== 'delete');
   const dels = [...ops.filter((o) => o.op === 'delete'), ...hDup];
+  /* Хэсэг бүр тусдаа applyEdits (атом биш): унасан хэсэгт зогсож дуудагч дахин оролдоно; хувилбар (мөрүүдийн дээд `last_edited_date`) хэсэг бүрд ахих тул хагас бичилтийг уншсан клиент дараагийн хэсэгт дахин уншина */
   for (const c of chunksOf(writes, hOp)) {
     const r = await sendChunk(url, img, c);
     if (!r.ok) return r;
   }
-  for (let i = 0; i < dels.length; i += CHUNK) await sendChunk(url, img, dels.slice(i, i + CHUNK), false);
+  for (let i = 0; i < dels.length; i += CHUNK) {
+    /* Устгал унавал зогсоно — `sendChunk` зургийг «бүтэн унш» гэж тэмдэглэсэн тул үлдсэн нь дараагийн бичилтэд дахин устна */
+    const r = await sendChunk(url, img, dels.slice(i, i + CHUNK), false);
+    if (!r.ok) break;
+  }
   img.legacyAt = 0;
   img.ver = null;
   for (const [k, a] of viewOf(img.rows.values(), kind)) {
@@ -752,6 +803,66 @@ export async function perfSave(pkg: string, payload: string, frameOverride?: Fra
     console.error('[selbe] ноорог (мөр) хадгалагдсангүй:', e);
     return { ok: false, error: errText(e) };
   }
+}
+
+/**
+ * ХУУДАС ХААГДАХ ҮЕИЙН БИЧИЛТ — хүлээлтгүй (синхрон) нэг `keepalive` хүсэлт: уншсан зурагтай жишсэн диффээс зөвхөн ӨӨРИЙН
+ * сүүлийн нүд (`beaconPick`). Зураг уншигдаагүй/хуучирсан бол илгээхгүй (локал хуулбар дараагийн нээлтэд хуулагдана).
+ */
+export function perfBeacon(pkg: string, payload: string): boolean {
+  if (draftWriteLocked() || !lastUrl) return false;
+  const dkey = perfDkey(pkg);
+  const img = imgs.get(dkey);
+  const frame = frames.get(pkg);
+  if (!img?.loaded || img.needFull || !frame) return false;
+  const d = parseDraft(payload, 'remote');
+  if (!d) return false;
+  const who = me();
+  const w = perfToRows(d, frame, img.stale);
+  const ops = diffRows(byKey(img), w.rows, 'guitsetgel', { dkey, pkg, kind: 'guitsetgel' }, { clearAt: d.t, me: who, now: Date.now(), gcMax: 0, keep: (k) => !img.seen.has(k) });
+  const attrsOf = (o: Op): Attrs | null => (o.op === 'add' ? o.a : o.op === 'update' ? { objectid: o.oid, ...o.a } : null);
+  const pick = beaconPick(ops, w.rows, who, (o) => encodeURIComponent(JSON.stringify({ attributes: attrsOf(o) })).length + 3, BEACON_MAX);
+  if (!pick.length) return false;
+  const list = (op: 'add' | 'update') => pick.filter((o) => o.op === op).map((o) => ({ attributes: attrsOf(o) }));
+  const params: Record<string, string> = { rollbackOnFailure: 'false' };
+  if (list('add').length) params.adds = JSON.stringify(list('add'));
+  if (list('update').length) params.updates = JSON.stringify(list('update'));
+  /* Хариуг уншихгүй тул зураг мэдэгдэхгүй — хуудас амьд үлдвэл дараагийн бичилт бүтэн уншина (давхар нэмэхгүй) */
+  img.needFull = true;
+  return beacon(`${lastUrl}/applyEdits`, params);
+}
+
+/**
+ * ХУГАЦАА ДУУССАН МӨРИЙН ЦЭВЭРЛЭГЭЭ — БҮХ багцын ноорогоос (`gcExpired`). `write`-гүй бол зөвхөн тоолно (`tools/draft-gc.mjs`).
+ * Серверт `last_edited_date`-ээр урьдчилан шүүнэ (7 хоногт хөндөгдөөгүй мөр л) — амьд ноорогийн мөр хэзээ ч орохгүй.
+ */
+export async function gcAllDrafts(opt: { write?: boolean; now?: number; max?: number } = {}): Promise<{
+  scanned: number; expired: number; deleted: number; failed: number; byDkey: Record<string, number>;
+}> {
+  const url = await layerUrl();
+  if (!url) throw new Error(tr('ноорогийн хүснэгт олдсонгүй'));
+  const now = opt.now ?? Date.now();
+  const rows = await queryAll(url, `${COL.dkey} LIKE 'n:%' AND last_edited_date < ${tsSql(now - ROW_TTL)}`,
+    ['objectid', COL.dkey, COL.at, COL.turul, COL.key, COL.empty, COL.too, ...VAL_COLS]);
+  const hit = rows.filter((a) => gcExpired(a, now)).slice(0, opt.max ?? Number.POSITIVE_INFINITY);
+  const byDkey: Record<string, number> = {};
+  for (const a of hit) { const k = String(a[COL.dkey]); byDkey[k] = (byDkey[k] ?? 0) + 1; }
+  let deleted = 0;
+  let failed = 0;
+  if (opt.write) {
+    const oids = hit.map((a) => num(a.objectid)).filter((x): x is number => x != null);
+    for (let i = 0; i < oids.length; i += CHUNK) {
+      const part = oids.slice(i, i + CHUNK);
+      try {
+        const r = (await post(`${url}/applyEdits`, { rollbackOnFailure: 'false', deletes: part.join(',') })) as ApplyRes;
+        const ok = (r.deleteResults ?? []).filter((x) => x.success).length;
+        deleted += ok;
+        failed += part.length - ok;
+      } catch { failed += part.length; }
+    }
+    if (deleted) imgs = new Map();
+  }
+  return { scanned: rows.length, expired: hit.length, deleted, failed, byDkey };
 }
 
 /**

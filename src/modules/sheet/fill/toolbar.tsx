@@ -452,9 +452,11 @@ export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false, pkgAl
 }
 
 /** Нооргийн байдал — ногоон тоолуур · устгах · хадгалсан агшин · ArcGIS */
-export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, remoteState, restoring = false, offline = false, localFail = false, canDrop = false }: {
+export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, remoteState, restoring = false, offline = false, localFail = false, canDrop = false, dropAll = false }: {
   locked: boolean; dirtyCount: number; noPerf: boolean; dropDraft: () => void; savedAt: number | null; remoteState: RemoteState;
   canDrop?: boolean;
+  /** «Ноорог устгах» бүх хүний нүдийг устгах уу (super) — үгүй бол зөвхөн өөрийн */
+  dropAll?: boolean;
   restoring?: boolean;
   offline?: boolean;
   localFail?: boolean;
@@ -479,7 +481,9 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
               <>
                 {' · '}
                 <button type="button" className={st.linkBtn} onClick={dropDraft}
-                  title={tr('Илгээгээгүй бүх засварыг хаяна — локал ба ArcGIS хоёуланд. Буцаах зам байхгүй.')}>
+                  title={dropAll
+                    ? tr('Илгээгээгүй бүх засварыг хаяна — локал ба ArcGIS хоёуланд. Буцаах зам байхгүй.')
+                    : tr('Зөвхөн ТАНЫ бөглөсөн илгээгээгүй засварыг хаяна — бусад хүний нүд хэвээр үлдэнэ. Буцаах зам байхгүй.')}>
                   {tr('ноорог устгах')}
                 </button>
               </>
@@ -494,7 +498,9 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
         {!locked && savedAt != null && dirtyCount > 0 && !localFail && (
           <span
             className={st.autosave}
-            title={tr('Ноорог энэ хөтчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Илгээх» дарна.')}
+            title={remoteState?.kind === 'ok'
+              ? tr('Ноорог энэ хөтчид, мөн ArcGIS-д хадгалагдана — өөр компьютероос нэвтэрсэн ч сэргээх боломжтой. Хянагчид хүргэхийн тулд «Илгээх» дарна.')
+              : tr('Ноорог энэ хөтчид хадгалагдсан; ArcGIS-д хараахан хадгалагдаагүй — хадгалагдтал өөр компьютероос харагдахгүй. Хянагчид хүргэхийн тулд «Илгээх» дарна.')}
           >
             {tr('ноорог хадгалагдав {0}', new Date(savedAt).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' }))}
           </span>
@@ -507,6 +513,21 @@ export function DraftStatus({ locked, dirtyCount, noPerf, dropDraft, savedAt, re
         {remoteState?.kind === 'fail' && (
           <span className={st.autosaveWarn} role="status" title={remoteState.why + '\n' + tr('3 секунд тутам автоматаар дахин оролдоно. Өөр компьютероос үргэлжлүүлэх бол энэ асуудлыг засаж хуулагдсаны дараа шилжинэ үү.')}>
             {tr('⚠ ArcGIS-д хуулагдсангүй ({0}) — ноорог зөвхөн энэ компьютерт байна.', remoteState.why)}
+          </span>
+        )}
+        {remoteState?.kind === 'saving' && !locked && (
+          <span className={st.autosave} role="status" title={tr('Засвар ArcGIS руу хадгалагдаж байна — дуустал өөр компьютероос харагдахгүй.')}>
+            {tr('Хадгалж байна…')}
+          </span>
+        )}
+        {remoteState?.kind === 'reading' && !locked && (
+          <span className={st.autosave} role="status" title={tr('ArcGIS-ээс ноорог уншиж дуусаагүй тул энэ компьютерийн хуулбараар нээв — уншиж дуусмагц өөр газраас бөглөсөн нүд автоматаар нэмэгдэнэ.')}>
+            {tr('ArcGIS-ээс ноорог уншиж байна…')}
+          </span>
+        )}
+        {remoteState?.kind === 'error' && (
+          <span className={st.autosaveWarn} role="alert" title={remoteState.why + '\n' + tr('Олон удаа оролдоод хадгалж чадсангүй; автоматаар үргэлжлүүлэн оролдоно. Засвар энэ компьютерт хадгалагдсан — таб хаахгүй, сүлжээ болон нэвтрэлтээ шалгана уу.')}>
+            {tr('⚠ ArcGIS-д хадгалагдсангүй')}
           </span>
         )}
         {remoteState?.kind === 'ok' && !locked && dirtyCount > 0 && (

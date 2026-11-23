@@ -8,7 +8,7 @@ import {
   clearRemoteDraft as blobClear, readRemoteDraft as blobRead, readRemoteDraftAt as blobReadAt, saveRemoteDraft as blobSave,
   REMOTE_MAX, type RemoteDraftRead, type RemoteSaveResult,
 } from '@/lib/draftRemote';
-import { perfClear, perfMigrate, perfRead, perfReadAt, perfSave, rowsReady, setFillFrame as setFrame } from '@/lib/draftRowsRemote';
+import { perfBeacon, perfClear, perfMigrate, perfRead, perfReadAt, perfSave, rowsReady, setFillFrame as setFrame } from '@/lib/draftRowsRemote';
 import type { FrameRow } from '@/lib/draftRows';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -23,6 +23,15 @@ const mode = async (): Promise<'rows' | 'blob' | 'wait'> => {
 
 /** Алсын ноорогийн дээд хэмжээ — мөрийн горимд хязгааргүй (нүд мөрөнд), JSON горимд `REMOTE_MAX` */
 export const remoteMax = (): number => (lastMode === 'rows' ? Number.POSITIVE_INFINITY : REMOTE_MAX);
+/** Мөрийн горим уу (синхрон, сүүлд шалгаснаар) — баримтаар дарагдсан tombstone-ийг үлдээх эсэх */
+export const rowsMode = (): boolean => lastMode === 'rows';
+/**
+ * Хуудас хаагдах үеийн бичилт (`keepalive`) — зөвхөн мөрийн горимд (JSON горимд нэг мөр бүх хүний нүдийг агуулдаг тул
+ * нийлүүлэлгүй бичвэл бусдын ажлыг дарна). Явуулсан бол `true`.
+ */
+export function beaconRemoteDraft(pkgKey: string, payload: string): boolean {
+  try { return lastMode === 'rows' && perfBeacon(pkgKey, payload); } catch { return false; }
+}
 
 /** Хуудасны жаазыг бүртгэнэ (код ↔ oid) — мөрийн горимд нүдийг `des_dugaar`-аар түлхүүрлэнэ */
 export function setFillFrame(pkgKey: string, rows: readonly FrameRow[], bld: readonly string[]): void {

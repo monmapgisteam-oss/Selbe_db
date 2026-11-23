@@ -336,8 +336,15 @@ export type Overlay = {
   /**
    * `unmoved`-ийн дотроос ЭНЭ ХУУДСАНД БАЙХГҮЙ БЛОКИЙН нүд (блокийн дугаар нь баганын тооноос их) — илгээснээс хойш блокийг
    * хуудаснаас хассан (өөр хуудас руу шилжүүлсэн) үед. Мөр таарсан, утга зөв ч буух багана алга (2026-11-19).
+   * Зөвхөн `bld`-гүй (хуучин) илгээлтэд — нэр нь мэдэгдэхгүй тул; `bld`-тэй бол `skippedHidden`.
    */
   goneBlock: number;
+  /**
+   * Хаагдсан/хасагдсан блокийн нүд (`sub.bld`-д нэртэй, `sc.bld`-д алга) — АЛГАСАГДСАН, `unmoved`-д тоологдохгүй.
+   * Түлхүүр нь илгээлтийн эх индексээр.
+   */
+  skippedHidden: number;
+  skippedKeys: string[];
   remapped: boolean;
   negative: number;
   negKeys: string[];
@@ -453,6 +460,37 @@ export function describeNegFixes(
   });
 }
 
+/** `a`-ийн дараа `b`-д л байгаа нэрс — `a`-ийн индекс хэвээр үлдэнэ */
+export const unionBld = (a: readonly string[], b: readonly string[]): string[] => [...a, ...b.filter((n) => !a.includes(n))];
+/**
+ * БЛОКИЙГ НЭРЭЭР НЬ БУУЛГАНА — `cells`/`dates`-ийн `b`-г `p.bld[b]` нэрийн `target` дахь индекс болгоно. `target`-д
+ * байхгүй (хаагдсан/хасагдсан) блокийн түлхүүр `skipped`-д орж хасагдана. `bld`-гүй (хуучин) илгээлт хөндөгдөхгүй.
+ */
+export function alignBlocks<T extends Pick<SubmissionPayload, 'cells' | 'dates' | 'bld' | 'archiving'>>(
+  p: T,
+  target: readonly string[],
+): { sub: T; skipped: string[] } {
+  const from = p.bld;
+  if (!from || (from.length === target.length && from.every((n, i) => n === target[i]))) return { sub: p, skipped: [] };
+  const to = from.map((n) => target.indexOf(n));
+  const skipped: string[] = [];
+  const move = (l: readonly [string, string][], drop: string[] | null): [string, string][] => {
+    const out: [string, string][] = [];
+    for (const [k, v] of l) {
+      const m = /^(-?\d+):(\d+)(:[se])?$/.exec(k);
+      const b = m ? Number(m[2]) : -1;
+      /* `bld`-ээс гадуурх индекс — нэр нь мэдэгдэхгүй тул хэвээр (буулгахдаа «тулгагдаагүй») */
+      if (!m || b >= from.length) { out.push([k, v]); continue; }
+      if (to[b] < 0) { drop?.push(k); continue; }
+      out.push([`${m[1]}:${to[b]}${m[3] ?? ''}`, v]);
+    }
+    return out;
+  };
+  const sub: T = { ...p, cells: move(p.cells, skipped), dates: move(p.dates ?? [], skipped), bld: [...target] };
+  if (p.archiving?.prev) sub.archiving = { ...p.archiving, prev: { ...p.archiving.prev, cells: move(p.archiving.prev.cells, null) } };
+  return { sub, skipped };
+}
+
 /**
  * АРХИВЫН «ШИНЭЧЛЭГДСЭН ОГНОО» — ХОЖУУ НЬ (2026-10-22, аудит). Өдөр бүр тусдаа илгээлттэй тул ХУУЧИН өдрийн илгээлт
  * хожуу батлагдвал (10-12-ныхын дараа 10-10-ных) архивын огноо УХАРЧ, БҮХ мөрийн төлөвлөгөөт хувь буцаж бодогддог байв.
@@ -483,10 +521,12 @@ export function laterAsOf(sub: number | null | undefined, cur: number | null | u
  */
 export function overlaySubmission(
   rows: SheetRow[],
-  sub: SubmissionPayload,
+  sub0: SubmissionPayload,
   sc: Schema,
   nBld: number,
 ): Overlay {
+  /* ── 0. Блокийг нэрээр (`sub.bld` → `sc.bld`); хаагдсан блокийн нүд алгасагдана ── */
+  const { sub, skipped: skippedKeys } = alignBlocks(sub0, sc.bld);
   /* ── 1. ObjectID шилжилт ── */
   const baseOids = new Set(rows.map((r) => r.oid));
   const rowKeys = sub.rowKeys ?? [];
@@ -602,6 +642,8 @@ export function overlaySubmission(
     unmoved: unmovedKeys.length,
     unmovedKeys,
     goneBlock: unmovedKeys.filter((k) => { const b = Number(k.split(":")[1]); return Number.isInteger(b) && b >= nBld; }).length,
+    skippedHidden: skippedKeys.length,
+    skippedKeys,
     remapped: needMap,
     negative: negKeys.length,
     negKeys,

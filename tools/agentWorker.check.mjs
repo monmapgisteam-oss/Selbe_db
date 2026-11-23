@@ -124,6 +124,23 @@ try {
     console.log('✅ worker: ARCGIS_ORG_ID хоосон → 503 (бот хэвээр)');
   }
 
+  /* ── (г2) бот ч өдрийн төсөвт тоологдоно (`x-bot-user`-гүй бол нийтийн «bot» сав); нууцгүй `x-bot-user` үл тоомсорлогдоно ── */
+  {
+    reset();
+    const big = () => jsonRes({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }], usage: { input_tokens: 200_000, output_tokens: 0 }, id: 'msg_bb', model: 'x' });
+    globalThis.fetch = route({ self: selfOf('bat'), perms: rowOf('bat'), upstream: big });
+    const env = { ...baseEnv(), BOT_SECRET: 'correct-secret', DAILY_TOKEN_BUDGET: '100000' };
+    const b1 = await post(env, { 'x-bot-secret': 'correct-secret' });
+    assert.equal(b1.status, 200); await b1.json();
+    const b2 = await post(env, { 'x-bot-secret': 'correct-secret' });
+    assert.equal(b2.status, 429, `бот төсвөөс хэтэрсэн → 429 биш (${b2.status})`);
+    assert.equal((await b2.json()).code, 'daily_budget');
+    const spoof = await post(env, { 'x-bot-user': '7' });
+    assert.equal(spoof.status, 401, `нууцгүй x-bot-user → энгийн хэрэглэгч (401) биш (${spoof.status})`);
+    assert.equal(calls.up, 1);
+    console.log('✅ worker: бот төсөвт тоологдоно · нууцгүй x-bot-user үл тоомсорлогдоно');
+  }
+
   /* ── (в) дээд үйлчилгээ 401 → 502 `upstream_auth` (ArcGIS токен хүчинтэй, эрхийн мөртэй) ── */
   {
     reset();

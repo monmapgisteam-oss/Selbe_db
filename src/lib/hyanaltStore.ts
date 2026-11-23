@@ -1076,7 +1076,7 @@ async function archiveSubmission(
       error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
     };
 
-  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc, laterAsOf }, { sameFrame, fillMsFor }, { agsFetch }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc, laterAsOf, alignBlocks }, { sameFrame, fillMsFor }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
     import('./ajilApply'),
@@ -1191,10 +1191,12 @@ async function archiveSubmission(
     return names.join('; ') + more;
   };
   const lastDay0 = loaded.snapshot != null ? msToDay(loaded.snapshot) : '';
+  /* Блокийг нэрээр (`pl.bld` → `sc.bld`) — хаагдсан блокийн нүд алгасагдана (доор анхааруулга) */
+  const { sub: plA, skipped: hiddenKeys } = alignBlocks(pl, sc.bld);
   let skipped: string[] = [];
-  let plEff = pl;
+  let plEff = plA;
   const incPl = pl.mode === 'inc';
-  const needStale = !incPl || (pl.dates ?? []).length > 0;
+  const needStale = !incPl || (plA.dates ?? []).length > 0;
   if (needStale && lastDay0 && lastDay0 > msToDay(pl.fillMs) && loaded.snapshot !== pl.base) {
     if (pl.base == null)
       return {
@@ -1207,13 +1209,13 @@ async function archiveSubmission(
     } catch (e) {
       return { ok: false, error: tr('Илгээлтийн суурь жаазыг уншиж чадсангүй — архивт юу ч бичсэнгүй: {0}', String((e as Error)?.message ?? e)) };
     }
-    skipped = staleSubmissionKeys(baseRows, loaded.rows, pl, nBld);
+    skipped = staleSubmissionKeys(baseRows, loaded.rows, plA, nBld);
     if (skipped.length) {
       const drop = new Set(skipped);
       plEff = {
-        ...pl,
-        cells: (pl.cells ?? []).filter(([k]) => !drop.has(k)),
-        dates: (pl.dates ?? []).filter(([k]) => !drop.has(k)),
+        ...plA,
+        cells: (plA.cells ?? []).filter(([k]) => !drop.has(k)),
+        dates: (plA.dates ?? []).filter(([k]) => !drop.has(k)),
       };
     }
   }
@@ -1476,6 +1478,7 @@ async function archiveSubmission(
   const warns = fin.warns;
   if (postWarn) warns.push(postWarn);
   if (cleanupWarn) warns.push(cleanupWarn);
+  if (hiddenKeys.length) warns.push(tr('Хаагдсан блокийн {0} нүдийг алгасав', String(hiddenKeys.length)));
   const reopen = fin.reopen;
   if (skipped.length)
     warns.push(tr('Архивт илүү хожуу өдрийн жааз аль хэдийн байсан тул {0} нүдийг алгасав (хуримтлал буурахаас сэргийлэв): {1}', String(skipped.length), nameKeys(skipped)));

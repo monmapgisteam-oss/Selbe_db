@@ -7,6 +7,7 @@ import {
 } from './huvaariDraft';
 import { packRcpt, unpackRcpt, type Draft, type Rcpt } from '@/modules/sheet/fill/draft';
 import { fmtInc, parseInc } from '@/modules/sheet/bagtsSheet';
+import { unionBld } from '@/modules/sheet/sheetFrame';
 
 /* ══════════════ Баганууд — notebook (`notebook_draft191.py`)-ийн нэртэй ЯГ ижил ══════════════ */
 
@@ -32,6 +33,8 @@ export const ROW_FIELDS: readonly string[] = [
   COL.des, COL.no, COL.work,
   COL.ob, COL.act, COL.ps, COL.pe, COL.gs, COL.ge, COL.as, COL.ae, COL.ham, COL.hun, COL.mash, COL.asOf, COL.mob,
 ];
+/** Гүйцэтгэлийн ноорогийн (`n:<багц>`) уншдаг багана — хуваарийн ноорогийн баганыг татахгүй (сэргээлтийн хэмжээ) */
+export const PERF_FIELDS: readonly string[] = ROW_FIELDS.filter((c) => !([COL.ym, COL.gs, COL.ge, COL.as, COL.ae, COL.ham, COL.hun, COL.mash, COL.mob] as string[]).includes(c));
 /** Бүтцийн хувилбар — толгойн `huvilbar`; үүнээс ИХ бол энэ клиент бичихгүй (шинэ бүтэц) */
 export const ROW_VERSION = 3;
 /** Tombstone · хоосон мөрийн амьдрах хугацаа (`DEL_TTL_MS`, `HD_DEL_TTL`-тэй ижил) */
@@ -298,7 +301,7 @@ export function diffRows(
   },
 ): Op[] {
   const ops: Op[] = [];
-  let gc = opt.gcMax ?? 200;
+  let gc = opt.gcMax ?? GC_MAX;
   const sAt = new Map<string, number>(opt.seriesAt ?? []);
   for (const [k, phys] of img) {
     const s = seriesKey(k);
@@ -379,6 +382,43 @@ export function diffRows(
     }
   }
   return ops;
+}
+
+/** `diffRows`-ийн нэг бичилтэд устгах хуучирсан хоосон мөрийн дээд тоо (үлдсэн нь дараагийн бичилтэд) */
+export const GC_MAX = 2000;
+/**
+ * ХУГАЦАА ДУУССАН МӨР МӨН ҮҮ (цэвэр — `tools/draft-gc.mjs` · `gcAllDrafts`): ноорогийн (`n:…`, илгээлтийн MVCC мөр БИШ)
+ * `ustgal`/`barimt` эсвэл хоосон мөр бөгөөд `at` нь `ROW_TTL`-ээс хуучин. Толгой, `at`-гүй мөрийг хэзээ ч сонгохгүй.
+ */
+export function gcExpired(a: Attrs, now: number): boolean {
+  const dk = typeof a[COL.dkey] === 'string' ? a[COL.dkey] as string : '';
+  if (!dk.startsWith('n:') || dk.startsWith('n:sub:') || dk.startsWith('n:hsub:')) return false;
+  const t = String(a[COL.turul] ?? '');
+  if (!t || t === 'tolgoi') return false;
+  const at = num(a[COL.at]);
+  if (at == null || now - at <= ROW_TTL) return false;
+  if (t === 'ustgal' || t === 'barimt') return true;
+  return isEmptyRow(a) && num(a[COL.too]) == null;
+}
+/**
+ * ХУУДАС ХААГДАХ ҮЕИЙН БИЧИЛТ (цэвэр) — диффээс ЗӨВХӨН өөрийн (`me`) сүүлд бичсэн нүдний нэмэх/шинэчлэх ба шинэ tombstone-ийг,
+ * шинэ нь эхэлж, `size`-аар хэмжсэн биеийн дээд (`max`, keepalive ≈ 64КБ) хүртэл. Бусдын мөр, хоосолт, устгал орохгүй.
+ */
+export function beaconPick(ops: readonly Op[], want: ReadonlyMap<string, Want>, me: string | null, size: (o: Op) => number, max: number): Op[] {
+  const mine = ops.filter((o) => {
+    if (o.op === 'delete') return false;
+    const w = want.get(o.k);
+    if (!w) return false;
+    return w.t === 'ustgal' ? o.op === 'add' : w.t === 'ajil' && !!me && w.u === me;
+  }).sort((x, y) => (want.get(y.k)?.at ?? 0) - (want.get(x.k)?.at ?? 0));
+  const out: Op[] = [];
+  let n = 0;
+  for (const o of mine) {
+    n += size(o);
+    if (n > max) break;
+    out.push(o);
+  }
+  return out;
 }
 
 /** Хэсэглэлтийн нэгж — сарын цуваа (`m:`/`n:` + суурь) нэг хэсэгт; бусад мөр тус бүр */
@@ -849,6 +889,8 @@ export function perfToRows(
     return stale.get(oid) ?? draftId(oid, lb, occMap.get(oid));
   };
   const n = frameN(frame);
+  /* Блокийн нэр — ноорогийн өөрийн жагсаалтаас (нуугдсан блокийн нүд нэрээ хадгална), эс бөгөөс жаазнаас */
+  const bldW = d.bld?.length ? d.bld : frame?.bld;
   const by = new Map<string, string>(d.by ?? []);
   const byAt = new Map<string, number>(d.byAt ?? []);
   const split = (k: string): { oid: number; b: number; g: 'v' | 's' | 'e' } | null => {
@@ -860,7 +902,7 @@ export function perfToRows(
     let w = rows.get(k);
     if (!w) {
       const x = idOf(oid);
-      w = { k, t, a: { ...idAttrs(x, oid), ...blkAttrs(b, frame?.bld, n), ...blank(cols) }, e: idListed(x), at: 0, u: null, unit: k, ...(isBase ? { base: true } : {}) };
+      w = { k, t, a: { ...idAttrs(x, oid), ...blkAttrs(b, bldW, n), ...blank(cols) }, e: idListed(x), at: 0, u: null, unit: k, ...(isBase ? { base: true } : {}) };
       rows.set(k, w);
     }
     return w;
@@ -907,9 +949,12 @@ export function perfToRows(
     /* Аль нүд тэмдэглэгдсэн — `ajil` мөрд `tuluv_seq` нь бүлгийн битүүд (`HOLD_BIT`); мөрийн бусад нүдэнд тархахгүй */
     w.a[COL.stSeq] = (num(w.a[COL.stSeq]) ?? 0) | HOLD_BIT[s.g];
   }
-  /* Tombstone */
+  /* Tombstone — амьд баримтаар дарагдсаныг (баримтын агшин ≥ tombstone) бичихгүй: баримт өөрөө tombstone */
+  const rcList = (d.rcpt ? unpackRcpt(d.rcpt) : []).filter((r) => now - r[1] <= ROW_TTL);
+  const rcAt = new Map<string, number>();
+  for (const r of rcList) if ((rcAt.get(r[0]) ?? 0) < r[1]) rcAt.set(r[0], r[1]);
   for (const [k, t] of d.del ?? []) {
-    if (live.has(k) || now - t > ROW_TTL) continue;
+    if (live.has(k) || now - t > ROW_TTL || (rcAt.get(k) ?? -1) >= t) continue;
     const s = split(k);
     if (!s) continue;
     const x = idOf(s.oid);
@@ -918,15 +963,14 @@ export function perfToRows(
     if (t >= w.at) { w.at = t; w.u = null; }
   }
   /* Илгээлтийн баримт — нүд/огноо бүрд тусдаа мөр (`a`, `sa` ЯГ) */
-  for (const r of d.rcpt ? unpackRcpt(d.rcpt) : []) {
-    if (now - r[1] > ROW_TTL) continue;
+  for (const r of rcList) {
     const s = split(r[0]);
     if (!s) continue;
     const x = idOf(s.oid);
     const rk = `r:${s.g}:${x.id}:${s.b}`;
     const cur = rows.get(rk);
     if (cur && cur.at >= r[1]) continue;
-    const w: Want = { k: rk, t: 'barimt', a: { ...idAttrs(x, s.oid), ...blkAttrs(s.b, frame?.bld, n), ...blank([COL.ob, COL.act, COL.niit, COL.ps, COL.pe]), [COL.sentAt]: r[3] }, e: idListed(x), at: r[1], u: null, unit: rk };
+    const w: Want = { k: rk, t: 'barimt', a: { ...idAttrs(x, s.oid), ...blkAttrs(s.b, bldW, n), ...blank([COL.ob, COL.act, COL.niit, COL.ps, COL.pe]), [COL.sentAt]: r[3] }, e: idListed(x), at: r[1], u: null, unit: rk };
     if (s.g === 'v') {
       const c = r[2] ? cellToCols(r[2]) : null;
       if (c) { w.a[COL.ob] = c.ob; w.a[COL.act] = c.act; w.a[COL.niit] = c.niit; }
@@ -1051,7 +1095,29 @@ export function perfFromRows(
     }
     return oid;
   };
-  const blkOf = (k: string): number => Number(k.slice(k.lastIndexOf(':') + 1));
+  /* Блок — мөрийн `blok` НЭРЭЭР (түлхүүрийн индекс бичигчийн жаазных): жаазад алга нэр жагсаалтын ард нэмэгдэнэ (буухгүй, устахгүй) */
+  const nB = frameN(frame);
+  const bldOut: string[] | null = nB && frame ? frame.bld.map((x) => x.slice(0, 64)) : null;
+  const nameAt = (i: number): string | null => str(bldOut?.[i]) ?? (nB === 1 && i === 0 ? 'Ажил' : null);
+  let moved = false;
+  const blkOf = (k: string, a?: Attrs): number => {
+    const i = Number(k.slice(k.lastIndexOf(':') + 1));
+    const nm = a ? str(a[COL.blk]) : null;
+    if (!bldOut || !nm || nameAt(i) === nm) return i;
+    moved = true;
+    for (let j = 0; j < bldOut.length; j += 1) if (nameAt(j) === nm) return j;
+    bldOut.push(nm);
+    return bldOut.length - 1;
+  };
+  /* Нүд бүрийн эх мөр (`w:` түлхүүр) — нэг нүдэнд хоёр мөр буувал ялагчийг ялгахад */
+  const srcs = new Map<unknown[], string[]>();
+  const put = <T>(arr: T[], e: T, rowK: string): void => {
+    arr.push(e);
+    const l = srcs.get(arr);
+    if (l) l.push(rowK); else srcs.set(arr, [rowK]);
+  };
+  const win = new Map<string, [string, number]>();
+  const claim = (ck: string, rowK: string, at: number): void => { const c = win.get(ck); if (!c || at >= c[1]) win.set(ck, [rowK, at]); };
   for (const [k, a] of view) {
     const tt = String(a[COL.turul] ?? '');
     if (tt === 'tolgoi') continue;
@@ -1068,7 +1134,7 @@ export function perfFromRows(
       const p = /^x:([vse]):/.exec(k);
       const oid = p ? oidOf(k.replace(/^x:[vse]:/, 'w:'), a) : null;
       if (p && oid != null) {
-        const dk = `${oid}:${blkOf(k)}${p[1] === 'v' ? '' : `:${p[1]}`}`;
+        const dk = `${oid}:${blkOf(k, a)}${p[1] === 'v' ? '' : `:${p[1]}`}`;
         const at = num(a[COL.at]) ?? 0;
         if ((del.get(dk) ?? -1) < at) del.set(dk, at);
       }
@@ -1079,7 +1145,7 @@ export function perfFromRows(
       if (num(a[COL.sentAt]) == null) continue;
       const oid = p ? oidOf(k.replace(/^r:[vse]:/, 'w:'), a) : null;
       if (!p || oid == null) continue;
-      const dk = `${oid}:${blkOf(k)}${p[1] === 'v' ? '' : `:${p[1]}`}`;
+      const dk = `${oid}:${blkOf(k, a)}${p[1] === 'v' ? '' : `:${p[1]}`}`;
       const sv = p[1] === 'v' ? colsToCell(a[COL.ob], a[COL.act], a[COL.niit]) ?? ''
         : (() => { const ms = num(a[p[1] === 's' ? COL.ps : COL.pe]); return ms != null ? msToYmd(ms) : ''; })();
       const at = num(a[COL.at]) ?? 0;
@@ -1092,13 +1158,13 @@ export function perfFromRows(
       if (!p || oid == null) continue;
       if (!present(a, listedOf(a), [p[1] === 's' ? COL.ps : COL.pe])) continue;
       const ms = num(a[p[1] === 's' ? COL.ps : COL.pe]);
-      datesB.push([`${oid}:${blkOf(k)}:${p[1]}`, ms != null ? msToYmd(ms) : '']);
+      datesB.push([`${oid}:${blkOf(k, a)}:${p[1]}`, ms != null ? msToYmd(ms) : '']);
       continue;
     }
     if (!k.startsWith('w:')) continue;
     const oid = oidOf(k, a);
     if (oid == null) continue;
-    const b = blkOf(k);
+    const b = blkOf(k, a);
     const l = listedOf(a);
     const st = stamps.get(k);
     const keys: string[] = [];
@@ -1107,8 +1173,9 @@ export function perfFromRows(
       if (v != null) {
         const ck = `${oid}:${b}`;
         const s = stampOf(st, [COL.ob, COL.act, COL.niit], a);
-        cells.push([ck, v]); byAt.push([ck, s.at]); if (s.u) by.push([ck, s.u]);
-        if (guessed(st, [COL.ob, COL.act, COL.niit], a, l)) byGuess.push(ck);
+        claim(ck, k, s.at);
+        put(cells, [ck, v], k); put(byAt, [ck, s.at], k); if (s.u) put(by, [ck, s.u], k);
+        if (guessed(st, [COL.ob, COL.act, COL.niit], a, l)) put(byGuess, ck, k);
         keys.push(ck);
       }
     }
@@ -1117,20 +1184,32 @@ export function perfFromRows(
       const ms = num(a[col]);
       const dk = `${oid}:${b}:${g}`;
       const s = stampOf(st, [col], a);
-      dates.push([dk, ms != null ? msToYmd(ms) : '']); byAt.push([dk, s.at]); if (s.u) by.push([dk, s.u]);
-      if (guessed(st, [col], a, l)) byGuess.push(dk);
+      claim(dk, k, s.at);
+      put(dates, [dk, ms != null ? msToYmd(ms) : ''], k); put(byAt, [dk, s.at], k); if (s.u) put(by, [dk, s.u], k);
+      if (guessed(st, [col], a, l)) put(byGuess, dk, k);
       keys.push(dk);
     }
     const btv = num(a[COL.bt]);
-    if (btv != null) for (const kk of keys) bt.push([kk, btv]);
+    if (btv != null) for (const kk of keys) put(bt, [kk, btv], k);
     if (a[COL.st] === 'barisan' || a[COL.st] === 'albadsan') {
       /* `tuluv_seq`-гүй (хуучин) мөрд тэмдэг мөрийн түвшинд — бүх нүдэнд */
       const bits = num(a[COL.stSeq]);
       for (const kk of keys) {
         const g = /:([se])$/.exec(kk)?.[1] as 's' | 'e' | undefined;
-        if (bits == null || (bits & HOLD_BIT[g ?? 'v'])) hold.push([kk, num(a[COL.stAt]) ?? 0, a[COL.st] === 'albadsan' ? 1 : 0]);
+        if (bits == null || (bits & HOLD_BIT[g ?? 'v'])) put(hold, [kk, num(a[COL.stAt]) ?? 0, a[COL.st] === 'albadsan' ? 1 : 0], k);
       }
     }
+  }
+  if (moved) {
+    /* Хуучин ба шинэ индексийн мөр нэг нүдэнд буусан бол ШИНЭ агшинтай мөрийнх нь үлдэнэ */
+    for (const [arr, src] of srcs) {
+      const keep = arr.filter((e, i) => win.get(typeof e === 'string' ? e : String((e as unknown[])[0]))?.[0] === src[i]);
+      arr.length = 0;
+      arr.push(...keep);
+    }
+    const db = new Map(datesB);
+    datesB.length = 0;
+    datesB.push(...db);
   }
   const live = new Set([...cells.map(([k]) => k), ...dates.map(([k]) => k)]);
   const fs = num(hdr?.[COL.jaazOid]) != null && num(hdr?.[COL.jaazSeen]) != null
@@ -1153,6 +1232,7 @@ export function perfFromRows(
     ...(asOf !== undefined ? { asOf, ...(asOfAt != null ? { asOfAt } : {}) } : {}),
     ...(asOfB !== undefined && asOf !== undefined ? { asOfB } : {}),
     ...(fs ? { frameSeenAt: fs } : {}),
+    ...(bldOut && frame?.bld.length ? { bld: unionBld(frame.bld, bldOut.slice(frame.bld.length)) } : {}),
   };
   return out;
 }
