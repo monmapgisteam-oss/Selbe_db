@@ -12,6 +12,8 @@ import assert from 'node:assert/strict';
 import { buildTree, computePlan, moneySums } from './projectPlan.ts';
 import { toZRow } from './zuragBurtgel.ts';
 import { withRegistryRows, registryPlanEdits, isTezuBuleg } from './zuragPlan.ts';
+import { isRegisterRow } from './hoSync/compute.ts';
+import { CASHFLOW_NEW } from './services.ts';
 
 const D = (s) => Date.parse(`${s}T00:00:00Z`);
 const rows = [
@@ -162,7 +164,7 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
     'хуучин огноо хоосолдоно');
   assert.deepEqual(e.updates.find((u) => u.objectid === 3), { objectid: 3, ajil_uilchilgee: 'n1', bagts: null, guitsetgel_huvi: 80, zurag_oid: 1 }, '2026-11-19: бүртгэлийн мөрийн ID бичигдэнэ');
   const a = e.adds.find((x) => x.dd_kod === '2.2.1.1');
-  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null, olgoson_dun: null, guits_ehleh: null, guits_duusah: null, geree_ehleh: null, geree_duusah: null, zurag_oid: 2, bagts_kod: null },
+  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null, olgoson_dun: null, guits_ehleh: null, guits_duusah: null, zurag_oid: 2, bagts_kod: null },
     'бүртгэлд байхгүй утга хоосон');
   assert.ok(!e.deletes.includes(1) && !e.deletes.includes(11) && !e.deletes.includes(20), 'үе шатын мөр, бусад үе шат хөндөгдөхгүй');
   /* Бичигдсэний дараах байдал: дахин тулгахад засвар алга; төлөв өөрчлөгдвөл ганц мөр засна; баримт хасагдвал мөр устана */
@@ -220,6 +222,13 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   const ren = registryPlanEdits(stored, plus.map((d) => (d.oid === 2 ? zd(2, 'B2') : d)));
   assert.deepEqual([ren.adds.length, ren.deletes.length], [0, 0]);
   assert.equal(ren.updates.find((u) => u.objectid === idB).ajil_uilchilgee, 'B2');
+  /* хоосон/зайтай дугаар = дугааргүй: олгосон дүнг бүртгэл бичнэ (`hoSync.isRegisterRow`-тай нэг дүрэм — эзэнгүй мөр алга) */
+  for (const no of ['', '  ']) {
+    const blank = stored.map((r) => (r.objectid === idB ? { ...r, geree_dugaar: no, olgoson_dun: 4 } : r));
+    assert.equal(registryPlanEdits(blank, plus).updates.find((u) => u.objectid === idB)?.olgoson_dun, 10, `дугаар ${JSON.stringify(no)} — бүртгэлийн мөр`);
+    const cf = CASHFLOW_NEW.fields;
+    assert.equal(isRegisterRow({ [cf.phase]: 'Ажлын зураг төсөл', [cf.contractNo]: no }), true, 'hoSync ч мөн бүртгэлийн мөр гэж үзнэ');
+  }
 }
 /* 2026-11-19: мөр бүртгэлийн ID-аараа (`zurag_oid`) баримтаа дагана — нэр ба байрлал хоёулаа өөрчлөгдсөн ч гэрээ, төлбөр хэвээр */
 {

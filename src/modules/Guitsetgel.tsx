@@ -33,6 +33,7 @@ import { TusulNegtgel } from '@/modules/TusulNegtgel';
 import { setReportSource } from '@/lib/reportSource';
 import { guitsetgelBlocks } from '@/lib/guitsetgelReport';
 import { Loading, userError } from '@/components/ui';
+import { STAGE_LIMIT_DAYS, waitOf, waitSummary, type Wait } from '@/lib/hyanaltWait';
 import s from './guitsetgel.module.css';
 
 const STAGES: Stage[] = STAGE_ORDER;
@@ -207,8 +208,8 @@ function GainLine({ g, pending }: {
 /** Нэгж хувийг тэмдэгтэй: «+2.35%», «−0.10%» */
 const signed = (v: number, d: number): string => (v > 0 ? `+${pct(v, d)}` : v < 0 ? `−${pct(-v, d)}` : pct(0, d));
 
-/** Компани менежерийн шатыг ОГТ харахгүй */
-const seesManager = (stage: Stage) => stage !== 'company';
+/** Гүйцэтгэгч ч бүх шат, хянагчийн нэр, төлөвийг харна (2026-11-20, хэрэглэгч) */
+const seesManager = (_stage: Stage): boolean => true;
 
 const badgeClass = (st: Status, stage: Stage) => {
   if (st === STATUS.transferred) return s.bDone;
@@ -218,12 +219,9 @@ const badgeClass = (st: Status, stage: Stage) => {
   return st === STATUS.engineerReturned ? s.bBack : s.bWait;
 };
 
-/** Төлөвийн шошго — компанид менежерийн шат харагдахгүй */
-function statusLabel(st: Status, stage: Stage): string {
-  if (seesManager(stage)) return STATUS_LABEL[st] ?? st;
-  if (st === STATUS.transferred) return tr('Хүлээн авсан');
-  if (st === STATUS.engineerReturned) return tr('Буцаасан');
-  return tr('Хянагдаж байна');
+/** Төлөвийн шошго — гүйцэтгэгч ч аль шатанд, хэн хянаж буйг харна */
+function statusLabel(st: Status, _stage: Stage): string {
+  return STATUS_LABEL[st] ?? st;
 }
 
 /**
@@ -665,6 +663,11 @@ function Submitted({
               {tr('Илгээлтийн {0} нүд энэ хуудаснаас хасагдсан блокийнх — буух багана байхгүй тул батлах боломжгүй. Компанид буцааж, тэр блокийн тоог өөрийнх нь хуудсаар илгээлгэнэ үү.', String(data.goneBlock))}
             </div>
           )}
+          {(data.skippedHidden ?? 0) > 0 && (
+            <div className={s.subWarn} role="status">
+              {tr('Хаагдсан блокийн {0} нүдийг алгасав', String(data.skippedHidden))}
+            </div>
+          )}
           {(data.unmoved ?? 0) - (data.goneBlock ?? 0) > 0 && (
             <div className={s.subWarn} role="alert">
               {tr('Илгээлтийн {0} нүдийг хуудсанд буулгаж чадсангүй — мөр нь одоогийн хуудсанд тулгагдаагүй, эсвэл нэмэлтийн утга нь тоо биш («1,250» · «abc» мэт). Доорх жагсаалтад харагдахгүй бөгөөд батлах боломжгүй — гүйцэтгэгчээр шалгуулж (тоог зөв бичээд) дахин илгээлгэнэ үү.', String((data.unmoved ?? 0) - (data.goneBlock ?? 0)))}
@@ -764,7 +767,7 @@ function Track({ status, stage }: { status: Status; stage: Stage }) {
           <span
             key={x}
             className={`${s.tk} ${state}`}
-            title={seesManager(stage) ? STAGE_LABEL[x] : tr('{0}-р шат', String(i + 1))}
+            title={STAGE_LABEL[x]}
           >
             {done || i < at ? '✓' : i + 1}
           </span>
@@ -1264,6 +1267,42 @@ const statusOptions = (stage: Stage): StatusOpt[] =>
 /**
  * УРСГАЛЫН ЗУРАГЛАЛ — гурван шат, тус бүрд хүлээгдэж буй ажлын тоо.
  */
+/** «Хяналтын хугацаа» — хэн дээр хэд хоног хүлээгдэж буй, шатны хугацаа (${STAGE_LIMIT_DAYS} хоног) хэтэрсэн эсэх */
+function WaitPanel({ items }: { items: { w: Work; x: Wait }[] }) {
+  if (!items.length) return <div className={s.empty}>{tr('Хяналтад хүлээгдэж буй илгээлт алга')}</div>;
+  const sum = waitSummary(items.map((i) => i.x));
+  return (
+    <>
+      <div className={s.waitSum}>
+        {STAGE_ORDER.filter((st) => sum[st]).map((st) => (
+          <span key={st} className={`${s.badge} ${sum[st].overdue ? s.bBack : s.bWait}`}>
+            {STAGE_LABEL[st]}: {tr('{0} хүлээгдэж буй', String(sum[st].n))}{sum[st].overdue ? ` · ${tr('{0} хугацаа хэтэрсэн', String(sum[st].overdue))}` : ''}
+          </span>
+        ))}
+        <span className={s.waitHint}>{tr('Шат бүрийн хугацаа: {0} хоног', String(STAGE_LIMIT_DAYS))}</span>
+      </div>
+      <table className={s.waitTable}>
+        <thead>
+          <tr>
+            <th>{tr('Багц')}</th><th>{tr('Ажил')}</th><th>{tr('Компани')}</th><th>{tr('Одоо хэн дээр')}</th>
+            <th>{tr('Төлөв')}</th><th>{tr('Ирсэн огноо')}</th><th>{tr('Хүлээгдсэн')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(({ w, x }) => (
+            <tr key={w.key} className={x.overdue ? s.waitLate : undefined}>
+              <td>{tr(w.bagts)}</td><td>{w.ajil}</td><td>{w.company}</td><td>{STAGE_LABEL[x.owner]}</td>
+              <td>{STATUS_LABEL[w.status] ?? w.status}</td>
+              <td>{x.since != null ? dateTime(new Date(x.since).toISOString()) : '—'}</td>
+              <td>{x.days == null ? '—' : x.days < 1 ? tr('{0} цаг', String(Math.floor(x.days * 24))) : tr('{0} хоног', String(Math.floor(x.days)))}{x.overdue ? ` · ${tr('хугацаа хэтэрсэн')}` : ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 function Flow({
   counts,
   stage,
@@ -1286,12 +1325,46 @@ function Flow({
             onClick={() => pick?.(x)}
           >
             <span className={s.flowName}>
-              {seesManager(stage) || i === 0 ? STAGE_LABEL[x] : tr('{0}-р шат', String(i + 1))}
+              {STAGE_LABEL[x]}
             </span>
             <span className={s.flowNum}>{counts[x]}</span>
           </button>
         </Fragment>
       ))}
+    </div>
+  );
+}
+
+/** «Хяналтын хугацаа» цэс — «Гүйцэтгэл»-тэй ижил хүрээний (хуваарилагдсан багц) илгээлтүүд */
+export function HyanaltHugatsaa() {
+  const { role, user, status: authStatus } = useAuth();
+  const [aclN, setAclN] = useState(0);
+  useEffect(() => subscribeAcl(() => setAclN((n) => n + 1)), []);
+  const scope = useMemo(
+    () => resolveFlowStage(user?.username, role, null, authStatus === 'off').scope,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `aclN` нь хуваарилалт өөрчлөгдсөн дохио
+    [user, role, authStatus, aclN],
+  );
+  const { rows, loading, error, reload } = useHyanaltRows();
+  const [now] = useState(() => Date.now());
+  const waits = useMemo(() => {
+    const all = groupWorks(rows);
+    return (scope ? all.filter((w) => scopeHas(scope, w.bagts)) : all)
+      .flatMap((w) => { const x = waitOf(w.current, w.status, now); return x ? [{ w, x }] : []; })
+      .sort((a, b) => (b.x.days ?? -1) - (a.x.days ?? -1));
+  }, [rows, scope, now]);
+  return (
+    <div className={s.wrap}>
+      <header className={s.head}><div className={s.title}>{tr('Хяналтын хугацаа')}</div></header>
+      <div className={s.body}>
+        {error && (
+          <div className={s.note} role="alert">
+            {tr('Үйлчилгээнээс өгөгдөл татаж чадсангүй: {0}', userError(error))}
+            <button className={s.clear} onClick={reload}>{tr('Дахин оролдох')}</button>
+          </div>
+        )}
+        {loading ? <Loading /> : <WaitPanel items={waits} />}
+      </div>
     </div>
   );
 }

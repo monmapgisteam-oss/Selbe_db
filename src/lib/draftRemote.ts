@@ -97,7 +97,8 @@ export type RemoteDraft = { at: number; payload: string };
 export async function readRemoteDraftAt(pkgKey: string): Promise<number | null | undefined> {
   try {
     const auth = await getAuth();
-    if (!auth) return null;
+    /* Токен дууссан/нэвтрээгүй — «мөр алга» биш «уншиж чадсангүй» (алсын ноорогийг алгасуулахгүй) */
+    if (!auth) return undefined;
     const url = await tableUrl();
     if (!url) return null;
     const fl = await layer(url);
@@ -120,10 +121,10 @@ export async function readRemoteDraftAt(pkgKey: string): Promise<number | null |
  */
 export type LegacyDraft = { at: number; payload: string; user: string };
 
-export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
+export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[] | null> {
   try {
     const url = await tableUrl();
-    if (!url) return [];
+    if (!url) return null;
     const fl = await layer(url);
     const res = await fl.queryFeatures({
       where: legacyWhere(pkgKey),
@@ -141,7 +142,8 @@ export async function readLegacyDrafts(pkgKey: string): Promise<LegacyDraft[]> {
     }
     return out;
   } catch {
-    return [];
+    /* уншиж чадсангүй — «хуучин ноорог алга» гэж тэмдэглүүлэхгүй */
+    return null;
   }
 }
 
@@ -173,7 +175,8 @@ export async function clearLegacyDrafts(pkgKey: string): Promise<boolean> {
 async function readRemoteDraftRaw(pkgKey: string): Promise<RemoteDraft | null> {
   try {
     const auth = await getAuth();
-    if (!auth) return null;
+    /* Токен дууссан — унших боломжгүй: `readRemoteDraft` үүнийг `ok: false` болгож, сэргээлт локалаа хадгалаад дахин оролдоно */
+    if (!auth) throw new Error(tr('нэвтрээгүй эсвэл токен дууссан'));
     const url = await tableUrl();
     if (!url) return null;
     const fl = await layer(url);

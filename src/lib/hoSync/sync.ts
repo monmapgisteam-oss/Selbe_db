@@ -24,7 +24,7 @@ export async function loadCfContractRows(): Promise<Row[]> {
   return queryFeatures(CASHFLOW_NEW.url, {
     where: `(${CF.amountNote} IS NOT NULL OR ${CF.paid} IS NOT NULL OR ${CF.advance} IS NOT NULL)`,
     outFields: [CASHFLOW_NEW.oid, CF.pkg, CF.phase, CF.detail, CF.amountNote, CF.budgetOrder, CF.contractAmount, CF.paid, CF.advance, CF.contractor, CF.contractNo,
-      CF.orderDate, CF.orderNo],
+      CF.orderDate, CF.orderNo, CF.contractDate],
   });
 }
 
@@ -76,8 +76,12 @@ const isForbidden = (e: unknown): boolean => /\b(403|499|498)\b|эрхгүй|per
  * batch дотор мэдэгдэл хойшилдог тул бичилтийн үеэр (`writeEpoch`) таньна.
  */
 let ownEpoch = -1;
+/** `invalidate` захиалагчдыг СИНХРОН дууддаг — үе нь дараа нь л тогтох тул тэр агшинд `muted`-аар таньна */
+let muted = false;
+const isOwnNotice = (): boolean => muted || writeEpoch() === ownEpoch;
 function invalidateQuiet(...keys: Parameters<typeof invalidate>): void {
-  invalidate(...keys);
+  muted = true;
+  try { invalidate(...keys); } finally { muted = false; }
   ownEpoch = writeEpoch();
 }
 
@@ -146,7 +150,7 @@ export function scheduleHoSync(delay = DEBOUNCE_MS): void {
 /** Портал нээгдэхэд нэг удаа + бичилт бүрийн дараа (dataBus) */
 export function startHoSync(): () => void {
   if (typeof window === 'undefined') return () => {};
-  const unsub = subscribeData(() => { if (writeEpoch() !== ownEpoch) scheduleHoSync(); });
+  const unsub = subscribeData(() => { if (!isOwnNotice()) scheduleHoSync(); });
   scheduleHoSync(BOOT_DELAY_MS);
   return () => { unsub(); if (timer) { clearTimeout(timer); timer = null; } };
 }
@@ -154,3 +158,5 @@ export function startHoSync(): () => void {
 export function useHoSync(on: boolean): void {
   useEffect(() => (on ? startHoSync() : undefined), [on]);
 }
+
+export const __test = { isMuted: () => muted, isOwnNotice, invalidateQuiet };

@@ -3,12 +3,12 @@
  * → системийн САРЫН мөр (`cashflow_huwi` 0–100 · `cashflow_dun` ₮) (2026-10-27).
  */
 
-/** `recomputeFinanceAmounts.costOf`-ийн дүрэм */
+/** Гэрээний дүн — эерэг тоо л, бусад нь null */
 export const costOf = (raw) => {
   const v = Number(raw);
   return raw != null && raw !== '' && Number.isFinite(v) && v > 0 ? v : null;
 };
-/** `recomputeFinanceAmounts.amountOf`-ийн дүрэм */
+/** Хувь × дүн / 100 — хувь хоосон эсвэл дүнгүй бол null */
 export const amountOf = (pct, cost) => {
   const v = Number(pct);
   return pct == null || String(pct).trim() === '' || !Number.isFinite(v) || cost == null ? null : (cost * v) / 100;

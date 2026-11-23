@@ -65,7 +65,7 @@ import { ReportButton } from '@/components/ReportButton';
 import { askConfirm } from '@/lib/confirm';
 import { SystemCloseDialog, SystemClosedStrip, useCanCloseSystem, useSystemClosed } from '@/components/SystemCloseDialog';
 /** «Тайлан» товч ГАРАХГҮЙ харагдацууд (2026-10-19, хэрэглэгч) — Санхүүжилт, Үйл ажиллагааны схем, Чанар (QAQC), БАТЛАХ бүлэг, ТУХ, Багцын хамаарал, Зөвшөөрөл */
-const NO_REPORT = new Set<string>(['finance', 'schem', 'qaqc', 'huvaariBatlah', 'ajilBatlah', 'chanar', 'ma', 'tuh', 'bagtsHamaaral', 'zovshoorol']);
+const NO_REPORT = new Set<string>(['finance', 'schem', 'qaqc', 'huvaariBatlah', 'ajilBatlah', 'chanar', 'ma', 'tuh', 'bagtsHamaaral', 'hyanaltHugatsaa', 'zovshoorol']);
 const ViewPanel = dynamic(() => import('@/modules/ViewPanel').then((m) => m.ViewPanel), { ssr: false });
 const AdminOpenCtx = createContext(false);
 function AdminLoading() {

@@ -102,7 +102,7 @@ assert.ok(restoreEff.includes('restoring.current = false'), 'сэргээлти�
 /* Тасалдсан (`!alive`) үед ч буцаах ёстой — эс бөгөөс дараагийн багц мөнхөд
    хаалттай. Мөн `promptedPkgRef`-ийг хоослох — энэ багц руу эргэж ирэхэд
    сэргээлт ДАХИН явах ёстой. */
-const aborted = between('if (!alive) {', '}', SRC.indexOf('const rr = await readRemoteDraft'));
+const aborted = between('if (!alive) {', '}', SRC.indexOf('const got = await withTimeout(read, REMOTE_READ_TIMEOUT_MS)'));
 assert.ok(aborted.includes('restoring.current = false'), 'тасалдсан сэргээлт `restoring`-ийг буцаахгүй');
 assert.ok(aborted.includes("promptedPkgRef.current = ''"), 'тасалдсан сэргээлт дахин оролдох замыг нээхгүй');
 
@@ -161,7 +161,8 @@ console.log('✅ буцаагдсан илгээлт — өдөр солигдс
   const js = (src + '\n}')
     .replace(': Draft | null', '').replace(': Draft | null', '').replace(': Draft | null', '')
     .replace(/new Map<[^>]*>/g, 'new Map');
-  const mergeDrafts = new Function('return ' + js.replace('const mergeDrafts = ', ''))();
+  /* `serverNow` — модулийн импорт; тусгаарласан кодод хөтчийн цагаар орлуулна */
+  const mergeDrafts = new Function('serverNow', 'return ' + js.replace('const mergeDrafts = ', ''))(Date.now);
   const L = { t: 100, cells: [['1:0', '10'], ['2:0', '20']], dates: [['1:0:s', '2026-01-01']], adds: [{ oid: -1, no: '1', work: 'A' }], rowKeys: [[1, '1 ¦ x'], [2, '2 ¦ y']] };
   const R = { t: 200, cells: [['2:0', '25'], ['3:0', '30']], dates: [['3:0:e', '2026-02-02']], adds: [{ oid: -2, no: '2', work: 'B' }], rowKeys: [[3, '3 ¦ z']], asOf: 5 };
   const m = mergeDrafts(L, R);
@@ -220,16 +221,20 @@ const pickBlock = between('const local = readDraft(pkg.key);', 'pickDraft(merged
 assert.ok(pickBlock.includes('readRemoteDraft(pkg.key)'), 'алсын ноорог уншигдахгүй байна');
 assert.ok(pickBlock.includes('mergeDrafts(local, remote)'), 'локал/алсын ноорог нийлүүлэгдэхгүй байна');
 assert.ok(!pickBlock.includes('remote.t > local.t'), '«шинийг сонго» зам буцаж орсон — нийлүүлэх ёстой');
-assert.ok(pickBlock.includes('!rr.ok'), 'алсын уншилтын алдаа ялгагдахгүй байна');
+assert.ok(pickBlock.includes('restorePlan(') && pickBlock.includes('if (plan.retry) {'), 'алсын уншилтын алдаа ялгагдахгүй байна');
+assert.ok(pickBlock.includes('if (plan.background) {') && pickBlock.includes("{ kind: 'reading' }"), 'уншилт хугацаандаа амжаагүй үед локалаар нээж төлөвт харуулахгүй байна');
 assert.ok(
   pickBlock.includes("promptedPkgRef.current = ''"),
   'уншилт унахад дахин оролдох зам нээгдэхгүй байна',
 );
 /* (2) Бичилт нь ЗАВСАРЛАГАТАЙ — нүд бүрийн товшилтод ArcGIS руу хүсэлт явбал
        бөглөлт удааширна. Хадгалалтын эффект зөвхөн дараалалд тавина. */
-const persist = between('const at = Date.now();', 'remoteQueue.current = { pkg: pkg.key, draft };');
-assert.ok(!persist.includes('saveRemoteDraft'), 'алсын бичилт завсарлагагүй хийгдэж байна');
-assert.ok(SRC.includes('setTimeout(flush, REMOTE_DEBOUNCE_MS)'), 'алсын бичилтийн завсарлага тогтмолоор биш');
+const persist = between('const at = serverNow();', 'remoteQueue.current = { pkg: pkg.key, draft };');
+assert.ok(!persist.includes('saveRemoteDraft'), 'алсын бичилт хадгалах эффект дотроос шууд хийгдэж байна (дараалалд л тавина)');
+/* 2026-11-23: нүд баталгаажих бүрд ШУУД бичнэ (3 с хүлээвэл таб хаахад алдагдана) — харин нэг дор НЭГ бичилт л явна */
+assert.ok(SRC.includes('const t = setTimeout(flush, 0);'), 'нүд баталгаажихад алсын бичилт шууд эхлэхгүй байна');
+assert.ok(SRC.includes('if (!allowStale && flightRef.current) { flightRef.current.again = true; return; }'), 'явж буй бичилттэй зэрэгцэн хоёр дахь гинж эхэлж байна');
+assert.ok(SRC.includes('if (fl.again && remoteQueue.current) setRemoteTick((n) => n + 1);'), 'явж буй бичилтийн дараа дараалал дахин цохигдохгүй');
 {
   const n = (s) => Number((SRC.match(new RegExp('const ' + s + ' = ([0-9_]+);')) ?? [])[1]?.replace(/_/g, ''));
   const deb = n('REMOTE_DEBOUNCE_MS'), cap = n('REMOTE_CAP_MS'), retry = n('REMOTE_RETRY_MS');
@@ -242,7 +247,9 @@ assert.ok(SRC.includes('setTimeout(flush, REMOTE_DEBOUNCE_MS)'), 'алсын б�
   assert.ok(!/setTimeout\(flush, [1-9]/.test(SRC), 'flush-д шууд тоо бичигдсэн — тогтмолыг тойрсон');
 }
 assert.ok(SRC.includes("window.addEventListener('pagehide'"), 'pagehide алга — iOS/bfcache-д сүүлийн ажил алдагдана');
-assert.ok(SRC.includes('lastRemoteRef'), 'алсын бичилтийн ДЭЭД хүлээлт алга');
+/* 2026-11-23: таб хаагдахад гинжин хүсэлт амжихгүй — нэг keepalive хүсэлт (`beaconRemoteDraft`) */
+assert.ok(SRC.includes('const onPageHide = () => { beaconNow(); flush(); };'), 'pagehide дээр keepalive бичилт явахгүй');
+assert.ok(between('const beaconNow = () => {', '};').includes('isUnsynced(pk)'), 'keepalive бичилт хуулагдаагүй засваргүй үед ч явж байна');
 const CODE_ONLY = SRC
   .split('\n')
   .filter((l) => !/^\s*[*]/.test(l) && !/^\s*\/[*]/.test(l) && !/^\s*\/\//.test(l))
@@ -287,7 +294,7 @@ assert.equal(
   /* parseDraft нь эх сурвалжаар ялгана; хугацааг ЗӨВХӨН local-д */
   const parse = between('const parseDraft = ', 'const readDraft = ');
   assert.ok(parse.includes("source: 'local' | 'remote'"), 'parseDraft эх сурвалжаар ялгадаггүй');
-  assert.ok(parse.includes("source === 'local' && Date.now() - d.t > LOCAL_DRAFT_TTL_MS"), 'локал хугацааны шүүлт алга эсвэл алсад ч хамаарч байна');
+  assert.ok(parse.includes("source === 'local' && serverNow() - d.t > LOCAL_DRAFT_TTL_MS"), 'локал хугацааны шүүлт алга эсвэл алсад ч хамаарч байна');
   assert.ok(parse.includes('if (!d.t || !Array.isArray(d.cells)) return null;'), 'бүтцийн шалгалт хэвээр байх ёстой');
   /* дуудлагууд зөв эх сурвалжтай */
   assert.ok(SRC.includes("parseDraft(raw, 'local')"), 'readDraft локал гэж дуудахгүй байна');
@@ -298,7 +305,12 @@ console.log('✅ ноорогийн хугацаа — локал 3 хоног �
 /* (4) Алсын хуулбарын БАЙДАЛ ил байх — хэт том, унасан, амжилттай гурвуулаа. */
 assert.ok(SRC.includes('REMOTE_MAX'), 'алсын хэмжээний хамгаалалт алга');
 assert.ok(SRC.includes("setRemoteState({ kind: 'big' })"), 'хэт том ноорог чимээгүй алгасагдаж байна');
-assert.ok(SRC.includes("{ kind: 'fail', why: r.error }"), 'алсын хуулбар унасны ШАЛТГААН дэлгэцэд хүрэхгүй байна');
+assert.ok(SRC.includes('failed(r.error);') && SRC.includes("else if (!conflict) setRemoteState({ kind: 'fail', why });"), 'алсын хуулбар унасны ШАЛТГААН дэлгэцэд хүрэхгүй байна');
+/* 2026-11-23: бичилт явж байхад «ArcGIS HH:MM» (сүүлийн амжилт) биш «Хадгалж байна…»; дараалсан уналт/зөрчил чимээгүй эргэлдэхгүй */
+assert.ok(SRC.includes("{ kind: 'saving' }") && SRC.includes("tr('Хадгалж байна…')"), 'бичилт явж буйг төлөвт харуулахгүй байна');
+assert.ok(SRC.includes("if (many) setRemoteState({ kind: 'error', why });") && SRC.includes('failed(r.error, true);') && SRC.includes("tr('⚠ ArcGIS-д хадгалагдсангүй')"),
+  'дараалсан олон алдаа/зөрчил «хадгалагдсангүй» төлөвт гарахгүй байна');
+assert.ok(SRC.includes("title={remoteState?.kind === 'ok'"), '«ноорог хадгалагдав» тайлбар ArcGIS-д хадгалагдаагүй үед ч «мөн ArcGIS-д» гэж байна');
 assert.ok(SRC.includes('if (!remoteQueue.current) remoteQueue.current = q;'), 'унасан ноорог дарааллаас бүрмөсөн хасагдаж байна — retry алга');
 const DR = fs.readFileSync('src/lib/draftRemote.ts', 'utf8');
 assert.ok(DR.includes('export type RemoteSave = { ok: true } | { ok: false; error: string; conflict?: boolean };'), 'saveRemoteDraft шалтгаан ялгадаггүй (boolean хэвээр)');
@@ -319,7 +331,7 @@ assert.ok(
 
 /* (4b) ДЭЭД ХҮЛЭЭЛТ — debounce дангаараа бол тасралтгүй бөглөж байхад
    алсын хуулбар ХЭЗЭЭ Ч бичигддэггүй байв (2026-09-06). */
-assert.ok(SRC.includes('since >= REMOTE_CAP_MS'), 'алсын бичилтэд дээд хүлээлт алга');
+assert.ok(!SRC.includes('setTimeout(flush, REMOTE_DEBOUNCE_MS)'), 'алсын бичилт дахин завсарлагатай болсон — тасралтгүй бөглөхөд хойшилно');
 assert.ok(SRC.includes("'pagehide'"), 'pagehide дээр илгээхгүй байна');
 
 /* (4c) НООРОГИЙН ХУГАЦАА — 2026-09-08-наас ХЯЗГААРГҮЙ (дээрх «хэзээ ч
@@ -508,3 +520,24 @@ console.log('✅ «Илгээх» асуулт — busy-гаар татах мө
   assert.ok(SRC.includes('get zahiralView()'), 'RO.zahiralView алга');
 }
 console.log('✅ «Ерөнхий захирал» — бүх багц харна, permPerf үргэлж худал');
+
+/* ── 2026-11-23: ноорог хадгалалтын сул тал — эх кодын гэрээ (зан үйл нь `draftRows.check.mjs` §17) ── */
+{
+  /* (1) блок НЭРЭЭР: буулгахын өмнө тааруулна; бичих ноорог бүр блокийн нэрсээ авч явна */
+  assert.ok(SRC.includes('const d = bldAll ? alignDraftBld(d0, bldAll) : d0;'), 'pickDraft блокийг нэрээр тааруулахгүй — нуугдсан блокийн дараах нүд буруу баганад буна');
+  assert.ok(between('const draft: Draft = {', '};').includes('bld: bldFor(pkg.key),'), 'хадгалах ноорогт блокийн нэрс (`bld`) алга');
+  assert.ok((SRC.match(/bld: bldFor\(/g) ?? []).length >= 6, 'tombstone ноорогуудад (устгах · хоосон · баримт · буцаалт) блокийн нэрс алга');
+  /* (5) цаг: засварын агшин серверийн цагаар; ирээдүйн агшныг хэдхэн минутаар л хүлээн авна */
+  assert.ok(SRC.includes('const t = Math.max(serverNow(), clockRef.current + 1);'), 'засварын агшин хөтчийн цагаар (Date.now) тавигдаж байна');
+  assert.ok(SRC.includes('n < serverNow() + FUTURE_SKEW_MS') && /const FUTURE_SKEW_MS = (\d+) \* 60_000;/.test(SRC) && Number(RegExp.$1) <= 10, 'ирээдүйн агшныг логик цагт хязгааргүй (366 хоног) хүлээн авч байна');
+  assert.ok(!/const now = Date\.now\(\);/.test(between('const mergeDrafts = (', '\n};')), 'mergeDrafts хугацааг хөтчийн цагаар шалгаж байна');
+  /* (3) сэргээлт: уншилтыг эффект дахин ажиллахад шинээр эхлүүлэхгүй; 15 с-ийн дээд хүлээлт; хуучин LIKE хайлт кэштэй */
+  assert.ok(SRC.includes('const read = held && held.pkg === pkg.key ? held.p : readRemoteDraft(pkg.key);'), '`rows` солигдох бүрд алсын уншилт дахин эхэлж байна');
+  assert.ok(/const REMOTE_READ_TIMEOUT_MS = 15_000;/.test(SRC), 'алсын уншилтын дээд хүлээлт 15 с биш');
+  assert.ok(SRC.includes('plan.useRemote && !legacyChecked(pkg.key)') && SRC.includes('markLegacyChecked(pkg.key);'), 'хуучин ноорогийн LIKE хайлт нээх бүрд явж байна');
+  /* (8) «ноорог устгах» — super биш бол зөвхөн өөрийн нүд */
+  const dropAllFn = between('const dropDraft = useCallback', 'Ноорог устгагдлаа');
+  assert.ok(dropAllFn.includes('ownKeys(allKeys, owner, mineRef.current, meKey, !!p.dropAll)') && dropAllFn.includes('if (partial) {'), '«ноорог устгах» бүх хүний нүдийг устгаж байна');
+  assert.ok(SRC.includes('dropAll: unrestricted,'), 'super эсэх hook-т дамжихгүй');
+}
+console.log('✅ 2026-11-23 — блок нэрээр · серверийн цаг · сэргээлтийн хүлээлт · зөвхөн өөрийн нүд');

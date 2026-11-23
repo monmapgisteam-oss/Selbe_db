@@ -682,6 +682,13 @@ export function workflowViewsOf(username?: string | null): ViewKey[] {
  * суурийг. Аль нь ч байхгүй бол `null` (нэвтрэх эрхгүй).
  */
 export function resolveAccess(username?: string | null): Access | null {
+  const a = resolveAccessRaw(username);
+  /* «Гүйцэтгэл» хардаг хэн ч «Хяналтын хугацаа»-г харна — тусад нь эрх олгох шаардлагагүй */
+  if (!a || a.views === 'all' || !a.views.includes('guitsetgel') || a.views.includes('hyanaltHugatsaa')) return a;
+  return { ...a, views: [...a.views, 'hyanaltHugatsaa' as ViewKey].sort((x, y) => (VIEW_ORDER.get(x) ?? 0) - (VIEW_ORDER.get(y) ?? 0)) };
+}
+
+function resolveAccessRaw(username?: string | null): Access | null {
   const base = resolveBaseAccess(username);
   if (!base || !username) return base;
   if (isHardSuper(username)) {

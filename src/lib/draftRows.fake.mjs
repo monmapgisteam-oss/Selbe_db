@@ -41,10 +41,12 @@ export function makeFake(url, opt = {}) {
         return (a) => vs.includes(a[m[1]]);
       }
       if ((m = /^(\w+) IS NULL$/.exec(c))) return (a) => a[m[1]] == null;
-      if ((m = /^(\w+) >= timestamp '(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})'$/.exec(c))) {
-        const t = Date.parse(`${m[2].replace(' ', 'T')}Z`);
-        return (a) => typeof a[m[1]] === 'number' && a[m[1]] >= t;
+      if ((m = /^(\w+) (>=|<) timestamp '(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})'$/.exec(c))) {
+        const t = Date.parse(`${m[3].replace(' ', 'T')}Z`);
+        return (a) => typeof a[m[1]] === 'number' && (m[2] === '<' ? a[m[1]] < t : a[m[1]] >= t);
       }
+      /* Зөвхөн угтварын LIKE (`'n:%'`) */
+      if ((m = /^(\w+) LIKE '([^'%_]*)%'$/.exec(c))) return (a) => typeof a[m[1]] === 'string' && a[m[1]].startsWith(m[2]);
       return fail(`where хэлбэр танигдсангүй: ${c}`, 400);
     });
     return (a) => preds.every((p) => p(a));
@@ -59,7 +61,9 @@ export function makeFake(url, opt = {}) {
     if (u === `${url}/query`) {
       fake.queries.push(params.where);
       const pred = evalWhere(params.where);
-      const sel = fake.all().filter(pred);
+      const idSet = params.objectIds ? new Set(params.objectIds.split(',').map(Number)) : null;
+      const sel = fake.all().filter((a) => pred(a) && (!idSet || idSet.has(a.objectid)));
+      if (params.returnIdsOnly === 'true') return { objectIdFieldName: 'objectid', objectIds: sel.length ? sel.map((a) => a.objectid) : null };
       if (params.outStatistics) {
         const st = JSON.parse(params.outStatistics);
         const g = params.groupByFieldsForStatistics;
@@ -82,7 +86,7 @@ export function makeFake(url, opt = {}) {
       for (const f of fl) checkField(f);
       const all = sel.sort((x, y) => x.objectid - y.objectid);
       const off = Number(params.resultOffset ?? 0);
-      const cnt = Math.min(2000, Number(params.resultRecordCount ?? 2000));
+      const cnt = Math.min(fake.pageMax ?? 2000, Number(params.resultRecordCount ?? 2000));
       const page = all.slice(off, off + cnt);
       return { features: page.map((a) => ({ attributes: Object.fromEntries(fl.map((f) => [f, a[f] ?? null])) })), ...(off + cnt < all.length ? { exceededTransferLimit: true } : {}) };
     }

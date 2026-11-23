@@ -667,4 +667,34 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
   assert.ok(Math.abs(plainNoVol.rows[0].act[0] - 0.5) < 1e-12, 'синтетик бус — хуучин зан төлөв');
 }
 
+/* ── 2026-11-20: БЛОКИЙГ НЭРЭЭР — илгээснээс хойш блок хаагдах/дараалал солигдоход нүд буруу баганад буухгүй ── */
+{
+  /* дунд блок (6/1) хаагдсан: илгээх үеийн 2-р индекс (5/2) одоо 1-р индекс */
+  const hid = sub({
+    bld: ['5/1', '6/1', '5/2'],
+    cells: [['103:0', '12'], ['103:1', '7'], ['103:2', '%40']],
+    dates: [['104:2:s', '2026-09-01'], ['104:1:e', '2026-09-02']],
+  });
+  const ov = overlaySubmission(old, hid, sc, nBld);
+  assert.equal(ov.unmoved, 0, 'хаагдсан блокийн нүд «тулгагдаагүй» биш');
+  assert.equal(ov.skippedHidden, 2, 'хаагдсан блокийн нүд + огноо алгасагдана');
+  assert.deepEqual(ov.skippedKeys.sort(), ['103:1', '104:1:e']);
+  assert.deepEqual([...ov.cellKeys].sort(), ['103:0', '103:1'], '5/2-ийн нүд одоогийн 1-р индекст');
+  const r3 = ov.rows.find((r) => r.oid === 103), r4 = ov.rows.find((r) => r.oid === 104);
+  assert.equal(r3.obyem[0], 12);
+  assert.ok(Math.abs(r3.act[1] - 0.4) < 1e-12, '5/2 баганад %40');
+  assert.equal(r4.start[1], D('2026-09-01'), '5/2-ийн огноо буув');
+  assert.equal(r4.end[1], null, 'хаагдсан блокийн огноо бичигдээгүй');
+  /* дараалал солигдсон — урьд чимээгүй өөр баганад буудаг байв */
+  const swap = overlaySubmission(old, sub({ bld: ['5/2', '5/1'], cells: [['103:0', '%30']] }), sc, nBld);
+  assert.deepEqual([swap.unmoved, swap.skippedHidden, swap.cellKeys], [0, 0, ['103:1']]);
+  assert.ok(Math.abs(swap.rows.find((r) => r.oid === 103).act[1] - 0.3) < 1e-12);
+  /* ижил жагсаалт — хуучин зан */
+  assert.deepEqual(overlaySubmission(old, sub({ bld: ['5/1', '5/2'], cells: [['103:1', '%30']] }), sc, nBld).cellKeys, ['103:1']);
+  /* хуучин (`bld`-гүй) илгээлт — индексээр, `b >= nBld` нь «тулгагдаагүй» хэвээр */
+  const leg = overlaySubmission(old, sub({ cells: [['103:0', '12'], ['103:2', '5']] }), sc, nBld);
+  assert.deepEqual([leg.unmoved, leg.goneBlock, leg.skippedHidden, leg.cellKeys], [1, 1, 0, ['103:0']]);
+}
+console.log('✅ илгээлтийн блок нэрээр: хаагдсан дунд блок · дараалал солигдсон · хуучин payload хэвээр');
+
 console.log('sheetFrame.check: OK');

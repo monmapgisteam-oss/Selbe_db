@@ -291,6 +291,26 @@ export async function arcgisPost<T extends ArcgisBody = ArcgisBody>(
   return (await run(url, params, opts)) as T;
 }
 
+/** keepalive хүсэлтийн биеийн хөтчийн хязгаар (64КиБ) — нөөцтэй */
+const BEACON_BODY_MAX = 63_000;
+/**
+ * ХУУДАС ХААГДАХ ҮЕИЙН БИЧИЛТ — хариу хүлээхгүй, синхрон эхэлдэг `keepalive` POST (таб хаагдсан ч хөтөч дуусгана).
+ * Токен шинэчлэхгүй (одоогийнхоор), дахин оролдохгүй; явуулсан бол `true`. Dev токеноор бичихгүй, бие хэт том бол явуулахгүй.
+ */
+export function arcgisBeacon(url: string, params: Record<string, string>): boolean {
+  if (typeof fetch !== 'function' || !(isOrgUrl(url) || isPortalUrl(url))) return false;
+  const tok = tokenParam();
+  if (tok.token && tok.token === devToken() && isWriteEndpoint(url)) return false;
+  const body = new URLSearchParams({ f: 'json', ...params, ...tok }).toString();
+  if (body.length > BEACON_BODY_MAX) return false;
+  try {
+    void fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, keepalive: true }).catch(() => undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * НЭГТГЭЖ БОЛОХ хүсэлт мөн үү — `arcgisPost` 2026-10-04.
  */

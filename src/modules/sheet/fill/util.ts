@@ -209,6 +209,8 @@ export type PickState = {
 /** Хөвөгч мэдэгдлийн төрөл — `useNotice` */
 export type NoticeKind = 'ro' | 'ok' | 'warn';
 /** Алсын хуулбарын байдал — `useDraftSync`-ийн `remoteState` */
-export type RemoteState = null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail'; why: string };
+export type RemoteState = null | { kind: 'ok'; at: number } | { kind: 'big' } | { kind: 'fail'; why: string }
+  /** бичилт дараалалд/явж байна · алсын ноорогийг ард уншиж байна · дараалсан олон алдаа/зөрчил */
+  | { kind: 'saving' } | { kind: 'reading' } | { kind: 'error'; why: string };
 /** `computeAll`-ийн үр дүн (мөр бүрийн бодогдсон утга) */
 export type Calc = ReturnType<typeof computeAll>;

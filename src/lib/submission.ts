@@ -10,6 +10,7 @@ import { cellToCols, colsToCell, pickGeneration, subFromRows, subToRows, ROW_VER
 import { t as tr } from '@/lib/i18nCore';
 import { negInc, parseInc, sumInc } from '@/modules/sheet/bagtsSheet';
 import { isLostWrite } from './lostWrite';
+import { alignBlocks, unionBld } from '@/modules/sheet/sheetFrame';
 import { serverNow } from './serverClock';
 
 /**
@@ -61,6 +62,11 @@ export type SubmissionPayload = {
   cells: [string, string][];
   /** `${oid}:${b}:s|e` → 'YYYY-MM-DD' эсвэл '' — `pendDate`-тэй ИЖИЛ */
   dates: [string, string][];
+  /**
+   * БЛОКИЙН НЭРС — `cells`/`dates`-ийн `b` нь энэ жагсаалтын индекс (илгээх үеийн `sc.bld`). Блок хаагдах/дараалал
+   * солигдоход нүдийг нэрээр нь буулгана (`alignBlocks`); хуучин илгээлтэд алга — `b` нь одоогийн индекс гэж үзнэ.
+   */
+  bld?: string[];
   /** Нэмсэн мөр — oid сөрөг */
   adds: NewRow[];
   /** oid → "№ ¦ Ажлын нэр" — ObjectID шилжилтэд */
@@ -439,6 +445,8 @@ const isOcc = (x: unknown): x is [number, number, number] =>
  */
 const NONCE_KEEP = 200;
 const USERS_KEEP = 50;
+/** `SubmissionPayload.bld`-ийн дээд урт */
+const BLD_MAX = 500;
 /** Илгээгчдийн нэгдэл (жижиг үсгээр, давхардалгүй, сүүлийн `USERS_KEEP`) — `mergeSubmission`/`saveSubmission` */
 function mergeUsers(...lists: (readonly (string | undefined)[] | undefined)[]): string[] {
   const out = new Set<string>();
@@ -516,6 +524,9 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
       adds,
       rowKeys,
     };
+    const bld = Array.isArray(d.bld) ? (d.bld as unknown[]) : null;
+    if (bld && bld.length <= BLD_MAX && bld.every((x) => isStr(x) && x.length > 0 && x.length <= 64) && new Set(bld).size === bld.length)
+      out.bld = (bld as string[]).slice();
     if (Number.isInteger(d.archiveOid) && (d.archiveOid as number) > 0) out.archiveOid = d.archiveOid as number;
     if (isFin(d.approvedAt)) out.approvedAt = d.approvedAt;
     const occ = Array.isArray(d.rowOcc) ? (d.rowOcc as unknown[]).filter(isOcc).map((e): [number, number, number] => [e[0], e[1], e[2]]) : [];
@@ -581,9 +592,15 @@ export function parseSubmission(raw: string): SubmissionPayload | null {
  * Оролтыг ӨӨРЧЛӨХГҮЙ (шинэ объект/массив).
  */
 export function mergeSubmission(
-  prev: SubmissionPayload | null,
+  prev0: SubmissionPayload | null,
   next: Omit<SubmissionPayload, 'v'>,
 ): SubmissionPayload {
+  /* Хоёр талын блокийн жагсаалт зөрвөл хуучныг шинийн (+ хуучинд л байсан нэрс) индекс рүү — нүд алдагдахгүй */
+  const prev = prev0?.bld && next.bld ? alignBlocks(prev0, unionBld(next.bld, prev0.bld)).sub : prev0;
+  /* `bld`-гүй хуучин prev-д шинийн жагсаалтаас гадуурх индекс байвал нэр нь мэдэгдэхгүй — нэгтгэл хуучин хэвээр (`bld`-гүй) */
+  const outside = (p: SubmissionPayload, n: number) =>
+    [...p.cells, ...p.dates].some(([k]) => { const b = Number(k.split(':')[1]); return Number.isInteger(b) && b >= n; });
+  const bld = prev?.bld ?? (prev && next.bld && outside(prev, next.bld.length) ? undefined : next.bld);
   const inc = next.mode === 'inc';
   if (prev && (prev.mode === 'inc') !== inc)
     throw new Error(tr('Илгээлтийн горим зөрсөн (нэмэлт ↔ нийт) — нэгтгэсэнгүй. Хуудсыг дахин ачаална уу.'));
@@ -678,6 +695,7 @@ export function mergeSubmission(
     cells: [...cells].map(([k, v]): [string, string] => [k, v]),
     dates: [...dates].map(([k, v]): [string, string] => [k, v]),
     adds: [...adds.values()].map((a) => ({ ...a })),
+    ...(bld ? { bld: [...bld] } : {}),
     rowKeys: byPageOrder(rowKeys),
     ...(occ.size ? { rowOcc: [...occ.values()].filter(([o]) => rowKeys.has(o)).sort((a, b) => a[0] - b[0]) } : {}),
     ...(nonces.length ? { nonces } : {}),
@@ -698,10 +716,14 @@ export function mergeSubmission(
  * дуудагч ил анхааруулна (таамаглаж хасвал буруу нүднээс хасна).
  */
 export function residualAfterArchive(
-  cur: SubmissionPayload,
-  archived: SubmissionPayload,
+  cur0: SubmissionPayload,
+  archived0: SubmissionPayload,
 ): SubmissionPayload | null {
-  if (cur.mode !== 'inc' || archived.mode !== 'inc') return null;
+  if (cur0.mode !== 'inc' || archived0.mode !== 'inc') return null;
+  /* Блокийн нэг индексэд — `cur`-ийн индекс хэвээр (`mergeSubmission`-ий дүрэм) */
+  const u = cur0.bld && archived0.bld ? unionBld(cur0.bld, archived0.bld) : null;
+  const cur = u ? { ...cur0, bld: u } : cur0;
+  const archived = u ? alignBlocks(archived0, u).sub : archived0;
   const cells = new Map<string, string>(cur.cells);
   /* Шошго → oid-ууд (хуудасны дарааллаар) — давхардсан шошгыг дарааллаар хослуулна */
   const byLabel = (keys: [number, string][]) => {

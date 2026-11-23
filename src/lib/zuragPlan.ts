@@ -159,14 +159,14 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
   if (!add.length) return same;
   const ids = matchStored(add, [...drop]);
   /* Гэрээний дугаартай мөр (гараар байгуулсан гэрээ) төлбөрийн актаар явна — олгосон дүн нь хүснэгтэд байгаа хэвээр,
-     бүртгэлийн «Ажлын үнэ»-ээр дарагдахгүй (`hoSync.isRegisterRow`-ийн нөгөө тал) */
+     бүртгэлийн «Ажлын үнэ»-ээр дарагдахгүй (`hoSync.isRegisterRow`-ийн нөгөө тал — хоосон/зайтай дугаар = дугааргүй) */
   const storedBy = new Map<number, PlanStoredRow>();
   for (const r of drop) if (typeof r.objectid === 'number') storedBy.set(r.objectid, r);
   const gen = add.map((r, i): PlanStoredRow => {
     const id = ids[i];
     if (id == null) return { ...r, virtual: true };
     const st = storedBy.get(id);
-    return st?.geree_dugaar != null && r.guitsetgel_huvi !== undefined ? { ...r, objectid: id, olgoson_dun: st.olgoson_dun ?? null } : { ...r, objectid: id };
+    return st && String(st.geree_dugaar ?? '').trim() !== '' && r.guitsetgel_huvi !== undefined ? { ...r, objectid: id, olgoson_dun: st.olgoson_dun ?? null } : { ...r, objectid: id };
   });
   return { out: [...rows.filter((r) => !drop.has(r)).map((r) => swap.get(r) ?? r), ...gen], gen, old: [...drop] };
 }
@@ -209,7 +209,7 @@ function matchStored(add: readonly PlanStoredRow[], stored: readonly PlanStoredR
 }
 
 /** Хүснэгтэд бичигддэг талбарууд — бүртгэлээс гардаг нь л; бусад нь хоосон */
-export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar', 'olgoson_dun', 'guits_ehleh', 'guits_duusah', 'geree_ehleh', 'geree_duusah', 'zurag_oid', 'bagts_kod'] as const;
+export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar', 'olgoson_dun', 'guits_ehleh', 'guits_duusah', 'zurag_oid', 'bagts_kod'] as const;
 type RKey = (typeof REGISTRY_PLAN_KEYS)[number];
 export type RegistryPlanEdits = {
   adds: ({ dd_kod: string } & Record<RKey, string | number | null>)[];

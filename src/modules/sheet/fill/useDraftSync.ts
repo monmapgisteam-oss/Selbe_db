@@ -5,14 +5,16 @@ import {
   clearLegacyDrafts, readLegacyDrafts, type RemoteDraftRead,
 } from "@/lib/draftRemote";
 import {
-  readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX, remoteMax, setFillFrame,
+  beaconRemoteDraft, readRemoteDraft, readRemoteDraftAt, saveRemoteDraft, REMOTE_MAX, remoteMax, rowsMode, setFillFrame,
 } from "@/lib/fillStore";
+import { serverNow, syncServerClock } from "@/lib/serverClock";
 import { t as tr } from "@/lib/i18nCore";
 import { fixCyr } from "@/lib/format";
 import { askConfirm } from "@/lib/confirm";
 import { userError } from "@/components/ui";
 import {
-  type Draft, LOCAL_DRAFT_TTL_MS, REMOTE_DEBOUNCE_MS, REMOTE_CAP_MS, REMOTE_RETRY_MS, DEL_TTL_MS,
+  type Draft, LOCAL_DRAFT_TTL_MS, REMOTE_DEBOUNCE_MS, REMOTE_RETRY_MS, DEL_TTL_MS,
+  alignDraftBld, FUTURE_SKEW_MS, REMOTE_READ_TIMEOUT_MS, REMOTE_FAIL_MAX, restorePlan, withTimeout, ownKeys, legacyChecked, markLegacyChecked,
   parseDraft, mergeDrafts, readDraft, saveDraftLS, clearDraftLS, marksOf, doneOfMarks, type Mark,
   /* 2026-10-04 аудит */
   writeDraftLS, markUnsynced, clearUnsynced, isUnsynced, rcptApply, type Rcpt,
@@ -124,6 +126,8 @@ export function useDraftSync(p: {
   flashCells?: (keys: string[]) => void;
   visibleKeys?: (keys: string[]) => string[];
   okLock?: (oid: number, b: number) => boolean;
+  /** «Ноорог устгах» бүх оролцогчийн нүдийг устгах эрхтэй юу (super) — үгүй бол зөвхөн өөрийн нүд */
+  dropAll?: boolean;
 }) {
   const {
     pkg, user, busy, rows, sc, nBld, canPerf, noEdit, asOf, asOfOrig, setAsOf,
@@ -180,14 +184,16 @@ export function useDraftSync(p: {
    */
   const clockRef = useRef(0);
   const stamp = useCallback(() => {
-    const t = Math.max(Date.now(), clockRef.current + 1);
+    /* Серверийн цагаар — хөтчийн буруу цаг нийлүүлэлтийн ялагчийг шийдэхгүй */
+    const t = Math.max(serverNow(), clockRef.current + 1);
     clockRef.current = t;
     return t;
   }, []);
+  useEffect(() => { void syncServerClock(); }, []);
   /** Нийлүүлэлтээр ирсэн агшнуудаар логик цагийг урагшлуулна */
   const seeClock = useCallback((d: Draft) => {
     let m = clockRef.current;
-    const see = (x: unknown) => { const n = Number(x); if (Number.isFinite(n) && n > m && n < Date.now() + 366 * 86_400_000) m = n; };
+    const see = (x: unknown) => { const n = Number(x); if (Number.isFinite(n) && n > m && n < serverNow() + FUTURE_SKEW_MS) m = n; };
     for (const [, a] of d.byAt ?? []) see(a);
     for (const [, a] of d.del ?? []) see(a);
     for (const mk of d.marks ?? []) see(mk[3]);
@@ -198,9 +204,11 @@ export function useDraftSync(p: {
   const seenAtRef = useRef<Map<string, number>>(new Map());
   const stampKey = useCallback((key: string) => {
     const s = seenAtRef.current.get(key);
-    const ok = s != null && s < Date.now() + 366 * 86_400_000 ? s : undefined;
+    const ok = s != null && s < serverNow() + 366 * 86_400_000 ? s : undefined;
     const t = editStamp(stamp(), ok);
-    if (t > clockRef.current) clockRef.current = t;
+    /* Хол ирээдүйн агшинтай (буруу цагтай клиентийн) нүдийг давж бичнэ, гэхдээ логик цагаа тийш чирэхгүй — нүдэндээ л санана */
+    if (t > clockRef.current && t < serverNow() + FUTURE_SKEW_MS) clockRef.current = t;
+    seenAtRef.current.set(key, t);
     return t;
   }, [stamp]);
   /**
@@ -315,13 +323,33 @@ export function useDraftSync(p: {
    */
   const minOidRef = useRef<number | null>(null);
   const frameSeenRef = useRef<[number, number] | null>(null);
+  /** Ачаалагдсан багцын хуудасны блокийн нэрс (`sc.bld`) */
+  const scBldRef = useRef<{ pkg: string; bld: readonly string[] }>({ pkg: '', bld: [] });
+  /** Ноорогийн блокийн нэрс — `sc.bld` + хуудсанд алга (нуугдсан) блокийн нэр; ноорогийн түлхүүрийн `b` нь үүний индекс */
+  const bldRef = useRef<{ pkg: string; bld: string[] }>({ pkg: '', bld: [] });
+  const bldFor = useCallback((pk: string): string[] | undefined => {
+    const s = scBldRef.current;
+    /* Нэргүй блоктой (ганц «Ажил») хуудсанд нэрээр тааруулах зүйлгүй — хуучин зан */
+    if (s.pkg !== pk || !s.bld.length || s.bld.some((n) => !n)) return undefined;
+    const b = bldRef.current;
+    if (b.pkg !== pk || !s.bld.every((n, i) => b.bld[i] === n)) bldRef.current = { pkg: pk, bld: [...s.bld] };
+    return bldRef.current.bld;
+  }, []);
   useEffect(() => {
     let m = Number.POSITIVE_INFINITY;
     for (const r of rows) if (r.oid >= 0 && r.oid < m) m = r.oid;
     minOidRef.current = Number.isFinite(m) ? m : null;
-    if (Number.isFinite(m) && frameSeenRef.current?.[0] !== m) frameSeenRef.current = [m, Date.now()];
-    if (loadedPkgRef.current && rows.length) setFillFrame(loadedPkgRef.current, rows, sc?.bld ?? []);
+    if (Number.isFinite(m) && frameSeenRef.current?.[0] !== m) frameSeenRef.current = [m, serverNow()];
+    if (loadedPkgRef.current && rows.length) {
+      setFillFrame(loadedPkgRef.current, rows, sc?.bld ?? []);
+      scBldRef.current = { pkg: loadedPkgRef.current, bld: sc?.bld ?? [] };
+    }
   }, [rows, sc, loadedPkgRef]);
+  /** Шахалтын сонголт — мөрийн горимд баримтаар дарагдсан tombstone үлдэхгүй */
+  const compactOpt = useCallback((live: boolean) => ({
+    max: REMOTE_MAX, rows: rowsMode(), minOid: live ? minOidRef.current : null,
+    frameSeenAt: live ? frameSeenFor(frameSeenRef.current, minOidRef.current) : null,
+  }), []);
   /**
    * ЛОКАЛ ХАДГАЛАЛТ УНАСАН (сан дүүрсэн/хаалттай) — 2026-10-04 аудит (#9). Урьд нь `saveDraftLS`
    * алдааг залгиж «ноорог хадгалагдав» гэж ХУДАЛ баталдаг байв.
@@ -443,6 +471,14 @@ export function useDraftSync(p: {
   const lastRemoteRef = useRef(0);
   const promptedPkgRef = useRef("");
   const restoreGenRef = useRef(0);
+  /** Сэргээлтийн алсын уншилт (багцаар) — эффект дахин ажиллахад шинээр эхлүүлэхгүй; хугацаа хэтэрсэн ч ард үргэлжилнэ */
+  const restoreReadRef = useRef<{ pkg: string; p: Promise<RemoteDraftRead> } | null>(null);
+  /** Сэргээлтийн дараалсан уналт (багцаар) — анхааруулга нэг удаа, дахин оролдлого сийрэгжинэ */
+  const restoreFailRef = useRef<{ pkg: string; n: number }>({ pkg: '', n: 0 });
+  /** Явж буй алсын бичилт — `again`: энэ хооронд шинэ засвар дараалалд орсон */
+  const flightRef = useRef<{ again: boolean } | null>(null);
+  /** Дараалсан унасан/зөрчилдсөн бичилтийн тоо — `REMOTE_FAIL_MAX` хүрвэл «хадгалагдсангүй» төлөв */
+  const failsRef = useRef<{ pkg: string; n: number }>({ pkg: '', n: 0 });
   /**
    * `flush`-ийн СҮҮЛИЙН хувилбарыг ref-д — unmount-ийн эффект (`[]` хамаарал)
    * түүнийг дуудна. Доорх эффект `remoteTick` бүрд `flush`-ыг дахин үүсгэдэг
@@ -556,8 +592,8 @@ export function useDraftSync(p: {
        нүдний утгыг ЭНД хөндөхгүй (хадгалах эффект түүнийг хариуцна). */
     const cur = readDraft(want);
     const d: Draft = cur
-      ? { ...cur, t: Date.now(), done: next, marks: [...nextMarks.values()] }
-      : { t: Date.now(), mode: 'inc', cells: [], done: next, marks: [...nextMarks.values()] };
+      ? { ...cur, t: serverNow(), done: next, marks: [...nextMarks.values()] }
+      : { t: serverNow(), mode: 'inc', cells: [], done: next, marks: [...nextMarks.values()] };
     saveDraftLS(want, d);
     const at0 = await readRemoteDraftAt(want);
     const rr: RemoteDraftRead = at0 === undefined
@@ -567,8 +603,7 @@ export function useDraftSync(p: {
         : { ok: true, draft: null };
     const dNew: Draft = { ...d, t: Math.max(d.t, at0 != null ? at0 + 1 : 0) };
     const merged = rr.ok
-      ? compactDraft(mergeDrafts(rr.draft ? parseDraft(rr.draft.payload, 'remote') : null, dNew) ?? dNew,
-        { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null, frameSeenAt: pkgKeyRef.current === want ? frameSeenFor(frameSeenRef.current, minOidRef.current) : null })
+      ? compactDraft(mergeDrafts(rr.draft ? parseDraft(rr.draft.payload, 'remote') : null, dNew) ?? dNew, compactOpt(pkgKeyRef.current === want))
       : null;
     let mergedLS: Draft | null = null;
     if (merged) {
@@ -589,17 +624,21 @@ export function useDraftSync(p: {
       show('warn', tr('«{0}» тэмдэглэгээ ArcGIS-т хадгалагдсангүй ({1}) — бусад хүн харахгүй байж магадгүй.',
         iAmDone ? tr('Дахин засах') : tr('Дуусгасан'), userError(r.error)));
     }
-  }, [meKey, iAmDone, pkg.key, show, pkgKeyRef, applyMarks, stamp, canPerf]);
+  }, [meKey, iAmDone, pkg.key, show, pkgKeyRef, applyMarks, stamp, canPerf, compactOpt]);
 
   /**
    * Сонгосон ноорогийг ШҮҮЖ, сэргээх цонхонд бэлдэнэ.
    */
-  const pickDraft = useCallback((d: Draft, source: 'local' | 'remote' | 'both', opts?: {
+  const pickDraft = useCallback((d0: Draft, source: 'local' | 'remote' | 'both', opts?: {
     sharedOnly?: boolean;
     poll?: boolean;
   }): PickRes => {
     const res: PickRes = { changed: false, rcpt: 0 };
     if (!sc || !canPerf) return res;
+    /* Блокийг НЭРЭЭР буулгана — нуугдсан/эрэмбэ солигдсон блокийн нүд өөр блокт буухгүй (хуудсанд алга нэр `nBld`-ээс цааш) */
+    const bldAll = bldFor(pkg.key);
+    const d = bldAll ? alignDraftBld(d0, bldAll) : d0;
+    if (bldAll && d.bld) bldRef.current = { pkg: pkg.key, bld: d.bld };
     seeClock(d);
     const byOid = new Map<number, SheetRow>();
     for (const r of rows) byOid.set(r.oid, r);
@@ -724,7 +763,7 @@ export function useDraftSync(p: {
     let dropped = 0;
     const dropNames: string[] = [];
     const dropName = (oid: number, b: number, se?: string) =>
-      `${sc.bld[b] ?? `#${b}`} · ${fixCyr(byOid.get(oid)?.work) ?? `#${oid}`}${se === 's' ? ` · ${tr('Эхлэх огноо')}` : se === 'e' ? ` · ${tr('Дуусах огноо')}` : ''}`;
+      `${sc.bld[b] ?? d.bld?.[b] ?? `#${b}`} · ${fixCyr(byOid.get(oid)?.work) ?? `#${oid}`}${se === 's' ? ` · ${tr('Эхлэх огноо')}` : se === 'e' ? ` · ${tr('Дуусах огноо')}` : ''}`;
     /** Хадгалагдсантайгаа ИЖИЛ тул сэргээгээгүй нүд/огноо (хуучирсан БИШ) */
     let sameN = 0;
     for (const [key0, vRaw] of d.cells) {
@@ -1121,6 +1160,10 @@ export function useDraftSync(p: {
     const local = readDraft(pkg.key);
     let alive = true;
     void (async () => {
+      /* Нэг багцын уншилтыг НЭГ удаа эхлүүлнэ — `rows` солигдож эффект дахин ажиллахад (доорх `!alive`) мөн хүсэлтийг хүлээнэ */
+      const held = restoreReadRef.current;
+      const read = held && held.pkg === pkg.key ? held.p : readRemoteDraft(pkg.key);
+      restoreReadRef.current = { pkg: pkg.key, p: read };
       /*
        * Урьд нь `loadRemoteDraft` нь «ноорог БАЙХГҮЙ» ба «уншиж ЧАДСАНГҮЙ»
        * хоёрыг ижил `null`-аар буцаадаг байв. Сүлжээ түр тасрах, токен
@@ -1130,7 +1173,8 @@ export function useDraftSync(p: {
        * хэдийн тавигдсан тул тэр сешнд ДАХИН оролдохгүй: зөвхөн хуудсыг
        * бүтнээр дахин ачаалж (F5) байж сэргэдэг байлаа.
        */
-      const rr = await readRemoteDraft(pkg.key);
+      const got = await withTimeout(read, REMOTE_READ_TIMEOUT_MS)
+        .catch((e): { late: false; v: RemoteDraftRead } => ({ late: false, v: { ok: false, error: String((e as Error)?.message ?? e) } }));
       if (!alive) {
         if (restoreGenRef.current !== gen) return;
         restoring.current = false;
@@ -1138,13 +1182,29 @@ export function useDraftSync(p: {
         if (promptedPkgRef.current === pkg.key) { promptedPkgRef.current = ''; setRemoteRetry((n) => n + 1); }
         return;
       }
-      if (!rr.ok) {
+      const plan = restorePlan(got.late ? 'timeout' : got.v.ok ? 'ok' : 'fail');
+      const rr: RemoteDraftRead = got.late ? { ok: false, error: tr('алсын ноорог уншиж дуусаагүй') } : got.v;
+      if (!plan.background) restoreReadRef.current = null;
+      if (plan.useRemote) restoreFailRef.current = { pkg: pkg.key, n: 0 };
+      if (plan.background) {
+        /* Хугацаандаа уншиж амжсангүй — локал хуулбараар нээнэ; хүсэлт ард үргэлжилж, дуусмагц 3 с-ийн мөчлөг нийлүүлнэ */
+        const pk = pkg.key;
+        setRemoteState((s) => (s == null || s.kind === 'ok' ? { kind: 'reading' } : s));
+        void read.catch(() => null).then(() => {
+          if (restoreReadRef.current?.p === read) restoreReadRef.current = null;
+          if (pkgKeyRef.current === pk) setRemoteState((s) => (s?.kind === 'reading' ? null : s));
+        });
+      }
+      if (plan.retry) {
         promptedPkgRef.current = '';
-        show('warn', tr(
+        /* Тасралтгүй унавал (токен дууссан г.м.) анхааруулга нэг удаа, дахин оролдлого сийрэгжинэ */
+        const f = restoreFailRef.current.pkg === pkg.key ? restoreFailRef.current.n : 0;
+        restoreFailRef.current = { pkg: pkg.key, n: f + 1 };
+        setTimeout(() => setRemoteRetry((n) => n + 1), Math.min(REMOTE_RETRY_MS * 2 ** f, 60_000));
+        if (!f) show('warn', tr(
           'Алсын ноорогийг уншиж чадсангүй ({0}). Энэ компьютерийн ноорог хэвээр — өөр газраас бөглөсөн ажил байвал 3 секундын дараа дахин оролдоно.',
-          rr.error,
+          rr.ok ? '' : rr.error,
         ));
-        setTimeout(() => setRemoteRetry((n) => n + 1), REMOTE_RETRY_MS);
       }
       const rem = rr.ok ? rr.draft : null;
       const remote = rem ? parseDraft(rem.payload, 'remote') : null;
@@ -1156,7 +1216,12 @@ export function useDraftSync(p: {
        * ── ХУУЧИН (`хэрэглэгч|багц`) НООРОГИЙГ НЭГ УДАА ШИЛЖҮҮЛНЭ (2026-09-08) ──
        */
       let migrated: Draft | null = null;
-      const legacy = await readLegacyDrafts(pkg.key);
+      /* `LIKE '%|багц'` (индексгүй) хайлт — саяхан хоосон гарсан бол алгасна; алсын уншилт амжаагүй үед ч хүлээлгэхгүй */
+      const lg = plan.useRemote && !legacyChecked(pkg.key)
+        ? await withTimeout(readLegacyDrafts(pkg.key), REMOTE_READ_TIMEOUT_MS).catch((): { late: true } => ({ late: true }))
+        : null;
+      const legacy = lg && !lg.late ? lg.v ?? [] : [];
+      if (lg && !lg.late && lg.v && !lg.v.length) markLegacyChecked(pkg.key);
       if (alive && legacy.length) {
         for (const L of legacy) {
           const p = parseDraft(L.payload, 'remote');
@@ -1206,19 +1271,69 @@ export function useDraftSync(p: {
   const dropDraft = useCallback(async () => {
     const others = [...participants].filter((u) => u !== meKey);
     const nCell = String(dirtyCount);
-    if (!(await askConfirm(others.length
-      ? tr(
-        'Энэ нооргийг {0} мөн бөглөж байна. Устгавал ТЭДНИЙ ажил ч арилна ({1} нүд). Үргэлжлүүлэх үү?',
-        others.sort().join(', '), nCell,
-      )
-      : tr('Илгээгээгүй {0} нүдний засвар арилна. Ноорог устгах уу?', nCell), { ok: tr('Ноорог устгах'), danger: true }))) return;
-    const nowMs = stamp();
     const ld = readDraft(pkg.key);
-    const tombKeys = [...new Set([
+    const allKeys = [...new Set([
       ...Object.keys(pending), ...Object.keys(pendDate),
       ...(ld?.cells ?? []).map(([k]) => k), ...(ld?.dates ?? []).map(([k]) => k),
       ...heldRef.current.keys(),
     ])];
+    /* Нүдний эзэн — дэлгэцийн төлөв, локал хуулбар, тэмдэглэсэн нүднээс */
+    const owner = new Map<string, string>(byMapRef.current);
+    for (const [k, u] of ld?.by ?? []) if (!owner.has(k)) owner.set(k, String(u).trim().toLowerCase());
+    for (const [k, h] of heldRef.current) if (h.by && !owner.has(k)) owner.set(k, h.by);
+    const tombKeys = ownKeys(allKeys, owner, mineRef.current, meKey, !!p.dropAll);
+    /* Бусдын нүд үлдэх бол зөвхөн өөрийнхийг устгана (super биш хэрэглэгч бусдын ажлыг арилгаж чадахгүй) */
+    const partial = tombKeys.length < allKeys.length;
+    const nMine = String(tombKeys.filter((k) => k in pending || k in pendDate).length);
+    if (partial && !tombKeys.length) { say(tr('Танд устгах өөрийн засвар алга — бусад хүний бөглөсөн нүдийг устгахгүй.')); return; }
+    if (!(await askConfirm(partial
+      ? tr('Зөвхөн ТАНЫ бөглөсөн {0} нүдний засвар арилна — бусад хүний бөглөсөн нүд хэвээр үлдэнэ. Үргэлжлүүлэх үү?', nMine)
+      : others.length
+        ? tr(
+          'Энэ нооргийг {0} мөн бөглөж байна. Устгавал ТЭДНИЙ ажил ч арилна ({1} нүд). Үргэлжлүүлэх үү?',
+          others.sort().join(', '), nCell,
+        )
+        : tr('Илгээгээгүй {0} нүдний засвар арилна. Ноорог устгах уу?', nCell), { ok: tr('Ноорог устгах'), danger: true }))) return;
+    const nowMs = stamp();
+    if (partial) {
+      const ks = new Set(tombKeys);
+      for (const k of ks) {
+        if ((delRef.current.get(k) ?? 0) < nowMs) delRef.current.set(k, nowMs);
+        mineRef.current.delete(k);
+        mineAtRef.current.delete(k);
+        heldRef.current.delete(k);
+      }
+      setHeldN(heldVisN(heldRef.current));
+      const strip = (prev: Record<string, string>) => {
+        if (!Object.keys(prev).some((k) => ks.has(k))) return prev;
+        const n = { ...prev };
+        for (const k of ks) delete n[k];
+        return n;
+      };
+      setPending(strip);
+      setPendDate(strip);
+      const mk = meKey ? marksRef.current.get(meKey) : undefined;
+      if (mk && mk[1] === 1) {
+        const m = new Map(marksRef.current);
+        m.set(meKey, [meKey, 0, mk[2] + 1, nowMs]);
+        applyMarks(m);
+      }
+      clearMyTgt();
+      const tomb: Draft = {
+        t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
+        del: [...ks].map((k): [string, number] => [k, nowMs]),
+        marks: [...marksRef.current.values()],
+        tgt: tgtsRef.current.size ? [...tgtsRef.current.values()] : undefined,
+        bld: bldFor(pkg.key),
+      };
+      const w = writeDraftLS(pkg.key, tomb);
+      setLocalFail(!w.ok);
+      markUnsynced(pkg.key, tomb.t);
+      remoteQueue.current = { pkg: pkg.key, draft: tomb };
+      setRemoteTick((n) => n + 1);
+      say(tr('Таны {0} нүдний засвар устгагдлаа — бусад хүний нүд хэвээр.', nMine));
+      return;
+    }
     heldRef.current = new Map();
     setHeldN(0);
     if (asOf !== asOfOrig) asOfRevRef.current = true;
@@ -1250,6 +1365,7 @@ export function useDraftSync(p: {
         done: [], marks: [...marksRef.current.values()], del: [...delRef.current],
         rcpt: rcptRef.current.size ? packRcpt(rcptRef.current.values()) : undefined,
         tgt: tgtsRef.current.size ? [...tgtsRef.current.values()] : undefined,
+        bld: bldFor(pkg.key),
       };
       if (!saveDraftLS(pkg.key, tomb)) setLocalFail(true);
       markUnsynced(pkg.key, tomb.t);
@@ -1299,6 +1415,7 @@ export function useDraftSync(p: {
             rcpt: liveRc.length ? packRcpt(liveRc) : undefined,
             frameSeenAt: frameSeenRef.current ?? undefined,
             tgt: tgtsRef.current.size ? [...tgtsRef.current.values()] : undefined,
+            bld: bldFor(pkg.key),
           };
           const w = writeDraftLS(pkg.key, tomb);
           setLocalFail(!w.ok);
@@ -1339,7 +1456,7 @@ export function useDraftSync(p: {
       setSavedAt(null);
       return;
     }
-    const at = Date.now();
+    const at = serverNow();
     setSavedAt(at);
     /* 2026-09-25: хоосон биш ноорог — `draftLiveRef`/`asOfRevRef` */
     draftLiveRef.current = true;
@@ -1450,13 +1567,14 @@ export function useDraftSync(p: {
       asOfB: asOfChanged ? asOfBRef.current : undefined,
       datesB: datesB.length ? datesB : undefined,
       frameSeenAt: frameSeenRef.current ?? undefined,
+      bld: bldFor(pkg.key),
     };
     const wr = writeDraftLS(pkg.key, draft);
     setLocalFail(!wr.ok);
     markUnsynced(pkg.key, draft.t);
     remoteQueue.current = { pkg: pkg.key, draft };
     setRemoteTick((n) => n + 1);
-  }, [pending, pendDate, asOf, asOfOrig, pkg.key, rows, user?.username, loadedPkgRef, curTgt, stamp, safeClearRemote]);
+  }, [pending, pendDate, asOf, asOfOrig, pkg.key, rows, user?.username, loadedPkgRef, curTgt, stamp, safeClearRemote, bldFor]);
 
   /**
    * ── АЛСЫН ХУУЛБАР (ArcGIS) — `REMOTE_DEBOUNCE_MS` (3 сек) завсарлагатай ──
@@ -1485,20 +1603,35 @@ export function useDraftSync(p: {
       const q = remoteQueue.current;
       if (!q) return;
       if (q.pkg !== (pkgKey ?? pkg.key)) { remoteQueue.current = null; return; }
-      remoteQueue.current = null;
       const allowStale = pkgKey != null;
+      /* Нэг багцад нэг бичилт л явна — явж буй нь дуусмагц дараалал дахин цохигдоно (зэрэг хоёр гинж бие биетэйгээ зөрчилдөнө) */
+      if (!allowStale && flightRef.current) { flightRef.current.again = true; return; }
+      /* Сэргээлтийн уншилт ард явж байвал (хугацаа хэтэрсэн) түүнийг хүлээнэ — зэрэгцээ хоёр дахь бүтэн уншилт эхлүүлэхгүй; засвар локалд бий */
+      if (!allowStale && restoreReadRef.current?.pkg === q.pkg) { setTimeout(() => setRemoteTick((n) => n + 1), REMOTE_RETRY_MS); return; }
+      remoteQueue.current = null;
       /** Хариу ОДООГИЙН багцынх уу — төлөв/ref зөвхөн тэгвэл шинэчлэгдэнэ */
       const live = () => loadedPkgRef.current === q.pkg;
       lastRemoteRef.current = Date.now();
+      const fl = { again: false };
+      if (!allowStale) flightRef.current = fl;
+      if (live()) setRemoteState((s) => (s?.kind === 'fail' || s?.kind === 'error' || s?.kind === 'big' ? s : { kind: 'saving' }));
+      /** Унасан/зөрчилдсөн бичилт — дараалсан тоогоор «хадгалагдсангүй» төлөв, дахин оролдлого */
+      const failed = (why: string, conflict = false) => {
+        const nFail = failsRef.current.pkg === q.pkg ? failsRef.current.n + 1 : 1;
+        failsRef.current = { pkg: q.pkg, n: nFail };
+        const many = nFail >= REMOTE_FAIL_MAX;
+        if (many) setRemoteState({ kind: 'error', why });
+        else if (!conflict) setRemoteState({ kind: 'fail', why });
+        if (!remoteQueue.current) remoteQueue.current = q;
+        setTimeout(() => setRemoteTick((n) => n + 1), conflict && !many ? 300 : REMOTE_RETRY_MS);
+      };
       void (async () => {
         const at = await readRemoteDraftAt(q.pkg);
         if (at === undefined) {
           /* Уншиж чадсангүй — бичихгүй: алсын агуулга үл мэдэгдэх тул бичих нь
              бусдын ажлыг устгах эрсдэлтэй. Локал бүрэн бүтэн. */
           if (!live()) { staleWarn(q.pkg, tr('алсын ноорогийг шалгаж чадсангүй')); return; }
-          setRemoteState({ kind: 'fail', why: tr('алсын ноорогийг шалгаж чадсангүй') });
-          if (!remoteQueue.current) remoteQueue.current = q;
-          setTimeout(() => setRemoteTick((n) => n + 1), REMOTE_RETRY_MS);
+          failed(tr('алсын ноорогийг шалгаж чадсангүй'));
           return;
         }
         let remote: Draft | null = null;
@@ -1506,22 +1639,21 @@ export function useDraftSync(p: {
           const rr = await readRemoteDraft(q.pkg);
           if (!rr.ok) {
             if (!live()) { staleWarn(q.pkg, rr.error); return; }
-            setRemoteState({ kind: 'fail', why: rr.error });
-            if (!remoteQueue.current) remoteQueue.current = q;
-            setTimeout(() => setRemoteTick((n) => n + 1), REMOTE_RETRY_MS);
+            failed(rr.error);
             return;
           }
           remote = rr.draft ? parseDraft(rr.draft.payload, 'remote') : null;
         }
         /* Алсынхыг ХУУЧИН, өөрийнхийг ШИНЭ тал болгож нийлүүлнэ — нүд тус
            бүрээр шинэ агшинтай нь ялна (`mergeDrafts`). */
-        const merged0 = compactDraft(mergeDrafts(remote, q.draft) ?? q.draft, { max: REMOTE_MAX, minOid: live() ? minOidRef.current : null, frameSeenAt: live() ? frameSeenFor(frameSeenRef.current, minOidRef.current) : null });
+        const merged0 = compactDraft(mergeDrafts(remote, q.draft) ?? q.draft, compactOpt(live()));
         /* `body` — хувилбарын дугааргүй агуулга: дэмий бичилт таслахад (доор) */
         const body = JSON.stringify(merged0);
-        const outDraft: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at != null ? at + 1 : 0) };
+        const outDraft: Draft = { ...merged0, t: Math.max(serverNow(), merged0.t, at != null ? at + 1 : 0) };
         const outBody = JSON.stringify(outDraft);
         if (outBody.length > remoteMax()) { if (live()) setRemoteState({ kind: 'big' }); else staleWarn(q.pkg, tr('ноорог хэт том')); return; }
         if (live() && body === lastBodyRef.current) {
+          failsRef.current = { pkg: q.pkg, n: 0 };
           setRemoteState({ kind: 'ok', at: Date.now() });
           clearUnsynced(q.pkg, q.draft.t);
           return;
@@ -1533,11 +1665,12 @@ export function useDraftSync(p: {
         /* Багц солигдсон бол хуучин хариугаар шинэ багцын төлөвийг бичихгүй. */
         if (!live()) { if (!r.ok) staleWarn(q.pkg, r.error); return; }
         if (!r.ok && r.conflict) {
-          if (!remoteQueue.current) remoteQueue.current = q;
-          setTimeout(() => setRemoteTick((n) => n + 1), 300);
+          /* Зөрчил — дахин уншиж нийлүүлнэ; олон дараалбал чимээгүй эргэлдэхгүй, төлөвт гарна */
+          failed(r.error, true);
           return;
         }
         if (r.ok) {
+          failsRef.current = { pkg: q.pkg, n: 0 };
           lastBodyRef.current = body;
           setRemoteState({ kind: 'ok', at: Date.now() });
           if (legacyPendingRef.current === q.pkg) {
@@ -1546,29 +1679,44 @@ export function useDraftSync(p: {
           }
           return;
         }
-        setRemoteState({ kind: 'fail', why: r.error });
-        if (!remoteQueue.current) remoteQueue.current = q;
-        setTimeout(() => setRemoteTick((n) => n + 1), REMOTE_RETRY_MS);
+        failed(r.error);
         });
-      })();
+      })().catch((e: unknown) => {
+        if (live()) failed(String((e as Error)?.message ?? e));
+      }).finally(() => {
+        if (flightRef.current === fl) flightRef.current = null;
+        if (fl.again && remoteQueue.current) setRemoteTick((n) => n + 1);
+      });
     };
     flushRef.current = flush;
-    const t = setTimeout(flush, REMOTE_DEBOUNCE_MS);
-    const since = Date.now() - lastRemoteRef.current;
-    const cap = since >= REMOTE_CAP_MS
-      ? setTimeout(flush, 0)
-      : setTimeout(flush, Math.max(0, REMOTE_CAP_MS - since));
-    const onHide = () => { if (document.visibilityState === 'hidden') flush(); };
+    /* Нүд баталгаажих бүрд (blur/Enter → `pending` → энэ цохилт) ШУУД бичнэ; явж буй бичилт байвал түүний дараа (`flightRef`) */
+    const t = setTimeout(flush, 0);
+    /**
+     * Таб хаагдах үед гинжин (унш → нийлүүл → бич) хүсэлт амжихгүй — хуулагдаагүй засвартай бол локал хуулбараас өөрийн
+     * сүүлийн нүдийг НЭГ `keepalive` хүсэлтээр явуулна (мөрийн горимд; `perfBeacon`).
+     */
+    const beaconNow = () => {
+      const pk = pkg.key;
+      if (loadedPkgRef.current !== pk || !isUnsynced(pk)) return;
+      const d = readDraft(pk);
+      if (d) beaconRemoteDraft(pk, JSON.stringify(d));
+    };
+    const onHide = () => {
+      if (document.visibilityState !== 'hidden') return;
+      /* Бичилт явж байвал (таб нуугдахад JS зогсдоггүй) давхар нэмэхгүй */
+      if (!flightRef.current) beaconNow();
+      flush();
+    };
     document.addEventListener('visibilitychange', onHide);
     /* (Event аргумент `pkgKey` болж орохгүй — хаалтаар дуудна) */
-    const onPageHide = () => flush();
+    const onPageHide = () => { beaconNow(); flush(); };
     window.addEventListener('pagehide', onPageHide);
     return () => {
-      clearTimeout(t); clearTimeout(cap);
+      clearTimeout(t);
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', onPageHide);
     };
-  }, [remoteTick, pkg.key, loadedPkgRef]);
+  }, [remoteTick, pkg.key, loadedPkgRef, compactOpt]);
 
   /**
    * ── UNMOUNT ДЭЭР ШУУД ИЛГЭЭНЭ (2026-09-08) ──
@@ -1599,7 +1747,8 @@ export function useDraftSync(p: {
        * шалгагдана. Ингэснээр эзэмшил ба «дуусгасан» төлөв цаг тухайд нь
        * ирж, курсор нь ч үсрэхгүй.
        */
-      if (document.visibilityState === 'hidden' || remoteQueue.current) {
+      /* Сэргээлтийн уншилт ард явж байвал (хугацаа хэтэрсэн) хоёр дахь бүтэн уншилтыг эхлүүлэхгүй */
+      if (document.visibilityState === 'hidden' || remoteQueue.current || restoreReadRef.current?.pkg === pkg.key) {
         timer = setTimeout(() => void tick(), REMOTE_DEBOUNCE_MS);
         return;
       }
@@ -1662,7 +1811,7 @@ export function useDraftSync(p: {
    */
   useEffect(() => {
     const pendingRemote = remoteQueue.current != null && remoteQueue.current.pkg === pkg.key;
-    const failedRemote = remoteState?.kind === 'fail';
+    const failedRemote = remoteState?.kind === 'fail' || remoteState?.kind === 'error';
     if (!pendingRemote && !failedRemote && !pvDirty) return;
     const h = (e: BeforeUnloadEvent) => {
       /* Цонх гарч байх зуур ArcGIS руу — дараалалд юу ч байхгүй бол хоосон */
@@ -1689,6 +1838,7 @@ export function useDraftSync(p: {
       rcpt: liveRc.length ? packRcpt(liveRc) : undefined,
       frameSeenAt: frameSeenRef.current ?? undefined,
       tgt: tgtsRef.current.size ? [...tgtsRef.current.values()] : undefined,
+      bld: bldFor(want),
     };
     try {
       for (let i = 0; i < 3; i += 1) {
@@ -1700,9 +1850,8 @@ export function useDraftSync(p: {
           if (!rr.ok) return { ok: false, why: rr.error };
           remote = rr.draft ? parseDraft(rr.draft.payload, 'remote') : null;
         }
-        const merged0 = compactDraft(mergeDrafts(remote, tomb) ?? tomb,
-          { max: REMOTE_MAX, minOid: pkgKeyRef.current === want ? minOidRef.current : null, frameSeenAt: pkgKeyRef.current === want ? frameSeenFor(frameSeenRef.current, minOidRef.current) : null });
-        const out: Draft = { ...merged0, t: Math.max(Date.now(), merged0.t, at0 != null ? at0 + 1 : 0) };
+        const merged0 = compactDraft(mergeDrafts(remote, tomb) ?? tomb, compactOpt(pkgKeyRef.current === want));
+        const out: Draft = { ...merged0, t: Math.max(serverNow(), merged0.t, at0 != null ? at0 + 1 : 0) };
         const body = JSON.stringify(out);
         if (body.length > remoteMax()) return { ok: false, why: tr('ноорог хэт том') };
         const r = await saveRemoteDraft(want, out.t, body, { expectAt: at0 });
@@ -1713,7 +1862,7 @@ export function useDraftSync(p: {
     } catch (e) {
       return { ok: false, why: String((e as Error).message || e) };
     }
-  }, [stamp, pkgKeyRef]);
+  }, [stamp, pkgKeyRef, bldFor, compactOpt]);
   /**
    * «ИЛГЭЭХ»-ИЙН ӨМНӨ ХУВААЛЦСАН НООРОГИЙГ ДАХИН УНШИНА (2026-10-09) — `FillNew.publish`-ийн эхэнд.
    */
@@ -1791,13 +1940,14 @@ export function useDraftSync(p: {
       t: nowMs, mode: 'inc', cells: [], dates: [], rowKeys: [],
       del: [...ks].map((k): [string, number] => [k, nowMs]),
       tgt: [...tgtsRef.current.values()],
+      bld: bldFor(want),
     };
     const w = writeDraftLS(want, tomb);
     setLocalFail(!w.ok);
     markUnsynced(want, tomb.t);
     remoteQueue.current = { pkg: want, draft: tomb };
     setRemoteTick((n) => n + 1);
-  }, [meKey, stamp, pkgKeyRef, setPending, setPendDate]);
+  }, [meKey, stamp, pkgKeyRef, setPending, setPendDate, bldFor]);
   return {
     offTgtKeys, storedMine, dropMine,
     pullNow,

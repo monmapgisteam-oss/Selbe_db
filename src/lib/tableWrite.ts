@@ -49,7 +49,7 @@ const clean = (a: Record<string, unknown>, drop?: RegExp): Record<string, unknow
  * серверт ИЛГЭЭХГҮЙ.
  */
 const CF_URL = /\/Guitsetgel_talbe\/FeatureServer\/182\/?$/i;
-const CF_VIRTUAL = /^(etseg_kod|tuvshin|uy_shat|(bagts|ajil)_tuvshin[123])$/;
+const CF_VIRTUAL = /^(etseg_kod|tuvshin|uy_shat|(bagts|ajil)_tuvshin[123]|geree_ehleh|geree_duusah)$/;
 
 /**
  * НЭМЭХ · ЗАСАХ · УСТГАХ гурвыг НЭГ `applyEdits` хүсэлтээр — АТОМААР.
