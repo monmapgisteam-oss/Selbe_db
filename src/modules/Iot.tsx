@@ -61,12 +61,18 @@ const freshLabel = (h: number | null): string => {
 };
 
 /**
- * Насаар өнгө — 2 цаг хүртэл шинэ, `SENSOR_STALE_H` (24, 2026-10-04 — урьд нь 48) хүртэл анхаарах,
- * цаашид хуучирсан (CEO самбарын `IOT_STALE_H`-тэй нэг).
+ * Мэдрэгчийн задарсан заалтын хэвийн алхам (цаг) — дээрх тайлбарын амьд хэмжилт: усны тоолуур ≈6 цаг, бусад ≈1 цаг.
+ * 2026-11-23 (аудит): нэг 2 цагийн босго усны тоолуурыг ихэнх үед шар харуулдаг байв.
  */
-const freshTone = (h: number | null): string => {
+const CADENCE_H: Readonly<Record<string, number>> = { water: 6 };
+
+/**
+ * Насаар өнгө — хэвийн алхмын 1.5 дахин (дор хаяж 2 цаг) хүртэл шинэ, `SENSOR_STALE_H` (24, 2026-10-04 — урьд нь 48)
+ * хүртэл анхаарах, цаашид хуучирсан (CEO самбарын `IOT_STALE_H`-тэй нэг).
+ */
+const freshTone = (h: number | null, stepH = 1): string => {
   if (h == null) return 'var(--ink-3)';
-  if (h <= 2) return 'var(--good-ink)';
+  if (h <= Math.max(2, stepH * 1.5)) return 'var(--good-ink)';
   if (h <= SENSOR_STALE_H) return 'var(--warn-ink)';
   return 'var(--bad-ink)';
 };
@@ -127,7 +133,7 @@ function Cell({ c }: { c: Card }) {
         </span>
       )}
       {/* Нас — мөрийн ТӨГСГӨЛД. Өнгө нь шинэлэг байдлыг заана (ногоон/шар/улаан). */}
-      <span className={`${s.metricAge} num`} style={{ color: freshTone(age) }}>
+      <span className={`${s.metricAge} num`} style={{ color: freshTone(age, CADENCE_H[c.s.key]) }}>
         {freshLabel(age)}
       </span>
       {c.m.trend?.etaHours != null && c.m.alert && (
@@ -280,11 +286,39 @@ export function Iot({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         </div>
       </section>
 
-      <Data q={q} loading={tr('Мэдрэгчийн заалт уншиж байна…')}>
-        {(all) => <Board all={all} range={range} setRange={setRange} />}
-      </Data>
+      {/* 2026-11-23 (аудит): хүрээ солиход (эсвэл унасан үед) хүрээний товч `<Data>`-тай хамт алга болдог байв —
+          ачаалал/алдааны үед ч толгой ба товчнууд үлдэнэ */}
+      {q.state === 'ready' ? <Board all={q.data} range={range} setRange={setRange} /> : (
+        <section className={`${s.card} ${s.pCells}`}>
+          <header className={s.cardHd}>
+            <h3 className={s.cardTitle}>{tr('Бүх үзүүлэлт')}</h3>
+            <RangeBar range={range} setRange={setRange} />
+          </header>
+          <div className={s.cardBody}>
+            <Data q={q} loading={tr('Мэдрэгчийн заалт уншиж байна…')}>{() => null}</Data>
+          </div>
+        </section>
+      )}
     </div>
     </NowCtx.Provider>
+  );
+}
+
+function RangeBar({ range, setRange }: { range: RangeKey; setRange: (r: RangeKey) => void }) {
+  return (
+    <span className={s.rangeBar} role="group" aria-label={tr('Хугацааны хүрээ')}>
+      {RANGES.map((r) => (
+        <button
+          key={r.key}
+          type="button"
+          aria-pressed={range === r.key}
+          className={`${s.rangeBtn} ${range === r.key ? s.rangeBtnOn : ''}`}
+          onClick={() => setRange(r.key)}
+        >
+          {r.label}
+        </button>
+      ))}
+    </span>
   );
 }
 
@@ -317,19 +351,7 @@ function Board({ all, range, setRange }: {
       <section className={`${s.card} ${s.pCells}`}>
         <header className={s.cardHd}>
           <h3 className={s.cardTitle}>{tr('Бүх үзүүлэлт')}</h3>
-          <span className={s.rangeBar} role="group" aria-label={tr('Хугацааны хүрээ')}>
-            {RANGES.map((r) => (
-              <button
-                key={r.key}
-                type="button"
-                aria-pressed={range === r.key}
-                className={`${s.rangeBtn} ${range === r.key ? s.rangeBtnOn : ''}`}
-                onClick={() => setRange(r.key)}
-              >
-                {r.label}
-              </button>
-            ))}
-          </span>
+          <RangeBar range={range} setRange={setRange} />
         </header>
         <div className={s.cardBody}>
           <div className={s.grid}>

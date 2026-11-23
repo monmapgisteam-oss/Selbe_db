@@ -376,6 +376,7 @@ function RejectDialog({ text, onText, busy, onClose, onOk, title, okLabel }: {
   title?: string; okLabel?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const downBackRef = useRef(false);
   useFocusTrap(ref);
   const taRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { taRef.current?.focus(); }, []);
@@ -385,7 +386,10 @@ function RejectDialog({ text, onText, busy, onClose, onOk, title, okLabel }: {
     return () => window.removeEventListener('keydown', esc);
   }, [onClose]);
   return (
-    <div className={st.overlay} role="presentation" onClick={onClose}>
+    /* 2026-11-23 (аудит): дарах ба суллах хоёулаа дэвсгэр дээр байвал л хаана — бичсэн шалтгаан алдагдахгүй */
+    <div className={st.overlay} role="presentation"
+      onMouseDown={(e) => { downBackRef.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (downBackRef.current && e.target === e.currentTarget) onClose(); downBackRef.current = false; }}>
       <div ref={ref} className={st.modal} role="dialog" aria-modal="true" aria-label={okLabel ?? tr('Обьём буцаах')}
         style={{ maxWidth: '32rem' }} onClick={(e) => e.stopPropagation()}>
         <div className={st.modalHead}>

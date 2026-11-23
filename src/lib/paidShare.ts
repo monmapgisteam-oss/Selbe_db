@@ -38,6 +38,12 @@ export type PaidShare = {
   /** `paidPctOf(paidContracted, contract)` — 0–100, эсвэл `null` */
   pct: number | null;
   paidKnown: number;
+  /**
+   * 2026-11-23 (аудит №3): гэрээлсэн багцад холбогдоогүй ТЭЗҮ · СУДАЛГААНЫ олголт (`ajliin_turul`), ₮ — `paidOther`-ийн нэг хэсэг.
+   * Ажлын мөрийн гэрээ (`contract`) энэ гэрээг агуулдаггүй тул энд тоологчид ОРОХГҮЙ; ТТБ-ийн нийт гэрээлсэн дүнгээр
+   * хуваах үед (`withProjectContract`) тоологчид нэмэгдэнэ — ТТБ-ийн гэрээлсэн нийт ТЭЗҮ/зураг төслийн гэрээг агуулдаг.
+   */
+  paidDesign: number;
 };
 
 const str = (v: unknown): string => (v == null ? '' : String(v)).replace(/\s+/g, ' ').trim();
@@ -81,12 +87,14 @@ export function paidShareOf(
   let paid = 0;
   let paidContracted = 0;
   let paidKnown = 0;
+  let paidDesign = 0;
   for (const r of hoRows) {
     const n = hoAmount(r as Row);
     if (n == null) continue;
     paidKnown += 1;
     paid += n;
     if (inContracted(r[HO_IPC.contractFields.pkg])) paidContracted += n;
+    else if (isDesignPay(r)) paidDesign += n;
   }
   /* 2026-11-05: хөвөгч тооны үлдэгдэл (0.00006 ₮) «гадуур олголт» мэт гардаг байв — хагас төгрөгөөс бага бол 0 */
   const other = paid - paidContracted;
@@ -97,5 +105,30 @@ export function paidShareOf(
     paidOther: Math.abs(other) < 0.5 ? 0 : other,
     pct: paidKnown ? paidPctOf(paidContracted, contract) : null,
     paidKnown,
+    paidDesign: Math.abs(paidDesign) < 0.5 ? 0 : paidDesign,
+  };
+}
+
+/** HO мөр ТЭЗҮ · судалгаа · зураг төслийн гэрээний олголт уу (`ajliin_turul` «ТЭЗҮ,Судалгаа» г.м.) */
+export function isDesignPay(r: Readonly<Record<string, unknown>>): boolean {
+  return /тэзү|судалгаа|зураг\s*төсөл/i.test(str(r[HO_IPC.contractFields.workType]));
+}
+
+/**
+ * ТТБ-ИЙН НИЙТ ГЭРЭЭЛСЭН ДҮНГЭЭР (2,046.5 — ТЭЗҮ/зураг төсөл орсон) хуваах хувилбар (2026-11-23, аудит №3).
+ * Хуваарь ТЭЗҮ/зураг төслийн гэрээг агуулдаг тул тэдгээрийн олголтыг (`paidDesign`) тоологчид нэмнэ — эс бөгөөс
+ * 33.08% (зөв нь 33.3%) гэж бага гардаг байв. `projContract` алга бол хуучин (ажлын мөрийн) хувилбараар.
+ */
+export function withProjectContract(share: PaidShare, projContract: number | null | undefined): PaidShare {
+  if (projContract == null || !(projContract > 0)) return share;
+  const paidContracted = share.paidContracted + share.paidDesign;
+  const other = share.paid - paidContracted;
+  return {
+    ...share,
+    contract: projContract,
+    paidContracted,
+    paidOther: Math.abs(other) < 0.5 ? 0 : other,
+    paidDesign: 0,
+    pct: share.paidKnown ? paidPctOf(paidContracted, projContract) : null,
   };
 }

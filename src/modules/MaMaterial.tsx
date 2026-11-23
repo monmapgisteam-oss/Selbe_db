@@ -390,7 +390,16 @@ export function AjilMatTab({ tick }: { tick: number }) {
                                       placeholder={dn == null ? tr('норм алга') : tr('үндсэн {0}', num(dn))}
                                       aria-label={tr('{0} — энэ ажлын тусгай норм', name)}
                                       title={tr('Хоосон бол материалын үндсэн норм хэрэглэгдэнэ')}
-                                      onBlur={(ev) => { const v = normIn(ev.target.value); if (v !== undefined && v !== ent.norm) setNorm(des, base, name, v); }} />
+                                      onBlur={(ev) => {
+                                        const v = normIn(ev.target.value);
+                                        /* 2026-11-23 (аудит): буруу норм чимээгүй алга болдог байв — мэдэгдэж, хуучин утгыг буцаана */
+                                        if (v === undefined) {
+                                          setMsg({ kind: 'err', text: tr('«{0}»-ийн норм буруу — 0 буюу түүнээс их тоо бичнэ үү.', name) });
+                                          ev.target.value = ent.norm == null ? '' : String(ent.norm);
+                                          return;
+                                        }
+                                        if (v !== ent.norm) setNorm(des, base, name, v);
+                                      }} />
                                   )}
                                 </span>
                               );

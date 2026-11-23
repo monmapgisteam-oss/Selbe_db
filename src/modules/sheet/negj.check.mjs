@@ -9,10 +9,15 @@
 import assert from 'node:assert/strict';
 import { PKGS, loadSchema } from '@/modules/sheet/bagts.pkg.ts';
 import { loadRows } from '@/modules/sheet/bagtsSheet.ts';
-import { negjOf } from '@/modules/sheet/negj.ts';
+import { negjOf, unitLabel } from '@/modules/sheet/negj.ts';
+
+/* 2026-11-23 (аудит №41): сүлжээгүй хэсэг (нэгжийн шошго) ҮРГЭЛЖ ажиллана — амьд хэсгийг л SELBE_LIVE_SKIP хаана */
+for (const u of ['м³', 'м²', 'м', 'тн', 'ш']) assert.ok(unitLabel(u), `нэгж «${u}» шошгогүй`);
+assert.equal(unitLabel(null), '');
+console.log('✅ нэгжийн шошго');
 
 if (process.env.SELBE_LIVE_SKIP) {
-  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  console.log(`⏭ амьд шалгуур (negj амьд хэсэг) алгасав — ${process.env.SELBE_LIVE_SKIP_REASON || 'үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга'}`);
   process.exit(0);
 }
 
@@ -74,9 +79,4 @@ for (const [k, e] of extra) console.log(`  (босгогүй) ${k.padEnd(4)} ${S
 
 assert.ok(cov >= 90, `хамралт ${cov.toFixed(1)}% — 90%-иас доош унав`);
 assert.ok(acc >= 93, `үнийн нийцэл ${acc.toFixed(1)}% — 93%-иас доош унав`);
-{
-  const { unitLabel } = await import('@/modules/sheet/negj.ts');
-  for (const u of ['м³', 'м²', 'м', 'тн', 'ш']) assert.ok(unitLabel(u), `нэгж «${u}» шошгогүй`);
-  assert.equal(unitLabel(null), '');
-}
 console.log('\nnegj.check: ok');

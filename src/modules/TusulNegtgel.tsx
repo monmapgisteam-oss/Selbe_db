@@ -86,17 +86,17 @@ function toneOf(
 /* ═══════════════ БАГАНА — нуух / өргөсгөх (2026-09-25) ═══════════════ */
 
 type ColKey = 'code' | 'bagts' | 'name' | 'budget' | 'inSection' | 'inProject' | 'inTotal'
-  | 'ctStart' | 'ctEnd' | 'exStart' | 'exEnd' | 'actStart' | 'actEnd'
+  | 'ctStart' | 'ctEnd' | 'exStart' | 'exEnd'
   | 'planG' | 'planGch' | 'planGu' | 'planNw' | 'planPw' | 'act' | 'actPw' | 'gainWk' | 'perfG' | 'perfGch' | 'perfGu' | 'perfWk';
 
 /**
  * ТОЛГОЙН БҮЛЭГ — Excel-ийн 4-р мөрөнд ХЭВТЭЭ нэгтгэсэн нүд (H4:I4 · J4:K4 · L4:M4), 5-р мөрөнд дэд толгой.
  */
-type GrpKey = 'ct' | 'ex' | 'act';
+/* 2026-11-23 (аудит): COLS-д нэг ч баганагүй байсан «ОСНАУГ…» бүлэг ба actStart/actEnd түлхүүрийг хасав */
+type GrpKey = 'ct' | 'ex';
 const GROUPS: { key: GrpKey; label: () => string }[] = [
   { key: 'ct', label: () => tr('Гэрээ/Хавсралт 5') },
   { key: 'ex', label: () => tr('Гүйцэтгэгч') },
-  { key: 'act', label: () => tr('ОСНАУГ/Газар чөлөөлөлт/ хуулийн маргаан/Өндөржилт нөлөөлөл') },
 ];
 const GROUP = new Map(GROUPS.map((g) => [g.key, g]));
 
@@ -418,26 +418,32 @@ function NegBody({ d: live, onDirty, reloadFailed, onReload }: {
 function EditInput({ v, budget, onCommit }: { v: number | null; budget: boolean; onCommit: (text: string) => string | null }) {
   const shown = v == null ? '' : budget ? String(Math.round(v)) : String(Number((v * 100).toFixed(4)));
   const [bad, setBad] = useState<string | null>(null);
+  /* 2026-11-23 (аудит): `key={shown}`-ээр утга солигдох бүрд (бусад нүдний засвар, нээх/хаах) оролт дахин үүсч фокус,
+     бичиж буй текст алдагддаг байв — одоо удирдлагатай: засаж байх үед (draft) өөрийн текст, бусад үед `shown` */
+  const [draft, setDraft] = useState<string | null>(null);
+  const cancelRef = useRef(false);
   return (
     <input
-      key={shown}
       className={bad ? `${n.edIn} ${n.edBad}` : n.edIn}
-      defaultValue={shown}
+      value={draft ?? shown}
       inputMode="decimal"
       aria-label={tr('Утга засах')}
       aria-invalid={bad ? true : undefined}
       title={bad ?? undefined}
-      onChange={() => { if (bad) setBad(null); }}
+      onFocus={() => setDraft(shown)}
+      onChange={(e) => { setDraft(e.target.value); if (bad) setBad(null); }}
       onBlur={(e) => {
-        const el = e.target;
-        if (el.value === shown) return;
-        const err = onCommit(el.value);
-        if (err) { el.value = shown; setBad(err); }
+        const text = e.target.value;
+        setDraft(null);
+        if (cancelRef.current) { cancelRef.current = false; return; }
+        if (text === shown) return;
+        const err = onCommit(text);
+        if (err) setBad(err);
       }}
       onKeyDown={(e) => {
         const el = e.currentTarget;
         if (e.key === 'Enter') el.blur();
-        if (e.key === 'Escape') { el.value = shown; setBad(null); el.blur(); }
+        if (e.key === 'Escape') { cancelRef.current = true; setBad(null); el.blur(); }
       }}
     />
   );
@@ -820,6 +826,7 @@ export function Tree({ rows, calc, edit, toolbar, root, onTotal }: {
       <div className={n.bar}>
         <input
           className={n.search}
+          aria-label={tr('Ажил, кодоор хайх…')}
           placeholder={tr('Ажил, кодоор хайх…')}
           value={q1}
           onChange={(e) => setQ1(e.target.value)}
@@ -1039,8 +1046,6 @@ export function Tree({ rows, calc, edit, toolbar, root, onTotal }: {
                   case 'ctEnd': return ymd(c?.ctEnd);
                   case 'exStart': return c?.exStart ?? '';
                   case 'exEnd': return c?.exEnd ?? '';
-                  case 'actStart': return c?.actStart ?? '';
-                  case 'actEnd': return c?.actEnd ?? '';
                 }
               };
               return (

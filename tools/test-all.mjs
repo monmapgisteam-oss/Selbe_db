@@ -64,9 +64,12 @@ const walk = (d) => {
 for (const r of ROOTS) walk(r);
 found.sort();
 
+const matchesFilter = (f) => !filters.length || filters.some((s) => f.includes(s));
 const files = found
   .filter((f) => live || !LIVE.has(f))
-  .filter((f) => !filters.length || filters.some((s) => f.includes(s)));
+  .filter(matchesFilter);
+/* 2026-11-23 (аудит №41): `LIVE` жагсаалтаас (--live-гүй үед) хассан шалгуурын тоо — дүнд ил */
+const excludedLive = live ? [] : found.filter((f) => LIVE.has(f) && matchesFilter(f));
 
 if (!files.length) {
   console.error('test-all: тохирох *.check.mjs олдсонгүй');
@@ -137,6 +140,7 @@ const summary =
   `test-all: ${results.length - failed.length}/${results.length} давлаа` +
   ` · нийт ${(total / 1000).toFixed(0)}с CPU` +
   (skippedLive.length ? ` · амьд алгассан ${skippedLive.length}` : '') +
+  (excludedLive.length ? ` · LIVE-ээс хассан ${excludedLive.length} (--live)` : '') +
   (failed.length ? ` · УНАСАН: ${failed.map((r) => r.file).join(', ')}` : '');
 console.log(`\n${summary}`);
 if (process.env.GITHUB_STEP_SUMMARY) {

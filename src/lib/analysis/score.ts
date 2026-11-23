@@ -131,6 +131,8 @@ export function urbanScore(
   indicators: Indicator[],
   torol?: string | null,
   minShare: number = MIN_MEASURED_SHARE,
+  /** Таамгаар «норм хангасан» үзүүлэлтүүд — анхдагч `ASSUME_MET` (шалгуурт солино) */
+  assumeMet: Readonly<Record<string, number>> = ASSUME_MET,
 ): UrbanScore {
   let sum = 0, wsum = 0, total = 0, measured = 0;
   const parts: Record<string, Part> = {};
@@ -146,7 +148,7 @@ export function urbanScore(
     parts[ind.id] = { value: raw[ind.id] ?? null, score: s, weight: ind.weight, norm: eff };
     if (s !== null) {
       sum += s * ind.weight; wsum += ind.weight;
-      if (!(ind.id in ASSUME_MET)) measured += ind.weight;
+      if (!(ind.id in assumeMet)) measured += ind.weight;
     }
   }
 

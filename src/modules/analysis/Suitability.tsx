@@ -815,6 +815,16 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
           </div>
         </div>
       )}
+      {/* 2026-11-23 (аудит): анхны ачаалалд хоосон дэлгэц биш — ачаалж буйг харуулна */}
+      {!data && !error && (
+        <div className={s.loader} role="status" aria-live="polite">
+          <div className={s.loaderBox}>
+            <div className={s.loaderTitle}>{tr('Сэлбэ дэд төв')}</div>
+            <div className={s.loaderSub}>{tr('Тохиромжтой байдлын загварчлал')}</div>
+            <div className={s.loaderMsg}>{tr('Татаж байна…')}</div>
+          </div>
+        </div>
+      )}
 
       {data && data.failed.length > 0 && (
         <div

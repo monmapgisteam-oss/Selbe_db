@@ -276,6 +276,25 @@ export type PaidSyncPlan = {
 };
 
 /**
+ * НЭМСНИЙ ДАРААХ ДАВХАРДЛЫН ШАЛГАЛТ (цэвэр; 2026-11-23, аудит). Хоёр компьютер ижил цонхонд шинэ гэрээний толгой мөрийг
+ * зэрэг нэмж болно (ижил `geree_kod`, ижил «ХО» дугаар) — бүртгэлийн гэрээнд хоёулаа «Олгосон» дүнтэй тул олгосон дүн хоёр
+ * тоологдоно. `rows` — нэмсний дараа уншсан HO мөрүүд, `mine` — миний сая нэмсэн objectid-ууд. Миний нэмсэн мөр бүрийн кодтой,
+ * МИНИЙХ БИШ, БАГА objectid-тэй мөр байвал минийх устгагдана (хожуу нь бууж өгнө — хоёр тал ижил дүрмээр нэгийг л үлдээнэ).
+ */
+export function dupAddsToDelete(rows: readonly Row[], mine: readonly number[]): number[] {
+  const my = new Set(mine);
+  const codeOf = (r: Row) => txt(r[HC.code]);
+  const out: number[] = [];
+  for (const r of rows) {
+    const oid = Number(r[HO_IPC.oid]);
+    const code = codeOf(r);
+    if (!my.has(oid) || !code) continue;
+    if (rows.some((x) => codeOf(x) === code && !my.has(Number(x[HO_IPC.oid])) && Number(x[HO_IPC.oid]) < oid)) out.push(oid);
+  }
+  return out;
+}
+
+/**
  * IPC → ТТБ (2026-11-04, хэрэглэгч): IPC-ийн `dun` бичигдсэн мөр бүрийг гэрээний мөрт оноож нийлбэрлэнэ. `dun` зөвхөн «Олгосон»
  * шатанд бичигддэг тул IPC үүссэн ч олгоогүй дүн тоологдохгүй. Олон багцтай гэрээнд мөр нь өөрийн `bagts`-ийн багцад очно.
  */

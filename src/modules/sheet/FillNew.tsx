@@ -941,7 +941,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     asOf });
   const [ownJump, setOwnJump] = useState<{ row: number; block: string; n: number } | null>(null);
   const jumpReq = view?.jump ?? ownJump;
-  const { scrollRef, tbodyRef, rowHRef, onScroll, hitKey, winFrom, winTo } = useVirtualWindow({ vis, edit, view, jump: ownJump });
+  const { scrollRef, tbodyRef, rowHRef, onScroll, hitKey, winFrom, winTo, winGap } = useVirtualWindow({ vis, edit, view, jump: ownJump });
   /**
    * БУЦААГДСАН НҮДНИЙ ЖАГСААЛТ (гүйцэтгэгч) — `backChg` (тэр илгээлтэд өөрчлөгдсөн) ба `backOk`
    * (хянагч зөвшөөрсөн). Засах ёстой (улаан) нь ЭХЭНД, зөвшөөрсөн (ногоон ✓) нь араас; дотроо
@@ -2380,6 +2380,12 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
                 restoring={restoringUi} remainHint={remainHint} pastePrev={pastePrev} extra={extra} compact={compact} clearLocked={clearLocked}
                 maBlock={maBlock}
                 matNorms={matNorms}
+                winGap={winGap}
+                gapRow={(n) => (
+                  <tr aria-hidden="true" style={{ height: n * rowH }}>
+                    <td colSpan={nCols} style={{ padding: 0, border: 0 }} />
+                  </tr>
+                )}
               />
               {/* Доод ЧИГЖЭЭС — гүйлгэх зурвасны урт үнэн байлгана. */}
               {winTo < vis.length && (

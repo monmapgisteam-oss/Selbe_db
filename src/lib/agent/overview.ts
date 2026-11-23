@@ -6,7 +6,7 @@
 
 import { count, nPrefixUnicode, queryFeatures, queryGroup, queryStats, sqlStr, type Stat } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
-import { BLOCK_LAYER, BUILDING, PKG_BY_BAGTS, bagtsKey, zoneWhere, type LayerDef } from '@/lib/services';
+import { BLOCK_LAYER, BUILDING, PKG_BY_BAGTS, bagtsKey, pkgKeyOf, zoneWhere, type LayerDef } from '@/lib/services';
 import { layerTotals, qtyText, whereFor } from '@/lib/totals';
 import { allowedDatasets, allowedLayers, type AgentScope } from './registry';
 import type { Dataset } from './datasets';
@@ -72,7 +72,8 @@ async function datasetWhere(d: Dataset, zone: string): Promise<string | null> {
   const rows = await queryGroup(d.url, d.zoneField, [count(d.oid ?? 'objectid', 'n')], d.baseWhere ?? '1=1');
   const hits = rows
     .map((r) => String(r[d.zoneField!] ?? ''))
-    .filter((v) => v && bagtsKey(v) === key);
+    /* 2026-11-23 (аудит №42): «Багц 1,2», «БАГЦ 1-4» г.м. олон багцын мөр «Багц 12», «Багц-14»-тэй андуурагдахгүй (`pkgKeyOf`) */
+    .filter((v) => v && pkgKeyOf(v) === key);
 
   if (!hits.length) return null;
   return `${d.zoneField} IN (${hits.map(sqlStr).join(', ')})`;

@@ -803,7 +803,7 @@ export function toPkgPct(feats: readonly { attributes: Record<string, unknown> }
 const PCT_FIELDS = ['objectid', 'dkey', 'bagts', 'sar', 'sar_txt', 'obyem'];
 
 /** Бүх багцын сарын хувь + `dkey → ObjectID` (бичилтэд). Алдаа шидэгдэнэ — дуудагч «уншигдсангүй» гэж үзнэ (хоосон БИШ). */
-export async function loadPkgPct(): Promise<{ pct: PkgPct; oids: Map<string, number>; dups: number[] }> {
+export async function loadPkgPct(): Promise<{ pct: PkgPct; oids: Map<string, number>; dups: number[]; dupsByPkg: Map<string, number[]> }> {
   const feats: { attributes: Record<string, unknown> }[] = [];
   for (let off = 0; ; ) {
     const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
@@ -821,6 +821,8 @@ export async function loadPkgPct(): Promise<{ pct: PkgPct; oids: Map<string, num
   }
   const oids = new Map<string, number>();
   const dups: number[] = [];
+  /* 2026-11-23 (аудит №19): давхар мөрийг БАГЦААР — нэг багцыг хадгалахад бусад багцын мөрийг (тэдний эрхгүйгээр) устгахгүй */
+  const dupsByPkg = new Map<string, number[]>();
   for (const f of feats) {
     const a = f.attributes;
     const oid = Number(a.objectid);
@@ -829,10 +831,13 @@ export async function loadPkgPct(): Promise<{ pct: PkgPct; oids: Map<string, num
     if (!Number.isInteger(oid) || !pkg || monthStart(sar) == null) continue;
     const k = pctDkeyOf(pkg, sar);
     const old = oids.get(k);
-    if (old != null) dups.push(old);
+    if (old != null) {
+      dups.push(old);
+      (dupsByPkg.get(pkg) ?? dupsByPkg.set(pkg, []).get(pkg)!).push(old);
+    }
     oids.set(k, oid);
   }
-  return { pct: toPkgPct(feats), oids, dups };
+  return { pct: toPkgPct(feats), oids, dups, dupsByPkg };
 }
 
 /**
@@ -891,7 +896,8 @@ export async function patchPkgPct(pkg: string, name: string, patch: ReadonlyMap<
     const { currentUser } = await import('./who');
     if (!canEditMainSpan(currentUser(), name)) throw new Error(tr('Энэ багцын «Үндсэн хугацаа»-г засах эрхгүй — «Санхүү засах» эрх эсвэл тэр багцын хуваарийн зохиогч байх ёстой.'));
   }
-  const { pct, oids, dups } = await loadPkgPct();
+  const { pct, oids, dupsByPkg } = await loadPkgPct();
+  const dups = dupsByPkg.get(pkg) ?? [];
   const cur = pct.get(pkg) ?? new Map<string, number>();
   const next = pctPatched(cur, patch);
   const e = pctEdits(pkg, name, cur, oids, next);
@@ -905,7 +911,8 @@ export async function patchPkgPct(pkg: string, name: string, patch: ReadonlyMap<
 /** Нэг багцын сарын хувийг хадгална — ШИНЭЭР уншиж зөрүүг л бичнэ. Буцаах нь (нэмсэн, шинэчилсэн, устгасан). */
 export async function savePkgPct(pkg: string, name: string, next: ReadonlyMap<string, number | null>): Promise<[number, number, number]> {
   requireCap('finEdit');
-  const { pct, oids, dups } = await loadPkgPct();
+  const { pct, oids, dupsByPkg } = await loadPkgPct();
+  const dups = dupsByPkg.get(pkg) ?? [];
   const e = pctEdits(pkg, name, pct.get(pkg) ?? new Map(), oids, next);
   e.dups = dups;
   if (!e.adds.length && !e.updates.length && !e.deletes.length && !dups.length) return [0, 0, 0];

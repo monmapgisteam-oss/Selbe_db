@@ -64,7 +64,7 @@ function route({ self, perms, upstream = okUpstream }) {
     if (PERMS.test(u)) {
       calls.perms++;
       calls.lastWhere = body.get('where') ?? '';
-      assert.equal(body.get('outFields'), 'username,role,views', 'хүснэгтийн талбар жижиг үсгээр');
+      assert.equal(body.get('outFields'), 'username,role,views,last_edited_user', 'хүснэгтийн талбар жижиг үсгээр (+ бичсэн хүн — өөрөө бичсэн мөр хүчингүй)');
       assert.equal(body.get('f'), 'json');
       const r = await perms(body.get('token'), body.get('where'));
       if (r instanceof Error) throw r;
@@ -166,7 +166,7 @@ try {
     assert.equal(res.headers.get('Access-Control-Allow-Origin'), ORIGIN);
     assert.equal(calls.up, 1);
     assert.equal(calls.self, 1); assert.equal(calls.perms, 1);
-    assert.equal(calls.lastWhere, "username = 'bat'", 'хүснэгтийн where — нэр жижиг үсгээр');
+    assert.equal(calls.lastWhere, "username = 'bat' OR role = 'super'", 'хүснэгтийн where — нэр жижиг үсгээр (+ итгэмжлэлийн гинжийн super мөрүүд)');
     console.log('✅ worker: Anthropic 401 → 502 upstream_auth (түүхий мессежгүй)');
   }
 
@@ -180,7 +180,7 @@ try {
     const j = await res.json();
     assert.deepEqual(Object.keys(j).sort(), ['content', 'stop_reason', 'usage']);
     assert.equal(j.content[0].text, 'Сайн байна уу');
-    assert.equal(calls.lastWhere, "username = 'dorj_selbe' OR username = 'Dorj_Selbe'", 'том үсэгтэй нэр — жижиг + эх үсгээр хоёулаа');
+    assert.equal(calls.lastWhere, "username = 'dorj_selbe' OR username = 'Dorj_Selbe' OR role = 'super'", 'том үсэгтэй нэр — жижиг + эх үсгээр хоёулаа');
     const res2 = await post(env, { Origin: ORIGIN, 'x-arcgis-token': 'tok-ok' });
     assert.equal(res2.status, 200);
     assert.equal(calls.self, 1, 'community/self дахин асуугдахгүй (кэш)');
@@ -318,8 +318,8 @@ try {
       assert.equal(r.ok, true, `server: ${name} → ok`);
       const serverWhere = calls.lastWhere;
       assert.equal(serverWhere, name === name.toLowerCase()
-        ? "username = 'o''brien'"
-        : "username = 'o''brien' OR username = 'O''Brien'", `server: «${name}»-ийн where`);
+        ? "username = 'o''brien' OR role = 'super'"
+        : "username = 'o''brien' OR username = 'O''Brien' OR role = 'super'", `server: «${name}»-ийн where`);
       reset();
       globalThis.fetch = route({ self: selfOf(name), perms: rowOf(name.toLowerCase()) });
       const wr = await post(baseEnv(), { Origin: ORIGIN, 'x-arcgis-token': `tok-wq-${name}` });
@@ -339,6 +339,63 @@ try {
     assert.equal(S.verified.size, 2);
     assert.ok(S.verified.has(S.tokenHash('tok-a')) && !S.verified.has('tok-a'), 'server: кэшийн түлхүүр — токены SHA-256 хэш (түүхий токен биш)');
     console.log('✅ server.mjs: мөргүй/устгагдсан → 403 · хүснэгт уншигдахгүй → 503 · `\'` зайлуулалт (worker-тэй ижил) · зөвхөн амжилт токен тус бүрд кэшлэгдэнэ');
+  }
+
+  /* ── (ж) 2026-11-23 (аудит №29): МӨРИЙН ИТГЭМЖЛЭЛ — worker ба server ИЖИЛ ──
+     Хүчинтэй мөр = итгэмжлэгдсэн гинж (TRUSTED_ADMINS + тэдний бичсэн super) бичсэн. Өөрөө бичсэн ба ӨӨР энгийн гишүүний
+     бичсэн мөр (хэрэглэгч · `__cap__:` · super) хүчингүй. `last_edited_user` талбар огт ирээгүй мөрөнд итгэнэ (урьдын дүрэм). */
+  {
+    const ROOT = 'tumenjargal_selbe';
+    const feat = (username, role, views, editor) => ({ attributes: { username, role, views, ...(editor === undefined ? {} : { last_edited_user: editor }) } });
+    const user = (editor, views = '"all"') => feat('bat', 'beginner', views, editor);
+    const sup = (name, editor) => feat(name, 'super', '"all"', editor);
+    const cap = (editor) => feat('__cap__:bat', null, '["aiAgent"]', editor);
+    const cases = [
+      ['өөрөө бичсэн хэрэглэгчийн мөр', [user('bat')], 403],
+      ['ӨӨР энгийн гишүүний бичсэн мөр', [user('mallory')], 403],
+      ['үндсэн админы бичсэн мөр', [user(ROOT)], 200],
+      ['гинжийн super-ийн бичсэн мөр', [sup('admin2', ROOT), user('admin2')], 200],
+      ['итгэмжлэгдээгүй super-ийн бичсэн мөр', [sup('admin3', 'mallory'), user('admin3')], 403],
+      ['энгийн гишүүний бичсэн super мөр', [sup('bat', 'mallory')], 403],
+      ['бичсэн хүний талбаргүй (хуучин) мөр', [user(undefined)], 200],
+      ['cap шаардлагатай · cap-ыг энгийн гишүүн бичсэн', [user(ROOT, '[]'), cap('mallory')], 403, true],
+      ['cap шаардлагатай · cap-ыг админ бичсэн', [user(ROOT, '[]'), cap(ROOT)], 200, true],
+      ['cap шаардлагатай · энгийн гишүүний бичсэн super мөр cap-ыг алгасахгүй', [user(ROOT, '[]'), sup('bat', 'mallory')], 403, true],
+    ];
+    const PORTAL = 'https://gis.selbecity.mn/geoportal';
+    const PERMS_URL = 'https://gis.selbecity.mn/map/rest/services/Hosted/SYS_Selbe_Permissions/FeatureServer/230';
+    const src = readFileSync(new URL('../agent-proxy/server.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    const a = src.indexOf('const tokenHash = ');
+    const b = src.indexOf('async function checkArcGIS(token)');
+    let end = -1;
+    for (let i = src.indexOf('{', b), depth = 0; b > 0 && i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}' && --depth === 0) { end = i + 1; break; }
+    }
+    const factory = vm.runInThisContext(
+      `(function (fetch, createHash, ARCGIS_PORTAL, ARCGIS_PERMS_URL, ARCGIS_ORG_ID, VERIFIED_MAX) {\n${src.slice(a, end)}\nreturn { checkArcGIS };\n})`,
+      { filename: 'agent-proxy/server.mjs (trust)' },
+    );
+    let n = 0;
+    for (const [label, features, want, capReq] of cases) {
+      n += 1;
+      const perms = async () => ({ features });
+      /* worker */
+      reset();
+      globalThis.fetch = route({ self: selfOf('bat'), perms });
+      const env = { ...baseEnv(), ...(capReq ? { AGENT_CAP_REQUIRED: '1' } : {}) };
+      const wr = await post(env, { Origin: ORIGIN, 'x-arcgis-token': `tok-trust-w-${n}` });
+      assert.equal(wr.status, want, `worker: ${label} → ${want} биш (${wr.status})`);
+      await wr.text();
+      /* server (AGENT_CAP_REQUIRED нь модулийн тогтмол — хэсгийг дахин үнэлэхэд уншигдана) */
+      reset();
+      if (capReq) process.env.AGENT_CAP_REQUIRED = '1'; else delete process.env.AGENT_CAP_REQUIRED;
+      const S = factory(route({ self: selfOf('bat'), perms }), createHash, PORTAL, PERMS_URL, ORG, 500);
+      const sr = await S.checkArcGIS(`tok-trust-s-${n}`);
+      assert.equal(sr.ok ? 200 : sr.status, want, `server: ${label} → ${want} биш (${sr.ok ? 200 : sr.status})`);
+    }
+    delete process.env.AGENT_CAP_REQUIRED;
+    console.log(`✅ реле (worker · server): мөрийн итгэмжлэл — ${cases.length} тохиолдол (өөрөө/өөр гишүүн бичсэн → 403, гинж → 200, cap)`);
   }
 } finally {
   globalThis.fetch = realFetch;

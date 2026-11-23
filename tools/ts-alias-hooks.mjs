@@ -144,8 +144,8 @@ export async function load(url, context, next) {
           ? `console.log(${JSON.stringify(`::error file=${file},title=Сэлбэ амьд шалгуур::${msg}`)});\n` : '';
         return { ...r, source: `${ann}throw new Error(${JSON.stringify(msg)});\n` };
       }
-      const msg = `⏭ амьд шалгуур алгасав — ${why}`;
-      return { ...r, source: `console.log(${JSON.stringify(msg)});\nexport {};\n` };
+      /* 2026-11-23 (аудит №41): файлыг БҮХЭЛД нь орлуулахгүй — шалгуур бүр өөрийн амьд хэсгийг
+         `if (process.env.SELBE_LIVE_SKIP)`-ээр хаадаг тул сүлжээгүй хэсгүүд нь CI-д ч ажиллана */
     }
   }
   return r;

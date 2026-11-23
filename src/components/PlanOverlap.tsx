@@ -11,6 +11,7 @@ import SimpleLineSymbol from '@arcgis/core/symbols/SimpleLineSymbol';
 import SimpleMarkerSymbol from '@arcgis/core/symbols/SimpleMarkerSymbol';
 import * as reactiveUtils from '@arcgis/core/core/reactiveUtils';
 import { useMap } from '@/components/MapCanvas';
+import { useSyncRef } from '@/lib/useSyncRef';
 import {
   computeOverlap, computeOverlapDisplay, onOverlapStep, overlapScopeKey, fmtLen, OVERLAP_CATS, OVERLAP_TYPES,
   type OverlapCat, type OverlapResult, type OverlapSide, type OverlapMapDisplay, type OverlapZone,
@@ -35,11 +36,26 @@ const LINE_STYLE: Record<string, __esri.SimpleLineSymbolProperties['style']> = {
   sewer: 'dash', heat: 'short-dash', hot: 'short-dash', power: 'dash-dot', comm: 'dot', lotki: 'short-dot',
 };
 const zoneTitle = (zone: Pick<OverlapZone, 'label' | 'oid'>) => `${zone.label || tr('Бүс')} · #${zone.oid}`;
+/** Графикийн хэсэг ба одоогийн тодруулгын төлөв (hover-т зөвхөн өөрчлөгдсөнийг солихын тулд) */
+type DrawnPiece = { type: string; geometry: { type: string } } & Parameters<typeof matchesOverlapFocus>[2];
+const drawnOf = new WeakMap<Graphic, { p: DrawnPiece; on: boolean }>();
+
 /** '#rrggbb' → [r, g, b] */
 const rgbOf = (hex: string): [number, number, number] => {
   const n = parseInt(hex.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 };
+
+/** Давхцлын хэсгийн тэмдэгт — инженерийн төрлийн өнгө, масштабт тохирсон зузаан */
+function overlapSymbol(p: { type: string; geometry: { type: string } }, highlighted: boolean, lw: number) {
+  const hue = TYPE_BY_KEY.get(p.type)?.hue ?? '#64748b';
+  const g = p.geometry;
+  return g.type === 'polyline'
+    ? new SimpleLineSymbol({ color: hue, width: lw + (highlighted ? 0.35 : 0), style: LINE_STYLE[p.type] ?? 'solid', cap: 'round', join: 'round' })
+    : g.type === 'polygon'
+      ? new SimpleFillSymbol({ color: [...rgbOf(hue), highlighted ? 0.2 : 0.1] as never, outline: { color: hue, width: highlighted ? 0.9 : 0.55 } })
+      : new SimpleMarkerSymbol({ color: hue, size: highlighted ? 5.5 : 4, outline: { color: '#ffffff', width: 0.65 } });
+}
 
 type State = { result: OverlapResult | null; step: string; error: string | null };
 
@@ -145,28 +161,36 @@ export function PlanOverlapLayers({
     return () => { map.remove(l); l.destroy(); setGl(null); };
   }, [view]);
 
-  /* Бодит огтлолцлыг инженерийн төрлийн өнгөөр, масштабт тохирсон нарийн шугамаар зурна. */
+  /* Бодит огтлолцлыг инженерийн төрлийн өнгөөр, масштабт тохирсон нарийн шугамаар зурна.
+     2026-11-23 (аудит): hover (`focus`) бүрд БҮХ графикийг устгаж дахин үүсгэдэг байв — одоо графикийг зөвхөн
+     хэсэг/шугамын зузаан солигдоход барина, hover-т зөвхөн тодруулга өөрчлөгдсөн графикийн тэмдэгтийг солино. */
+  const focusRef = useRef(focus);
+  useSyncRef(focusRef, focus);
   useEffect(() => {
     if (!gl) return;
     gl.removeAll();
     if (tipRef.current) tipRef.current.hidden = true;
-    gl.addMany(visiblePieces
-      .map((p) => {
-        const hue = TYPE_BY_KEY.get(p.type)?.hue ?? '#64748b';
-        const highlighted = matchesOverlapFocus(focus, 'next', p);
-        const g = p.geometry;
-        const symbol = g.type === 'polyline'
-          ? new SimpleLineSymbol({ color: hue, width: lineWidth + (highlighted ? 0.35 : 0), style: LINE_STYLE[p.type] ?? 'solid', cap: 'round', join: 'round' })
-          : g.type === 'polygon'
-            ? new SimpleFillSymbol({ color: [...rgbOf(hue), highlighted ? 0.2 : 0.1] as never, outline: { color: hue, width: highlighted ? 0.9 : 0.55 } })
-            : new SimpleMarkerSymbol({ color: hue, size: highlighted ? 5.5 : 4, outline: { color: '#ffffff', width: 0.65 } });
-        return new Graphic({
-          geometry: g,
-          attributes: { cats: p.cats, type: p.type, layer: p.layer, len: p.lengthM },
-          symbol,
-        });
-      }));
-  }, [gl, visiblePieces, focus, lineWidth]);
+    gl.addMany(visiblePieces.map((p) => {
+      const on = matchesOverlapFocus(focusRef.current, 'next', p);
+      const g = new Graphic({
+        geometry: p.geometry,
+        attributes: { cats: p.cats, type: p.type, layer: p.layer, len: p.lengthM },
+        symbol: overlapSymbol(p, on, lineWidth),
+      });
+      drawnOf.set(g, { p, on });
+      return g;
+    }));
+  }, [gl, visiblePieces, lineWidth]);
+  useEffect(() => {
+    gl?.graphics.forEach((g) => {
+      const d = drawnOf.get(g);
+      if (!d) return;
+      const on = matchesOverlapFocus(focus, 'next', d.p);
+      if (on === d.on) return;
+      drawnOf.set(g, { p: d.p, on });
+      g.symbol = overlapSymbol(d.p, on, lineWidth);
+    });
+  }, [gl, focus, lineWidth]);
 
   /* ДАВХАРГА сонгоход тэр давхаргын давхцал руу ОЙРТОНО (хэрэглэгч: «zoom to layer and filter») */
   const selLayer = selected?.layer ?? null;

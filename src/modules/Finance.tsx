@@ -720,20 +720,31 @@ export const INFRA_TYPE = 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ';
 
 /**
  * АЖЛЫН ТӨРЛИЙН (ангиллын) БИЕТ ГҮЙЦЭТГЭЛ «ОДОО» — тэр төрлийн мөрүүдийн багцаар (`pkgKeyOf(pkg2)`) `physNowOf`.
+ * 2026-11-23 (аудит): мөрд `cost` (төсөв) өгвөл БӨГЛӨХ ХУУДАСГҮЙ багц 0% гэж тооцогдоно — «Төсөл төлөвлөгөө биелэлт»-ийн тэр
+ * төрлийн мөртэй (6.2.3) НЭГ хүрээ. Урьд нь зөвхөн хуудастай 14 багцаар 11.2% гарч, нэг дашбоардын ТТБ-ийн 4.1%-тай зөрдөг байв.
  */
 export function typePhysNow(
   d: FinData,
-  rows: Iterable<{ type: string; pkg2: string }>,
+  rows: Iterable<{ type: string; pkg2: string; cost?: number | null }>,
   type: string,
   nowYm: string = monthKey(),
 ): { pct: number; at: string } | null {
   const keys = new Set<string>();
+  const measured = new Set<string>([...d.phys.keys(), ...(d.physN?.keys() ?? [])]);
+  let all = 0;
+  let withData = 0;
+  let anyCost = false;
   for (const r of rows) {
     if (r.type !== type) continue;
     const k = pkgKeyOf(r.pkg2);
-    if (k && k !== '0') keys.add(k);
+    const c = typeof r.cost === 'number' && Number.isFinite(r.cost) && r.cost > 0 ? r.cost : 0;
+    if (r.cost != null) anyCost = true;
+    all += c;
+    if (k && k !== '0') { keys.add(k); if (measured.has(k)) withData += c; }
   }
-  return physNowOf(d, keys, nowYm);
+  const p = physNowOf(d, keys, nowYm);
+  if (!p || !anyCost || !(all > 0) || !(withData > 0)) return p;
+  return { ...p, pct: p.pct * Math.min(1, withData / all) };
 }
 
 /**
@@ -745,7 +756,7 @@ export function infraPhysNow(d: FinData, nowYm: string = monthKey()): { pct: num
   const C = CASHFLOW_NEW.fields;
   return typePhysNow(
     d,
-    d.contracts.map((r) => ({ type: finXlChartCat(r), pkg2: String(r[C.pkg2] ?? '').trim() })),
+    d.contracts.map((r) => ({ type: finXlChartCat(r), pkg2: String(r[C.pkg2] ?? '').trim(), cost: Number(r[C.budget]) || 0 })),
     INFRA_TYPE,
     nowYm,
   );
@@ -793,6 +804,9 @@ async function loadFinDataRaw(): Promise<FinData> {
     ipc.forEach((r) => {
       const amt = hoAmount(r);
       if (amt == null || amt === 0) return;
+      /* 2026-11-23 (аудит): ТЭЗҮ · зураг төслийн гэрээний төлбөр («ТЭЗҮ, Судалгаа») багцын БАРИЛГЫН олголтод орохгүй — «Төсөл
+         төлөвлөгөө биелэлт» түүнийг зургийн үе шатанд бүртгэдэг (Багц-2: 181.95 ↔ 179.82 тэрбум ₮). Нийт олголтод хэвээр (`hoTotals`). */
+      if (/тэзү|судалгаа/i.test(String(r[HC.workType] ?? ''))) return;
       const k = pkgKeyOf(r[HC.pkg]);
       if (!k || k === '0') return;
       givenTotal.set(k, (givenTotal.get(k) ?? 0) + amt);
@@ -1177,6 +1191,13 @@ function ExcludedSummary({ tree, result }: { tree: ProjectPlan['tree']; result: 
     if (!what.length) continue;
     rows.push({ code: n.code, name: String(r.ajil_uilchilgee ?? ''), what, money: noMoney(n) ? result.values.get(n)?.E ?? null : null });
   }
+  /* 2026-11-23 (аудит): «Үе шатны гүйцэтгэлд тооцохгүй» мөртэй үе шат — мөрд харагдах хувь (тэр мөрийг хассан) ба Төслийн нийтэд
+     орсон хувь (тэр мөртэй) хоёр өөр; ил бичихгүй бол үе шатуудаас Төслийн нийт дахин бодогдохгүй (37.3 ↔ 36.0) */
+  const gaps = tree.root.children.flatMap((n) => {
+    const shown = result.values.get(n)?.S ?? null;
+    const used = result.total?.values.get(n)?.S ?? null;
+    return shown != null && used != null && Math.abs(shown - used) > 0.005 ? [{ code: n.code, name: String(n.row?.ajil_uilchilgee ?? ''), shown, used }] : [];
+  });
   if (!rows.length) return null;
   const money = rows.reduce((a, x) => a + (x.money ?? 0), 0);
   return (
@@ -1189,6 +1210,11 @@ function ExcludedSummary({ tree, result }: { tree: ProjectPlan['tree']; result: 
         {rows.map((x) => (
           <li key={x.code}>
             <b className="num">{x.code}</b> {x.name} — {x.what.join(', ')}{x.money != null && x.money !== 0 ? ` (${mnt(x.money)})` : ''}
+          </li>
+        ))}
+        {gaps.map((g) => (
+          <li key={`gap:${g.code}`}>
+            <b className="num">{g.code}</b> {g.name} — {tr('мөрд {0} харагдана, Төслийн нийтэд {1}-аар орсон', pct(g.shown, 2), pct(g.used, 2))}
           </li>
         ))}
       </ul>
@@ -1205,6 +1231,8 @@ function PhaseWeightCell({ shown, stored, canEdit, onSave, onError }: {
   onError: (msg: string) => void;
 }) {
   const [text, setText] = useState<string | null>(null);
+  /** 2026-11-23 (аудит): Enter-ээр хадгалж буй үед blur дахин илгээхгүй (`PlanEntry`-ийн хамгаалалт) */
+  const saving = useRef(false);
   const fixed = stored != null;
   const title = fixed ? tr('Тогтмол жин — гараар оруулсан') : tr('Томьёогоор: 100% − тогтмол жингүүдийн нийлбэр, төсвөөр');
   if (!canEdit) return <td className={f.cellNum} title={title}>{pct(shown, 2)}</td>;
@@ -1215,7 +1243,9 @@ function PhaseWeightCell({ shown, stored, canEdit, onSave, onError }: {
     if (v != null && !(Number.isFinite(v) && v >= 0 && v <= 100)) { onError(tr('Жин 0–100 хооронд байх ёстой')); return; }
     const was = stored == null ? null : Math.round(stored * 1e6) / 1e4;
     if (v === was) { setText(null); return; }
-    if (await onSave(v)) setText(null);
+    if (saving.current) return;
+    saving.current = true;
+    try { if (await onSave(v)) setText(null); } finally { saving.current = false; }
   };
   if (text == null) {
     return (
@@ -1354,6 +1384,9 @@ export function ProjectPlanTable({
   onSaved: () => void;
 }) {
   const { tree, result } = plan;
+  /* 2026-11-23 (аудит №4): хадгалсан «Олгосон дүн» IPC-ээс хоцорсон бол тэмдэглэнэ (зөвхөн уншина — бичилтийг синк хийнэ) */
+  const paidPendQ = useAsync(() => import('@/lib/hoSync/sync').then((m) => m.paidSyncPending()).catch(() => null), []);
+  const paidPend = paidPendQ.state === 'ready' && paidPendQ.data && paidPendQ.data.rows > 0 ? paidPendQ.data : null;
   /* ── БАГАНА СОНГОХ (2026-11-17, хэрэглэгч: «checkлэсэн баганууд харагддаг хэсэг») — тэмдэглэсэн багана л харагдана;
      сонголт хөтөчид хадгалагдана (`PP_COLS_LS`). Зөвхөн «Бүрэн хүснэгт» харагдацад. ── */
   const allGroups = useMemo(() => ppGroups(), []);
@@ -1437,7 +1470,7 @@ export function ProjectPlanTable({
     const alloc = c.k === 'E' && v?.E == null && v?.EA != null && !!n && isAddedWork(n);
     const x = CALC_KEYS.includes(c.k) ? ppCalcVal(c.k, n ? moneyOf.get(n) : undefined, rootE)
       : c.raw ? ((n?.row?.[c.k as PpRawKey] as number | string | null | undefined) ?? null)
-      : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip' | 'noTotal' | 'noPhase' | 'GT'>] : null;
+      : alloc ? v!.EA : v ? v[c.k as Exclude<keyof PlanValues, 'status' | 'skip' | 'noTotal' | 'noPhase' | 'GT' | 'FT'>] : null;
     const st = c.k === 'S' && blk && v?.status ? v.status : null;
     return (
       <td
@@ -1607,6 +1640,11 @@ export function ProjectPlanTable({
       <header className={f.regHd}>
         <h2>{tr('Төсөл төлөвлөгөө биелэлт')}</h2>
         <span>{tr('{0}-ний байдлаар · {1} мөр', date(result.today), num(tree.nodes.length))}</span>
+        {paidPend && (
+          <span role="status" title={tr('Олгосон дүнг «Төлбөрийн акт (IPC)»-ээс синкийн эрхтэй хэрэглэгч порталыг нээхэд шинэчилнэ.')}>
+            {tr('Олгосон дүн синк хүлээгдэж буй: {0} мөр · {1} ₮', num(paidPend.rows), num(paidPend.delta))}
+          </span>
+        )}
       </header>
       <div className={f.ppBar}>
         <div className={f.tabs} role="group" aria-label={tr('Харагдац')}>
@@ -1749,7 +1787,7 @@ export function ProjectPlanTable({
                   {nameCell(n)}
                   {!n.outside && !r.registry && (n.parent === tree.root || n.phase !== 'zurag') && typeof r.objectid === 'number' ? (
                     <PhaseWeightCell
-                      shown={v?.F ?? null}
+                      shown={v?.FT !== undefined ? v.FT : v?.F ?? null}
                       stored={typeof r.heseg_ezleh_huvi === 'number' ? r.heseg_ezleh_huvi : null}
                       canEdit={canEdit}
                       onError={setErr}
@@ -1766,7 +1804,7 @@ export function ProjectPlanTable({
                         }
                       }}
                     />
-                  ) : <td className={f.cellNum}>{pct(v?.F ?? null, 2)}</td>}
+                  ) : <td className={f.cellNum}>{pct(v?.FT !== undefined ? v.FT : v?.F ?? null, 2)}</td>}
                   {PLAN_EDIT_KEYS.map((k) => (
                     <Fragment key={k}>
                       <PlanEditCell

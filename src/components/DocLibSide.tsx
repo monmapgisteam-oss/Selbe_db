@@ -72,7 +72,14 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
     try { await fn(); } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
   };
 
-  const saveEdit = () => run(async () => {
+  /** 2026-11-23 (аудит): Enter давхар дарахад (busy шинэчлэгдэхээс өмнө) хоёр удаа хадгалахгүй */
+  const saving = useRef(false);
+  const saveEdit = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    try { await saveEditRun(); } finally { saving.current = false; }
+  };
+  const saveEditRun = () => run(async () => {
     const title = edit?.title.trim() ?? '';
     if (!edit || !title || !groups || groupsFailed) { setEdit(null); return; }
     const next = await saveGroups((cur) => {
@@ -94,7 +101,7 @@ export function DocLibSide({ active, onPick }: { active: string | null; onPick: 
     <div className={s.entRow}>
       <input className={s.entInput} autoFocus value={edit?.title ?? ''} placeholder={tr('Бүлгийн нэр')} aria-label={tr('Бүлгийн нэр')}
         onChange={(e) => setEdit((x) => (x ? { ...x, title: e.target.value } : x))}
-        onKeyDown={(e) => { if (e.key === 'Enter') void saveEdit(); if (e.key === 'Escape') { e.stopPropagation(); setEdit(null); } }} />
+        onKeyDown={(e) => { if (e.key === 'Enter' && !busy && !saving.current && edit?.title.trim()) void saveEdit(); if (e.key === 'Escape') { e.stopPropagation(); setEdit(null); } }} />
       <button type="button" className={s.entBtn} disabled={busy || !edit?.title.trim()} onClick={() => { void saveEdit(); }}>{tr('Хадгалах')}</button>
       <button type="button" className={s.entLink} disabled={busy} onClick={() => setEdit(null)}>{tr('Болих')}</button>
     </div>

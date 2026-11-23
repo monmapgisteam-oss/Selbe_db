@@ -77,13 +77,15 @@ export function AclGrid({
 }: AclGridProps) {
   /** Нээлттэй «+» сонгогч — `мөр|багана` (нэг л удаад нэг) */
   const [open, setOpen] = useState<string | null>(null);
+  /** Нээлттэй сонгогчид сонгосон (хараахан олгоогүй) аккаунт */
+  const [pick, setPick] = useState('');
   useEffect(() => {
     if (open == null) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.stopImmediatePropagation();
       e.preventDefault();
-      setOpen(null);
+      setOpen(null); setPick('');
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
@@ -110,25 +112,35 @@ export function AclGrid({
           ))}
           {!hs.length && open !== key && <span className={s.ggDash}>—</span>}
           {open === key ? (
-            <select
-              className={s.ggSelect}
-              aria-label={addTitle(row, col)}
-              autoFocus
-              value=""
-              disabled={off}
-              onBlur={() => setOpen(null)}
-              onChange={(e) => {
-                const u = e.target.value;
-                setOpen(null);
-                if (u) onAdd(row.key, col.key, u);
-              }}
+            /* 2026-11-23 (аудит): сонгоход шууд олгохгүй (гарын сум/буруу товшилт) — сонгоод «Нэмэх» дарна */
+            <div
+              style={{ display: 'flex', gap: 4, width: '100%' }}
+              onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setOpen(null); setPick(''); } }}
             >
-              <option value="">{cands.length ? tr('Аккаунт сонгох…') : tr('Нэмэх аккаунт алга — шинэ аккаунтыг эхлээд «Хадгалах» дарна уу')}</option>
-              {cands.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
+              <select
+                className={s.ggSelect}
+                aria-label={addTitle(row, col)}
+                autoFocus
+                value={pick}
+                disabled={off}
+                onChange={(e) => setPick(e.target.value)}
+              >
+                <option value="">{cands.length ? tr('Аккаунт сонгох…') : tr('Нэмэх аккаунт алга — шинэ аккаунтыг эхлээд «Хадгалах» дарна уу')}</option>
+                {cands.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+              <button
+                type="button"
+                className={s.aclBtn}
+                disabled={off || !pick}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { const u = pick; setOpen(null); setPick(''); if (u) onAdd(row.key, col.key, u); }}
+              >
+                {tr('Нэмэх')}
+              </button>
+            </div>
           ) : (
             <button type="button" className={s.ggAdd} disabled={off} title={addTitle(row, col)} aria-label={addTitle(row, col)}
-              onClick={() => { if (canOpen && !canOpen()) return; setOpen(key); }}>
+              onClick={() => { if (canOpen && !canOpen()) return; setPick(''); setOpen(key); }}>
               +
             </button>
           )}

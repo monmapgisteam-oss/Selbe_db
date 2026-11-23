@@ -7,7 +7,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { money2, num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
-import { loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
+import { loadDesignMoney, loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
@@ -15,7 +15,7 @@ import {
   orderTotalOf,
 } from '@/lib/services';
 import { housingPct, pkgCostWeight, pkgCostTotal, cfWeightRow } from '@/lib/gdash';
-import { paidShareOf, paidPctOf } from '@/lib/paidShare';
+import { paidShareOf, paidPctOf, withProjectContract } from '@/lib/paidShare';
 import { finPkgKey } from '@/lib/pkgAlias';
 import { loadNegtgelPct } from '@/lib/negtgel';
 import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD, ubDayKey } from '@/lib/ceo/workforce';
@@ -228,7 +228,7 @@ export function byTypeGapNote(f: Pick<ReportExtra['finance'], 'budget' | 'byType
   const missing = f.budget - (f.byTypeTotal.budget - outside);
   const parts: string[] = [];
   if (outside > 0.5) parts.push(tr('нийт төсөвт ордоггүй мөрүүд {0} ₮ (нийгмийн дэд бүтэц) энэ хүснэгтэд орсон', bn(outside)));
-  if (missing > 0.5) parts.push(tr('ажлын мөргүй үе шатууд {0} ₮ (ТЭЗҮ, зураг төсөл, газар чөлөөлөлт) орхигдсон', bn(missing)));
+  if (missing > 0.5) parts.push(tr('ажлын мөргүй үе шатууд {0} ₮ (газар чөлөөлөлт г.м.) орхигдсон', bn(missing)));
   return parts.length ? tr('Хүснэгтийн нийлбэр төслийн нийт төсвөөс ялгаатай: {0}.', parts.join('; ')) : null;
 }
 
@@ -237,7 +237,7 @@ export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'C
 async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   const F = CASHFLOW_NEW.fields;
   const { loadPkgProgress } = await import('@/lib/blockProgress');
-  const [byPkg, labels, cf] = await Promise.all([
+  const [byPkg, labels, cf, projBudget] = await Promise.all([
     loadPkgProgress(),
     loadPkgLabels(),
     /* Зөвхөн 3 талбар — `loadFinance` нь «*»-оор бүтнээр татдаг ч энэ нь
@@ -246,6 +246,8 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
       where: CF_WORK_WHERE,
       outFields: [F.pkg2, F.pkg, F.budget, FIN_XL_TOTAL_CODE_FIELD],
     }),
+    /* 2026-11-23 (аудит №7): ТТБ-ийн НИЙТ төсөв (E) — ажлын мөрийн нийлбэр ТЭЗҮ/зураг төслийн мөнгийг орхидог байв */
+    loadProjectBudgetTotal().catch(() => null),
   ]);
 
   /** багцын түлхүүр → урьдчилсан төсөвт өртөг, ₮ */
@@ -256,7 +258,7 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
 
   /* Төслийн НИЙТ төсөв — жингийн хуваарь. 2026-11-04: диапазон/багцгүй мөр орсон (`pkgCostTotal`) —
      урьд нь Σ `budget` (багцтай мөр л) тул орон сууцны жин 79.4% гарч байв, үнэн нь 74.43%. */
-  const budgetAll = pkgCostTotal(weightRows);
+  const budgetAll = projBudget != null && projBudget > 0 ? projBudget : pkgCostTotal(weightRows);
 
   const raw = [...byPkg.entries()].map(([pkg, m]) => ({
     key: pkg,
@@ -456,12 +458,13 @@ export const loadFinance = cached(loadFinanceRaw, 5 * 60_000, ['CASHFLOW_NEW', '
 
 async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   const F = CASHFLOW_NEW.fields;
-  const [rows, ho, official, officialContract] = await Promise.all([
+  const [rows, ho, official, officialContract, design] = await Promise.all([
     queryFeatures(CASHFLOW_NEW.url, { where: CF_WORK_WHERE, outFields: ['*'] }),
-    queryFeatures(HO_IPC.url, { outFields: [HO_IPC.payFields.amount, HO_IPC.contractFields.pkg] }),
+    queryFeatures(HO_IPC.url, { outFields: [HO_IPC.payFields.amount, HO_IPC.contractFields.pkg, HO_IPC.contractFields.workType] }),
     loadProjectBudgetTotal(),
     /* 2026-11-19 (аудит): ТТБ-ийн Төслийн нийт «Гэрээний дүн» — ТЭЗҮ · зураг төслийн гэрээ орно */
     loadProjectContractTotal().catch(() => null),
+    loadDesignMoney().catch(() => null),
   ]);
 
 
@@ -489,7 +492,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
   /*
    * «Бодитоор олгосон» — HO төлбөрийн бүртгэлийн `dun` нийлбэр.
    */
-  const share = paidShareOf(master, ho);
+  /* 2026-11-23 (аудит №3): ТТБ-ийн нийт гэрээлсэн дүнгээр хуваах тул ТЭЗҮ/судалгааны олголт тоологчид орно */
+  const share = withProjectContract(paidShareOf(master, ho), officialContract);
   const { paid, paidContracted } = share;
 
   /*
@@ -508,6 +512,13 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     if (str(r[F.amountNote]) === CONTRACTED) e.contract += nn(r[F.contractAmount]);
     typeMap.set(t, e);
   });
+
+  /* 2026-11-23 (хэрэглэгч): ТЭЗҮ · ажлын зураг төслийн гэрээ ажлын мөрд байхгүй тул тусдаа мөр — задаргааны нийт ТТБ-тэй таарна */
+  const DESIGN = tr('ТЭЗҮ, зураг төсөл');
+  if (design && (design.budget > 0 || design.contract > 0)) {
+    const e = typeMap.get(DESIGN) ?? { n: 0, budget: 0, contract: 0 };
+    typeMap.set(DESIGN, { n: e.n + design.n, budget: e.budget + design.budget, contract: e.contract + design.contract });
+  }
 
   /**
    * БАГЦ БҮРИЙН урьдчилсан төсөвт өртөг — `BagtsRow.key`-ээр хайхад бэлэн.
@@ -547,7 +558,7 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
     /* 2026-11-20 (засвар): олгосон дүн, гэрээлсэн багцын олголт, гадуурх олголт гурвуулаа НЭГ эхээс («Төлбөрийн акт (IPC)») —
        өмнөх засварт олгосон дүн ТТБ-ээс, задаргаа нь IPC-ээс авагдаж нэг өгүүлбэрт зөрдөг байв */
     paid: share.paidKnown ? paid : null,
-    paidPct: officialContract != null && share.paidKnown ? paidPctOf(paidContracted, officialContract) : share.pct,
+    paidPct: share.pct,
     paidContracted,
     paidOther: share.paidOther,
     byType: [...typeMap.entries()]
@@ -559,12 +570,12 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
      */
     byTypeTotal: {
       /* Мөрүүдтэй ижил хүрээ: нуугдсан (`FIN_XL_ROW_HIDE`) хэсэг нийт дүнд орохгүй */
-      budget: shownRows.reduce((a, r) => a + nn(r[F.budget]), 0),
+      budget: shownRows.reduce((a, r) => a + nn(r[F.budget]), 0) + (design?.budget ?? 0),
       /** Нийт төсөвт ордоггүй ажлын мөрүүд (нийгмийн дэд бүтэц г.м.) — зөрүүний тайлбарт */
       outside: shownRows.filter((r) => !finXlInTotal(r)).reduce((a, r) => a + nn(r[F.budget]), 0),
       contract: shownRows
         .filter((r) => str(r[F.amountNote]) === CONTRACTED)
-        .reduce((a, r) => a + nn(r[F.contractAmount]), 0),
+        .reduce((a, r) => a + nn(r[F.contractAmount]), 0) + (design?.contract ?? 0),
     },
     byBagts,
   };

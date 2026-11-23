@@ -23,7 +23,7 @@ function read(): Line[] {
   return [
     { name: tr('Төлбөрийн акт ↔ Төсөл төлөвлөгөө биелэлт'), at: ho?.at ?? null, error: ho?.error && ho.error !== 'no-cap' ? ho.error : null },
     { name: tr('Гүйцэтгэлийн хувь, огноо'), at: planSyncLastAt() || null, error: pl ? (pl.ok ? planSyncWarn(pl) : pl.error) : null },
-    { name: tr('Нийтийн вэб'), at: pu?.at ?? null, error: puOff ?? (pu?.failed.length ? pu.failed.join(', ') : null) },
+    { name: tr('Нийтийн вэб'), at: pu?.at ?? null, error: puOff ?? ((pu?.failed ?? []).filter((x) => x !== 'no-cap').join(', ') || null) },
   ];
 }
 

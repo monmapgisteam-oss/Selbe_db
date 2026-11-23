@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { MapCanvas, useMap, type Dim } from '@/components/MapCanvas';
+import { MapCanvas, progColor, useMap, type Dim } from '@/components/MapCanvas';
 import { MapTools } from '@/components/MapTools';
 import { LayerCatalog } from '@/components/LayerCatalog';
 import { OpacityPanel } from '@/components/OpacityPanel';
@@ -14,10 +14,8 @@ import { useZoomToFilter } from '@/lib/useZoomToFilter';
 
 import { BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, bagtsKey, zoneWhere } from '@/lib/services';
 import { mapPkgLayers } from '@/lib/pkgAlias';
-import { shade } from '@/lib/format';
 import { BLOCK_LAYER, type Pack } from '@/modules/Bagts';
 import { pickedBuilding } from '@/modules/BuildingPanel';
-import { HUE } from '@/modules/pkgShared';
 import s from '../tuh.module.css';
 
 export type MapSel = {
@@ -151,9 +149,10 @@ export function TuhMap({ dim, setDim, sel, packs, packsState = 'ready', onPickPk
               {LAYER_BY_ID[id]?.title}
             </span>
           ))
-          : PROGRESS_LEVELS.map((l, i) => (
+          : PROGRESS_LEVELS.map((l) => (
             <span key={l.key} className={s.mapLegendItem}>
-              <i style={{ background: shade(HUE, PROGRESS_LEVELS.length - 1 - i, PROGRESS_LEVELS.length) } as CSSProperties} />
+              {/* 2026-11-23 (аудит): тайлбарын өнгө = газрын зургийн рендерерийн өнгө (`progColor`, түвшний дунд) — урьд нь улбар шар */}
+              <i style={{ background: `rgb(${progColor((l.min + l.max) / 2).join(',')})` } as CSSProperties} />
               {l.label} <b>{l.range}</b>
             </span>
           ))}

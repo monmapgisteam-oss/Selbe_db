@@ -10,7 +10,7 @@ import { agsFetch } from '@/modules/sheet/ags';
 import { invalidate } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
 import { snapshotDayOf, LINK_FIELDS } from '@/lib/ipcLink';
-import { dayOf, planAuto, autoContractFor, planAutoZoruu, sheetsVerdict, type AutoPlan, type SheetRead } from '@/lib/ipcAuto';
+import { dayOf, planAuto, autoContractFor, planAutoZoruu, sheetsVerdict, autoDay, isAuto, isCancelledRow, isLockedRow, type AutoPlan, type SheetRead } from '@/lib/ipcAuto';
 import { uniqueBlockCounts } from '@/lib/blockProgress';
 import { t as tr } from '@/lib/i18nCore';
 
@@ -35,6 +35,68 @@ export type AutoResult =
  * бодож, зөрсөн бол `guits_une`-г шинэчилнэ. IPC-д орсон мөр, нэг өдөрт олон мөртэй өдөр, уншигдаагүй хуудастай өдрийг хөндөхгүй.
  * @returns шинэчилсэн мөрийн тоо
  */
+/** Одоо ч чөлөөт («Гүйцэтгэл», IPC дугааргүй) мөрийн objectid-ууд — бичихийн өмнөх дахин шалгалт (цэвэр) */
+export function stillFree(rows: readonly Row[]): Set<number> {
+  const out = new Set<number>();
+  for (const r of rows) {
+    const oid = Number(r[HO_IPC.oid]);
+    const st = String(r[HO_IPC.status.field] ?? '').trim();
+    if (Number.isFinite(oid) && (st === HO_IPC.status.work || st === '') && r[P.ipcNo] == null) out.add(oid);
+  }
+  return out;
+}
+
+/**
+ * ИЖИЛ БАГЦ · ИЖИЛ ӨДРИЙН БУСАД (цуцлагдаагүй) AUTO мөр (2026-11-23, аудит №11) — `AUTO|P|D` ба `AUTO|P|D|2` ялгаатай
+ * `murun_id`-тай тул урьд нь «давхар биш» гэж үзэж, хоёуланд нь өдрийн БҮТЭН дүнг бичдэг байв (IPC-д орсон хэсэг дахин
+ * төлөгдөнө). `planAuto`-гийн адил эдгээрийн дүнг хасна (цэвэр).
+ */
+export function sameDayOthers(rows: readonly Row[], r: Row): Row[] {
+  const C = HO_IPC.contractFields;
+  const key = pkgKeyOf(r[C.pkg]);
+  const day = autoDay(r);
+  return rows.filter((x) => x !== r && isAuto(x) && !isCancelledRow(x) && autoDay(x) === day && pkgKeyOf(x[C.pkg]) === key);
+}
+
+/**
+ * ДАХИН ҮНЭЛЭХ МӨР (2026-11-23, хяналт) — `r`-ийн (багц, өдөр)-т `planAuto`-гийн шинэчлэх мөр (`isLockedRow` биш ЭХНИЙХ, OID-ийн
+ * дарааллаар). Бусад сул мөр дахин үнэлэгдэхгүй (цэвэр).
+ */
+export function repricePick(rows: readonly Row[], r: Row): Row | undefined {
+  const C = HO_IPC.contractFields;
+  const key = pkgKeyOf(r[C.pkg]);
+  const day = autoDay(r);
+  return rows.find((x) => isAuto(x) && autoDay(x) === day && pkgKeyOf(x[C.pkg]) === key && !isLockedRow(x));
+}
+
+/** `planAuto`-гийн шинэчлэлт хадгалсан утгаас ялгаагүй юу (давталтын зогсоох нөхцөл, цэвэр) */
+export function autoUnchanged(rows: readonly Row[], attrs: Record<string, unknown>): boolean {
+  const oid = Number(attrs[HO_IPC.oid]);
+  const cur = rows.find((r) => Number(r[HO_IPC.oid]) === oid);
+  if (!cur) return false;
+  const same = (f: string, eps: number) => {
+    const x = num(attrs[f]);
+    const y = num(cur[f]);
+    return x == null ? y == null : y != null && Math.abs(x - y) < eps;
+  };
+  return same(LINK_FIELDS.obyem, 1e-6) && same(LINK_FIELDS.une, 0.5);
+}
+
+/** HO мөрүүдийг СЕРВЕРООС ШУУД (хуваалцсан/кэшлэсэн хариугүй) — зэрэг бичилтийн дараах дахин уншилт */
+async function loadHoFresh(where = '1=1', outFields = '*'): Promise<Row[]> {
+  const out: Row[] = [];
+  for (let off = 0; ; ) {
+    const j = await agsFetch(`${HO_IPC.url}/query`, {
+      where, outFields, orderByFields: `${HO_IPC.oid} ASC`, resultOffset: String(off), resultRecordCount: '2000', returnGeometry: 'false',
+    });
+    const f = ((j.features ?? []) as { attributes: Row }[]).map((x) => x.attributes);
+    out.push(...f);
+    if (!f.length || (!j.exceededTransferLimit && f.length < 2000)) break;
+    off += f.length;
+  }
+  return out;
+}
+
 export async function repriceFreeRows(code: string): Promise<number> {
   /* «IPC үүсгэх» эрхтэй хүн л — урьд нь зөвхөн дэлгэцийн нөхцөлөөр (`IpcFlow` `canCreate`) хамгаалагддаг байв */
   requireCap('ipcCreate');
@@ -52,6 +114,10 @@ export async function repriceFreeRows(code: string): Promise<number> {
     /* 2026-11-23 (засвар): ижил БАГЦ · ижил өдрийн мөр л давхардал. Урьд нь зөвхөн өдрөөр тулгадаг байсан тул олон багцтай
        гэрээний (БАГЦ-10,11) нэг өдрийн хоёр багцын мөр хоёулаа алгасагдаж, хожим оруулсан нэгж үнэ хэзээ ч бичигддэггүй байв. */
     if (mine.filter((x) => String(x[P.id]) === String(r[P.id])).length !== 1) continue;
+    /* 2026-11-23 (хяналт): нэг (багц, өдөр)-т хоёр СУЛ мөр байвал хоёуланг нь «нийт − нөгөөгийн ХУУЧИН дүн»-ээр бичдэг байсан тул
+       нийлбэр нь 2T′ − T болж нэмэгдлийг давхар төлдөг байв — `planAuto`-гийн сонгох мөрийг (түгжээгүй ЭХНИЙХ) л дахин үнэлнэ */
+    if (repricePick(rows, r) !== r) continue;
+    const others = sameDayOthers(mine, r);
     const wanted: Pkg[] = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
     const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p, p.floors == null ? { fill: true } : {}).catch(() => null)));
     const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));
@@ -82,10 +148,19 @@ export async function repriceFreeRows(code: string): Promise<number> {
       if (s.une != null) une = (une ?? 0) + s.une;
     }
     if (!ok || !filled || une == null) continue;
+    /* Өдрийн жааз өдрийн НИЙТ ажлыг хадгалдаг — тэр өдрийн бусад мөрийн (IPC-д орсон ч) дүнг хасна (аудит №11) */
+    if (others.length) une = Math.round((une - others.reduce((a, x) => a + (num(x[LINK_FIELDS.une]) ?? 0), 0)) * 1e6) / 1e6;
+    if (une < 0) continue;
     const was = num(r[LINK_FIELDS.une]);
     if (was != null && Math.abs(was - une) < 0.5) continue;
     updates.push({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [LINK_FIELDS.une]: une });
   }
+  if (!updates.length) return 0;
+  /* 2026-11-23 (аудит): хуудас уншиж байх хооронд (секундүүд) IPC-д түгжигдсэн мөрийн дүнг дардаг байв — бичихийн ӨМНӨ дахин уншиж,
+     «Гүйцэтгэл» төлөвт үлдсэн мөрийг л бичнэ */
+  const now = (await queryFeatures(HO_IPC.url, { where: `${HO_IPC.oid} IN (${updates.map((u) => Number(u[HO_IPC.oid])).join(',')})`, outFields: [HO_IPC.oid, HO_IPC.status.field, P.ipcNo] })) as Row[];
+  const keep = stillFree(now);
+  for (let i = updates.length - 1; i >= 0; i -= 1) if (!keep.has(Number(updates[i][HO_IPC.oid]))) updates.splice(i, 1);
   if (!updates.length) return 0;
   const j = await agsFetch(`${HO_IPC.url}/applyEdits`, { updates: JSON.stringify(updates.map((attributes) => ({ attributes }))), rollbackOnFailure: 'true' });
   const res = (j.updateResults ?? []) as EditRes[];
@@ -106,94 +181,125 @@ export async function syncIpcFromFill(bagts: string, day: string): Promise<AutoR
     const wanted: Pkg[] = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
     if (!wanted.length) return { ok: false, error: tr('Багц олдсонгүй: {0}', bagts) };
 
-    let obyem: number | null = null;
-    let une: number | null = null;
-    const reads: SheetRead[] = [];
-    let noUnit = 0;
     /* Блокгүй хуудас: `obyem_sum` зөвхөн бөглөх бүдүүвчид (`fill`) орно; `synthetic` бол IPC мөр чимээгүй алга болдог */
     const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p, p.floors == null ? { fill: true } : {}).catch(() => null)));
     const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));
 
-    for (const [i, pkg] of wanted.entries()) {
-      const sc = schemas[i];
-      if (sc && sc.bld.length > 0 && weights[i] === 0) continue;
-      if (!sc?.f.fillDate) { reads.push('missing'); continue; }
-      const cols = sc.obyem.filter((x): x is string => !!x);
-      if (!cols.length) { reads.push('no-obyem'); continue; }
-      const need = [sc.f.oid, sc.f.no, sc.f.work, sc.f.gun, sc.f.wC, sc.f.vol, sc.f.unit, ...cols]
-        .filter((x): x is string => !!x);
-      const upTo = await latestDayUpTo(pkg.url, sc.f.fillDate, at);
-      if (!upTo) { reads.push('unpublished'); continue; }
-      /* 2026-11-04: жааз бүр ТУХАЙН ӨДРИЙН ажил — тэр өдөр жаазгүй хуудас 0 оролцоотой (өмнөх өдрийн жаазны ажил дахин тоологдохгүй) */
-      if (upTo !== at) { reads.push('no-frame'); continue; }
-      const { rows } = await loadRows(pkg, sc, at, need, { strict: true });
-      if (!rows.length) { reads.push('missing'); continue; }
-      reads.push('read');
-      /* 2026-11-04: тухайн өдрийн ажил (хуримтлал биш) — жааз бүр IPC-ийн дүн */
-      const s = snapshotDayOf(rows, day);
-      if (s.obyem != null) obyem = (obyem ?? 0) + s.obyem;
-      if (s.une != null) une = (une ?? 0) + s.une;
-      noUnit += s.noUnit ?? 0;
-    }
-
-    const verdict = sheetsVerdict(reads);
-    if (!verdict.go) return verdict.result;
-
-    /* ── 2. HO-гийн одоогийн мөрүүд ── */
-    const rows = (await queryFeatures(HO_IPC.url, {
-      outFields: ['*'],
-      orderBy: `${HO_IPC.oid} ASC`,
-    })) as Row[];
-
-    /* ── 3. Шийдвэр ── */
-    const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));
-    const unitWarn = noUnit ? tr('{0} мөр нэгж үнэгүй тул IPC дүнд ороогүй — нэгж үнийг бөглөнө үү.', noUnit) : null;
-    const warns = [cw, verdict.warn, unitWarn].filter((x): x is string => !!x);
-    const wx = warns.length ? { warn: warns.join(' · ') } : {};
-    const plan = planAuto(rows, { pkg: bagts, day: at, code, obyem, une });
-    if (plan.op === 'skip') {
-      if (plan.why === 'no-data') return { ok: true, op: 'skip', why: plan.why, ...wx };
-      /* Блокгүй багцад гэрээ хараахан алга (шинэ 40 хүснэгт г.м.): актлах гэрээ байхгүй — батлалтыг гацаахгүй. Өмнөх мөнгө хэвээр */
-      if (plan.why === 'no-code' && wanted.every((p) => p.floors == null)) {
-        return { ok: true, op: 'skip', why: 'no-data', warn: [...warns, tr('{0} багцад гэрээ бүртгэгдээгүй тул IPC мөр үүссэнгүй.', bagts)].join(' · ') };
+    /** Тухайн өдрийн БҮХ хуудасны дүн — давталт бүрд ШИНЭЭР уншина (зэрэг батлалт өөр хуудсыг энэ хооронд бичсэн байж болно) */
+    const readDay = async () => {
+      let obyem: number | null = null;
+      let une: number | null = null;
+      const reads: SheetRead[] = [];
+      let noUnit = 0;
+      for (const [i, pkg] of wanted.entries()) {
+        const sc = schemas[i];
+        if (sc && sc.bld.length > 0 && weights[i] === 0) continue;
+        if (!sc?.f.fillDate) { reads.push('missing'); continue; }
+        const cols = sc.obyem.filter((x): x is string => !!x);
+        if (!cols.length) { reads.push('no-obyem'); continue; }
+        const need = [sc.f.oid, sc.f.no, sc.f.work, sc.f.gun, sc.f.wC, sc.f.vol, sc.f.unit, ...cols]
+          .filter((x): x is string => !!x);
+        const upTo = await latestDayUpTo(pkg.url, sc.f.fillDate, at);
+        if (!upTo) { reads.push('unpublished'); continue; }
+        /* 2026-11-04: жааз бүр ТУХАЙН ӨДРИЙН ажил — тэр өдөр жаазгүй хуудас 0 оролцоотой (өмнөх өдрийн жаазны ажил дахин тоологдохгүй) */
+        if (upTo !== at) { reads.push('no-frame'); continue; }
+        const { rows } = await loadRows(pkg, sc, at, need, { strict: true });
+        if (!rows.length) { reads.push('missing'); continue; }
+        reads.push('read');
+        /* 2026-11-04: тухайн өдрийн ажил (хуримтлал биш) — жааз бүр IPC-ийн дүн */
+        const s = snapshotDayOf(rows, day);
+        if (s.obyem != null) obyem = (obyem ?? 0) + s.obyem;
+        if (s.une != null) une = (une ?? 0) + s.une;
+        noUnit += s.noUnit ?? 0;
       }
-      const error = plan.why === 'no-code'
-        ? tr('IPC мөр бичсэнгүй: {0} багцын гэрээний код HO хүснэгтэд олдсонгүй', bagts)
-        : plan.why === 'no-pkg'
-          ? tr('IPC мөр бичсэнгүй: багцын түлхүүр танигдсангүй: {0}', bagts)
-          : tr('Огноо танигдсангүй: {0}', day);
-      return { ok: false, error };
+      return { obyem, une, reads, noUnit };
+    };
+
+    /*
+     * 2026-11-23 (аудит №13): ЗЭРЭГ БАТЛАЛТ — нэг багцын 9F/12F хуудсыг секундын зайтай батлахад нэг нь нөгөөгийн жааз
+     * үүсэхээс өмнө уншиж, хожуу бичсэнээрээ нөгөө хуудасны ажлыг IPC-ээс хасдаг байв (хоёулаа «бүртгэгдсэн» тул дахин
+     * ажиллахгүй). Одоо бичсний дараа хуудас ба HO-г ШИНЭЭР уншиж дахин төлөвлөнө — бичих зүйлгүй болтол (дээд тал 3 удаа).
+     * Шинэчлэхийн өмнө зорилтот мөр одоо ч чөлөөт эсэхийг шалгана (IPC-д түгжигдсэн мөрийн дүнг дарахгүй).
+     */
+    let wrote: 'insert' | 'update' | null = null;
+    let wx: { warn?: string } = {};
+    let code = '';
+    let dedup = false;
+    for (let pass = 0; pass < 3; pass += 1) {
+      const { obyem, une, reads, noUnit } = await readDay();
+      const verdict = sheetsVerdict(reads);
+      if (pass === 0) {
+        if (!verdict.go) return verdict.result;
+      } else if (!verdict.go) break;
+
+      /* ── 2. HO-гийн одоогийн мөрүүд (давталтад сервероос шууд — `queryFeatures`-ийн хуваалцсан хариу хуучин байж болно) ── */
+      const rows = (pass === 0
+        ? await queryFeatures(HO_IPC.url, { outFields: ['*'], orderBy: `${HO_IPC.oid} ASC` })
+        : await loadHoFresh()) as Row[];
+
+      /* ── 3. Шийдвэр ── */
+      const { code: c, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));
+      code = c;
+      const unitWarn = noUnit ? tr('{0} мөр нэгж үнэгүй тул IPC дүнд ороогүй — нэгж үнийг бөглөнө үү.', noUnit) : null;
+      const warns = [cw, verdict.warn, unitWarn].filter((x): x is string => !!x);
+      wx = warns.length ? { warn: warns.join(' · ') } : {};
+      const plan = planAuto(rows, { pkg: bagts, day: at, code, obyem, une });
+      if (plan.op === 'skip') {
+        if (pass > 0) break;
+        if (plan.why === 'no-data') return { ok: true, op: 'skip', why: plan.why, ...wx };
+        /* Блокгүй багцад гэрээ хараахан алга (шинэ 40 хүснэгт г.м.): актлах гэрээ байхгүй — батлалтыг гацаахгүй. Өмнөх мөнгө хэвээр */
+        if (plan.why === 'no-code' && wanted.every((p) => p.floors == null)) {
+          return { ok: true, op: 'skip', why: 'no-data', warn: [...warns, tr('{0} багцад гэрээ бүртгэгдээгүй тул IPC мөр үүссэнгүй.', bagts)].join(' · ') };
+        }
+        const error = plan.why === 'no-code'
+          ? tr('IPC мөр бичсэнгүй: {0} багцын гэрээний код HO хүснэгтэд олдсонгүй', bagts)
+          : plan.why === 'no-pkg'
+            ? tr('IPC мөр бичсэнгүй: багцын түлхүүр танигдсангүй: {0}', bagts)
+            : tr('Огноо танигдсангүй: {0}', day);
+        return { ok: false, error };
+      }
+      /* Давталтад: хадгалсан утга аль хэдийн зөв — тогтворжсон */
+      if (pass > 0 && plan.op === 'update' && autoUnchanged(rows, plan.attrs)) break;
+      if (plan.op === 'update') {
+        const oid = Number(plan.attrs[HO_IPC.oid]);
+        const now = await loadHoFresh(`${HO_IPC.oid} = ${oid}`, [HO_IPC.oid, HO_IPC.status.field, P.ipcNo].join(','));
+        /* Энэ хооронд IPC-д түгжигдсэн — дараагийн давталт шинэ мөр болгож төлөвлөнө */
+        if (!stillFree(now).has(oid)) continue;
+      }
+
+      /* ── 4. Бичих ── */
+      const key = plan.op === 'insert' ? 'adds' : 'updates';
+      tried = true;
+      const j = await agsFetch(`${HO_IPC.url}/applyEdits`, {
+        [key]: JSON.stringify([{ attributes: plan.attrs }]),
+        rollbackOnFailure: 'true',
+      });
+      const res = (j[plan.op === 'insert' ? 'addResults' : 'updateResults'] ?? []) as EditRes[];
+      if (res.length !== 1) return { ok: false, error: tr('Сервер үр дүн буцаасангүй — IPC мөр бичигдээгүй гэж үзнэ') };
+      const bad = res.find((r) => r.success !== true);
+      if (bad) return { ok: false, error: bad.error?.description || tr('Бичих амжилтгүй') };
+      wrote = wrote ?? plan.op;
+
+      invalidate('HO_IPC');
+
+      /* ── 5. Зэрэг батлалтын ДАВХАР мөр (2026-09-25-ны аудит) — үлдэх мөрийн утгыг дараагийн давталт ШИНЭ уншилтаар засна ── */
+      if (plan.op === 'insert') {
+        const newOid = Number(res[0].objectId);
+        const dd = await dedupeAuto(rows, String(plan.attrs[P.id] ?? ''), newOid, { pkg: bagts, day: at, code, obyem, une });
+        if (!dd.ok) return dd;
+        if (dd.why === 'dedup') { dedup = true; wrote = 'update'; }
+      }
     }
-
-    /* ── 4. Бичих ── */
-    const key = plan.op === 'insert' ? 'adds' : 'updates';
-    tried = true;
-    const j = await agsFetch(`${HO_IPC.url}/applyEdits`, {
-      [key]: JSON.stringify([{ attributes: plan.attrs }]),
-      rollbackOnFailure: 'true',
-    });
-    const res = (j[plan.op === 'insert' ? 'addResults' : 'updateResults'] ?? []) as EditRes[];
-    if (res.length !== 1) return { ok: false, error: tr('Сервер үр дүн буцаасангүй — IPC мөр бичигдээгүй гэж үзнэ') };
-    const bad = res.find((r) => r.success !== true);
-    if (bad) return { ok: false, error: bad.error?.description || tr('Бичих амжилтгүй') };
-
-    invalidate('HO_IPC');
-
-    /* ── 5. Зэрэг батлалтын ДАВХАР мөр (2026-09-25-ны аудит) ── */
-    if (plan.op === 'insert') {
-      const newOid = Number(res[0].objectId);
-      const dd = await dedupeAuto(rows, String(plan.attrs[P.id] ?? ''), newOid, { pkg: bagts, day: at, code, obyem, une });
-      if (!dd.ok) return dd;
-      if (dd.why === 'dedup') return { ...dd, ...wx };
-    }
+    if (dedup) return { ok: true, op: 'update', why: 'dedup', ...wx };
+    if (!wrote) return { ok: true, op: 'skip', why: 'no-data', ...wx };
 
     /* ── 6. Гэрээний AUTO мөрүүдийн зөрүүг шинэчилнэ (`refreshAutoZoruu`) ── */
     const rz = await refreshAutoZoruu(code);
     if (!rz.ok) {
       console.warn('[selbe] IPC зөрүүг дахин бодож чадсангүй:', rz.error);
-      return { ok: true, op: plan.op, why: rz.error, ...wx };
+      return { ok: true, op: wrote, why: rz.error, ...wx };
     }
-    return { ok: true, op: plan.op, ...wx };
+    return { ok: true, op: wrote, ...wx };
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };
   } finally {

@@ -20,7 +20,7 @@ import type { AnaTab } from './AnalysisPanel';
 import type { PlanKind } from './types';
 
 export function useAnalysis({
-  ana, plan, base, blk, unbalRows, kind, refSpanOf, sc, obResOf, obOf, pkgKey,
+  ana, plan, base, blk, unbalRows, kind, refSpanOf, sc, obResOf, obOf, pkgKey, rowsAt, exportNote,
 }: {
   ana: AnaTab | null;
   plan: PlanRow[];
@@ -33,6 +33,12 @@ export function useAnalysis({
   obResOf: (des: number | null, blok: string) => Map<string, MonthRes>;
   obOf: (des: number | null, blok: string) => Map<string, number>;
   pkgKey: string;
+  /**
+   * 2026-11-23 (аудит): блок бүрд экспортлох мөр — PDF-тэй ИЖИЛ шүүлт (`exportAt`). Өгөөгүй бол бүх мөр.
+   */
+  rowsAt?: (b: number) => PlanRow[];
+  /** Ноорог / урьдчилан харалт / шүүлтийн тэмдэглэл — PDF-ийн `draftLabel`-тай ижил; файлын эхний мөрөнд */
+  exportNote?: string;
 }) {
   const anaIssues = useMemo(
     () => (ana === 'issues' ? planIssues(plan, blk, {
@@ -66,10 +72,13 @@ export function useAnalysis({
     if (!sc) return;
     const items: { r: PlanRow; b: number; sp: Span; months: Map<string, number> }[] = [];
     const mset = new Set<string>();
+    /* PDF-тэй ижил: шүүлтэд таарсан мөр л (блок бүрээр), урвуу (дуусах < эхлэх) муж — хуваарьгүй гэж тооцно */
+    const allow = rowsAt ? sc.bld.map((_, b) => new Set(rowsAt(b).map((x) => x.oid))) : null;
     for (const r of plan) {
       if (r.group) continue;
       r.spans.forEach((sp, b) => {
-        if (!sp) return;
+        if (!sp || sp.end < sp.start) return;
+        if (allow && !allow[b]?.has(r.oid)) return;
         const blok = sc.bld[b] ?? '';
         const months = kind === 'plan' && r.des != null && blok ? obOf(r.des, blok) : new Map<string, number>();
         for (const k of months.keys()) mset.add(k);
@@ -80,16 +89,16 @@ export function useAnalysis({
     const bold = { bold: true, fill: 'E8EEF7', border: true };
     const head: XlsxCell[] = [tr('№'), tr('Код'), tr('Ажил'), tr('Блок'), tr('Эхлэх'), tr('Дуусах'), tr('Хоног'), tr('Обьём'), ...mk]
       .map((v) => ({ v, s: bold }));
-    const rowsX: XlsxCell[][] = [head];
+    const rowsX: XlsxCell[][] = exportNote ? [[{ v: exportNote, s: { bold: true } }], head] : [head];
     for (const it of items) {
       rowsX.push([
         it.r.no, it.r.des, fixCyr(it.r.work), sc.bld[it.b] ?? '', msToDay(it.sp.start), msToDay(it.sp.end), spanDays(it.sp),
         it.r.vol, ...mk.map((k) => it.months.get(k) ?? null),
       ]);
     }
-    const bytes = buildXlsx([{ name: kind === 'plan' ? tr('Төлөвлөгөө') : tr('Гэрээ'), rows: rowsX, frozen: { rows: 1, cols: 3 }, cols: [6, 6, 48, 8, 11, 11, 7, 10] }]);
+    const bytes = buildXlsx([{ name: kind === 'plan' ? tr('Төлөвлөгөө') : tr('Гэрээ'), rows: rowsX, frozen: { rows: exportNote ? 2 : 1, cols: 3 }, cols: [6, 6, 48, 8, 11, 11, 7, 10] }]);
     downloadXlsx(`${tr('Хуваарь')}_${pkgKey}_${fileDate()}.xlsx`, bytes);
-  }, [sc, plan, kind, obOf, pkgKey]);
+  }, [sc, plan, kind, obOf, pkgKey, rowsAt, exportNote]);
 
   return { anaIssues, anaCrit, critOids, anaDelays, anaRes, exportPlan };
 }

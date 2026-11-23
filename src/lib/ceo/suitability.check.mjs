@@ -17,6 +17,11 @@
 import assert from 'node:assert/strict';
 import { computeSuitability, buildSuitabilityKpi, judgedIndicators } from './suitability.ts';
 import { ROW_CAP } from './kpi.ts';
+import { ACTIVATABLE_ZONE_TYPES } from '../analysis/config.ts';
+
+/* 2026-11-23: `ASSUME_MET` анхдагчаар УНТАРСАН — доорх 2–4-р хэсэг хуучин таамгийн горимыг (social/engineering) ИЛ дамжуулж шалгана */
+const OLD_ASSUME = { social: 100, engineering: 100 };
+const cs = (zs) => computeSuitability(zs, undefined, ACTIVATABLE_ZONE_TYPES, OLD_ASSUME);
 
 const RES = 'Орон сууцны бүс';
 const PUB = 'Олон нийтийн бүс';
@@ -42,7 +47,7 @@ const Z = [
 }
 
 /* 2. Хуримтлал ба эрэмбэ */
-const c = computeSuitability(Z);
+const c = cs(Z);
 {
   const by = Object.fromEntries(c.byIndicator.map((r) => [r.id, r]));
   assert.equal(c.byIndicator[0].id, 'green', 'fails desc — ногоон эхэнд');
@@ -115,7 +120,7 @@ const c = computeSuitability(Z);
 
 /* 4. Зөвхөн таамаг (social) зөрчил → warn; юу ч байхгүй → unknown */
 {
-  const only = computeSuitability([
+  const only = cs([
     zone('B-1', RES, { green: 8, density: 350, far: 1.0, bcr: 30, parking: 100, social: 20 }),
   ]);
   const k = buildSuitabilityKpi(only);
@@ -136,6 +141,18 @@ const c = computeSuitability(Z);
   ]));
   assert.equal(blank.value, '—');
   assert.equal(blank.level, 'unknown');
+}
+
+/* 4б. 2026-11-23 — анхдагч (таамаггүй): social бодит утгаараа, «батлагдаагүй» тэмдэггүй, хэмжсэн жинд орно */
+{
+  const d = computeSuitability(Z);
+  const by = Object.fromEntries(d.byIndicator.map((r) => [r.id, r]));
+  assert.equal(by.social.assumed, false, 'таамаггүй');
+  assert.equal(by.social.fails, 1, 'A-1 social 40 — бодит зөрчил');
+  assert.equal(d.assumedCount, 0);
+  assert.equal(d.assumedFailing, 0);
+  const k = buildSuitabilityKpi(d);
+  assert.ok(!k.facts.some((f) => f.includes('батлагдаагүй')), k.facts.join(' | '));
 }
 
 /* 5. null ≠ 0 — 0 нь бодит зөрчил, null нь дүгнэгдэхгүй */

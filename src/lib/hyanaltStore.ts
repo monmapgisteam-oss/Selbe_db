@@ -863,6 +863,30 @@ const MARK_UNRESOLVED = (why: string) =>
   tr('Өмнөх архивлалт шалгагдаагүй — давхар тоолохоос сэргийлж юу ч бичсэнгүй. Хэдэн минутын дараа дахин оролдоно уу ({0}).', why);
 
 /**
+ * ХОЖУУ ЖААЗНЫ ХУВИЙГ НӨХӨЖ ШИНЭЧЛЭХ (2026-11-23, аудит) — бөглөсөн өдрөөр (хожуу жаазны өмнө) бичсэний дараах
+ * `refreshStoredProgress` ганц удаа, бичилтийн яг ард дуудагддаг байсан: тэр хооронд таб хаагдвал хожуу жаазнуудын хадгалсан
+ * хувь тэр ажилгүй үлдэж, дахин батлах зам («аль хэдийн архивлагдсан») түүнийг хэзээ ч нөхдөггүй байв. Энд тэр замуудаас
+ * дуудна: тэр өдрөөс хойш жааз байхгүй бол юу ч хийхгүй, зөрүүгүй бол бичихгүй (давтахад аюулгүй). Унавал зөвхөн лог.
+ */
+async function healLaterFrames(pkgKey: string, day: string | undefined): Promise<void> {
+  if (!day) return;
+  try {
+    const [{ PKGS, fillSchema }, { refreshStoredProgress }] = await Promise.all([import('@/modules/sheet/bagts.pkg'), import('./frameRepair')]);
+    const pkg = PKGS.find((p) => p.key === pkgKey);
+    if (!pkg) return;
+    /* 2026-11-23 (аудит №10 · хяналт): нэгтгэлд (190) зөвхөн энэ засварын нөлөө — засварын өмнөх агшин, дараа нь зөрүү */
+    const { snapshotNegtgelFrom, resyncNegtgelFrom } = await import('./negtgelWrite');
+    const snap = await snapshotNegtgelFrom(pkg.group, day);
+    await refreshStoredProgress(pkg, await fillSchema(pkg), day);
+    const rs = await resyncNegtgelFrom(snap);
+    if (!rs.ok) console.warn('[selbe] хожуу өдрүүдийн нэгтгэл дахин бодогдсонгүй:', rs.error);
+    else if (rs.skipped.length) console.warn('[selbe] нэгтгэлийн ±20-оос их үсрэлтийг бичсэнгүй:', rs.skipped.join(', '));
+  } catch (e) {
+    console.warn('[selbe] хожуу жаазны хадгалсан хувийг нөхөж шинэчилсэнгүй', e);
+  }
+}
+
+/**
  * АРХИВЫН ЖААЗНЫ БОДИТ ӨДӨР — `archiveOid` мөрийн `fillDate`-ээс, уншиж чадахгүй бол илгээлтийн `fillMs`-ээр.
  */
 async function archivedDayOf(pkgKey: string, aOid: number, fm: number | null | undefined): Promise<string | undefined> {
@@ -1021,6 +1045,7 @@ async function archiveSubmission(
     }
     const aOid = staged.payload.archiveOid ?? 0;
     const day = await archivedDayOf(staged.payload.pkgKey, aOid, staged.payload.fillMs);
+    if (aOid > 0) await healLaterFrames(staged.payload.pkgKey, day);
     unclosedSet(subOid, null);
     return { ok: true, archiveOid: aOid, day, pkgKey: staged.payload.pkgKey, ...(aOid === 0 && staged.payload.residual === true ? { empty: true as const } : {}) };
   }
@@ -1250,7 +1275,11 @@ async function archiveSubmission(
   let backDated = false;
   if (lastDay && lastDay >= msToDay(fillMs)) {
     let keep = lastDay === msToDay(fillMs);
-    if (!keep && incPl && !ov.dateKeys.length && ov.rows.length === loaded.rows.length && sc.f.fillDate) {
+    /* 2026-11-23 (аудит): «Шинэчлэгдсэн огноо» өөрчлөгдөөгүй БА өөрчлөлт бүр обьёмын замаар (хувиар нэмсэн нүдгүй) үед л —
+       эс бөгөөс тэр ахиц/огноо хожуу жаазанд хүрдэггүй тул батлах өдрийн дүрмээр бичнэ (`frameRepair.volumeOnlyChange`) */
+    const sameAsOf = ov.asOf == null || ov.asOf === loaded.asOf;
+    const volOnly = sameAsOf && (await import('./frameRepair')).volumeOnlyChange(loaded.rows, ov.rows);
+    if (!keep && volOnly && incPl && !ov.dateKeys.length && ov.rows.length === loaded.rows.length && sc.f.fillDate) {
       try {
         const j = await agsFetch(`${pkg.url}/query`, { where: dayFilter(sc.f.fillDate, msToDay(fillMs)), returnCountOnly: String(true) });
         keep = Number(j?.count) === 0;
@@ -1311,7 +1340,9 @@ async function archiveSubmission(
     if (!again.sub) return { ok: false, error: tr('Илгээлт энэ хооронд устгагдлаа — архивт юу ч бичсэнгүй') };
     if (again.sub.done || again.sub.payload.archiveOid != null) {
       const aOid2 = again.sub.payload.archiveOid ?? 0;
-      return { ok: true, archiveOid: aOid2, day: await archivedDayOf(pkg.key, aOid2, again.sub.payload.fillMs), pkgKey: pkg.key };
+      const day2 = await archivedDayOf(pkg.key, aOid2, again.sub.payload.fillMs);
+      if (aOid2 > 0) await healLaterFrames(pkg.key, day2);
+      return { ok: true, archiveOid: aOid2, day: day2, pkgKey: pkg.key };
     }
     if (again.sub.at !== staged.at)
       return { ok: false, error: tr('Илгээлт энэ хооронд өөрчлөгдлөө — дахин нээж баталгаажуулна уу') };
@@ -1465,8 +1496,18 @@ async function archiveSubmission(
   /* Бөглөсөн өдрөөр (хожуу жаазны өмнө) бичсэн бол хожуу жаазнуудын хадгалсан гүйцэтгэлийн хувийг шинэчилнэ — унавал анхааруулга */
   if (backDated) {
     try {
-      const { refreshStoredProgress } = await import('./frameRepair');
+      const [{ refreshStoredProgress }, { snapshotNegtgelFrom, resyncNegtgelFrom }] = await Promise.all([import('./frameRepair'), import('./negtgelWrite')]);
+      /* 2026-11-23 (аудит №10 · хяналт): хожуу өдрүүдийн нэгтгэлд (190) ЗӨВХӨН энэ засварын нөлөөг нэмнэ — засварын өмнөх агшин */
+      const snap = await snapshotNegtgelFrom(pkg.group, msToDay(fillMs));
       await refreshStoredProgress(pkg, sc, msToDay(fillMs));
+      const rs = await resyncNegtgelFrom(snap);
+      if (!rs.ok) {
+        const w = tr('Хожуу өдрүүдийн нэгтгэл (дашбоардын муруй) дахин бодогдсонгүй ({0}) — админд мэдэгдэнэ үү.', rs.error);
+        postWarn = postWarn ? `${postWarn} · ${w}` : w;
+      } else if (rs.skipped.length) {
+        const w = tr('Нэгтгэлийн {0} өдрийн гүйцэтгэл ±20-оос их өөрчлөгдөх байсан тул бичсэнгүй ({1}) — админд мэдэгдэнэ үү.', String(rs.skipped.length), rs.skipped.slice(0, 5).join(', '));
+        postWarn = postWarn ? `${postWarn} · ${w}` : w;
+      }
     } catch (e) {
       const w = tr('Хожуу өдрийн бөглөлтүүдийн хадгалсан хувь шинэчлэгдсэнгүй ({0}) — админд мэдэгдэнэ үү.', String((e as Error)?.message ?? e));
       postWarn = postWarn ? `${postWarn} · ${w}` : w;

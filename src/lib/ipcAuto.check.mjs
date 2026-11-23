@@ -280,7 +280,7 @@ const P = HO_IPC.payFields;
 
   const { readFileSync } = await import('node:fs');
   const W = readFileSync('src/lib/ipcAutoWrite.ts', 'utf8');
-  assert.ok(W.includes("const { code, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));") && !W.includes('contractCodeOf('), 'syncIpcFromFill warn-ийг хаяхгүй (F6)');
+  assert.ok(W.includes("const { code: c, warn: cw } = autoContractFor(rows, pkgKeyOf(bagts));") && !W.includes('contractCodeOf('), 'syncIpcFromFill warn-ийг хаяхгүй (F6)');
   assert.ok(!W.includes('isBlocklessBagts'), '2026-11-04: блокгүй багц ч обьём × нэгж үнээр бодогдоно');
   /* 2026-11-04: IPC-д орсон мөрийг шинэчлэхгүй, ижил өдөр шинэ мөр; олон багцтай гэрээг олно */
   {
@@ -361,9 +361,7 @@ const P = HO_IPC.payFields;
   }
   assert.ok(W.includes('const warns = [cw, verdict.warn, unitWarn]'), 'нийтлэгдээгүй хуудасны warn дуудагчид хүрнэ (аудит №6)');
   assert.ok(/\} finally \{\s*(?:\/\*[^]*?\*\/\s*)?if \(tried\) invalidate\('HO_IPC'\);/.test(W), 'refreshAutoZoruu finally-д зарлана (R6)');
-  const L = readFileSync('src/lib/ipcDocLoad.ts', 'utf8');
-  assert.ok(L.includes('const cf = autoContractFor(hoRows, packKey);') && L.includes('cands.find((c) => c.code === cf.code)'), 'ipcDocLoad AUTO-той ижил гэрээ сонгоно (F6)');
-  assert.ok(L.includes('msToDay(normDayMs(v))'), 'ipcDocLoad өдрийг normDayMs-ээр (8)');
+  /* 2026-11-23 (аудит №48): ашиглагддаггүй `ipcDocLoad` (IPC баримт/PDF) устсан */
   console.log('✅ ipcAuto 2026-10-09: AUTO гэрээ · warn · блокгүй · finally');
 }
 

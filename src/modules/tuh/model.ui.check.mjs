@@ -252,7 +252,7 @@ console.log('\n8. Зурагдах (SSR)');
     assert.ok(hl.includes('…<small>айл</small>'), 'айл «…»');
     assert.ok(!hl.includes('—<small>айл</small>'));
     const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: ml.rows.find((x) => x.p.key === 'БАГЦ1'), m: ml, onBack: noop, onOpen: noop }));
-    assert.ok(hd.includes('Гэрээний төлөвлөгөө …'), 'дэлгэрэнгүй — гэрээний төлөвлөгөө «…»');
+    assert.ok(hd.includes('Төлбөрийн төлөвлөгөө …'), 'дэлгэрэнгүй — гэрээний төлөвлөгөө «…»');
   });
 
   console.log('\n14. Хоосон хэсэг хураагдсан, төлвийн тоо товч');
@@ -260,7 +260,8 @@ console.log('\n8. Зурагдах (SSR)');
     assert.ok(/<details[^>]*>\s*<summary><h2>ТУХ-ын төсөл дамнасан арга хэмжээ<\/h2>/.test(html));
     assert.ok(html.includes('aria-pressed="false"'));
     const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
-    assert.ok(/<details[^>]*>\s*<summary><h2>Зураг<\/h2>/.test(hd));
+    /* 2026-11-23 (аудит №95c): эх сурвалжгүй «Зураг», «Асуудал» хэсэг хасагдсан */
+    assert.ok(!/<h2>Зураг<\/h2>/.test(hd) && !/<h2>Асуудал<\/h2>/.test(hd));
   });
 
   console.log('\n15. Хуваарь < 95% хамарсан — гүйцэтгэгчийн хуваариар ДҮГНЭХГҮЙ');

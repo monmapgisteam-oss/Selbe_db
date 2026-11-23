@@ -752,3 +752,13 @@ console.log('✅ loadPendingBoth — хямд · хоёр төрөл · strict')
   assert.ok(!/\[F\.(approverAt|authorSent)\]: Date\.now\(\)/.test(L), 'бичилтэд хөтчийн цаг үлдэв');
 }
 console.log('✅ 2026-10-12: claimAt · тэмдгийн эзэн · дахин шалгалт · CAS татах · серверийн цаг · эх текст · хөнгөн тэмдэг');
+
+/* 2026-11-23 (аудит №16): гацсан илгээлтийг буцаасны дараа ТТБ (182)-ийг шинэчилнэ */
+{
+  const { readFileSync } = await import('node:fs');
+  const L = readFileSync(new URL('./huvaariBatlah.ts', import.meta.url), 'utf8');
+  const i = L.indexOf('export async function returnStuckPlan');
+  assert.ok(i > 0, 'returnStuckPlan');
+  assert.match(L.slice(i, i + 4000), /invalidate\('HUVAARI_BATLAH'\);[\s\S]{0,600}runPlanSync\(\{ fresh: true, force: true \}\)/, 'буцаасны дараа 182 синк');
+  console.log('✅ гацсан илгээлтийг буцаахад ТТБ шинэчлэгдэнэ');
+}

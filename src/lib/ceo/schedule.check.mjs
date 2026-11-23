@@ -333,4 +333,14 @@ assert.equal(r8p.value, '—');
 assert.equal(r8p.level, 'unknown');
 assert.deepEqual(r8p.tables[2].rows.map((row) => [row[0].v, row[4].v]), [['Багц 2', 20], ['Багц 1', 30]]);
 
+/* 2026-11-23 (давтан аудит): ТТБ-ийн нөөц — хамралтын дүрэм ба сар (байдлын огноонд орохгүй) */
+{
+  const ttb = new Map([['Б5', { P: 40, S: null, C: 100 }], ['Б6', { P: 50, S: 10, C: 60 }], ['Б7', { P: null, S: null, C: null }]]);
+  const r9 = computeSchedule([mk('Б5', 'Багц 5', null), mk('Б6', 'Багц 6', null), mk('Б7', 'Багц 7', null)], curves, lagLevel, now, [], false, ttb);
+  const meas = r9.tables[0].rows.map((row) => [row[0].v, row[1].v, row[4].v]);
+  assert.deepEqual(meas, [['Багц 5', '', -40]], 'бүрэн хамралт — бодит алга = 0%, сар хоосон');
+  assert.deepEqual(r9.tables[2].rows.map((row) => row[0].v), ['Багц 6'], 'хамралт 60% — дүгнэхгүй');
+  assert.equal(r9.asOf, null, 'ТТБ-ийн нөөц байдлын огноо гаргахгүй');
+}
+
 console.log('schedule.check: OK');

@@ -369,15 +369,20 @@ export function syncNoots(mas: readonly MaRow[], mirs: readonly MirRow[]): Promi
     const dup = planSync(rows, receiptsOf(mas, mirs, bagtsOf)).deletes;
     if (dup.length) { await apply('deletes', dup); rows = await loadNoots(); }
     /* 2026-10-30: ЗАРЦУУЛАЛТ — бүх гүйцэтгэлийн хүснэгтийн ажлуудаас (норм × обьём); хүснэгт уншигдаагүй бол «дутуу» */
-    let usage: Map<string, MatUse>;
+    /* 2026-11-23 (аудит №12): НЭГ ч хүснэгт уншигдаагүй (эсвэл ачаалал унасан) бол зарцуулалт/төлөвийг БИЧИХГҮЙ — урьд нь
+       бүх материал «дутуу» болж, «Дууссан» төлөв бүгд «Дуусаагүй» болон `used_qty` хоосордог байв (нэг хэрэглэгчийн сүлжээний
+       түр алдаа бүх хүнд). Дараагийн бүрэн уншилтаар засагдана. */
+    let usage: Map<string, MatUse> | null = null;
     try {
       const wu = await loadWorkUses();
-      const defaults = new Map(nootsSummary(rows).map((x) => [matKey(x.bagts, x.name), x.norm] as const));
-      usage = computeUsage(wu.works, defaults, wu.failed.length > 0);
+      if (!wu.failed.length) {
+        const defaults = new Map(nootsSummary(rows).map((x) => [matKey(x.bagts, x.name), x.norm] as const));
+        usage = computeUsage(wu.works, defaults, false);
+      }
     } catch {
-      usage = new Map();
+      usage = null;
     }
-    const fixes = usageFixes(rows, usage);
+    const fixes = usage ? usageFixes(rows, usage) : [];
     if (fixes.length) {
       await apply('updates', fixes.map((f) => ({ attributes: { [NF.oid]: f.oid, [NF.usedQty]: f.used, [NF.status]: f.status } })));
     }

@@ -59,6 +59,8 @@ export function DedButetsBatch({
   const [rows, setRows] = useState<Row[] | null>(null);
   const [base, setBase] = useState<Base>({});
   const [p, setP] = useState<Patch>({});
+  /** «олон утга»-тай талбаруудаас бүгдэд хоослохоор тэмдэглэсэн нь */
+  const [clear, setClear] = useState<ReadonlySet<string>>(() => new Set());
   const [load, setLoad] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<Record<string, string>>({});
@@ -84,7 +86,7 @@ export function DedButetsBatch({
   useEffect(() => {
     let alive = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoad(true); setFail(''); setErr({}); setAsk(false);
+    setLoad(true); setFail(''); setErr({}); setAsk(false); setClear(new Set());
     (async () => {
       const m = await loadLayerMeta(layerId);
       const rs = oids.length ? await loadRows(m, oids) : [];
@@ -120,13 +122,14 @@ export function DedButetsBatch({
     setAsk(false);
   };
 
-  /** ӨӨРЧЛӨГДСӨН талбарууд — эхлэлээс өөр утгатай нь л бичигдэнэ */
+  /** ӨӨРЧЛӨГДСӨН талбарууд — эхлэлээс өөр утгатай нь л бичигдэнэ. 2026-11-23 (аудит): «олон утга»-тай талбарыг
+      хоосон хэвээр «Бүгдэд хоослох» дарвал (`clear`) хоосон утга бүгдэд бичигдэнэ — өмнө нь хоослох боломжгүй байв */
   const changed = useMemo(() => {
     if (!meta) return [] as string[];
     return meta.fields
       .map((f) => f.name)
-      .filter((k) => (p[k] ?? '') !== (base[k] ?? ''));
-  }, [meta, p, base]);
+      .filter((k) => (p[k] ?? '') !== (base[k] ?? '') || (base[k] === null && clear.has(k) && (p[k] ?? '') === ''));
+  }, [meta, p, base, clear]);
 
   const isDirty = changed.length > 0;
   const onDirtyRef = useRef(onDirty);
@@ -209,6 +212,7 @@ export function DedButetsBatch({
       const nb: Base = { ...base };
       for (const k of changed) nb[k] = p[k] ?? '';
       setBase(nb);
+      setClear(new Set());
       onDone(done.length, changed.length, undo);
     } catch (x) {
       const partial = (x as { done?: number[] }).done;
@@ -264,8 +268,19 @@ export function DedButetsBatch({
                 err={err[f.name]}
                 disabled={!canEdit || busy || load}
                 onChange={(v) => set(f.name, v)}
-                placeholder={mixed ? tr('— олон утга —') : undefined}
-                hint={dirty && (
+                placeholder={mixed ? (clear.has(f.name) ? tr('(хоосон)') : tr('— олон утга —')) : undefined}
+                hint={(dirty || (mixed && canEdit && !(p[f.name] ?? ''))) && (
+                  <>
+                    {mixed && canEdit && !(p[f.name] ?? '') && (
+                      <button type="button" className={d.btn} disabled={busy || load} aria-pressed={clear.has(f.name)}
+                        onClick={() => {
+                          setClear((x) => { const n = new Set(x); if (n.has(f.name)) n.delete(f.name); else n.add(f.name); return n; });
+                          setAsk(false);
+                        }}>
+                        {clear.has(f.name) ? tr('Хоослохгүй') : tr('Бүгдэд хоослох')}
+                      </button>
+                    )}
+                    {dirty && (
                   <>
                     <span className={d.fHint}>
                       {tr('{0} объектод бичигдэнэ', num(nRead))}
@@ -274,6 +289,8 @@ export function DedButetsBatch({
                       <span className={d.fWarn}>
                         {tr('Урт нь объект бүрд өөр — бүгдэд ИЖИЛ урт бичигдэнэ. Объект бүрийн уртыг дан маягтын «Урт ← геометр»-ээр бөглөнө үү.')}
                       </span>
+                    )}
+                  </>
                     )}
                   </>
                 )}

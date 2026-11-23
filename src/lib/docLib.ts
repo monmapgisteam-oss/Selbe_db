@@ -79,7 +79,13 @@ export function groupOf(pdf: EntPdf, groups: readonly DocGroup[]): string {
 export const isFmPdf = (d: EntPdf): boolean =>
   (d.tags ?? []).some((t) => t.toLowerCase() === 'selbe-fm') || /^(FIC|М-акт) · /.test(d.title);
 
-export const listPdfs = async (): Promise<EntPdf[]> => (await entListPdfs()).filter((d) => !isFmPdf(d));
+/** Чанарын баримтын (`chanarDocs.DOC_TAG`) item — тэдгээр нь мөн ENT_TAG-тай тул сангийн жагсаалтад орж ирдэг байсан */
+const CHANAR_DOC_TAG = 'selbe-chanar-doc';
+export const isChanarDoc = (d: EntPdf): boolean => (d.tags ?? []).some((t) => t.toLowerCase() === CHANAR_DOC_TAG);
+
+/** Сангийн жагсаалт — FIC/М-акт ба чанарын баримтыг хасна (бусад модулийн файлыг сангаас устгах/зөөхөөс сэргийлнэ) */
+export const libPdfs = (all: readonly EntPdf[]): EntPdf[] => all.filter((d) => !isFmPdf(d) && !isChanarDoc(d));
+export const listPdfs = async (): Promise<EntPdf[]> => libPdfs(await entListPdfs());
 
 export async function uploadPdf(file: File, groupId: string): Promise<{ item: EntPdf; warn?: string }> {
   requireCap('docsUpload');

@@ -8,27 +8,10 @@
  */
 import assert from 'node:assert/strict';
 import { loadBlockProgress, loadPrepProgress } from './blockProgress.ts';
+/* 2026-11-23 (аудит №46): хуулбар биш — аппын ЖИНХЭНЭ түлхүүрийн функцууд (`services/fields.ts`) */
+import { BAGTS_AJLUUD, bagtsKey, blockKey, buildingKey } from './services.ts';
 
-if (process.env.SELBE_LIVE_SKIP) {
-  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
-  process.exit(0);
-}
-
-const { BAGTS_AJLUUD } = await import('@/lib/services.ts');
-const { arcgisPost } = await import('@/lib/query.ts');
-const BLDG = `${BAGTS_AJLUUD}/0`;
-
-// services.ts-ийн хуулбар — тэндээ өөрчилвөл ЭНДЭЭ ч өөрчил.
-const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
-const blockKey = (v) => String(v ?? '').trim().split(/\s+/)[0];
-const buildingKey = (b, k) => `${bagtsKey(b)}|${blockKey(k)}`;
-
-const q = async (url, params) => {
-  const j = await arcgisPost(`${url}/query`, { returnGeometry: 'false', ...params });
-  return (j.features || []).map((f) => f.attributes);
-};
-
-// 1. Гурван эх сурвалжийн багцын нэр НЭГ түлхүүр рүү буулна.
+// 1. Гурван эх сурвалжийн багцын нэр НЭГ түлхүүр рүү буулна (сүлжээгүй — үргэлж ажиллана).
 assert.equal(bagtsKey('Багц 4.1'), bagtsKey('Багц 4-1'), 'давхарга ↔ хүснэгт');
 assert.equal(bagtsKey('Багц 4.1'), bagtsKey('БАГЦ-4-1'), 'давхарга ↔ master');
 assert.equal(bagtsKey('Багц 1'), 'БАГЦ1');
@@ -36,6 +19,19 @@ assert.equal(blockKey('5/1 барилга'), '5/1');
 assert.equal(blockKey('5/1 блок'), '5/1');
 // ...харин ӨӨР багц ХЭЗЭЭ Ч нийлэхгүй.
 assert.notEqual(buildingKey('Багц 1', '5/1 барилга'), buildingKey('Багц 2', '5/1 барилга'));
+
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log(`⏭ амьд шалгуур (blockProgress амьд хэсэг) алгасав — ${process.env.SELBE_LIVE_SKIP_REASON || 'үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга'}`);
+  process.exit(0);
+}
+
+const { arcgisPost } = await import('@/lib/query.ts');
+const BLDG = `${BAGTS_AJLUUD}/0`;
+
+const q = async (url, params) => {
+  const j = await arcgisPost(`${url}/query`, { returnGeometry: 'false', ...params });
+  return (j.features || []).map((f) => f.attributes);
+};
 
 // 2. Порталын шугамаас блокийн гүйцэтгэл.
 const prog = await loadBlockProgress();

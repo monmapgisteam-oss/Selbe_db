@@ -370,3 +370,15 @@ export const loadPlanPkgs = cached(async () => planPkgNames(await queryFeatures(
   where: `${CASHFLOW_NEW.fields.ddKod} IS NOT NULL`,
   outFields: [CASHFLOW_NEW.fields.ddKod, CASHFLOW_NEW.fields.pkg, CASHFLOW_NEW.fields.detail],
 })), SESSION_TTL_MS, ['CASHFLOW_NEW']);
+
+
+/**
+ * ЗӨРЧЛИЙН ДАРААХ ЗАСВАР (2026-11-23, хяналт, цэвэр): хэрэглэгчийн өөрчилсөн (`v` ≠ `base`) талбарууд шинэ мөрийн (`fresh`) дээр
+ * давхарлагдана, бусад нь шинэ утгаараа; `base` = `fresh` тул дараагийн хадгалалт зөвхөн хэрэглэгчийн өөрчлөлтийг бичнэ.
+ */
+export function rebaseEdit(oid: number, v: Record<string, string>, base: Record<string, string>, fresh: Record<string, string>): { oid: number; v: Record<string, string>; base: Record<string, string> } {
+  const out: Record<string, string> = { ...fresh };
+  for (const k of Object.keys(v)) if ((v[k] ?? '') !== (base[k] ?? '')) out[k] = v[k];
+  return { oid, v: out, base: fresh };
+}
+

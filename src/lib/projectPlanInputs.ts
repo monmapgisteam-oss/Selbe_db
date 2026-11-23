@@ -188,6 +188,34 @@ export async function loadProjectContractTotal(): Promise<number | null> {
  * («Мөнгөний нийлбэрт тооцох»). Олгосон хувь = олгосон ÷ гэрээний дүн. Тайлан, дашбоард, AI туслах бүгд ЭНЭ тоог авна.
  * Газрын нөхөн олговор (`withLandComp`) ТТБ-тэй адил орно — анхдагчаар нийтэд тооцогдохгүй. Мөр алга бол null.
  */
+/**
+ * ТЭЗҮ · АЖЛЫН ЗУРАГ ТӨСЛИЙН МӨНГӨ (2026-11-23, хэрэглэгч) — эдгээр гэрээ ажлын мөрд (`cashflow_id`) ороогүй тул «Ажлын төрлөөр»
+ * задаргаанд аль ч төрөлд ордоггүй байв (нийт 2,034.8 ↔ ТТБ 2,046.5). ТТБ-ийн хоёр үе шатын төсөв (E) ба гэрээний дүн
+ * (`moneySums`), «Мөнгөний нийлбэрт тооцох» унтраалгатай. Мөр алга бол null.
+ */
+export async function loadDesignMoney(): Promise<{ budget: number; contract: number; n: number; contracted: number } | null> {
+  const rows = await loadPlanRows();
+  if (!rows.length) return null;
+  const tree = buildTree(rows);
+  const vals = computePlan(tree, {}).values;
+  const ms = moneySums(tree);
+  let budget = 0, contract = 0, n = 0, contracted = 0;
+  for (const p of tree.root.children) {
+    if (p.outside || (p.phase !== 'tezu' && p.phase !== 'zurag')) continue;
+    budget += vals.get(p)?.E ?? 0;
+    contract += ms.get(p)?.contract ?? 0;
+    /* 2026-11-23 (давтан аудит): «Гэрээт» — гэрээний дүнтэй навч л (урьд нь гэрээ > 0 бол БҮХ навч: 369/369) */
+    const walk = (x: typeof p): void => {
+      if (x.outside) return;
+      if (x.children.length) { for (const c of x.children) walk(c); return; }
+      n += 1;
+      if ((ms.get(x)?.contract ?? 0) > 0) contracted += 1;
+    };
+    walk(p);
+  }
+  return { budget, contract, n, contracted };
+}
+
 export type ProjectMoney = { budget: number | null; contract: number | null; paid: number | null; advance: number | null; paidPct: number | null };
 export async function loadProjectMoney(): Promise<ProjectMoney | null> {
   const rows = await loadPlanRows();
@@ -743,6 +771,11 @@ export type ProjectPlan = {
   prevWeek?: Map<PlanNode, number | null>;
   /** Зураг төслийн явц БАГЦААР (бүртгэлийн төлөвөөс, 0–100) — багцын «Зураг төсөл» үе шатны хувьд (`liveProgressOf`) */
   zuragPkg?: ReadonlyMap<string, number> | null;
+  /**
+   * Зөвшөөрлийн явц БАГЦААР — «Зөвшөөрөл» бүртгэлээс (зөвшөөрсөн ÷ нийт, 0–100; `pkgKeyOf`). 2026-11-23 (аудит): бүртгэлд
+   * Багц-1 нэг зөвшөөрөл хүлээгдэж байхад багцын «Зөвшөөрөл» шат ТТБ-ийн мөрөөр 100% гардаг байв. Бүртгэлд мөргүй багц — ТТБ-ээр.
+   */
+  zovPkg?: ReadonlyMap<string, number> | null;
 };
 
 /** Хоосон төлөв (цэвэр) */
@@ -804,11 +837,13 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
   if (s.status === 'fulfilled') failed.push(...s.value.failed); else failed.push('schedule');
   const plan = assemblePlan(planRows, { actual, sched, dates, landTotal, zurag }, today, failed);
   plan.zuragPkg = zurag;
+  plan.zovPkg = await import('./zovshoorol').then((m) => m.loadZov()).then((zs) => (zs ? zovPctMap(zs) : null)).catch(() => null);
   /* Өмнөх 7 хоног — бөглөлтийн архиваас (2026-11-11). Унавал гол тооцоог саатуулахгүй */
   try {
     const at = await loadProgressAt(new Date(today - 7 * DAY).toISOString().slice(0, 10));
     const pw = computePlan(plan.tree, makeInputs({ actual: { ...actual, ...at }, sched: null, landTotal, zurag }), today);
-    plan.prevWeek = new Map(plan.tree.nodes.map((n) => [n, pw.values.get(n)?.S ?? null]));
+    /* 2026-11-23 (аудит №5): үе шатын мөрийн өмнөх 7 хоног — одоогийнхтой ИЖИЛ (Төслийн нийтэд орсон) дамжуулалтаас */
+    plan.prevWeek = new Map(plan.tree.nodes.map((n) => [n, (n.parent === plan.tree.root ? pw.total?.values.get(n)?.S : undefined) ?? pw.values.get(n)?.S ?? null]));
     plan.prevWeek.set(plan.tree.root, pw.values.get(plan.tree.root)?.S ?? null);
   } catch (e) {
     console.warn('[selbe] өмнөх 7 хоногийн гүйцэтгэл бодогдсонгүй', e);
@@ -829,6 +864,20 @@ export type LiveProgress = {
 /**
  * cashflow_id → амьд гүйцэтгэл — «Төсөл төлөвлөгөө биелэлт»-ийн S (`computePlan`), цэвэр (тестлэгдэнэ).
  */
+/** «Зөвшөөрөл» бүртгэлийн мөрүүд → багц (`pkgKeyOf`) → зөвшөөрсөн ÷ нийт × 100 (цэвэр) */
+export function zovPctMap(rows: readonly { bagts: string; tolov: string }[]): Map<string, number> {
+  const acc = new Map<string, { ok: number; n: number }>();
+  for (const r of rows) {
+    const k = pkgKeyOf(r.bagts);
+    if (!k) continue;
+    const a = acc.get(k) ?? { ok: 0, n: 0 };
+    a.n += 1;
+    if (r.tolov === 'Зөвшөөрсөн') a.ok += 1;
+    acc.set(k, a);
+  }
+  return new Map([...acc].map(([k, a]) => [k, (a.ok / a.n) * 100]));
+}
+
 export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
   const ST = CASHFLOW_NEW.stages;
   const PHASE_FIELD: [string, string][] = [
@@ -859,7 +908,8 @@ export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
       const t = pk ? top.get(`${ph}|${pk}`) : undefined;
       /* 2026-11-17: ТТБ-ийн зураг төслийн хэсэг бүртгэлийн жагсаалтаар (багцын мөргүй) — багцын зургийн хувь бүртгэлээс */
       const zp = ph === 'zurag' ? plan.zuragPkg?.get(bagtsKey(n.pkg ?? '')) : undefined;
-      stages[f] = zp !== undefined ? zp : t ? sOf(t) : null;
+      const vp = ph === 'zovshoorol' && pk ? plan.zovPkg?.get(pk) : undefined;
+      stages[f] = zp !== undefined ? zp : vp !== undefined ? vp : t ? sOf(t) : null;
     }
     out.set(id, { S, stages });
   }

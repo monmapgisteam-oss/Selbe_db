@@ -728,4 +728,45 @@ console.log('✅ revertRows CAS (wrote) — өөр хэрэглэгчийн ут
   }
 }
 
+/* ── Хэлбэрийн зэрэг засвар (2026-11-23, аудит): засвар эхэлснээс хойш өөр хүн хэлбэр зассан бол дарахгүй; буцаалт ч мөн ── */
+{
+  const { sameGeometry, saveGeometryChecked } = await import('./butetsEdit.ts');
+  const A = { paths: [[[1, 2], [3, 4]]], spatialReference: SR };
+  assert.equal(sameGeometry(A, { paths: [[[1.004, 2], [3, 4]]] }), true, 'серверийн бөөрөнхийлөлт (≤1 см) — ижил');
+  assert.equal(sameGeometry(A, { paths: [[[1, 2], [3, 5]]] }), false, 'цэг зөөгдсөн');
+  assert.equal(sameGeometry(A, { paths: [[[1, 2]], [[3, 4]]] }), false, 'бүтэц өөр (хоёр зам)');
+  assert.equal(sameGeometry(A, { rings: [[[1, 2], [3, 4]]] }), false, 'төрөл өөр');
+  assert.equal(sameGeometry(null, null), true);
+  assert.equal(sameGeometry(A, null), false);
+
+  const realF = globalThis.fetch;
+  const calls = [];
+  let server = { paths: [[[1, 2], [3, 4]]] };
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    const body = new URLSearchParams(String(init?.body ?? ''));
+    calls.push(u.endsWith('/applyEdits') ? 'write' : 'read');
+    if (u.endsWith('/applyEdits')) {
+      server = JSON.parse(body.get('updates'))[0].geometry;
+      return { ok: true, json: async () => ({ updateResults: [{ success: true, objectId: 12 }] }) };
+    }
+    return { ok: true, json: async () => ({ spatialReference: SR, features: [{ geometry: server }] }) };
+  };
+  try {
+    const NEW = { paths: [[[1, 2], [9, 9]]], spatialReference: SR };
+    const after = await saveGeometryChecked(meta, 12, A, NEW);
+    assert.deepEqual(calls, ['read', 'write', 'read'], 'бичихийн өмнө уншиж, дараа нь шинэ хэлбэрийг буцаана');
+    assert.ok(sameGeometry(after, NEW));
+    /* Өөр хүн энэ хооронд зассан → бичихгүй */
+    server = { paths: [[[5, 5], [6, 6]]] };
+    calls.length = 0;
+    await assert.rejects(() => saveGeometryChecked(meta, 12, after, A), /өөр хэрэглэгч/);
+    assert.deepEqual(calls, ['read'], 'зөрсөн үед applyEdits дуудагдахгүй');
+    assert.deepEqual(server.paths, [[[5, 5], [6, 6]]], 'нөгөө хүний хэлбэр хэвээр');
+  } finally {
+    globalThis.fetch = realF;
+  }
+  console.log('✅ хэлбэрийн зэрэг засвар: өөр хүний засварыг дарахгүй');
+}
+
 console.log('butetsEdit.check: OK');

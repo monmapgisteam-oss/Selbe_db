@@ -362,3 +362,13 @@ console.log('hoSync.compute: ok');
   const p = planHoSync(ho, rows);
   assert.deepEqual(p.matched.get('Багц 2 · Ажлын зураг төсөл · oid:999'), [41], 'ttb_oid-оор — нэр, кодын дугаар таарахгүй ч');
 }
+/* 2026-11-23 (аудит): хоёр компьютер ижил гэрээний толгой мөрийг зэрэг нэмсэн — хожуу (их objectid) нь өөрийгөө устгана */
+{
+  const { dupAddsToDelete } = await import('./compute.ts');
+  const h = (objectid, geree_kod) => ({ objectid, geree_kod });
+  const rows = [h(50, 'Багц 2 · oid:9'), h(51, 'Багц 2 · oid:9'), h(52, 'Багц 3 · oid:7')];
+  assert.deepEqual(dupAddsToDelete(rows, [51, 52]), [51], 'минийх (51) хожуу — устгана; давхцалгүй 52 үлдэнэ');
+  assert.deepEqual(dupAddsToDelete(rows, [50]), [], 'минийх (50) эрт — нөгөө тал өөрийгөө устгана');
+  assert.deepEqual(dupAddsToDelete(rows, [50, 51]), [], 'хоёулаа минийх — устгахгүй');
+  console.log('✅ HO синк: зэрэг нэмсэн давхар толгой мөрөөс нэг л үлдэнэ');
+}

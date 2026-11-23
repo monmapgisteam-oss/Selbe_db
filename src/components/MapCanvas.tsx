@@ -610,7 +610,10 @@ const PROG_STOPS: [number, [number, number, number]][] = [
   [50, [163, 230, 53]],  // #a3e635 шаргал ногоон — дунд шат
   [100, [22, 163, 74]],  // #16a34a ногоон — дууссан
 ];
-const progColor = (v: number): [number, number, number] => {
+const noop3d = (): void => {};
+
+/** Блокийн гүйцэтгэлийн өнгө (0–100) — газрын зургийн рендерер ба тайлбар (`TuhMap`) НЭГ эх */
+export const progColor = (v: number): [number, number, number] => {
   const x = Math.max(0, Math.min(100, v));
   for (let i = 1; i < PROG_STOPS.length; i++) {
     const [p1, c1] = PROG_STOPS[i - 1];
@@ -1310,6 +1313,7 @@ export function MapProvider({ children }: { children: ReactNode }) {
     if (!view || view.destroyed || !view.map) return;
     const is3d = view.type === '3d';
     const onlyList = hl.only == null ? null : Array.isArray(hl.only) ? hl.only : [hl.only];
+
     lazyTop(view.map).forEach((l) => {
       if (NO_HIGHLIGHT.has(l.id) || !('featureEffect' in l)) return;
       const fl = l as FeatureLayer;
@@ -1662,6 +1666,8 @@ export const MapCanvas = memo(function MapCanvas({
    * Дарж бичихээс ӨМНӨХ renderer — дарлага арилахад буцаана.
    */
   const styleBackup = useRef<Record<string, unknown>>({});
+  /** 3D босголтыг дахин хэрэглэх (рендерер дахин оноогдсоны дараа) — доорх босголтын effect тавина */
+  const reapply3dRef = useRef<() => void>(noop3d);
   const prevVisRef = useRef<Set<string>>(new Set());
   /** Одоо пульс-анимаци явж буй давхаргууд — давхар гогцоо эхлэхээс сэргийлнэ */
   const fadingRef = useRef<Set<string>>(new Set());
@@ -3626,6 +3632,16 @@ export const MapCanvas = memo(function MapCanvas({
   // `pulseLayer` нь тогтвортой лавлагаатай (useCallback) тул props-ыг ref-ээр уншина.
   useSyncRef(pulseIdsRef, pulseIds ?? []);
   useSyncRef(layerStyleRef, layerStyle ?? {});
+  /* 2026-11-23 (аудит): пульсийн хуулбар (GraphicsLayer) тодруулгын `featureEffect`-д ордоггүй тул тодруулгатай үед ч
+     бүх объект тод анивчдаг байв — 2D-д бусадтай адил бүдгэрүүлнэ. 3D-д тодруулга шүүлтээр явж пульс дахин эхэлнэ. */
+  const pulseDim = dim === '2d' && (hl.where || hl.geometry) ? 'opacity(15%) grayscale(80%)' : '';
+  const pulseDimRef = useRef(pulseDim);
+  useSyncRef(pulseDimRef, pulseDim);
+  useEffect(() => {
+    const pl = mapRef.current?.findLayerById('source:pulse') as GraphicsLayer | null | undefined;
+    /* хоосон мөр биш `null` — ArcGIS эффектийг `null`-оор цэвэрлэнэ (2026-11-23, хяналт) */
+    if (pl && dim === '2d') pl.effect = (pulseDim || null) as never;
+  }, [pulseDim, dim, ready]);
 
   const pulseLayer = useCallback((layer: Layer) => {
     const map = mapRef.current;
@@ -3642,6 +3658,7 @@ export const MapCanvas = memo(function MapCanvas({
     let gl = map.findLayerById('source:pulse') as GraphicsLayer | null;
     if (!gl) {
       gl = new GraphicsLayer({ id: 'source:pulse', listMode: 'hide' });
+      if (viewRef.current?.type === '2d') gl.effect = (pulseDimRef.current || null) as never;
       map.add(gl);
     }
     const pulse = gl;
@@ -4058,6 +4075,9 @@ export const MapCanvas = memo(function MapCanvas({
     lazyShowVisible(map);
     // Дараагийн өөрчлөлтөд «шинээр ил болсон»-ыг зөв илрүүлэхийн тулд тэмдэглэнэ.
     prevVisRef.current = on;
+    /* 2026-11-23 (аудит): дээрх `layerStyle` дарлага effect ажил бүрд рендерерийг ДАХИН онооно (тодруулга, бүс солиход ч) —
+       3D-д босгосон (`applied3d`) давхарга хавтгай болдог байв. Босголтыг дахин хэрэглэнэ (өөрчлөгдөөгүйг алгасна). */
+    reapply3dRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleKey, alwaysOnKey, dim, ready, zone, layerWhere, layerStyle, hl, hlOnly, uniform, bare, ortho, pulseLayer, meshVer]);
 
@@ -4098,28 +4118,34 @@ export const MapCanvas = memo(function MapCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || dim !== '3d' || (!extrudeM && !tubeM && !pointM)) return;
-    for (const id of visibleKey ? visibleKey.split(',') : []) {
-      if (!id.startsWith('infra:')) continue;
-      const geom = LAYER_BY_ID[id]?.geom;
-      if (!(geom === 'area' && extrudeM) && !(geom === 'line' && tubeM) && !(geom === 'point' && pointM)) continue;
-      const l = mapLayer(map, id) as FeatureLayer | null;
-      if (!l?.renderer) continue;
-      const key = geom === 'line' ? `line:${tubeNear}` : String(geom);
-      const cur = applied3d.current.get(id);
-      const ours = !!cur && l.renderer === cur.mine;
-      if (ours && cur.key === key) continue;
-      /* `layerStyle` effect дарж бичсэн бол тэр нь шинэ суурь */
-      const orig = ours ? cur.orig : l.renderer;
-      const elev = ours ? cur.elev : l.elevationInfo;
-      const base = (orig as NonNullable<FeatureLayer['renderer']>).clone();
-      let mine: FeatureLayer['renderer'];
-      if (geom === 'area') mine = extrudeRenderer(base, extrudeM as number);
-      else if (geom === 'point') mine = pillarRenderer(base, pointM as number);
-      else mine = tubeNear ? tubeRenderer(base, tubeM as number) : flatLineRenderer(base, 1);
-      l.renderer = mine;
-      l.elevationInfo = (geom === 'line' && tubeNear ? tubeElevation(tubeM as number) : elev) as never;
-      applied3d.current.set(id, { l, orig, elev, mine, key });
-    }
+    const run = () => {
+      for (const id of visibleKey ? visibleKey.split(',') : []) {
+        if (!id.startsWith('infra:')) continue;
+        const geom = LAYER_BY_ID[id]?.geom;
+        if (!(geom === 'area' && extrudeM) && !(geom === 'line' && tubeM) && !(geom === 'point' && pointM)) continue;
+        const l = mapLayer(map, id) as FeatureLayer | null;
+        if (!l?.renderer) continue;
+        const key = geom === 'line' ? `line:${tubeNear}` : String(geom);
+        const cur = applied3d.current.get(id);
+        const ours = !!cur && l.renderer === cur.mine;
+        if (ours && cur.key === key) continue;
+        /* `layerStyle` effect дарж бичсэн бол тэр нь шинэ суурь */
+        const orig = ours ? cur.orig : l.renderer;
+        const elev = ours ? cur.elev : l.elevationInfo;
+        const base = (orig as NonNullable<FeatureLayer['renderer']>).clone();
+        let mine: FeatureLayer['renderer'];
+        if (geom === 'area') mine = extrudeRenderer(base, extrudeM as number);
+        else if (geom === 'point') mine = pillarRenderer(base, pointM as number);
+        else mine = tubeNear ? tubeRenderer(base, tubeM as number) : flatLineRenderer(base, 1);
+        l.renderer = mine;
+        l.elevationInfo = (geom === 'line' && tubeNear ? tubeElevation(tubeM as number) : elev) as never;
+        applied3d.current.set(id, { l, orig, elev, mine, key });
+      }
+    };
+    run();
+    reapply3dRef.current = run;
+    /* Хуучин хаалт (өөр dim/багц) дараагийн effect-ээс дуудагдахгүй — бүх цэвэрлэгээ шинэ effect-ийн өмнө ажиллана */
+    return () => { reapply3dRef.current = noop3d; };
   }, [dim, ready, extrudeM, tubeM, pointM, visibleKey, layerStyle, tubeNear]);
 
   /**

@@ -1,4 +1,4 @@
-import { Fragment, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { Fragment, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { Schema } from "../bagts.pkg";
 import { fmtInc, parseInc, type SheetRow } from "../bagtsSheet";
 import { negFixOf, negFixText, negTotalAt } from "../sheetFrame";
@@ -40,8 +40,11 @@ export function FillRows({
   locked, noEdit, say, canPerf, perfWhy, busy, pctOnly, pctHintRef, setVal, cellSeed, setEdit, hitKey, noPerf, pasteBlock,
   inputRef, prevHint, val, commit, nextEditable, nextBlockEditable, pendDate, setPick, asOf, asOfOrig, warn,
   restoring = false, remainHint, pastePrev = null, extra = [], compact = false, clearLocked, maBlock, matNorms,
+  winGap = null, gapRow,
 }: {
-  vis: number[]; winFrom: number; winTo: number; rowsAll: SheetRow[]; calc: Calc; addedOids: Set<number>;
+  vis: number[]; winFrom: number; winTo: number;
+  /** Зурахгүй завсар ([эхлэх, дуусах) vis байрлал) — `gapRow(мөрийн тоо)` өндрөөр орлоно (аудит №91) */
+  winGap?: [number, number] | null; gapRow?: (n: number) => ReactNode; rowsAll: SheetRow[]; calc: Calc; addedOids: Set<number>;
   collapsed: Set<number>; toggle: (oid: number) => void;
   ro: (msg: string) => { title: string; onClick: () => void };
   editing: boolean; canObyemEdit: boolean; pvSub: ObyemT['pvSub']; sc: Schema;
@@ -72,7 +75,11 @@ export function FillRows({
 }) {
   return (
     <>
-              {vis.slice(winFrom, winTo).map((i) => {
+              {vis.slice(winFrom, winTo).map((i, k) => {
+                const p = winFrom + k;
+                if (winGap && p >= winGap[0] && p < winGap[1]) {
+                  return p === winGap[0] && gapRow ? <Fragment key="gap">{gapRow(winGap[1] - winGap[0])}</Fragment> : null;
+                }
                 const r = rowsAll[i];
                 const c = calc[i];
                 if (!c) return null;
@@ -507,6 +514,14 @@ export function FillRows({
                           : !noPerf
                             ? tr('Дарж календараар сонгоно')
                             : noEdit ? RO.viewOnly : !canPerf ? (perfWhy ?? RO.noPerf) : RO.notEditing}
+                        /* 2026-11-23 (аудит): гарнаас ч нээгдэнэ — Tab-аар очиж Enter/Space */
+                        tabIndex={i === 0 && !noPerf ? 0 : undefined}
+                        aria-haspopup={i === 0 && !noPerf ? "dialog" : undefined}
+                        onKeyDown={(e) => {
+                          if (i !== 0 || noPerf || (e.key !== "Enter" && e.key !== " ")) return;
+                          e.preventDefault();
+                          e.currentTarget.click();
+                        }}
                         onClick={(e) => {
                           if (noPerf) return i === 0 ? say(noEdit ? RO.viewOnly : !canPerf ? (perfWhy ?? RO.noPerf) : RO.notEditing) : undefined;
                           if (i !== 0) return say(RO.asOfRow);

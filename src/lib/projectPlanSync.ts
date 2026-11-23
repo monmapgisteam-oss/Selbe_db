@@ -11,7 +11,7 @@ import { useEffect } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { CASHFLOW_NEW, bagtsKey } from '@/lib/services';
 import { applyAll } from '@/lib/tableWrite';
-import { invalidate, subscribeData, writeEpoch, type DataKey } from '@/lib/dataBus';
+import { invalidate, subscribeData, writeEpoch, type DataKey, dropCaches } from '@/lib/dataBus';
 import { canAutoSync } from '@/lib/caps';
 import { currentUser } from '@/lib/who';
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
@@ -215,14 +215,31 @@ const isForbidden = (e: string): boolean => /\b(403|499|498)\b|эрхгүй|perm
  * Нэг удаагийн синк — зэрэг дуудвал нэг л ажиллагаа; явж байхад дахин хүсвэл дараа нь дахин ажиллана.
  * `fresh` — батлалтын дараа (кэшээр биш шинээр уншина, `syncPlanProgress`); автобусаас анхдагч `false`.
  */
-export function runPlanSync(opts: { fresh?: boolean } = {}): Promise<PlanSyncResult> {
-  if (inflight) { again = true; return inflight; }
+export function runPlanSync(opts: { fresh?: boolean; force?: boolean } = {}): Promise<PlanSyncResult> {
+  /* 2026-11-23 (аудит): `force` (батлалтын дараа) — явж буй ажиллагаа батлалтаас ӨМНӨ уншсан байж болох тул түүний дүнг буцаахгүй,
+     дууссаны дараа ШИНЭ ажиллагаа гинжилнэ (урьд нь `fresh` хаягдаж, хуучин уншилтын дүн буцдаг байв) */
+  if (inflight) {
+    if (opts.force) return inflight.then(() => runPlanSync(opts), () => runPlanSync(opts));
+    again = true;
+    return inflight;
+  }
   inflight = (async (): Promise<PlanSyncResult> => {
+    if (opts.force) {
+      /* Батлалтын зам: эрхийн хаалт (`canAutoSync`) ба түр хаалтыг тойрно — батлагч 182-т бичих ёстой (`hyanaltStore`-той нэг дүрэм).
+         Урьд нь санхүү/IPC эрхгүй хуваарийн батлагчид «no-cap» гэж алгасагдаж, 182 ба нийтийн вэб хоцордог байв. */
+      const forced = await syncPlanProgress({ fresh: true });
+      last = forced;
+      lastAt = Date.now();
+      return forced;
+    }
     const off = planSyncDisabled();
     if (off) return { ok: false, error: `disabled: ${off}` };
     /* 2026-11-05 (аудит): автомат бичилт зөвхөн санхүү/IPC эрхтэй сешнээс — `hoSync`/`publicSync`-тэй нэг дүрэм
        (батлалтын шууд зам `syncPlanProgress` хаалтгүй — батлагч бичих ёстой) */
     if (!canAutoSync(currentUser())) return { ok: true, n: 0, skipped: 'no-cap' };
+    /* 2026-11-23 (аудит): автобусын зам ч хуучин кэшээр бодохгүй — өөр хөтчийн шинэ гүйцэтгэлийг энэ хөтчийн 5 минутын кэшээр
+       дарж бичдэг байв. Кэшийг ЧИМЭЭГҮЙ хаяна (`dropCaches`: дэлгэц дахин зурагдахгүй, синкүүд дахин өдөөгдөхгүй). */
+    if (!(opts.fresh ?? false)) dropCaches();
     const res = await syncPlanProgress({ fresh: opts.fresh ?? false });
     if (!res.ok) {
       if (isForbidden(res.error)) { disabled = res.error; disabledUntil = Date.now() + DISABLE_MS; }

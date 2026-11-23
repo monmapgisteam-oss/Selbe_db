@@ -109,3 +109,19 @@ console.log('zuragBurtgel.check: бүгд ✅');
   a.deepEqual(planPkgNames([{ dd_kod: '1', ajil_uilchilgee: 'ТЭЗҮ' }]), [], 'үе шат олдоогүй — хоосон (бичих талбар хэвээр)');
   console.log('zuragBurtgel.check: багцын жагсаалт ✅');
 }
+
+/* 2026-11-23 (хяналт): зөрчлийн дараах хоёр дахь «Хадгалах» өөр хүний засварыг буцааж бичихгүй */
+{
+  const { rebaseEdit } = await import('./zuragBurtgel.ts');
+  const { strict: a } = await import('node:assert');
+  const base = { ner: 'A', shifr: 'S1', bagts: 'Багц-1' };
+  const v = { ner: 'A2', shifr: 'S1', bagts: 'Багц-1' }; // хэрэглэгч зөвхөн нэрийг өөрчилсөн
+  const fresh = { ner: 'A', shifr: 'S2', bagts: 'Багц-1' }; // өөр хүн шифрийг өөрчилсөн
+  const r = rebaseEdit(7, v, base, fresh);
+  a.deepEqual(r, { oid: 7, v: { ner: 'A2', shifr: 'S2', bagts: 'Багц-1' }, base: fresh }, 'хэрэглэгчийн өөрчлөлт + бусдын шинэ утга');
+  a.deepEqual(Object.keys(r.v).filter((k) => r.v[k] !== r.base[k]), ['ner'], 'дараагийн хадгалалт зөвхөн нэрийг бичнэ');
+  const ui = (await import('node:fs')).readFileSync(new URL('../modules/ZuragBurtgel.tsx', import.meta.url), 'utf8');
+  a.ok(ui.includes("if (t0 === (base[e.k] ?? '')) continue;"), 'бичих талбарыг засвар нээсэн агшинтай жишнэ');
+  a.ok(ui.includes('setEdit(rebaseEdit(edit.oid, v, base, editOf(fresh)));'), 'зөрчилд засварыг шинэ мөр дээр давхарлана');
+  console.log('zuragBurtgel.check: зөрчлийн дараах засвар ✅');
+}

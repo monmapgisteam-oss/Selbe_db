@@ -3,6 +3,7 @@
  */
 import { t as tr } from './i18nCore';
 import { applyAll } from './tableWrite';
+import { queryFeatures } from './query';
 import { hasCap, type CapKey } from './caps';
 import { currentUser } from './who';
 import { invalidate } from './dataBus';
@@ -111,12 +112,13 @@ export function deleteWhy(n: PlanNode, cutoff: number | null): string | null {
 export const isNewGroup = (n: PlanNode): boolean => n.children.length === 0;
 
 /** Дараагийн Д/Д — `эцэг.N`, бүх мөрийн дундаас хамгийн их N + 1 (давхардахгүй) */
-export function nextCodes(tree: PlanTree, parent: PlanNode, count: number): string[] {
+export function nextCodes(tree: PlanTree, parent: PlanNode, count: number, taken: readonly string[] = []): string[] {
   const pre = `${parent.code}.`;
   let max = 0;
-  for (const x of tree.nodes) {
-    if (!x.code.startsWith(pre)) continue;
-    const rest = x.code.slice(pre.length);
+  /* `taken` — хүснэгтээс САЯ уншсан Д/Д (2026-11-23, аудит): санах ойн мод хуучирсан байж болно */
+  for (const code of [...tree.nodes.map((x) => x.code), ...taken]) {
+    if (!code.startsWith(pre)) continue;
+    const rest = code.slice(pre.length);
     if (/^\d+$/.test(rest)) max = Math.max(max, Number(rest));
   }
   return Array.from({ length: count }, (_, i) => `${pre}${max + 1 + i}`);
@@ -144,8 +146,8 @@ export function newRowsWhy(parent: PlanNode, items: readonly NewPlanRow[]): stri
 }
 
 /** Хүснэгтэд нэмэх атрибутууд (цэвэр) */
-export function newRowAttrs(tree: PlanTree, parent: PlanNode, items: readonly NewPlanRow[]): Record<string, unknown>[] {
-  const codes = nextCodes(tree, parent, items.length);
+export function newRowAttrs(tree: PlanTree, parent: PlanNode, items: readonly NewPlanRow[], taken: readonly string[] = []): Record<string, unknown>[] {
+  const codes = nextCodes(tree, parent, items.length, taken);
   const r = parent.row!;
   const lvl = typeof r.tuvshin === 'number' ? r.tuvshin + 1 : parent.depth;
   const group = isNewGroup(parent);
@@ -271,16 +273,61 @@ export function savePlanValue(n: PlanNode, k: PlanEditKey, value: unknown) {
   return write({ updates: [{ [CASHFLOW_NEW.oid]: oidOf(n), [PLAN_EDIT[k].field]: value }] }, planRowCap(n, k));
 }
 
-/** Дэд мөрүүд нэмнэ (нэг хүсэлтээр — атомаар) */
-export function addPlanRows(tree: PlanTree, parent: PlanNode, items: readonly NewPlanRow[]) {
-  const why = addWhy(tree, parent) ?? newRowsWhy(parent, items);
-  if (why) throw new Error(why);
-  return write({ adds: newRowAttrs(tree, parent, items) }, planRowCap(parent));
+/**
+ * ХҮСНЭГТЭД САЯ НЭМЭГДСЭН МӨРТЭЙ ДАВХЦАХ УУ (цэвэр; 2026-11-23, аудит). `live` — эцгийн доорх мөрүүдийг бичихийн өмнө шинээр
+ * уншсан нь. Санах ойн модонд БАЙХГҮЙ (өөр хэрэглэгч эсвэл хариу нь алдагдсан өмнөх «Хадгалах» нэмсэн) шууд дэд мөр ижил нэртэй
+ * бол дахин нэмэхгүй — урьд нь ижил Д/Д-тэй хоёр мөр үүсдэг байв (шинэ бүлэгт жин 200%). Давхцалгүй бол null.
+ */
+export function addDupWhy(
+  tree: PlanTree, parent: PlanNode, items: readonly NewPlanRow[], live: readonly { code: string; name: string }[],
+): string | null {
+  const pre = `${parent.code}.`;
+  const known = new Set(tree.nodes.map((x) => x.code));
+  const key = (v: string) => v.replace(/\s+/g, ' ').trim().toLowerCase();
+  const fresh = live.filter((r) => r.code.startsWith(pre) && /^\d+$/.test(r.code.slice(pre.length)) && !known.has(r.code));
+  const names = new Set(fresh.map((r) => key(r.name)));
+  const hit = items.find((x) => names.has(key(x.name)));
+  return hit ? tr('«{0}» мөр энэ хооронд аль хэдийн нэмэгдсэн байна — хуудсаа шинэчилж шалгана уу.', hit.name.trim()) : null;
 }
 
-/** Гараар нэмсэн мөрийг устгана */
-export function deletePlanRow(n: PlanNode, cutoff: number | null) {
+/**
+ * ШИНЭ БҮЛЭГ ГЭЖ ҮЗСЭН ЭЦЭГТ энэ хооронд өөр хүн дэд мөр нэмсэн үү (2026-11-23, аудит №17). Санах ойн мод «дэд мөргүй» гэвэл
+ * шинэ мөрүүд 100% жинтэй бичигддэг — хоёр хүн зэрэг нэмбэл нийлбэр 200% болно. Хүснэгтэд модонд үл мэдэгдэх ШУУД дэд мөр
+ * байвал татгалзана (цэвэр).
+ */
+export function staleGroupWhy(
+  tree: PlanTree, parent: PlanNode, live: readonly { code: string }[],
+): string | null {
+  if (!isNewGroup(parent)) return null;
+  const pre = `${parent.code}.`;
+  const known = new Set(tree.nodes.map((x) => x.code));
+  const fresh = live.some((r) => r.code.startsWith(pre) && /^\d+$/.test(r.code.slice(pre.length)) && !known.has(r.code));
+  return fresh ? tr('Энэ мөрийн доор энэ хооронд өөр дэд мөр нэмэгдсэн байна — хуудсаа шинэчилж жинг дахин оруулна уу.') : null;
+}
+
+/** Дэд мөрүүд нэмнэ (нэг хүсэлтээр — атомаар). Бичихийн өмнө эцгийн доорх Д/Д-г хүснэгтээс шинээр уншина (`addDupWhy`). */
+export async function addPlanRows(tree: PlanTree, parent: PlanNode, items: readonly NewPlanRow[]) {
+  const why = addWhy(tree, parent) ?? newRowsWhy(parent, items);
+  if (why) throw new Error(why);
+  const rows = await queryFeatures(CASHFLOW_NEW.url, {
+    where: `${F.ddKod} LIKE '${parent.code.replace(/'/g, "''")}.%'`, outFields: [F.ddKod, F.detail],
+  });
+  const live = rows.map((r) => ({ code: String(r[F.ddKod] ?? '').trim(), name: String(r[F.detail] ?? '') }));
+  const dup = addDupWhy(tree, parent, items, live) ?? staleGroupWhy(tree, parent, live);
+  if (dup) throw new Error(dup);
+  return write({ adds: newRowAttrs(tree, parent, items, live.map((r) => r.code)) }, planRowCap(parent));
+}
+
+/**
+ * Гараар нэмсэн мөрийг устгана. 2026-11-23 (аудит №18): санах ойн мод хуучирсан байж болох тул устгахын өмнө дэд мөрийг
+ * хүснэгтээс ШИНЭЭР асууна — энэ хооронд өөр хүний нэмсэн дэд мөр эзэнгүй үлдэхгүй.
+ */
+export async function deletePlanRow(n: PlanNode, cutoff: number | null) {
   const why = deleteWhy(n, cutoff);
   if (why) throw new Error(why);
+  const kids = await queryFeatures(CASHFLOW_NEW.url, {
+    where: `${F.ddKod} LIKE '${n.code.replace(/'/g, "''")}.%'`, outFields: [F.ddKod],
+  });
+  if (kids.length) throw new Error(tr('Энэ мөрийн доор энэ хооронд дэд мөр нэмэгдсэн байна — устгахгүй. Хуудсаа шинэчилнэ үү.'));
   return write({ deletes: [oidOf(n)!] }, planRowCap(n));
 }

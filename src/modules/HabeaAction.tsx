@@ -459,7 +459,7 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = N
   if (st.state === 'error') {
     return (
       <Section title={tr('Үл нийцлийн арилгалт')}>
-        <Empty label={tr('Татагдсангүй: {0}', friendlyError(st.error))} />
+        <Empty label={tr('Татагдсангүй: {0}', friendlyError(st.error))} onRetry={st.retry} />
       </Section>
     );
   }

@@ -24,6 +24,13 @@ const OPTIONAL_LOCAL = new Map([
     'Нэвтрэлтийг санаатай унтраах (зөвхөн UI бүтэц харах) — production/CI-д ХЭЗЭЭ Ч тавихгүй (env.ts).'],
 ]);
 
+/**
+ * Кодоос ХАСАГДСАН ч workflow-д үлдсэн мөр — `.github/workflows/*.yml`-ийг push хийхэд `workflow` эрх хэрэгтэй тул
+ * тэр эрхтэй хүн устгах хүртэл зөвшөөрнө (код · .env.example-д байх ЁСГҮЙ).
+ * 2026-11-23 (аудит №11): `NEXT_PUBLIC_AGENT_PROMPT_HMAC` — browser-т ил нууц.
+ */
+const WORKFLOW_PENDING_REMOVAL = new Set(['NEXT_PUBLIC_AGENT_PROMPT_HMAC']);
+
 const SELF = 'tools/envParity.check.mjs';
 const NAME = /NEXT_PUBLIC_[A-Z0-9_]+/g;
 const BS = String.fromCharCode(92);
@@ -123,7 +130,14 @@ for (const [name, file] of code) {
   if (!test.has(name)) errs.push(`${name} (${file}) — test.yml-ийн env-д алга`);
 }
 for (const [label, set] of [['.env.example', example], ['deploy.yml', deploy], ['test.yml', test]]) {
-  for (const name of set) if (!code.has(name)) errs.push(`${name} — ${label}-д байгаа ч кодод хэрэглэгдэхгүй (хуучирсан мөр)`);
+  for (const name of set) {
+    if (code.has(name)) continue;
+    if (label !== '.env.example' && WORKFLOW_PENDING_REMOVAL.has(name)) continue;
+    errs.push(`${name} — ${label}-д байгаа ч кодод хэрэглэгдэхгүй (хуучирсан мөр)`);
+  }
+}
+for (const name of WORKFLOW_PENDING_REMOVAL) {
+  if (code.has(name) || example.has(name)) errs.push(`${name} — кодоос хасагдсан тул код/.env.example-д байх ЁСГҮЙ`);
 }
 for (const name of deploy) if (!test.has(name) && code.has(name)) errs.push(`${name} — deploy.yml-д байгаа ч test.yml-д алга`);
 for (const name of test) if (!deploy.has(name) && code.has(name)) errs.push(`${name} — test.yml-д байгаа ч deploy.yml-д алга`);

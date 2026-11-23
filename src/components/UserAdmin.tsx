@@ -1026,9 +1026,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
           {addNote && <div className={s.capNote} role="status">{addNote}</div>}
 
           {/* Бөөнөөр засах зурвас — сонголттой үед л */}
-          {sel.size > 0 && (
+          {/* 2026-11-23 (аудит): жагсаалтаас хасагдсан (устгасан/дахин ачаалсан) хэрэглэгчийн сонголтыг тоолохгүй — `selRows` */}
+          {selRows.length > 0 && (
             <div className={s.bulkBar}>
-              <span className={s.bulkInfo}>{tr('{0} сонгосон', String(sel.size))}</span>
+              <span className={s.bulkInfo}>{tr('{0} сонгосон', String(selRows.length))}</span>
               {rolePresets().map((r) => (
                 <button key={r.key} type="button" className={s.preset} onClick={() => { void bulkRole(r.key); }}>
                   {r.label}

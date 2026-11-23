@@ -211,3 +211,38 @@ const byCode = (c) => tree.byCode.get(c);
 }
 
 console.log('uyShat.check: OK');
+
+/* ── 6. Жин хуваалтын зөрөл (2026-11-23, аудит) — 1/k-г ачаалсан мөрөөр хуваасан; өөр хүн ах дүү нэмсэн/жин зассан бол хадгалахгүй ── */
+{
+  const { splitDrift } = await import('./uyShat.ts');
+  const kid = (oid, code, w) => row(oid, code, '3.2.2', { bagts: 'Багц-2', name: code, tuvshin: 3, heseg_ezleh_huvi: w });
+  const saved = [...base, kid(60, '3.2.2.1', 0.5), kid(61, '3.2.2.2', 0.5)];
+  const p = { ...EMPTY_PENDING, deletes: [60] };
+  const sib = (extra = []) => [saved.find((r) => r.objectid === 60), saved.find((r) => r.objectid === 61), ...extra];
+  assert.deepEqual(splitDrift(saved, sib(), p), [], 'ах дүү хэвээр — зөрөлгүй');
+  assert.deepEqual(splitDrift(saved, sib([kid(62, '3.2.2.3', 0.33)]), p).sort(), ['3.2.2.2', '3.2.2.3'], 'энэ хооронд өөр хүн ажил нэмсэн — k өөр');
+  const a = rowAdd(PAGES.zovshoorolTtb, buildTree(saved).byCode.get('3.2.2'), buildTree(saved), 'Шинэ');
+  const pa = { ...EMPTY_PENDING, adds: [a] };
+  assert.deepEqual(splitDrift(saved, sib(), pa), [], 'нэмэлт · ах дүү хэвээр');
+  assert.ok(splitDrift(saved, sib([kid(62, '3.2.2.9', 0.33)]), pa).length > 0, 'нэмэлт · өөр хүн ах дүү нэмсэн');
+  /* Жин бичих мөрийн жинг өөр хүн зассан — зэрэг засвар */
+  const P = PAGES.zovshoorolTtb;
+  const u = [{ objectid: 61, heseg_ezleh_huvi: 1 }];
+  assert.deepEqual(conflicts(P, saved, saved, u, N), []);
+  assert.deepEqual(conflicts(P, saved, saved.map((r) => (r.objectid === 61 ? { ...r, heseg_ezleh_huvi: 0.3 } : r)), u, N), ['3.2.2.2'], 'жин өөрчлөгдсөн');
+  console.log('✅ 6. жин хуваалтын зөрөл · жингийн зэрэг засвар');
+}
+
+/* 2026-11-23 (хяналт): хадгалахын өмнөх ах дүүгийн уншилт `etseg_kod` (виртуал, серверт БАЙХГҮЙ)-оор БИШ `dd_kod LIKE`-аар */
+{
+  const { isDirectChild } = await import('./uyShat.ts');
+  assert.equal(isDirectChild('3.2.1', '3.2'), true);
+  assert.equal(isDirectChild('3.2.1.1', '3.2'), false, 'ач');
+  assert.equal(isDirectChild('3.21', '3.2'), false, 'өөр эцэг');
+  assert.equal(isDirectChild('3.2.', '3.2'), false, 'хоосон дагавар');
+  const { readFileSync } = await import('node:fs');
+  const ui = readFileSync(new URL('../modules/UyShatOruulah.tsx', import.meta.url), 'utf8');
+  assert.ok(!/\$\{F\.parentKod\} IN/.test(ui), '`etseg_kod` серверийн where-д орохгүй');
+  assert.ok(ui.includes('${F.ddKod} LIKE ${sqlStr(`${c}.%`)}'), 'эцгээр dd_kod LIKE');
+  console.log('✅ 7. ах дүүгийн уншилт dd_kod LIKE + шууд хүүхэд');
+}

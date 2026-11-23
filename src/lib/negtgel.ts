@@ -440,6 +440,9 @@ export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectP
     const r = n.row;
     if (!r || (r.objectid == null && !r.virtual)) continue;
     const v = plan.result.values.get(n);
+    /* 2026-11-23 (аудит №5): үе шатын (1-р түвшин) мөрийн гүйцэтгэл, төлөвлөгөө, биелэлт, 7 хоногийн ахиц — БҮГД Төслийн
+       нийтэд ОРСОН дамжуулалтаас (`result.total`); урьд нь зөвхөн гүйцэтгэл нь тэндээс тул нэг мөрөнд хоёр суурь холилддог байв */
+    const vt = n.parent === plan.tree.root ? plan.result.total?.values.get(n) ?? v : v;
     const live = !n.children.length && (n.phase === 'barilga' && n.sub === 'barilga' || n.phase === 'gazar');
     out.push({
       oid: r.objectid ?? (vOid -= 1),
@@ -447,19 +450,21 @@ export function negRowsFromPlan(plan: import('@/lib/projectPlanInputs').ProjectP
       name: r.ajil_uilchilgee ?? '',
       bagts: r.bagts ?? '',
       depth: n.depth,
-      w: fr(v?.F),
+      /* «Хэсэгт эзлэх» — ТТБ-ийн нүдтэй ижил (`FT ?? F`, 2026-11-23) */
+      w: fr(v?.FT !== undefined ? v.FT : v?.F),
       p: fr(v?.G),
       budget: v?.E ?? null,
       outside: n.outside,
       inTotal: r.niit_tootsoh ?? null,
       ...(v?.noTotal ? { noTotal: true } : {}),
-      act: fr(v?.S), planG: fr(v?.N), planGch: null, planGu: fr(v?.P), planNw: fr(v?.Q), planPw: fr(v?.R),
-      perfG: fr(v?.T), perfGch: null, perfGu: fr(v?.V), perfWk: fr(v?.W),
+      /* Үе шатын мөр — Төслийн нийтэд ОРСОН хувь (`result.total`), ингэснээр Σ(G·S) = Төслийн нийт (2026-11-23, аудит) */
+      act: fr(vt?.S), planG: fr(vt?.N), planGch: null, planGu: fr(vt?.P), planNw: fr(vt?.Q), planPw: fr(vt?.R),
+      perfG: fr(vt?.T), perfGch: null, perfGu: fr(vt?.V), perfWk: fr(vt?.W),
       ctStart: v?.H ?? null, ctEnd: v?.I ?? null,
       exStart: ymd(v?.L), exEnd: ymd(v?.M),
       auto: live,
       how: live ? tr('Төсөл төлөвлөгөө биелэлт — системээс') : tr('Төсөл төлөвлөгөө биелэлт'),
-      ...weekOf(n, v?.S),
+      ...weekOf(n, vt?.S),
     });
   }
   return out;

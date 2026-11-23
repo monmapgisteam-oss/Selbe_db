@@ -100,18 +100,50 @@ function verifiedUser(key) {
 }
 /** SQL мөрийн литерал — `'` → `''` */
 const sqlStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
+
+/**
+ * ИТГЭМЖЛЭЛИЙН ГИНЖ (2026-11-23, аудит №29) — порталын `permsRemote.trustRules`-тэй ИЖИЛ дүрэм (`worker.mjs`-д ижил хуулбар).
+ * Гинж = `roots` (TRUSTED_ADMINS) + тэдний (гинжийнхний) бичсэн идэвхтэй super мөрийн эзэд. Мөр хүчинтэй нь:
+ *   · super мөр — `last_edited_user` гинжинд (талбар огт ирээгүй бол итгэнэ; null бол үгүй);
+ *   · бусад (хэрэглэгч, `__cap__:`) — `last_edited_user` гинжинд, эсвэл хоосон/ирээгүй (шалгах боломжгүй — итгэнэ).
+ * Урьд нь зөвхөн ӨӨРӨӨ бичсэн мөр хасагддаг байсан тул нэг энгийн гишүүн НӨГӨӨДӨДөө эрх бичиж чаддаг байв.
+ */
+function trustChain(features, roots) {
+  const lc = (s) => String(s ?? "").trim().toLowerCase();
+  const attrs = (f) => f?.attributes ?? {};
+  const editorOf = (f) => (Object.hasOwn(attrs(f), "last_edited_user") ? attrs(f).last_edited_user : undefined);
+  const activeSuper = (f) => attrs(f).role === "super" && String(attrs(f).views ?? "") !== "removed";
+  const chain = new Set(roots.map(lc));
+  const supers = features.filter((f) => activeSuper(f) && lc(attrs(f).username) && !lc(attrs(f).username).startsWith("__"));
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const f of supers) {
+      const u = lc(attrs(f).username);
+      if (chain.has(u)) continue;
+      const e = editorOf(f);
+      if (e === undefined || (e != null && chain.has(lc(e)))) { chain.add(u); grew = true; }
+    }
+  }
+  return (f) => {
+    const e = editorOf(f);
+    if (activeSuper(f)) return e === undefined || (e != null && chain.has(lc(e)));
+    const le = typeof e === "string" ? lc(e) : "";
+    return le === "" || chain.has(le);
+  };
+}
 const AGENT_CAP_REQUIRED = process.env.AGENT_CAP_REQUIRED === "1";
 async function hasPortalRow(token, username) {
   const name = String(username ?? "").trim();
   const lo = name.toLowerCase();
   const capKey = `__cap__:${lo}`;
-  const where = `${lo === name ? `username = ${sqlStr(lo)}` : `username = ${sqlStr(lo)} OR username = ${sqlStr(name)}`}${AGENT_CAP_REQUIRED ? ` OR username = ${sqlStr(capKey)}` : ""}`;
+  /* 2026-11-23 (аудит №29): super мөрүүдийг ч татна — итгэмжлэлийн гинжийг (`trustChain`) тэднээс бодно */
+  const where = `${lo === name ? `username = ${sqlStr(lo)}` : `username = ${sqlStr(lo)} OR username = ${sqlStr(name)}`}${AGENT_CAP_REQUIRED ? ` OR username = ${sqlStr(capKey)}` : ""} OR role = 'super'`;
   let data;
   try {
     const r = await fetch(`${ARCGIS_PERMS_URL}/query`, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ f: "json", where, outFields: "username,role,views", returnGeometry: "false", resultRecordCount: "10", token }).toString(),
+      body: new URLSearchParams({ f: "json", where, outFields: "username,role,views,last_edited_user", returnGeometry: "false", resultRecordCount: "500", token }).toString(),
     });
     data = await r.json();
   } catch {
@@ -120,12 +152,18 @@ async function hasPortalRow(token, username) {
   if (!data || data.error || !Array.isArray(data.features)) {
     return { ok: false, reason: "Порталын эрхийн хүснэгт шалгагдсангүй — түр хүлээгээд дахин оролдоно уу", status: 503 };
   }
-  const own = data.features.filter((f) => f?.attributes && String(f.attributes.username ?? "").toLowerCase() !== capKey);
+  /* 2026-11-23 (аудит): хэрэглэгч ӨӨРӨӨ бичсэн мөр (өөртөө «super» эсвэл «aiAgent» эрх тарьсан) хүчингүй — `last_edited_user`-ийг
+     сервер тавьдаг тул хуурамчлагдахгүй. Порталын `permsRemote`-ийн дүрэмтэй нэг чиглэл. */
+  /* Үндсэн админ (порталын `BOOTSTRAP_SUPER`; `TRUSTED_ADMINS`-аар таслалаар нэмнэ) өөрийн мөрийг өөрөө хадгалж болно */
+  const roots = String(process.env.TRUSTED_ADMINS || "tumenjargal_selbe").toLowerCase().split(",").map((x) => x.trim()).filter(Boolean);
+  const selfWritten = (f) => !roots.includes(lo) && String(f?.attributes?.last_edited_user ?? "").trim().toLowerCase() === lo;
+  const trusted = trustChain(data.features, roots);
+  const own = data.features.filter((f) => f?.attributes && String(f.attributes.username ?? "").trim().toLowerCase() === lo && !selfWritten(f) && trusted(f));
   const live = own.some((f) => String(f.attributes.views ?? "") !== "removed");
   if (!live) return { ok: false, reason: "Порталд бүртгэлгүй аккаунт — админаас эрх авна уу", status: 403 };
   /* 2026-11-11: туслах зөвхөн «AI туслах ашиглах» (`aiAgent`) эрхтэй аккаунтад — `AGENT_CAP_REQUIRED=1` үед. Системийн админ үргэлж */
   if (AGENT_CAP_REQUIRED && !own.some((f) => f.attributes.role === "super")) {
-    const cap = data.features.find((f) => String(f?.attributes?.username ?? "").toLowerCase() === capKey);
+    const cap = data.features.find((f) => String(f?.attributes?.username ?? "").toLowerCase() === capKey && !selfWritten(f) && trusted(f));
     let caps = [];
     try { caps = JSON.parse(cap?.attributes?.views || "[]"); } catch { caps = []; }
     if (!Array.isArray(caps) || !caps.includes("aiAgent")) return { ok: false, reason: "Танд AI туслах ашиглах эрх алга — админаас эрх авна уу", status: 403 };
@@ -187,6 +225,11 @@ const BOT_SECRET = process.env.BOT_SECRET?.trim() || "";
  * `x-prompt-sig` толгойгоор илгээнэ; таарахгүй бол 403. Тохируулаагүй бол зан огт өөрчлөгдөхгүй.
  */
 const PROMPT_HMAC = process.env.PROMPT_HMAC?.trim() || "";
+/**
+ * `/public-admin`-ИЙН НУУЦ (2026-11-23, аудит №8). Тохируулбал нийтийн сайтын СЕРВЕР `x-public-admin-secret` толгойгоор
+ * ИЖИЛ утгыг илгээх ёстой — Origin толгойг curl хуурамчилж чаддаг тул зөвхөн түүнд найдахгүй. Тохируулаагүй бол урьдын зан.
+ */
+const PUBLIC_ADMIN_SECRET = process.env.PUBLIC_ADMIN_SECRET?.trim() || "";
 const promptSig = (system) => createHmac("sha256", PROMPT_HMAC).update(system, "utf8").digest("hex");
 
 /** Өдрийн токены төсөв — `rateLimit.mjs` (`DAILY_TOKEN_BUDGET`, 0 = унтраалттай) */
@@ -407,6 +450,10 @@ const PUB_CONCURRENT = 2;
 async function publicChat(req, res, origin, kind) {
   const K = OPEN[kind];
   if (!origin || !PUB.origins.includes(origin)) {
+    json(res, 403, { error: "Энэ эх сурвалжид зөвшөөрөл алга" });
+    return;
+  }
+  if (kind === "adm" && PUBLIC_ADMIN_SECRET && !secretMatches(req.headers["x-public-admin-secret"], PUBLIC_ADMIN_SECRET)) {
     json(res, 403, { error: "Энэ эх сурвалжид зөвшөөрөл алга" });
     return;
   }
@@ -660,6 +707,6 @@ server.listen(PORT, '127.0.0.1', () => {
   );
   console.log(`[agent-proxy] зөвшөөрсөн эх: ${ALLOWED.join(", ")}`);
   console.log(`[agent-proxy] нийтийн чат (/public-chat): ${PUB.origins.join(", ")} · IP-д цагт ${PUB.perHour} · өдөрт нийт ${PUB.perDay}`);
-  console.log(`[agent-proxy] админы AI (/public-admin): IP-д цагт ${PUB.admin.perHour} · өдөрт нийт ${PUB.admin.perDay}`);
+  console.log(`[agent-proxy] админы AI (/public-admin): IP-д цагт ${PUB.admin.perHour} · өдөрт нийт ${PUB.admin.perDay} · нууц: ${PUBLIC_ADMIN_SECRET ? "шаардана" : "тохируулаагүй (зөвхөн Origin)"}`);
   console.log(`[agent-proxy] өдрийн төсөв: ${DAILY_TOKEN_BUDGET ? `${DAILY_TOKEN_BUDGET} токен/хэрэглэгч` : "унтраалттай"} · заавар гарын үсэг: ${PROMPT_HMAC ? "асаалттай" : "унтраалттай"}`);
 });

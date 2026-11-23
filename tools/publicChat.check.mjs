@@ -76,4 +76,41 @@ assert.match(pub, /K\.day\.hit\(K\.perDay\)/, 'өдрийн нийт хязга�
 assert.match(srv, /isPublicPath\(url\) && PUB\.origins\.includes\(origin\)/, 'нийтийн сайтын CORS зөвхөн /public-chat-д');
 assert.ok(srv.indexOf('isPublicPath(req.url)') < srv.indexOf('!req.url?.startsWith("/chat")'), 'нийтийн зам нэвтрэлтээс ӨМНӨ салаалана');
 
+/* 2026-11-23 (аудит №8/№31): `/public-admin`-ийн НУУЦ (`PUBLIC_ADMIN_SECRET`) — ЖИНХЭНЭ `publicChat` + `secretMatches`-ийг
+   эх кодоос таслан хуурамч орчинд ажиллуулна. Нууц тохируулсан үед толгойгүй/буруу → 403 (биеийг уншихаас ӨМНӨ);
+   зөв толгой ба `/public-chat` гацаагүй (дараагийн шат — цагийн хязгаарын хуурамч 429 хүртэл явна); тохируулаагүй бол урьдын зан. */
+{
+  const { timingSafeEqual } = await import('node:crypto');
+  const vm = await import('node:vm');
+  const src = srv.replace(/\r\n/g, '\n');
+  const fnSrc = (head) => {
+    const b = src.indexOf(head);
+    assert.ok(b >= 0, `server.mjs: «${head}» олдсонгүй`);
+    for (let i = src.indexOf('{', src.indexOf(')', b)), depth = 0; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}' && --depth === 0) return src.slice(b, i + 1);
+    }
+    throw new Error(`server.mjs: «${head}»-ийн төгсгөл олдсонгүй`);
+  };
+  const factory = vm.runInThisContext(
+    `(function (OPEN, PUB, PUBLIC_ADMIN_SECRET, json, clientIp, pubHour, Buffer, timingSafeEqual) {\n${fnSrc('function secretMatches(')}\n${fnSrc('async function publicChat(')}\nreturn publicChat;\n})`,
+    { filename: 'agent-proxy/server.mjs (publicChat)' },
+  );
+  const ORIGIN = 'https://investment.selbecity.mn';
+  const run = async (secret, kind, header) => {
+    let sent = null;
+    const json = (_res, code) => { sent = code; };
+    const K = { perHour: 1, unit: 'хүсэлт' };
+    const fn = factory({ pub: K, adm: K }, { origins: [ORIGIN] }, secret, json, () => '1.2.3.4', { full: () => true }, Buffer, timingSafeEqual);
+    await fn({ headers: header == null ? {} : { 'x-public-admin-secret': header } }, {}, ORIGIN, kind);
+    return sent;
+  };
+  assert.equal(await run('s3cret', 'adm', null), 403, 'нууц тохируулсан · толгойгүй → 403');
+  assert.equal(await run('s3cret', 'adm', 'wrong'), 403, 'нууц тохируулсан · буруу толгой → 403');
+  assert.equal(await run('s3cret', 'adm', 's3cret'), 429, 'зөв нууц → дараагийн шат (хуурамч цагийн хязгаар 429)');
+  assert.equal(await run('s3cret', 'pub', null), 429, '/public-chat нууц шаардахгүй');
+  assert.equal(await run('', 'adm', null), 429, 'нууц тохируулаагүй → урьдын зан (зөвхөн Origin)');
+  console.log('✅ /public-admin: PUBLIC_ADMIN_SECRET — толгойгүй/буруу → 403 · зөв → нэвтэрнэ · /public-chat хөндөгдөхгүй');
+}
+
 console.log('publicChat.check: OK');

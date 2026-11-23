@@ -147,7 +147,7 @@ check('guitsetgel — дэд багц 16.1/17.1 нь «16»-ийн доор, б�
 
 /* ══════════ §3 ══════════ */
 /* 2026-11-04: олгосон дүн `olgoson_dun`-ийн нийлбэрээс (IPC-ийн `dun`-ийг hoSync бичдэг) */
-const planPaid = assemblePlan(rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, olgoson_dun: 400 } : r)), { actual: { blocks: null, universe: null, infra: null }, sched: null }, D(2026, 7, 2));
+const planPaid = assemblePlan(rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, olgoson_dun: 400, geree_dun: 800, ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : r)), { actual: { blocks: null, universe: null, infra: null }, sched: null }, D(2026, 7, 2));
 check('sanhuu — E, эх үүсвэр, олгосон, хувь', () => {
   const [s] = sanhuuRows(planPaid);
   const E = plan.result.values.get(plan.tree.root).E;
@@ -156,7 +156,8 @@ check('sanhuu — E, эх үүсвэр, олгосон, хувь', () => {
   /* 2026-11-17 (хэрэглэгч): 4 эх үүсвэрийг бүр хасав — нийтийн хүснэгтэд бичигдэхгүй */
   for (const k of ['tosov_unet_tsaas', 'tosov_tosliin_orlogo', 'tosov_niislel_tosov', 'tosov_nzd_nuuts']) assert.ok(!(k in s), `${k} бичигдэв`);
   assert.equal(s.olgoson_sanhuujilt_dun, 400, 'урьдчилгаа + гүйцэтгэл');
-  assert.equal(s.olgoson_huvi, Math.round((400 / 1150) * 1000) / 10);
+  /* 2026-11-23 (аудит): олгосон ÷ ГЭРЭЭНИЙ дүн — порталын «Олгосон хувь»-тай нэг томьёо */
+  assert.equal(s.olgoson_huvi, 50);
   assert.ok(!('geree_dun' in s), 'гэрээний дүн өгөхгүй');
 });
 check('2026-11-09: sanhuu — мөнгө бүхэл төгрөг (амьд E 2,495,841,880,529.33 бичигддэг байв)', () => {

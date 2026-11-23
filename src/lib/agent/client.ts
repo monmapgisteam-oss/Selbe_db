@@ -78,10 +78,11 @@ async function probeHealth(base: string, signal?: AbortSignal): Promise<boolean>
 
 /**
  * СИСТЕМИЙН ЗААВРЫН ГАРЫН ҮСЭГ (2026-10-09, аудит №1) — реле дээр `PROMPT_HMAC` тохируулсан
- * үед ИЖИЛ утгыг энд өгнө: бот/Node — `AGENT_PROMPT_HMAC` (`BOT_SECRET`-ийн адил browser-т
- * `undefined`), browser build — `NEXT_PUBLIC_AGENT_PROMPT_HMAC` (GitHub Variable).
+ * үед ИЖИЛ утгыг энд өгнө: ЗӨВХӨН бот/Node — `AGENT_PROMPT_HMAC` (`BOT_SECRET`-ийн адил browser-т `undefined`).
+ * 2026-11-23 (аудит №11): browser build-ийн `NEXT_PUBLIC_…` хувилбар хасагдсан — JS багцад ил бичигдэж нууц
+ * дэлгэгддэг байв; реле гарын үсэггүй browser хүсэлтийг хүлээн авдаг (2026-11-19-өөс).
  */
-const PROMPT_KEY = process.env.AGENT_PROMPT_HMAC || process.env.NEXT_PUBLIC_AGENT_PROMPT_HMAC || '';
+const PROMPT_KEY = process.env.AGENT_PROMPT_HMAC || '';
 
 /** `system`-ийн HMAC-SHA256 (hex) — реле (`server.mjs` `promptSig`, `worker.mjs` `hmacHex`)-тэй ИЖИЛ */
 async function promptSig(system: string): Promise<string> {

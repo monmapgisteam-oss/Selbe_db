@@ -310,7 +310,14 @@ function TailanFull() {
    * ба `useBagtsTable`-ийн уншдаг хүснэгтүүдийн тагийг хүчингүй болгоход
    * `useAsync` дахин татна.
    */
-  const refresh = useCallback(() => invalidateAll(), []);
+  /* 2026-11-23 (аудит): автобусаар дахин татахад хуучин утга дэлгэц дээр үлддэг (stale-while-revalidate) тул шинэ өгөгдөл
+     гурвууланд ирэх хүртэл экспортын товчийг хаана — хуучин тоогоор PDF/мэйл гаргахгүй */
+  const [refreshFrom, setRefreshFrom] = useState<readonly unknown[] | null>(null);
+  const refresh = useCallback(() => {
+    setRefreshFrom([bagts, ex, pair]);
+    invalidateAll();
+  }, [bagts, ex, pair]);
+  const refreshing = refreshFrom != null && (refreshFrom[0] === bagts || refreshFrom[1] === ex || refreshFrom[2] === pair);
 
   const failed = bagts.state === 'error' || ex.state === 'error' || pair.state === 'error';
   const waiting = !failed && (bagts.state === 'loading' || ex.state === 'loading' || pair.state === 'loading');
@@ -328,7 +335,7 @@ function TailanFull() {
           <button
             type="button"
             className={r.btn}
-            disabled={!ready || busy || !hasTo}
+            disabled={!ready || refreshing || busy || !hasTo}
             onClick={send}
             title={tr('Outlook нээгдэж, мэйл бичигдсэн, PDF хавсаргагдсан, Send дарахад бэлэн (юу ч чирэх шаардлагагүй)')}
           >
@@ -338,7 +345,7 @@ function TailanFull() {
           <button
             type="button"
             className={r.btn}
-            disabled={!ready || busy || !hasTo}
+            disabled={!ready || refreshing || busy || !hasTo}
             onClick={sendWeb}
             title={tr('New Outlook эсвэл вэб хувилбар (OWA) ашигладаг бол мэйл бичих цонх нээгдэж, PDF нь тусад нь татагдана')}
           >
@@ -349,7 +356,7 @@ function TailanFull() {
           <button
             type="button"
             className={r.btn}
-            disabled={!ready || busy}
+            disabled={!ready || refreshing || busy}
             onClick={savePdf}
             title={tr('Зөвхөн PDF файлыг татах, мэйл програм нээхгүй')}
           >
@@ -359,12 +366,12 @@ function TailanFull() {
           <button
             type="button"
             className={r.btn}
-            disabled={busy || waiting}
+            disabled={busy || waiting || refreshing}
             onClick={refresh}
             title={tr('Тайлангийн түр санах ойг хаяж өгөгдлийг дахин татна')}
           >
             <Icon name="chart" size={15} />
-            {tr('Шинэчлэх')}
+            {refreshing ? tr('Шинэчилж байна…') : tr('Шинэчлэх')}
           </button>
         </div>
         {/* Хүлээн авагч ба Outlook-ийн зөвлөмж — товчнуудын доор, үргэлж харагдана */}
@@ -391,7 +398,7 @@ function TailanFull() {
           value={extra?.projectPct ?? null}
           loading={!extra && !failed}
           note={extra && <>
-            {tr('Барилгын явц')} {pct(extra.overall.pct, 2)}
+            {tr('Орон сууцны блокийн явц')} {pct(extra.overall.pct, 2)}
           </>}
         />
 
@@ -461,7 +468,7 @@ function TailanFull() {
                       <KpiRow items={[
                         { label: tr('Орон сууцны блок'), value: num(blocks) },
                         { label: tr('Өрхийн орон сууц'), value: ail },
-                        { label: tr('Барилгын явц'), value: pct(x.overall.pct, 2) },
+                        { label: tr('Орон сууцны блокийн явц'), value: pct(x.overall.pct, 2) },
                         { label: tr('Захирамжаар батлагдсан'), value: `${bn(x.finance.orderTotal)} ₮` },
                         { label: tr('Гэрээгээр байгуулагдсан'), value: `${bn(x.finance.contractAmount)} ₮` },
                         { label: tr('Бодитоор олгосон'), value: mnt(x.finance.paid) },
@@ -485,7 +492,7 @@ function TailanFull() {
                           <tr><td>{tr('Орон сууцны блок')}</td><td className={r.num}>{num(blocks)}</td></tr>
                           <tr><td>{tr('Өрхийн орон сууц')}</td><td className={r.num}>{ail}</td></tr>
                           <tr>
-                            <td title={tr('Орон сууцны блокуудын гүйцэтгэлийг төсвөөр нь жигнэсэн (3-р хэсэг)')}>{tr('Барилгын явц')}</td>
+                            <td title={tr('Орон сууцны блокуудын гүйцэтгэлийг төсвөөр нь жигнэсэн (3-р хэсэг)')}>{tr('Орон сууцны блокийн явц')}</td>
                             <td className={r.num}>{pct(x.overall.pct, 2)}</td>
                           </tr>
                           <tr>

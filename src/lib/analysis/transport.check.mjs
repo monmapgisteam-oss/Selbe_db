@@ -4,6 +4,10 @@
  *
  * Газрын зураг дээрх `barilga` (et:24)-ийг татаж, барилга бүрийг 7 ангилалд
  * хуваан, өглөөний оргил цагийн хүн-зорчилт ба тээврийн хуваарийг тооцно.
+ *
+ * 2026-11-23 (аудит №46): өмнө нь `transport.ts` · `roadDemand` · `busAccess` · `traffic`-ийн
+ * ХУУЛБАР логикийг шалгадаг байв (жинхэнэ модуль эвдэрсэн ч ногоон). Одоо ЖИНХЭНЭ экспортуудыг
+ * (`loadBuildings` · `loadPathsFrom` · `loadBusStops` · `assignRoadDemand` · `busAccess`) дуудна.
  */
 import assert from 'node:assert/strict';
 
@@ -13,158 +17,52 @@ if (process.env.SELBE_LIVE_SKIP) {
 }
 
 const { SELBE_ET } = await import('@/lib/services.ts');
-const { arcgisPost } = await import('@/lib/query.ts');
-const URL = `${SELBE_ET}/99`;
-/** «Замын тэнхлэг» — `roadNet.ts`-ийн эх сурвалж (et:5) */
-const ROAD_URL = `${SELBE_ET}/102`;
-/** «Автобус_буудал» — `busAccess.ts`-ийн эх сурвалж (et:2) */
-const BUS_URL = `${SELBE_ET}/127`;
+const {
+  CAT_LABEL, MODE_SPLIT, CAR_OCCUPANCY, ROAD_MAX_DIST_M, ROAD_WEIGHTS, BUS_GOOD_M, BUS_OK_M,
+  TRIP_COEF, vehicleTrips, busBand, classifyBuilding, buildingTrips,
+} = await import('@/lib/analysis/transport.ts');
+const { loadBuildings } = await import('@/modules/analysis/suit/buildings.ts');
+const { loadPathsFrom, WM_UNITS_PER_M } = await import('@/modules/analysis/suit/roadNet.ts');
+const { loadBusStops, busAccess } = await import('@/modules/analysis/suit/busAccess.ts');
+const { assignRoadDemand } = await import('@/modules/analysis/suit/roadDemand.ts');
+const { distToPath } = await import('@/modules/analysis/suit/traffic.ts');
 
-/* ── transport.ts-ийн хуулбар логик ── */
-const F = { purpose: 'зориулалт_m', population: 'population', capacity: 'huchin_chadal' };
+/** «Замын тэнхлэг» (et:5) */
+const ROAD_URL = `${SELBE_ET}/102`;
 
 const CATS = ['residential', 'school', 'kindergarten', 'hospital', 'office', 'service', 'other'];
-const CAT_LABEL = {
-  residential: 'Орон сууц', school: 'Сургууль', kindergarten: 'Цэцэрлэг',
-  hospital: 'Эмнэлэг', office: 'Оффис', service: 'Худалдаа, үйлчилгээ', other: 'Бусад',
-};
 
-function classify(purpose) {
-  const s = String(purpose ?? '').toLowerCase().trim();
-  if (!s) return 'other';
-  if (/орон сууц|house/.test(s)) return 'residential';
-  if (/сургууль/.test(s)) return 'school';
-  if (/цэцэрлэг/.test(s)) return 'kindergarten';
-  if (/эмнэлэг/.test(s)) return 'hospital';
-  if (/оффис|цагдаа|холбоо мэдээ|төрийн/.test(s)) return 'office';
-  if (/худалдаа|үйлчилгээ|зах|спорт|ахмад|хүүхэд|үзвэр/.test(s)) return 'service';
-  return 'other';
-}
+/* ── Жинхэнэ функцийн сүлжээгүй баталгаа ── */
+assert.equal(classifyBuilding('Орон сууц'), 'residential');
+assert.equal(classifyBuilding('Ерөнхий боловсролын сургууль'), 'school');
+assert.equal(classifyBuilding(''), 'other');
+assert.equal(buildingTrips('residential', 100, 999), 100 * TRIP_COEF.residential, 'орон сууц зөвхөн хүн амаар');
+assert.equal(buildingTrips('school', 999, 100), 100 * TRIP_COEF.school, 'бусад нь багтаамжаар');
+assert.equal(busBand(BUS_GOOD_M), 'good');
+assert.equal(busBand(BUS_OK_M), 'ok');
+assert.equal(busBand(BUS_OK_M + 1), 'poor');
+assert.ok(Math.abs(distToPath([0, 1], [[-1, 0], [1, 0]]) - 1) < 1e-9, 'distToPath');
 
-const TRIP_COEF = {
-  residential: 0.35, school: 0.90 * 0.75, kindergarten: 0.90 * 0.80,
-  hospital: 0.75 * 0.30, office: 0.80 * 0.60, service: 0.65 * 0.45, other: 0,
-};
-const buildingTrips = (cat, pop, cap) =>
-  (cat === 'residential' ? Math.max(0, pop) : Math.max(0, cap)) * TRIP_COEF[cat];
-
-const MODE_SPLIT = { car: 0.35, transit: 0.40, walk: 0.20, bike: 0.05 };
-const CAR_OCCUPANCY = 1.4;
-
-const vehicleTrips = (personTrips) => (personTrips * MODE_SPLIT.car) / CAR_OCCUPANCY;
-
-/* ── Замын эрэлт (`roadDemand.ts`-ийн хуулбар) ── */
-const ROAD_MAX_DIST_M = 150;
-const ROAD_WEIGHTS = [0.5, 0.3, 0.2];
-/** Web Mercator нэгж / бодит метр Сэлбэгийн өргөрөгт (`roadNet.WM_UNITS_PER_M`) */
-const WM_UNITS_PER_M = 1 / Math.cos((47.9674 * Math.PI) / 180);
-
-const n = (v) => (v == null || !Number.isFinite(Number(v)) ? 0 : Number(v));
-
-/* ── Живэ өгөгдөл татах (2000-ийн хязгаарыг offset-оор давна) ── */
-async function fetchAll() {
-  const out = [];
-  let offset = 0;
-  for (;;) {
-    const j = await arcgisPost(`${URL}/query`, {
-      where: '1=1', outFields: `${F.purpose},${F.population},${F.capacity}`, returnGeometry: 'false', returnCentroid: 'true',
-      outSR: '3857', resultOffset: String(offset), resultRecordCount: '2000',
-    });
-    if (j.error) throw new Error(JSON.stringify(j.error));
-    const feats = j.features ?? [];
-    // Төв цэгийг атрибутын хажууд `__x/__y`-ээр авч явна (доорх код `a[F...]` уншина)
-    out.push(...feats.map((f) => ({
-      ...f.attributes,
-      __x: f.centroid?.x ?? null,
-      __y: f.centroid?.y ?? null,
-    })));
-    if (feats.length < 2000) break;
-    offset += 2000;
-  }
-  return out;
-}
-
-/**
- * «Замын тэнхлэг» (et:5)-ийг Web Mercator шугам болгож татна.
- */
-async function fetchRoads() {
-  const geometry = JSON.stringify({
-    xmin: 641000, ymin: 5312000, xmax: 645000, ymax: 5317000,
-    spatialReference: { wkid: 32648 },
-  });
-  const out = [];
-  let offset = 0;
-  for (;;) {
-    const j = await arcgisPost(`${ROAD_URL}/query`, {
-      where: '1=1', geometry, geometryType: 'esriGeometryEnvelope', inSR: '32648', spatialRel: 'esriSpatialRelIntersects',
-      outFields: '', returnGeometry: 'true', outSR: '3857', maxAllowableOffset: '1.5', geometryPrecision: '1',
-      resultOffset: String(offset), resultRecordCount: '2000',
-    });
-    if (j.error) throw new Error(JSON.stringify(j.error));
-    const feats = j.features ?? [];
-    for (const f of feats) {
-      for (const path of f.geometry?.paths ?? []) if (path.length >= 2) out.push(path);
-    }
-    if (feats.length < 2000) break;
-    offset += 2000;
-  }
-  return out;
-}
-
-/** Автобусны буудлууд — Web Mercator цэг (`busAccess.loadBusStops`-ийн хуулбар) */
-async function fetchStops() {
-  const j = await arcgisPost(`${BUS_URL}/query`, { where: '1=1', outFields: 'objectid', returnGeometry: 'true', outSR: '3857', resultRecordCount: '2000' });
-  if (j.error) throw new Error(JSON.stringify(j.error));
-  return (j.features ?? [])
-    .map((f) => f.geometry)
-    .filter((g) => g && Number.isFinite(g.x) && Number.isFinite(g.y));
-}
-
-/* ── Автобусны хүртээмж (`busAccess.ts`-ийн хуулбар) ── */
-const BUS_GOOD_M = 400;
-const BUS_OK_M = 800;
-const busBand = (d) => (d <= BUS_GOOD_M ? 'good' : d <= BUS_OK_M ? 'ok' : 'poor');
-
-/* ── Цэг ↔ шугамын зай (`traffic.distToSeg` / `distToPath`-ийн хуулбар) ── */
-function distToSeg(p, a, b) {
-  const dx = b[0] - a[0];
-  const dy = b[1] - a[1];
-  const L2 = dx * dx + dy * dy;
-  if (L2 === 0) return Math.hypot(p[0] - a[0], p[1] - a[1]);
-  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2));
-  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
-}
-
-function distToPath(p, pts) {
-  let best = Infinity;
-  for (let i = 1; i < pts.length; i++) {
-    const d = distToSeg(p, pts[i - 1], pts[i]);
-    if (d < best) best = d;
-  }
-  return best;
-}
-
-/* ── Тооцоо ── */
-const rows = await fetchAll();
-assert.ok(rows.length > 0, 'барилга татагдсангүй');
+/* ── Тооцоо (жинхэнэ ачаалагч) ── */
+const blds = await loadBuildings();
+assert.ok(blds.length > 0, 'барилга татагдсангүй');
 
 const agg = Object.fromEntries(CATS.map((c) => [c, { count: 0, pop: 0, cap: 0, trips: 0 }]));
 let totalTrips = 0;
 const unknown = new Set();
 
-for (const a of rows) {
-  const cat = classify(a[F.purpose]);
-  const pop = n(a[F.population]);
-  const cap = n(a[F.capacity]);
-  const t = buildingTrips(cat, pop, cap);
-  const g = agg[cat];
-  g.count++; g.pop += pop; g.cap += cap; g.trips += t;
-  totalTrips += t;
-  if (cat === 'other' && String(a[F.purpose] ?? '').trim()) unknown.add(String(a[F.purpose]).trim());
+for (const b of blds) {
+  assert.equal(b.cat, classifyBuilding(b.purpose), `${b.oid}: ангилал зөрөв`);
+  assert.ok(Math.abs(b.trips - buildingTrips(b.cat, b.population, b.capacity)) < 1e-9, `${b.oid}: зорчилт зөрөв`);
+  assert.ok(Math.abs(b.vehTrips - vehicleTrips(b.trips)) < 1e-9, `${b.oid}: машин-зорчилт зөрөв`);
+  const g = agg[b.cat];
+  g.count++; g.pop += b.population; g.cap += b.capacity; g.trips += b.trips;
+  totalTrips += b.trips;
+  if (b.cat === 'other' && b.purpose) unknown.add(b.purpose);
 }
 
 /* ── Тайлан ── */
-console.log(`transport.check: ${rows.length} барилга · нийт хүн-зорчилт ${Math.round(totalTrips).toLocaleString('en-US')}/оргил цаг\n`);
+console.log(`transport.check: ${blds.length} барилга · нийт хүн-зорчилт ${Math.round(totalTrips).toLocaleString('en-US')}/оргил цаг\n`);
 console.log('Ангилал            | Тоо  | Хүн ам | Багтаамж | Хүн-зорчилт');
 console.log('-------------------|------|--------|----------|------------');
 for (const c of CATS) {
@@ -193,137 +91,79 @@ if (unknown.size) {
   for (const u of [...unknown].sort()) console.log('   - ' + u);
 }
 
-/* ══════════════════ Phase 2 — замын эрэлт ══════════════════ */
+/* ══════════════════ Phase 2 — замын эрэлт (`assignRoadDemand`) ══════════════════ */
 
-const roads = await fetchRoads();
+const roads = await loadPathsFrom(ROAD_URL);
 assert.ok(roads.length > 0, 'замын шугам татагдсангүй');
 
-const maxDist = ROAD_MAX_DIST_M * WM_UNITS_PER_M;
-const demand = new Float64Array(roads.length);
-let assignedVeh = 0;
-let linkedB = 0;
-const unlinked = [];
-const noCentroid = [];
-const distsM = [];
-
-for (const a of rows) {
-  const cat = classify(a[F.purpose]);
-  const veh = vehicleTrips(buildingTrips(cat, n(a[F.population]), n(a[F.capacity])));
-  if (a.__x == null || a.__y == null) { noCentroid.push(a); continue; }
-  const p = [a.__x, a.__y];
-
-  // Хамгийн ойрын 3 (өсөх дараалал)
-  const best = [];
-  for (let i = 0; i < roads.length; i++) {
-    const d = distToPath(p, roads[i]);
-    if (d > maxDist) continue;
-    if (best.length === 3 && d >= best[2].d) continue;
-    let j = best.length;
-    while (j > 0 && best[j - 1].d > d) j--;
-    best.splice(j, 0, { i, d });
-    if (best.length > 3) best.pop();
-  }
-
-  if (!best.length) { if (veh > 0) unlinked.push(a); continue; }
-  linkedB++;
-  distsM.push(best[0].d / WM_UNITS_PER_M);
-  if (veh <= 0) continue;
-
-  const wSum = best.reduce((s, _, i) => s + ROAD_WEIGHTS[i], 0);
-  for (let i = 0; i < best.length; i++) {
-    const share = (veh * ROAD_WEIGHTS[i]) / wSum;
-    demand[best[i].i] += share;
-    assignedVeh += share;
-  }
-}
+/* Зөвхөн `assignRoadDemand`-ын уншдаг талбарууд (`edges[].pts/dup`, `unitsPerMeter`) */
+const net = { edges: roads.map((pts) => ({ pts })), unitsPerMeter: WM_UNITS_PER_M };
+const rd = assignRoadDemand(net, blds);
 
 const totalVeh = vehicleTrips(totalTrips);
-const unlinkedVeh = unlinked.reduce(
-  (s, a) => s + vehicleTrips(buildingTrips(classify(a[F.purpose]), n(a[F.population]), n(a[F.capacity]))),
-  0,
-);
-let maxDemand = 0;
+const unlinkedVeh = rd.unlinked.reduce((s, i) => s + blds[i].vehTrips, 0);
+const distsM = rd.links.filter(Boolean).map((l) => l.distsM[0]);
 let loadedRoads = 0;
-for (const v of demand) { if (v > maxDemand) maxDemand = v; if (v > 0) loadedRoads++; }
+for (const v of rd.edgeDemand) if (v > 0) loadedRoads++;
 const median = distsM.length ? distsM.slice().sort((x, y) => x - y)[Math.floor(distsM.length / 2)] : 0;
 
 console.log('\nЗамын эрэлт (Phase 2):');
 console.log(`  Замын шугам           ${roads.length.toLocaleString('en-US')} (эрэлт орсон нь ${loadedRoads.toLocaleString('en-US')})`);
-console.log(`  Замд холбогдсон       ${linkedB} / ${rows.length} барилга`);
-console.log(`  Холбогдоогүй (зорчилттой) ${unlinked.length} барилга · ${Math.round(unlinkedVeh).toLocaleString('en-US')} машин`);
-console.log(`  Хуваарилагдсан        ${Math.round(assignedVeh).toLocaleString('en-US')} / ${Math.round(totalVeh).toLocaleString('en-US')} машин`);
+console.log(`  Замд холбогдсон       ${distsM.length} / ${blds.length} барилга`);
+console.log(`  Холбогдоогүй (зорчилттой) ${rd.unlinked.length} барилга · ${Math.round(unlinkedVeh).toLocaleString('en-US')} машин`);
+console.log(`  Хуваарилагдсан        ${Math.round(rd.assigned).toLocaleString('en-US')} / ${Math.round(totalVeh).toLocaleString('en-US')} машин`);
 console.log(`  Ойрын зам хүртэл      медиан ${Math.round(median)} м · дээд ${Math.round(Math.max(...distsM))} м`);
-console.log(`  Хамгийн ачаалалтай зам ${Math.round(maxDemand).toLocaleString('en-US')} машин/ц`);
+console.log(`  Хамгийн ачаалалтай зам ${Math.round(rd.max).toLocaleString('en-US')} машин/ц`);
 
 /* ── Батламжууд ── */
-assert.equal(noCentroid.length, 0, 'төв цэггүй барилга байна');
 // НИЙЛБЭР ХАДГАЛАГДАНА: хуваарилагдсан + холбогдоогүй = нийт машин-зорчилт
 assert.ok(
-  Math.abs(assignedVeh + unlinkedVeh - totalVeh) < 1,
-  `машин-зорчилт алдагдсан: ${assignedVeh.toFixed(2)} + ${unlinkedVeh.toFixed(2)} ≠ ${totalVeh.toFixed(2)}`,
+  Math.abs(rd.assigned + unlinkedVeh - totalVeh) < 1,
+  `машин-зорчилт алдагдсан: ${rd.assigned.toFixed(2)} + ${unlinkedVeh.toFixed(2)} ≠ ${totalVeh.toFixed(2)}`,
 );
-assert.ok(maxDemand > 0, 'ямар ч замд эрэлт оногдоогүй');
+const edgeSum = rd.edgeDemand.reduce((a, b) => a + b, 0);
+assert.ok(Math.abs(edgeSum - rd.assigned) < 1e-6, 'ирмэгийн эрэлтийн нийлбэр ≠ хуваарилагдсан');
+assert.ok(rd.max > 0, 'ямар ч замд эрэлт оногдоогүй');
 assert.ok(Math.max(...distsM) <= ROAD_MAX_DIST_M + 1e-6, 'зайн босго зөрчигдсөн');
+assert.ok(rd.links.every((l) => l == null || l.edges.length <= ROAD_WEIGHTS.length), 'нэг барилга 3-аас олон замд');
 assert.ok(Math.abs(ROAD_WEIGHTS.reduce((a, b) => a + b, 0) - 1) < 1e-9, 'замын жин 1.0 болохгүй байна');
 
-if (unlinked.length) {
-  console.log(`\n⚠️ ${ROAD_MAX_DIST_M} м дотор зам олдоогүй, зорчилт үүсгэдэг барилга (${unlinked.length}):`);
-  for (const a of unlinked.slice(0, 12)) {
-    console.log(`   - ${String(a[F.purpose] ?? '—')} · ${CAT_LABEL[classify(a[F.purpose])]}`);
+if (rd.unlinked.length) {
+  console.log(`\n⚠️ ${ROAD_MAX_DIST_M} м дотор зам олдоогүй, зорчилт үүсгэдэг барилга (${rd.unlinked.length}):`);
+  for (const i of rd.unlinked.slice(0, 12)) {
+    console.log(`   - ${blds[i].purpose || '—'} · ${CAT_LABEL[blds[i].cat]}`);
   }
-  if (unlinked.length > 12) console.log(`   … нийт ${unlinked.length}`);
+  if (rd.unlinked.length > 12) console.log(`   … нийт ${rd.unlinked.length}`);
 }
 
-/* ══════════════════ Phase 3 — автобусны хүртээмж ══════════════════ */
+/* ══════════════════ Phase 3 — автобусны хүртээмж (`busAccess`) ══════════════════ */
 
-const stops = await fetchStops();
+const stops = await loadBusStops();
 assert.ok(stops.length > 0, 'автобусны буудал татагдсангүй');
 
-const stopDemand = new Float64Array(stops.length);
-const popByBand = { good: 0, ok: 0, poor: 0 };
+const ba = busAccess(blds, stops, WM_UNITS_PER_M);
 const bldByBand = { good: 0, ok: 0, poor: 0 };
-let resPop = 0;
-
-for (const a of rows) {
-  if (a.__x == null || a.__y == null) continue;
-  const cat = classify(a[F.purpose]);
-  const pop = n(a[F.population]);
-  const trips = buildingTrips(cat, pop, n(a[F.capacity]));
-
-  let bestI = -1;
-  let bestD = Infinity;
-  for (let s = 0; s < stops.length; s++) {
-    const d = Math.hypot(a.__x - stops[s].x, a.__y - stops[s].y);
-    if (d < bestD) { bestD = d; bestI = s; }
-  }
-  const distM = bestD / WM_UNITS_PER_M;
-  const band = busBand(distM);
-  bldByBand[band]++;
-  if (cat === 'residential') { popByBand[band] += pop; resPop += pop; }
-  stopDemand[bestI] += trips * MODE_SPLIT.transit;
-}
-
-let maxStop = 0;
-for (const v of stopDemand) if (v > maxStop) maxStop = v;
+for (const a of ba.access) bldByBand[a.band]++;
+const resPop = agg.residential.pop;
 const pct = (v) => (resPop > 0 ? Math.round((v / resPop) * 100) : 0);
 
 console.log('\nАвтобусны хүртээмж (Phase 3):');
 console.log(`  Буудал                ${stops.length}`);
-console.log(`  ≤${BUS_GOOD_M} м (сайн)        ${String(popByBand.good).padStart(6)} хүн (${pct(popByBand.good)}%) · ${bldByBand.good} барилга`);
-console.log(`  ${BUS_GOOD_M}–${BUS_OK_M} м (боломжийн) ${String(popByBand.ok).padStart(6)} хүн (${pct(popByBand.ok)}%) · ${bldByBand.ok} барилга`);
-console.log(`  >${BUS_OK_M} м (дутмаг)      ${String(popByBand.poor).padStart(6)} хүн (${pct(popByBand.poor)}%) · ${bldByBand.poor} барилга`);
-console.log(`  Хамгийн ачаалалтай буудал ${Math.round(maxStop).toLocaleString('en-US')} зорчигч/ц`);
+console.log(`  ≤${BUS_GOOD_M} м (сайн)        ${String(ba.popByBand.good).padStart(6)} хүн (${pct(ba.popByBand.good)}%) · ${bldByBand.good} барилга`);
+console.log(`  ${BUS_GOOD_M}–${BUS_OK_M} м (боломжийн) ${String(ba.popByBand.ok).padStart(6)} хүн (${pct(ba.popByBand.ok)}%) · ${bldByBand.ok} барилга`);
+console.log(`  >${BUS_OK_M} м (дутмаг)      ${String(ba.popByBand.poor).padStart(6)} хүн (${pct(ba.popByBand.poor)}%) · ${bldByBand.poor} барилга`);
+console.log(`  Хамгийн ачаалалтай буудал ${Math.round(ba.maxStopDemand).toLocaleString('en-US')} зорчигч/ц`);
 
 /* ── Батламжууд ── */
 // Зурвасын хүн ам нийлээд ОРОН СУУЦНЫ нийт хүн амыг өгнө (давхардал/алдагдалгүй)
-assert.equal(
-  popByBand.good + popByBand.ok + popByBand.poor,
-  agg.residential.pop,
+assert.ok(
+  Math.abs(ba.popByBand.good + ba.popByBand.ok + ba.popByBand.poor - agg.residential.pop) < 1e-6,
   'зурвасын хүн амын нийлбэр орон сууцны хүн амтай таарахгүй',
 );
-assert.equal(bldByBand.good + bldByBand.ok + bldByBand.poor, rows.length, 'барилга зурваст бүрэн хуваарилагдаагүй');
+assert.equal(bldByBand.good + bldByBand.ok + bldByBand.poor, blds.length, 'барилга зурваст бүрэн хуваарилагдаагүй');
+for (const a of ba.access) assert.equal(a.band, busBand(a.distM), 'зурвас зайтайгаа таарахгүй');
 // Буудлын эрэлтийн нийлбэр = нийт зорчилт × нийтийн тээврийн хувь
-const stopSum = stopDemand.reduce((a, b) => a + b, 0);
+const stopSum = ba.stopDemand.reduce((a, b) => a + b, 0);
 assert.ok(
   Math.abs(stopSum - totalTrips * MODE_SPLIT.transit) < 1,
   `буудлын эрэлт алдагдсан: ${stopSum.toFixed(2)} ≠ ${(totalTrips * MODE_SPLIT.transit).toFixed(2)}`,

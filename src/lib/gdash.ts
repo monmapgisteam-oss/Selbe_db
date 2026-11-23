@@ -467,7 +467,8 @@ export function chartTypeCost(
     ...b,
     count: cnt.get(b.key)?.n ?? 0,
     countSub: cnt.get(b.key)?.c ?? 0,
-    perf: catPct.get(b.key) ?? w.get(b.key) ?? null,
+    /* 2026-11-23 (аудит №9, хэрэглэгчийн дүрэм): гэрээлсэн боловч хэмжилтгүй (ажил эхлээгүй) төрөл — 0%, «—» биш */
+    perf: catPct.get(b.key) ?? w.get(b.key) ?? ((b.sub ?? 0) > 0 ? 0 : null),
     fin: wf.get(b.key) ?? null,
     inTotal: inTot.has(b.key),
   }));

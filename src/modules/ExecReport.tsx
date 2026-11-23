@@ -26,7 +26,7 @@ import { coverageOk, coverageNote } from '@/lib/planProgress';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { downloadExecPdf, downloadInfographic } from '@/lib/execPdf';
 import {
-  periodOf, PERIOD_KEYS, periodLabel, deltaText, execDeltaRows, packTrendOf, givenTrendOf, type ExecPeriodKey, type ExecDeltas,
+  periodOf, customPeriodError, PERIOD_KEYS, periodLabel, deltaText, execDeltaRows, packTrendOf, givenTrendOf, type ExecPeriodKey, type ExecDeltas,
 } from '@/lib/execPeriodCalc';
 import { loadExecDeltas } from '@/lib/execPeriod';
 import { relayAlive } from '@/lib/agent/client';
@@ -69,6 +69,8 @@ export function ExecReport() {
   const [custom, setCustom] = useState<{ from: string; to: string }>({ from: '', to: '' });
   // Selection changes immediately, without a render using the previous period.
   const period = useMemo(() => periodNow == null ? null : periodOf(pkey, periodNow, custom), [pkey, periodNow, custom]);
+  /* 2026-11-23 (аудит): буруу «Огноо сонгох» — 30 хоногоор чимээгүй гаргахгүй, оролтын дэргэд алдаа + экспорт хаалттай */
+  const periodErr = customPeriodError(pkey, custom);
   const q = useAsync(loadExecReport, []);
   const [busy, setBusy] = useState<'' | 'pdf' | 'png' | 'ai'>('');
   const [fail, setFail] = useState('');
@@ -117,7 +119,7 @@ export function ExecReport() {
   const appendix = useMemo(() => (x ? execAppendix(x, findings) : []), [x, findings]);
 
   const run = useCallback(async (what: 'pdf' | 'png' | 'ai') => {
-    if (!x || busy || (what !== 'ai' && !deltas)) return;
+    if (!x || busy || (what !== 'ai' && (!deltas || periodErr))) return;
     setFail('');
     setBusy(what);
     let ac: AbortController | null = null;
@@ -142,7 +144,7 @@ export function ExecReport() {
     } finally {
       setBusy('');
     }
-  }, [x, busy, summary, deltas]);
+  }, [x, busy, summary, deltas, periodErr]);
   /**
    * ШИНЭЧЛЭХ — `loadExecReport`-ийн 5 минутын кэш (ба түүний уншдаг бүх кэш)-ийг хаяна.
    */
@@ -152,12 +154,12 @@ export function ExecReport() {
     <>
       <div className={r.toolbar}>
         <div className={r.tools}>
-          <button type="button" className={r.btn} disabled={!x || !deltas || !!busy} onClick={() => run('pdf')}
+          <button type="button" className={r.btn} disabled={!x || !deltas || !!periodErr || !!busy} onClick={() => run('pdf')}
             title={tr('Тайланг PDF хэлбэрээр татах')}>
             <Icon name="file" size={15} />
             {busy === 'pdf' ? tr('Бэлтгэж байна…') : tr('PDF татах')}
           </button>
-          <button type="button" className={r.btn} disabled={!x || !deltas || !!busy} onClick={() => run('png')}
+          <button type="button" className={r.btn} disabled={!x || !deltas || !!periodErr || !!busy} onClick={() => run('png')}
             title={tr('Инфографик зураг (PNG), мессенжер болон илтгэлд')}>
             <Icon name="chart" size={15} />
             {busy === 'png' ? tr('Бэлтгэж байна…') : tr('Инфографик (PNG)')}
@@ -203,7 +205,9 @@ export function ExecReport() {
               />
             </>
           )}
-          {period && <span className={e.periodRange}>{period.from} → {period.to}</span>}
+          {periodErr
+            ? <span className={r.fail} role="alert">{periodErr}</span>
+            : period && <span className={e.periodRange}>{period.from} → {period.to}</span>}
         </div>
         {fail && <p className={r.fail} role="alert">{fail}</p>}
       </div>
@@ -213,14 +217,15 @@ export function ExecReport() {
           meta={<>{date && <>{tr('Огноо:')} {date}</>}{x && <> {tr('· Өгөгдөл:')} {dateTime(x.fetchedAt)}</>}</>}
           title={tr('Сэлбэ 20 минутын хотын удирдлагын тайлан')}
           sub={tr('Ерөнхий дашбоард · Багцын гүйцэтгэл · Багцын санхүү · Зөвшөөрөл')}
-          figLabel={tr('Барилгын явц')}
+          figLabel={tr('Орон сууцны блокийн явц')}
           value={x?.prog.actual ?? null}
           plan={x?.prog.planned ?? null}
           loading={q.state === 'loading'}
           note={x && <>
             {tr('Төлөвлөсөн')} {pct(x.prog.planned, 1)}{coverageNote(x.prog.planCoverage) ? ` (${coverageNote(x.prog.planCoverage)})` : ''}
             {' · '}{tr('Төслийн нийт явц')} {pct(x.gdash.progress, 1)}
-            {x.gdash.progressPlan != null ? ` (${tr('төлөвлөгөө {0}', pct(x.gdash.progressPlan, 1))})` : ''}
+            {x.gdash.progressPlan != null || x.gdash.progressPlanP != null
+              ? ` (${[x.gdash.progressPlan != null ? tr('гэрээгээр {0}', pct(x.gdash.progressPlan, 1)) : '', x.gdash.progressPlanP != null ? tr('гүйцэтгэгчийн төлөвлөгөөгөөр {0}', pct(x.gdash.progressPlanP, 1)) : ''].filter(Boolean).join(' · ')})` : ''}
           </>}
         />
 
@@ -449,7 +454,8 @@ export function ExecReport() {
                     items={x.prog.packs.filter((p) => p.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1))
                       .map((p, i) => {
                         const t = packTrendOf(deltas, p.key);
-                        return { label: p.name, value: p.progress, hot: i === 0 && p.progress != null, text: `${pct(p.progress ?? 0, 1)}${t ? ` ${t.text}` : ''}` };
+                        /* 2026-11-23 (аудит №9): хэмжилтгүй (эхлээгүй) багц — 0% (текстийн «0.0%»-тэй нэг) */
+                        return { label: p.name, value: p.progress ?? 0, hot: i === 0 && p.progress != null, text: `${pct(p.progress ?? 0, 1)}${t ? ` ${t.text}` : ''}` };
                       })}
                   />
                   <Cap no={String(execSectionNo('prog'))}>{tr('Блокийн гүйцэтгэлийн түвшин')}</Cap>

@@ -124,14 +124,17 @@ export function ResizableTable({ storeKey, className, children }: Props) {
   useLayoutEffect(() => { measure(); }, [measure, w]);
 
   // Агуулга/өргөн өөрчлөгдөхөд ирмэгүүд шилжинэ — ажиглаж дагана.
+  // 2026-11-23 (аудит): урьд нь `children` deps-д — эцгийн рендер БҮРД ажиглагчийг дахин үүсгэж, layout уншдаг байв.
+  // Одоо нэг удаа: хэмжээг ResizeObserver, агуулгыг (мөр/текст) MutationObserver дагана.
   useLayoutEffect(() => {
-    measure();
     const wrap = wrapRef.current;
-    if (!wrap || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(wrap);
-    return () => ro.disconnect();
-  }, [measure, children]);
+    if (!wrap) return;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(wrap);
+    const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(measure) : null;
+    mo?.observe(wrap, { childList: true, subtree: true, characterData: true });
+    return () => { ro?.disconnect(); mo?.disconnect(); };
+  }, [measure]);
 
   /** `snap` — `onDown`-д ТҮР тогтоосон баганын индексүүд (хөдөлгөөнгүй бол буцаана). */
   const drag = useRef<{ i: number; x: number; w: number; px?: number; snap: number[] } | null>(null);

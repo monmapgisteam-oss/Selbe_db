@@ -57,10 +57,8 @@ const NAV = (housing: boolean, hasDeps: boolean) => [
   ['schedule', tr('Хуваарь')],
   ['progress', tr('Гүйцэтгэл')],
   ...(housing ? [['commissioning', tr('Ашиглалт')]] : hasDeps ? [['dependents', tr('Хамааралтай орон сууц')]] : []),
-  ['drawings', tr('Зураг')],
   ['materials', tr('Материал')],
   ['payments', tr('Төлбөр (IPC)')],
-  ['issues', tr('Асуудал')],
 ] as [string, string][];
 
 
@@ -184,9 +182,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
           <div><dt>{r.p.contracted ? tr('Гэрээний нийт дүн') : tr('Төсөвт дүн')}</dt><dd>{mnt(r.p.cost)}</dd></div>
           <div><dt>{tr('Гэрээт хугацаа')}</dt><dd>{date(r.p.start)} – {date(r.p.end)}</dd></div>
           <div><dt>{tr('Ерөнхий гүйцэтгэгч')}</dt><dd>{r.p.contractor || '—'}</dd></div>
-          <div><dt>{tr('Гэрээт байгууллага')}</dt><dd>—</dd></div>
           <div><dt>{tr('Захиалагчийн хяналт')}</dt><dd>{r.p.client || '—'}</dd></div>
-          <div><dt>{tr('Хяналтын баг')}</dt><dd>—</dd></div>
         </dl>
       </header>
 
@@ -195,12 +191,11 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
           <span className={s.statLabel}>{tr('Нийт гүйцэтгэл')}</span>
           <span className={s.statValue}>{pct(r.progress, 2)}</span>
           <span className={s.meterGap}><Meter value={r.progress} plan={r.planContract} /></span>
-          <span className={s.statNote}>{tr('Гэрээний төлөвлөгөө {0}', lz(m, 'cfPlan')(pct(r.planContract)))}</span>
+          <span className={s.statNote}>{tr('Төлбөрийн төлөвлөгөө {0}', lz(m, 'cfPlan')(pct(r.planContract)))}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('7 хоногийн ахиц')}</span>
           <span className={s.statValue}>{lz(m, 'hist')(pp(r.week))}</span>
-          <span className={s.statNote}>{tr('Өнгөрсөн 7 хоногийн төлөвлөгөө: {0}', '—')}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Гүйцэтгэгчийн төлөвлөгөөнөөс')}</span>
@@ -211,7 +206,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
           </span>
         </div>
         <div className={s.stat}>
-          <span className={s.statLabel}>{tr('Гэрээний төлөвлөгөөнөөс')}</span>
+          <span className={s.statLabel}>{tr('Төлбөрийн төлөвлөгөөнөөс')}</span>
           <span className={`${s.statValue} ${gapTone(r.gapContract)}`}>{lz(m, 'cfPlan')(pp(r.gapContract))}</span>
           <span className={s.statNote}>{tr('SPI (гэрээ) {0}', lz(m, 'cfPlan')(r.ev.spiContract == null ? '—' : num(r.ev.spiContract, 2)))}</span>
         </div>
@@ -221,7 +216,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             {r.workerDays.length ? num(r.workers) : wfWait ? '…' : schedWait(num(derived?.hun ?? null))}
             <small>{tr('хүн')}{!r.workerDays.length && !wfWait && derived?.hun != null ? ` · ${tr('төлөвлөсөн')}` : ''}</small>
           </span>
-          <span className={s.statNote}>{tr('шууд / шууд бус: {0}', '—')}</span>
         </div>
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Машин, техник')}</span>
@@ -243,6 +237,8 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         {nav.map(([id, label]) => <button key={id} type="button" onClick={() => go(id)}>{label}</button>)}
       </nav>
 
+      {/* 2026-11-23 (аудит №95c): эх сурвалжгүй (үргэлж «—») талбарууд хасагдав — гэрээт байгууллага, хяналтын баг, BIM/IFC,
+          7 хоногийн төлөвлөгөө/PPC/саад, шууд/шууд бус хүн хүч, материалын 3-6-9, «Зураг», «Асуудал» хэсэг */}
       {/* ── Тойм ── */}
       <Section id="tuh-overview" title={tr('Одоо хаана байна')}>
         <div className={s.panels}>
@@ -264,7 +260,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
             <h3>{tr('Digital twin холбоос')}</h3>
             <dl className={s.kv}>
               <dt>{tr('GIS давхарга')}</dt><dd>{housing ? tr('Барилга (блок)') : layerTitles.length ? layerTitles.join(', ') : '—'}</dd>
-              <dt>{tr('BIM/IFC загвар')}</dt><dd>—</dd>
               <dt>ID</dt><dd>{r.p.pkgKey || '—'}</dd>
             </dl>
           </div>
@@ -342,17 +337,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
                   <Gantt rows={derived.l3} from={dom.from} to={dom.to} now={now} />
                 </Card>
               ) : <p className={s.note}>—</p>}
-        <h3>{tr('Level 4 — 7 хоногийн төлөвлөгөө')}</h3>
-        <div className={s.chips} style={{ marginBottom: 6 }}>
-          <span className={s.chip}>PPC —</span>
-          <span className={s.chip}>{tr('Шийдэгдээгүй саад {0}', '—')}</span>
-        </div>
-        <div className={s.weeks}>
-          <div className={s.week}><b>{tr('Өнгөрсөн 7 хоног')}</b>—</div>
-          <div className={s.week}><b>{tr('Энэ 7 хоног')}</b>—</div>
-          <div className={s.week}><b>{tr('+1 долоо хоног')}</b>—</div>
-          <div className={s.week}><b>{tr('+2 долоо хоног')}</b>—</div>
-        </div>
         <h3>{tr('Level 1 — Мастер хуваарь')}</h3>
         <Card>
           <Gantt rows={l1} from={dom.from} to={dom.to} now={now} />
@@ -423,7 +407,7 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
                 <dt>{tr('Нийт гүйцэтгэл')}</dt><dd>{pct(r.progress)}</dd>
                 <dt>{tr('Гэрээт дуусах')}</dt><dd>{date(r.p.end)}</dd>
                 <dt>{tr('Барилга дуусах (гүйцэтгэгчийн төлөвлөгөө)')}</dt><dd>{schedWait(date(derived?.finish ?? null))}{covLow && derived?.finish != null ? ` · ${coverageNote(r.planCoverage)} — ${tr('хуваарь дутуу — дүгнэхгүй')}` : ''}</dd>
-                <dt>{tr('Гэрээний төлөвлөгөөнөөс')}</dt><dd>{lz(m, 'cfPlan')(pp(r.gapContract))}</dd>
+                <dt>{tr('Төлбөрийн төлөвлөгөөнөөс')}</dt><dd>{lz(m, 'cfPlan')(pp(r.gapContract))}</dd>
               </dl>
             </div>
           </div>
@@ -455,21 +439,9 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
         </Section>
       )}
 
-      {/* ── Зураг ── (эх сурвалжгүй — хураагдсан) */}
-      <Section id="tuh-drawings" title={tr('Зураг')} empty>
-        <p className={s.note}>—</p>
-      </Section>
-
       {/* ── Материал ── (MA/MIR алга, ачаалж дууссан бол хураагдсан) */}
       <Section id="tuh-materials" title={tr('Материалын хуваарь, төлөв')}
         empty={!r.docs.some((d) => d.kind === 'MA' || d.kind === 'MIR') && !m.loading.has('docs')}>
-        <h3>{tr('Материалын 3-6-9 долоо хоногийн төлөвлөгөө')}</h3>
-        <div className={s.weeks}>
-          <div className={s.week}><b>{tr('Хугацаа хэтэрсэн')}</b>—</div>
-          <div className={s.week}><b>{tr('3 долоо хоног')}</b>—</div>
-          <div className={s.week}><b>{tr('6 долоо хоног')}</b>—</div>
-          <div className={s.week}><b>{tr('9 долоо хоног')}</b>—</div>
-        </div>
         <h3>{tr('MA / MIR')}</h3>
         <div className={s.tableWrap}>
           <table className={s.table}>
@@ -605,15 +577,6 @@ export function PkgDetail({ r, m, onBack, onOpen, onOpenDeps }: {
               {!r.ipc && <EmptyRow cols={7} />}
             </tbody>
           </table>
-        </div>
-      </Section>
-
-      {/* ── Асуудал ── */}
-      <Section id="tuh-issues" title={tr('Асуудал')} empty>
-        <div className={s.three}>
-          <div className={s.panel}><h3>{tr('Өнгөрсөн 7 хоногийн ололт')}</h3><p className={s.note}>—</p></div>
-          <div className={s.panel} data-tone="bad"><h3>{tr('Тулгамдсан асуудал')}</h3><p className={s.note}>—</p></div>
-          <div className={s.panel}><h3>{tr('Дараа 7 хоногийн төлөвлөгөө')}</h3><p className={s.note}>—</p></div>
         </div>
       </Section>
     </>

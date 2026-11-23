@@ -1064,7 +1064,8 @@ export function useDraftSync(p: {
         if (nOk) warns.push(tr('Хянагчийн ЗӨВШӨӨРСӨН (ногоон ✓) {0} нүдний ноорог утгыг хаяв — тэр нүд дахин засагдахгүй.', nOk));
       }
       if (fresh.ambig || fresh.srv || fresh.old) warns.push(tr('Тэмдэглэсэн нүд 7 хоногийн дараа автоматаар хаягдана — «Тэмдэглэсэн нүдийг хаях» товчоор одоо хаяж болно.'));
-      if (warns.length) show('warn', warns.join(' '));
+      /* 2026-11-23 (аудит): нэг удаа л гардаг (`heldWarnedRef`) тул 4 с-ийн дараа алга болбол дахин харагдахгүй — тогтмол мэдэгдлээр */
+      if (warns.length) (cbRef.current.stick ?? ((m: string) => show('warn', m)))(warns.join(' '));
     }
     if (dropped && !opts?.poll) {
       const shown = dropNames.slice(0, 12).join('; ') + (dropNames.length > 12 ? ` … (+${dropNames.length - 12})` : '');

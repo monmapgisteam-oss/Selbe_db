@@ -101,6 +101,8 @@ export function computeSuitability(
   indicators: readonly Indicator[] = INDICATORS,
   /** Оноололд ОРУУЛАХ хасагдсан ангиллууд — анхдагч нь хуудасны анхдагч сонголт */
   scoreTypes: ReadonlySet<string> = ACTIVATABLE_ZONE_TYPES,
+  /** Таамгаар «норм хангасан» үзүүлэлтүүд — анхдагч `ASSUME_MET` (шалгуурт солино) */
+  assumeMet: Readonly<Record<string, number>> = ASSUME_MET,
 ): SuitComputed {
   const live = zones.filter((z) => !z.excluded || scoreTypes.has(z.type));
   const judged = judgedIndicators(indicators);
@@ -108,7 +110,7 @@ export function computeSuitability(
   const allFails: SuitFail[] = [];
 
   const byIndicator: SuitIndicatorRow[] = judged.map((ind) => {
-    const assumed = ind.id in ASSUME_MET;
+    const assumed = ind.id in assumeMet;
     let fails = 0;
     let scored = 0;
     let worst: SuitIndicatorRow['worst'] = null;
@@ -150,7 +152,7 @@ export function computeSuitability(
   const liveIds = new Set(live.map((z) => z.id));
   let lowCoverage = 0;
   const scoredList: SuitZoneScore[] = zones.map((z) => {
-    const u = urbanScore(z.raw, [...indicators], z.type);
+    const u = urbanScore(z.raw, [...indicators], z.type, undefined, assumeMet);
     if (u.reason === 'coverage' && liveIds.has(z.id)) lowCoverage += 1;
     return { zone: z.id, type: z.type, score: u.score, coverage: u.coverage, fails: failsByZone.get(z.id) ?? 0 };
   });

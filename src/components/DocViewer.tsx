@@ -36,6 +36,7 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
   const [active, setActive] = useState<string | null>(null);
   const narrow = useSyncExternalStore(subNarrow, isNarrow, () => false);
   const modalRef = useRef<HTMLDivElement>(null);
+  const downBackRef = useRef(false);
 
   useFocusTrap(modalRef, open);
 
@@ -57,7 +58,10 @@ export function DocViewer({ open, onClose }: { open: boolean; onClose: () => voi
   const entId = active?.startsWith(ENT_KEY) ? active.slice(ENT_KEY.length) : null;
 
   return (
-    <div className={s.overlay} onClick={onClose} role="presentation">
+    /* 2026-11-23 (аудит): дарах ба суллах хоёулаа дэвсгэр дээр байвал л хаана (бичиж буй бүлгийн нэр/нууц үг алдагдахгүй) */
+    <div className={s.overlay} role="presentation"
+      onMouseDown={(e) => { downBackRef.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (downBackRef.current && e.target === e.currentTarget) onClose(); downBackRef.current = false; }}>
       <div
         ref={modalRef}
         className={s.modal}

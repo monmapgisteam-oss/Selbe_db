@@ -12,13 +12,20 @@
  */
 import assert from 'node:assert/strict';
 import { loadSheetRows, sheetBagtsNames } from './sheet/sheetRows.ts';
+import { bagtsKey } from '../lib/services/fields.ts';
+
+/* 2026-11-23 (аудит №41): сүлжээгүй хэсэг (бүртгэл · жинхэнэ `bagtsKey`) ҮРГЭЛЖ ажиллана — амьд хэсгийг л SELBE_LIVE_SKIP хаана */
+const names = sheetBagtsNames();
+assert.ok(names.length >= 5, `бүртгэлд багц хэт бага: ${names.length}`);
+
+// Давхаргын «Багц 4.1» → хуудсын «Багц 4-1»
+assert.ok(names.find((n) => bagtsKey(n) === bagtsKey('Багц 4.1')), 'Багц 4.1 таарсангүй');
+console.log(`✅ бүртгэл: ${names.length} багц · «Багц 4.1» ↔ хуудас таарна`);
 
 if (process.env.SELBE_LIVE_SKIP) {
-  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
+  console.log(`⏭ амьд шалгуур (bagts амьд хэсэг) алгасав — ${process.env.SELBE_LIVE_SKIP_REASON || 'үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга'}`);
   process.exit(0);
 }
-
-const bagtsKey = (v) => String(v ?? '').toUpperCase().replace(/[^0-9А-ЯӨҮA-Z]/g, '');
 
 /** `useBagtsWorks`-ийн хуулбар: батч = (блок, агшин), гүн толгойг дараалллаас */
 function works(rows) {
@@ -61,12 +68,6 @@ function works(rows) {
     })
     .sort((a, b) => a.order - b.order);
 }
-
-const names = sheetBagtsNames();
-assert.ok(names.length >= 5, `бүртгэлд багц хэт бага: ${names.length}`);
-
-// Давхаргын «Багц 4.1» → хуудсын «Багц 4-1»
-assert.ok(names.find((n) => bagtsKey(n) === bagtsKey('Багц 4.1')), 'Багц 4.1 таарсангүй');
 
 let withData = 0;
 for (const name of names) {

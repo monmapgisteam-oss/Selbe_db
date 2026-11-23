@@ -496,6 +496,7 @@ export function PkgProg({ dim, setDim }: {
       sel={sel}
       onSel={pick}
       finMap={finMap}
+      finFailed={finQ.state === 'error'}
     />
   );
 
@@ -545,6 +546,7 @@ export function PkgProg({ dim, setDim }: {
                   sel={sel}
                   onSel={pick}
                   finMap={finMap}
+                  finFailed={finQ.state === 'error'}
                 />
               </div>
             )}
@@ -835,7 +837,7 @@ function TsKpi(
 }
 
 function TsPackList({
-  title, note, packs, sel, onSel, finMap,
+  title, note, packs, sel, onSel, finMap, finFailed = false,
 }: {
   title: string;
   note: string;
@@ -843,6 +845,8 @@ function TsPackList({
   sel: string | null;
   onSel: (k: string | null) => void;
   finMap: Map<string, ReturnType<typeof contractMonths>> | null;
+  /** Санхүү уншигдаагүй — «…» биш «—» */
+  finFailed?: boolean;
 }) {
   if (!packs.length) return null;
   /**
@@ -894,7 +898,9 @@ function TsPackList({
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   flexWrap: 'wrap', justifyContent: 'flex-end',
                 }}>
-                  {pct(execPct ?? 0, 1)}
+                  {/* 2026-11-23 (аудит): санхүү ачаалж байхад «…» — 0.0% гэж харуулахгүй; ачаалсны дараа хэмжигдээгүй нь 0% (2026-11-09 дүрэм) */}
+                  {/* 2026-11-23 (давтан аудит): санхүү УНАСАН бол «—» (дээрх алдааны мэдэгдэл); «…» зөвхөн ачаалж байхад */}
+                  {finMap ? pct(execPct ?? 0, 1) : finFailed ? '—' : '…'}
                   {lvl && lag && (
                     <b
                       className={`${ts.gapBadge} ${lvl === 'red' ? ts.gapRed : ts.gapYellow}`}

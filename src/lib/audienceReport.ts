@@ -36,7 +36,7 @@ export type ReportInputs = {
   /** Хугацааны өөрчлөлт — ачаалалт унавал null (өөрчлөлтийн өгүүлбэр гарахгүй) */
   d: ExecDeltas | null;
   /** Төслийн нийт мөр (root) — «Төсөл төлөвлөгөө биелэлт» гол эх; уншигдаагүй бол null */
-  project: { S: number | null; P: number | null } | null;
+  project: { S: number | null; P: number | null; N?: number | null } | null;
   phases: PhaseInput[];
   /** Барилга угсралт үе шатын дэд хэсэг — Бэлтгэл ажил · Барилга угсралт ажил */
   buildSub: PhaseInput[];
@@ -206,14 +206,22 @@ export const stalledPacks = (x: ExecReport) => x.prog.packs.filter((p) => p.kind
 
 const ipcTotals = (i: ReportInputs) => i.ipc ? i.ipc.created + i.ipc.signed : 0;
 
+/** Төлөвлөгөөт хувийн бичвэр — хоёр суурийг НЭРТЭЙ нь (2026-11-23, аудит: нэг тайланд 63.5, нөгөөд 49.6 гэж нэргүй гардаг байв) */
+const planLabel = (n: number | null, p: number | null): string | null => {
+  const parts = [n != null ? tr('гэрээгээр {0}', pct(n, 1)) : '', p != null ? tr('гүйцэтгэгчийн төлөвлөгөөгөөр {0}', pct(p, 1)) : ''].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+};
+
 function kpiSummary(i: ReportInputs, full: boolean): Section {
   const { x, d } = i;
   const projS = i.project?.S ?? x.gdash.progress;
-  const projP = i.project?.P ?? x.gdash.progressPlan;
+  const projP = i.project?.P ?? x.gdash.progressPlanP ?? null;
+  const projN = i.project?.N ?? x.gdash.progressPlan ?? null;
+  const planTxt = planLabel(projN, projP);
   const housing = progressOf(x.prog.actual);
   const st = scheduleStatus(x);
   const items: KpiItem[] = [
-    { label: tr('Төслийн нийт явц'), value: pctKnown(projS), sub: projP == null ? tr('Төсөл төлөвлөгөө биелэлт') : tr('төлөвлөгөө {0}', pct(projP, 1)) },
+    { label: tr('Төслийн нийт явц'), value: pctKnown(projS), sub: planTxt ?? tr('Төсөл төлөвлөгөө биелэлт') },
     { label: tr('Барилгын явц'), value: pct(housing, 1), sub: measuredLabel(x.prog) || undefined, trend: d && d.housing.delta != null ? `${d.housing.delta >= 0 ? '+' : '−'}${abs1(d.housing.delta)} ${tr('нэгж хувь')}` : null },
     { label: tr('Газар чөлөөлөлт'), value: pctKnown(x.gdash.landPct), sub: tr('{0} нэгж талбар үлдсэн', num(x.gdash.land.remaining)) },
     { label: tr('Олголт'), value: x.fin.share == null ? tr('мэдээлэлгүй') : pct(x.fin.share, 1), sub: tr('гэрээлсэн дүнгийн'), trend: d && d.given.delta != null ? `${d.given.delta < 0 ? '−' : '+'}${money(Math.abs(d.given.delta))}` : null },
@@ -222,9 +230,9 @@ function kpiSummary(i: ReportInputs, full: boolean): Section {
   const text = [
     projS == null
       ? tr('Төслийн нийт явц бодогдсонгүй — эх өгөгдөл бүрэн уншигдаагүй.')
-      : projP == null
+      : planTxt == null
         ? tr('Төслийн нийт явц {0} («Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр).', pct(projS, 1))
-        : tr('Төслийн нийт явц {0}, төлөвлөгөө {1} («Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр).', pct(projS, 1), pct(projP, 1)),
+        : tr('Төслийн нийт явц {0}; төлөвлөгөө: {1} («Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр).', pct(projS, 1), planTxt),
     tr('Барилгын явц {0}, газар чөлөөлөлт {1} ({2} нэгж талбарын {3} нь чөлөөлөгдсөн).', pct(housing, 1), pctKnown(x.gdash.landPct), num(x.gdash.land.total), num(x.gdash.land.cleared)),
     ppDelta(tr('Барилгын явц'), d, d?.housing.delta) ?? st.sentence,
   ];
@@ -328,12 +336,12 @@ function phases(i: ReportInputs, no: string, group: number): Section {
     ...i.buildSub.map((p) => ({ label: `— ${p.label}`, value: progressOf(p.S), mark: p.P, text: p.P == null ? pct(progressOf(p.S), 1) : `${pct(progressOf(p.S), 1)} · ${tr('төлөвлөгөө {0}', pct(p.P, 1))}` })),
   ];
   const projS = i.project?.S ?? i.x.gdash.progress;
-  const projP = i.project?.P ?? null;
+  const planTxt = planLabel(i.project?.N ?? null, i.project?.P ?? null);
   const sorted = byDesc(i.phases, (p) => progressOf(p.S));
   const text: string[] = [
     projS == null ? tr('Төслийн нийт явц бодогдсонгүй — эх өгөгдөл бүрэн уншигдаагүй.')
-      : projP == null ? tr('Төслийн нийт явц {0}, {1} үе шат.', pct(projS, 1), num(i.phases.length))
-        : tr('Төслийн нийт явц {0} (төлөвлөгөө {1}), {2} үе шат.', pct(projS, 1), pct(projP, 1), num(i.phases.length)),
+      : planTxt == null ? tr('Төслийн нийт явц {0}, {1} үе шат.', pct(projS, 1), num(i.phases.length))
+        : tr('Төслийн нийт явц {0} (төлөвлөгөө: {1}), {2} үе шат.', pct(projS, 1), planTxt, num(i.phases.length)),
   ];
   if (sorted.length >= 2) {
     text.push(tr('Хамгийн өндөр явцтай үе шат «{0}» {1}, хамгийн бага «{2}» {3}.', sorted[0].label, pct(progressOf(sorted[0].S), 1), sorted[sorted.length - 1].label, pct(progressOf(sorted[sorted.length - 1].S), 1)));

@@ -19,7 +19,7 @@ import { loadLandStatus } from '@/lib/land';
 import { loadFillPkgProgress, loadHeadline } from '@/lib/live';
 import { loadBagtsRows } from '@/lib/execData';
 import { loadNegtgelFull, loadNegtgelPct } from '@/lib/negtgel';
-import { loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
+import { loadDesignMoney, loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
 import { loadFinData, typePhysNow, INFRA_TYPE, aggregateMonths } from '@/modules/Finance';
 import { loadHoRows } from '@/lib/ipc';
 import { overlapLeftParcels } from '@/lib/parcelOverlap';
@@ -336,6 +336,7 @@ export function GeneralDash({
     const next = k === reason ? null : k;
     if (next != null && (byReason.state !== 'ready' || !byReason.data.get(next)?.size)) return;
     setReason(next);
+    const typeBase = beforeType.current;
 
     if (beforeType.current) {
       setVisible(beforeType.current);
@@ -356,7 +357,9 @@ export function GeneralDash({
     const oids = byReason.state === 'ready' ? byReason.data.get(next) : null;
     if (!oids || oids.size === 0) { setParcelWhere(null); return; }
 
-    if (beforeReason.current == null) beforeReason.current = beforeXs.current ?? visible;
+    /* 2026-11-23 (аудит): сонголтын суурь — багц/төрлийн давхарга асаахаас ӨМНӨХ төлөв. Урьд нь `visible` (багцын
+       давхаргатай) хадгалагдаж, шалтгааныг цуцлахад багцын давхаргууд унтрахгүй үлддэг байв. */
+    if (beforeReason.current == null) beforeReason.current = beforePkg.current ?? typeBase ?? beforeXs.current ?? visible;
     beforePkg.current = null;
     beforeXs.current = null;
     setVisible([PARCEL_LAYER]);
@@ -940,6 +943,8 @@ const countBars = (
  * БҮХ ЧАРТ НЭГ ӨНГӨТЭЙ.
  */
 const BAR_HUE = 'var(--data)';
+/** «Төсөв, гэрээлсэн дүн» чартын ТЭЗҮ · зураг төслийн мөрийн түлхүүр (ажлын төрөл биш) */
+const DESIGN_KEY = '__design__';
 
 /**
  * «ТӨСЛИЙН ГҮЙЦЭТГЭЛ» ЧАРТЫН МӨРҮҮД — ЯГ ЭДГЭЭР зургаан үзүүлэлт.
@@ -1049,7 +1054,21 @@ function FinCharts({
       }));
   }, [wbs, rows, housingNow]);
 
-  const c1 = useMemo(() => chartTypeCost(rType, pkgPct, catPct, contracts), [rType, pkgPct, catPct, contracts]);
+  /* 2026-11-23 (аудит №2): ТЭЗҮ · ажлын зураг төслийн гэрээ ажлын мөрд байхгүй — шүүлтгүй үед тусдаа мөрөөр нэмж
+     нийлбэрийг ТТБ-ийн гэрээлсэн нийттэй (2,046.5) тааруулна. Гүйцэтгэл = «Төслийн гүйцэтгэл» чартын ТЭЗҮ, зураг төслийн хувь. */
+  const designQ = useAsync(loadDesignMoney, []);
+  const c1 = useMemo(() => {
+    const base = chartTypeCost(rType, pkgPct, catPct, contracts);
+    const d = designQ.state === 'ready' ? designQ.data : null;
+    if (!d || !(d.budget > 0) || rType.length !== rows.length) return base;
+    const perf = wbsBars.find((b) => b.label === tr('ТЭЗҮ, зураг төсөл'))?.value ?? null;
+    return [...base, {
+      key: DESIGN_KEY, label: tr('ТЭЗҮ, зураг төсөл'), value: d.budget, sub: d.contract,
+      count: d.n, countSub: d.contracted, perf, fin: null, inTotal: true,
+    }].sort((a, b) => b.value - a.value);
+  }, [rType, rows.length, pkgPct, catPct, contracts, designQ, wbsBars]);
+  /* Дизайны мөр ажлын мөргүй тул хөндлөн шүүлтэд оролцохгүй */
+  const pickType = (k: string) => { if (k !== DESIGN_KEY) pickX('type')(k); };
 
   return (
     <>
@@ -1065,7 +1084,7 @@ function FinCharts({
           )}
           limit={8}
           selected={onX('type')}
-          onSelect={pickX('type')}
+          onSelect={pickType}
         />
         <p className={g.foot}>
           <span className={g.tlKey}>

@@ -24,25 +24,26 @@ import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
 import { housingSeries, pkgCostWeight, cfWeightRow, contractedScope, gapPts } from '@/lib/gdash';
 import { FIN_PKG_ALIAS, rangePaysOf, type RangePay } from '@/lib/pkgAlias';
 import {
-  BUILDING, CASHFLOW_NEW, HO_IPC, LAYER_BY_ID, pkgKeyOf, bagtsKey,
+  CASHFLOW_NEW, HO_IPC, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   zoneWhere,
   hoAmount, hoPayCode, contractAmountOf, orderTotalOf } from '@/lib/services';
 import { cat, date, mnt, money2, MNT_DEC, num, pct, monthKey, NO_DATA } from '@/lib/format';
-
-/**
- * ОЛГОГДООГҮЙ ҮЛДЭГДЭЛ ₮ — `Math.max(0, гэрээ − олголт)` тул 0 нь ЖИНХЭНЭ «бүрэн төлөгдсөн».
- */
-const remainMnt = (v: number | null | undefined): string =>
-  v == null || !Number.isFinite(v) ? '—' : v === 0 ? `${num(0, MNT_DEC)} ₮` : mnt(v); // 2026-11-23: «0.00 ₮» — мөнгө ҮРГЭЛЖ 2 аравтын оронтой
 import { hoTotals } from '@/lib/ipc';
 /* «Олгосон хувь» — удирдлагын тайлан · IPC · CEO-той НЭГ томьёо (2026-11-04: давхар хуулбарыг хасав) */
-import { paidPctOf, paidShareOf, type PaidShare } from '@/lib/paidShare';
+import { paidPctOf, paidShareOf, withProjectContract, type PaidShare } from '@/lib/paidShare';
 import { PackLayers } from '@/components/PackLayers';
 import { readParam, writeParams } from '@/lib/urlState';
 import o from './pkgFinOv.module.css';
 import f from './pkgFinBase.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import ts from './pkgFin.module.css';
+
+/**
+ * ОЛГОГДООГҮЙ ҮЛДЭГДЭЛ ₮ — `Math.max(0, гэрээ − олголт)` тул 0 нь ЖИНХЭНЭ «бүрэн төлөгдсөн»;
+ * карт дахь төлөвлөгөөт/олгосон 0 мөн жинхэнэ тэг (2026-11-23) — «—» биш «0 ₮».
+ */
+const remainMnt = (v: number | null | undefined): string =>
+  v == null || !Number.isFinite(v) ? '—' : v === 0 ? `${num(0, MNT_DEC)} ₮` : mnt(v); // мөнгө ҮРГЭЛЖ 2 аравтын оронтой
 
 /**
  * БАРИЛГЫН ЦОГЦ ХЯНАЛТ — «Багцын мэдээлэл» + «Барилгын хяналт» + «Санхүүжилт»
@@ -309,7 +310,8 @@ export function PkgFin({ dim, setDim }: {
   const projShare = useMemo<PaidShare | null>(() => {
     if (!finRawData) return null;
     const sh = paidShareOf(finRawData.contracts, finRawData.pays);
-    return projContract != null && projContract > 0 ? { ...sh, contract: projContract, pct: paidPctOf(sh.paidContracted, projContract) } : sh;
+    /* 2026-11-23 (аудит №3): ТЭЗҮ/судалгааны олголт тоологчид — хуваарь ТТБ-ийн нийт (ТЭЗҮ/зураг төсөл орсон) */
+    return withProjectContract(sh, projContract);
   }, [finRawData, projContract]);
   const { zoomToWhere, setHighlight } = useMap();
 
@@ -500,39 +502,21 @@ export function PkgFin({ dim, setDim }: {
       };
     }
     let plan = 0;
-    let given = 0;
     d.planTotal.forEach((v) => { plan += v; });
-    d.givenTotal.forEach((v) => { given += v; });
+    /* 2026-11-23 (давтан аудит): төслийн түвшний олголт = HO-ийн БҮХ олголт (`hoTotals`) — `givenTotal` нь ТЭЗҮ/зураг төслийн
+       олголтыг багцаас хасдаг тул Σ нь 670.6 болж, хувь (33.3%) ба үлдэгдэлтэй (projShare — 682.4) зөрдөг байв */
+    const given = hoTotals(d.pays).paid ?? 0;
     return { plan, given, contract: projShare?.contract ?? 0, givenContracted: projShare?.paidContracted ?? 0 };
   }, [givenMap, contractMap, active, finQ, projShare]);
-
-  /**
-   * ALERT-тэй (төлөвлөгөөнөөс хоцорсон) багцууд — ТУСДАА бүлэг болж жагсаалтын
-   * ХАМГИЙН ДЭЭР гарна. Гүйцэтгэл хэвийн болмогц lag арилж, багц өөрийн
-   * бүлэгтээ аяндаа буцна (тусгай төлөв хадгалахгүй).
-   */
-  const alertKeys = useMemo(() => new Set<string>(), []);
 
   /** Багц → гэрээний нийт дүн, ₮ — жагсаалт ба картуудын «төлөвлөгөө» багана */
   const planMap = useMemo(
     () => (finQ.state === 'ready' ? finQ.data.planTotal : null),
     [finQ],
   );
-  const alerted = useMemo(() => packs.filter((p) => alertKeys.has(p.key)), [packs, alertKeys]);
 
 
 
-  /**
-   * ХОЦРОГДОЛТОЙ багцуудын блокийн шүүлт — багц СОНГООГҮЙ үед газрын зураг дээр
-   * ЗӨВХӨН эдгээр багцын блок харагдана (анхаарал татах). Хоцрогдолгүй бол
-   * (эсвэл багц сонгосон бол) энэ хэрэглэгдэхгүй.
-   */
-  const alertedWhere = useMemo(() => {
-    const oids = alerted
-      .filter((p) => p.kind === 'build')
-      .flatMap((p) => p.blocks.map((b) => b.oid));
-    return oids.length ? `${BUILDING.oid} IN (${oids.join(',')})` : null;
-  }, [alerted]);
 
   const [visible, setVisible] = useLayerPicks(active ? active.layerIds : [BLOCK_LAYER]);
   const [catOpen, setCatOpen] = useState(false);
@@ -556,11 +540,11 @@ export function PkgFin({ dim, setDim }: {
           if (d) w[id] = zoneWhere(d, zone);
         }
       }
-      // Багц сонгосон → тэр багц; эс бөгөөс → зөвхөн хоцрогдолтой багцын блокууд
-      w[BLOCK_LAYER] = active?.where ?? alertedWhere;
+      /* Багц сонгосон → тэр багц; эс бөгөөс бүх блок (2026-11-23: хэзээ ч дүүрдэггүй байсан alertKeys/alertedWhere-г хасав) */
+      w[BLOCK_LAYER] = active?.where ?? null;
       return w;
     },
-    [active, alertedWhere, zone, mapVisible],
+    [active, zone, mapVisible],
   );
 
   /** Багц солих — барилгын сонголт цуцлагдана (өөр багцын барилга үлдэхгүй) */
@@ -593,12 +577,8 @@ export function PkgFin({ dim, setDim }: {
    *     (блокийн OID жагсаалт) ялгана;
    *   · `infra` — ДАВХАРГА нь өөрөө багц, тиймээс `where` нь `null`.
    *
-   * `??` гинж нь дэд бүтцийн багцын `null`-ыг `alertedWhere` руу унагаадаг
-   * байлаа — тэр нь БАРИЛГЫН блокийн OID-ууд. Өөр давхаргын OID-аар шүүх тул
-   * үр дүн хоосон буцаж, зураг огт хөдөлдөггүй байв.
-   *
-   * Одоо: багц сонгосон бол `where` нь ЗӨВХӨН тухайн багцынх (байхгүй бол
-   * давхарга бүхэлдээ); `alertedWhere` нь зөвхөн багц СОНГООГҮЙ үед хүчинтэй.
+   * Багц сонгосон бол `where` нь ЗӨВХӨН тухайн багцынх (байхгүй бол
+   * давхарга бүхэлдээ); сонгоогүй бол блокийн давхарга бүхэлдээ.
    */
   useEffect(() => {
     if (active) {
@@ -606,8 +586,8 @@ export function PkgFin({ dim, setDim }: {
       if (id) zoomToWhere(id, active.where ?? '1=1');
       return;
     }
-    zoomToWhere(BLOCK_LAYER, alertedWhere ?? '1=1');
-  }, [active, alertedWhere, zoomToWhere]);
+    zoomToWhere(BLOCK_LAYER, '1=1');
+  }, [active, zoomToWhere]);
 
   const loading = q.state === 'loading';
   const errQ: Async<unknown> | null = q.state === 'error' ? q : null;
@@ -648,7 +628,7 @@ export function PkgFin({ dim, setDim }: {
               {tr('Санхүүгийн хоцрогдол тооцогдохгүй — гэрээнд сарын төлбөрийн хуваарь байхгүй. Доорх жагсаалт нь олгосон дүнгээр эрэмбэлэгдсэн.')}
             </p>
             {/* ДӨРВӨН АНГИЛЛААР (2026-08-21) — барилга угсралт · дэд бүтэц ·
-                нийгмийн барилга · өндөржилт; alert-тэй нь дээрх бүлэгт */}
+                нийгмийн барилга · өндөржилт */}
             {PACK_CATS.map((c) => (
               <TsPackList
                 key={c.key}
@@ -659,7 +639,7 @@ export function PkgFin({ dim, setDim }: {
                 planMap={planMap}
                 contractMap={contractMap}
                 finFailed={finErr != null}
-                packs={packs.filter((p) => catOf(p) === c.key && !alertKeys.has(p.key))}
+                packs={packs.filter((p) => catOf(p) === c.key)}
                 sel={sel}
                 onSel={pick}
                 finMap={finMap}
@@ -1010,12 +990,12 @@ function PkgFinCard({ p, fin }: { p: Pack; fin: { plan: number; given: number; c
         <Rows
           items={[
             { key: tr('Гүйцэтгэгч'), value: contractor },
-            { key: tr('Төлөвлөгөөт санхүүжилт'), value: <span className="num">{mnt(fin.plan)}</span> },
-            { key: tr('Олгосон санхүүжилт'), value: <span className="num">{mnt(fin.given)}</span> },
+            { key: tr('Төлөвлөгөөт санхүүжилт'), value: <span className="num">{remainMnt(fin.plan)}</span> },
+            { key: tr('Олгосон санхүүжилт'), value: <span className="num">{remainMnt(fin.given)}</span> },
             { key: tr('олгосон — гэрээний дүнгийн %'), value: <span className="num">{share == null ? '—' : pct(share, 1)}</span> },
             {
               key: tr('Олгогдоогүй үлдэгдэл'),
-              value: <span className="num">{fin.contract > 0 ? mnt(Math.max(0, fin.contract - fin.givenContracted)) : '—'}</span>,
+              value: <span className="num">{fin.contract > 0 ? remainMnt(Math.max(0, fin.contract - fin.givenContracted)) : '—'}</span>,
             },
           ]}
         />
