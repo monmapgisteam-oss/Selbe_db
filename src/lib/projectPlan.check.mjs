@@ -632,6 +632,15 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
     const ms = monthEnds(d('2026-01-01'), d('2026-03-01'));
     const mPh = monthlySeries(ph, ms), mBase = monthlySeries(base, ms);
     assert.deepEqual(mPh.get(ph.tree.root), mBase.get(base.tree.root), 'сарын цуваа: Төслийн нийт хэвээр');
+    /* 2026-11-23 (давтан аудит): эцэг мөрийн сарын цуваа үе шатын F-ээр — 1.2 унтарсан үед 1.1 (дууссан) 100% жинтэй;
+       урьд нь Төслийн нийтийн F (50/50) орж, N = 100 атал сарын утга 50 гардаг байв */
+    const dated = (r) => (r.dd_kod === '1.1' || r.dd_kod === '1.2' ? { ...r, geree_ehleh: d('2026-01-01'), geree_duusah: d('2026-02-01') } : r);
+    const phD = computePlan(buildTree(rows.map(dated).map((r) => (r.dd_kod === '1.2' ? { ...r, uy_shat_tootsoh: 0 } : r))), {}, d('2026-07-02'));
+    near(phD.get('1').N, 100, 1e-9, 'эцэг мөрийн N — 1.1 дууссан');
+    const mD = monthlySeries(phD, ms).get(phD.tree.byCode.get('1'));
+    near(mD[mD.length - 1], phD.get('1').N, 1e-9, 'сарын цувааны сүүлийн утга = N (жин үе шатын дамжуулалтаас)');
+    near(phD.get('1.1').F, 100, 1e-9, 'F — үе шатын дамжуулалт (1.2 хасагдсан)');
+    near(phD.get('1.1').FT, 50, 1e-9, 'FT — Төслийн нийтийн дамжуулалт (дэлгэцэд)');
   }
   /* Төлөвлөгөөт хувь (N…R) ба сарын цуваа ч хасагдана — 1.2 дууссан (100%), 2.1 эхлээгүй (0%) */
   const dt = (r) => (r.dd_kod === '1.2' ? { ...r, geree_ehleh: d('2026-01-01'), geree_duusah: d('2026-02-01') }

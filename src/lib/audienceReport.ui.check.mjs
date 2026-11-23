@@ -83,7 +83,8 @@ console.log('\n3. Тоо нь оролттой таарна');
 ok('хураангуй — төслийн нийт явц · төлөвлөгөө · барилгын явц · газар · олголт', () => {
   const s = mayor.sections[0];
   assert.equal(s.chart.items[0].value, '31.7%');
-  assert.equal(s.chart.items[0].sub, 'төлөвлөгөө 45.2%');
+  /* 2026-11-23 (аудит): төлөвлөгөөт хувь хоёр суурийн нэртэй — гэрээгээр (N) · гүйцэтгэгчийн төлөвлөгөөгөөр (P) */
+  assert.equal(s.chart.items[0].sub, 'гэрээгээр 45.2% · гүйцэтгэгчийн төлөвлөгөөгөөр 45.2%');
   assert.equal(s.chart.items[1].value, '24.6%');
   assert.equal(s.chart.items[2].value, '82.4%');
   assert.equal(s.chart.items[3].value, '25.0%');

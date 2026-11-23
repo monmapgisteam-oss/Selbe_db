@@ -1055,6 +1055,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, blockedWhy, onDon
                   <textarea
                     className={s.field}
                     rows={2}
+                    aria-label={tr('Буцаах шалтгаан')}
                     placeholder={tr('Зөвхөн буцаахад бичнэ — буцаах шалтгаан (зөвшөөрөхөд хаягдана)')}
                     maxLength={reasonLim}
                     value={reason}
@@ -1138,6 +1139,7 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, blockedWhy, onDon
                   <textarea
                     className={s.field}
                     rows={2}
+                    aria-label={tr('Буцаах шалтгаан')}
                     placeholder={RECHECK_HINT[reBy]}
                     maxLength={reasonLim}
                     value={reason}
@@ -1544,6 +1546,7 @@ export function Guitsetgel() {
     ? mineOk.filter((w) => w.status === REVIEW_STATUS[stage as ReviewStage])
     : [];
   const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
+  /* 2026-11-23 (аудит): «Бүгдийг зөвшөөрөх» явж байхад мөр тус бүрийн зөвшөөрөх/буцаах товч түр нуугдана (`readOnly`) — хоёр шийдвэр зэрэг бичигдэхгүй */
   const [bulkFails, setBulkFails] = useState<string[]>([]);
   const approveAll = async () => {
     if (bulk || !bulkList.length) return;
@@ -1651,7 +1654,7 @@ export function Guitsetgel() {
         <span className={s.groupCount}>{g.items.length}</span>
       </div>
       {g.items.map((w) => (
-        <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off'} onFix={goFix} readOnly={!canReview} />
+        <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off'} onFix={goFix} readOnly={!canReview || bulk != null} />
       ))}
     </Fragment>
   ));
@@ -1869,14 +1872,14 @@ export function Guitsetgel() {
                 </div>
               ) : (
                 <>
-                  {mineOk.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off'} onFix={goFix} readOnly={!canReview} onDone={setDoneMsg} />)}
+                  {mineOk.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off'} onFix={goFix} readOnly={!canReview || bulk != null} onDone={setDoneMsg} />)}
                   {mineBlocked.length > 0 && (
                     <>
                       <div className={s.groupHead}>
                         <span>{tr('Та зөвшөөрөх боломжгүй — энэ шатны өөр хянагч шийднэ')}</span>
                         <span className={s.groupCount}>{mineBlocked.length}</span>
                       </div>
-                      {mineBlocked.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off'} onFix={goFix} readOnly={!canReview} onDone={setDoneMsg} blockedWhy={blocked.get(w.key)} />)}
+                      {mineBlocked.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off'} onFix={goFix} readOnly={!canReview || bulk != null} onDone={setDoneMsg} blockedWhy={blocked.get(w.key)} />)}
                     </>
                   )}
                 </>

@@ -90,6 +90,30 @@ export function rebaseBackdated(
   return n;
 }
 
+/**
+ * ИЛГЭЭЛТ ЗӨВХӨН ОБЬЁМЫН ЗАМААР ӨӨРЧИЛСӨН ҮҮ (2026-11-23, аудит) — бөглөсөн өдрөөр (хожуу жаазны өмнө) бичих нөхцөл.
+ * Хожуу жаазнуудын хадгалсан хувийг `refreshStoredProgress` зөвхөн обьёмоос (`obyemDay`) дахин боддог тул обьёмгүй мөрд
+ * ХУВИАР нэмсэн ахиц (`act` өөрчлөгдсөн, `obyem` хэвээр) хожуу жаазанд хэзээ ч хүрдэггүй байв — батлалт «амжилттай» боловч
+ * дашбоард тэр ахицыг хардаггүй. Ийм нүд нэг ч байвал `false` → дуудагч батлах өдрийн (хуучин) дүрмээр бичнэ.
+ * `before[i]` ↔ `after[i]` (мөрийн тоо ижил); бүлгийн мөр тооцохгүй.
+ */
+export function volumeOnlyChange(
+  before: readonly Pick<SheetRow, 'group' | 'act' | 'obyem'>[],
+  after: readonly Pick<SheetRow, 'group' | 'act' | 'obyem'>[],
+): boolean {
+  if (before.length !== after.length) return false;
+  const diff = (a: number | null | undefined, b: number | null | undefined): boolean =>
+    (a == null) !== (b == null) || (a != null && b != null && Math.abs(a - b) > 1e-9);
+  for (let i = 0; i < after.length; i += 1) {
+    if (after[i].group) continue;
+    const n = Math.max(after[i].act.length, before[i].act.length);
+    for (let b = 0; b < n; b += 1) {
+      if (diff(before[i].act[b], after[i].act[b]) && !diff(before[i].obyem[b], after[i].obyem[b])) return false;
+    }
+  }
+  return true;
+}
+
 /** Тэр өдрийн жаазанд обьём бичигдсэн НАВЧ мөр: ажлын код → обьём бичигдсэн БЛОКИЙН индексүүд (цэвэр — тест) */
 export function touchedCodes(rows: readonly Pick<SheetRow, 'group' | 'des' | 'obyemDay'>[]): Map<number, Set<number>> {
   const out = new Map<number, Set<number>>();

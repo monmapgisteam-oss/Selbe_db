@@ -241,7 +241,8 @@ export function computeIpc(rows: readonly Row[], now: number, ref: IpcContractRe
           tr('гэрээлсэн дүн {0} (Cashflow)', mnt(ref.contract)),
           tr('гэрээнд эзлэх {0}', pct(refPct)),
         ]
-        : [tr('гэрээнд эзлэх {0} («Олгосон санхүүжилт · IPC» хүснэгтээр)', pct(s.paidPct))]),
+        /* 2026-11-23: санхүү уншигдаагүй бол өөр томьёоны нөөц хувь (33.03%) харуулахгүй — портал даяар нэг хувь */
+        : []),
       tr('хэмнэлт {0}', mnt(s.saving)),
     ],
     level: ipcLevel(s),

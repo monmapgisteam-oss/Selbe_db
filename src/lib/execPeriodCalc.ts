@@ -39,6 +39,17 @@ export function periodOf(key: ExecPeriodKey, now: number, custom?: { from?: stri
   return { key, from: startOfLast(30), to: today };
 }
 
+/**
+ * `custom` хугацааны алдаа (2026-11-23, аудит) — буруу/хоосон бол `periodOf` чимээгүй 30 хоног болдог тул UI нь энэ
+ * зурвасыг оролтын дэргэд харуулж, экспортыг хаана. Бусад түлхүүрт `null`.
+ */
+export function customPeriodError(key: ExecPeriodKey, custom?: { from?: string; to?: string }): string | null {
+  if (key !== 'custom') return null;
+  if (!isDay(custom?.from) || !isDay(custom?.to)) return tr('Эхлэх ба дуусах огноог сонгоно уу');
+  if (custom.from > custom.to) return tr('Эхлэх огноо дуусах огнооноос хойш байна');
+  return null;
+}
+
 export type ExecDelta = {
   prev: number | null;
   now: number | null;

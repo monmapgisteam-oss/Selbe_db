@@ -244,25 +244,200 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
       }
     }
   }
+  const f = await finishParts(parts);
+  return { at, ...f, progress: own.act == null ? null : f.progress, parts };
+}
+
+/**
+ * Хуудсуудын хэсгээс багцын нэгдсэн дүн (`summaryOf` ба `summaryAtDate`-ийн НЭГ дүрэм): блокийн тоогоор жигнэнэ,
+ * обьём нь хуудас бүрийн тэр жаазнаас (`x.r.at` — эх хуудасны хувьд архивын агшин өөрөө).
+ */
+async function finishParts(parts: Part[]) {
   const pkgOrder = new Map(PKGS.map((x, i) => [x.key, i]));
   parts.sort((a, b) => (pkgOrder.get(a.p.key) ?? 0) - (pkgOrder.get(b.p.key) ?? 0));
   uniqueBlockCounts(parts.map((x) => x.sc.bld)).forEach((w, i) => { parts[i].n = w; });
   const mean = (pick: (r: BRow) => number | null): number | null =>
-    parts.length === 1 ? pick(own) : blendSheets(parts.map((x) => ({ bld: x.sc.bld, v: pick(x.r) })));
+    parts.length === 1 ? pick(parts[0].r) : blendSheets(parts.map((x) => ({ bld: x.sc.bld, v: pick(x.r) })));
   const volParts = parts.some((x) => x.n > 0) ? parts.filter((x) => x.n > 0) : parts.slice(0, 1);
-  const vols = await Promise.all(volParts.map((x) => sheetObyem(x.p, x.p.key === one.p.key ? at : x.r.at)));
+  const vols = await Promise.all(volParts.map((x) => sheetObyem(x.p, x.r.at)));
   const vol: ObyemPair = vols.some((v) => v == null)
     ? { volume: null, volumePlan: null }
     : sumObyemParts(volParts.map((x, i) => ({ n: x.n, ...(vols[i] as ObyemPair) })));
-
   return {
-    at,
-    progress: toPct(own.act == null ? null : mean((r) => r.act)),
+    progress: toPct(mean((r) => r.act)),
     planned: toPct(mean((r) => r.plan)),
     volume: vol.volume,
     volumePlan: vol.volumePlan,
-    parts,
   };
+}
+
+/**
+ * НЭГ ӨДРИЙН багцын дүн — хуудас БҮРИЙН тэр агшин хүртэлх хамгийн сүүлийн жаазаар (`summaryOf`-ийн «бусад хуудас»-ны
+ * дүрэм бүх хуудсанд). Хэмжилттэй хуудас огт байхгүй бол `null`.
+ */
+async function summaryAtDate(bagts: string, at: number) {
+  const group = PKGS.filter((x) => bagtsKey(x.group) === bagtsKey(bagts));
+  const parts: Part[] = [];
+  for (const p of group) {
+    const sc = await loadSchema(p);
+    if (!sc.f.fillDate) continue;
+    const r = await bRowOf(p, sc, sc.f.fillDate, `${sc.f.fillDate} <= ${ts(at)}`);
+    if (r && r.act != null) parts.push({ n: sc.bld.length, r, p, sc, real: true });
+    else if (sc.act.some(Boolean)) parts.push({ n: sc.bld.length, r: { act: 0, plan: r?.plan ?? null, at: r?.at ?? null }, p, sc, real: false });
+  }
+  if (!parts.some((x) => x.real)) return null;
+  return finishParts(parts);
+}
+
+
+/** Нэгтгэлийн нэг өдрийн дүн (`summaryAtDate`) */
+export type NegtgelSum = { progress: number | null; planned: number | null; volume: number | null; volumePlan: number | null };
+
+const SUM_FIELDS = [
+  ['progress', F.progress, 100],
+  ['planned', F.planned, 100],
+  ['volume', F.volume, Infinity],
+  ['volumePlan', F.volumePlan, Infinity],
+] as const;
+
+/** ±20 — нэг удаагийн хойш огноотой батлалтаар нэг өдрийн гүйцэтгэл үүнээс их хөдлөхгүй (`registerApproved`-ийн хамгаалалт) */
+export const RESYNC_MAX_JUMP = 20;
+
+/**
+ * ХАДГАЛСАН МӨРӨНД ЗӨВХӨН ЭНЭ БАТЛАЛТЫН НӨЛӨӨГ НЭМНЭ (цэвэр, 2026-11-23 хяналт). `after − before`-ийг хадгалсан утга дээр нэмнэ —
+ * мөрийн бусад (түүхэн, өөр дүрмээр бичигдсэн) зөрүүг ХӨНДӨХГҮЙ. Хувь 0–100, обьём ≥ 0. Гүйцэтгэлийн өөрчлөлт
+ * `RESYNC_MAX_JUMP`-аас их бол `'jump'` (бичихгүй, анхааруулна); өөрчлөлтгүй бол `null`.
+ */
+export function negtgelDelta(
+  stored: Readonly<Record<string, unknown>>,
+  before: NegtgelSum | null,
+  after: NegtgelSum | null,
+): Record<string, number> | 'jump' | null {
+  if (!before || !after) return null;
+  const dp = before.progress != null && after.progress != null ? after.progress - before.progress : 0;
+  if (Math.abs(dp) > RESYNC_MAX_JUMP) return 'jump';
+  const out: Record<string, number> = {};
+  for (const [k, f, max] of SUM_FIELDS) {
+    const b = before[k];
+    const a = after[k];
+    const had = num(stored[f]);
+    if (b == null || a == null || had == null) continue;
+    const d = a - b;
+    if (Math.abs(d) < 0.01) continue;
+    const v = Math.min(max, Math.max(0, had + d));
+    if (Math.abs(v - had) >= 0.01) out[f] = Math.round(v * 1e6) / 1e6;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/** Хадгалсан мөр шинэ дүнтэй зөрүүтэй юу — `null` шинэ утга нь «мэдэгдэхгүй» (дарахгүй) (цэвэр) */
+export function negtgelDiffers(
+  row: Readonly<Record<string, unknown>>,
+  s: NegtgelSum,
+): boolean {
+  const diff = (f: string, v: number | null) => {
+    if (v == null) return false;
+    const had = num(row[f]);
+    return had == null || Math.abs(had - v) >= 0.01;
+  };
+  return diff(F.progress, s.progress) || diff(F.planned, s.planned) || diff(F.volume, s.volume) || diff(F.volumePlan, s.volumePlan);
+}
+
+const SNAP_OUT = [BAGTS_NEGTGEL.oid, F.bagts, F.date, F.progress, F.planned, F.volume, F.volumePlan];
+
+/** SQL мөрийн литерал (`'` давхарлана; Кирилл тул N-угтвар) */
+const sqlLit = (v: string) => `N'${v.replace(/'/g, "''")}'`;
+
+/** Тухайн багцын (бичлэгийн бүх хувилбар нэрээр) `fromMs`-ээс хойшх мөрүүд — серверийн шүүлттэй, хуудаслан */
+async function negtgelRowsFrom(bagts: string, fromMs: number, extra?: string): Promise<Record<string, unknown>[]> {
+  const key = bagtsKey(bagts);
+  const d = (await post(`${BAGTS_NEGTGEL.url}/query`, {
+    where: '1=1', outFields: F.bagts, returnDistinctValues: 'true', returnGeometry: 'false',
+  })) as { features?: { attributes: Record<string, unknown> }[] };
+  const names = [...new Set((d.features ?? []).map((x) => x.attributes[F.bagts]).filter((v): v is string => typeof v === 'string' && bagtsKey(v) === key))];
+  if (!names.length) return [];
+  const where = `${F.bagts} IN (${names.map(sqlLit).join(',')}) AND ${F.date} >= ${ts(fromMs)}${extra ? ` AND (${extra})` : ''}`;
+  const out: Record<string, unknown>[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const q = (await post(`${BAGTS_NEGTGEL.url}/query`, {
+      where, outFields: SNAP_OUT.join(','), returnGeometry: 'false',
+      orderByFields: `${F.date} ASC, ${BAGTS_NEGTGEL.oid} ASC`, resultOffset: String(offset), resultRecordCount: '1000',
+    })) as { features?: { attributes: Record<string, unknown> }[]; exceededTransferLimit?: boolean };
+    const f = q.features ?? [];
+    out.push(...f.map((x) => x.attributes));
+    if (!q.exceededTransferLimit || !f.length) break;
+  }
+  return out;
+}
+
+/** `snapshotNegtgelFrom`-ийн үр дүн — хадгалсан мөр ба тэр агшны дүн */
+export type NegtgelSnap = { bagts: string; rows: { oid: number; at: number; stored: Record<string, unknown>; before: NegtgelSum | null }[] };
+
+/**
+ * ХОЖУУ ӨДРҮҮДИЙН НЭГТГЭЛ — ӨМНӨХ АГШИН (2026-11-23, хяналт). `refreshStoredProgress`-ийн ӨМНӨ дуудна: `day`-ээс хойшх
+ * мөр бүрийн хадгалсан утга ба тэр агшны `summaryAtDate`. Уншиж чадахгүй бол `null` (дараагийн алхам юу ч бичихгүй).
+ */
+export async function snapshotNegtgelFrom(bagts: string, day: string): Promise<NegtgelSnap | null> {
+  const from = Date.parse(`${day}T00:00:00Z`);
+  if (!Number.isFinite(from)) return null;
+  try {
+    const rows: NegtgelSnap['rows'] = [];
+    for (const a of await negtgelRowsFrom(bagts, dayRange(from)[0])) {
+      const oid = num(a[BAGTS_NEGTGEL.oid]);
+      const at = num(a[F.date]);
+      if (oid == null || at == null) continue;
+      rows.push({ oid, at, stored: a, before: await summaryAtDate(bagts, at) });
+    }
+    return { bagts, rows };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ХОЖУУ ӨДРҮҮДИЙН НЭГТГЭЛИЙГ ДАХИН БОДОХ (2026-11-23, аудит №10 · хяналтаар засварласан). Хойш огноогоор батлах (`backDated`)
+ * ба `healLaterFrames` нь хожуу жаазнуудын хадгалсан «Б.» хувийг (`frameRepair.refreshStoredProgress`) шинэчилдэг ч хүснэгт 190
+ * зөвхөн архивласан өдрийн мөрөө бичдэг байв. Одоо `snapshotNegtgelFrom`-оор (засварын ӨМНӨ) авсан агшинтай засварын ДАРААХ
+ * дүнг жишиж, зөвхөн ЭНЭ засварын нөлөөг (`negtgelDelta`) хадгалсан утга дээр нэмнэ — түүхэн мөрийг бүхэлд нь дахин бичихгүй.
+ * Бичихийн яг өмнө мөрийг дахин уншиж, агшнаас хойш өөрчлөгдсөн бол алгасна. ±`RESYNC_MAX_JUMP`-аас их үсрэлтийг бичихгүй
+ * (`skipped`). Давтахад аюулгүй: засвар юу ч өөрчлөөгүй бол before = after → бичихгүй.
+ */
+export async function resyncNegtgelFrom(snap: NegtgelSnap | null): Promise<{ ok: true; n: number; skipped: string[] } | { ok: false; error: string }> {
+  if (!snap) return { ok: false, error: tr('Нэгтгэлийн өмнөх агшин уншигдсангүй') };
+  if (!snap.rows.length) return { ok: true, n: 0, skipped: [] };
+  await requireWriter();
+  let wrote = false;
+  try {
+    const plan: { oid: number; stored: Record<string, unknown>; u: Record<string, number> }[] = [];
+    const skipped: string[] = [];
+    for (const r of snap.rows) {
+      const d = negtgelDelta(r.stored, r.before, await summaryAtDate(snap.bagts, r.at));
+      if (d == null) continue;
+      if (d === 'jump') { skipped.push(new Date(r.at).toISOString().slice(0, 10)); continue; }
+      plan.push({ oid: r.oid, stored: r.stored, u: d });
+    }
+    if (!plan.length) return { ok: true, n: 0, skipped };
+    /* Бичихийн өмнө дахин уншина — агшнаас хойш өөр бичигч (`registerApproved`) хөндсөн мөрийг дарахгүй */
+    const now = new Map((await negtgelRowsFrom(snap.bagts, 0, `${BAGTS_NEGTGEL.oid} IN (${plan.map((x) => x.oid).join(',')})`))
+      .map((a) => [num(a[BAGTS_NEGTGEL.oid]), a] as const));
+    const same = (a: Record<string, unknown> | undefined, b: Record<string, unknown>) =>
+      !!a && SUM_FIELDS.every(([, f]) => num(a[f]) === num(b[f]));
+    const updates = plan.filter((x) => same(now.get(x.oid), x.stored)).map((x) => ({ [BAGTS_NEGTGEL.oid]: x.oid, ...x.u }));
+    if (!updates.length) return { ok: true, n: 0, skipped };
+    wrote = true;
+    const res = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
+      updates: JSON.stringify(updates.map((attributes) => ({ attributes }))),
+      rollbackOnFailure: 'true',
+    })) as { updateResults?: { success?: boolean; error?: { description?: string } }[] };
+    const ur = res.updateResults ?? [];
+    if (ur.length !== updates.length || ur.some((x) => x.success !== true))
+      return { ok: false, error: ur.find((x) => x.success !== true)?.error?.description ?? tr('Нэгтгэлийн мөр шинэчлэгдсэнгүй') };
+    return { ok: true, n: updates.length, skipped };
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  } finally {
+    if (wrote) invalidate('BAGTS_NEGTGEL');
+  }
 }
 
 /**
@@ -317,6 +492,31 @@ export async function registerApproved(
 ): Promise<NegtgelResult> {
   await requireWriter();
   let wrote = false;
+  /**
+   * БИЧСНИЙ ДАРААХ ДАХИН БОДОЛТ (2026-11-23, аудит №14). Нэг багцын 9F/12F хуудсыг секундын зайтай батлахад нэг нь нөгөөгийн
+   * жааз үүсэхээс өмнө уншиж, хожуу бичсэнээрээ нөгөөгийн ажлыг хольцоос хасдаг байв (урьд нь зөвхөн хадгалсан утга ӨӨРИЙН
+   * утгаас зөрсөн үед л засдаг байсан). Одоо бичсэн бүрд нэг удаа ШИНЭЭР бодож, зөрвөл дахин бичнэ. Унавал зөвхөн лог.
+   */
+  const settle = async (oid: number, s: { progress: number | null; planned: number | null; volume: number | null; volumePlan: number | null }) => {
+    try {
+      const s2 = await summaryOf(bagts, sheetOid, pkgKey);
+      if (!s2 || s2.progress == null) return;
+      const written: Record<string, unknown> = { [F.progress]: s.progress, [F.planned]: s.planned, [F.volume]: s.volume, [F.volumePlan]: s.volumePlan };
+      if (!negtgelDiffers(written, s2)) return;
+      const a2: Record<string, unknown> = { [BAGTS_NEGTGEL.oid]: oid, [F.progress]: s2.progress };
+      if (s2.planned != null) a2[F.planned] = s2.planned;
+      if (s2.volume != null) a2[F.volume] = s2.volume;
+      if (s2.volumePlan != null) a2[F.volumePlan] = s2.volumePlan;
+      wrote = true;
+      const upd = (await post(`${BAGTS_NEGTGEL.url}/applyEdits`, {
+        updates: JSON.stringify([{ attributes: a2 }]),
+        rollbackOnFailure: 'true',
+      })) as { updateResults?: { success?: boolean; error?: { description?: string } }[] };
+      if (upd.updateResults?.[0]?.success !== true) console.warn('[selbe] нэгтгэлийн дахин бодолт бичигдсэнгүй:', upd.updateResults?.[0]?.error?.description);
+    } catch (e) {
+      console.warn('[selbe] нэгтгэлийн бичсэний дараах шалгалт унав (бичилт батлагдсан):', e);
+    }
+  };
   try {
     const s = await summaryOf(bagts, sheetOid, pkgKey);
     if (s && s.progress == null && isBlocklessBagts(bagts)) return { ok: true, skipped: 'blockless' };
@@ -395,26 +595,7 @@ export async function registerApproved(
           throw new Error(ur?.error?.description ?? tr('Нэгтгэлийн мөр шинэчлэгдсэнгүй'));
       };
       await update(attrs);
-      try {
-        const back = (await post(`${BAGTS_NEGTGEL.url}/query`, {
-          where: `${BAGTS_NEGTGEL.oid} = ${oid}`,
-          outFields: F.progress,
-          returnGeometry: 'false',
-        })) as { features?: { attributes: Record<string, unknown> }[] };
-        const got = num(back.features?.[0]?.attributes?.[F.progress]);
-        if (got != null && Math.abs(got - s.progress) > 0.01) {
-          const s2 = await summaryOf(bagts, sheetOid, pkgKey);
-          if (s2 && s2.progress != null) {
-            const a2: Record<string, unknown> = { [BAGTS_NEGTGEL.oid]: oid, [F.progress]: s2.progress };
-            if (s2.planned != null) a2[F.planned] = s2.planned;
-            if (s2.volume != null) a2[F.volume] = s2.volume;
-            if (s2.volumePlan != null) a2[F.volumePlan] = s2.volumePlan;
-            await update(a2);
-          }
-        }
-      } catch (e) {
-        console.warn('[selbe] нэгтгэлийн бичсэний дараах шалгалт унав (бичилт батлагдсан):', e);
-      }
+      await settle(oid, s);
       return { ok: true };
     }
 
@@ -468,8 +649,10 @@ export async function registerApproved(
             ok: false,
             error: tr('Давхар нэгтгэлийн мөр (бүртгэл №{0}) үлдлээ — админд мэдэгдэнэ үү (гараар устгах шаардлагатай): {1}', newOid, dr?.error?.description ?? ''),
           };
+        await settle(keepOid, s);
         return { ok: true };
       }
+      await settle(newOid, s);
     }
     return { ok: true };
   } catch (e) {

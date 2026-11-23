@@ -105,7 +105,8 @@ export function hunHuchRows(day: WorkforceDay | null, companies: readonly { sfx:
 
 /* ══════════════ 2. Санхүү ══════════════ */
 
-/** Төслийн нийт төсөв = үндэс мөрийн E; олгосон = HO бүх төлбөр (урьдчилгаа + гүйцэтгэл); хувь = олгосон ÷ E */
+/** Төслийн нийт төсөв = үндэс мөрийн E; олгосон = HO бүх төлбөр (урьдчилгаа + гүйцэтгэл); хувь = олгосон ÷ ГЭРЭЭНИЙ дүн
+ *  (2026-11-23, аудит: порталын «Олгосон хувь»-тай нэг томьёо — урьд нь ÷ төсөв тул 27.1% ↔ портал 33.0%) */
 export function sanhuuRows(plan: ProjectPlan, paidIpc?: number | null): PubRow[] {
   const root = plan.tree.root;
   const E = plan.result.values.get(root)?.E ?? null;
@@ -114,11 +115,12 @@ export function sanhuuRows(plan: ProjectPlan, paidIpc?: number | null): PubRow[]
      байв. Өгөөгүй бол (шалгуур) хуучин эх. */
   const paid = paidIpc !== undefined ? paidIpc : (moneySums(plan.tree).get(root)?.paid ?? null);
   /* 2026-11-09: мөнгө бүхэл төгрөгөөр (2,495,841,880,529.33 → 2,495,841,880,529) — нийтийн хүснэгтэд бутархай ₮ бичихгүй */
+  const contract = moneySums(plan.tree).get(root)?.contract ?? null;
   const tg = (v: number | null | undefined): number | null => (v == null || !Number.isFinite(v) ? null : Math.round(v));
   return [{
     niit_tosov_dun: tg(E),
     olgoson_sanhuujilt_dun: tg(paid),
-    olgoson_huvi: E && paid != null ? Math.round((paid / E) * 1000) / 10 : null,
+    olgoson_huvi: contract && paid != null ? Math.round((paid / contract) * 1000) / 10 : null,
   }];
 }
 
@@ -229,7 +231,8 @@ export function guitsetgelRows(plan: ProjectPlan, inp: GuitsetgelInputs): PubRow
 
   out.push(row({ kod: PUB_TOTAL, etseg: null, tuvshin: 'tosol', ner: 'Төслийн нийт', pct: rootV?.S, dates: contractDates(rootV), ail: ailTotal }));
   if (build) {
-    const bv = result.values.get(build);
+    /* Төслийн нийтэд ОРСОН хувь (`result.total`) — «Барилга угсралтад тооцохгүй» мөртэй үед мөрийн хувиас өөр (2026-11-23) */
+    const bv = result.total?.values.get(build) ?? result.values.get(build);
     out.push(row({ kod: PUB_BUILD, etseg: PUB_TOTAL, tuvshin: 'shat', ner: txt(build.row?.ajil_uilchilgee) || 'Барилга угсралт', pct: bv?.S, dates: contractDates(bv), ail: ailTotal }));
   }
   out.push(...pkgRows);

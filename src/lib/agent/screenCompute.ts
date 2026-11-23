@@ -6,6 +6,7 @@
 
 import { paidShareOf } from '@/lib/paidShare';
 import { coverageOk } from '@/lib/planProgress';
+import { MAP_PKG_ALIAS } from '@/lib/pkgAlias';
 import { t as tr } from '@/lib/i18nCore';
 import { resolveSource, type AgentScope } from './registry';
 
@@ -72,7 +73,16 @@ export async function financeSummary(scope: AgentScope): Promise<FinanceSummary>
   const m = await loadProjectMoney().catch(() => null);
   /* 2026-11-20 (засвар): зөвхөн гэрээлсэн дүнг ТТБ-ээс; олголт бүхэлдээ IPC-ээс — хувь = гэрээлсэн багцын олголт ÷ гэрээлсэн дүн */
   if (!m?.contract) return out;
-  return { ...out, contracted: m.contract, paidPct: out.paidContracted == null ? out.paidPct : Math.round((out.paidContracted / m.contract) * 1000) / 10 };
+  /* 2026-11-23 (аудит №3): ТТБ-ийн нийт ТЭЗҮ/зураг төслийн гэрээг агуулдаг тул тэдгээрийн олголт тоологчид орно (`withProjectContract`) */
+  const { paidShareOf, withProjectContract } = await import('@/lib/paidShare');
+  const sh = withProjectContract(paidShareOf(fin.contracts, fin.pays), m.contract);
+  const known = sh.paidKnown > 0;
+  return {
+    ...out, contracted: m.contract,
+    paidContracted: known ? sh.paidContracted : out.paidContracted,
+    paidOther: known ? sh.paidOther : out.paidOther,
+    paidPct: sh.pct == null ? out.paidPct : Math.round(sh.pct * 10) / 10,
+  };
 }
 
 /* ══════════════ pkg_plan ══════════════ */
@@ -88,6 +98,11 @@ export type PkgPlanDeps<M extends MonthLike = MonthLike> = {
   /** Муруйн кэш алга үед ТУХ-ийн fallback (`planPctAt(series, measDayOf(…))`) — заавал биш */
   planAt?: (key: string, months: M[]) => number | null;
   isHousing?: (key: string) => boolean;
+  /**
+   * 2026-11-23 (аудит №44): түлхүүр («БАГЦ32») → дэлгэцийн нэр («Багц-3.2»). `null` = зөвхөн alias-ийн хуулбар түлхүүр
+   * (`MAP_PKG_ALIAS`, жиш. БАГЦ7 = БАГЦ71) — давхар мөр гаргахгүй. Өгөөгүй бол түлхүүрээрээ (хуучин зан).
+   */
+  labelOf?: (key: string) => string | null;
 };
 
 export type PkgPlanRow = {
@@ -112,6 +127,8 @@ export function pkgPlanOf<M extends MonthLike>(
 ): PkgPlanRow[] {
   const out: PkgPlanRow[] = [];
   monthsBy.forEach((months, key) => {
+    const label = deps.labelOf ? deps.labelOf(key) : key;
+    if (label == null) return;
     const lag = deps.lagOf(months);
     const actual = deps.physLatest(months);
     const housing = deps.isHousing?.(key) ?? false;
@@ -123,7 +140,7 @@ export function pkgPlanOf<M extends MonthLike>(
     const gap = !judged ? null : lag ? lag.gap : planned != null && progress != null ? planned - progress : null;
     if (actual == null && planned == null) return; // хуваарьгүй · хэмжилтгүй — «мэдээлэлгүй», мөр БИШ
     out.push({
-      bagts: key,
+      bagts: label,
       actual,
       planned,
       gap,
@@ -143,14 +160,24 @@ export async function pkgPlan(scope: AgentScope): Promise<PkgPlan> {
   if (!resolveSource('ds:pkg_progress', scope)) {
     throw new Error(tr('Багцын гүйцэтгэлийн эх сурвалжид хандах эрх алга.'));
   }
-  const [F, PP, TD, FMT] = await Promise.all([
+  const [F, PP, TD, FMT, SV] = await Promise.all([
     import('@/modules/Finance'),
     import('@/lib/planProgress'),
     import('@/lib/tuhData'),
     import('@/lib/format'),
+    import('@/lib/services'),
   ]);
   const [fin, pc] = await Promise.all([F.loadFinData(), PP.loadPlanCurveCached().catch(() => null)]);
   const monthsBy = F.pkgMonthsMap(fin);
+  /* Гэрээний мөрийн багцын нэр (canonPkg) — alias-аар хуулсан түлхүүр энд байхгүй тул алгасагдана */
+  const C = SV.CASHFLOW_NEW.fields;
+  const nameOf = new Map<string, string>();
+  for (const r of fin.contracts) {
+    for (const v of [r[C.pkg2], r[C.pkg]]) {
+      const k = SV.pkgKeyOf(v);
+      if (k && !nameOf.has(k)) nameOf.set(k, String(SV.canonPkg(String(v ?? ''))).trim());
+    }
+  }
   const today = FMT.dayKey(Date.now());
   const nowYm = today.slice(0, 7);
   const rows = pkgPlanOf(monthsBy, {
@@ -158,6 +185,15 @@ export async function pkgPlan(scope: AgentScope): Promise<PkgPlan> {
     physLatest: F.physLatest,
     lagLevel: F.lagLevel,
     isHousing: (key) => TD.TUH_HOUSING.includes(key),
+    /* Alias (`MAP_PKG_ALIAS`, жиш. гэрээний БАГЦ71 → газрын зургийн БАГЦ7): ЗОРИЛТОТ түлхүүрийн мөрийг alias-ийн нэрээр үлдээнэ —
+       орон сууц/хуваарийн муруй (`isHousing`, `planAt`) тэр түлхүүрээр; эх (гэрээний) түлхүүрийн давхар мөрийг хасна */
+    labelOf: (key) => {
+      const asTarget = Object.values(MAP_PKG_ALIAS).find((a) => a.key === key);
+      if (asTarget) return asTarget.label;
+      const asSrc = MAP_PKG_ALIAS[key];
+      if (asSrc && monthsBy.has(asSrc.key)) return null;
+      return nameOf.get(key) ?? null;
+    },
     planAt: (key, months) => {
       const series = pc?.byBagts.get(key);
       return series?.length ? PP.planPctAt(series, TD.measDayOf(months, nowYm, today)) : null;

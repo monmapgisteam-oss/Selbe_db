@@ -282,6 +282,51 @@ export async function saveGeometry(
   });
 }
 
+/** Геометрийн бүх координатыг дарааллаар нь (x/y/z/m · points · paths · rings) — spatialReference хамаарахгүй */
+const coordsOf = (g: unknown): number[] | null => {
+  if (g == null || typeof g !== 'object') return null;
+  const o = g as Record<string, unknown>;
+  const out: number[] = [];
+  /* Тэмдэгт: түлхүүр = −1e15−i, массивын эхлэл/төгсгөл = −2e15/−3e15 (координатын мужаас хол) — бүтэц ч харьцуулагдана */
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) { out.push(-2e15); for (const x of v) walk(x); out.push(-3e15); return; }
+    out.push(typeof v === 'number' ? v : NaN);
+  };
+  ['x', 'y', 'z', 'm', 'points', 'paths', 'rings'].forEach((k, i) => {
+    if (o[k] != null) { out.push(-1e15 - i); walk(o[k]); }
+  });
+  return out;
+};
+
+/**
+ * Хоёр геометр ижил үү — координат бүр `tol` (102100-д метр) дотор. Серверийн бөөрөнхийлөлт засварын зөрөл БИШ.
+ */
+export function sameGeometry(a: unknown, b: unknown, tol = 0.01): boolean {
+  const x = coordsOf(a), y = coordsOf(b);
+  if (x == null || y == null) return x === y;
+  if (x.length !== y.length) return false;
+  return x.every((v, i) => Number.isFinite(v) && Number.isFinite(y[i]) ? Math.abs(v - y[i]) <= tol : Object.is(v, y[i]));
+}
+
+/** Өөр хэрэглэгч хэлбэрийг энэ хооронд өөрчилсөн — дахин оролдох утгагүй (2026-11-23, хяналт: түр алдаанаас ялгана) */
+export class GeometryConflict extends Error {}
+
+/**
+ * ЗЭРЭГ ЗАСВАРЫН ХАМГААЛАЛТТАЙ хэлбэр бичих — одоогийн геометр `expected`-тэй (засвар эхлэхэд уншсан / өмнө бичсэн)
+ * ижил үед л бичнэ; өөр хүн энэ хооронд зассан бол алдаа шиднэ (түүний засварыг дарахгүй). Бичсэний дараах серверийн
+ * геометрийг буцаана (дараагийн буцаалтын суурь).
+ */
+export async function saveGeometryChecked(
+  meta: LayerMeta, oid: number, expected: unknown, geometry: unknown,
+): Promise<unknown> {
+  const now = await loadGeometry(meta, oid);
+  if (!sameGeometry(now, expected)) {
+    throw new GeometryConflict(tr('Энэ объектын хэлбэрийг өөр хэрэглэгч энэ хооронд өөрчилсөн байна — хадгалсангүй. Объектыг дахин сонгож шинэ хэлбэр дээр засна уу.'));
+  }
+  await saveGeometry(meta, oid, geometry);
+  try { return (await loadGeometry(meta, oid)) ?? geometry; } catch { return geometry; }
+}
+
 /** Тухайн объектыг зурагт тодруулах / дахин татах SQL */
 export const oidWhere = (meta: LayerMeta, oid: number): string =>
   `${meta.oidField} = ${Math.trunc(oid)}`;

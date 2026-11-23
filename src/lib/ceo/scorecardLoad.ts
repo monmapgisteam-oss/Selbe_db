@@ -15,7 +15,7 @@ import { CANCELLED_NOTE_RE } from './uncontracted';
 import { collectPkgLags, FIN_XL_BUILD_CODE, isBuildRow } from './schedule';
 import { FIN_XL_LAND_CODE, FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadWorkforceKpi, type WorkforceKpi } from './workforce';
-import { loadZov, summarize as summarizeZov } from '@/lib/zovshoorol';
+import { loadPermitRows, summarize as summarizeZov } from '@/lib/zovshoorol';
 import {
   DIMS, overlapOfKeys, scorePerf, perfNoCurve, perfNotStarted, scoreFin, scoreLand, scorePermit, scoreHse, totalOf,
   type Dim, type DimScore, type WorkScore, type Inspection,
@@ -51,7 +51,8 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
     loadBuildings().catch(() => null),
     loadUzlegRows('v11').catch(() => null),
     loadUzlegRows('guitsetgegch').catch(() => null),
-    loadZov().catch(() => null),
+    /* 2026-11-23 (аудит): зөвшөөрөл НЭГ эх — ТТБ-ийн мөр + бүртгэл давамгайлна (`mergePermits`), бусад карттай ижил */
+    loadPermitRows().catch(() => null),
     (loadWorkforceKpi() as Promise<WorkforceKpi>).catch(() => null),
   ]);
   const failed: string[] = [];

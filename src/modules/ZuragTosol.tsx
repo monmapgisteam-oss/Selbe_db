@@ -13,6 +13,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { hasCap, subscribeCaps, type CapKey } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
+import { askConfirm } from '@/lib/confirm';
+import { navDirtyLabels } from '@/lib/navGuard';
 import { ZuragBurtgel } from './ZuragBurtgel';
 import s from './zuragTosol.module.css';
 
@@ -27,6 +29,16 @@ export function ZuragTosol() {
   const canEdit = useMemo(() => hasCap(user?.username, ZURAG_CAP), [user, capN]);
   /* ТЭЗҮ (бүртгэлийн 001 бүлэг) ба зураг төсөл тусдаа таб — хоёулаа «Зургийн бүртгэл»-ээс */
   const [view, setView] = useState<'tezu' | 'zurag'>('tezu');
+  /* 2026-11-23 (аудит №56): таб солиход хадгалаагүй засвар чимээгүй алдагдахгүй — эхлээд асууна */
+  const goView = async (k: 'tezu' | 'zurag') => {
+    if (k === view) return;
+    const labels = navDirtyLabels();
+    if (labels.length && !(await askConfirm(
+      tr('{0}: хадгалаагүй засвар байна. Гарвал алдагдана. Гарах уу?', labels.join(' · ')),
+      { danger: true, ok: tr('Хаяад гарах') },
+    ))) return;
+    setView(k);
+  };
   return (
     <div className={s.wrap}>
       <header className={s.head}>
@@ -36,7 +48,7 @@ export function ZuragTosol() {
         </p>
         <div className={s.seg} role="tablist" aria-label={tr('Харагдац')}>
           {([['tezu', tr('ТЭЗҮ')], ['zurag', tr('Зургийн бүртгэл')]] as ['tezu' | 'zurag', string][]).map(([k, t]) => (
-            <button key={k} type="button" role="tab" aria-selected={view === k} className={`${s.segB} ${view === k ? s.segOn : ''}`} onClick={() => setView(k)}>{t}</button>
+            <button key={k} type="button" role="tab" aria-selected={view === k} className={`${s.segB} ${view === k ? s.segOn : ''}`} onClick={() => void goView(k)}>{t}</button>
           ))}
         </div>
       </header>

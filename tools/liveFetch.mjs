@@ -37,7 +37,7 @@ export function loadAdminTokens() {
 }
 
 const realHost = (h) => /(^|\.)selbecity\.mn$|(^|\.)arcgis\.com$/i.test(h);
-const WRITE_EP = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|calculate|append|truncate|createService|addToDefinition|updateDefinition|deleteFromDefinition|addItem|updateItem|deleteItem|share|unshare|delete)(\?|\/?$)/i;
+const WRITE_EP = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|calculate|append|truncate|createService|addToDefinition|updateDefinition|deleteFromDefinition|addItem|updateItem|deleteItem|share|unshare|delete|addAttachment|updateAttachment|deleteAttachments|update|createFolder|move|deleteItems|moveItems|shareItems|unshareItems|addResources|updateResources|removeResources|upload|addRelationship|deleteRelationship|updateUserRole)(\?|\/?$)/i;
 const APP_TABLES = /\/(SYS_Selbe_Permissions\/FeatureServer\/230|Guitsetgel_talbe\/FeatureServer\/(183|191|192|193))\/[a-z]/i;
 
 let blocked = 0;

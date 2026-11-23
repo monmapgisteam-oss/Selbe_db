@@ -261,7 +261,9 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   ];
   const cp = chartTypeCost(perfRows);
   assert.equal(Math.round(cp[0].fin * 100) / 100, 19, '(900×10+100×100)/1000');
-  assert.equal(cp[0].perf, null, 'биет хэмжилтгүй бол perf null (fin руу унахгүй)');
+  /* 2026-11-23 (аудит №9, хэрэглэгчийн дүрэм): гэрээлсэн, биет хэмжилтгүй ангилал — 0% (fin руу унахгүй) */
+  assert.equal(cp[0].perf, 0, 'гэрээлсэн, биет хэмжилтгүй бол perf 0 (fin руу унахгүй)');
+  assert.equal(chartTypeCost([buildRow({ oid: 9, type: 'B', cost: 50, progress: null })])[0].perf, null, 'гэрээгүй, хэмжилтгүй — null');
   /* Холимог ангилал: биеттэй мөр л `perf`-д орно, биетгүй мөр хуваарьт ч орохгүй */
   const mix = chartTypeCost([
     buildRow({ oid: 1, type: 'A', cost: 100, progress: 10, pkg2: 'Багц -1' }),

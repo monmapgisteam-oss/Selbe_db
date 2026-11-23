@@ -14,7 +14,7 @@ import { currentUser } from '@/lib/who';
 import { HO_IPC, CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
 import { buildTree } from '@/lib/projectPlan';
 import { sortPlanRows, toStoredRow } from '@/lib/projectPlanInputs';
-import { planBlockBudgets, planHoSync, planPaidSync, type HoSyncPlan, type Row } from './compute';
+import { dupAddsToDelete, planBlockBudgets, planHoSync, planPaidSync, type HoSyncPlan, type Row } from './compute';
 
 export type HoSyncResult = { at: number; blocks: number; paid: number; unassigned: string[]; updated: number; added: number; unmatched: string[]; error: string | null };
 
@@ -27,6 +27,29 @@ export async function loadCfContractRows(): Promise<Row[]> {
     outFields: [CASHFLOW_NEW.oid, CF.pkg, CF.phase, CF.detail, CF.amountNote, CF.budgetOrder, CF.contractAmount, CF.paid, CF.advance, CF.contractor, CF.contractNo,
       CF.orderDate, CF.orderNo, CF.contractDate],
   });
+}
+
+/**
+ * IPC → ТТБ ОЛГОСОН ДҮНГИЙН БИЧИГДЭЭГҮЙ ЗӨРҮҮ (2026-11-23, аудит №4) — ЗӨВХӨН уншина, бичихгүй. ТТБ-ийн хадгалсан
+ * олгосон дүн нь синкийн эрхтэй хэрэглэгч порталыг нээх хүртэл IPC-ээс хоцордог тул «Төсөл төлөвлөгөө биелэлт» хүснэгт
+ * «синк хүлээгдэж буй» тэмдэг харуулна. `delta` = Σ (IPC-ийн дүн − хадгалсан дүн), ₮.
+ */
+export async function paidSyncPending(): Promise<{ rows: number; delta: number }> {
+  const [ho, cf] = await Promise.all([
+    queryFeatures(HO_IPC.url, { outFields: ['*'], orderBy: `${HO_IPC.oid} ASC` }),
+    loadCfContractRows(),
+  ]);
+  const ps = planPaidSync(ho, cf);
+  const byOid = new Map(cf.map((r) => [Number(r[CASHFLOW_NEW.oid]), r] as const));
+  const n = (v: unknown): number => (v == null || v === '' || !Number.isFinite(Number(v)) ? 0 : Number(v));
+  let rows = 0;
+  let delta = 0;
+  for (const u of ps.updates) {
+    if (!(CF.paid in u)) continue;
+    rows += 1;
+    delta += n(u[CF.paid]) - n(byOid.get(Number(u[CASHFLOW_NEW.oid]))?.[CF.paid]);
+  }
+  return { rows, delta };
 }
 
 /** Багцын дүнг дагах дэд мөрийн засвар — «Төсөл төлөвлөгөө биелэлт»-ийн мөрүүдээс (бичилтгүй) */
@@ -118,9 +141,22 @@ export function runHoSync(): Promise<HoSyncResult> {
         p.adds = again.adds.filter((a) => still.has(String(a[HO_IPC.contractFields.code] ?? '')));
       }
       if (p.updates.length || p.adds.length) {
-        await applyAll(HO_IPC.url, HO_IPC.oid, { updates: p.updates, adds: p.adds });
+        const made = await applyAll(HO_IPC.url, HO_IPC.oid, { updates: p.updates, adds: p.adds });
         res.updated = p.updates.length;
         res.added = p.adds.length;
+        /* 2026-11-23 (аудит): нэмсний ДАРАА дахин уншиж, өөр компьютер зэрэг нэмсэн (бага objectid) ижил кодтой мөр байвал өөрийнхөө
+           мөрийг устгана — таб хоорондын түгжээ өөр компьютерт үйлчлэхгүй. Уншилт унавал дараагийн синкээр. */
+        if (p.adds.length && made.oids.length) {
+          try {
+            const codes = [...new Set(p.adds.map((a) => String(a[HO_IPC.contractFields.code] ?? '').trim()).filter(Boolean))];
+            const where = codes.map((c) => `${HO_IPC.contractFields.code} = N'${c.replace(/'/g, "''")}'`).join(' OR ');
+            const now = where ? await queryFeatures(HO_IPC.url, { where, outFields: [HO_IPC.oid, HO_IPC.contractFields.code] }) : [];
+            const del = dupAddsToDelete(now, made.oids);
+            if (del.length) { await applyAll(HO_IPC.url, HO_IPC.oid, { deletes: del }); res.added -= del.length; }
+          } catch (e) {
+            console.warn('[hoSync] нэмсний дараах давхардлын шалгалт унав:', e);
+          }
+        }
         invalidateQuiet('HO_IPC');
       }
       /* IPC → ТТБ: олгосон дүн, урьдчилгаа. Зөрүүгүй бол бичихгүй (гогцоогүй) */

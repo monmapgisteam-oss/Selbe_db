@@ -125,7 +125,6 @@ const CASES = [
   { name: 'HelpPanel', load: () => import('@/components/HelpPanel'), pick: (m) => m.HelpPanel,
     props: { open: true, onClose: noopFn, navScope: 'all', view: 'dashboard', onGo: noopFn }, map: false },
   { name: 'CeoScorecard', load: () => import('@/components/CeoScorecard'), pick: (m) => m.CeoScorecard, props: { onView: noopFn } },
-  { name: 'CeoBoard', load: () => import('@/components/CeoBoard'), pick: (m) => m.CeoBoard, props: { onView: noopFn } },
   { name: 'LayerCatalog', load: () => import('@/components/LayerCatalog'), pick: (m) => m.LayerCatalog,
     props: { view: 'plan', totals: { state: 'loading', data: null, error: null }, visible: [], setVisible: noopFn, selected: null, onSelect: noopFn, onClose: noopFn, zone: null } },
   { name: 'UserAdmin', load: () => import('@/components/UserAdmin'), pick: (m) => m.UserAdmin, props: { open: true, onClose: noopFn }, map: false },

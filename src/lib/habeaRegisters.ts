@@ -334,6 +334,12 @@ const oneAdd = (j: { addResults?: ApplyRes[] }): ApplyRes => {
   if (r.length !== 1) throw new Error(tr('сервер {0}/{1} мөрийн хариу буцаав — бичигдээгүй гэж үзнэ', r.length, 1));
   return r[0];
 };
+/** `applyEdits`-ийн НЭГ шинэчлэлийн үр дүн */
+const oneUpdate = (j: { updateResults?: ApplyRes[] }): ApplyRes => {
+  const r = j.updateResults ?? [];
+  if (r.length !== 1) throw new Error(tr('сервер {0}/{1} мөрийн хариу буцаав — бичигдээгүй гэж үзнэ', r.length, 1));
+  return r[0];
+};
 
 /** Клиентийн GlobalID — `{XXXXXXXX-XXXX-4XXX-YXXX-XXXXXXXXXXXX}` (ArcGIS-ийн хэв) */
 export function newGlobalId(): string {
@@ -477,7 +483,7 @@ export const registerSig = (attrs: Record<string, unknown>): string =>
   JSON.stringify(Object.keys(attrs).sort().map((k) => [k, attrs[k]]));
 
 export async function addRegister(
-  table: number, attrs: Record<string, unknown>, gid: string, opts: { autoSeq?: string; retry?: boolean } = {},
+  table: number, attrs: Record<string, unknown>, gid: string, opts: { autoSeq?: string; retry?: boolean; upsert?: boolean } = {},
 ): Promise<void> {
   requireCap('habeaData');
   const auth = entAuth();
@@ -485,6 +491,22 @@ export async function addRegister(
   const url = `${R.url}/${table}`;
   try {
     if (opts.retry && await gidExists(url, R.gidField, gid)) return;
+    /* 2026-11-23 (аудит): хариу алдагдсан илгээлтийн дараа утгыг ӨӨРЧИЛЖ хадгалбал — тэр GlobalID-тай мөр сервер дээр суусан
+       бол ШИНЭЧИЛНЭ (урьд нь шинэ GlobalID-аар дахин нэмэгдэж давхар мөр үүсдэг байв); суугаагүй бол ердийнхөөр нэмнэ */
+    if (opts.upsert) {
+      const q = await arcgisPost<{ objectIds?: number[] }>(`${url}/query`, {
+        f: 'json', where: `${R.gidField} = '${gid.replace(/'/g, "''")}'`, returnIdsOnly: 'true', ...auth,
+      }, { token: 'org' });
+      const oid = q.objectIds?.[0];
+      if (oid != null) {
+        const up = oneUpdate(await arcgisPost<{ updateResults?: ApplyRes[] }>(`${url}/applyEdits`, {
+          /* Автомат дугаар анх нэмэгдэхэд олгогдсон — шинэчлэлтэд хөндөхгүй (2026-11-23, хяналт) */
+          f: 'json', updates: JSON.stringify([{ attributes: { ...Object.fromEntries(Object.entries(attrs).filter(([k]) => k !== opts.autoSeq)), objectid: oid } }]), rollbackOnFailure: 'true', ...auth,
+        }, { token: 'org' }));
+        if (up.success !== true) throw new Error(up.error?.description || tr('Хадгалах амжилтгүй боллоо.'));
+        return;
+      }
+    }
     const a = { ...attrs };
     if (opts.autoSeq) a[opts.autoSeq] = await nextNumber(table, opts.autoSeq);
     let res: ApplyRes;

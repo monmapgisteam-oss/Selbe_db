@@ -10,7 +10,7 @@
  *   · `WasteAddDialog` — «Хог хаягдал»: долоо хоног × төрөл сонгоод багц бүрийн тоо.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { HABEA } from '@/lib/services';
 import { friendlyError, Loading } from '@/components/ui';
@@ -70,6 +70,13 @@ export function AddButton({ onClick, disabled = false, note }: { onClick?: () =>
   return disabled && note ? <span title={note}>{btn}</span> : btn;
 }
 
+/** «Болих» товч — `Shell`-ийн асуудаг хаалт (`softClose`), 2026-11-23 (аудит): бөглөсөн маягт асуулгүй хаягдахгүй */
+const ShellCloseCtx = createContext<() => void>(() => {});
+function ShellCancel({ disabled }: { disabled: boolean }) {
+  const close = useContext(ShellCloseCtx);
+  return <button type="button" className={x.btn} onClick={close} disabled={disabled}>{tr('Болих')}</button>;
+}
+
 function Shell({ title, busy, dirty, onClose, children, foot }: {
   title: string; busy: boolean;
   /** Бөглөсөн утга байна — Esc эсвэл ард дарахад шууд хаяхгүй, асууна */
@@ -88,6 +95,7 @@ function Shell({ title, busy, dirty, onClose, children, foot }: {
     asking.current = false;
     if (yes) onClose();
   }, [dirty, onClose]);
+  const closeAsk = useCallback(() => { void softClose(); }, [softClose]);
   useEffect(() => {
     const k = (ev: KeyboardEvent) => { if (ev.key === 'Escape' && !busy) void softClose(); };
     window.addEventListener('keydown', k);
@@ -107,12 +115,13 @@ function Shell({ title, busy, dirty, onClose, children, foot }: {
       <div ref={boxRef} className={`${x.box} ${e.box}`} role="dialog" aria-modal="true" aria-label={title}>
         <header className={x.head}>
           <div><h2 className={x.title}>{title}</h2></div>
-          <button type="button" className={x.close} onClick={onClose} aria-label={tr('Хаах')} disabled={busy}>
+          {/* 2026-11-23 (аудит): «×» ч Esc/ард дарахтай адил — бөглөсөн бол асууна */}
+          <button type="button" className={x.close} onClick={closeAsk} aria-label={tr('Хаах')} disabled={busy}>
             <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
           </button>
         </header>
         <div className={x.body}>{children}</div>
-        <footer className={x.foot}>{foot}</footer>
+        <footer className={x.foot}><ShellCloseCtx.Provider value={closeAsk}>{foot}</ShellCloseCtx.Provider></footer>
       </div>
     </div>
   );
@@ -131,7 +140,8 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
   /** Санал болгосон дугаар — хэрэглэгч өөрчлөөгүй бол хадгалахын ЯГ ӨМНӨ дахин бодно */
   const [seqHint, setSeqHint] = useState<{ name: string; value: string } | null>(null);
   const [gid, setGid] = useState(newGlobalId);
-  const [prior, setPrior] = useState<{ sig: string } | null>(null);
+  /** Өмнөх амжилтгүй илгээлт — `lost` = хариу алдагдсан (сервер дээр СУУСАН байж болзошгүй) */
+  const [prior, setPrior] = useState<{ sig: string; vals: Record<string, string>; lost: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const ent = useEntSession();
@@ -185,14 +195,22 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
     }
     const sig = registerSig(attrs);
     const retry = prior != null && prior.sig === sig;
+    /* Хариу алдагдсан илгээлтийн дараа утгыг өөрчилбөл шинэ GlobalID-аар нэмэгдэж, анхныхтай ДАВХАР болж болзошгүй —
+       эхлээд ижил утгаар дахин илгээж (GlobalID-аар шалгана) суусан эсэхийг тодруулна */
+    /* 2026-11-23: хариу алдагдсан илгээлтийн дараа утгыг өөрчилбөл ИЖИЛ GlobalID-аар — суусан бол тэр мөр шинэчлэгдэнэ (`upsert`),
+       суугаагүй бол нэмэгдэнэ; давхар мөр үүсэхгүй, хэрэглэгчийн өөрчлөлт хадгалагдана */
+    const upsert = prior?.lost === true && !retry;
     try {
       const autoSeq = seqHint && (vals[seqHint.name] ?? '').trim() === seqHint.value ? seqHint.name : undefined;
-      const g = prior != null && !retry ? newGlobalId() : gid;
+      const g = prior != null && !retry && !upsert ? newGlobalId() : gid;
       if (g !== gid) setGid(g);
-      await addRegister(item.table, attrs, g, { autoSeq, retry });
+      /* 2026-11-23 (хяналт): upsert мөр олдохгүй бол нэмэгдэх тул `autoSeq`-ийг үргэлж дамжуулна — шинэчлэх замд дугаарыг хөндөхгүй */
+      await addRegister(item.table, attrs, g, { autoSeq, retry, upsert });
       onClose();
     } catch (ex) {
-      setPrior({ sig });
+      /* Хариу алдагдсан бол дараагийн илгээлтийн хамгаалалтыг (`lost`) өмнөх төлөвөөс ч хадгална */
+      /* 2026-11-23 (хяналт): upsert/дахин оролдлого энгийн алдаагаар унасан ч анхны илгээлт сервер дээр байж болох тул `lost` хэвээр */
+      setPrior({ sig, vals, lost: ex instanceof HabeaLostWrite || prior?.lost === true });
       setErr(errText(ex));
     } finally {
       setBusy(false);
@@ -209,7 +227,7 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
         <>
           {err && <p className={x.err} role="alert">{err}</p>}
           <div className={x.actions}>
-            <button type="button" className={x.btn} onClick={onClose} disabled={busy}>{tr('Болих')}</button>
+            <ShellCancel disabled={busy} />
             <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void save(); }} disabled={busy || !ok || !entOk}>
               {busy ? tr('Хадгалж байна…') : tr('Хадгалах')}
             </button>
@@ -221,7 +239,15 @@ export function RegisterAddDialog({ onClose }: { onClose: () => void }) {
       <div className={x.chips} role="radiogroup" aria-label={tr('Төрөл')}>
         {kinds.map((k) => (
           <button key={k.key} type="button" role="radio" aria-checked={kind === k.key} disabled={busy}
-            className={`${x.chip} ${kind === k.key ? x.chipOn : ''}`} onClick={() => pickKind(k.key)}>
+            className={`${x.chip} ${kind === k.key ? x.chipOn : ''}`}
+            onClick={() => {
+              if (k.key === kind) return;
+              /* 2026-11-23 (аудит): төрөл солиход маягт цэвэрлэгдэнэ — бөглөсөн бол асууна */
+              void (async () => {
+                if (dirty && !(await askConfirm(tr('Бөглөсөн мэдээлэл хадгалагдахгүй. Төрлийг солих уу?'), { danger: true, ok: tr('Солих') }))) return;
+                pickKind(k.key);
+              })();
+            }}>
             {k.label}
           </button>
         ))}
@@ -339,7 +365,7 @@ export function WasteAddDialog({ onClose }: { onClose: () => void }) {
         <>
           {err && <p className={x.err} role="alert">{err}</p>}
           <div className={x.actions}>
-            <button type="button" className={x.btn} onClick={onClose} disabled={busy}>{tr('Болих')}</button>
+            <ShellCancel disabled={busy} />
             <button type="button" className={`${x.btn} ${x.pri}`} onClick={() => { void save(); }} disabled={busy || !ok || !dom || !entOk}>
               {busy ? tr('Хадгалж байна…') : tr('Хадгалах')}
             </button>

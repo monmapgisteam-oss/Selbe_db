@@ -8,7 +8,8 @@
  * шууд бичигдэнэ (`lib/planEdit` — «Төсөл төлөвлөгөө биелэлт» хуудастай НЭГ дүрэм), тиймээс хоёр газар өөр утга үүсэхгүй.
  * Гараар бөглөх нь: гүйцэтгэлийн хувь (доод мөрд), захирамжийн дугаар, огноо. Бүлгийн хувь, жин автоматаар бодогдоно.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { askConfirm } from '@/lib/confirm';
 import { t as tr } from '@/lib/i18nCore';
 import { Loading, userError } from '@/components/ui';
 import { useAsync } from '@/lib/useAsync';
@@ -28,6 +29,9 @@ export function ZovPlan({ canEdit }: { canEdit: boolean }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<'all' | State>('all');
   const [busy, setBusy] = useState(false);
+  /* хадгалалтын дараалал — `run` (доор) */
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const pending = useRef(0);
   const [err, setErr] = useState('');
   const [addAt, setAddAt] = useState<string | null>(null);
   const [draft, setDraft] = useState({ name: '', pct: '', weight: '' });
@@ -70,14 +74,30 @@ export function ZovPlan({ canEdit }: { canEdit: boolean }) {
     return true;
   });
 
-  const run = async (fn: () => Promise<unknown>) => {
+  /* 2026-11-23 (давтан аудит): нүдний оролт хадгалалтын үед ИДЭВХТЭЙ (Tab-аар шилжинэ) тул хадгалалтыг ДАРААЛУУЛНА — давхцаж
+     бичихгүй, «×»/«+» сүүлийн хадгалалт дуустал идэвхгүй */
+  const run = (fn: () => Promise<unknown>): Promise<void> => {
+    pending.current += 1;
     setBusy(true); setErr('');
-    try { await fn(); } catch (e) { setErr(userError(e)); } finally { setBusy(false); }
+    const next = queue.current.then(async () => {
+      try { await fn(); } catch (e) { setErr(userError(e)); }
+    }).finally(() => {
+      pending.current -= 1;
+      if (pending.current === 0) setBusy(false);
+    });
+    queue.current = next;
+    return next;
   };
-  const savePct = (n: PlanNode, raw: string) => {
+  /* 2026-11-23 (аудит): буруу утгыг нүдэнд үлдээхгүй — хадгалсан утгаар буцаана */
+  const savePct = (n: PlanNode, el: HTMLInputElement) => {
+    const raw = el.value;
     const t = raw.trim().replace(',', '.');
     const v = t === '' ? null : Number(t);
-    if (v != null && (!Number.isFinite(v) || v < 0 || v > 100)) { setErr(tr('Гүйцэтгэлийн хувь 0–100 хооронд байх ёстой')); return; }
+    if (v != null && (!Number.isFinite(v) || v < 0 || v > 100)) {
+      setErr(tr('Гүйцэтгэлийн хувь 0–100 хооронд байх ёстой'));
+      el.value = n.row?.guitsetgel_huvi == null ? '' : String(n.row.guitsetgel_huvi);
+      return;
+    }
     if ((n.row?.guitsetgel_huvi ?? null) === v) return;
     void run(() => savePlanValue(n, 'pct', v));
   };
@@ -86,7 +106,10 @@ export function ZovPlan({ canEdit }: { canEdit: boolean }) {
     if ((n.row?.zahiramj_dugaar ?? null) === v) return;
     void run(() => savePlanValue(n, 'orderNo', v));
   };
-  const saveDate = (n: PlanNode, raw: string) => {
+  /* 2026-11-23 (аудит): дутуу бичсэн огноо (`badInput`) хоосон утга мэт ирдэг — хадгалсан огноог устгахгүй */
+  const saveDate = (n: PlanNode, el: HTMLInputElement) => {
+    const raw = el.value;
+    if (el.validity.badInput) { el.value = dayOf(n.row?.zahiramj_ognoo); return; }
     const v = raw ? Date.parse(`${raw}T00:00:00Z`) : null;
     if (dayOf(n.row?.zahiramj_ognoo) === raw) return;
     void run(() => savePlanValue(n, 'orderDate', v));
@@ -165,10 +188,10 @@ export function ZovPlan({ canEdit }: { canEdit: boolean }) {
                     {canPct ? (
                       <input
                         key={`${n.code}:${n.row?.guitsetgel_huvi ?? ''}`}
-                        className={s.inNum} inputMode="decimal" disabled={busy}
+                        className={s.inNum} inputMode="decimal"
                         defaultValue={n.row?.guitsetgel_huvi == null ? '' : String(n.row.guitsetgel_huvi)}
                         aria-label={tr('{0} — гүйцэтгэлийн хувь', String(n.row?.ajil_uilchilgee ?? n.code))}
-                        onBlur={(e) => savePct(n, e.target.value)}
+                        onBlur={(e) => savePct(n, e.target)}
                         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                       />
                     ) : <span className="num" title={leaf && pctLock ? pctLock : undefined}>{num(p, 1)}%</span>}
@@ -177,7 +200,7 @@ export function ZovPlan({ canEdit }: { canEdit: boolean }) {
                   <td>
                     {canMeta ? (
                       <input
-                        key={`${n.code}:no:${n.row?.zahiramj_dugaar ?? ''}`} className={s.inTxt} disabled={busy}
+                        key={`${n.code}:no:${n.row?.zahiramj_dugaar ?? ''}`} className={s.inTxt}
                         defaultValue={n.row?.zahiramj_dugaar ?? ''} aria-label={tr('{0} — захирамжийн дугаар', String(n.row?.ajil_uilchilgee ?? n.code))}
                         onBlur={(e) => saveText(n, e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
@@ -187,9 +210,9 @@ export function ZovPlan({ canEdit }: { canEdit: boolean }) {
                   <td>
                     {canMeta ? (
                       <input
-                        key={`${n.code}:d:${dayOf(n.row?.zahiramj_ognoo)}`} className={s.inTxt} type="date" disabled={busy}
+                        key={`${n.code}:d:${dayOf(n.row?.zahiramj_ognoo)}`} className={s.inTxt} type="date"
                         defaultValue={dayOf(n.row?.zahiramj_ognoo)} aria-label={tr('{0} — захирамжийн огноо', String(n.row?.ajil_uilchilgee ?? n.code))}
-                        onBlur={(e) => saveDate(n, e.target.value)}
+                        onBlur={(e) => saveDate(n, e.target)}
                       />
                     ) : dayOf(n.row?.zahiramj_ognoo)}
                   </td>
@@ -201,7 +224,12 @@ export function ZovPlan({ canEdit }: { canEdit: boolean }) {
                       )}
                       {!dWhy && (
                         <button type="button" className={s.mini} disabled={busy} title={tr('Гараар нэмсэн мөрийг устгах')}
-                          onClick={() => { void run(() => deletePlanRow(n, cutoff)); }}>×</button>
+                          onClick={() => {
+                            void (async () => {
+                              if (!(await askConfirm(tr('«{0}» мөрийг устгах уу?', String(n.row?.ajil_uilchilgee ?? n.code)), { danger: true, ok: tr('Устгах') }))) return;
+                              await run(() => deletePlanRow(n, cutoff));
+                            })();
+                          }}>×</button>
                       )}
                     </td>
                   )}

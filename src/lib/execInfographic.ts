@@ -239,7 +239,7 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
   const tiles: [string, string, string?][] = [
     [tr('Нийт төсөв'), money(g.budget), tr('«Төсөл төлөвлөгөө биелэлт» — Төслийн нийт')],
     [tr('Нийт гэрээлсэн дүн'), money(g.contract), g.budget > 0 ? tr('төсвийн {0}', pct(g.contract / g.budget * 100, 1)) : undefined],
-    [tr('Төслийн нийт явц'), pct(g.progress, 1), [tr('Нэгтгэл гүйцэтгэлээр'), g.progressPlan == null ? '' : tr('төлөвлөгөө {0}', pct(g.progressPlan, 1))].filter(Boolean).join(' · ')],
+    [tr('Төслийн нийт явц'), pct(g.progress, 1), [tr('Нэгтгэл гүйцэтгэлээр'), g.progressPlan == null ? '' : tr('гэрээний төлөвлөгөө {0}', pct(g.progressPlan, 1))].filter(Boolean).join(' · ')],
     [tr('Олгосон санхүүжилт'), money(f.given), f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1))],
     [tr('Газар чөлөөлөлт'), pct(g.landPct, 1), tr('{0} нэгж талбар үлдсэн', num(g.land.remaining))],
     [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(p.blocks), householdsLabel(p))],

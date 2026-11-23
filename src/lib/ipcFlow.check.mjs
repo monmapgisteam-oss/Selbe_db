@@ -221,4 +221,39 @@ assert.equal(contractWhy({ ...one, items: one.items.map((i) => ({ ...i, advance:
   assert.deepEqual(dupDocNos([doc(1, 'IPC|Х|3', 3), doc(2, 'IPC|Х|3', 3)]), [3]);
 }
 
+/* 2026-11-23 (аудит): давхар дугаарын буцаалт — дүнгээр нотлогдсон үед л миний мөрийг чөлөөлнө */
+{
+  const { rollbackFree, advanceMissing } = await import('./ipcFlow.ts');
+  const d = (oid, no, total) => ({ objectid: oid, murun_id: `IPC|Багц-2|${no}`, geree_kod: 'Багц-2', bagts: 'Багц 2', tulult_turul: 'Гүйцэтгэл', guits_une: total, ipc_dugaar: no });
+  const p3 = (oid, une) => auto({ oid, day: `2026-10-${10 + oid}`, une, no: 3 });
+  /* Нөгөө баримт (10) = мөр 3 (100); миний (11) = мөр 4 (120) → минийх тусдаа: чөлөөлнө */
+  assert.deepEqual(rollbackFree([d(10, 3, 100), d(11, 3, 120), p3(3, 100), p3(4, 120)], 3, 11, [4]), { free: [4], sure: true });
+  /* Миний сонгосон мөр 3 нөгөө баримтынх (бүх дүн = нөгөөгийн дүн) → чөлөөлөхгүй (урьд нь чөлөөлж давхар төлбөрт оруулдаг байв) */
+  assert.deepEqual(rollbackFree([d(10, 3, 100), d(11, 3, 100), p3(3, 100)], 3, 11, [3]), { free: [], sure: true });
+  /* Хэсэгчлэн давхцсан — нотлогдохгүй: юу ч чөлөөлөхгүй, sure=false */
+  assert.deepEqual(rollbackFree([d(10, 3, 150), d(11, 3, 120), p3(3, 100), p3(4, 120)], 3, 11, [4]), { free: [], sure: false });
+  /* Үлдсэн баримт нэгээс олон — sure=false */
+  assert.deepEqual(rollbackFree([d(10, 3, 100), d(12, 3, 100), d(11, 3, 120), p3(4, 120)], 3, 11, [4]), { free: [], sure: false });
+  /* Урьдчилгаа давхардахгүй: цуцлагдаагүй урьдчилгаатай багц алгасагдана, бусад нь үлдэнэ */
+  const a2 = { objectid: 20, ...createAdvance('Багц-2', 'Багц 2', 50, 1, '2026-11-04') };
+  const items = [{ row: { bagts: 'Багц 2' } }, { row: { bagts: 'Багц 3' } }];
+  assert.deepEqual(advanceMissing([a2], items, (i) => i.row.bagts).map((i) => i.row.bagts), ['Багц 3']);
+  assert.equal(advanceMissing([], items, (i) => i.row.bagts).length, 2);
+  console.log('✅ IPC давхар дугаарын буцаалт · урьдчилгаа давхардахгүй');
+}
+
+/* 2026-11-23 (аудит №15): өмнөх «Хадгалах» бичигдсэн ч хариу алдагдсан — сервер дээрх мөрүүд энэ гэрээгээр бичигдсэн бол хадгалагдсан гэж үзнэ */
+{
+  const { contractAlreadySaved, contractUpdates } = await import('./ipcFlow.ts');
+  const saved = contractUpdates(many);
+  assert.equal(contractAlreadySaved(many, saved), true, 'бүх мөр энэ дугаар · «Гэрээлсэн дүн» · ижил дүн');
+  assert.equal(contractAlreadySaved(many, [saved[0]]), false, 'нэг мөр нь бичигдээгүй');
+  assert.equal(contractAlreadySaved(many, saved.map((r, i) => (i ? { ...r, geree_dun: 999 } : r))), false, 'дүн зөрсөн');
+  assert.equal(contractAlreadySaved(many, saved.map((r) => ({ ...r, geree_dugaar: 'Н/9' }))), false, 'өөр гэрээний дугаар');
+  assert.equal(contractAlreadySaved(one, cf), false, 'анхны (бичээгүй) мөрүүд');
+  const ui = readFileSync(new URL('../modules/IpcFlow.tsx', import.meta.url), 'utf8');
+  assert.ok(ui.includes('const already = contractAlreadySaved(c, cfNow);') && ui.includes('if (!already) await applyAll(CASHFLOW_NEW.url'), 'цонх: хадгалагдсан бол дахин бичихгүй, урьдчилгаа руу үргэлжилнэ');
+  console.log('✅ гэрээний цонх: хариу алдагдсан хадгалалтын давталт');
+}
+
 console.log('ipcFlow.check ✓');

@@ -117,6 +117,39 @@ export function dupDocNos(pays: readonly Row[]): number[] {
 
 const docId = (code: string, no: number): string => `${DOC_PREFIX}${code}|${no}`;
 
+/**
+ * ДАВХАР ДУГААРЫН БУЦААЛТ (2026-11-23, аудит) — хоёр хэрэглэгч зэрэг ижил дугаартай IPC үүсгэсэн үед ХОЖУУ баримт өөрийгөө
+ * буцаана. Гүйцэтгэлийн мөр баримттай зөвхөн дугаараар (`ipc_dugaar`) холбогддог тул «миний сонгосон мөр» үлдсэн баримтынх ч
+ * байж болно: урьд нь бүгдийг болзолгүй чөлөөлдөг байсан тул үлдсэн баримтын мөр чөлөөлөгдөж ДАРААГИЙН IPC-д дахин ордог
+ * (давхар төлбөр). Одоо дүнгээр НОТЛОГДСОН үед л чөлөөлнө:
+ *   · тэр дугаартай бүх мөрийн дүн − миний мөрийн дүн = үлдсэн баримтын хөлдсөн дүн → миний мөр тусдаа: бүгдийг чөлөөлнө;
+ *   · тэр дугаартай бүх мөрийн дүн = үлдсэн баримтын дүн → миний мөр үлдсэн баримтынх: юу ч чөлөөлөхгүй;
+ *   · бусад (хэсэгчлэн давхцсан, үлдсэн баримт нэгээс олон/алга) → юу ч чөлөөлөхгүй, `sure: false` (админд мэдэгдэнэ).
+ */
+export function rollbackFree(after: readonly Row[], no: number, mineOid: number, selOids: readonly number[]): { free: number[]; sure: boolean } {
+  const others = docRows(after).filter((x) => x.no === no && x.oid !== mineOid && !x.advance);
+  if (others.length !== 1 || others[0].total == null) return { free: [], sure: false };
+  const rows = perfRows(after).filter((r) => r.ipcNo === no);
+  const mine = new Set(selOids);
+  const sum = (rs: readonly PerfRow[]) => rs.reduce((a, r) => a + (r.une ?? 0), 0);
+  const all = sum(rows);
+  const my = sum(rows.filter((r) => mine.has(r.oid)));
+  const keep = others[0].total;
+  if (Math.abs(all - my - keep) < 1) return { free: rows.filter((r) => mine.has(r.oid)).map((r) => r.oid), sure: true };
+  if (Math.abs(all - keep) < 1) return { free: [], sure: true };
+  return { free: [], sure: false };
+}
+
+/**
+ * УРЬДЧИЛГААНЫ ДАВХАРДАЛ (2026-11-23, аудит) — хариу алдагдсаны дараа «Хадгалах»-ыг дахин дарахад багц бүрт ХОЁР ДАХЬ урьдчилгааны
+ * баримт нэмэгддэг байв. Тэр гэрээнд цуцлагдаагүй урьдчилгааны баримттай багцыг (`pkgKeyOf`-оор) алгасна.
+ */
+export function advanceMissing<T>(pays: readonly Row[], items: readonly T[], pkgOf: (i: T) => string): T[] {
+  const key = (v: string) => pkgKeyOf(v) || v.trim();
+  const have = new Set(docRows(pays).filter((d) => d.advance && d.status !== S.cancelled).map((d) => key(d.pkg)));
+  return items.filter((i) => !have.has(key(pkgOf(i))));
+}
+
 export type FlowEdit = { adds: Row[]; updates: Row[] };
 
 /** IPC баримтын нийлбэр — сонгосон гүйцэтгэлийн дүн */
@@ -277,6 +310,22 @@ export function contractWhy(c: NewContract, cfRows: readonly Row[], hoRows: read
 }
 
 /** `Guitsetgel_talbe/182`-ийн засвар — гэрээний дүн `geree_dun`-д; урьдчилсан төсөв (`ho_dun_geree`) хөндөгдөхгүй */
+/**
+ * ГЭРЭЭ АЛЬ ХЭДИЙН CASHFLOW-Д БИЧИГДСЭН ҮҮ (2026-11-23, аудит №15) — бичилт амжилттай болсон ч хариу алдагдвал `cfSaved` худал
+ * үлдэж, дахин «Хадгалах» дарахад «багц өөр гэрээтэй» гэж татгалздаг тул урьдчилгаа хэзээ ч үүсдэггүй байв. `fresh` — сервероос
+ * САЯ уншсан мөрүүд: сонгосон мөр БҮР энэ дугаар, «Гэрээлсэн дүн», ижил дүнтэй бол хадгалагдсан гэж үзнэ (цэвэр).
+ */
+export function contractAlreadySaved(c: NewContract, fresh: readonly Row[]): boolean {
+  if (!c.items.length || !txt(c.no)) return false;
+  const by = new Map(fresh.map((r) => [num(r[CASHFLOW_NEW.oid]), r] as const));
+  return c.items.every(({ row, amount }) => {
+    const r = by.get(num(row[CASHFLOW_NEW.oid]));
+    if (!r) return false;
+    const amt = num(r[CF.contractAmount]);
+    return txt(r[CF.contractNo]) === txt(c.no) && txt(r[CF.amountNote]) === CONTRACTED && amt != null && Math.abs(amt - amount) < 0.005;
+  });
+}
+
 export function contractUpdates(c: NewContract): Row[] {
   return c.items.map(({ row, amount }) => ({
     [CASHFLOW_NEW.oid]: num(row[CASHFLOW_NEW.oid]),

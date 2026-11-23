@@ -17,7 +17,7 @@ import { LAYER_BY_ID, layerUrl } from './services.ts';
 import { measureKind, srKind } from './butetsLen.ts';
 
 if (process.env.SELBE_LIVE_SKIP) {
-  console.log('⏭ butetsInfra.check: амьд үйлчилгээ хүрэхгүй (SELBE_LIVE_SKIP) — алгасав');
+  console.log(`⏭ амьд шалгуур (butetsInfra) алгасав — ${process.env.SELBE_LIVE_SKIP_REASON || 'SELBE_LIVE_SKIP'}`);
   process.exit(0);
 }
 

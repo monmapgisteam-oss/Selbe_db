@@ -536,3 +536,12 @@ console.log('huvaariObyem.check: ok — scheduleByMoney · orderByDeps · remapM
   }
   console.log('huvaariObyem.check: ok — applyPlanEdits багцын эрх (устгалт · үл мэдэгдэх багц) ✓');
 }
+
+/* 2026-11-23 (аудит №19): сарын хувийг хадгалахад ЗӨВХӨН тэр багцын давхар мөрийг устгана */
+{
+  const { readFileSync } = await import('node:fs');
+  const L = readFileSync(new URL('./huvaariObyem.ts', import.meta.url), 'utf8');
+  assert.equal((L.match(/const dups = dupsByPkg\.get\(pkg\) \?\? \[\];/g) ?? []).length, 2, 'patchPkgPct ба savePkgPct хоёулаа багцаар');
+  assert.ok(!/const \{ pct, oids, dups \} = await loadPkgPct\(\)/.test(L), 'бүх багцын давхар жагсаалт ашиглагдахгүй');
+  console.log('huvaariObyem.check: давхар мөр багцаар ✓');
+}

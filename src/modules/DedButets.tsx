@@ -41,7 +41,7 @@ import { CoordPopup } from './DedButetsCoord';
 import { StatusBar, statusValsChanged, useStatusClasses, type ColorBy, type StatPick, type StatusPick } from './DedButetsStatus';
 import {
   applyAttrs, cachedOidField, deleteRow, loadGeometry, loadLayerMeta, queryOidsIn, revertRows,
-  saveGeometry,
+  saveGeometryChecked, GeometryConflict,
 } from '@/lib/butetsEdit';
 
 
@@ -309,7 +309,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
   const [undoable, setUndoable] = useState<
     | { kind: 'add'; layerId: string; oid: number }
     | { kind: 'attr'; layerId: string; oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }
-    | { kind: 'geom'; layerId: string; oid: number; geometry: unknown }
+    /* `geometry` = засвараас өмнөх (буцаах утга), `after` = бичсэний дараах серверийн хэлбэр (зэрэг засварын шалгалтын суурь) */
+    | { kind: 'geom'; layerId: string; oid: number; geometry: unknown; after: unknown }
     /* Олон мөрийн засвар — мөр бүр ӨӨРИЙН хуучин утгатай (`DedButetsBatch`) */
     | { kind: 'batch'; layerId: string; rows: { oid: number; attrs: Record<string, unknown>; wrote?: Record<string, unknown> }[] }
     | null
@@ -741,7 +742,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setGeomBusy(true);
     try {
       const meta = await loadLayerMeta(reshape.layerId);
-      await saveGeometry(meta, reshape.oid, reshaped);
+      /* Засвар эхлэхэд уншсан хэлбэр одоо ч хэвээр үед л бичнэ — өөр хүний засварыг дарахгүй */
+      const after = await saveGeometryChecked(meta, reshape.oid, reshape.geometry, reshaped);
       refreshLayer(reshape.layerId); statusValsChanged(reshape.layerId);
       dropTotalsLater();
       setGeomRev((x) => x + 1);
@@ -752,6 +754,7 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
         layerId: reshape.layerId,
         oid: reshape.oid,
         geometry: reshape.geometry,
+        after,
       });
       toast(tr('Хэлбэр хадгалагдлаа'));
       setReshape(null);
@@ -799,7 +802,15 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
           }
         }
         else {
-          await saveGeometry(meta, u.oid, u.geometry);
+          /* Бидний бичсэн хэлбэр хэвээр үед л буцаана — дараа нь өөр хүн зассан бол түүнийг дарахгүй */
+          try {
+            await saveGeometryChecked(meta, u.oid, u.after, u.geometry);
+          } catch (e) {
+            /* 2026-11-23 (хяналт): зөвхөн зэрэг засварын зөрчилд буцаалтыг хаана — сүлжээний түр алдааны дараа дахин оролдож болно */
+            if (e instanceof GeometryConflict) setUndoable(null);
+            toast(userError(e), 'err');
+            return;
+          }
           setGeomRev((x) => x + 1);
         }
         refreshLayer(u.layerId); statusValsChanged(u.layerId);

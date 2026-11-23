@@ -170,7 +170,8 @@ export function buildContractGapKpi(g: ContractGap): Omit<KpiResult, 'failedSour
     g.under.count > 0
       ? tr('{0} гэрээ төсвөөс бага ({1})', g.under.count, mnt(Math.abs(g.under.sum ?? 0)))
       : tr('{0} гэрээ төсвөөс бага', 0),
-    tr('гэрээлсэн {0} / төсөв {1}', mnt(g.contractTotal), mnt(g.budgetTotal)),
+    /* 2026-11-23 (аудит №2): зөвхөн ажлын мөр — ТЭЗҮ, зураг төслийн гэрээ (ТТБ-д тусдаа) орохгүй тул ТТБ-ийн нийтээс бага */
+    tr('ажлын мөрийн гэрээлсэн {0} / төсөв {1} (ТЭЗҮ, зураг төсөл орохгүй)', mnt(g.contractTotal), mnt(g.budgetTotal)),
   ];
   if (g.noBudget > 0) {
     facts.push(g.noBudgetSum == null

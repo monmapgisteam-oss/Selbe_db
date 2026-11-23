@@ -7,7 +7,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { housingPct, pkgCostWeight, cfWeightRow, type CfPlanRow } from '@/lib/gdash';
 import { ipcNumbers } from '@/lib/ipc';
 import { contractBlocks, ipcTotals } from '@/lib/ipcTable';
-import { paidShareOf } from '@/lib/paidShare';
+import { paidShareOf, withProjectContract } from '@/lib/paidShare';
 import { planPctAt, planCoverage, coverageOk, type PlanCurve } from '@/lib/planProgress';
 import type { BlockHistory } from '@/lib/blockProgress';
 import type { CompanyDay, WorkforceDetail } from '@/lib/ceo/workforce';
@@ -240,6 +240,8 @@ export function buildModel(input: {
   /** Хуваарийн муруй бүхэлдээ УНАСАН (`planQ.state === 'error'`) — `TuhModel.planFailed` = -1 */
   planError?: boolean;
   live?: LiveMap | null;
+  /** Төслийн нийт ГЭРЭЭЛСЭН дүн (`loadProjectContractTotal`) — өгвөл «олгосон хувь»-ийн хуваарь нь тэр (портал даяар нэг тоо, 2026-11-23) */
+  projContract?: number | null;
 }): TuhModel {
   const { fin, plan, cfPlan, packs, hist, commission, workforce, docs } = input;
   const today = todayIso();
@@ -380,7 +382,10 @@ export function buildModel(input: {
   for (const r of rows) statusCount.set(r.status, (statusCount.get(r.status) ?? 0) + 1);
 
   const tot = ipcTotals(contractBlocks(fin.contractsHo));
-  const share = paidShareOf(fin.contracts, fin.pays);
+  const share0 = paidShareOf(fin.contracts, fin.pays);
+  const pc = input.projContract;
+  /* 2026-11-23 (аудит №3): ТТБ-ийн нийт гэрээлсэн дүнгээр хуваахад ТЭЗҮ/судалгааны олголт тоологчид орно */
+  const share = withProjectContract(share0, pc);
   /* 2026-11-09: зөвхөн олгосон (`dun` бичигдсэн) IPC — `ipcOf`-той нэг дүрэм, батлаагүй баримт тоологдохгүй */
   const ipcCount = fin.contractsHo.reduce((a, c) => a + ipcNumbers(c.pays.filter((r) => hoAmount(r) != null)).length, 0);
 

@@ -99,7 +99,8 @@ ok('AI баримт — орон сууцны багцаар, хамралт б�
   const t = execFacts(base({}));
   assert.ok(t.includes('Бодит (орон сууцны багцууд): 24.6%'), 'бүх багц биш — орон сууц');
   assert.ok(t.includes('Хуваарийн хамралт (төлөвлөгөөнд огноотой ажлын жин): 59.1% — 95%-иас бага'), t);
-  assert.ok(t.includes('өөрийн төлөвлөгөө (нэгтгэл гүйцэтгэл): 71.9%'), t);
+  /* 2026-11-23 (аудит): төлөвлөгөөт хувь суурийн нэртэй */
+  assert.ok(t.includes('Төлөвлөгөөт хувь — гэрээгээр (нэгтгэл гүйцэтгэл): 71.9%'), t);
   assert.ok(!execFacts(base({ planCoverage: 100 })).includes('95%-иас бага'));
 });
 
@@ -115,7 +116,7 @@ ok('§3 блокийн тоо — түвшний хүснэгтийн олонл
   assert.match(ER, /householdsMissing: lv \? householdsMissingOf\(lv, /, 'багцын «дутуу» өрх полигонгүй блокийг тоолно');
 });
 ok('толгой: «Төслийн гүйцэтгэл» өөрийн төлөвлөгөөтэй, «Төлөвлөсөн» хамралттай', () => {
-  assert.match(UI, /x\.gdash\.progressPlan != null \? ` \(\$\{tr\('төлөвлөгөө \{0\}', pct\(x\.gdash\.progressPlan, 1\)\)\}\)`/);
+  assert.ok(UI.includes("tr('гэрээгээр {0}', pct(x.gdash.progressPlan, 1))") && UI.includes("tr('гүйцэтгэгчийн төлөвлөгөөгөөр {0}', pct(x.gdash.progressPlanP, 1))"), 'төлөвлөгөөт хувь хоёр суурийн нэртэй');
   assert.match(UI, /coverageNote\(x\.prog\.planCoverage\)/);
 });
 ok('§3 эгнээ: бодит нь зөрүүний тал, дутуу хамралтад «хоцрогдол/түрүүлэлт» биш', () => {

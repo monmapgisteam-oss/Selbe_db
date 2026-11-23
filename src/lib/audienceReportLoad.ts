@@ -30,7 +30,12 @@ export function phasesOf(plan: Pick<ProjectPlan, 'empty' | 'tree' | 'result'>): 
   if (plan.empty) return { project: null, phases: [], buildSub: [] };
   const v = (n: PlanNode) => plan.result.values.get(n);
   const label = (n: PlanNode) => txt(n.row?.uy_shat) || txt(n.row?.ajil_uilchilgee) || n.code;
-  const row = (n: PlanNode, key: string): PhaseInput => ({ key, label: label(n), S: fin(v(n)?.S), P: fin(v(n)?.P) });
+  /* 2026-11-23 (аудит): үе шатыг Төслийн нийтэд ОРСОН хувиар (`result.total` — «Үе шатны гүйцэтгэлд тооцохгүй» мөрийг оруулсан
+     дамжуулалт) харуулна — эс бөгөөс жагсаасан үе шатуудаас Төслийн нийт дахин бодогдохгүй (37.3 ↔ 36.0) */
+  const sOf = (n: PlanNode) => plan.result.total?.values.get(n)?.S ?? v(n)?.S;
+  /* 2026-11-23 (аудит №5): төлөвлөгөө (P) ч ИЖИЛ дамжуулалтаас — гүйцэтгэлтэй нэг суурь */
+  const pOf = (n: PlanNode) => plan.result.total?.values.get(n)?.P ?? v(n)?.P;
+  const row = (n: PlanNode, key: string): PhaseInput => ({ key, label: label(n), S: fin(sOf(n)), P: fin(pOf(n)) });
   const phases = plan.tree.root.children.map((n, k) => row(n, `${n.phase}:${k}`));
   const b = plan.tree.root.children.find((n) => n.phase === 'barilga');
   const buildSub: PhaseInput[] = [];
@@ -39,7 +44,7 @@ export function phasesOf(plan: Pick<ProjectPlan, 'empty' | 'tree' | 'result'>): 
     if (c) buildSub.push({ ...row(c, `barilga:${sub}`), label: txt(c.row?.ajil_uilchilgee) || label(c) });
   }
   const rv = v(plan.tree.root);
-  return { project: { S: fin(rv?.S), P: fin(rv?.P) }, phases, buildSub };
+  return { project: { S: fin(rv?.S), P: fin(rv?.P), N: fin(rv?.N) }, phases, buildSub };
 }
 
 /**

@@ -243,6 +243,13 @@ export function collectCurves(pkgs: readonly PkgLag[], lagOfFn: LagOfFn, nowYm: 
   return out;
 }
 
+/**
+ * ТТБ-ИЙН БАГЦЫН ТӨЛӨВЛӨГӨӨ / ГҮЙЦЭТГЭЛ (2026-11-23, аудит №6) — Finance-ийн хоцрогдол (`lagOf`) бодогдоогүй багцад.
+ * `P` = гүйцэтгэгчийн хуваарийн төлөвлөгөө, `S` = бодит гүйцэтгэл (0–100; хэмжилтгүй бол `null` → 0, хэрэглэгчийн дүрэм).
+ */
+/** `C` — хуваарийн хамралт (0–100, хугацаатай навчны төсвийн хувь); өгөөгүй бол бүрэн гэж үзнэ (хуучин дуудагч, тест) */
+export type TtbPkgPlan = ReadonlyMap<string, { P: number | null; S: number | null; C?: number | null }>;
+
 /* ══════════════ Цэвэр тооцоо ══════════════ */
 
 /**
@@ -263,12 +270,31 @@ export function computeSchedule(
   now: number,
   failedSources: readonly string[] = [],
   finCurveMissing = false,
+  ttb: TtbPkgPlan = new Map(),
 ): KpiResult {
   const measured: SchedulePkg[] = [];
   const partial: SchedulePkg[] = [];
   const noData: PkgLag[] = [];
-  for (const p of pkgs) {
-    if (!p.lag) { noData.push(p); continue; }
+  for (const p0 of pkgs) {
+    /* 2026-11-23 (аудит №6): нэргүй мөр — түлхүүрээр */
+    const p = p0.label ? p0 : { ...p0, label: p0.key };
+    if (!p.lag) {
+      /* Хоцрогдол бодогдоогүй — ТТБ-ийн багцын төлөвлөгөөтэй бол түүгээр (бодит алга = 0%); төлөвлөгөөгүй бол л «хэмжилтгүй» */
+      const t = ttb.get(p.key);
+      if (t?.P != null && t.P > 0) {
+        const actual = t.S ?? 0;
+        const gap = t.P - actual;
+        /* 2026-11-23 (давтан аудит): хоцрогдлын замтай ИЖИЛ хамралтын дүрэм; сар — ТТБ-ийн утга хэмжилтийн сартай биш тул хоосон
+           (картын «байдлын огноо»-д орохгүй — урьд нь үргэлж «одоо» гардаг байв) */
+        const cov = t.C === undefined ? null : t.C;
+        const judged = t.C === undefined || coverageOk(cov);
+        (judged ? measured : partial).push({
+          key: p.key, label: p.label, month: '', planned: t.P, actual, gap,
+          slipMonths: null, tone: judged ? lagLevelFn(gap) : null, coverage: cov,
+        });
+      } else noData.push(p);
+      continue;
+    }
     const judged = coverageOk(p.lag.coverage);
     (judged ? measured : partial).push({
       key: p.key,
@@ -378,6 +404,39 @@ export function computeSchedule(
 
 /* ══════════════ Ачаалагч ══════════════ */
 
+/** ТТБ-ийн барилга угсралтын багц бүрийн ДЭЭД мөрийн P/S (`pkgKeyOf(pkg)` түлхүүр; олон мөртэй бол төсөв хамгийн их нь) */
+async function loadTtbPkgPlan(): Promise<TtbPkgPlan> {
+  const { loadProjectPlan } = await import('@/lib/projectPlanInputs');
+  const pl = await loadProjectPlan();
+  const out = new Map<string, { P: number | null; S: number | null; C: number | null; E: number }>();
+  if (pl.empty) return out;
+  /* Хамралт — хугацаатай (P бодогдсон) навчны төсөв ÷ бүх навчны төсөв, % */
+  const covOf = (root: (typeof pl.tree.nodes)[number]): number | null => {
+    let all = 0, dated = 0;
+    const walk = (n: typeof root) => {
+      if (n.outside) return;
+      if (n.children.length) { for (const c of n.children) walk(c); return; }
+      const v = pl.result.values.get(n);
+      const e = v?.E ?? 0;
+      if (!(e > 0)) return;
+      all += e;
+      if (v?.P != null) dated += e;
+    };
+    walk(root);
+    return all > 0 ? (dated / all) * 100 : null;
+  };
+  for (const n of pl.tree.nodes) {
+    if (n.phase !== 'barilga' || !n.pkg || n.outside || n.parent?.pkg === n.pkg) continue;
+    const k = pkgKeyOf(n.pkg);
+    if (!k) continue;
+    const v = pl.result.values.get(n);
+    const E = v?.E ?? 0;
+    const cur = out.get(k);
+    if (!cur || E > cur.E) out.set(k, { P: v?.P ?? null, S: v?.S ?? null, C: covOf(n), E });
+  }
+  return out;
+}
+
 const SRC_FIN = () => tr('Санхүүжилт (Cashflow · IPC · гүйцэтгэл)');
 /** Finance.tsx-ийн ДОТООД муруйн кэш — сорилоор илэрдэг (толгой) */
 const SRC_FIN_CURVE = () => tr('Хуваарийн муруй (Санхүүжилт)');
@@ -396,5 +455,5 @@ export const loadScheduleKpi = cached(async (): Promise<KpiResult> => {
   const failed = finCurveMissing ? [SRC_FIN_CURVE()] : [];
   const pkgs = collectPkgLags(fin.contracts, (r) => F.contractMonths(r, fin), F.lagOf, isBuildRow);
   const curves = collectCurves(pkgs, F.lagOf, nowYm);
-  return computeSchedule(pkgs, curves, F.lagLevel, now, failed, finCurveMissing);
+  return computeSchedule(pkgs, curves, F.lagLevel, now, failed, finCurveMissing, await loadTtbPkgPlan().catch(() => new Map()));
 }, SESSION_TTL_MS, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'HUVAARI_OBYEM'], kpiComplete);

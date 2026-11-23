@@ -21,3 +21,31 @@ updates:
       - dependency-name: next
         update-types:
           - version-update:semver-major
+  # 2026-11-23 (аудит №51): релейн хамаарал (`@anthropic-ai/sdk`, `wrangler`), SHA-гаар бэхэлсэн GitHub Actions,
+  #    Telegram ботын Docker суурь — урьд нь зөвхөн үндсэн npm хамрагддаг байв.
+  - package-ecosystem: npm
+    directory: /agent-proxy
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Ulaanbaatar
+    open-pull-requests-limit: 3
+    groups:
+      relay-minor-patch:
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Ulaanbaatar
+    open-pull-requests-limit: 3
+  - package-ecosystem: docker
+    directory: /deploy/telegram-bot
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Ulaanbaatar
+    open-pull-requests-limit: 2

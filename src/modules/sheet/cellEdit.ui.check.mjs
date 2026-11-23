@@ -404,8 +404,8 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
 
   /* Эх код: FillNew-ийн colSpan бүгд extra-г тооцно · сонголт хэрэглэгч тус бүрд, try/catch */
   const fn = readFileSync(new URL('./FillNew.tsx', import.meta.url), 'utf8');
-  ok(!/colSpan=\{14 \+ nBld \* 4/.test(fn) && (fn.match(/colSpan=\{nCols\}/g) ?? []).length === 3
-    && /const nCols = compact \? 4 \+ nBld \* 2 : 14 \+ nBld \* 4 \+ extra\.length;/.test(fn), '9f: FillNew-ийн 3 colSpan харагдацын баганын тоог (`nCols`) тооцно');
+  ok(!/colSpan=\{14 \+ nBld \* 4/.test(fn) && (fn.match(/colSpan=\{nCols\}/g) ?? []).length === 4 /* + аудит №91 завсрын чигжээс */
+    && /const nCols = compact \? 4 \+ nBld \* 2 : 14 \+ nBld \* 4 \+ extra\.length;/.test(fn), '9f: FillNew-ийн 4 colSpan харагдацын баганын тоог (`nCols`) тооцно');
   ok((fn.match(/extra=\{extra\}/g) ?? []).length === 2 && /extraPrefKey\(user\?\.username\)/.test(fn), '9f: SheetHead/FillRows ИЖИЛ массив · хэрэглэгч тус бүрийн түлхүүр');
   const xc = readFileSync(new URL('./fill/extraCols.ts', import.meta.url), 'utf8');
   ok((xc.match(/try \{\s*(return )?localStorage/g) ?? []).length === 2, '9f: localStorage унших/бичих хоёулаа try/catch-тай');

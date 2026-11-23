@@ -474,7 +474,10 @@ export async function fetchAll(): Promise<{
       if (a.role === 'super' && !removed && !trust.superRowOk(a)) {
         console.error('[selbe] Итгэмжлэгдээгүй хүн бичсэн super мөрийг хэрэгсэхгүй болгов:', raw);
         bad(raw, 'untrusted');
-        if (!Object.hasOwn(perms, lu)) neutral.set(lu, { ...entry, role: null, views: [], docs: false });
+        /* 2026-11-23 (аудит): ӨӨРӨӨ бичсэн super мөр (бүртгэлгүй аккаунт өөрийгөө нэмсэн) — мөр огт үүсгэхгүй, эс бөгөөс
+           эрхгүй ч порталд нэвтэрдэг байв. Өөр хүн хөндсөн мөрд л (жинхэнэ админ байж болно) эрхгүй мөр үлдээнэ. */
+        const selfWritten = String(a.last_edited_user ?? '').trim().toLowerCase() === lu;
+        if (!selfWritten && !Object.hasOwn(perms, lu)) neutral.set(lu, { ...entry, role: null, views: [], docs: false });
         continue;
       }
       neutral.delete(lu);

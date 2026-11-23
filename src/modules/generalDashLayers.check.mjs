@@ -26,14 +26,16 @@ const src = strip(readFileSync(new URL('./GeneralDash.tsx', import.meta.url), 'u
 
 /* 1. Шалтгааны сэргээх цэг — хөндлөн сонголтын ӨМНӨХ давхаргууд */
 {
-  const line = 'if (beforeReason.current == null) beforeReason.current = beforeXs.current ?? visible;';
+  /* 2026-11-23 (аудит): багц/төрлийн давхарга асаахаас ӨМНӨХ төлөв түрүүлнэ — шалтгааныг цуцлахад багцын давхаргууд үлдэхгүй */
+  const line = 'if (beforeReason.current == null) beforeReason.current = beforePkg.current ?? typeBase ?? beforeXs.current ?? visible;';
   const i = src.indexOf(line);
-  assert.ok(i > 0, '`beforeReason` нь `beforeXs ?? visible`-ээс авах ёстой');
+  assert.ok(i > 0, '`beforeReason` нь `beforePkg ?? typeBase ?? beforeXs ?? visible`-ээс авах ёстой');
+  assert.ok(src.indexOf('const typeBase = beforeType.current;') > 0 && src.indexOf('const typeBase = beforeType.current;') < src.indexOf('beforeType.current = null;', src.indexOf('const pickReason')), 'төрлийн суурийг тэглэхээс өмнө авна');
   const j = src.indexOf('beforeXs.current = null;', i);
   assert.ok(j > i, '`beforeXs` нь сэргээх цэгийг авсны ДАРАА тэглэгдэх ёстой');
   assert.ok(!src.includes('if (beforeReason.current == null) beforeReason.current = visible;'), 'хуучин `= visible` зам үлдсэн');
 }
-console.log('✅ pickReason: beforeReason = beforeXs ?? visible');
+console.log('✅ pickReason: beforeReason = beforePkg ?? typeBase ?? beforeXs ?? visible');
 
 /* 2. Багцын ажлын унтраалт — `PkgWorkList` нь `generalDashLayers.ts`-ийн функцүүдийг дуудна (дотоод хуулбаргүй) */
 {

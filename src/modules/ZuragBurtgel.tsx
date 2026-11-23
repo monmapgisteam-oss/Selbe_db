@@ -5,7 +5,7 @@
  * оруулна — Enterprise item болно) — «ТЭЗҮ · Ажлын зураг төсөл» хуудасны таб. Өгөгдөл: хүснэгт 234 (`lib/zuragBurtgel.ts`).
  */
 import { pkgCodeOf } from '@/lib/hoSync/compute';
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { applyAll } from '@/lib/tableWrite';
@@ -15,7 +15,9 @@ import { ZURAG_BURTGEL, canonPkg, sameBagts } from '@/lib/services';
 import { entDeletePdf, entPdfBlob, entSearch, entUploadPdf, type EntPdf } from '@/lib/entDocs';
 import { pdfIndex, pdfsOf, tagsFor, type ZPdfKind } from '@/lib/zuragPdf';
 import { askConfirm } from '@/lib/confirm';
-import { loadZuragBurtgel, loadPlanPkgs, bulegLabel, groupByBudget, groupZ, subLabel, toZRow, tolovAvg, passedMagadlal, isReceived, Z_TOLOV, type ZRow, type ZTolov } from '@/lib/zuragBurtgel';
+import { setNavDirty } from '@/lib/navGuard';
+import { isTopFocusTrap, useFocusTrap } from '@/lib/useFocusTrap';
+import { loadZuragBurtgel, loadPlanPkgs, bulegLabel, groupByBudget, groupZ, subLabel, toZRow, tolovAvg, passedMagadlal, isReceived, rebaseEdit, Z_TOLOV, type ZRow, type ZTolov } from '@/lib/zuragBurtgel';
 import { queryFeatures } from '@/lib/query';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import { Data, userError } from '@/components/ui';
@@ -39,7 +41,7 @@ export function ZuragBurtgel({ canEdit, scope }: {
   const q = useAsync(loadZuragBurtgel, []);
   return (
     <Data q={q} loading={tr('Ачаалж байна…')} minH={240}>
-      {(rows) => <Body key={scope ?? 'all'} rows={scope ? rows.filter((r) => isTezuBuleg(r.buleg) === (scope === 'tezu')) : rows} canEdit={canEdit} />}
+      {(rows) => <Body key={scope ?? 'all'} scope={scope} rows={scope ? rows.filter((r) => isTezuBuleg(r.buleg) === (scope === 'tezu')) : rows} canEdit={canEdit} />}
     </Data>
   );
 }
@@ -88,7 +90,7 @@ type Edit = Record<string, string>;
 const editOf = (r: ZRow): Edit => Object.fromEntries(EF.map((e) => [e.k, e.get(r)]));
 type Add = { buleg: string; ded: string; bagts: string; ner: string; shifr: string };
 
-function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
+function Body({ rows, canEdit, scope }: { rows: ZRow[]; canEdit: boolean; scope?: 'tezu' | 'zurag' }) {
   const sess = useEntSession();
   const [find, setFind] = useState('');
   const [pkg, setPkg] = useState('');
@@ -96,7 +98,8 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [edit, setEdit] = useState<{ oid: number; v: Edit } | null>(null);
+  /* `base` — засвар нээх агшны мөр (2026-11-23, хяналт): зөвхөн хэрэглэгчийн өөрчилсөн талбарыг бичих, зөрчлийн үед шинэ мөр дээр давхарлах */
+  const [edit, setEdit] = useState<{ oid: number; v: Edit; base?: Edit } | null>(null);
   const [add, setAdd] = useState<Add | null>(null);
   const fileEl = useRef<HTMLInputElement>(null);
   /* 2026-11-17: нэг баримтад хэдэн ч PDF — порталын item-үүд тагаар (`lib/zuragPdf.ts`). Нэвтрээгүй бол жагсаалт уншигдахгүй */
@@ -121,6 +124,24 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
   );
   const pkgs = useMemo(() => [...new Set(rows.map((r) => canonPkg(r.bagts)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'mn')), [rows]);
   const bulegs = useMemo(() => [...new Set(rows.map((r) => r.buleg).filter(Boolean))], [rows]);
+  /* 2026-11-23 (аудит): хадгалаагүй засвар/шинэ мөр — өөр мөр «Засах», харагдац солих, хуудаснаас гарахад асууна */
+  const editRow = edit ? rows.find((x) => x.oid === edit.oid) : undefined;
+  const editDirty = !!edit && !!editRow && EF.some((e) => (edit.v[e.k] ?? '') !== e.get(editRow));
+  const addDirty = !!add && !!(add.ner.trim() || add.shifr.trim() || add.ded.trim());
+  useEffect(() => {
+    setNavDirty('zurag-burtgel', editDirty || addDirty, tr('Зургийн бүртгэлийн хадгалаагүй засвар'));
+  }, [editDirty, addDirty]);
+  useEffect(() => () => setNavDirty('zurag-burtgel', false), []);
+  /** Засвартай мөрийг орхих эсэхийг асууна (өөрчлөлтгүй бол шууд) */
+  const leaveEdit = async (): Promise<boolean> => !editDirty || askConfirm(tr('Хадгалаагүй засвар алдагдана. Үргэлжлүүлэх үү?'), { danger: true, ok: tr('Хаяад үргэлжлүүлэх') });
+  const dlgRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dlgRef, pdfFor != null);
+  useEffect(() => {
+    if (pdfFor == null) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTopFocusTrap(dlgRef.current)) { e.stopPropagation(); setPdfFor(null); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pdfFor]);
   const shown = useMemo(() => {
     const qx = find.trim().toLowerCase();
     return rows.filter((r) => (!pkg || sameBagts(r.bagts, pkg)) && (!noPdf || !pdfIdx || pdfsOf(r, pdfIdx).length === 0)
@@ -236,14 +257,23 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
       if (!r0) return null;
       /* Дэлгэцийн мөр хуучирсан байж болно — шинээр уншиж, энэ хооронд өөрчлөгдсөн бол зогсоно */
       const fresh = (await queryFeatures(ZURAG_BURTGEL.url, { where: `${ZURAG_BURTGEL.oid} = ${edit.oid}`, outFields: ['*'] })).map(toZRow)[0];
-      const sig = (z: ZRow) => EF.map((e) => e.get(z)).join('\u0001');
-      if (!fresh || sig(fresh) !== sig(r0)) { invalidate('ZURAG_BURTGEL'); setEdit(null); throw new Error(tr('Энэ хооронд өөр хэрэглэгч өөрчилсөн байна. Шинэчилсэн мэдээллийг шалгаад дахин оролдоно уу.')); }
+      const base = edit.base ?? editOf(r0);
+      const conflictMsg = tr('Энэ хооронд өөр хэрэглэгч өөрчилсөн байна. Шинэчилсэн мэдээллийг шалгаад дахин оролдоно уу.');
+      if (!fresh) { invalidate('ZURAG_BURTGEL'); throw new Error(conflictMsg); }
+      /* 2026-11-23 (хяналт): засварыг хаахгүй, гэхдээ ШИНЭ мөр дээр зөвхөн хэрэглэгчийн өөрчилсөн талбарыг давхарлана
+         (`rebaseEdit`) — урьд нь хоёр дахь «Хадгалах» нь хуучин утгуудыг буцааж бичиж өөр хүний засварыг устгадаг байв.
+         Засвар НЭЭСЭН агшинтай (`base`) жишнэ — дэлгэцийн мөр шинэчлэгдсэн эсэхээс хамаарахгүй. */
+      if (EF.some((e) => e.get(fresh) !== (base[e.k] ?? ''))) {
+        setEdit(rebaseEdit(edit.oid, v, base, editOf(fresh)));
+        invalidate('ZURAG_BURTGEL');
+        throw new Error(conflictMsg);
+      }
       if (!(v.ner ?? '').trim()) throw new Error(tr('Бичиг баримтын нэрийг бичнэ үү.'));
       const u: Record<string, unknown> = { [ZURAG_BURTGEL.oid]: edit.oid };
       for (const e of EF) {
         const t0 = (v[e.k] ?? '').trim();
         const t = e.k === 'bagts' ? canonPkg(t0) : t0; // багцын нэр — стандарт бичлэгээр
-        if (t0 === e.get(r0)) continue;
+        if (t0 === (base[e.k] ?? '')) continue;
         if (e.kind === 'text') { u[e.f] = t || null; continue; }
         if (e.kind === 'date') {
           const ms = msOf(t);
@@ -268,10 +298,16 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
   };
 
   const saveAdd = () => {
-    if (!add || !add.ner.trim() || !add.buleg) { setErr(tr('Бүлэг ба баримтын нэрийг бөглөнө үү.')); return; }
+    const buleg = add?.buleg.trim() ?? '';
+    if (!add || !add.ner.trim() || !buleg) { setErr(tr('Бүлэг ба баримтын нэрийг бөглөнө үү.')); return; }
+    /* Харагдацад таарахгүй бүлэг (ТЭЗҮ = «001…») бол нөгөө табд орж «алга болно» — урьдчилан хэлнэ */
+    if (scope && isTezuBuleg(buleg) !== (scope === 'tezu')) {
+      setErr(scope === 'tezu' ? tr('ТЭЗҮ-ийн бүлэг «001»-ээр эхэлнэ.') : tr('«001»-ээр эхэлсэн бүлэг ТЭЗҮ-ийн табд харагдана — өөр бүлэг бичнэ үү.'));
+      return;
+    }
     void run(async () => {
       await applyAll(ZURAG_BURTGEL.url, ZURAG_BURTGEL.oid, { adds: [{
-        buleg: add.buleg, ded_buleg: add.ded.trim() || null, bagts: canonPkg(add.bagts.trim()) || null, bagts_kod: pkgCodeOf(add.bagts),
+        buleg, ded_buleg: add.ded.trim() || null, bagts: canonPkg(add.bagts.trim()) || null, bagts_kod: pkgCodeOf(add.bagts),
         ner: add.ner.trim(), shifr: add.shifr.trim() || null,
       }] }, CAP);
       invalidate('ZURAG_BURTGEL');
@@ -301,7 +337,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
   return (
     <>
       <div className={s.stats}>
-        {([[tr('Гүйцэтгэл'), stat.pct == null ? '—' : `${stat.pct.toFixed(1)}%`], [tr('Нийт баримт'), stat.total], [tr('Магадлалд орсон'), stat.magadlal], [tr('Зохиогчоос хүлээж авсан'), stat.received], [tr('PDF-тэй'), stat.pdf ?? '—']] as [string, number | string][]).map(([k, v]) => (
+        {([[tr('Гүйцэтгэл (баримтын дундаж)'), stat.pct == null ? '—' : `${stat.pct.toFixed(1)}%`], [tr('Нийт баримт'), stat.total], [tr('Магадлалд орсон'), stat.magadlal], [tr('Зохиогчоос хүлээж авсан'), stat.received], [tr('PDF-тэй'), stat.pdf ?? '—']] as [string, number | string][]).map(([k, v]) => (
           <div key={k} className={s.stat}><span className={s.statK}>{k}</span><span className={s.statV}>{v}</span></div>
         ))}
       </div>
@@ -325,16 +361,16 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
           <button type="button" className={s.ghost} onClick={() => setShut(new Set())}>{tr('Бүгдийг дэлгэх')}</button>
           <span className={s.spacer} />
           {canEdit && !sess && <EntSignIn compact />}
-          {canEdit && <button type="button" className={s.ghost} disabled={busy} onClick={() => setAdd({ buleg: bulegs[0] ?? '', ded: '', bagts: '', ner: '', shifr: '' })}>{tr('+ Зураг нэмэх')}</button>}
+          {canEdit && <button type="button" className={s.ghost} disabled={busy} onClick={() => setAdd({ buleg: bulegs[0] ?? (scope === 'tezu' ? '001. ' : ''), ded: '', bagts: '', ner: '', shifr: '' })}>{tr('+ Зураг нэмэх')}</button>}
           <button type="button" className={s.ghost} disabled={busy} onClick={() => invalidate('ZURAG_BURTGEL')} title={tr('Дахин ачаалах')} aria-label={tr('Дахин ачаалах')}>↻</button>
         </div>
         {(err || msg) && <div className={s.bar}>{err && <span className={s.err} role="alert">{err}</span>}{msg && <span className={s.ok} role="status">{msg}</span>}</div>}
         {add && (
           <div className={s.bar}>
             <div className={s.addFormIn}>
-              <select className={s.inp} value={add.buleg} onChange={(e) => setAdd({ ...add, buleg: e.target.value })} aria-label={tr('Бүлэг')}>
-                {bulegs.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
+              {/* 2026-11-23 (аудит): хоосон харагдацад эхний баримтыг нэмэхийн тулд бүлгийг жагсаалтаас сонгох эсвэл шинээр бичнэ */}
+              <input className={s.inp} list="zb-buleg" value={add.buleg} placeholder={tr('Бүлэг')} onChange={(e) => setAdd({ ...add, buleg: e.target.value })} aria-label={tr('Бүлэг')} />
+              <datalist id="zb-buleg">{bulegs.map((b) => <option key={b} value={b} />)}</datalist>
               <input className={s.inp} value={add.ded} placeholder={tr('Дэд бүлэг')} onChange={(e) => setAdd({ ...add, ded: e.target.value })} />
               {pkgOpts
                 ? pkgSel(add.bagts, (v) => setAdd({ ...add, bagts: v }))
@@ -350,7 +386,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
         {/* 2026-11-17 (хэрэглэгч): «PDF оруулах дарахад попап цонх нээгдэнэ; Гэрээ болон Материал гэсэн тусдаа browse; олныг сонгож оруулна» */}
         {pdfRow && (
           <div className={s.zDlgBack} onClick={() => setPdfFor(null)}>
-            <div className={s.zDlg} role="dialog" aria-modal="true" aria-label={tr('PDF оруулах')} onClick={(e) => e.stopPropagation()}>
+            <div ref={dlgRef} className={s.zDlg} role="dialog" aria-modal="true" aria-label={tr('PDF оруулах')} onClick={(e) => e.stopPropagation()}>
               <h3 className={s.zDlgTitle}>{pdfRow.ner}</h3>
               {pdfQ.state === 'loading' && <span className={s.zSub}>{tr('Ачаалж байна…')}</span>}
               {pdfQ.state === 'error' && <span className={s.err} role="alert">{userError(pdfQ.error)}</span>}
@@ -438,7 +474,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
                                     <button type="button" className={s.ghost} disabled={busy} onClick={() => setEdit(null)}>{tr('Болих')}</button>
                                   </>
                                 ) : (
-                                  <button type="button" className={s.ghost} disabled={busy} onClick={() => setEdit({ oid: r.oid, v: editOf(r) })}>{tr('Засах')}</button>
+                                  <button type="button" className={s.ghost} disabled={busy} onClick={() => void (async () => { if (await leaveEdit()) setEdit({ oid: r.oid, v: editOf(r), base: editOf(r) }); })()}>{tr('Засах')}</button>
                                 )}
                               </td>
                             )}

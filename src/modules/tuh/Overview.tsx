@@ -9,7 +9,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, date } from '@/lib/format';
 import {
-  TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, heatWinterYear, elapsedPct,
+  TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, elapsedPct,
   calDaysBetween,
   type TuhGroup, type TuhStatus,
 } from '@/lib/tuhData';
@@ -221,7 +221,6 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
     setSt((cur) => (cur === k ? null : k));
     document.getElementById('packages')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
-  const heatYear = heatWinterYear(m.today);
 
   const l1 = useMemo(() => level1Rows(m.rows, onOpen), [m.rows, onOpen]);
   const dom = ganttDomain(m.rows.map((r) => ({ start: r.p.start, end: r.p.end, extra: [r.commission] })), now);
@@ -253,7 +252,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           <span className={s.heroNum}>{pct(m.hero.actual)}</span>
           <span className={s.meterGap}><Meter value={m.hero.actual} plan={m.hero.planContract} /></span>
           <span className={s.heroNote}>
-            {tr('Гэрээний төлөвлөгөө {0} · Гүйцэтгэгчийн төлөвлөгөө {1} · гэрээний дүнгээр жигнэсэн', lz(m, 'cfPlan')(pct(m.hero.planContract)), lz(m, 'plan')(pct(m.hero.planContractor)))}
+            {tr('Төлбөрийн төлөвлөгөө {0} · Гүйцэтгэгчийн төлөвлөгөө {1} · гэрээний дүнгээр жигнэсэн', lz(m, 'cfPlan')(pct(m.hero.planContract)), lz(m, 'plan')(pct(m.hero.planContractor)))}
             {coverageNote(m.hero.planCoverage) ? ` · ${coverageNote(m.hero.planCoverage)}` : ''}
             {m.hero.planExcluded.length ? ` · ${planScopeNote(m.hero.planExcluded)}` : ''}
           </span>
@@ -280,11 +279,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
           <span className={s.statValue}>{lz(m, 'packs')(num(households))}<small>{tr('айл')}</small></span>
           <span className={s.statNote}>{tr('{0} блок', lz(m, 'packs')(num(blocks)))}</span>
         </div>
-        <div className={s.stat}>
-          <span className={s.statLabel}>{tr('{0} оны өвөл дулаан авах', heatYear == null ? '—' : String(heatYear))}</span>
-          <span className={s.statValue}>—</span>
-          <span className={s.statNote}>{tr('блок')}</span>
-        </div>
+        {/* 2026-11-23 (аудит №95b): эх сурвалжгүй «… оны өвөл дулаан авах» хавтан (үргэлж «—») хасагдав */}
         <div className={s.stat}>
           <span className={s.statLabel}>{tr('Нийт олгосон санхүүжилт')}</span>
           <span className={s.statValue}>{wrapNum(mnt(m.paid.total))}</span>
@@ -388,7 +383,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                 <th className={s.num}>{tr('Олгосон IPC')}</th>
                 <th>{tr('Сүүлд олгосон')}</th>
                 <th>{tr('Хянагдаж буй IPC')}</th>
-                <th>{tr('Одоо хэн дээр')}</th>
+                {/* 2026-11-23 (аудит): «Одоо хэн дээр» багана эх сурвалжгүй — үргэлж «—» байсан тул хасав */}
                 <th className={s.num}>{tr('хоног')}</th>
               </tr>
             </thead>
@@ -420,12 +415,11 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
                         </>
                       ) : '—'}
                     </td>
-                    <td>—</td>
                     <td className={`${s.num} ${wait != null && wait >= TUH_STALE_DAYS ? s.bad : ''}`}>{wait == null ? '—' : num(wait)}</td>
                   </tr>
                 );
               })}
-              {!ipcRows.length && <EmptyRow cols={9} />}
+              {!ipcRows.length && <EmptyRow cols={8} />}
             </tbody>
           </table>
         </div>
@@ -531,7 +525,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
       </Section>
 
       {/* ── Материал ── */}
-      <Section id="supply" title={tr('Материал: 3-6-9 төлөвлөгөө, MA/MIR, түүвэр')}
+      <Section id="supply" title={tr('Материал: MA/MIR')}
         empty={!matRows.length && !m.loading.has('docs')}
         lead={tr('MA (материал баталгаажуулалт) ба MIR (материалын үзлэг) — Survey123-аар бөглөгдсөн, «Материал баталгаажуулалт» хэсгийнх.')}>
         <div className={s.tableWrap}>
@@ -539,34 +533,24 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
             <thead>
               <tr>
                 <th>{tr('Код')}</th>
-                <th>{tr('Материал')}</th>
-                <th className={s.num}>{tr('Хоцорсон')}</th>
-                <th className={s.num}>{tr('3 д/х')}</th>
-                <th className={s.num}>{tr('6 д/х')}</th>
-                <th className={s.num}>{tr('9 д/х')}</th>
+                {/* 2026-11-23 (аудит): эх сурвалжгүй «Материал / Хоцорсон / Хугацаа хэтэрсэн · 3/6/9 д/х · түүвэр» баганууд (үргэлж «—») хасагдав */}
                 <th className={s.num}>{tr('MA батлагдаагүй')}</th>
                 <th className={s.num}>{tr('MIR батлагдаагүй')}</th>
-                <th className={s.num}>{tr('түүвэр')}</th>
                 <th className={s.num}>{tr('Батлагдсан')}</th>
                 <th className={s.num}>{tr('хянагдаж буй')}</th>
-                <th className={s.num}>{tr('Хугацаа хэтэрсэн')}</th>
               </tr>
             </thead>
             <tbody>
               {matRows.map((r) => (
                 <tr key={r.p.key}>
                   <td><button type="button" className={s.rowLink} onClick={() => onOpen(r.p.key)}>{r.p.code}</button></td>
-                  <td>—</td>
-                  <td className={s.num}>—</td><td className={s.num}>—</td><td className={s.num}>—</td><td className={s.num}>—</td>
                   <td className={s.num}>{r.ma ? num(r.ma.total - r.ma.approved) : '—'}</td>
                   <td className={s.num}>{r.mir ? num(r.mir.total - r.mir.approved) : '—'}</td>
-                  <td className={s.num}>—</td>
                   <td className={s.num}>{r.ma || r.mir ? num((r.ma?.approved ?? 0) + (r.mir?.approved ?? 0)) : '—'}</td>
                   <td className={s.num}>{r.ma || r.mir ? num((r.ma?.review ?? 0) + (r.mir?.review ?? 0)) : '—'}</td>
-                  <td className={s.num}>—</td>
                 </tr>
               ))}
-              {!matRows.length && <EmptyRow cols={12} loading={m.loading.has('docs')} />}
+              {!matRows.length && <EmptyRow cols={5} loading={m.loading.has('docs')} />}
             </tbody>
           </table>
         </div>
@@ -609,27 +593,22 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
             <thead>
               <tr>
                 <th>{tr('Төрөл')}</th>
-                <th>{tr('Нэр')}</th>
+                {/* 2026-11-23 (аудит): захирамжид нэр/төлөв/баталсан эх сурвалжгүй (үргэлж «—») — баганыг хасав */}
                 <th>{tr('Дугаар / хувилбар')}</th>
-                <th>{tr('Баталсан')}</th>
                 <th>{tr('Огноо')}</th>
                 <th>{tr('Хамрах багц')}</th>
-                <th>{tr('Төлөв')}</th>
               </tr>
             </thead>
             <tbody>
               {(regType === 'all' || regType === 'order') && orders.map((o) => (
                 <tr key={`${o.no}|${o.date ?? ''}`}>
                   <td>{tr('Захирамж')}</td>
-                  <td>—</td>
                   <td>{o.no}</td>
-                  <td>—</td>
                   <td>{date(o.date)}</td>
                   <td><span className={s.chips}>{o.codes.map((c) => <span key={c} className={s.chip}>{c}</span>)}</span></td>
-                  <td>—</td>
                 </tr>
               ))}
-              {((regType !== 'all' && regType !== 'order') || !orders.length) && <EmptyRow cols={7} />}
+              {((regType !== 'all' && regType !== 'order') || !orders.length) && <EmptyRow cols={4} />}
             </tbody>
           </table>
         </div>

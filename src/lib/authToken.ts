@@ -61,7 +61,7 @@ export function devTokenFor(o: { nodeEnv: string | undefined; appId: string; hos
   return t || null;
 }
 /** ArcGIS-ийн бичих төгсгөл — dev токеноор ХЭЗЭЭ Ч явахгүй (унших зориулалттай) */
-const WRITE_ENDPOINT = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|calculate|append|truncate|createService|addToDefinition|updateDefinition|deleteFromDefinition|addItem|updateItem|deleteItem|share|unshare|delete)\/?$/i;
+const WRITE_ENDPOINT = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|calculate|append|truncate|createService|addToDefinition|updateDefinition|deleteFromDefinition|addItem|updateItem|deleteItem|share|unshare|delete|addAttachment|updateAttachment|deleteAttachments|update|createFolder|move|deleteItems|moveItems|shareItems|unshareItems|addResources|updateResources|removeResources|upload|addRelationship|deleteRelationship|updateUserRole)\/?$/i;
 export const isWriteEndpoint = (url: string): boolean => WRITE_ENDPOINT.test(url.split('?')[0]);
 export const DEV_WRITE_BLOCKED = (): string => tr('Нэвтрэлт унтраалттай dev горимд бичилт хаалттай — production өгөгдөл хөндөгдөхгүй.');
 export function devToken(): string | null {

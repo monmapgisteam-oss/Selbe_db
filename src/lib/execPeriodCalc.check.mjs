@@ -12,7 +12,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  periodOf, seriesDelta, computeExecDeltas, deltaText, execDeltaRows, PERIOD_KEYS, packTrendOf, givenTrendOf,
+  periodOf, customPeriodError, seriesDelta, computeExecDeltas, deltaText, execDeltaRows, PERIOD_KEYS, packTrendOf, givenTrendOf,
   computeSeries, bandOf,
 } from './execPeriodCalc.ts';
 
@@ -48,6 +48,13 @@ ok('гараар — зөв бол тэр чигээр, буруу/хоосон/
   assert.deepEqual(periodOf('custom', NOW, { from: '', to: '' }), { key: 'custom', from: '2026-09-29', to: '2026-10-28' });
   assert.deepEqual(periodOf('custom', NOW, { from: '2026-09-10', to: '2026-09-01' }), { key: 'custom', from: '2026-09-29', to: '2026-10-28' });
   assert.deepEqual(PERIOD_KEYS, ['7d', '30d', 'thisMonth', 'prevMonth', 'custom']);
+});
+ok('гараар — буруу/хоосон/урвуу бол алдааны зурвас (UI экспортыг хаана, 2026-11-23)', () => {
+  assert.equal(customPeriodError('30d', { from: '', to: '' }), null);
+  assert.equal(customPeriodError('custom', { from: '2026-08-01', to: '2026-08-31' }), null);
+  assert.equal(customPeriodError('custom', { from: '2026-08-01', to: '2026-08-01' }), null, 'нэг өдөр зөв');
+  assert.ok(customPeriodError('custom', { from: '', to: '2026-08-31' }));
+  assert.ok(customPeriodError('custom', { from: '2026-09-10', to: '2026-09-01' }));
 });
 
 console.log('\n2. Цуваа');

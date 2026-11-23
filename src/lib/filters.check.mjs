@@ -14,12 +14,18 @@ if (process.env.SELBE_LIVE_SKIP) {
   process.exit(0);
 }
 
-const { BAGTS_AJLUUD, SELBE_ET } = await import('@/lib/services.ts');
-const { arcgisPost } = await import('@/lib/query.ts');
-const URL_ = `${BAGTS_AJLUUD}/0/query`;
+/* 2026-11-23 (аудит №46): өмнө нь `sqlStr` ба хоосон бүлгийн SQL-ийн ХУУЛБАРЫГ шалгадаг байв — одоо аппын ЖИНХЭНЭ
+   `sqlStr` · `groups` · `groupWhere` · `blankWhere` (`query.ts`) ба `BUILDING` талбаруудыг (`services/fields.ts`) ашиглана */
+const { BUILDING, SELBE_ET } = await import('@/lib/services.ts');
+const { arcgisPost, sqlStr, groups, groupWhere, blankWhere } = await import('@/lib/query.ts');
+const URL_ = `${BUILDING.url}/query`;
 
-const F = { bagts: 'bagts', contractor: 'bar_comp' };
-const sqlStr = (v) => `'${String(v).replace(/'/g, "''")}'`;
+const F = { bagts: BUILDING.fields.bagts, contractor: BUILDING.fields.contractor };
+
+/* Сүлжээгүй: жинхэнэ туслахуудын хэлбэр */
+assert.equal(sqlStr("O'Neil"), "N'O''Neil'", 'sqlStr: нэг хашилт хоёрдоно, N угтвар');
+assert.equal(blankWhere('f'), 'f IS NULL');
+assert.equal(blankWhere('f', ['', ' ']), "f IS NULL OR f IN (N'', N' ')");
 
 /** WHERE-ийг ЖИНХЭНЭ давхарга дээр гүйлгэнэ — зөвшөөрөгдөөгүй бол алдана. */
 async function count(where) {
@@ -84,13 +90,12 @@ for (const [u, field] of FACETS) {
     where: '1=1', outFields: field, groupByFieldsForStatistics: field,
     outStatistics: '[{"statisticType":"count","onStatisticField":"objectid","outStatisticFieldName":"c"}]',
   });
-  const blanks = (g.features || []).map((f) => f.attributes)
-    .filter((r) => r[field] == null || String(r[field]).trim() === '');
-  if (!blanks.length) continue;
+  /* Аппын замаар: `groups` хоосны бүх хувилбарыг нэг бүлэгт нэгтгэж, `groupWhere` → `blankWhere` SQL өгнө */
+  const blank = groups((g.features || []).map((f) => f.attributes), field, 'Бүртгэгдээгүй', ['c']).find((x) => x.blank);
+  if (!blank) continue;
 
-  const counted = blanks.reduce((a, r) => a + r.c, 0);
-  const raws = blanks.filter((r) => r[field] != null).map((r) => String(r[field]));
-  const where = [`${field} IS NULL`, ...(raws.length ? [`${field} IN (${raws.map(sqlStr).join(', ')})`] : [])].join(' OR ');
+  const counted = blank.values.c;
+  const where = groupWhere(field, blank);
 
   const got = await post(u, { where, returnCountOnly: 'true' });
   assert.ok(!got.error, `хоосон бүлгийн SQL татгалзав: ${where}`);

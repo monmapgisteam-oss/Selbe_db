@@ -275,6 +275,14 @@ ok(OPS.allAclReady(), 'бүх туг бэлэн');
       ok(sel && sel.trail.includes(r.key) && sel.trail.includes(c.key), `§A «+» ${r.key}/${c.key} — тэр нүдэнд сонгогч`);
       calls.length = 0;
       sel.el.props.onChange({ target: { value: `new_${r.key}_${c.key}` } });
+      /* 2026-11-23 (аудит): сонгоход шууд олгохгүй — «Нэмэх» дарсны дараа л onAdd */
+      eq(calls, [], `§A «+» ${r.key}/${c.key} — сонгоход шууд олгохгүй`);
+      m.render();
+      const addBtn = findAll(m.tree, (n) => n.type === 'button' && n.props?.children === 'Нэмэх'
+        && typeof n.props?.onClick === 'function')
+        .find((x) => x.trail.includes(r.key) && x.trail.includes(c.key));
+      ok(addBtn, `§A «+» ${r.key}/${c.key} — «Нэмэх» товч`);
+      addBtn.el.props.onClick({});
       eq(calls, [['add', r.key, c.key, `new_${r.key}_${c.key}`]], `§A «+» ${r.key}/${c.key} onAdd`);
       m.render();
     }
@@ -302,6 +310,13 @@ const clickAdd = (m, row, col, user) => {
   const sel = findAll(m.tree, (n) => n.type === 'select')[0];
   ok(sel.el.props.children[1].some((o) => o.props.value === user), `«+» ${row}/${col}: «${user}» санал болгогдоно`);
   sel.el.props.onChange({ target: { value: user } });
+  /* 2026-11-23 (аудит): сонгосны дараа «Нэмэх» дарж олгоно */
+  m.render();
+  const addBtn = findAll(m.tree, (n) => n.type === 'button' && n.props?.children === 'Нэмэх'
+    && typeof n.props?.onClick === 'function')
+    .find((x) => x.trail.includes(row) && x.trail.includes(col));
+  ok(addBtn, `«+» ${row}/${col}: «Нэмэх» товч`);
+  addBtn.el.props.onClick({});
 };
 /** Нүдэн дэх чипүүд (задалсан `Chip`; зам нь `…/мөр/багана/аккаунт`) */
 const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' && n.props.of === 'Chip')

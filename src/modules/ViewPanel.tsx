@@ -13,7 +13,7 @@ import { queryGroup, queryGroupEx, count, sum, groups, groupWhere, sqlStr, type 
 import {
   LAYER_BY_ID, layerUrl, oidOf, ZONE_FIELD, ZONE_NONE, ZONE_LAYER, ZONE_FIELDS,
   BUILT_LAYER, BUILT_FIELDS, BUILT_STATUS, ZONE_TYPES, ZONE_TYPE_EMPTY_HUE, zoneType, zoneCanon, zoneWhere,
-  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, PARCEL_LEFT, groupOf, VIEW_BY_KEY, facetName,
+  LAYER_GROUPS, GROUP_LAYERS, PLAN_LAYER_IDS, PARCEL_LEFT, groupOf, VIEW_BY_KEY, facetName, BASE_MAP_IDS,
   type LayerDef, type ViewKey,
 } from '@/lib/services';
 import { zoneLabel } from '@/lib/zoneLabel';
@@ -82,7 +82,8 @@ export function ViewPanel({
       {/* Дарсан объект — ХАМГИЙН ДЭЭР. Зураг дээр дарсан хариу шууд нүдэнд өртөнө. */}
       {picked && pickedLayer && (
         pickedLayer === ZONE_LAYER.id
-          ? <PickedZone attrs={picked} zone={zone} setZone={setZone} />
+          ? <PickedZone attrs={picked} zone={zone} setZone={setZone}
+            ensureOn={(id) => setVisible((prev) => (prev.includes(id) ? prev : [...prev, id]))} />
           : LAYER_BY_ID[pickedLayer]
             ? (
               <PickedFeature
@@ -100,7 +101,9 @@ export function ViewPanel({
         <LayerDashboard
           d={def}
           zone={zone}
-          on={visible.includes(def.id)}
+          /* 2026-11-23 (хяналт): каталогт юу ч сонгоогүй үед суурь давхарга (`BASE_MAP_IDS`) аль хэдийн харагдана — «асаалттай» гэж
+             тооцож хэсэг сонгоход ганцаараа сонгогдож бусад суурь давхаргыг унтраахаас сэргийлнэ */
+          on={visible.includes(def.id) || (visible.length === 0 && BASE_MAP_IDS.includes(def.id))}
           toggle={() =>
             setVisible((prev) =>
               prev.includes(def.id) ? prev.filter((x) => x !== def.id) : [...prev, def.id],
@@ -784,6 +787,8 @@ function LayerDashboard({
   const pick = (key: string, w: string | null) => {
     const next = sel === key ? null : key;
     setSel(next);
+    /* 2026-11-23 (аудит): унтраалттай давхаргын хэсгийг сонговол эхлээд асаана — эс бөгөөс бусад давхарга бүдгэрч, юу ч тодрохгүй байв */
+    if (next && !on) toggle();
     setHighlight(next ? w : null, d.id);
   };
 
@@ -839,9 +844,10 @@ function LayerDashboard({
         {one.failed.length > 0 ? (
           <Empty label={tr('Үзүүлэлт татагдсангүй.')} onRetry={retryTotals} />
         ) : (
-          <Stats cols={avg != null ? 3 : 2}>
+          <Stats cols={(avg != null ? (d.qty ? 3 : 2) : (d.qty ? 2 : 1)) as 1 | 2 | 3}>
             <Stat value={t ? num(t.n) : '…'} unit={tr('ш')} label={tr('Тоо')} accent />
-            <Stat value={qty ?? '—'} label={d.qty?.unit === 'м²' ? tr('Талбай') : tr('Урт')} />
+            {/* 2026-11-23 (аудит): хэмжээгүй (цэгэн) давхаргад «Урт —» хавтан гаргахгүй */}
+            {d.qty && <Stat value={qty ?? '—'} label={d.qty.unit === 'м²' ? tr('Талбай') : tr('Урт')} />}
             {avg != null && (
               <Stat
                 value={num(avg, 1)}
@@ -960,11 +966,13 @@ function LayerDashboard({
 /* ═════════════════ Сонгосон бүс ═════════════════ */
 
 function PickedZone({
-  attrs, zone, setZone,
+  attrs, zone, setZone, ensureOn,
 }: {
   attrs: Record<string, unknown>;
   zone: string | null;
   setZone: (z: string | null) => void;
+  /** Давхаргыг асаах (тодруулахын өмнө) */
+  ensureOn?: (id: string) => void;
 }) {
   const F = ZONE_FIELDS;
   const id = zoneCanon(attrs[F.id]);
@@ -991,6 +999,8 @@ function PickedZone({
     const off = selSt === v;
     setSelSt(off ? null : v);
     if (off) { setHighlight(null); return; }
+    /* Барилгын давхарга унтраалттай бол асаана (2026-11-23, аудит) */
+    ensureOn?.(BUILT_LAYER.id);
     const zw = zoneWhere(BUILT_LAYER, id);
     const cond = where ?? `${BUILT_FIELDS.status} = ${sqlStr(v)}`;
     setHighlight(`${zw ? `(${zw}) AND ` : ''}(${cond})`, BUILT_LAYER.id);

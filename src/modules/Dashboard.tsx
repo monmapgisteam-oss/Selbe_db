@@ -934,7 +934,7 @@ function IndStrip({ d }: { d: DashData }) {
     { icon: 'frame', label: tr('Төслийн нийт талбай'), v: h ? hVal(h, h.areaHa, (n) => tr('{0} га', num(n, 1))) : dots(d.headline), q: d.headline },
     { icon: 'users', label: tr('Хамрагдах хүн ам'), v: h ? hVal(h, h.population, (n) => num(n)) : dots(d.headline), q: d.headline },
     { icon: 'building', label: tr('Барилгын блок'), v: blocks != null ? num(blocks) : dots(d.bagts), q: d.bagts },
-    { icon: 'chart', label: tr('Барилгын явц'), v: overall != null ? pct(overall, 1) : dots(d.fin), q: d.fin },
+    { icon: 'chart', label: tr('Орон сууцны блокийн явц'), v: overall != null ? pct(overall, 1) : dots(d.fin), q: d.fin },
     { icon: 'polygon', label: tr('Газар чөлөөлөлт'), v: clearedPct != null ? pct(clearedPct, 1) : dots(d.land), q: d.land },
   ];
   return (
@@ -1223,7 +1223,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
       <Panel title={tr('Төслийн цар хүрээ')}>
         <Stats cols={2}>
           <Stat accent color={HUE[0]} value={h == null ? dots(d.headline) : hVal(h, h.areaHa, (v) => num(v, 1))} unit={tr('га')} label={tr('Төслийн талбай')} />
-          <Stat accent color={HUE[1]} value={prog.actual != null ? num(prog.actual, 1) : d.fin.state === 'loading' ? '…' : '—'} unit="%" label={tr('Барилгын явц')} />
+          <Stat accent color={HUE[1]} value={prog.actual != null ? num(prog.actual, 1) : d.fin.state === 'loading' ? '…' : '—'} unit="%" label={tr('Орон сууцны блокийн явц')} />
           <Stat accent color={HUE[2]} value={h == null ? dots(d.headline) : hVal(h, h.investTotal, (v) => num(v))} unit={tr('₮')} label={tr('Нийт төсөв')} />
           <Stat accent color={HUE[3]} value={blocks == null ? dots(bagts) : num(blocks)} unit={tr('блок')} label={tr('Орон сууцны блок')} />
           <Stat accent color={HUE[4]} value={ail == null ? dots(bagts) : num(ail)} unit={tr('өрх')} label={tr('Айл өрх')} />
@@ -1240,9 +1240,9 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
       <Panel title={tr('Нягтрал — нэгжид ногдох үзүүлэлт')}>
         <Rows
           items={[
-            { key: tr('Нэг блокт ногдох өрх'), value: ratio(ail, blocks, (v) => num(v, 1), bagts) },
-            { key: tr('Нэг өрхөд ногдох хүн'), value: ratio(h?.population, ail, (v) => num(v, 1), d.headline, bagts) },
-            { key: tr('1 га-д ногдох өрх'), value: ratio(ail, h?.areaHa, (v) => num(v, 1), d.headline, bagts) },
+            { key: tr('Нэг блокт ногдох өрх'), value: ratio(ailFull, blocks, (v) => num(v, 1), bagts) },
+            { key: tr('Нэг өрхөд ногдох хүн'), value: ratio(h?.population, ailFull, (v) => num(v, 1), d.headline, bagts) },
+            { key: tr('1 га-д ногдох өрх'), value: ratio(ailFull, h?.areaHa, (v) => num(v, 1), d.headline, bagts) },
             {
               key: tr('1 өрхөд ногдох төсөв'),
               value: ratio(h?.investTotal, ailFull, (v) => mnt(v), d.headline, bagts),
@@ -1506,6 +1506,13 @@ const volSrc = (q: Async<VolData>) => (q.state === 'ready' && q.data.fallback ? 
  * Хоёулаа «Гүйцэтгэл бөглөх» цонхоор ПОРТАЛААС бөглөгддөг тул тоо нь
  * бүртгэлтэй нэг агшинд таарна.
  */
+/** 2026-11-23 (аудит): багцын жагсаалт ачаалж/унасан үед «бүртгэл алга» биш — ачаалал эсвэл алдаа + дахин оролдох */
+function bagtsGate(q: Async<BagtsRow[]>): ReactNode | null {
+  if (q.state === 'loading') return <Loading label={tr('Татаж байна…')} />;
+  if (q.state === 'error') return <Empty label={tr('Багцын блокийн жагсаалт татагдсангүй')} hint={friendlyError(q.error)} onRetry={q.retry} />;
+  return null;
+}
+
 function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
   fin: Async<FinData>;
   prog: Async<BlockProgressMap>;
@@ -1729,8 +1736,8 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
       <Panel title={tr('Тайлагнасан блок — багцаар')} note={tr('бүртгэлтэй / нийт блок')}>
         <Data q={prog} loading={tr('Татаж байна…')}>
           {() => {
-            const b = bagts.state === 'ready' ? bagts.data : null;
-            if (!b) return <Empty label={tr('Багцын бүртгэл алга')} />;
+            if (bagts.state !== 'ready') return bagtsGate(bagts);
+            const b = bagts.data;
             const rows = b
               .map((r) => ({ key: r.key, label: r.label, n: r.measured, all: r.total }))
               .sort((x, y) => y.n / Math.max(1, y.all) - x.n / Math.max(1, x.all));
@@ -2095,9 +2102,9 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
           </Stats>
       </Panel>
 
-      <Panel title={tr('Барилгын явц')}
+      <Panel title={tr('Орон сууцны блокийн явц')}
              note={ring && ring.total ? tr('{0}/{1} блок тайлагнасан', num(ring.blocks), num(ring.total)) : undefined}>
-        <RingCard value={avg} label={tr('Барилгын явц')} color={cat(0)} />
+        <RingCard value={avg} label={tr('Орон сууцны блокийн явц')} color={cat(0)} />
       </Panel>
 
       <Panel title={tr('Багц бүрийн явц')} note={SRC_SHEET()}>
@@ -2868,8 +2875,8 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
         <Data q={netQ} loading={tr('Татаж байна…')}>
           {() => {
             if (zone) return <Empty label={tr('Бүсийн шүүлттэй үед харьцаа тооцохгүй — өрх, блокийн тоо бүсээр ялгагддаггүй.')} />;
-            const rows2 = bagts.state === 'ready' ? bagts.data : null;
-            if (!rows2) return <Empty label={tr('Орон сууцны багцын өрхийн тоо алга.')} />;
+            if (bagts.state !== 'ready') return bagtsGate(bagts);
+            const rows2 = bagts.data;
             const list = NET_SERVES
               .map((s) => {
                 const p = packs.find((x) => x.key === s.key);
@@ -3145,8 +3152,8 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
         <Data q={netQ} loading={tr('Татаж байна…')}>
           {() => {
             if (zone) return <Empty label={tr('Бүсийн шүүлттэй үед харьцаа тооцохгүй — өрх, блокийн тоо бүсээр ялгагддаггүй.')} />;
-            const rows2 = bagts.state === 'ready' ? bagts.data : null;
-            if (!rows2) return <Empty label={tr('Орон сууцны багцын өрхийн тоо алга.')} />;
+            if (bagts.state !== 'ready') return bagtsGate(bagts);
+            const rows2 = bagts.data;
             const list = NET_SERVES
               .map((s) => {
                 const p = packs.find((x) => x.key === s.key);

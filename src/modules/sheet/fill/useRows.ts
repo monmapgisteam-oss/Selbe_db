@@ -353,7 +353,14 @@ export function useVirtualWindow({ vis, edit, view, jump: ownJump }: {
   const editVis = edit ? vis.indexOf(edit.i) : -1;
   const winFrom = editVis >= 0 ? Math.min(win.from, editVis) : win.from;
   const winTo = editVis >= 0 ? Math.max(win.to, editVis + 1) : win.to;
-  return { scrollRef, tbodyRef, rowHRef, onScroll, hitKey, winFrom, winTo };
+  /**
+   * 2026-11-23 (аудит №91): нээлттэй нүдний мөр цонхноос гадуур бол ЗӨВХӨН тэр мөрийг нэмж зурна — завсрын мөрүүдийг
+   * (`winGap` = [эхлэх, дуусах) vis байрлал) зурахгүй, өндрөөр нь орлоно. Өмнө нь завсрын бүх мөр гүйлгэх бүрд зурагддаг байв.
+   */
+  const winGap: [number, number] | null = editVis >= 0 && editVis < win.from && editVis + 1 < win.from ? [editVis + 1, win.from]
+    : editVis >= 0 && editVis >= win.to && win.to < editVis ? [win.to, editVis]
+    : null;
+  return { scrollRef, tbodyRef, rowHRef, onScroll, hitKey, winFrom, winTo, winGap };
 }
 
 /** Багцын бодит гүйцэтгэл (батлагдсан · ноорогтой) ба нөгөө хувилбарынх. */

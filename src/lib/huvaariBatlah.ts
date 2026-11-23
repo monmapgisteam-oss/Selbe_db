@@ -1198,7 +1198,8 @@ export async function decidePlan(args: {
        */
       try {
         const m = await import('./projectPlanSync');
-        const pw = m.planSyncWarn(await m.runPlanSync({ fresh: true }));
+        /* 2026-11-23 (аудит): `force` — санхүү/IPC эрхгүй батлагчид ч 182 бичигдэнэ; явж буй ажиллагааны ард шинээр ажиллана */
+        const pw = m.planSyncWarn(await m.runPlanSync({ fresh: true, force: true }));
         if (pw) warn = warn ? `${warn} · ${pw}` : pw;
       } catch (e) {
         console.warn('[selbe] төсөл төлөвлөгөөний огноо бичих алдаа:', e);
@@ -1565,7 +1566,7 @@ export function displayReason(raw: string | null | undefined): string {
 /**
  * ГАЦСАН (ХАГАС БИЧИГДСЭН) ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл super (2026-10-08).
  */
-export async function returnStuckPlan(args: { oid: number; approver: string; reason: string }): Promise<{ ok: boolean; error?: string }> {
+export async function returnStuckPlan(args: { oid: number; approver: string; reason: string }): Promise<{ ok: boolean; error?: string; warn?: string }> {
   const me = args.approver.trim().toLowerCase();
   if (!me) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
   const why = args.reason.trim();
@@ -1635,7 +1636,17 @@ export async function returnStuckPlan(args: { oid: number; approver: string; rea
       return { ok: false, error: tr('Хадгалагдсангүй — холболтоо шалгаад дахин дарна уу. Таны өөрчлөлт хэвээр байна.') };
     }
     invalidate('HUVAARI_BATLAH');
-    return { ok: true };
+    /* 2026-11-23 (аудит №16): хуудсанд хагас бичигдсэн огноо хэвээр үлддэг тул ТТБ (182)-ийг шинэчилнэ — урьд нь синк
+       ажилладаггүй байсан тул санхүү/IPC эрхгүй батлагчийн хувьд 182 хуучирч үлддэг байв */
+    let warn: string | undefined;
+    try {
+      const m = await import('./projectPlanSync');
+      warn = m.planSyncWarn(await m.runPlanSync({ fresh: true, force: true })) || undefined;
+    } catch (e) {
+      console.warn('[selbe] төсөл төлөвлөгөөний огноо бичих алдаа:', e);
+      warn = tr('«Төсөл төлөвлөгөө биелэлт»-ийн огноо/хувь бичигдсэнгүй ({0}).', errText(e));
+    }
+    return { ok: true, warn };
   } catch (e) {
     await releasePlanClaim({ oid: args.oid, approver: me });
     return { ok: false, error: errText(e) };

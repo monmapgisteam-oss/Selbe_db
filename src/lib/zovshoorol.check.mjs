@@ -1,71 +1,14 @@
 import assert from 'node:assert/strict';
-import { loadZov, byBagts, summarize, TOLOV, validateZov, oidKey, oidField, F, URL as ZURL_KEY } from '@/lib/zovshoorol.ts';
+import { loadZov, byBagts, summarize, TOLOV, validateZov, oidKey, oidField, F, URL as ZURL_KEY, mergePermits } from '@/lib/zovshoorol.ts';
 import { arcgisPost } from '@/lib/query.ts';
 
 const zovMetaRaw = () => arcgisPost(ZURL_KEY, {});
 
-if (process.env.SELBE_LIVE_SKIP) {
-  console.log('⏭ амьд шалгуур алгасав — үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга');
-  process.exit(0);
-}
-const rows = await loadZov();
-assert.ok(rows, 'татаж чадсангүй');
-const meta0 = await zovMetaRaw();
-assert.ok(rows.length > 0, 'мөр алга');
-console.log(`✅ ${rows.length} мөр уншигдав`);
-
-/* ── OBJECTID ───────────────────────────────────────────────────────────── */
-const zeroOid = rows.filter((r) => !r.oid);
-assert.equal(zeroOid.length, 0,
-  `${zeroOid.length}/${rows.length} мөрийн OBJECTID уншигдсангүй: ${zeroOid.map((r) => r.ner).join(', ')}`);
-const oids = rows.map((r) => r.oid);
-assert.equal(new Set(oids).size, oids.length, 'OBJECTID давхардав — таних чанараа алдсан');
-console.log(`✅ ${rows.length}/${rows.length} мөрийн oid > 0 ба давхардалгүй (${oids.join(', ')})`);
-
-const meta = await zovMetaRaw();
-assert.ok(!meta.error, `метадата алдаа: ${JSON.stringify(meta.error)}`);
-assert.ok(/^objectid$/i.test(String(meta.objectIdField)),
-  `метадатагийн objectIdField = ${meta.objectIdField}`);
-assert.equal(await oidField(), meta.objectIdField,
-  `oidField() нь метадататай таарахгүй байна (${await oidField()} ≠ ${meta.objectIdField})`);
-assert.equal(F.oid.toLowerCase(), String(meta.objectIdField).toLowerCase(),
-  `F.oid (${F.oid}) нь амьд талбар (${meta.objectIdField})-аас ЯЛГААТАЙ`);
-console.log(`✅ objectIdField = ${meta.objectIdField} — код ба үйлчилгээ таарав`);
-
+/* 2026-11-23 (аудит №41): сүлжээгүй хэсэг ҮРГЭЛЖ ажиллана — амьд хэсгийг л SELBE_LIVE_SKIP хаана */
 for (const k of ['OBJECTID', 'ObjectID', 'objectid', 'objectID'])
   assert.equal(oidKey({ [k]: 7, bagts: 'x' }), k, `oidKey нь «${k}»-г танихгүй байна`);
 assert.equal(oidKey({ OBJECTID_1: 7, FID: 3 }), null, 'oidKey нь буруу талбарыг авах ёсгүй');
 console.log('✅ oidKey — үсгийн 4 хувилбар таарч, ойролцоо нэрийг авахгүй');
-
-const bad = rows.filter((r) => r.tolov === 'unknown');
-assert.equal(bad.length, 0, `танихгүй төлөв: ${bad.map((b) => b.ner).join(', ')}`);
-console.log('✅ бүх төлөв танигдав');
-
-if (meta0.editFieldsInfo?.creationDateField || meta0.editFieldsInfo?.editDateField) {
-  const withSince = rows.filter((r) => r.since != null).length;
-  assert.ok(withSince > 0, 'Editor Tracking асаалттай атал нэг ч мөрийн бүртгэгдсэн цаг уншигдсангүй');
-  console.log(`✅ ${withSince}/${rows.length} мөрийн бүртгэгдсэн цаг уншигдав`);
-} else {
-  assert.equal(rows.filter((r) => r.since != null).length, 0, 'тохиргоо унтраалттай үед `since` null байх ёстой');
-  console.log('ℹ Editor Tracking унтраалттай — «удаж буй» тэмдэглэгээ идэвхгүй');
-}
-
-const dated = rows.filter((r) => r.ognoo != null);
-assert.ok(dated.length > 0, 'нэг ч огноо уншигдсангүй — DateOnly хөрвүүлэлт ажиллаагүй');
-for (const r of dated) assert.ok(Number.isFinite(r.ognoo), `огноо NaN: ${r.ner}`);
-console.log(`✅ ${dated.length} огноо зөв хөрвөв`);
-
-const d = (ms) => { const x = new Date(ms); const p = (n) => String(n).padStart(2, '0'); return `${x.getUTCFullYear()}-${p(x.getUTCMonth()+1)}-${p(x.getUTCDate())}`; };
-console.log('\n── ДЭЛГЭЦЭНД ЮУ ГАРАХ ──');
-for (const [b, list] of byBagts(rows)) {
-  const sm = summarize(list);
-  console.log(`\n${b}   ${sm.ok} зөвшөөрсөн · ${sm.wait} хүлээгдэж буй · ${sm.no} зөвшөөрөөгүй${sm.alert ? '   ⚠ багц улаан' : ''}`);
-  for (const z of list) {
-    const i = z.tolov === TOLOV.ok ? '✓' : z.tolov === TOLOV.no ? '! анивчина' : '⏳';
-    console.log(`   ${z.shat}. ${z.ner.padEnd(30)} ${i.padEnd(11)} ${z.ognoo ? d(z.ognoo) : ''}  ${z.dugaar}`);
-  }
-}
-console.log('амьд уншилт: ok');
 
 /* ── МАЯГТЫН ШАЛГУУР (сүлжээгүй) ── */
 const all = [
@@ -96,5 +39,77 @@ console.log('✅ төлөв ба огнооны нийцэл');
 assert.equal(has({ ...base, oid: 1, shat: 1 }, 'shat'), false, 'өөрийгөө давхардал гэж үзэх ёсгүй');
 console.log('✅ засварлаж буй мөр өөртэйгөө зөрчилдөхгүй');
 
+/* 2026-11-23 (давтан аудит): mergePermits — бүртгэлтэй багцын ТТБ мөр хасагдана; «Шат» багц ДОТОРХ дараалал */
+{
+  const reg = [{ oid: 5, bagts: 'Багц-1', shat: 1, ner: 'Бүртгэл', selbe: '', tolov: TOLOV.wait, ognoo: null, dugaar: '', baiguullaga: '', hariutsagch: '', tailbar: '' }];
+  const leaves = [
+    { pkg: 'Багц-1', name: 'ТТБ 1', pct: 100 },
+    { pkg: 'Багц-2', name: 'А', pct: 100 }, { pkg: 'Багц-2', name: 'Б', pct: 40 },
+    { pkg: 'Багц-3.1', name: 'В', pct: null },
+  ];
+  const m = mergePermits(leaves, reg);
+  assert.deepEqual(m.map((z) => [z.ner, z.shat]), [['Бүртгэл', 1], ['А', 1], ['Б', 2], ['В', 1]], 'шат багц дотор');
+  assert.deepEqual(m.slice(1).map((z) => z.tolov), [TOLOV.ok, TOLOV.wait, TOLOV.wait], '100% = зөвшөөрсөн, бусад хүлээгдэж буй');
+  assert.equal(mergePermits(null, null), null);
+  console.log('✅ mergePermits — бүртгэл давамгайлна, шат багц дотор');
+}
+
+if (process.env.SELBE_LIVE_SKIP) {
+  console.log('⏭ амьд шалгуур (zovshoorol амьд хэсэг) алгасав — ' + (process.env.SELBE_LIVE_SKIP_REASON || 'үйлчилгээ Organization-only, ARCGIS_ADMIN_TOKEN алга'));
+} else {
+  const rows = await loadZov();
+  assert.ok(rows, 'татаж чадсангүй');
+  const meta0 = await zovMetaRaw();
+  assert.ok(rows.length > 0, 'мөр алга');
+  console.log(`✅ ${rows.length} мөр уншигдав`);
+  
+  /* ── OBJECTID ───────────────────────────────────────────────────────────── */
+  const zeroOid = rows.filter((r) => !r.oid);
+  assert.equal(zeroOid.length, 0,
+    `${zeroOid.length}/${rows.length} мөрийн OBJECTID уншигдсангүй: ${zeroOid.map((r) => r.ner).join(', ')}`);
+  const oids = rows.map((r) => r.oid);
+  assert.equal(new Set(oids).size, oids.length, 'OBJECTID давхардав — таних чанараа алдсан');
+  console.log(`✅ ${rows.length}/${rows.length} мөрийн oid > 0 ба давхардалгүй (${oids.join(', ')})`);
+  
+  const meta = await zovMetaRaw();
+  assert.ok(!meta.error, `метадата алдаа: ${JSON.stringify(meta.error)}`);
+  assert.ok(/^objectid$/i.test(String(meta.objectIdField)),
+    `метадатагийн objectIdField = ${meta.objectIdField}`);
+  assert.equal(await oidField(), meta.objectIdField,
+    `oidField() нь метадататай таарахгүй байна (${await oidField()} ≠ ${meta.objectIdField})`);
+  assert.equal(F.oid.toLowerCase(), String(meta.objectIdField).toLowerCase(),
+    `F.oid (${F.oid}) нь амьд талбар (${meta.objectIdField})-аас ЯЛГААТАЙ`);
+  console.log(`✅ objectIdField = ${meta.objectIdField} — код ба үйлчилгээ таарав`);
+  
+  const bad = rows.filter((r) => r.tolov === 'unknown');
+  assert.equal(bad.length, 0, `танихгүй төлөв: ${bad.map((b) => b.ner).join(', ')}`);
+  console.log('✅ бүх төлөв танигдав');
+  
+  if (meta0.editFieldsInfo?.creationDateField || meta0.editFieldsInfo?.editDateField) {
+    const withSince = rows.filter((r) => r.since != null).length;
+    assert.ok(withSince > 0, 'Editor Tracking асаалттай атал нэг ч мөрийн бүртгэгдсэн цаг уншигдсангүй');
+    console.log(`✅ ${withSince}/${rows.length} мөрийн бүртгэгдсэн цаг уншигдав`);
+  } else {
+    assert.equal(rows.filter((r) => r.since != null).length, 0, 'тохиргоо унтраалттай үед `since` null байх ёстой');
+    console.log('ℹ Editor Tracking унтраалттай — «удаж буй» тэмдэглэгээ идэвхгүй');
+  }
+  
+  const dated = rows.filter((r) => r.ognoo != null);
+  assert.ok(dated.length > 0, 'нэг ч огноо уншигдсангүй — DateOnly хөрвүүлэлт ажиллаагүй');
+  for (const r of dated) assert.ok(Number.isFinite(r.ognoo), `огноо NaN: ${r.ner}`);
+  console.log(`✅ ${dated.length} огноо зөв хөрвөв`);
+  
+  const d = (ms) => { const x = new Date(ms); const p = (n) => String(n).padStart(2, '0'); return `${x.getUTCFullYear()}-${p(x.getUTCMonth()+1)}-${p(x.getUTCDate())}`; };
+  console.log('\n── ДЭЛГЭЦЭНД ЮУ ГАРАХ ──');
+  for (const [b, list] of byBagts(rows)) {
+    const sm = summarize(list);
+    console.log(`\n${b}   ${sm.ok} зөвшөөрсөн · ${sm.wait} хүлээгдэж буй · ${sm.no} зөвшөөрөөгүй${sm.alert ? '   ⚠ багц улаан' : ''}`);
+    for (const z of list) {
+      const i = z.tolov === TOLOV.ok ? '✓' : z.tolov === TOLOV.no ? '! анивчина' : '⏳';
+      console.log(`   ${z.shat}. ${z.ner.padEnd(30)} ${i.padEnd(11)} ${z.ognoo ? d(z.ognoo) : ''}  ${z.dugaar}`);
+    }
+  }
+  console.log('амьд уншилт: ok');
+}
 console.log('');
 console.log('zovshoorol: ok');

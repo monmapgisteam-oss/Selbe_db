@@ -60,6 +60,8 @@ export function DateRangePill({ label, from, to, min, max, onChange }: {
   }, [open, place, close]);
 
   const on = Boolean(from || to);
+  /* 2026-11-23 (аудит): гараар бичихэд min/max хамгаалахгүй — эхлэл > төгсгөл бол шүүлт хэрэглэгдэхгүйг ил хэлнэ */
+  const bad = Boolean(from && to && from > to);
   const fmt = (v: string) => v.replace(/-/g, '.');
   const summary = !on
     ? tr('Бүх огноо')
@@ -106,18 +108,23 @@ export function DateRangePill({ label, from, to, min, max, onChange }: {
             <label style={{ display: 'grid', gap: 3, fontSize: 11, color: 'var(--ink-3)' }}>
               {tr('Эхлэх')}
               <input
-                type="date" style={field} value={from} min={min} max={to || max}
+                type="date" style={field} value={from} min={min} max={to || max} aria-invalid={bad || undefined}
                 onChange={(e) => onChange(e.target.value, to)}
               />
             </label>
             <label style={{ display: 'grid', gap: 3, fontSize: 11, color: 'var(--ink-3)' }}>
               {tr('Дуусах')}
               <input
-                type="date" style={field} value={to} min={from || min} max={max}
+                type="date" style={field} value={to} min={from || min} max={max} aria-invalid={bad || undefined}
                 onChange={(e) => onChange(from, e.target.value)}
               />
             </label>
           </div>
+          {bad && (
+            <p role="alert" style={{ margin: '0 10px 10px', fontSize: 11, color: 'var(--bad)' }}>
+              {tr('Эхлэх огноо дуусахаас хойш байна — шүүлт хэрэглэгдээгүй')}
+            </p>
+          )}
         </div>
       )}
     </div>

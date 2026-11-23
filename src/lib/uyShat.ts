@@ -260,10 +260,34 @@ export function conflicts(
     const was = b.get(oid);
     const now = f.get(oid);
     if (!was || !now) { out.push(was?.dd_kod ?? String(oid)); continue; }
-    for (const fd of page.fields) {
-      if (!(fd.key in u)) continue;
-      if (!sameVal(fd, was[fd.key], now[fd.key])) { out.push(was.dd_kod ?? String(oid)); break; }
-    }
+    const wDrift = 'heseg_ezleh_huvi' in u && !sameW(was.heseg_ezleh_huvi, now.heseg_ezleh_huvi);
+    if (wDrift || page.fields.some((fd) => fd.key in u && !sameVal(fd, was[fd.key], now[fd.key]))) out.push(was.dd_kod ?? String(oid));
+  }
+  return out;
+}
+
+const sameW = (a: unknown, b: unknown): boolean => {
+  const x = typeof a === 'number' ? a : null, y = typeof b === 'number' ? b : null;
+  return x == null || y == null ? x === y : Math.abs(x - y) < 1e-9;
+};
+
+/**
+ * ЖИН ХУВААЛТЫН ЗӨРӨЛ — 1/k жинг ачаалсан `base`-ээр хуваасан; энэ хооронд өөр хүн тэр эцгийн доор ажил нэмсэн/устгасан бол
+ * k өөр болж нийлбэр 1 биш болно. `fresh` нь тухайн эцгүүдийн ШИНЭЭР уншсан БҮХ хүүхэд. Зөрсөн мөрийн кодыг буцаана.
+ */
+/** `code` нь `parent`-ийн ШУУД хүүхэд үү («1.2.3» нь «1.2»-ийнх, «1.2.3.4» биш) — 2026-11-23 (хяналт) */
+export const isDirectChild = (code: string, parent: string): boolean =>
+  code.startsWith(`${parent}.`) && !code.slice(parent.length + 1).includes('.') && code.length > parent.length + 1;
+
+export function splitDrift(base: readonly PlanStoredRow[], fresh: readonly PlanStoredRow[], p: Pending): string[] {
+  const del = new Set(p.deletes ?? []);
+  const a = splitWeights(base, { ...p, deletes: [...del] });
+  const b = splitWeights(fresh, { ...p, deletes: [...del] });
+  const out: string[] = [];
+  const codeOf = (oid: number): string =>
+    (base.find((r) => r.objectid === oid) ?? fresh.find((r) => r.objectid === oid))?.dd_kod ?? String(oid);
+  for (const oid of new Set([...a.saved.keys(), ...b.saved.keys()])) {
+    if (!sameW(a.saved.get(oid), b.saved.get(oid))) out.push(codeOf(oid));
   }
   return out;
 }

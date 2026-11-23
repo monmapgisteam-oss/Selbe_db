@@ -567,7 +567,9 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   assert.ok(W.includes('if (v != null && (v < -0.5 || v > 100.5))'), 'хуудас бүрийн 0–100 шалгалт алга (F12)');
   assert.ok(W.includes('if (cur != null && cur <= 1 && r.act * 100 > 1) return { scale: x.p.label };'), 'хуучин хуудасны ≤1 гулсалт алга (F12)');
   assert.ok(/\} finally \{\s*if \(wrote\) invalidate\('BAGTS_NEGTGEL'\);\s*\}/.test(W), 'BAGTS_NEGTGEL finally-д (R6)');
-  assert.equal((W.match(/invalidate\('BAGTS_NEGTGEL'\)/g) ?? []).length, 1, 'зарлал нэг газар (finally)');
+  /* 2026-11-23 (аудит №10): `resyncNegtgelFrom` өөрийн finally-д — бичигч функц бүрд нэг зарлал */
+  assert.equal((W.match(/invalidate\('BAGTS_NEGTGEL'\)/g) ?? []).length, 2, 'зарлал бичигч бүрийн finally-д (registerApproved · resyncNegtgelFrom)');
+  assert.equal((W.match(/\} finally \{\s*if \(wrote\) invalidate\('BAGTS_NEGTGEL'\);\s*\}/g) ?? []).length, 2, 'хоёулаа finally-д');
   const iAdd = W.indexOf('    wrote = true;\n    const res = (await post(');
   assert.ok(iAdd > 0 || W.indexOf('    wrote = true;\r\n    const res = (await post(') > 0, 'нэмэх бичилтийн өмнө wrote тэмдэг');
   console.log('negtgel 2026-10-09 (F12/R6): ok — хэмжээс · finally');

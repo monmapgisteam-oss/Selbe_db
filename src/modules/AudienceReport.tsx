@@ -13,7 +13,7 @@ import { Segmented } from '@/components/Switch';
 import { useAuth } from '@/components/AuthGate';
 import { invalidateAll } from '@/lib/dataBus';
 import { dateTime } from '@/lib/format';
-import { periodOf, PERIOD_KEYS, periodLabel, type ExecPeriodKey } from '@/lib/execPeriodCalc';
+import { periodOf, customPeriodError, PERIOD_KEYS, periodLabel, type ExecPeriodKey } from '@/lib/execPeriodCalc';
 import { AUDIENCES, audienceLabel, buildReport, type Audience } from '@/lib/audienceReport';
 import { loadAudienceInputs } from '@/lib/audienceReportLoad';
 import { downloadAudiencePdf } from '@/lib/audiencePdf';
@@ -37,12 +37,14 @@ export function AudienceReport() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setNow(Date.now()); }, []);
   const period = useMemo(() => (now == null ? null : periodOf(pkey, now, custom)), [pkey, now, custom]);
+  /* 2026-11-23 (аудит): буруу «Огноо сонгох» — 30 хоногоор чимээгүй гаргахгүй, оролтын дэргэд алдаа + PDF хаалттай */
+  const periodErr = customPeriodError(pkey, custom);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'ok' | 'fail'; text: string } | null>(null);
 
   /** Дарахад л татна: эх сурвалжуудыг нэгтгэж (кэштэй), тайланг бодож, PDF үүсгэнэ */
   const savePdf = useCallback(async () => {
-    if (!period || now == null || busy) return;
+    if (!period || periodErr || now == null || busy) return;
     setMsg(null);
     setBusy(true);
     try {
@@ -61,7 +63,7 @@ export function AudienceReport() {
     } finally {
       setBusy(false);
     }
-  }, [period, now, busy, user, aud]);
+  }, [period, periodErr, now, busy, user, aud]);
   /** Шинэчлэх — бүх кэшийг хаяж дараагийн PDF-ийг шинэ өгөгдлөөр үүсгэнэ */
   const refresh = useCallback(() => { setNow(Date.now()); invalidateAll(); setMsg(null); }, []);
 
@@ -71,7 +73,7 @@ export function AudienceReport() {
         <div className={r.tools}>
           <Segmented value={aud} onChange={setAud} label={tr('Хүлээн авагч')}
             options={AUDIENCES.map((k) => ({ value: k, label: audienceLabel(k) }))} />
-          <button type="button" className={r.btn} disabled={!period || busy} onClick={savePdf} title={tr('Сонгосон хүлээн авагчийн тайланг PDF хэлбэрээр татах')}>
+          <button type="button" className={r.btn} disabled={!period || !!periodErr || busy} onClick={savePdf} title={tr('Сонгосон хүлээн авагчийн тайланг PDF хэлбэрээр татах')}>
             <Icon name="file" size={15} />
             {busy ? tr('Бэлтгэж байна…') : tr('PDF татах')}
           </button>
@@ -97,7 +99,9 @@ export function AudienceReport() {
                 onChange={(ev) => setCustom((c) => ({ ...c, to: ev.target.value }))} />
             </>
           )}
-          {period && <span className={e.periodRange}>{period.from} → {period.to}</span>}
+          {periodErr
+            ? <span className={r.fail} role="alert">{periodErr}</span>
+            : period && <span className={e.periodRange}>{period.from} → {period.to}</span>}
         </div>
         {msg && <p className={msg.tone === 'fail' ? r.fail : r.note} role={msg.tone === 'fail' ? 'alert' : 'status'}>{msg.text}</p>}
       </div>

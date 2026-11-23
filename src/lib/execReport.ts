@@ -9,7 +9,7 @@
  */
 
 import { cached, loadFillPkgProgress } from '@/lib/live';
-import { loadProjectBudgetTotal, loadProjectContractTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
+import { loadDesignMoney, loadProjectBudgetTotal, loadProjectContractTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
 import { t as tr } from '@/lib/i18nCore';
 import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
@@ -20,7 +20,7 @@ import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
 import { loadNegtgelFull, negtgelActualFailed, negtgelProjectPct, type NegtgelRow, type NegtgelCalc } from '@/lib/negtgel';
 import { loadPlanCurveCached, coverageOk } from '@/lib/planProgress';
-import { loadZov, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
+import { loadPermitRows, summarize, byBagts, TOLOV } from '@/lib/zovshoorol';
 import { PROGRESS_LEVELS, pkgKeyOf, hoAmount, HO_IPC } from '@/lib/services';
 import { finPkgKey, rangePaysOf } from '@/lib/pkgAlias';
 import { loadBuildings, uniqueBlocks } from '@/modules/BuildingPanel';
@@ -31,7 +31,7 @@ import { physNow, aggregateMonths } from '@/modules/PkgProg';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { hoTotals } from '@/lib/ipc';
 import { loadFinance } from '@/lib/reportData';
-import { paidPctOf } from '@/lib/paidShare';
+import { isDesignPay, paidPctOf } from '@/lib/paidShare';
 import { loadSafetyRows, RECENT_DAYS } from '@/lib/ceo/safety';
 import { arcgisToken, relayFetch, RelayError } from '@/lib/agent/client';
 
@@ -44,7 +44,10 @@ export type ExecReport = {
     contract: number;
     /** Төслийн нийт гүйцэтгэл (`Negtgel_guitsetgel`, унавал 6 шатны бодолт), 0–100; хэмжигдээгүй бол null */
     progress: number | null;
+    /** Төлөвлөгөөт хувь ГЭРЭЭГЭЭР (Төслийн нийт мөрийн N) */
     progressPlan: number | null;
+    /** Төлөвлөгөөт хувь ГҮЙЦЭТГЭГЧИЙН ТӨЛӨВЛӨГӨӨГӨӨР (Төслийн нийт мөрийн P) — 2026-11-23: хоёрыг хольж нэг нэрээр харуулдаг байв */
+    progressPlanP: number | null;
     packages: number;
     types: number;
     landPct: number | null;
@@ -167,7 +170,8 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     loadBuildings(),
     loadFinData(),
     loadPlanCurveCached(),
-    loadZov().catch(() => null),
+    /* 2026-11-23 (аудит №1): ТТБ-ийн зөвшөөрлийн мөрүүд + бүртгэл (бүртгэлтэй багцад бүртгэл давамгайлна) */
+    loadPermitRows().catch(() => null),
     loadHseNow().catch(() => null),
     loadFinance(),
     loadNegtgelFull()
@@ -218,6 +222,26 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       n: b.count ?? 0, contracted: b.countSub ?? 0,
     }))
     .sort((a, b) => b.cost - a.cost);
+  /* 2026-11-23 (аудит №2): ТЭЗҮ · ажлын зураг төслийн гэрээ (11.8 тэрбум) ажлын мөрд байхгүй тул тусдаа мөр — нийт нь
+     ТТБ-ийн гэрээлсэн нийт (2,046.5)-тэй таарна. Гүйцэтгэл = ТТБ-ийн ТЭЗҮ/зураг үе шатын S (төсвөөр жигнэсэн). */
+  {
+    const [design, pl] = await Promise.all([loadDesignMoney().catch(() => null), loadProjectPlan().catch(() => null)]);
+    if (design && (design.budget > 0 || design.contract > 0)) {
+      let ew = 0, es = 0;
+      if (pl && !pl.empty) {
+        for (const ph of pl.tree.root.children) {
+          if (ph.outside || (ph.phase !== 'tezu' && ph.phase !== 'zurag')) continue;
+          const v = pl.result.values.get(ph);
+          if (v?.E != null && v.E > 0 && v.S != null) { ew += v.E; es += v.E * v.S; }
+        }
+      }
+      byType.push({
+        label: 'ТЭЗҮ, зураг төсөл', cost: design.budget, contract: design.contract, perf: ew > 0 ? es / ew : null,
+        n: design.n, contracted: design.contracted,
+      });
+      byType.sort((a, b) => b.cost - a.cost);
+    }
+  }
   const planRootP = await loadProjectPlan().then((p) => (p.empty ? null : p.result.values.get(p.tree.root)?.P ?? null)).catch(() => null);
 
   /* ── 04. Багцын санхүү — `PkgFin.pkgFinRows`-тэй ИЖИЛ ── */
@@ -251,15 +275,18 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     }
     let inRows = 0;
     let inParents = 0;
+    /* 2026-11-23 (аудит №3): ТЭЗҮ/судалгааны олголт тоологчид орсон боловч багцын мөрд байхгүй — зөрүүд тооцохгүй */
+    let inDesign = 0;
     for (const p of fin.pays) {
       const n = hoAmount(p);
+      if (n == null) continue;
       const k = pkgKeyOf(p[HC.pkg]);
-      if (n == null || !k) continue;
-      const fk = finPkgKey(k);
-      if (rowKeys.has(fk)) inRows += n;
-      else if (parents.has(fk)) inParents += n;
+      const fk = k ? finPkgKey(k) : '';
+      if (fk && rowKeys.has(fk)) inRows += n;
+      else if (fk && parents.has(fk)) inParents += n;
+      else if (isDesignPay(p)) inDesign += n;
     }
-    const miss = finGivenContracted - inRows - inParents;
+    const miss = finGivenContracted - inRows - inParents - inDesign;
     if (miss > 1) {
       console.warn('[execReport] гэрээлсэн олголтын нэг хэсэг багцын мөрд ороогүй', { paidContracted: finGivenContracted, inRows, inParents, miss });
     }
@@ -304,8 +331,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
   return {
     gdash: {
       budget: k.budget, contract: k.contract, progress: k.progress,
-      /* 2026-11-05 (аудит): нэгтгэлд төлөвлөгөө алга бол «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн P (хүлээн авагчийн тайлантай нэг тоо) */
-      progressPlan: (wbsPct != null ? wbs?.plan ?? null : null) ?? planRootP,
+      /* 2026-11-23 (аудит): N (гэрээгээр) ба P (гүйцэтгэгчийн төлөвлөгөөгөөр) тус тусын нэртэй — бие биеэ орлохгүй */
+      progressPlan: wbsPct != null ? wbs?.plan ?? null : null,
+      progressPlanP: planRootP,
       packages: k.packages, types: k.types, landPct: land.pct,
       land: {
         total: land.total, cleared: land.cleared, remaining: land.remaining, areaM2: land.areaM2,
@@ -707,7 +735,8 @@ export function execFacts(x: ExecReport): string {
   L.push(`Нийт төсөв: ${num(x.gdash.budget)} ₮`);
   L.push(`Нийт гэрээлсэн дүн: ${num(x.gdash.contract)} ₮`);
   L.push(`Гүйцэтгэлийн хувь (нэгтгэл гүйцэтгэлээр): ${x.gdash.progress == null ? 'мэдээлэлгүй' : pct(x.gdash.progress, 1)}`);
-  if (x.gdash.progressPlan != null) L.push(`Гүйцэтгэлийн хувийн өөрийн төлөвлөгөө (нэгтгэл гүйцэтгэл): ${pct(x.gdash.progressPlan, 1)}`);
+  if (x.gdash.progressPlanP != null) L.push(`Төлөвлөгөөт хувь — гүйцэтгэгчийн төлөвлөгөөгөөр: ${pct(x.gdash.progressPlanP, 1)}`);
+  if (x.gdash.progressPlan != null) L.push(`Төлөвлөгөөт хувь — гэрээгээр (нэгтгэл гүйцэтгэл): ${pct(x.gdash.progressPlan, 1)}`);
   L.push(`Багц ажлын тоо: ${x.gdash.packages}; төрлийн тоо: ${x.gdash.types}`);
   L.push(`Газар чөлөөлөлт: ${x.gdash.landPct == null ? 'мэдээлэлгүй' : pct(x.gdash.landPct, 1)} (нийт ${x.gdash.land.total}, чөлөөлсөн ${x.gdash.land.cleared}, үлдсэн ${x.gdash.land.remaining})`);
   L.push(`Газар чөлөөлөлт төлвөөр: ${x.gdash.land.byStatus.map((b) => `${b.label} ${b.n}`).join('; ') || '—'}`);

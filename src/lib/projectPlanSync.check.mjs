@@ -163,6 +163,34 @@ assert.ok(ups.every((u) => Object.keys(u).sort().join() === 'guitsetgel_huvi,obj
     globalThis.setTimeout = realSet; globalThis.clearTimeout = realClear; delete globalThis.window;
   }
 }
+/* 2026-11-23 (аудит): батлалтын дараах синк (`force`) — эрхийн хаалтаар алгасагдахгүй, явж буй (батлалтаас өмнө уншсан)
+   ажиллагааны дүнг буцаахгүй, дараа нь ШИНЭ ажиллагаа гинжилнэ. Сүлжээ бүхэлдээ хаалттай (бичилт гарахгүй). */
+{
+  const { runPlanSync } = await import('./projectPlanSync.ts');
+  const realF = globalThis.fetch;
+  let reads = 0;
+  globalThis.fetch = async () => { reads += 1; throw new Error('offline (check)'); };
+  try {
+    const plain = await runPlanSync();
+    assert.equal(plain.skipped, 'no-cap', 'автобусын зам: эрхгүй сешн алгасна');
+    const r0 = reads;
+    const forced = await runPlanSync({ fresh: true, force: true });
+    assert.notEqual(forced.skipped, 'no-cap', 'батлалтын зам эрхийн хаалтыг тойрно');
+    assert.ok(reads > r0, 'батлалтын зам хүснэгтийг шинээр уншина');
+    /* Явж буй ажиллагааны үед force — тэр promise биш, дараах шинэ ажиллагаа */
+    const first = runPlanSync({ fresh: true, force: true });
+    const second = runPlanSync({ fresh: true, force: true });
+    assert.notEqual(first, second, 'явж буй ажиллагааг дахин ашиглахгүй — гинжилнэ');
+    const r1 = reads;
+    await first;
+    const afterFirst = reads;
+    await second;
+    assert.ok(afterFirst > r1 && reads > afterFirst, 'хоёр дахь нь эхнийх дууссаны ДАРАА дахин уншина');
+  } finally {
+    globalThis.fetch = realF;
+  }
+  console.log('✅ батлалтын дараах синк: эрхийн хаалтгүй · хуучин уншилтын дүн буцаахгүй');
+}
 console.log('projectPlanSync.check: бүгд ✅');
 
 /* 2026-11-18: Зургийн бүртгэлээс үүссэн мөрийн (registry) хувийг гүйцэтгэл хадгалагч БИЧИХГҮЙ — эзэн нь бүртгэлийн тааруулалт */

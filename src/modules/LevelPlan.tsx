@@ -165,8 +165,10 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelDat
   const [xlsBusy, setXlsBusy] = useState(false);
   const [xlsErr, setXlsErr] = useState<string | null>(null);
   const pkgs = useMemo(() => packagesOf(d.plan.tree), [d.plan.tree]);
+  /* 2026-11-23 (аудит): хуучирсан ?bagts= (жагсаалтад байхгүй багц) — хоосон хүснэгт биш «Бүх багц» */
+  const pkOk = pk && pkgs.some((p) => p.key === pk) ? pk : '';
   const today = dayOfLocal(d.at);
-  useEffect(() => { writeUrl(lvl, pk); }, [lvl, pk]);
+  useEffect(() => { writeUrl(lvl, pkOk); }, [lvl, pkOk]);
   /* Ажлын холбоос (2026-11-13) — 6 түвшин бүрт; бөглөх хуудсаас (L1/L2-т ч ачаална, ачаалагдтал сумгүй) */
   const sq = useAsync(loadSheetDetail, []);
   const work = sq.state === 'ready' ? sq.data.links : null;
@@ -182,7 +184,7 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelDat
   }
 
   const look = lvl === 5 || lvl === 6;
-  const shown: PkgInfo[] = pk ? pkgs.filter((p) => p.key === pk) : pkgs;
+  const shown: PkgInfo[] = pkOk ? pkgs.filter((p) => p.key === pkOk) : pkgs;
   /* Түвшин солиход хураалт эхлээс — мөрийн ID-ууд түвшин бүрд өөр */
   const pickLvl = (l: Level) => { setLvl(l); setFold(l === 5 || l === 6 ? LOOK_FOLD : FOLD0); };
   const vo: ViewOpts = {
@@ -235,7 +237,7 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelDat
             <span>{tr('Багц')}</span>
             <select
               className={s.select}
-              value={pk}
+              value={pkOk}
               onChange={(e) => setPk(e.target.value)}
             >
               <option value="">{tr('Бүх багц')}</option>

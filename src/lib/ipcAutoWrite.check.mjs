@@ -191,5 +191,45 @@ const B1 = row({ [P.id]: 'AUTO|БАГЦ2|2026-09-01', [C.code]: 'K2', [P.ipcNo]:
   console.log('✅ 2 хуудас · өөр өдөр — нөгөө хуудасны өмнөх жааз дахин тоологдохгүй (70, 4 070 биш)');
 }
 
+/* 2026-11-23 (аудит): нэгж үнийн нөхөлт — бичихийн өмнөх дахин уншилтаар IPC-д түгжигдсэн мөр хасагдана */
+{
+  const { stillFree } = await import('@/lib/ipcAutoWrite.ts');
+  const ST = HO_IPC.status.field;
+  const s = stillFree([
+    { [OID]: 1, [ST]: HO_IPC.status.work, [P.ipcNo]: null },
+    { [OID]: 2, [ST]: HO_IPC.status.work, [P.ipcNo]: 4 },          // энэ хооронд IPC-4-т түгжигдсэн
+    { [OID]: 3, [ST]: HO_IPC.status.created, [P.ipcNo]: 4 },
+    { [OID]: 4, [ST]: '', [P.ipcNo]: null },                        // хуучин (төлөвгүй) AUTO мөр
+  ]);
+  assert.deepEqual([...s].sort(), [1, 4]);
+  console.log('✅ нэгж үнийн нөхөлт: IPC-д түгжигдсэн мөрийг дарахгүй');
+}
+
+/* 2026-11-23 (аудит №11, №13): нэг өдрийн олон AUTO мөр · давталтын зогсоох нөхцөл */
+{
+  const { sameDayOthers, autoUnchanged } = await import('@/lib/ipcAutoWrite.ts');
+  const { LINK_FIELDS } = await import('@/lib/ipcLink.ts');
+  const ST = HO_IPC.status.field;
+  const a = { [OID]: 1, [P.id]: 'AUTO|БАГЦ1|2026-10-01', [C.pkg]: 'Багц 1', [ST]: 'IPC-д орсон', [LINK_FIELDS.une]: 100 };
+  const b = { [OID]: 2, [P.id]: 'AUTO|БАГЦ1|2026-10-01|2', [C.pkg]: 'Багц-1', [ST]: HO_IPC.status.work, [LINK_FIELDS.une]: 40 };
+  const other = { [OID]: 3, [P.id]: 'AUTO|БАГЦ2|2026-10-01', [C.pkg]: 'Багц 2', [ST]: HO_IPC.status.work, [LINK_FIELDS.une]: 7 };
+  const cancelled = { [OID]: 4, [P.id]: 'AUTO|БАГЦ1|2026-10-01|3', [C.pkg]: 'Багц 1', [ST]: HO_IPC.status.cancelled, [LINK_FIELDS.une]: 9 };
+  assert.deepEqual(sameDayOthers([a, b, other, cancelled], b).map((r) => r[OID]), [1], '|2 мөрд: ижил багц · өдрийн IPC-д орсон мөр (цуцлагдсан, өөр багц биш)');
+  assert.deepEqual(sameDayOthers([a, other], a), [], 'ганц мөр — хасах зүйлгүй');
+  assert.equal(autoUnchanged([b], { [OID]: 2, [LINK_FIELDS.obyem]: null, [LINK_FIELDS.une]: 40.2 }), true, 'ижил утга → тогтворжсон');
+  assert.equal(autoUnchanged([b], { [OID]: 2, [LINK_FIELDS.obyem]: null, [LINK_FIELDS.une]: 55 }), false, 'өөр нэгж үнэ → дахин бичнэ');
+  assert.equal(autoUnchanged([b], { [OID]: 99, [LINK_FIELDS.une]: 40 }), false, 'мөр алга');
+  const src = (await import('node:fs')).readFileSync(new URL('./ipcAutoWrite.ts', import.meta.url), 'utf8');
+  assert.match(src, /for \(let pass = 0; pass < 3; pass \+= 1\)[\s\S]{0,4000}if \(!stillFree\(now\)\.has\(oid\)\) continue;/, 'бичихийн өмнө мөр чөлөөт эсэхийг шалгана, дахин төлөвлөнө');
+  assert.ok(src.includes('une - others.reduce('), 'нэгж үнийн нөхөлт тэр өдрийн бусад мөрийг хасна');
+  /* хяналт: нэг (багц, өдөр)-т хоёр сул мөр — зөвхөн `planAuto`-гийн сонгох (түгжээгүй ЭХНИЙХ) мөрийг дахин үнэлнэ */
+  const { repricePick } = await import('@/lib/ipcAutoWrite.ts');
+  const b1 = { ...b, [OID]: 5, [P.id]: 'AUTO|БАГЦ1|2026-10-01' };
+  assert.equal(repricePick([a, b, other, cancelled], b), b, 'түгжигдсэн a-г алгасаад эхний сул нь b');
+  assert.equal(repricePick([b1, b], b), b1, 'хоёр сул мөр — эхнийх (b1) л, b дахин үнэлэгдэхгүй');
+  assert.ok(src.includes('if (repricePick(rows, r) !== r) continue;'), 'repriceFreeRows-д');
+  console.log('✅ IPC AUTO: нэг өдрийн олон мөр · зэрэг батлалтын дахин төлөвлөлт');
+}
+
 assertNoUnexpected(assert);
 console.log('✅ ipcAutoWrite: зан үйлийн шалгуур давлаа');

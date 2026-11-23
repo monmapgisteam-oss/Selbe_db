@@ -90,7 +90,6 @@ export function ErhTypes({ remote, onDirty }: {
     put(r, { ...t, on: v ? [...new Set([...t.on, id])] : t.on.filter((x) => x !== id) }, id.startsWith('view:') ? [id.slice(5) as ViewKey] : []);
   };
   const allowed = (_r: Role, id: string): boolean => id !== 'admin' && !id.startsWith('huvaari:');
-  const hvIds = (r: Role): string[] => cur(r).on.filter((id) => id.startsWith('huvaari:'));
   const setHv = (r: Role, v: HvScope) => { const t = cur(r); put(r, { ...t, on: withHvScope(t.on, v) }, [HUVAARI_MARK]); };
   /** «Хуваарь харах» шийдэгдээгүй (энэ тохиргооноос ӨМНӨ хадгалсан) багана — анхдагч утга үйлчилж байна */
   const hvUndecided = (r: Role): boolean => !planViewDecided(cur(r), isStoredTpl(r));
@@ -218,7 +217,8 @@ export function ErhTypes({ remote, onDirty }: {
                     <div className={s.headBtns}>
                       <button type="button" className={s.mini} disabled={busy}
                         aria-label={`${tr('бүгд')} — ${typeLabel(r)}`}
-                        onClick={() => put(r, { ...cur(r), on: [...allIds.filter((id) => allowed(r, id)), ...hvIds(r)] }, tplViewKeys())}>
+                        /* 2026-11-23 (аудит): энд сонгогддоггүй түлхүүрийг (admin · huvaari:*) «арилгах»-тай адил хэвээр үлдээнэ — Super-ийн admin алга болдог байв */
+                        onClick={() => put(r, { ...cur(r), on: [...new Set([...allIds.filter((id) => allowed(r, id)), ...cur(r).on.filter((id) => !allowed(r, id))])] }, tplViewKeys())}>
                         {tr('бүгд')}
                       </button>
                       <button type="button" className={s.mini} disabled={busy}

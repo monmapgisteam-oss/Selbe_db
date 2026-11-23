@@ -115,6 +115,8 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       cfGaps,
       loading,
       planError: planQ.state === 'error',
+      /* 2026-11-23 (аудит №8): олгосон хувийг ТТБ-ийн гэрээлсэн нийт (2,046.5) дүнгээр — ажлын мөрийн нийлбэрээр биш */
+      projContract: budgetQ.state === 'ready' ? budgetQ.data.contract : null,
     });
   }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ, liveQ, docsQ]);
 
@@ -134,7 +136,9 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (budgetQ.state === 'error') budgetQ.retry?.();
     if (depQ.state === 'error') depQ.retry?.();
     if (docsQ.state === 'error') docsQ.retry?.();
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ, docsQ]);
+    /* 2026-11-23 (аудит): «Гэрээний амьд гүйцэтгэл» унасан гэж харуулдаг ч дахин оролдлогод ордоггүй байв */
+    if (liveQ.state === 'error') liveQ.retry?.();
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ, docsQ, liveQ]);
 
   const row = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
   const open = useCallback((k: string) => setSel(k), []);

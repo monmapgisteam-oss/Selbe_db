@@ -142,3 +142,11 @@ console.log('✅ materialNoots: бүх шалгуур давлаа');
   assert.equal(planSync([row()], rc2).updates[0].bagts, 'Багц 1', 'хуучин мөрийн багц бөглөгдөнө');
   console.log('materialNoots.check: багцаар ✅');
 }
+
+/* 2026-11-23 (аудит №12): нэг ч хүснэгт уншигдаагүй / ачаалал унасан бол зарцуулалт ба төлөвийг бичихгүй */
+{
+  const src = readFileSync(fileURLToPath(new URL('./materialNoots.ts', import.meta.url)), 'utf8');
+  assert.ok(src.includes('if (!wu.failed.length) {') && src.includes('const fixes = usage ? usageFixes(rows, usage) : [];'),
+    'хагас уншилтаар бүх материалын төлөв «Дуусаагүй» болохгүй');
+  console.log('materialNoots.check: хагас уншилтад зарцуулалт бичихгүй ✅');
+}

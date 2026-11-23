@@ -761,8 +761,9 @@ export function Huvaari({
 
   useEffect(() => {
     let alive = true;
+    /* 2026-11-23 (аудит): өмнөх багцын «илгээгдлээ / хадгалагдлаа» мэдэгдэл шинэ багцад үлдэхгүй (`setNote('')`) */
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setBusy(true); setErr(''); setLoadErr(null); setRows([]); setSc(null);
+    setBusy(true); setErr(''); setNote(''); setLoadErr(null); setRows([]); setSc(null);
     setDraft(new Map()); setHam(new Map()); setSel(null); setCollapsed(new Set()); setModal(null);
     setErrList([]); setUndoSnap(null); setChgOpen(false); setChainN(0); setPendingOther(null);
     setFGrp('all'); setLinkAsk(null);
@@ -2903,6 +2904,20 @@ export function Huvaari({
     setSel, setFGrp, setCollapsed, setModal, setLinkAsk, undoRef,
     setOkRows, setCellEdit,
   });
+  /**
+   * 2026-11-23 (аудит): нээлттэй «+ ажил» / засах маягтад бичсэн зүйлийг өөр «+» / ✎ дарахад асуулгүй арилгахгүй.
+   * Шинэ маягт — аль нэг талбар бөглөгдсөн; засах маягт — анхны утгаас өөрчлөгдсөн.
+   */
+  const askDropAddForm = async (): Promise<boolean> => {
+    let dirty = false;
+    if (addFor != null) dirty = Object.values(addForm).some((v) => String(v ?? '').trim() !== '');
+    else if (editAdd != null) {
+      const a0 = adds.find((x) => x.oid === editAdd);
+      dirty = !!a0 && (addForm.no !== a0.no || addForm.work !== a0.work
+        || addForm.vol !== (a0.vol == null ? '' : String(a0.vol)) || addForm.unit !== (a0.unit == null ? '' : String(a0.unit)));
+    }
+    return !dirty || askConfirm(tr('Хадгалаагүй засвар алдагдана. Үргэлжлүүлэх үү?'), { danger: true, ok: tr('Хаяад үргэлжлүүлэх') });
+  };
 
   /**
    * ИЛГЭЭЛТЭЭ ТАТАХ — зохиогч өөрийн хүлээгдэж буй илгээлтийг буцааж авна
@@ -3221,6 +3236,19 @@ export function Huvaari({
    */
   /* (`savedRef` — дээр, эрт зарлагдсан) */
   const headApproved = (oid: number): Promise<boolean> => isApprovedBy(oid, user?.username ?? '');
+  /**
+   * 2026-11-23 (аудит №16): `decidePlan`-ийн хариу алдагдсан ч толгой батлагдсан (`headApproved`) бол тэр нь ТТБ (182)-ийн
+   * синкийг ажиллуулаагүй — энд ижил `force` синкийг ажиллуулж, анхааруулгыг буцаана.
+   */
+  const syncAfterLost = async (): Promise<string | undefined> => {
+    try {
+      const m = await import('@/lib/projectPlanSync');
+      return m.planSyncWarn(await m.runPlanSync({ fresh: true, force: true })) || undefined;
+    } catch (e) {
+      console.warn('[selbe] төсөл төлөвлөгөөний огноо бичих алдаа:', e);
+      return tr('«Төсөл төлөвлөгөө биелэлт»-ийн огноо/хувь бичигдсэнгүй ({0}).', userError(e));
+    }
+  };
   const stepOf = (o: number): { step: 'dates' | 'obyem'; written?: number; total?: number } | undefined => {
     const f = failStepRef.current;
     return f && f.oid === o ? { step: f.step, written: f.written, total: f.total } : undefined;
@@ -3268,7 +3296,7 @@ export function Huvaari({
               claimAt: claimAtRef.current ?? undefined,
             });
             answered = true;
-            const r = r0.ok || !(await headApproved(approving)) ? r0 : { ok: true as const };
+            const r = r0.ok || !(await headApproved(approving)) ? r0 : { ok: true as const, warn: await syncAfterLost() };
             if (r.ok) {
               setPreviewing(false); setOkRows(new Set());
               if (partialRef.current === approving) partialRef.current = null;
@@ -3276,7 +3304,7 @@ export function Huvaari({
               if (lostWriteRef.current === approving) lostWriteRef.current = null;
             }
             setNote(r.ok
-              ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.') + (r0.ok && r0.warn ? ` ${r0.warn}` : '')
+              ? tr('Хуваарь батлагдлаа — эх хуудас аль хэдийн ижил байсан тул өөрчлөлт бичигдсэнгүй.') + (r.ok && r.warn ? ` ${r.warn}` : '')
               : '');
             if (!r.ok) {
               setErr(r.error ? userError(r.error) : tr('Шийдвэр хадгалагдсангүй.'));
@@ -3333,7 +3361,7 @@ export function Huvaari({
           approver: user?.username ?? '', author: pending?.author ?? '',
           claimAt: claimAtRef.current ?? undefined,
         });
-        const r = r0.ok || !(await headApproved(oid)) ? r0 : { ok: true as const };
+        const r = r0.ok || !(await headApproved(oid)) ? r0 : { ok: true as const, warn: await syncAfterLost() };
         decided = r.ok;
         if (!r.ok) {
           setErr((r.error ? userError(r.error) : tr('Хуваарь бичигдсэн ч төлөв шинэчлэгдсэнгүй — дахин оролдоно уу.'))
@@ -3344,7 +3372,7 @@ export function Huvaari({
           if (lostWriteRef.current === oid) lostWriteRef.current = null;
           setPreviewing(false);
           setOkRows(new Set());
-          setNote(tr('Хуваарь батлагдаж эх хуудсанд бичигдлээ.') + (r0.ok && r0.warn ? ` ${r0.warn}` : ''));
+          setNote(tr('Хуваарь батлагдаж эх хуудсанд бичигдлээ.') + (r.ok && r.warn ? ` ${r.warn}` : ''));
         }
         await refreshFlow({ noRefetch: true });
       } catch (e) {
@@ -3460,8 +3488,13 @@ export function Huvaari({
    * МӨР РҮҮ ОЧИХ (2026-10-08) — алдааны «→ ажил руу» · өөрчлөлтийн самбар · «Үсрэх» оролт нэг зам.
    */
   /* ══════════════ ШИНЖИЛГЭЭ (2026-10-29) — `huvaari/useAnalysis` ══════════════ */
+  /* 2026-11-23 (аудит): Excel экспорт PDF-тэй ижил — шүүлт, ноорог/урьдчилан харалтын тэмдэглэл (`savePdf`) */
+  const exportNote = [
+    previewing ? tr('САНАЛ (урьдчилан харалт)') : !savedView && dirtyRows > 0 ? tr('НООРОГ — батлагдаагүй {0} мөр', num(dirtyRows)) : '',
+    filtOn || fGrp !== 'all' ? tr('Шүүлт идэвхтэй — зөвхөн шүүлтэд таарсан ажил') : '',
+  ].filter(Boolean).join(' · ') || undefined;
   const { anaIssues, anaCrit, critOids, anaDelays, anaRes, exportPlan } = useAnalysis({
-    ana, plan, base, blk, unbalRows, kind, refSpanOf, sc, obResOf, obOf, pkgKey: pkg.key,
+    ana, plan, base, blk, unbalRows, kind, refSpanOf, sc, obResOf, obOf, pkgKey: pkg.key, rowsAt: exportAt, exportNote,
   });
 
 
@@ -5311,13 +5344,19 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                     /* НЭМЭЛТ АЖИЛ (2026-09-24): бүлэгт «+», батлагдаагүй мөрд улаан + «×» */
                     added={r.oid < 0}
                     onAdd={r.group && canAddRow && !locked && !allOn
-                      ? () => { setAddFor((x) => (x === r.oid ? null : r.oid)); setEditAdd(null); setAddForm(EMPTY_FORM); setAjErr(''); }
+                      ? () => {
+                        void (async () => {
+                          if (!(await askDropAddForm())) return;
+                          setAddFor((x) => (x === r.oid ? null : r.oid)); setEditAdd(null); setAddForm(EMPTY_FORM); setAjErr('');
+                        })();
+                      }
                       : undefined}
                     onDrop={r.oid < 0 && !allOn ? () => dropAdd(r.oid) : undefined}
                     /* НЭМЭЛТ МӨР ЗАСАХ (2026-09-29) — илгээгээгүй ба засварт нээсэн мөрд */
-                    onEditAdd={r.oid < 0 && canAddRow && !allOn ? () => {
+                    onEditAdd={r.oid < 0 && canAddRow && !allOn ? async () => {
                       const a0 = adds.find((x) => x.oid === r.oid);
                       if (!a0) return;
+                      if (!(await askDropAddForm())) return;
                       setAddFor(null); setAjErr('');
                       setEditAdd((x) => (x === r.oid ? null : r.oid));
                       setAddForm({ no: a0.no, work: a0.work, vol: a0.vol == null ? '' : String(a0.vol), unit: a0.unit == null ? '' : String(a0.unit) });

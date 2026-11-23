@@ -133,7 +133,7 @@ export function contractFor(rows: readonly Row[], pkgKey: string): { code: strin
 }
 
 /**
- * AUTO МӨРИЙН ГЭРЭЭ — `syncIpcFromFill` ба `ipcDocLoad`-ын НЭГ эх (2026-10-09, F6).
+ * AUTO МӨРИЙН ГЭРЭЭ — `syncIpcFromFill`-ийн эх (2026-10-09, F6).
  */
 export function autoContractFor(rows: readonly Row[], pkgKey: string): { code: string; warn: string | null } {
   const base = contractFor(rows, pkgKey);

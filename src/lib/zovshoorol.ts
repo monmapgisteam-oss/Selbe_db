@@ -4,7 +4,7 @@
 
 import { pkgCodeOf } from './hoSync/compute';
 import { agsFetch } from '@/modules/sheet/ags';
-import { GUITS, canonPkg } from '@/lib/services';
+import { GUITS, canonPkg, pkgKeyOf } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
 import { invalidate } from '@/lib/dataBus';
 import { requireCap } from '@/lib/who';
@@ -224,6 +224,68 @@ export function filterZov(rows: Zov[], f: ZovFilter, now: number): Zov[] {
  */
 export async function loadZov(): Promise<Zov[] | null> {
   return (await loadZovResult()).rows;
+}
+
+/**
+ * ЗӨВШӨӨРЛИЙН НЭГДСЭН ЖАГСААЛТ (2026-11-23, аудит №1) — нэг дүрэм бүх тайлан, самбарт:
+ *   · жагсаалт = «Төсөл төлөвлөгөө биелэлт»-ийн «Зөвшөөрөл» үе шатын доод мөрүүд (ТТБ);
+ *   · бүртгэлд (`loadZov`) мөртэй багцын хувьд ТТБ-ийн мөрийн ОРОНД бүртгэлийн мөрүүд (төлөв нь давамгайлна).
+ * Урьд нь тайлан, CEO самбар зөвхөн 4 мөрт бүртгэлийг, «Зөвшөөрөл» хуудас ТТБ-ийн 63 мөрийг тоолдог байв.
+ * ТТБ-ийн мөрийн төлөв: 100% → «Зөвшөөрсөн», бусад нь «Хүлээгдэж буй» (явцтай ч шийдэгдээгүй).
+ * Аль аль нь уншигдаагүй бол `null`.
+ */
+export function mergePermits(
+  leaves: readonly { pkg: string | null; name: string; pct: number | null }[] | null,
+  reg: readonly Zov[] | null,
+): Zov[] | null {
+  if (leaves == null && reg == null) return null;
+  const regPkgs = new Set((reg ?? []).map((r) => pkgKeyOf(r.bagts)).filter(Boolean));
+  const out: Zov[] = [...(reg ?? [])];
+  let oid = 0;
+  /* 2026-11-23 (давтан аудит): «Шат» — багц ДОТОРХ дараалал (1, 2, …), бүх мөрөөр үргэлжилсэн дугаар (47 г.м.) биш */
+  const seq = new Map<string, number>();
+  (leaves ?? []).forEach((l) => {
+    const k = pkgKeyOf(l.pkg ?? '');
+    if (k && regPkgs.has(k)) return;
+    const sk = k || String(l.pkg ?? '');
+    const shat = (seq.get(sk) ?? 0) + 1;
+    seq.set(sk, shat);
+    out.push({
+      oid: (oid -= 1), bagts: l.pkg ?? '', shat, ner: l.name,
+      selbe: '', tolov: l.pct != null && l.pct >= 99.995 ? TOLOV.ok : TOLOV.wait, ognoo: null,
+      dugaar: '', baiguullaga: '', hariutsagch: '', tailbar: '', since: null,
+    });
+  });
+  return out;
+}
+
+/**
+ * `mergePermits` — ТТБ (`loadProjectPlan`) ба бүртгэлээс. 2026-11-23 (давтан аудит): АЛЬ НЭГ НЬ уншигдаагүй бол `null` — урьд нь
+ * бүртгэл унахад ТТБ-ийн 100% мөрөөр Багц-1/2-ыг «Зөвшөөрсөн» гэж чимээгүй харуулдаг байв; одоо карт «тодорхойгүй» болж эх
+ * сурвалжийг нэрлэнэ (дуудагчид `null`-ийг уналт гэж үздэг).
+ */
+export async function loadPermitRows(): Promise<Zov[] | null> {
+  const [reg, leaves] = await Promise.all([
+    loadZov().catch(() => null),
+    import('./projectPlanInputs').then((m) => m.loadProjectPlan()).then((pl) => {
+      /* хоосон ТТБ / «Зөвшөөрөл» үе шатгүй — уналт БИШ (жагсаалт хоосон); уналт нь зөвхөн доорх catch */
+      if (pl.empty) return [];
+      const phase = pl.tree.root.children.find((n) => n.phase === 'zovshoorol');
+      if (!phase) return [];
+      const out: { pkg: string | null; name: string; pct: number | null }[] = [];
+      const walk = (n: typeof phase) => {
+        for (const c of n.children) {
+          if (c.outside) continue;
+          if (c.children.length) walk(c);
+          else out.push({ pkg: c.pkg, name: String(c.row?.ajil_uilchilgee ?? '').trim(), pct: pl.result.values.get(c)?.S ?? null });
+        }
+      };
+      walk(phase);
+      return out;
+    }).catch(() => null),
+  ]);
+  if (reg == null || leaves == null) return null;
+  return mergePermits(leaves, reg);
 }
 
 /**

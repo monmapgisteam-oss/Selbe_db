@@ -110,7 +110,7 @@ import { cfMonthAxis } from '../lib/services.ts';
 
 /* ── 1+. АМЬД ӨГӨГДӨЛ ── */
 if (process.env.SELBE_LIVE_SKIP === '1') {
-  console.log(`⏭ phys.check: амьд хэсэг алгасав (${process.env.SELBE_LIVE_SKIP_REASON || 'Enterprise хүрэгдэхгүй'})`);
+  console.log(`⏭ амьд шалгуур (phys амьд хэсэг) алгасав — ${process.env.SELBE_LIVE_SKIP_REASON || 'Enterprise хүрэгдэхгүй'}`);
 } else {
 const AXIS = cfMonthAxis();
 const hist = await loadBlockHistory();

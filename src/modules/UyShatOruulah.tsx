@@ -6,7 +6,7 @@
  * хадгалагдана; «Төсөл төлөвлөгөө биелэлт» ба 6 түвшний хуваарь эндээс уншина. Загвар: `GazarOgnoo.tsx` · `ZuragTosol.tsx`.
  */
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { pct } from '@/lib/format';
 import { cached } from '@/lib/live';
@@ -26,7 +26,7 @@ import { buildTree, computePlan, ubToday, type PlanNode } from '@/lib/projectPla
 import { EMPTY_PENDING, dayOf, displayCodes, dropAdd, rowKey, toStored, toggleDelete, type Names, type Pending } from '@/lib/zuragTosol';
 import {
   PAGES, badText, buildEdits, canAddRow, canDeleteRow, conflicts, editableFields, effectiveRows, fieldLockWhy, pendingCount, rowAdd, rowsOf,
-  setEdit, textOf, workNameWhy, type FieldDef, type Issue, type PageKey,
+  isDirectChild, setEdit, splitDrift, textOf, workNameWhy, type FieldDef, type Issue, type PageKey,
 } from '@/lib/uyShat';
 import s from './uyShat.module.css';
 
@@ -82,6 +82,14 @@ const ISSUE_TEXT: Record<Issue['kind'], () => string> = {
 
 export function UyShatOruulah({ page }: { page: PageKey }) {
   const q = useAsync(loadRows, []);
+  /* 2026-11-23 (аудит): хадгалаагүй засвар `<Data>`-аас ДЭЭШ — арын дахин ачаалалт бүтэлгүйтэж Body салбал засвар алдагдахгүй */
+  const [pend, setPend] = useState<Pending>(EMPTY_PENDING);
+  const [pubFrom, setPubFrom] = useState<Row[] | null>(null);
+  const rowsNow = q.state === 'ready' ? q.data.rows : null;
+  if (pubFrom != null && rowsNow && !awaitingReload(pubFrom, rowsNow)) {
+    setPubFrom(null);
+    setPend(EMPTY_PENDING);
+  }
   return (
     <div className={s.wrap}>
       <header className={s.head}>
@@ -89,16 +97,19 @@ export function UyShatOruulah({ page }: { page: PageKey }) {
         <p className={s.sub}>{SUB[page]()}</p>
       </header>
       <Data q={q} loading={tr('Ачаалж байна…')} minH={240}>
-        {(d) => <Body page={page} rows={d.rows} at={d.at} />}
+        {(d) => <Body page={page} rows={d.rows} at={d.at} pend={pend} setPend={setPend} pubFrom={pubFrom} setPubFrom={setPubFrom} />}
       </Data>
     </div>
   );
 }
 
-function Body({ page, rows, at }: { page: PageKey; rows: Row[]; at: number }) {
+function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
+  page: PageKey; rows: Row[]; at: number;
+  pend: Pending; setPend: Dispatch<SetStateAction<Pending>>;
+  pubFrom: Row[] | null; setPubFrom: Dispatch<SetStateAction<Row[] | null>>;
+}) {
   const P = PAGES[page];
   const base = useMemo(() => rows.map((r) => toStored(r, NAMES)).filter((r) => r.dd_kod), [rows]);
-  const [pend, setPend] = useState<Pending>(EMPTY_PENDING);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -108,12 +119,7 @@ function Body({ page, rows, at }: { page: PageKey; rows: Row[]; at: number }) {
   const [newName, setNewName] = useState('');
   const [nameErr, setNameErr] = useState<string | null>(null);
 
-  const [pubFrom, setPubFrom] = useState<Row[] | null>(null);
   const reloading = awaitingReload(pubFrom, rows);
-  if (pubFrom != null && !reloading) {
-    setPubFrom(null);
-    setPend(EMPTY_PENDING);
-  }
   const locked = busy || reloading;
 
   const { user } = useAuth();
@@ -233,21 +239,34 @@ function Body({ page, rows, at }: { page: PageKey; rows: Row[]; at: number }) {
     try {
       const oids = [...new Set([...e.updates.map((u) => Number(u[NAMES.oid])), ...e.deletes])];
       const codes = e.adds.map((a) => String(a.dd_kod));
+      /* Жин 1/k хуваагдах эцгүүдийн БҮХ хүүхдийг шинээр уншина — энэ хооронд өөр хүн ах дүү нэмсэн/устгасан бол зөрөл */
+      const delSet = new Set(e.deletes);
+      const parents = [...new Set([
+        ...pend.adds.map((a) => a.etseg_kod),
+        ...base.filter((r) => r.objectid != null && delSet.has(r.objectid)).map((r) => r.etseg_kod),
+      ].filter((c): c is string => typeof c === 'string' && c !== ''))];
       const parts = [
         ...(oids.length ? [`${CASHFLOW_NEW.oid} IN (${oids.join(',')})`] : []),
         ...(codes.length ? [`${F.ddKod} IN (${codes.map(sqlStr).join(',')})`] : []),
+        /* 2026-11-23 (хяналт): `etseg_kod` нь 182-д СЕРВЕРИЙН багана биш (клиентэд бодогддог виртуал талбар) — `where`-д
+           орвол «Field name does not exist». Эцгийн кодоор `dd_kod LIKE '<эцэг>.%'` асууж, ШУУД хүүхдийг доор шүүнэ. */
+        ...parents.map((c) => `${F.ddKod} LIKE ${sqlStr(`${c}.%`)}`),
       ];
       const fresh = (await queryFeatures(CASHFLOW_NEW.url, {
         where: `(${parts.join(' OR ')})`,
         outFields: OUT,
         orderBy: `${CASHFLOW_NEW.oid} ASC`,
-      })).map((r) => toStored(r, NAMES));
+      })).map((r) => toStored(r, NAMES))
+        /* LIKE-ээр ирсэн ач мөрүүдийг хасна — oid/кодоор таарсан мөр хэвээр */
+        .filter((r) => (r.objectid != null && oids.includes(r.objectid)) || (r.dd_kod != null && codes.includes(r.dd_kod))
+          || (r.dd_kod != null && parents.some((c) => isDirectChild(r.dd_kod!, c))));
       const clash = conflicts(P, base, fresh.filter((r) => r.objectid != null && oids.includes(r.objectid)), e.updates, NAMES);
       const taken = codes.filter((c) => fresh.some((r) => r.dd_kod === c));
       const gone = e.deletes.filter((o) => !fresh.some((r) => r.objectid === o)).map((o) => base.find((r) => r.objectid === o)?.dd_kod ?? String(o));
-      if (clash.length || taken.length || gone.length) {
+      const drift = parents.length ? splitDrift(base, fresh.filter((r) => r.dd_kod != null && !codes.includes(r.dd_kod)), pend) : [];
+      if (clash.length || taken.length || gone.length || drift.length) {
         setErr(tr('Өөр хэрэглэгч энэ хооронд өөрчилсөн байна ({0}). Дахин ачаалж шинэ утгаар засна уу.',
-          [...clash, ...taken, ...gone].slice(0, 5).map(label).join(', ')));
+          [...new Set([...clash, ...taken, ...gone, ...drift])].slice(0, 5).map(label).join(', ')));
         return;
       }
       const { n } = await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: e.updates, adds: e.adds, deletes: e.deletes }, { cap: P.cap });

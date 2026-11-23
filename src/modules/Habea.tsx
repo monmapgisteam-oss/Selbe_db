@@ -1643,7 +1643,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         : pickActOid ? tr('Сонгосон цэг')
         : pickUzOid ? tr('Сонгосон үзлэг') : tr('Сонгосон кран'),
       value: picked.id === 'habea:osol'
-        ? text(picked.attrs[I.turul], `#${pickOsol}`)
+        /* 2026-11-23 (аудит): түүхий код биш — жагсаалт, попаптай ижил нэр */
+        ? text(codedName(all?.incDom?.[I.turul], picked.attrs[I.turul]), `#${pickOsol}`)
         : pickActOid
           ? (actRows.state === 'ready' ? actPickLabel(actRows.data, pickActOid) : `#${pickActOid}`)
         : pickUzOid
@@ -1717,6 +1718,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     ? tr('Сонгосон шүүлтэд тохирох бүртгэл алга — дээрх шүүлтийн чипийг (×) арилгаж бүгдийг харна.')
     : tr('Шинэ бүртгэл орж ирэхэд энд автоматаар гарна.');
   const noRecords = <Empty label={tr('Бүртгэл алга')} hint={emptyHint} />;
+  /* 2026-11-23 (аудит): эх сурвалж татагдаагүй үед «Бүртгэл алга» / 0 биш — `mixCard`-ийн `laborFailed`-тэй адил */
+  const incFailEmpty = <Empty label={tr('Осол, зөрчлийн мэдээлэл татагдсангүй')} />;
+  const craneFailEmpty = <Empty label={tr('Цамхагт краны мэдээлэл татагдсангүй')} />;
 
   /** «Компаниар — монгол, гадаад» — анхны харагдацад зүүнд, хүн хүчний фокуст баруунд (2026-11-02) */
   const mixCard = (
@@ -1966,7 +1970,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             баруун баганад байв. ── */}
         {focus === null && (
         <Section title={tr('Цамхагт кран — төлөв')}>
-          {craneByStatus.length
+          {craneFailed ? craneFailEmpty : craneByStatus.length
             ? <Donut items={craneByStatus} stack fitLegend soft size="md" center={num(craneStatusBase.length)} centerLabel={tr('кран')}
                 selected={sel.craneState} onSelect={(k) => toggleDim('craneState', k)} />
             : noRecords}
@@ -1992,13 +1996,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             : tr('{0} бүртгэл', num(fInc.length))}
           tone="primary"
         >
-          {incByType.length
+          {incFailed ? incFailEmpty : incByType.length
             ? <Donut items={incByType} stack fitLegend soft size="md" center={num(incTypeBase.length)} centerLabel={tr('нийт')}
                 selected={sel.incType} onSelect={(k) => k !== '__other' && toggleDim('incType', k)} />
             : noRecords}
         </Section>
         <Section title={tr('Шалтгааны төрөл')} note={tr('{0} бүртгэл', num(causeTotal))}>
-          {causeSlices.length
+          {incFailed ? incFailEmpty : causeSlices.length
             ? <Donut items={causeSlices} stack fitLegend soft size="md" center={num(causeTotal)} centerLabel={tr('нийт')}
                 selected={sel.cause} onSelect={(k) => toggleDim('cause', k)} />
             : <Empty label={tr('Шалтгаан тэмдэглэгдээгүй')} />}
@@ -2019,6 +2023,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           )}
         >
           {(() => {
+            if (incFailed) return incFailEmpty;
             const r = rateStep === 'pkg' ? ratePkg : rateMonth;
             if (!r.items.length) return <Empty label={tr('Хүн-цагийн бүртгэл алга')} />;
             const items = r.items.map((x) => ({
@@ -2208,7 +2213,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                   </div>
                   {FOCUS_CHIPS.map((f) => {
                     const on = focus === f.key;
-                    const n = f.count(fInc.length);
+                    const n = f.key === 'inc' && incFailed ? null : f.count(fInc.length);
                     return (
                       <button
                         key={f.key}
@@ -2284,7 +2289,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 )}
               </div>
             );
-          }) : noRecords}
+          }) : incFailed ? incFailEmpty : noRecords}
         </Section>
         )}
 
@@ -2364,7 +2369,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           <PhotoWall list={[...fInc].sort((a, b) => b.d - a.d)} />
         </Section>
         <Section title={tr('Осол, зөрчил — компаниар')}>
-          {incByCompany.length
+          {incFailed ? incFailEmpty : incByCompany.length
             ? <Bars items={incByCompany} selected={sel.incCompany} onSelect={(k) => toggleDim('incCompany', k)} />
             : noRecords}
         </Section>

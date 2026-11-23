@@ -4,6 +4,7 @@ import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef,
   type CSSProperties, type ReactNode, type PointerEvent as RPointerEvent, type KeyboardEvent as RKeyboardEvent,
 } from 'react';
+import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
 import { GRIP_TITLE } from './ResizableTable';
 import st from './resizableColumns.module.css';
@@ -137,24 +138,31 @@ export function ResizableColumns({
     try { localStorage.setItem(LS + id, JSON.stringify({ ...readSaved(id), ...size.current })); } catch { /* хувийн горим */ }
   }, [id]);
 
-  /* Зурагдалтаас өмнө: дутуу талыг сэргээх, алга болсныг цэвэрлэх (толгой) */
+  /* Зурагдалтаас өмнө: дутуу талыг сэргээх, алга болсныг цэвэрлэх (толгой).
+     2026-11-23 (аудит): урьд нь deps-гүй — рендер БҮРД layout уншиж (clientWidth, getBoundingClientRect) дахин багтаадаг
+     байв. Одоо зөвхөн анхдагч/түлхүүр солигдоход; хүрээний хэмжээний өөрчлөлтийг доорх ResizeObserver дагана. */
+  const legacyRef = useRef(legacy);
+  useSyncRef(legacyRef, legacy);
   useLayoutEffect(() => {
     let saved: Sizes | null = null;
     for (const side of ['left', 'right'] as const) {
       if (def[side] == null) { delete size.current[side]; restored.current.delete(side); continue; }
       if (restored.current.has(side)) continue;
       restored.current.add(side);
-      saved ??= readSaved(id, legacy);
+      saved ??= readSaved(id, legacyRef.current);
       size.current[side] = saved[side] ?? def[side];
     }
     apply();
-  });
+  }, [def, id, apply]);
 
   /* Цонх өөрчлөгдөхөд дахин багтаана — хязгаар нь хүрээний өргөнөөс хамаарна */
   useEffect(() => {
     const on = () => apply();
     window.addEventListener('resize', on);
-    return () => window.removeEventListener('resize', on);
+    const node = el.current;
+    const ro = node && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(on) : null;
+    if (node) ro?.observe(node);
+    return () => { window.removeEventListener('resize', on); ro?.disconnect(); };
   }, [apply]);
 
   useEffect(() => () => document.body.classList.remove('resizing'), []);

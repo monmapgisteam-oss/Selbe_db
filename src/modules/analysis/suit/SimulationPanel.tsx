@@ -380,6 +380,11 @@ export function NetSelector({ net }: { net?: NetSel }) {
 function SignalControl({ sig }: { sig?: SignalSel }) {
   if (!sig) return null;
   const green = Math.max(0, sig.plan.cycle / sig.plan.stages.length - sig.plan.yellow);
+  /* 2026-11-23 (аудит): уулзвар бүр ӨӨРИЙН ээлжтэй (`byJunction`) — 2-р уулзварт 1-рийн кодыг харуулдаг байв */
+  const junctions = Object.values(sig.plan.byJunction ?? {});
+  const stageCodes = (i: number) => junctions.length
+    ? junctions.map((st, j) => `${tr('{0}-р уулзвар', j + 1)}: ${(st[i] ?? st[st.length - 1]).join(', ')}`).join(' · ')
+    : sig.plan.stages[i].join(', ');
   return (
     <div className={c.console}>
       <div className={c.secHead}>
@@ -397,14 +402,14 @@ function SignalControl({ sig }: { sig?: SignalSel }) {
           >
             {tr('Авто')}
           </button>
-          {sig.plan.stages.map((codes, i) => (
+          {sig.plan.stages.map((_, i) => (
             <button
               key={i}
               type="button"
               aria-pressed={sig.stage === i}
               className={sig.stage === i ? c.segSmOn : undefined}
               onClick={() => sig.setStage(sig.stage === i ? null : i)}
-              title={tr('{0} кодын гэрэл НОГООН асна — бусад нь улаан', codes.join(', '))}
+              title={tr('{0} кодын гэрэл НОГООН асна — бусад нь улаан', stageCodes(i))}
             >
               {i + 1} {tr('ээлж')}
             </button>
@@ -413,7 +418,7 @@ function SignalControl({ sig }: { sig?: SignalSel }) {
       </div>
       {sig.stage != null && (
         <p className={c.desc} style={{ marginTop: 8 }}>
-          {tr('{0}-р ээлж баригдав: {1} кодын гэрэл ногоон, бусад нь улаан.', sig.stage + 1, sig.plan.stages[sig.stage].join(', '))}
+          {tr('{0}-р ээлж баригдав: {1} кодын гэрэл ногоон, бусад нь улаан.', sig.stage + 1, stageCodes(sig.stage))}
         </p>
       )}
     </div>

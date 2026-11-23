@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useFocusTrap } from '@/lib/useFocusTrap';
 import { t as tr } from '@/lib/i18nCore';
 import { dayKey, mnt } from '@/lib/format';
 import { askConfirm } from '@/lib/confirm';
@@ -20,14 +21,15 @@ import { userError } from '@/components/ui';
 import { EntSignIn, useEntSession } from '@/components/EntSignIn';
 import { downloadIpcFlowPdf } from '@/lib/ipcFlowPdf';
 import {
-  advanceOver, approveIpc, approveWhy, contractCancelFresh, contractCancelWhy, contractUpdates, contractWhy, createAdvance, deleteIpc, deleteWhy,
-  createIpc, docRows, docTitle, dupDocNos, nextIpcNo, overContract, parseMoney, perfRows, perfTotal, signIpc, type ContractWhy, type IpcDocRow, type NewContract, type PerfRow, type Row,
+  advanceMissing, advanceOver, approveIpc, contractAlreadySaved, approveWhy, contractCancelFresh, contractCancelWhy, contractUpdates, contractWhy, createAdvance, deleteIpc, deleteWhy,
+  createIpc, docRows, docTitle, dupDocNos, nextIpcNo, overContract, parseMoney, perfRows, perfTotal, rollbackFree, signIpc, type ContractWhy, type IpcDocRow, type NewContract, type PerfRow, type Row,
 } from '@/lib/ipcFlow';
 import s from './ipcTable.module.css';
 
 const S = HO_IPC.status;
 const CF = CASHFLOW_NEW.fields;
-const money = (v: number | null | undefined): string => (v == null ? '—' : `${mnt(v)}`);
+/* 2026-11-23 (аудит): 0 ₮ нь «—» биш — `mnt(0)` хоосон гэж үздэг тул тэгийг тусад нь (IpcTable-тай ижил) */
+const money = (v: number | null | undefined): string => (v == null ? '—' : v === 0 ? '0 ₮' : `${mnt(v)}`);
 /* 2026-11-04: Улаанбаатарын хуанлийн өдөр (`dayKey`) — бөглөх хуудасны өдөртэй (`ajilApply.todayLocalMs`) нэг дүрэм; UTC биш */
 const today = (): string => dayKey(Date.now());
 /** Гэрээний мөрүүдийг сервероос ШИНЭЭР уншина — бичихийн өмнө, өөр хэрэглэгчийн өөрчлөлтийг харахын тулд */
@@ -86,10 +88,18 @@ export function IpcFlowPanel({
 
   /* 2026-11-11: нэгж үнийг хожим тавьсан ажлын мөнгийг чөлөөт гүйцэтгэлд нөхнө — гэрээг нээхэд нэг удаа, IPC үүсгэх эрхтэй хүнд */
   const repricedRef = useRef('');
+  /* 2026-11-23 (аудит): үнийн нөхөлт явж байхад IPC үүсгэхийг хаана — нөхөлт уншсанаас хойш түгжигдсэн мөрийн дүнг дардаг байв */
+  const [repricing, setRepricing] = useState(false);
+  /* 2026-11-23 (хяналт): `alive`-ийн оронд ажиллуулалтын дугаар — `canCreate` унтарч асахад (ижил гэрээ, шинэ ажиллуулалтгүй)
+     хуучин `finally` `repricing`-ийг цэвэрлэхгүй үлдээж «IPC үүсгэх» бүрмөсөн идэвхгүй болдог байв */
+  const repriceRun = useRef(0);
   useEffect(() => {
     if (!canCreate || repricedRef.current === code) return;
     repricedRef.current = code;
-    void import('@/lib/ipcAutoWrite').then((m) => m.repriceFreeRows(code)).catch((e) => console.warn('[selbe] нэгж үнийн нөхөлт амжилтгүй:', e));
+    const run = ++repriceRun.current;
+    setRepricing(true);
+    void import('@/lib/ipcAutoWrite').then((m) => m.repriceFreeRows(code)).catch((e) => console.warn('[selbe] нэгж үнийн нөхөлт амжилтгүй:', e))
+      .finally(() => { if (repriceRun.current === run) setRepricing(false); });
   }, [canCreate, code]);
   const perf = useMemo(() => perfRows(pays), [pays]);
   const docs = useMemo(() => docRows(pays), [pays]);
@@ -142,18 +152,24 @@ export function IpcFlowPanel({
     const no = Number(e2.adds[0][HO_IPC.payFields.ipcNo]);
     /* IPC аль хэдийн бичигдсэн: энэ уншилт унавал «алдаа» гэж хэлэхгүй */
     const after = await freshPays(code, pays).catch(() => null);
-    if (after && dupDocNos(after).includes(no)) {
+    /* 2026-11-23 (аудит): шалгалтын уншилт унавал чимээгүй алгасахгүй — давхар дугаар шалгагдаагүйг хэлнэ */
+    if (!after) { setErr(tr('IPC-{0} үүслээ, гэхдээ давхар дугаарын шалгалт хийгдсэнгүй (сүлжээ). Хуудсаа шинэчилж, ижил дугаартай өөр баримт байгаа эсэхийг шалгана уу.', no)); return; }
+    if (dupDocNos(after).includes(no)) {
       /* 2026-11-11 (аудит): ижил дугаартай хоёр баримт бие биеийн гүйцэтгэлийг чөлөөлж/түгждэг (давхар төлбөр). Хожуу үүссэн
          (их objectid) нь ӨӨРИЙН баримтыг буцаана: баримтаа устгаж, зөвхөн өөрийн сонгосон гүйцэтгэлийг чөлөөлнө */
       const mine = made.oids[0];
       const others = docRows(after).filter((x) => x.no === no && x.oid !== mine).map((x) => x.oid);
       if (mine != null && others.length && others.every((o) => o < mine)) {
+        /* 2026-11-23 (аудит): үлдсэн баримтынх БИШ гэж дүнгээр нотлогдсон мөрийг л чөлөөлнө (`rollbackFree`) */
+        const rb = rollbackFree(after, no, mine, sel2.map((r) => r.oid));
         await applyAll(HO_IPC.url, HO_IPC.oid, {
           deletes: [mine],
-          updates: sel2.map((r) => ({ [HO_IPC.oid]: r.oid, [HO_IPC.payFields.ipcNo]: null, [S.field]: S.work })),
+          updates: rb.free.map((oid) => ({ [HO_IPC.oid]: oid, [HO_IPC.payFields.ipcNo]: null, [S.field]: S.work })),
         }, CREATE_CAP);
         invalidate('HO_IPC');
-        setErr(tr('IPC-{0} дугаарыг өөр хэрэглэгч зэрэг авсан тул таны баримтыг буцаалаа. Дахин үүсгэнэ үү.', no));
+        setErr(rb.sure
+          ? tr('IPC-{0} дугаарыг өөр хэрэглэгч зэрэг авсан тул таны баримтыг буцаалаа. Дахин үүсгэнэ үү.', no)
+          : tr('IPC-{0} дугаарыг өөр хэрэглэгч зэрэг авсан тул таны баримтыг буцаалаа. Сонгосон гүйцэтгэл нөгөө баримттай давхцсан байж болзошгүй тул түгжээтэй үлдээв — админд мэдэгдэнэ үү.', no));
       } else {
         setErr(tr('IPC-{0} дугаартай өөр баримт зэрэг үүссэн байна. Баталгаажуулахаас өмнө админд мэдэгдэнэ үү.', no));
       }
@@ -216,7 +232,8 @@ export function IpcFlowPanel({
       {canCreate && free.length > 0 && (
         <div className={s.flowBar}>
           <span>{tr('Чеклэсэн гүйцэтгэлийн нийлбэр: {0}', money(total))}</span>
-          <button type="button" className={s.btn} disabled={busy || !sel.length} onClick={() => void create()}>{tr('IPC үүсгэх')}</button>
+          <button type="button" className={s.btn} disabled={busy || repricing || !sel.length}
+            title={repricing ? tr('Нэгж үнийн нөхөлт дуустал түр хүлээнэ үү') : undefined} onClick={() => void create()}>{tr('IPC үүсгэх')}</button>
         </div>
       )}
       {children(pick)}
@@ -340,6 +357,9 @@ type Item = { oid: number; amount: string; advance: string };
  * дараа нь урьдчилгааны баримт багц бүрээр үүснэ.
  */
 export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; onClose: () => void }) {
+  const dlgRef = useRef<HTMLDivElement>(null);
+  const downBack = useRef(false);
+  useFocusTrap(dlgRef);
   const [no, setNo] = useState('');
   const [contractor, setContractor] = useState('');
   const [date, setDate] = useState(today());
@@ -384,20 +404,22 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
       if (!cfSaved) {
         /* Цонх нээгдсэний дараа өөр хэрэглэгч багцыг гэрээлсэн эсвэл дугаарыг авсан байж болно — бичихийн өмнө шинээр шалгана */
         const [cfNow, hoNow] = await Promise.all([
-          queryFeatures(CASHFLOW_NEW.url, { where: '1=1', outFields: [CASHFLOW_NEW.oid, CF.amountNote, CF.contractNo] }),
+          queryFeatures(CASHFLOW_NEW.url, { where: '1=1', outFields: [CASHFLOW_NEW.oid, CF.amountNote, CF.contractNo, CF.contractAmount] }),
           queryFeatures(HO_IPC.url, { outFields: [HO_IPC.oid, HO_IPC.contractFields.contractNo] }),
         ]);
         const nowOf = new Map(cfNow.map((r) => [Number(r[CASHFLOW_NEW.oid]), r] as const));
-        if (c.items.some((i) => !nowOf.has(Number(i.row[CASHFLOW_NEW.oid])))) {
+        /* 2026-11-23 (аудит №15): өмнөх «Хадгалах» бичигдсэн ч хариу алдагдсан — дахин бичихгүй, синк/урьдчилгааны алхмаар үргэлжилнэ */
+        const already = contractAlreadySaved(c, cfNow);
+        if (!already && c.items.some((i) => !nowOf.has(Number(i.row[CASHFLOW_NEW.oid])))) {
           setErr(tr('Энэ хооронд өөр хэрэглэгч өөрчилсөн байна. Шинэчилсэн мэдээллийг шалгаад дахин оролдоно уу.'));
           return;
         }
-        const why2 = contractWhy({ ...c, items: c.items.map((i) => ({ ...i, row: { ...i.row, ...nowOf.get(Number(i.row[CASHFLOW_NEW.oid])) } })) }, cfNow, hoNow);
+        const why2 = already ? null : contractWhy({ ...c, items: c.items.map((i) => ({ ...i, row: { ...i.row, ...nowOf.get(Number(i.row[CASHFLOW_NEW.oid])) } })) }, cfNow, hoNow);
         if (why2) {
           setErr(whyText(why2));
           return;
         }
-        await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: contractUpdates(c) }, CREATE_CAP);
+        if (!already) await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { updates: contractUpdates(c) }, CREATE_CAP);
         setCfSaved(true);
         invalidate('CASHFLOW_NEW');
       }
@@ -416,10 +438,14 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
         if (!code) throw new Error(tr('Гэрээ хадгалагдсан ч IPC-д хараахан үүсээгүй. Цонхыг хаалгүй «Хадгалах»-ыг дахин дарж урьдчилгааг бичнэ үү.'));
         const pays = ho.filter((r) => String(r[HO_IPC.contractFields.code] ?? '').trim() === code);
         const first = nextIpcNo(pays);
-        await applyAll(HO_IPC.url, HO_IPC.oid, {
-          adds: adv.map((i, k) => createAdvance(code, String(i.row[CF.pkg] ?? ''), i.advance as number, first + k, today())),
-        }, CREATE_CAP);
-        invalidate('HO_IPC');
+        /* 2026-11-23 (аудит): аль хэдийн урьдчилгааны баримттай багцыг алгасна — дахин «Хадгалах» давхар баримт үүсгэдэг байв */
+        const todo = advanceMissing(pays, adv, (i) => String(i.row[CF.pkg] ?? ''));
+        if (todo.length) {
+          await applyAll(HO_IPC.url, HO_IPC.oid, {
+            adds: todo.map((i, k) => createAdvance(code, String(i.row[CF.pkg] ?? ''), i.advance as number, first + k, today())),
+          }, CREATE_CAP);
+          invalidate('HO_IPC');
+        }
       }
       onClose();
     } catch (e) {
@@ -430,8 +456,12 @@ export function ContractDialog({ cfRows, onClose }: { cfRows: readonly Row[]; on
   };
 
   return (
-    <div className={s.dlgBack} role="presentation" onClick={() => { if (!busy && !cfSaved) onClose(); }}>
-      <div className={s.dlg} role="dialog" aria-modal="true" aria-label={tr('Гэрээ үүсгэх')} onClick={(e) => e.stopPropagation()}>
+    /* 2026-11-23 (аудит): дарах ба суллах хоёулаа дэвсгэр дээр байвал л хаана — цонхонд текст сонгоод гадна суллахад бичсэн зүйл алга болдог байв */
+    <div className={s.dlgBack} role="presentation"
+      onMouseDown={(e) => { downBack.current = e.target === e.currentTarget; }}
+      onKeyDown={(e) => { if (e.key === 'Escape' && !busy && !cfSaved) { e.stopPropagation(); onClose(); } }}
+      onClick={(e) => { if (downBack.current && e.target === e.currentTarget && !busy && !cfSaved) onClose(); downBack.current = false; }}>
+      <div ref={dlgRef} className={s.dlg} role="dialog" aria-modal="true" aria-label={tr('Гэрээ үүсгэх')} onClick={(e) => e.stopPropagation()}>
         <h3 className={s.dlgTitle}>{tr('Гэрээ үүсгэх')}</h3>
         <div className={s.dlgForm}>
           <label>{tr('Гэрээний дугаар')}<input className={s.dlgIn} value={no} onChange={(e) => setNo(e.target.value)} /></label>

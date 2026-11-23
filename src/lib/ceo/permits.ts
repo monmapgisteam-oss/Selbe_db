@@ -11,7 +11,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { num } from '@/lib/format';
 import { cached } from '@/lib/live';
-import { byBagts, loadZov, summarize, TOLOV, type Tolov, type Zov } from '@/lib/zovshoorol';
+import { byBagts, loadPermitRows, summarize, TOLOV, type Tolov, type Zov } from '@/lib/zovshoorol';
 import { cell, table, type KpiIssue, type KpiResult, type Level } from './kpi';
 
 /** Кэшийн хугацаа — `schemData`-ийн `loadZov` кэштэй ижил 5 минут */
@@ -157,13 +157,14 @@ export function computePermits(rows: Zov[] | null): KpiResult {
  */
 export const loadPermitsKpi = cached(
   async (): Promise<KpiResult> => {
-    const rows = await loadZov();
+    /* 2026-11-23 (аудит №1): «Зөвшөөрөл» хуудастай нэг жагсаалт — ТТБ-ийн мөрүүд + бүртгэл */
+    const rows = await loadPermitRows();
     /* дотоод — дэлгэцэд гарахгүй (`loadPermitsKpiSafe` барина) */
     if (rows == null) throw new Error('zovshoorol: load failed');
     return computePermits(rows);
   },
   PERMITS_TTL_MS,
-  ['ZOVSHOOROL'],
+  ['ZOVSHOOROL', 'CASHFLOW_NEW'],
 );
 
 /** Самбарын ачаалагч — унавал шидэхгүй, unknown карт (кэшлэгдэхгүй — дараагийн дуудалт дахин оролдоно) */

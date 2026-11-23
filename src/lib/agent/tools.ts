@@ -109,10 +109,10 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     name: 'compute',
     get description() { return tr('ArcGIS дээр БАЙХГҮЙ, кодод ТООЦООЛОГДДОГ үзүүлэлтүүд. ') +
-      tr('`building_progress` — бөглөх хуудсаар бодсон БОДИТ гүйцэтгэл: ТӨСЛИЙН НИЙТ гүйцэтгэл (`project` — нэгтгэл, Ерөнхий дашбоардын «Гүйцэтгэлийн хувь»), орон сууцны дүнгээр жигнэсэн хувь (`housing` — Дашбоардын «Барилгын явц»), блокийн жигнэсэн дундаж (`overall`), багц бүрийн ') +
+      tr('`building_progress` — бөглөх хуудсаар бодсон БОДИТ гүйцэтгэл: ТӨСЛИЙН НИЙТ гүйцэтгэл (`project` — нэгтгэл, Ерөнхий дашбоардын «Гүйцэтгэлийн хувь»), орон сууцны дүнгээр жигнэсэн хувь (`housing` — Дашбоардын «Орон сууцны блокийн явц»), блокийн жигнэсэн дундаж (`overall`), багц бүрийн ') +
       tr('задаргаа, хамгийн хоцорсон блокууд, гүйцэтгэгч компани. ') +
-      tr('⚠️ Барилгын НИЙТ гүйцэтгэлийг асуувал ЭНЭ ХЭРЭГСЛИЙГ ашигла — `mon:building`-ийн `GUITS_HV`-ийн ') +
-      tr('дундаж нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог). ') +
+      tr('⚠️ Барилгын НИЙТ гүйцэтгэлийг асуувал ЭНЭ ХЭРЭГСЛИЙГ ашигла — `mon:building` давхаргын мөрүүдийг өөрөө ') +
+      tr('дундажлах нь дашбоардын тоотой ТААРАХГҮЙ (өөр аргаар бодогддог). ') +
       tr('`finance_summary` — төслийн нийт төсөвт өртөг, гэрээлсэн дүн, олгосон санхүүжилт, олгосон хувь (дашбоардын ЯГ тэр тоо). Санхүүгийн НИЙТ дүнг асуувал ЭНИЙГ ашигла — Cashflow/IPC-ийн мөрийг өөрөө нийлүүлэхгүй. ') +
       tr('`pkg_plan` — багц бүрийн бодит ба хуваарийн төлөвлөгөөт гүйцэтгэл, хоцрогдол (нэгжээр), анхааруулгын түвшин («Багцын гүйцэтгэл»-ийн ЯГ тэр тоо). «Төлөвлөгөөнөөс хэр хоцорсон бэ» гэвэл ЭНИЙГ ашигла.') +
       tr('`land` — газар чөлөөлөлтийн нийт/чөлөөлсөн/үлдсэн нэгж талбар, хувь (ТООГООР) ба талбай — порталын «Газар чөлөөлөлт»-ийн ЯГ тэр тоо. Газар чөлөөлөлтийн хувийг асуувал ЭНИЙГ ашигла.'); },
@@ -281,6 +281,25 @@ export const asToolData = (text: string): string => {
 const ok =(v: unknown): ToolOutcome => ({ text: JSON.stringify(capStrings(v)), isError: false });
 const fail = (msg: string): ToolOutcome => ({ text: msg, isError: true });
 
+/**
+ * ХУВИЙН МЭДЭЭЛЛИЙН ТАЛБАР (2026-11-23, аудит) — нэгж талбарын давхаргад (`Gazar_choloololt`) иргэний регистр, утас, нэр, хаяг,
+ * нөхөх олговрын дүн хадгалагддаг. AI туслах (ба Telegram бот) эдгээрийг уншихгүй, шүүлт/бүлэглэлд ашиглахгүй — загварын
+ * үйлчилгээ рүү хувийн мэдээлэл гарахгүй. Нийлбэр дүнг порталын тооцоолсон хэрэгслүүд (`land_status`) өгнө.
+ * 2026-11-23 (аудит): чөлөөт бичвэрийн тайлбар (`тайлб`, `тайл_1`, `тайл_2`) — утас, хүний нэр бичигдсэн байдаг тул мөн хаалттай.
+ * 2026-11-23 (давтан аудит): нэгж талбар/барилгын үнэлгээ (`unelgee`, `niit_une`, `mkv_une`), чөлөөт бичвэр (`descriptio`, `sanal`,
+ * `zahiramj`), эзэмшигчтэй холбогдох кадастрын дугаар (`geree`, `decision_l`, `building_n`, `parcel_id`, `geo_id`, `old_parcel`).
+ */
+const PRIVATE_FIELD = /^(person_reg|person_typ|first_name|middle_nam|last_name|ner|ners|name|name_2|name_desc|utas|утас|овог.*|хаяг.*|address_.*|old_addr.*|old_addres|olgovor_.*|property_n|contract_n|decision_n|app_no|тайлб|тайл_\d+|unelgee|niit_une|mkv_une|descriptio|sanal|zahiramj|geree|decision_l|building_n|parcel_id|geo_id|old_parcel)$/i;
+const hasPrivate = (src: AgentSource): boolean => src.url.toLowerCase().includes('/gazar_choloololt/');
+/** Шүүлтийн бичвэрт хувийн талбарын нэр (бүтэн үгээр) дурдагдсан уу */
+const mentionsPrivate = (where: string, fields: Iterable<string>): boolean => {
+  const words = new Set(where.toLowerCase().split(/[^\p{L}\p{N}_]+/u).filter(Boolean));
+  for (const f of fields) if (PRIVATE_FIELD.test(f) && words.has(f.toLowerCase())) return true;
+  return false;
+};
+const isPrivate = (src: AgentSource, f: string): boolean => hasPrivate(src) && PRIVATE_FIELD.test(f.trim());
+const PRIVATE_MSG = (): string => tr('Энэ давхаргын хувийн мэдээллийн талбарыг (регистр, утас, нэр, хаяг, нөхөх олговор, тайлбар) AI туслах уншихгүй.');
+
 const notFound = (id?: string) =>
   fail(tr('`{0}` гэсэн эх сурвалж байхгүй эсвэл танд үзэх эрх алга.', id));
 
@@ -294,7 +313,7 @@ async function runDescribe(input: { id?: string }, scope: AgentScope, signal?: A
     title: src.title,
     kind: src.kind,
     oidField: src.oidField,
-    fields: fields.map((f) => ({
+    fields: fields.filter((f) => !isPrivate(src, f.name)).map((f) => ({
       name: f.name,
       type: f.type?.replace('esriFieldType', ''),
       // Хүний ойлгох утга: манай тайлбар нь ArcGIS-ийн алиасаас ДЭЭГҮҮР
@@ -316,6 +335,12 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
   const where = andWhere(src.baseWhere, nPrefixUnicode(input.where?.trim() || '1=1'));
 
   let known = new Set((await fieldsOf(url, false, signal)).map((f) => f.name));
+  /* Хувийн мэдээлэл: талбарыг нэрлэсэн (outFields · groupBy · stats · orderBy) эсвэл шүүлтэд дурдсан бол татгалзана */
+  if (hasPrivate(src)) {
+    const named = [...(input.stats?.map((s) => s.field) ?? []), ...(input.groupBy ? [input.groupBy] : []), ...(input.outFields ?? []),
+      ...(input.orderBy ?? '').split(',').map((t) => t.trim().split(/\s+/)[0])].filter((f) => f && f !== '*');
+    if (mentionsPrivate(input.where ?? '', known) || named.some((f) => isPrivate(src, f))) return fail(PRIVATE_MSG());
+  }
   // orderBy бас шалгах талбар — «талбар [ASC|DESC], …» тул талбарын нэрсийг л салгана.
   // (Өмнө нь шалгагдахгүй тул хуурмаг нэр ArcGIS-ийн ерөнхий алдаа руу шууд оруулдаг байв.)
   const orderFields = (input.orderBy ?? '')
@@ -399,7 +424,10 @@ async function runQuery(input: QueryIn, scope: AgentScope, signal?: AbortSignal)
     const limit = Math.min(Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 10), MAX_ROWS);
     const rows = await queryFeatures(url, {
       where,
-      outFields: input.outFields?.length ? input.outFields.map((f) => (f === '*' ? f : real(f))) : undefined,
+      /* Хувийн мэдээлэлтэй давхаргад `*` / анхдагч = зөвшөөрөгдсөн талбарууд л */
+      outFields: hasPrivate(src) && (!input.outFields?.length || input.outFields.includes('*'))
+        ? [...known].filter((f) => !PRIVATE_FIELD.test(f))
+        : input.outFields?.length ? input.outFields.map((f) => (f === '*' ? f : real(f))) : undefined,
       orderBy,
       limit,
       signal,

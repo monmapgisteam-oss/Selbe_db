@@ -191,6 +191,11 @@ export type PlanValues = {
    */
   noTotal?: true;
   /**
+   * 2026-11-23: Төслийн нийтийн дамжуулалтын «Хэсэгт эзлэх» (0–100) — зөвхөн «барилга угсралтад тооцохгүй» мөр байхад өгөгдөнө.
+   * ДЭЛГЭЦЭНД (`FT ?? F`) л; нийлбэр, сарын цуваа `F`-ээр.
+   */
+  FT?: number | null;
+  /**
    * 2026-11-17 (хэрэглэгч): «Үе шатны гүйцэтгэлд тооцохгүй» мөр (`uy_shat_tootsoh` = 0) ба түүний үр удам — өөрийн хувь
    * бодогдсоор, эцэг мөрүүдийн (үе шат, Төслийн нийт) нийлбэр ба жинд орохгүй; жин нь үлдсэн ах дүүд хуваагдана.
    */
@@ -739,7 +744,11 @@ export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: numb
     const { GT: _gt, noTotal: _nt, ...rest } = b.values.get(n)!;
     void _gt; void _nt;
     const va = a.values.get(n)!;
-    values.set(n, { ...rest, G: va.G, ...(va.GT !== undefined ? { GT: va.GT } : {}), ...(va.noTotal ? { noTotal: true as const } : {}) });
+    /* 2026-11-23 (аудит): «Хэсэгт эзлэх»-ийн ДЭЛГЭЦИЙН утга Төслийн нийтийн дамжуулалтаас (`FT`) — эс бөгөөс F × G_эцэг ≠ G
+       (6.2.1: 76.44% × 74.10 ≠ 57.88). 2026-11-23 (давтан аудит): `F` нь үе шатын дамжуулалтынх хэвээр — сарын цуваа
+       (`monthlySeries`), 6 түвшний блокийн жин үүгээр нийлдэг; Төслийн нийтийнхээр бол «барилга угсралтад тооцохгүй» мөр жин авч,
+       ах дүүсийн жин дахин хуваагдахгүй (N=100 атал сарын нийлбэр 50) байв. */
+    values.set(n, { ...rest, FT: va.F, G: va.G, ...(va.GT !== undefined ? { GT: va.GT } : {}), ...(va.noTotal ? { noTotal: true as const } : {}) });
   }
   return {
     tree, today, values, get: (code) => { const n = tree.byCode.get(code); return n ? values.get(n) : undefined; },
@@ -906,6 +915,9 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
   const fOf = (n: PlanNode): number | null => {
     if (F.has(n)) return F.get(n)!;
     if (skip.has(n)) { F.set(n, null); return null; }
+    /* 2026-11-23 (аудит): тооцоонд ороогүй (`outside`) мөр жингүй — урьд нь E ÷ E_эцэг гэж 7.09% харагдаж бүлгийн «Хэсэгт эзлэх»
+       нийлбэр 107% болдог байв */
+    if (n.outside && !inputs.excelWeights) { F.set(n, null); return null; }
     if (busy.has(n)) return null;
     busy.add(n);
     const r = n.row!;

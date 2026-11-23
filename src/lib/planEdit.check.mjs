@@ -150,4 +150,33 @@ assert.equal(isEmptyVal('pct', 0), true);
 assert.equal(isEmptyVal('orderNo', 0), false);
 assert.equal(isEmptyVal('orderNo', '  '), true);
 
+/* 2026-11-23 (аудит): дэд мөр нэмэх — санах ойн мод хуучирсан ч хүснэгтийн шинэ Д/Д-тэй давхцахгүй, ижил нэртэй мөр дахин нэмэгдэхгүй */
+{
+  const { addDupWhy } = await import('./planEdit.ts');
+  assert.deepEqual(nextCodes(tree, node(4), 1, ['2.1.8', '2.1.12']), ['2.1.13'], 'хүснэгтэд байгаа (модонд алга) Д/Д-ийн араас');
+  assert.deepEqual(nextCodes(tree, node(4), 1, ['3.1.99']), ['2.1.8'], 'өөр эцгийн код нөлөөлөхгүй');
+  const live = [{ code: '2.1.8', name: ' Шинэ  ажил ' }];
+  assert.match(addDupWhy(tree, node(4), [{ name: 'шинэ ажил', weight: null, pct: null }], live) ?? '', /аль хэдийн нэмэгдсэн/, 'хариу алдагдсан өмнөх «Хадгалах» нэмсэн мөр');
+  assert.equal(addDupWhy(tree, node(4), [{ name: 'Өөр ажил', weight: null, pct: null }], live), null, 'өөр нэр — нэмнэ');
+  const known = tree.nodes.find((x) => x.code.startsWith('2.1.'));
+  const kn = String(known.row?.ajil_uilchilgee ?? 'x');
+  assert.equal(addDupWhy(tree, node(4), [{ name: kn, weight: null, pct: null }], [{ code: known.code, name: kn }]), null, 'модонд байгаа мөр давхцал биш (энгийн дүрэм)');
+  console.log('✅ дэд мөр нэмэх: шинэ Д/Д · давхар нэмэлтгүй');
+}
+
+/* 2026-11-23 (аудит №17): «дэд мөргүй» гэж үзсэн эцэгт энэ хооронд өөр хүн дэд мөр нэмсэн бол 100% жинтэй дахин нэмэхгүй */
+{
+  const { staleGroupWhy } = await import('./planEdit.ts');
+  const leaf = tree.nodes.find((x) => x.children.length === 0 && x.code);
+  assert.ok(leaf, 'дэд мөргүй мөр');
+  assert.match(staleGroupWhy(tree, leaf, [{ code: `${leaf.code}.1` }]) ?? '', /дэд мөр нэмэгдсэн/, 'модонд үл мэдэгдэх шууд дэд мөр → татгалзана');
+  assert.equal(staleGroupWhy(tree, leaf, [{ code: `${leaf.code}.1.2` }]), null, 'ач мөр (шууд биш) — нөлөөгүй');
+  assert.equal(staleGroupWhy(tree, leaf, []), null, 'шинэ мөргүй — нэмнэ');
+  assert.equal(staleGroupWhy(tree, node(4), [{ code: '2.1.99' }]), null, 'аль хэдийн бүлэг (жин 0-ээр нэмэгдэнэ) — татгалзахгүй');
+  /* №18: устгахын өмнө дэд мөрийг хүснэгтээс шинээр асууна */
+  const src = (await import('node:fs')).readFileSync(new URL('./planEdit.ts', import.meta.url), 'utf8');
+  assert.match(src, /export async function deletePlanRow[\s\S]{0,600}LIKE[\s\S]{0,200}if \(kids\.length\) throw/, 'устгахын өмнө дэд мөрийг шинээр шалгана');
+  console.log('✅ дэд мөр нэмэх/устгах: хуучирсан модоор 200% жин · эзэнгүй дэд мөргүй');
+}
+
 console.log('planEdit.check ✓');

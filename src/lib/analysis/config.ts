@@ -587,10 +587,9 @@ export const isResidential = (purpose: unknown) =>
  * Утга нь тухайн үзүүлэлтийн НОРМЫН хязгаар: `social` ≥ 100 %, `engineering`
  * ≤ 100 м.
  */
-export const ASSUME_MET: Record<string, number> = {
-  social: 100,
-  engineering: 100,
-};
+/* 2026-11-23 (хэрэглэгчийн шийдвэр): түр дүгнэлтийг УНТРААВ — нийгмийн ба инженерийн хүртээмжийг бодит өгөгдлөөр бодно.
+   Дахин асаах бол `{ social: 100, engineering: 100 }`. */
+export const ASSUME_MET: Record<string, number> = {};
 
 /**
  * ОНОО ГАРГАХ ХАМГИЙН БАГА ХЭМЖСЭН ЖИН — нийт жингийн хувь (0–1).
