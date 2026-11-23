@@ -721,7 +721,8 @@ console.log('✅ loadPendingBoth — хямд · хоёр төрөл · strict')
   assert.ok(/if \(had != null\) return \{ ok: true, existing: had \};/.test(mp) && mp.indexOf('existing: had') < iW, 'markPlanPartial: байгаа тэмдгийг дарж бичнэ');
   /* (ж) clearPlanPartial(oid, owner): эзэн зөрвөл бичихгүй */
   const cp = part('export async function clearPlanPartial(', 'export const STUCK_PREFIX_SRC');
-  assert.ok(/clearPlanPartial\(oid: number, owner\?: string\)/.test(cp), 'clearPlanPartial: owner параметр алга');
+  /* 2026-11-20 (аудит): эзэн ЗААВАЛ — эзэнгүй дуудлага аль ч бичих эрхтэй хүнд тэмдгийг арилгуулдаг байв */
+  assert.ok(/clearPlanPartial\(oid: number, owner: string\)/.test(cp) && !cp.includes('requireWriter'), 'clearPlanPartial: owner заавал биш');
   assert.ok(cp.indexOf('pb !== owner.trim().toLowerCase()) return false') > 0 && cp.indexOf('pb !== owner.trim().toLowerCase()') < cp.indexOf('applyEdits'), 'clearPlanPartial: эзнийг бичилтээс өмнө шалгахгүй');
   /* (з) decidePlan: буцаалтын өмнө тэмдгийг ДАХИН (түгжээ авсны дараа) шалгана */
   const dp = part('export async function decidePlan(', 'export type ClaimFail');

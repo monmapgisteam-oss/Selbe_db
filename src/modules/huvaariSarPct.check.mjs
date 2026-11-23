@@ -34,8 +34,9 @@ const ok = (m) => { n += 1; console.log('  ✓', m); };
 /* ── 1. НАВЧНЫ ШҮҮЛТ — хамгийн чухал инвариант ─────────────────────── */
 const mi = TSX.indexOf('const monPct = useMemo(');
 assert.ok(mi > 0, 'monPct memo байх ёстой');
-const mEnd = TSX.indexOf('}, [plan, n, sc, obDraft, obPlan]);', mi);
-assert.ok(mEnd > mi, 'monPct-ийн deps нь [plan, n, sc, obDraft, obPlan] байх ёстой');
+/* 2026-11-20 (аудит): «Батлагдсан» харагдацад ноорог орохгүй тул `savedView` ч deps-д */
+const mEnd = TSX.indexOf('}, [plan, n, sc, obDraft, obPlan, savedView]);', mi);
+assert.ok(mEnd > mi, 'monPct-ийн deps нь [plan, n, sc, obDraft, obPlan, savedView] байх ёстой');
 const BODY = TSX.slice(mi, mEnd);
 
 assert.match(

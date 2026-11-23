@@ -784,7 +784,7 @@ async function loadFinDataRaw(): Promise<FinData> {
       planTotal.set(k, (planTotal.get(k) ?? 0) + v);
     });
 
-    const HC = HO_IPC.contractFields;
+    const HC = HO_IPC.contractFields;
     const axis = cfMonthAxis();
     const first = axis[0];
     const last = axis[axis.length - 1];
@@ -1745,7 +1745,7 @@ export function ProjectPlanTable({
                   <td className={`${f.ppFz0} ${f.ppNo}`}>{ddOf.get(n)}</td>
                   <td className={`${f.ppFz1} ${f.ppPkg}`}>{n.blok ?? (r.bagts || '')}</td>
                   {nameCell(n)}
-                  {n.parent === tree.root && !n.outside && typeof r.objectid === 'number' ? (
+                  {!n.outside && !r.registry && (n.parent === tree.root || n.phase !== 'zurag') && typeof r.objectid === 'number' ? (
                     <PhaseWeightCell
                       shown={v?.F ?? null}
                       stored={typeof r.heseg_ezleh_huvi === 'number' ? r.heseg_ezleh_huvi : null}

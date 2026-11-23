@@ -4,7 +4,7 @@
  * ХУВААРИЙН БАТЛАХ УРСГАЛ — гүйцэтгэгч зохионо, батлагч батална.
  */
 
-import { requireSelf, requireWriter } from './writeGuard';
+import { requireSelf } from './writeGuard';
 import { GUITS } from '@/lib/services/env';
 import { AUTH, canonPkg, roleForUser } from './services';
 import { huvaariAclReady, huvaariScope } from './huvaariAcl';
@@ -1511,15 +1511,18 @@ export async function markPlanPartial(args: { oid: number; approver: string; cla
 /**
  * ХАГАС БИЧИЛТИЙН ТЭМДЭГ АРИЛГАХ (2026-10-01) — эх хуудсанд НЭГ Ч мөр бичигдээгүй унасан үед.
  */
-export async function clearPlanPartial(oid: number, owner?: string): Promise<boolean> {
-  try { if (owner != null) requireSelf(owner); else await requireWriter(); } catch { return false; }
+export async function clearPlanPartial(oid: number, owner: string): Promise<boolean> {
+  /* 2026-11-20 (аудит): эзэнгүй дуудлага (`requireWriter` л) аль ч бичих эрхтэй хүнд хагас бичигдсэн тэмдгийг арилгуулдаг байв —
+     зөвхөн тэмдгийн эзэн (өөрөө) арилгана */
+  if (!owner.trim()) return false;
+  try { requireSelf(owner); } catch { return false; }
   const url = await tableUrl();
   if (!url) return false;
   try {
     const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status},${F.reason}`);
     const pb = cur.length ? partialBy(s(cur[0][F.status]), s(cur[0][F.reason])) : null;
     if (pb == null) return false;
-    if (owner != null && pb !== owner.trim().toLowerCase()) return false;
+    if (pb !== owner.trim().toLowerCase()) return false;
     const j = await arcgisPost(`${url}/applyEdits`, {
       updates: JSON.stringify([{ attributes: { [F.oid]: oid, [F.reason]: null } }]),
       rollbackOnFailure: 'true',

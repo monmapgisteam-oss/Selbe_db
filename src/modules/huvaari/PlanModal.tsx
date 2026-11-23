@@ -15,7 +15,7 @@ import { DateField } from './DateField';
 import { HAM_MAX } from './savePrep';
 import { MAX_DAYS } from './types';
 import h from '../huvaari.module.css';
-import { evenPct } from './copyPkg';
+import { evenPct, round100 } from './copyPkg';
 
 /* ══════════════════ POPUP ХУАНЛИ ══════════════════ */
 
@@ -449,8 +449,9 @@ function PlanModalBody({
   const [gp, setGp] = useState<Map<string, number>>(() => {
     const out = new Map<string, number>();
     if (initSpan || !groupCurve || !groupMoney || !(groupMoney > 0)) return out;
-    for (const [k, v] of groupCurve) if (v > 0) out.set(k, Math.round((v / groupMoney) * 10000) / 100);
-    return out;
+    /* 2026-11-20 (аудит): сар бүрийг тус тусад нь тойруулахад нийлбэр 100.01 болж доорх автомат бөглөлт бодит хэлбэрийг тэнцүү
+       хуваалтаар солидог байв (1:1:4 → 33/33/33) — `round100` нийлбэрийг яг 100 болгоно */
+    return round100(new Map([...groupCurve].filter(([, v]) => v > 0)));
   });
   /** Нээгдэх үеийн хувь — өөрчлөгдөөгүй бол хаахад «хадгалаагүй» гэж асуухгүй */
   const [gp0] = useState(gp);
@@ -664,7 +665,8 @@ function PlanModalBody({
         const v = mv.get(k);
         if (v == null) return;
         const tk = keys[Math.min(i, keys.length - 1)];
-        out.set(tk, Math.round(((out.get(tk) ?? 0) + v) * 100) / 100);
+        /* Тойруулахгүй — 0.01-ээр тойруулбал бага/нарийн обьём (0.0052 → 0) тэнцвэрээ алдаж илгээх боломжгүй болдог байв */
+        out.set(tk, (out.get(tk) ?? 0) + v);
       });
       jobs.push({ b, out });
     }

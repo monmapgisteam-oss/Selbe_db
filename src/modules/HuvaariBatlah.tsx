@@ -177,6 +177,10 @@ export function HuvaariBatlah({
     [mine],
   );
 
+  /* 2026-11-20 (аудит): сонгосон багцын сүүлийн илгээлт шийдэгдэж сонголтоос алга болбол шүүлт тэглэнэ — урьд нь «Бүх багц» гэж
+     харагдаж байхад тэр багцаар шүүсээр «илгээлт алга» гэдэг байв */
+  if (grp && st.k === 'ready' && !groupOpts.some((g) => sameBagts(g, grp))) setGrp(ALL);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return mine.filter((x) => {

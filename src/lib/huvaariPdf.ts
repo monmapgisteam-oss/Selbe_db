@@ -355,7 +355,8 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
     });
   };
   const hasDate = (r: HvPdfRow) => !!(r.bar || r.inh || r.ref || (x.hasActual && r.aStart != null));
-  const nowAx = x.now - new Date(x.now).getTimezoneOffset() * 60_000;
+  /* `x.now` аль хэдийн UTC шөнө дундын өдөр (`todayUtc`) — цагийн бүсийг дахин хасвал Улаанбаатарт 8 цагаар хазайдаг байв (2026-11-20) */
+  const nowAx = x.now;
   /* Хугацааны цонх — өнөөдрөөс ирэх N сар (календарийн сар) */
   const today = dayStart(nowAx);
   const win: [number, number] | null = opts.months

@@ -399,6 +399,22 @@ async function readLegacy(url: string, legacyKey: string): Promise<{ at: number;
 
 /* ══════════════ ХУВААРИЙН НООРОГ (`plan:<төрөл>:<багц>` → `n:plan:…`) ══════════════ */
 
+/**
+ * ХУВААРИЙН НООРОГТ БИЧИХ ЭРХ (2026-11-20, аудит): урьд нь зөвхөн «нэвтэрсэн эсэх» шалгадаг тул зөвхөн харах эрхтэй хүн функцийг шууд
+ * дуудаж аль ч багцын ноорогийг дарж бичиж/хоосолж чаддаг байв. Тэр багцын зохиогч эсвэл батлагч байх ёстой (`requirePlanWrite`).
+ * @returns алдааны бичвэр, эрхтэй бол null
+ */
+async function planWriteDenied(key: string): Promise<string | null> {
+  try {
+    const [{ requirePlanWrite }, { PKGS }] = await Promise.all([import('./huvaariAcl'), import('@/modules/sheet/bagts.pkg')]);
+    const pkg = planMeta(key).pkg;
+    requirePlanWrite(PKGS.find((p) => p.key === pkg)?.group ?? null);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
 const planMeta = (key: string): { kind: HDKind; pkg: string } => {
   const p = key.split(':');
   return { kind: p[1] === 'geree' ? 'geree' : 'plan', pkg: p.slice(2).join(':') };
@@ -457,6 +473,8 @@ export async function planSave(
   key: string, d: HDDraft, opt: { ctx: PlanCtx; extra?: ReadonlyMap<number, HDRowKey>; expectAt?: number | null; cur?: ReadonlySet<number> },
 ): Promise<RemoteSaveResult & { at?: number }> {
   if (draftWriteLocked()) return { ok: false, error: LOCKED() };
+  const denied = await planWriteDenied(key);
+  if (denied) return { ok: false, error: denied };
   const dkey = planDkeyOfLegacy(key);
   const meta = planMeta(key);
   const img = imgOf(dkey);
@@ -546,6 +564,7 @@ async function addAll(url: string, dkey: string, pkg: string, kind: NKind, want:
  */
 export async function planWriteSubmitted(key: string, d: HDDraft, ctx: PlanCtx, oid: number): Promise<boolean> {
   if (draftWriteLocked()) return false;
+  if (await planWriteDenied(key)) return false;
   try {
     const url = await layerUrl();
     if (!url) return false;

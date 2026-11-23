@@ -506,6 +506,8 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    *   Устгагдсан аккаунтын өнчин мөрийг цэвэрлэхэд `false`.
    */
   const removeAssign = (user: string, revoke = true): AclWrite => {
+    /* 2026-11-20 (аудит): хасах/цэвэрлэх/дахин илгээхийг ч зөвхөн системийн админ — урьд нь нэвтэрсэн хэн ч бусдын томилгоог устгаж чаддаг байв */
+    try { requireSuper(); } catch (e) { return { ok: false, error: (e as Error).message }; }
     const u = user.trim().toLowerCase();
     if (!u) return { ok: false, error: spec.msg.noUser };
     const base = load().find((a) => a.user === u)?.grants ?? [];
@@ -524,6 +526,7 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    * Аккаунт УСТГАХАД хуваарилалтыг бүрмөсөн арилгах.
    */
   const purge = (user: string): Promise<boolean> => {
+    try { requireSuper(); } catch { return Promise.resolve(false); }
     const u = user.trim().toLowerCase();
     if (!u) return Promise.resolve(true);
     save(load().filter((a) => a.user !== u));
@@ -538,6 +541,7 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    * «ДАХИН ИЛГЭЭХ» · «ДАХИН ОЛГОХ» (2026-10-01, «хэрэглэгч: бүгдийг зас»).
    */
   const retry = (user: string, grant = true): AclWrite => {
+    try { requireSuper(); } catch (e) { return { ok: false, error: (e as Error).message }; }
     const u = user.trim().toLowerCase();
     if (!u) return { ok: false, error: spec.msg.noUser };
     const run = enqueue(u, async () => {

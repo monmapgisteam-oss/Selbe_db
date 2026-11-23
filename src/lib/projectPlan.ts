@@ -859,13 +859,18 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
        Үе шатын мөрд «Хэсэгт эзлэх» (`heseg_ezleh_huvi`) ХАДГАЛСАН бол тэр нь тогтмол жин (төсвөөс хамаарахгүй);
        хадгалаагүй үе шатууд (Барилга угсралт) ҮЛДЭГДЛИЙГ (100% − тогтмолуудын нийлбэр) төсвөөрөө хуваана.
        Нэг ч үе шатад жин хадгалаагүй бол хуучнаараа — бүгд төсвөөр (2026-11-13). ── */
-    if (p === root) {
-      const fixedOf = (c: PlanNode): number | null => wt(c.row?.heseg_ezleh_huvi);
+    /* 2026-11-23 (хэрэглэгч: «ТТБ хувийн жинг гараар засах боломжтой болго») — ижил дүрэм БҮХ түвшинд: мөрд «Хэсэгт эзлэх»
+       хадгалсан бол тогтмол, хадгалаагүй ах дүү үлдэгдлийг төсвөөрөө хуваана. Зургийн бүртгэлийн мөр (`registry`) хамаарахгүй. */
+    /* «Ажлын зураг төсөл» үе шатны доод мөр хамаарахгүй — жин нь «ТЭЗҮ · Ажлын зураг төсөл» хуудасны өөрийн дүрмээр (`manual`) */
+    if (p === root || (!n.row?.registry && n.phase !== 'zurag')) {
+      const fixedOf = (c: PlanNode): number | null => (c.row?.registry && p !== root ? null : wt(c.row?.heseg_ezleh_huvi));
       if (sib.some((c) => fixedOf(c) != null)) {
         const own = fixedOf(n);
-        if (own != null) return own;
         let fixed = 0, free = 0;
         for (const c of sib) { const w = fixedOf(c); if (w != null) fixed += w; else free += W(c) ?? 0; }
+        /* Үе шатнаас доош: бүх ах дүү тогтмол жинтэй бол нийлбэрт нь хувааж 100% болгоно (хасагдсан ах дүү байвал үлдсэн нь нөхнө) */
+        if (own != null && p !== root && fixed > 0 && sib.every((c) => fixedOf(c) != null)) return own / fixed;
+        if (own != null) return own;
         const rest = Math.max(0, 1 - fixed);
         if (free > 0) return rest * ((W(n) ?? 0) / free);
         const nFree = sib.filter((c) => fixedOf(c) == null).length;

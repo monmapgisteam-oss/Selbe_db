@@ -92,6 +92,8 @@ type Sheet = {
   /** Блокийн шошгууд (`Schema.bld`) — багц доторх давхардлыг ялгахад */
   bld: readonly string[];
   nUniq: number;
+  /** Блокгүй (синтетик нэг блок) хуудас — багцын муруйд орно, ТӨСЛИЙН нийт (орон сууцны блокийн) муруйд орохгүй */
+  synthetic?: boolean;
   /** «Б. БАРИЛГА УГСРАЛТЫН АЖИЛ» мөрийн индекс; олдоогүй бол `-1` */
   bi: number;
   /** Сарын задаргааны хувь бодогч (задаргаагүй бол `undefined`) */
@@ -151,7 +153,9 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
     /** Сарын обьёмын задаргаа — мөрийн уншилттай ЗЭРЭГ (доорх 2026-10-04) */
     let obP: Promise<Awaited<ReturnType<typeof loadPkgPlan>>['plan'] | null> = Promise.resolve(null);
     try {
-      sc = await retry(() => loadSchema(pkg));
+      /* 2026-11-20 (аудит): блокгүй багц (суурийн холболт, зам сүвлэх, Багц-11 …) — СИНТЕТИК нэг блокоор (`projectPlanInputs`-тэй
+         ижил); урьд нь блок 0 тул дуугүй алгасагдаж багцын муруй (`byBagts`) гардаггүй байв */
+      sc = await retry(() => loadSchema(pkg, pkg.floors != null ? {} : { synthetic: true }));
       if (!sc.bld.length) return;
       const s = sc;
       obP = emptyP.then((empty) => (empty ? null : loadPkgPlan(pkg.key).then((x) => x.plan))).catch(() => null);
@@ -223,6 +227,7 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
       nBld: sc.bld.length,
       bld: sc.bld,
       nUniq: sc.bld.length,
+      synthetic: pkg.floors == null,
       bi,
       planPct,
       from,
@@ -298,8 +303,7 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
         if (!sh.nUniq) return;
         gArr[i].s += plan * wg;
         gArr[i].n += wg;
-        tAcc[i].s += plan * wt;
-        tAcc[i].n += wt;
+        if (!sh.synthetic) { tAcc[i].s += plan * wt; tAcc[i].n += wt; }
         return;
       }
       pts.push({ label: a.label, pct: plan * 100, vol: sh.volByMonth.get(a.label) ?? null });
@@ -307,8 +311,7 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
       /* Багц/төслийн нэгтгэлд блокийн ТӨСВӨӨР жигнэнэ. */
       gArr[i].s += plan * wg;
       gArr[i].n += wg;
-      tAcc[i].s += plan * wt;
-      tAcc[i].n += wt;
+      if (!sh.synthetic) { tAcc[i].s += plan * wt; tAcc[i].n += wt; }
     });
     if (pts.length) bySheet.set(sh.key, pts);
     gAcc.set(sh.group, gArr);
@@ -326,7 +329,7 @@ export async function loadPlanCurve(): Promise<PlanCurve> {
     const g = gVol.get(sh.group) ?? new Map<string, number>();
     for (const [sar, v] of sh.volByMonth) {
       g.set(sar, (g.get(sar) ?? 0) + v);
-      tVol.set(sar, (tVol.get(sar) ?? 0) + v);
+      if (!sh.synthetic) tVol.set(sar, (tVol.get(sar) ?? 0) + v);
     }
     gVol.set(sh.group, g);
   }
