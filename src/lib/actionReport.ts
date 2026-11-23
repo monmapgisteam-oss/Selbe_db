@@ -13,13 +13,16 @@
  */
 import type { TDocumentDefinitions, Content } from 'pdfmake/interfaces';
 import { queryFeatures, type Row } from '@/lib/query';
-import { HABEA } from '@/lib/services';
+import { HABEA, ACTION_FIELDS, actionStatus } from '@/lib/services';
 import {
   cleanLabel, fmtDate, fmtDateTime, guidKey, loadUzAttachments, attUrl, postFormOrSource, uzPhotoRef, type UzPhotoRef, type UzImg,
 } from '@/lib/uzlegReport';
 import { buildXlsx, type XlsxCell, type XlsxPic, type XlsxSheet } from '@/lib/xlsx';
 
-/** `esritask_status` домэйн — нэр ба өнгө (ажлын урсгалын дараалал) */
+/**
+ * Төлөвийн код — нэр ба өнгө (ажлын урсгалын дараалал). 2026-11-20: төлөв нь «Гүйцэтгэгчийн үйл явц» ба
+ * «Захиалагчийн шийдвэр»-ээс (`actionStatus`) — домэйн нь `esritask_status`-тэй ижил кодтой.
+ */
 export const ACTION_STATUS: { code: number; label: string; color: string }[] = [
   { code: 0, label: 'Хуваарилаагүй', color: '#94a3b8' },
   { code: 1, label: 'Хуваарилсан', color: '#f59e0b' },
@@ -65,8 +68,8 @@ const numN = (v: unknown): number | null => (v == null || v === '' || !Number.is
 
 const FIELDS = [
   'objectid', 'insp_datetime', 'survey', 'site', 'company', 'inspector', 'site_area', 'section', 'question',
-  'severity_code', 'severity', 'esritask_status', 'esritask_assignee', 'esritask_duedate', 'comment',
-  'үл_нийцэл_арилгасан_тайлбар', 'review_decision', 'review_comment', 'review_by', 'photo_count',
+  'severity_code', 'severity', ACTION_FIELDS.contractor, 'esritask_assignee', 'esritask_duedate', 'comment',
+  'үл_нийцэл_арилгасан_тайлбар', ACTION_FIELDS.decision, 'review_comment', 'review_by', 'photo_count',
   'q_code', 'src_globalid',
 ];
 
@@ -82,12 +85,12 @@ export const toActionItem = (r: Row): ActionItem => ({
   question: cleanLabel(str(r.question)),
   sevCode: str(r.severity_code),
   severity: str(r.severity),
-  status: numN(r.esritask_status),
+  status: actionStatus(r),
   assignee: str(r.esritask_assignee),
   due: numN(r.esritask_duedate),
   comment: str(r.comment),
   fixNote: str(r['үл_нийцэл_арилгасан_тайлбар']),
-  decision: numN(r.review_decision),
+  decision: numN(r[ACTION_FIELDS.decision]),
   reviewComment: str(r.review_comment),
   reviewBy: str(r.review_by),
   photos: numN(r.photo_count),

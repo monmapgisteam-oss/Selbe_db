@@ -820,3 +820,24 @@ export const TOGLOOM_TYPES: { value: string; color: string; kind: "slide" | "swi
   { value: 'Дүүжин', color: "#0ea5e9", kind: "swing" },
   { value: 'Том гулсууран тоглоом', color: "#22c55e", kind: "set" },
 ];
+
+/**
+ * ҮЛ НИЙЦЛИЙН ТӨЛӨВИЙН ЭХ — `HSE_Action` (2026-11-20, хэрэглэгч): Workforce-ийн `esritask_status` биш, ХОЁР талбар
+ * (домэйн нь `esritask_status`-тэй ижил кодтой):
+ *   · `contractor_status` «Гүйцэтгэгчийн үйл явц» — 1 Хуваарилсан · 2 Гүйцэтгэж байна · 4 Шалгуулах
+ *   · `review_decision`   «Захиалагчийн шийдвэр»  — 5 Засвар шаардлагатай · 3 Дууссан
+ * Мөрийн төлөв = шийдвэр бөглөгдсөн бол шийдвэр, эс бөгөөс гүйцэтгэгчийн явц. Амьд 2026-11-20: `esritask_status`
+ * 35 мөрөнд хоцорсон байв (гүйцэтгэгч «Шалгуулах» болгосон 29 мөр тэнд «Хуваарилсан» хэвээр).
+ */
+export const ACTION_FIELDS = { contractor: 'contractor_status', decision: 'review_decision' } as const;
+
+/** Мөрийн төлөвийн код — хоёулаа хоосон бол `null` (төлөв тодорхойгүй) */
+export function actionStatus(r: Readonly<Record<string, unknown>>): number | null {
+  const code = (v: unknown): number | null => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+  return code(r[ACTION_FIELDS.decision]) ?? code(r[ACTION_FIELDS.contractor]);
+}
+
+/** Газрын зургийн ижил дүрэм — Arcade (`paint.expr`); текст буцаана, хоёулаа хоосон бол "" (анхдагч өнгө) */
+export const ACTION_STATUS_ARCADE =
+  `var d = $feature.${ACTION_FIELDS.decision}; var c = $feature.${ACTION_FIELDS.contractor};`
+  + ' return IIf(!IsEmpty(d), Text(d), IIf(!IsEmpty(c), Text(c), ""));';

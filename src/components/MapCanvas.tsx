@@ -295,8 +295,46 @@ const line = (hex: string, w = 1.4, dash: NonNullable<LayerDef['dash']> = 'solid
 /** Pin-ий SVG зам (32×44 хайрцаг, үзүүр нь доод төвд) */
 const PIN_PATH = 'M16 0C7.2 0 0 7.1 0 15.9 0 27.8 16 44 16 44S32 27.8 32 15.9C32 7.1 24.8 0 16 0Z';
 
+/**
+ * ГЭРЭЛТЭХ ЦЭГ (`marker: 'glow'`, 2026-11-20 — цамхагт кран, хэрэглэгчийн жишээ зураг): дээрээс доош — цагаан тод
+ * гол · `hex` цэг · хагас тунгалаг цагираг · бүдэг гадна туяа. Давхаргын `effect` (bloom) хөтөч/WebGL-ээс хамаарч
+ * тогтворгүй зурагдаж байсан тул CIM тэмдгээр — бүх хөтөчид ижил.
+ */
+const GLOW_RING = [Array.from({ length: 33 }, (_, i) => {
+  const a = (i / 32) * Math.PI * 2;
+  return [Math.round(5 * Math.cos(a) * 1000) / 1000, Math.round(5 * Math.sin(a) * 1000) / 1000];
+})];
+const glowDot = (hex: string, size: number) => {
+  const disc = (s: number, color: number[]) => ({
+    type: 'CIMVectorMarker', enable: true, size: s, anchorPointUnits: 'Relative',
+    frame: { xmin: -5, ymin: -5, xmax: 5, ymax: 5 }, scaleSymbolsProportionally: true, respectFrame: true,
+    markerGraphics: [{
+      type: 'CIMMarkerGraphic', geometry: { rings: GLOW_RING },
+      symbol: { type: 'CIMPolygonSymbol', symbolLayers: [{ type: 'CIMSolidFill', enable: true, color }] },
+    }],
+  });
+  return {
+    type: 'cim',
+    data: {
+      type: 'CIMSymbolReference',
+      symbol: {
+        type: 'CIMPointSymbol',
+        symbolLayers: [
+          disc(size * 0.75, cim('#f5faff', 1)),
+          disc(size * 1.15, cim(hex, 1)),
+          disc(size * 2.1, cim(hex, 0.6)),
+          disc(size * 3, cim(hex, 0.32)),
+          disc(size * 4, cim(hex, 0.14)),
+        ],
+      },
+    },
+  } as const;
+};
+
 const dot = (hex: string, size = 9, marker: NonNullable<LayerDef['marker']> = 'circle') =>
-  marker === 'pin'
+  marker === 'glow'
+    ? glowDot(hex, size)
+    : marker === 'pin'
     ? ({
         /* `path` нь хайрцгийн урт талаар `size`-д багтна; үзүүрийг цэг дээр буулгахаар хагас өндрөөр өргөнө */
         type: 'simple-marker', style: 'path', path: PIN_PATH, size,
@@ -411,7 +449,7 @@ const scaledDot = (hex: string, marker: NonNullable<LayerDef['marker']> = 'circl
   type: 'simple',
   symbol: {
     type: 'simple-marker',
-    style: marker,
+    style: marker === 'glow' ? 'circle' : marker,
     color: c(hex, 0.95),
     outline: { color: [255, 255, 255, 0.9], width: ow(0.8) },
   },
@@ -492,7 +530,7 @@ const srcSymbol = (d: LayerDef, hue: string) =>
       } as const)
     : d.geom === 'point'
       ? ({
-          type: 'simple-marker', style: d.marker ?? 'circle',
+          type: 'simple-marker', style: d.marker === 'glow' ? 'circle' : d.marker ?? 'circle',
           size: Math.max(4, d.size ?? 4), color: c(hue, 1), outline: { width: 0 },
         } as const)
       : ({
@@ -542,11 +580,12 @@ const zoneTypeRenderer = (d: LayerDef) => ({
  */
 const paintRenderer = (d: LayerDef) => ({
   type: 'unique-value',
-  field: d.paint!.field,
+  ...(d.paint!.expr ? { valueExpression: d.paint!.expr } : { field: d.paint!.field }),
   defaultSymbol: symbolOf(d, d.paint!.defaultHue ?? ZONE_TYPE_EMPTY_HUE),
   defaultLabel: d.paint!.emptyLabel,
   uniqueValueInfos: Object.entries(d.paint!.values).map(([value, hue]) => ({
-    value: paintValue(value),
+    /* Arcade нь текст буцаадаг тул тэр үед түлхүүрийг тоо болгохгүй */
+    value: d.paint!.expr ? value : paintValue(value),
     label: d.paint!.labels?.[value] ?? value,
     symbol: symbolOf(d, hue),
   })),

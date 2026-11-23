@@ -101,7 +101,9 @@ const SOURCES: { view: ViewKey; part?: 'obyem' | 'review'; load: () => Promise<C
      гүйцэтгэлийн хяналт (дээрх обьёмтой НИЙЛБЭР, нэг харагдац). */
   { view: 'guitsetgel', part: 'review', load: async () => countReviewWithStage },
   { view: 'ma', load: async () => countMaPending },
-
+  /* ✅ 2026-11-21: `habeaNotify.countHabeaNotify` — гүйцэтгэгчийн (ХАБЭА — багцаар харах) өөрийн багцын ШИНЭ
+     үл нийцлийн мэдэгдэл (шинээр үүссэн / дараагийн шатанд орсон, тухайн хөтөчид хараагүй). */
+  { view: 'habea', load: () => probe(import('@/lib/habeaNotify'), ['countHabeaNotify']) },
 ];
 
 /**
@@ -148,6 +150,7 @@ export function badgeLabelFor(view: ViewKey, n: number, fmt: (x: number) => stri
     return null;
   }
   if (view === 'ma') return tr('Таны шийдвэр хүлээж буй {0}', fmt(n));
+  if (view === 'habea') return tr('Шинэ үл нийцлийн мэдэгдэл {0}', fmt(n));
   return null;
 }
 
@@ -262,10 +265,16 @@ export function subscribeNavBadges(cb: () => void, quietMs = 400): () => void {
     timer = setTimeout(cb, quietMs);
   };
   const offs: (() => void)[] = [];
-  void Promise.all([import('@/lib/caps'), import('@/lib/chanarAcl')]).then(([caps, chanar]) => {
+  void Promise.all([import('@/lib/caps'), import('@/lib/chanarAcl'), import('@/lib/habeaAcl')]).then(([caps, chanar, habea]) => {
     if (stopped) return;
-    offs.push(caps.subscribeCaps(kick), chanar.subscribeChanarAcl(kick));
+    /* ХАБЭА-гийн багцын хуваарилалт ирэхэд — гүйцэтгэгчийн мэдэгдлийн тоо (2026-11-21) */
+    offs.push(caps.subscribeCaps(kick), chanar.subscribeChanarAcl(kick), habea.subscribeHabeaAcl(kick));
   }, () => { /* модуль ачаалагдсангүй — 3 минутын шинэчлэл хэвээр */ });
+  /* Мэдэгдлийг уншсан (`habeaNotify.writeSeen`) — тэмдэг ДАРУЙ буурна */
+  if (typeof window !== 'undefined') {
+    window.addEventListener('selbe:nav-badges', kick);
+    offs.push(() => window.removeEventListener('selbe:nav-badges', kick));
+  }
   return () => {
     stopped = true;
     clearTimeout(timer);

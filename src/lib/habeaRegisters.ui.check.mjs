@@ -136,6 +136,23 @@ try {
     assert.equal('Багц-2' in beton, false, 'хоосон нүд 0 болж нэмэгдэхгүй; Week хоосон мөр орохгүй (null ≠ 0)');
     assert.equal(d.rows.find((r) => r.metric === 'Ахуйн хог (рейс)'), undefined, '41-р долоо хоног орохгүй');
     assert.equal(d.multiYear, false, 'нэг оны өгөгдөл');
+    /* 2026-11-21: Огноо/сар/өдрийн шүүлтийг дагах — бүх долоо хоног `byWeek`-д, сонгосноор нь нийлүүлнэ */
+    assert.deepEqual(d.byWeek.map((r) => r.wk).sort(), [40, 41], 'Week хоосон мөр byWeek-д орохгүй');
+    const both = R.wasteRowsFor(d.byWeek, [40, 41]);
+    assert.equal(both.length, 2, 'хоёр долоо хоногийн хоёр төрөл');
+    assert.deepEqual(R.wasteRowsFor(d.byWeek, [40]), d.rows, 'анхдагч rows = өмнөх долоо хоног');
+    assert.equal(R.wasteWeeksFor([], []), null, 'шүүлтгүй → анхдагч долоо хоног');
+    assert.deepEqual(R.wasteWeeksFor(['2026-10-05', '2026-10-06', '2026-10-12'], []), [41, 42], 'өдөр → тэр өдрийн долоо хоног');
+    assert.deepEqual(R.wasteWeeksFor([], ['2026-10']), [40, 41, 42, 43, 44], 'сар → Пүрэв гараг нь сардаа орсон долоо хоногууд');
+    assert.deepEqual(R.wasteWeeksFor([], ['2026-09']), [36, 37, 38, 39], '10-01 (Пүрэв) → 40 нь 10-р сард');
+    assert.deepEqual(R.wasteWeeksFor(['2026-09-30', '2026-10-05'], ['2026-10']), [41], 'өдөр ба сар хоёулаа — сардаа багтах өдөр л');
+    /* 2026-11-23 хяналт: өөр онд хүрсэн сонголт — «он ялгагдаагүй» сануулгын эх */
+    assert.deepEqual(R.isoYearsFor(['2026-10-05'], []), [2026]);
+    assert.deepEqual(R.isoYearsFor(['2027-01-01'], []), [2026], '2027-01-01 нь ISO 2026-W53');
+    assert.deepEqual(R.isoYearsFor([], ['2025-10', '2026-10']), [2025, 2026]);
+    assert.deepEqual(R.wasteWeeksFor(['2027-01-01'], []), [53]);
+    assert.equal(R.weekRunLabel([40, 41, 42, 44]), '40–42, 44');
+    assert.equal(R.weekRunLabel([7]), '7');
     /* 2027-ийн 2-р долоо хоногт (өмнөх = 1) 40, 41 нь өнгөрсөн оных → он ялгагдаагүйг ил хэлнэ */
     const d2 = await R.loadHabeaWaste(new Date('2027-01-13T12:00:00+08:00'));
     assert.equal(d2.weekNo, 1);

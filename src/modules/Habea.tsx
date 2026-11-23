@@ -24,6 +24,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useHabeaNotify, NotifyBell, NotifyDialog, type ActNotice } from './HabeaNotify';
+import { popupShown, setPopupShown } from '@/lib/habeaNotify';
+import { ESCALATION } from '@/lib/habeaStage';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
@@ -53,13 +56,18 @@ import { DateRangePill } from '@/components/DateRangePill';
 import { Section, Bars, Donut, Series, Stack, Loading, Empty, friendlyError, type SeriesLineDef } from '@/components/ui';
 import { UzlegExportButton } from './UzlegExport';
 import { useHabeaScope, scopePkgs, canDownloadHabea } from './habeaScope';
-import { loadHabeaRegisters, loadHabeaWaste, loadIsOrgAdmin, loadWasteCanCreate, HABEA_POLL_MS, HABEA_TTL_MS } from '@/lib/habeaRegisters';
+import { loadHabeaRegisters, loadHabeaWaste, loadIsOrgAdmin, loadWasteCanCreate, wasteRowsFor, wasteWeeksFor, weekRunLabel, isoYearsFor, isoWeekYear, HABEA_POLL_MS, HABEA_TTL_MS } from '@/lib/habeaRegisters';
 import { HabeaCardGrips } from './HabeaCardGrips';
 import { AddButton, RegisterAddDialog, WasteAddDialog } from './HabeaEntry';
 import { HseActionPanel, loadActions, actionWhere, actValueLabel, actPickLabel, actPickRows, toggleActSel, NO_ACT_SEL, ACT_DIMS, ACT_DIM_LABEL, type ActSel, type ActDim } from './HabeaAction';
 
-/** «Хог хаягдал» донат — `HABEA.waste.kinds`-д байхгүй төрлийн нөөц өнгө (өгөгдлийн дарааллаар) */
-const WASTE_EXTRA = ['#7c3aed', '#0ea5e9', '#14b8a6', '#f97316', '#a3e635', '#ec4899', '#64748b', '#eab308'];
+/**
+ * «Хог хаягдал» донат — `HABEA.waste.kinds`-д байхгүй төрлийн нөөц өнгө (өгөгдлийн дарааллаар).
+ * 2026-11-20: үндсэн төрлүүдийн өнгөнөөс (шар · цэнхэр · ногоон · саарал · улаан · бор · ягаан #7c6fb0) ЗАЙТАЙ hue —
+ * урьд нь эхний нөөц #7c3aed «Бохир соруулах»-ын ягаантай, хоёр дахь #0ea5e9 «Ахуйн хог»-ийн цэнхэртэй нийлж байв.
+ */
+/* 2026-11-20 (хэрэглэгч: «нүдэнд тээргүй»): бүдэгдүү — далайн ногоон · бүдэг ягаан · чидун шар · тоор · лаванда · сарнай · саарал · хөвд */
+const WASTE_EXTRA = ['#7fa39a', '#b892b4', '#bcb27a', '#d0a088', '#9a8fb3', '#c9a3a3', '#a8a8a8', '#7d9a8a'];
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { num, date, text, pct, cat } from '@/lib/format';
@@ -235,8 +243,12 @@ const normIncident = (r: Row, dom: CodedMaps): Inc => ({
 
 /* ─────────── Цамхагт кран ─────────── */
 
-const CRANE_HUE: Record<string, string> = {
-  'Шинээр нэмэгдсэн': '#14b8a6', 'Одоо байгаа': '#14b8a6', 'Буусан': '#9ca3af',
+/**
+ * «Цамхагт кран — төлөв» донатын өнгө — газрын зургийн цэгтэй ЯГ ИЖИЛ (2026-11-20, хэрэглэгч): `habea:crane` давхаргын
+ * `paint.values`-аас шууд уншина, газрын зургийн өнгө солигдоход чарт өөрөө дагана (тод хөх цэнхэр · буусан саарал).
+ */
+const CRANE_HUE: Record<string, string> = LAYER_BY_ID['habea:crane']?.paint?.values ?? {
+  'Шинээр нэмэгдсэн': '#1E90FF', 'Одоо байгаа': '#1E90FF', 'Буусан': '#9ca3af',
 };
 
 type Crane = {
@@ -446,10 +458,12 @@ const kpiTile = (
   look: KpiLook,
   val: ReactNode, label: string, unit?: string, sub?: string, ratio?: number | null, subWarn = false,
   bigLabel = false,
+  /** Товчилсон шошгын БҮТЭН нэр — hover-т (2026-11-20) */
+  fullLabel?: string,
 ) => (
   <div className={h.kt} style={{ '--t': look.tone } as React.CSSProperties}>
     <div className={h.ktHead}>
-      <div className={`${h.ktLabel} ${bigLabel ? h.ktLabelBig : ""}`}>{label}</div>
+      <div className={`${h.ktLabel} ${bigLabel ? h.ktLabelBig : ""}`} title={fullLabel ?? label}>{label}</div>
     </div>
     <div className={h.ktFoot}>
       <div className={h.ktVal}><b>{val}</b>{unit && <i>{unit}</i>}</div>
@@ -676,7 +690,7 @@ const infoHue = (k: (typeof FOCUS_CHIPS)[number]['key']): string => {
  *   incCompany → ЗӨВХӨН осол
  *   craneState → ЗӨВХӨН кран
  */
-type Dim2 = 'pkg' | 'co' | 'incType' | 'cause' | 'incCompany' | 'craneState'
+type Dim2 = 'pkg' | 'co' | 'incType' | 'cause' | 'incCompany' | 'craneState' | 'wasteKind'
   | 'uzSev' | 'uzShift' | 'uzCompany' | 'uzWeek'
   | 'day' | 'month';
 type SelDim = Exclude<Dim2, 'pkg' | 'co'>;
@@ -690,7 +704,7 @@ const NO_UZ_SEL: Pick<Sel, 'uzSev' | 'uzShift' | 'uzCompany' | 'uzWeek'> = {
 };
 
 const NO_SEL: Sel = {
-  incType: [], cause: [], incCompany: [], craneState: [],
+  incType: [], cause: [], incCompany: [], craneState: [], wasteKind: [],
   ...NO_UZ_SEL,
   day: [], month: [],
 };
@@ -721,6 +735,7 @@ const DIM_LABEL: Record<Dim2, string> = {
   get cause() { return tr('Шалтгаан'); },
   get incCompany() { return tr('Ослын компани'); },
   get craneState() { return tr('Краны төлөв'); },
+  get wasteKind() { return tr('Хог хаягдлын төрөл'); },
   get uzSev() { return tr('Үл нийцлийн зэрэг'); },
   get uzShift() { return tr('Ээлж'); },
   get uzCompany() { return tr('Үзлэгийн компани'); },
@@ -816,40 +831,6 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /** «Багцаар» онооны чартууд өөрийн сонголтоор шүүгддэггүй — хүрээтэй аккаунтад мөрийг нь урьдчилан хязгаарлана */
   const scoreRowsOf = <T extends { pkgK: string }>(rows: readonly T[]): readonly T[] =>
     (habScope ? rows.filter((r) => habScope.includes(r.pkgK)) : rows);
-  const { wasteSlices, wasteMeasured } = useMemo(() => {
-    if (waste.state !== 'ready') return { wasteSlices: [], wasteMeasured: false };
-    let measured = false;
-    const K = HABEA.waste.kinds;
-    const base = (m: string) => m.replace(/\s*\((рейс|kg|кг|m3|м3)\)\s*$/i, '').trim().toLowerCase();
-    const kindOf = (m: string) => K.find((k) => base(k.metric) === base(m));
-    const order = (m: string) => { const k = kindOf(m); return k ? K.indexOf(k) : K.length; };
-    const rows = [...waste.data.rows].sort((a, b) => order(a.metric) - order(b.metric) || a.metric.localeCompare(b.metric));
-    let extra = 0;
-    const slices: { key: string; label: string; value: number; color: string }[] = [];
-    const byKey = new Map<string, { key: string; label: string; value: number; color: string }>();
-    for (const row of rows) {
-      let value = 0;
-      let has = false;
-      for (const [name, v] of Object.entries(row.byPkg)) {
-        if (pkgs.length && !pkgs.includes(habeaPkgKey(name))) continue;
-        measured = true;
-        has = true;
-        value += v;
-      }
-      if (!has) continue;
-      const k = kindOf(row.metric);
-      const key = k ? k.metric : base(row.metric);
-      const hit = byKey.get(key);
-      if (hit) { hit.value += value; continue; }
-      const sl = k
-        ? { key, label: k.label, value, color: k.color }
-        : { key, label: row.metric.trim(), value, color: WASTE_EXTRA[extra++ % WASTE_EXTRA.length] };
-      byKey.set(key, sl);
-      slices.push(sl);
-    }
-    return { wasteSlices: slices, wasteMeasured: measured };
-  }, [waste, pkgs]);
-  const wasteTotal = wasteSlices.reduce((acc, x) => acc + x.value, 0);
   const [cos, setCos] = useState<string[]>([]);
   const [picked, setPicked] = useState<{ id: string; attrs: Record<string, unknown> } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -952,9 +933,109 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     return c ?? d;
   }, [pkgs, cos, pkgOfCo]);
 
+  /**
+   * ХОГ ХАЯГДАЛ — ХӨНДЛӨН ШҮҮЛТИЙГ ДАГАНА (2026-11-21, хэрэглэгч: «дарахаар шүүгдэхгүй байна, динамикаар»).
+   *   · Багц ба КОМПАНИ — `pkgEff` (компани → түүний багц; урьд нь зөвхөн «Багц»-ыг дагадаг байв);
+   *   · Огноо / сар / өдөр (чартаас дарсан ч, Огнооны капсулаас ч) — хүснэгт долоо хоногоор тул тэдгээрийн
+   *     ISO долоо хоногуудаар (`wasteWeeksFor`); шүүлтгүй бол урьдын адил өмнөх бүтэн долоо хоног.
+   * Донатын зүсмэгийг дарахад `wasteKind` сонголт — зүсмэг тодорч, гол хэсэгт сонгосны нийлбэр.
+   */
+  const wasteWeeks = useMemo(() => wasteWeeksFor(sel.day, sel.month), [sel.day, sel.month]);
+  const { wasteSlices, wasteMeasured } = useMemo(() => {
+    if (waste.state !== 'ready') return { wasteSlices: [], wasteMeasured: false };
+    let measured = false;
+    const K = HABEA.waste.kinds;
+    const base = (m: string) => m.replace(/\s*\((рейс|kg|кг|m3|м3)\)\s*$/i, '').trim().toLowerCase();
+    const kindOf = (m: string) => K.find((k) => base(k.metric) === base(m));
+    const order = (m: string) => { const k = kindOf(m); return k ? K.indexOf(k) : K.length; };
+    const src = wasteWeeks ? wasteRowsFor(waste.data.byWeek, wasteWeeks) : waste.data.rows;
+    const rows = [...src].sort((a, b) => order(a.metric) - order(b.metric) || a.metric.localeCompare(b.metric));
+    let extra = 0;
+    const slices: { key: string; label: string; value: number; color: string }[] = [];
+    const byKey = new Map<string, { key: string; label: string; value: number; color: string }>();
+    for (const row of rows) {
+      let value = 0;
+      let has = false;
+      for (const [name, v] of Object.entries(row.byPkg)) {
+        if (pkgEff && !pkgEff.has(habeaPkgKey(name))) continue;
+        measured = true;
+        has = true;
+        value += v;
+      }
+      if (!has) continue;
+      const k = kindOf(row.metric);
+      const key = k ? k.metric : base(row.metric);
+      const hit = byKey.get(key);
+      if (hit) { hit.value += value; continue; }
+      const sl = k
+        ? { key, label: k.label, value, color: k.color }
+        : { key, label: row.metric.trim(), value, color: WASTE_EXTRA[extra++ % WASTE_EXTRA.length] };
+      byKey.set(key, sl);
+      slices.push(sl);
+    }
+    return { wasteSlices: slices, wasteMeasured: measured };
+  }, [waste, pkgEff, wasteWeeks]);
+  const wasteTotal = wasteSlices.reduce((acc, x) => acc + x.value, 0);
+  /** Сонгосон төрлүүдийн нийлбэр — донатын голд «сонгосон / нийт» */
+  const wastePicked = sel.wasteKind.length
+    ? wasteSlices.filter((x) => sel.wasteKind.includes(x.key)).reduce((acc, x) => acc + x.value, 0)
+    : null;
+  /**
+   * Донатад тодруулах сонголт — ОДОО байгаа зүсмэгээр (2026-11-23 хяналт). Огноо/багц солиход сонгосон төрөл алга
+   * болбол бүх зүсмэг бүдгэрч «эвдэрсэн» мэт харагдаж байв; чип ба голын «0 / N» нь сонголт хэвээрийг хэлнэ.
+   */
+  const wasteSelOn = sel.wasteKind.filter((k) => wasteSlices.some((x) => x.key === k));
+  /**
+   * Огнооны сонголт ӨӨР ОНД (ISO) хүрвэл — хүснэгт он талбаргүй тул тэр дугаартай БҮХ оны мөр нийлбэрт орно;
+   * «он ялгагдаагүй» сануулга (анхдагч долоо хоногийн `multiYear`-ээс гадна).
+   */
+  const wasteYearMix = wasteWeeks != null
+    && isoYearsFor(sel.day, sel.month).some((y) => y !== isoWeekYear(prevWeek(new Date(now)).start));
+  /** Картын тайлбарын долоо хоног(ууд) — шүүлтгүй бол өмнөх бүтэн долоо хоног */
+  const wasteWeekText = waste.state === 'ready'
+    ? (wasteWeeks ? (wasteWeeks.length ? weekRunLabel(wasteWeeks) : '—') : num(waste.data.weekNo))
+    : '';
+
   const onPick = useCallback((attrs: Record<string, unknown> | null, layerId: string | null) => {
     setPicked(attrs && layerId?.startsWith('habea:') ? { id: layerId, attrs } : null);
   }, []);
+
+  /**
+   * ГҮЙЦЭТГЭГЧИЙН ҮЛ НИЙЦЛИЙН МЭДЭГДЭЛ (2026-11-21, хэрэглэгч) — «ХАБЭА — багцаар харах»-д багц оноогдсон аккаунтад л
+   * (`habScope` хоосон биш). Хонх нь «Тайлан татах»-ын хажууд; нэвтэрч орсны дараа шинэ мэдэгдэл байвал сешнд НЭГ
+   * удаа цонх гарна (`dlg`: idle → open → done; storage-ийг render-т уншина, effect-д setState хийхгүй).
+   */
+  const notify = useHabeaNotify(user?.username, habScope, tick, now);
+  const { markSeen: markNoticeSeen } = notify;
+  const [notifyDlg, setNotifyDlg] = useState<'idle' | 'open' | 'done'>('idle');
+  if (notifyDlg === 'idle' && notify.ready && notify.newN > 0 && !popupShown(user?.username)) setNotifyDlg('open');
+  useEffect(() => { if (notifyDlg === 'open') setPopupShown(user?.username); }, [notifyDlg, user]);
+  /** Тогтвортой лавлагаа — цонхны effect рендер бүрд дахин ажиллаж фокусыг булаахгүй */
+  const closeNotifyDlg = useCallback(() => setNotifyDlg('done'), []);
+  /** Мэдэгдлээс нээсэн үл нийцэл — дэлгэрэнгүй жагсаалтад задарч, газрын зураг тэр цэг рүү (сонголт солигдвол алга) */
+  const [notifyOid, setNotifyOid] = useState(0);
+  /**
+   * Мэдэгдлийн мөр дарахад: «Үл нийцлийн мэдээлэл» фокус · тэр ШАТ (30 хоногийн цонхгүй — 4-р шат хуучин мөрийг
+   * ч агуулна) · тэр цэг. Огноо/компани/багцын сонголт тэр мөрийг нууж болох тул цэвэрлэнэ (хүрээ хэвээр).
+   */
+  const openStage = useCallback((stage: number) => {
+    setNotifyDlg('done');
+    setInfoOpen(false);
+    setFocus('action');
+    setSel((s) => ({ ...s, ...NO_UZ_SEL, day: [], month: [] }));
+    setCos([]);
+    setPkgs([]);
+    setActSel({ ...NO_ACT_SEL, stage: [ESCALATION[stage].key] });
+    setPicked(null);
+    setNotifyOid(0);
+  }, []);
+  /** Нэг үл нийцэл — тэр шат + тэр цэг, дэлгэрэнгүй жагсаалтад задарна; уншсан болно */
+  const openNotice = useCallback((it: ActNotice) => {
+    markNoticeSeen([it]);
+    openStage(it.stage);
+    setPicked({ id: 'habea:action', attrs: { objectid: it.row.oid } });
+    setNotifyOid(it.row.oid);
+  }, [markNoticeSeen, openStage]);
 
   // Ортофотогийн анхдагч Portal-д харагдац бүрээр тогтоогддог (habea = асаалттай)
 
@@ -1116,6 +1197,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     : 0;
   /** Үл нийцэл (HSE_Action) — зурагт дарвал «Үл нийцлийн мэдээлэл»-ийн БҮХ чарт тэр цэгийн (үзлэгийн) бүх мөрөөр (2026-11-03) */
   const pickActOid = picked?.id === 'habea:action' ? nn(picked.attrs['objectid']) : 0;
+  /** Мэдэгдлээс нээсэн мөр — сонгосон цэг хэвээр байх хооронд л (цэг солих/цуцлахад алга) */
+  const openActOid = notifyOid && notifyOid === pickActOid ? notifyOid : 0;
   const pickUzZ = dual && picked?.id === HABEA_UZLEG_LAYER_ID[DUAL2];
   const pickUzOid = picked && (Object.values(HABEA_UZLEG_LAYER_ID) as string[]).includes(picked.id)
     ? nn(picked.attrs['objectid'])
@@ -1313,7 +1396,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   /**
    * Шүүлт солигдоход зураг тэр объектууд руу нисэнэ (irgediin-hurteemj).
    */
-  const zoomTo: [string, string] | null = uzLayerId && uzWhere
+  const zoomTo: [string, string] | null = actionFocus && openActOid
+    ? ['habea:action', `objectid = ${openActOid}`]
+    : uzLayerId && uzWhere
     ? [uzLayerId, uzWhere]
     : uzLayerId2 && uzWhere2
       ? [uzLayerId2, uzWhere2]
@@ -1518,6 +1603,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     const v = sel[d];
     if (v.length) chips.push({ dim: d, label: DIM_LABEL[d], value: v.join(', '), clear: () => setSel((s) => ({ ...s, [d]: [] })) });
   });
+  if (sel.wasteKind.length) {
+    chips.push({
+      dim: 'wasteKind', label: DIM_LABEL.wasteKind,
+      value: sel.wasteKind.map((k) => wasteSlices.find((x) => x.key === k)?.label ?? HABEA.waste.kinds.find((x) => x.metric === k)?.label ?? k).join(', '),
+      clear: () => setSel((s) => ({ ...s, wasteKind: [] })),
+    });
+  }
   /* Үзлэгийн чартын сонголтууд — зэргийн түлхүүрийг нэрээр нь харуулна */
   (Object.entries(UZ_DIM) as [UzDim, SelDim][]).forEach(([ud, d]) => {
     const v = sel[d];
@@ -1635,9 +1727,10 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       {mixByCo.length
         ? (
           <div className={h.mixList}>
+            {/* 2026-11-20: тайлбарын тэмдэг зурвастай ижил — хүрээ бүтэн өнгө, дүүргэлт `--chart-soft-fill` (2026-11-21: 30%, `Stack soft`) */}
             <div className={h.mixLegend} aria-hidden>
-              <span><i style={{ background: 'var(--c1)' }} />{tr('Монгол')}</span>
-              <span><i style={{ background: 'var(--c2)' }} />{tr('Гадаад')}</span>
+              <span><i style={{ background: 'color-mix(in oklab, var(--c1) calc(var(--chart-soft-fill) * 100%), transparent)', boxShadow: 'inset 0 0 0 1.5px var(--c1)' }} />{tr('Монгол')}</span>
+              <span><i style={{ background: 'color-mix(in oklab, var(--c2) calc(var(--chart-soft-fill) * 100%), transparent)', boxShadow: 'inset 0 0 0 1.5px var(--c2)' }} />{tr('Гадаад')}</span>
             </div>
             {mixByCo.map((x) => (
               <div
@@ -1653,6 +1746,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 <span className={h.mixBar}>
                   <Stack
                     legend={false}
+                    soft
                     items={[
                       { key: `${x.key}-mn`, label: tr("Монгол"), value: x.mongol, color: 'var(--c1)' },
                       { key: `${x.key}-fr`, label: tr("Гадаад"), value: x.gadaad, color: 'var(--c2)' },
@@ -1708,6 +1802,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       className={h.shell}
       data-list={listOpen ? '1' : '0'}
       data-r={rOpen ? '1' : '0'}
+      data-inc={incOpen ? '1' : '0'}
 
       style={panes.styleFor("l", "r", "fin")}
     >
@@ -1728,14 +1823,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {/* ── Эхний ГУРВАН үзүүлэлт нь ТӨСЛИЙН ЭХНЭЭС хуримтлагдсан нийлбэр — бүх бүртгэлээр нийлүүлсэн.
             Хүн хүч, техник: өдрийн тоонуудын нийлбэр тул нэгж нь хүн-өдөр · нэгж-өдөр (`laborKpi`, гүйцэтгэгчийн баганаас);
             цаг: толгойн `Hun_tsag`, шүүлттэй үед гүйцэтгэгчийн хуваарилсан цаг (`ltiShown`). */}
-        {kpiTile(KPI_LOOK.people,
-          laborKpi('ajiltan'),
-          tr('Нийт ажилласан хүн хүч'),
-        )}
-        {kpiTile(KPI_LOOK.hours,
-          laborFailed || incFailed || sel.day.length || sel.month.length || coEff?.length === 0 || ltiShown.hours == null ? '—' : num(ltiShown.hours),
-          tr('Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг'),
-          undefined,
+        {/* 2026-11-20: НЭГЖ — цаг · тохиолдол (хүн хүч, техникт нэгжгүй — хэрэглэгч «хүн-өдөр», «нэгж-өдөр»-ийг хасуулав);
+            урт LTI шошгыг товчилж бүтэн нэр hover-т */}
+        {kpiTile(KPI_LOOK.people, laborKpi('ajiltan'), tr('Нийт ажилласан хүн хүч'))}
+        {((v) => kpiTile(KPI_LOOK.hours,
+          v,
+          tr('Осолгүй ажилласан цаг (LTI)'),
+          v === '—' ? undefined : tr('цаг'),
           [
             ltiShown.undatedLti
               ? tr('Огноогүй хөдөлмөрийн чадвар түр алдсан осол бүртгэгдсэн — тооцох боломжгүй')
@@ -1744,7 +1838,9 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           ].filter(Boolean).join(' · ') || undefined,
           undefined,
           ltiShown.undatedLti,
-        )}
+          false,
+          tr('Хөдөлмөрийн чадвар түр алдсан осолгүй ажилласан цаг'),
+        ))(laborFailed || incFailed || sel.day.length || sel.month.length || coEff?.length === 0 || ltiShown.hours == null ? '—' : num(ltiShown.hours))}
         {kpiTile(KPI_LOOK.tech, laborKpi('tehnik'), tr('Нийт ажилласан техникийн тоо'))}
         {kpiTile(KPI_LOOK.crane,
           craneFailed ? '—' : craneUp === fCrane.length ? num(fCrane.length) : `${num(craneUp)}/${num(fCrane.length)}`,
@@ -1753,7 +1849,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           undefined,
           craneFailed || craneUp === fCrane.length || !fCrane.length ? null : craneUp / fCrane.length,
         )}
-        {kpiTile(KPI_LOOK.inc, incFailed ? '—' : num(fInc.length), tr('Осол, зөрчил'))}
+        {kpiTile(KPI_LOOK.inc, incFailed ? '—' : num(fInc.length), tr('Осол, зөрчил'), incFailed ? undefined : tr('тохиолдол'))}
         {/**
           * ӨМНӨХ БҮТЭН ДОЛОО ХОНОГИЙН ДУНДАЖ ОНОО (2026-09-17, хэрэглэгчийн хүсэлт).
           * Дүрэм, тооцоо: `habeaUzleg.prevWeek` ба `loadWeekScore`.
@@ -1768,7 +1864,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           tr('Захиалагчийн ажлын байрны үзлэг'),
           undefined,
           weekScores.state === 'ready'
-            ? tr('{0}-р долоо хоногийн дундаж оноо', num(weekScores.data.no))
+            ? tr('{0}-р долоо хоног', num(weekScores.data.no))
             : weekScores.state === 'error'
               ? `${tr('Долоо хоногийн дундаж оноо')} — ${tr('татагдсангүй')}`
               : tr('Долоо хоногийн дундаж оноо'),
@@ -1805,24 +1901,24 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         >
           {regs.state === 'loading' && <Loading />}
           {regs.state === 'error' && <Empty label={tr('Татагдсангүй: {0}', friendlyError(regs.error))} onRetry={regs.retry} />}
-          {regs.state === 'ready' && (() => {
-            const max = Math.max(1, ...regs.data.rows.map((r) => r.week ?? 0));
-            return (
-              <div className={h.regs}>
-                <div className={h.regHead}><span /><span>{tr('{0} хоног', num(7))}</span></div>
-                <Bars
-                  max={max}
-                  items={regs.data.rows.map((r) => ({
-                    key: r.key,
-                    label: r.label,
-                    value: r.week,
-                    display: r.week == null ? '—' : num(r.week),
-                    hint: r.week == null ? (r.hint ?? tr('Эх сурвалж холбогдоогүй')) : r.hint,
-                  }))}
-                />
-              </div>
-            );
-          })()}
+          {/* 2026-11-20: баганын оронд ТООН ЖАГСААЛТ — 1, 1, 0 гэх мэт жижиг тоог бүтэн зурвасаар зурахад
+              «биелсэн» мэт уншигдаж байв; тоо нь хэмжээ биш, долоо хоногийн бүртгэлийн тоо */}
+          {regs.state === 'ready' && (
+            <div className={h.regs}>
+              <div className={h.regHead}><span /><span>{tr('{0} хоног', num(7))}</span></div>
+              <ul className={h.regList}>
+                {regs.data.rows.map((r) => {
+                  const hint = r.week == null ? (r.hint ?? tr('Эх сурвалж холбогдоогүй')) : r.hint;
+                  return (
+                    <li key={r.key} title={hint}>
+                      <span>{r.label}</span>
+                      <b className={r.week == null || r.week === 0 ? h.regMuted : undefined}>{r.week == null ? '—' : num(r.week)}</b>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </Section>
         )}
         {/* ── ХОГ ХАЯГДАЛ (2026-10-08) — «Бусад үзүүлэлт»-ийн ДООР, эхний харагдацад. */}
@@ -1831,13 +1927,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           title={tr('Хог хаягдал')}
           note={(
             <>
-              {waste.state === 'ready' && (waste.data.multiYear
+              {waste.state === 'ready' && (waste.data.multiYear || wasteYearMix
                 ? (
                   <span title={tr('Хүснэгтэд он, огноо талбар байхгүй — өмнөх оны ижил дугаартай долоо хоногийн мөр нийлбэрт холилдож болзошгүй.')}>
-                    {tr('{0}-р долоо хоног (он ялгагдаагүй)', num(waste.data.weekNo))}
+                    {tr('{0}-р долоо хоног (он ялгагдаагүй)', wasteWeekText)}
                   </span>
                 )
-                : tr('{0}-р долоо хоног', num(waste.data.weekNo)))}
+                : tr('{0}-р долоо хоног', wasteWeekText))}
               {canEnter && (wasteCan.state !== 'ready' || wasteCan.data.create !== false
                 ? <> <AddButton onClick={() => setEntry('waste')} /></>
                 : isSuperUser || wasteCan.data.admin
@@ -1849,10 +1945,14 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           {waste.state === 'loading' && <Loading />}
           {waste.state === 'error' && <Empty label={tr('Татагдсангүй: {0}', friendlyError(waste.error))} onRetry={waste.retry} />}
           {waste.state === 'ready' && (wasteTotal > 0
-            ? <Donut items={wasteSlices} stack size="md" center={num(wasteTotal)} centerLabel={tr('нийт')} />
+            ? <Donut items={wasteSlices} stack fitLegend soft calm size="md"
+                center={num(wastePicked ?? wasteTotal)} centerLabel={wastePicked == null ? tr('нийт') : `/ ${num(wasteTotal)}`}
+                selected={wasteSelOn} onSelect={(k) => toggleDim('wasteKind', k)} selectHint={tr('Дарж сонгоно — голд сонгосон төрлийн нийлбэр')} />
             : wasteMeasured
-              ? <Empty label={tr('Бүртгэгдсэн {0} — {1}-р долоо хоног', num(0), num(waste.data.weekNo))} />
-              : <Empty label={tr('Бүртгэл алга')} hint={canEnter ? tr('«+ Нэмэх» товчоор энэ долоо хоногийн хог хаягдлыг бүртгэнэ.') : undefined} />)}
+              ? <Empty label={tr('Бүртгэгдсэн {0} — {1}-р долоо хоног', num(0), wasteWeekText)} />
+              : wasteWeeks || pkgEff
+                ? <Empty label={tr('Сонгосон шүүлтэд тохирох бүртгэл алга — дээрх шүүлтийн чипийг (×) арилгаж бүгдийг харна.')} />
+                : <Empty label={tr('Бүртгэл алга')} hint={canEnter ? tr('«+ Нэмэх» товчоор энэ долоо хоногийн хог хаягдлыг бүртгэнэ.') : undefined} />)}
         </Section>
         )}
         {entry === 'reg' && <RegisterAddDialog onClose={() => setEntry(null)} />}
@@ -1866,7 +1966,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         {focus === null && (
         <Section title={tr('Цамхагт кран — төлөв')}>
           {craneByStatus.length
-            ? <Donut items={craneByStatus} stack size="md" center={num(craneStatusBase.length)} centerLabel={tr('кран')}
+            ? <Donut items={craneByStatus} stack fitLegend soft size="md" center={num(craneStatusBase.length)} centerLabel={tr('кран')}
                 selected={sel.craneState} onSelect={(k) => toggleDim('craneState', k)} />
             : noRecords}
         </Section>
@@ -1892,13 +1992,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           tone="primary"
         >
           {incByType.length
-            ? <Donut items={incByType} stack size="md" center={num(incTypeBase.length)} centerLabel={tr('нийт')}
+            ? <Donut items={incByType} stack fitLegend soft size="md" center={num(incTypeBase.length)} centerLabel={tr('нийт')}
                 selected={sel.incType} onSelect={(k) => k !== '__other' && toggleDim('incType', k)} />
             : noRecords}
         </Section>
         <Section title={tr('Шалтгааны төрөл')} note={tr('{0} бүртгэл', num(causeTotal))}>
           {causeSlices.length
-            ? <Donut items={causeSlices} stack size="md" center={num(causeTotal)} centerLabel={tr('нийт')}
+            ? <Donut items={causeSlices} stack fitLegend soft size="md" center={num(causeTotal)} centerLabel={tr('нийт')}
                 selected={sel.cause} onSelect={(k) => toggleDim('cause', k)} />
             : <Empty label={tr('Шалтгаан тэмдэглэгдээгүй')} />}
         </Section>
@@ -1932,7 +2032,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
               <>
                 {rateStep === 'pkg'
                   ? <Bars items={items} selected={pkgs} onSelect={togglePkg} />
-                  : <Series items={markCurMonth(items, curYm)} height={96} line lines={rateLines} />}
+                  : <Series tidyLabels items={markCurMonth(items, curYm)} height={96} line lines={rateLines} />}
                 {r.unmatched > 0 && (
                   <p className={h.photoNote}>
                     {tr('{0} осол хүн-цагийн бүртгэлгүй багц/сард — давтамжид ороогүй', num(r.unmatched))}
@@ -2132,6 +2232,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             </div>
             {/* ҮЗЛЭГИЙН ТАЙЛАН ТАТАХ (2026-10-06) — асуумж · хугацаа · компани сонгоод PDF / Excel. */}
             {canDownloadHabea(canEnter, habScope) && <UzlegExportButton kind={uzlegKind} scope={habScope} />}
+            {/* Гүйцэтгэгчийн үл нийцлийн мэдэгдэл (2026-11-21) — багц оноогдсон аккаунтад л */}
+            {notify.enabled && <NotifyBell n={notify} now={now} onOpen={openNotice} onOpenStage={openStage} />}
           </div>
           {/* ── ШҮҮЛТҮҮР — Огноо · Багц · Компани (2026-11-03: газрын зургийн баруун дээд булангаас энд) ── */}
           <div className={h.fltPills} role="group" aria-label={tr('Шүүлтүүр')}>
@@ -2186,7 +2288,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         )}
 
         {uzlegKind && !dual && <UzlegRight st={uzF} sel={uzSel} onPick={onUzPick} />}
-        {actionFocus && <HseActionPanel part="right" pkgs={pkgs} cos={cos} days={sel.day} months={sel.month} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />}
+        {actionFocus && <HseActionPanel part="right" pkgs={pkgs} cos={cos} days={sel.day} months={sel.month} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} openOid={openActOid} scope={habScope} />}
         {dual && (<>
           <UzSrcHead title={HABEA.uzleg[DUAL2].title} hue={LAYER_BY_ID[HABEA_UZLEG_LAYER_ID[DUAL2]].hue} />
           <UzlegLeft
@@ -2252,7 +2354,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           үед ажилтан/техникийн цуваа, ослын фокуст зураг + компаниар,
           үзлэгийн фокуст гүйцэтгэгч + талбай + сараар. «Осол, зөрчил —
           багцаар» ба «Кран — багцаар» хасагдсан; багцаар шүүх нь дээд талын
-          «Багц» шүүлтүүрт. ── */}
+          «Багц» шүүлтүүрт. 2026-11-21: ослын фокуст энэ зурвас ЗӨВХӨН газрын
+          зургийн доор (`data-inc`, habea.module.css) — зүүн/баруун багана доош үргэлжилнэ. ── */}
       <div className={h.fin} data-cols="2"
         style={panes.styleFor('fin1', 'fin2')}>
         {incOpen && (<>
@@ -2301,7 +2404,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ? (
               <div className={`${h.dayScroll} ${h.dayScrollFill}`} ref={dayScroll}>
                 <div style={{ minWidth: `${Math.max(100, (ajItems.length / SERIES_VISIBLE) * 100)}%` }}>
-                  <Series
+                  <Series tidyLabels
                     items={ajItems}
                     lines={ajLines}
                     height={110}
@@ -2331,7 +2434,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
             ? (
               <div className={`${h.dayScroll} ${h.dayScrollFill}`} ref={techScroll}>
                 <div style={{ minWidth: `${Math.max(100, ((tStep === 'day' ? techDay : techMonth).length / SERIES_VISIBLE) * 100)}%` }}>
-                  <Series
+                  <Series tidyLabels
                     items={tStep === 'day' ? techDay : techMonth}
                     height={110}
                     unit={tStep === 'day' ? tr("нэгж") : tr("нэгж-өдөр")}
@@ -2362,6 +2465,12 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
       )}
       <div className={h.gripCol} style={{ gridArea: 'r', left: -8 }} {...panes.grip('r')} />
       <div className={h.gripRow} style={{ gridArea: 'fin', top: -8 }} {...panes.grip('fin')} />
+      {/* Нэвтрэх үеийн мэдэгдлийн цонх — ФОКУСААС үл хамааран (portal); багана дотор байвал «Осол»/«Үл нийцэл» фокуст
+          `open` болж сешнд тэмдэглэгдээд ХАРАГДАХГҮЙ, дараа нь санаандгүй гарч ирдэг байв (2026-11-23 хяналт) */}
+      {notifyDlg === 'open' && notify.enabled && (
+        <NotifyDialog n={notify} now={now} onOpen={openNotice} onOpenStage={openStage} onClose={closeNotifyDlg}
+          pkgLabel={(habScope ?? []).map((k) => pkgOptions.find((o) => o.key === k)?.label ?? k).join(', ')} />
+      )}
     </div>
   );
 }

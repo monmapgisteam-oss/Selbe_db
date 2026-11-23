@@ -4,7 +4,7 @@ import { BAGTS_AJLUUD, ENT_HOSTED, HAB_KRAN, HABEA_SVC, HET, SELBE_ET, SOURCE_FS
 import { OID, ZONE_FIELD } from './layerDef';
 import type { LayerDef } from './layerDef';
 import { BUILT_STATUS, M, M2, ZONE_CHART_TYPES, ZONE_MAP_TYPES, ZONE_TYPE_EMPTY, zoneType } from './palette';
-import { GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_STATUS_HUES } from './fields';
+import { ACTION_FIELDS, ACTION_STATUS_ARCADE, GAZAR_BUILDING, GAZAR_PARCEL, PARCEL_LEFT, PARCEL_STATUS_HUES } from './fields';
 import { PKG_HUE, PKG_LAYERS } from './pkg';
 
 /* ══════════ ЗӨВХӨН test_data-д БАЙДАГ давхаргууд (2026-08-24) ══════════
@@ -281,15 +281,18 @@ export const LAYERS: LayerDef[] = [
     get title() { return tr('Цамхагт кран'); },
     topic: "monitor",
     geom: "point",
-    hue: "#dc2626",
-    marker: "circle",
-    size: 7,
+    /* 2026-11-20: кран ӨӨРӨӨ аюул биш — улаан нь зөвхөн аюултай бүсэд (`habea:buffer`), газрын зургийн тайлбарт хоёр
+       улаан давхцахгүй. Хэрэглэгч: цэг нь ТОД ХӨХ ЦЭНХЭР (#1E90FF) — хиймэл дагуулын зураг дээр ялгарна; буусан нь саарал */
+    hue: "#1E90FF",
+    /* Хэрэглэгч 2026-11-20: «гэрэлтэж харагдах» (жишээ зураг) — цагаан гол · хөх цэг · хөх туяа (`MapCanvas.glowDot`) */
+    marker: "glow",
+    size: 3.75, // = 5px цэг (ArcGIS симболын хэмжээ pt-ээр: 5 × 0.75), туяа нь ~16px хүртэл — хэрэглэгч 2026-11-20
     noZone: true,
     oid: "objectid",
     paint: {
       field: "tuluv",
-      values: { "Одоо байгаа": "#dc2626", "Шинээр нэмэгдсэн": "#dc2626", "Буусан": "#9ca3af" },
-      defaultHue: "#dc2626",
+      values: { "Одоо байгаа": "#1E90FF", "Шинээр нэмэгдсэн": "#1E90FF", "Буусан": "#9ca3af" },
+      defaultHue: "#1E90FF",
       force: true,
       get emptyLabel() { return tr('Тодорхойгүй'); },
     },
@@ -499,11 +502,13 @@ export const LAYERS: LayerDef[] = [
     topic: "monitor",
     geom: "point",
     hue: "#f59e0b",
-    /* 2026-11-03: pin · төлөвөөр өнгө — «Үл нийцэл — төрлөөр» донаттай ИЖИЛ (`HabeaAction.STATUS`) */
+    /* 2026-11-03: pin · төлөвөөр өнгө — «Үл нийцэл — төрлөөр» донаттай ИЖИЛ (`HabeaAction.STATUS`).
+       2026-11-20: төлөв нь «Захиалагчийн шийдвэр» эсвэл «Гүйцэтгэгчийн үйл явц»-аас (`ACTION_STATUS_ARCADE`) */
     marker: "pin",
     size: 11.25, // = 15px (ArcGIS симболын хэмжээ pt-ээр: 15 × 0.75)
     paint: {
-      field: "esritask_status",
+      field: ACTION_FIELDS.contractor,
+      expr: ACTION_STATUS_ARCADE,
       values: { "0": "#94a3b8", "1": "#f59e0b", "2": "#3b82f6", "4": "#8b5cf6", "5": "#dc2626", "3": "#16a34a" },
       get labels() {
         return {
