@@ -12,7 +12,7 @@
     "deploy:log": "wrangler tail"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.70.0"
+    "@anthropic-ai/sdk": "^1.11.0"
   },
   "devDependencies": {
     "wrangler": "^4.157.0"
