@@ -619,3 +619,13 @@ ul, ol { list-style: none; }
   }
   .chartGlow { filter: none !important; }
 }
+
+/*
+ * iOS ТОМРОЛ (2026-11-20): Safari 16px-ээс жижиг үсэгтэй оролтод фокуслахад хуудсыг автоматаар томруулж,
+ * хэрэглэгч гараар буцааж жижигрүүлэх шаардлагатай болдог. Зөвхөн хүрэлтийн утсан дээр (≤620px, coarse) 16px.
+ */
+@media (max-width: 620px) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea { font-size: 16px; }
+}

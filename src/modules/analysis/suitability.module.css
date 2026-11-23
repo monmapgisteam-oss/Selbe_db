@@ -610,3 +610,13 @@
 .app.app *:has(> .catPanel) > :global(.mapOpacity) { position: absolute; }
 .app.app *:has(> :global(.mapOpacity)) > .catPanel { bottom: auto; height: calc(55% - 18px); }
 .app.app *:has(> .catPanel) > :global(.mapOpacity) { top: calc(55% + 6px); max-height: calc(45% - 18px); }
+
+/* УТАС (≤620px, 2026-11-20): нээгдэх цонх товчны хажууд ~150px болж нарийсдаг байв — зургийн бүтэн өргөнөөр, товчны ДЭЭР (хаах товч нь цонхондоо) */
+@media (max-width: 620px) {
+  .app.app .catPanel,
+  .app.app :global(.mapOpacity) {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}

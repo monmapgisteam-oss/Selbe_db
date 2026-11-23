@@ -1642,5 +1642,45 @@
   .shell[data-detail='1'] { overflow-x: auto; }
 }
 
+/* УТАС (≤620px, 2026-11-20): нээгдэх цонх товчны хажууд ~150px болж нарийсдаг байв — зургийн бүтэн өргөнөөр, товчны ДЭЭР (хаах товч нь цонхондоо) */
+@media (max-width: 620px) {
+  .shell .hero .catPanel,
+  .shell .hero :global(.mapOpacity),
+  .shell .hero [class*='zonePanel'] {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}
 
+/*
+ * ХЭСГИЙН 9 ТОВЧ — НАРИЙН НОУТБУК (≤1700px, 2026-11-20): нэг мөрөнд багтаах гэж нэр нь «Төслий цар…» болж
+ * тасардаг байв (1366px). Хоёр мөрөнд (5 + 4) хуваагдаж нэр бүтэн уншигдана. Утас/таблетын (≤1180px) дүрэм хэвээр.
+ */
+@media (min-width: 1181px) and (max-width: 1700px) {
+  .rail { flex-wrap: wrap; row-gap: 6px; }
+  .railItem { flex: 1 1 calc(20% - 6px); min-width: 0; }
+}
+/* Таблет (≤1180px) — 3 баганаар (3 × 3), нэр бүтэн */
+@media (max-width: 1180px) {
+  .rail { flex-wrap: wrap; row-gap: 6px; }
+  .railItem { flex: 1 1 calc(33.333% - 6px); min-width: 0; }
+}
+/* Утас (≤520px) — 2 баганаар */
+@media (max-width: 520px) {
+  .railItem { flex-basis: calc(50% - 6px); }
+}
 
+/* Картын толгойн тайлбар — нарийн ноутбукт (≤1440px) хажуугийн багана нарийн тул 2 мөрт багтахгүй тасардаг байв → 3 мөр */
+@media (max-width: 1440px) {
+  .panelNote { -webkit-line-clamp: 3; }
+}
+
+/* УТАС (≤520px, 2026-11-20): 2 баганат товчинд нэр ба утга нэг мөрөнд давхардаж байв — нэр дээр, утга доор */
+@media (max-width: 520px) {
+  .railItem { flex-direction: column; align-items: flex-start; gap: 2px; border-radius: var(--r-lg); }
+  .railVal { margin-left: 0; }
+  /* align-items:flex-start үед нэр агуулгынхаа өргөнөөр сунаж хугардаггүй, товчноос гардаг байв */
+  .railTop { align-self: stretch; }
+  .railTitle { white-space: normal !important; display: -webkit-box !important; overflow: hidden !important; }
+}

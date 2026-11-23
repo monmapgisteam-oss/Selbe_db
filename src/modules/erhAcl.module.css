@@ -212,6 +212,7 @@
   max-width: 100%;
   overflow: auto;
   max-height: calc(100vh - 250px);
+  max-height: calc(100dvh - 250px);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   background: var(--surface);

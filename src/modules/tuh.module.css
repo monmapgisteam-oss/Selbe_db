@@ -641,3 +641,20 @@ button.ganttRow:hover, button.ganttRow:focus-visible { background: var(--surface
 }
 .map.map:has(:global(.mapOpacity)) *:has(> :global(.mapCatalog)) { bottom: auto; height: calc(55% - 18px); }
 .map.map:has(:global(.mapCatalog)) :global(.mapOpacity) { top: calc(55% + 6px); max-height: calc(45% - 18px); }
+
+/* УТАС (≤620px, 2026-11-20): нээгдэх цонх товчны хажууд ~150px болж нарийсдаг байв — зургийн бүтэн өргөнөөр, товчны ДЭЭР (хаах товч нь цонхондоо) */
+@media (max-width: 620px) {
+  .map.map *:has(> :global(.mapCatalog)),
+  .map.map :global(.mapOpacity),
+  .map.map [class*='zonePanel'] {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}
+
+/* ТУХ урсгал (≤620px): 3 багана (1fr · 28px · 220–280px) нь утсан дээр зүүн баганыг ~60px болгож шахдаг байв — босоо дараалал */
+@media (max-width: 620px) {
+  .flow { grid-template-columns: minmax(0, 1fr); }
+  .flowArrow { transform: rotate(90deg); min-height: 20px; }
+}
