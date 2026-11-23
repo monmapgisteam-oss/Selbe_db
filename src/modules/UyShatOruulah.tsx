@@ -12,7 +12,9 @@ import { pct } from '@/lib/format';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
 import { queryFeatures } from '@/lib/query';
-import { CASHFLOW_NEW, CF_MONTH } from '@/lib/services';
+import { CASHFLOW_NEW, CF_MONTH, bagtsKey } from '@/lib/services';
+import { buildXlsx, downloadXlsx, type XlsxCell } from '@/lib/xlsx';
+import { loadCommissionDates } from '@/modules/tuh/tuhSchedule';
 import { applyAll } from '@/lib/tableWrite';
 import { invalidate } from '@/lib/dataBus';
 import { schedulePlanSync } from '@/lib/projectPlanSync';
@@ -26,7 +28,7 @@ import { buildTree, computePlan, ubToday, type PlanNode } from '@/lib/projectPla
 import { EMPTY_PENDING, dayOf, displayCodes, dropAdd, rowKey, toStored, toggleDelete, type Names, type Pending } from '@/lib/zuragTosol';
 import {
   PAGES, badText, buildEdits, canAddRow, canDeleteRow, conflicts, editableFields, effectiveRows, fieldLockWhy, pendingCount, rowAdd, rowsOf,
-  isDirectChild, setEdit, splitDrift, textOf, workNameWhy, type FieldDef, type Issue, type PageKey,
+  isDirectChild, setEdit, splitDrift, textOf, workNameWhy, decreeGaps, dateGaps, contractOf, rowWarn, type FieldDef, type Issue, type PageKey,
 } from '@/lib/uyShat';
 import s from './uyShat.module.css';
 
@@ -37,7 +39,7 @@ const NAMES: Names = { oid: CASHFLOW_NEW.oid, cfId: CF_MONTH.id };
 const OUT = [
   CASHFLOW_NEW.oid, F.ddKod, F.parentKod, F.level, F.phase, F.pkg, F.block, F.detail, F.budget, F.wSection,
   F.contractorStart, F.contractorEnd, F.progressPct, CF_MONTH.id,
-  F.orderDate, F.orderNo, F.contractDate, F.handoverDate,
+  F.orderDate, F.orderNo, F.budgetOrder, F.contractDate, F.contractNo, F.contractor, F.handoverDate,
   /* 2026-11-09: ихрийн «Гэрээлсэн дүн» — `tenderSigned` уншина; алга бол Багц-5.3 · 5.4-ийн явц энд засагдаж үндсэн хүснэгт 100-гаар дардаг байв */
   F.amountNote,
 ];
@@ -58,8 +60,8 @@ const TITLE: Record<PageKey, () => string> = {
   ashiglalt: () => tr('Ашиглалтад оруулах'),
 };
 const SUB: Record<PageKey, () => string> = {
-  zahiramj: () => tr('Багц бүрийн захирамжийн огноо, дугаарыг оруулна. «Төсөл төлөвлөгөө биелэлт» ба 6 түвшний хуваарийн «Захирамж» milestone эндээс бөглөгдөнө.'),
-  songon: () => tr('Багц бүрийн сонгон шалгаруулалтын огноо, гэрээ байгуулсан огноо, доод мөрийн явцыг оруулна. Дээд мөрүүдийн явц автоматаар бодогдоно.'),
+  zahiramj: () => tr('Ажил бүрийн нэр, багц, захирамжийн дугаар, огноо, дүнг засна. Шинэ захирамж гарвал бүлгийн доор шинэ мөр нэмнэ — «Төсөл төлөвлөгөө биелэлт»-д шинэ мөр болж орно.'),
+  songon: () => tr('Сонгон шалгаруулалтын мөр бүрийн эхлэх, дуусах огноо, явцыг оруулна. Гэрээний огноо, дугаар, гүйцэтгэгч ТТБ-ийн гэрээний мэдээллээс автоматаар гарна; хугацаа хэтэрсэн, гэрээгүй мөр улаанаар тодорно.'),
   zovshoorolTtb: () => tr('Багцын зөвшөөрлийн мөрийн доор зөвшөөрөл бүрийг мөрөөр нэмж, эхлэх, дуусах огноо, явцыг оруулна. Багцын явц зөвшөөрлүүдээс автоматаар бодогдож «Төсөл төлөвлөгөө биелэлт»-д хадгалагдана.'),
   ashiglalt: () => tr('Багц бүрийн ашиглалтад оруулах огноог оруулна.'),
 };
@@ -71,10 +73,14 @@ const FIELD_LABEL: Record<FieldDef['key'], () => string> = {
   guits_ehleh: () => tr('Эхлэх'),
   guits_duusah: () => tr('Дуусах'),
   guitsetgel_huvi: () => tr('Явц, %'),
+  ajil_uilchilgee: () => tr('Ажлын нэр'),
+  bagts: () => tr('Багц'),
+  ho_dun_zahiramj: () => tr('Захирамжийн дүн'),
 };
 const ISSUE_TEXT: Record<Issue['kind'], () => string> = {
   date: () => tr('огноо буруу (YYYY-MM-DD)'),
   pct: () => tr('явц 0–100 биш'),
+  num: () => tr('дүн буруу (зөвхөн тоо)'),
   order: () => tr('эхлэх огноо дуусахаас хойш'),
   pair: () => tr('эхлэх, дуусах огноог хоёуланг нь оруулна уу'),
   missing: () => tr('мөр олдсонгүй — дахин ачаална уу'),
@@ -118,6 +124,10 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
   const [adding, setAdding] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [nameErr, setNameErr] = useState<string | null>(null);
+  /** «Зөвхөн асуудалтай» — анхааруулгатай эсвэл огноо дутуу мөр (ба тэдгээрийн бүлэг) */
+  const [onlyBad, setOnlyBad] = useState(false);
+  /** Ашиглалт: багц бүрийн Улсын комиссын огноо — «Хуваарь»-ийн «УК» мөрөөс */
+  const km = useAsync(() => (P.buildInfo ? loadCommissionDates() : Promise.resolve(null)), [P.buildInfo]);
 
   const reloading = awaitingReload(pubFrom, rows);
   const locked = busy || reloading;
@@ -125,11 +135,14 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
   const { user } = useAuth();
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
-  const canEdit = useMemo(
+  const canEditCap = useMemo(
     () => hasCap(user?.username, P.cap),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, capN, P.cap],
   );
+  /** «Засах» товч дарсан үед л нүдүүд засагдана (2026-11-23, хэрэглэгч) */
+  const [editing, setEditing] = useState(false);
+  const canEdit = canEditCap && editing;
 
   const tree = useMemo(() => buildTree(effectiveRows(P, base, pend)), [P, base, pend]);
   const res = useMemo(() => computePlan(tree, {}, at), [tree, at]);
@@ -153,14 +166,18 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
   useEffect(() => () => setNavDirty(page, false), [page]);
 
   const all = useMemo(() => rowsOf(P, tree), [P, tree]);
+  const isBad = (n: PlanNode) => !!rowWarn(P, n, res.values.get(n)?.S ?? null) || dateGaps(P, n).length > 0;
+  const badN = P.issues ? all.filter(isBad).length : 0;
   const visible = useMemo(() => {
     const needle = find.trim().toLowerCase();
     const inPage = new Set(all);
-    if (needle) {
+    const bad = onlyBad && P.issues;
+    if (needle || bad) {
       const hit = new Set<PlanNode>();
       for (const n of all) {
         const hay = `${dcode.get(n) ?? ''} ${n.row?.bagts ?? ''} ${n.blok ?? ''} ${nameOf(n)}`.toLowerCase();
-        if (!hay.includes(needle)) continue;
+        if (needle && !hay.includes(needle)) continue;
+        if (bad && !isBad(n)) continue;
         for (let x: PlanNode | null = n; x && x.row && inPage.has(x); x = x.parent) hit.add(x);
       }
       return all.filter((n) => hit.has(n));
@@ -177,7 +194,8 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
     };
     walk(tree.root);
     return out;
-  }, [P.phase, all, tree, dcode, find, shut]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [P, all, tree, dcode, find, shut, onlyBad, res]);
 
   const label = (code: string | null) => {
     const n = code ? tree.byCode.get(code) : undefined;
@@ -296,12 +314,22 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
     const v = textOf(pend, o, f);
     const changed = (pend.edits[rowKey(o)] as Record<string, string> | undefined)?.[f.key] != null;
     const bad = badText(f, v);
+    if (f.key === 'bagts') {
+      return (
+        <select className={`${s.inp} ${s.inpName} ${changed ? s.inpDirty : ''}`} value={v} disabled={locked}
+          aria-label={`${dcode.get(n) ?? ''} ${FIELD_LABEL[f.key]()}`} onChange={(e) => edit(n, f, e.target.value)}>
+          <option value="">{tr('— сонгох —')}</option>
+          {pkgOpts.map((p) => <option key={p} value={p}>{p}</option>)}
+          {v && !pkgOpts.includes(v) && <option value={v}>{v}</option>}
+        </select>
+      );
+    }
     return (
       <input
-        className={`${s.inp} ${f.kind === 'date' ? s.inpDate : f.kind === 'pct' ? s.inpPct : s.inpName} ${changed ? s.inpDirty : ''} ${bad ? s.inpBad : ''}`}
+        className={`${s.inp} ${f.kind === 'date' ? s.inpDate : f.kind === 'pct' || f.kind === 'num' ? s.inpPct : s.inpName} ${changed ? s.inpDirty : ''} ${bad ? s.inpBad : ''}`}
         value={v}
         placeholder={f.kind === 'date' ? 'YYYY-MM-DD' : f.kind === 'pct' ? '0–100' : ''}
-        inputMode={f.kind === 'pct' ? 'decimal' : f.kind === 'date' ? 'numeric' : 'text'}
+        inputMode={f.kind === 'pct' || f.kind === 'num' ? 'decimal' : f.kind === 'date' ? 'numeric' : 'text'}
         readOnly={locked}
         aria-invalid={bad || undefined}
         aria-label={`${dcode.get(n) ?? ''} ${FIELD_LABEL[f.key]()}`}
@@ -311,7 +339,37 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
   };
 
   const cols = P.fields;
+  /** Багцын сонголт — ТТБ-д байгаа багцын нэрс (давхардалгүй, эрэмбэлсэн) */
+  const pkgOpts = [...new Set(base.map((r) => String(r.bagts ?? '').trim()).filter((b) => /^Багц-\d+(\.\d+)*$/.test(b)))]
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const showPct = !!P.phase;
+  const komissOf = (r: Row): number | null => km.data?.dates.get(bagtsKey(r.bagts)) ?? null;
+  const komissText = (r: Row): string => {
+    const d = komissOf(r);
+    return d == null ? '—' : d < at ? tr('{0} (өнгөрсөн)', dayOf(d)) : dayOf(d);
+  };
+  const warnText = (n: PlanNode): string | null => {
+    const g = dateGaps(P, n);
+    return g.length ? tr('Огноо дутуу: {0}', g.map((k) => FIELD_LABEL[k]()).join(', ')) : rowWarn(P, n, res.values.get(n)?.S ?? null);
+  };
+
+  /** Excel — одоо харагдаж буй мөрүүд */
+  const toExcel = () => {
+    const head: XlsxCell[] = [tr('Д/Д'), tr('Багц'), tr('Ажлын нэр'), ...cols.map((f) => FIELD_LABEL[f.key]()),
+      ...(P.buildInfo ? [tr('Барилга дуусах'), tr('Гүйцэтгэл, %'), tr('Улсын комисс')] : []),
+      ...(showPct ? [tr('Явц, %')] : []), tr('Анхааруулга')];
+    const body: XlsxCell[][] = visible.map((n) => {
+      const r = n.row!;
+      const S = res.values.get(n)?.S ?? null;
+      const pv = S == null ? null : Math.round(S * 10) / 10;
+      const kd = komissOf(r);
+      return [dcode.get(n) ?? '', String(r.bagts ?? ''), nameOf(n),
+        ...cols.map((f): XlsxCell => (f.kind === 'date' ? dayOf(r[f.key] as number | null) || '' : f.kind === 'pct' ? pv : (r[f.key] as string | number | null) ?? '')),
+        ...(P.buildInfo ? [dayOf(r.guits_duusah as number | null) || '', pv, kd == null ? '' : dayOf(kd)] : []),
+        ...(showPct ? [pv] : []), warnText(n) ?? ''];
+    });
+    downloadXlsx(`${P.key}-${dayOf(at)}.xlsx`, buildXlsx([{ name: TITLE[page](), rows: [head, ...body], frozen: { rows: 1, cols: 3 }, cols: [8, 12, 48] }]));
+  };
 
   return (
     <div className={s.card}>
@@ -324,8 +382,24 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
           aria-label={tr('Багц, ажлын нэрээр хайх')}
           onChange={(e) => setFind(e.target.value)}
         />
+        {P.issues && (
+          <button type="button" className={onlyBad ? s.save : s.ghost} aria-pressed={onlyBad} onClick={() => setOnlyBad((v) => !v)}>
+            {tr('Зөвхөн асуудалтай ({0})', badN)}
+          </button>
+        )}
+        {P.issues && <button type="button" className={s.ghost} onClick={toExcel}>{tr('Excel')}</button>}
         <span className={s.spacer} />
-        {!canEdit && <span className={s.ro}>{tr('Зөвхөн харах')}</span>}
+        {!canEditCap && <span className={s.ro}>{tr('Зөвхөн харах')}</span>}
+        {canEditCap && (
+          <button type="button" className={editing ? s.ghost : s.save} disabled={locked}
+            onClick={async () => {
+              if (editing && dirty && !(await askConfirm(tr('Хадгалаагүй {0} өөрчлөлт байна. Хаяад засах горимоос гарах уу?', dirty), { danger: true, ok: tr('Хаях') }))) return;
+              if (editing) { setPend(EMPTY_PENDING); setErr(null); setMsg(null); }
+              setEditing((v) => !v);
+            }}>
+            {editing ? tr('Засварыг дуусгах') : tr('Засах')}
+          </button>
+        )}
         <button
           type="button"
           className={s.ghost}
@@ -341,9 +415,11 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
           <thead>
             <tr>
               <th>{tr('Д/Д')}</th>
-              <th>{tr('Багц')}</th>
-              <th>{tr('Ажлын нэр')}</th>
+              {!P.decree && <th>{tr('Багц')}</th>}
+              {!P.decree && <th>{tr('Ажлын нэр')}</th>}
               {cols.map((f) => <th key={f.key} className={f.kind === 'pct' ? s.r : undefined}>{FIELD_LABEL[f.key]()}</th>)}
+              {P.buildInfo && <><th>{tr('Барилга дуусах')}</th><th className={s.r}>{tr('Гүйцэтгэл')}</th><th>{tr('Улсын комисс')}</th></>}
+              {P.contractInfo && <><th>{tr('Гэрээ байгуулсан огноо')}</th><th>{tr('Гэрээний дугаар')}</th><th>{tr('Гүйцэтгэгч')}</th></>}
               {showPct && <th className={s.r}>{tr('Явц')}</th>}
               {canEdit && P.addRows && <th aria-label={tr('Үйлдэл')} />}
             </tr>
@@ -361,7 +437,8 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
               const depth = P.phase ? n.depth : 1;
               return (
                 <Fragment key={k}>
-                  <tr className={`${depth === 1 && P.phase ? s.phaseRow : n.children.length && P.phase ? s.grpRow : s.leafRow} ${isNew ? s.newRow : ''}`}>
+                  <tr className={`${depth === 1 && P.phase ? s.phaseRow : n.children.length && P.phase ? s.grpRow : s.leafRow} ${isNew ? s.newRow : ''} ${(P.decree && decreeGaps(r).length) || dateGaps(P, n).length ? s.gapRow : ''} ${rowWarn(P, n, v.S) ? s.lateRow : ''}`}
+                    title={P.decree && decreeGaps(r).length ? tr('Дутуу: {0}', decreeGaps(r).map((k) => FIELD_LABEL[k]()).join(', ')) : warnText(n) ?? undefined}>
                     <td className={s.code} style={{ paddingLeft: 6 + (depth - 1) * 14 }}>
                       {P.phase && n.children.length > 0 && !find.trim() ? (
                         <button
@@ -374,19 +451,27 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
                       ) : <span className={s.togSp} aria-hidden />}
                       {dcode.get(n)}
                     </td>
-                    <td className={s.pkg}>{[r.bagts, n.blok && n.blok !== r.bagts ? n.blok : null].filter(Boolean).join(' · ')}</td>
-                    <td className={s.nm} title={nameOf(n)}>
-                      {nameOf(n)}
-                      {isNew && <span className={s.badge}>{tr('шинэ')}</span>}
-                    </td>
+                    {!P.decree && <td className={s.pkg}>{[r.bagts, n.blok && n.blok !== r.bagts ? n.blok : null].filter(Boolean).join(' · ')}</td>}
+                    {!P.decree && (
+                      <td className={s.nm} title={nameOf(n)}>
+                        {nameOf(n)}
+                        {isNew && <span className={s.badge}>{tr('шинэ')}</span>}
+                      </td>
+                    )}
                     {cols.map((f) => {
                       /* Оруулсан утгатай нүд түгжигдсэн ч нээлттэй үлдэнэ — алдаатай оруулга харагдахгүй болж хадгалалтыг хааж болохгүй */
                       const ed = fields.includes(f) || (pend.edits[k] as Record<string, string> | undefined)?.[f.key] != null;
                       const raw = r[f.key];
                       const shown = f.kind === 'date' ? (dayOf(raw as number | null) || '—')
-                        : f.kind === 'pct' ? pct(v.S, 1) : (raw == null || raw === '' ? '—' : String(raw));
+                        : f.kind === 'pct' ? pct(v.S, 1) : f.kind === 'num' ? (raw == null ? '—' : Number(raw).toLocaleString('en-US'))
+                        : (raw == null || raw === '' ? '—' : String(raw));
                       return <td key={f.key} className={f.kind === 'pct' ? s.r : undefined} title={ed ? undefined : fieldLockWhy(n, f) ?? undefined}>{ed ? input(n, f) : shown}</td>;
                     })}
+                    {P.buildInfo && <><td>{dayOf(r.guits_duusah as number | null) || '—'}</td><td className={s.r}>{pct(v.S, 1)}</td><td>{komissText(r)}</td></>}
+                    {P.contractInfo && (() => {
+                      const c = contractOf(n);
+                      return <><td>{c?.date != null ? dayOf(c.date) : '—'}</td><td>{c?.no || '—'}</td><td className={s.nm} title={c?.contractor || undefined}>{c?.contractor || '—'}</td></>;
+                    })()}
                     {showPct && <td className={s.r}>{pct(v.S, 1)}</td>}
                     {canEdit && P.addRows && (
                       <td className={s.act}>

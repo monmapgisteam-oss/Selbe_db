@@ -33,6 +33,10 @@ function matText(v: string, norms: ReadonlyMap<string, number | null> | undefine
   }).join('; ');
 }
 
+/** Хураангуйд бүлгийн мөрийн «№» — нэр «Ажил» баганад байгаа тул урт нэрийг давхардуулахгүй, богино кодыг л */
+export const groupNo = (r: { group: boolean; no: string; work: string }): string =>
+  !r.group || (r.no.length <= 6 && r.no.trim() !== r.work.trim()) ? r.no : "";
+
 export function FillRows({
   vis, winFrom, winTo, rowsAll, calc, addedOids, collapsed, toggle, ro, editing, canObyemEdit, pvSub, sc,
   pvPend, pvPreview, setPvPend, pending, byMap, fillMode, ovBase, meKey, volMode, edit, view, backChg, backOk,
@@ -92,7 +96,7 @@ export function FillRows({
                     data-r={i}
                     className={`${r.group ? st.cat : ""}${isNew ? ` ${st.newRow}` : ""}`.trim() || undefined}
                   >
-                    <td className={cls("num fz c-no")} {...ro(RO.no)} title={noTitle ? r.no : RO.no}>{r.no}</td>
+                    <td className={cls("num fz c-no")} {...ro(RO.no)} title={noTitle ? r.no : RO.no}>{compact ? groupNo(r) : r.no}</td>
                     <td
                       className={cls("fz c-ajil")}
                       style={{ paddingLeft: `${r.depth * 14 + 6}px` }}
@@ -435,7 +439,7 @@ export function FillRows({
                     {sc.bld.map((b, bi) => (
                       <td
                         key={`p${b}`}
-                        className={cls("num bld calc")}
+                        className={cls("num bld calc pcol")}
                         style={cw(`p${bi}`, "bld")}
                         {...ro(RO.blockPlan)}
                       >

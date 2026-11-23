@@ -1524,7 +1524,7 @@ export function ProjectPlanTable({
     const timeOwn = noTime(n);
     const sw = (kind: 'tot' | 'ph' | 'mon' | 'time', own: boolean, inh: boolean) => {
       const on = !own && !inh;
-      const name = kind === 'tot' ? tr('Төслийн нийтэд тооцох') : kind === 'ph' ? tr('Барилга угсралтын гүйцэтгэлд тооцох')
+      const name = kind === 'tot' ? tr('Төслийн нийтэд тооцох') : kind === 'ph' ? tr('Дээд мөрийн гүйцэтгэлд тооцох')
         : kind === 'mon' ? tr('Мөнгөний нийлбэрт тооцох') : tr('Хугацааны нийтэд тооцох');
       return (
         <button
@@ -1551,7 +1551,8 @@ export function ProjectPlanTable({
     return (
       <td className={f.ppSt}>
         <span className={f.ppSwPair}>
-          {sw('tot', totOwn, totInh)}{sw('ph', phOwn, phInh)}{sw('mon', monOwn, monAnc)}{sw('time', timeOwn, timeAnc)}
+          {/* 2026-11-23: үе шатны мөр шууд Төслийн нийтэд ордог (тэр нь энэ унтраалгыг тооцдоггүй) — товч нь юу ч өөрчлөхгүй тул нуув */}
+          {sw('tot', totOwn, totInh)}{n.depth === 1 ? <span className={f.ppSwGap} aria-hidden /> : sw('ph', phOwn, phInh)}{sw('mon', monOwn, monAnc)}{sw('time', timeOwn, timeAnc)}
         </span>
       </td>
     );
@@ -1756,7 +1757,7 @@ export function ProjectPlanTable({
         <table className={`${f.tbl} ${f.ppTbl}`}>
           <thead>
             <tr>
-              <th className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Үе шатны гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд')}><span className={f.ppSwPair}><span>{tr('Нийт')}</span><span>{tr('Үе шат')}</span><span>{tr('Мөнгө')}</span><span>{tr('Хугацаа')}</span></span></th>
+              <th className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд')}><span className={f.ppSwPair}><span>{tr('Нийт')}</span><span>{tr('Дээд мөр')}</span><span>{tr('Мөнгө')}</span><span>{tr('Хугацаа')}</span></span></th>
               <th className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
               <th className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
               <th className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>
@@ -1844,7 +1845,7 @@ export function ProjectPlanTable({
         <table className={`${f.tbl} ${f.ppTbl}`}>
           <thead>
             <tr>
-              <th rowSpan={2} className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Үе шатны гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд')}><span className={f.ppSwPair}><span>{tr('Нийт')}</span><span>{tr('Үе шат')}</span><span>{tr('Мөнгө')}</span><span>{tr('Хугацаа')}</span></span></th>
+              <th rowSpan={2} className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд')}><span className={f.ppSwPair}><span>{tr('Нийт')}</span><span>{tr('Дээд мөр')}</span><span>{tr('Мөнгө')}</span><span>{tr('Хугацаа')}</span></span></th>
               <th rowSpan={2} className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
               <th rowSpan={2} className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
               <th rowSpan={2} className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>

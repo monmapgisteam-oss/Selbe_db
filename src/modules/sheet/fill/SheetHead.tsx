@@ -44,14 +44,14 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [], compact = false }
                 {syn && (
                   <>
                     <th className={cls("band")}>{tr('Ажил гүйцэтгэл')}</th>
-                    <th className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл')}</th>
+                    <th className={cls("band pcol")}>{tr('Төлөвлөгөөт гүйцэтгэл')}</th>
                     {!compact && <th colSpan={2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь')}</th>}
                   </>
                 )}
                 {nBld > 0 && !syn && (
                   <>
                     <th colSpan={nBld} className={cls("band")}>{tr('Ажил гүйцэтгэл — обьём / хувь ({0} барилга)', nBld)}</th>
-                    <th colSpan={nBld} className={cls("band")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
+                    <th colSpan={nBld} className={cls("band pcol")}>{tr('Төлөвлөгөөт гүйцэтгэл ({0} барилга)', nBld)}</th>
                     {!compact && <th colSpan={nBld * 2} className={cls("band")}>{tr('Төлөвлөгөөт хуваарь ({0} барилга)', nBld)}</th>}
                   </>
                 )}
@@ -68,7 +68,7 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [], compact = false }
                       <th className={cls("bld synH")} style={cw("a0", "bld")}
                         title={tr('Нүдний том тоо — ХУРИМТЛАГДСАН нийт обьём; жижиг «+N» — энэ удаа нэмж буй обьём. Өмнөх бөглөлтөөс хойш хийсэн обьёмоо бичнэ — нийтэд нэмэгдэж, гүйцэтгэл = нийт ÷ Обьём.')}>
                         {tr('Обьём (нийт · +энэ удаа)')}<i {...grip("a0")} /></th>
-                      <th className={cls("bld synH")} style={cw("p0", "bld")} title={RO.blockPlan}>%<i {...grip("p0")} /></th>
+                      <th className={cls("bld synH pcol")} style={cw("p0", "bld")} title={RO.blockPlan}>%<i {...grip("p0")} /></th>
                       {!compact && <th className={cls("c-date synH")} style={cw("s0", "date")}>{tr('Эхлэх')}<i {...grip("s0")} /></th>}
                       {!compact && <th className={cls("c-date synH")} style={cw("e0", "date")}>{tr('Дуусах')}<i {...grip("e0")} /></th>}
                     </>
@@ -77,7 +77,7 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [], compact = false }
                     <th key={`ba${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
                   ))}
                   {tall && bands.map((g, gi) => (
-                    <th key={`bp${gi}`} colSpan={g.count} className={cls("band2")}>{g.label}</th>
+                    <th key={`bp${gi}`} colSpan={g.count} className={cls("band2 pcol")}>{g.label}</th>
                   ))}
                   {tall && !compact && bands.map((g, gi) => (
                     <th key={`bd${gi}`} colSpan={g.count * 2} className={cls("band2")}>{g.label}</th>
@@ -97,7 +97,7 @@ export function SheetHead({ sc, nBld, bands, grip, extra = [], compact = false }
                     <th key={`a${b}`} rowSpan={compact ? 1 : 2} className={cls("bld")} style={cw(`a${bi}`, "bld")}>{b}<i {...grip(`a${bi}`)} /></th>
                   ))}
                   {sc.bld.map((b, bi) => (
-                    <th key={`p${b}`} rowSpan={compact ? 1 : 2} className={cls("bld")} style={cw(`p${bi}`, "bld")}>{b} {tr('барилга')}<i {...grip(`p${bi}`)} /></th>
+                    <th key={`p${b}`} rowSpan={compact ? 1 : 2} className={cls("bld pcol")} style={cw(`p${bi}`, "bld")}>{b} {tr('барилга')}<i {...grip(`p${bi}`)} /></th>
                   ))}
                   {!compact && sc.bld.map((b) => (
                     <th key={`d${b}`} colSpan={2} className={cls("c-date2")}>{b} {tr('барилга')}</th>

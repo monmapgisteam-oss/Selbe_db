@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { buildTree, computePlan, isAddedWork } from './projectPlan.ts';
 import {
   PAGES, badText, buildEdits, canAddRow, canDeleteRow, conflicts, editableFields, effectiveRows, fieldLockWhy, origText, pendingCount,
-  rowAdd, rowsOf, setEdit, textOf,
+  rowAdd, rowsOf, setEdit, textOf, contractOf, tenderLate,
 } from './uyShat.ts';
 import { EMPTY_PENDING } from './zuragTosol.ts';
 
@@ -35,9 +35,9 @@ const base = [
   row(50, '5', null, { uy_shat: 'Барилга угсралт', name: 'Барилга угсралт', tuvshin: 0 }),
   row(52, '5.2', '5', { name: 'Барилга угсралт ажил', tuvshin: 1, heseg_ezleh_huvi: 0.95 }),
   row(53, '5.2.1', '5.2', { name: 'Орон сууц', tuvshin: 2 }),
-  row(54, '5.2.1.1', '5.2.1', { bagts: 'Багц-1', name: 'Орон сууц', tuvshin: 3, ho_dun_geree: 100, zahiramj_ognoo: d('2025-04-01'), zahiramj_dugaar: 'А/1' }),
+  row(54, '5.2.1.1', '5.2.1', { bagts: 'Багц-1', name: 'Орон сууц', tuvshin: 3, ho_dun_geree: 100, zahiramj_ognoo: d('2025-04-01'), zahiramj_dugaar: 'А/1', cashflow_id: 11 }),
   row(55, '5.2.1.1.1', '5.2.1.1', { bagts: '5/1', name: '9 давхар', tuvshin: 4, ho_dun_geree: 100 }),
-  row(56, '5.2.1.2', '5.2.1', { bagts: 'Багц-2', name: 'Орон сууц', tuvshin: 3, ho_dun_geree: 50 }),
+  row(56, '5.2.1.2', '5.2.1', { bagts: 'Багц-2', name: 'Орон сууц', tuvshin: 3, ho_dun_geree: 50, cashflow_id: 12 }),
 ];
 const tree = buildTree(base);
 const byCode = (c) => tree.byCode.get(c);
@@ -45,18 +45,28 @@ const byCode = (c) => tree.byCode.get(c);
 /* ── 1. Мөр, талбар ── */
 {
   const z = rowsOf(PAGES.zahiramj, tree);
-  assert.deepEqual(z.map((n) => n.row.dd_kod), ['5.2.1.1', '5.2.1.2'], 'Захирамж: багцын барилгын мөр л');
-  assert.deepEqual(editableFields(PAGES.zahiramj, z[0]).map((f) => f.key), ['zahiramj_ognoo', 'zahiramj_dugaar']);
+  /* 2026-11-23: барилга угсралтын мод (бүлгүүд + ажлын мөр), багцын доод мөргүй; ажлын мөрийн бүх талбар засагдана, бүлгийнх үгүй */
+  assert.deepEqual(z.map((n) => n.row.dd_kod), ['5', '5.2', '5.2.1', '5.2.1.1', '5.2.1.2'], 'Захирамж: бүлгүүд ба ажлын мөрүүд');
+  const zi = z.findIndex((n) => n.row.dd_kod === '5.2.1.1');
+  assert.deepEqual(editableFields(PAGES.zahiramj, z[zi]).map((f) => f.key), ['ajil_uilchilgee', 'zahiramj_dugaar', 'zahiramj_ognoo', 'ho_dun_zahiramj'], 'Cashflow мөрийн багц түгжээтэй');
+  assert.deepEqual(editableFields(PAGES.zahiramj, byCode('5.2.1')).map((f) => f.key), [], 'бүлгийн мөр засагдахгүй');
+  assert.equal(canAddRow(PAGES.zahiramj, byCode('5.2.1')), true, 'ажлын мөрүүдийн бүлэгт шинэ захирамжийн мөр нэмнэ');
+  assert.equal(canAddRow(PAGES.zahiramj, byCode('5.2.1.1')), false, 'ажлын мөрийн доор нэмэхгүй');
+  {
+    const a = rowAdd(PAGES.zahiramj, byCode('5.2.1'), tree, 'Шинэ барилга');
+    assert.deepEqual([a.dd_kod, a.etseg_kod, a.bagts, a.heseg_ezleh_huvi, a.ajil_uilchilgee], ['5.2.1.3', '5.2.1', null, null, 'Шинэ барилга'], 'шинэ мөр — жингүй, багцгүй');
+  }
   assert.deepEqual(rowsOf(PAGES.ashiglalt, tree).map((n) => n.row.dd_kod), ['5.2.1.1', '5.2.1.2']);
   assert.deepEqual(editableFields(PAGES.ashiglalt, z[1]).map((f) => f.key), ['ashiglalt_ognoo']);
 
   const s = rowsOf(PAGES.songon, tree);
   assert.deepEqual(s.map((n) => n.row.dd_kod), ['4', '4.1', '4.1.1', '4.2'], 'Сонгон: үе шатын мод');
   assert.deepEqual(editableFields(PAGES.songon, byCode('4')).map((f) => f.key), [], 'үе шатын толгой засагдахгүй');
-  assert.deepEqual(editableFields(PAGES.songon, byCode('4.1')).map((f) => f.key), ['geree_ognoo'], 'блоктой багц: огноо л');
-  assert.deepEqual(editableFields(PAGES.songon, byCode('4.1.1')).map((f) => f.key), ['guitsetgel_huvi'], 'блок: явц л');
-  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-01-01')).map((f) => f.key), ['geree_ognoo', 'guitsetgel_huvi'], 'блокгүй багц, сонгон хараахан болоогүй: бүгд');
-  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-05-02')).map((f) => f.key), ['geree_ognoo'], 'сонгон/гэрээ болсон: явц системээс (100) — оруулсан утга дарагддаг');
+  /* 2026-11-23: гэрээний огноо гараар биш (ТТБ-ийн гэрээнээс); навчинд эхлэх · дуусах · явц */
+  assert.deepEqual(editableFields(PAGES.songon, byCode('4.1')).map((f) => f.key), [], 'бүлгийн мөр засагдахгүй');
+  assert.deepEqual(editableFields(PAGES.songon, byCode('4.1.1')).map((f) => f.key), ['guits_ehleh', 'guits_duusah', 'guitsetgel_huvi'], 'навч: огноо, явц');
+  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-01-01')).map((f) => f.key), ['guits_ehleh', 'guits_duusah', 'guitsetgel_huvi'], 'гэрээгүй навч: бүгд');
+  assert.deepEqual(editableFields(PAGES.songon, byCode('4.2'), d('2025-05-02')).map((f) => f.key), ['guits_ehleh', 'guits_duusah'], 'сонгон/гэрээ болсон: явц системээс (100) — оруулсан утга дарагддаг');
   const pctF = PAGES.songon.fields.find((f) => f.kind === 'pct');
   assert.match(fieldLockWhy(byCode('4.2'), pctF, d('2025-05-02')), /Гэрээ байгуулагдсан/, 'шалтгаан хэлнэ');
   assert.equal(fieldLockWhy(byCode('4.2'), pctF, d('2025-01-01')), null);
@@ -79,7 +89,7 @@ const byCode = (c) => tree.byCode.get(c);
 {
   const P = PAGES.zahiramj;
   const r = base.find((x) => x.objectid === 54);
-  const FD = P.fields[0], FN = P.fields[1];
+  const FD = P.fields.find((f) => f.key === 'zahiramj_ognoo'), FN = P.fields.find((f) => f.key === 'zahiramj_dugaar');
   assert.equal(origText(r, FD), '2025-04-01');
   assert.equal(origText(r, FN), 'А/1');
   let p = setEdit(EMPTY_PENDING, r, FD, '2025-04-15');
@@ -101,12 +111,17 @@ const byCode = (c) => tree.byCode.get(c);
 
   /* Сонгон: явц 0–100, null ≠ 0 */
   const S = PAGES.songon;
-  const FP = S.fields[1];
+  const FP = S.fields.find((f) => f.kind === 'pct');
   const r42 = base.find((x) => x.objectid === 42);
   assert.deepEqual(buildEdits(S, base, setEdit(EMPTY_PENDING, r42, FP, ''), N).updates, [{ objectid: 42, guitsetgel_huvi: null }], '0 → хоосон = null');
   assert.deepEqual(buildEdits(S, base, setEdit(EMPTY_PENDING, r42, FP, '101'), N).issues, [{ code: '4.1.1', kind: 'pct' }]);
   const r43 = base.find((x) => x.objectid === 43);
-  assert.deepEqual(buildEdits(S, base, setEdit(EMPTY_PENDING, r43, S.fields[0], '2025-06-01'), N).updates, [{ objectid: 43, geree_ognoo: d('2025-06-01') }]);
+  const se = setEdit(setEdit(EMPTY_PENDING, r43, S.fields[0], '2025-03-01'), r43, S.fields[1], '2025-04-30');
+  assert.deepEqual(buildEdits(S, base, se, N).updates, [{ objectid: 43, guits_ehleh: d('2025-03-01'), guits_duusah: d('2025-04-30') }], 'эхлэх · дуусах хос');
+  assert.equal(contractOf(byCode('4.2')).date, d('2025-05-01'), 'гэрээний огноо — мөрөөс');
+  assert.equal(contractOf(byCode('4.1.1')), null, 'гэрээгүй');
+  assert.equal(tenderLate({ ...byCode('4.1.1'), row: { ...byCode('4.1.1').row, guits_duusah: d('2025-01-01') } }, 0, d('2025-02-01')), true, 'хугацаа хэтэрсэн, гэрээгүй');
+  assert.equal(tenderLate(byCode('4.1.1'), 0, d('2025-02-01')), false, 'дуусах огноогүй — хэтрээгүй');
 
   /* Зөвшөөрөл: огнооны хос */
   const Z = PAGES.zovshoorolTtb;

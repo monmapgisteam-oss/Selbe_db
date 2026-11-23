@@ -7,11 +7,11 @@
 .wrap {
   height: 100%;
   overflow-y: auto;
-  padding: 20px 24px 40px;
+  padding: 10px 14px 14px;
   background: var(--bg);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .head { flex: none; }
@@ -89,8 +89,9 @@
 }
 
 /* ── Хүснэгт ── */
-.scroll { overflow: auto; max-height: calc(100dvh - 330px); min-height: 240px; }
-.tbl { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 11.5px; }
+.scroll { overflow: auto; flex: 1; min-height: 240px; }
+/* Багана агуулгынхаа өргөнөөр — хоосон зай үүсгэхгүй */
+.tbl { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 11.5px; }
 .tbl th {
   position: sticky;
   top: 0;
@@ -103,12 +104,12 @@
   color: var(--ink-3);
   text-align: left;
   white-space: nowrap;
-  padding: 7px 10px;
+  padding: 5px 8px;
   background: var(--surface);
   border-bottom: 1px solid var(--line-strong);
 }
 .tbl td {
-  padding: 4px 10px;
+  padding: 2px 8px;
   color: var(--ink-2);
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
@@ -273,3 +274,11 @@
 .inpName { width: min(320px, 100%); }
 .addForm td { background: color-mix(in oklab, var(--data) 5%, transparent); }
 .addFormIn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* Захирамжийн мөр дутуу (дугаар · огноо · дүнгийн аль нэг нь алга) */
+.gapRow td { background: color-mix(in oklab, var(--warn) 12%, transparent); }
+.gapRow td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+
+/* Сонгон шалгаруулалт хугацаа хэтэрсэн, гэрээгүй */
+.lateRow td { background: color-mix(in oklab, var(--bad) 10%, transparent); }
+.lateRow td:first-child { box-shadow: inset 3px 0 0 var(--bad); }

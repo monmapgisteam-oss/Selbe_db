@@ -184,6 +184,8 @@ export function ViewRail({
       ? VIEWS.filter((v) => !ALL_MODE_HIDE.includes(v.key))
       : VIEWS.filter((v) => navScope.includes(v.key));
   const inScope = new Set(shown.map((v) => v.key));
+  /** «Нэмэлт ажил батлах» нь «Хуваарь батлах»-ын таб (2026-11-23, `BatlahHub`) — хоёуланг харах эрхтэйд цэсэнд нэг мөр */
+  const mergeAjil = inScope.has('huvaariBatlah') && inScope.has('ajilBatlah');
 
   /* Бүлэг бүрт хүрээнд байгаа харагдацууд; хоосон бүлэг зурагдахгүй. */
   const covered = new Set(NAV_GROUPS.flatMap((g) => g.views));
@@ -191,7 +193,7 @@ export function ViewRail({
     ...NAV_GROUPS.filter((g) => g.id !== 'system').map((g) => ({
       id: g.id as string,
       title: g.title,
-      views: g.views.filter((k) => inScope.has(k)).map((k) => VIEW_BY_KEY[k]),
+      views: g.views.filter((k) => inScope.has(k) && !(mergeAjil && k === 'ajilBatlah')).map((k) => VIEW_BY_KEY[k]),
     })),
     { id: 'other', title: tr('Бусад'), views: shown.filter((v) => !covered.has(v.key)) },
   ].filter((g) => g.views.length > 0);
@@ -205,8 +207,10 @@ export function ViewRail({
   );
   const viewButton = (v: (typeof VIEWS)[number], extraCls = '') => {
     const no = order.get(v.key) ?? 0;
-    const on = v.key === view;
-    const n = badgeOf(v.key);
+    const hub = mergeAjil && v.key === 'huvaariBatlah';
+    const on = v.key === view || (hub && view === 'ajilBatlah');
+    const n = badgeOf(v.key) + (hub ? badgeOf('ajilBatlah') : 0);
+    if (hub) v = { ...v, title: tr('Хуваарь, нэмэлт ажил'), desc: tr('Гүйцэтгэгчээс ирсэн хуваарь, нэмэлт ажлыг батлах') };
     return (
       <button
         key={v.key}

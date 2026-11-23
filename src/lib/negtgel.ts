@@ -544,7 +544,8 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
   // 187 бүрэн уншигдсан ч 182-ын уналт арилахгүй: UI мэдэгдэнэ, нөөц үр дүн кэшлэгдэхгүй.
   const failed: string[] = [tr('Төсөл төлөвлөгөө биелэлт')];
   let src: NegSources | null = null;
-  try {
+  /* 2026-11-23: 187 нь ТТБ-ийн толь болсон (кодын мод) — Excel-ийн бүтцээр дахин бодох нь буруу; сүүлд толилсон утгаар харуулна */
+  if (A.negTreeSource() === 'excel') try {
     src = await A.loadNegSources();
     failed.push(...(src.partial ?? []));
     calcRows = A.computeNegAuto(stored, src);
@@ -554,7 +555,7 @@ async function loadNegtgelFullRaw(): Promise<NegtgelFull> {
     failed.push(...(e instanceof A.NegSourceError ? e.failed : [tr('Системийн эх')]));
   }
   const use = calcRows ?? stored.map((r) => ({
-    ...r, auto: false, how: tr('Нэгтгэл гүйцэтгэл (Excel)'),
+    ...r, auto: false, how: A.negTreeSource() === 'excel' ? tr('Нэгтгэл гүйцэтгэл (Excel)') : tr('Төсөл төлөвлөгөө биелэлт — сүүлд хадгалсан'),
   }));
   const { rows, calc } = negDisplay(use);
   return { rows, calc, live: calcRows != null, sync, failed, tree: A.negTreeSource(), stored, src: calcRows ? src : null, source: 'negtgel' };

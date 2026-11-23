@@ -297,10 +297,15 @@ export const FIN_XL_TOTAL_SKIP: readonly string[] = ['5', '6', '7'];
 /** Excel-ийн мөр 7-ийн ЯГ ТЭР шошго */
 export const FIN_XL_TOTAL_LABEL = () => tr('НИЙТ (Орон сууцны хороолол+ГИШС)');
 
-/** Мөр ерөнхий нийлбэрт орох уу — `bagts_tuvshin1` кодоор */
-export const finXlInTotal = (row: Record<string, unknown>): boolean => (
-  !FIN_XL_TOTAL_SKIP.includes(String(row[FIN_XL_TOTAL_CODE_FIELD] ?? '').trim())
-);
+/**
+ * Мөр ерөнхий нийлбэрт орох уу — 2026-11-23: ТТБ-ийн «Мөнгөний нийлбэрт тооцох» унтраалгаар (`mongo_niit`, мөр өөрөө ба
+ * дээд мөрүүд — `cfClass.cfMoneyMap`). Тэр утга алга (182 биш эх, тест) бол хуучнаар `bagts_tuvshin1` кодоор.
+ */
+export const finXlInTotal = (row: Record<string, unknown>): boolean => {
+  const m = row.mongo_niit;
+  if (m === 0 || m === 1) return m === 1;
+  return !FIN_XL_TOTAL_SKIP.includes(String(row[FIN_XL_TOTAL_CODE_FIELD] ?? '').trim());
+};
 
 /**
  * ХҮСНЭГТЭД ОГТ ХАРАГДАХГҮЙ ХЭСЭГ — «7 БОНДЫН ХҮҮ» (2026-09-10, хэрэглэгчийн

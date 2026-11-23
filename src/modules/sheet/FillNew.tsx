@@ -473,6 +473,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
    * ХУВААРИЙН ДАГУУ ШҮҮХ — «Шинэчлэгдсэн огноо»-нд явж байх ЁСТОЙ ажлууд.
    */
   const [byPlan, setByPlan] = useState(true);
+  /** «Ажил хайх» · «Зөвхөн өөрчилсөн» · «Төлөвлөгөөт» хэсгийг харуулах */
+  const [query, setQuery] = useState("");
+  const [onlyChanged, setOnlyChanged] = useState(false);
+  const [showPlan, setShowPlan] = useState(true);
   const { style: colStyle, grip, resetAll, resized } = useColWidths(`fillnew.${pkg.key}`, FILL_W_FALLBACK);
   /**
    * «БУСАД ТАЛБАР» (2026-10-09, хэрэглэгч: «table fieldудыг бүгдийг шалгаж бүх баганыг ил гарга») —
@@ -937,7 +941,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     [rowsAll, nBld, asOf, pending, pendDate, hasObyem, planPct, sc],
   );
 
+  /** Илгээгээгүй засвартай мөрүүд — `pending`/`pendDate` түлхүүрийн oid */
+  const changedOids = useMemo(() => {
+    const out = new Set<number>();
+    for (const k of [...Object.keys(pending), ...Object.keys(pendDate)]) {
+      const oid = Number(k.split(":")[0]);
+      if (Number.isFinite(oid)) out.add(oid);
+    }
+    return out;
+  }, [pending, pendDate]);
   const { planCount, grpAOpts, grpBOpts, grpBEff, hidden, vis } = useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan,
+    query, onlyOids: onlyChanged && changedOids.size > 0 ? changedOids : null,
     asOf });
   const [ownJump, setOwnJump] = useState<{ row: number; block: string; n: number } | null>(null);
   const jumpReq = view?.jump ?? ownJump;
@@ -992,7 +1006,9 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpN]);
 
-  /** n давхарга харуулна: гүн n−1 дэх бүх бүлгийг хаана. n≥5 = бүрэн дэлгэх. */
+  /** n түвшин харуулна: гүн ≥ n−1 бүлгүүдийг хураана; 0 = бүгдийг дэлгэнэ */
+  const showLevel = (n: number) =>
+    setCollapsed(n <= 0 ? new Set() : new Set(rowsAll.filter((r) => r.group && r.depth >= n - 1).map((r) => r.oid)));
 
   const dirtyCount =
     Object.keys(pending).length +
@@ -1460,8 +1476,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     setBusy(true);
     let yes = false;
     try {
+      /* Илгээхийн өмнөх хураангуй — хэдэн мөр, блок, багцын хувь хэдээс хэд болох */
+      const keys = [...Object.keys(pending), ...Object.keys(pendDate)];
+      const nRows = new Set(keys.map((k) => k.split(':')[0])).size;
+      const nBlk = new Set(keys.map((k) => k.split(':')[1]).filter((x) => x != null && x !== '')).size;
+      const pctLine = pkgPct && Number.isFinite(pkgPct.saved) && Number.isFinite(pkgPct.draft)
+        ? tr('Багцын гүйцэтгэл: {0}% → {1}%', pkgPct.saved.toFixed(2), pkgPct.draft.toFixed(2))
+        : '';
       yes = await askConfirm(
-        tr('{0} өөрчлөлтийг хянагчид илгээх үү?\n\nИлгээсний дараа 7 шатны хяналт дуустал (эсвэл хянагч буцаатал) энэ багцад шинээр бөглөх, засах боломжгүй.', dirtyCount),
+        tr('{0} өөрчлөлтийг хянагчид илгээх үү?', dirtyCount) + '\n\n'
+          + tr('Мөр: {0} · Блок: {1}', nRows, nBlk) + (pctLine ? `\n${pctLine}` : '') + '\n\n'
+          + tr('Илгээсний дараа 7 шатны хяналт дуустал (эсвэл хянагч буцаатал) энэ багцад шинээр бөглөх, засах боломжгүй.'),
         { ok: tr('Илгээх'), title: pkg.label },
       );
     } finally {
@@ -1897,7 +1922,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       pubEpochRef.current += 1;
       setBusy(false);
     }
-  }, [pkg, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, sendReady, canPerf, noEdit, rows, done, reviewStage, hideStage, maBadRows, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
+  }, [pkg, pkgPct, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, sendReady, canPerf, noEdit, rows, done, reviewStage, hideStage, maBadRows, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
     /* 2026-10-04 аудит */
     stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts,
     /* 2026-10-09 */
@@ -2140,6 +2165,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       <div className={st.toolbar}>
         <PkgPctBadge pkgPct={pkgPct} pkg={pkg} otherPct={otherPct} otherPending={otherPending} pkgAll={pkgAll} />
         <span className={st.tbGrow} aria-hidden />
+        <DraftStatus locked={locked} dirtyCount={dirtyCount} noPerf={noPerf} dropDraft={dropDraft} savedAt={savedAt} remoteState={remoteState}
+          restoring={restoringUi} offline={offline} localFail={localFail}
+          canDrop={reviewLock && permPerf && !reviewerOnly && !noEdit} dropAll={unrestricted} />
+        <span className={st.tbBreak} aria-hidden />
         <div className={st.tbTools}>
         {/*
           * БӨГЛӨХ ГОРИМ — хүснэгтийг бүтэн дэлгэц болгоно.
@@ -2179,8 +2208,17 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           grpA={grpA} setGrpA={setGrpA} grpAOpts={grpAOpts} grpBEff={grpBEff} setGrpB={setGrpB} grpBOpts={grpBOpts}
           byPlan={byPlan} setByPlan={setByPlan} today={today} planCount={planCount} resized={resized} resetAll={resetAll}
           fullView={showExtra} setFullView={setFullView}
+          query={query} setQuery={setQuery} onlyChanged={onlyChanged} setOnlyChanged={setOnlyChanged} changedN={changedOids.size}
+          showPlan={showPlan} setShowPlan={setShowPlan}
           restoring={restoringUi}
         />
+        <span className={st.field}>{tr('Түвшин')}</span>
+        <span className={st.layerBtns} role="group" aria-label={tr('Бүлгийн түвшин')} title={tr('Бүлгүүдийг сонгосон түвшин хүртэл хураана. «Бүгд» — бүгдийг дэлгэнэ.')}>
+          {[1, 2, 3].map((n) => (
+            <button key={n} type="button" className={st.layerBtn} onClick={() => showLevel(n)}>{n}</button>
+          ))}
+          <button type="button" className={st.layerBtn} onClick={() => showLevel(0)}>{tr('Бүгд')}</button>
+        </span>
         {unrestricted && (
           <button
             type="button"
@@ -2193,7 +2231,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           </button>
         )}
         </div>
-        <span className={st.tbBreak} aria-hidden />
         {canPerf ? (
           <SubmitControls
             locked={locked} canSubmitNow={canSubmitNow} publish={publishBtn} busy={busy || restoringUi || !!frameTrunc} noEdit={noEdit}
@@ -2214,10 +2251,6 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
         />
 
         {busy && <span className={st.muted}>{tr('ажиллаж байна…')}</span>}
-        <span className={st.tbGrow} aria-hidden />
-        <DraftStatus locked={locked} dirtyCount={dirtyCount} noPerf={noPerf} dropDraft={dropDraft} savedAt={savedAt} remoteState={remoteState}
-          restoring={restoringUi} offline={offline} localFail={localFail}
-          canDrop={reviewLock && permPerf && !reviewerOnly && !noEdit} dropAll={unrestricted} />
       </div>
       {pastePrev && (
         <div className={st.pasteBar} role="status">
@@ -2345,7 +2378,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
           <div className={st.tableWrap}>
           <div ref={colHlRef} className={st.colHl} aria-hidden="true" />
           <table
-            className={cls("xl b32")}
+            className={cls(showPlan ? "xl b32" : "xl b32 noPlan")}
             style={colStyle}
             onMouseOver={moveColHl}
             onMouseLeave={hideColHl}

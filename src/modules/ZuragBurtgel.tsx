@@ -202,7 +202,10 @@ function Body({ rows, canEdit, scope }: { rows: ZRow[]; canEdit: boolean; scope?
 
   /** Бүртгэл өөрчлөгдсөний дараа «Төсөл төлөвлөгөө биелэлт»-ийн хүснэгтийг тааруулна; бүтэлгүйтвэл мэдэгдэлд нэмнэ */
   const toPlan = async (ok: string): Promise<string> => {
-    try { await syncZuragPlan(); return ok; } catch (e) { return `${ok} · ${tr('«Төсөл төлөвлөгөө биелэлт»-д бичигдсэнгүй: {0}', userError(e))}`; }
+    try {
+      const r = await syncZuragPlan();
+      return r.held ? `${ok} · ${tr('Бүртгэлээс хасагдсан {0} баримтын мөр гэрээ, төлбөрийн мэдээлэлтэй тул «Төсөл төлөвлөгөө биелэлт»-д үлдээв', r.held)}` : ok;
+    } catch (e) { return `${ok} · ${tr('«Төсөл төлөвлөгөө биелэлт»-д бичигдсэнгүй: {0}', userError(e))}`; }
   };
 
   const run = async (f: () => Promise<string | null>) => {

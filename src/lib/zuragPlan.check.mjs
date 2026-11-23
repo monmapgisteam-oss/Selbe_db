@@ -154,7 +154,7 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
 }
 /* ── Хүснэгтэд бичих: хуучныг устгаж шинийг нэмнэ; дараа нь зөвхөн зөрснийг засна ── */
 {
-  assert.deepEqual(registryPlanEdits(rows, []), { adds: [], updates: [], deletes: [] }, 'бүртгэл хоосон — юу ч устгахгүй');
+  assert.deepEqual(registryPlanEdits(rows, []), { adds: [], updates: [], deletes: [], held: [] }, 'бүртгэл хоосон — юу ч устгахгүй');
   const e = registryPlanEdits(rows, docs);
   /* 2026-11-19: огноо бүртгэлээс бичигддэг болсон тул огноотой 2.1, 2.2 «гадны» мөр биш — устгахгүй, байранд нь засна
      (хуучин огноо хоосолно); 2.1.1 (жин, хувь, багц л) — засна */
@@ -171,7 +171,7 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   let oid = 100;
   const stored = [...rows.filter((r) => !e.deletes.includes(r.objectid)).map((r) => { const u = e.updates.find((x) => x.objectid === r.objectid); return u ? { ...r, ...u } : r; }),
     ...e.adds.map((x) => ({ ...x, objectid: oid++, etseg_kod: x.dd_kod.replace(/\.\d+$/, '') }))];
-  assert.deepEqual(registryPlanEdits(stored, docs), { adds: [], updates: [], deletes: [] }, 'таарсан — засваргүй');
+  assert.deepEqual(registryPlanEdits(stored, docs), { adds: [], updates: [], deletes: [], held: [] }, 'таарсан — засваргүй');
   const e2 = registryPlanEdits(stored, docs.map((d) => (d.oid === 3 ? { ...d, tolov: 'magadlal' } : d)));
   /* 2026-11-18: баримтын төлөв өөрчлөгдөхөд түүний мөр ба дээд бүлгүүдийн ДУНДАЖ хамт шинэчлэгдэнэ (бүлгийн хувийг
      хоослохгүй — гүйцэтгэл хадгалагчтай ээлжлэн дардаг байсныг зогсоов) */
@@ -180,10 +180,20 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
     { objectid: idOf('2.2'), guitsetgel_huvi: 86.666667 },
     { objectid: idOf('2.2.1'), guitsetgel_huvi: 90 },
     { objectid: idOf('2.2.1.2'), guitsetgel_huvi: 80 },
-  ], deletes: [] });
+  ], deletes: [], held: [] });
   assert.equal(stored.find((r) => r.dd_kod === '2.2.1').guitsetgel_huvi, 50, 'бүлгийн мөрд дундаж хадгалагдана: (100 + 0) ÷ 2');
   const e3 = registryPlanEdits(stored, docs.filter((d) => d.oid !== 4));
   assert.deepEqual(e3.deletes.sort(), [stored.find((r) => r.dd_kod === '2.2.2').objectid, stored.find((r) => r.dd_kod === '2.2.2.1').objectid].sort());
+  /* 2026-11-23: бүртгэлээс хасагдсан баримтын мөр гэрээний дугаартай бол устгахгүй (гэрээ, төлбөр алдагдахгүй) */
+  {
+    const leaf = stored.find((r) => r.dd_kod === '2.2.2.1');
+    const withGeree = stored.map((r) => (r === leaf ? { ...r, geree_dugaar: 'НХААГ/1' } : r));
+    const e4 = registryPlanEdits(withGeree, docs.filter((d) => d.oid !== 4));
+    assert.ok(!e4.deletes.includes(leaf.objectid), 'гэрээтэй мөр устгагдахгүй');
+    assert.deepEqual(e4.held, [leaf.objectid], 'гэрээтэй мөрийг үлдээсэн жагсаалтад');
+    const e5 = registryPlanEdits(stored.map((r) => (r === leaf ? { ...r, guitsetgegch: 'ХХК' } : r)), docs.filter((d) => d.oid !== 4));
+    assert.deepEqual(e5.held, [leaf.objectid], 'гүйцэтгэгчтэй мөр мөн үлдэнэ');
+  }
   assert.equal(e3.adds.length, 0);
 }
 
@@ -204,7 +214,7 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   const idB = stored.find((r) => r.ajil_uilchilgee === 'B').objectid;
   /* B баримтад гэрээ байгуулж, төлбөр олгосон */
   stored = stored.map((r) => (r.objectid === idB ? { ...r, geree_dugaar: 'З/7', guitsetgegch: 'Зураг ХХК', olgoson_dun: 4, urdchilgaa_dun: 1 } : r));
-  assert.deepEqual(registryPlanEdits(stored, docs), { adds: [], updates: [], deletes: [] }, 'гэрээ · төлбөртэй мөр устаж дахин нэмэгдэхгүй');
+  assert.deepEqual(registryPlanEdits(stored, docs), { adds: [], updates: [], deletes: [], held: [] }, 'гэрээ · төлбөртэй мөр устаж дахин нэмэгдэхгүй');
   /* B-ийн өмнө шинэ баримт: B нэг мөрөөр доошилно — мөр (гэрээ, төлбөртэйгээ) хамт явна */
   const plus = [docs[0], zd(9, 'X'), docs[1], docs[2]];
   const e = registryPlanEdits(stored, plus);
@@ -217,7 +227,7 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   /* 2026-11-19: дугааргүй баримтын мөр — «Ажлын үнэ» нь олгосон дүн ч мөн */
   assert.deepEqual(stored.filter((r) => ['A', 'C', 'X'].includes(r.ajil_uilchilgee)).map((r) => r.olgoson_dun), [10, 10, 10]);
   assert.equal(new Set(stored.map((r) => r.dd_kod)).size, stored.length, 'Д/Д давхардахгүй');
-  assert.deepEqual(registryPlanEdits(stored, plus), { adds: [], updates: [], deletes: [] }, 'тогтвортой');
+  assert.deepEqual(registryPlanEdits(stored, plus), { adds: [], updates: [], deletes: [], held: [] }, 'тогтвортой');
   /* нэр өөрчлөгдсөн баримт — ижил Д/Д-ийн мөр хэвээр (гэрээ хэвээр) */
   const ren = registryPlanEdits(stored, plus.map((d) => (d.oid === 2 ? zd(2, 'B2') : d)));
   assert.deepEqual([ren.adds.length, ren.deletes.length], [0, 0]);

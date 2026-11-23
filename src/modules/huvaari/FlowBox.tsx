@@ -3,7 +3,7 @@
 import { type KeyboardEvent as KEvt, type ReactNode, useEffect, useRef } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { useFocusTrap } from '@/lib/useFocusTrap';
-import { REASON_MAX } from '@/lib/huvaariBatlah';
+import { PLAN_REASON_PRESETS, REASON_MAX, REASON_MIN, reasonOk } from '@/lib/huvaariBatlah';
 import { useLatest } from './useLatest';
 import h from '../huvaari.module.css';
 
@@ -13,8 +13,10 @@ import h from '../huvaari.module.css';
  * ИЛГЭЭХ / ШИЙДВЭРЛЭХ цонх — нэг бүрэлдэхүүн хоёуланд.
  */
 export function FlowBox({
-  title, desc, label, okText, rejectText, busy, err, text, onText, onPreview, onClose, onOk, onReject, summary, progress, okDisabled,
+  title, desc, label, okText, rejectText, busy, err, text, onText, onPreview, onClose, onOk, onReject, summary, progress, okDisabled, presets,
 }: {
+  /** Буцаах цонх: түгээмэл шалтгааны товчнууд + доод урт (2026-11-23) */
+  presets?: boolean;
   title: string; desc: string; label: string; okText: string;
   rejectText?: string; busy: boolean;
   progress?: string;
@@ -47,9 +49,10 @@ export function FlowBox({
     if (el.closest('textarea') && !(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
     if (onReject) {
-      if (txt.trim()) onReject(txt);
+      if (presets ? reasonOk(txt) : txt.trim()) onReject(txt);
       return;
     }
+    if (presets && !reasonOk(txt)) return;
     if (okDisabled) return;
     onOk(txt);
   };
@@ -74,6 +77,19 @@ export function FlowBox({
         {progress && busy && <p className={h.note} role="status" aria-live="polite">⏳ {progress}</p>}
         {err && <p className={h.err} role="alert">{err}</p>}
         {okDisabled && !busy && <p className={h.muted} role="status">{okDisabled}</p>}
+        {presets && (
+          <div className={h.reasonChips} role="group" aria-label={tr('Түгээмэл шалтгаан')}>
+            {PLAN_REASON_PRESETS.map((p) => {
+              const on = txt.includes(p.text);
+              return (
+                <button key={p.text} type="button" className={`${h.reasonChip} ${on ? h.reasonChipOn : ''}`} aria-pressed={on} disabled={busy}
+                  onClick={() => setTxt(on ? txt.replace(p.text, '').replace(/\n{2,}/g, '\n').trim() : [txt.trim(), p.text].filter(Boolean).join('\n'))}>
+                  {p.label()}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <label className={h.mdField}>
           {label}
           <textarea
@@ -96,14 +112,14 @@ export function FlowBox({
             <button
               type="button"
               className={h.discard}
-              disabled={busy || !txt.trim()}
-              title={txt.trim() ? undefined : tr('Буцаах шалтгааныг бичнэ үү.')}
+              disabled={busy || !(presets ? reasonOk(txt) : txt.trim())}
+              title={(presets ? reasonOk(txt) : txt.trim()) ? undefined : presets ? tr('Шалтгааныг сонгох эсвэл {0}-аас доошгүй тэмдэгтээр бичнэ үү.', REASON_MIN) : tr('Буцаах шалтгааныг бичнэ үү.')}
               onClick={() => onReject(txt)}
             >
               {rejectText}
             </button>
           )}
-          <button type="button" className={h.save} disabled={busy || !!okDisabled} title={okDisabled}
+          <button type="button" className={h.save} disabled={busy || !!okDisabled || (presets && !onReject && !reasonOk(txt))} title={okDisabled}
             onClick={() => onOk(txt)}>
             {okText}
           </button>

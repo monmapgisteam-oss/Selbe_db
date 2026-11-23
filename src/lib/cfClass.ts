@@ -13,7 +13,7 @@
  *   Барилга угсралт › Инженерийн дэд б. → 2 · 4 «ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт» · 4.1…4.5 дэд бүлгээр
  *   Барилга угсралт › Нийгмийн дэд б.  → 5 «НИЙГМИЙН ДЭД БҮТЭЦ»
  */
-import { buildTree, orderPlanRows, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
+import { buildTree, noMoney, orderPlanRows, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 
 export const CF_CLASS_FIELDS = [
   'bagts_tuvshin1', 'ajil_tuvshin1', 'bagts_tuvshin2', 'ajil_tuvshin2', 'bagts_tuvshin3', 'ajil_tuvshin3',
@@ -106,15 +106,38 @@ export function cfPhaseNames(rows: readonly Record<string, unknown>[]): Map<stri
   return out;
 }
 
-export type CfVirtual = { cls: Map<number, CfClass>; phases: Map<string, string> };
-
-/** Түүхий мөрүүдээс (`CF_CLASS_SOURCE_FIELDS`) ангиллын зураглал ба үе шатын нэрс */
-export function cfVirtualFromRows(rows: readonly Record<string, unknown>[]): CfVirtual {
-  return { cls: cfClassFromRows(rows), phases: cfPhaseNames(rows) };
+/**
+ * МӨНГӨНИЙ НИЙЛБЭРТ ОРОХ ЭСЭХ (2026-11-23, хэрэглэгч: «ТТБ-ийн урд талын унтраалга бүх бодолтод») — ТТБ-ийн
+ * «Мөнгөний нийлбэрт тооцох» (`projectPlan.noMoney`) мөр өөрөө ЭСВЭЛ дээд мөрүүдийн аль нэг нь унтарсан бол 0, үгүй бол 1.
+ * Дашбоард, тайлан, захирлын самбарын «Нийт» хүрээ (`finExcelLayout.finXlInTotal`) үүнийг уншина — урьд нь
+ * «Нийгмийн дэд бүтэц» гэсэн нэрээр хатуу хасдаг байсан тул ТТБ-д унтраалга солиход дагадаггүй байв.
+ */
+export const CF_MONEY_FIELD = 'mongo_niit';
+export function cfMoneyMap(tree: PlanTree): Map<number, 0 | 1> {
+  const out = new Map<number, 0 | 1>();
+  const walk = (n: PlanNode, off: boolean) => {
+    for (const c of n.children) {
+      const o = off || noMoney(c);
+      if (c.row?.objectid != null) out.set(c.row.objectid, o ? 0 : 1);
+      walk(c, o);
+    }
+  };
+  walk(tree.root, false);
+  return out;
 }
 
-/** Модыг угсрахад хэрэгтэй багана — `query.ts` ангиллын эхийг ЭНЭ жагсаалтаар уншина */
-export const CF_CLASS_SOURCE_FIELDS = ['objectid', 'dd_kod', 'bagts', 'blok', 'ajil_uilchilgee', 'cashflow_id'] as const;
+export type CfVirtual = { cls: Map<number, CfClass>; phases: Map<string, string>; money: Map<number, 0 | 1> };
+
+/** Түүхий мөрүүдээс (`CF_CLASS_SOURCE_FIELDS`) ангиллын зураглал, үе шатын нэрс ба мөнгөний хүрээ */
+export function cfVirtualFromRows(rows: readonly Record<string, unknown>[]): CfVirtual {
+  const tree = cfTreeFromRows(rows);
+  return { cls: cfClassMap(tree), phases: cfPhaseNames(rows), money: cfMoneyMap(tree) };
+}
+
+/** Модыг угсрахад хэрэгтэй багана — `query.ts` ангиллын эхийг ЭНЭ жагсаалтаар уншина (унтраалгууд — `cfMoneyMap`) */
+export const CF_CLASS_SOURCE_FIELDS = [
+  'objectid', 'dd_kod', 'bagts', 'blok', 'ajil_uilchilgee', 'cashflow_id', 'niit_tootsoh', 'uy_shat_tootsoh', 'mongo_tootsoh',
+] as const;
 export const CF_CLASS_SOURCE_WHERE = 'dd_kod IS NOT NULL';
 
 const cmpKod = (a: string | null | undefined, b: string | null | undefined): number => {
@@ -127,8 +150,10 @@ const cmpKod = (a: string | null | undefined, b: string | null | undefined): num
   return x.length - y.length;
 };
 
-/** Түүхий мөрүүдээс (`CF_CLASS_SOURCE_FIELDS`) ангиллын зураглал */
-export function cfClassFromRows(rows: readonly Record<string, unknown>[]): Map<number, CfClass> {
+const tog = (v: unknown): number | null => (v == null || v === '' ? null : Number(v));
+
+/** Түүхий мөрүүдээс (`CF_CLASS_SOURCE_FIELDS`) мод */
+function cfTreeFromRows(rows: readonly Record<string, unknown>[]): PlanTree {
   const phases = cfPhaseNames(rows);
   const stored = rows
     .map((r) => ({
@@ -139,13 +164,24 @@ export function cfClassFromRows(rows: readonly Record<string, unknown>[]): Map<n
       blok: r.blok == null ? null : String(r.blok),
       ajil_uilchilgee: r.ajil_uilchilgee == null ? null : String(r.ajil_uilchilgee),
       cashflow_id: r.cashflow_id == null ? null : Number(r.cashflow_id),
+      niit_tootsoh: tog(r.niit_tootsoh),
+      uy_shat_tootsoh: tog(r.uy_shat_tootsoh),
+      mongo_tootsoh: tog(r.mongo_tootsoh),
     } satisfies PlanStoredRow))
     .filter((r) => r.dd_kod);
-  return cfClassMap(buildTree(orderPlanRows(stored, cmpKod)));
+  return buildTree(orderPlanRows(stored, cmpKod));
+}
+
+/** Түүхий мөрүүдээс (`CF_CLASS_SOURCE_FIELDS`) ангиллын зураглал */
+export function cfClassFromRows(rows: readonly Record<string, unknown>[]): Map<number, CfClass> {
+  return cfClassMap(cfTreeFromRows(rows));
 }
 
 /** Мөрүүдэд ангиллын 6 утга ба Д/Д-ээс гардаг 3 утгыг залгана (байрандаа); ангилалгүй мөрд `null` */
 export function attachCfVirtual<T extends Record<string, unknown>>(rows: T[], v: CfVirtual, oidField = 'objectid'): T[] {
-  for (const r of rows) Object.assign(r, v.cls.get(Number(r[oidField])) ?? EMPTY, cfDerive(r.dd_kod, v.phases));
+  for (const r of rows) {
+    const oid = Number(r[oidField]);
+    Object.assign(r, v.cls.get(oid) ?? EMPTY, cfDerive(r.dd_kod, v.phases), { [CF_MONEY_FIELD]: v.money.get(oid) ?? null });
+  }
   return rows;
 }

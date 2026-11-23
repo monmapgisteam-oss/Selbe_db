@@ -515,6 +515,8 @@ const CF_CLASS_NAMES: ReadonlySet<string> = new Set([
   'bagts_tuvshin1', 'ajil_tuvshin1', 'bagts_tuvshin2', 'ajil_tuvshin2', 'bagts_tuvshin3', 'ajil_tuvshin3',
   /* Д/Д-ээс гардаг (`cfClass.cfDerive`) */
   'etseg_kod', 'tuvshin', 'uy_shat',
+  /* ТТБ-ийн мөнгөний унтраалгаас (`cfClass.cfMoneyMap`, 2026-11-23) */
+  'mongo_niit',
 ]);
 const CF_CLASS_TTL_MS = 30_000;
 let cfClassHit: { url: string; at: number; epoch: number; p: Promise<import('./cfClass').CfVirtual> } | null = null;

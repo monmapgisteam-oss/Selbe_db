@@ -55,3 +55,19 @@ const st = (oid, code, name, bagts, o = {}) => ({ ...V, oid, code, name, bagts, 
   assert.match(src, /async function mirrorToNegtgel[\s\S]{0,700}catch \(err\)/);
 }
 console.log('negtgelMirror.check: OK');
+
+/* 2026-11-23: бүтцийн толь — хосгүй ТТБ мөр нэмэгдэнэ, хосгүй 187 мөр устана; хэт олон хосгүй бол хөндөхгүй */
+{
+  const { mirrorStructure } = await import('./negtgelMirror.ts');
+  const rows = Array.from({ length: 20 }, (_, i) => row(String(i + 1), `Ажил ${i + 1}`, ''));
+  const stored = rows.slice(0, 19).map((r, i) => st(100 + i, r.code, r.name, '')).concat([st(200, '99', 'Хуучин', '')]);
+  const s1 = mirrorStructure(rows, stored, 7);
+  assert.equal(s1.blocked, false);
+  assert.deepEqual(s1.adds.map((a) => a.wbs_id), ['20'], 'хосгүй ТТБ мөр нэмэгдэнэ');
+  assert.equal(s1.adds[0].sys_shinechilsen, 7);
+  assert.deepEqual(s1.deletes, [200], 'хосгүй 187 мөр устана');
+  const s2 = mirrorStructure(rows, [st(1, 'x', 'y', ''), st(2, 'z', 'w', '')], 7);
+  assert.equal(s2.blocked, true, 'бүтэц эвдэрсэн — хөндөхгүй');
+  assert.deepEqual([s2.adds.length, s2.deletes.length], [0, 0]);
+  console.log('✅ бүтцийн толь — нэмэх · устгах · хамгаалалт');
+}

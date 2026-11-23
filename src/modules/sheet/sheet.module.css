@@ -7,12 +7,12 @@
 .wrap {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
   height: 100%;
   /* `.tabs` нь flex тул порталын толгойн ҮЛДСЭН өндрийг эзэлнэ. */
   flex: 1 1 auto;
   /* Хуудасны ирмэгээс зай — ирмэгт наалдаж «нүцгэн» харагдахгүй */
-  padding: 18px 24px 24px;
+  padding: 8px 16px 10px;
   /* grid/flex item нь `min-*: 0`-гүй бол хүснэгтийн өргөнөөр сунаж дэлгэцээс хальна */
   min-width: 0;
   min-height: 0;
@@ -24,8 +24,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  --ctl-h: 30px;
-  gap: 8px 10px;
+  --ctl-h: 26px;
+  gap: 4px 8px;
 }
 .toolbar :is(.fullBtn, .fullBtnOn, .layerBtn, .select, .publishBtn) {
   box-sizing: border-box;
@@ -155,9 +155,9 @@
 }
 .pctStatLab { display: inline-flex; align-items: baseline; gap: 6px; font-size: 0.72rem; color: var(--ink-2); }
 .pctStatVal { font-size: 0.86rem; font-weight: 700; color: var(--ink); }
-.pctStatOther .pctStatVal { color: var(--ink-2); font-weight: 600; }
-.pctStatMain { border-color: var(--line-strong); }
-.pctStatMain .pctStatVal { color: var(--data-ink); }
+/* Гурвуулаа ижил — хэрэгслүүдээс ялгарах нэг өнгөтэй хайрцаг */
+.pctStatMine, .pctStatOther, .pctStatMain { border-color: var(--data); background: color-mix(in oklab, var(--data) 10%, var(--surface)); }
+:is(.pctStatMine, .pctStatOther, .pctStatMain) .pctStatVal { color: var(--data-ink); font-weight: 700; }
 
 .layerBtns { display: inline-flex; gap: 3px; }
 .layerBtn {
@@ -1457,14 +1457,11 @@
   font-weight: 500;
   overflow-wrap: anywhere;
 }
-.tbTools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px 10px;
-  min-width: 0;
-}
+/* Хэрэгслүүд тусдаа мөр болохгүй — хувь, шүүлтүүр, «Илгээх», төлөв бүгд нэг мөрд урсана */
+.tbTools { display: contents; }
 
 /* Ажлын материал — ажлын нэрийн доор жижиг мөр (2026-10-30, зөвхөн уншина) */
 .matLine { display: block; margin-top: 1px; font-size: 0.66rem; color: var(--ink-3); white-space: normal; line-height: 1.25; }
+
+/* «Төлөвлөгөөт гүйцэтгэл» хэсгийг нуух (хэрэгслийн мөрийн унтраалга) */
+.noPlan .pcol { display: none; }

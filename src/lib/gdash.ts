@@ -21,7 +21,7 @@ import {
 import { latestLaborRow, laborHeadOf, EDIT_DATE_FIELD, OID_FIELD, ubDayKey } from '@/lib/ceo/workforce';
 import { isClearedStatus } from '@/lib/land';
 import {
-  FIN_XL_TOTAL_CODE_FIELD, FIN_XL_TOTAL_SKIP, FIN_XL_CHART_FIELDS, finXlChartCat,
+  FIN_XL_TOTAL_CODE_FIELD, FIN_XL_CHART_FIELDS, finXlChartCat, finXlInTotal,
   FIN_XL_WORK_SKIP,
 } from '@/lib/finExcelLayout';
 import type { LiveProgress } from '@/lib/projectPlanInputs';
@@ -186,7 +186,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     ],
   }), loadLiveProgressLazy()]);
   /* 2026-11-16: «Төсөлд эзлэх» хадгалсан багана биш — нийтэд орох мөрийн төсөвт өртөг ÷ тэдгээрийн нийлбэр (жин төсвөөр) */
-  const inTot = (r: Row) => !FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1]));
+  const inTot = (r: Row) => finXlInTotal(r);
   const costSum = rows.reduce((a, r) => a + (inTot(r) ? nOf(r[CF.cost]) : 0), 0);
   return rows.map((r: Row): CfRow => {
     const cfId = dOf(r[CF.cfId]);
@@ -205,7 +205,7 @@ export const loadGdashCf = cached<CfRow[]>(async () => {
     decree: nOf(orderTotalOf(r)),
     progress: lp ? lp.S : null,
     stage: Object.fromEntries(Object.values(CASHFLOW_NEW.stages).map((f) => [f, lp ? lp.stages[f] ?? null : null])),
-    inTotal: !FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1])),
+    inTotal: finXlInTotal(r),
     cfId,
     lvl3: sOf(r.ajil_tuvshin3),
     isWork: !FIN_XL_WORK_SKIP.includes(sOf(r[CF.code1])),
@@ -799,7 +799,7 @@ export function contractedScope(
   let amount = 0;
   const keys = new Set<string>();
   for (const r of rows) {
-    if (FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1]))) continue;
+    if (!finXlInTotal(r)) continue;
     if (!isContracted(r)) continue;
     amount += nOf(r[CF.contract]);
     for (const v of [r[CF.pkg2], r[CF.pkg]]) {
@@ -814,7 +814,7 @@ export function contractedScope(
 export const cfWeightRow = (r: Readonly<Record<string, unknown>>): { pkg: unknown; cost: number; inTotal: boolean } => ({
   pkg: sOf(r[CF.pkg2]) || sOf(r[CF.pkg]),
   cost: nOf(r[CF.cost]),
-  inTotal: !FIN_XL_TOTAL_SKIP.includes(sOf(r[CF.code1])),
+  inTotal: finXlInTotal(r),
 });
 
 /**

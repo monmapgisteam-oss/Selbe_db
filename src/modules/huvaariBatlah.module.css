@@ -159,3 +159,9 @@
   border-top: 1px solid var(--line);
   padding: 12px 15px;
 }
+
+/* «Техник» — ноорог шилжүүлэх хэрэгсэл хураасан (2026-11-23) */
+.tech { display: inline-flex; align-items: center; gap: 6px; }
+.tech > summary { list-style: none; cursor: pointer; }
+.tech > summary::-webkit-details-marker { display: none; }
+.tech[open] { flex-wrap: wrap; }

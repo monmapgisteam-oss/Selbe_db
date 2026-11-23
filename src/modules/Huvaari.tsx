@@ -44,7 +44,7 @@ import { ubToday } from '@/lib/projectPlan';
 import {
   approveGuard, claimHolderOf, claimPlan, decidePlan, isApprovedBy, loadHistory, loadPayload, loadPending, loadPendingBoth, loadSubmissionHead, partialBy, planTableState, PLAN_STATUS, REASON_MAX,
   clearPlanPartial, markPlanApprovedSeen, markPlanPartial, releasePlanClaim, setPlanNavBusy, submitPlan, withdrawPlan,
-  renewPlanClaim, displayReason, serverNow, BLIND_NOTE_SRC,
+  renewPlanClaim, displayReason, serverNow, BLIND_NOTE_SRC, loadPrevReturned, reasonOk,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 import { loadPlanNews, markPlanReturnedSeen, type PlanNews } from '@/components/navBadges';
@@ -92,7 +92,7 @@ import { sameShapeGroups } from '@/lib/planAnalysis';
 import { LinkModal, linksReplaced } from './huvaari/LinkModal';
 import { CopyFromPkg } from './huvaari/CopyFromPkg';
 import { sourceUnitPlans, unitKey } from './huvaari/copyPkg';
-import { Segmented, Switch, Toggle } from '@/components/Switch';
+import { Segmented } from '@/components/Switch';
 
 export type { HuvaariReview } from './huvaari/types';
 
@@ -224,6 +224,9 @@ const keyIgnored = (el: EventTarget | null): boolean => {
   return !el.closest('[data-huvaari-root]');
 };
 
+/** Энгийн хуваарь төлөвлөх хуудас (2026-11-23, хэрэглэгч) — шинжилгээ, шүүлт, нэмэлт багануудыг харуулахгүй */
+const SIMPLE = true as boolean;
+
 export function Huvaari({
   jump, onJumpDone, review,
 }: {
@@ -278,8 +281,9 @@ export function Huvaari({
    * ЗАСАХ ЭРХ — тусад нь олгодог (`caps`) + багцын хүрээ.
    */
   const [viewSavedAt, setViewSavedAt] = useState<string | null>(null);
-  const viewSaved = viewSavedAt === pkg.key;
-  const setViewSaved = useCallback((on: boolean) => setViewSavedAt(on ? pkg.key : null), [pkg.key]);
+  /* Анхдагч — батлагдсан хуваарь; «Төлөвлөх» дарж л засах (ноорог) горимд орно. `viewSavedAt` = төлөвлөж буй багц */
+  const viewSaved = viewSavedAt !== pkg.key;
+  const setViewSaved = useCallback((on: boolean) => setViewSavedAt(on ? null : pkg.key), [pkg.key]);
   const canEditRole = useMemo(
     () => !review && (status === 'off' || inScope(huvaariScope(user?.username, 'author'), pkg.group)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -322,6 +326,8 @@ export function Huvaari({
    * БЭЛЭН БИШ БОЛ ЯАГААД — баннерт ЯГ энэ шалтгааныг бичнэ (2026-09-11).
    */
   const [flowWhy, setFlowWhy] = useState<string>('');
+  /** Порталд нэвтрээгүйн шалтгаан — анхааруулгын мөр харуулахгүй */
+  const [flowNoAuth, setFlowNoAuth] = useState(false);
   /**
    * СҮҮЛИЙН ШИЙДВЭР — хүлээгдэж буй илгээлт байхгүй үед харуулна.
    */
@@ -460,6 +466,7 @@ export function Huvaari({
    * зүүн самбар нарийсч хуанлид зай өгнө; код · нэр · хамаарал үлдэнэ.
    */
   const [cols, setCols] = useState(() => {
+    if (SIMPLE) return true;
     try { return localStorage.getItem('selbe-huvaari-cols') !== '0'; } catch { return true; }
   });
   /** Зүүн жагсаалтыг чирж өргөсгөх нэмэлт пиксел (2026-10-04, `useSideExtra`) */
@@ -476,6 +483,29 @@ export function Huvaari({
     rh: cRes, rm: cRes,
   });
   const colElRef = colW.elRef;
+  /** Нуусан баганууд (хэрэглэгч сонгоно, хөтөчид хадгална): des · g (гэрээ) · p (төлөвлөгөө) · a (бодит) · r (хүн/техник) · h (хамаарал) */
+  const [hideCols, setHideCols] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('selbe-huvaari-hide') ?? '[]') as string[]); } catch { return new Set(); }
+  });
+  const toggleCol = (k: string) => setHideCols((s0) => {
+    const n = new Set(s0);
+    if (n.has(k)) n.delete(k); else n.add(k);
+    try { localStorage.setItem('selbe-huvaari-hide', JSON.stringify([...n])); } catch { /* хаалттай орчин */ }
+    return n;
+  });
+  /** Зүүн хүснэгтийн өргөн — харагдаж буй баганын нийлбэр (нуусан багана зай эзлэхгүй) */
+  const sideBasis = (() => {
+    const w: string[] = ['320px', 'var(--side-extra, 0px)'];
+    if (!hideCols.has('des')) w.push('var(--des-w, 60px)');
+    if (!hideCols.has('g')) w.push('var(--w-gs, 80px)', 'var(--w-ge, 80px)', 'var(--w-gd, 40px)');
+    if (!hideCols.has('p')) w.push('var(--w-ps, 80px)', 'var(--w-pe, 80px)', 'var(--w-pd, 40px)');
+    if (colAct && !hideCols.has('a')) w.push('var(--w-as, 72px)', 'var(--w-ae, 72px)');
+    if (colRes && !hideCols.has('r')) w.push('var(--w-rh, 44px)', 'var(--w-rm, 44px)');
+    if (!hideCols.has('h')) w.push('var(--ham-w, 100px)');
+    return `calc(${w.join(' + ')})`;
+  })();
+  const hideCls = [['des', h.hDes], ['g', h.hG], ['p', h.hP], ['a', h.hA], ['r', h.hR], ['h', h.hH]]
+    .filter(([k]) => hideCols.has(k as string)).map(([, c]) => c).join(' ');
   const sideAndColRef = useCallback((node: HTMLDivElement | null) => { colElRef(node); return sideRef(node); }, [colElRef, sideRef]);
   useEffect(() => {
     try { localStorage.setItem('selbe-huvaari-cols', cols ? '1' : '0'); } catch { /* хаалттай орчин */ }
@@ -962,6 +992,20 @@ export function Huvaari({
     return s;
   }, [draft, ham, aDraft, resDraft, obDraft, obResDraft, byCode, plan, base, orphanOids]);
   const dirtyRows = dirtyOids.size;
+  /** Ноорог энэ компьютерт хадгалагдсан агшин — засвар өөрчлөгдөх бүрд (төлөвийн мөрөнд) */
+  const [localAt, setLocalAt] = useState<number | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- засвар өөрчлөгдсөн агшныг тэмдэглэнэ
+    setLocalAt(dirtyN > 0 ? Date.now() : null);
+  }, [dirtyN, draft, obDraft, aDraft]);
+  /* Илгээгээгүй ноорог байвал багцыг анх нээхэд шууд төлөвлөх горимд оруулна — нэг л удаа («Хадгалаад гарах»-ыг хүндэтгэнэ) */
+  const autoPlanRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (dirtyN > 0 && viewSaved && !autoPlanRef.current.has(pkg.key)) {
+      autoPlanRef.current.add(pkg.key);
+      setViewSaved(false);
+    }
+  }, [dirtyN, viewSaved, setViewSaved, pkg.key]);
 
   /**
    * ЗӨВШӨӨРӨЛ ШААРДАХ МӨРҮҮД — өөрчлөгдсөн АЖЛЫН мөр + бүлгийн ЖИНХЭНЭ өөрчлөлт.
@@ -2509,6 +2553,7 @@ export function Huvaari({
       const ready = st.ok;
       flowThrewRef.current = !ready && st.why === 'error';
       if (!ready) setFlowReady(false);
+      setFlowNoAuth(!ready && st.why === 'auth');
       setFlowWhy(ready ? '' : (
         st.why === 'auth'
           ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
@@ -2734,6 +2779,33 @@ export function Huvaari({
         return;
       }
     }
+    /*
+     * ГЭРЭЭНИЙ ХУГАЦААНААС ХЭТЭРСЭН (2026-11-23): батлагчид хамгийн их буцаадаг шалтгаан — илгээхээс өмнө жагсааж
+     * баталгаажуулна. Зөвхөн энэ удаа өөрчилсөн ажлын мөр; гэрээний дуусах = гэрээний хуваарийн хамгийн хожуу огноо.
+     */
+    if (kind === 'plan') {
+      let ctEnd: number | null = null;
+      for (const r of refBase) if (!r.group) for (const sp of r.spans) if (sp && (ctEnd == null || sp.end > ctEnd)) ctEnd = sp.end;
+      if (ctEnd != null) {
+        const lim = ctEnd;
+        const over: { msg: string; oid: number; b: number }[] = [];
+        for (const r of plan) {
+          if (r.group || !draft.has(r.oid)) continue;
+          r.spans.forEach((sp, b) => {
+            if (sp && sp.end > lim) over.push({ msg: `${`${r.no} ${fixCyr(r.work)}`.trim()}${n > 1 ? ` (${sc?.bld[b] ?? String(b + 1)})` : ''} → ${msToDay(sp.end)}`, oid: r.oid, b });
+          });
+        }
+        if (over.length) {
+          setErrList([{ msg: tr('Гэрээний хугацаанаас ({0}) хэтэрсэн {1} ажил — дарж тухайн ажил руу очно:', msToDay(lim), num(over.length)) }, ...over.slice(0, 30),
+            ...(over.length > 30 ? [{ msg: tr('… ба {0}', num(over.length - 30)) }] : [])]);
+          if (!(await askConfirm(tr('{0} ажлын дуусах огноо гэрээний хугацаанаас ({1}) хэтэрсэн. Батлагч буцааж магадгүй. Гэсэн ч илгээх үү?', num(over.length), msToDay(lim)), { ok: tr('Илгээх') }))) {
+            setFlowBox(null);
+            return;
+          }
+          setErrList([]);
+        }
+      }
+    }
     {
       const have = new Set(rows.map((r) => r.oid));
       const stale = new Set([...draft.keys(), ...ham.keys(), ...aDraft.keys(), ...resDraft.keys()].filter((o) => !have.has(o)));
@@ -2785,7 +2857,7 @@ export function Huvaari({
       setBusy(false);
       setProgress('');
     }
-  }, [dirtyN, dirtyRows, busy, previewing, canEdit, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft, kind, hdClearRef, xLockCheck,
+  }, [dirtyN, dirtyRows, refBase, busy, previewing, canEdit, pkg, user, buildPayload, refreshFlow, plan, sc, obDraft, obPlan, rows, draft, ham, aDraft, resDraft, kind, hdClearRef, xLockCheck,
     hdSubmitBegin, hdSubmitEnd, setErr, setBusy, setNote, setDraft, setHam, setObDraft, setObResDraft, setADraft, setResDraft, setBackMarks,
     unbalRows, obOut, obOutMsg, setErrList, setFlowBox, setProgress, obNotReady, obState, obResDraft, frameOld, orphanOb, n]);
 
@@ -2994,7 +3066,7 @@ export function Huvaari({
   const restoreWithdrawn = useCallback(async (auto = false) => {
     const back = lastDecision?.status === PLAN_STATUS.returned;
     if (!lastDecision || (lastDecision.status !== PLAN_STATUS.withdrawn && !back) || busy || dirtyN > 0 || !canEditRole) return;
-    setViewSavedAt(null);
+    setViewSavedAt(pkg.key);
     setBusy(true); setErr(''); setNote('');
     try {
       const p = await loadPayload(lastDecision.oid).catch(() => null);
@@ -3472,6 +3544,31 @@ export function Huvaari({
     [backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes],
   );
   const marking = !!review || (previewing && pending != null && canApprove && !isOwnSubmission);
+  /**
+   * ӨМНӨХ ЗӨВШӨӨРЛИЙГ ҮРГЭЛЖЛҮҮЛЭХ (2026-11-23): буцаагдаад дахин ирсэн хуваарьт өмнөх буцаалтад зөвшөөрсөн БА
+   * агуулга нь өөрчлөгдөөгүй мөрүүд автоматаар ногоон — батлагч зөвхөн засагдсан/шинэ мөрийг шалгана
+   * (911 мөрийн 9 нь л асуудалтай байхад бүгдийг дахин шалгадаг байв). Тулгалт `backMarkMapOf`-ийнх.
+   */
+  const carryRef = useRef<number | null>(null);
+  const carryCalc = useLatest((prev: { oid: number; ok: Set<number>; pay: PlanPayload }) => backMarkMapOf({
+    backOn: true, backMarks: prev, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes,
+  }));
+  useEffect(() => {
+    if (!review || !reviewLive || carryRef.current === review.oid || okNRef.current > 0) return;
+    const oid = review.oid;
+    carryRef.current = oid;
+    void (async () => {
+      const prev = await loadPrevReturned(review.pkgKey, kind, oid).catch(() => null);
+      if (!prev?.okRows?.length) return;
+      const pay = await loadPayload(prev.oid).catch(() => null);
+      if (!pay || pay.kind !== kind || carryRef.current !== oid) return;
+      const ok = [...carryCalc.current({ oid: prev.oid, ok: new Set(prev.okRows), pay })].filter(([, v]) => v === 'ok').map(([o]) => o);
+      if (!ok.length) return;
+      setOkRows((s0) => (s0.size ? s0 : new Set(ok)));
+      setNote(tr('Өмнөх илгээлтэд зөвшөөрсөн, өөрчлөгдөөгүй {0} мөр автоматаар ногоон боллоо — үлдсэнийг шалгана уу.', num(ok.length)));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [review?.oid, reviewLive, kind]);
   /**
    * «БҮХ БЛОК»-ийн ДЭД МӨР ДЭЭР ДАРАХ (2026-10-04): тэр блок идэвхжиж горим унтарна —
    * хэрэглэгч шууд засах боломжтой. Мөр сонгогдож, доорх эффект түүн рүү гүйлгэнэ
@@ -4217,10 +4314,23 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         : backOn
           ? { tone: 'bad', text: tr('Буцаагдсан: улаан ✕ мөрүүдийг засаад «Батлуулах»-аар дахин илгээнэ. Ногоон ✓ мөр зөвшөөрөгдсөн.') }
           : savedView
-            ? { tone: 'ok', text: tr('Батлагдсан хуваарь — зөвхөн харах. Засахын тулд «Ноорог» руу шилжинэ.') }
+            ? null
             : dirtyRows > 0
               ? { tone: 'warn', text: tr('Ноорог: {0} мөр өөрчлөгдсөн, батлагдсан хуваарь хөдлөөгүй. Судалтай саарал зурвас = батлагдсан огноо. «Батлуулах»-аар илгээнэ.', num(dirtyRows)) }
               : null;
+
+  /** Илгээгээгүй бүх өөрчлөлтийг хаяна (асууж) — `true` бол хаягдсан */
+  const discardDraft = async (): Promise<boolean> => {
+    if (dirtyN > 0) {
+      const others = hdUsers.length > 0 ? ` (${hdUsers.join(', ')})` : '';
+      if (!(await askConfirm(tr('Илгээгээгүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид{1} устна.', num(dirtyRows), others), { danger: true, ok: tr('Ноорог хаях') }))) return false;
+      hdDiscard();
+    }
+    setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map()); setADraft(new Map()); setResDraft(new Map()); setNote('');
+    setUndoSnap(null); setChainN(0); setChgOpen(false);
+    setBackMarks(null);
+    return true;
+  };
 
   return (
     <div className={`${h.frame} ${isWide ? h.frameWide : ''}`} data-huvaari-root="">
@@ -4255,118 +4365,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
 
         {sc && rows.length > 0 && (
           <>
-            <span className={h.tbSep} aria-hidden />
-
-            {/*
-              * ТҮВШНИЙ ЗУРВАС — «Гэрээний бүртгэл» хуудасны ЯГ ИЖИЛ загвар
-              * (2026-09-15, хэрэглэгчийн шаардлага). Товч нь «энэ түвшин
-              * хүртэл дэлгэ» гэсэн утгатай: 1 дарвал зөвхөн дээд бүлгүүд,
-              * хамгийн гүн нь дарвал бүх ажлын мөр харагдана.
-              */}
-            {lvls.length > 1 && (
-              <span className={h.lvBar}>
-                <span className={h.lvLbl}>{tr('Түвшин')}</span>
-                <button
-                  type="button"
-                  className={lvl === -1 ? h.lvOn : ''}
-                  title={tr('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд')}
-                  aria-label={tr('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд')}
-                  onClick={() => setLevel(-1)}
-                >0</button>
-                {lvls.map((d) => {
-                  const nn = d + 1;
-                  const deepest = d === lvls[lvls.length - 1];
-                  return (
-                    <button
-                      key={d}
-                      type="button"
-                      className={lvl === nn ? h.lvOn : ''}
-                      title={deepest
-                        ? tr('Бүх ажлын мөрийг дэлгэнэ')
-                        : tr('{0}-р түвшин хүртэл дэлгэх', nn)}
-                      aria-label={deepest
-                        ? tr('Бүх ажлын мөрийг дэлгэнэ')
-                        : tr('{0}-р түвшин хүртэл дэлгэх', nn)}
-                      onClick={() => setLevel(nn)}
-                    >{nn}</button>
-                  );
-                })}
-              </span>
-            )}
-            {/* 2026-11-16: зөвхөн 3-р давхрын (төлөвлөх) бүлгүүд — бүлгийг дэлгэж ажлуудыг харна */}
-            {kind === 'plan' && locks.size > 0 && (
-              <button type="button" className={`${h.tlZoomB} ${lvl === PLAN_DEPTH ? h.lvOn : ''}`} aria-pressed={lvl === PLAN_DEPTH}
-                title={tr('Зөвхөн 3-р давхрын (төлөвлөх) бүлгүүдийг харуулна — бүлгийг дэлгэж ажлуудыг харна')}
-                onClick={() => setLevel(lvl === PLAN_DEPTH ? (lvls[lvls.length - 1] ?? 0) + 1 : PLAN_DEPTH)}>
-                {tr('Төлөвлөх бүлгүүд')}
-              </button>
-            )}
-            {kind === 'plan' && locks.size > 0 && canEdit && !locked && (
-              <button type="button" className={h.tlZoomB} disabled={busy} onClick={() => setCopyOpen(true)}
-                title={tr('Өөр багцын 3-р давхрын бүлгүүдийн төлөвлөлтийг энэ хуудсанд хуулна')}>
-                {tr('Өөр багцаас хуулах')}
-              </button>
-            )}
-
-            <span className={h.tbSep} aria-hidden />
-
-            <Segmented<typeof filter>
-              value={filter}
-              onChange={setFilter}
-              label={tr('Хуваарийн шүүлт')}
-              options={[
-                { value: 'all', label: `${tr('Бүгд')} ${num(plan.filter((r) => !r.group).length)}` },
-                { value: 'has', label: `${tr('Хуваарьтай')} ${num(cov.planned)}` },
-                { value: 'none', label: `${tr('Хуваарьгүй')} ${num(cov.tasks - cov.planned)}` },
-                { value: 'partial', label: `${tr('Дутуу')} ${num(cov.partial)}` },
-              ]}
-            />
-
-            {cov.reversed > 0 && (
-              <span role="status" style={{ color: 'var(--bad-ink)', fontWeight: 600, whiteSpace: 'nowrap' }}
-                title={tr('Эдгээр мужийг төлөвлөгөөт хувь ба муруйд хуваарьгүй гэж тооцно — огноог засна уу')}>
-                ⚠ {tr('{0} ажлын огноо урвуу (дуусах < эхлэх)', num(cov.reversed))}
-              </span>
-            )}
-
-            <select className={`${h.sel} ${h.selWide}`} value={String(fGrp)} aria-label={tr('Бүлэг')}
-              onChange={(e) => setFGrp(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
-              <option value="all">{tr('Бүлэг: бүгд')}</option>
-              {groups.map((g) => <option key={g.oid} value={g.oid}>{g.label}</option>)}
-            </select>
-
-            <select className={h.sel} value={fYear} aria-label={tr('Эхлэх жил')}
-              onChange={(e) => setFYear(e.target.value)}>
-              <option value="all">{tr('Жил: бүгд')}</option>
-              {years.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-
-            {([
-              /* 2026-11-20: «Зөвхөн өөрчлөгдсөн» — ноорог/санал дахь өөрчлөгдсөн мөрүүд, бүлгүүдийнхээ хамт */
-              ...((!savedView && dirtyRows > 0) || chips.has('dirty') ? [['dirty', tr('Зөвхөн өөрчлөгдсөн'), dirtyRows] as [Chip, string, number]] : []),
-              ...((kind === 'plan' && unbalRows.size > 0) || chips.has('unbal') ? [['unbal', tr('Тэнцээгүй'), unbalRows.size] as [Chip, string, number]] : []),
-            ] as [Chip, string, number][]).map(([c, label, cnt]) => (
-              <button key={c} type="button"
-                className={`${h.chipFilter} ${chips.has(c) ? h.chipFilterOn : ''}`}
-                aria-pressed={chips.has(c)}
-                title={c === 'dirty' ? tr('Зөвхөн илгээгээгүй ноорогтой мөр')
-                  : c === 'viol' ? tr('Зөвхөн уялдааны зөрчилтэй мөр (идэвхтэй блок)')
-                    : c === 'unbal' ? tr('Зөвхөн сарын обьём нь нийт обьёмтой тэнцээгүй мөр (бүх блок) — илгээхээс өмнө засна')
-                      : tr('Зөвхөн хоцорсон мөр (идэвхтэй блок)')}
-                onClick={() => setChips((s) => { const m = new Set(s); if (m.has(c)) m.delete(c); else m.add(c); return m; })}>
-                {label} <b>{num(cnt)}</b>
-              </button>
-            ))}
-
-            {stickyN > 0 && (
-              <button type="button" className={h.tab}
-                title={tr('Засварласан мөрүүд шүүлтэд таарахгүй ч засвар дуустал харагдсаар байна — дарж шүүлтийг дахин хэрэглэнэ')}
-                onClick={() => setSticky(new Set())}>
-                {tr('Шүүлтийг шинэчлэх ({0})', num(stickyN))}
-              </button>
-            )}
-
-            <span className={h.tbSep} aria-hidden />
 
             <label className={h.plField}>
               {tr('Блок')}{' '}
@@ -4391,64 +4389,198 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               </button>
             )}
 
-            {/*
-              * ХУВААРИЙН ТӨРӨЛ — «Төлөвлөгөө» / «Гэрээ» (2026-09-11).
-              */}
-            {!review && !previewing && approving == null && pending == null && (
-              <Switch
-                checked={!viewSaved}
-                onChange={(v) => setViewSaved(!v)}
-                off={tr('Батлагдсан')}
-                on={tr('Ноорог')}
-                title={viewSaved
-                  ? tr('Серверт хадгалагдсан (батлагдсан) хуваарь — засвар хаалттай. «Ноорог» руу шилжиж засна.')
-                  : tr('Хадгалаагүй засвартай (ноорог) хувилбар. «Батлагдсан» руу шилжиж хадгалсан хуваарийг харна.')}
+            <select className={`${h.sel} ${h.selWide}`} value={String(fGrp)} aria-label={tr('Бүлэг')}
+              onChange={(e) => setFGrp(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+              <option value="all">{tr('Бүлэг: бүгд')}</option>
+              {groups.map((g) => <option key={g.oid} value={g.oid}>{g.label}</option>)}
+            </select>
+
+            <select className={h.sel} value={fYear} aria-label={tr('Эхлэх жил')}
+              onChange={(e) => setFYear(e.target.value)}>
+              <option value="all">{tr('Жил: бүгд')}</option>
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+
+            {/* Харагдацын мөр — үргэлж 2-р мөрөнд; үйлдлийн товчнууд 1-р мөрийн баруун талд (order) */}
+            <div className={h.viewRow}>
+  
+              {/*
+                * ХУВААРИЙН ТӨРӨЛ — «Төлөвлөгөө» / «Гэрээ» (2026-09-11).
+                */}
+              {/* Төлөвлөгөө · Гэрээ — тус бүрийг асааж/унтраана (хоёулаа асвал зэрэг харагдана; аль нэг нь үргэлж асаалттай) */}
+              {(() => {
+                const on = { plan: kind === 'plan' || showRef, geree: kind === 'geree' || showRef };
+                const flip = (t: PlanKind) => {
+                  const other: PlanKind = t === 'plan' ? 'geree' : 'plan';
+                  if (!on[t]) { setShowRef(true); return; }
+                  if (!on[other]) return;
+                  setShowRef(false);
+                  if (kind === t) runSwitch(() => setKind(other));
+                };
+                return (
+                  <span className={`${h.lvBar} ${h.kindBar}`} role="group" aria-label={tr('Огнооны төрөл')}>
+                    {([['plan', tr('Төлөвлөгөө')], ['geree', tr('Гэрээ')]] as [PlanKind, string][]).map(([t, label]) => (
+                      <button key={t} type="button" className={on[t] ? h.lvOn : ''} aria-pressed={on[t]}
+                        disabled={busy || switching || !!review}
+                        title={on[t] ? tr('Дарж нуух') : tr('Дарж харуулах')}
+                        onClick={() => flip(t)}>
+                        {label}
+                      </button>
+                    ))}
+                  </span>
+                );
+              })()}
+  
+  
+              <Segmented<Zoom>
+                value={zoom}
+                onChange={setZoom}
+                label={tr('Хуанлийн масштаб')}
+                options={[
+                  { value: 'day', label: tr('хоног') },
+                  { value: 'week', label: tr('7 хоног') },
+                  { value: 'month', label: tr('сар') },
+                  { value: 'year', label: tr('жил') },
+                ]}
               />
-            )}
-            <Switch
-              checked={kind === 'geree'}
-              onChange={(v) => { const k: PlanKind = v ? 'geree' : 'plan'; if (kind !== k) runSwitch(() => setKind(k)); }}
-              off={tr('Төлөвлөгөө')}
-              on={tr('Гэрээ')}
-              title={kind === 'geree'
-                ? tr('Гэрээнд заасан огноог засна.')
-                : tr('Ажлын төлөвлөсөн огноог засна.')}
-              disabled={busy || switching || !!review}
-            />
-
-            {/*
-              * ЗЭРЭГ ХАРАХ — нөгөө төрлийн огноог мөр бүрийн ДООД зурвасаар
-              * нэмж харуулна (2026-09-11, хэрэглэгч: «тусдаа зэрэг харах гэдэг
-              * button нэм»).
-              */}
-            <Toggle
-              checked={showRef}
-              onChange={setShowRef}
-              label={tr('Зэрэг')}
-              title={showRef
-                ? tr('Нөгөө огноог нуана.')
-                : (kind === 'geree'
-                  ? tr('Төлөвлөсөн огноог мөр бүрийн доор нэмж харуулна.')
-                  : tr('Гэрээний огноог мөр бүрийн доор нэмж харуулна.'))}
-            />
-
-
-            <Segmented<Zoom>
-              value={zoom}
-              onChange={setZoom}
-              label={tr('Хуанлийн масштаб')}
-              options={[
-                { value: 'day', label: tr('хоног') },
-                { value: 'week', label: tr('7 хоног') },
-                { value: 'month', label: tr('сар') },
-                { value: 'year', label: tr('жил') },
-              ]}
-            />
-            <HowtoHint />
+              <span className={h.tbSep} aria-hidden />
+  
+              {/*
+                * ТҮВШНИЙ ЗУРВАС — «Гэрээний бүртгэл» хуудасны ЯГ ИЖИЛ загвар
+                * (2026-09-15, хэрэглэгчийн шаардлага). Товч нь «энэ түвшин
+                * хүртэл дэлгэ» гэсэн утгатай: 1 дарвал зөвхөн дээд бүлгүүд,
+                * хамгийн гүн нь дарвал бүх ажлын мөр харагдана.
+                */}
+              <details className={h.colMenu}>
+                <summary>{tr('Багана')} ▾</summary>
+                <div className={h.colMenuPop}>
+                  {([['des', tr('Ажлын код')], ['g', tr('Гэрээний огноо')], ['p', tr('Төлөвлөгөөт огноо')],
+                    ...(colAct ? [['a', tr('Бодит огноо')]] : []), ...(colRes ? [['r', tr('Хүн, техник')]] : []), ['h', tr('Хамаарал')]] as [string, string][])
+                    .map(([k, label]) => (
+                      <label key={k}>
+                        <input type="checkbox" checked={!hideCols.has(k)} onChange={() => toggleCol(k)} /> {label}
+                      </label>
+                    ))}
+                </div>
+              </details>
+              {lvls.length > 1 && (
+                <span className={h.lvBar}>
+                  <span className={h.lvLbl}>{tr('Түвшин')}</span>
+                  <button
+                    type="button"
+                    className={lvl === -1 ? h.lvOn : ''}
+                    title={tr('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд')}
+                    aria-label={tr('Бүгдийг хураах — зөвхөн дээд түвшний бүлгүүд')}
+                    onClick={() => setLevel(-1)}
+                  >1</button>
+                  {lvls.map((d) => {
+                    const nn = d + 1;
+                    const deepest = d === lvls[lvls.length - 1];
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        className={lvl === nn ? h.lvOn : ''}
+                        title={deepest
+                          ? tr('Бүх ажлын мөрийг дэлгэнэ')
+                          : tr('{0}-р түвшин хүртэл дэлгэх', nn)}
+                        aria-label={deepest
+                          ? tr('Бүх ажлын мөрийг дэлгэнэ')
+                          : tr('{0}-р түвшин хүртэл дэлгэх', nn)}
+                        onClick={() => setLevel(nn)}
+                      >{nn + 1}</button>
+                    );
+                  })}
+                </span>
+              )}
+              {/* 2026-11-16: зөвхөн 3-р давхрын (төлөвлөх) бүлгүүд — бүлгийг дэлгэж ажлуудыг харна */}
+              {kind === 'plan' && locks.size > 0 && (
+                <button type="button" className={`${h.tlZoomB} ${lvl === PLAN_DEPTH ? h.lvOn : ''}`} aria-pressed={lvl === PLAN_DEPTH}
+                  title={tr('Зөвхөн 3-р давхрын (төлөвлөх) бүлгүүдийг харуулна — бүлгийг дэлгэж ажлуудыг харна')}
+                  onClick={() => setLevel(lvl === PLAN_DEPTH ? (lvls[lvls.length - 1] ?? 0) + 1 : PLAN_DEPTH)}>
+                  {tr('Төлөвлөх бүлгүүд')}
+                </button>
+              )}
+              <span className={h.tbSep} aria-hidden />
+  
+              {!SIMPLE && <Segmented<typeof filter>
+                value={filter}
+                onChange={setFilter}
+                label={tr('Хуваарийн шүүлт')}
+                options={[
+                  { value: 'all', label: `${tr('Бүгд')} ${num(plan.filter((r) => !r.group).length)}` },
+                  { value: 'has', label: `${tr('Хуваарьтай')} ${num(cov.planned)}` },
+                  { value: 'none', label: `${tr('Хуваарьгүй')} ${num(cov.tasks - cov.planned)}` },
+                  { value: 'partial', label: `${tr('Дутуу')} ${num(cov.partial)}` },
+                ]}
+              />}
+  
+              {cov.reversed > 0 && (
+                <span role="status" style={{ color: 'var(--bad-ink)', fontWeight: 600, whiteSpace: 'nowrap' }}
+                  title={tr('Эдгээр мужийг төлөвлөгөөт хувь ба муруйд хуваарьгүй гэж тооцно — огноог засна уу')}>
+                  ⚠ {tr('{0} ажлын огноо урвуу (дуусах < эхлэх)', num(cov.reversed))}
+                </span>
+              )}
+              {!SIMPLE && ([
+                /* 2026-11-20: «Зөвхөн өөрчлөгдсөн» — ноорог/санал дахь өөрчлөгдсөн мөрүүд, бүлгүүдийнхээ хамт */
+                ...((!savedView && dirtyRows > 0) || chips.has('dirty') ? [['dirty', tr('Зөвхөн өөрчлөгдсөн'), dirtyRows] as [Chip, string, number]] : []),
+                ...((kind === 'plan' && unbalRows.size > 0) || chips.has('unbal') ? [['unbal', tr('Тэнцээгүй'), unbalRows.size] as [Chip, string, number]] : []),
+              ] as [Chip, string, number][]).map(([c, label, cnt]) => (
+                <button key={c} type="button"
+                  className={`${h.chipFilter} ${chips.has(c) ? h.chipFilterOn : ''}`}
+                  aria-pressed={chips.has(c)}
+                  title={c === 'dirty' ? tr('Зөвхөн илгээгээгүй ноорогтой мөр')
+                    : c === 'viol' ? tr('Зөвхөн уялдааны зөрчилтэй мөр (идэвхтэй блок)')
+                      : c === 'unbal' ? tr('Зөвхөн сарын обьём нь нийт обьёмтой тэнцээгүй мөр (бүх блок) — илгээхээс өмнө засна')
+                        : tr('Зөвхөн хоцорсон мөр (идэвхтэй блок)')}
+                  onClick={() => setChips((s) => { const m = new Set(s); if (m.has(c)) m.delete(c); else m.add(c); return m; })}>
+                  {label} <b>{num(cnt)}</b>
+                </button>
+              ))}
+  
+              {stickyN > 0 && (
+                <button type="button" className={h.tab}
+                  title={tr('Засварласан мөрүүд шүүлтэд таарахгүй ч засвар дуустал харагдсаар байна — дарж шүүлтийг дахин хэрэглэнэ')}
+                  onClick={() => setSticky(new Set())}>
+                  {tr('Шүүлтийг шинэчлэх ({0})', num(stickyN))}
+                </button>
+              )}
+  
+              <HowtoHint />
+            </div>
           </>
         )}
 
         <span className={h.spacer} />
+        {!review && !previewing && approving == null && pending == null && canEditRole && !locked && (
+          viewSaved ? (
+            <button type="button" className={h.save} disabled={busy}
+              title={dirtyN > 0
+                ? tr('Хадгалсан ноорог руу буцаж төлөвлөлтөө үргэлжлүүлнэ')
+                : tr('Батлагдсан хуваарийг засаж төлөвлөнө — «Батлуулах» хүртэл батлагдсан хуваарь хөдлөхгүй')}
+              onClick={() => setViewSaved(false)}>
+              {dirtyN > 0 ? tr('Төлөвлөлт үргэлжлүүлэх ({0})', num(dirtyRows)) : tr('Төлөвлөх')}
+            </button>
+          ) : (<>
+            <button type="button" className={h.discard} disabled={busy}
+              title={tr('Засвар ноорогт хадгалагдсан хэвээр — батлагдсан хуваарийг харна. Дараа «Төлөвлөлт үргэлжлүүлэх»-ээр буцна.')}
+              onClick={() => setViewSaved(true)}>
+              {tr('Хадгалаад гарах')}
+            </button>
+            <button type="button" className={h.discard} disabled={busy}
+              title={tr('Төлөвлөлтийг болиод батлагдсан хуваарь руу буцна — илгээгээгүй өөрчлөлт хаягдана')}
+              onClick={async () => { if (await discardDraft()) setViewSaved(true); }}>
+              {tr('Батлагдсан руу буцаах')}
+            </button>
+          </>)
+        )}
+        {!SIMPLE && kind === 'plan' && locks.size > 0 && canEdit && !locked && (
+          <button type="button" className={h.tlZoomB} disabled={busy} onClick={() => setCopyOpen(true)}
+            title={tr('Өөр багцын 3-р давхрын бүлгүүдийн төлөвлөлтийг энэ хуудсанд хуулна')}>
+            {tr('Өөр багцаас хуулах')}
+          </button>
+        )}
+
 
         {canEdit && !locked && undoSnap && !previewing && (
           <button type="button" className={`${h.discard} ${h.undoBtn}`} disabled={busy}
@@ -4524,18 +4656,24 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               num(grpSplit.length), grpSplit.slice(0, 3).join('; ') + (grpSplit.length > 3 ? ` (+${num(grpSplit.length - 3)})` : ''))}
           </span>
         )}
-        {/* Хуваалцсан ноорогийн төлөв (2026-09-23) — хадгалагдсан цаг · алдаа · хамт бичигчид */}
-        {hdSt.st === 'saved' ? (
-          <span className={`${h.flowNote} ${h.hdOk}`} role="status"
-            title={[hdLabel, hdUsers.length > 0 ? tr('ноорогт: {0}', hdUsers.join(', ')) : ''].filter(Boolean).join(' · ')}>
-            <span aria-hidden>✓</span> {tr('Ноорог хадгалагдсан')}
-          </span>
-        ) : hdLabel ? (
-          <span className={`${h.flowNote} ${hdSt.st === 'err' || hdSt.st === 'big' || hdSt.st === 'local' ? h.hdWarn : ''}`} role="status"
-            title={hdUsers.length > 0 ? tr('ноорогт: {0}', hdUsers.join(', ')) : undefined}>
-            {hdLabel}
-          </span>
-        ) : null}
+        {/* Ноорогийн төлөв — «Гүйцэтгэл бөглөх»-тэй ижил 3 хэсэг: илгээгээгүй тоо · энэ компьютерт хадгалсан цаг · ArcGIS */}
+        {canEdit && !previewing && (() => {
+          const hm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+          const users = hdUsers.length > 0 ? tr('ноорогт: {0}', hdUsers.join(', ')) : undefined;
+          const arc = hdSt.st === 'saved' ? { warn: false, text: `ArcGIS ${hm(hdSt.at ?? 0)}` }
+            : hdSt.st === 'saving' ? { warn: false, text: tr('ArcGIS-д хадгалж байна…') }
+            : hdSt.st === 'pending' ? { warn: false, text: tr('ArcGIS-д хүлээгдэж байна') }
+            : hdSt.st === 'err' || hdSt.st === 'local' || hdSt.st === 'big' ? { warn: true, text: `⚠ ${hdLabel}` }
+            : status === 'off' && dirtyN > 0 ? { warn: true, text: tr('⚠ ArcGIS-д хадгалагдсангүй (нэвтрэлт унтраалттай dev горим) — ноорог зөвхөн энэ компьютерт байна.') }
+            : null;
+          return (<>
+            {dirtyN > 0 && <span className={`${h.flowNote} ${h.hdOk}`} role="status">{tr('ногоон: илгээгээгүй ({0})', num(dirtyRows))}</span>}
+            <span className={h.flowNote} role="status" title={users}>
+              {dirtyN > 0 && localAt != null ? `● ${tr('ноорог хадгалагдав {0}', hm(localAt))}` : tr('Ноорог: өөрчлөлтгүй')}
+            </span>
+            {arc && <span className={`${h.flowNote} ${arc.warn ? h.hdWarn : ''}`} role="status" title={users}>{arc.text}</span>}
+          </>);
+        })()}
         {hdStoreNote && canEditRole && (hdStoreMode === 'rows-wait' || roleForUser(user?.username) === 'super') && (
           <span className={`${h.flowNote} ${h.hdWarn}`} role="status">{hdStoreNote}</span>
         )}
@@ -4543,14 +4681,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
         {canEdit && !previewing && !locked && dirtyN > 0 && (
           <button type="button" className={h.discard} disabled={busy}
             title={tr('Илгээгээгүй бүх өөрчлөлтийг хаяна — хуваалцсан ноорог БҮХ оролцогчид устна')}
-            onClick={async () => {
-              const others = hdUsers.length > 0 ? ` (${hdUsers.join(', ')})` : '';
-              if (!(await askConfirm(tr('Илгээгээгүй {0} өөрчлөлтийг хаях уу? Хуваалцсан ноорог бүх оролцогчид{1} устна.', num(dirtyRows), others), { danger: true, ok: tr('Ноорог хаях') }))) return;
-              hdDiscard();
-              setDraft(new Map()); setHam(new Map()); setObDraft(new Map()); setObResDraft(new Map()); setADraft(new Map()); setResDraft(new Map()); setNote('');
-              setUndoSnap(null); setChainN(0); setChgOpen(false);
-              setBackMarks(null);
-            }}>
+            onClick={() => void discardDraft()}>
             {tr('Ноорог хаях')} ({num(dirtyRows)})
           </button>
         )}
@@ -4574,7 +4705,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             {tr('Нэмэлт ажил батлуулах')} ({num(adds.length)})
           </button>
         )}
-        {sc && (
+        {!SIMPLE && sc && (
           <button type="button" className={h.discard} aria-pressed={ana != null}
             title={tr('Асуудал · эгзэгтэй зам · хоцролт · нөөц · Excel экспорт')}
             onClick={() => setAna((v) => (v ? null : 'issues'))}>
@@ -4672,14 +4803,16 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               onClick={() => setChgOpen((v) => !v)}>
               {tr('Өөрчлөлт {0}', num(reviewOids.length))}
             </button>
-            {status === 'off' && (
-              <button type="button" className={h.discard}
-                disabled={busy || approving != null || !reviewLive || !reviewOids.length}
-                title={tr('Өөрчлөгдсөн бүх мөрийг ногоон/улаан болгоно')}
-                onClick={() => setOkRows(allOk ? new Set() : new Set(reviewOids))}>
-                {allOk ? tr('Бүгдийг болих') : tr('Бүгдийг зөвшөөрөх')}
-              </button>
-            )}
+            <button type="button" className={h.discard}
+              disabled={busy || approving != null || !reviewLive || !reviewOids.length}
+              title={tr('Өөрчлөгдсөн бүх мөрийг ногоон/улаан болгоно')}
+              onClick={async () => {
+                if (allOk) { setOkRows(new Set()); return; }
+                if (!(await askConfirm(tr('Өөрчлөгдсөн {0} мөрийг бүгдийг нь зөвшөөрөх үү? Шалгаагүй мөр ч ногоон болно.', num(reviewOids.length - reviewOk)), { ok: tr('Бүгдийг зөвшөөрөх') }))) return;
+                setOkRows(new Set(reviewOids));
+              }}>
+              {allOk ? tr('Бүгдийг болих') : tr('Бүгдийг зөвшөөрөх')}
+            </button>
             <button type="button" className={h.discard}
               disabled={busy || approving != null || !(reviewLive || reviewConflict) || !canApprove || isOwnSubmission}
               onClick={() => { setErr(''); setFlowBox('reject'); }}>
@@ -5113,7 +5246,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             lastDecision.approver ?? '', num(lastDecision.rowCount))}
         </p>
       )}
-      {flowReady === false && (canEditRole || canApprove) && !loadErr && (
+      {flowReady === false && !flowNoAuth && (canEditRole || canApprove) && !loadErr && (
         <p className={h.err} role="alert">
           {flowWhy || tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.')}
           {' '}
@@ -5231,7 +5364,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           ) : (
             <div className={`${h.gWrap}${hdRestoringUi ? ` ${h.gWrapGated}` : ''}`} ref={scrollRef} onScroll={onScroll}
               aria-hidden={hdRestoringUi || undefined} inert={hdRestoringUi}>
-              <div ref={sideAndColRef} style={{ ...sideStyle, ...colW.style }} className={`${h.gSide} ${cols ? '' : h.gSideNarrow} ${canEdit && !locked && !allOn ? (kind === 'plan' ? h.gSideEdP : h.gSideEdG) : ''}`}>
+              <div ref={sideAndColRef} style={{ ...sideStyle, ...colW.style, ...(SIMPLE ? { flexBasis: sideBasis } : {}) }} className={`${h.gSide} ${hideCls} ${SIMPLE ? (kind === 'geree' ? h.simpleG : h.simpleP) : ''} ${cols ? '' : h.gSideNarrow} ${canEdit && !locked && !allOn ? (kind === 'plan' ? h.gSideEdP : h.gSideEdG) : ''}`}>
                 <button type="button" className={`${h.sideGrip}${sideGrip.dragging ? ` ${h.sideGripOn}` : ''}`}
                   role="separator" aria-orientation="vertical"
                   aria-label={tr('Жагсаалтын өргөн')} aria-valuenow={sideGrip.extra}
@@ -5450,7 +5583,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                             const other = kind === 'geree' ? tr('Төлөвлөгөө') : tr('Гэрээ');
                             return (
                               <div
-                                className={h.plRef}
+                                /* Зэрэг харах: төлөвлөгөө — ДЭЭД, гэрээ — ДООД зурвас (аль нь засагдаж буйгаас үл хамаарна) */
+                                className={`${h.plRef} ${kind === 'geree' ? `${h.plRefP} ${h.plRefTop}` : h.plRefG}`}
                                 style={{ left: xOf(rsp.start), width: Math.max(6, spanDays(rsp) * px - 1) }}
                                 title={`${other}: ${msToDay(rsp.start)} → ${msToDay(rsp.end)} (${tr('{0} хоног', spanDays(rsp))})`}
                               />
@@ -5488,7 +5622,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                           )}
                           {sp && (
                             <div
-                              className={`${h.plBar} ${half ? h.plBarHalf : ''} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.oid ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''} ${critOids?.has(r.oid) ? h.plBarCrit : ''}`}
+                              className={`${h.plBar} ${half ? (showRef && kind === 'geree' ? h.plBarHalfLow : h.plBarHalf) : ''} ${r.group ? h.plBarG : ST_CLASS[st]} ${sel === r.oid ? h.tlBarOn : ''} ${viol ? h.plBarViol : ''} ${critOids?.has(r.oid) ? h.plBarCrit : ''}`}
                               style={{ left: xOf(sp.start), width: Math.max(10, spanDays(sp) * px - 1) }}
                               onPointerDown={(e) => onDown(e, r, 'move')}
                               role={r.oid < 0 ? undefined : 'button'}
@@ -5585,6 +5719,14 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+          {/* Тайлбар — зэрэг харах үед: төлөвлөгөө дээд, гэрээ доод зурвас */}
+          {showRef && (
+            <div className={h.legend} role="note">
+              <span className={h.legItem}><i className={`${h.legLane} ${h.legLaneTop}`} aria-hidden />{tr('Төлөвлөгөө — дээд зурвас')}</span>
+              <span className={h.legItem}><i className={`${h.legLane} ${h.legLaneBot}`} aria-hidden />{tr('Гэрээ — доод зурвас')}</span>
+              <span className={h.legHint}>{kind === 'plan' ? tr('Засагдаж буй: төлөвлөгөө') : tr('Засагдаж буй: гэрээ')}</span>
             </div>
           )}
         </Section>
@@ -5764,6 +5906,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           label={tr('Буцаах шалтгаан (буцаахад заавал)')}
           okText={tr('Батлах')}
           rejectText={tr('Буцаах')}
+          presets
           busy={busy}
           err={err}
           text={flowTxt}
@@ -5788,7 +5931,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           }}
           onReject={(txt) => {
             const own = txt.trim();
-            if (!own) return;
+            if (!reasonOk(own)) return;
             if (previewing) { void decide(false, txt, reviewOids.filter((o) => okRows.has(o))); return; }
             if (previewBad === pending.oid) { void decide(false, own, undefined); return; }
             const blind = BLIND_NOTE;
@@ -5830,6 +5973,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             : tr('{0} мөрийн хуваарийг {1} илгээв.', num(pending.rowCount), pending.author)}
           label={tr('Буцаах шалтгаан (заавал)')}
           okText={tr('Буцаах')}
+          presets
           busy={busy}
           err={err}
           text={flowTxt}
