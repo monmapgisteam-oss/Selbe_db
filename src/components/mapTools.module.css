@@ -383,3 +383,28 @@
   background: var(--data);
   box-shadow: 0 0 0 2px var(--surface);
 }
+
+/*
+ * УТАС (≤620px, 2026-11-20): товчнууд нэг ХЭВТЭЭ мөрөнд (зүүн дээд), 2D/3D/BIM түүний ДООР зүүн талд — давхцахгүй.
+ * `dock` (Ерөнхий төлөвлөгөө) өөрийн зохиомжтой тул хамаарахгүй.
+ */
+@media (max-width: 620px) {
+  .tools:not(.toolsDock) {
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    width: auto !important;
+    max-width: calc(100% - 64px);
+    /* 4–5 товчтой цэсэнд (Газар чөлөөлөлт, Дэд бүтэц) нэр «Дав · Тун» болж тасардаг байв — мөр ХӨНДЛӨН гүйнэ, товч бүтэн */
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none;
+  }
+  .tools:not(.toolsDock) .btn { flex: none; }
+  /* 3 товч нэг мөрөнд багтахаар нягт — хоёр дахь мөр 2D/3D/BIM-ийн доор далдлагддаг байв */
+  .tools:not(.toolsDock) .btn { padding: 4px 8px !important; font-size: 12px !important; gap: 5px !important; white-space: nowrap; }
+  *:not(:has(> .tabDock)) > .dimsBar {
+    top: 60px !important;
+    left: 12px !important;
+    transform: none !important;
+  }
+}

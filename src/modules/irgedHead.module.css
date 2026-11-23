@@ -79,3 +79,9 @@
 @media (max-width: 620px) {
   .head { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* НАРИЙН ДЭЛГЭЦ (≤1180px, 2026-11-23): урт дүн («2,495,841,880,529») нэг мөрөнд багтахгүй зүүн тал нь тасардаг байв — мянгатын заагаар хугарна */
+@media (max-width: 1180px) {
+  .tileValLong { white-space: normal; overflow-wrap: anywhere; }
+  .tileVal { flex-wrap: wrap; }
+}

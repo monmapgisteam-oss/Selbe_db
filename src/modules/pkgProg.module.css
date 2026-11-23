@@ -518,3 +518,23 @@
 }
 .map.map:has(:global(.mapOpacity)) *:has(> :global(.mapCatalog)) { bottom: auto; height: calc(55% - 18px); }
 .map.map:has(:global(.mapCatalog)) :global(.mapOpacity) { top: calc(55% + 6px); max-height: calc(45% - 18px); }
+
+/* УТАС (≤620px, 2026-11-20): нээгдэх цонх товчны хажууд ~150px болж нарийсдаг байв — зургийн бүтэн өргөнөөр, товчны ДЭЭР (хаах товч нь цонхондоо) */
+@media (max-width: 620px) {
+  .map.map *:has(> :global(.mapCatalog)),
+  .map.map :global(.mapOpacity),
+  .map.map [class*='zonePanel'] {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}
+
+/*
+ * НАМХАН ДЭЛГЭЦ (2026-11-20) — ноутбук 1366×768 · 1280×720 · Windows 125% томруулалт. Дашбоард дэлгэцийн өндөрт
+ * баригдаж газрын зураг ~120–240px болж хумигддаг байв. Өндөр 900px-ээс бага бол дашбоард ТОГТМОЛ 900px өндөртэй болж (багануудын дотоод гүйлгэлт хэвээр),
+ * хуудас доошоо гүйлгэгдэнэ — зураг, картууд шахагдахгүй. Нарийн (≤1180px) горимд аль хэдийн урсгалд ордог тул ширээнд л.
+ */
+@media (min-width: 1181px) and (max-height: 900px) {
+  .pack { height: 900px; min-height: 900px; }
+}

@@ -123,3 +123,8 @@
   font-size: 11px;
   color: var(--ink-2);
 }
+
+/* УТАС (≤620px, 2026-11-20): 22px урт дүн («1,364,099,144,390 ₮») хавтангаас гарч байв — жижигрүүлж мянгатын заагаар хугална */
+@media (max-width: 620px) {
+  .tileVal b { font-size: 16px; overflow-wrap: anywhere; }
+}

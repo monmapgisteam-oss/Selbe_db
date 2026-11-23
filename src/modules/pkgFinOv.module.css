@@ -101,3 +101,13 @@
   color: var(--ink-3);
   background: var(--bg);
 }
+
+/* УТАС (≤620px, 2026-11-20): 22px урт дүн («1,364,099,144,390 ₮») хавтангаас гарч байв — жижигрүүлж мянгатын заагаар хугална */
+@media (max-width: 620px) {
+  .tileVal b { font-size: 16px; overflow-wrap: anywhere; }
+}
+
+/* ТАБЛЕТ · ХЭВТЭЭ УТАС (621–1180px, 2026-11-23): 4 баганат хавтанд 22px урт дүн («1,364,099,144,366 ₮») хөрш хавтан руу гардаг байв */
+@media (min-width: 621px) and (max-width: 1180px) {
+  .tileVal b { font-size: 17px; overflow-wrap: anywhere; }
+}

@@ -3,6 +3,7 @@
   max-width: 100%;
   overflow: auto;
   max-height: calc(100vh - 230px);
+  max-height: calc(100dvh - 230px);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
   background: var(--surface);
