@@ -377,7 +377,11 @@
 .rowGroup { font-weight: 600; background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
 .rowOn { background: color-mix(in oklab, var(--moss) 12%, transparent); box-shadow: inset 3px 0 0 var(--moss); }
 /* Нийтлээгүй засвар — зүүн ирмэгийн зураас (өнгө нь «хадгалагдаагүй» гэсэн утга) */
-.rowDirty { box-shadow: inset 3px 0 0 var(--data); }
+/* 2026-11-20: өөрчлөгдсөн мөр шар өнгөөр тод (зүүн зураас + бүдэг дэвсгэр) */
+.rowDirty {
+  box-shadow: inset 4px 0 0 var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+}
 /*
  * БАТЛАГЧИЙН ЗӨВШӨӨРӨЛ (2026-09-25) — `sheet.module.css`-ийн `.chg` / `.chgOk`
  * загвар: улаан = зөвшөөрөөгүй (засах ёстой), ногоон = зөвшөөрсөн.
@@ -1844,3 +1848,32 @@ span.blkChip { cursor: default; }
 @media (max-width: 620px) {
   .frame select { max-width: 100%; min-width: 0; }
 }
+/* ── ТӨЛВИЙН МӨР · ШИЛЖИЛТИЙН ТЭМДЭГ (2026-11-20) ── */
+.stateBar {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-left: 4px solid var(--data);
+  background: color-mix(in srgb, var(--data) 10%, transparent);
+  color: var(--ink);
+}
+.state_ok { border-left-color: var(--good); background: color-mix(in srgb, var(--good) 10%, transparent); }
+.state_warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.state_bad { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.state_info { border-left-color: var(--data); }
+.plShift {
+  position: absolute;
+  top: 2px;
+  z-index: 3;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  white-space: nowrap;
+  pointer-events: auto;
+  background: var(--surface, #fff);
+}
+.plShiftLate { color: var(--bad-ink); border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent); }
+.plShiftEarly { color: var(--good-ink); border: 1px solid color-mix(in srgb, var(--good) 45%, transparent); }

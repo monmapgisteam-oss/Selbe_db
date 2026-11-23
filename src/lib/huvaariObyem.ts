@@ -285,14 +285,23 @@ export function remapMonths(months: ReadonlyMap<string, number>, from: Span, to:
   for (const k of oldK) cnt.set(k, (cnt.get(k) ?? 0) + 1);
   const accm = new Map<string, number>();
   let got = 0;
+  /* 2026-11-20 (аудит): хуучин өдөр бүрийн обьём шинэ мужийн ХАРГАЛЗАХ ХЭСЭГТ [d·L'/L, (d+1)·L'/L) өдрүүдийн давхцлаар
+     тарна — урьд нь нэг л шинэ өдөрт буудаг байсан тул сунгахад бүтэн сар 0 болдог байв (1–2 сарын 50/50 → 4 сар: 50/0/0/50) */
+  const L = oldK.length;
+  const Ln = newK.length;
   oldK.forEach((k, d) => {
     const v = months.get(k);
     if (v == null || !(v > 0)) return;
-    const t = oldK.length > 1 ? d / (oldK.length - 1) : 0;
-    const nk = newK[Math.round(t * (newK.length - 1))];
     const add = v / cnt.get(k)!;
-    accm.set(nk, (accm.get(nk) ?? 0) + add);
-    got += add;
+    const a0 = (d * Ln) / L;
+    const a1 = ((d + 1) * Ln) / L;
+    for (let j = Math.floor(a0); j < Math.min(Ln, Math.ceil(a1)); j++) {
+      const w = Math.min(a1, j + 1) - Math.max(a0, j);
+      if (!(w > 0)) continue;
+      const part = (add * w) / (a1 - a0);
+      accm.set(newK[j], (accm.get(newK[j]) ?? 0) + part);
+      got += part;
+    }
   });
   if (!(got > 0)) return out;
   for (const k of out.keys()) out.set(k, ((accm.get(k) ?? 0) / got) * 100);

@@ -5,11 +5,12 @@
  */
 
 import { type PointerEvent as PEvt, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { subscribeData } from '@/lib/dataBus';
 import { t as tr } from '@/lib/i18nCore';
 import { scopeHas } from '@/lib/scopedAcl';
 import { Section, Empty, Loading, Data, friendlyError, userError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
-import { hasPlanRole, huvaariAclReady, huvaariScope, planApproversOf, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { hasPlanRole, huvaariAclReady, huvaariScope, planApproversOf, requirePlanWrite, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { ensureKomissRow, findKomissRow } from '@/lib/ulsiinKomiss';
 import { roleForUser } from '@/lib/services';
 import { dayKey, fixCyr, num } from '@/lib/format';
@@ -765,6 +766,10 @@ export function Huvaari({
     setDraft(new Map()); setHam(new Map()); setSel(null); setCollapsed(new Set()); setModal(null);
     setErrList([]); setUndoSnap(null); setChgOpen(false); setChainN(0); setPendingOther(null);
     setFGrp('all'); setLinkAsk(null);
+    /* 2026-11-20 (аудит): багц солиход жилийн шүүлт, хөлдөөсөн мөр (ObjectID багц хооронд давхцдаг), «тэнцээгүй» чип тэглэнэ —
+       урьд нь шинэ багцад жил байхгүй бол шүүлт ажилласаар «Жил: бүгд» гэж харагддаг, өөр багцын мөр хөлдөж харагддаг байв */
+    setFYear('all');
+    setChips((s) => (s.has('unbal') ? new Set([...s].filter((c) => c !== 'unbal')) : s));
     setADraft(new Map()); setResDraft(new Map());
     setLvl(0);
     setObPlan(new Map()); setObOids(new Map()); setObDraft(new Map()); setObDups([]);
@@ -834,6 +839,8 @@ export function Huvaari({
     setViewSavedAt(null);
     setErrList([]); setUndoSnap(null); setChgOpen(false); setChainN(0);
     setChips((s) => (s.has('unbal') ? new Set([...s].filter((c) => c !== 'unbal')) : s));
+    /* Таб солиход жилийн шүүлт тэглэнэ — нөгөө табд тэр жил байхгүй бол хоосон ч «Жил: бүгд» харагддаг байв (2026-11-20) */
+    setFYear('all');
     const pr = pendRef.current;
     setPending(pr.other); setPendingOther(pr.cur);
     savedRef.current = false;
@@ -1023,7 +1030,8 @@ export function Huvaari({
       if (r.group || r.des == null) continue;
       if (r.vol == null || !(r.vol > 0)) continue;
       const pm = obPlan.get(r.des);
-      const hasDraft = obDraft.size > 0;
+      /* «Батлагдсан» харагдацад ноорог обьём орохгүй — зурвас хадгалсан огноогоор тул хувь ч хадгалсан утгаар (2026-11-20) */
+      const hasDraft = !savedView && obDraft.size > 0;
       for (let b = 0; b < n; b += 1) {
         const blok = sc?.bld[b];
         if (!blok) continue;
@@ -1038,7 +1046,7 @@ export function Huvaari({
       }
     }
     return { per, tot };
-  }, [plan, n, sc, obDraft, obPlan]);
+  }, [plan, n, sc, obDraft, obPlan, savedView]);
 
   /**
    * Сарын шошгын доорх хувийн ТЕКСТ. `null` = ОГТ зурахгүй.
@@ -1137,6 +1145,9 @@ export function Huvaari({
    */
   const exportAt = useCallback((b: number) => scoped.filter((r) => matchAt(r, b)), [scoped, matchAt]);
   const [sticky, setSticky] = useState<ReadonlySet<number>>(() => new Set());
+  /* Багц солиход хөлдөөсөн мөр тэглэнэ — ObjectID багц хооронд давхцдаг тул өөр багцын мөр шүүлтгүйгээр харагддаг байв (2026-11-20) */
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setSticky(new Set()); }, [pkg.key, reloadN]);
   const filtOn = filter !== 'all' || fYear !== 'all' || chips.size > 0;
   const filtKey = `${filter}|${fYear}|${[...chips].sort().join(',')}`;
   const [stickyKey, setStickyKey] = useState(filtKey);
@@ -1179,8 +1190,11 @@ export function Huvaari({
   const years = useMemo(() => {
     const s = new Set<string>();
     for (const r of plan) {
+      /* 2026-11-20 (аудит): бүлгийн хадгалсан муж ба 2000–2100-аас гадуурх огноо (1899, 1909 …) жилийн жагсаалтыг 119 сонголт
+         болгодог байв — ажлын мөрийн, хуанлийн хүрээнд (`useCalendar`) багтах жил л */
+      if (r.group) continue;
       const sp = rowSpan(r);
-      if (!sp) continue;
+      if (!sp || sp.end < sp.start || sp.start < Date.UTC(2000, 0, 1) || sp.end > Date.UTC(2100, 0, 1)) continue;
       const y0 = new Date(sp.start).getUTCFullYear();
       const y1 = new Date(sp.end).getUTCFullYear();
       for (let y = y0; y <= y1; y++) s.add(String(y));
@@ -2178,6 +2192,9 @@ export function Huvaari({
       return false;
     }
     try {
+      /* 2026-11-20 (аудит): эх хуудсанд бичихийн өмнө ТЭР багцын зохиогч/батлагч эсэхийг шалгана — урьд нь `applyUpdates` зөвхөн «аль
+         нэг бичих эрх»-ийг шалгадаг тул өөр багцын хуудсанд бичих боломжтой байв (жинхэнэ хил нь сервер талд) */
+      requirePlanWrite(pkg.group);
       const approvalMode = approving != null;
       const steps = approvalMode ? 3 : 2;
       if (approvalMode) failStepRef.current = null;
@@ -2542,6 +2559,18 @@ export function Huvaari({
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void refreshFlow(); }, [refreshFlow]);
+  /*
+   * ПОРТАЛЫН «ШИНЭЧЛЭХ» (2026-11-20, аудит): `invalidateAll` · өгөгдлийн автуу (dataBus) — «Хуваарь» сонсдоггүй тул мөр, хүлээгдэж буй
+   * илгээлт, сарын обьём хуучин хэвээр үлддэг байв. Ноорог хөндөхгүй ар талын татах (`refetchBg`) + урсгал; олон дохиог 600 мс-ээр нэгтгэнэ.
+   */
+  useEffect(() => {
+    let t: number | null = null;
+    const off = subscribeData(() => {
+      if (t != null) window.clearTimeout(t);
+      t = window.setTimeout(() => { t = null; void refreshFlow(); void refetchBg().catch(() => { /* дараагийн ачаалалтаар */ }); }, 600);
+    });
+    return () => { off(); if (t != null) window.clearTimeout(t); };
+  }, [refreshFlow, refetchBg]);
 
   /**
    * ХҮЛЭЭГДЭЖ БУЙ ИЛГЭЭЛТИЙГ 30 с ТУТАМ ШАЛГАНА (2026-09-29, хэрэглэгч: «буцаасан шалтгаан
@@ -3799,7 +3828,10 @@ export function Huvaari({
   }, [pdfOpen]);
   const rowFor = useCallback((r: PlanRow, b: number): HvPdfRow => {
     const x = r.group ? effRow(r) : r;
-    const sp = b === blk ? rowSpanAt(r) : blockSpan(plan, r, b);
+    const sp0 = b === blk ? rowSpanAt(r) : blockSpan(plan, r, b);
+    /* 2026-11-20 (аудит): урвуу муж (дуусах < эхлэх) — хуваарьгүй гэж үзнэ (`coverageOf` · `planAt`-тэй ижил); урьд нь тайланд
+       «хуваарьтай · дууссан · −116 хоног» гэж гардаг байв */
+    const sp = sp0 && sp0.end >= sp0.start ? sp0 : null;
     const need = sp && r.deps.length && kind === 'plan'
       ? requiredStart(plan, byCode, r.i, b) : null;
     const other = b === blk ? refSpanAt(r.oid) : refSpanOf(r.oid, b);
@@ -3826,9 +3858,10 @@ export function Huvaari({
       `${tr('Хуваарь')}: ${kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө')}`,
       n > 1 && sc?.bld[blk] ? `${tr('Блок')}: ${sc.bld[blk]}` : '',
       previewing ? tr('САНАЛ (урьдчилан харалт)') : !savedView && dirtyRows > 0 ? tr('Хадгалаагүй {0} мөр орсон', num(dirtyRows)) : '',
-      filtOn ? tr('Шүүлт идэвхтэй — зөвхөн шүүлтэд таарсан ажил') : '',
+      /* Бүлгийн шүүлт ч тайланд нөлөөлдөг (`exportAt`) — тэмдэглэнэ (2026-11-20) */
+      filtOn || fGrp !== 'all' ? tr('Шүүлт идэвхтэй — зөвхөн шүүлтэд таарсан ажил') : '',
     ].filter(Boolean),
-  }), [exportAt, blk, rowFor, hasActual, pkg, kind, n, sc, previewing, dirtyRows, savedView, filtOn]);
+  }), [exportAt, blk, rowFor, hasActual, pkg, kind, n, sc, previewing, dirtyRows, savedView, filtOn, fGrp]);
 
   const savePdf = useCallback(async () => {
     if (!sc || pdfBusy) return;
@@ -3838,7 +3871,9 @@ export function Huvaari({
       const out: HvPdfRow[] = exportAt(blk).map((r) => rowFor(r, blk));
       const allPdf = !!pdfOpts.allBlocks && multiBlk;
       const blocks = allPdf ? sc.bld.map((name, b) => ({ block: name, rows: exportAt(b).map((r) => rowFor(r, b)) })) : undefined;
-      const kindLabel = kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө');
+      /* 2026-11-20 (аудит): PDF-д шүүлтийн тэмдэглэл огт гардаггүй тул мөр орхигдсон нь мэдэгддэггүй байв */
+      const kindLabel = (kind === 'geree' ? tr('Гэрээ') : tr('Төлөвлөгөө'))
+        + (filtOn || fGrp !== 'all' ? ` · ${tr('Шүүлт идэвхтэй — зөвхөн шүүлтэд таарсан ажил')}` : '');
       await downloadHuvaariPdf({
         pkg: pkg.label,
         kindLabel,
@@ -3859,7 +3894,7 @@ export function Huvaari({
       setPdfBusy(false);
     }
   }, [sc, pdfBusy, exportAt, rowFor, multiBlk, kind, blk, now, showRef,
-    pkg, n, hasActual, pdfOpts, setErr, setPdfOpen, previewing, dirtyRows, savedView]);
+    pkg, n, hasActual, pdfOpts, setErr, setPdfOpen, previewing, dirtyRows, savedView, filtOn, fGrp]);
 
   /** Холбох цонхны хоёр мөр — OID-оор (2026-09-25); аль нэг нь алга бол цонх гарахгүй */
   const linkRows = useMemo(() => {
@@ -4129,6 +4164,24 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
     );
   }
 
+  /*
+   * ТӨЛВИЙН МӨР (2026-11-20, хэрэглэгч: «юу өөрчлөгдсөн, ямар төлөвт байгааг мэдэхэд хэцүү») — нэг мөрөнд ОДОО юу хийж байгаа,
+   * эх (батлагдсан) хуваарь хөдөлсөн эсэх, дараагийн алхам. Дэлгэрэнгүй тэмдэглэлүүд доор хэвээр.
+   */
+  const stateLine: { tone: 'ok' | 'warn' | 'bad' | 'info'; text: string } | null = review
+    ? { tone: 'warn', text: tr('Хянаж байна: {0} илгээсэн {1} өөрчлөлт. Судалтай саарал зурвас = одоо батлагдсан огноо, өнгөт зурвас = санал болгож буй огноо. Мөр бүрийг ✓/✕ хийнэ.', pending?.author ?? '—', num(reviewOids.length)) }
+    : previewing
+      ? { tone: 'info', text: tr('Илгээлтийг урьдчилан харж байна — эх (батлагдсан) хуваарь өөрчлөгдөөгүй.') }
+      : pending
+        ? { tone: 'info', text: tr('Батлагдахыг хүлээж байна: {0} илгээсэн. Шийдвэр гартал батлагдсан хуваарь хөдлөхгүй.', pending.author) }
+        : backOn
+          ? { tone: 'bad', text: tr('Буцаагдсан: улаан ✕ мөрүүдийг засаад «Батлуулах»-аар дахин илгээнэ. Ногоон ✓ мөр зөвшөөрөгдсөн.') }
+          : savedView
+            ? { tone: 'ok', text: tr('Батлагдсан хуваарь — зөвхөн харах. Засахын тулд «Ноорог» руу шилжинэ.') }
+            : dirtyRows > 0
+              ? { tone: 'warn', text: tr('Ноорог: {0} мөр өөрчлөгдсөн, батлагдсан хуваарь хөдлөөгүй. Судалтай саарал зурвас = батлагдсан огноо. «Батлуулах»-аар илгээнэ.', num(dirtyRows)) }
+              : null;
+
   return (
     <div className={`${h.frame} ${isWide ? h.frameWide : ''}`} data-huvaari-root="">
       {/* ── БҮХ ХЭРЭГСЭЛ НЭГ МӨРӨНД ── */}
@@ -4249,6 +4302,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             </select>
 
             {([
+              /* 2026-11-20: «Зөвхөн өөрчлөгдсөн» — ноорог/санал дахь өөрчлөгдсөн мөрүүд, бүлгүүдийнхээ хамт */
+              ...((!savedView && dirtyRows > 0) || chips.has('dirty') ? [['dirty', tr('Зөвхөн өөрчлөгдсөн'), dirtyRows] as [Chip, string, number]] : []),
               ...((kind === 'plan' && unbalRows.size > 0) || chips.has('unbal') ? [['unbal', tr('Тэнцээгүй'), unbalRows.size] as [Chip, string, number]] : []),
             ] as [Chip, string, number][]).map(([c, label, cnt]) => (
               <button key={c} type="button"
@@ -4639,6 +4694,10 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           <span className={h.flowNote} role="status" aria-live="polite">⏳ {progress}</span>
         )}
       </header>
+
+      {stateLine && (
+        <p className={`${h.stateBar} ${h[`state_${stateLine.tone}`] ?? ''}`} role="status">{stateLine.text}</p>
+      )}
 
       {(err || chainN > 0 || note) && (
         <div className={h.toasts}>
@@ -5317,7 +5376,8 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                        * ба буцаасан саналыг засахад: өөрчлөгдсөн мөрийн ОДООГИЙН
                        * батлагдсан огноо доод хагаст бүдгээр («юу байсан → юу болох»).
                        */
-                      const oldSp = (review || backOn) && !r.group && reviewSet.has(r.oid)
+                      /* 2026-11-20: засаж буй ноорогт ч (зохиогч) батлагдсан огноог харуулна — «юу өөрчлөгдсөн бэ» нүдээр */
+                      const oldSp = !r.group && r.oid > 0 && ((review || backOn) ? reviewSet.has(r.oid) : (!savedView && dirtyOids.has(r.oid)))
                         ? base[r.i]?.spans[blk] ?? null : null;
                       const showOld = !!(oldSp && !showRef && (!sp || oldSp.start !== sp.start || oldSp.end !== sp.end));
                       const half = showRef || showOld;
@@ -5351,6 +5411,20 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                               {msToDay(sp.start)} → {msToDay(sp.end)} · {spanDays(sp)}{tr('х')}
                             </span>
                           )}
+                          {showOld && oldSp && sp && (() => {
+                            /* «+5х» — эхлэх огноо хэдэн хоногоор шилжсэн; «урт +3х» — үргэлжлэх хугацаа (2026-11-20) */
+                            const mv = Math.round((sp.start - oldSp.start) / DAY);
+                            const dl = spanDays(sp) - spanDays(oldSp);
+                            const txt = [mv ? `${mv > 0 ? '+' : ''}${mv}${tr('х')}` : '', dl ? `${tr('урт')} ${dl > 0 ? '+' : ''}${dl}${tr('х')}` : ''].filter(Boolean).join(' · ');
+                            if (!txt) return null;
+                            return (
+                              <span className={`${h.plShift} ${mv > 0 || dl > 0 ? h.plShiftLate : h.plShiftEarly}`}
+                                style={{ left: xOf(Math.max(sp.end, oldSp.end)) + px + 4 }}
+                                title={`${tr('Батлагдсан')}: ${msToDay(oldSp.start)} → ${msToDay(oldSp.end)} · ${tr('Шинэ')}: ${msToDay(sp.start)} → ${msToDay(sp.end)}`}>
+                                {txt}
+                              </span>
+                            );
+                          })()}
                           {showOld && oldSp && (
                             <div
                               className={`${h.plRef} ${h.plOld}`}
