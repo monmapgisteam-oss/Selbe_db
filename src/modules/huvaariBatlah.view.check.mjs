@@ -99,7 +99,9 @@ console.log('✅ өөрийгөө батлах — тусдаа хэсэг, хо
   assert.ok(/if\s*\(busy\s*\|\|\s*!why\)/.test(V),
     'HuvaariBatlah: буцаах функц шалтгааныг шалгахгүй байна');
   /* 2026-09-29: өөр батлагч түгжсэн бол (`holder`) ч хаалттай */
-  assert.ok(/disabled=\{busy\s*\|\|\s*!reason\.trim\(\)\s*\|\|\s*!!holder\}/.test(V),
+  /* 2026-11-23: доод урттай (`reasonOk`) — «1», «asd» мэт шалтгаан хаагдана */
+  assert.ok(/if\s*\(busy\s*\|\|\s*!reasonOk\(why\)\)/.test(V), 'HuvaariBatlah: буцаах функц шалтгааны доод уртыг шалгахгүй байна');
+  assert.ok(/disabled=\{busy\s*\|\|\s*!reasonOk\(reason\)\s*\|\|\s*!!holder\}/.test(V),
     'HuvaariBatlah: буцаах товч шалтгаангүйд хаагдахгүй байна');
 }
 console.log('✅ буцаах — шалтгаан заавал (функц ба товч хоёуланд)');
@@ -215,7 +217,7 @@ console.log('✅ батлах шилжилт — санах ойгоор, setVie
   assert.ok(/const rejectReview[\s\S]{0,900}decide\(false,[\s\S]{0,80}okRows\.has/.test(H),
     'Huvaari: хяналтын буцаалт зөвшөөрсөн мөрийг дамжуулахгүй');
   /* 2026-09-29 аудит: хяналтын горимоос ГАДУУРХ «Шийдвэрлэх → Буцаах» ч тэмдэг дамжуулна */
-  assert.ok(/onReject=\{\(txt\) => \{[\s\S]{0,120}if \(!own\) return;[\s\S]{0,40}if \(previewing\) \{ void decide\(false, txt, reviewOids\.filter\(\(o\) => okRows\.has\(o\)\)\); return; \}[\s\S]{0,300}void decide\(false, [\s\S]{0,200}REASON_MAX[\s\S]{0,80}, \[\]\);/.test(H),
+  assert.ok(/onReject=\{\(txt\) => \{[\s\S]{0,120}if \(!reasonOk\(own\)\) return;[\s\S]{0,40}if \(previewing\) \{ void decide\(false, txt, reviewOids\.filter\(\(o\) => okRows\.has\(o\)\)\); return; \}[\s\S]{0,300}void decide\(false, [\s\S]{0,200}REASON_MAX[\s\S]{0,80}, \[\]\);/.test(H),
     'Huvaari: FlowBox-ын буцаалт урьдчилан харсан тэмдэглэгээг хаяж байна (эсвэл хараагүй үед [] биш)');
   assert.ok(/reason: `\$\{why\.slice\(0, Math\.max\(0, REASON_MAX - blind\.length - 1\)\)\}\\n\$\{blind\}`, okRows: \[\]/.test(V),
     'HuvaariBatlah: дарааллаас буцаахад okRows: [] (бүгд улаан) дамжихгүй');

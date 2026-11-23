@@ -16,8 +16,8 @@ import { fetchPlanRows } from './projectPlanInputs';
 import { loadZuragBurtgel } from './zuragBurtgel';
 import { registryPlanEdits } from './zuragPlan';
 
-/** Хүснэгтийг бүртгэлтэй тааруулна; бичигдсэн мөрийн тоо (0 = таарч байсан) */
-export function syncZuragPlan(): Promise<number> {
+/** Хүснэгтийг бүртгэлтэй тааруулна; `n` — бичигдсэн мөр (0 = таарч байсан), `held` — гэрээ/төлбөртэй тул устгаагүй мөр */
+export function syncZuragPlan(): Promise<{ n: number; held: number }> {
   /* 2026-11-20 (аудит): хоёр таб зэрэг хадгалбал давхар мөр нэмэгддэг байв — ээлжлүүлнэ */
   return withTabLock('zuragPlan', syncZuragPlanNow);
 }
@@ -35,16 +35,17 @@ export function useZuragPlanSync(on: boolean): void {
   }, [on]);
 }
 
-async function syncZuragPlanNow(): Promise<number> {
+async function syncZuragPlanNow(): Promise<{ n: number; held: number }> {
   const [rows, z] = await Promise.all([fetchPlanRows(), loadZuragBurtgel()]);
   const e = registryPlanEdits(rows, z);
   const n = e.adds.length + e.updates.length + e.deletes.length;
-  if (!n) return 0;
+  const held = e.held.length;
+  if (!n) return { n: 0, held };
   await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, {
     adds: e.adds,
     updates: e.updates.map(({ objectid, ...a }) => ({ [CASHFLOW_NEW.oid]: objectid, ...a })),
     deletes: e.deletes,
   }, { cap: 'zuragEdit' });
   invalidate('CASHFLOW_NEW');
-  return n;
+  return { n, held };
 }

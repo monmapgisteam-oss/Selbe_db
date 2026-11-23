@@ -74,7 +74,7 @@ async function totals() {
   return { ipc: sum(ho, HO_IPC.payFields.amount), ttb: sum(cf, CASHFLOW_NEW.fields.paid) };
 }
 
-await step('Зургийн бүртгэл → ТТБ', async () => (DRY ? 'алгасав (--dry)' : `${await syncZuragPlan()} мөр`));
+await step('Зургийн бүртгэл → ТТБ', async () => (DRY ? 'алгасав (--dry)' : await syncZuragPlan().then((r) => `${r.n} мөр${r.held ? ` · гэрээ/төлбөртэй тул үлдээсэн ${r.held}` : ''}`)));
 await step('Төлбөрийн акт ↔ ТТБ', hoSync);
 await step('Гүйцэтгэл → ТТБ', async () => {
   if (DRY) return 'алгасав (--dry)';

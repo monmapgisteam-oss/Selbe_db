@@ -14,6 +14,7 @@
  * 6 түвшний хуваарь (`levelPlan.buildL2`) эдгээр талбарыг аль хэдийн уншдаг тул энд бичсэн утга шууд milestone болно.
  */
 import type { CapKey } from './caps';
+import { t as tr } from './i18nCore';
 import { packagesOf } from './levelPlan';
 import { isAddedWork, saneDate, tenderLockWhy, ubToday, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 import {
@@ -26,10 +27,11 @@ export type PageKey = 'zahiramj' | 'songon' | 'zovshoorolTtb' | 'ashiglalt';
 /** Нэг оруулах талбар: `key` — `PlanStoredRow`-ийн түлхүүр = `Guitsetgel_talbe/182`-ийн талбарын нэр */
 export type FieldDef = {
   key: 'zahiramj_ognoo' | 'zahiramj_dugaar' | 'geree_ognoo' | 'ashiglalt_ognoo'
-  | 'guits_ehleh' | 'guits_duusah' | 'guitsetgel_huvi';
-  kind: 'date' | 'text' | 'pct';
-  /** Аль мөрд засагдах вэ: `pkg` — багцтай, блокгүй мөр; `leaf` — хүүхэдгүй мөр; `row` — бүх мөр */
-  on: 'pkg' | 'leaf' | 'row';
+  | 'guits_ehleh' | 'guits_duusah' | 'guitsetgel_huvi'
+  | 'ajil_uilchilgee' | 'bagts' | 'ho_dun_zahiramj';
+  kind: 'date' | 'text' | 'pct' | 'num';
+  /** Аль мөрд засагдах вэ: `pkg` — багцтай, блокгүй мөр; `leaf` — хүүхэдгүй мөр; `row` — бүх мөр; `decree` — захирамжийн мөр (бүлэг биш) */
+  on: 'pkg' | 'leaf' | 'row' | 'decree';
 };
 
 export type PageDef = {
@@ -40,62 +42,137 @@ export type PageDef = {
   cap: CapKey;
   /** Багцын мөрийн доор мөр нэмэх/устгах (Зөвшөөрөл) */
   addRows?: boolean;
+  /** Захирамж: барилга угсралтын ажлын мөрүүд (доод мөргүй); бүлгийн доор шинэ ажлын мөр = шинэ захирамж */
+  decree?: boolean;
+  /** Сонгон: гэрээний мэдээлэл (огноо · дугаар · гүйцэтгэгч) ТТБ-ийн гэрээний мөрөөс — зөвхөн харуулна */
+  contractInfo?: boolean;
+  /** Ашиглалт: барилгын дуусах огноо ба гүйцэтгэл — зөвхөн харуулна */
+  buildInfo?: boolean;
+  /** Зөвшөөрөл · Ашиглалт: огноо дутуу мөр шараар, «Зөвхөн асуудалтай» шүүлт, Excel (2026-11-23) */
+  issues?: boolean;
 };
 
 export const PAGES: Record<PageKey, PageDef> = {
+  /* 2026-11-23 (хэрэглэгч): шинэ захирамж — ТТБ-д шинэ ажлын мөр; захирамжийн мөрийн бүх баганыг засна (системээс гардгийг үгүй) */
   zahiramj: {
-    key: 'zahiramj', cap: 'zahiramjEdit',
-    fields: [{ key: 'zahiramj_ognoo', kind: 'date', on: 'row' }, { key: 'zahiramj_dugaar', kind: 'text', on: 'row' }],
-  },
-  songon: {
-    key: 'songon', phase: 'songon', cap: 'songonEdit',
+    key: 'zahiramj', phase: 'barilga', cap: 'zahiramjEdit', addRows: true, decree: true,
     fields: [
-      { key: 'geree_ognoo', kind: 'date', on: 'pkg' },
+      { key: 'ajil_uilchilgee', kind: 'text', on: 'decree' }, { key: 'bagts', kind: 'text', on: 'decree' },
+      { key: 'zahiramj_dugaar', kind: 'text', on: 'decree' }, { key: 'zahiramj_ognoo', kind: 'date', on: 'decree' },
+      { key: 'ho_dun_zahiramj', kind: 'num', on: 'decree' },
+    ],
+  },
+  /* 2026-11-23 (хэрэглэгч): гэрээний огноо гараар биш — ТТБ-ийн гэрээний мөрөөс; сонгон шалгаруулалтын эхлэх, дуусах огноо нэмэв */
+  songon: {
+    key: 'songon', phase: 'songon', cap: 'songonEdit', contractInfo: true,
+    fields: [
+      { key: 'guits_ehleh', kind: 'date', on: 'leaf' }, { key: 'guits_duusah', kind: 'date', on: 'leaf' },
       { key: 'guitsetgel_huvi', kind: 'pct', on: 'leaf' },
     ],
   },
   zovshoorolTtb: {
-    key: 'zovshoorolTtb', phase: 'zovshoorol', cap: 'zovshoorolTtbEdit', addRows: true,
+    key: 'zovshoorolTtb', phase: 'zovshoorol', cap: 'zovshoorolTtbEdit', addRows: true, issues: true,
     fields: [
       { key: 'guits_ehleh', kind: 'date', on: 'leaf' }, { key: 'guits_duusah', kind: 'date', on: 'leaf' },
       { key: 'guitsetgel_huvi', kind: 'pct', on: 'leaf' },
     ],
   },
   ashiglalt: {
-    key: 'ashiglalt', cap: 'ashiglaltEdit',
+    key: 'ashiglalt', cap: 'ashiglaltEdit', buildInfo: true, issues: true,
     fields: [{ key: 'ashiglalt_ognoo', kind: 'date', on: 'row' }],
   },
 };
 
 /** Хуудасны мөрүүд — үе шатын мод (урьдчилсан дараалал) эсвэл багцын хавтгай жагсаалт */
 export function rowsOf(page: PageDef, tree: PlanTree): PlanNode[] {
+  if (page.decree) {
+    /* Захирамжийн мөр (Cashflow · захирамжтай · шинээр нэмсэн) ба тэдгээрийг агуулсан бүлгүүд л — бэлтгэл ажлын салбар орохгүй */
+    const keep = new Set<PlanNode>();
+    for (const n of tree.nodes) {
+      if (n.phase !== page.phase || n.blok || underPkg(n) || !n.row) continue;
+      const r = n.row;
+      if (r.cashflow_id == null && r.zahiramj_dugaar == null && r.ho_dun_zahiramj == null && !(isAddedWork(n) && hasPkg(n.parent))) continue;
+      /* ах дүү ажлын мөрүүд ч (захирамж хараахан оруулаагүй) харагдана */
+      for (const sib of n.parent?.children ?? [n]) if (!sib.blok) keep.add(sib);
+      for (let p: PlanNode | null = n; p; p = p.parent) keep.add(p);
+    }
+    return tree.nodes.filter((n) => keep.has(n));
+  }
   if (page.phase) return tree.nodes.filter((n) => n.phase === page.phase);
   return packagesOf(tree).map((p) => p.node);
 }
 
 const isPkgRow = (n: PlanNode): boolean => !!n.row && !!String(n.row.bagts ?? '').trim() && !n.blok;
+const hasPkg = (n: PlanNode | null): boolean => !!n?.row && !!String(n.row.bagts ?? '').trim();
+/** Өвөг нь захирамжийн (Cashflow) мөр уу — тэгвэл энэ нь түүний доод (блок, бөглөх хуудасны) мөр */
+const underPkg = (n: PlanNode): boolean => { for (let p = n.parent; p; p = p.parent) if (p.row?.cashflow_id != null) return true; return false; };
+/** Захирамжийн мөр — Cashflow мөр эсвэл хүүхэдгүй (шинээр нэмсэн) ажлын мөр; бүлгийн мөр биш */
+const isDecreeRow = (n: PlanNode): boolean => !!n.row && (n.row.cashflow_id != null || n.children.length === 0);
 
 /** Талбар түгжигдсэн шалтгаан — гэрээтэй сонгон шалгаруулалтын явц (`tenderLockWhy`); `null` = түгжээгүй */
 export const fieldLockWhy = (n: PlanNode, f: FieldDef, today: number = ubToday()): string | null =>
-  (f.kind === 'pct' ? tenderLockWhy(n, today) : null);
+  (f.kind === 'pct' ? tenderLockWhy(n, today)
+    : f.key === 'bagts' && n.row?.cashflow_id != null ? tr('«Төлбөрийн акт», гэрээ энэ багцаар тулгагддаг тул өөрчлөхгүй') : null);
+
+/** Захирамжийн дугаар — латин «A»-г кирилл «А» болгоно (нүдэнд ижил, систем өөр гэж үздэг) */
+export const normDecreeNo = (v: string): string => v.replace(/^[Aa](?=\s*\/)/, 'А');
+
+/** Захирамжийн мөр дутуу уу — дугаар · огноо · дүнгийн аль нэг нь бий, бүгд биш */
+export function decreeGaps(r: PlanStoredRow): ('zahiramj_dugaar' | 'zahiramj_ognoo' | 'ho_dun_zahiramj')[] {
+  const has = {
+    zahiramj_dugaar: !!String(r.zahiramj_dugaar ?? '').trim(),
+    zahiramj_ognoo: r.zahiramj_ognoo != null,
+    ho_dun_zahiramj: r.ho_dun_zahiramj != null && Number(r.ho_dun_zahiramj) > 0,
+  };
+  const any = Object.values(has).some(Boolean);
+  return any ? (Object.keys(has) as (keyof typeof has)[]).filter((k) => !has[k]) : [];
+}
 
 /** Мөрд засагдах талбарууд */
+/** Талбар энэ мөрөнд хамаарах уу (түгжээг тооцохгүй) */
+const fieldApplies = (f: FieldDef, n: PlanNode): boolean =>
+  f.on === 'row' ? true : f.on === 'leaf' ? n.children.length === 0 : f.on === 'decree' ? isDecreeRow(n) : isPkgRow(n);
+
+/** Огноо дутуу (Зөвшөөрөл · Ашиглалт) — мөрөнд хамаарах огнооны талбар хоосон */
+export function dateGaps(page: PageDef, n: PlanNode): FieldDef['key'][] {
+  const r = n.row;
+  if (!page.issues || !r) return [];
+  return page.fields.filter((f) => f.kind === 'date' && fieldApplies(f, n) && saneDate(r[f.key]) == null).map((f) => f.key);
+}
+
 export function editableFields(page: PageDef, n: PlanNode, today: number = ubToday()): FieldDef[] {
   if (!n.row) return [];
-  return page.fields.filter((f) => (f.on === 'row' ? true : f.on === 'leaf' ? n.children.length === 0 : isPkgRow(n)) && !fieldLockWhy(n, f, today));
+  return page.fields.filter((f) => fieldApplies(f, n)
+    && !(f.key === 'bagts' && n.row?.cashflow_id != null) && !fieldLockWhy(n, f, today));
 }
 
 /** Багцын мөрийн доор мөр нэмж болох уу (Зөвшөөрөл) */
 export const canAddRow = (page: PageDef, n: PlanNode): boolean =>
-  !!page.addRows && !!page.phase && canAddWorkIn(n, page.phase);
+  page.decree
+    /* Захирамж: ажлын мөрүүдийн бүлэг (өөрөө багцгүй, хүүхэд бүр нь ажлын мөр) */
+    ? !!n.row && n.phase === page.phase && !n.blok && n.row.cashflow_id == null && n.children.length > 0 && n.children.every(isDecreeRow)
+    : !!page.addRows && !!page.phase && canAddWorkIn(n, page.phase);
 
 /** Нэмсэн мөрийг устгаж болох уу — навч, мөнгөгүй, хадгалсан */
 export const canDeleteRow = (page: PageDef, n: PlanNode): boolean =>
   !!page.addRows && isAddedWork(n) && n.children.length === 0 && n.row?.objectid != null;
 
 /** Шинэ мөр — `zuragTosol.workAdd`-тай ижил (dd_kod, эцэг, багц, жин тэнцүү хуваагдана) */
-export const rowAdd = (page: PageDef, n: PlanNode, tree: PlanTree, name: string): PlanStoredRow | null =>
-  (page.phase && page.addRows ? workAdd(n, tree, name, page.phase) : null);
+export const rowAdd = (page: PageDef, n: PlanNode, tree: PlanTree, name: string): PlanStoredRow | null => {
+  if (page.decree) {
+    if (!canAddRow(page, n) || !n.row || workNameWhy(n, name)) return null;
+    const used = new Set(tree.byCode.keys());
+    let k = n.children.length + 1;
+    while (used.has(`${n.code}.${k}`)) k += 1;
+    /* Жин гараар биш — барилга угсралтын жин төсвөөс бодогдоно */
+    return {
+      objectid: null, dd_kod: `${n.code}.${k}`, etseg_kod: n.code, tuvshin: n.row.tuvshin != null ? n.row.tuvshin + 1 : n.depth,
+      uy_shat: n.row.uy_shat ?? null, bagts: null, blok: null, ajil_uilchilgee: name.trim(), heseg_ezleh_huvi: null,
+      guits_ehleh: null, guits_duusah: null, guitsetgel_huvi: null, cashflow_id: null,
+    };
+  }
+  return page.phase && page.addRows ? workAdd(n, tree, name, page.phase) : null;
+};
 
 export { workNameWhy };
 
@@ -106,6 +183,7 @@ export function origText(r: PlanStoredRow, f: FieldDef): string {
   const v = r[f.key];
   if (f.kind === 'text') return v == null ? '' : String(v);
   if (f.kind === 'pct') return v == null ? '' : String(Math.round(Number(v) * 1e6) / 1e6);
+  if (f.kind === 'num') return v == null ? '' : String(v);
   return dayOf(v as number | null | undefined);
 }
 
@@ -114,7 +192,13 @@ export const textOf = (p: Pending, r: PlanStoredRow, f: FieldDef): string =>
 
 type Parsed = { ok: true; v: number | string | null } | { ok: false };
 const parseOf = (f: FieldDef, text: string): Parsed => {
-  if (f.kind === 'text') { const t = text.trim(); return { ok: true, v: t || null }; }
+  if (f.kind === 'text') { const t = f.key === 'zahiramj_dugaar' ? normDecreeNo(text.trim()) : text.trim(); return { ok: true, v: t || null }; }
+  if (f.kind === 'num') {
+    const t = text.replace(/[\s,₮]/g, '');
+    if (!t) return { ok: true, v: null };
+    const v = Number(t);
+    return Number.isFinite(v) && v >= 0 ? { ok: true, v } : { ok: false };
+  }
   return f.kind === 'pct' ? parsePct(text) : parseDay(text);
 };
 
@@ -151,7 +235,7 @@ const withoutDeleted = (base: readonly PlanStoredRow[], p: Pending): PlanStoredR
 
 /** Урьдчилсан мөрүүд — засвар + шинэ мөр (жин тэнцүү), устгал хасагдсан, dd_kod-оор эрэмбэлсэн */
 export function effectiveRows(page: PageDef, base: readonly PlanStoredRow[], p: Pending): PlanStoredRow[] {
-  const sw = splitWeights(base, p);
+  const sw = page.decree ? { saved: new Map<number, number>(), adds: new Map<string, number>() } : splitWeights(base, p);
   const row = (r: PlanStoredRow): PlanStoredRow => {
     const w = r.objectid != null ? sw.saved.get(r.objectid) : sw.adds.get(rowKey(r));
     return merged(page, w == null ? r : { ...r, heseg_ezleh_huvi: w }, p.edits[rowKey(r)] as Record<string, string> | undefined);
@@ -162,7 +246,7 @@ export function effectiveRows(page: PageDef, base: readonly PlanStoredRow[], p: 
 export const pendingCount = (p: Pending): number =>
   new Set([...Object.keys(p.edits), ...p.adds.map(rowKey), ...(p.deletes ?? []).map((o) => `d${o}`)]).size;
 
-export type Issue = { code: string | null; kind: 'date' | 'pct' | 'order' | 'pair' | 'missing' };
+export type Issue = { code: string | null; kind: 'date' | 'pct' | 'num' | 'order' | 'pair' | 'missing' };
 export type Payload = { updates: Record<string, unknown>[]; adds: Record<string, unknown>[]; deletes: number[]; issues: Issue[] };
 
 const sameVal = (f: FieldDef, a: unknown, b: unknown): boolean => {
@@ -190,10 +274,11 @@ export function buildEdits(page: PageDef, base: readonly PlanStoredRow[], p: Pen
     for (const f of page.fields) {
       if (!(f.key in e)) continue;
       const ps = parseOf(f, e[f.key]);
-      if (!ps.ok) { issues.push({ code: r.dd_kod, kind: f.kind === 'pct' ? 'pct' : 'date' }); bad = true; continue; }
+      if (!ps.ok) { issues.push({ code: r.dd_kod, kind: f.kind === 'pct' ? 'pct' : f.kind === 'num' ? 'num' : 'date' }); bad = true; continue; }
       if (!sameVal(f, r[f.key], ps.v)) out[f.key] = ps.v;
     }
     if (bad) return null;
+    if (page.decree && 'ho_dun_zahiramj' in out && r.cashflow_id == null) out.ho_dun_geree = out.ho_dun_zahiramj;
     if (pairKeys.has('guits_ehleh') && ('guits_ehleh' in out || 'guits_duusah' in out)) {
       const s = 'guits_ehleh' in out ? out.guits_ehleh as number | null : saneDate(r.guits_ehleh);
       const en = 'guits_duusah' in out ? out.guits_duusah as number | null : saneDate(r.guits_duusah);
@@ -221,7 +306,7 @@ export function buildEdits(page: PageDef, base: readonly PlanStoredRow[], p: Pen
   }
 
   /* Жин тэнцүү хуваах — нэмсэн/устгасан эцгийн хадгалсан мөрүүд 1/k (хэрэглэгч жин бичдэггүй) */
-  const sw = splitWeights(base, { ...p, deletes });
+  const sw = page.decree ? { saved: new Map<number, number>(), adds: new Map<string, number>() } : splitWeights(base, { ...p, deletes });
   for (const [oid, w] of sw.saved) {
     const r = base.find((x) => x.objectid === oid)!;
     if (typeof r.heseg_ezleh_huvi === 'number' && Math.abs(r.heseg_ezleh_huvi - w) < 1e-9) continue;
@@ -241,6 +326,10 @@ export function buildEdits(page: PageDef, base: readonly PlanStoredRow[], p: Pen
       bagts: m.bagts ?? null, blok: m.blok ?? null, ajil_uilchilgee: m.ajil_uilchilgee ?? null,
       heseg_ezleh_huvi: m.heseg_ezleh_huvi ?? null,
       guits_ehleh: m.guits_ehleh ?? null, guits_duusah: m.guits_duusah ?? null, guitsetgel_huvi: m.guitsetgel_huvi ?? null,
+      ...(page.decree ? {
+        zahiramj_dugaar: m.zahiramj_dugaar ?? null, zahiramj_ognoo: m.zahiramj_ognoo ?? null, ho_dun_zahiramj: m.ho_dun_zahiramj ?? null,
+        ho_dun_geree: m.ho_dun_zahiramj ?? null,
+      } : {}),
       [names.cfId]: null,
     });
   }
@@ -266,4 +355,46 @@ export function conflicts(
     }
   }
   return out;
+}
+
+/** Сонгон шалгаруулалтын мөрийн гэрээ — өөрөө эсвэл дээд мөрийн ихэр (ТТБ-ийн гэрээний мөр) */
+export function contractOf(n: PlanNode): { date: number | null; no: string; contractor: string } | null {
+  for (let x: PlanNode | null = n; x && x.row; x = x.parent) {
+    const t = x.twin?.row;
+    const date = saneDate(x.row.geree_ognoo) ?? (t ? saneDate(t.geree_ognoo) : null);
+    const no = String(t?.geree_dugaar ?? '').trim();
+    const contractor = String(t?.guitsetgegch ?? '').trim();
+    if (date != null || no || contractor) return { date, no, contractor };
+  }
+  return null;
+}
+
+/** Хугацаа хэтэрсэн сонгон шалгаруулалт — навч, дуусах огноо өнгөрсөн, явц < 100, гэрээгүй */
+export function tenderLate(n: PlanNode, pct: number | null, today: number = ubToday()): boolean {
+  if (n.phase !== 'songon' || n.children.length || !n.row) return false;
+  const end = saneDate(n.row.guits_duusah);
+  return end != null && end < today && (pct ?? 0) < 100 && !contractOf(n);
+}
+
+/**
+ * МӨРИЙН АНХААРУУЛГА (2026-11-23) — хуудас бүрийн дүрмээр; `null` = хэвийн.
+ *   songon        — дуусах огноо өнгөрсөн, явц < 100, гэрээгүй
+ *   zovshoorolTtb — зөвшөөрлийн навч: дуусах огноо өнгөрсөн, явц < 100
+ *   ashiglalt     — ашиглалтын огноо барилга дуусахаас өмнө; эсвэл өнгөрсөн ч барилга дуусаагүй
+ */
+export function rowWarn(page: PageDef, n: PlanNode, pct: number | null, today: number = ubToday()): string | null {
+  if (!n.row) return null;
+  if (page.key === 'songon') return tenderLate(n, pct, today) ? tr('Хугацаа хэтэрсэн, гэрээ байгуулагдаагүй') : null;
+  if (page.key === 'zovshoorolTtb') {
+    const end = saneDate(n.row.guits_duusah);
+    return !n.children.length && end != null && end < today && (pct ?? 0) < 100 ? tr('Зөвшөөрлийн хугацаа хэтэрсэн') : null;
+  }
+  if (page.key === 'ashiglalt') {
+    const h = saneDate(n.row.ashiglalt_ognoo);
+    const end = saneDate(n.row.guits_duusah);
+    if (h == null) return null;
+    if (h < today && (pct ?? 0) < 100) return tr('Ашиглалтын огноо өнгөрсөн, барилга дуусаагүй');
+    if (end != null && h < end) return tr('Ашиглалтын огноо барилга дуусахаас өмнө');
+  }
+  return null;
 }

@@ -7,7 +7,7 @@
 /* ══════════ Толгой ══════════ */
 .head {
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-  padding: 12px 22px;
+  padding: 6px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
@@ -341,8 +341,8 @@
 .flowStep {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 11px;
+  gap: 6px;
+  padding: 3px 9px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r);
   background: transparent;
@@ -384,12 +384,12 @@
 }
 
 /* ══════════════ ГҮЙЦЭТГЭГЧИЙН ХОЁР ТАЛ ══════════════ */
-.tabs { display: flex; gap: 4px; padding: 8px 14px 0; }
+.tabs { display: flex; gap: 4px; padding: 4px 14px 0; }
 .tab {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px;
+  padding: 5px 12px;
   border: 1px solid transparent;
   border-bottom: 0;
   border-radius: var(--r) var(--r) 0 0;

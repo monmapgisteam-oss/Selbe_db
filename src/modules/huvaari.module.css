@@ -41,13 +41,13 @@
   gap: 8px;
   flex: none;
   flex-wrap: wrap;
-  padding: 8px 12px;
+  padding: 5px 10px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
 }
 .spacer { flex: 1; }
-.head { --ctl-h: 30px; gap: 8px 10px; }
+.head { --ctl-h: 26px; gap: 5px 8px; }
 .head :is(.sel, .select, .save, .discard, .tlZoomB, .tab) {
   box-sizing: border-box;
   height: var(--ctl-h);
@@ -716,15 +716,16 @@
 .plRef {
   position: absolute;
   bottom: 3px;
-  height: 9px;
+  height: 11px;
   border-radius: 2px;
   pointer-events: none;
+  /* Нөгөө огноо (зэрэг харах) — шар судалтай, «хуваарьгүй» саарал судалтай андуурагдахгүй */
   background: repeating-linear-gradient(
     45deg,
-    color-mix(in srgb, var(--ink-2) 42%, transparent) 0 2px,
-    transparent 2px 5px
+    color-mix(in srgb, var(--warn, #d97706) 70%, transparent) 0 3px,
+    color-mix(in srgb, var(--warn, #d97706) 18%, transparent) 3px 6px
   );
-  border: 1px solid color-mix(in srgb, var(--ink-2) 34%, transparent);
+  border: 1.5px solid var(--warn, #d97706);
 }
 
 /* ── УЯЛДААНЫ СУМУУД ── */
@@ -1877,3 +1878,60 @@ span.blkChip { cursor: default; }
 }
 .plShiftLate { color: var(--bad-ink); border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent); }
 .plShiftEarly { color: var(--good-ink); border: 1px solid color-mix(in srgb, var(--good) 45%, transparent); }
+
+/* Хэрэгслийн мөр: 1-р мөр — сонголт (багц, блок, бүлэг, жил); 2-р мөр — харагдац ба үйлдэл */
+.viewRow { order: 2; flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.grpLbl { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Огнооны багануудыг хураах товч харагдахгүй — багана үргэлж нээлттэй */
+.simpleP :is(.colsBtn), .simpleG :is(.colsBtn) { display: none !important; }
+
+/* Төлөвлөгөө · Гэрээ — текстэй товч (түвшний дөрвөлжин товчны хэмжээ биш) */
+.head .lvBar.kindBar button { width: auto; min-width: 0; padding: 0 12px; }
+
+/* Баганыг нуух («Багана ▾» цэс) */
+.hDes :is(.gHeadDes, .rowDes), .hG :is(.cGs, .cGe, .cGd), .hP :is(.cPs, .cPe, .cPd),
+.hA :is(.cAs, .cAe), .hR :is(.cRh, .cRm), .hH :is(.gHeadHam, .rowHam) { display: none !important; }
+.colMenu { position: relative; font-size: 12px; }
+.colMenu > summary { list-style: none; cursor: pointer; height: var(--ctl-h); display: inline-flex; align-items: center; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-sm); color: var(--ink-2); }
+.colMenu > summary::-webkit-details-marker { display: none; }
+.colMenuPop { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; display: flex; flex-direction: column; gap: 6px; min-width: 180px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r); box-shadow: var(--shadow-sm); }
+.colMenuPop label { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+
+/* Гантын тайлбар (доод мөр) */
+.legend { flex: 0 0 auto !important; padding-right: 56px !important; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); }
+.legItem { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.legSw { display: inline-block; width: 26px; height: 10px; border-radius: 2px; }
+.legHint { margin-left: auto; color: var(--ink-3); }
+.legRef { height: 8px; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--warn, #d97706) 70%, transparent) 0 3px, color-mix(in srgb, var(--warn, #d97706) 18%, transparent) 3px 6px); border: 1.5px solid var(--warn, #d97706); }
+.legGrp { background: color-mix(in srgb, var(--overlap) 16%, transparent); border: 1.5px solid color-mix(in srgb, var(--overlap) 65%, transparent); }
+.legNow { display: inline-block; width: 0; height: 12px; border-left: 1.5px dashed var(--bad); }
+.legSep { width: 1px; height: 14px; background: var(--line-strong); }
+
+/* Зэрэг харах — хоёр тэнцүү эгнээ: төлөвлөгөө дээд, гэрээ доод */
+.plBarHalfLow { top: auto; bottom: 3px; height: 11px; }
+.plRefTop { bottom: auto; top: 3px; }
+.plRefG { background: color-mix(in srgb, var(--warn) 28%, transparent); border: 1.5px solid var(--warn); }
+.plRefP { background: color-mix(in srgb, var(--water) 30%, transparent); border: 1.5px solid var(--water); }
+
+/* Тайлбарын дүрс — мөрийн 2 эгнээ: тодорсон нь тухайн огноо */
+.legLane { position: relative; display: inline-block; width: 30px; height: 16px; }
+.legLane::before, .legLane::after { content: ""; position: absolute; left: 0; right: 0; height: 6px; border-radius: 2px; background: color-mix(in srgb, var(--ink-3) 25%, transparent); }
+.legLane::before { top: 1px; }
+.legLane::after { bottom: 1px; }
+.legLaneTop::before, .legLaneBot::after { background: var(--water); }
+
+/* Буцаах шалтгааны түгээмэл сонголт (2026-11-23) */
+.reasonChips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
+.reasonChip {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.reasonChip:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
+.reasonChipOn { border-color: var(--bad); color: var(--bad-ink); background: color-mix(in oklab, var(--bad) 8%, transparent); }

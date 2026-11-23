@@ -5,6 +5,7 @@ import { memo, type ReactElement } from 'react';
 import type { Dim } from '@/components/MapCanvas';
 import type { ViewKey } from '@/lib/services';
 import { t as tr } from '@/lib/i18nCore';
+import { BatlahHub } from '@/modules/BatlahHub';
 
 /**
  * ХАРАГДАЦЫН БҮРТГЭЛ — `ViewKey` → бүтэн дэлгэцийн (`standalone`) модуль.
@@ -132,15 +133,19 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   pkgProg: ({ dim, setDim }) => <PkgProg dim={dim} setDim={setDim} />,
   huvaari: ({ planJump, clearPlanJump }) => <Huvaari jump={planJump} onJumpDone={clearPlanJump} />,
   huvaariBatlah: ({ navScope, setPlanJump, setView }) => (
-    <HuvaariBatlah
-      navScope={navScope}
-      onApprove={(pkgKey, oid) => {
-        setPlanJump({ pkgKey, oid });
-        setView('huvaari');
-      }}
-    />
+    <BatlahHub tab="huvaariBatlah" navScope={navScope} setView={setView}>
+      <HuvaariBatlah
+        navScope={navScope}
+        onApprove={(pkgKey, oid) => {
+          setPlanJump({ pkgKey, oid });
+          setView('huvaari');
+        }}
+      />
+    </BatlahHub>
   ),
-  ajilBatlah: () => <AjilBatlah />,
+  ajilBatlah: ({ navScope, setView }) => (
+    <BatlahHub tab="ajilBatlah" navScope={navScope} setView={setView}><AjilBatlah /></BatlahHub>
+  ),
   tailan: ({ dim, setDim }) => <Tailan dim={dim} setDim={setDim} />,
   tuh: ({ dim, setDim, setView, navScope }) => (
     <Tuh

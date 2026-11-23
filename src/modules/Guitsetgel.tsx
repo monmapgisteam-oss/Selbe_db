@@ -1247,24 +1247,32 @@ function WaitPanel({ items }: { items: { w: Work; x: Wait }[] }) {
   return (
     <>
       <div className={s.waitSum}>
-        {STAGE_ORDER.filter((st) => sum[st]).map((st) => (
-          <span key={st} className={`${s.badge} ${sum[st].overdue ? s.bBack : s.bWait}`}>
-            {STAGE_LABEL[st]}: {tr('{0} хүлээгдэж буй', String(sum[st].n))}{sum[st].overdue ? ` · ${tr('{0} хугацаа хэтэрсэн', String(sum[st].overdue))}` : ''}
-          </span>
-        ))}
+        {/* 7 шат бүгд дарааллаараа — хүлээгдэж буй ба хугацаа хэтэрсэн тоотой */}
+        <div className={s.flow}>
+          {STAGE_ORDER.map((st, i) => (
+            <Fragment key={st}>
+              {i > 0 && <span className={s.flowArrow} aria-hidden="true">→</span>}
+              <span className={`${s.flowStep} ${sum[st]?.overdue ? s.bBack : sum[st] ? s.flowOn : ''}`}
+                title={sum[st]?.overdue ? tr('{0} хугацаа хэтэрсэн', String(sum[st].overdue)) : undefined}>
+                <span className={s.flowName}>{STAGE_LABEL[st]}</span>
+                <span className={s.flowNum}>{sum[st]?.n ?? 0}</span>
+              </span>
+            </Fragment>
+          ))}
+        </div>
         <span className={s.waitHint}>{tr('Шат бүрийн хугацаа: {0} хоног', String(STAGE_LIMIT_DAYS))}</span>
       </div>
       <table className={s.waitTable}>
         <thead>
           <tr>
-            <th>{tr('Багц')}</th><th>{tr('Ажил')}</th><th>{tr('Компани')}</th><th>{tr('Одоо хэн дээр')}</th>
+            <th>{tr('Багц')}</th><th>{tr('Ажил')}</th><th>{tr('Компани')}</th><th>{tr('Шат')}</th><th>{tr('Одоо хэн дээр')}</th>
             <th>{tr('Төлөв')}</th><th>{tr('Ирсэн огноо')}</th><th>{tr('Хүлээгдсэн')}</th>
           </tr>
         </thead>
         <tbody>
           {items.map(({ w, x }) => (
             <tr key={w.key} className={x.overdue ? s.waitLate : undefined}>
-              <td>{tr(w.bagts)}</td><td>{w.ajil}</td><td>{w.company}</td><td>{STAGE_LABEL[x.owner]}</td>
+              <td>{tr(w.bagts)}</td><td>{w.ajil}</td><td>{w.company}</td><td><Track status={w.status} stage={x.owner} /></td><td>{STAGE_LABEL[x.owner]}</td>
               <td>{STATUS_LABEL[w.status] ?? w.status}</td>
               <td>{x.since != null ? dateTime(new Date(x.since).toISOString()) : '—'}</td>
               <td>{x.days == null ? '—' : x.days < 1 ? tr('{0} цаг', String(Math.floor(x.days * 24))) : tr('{0} хоног', String(Math.floor(x.days)))}{x.overdue ? ` · ${tr('хугацаа хэтэрсэн')}` : ''}</td>

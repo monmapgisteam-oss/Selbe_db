@@ -36,7 +36,8 @@ import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { Huvaari, showPlanReason } from '@/modules/Huvaari';
 import {
-  BLIND_NOTE_SRC, claimHolderOf, decidePlan, serverNow, loadAllPending, loadLastPerPkg, loadPayload, partialBy, planTableState, queueFigures, returnStuckPlan, withdrawPlan, PLAN_STATUS, REASON_MAX,
+  BLIND_NOTE_SRC, claimHolderOf, decidePlan, serverNow, loadAllPending, loadHistory, loadLastPerPkg, loadPayload, partialBy, planTableState, queueFigures, returnStuckPlan, withdrawPlan, PLAN_STATUS, REASON_MAX,
+  PLAN_REASON_PRESETS, REASON_MIN, reasonOk, planStatusLabel,
   type PlanPayload, type PlanSubmission,
 } from '@/lib/huvaariBatlah';
 import s from './huvaariBatlah.module.css';
@@ -119,7 +120,7 @@ export function HuvaariBatlah({
         if (!t.ok) {
           setSt({ k: 'blocked', why:
             t.why === 'auth'
-              ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
+              ? ''
               : t.why === 'error'
                 ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
                 : tr('Батлах хүснэгт олдсонгүй — админ (super) нэг удаа нэвтрэхэд автоматаар үүснэ.') });
@@ -330,7 +331,7 @@ export function HuvaariBatlah({
   /* ══════════════════════ БУЦААХ ══════════════════════ */
   const reject = useCallback(async (x: PlanSubmission) => {
     const why = (reason.get(x.oid) ?? '').trim();
-    if (busy || !why) return;
+    if (busy || !reasonOk(why)) return;
     if (!(await askConfirm(tr('Энэ илгээлтийг буцаах уу? Гүйцэтгэгч засаад дахин илгээх шаардлагатай болно.'), { ok: tr('Буцаах') }))) return;
     if (!alive.current) return;
     setBusy(true); setErr(''); setNote('');
@@ -457,8 +458,10 @@ export function HuvaariBatlah({
           </button>
         )}
         {/* Шилжүүлэлтийн хэрэгсэл — 2026-11-20: админд биш, БҮХ багцын хуваарийн батлагчид (эсвэл дев) */}
-        {st.k === 'ready' && scope === null && (
-          <>
+        {/* 2026-11-23: ноорог шилжүүлэх техникийн хэрэгсэл — бүх багцын батлагчид, «Техник» доор хураасан (ердийн ажилд харагдахгүй) */}
+        {st.k === 'ready' && (status === 'off' || scope === null) && (
+          <details className={s.tech}>
+            <summary className={s.clear}>{tr('Техник')}</summary>
             <button className={s.clear} disabled={busy || migBusy} onClick={() => { void migrateAll(); }}
               title={tr('191-ийн хуучин JSON ноорог ба илгээлтийг эх хуудасны бүтцээр мөр рүү шилжүүлнэ (JSON хэвээр)')}>
               {migBusy && migProg ? tr('Шилжүүлж байна… {0}', migProg) : tr('Бүх ноорогийг шилжүүлэх')}
@@ -473,7 +476,7 @@ export function HuvaariBatlah({
                 {tr('Хуучин JSON-ыг цэвэрлэх')}
               </button>
             )}
-          </>
+          </details>
         )}
         <span className={s.total} title={tr('Шүүлтийн дараах бүх мөр — өөрийн илгээсэн ба бүртгэлгүй багцынх орно')}>
           {tr('жагсаалтад {0}', st.k === 'ready' ? num(filtered.length) : '—')}
@@ -484,7 +487,7 @@ export function HuvaariBatlah({
         {err && <div className={s.error} role="alert">{err}</div>}
         {note && <div className={s.note} role="status">{note}</div>}
 
-        {st.k === 'blocked' && (
+        {st.k === 'blocked' && st.why && (
           <div className={s.note} role="alert">
             {st.why}
             <button className={s.clear} onClick={reload}>{tr('Дахин оролдох')}</button>
@@ -660,6 +663,15 @@ function Row({
     return p ? queueFigures(p) : null;
   }, [p]);
 
+  /** Багцын өмнөх шийдвэрүүд (2026-11-23) — хэн, хэзээ, юу гэж буцаасан; мөр дэлгэхэд л татна */
+  const [hist, setHist] = useState<PlanSubmission[] | null>(null);
+  useEffect(() => {
+    if (!open || hist) return undefined;
+    let dead = false;
+    void loadHistory(sub.pkgKey, 5).then((h) => { if (!dead) setHist(h.filter((x) => x.oid !== sub.oid)); }, () => { if (!dead) setHist([]); });
+    return () => { dead = true; };
+  }, [open, hist, sub.pkgKey, sub.oid]);
+
   return (
     <div className={s.item}>
       <button
@@ -747,6 +759,20 @@ function Row({
             </div>
           )}
 
+          {hist && hist.length > 0 && (
+            <details className={s.reasonBox}>
+              <summary className={s.reasonLabel}>{tr('Өмнөх шийдвэр ({0})', num(hist.length))}</summary>
+              {hist.map((x) => (
+                <div key={x.oid} className={s.meta} style={{ marginTop: 6, whiteSpace: 'pre-line' }}>
+                  <b>{planStatusLabel(x.status)}</b>
+                  {' · '}{x.approverAt == null ? '—' : dayKey(x.approverAt)}
+                  {' · '}{x.approver ?? '—'}
+                  {x.reason?.trim() ? `\n${showPlanReason(x.reason.trim())}` : ''}
+                </div>
+              ))}
+            </details>
+          )}
+
           {ownWhy && (
             <div className={s.note} role="status">{ownWhy}</div>
           )}
@@ -756,6 +782,20 @@ function Row({
               <label className={s.reasonLabel} htmlFor={`why-${sub.oid}`}>
                 {onReturnStuck && partialWhy ? tr('Гацсаныг буцаах шалтгаан (заавал)') : tr('Буцаах шалтгаан (буцаахад заавал)')}
               </label>
+              <div className={s.row} role="group" aria-label={tr('Түгээмэл шалтгаан')}>
+                {PLAN_REASON_PRESETS.map((pr) => {
+                  const cur = onReturnStuck ? reasonIn : reason;
+                  const on = cur.includes(pr.text);
+                  return (
+                    <button key={pr.text} type="button" className={s.clear} aria-pressed={on}
+                      style={on ? { borderColor: 'var(--bad)', color: 'var(--bad-ink)' } : undefined}
+                      disabled={busy || (partialWhy != null && !onReturnStuck)}
+                      onClick={() => onReason(on ? cur.replace(pr.text, '').replace(/\n{2,}/g, '\n').trim() : [cur.trim(), pr.text].filter(Boolean).join('\n'))}>
+                      {pr.label()}
+                    </button>
+                  );
+                })}
+              </div>
               <textarea
                 id={`why-${sub.oid}`}
                 className={s.field}
@@ -807,12 +847,12 @@ function Row({
               <button
                 type="button"
                 className={`${s.btn} ${s.bad}`}
-                disabled={busy || !reason.trim() || !!holder}
+                disabled={busy || !reasonOk(reason) || !!holder}
                 title={partialWhy
                   ? partialWhy
                   : holder
                     ? tr('{0} энэ илгээлтийг яг одоо батлаж байна.', holder)
-                    : reason.trim() ? undefined : tr('Буцаах шалтгааныг бичнэ үү.')}
+                    : reasonOk(reason) ? undefined : tr('Шалтгааныг сонгох эсвэл {0}-аас доошгүй тэмдэгтээр бичнэ үү.', REASON_MIN)}
                 onClick={onReject}
               >
                 {tr('Буцаах')}
@@ -834,8 +874,8 @@ function Row({
               </button>
             )}
           </div>
-          {onReject && !holder && !busy && !partialWhy && !reason.trim() && (
-            <div className={s.meta} role="status">{tr('Буцаахын тулд дээрх талбарт шалтгаанаа бичнэ үү.')}</div>
+          {onReject && !holder && !busy && !partialWhy && !reasonOk(reason) && (
+            <div className={s.meta} role="status">{tr('Буцаахын тулд шалтгаанаа сонгох эсвэл {0}-аас доошгүй тэмдэгтээр бичнэ үү.', REASON_MIN)}</div>
           )}
         </div>
       )}

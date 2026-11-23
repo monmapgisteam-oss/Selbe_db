@@ -150,7 +150,7 @@ export function AjilBatlah() {
         if (!t.ok) {
           setSt({ k: 'blocked', why:
             t.why === 'auth'
-              ? tr('Порталд нэвтрээгүй байна — гарч ороод дахин оролдоно уу.')
+              ? ''
               : t.why === 'error'
                 ? tr('Порталын хайлт амжилтгүй: {0}', t.detail ? userError(t.detail) : '')
                 : tr('Нэмэлт ажлын батлах хүснэгт олдсонгүй — админд мэдэгдэнэ үү.') });
@@ -470,7 +470,7 @@ export function AjilBatlah() {
           </div>
         )}
 
-        {st.k === 'blocked' && (
+        {st.k === 'blocked' && st.why && (
           <div className={s.note} role="alert">
             {st.why}
             <button className={s.clear} onClick={reload}>{tr('Дахин оролдох')}</button>

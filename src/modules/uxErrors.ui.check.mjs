@@ -71,7 +71,7 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   assert.ok(!hv.includes(".catch((e) => alive && setErr(String((e as Error).message || e)))"), 'Huvaari: түүхий ачаалах алдаа');
   assert.match(hv, /setLoadErr\(e instanceof Error/);
   assert.match(hv, /\}, \[pkg, reloadN\]\);/, 'Huvaari: «Дахин оролдох» эффектийг дахин ажиллуулна');
-  assert.match(hv, /flowReady === false && \(canEditRole \|\| canApprove\) && !loadErr/, 'Huvaari: алдаа ГАНЦ удаа');
+  assert.match(hv, /flowReady === false && !flowNoAuth && \(canEditRole \|\| canApprove\) && !loadErr/, 'Huvaari: алдаа ГАНЦ удаа (нэвтрээгүйд мөргүй)');
   assert.match(hv, /friendlyError\(\{ message: st\.detail/);
 
 

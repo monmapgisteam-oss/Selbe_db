@@ -296,6 +296,20 @@ async function getToken(): Promise<{ token: string; user: string } | null> {
 export const PAYLOAD_MAX = 1_048_576;
 /** Буцаах шалтгаан · тайлбарын талбарын урт — UI `maxLength` үүнтэй ижил */
 export const REASON_MAX = 2000;
+/** Буцаах шалтгааны доод урт (2026-11-23) — «1», «asd» мэт утгагүй шалтгаан хадгалагдахгүй */
+export const REASON_MIN = 8;
+/**
+ * БУЦААХ ТҮГЭЭМЭЛ ШАЛТГААН (2026-11-23) — 192-ын бодит буцаалтуудаас. `text` нь ӨГӨГДӨЛ (монголоор хадгална),
+ * `label` нь дэлгэцийн нэр.
+ */
+export const PLAN_REASON_PRESETS: { text: string; label: () => string }[] = [
+  { text: 'Гэрээний хугацаанаас хэтэрсэн огноотой ажил байна.', label: () => tr('Гэрээний хугацаанаас хэтэрсэн') },
+  { text: 'Эхлэх, дуусах огноо дутуу ажил байна.', label: () => tr('Огноо дутуу') },
+  { text: 'Сарын обьём дутуу эсвэл тэнцээгүй.', label: () => tr('Сарын обьём дутуу') },
+  { text: 'Бодит эхэлсэн, дууссан огноог оруулна уу.', label: () => tr('Бодит огноо дутуу') },
+];
+/** Шалтгаан хангалттай юу — доод урттай */
+export const reasonOk = (v: string): boolean => v.trim().length >= REASON_MIN;
 
 /**
  * Хүснэгтийн URL — олох, эс бөгөөс (super) үүсгэх.
@@ -553,6 +567,20 @@ export async function loadPending(pkgKey: string, kind?: PlanPayloadKind): Promi
     list = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null);
   }
   list.sort((a, b) => a.oid - b.oid);
+  return list[0] ?? null;
+}
+
+/**
+ * ӨМНӨХ БУЦААГДСАН ИЛГЭЭЛТ (2026-11-23) — ижил багц, төрөл, `beforeOid`-оос өмнөх хамгийн сүүлийнх (зөвшөөрсөн мөртэй нь).
+ * Дахин илгээсэн хуваарийг шалгахад өмнө зөвшөөрсөн, өөрчлөгдөөгүй мөрийг автоматаар ногоон болгоход.
+ */
+export async function loadPrevReturned(pkgKey: string, kind: PlanPayloadKind, beforeOid: number): Promise<PlanSubmission | null> {
+  const esc = pkgKey.replace(/'/g, "''");
+  const rows = await query(
+    `${F.pkgKey} = '${esc}' AND ${F.status} = N'${PLAN_STATUS.returned}' AND ${F.oid} < ${Number(beforeOid)} AND ${KIND_SQL(kind)}`,
+    await headFields(), true,
+  );
+  const list = rows.map(toSubmission).filter((x): x is PlanSubmission => x != null).sort((a, b) => b.oid - a.oid);
   return list[0] ?? null;
 }
 

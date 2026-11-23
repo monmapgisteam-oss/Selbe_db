@@ -23,6 +23,7 @@ export function FilterBar({
   locked, busy, noPerf, pkg, setPkg, confirmSwitch, groupOpts, floorOpts,
   asOf, setAsOf, dateOpts, grpA, setGrpA, grpAOpts, grpBEff, setGrpB, grpBOpts, byPlan, setByPlan,
   today, planCount, resized, resetAll, fullView = true, setFullView, restoring = false,
+  query = "", setQuery, onlyChanged = false, setOnlyChanged, changedN = 0, showPlan = true, setShowPlan,
 }: {
   locked: boolean; busy: boolean; noPerf: boolean;
   pkg: Pkg; setPkg: Dispatch<SetStateAction<Pkg>>;
@@ -36,6 +37,9 @@ export function FilterBar({
   resized: boolean; resetAll: () => void;
   fullView?: boolean; setFullView?: (on: boolean) => void;
   restoring?: boolean;
+  query?: string; setQuery?: (v: string) => void;
+  onlyChanged?: boolean; setOnlyChanged?: (v: boolean) => void; changedN?: number;
+  showPlan?: boolean; setShowPlan?: (v: boolean) => void;
 }) {
   return (
     <>
@@ -160,6 +164,38 @@ export function FilterBar({
             off={tr('Хураангуй')}
             on={tr('Дэлгэрэнгүй')}
             title={tr('Хураангуй — дэс дугаар, ажил, обьём, инженерийн төлөвлөсөн обьём, бөглөх нүд ба төлөвлөгөөт хувь. Дэлгэрэнгүй — бүх багана ба үйлчилгээний мөрийн түвшний бусад бүх талбар.')}
+          />
+        )}
+
+        {setShowPlan && (
+          <Toggle
+            checked={showPlan}
+            onChange={setShowPlan}
+            label={tr('Төлөвлөгөөт')}
+            title={tr('«Төлөвлөгөөт гүйцэтгэл» хэсгийг харуулах / нуух')}
+          />
+        )}
+
+        {setOnlyChanged && (
+          <Toggle
+            checked={onlyChanged && changedN > 0}
+            onChange={setOnlyChanged}
+            disabled={changedN === 0}
+            label={tr('Зөвхөн өөрчилсөн')}
+            extra={changedN > 0 ? changedN.toLocaleString() : undefined}
+            title={tr('Илгээгээгүй засвартай мөрүүдийг л харуулна')}
+          />
+        )}
+
+        {setQuery && (
+          <input
+            type="search"
+            className={st.select}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={tr('Ажил хайх…')}
+            aria-label={tr('Ажил хайх…')}
+            style={{ width: 160 }}
           />
         )}
 
@@ -431,7 +467,7 @@ export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false, pkgAl
       {variants.length > 1 && variants.map((v) => (
         <span
           key={v.key}
-          className={`${st.pctStat} ${v.mine ? '' : st.pctStatOther}`}
+          className={`${st.pctStat} ${v.mine ? st.pctStatMine : st.pctStatOther}`}
           title={v.mine
             ? tr('Энэ ХУУДСЫН ({0}) батлагдсан гүйцэтгэл — блокуудынх нь дундаж.', pkg.label)
             : tr('Энэ багцын НӨГӨӨ хувилбарын ({0}) батлагдсан гүйцэтгэл. Хувилбар сонгогчоор шилжиж бөглөнө.', `${v.floors}F`)}

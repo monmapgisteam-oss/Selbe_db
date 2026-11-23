@@ -209,12 +209,25 @@ export const negRootOf = (rows: readonly NegRaw[]): NegRootRow[] | undefined => 
  * Хүснэгтийг ХАДГАЛСАН (Excel-ийн) утгатай нь бүтнээр уншина.
  */
 export async function loadNegRaw(): Promise<NegRaw[]> {
-  const raw = await queryFeatures(TUSUL_NEGTGEL.url, { outFields: ['*'], orderBy: TUSUL_NEGTGEL.oid });
-  const codes = raw.map((r) => txt(r[F.code]));
-  const phases = raw.map((r) => txt(r[F.phase]));
-  const t = excelTree(codes, phases);
+  let raw = await queryFeatures(TUSUL_NEGTGEL.url, { outFields: ['*'], orderBy: TUSUL_NEGTGEL.oid });
+  let codes = raw.map((r) => txt(r[F.code]));
+  let phases = raw.map((r) => txt(r[F.phase]));
+  let t = excelTree(codes, phases);
+  /* 2026-11-23: 187 = ТТБ-ийн толь (`negtgelMirror`) — Excel-ийн мод таарахгүй нь хэвийн. Шинээр нэмэгдсэн мөр objectid-аар
+     сүүлд орох тул Д/Д-ийн дарааллаар (эцэг хүүхдээсээ өмнө) эрэмбэлж модыг угсарна. */
+  if (t.source === 'code') {
+    const seg = (c: string) => c.split('.').map((x) => Number(x));
+    const cmp = (a: string, b: string) => {
+      const x = seg(a), y = seg(b);
+      for (let i = 0; i < Math.min(x.length, y.length); i += 1) if (x[i] !== y[i]) return (Number.isFinite(x[i]) ? x[i] : 0) - (Number.isFinite(y[i]) ? y[i] : 0);
+      return x.length - y.length;
+    };
+    raw = raw.map((r, i) => ({ r, i })).sort((p, q) => cmp(txt(p.r[F.code]), txt(q.r[F.code])) || p.i - q.i).map((x) => x.r);
+    codes = raw.map((r) => txt(r[F.code]));
+    phases = raw.map((r) => txt(r[F.phase]));
+    t = excelTree(codes, phases);
+  }
   treeSource = t.source;
-  if (t.source === 'code') console.warn('[negtgel] хүснэгт Excel-ийн модтой таарахгүй — кодоор угсарлаа (negtgelTree.ts-ийг дахин үүсгэнэ)');
   const out: NegRaw[] = [];
   const roots: NegRootRow[] = [];
   raw.forEach((r, i) => {

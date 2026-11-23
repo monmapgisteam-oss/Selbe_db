@@ -60,12 +60,44 @@ export function useAddedOids(pkg: Pkg, rowsAll: SheetRow[]) {
   return addedOids;
 }
 
+/** Хайлтын текст — жижиг үсэг, илүү зайгүй */
+export const normQuery = (v: string): string => fixCyr(v).replace(/s+/g, " ").trim().toLowerCase();
+
+/**
+ * Таарсан НАВЧ мөрүүд ба тэдгээрийн өвөг бүлгүүд — үлдэх мөрүүд (`true`). Шүүлт идэвхгүй бол `null`.
+ * `query` — ажлын нэр эсвэл №-д агуулагдах; `onlyOids` — эдгээр мөр (засвартай) л.
+ */
+export function matchKeep(
+  rowsAll: readonly Pick<SheetRow, "oid" | "no" | "work" | "group" | "depth">[],
+  query: string,
+  onlyOids: ReadonlySet<number> | null,
+): boolean[] | null {
+  const q = normQuery(query);
+  if (!q && !onlyOids) return null;
+  const keep = new Array<boolean>(rowsAll.length).fill(false);
+  const par = parentIndexes(rowsAll as SheetRow[]);
+  for (let i = 0; i < rowsAll.length; i++) {
+    const r = rowsAll[i];
+    if (r.group) continue;
+    if (onlyOids && !onlyOids.has(r.oid)) continue;
+    if (q && !normQuery(`${r.no ?? ""} ${r.work ?? ""}`).includes(q)) continue;
+    keep[i] = true;
+    for (let p = par[i]; p >= 0 && !keep[p]; p = par[p]) keep[p] = true;
+  }
+  return keep;
+}
+
 /** Бүлгийн ХОЁР ШАТЛАЛТ шүүлт · хуваарийн дагуу шүүлт · эвхэлт → зурагдах мөрийн индекс. */
-export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan, asOf }: {
+export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed, byPlan, asOf, query = "", onlyOids = null }: {
   rowsAll: SheetRow[]; calc: Calc; nBld: number; today: string;
   grpA: number; grpB: number; collapsed: Set<number>; byPlan: boolean;
   asOf?: number | null;
+  /** «Ажил хайх» — ажлын нэр/№ */
+  query?: string;
+  /** «Зөвхөн өөрчилсөн» — засвартай мөрийн oid-ууд */
+  onlyOids?: ReadonlySet<number> | null;
 }) {
+  const match = useMemo(() => matchKeep(rowsAll, query, onlyOids), [rowsAll, query, onlyOids]);
   /**
    * ӨНӨӨДӨР (UTC шөнө дунд) — хуваарийн шүүлтийн лавлах цэг.
    */
@@ -190,6 +222,11 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
         continue;
       }
 
+      /* Хайлт/«зөвхөн өөрчилсөн» идэвхтэй бол эвхэлтийг үл тооно — таарсан мөр харагдах ёстой */
+      if (match) {
+        if (!match[i]) h[i] = true;
+        continue;
+      }
       if (depth >= 0 && r.depth > depth) {
         h[i] = true;
         continue;
@@ -201,7 +238,7 @@ export function useRowFilter({ rowsAll, calc, nBld, today, grpA, grpB, collapsed
       for (let i = 0; i < h.length; i++) if (!planKeep[i]) h[i] = true;
     }
     return h;
-  }, [rowsAll, collapsed, grpRange, byPlan, planOff, planKeep]);
+  }, [rowsAll, collapsed, grpRange, byPlan, planOff, planKeep, match]);
 
   /** Зурагдах мөрүүдийн ИНДЕКС (нуугдсаныг хассан). */
   const vis = useMemo(() => {

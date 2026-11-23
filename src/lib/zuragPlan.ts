@@ -221,6 +221,8 @@ export type RegistryPlanEdits = {
   adds: ({ dd_kod: string } & Record<RKey, string | number | null>)[];
   updates: ({ objectid: number; dd_kod?: string } & Partial<Record<RKey, string | number | null>>)[];
   deletes: number[];
+  /** Гэрээ/төлбөртэй тул устгаагүй мөрүүд (бүртгэлээс хасагдсан эсвэл гадны утгатай) — гараар шийдвэрлэнэ */
+  held: number[];
 };
 
 const eq = (a: unknown, b: unknown): boolean => {
@@ -237,12 +239,15 @@ const eq = (a: unknown, b: unknown): boolean => {
  */
 export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZRow[]): RegistryPlanEdits {
   const { gen, old } = build(rows, z);
-  const out: RegistryPlanEdits = { adds: [], updates: [], deletes: [] };
+  const out: RegistryPlanEdits = { adds: [], updates: [], deletes: [], held: [] };
   /* 2026-11-18: гэрээний дугаар · гүйцэтгэгч · олгосон дүн · урьдчилгаа нь «гадны» шинж БИШ — зургийн гэрээ байгуулах,
      төлбөр олгоход систем өөрөө баримтын мөрд бичдэг. Урьд нь ийм мөрийг дараагийн бүртгэлийн хадгалалт устгаад хоосон
      мөр нэмдэг байсан тул гэрээний дугаар арилж, төлбөр гэрээнээсээ тасардаг байв. */
   /* 2026-11-19: гүйцэтгэгчийн огноо бүртгэлээс бичигддэг болсон тул «гадны» шинж биш */
   const foreign = (r: PlanStoredRow) => r.cashflow_id != null || r.ho_dun_zahiramj != null || r.zahiramj_dugaar != null;
+  /** Гэрээ, төлбөрийн мэдээлэлтэй мөр — хэзээ ч устгахгүй (баримт бүртгэлээс хасагдсан ч) */
+  const isProtected = (r: PlanStoredRow) => foreign(r) || String(r.geree_dugaar ?? '').trim() !== ''
+    || String(r.guitsetgegch ?? '').trim() !== '' || (Number(r.urdchilgaa_dun) || 0) > 0;
   const byOid = new Map<number, PlanStoredRow>();
   for (const r of old) if (typeof r.objectid === 'number') byOid.set(r.objectid, r);
   const kept = new Set<number>();
@@ -266,6 +271,30 @@ export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZR
       out.updates.push({ objectid: g.objectid as number, ...(moved ? { dd_kod: g.dd_kod as string } : {}), ...Object.fromEntries(diff.map((k) => [k, want[k]])) });
     }
   }
-  for (const o of byOid.keys()) if (!kept.has(o)) out.deletes.push(o);
+  for (const [o, r] of byOid) {
+    if (kept.has(o)) continue;
+    if (isProtected(r)) out.held.push(o);
+    else out.deletes.push(o);
+  }
+  /* Үлдээсэн мөрийн Д/Д бүртгэлийн мөртэй давхцвал тэр бүлгийн төгсгөлд шинэ дугаар өгнө — мод эвдрэхгүй */
+  const used = new Set<string>(gen.map((g) => String(g.dd_kod)));
+  const nextIn = (parent: string): string => {
+    let mx = 0;
+    for (const c of used) {
+      if (!c.startsWith(`${parent}.`)) continue;
+      const rest = c.slice(parent.length + 1);
+      if (/^d+$/.test(rest)) mx = Math.max(mx, Number(rest));
+    }
+    return `${parent}.${mx + 1}`;
+  };
+  for (const o of out.held) {
+    const r = byOid.get(o) as PlanStoredRow;
+    const code = String(r.dd_kod ?? '');
+    if (code && !used.has(code)) { used.add(code); continue; }
+    const parent = code.includes('.') ? code.slice(0, code.lastIndexOf('.')) : code;
+    const nc = nextIn(parent);
+    used.add(nc);
+    out.updates.push({ objectid: o, dd_kod: nc });
+  }
   return out;
 }
