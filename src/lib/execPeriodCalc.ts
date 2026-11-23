@@ -2,7 +2,7 @@
  * УДИРДЛАГЫН ТАЙЛАН — ХУГАЦААНЫ ӨӨРЧЛӨЛТ (өсөлт · бууралт), ЦЭВЭР тооцоо (сүлжээгүй, React-гүй — `execPeriodCalc.check.mjs`).
  */
 import { t as tr } from '@/lib/i18nCore';
-import { dayKey, num, pct } from '@/lib/format';
+import { dayKey, money2, num, pct } from '@/lib/format';
 
 export type ExecPeriodKey = '7d' | '30d' | 'thisMonth' | 'prevMonth' | 'custom';
 /** Хугацаа — `from` · `to` хоёулаа ОРНО (YYYY-MM-DD) */
@@ -235,8 +235,9 @@ export type Trend = { text: string; tone: 'good' | 'bad' | 'mute' };
 export function deltaText(delta: number | null, unit: 'pp' | 'n' | 'mnt', o: { upGood?: boolean; arrows?: boolean } = {}): Trend | null {
   if (delta == null || !Number.isFinite(delta)) return null;
   const a = Math.abs(delta);
-  const body = unit === 'pp' ? tr('{0} н.х', num(a, 1)) : unit === 'mnt' ? `${num(a)} ₮` : num(a);
-  const zero = unit === 'pp' ? a < 0.05 : unit === 'mnt' ? a < 1 : a < 0.5;
+  /* 2026-11-23: нэгж хувь ба ₮ — 2 аравтын оронтой; «тэг» босго нь харагдах 2 оронтой нийцнэ (0.00 = тэг) */
+  const body = unit === 'pp' ? tr('{0} н.х', num(a, 2)) : unit === 'mnt' ? `${money2(a)} ₮` : num(a);
+  const zero = unit === 'pp' || unit === 'mnt' ? a < 0.005 : a < 0.5;
   const sign = zero ? '' : delta > 0 ? '+' : '−';
   const arrow = o.arrows === false ? '' : zero ? '= ' : delta > 0 ? '▲ ' : '▼ ';
   const tone: Trend['tone'] = zero || o.upGood == null ? 'mute' : (delta > 0) === o.upGood ? 'good' : 'bad';
@@ -257,7 +258,7 @@ export function givenTrendOf(d: ExecDeltas | null, key: string, arrows = true): 
 
 export type DeltaRow = { key: string; label: string; prev: string; now: string; delta: number | null; trend: Trend | null; note?: string };
 
-const mnt = (v: number | null): string => (v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`);
+const mnt = (v: number | null): string => (v == null || !Number.isFinite(v) ? '—' : `${money2(v)} ₮`);
 
 /** Дэлгэц · PDF · PNG-д НЭГ мөрүүд (багц бүрийн мөр зөвхөн хэмжилттэйд) */
 export function execDeltaRows(d: ExecDeltas, arrows = true): DeltaRow[] {

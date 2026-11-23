@@ -1754,7 +1754,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                     ]}
                   />
                 </span>
-                <b className={`${h.mixPct} num`}>{tr("{0}%", num(x.share, 0))}</b>
+                <b className={`${h.mixPct} num`}>{tr("{0}%", num(x.share, 2))}</b>
               </div>
             ))}
           </div>

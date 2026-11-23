@@ -40,7 +40,8 @@ const APPROVER = 'НИЙСЛЭЛИЙН ЗАСАГ ДАРГЫН ТАМГЫН ГА
 
 /* ── Тоо, огноо ── */
 const f2 = (x: number | null) => (x == null || Math.abs(x) < 0.005 ? '-' : x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-const f0 = (x: number | null) => (x == null ? '-' : Math.round(x).toLocaleString('en-US'));
+/** Мөнгө — 2026-11-23-аас бүхэлдэхгүй, ҮРГЭЛЖ 2 аравтын оронтой (0 → «0.00», хоосон → «-») */
+const f0 = (x: number | null) => (x == null ? '-' : x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const pc = (x: number | null, of: number | null) =>
   x == null || of == null || of === 0 ? '-' : `${((x / of) * 100).toFixed(2)}%`;
 const d = (ms: number | null) => (ms == null ? '-' : new Date(ms).toISOString().slice(0, 10).replace(/-/g, '.'));
@@ -123,21 +124,41 @@ function perfSigners(doc: IpcDoc, meta: IpcMeta): Obj {
 }
 
 /* ══════════════ 1. Хүснэгт 7 ══════════════ */
+/**
+ * «Хүснэгт 7»-гийн хуудас — сарын баримт (`page7`) ба IPC баримтын хүснэгтийн (`Guitsetgel_talbe/238`) мөр (2026-11-23) хоёулаа.
+ */
+export type T7Page = {
+  t7: readonly T7Row[];
+  annual: number | null;
+  project: string;
+  contractNo: string;
+  contractor: string;
+  /** Огноо (мс) */
+  at: number | null;
+  signers: IpcSigners;
+};
+
 function page7(doc: IpcDoc, meta: IpcMeta): Obj[] {
-  const inp = doc.input;
-  const s = meta.signers;
+  return t7Page({
+    t7: doc.t7, annual: doc.input.annual, project: projectName(doc), contractNo: doc.input.contractNo,
+    contractor: doc.input.contractor, at: doc.periodTo, signers: meta.signers,
+  });
+}
+
+export function t7Page(pg: T7Page): Obj[] {
+  const s = pg.signers;
   const body: Obj[][] = [[
     cell('Зардлын нэр төрөл', TH), cell('Гэрээний дүн', TH), cell('Тухайн онд батлагдсан санхүүжилт', TH),
     cell('Нийт гүйцэтгэл', TH), cell('Нийт санхүүжилт', TH), cell('Өмнөх санхүүжилт', TH),
     cell('Одоо санхүүжих', TH), cell('Үлдэгдэл санхүүжилт', TH),
   ]];
-  doc.t7.forEach((r: T7Row, i) => {
+  pg.t7.forEach((r: T7Row, i) => {
     body.push([
       cell(r.label, { bold: r.bold, alignment: r.bold ? 'center' : 'left' }),
       numCell(f2(r.contract), r.bold),
       /* «Тухайн онд батлагдсан» — нэг нүд бүх мөрөөр (скан баримтынхаар) */
       i === 0
-        ? ({ ...cell(f2(inp.annual), { alignment: 'center', bold: true }), rowSpan: doc.t7.length })
+        ? ({ ...cell(f2(pg.annual), { alignment: 'center', bold: true }), rowSpan: pg.t7.length })
         : ({}),
       numCell(f2(r.perf), r.bold),
       numCell(f2(r.fin), r.bold),
@@ -152,11 +173,11 @@ function page7(doc: IpcDoc, meta: IpcMeta): Obj[] {
   ], margin: [0, 5, 0, 0] });
   return [
     { text: 'Хүснэгт 7', alignment: 'right', fontSize: 8 },
-    approveBlock(meta),
+    approveBlock({ capacity: '', signers: s }),
     { text: 'УЛСЫН ТӨСВИЙН ХӨРӨНГӨ ОРУУЛАЛТААС САНХҮҮЖҮҮЛЭХ БАРИЛГА УГСРАЛТЫН АЖЛЫН САНХҮҮЖИЛТИЙН ХҮСНЭГТ', bold: true, fontSize: 10, alignment: 'center', margin: [0, 2, 0, 8] },
     infoLines(
-      [['Төсөл арга хэмжээний нэр', projectName(doc)], ['Гэрээний дугаар', inp.contractNo || '-'], ['Огноо', d(doc.periodTo)]],
-      ['Гүйцэтгэгч', inp.contractor || '-'],
+      [['Төсөл арга хэмжээний нэр', pg.project || '-'], ['Гэрээний дугаар', pg.contractNo || '-'], ['Огноо', d(pg.at)]],
+      ['Гүйцэтгэгч', pg.contractor || '-'],
     ),
     { table: { headerRows: 1, widths: [150, '*', 80, '*', '*', '*', '*', '*'], body }, layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5 } },
     { unbreakable: true, stack: [

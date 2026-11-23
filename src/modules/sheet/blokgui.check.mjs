@@ -441,9 +441,9 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
   assert.deepEqual(extraVal(col('hun'), r({ hun_huch: null })), { text: '' }, 'null хоосон (0 БИШ)');
   assert.deepEqual(extraVal(col('hun'), r({})), { text: '' }, 'талбар ирээгүй — хоосон');
   assert.equal(extraVal(col('des'), r({ des_dugaar: '1,234' })).text, '1234', 'мөрөн тоо (numLoose)');
-  assert.equal(extraVal(col('L'), r({ 'ажил_гүйцэтгэл': 0.253 })).text, '25.3%', 'хадгалсан L 0–1 → %');
-  assert.equal(extraVal(col('M'), r({ 'төлөвлөгөөт_гүйцэтгэл1': 1 })).text, '100%');
-  assert.equal(extraVal(col('M'), r({ 'төлөвлөгөөт_гүйцэтгэл1': 0 })).text, '0%', 'хадгалсан 0 — «0%» (null биш)');
+  assert.equal(extraVal(col('L'), r({ 'ажил_гүйцэтгэл': 0.253 })).text, '25.30%', 'хадгалсан L 0–1 → %');
+  assert.equal(extraVal(col('M'), r({ 'төлөвлөгөөт_гүйцэтгэл1': 1 })).text, '100.00%');
+  assert.equal(extraVal(col('M'), r({ 'төлөвлөгөөт_гүйцэтгэл1': 0 })).text, '0.00%', 'хадгалсан 0 — «0.00%» (null биш)');
   assert.equal(extraVal(col('L'), r({ 'ажил_гүйцэтгэл': null })).text, '', 'L null — хоосон');
   assert.equal(extraVal(col('gS'), r({ geree_ehleh: Date.UTC(2026, 2, 1) })).text, '2026-03-01');
   assert.equal(extraVal(col('fill'), r({ buglusun_ognoo: Date.UTC(2026, 9, 7, 16) })).text, '2026-10-08', 'локал шөнө дунд (UTC+8) → тэр өдөр (normDayMs)');
@@ -463,10 +463,10 @@ console.log('✅ бөглөх бүдүүвч (fill) — obyem→obyem_sum · act
     assert.equal(at6('f68').kind, 'day', 'огнооны төрөлтэй талбар — огноо');
     assert.equal(extraVal(at6('f68'), { raw: raw6 }).text, '2026-09-02', 'f68 огноогоор (Улаанбаатарын шөнө дунд)');
     assert.equal(at6('мөнгөн_дүн__шинэ').label(), 'Мөнгөн дүн- Шинэ', 'alias шошго');
-    assert.equal(extraVal(at6('мөнгөн_дүн__шинэ'), { raw: raw6 }).text, '14,228,954,139', 'мөнгө мянгатын таслалтай, бүтэн');
+    assert.equal(extraVal(at6('мөнгөн_дүн__шинэ'), { raw: raw6 }).text, '14,228,954,139.00', 'мөнгө мянгатын таслалтай, 2 аравтын оронтой (2026-11-23)');
     assert.equal(extraVal(at6('нэгж_өртөг__шинэ'), { raw: raw6 }).text, '2,166.94');
     assert.equal(at6('хувийн_жин_шинэ1').kind, 'pct', 'хувийн жин — хувь');
-    assert.equal(extraVal(at6('хувийн_жин_шинэ1'), { raw: raw6 }).text, '78%');
+    assert.equal(extraVal(at6('хувийн_жин_шинэ1'), { raw: raw6 }).text, '77.96%', '2026-11-23: хувь ҮРГЭЛЖ 2 аравтын оронтой');
     assert.equal(at6('f5_3_блок___9_давхар_дуусах'), undefined, 'энэ хуудасны блокуудад ороогүй блокийн үлдэгдэл харагдахгүй');
     assert.equal(extraNum(at6('мөнгөн_дүн__шинэ'), { raw: raw6 }), 14228954139, 'Excel-д тоон утга');
     assert.equal(extraNum(at6('f68'), { raw: raw6 }), null, 'огноо тоон нүд биш');

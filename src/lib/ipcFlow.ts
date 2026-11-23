@@ -288,8 +288,12 @@ export function contractUpdates(c: NewContract): Row[] {
   }));
 }
 
-/** Гэрээ цуцлах боломжтой юу — IPC үүссэн, олгосон мөргүй */
-export function contractCancelWhy(pays: readonly Row[]): 'has-ipc' | null {
+/**
+ * Гэрээ цуцлах боломжтой юу — IPC үүссэн, олгосон мөргүй. `docs` — IPC баримтын хүснэгтийн (`Guitsetgel_talbe/238`) тэр
+ * гэрээний мөрүүд (2026-11-23): нэг ч баримт байвал цуцлахгүй (эхлээд устгана).
+ */
+export function contractCancelWhy(pays: readonly Row[], docs: readonly Row[] = []): 'has-ipc' | null {
+  if (docs.length) return 'has-ipc';
   /* «Цуцлагдсан» AUTO мөр зөвхөн гэрээ цуцлахаас үүснэ — хагас цуцлагдсан гэрээг дахин оролдох боломжтой */
   return pays.some((r) => num(r[P.amount]) != null || isDocRow(r) || (isAuto(r) && statusOf(r) !== S.work && statusOf(r) !== S.cancelled))
     ? 'has-ipc' : null;
@@ -300,8 +304,8 @@ export function contractCancelWhy(pays: readonly Row[]): 'has-ipc' | null {
  * Дэлгэц нээлттэй байх хооронд өөр хүн IPC үүсгэсэн / баталсан бол (`contractCancelWhy`) цуцлахгүй — урьд нь дэлгэцийн
  * хуучин мөрөөр шийдэж, төлбөр нь олгогдсон гэрээг цуцалдаг байв. Засвар нь ШИНЭ мөрүүдээр (шинээр үүссэн мөр ч орно).
  */
-export function contractCancelFresh(fresh: readonly Row[], cfRows: readonly Row[]): { ok: false; why: 'has-ipc' } | { ok: true; ho: Row[]; cf: Row[] } {
-  const why = contractCancelWhy(fresh);
+export function contractCancelFresh(fresh: readonly Row[], cfRows: readonly Row[], docs: readonly Row[] = []): { ok: false; why: 'has-ipc' } | { ok: true; ho: Row[]; cf: Row[] } {
+  const why = contractCancelWhy(fresh, docs);
   return why ? { ok: false, why } : { ok: true, ...contractCancel(fresh, cfRows) };
 }
 

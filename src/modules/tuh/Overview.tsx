@@ -7,7 +7,7 @@
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, mnt, date } from '@/lib/format';
+import { num, pct, mnt, money2, date } from '@/lib/format';
 import {
   TUH_GROUPS, TUH_STATUS, TUH_STALE_DAYS, statusMeta, matchesSearch, lateFirst, heatWinterYear, elapsedPct,
   calDaysBetween,
@@ -24,9 +24,9 @@ import { pp } from '@/modules/pkgShared';
 import { Segmented } from '@/components/Switch';
 import s from '../tuh.module.css';
 
-/** Мөнгөн дүн — ЗӨВХӨН null үед «—» (0 нь «0 ₮»); `mnt` нь 0-ийг ч «—» болгодог (PkgDetail.mnt0-тэй ижил) */
+/** Мөнгөн дүн — ЗӨВХӨН null үед «—» (0 нь «0.00 ₮»); `mnt` нь 0-ийг ч «—» болгодог (PkgDetail.mnt0-тэй ижил). 2026-11-23: 2 аравтын оронтой */
 const mnt0 = (v: number | null | undefined): string =>
-  v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`;
+  v == null || !Number.isFinite(v) ? '—' : `${money2(v)} ₮`;
 
 const wrapNum = (txt: string): ReactNode => txt.split(',').map((part, i, a) => (
   i < a.length - 1 ? <span key={i}>{part},<wbr /></span> : <span key={i}>{part}</span>
@@ -510,7 +510,7 @@ export function Overview({ m, contractTotal, onOpen, onRetry, onOpenDeps }: {
 
       {/* ── S-curve ── */}
       <Section id="housing-curves" title={tr('S-curve — хуримтлагдсан гүйцэтгэл')}
-        lead={tr('Орон сууцны багц бүрийн хуваарийн төлөвлөгөө ба бодит гүйцэтгэл — «Багцын гүйцэтгэл» хэсгийн ижил график.')}>
+        lead={tr('Орон сууцны багц бүрийн хуваарийн төлөвлөгөө ба бодит гүйцэтгэл — «Багцын явц» хэсгийн ижил график.')}>
         <div className={s.multiples}>
           {housing.map((r) => (
             <div key={r.p.key} className={s.progCell}>

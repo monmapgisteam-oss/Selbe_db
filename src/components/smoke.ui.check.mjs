@@ -159,7 +159,6 @@ const CASES = [
   { name: 'HuvaariBatlah', load: () => import('@/modules/HuvaariBatlah'), pick: (m) => m.HuvaariBatlah, props: {}, expect: ['Хуваарь батлах'] },
   { name: 'AjilBatlah', load: () => import('@/modules/AjilBatlah'), pick: (m) => m.AjilBatlah, props: {} },
   { name: 'Schem', load: () => import('@/modules/Schem'), pick: (m) => m.Schem, props: { setView: noopFn } },
-  { name: 'SysDoc', load: () => import('@/modules/SysDoc'), pick: (m) => m.default, props: { setView: noopFn } },
   { name: 'TusulNegtgel', load: () => import('@/modules/TusulNegtgel'), pick: (m) => m.TusulNegtgel, props: {} },
   { name: 'ViewPanel', skip: 'Portal-ын дотоод самбар — олон тооны төлөв/callback prop; Portal тохиолдол дамжуулан зурна' },
   { name: 'FillNew', load: () => import('@/modules/sheet/FillNew'), pick: (m) => m.default, props: {} },
@@ -189,6 +188,21 @@ const CASES = [
   /* 2026-11-20: «Систем түр хаах» (SystemClosed · SystemCloseDialog · sysClose эрх) бүрмөсөн хасагдсан */
   { name: 'PlainCapAcl:docsGroups', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'docsGroups' }, map: false,
     expect: ['Баримт бичгийн сан — бүлэг үүсгэх', 'шууд хадгалагдана'] },
+  /* 2026-11-23: «Шинэ эрх» бүлэг — Хүмүүс · Багцууд · Албан үүрэг ба хүний самбар */
+  ...['nPeople', 'nPkgs', 'nJobs'].map((pane) => ({
+    name: `ErhNew:${pane}`, load: () => import('@/modules/ErhNew'), pick: (m) => m.ErhNew, map: false,
+    props: { pane, onPane: noopFn, oldDrafts: new Set(), onDirty: noopFn, lookup: async () => 'ok', askLeave: async () => true },
+    expect: pane === 'nPeople' ? ['Хүн нэмэх', 'Хүн солих', 'Яг энэ хүн шиг'] : pane === 'nPkgs' ? ['Хэн … хийж чадах вэ?', 'Багц-1'] : ['Гүйцэтгэгч компани', 'зөвхөн харна'],
+  })),
+  { name: 'ErhNewPerson', load: () => import('@/modules/ErhNewPerson'), pick: (m) => m.ErhNewPerson, map: false,
+    props: {
+      user: 'smoke_new', display: 'smoke_new', isNew: true, dirty: true,
+      have: { role: null, views: [], docs: false, flow: null, acl: {}, caps: [] },
+      draft: { user: 'smoke_new', job: 'injener', bagts: ['Багц-1'], add: [{ kind: 'cap', cap: 'zovshoorol' }], remove: [] },
+      onDraft: noopFn, onReset: noopFn, readOnly: null, canSuper: false, jobLock: null, removeLock: null, saveLock: null, rows: [],
+      onClose: noopFn, onSaved: noopFn, onRemoved: noopFn,
+    },
+    expect: ['Албан үүрэг', 'Багцууд', 'Нэмэлт / хасагдсан эрх', 'Энэ хүн юу хийж чадах вэ', 'Хадгалах', 'Зөвшөөрөл засах'] },
 ];
 
 if (listOnly) { CASES.forEach((c) => console.log(`${c.skip ? '⏭' : '·'} ${c.name}${c.skip ? ' — ' + c.skip : ''}`)); process.exitCode = 0; }

@@ -228,7 +228,7 @@ export function ErhOverview({
               </div>
 
               {u.superUser && (
-                <div className={s.aclName}>{tr('Админ — бүх багц, бүх шат')}</div>
+                <div className={s.aclName}>{tr('Админ — эрх удирдана; ажлын эрх нь доорх томилгооноос, бусдын адил')}</div>
               )}
               {!u.any && (
                 <div className={s.aclEmpty}>{tr('Эрх олгоогүй — зөвхөн харагдац.')}</div>

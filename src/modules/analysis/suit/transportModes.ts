@@ -7,6 +7,7 @@ import {
 } from '@/lib/analysis/transport';
 import { simColor } from './simulation';
 import { t as tr } from '@/lib/i18nCore';
+import { pct as fmtPct } from '@/lib/format';
 import { demandNorm, type RoadDemand } from './roadDemand';
 import type { BusAccess, BusStop } from './busAccess';
 import type { BuildingPt } from './buildings';
@@ -342,10 +343,12 @@ export function tReadout(mode: TMode, ctx: TransportCtx): TCell[] {
     const resPop = buildings.reduce((a, b) => a + (b.cat === 'residential' ? b.population : 0), 0);
     const pct = (v: number): number | null => (resPop > 0 ? Math.round((v / resPop) * 100) : null);
     const good = pct(bus.popByBand.good);
+    /* 2026-11-23: дэлгэцэнд 2 аравтын оронтой — өнгөний босго бүхэлдсэн `good`-оор хэвээр */
+    const goodRaw = resPop > 0 ? (bus.popByBand.good / resPop) * 100 : null;
     return [
       {
         k: tr('≤{0} м доторх', BUS_GOOD_M),
-        v: good == null ? '—' : `${good}%`,
+        v: goodRaw == null ? '—' : fmtPct(goodRaw),
         color: good == null ? undefined
           : good > 70 ? 'var(--good-ink)' : good > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)',
       },

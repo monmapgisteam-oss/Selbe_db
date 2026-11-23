@@ -27,13 +27,13 @@ import {
   BUILDING, CASHFLOW_NEW, HO_IPC, LAYER_BY_ID, pkgKeyOf, bagtsKey,
   zoneWhere,
   hoAmount, hoPayCode, contractAmountOf, orderTotalOf } from '@/lib/services';
-import { cat, date, mnt, num, pct, monthKey, NO_DATA } from '@/lib/format';
+import { cat, date, mnt, money2, MNT_DEC, num, pct, monthKey, NO_DATA } from '@/lib/format';
 
 /**
  * ОЛГОГДООГҮЙ ҮЛДЭГДЭЛ ₮ — `Math.max(0, гэрээ − олголт)` тул 0 нь ЖИНХЭНЭ «бүрэн төлөгдсөн».
  */
 const remainMnt = (v: number | null | undefined): string =>
-  v == null || !Number.isFinite(v) ? '—' : v === 0 ? tr('0 ₮') : mnt(v);
+  v == null || !Number.isFinite(v) ? '—' : v === 0 ? `${num(0, MNT_DEC)} ₮` : mnt(v); // 2026-11-23: «0.00 ₮» — мөнгө ҮРГЭЛЖ 2 аравтын оронтой
 import { hoTotals } from '@/lib/ipc';
 /* «Олгосон хувь» — удирдлагын тайлан · IPC · CEO-той НЭГ томьёо (2026-11-04: давхар хуулбарыг хасав) */
 import { paidPctOf, paidShareOf, type PaidShare } from '@/lib/paidShare';
@@ -846,7 +846,7 @@ function TsKpi({ packs, fin, share }: {
       { v: t == null ? '…' : mnt(t.given), l: tr('олгосон санхүүжилт') },
       { v: t == null ? '…' : t.share == null ? '—' : pct(t.share, 1), l: tr('олгосон — гэрээний дүнгийн %'),
         /* 2026-11-09: хувийн тоологчийг хажууд нь — нийт олголтоос (зүүн хавтан) ялгаатай бол ойлгомжтой */
-        h: t == null || t.share == null ? '' : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(t.givenContracted), pct(t.share, 1)) },
+        h: t == null || t.share == null ? '' : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', money2(t.givenContracted), pct(t.share, 1)) },
       { v: t == null ? '…' : remainMnt(t.remain), l: tr('олгогдоогүй үлдэгдэл') },
   ];
   return (
@@ -1410,7 +1410,7 @@ function FinCard({
       {!finOnly && lag && lvl && (
         <span
           className={`${f.lagBadge} ${lvl === 'red' ? f.lagRed : f.lagYellow}`}
-          title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
+          title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, num(lag.planned, 2), num(lag.actual, 2))}
         >
           {lvl === 'red' ? tr('Хоцрогдол') : tr('Анхаарах')} {gapPts(lag.gap)}
         </span>
@@ -1427,7 +1427,7 @@ function FinCard({
   const note =
     total > 0 ? (
       <span className={ts.totNote}>
-        {tr('Багцын гэрээ/төсвийн дүн (гэрээгүй бол төсвөөр):')} <b>{num(total)} ₮</b>
+        {tr('Багцын гэрээ/төсвийн дүн (гэрээгүй бол төсвөөр):')} <b>{money2(total)} ₮</b>
       </span>
     ) : undefined;
 

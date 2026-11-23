@@ -12,7 +12,7 @@
 import { queryFeatures, type Row } from '@/lib/query';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { t as tr } from '@/lib/i18nCore';
-import { num } from '@/lib/format';
+import { num, PCT_DEC } from '@/lib/format';
 import {
   CASHFLOW_NEW, CF_WORK_WHERE, HABEA, bagtsKey, isPkgRange,
   BUILDING, laborCompanyFields,
@@ -695,26 +695,29 @@ export function housingSeries(
 
 /**
  * ХУВИЙН НЭГЖИЙН ЗӨРҮҮ (нэгж хувь, «н.х») — тэмдэгтэй утга `v` (эерэг = өсөлт/түрүүлсэн).
+ * 2026-11-23: хувийн дүрэмтэй нэг — ҮРГЭЛЖ 2 аравтын оронтой (`_d` үл тоомсорлогдоно).
  */
-export function pts(v: number | null | undefined, d = 1): string {
+export function pts(v: number | null | undefined, _d?: number): string {
   if (v == null || !Number.isFinite(v)) return '—';
+  const d = PCT_DEC;
   const a = Math.abs(v);
   if (Number(a.toFixed(d)) === 0) return tr('{0} н.х', num(0, d));
   return tr('{0} н.х', `${v > 0 ? '+' : '−'}${num(a, d)}`);
 }
 
 /**
- * ХУВААРИЙН ЗӨРҮҮ — `gap` = төлөвлөгөө − бодит (эерэг = ХОЦОРСОН) → «−5.0 н.х» (хоцорсон),
- * «+2.0 н.х» (түрүүлсэн), «0.0 н.х». 2026-10-09 (аудит №2): `pts`.
+ * ХУВААРИЙН ЗӨРҮҮ — `gap` = төлөвлөгөө − бодит (эерэг = ХОЦОРСОН) → «−5.00 н.х» (хоцорсон),
+ * «+2.00 н.х» (түрүүлсэн), «0.00 н.х». 2026-10-09 (аудит №2): `pts`.
  */
-export const gapPts = (gap: number | null | undefined, d = 1): string =>
-  pts(gap == null ? gap : -gap, d);
+export const gapPts = (gap: number | null | undefined, _d?: number): string =>
+  pts(gap == null ? gap : -gap);
 
 /**
- * ХУВААРИЙН ЗӨРҮҮ ҮГЭЭР — «5.0 н.х хоцролт» / «2.0 н.х түрүүлсэн» / «0.0 н.х».
+ * ХУВААРИЙН ЗӨРҮҮ ҮГЭЭР — «5.00 н.х хоцролт» / «2.00 н.х түрүүлсэн» / «0.00 н.х» (2026-11-23: ҮРГЭЛЖ 2 орон).
  */
-export function gapPtsWord(gap: number | null | undefined, d = 1): string {
+export function gapPtsWord(gap: number | null | undefined, _d?: number): string {
   if (gap == null || !Number.isFinite(gap)) return '—';
+  const d = PCT_DEC;
   const a = Math.abs(gap);
   if (Number(a.toFixed(d)) === 0) return tr('{0} н.х', num(0, d));
   return gap > 0 ? tr('{0} н.х хоцролт', num(a, d)) : tr('{0} н.х түрүүлсэн', num(a, d));

@@ -32,7 +32,8 @@ export type DataKey =
   | 'HUVAARI_OBYEM'
   | 'TUSUL_NEGTGEL'
   | 'MATERIAL_NOOTS'
-  | 'ZURAG_BURTGEL';  // Zurag_tosol_burtgel — zuragBurtgel.ts (2026-11-11)
+  | 'ZURAG_BURTGEL'  // Zurag_tosol_burtgel — zuragBurtgel.ts (2026-11-11)
+  | 'IPC_DOC';       // Guitsetgel_talbe/238 «ipc» — ipcDocTable.ts (2026-11-23)
 
 /** Бүртгэгдсэн кэш — `cached()` өөрийгөө энд нэмнэ */
 type Slot = { drop: () => void; reads: readonly DataKey[] };

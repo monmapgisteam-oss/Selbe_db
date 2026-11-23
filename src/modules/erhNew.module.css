@@ -1,0 +1,327 @@
+/* ═══════════════════════════════════════════════════════════════
+   «ШИНЭ ЭРХ» — Хүмүүс · Багцууд · Албан үүрэг (2026-11-23).
+   Өнгө · хэмжээ админ порталын (`userAdmin.module.css`) токеноор. */
+
+.wrap { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 16px; min-width: 0; }
+
+/* ── Дээд мөр — тоо · багцын хураангуй ── */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.summary b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.linkBtn {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--data-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.linkBtn:hover { color: var(--ink); }
+
+/* ── Хэрэгслийн мөр ── */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.search {
+  flex: 1 1 220px;
+  min-width: 0;
+  height: var(--ctl-h-form);
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+.search:focus-visible, .select:focus-visible, .input:focus-visible {
+  outline: none;
+  border-color: var(--data);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--data) 18%, transparent);
+}
+.select, .input {
+  height: var(--ctl-h-form);
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+.input { flex: 1 1 180px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.check input { width: 14px; height: 14px; accent-color: var(--data); }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--ctl-h-form);
+  padding: 0 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.primary {
+  border-color: var(--workspace-accent);
+  background: var(--workspace-accent);
+  color: var(--workspace-accent-ink);
+  font-weight: 600;
+}
+.primary:hover:not(:disabled) { background: var(--workspace-accent-hover); color: var(--workspace-accent-ink); }
+.danger { color: var(--bad-ink); border-color: color-mix(in oklab, var(--bad) 40%, transparent); }
+.danger:hover:not(:disabled) { background: color-mix(in oklab, var(--bad) 8%, transparent); color: var(--bad-ink); }
+
+/* ── Тусгай самбар (хүн нэмэх · солих · хуулах) ── */
+.tool {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--r);
+  border: 1px solid color-mix(in oklab, var(--data) 40%, transparent);
+  background: color-mix(in oklab, var(--data) 6%, transparent);
+}
+.toolHead { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* ── Тайлбар · алдаа ── */
+.note { margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
+.err, .warn, .ok {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.err { color: var(--bad-ink); border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent); background: color-mix(in oklab, var(--bad) 8%, transparent); }
+.warn { color: var(--warn-ink); border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent); background: color-mix(in oklab, var(--warn) 10%, transparent); }
+.ok { color: var(--data-ink); border: 1px solid color-mix(in oklab, var(--data) 35%, transparent); background: color-mix(in oklab, var(--data) 8%, transparent); }
+.list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; line-height: 1.4; }
+
+/* ── Хүмүүсийн хүснэгт ── */
+.tableWrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); }
+.table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 10px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+.table td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table tbody tr { cursor: pointer; }
+.table tbody tr:hover { background: var(--surface-2); }
+.rowOn { background: color-mix(in oklab, var(--data) 9%, transparent); }
+.name { font-weight: 600; color: var(--ink); word-break: break-all; }
+.muted { color: var(--ink-3); }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.bDiff { color: var(--data-ink); border-color: color-mix(in oklab, var(--data) 40%, transparent); background: color-mix(in oklab, var(--data) 8%, transparent); }
+.bBad { color: var(--bad-ink); border-color: color-mix(in oklab, var(--bad) 40%, transparent); background: color-mix(in oklab, var(--bad) 8%, transparent); }
+.bWarn { color: var(--warn-ink); border-color: color-mix(in oklab, var(--warn) 45%, transparent); background: color-mix(in oklab, var(--warn) 10%, transparent); }
+.newTag {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--data) 40%, transparent);
+  background: color-mix(in oklab, var(--data) 10%, transparent);
+  color: var(--data-ink);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  vertical-align: 1px;
+}
+
+/* ── Хүний самбар (баруун талын шургуулга) ── */
+.scrim { position: fixed; inset: 52px 0 0 0; z-index: 1005; background: color-mix(in oklab, #000 22%, transparent); }
+.drawer {
+  position: fixed;
+  top: 52px;
+  right: 0;
+  bottom: 0;
+  z-index: 1006;
+  display: flex;
+  flex-direction: column;
+  width: min(620px, 100%);
+  background: var(--surface);
+  border-left: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-sm);
+}
+.dHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.dName { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; word-break: break-all; }
+.dirty { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--data); }
+.dBody { flex: 1; overflow-y: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; }
+.sec { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 7px; }
+.secHead {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.dFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+.footInfo { flex: 1; min-width: 0; font-size: 12px; color: var(--ink-2); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 4px 3px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink-2);
+  background: var(--bg);
+}
+.chipAdd { border-color: color-mix(in oklab, var(--data) 45%, transparent); background: color-mix(in oklab, var(--data) 7%, transparent); color: var(--data-ink); }
+.chipDel { border-color: color-mix(in oklab, var(--bad) 40%, transparent); background: color-mix(in oklab, var(--bad) 6%, transparent); color: var(--bad-ink); text-decoration: line-through; text-decoration-color: color-mix(in oklab, var(--bad) 50%, transparent); }
+.chipText { min-width: 0; overflow-wrap: anywhere; }
+.chipX {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.chipX:hover { background: var(--surface-2); color: var(--ink); }
+
+/* ── Багц сонгогч ── */
+.picker { display: flex; flex-direction: column; gap: 6px; }
+.pickList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+}
+.pickItem { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--ink-2); padding: 2px 0; }
+.pickItem input { flex: none; width: 14px; height: 14px; accent-color: var(--data); }
+.pickItem span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fam {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.fam:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.famOn { border-color: color-mix(in oklab, var(--data) 45%, transparent); background: color-mix(in oklab, var(--data) 10%, transparent); color: var(--data-ink); }
+
+/* ── Баталгаажуулах жагсаалт ── */
+.confirm { display: flex; flex-direction: column; gap: 6px; }
+.chAdd, .chDel { font-size: 12.5px; line-height: 1.4; padding: 3px 8px; border-radius: var(--r-sm); }
+.chAdd { color: var(--data-ink); background: color-mix(in oklab, var(--data) 7%, transparent); }
+.chDel { color: var(--bad-ink); background: color-mix(in oklab, var(--bad) 7%, transparent); }
+
+/* ── Багцуудын хүснэгт ── */
+.pkgWrap { overflow: auto; max-height: calc(100vh - 260px); border: 1px solid var(--line); border-radius: var(--r); }
+.pkg { border-collapse: separate; border-spacing: 0; font-size: 11.5px; }
+.pkg th, .pkg td { padding: 5px 7px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); vertical-align: top; }
+.pkg thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  color: var(--ink-3);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.pkg thead tr + tr th { top: 27px; }
+.pkg .stick { position: sticky; left: 0; z-index: 1; background: var(--surface); min-width: 120px; }
+.pkg thead .stick { z-index: 3; }
+.cell { min-width: 92px; max-width: 160px; }
+.cBad { background: color-mix(in oklab, var(--bad) 12%, var(--bg)); }
+.cWarn { background: color-mix(in oklab, var(--warn) 14%, var(--bg)); }
+.who {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  text-align: left;
+  font-size: 11.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.who:hover { color: var(--data-ink); text-decoration: underline; }
+.whoView { color: var(--ink-3); font-style: italic; }
+.mark { font-size: 10.5px; font-weight: 600; }
+.mBad { color: var(--bad-ink); }
+.mWarn { color: var(--warn-ink); }
+.pkgName { font-weight: 600; color: var(--ink); text-align: left; padding: 0; }
+.issues td { background: var(--bg); }
+
+/* ── Албан үүргийн жагсаалт ── */
+.jobs td { font-size: 12px; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { padding: 1px 6px; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--bg); font-size: 11px; color: var(--ink-2); }
+
+/* Нарийн дэлгэц — хүмүүсийн хүснэгт карт болно, шургуулга бүтэн өргөн */
+@media (max-width: 760px) {
+  .table thead { display: none; }
+  .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
+  .table tr { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .table td { border: none; padding: 2px 10px; }
+  .num { text-align: left; }
+  .drawer { width: 100%; border-left: none; }
+  .scrim { display: none; }
+  .pkgWrap { max-height: none; }
+}

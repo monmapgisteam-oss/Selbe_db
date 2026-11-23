@@ -73,8 +73,8 @@ console.log('\n2. Хазгай оролт — чат унахгүй');
   ok('дан хашлага гацаахгүй', parseBlocks(['```', 'Текст'].join('\n')).length === 1);
   ok('хоосон оролт', parseBlocks('').length === 0);
   ok('эвдэрсэн JSON-той график spec null', parseBlocks('```chart\n{буруу\n```').find((x) => x.kind === 'chart').spec === null);
-  ok('графикийн утга хувьтай', chartValText(45.6, '%') === '45.6%');
-  ok('графикийн утга мөнгөтэй, бүтнээр', chartValText(1234567890, '₮') === '1,234,567,890 ₮');
+  ok('графикийн утга хувьтай', chartValText(45.6, '%') === '45.60%');
+  ok('графикийн утга мөнгөтэй, бүтнээр', chartValText(1234567890, '₮') === '1,234,567,890.00 ₮');
   ok('графикийн утга нэгжгүй', chartValText(12) === '12');
   ok('графикийн цоорхой', chartValText(null, '%') === '—');
 }
@@ -138,7 +138,7 @@ console.log('\n7. Excel (.xlsx) — ЭХНИЙ хуудас нь ХҮСНЭГТ'
   ok('эхний хуудас = хүснэгт', names[0] === 'Гүйцэтгэлийн байдал');
   ok('«Тайлбар» ХАМГИЙН СҮҮЛД', names[names.length - 1] === 'Тайлбар');
   ok('хувь 0–1 утгаар', txt.includes('<v>0.197</v>'));
-  ok('хувийн формат', txt.includes('formatCode="0.0%"'));
+  ok('хувийн формат', txt.includes('formatCode="0.00%"'));
   ok('тооны формат', txt.includes('formatCode="#,##0"'));
   ok('толгой хөлдүү (гарчиг+толгой)', txt.includes('ySplit="2"'));
   ok('хүснэгтгүй хариултад ч үүснэ', buildChatXlsx({ title: 'a', date: 'b', blocks: parseBlocks('Зөвхөн текст.') }).length > 0);
@@ -150,11 +150,11 @@ console.log('\n7a. Нүдний төрөл — текст биш ТОО');
   ok('баганын төрөл: текст · хувь · тоо', t.cols.map((c) => c.kind).join(',') === 'text,pct,num');
   ok('«19.7%» → 0.197', t.rows[0][1] === 0.197);
   ok('«1,788» → 1788', t.rows[0][2] === 1788);
-  ok('хувийн формат 0.0%', t.cols[1].numFmt === '0.0%');
+  ok('хувийн формат 0.00% (2026-11-23: үргэлж 2 орон)', t.cols[1].numFmt === '0.00%');
 
   const money = typeTable({ name: 'a', head: ['Багц', 'Дүн'], rows: [['Багц 1', '2,660,000,000 ₮'], ['Багц 2', '5,000 ₮']] });
   ok('мөнгө → тоо', money.rows[0][1] === 2660000000 && money.cols[1].kind === 'money');
-  ok('мөнгөний формат ба толгой', money.cols[1].numFmt === '#,##0' && colHeader(money.cols[1], true) === 'Дүн (₮)');
+  ok('мөнгөний формат ба толгой', money.cols[1].numFmt === '#,##0.00' && colHeader(money.cols[1], true) === 'Дүн (₮)');
 
   const qty = typeTable({ name: 'a', head: ['Багц', 'Талбай'], rows: [['a', '1,788 м²'], ['b', '900 м²']] });
   ok('хэмжээ → тоо + нэгж формат дотор', qty.rows[0][1] === 1788 && qty.cols[1].numFmt === '#,##0 "м²"');

@@ -3,10 +3,10 @@
  */
 import { num as fmtNum } from '@/lib/format';
 
-/** Утгын шошго — нэгж өгөгдсөн бол хамт; дэлгэц ба PDF НЭГ дүрэм */
+/** Утгын шошго — нэгж өгөгдсөн бол хамт; дэлгэц ба PDF НЭГ дүрэм. 2026-11-23: хувь (%) ба мөнгө (₮/төг) ҮРГЭЛЖ 2 аравтын оронтой */
 export function chartValText(v: number | null, unit?: string): string {
   if (v == null) return '—';
-  const s = fmtNum(v, Number.isInteger(v) ? 0 : 1);
+  const s = fmtNum(v, unit && /%|₮|төг/.test(unit) ? 2 : Number.isInteger(v) ? 0 : 1);
   if (!unit) return s;
   return unit === '%' ? `${s}%` : `${s} ${unit}`;
 }

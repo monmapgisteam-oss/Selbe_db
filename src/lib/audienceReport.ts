@@ -9,7 +9,7 @@
  * Хэмжигдээгүй явц = 0% («явцгүй» гэж хэзээ ч бичихгүй). ЦЭВЭР — сүлжээгүй, React-гүй (`audienceReport.check.mjs`).
  */
 import { t as tr } from '@/lib/i18nCore';
-import { dayKey, num, pct } from '@/lib/format';
+import { dayKey, money2, num, pct } from '@/lib/format';
 import { execFindings, incidentLabel, LATE_GAP, measuredLabel, type ExecReport } from '@/lib/execReport';
 import { coverageOk } from '@/lib/planProgress';
 import { bandOf, type ExecDelta, type ExecDeltas, type ExecPeriod } from '@/lib/execPeriodCalc';
@@ -133,7 +133,8 @@ export const failedNames = (failed: readonly string[] | undefined): string[] =>
 /** Мөнгө — бүтэн дүн, таслалтай (2026-09-01 дүрэм); мэдээлэлгүй → «мэдээлэлгүй» */
 export const money = (v: number | null | undefined): string => bn(v);
 
-const abs1 = (v: number) => num(Math.abs(v), 1);
+/** Нэгж хувийн өөрчлөлт — 2 аравтын оронтой (2026-11-23, хувийн дүрэмтэй нэг) */
+const abs1 = (v: number) => num(Math.abs(v), 2);
 
 /** Чиглэлийн үг — тэг бол «өөрчлөгдөөгүй» */
 const trendWord = (delta: number, zeroBelow: number): string =>
@@ -167,7 +168,7 @@ function givenDelta(d: ExecDeltas | null): string | null {
  * гэрээлсэн багцаас гадуурх хэсэг байвал хажууд нь тусад нь хэлнэ (удирдлагын тайлангийн 04-ийн тэмдэглэлтэй нэг өгүүлбэр).
  */
 const withOutside = (x: ExecReport, s: string): string => (x.fin.givenOther > 0
-  ? `${s} ${tr('Нийт олгосон дүнд гэрээлсэн багцаас гадуурх {0} ₮ олголт (хэд хэдэн багц хамарсан мөр, гэрээлсэн дүнгийн багцад холбогдоогүй төлбөр) орсон — олгосон хувьд ороогүй.', num(x.fin.givenOther))}`
+  ? `${s} ${tr('Нийт олгосон дүнд гэрээлсэн багцаас гадуурх {0} ₮ олголт (хэд хэдэн багц хамарсан мөр, гэрээлсэн дүнгийн багцад холбогдоогүй төлбөр) орсон — олгосон хувьд ороогүй.', money2(x.fin.givenOther))}`
   : s);
 
 const byDesc = <T,>(arr: readonly T[], v: (t: T) => number): T[] => [...arr].sort((a, b) => v(b) - v(a));
@@ -188,10 +189,10 @@ export function scheduleStatus(x: ExecReport): { label: string; sentence: string
   }
   const gap = p.planned - actual;
   if (gap >= LATE_GAP) {
-    return { label: tr('хоцрогдол {0} нэгж хувь', num(gap, 1)), sentence: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).', num(gap, 1), pct(p.planned, 1), pct(actual, 1)) };
+    return { label: tr('хоцрогдол {0} нэгж хувь', num(gap, 2)), sentence: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).', num(gap, 2), pct(p.planned, 1), pct(actual, 1)) };
   }
   if (gap < 0) {
-    return { label: tr('түрүүлэлт {0} нэгж хувь', num(-gap, 1)), sentence: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар түрүүлж байна (төлөвлөгөө {1}, бодит {2}).', num(-gap, 1), pct(p.planned, 1), pct(actual, 1)) };
+    return { label: tr('түрүүлэлт {0} нэгж хувь', num(-gap, 2)), sentence: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар түрүүлж байна (төлөвлөгөө {1}, бодит {2}).', num(-gap, 2), pct(p.planned, 1), pct(actual, 1)) };
   }
   return { label: tr('хуваарийн дагуу'), sentence: tr('Орон сууцны барилга угсралт хуваарийн дагуу явж байна (төлөвлөгөө {0}, бодит {1}).', pct(p.planned, 1), pct(actual, 1)) };
 }
@@ -369,7 +370,7 @@ function packLag(i: ReportInputs, no: string, group: number, infraToo: boolean):
     const late = l && coverageOk(l.coverage) && l.gap >= LATE_GAP;
     return {
       label: p.name, value: progressOf(p.progress), mark: l && coverageOk(l.coverage) ? l.planned : null,
-      text: `${pct(progressOf(p.progress), 1)}${late ? ` · ${tr('хоцрогдол {0} нэгж хувь', num(l.gap, 1))}` : ''}`,
+      text: `${pct(progressOf(p.progress), 1)}${late ? ` · ${tr('хоцрогдол {0} нэгж хувь', num(l.gap, 2))}` : ''}`,
     };
   });
   const keys = new Set(packs.map((p) => p.key));
@@ -381,7 +382,7 @@ function packLag(i: ReportInputs, no: string, group: number, infraToo: boolean):
   const text = [
     tr('{0} багцаас хуваарь нь шалгагдах {1}; үүнээс {2} нь хуваариас {3} нэгж хувиас илүү хоцорсон, {4} багцын хуваарь хангалтгүй тул дүгнэсэнгүй.',
       num(packs.length), num(evaluable), num(late.length), num(LATE_GAP), num(packs.length - evaluable)),
-    worst ? tr('Хамгийн их хоцрогдол {0}: төлөвлөгөө {1}, бодит {2} ({3} нэгж хувь).', worst.label, pct(worst.planned, 1), pct(worst.actual, 1), num(worst.gap, 1))
+    worst ? tr('Хамгийн их хоцрогдол {0}: төлөвлөгөө {1}, бодит {2} ({3} нэгж хувь).', worst.label, pct(worst.planned, 1), pct(worst.actual, 1), num(worst.gap, 2))
       : tr('Хуваарь нь шалгагдах {0} багцын хоцрогдол {1} нэгж хувиас бага.', num(evaluable), num(LATE_GAP)),
     tr('{0} орон сууцны багц 5%-иас доош явцтай.', num(stalled.length)),
   ];
@@ -538,7 +539,7 @@ export function attentionItems(i: ReportInputs): ListItem[] {
   const lost = failedNames(i.failed);
   if (lost.length) push(null, { text: tr('Дараах өгөгдөл уншигдаагүй тул холбогдох үзүүлэлт «—» гэж гарсан: {0}. Тайланг дахин үүсгэнэ үү.', lost.join(', ')), tone: 'bad' });
   for (const l of byDesc(latePacks(i), (l) => l.gap)) {
-    push(l.key, { text: tr('{0} хуваариас {1} нэгж хувиар хоцорсон (төлөвлөгөө {2}, бодит {3}).', l.label, num(l.gap, 1), pct(l.planned, 1), pct(l.actual, 1)), tone: l.gap >= 10 ? 'bad' : 'warn' });
+    push(l.key, { text: tr('{0} хуваариас {1} нэгж хувиар хоцорсон (төлөвлөгөө {2}, бодит {3}).', l.label, num(l.gap, 2), pct(l.planned, 1), pct(l.actual, 1)), tone: l.gap >= 10 ? 'bad' : 'warn' });
   }
   for (const p of stalledPacks(x)) push(p.key, { text: tr('{0} явц {1} — ажил эхлээгүй эсвэл бөглөгдөөгүй.', p.name, pct(progressOf(p.progress), 1)), tone: 'warn' });
   for (const f of execFindings(x)) {
@@ -576,7 +577,7 @@ function decisions(i: ReportInputs, no: string, group: number): Section {
   /* Нэрсгүйгээр «Эдгээр багцын…» гэсэн зөвлөмж юуг хэлж байгаа нь мэдэгдэхгүй */
   const items: ListItem[] = fs.map((f) => ({ text: `${f.area}: ${f.advice}${f.items?.length ? ` (${f.items.join(', ')})` : ''}`, tone: f.sev }));
   for (const l of byDesc(latePacks(i), (l) => l.gap).slice(0, 5)) {
-    items.push({ text: tr('{0}: хоцрогдол {1} нэгж хувь — хүн хүч, техникийн нэмэлт хуваарилалт шийдэх.', l.label, num(l.gap, 1)), tone: l.gap >= 10 ? 'bad' : 'warn' });
+    items.push({ text: tr('{0}: хоцрогдол {1} нэгж хувь — хүн хүч, техникийн нэмэлт хуваарилалт шийдэх.', l.label, num(l.gap, 2)), tone: l.gap >= 10 ? 'bad' : 'warn' });
   }
   const text = [
     tr('{0} шийдвэрийн санал — тайлангийн дүгнэлт ба хоцорсон багцаас автоматаар.', num(items.length)),
@@ -633,18 +634,18 @@ function appendixOf(x: ExecReport, no: string): Appendix {
     const p = prog.get(r.key);
     return [
       r.contracted ? r.label : `${r.label} (${tr('гэрээгүй')})`,
-      r.plan > 0 ? num(r.plan) : '—',
-      num(r.given),
+      r.plan > 0 ? money2(r.plan) : '—',
+      money2(r.given),
       r.pct == null ? '—' : pct(r.pct, 1),
       p ? pct(progressOf(p.progress), 1) : '—',
     ];
   });
-  for (const g of x.fin.ranges) rows.push([tr('{0} (хэд хэдэн багц хамарсан олголт)', g.label), '—', num(g.given), '—', '—']);
+  for (const g of x.fin.ranges) rows.push([tr('{0} (хэд хэдэн багц хамарсан олголт)', g.label), '—', money2(g.given), '—', '—']);
   /* Мөрүүдийн нийлбэр «Нийт»-тэй тэнцэнэ (удирдлагын тайлантай НЭГ мөр) */
   if (x.fin.planUnlisted > 0 || x.fin.givenUnlisted > 0) {
-    rows.push([tr('Багцын мөрд ороогүй гэрээ, олголт'), x.fin.planUnlisted > 0 ? num(x.fin.planUnlisted) : '—', num(x.fin.givenUnlisted), '—', '—']);
+    rows.push([tr('Багцын мөрд ороогүй гэрээ, олголт'), x.fin.planUnlisted > 0 ? money2(x.fin.planUnlisted) : '—', money2(x.fin.givenUnlisted), '—', '—']);
   }
-  rows.push([tr('Нийт'), num(x.fin.planTotal), num(x.fin.given), x.fin.share == null ? '—' : pct(x.fin.share, 1), pct(progressOf(x.prog.actual), 1)]);
+  rows.push([tr('Нийт'), money2(x.fin.planTotal), money2(x.fin.given), x.fin.share == null ? '—' : pct(x.fin.share, 1), pct(progressOf(x.prog.actual), 1)]);
   return {
     no, title: tr('Хавсралт — багц бүрийн гэрээ, олголт, явц'),
     head: [tr('Багц'), tr('Гэрээлсэн (₮)'), tr('Олгосон (₮)'), tr('Олголт'), tr('Явц')],

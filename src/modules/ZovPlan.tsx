@@ -110,7 +110,7 @@ export function ZovPlan({ canEdit }: { canEdit: boolean }) {
     <section className={s.box} aria-busy={busy}>
       <div className={s.head}>
         <h2 className={s.h2}>{tr('Зөвшөөрөл — «Төсөл төлөвлөгөө биелэлт»-ийн мөрүүд')}</h2>
-        <span className={s.total}>{tr('Нийт гүйцэтгэл')} <b className="num">{num(pctOf(phase), 1)}%</b></span>
+        <span className={s.total}>{tr('Нийт гүйцэтгэл')} <b className="num">{num(pctOf(phase), 2)}%</b></span>
       </div>
       <div className={s.chips} role="group" aria-label={tr('Төлөвөөр шүүх')}>
         {chips.map(([k, label, n]) => (
@@ -171,7 +171,7 @@ export function ZovPlan({ canEdit }: { canEdit: boolean }) {
                         onBlur={(e) => savePct(n, e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                       />
-                    ) : <span className="num" title={leaf && pctLock ? pctLock : undefined}>{num(p, 1)}%</span>}
+                    ) : <span className="num" title={leaf && pctLock ? pctLock : undefined}>{num(p, 2)}%</span>}
                   </td>
                   <td><span className={`${s.tag} ${s[st]}`}>{stateText(st)}</span></td>
                   <td>

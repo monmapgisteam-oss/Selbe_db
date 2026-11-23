@@ -89,7 +89,7 @@ export function PlainCapAcl({ cap }: { cap: CapKey }) {
             <div key={u} className={s.aclUser}>
               <span className={s.aclName} title={u}>{u}</span>
               {isAdmin(u) && (
-                <span className={s.aclMarkTag} title={tr('Админ (super) — одоо бүх эрхтэй; энэ нь хадгалагдсан эрх (админ эрхийг хасахад үлдэнэ)')}>{tr('админ')}</span>
+                <span className={s.aclMarkTag} title={tr('Админ (super) — эрх удирдана; энэ эрх түүнд бусдын адил үйлчилнэ')}>{tr('админ')}</span>
               )}
               {portalMissing(u) && (
                 <span className={s.aclMarkTag} title={tr('Enterprise порталд алга — нэвтэрч чадахгүй; ✕-ээр хасаад өөр аккаунт томилно уу')}>{tr('порталд алга')}</span>

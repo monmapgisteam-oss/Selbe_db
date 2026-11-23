@@ -139,7 +139,7 @@ export function newRowsWhy(parent: PlanNode, items: readonly NewPlanRow[]): stri
     return tr('Мөр бүрийн жинг оруулна уу');
   }
   const sum = items.reduce((s, x) => s + (x.weight ?? 0), 0);
-  if (Math.abs(sum - 100) > SUM_EPS) return tr('Жингийн нийлбэр 100% байх ёстой (одоо {0}%)', Math.round(sum * 100) / 100);
+  if (Math.abs(sum - 100) > SUM_EPS) return tr('Жингийн нийлбэр 100% байх ёстой (одоо {0}%)', (Math.round(sum * 100) / 100).toFixed(2));
   return null;
 }
 

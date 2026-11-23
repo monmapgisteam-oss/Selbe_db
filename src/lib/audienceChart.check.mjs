@@ -53,13 +53,13 @@ function noOverlap(s, size) {
 
 console.log('\n1. Туслах');
 ok('bn · fmtUnit · wrapText · emptySvg', () => {
-  assert.equal(bn(2_495_841_880_529), '2,495,841,880,529 ₮', 'бүтэн дүн — 2026-09-01 дүрэм');
-  assert.equal(bn(530.87e9), '530,870,000,000 ₮');
-  assert.equal(bn(876_465_164), '876,465,164 ₮');
-  assert.equal(bn(1234), '1,234 ₮');
+  assert.equal(bn(2_495_841_880_529), '2,495,841,880,529.00 ₮', 'бүтэн дүн — 2026-09-01 дүрэм');
+  assert.equal(bn(530.87e9), '530,870,000,000.00 ₮');
+  assert.equal(bn(876_465_164), '876,465,164.00 ₮');
+  assert.equal(bn(1234), '1,234.00 ₮');
   assert.equal(bn(null), 'мэдээлэлгүй');
-  assert.equal(fmtUnit(12.34, 'pct'), '12.3%');
-  assert.equal(fmtUnit(2_495_841_880_529, 'mnt'), '2,495,841,880,529 ₮');
+  assert.equal(fmtUnit(12.34, 'pct'), '12.34%');
+  assert.equal(fmtUnit(2_495_841_880_529, 'mnt'), '2,495,841,880,529.00 ₮');
   assert.equal(fmtUnit(1311, 'num'), '1,311');
   assert.equal(fmtUnit(null, 'num'), 'мэдээлэлгүй');
   const lines = wrapText('Орон сууцны барилга угсралт хуваариас 9.6 нэгж хувиар хоцорч байна', 120);
@@ -92,7 +92,7 @@ ok('bars — тэнхлэг, утга бүр, төлөвлөгөөний тэм�
     { label: 'Багц 3', value: null },
     { label: 'Багц 9', value: 140, text: '140.0%' },
   ] }));
-  assert.ok(s.includes('32.9% · хоцрогдол 3.1 н.х') && s.includes('>18.4%</text>') && s.includes('>мэдээлэлгүй</text>') && s.includes('>140.0%</text>'), s);
+  assert.ok(s.includes('32.9% · хоцрогдол 3.1 н.х') && s.includes('>18.40%</text>') && s.includes('>мэдээлэлгүй</text>') && s.includes('>140.0%</text>'), s);
   assert.ok(s.includes('>0%</text>') && s.includes('>70%</text>') && s.includes('>140%</text>'), 'тэнхлэгийн шошго 0 · ½ · дээд');
   assert.ok(s.includes('төлөвлөгөө (хуваарь)'), 'төлөвлөгөөний тайлбар');
   assert.equal(count(s, /<line[^>]*stroke-width="1.6"/g), 2, 'нэг тэмдэг + тайлбарын тэмдэг');
@@ -102,7 +102,7 @@ ok('bars — тэнхлэг, утга бүр, төлөвлөгөөний тэм�
   assert.ok(chartSvg({ kind: 'bars', unit: 'num', items: [] }).includes('мэдээлэлгүй'));
   assert.ok(chartSvg({ kind: 'bars', unit: 'num', items: [{ label: 'a', value: null }] }).includes('stroke-dasharray'), 'бүгд null → орлуулагч');
   const m = validSvg(chartSvg({ kind: 'bars', unit: 'mnt', items: [{ label: 'Гэрээлсэн', value: 2.1e12 }, { label: 'Олгосон', value: 530.87e9 }] }));
-  assert.ok(m.includes('2,100,000,000,000 ₮') && m.includes('530,870,000,000 ₮') && m.includes('>2,100,000,000,000</text>'), 'бүтэн дүн, тэнхлэг ч бүтэн');
+  assert.ok(m.includes('2,100,000,000,000.00 ₮') && m.includes('530,870,000,000.00 ₮') && m.includes('>2,100,000,000,000</text>'), 'бүтэн дүн, тэнхлэг ч бүтэн');
 });
 ok('bars — урт нэр тасарна, 40 мөр `splitSpec`-ээр 2 график (24 + 16) болно', () => {
   const items = Array.from({ length: 40 }, (_, k) => ({ label: `Багц ${k + 1} — маш урт нэртэй дэд бүтцийн ажлын багц ${k}`, value: k * 2 }));
@@ -125,14 +125,14 @@ ok('line — тэнхлэг бүтэн дүнгээр, сарын шошго, у
   assert.equal(count(s, /<polyline/g), 2);
   assert.equal(count(s, /<polyline[^>]*stroke-dasharray/g), 1, 'лавлах шугам тасархай');
   assert.ok(s.includes('>0</text>') && s.includes('>2,500,000,000,000</text>'), 'зүүн тэнхлэг бүтэн дүн, дээд утга гэрээлсэн дүнг багтаана');
-  assert.ok(s.includes('>500,200,000,000 ₮</text>'), 'сүүлийн (дээд) утга');
+  assert.ok(s.includes('>500,200,000,000.00 ₮</text>'), 'сүүлийн (дээд) утга');
   assert.ok(s.includes('>2026-03</text>') && s.includes('>2026-10</text>'), 'сарын шошго');
   for (const l of ['Хуримтлагдсан олголт', 'Гэрээлсэн нийт дүн', 'Сарын олголт']) assert.ok(s.includes(`>${l}</text>`), l);
   noOverlap(s, 7.5);
   noOverlap(s, 7);
   const p = validSvg(chartSvg({ kind: 'line', months: months.slice(0, 5), unit: 'pct', series: [{ label: 'Төлөвлөгөө', values: [10, 16, 22, 28, 34.2], dashed: true }, { label: 'Бодит', values: [8, 12, null, 21.9, 24.6] }] }));
   assert.equal(count(p, /<polyline/g), 3, 'төлөвлөгөө 1 + бодит 2 (null цоорхой)');
-  assert.ok(p.includes('>34.2%</text>') && p.includes('>24.6%</text>') && p.includes('>100%</text>'), 'хувийн тэнхлэг 0–100');
+  assert.ok(p.includes('>34.20%</text>') && p.includes('>24.60%</text>') && p.includes('>100%</text>'), 'хувийн тэнхлэг 0–100');
   assert.ok(chartSvg({ kind: 'line', months: [], series: [], unit: 'pct' }).includes('мэдээлэлгүй'));
   assert.ok(chartSvg({ kind: 'line', months, series: [{ label: 'x', values: months.map(() => null) }], unit: 'pct' }).includes('мэдээлэлгүй'), 'бүгд null');
   const many = validSvg(chartSvg({ kind: 'line', months: Array.from({ length: 60 }, (_, k) => `2026-${String(k + 1).padStart(2, '0')}`), series: [{ label: 'Хүн', values: Array.from({ length: 60 }, (_, k) => 1000 + k) }], unit: 'num' }));

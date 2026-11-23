@@ -65,7 +65,7 @@ P._markRemoteLoaded();
   const supTpl = (await import('./roleTypes.ts')).roleAccess('super');
   assert.deepEqual(P.resolveBaseAccess(legacySuper).views, supTpl.views, 'хатуу super — override views үл тооцно (загвар)');
   assert.equal(P.resolveBaseAccess(legacySuper).docs, supTpl.docs, 'хатуу super — override docs үл тооцно');
-  { const v = P.resolveAccess(legacySuper).views; assert.ok(v.includes('sysdoc') && !v.includes('gdash'), 'хатуу super — эрх удирдлагын хуудас л, хуучин мөрийн «gdash» биш'); }
+  { const v = P.resolveAccess(legacySuper).views; assert.ok(v.includes('gdash') && !v.includes('finance'), 'хатуу super — зөвхөн тойм (2026-11-23: «Системийн баримт» хасагдсан)'); }
   assert.equal(P.roleOf(legacySuper), 'super', 'хатуу super — override role (injener) үл тооцно');
   const r = P.listUsers().find((u) => u.username.toLowerCase() === legacySuper.toLowerCase());
   assert.ok(r, 'super жагсаалтад байх ёстой');
@@ -212,7 +212,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   CAPS._syncRemoteCaps([]);
   assert.deepEqual(P.resolveAccess('wf_user').views, ['gdash'], 'хуваарилалт хасагдахад урсгалтай хуудас хаагдана');
   /* (е) 2026-11-20: хатуу super ч «бүгд» биш — загвар + эрх удирдлагын хуудас (ажлын харагдац бусдын адил олгогдоно) */
-  { const v = P.resolveAccess(superName).views; assert.ok(Array.isArray(v) && v.includes('sysdoc') && !v.includes('finance'), `хатуу super — бүх харагдац биш (${v})`); }
+  { const v = P.resolveAccess(superName).views; assert.ok(Array.isArray(v) && v.includes('gdash') && !v.includes('finance'), `хатуу super — бүх харагдац биш (${v})`); }
   await P.setUser('wf_sup', { views: ['gdash', 'guitsetgel'], docs: true }, 'super');
   assert.deepEqual(P.resolveAccess('wf_sup').views, ['gdash'], 'хуучин панелийн super — хадгалсан урсгалтай харагдац хүчингүй');
   await P.setUser('wf_sup', { views: 'all', docs: true }, 'super');
@@ -276,7 +276,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   assert.equal(P.roleOf('tbl_sup'), 'super');
   assert.equal(P.hasAccess('tbl_sup'), true, 'хүснэгтийн super нэвтэрнэ');
   /* 2026-11-20: админ хадгалсан харагдацаа л авна (энд «бүгд» хадгалсан — урсгалтай харагдац томилгооноос) */
-  { const v = P.resolveAccess('tbl_sup').views; assert.ok(Array.isArray(v) && v.includes('gdash') && v.includes('sysdoc') && !v.includes('guitsetgel'), 'super: хадгалсан харагдац'); }
+  { const v = P.resolveAccess('tbl_sup').views; assert.ok(Array.isArray(v) && v.includes('gdash') && !v.includes('guitsetgel'), 'super: хадгалсан харагдац'); }
   assert.equal(P.resolveBaseAccess('tbl_sup').docs, true);
   const row = P.listUsers().find((u) => u.username.toLowerCase() === 'tbl_sup');
   assert.ok(row && row.role === 'super' && row.views === 'all' && row.docs === true && row.overridden === false, 'самбарт super мөр (Сэргээхгүй)');
@@ -307,7 +307,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
 
   R._setTableSupers([]);
   const boot = R.BOOTSTRAP_SUPER;
-  assert.ok(P.listUsers().some((u) => u.username === boot && u.role === 'super' && Array.isArray(u.views) && u.views.includes('sysdoc') && u.overridden === false),
+  assert.ok(P.listUsers().some((u) => u.username === boot && u.role === 'super' && Array.isArray(u.views) && u.views.includes('gdash') && u.overridden === false),
     'идэвхтэй анхны админ самбарт синтетик super мөрөөр');
   WHO.setCurrentUser(boot);
   assert.equal(await P.setUser('tbl_sup2', { views: 'all', docs: true }, 'super'), false, 'өөрийн мөр ArcGIS-т бичигдээгүй → нөгөөд олгохгүй');
@@ -318,7 +318,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   assert.equal(R.roleForUser('tbl_sup2'), null, 'нөгөөд super олгогдоогүй (fail-closed)');
   assert.ok(P.dirtyKeys().includes(boot), 'өөрийн мөр dirty — retry бичнэ');
   const bootRow = P.listUsers().find((u) => u.username.toLowerCase() === boot);
-  assert.ok(bootRow && bootRow.role === 'super' && Array.isArray(bootRow.views) && bootRow.views.includes('sysdoc') && bootRow.overridden === false, 'самбарт өөрийн super мөр');
+  assert.ok(bootRow && bootRow.role === 'super' && Array.isArray(bootRow.views) && bootRow.views.includes('gdash') && bootRow.overridden === false, 'самбарт өөрийн super мөр');
   /* ДАХИН оролдлого — хүснэгтэд super мөр алга хэвээр тул ДАХИАД өөрийн мөрийг эхэлж бичнэ (унавал нөгөөд олгохгүй) */
   assert.equal(await P.setUser('tbl_sup2', { views: 'all', docs: true }, 'super'), false, 'дахин оролдлого ч өөрийн мөргүйгээр олгохгүй');
   assert.equal(R.roleForUser('tbl_sup2'), null);

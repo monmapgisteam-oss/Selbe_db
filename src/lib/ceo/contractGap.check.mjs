@@ -59,7 +59,7 @@ const row = (o) => ({
   const k = buildContractGapKpi(g);
   assert.equal(k.value, '—', 'давсан гэрээ алга → «—»');
   assert.equal(k.level, 'good');
-  assert.ok(k.facts.some((f) => f.includes('2 ') && f.includes('төсөвт өртөггүй') && f.includes('1,000 ₮')), k.facts.join(' | '));
+  assert.ok(k.facts.some((f) => f.includes('2 ') && f.includes('төсөвт өртөггүй') && f.includes('1,000.00 ₮')), k.facts.join(' | '));
   assert.equal(k.tables[0].rows.length, 0);
   assert.equal(k.tables[1].rows.length, 2);
 }
@@ -90,7 +90,7 @@ const row = (o) => ({
   assert.equal(contractOverLevel(g), 'warn', 'давсан ч босгоос доош → шар');
 
   const k = buildContractGapKpi(g);
-  assert.equal(k.value, '550 ₮');
+  assert.equal(k.value, '550.00 ₮');
   assert.equal(k.level, 'warn');
   assert.equal(k.tables.length, 2);
   assert.equal(k.tables[0].cols.length, 8);
@@ -103,12 +103,12 @@ const row = (o) => ({
   assert.equal(k.tables[1].rows[4][1].v, 'БАГЦ-5');
   assert.equal(k.issues.length, 2);
   assert.ok(k.issues.every((i) => i.tone === 'warn'));
-  assert.ok(k.issues[0].text.includes('их давсан') && k.issues[0].text.includes('БАГЦ-3.2') && k.issues[0].text.includes('500 ₮'), k.issues[0].text);
+  assert.ok(k.issues[0].text.includes('их давсан') && k.issues[0].text.includes('БАГЦ-3.2') && k.issues[0].text.includes('500.00 ₮'), k.issues[0].text);
   assert.ok(k.facts[0].startsWith('2 '), k.facts[0]);
-  assert.ok(k.facts[1].includes('1 ') && k.facts[1].includes('200 ₮'), k.facts[1]);
-  assert.ok(k.facts[2].includes('3,550 ₮') && k.facts[2].includes('3,200 ₮'), k.facts[2]);
+  assert.ok(k.facts[1].includes('1 ') && k.facts[1].includes('200.00 ₮'), k.facts[1]);
+  assert.ok(k.facts[2].includes('3,550.00 ₮') && k.facts[2].includes('3,200.00 ₮'), k.facts[2]);
   assert.equal(k.facts.length, 4, '«нэргүй» төсөвгүй → 4 дэх баримт');
-  assert.ok(k.facts[3].includes('1 ') && k.facts[3].includes('төсөвт өртөггүй') && k.facts[3].includes('10 ₮'), k.facts[3]);
+  assert.ok(k.facts[3].includes('1 ') && k.facts[3].includes('төсөвт өртөггүй') && k.facts[3].includes('10.00 ₮'), k.facts[3]);
   assert.equal(k.asOf, null);
   for (const t of k.tables) for (const r of t.rows) assert.equal(r.length, t.cols.length);
 }
@@ -128,8 +128,8 @@ const row = (o) => ({
   assert.equal(g.contractTotal - g.budgetTotal, g.over.sum + g.under.sum);
   assert.equal(g.noBudgetSum, 50);
   const k = buildContractGapKpi(g);
-  assert.ok(k.facts[2].includes('3,200 ₮') && k.facts[2].includes('3,000 ₮'), k.facts[2]);
-  assert.ok(k.facts[3].includes('50 ₮'), k.facts[3]);
+  assert.ok(k.facts[2].includes('3,200.00 ₮') && k.facts[2].includes('3,000.00 ₮'), k.facts[2]);
+  assert.ok(k.facts[3].includes('50.00 ₮'), k.facts[3]);
   assert.ok(!k.facts[2].includes('1,503,000'), 'гэрээгүй төсөв баримтад орсон байна');
 }
 

@@ -7,10 +7,10 @@ import { useMemo, useState, useSyncExternalStore } from 'react';
 import { phasesOf } from '@/lib/hoSync/compute';
 import { groupByRegistry } from '@/lib/ipcZurag';
 import { loadZuragBurtgel } from '@/lib/zuragBurtgel';
-import { HO_IPC } from '@/lib/services';
+import { HO_IPC, IPC_DOC } from '@/lib/services';
 import { hoSyncErrorText, hoUnassignedText, subscribeHoSync } from '@/lib/hoSync/sync';
 import { t as tr } from '@/lib/i18nCore';
-import { mnt, num, pct, dayKey } from '@/lib/format';
+import { mnt, MNT_DEC, num, pct, dayKey } from '@/lib/format';
 import {
   contractBlocks, anyObyem, sortBlocks, ipcTotals, payCount, ipcHeadShare, packageRows,
   type ContractBlock, type Detail, type PackageRow, type PayRow, type SortKey,
@@ -21,14 +21,17 @@ import { loadFinance } from '@/lib/reportData';
 import { paidPctOf } from '@/lib/paidShare';
 import type { HoContract } from '@/lib/ipc';
 import { useTip } from '@/components/ui';
-import { IpcFlowPanel, ContractCancelButton, ContractDialog, type CardPick } from './IpcFlow';
+import { IpcFlowPanel, ContractCancelButton, ContractDialog } from './IpcFlow';
+import { loadIpcDocs } from '@/lib/ipcDocRows';
+import { isAuto } from '@/lib/ipcAuto';
+import { statusOf } from '@/lib/ipcFlow';
 import { useAuth } from '@/components/AuthGate';
 import { hasCap } from '@/lib/caps';
 import s from './ipcTable.module.css';
 
 const money = (v: number | null): string => {
   if (v == null) return '—';
-  if (v === 0) return tr('0 ₮');
+  if (v === 0) return `${num(0, MNT_DEC)} ₮`; // 2026-11-23: мөнгө ҮРГЭЛЖ 2 аравтын оронтой («0.00 ₮»)
   return mnt(v);
 };
 
@@ -236,26 +239,12 @@ function Line({ k, v, cls }: { k: string; v: string; cls?: string }) {
   );
 }
 
-function PayCard({ r, pick }: {
-  r: PayRow;
-  /** IPC үүсгэх чекбокс (2026-11-04) — зөвхөн сонгогдоогүй «Гүйцэтгэл» картад */
-  pick?: CardPick;
-}) {
-  const perf = r.oid != null ? pick?.row(r.oid) : undefined;
+/* 2026-11-23 (хэрэглэгч): бөглөлт бүрээр карт/чекбокс БИШ — төлөгдөөгүй бөглөлт IPC самбарт нийлбэрээр харагдана */
+function PayCard({ r }: { r: PayRow }) {
   return (
-    <article className={`${s.card} ${r.advance ? s.cardAdv : ''} ${perf && pick?.on(r.oid as number) ? s.cardOn : ''}`}>
+    <article className={`${s.card} ${r.advance ? s.cardAdv : ''}`}>
       {/* ── ТОЛГОЙ: IPC дугаар + ХУГАЦАА ── */}
       <header className={s.cardHd}>
-        {perf && pick && (
-          <input
-            type="checkbox"
-            className={s.cardPick}
-            aria-label={tr('IPC-д оруулах')}
-            checked={pick.on(r.oid as number)}
-            disabled={pick.disabled}
-            onChange={() => pick.toggle(r.oid as number)}
-          />
-        )}
         <span className={r.advance ? s.tagAdv : s.tagIpc}>{r.code}</span>
         <span className={s.cardDate}>
           {r.date != null && r.date !== ''
@@ -275,7 +264,7 @@ function PayCard({ r, pick }: {
         <Line k={tr('Мөнгөн дүн')} v={money(r.une)} />
         {/* 2026-11-04: нэг IPC = нэг карт — олгосон гүйцэтгэлийн өдрүүд энд */}
         {r.days.length > 0 && <Line k={tr('Гүйцэтгэлийн өдөр')} v={r.days.join(', ')} />}
-        {perf && (perf.une ?? 0) < 0 && <Line k={tr('Анхааруулга')} v={tr('дүн сөрөг')} cls={s.over} />}
+        {(r.une ?? 0) < 0 && <Line k={tr('Анхааруулга')} v={tr('дүн сөрөг')} cls={s.over} />}
 
         {/* ── ОЛГОЛТ ── картын ГОЛ тоо, томоор */}
         <div className={s.sep} />
@@ -295,6 +284,16 @@ function PayCard({ r, pick }: {
   );
 }
 
+/**
+ * Картууд — олгоогүй бөглөлтийн AUTO мөр (төлөв «Гүйцэтгэл» · «IPC үүссэн» · «Гарын үсэг зурсан») карт болохгүй: төлөгдөөгүй нь
+ * IPC самбарт нийлбэрээр, IPC-д орсон нь IPC баримтын мөрөөр харагдана (2026-11-23). Олгосон бөглөлт төлбөрийн картад нийлсэн хэвээр.
+ */
+const HIDDEN_FILL: readonly string[] = [HO_IPC.status.work, HO_IPC.status.created, HO_IPC.status.signed];
+function cardRows(b: ContractBlock): PayRow[] {
+  const hide = new Set(b.pays.filter((r) => isAuto(r) && HIDDEN_FILL.includes(statusOf(r))).map((r) => Number(r[HO_IPC.oid])));
+  return b.rows.filter((r) => r.oid == null || !hide.has(r.oid));
+}
+
 export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; cfRows?: readonly Record<string, unknown>[] }) {
   const [sort, setSort] = useState<SortKey>('paid');
   /** Хаагдсан бүлгүүд — анхдагчаар БҮГД НЭЭЛТТЭЙ */
@@ -312,6 +311,18 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
   const showObyem = useMemo(() => anyObyem(blocks), [blocks]);
   const t = useMemo(() => ipcTotals(blocks), [blocks]);
   const finQ = useAsync(() => loadFinance(), []);
+  /* 2026-11-23: IPC баримтын хүснэгт (`Guitsetgel_talbe/238`) — гэрээний кодоор */
+  const docsQ = useAsync(loadIpcDocs, []);
+  const docsBy = useMemo(() => {
+    const m = new Map<string, Record<string, unknown>[]>();
+    if (docsQ.state !== 'ready') return m;
+    for (const r of docsQ.data) {
+      const c = String(r[IPC_DOC.fields.code] ?? '').trim();
+      if (c) m.set(c, [...(m.get(c) ?? []), r]);
+    }
+    return m;
+  }, [docsQ.state, docsQ.data]);
+  const docsOf = (code: string): readonly Record<string, unknown>[] | null => (docsQ.state === 'ready' ? docsBy.get(code) ?? [] : null);
   const head = useMemo(() => ipcHeadShare(t, finQ.state === 'ready'
     ? {
       contract: finQ.data.contractAmount,
@@ -337,7 +348,9 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
 
   /* 2026-11-17 (хэрэглэгч: «орох нь зөв, гэхдээ Зураг гэдэг бүлгээр орох ёстой») — ТЭЗҮ · зураг төслийн гэрээнүүд (зургийн
      бүртгэлийн баримт бүр нэг мөр) барилгын гэрээнүүдтэй холилдохгүй: жагсаалтын төгсгөлд нэг хураагддаг бүлэг, анхдагчаар хураалттай */
-  const [zOpen, setZOpen] = useState(false);
+  /* 2026-11-23 (хэрэглэгч: «багцууд ба зургийн дүнг 2 тусдаа товч болгож тус бүрийн нийлбэр, бүгдийн нийлбэрийг харуул»):
+     жагсаалт нэг удаад нэг бүлгийг харуулна — «Багцууд» (барилга угсралт · ГИШС) эсвэл «Зураг» (ТЭЗҮ · зураг төсөл) */
+  const [tab, setTab] = useState<'build' | 'design'>('build');
   /* Дотроо — Зургийн бүртгэлийн бүлэг → дэд бүлгээр (хэрэглэгч: «зураг дотроо бүлэглэхгүй юм уу»); нээсэн бүлгүүд */
   const [zShown, setZShown] = useState<ReadonlySet<string>>(() => new Set());
   const zFlip = (k: string) => setZShown((q) => { const n = new Set(q); if (n.has(k)) n.delete(k); else n.add(k); return n; });
@@ -362,10 +375,16 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
       {zShown.has(k) && <div className={s.zGrp}>{body()}</div>}
     </section>
   );
-  const dSum = useMemo(() => {
-    const add = (k: 'contractTotal' | 'paidTotal') => design.reduce((a, b) => a + (b[k] ?? 0), 0);
-    return { contract: add('contractTotal'), paid: add('paidTotal') };
-  }, [design]);
+  const totalOf = (bs: readonly ContractBlock[]) => ({
+    n: bs.length,
+    contract: bs.reduce((a, b) => a + (b.contractTotal ?? 0), 0),
+    paid: bs.reduce((a, b) => a + (b.paidTotal ?? 0), 0),
+  });
+  const dSum = useMemo(() => totalOf(design), [design]);
+  const bSum = useMemo(() => totalOf(build), [build]);
+  const allSum = { n: bSum.n + dSum.n, contract: bSum.contract + dSum.contract, paid: bSum.paid + dSum.paid };
+  const sumLine = (x: { n: number; contract: number; paid: number }) =>
+    tr('{0} гэрээ · гэрээт {1} · олгосон {2}', num(x.n), money(x.contract), money(x.paid));
 
   const allShut = sorted.every((b) => shut.has(keyOf(b)));
   const toggleAll = () => {
@@ -394,19 +413,19 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
                 code={b.code}
                 contractNo={b.contractNo}
                 contractor={b.contractor}
+                project={String(b.pays.map((r) => r[HO_IPC.contractFields.project]).find((v) => v != null && String(v).trim() !== '') ?? '')}
                 pays={b.pays}
+                docs={docsOf(b.code)}
                 contract={b.contractTotal}
                 paid={b.paidTotal}
                 canCreate={canCreate}
                 canApprove={canApprove}
               >
-                {(pick) => (
-                  <div className={s.cards}>
-                    {b.rows.map((r) => <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} pick={pick} />)}
-                  </div>
-                )}
+                <div className={s.cards}>
+                  {cardRows(b).map((r) => <PayCard key={`${k}|${r.oid ?? r.id}`} r={r} />)}
+                </div>
               </IpcFlowPanel>
-              {canApprove && b.code && <div className={s.flowBar}><ContractCancelButton code={b.code} pays={b.pays} cfRows={cfRows} /></div>}
+              {canApprove && b.code && <div className={s.flowBar}><ContractCancelButton code={b.code} pays={b.pays} cfRows={cfRows} docs={docsOf(b.code)} /></div>}
             </>
           )}
         </section>
@@ -465,29 +484,34 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
         </div>
       </header>
 
+      <div className={s.tabs} role="group" aria-label={tr('Гэрээний бүлэг')}>
+        <button type="button" className={s.tab} aria-pressed={tab === 'build'} onClick={() => setTab('build')}>
+          <span className={s.tabName}>{tr('Багцууд')}</span>
+          <span className={s.tabSum}>{sumLine(bSum)}</span>
+        </button>
+        <button type="button" className={s.tab} aria-pressed={tab === 'design'} onClick={() => setTab('design')}>
+          <span className={s.tabName}>{tr('Зураг')}</span>
+          <span className={s.tabSum}>{sumLine(dSum)}</span>
+        </button>
+        <div className={s.tabAll}>
+          <span className={s.tabName}>{tr('Бүгд')}</span>
+          <span className={s.tabSum}>{sumLine(allSum)}</span>
+        </div>
+      </div>
+
       <div className={s.list}>
-        {build.map(block)}
-        {design.length > 0 && (
-          <section className={s.blk}>
-            <button type="button" className={s.gBtn} onClick={() => setZOpen((v) => !v)} aria-expanded={zOpen}>
-              <span className={s.caret} aria-hidden="true">{zOpen ? '▾' : '▸'}</span>
-              <span className={s.gTitle}>{tr('Зураг')}</span>
-              <span className={s.gMeta}>{tr('ТЭЗҮ · Ажлын зураг төсөл')}</span>
-              <span className={s.gCount}>{tr('{0} гэрээ · гэрээт {1} · олгосон {2}', num(design.length), money(dSum.contract), money(dSum.paid))}</span>
-            </button>
-            {zOpen && (
-              <div className={s.zGrp}>
-                {dTree.tree.map((g) => zSect(g.key, g.label, [...g.items, ...g.subs.flatMap((x) => x.items)], () => (
-                  <>
-                    {g.subs.map((x) => zSect(x.key, x.label, x.items, () => x.items.map(block)))}
-                    {g.items.map(block)}
-                  </>
-                )))}
-                {dTree.rest.length > 0 && (dTree.tree.length ? zSect('rest', tr('Бусад'), dTree.rest, () => dTree.rest.map(block)) : dTree.rest.map(block))}
-              </div>
-            )}
-          </section>
-        )}
+        {tab === 'build' && (build.length ? build.map(block) : <p className={s.note}>{tr('Багцын гэрээ алга')}</p>)}
+        {tab === 'design' && (design.length ? (
+          <div className={s.zGrp}>
+            {dTree.tree.map((g) => zSect(g.key, g.label, [...g.items, ...g.subs.flatMap((x) => x.items)], () => (
+              <>
+                {g.subs.map((x) => zSect(x.key, x.label, x.items, () => x.items.map(block)))}
+                {g.items.map(block)}
+              </>
+            )))}
+            {dTree.rest.length > 0 && (dTree.tree.length ? zSect('rest', tr('Бусад'), dTree.rest, () => dTree.rest.map(block)) : dTree.rest.map(block))}
+          </div>
+        ) : <p className={s.note}>{tr('Зургийн гэрээ алга')}</p>)}
       </div>
 
 

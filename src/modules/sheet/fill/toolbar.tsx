@@ -442,7 +442,7 @@ export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false, pkgAl
       ))}
       <span
         className={`${st.pctStat} ${st.pctStatMain}`}
-        title={tr('Багцын батлагдсан гүйцэтгэл — бүх хувилбарын бүх блокийн дундаж («Багцын гүйцэтгэл» дэлгэцтэй ижил).')}
+        title={tr('Багцын батлагдсан гүйцэтгэл — бүх хувилбарын бүх блокийн дундаж («Багцын явц» дэлгэцтэй ижил).')}
       >
         <span className={st.pctStatLab}>{tr('Багцын гүйцэтгэл')}</span>
         <b className={st.pctStatVal}>{pct(pkgAll, 2)}</b>

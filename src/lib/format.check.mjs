@@ -17,15 +17,15 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { mnt, num, date, dateTime, dayKey, monthKey } from './format.ts';
+import { mnt, num, pct, money2, date, dateTime, dayKey, monthKey } from './format.ts';
 import { money as suitMoney } from '../modules/analysis/suit/format.ts';
 
 /* ── 1. Хэлбэр — бүтэн, таслалтай, нэгжтэй ── */
-assert.equal(mnt(2_660_000_000_000), '2,660,000,000,000 ₮', 'их дүн бүтнээр');
-assert.equal(mnt(314_500_000_000), '314,500,000,000 ₮');
-assert.equal(mnt(4_058_800_000), '4,058,800,000 ₮');
-assert.equal(mnt(76_000), '76,000 ₮');
-assert.equal(mnt(-4_100_000_000), '-4,100,000,000 ₮', 'хасах дүн ч бүтнээр');
+assert.equal(mnt(2_660_000_000_000), '2,660,000,000,000.00 ₮', 'их дүн бүтнээр');
+assert.equal(mnt(314_500_000_000), '314,500,000,000.00 ₮');
+assert.equal(mnt(4_058_800_000), '4,058,800,000.00 ₮');
+assert.equal(mnt(76_000), '76,000.00 ₮');
+assert.equal(mnt(-4_100_000_000), '-4,100,000,000.00 ₮', 'хасах дүн ч бүтнээр');
 
 /* ── 2. Хоосон утга — `0` нь `'—'`, `num`-аас ЯЛГААТАЙ ── */
 assert.equal(mnt(0), '—', '0 ₮ гэж бичвэл «олгоогүй» гэж худал уншигдана');
@@ -34,6 +34,13 @@ assert.equal(mnt(undefined), '—');
 assert.equal(mnt(NaN), '—');
 assert.equal(mnt(Infinity), '—');
 assert.equal(num(0), '0', 'num нь 0-г 0 гэж бичсэн ХЭВЭЭР — зөвхөн mnt ялгаатай');
+assert.equal(mnt(2_310_404_581.72), '2,310,404,581.72 ₮', '2026-11-23: мөнгө ҮРГЭЛЖ 2 аравтын оронтой');
+assert.equal(mnt(1_868_075_776), '1,868,075,776.00 ₮');
+assert.equal(pct(40.1), '40.10%', 'хувь ҮРГЭЛЖ 2 аравтын оронтой');
+assert.equal(pct(0, 0), '0.00%', 'd параметр үл тоомсорлогдоно');
+assert.equal(pct(100, 1), '100.00%');
+assert.equal(pct(null), '—');
+assert.equal(money2(1500), '1,500.00');
 
 /* ── 3. Таслал заавал, ЗАЙ байж БОЛОХГҮЙ ── */
 for (const v of [1_234_567, 2_660_000_000_000, 999_999]) {
@@ -43,8 +50,8 @@ for (const v of [1_234_567, 2_660_000_000_000, 999_999]) {
 }
 
 /* ── 4. Анализ модуль ч ижил дүрэмтэй (зөвхөн `₮` зайгүй наана) ── */
-assert.equal(suitMoney(2_660_000_000_000), '2,660,000,000,000₮');
-assert.equal(suitMoney(-1_500_000), '−1,500,000₮', 'хасах нь U+2212 тэмдэгтэй');
+assert.equal(suitMoney(2_660_000_000_000), '2,660,000,000,000.00₮');
+assert.equal(suitMoney(-1_500_000), '−1,500,000.00₮', 'хасах нь U+2212 тэмдэгтэй');
 assert.equal(suitMoney(null), '—');
 assert.ok(!suitMoney(1_500_000_000).includes('тэрбум'), 'анализ модульд товчлол үлдсэн байна');
 

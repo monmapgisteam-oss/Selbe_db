@@ -181,11 +181,11 @@ export function scorePerf(i: PerfInput): DimScore {
   return {
     score,
     ...(caveat ? { caveat } : {}),
-    issues: tone ? [{ tone, text: tr('Хуваариас {0} нэгж хувиар хоцорсон (төлөвлөсөн {1}, бодит {2})', num(gap, 1), pct(planned, 1), pct(actual, 1)) }] : [],
+    issues: tone ? [{ tone, text: tr('Хуваариас {0} нэгж хувиар хоцорсон (төлөвлөсөн {1}, бодит {2})', num(gap, 2), pct(planned, 1), pct(actual, 1)) }] : [],
     facts: [
       fact(tr('Төлөвлөсөн гүйцэтгэл'), pct(planned, 1)),
       fact(tr('Бодит гүйцэтгэл'), pct(actual, 1)),
-      fact(tr('Хоцрогдол'), gap > 0 ? tr('{0} нэгж хувь', num(gap, 1)) : tr('алга')),
+      fact(tr('Хоцрогдол'), gap > 0 ? tr('{0} нэгж хувь', num(gap, 2)) : tr('алга')),
     ],
   };
 }
@@ -282,8 +282,8 @@ export function scoreFin(i: FinInput): DimScore {
       issues.push({
         tone: t,
         text: diff < 0
-          ? tr('Олголт биет гүйцэтгэлээс {0} нэгж хувиар хоцорсон (олгосон {1}, биет {2})', num(-diff, 1), pct(i.paidPct, 1), pct(i.actual, 1))
-          : tr('Олголт биет гүйцэтгэлээс {0} нэгж хувиар түрүүлсэн (олгосон {1}, биет {2})', num(diff, 1), pct(i.paidPct, 1), pct(i.actual, 1)),
+          ? tr('Олголт биет гүйцэтгэлээс {0} нэгж хувиар хоцорсон (олгосон {1}, биет {2})', num(-diff, 2), pct(i.paidPct, 1), pct(i.actual, 1))
+          : tr('Олголт биет гүйцэтгэлээс {0} нэгж хувиар түрүүлсэн (олгосон {1}, биет {2})', num(diff, 2), pct(i.paidPct, 1), pct(i.actual, 1)),
       });
     }
     facts.push(fact(tr('Олгосон санхүүжилт (гэрээний)'), pct(i.paidPct, 1)));
@@ -439,7 +439,7 @@ export function scoreHse(i: HseInput): DimScore {
   if (major > 0) issues.push({ tone: 'bad', text: tr('Ажлын байрны үзлэгт {0} ноцтой үл нийцэл илэрсэн', num(major)) });
   const lv = dimLevel('hse', score);
   if (lv === 'bad' || lv === 'warn') {
-    issues.push({ tone: lv, text: tr('Үзлэгийн нийцэл {0} — {1}%-иас доош', pct(score, 1), HSE_GOOD) });
+    issues.push({ tone: lv, text: tr('Үзлэгийн нийцэл {0} — {1}%-иас доош', pct(score, 1), num(HSE_GOOD, 2)) });
   }
   return { score, facts, issues };
 }

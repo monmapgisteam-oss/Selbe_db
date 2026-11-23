@@ -13,12 +13,12 @@ export const nf = (v: number | null | undefined, d = 0) =>
     : v.toLocaleString('mn-MN', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 /**
- * Мөнгөн дүн — БҮТНЭЭР, мянгатын таслалтай. Хасах утгыг `−` (U+2212) тэмдгээр.
+ * Мөнгөн дүн — БҮТНЭЭР, мянгатын таслалтай, 2 аравтын оронтой (2026-11-23). Хасах утгыг `−` (U+2212) тэмдгээр.
  */
 export function money(v: number | null | undefined) {
   if (v == null || !Number.isFinite(v)) return '—';
   const a = Math.abs(v), sign = v < 0 ? '−' : '';
-  return `${sign}${a.toLocaleString('en-US')}₮`;
+  return `${sign}${a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}₮`;
 }
 
 /**

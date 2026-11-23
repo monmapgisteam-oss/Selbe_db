@@ -222,7 +222,7 @@ export function SuitDetail({
   const builtM2 = Math.min(r.builtM2, landM2);
   const greenM2 = Math.min(r.greenM2, Math.max(0, landM2 - builtM2));
   const otherM2 = Math.max(0, landM2 - builtM2 - greenM2);
-  const landPct = (v: number) => (landM2 > 0 ? `${nf((v / landM2) * 100, 1)}%` : '—');
+  const landPct = (v: number) => (landM2 > 0 ? `${nf((v / landM2) * 100, 2)}%` : '—');
 
   return (
     <div ref={box} className={s.detail}>
@@ -233,7 +233,7 @@ export function SuitDetail({
         <div>
           <h3>{zoneLabel(r.id)}</h3>
           <p>{zoneTypeLabel(r.type)} · {nf(r.areaHa, 2)} {tr('га ·')} {tot == null && r.urbanReason === 'coverage' && r.coverage != null
-            ? tr('Өгөгдөл хангалтгүй — хэмжсэн жин {0}%', Math.round(r.coverage * 100))
+            ? tr('Өгөгдөл хангалтгүй — хэмжсэн жин {0}%', nf(r.coverage * 100, 2))
             : scoreLabel(tot)}</p>
         </div>
         <button type="button" className={s.dClose} title={tr('Хаах')} aria-label={tr('Хаах')} onClick={onClose}>×</button>
@@ -289,7 +289,7 @@ export function SuitDetail({
                     <span className="v" style={{ color: scoreTone(p?.score) }}>
                       {p?.value == null ? '—' : `${nf(p.value, ind.decimals)}${ind.unit ? ` ${ind.unit}` : ''}`}
                     </span>
-                    <span className="w">{((ind.weight / totalW) * 100).toFixed(0)}%</span>
+                    <span className="w">{nf((ind.weight / totalW) * 100, 2)}%</span>
                   </div>
                   <div className={s.mNorm}>
                     {ind.ref || ind.weight <= 0 ? (
@@ -357,7 +357,7 @@ export function SuitDetail({
               />
               <div className={s.chCap}>
                 {tr('Хангалт')} <b style={{ color: scoreTone(r.parts.parking?.score) }}>
-                  {r.raw.parking == null ? '—' : `${nf(r.raw.parking)}%`}
+                  {r.raw.parking == null ? '—' : `${nf(r.raw.parking, 2)}%`}
                 </b> ·{' '}
                 {r.parkingGap == null ? '—' : (
                   <>

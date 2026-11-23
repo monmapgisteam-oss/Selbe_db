@@ -11,7 +11,7 @@
 import { cached, loadFillPkgProgress } from '@/lib/live';
 import { loadProjectBudgetTotal, loadProjectContractTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
+import { money2, num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, isContracted,
   planScopeNote, HOUSING_PKGS, type CfRow,
@@ -568,7 +568,7 @@ export function execFindings(x: ExecReport): ExecFinding[] {
     out.push({
       sev: 'warn',
       area: A_PROG,
-      text: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).', num(x.prog.gap, 1), pct(x.prog.planned, 1), pct(x.prog.actualLag, 1))
+      text: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар хоцорч байна (төлөвлөгөө {1}, бодит {2}).', num(x.prog.gap, 2), pct(x.prog.planned, 1), pct(x.prog.actualLag, 1))
         + (x.prog.planExcluded.length ? ` ${planScopeNote(x.prog.planExcluded)}.` : ''),
       advice: tr('Хоцрогдолтой блокуудад хүн хүч, техник хэрэгслийн нэмэлт хуваарилалт хийж, сар бүрийн биет хэмжилтээр явцыг хянах.'),
     });
@@ -576,7 +576,7 @@ export function execFindings(x: ExecReport): ExecFinding[] {
     out.push({
       sev: 'info',
       area: A_PROG,
-      text: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар түрүүлж байна.', num(-x.prog.gap, 1)),
+      text: tr('Орон сууцны барилга угсралт хуваариас {0} нэгж хувиар түрүүлж байна.', num(-x.prog.gap, 2)),
       advice: tr('Одоогийн хурдыг барихын тулд хүн хүч, техник хэрэгслийн хуваарилалтыг тогтвортой хадгалж, хамгийн бага гүйцэтгэлтэй багцуудад нэмэлт анхаарал хандуулах.'),
     });
   }
@@ -640,7 +640,7 @@ export function execAppendix(x: ExecReport, findings: readonly ExecFinding[]): E
     out.push({
       no: out.length + 1, kind: 'finZero',
       title: tr('Олголт эхлээгүй {0} гэрээт багц', num(zero.length)),
-      items: zero.map((r) => `${r.label} · ${r.plan > 0 ? `${num(r.plan)} ₮` : tr('гэрээний дүн бөглөгдөөгүй')}`),
+      items: zero.map((r) => `${r.label} · ${r.plan > 0 ? `${money2(r.plan)} ₮` : tr('гэрээний дүн бөглөгдөөгүй')}`),
     });
   }
   const unlisted = x.fin.noneUnlisted ?? [];
@@ -648,7 +648,7 @@ export function execAppendix(x: ExecReport, findings: readonly ExecFinding[]): E
     out.push({
       no: out.length + 1, kind: 'finNone',
       title: tr('Гэрээ байгуулаагүй {0} багц, ажил (төсөвт өртгөөр)', num(none.length + unlisted.length)),
-      items: [...none, ...unlisted].map((r) => `${r.label} · ${num(r.budget)} ₮`),
+      items: [...none, ...unlisted].map((r) => `${r.label} · ${money2(r.budget)} ₮`),
     });
   }
   for (const f of findings) {

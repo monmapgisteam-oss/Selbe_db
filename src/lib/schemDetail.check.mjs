@@ -25,6 +25,7 @@ import { NODES, SOURCE_NAME } from './schem.ts';
 import { FINE_BY_ID, FINE_NODES } from './schemFine.ts';
 import { STATUS, F as HF } from './hyanalt.ts';
 import { TOLOV } from './zovshoorol.ts';
+import { bagtsKey } from './services.ts';
 
 const EMPTY = {
   headline: null, clearance: null, overall: null, progress: null,
@@ -66,7 +67,7 @@ for (const n of NODES) {
 /* `failed` хоосон бол бүх эх сурвалж хэвийн */
 {
   const d = nodeDetail({ ...EMPTY, failed: [] }, 'barilga', null);
-  assert.equal(d.sources.length, 3, 'барилга гурван эх сурвалжтай');
+  assert.equal(d.sources.length, 4, 'барилга дөрвөн эх сурвалжтай (2026-11-23: + төсөл төлөвлөгөө биелэлт)');
   assert.ok(d.sources.every((s) => s.ok), 'failed хоосон атлаа эх сурвалж унасан гэв');
 }
 /* Нэг нь унавал ЗӨВХӨН тэр нь тэмдэглэгдэнэ */
@@ -75,10 +76,10 @@ for (const n of NODES) {
   const bad = d.sources.filter((s) => !s.ok).map((s) => s.name);
   assert.deepEqual(bad, [SOURCE_NAME.overall], 'унасан эх сурвалж буруу тэмдэглэгдэв');
 }
-/* Хуваарь — амьд эх сурвалжгүй, гэхдээ ШАЛТГААН нь ИЛ гарна */
+/* Хуваарь — 2026-11-23-аас батлах хүсэлт ба «Төсөл төлөвлөгөө биелэлт»-ээс; унасан үед ШАЛТГААН нь ИЛ гарна */
 {
   const d = nodeDetail(EMPTY, 'huvaari', null);
-  assert.equal(d.sources.length, 0, 'хуваарь эх сурвалжгүй байх ёстой');
+  assert.deepEqual(d.sources.map((x) => x.name), [SOURCE_NAME.approvals, SOURCE_NAME.plan], 'хуваарийн эх сурвалж');
   assert.ok(d.issues.length > 0, 'хуваарийн шалтгаан ил бичигдээгүй');
 }
 
@@ -183,8 +184,8 @@ const bagts = (over) => ({
     d.issues.some((i) => i.text.includes('Багц 2') && i.text.includes('2')),
     'тайлангүй блоктой багц дурдагдсангүй',
   );
-  assert.ok(d.issues.some((i) => i.text.includes('85%')), 'дутуу жингийн анхааруулга алга');
-  assert.ok(!d.issues.some((i) => i.text.includes('58%')), 'дэд бүтэцтэй хуваарийн жин хэвээр');
+  assert.ok(d.issues.some((i) => i.text.includes('84.62%')), 'дутуу жингийн анхааруулга алга');
+  assert.ok(!d.issues.some((i) => i.text.includes('58.00%')), 'дэд бүтэцтэй хуваарийн жин хэвээр');
   assert.ok(d.issues.some((i) => i.text.includes('1%-иас доогуур')), 'эхлээгүй блокийн анхааруулга алга');
   assert.ok(!d.issues.some((i) => i.text.includes('зогссон')), '«зогссон» гэж худал нэрлэсээр');
 
@@ -410,8 +411,30 @@ const cyc = (ergelt, oid, over) => ({
   assert.equal(cardStat(live, null, 'barOk').value, 10, 'тайлагнасан блок = нийт − тайлангүй биш');
   const inc = cardStat({ ...live, habea: { workers: 1, tehnik: 1, incidents: 3 } }, null, 'habInc');
   assert.equal(inc.tone, 'bad', 'осол гарсан үед улаан болсонгүй');
-  /* Хуваарь — амьд эх сурвалжгүй тул ҮРГЭЛЖ «—» (`schem.ts`-ийн шийдвэр) */
-  assert.equal(cardStat(live, null, 'huv').value, null, 'хуваарь тоо гаргав');
+  /* Хуваарь — батлах хүсэлтийн эх алга бол «—» (0 БИШ) */
+  assert.equal(cardStat(live, null, 'huv').value, null, 'эх алга атлаа хуваарь тоо гаргав');
+  const ap = { huvaari: [{ pkg: 'Багц-1' }, { pkg: 'Багц-1' }, { pkg: 'Багц-2' }], ajil: [{ pkg: 'Багц-2', rows: 4 }] };
+  assert.equal(cardStat({ ...live, approvals: ap }, null, 'huv').value, 3, 'хүлээгдэж буй хуваарь');
+  assert.equal(cardStat({ ...live, approvals: ap }, 'Багц 1', 'huv').value, 2, 'багцаар шүүсэн хуваарь');
+  assert.equal(cardStat({ ...live, approvals: ap }, null, 'huv').tone, 'warn');
+  assert.equal(cardStat({ ...live, approvals: { huvaari: [], ajil: [] } }, null, 'ajil').tone, 'good', 'хүсэлтгүй бол ногоон');
+  assert.equal(cardStat({ ...live, approvals: ap }, 'Багц 1', 'ajil').value, 0, 'өөр багцын нэмэлт ажил орсон');
+  const ma = [{ pkg: 'Багц-1', verdict: 'A', material: 'Цемент', contractor: 'X' }, { pkg: 'Багц-1', verdict: 'R', material: 'Төмөр', contractor: 'X' }, { pkg: 'Багц-2', verdict: null, material: 'Тоосго', contractor: 'Y' }];
+  assert.equal(cardStat({ ...live, ma }, null, 'ma').value, 2, 'буцаасан + шийдвэргүй материал');
+  assert.equal(cardStat({ ...live, ma }, 'Багц 1', 'ma').value, 1);
+  const md = nodeDetail({ ...live, ma, failed: [] }, 'ma', null);
+  assert.ok(md.issues.some((x) => x.at === 'ma' && x.tone === 'warn'), 'буцаасан материалын анхааруулга алга');
+  /* Үе шатны явц — «Төсөл төлөвлөгөө биелэлт» */
+  const plan = { phases: { songon: { P: 80, S: 50, E: null }, barilga: { P: 40, S: 38, E: 1000 } }, byPkg: { [bagtsKey('Багц 1')]: { songon: { P: 100, S: 100, E: null } } }, total: { P: 40, S: 35, E: 1000 } };
+  const son = cardStat({ ...live, plan }, null, 'son');
+  assert.equal(son.value, 50, 'сонгон шалгаруулалтын гүйцэтгэл');
+  assert.equal(son.tone, 'bad', '30 нэгж хоцролт улаан болсонгүй');
+  assert.equal(cardStat({ ...live, plan }, 'Багц 1', 'son').tone, 'good', 'багцын сонгон 100% ногоон биш');
+  assert.equal(cardStat({ ...live, plan }, null, 'bar').value, 38, 'барилгын гүйцэтгэл «Төсөл төлөвлөгөө биелэлт»-ээс биш');
+  assert.equal(cardStat({ ...live, plan }, null, 'tezu').value, null, 'үе шат алга атлаа тоо гарав');
+  const sd = nodeDetail({ ...live, plan, failed: [] }, 'songon', null);
+  assert.ok(sd.issues.some((x) => x.at === 'son' && x.tone === 'bad'), 'хоцролтын анхааруулга алга');
+  assert.equal(sd.tables[0].rows.length, 1, 'багцаар хүснэгт');
 }
 
 /* Бүх эх сурвалж унасан үед ч анхааруулга нь ЖИНХЭНЭ картад буна */

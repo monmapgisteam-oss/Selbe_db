@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { CHART, lineSegments, areaPath } from '@/lib/chartStyle';
-import { cat } from '@/lib/format';
+import { cat, num, pct, PCT_DEC } from '@/lib/format';
 import { DIURNAL, diurnalAt, clockText, wrapMin } from './traffic';
 import c from './simulation.module.css';
 
@@ -108,7 +108,7 @@ export function Timeline({
     <div className={c.console}>
       <div className={c.clockRow}>
         <span className={c.clock}>{clockText(minute)}</span>
-        <span className={c.demand}>{tr('эрэлт')} {Math.round(load * 100)}%</span>
+        <span className={c.demand}>{tr('эрэлт')} {pct(load * 100)}</span>
       </div>
 
       {/* Өдрийн эрэлтийн муруй + одоогийн байрлал */}
@@ -117,7 +117,7 @@ export function Timeline({
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={tr('Өдрийн эрэлтийн муруй, одоо {0}, эрэлт {1}%', clockText(minute), Math.round(load * 100))}
+        aria-label={tr('Өдрийн эрэлтийн муруй, одоо {0}, эрэлт {1}%', clockText(minute), num(load * 100, PCT_DEC))}
       >
         {HOUR_TICKS.map((h) => (
           <line

@@ -20,7 +20,7 @@ import { userErh } from '@/lib/erhOverview';
 import { STAGE_LABEL } from '@/lib/hyanaltGroup';
 import { capLabelShort } from '@/modules/erhLabels';
 import { paneLabel } from '@/modules/capText';
-import { TYPE_ORDER, isTypeRole, typeLabel } from '@/lib/roleTypes';
+import { PICK_ORDER, isPickRole, typeLabel } from '@/lib/roleTypes';
 import { applyType, applyTypePrecheck, typeApplyBusy } from '@/lib/roleTypeApply';
 import { askConfirm } from '@/lib/confirm';
 import { userError } from '@/components/ui';
@@ -85,7 +85,7 @@ export function UserTypeSection({
   disabled: boolean;
   hardSuper: boolean;
 }) {
-  const [type, setType] = useState<Role | ''>(isTypeRole(role) ? role : '');
+  const [type, setType] = useState<Role | ''>(isPickRole(role) ? role : '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
@@ -151,7 +151,8 @@ export function UserTypeSection({
           onChange={(e) => { setType(e.target.value as Role | ''); setMsg(''); }}
         >
           <option value="">{tr('— төрөл сонгох —')}</option>
-          {TYPE_ORDER.map((r) => (
+          {/* 2026-11-23: + албан үүргийн загварын шинэ таван үүрэг (`PICK_ORDER`) */}
+          {PICK_ORDER.map((r) => (
             <option key={r} value={r} disabled={r === 'super' && roleForUser(currentUser()) !== 'super'}>{typeLabel(r)}</option>
           ))}
         </select>

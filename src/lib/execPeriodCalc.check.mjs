@@ -93,10 +93,10 @@ ok('олголт — хугацаанд багтсан (хил орно), огн
   assert.equal(d.given.delta, 13e9); assert.equal(d.given.count, 3); assert.equal(d.given.undated, 1);
   assert.equal(d.given.now, 18e9); assert.equal(d.given.prev, 5e9);
   assert.deepEqual(d.givenByKey, { БАГЦ1: 10e9, БАГЦ2: 1e9 }, 'багцаар — түлхүүргүй төлбөр орохгүй');
-  assert.deepEqual(givenTrendOf(d, 'БАГЦ1'), { text: '▲ +10,000,000,000 ₮', tone: 'good' });
-  assert.deepEqual(givenTrendOf(d, 'БАГЦ9'), { text: '= 0 ₮', tone: 'mute' }, 'олголтгүй багц = 0 (хэмжээс бий)');
+  assert.deepEqual(givenTrendOf(d, 'БАГЦ1'), { text: '▲ +10,000,000,000.00 ₮', tone: 'good' });
+  assert.deepEqual(givenTrendOf(d, 'БАГЦ9'), { text: '= 0.00 ₮', tone: 'mute' }, 'олголтгүй багц = 0 (хэмжээс бий)');
   assert.equal(givenTrendOf(null, 'БАГЦ1'), null);
-  assert.deepEqual(packTrendOf(d, 'БАГЦ1'), { text: '▲ +2.9 н.х', tone: 'good' });
+  assert.deepEqual(packTrendOf(d, 'БАГЦ1'), { text: '▲ +2.90 н.х', tone: 'good' });
   assert.equal(packTrendOf(d, 'БАГЦ9'), null, 'хэмжилтгүй багц');
 });
 ok('ХАБ — өдрөөр; null өдөр алгасна', () => {
@@ -136,11 +136,11 @@ ok('олголтын хоосон түүх, буцаалт, огноогүй д�
 
 console.log('\n4. Текст');
 ok('▲/▼ · +/− · нэгж · өнгө', () => {
-  assert.deepEqual(deltaText(2.7, 'pp', { upGood: true }), { text: '▲ +2.7 н.х', tone: 'good' });
-  assert.deepEqual(deltaText(-2.7, 'pp', { upGood: true }), { text: '▼ −2.7 н.х', tone: 'bad' });
+  assert.deepEqual(deltaText(2.7, 'pp', { upGood: true }), { text: '▲ +2.70 н.х', tone: 'good' });
+  assert.deepEqual(deltaText(-2.7, 'pp', { upGood: true }), { text: '▼ −2.70 н.х', tone: 'bad' });
   assert.deepEqual(deltaText(111, 'n'), { text: '▲ +111', tone: 'mute' }, 'upGood өгөөгүй → саарал');
-  assert.deepEqual(deltaText(0, 'pp', { upGood: true }), { text: '= 0.0 н.х', tone: 'mute' });
-  assert.deepEqual(deltaText(13e9, 'mnt', { upGood: true, arrows: false }), { text: '+13,000,000,000 ₮', tone: 'good' }, 'PDF — сумгүй');
+  assert.deepEqual(deltaText(0, 'pp', { upGood: true }), { text: '= 0.00 н.х', tone: 'mute' });
+  assert.deepEqual(deltaText(13e9, 'mnt', { upGood: true, arrows: false }), { text: '+13,000,000,000.00 ₮', tone: 'good' }, 'PDF — сумгүй');
   assert.equal(deltaText(null, 'pp'), null);
 });
 ok('мөрүүд — дэлгэц/PDF/PNG нэг эх; хэмжилтгүй багц орохгүй', () => {
@@ -148,9 +148,9 @@ ok('мөрүүд — дэлгэц/PDF/PNG нэг эх; хэмжилтгүй ба
   assert.deepEqual(rows.map((r) => r.key), ['housing', 'given', 'workers', 'technik', 'zov', 'pkg:БАГЦ1']);
   assert.equal(rows[0].note, 'хэмжилт 2026-09-27 → 2026-10-26');
   assert.equal(rows[1].note, '3 төлбөр · огноогүй 1 төлбөр тоологдоогүй');
-  assert.equal(rows[1].now, '18,000,000,000 ₮');
+  assert.equal(rows[1].now, '18,000,000,000.00 ₮');
   assert.match(rows[4].now, /зөвшөөрсөн 1 · татгалзсан 1/);
-  assert.equal(execDeltaRows(d, false)[0].trend.text, '+2.7 н.х');
+  assert.equal(execDeltaRows(d, false)[0].trend.text, '+2.70 н.х');
 });
 
 console.log('\n5. Сарын цуваа (график)');

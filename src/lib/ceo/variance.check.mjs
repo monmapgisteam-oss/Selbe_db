@@ -34,7 +34,7 @@ const base = (all, failedPkgs = 0) => ({
 {
   const r = computeVariance(base([]), PKG_N);
   assert.equal(r.level, 'good');
-  assert.equal(r.value, '0 ₮', 'бүгд уншигдаж хэтрэлтгүй → хэмжсэн тэг ИЛ, «—» (мэдээлэлгүй) биш');
+  assert.equal(r.value, '0.00 ₮', 'бүгд уншигдаж хэтрэлтгүй → хэмжсэн тэг ИЛ, «—» (мэдээлэлгүй) биш');
   assert.equal(kpiComplete(r), true, 'бүрэн үр дүн — кэшлэгдэнэ');
   assert.deepEqual(r.facts, ['0 ажил хэтэрсэн']);
   assert.equal(r.tables.length, 2);
@@ -74,7 +74,7 @@ const ALL = [
 {
   const r = computeVariance(base(ALL, 0), PKG_N);
   assert.equal(r.level, 'bad', 'нийт ' + r.value + ' ≥ ' + VAR_BAD_MNT);
-  assert.equal(r.value, '115,700,000 ₮');
+  assert.equal(r.value, '115,700,000.00 ₮');
   assert.ok(!/тэрбум|сая|их наяд/.test(r.value), 'мөнгө товчлолгүй');
   assert.deepEqual(r.facts, ['4 ажил хэтэрсэн', '3 багц']);
   assert.equal(r.unit, 'зөрүү');

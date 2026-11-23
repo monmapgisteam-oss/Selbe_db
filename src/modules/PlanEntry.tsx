@@ -9,7 +9,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { userError } from '@/components/ui';
 import { editText, parseCell, type ParseMsg } from '@/lib/finEdit';
-import { date, num, pct } from '@/lib/format';
+import { date, money2, num as fmtNum, pct } from '@/lib/format';
 import {
   PLAN_EDIT, addPlanRows, editWhy, isNewGroup, newRowsWhy,
   type NewPlanRow, type PlanEditKey,
@@ -43,7 +43,7 @@ export function showVal(k: PlanEditKey, v: unknown): string {
   if (v == null || String(v).trim() === '') return '—';
   if (kind === 'pct') return pct(Number(v), 1);
   if (kind === 'date') return date(Number(v));
-  if (kind === 'money') return num(Number(v));
+  if (kind === 'money') return money2(Number(v));
   return String(v);
 }
 
@@ -224,7 +224,7 @@ export function AddRowsPanel({
         <button type="button" className={f.ppMini} onClick={() => setItems((xs) => [...xs, blank()])}>{tr('Мөр нэмэх')}</button>
         {sum != null && (
           <span className={Math.abs(sum - 100) > 0.01 ? f.ppAddWarn : undefined}>
-            {tr('Жингийн нийлбэр: {0}%', Math.round(sum * 100) / 100)}
+            {tr('Жингийн нийлбэр: {0}%', fmtNum(sum, 2))}
           </span>
         )}
         {err && <span role="alert" className={f.editErr}>{err}</span>}

@@ -30,6 +30,8 @@ export type UserRowProps = {
   /** Нээлттэй харагдацын тоо (нэмэлт эрхийн дагуулыг оруулаад) */
   on: number;
   capViews: ViewKey[];
+  /** Автоматаар нээгддэг харагдац (2026-11-23: «Гүйцэтгэл»-тэй хүнд «Хяналтын хугацаа») — унтраалга түгжээтэй */
+  autoViews?: ViewKey[];
   /** `caps` дэх эрхүүд (runtime) — засах эрхээр нээгдсэн харагдацын tooltip-д */
   caps: CapKey[];
   selected: boolean;
@@ -55,6 +57,7 @@ export type UserRowProps = {
 export const rightsProps = (p: UserRowProps): UserRightsProps => ({
   d: p.d,
   capViews: p.capViews,
+  autoViews: p.autoViews,
   caps: p.caps,
   hasView: p.hasView,
   onFlipView: p.onFlipView,

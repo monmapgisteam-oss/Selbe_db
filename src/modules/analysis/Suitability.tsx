@@ -606,7 +606,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
 
       const diff = m.value != null && simAvg > 0 ? ((m.value - simAvg) / simAvg) * 100 : null;
       const diffTxt = diff == null ? '—'
-        : `<b style="color:${diff > 0 ? 'var(--warn-ink)' : 'var(--good-ink)'}">${diff > 0 ? '+' : ''}${Math.round(diff)}%</b>`;
+        : `<b style="color:${diff > 0 ? 'var(--warn-ink)' : 'var(--good-ink)'}">${diff > 0 ? '+' : ''}${nf(diff, 2)}%</b>`;
 
       return tr('\n        <div class="t">\n          <b>{0}</b>\n          <span class="st" style="background:{1};color:#1a1205">{2}</span>\n        </div>\n        <div class="sub2">{3} · {4} га</div>\n        <dl>\n          {5}\n          {6}\n          {7}\n          {8}\n        </dl>', esc(r.id), simColor(t), t == null ? '—' : Math.round(t * 100), esc(zoneTypeLabel(r.type)), nf(r.areaHa, 2), dt(esc(def.label), `<b>${m.text}</b>`), dt(tr('Дунджаас'), diffTxt), dt(tr('Оршин суугч'), nf(r.residentPop)), dt(tr('Барилга'), nf(r.buildingCount)));
     }
@@ -666,7 +666,7 @@ export function Suitability({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => voi
       const v = tCtx.demand.edgeDemand[idx];
       if (!e || !(v > 0)) return null;
       const t = tCtx.demand.max > 0 ? v / tCtx.demand.max : 0;
-      return tr('\n        <div class="t">\n          <b>Замын хэрчим</b>\n          <span class="st" style="background:{0};color:#1a1205">{1}</span>\n        </div>\n        <div class="sub2">{2} м урт</div>\n        <dl>\n          {3}\n          {4}\n        </dl>\n        <div class="fails"><div><span>Эрэлт — хүчин чадалтай харьцуулаагүй</span><em>V/C биш</em></div></div>', tColor(tMode, t), Math.round(t * 100), nf(e.length / tCtx.net.unitsPerMeter), dt(tr('Эрэлт'), tr('{0} машин/ц', nf(v))), dt(tr('Хамгийн ихээс'), `${Math.round(t * 100)}%`));
+      return tr('\n        <div class="t">\n          <b>Замын хэрчим</b>\n          <span class="st" style="background:{0};color:#1a1205">{1}</span>\n        </div>\n        <div class="sub2">{2} м урт</div>\n        <dl>\n          {3}\n          {4}\n        </dl>\n        <div class="fails"><div><span>Эрэлт — хүчин чадалтай харьцуулаагүй</span><em>V/C биш</em></div></div>', tColor(tMode, t), Math.round(t * 100), nf(e.length / tCtx.net.unitsPerMeter), dt(tr('Эрэлт'), tr('{0} машин/ц', nf(v))), dt(tr('Хамгийн ихээс'), `${nf(t * 100, 2)}%`));
     }
 
     const st = tCtx.stops[idx];

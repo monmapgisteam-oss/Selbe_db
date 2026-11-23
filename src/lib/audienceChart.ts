@@ -9,7 +9,7 @@
  * Сүлжээгүй, DOM-гүй — `audienceChart.check.mjs`.
  */
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, PRINT_COLORS } from '@/lib/format';
+import { num, pct, MNT_DEC, PRINT_COLORS } from '@/lib/format';
 import type { ChartSpec, Unit, BarItem, KpiItem, ListItem, LineSeries } from '@/lib/audienceReport';
 
 const { ink: INK, ink2: INK2, ink3: INK3, data: ACCENT, track: TRACK } = PRINT_COLORS;
@@ -28,12 +28,12 @@ export const BARS_PER_CHART = 24;
 export const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
- * Мөнгө — БҮТЭН дүн, мянгатын таслалтай (хэрэглэгчийн 2026-09-01 дүрэм, `format.check.mjs` товчлолыг хориглоно);
+ * Мөнгө — БҮТЭН дүн, мянгатын таслалтай, 2 аравтын оронтой (2026-09-01 дүрэм; 2026-11-23-аас бутархайтай), `format.check.mjs` товчлолыг хориглоно;
  * мэдээлэлгүй бол «мэдээлэлгүй» (0 биш).
  */
 export function bn(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return tr('мэдээлэлгүй');
-  return `${num(v)} ₮`;
+  return `${num(v, MNT_DEC)} ₮`;
 }
 
 /** Утгын бичвэр — нэгжээр */

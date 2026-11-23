@@ -11,7 +11,7 @@
  */
 import type { TDocumentDefinitions, Content, TableCell, CustomTableLayout } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, dateTime } from '@/lib/format';
+import { money2, num, pct, dateTime } from '@/lib/format';
 import { PAPER, INK, INK2, INK3, MUTED, RULE, RULE2, SURF, ACCENT, RED, AMBER, T, tableLayout, th, td, tdBold } from '@/lib/pdfTheme';
 import {
   execFindings, execFindingBrief, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel, measuredLabel,
@@ -190,8 +190,8 @@ export async function buildExecDoc(
   /** Хавсралт — дугаар ба дараалал `execAppendix`-ээс (дэлгэцтэй ИЖИЛ) */
   const appendix = execAppendix(x, findings);
   const gapText = p.gap == null ? '—'
-    : Number(Math.abs(p.gap).toFixed(1)) === 0 ? num(0, 1)
-      : `${p.gap > 0 ? '−' : '+'}${num(Math.abs(p.gap), 1)}`;
+    : Number(Math.abs(p.gap).toFixed(2)) === 0 ? num(0, 2)
+      : `${p.gap > 0 ? '−' : '+'}${num(Math.abs(p.gap), 2)}`;
   const dataAt = tr('Өгөгдөл: {0}', dateTime(x.fetchedAt));
   const buildPk = p.packs.filter((k) => k.kind === 'build');
   const topType = g.byType[0];
@@ -313,13 +313,13 @@ export async function buildExecDoc(
       { text: tr('Гүйцэтгэлийн хураангуй'), style: 'h1', pageBreak: 'before' },
       { text: `${tr('{0} байдлаарх нэгдсэн үзүүлэлт', dateStr)} · ${dataAt}`, style: 'h2sub' },
       kpiRow([
-        { label: tr('Нийт төсөв'), value: money(g.budget), sub: `${num(g.budget)} ₮` },
+        { label: tr('Нийт төсөв'), value: money(g.budget), sub: `${money2(g.budget)} ₮` },
         { label: tr('Нийт гэрээлсэн дүн'), value: money(g.contract), sub: g.budget > 0 ? tr('төсвийн {0}', pct((g.contract / g.budget) * 100, 1)) : undefined },
         { label: tr('Төслийн нийт явц'), value: g.progress == null ? '—' : pct(g.progress, 1), sub: tr('Нэгтгэл гүйцэтгэлээр') },
       ]),
       kpiRow([
         { label: tr('Газар чөлөөлөлт'), value: g.landPct == null ? '—' : pct(g.landPct, 1), sub: tr('{0} / {1} нэгж талбар', num(g.land.cleared), num(g.land.total)) },
-        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1)) },
+        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', money2(f.givenContracted), pct(f.share, 1)) },
         { label: tr('Ажлын багц'), value: num(g.packages), sub: tr('{0} төрөл ажил', num(g.types)) },
       ]),
       ...(deltas ? deltaBlocks(deltas) : []),
@@ -360,19 +360,19 @@ export async function buildExecDoc(
         num(g.types),
         topType ? tr(' Хамгийн том эзлэх хувьтай нь {0} ({1}).', tr(topType.label), money(topType.cost)) : '')),
       cap(tr('Ажлын төрлөөр төсвийн хэмжээ')),
-      barChart(g.byType.map((t) => ({ label: tr(t.label), value: t.cost, text: `${num(t.cost)} ₮` })), { nameW: 165, valW: 130 }),
+      barChart(g.byType.map((t) => ({ label: tr(t.label), value: t.cost, text: `${money2(t.cost)} ₮` })), { nameW: 165, valW: 130 }),
       cap(tr('Ажлын төрлөөр (төсөв, гэрээлсэн дүн, гүйцэтгэл)')),
-      { table: { headerRows: 1, widths: ['*', 32, 36, 94, 94, 46], body: [
+      { table: { headerRows: 1, widths: ['*', 30, 34, 106, 106, 46], body: [
         [th(tr('Ажлын төрөл')), th(tr('Ажил'), true), th(tr('Гэрээт'), true), th(tr('Төсөв (төг)'), true), th(tr('Гэрээлсэн (төг)'), true), th(tr('Гүйцэтгэл'), true)],
         ...g.byType.map((t): TableCell[] => [
           td(tr(t.label)), td(num(t.n), true), td(num(t.contracted), true),
-          td(num(t.cost), true), td(t.contract > 0 ? num(t.contract) : '—', true),
+          td(money2(t.cost), true), td(t.contract > 0 ? money2(t.contract) : '—', true),
           td(pct(t.perf ?? 0, 1), true),
         ]),
         [tdBold(tr('Нийт')), tdBold(num(g.byType.reduce((a, t) => a + t.n, 0)), true),
           tdBold(num(g.byType.reduce((a, t) => a + t.contracted, 0)), true),
-          tdBold(num(g.byType.reduce((a, t) => a + t.cost, 0)), true),
-          tdBold(num(g.byType.reduce((a, t) => a + t.contract, 0)), true), tdBold('', true)],
+          tdBold(money2(g.byType.reduce((a, t) => a + t.cost, 0)), true),
+          tdBold(money2(g.byType.reduce((a, t) => a + t.contract, 0)), true), tdBold('', true)],
       ] }, layout: tableLayout },
       note(tr('Нийт төсөв нь «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт дүн; хүснэгт нь нийт төсөвт ордоггүй нийгмийн дэд бүтцийн мөрүүдийг ч хамарна. Гүйцэтгэлийн хувь нь биет хэмжилтээр; хэмжигдээгүй бол 0%.')),
 
@@ -478,8 +478,8 @@ export async function buildExecDoc(
           ? tr(' Гэрээ байгуулаагүй {0} багц тусад нь хавсралтад.', num(finNone.length))
           : '')),
       kpiRow([
-        { label: tr('Гэрээлсэн нийт дүн'), value: money(f.planTotal), sub: `${num(f.planTotal)} ₮` },
-        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1)) },
+        { label: tr('Гэрээлсэн нийт дүн'), value: money(f.planTotal), sub: `${money2(f.planTotal)} ₮` },
+        { label: tr('Олгосон санхүүжилт'), value: money(f.given), sub: f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', money2(f.givenContracted), pct(f.share, 1)) },
         { label: tr('Олгогдоогүй үлдэгдэл'), value: money(f.remain), sub: tr('гэрээт боловч санхүүжилт хүлээгдэж буй') },
       ]),
       ...(finStarted.length ? [
@@ -488,40 +488,40 @@ export async function buildExecDoc(
           const t = givenTrendOf(deltas, r.key, false);
           return {
             label: r.label, value: r.given,
-            text: `${num(r.given)} ₮ · ${r.pct == null ? '—' : pct(r.pct, 1)}${t ? ` · ${t.text}` : ''}`,
+            text: `${money2(r.given)} ₮ · ${r.pct == null ? '—' : pct(r.pct, 1)}${t ? ` · ${t.text}` : ''}`,
           };
         }), { nameW: 160, valW: deltas ? 200 : 140 }),
         ...(deltas ? [note(tr('Сүүлийн багана: хугацаанд ({0} → {1}) олгосон дүн.', deltas.period.from, deltas.period.to))] : []),
       ] : []),
-      { table: { headerRows: 1, widths: ['*', 100, 100, 46], body: [
+      { table: { headerRows: 1, widths: ['*', 108, 108, 46], body: [
         [th(tr('Багц')), th(tr('Гэрээлсэн (төг)'), true), th(tr('Олгосон (төг)'), true), th(tr('Хувь'), true)],
         ...finStarted.map((r): TableCell[] => [
           td(r.contracted ? r.label : `${r.label} (${tr('гэрээгүй')})`, false, r.contracted ? undefined : AMBER),
-          td(r.plan > 0 ? num(r.plan) : '—', true), td(num(r.given), true),
+          td(r.plan > 0 ? money2(r.plan) : '—', true), td(money2(r.given), true),
           td(r.pct == null ? '—' : pct(r.pct, 1), true, r.pct != null && r.pct < 10 && r.plan > 0 ? RED : undefined),
         ]),
         ...(finZero.length ? [[
           td(tr('Эхлээгүй ажил ({0} гэрээт багц)', num(finZero.length)), false, RED),
-          td(num(finZero.reduce((a, r) => a + r.plan, 0)), true),
-          td(num(0), true), td('0.0%', true, RED),
+          td(money2(finZero.reduce((a, r) => a + r.plan, 0)), true),
+          td(money2(0), true), td(pct(0), true, RED),
         ] as TableCell[]] : []),
         ...(finNone.length ? [[
           td(tr('Гэрээ байгуулаагүй ажил ({0} багц)', num(finNone.length)), false, AMBER),
-          td('—', true), td(num(0), true), td('—', true),
+          td('—', true), td(money2(0), true), td('—', true),
         ] as TableCell[]] : []),
         /* 2026-11-04: олон багц хамарсан олголт — тусдаа мөр, Σ мөр = толгойн «Олгосон» (дэлгэцтэй ижил) */
         ...f.ranges.map((g): TableCell[] => [
-          td(tr('{0} (хэд хэдэн багц хамарсан олголт)', g.label)), td('—', true), td(num(g.given), true), td('—', true),
+          td(tr('{0} (хэд хэдэн багц хамарсан олголт)', g.label)), td('—', true), td(money2(g.given), true), td('—', true),
         ]),
         ...(f.givenUnlisted > 0 || f.planUnlisted > 0 ? [[
-          td(tr('Багцын мөрд ороогүй гэрээ, олголт'), false, AMBER), td(f.planUnlisted > 0 ? num(f.planUnlisted) : '—', true), td(f.givenUnlisted > 0 ? num(f.givenUnlisted) : '—', true), td('—', true),
+          td(tr('Багцын мөрд ороогүй гэрээ, олголт'), false, AMBER), td(f.planUnlisted > 0 ? money2(f.planUnlisted) : '—', true), td(f.givenUnlisted > 0 ? money2(f.givenUnlisted) : '—', true), td('—', true),
         ] as TableCell[]] : []),
-        [tdBold(tr('Нийт')), tdBold(num(f.planTotal), true), tdBold(num(f.given), true),
+        [tdBold(tr('Нийт')), tdBold(money2(f.planTotal), true), tdBold(money2(f.given), true),
           tdBold(f.share == null ? '—' : pct(f.share, 1), true)],
       ] }, layout: tableLayout },
       ...(finZero.length ? [note(tr('«Эхлээгүй ажил» гэдэг нь гэрээ байгуулагдсан боловч олголт хараахан хийгдээгүй багцууд; нэрсийг хавсралтаас үзнэ үү.'))] : []),
       ...(finNone.length ? [note(tr('«Гэрээ байгуулаагүй ажил» гэдэг нь зөвхөн төсөвт өртөгтэй, гэрээ хараахан байгуулагдаагүй багцууд; гэрээлсэн дүнд орохгүй, нэрс ба төсвийг хавсралтаас үзнэ үү.'))] : []),
-      ...(f.givenOther > 0 ? [note(tr('Нийт олгосон дүнд гэрээлсэн багцаас гадуурх {0} ₮ олголт (хэд хэдэн багц хамарсан мөр, гэрээлсэн дүнгийн багцад холбогдоогүй төлбөр) орсон — олгосон хувьд ороогүй.', num(f.givenOther)))] : []),
+      ...(f.givenOther > 0 ? [note(tr('Нийт олгосон дүнд гэрээлсэн багцаас гадуурх {0} ₮ олголт (хэд хэдэн багц хамарсан мөр, гэрээлсэн дүнгийн багцад холбогдоогүй төлбөр) орсон — олгосон хувьд ороогүй.', money2(f.givenOther)))] : []),
       note(tr('«Олгосон» нь урьдчилгаа ба гүйцэтгэлийн бүх төлбөрийн нийлбэр.')),
 
       /* ══════════ 5. ЗӨВШӨӨРӨЛ ══════════ */
@@ -570,17 +570,17 @@ export async function buildExecDoc(
         ...appendix.flatMap((a): Content[] => {
           const head: Content = { text: tr('Хавсралт {0}. {1}', num(a.no), a.title), style: 'caption' };
           if (a.kind === 'finZero') {
-            return [head, { table: { headerRows: 1, widths: ['*', 110, 100], body: [
+            return [head, { table: { headerRows: 1, widths: ['*', 112, 108], body: [
               [th(tr('Гэрээт багц')), th(tr('Гэрээ (төг)'), true), th(tr('Олгосон (төг)'), true)],
-              ...finZero.map((r): TableCell[] => [td(r.label), td(r.plan > 0 ? num(r.plan) : '—', true), td(num(0), true)]),
-              [tdBold(tr('Нийт')), tdBold(num(finZero.reduce((s, r) => s + r.plan, 0)), true), tdBold(num(0), true)],
+              ...finZero.map((r): TableCell[] => [td(r.label), td(r.plan > 0 ? money2(r.plan) : '—', true), td(money2(0), true)]),
+              [tdBold(tr('Нийт')), tdBold(money2(finZero.reduce((s, r) => s + r.plan, 0)), true), tdBold(money2(0), true)],
             ] }, layout: tableLayout }];
           }
           if (a.kind === 'finNone') {
             return [head, { table: { headerRows: 1, widths: ['*', 130], body: [
               [th(tr('Багц')), th(tr('Төсөвт өртөг (төг)'), true)],
-              ...[...finNone, ...(x.fin.noneUnlisted ?? [])].map((r): TableCell[] => [td(r.label), td(num(r.budget), true)]),
-              [tdBold(tr('Нийт')), tdBold(num([...finNone, ...(x.fin.noneUnlisted ?? [])].reduce((s, r) => s + r.budget, 0)), true)],
+              ...[...finNone, ...(x.fin.noneUnlisted ?? [])].map((r): TableCell[] => [td(r.label), td(money2(r.budget), true)]),
+              [tdBold(tr('Нийт')), tdBold(money2([...finNone, ...(x.fin.noneUnlisted ?? [])].reduce((s, r) => s + r.budget, 0)), true)],
             ] }, layout: tableLayout },
             note(tr('Жагсаалтад нийт төсөвт ордоггүй нийгмийн дэд бүтцийн мөрүүд орсон тул нийлбэр нь «нийт төсөв − гэрээлсэн дүн»-гээс ялгаатай.'))];
           }

@@ -52,7 +52,7 @@ import { useLayerPicks } from '@/lib/useLayerPicks';
 import { useAsync } from '@/lib/useAsync';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { INFRA_SYSTEMS, INITIAL_MAP_LAYERS, LAYER_BY_ID, REFERENCE_IDS } from '@/lib/services';
-import { blank, ha, mnt, num, text } from '@/lib/format';
+import { blank, ha, mnt, money2, num, text, PCT_DEC } from '@/lib/format';
 import {
   AIR_LEVELS, AQI_BAND, EXPOSURE, FLOOD_LEVELS, GRADE_COLOR, GRADE_LABEL, HAZARDS, KIND_LABEL,
   DAMAGE_RATE, LEVELS, SPAN_H, buildLive, gradeOf, hourOf, loadStations, scenarioNote,
@@ -1214,7 +1214,7 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
               : why.reliefM > 0
                 ? tr('орчноосоо {0} м нам', num(why.reliefM, 1))
                 : tr('орчноосоо {0} м өндөр', num(-why.reliefM, 1)) },
-            { k: tr('Налуу'), v: tr('{0}%', num(why.slopePct, 1)) },
+            { k: tr('Налуу'), v: tr('{0}%', num(why.slopePct, PCT_DEC)) },
             ...(why.accHa != null && why.accHa >= 0.5
               ? [{ k: tr('Хураах талбай (тооцооны мужид)'), v: tr('≥ {0} га', num(why.accHa, why.accHa >= 10 ? 0 : 1)) }]
               : []),
@@ -2395,12 +2395,12 @@ export function Ersdel({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
                     <Note>
                       {result.hazard === 'air'
                         ? tr('Өртөлтөөр: ЗӨВХӨН барилгаас — барилгын хүн ам (оршин суугч + хүчин чадал) × мужид орсон хувь; хүн амгүй барилгад шалны {0} м²-д 1 хүн. Хүн тутамд өдрийн {1} ₮ зардлын таамгаар. Эмнэлгийн бодит бүртгэлээс уншаагүй.',
-                          num(EXPOSURE.m2PerPerson), num(EXPOSURE.costPerPersonDay))
+                          num(EXPOSURE.m2PerPerson), money2(EXPOSURE.costPerPersonDay))
                         : tr('Нэгж үнэлгээ нь объектын АНГИЛЛААС: барилга {0} {1} · хатуу хучилт {2} {3} · ногоон {4} {5} · мод {6} {7}. Гэрээний бодит үнээс уншаагүй — ТААМАГ.',
-                          num(DAMAGE_RATE.building.rate), DAMAGE_RATE.building.unit,
-                          num(DAMAGE_RATE.paved.rate), DAMAGE_RATE.paved.unit,
-                          num(DAMAGE_RATE.green.rate), DAMAGE_RATE.green.unit,
-                          num(DAMAGE_RATE.tree.rate), DAMAGE_RATE.tree.unit)}
+                          money2(DAMAGE_RATE.building.rate), DAMAGE_RATE.building.unit,
+                          money2(DAMAGE_RATE.paved.rate), DAMAGE_RATE.paved.unit,
+                          money2(DAMAGE_RATE.green.rate), DAMAGE_RATE.green.unit,
+                          money2(DAMAGE_RATE.tree.rate), DAMAGE_RATE.tree.unit)}
                     </Note>
                   </div>
                 </section>

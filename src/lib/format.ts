@@ -50,9 +50,15 @@ export const num = (v: number | null | undefined, d = 0): string =>
     ? '—'
     : nfOf(d).format(v);
 
-/** 13.4% */
-export const pct = (v: number | null | undefined, d = 1): string =>
-  v == null || !Number.isFinite(v) ? '—' : `${num(v, d)}%`;
+/**
+ * ХУВЬ — портал даяар ҮРГЭЛЖ 2 аравтын оронтой: «40.10%», «0.00%», «100.00%».
+ * 2026-11-23: хэрэглэгч «зарим газар бутархайтай, заримд нь бүхэлдсэн — бүгдийг
+ * бутархайтай харуул» гэсэн тул `d` параметрийг ҮЛ ТООМСОРЛОНО (дуудагчид
+ * хөрвүүлэгдэхийн тулд л үлдсэн). Зөвхөн ХАРУУЛАЛТ — тооцоонд нөлөөгүй.
+ */
+export const PCT_DEC = 2;
+export const pct = (v: number | null | undefined, _d?: number): string =>
+  v == null || !Number.isFinite(v) ? '—' : `${num(v, PCT_DEC)}%`;
 
 /** м² → га */
 export const ha = (m2: number | null | undefined, d = 1): string =>
@@ -63,12 +69,23 @@ export const km = (m: number | null | undefined, d = 1): string =>
   m == null || !Number.isFinite(m) ? '—' : num(m / 1_000, d);
 
 /**
- * Төгрөг — ҮРГЭЛЖ БҮТЭН, мянгатын таслалтай: 2660000000000 → «2,660,000,000,000 ₮»
+ * Төгрөг — ТОВЧЛОЛГҮЙ, мянгатын таслалтай, ҮРГЭЛЖ 2 аравтын оронтой:
+ * 2660000000000 → «2,660,000,000,000.00 ₮», 2310404581.72 → «2,310,404,581.72 ₮».
+ * 2026-11-23: урьд бүхэлдэж харуулдаг байсан — хэрэглэгч «бүх мөнгөн дүн
+ * бутархайтай» гэж шийдсэн. Зөвхөн ХАРУУЛАЛТ. `0` → «—» хэвээр.
  */
+export const MNT_DEC = 2;
 export function mnt(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v) || v === 0) return '—';
-  return `${num(v)} ₮`;
+  return `${num(v, MNT_DEC)} ₮`;
 }
+
+/**
+ * Мөнгөн дүнгийн ТОО (₮ тэмдэггүй) — хүснэгтийн «Дүн (₮)» багана г.м. нэгж нь
+ * гарчигт байгаа газарт. `num`-тай ижил (0 → «0.00», хоосон → «—»), гэвч ҮРГЭЛЖ
+ * 2 аравтын оронтой (2026-11-23).
+ */
+export const money2 = (v: number | null | undefined): string => num(v, MNT_DEC);
 
 /** Огноо: ArcGIS epoch (мс), "2026-07-14" эсвэл DateOnly */
 export function date(v: number | string | null | undefined): string {

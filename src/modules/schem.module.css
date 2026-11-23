@@ -169,8 +169,10 @@
   line-height: 1.25;
   color: var(--ink-3);
 }
-.mLabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mValue { font-variant-numeric: tabular-nums; color: var(--ink-2); flex: none; }
+/* 2026-11-23: шошго ба дүн багтахгүй бол дүн дараагийн мөрөнд баруун тийш шилжинэ — шошго «Төсөвт…» болж тасрахгүй */
+.metric { flex-wrap: wrap; row-gap: 0; }
+.mLabel { flex: 1 0 auto; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mValue { font-variant-numeric: tabular-nums; color: var(--ink-2); flex: none; margin-left: auto; }
 /* Мэдээлэлгүй утга — тодруулахгүй, гэхдээ далдлахгүй */
 .mNone { color: var(--ink-3); font-style: italic; }
 
@@ -448,6 +450,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
   font-size: 11.5px;
   line-height: 1.3;
   color: var(--ink-3);

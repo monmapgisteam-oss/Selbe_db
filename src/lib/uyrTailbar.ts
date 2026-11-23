@@ -118,11 +118,11 @@ export function whyFlood(fd: FloodData, s: number, idx: number): FloodWhy | null
     : reliefM > 0.8
       ? tr('ХОНХОР: энэ цэг эргэн тойрноосоо {0} м нам тул ус цуглана.', reliefM.toFixed(1))
       : slopePct < 2
-        ? tr('ХАВТГАЙ ГАЗАР (налуу {0}%): ус урсаж гарч чадахгүй, тэнд тогтоно.', slopePct.toFixed(1))
+        ? tr('ХАВТГАЙ ГАЗАР (налуу {0}%): ус урсаж гарч чадахгүй, тэнд тогтоно.', slopePct.toFixed(2))
         : sp > 1.2
           ? tr('УРСГАЛЫН ЗАМ: ус энд тогтохгүй, {0} м/с хурдтай өнгөрч байна.', sp.toFixed(1))
           : d > 0.05
-            ? tr('Дээд урсгалаас ирсэн ус налуугаар ({0}%) энд дамжин урсаж байна.', slopePct.toFixed(1))
+            ? tr('Дээд урсгалаас ирсэн ус налуугаар ({0}%) энд дамжин урсаж байна.', slopePct.toFixed(2))
             : tr('Ус бага — энэ цэг эргэн тойрноосоо өндөр.');
   const reason = computed
     ? catchTxt + cause

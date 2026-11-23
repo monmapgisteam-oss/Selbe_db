@@ -10,12 +10,13 @@ import {
 } from '@/lib/hyanalt';
 import { groupWorks } from '@/lib/hyanaltGroup';
 import { TOLOV, type Zov } from '@/lib/zovshoorol';
+import { paceHealth, phaseOf, type PhaseVal, type PlanLive } from '@/lib/schemPlan';
 
 /* ══════════════════ Төрөл ══════════════════ */
 
 export type SchemId =
-  | 'tolovlolt' | 'zovshoorol' | 'gazar' | 'huvaari'
-  | 'barilga' | 'hyanalt' | 'habea' | 'ersdel' | 'sankhuu' | 'tailan';
+  | 'tolovlolt' | 'zurag' | 'zovshoorol' | 'songon' | 'gazar' | 'huvaari' | 'ajil' | 'ma'
+  | 'barilga' | 'hyanalt' | 'habea' | 'ersdel' | 'sankhuu' | 'ashiglalt' | 'tailan';
 
 /**
  * Зангилааны төлөв.
@@ -56,10 +57,14 @@ export type SchemEdge = {
 /* ══════════════════ Топологи ══════════════════ */
 
 /**
- *   мөр 0 — ЗӨВШӨӨРӨХ / ХЯНАХ  (гадны шийдвэр хүлээх цэгүүд)
- *   мөр 1 — ҮНДСЭН УРСГАЛ       (төлөвлөх → барих → санхүүжүүлэх → тайлагнах)
- *   мөр 2 — НӨХЦӨЛ / АЮУЛГҮЙ БАЙДАЛ
- *   мөр 3 — ЭРСДЭЛ
+ * 2026-11-23 (хэрэглэгч: «үйл ажиллагааны схем бүрэн сайжруул») — схем нь системийн БОДИТ урсгал, цэсний нэрээр:
+ * «Төсөл төлөвлөгөө биелэлт»-ийн үе шатууд (ТЭЗҮ → зураг → газар · зөвшөөрөл · сонгон → барилга → хүлээлгэн өгөх)
+ * ба «Миний ажил»-ын ажиллагаанууд (хуваарь, нэмэлт ажил, материал, хяналт, төлбөрийн акт).
+ *
+ *   багана 0  төлөвлөх                     багана 4  барилга угсралт (+ материал, ХАБЭА, эрсдэл)
+ *   багана 1  ТЭЗҮ · зураг төсөл           багана 5  гүйцэтгэлийн хяналт
+ *   багана 2  зөвшөөрөл · сонгон · газар   багана 6  төлбөрийн акт (IPC)
+ *   багана 3  хуваарь · нэмэлт ажил        багана 7  ашиглалт · тайлан
  */
 export const NODES: readonly SchemNode[] = [
   {
@@ -68,24 +73,49 @@ export const NODES: readonly SchemNode[] = [
     get desc() { return tr('Бүс, барилга, инженерийн дэд бүтэц — төслийн эхлэл'); },
   },
   {
-    id: 'zovshoorol', col: 1, row: 0, view: 'zovshoorol', icon: 'shield',
-    get title() { return tr('Зөвшөөрөл'); },
-    get desc() { return tr('Багц бүрийн зөвшөөрлүүд — шатлал нь өгөгдлөөс тодорхойлогдоно'); },
+    id: 'zurag', col: 1, row: 1, view: 'zuragTosol', icon: 'file',
+    get title() { return tr('ТЭЗҮ · Ажлын зураг төсөл'); },
+    get desc() { return tr('ТЭЗҮ ба ажлын зураг төслийн явц — «Зургийн бүртгэл»-ээс'); },
   },
   {
-    id: 'gazar', col: 1, row: 2, view: 'gazar', icon: 'frame',
+    id: 'zovshoorol', col: 2, row: 0, view: 'zovshoorol', icon: 'shield',
+    get title() { return tr('Зөвшөөрлийн явц'); },
+    get desc() { return tr('Багц бүрд шаардлагатай зөвшөөрлүүд — «Зөвшөөрөл оруулах»-аар бүртгэгдэнэ'); },
+  },
+  {
+    id: 'songon', col: 2, row: 1, view: 'songon', icon: 'briefcase',
+    get title() { return tr('Захирамж · Сонгон шалгаруулалт'); },
+    get desc() { return tr('Захирамж гарснаас гүйцэтгэгчтэй гэрээ байгуулах хүртэл'); },
+  },
+  {
+    id: 'gazar', col: 2, row: 2, view: 'gazar', icon: 'frame',
     get title() { return tr('Газар чөлөөлөлт'); },
     get desc() { return tr('Нэгж талбарын төлөв — барилга эхлүүлэх нөхцөл'); },
   },
   {
-    id: 'huvaari', col: 2, row: 1, view: 'huvaari', icon: 'calendar',
-    get title() { return tr('Хуваарь'); },
-    get desc() { return tr('Ажлын эхлэх, дуусах хугацаа — блокийн хэмнэлээр'); },
+    id: 'huvaari', col: 3, row: 1, view: 'huvaari', icon: 'calendar',
+    get title() { return tr('Хуваарь төлөвлөх · батлах'); },
+    get desc() { return tr('Гүйцэтгэгч блок бүрийн хуваарийг төлөвлөж илгээнэ, батлагч батална'); },
   },
   {
-    id: 'barilga', col: 3, row: 1, view: 'pkgProg', icon: 'building',
+    id: 'ajil', col: 3, row: 0, view: 'ajilBatlah', icon: 'plus',
+    get title() { return tr('Нэмэлт ажил батлах'); },
+    get desc() { return tr('Гэрээнд байгаагүй ажлын мөрийг хянаж батлах — батлагдвал хуваарьт орно'); },
+  },
+  {
+    id: 'ma', col: 4, row: 0, view: 'ma', icon: 'listCheck',
+    get title() { return tr('Материал баталгаажуулалт'); },
+    get desc() { return tr('Ажилд орох материалын A/AN/R шийдвэр — батлагдаагүй материалтай ажил эхлэхгүй'); },
+  },
+  {
+    id: 'barilga', col: 4, row: 1, view: 'guitsetgel', icon: 'building',
     get title() { return tr('Барилга угсралт'); },
-    get desc() { return tr('Блокийн биет гүйцэтгэл — «Гүйцэтгэл бөглөх» хуудсаас'); },
+    get desc() { return tr('Блокийн биет гүйцэтгэл — «Гүйцэтгэл бөглөх» хуудсаар бөглөгдөнө'); },
+  },
+  {
+    id: 'habea', col: 4, row: 2, view: 'habea', icon: 'flame',
+    get title() { return tr('ХАБЭА'); },
+    get desc() { return tr('Ажилтан, техник, осол зөрчил'); },
   },
   {
     id: 'ersdel', col: 4, row: 3, view: 'ersdel', icon: 'waves',
@@ -93,44 +123,53 @@ export const NODES: readonly SchemNode[] = [
     get desc() { return tr('Эхлээгүй блок (<1%), байгалийн аюулын нөлөө'); },
   },
   {
-    id: 'hyanalt', col: 4, row: 0, view: 'guitsetgel', icon: 'pen',
+    id: 'hyanalt', col: 5, row: 1, view: 'hyanaltHugatsaa', icon: 'pen',
     get title() { return tr('Гүйцэтгэлийн хяналт'); },
     get desc() { return tr('Гүйцэтгэгч → инженер → багцын ахлах инженер → төлөвлөлтийн инженер → төлөвлөлтийн ахлах инженер → хэлтсийн дарга → газрын дарга'); },
   },
   {
-    id: 'habea', col: 3, row: 2, view: 'habea', icon: 'flame',
-    get title() { return tr('ХАБЭА'); },
-    get desc() { return tr('Ажилтан, техник, осол зөрчил'); },
+    id: 'sankhuu', col: 6, row: 1, view: 'ipc', icon: 'coins',
+    get title() { return tr('Төлбөрийн акт (IPC)'); },
+    get desc() { return tr('Батлагдсан гүйцэтгэлээр төлбөрийн акт үүсгэж олгоно — гэрээ, олгосон санхүүжилт'); },
   },
   {
-    id: 'sankhuu', col: 4, row: 1, view: 'pkgFin', icon: 'calc',
-    get title() { return tr('Санхүүжилт'); },
-    get desc() { return tr('Гэрээ, IPC акт, олгосон санхүүжилт'); },
+    id: 'ashiglalt', col: 7, row: 1, view: 'ashiglalt', icon: 'stamp',
+    get title() { return tr('Ашиглалтад оруулах'); },
+    get desc() { return tr('Хүлээлгэн өгөх, зүгшрүүлэх — барилгыг ашиглалтад оруулна'); },
   },
   {
-    id: 'tailan', col: 5, row: 1, view: 'tailan', icon: 'chart',
+    id: 'tailan', col: 7, row: 2, view: 'tailan', icon: 'chart',
     get title() { return tr('Тайлан'); },
     get desc() { return tr('Нэгтгэсэн үзүүлэлт — төслийн эцсийн баримт'); },
   },
 ];
 
 export const EDGES: readonly SchemEdge[] = [
-  /* Салаа — төлөвлөгөөнөөс зэрэг хоёр урсгал эхэлнэ */
-  { from: 'tolovlolt', to: 'zovshoorol', kind: 'main' },
-  { from: 'tolovlolt', to: 'gazar', kind: 'main' },
-  /* Нийлэлт — хоёулаа бүрдсэний дараа хуваарь утгатай болно */
+  { from: 'tolovlolt', to: 'zurag', kind: 'main' },
+
+  /* Зураг төслөөс зэрэг гурван урсгал: зөвшөөрөл, сонгон шалгаруулалт, газар чөлөөлөлт */
+  { from: 'zurag', to: 'zovshoorol', kind: 'main' },
+  { from: 'zurag', to: 'songon', kind: 'main' },
+  { from: 'zurag', to: 'gazar', kind: 'main' },
+  /* Нийлэлт — гэрээ, зөвшөөрөл, газар бүрдсэний дараа хуваарь утгатай болно */
   { from: 'zovshoorol', to: 'huvaari', kind: 'main' },
+  { from: 'songon', to: 'huvaari', kind: 'main' },
   { from: 'gazar', to: 'huvaari', kind: 'main' },
+  { from: 'songon', to: 'ajil', kind: 'feed' },
+  { from: 'ajil', to: 'huvaari', kind: 'feed' },
   { from: 'huvaari', to: 'barilga', kind: 'main' },
+  { from: 'huvaari', to: 'ma', kind: 'feed' },
+  { from: 'ma', to: 'barilga', kind: 'feed' },
   { from: 'barilga', to: 'hyanalt', kind: 'main' },
-  { from: 'hyanalt', to: 'sankhuu', kind: 'main' },
-  { from: 'sankhuu', to: 'tailan', kind: 'main' },
   { from: 'hyanalt', to: 'barilga', kind: 'back', get label() { return tr('Буцаасан'); } },
+  { from: 'hyanalt', to: 'sankhuu', kind: 'main' },
+  { from: 'sankhuu', to: 'ashiglalt', kind: 'main' },
+  { from: 'ashiglalt', to: 'tailan', kind: 'main' },
   /**
    * ХАЖУУГИЙН ХЭМЖҮҮР — дараалал БИШ, барилгаас САЛБАРЛАСАН хяналт.
    */
   { from: 'barilga', to: 'habea', kind: 'feed' },
-  { from: 'barilga', to: 'ersdel', kind: 'feed' },
+  { from: 'habea', to: 'ersdel', kind: 'feed' },
 ];
 
 export const NODE_BY_ID: Record<SchemId, SchemNode> = Object.fromEntries(
@@ -170,7 +209,7 @@ export function topoOrder(): SchemId[] {
 /* ══════════════════ Байрлал ══════════════════ */
 
 /**
- * 10 зангилаанд layered (Sugiyama) алгоритм нь ~150 мөр код, огтлолцол
+ * Цөөн зангилаанд layered (Sugiyama) алгоритм нь ~150 мөр код, огтлолцол
  * багасгах шат шаардана. Түүнээс гадна зангилаа нэмэх бүрд БҮХ зургийг дахин
  * байрлуулж, хэрэглэгчийн орон зайн ой санамжийг эвднэ («газар чөлөөлөлт
  * доод зүүн буланд байдаг» гэдэг нь суралцсан зүйл).
@@ -178,7 +217,8 @@ export function topoOrder(): SchemId[] {
  * Дараалал нь БИЗНЕСИЙН БАРИМТ — бодож олох зүйл биш. `col`/`row` тогтмол нь
  * diff-д уншигдана, шинэ хүн зургийг кодоос шууд харна.
  */
-export const GEO = { w: 220, h: 140, gapX: 78, gapY: 44, pad: 34 } as const;
+/* 2026-11-23: 8 багана — өргөн дэлгэцэнд (≈1400px) жижгэрэлгүй багтана */
+export const GEO = { w: 196, h: 156, gapX: 46, gapY: 36, pad: 28 } as const;
 
 export type Box = { x: number; y: number; w: number; h: number };
 
@@ -215,7 +255,7 @@ export function layoutOf<T extends string>(
   };
 }
 
-/** «Ерөнхий» схемийн байрлал — 10 карт, гараар зохиосон тор */
+/** «Ерөнхий» схемийн байрлал — гараар зохиосон тор */
 export function layout(nodes: readonly SchemNode[] = NODES): {
   w: number; h: number; box: Record<SchemId, Box>;
 } {
@@ -364,9 +404,21 @@ export const SOURCE_NAME = {
   get zov() { return tr('зөвшөөрөл'); },
   get review() { return tr('гүйцэтгэлийн хяналт'); },
   get bagts() { return tr('багцын жагсаалт'); },
+  get plan() { return tr('төсөл төлөвлөгөө биелэлт'); },
+  get ma() { return tr('материал баталгаажуулалт'); },
+  get approvals() { return tr('батлах хүсэлт'); },
 } as const;
 
 export type SourceKey = keyof typeof SOURCE_NAME;
+
+/** Материал баталгаажуулалтын нэг мөр — схемд хэрэгтэй хэсэг */
+export type MaLite = { pkg: string; verdict: 'A' | 'AN' | 'R' | null; material: string; contractor: string };
+
+/** Хүлээгдэж буй батлах хүсэлт — `pkg` нь багцын нэр («Багц-2») */
+export type Approvals = {
+  huvaari: { pkg: string }[];
+  ajil: { pkg: string; rows: number | null }[];
+};
 
 /** `live.ts` ба `reportData.ts`-ийн хэсгүүд — бүгд ТУСДАА унаж болно */
 export type SchemSources = {
@@ -379,6 +431,12 @@ export type SchemSources = {
   zov: Zov[] | null;
   review: Record<string, unknown>[] | null;
   bagts: BagtsLite[] | null;
+  /** «Төсөл төлөвлөгөө биелэлт»-ийн үе шатны явц (2026-11-23) — алга бол «—» */
+  plan?: PlanLive | null;
+  /** Материал баталгаажуулалтын мөрүүд (хөнгөн) */
+  ma?: MaLite[] | null;
+  /** Хүлээгдэж буй батлах хүсэлтүүд — хуваарь ба нэмэлт ажил */
+  approvals?: Approvals | null;
   /** Унасан эх сурвалжийн НЭР — толгойн зурвасд ил бичигдэнэ */
   failed: string[];
 };
@@ -540,6 +598,10 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
       ],
     };
   }
+  {
+    const zp = phaseOf(src.plan, 'zovshoorol', pkg);
+    if (zp) zovState.metrics.push({ label: tr('Явц'), value: zp.S, kind: 'pct' });
+  }
 
   /* ── Газар чөлөөлөлт ── */
   const clrPct = fin(src.clearance?.pct);
@@ -553,25 +615,79 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
     ],
   };
 
-  /**
-   * ── Хуваарь ──
-   */
+  /* ── «Төсөл төлөвлөгөө биелэлт»-ийн үе шатууд (2026-11-23) ── */
+  const noPlan = src.plan == null ? tr('«Төсөл төлөвлөгөө биелэлт» татагдсангүй') : pkg ? tr('Энэ багцад тэр үе шат алга') : undefined;
+  const ph = (k: Parameters<typeof phaseOf>[1]) => phaseOf(src.plan, k, pkg);
+  const paceMetrics = (v: PhaseVal | null): Metric[] => [
+    { label: tr('Төлөвлөгөөт'), value: v?.P ?? null, kind: 'pct', why: v ? undefined : noPlan },
+    { label: tr('Гүйцэтгэл'), value: v?.S ?? null, kind: 'pct', why: v ? undefined : noPlan },
+  ];
+  const tezu = ph('tezu');
+  const zur = ph('zurag');
+  const zurag: SchemState = {
+    health: worse(paceHealth(tezu), paceHealth(zur)),
+    metrics: [
+      { label: tr('ТЭЗҮ'), value: tezu?.S ?? null, kind: 'pct', why: tezu ? undefined : noPlan },
+      { label: tr('Зураг төсөл'), value: zur?.S ?? null, kind: 'pct', why: zur ? undefined : noPlan },
+      { label: tr('Зураг төсөл · төлөвлөгөөт'), value: zur?.P ?? null, kind: 'pct', why: zur ? undefined : noPlan },
+    ],
+  };
+  const son = ph('songon');
+  const songon: SchemState = { health: paceHealth(son), metrics: paceMetrics(son) };
+  const ash = ph('huleelgeh');
+  const zug = ph('zugshruulelt');
+  const ashiglalt: SchemState = {
+    health: worse(paceHealth(ash), paceHealth(zug)),
+    metrics: [
+      { label: tr('Хүлээлгэн өгөх'), value: ash?.S ?? null, kind: 'pct', why: ash ? undefined : noPlan },
+      { label: tr('Зүгшрүүлэлт'), value: zug?.S ?? null, kind: 'pct', why: zug ? undefined : noPlan },
+    ],
+  };
+
+  /* ── Хуваарь · нэмэлт ажил — хүлээгдэж буй хүсэлт ── */
+  const ap = src.approvals ?? null;
+  const mineAp = <T extends { pkg: string }>(l: T[]): T[] => (pkg ? l.filter((x) => samePkg(x.pkg, pkg)) : l);
+  const huvWait = ap ? mineAp(ap.huvaari).length : null;
+  const bar = ph('barilga');
   const huvaari: SchemState = {
-    health: 'none',
-    metrics: [{
-      label: tr('Хуваарийн хамралт'),
-      value: null,
-      kind: 'pct',
-      why: tr('Хуваарь багц бүрээр ачаалагддаг — схемд амьд тоо гаргахгүй'),
-    }],
+    health: huvWait == null ? 'none' : huvWait > 0 ? 'warn' : 'good',
+    metrics: [
+      { label: tr('Батлуулахаар хүлээгдэж буй'), value: huvWait, kind: 'count', why: ap ? undefined : tr('Үйлчилгээ татагдсангүй') },
+      { label: tr('Барилгын төлөвлөгөөт явц'), value: bar?.P ?? null, kind: 'pct', why: bar ? undefined : noPlan },
+    ],
+  };
+  const ajWait = ap ? mineAp(ap.ajil) : null;
+  const ajil: SchemState = {
+    health: ajWait == null ? 'none' : ajWait.length > 0 ? 'warn' : 'good',
+    metrics: [
+      { label: tr('Хүлээгдэж буй хүсэлт'), value: ajWait ? ajWait.length : null, kind: 'count', why: ap ? undefined : tr('Үйлчилгээ татагдсангүй') },
+      { label: tr('Нэмэгдэх мөр'), value: ajWait ? ajWait.reduce((a, x) => a + (x.rows ?? 0), 0) : null, kind: 'count' },
+    ],
+  };
+
+  /* ── Материал баталгаажуулалт ── */
+  const maRows = src.ma ? (pkg ? src.ma.filter((m) => samePkg(m.pkg, pkg)) : src.ma) : null;
+  const maN = (v: MaLite['verdict']) => (maRows ? maRows.filter((m) => m.verdict === v).length : null);
+  const maR = maN('R');
+  const maNone = maN(null);
+  const ma: SchemState = {
+    health: maRows == null ? 'none' : (maR ?? 0) > 0 ? 'warn' : (maNone ?? 0) > 0 ? 'warn' : maRows.length ? 'good' : 'none',
+    metrics: [
+      { label: tr('Батлагдсан (A/AN)'), value: maRows ? (maN('A') ?? 0) + (maN('AN') ?? 0) : null, kind: 'count', why: src.ma ? undefined : tr('Үйлчилгээ татагдсангүй') },
+      { label: tr('Буцаасан (R)'), value: maR, kind: 'count' },
+      { label: tr('Шийдвэргүй'), value: maNone, kind: 'count' },
+    ],
   };
 
   /* ── Барилга угсралт ── */
-  const bPct = bagtsRow ? fin(bagtsRow.progress) : lost ? null : fin(src.overall?.pct);
+  /* 2026-11-23: «Төсөл төлөвлөгөө биелэлт»-ийн барилга угсралтын мөр — алга бол хуучин эх */
+  const bPlan = phaseOf(src.plan, 'barilga', pkg);
+  const bPct = bPlan?.S ?? (bagtsRow ? fin(bagtsRow.progress) : lost ? null : fin(src.overall?.pct));
   const weightSum = housingWeight(src);
   const barilga: SchemState = {
-    health: grade(bPct, TH.barilgaPct.good, TH.barilgaPct.warn),
+    health: bPlan ? paceHealth(bPlan) : grade(bPct, TH.barilgaPct.good, TH.barilgaPct.warn),
     metrics: [
+      ...(bPlan ? [{ label: tr('Төлөвлөгөөт'), value: bPlan.P, kind: 'pct' as const }] : []),
       { label: tr('Гүйцэтгэл'), value: bPct, kind: 'pct', why: lostWhy },
       {
         label: tr('Тайлагнасан блок'),
@@ -589,7 +705,7 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
       },
     ],
     note: !pkg && weightSum != null && weightSum < 100
-      ? tr('Төсвийн жингийн {0}% л бүртгэгдсэн', weightSum.toFixed(0))
+      ? tr('Төсвийн жингийн {0}% л бүртгэгдсэн', weightSum.toFixed(2))
       : undefined,
   };
 
@@ -661,8 +777,15 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
     ],
   };
 
-  return { tolovlolt, zovshoorol: zovState, gazar, huvaari, barilga, hyanalt, habea, ersdel, sankhuu, tailan };
+  return {
+    tolovlolt, zurag, zovshoorol: zovState, songon, gazar, huvaari, ajil, ma,
+    barilga, hyanalt, habea, ersdel, sankhuu, ashiglalt, tailan,
+  };
 }
+
+/** Хоёр төлөвийн муу нь (мэдээлэлгүй нь хамгийн сүүлд) */
+const RANK: Record<Health, number> = { bad: 3, warn: 2, good: 1, none: 0 };
+export const worse = (a: Health, b: Health): Health => (RANK[a] >= RANK[b] ? a : b);
 
 /**
  * «YYYY-MM-DD» → өнөөдрөөс хойших хоног. Танигдахгүй бол `null`.

@@ -28,16 +28,16 @@ ok(!boardAllowedFor([], false), 'харагдацгүй → самбаргүй')
 ok(!boardAllowedFor(['guitsetgel', 'plan'], false), 'гүйцэтгэгч → самбаргүй');
 /* амьд `munkhbaatar`-ын (Газрын дарга) хадгалсан жагсаалт — урсгалтай бус бүгд */
 ok(boardAllowedFor(['gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'analysis', 'irged', 'tailan', 'tuh',
-  'bagtsHamaaral', 'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem', 'sysdoc', 'zuragTosol', 'tuvshin6'], false), 'амьд «Газрын дарга» → самбартай');
+  'bagtsHamaaral', 'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem', 'zuragTosol', 'tuvshin6'], false), 'амьд «Газрын дарга» → самбартай');
 ok(!boardAllowedFor(['gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'analysis', 'irged', 'tailan', 'tuh',
-  'bagtsHamaaral', 'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem', 'sysdoc'], false), 'шинэ 2 харагдацгүй хуучин жагсаалт → самбаргүй (эрх олгоно)');
+  'bagtsHamaaral', 'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem'], false), 'шинэ 2 харагдацгүй хуучин жагсаалт → самбаргүй (эрх олгоно)');
 ok(!boardAllowedFor(roleAccess('gazriin').views === 'all' ? [] : roleAccess('gazriin').views, false), 'синкгүй нөөц загвар → самбаргүй');
 console.log('✅ самбар: super · урсгалтай бус бүх харагдац (удирдлага) → нээлттэй; дутуу → хаалттай');
 
 const root = readFileSync(new URL('../components/Root.tsx', import.meta.url), 'utf8');
 const ag = readFileSync(new URL('../components/AuthGate.tsx', import.meta.url), 'utf8');
 ok(root.includes("boardAllowed={boardAllowedFor(allowed, status === 'off', roleOf(user?.username))}"), 'Root: самбар `boardAllowedFor`-оор (2026-11-20: админ автоматаар биш)');
-ok(!boardAllowedFor(['sysdoc'], false), '2026-11-20: харагдацгүй админ (зөвхөн эрх удирдлагын хуудас) — самбаргүй');
+ok(!boardAllowedFor(['gdash'], false), '2026-11-20: харагдацгүй админ (зөвхөн тойм) — самбаргүй');
 ok(boardAllowedFor([], false, 'zahiral'), '«Ерөнхий захирал» → самбартай (харагдац хумигдсан ч)');
 ok(boardAllowedFor(roleAccess('zahiral').views === 'all' ? 'all' : roleAccess('zahiral').views, false), '«Ерөнхий захирал»-ын загвар — удирдлагын бүх харагдац');
 ok(!boardAllowedFor([], false, 'gazar'), 'бусад үүрэг харагдацгүй бол самбаргүй');

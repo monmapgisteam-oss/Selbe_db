@@ -99,7 +99,7 @@ assert.equal(epochOf(null), null);
   const rp = computeIpc(rows, NOW, { contract: 200, paidContracted: 0, pct: null });
   assert.ok(rp.facts.includes('гэрээнд эзлэх —'), rp.facts.join(' | '));
   const rq = computeIpc(rows, NOW, { contract: 200, paidContracted: 50, pct: 12.5 });
-  assert.ok(rq.facts.includes('гэрээнд эзлэх 12.5%'), rq.facts.join(' | '));
+  assert.ok(rq.facts.includes('гэрээнд эзлэх 12.50%'), rq.facts.join(' | '));
 
   const r = computeIpc(rows, NOW);
   const t1 = r.tables[0];
@@ -183,14 +183,14 @@ assert.equal(epochOf(null), null);
   assert.equal(s.paid, 530, '«олгосон» = урьдчилгаа + гүйцэтгэл');
 
   const r = computeIpc(rows, NOW);
-  assert.equal(r.value, '530 ₮');
+  assert.equal(r.value, '530.00 ₮');
   assert.equal(r.unit, 'олгосон санхүүжилт');
   assert.deepEqual(r.facts, [
-    '1 гэрээ · 2 төлбөр', 'урьдчилгаа 314 ₮', 'гүйцэтгэл 216 ₮',
-    'гэрээнд эзлэх 588.9% («Олгосон санхүүжилт · IPC» хүснэгтээр)', 'хэмнэлт 10 ₮',
+    '1 гэрээ · 2 төлбөр', 'урьдчилгаа 314.00 ₮', 'гүйцэтгэл 216.00 ₮',
+    'гэрээнд эзлэх 588.89% («Олгосон санхүүжилт · IPC» хүснэгтээр)', 'хэмнэлт 10.00 ₮',
   ]);
   const r2 = computeIpc(rows, NOW, { contract: 1000, paidContracted: 250 });
-  assert.deepEqual(r2.facts.slice(3, 5), ['гэрээлсэн дүн 1,000 ₮ (Cashflow)', 'гэрээнд эзлэх 25.0%'],
+  assert.deepEqual(r2.facts.slice(3, 5), ['гэрээлсэн дүн 1,000.00 ₮ (Cashflow)', 'гэрээнд эзлэх 25.00%'],
     'ref өгвөл гэрээ ба хувь Cashflow CONTRACTED-оос');
   /* Урьдчилгаа мөрд `ipc_dugaar` null — «IPC-00» гэж БУРУУ дугаарлахгүй */
   assert.equal(r.issues.length, 0, 'бүх мөр эрүүл — анхааруулга алга');

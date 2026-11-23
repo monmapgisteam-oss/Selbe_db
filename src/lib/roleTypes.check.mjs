@@ -84,7 +84,7 @@ console.log('✅ cleanTpl — cap:* · chanar:* · flow:* · scope хаягда�
   assert.equal(a.home, 'plan');
   assert.deepEqual(Object.keys(a).sort(), ['docs', 'home', 'views']);
   /* 2026-11-20: super загвараа дагана — анхдагч нь эрх удирдлагын лавлах л (ажлын харагдац бусдын адил) */
-  assert.deepEqual(roleAccess('super').views, ['sysdoc'], 'super-ийн анхдагч загвар — зөвхөн эрх удирдлагын хуудас');
+  assert.deepEqual(roleAccess('super').views, ['gdash'], 'super-ийн анхдагч загвар — зөвхөн тойм (2026-11-23: «Системийн баримт» хасагдсан)');
   for (const r of TYPE_ORDER) {
     const t = tplOf(r);
     assert.ok(t.on.every((id) => /^view:|^docs$|^admin$|^huvaari:(all|own)$/.test(id)), `${r}: анхдагч загварт харахаас өөр id байна`);

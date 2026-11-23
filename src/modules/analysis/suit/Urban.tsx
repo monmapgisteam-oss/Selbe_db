@@ -111,7 +111,7 @@ export function CategoryPie({
               {c.score == null ? '—' : Math.round(c.score)}
             </b>
             {' · '}
-            {c.share.toFixed(0)}%
+            {nf(c.share, 2)}%
           </>
         ),
       }))}
@@ -171,7 +171,7 @@ export function IndicatorPicker({
                 >
                   {/* FAR/BCR нь дангаараа (богино нэр), бусад нь бүтэн нэршлээрээ */}
                   <span className="nm">{i.byType ? i.short : i.name}</span>
-                  <span className="wt">{((i.weight / totalW) * 100).toFixed(0)}%</span>
+                  <span className="wt">{nf((i.weight / totalW) * 100, 2)}%</span>
                   <span className="cnt">{total ? `${pass}/${total}` : '—'}</span>
                   <span className="bar">{total > 0 && <i style={{ width: `${pct}%`, background: scoreTone(pct) }} />}</span>
                 </button>
@@ -184,7 +184,7 @@ export function IndicatorPicker({
       <div className={s.indNote}>
         <div className={s.wReq}>
           <b>{tr('Норм:')}</b> {normLine(ind)}
-          <span className="wt">{tr('жин')} {((ind.weight / totalW) * 100).toFixed(0)}%</span>
+          <span className="wt">{tr('жин')} {nf((ind.weight / totalW) * 100, 2)}%</span>
         </div>
         <div className={s.wSrc}>{ind.norm}</div>
       </div>
@@ -241,7 +241,7 @@ export function Weights({
           <div key={i.id} className={s.wRow} style={{ opacity: i.weight === 0 ? 0.45 : 1 }}>
             <div className={s.wTop}>
               <span className="nm">{i.name}</span>
-              <span className="pct">{((i.weight / totalW) * 100).toFixed(0)}%</span>
+              <span className="pct">{nf((i.weight / totalW) * 100, 2)}%</span>
             </div>
             <input
               type="range" className={s.wSlider} min={0} max={40} step={1}
@@ -385,7 +385,7 @@ export function Parking({
       <div className={s.parkHead}>
         {/* envhub: индикаторын том тоо акцентаар будагдахгүй — үндсэн бэхээрээ */}
         <div className={s.parkPct}>
-          {pct == null ? '—' : Math.round(pct)}<i>%</i>
+          {pct == null ? '—' : nf(pct, 2)}<i>%</i>
         </div>
         <div className={s.parkHeadTxt}>
           <b>{tr('Хэрэгцээ хангасан хувь')}</b>
@@ -403,7 +403,7 @@ export function Parking({
       <Formula>
         {tr('Хэрэгцээ =')} {needExpr} = <b>{nf(need)}</b> {tr('зогсоол')}<br />
         {tr('Хэрэгцээтэй бүсэд төлөвлөсөн =')} {nf(il)} {tr('ил +')} {nf(dald)} {tr('далд =')} <b>{nf(supply)}</b> {tr('зогсоол')}<br />
-        {tr('Хангалт =')} {nf(supply)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${Math.round(pct)}%`}</b>
+        {tr('Хангалт =')} {nf(supply)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${nf(pct, 2)}%`}</b>
       </Formula>
 
       <div className={s.finSummary}>
@@ -541,7 +541,7 @@ export function Green({
       <div className={s.parkHead}>
         {/* envhub: индикаторын том тоо акцентаар будагдахгүй — үндсэн бэхээрээ */}
         <div className={s.parkPct}>
-          {pct == null ? '—' : Math.round(pct)}<i>%</i>
+          {pct == null ? '—' : nf(pct, 2)}<i>%</i>
         </div>
         <div className={s.parkHeadTxt}>
           <b>{buffer ? tr('Ногоон байгууламжийн хүртээмж') : tr('Хэрэгцээ хангасан хувь')}</b>
@@ -564,13 +564,13 @@ export function Green({
       <Formula>
         {buffer ? tr('Нийт') : tr('Хэрэгцээ')} = {needExpr} = <b>{nf(need)}</b> {unit}<br />
         {buffer ? tr('Хамрагдсан ({0} м дотор)', green.radius) : tr('Байгаа')} = <b>{nf(haveNeeded)}</b> {unit}<br />
-        {tr('Хангалт =')} {nf(haveNeeded)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${Math.round(pct)}%`}</b>
+        {tr('Хангалт =')} {nf(haveNeeded)} ÷ {nf(need)} × 100 = <b>{pct == null ? '—' : `${nf(pct, 2)}%`}</b>
       </Formula>
 
       <div className={s.finSummary}>
         <div>
           <span>{tr('Ногоон эзлэх хувь (төсөл)')}</span>
-          <b>{sharePct == null ? '—' : `${nf(sharePct, 1)}%`}</b>
+          <b>{sharePct == null ? '—' : `${nf(sharePct, 2)}%`}</b>
         </div>
         <div>
           <span>{tr('Ногоон / нийт талбай')}</span>

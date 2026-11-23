@@ -234,15 +234,15 @@ console.log('\n8. Зурагдах (SSR)');
   console.log('\n11. Хувьд ороогүй олголт — тусад нь нэрлэнэ');
   ok('m.paid.other = 300; KPI-д бичигдэнэ', () => {
     assert.equal(m.paid.other, 300);
-    assert.ok(html.includes('гэрээлсэн багцаас гадуур олгосон 300 ₮ (хувьд ороогүй)'));
+    assert.ok(html.includes('гэрээлсэн багцаас гадуур олгосон 300.00 ₮ (хувьд ороогүй)'));
   });
 
   console.log('\n12. Хянагдаж буй IPC — AUTO, олгоогүй');
-  ok('БАГЦ1: 1 акт · 500 ₮ · 2026-09-09; олголтын тоо, огноо хөдлөхгүй', () => {
+  ok('БАГЦ1: 1 акт · 500.00 ₮ · 2026-09-09; олголтын тоо, огноо хөдлөхгүй', () => {
     assert.deepEqual(h1.ipc.review, { count: 1, une: 500, oldest: '2026-09-09', latest: '2026-09-09' });
     assert.equal(h1.ipc.lastPaidDate, '2026-08-10');
     assert.equal(m.paid.ipcCount, 2);
-    assert.ok(html.includes('1 акт · 500 ₮'));
+    assert.ok(html.includes('1 акт · 500.00 ₮'));
   });
 
   console.log('\n13. Ачаалж байхад «…», дууссан бол «—»');
@@ -264,15 +264,15 @@ console.log('\n8. Зурагдах (SSR)');
   });
 
   console.log('\n15. Хуваарь < 95% хамарсан — гүйцэтгэгчийн хуваариар ДҮГНЭХГҮЙ');
-  ok('БАГЦ1: хамралт 70 → төлөв гэрээний төлөвлөгөөгөөр, SPI (гүйцэтгэгч) «—», hero-д «хуваарь 70.0% хамарсан»', () => {
+  ok('БАГЦ1: хамралт 70 → төлөв гэрээний төлөвлөгөөгөөр, SPI (гүйцэтгэгч) «—», hero-д «хуваарь 70.00% хамарсан»', () => {
     assert.equal(h1.planCoverage, 70);
     assert.notEqual(h1.statusBasis, 'contractor', 'дутуу хуваарьтай гүйцэтгэгчийн зөрүүгөөр төлөв тогтоохгүй');
     assert.equal(h1.ev.spiContractor, null, 'хэт бага төлөвлөгөөнд хуваасан SPI «түрүүлсэн» мэт гарахгүй');
     near(h1.planContractor, 15, 'төлөвлөгөөний ТОО хэвээр харагдана');
     assert.equal(m.hero.planCoverage, 70);
-    assert.ok(html.includes('хуваарь 70.0% хамарсан'), 'hero — гүйцэтгэгчийн төлөвлөгөөний хажууд хамралт');
+    assert.ok(html.includes('хуваарь 70.00% хамарсан'), 'hero — гүйцэтгэгчийн төлөвлөгөөний хажууд хамралт');
     const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
-    assert.ok(hd.includes('хуваарь 70.0% хамарсан — хуваарь дутуу — дүгнэхгүй'), 'дэлгэрэнгүй — дүгнэхгүй гэж ил');
+    assert.ok(hd.includes('хуваарь 70.00% хамарсан — хуваарь дутуу — дүгнэхгүй'), 'дэлгэрэнгүй — дүгнэхгүй гэж ил');
   });
   ok('хамралт 100% — SPI (гүйцэтгэгч) бодогдоно, hero-д тэмдэглэлгүй', () => {
     const full = [{ label: '2026-07', pct: 10, vol: null }, { label: '2026-08', pct: 41, vol: null }, { label: '2026-12', pct: 100, vol: null }];
@@ -322,7 +322,7 @@ console.log('\n17. Гэрээгүй мөр — EV/PV бодохгүй; нэгд�
     const b = mj.rows.find((x) => x.p.pkgKey === 'БАГЦ71' && x.p.group !== 'design');
     assert.deepEqual([a.ipc.contractTotal, a.ipc.paid, b.ipc.contractTotal, b.ipc.paid], [1000, 60, 500, 40]);
     const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: a, m: mj, onBack: noop, onOpen: noop }));
-    assert.ok(hd.includes('Нэгдсэн гэрээ БАГЦ-1,7.1 — нийт 1,500 ₮'), 'нэгдсэн гэрээ ил');
+    assert.ok(hd.includes('Нэгдсэн гэрээ БАГЦ-1,7.1 — нийт 1,500.00 ₮'), 'нэгдсэн гэрээ ил');
   });
   const when = Date.UTC(2027, 8, 30);
   const hc = fin.contracts.map((c) => (c.objectid === 11 ? { ...c, ashiglalt_ognoo: when, guits_duusah: Date.UTC(2027, 3, 24) } : c));

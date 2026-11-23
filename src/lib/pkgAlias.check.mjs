@@ -31,16 +31,19 @@ assert.equal(g[1].amount, 0.5e9);
 /* ── HO → Cashflow → газрын зураг: нэг хүснэгт ── */
 assert.equal(hoPkgKey('БАГЦ81'), 'БАГЦ8');
 assert.equal(hoPkgKey('БАГЦ1'), 'БАГЦ1');
-for (const cf of Object.values(HO_PKG_ALIAS)) assert.ok(MAP_PKG_ALIAS[cf], `${cf}: газрын зургийн холбоосгүй`);
+/* 2026-11-23: газрын зургийн давхаргын код гэрээний нэртэй ИЖИЛ болсон — газрын зургийн хөрвүүлэх дүрэм хоосон */
+assert.deepEqual(MAP_PKG_ALIAS, {}, 'газрын зургийн багцын код ба гэрээний багц ижил');
+assert.ok(Object.values(HO_PKG_ALIAS).every((cf) => !(cf in MAP_PKG_ALIAS)));
 
-assert.equal(finPkgKey('БАГЦ81'), 'БАГЦ82', 'HO «Багц-8.1» → «Багц 8.2»');
-assert.equal(finPkgKey('БАГЦ8'), 'БАГЦ82', 'Cashflow «Багц 8» → «Багц 8.2»');
-assert.equal(finPkgKey('БАГЦ71'), 'БАГЦ7');
-assert.equal(finPkgKey('БАГЦ7'), 'БАГЦ7');
+assert.equal(finPkgKey('БАГЦ81'), 'БАГЦ8', 'HO «Багц-8.1» → «Багц-8»');
+assert.equal(finPkgKey('БАГЦ8'), 'БАГЦ8', 'Cashflow «Багц 8» өөрөө');
+assert.equal(finPkgKey('БАГЦ71'), 'БАГЦ71', '«Багц 7.1» өөрөө');
 assert.equal(finPkgKey('БАГЦ1'), 'БАГЦ1', 'холбоосгүй → өөрөө');
-assert.equal(FIN_PKG_ALIAS['БАГЦ81'].label, MAP_PKG_ALIAS['БАГЦ8'].label);
-/* 2026-11-04: нэр «Багц 7.1» түлхүүрт нөлөөлөхгүй — түлхүүр нь өөрөө каноник (`pkgKeyOf(key) === key`), нэр чөлөөтэй */
-assert.equal(MAP_PKG_ALIAS['БАГЦ71'].label, 'Багц-7.1');
+{
+  const { PKG_BY_BAGTS } = await import('./services.ts');
+  assert.ok(PKG_BY_BAGTS['БАГЦ71']?.length && PKG_BY_BAGTS['БАГЦ8']?.length, 'газрын зургийн давхарга БАГЦ71, БАГЦ8 кодтой');
+  assert.ok(!PKG_BY_BAGTS['БАГЦ7'] && !PKG_BY_BAGTS['БАГЦ82'], 'хуучин код БАГЦ7, БАГЦ82 үлдээгүй');
+}
 for (const [src, a] of Object.entries(FIN_PKG_ALIAS)) {
   assert.equal(pkgKeyOf(a.key), a.key, `${src} → ${a.key}: алиасын түлхүүр каноник биш`);
   assert.notEqual(a.key, src, `${src}: өөртөө холбосон`);

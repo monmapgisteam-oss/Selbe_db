@@ -46,7 +46,7 @@ console.log('\n3. Зургийн бүтэц');
   const map = dataMapLines(ALL).join('\n');
   ok('гарчигууд бий', map.includes('ӨГӨГДЛИЙН ЗУРАГ') && map.includes('АЛЬ ТООГ АЛЬ ЭХЭЭС'));
   ok('түлхүүрийн дүрэм бий', map.includes('ДИАПАЗОН') && map.includes('БАРИЛГА = багц + блок'));
-  ok('санхүүгийн холбоос бий', map.includes('Багц 8.2'));
+  ok('санхүүгийн холбоос бий', map.includes('Багц-8.1') && map.includes('БАГЦ71'));
   const lines = map.split('\n');
   const from = lines.findIndex((l) => l.startsWith('### ') && l.includes('урсгал'));
   const rest = lines.slice(from + 1);
@@ -63,7 +63,8 @@ console.log('\n4. Системийн заавар');
   ok('зураг ба жорууд зааварт орсон', a.includes('## ӨГӨГДЛИЙН ЗУРАГ') && a.includes('## ЖОРУУД'));
   ok('хоёр дуудалт ЯГ ижил (кэш эвдрэхгүй)', a === b);
   /* 2026-11-04: 5 шинэ харагдац (газар чөлөөлөлтийн огноо, захирамж, сонгон, зөвшөөрөл, ашиглалт) нэрээрээ орсон */
-  ok(`хэмжээ хязгаарт (${a.length} < 56000)`, a.length < 56000);
+  /* 2026-11-23: «Төлбөрийн акт (IPC)» тусдаа цэс болж нэмэгдсэн — хязгаар 56500 */
+  ok(`хэмжээ хязгаарт (${a.length} < 56500)`, a.length < 56500);
   const plan = buildSystemPrompt(['plan']);
   ok('эрх багатай заавар богино', plan.length < a.length);
 }

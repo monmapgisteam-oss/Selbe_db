@@ -23,6 +23,7 @@ const LOAD = {
   dedButets: () => import('@/modules/DedButets').then((m) => m.DedButets),
   analysis: () => import('@/modules/analysis/Suitability').then((m) => m.Suitability),
   finance: () => import('@/modules/Finance').then((m) => m.Finance),
+  ipc: () => import('@/modules/Finance').then((m) => m.Finance),
   guitsetgel: () => import('@/modules/Guitsetgel').then((m) => m.Guitsetgel),
   hyanaltHugatsaa: () => import('@/modules/Guitsetgel').then((m) => m.HyanaltHugatsaa),
   zovshoorol: () => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol),
@@ -39,7 +40,6 @@ const LOAD = {
   huvaariBatlah: () => import('@/modules/HuvaariBatlah').then((m) => m.HuvaariBatlah),
   ajilBatlah: () => import('@/modules/AjilBatlah').then((m) => m.AjilBatlah),
   schem: () => import('@/modules/Schem').then((m) => m.Schem),
-  sysdoc: () => import('@/modules/SysDoc').then((m) => m.default),
   ma: () => import('@/modules/Ma').then((m) => m.Ma),
 };
 /* Шинэ харагдацын ачаалагчийг мартвал энд `tsc` унана (`satisfies` БИШ — тэр нь `.then`-ий төрлийн дүгнэлтийг эвддэг) */
@@ -85,7 +85,6 @@ const Huvaari = dynamic(() => LOAD.huvaari(), { ssr: false, loading: ViewLoading
 const HuvaariBatlah = dynamic(() => LOAD.huvaariBatlah(), { ssr: false, loading: ViewLoading });
 const AjilBatlah = dynamic(() => LOAD.ajilBatlah(), { ssr: false, loading: ViewLoading });
 const Schem = dynamic(() => LOAD.schem(), { ssr: false, loading: ViewLoading });
-const SysDoc = dynamic(() => LOAD.sysdoc(), { ssr: false, loading: ViewLoading });
 const Ma = dynamic(() => LOAD.ma(), { ssr: false, loading: ViewLoading });
 
 /**
@@ -157,7 +156,8 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   ashiglalt: () => <Ashiglalt />,
   tuvshin6: () => <LevelPlan />,
   gazar: ({ dim, setDim }) => <Gazar dim={dim} setDim={setDim} />,
-  finance: () => <Finance />,
+  finance: () => <Finance only="proj" />,
+  ipc: () => <Finance only="ipc" />,
   habea: ({ dim, setDim }) => <Habea dim={dim} setDim={setDim} />,
   irged: ({ dim, setDim }) => <Irged dim={dim} setDim={setDim} />,
   iot: ({ dim, setDim }) => <Iot dim={dim} setDim={setDim} />,
@@ -168,7 +168,6 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   hyanaltHugatsaa: () => <HyanaltHugatsaa />,
   ma: () => <Ma />,
   schem: ({ setView, navScope }) => <Schem setView={setView} navScope={navScope} />,
-  sysdoc: ({ setView, navScope }) => <SysDoc setView={setView} navScope={navScope} />,
   analysis: ({ dim, setDim }) => <Suitability dim={dim} setDim={setDim} />,
 };
 

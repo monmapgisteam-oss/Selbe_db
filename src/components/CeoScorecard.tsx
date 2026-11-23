@@ -9,7 +9,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { Icon } from '@/components/Icon';
 import { useTip } from '@/components/ui';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { num, mnt } from '@/lib/format';
+import { num, mnt, pct, PCT_DEC } from '@/lib/format';
 import { roundPctsTo100 } from '@/lib/chartStyle';
 import { LEVEL_TONE, levelLabel, type Level } from '@/lib/kpiLevels';
 import type { ViewKey } from '@/lib/services';
@@ -62,11 +62,11 @@ function StatusPanel({
   onStatus: (st: WorkStatus) => void;
 }) {
   const total = STATUSES.reduce((acc, st) => acc + counts[st], 0);
-  const pcts = roundPctsTo100(STATUSES.map((st) => counts[st]), total);
+  const pcts = roundPctsTo100(STATUSES.map((st) => counts[st]), total, PCT_DEC);
   const pctOf = (st: WorkStatus): string => {
     if (!total) return '—';
     const p = pcts[STATUSES.indexOf(st)];
-    return counts[st] > 0 && p === 0 ? '<1%' : `${num(p)}%`;
+    return counts[st] > 0 && p === 0 ? '<0.01%' : pct(p);
   };
   const stOn = (st: WorkStatus) => selected.includes(st);
   const faded = (st: WorkStatus) => selected.length > 0 && !stOn(st);

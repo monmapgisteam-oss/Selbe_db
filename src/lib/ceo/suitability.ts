@@ -224,7 +224,7 @@ export function buildSuitabilityKpi(c: SuitComputed, failed: readonly string[] =
       cell(z.zone),
       cell(z.type),
       cell(z.score == null ? null : Math.round(z.score), 'count'),
-      cell(z.coverage == null ? null : Math.round(z.coverage * 100), 'count'),
+      cell(z.coverage == null ? null : z.coverage * 100, 'pct'), // 2026-11-23: хувь 2 аравтын оронтой
       cell(z.fails, 'count'),
     ]),
   );
@@ -243,7 +243,7 @@ export function buildSuitabilityKpi(c: SuitComputed, failed: readonly string[] =
     facts.push(tr('{0} зөрчил', c.pairs));
     if (c.avgScore != null) facts.push(`${tr('дундаж оноо')} ${num(c.avgScore, 0)}`);
     if (c.lowCoverage > 0) {
-      facts.push(tr('{0} бүсийн өгөгдөл хангалтгүй (хэмжсэн жин < {1}%)', c.lowCoverage, Math.round(MIN_MEASURED_SHARE * 100)));
+      facts.push(tr('{0} бүсийн өгөгдөл хангалтгүй (хэмжсэн жин < {1}%)', c.lowCoverage, num(MIN_MEASURED_SHARE * 100, 2)));
     }
     if (c.assumedCount > 0) facts.push(tr('{0} үзүүлэлт батлагдаагүй эх өгөгдөлтэй', c.assumedCount));
   }

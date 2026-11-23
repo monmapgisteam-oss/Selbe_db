@@ -637,7 +637,8 @@ export function MonitorDetail({ b, q }: { b: PickedBuilding | null; q: Async<Tas
                     key: `${i}:${h.name}`,
                     label: h.name,
                     value: h.progress ?? null,
-                    display: h.progress == null ? pct(0, 0) : h.progress < 100 && h.progress >= 99.5 ? pct(99, 0) : pct(h.progress, 0),
+                    // 2026-11-23: хувь 2 аравтын оронтой — дуусаагүй ажил «100.00%» болж бөөрөнхийлөгдөхгүй (99.99% дээд)
+                    display: h.progress == null ? pct(0) : h.progress < 100 && h.progress >= 99.995 ? pct(99.99) : pct(h.progress),
                   }))}
                 />
               </Section>

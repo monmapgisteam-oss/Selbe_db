@@ -52,9 +52,9 @@ const sqlStr = (v: string) => `'${v.replace(/'/g, "''")}'`;
 const nameOf = (n: PlanNode): string => String(n.row?.ajil_uilchilgee ?? '');
 
 const TITLE: Record<PageKey, () => string> = {
-  zahiramj: () => tr('Захирамж'),
+  zahiramj: () => tr('Захирамж төлөвлөх'),
   songon: () => tr('Сонгон шалгаруулалт'),
-  zovshoorolTtb: () => tr('Зөвшөөрөл (төлөвлөгөө)'),
+  zovshoorolTtb: () => tr('Зөвшөөрөл оруулах'),
   ashiglalt: () => tr('Ашиглалтад оруулах'),
 };
 const SUB: Record<PageKey, () => string> = {

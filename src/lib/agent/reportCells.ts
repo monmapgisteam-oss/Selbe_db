@@ -92,12 +92,13 @@ export function parseCell(raw: string): Parsed | null {
   return { kind: 'text', value: s, dec: 0, text: s };
 }
 
-/** Тоон баганын Excel формат */
+/** Тоон баганын Excel формат — 2026-11-23: хувь ба мөнгө ҮРГЭЛЖ 2 аравтын оронтой (утга нь тоо хэвээр) */
 function numFmtOf(kind: ColKind, unit: string | undefined, dec: number): string | undefined {
-  if (kind === 'pct') return dec >= 2 ? '0.00%' : dec === 1 ? '0.0%' : '0%';
+  if (kind === 'pct') return '0.00%';
+  if (kind === 'money') return '#,##0.00';
   const base = dec > 0 ? '#,##0.###' : '#,##0';
   if (kind === 'qty' && unit) return `${base} "${unit}"`;
-  if (kind === 'money' || kind === 'num') return base;
+  if (kind === 'num') return base;
   return undefined;
 }
 

@@ -67,6 +67,8 @@ const AUTO_RE = /^(objectid|fid|globalid|creationdate|creator|editdate|editor|cr
 const DATE_RE = /ognoo|огноо|ehleh|duusah|эхлэх|дуусах|date/i;
 /** 0–1 бутархайгаар хадгалагддаг талбарууд (хувийн жин · гүйцэтгэл · биелэлт) */
 const PCT_RE = /хувь|хувийн_*жин|гүйцэтгэл|гүйцтэгэл|биелэлт|биеэлэлт/i;
+/** Мөнгөн дүнгийн талбар (мөнгөн дүн · нэгж өртөг · үнэ) — 2026-11-23: дэлгэцэд ҮРГЭЛЖ 2 аравтын оронтой */
+const MONEY_RE = /мөнгө|өртөг|үнэ|(^|_)(dun|une)(_|$)/i;
 /** Блокийн талбарын нэр (`resolveSchema`-ийн `f<цуваа>_<дугаар>_`) */
 const BLOCK_RE = /^f(\d+)_(\d+)_/i;
 /** Өргөний түлхүүр — ASCII (CSS хувьсагчийн нэр), талбарын нэрээс тогтвортой */
@@ -168,12 +170,13 @@ export function extraVal(col: ExtraCol, r: SheetRow): { text: string; title?: st
     case "num": {
       const n = numLoose(v);
       if (n == null) return { text: "" };
+      if (MONEY_RE.test(col.field)) return { text: n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), title: String(n) };
       return { text: n.toLocaleString("en-US", { maximumFractionDigits: Math.abs(n) >= 1 ? 2 : 6 }), title: String(n) };
     }
     case "pct": {
       const n = numLoose(v);
       if (n == null) return { text: "" };
-      return { text: (n * 100).toFixed(1).replace(/\.0+$/, "") + "%", title: `${n}` };
+      return { text: (n * 100).toFixed(2) + "%", title: `${n}` }; // 2026-11-23: хувь ҮРГЭЛЖ 2 аравтын оронтой
     }
     case "day": {
       const ms = normDayMs(numLoose(v));

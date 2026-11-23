@@ -105,7 +105,7 @@ const I = row({ objectid: 8, ajil_uilchilgee: 'I өнөөдөр', ho_dun_geree: 
   assert.equal(k.level, 'bad');
   assert.equal(k.asOf, null);
   assert.deepEqual(k.failedSources, []);
-  assert.ok(k.facts.some((f) => f.includes('681 ₮')), `Σ төсөв (N-ийн 300 орохгүй): ${k.facts}`);
+  assert.ok(k.facts.some((f) => f.includes('681.00 ₮')), `Σ төсөв (N-ийн 300 орохгүй): ${k.facts}`);
   assert.ok(k.facts.some((f) => f.startsWith('2 ')), `эхэлсэн 2 (A, H; I = яг одоо, өнгөрөөгүй): ${k.facts}`);
   assert.ok(k.facts.some((f) => f.includes('2 дутуу')), `дутуу 2 (G, E2): ${k.facts}`);
   assert.ok(k.facts.some((f) => f.includes('1 бүртгэлийн зөрүү')), `тайлбар ↔ дүн зөрүү 1 (N): ${k.facts}`);
@@ -169,7 +169,7 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
   const k = computeUncontracted([B, E, X, Y, Z], NOW);
   assert.equal(k.value, '2', 'B ба E гэрээгүй');
   assert.equal(k.level, 'warn', 'X эхэлсэн ч хасагдсан → bad биш');
-  assert.ok(k.facts.some((f) => f.includes('560 ₮') && !f.includes('20,560')), `Σ төсөвт X орохгүй: ${k.facts}`);
+  assert.ok(k.facts.some((f) => f.includes('560.00 ₮') && !f.includes('20,560')), `Σ төсөвт X орохгүй: ${k.facts}`);
   assert.ok(k.facts.some((f) => f.startsWith('0 ')), `эхэлсэн 0: ${k.facts}`);
   assert.ok(k.facts.some((f) => f.includes('0 дутуу')), `дутуу 0 (E нь гэрээгүй болов): ${k.facts}`);
   assert.ok(k.facts.some((f) => f.includes('3 хасагдсан')), `хасагдсан 3 (X, Y, Z): ${k.facts}`);
@@ -178,7 +178,7 @@ const NOTE_76 = 'Төслийн хөрөнгө оруулалт руу оруу�
   const kw = computeUncontracted([B, X, W], NOW);
   assert.equal(kw.value, '2', 'B + W гэрээгүй — «НӨАТ хасах дүн» хасагдсан биш');
   assert.equal(kw.level, 'bad', 'W эхэлсэн → bad');
-  assert.ok(kw.facts.some((f) => f.includes('507 ₮')), `Σ = 500 + 7: ${kw.facts}`);
+  assert.ok(kw.facts.some((f) => f.includes('507.00 ₮')), `Σ = 500 + 7: ${kw.facts}`);
   assert.ok(kw.facts.some((f) => f.includes('1 хасагдсан')), `хасагдсан зөвхөн X: ${kw.facts}`);
   assert.deepEqual(kw.tables[0].rows.map((r) => r[0].v), ['W НӨАТ', 'B ажил']);
 

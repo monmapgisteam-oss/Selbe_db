@@ -118,7 +118,7 @@ const ROWS = [
 
   // Баримтууд — зөвхөн тоо
   assert.deepEqual(k.facts, [
-    '+16 хүн өмнөх тайлангаас (+1.1%)',
+    '+16 хүн өмнөх тайлангаас (+1.10%)',
     'техник 72',
     'хүн цаг 11,776 (ажилтан × 8 цаг, тооцоолсон)',
     '2026-09-03 · өмнөх 2026-09-02',
@@ -231,7 +231,7 @@ const ROWS = [
   assert.ok(!k2.facts.some((f) => f.startsWith('хүн цаг')));
   assert.equal(k2.detail.technik, null, 'бүх Tehnik_ хоосон → null');
   assert.equal(k2.detail.workersLatest, 10, 'ажилтан тусдаа тугаар — null биш');
-  assert.deepEqual(k2.facts, ['0 хүн өмнөх тайлангаас (0.0%)', '2026-09-03 · өмнөх 2026-09-02']);
+  assert.deepEqual(k2.facts, ['0 хүн өмнөх тайлангаас (0.00%)', '2026-09-03 · өмнөх 2026-09-02']);
   assert.equal(k2.tables[1].rows[0][2].v, null, 'трендэд техник «—»');
   // Tehnik_ 0 гэж БИЧИГДСЭН бол 0 (хэмжсэн тэг) — null биш
   const k3 = computeWorkforce([row(D3, { MK: { w: 10, t: 0 } }), row(D2, { MK: { w: 10, t: 0 } })], ub(2026, 9, 4));
@@ -276,7 +276,7 @@ const ROWS = [
   ], ub(2026, 9, 4));
   assert.equal(drop.detail.deltaPct, -40);
   assert.equal(drop.level, 'bad');
-  assert.equal(drop.facts[0], '-40 хүн өмнөх тайлангаас (-40.0%)');
+  assert.equal(drop.facts[0], '-40 хүн өмнөх тайлангаас (-40.00%)');
   assert.equal(drop.issues.length, 1);
   assert.equal(drop.issues[0].text, 'Монкон констракшн ХХК — 100 → 60 хүн');
 

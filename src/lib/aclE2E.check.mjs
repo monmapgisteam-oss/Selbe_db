@@ -483,7 +483,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     eq(P.roleOf(u), 'super', `${tag} ${w}: roleOf super`);
     /* 2026-11-20: super олгоход одоогийн харагдац хэвээр + эрх удирдлагын хуудас; «бүгд» биш, ажлын эрх нэмэгдэхгүй */
     const v = P.resolveAccess(u).views;
-    ok(Array.isArray(v) && v.includes('sysdoc') && RT.roleAccess('gazar').views.every((x) => v.includes(x)), `${tag} ${w}: хуучин харагдац + эрх удирдлагын хуудас (${v})`);
+    ok(Array.isArray(v) && v.includes('gdash') && RT.roleAccess('gazar').views.every((x) => v.includes(x)), `${tag} ${w}: хуучин харагдац + эрх удирдлагын хуудас (${v})`);
     ok(P.listUsers().some((x) => x.username.toLowerCase() === u && x.role === 'super' && Array.isArray(x.views) && !x.overridden), `${tag} ${w}: самбарт super мөр`);
     ok(!CAPS.capsOf(u).includes('finEdit'), `${tag} ${w}: super ажлын эрхийг автоматаар авахгүй`);
   });
@@ -942,7 +942,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await roundTrip();
   eq(SV.tableSuperUsers(), [], `${tag}: super мөргүй хүснэгт`);
   eq(SV.roleForUser(boot), 'super', `${tag}: анхны админ super`);
-  ok(P.listUsers().some((x) => x.username === boot && x.role === 'super' && Array.isArray(x.views) && x.views.includes('sysdoc') && !x.overridden), `${tag}: анхны админ самбарт (синтетик мөр)`);
+  ok(P.listUsers().some((x) => x.username === boot && x.role === 'super' && Array.isArray(x.views) && x.views.includes('gdash') && !x.overridden), `${tag}: анхны админ самбарт (синтетик мөр)`);
   const B = mkUser();
   WHO12.setCurrentUser(boot);
   let res = await RTA.applyType(B, 'super'); await settle();

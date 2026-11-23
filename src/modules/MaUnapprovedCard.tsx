@@ -15,7 +15,8 @@ import { num } from '@/lib/format';
 import { loadUnapproved, type UnPkg, type UnWork } from '@/lib/maUnapproved';
 import s from './maUnapproved.module.css';
 
-const pp = (v: number): string => (v >= 0.05 ? num(v, 1) : v > 0 ? '<0.1' : '0');
+/** Нэгж хувь — 2026-11-23: хувь ҮРГЭЛЖ 2 аравтын оронтой (0.005-аас бага эерэг утга «<0.01») */
+const pp = (v: number): string => (v >= 0.005 ? num(v, 2) : v > 0 ? '<0.01' : num(0, 2));
 const vol = (v: number | null): string => (v == null ? '—' : num(v, v >= 100 ? 0 : 2));
 const stateLabel = (st: UnWork['state']): string => (st === 'rejected' ? tr('Буцаасан') : tr('Шийдвэр хүлээж буй'));
 
@@ -97,7 +98,7 @@ export function MaUnapprovedCard() {
                         <td><span className={w.state === 'rejected' ? s.tagBad : s.tagWarn}>{stateLabel(w.state)}</span></td>
                         <td className={`${s.r} num`}>
                           {w.done != null && w.total != null ? `${vol(w.done)} / ${vol(w.total)}` : vol(w.done)}
-                          {w.pct != null && <small> · {num(w.pct, 1)}%</small>}
+                          {w.pct != null && <small> · {num(w.pct, 2)}%</small>}
                         </td>
                       </tr>
                     ))}

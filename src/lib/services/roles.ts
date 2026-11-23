@@ -23,7 +23,14 @@ export type Role =
   | "taniltsah"
   | "chanar"
   | "gazar"
-  | "zahiral";
+  | "zahiral"
+  /* 2026-11-23: албан үүргийн загварын (`lib/jobModel.ts`) ШИНЭ таван үүрэг — нэмэлт л; одоогийн хэрэглэгчийн мөрөнд байхгүй тул
+     хэний ч эрх өөрчлөгдөхгүй. `roleTypes.TYPE_ORDER`-т ОРООГҮЙ (төрлийн загварын хүснэгтэд гарахгүй) */
+  | "guitshabea"
+  | "habea"
+  | "butets"
+  | "zurag"
+  | "sanhuu";
 
 /**
  * УРСГАЛЫН ШАТ → ПОРТАЛЫН ҮҮРЭГ — ГАНЦ ЭХ СУРВАЛЖ.
@@ -58,9 +65,9 @@ export const ROLE_ACCESS: Record<
   { views: ViewKey[] | "all"; docs: boolean; home: ViewKey }
 > = {
   /* 2026-11-20: «бүгд» биш — эрх удирдлагын лавлах хуудас л (`permissions.ADMIN_VIEWS`) */
-  super: { views: ["sysdoc"], docs: false, home: "sysdoc" },
+  super: { views: ["gdash"], docs: false, home: "gdash" },
   beginner: {
-    views: ["schem", "plan", "pkgProg", "habea", "gazar", "tailan", "sysdoc"],
+    views: ["schem", "plan", "pkgProg", "habea", "gazar", "tailan"],
     docs: true,
     home: "plan",
   },
@@ -72,16 +79,22 @@ export const ROLE_ACCESS: Record<
   eronhii: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   heltsiin: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
   gazriin: { views: ["guitsetgel"], docs: false, home: "guitsetgel" },
-  taniltsah: { views: ["gdash", "dashboard", "plan", "pkgProg", "gazar", "tailan", "schem", "sysdoc"], docs: true, home: "gdash" },
+  taniltsah: { views: ["gdash", "dashboard", "plan", "pkgProg", "gazar", "tailan", "schem"], docs: true, home: "gdash" },
   chanar: { views: ["ma"], docs: false, home: "ma" },
   gazar: { views: ["gazar"], docs: false, home: "gazar" },
   zahiral: {
     views: ["gdash", "dashboard", "plan", "hesegET", "pkgFin", "pkgProg", "gazar", "analysis", "irged", "tailan", "tuh",
-      "bagtsHamaaral", "finance", "habea", "iot", "ersdel", "dedButets", "zovshoorol", "schem", "sysdoc", "guitsetgel",
+      "bagtsHamaaral", "finance", "habea", "iot", "ersdel", "dedButets", "zovshoorol", "schem", "guitsetgel",
       "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "tuvshin6"],
     docs: true,
     home: "gdash",
   },
+  /* 2026-11-23: шинэ албан үүргүүдийн нарийн суурь — `jobModel.JOB_DEFS` эндээс уншина (ганц эх сурвалж) */
+  guitshabea: { views: ["gdash", "habea"], docs: false, home: "habea" },
+  habea: { views: ["gdash", "dashboard", "habea"], docs: false, home: "habea" },
+  butets: { views: ["gdash", "dashboard", "dedButets"], docs: false, home: "dedButets" },
+  zurag: { views: ["gdash", "dashboard", "zuragTosol"], docs: false, home: "zuragTosol" },
+  sanhuu: { views: ["gdash", "dashboard", "pkgFin", "finance"], docs: false, home: "finance" },
 };
 
 /**

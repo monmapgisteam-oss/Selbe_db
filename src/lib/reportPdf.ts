@@ -9,10 +9,10 @@ import type { BagtsRow } from '@/modules/Dashboard';
 import { t as tr } from '@/lib/i18nCore';
 import { buildFindings, byTypeGapNote, BAGTS_GAP_PTS, type ReportExtra } from '@/lib/reportData';
 import { ailTotal } from '@/lib/execData';
-import { num, pct, dateTime } from '@/lib/format';
+import { money2, num, pct, dateTime } from '@/lib/format';
 
-/** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
-const bn = (v: number | null) => num(v);
+/** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан), 2 аравтын оронтой (2026-11-23) */
+const bn = (v: number | null) => money2(v);
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
 
 const HEAD = '#eef1f5';
@@ -85,7 +85,7 @@ export function buildReportDoc(
   const bagtsAvg = overall.pct;
 
   /* ── Товч танилцуулга — дэлгэцийн `.lead` блоктой ижил гурван догол ── */
-  const lag = d.buildLag != null ? tr(' буюу төлөвлөгөөнөөс {0} нэгж хувиар хоцорч байна', num(d.buildLag, 1)) : '';
+  const lag = d.buildLag != null ? tr(' буюу төлөвлөгөөнөөс {0} нэгж хувиар хоцорч байна', num(d.buildLag, 2)) : '';
   const lead = [
     extra.projectPct != null
       ? tr('Сэлбэ 20 минутын хотын төслийн хэрэгжилт тайлан үүсгэх өдрийн байдлаар {0}-тай байна. Төслийн төсвийн {1}-ийг эзэлдэг барилга угсралтын ажил (төсвөөр жигнэсэн) {2}-ийн гүйцэтгэлтэй{3}. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр{4} байгаа ч {5} нэгж талбар шийдвэрлэгдээгүй үлдсэн байна.', pct(extra.projectPct, 2), pct(d.buildWeight, 1), pct(d.buildActual, 2), lag, ` ${pct(land.pct, 1)}`, num(d.landLeft))
@@ -189,7 +189,7 @@ export function buildReportDoc(
           td(tr(s.label)), td(num(s.n), true),
           td(land.parcels ? pct((s.n / land.parcels) * 100, 1) : '—', true),
         ]),
-        [td(tr('Нийт'), false, TOTAL), td(num(land.parcels), true, TOTAL), td(land.parcels ? '100%' : '—', true, TOTAL)],
+        [td(tr('Нийт'), false, TOTAL), td(num(land.parcels), true, TOTAL), td(land.parcels ? pct(100) : '—', true, TOTAL)],
       ] }, layout: tableLayout },
 
       ...(land.byReason.length ? [
@@ -241,7 +241,7 @@ export function buildReportDoc(
       ...section('7', tr('Санхүүжилтийн явц'),
         tr('{0} багц ажлын төсөв, гэрээний дүнг ажлын төрлөөр харуулав.', num(finance.rows))),
       cap('7.1', tr('Ажлын төрлөөр (төсөв ба гэрээний дүн)')),
-      { table: { headerRows: 1, widths: ['*', 38, 105, 105], body: [
+      { table: { headerRows: 1, widths: ['*', 36, 112, 112], body: [
         [th(tr('Төрөл')), th(tr('Ажил'), true), th(tr('Төсөв'), true), th(tr('Гэрээлсэн'), true)],
         ...finance.byType.map((t): TableCell[] => [
           td(tr(t.type)), td(num(t.n), true), td(bnOrDash(t.budget), true), td(bnOrDash(t.contract), true),

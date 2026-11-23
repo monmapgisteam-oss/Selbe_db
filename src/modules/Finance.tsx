@@ -36,7 +36,7 @@ import {
   finXlRowHidden, finXlChartCat,
 } from '@/lib/finExcelLayout';
 import {
-  mnt, num, pct, date, monthKey, dayKey,
+  mnt, money2, num, pct, date, monthKey, dayKey,
 } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { CHART, lineSegments } from '@/lib/chartStyle';
@@ -314,7 +314,7 @@ export function ComboChart({
       anchor: anchorFor(i),
     })).filter((l) => envThin(l.i, last))),
   );
-  const givenLbl = fitFor(lastGiven, (r) => num(r.givenCum));
+  const givenLbl = fitFor(lastGiven, (r) => money2(r.givenCum));
   const physLbl = fitFor(lastPhys, (r) => pct(r.physPct, 1));
   /* X тэнхлэгийн он·сар — «2026-09» тогтмол 7 тэмдэгт */
   const axisLbl = new Set(fitLabels(rows.map((r, i) => ({
@@ -465,7 +465,7 @@ export function ComboChart({
           return (
             <g key={`gv-${i}`}>
               <text x={x} y={Math.min(padT + plotH - 4, y + 16)} className={`${f.ptVal} ${i === hi ? f.ptValOn : ''}`} textAnchor={anchorFor(i)}>
-                {num(r.givenCum)}
+                {money2(r.givenCum)}
               </text>
             </g>
           );
@@ -514,13 +514,13 @@ export function ComboChart({
             </div>
             <div className={f.tipBody}>
               <div className={f.tipMain}>
-                <span className={`num ${f.tipBig}`} style={{ color: ACT }}>{pt.givenCum > 0 ? num(pt.givenCum) : '—'}</span>
+                <span className={`num ${f.tipBig}`} style={{ color: ACT }}>{pt.givenCum > 0 ? money2(pt.givenCum) : '—'}</span>
                 <span className={f.tipUnit}>₮ · {tr('Олгосон санхүүжилт')}</span>
               </div>
               {d != null && pt.givenCum > 0 && (
                 <div className={f.tipMeta}>
                   <span className="num" style={{ color: d !== 0 ? 'var(--data)' : 'var(--ink-3)' }}>
-                    {d > 0 ? '▲' : d < 0 ? '▼' : '='} {num(Math.abs(d))} ₮
+                    {d > 0 ? '▲' : d < 0 ? '▼' : '='} {money2(Math.abs(d))} ₮
                   </span>
                 </div>
               )}
@@ -901,13 +901,14 @@ async function loadFinRegisterRaw(): Promise<FinTables> {
   };
 }
 
-export function Finance() {
+/** 2026-11-23: «Санхүүжилт» хоёр цэс болов — `only`: «Төсөл төлөвлөгөө биелэлт» (proj) эсвэл «Төлбөрийн акт (IPC)» (ipc) */
+export function Finance({ only }: { only?: FinTab } = {}) {
   const q = useAsync<FinTables>(loadFinRegister, []);
 
   return (
     <div className={f.frame}>
       <Data q={q} loading={tr('Санхүүжилтийн бүртгэл…')}>
-        {(d) => <FinTablesView d={d} onSaved={() => q.retry?.()} />}
+        {(d) => <FinTablesView d={d} onSaved={() => q.retry?.()} only={only} />}
       </Data>
     </div>
   );
@@ -1312,7 +1313,7 @@ const ppFmt = (kind: PpKind, v: number | string | null): string => {
   if (kind === 'text') return v == null || v === '' ? '—' : String(v);
   if (typeof v === 'string') return v;
   if (kind === 'frac') return pct(v == null ? null : v * 100, 1);
-  if (kind === 'money') return num(v);
+  if (kind === 'money') return money2(v);
   if (kind === 'w') return pct(v, 2);
   if (kind === 'date') return date(v);
   return pct(v, 1);
@@ -1862,7 +1863,7 @@ type FinTab = 'ipc' | 'proj';
 /**
  * Санхүүжилт — Cashflow ба IPC-ийн БҮРЭН хүснэгт (график огт байхгүй).
  */
-function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
+function FinTablesView({ d, onSaved, only }: { d: FinTables; onSaved: () => void; only?: FinTab }) {
   const { user } = useAuth();
   const [tick, setTick] = useState(0);
   useEffect(() => subscribeCaps(() => setTick((n) => n + 1)), []);
@@ -1876,7 +1877,8 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
    * бүхэлдээ гурван өөр гүйлгэлттэй болж, доод хүснэгтийг олохын тулд
    * дээдийг нь өнгөрөх шаардлагатай байлаа. Нэг мөчид НЭГ хүснэгт.
    */
-  const [tab, setTab] = useState<FinTab>('proj');
+  const [tab0, setTab] = useState<FinTab>(only ?? 'proj');
+  const tab: FinTab = only ?? tab0;
   const switchTab = (t: FinTab) => { if (t !== tab) setTab(t); };
 
   return (
@@ -1891,7 +1893,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           </p>
         )}
         {/* Хүснэгт солих — идэвхтэй нь дүүргэлттэй */}
-        <div className={f.tabs} role="tablist" style={{ marginLeft: 'auto' }} onKeyDown={(e) => tabFocusNav(e)}>
+        {!only && <div className={f.tabs} role="tablist" style={{ marginLeft: 'auto' }} onKeyDown={(e) => tabFocusNav(e)}>
           <button
             type="button"
             role="tab"
@@ -1912,7 +1914,7 @@ function FinTablesView({ d, onSaved }: { d: FinTables; onSaved: () => void }) {
           >
             {tr('Төлбөрийн акт (IPC)')}
           </button>
-        </div>
+        </div>}
         {/* 2026-11-05: «Cashflow хувиарлах» таб хасагдсан — гэрээ бүрийн сарын хувь «Үндсэн хугацаа»-нд (Хуваарь хуудсанд ч мөн) */}
         {/* Энэ хуудас бүх гэрээг харуулдаг тул хүрээгүй */}
         <MainSpanButton canEdit={canEdit} scope={null} />

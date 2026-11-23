@@ -157,6 +157,89 @@ export const HO_IPC = {
   pendingFields: { treasury: "hul_turiin_san", ho: "hul_ho_helts", client: "hul_zahialagch" },
 } as const;
 
+/**
+ * IPC БАРИМТЫН ХҮСНЭГТ (2026-11-23, хэрэглэгч) — `Guitsetgel_talbe/238` «ipc». НЭГ МӨР = НЭГ IPC (эсвэл нэг урьдчилгаа).
+ * IPC нь төлөгдөөгүй бөглөлтүүдийн (AUTO мөр, `HO_IPC`) НИЙЛБЭРЭЭС нэг удаа үүснэ. «Хүснэгт 7»-гийн ОДОО САНХҮҮЖИХ дүнгүүд
+ * ба «Хавсралт №8»-ын зардлын мөрүүд энд; өмнөх · хуримтлагдсан · үлдэгдэл багана ХАДГАЛАГДАХГҮЙ — ижил гэрээний өмнөх IPC-
+ * үүд ба гэрээний дүнгээс бодогдоно (`ipcDocTable.cumulative`). Олгосон мөнгө нь баталгаажуулахад «Төлбөрийн акт (IPC)»
+ * (185)-д ТӨЛБӨРИЙН МӨР болж бичигдэнэ (`dun`) — бүх нийлбэр хуучин дүрмээрээ 185-аас тоологдоно. Бүх талбар хоосон байж болно.
+ */
+export const IPC_DOC = {
+  url: `${GUITS}/238`,
+  oid: "objectid",
+  /** `turul`-ийн утгууд */
+  types: { advance: "Урьдчилгаа", work: "Гүйцэтгэл" },
+  fields: {
+    type: "turul",                  // «Урьдчилгаа» | «Гүйцэтгэл»
+    no: "ipc_dugaar",               // Гэрээний IPC дугаар — 185-ын хуучин баримттай нэг цуваа
+    kod: "ipc_kod",                 // «SLB-IPC-P0402-001»
+    code: "geree_kod",
+    contractNo: "geree_dugaar",
+    pkg: "bagts",
+    pkgCode: "bagts_kod",
+    contractor: "guitsetgegch",
+    contractorRd: "guitsetgegch_rd",
+    start: "ehleh_ognoo",           // DateOnly — ажлын үеийн эхлэл
+    end: "duusah_ognoo",            // DateOnly — «энэ өдөр хүртэлх ажил»
+    signDate: "garyn_useg_ognoo",   // DateOnly — гарын үсэгтэй скан орсон өдөр
+    payDate: "guilgee_ognoo",       // DateOnly — баталгаажуулсан (олгосон) өдөр
+    annual: "tuhain_ond_batlagdsan",
+    /* ── «Хүснэгт 7» — одоо санхүүжих дүн ── */
+    total: "niit_dun",              // Нийт дүн — гүйцэтгэл (урьдчилгаанд = урьдчилгаа санхүүжилт)
+    advance: "urdchilgaa_sanhuujilt",
+    recovery: "urdchilgaa_tololt",
+    recoveryPct: "urdchilgaa_tololt_huvi", // хувь, 0–100
+    overBudget: "tosvoos_davsan",
+    norm: "norm_san",
+    clientCtl: "zahialagch_hyanalt",
+    authorCtl: "zohiogch_hyanalt",
+    retention: "baritsaa",
+    retentionPct: "baritsaa_huvi",  // хувь, 0–100
+    payable: "guitsetgegchid_tuluh",
+    status: "tuluv",                // `HO_IPC.status`-ийн утгууд
+    note: "tailbar",                // Суутгалын тайлбар (2000)
+    docItem: "barimt_id",           // Гарын үсэгтэй сканы Enterprise item
+  },
+  /** «Хавсралт №8» — тайлант үеийн зардлын мөрүүд */
+  costFields: {
+    labor: "z_ajillah_huch",
+    material: "z_material",
+    machine: "z_mashin",
+    equipment: "z_tonog",
+    transport: "z_teever",
+    direct: "z_shuud",
+    overhead: "z_udirdlaga",
+    profit: "z_ashig",
+    works: "z_bua",
+    vat: "z_nuat",
+    norm: "z_norm_san",
+    sum: "z_dun",
+    tech: "z_tehnik_hyanalt",
+    design: "z_zurag",
+    author: "z_zohiogch",
+    contingency: "z_magadlashgui",
+    client: "z_zahialagch_niit",
+    insurance: "z_daatgal",
+    total: "z_bugd",
+    reviewed: "hyanalt_hyanasan",
+  },
+  /** Гарын үсэг зурах хүмүүсийн нэр */
+  signers: {
+    approve: "batlav",
+    ceo: "z_zahiral",
+    finHead: "z_sanhuu_darga",
+    chiefAcc: "z_nyagtlan",
+    hoSpec: "ho_mergejilten",
+    pmoHead: "h_darga",
+    pm1: "h_menejer1",
+    pm2: "h_menejer2",
+    cDir: "g_zahiral",
+    cAcc: "g_nyagtlan",
+    cPm: "g_tusliin",
+    cEng: "g_injener",
+  },
+} as const;
+
 type Row = Record<string, unknown>;
 
 /** Хоосон/тоо биш → `null`. 0 нь жинхэнэ тэг — `null` БИШ. */

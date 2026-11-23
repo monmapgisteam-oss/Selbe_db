@@ -11,16 +11,22 @@ export const cls = (names: string) =>
 export { synNoVol } from "../bagtsSheet";
 /** ӨНӨӨДРИЙН бөглөх өдөр — Улаанбаатарын хуанлийн өдөр, серверийн цагаар (`todayFillMs`), хөтчийн цагийн бүсээс үл хамаарна. */
 export const nowFillMs = () => ubToday(serverNow());
-/** 0..1 → хувь. Бүлгийн нийлбэр бутархай тул аравны нэг хүртэл. */
-export const pc = (v: number | null, dec = 0) =>
-  v == null ? "" : (v * 100).toFixed(dec).replace(/\.0+$/, "") + "%";
-/** Жин: 0.0083 → «0.83%». Маш жижиг жингүүд 0% болж унтрахгүйн тулд ач холбогдол бүхий орноор. */
+/**
+ * 0..1 → хувь — ЗӨВХӨН ХАРУУЛАХ бичвэр. 2026-11-23: портал даяар хувь ҮРГЭЛЖ
+ * 2 аравтын оронтой («40.10%», «0.00%»); `_dec` үл тоомсорлогдоно (дуудлагын хэлбэр л).
+ * Оролтын утга / задлах бичлэгт ХЭРЭГЛЭХГҮЙ (`full`, `fmtInc` бүтэн нарийвчлалтай).
+ */
+export const pc = (v: number | null, _dec?: number) =>
+  v == null ? "" : (v * 100).toFixed(2) + "%";
+/**
+ * Жин: 0.0083 → «0.83%». 2026-11-23: хувь ҮРГЭЛЖ 2 аравтын оронтой; 0.005%-иас
+ * бага ТЭГ БИШ жин «0.00%» болж унтрахгүйн тулд «<0.01%» (бүтэн утга нь `full` tooltip-д).
+ */
 export const wt = (v: number | null) => {
   if (v == null) return "";
   const p = v * 100;
-  if (p === 0) return "0%";
-  const d = Math.abs(p) >= 10 ? 1 : Math.abs(p) >= 1 ? 2 : 4;
-  return p.toFixed(d).replace(/\.?0+$/, "") + "%";
+  if (p !== 0 && Math.abs(p) < 0.005) return p > 0 ? "<0.01%" : ">-0.01%";
+  return p.toFixed(2) + "%";
 };
 /** Бөөрөнхийлөөгүй бүтэн хувь — tooltip-д (дээд бүлгийн өөрчлөлт жижиг байдаг). */
 export const full = (v: number | null) => (v == null ? undefined : (v * 100).toFixed(6) + "%");

@@ -40,10 +40,10 @@ assert.equal(scorePerf({ lag: { planned: 80, actual: 0, coverage: 100 }, start: 
 {
   const p = scorePerf({ lag: { planned: 8.6, actual: 25.1, coverage: 8.6 }, start: now - 50 * DAY, end: now + 50 * DAY, progress: 40, now });
   assert.equal(p.score, null, 'дутуу хамралт → null (огнооны шугам + Cashflow руу ч БУУХГҮЙ)');
-  assert.deepEqual(p.facts.map((f) => f.value), ['8.6%', '25.1%', '8.6%'], 'төлөвлөсөн · бодит · хамралт');
+  assert.deepEqual(p.facts.map((f) => f.value), ['8.60%', '25.10%', '8.60%'], 'төлөвлөсөн · бодит · хамралт');
   assert.equal(p.facts[2].label, 'Хуваарийн хамралт');
   assert.equal(p.issues?.[0]?.tone, 'info');
-  assert.ok(p.issues[0].text.includes('8.6%'), p.issues[0].text);
+  assert.ok(p.issues[0].text.includes('8.60%'), p.issues[0].text);
   /* хамралт мэдэгдэхгүй (null/алга) — дүгнэхгүй */
   assert.equal(scorePerf({ lag: { planned: 30, actual: 10, coverage: null }, start: null, end: null, progress: null, now }).score, null);
   assert.equal(scorePerf({ lag: { planned: 30, actual: 10 }, start: null, end: null, progress: null, now }).score, null, 'хамралтгүй lag → дүгнэхгүй');
@@ -243,8 +243,8 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   const al = scoreAlerts(ws);
   assert.deepEqual(al.map((a) => a.kind), ['perfCoverage', 'notDue', 'dataGap']);
   assert.equal(al[0].tone, 'bad', 'оноотой өртөг 200/700 = 29% < 50 → bad');
-  assert.match(al[0].text, /29%/);
-  assert.match(al[0].text, /Багц-1 84%/, 'дутуу хуваарьтай багц хамралтаараа');
+  assert.match(al[0].text, /28\.57%/);
+  assert.match(al[0].text, /Багц-1 84\.30%/, 'дутуу хуваарьтай багц хамралтаараа');
   assert.match(al[0].text, /1 ажил огноогүй/);
   assert.match(al[1].text, /^1 ажил эхлэх огноо ирээгүй/);
   assert.match(al[1].text, /Багц-2/);
@@ -308,15 +308,15 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   const ids = new Map([
     ['БАГЦ61', new Set([1, 2])],
     ['БАГЦ1ХОЛБОО', new Set([2, 3, 4])],
-    ['БАГЦ7', new Set([7, 8])],
+    ['БАГЦ71', new Set([7, 8])],
     ['БАГЦ63', null],
   ]);
   assert.equal(overlapOfKeys(ids, mapPkgKeySet(['БАГЦ61'])), 4, 'Багц 6.1 + Багц 6.1 · Холбоо, давхардалгүй');
-  assert.equal(overlapOfKeys(ids, mapPkgKeySet(['БАГЦ71'])), 2, 'Багц 7.1 → зургийн БАГЦ7');
+  assert.equal(overlapOfKeys(ids, mapPkgKeySet(['БАГЦ71'])), 2, 'Багц 7.1 — зургийн код ижил (БАГЦ71)');
   assert.equal(overlapOfKeys(ids, mapPkgKeySet(['БАГЦ63'])), -1, 'тооцогдоогүй түлхүүр → −1');
   assert.equal(overlapOfKeys(ids, mapPkgKeySet(['БАГЦ8'])), undefined, 'давхцалгүй');
   assert.equal(overlapOfKeys(ids, new Set()), undefined, 'багцгүй ажил');
-  assert.ok(mapPkgKeySet(['БАГЦ8']).has('БАГЦ82'), 'Багц 8-ын зураглал нь Багц 8.2');
+  assert.deepEqual([...mapPkgKeySet(['БАГЦ8'])], ['БАГЦ8'], 'Багц 8 — зургийн код ижил (2026-11-23)');
 }
 
 console.log('scorecard.check ✓');

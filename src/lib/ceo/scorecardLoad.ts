@@ -196,7 +196,7 @@ export function assemble(base: ScoreBase, x: Extras): WorkScore[] {
   const foot = new Set(base.footprints);
   return base.works.map((w) => {
     const none: DimScore = { score: null, facts: [] };
-    /* Газрын зургийн түлхүүрүүд: «Багц 6.1» + БАГЦ1ХОЛБОО · «Багц 7.1» → БАГЦ7 · «Багц 8» → БАГЦ82 */
+    /* Газрын зургийн түлхүүрүүд: «Багц 6.1» + БАГЦ1ХОЛБОО (2026-11-23-наас «Багц 7.1», «Багц 8» өөрийн кодтой) */
     const mapKeys = w.key ? mapPkgKeySet([w.key]) : new Set<string>();
     const ov = x.land ? overlapOfKeys(x.land.overlaps, mapKeys) : undefined;
     const dims: Record<Dim, DimScore> = {

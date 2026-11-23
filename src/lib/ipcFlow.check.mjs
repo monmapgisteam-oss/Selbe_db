@@ -172,13 +172,15 @@ assert.equal(contractWhy({ ...one, items: one.items.map((i) => ({ ...i, advance:
   const src = readFileSync('src/modules/IpcFlow.tsx', 'utf8');
   assert.ok(src.includes('cfMatches(r, parts, phases)'), 'гэрээ цуцлахад ижил багцын өөр үе шатны гэрээ хөндөгдөхгүй');
   assert.ok(!src.includes('toISOString'), 'IPC-ийн огноо локал өдрөөр');
-  assert.equal((src.match(/await freshPays\(code, pays\)/g) ?? []).length, 6, 'IPC үүсгэх (өмнө, дараа), скан, батлах, устгах, гэрээ цуцлах (2026-11-18) — дахин уншина');
-  assert.ok(src.includes('contractCancelFresh(await freshPays(code, pays), rows)'), 'гэрээ цуцлах шинээр уншсан мөрөөр шийднэ');
+  assert.equal((src.match(/await freshPays\(code, pays\)/g) ?? []).length, 4, 'хуучин баримтын скан, батлах, устгах, гэрээ цуцлах (2026-11-18) — дахин уншина');
+  /* 2026-11-23: шинэ IPC (238) — үүсгэхийн өмнө, дараа, скан · батлах · устгахад (`freshRec`) 185 ба 238-ийг хамт дахин уншина */
+  assert.equal(src.split('Promise.all([freshPays(code, pays), freshDocs(code)])').length - 1, 3, 'шинэ IPC 185 + 238-ийг дахин уншина');
+  assert.ok(src.includes('contractCancelFresh(await freshPays(code, pays), rows, await freshDocs(code))'), 'гэрээ цуцлах шинээр уншсан мөрөөр (185 ба 238) шийднэ');
   assert.ok(src.includes('d2.status !== S.created'), 'скан оруулахад төлөв шинээр шалгагдана');
   assert.ok(src.indexOf('updates: e.ho') < src.indexOf('updates: e.cf'), 'гэрээ цуцлахад IPC эхэлнэ');
   assert.ok(src.includes('!== S.cancelled'), 'урьдчилгаа цуцлагдсан гэрээнд очихгүй');
   assert.ok(src.includes('cfNow, hoNow'), 'гэрээ үүсгэхийн өмнө 182, 185-г шинээр шалгана');
-  assert.ok(src.includes('freshPays(code, pays).catch(() => null)'), 'IPC бичигдсэний дараах уншилт унавал алдаа гэж хэлэхгүй');
+  assert.ok(src.includes('Promise.all([freshPays(code, pays), freshDocs(code)]).catch(() => null)'), 'IPC бичигдсэний дараах уншилт унавал алдаа гэж хэлэхгүй');
   assert.ok(src.includes('(!nos.size || !dead) && cfMatches(r, parts, phases)'), 'идэвхтэй гэрээ цуцлахад дугааргүй мөр нь цэвэрлэгдэнэ; цуцлагдсан дугаартай гэрээ хөндөхгүй');
   /* 2026-11-09: скан файл ЭЗНИЙ нэрээр устгагдана (одоогийн хэрэглэгч биш); сешнгүй бол чимээгүй үлдээхгүй */
   assert.ok(src.includes('await entDeletePdf(it.id, it.owner)'), 'скан item-ийн эзнээр устгана');

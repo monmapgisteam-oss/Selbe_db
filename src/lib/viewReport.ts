@@ -642,9 +642,13 @@ function describe(name: string, t: Extract<DocBlock, { kind: 'table' }>, unit: s
 }
 
 /* ── Графикийн тайлбар (2026-10-19, хэрэглэгч: «графикийн дээр нэрийн доор тухайн графикийг тайлбарласан хэсэг») ── */
-const fmtN = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+const fmtN0 = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+/** Хувь, мөнгө — ҮРГЭЛЖ 2 аравтын оронтой (2026-11-23) */
+const fmt2 = (v: number) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const isPctMoney = (u: string) => /^\s*(%|₮|төг)/.test(u);
 function describeChart(name: string, c: DocChartSpec, unit: string): string {
   const parts: string[] = [];
+  const fmtN = isPctMoney(unit) ? fmt2 : fmtN0;
   /* Богино нэгж («км», «%») утгын ард; урт дэд мөр («PM2.5 · мкг/м³») тусдаа өгүүлбэр */
   const short = !!unit && unit.length <= 8 && !unit.includes('·') && !unit.includes(',');
   const u = short ? ` ${unit}` : '';
@@ -655,12 +659,12 @@ function describeChart(name: string, c: DocChartSpec, unit: string): string {
     if (c.hideLabels?.includes(0)) {
       parts.push(tr('«{0}» графикийн утга: {1}.', name, c.title ?? ''));
     } else if (c.pct && c.hideLabels?.includes(1)) {
-      parts.push(tr('«{0}» графикт гүйцэтгэлийн хувийг харуулав: {1} {2}%.', name, c.cats[0] ?? '', fmtN(vals[0] ?? 0)));
+      parts.push(tr('«{0}» графикт гүйцэтгэлийн хувийг харуулав: {1} {2}%.', name, c.cats[0] ?? '', fmt2(vals[0] ?? 0)));
     } else {
       parts.push(tr('«{0}» графикт {1} ангиллын бүтцийг харуулав, нийт {2}.', name, String(c.cats.length), fmtN(tot) + u));
       let k = 0;
       vals.forEach((v, i) => { if ((v ?? 0) > (vals[k] ?? 0)) k = i; });
-      if (tot > 0 && c.cats.length > 1) parts.push(tr('Хамгийн их хэсэг нь {0}: {1} ({2}%).', c.cats[k], fmtN(vals[k] ?? 0) + u, fmtN(Math.round(((vals[k] ?? 0) / tot) * 1000) / 10)));
+      if (tot > 0 && c.cats.length > 1) parts.push(tr('Хамгийн их хэсэг нь {0}: {1} ({2}%).', c.cats[k], fmtN(vals[k] ?? 0) + u, fmt2(((vals[k] ?? 0) / tot) * 100)));
     }
     return parts.join(' ');
   }

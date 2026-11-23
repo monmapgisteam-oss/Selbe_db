@@ -3,7 +3,7 @@
 import { Fragment, type KeyboardEvent as KEvt, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSyncRef } from '@/lib/useSyncRef';
 import { t as tr } from '@/lib/i18nCore';
-import { fixCyr, num } from '@/lib/format';
+import { fixCyr, money2, num } from '@/lib/format';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { DAY, endOf, spanDays, type PlanRow, type Span } from '@/lib/plan';
 import { formatDeps, sameDep, type Dep, type DepType } from '@/lib/deps';
@@ -261,7 +261,7 @@ function WeekBox({ start, value, vol, canEdit, save }: WeekBoxProps) {
           onChange={(ev) => { setTxt(ev.target.value); setOk(false); }}
           onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); void go(); } }}
         />
-        <span className={h.mdMonth}>{v != null && !bad ? tr('нийт обьёмын {0}', `${num((v / vol) * 100, 1)}%`) : ''}</span>
+        <span className={h.mdMonth}>{v != null && !bad ? tr('нийт обьёмын {0}', `${num((v / vol) * 100, 2)}%`) : ''}</span>
         {canEdit && (
           <button type="button" className={h.save} disabled={!dirty || busy} onClick={() => void go()}>
             {busy ? tr('Хадгалж байна…') : tr('Хадгалах')}
@@ -916,7 +916,7 @@ function PlanModalBody({
           <div className={h.mdDeps}>
             <div className={h.mdDepsHead}>
               {tr('Бүлгээр төлөвлөх')}
-              {groupMoney != null && <span className={h.mdDepsN}>{tr('мөнгөн дүн')} {num(groupMoney)}</span>}
+              {groupMoney != null && <span className={h.mdDepsN}>{tr('мөнгөн дүн')} {money2(groupMoney)}</span>}
             </div>
             <p className={h.mdPar}>
               {tr('Дээрх эхлэх, дуусах огноо ба ажилтай сар бүрийн хувийг (нийлбэр 100%, хоосон сар 0%) оруулаад «Доторх ажилд тараах» дарна. Бүлгийн мөнгөн дүнгийн тэр хувь тухайн сард гүйцэтгэгдэнэ: доторх ажлууд мөрийн дарааллаар мөнгөн дүнгийнхээ хувиар энэ муруйг дүүргэж, тус бүр өөрийн эхлэх, дуусах огноо ба сарын обьёмтой болно.')}
@@ -949,12 +949,12 @@ function PlanModalBody({
                           return out;
                         });
                       }} />
-                    <span className="num">{groupMoney != null && gp.has(k) ? num(groupMoney * (gp.get(k) ?? 0) / 100) : '—'}</span>
+                    <span className="num">{groupMoney != null && gp.has(k) ? money2(groupMoney * (gp.get(k) ?? 0) / 100) : '—'}</span>
                   </Fragment>
                 ))}
                 <span className={h.mdMonthTot}>{tr('Нийлбэр')}</span>
                 <span className={`${h.mdMonthTot} num`}>{num(gpSum, 2)}%</span>
-                <span className={`${h.mdMonthTot} num`}>{groupMoney != null ? num(groupMoney * gpSum / 100) : '—'}</span>
+                <span className={`${h.mdMonthTot} num`}>{groupMoney != null ? money2(groupMoney * gpSum / 100) : '—'}</span>
               </div>
             )}
             {mKeys.length > 0 && !gpOk && (
@@ -979,7 +979,7 @@ function PlanModalBody({
                         <td>{fixCyr(x.work)}</td>
                         <td className="num">{msToDay(x.span.start)}</td>
                         <td className="num">{msToDay(x.span.end)}</td>
-                        <td className="num">{x.money != null ? num(x.money) : '—'}</td>
+                        <td className="num">{x.money != null ? money2(x.money) : '—'}</td>
                         <td className="num">{x.months ? [...x.months].filter(([, v]) => v > 0).map(([k, v]) => `${k}: ${num(v, 2)}`).join(' · ') : '—'}</td>
                       </tr>
                     ))}
@@ -1035,7 +1035,7 @@ function PlanModalBody({
           <div className={h.mdDeps}>
             <div className={h.mdDepsHead}>
               {tr('Бүлгийн хураангуй')}
-              {groupMoney != null && <span className={h.mdDepsN}>{tr('мөнгөн дүн')} {num(groupMoney)}</span>}
+              {groupMoney != null && <span className={h.mdDepsN}>{tr('мөнгөн дүн')} {money2(groupMoney)}</span>}
             </div>
             <p className={h.mdPar}>
               {tr('Том бүлэг гараар төлөвлөгдөхгүй — огноо, сарын хувь ба мөнгө нь доторх жижиг бүлгүүдээс автоматаар бодогдоно. Жижиг бүлгээ нээж төлөвлөнө үү.')}
@@ -1049,12 +1049,12 @@ function PlanModalBody({
                   <Fragment key={k}>
                     <span className={h.mdMonth}>{k}</span>
                     <span className="num">{groupMoney ? `${num((v / groupMoney) * 100, 2)}%` : '—'}</span>
-                    <span className="num">{num(v)}</span>
+                    <span className="num">{money2(v)}</span>
                   </Fragment>
                 ))}
                 <span className={h.mdMonthTot}>{tr('Нийлбэр')}</span>
                 <span className={`${h.mdMonthTot} num`}>{groupMoney ? `${num(([...groupCurve.values()].reduce((x, y) => x + y, 0) / groupMoney) * 100, 2)}%` : '—'}</span>
-                <span className={`${h.mdMonthTot} num`}>{num([...groupCurve.values()].reduce((x, y) => x + y, 0))}</span>
+                <span className={`${h.mdMonthTot} num`}>{money2([...groupCurve.values()].reduce((x, y) => x + y, 0))}</span>
               </div>
             ) : (
               <p className={h.mdPar}>{tr('Доторх ажлууд сарын обьёмоор төлөвлөгдөөгүй байна.')}</p>

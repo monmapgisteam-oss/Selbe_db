@@ -56,10 +56,11 @@ export const catOf = (p: Pack): PackCat => {
 export { aggregateMonths, physNow } from '@/modules/Finance';
 
 /**
- * ХУВИЙН НЭГЖИЙН ЗӨРҮҮ (pp) — «бодит − төлөвлөгөө»; сөрөг = хоцорсон («-5.0 pp»).
+ * ХУВИЙН НЭГЖИЙН ЗӨРҮҮ (pp) — «бодит − төлөвлөгөө»; сөрөг = хоцорсон («-5.00 pp»).
+ * 2026-11-23: хувь ҮРГЭЛЖ 2 аравтын оронтой.
  */
 export const pp = (v: number | null | undefined): string =>
-  v == null || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${num(v, 1)} pp`;
+  v == null || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${num(v, 2)} pp`;
 
 /**
  * Дэлгэц уншигчид л харагдах (нүдэнд нуугдсан) хэв — графикийн `aria-live` уншилтад.

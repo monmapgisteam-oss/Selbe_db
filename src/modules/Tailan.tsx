@@ -18,7 +18,7 @@ import { TuhMap } from '@/modules/tuh/TuhMap';
 import { Fig, KpiRow, RankBars } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
-import { num, pct, dateTime, mnt } from '@/lib/format';
+import { num, pct, dateTime, mnt, money2 } from '@/lib/format';
 import { invalidateAll } from '@/lib/dataBus';
 import { useBagtsTable, type BagtsRow } from '@/modules/Dashboard';
 import { ailTotal, loadBagtsRows } from '@/lib/execData';
@@ -36,8 +36,8 @@ import { ReportContents, ReportHero } from './ReportContents';
 import { Segmented } from '@/components/Switch';
 import r from './report.module.css';
 
-/** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан) */
-const bn = (v: number) => num(v);
+/** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан); 2026-11-23-наас ҮРГЭЛЖ 2 аравтын оронтой */
+const bn = (v: number) => money2(v);
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
 
 /** Хүснэгтийн дугаартай тайлбар — ХҮСНЭГТИЙН ДЭЭД талд байрлана */
@@ -428,7 +428,7 @@ function TailanFull() {
                           : tr('Төслийн нийт гүйцэтгэл (нэгтгэл гүйцэтгэл) уншигдсангүй. Төслийн төсвийн')}
                         {' '}<strong>{pct(d.buildWeight, 1)}</strong>{tr('-ийг эзэлдэг барилга угсралтын ажил (төсвөөр жигнэсэн)')} <strong>{pct(d.buildActual, 2)}</strong>{tr('-ийн гүйцэтгэлтэй')}
                         {d.buildLag != null && (
-                          <> {tr('буюу төлөвлөгөөнөөс')} <strong>{num(d.buildLag, 1)} {tr('нэгж хувиар')}</strong> {tr('хоцорч байна')}</>
+                          <> {tr('буюу төлөвлөгөөнөөс')} <strong>{num(d.buildLag, 2)} {tr('нэгж хувиар')}</strong> {tr('хоцорч байна')}</>
                         )}
                         {tr('. Газар чөлөөлөлтийн гүйцэтгэл нэгж талбарын төлвөөр')}
                         {' '}<strong>{pct(x.land.pct, 1)}</strong> {tr('байгаа ч')}

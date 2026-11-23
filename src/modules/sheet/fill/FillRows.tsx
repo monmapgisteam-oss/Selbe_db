@@ -4,7 +4,7 @@ import { fmtInc, parseInc, type SheetRow } from "../bagtsSheet";
 import { negFixOf, negFixText, negTotalAt } from "../sheetFrame";
 import { negjOf, unitLabel } from "../negj";
 import { t as tr } from "@/lib/i18nCore";
-import { fixCyr } from "@/lib/format";
+import { fixCyr, money2 } from "@/lib/format";
 import { askConfirm, getConfirmSnapshot } from "@/lib/confirm";
 import { PvCell } from "./PvCell";
 import type { useObyem } from "./useObyem";
@@ -167,8 +167,8 @@ export function FillRows({
                         <span className={st.negj}>{unitLabel(negjOf(r.work))}</span>
                       )}
                     </td>
-                    <td className={cls("right c-vol")} style={cw("unit", "vol")} {...ro(RO.unit)}>{qty(r.unit)}</td>
-                    <td className={cls("right c-money")} style={cw("money", "money")} {...ro(RO.money)}>{qty(r.money)}</td>
+                    <td className={cls("right c-vol")} style={cw("unit", "vol")} {...ro(RO.unit)}>{r.unit == null ? "" : money2(r.unit)}</td>
+                    <td className={cls("right c-money")} style={cw("money", "money")} {...ro(RO.money)}>{r.money == null ? "" : money2(r.money)}</td>
                     <td className={cls("num c-calc calc")} style={cw("ci", "calc")} {...ro(RO.I)}>{pc(c.I, 1)}</td>
                     <td className={cls("num c-calc calc")} style={cw("cj", "calc")} {...ro(RO.J)}>{pc(c.J, 1)}</td>
                     <td className={cls("num c-calc calc")} style={cw("ck", "calc")} {...ro(RO.K)}>{pc(c.K, 1)}</td>

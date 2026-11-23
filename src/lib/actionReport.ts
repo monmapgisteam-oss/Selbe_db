@@ -262,7 +262,8 @@ const LINE = '#d7dce6';
 const BAR_W = 230;
 type Obj = Record<string, unknown>;
 
-const pctTxt = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(0)}%` : '—');
+/** Хувь — 2 аравтын оронтой (2026-11-23) */
+const pctTxt = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(2)}%` : '—');
 
 /** Хэвтээ баганан чарт — нэр · зурвас · тоо (хувь) */
 function barChart(title: string, buckets: Bucket[], total: number, color = '#3b82f6'): Obj {

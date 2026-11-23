@@ -8,7 +8,7 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
-import { fixCyr, mnt, num } from '@/lib/format';
+import { fixCyr, mnt, money2, num } from '@/lib/format';
 import { loadVariance, type Variance, type VarianceWork } from '@/lib/execTriage';
 import { VAR_BAD_MNT } from '@/lib/kpiLevels';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
@@ -95,7 +95,7 @@ export function computeVariance(v: Variance, pkgCount: number = PKGS.length): Kp
   }
 
   return {
-    value: allFailed ? '—' : v.works === 0 && v.failedPkgs === 0 ? `${num(0)} ₮` : mnt(v.totalMnt),
+    value: allFailed ? '—' : v.works === 0 && v.failedPkgs === 0 ? `${money2(0)} ₮` : mnt(v.totalMnt),
     unit: tr('зөрүү'),
     facts,
     level,

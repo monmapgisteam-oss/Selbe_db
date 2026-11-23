@@ -144,8 +144,8 @@ assert.equal(r.level, 'bad');
 assert.equal(r.unit, 'багц хоцорсон');
 assert.deepEqual(r.failedSources, ['муруй']);
 assert.equal(r.facts[0], '1 яаралтай · 1 анхаарах');
-assert.equal(r.facts[1], 'хамгийн муу −15.0 н.х');
-assert.equal(r.facts[2], 'дундаж −8.0 н.х');
+assert.equal(r.facts[1], 'хамгийн муу −15.00 н.х');
+assert.equal(r.facts[2], 'дундаж −8.00 н.х');
 assert.equal(r.facts[3], '2 багц хэмжилтгүй');
 
 /* Хүснэгт 1: БҮХ хэмжигдсэн багц, хамгийн муу дээр */
@@ -170,7 +170,7 @@ assert.equal(t2.rows[1][1].v, 'гүйцэтгэлийн бичилт алга');
 /* Анхааруулга: зөвхөн улаан */
 assert.equal(r.issues.length, 1);
 assert.equal(r.issues[0].tone, 'bad');
-assert.equal(r.issues[0].text, 'Багц 1 — төл. 30.0% / бодит 15.0% · −15.0 н.х');
+assert.equal(r.issues[0].text, 'Багц 1 — төл. 30.00% / бодит 15.00% · −15.00 н.х');
 
 /* asOf: хамгийн сүүлийн хэмжилтийн сарын эцэс (2026-05-31) */
 assert.equal(r.asOf, Date.UTC(2026, 4, 31));
@@ -206,17 +206,17 @@ const r5 = computeSchedule(
 assert.equal(r5.level, 'good');
 assert.equal(r5.value, '0');
 assert.equal(r5.tables[0].rows.length, 2);
-assert.equal(r5.facts[1], 'хамгийн муу −2.0 н.х');
+assert.equal(r5.facts[1], 'хамгийн муу −2.00 н.х');
 /* хэмжилтгүй байхгүй → тэр баримт гарахгүй */
 assert.equal(r5.facts.length, 3);
 
 /* Түрүүлсэн багц: зөрүү эерэг тэмдэгтэй, −0 гарахгүй */
 const r6 = computeSchedule(
   [mk('БАГЦ1', 'Багц 1', { month: '2026-03', planned: 10, actual: 12, gap: -2 }),
-    mk('БАГЦ3', 'Багц 3', { month: '2026-03', planned: 10, actual: 10.04, gap: -0.04 })],
+    mk('БАГЦ3', 'Багц 3', { month: '2026-03', planned: 10, actual: 10.004, gap: -0.004 })],
   curves, lagLevel, now,
 );
-assert.equal(r6.facts[1], 'хамгийн муу 0.0 н.х');
+assert.equal(r6.facts[1], 'хамгийн муу 0.00 н.х');
 assert.ok(Object.is(r6.tables[0].rows[0][4].v, 0), 'зөрүү −0 биш 0');
 assert.equal(r6.tables[0].rows[1][4].v, 2);
 /* Түрүүлсэн: муруйн хэсэг хэмжилтийн сар хүртэл л байхад ч сарын хоцрогдол 0 */

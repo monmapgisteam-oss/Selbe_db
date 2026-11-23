@@ -24,7 +24,7 @@ const main = tables.find((t) => t.head[0].includes('Хоног'));
 assert.equal(main.rows.length, 4);
 assert.equal(main.rows[0][2], 'Шав');
 assert.equal(main.rows[1][2], '  Малталт', 'гүнээр догол');
-assert.deepEqual(main.rows[1].slice(3), ['2026-01-01', '2026-01-10', '10', '100%', 'дууссан']);
+assert.deepEqual(main.rows[1].slice(3), ['2026-01-01', '2026-01-10', '10', '100.00%', 'дууссан']);
 assert.equal(main.rows[0][7], '', 'бүлэгт төлөв бичихгүй');
 assert.deepEqual(main.rows[3].slice(3, 6), ['', '', ''], 'хуваарьгүй мөр хоосон');
 

@@ -352,7 +352,7 @@ export function computeSchedule(
   const issues: KpiIssue[] = measured
     .filter((m) => m.tone === 'red')
     .map((m) => ({
-      text: tr('{0} — төл. {1}% / бодит {2}% · {3}', m.label, num(m.planned, 1), num(m.actual, 1), gapPts(m.gap)),
+      text: tr('{0} — төл. {1}% / бодит {2}% · {3}', m.label, num(m.planned, 2), num(m.actual, 2), gapPts(m.gap)),
       tone: 'bad' as const,
     }));
 

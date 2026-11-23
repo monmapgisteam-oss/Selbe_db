@@ -132,12 +132,12 @@ export function Gantt({ rows, from, to, now }: { rows: GanttRow[]; from: number;
                 pos(r.end!) > 88 && pos(r.start!) > 12
                   ? (
                     <em className={`${s.ganttPct} ${s.ganttPctL}`} style={{ left: `calc(${pos(r.start!)}% - 4px)` } as CSSProperties}>
-                      {pct(r.progress, r.progress < 10 ? 1 : 0)}
+                      {pct(r.progress)}
                     </em>
                   )
                   : (
                     <em className={s.ganttPct} style={{ left: `calc(${pos(r.end!)}% + 4px)` } as CSSProperties}>
-                      {pct(r.progress, r.progress < 10 ? 1 : 0)}
+                      {pct(r.progress)}
                     </em>
                   )
               )}

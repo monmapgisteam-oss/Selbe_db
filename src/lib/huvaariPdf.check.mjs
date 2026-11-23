@@ -221,9 +221,9 @@ console.log('✓ huvaariPdf: задарсан гүн бүлгийн зурвас
   const now = D('2026-10-01');
   const rows = [grp('2026-10-01', '2026-10-31'), task(1, '2026-10-01', '2026-10-20', { act: 3.099 }), task(2, '2026-10-05', '2026-10-25', { act: 0.5 })];
   const s = JSON.stringify(buildHuvaariDoc(input(rows, now, { months: 1, active: false, paper: 'A3' })).content);
-  assert.ok(s.includes('310%'), '309.9% нь «310%» гэж хэвлэгдэх ёстой');
-  assert.ok(!s.includes('· 100%'), '100%-иас давсан гүйцэтгэл «100%» болж тайрагдав');
-  assert.ok(s.includes('50%'), 'энгийн хувь хэвээр');
+  assert.ok(s.includes('309.90%'), '309.9% нь «309.90%» гэж хэвлэгдэх ёстой');
+  assert.ok(!s.includes('· 100.00%'), '100%-иас давсан гүйцэтгэл «100%» болж тайрагдав');
+  assert.ok(s.includes('50.00%'), 'энгийн хувь хэвээр');
 }
 console.log('✓ huvaariPdf: 100%-иас давсан гүйцэтгэл түүхийгээр хэвлэгдэнэ');
 

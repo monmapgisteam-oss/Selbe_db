@@ -75,7 +75,7 @@ console.log('✅ хамгийн жинтэй багц — зөвхөн дийл�
   assert.equal(buildFindings({ ...x, overall: withPlans(x.overall, { ...plans, lag: 8.85, total: 35.51 }) }).buildLag, 8.85);
   assert.equal(buildFindings(x).buildLag, null);
   const t = docText({ ...x, overall: o });
-  assert.ok(t.includes('63.8%'), 'багцын төлөвлөгөө хүснэгтэд');
+  assert.ok(t.includes('63.80%'), 'багцын төлөвлөгөө хүснэгтэд');
   assert.ok(!t.includes('Төлөвлөгөө (алга)') && !t.includes('одоогоор байхгүй'), 'төлөвлөгөө байхгүй гэсэн худал алга');
 }
 console.log('✅ §3 төлөвлөгөө — хамрах хүрээний дүрмээр');

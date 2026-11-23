@@ -2,6 +2,7 @@
 
 import { useMemo, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { pct as fmtPct } from '@/lib/format';
 import { Card } from './Layout';
 import { Icon } from '@/components/Icon';
 import { rovingTab, tabFocusNav } from '@/components/ui';
@@ -310,7 +311,7 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
       { k: tr('Дундаж хурд'), v: st ? String(Math.round(st.kmh)) : '—', unit: st ? tr('км/ц') : undefined },
       {
         k: tr('Урсгал'),
-        v: flow == null ? '—' : `${flow}%`,
+        v: st ? fmtPct(st.flow * 100) : '—', // 2026-11-23: 2 аравтын оронтой; өнгөний босго бүхэлдсэн `flow`-оор
         // Утга заасан өнгө — статус токеноор (хоёр горимд уншигдана)
         color: flow == null ? undefined : flow > 70 ? 'var(--good-ink)' : flow > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)',
       },
@@ -327,7 +328,7 @@ function readout(kind: SimKind, ranked: Ranked[], road?: RoadState): Cell[] {
       { k: tr('Хамгийн хол'), v: nf0(ranked[0].value), unit: tr('м') },
       {
         k: tr('{0} м дотор', TRANSIT_NORM_M),
-        v: `${pct}%`,
+        v: fmtPct((ok / ranked.length) * 100), // 2026-11-23: 2 аравтын оронтой; өнгөний босго бүхэлдсэн `pct`-оор
         // Утга заасан өнгө — статус токеноор (хоёр горимд уншигдана)
         color: pct > 70 ? 'var(--good-ink)' : pct > 40 ? 'var(--warn-ink)' : 'var(--bad-ink)',
       },

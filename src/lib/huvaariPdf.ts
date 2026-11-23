@@ -550,7 +550,8 @@ export function buildHuvaariDoc(x: HvPdfInput): TDocumentDefinitions {
        * нэр ч), үгүй бол зурвасын ГАДНА баруун, зай үгүй бол зүүн талд.
        */
       const d = spanDays(r.bar);
-      const pv = raw == null ? null : raw > 0 && raw < 1 ? Math.min(99, Math.max(1, Math.round(raw * 100))) : Math.round(raw * 100);
+      /* 2026-11-23: хувь 2 аравтын оронтой; хэсэгчилсэн ажил 0.01–99.99% */
+      const pv = raw == null ? null : (raw > 0 && raw < 1 ? Math.min(99.99, Math.max(0.01, raw * 100)) : raw * 100).toFixed(2);
       const pc = pv != null ? ` · ${pv}%` : '';
       const full = `${iso(r.bar.start)} – ${iso(r.bar.end)} · ${d}${tr('х')}${pc}`;
       const cw = LAB_FS * 0.52;

@@ -82,7 +82,7 @@ const body = html.slice(html.indexOf('<tbody'));
 const total = body.slice(0, body.indexOf('</tr>'));
 assert.match(total, /class="stage totalRow"/, 'нийт мөр царцсан');
 assert.match(total, /ТӨСЛИЙН НИЙТ ГҮЙЦЭТГЭЛ/);
-assert.match(total, />100\.0%</, 'Σ төсөлд эзлэх = 100.0 (1 орон — аудит №7)');
+assert.match(total, />100\.00%</, 'Σ төсөлд эзлэх = 100.00 (2026-11-23: хувь ҮРГЭЛЖ 2 орон)');
 /* Гүйцэтгэл = 0.05 × 100 + 0.95 × 20 = 24 · төлөвлөгөө = 0.05 × 100 + 0.95 × 50 = 52.5 · биелэлт = 24 ÷ 52.5 */
 assert.match(total, /24\.00%/, 'нийт гүйцэтгэл = Σ G × S');
 assert.match(total, /52\.50%/, 'нийт төлөвлөгөө = Σ G × N');

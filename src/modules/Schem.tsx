@@ -3,11 +3,11 @@
 /**
  * ТӨСЛИЙН ҮЙЛ АЖИЛЛАГААНЫ СХЕМ.
  *
- *   «Ерөнхий»     — `schem.ts`-ийн 10 карт. Төслийн мөчлөгийн товч зураг.
- *   «Дэлгэрэнгүй» — `schemFine.ts`-ийн 26 карт. АЖИЛЛАГАА БҮР өөрийн хайрцагтай:
- *                   зөвшөөрсөн · хүлээгдэж буй · татгалзсан · чөлөөлсөн ·
- *                   үлдсэн · тайлагнасан блок · тайлангүй блок · хяналтын 6
- *                   шат · шилжүүлсэн · төсөв · гэрээ · олголт …
+ *   «Ерөнхий»     — `schem.ts`-ийн 15 карт. Төслийн мөчлөг — цэсний нэрээр, амьд тоогоор.
+ *   «Дэлгэрэнгүй» — `schemFine.ts`-ийн 33 карт. АЖИЛЛАГАА БҮР өөрийн хайрцагтай:
+ *                   ТЭЗҮ · зураг төсөл · зөвшөөрлийн төлөв · сонгон · газар · хуваарь ·
+ *                   нэмэлт ажил · материал · блок · хяналтын 7 шат · төлбөрийн акт · ашиглалт …
+ *   Үе шатны хувь (төлөвлөгөөт · гүйцэтгэл) «Төсөл төлөвлөгөө биелэлт»-ээс (`schemPlan.ts`, 2026-11-23).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -103,7 +103,7 @@ const AREA_QTY = { qty: { field: '', unit: 'м²' } } as LayerDef;
 function show(m: Metric): string {
   if (m.value == null) return '—';
   switch (m.kind) {
-    case 'pct': return pct(m.value, 0);
+    case 'pct': return pct(m.value);
     case 'mnt': return mnt(m.value);
     case 'ha': return qtyText(AREA_QTY, m.value * 10_000) ?? '—';
     case 'day': return tr('{0} хоног', num(m.value));
@@ -123,7 +123,7 @@ function cellText(x: Cell): string {
 /* ══════════════════ Нэг карт ══════════════════ */
 
 /**
- * Зурагдах карт — ХОЁУЛАНГ НЬ (ерөнхий 10, нарийн 24) нэг хэлбэрт оруулсан.
+ * Зурагдах карт — ХОЁУЛАНГ НЬ (ерөнхий ба нарийн) нэг хэлбэрт оруулсан.
  */
 type Card = {
   id: string;
@@ -530,7 +530,7 @@ const COARSE_CARDS: Card[] = topoOrder().map((id) => {
   const n = NODE_BY_ID[id];
   return { id, group: id, get title() { return n.title; }, get desc() { return n.desc; }, icon: n.icon, view: n.view, col: n.col, row: n.row };
 });
-/** «Дэлгэрэнгүй» схемийн 26 карт */
+/** «Дэлгэрэнгүй» схемийн картууд */
 const FINE_CARDS: Card[] = fineOrder().map((id) => {
   const n = FINE_BY_ID[id];
   return { id, group: n.group, get title() { return n.title; }, get desc() { return n.desc; }, icon: n.icon, view: n.view, col: n.col, row: n.row };
@@ -602,7 +602,7 @@ export function Schem({
       <header className={c.head}>
         <div>
           <h2 className={c.title}>{tr('Үйл ажиллагааны схем')}</h2>
-          <p className={c.sub}>{tr('Төлөвлөхөөс тайлагнах хүртэлх урсгал — амьд тоогоор')}</p>
+          <p className={c.sub}>{tr('Төлөвлөхөөс ашиглалтад оруулах хүртэлх урсгал — «Төсөл төлөвлөгөө биелэлт»-ийн амьд тоогоор')}</p>
         </div>
         <span className={c.spacer} />
         <Segmented value={fine ? 'fine' : 'coarse'} onChange={(v) => setFine(v === 'fine')} label={tr('Нарийвчлал')}

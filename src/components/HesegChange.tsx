@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { refreshEpoch, subscribeData } from '@/lib/dataBus';
 import { computeChange, compareChangeQuantity, CHANGE_ITEMS, type ChangeKey, type ChangeResult, type ChangeFilter, type ChangePiece, type ChangeRow, type ChangeGroup } from '@/lib/hesegChange';
 import { fmtLen } from '@/lib/planOverlap';
-import { num, ha } from '@/lib/format';
+import { num, ha, pct } from '@/lib/format';
 import { userError } from '@/components/ui';
 import s from './heseg.module.css';
 import c from './hesegChange.module.css';
@@ -133,7 +133,7 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                   <dd className={cmp ? d > 0 ? s.up : d < 0 ? s.down : '' : ''}>
                     {cmp ? deltaText(it.key, d) : '—'}
                   </dd>
-                  {cmp && pctD != null && d !== 0 && <small>{`${d > 0 ? '+' : '−'}${num(Math.abs(pctD), 1)}%`}</small>}
+                  {cmp && pctD != null && d !== 0 && <small>{`${d > 0 ? '+' : '−'}${pct(Math.abs(pctD))}`}</small>}
                   {!cmp && <small>{it.old ? tr('Мэдээлэл дутуу') : tr('харьцуулахгүй')}</small>}
                 </div>}
               </dl>
@@ -149,7 +149,7 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                           <span className={s.rowName}>{g.label ?? tr('Бүсээс гадуур')}</span>
                           <span className={s.rowVal}>
                             {fmt(it.key, g.value)}
-                            {r.next > 0 && <small> · {num(Math.min(100, (g.value / r.next) * 100), 0)}%</small>}
+                            {r.next > 0 && <small> · {pct(Math.min(100, (g.value / r.next) * 100))}</small>}
                           </span>
                         </button>
                       </li>
@@ -213,7 +213,7 @@ export function ChangePanel({ pick, setPick }: { pick: ChangePick; setPick: (p: 
                     {showChange && <>
                     <div>{d == null ? it.old ? tr('Мэдээлэл дутуу') : tr('харьцуулахгүй')
                       : deltaText(it.key, d)}</div>
-                    {d != null && percent != null && d !== 0 && <div><small>{`${d > 0 ? '+' : '−'}${num(Math.abs(percent), 1)}%`}</small></div>}
+                    {d != null && percent != null && d !== 0 && <div><small>{`${d > 0 ? '+' : '−'}${pct(Math.abs(percent))}`}</small></div>}
                     {sourceCmp && r.oldN != null && <div><small>{tr('{0} объект', signed(r.nextN - r.oldN))}</small></div>}
                     {sourceCmp && r.oldLayersN != null && <div><small>{tr('{0} давхарга', signed(r.nextLayersN - r.oldLayersN))}</small></div>}
                     {sourceCmp && (it.metric === 'len' || it.key === 'zone') && r.oldArea != null && <div><small>{haDelta(r.nextArea - r.oldArea)} {tr('га')}</small></div>}

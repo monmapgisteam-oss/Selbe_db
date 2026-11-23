@@ -13,7 +13,7 @@ import { askConfirm } from '@/lib/confirm';
 import { useFocusTrap } from '@/lib/useFocusTrap';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import { HABEA, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID } from '@/lib/services';
-import { num } from '@/lib/format';
+import { num, pct } from '@/lib/format';
 import { friendlyError } from '@/components/ui';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import {
@@ -464,7 +464,7 @@ function UzlegExportDialog({ initialKind, scope, onClose, onAction }: {
                                 {tr('{0} үл нийцэл', num(nc))}
                               </span>
                             )}
-                            <span className={`${x.score} ${scoreTone(p)} num`}>{p == null ? '—' : `${p.toFixed(1)}%`}</span>
+                            <span className={`${x.score} ${scoreTone(p)} num`}>{p == null ? '—' : pct(p)}</span>
                           </label>
                         );
                       })}

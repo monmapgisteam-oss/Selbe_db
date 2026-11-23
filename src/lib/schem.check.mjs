@@ -72,8 +72,10 @@ for (const n of NODES) {
 
 const succ = (id) => EDGES.filter((e) => e.kind === 'main' && e.from === id).map((e) => e.to);
 const pred = (id) => EDGES.filter((e) => e.kind === 'main' && e.to === id).map((e) => e.from);
-assert.equal(succ('tolovlolt').length, 2, 'төлөвлөгөөнөөс хоёр салаа гарах ёстой');
-assert.equal(pred('huvaari').length, 2, 'хуваарь хоёр урсгалыг нийлүүлэх ёстой');
+/* 2026-11-23: төлөвлөгөө → ТЭЗҮ · зураг төсөл → (зөвшөөрөл · сонгон · газар) → хуваарь */
+assert.deepEqual(succ('tolovlolt'), ['zurag'], 'төлөвлөгөөний дараа зураг төсөл');
+assert.equal(succ('zurag').length, 3, 'зураг төслөөс гурван салаа гарах ёстой');
+assert.deepEqual(pred('huvaari').sort(), ['gazar', 'songon', 'zovshoorol'], 'хуваарь гурван урсгалыг нийлүүлэх ёстой');
 assert.equal(
   EDGES.filter((e) => e.kind === 'back').length, 1,
   'жинхэнэ буцаалт ЯГ нэг — гүйцэтгэлийн хяналт',

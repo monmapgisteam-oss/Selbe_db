@@ -9,7 +9,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { friendlyError } from '@/components/ui';
 import { useAsync, type Async } from '@/lib/useAsync';
 import { loadFinData, physNow } from '@/modules/Finance';
-import { num, monthKey } from '@/lib/format';
+import { num, money2, monthKey } from '@/lib/format';
 import { loadHeadline, type Headline } from '@/lib/live';
 import { ailTotal, ailLabel, type BagtsRow } from '@/lib/execData';
 import o from './irgedHead.module.css';
@@ -72,13 +72,13 @@ export function HeadKpi({ bagts, extra }: {
     { v: b == null || ailT == null ? dots(bagts) : ailLabel(b), unit: tr('өрх'), label: tr('Өрхийн орон сууц'), q: bagts },
     { v: h == null ? dots(hq) : hVal(h, h.population, (n) => num(n)), unit: tr('хүн'), label: tr('Хамрагдах хүн ам'), q: hq },
     {
-      v: p.actual != null ? num(p.actual, 1) : dots(pq), unit: '%', q: pq,
+      v: p.actual != null ? num(p.actual, 2) : dots(pq), unit: '%', q: pq,
       label: tr('Барилгын явц'),
       title: tr('Барилга угсралтын биет гүйцэтгэл — багц бүрийн сүүлийн сарын хэмжилт, багцын хөрөнгө оруулалтын дүнгээр жигнэсэн (05. Багцын гүйцэтгэлтэй ижил)'),
       lead: true,
     },
     {
-      v: h == null ? dots(hq) : hVal(h, h.investTotal, (n) => num(n)), unit: tr('₮'), label: tr('Төслийн нийт төсөв'), q: hq,
+      v: h == null ? dots(hq) : hVal(h, h.investTotal, (n) => money2(n)), unit: tr('₮'), label: tr('Төслийн нийт төсөв'), q: hq,
       title: tr('Орон сууцны хороолол ба Гадна инженерийн шугам сүлжээний хүрээний төсөвт өртөг («Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр); нийгмийн дэд бүтэц, газар чөлөөлөлт, бондын хүү ОРОХГҮЙ'),
     },
     ...(extra ?? []),

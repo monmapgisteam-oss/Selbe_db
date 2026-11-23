@@ -13,15 +13,16 @@ import type { EdgeKind, Geo, SchemId } from '@/lib/schem';
 /* ══════════════════ Топологи ══════════════════ */
 
 export type FineId =
-  | 'plan'
+  | 'plan' | 'tezu' | 'zur'
   | 'zov' | 'zovOk' | 'zovWait' | 'zovNo'
+  | 'son'
   | 'gaz' | 'gazOk' | 'gazLeft'
-  | 'huv'
-  | 'bar' | 'barOk' | 'barNo'
+  | 'huv' | 'ajil'
+  | 'ma' | 'bar' | 'barOk' | 'barNo'
   | 'ers' | 'hab' | 'habInc'
   | 'hyCo' | 'hyEng' | 'hyMgr' | 'hyPlan' | 'hyDir' | 'hyHead' | 'hyChief' | 'hyDone'
   | 'finBudget' | 'finContract' | 'finPaid'
-  | 'tailan';
+  | 'ash' | 'tailan';
 
 export type FineNode = {
   id: FineId;
@@ -40,19 +41,29 @@ export type FineNode = {
 export type FineEdge = { from: FineId; to: FineId; kind: EdgeKind; label?: string };
 
 /**
- *   багана 0  төлөвлөх
- *   багана 1–2 нөхцөл бүрдүүлэх (зөвшөөрөл · газар) ба тэдгээрийн ТӨЛӨВҮҮД
- *   багана 3–4 хуваарь → барилга угсралт
+ *   багана 0  төлөвлөх → ТЭЗҮ → ажлын зураг төсөл
+ *   багана 1–2 нөхцөл бүрдүүлэх (зөвшөөрөл · сонгон шалгаруулалт · газар) ба тэдгээрийн ТӨЛӨВҮҮД
+ *   багана 3–4 хуваарь (+ нэмэлт ажил) → барилга угсралт (+ материал)
  *   багана 5  барилгын үр дүн (блокийн ангилал · ХАБЭА · эрсдэл)
- *   багана 6  ГҮЙЦЭТГЭЛИЙН ХЯНАЛТЫН 4 ШАТ — цорын ганц жинхэнэ төлөвийн машин
- *   багана 7  батлагдсан ажил ба санхүүгийн хэмжүүрүүд
- *   багана 8  тайлан
+ *   багана 6  ГҮЙЦЭТГЭЛИЙН ХЯНАЛТЫН 7 ШАТ — цорын ганц жинхэнэ төлөвийн машин
+ *   багана 7  батлагдсан ажил ба санхүү (төлбөрийн акт)
+ *   багана 8  ашиглалтад оруулах → тайлан
  */
 export const FINE_NODES: readonly FineNode[] = [
   {
-    id: 'plan', group: 'tolovlolt', col: 0, row: 2, view: 'plan', icon: 'layers',
+    id: 'plan', group: 'tolovlolt', col: 0, row: 1, view: 'plan', icon: 'layers',
     get title() { return tr('Ерөнхий төлөвлөгөө'); },
     get desc() { return tr('Төслийн суурь тоо: нийт талбай, хүн ам, батлагдсан төсөвт өртөг'); },
+  },
+  {
+    id: 'tezu', group: 'zurag', col: 0, row: 2, view: 'zuragTosol', icon: 'file',
+    get title() { return tr('ТЭЗҮ'); },
+    get desc() { return tr('Техник эдийн засгийн үндэслэл — «Зургийн бүртгэл»-ийн төлөвөөр явц бодогдоно'); },
+  },
+  {
+    id: 'zur', group: 'zurag', col: 0, row: 3, view: 'zuragTosol', icon: 'file',
+    get title() { return tr('Ажлын зураг төсөл'); },
+    get desc() { return tr('Багц бүрийн ажлын зураг — явц нь «Зургийн бүртгэл»-ийн баримтын төлөвөөс'); },
   },
 
   /* ── Зөвшөөрөл ба түүний ТӨЛӨВҮҮД ── */
@@ -72,9 +83,15 @@ export const FINE_NODES: readonly FineNode[] = [
     get desc() { return tr('Хүсэлт өгсөн ч шийдвэр гараагүй — гадны байгууллагад хүлээгдэж буй зөвшөөрөл'); },
   },
   {
-    id: 'zovNo', group: 'zovshoorol', col: 2, row: 2, view: 'zovshoorol', icon: 'shield',
+    id: 'zovNo', group: 'zovshoorol', col: 1, row: 1, view: 'zovshoorol', icon: 'shield',
     get title() { return tr('Татгалзсан / танигдаагүй'); },
     get desc() { return tr('Зөвшөөрөөгүй, эсвэл төлөвийн утга нь толинд байхгүй тул баталгаажсан гэж үзэх боломжгүй'); },
+  },
+
+  {
+    id: 'son', group: 'songon', col: 1, row: 2, view: 'songon', icon: 'briefcase',
+    get title() { return tr('Захирамж · Сонгон шалгаруулалт'); },
+    get desc() { return tr('Захирамжийн огноо, дугаараас гэрээ байгуулах хүртэл. Гэрээ байгуулсан бол 100%'); },
   },
 
   /* ── Газар чөлөөлөлт ба түүний ангилал ── */
@@ -89,15 +106,25 @@ export const FINE_NODES: readonly FineNode[] = [
     get desc() { return tr('Эзэмшигчтэй тооцоо дууссан, барилга угсралт эхлэх боломжтой нэгж талбарууд'); },
   },
   {
-    id: 'gazLeft', group: 'gazar', col: 2, row: 5, view: 'gazar', icon: 'frame',
+    id: 'gazLeft', group: 'gazar', col: 1, row: 5, view: 'gazar', icon: 'frame',
     get title() { return tr('Үлдсэн талбар'); },
     get desc() { return tr('Хараахан чөлөөлөгдөөгүй нэгж талбар ба тэдгээрийн талбай — барилгыг хойшлуулж буй хүчин зүйл'); },
   },
 
   {
     id: 'huv', group: 'huvaari', col: 3, row: 2, view: 'huvaari', icon: 'calendar',
-    get title() { return tr('Хуваарь төлөвлөх'); },
-    get desc() { return tr('Ажил бүрийн эхлэх, дуусах огноо. Хамралтын хувь нь багц бүрийг бүтнээр татдаг тул схемд бодогдохгүй'); },
+    get title() { return tr('Хуваарь төлөвлөх · батлах'); },
+    get desc() { return tr('Гүйцэтгэгч блок бүрийн хуваарийг илгээж, батлагч батална. Карт дээр батлуулахаар хүлээгдэж буй хүсэлт'); },
+  },
+  {
+    id: 'ajil', group: 'ajil', col: 3, row: 1, view: 'ajilBatlah', icon: 'plus',
+    get title() { return tr('Нэмэлт ажил батлах'); },
+    get desc() { return tr('Гэрээнд байгаагүй ажлын мөрийг хянаж батлах — батлагдсан мөр хуваарьт орно'); },
+  },
+  {
+    id: 'ma', group: 'ma', col: 4, row: 0, view: 'ma', icon: 'listCheck',
+    get title() { return tr('Материал баталгаажуулалт'); },
+    get desc() { return tr('Материалын A/AN/R шийдвэр. Буцаасан (R) эсвэл шийдвэргүй материалтай ажил эхлэхгүй'); },
   },
   {
     id: 'bar', group: 'barilga', col: 4, row: 2, view: 'pkgProg', icon: 'building',
@@ -176,31 +203,39 @@ export const FINE_NODES: readonly FineNode[] = [
 
   /* ── Санхүү — ХЭМЖҮҮР, дараалал БИШ ── */
   {
-    id: 'finBudget', group: 'sankhuu', col: 7, row: 2, view: 'pkgFin', icon: 'calc',
+    id: 'finBudget', group: 'sankhuu', col: 7, row: 2, view: 'finance', icon: 'calc',
     get title() { return tr('Төсөвт өртөг'); },
     get desc() { return tr('Батлагдсан төсөв. Блокийн гүйцэтгэлийн жин ч мөн эндээс тооцогдоно'); },
   },
   {
-    id: 'finContract', group: 'sankhuu', col: 7, row: 3, view: 'pkgFin', icon: 'calc',
+    id: 'finContract', group: 'sankhuu', col: 7, row: 3, view: 'finance', icon: 'calc',
     get title() { return tr('Гэрээний дүн'); },
     get desc() { return tr('Гүйцэтгэгчидтэй байгуулсан гэрээнүүдийн нийлбэр ба төсөвт эзлэх хувь'); },
   },
   {
-    id: 'finPaid', group: 'sankhuu', col: 7, row: 4, view: 'pkgFin', icon: 'calc',
-    get title() { return tr('Олгосон санхүүжилт'); },
-    get desc() { return tr('IPC актаар бодитоор олгогдсон дүн ба төсөвт эзлэх хувь'); },
+    id: 'finPaid', group: 'sankhuu', col: 7, row: 4, view: 'ipc', icon: 'coins',
+    get title() { return tr('Төлбөрийн акт (IPC)'); },
+    get desc() { return tr('Батлагдсан гүйцэтгэлээр олгосон санхүүжилт ба гэрээнд эзлэх хувь'); },
+  },
+  {
+    id: 'ash', group: 'ashiglalt', col: 8, row: 3, view: 'ashiglalt', icon: 'stamp',
+    get title() { return tr('Ашиглалтад оруулах'); },
+    get desc() { return tr('Хүлээлгэн өгөх, зүгшрүүлэх үе шат — «Төсөл төлөвлөгөө биелэлт»-ийн явцаар'); },
   },
 
   {
-    id: 'tailan', group: 'tailan', col: 8, row: 3, view: 'tailan', icon: 'chart',
+    id: 'tailan', group: 'tailan', col: 8, row: 4, view: 'tailan', icon: 'chart',
     get title() { return tr('Тайлан'); },
     get desc() { return tr('Нэгтгэсэн үзүүлэлт. «Сүүлийн тайлангийн нас» нь мэдээлэл хэр шинэ болохыг хэлнэ'); },
   },
 ];
 
 export const FINE_EDGES: readonly FineEdge[] = [
-  { from: 'plan', to: 'zov', kind: 'main' },
-  { from: 'plan', to: 'gaz', kind: 'main' },
+  { from: 'plan', to: 'tezu', kind: 'main' },
+  { from: 'tezu', to: 'zur', kind: 'main' },
+  { from: 'zur', to: 'zov', kind: 'main' },
+  { from: 'zur', to: 'son', kind: 'main' },
+  { from: 'zur', to: 'gaz', kind: 'main' },
 
   { from: 'zov', to: 'zovOk', kind: 'main' },
   { from: 'zov', to: 'zovWait', kind: 'feed' },
@@ -209,10 +244,15 @@ export const FINE_EDGES: readonly FineEdge[] = [
   { from: 'gaz', to: 'gazOk', kind: 'main' },
   { from: 'gaz', to: 'gazLeft', kind: 'feed' },
 
-  /* Нийлэлт — ЗӨВШӨӨРСӨН ба ЧӨЛӨӨЛСӨН хоёул бүрдсэн үед хуваарь утгатай */
+  /* Нийлэлт — ЗӨВШӨӨРСӨН, ГЭРЭЭ, ЧӨЛӨӨЛСӨН гурав бүрдсэн үед хуваарь утгатай */
   { from: 'zovOk', to: 'huv', kind: 'main' },
+  { from: 'son', to: 'huv', kind: 'main' },
   { from: 'gazOk', to: 'huv', kind: 'main' },
+  { from: 'son', to: 'ajil', kind: 'feed' },
+  { from: 'ajil', to: 'huv', kind: 'feed' },
   { from: 'huv', to: 'bar', kind: 'main' },
+  { from: 'huv', to: 'ma', kind: 'feed' },
+  { from: 'ma', to: 'bar', kind: 'feed' },
 
   { from: 'bar', to: 'barOk', kind: 'main' },
   { from: 'bar', to: 'barNo', kind: 'feed' },
@@ -243,7 +283,8 @@ export const FINE_EDGES: readonly FineEdge[] = [
   { from: 'finContract', to: 'finPaid', kind: 'feed' },
   { from: 'hyDone', to: 'finPaid', kind: 'feed' },
 
-  { from: 'finPaid', to: 'tailan', kind: 'main' },
+  { from: 'finPaid', to: 'ash', kind: 'main' },
+  { from: 'ash', to: 'tailan', kind: 'main' },
 ];
 
 export const FINE_BY_ID: Record<FineId, FineNode> = Object.fromEntries(
@@ -259,15 +300,20 @@ export const FINE_BY_ID: Record<FineId, FineNode> = Object.fromEntries(
  */
 export const GROUP_ROOT: Record<SchemId, FineId> = {
   tolovlolt: 'plan',
+  zurag: 'zur',
   zovshoorol: 'zov',
+  songon: 'son',
   gazar: 'gaz',
   huvaari: 'huv',
+  ajil: 'ajil',
+  ma: 'ma',
   barilga: 'bar',
   /* Буцаалт нь ажлыг ГҮЙЦЭТГЭГЧ рүү эргүүлдэг тул хяналтын бүлгийн үндэс тэр */
   hyanalt: 'hyCo',
   habea: 'hab',
   ersdel: 'ers',
-  sankhuu: 'finBudget',
+  sankhuu: 'finPaid',
+  ashiglalt: 'ash',
   tailan: 'tailan',
 };
 

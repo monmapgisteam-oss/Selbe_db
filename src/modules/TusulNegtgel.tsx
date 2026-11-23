@@ -11,7 +11,7 @@ import { useSyncRef } from '@/lib/useSyncRef';
 import { setNavDirty } from '@/lib/navGuard';
 import { Data, userError } from '@/components/ui';
 import { askConfirm } from '@/lib/confirm';
-import { pct as fmtPct, num } from '@/lib/format';
+import { pct as fmtPct, num, money2 } from '@/lib/format';
 import { loadNegtgelFull, dropNegtgelFull, negDisplay, negtgelTree, type NegtgelFull, type NegtgelRow, type NegtgelCalc } from '@/lib/negtgel';
 import { computeNegAuto, syncNegtgel, type NegRaw, type NegSyncState } from '@/lib/negtgelAuto';
 import {
@@ -785,6 +785,8 @@ export function Tree({ rows, calc, edit, toolbar, root, onTotal }: {
    * ТООНЫ ХЭЛБЭР — Excel-ийн форматаар: гүйцэтгэл үргэлж 2 орон; үе шат ба
    * бүлгийн мөр 2 орон; навчны төлөвлөгөө/биелэлт бүхэл; төсөлд эзлэх хувь
    * навчинд 3 орон (0.002% мэт жижиг жин).
+   * 2026-11-23: портал даяар хувь ҮРГЭЛЖ 2 аравтын оронтой — `pct` нь `d`-г үл
+   * тоомсорлоно (доорх `d` нь зөвхөн хуучин дуудлагын хэлбэр).
    */
   const p = (v: number | null | undefined, d: number) => (
     v == null ? '' : fmtPct(v, d)
@@ -1017,7 +1019,7 @@ export function Tree({ rows, calc, edit, toolbar, root, onTotal }: {
                   case 'code': return r.code;
                   case 'bagts': return r.bagts ?? '';
                   case 'name': return r.name;
-                  case 'budget': return c?.budget ? num(c.budget) : '';
+                  case 'budget': return c?.budget ? money2(c.budget) : '';
                   case 'inSection': return p(c?.inSection, 2);
                   case 'inProject': return p(c?.inProject, r.depth <= 1 ? 0 : leafDeep ? 3 : 2);
                   case 'inTotal': return c?.outside || !c?.noTotal ? '' : c.inTotal === 0 ? tr('Тооцохгүй') : tr('Тооцохгүй (дээд мөр)');

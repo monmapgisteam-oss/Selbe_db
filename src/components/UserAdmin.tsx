@@ -32,11 +32,12 @@ import { useAuth } from './AuthGate';
 import { Icon } from './Icon';
 import { UserRow, type UserRowProps } from './UserRow';
 import {
-  CAPS, WORKFLOW_VIEWS, capsOf, capsStored, capViewsOf, dirtyCapKeys, foreignCapsDirty, retryCapsDirty, setCaps,
+  CAPS, WORKFLOW_VIEWS, capUsers, capsOf, capsStored, capViewsOf, dirtyCapKeys, foreignCapsDirty, retryCapsDirty, setCaps,
   subscribeCaps,
   type CapKey,
 } from '@/lib/caps';
 import { ErhOverview } from '@/modules/ErhOverview';
+import { ErhNew, type ErhNewPane } from '@/modules/ErhNew';
 import { GuitsetgelAcl } from '@/modules/GuitsetgelAcl';
 import { HuvaariAcl } from '@/modules/HuvaariAcl';
 import { ObyemAcl } from '@/modules/ObyemAcl';
@@ -67,7 +68,7 @@ import {
 import { UserCard } from './UserCard';
 import { capLabelShort } from '@/modules/erhLabels';
 import { ErhTypes } from '@/modules/ErhTypes';
-import { NEW_ACCOUNT_ROLE, TYPE_ORDER, roleAccess, typeLabel } from '@/lib/roleTypes';
+import { NEW_ACCOUNT_ROLE, PICK_ORDER, roleAccess, typeLabel } from '@/lib/roleTypes';
 import { setTypeDraftUsers, subscribeTypeLock } from '@/lib/roleTypeApply';
 import s from './userAdmin.module.css';
 
@@ -98,8 +99,9 @@ const superViews = (cur: ViewKey[] | 'all', tpl: ViewKey[] | 'all'): ViewKey[] |
  *   нь `role:'super'` override бичдэг байв — `roleTypeApply.applyType` · `UserTypeSection` татгалздаг,
  *   05-erh-batlah §9 «Super зөвхөн кодын админд». Бөөнөөр засах зурваст (`hardSuper=false`) ч алга.
  */
+/* 2026-11-23: + албан үүргийн загварын шинэ таван үүрэг (`roleTypes.PICK_ORDER`; `TYPE_ORDER` хэвээр) */
 const rolePresets = (hardSuper = false): { key: Role; label: string }[] =>
-  TYPE_ORDER.filter((r) => r !== 'super' || hardSuper).map((r) => ({ key: r, label: typeLabel(r) }));
+  PICK_ORDER.filter((r) => r !== 'super' || hardSuper).map((r) => ({ key: r, label: typeLabel(r) }));
 
 const grantsSuperToPlain = (_username: string, role: Role): boolean =>
   role === 'super' && roleForUser(currentUser()) !== 'super';
@@ -167,7 +169,23 @@ export type Draft = {
  * ХЭРЭГЛЭГЧИЙН ЭРХ УДИРДЛАГА — зөвхөн super admin-д.
  */
 /** Бүтэн өргөнтэй хуудсууд — «Эрхийн төрөл» ба «багц × үүрэг/шат» хүснэгттэй 7 хуудас (2026-09-30) */
-const WIDE_PANES: ReadonlySet<string> = new Set(['types', 'guits', 'huvaari', 'ajil', 'obyem', 'chanar', 'butets', 'habea']);
+const WIDE_PANES: ReadonlySet<string> = new Set(['types', 'guits', 'huvaari', 'ajil', 'obyem', 'chanar', 'butets', 'habea', 'nPkgs', 'nJobs']);
+
+/**
+ * «ШИНЭ ЭРХ» БҮЛЭГ (2026-11-23) — хажуугийн цэсний эхэнд; хуучин хуудсууд доор нь хэвээр (харьцуулж, буцаж болно).
+ * Гурван хуудас НЭГ `ErhNew`-ээр зурагдана — хооронд шилжихэд нээлттэй хүний ноорог хадгалагдана.
+ */
+const NEW_PANES: readonly { key: ErhNewPane; icon: string; label: () => string; sub: () => string }[] = [
+  { key: 'nPeople', icon: 'users', label: () => tr('Хүмүүс'),
+    sub: () => tr('Хүн бүрд албан үүрэг ба багц сонгоно — эрх нь албан үүргээс гарна; онцгой эрхийг нэмж, хасна. Ганц «Хадгалах»: бичихээс өмнө юу нэмэгдэж, юу хасагдахыг жагсааж харуулна.') },
+  { key: 'nPkgs', icon: 'grid', label: () => tr('Багцууд'),
+    sub: () => tr('Багц бүрд урсгалын долоон шат ба багцын үүрэг бүрийг хэн барьж байгаа, юу дутуу, юу зөрчилтэй вэ.') },
+  { key: 'nJobs', icon: 'briefcase', label: () => tr('Албан үүрэг'),
+    sub: () => tr('Албан үүрэг бүр юу олгодог вэ — шат, багцын үүрэг, эрх, харагдац.') },
+];
+const isNewPane = (p: string): p is ErhNewPane => NEW_PANES.some((x) => x.key === p);
+/** «Санхүүгийн бүртгэл — мөр нэмэх» (`finRow`) — ямар ч код шалгадаггүй тул эзэмшигчгүй бол хуудсанд харагдахгүй (2026-11-23) */
+const finRowHeld = (): boolean => capUsers().some((u) => capsStored(u).includes('finRow'));
 
 export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [users, setUsers] = useState<UserPerm[]>([]);
@@ -177,7 +195,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   /**
    * АЛЬ БҮЛЭГ нээлттэй байна.
    */
-  const [pane, setPane] = useState<'ovw' | 'types' | 'users' | ErhPane>('ovw');
+  const [pane, setPane] = useState<'ovw' | 'types' | 'users' | ErhPane | ErhNewPane>('ovw');
+  /** «Шинэ эрх» самбарт хадгалаагүй ноорогтой хүн (2026-11-23) */
+  const [newDirty, setNewDirty] = useState<string | null>(null);
+  const newDirtyRef = useRef(newDirty);
+  useSyncRef(newDirtyRef, newDirty);
   const [name, setName] = useState('');
   const [addErr, setAddErr] = useState('');
   const [addNote, setAddNote] = useState('');
@@ -237,12 +259,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   const [typesDirty, onTypesDirty] = useState(false);
   const typesDirtyRef = useRef(typesDirty);
   useSyncRef(typesDirtyRef, typesDirty);
-  const anyUnsaved = () => draftsRef.current.size > 0 || typesDirtyRef.current;
+  const anyUnsaved = () => draftsRef.current.size > 0 || typesDirtyRef.current || !!newDirtyRef.current;
   /** F5/таб хаахад хадгалаагүй ноорог чимээгүй алдагдахаас сэргийлнэ */
   useEffect(() => {
     if (!open) return;
     const onBefore = (e: BeforeUnloadEvent) => {
-      if (draftsRef.current.size === 0 && !typesDirtyRef.current) return;
+      if (draftsRef.current.size === 0 && !typesDirtyRef.current && !newDirtyRef.current) return;
       e.preventDefault();
     };
     window.addEventListener('beforeunload', onBefore);
@@ -270,6 +292,10 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     onClose();
   };
   const goPane = (k: typeof pane) => {
+    if (k !== pane && isNewPane(pane) && !isNewPane(k) && newDirty) {
+      void askLeaveNew().then((yes) => { if (yes) setPane(k); });
+      return;
+    }
     if (k !== pane && pane === 'types' && typesDirty) {
       void askConfirm(tr('Эрхийн төрлийн загварт хадгалаагүй өөрчлөлт байна. Хадгалалгүй шилжих үү?'), { danger: true, ok: tr('Хадгалалгүй шилжих') })
         .then((yes) => { if (yes) setPane(k); });
@@ -278,6 +304,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     setPane(k);
   };
 
+  const askLeaveNew = useCallback(
+    () => askConfirm(tr('Хадгалаагүй өөрчлөлт байна. Хадгалалгүй гарах уу?'), { danger: true, ok: tr('Хадгалалгүй гарах') }),
+    [],
+  );
+  const oldDraftKeys = useMemo(() => new Set(drafts.keys()), [drafts]);
   const saveRef = useRef<() => void>(() => {});
   const closeRef = useRef<() => void>(() => {});
   useSyncRef(closeRef, requestClose);
@@ -349,8 +380,11 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   useEffect(() => subscribeAclPending(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribeTypeLock(() => setAclN((n) => n + 1)), []);
   useEffect(() => subscribePortalPresence(() => setAclN((n) => n + 1)), []);
-  useEffect(() => { setTypeDraftUsers(drafts.keys()); }, [drafts]);
-  useEffect(() => { setAclDrafts(drafts.entries()); }, [drafts]);
+  /* «Шинэ эрх» самбарын ноорог ч бусад хуудсын шууд бичилтийг хаана (хуучин самбарын ноорогтой ижил дүрэм) */
+  useEffect(() => { setTypeDraftUsers([...drafts.keys(), ...(newDirty ? [newDirty] : [])]); }, [drafts, newDirty]);
+  useEffect(() => {
+    setAclDrafts([...drafts.entries(), ...(newDirty && !drafts.has(newDirty) ? [[newDirty, {}] as [string, Draft]] : [])]);
+  }, [drafts, newDirty]);
   useEffect(() => () => setAclDrafts([]), []);
 
   /** Устгагдсан аккаунтууд — рендер бүрд ДАХИН биш, нэг л удаа */
@@ -631,6 +665,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   };
   // eslint-disable-next-line react-hooks/refs
   saveRef.current = () => {
+    /* «Шинэ эрх» хуудсууд өөрийн «Хадгалах»-тай — Ctrl+S хуучин ноорог руу шилжүүлж, нээлттэй ноорогийг хаяхгүй */
+    if (isNewPane(pane)) return;
     if (pane !== 'users' && draftsRef.current.size > 0 && !typesDirtyRef.current) { setPane('users'); setCard(null); }
     void saveAll();
   };
@@ -716,10 +752,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        унтраалга үүнийг ч тусгана (`UserRights`) */
     const capViews = capViewsOf(u.username);
     const wf = workflowViewsOf(u.username);
+    /* 2026-11-23: «Гүйцэтгэл»-ийг хардаг хүнд «Хяналтын хугацаа» автоматаар (`permissions.resolveAccess`) — унтраалга түгжээтэй */
+    const autoViews: ViewKey[] = wf.includes('guitsetgel') ? ['hyanaltHugatsaa'] : [];
     /* 2026-11-20: админ (super) бусдын адил — урсгалтай харагдац томилгооноос, бусад нь хадгалсан + эрхийн харагдац */
     const opened = (k: ViewKey): boolean => (WORKFLOW_VIEWS.includes(k)
       ? wf.includes(k)
-      : hasView(d.views, k) || capViews.includes(k));
+      : hasView(d.views, k) || capViews.includes(k) || autoViews.includes(k));
     return {
       u,
       rowKey: key,
@@ -729,6 +767,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       expanded: openRows.has(key),
       on: ALL_KEYS.filter(opened).length,
       capViews,
+      autoViews,
       caps: capsLocked ? capsStored(u.username) : capsOf(u.username),
       selected: sel.has(key),
       dirtyPerm: dirtyRemote.has(key),
@@ -775,6 +814,22 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       </header>
 
       <aside className={s.side} aria-label={tr('Админ цэс')}>
+        <div className={s.sideHead}>
+          {tr('Шинэ эрх')}
+          <span className={s.newTag}>{tr('шинэ')}</span>
+        </div>
+        {NEW_PANES.map((x) => (
+          <button
+            key={x.key}
+            type="button"
+            className={`${s.sideItem} ${pane === x.key ? s.sideItemOn : ''}`}
+            aria-current={pane === x.key}
+            onClick={() => goPane(x.key)}
+          >
+            <Icon name={x.icon} size={14} />
+            {x.label()}
+          </button>
+        ))}
         <div className={s.sideHead}>{tr('Тохиргоо')}</div>
         <button
           type="button"
@@ -828,7 +883,22 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       </aside>
 
       <div className={`${s.main} ${WIDE_PANES.has(pane) ? s.mainWide : ''}`}>
-        {pane === 'ovw' ? (
+        {isNewPane(pane) ? (
+          <>
+            <header className={s.head}>
+              <h2 className={s.title}>{NEW_PANES.find((x) => x.key === pane)?.label()}</h2>
+              <p className={s.subtitle}>{NEW_PANES.find((x) => x.key === pane)?.sub()}</p>
+            </header>
+            <ErhNew
+              pane={pane}
+              onPane={(x) => goPane(x)}
+              oldDrafts={oldDraftKeys}
+              onDirty={setNewDirty}
+              lookup={lookupArcgisUser}
+              askLeave={askLeaveNew}
+            />
+          </>
+        ) : pane === 'ovw' ? (
           <>
             <header className={s.head}>
               <h2 className={s.title}>{tr('Эрхийн тойм')}</h2>
@@ -857,7 +927,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
                   : pane === 'chanar' ? <ChanarAcl />
                       : pane === 'butets' ? <DedButetsAcl />
                         : pane === 'habea' ? <><PlainCapAcl cap="habeaData" /><HabeaViewAcl /></>
-                        : PANE_CAPS[pane].map((c) => <PlainCapAcl key={c} cap={c} />)}
+                        : PANE_CAPS[pane].filter((c) => c !== 'finRow' || finRowHeld()).map((c) => <PlainCapAcl key={c} cap={c} />)}
           </>
         ) : pane === 'types' ? (
           <>

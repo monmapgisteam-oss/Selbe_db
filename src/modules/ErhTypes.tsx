@@ -149,7 +149,7 @@ export function ErhTypes({ remote, onDirty }: {
     if (!typesReady()) { setErr(tr('Эрхийн төрлийн загвар уншигдаагүй — дахин ачаална уу.')); return; }
     const users = usersOf(r);
     if (!users.length) return;
-    if (!(await askConfirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Харагдац ба ТЭЗҮ-БОНУ нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', typeLabel(r), String(users.length)), { ok: tr('Хэрэгжүүлэх') }))) return;
+    if (!(await askConfirm(tr('«{0}» төрлийн {1} хэрэглэгчид загварыг хэрэгжүүлэх үү? Харагдац нь загварынхаар солигдоно; засах эрх хөндөгдөхгүй.', typeLabel(r), String(users.length)), { ok: tr('Хэрэгжүүлэх') }))) return;
     setErr(''); setMsg('');
     if (!(await applyTypeBulk(r, users))) setErr(tr('Өөр хэрэгжүүлэлт явагдаж байна — дуустал хүлээнэ үү.'));
   };

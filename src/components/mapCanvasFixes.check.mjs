@@ -15,7 +15,7 @@ assert.ok(src.includes('svm.update([graphic], vertexOnly)'), 'reshape хэрэг
 /* Хэмжилтгүй блок = 0% (эзний дүрэм); саарал нь зөвхөн гүйцэтгэл огт татагдаагүй үед */
 assert.ok(!src.includes("tr('Мэдээлэлгүй')"), 'блокийн гүйцэтгэлд «Мэдээлэлгүй» үлдэв');
 assert.ok(src.includes('(prog: BlockProgressMap, failed = false)'), 'renderer алдаа ба хэмжилтгүйг ялгахгүй байна');
-assert.ok(src.includes("defaultLabel: failed ? tr('Гүйцэтгэл ачаалагдсангүй') : '0%'"), 'хэмжилтгүй блокийн шошго 0% биш');
+assert.ok(src.includes("defaultLabel: failed ? tr('Гүйцэтгэл ачаалагдсангүй') : pct(0)"), 'хэмжилтгүй блокийн шошго 0% биш');
 assert.ok(src.includes('color: [...progColor(0), 0.62]'), 'хэмжилтгүй блокийн өнгө 0%-ийнх биш');
 assert.ok(src.includes('buildingProgressRenderer(empty, true)'), 'татаж чадаагүй үед саарал биш');
 assert.ok(

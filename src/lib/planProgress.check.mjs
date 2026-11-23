@@ -164,7 +164,7 @@ assert.ok(/return spanFrac\(\{ start: s, end: e \}, asOf\);/.test(SHEET),
   assert.equal(planCoverage(undefined), null, 'муруй алга → null (0 биш)');
   assert.equal(PLAN_COVERAGE_MIN, 95);
   assert.ok(coverageOk(95) && !coverageOk(94.9) && !coverageOk(null));
-  assert.equal(coverageNote(8.58), 'хуваарь 8.6% хамарсан');
+  assert.equal(coverageNote(8.58), 'хуваарь 8.58% хамарсан');
   assert.equal(coverageNote(100), '');
 }
 

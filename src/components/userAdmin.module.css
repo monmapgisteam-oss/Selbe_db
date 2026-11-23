@@ -88,6 +88,18 @@
   transition: background 0.14s, color 0.14s;
 }
 .sideItem:hover { background: var(--surface-2); color: var(--ink); }
+/* «Шинэ эрх» бүлгийн жижиг тэмдэг (2026-11-23) */
+.newTag {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--data) 40%, transparent);
+  background: color-mix(in oklab, var(--data) 10%, transparent);
+  color: var(--data-ink);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+}
 .sideItemOn, .sideItemOn:hover {
   background: color-mix(in oklab, var(--data) 13%, transparent);
   color: var(--data-ink);

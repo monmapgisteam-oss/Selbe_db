@@ -40,7 +40,7 @@ import {
 } from '@/lib/blockProgress';
 import { sumBy, maxOf } from '@/lib/agg';
 import { loadLandStatus, statusKey, statusRawsWhere, parcelAreasDeduped, landuseText, PARCEL_SHAPE_AREA, type LandStatus } from '@/lib/land';
-import { cat, mnt, num, pct, shades, CAT_LIGHT, NO_DATA, km, monthKey, text } from '@/lib/format';
+import { cat, mnt, money2, num, pct, PCT_DEC, shades, CAT_LIGHT, NO_DATA, km, monthKey, text } from '@/lib/format';
 import { bagtsOrigin } from '@/lib/brief';
 import {
   loadHeadline, loadSocial, loadBudget, loadPkgProgress, latestPkgProgress, SESSION_TTL_MS,
@@ -1223,8 +1223,8 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
       <Panel title={tr('Төслийн цар хүрээ')}>
         <Stats cols={2}>
           <Stat accent color={HUE[0]} value={h == null ? dots(d.headline) : hVal(h, h.areaHa, (v) => num(v, 1))} unit={tr('га')} label={tr('Төслийн талбай')} />
-          <Stat accent color={HUE[1]} value={prog.actual != null ? num(prog.actual, 1) : d.fin.state === 'loading' ? '…' : '—'} unit="%" label={tr('Барилгын явц')} />
-          <Stat accent color={HUE[2]} value={h == null ? dots(d.headline) : hVal(h, h.investTotal, (v) => num(v))} unit={tr('₮')} label={tr('Нийт төсөв')} />
+          <Stat accent color={HUE[1]} value={prog.actual != null ? num(prog.actual, PCT_DEC) : d.fin.state === 'loading' ? '…' : '—'} unit="%" label={tr('Барилгын явц')} />
+          <Stat accent color={HUE[2]} value={h == null ? dots(d.headline) : hVal(h, h.investTotal, (v) => money2(v))} unit={tr('₮')} label={tr('Нийт төсөв')} />
           <Stat accent color={HUE[3]} value={blocks == null ? dots(bagts) : num(blocks)} unit={tr('блок')} label={tr('Орон сууцны блок')} />
           <Stat accent color={HUE[4]} value={ail == null ? dots(bagts) : num(ail)} unit={tr('өрх')} label={tr('Айл өрх')} />
           <Stat accent color={HUE[5 % HUE.length]} value={packs == null ? dots(bagts) : num(packs)} unit={tr('багц')} label={tr('Багц (газрын зураг)')} />
@@ -1534,8 +1534,8 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
     <>
       <Panel title={tr('Хэрэгжилтийн ерөнхий график')} note={tr('Cashflow_0909 · HO_guitsetgel · Гүйцэтгэл бөглөх')}>
         <Stats cols={2}>
-          <Stat accent color={HUE[0]} value={dash(actual, (x) => num(x, 1))} unit="%" label={tr('Биет гүйцэтгэл')} />
-          <Stat accent color={HUE[1]} value={dash(planned, (x) => num(x, 1))} unit="%" label={scopeNote ? tr('Төлөвлөсөн гүйцэтгэл (хуваарьтай багцаар)') : tr('Төлөвлөсөн гүйцэтгэл')} />
+          <Stat accent color={HUE[0]} value={dash(actual, (x) => num(x, PCT_DEC))} unit="%" label={tr('Биет гүйцэтгэл')} />
+          <Stat accent color={HUE[1]} value={dash(planned, (x) => num(x, PCT_DEC))} unit="%" label={scopeNote ? tr('Төлөвлөсөн гүйцэтгэл (хуваарьтай багцаар)') : tr('Төлөвлөсөн гүйцэтгэл')} />
           <Stat
             accent
             color={HUE[2]}
@@ -2198,7 +2198,8 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
           const natAil = natT.partial || natT.ail == null ? null : natT.ail;
           const allBlocks = sumBy(rows, (x) => x.blocks);
           const allAil = allT.partial || allT.ail == null ? null : allT.ail;
-          const p100 = (a: number | null, b: number | null): number | null => (a != null && b ? Math.round((a / b) * 100) : null);
+          /* 2026-11-23: бүхэлдэхгүй — хувь дэлгэцэнд 2 аравтын оронтой (`pct`) */
+          const p100 = (a: number | null, b: number | null): number | null => (a != null && b ? (a / b) * 100 : null);
           return (
             <>
               <Stats cols={3}>
@@ -3947,9 +3948,9 @@ function FinanceDetail({ budget, flt, onFlt }: { budget: Async<Budget> } & FltPr
     <>
       <Panel title={tr('Гол үзүүлэлт')}>
         <Stats cols={2}>
-          <Stat accent color={HUE[0]} value={num(bg.total)} unit={tr('₮')} label={tr('Төслийн нийт төсөвт өртөг')} />
-          <Stat accent color={HUE[1]} value={num(bg.orderTotal)} unit={tr('₮')} label={tr('Захирамжийн нийт дүн')} />
-          <Stat accent color={HUE[2]} value={num(bg.contract)} unit={tr('₮')} label={tr('Гэрээ байгуулсан дүн')} />
+          <Stat accent color={HUE[0]} value={money2(bg.total)} unit={tr('₮')} label={tr('Төслийн нийт төсөвт өртөг')} />
+          <Stat accent color={HUE[1]} value={money2(bg.orderTotal)} unit={tr('₮')} label={tr('Захирамжийн нийт дүн')} />
+          <Stat accent color={HUE[2]} value={money2(bg.contract)} unit={tr('₮')} label={tr('Гэрээ байгуулсан дүн')} />
           {/* Энэ хувь нь урьд нь ЗӨВХӨН зүүн жагсаалтын мөрөнд байсан —
               хэсгээ нээхэд алга болдог байв. */}
           <Stat accent color={HUE[4]}
@@ -4135,7 +4136,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
                 unit={tr('хүчин чадал')} label={tr('Нийгмийн байгууламжийн багтаамж')} />
           <Stat accent color={HUE[5]}
                 value={h != null && ail != null
-                  ? (ail > 0 && !ailT?.partial ? hVal(h, h.investTotal, (v) => num(v / ail)) : '—')
+                  ? (ail > 0 && !ailT?.partial ? hVal(h, h.investTotal, (v) => money2(v / ail)) : '—')
                   : dots(d.headline, bagts)}
                 unit={tr('₮')} label={tr('1 өрхөд ногдох төсөв')} />
           <Stat accent color={cat(6)}

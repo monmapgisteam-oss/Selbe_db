@@ -77,7 +77,7 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const { st, api } = harness([r]);
   const res = api().commit(r, 0, '10');
   ok(asked.length === 1 && /БУУРНА/.test(asked[0]), `1a: 50% → 10% бууралтыг асуух ёстой (асуулт: ${asked.length})`);
-  ok(/50%/.test(asked[0]) && /10%/.test(asked[0]), '1a: асуултад хувиар «50% → 10%»');
+  ok(/50.00%/.test(asked[0]) && /10.00%/.test(asked[0]), '1a: асуултад хувиар «50.00% → 10.00%» (2026-11-23: 2 орон)');
   ok(res === false && !('1:0' in st.pending), '1a: «Цуцлах» → бичигдэхгүй');
 }
 {

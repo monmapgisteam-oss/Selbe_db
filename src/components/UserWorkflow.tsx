@@ -51,16 +51,15 @@ export function UserWorkflow({ user, onGo }: { user: string; onGo: (pane: ErhPan
   const e = userErh(liveErhSource(), user);
   const rows = workflowRows(e);
   const pending = aclPendingFor(user);
-  const missing = e.superUser || pending ? [] : ungrantedCaps(rows);
+  /* 2026-11-23: хүснэгтийн админ (super) бусдын адил — зөвхөн кодын админ хуваарилалтгүй */
+  const missing = e.codeSuper || pending ? [] : ungrantedCaps(rows);
   const title = (v: string) => VIEWS.find((x) => x.key === v)?.title ?? v;
 
   return (
     <section className={s.cardSec} id="erh-sec-workflow">
       {head}
       <div className={s.capNote}>
-        {e.superUser
-          ? tr('Админ (super) — урсгалтай бүх хуудас нээлттэй, хуваарилалт үйлчлэхгүй.')
-          : tr('Эдгээр хуудас унтраалгаар биш, тухайн эрхийн хуудсанд багц/шат олгоход нээгдэж, хасахад хаагдана. Эх сурвалж дээр дарж тэр хуудас руу очно.')}
+        {tr('Эдгээр хуудас унтраалгаар биш, тухайн эрхийн хуудсанд багц/шат олгоход нээгдэж, хасахад хаагдана. Эх сурвалж дээр дарж тэр хуудас руу очно.')}
       </div>
       {missing.length > 0 && (
         <div className={s.capErr} role="alert">
@@ -87,7 +86,7 @@ export function UserWorkflow({ user, onGo }: { user: string; onGo: (pane: ErhPan
             </span>
             <span className={s.wfSrcs}>
               {r.sources.map((x, i) => {
-                const bad = !x.granted && !e.superUser && !pending;
+                const bad = !x.granted && !e.codeSuper && !pending;
                 return (
                   <button
                     key={`${x.sys}|${x.role}|${i}`}

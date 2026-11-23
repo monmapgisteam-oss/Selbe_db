@@ -4,7 +4,7 @@
 
 import { useAsync, type Async } from '@/lib/useAsync';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct } from '@/lib/format';
+import { money2, num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
 import { loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
@@ -822,7 +822,7 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
   }
 
   if (bestBagts && worstBagts && bestBagts.bagts !== worstBagts.bagts) {
-    f.push(tr('Багц хоорондын гүйцэтгэлийн зөрүү {0} нэгж хувь байна: {1} — {2}, {3} — {4}. Хоцорсон багцад нөөц дахин хуваарилах асуудлыг авч үзэх шаардлагатай.', num(bestBagts.pct - worstBagts.pct, 1), tr(bestBagts.bagts), pct(bestBagts.pct, 2), tr(worstBagts.bagts), pct(worstBagts.pct, 2)));
+    f.push(tr('Багц хоорондын гүйцэтгэлийн зөрүү {0} нэгж хувь байна: {1} — {2}, {3} — {4}. Хоцорсон багцад нөөц дахин хуваарилах асуудлыг авч үзэх шаардлагатай.', num(bestBagts.pct - worstBagts.pct, 2), tr(bestBagts.bagts), pct(bestBagts.pct, 2), tr(worstBagts.bagts), pct(worstBagts.pct, 2)));
   }
 
   if (stalled > 0) {
@@ -834,9 +834,9 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
   }
 
   if (contractRate != null && paidRate != null) {
-    f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээлсэн дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} ₮ байна.', pct(contractRate, 1), pct(paidRate, 1), num(Math.max(0, x.finance.contractAmount - x.finance.paidContracted))));
+    f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээлсэн дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} ₮ байна.', pct(contractRate, 1), pct(paidRate, 1), money2(Math.max(0, x.finance.contractAmount - x.finance.paidContracted))));
     if (x.finance.paidOther > 0) {
-      f.push(tr('Нийт олгосон {0} ₮-ийн {1} ₮ нь гэрээлсэн багцад холбогдоогүй (олон багц хамарсан эсвэл гэрээ баталгаажаагүй багцын) төлбөр тул дээрх хувь, үлдэгдэлд ороогүй.', num(x.finance.paid), num(x.finance.paidOther)));
+      f.push(tr('Нийт олгосон {0} ₮-ийн {1} ₮ нь гэрээлсэн багцад холбогдоогүй (олон багц хамарсан эсвэл гэрээ баталгаажаагүй багцын) төлбөр тул дээрх хувь, үлдэгдэлд ороогүй.', money2(x.finance.paid), money2(x.finance.paidOther)));
     }
   }
 

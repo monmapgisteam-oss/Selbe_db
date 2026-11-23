@@ -36,7 +36,7 @@ import {
 } from '@/lib/services';
 import { sqlStr } from '@/lib/query';
 import { mapPkgKeySet, mapPkgLayers } from '@/lib/pkgAlias';
-import { mnt, num, pct, monthKey } from '@/lib/format';
+import { mnt, money2, MNT_DEC, num, pct, monthKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, loadReasonOids, loadSubPkgLayers,
   loadCfPlan, cashflowCurve, housingMoney, pkgCostWeight, loadBuildPkgs,
@@ -798,7 +798,7 @@ const nice = (v: string): string => {
 };
 
 /**
- * Мөнгө — мөрөн дээр ТОЙМЛОСОН («29.0 тэрбум ₮»), бүтэн нь hover-т.
+ * Мөнгө — мөрөн дээр ТОЙМЛОСОН («29.00 тэрбум ₮» — 2026-11-23-наас ҮРГЭЛЖ 2 аравтын оронтой), бүтэн нь hover-т.
  */
 const byBar = <T extends { value: number | null }>(a: T[]): T[] =>
   a.slice().sort((x, y) => (y.value ?? -1) - (x.value ?? -1));
@@ -806,14 +806,14 @@ const byBar = <T extends { value: number | null }>(a: T[]): T[] =>
 const mntShort = (v: number): string => {
   if (!Number.isFinite(v) || v === 0) return '—';
   const a = Math.abs(v);
-  if (a >= 1e12) return tr('{0} их наяд ₮', num(v / 1e12, 2));
-  if (a >= 1e9) return tr('{0} тэрбум ₮', num(v / 1e9, 1));
-  if (a >= 1e6) return tr('{0} сая ₮', num(v / 1e6, 1));
+  if (a >= 1e12) return tr('{0} их наяд ₮', num(v / 1e12, MNT_DEC));
+  if (a >= 1e9) return tr('{0} тэрбум ₮', num(v / 1e9, MNT_DEC));
+  if (a >= 1e6) return tr('{0} сая ₮', num(v / 1e6, MNT_DEC));
   return mnt(v);
 };
 
 /** KPI зурвасын дүн — жинхэнэ 0-ийг «0 ₮» (`mntShort`-ийн «—» нь чартын мөрүүдэд хэвээр) */
-const kpiMnt = (v: number): string => (v === 0 ? '0 ₮' : mntShort(v));
+const kpiMnt = (v: number): string => (v === 0 ? `${money2(0)} ₮` : mntShort(v));
 
 /** МӨНГӨН чарт — мөрөнд «хувь · тоймлосон дүн», hover-т бүтэн задаргаа */
 const moneyBars = (

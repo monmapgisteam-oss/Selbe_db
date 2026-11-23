@@ -7,7 +7,7 @@
  */
 import { useMemo } from 'react';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, mnt, date, fixCyr } from '@/lib/format';
+import { num, pct, mnt, money2, date, fixCyr } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { CASHFLOW_NEW, HO_IPC, LAYER_BY_ID } from '@/lib/services';
 import { mapPkgLayers } from '@/lib/pkgAlias';
@@ -42,8 +42,9 @@ const gapTone = (gap: number | null): string => {
   return lv === 'red' ? s.bad : lv === 'yellow' ? s.warn : s.good;
 };
 
+/** 2026-11-23: мөнгө ҮРГЭЛЖ 2 аравтын оронтой («0.00 ₮») */
 const mnt0 = (v: number | null | undefined): string =>
-  v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`;
+  v == null || !Number.isFinite(v) ? '—' : `${money2(v)} ₮`;
 
 const numOf = (v: unknown): number | null => {
   if (v == null || v === '') return null;

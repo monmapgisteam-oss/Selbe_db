@@ -3,7 +3,7 @@
 import React, { Fragment, isValidElement, useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct } from '@/lib/format';
+import { num, pct, PCT_DEC } from '@/lib/format';
 import {
   CHART, DONUT_SIZES, RING_SIZES, donutGeom, lineSegments, areaPath, monotonePath,
   roundPctsTo100,
@@ -38,6 +38,14 @@ const fin = (v: number | null | undefined) => (v != null && Number.isFinite(v) ?
  */
 const autoNum = (v: number | null | undefined): string =>
   v == null || !Number.isFinite(v) ? '—' : num(v, Number.isInteger(v) ? 0 : 1);
+
+/**
+ * НЭГЖТЭЙ УТГА (2026-11-23) — хувь (%) ба мөнгө (₮/төг) ҮРГЭЛЖ 2 аравтын оронтой
+ * («40.10%», «1,500.00 ₮»); бусад нэгж (м², блок…) `autoNum`-аар хэвээр.
+ */
+const isPctMoneyUnit = (unit?: string): boolean => !!unit && /%|₮|төг/.test(unit);
+const unitNum = (v: number | null | undefined, unit?: string): string =>
+  v == null || !Number.isFinite(v) ? '—' : isPctMoneyUnit(unit) ? num(v, PCT_DEC) : autoNum(v);
 
 /**
  * Элементийн ОДООГИЙН өргөн (px). Хэмжигдэх хүртэл 0.
@@ -235,7 +243,7 @@ function AreaTip({
         )}
         {(share != null || delta != null) && (
           <span className={s.areaTipMeta}>
-            {share != null && <span className="num">{share.toFixed(1)}%</span>}
+            {share != null && <span className="num">{pct(share)}</span>}
             {delta != null && (
               <span className="num" style={{ color: delta.sign !== 0 ? 'var(--data)' : 'var(--ink-3)' }}>
                 {delta.sign > 0 ? `▲ ${delta.text}` : delta.sign < 0 ? `▼ ${delta.text}` : tr('өөрчлөлтгүй')}
@@ -726,7 +734,7 @@ export function Meter({
   showValue?: boolean;
   /** Утгын бичвэрийг дарна (жиш. «12 / 40 блок»); өгөөгүй бол `pct(value)` */
   display?: string;
-  /** `pct()`-ийн аравтын орон — анхдагч 1 */
+  /** `pct()`-ийн аравтын орон — 2026-11-23-аас ҮЛ ТООМСОРЛОНО (хувь үргэлж 2 оронтой) */
   decimals?: number;
   /** Тайлангийн толгойн том хэмжигч — 8px (`CHART.meterWideH`) */
   wide?: boolean;
@@ -803,14 +811,15 @@ export function Stack({
     ? { boxShadow: `inset 0 0 0 1.5px ${items[i].color ?? 'var(--data)'}`, borderRadius: 2 }
     : {});
   const valText = (it: { value: number; display?: string }) => it.display ?? autoNum(it.value);
-  const shares = roundPctsTo100(items.map((it) => fin(it.value)), total == null ? undefined : fin(total));
+  const shares = roundPctsTo100(items.map((it) => fin(it.value)), total == null ? undefined : fin(total), PCT_DEC);
   const share = (idx: number) => {
     // «0%» худал уншилтаас сэргийлнэ — Donut-ынхтой ижил дүрэм
-    return fin(items[idx].value) > 0 && shares[idx] === 0 ? '<1%' : `${shares[idx]}%`;
+    // 2026-11-23: хувь үргэлж 2 аравтын оронтой
+    return fin(items[idx].value) > 0 && shares[idx] === 0 ? '<0.01%' : pct(shares[idx]);
   };
   /** Уугуул `title` — Environment `Composition`: нэг оронтой хувь */
   const titleOf = (i: number) =>
-    `${tr(items[i].label)} · ${valText(items[i])} · ${((fin(items[i].value) / sum) * 100).toFixed(1)}%`;
+    `${tr(items[i].label)} · ${valText(items[i])} · ${pct((fin(items[i].value) / sum) * 100)}`;
 
   if (!legend) {
     return (
@@ -1008,8 +1017,8 @@ export function Donut({
   /**
    * ТАЙЛБАРЫН ХУВЬ — их үлдэгдлийн арга (largest remainder), хувиуд нийлээд ЯГ 100.
    */
-  const pcts = roundPctsTo100(slices.map((sl) => fin(sl.value)), total, 1);
-  const legendPct = (i: number) => (slices[i].frac > 0 && pcts[i] === 0 ? '<0.1%' : `${pcts[i].toFixed(1)}%`);
+  const pcts = roundPctsTo100(slices.map((sl) => fin(sl.value)), total, PCT_DEC);
+  const legendPct = (i: number) => (slices[i].frac > 0 && pcts[i] === 0 ? '<0.01%' : pct(pcts[i]));
   /**
    * Зүсмэгийн tooltip-ийн утга.
    */
@@ -1477,8 +1486,8 @@ export function Series({
   const valueOf = (idx: number): string => {
     const it = items[idx];
     const disp = multi
-      ? lines!.map((l) => `${l.label} ${autoNum(l.values[idx])}`).join(' · ')
-      : it.display ?? autoNum(it.value);
+      ? lines!.map((l) => `${l.label} ${unitNum(l.values[idx], unit)}`).join(' · ')
+      : it.display ?? unitNum(it.value, unit);
     return unit && !multi && isNum(it.value) && !disp.includes(unit) ? `${disp} ${unit}` : disp;
   };
 
@@ -1563,7 +1572,7 @@ export function Series({
       const topPct = isNum(vAt) ? (py(vAt) / H) * 100 : 50;
       const sum = allVals.reduce((a, b) => a + b, 0);
       const prev = hovIdx > 0 ? items[hovIdx - 1].value : null;
-      const disp = it.display ?? autoNum(it.value);
+      const disp = it.display ?? unitNum(it.value, unit);
       tip = (
         <AreaTip
           rect={tipRect}
@@ -1573,10 +1582,10 @@ export function Series({
           label={tr(it.label)}
           value={disp}
           unit={unit && isNum(it.value) && !disp.includes(unit) ? unit : undefined}
-          rows={multi ? lines!.map((l) => ({ key: l.key, label: l.label, value: autoNum(l.values[hovIdx]), color: l.color })) : undefined}
+          rows={multi ? lines!.map((l) => ({ key: l.key, label: l.label, value: unitNum(l.values[hovIdx], unit), color: l.color })) : undefined}
           share={!multi && isNum(it.value) && sum > 0 ? (it.value / sum) * 100 : null}
           delta={!multi && isNum(it.value) && isNum(prev)
-            ? { sign: Math.sign(it.value - prev), text: autoNum(Math.abs(it.value - prev)) }
+            ? { sign: Math.sign(it.value - prev), text: unitNum(Math.abs(it.value - prev), unit) }
             : null}
           hint={onSelect ? tr('Дарж шүүнэ') : undefined}
           selected={selHas(selected, it.key)}
@@ -1639,7 +1648,7 @@ export function Series({
                       className={`${s.seriesLineVal} ${active === i ? s.seriesLineValOn : ''} num`}
                       style={{ left: `${px(i)}%`, top: `${(py(v) / H) * 100}%`, transform: valBelow(v, i) ? `translate(${edge}, 6px)` : `translate(${edge}, calc(-100% - 6px))` }}
                     >
-                      {multi ? autoNum(v) : items[i].display ?? autoNum(v)}
+                      {multi ? unitNum(v, unit) : items[i].display ?? unitNum(v, unit)}
                     </span>
                   );
                 })}
@@ -1743,7 +1752,7 @@ export function Series({
                     />
                     {showV && (
                       <span className={`${s.seriesVal} num`} style={{ bottom: `calc(${h}% + 5px)`, opacity: activeCol ? 1 : CHART.dim }}>
-                        {it.display ?? autoNum(it.value)}
+                        {it.display ?? unitNum(it.value, unit)}
                       </span>
                     )}
                   </>
@@ -1933,7 +1942,7 @@ export function Trend({
   const gradId = `trendArea${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
   /** Утга бичих дүрэм — өгөөгүй бол `autoNum` (мянгатын таслал; бүхэл «26», бутархай «26.3»). */
-  const fmtV = fmt ?? autoNum;
+  const fmtV = fmt ?? ((v: number) => unitNum(v, unit));
 
   const [hovLen, setHovLen] = useState(points.length);
   if (hovLen !== points.length) {
@@ -2169,7 +2178,6 @@ export function Ring({
   width: widthIn,
   color,
   label,
-  decimals,
   text,
 }: {
   /** 0–100, эсвэл өгөгдөлгүй бол null */
@@ -2179,7 +2187,7 @@ export function Ring({
   width?: number;
   color?: string;
   label?: string;
-  /** Аравтын орны тоог албадан заана; өгөөгүй бол <10 үед 1, эс бөгөөс 0 */
+  /** 2026-11-23-аас ҮЛ ТООМСОРЛОНО — хувь портал даяар үргэлж 2 аравтын оронтой */
   decimals?: number;
   text?: string;
 }) {
@@ -2190,7 +2198,7 @@ export function Ring({
   const has = value != null && Number.isFinite(value);
   const v = has ? Math.max(0, Math.min(100, value)) : 0;
   const circ = 2 * Math.PI * mid;
-  const shown = has ? (text ?? `${ringPct(v, decimals ?? (v < 10 ? 1 : 0))}%`) : '—';
+  const shown = has ? (text ?? `${ringPct(v, PCT_DEC)}%`) : '—';
   const k = size / 112;
   const fs = Math.min(size * 0.18, (ri * 2 - 8) / Math.max(shown.length * 0.64, 1));
 

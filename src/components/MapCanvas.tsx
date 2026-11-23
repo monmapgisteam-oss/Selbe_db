@@ -637,12 +637,12 @@ const buildingProgressRenderer = (prog: BlockProgressMap, failed = false): Rende
   defaultSymbol: failed
     ? { type: 'simple-fill', color: c('#94a3b8', 0.22), outline: { color: c('#94a3b8', 0.9), width: ow(0.8) } }
     : { type: 'simple-fill', color: [...progColor(0), 0.62], outline: { color: [...progColor(0), 1], width: ow(1) } },
-  defaultLabel: failed ? tr('Гүйцэтгэл ачаалагдсангүй') : '0%',
+  defaultLabel: failed ? tr('Гүйцэтгэл ачаалагдсангүй') : pct(0),
   uniqueValueInfos: [...prog.entries()].map(([key, p]) => {
     const [r, g, b] = progColor(p.overall);
     return {
       value: key,
-      label: `${key.split('|')[1]} · ${Math.round(p.overall)}%`,
+      label: `${key.split('|')[1]} · ${pct(p.overall)}`,
       symbol: { type: 'simple-fill', color: [r, g, b, 0.62], outline: { color: [r, g, b, 1], width: ow(1) } },
     };
   }),

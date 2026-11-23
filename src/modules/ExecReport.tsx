@@ -16,7 +16,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { Fig, KpiRow, RankBars, PlanMeter } from '@/modules/tailanChart';
 import { Data } from '@/components/ui';
 import { Icon } from '@/components/Icon';
-import { num, pct, dateTime } from '@/lib/format';
+import { money2, num, pct, PCT_DEC, dateTime } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { invalidateAll } from '@/lib/dataBus';
 import { loadExecReport, execFindings, askExecSummary, execFinSplit, execAppendix, execAppendixNo, LATE_GAP, householdsLabel, measuredLabel } from '@/lib/execReport';
@@ -272,7 +272,7 @@ export function ExecReport() {
                       label: tr('Олгосон санхүүжилт'),
                       value: money(x.fin.given),
                       trend: deltas ? deltaText(deltas.given.delta, 'mnt', { upGood: true }) : null,
-                      sub: x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(x.fin.givenContracted), pct(x.fin.share, 1)),
+                      sub: x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', money2(x.fin.givenContracted), pct(x.fin.share, 1)),
                       desc: tr('Гүйцэтгэгчид бодитоор олгосон урьдчилгаа ба гүйцэтгэлийн төлбөрийн нийлбэр.'),
                     },
                   ];
@@ -346,7 +346,7 @@ export function ExecReport() {
                     {x.gdash.byType.map((t) => (
                       <tr key={t.label}>
                         <td>{tr(t.label)}</td><td className={r.num}>{num(t.n)}</td><td className={r.num}>{num(t.contracted)}</td>
-                        <td className={r.num}>{num(t.cost)}</td><td className={r.num}>{t.contract > 0 ? num(t.contract) : '—'}</td>
+                        <td className={r.num}>{money2(t.cost)}</td><td className={r.num}>{t.contract > 0 ? money2(t.contract) : '—'}</td>
                         <td className={r.num}>{pct(t.perf ?? 0, 1)}</td>
                       </tr>
                     ))}
@@ -354,8 +354,8 @@ export function ExecReport() {
                       <td>{tr('Нийт')}</td>
                       <td className={r.num}>{num(x.gdash.byType.reduce((a, t) => a + t.n, 0))}</td>
                       <td className={r.num}>{num(x.gdash.byType.reduce((a, t) => a + t.contracted, 0))}</td>
-                      <td className={r.num}>{num(x.gdash.byType.reduce((a, t) => a + t.cost, 0))}</td>
-                      <td className={r.num}>{num(x.gdash.byType.reduce((a, t) => a + t.contract, 0))}</td>
+                      <td className={r.num}>{money2(x.gdash.byType.reduce((a, t) => a + t.cost, 0))}</td>
+                      <td className={r.num}>{money2(x.gdash.byType.reduce((a, t) => a + t.contract, 0))}</td>
                       <td className={r.num} />
                     </tr>
                   </tbody>
@@ -437,7 +437,7 @@ export function ExecReport() {
                     },
                     !coverageOk(x.prog.planCoverage)
                       ? { label: tr('Зөрүү (нэгж хувь)'), value: '—', sub: coverageNote(x.prog.planCoverage) || tr('хуваарь дутуу — дүгнэхгүй') }
-                      : { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), 1)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
+                      : { label: tr('Зөрүү (нэгж хувь)'), value: x.prog.gap == null ? '—' : `${x.prog.gap > 0 ? '−' : x.prog.gap < 0 ? '+' : ''}${num(Math.abs(x.prog.gap), PCT_DEC)}`, sub: x.prog.gap == null ? undefined : x.prog.gap >= LATE_GAP ? tr('хоцрогдол') : x.prog.gap < 0 ? tr('түрүүлэлт') : tr('хуваарийн дагуу') },
                   ]} />
                   <PlanMeter value={x.prog.actual} plan={coverageOk(x.prog.planCoverage) ? x.prog.planned : null} label={tr('Орон сууцны барилга угсралт')} />
                   {x.prog.planExcluded.length > 0 && <p className={r.note}>{planScopeNote(x.prog.planExcluded)}</p>}
@@ -468,7 +468,7 @@ export function ExecReport() {
                   <SecHead k="fin" />
                   <KpiRow items={[
                     { label: tr('Гэрээлсэн нийт дүн'), value: money(x.fin.planTotal), sub: tr('1-р хэсэгтэй ижил') },
-                    { label: tr('Олгосон'), value: money(x.fin.given), sub: x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(x.fin.givenContracted), pct(x.fin.share, 1)) },
+                    { label: tr('Олгосон'), value: money(x.fin.given), sub: x.fin.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', money2(x.fin.givenContracted), pct(x.fin.share, 1)) },
                     { label: tr('Үлдэгдэл'), value: money(x.fin.remain) },
                   ]} />
                   <Fig no={String(execSectionNo('fin'))}>{tr('Санхүүжилт эхэлсэн {0} багц (олгосон дүн гэрээлсэн дүнд эзлэх хувиар)', num(finStarted.length))}</Fig>
@@ -491,15 +491,15 @@ export function ExecReport() {
                       {finStarted.map((f) => (
                         <tr key={f.key}>
                           <td className={f.contracted ? '' : e.warn}>{f.label}{f.contracted ? '' : ` (${tr('гэрээгүй')})`}</td>
-                          <td className={r.num}>{f.plan > 0 ? num(f.plan) : '—'}</td><td className={r.num}>{num(f.given)}</td>
+                          <td className={r.num}>{f.plan > 0 ? money2(f.plan) : '—'}</td><td className={r.num}>{money2(f.given)}</td>
                           <td className={`${r.num} ${f.pct != null && f.pct < 10 && f.plan > 0 ? e.warn : ''}`}>{f.pct == null ? '—' : pct(f.pct, 1)}</td>
                         </tr>
                       ))}
                       {finZero.length > 0 && (
                         <tr>
                           <td className={e.warn}>{tr('Эхлээгүй ажил ({0} гэрээт багц)', num(finZero.length))}</td>
-                          <td className={`${r.num} ${e.warn}`}>{num(finZero.reduce((a, f) => a + f.plan, 0))}</td>
-                          <td className={`${r.num} ${e.warn}`}>{num(0)}</td>
+                          <td className={`${r.num} ${e.warn}`}>{money2(finZero.reduce((a, f) => a + f.plan, 0))}</td>
+                          <td className={`${r.num} ${e.warn}`}>{money2(0)}</td>
                           <td className={`${r.num} ${e.warn}`}>{pct(0, 1)}</td>
                         </tr>
                       )}
@@ -507,7 +507,7 @@ export function ExecReport() {
                         <tr>
                           <td className={e.warn}>{tr('Гэрээ байгуулаагүй ажил ({0} багц)', num(finNone.length))}</td>
                           <td className={`${r.num} ${e.warn}`}>—</td>
-                          <td className={`${r.num} ${e.warn}`}>{num(0)}</td>
+                          <td className={`${r.num} ${e.warn}`}>{money2(0)}</td>
                           <td className={`${r.num} ${e.warn}`}>—</td>
                         </tr>
                       )}
@@ -515,18 +515,18 @@ export function ExecReport() {
                       {x.fin.ranges.map((g) => (
                         <tr key={`range:${g.label}`}>
                           <td>{tr('{0} (хэд хэдэн багц хамарсан олголт)', g.label)}</td>
-                          <td className={r.num}>—</td><td className={r.num}>{num(g.given)}</td><td className={r.num}>—</td>
+                          <td className={r.num}>—</td><td className={r.num}>{money2(g.given)}</td><td className={r.num}>—</td>
                         </tr>
                       ))}
                       {(x.fin.givenUnlisted > 0 || x.fin.planUnlisted > 0) && (
                         <tr>
                           <td className={e.warn}>{tr('Багцын мөрд ороогүй гэрээ, олголт')}</td>
-                          <td className={`${r.num} ${e.warn}`}>{x.fin.planUnlisted > 0 ? num(x.fin.planUnlisted) : '—'}</td>
-                          <td className={`${r.num} ${e.warn}`}>{num(x.fin.givenUnlisted)}</td>
+                          <td className={`${r.num} ${e.warn}`}>{x.fin.planUnlisted > 0 ? money2(x.fin.planUnlisted) : '—'}</td>
+                          <td className={`${r.num} ${e.warn}`}>{money2(x.fin.givenUnlisted)}</td>
                           <td className={`${r.num} ${e.warn}`}>—</td>
                         </tr>
                       )}
-                      <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{num(x.fin.planTotal)}</td><td className={r.num}>{num(x.fin.given)}</td><td className={r.num}>{x.fin.share == null ? '—' : pct(x.fin.share, 1)}</td></tr>
+                      <tr className={r.total}><td>{tr('Нийт')}</td><td className={r.num}>{money2(x.fin.planTotal)}</td><td className={r.num}>{money2(x.fin.given)}</td><td className={r.num}>{x.fin.share == null ? '—' : pct(x.fin.share, 1)}</td></tr>
                     </tbody>
                   </table></div>
                   {finZero.length > 0 && (
@@ -541,7 +541,7 @@ export function ExecReport() {
                   )}
                   {x.fin.givenOther > 0 && (
                     <p className={r.note}>
-                      {tr('Нийт олгосон дүнд гэрээлсэн багцаас гадуурх {0} ₮ олголт (хэд хэдэн багц хамарсан мөр, гэрээлсэн дүнгийн багцад холбогдоогүй төлбөр) орсон — олгосон хувьд ороогүй.', num(x.fin.givenOther))}
+                      {tr('Нийт олгосон дүнд гэрээлсэн багцаас гадуурх {0} ₮ олголт (хэд хэдэн багц хамарсан мөр, гэрээлсэн дүнгийн багцад холбогдоогүй төлбөр) орсон — олгосон хувьд ороогүй.', money2(x.fin.givenOther))}
                     </p>
                   )}
                 </section>

@@ -1059,7 +1059,7 @@ export function Huvaari({
     const p = (v / monPct.tot) * 100;
     return {
       txt: p < 0.5 ? '·' : String(Math.round(p)),
-      tip: tr('{0} — багцын нийт обьёмын {1}%', mk, num(p, 1)),
+      tip: tr('{0} — багцын нийт обьёмын {1}%', mk, num(p, 2)),
     };
   }, [monPct, kind]);
 

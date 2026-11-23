@@ -11,7 +11,6 @@
  *      (давхардсан feature-ээр дахин дундажлахгүй).
  */
 import assert from 'node:assert/strict';
-import { readFileSync as readSrc } from 'node:fs';
 
 /* ── Хөтөчийн хамгийн бага глобалууд (модулийн дээд түвшний шалгалтад) ── */
 const g = globalThis;
@@ -128,14 +127,11 @@ assert.equal(pk('БАГЦ31').progress, 0, 'тайлагнаагүй багц 0%
 assert.equal(buildPacks(rows, new Map()).find((p) => p.key === 'БАГЦ31').progress, null,
   'pkgPct-д байхгүй (хуваарьгүй) багц null — feature-ийн дундаж руу унахгүй');
 {
-  const p7 = buildPacks(rows, new Map([['БАГЦ71', 31.76]])).find((p) => p.key === 'БАГЦ7');
-  assert.equal(p7?.progress, 31.76, 'Багц 7: БАГЦ71-ийн гүйцэтгэл газрын зургийн БАГЦ7-д хүрсэнгүй');
-  assert.equal(buildPacks(rows, new Map([['БАГЦ7', 10], ['БАГЦ71', 31.76]])).find((p) => p.key === 'БАГЦ7').progress, 10,
-    'Багц 7: өөрийн түлхүүр давамгайлах ёстой');
-  assert.equal(buildPacks(rows, new Map()).find((p) => p.key === 'БАГЦ7').progress, null, 'Багц 7: хэмжилтгүй бол null');
-  const fin = readSrc(new URL('./Finance.tsx', import.meta.url), 'utf8');
-  assert.ok(/for \(const \[src, \{ key \}\] of Object\.entries\(MAP_PKG_ALIAS\)\) \{\s*const pts = m\.get\(src\);\s*if \(pts && !m\.has\(key\)\) m\.set\(key, pts\);/.test(fin),
-    'pkgMonthsMap: газрын зургийн багцын түлхүүр (БАГЦ71 → БАГЦ7)');
+  /* 2026-11-23: газрын зургийн давхаргын код «Багц 7.1» = БАГЦ71 (гэрээтэй ижил) — хөрвүүлэлтгүйгээр таарна */
+  const p7 = buildPacks(rows, new Map([['БАГЦ71', 31.76]])).find((p) => p.key === 'БАГЦ71');
+  assert.equal(p7?.progress, 31.76, 'Багц 7.1: гүйцэтгэл газрын зургийн багцад хүрсэнгүй');
+  assert.equal(buildPacks(rows, new Map()).find((p) => p.key === 'БАГЦ71').progress, null, 'Багц 7.1: хэмжилтгүй бол null');
+  assert.ok(!buildPacks(rows, new Map()).some((p) => p.key === 'БАГЦ7'), 'хуучин код БАГЦ7 үлдээгүй');
 }
 assert.equal(pk('БАГЦ1').blocks.length, 3, 'блокийн жагсаалт (feature, OID-оор) хэвээр');
 assert.equal(blockCount(pk('БАГЦ1')), 2, 'давхардсан полигон блокийн тоонд хоёр орсон');
@@ -145,14 +141,14 @@ assert.equal(buildPacks(rows).find((p) => p.key === 'БАГЦ1').progress, 60);
 
 /* ── 3. PackKpi — сонгосон багцын «гүйцэтгэл» хавтан ── */
 const html = renderToStaticMarkup(React.createElement(PackKpi, { active: pk('БАГЦ1'), packs }));
-assert.ok(html.includes('45.0%'), `PackKpi: сонгосон багцын хувь 45.0% биш — ${html.slice(0, 200)}`);
-assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дундажласан 70.0% гарав');
+assert.ok(html.includes('45.00%'), `PackKpi: сонгосон багцын хувь 45.00% биш — ${html.slice(0, 200)}`);
+assert.ok(!html.includes('70.00%'), 'PackKpi: feature-ээр дахин дундажласан 70.00% гарав');
 
 /* ── 3b. 2026-10-01 (ШИЙДВЭР): багц СОНГООГҮЙ үеийн «гүйцэтгэл» = төслийн нэгдсэн орон сууцны
       тоо (`physNow`, «Гүйцэтгэл»-ийн толгойтой нэг) — блокийн энгийн дундаж БИШ ── */
 {
   const none = renderToStaticMarkup(React.createElement(PackKpi, { active: null, packs, project: { pct: 41.25, loading: false } }));
-  assert.ok(none.includes('41.3%'), `сонголтгүй: төслийн тоо гарсангүй — ${none.slice(0, 300)}`);
+  assert.ok(none.includes('41.25%'), `сонголтгүй: төслийн тоо гарсангүй — ${none.slice(0, 300)}`);
   assert.ok(none.includes('бодит гүйцэтгэлийн хувь'), '«Гүйцэтгэл»-ийн толгойтой ижил нэр');
   const loading = renderToStaticMarkup(React.createElement(PackKpi, { active: null, packs, project: { pct: null, loading: true } }));
   assert.ok(loading.includes('…'), 'ачаалж байхад «…»');
@@ -249,7 +245,7 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   assert.equal(coverageOk(94.99), false);
   assert.equal(coverageOk(null), false);
   assert.equal(coverageOk(undefined), false);
-  assert.equal(coverageNote(59.08), 'хуваарь 59.1% хамарсан');
+  assert.equal(coverageNote(59.08), 'хуваарь 59.08% хамарсан');
   assert.equal(coverageNote(99.99), '', 'бүрэн хуваарьт тэмдэглэл нэмэхгүй');
   assert.equal(coverageNote(null), '');
   /* `lagLevelOf` — хамралт бага бол улаан/шар ГАРАХГҮЙ (урьд нь хоцорсон багц «хэвийн» эсвэл худал улаан) */
@@ -309,13 +305,13 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
     pays: [pay('Багц-7.1', 1_868), pay('Багц-1', 100), pay('Багц-1-4', 876)],
   };
   const pf71 = pkgFinRows(packs, fin71);
-  const r7 = pf71.rows.find((r) => r.key === 'БАГЦ7');
-  assert.ok(r7, 'БАГЦ7 (Багц 7.1) мөр алга');
-  assert.equal(r7.label, pk('БАГЦ7').name, 'нэр нь багцынх хэвээр');
+  const r7 = pf71.rows.find((r) => r.key === 'БАГЦ71');
+  assert.ok(r7, 'БАГЦ71 (Багц 7.1) мөр алга');
+  assert.equal(r7.label, pk('БАГЦ71').name, 'нэр нь багцынх хэвээр');
   assert.equal(r7.contract, 23_373);
-  assert.equal(r7.given, 1_868, 'БАГЦ71-ийн олголт БАГЦ7 мөрд');
+  assert.equal(r7.given, 1_868, 'Багц 7.1-ийн олголт өөрийн мөрд');
   assert.equal(r7.pct, (1_868 / 23_373) * 100);
-  assert.ok(!pf71.rows.some((r) => r.key === 'БАГЦ71'), 'БАГЦ71 тусдаа мөр үүсэхгүй');
+  assert.ok(!pf71.rows.some((r) => r.key === 'БАГЦ7'), 'хуучин код БАГЦ7-оор мөр үүсэхгүй');
   /* Σ мөр + олон багц хамарсан олголт = hoTotals(pays).paid (удирдлагын тайлангийн 04 толгойтой тэнцүү) */
   const paid71 = hoTotals(fin71.pays).paid;
   assert.equal(pf71.rows.reduce((s, r) => s + r.given, 0) + rangePaysOf(fin71.pays).reduce((s, r) => s + r.amount, 0), paid71);
@@ -323,9 +319,9 @@ assert.ok(!html.includes('70.0%'), 'PackKpi: feature-ээр дахин дунд�
   /* сарын цуваа ч ИЖИЛ түлхүүрээр (contractMonths → given.get) — Багц 7.1-ийн график 0 биш */
   const { aliasFin } = await import('@/modules/PkgFin.tsx');
   const a71 = aliasFin(fin71);
-  const row71 = a71.contracts.find((r) => r.__bagtsSrc === 'Багц-7.1');
-  assert.ok(row71 && pkgKeyOf(row71.bagts) === 'БАГЦ7', 'aliasFin: талбар алиасын түлхүүртэй таарна');
-  assert.equal(contractMonths(row71, a71).find((m) => m.label === '2026-10')?.given, 1_868, 'Багц 7.1 сарын олголт БАГЦ7 түлхүүрээр олдоно');
+  const row71 = a71.contracts.find((r) => r.bagts === 'Багц-7.1'); // 2026-11-23: хөрвүүлэлтгүй — нэр нь өөрөө
+  assert.ok(row71 && pkgKeyOf(row71.bagts) === 'БАГЦ71', 'aliasFin: талбар өөрийн түлхүүртэй');
+  assert.equal(contractMonths(row71, a71).find((m) => m.label === '2026-10')?.given, 1_868, 'Багц 7.1 сарын олголт олдоно');
 }
 
 {

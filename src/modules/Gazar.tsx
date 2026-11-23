@@ -29,7 +29,7 @@ import { PARCEL_OID, PARCEL_FIND_LIMIT, parcelWhere, findParcelsByNo, type Parce
 import { statusKey, isClearedStatus, statusRawsWhere, loadParcelAreaRows, parcelGroupRows } from '@/lib/land';
 import { GazarEdit } from './GazarEdit';
 import { Section } from '@/components/ui';
-import { num, text, cat, NO_DATA } from '@/lib/format';
+import { money2, num, text, cat, NO_DATA, PCT_DEC } from '@/lib/format';
 import o from './gazarOv.module.css';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
 import { setNavDirty } from '@/lib/navGuard';
@@ -257,10 +257,10 @@ const PALETTE = Array.from({ length: 8 }, (_, i) => cat(i));
 const ha = (m2: number) => num(m2 / 10_000, 2);
 
 /**
- * ₮ дүн — БҮТНЭЭР, мянгатын таслалтай. `Stat` нь утга/нэгжийг тусад нь
+ * ₮ дүн — БҮТНЭЭР, мянгатын таслалтай, 2 аравтын оронтой (2026-11-23). `Stat` нь утга/нэгжийг тусад нь
  * байрлуулдаг тул хос буцаана.
  */
-const money = (v: number): { v: string; unit: string } => ({ v: num(v), unit: '₮' });
+const money = (v: number): { v: string; unit: string } => ({ v: money2(v), unit: '₮' });
 
 /**
  * Бүлэглэсэн мөрүүд → диаграмын зүсмэгүүд (өнгө автоматаар, тоо НЭГЖТЭЙ).
@@ -777,7 +777,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
           key: label,
           label,
           n: v.n,
-          pct: Math.round((v.n / remN) * 100),
+          pct: (v.n / remN) * 100, // 2026-11-23: бүхэлдэхгүй — дэлгэцэнд 2 аравтын оронтой
           area: Math.round(v.a / 100) / 100,
           color: label === 'Тодорхойгүй' ? NO_DATA : 'var(--data)',
           where,
@@ -930,7 +930,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       onSelect={pickReason}
                       items={d.reasons.map((r) => ({
                         key: r.key, label: tr(r.label), value: r.n,
-                        display: tr('{0} талбар · {1}%', num(r.n), r.pct), color: r.color,
+                        display: tr('{0} талбар · {1}%', num(r.n), num(r.pct, PCT_DEC)), color: r.color,
                       }))}
                     />
                     <p className={g.subHead}>{tr('Шалтгаан')}<span className={g.subNote}> {tr('· хувиар')}</span></p>
@@ -941,7 +941,7 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                       onSelect={pickReason}
                       items={d.reasons.map((r) => ({
                         key: r.key, label: tr(r.label), value: r.pct,
-                        display: tr('{0}% · {1} талбар', r.pct, num(r.n)), color: r.color,
+                        display: tr('{0}% · {1} талбар', num(r.pct, PCT_DEC), num(r.n)), color: r.color,
                       }))}
                     />
                     <p className={g.subHead}>{tr('Шалтгаан')}<span className={g.subNote}> {tr('· талбайгаар (га)')}</span></p>

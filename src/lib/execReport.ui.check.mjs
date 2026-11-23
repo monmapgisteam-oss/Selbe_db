@@ -81,7 +81,7 @@ const base = (prog) => ({
 ok('хамралт 59.1% — «хоцорч байна» БИШ, хамралтын шалтгаантай мөр', () => {
   const f = execFindings(base({})).filter((x) => x.area === 'Гүйцэтгэл');
   assert.equal(f.length, 1, JSON.stringify(f));
-  assert.ok(f[0].text.includes('59.1%') && f[0].text.includes('дүгнэсэнгүй'), f[0].text);
+  assert.ok(f[0].text.includes('59.08%') && f[0].text.includes('дүгнэсэнгүй'), f[0].text);
   assert.ok(!f.some((x) => /хоцорч байна|түрүүлж байна/.test(x.text)));
 });
 ok('хамралт мэдэгдэхгүй (null) — мөн дүгнэхгүй', () => {
@@ -91,15 +91,15 @@ ok('хамралт мэдэгдэхгүй (null) — мөн дүгнэхгүй',
 ok('хамралт 100% — урьдын адил «хоцорч байна» (төлөвлөгөө, бодит нь харагдаж буй тоо)', () => {
   const f = execFindings(base({ planCoverage: 100 })).filter((x) => x.area === 'Гүйцэтгэл');
   assert.equal(f.length, 1);
-  assert.ok(f[0].text.startsWith('Орон сууцны барилга угсралт хуваариас 9.6 нэгж хувиар хоцорч байна (төлөвлөгөө 34.2%, бодит 24.6%)'), f[0].text);
+  assert.ok(f[0].text.startsWith('Орон сууцны барилга угсралт хуваариас 9.64 нэгж хувиар хоцорч байна (төлөвлөгөө 34.19%, бодит 24.55%)'), f[0].text);
   const a = execFindings(base({ planCoverage: 100, gap: -2 })).filter((x) => x.area === 'Гүйцэтгэл');
   assert.ok(a[0].text.includes('түрүүлж байна'), a[0].text);
 });
 ok('AI баримт — орон сууцны багцаар, хамралт ба нэгтгэлийн төлөвлөгөөтэй', () => {
   const t = execFacts(base({}));
-  assert.ok(t.includes('Бодит (орон сууцны багцууд): 24.6%'), 'бүх багц биш — орон сууц');
-  assert.ok(t.includes('Хуваарийн хамралт (төлөвлөгөөнд огноотой ажлын жин): 59.1% — 95%-иас бага'), t);
-  assert.ok(t.includes('өөрийн төлөвлөгөө (нэгтгэл гүйцэтгэл): 71.9%'), t);
+  assert.ok(t.includes('Бодит (орон сууцны багцууд): 24.55%'), 'бүх багц биш — орон сууц');
+  assert.ok(t.includes('Хуваарийн хамралт (төлөвлөгөөнд огноотой ажлын жин): 59.08% — 95%-иас бага'), t);
+  assert.ok(t.includes('өөрийн төлөвлөгөө (нэгтгэл гүйцэтгэл): 71.85%'), t);
   assert.ok(!execFacts(base({ planCoverage: 100 })).includes('95%-иас бага'));
 });
 
@@ -162,7 +162,7 @@ ok('дэлгэц · PDF · AI баримт — диапазон мөр ба мө
   assert.match(UI, /x\.fin\.ranges\.map\(\(g\) => \(/);
   /* 2026-11-05 (аудит): жагсаалтад ороогүй ГЭРЭЭЛСЭН дүн ч тэр мөрөнд — Σ мөр = толгойн «Гэрээлсэн» */
   assert.match(UI, /\(x\.fin\.givenUnlisted > 0 \|\| x\.fin\.planUnlisted > 0\) &&/);
-  assert.match(UI, /x\.fin\.planUnlisted > 0 \? num\(x\.fin\.planUnlisted\) : '—'/);
+  assert.match(UI, /x\.fin\.planUnlisted > 0 \? money2\(x\.fin\.planUnlisted\) : '—'/);
   const PDF = strip(readFileSync(new URL('./execPdf.ts', import.meta.url), 'utf8'));
   assert.match(PDF, /\.\.\.f\.ranges\.map\(\(g\): TableCell\[\] => \[/);
   assert.match(PDF, /f\.givenUnlisted > 0 \|\| f\.planUnlisted > 0 \?/);
@@ -175,8 +175,8 @@ ok('2026-11-06: хэмжигдээгүй явц AI баримтад 0% («мэд
   const x = { ...base({ packs: [{ key: 'БАГЦ5', name: 'Багц 5', kind: 'infra', blocks: 0, households: 0, householdsMissing: 0, progress: null }] }) };
   x.gdash = { ...x.gdash, byType: [{ label: 'Төрөл', cost: 1, contract: 0, perf: null, n: 1, contracted: 0 }] };
   const t = execFacts(x);
-  assert.ok(t.includes('- Багц 5: 0.0%'), t);
-  assert.ok(t.includes('- Төрөл: 1 / 0 / 0.0%'), t);
+  assert.ok(t.includes('- Багц 5: 0.00%'), t);
+  assert.ok(t.includes('- Төрөл: 1 / 0 / 0.00%'), t);
 });
 ok('2026-11-06: сүүлийн 30 хоногийн осол дүгнэлтэд — амь насанд ноцтой бол улаан, нэрсээр; хуучин осол тоологдохгүй', () => {
   const at = Date.UTC(2026, 10, 5);

@@ -883,7 +883,7 @@ function TsPackList({
               title={tr(p.name)}
               sub={p.kind === 'build'
                   ? tr('{0} блок · {1} айл{2}', num(blockCount(p)), num(p.households), lag && (lvl || !lagJudged(lag))
-                    ? tr(' · төл. {0}% / бодит {1}%', lag.planned.toFixed(1), lag.actual.toFixed(1))
+                    ? tr(' · төл. {0}% / бодит {1}%', num(lag.planned, 2), num(lag.actual, 2))
                       + (lagJudged(lag) || !coverageNote(lag.coverage) ? '' : ` · ${coverageNote(lag.coverage)}`)
                     : '')
                   /* Дэд бүтэц: гүйцэтгэлийн харагдацад мөнгө дурдахгүй —
@@ -898,12 +898,12 @@ function TsPackList({
                   {lvl && lag && (
                     <b
                       className={`${ts.gapBadge} ${lvl === 'red' ? ts.gapRed : ts.gapYellow}`}
-                      title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, lag.planned.toFixed(1), lag.actual.toFixed(1))}
+                      title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, num(lag.planned, 2), num(lag.actual, 2))}
                     >
                       <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
                       <span className="num">{gapPts(lag.gap)}</span>
                       <small className="num">
-                        {lag.planned.toFixed(1)}/{lag.actual.toFixed(1)}
+                        {num(lag.planned, 2)}/{num(lag.actual, 2)}
                       </small>
                     </b>
                   )}
@@ -1349,7 +1349,7 @@ export function ProgChart({ months, title, planFailed = 0, loading = false }: {
                 {d != null && (
                   <div className={ts.progTipMeta}>
                     <span className="num" style={{ color: d !== 0 ? 'var(--data)' : 'var(--ink-3)' }}>
-                      {d > 0 ? '▲' : d < 0 ? '▼' : '='} {tr('{0} н.х', num(Math.abs(d), 1))}
+                      {d > 0 ? '▲' : d < 0 ? '▼' : '='} {tr('{0} н.х', num(Math.abs(d), 2))}
                     </span>
                   </div>
                 )}

@@ -151,17 +151,10 @@ function Detail({ z, canEdit, onEdit, onClose }: {
  * ганц. Доор нь зөвшөөрлийн баримтын бүртгэл (дугаар, байгууллага, PDF) хуучнаараа; тэр нь уншигдаагүй ч үндсэн хэсэг харагдана.
  */
 export function Zovshoorol() {
-  const { user } = useAuth();
-  const [capN, setCapN] = useState(0);
-  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
-  const canEdit = useMemo(
-    () => hasCap(user?.username, 'zovshoorolTtbEdit') || hasCap(user?.username, 'finEdit'),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, capN],
-  );
   return (
     <>
-      <div className={s.wrap}><ZovPlan canEdit={canEdit} /></div>
+      {/* 2026-11-23 (хэрэглэгч): «Зөвшөөрлийн явц» нь ЗӨВХӨН ХАРАХ — мөрийг «Зөвшөөрөл оруулах»-аас л засна (нэг мөрийг хоёр газраас засахгүй) */}
+      <div className={s.wrap}><ZovPlan canEdit={false} /></div>
       <ZovRegister />
     </>
   );

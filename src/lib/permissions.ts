@@ -42,7 +42,8 @@ const GRANT_ALL = false;
  * ЭРХ УДИРДЛАГЫН ХАРАГДАЦ (2026-11-20) — админ (super) хадгалсан харагдацаас үл хамааран авна. Админ самбар нь харагдац биш
  * (толгойн товч) тул порталд орох ганц хуудас хэрэгтэй: «Системийн баримт» — хэн юу засах эрхтэйг тайлбарласан лавлах.
  */
-export const ADMIN_VIEWS: readonly ViewKey[] = ['sysdoc'];
+/* 2026-11-23: «Системийн баримт» хасагдсан — харагдацгүй админ порталд орохын тулд зөвхөн харах тойм (ажлын эрхгүй) */
+export const ADMIN_VIEWS: readonly ViewKey[] = ['gdash'];
 
 /** Панелд харуулах нэг мөр — суурь эсвэл override хэрэглэгч */
 export type UserPerm = {
@@ -600,9 +601,14 @@ export function workflowViewsOf(username?: string | null): ViewKey[] {
  */
 export function resolveAccess(username?: string | null): Access | null {
   const a = resolveAccessRaw(username);
+  if (!a || a.views === 'all') return a;
+  const add: ViewKey[] = [];
   /* «Гүйцэтгэл» хардаг хэн ч «Хяналтын хугацаа»-г харна — тусад нь эрх олгох шаардлагагүй */
-  if (!a || a.views === 'all' || !a.views.includes('guitsetgel') || a.views.includes('hyanaltHugatsaa')) return a;
-  return { ...a, views: [...a.views, 'hyanaltHugatsaa' as ViewKey].sort((x, y) => (VIEW_ORDER.get(x) ?? 0) - (VIEW_ORDER.get(y) ?? 0)) };
+  if (a.views.includes('guitsetgel') && !a.views.includes('hyanaltHugatsaa')) add.push('hyanaltHugatsaa');
+  /* 2026-11-23: «Санхүүжилт» хоёр цэс болсон — урьд түүнийг хардаг хүн «Төлбөрийн акт (IPC)»-г ч харна */
+  if (a.views.includes('finance') && !a.views.includes('ipc')) add.push('ipc');
+  if (!add.length) return a;
+  return { ...a, views: [...a.views, ...add].sort((x, y) => (VIEW_ORDER.get(x) ?? 0) - (VIEW_ORDER.get(y) ?? 0)) };
 }
 
 function resolveAccessRaw(username?: string | null): Access | null {
@@ -719,8 +725,9 @@ export function listRemoved(): string[] {
  * хоёр админ бие биеийн мөрийг засвал хоёулаа алддаг байв — тэдний хадгалсан бусад хүний мөр ч хүчингүй болж, хүмүүс нэвтэрч
  * чадахгүй болно. Иймээс админ болгох · админы мөр засах · админаас хасахыг зөвхөн үндсэн админ хийнэ; бусад админ энгийн
  * хэрэглэгчдийн эрхийг урьдын адил удирдана.
+ * 2026-11-23: зөвхөн уншихад экспортлов — «Шинэ эрх» самбар админы мөрийг үндсэн бус админд зөвхөн харуулна.
  */
-const isRootAdmin = (u: string | null | undefined): boolean =>
+export const isRootAdmin = (u: string | null | undefined): boolean =>
   (u ?? '').trim().toLowerCase() === BOOTSTRAP_SUPER.trim().toLowerCase() || isCodeSuper(u);
 function requireRootForAdminRow(username: string, nextRole: Role | null): void {
   if (!writeGuardsOn() || typeof window === 'undefined' || !AUTH.appId) return;

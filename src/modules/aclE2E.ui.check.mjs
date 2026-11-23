@@ -63,6 +63,7 @@ const { DedButetsAcl } = await import('@/modules/DedButetsAcl.tsx');
 const { GuitsetgelAcl } = await import('@/modules/GuitsetgelAcl.tsx');
 const { ErhCellEditor } = await import('@/modules/ErhCellEditor.tsx');
 const { UserAdmin } = await import('@/components/UserAdmin.tsx');
+const { ErhNew } = await import('@/modules/ErhNew.tsx');
 const { UserHeadActions } = await import('@/components/UserRow.tsx');
 const RT = await import('@/lib/roleTypes.ts');
 const ERL = await import('@/modules/erhLabels.ts');
@@ -778,6 +779,61 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   eq(RT.unseenViews('injener'), [], `${tag}: хадгалсны дараа тэмдэг арилав`);
   ok(Array.isArray(fake.json('__type__:', 'injener')?.seen), `${tag}: ArcGIS-т seen бичигдэв`);
   console.log('✅ §I засварын UI: картын урсгалтай хуудас · «Дахин олгох» · «Дахин илгээх» · устгагдсаны «Цэвэрлэх» · матрицын тэмдэг · шинэ аккаунтын төрөл · «шинэ хуудас» тэмдэг');
+}
+
+/* ══════════ §N. «Шинэ эрх» — цэс · хүний самбар · баталгаажуулалт · хадгалах (2026-11-23) ══════════ */
+{
+  const tag = '§N';
+  const u = mkUser();
+  const g = PKG_GROUPS[0];
+  await run(OPS.flowCellOp(u, 'engineer', g, true));
+  await P.initRemote(false, true); await idle();
+  /* (1) цэс — шинэ бүлэг эхэнд, хуучин хуудсууд хэвээр */
+  const m = mount(React.createElement(UserAdmin, { open: true, onClose: noop }), new Set(['UserAdmin']));
+  await idle(); m.render();
+  const side = () => findAll(m.tree, (n) => n.type === 'button' && /sideItem/.test(n.props?.className ?? ''));
+  const labels = side().map((x) => text(x.el));
+  eq(labels.slice(0, 3), ['Хүмүүс', 'Багцууд', 'Албан үүрэг'], `${tag}: шинэ бүлэг эхэнд (${labels.join(' | ')})`);
+  ok(labels.includes('Тойм') && labels.includes('Хэрэглэгчдийн эрх удирдах') && labels.includes('Гүйцэтгэлийн урсгалын эрх'), `${tag}: хуучин хуудсууд хэвээр`);
+  eq(findAll(m.tree, (n) => n.type === 'span' && n.props?.className === 'newTag').map((x) => text(x.el)), ['шинэ'], `${tag}: «шинэ» тэмдэг`);
+  side()[1].el.props.onClick({}); m.render();
+  eq(findAll(m.tree, byName('ErhNew'))[0]?.el.props.pane, 'nPkgs', `${tag}: «Багцууд» хуудас`);
+  side()[0].el.props.onClick({}); m.render();
+  eq(findAll(m.tree, byName('ErhNew'))[0]?.el.props.pane, 'nPeople', `${tag}: «Хүмүүс» хуудас`);
+
+  /* (2) хүний самбар — албан үүрэг солих → ноорог → «Хадгалах» → жагсаалт → «Батлаад хадгалах» */
+  let dirtyUser = null;
+  const e = mount(React.createElement(ErhNew, {
+    pane: 'nPeople', onPane: noop, oldDrafts: new Set(), onDirty: (x) => { dirtyUser = x; }, lookup: async () => 'ok', askLeave: async () => true,
+  }), new Set(['ErhNew', 'People', 'ErhNewPerson']));
+  await idle(); e.render();
+  const row = findAll(e.tree, (n) => n.type === 'tr' && typeof n.props?.onClick === 'function' && text(n).startsWith(u));
+  eq(row.length, 1, `${tag}: хүснэгтэд мөр`);
+  row[0].el.props.onClick({}); await idle(); e.render();
+  const panel = () => findAll(e.tree, (n) => n.type === 'expanded' && n.props?.of === 'ErhNewPerson')[0]?.el;
+  ok(panel(), `${tag}: самбар нээгдэв`);
+  const inPanel = (pred) => findAll(panel(), pred).map((x) => x.el);
+  const job = inPanel((n) => n.type === 'select' && n.props?.['aria-label'] === 'Албан үүрэг')[0];
+  ok(job && !job.props.disabled, `${tag}: албан үүргийн сонгогч`);
+  job.props.onChange({ target: { value: 'menejer' } }); e.render();
+  eq(dirtyUser, u, `${tag}: ноорог тэмдэглэгдэв (UserAdmin асууна)`);
+  eq(P.roleOf(u), 'taniltsah', `${tag}: «Хадгалах»-аас өмнө юу ч бичигдээгүй`);
+  const btnText = (t) => inPanel((n) => n.type === 'button' && text(n) === t)[0];
+  btnText('Хадгалах').props.onClick({}); e.render();
+  const lines = inPanel((n) => n.type === 'div' && /^ch(Add|Del)$/.test(n.props?.className ?? '')).map(text);
+  ok(lines.some((l) => l.startsWith('Нэмнэ — ')) && lines.some((l) => l.startsWith('Хасна — ')), `${tag}: баталгаажуулах жагсаалт (${lines.join(' | ')})`);
+  ok(lines.some((l) => l.includes('Багцын ахлах инженер')), `${tag}: шинэ шат жагсаалтад`);
+  eq(P.roleOf(u), 'taniltsah', `${tag}: баталгаажуулалт хүлээж байхад бичигдээгүй`);
+  btnText('Батлаад хадгалах').props.onClick({});
+  await settle(() => { e.render(); return fake.inflight > 0 || OPS.aclPendingFor(u) || P.roleOf(u) !== 'menejer' || FL.stageOfUser(u) !== 'manager'; });
+  await idle(); e.render();
+  eq(P.roleOf(u), 'menejer', `${tag}: албан үүрэг бичигдэв`);
+  eq(FL.stageOfUser(u), 'manager', `${tag}: шат солигдов`);
+  eq(FL.bagtsFor(u, 'manager'), [g], `${tag}: багц хэвээр`);
+  const res = inPanel((n) => n.type === 'p' && /^(ok|err|warn)$/.test(n.props?.className ?? '')).map(text);
+  ok(res.some((t) => t.startsWith('✓ Аккаунтын мөр')) && res.some((t) => t.startsWith('✓ Гүйцэтгэлийн урсгал')), `${tag}: алхам бүрийн үр дүн (${res.join(' | ')})`);
+  eq(dirtyUser, null, `${tag}: хадгалсны дараа ноорог алга`);
+  console.log('✅ §N «Шинэ эрх»: цэсний эхэнд · хуучин хуудсууд хэвээр · самбар · ноорог «Хадгалах» хүртэл бичигдэхгүй · жагсаалт · аккаунт → урсгал');
 }
 
 eq(fake.unexpected, [], 'амьд сүлжээ рүү хүсэлт явах ёсгүй');

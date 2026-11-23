@@ -6,7 +6,7 @@
 import { LATE_GAP, householdsLabel, measuredLabel, type ExecReport } from '@/lib/execReport';
 import { coverageNote, coverageOk } from '@/lib/planProgress';
 import { t as tr } from '@/lib/i18nCore';
-import { num, pct, PRINT_COLORS } from '@/lib/format';
+import { money2, num, pct, PRINT_COLORS } from '@/lib/format';
 import { PARCEL_CLEARED } from '@/lib/services';
 import { TOLOV } from '@/lib/zovshoorol';
 import { deltaText, packTrendOf, givenTrendOf, bandOf, type ExecDeltas, type Trend } from '@/lib/execPeriodCalc';
@@ -73,7 +73,8 @@ export function toPng(ops: Op[], scale = 1): string {
 }
 
 /** Full amounts: a recorded zero remains distinct from missing data. */
-export const money = (v: number | null) => v == null || !Number.isFinite(v) ? '—' : `${num(v)} ₮`;
+/** Мөнгө — бүтэн, таслалтай, 2 аравтын оронтой (2026-11-23) */
+export const money = (v: number | null) => v == null || !Number.isFinite(v) ? '—' : `${money2(v)} ₮`;
 export function wrap(text: string, maxChars: number): string[] {
   return text.split(/\r?\n/).flatMap((para) => {
     const lines: string[] = [];
@@ -240,7 +241,7 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
     [tr('Нийт төсөв'), money(g.budget), tr('«Төсөл төлөвлөгөө биелэлт» — Төслийн нийт')],
     [tr('Нийт гэрээлсэн дүн'), money(g.contract), g.budget > 0 ? tr('төсвийн {0}', pct(g.contract / g.budget * 100, 1)) : undefined],
     [tr('Төслийн нийт явц'), pct(g.progress, 1), [tr('Нэгтгэл гүйцэтгэлээр'), g.progressPlan == null ? '' : tr('төлөвлөгөө {0}', pct(g.progressPlan, 1))].filter(Boolean).join(' · ')],
-    [tr('Олгосон санхүүжилт'), money(f.given), f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', num(f.givenContracted), pct(f.share, 1))],
+    [tr('Олгосон санхүүжилт'), money(f.given), f.share == null ? undefined : tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', money2(f.givenContracted), pct(f.share, 1))],
     [tr('Газар чөлөөлөлт'), pct(g.landPct, 1), tr('{0} нэгж талбар үлдсэн', num(g.land.remaining))],
     [tr('Багц ажил'), num(g.packages), tr('{0} төрөл · {1} блок · {2} өрх', num(g.types), num(p.blocks), householdsLabel(p))],
   ];
@@ -267,7 +268,7 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
     cy = P.pair(cx, cy + 10, cw, tr('Бодит'), pct(actual, 1), late ? BAD : DATA);
     P.bar(cx, cy - 4, cw, actual == null ? null : actual / 100, late ? BAD : DATA);
     cy += 12;
-    const status = !judged ? coverageNote(p.planCoverage) : p.gap == null ? '' : late ? tr('Хоцрогдол {0} нэгж хувь', num(p.gap, 1)) : p.gap < 0 ? tr('Түрүүлэлт {0} нэгж хувь', num(-p.gap, 1)) : tr('хуваарийн дагуу');
+    const status = !judged ? coverageNote(p.planCoverage) : p.gap == null ? '' : late ? tr('Хоцрогдол {0} нэгж хувь', num(p.gap, 2)) : p.gap < 0 ? tr('Түрүүлэлт {0} нэгж хувь', num(-p.gap, 2)) : tr('хуваарийн дагуу');
     if (status) cy = P.paragraph(cx, cy, cw, status, 12, late ? BAD : INK3) + 14;
     const packs = p.packs.filter((k) => k.kind === 'build').sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1));
     // Four months keep 12px percentages legible alongside names and deltas.

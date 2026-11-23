@@ -19,7 +19,7 @@ import {
 import { zoneLabel } from '@/lib/zoneLabel';
 import { whereFor, qtyText, geomText, layerStats, retryTotals, avgQty, useLazyTotals, type Totals } from '@/lib/totals';
 import { POPULATION_FIELD } from '@/lib/live';
-import { num, text, shade } from '@/lib/format';
+import { num, pct, text, shade } from '@/lib/format';
 import { toggleIsolate, zoomWhereFor, type Iso } from './viewPanelLogic';
 import s from './dashboard.module.css';
 
@@ -1046,7 +1046,7 @@ function PickedZone({
           items={[
             { key: 'FAR / BCR', value: <span className="num">{num(n(F.far), 2)} / {(() => {
               const b = n(F.bcr);
-              return b == null || b === 0 ? '—' : `${num(b <= 1.5 ? b * 100 : b, 0)}%`;
+              return b == null || b === 0 ? '—' : pct(b <= 1.5 ? b * 100 : b);
             })()}</span> },
             { key: tr('Зогсоол (норм / төлөвлөсөн)'), value: <span className="num">{num(n(F.parkNorm))} / {num(n(F.parkPlanOpen) == null && n(F.parkPlanUnder) == null ? null : (n(F.parkPlanOpen) ?? 0) + (n(F.parkPlanUnder) ?? 0))}</span> },
             ...(n(F.landPending) ? [{ key: tr('Газар чөлөөлөлт'), value: tr('дуусаагүй') }] : []),

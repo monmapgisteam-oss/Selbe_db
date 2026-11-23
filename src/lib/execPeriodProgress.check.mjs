@@ -40,7 +40,8 @@ assert.equal(weighted.housing.at(-1).v, (15 * 100 + 80 * 300) / 500,
 assert.equal(weighted.packs.get('БАГЦ51').at(-1).v, 100, 'блокгүй багц өөрийн цуваатай');
 
 const alias = execProgressPoints(new Map([['БАГЦ71|X', [{ date: '2026-10-20', pct: 20 }]]]), new Map(), new Map(), '2026-10-28');
-assert.deepEqual(alias.packs.get('БАГЦ7'), alias.packs.get('БАГЦ71'));
+assert.ok(alias.packs.get('БАГЦ71')?.length, '«Багц 7.1» өөрийн кодоор (2026-11-23-наас газрын зургийн код ижил)');
+assert.equal(alias.packs.get('БАГЦ7'), undefined, 'хуучин код БАГЦ7 үүсэхгүй');
 assert.deepEqual(alias.housing, [], 'зөвхөн дэд бүтэцтэй бол орон сууцны хэмжилт үгүй');
 assert.deepEqual(execProgressPoints(new Map(), universe, new Map(), '2026-10-28').housing, []);
 

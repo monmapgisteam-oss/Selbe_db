@@ -13,7 +13,6 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { friendlyError } from '@/components/ui';
 import { schemAllFailedError } from '@/lib/schemData';
-import SysDoc, { hasTech } from '@/modules/SysDoc';
 import { ErhTypes } from '@/modules/ErhTypes';
 
 const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -39,19 +38,6 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   /* Шалтгаангүй үед ч унахгүй */
   assert.ok(schemAllFailedError(null).message.length > 0);
   assert.ok(!src('lib/schemData.ts').includes("tr('Өгөгдөл татагдсангүй — сүлжээгээ шалгана уу')"), 'хатуу «сүлжээгээ шалгана уу» үлдэх ёсгүй');
-}
-
-/* ── §2 Системийн баримт ── */
-{
-  const html = renderToStaticMarkup(h(SysDoc, {}));
-  const outside = html.replace(/<details[\s\S]*?<\/details>/g, '');
-  for (const code of ['__flow__', 'planApprove', 'obyemApprove', '__huvaari__']) {
-    assert.ok(html.includes(code), `${code} техникийн хэсэгт байх ёстой`);
-    assert.ok(!outside.includes(`>${code}<`), `${code} ил харагдаж болохгүй`);
-  }
-  assert.match(html, /<summary>Техникийн дэлгэрэнгүй<\/summary>/);
-  assert.equal(hasTech({ aliases: [], styleSrc: [] }, [{ text: 'x' }], []), false);
-  assert.equal(hasTech({ aliases: [], styleSrc: [] }, [{ cap: 'plan', text: 'x' }], []), true);
 }
 
 /* ── §3 Эрхийн төрөл ── */
@@ -96,4 +82,4 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   assert.match(db, /const exitEdit = useCallback\(\(\) => \{[\s\S]{0,300}askDropAll\(/);
 }
 
-console.log('✅ UX алдаа: схемийн ангилал · SysDoc техникийн код эвхмэл · эрхийн төрөл retry · эх кодын хамгаалалт');
+console.log('✅ UX алдаа: схемийн ангилал · эрхийн төрөл retry · эх кодын хамгаалалт');

@@ -4,7 +4,7 @@
  */
 
 import { t as tr, getLocaleGeneration } from '@/lib/i18nCore';
-import { LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF, IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM, ELEVATION_URL, HO_IPC, CASHFLOW_NEW, TUSUL_NEGTGEL, BAGTS_NEGTGEL, HABEA, GUITS, layerUrl, type LayerDef, type ViewKey } from '@/lib/services';
+import { LAYERS, VIEWS, CATALOG_LAYER_IDS, IRGED_TOILET_DEF, IRGED_BUILT_DEF, IMAGERY, IRGED_ROAD, SCENE, MESH_VERSIONS, IRGED_SCENE, BIM, ELEVATION_URL, HO_IPC, IPC_DOC, CASHFLOW_NEW, TUSUL_NEGTGEL, BAGTS_NEGTGEL, HABEA, GUITS, layerUrl, type LayerDef, type ViewKey } from '@/lib/services';
 import { HYANALT } from '@/lib/hyanalt';
 import { URL as ZOV_URL } from '@/lib/zovshoorol';
 import { HUVAARI_OBYEM } from '@/lib/huvaariObyem';
@@ -559,6 +559,7 @@ function guitsEntries(): CatEntry[] {
 function finEntries(): CatEntry[] {
   const cf = parseUrl(CASHFLOW_NEW.url);
   const ipc = parseUrl(HO_IPC.url);
+  const ipcDoc = parseUrl(IPC_DOC.url);
   const finEditors = (): Editor[] => [
     { cap: 'finEdit', text: tr('Санхүүгийн бүртгэл — утга засах') },
     { cap: 'ipcCreate', text: tr('IPC үүсгэх') },
@@ -615,6 +616,29 @@ function finEntries(): CatEntry[] {
         S(tr('Санхүүжилт · Багцын санхүү · Дашбоард · Тайлан')),
       ],
       editors: () => [...finEditors(), { text: tr('Систем — гүйцэтгэл батлагдахад') }],
+    },
+    /* 2026-11-23: IPC баримтын хүснэгт — нэг мөр = нэг IPC (эсвэл урьдчилгаа); олгосон мөнгө нь 185-д төлбөрийн мөр болно */
+    {
+      id: 'ipc-doc',
+      name: tr('IPC баримт (Хүснэгт 7)'),
+      service: ipcDoc.service,
+      layer: ipcDoc.layer,
+      url: IPC_DOC.url,
+      kind: 'table',
+      group: 'fin',
+      aliases: [],
+      styleSrc: [],
+      views: sortViews(['finance']),
+      purpose: () => tr('IPC бүрийн нийт дүн, суутгал (урьдчилгаа эргэн төлөлт, хяналт, барьцаа…), гүйцэтгэгчид төлөх дүн, ажлын үе, гарын үсэг.'),
+      chain: () => [
+        S(tr('Төлөгдөөгүй бөглөлтийн нийлбэрээс IPC үүсгэнэ (ipcCreate)')),
+        S(`${ipcDoc.service}/${ipcDoc.layer}`),
+        { label: tr('Баталгаажуулахад төлбөрийн мөр (ipcApprove)'), ref: 'ho-ipc' },
+      ],
+      editors: () => [
+        { cap: 'ipcCreate', text: tr('IPC үүсгэх') },
+        { cap: 'ipcApprove', text: tr('IPC баталгаажуулах') },
+      ],
     },
   ];
 }

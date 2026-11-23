@@ -44,10 +44,21 @@ export const subscribeButetsAcl = acl.subscribe;
 /** Remote уншигдсан уу — панелийн түгжээнд (2026-09-24) */
 export const butetsAclReady = acl.ready;
 
+/**
+ * ХУУЧИН БАГЦЫН КОД (2026-11-23): газрын зургийн давхаргын код «БАГЦ-7» → «БАГЦ-7.1», «БАГЦ-8.2» → «БАГЦ-8» болсон. Хуучин
+ * кодоор хадгалсан хуваарилалт уншихдаа шинэ код руу — эрх нь алдагдахгүй; дараагийн хадгалалтаар шинэ кодоор бичигдэнэ.
+ */
+export const LEGACY_PACK_KEY: Readonly<Record<string, string>> = { 'БАГЦ7': 'БАГЦ71', 'БАГЦ82': 'БАГЦ8' };
+const fixKeys = (b: string[] | undefined): string[] | undefined => (b ? [...new Set(b.map((k) => LEGACY_PACK_KEY[k] ?? k))] : b);
+
 /** REMOTE-ООС ИРСЭН хуваарилалт — `permissions.initRemote` дуудна */
 export const _syncRemoteButets = (
   rows: { user: string; roles?: string[]; bagts?: string[]; grants?: Grant<string>[] }[],
-): void => acl.syncRemote(rows);
+): void => acl.syncRemote(rows.map((r) => ({
+  ...r,
+  bagts: fixKeys(r.bagts),
+  grants: r.grants?.map((g) => ({ ...g, bagts: fixKeys(g.bagts) ?? g.bagts })),
+})));
 
 export const setButetsGrants = (
   user: string, grants: Grant<ButetsRole>[], grant = true,

@@ -84,10 +84,10 @@ export function Ranking({
         type="button"
         className={`${s.rankRow} ${selected === r.id ? s.rankSel : ''} ${/багц/i.test(r.id) ? s.bagts : ''}`}
         onClick={() => onSelect(selected === r.id ? null : r.id)}
-        title={r.coverage == null ? undefined : tr('Хэмжсэн жин {0}% — оноо гаргахад ≥ {1}% шаардлагатай', Math.round(r.coverage * 100), minPct)}
+        title={r.coverage == null ? undefined : tr('Хэмжсэн жин {0}% — оноо гаргахад ≥ {1}% шаардлагатай', nf(r.coverage * 100, 2), minPct)}
       >
         <span className="rk">{ranks[i] ?? '—'}</span>
-        <span className="nm">{zoneLabel(r.id)}<i>{zoneTypeLabel(r.type)}</i>{r.coverage != null && <i>{tr('хэмжсэн {0}%', Math.round(r.coverage * 100))}</i>}</span>
+        <span className="nm">{zoneLabel(r.id)}<i>{zoneTypeLabel(r.type)}</i>{r.coverage != null && <i>{tr('хэмжсэн {0}%', nf(r.coverage * 100, 2))}</i>}</span>
         <span className="nm2">{r.raw.density == null ? '' : tr('{0} хүн/га', nf(r.raw.density))}</span>
         <span className="tot" style={{ background: scoreTone(tot), color: scoreInk(tot, dark) }}>{tot == null ? '—' : Math.round(tot)}</span>
       </button>,

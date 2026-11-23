@@ -46,7 +46,7 @@ function bounds(list) {
 }
 bounds(ops);
 assert.equal(money(null), '—');
-assert.equal(money(0), '0 ₮');
+assert.equal(money(0), '0.00 ₮');
 assert.ok(ops.some((o) => o.k === 'text' && o.s === money(-1234567890)), 'refund amount must be visible');
 assert.ok(ops.some((o) => o.k === 'text' && o.s === '—'), 'missing measurements remain missing');
 const text = (list) => list.filter((o) => o.k === 'text').map((o) => o.s).join(' ').replace(/\s+/g, ' ');

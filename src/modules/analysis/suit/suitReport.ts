@@ -176,7 +176,7 @@ export function suitBlocks(x: SuitReportInput, shots: SuitShots = {}): DocBlock[
       [
         [tr('Шаардлагатай зогсоол'), fmt(need)],
         [tr('Хэрэгцээтэй бүсэд төлөвлөсөн (ил / далд)'), tr('{0} ({1} / {2})', fmt(supply), fmt(il), fmt(dald))],
-        [tr('Хэрэгцээ хангасан хувь'), pct == null ? '' : `${fmt(pct, 0)}%`],
+        [tr('Хэрэгцээ хангасан хувь'), pct == null ? '' : `${fmt(pct, 2)}%`],
         [gap == null || gap >= 0 ? tr('Илүүдэл') : tr('Дутагдал'), gap == null ? '' : fmt(Math.abs(gap))],
         [tr('Дутагдалтай бүс'), fmt(short)],
         [tr('Хангалттай бүс'), fmt(withNeed.length - short)],
@@ -217,8 +217,8 @@ export function suitBlocks(x: SuitReportInput, shots: SuitShots = {}): DocBlock[
       [
         [buffer ? tr('Нийт оршин суугч ({0})', unit) : tr('Шаардлагатай ({0})', unit), fmt(need)],
         [buffer ? tr('Хамрагдсан ({0})', unit) : tr('Байгаа ({0})', unit), fmt(have)],
-        [tr('Хэрэгцээ хангасан хувь'), pct == null ? '' : `${fmt(pct, 0)}%`],
-        [tr('Ногоон эзлэх хувь (төсөл)'), land > 0 ? `${fmt((haveAll / land) * 100, 1)}%` : ''],
+        [tr('Хэрэгцээ хангасан хувь'), pct == null ? '' : `${fmt(pct, 2)}%`],
+        [tr('Ногоон эзлэх хувь (төсөл)'), land > 0 ? `${fmt((haveAll / land) * 100, 2)}%` : ''],
         [tr('Ногоон / нийт талбай (га)'), tr('{0} / {1}', fmt(haveAll / 10_000, 1), fmt(land / 10_000, 1))],
         [tr('Дутагдалтай бүс'), fmt(short)],
       ],
@@ -265,7 +265,7 @@ export function suitBlocks(x: SuitReportInput, shots: SuitShots = {}): DocBlock[
   chart(
     tr('Үзүүлэлтийн ангиллын жин'),
     topCat
-      ? tr('Нийт жинд «{0}» хамгийн их буюу {1}% эзэлнэ. Ангиллын дундаж оноо: {2}.', topCat.c.label, fmt((topCat.weight / totalW) * 100, 0),
+      ? tr('Нийт жинд «{0}» хамгийн их буюу {1}% эзэлнэ. Ангиллын дундаж оноо: {2}.', topCat.c.label, fmt((topCat.weight / totalW) * 100, 2),
         cats.map((c) => `${c.c.short} ${c.score == null ? tr('өгөгдөлгүй') : fmt(c.score, 0)}`).join(', '))
       : '',
     {
@@ -285,7 +285,7 @@ export function suitBlocks(x: SuitReportInput, shots: SuitShots = {}): DocBlock[
       tr('{0} үзүүлэлтийн жин, БНБД-ийн норм ба оноололд орсон бүсийн хэд нь нормыг хангасныг харуулав.', fmt(items.length)),
       [tr('Үзүүлэлт'), tr('Жин (%)'), tr('Норм'), tr('Норм хангасан'), tr('Хувь'), tr('Дундаж оноо')],
       st.map(({ i, s }) => [
-        nameOf(i), fmt(wPct(i), 0), normLine(i), s.total ? `${s.pass} / ${s.total}` : '', s.pct == null ? '' : `${fmt(s.pct, 0)}%`, fmt(s.score, 1),
+        nameOf(i), fmt(wPct(i), 2), normLine(i), s.total ? `${s.pass} / ${s.total}` : '', s.pct == null ? '' : `${fmt(s.pct, 2)}%`, fmt(s.score, 1),
       ]),
     );
     const withData = st.filter(({ s }) => s.pct != null);
@@ -293,7 +293,7 @@ export function suitBlocks(x: SuitReportInput, shots: SuitShots = {}): DocBlock[
       const worst = [...withData].sort((a, b) => (a.s.pct ?? 0) - (b.s.pct ?? 0))[0];
       chart(
         tr('{0}: норм хангасан бүсийн хувь', c.short),
-        tr('Хамгийн бага хангалттай нь «{0}» ({1}%).', worst.i.short, fmt(worst.s.pct, 0)),
+        tr('Хамгийн бага хангалттай нь «{0}» ({1}%).', worst.i.short, fmt(worst.s.pct, 2)),
         {
           type: 'bar',
           cats: withData.map(({ i }) => i.short),
@@ -378,7 +378,7 @@ export function suitBlocks(x: SuitReportInput, shots: SuitShots = {}): DocBlock[
     img('road', tr('Оргил цагийн аялал үүсгэлт, аялал/ц ({0})', HEAT_KEY));
     if (x.traffic) {
       p(tr('Симуляцын агшин: {0} машин, дундаж хурд {1} км/ц, чөлөөт урсгалын {2}%.',
-        fmt(x.traffic.cars), fmt(x.traffic.kmh), fmt(x.traffic.flow * 100)));
+        fmt(x.traffic.cars), fmt(x.traffic.kmh), fmt(x.traffic.flow * 100, 2)));
     }
     chart(
       tr('Хамгийн их аялал үүсгэх {0} бүс', String(Math.min(TOP, list.length))),

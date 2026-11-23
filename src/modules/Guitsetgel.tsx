@@ -502,8 +502,9 @@ const stamp = (iso: string | null) => {
 /** Тоо — мянгатын тусгаарлагчтай, хоосныг зураасаар */
 const qty = (v: number | null) =>
   v == null ? '—' : Number(v.toFixed(3)).toLocaleString('en-US');
+/** Бутархай (0–1) → хувь. 2026-11-23: ҮРГЭЛЖ 2 аравтын оронтой (`format.pct`) */
 const pcs = (v: number | null) =>
-  v == null || !Number.isFinite(v) ? '—' : `${Number((v * 100).toFixed(1))}%`;
+  v == null || !Number.isFinite(v) ? '—' : pct(v * 100);
 /**
  * ЭНЭ УДААГИЙН НЭМЭЛТИЙН ЖИЖИГ ТЭМДЭГ — « (+15)» / « (−5)» (2026-09-25).
  */

@@ -14,6 +14,7 @@ import {
 } from '@/lib/schem';
 import { bagtsKey } from '@/lib/services';
 import { GROUP_ROOT, type FineId } from '@/lib/schemFine';
+import { paceHealth, phaseOf, type PhaseVal, type PlanPhase } from '@/lib/schemPlan';
 
 /* ══════════════════ Төрөл ══════════════════ */
 
@@ -55,10 +56,15 @@ export type SchemDetail = {
  */
 export const NODE_SOURCE: Record<SchemId, readonly SourceKey[]> = {
   tolovlolt: ['headline'],
-  zovshoorol: ['zov'],
+  zurag: ['plan'],
+  zovshoorol: ['zov', 'plan'],
+  songon: ['plan'],
   gazar: ['clearance'],
-  huvaari: [],
-  barilga: ['overall', 'progress', 'bagts'],
+  huvaari: ['approvals', 'plan'],
+  ajil: ['approvals'],
+  ma: ['ma'],
+  barilga: ['plan', 'overall', 'progress', 'bagts'],
+  ashiglalt: ['plan'],
   hyanalt: ['review'],
   habea: ['habea'],
   ersdel: ['progress'],
@@ -241,7 +247,7 @@ function gazarPart(src: SchemSources): Part {
     p.issues.push({ text: tr('Газар чөлөөлөлтийн эх сурвалж татагдсангүй.'), tone: 'none' });
   } else if (clr != null && clr < TH.gazarPct.warn) {
     p.issues.push({
-      text: tr('Чөлөөлөлт {0}% — барилга эхлүүлэх нөхцөл бүрдээгүй.', clr.toFixed(0)),
+      text: tr('Чөлөөлөлт {0}% — барилга эхлүүлэх нөхцөл бүрдээгүй.', clr.toFixed(2)),
       tone: 'bad',
       at: 'gazLeft',
     });
@@ -249,19 +255,176 @@ function gazarPart(src: SchemSources): Part {
   return p;
 }
 
-/* ── Хуваарь ── */
-function huvaariPart(): Part {
+/* ── «Төсөл төлөвлөгөө биелэлт»-ийн үе шат (2026-11-23) ── */
+
+/** Багцын түлхүүр → харуулах нэр (багцын жагсаалтаас; алга бол түлхүүр) */
+const pkgLabelOf = (src: SchemSources, key: string): string =>
+  src.bagts?.find((b) => bagtsKey(b.key) === key || bagtsKey(b.label) === key)?.label ?? key;
+
+/**
+ * Нэг буюу хэд хэдэн үе шатны хэсэг — төлөвлөгөөт, гүйцэтгэл, төсөв; багцаар хүснэгт; хоцролтын анхааруулга.
+ */
+function phasePart(src: SchemSources, pkg: string | null, list: readonly [PlanPhase, string, FineId][]): Part {
   const p = emptyPart();
-  p.metrics.push({
-    label: tr('Хуваарийн хамралт'),
-    value: null,
-    kind: 'pct',
-    why: tr('Хуваарь багц бүрээр ачаалагддаг — схемд амьд тоо гаргахгүй'),
-  });
-  p.issues.push({
-    text: tr('Хуваарийн хамралт нь багц тус бүрийн бүх мөрийг татаж байж бодогддог. Схем нээх бүрд тэр хүсэлтийг явуулбал бусад тоо ч удаашрах тул энд ЗОРИУДААР тооцохгүй — «Хуваарь» харагдацаас үзнэ үү.'),
-    tone: 'none',
-  });
+  if (!src.plan) {
+    p.metrics.push({ label: tr('Гүйцэтгэл'), value: null, kind: 'pct', why: tr('Үйлчилгээ татагдсангүй') });
+    p.issues.push({ text: tr('«Төсөл төлөвлөгөө биелэлт» татагдсангүй.'), tone: 'none' });
+    return p;
+  }
+  const many = list.length > 1;
+  for (const [ph, name] of list) {
+    const v = phaseOf(src.plan, ph, pkg);
+    const lab = (x: string) => (many ? `${name} · ${x}` : x);
+    p.metrics.push(
+      { label: lab(tr('Төлөвлөгөөт')), value: v?.P ?? null, kind: 'pct', why: v ? undefined : tr('Энэ багцад тэр үе шат алга') },
+      { label: lab(tr('Гүйцэтгэл')), value: v?.S ?? null, kind: 'pct', why: v ? undefined : tr('Энэ багцад тэр үе шат алга') },
+    );
+    if (v?.E != null) p.metrics.push({ label: lab(tr('Төсөвт өртөг')), value: v.E, kind: 'mnt' });
+  }
+  /* Багцаар — багц сонгосон ч бүх багц (харьцуулна) */
+  const keys = Object.keys(src.plan.byPkg).filter((k) => list.some(([ph]) => src.plan!.byPkg[k][ph]));
+  if (keys.length) {
+    const rows = keys.map((k) => ({ k, label: pkgLabelOf(src, k) })).sort((a, b) => a.label.localeCompare(b.label, 'mn'));
+    p.tables.push({
+      title: tr('Багцаар'),
+      cols: [tr('Багц'), ...list.flatMap(([, name]) => (many
+        ? [`${name} · ${tr('төлөвлөгөөт')}`, `${name} · ${tr('гүйцэтгэл')}`]
+        : [tr('Төлөвлөгөөт'), tr('Гүйцэтгэл')]))],
+      rows: rows.map(({ k, label }) => [
+        cell(label),
+        ...list.flatMap(([ph]) => {
+          const v: PhaseVal | undefined = src.plan!.byPkg[k][ph];
+          return [cell(v?.P ?? null, 'pct'), cell(v?.S ?? null, 'pct')];
+        }),
+      ]),
+    });
+  }
+  for (const [ph, name, at] of list) {
+    const v = phaseOf(src.plan, ph, pkg);
+    const tone = paceHealth(v);
+    if (v && v.P != null && v.S != null && (tone === 'warn' || tone === 'bad')) {
+      p.issues.push({
+        text: tr('{0}: гүйцэтгэл {1}% — төлөвлөгөөнөөс {2} нэгжээр хоцорсон.', name, v.S.toFixed(2), (v.P - v.S).toFixed(2)),
+        tone,
+        at,
+      });
+    }
+  }
+  return p;
+}
+
+const zuragPart = (src: SchemSources, pkg: string | null): Part => phasePart(src, pkg, [
+  ['tezu', tr('ТЭЗҮ'), 'tezu'], ['zurag', tr('Зураг төсөл'), 'zur'],
+]);
+const songonPart = (src: SchemSources, pkg: string | null): Part => phasePart(src, pkg, [
+  ['songon', tr('Сонгон шалгаруулалт'), 'son'],
+]);
+const ashiglaltPart = (src: SchemSources, pkg: string | null): Part => phasePart(src, pkg, [
+  ['huleelgeh', tr('Хүлээлгэн өгөх'), 'ash'], ['zugshruulelt', tr('Зүгшрүүлэлт'), 'ash'],
+]);
+
+/* ── Хуваарь — батлуулахаар хүлээгдэж буй хүсэлт ба барилгын төлөвлөгөөт явц ── */
+function huvaariPart(src: SchemSources, pkg: string | null): Part {
+  const p = emptyPart();
+  const ap = src.approvals;
+  const mine = ap ? pickPkg(ap.huvaari, pkg, (x) => x.pkg) : null;
+  const bar = phaseOf(src.plan, 'barilga', pkg);
+  p.metrics.push(
+    { label: tr('Батлуулахаар хүлээгдэж буй'), value: mine ? mine.length : null, kind: 'count', why: ap ? undefined : tr('Үйлчилгээ татагдсангүй') },
+    { label: tr('Барилгын төлөвлөгөөт явц'), value: bar?.P ?? null, kind: 'pct', why: bar ? undefined : tr('«Төсөл төлөвлөгөө биелэлт»-д алга') },
+    { label: tr('Барилгын гүйцэтгэл'), value: bar?.S ?? null, kind: 'pct' },
+  );
+  if (ap) {
+    const by = byPkgKey(ap.huvaari, (x) => x.pkg);
+    if (by.length) {
+      p.tables.push({
+        title: tr('Батлуулахаар хүлээгдэж буй хуваарь'),
+        cols: [tr('Багц'), tr('Хүсэлт')],
+        rows: by.map(({ label, list }) => [cell(label), cell(list.length, 'count')]),
+      });
+    }
+    if (mine && mine.length) {
+      p.issues.push({ text: tr('{0} хуваарь батлуулахаар хүлээгдэж байна.', mine.length), tone: 'warn', at: 'huv' });
+    }
+  } else {
+    p.issues.push({ text: tr('Хуваарь батлах хүсэлтийн хүснэгт татагдсангүй.'), tone: 'none' });
+  }
+  return p;
+}
+
+/* ── Нэмэлт ажил батлах ── */
+function ajilPart(src: SchemSources, pkg: string | null): Part {
+  const p = emptyPart();
+  const ap = src.approvals;
+  if (!ap) {
+    p.metrics.push({ label: tr('Хүлээгдэж буй хүсэлт'), value: null, kind: 'count', why: tr('Үйлчилгээ татагдсангүй') });
+    p.issues.push({ text: tr('Нэмэлт ажлын хүсэлтийн хүснэгт татагдсангүй.'), tone: 'none' });
+    return p;
+  }
+  const mine = pickPkg(ap.ajil, pkg, (x) => x.pkg);
+  p.metrics.push(
+    { label: tr('Хүлээгдэж буй хүсэлт'), value: mine.length, kind: 'count' },
+    { label: tr('Нэмэгдэх мөр'), value: mine.reduce((a, x) => a + (x.rows ?? 0), 0), kind: 'count' },
+  );
+  const by = byPkgKey(ap.ajil, (x) => x.pkg);
+  if (by.length) {
+    p.tables.push({
+      title: tr('Хүлээгдэж буй нэмэлт ажил'),
+      cols: [tr('Багц'), tr('Хүсэлт'), tr('Нэмэгдэх мөр')],
+      rows: by.map(({ label, list }) => [
+        cell(label), cell(list.length, 'count'), cell(list.reduce((a, x) => a + (x.rows ?? 0), 0), 'count'),
+      ]),
+    });
+  }
+  if (mine.length) {
+    p.issues.push({ text: tr('{0} нэмэлт ажлын хүсэлт батлагдаагүй байна.', mine.length), tone: 'warn', at: 'ajil' });
+  }
+  return p;
+}
+
+/* ── Материал баталгаажуулалт ── */
+function maPart(src: SchemSources, pkg: string | null): Part {
+  const p = emptyPart();
+  const all = src.ma;
+  if (!all) {
+    p.metrics.push({ label: tr('Нийт материал'), value: null, kind: 'count', why: tr('Үйлчилгээ татагдсангүй') });
+    p.issues.push({ text: tr('Материал баталгаажуулалтын хүснэгт татагдсангүй.'), tone: 'none' });
+    return p;
+  }
+  const mine = pickPkg(all, pkg, (m) => m.pkg);
+  const n = (l: typeof all, v: (typeof all)[number]['verdict']) => l.filter((m) => m.verdict === v).length;
+  p.metrics.push(
+    { label: tr('Нийт материал'), value: mine.length, kind: 'count' },
+    { label: tr('A — Зөвшөөрсөн'), value: n(mine, 'A'), kind: 'count' },
+    { label: tr('AN — Саналтай зөвшөөрсөн'), value: n(mine, 'AN'), kind: 'count' },
+    { label: tr('R — Буцаасан'), value: n(mine, 'R'), kind: 'count' },
+    { label: tr('Шийдвэргүй'), value: n(mine, null), kind: 'count' },
+  );
+  const by = byPkgKey(all, (m) => m.pkg);
+  if (by.length) {
+    p.tables.push({
+      title: tr('Багцаар'),
+      cols: [tr('Багц'), tr('A/AN'), tr('R'), tr('Шийдвэргүй')],
+      rows: by.map(({ label, list }) => [
+        cell(label), cell(n(list, 'A') + n(list, 'AN'), 'count'), cell(n(list, 'R'), 'count'), cell(n(list, null), 'count'),
+      ]),
+    });
+  }
+  const back = mine.filter((m) => m.verdict === 'R');
+  if (back.length) {
+    const { shown, hidden } = capped(back);
+    p.tables.push({
+      title: tr('Буцаасан материал'),
+      cols: [tr('Багц'), tr('Материал'), tr('Гүйцэтгэгч')],
+      rows: [
+        ...shown.map((m) => [cell(m.pkg || '—'), cell(m.material || noName()), cell(m.contractor || '—')]),
+        ...(hidden > 0 ? [[cell(tr('… бас {0} мөр', hidden)), cell(''), cell('')]] : []),
+      ],
+    });
+    p.issues.push({ text: tr('{0} материал буцаагдсан (R) — тэдгээрийг ашиглах ажил эхлэхгүй.', back.length), tone: 'warn', at: 'ma' });
+  }
+  const none = n(mine, null);
+  if (none) p.issues.push({ text: tr('{0} материалд шийдвэр гараагүй.', none), tone: 'warn', at: 'ma' });
   return p;
 }
 
@@ -276,8 +439,11 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
     lost ? null : src.bagts ? rows.reduce((s, b) => s + of(b), 0) : null
   );
 
+  const bPlan = phaseOf(src.plan, 'barilga', pkg);
   p.metrics.push(
-    { label: tr('Гүйцэтгэл'), value: row ? fin(row.progress) : lost ? null : fin(src.overall?.pct), kind: 'pct' },
+    ...(bPlan ? [{ label: tr('Төлөвлөгөөт'), value: bPlan.P, kind: 'pct' as const }] : []),
+    { label: tr('Гүйцэтгэл'), value: bPlan?.S ?? (row ? fin(row.progress) : lost ? null : fin(src.overall?.pct)), kind: 'pct' },
+    ...(bPlan?.E != null ? [{ label: tr('Төсөвт өртөг'), value: bPlan.E, kind: 'mnt' as const }] : []),
     { label: tr('Блок'), value: row ? row.blocks : sum((b) => b.blocks), kind: 'count' },
     { label: tr('Тайлангүй блок'), value: row ? row.missing : sum((b) => b.missing), kind: 'count' },
     { label: tr('Айлын тоо'), value: row ? row.ail : sum((b) => b.ail), kind: 'count' },
@@ -316,13 +482,21 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
   }
   if (!pkg && weightSum != null && weightSum < 100) {
     p.issues.push({
-      text: tr('Төсвийн жингийн {0}% л бүртгэгдсэн — нийт гүйцэтгэл дутуу хамралт дээр бодогдож байна.', weightSum.toFixed(0)),
+      text: tr('Төсвийн жингийн {0}% л бүртгэгдсэн — нийт гүйцэтгэл дутуу хамралт дээр бодогдож байна.', weightSum.toFixed(2)),
       tone: 'warn',
     });
   }
   const stalled = fin(src.progress?.stalled);
   if (stalled != null && stalled > 0) {
     p.issues.push({ text: tr('{0} блокийн гүйцэтгэл 1%-иас доогуур (эхлээгүй).', stalled), tone: 'warn', at: 'bar' });
+  }
+  const pace = paceHealth(bPlan);
+  if (bPlan && bPlan.P != null && bPlan.S != null && (pace === 'warn' || pace === 'bad')) {
+    p.issues.push({
+      text: tr('Барилга угсралт: гүйцэтгэл {0}% — төлөвлөгөөнөөс {1} нэгжээр хоцорсон.', bPlan.S.toFixed(2), (bPlan.P - bPlan.S).toFixed(2)),
+      tone: pace,
+      at: 'bar',
+    });
   }
   return p;
 }
@@ -541,10 +715,15 @@ function tailanPart(src: SchemSources): Part {
 
 const PART: Record<SchemId, (src: SchemSources, pkg: string | null) => Part> = {
   tolovlolt: (s) => tolovloltPart(s),
+  zurag: (s, p) => zuragPart(s, p),
   zovshoorol: (s, p) => zovPart(s, p),
+  songon: (s, p) => songonPart(s, p),
   gazar: (s) => gazarPart(s),
-  huvaari: () => huvaariPart(),
+  huvaari: (s, p) => huvaariPart(s, p),
+  ajil: (s, p) => ajilPart(s, p),
+  ma: (s, p) => maPart(s, p),
   barilga: (s, p) => barilgaPart(s, p),
+  ashiglalt: (s, p) => ashiglaltPart(s, p),
   hyanalt: (s, p) => hyanaltPart(s, p),
   habea: (s) => habeaPart(s),
   ersdel: (s) => ersdelPart(s),
@@ -616,9 +795,37 @@ export function cardStat(
   const c = src.clearance;
   const fi = src.finance;
 
+  const phaseStat = (ph: PlanPhase): CardStat => {
+    const v = phaseOf(src.plan, ph, pkg);
+    return {
+      ...statOf(tr('Гүйцэтгэл'), v?.S ?? null, 'pct', paceHealth(v)),
+      ...(v?.P != null ? { why: tr('Төлөвлөгөөт {0}%', v.P.toFixed(2)) } : {}),
+    };
+  };
+  const ap = src.approvals ?? null;
+  const ma = src.ma ? pickPkg(src.ma, pkg, (m) => m.pkg) : null;
+
   switch (id) {
     case 'plan':
       return statOf(tr('Талбай'), fin(src.headline?.areaHa), 'ha', known(fin(src.headline?.areaHa)));
+    case 'tezu':
+      return phaseStat('tezu');
+    case 'zur':
+      return phaseStat('zurag');
+    case 'son':
+      return phaseStat('songon');
+    case 'ash': {
+      const v = phaseOf(src.plan, 'huleelgeh', pkg);
+      return { ...statOf(tr('Хүлээлгэн өгөх'), v?.S ?? null, 'pct', paceHealth(v)), ...(v?.P != null ? { why: tr('Төлөвлөгөөт {0}%', v.P.toFixed(2)) } : {}) };
+    }
+    case 'ajil': {
+      const v = ap ? pickPkg(ap.ajil, pkg, (x) => x.pkg).length : null;
+      return statOf(tr('Хүлээгдэж буй'), v, 'count', fewer(v));
+    }
+    case 'ma': {
+      const v = ma ? ma.filter((m) => m.verdict === 'R' || m.verdict == null).length : null;
+      return statOf(tr('Буцаасан · шийдвэргүй'), v, 'count', fewer(v));
+    }
     case 'zov':
       return statOf(tr('Нийт зөвшөөрөл'), zov ? zov.length : null, 'count', known(zov ? zov.length : null));
     case 'zovOk':
@@ -637,9 +844,13 @@ export function cardStat(
       return statOf(tr('Чөлөөлсөн талбар'), fin(c?.cleared), 'count', known(fin(c?.cleared)));
     case 'gazLeft':
       return statOf(tr('Үлдсэн талбар'), fin(c?.remaining), 'count', fewer(fin(c?.remaining)));
-    case 'huv':
-      return statOf(tr('Хамралт'), null, 'pct', 'none');
+    case 'huv': {
+      const v = ap ? pickPkg(ap.huvaari, pkg, (x) => x.pkg).length : null;
+      return statOf(tr('Батлуулахаар хүлээгдэж буй'), v, 'count', fewer(v));
+    }
     case 'bar': {
+      const bp = phaseOf(src.plan, 'barilga', pkg);
+      if (bp) return phaseStat('barilga');
       const v = row ? fin(row.progress) : proj(fin(src.overall?.pct));
       return statOf(tr('Гүйцэтгэл'), v, 'pct', grade(v, TH.barilgaPct.good, TH.barilgaPct.warn));
     }

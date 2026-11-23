@@ -30,6 +30,7 @@ export type ViewKey =
   | "ashiglalt"
   | "tuvshin6"
   | "finance"
+  | "ipc"
   | "habea"
   | "irged"
   | "iot"
@@ -40,8 +41,7 @@ export type ViewKey =
   | "guitsetgel"
   | "hyanaltHugatsaa"
   | "ma"
-  | "schem"
-  | "sysdoc";
+  | "schem";
 
 export const VIEWS: {
   key: ViewKey;
@@ -65,7 +65,7 @@ export const VIEWS: {
    */
   {
     key: "gdash",
-    get title() { return tr('Ерөнхий дашбоард'); },
+    get title() { return tr('Төслийн нийт гүйцэтгэл'); },
     get desc() { return tr('Төсөл одоо ямар байна вэ — санхүү, газар чөлөөлөлт, төлөвлөгөө, аюулгүй ажиллагааг нэг дэлгэцэд харуулсан товч тойм'); },
     icon: "grid",
     hue: "#0ea5e9",
@@ -76,7 +76,7 @@ export const VIEWS: {
   {
     key: "dashboard",
     get title() { return tr('Төслийн дэлгэрэнгүй мэдээлэл'); },
-    get desc() { return tr('Бүс, барилга, дэд бүтцийн үзүүлэлтийг газрын зураг дээр задлан судлах дэлгэрэнгүй хэсэг (товч тойм нь «Ерөнхий дашбоард»-д)'); },
+    get desc() { return tr('Бүс, барилга, дэд бүтцийн үзүүлэлтийг газрын зураг дээр задлан судлах дэлгэрэнгүй хэсэг (товч тойм нь «Төслийн нийт гүйцэтгэл»-д)'); },
     icon: "info",
     hue: "#0284c7",
     layers: ["zone", "et:24"],
@@ -124,7 +124,7 @@ export const VIEWS: {
   },
   {
     key: "pkgProg",
-    get title() { return tr('Багцын гүйцэтгэл'); },
+    get title() { return tr('Багцын явц'); },
     get desc() { return tr('Багц бүрийн барилгын ажил хэдэн хувь явсныг блокоор, газрын зураг дээр ХАРАХ (бөглөх нь «Гүйцэтгэл»-д)'); },
     icon: "building",
     hue: "#c2410c",
@@ -180,7 +180,7 @@ export const VIEWS: {
    */
   {
     key: "huvaari",
-    get title() { return tr('Хуваарь'); },
+    get title() { return tr('Хуваарь төлөвлөх'); },
     get desc() { return tr('Ажил бүр хэзээ эхэлж дуусахыг блокоор төлөвлөж, батлуулахаар илгээнэ'); },
     icon: "calendar",
     hue: "#0891b2",
@@ -232,7 +232,7 @@ export const VIEWS: {
    */
   {
     key: "tuh",
-    get title() { return tr('ТУХ'); },
+    get title() { return tr('Багцын хяналт'); },
     get desc() { return tr('Багцын хяналтын самбар — улсын комисс, IPC, хуваарь, гүйцэтгэл нэг дор'); },
     icon: "briefcase",
     hue: "#0f766e",
@@ -273,7 +273,7 @@ export const VIEWS: {
    */
   {
     key: "zahiramj",
-    get title() { return tr('Захирамж'); },
+    get title() { return tr('Захирамж төлөвлөх'); },
     get desc() { return tr('Багц бүрийн захирамжийн огноо, дугаар оруулах.'); },
     icon: "file",
     hue: "#0f766e",
@@ -293,7 +293,7 @@ export const VIEWS: {
   },
   {
     key: "zovshoorolTtb",
-    get title() { return tr('Зөвшөөрөл (төлөвлөгөө)'); },
+    get title() { return tr('Зөвшөөрөл оруулах'); },
     get desc() { return tr('Багцын зөвшөөрлүүдийг мөрөөр нэмж огноо, явц оруулах — «Төсөл төлөвлөгөө биелэлт»-д хадгалагдана.'); },
     icon: "file",
     hue: "#0f766e",
@@ -331,10 +331,21 @@ export const VIEWS: {
    */
   {
     key: "finance",
-    get title() { return tr('Санхүүжилт'); },
-    get desc() { return tr('Гэрээ бүрийн санхүүжилтийн хуваарь, гүйцэтгэлээр олгох төлбөрийн актыг бүртгэх, хянах'); },
+    /* 2026-11-23 (хэрэглэгч): «Санхүүжилт»-ийг хоёр тусдаа цэс болгов — энэ нь «Төсөл төлөвлөгөө биелэлт», IPC нь «ipc» */
+    get title() { return tr('Төсөл төлөвлөгөө биелэлт'); },
+    get desc() { return tr('Төслийн ажил бүрийн төсөв, гэрээ, хугацаа, явц, олгосон санхүүжилт — нэг хүснэгтэд'); },
     icon: "coins",
     hue: "#0891b2",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
+  {
+    key: "ipc",
+    get title() { return tr('Төлбөрийн акт (IPC)'); },
+    get desc() { return tr('Гэрээ бүрийн гүйцэтгэлээр олгох төлбөрийн акт (IPC) үүсгэх, батлах, олголтыг хянах'); },
+    icon: "coins",
+    hue: "#0e7490",
     layers: [],
     initial: [],
     standalone: true,
@@ -356,7 +367,7 @@ export const VIEWS: {
   },
   {
     key: "iot",
-    get title() { return tr('IoT хяналт'); },
+    get title() { return tr('Мэдрэгчийн хяналт'); },
     get desc() { return tr('Хог, ус, гэрэл, агаарын чийг, хөрс хэмжих мэдрэгчийн одоогийн ба өмнөх заалт'); },
     icon: "radio",
     hue: "#0891b2",
@@ -399,7 +410,7 @@ export const VIEWS: {
   },
   {
     key: "zovshoorol",
-    get title() { return tr('Зөвшөөрөл'); },
+    get title() { return tr('Зөвшөөрлийн явц'); },
     get desc() { return tr('Багц бүрд шаардлагатай зөвшөөрлүүд аль шатандаа явааг харах'); },
     icon: "stamp",
     hue: "#0ea5e9",
@@ -409,7 +420,7 @@ export const VIEWS: {
   },
   {
     key: "hyanaltHugatsaa",
-    get title() { return tr('Хяналтын хугацаа'); },
+    get title() { return tr('Гүйцэтгэлийн хяналт'); },
     get desc() { return tr('Илгээсэн гүйцэтгэл хэн дээр хэд хоног хүлээгдэж буй, шатны хугацаа хэтэрсэн эсэх'); },
     icon: "calendarCheck",
     hue: "#7c3aed",
@@ -419,8 +430,8 @@ export const VIEWS: {
   },
   {
     key: "guitsetgel",
-    get title() { return tr('Гүйцэтгэл'); },
-    get desc() { return tr('Хийсэн ажлаа бөглөж илгээх, инженер хянах, удирдлага батлах ажлын хуудас (зөвхөн харах бол «Багцын гүйцэтгэл»)'); },
+    get title() { return tr('Гүйцэтгэл бөглөх'); },
+    get desc() { return tr('Хийсэн ажлаа бөглөж илгээх, инженер хянах, удирдлага батлах ажлын хуудас (зөвхөн харах бол «Багцын явц»)'); },
     icon: "pen",
     hue: "#7c3aed",
     layers: [],
@@ -452,19 +463,6 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
-  /**
-   * СИСТЕМИЙН БАРИМТ — порталын өөрийн заавар (2026-09-16).
-   */
-  {
-    key: "sysdoc",
-    get title() { return tr('Системийн баримт'); },
-    get desc() { return tr('Порталын тоо хаанаас ирдэг, хэзээ шинэчлэгддэг, хэн засах эрхтэйг тайлбарласан лавлах'); },
-    icon: "book",
-    hue: "#64748b",
-    layers: [],
-    initial: [],
-    standalone: true,
-  },
 ];
 
 export const VIEW_BY_KEY: Record<ViewKey, (typeof VIEWS)[number]> =
@@ -489,10 +487,10 @@ export const HOME_SECTIONS: {
   views: ViewKey[];
 }[] = [
   { id: "mgmt", get title() { return tr('Удирдлага'); }, all: true, views: [] },
-  { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
+  { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged", "tuvshin6"] },
   { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "hyanaltHugatsaa", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
-  { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
+  { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance", "ipc"] },
 ];
 
 /**
@@ -500,16 +498,18 @@ export const HOME_SECTIONS: {
  */
 export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
-  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "hyanaltHugatsaa", "huvaari", "tuvshin6", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt"] },
-  { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "ma"] },
+  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "hyanaltHugatsaa", "huvaari", "tuvshin6", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "ma", "bagtsHamaaral", "huvaariBatlah", "ajilBatlah"] },
+  /* 2026-11-23 (хэрэглэгч): «Батлах» бүлгийн цэсүүд «Миний ажил»-д шилжсэн — хоосон бүлэг зурагдахгүй */
+  { id: "approve", get title() { return tr('Батлах'); }, views: [] },
   {
     id: "monitor",
     get title() { return tr('Хяналт'); },
-    views: ["gdash", "dashboard", "tuh", "bagtsHamaaral", "pkgProg", "plan", "hesegET", "gazar", "zovshoorol", "habea", "dedButets", "pkgFin", "finance"],
+    views: ["gdash", "dashboard", "tuh", "pkgProg", "plan", "hesegET", "gazar", "zovshoorol", "habea", "dedButets", "pkgFin", "finance", "ipc"],
   },
   { id: "smart", get title() { return tr('Ухаалаг хот'); }, views: ["iot", "ersdel", "irged", "analysis"] },
   { id: "report", get title() { return tr('Тайлан'); }, views: ["tailan", "schem"] },
-  { id: "system", get title() { return tr('Систем'); }, views: ["sysdoc"] },
+  /* 2026-11-23 (хэрэглэгч): «Системийн баримт» бүрэн хасагдсан — бүлэг хоосон, зурагдахгүй */
+  { id: "system", get title() { return tr('Систем'); }, views: [] },
 ];
 
 

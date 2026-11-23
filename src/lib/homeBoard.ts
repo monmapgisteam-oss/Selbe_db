@@ -9,7 +9,8 @@ import { WORKFLOW_VIEWS } from './caps';
  *   самбар зөвхөн уншина. `roleOf` нь remote уншигдаагүй бол override үүргийг үл тооцно (fail-closed).
  */
 /** Шинэ хуудас — хадгалсан жагсаалтад байхгүй ч удирдлагын самбар хаагдахгүй (2026-11-04) */
-const BOARD_OPTIONAL: readonly ViewKey[] = ['zahiramj', 'songon', 'zovshoorolTtb', 'ashiglalt', 'hyanaltHugatsaa'];
+/* 2026-11-23: «ipc» — «Санхүүжилт»-ээс салсан цэс; «finance»-тэй хүн автоматаар харна (`permissions.resolveAccess`) */
+const BOARD_OPTIONAL: readonly ViewKey[] = ['zahiramj', 'songon', 'zovshoorolTtb', 'ashiglalt', 'hyanaltHugatsaa', 'ipc'];
 
 /**
  * @param authOff нэвтрэлт унтраалттай (локал dev). 2026-11-20: админ (super) энд үл хамаарна — бусдын адил харагдацаар.

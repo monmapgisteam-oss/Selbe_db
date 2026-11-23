@@ -67,7 +67,7 @@ ok('нүүр — хүлээн авагч, гарчиг, дэд гарчиг, о�
   assert.equal(c[2].columns[0].text, 'Хугацаа 2026-10-01 – 2026-10-31 · Үүсгэсэн 2026-11-05 · Тэст Хэрэглэгч', 'Roboto-д «→» байхгүй');
   const js = JSON.stringify(c);
   assert.ok(js.includes('Автоматаар үүссэн — гараар оруулсан мэдээлэлгүй'));
-  assert.ok(js.includes('"text":"31.7%","fontSize":18') && js.includes('ТӨСЛИЙН НИЙТ ЯВЦ'), 'нүүрний гол тоо');
+  assert.ok(js.includes('"text":"31.70%","fontSize":18') && js.includes('ТӨСЛИЙН НИЙТ ЯВЦ'), 'нүүрний гол тоо');
   assert.ok(!/гарын үсэг|__________|signature/i.test(js.replace(/гарын үсэг зурсан/gi, '')), 'гараар бөглөх зүйл гарав');
   assert.equal(docs.council.content[0].text, 'ИРГЭДИЙН ТӨЛӨӨЛӨГЧДИЙН ХУРАЛ');
   assert.equal(docs.board.content[0].text, 'ТӨЛӨӨЛӨН УДИРДАХ ЗӨВЛӨЛ');
@@ -84,7 +84,7 @@ ok('хавсралт — бүтэн дүн, Хотын дарга ба Төлө�
   const t = tables('mayor')[0].table;
   assert.equal(t.body[0][0].text, 'Багц');
   assert.equal(t.body[0][1].text, 'Гэрээлсэн (төг)');
-  assert.equal(t.body[1][1].text, '400,000,000,000', 'хавсралтад бүтэн дүн');
+  assert.equal(t.body[1][1].text, '400,000,000,000.00', 'хавсралтад бүтэн дүн');
   assert.equal(t.body.at(-1)[0].text, 'Нийт');
   assert.equal(t.body.at(-1)[0].bold, true);
 });

@@ -21,6 +21,15 @@ export const TYPE_ORDER: readonly Role[] = [
 export const isTypeRole = (r: Role | null | undefined): r is Role => !!r && TYPE_ORDER.includes(r);
 
 /**
+ * ҮҮРЭГ СОНГОГЧИЙН ЖАГСААЛТ (2026-11-23) — `TYPE_ORDER` + албан үүргийн загварын (`jobModel`) шинэ таван үүрэг, super эцэст.
+ * Зөвхөн сонголтын жагсаалт: шинэ үүргүүд `TYPE_ORDER`-т ОРООГҮЙ хэвээр (төрлийн загваргүй — `roleAccess` нь
+ * `ROLE_ACCESS`-ийн нарийн суурийг өгнө, «Хуваарь харах» = Үгүй), тиймээс одоогийн хэрэглэгчийн эрх хөндөгдөхгүй.
+ */
+export const JOB_EXTRA_ROLES: readonly Role[] = ['guitshabea', 'habea', 'butets', 'zurag', 'sanhuu'];
+export const PICK_ORDER: readonly Role[] = [...TYPE_ORDER.filter((r) => r !== 'super'), ...JOB_EXTRA_ROLES, 'super'];
+export const isPickRole = (r: Role | null | undefined): r is Role => !!r && PICK_ORDER.includes(r);
+
+/**
  * ШИНЭ АККАУНТЫН АНХДАГЧ ТӨРӨЛ (2026-10-01, «хэрэглэгч: бүгдийг зас»).
  */
 export const NEW_ACCOUNT_ROLE: Role = 'taniltsah';
@@ -38,6 +47,12 @@ export function typeLabel(r: Role): string {
   if (r === 'chanar') return tr('Чанар');
   if (r === 'gazar') return tr('Газар чөлөөлөлт');
   if (r === 'super') return tr('Super');
+  /* 2026-11-23: албан үүргийн загварын шинэ үүргүүд (`lib/jobModel.ts`) — `TYPE_ORDER`-т ороогүй, зөвхөн шошго */
+  if (r === 'guitshabea') return tr('Гүйцэтгэгчийн ХАБЭА ажилтан');
+  if (r === 'habea') return tr('ХАБЭА-ийн ажилтан');
+  if (r === 'butets') return tr('Дэд бүтцийн инженер');
+  if (r === 'zurag') return tr('Зураг төслийн ажилтан');
+  if (r === 'sanhuu') return tr('Санхүүгийн ажилтан');
   if (r === 'beginner') return tr('Энгийн (хуучин)');
   return tr('Төлөвлөлт (хуучин)');
 }
@@ -143,7 +158,7 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
   gazriin: { on: LEADER, home: 'gdash' },
   zahiral: { on: LEADER, home: 'gdash' },
   taniltsah: {
-    on: [...V('gdash', 'dashboard', 'plan', 'hesegET', 'pkgProg', 'tailan', 'schem', 'sysdoc', 'gazar'), 'docs', HV_ALL],
+    on: [...V('gdash', 'dashboard', 'plan', 'hesegET', 'pkgProg', 'tailan', 'schem', 'gazar'), 'docs', HV_ALL],
     home: 'gdash',
   },
   chanar: {
@@ -156,7 +171,7 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
   },
   /* 2026-11-20 (хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана»): анхдагч загвар зөвхөн эрх удирдлага — ажлын харагдацыг
      бусдын адил загвар эсвэл хүн бүрийн тохиргооноос олгоно */
-  super: { on: [...V('sysdoc'), 'admin'], home: 'sysdoc' },
+  super: { on: [...V('gdash'), 'admin'], home: 'gdash' },
 };
 
 export const _defaultTpl = (role: Role): TypeTpl | undefined => {

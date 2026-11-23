@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * НЭГ ХЭРЭГЛЭГЧИЙН ХАРАГДАЦ · ТЭЗҮ-БОНУ — жагсаалтын дэлгэсэн мөр ба
+ * НЭГ ХЭРЭГЛЭГЧИЙН ХАРАГДАЦ — жагсаалтын дэлгэсэн мөр ба
  * хэрэглэгчийн карт ХОЁУЛАА энэ бүрэлдэхүүнийг зурна (2026-09-25).
  */
 
@@ -17,6 +17,8 @@ export type UserRightsProps = {
   d: Draft;
   /** Засах эрхээр нээгдсэн харагдацууд (`capViewsOf`) */
   capViews: ViewKey[];
+  /** Автоматаар нээгддэг харагдац (2026-11-23: «Гүйцэтгэл»-ээс «Хяналтын хугацаа») — түгжээтэй асаалттай */
+  autoViews?: ViewKey[];
   /** Хэрэглэгчийн эрхүүд — аль эрх аль харагдацыг нээснийг tooltip-д хэлнэ */
   caps: CapKey[];
   hasView: (views: ViewKey[] | 'all', k: ViewKey) => boolean;
@@ -27,6 +29,7 @@ export type UserRightsProps = {
 
 export function UserRights(props: UserRightsProps) {
   const { d, capViews, caps, hasView, onFlipView, onAllViews } = props;
+  const autoViews = props.autoViews ?? [];
   const superUser = !!props.superUser;
 
   /** Энэ харагдацыг нээсэн эрхүүдийн ХУУДАСНЫ нэр (хажуугийн цэс) */
@@ -56,7 +59,8 @@ export function UserRights(props: UserRightsProps) {
       </div>
       <div className={s.capNote}>
         {superUser
-          ? tr('Админ (super) — бүх харагдац ба ТЭЗҮ-БОНУ админ эрхээр нээлттэй; энд засагдахгүй (төрлийг өөр super админ солино).')
+          /* 2026-11-23: хуучин «бүх харагдац нээлттэй» гэсэн бичвэр худал болсон (2026-11-20-оос админ загвараа дагана) */
+          ? tr('Кодонд бүртгэлтэй админ (super) — харагдац нь «Super» төрлийн загвараас; энд засагдахгүй.')
           : tr('Урсгалтай хуудсууд ({0}) урсгалын эрхийн хуудсаар нээгдэнэ — хуваарилалт олгоход нээгдэж, хасахад хаагдана.', workflowNames)}
       </div>
       {!superUser && capViews.some((k) => !WORKFLOW_VIEWS.includes(k)) && (
@@ -68,13 +72,15 @@ export function UserRights(props: UserRightsProps) {
         {shownViews.map((v) => {
           const base = hasView(d.views, v.key);
           const implied = !base && capViews.includes(v.key);
-          const locked = superUser || implied;
-          const vOn = superUser || base || implied;
+          const auto = autoViews.includes(v.key);
+          const locked = superUser || implied || auto;
+          const vOn = base || implied || auto;
           return (
             <div key={v.key} className={s.topicRow}>
               <span className={s.topicName}>
                 <span className={s.topicIcon}><Icon name={v.icon} size={14} /></span>
                 {v.title}
+                {auto && <span className={s.saveHint}>{tr('Гүйцэтгэл-ээс автоматаар')}</span>}
               </span>
               <button
                 type="button"
@@ -83,10 +89,12 @@ export function UserRights(props: UserRightsProps) {
                 aria-disabled={locked || undefined}
                 aria-label={v.title}
                 title={superUser
-                  ? tr('Админ (super) — админ эрхээр нээлттэй')
-                  : implied
-                    ? tr('Засах эрхээс үүссэн ({0}) — тухайн эрхийн хуудсаас хаана', impliedBy(v.key))
-                    : undefined}
+                  ? tr('Кодонд бүртгэлтэй админ — энд засагдахгүй')
+                  : auto
+                    ? tr('«Гүйцэтгэл»-ээс автоматаар нээлттэй')
+                    : implied
+                      ? tr('Засах эрхээс үүссэн ({0}) — тухайн эрхийн хуудсаас хаана', impliedBy(v.key))
+                      : undefined}
                 className={`${s.sw} ${vOn ? s.swOn : ''} ${locked ? s.swImplied : ''}`}
                 style={locked ? { cursor: 'not-allowed' } : undefined}
                 onClick={locked ? undefined : () => onFlipView(v.key)}

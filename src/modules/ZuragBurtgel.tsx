@@ -7,6 +7,7 @@
 import { pkgCodeOf } from '@/lib/hoSync/compute';
 import { Fragment, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
+import { money2, num, pct } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { applyAll } from '@/lib/tableWrite';
 import { syncZuragPlan } from '@/lib/zuragPlanSync';
@@ -150,7 +151,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
   const flip = (k: string) => setShut((p) => { const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const allKeys = useMemo(() => groups.flatMap((g) => [g.buleg, ...g.subs.filter((x) => x.ded).map((x) => `${g.buleg}|${x.ded}`)]), [groups]);
   /* 2026-11-17: гүйцэтгэл = төлөвийн хувийн дундаж */
-  const cntOf = (rs: readonly ZRow[]) => { const a = tolovAvg(rs); return a == null ? '' : tr('{0}% · {1} баримт', a.toFixed(1), String(rs.length)); };
+  const cntOf = (rs: readonly ZRow[]) => { const a = tolovAvg(rs); return a == null ? '' : tr('{0}% · {1} баримт', num(a, 2), String(rs.length)); };
   const head = (k: string, label: string, rs: readonly ZRow[], cls: string) => (
     <tr className={`${cls} ${s.zFold}`} onClick={() => flip(k)}>
       <td colSpan={canEdit ? 30 : 29}>
@@ -301,7 +302,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
   return (
     <>
       <div className={s.stats}>
-        {([[tr('Гүйцэтгэл'), stat.pct == null ? '—' : `${stat.pct.toFixed(1)}%`], [tr('Нийт баримт'), stat.total], [tr('Магадлалд орсон'), stat.magadlal], [tr('Зохиогчоос хүлээж авсан'), stat.received], [tr('PDF-тэй'), stat.pdf ?? '—']] as [string, number | string][]).map(([k, v]) => (
+        {([[tr('Гүйцэтгэл'), stat.pct == null ? '—' : pct(stat.pct)], [tr('Нийт баримт'), stat.total], [tr('Магадлалд орсон'), stat.magadlal], [tr('Зохиогчоос хүлээж авсан'), stat.received], [tr('PDF-тэй'), stat.pdf ?? '—']] as [string, number | string][]).map(([k, v]) => (
           <div key={k} className={s.stat}><span className={s.statK}>{k}</span><span className={s.statV}>{v}</span></div>
         ))}
       </div>
@@ -481,7 +482,7 @@ function Body({ rows, canEdit }: { rows: ZRow[]; canEdit: boolean }) {
                                 </>
                               )}
                             </td>
-                            <td className={s.r}>{ed ? inp('une', tr('Ажлын үнэ, ₮')) : r.ajliinUne == null ? '' : Math.round(r.ajliinUne).toLocaleString('en-US')}</td>
+                            <td className={s.r}>{ed ? inp('une', tr('Ажлын үнэ, ₮')) : r.ajliinUne == null ? '' : money2(r.ajliinUne)}</td>
                             <td className={s.zCell} title={r.hyanah || undefined}>{ed ? inp('hyanah', tr('Хянах ажилтан')) : r.hyanah}</td>
                             <td>{ed ? inp('batlagdsan', tr('ХБХСГ-аар батлагдсан')) : ymd(r.dates.batlagdsan_ognoo) || '—'}</td>
                             <td className={s.zCell} title={r.zohiogch || undefined}>{ed ? inp('zohiogch', tr('Зураг зохиогч')) : r.zohiogch}</td>

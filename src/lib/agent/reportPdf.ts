@@ -3,7 +3,7 @@
  */
 import type { Content, TableCell, CanvasElement, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { t as tr } from '@/lib/i18nCore';
-import { num } from '@/lib/format';
+import { pct } from '@/lib/format';
 import { isNumeric } from '@/lib/agent/format';
 import { headingOf, type MdBlock } from '@/lib/agent/blocks';
 import { chartValText as valText, type ChartSpec } from '@/lib/agent/chart';
@@ -68,7 +68,7 @@ function bars(spec: ChartSpec): Content {
         },
         {
           text: share && d.value != null && total > 0
-            ? `${valText(d.value, spec.unit)} · ${num((d.value / total) * 100, 1)}%`
+            ? `${valText(d.value, spec.unit)} · ${pct((d.value / total) * 100)}`
             : valText(d.value, spec.unit),
           style: 'barVal',
           alignment: 'right',

@@ -566,19 +566,19 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
 }
 
 {
-  assert.equal(pts(1.25), '+1.3 н.х');
-  assert.equal(pts(-2), '−2.0 н.х');
-  assert.equal(pts(-0.04), '0.0 н.х', 'тойруулсны дараа 0 → тэмдэггүй');
-  assert.equal(pts(0), '0.0 н.х');
+  assert.equal(pts(1.25), '+1.25 н.х');
+  assert.equal(pts(-2), '−2.00 н.х');
+  assert.equal(pts(-0.004), '0.00 н.х', 'тойруулсны дараа 0 → тэмдэггүй');
+  assert.equal(pts(0), '0.00 н.х');
   assert.equal(pts(null), '—', 'null ≠ 0');
-  assert.equal(gapPts(5), '−5.0 н.х', 'gap = төл. − бодит > 0 → хоцорсон (хасах)');
-  assert.equal(gapPts(-2), '+2.0 н.х', 'түрүүлсэн');
-  assert.equal(gapPts(0), '0.0 н.х', 'хуваарийн дагуу — «−0.0%» биш');
-  assert.equal(gapPts(0.03), '0.0 н.х');
+  assert.equal(gapPts(5), '−5.00 н.х', 'gap = төл. − бодит > 0 → хоцорсон (хасах)');
+  assert.equal(gapPts(-2), '+2.00 н.х', 'түрүүлсэн');
+  assert.equal(gapPts(0), '0.00 н.х', 'хуваарийн дагуу — «−0.0%» биш');
+  assert.equal(gapPts(0.003), '0.00 н.х');
   assert.equal(gapPts(undefined), '—');
-  assert.equal(gapPtsWord(5), '5.0 н.х хоцролт');
-  assert.equal(gapPtsWord(-2), '2.0 н.х түрүүлсэн');
-  assert.equal(gapPtsWord(-0.01), '0.0 н.х');
+  assert.equal(gapPtsWord(5), '5.00 н.х хоцролт');
+  assert.equal(gapPtsWord(-2), '2.00 н.х түрүүлсэн');
+  assert.equal(gapPtsWord(-0.001), '0.00 н.х');
   assert.equal(gapPtsWord(null), '—');
 }
 
