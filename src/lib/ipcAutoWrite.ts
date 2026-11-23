@@ -49,7 +49,9 @@ export async function repriceFreeRows(code: string): Promise<number> {
     const day = dayOf(dayOfRow(r));
     const bagts = String(r[C.pkg] ?? '');
     if (!day || !bagts) continue;
-    if (mine.filter((x) => dayOfRow(x) === dayOfRow(r)).length !== 1) continue;
+    /* 2026-11-23 (засвар): ижил БАГЦ · ижил өдрийн мөр л давхардал. Урьд нь зөвхөн өдрөөр тулгадаг байсан тул олон багцтай
+       гэрээний (БАГЦ-10,11) нэг өдрийн хоёр багцын мөр хоёулаа алгасагдаж, хожим оруулсан нэгж үнэ хэзээ ч бичигддэггүй байв. */
+    if (mine.filter((x) => String(x[P.id]) === String(r[P.id])).length !== 1) continue;
     const wanted: Pkg[] = PKGS.filter((p) => bagtsKey(p.group) === bagtsKey(bagts));
     const schemas: (Schema | null)[] = await Promise.all(wanted.map((p) => loadSchema(p, p.floors == null ? { fill: true } : {}).catch(() => null)));
     const weights = uniqueBlockCounts(schemas.map((x) => x?.bld ?? []));

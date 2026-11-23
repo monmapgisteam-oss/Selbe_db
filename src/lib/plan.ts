@@ -93,7 +93,10 @@ export function spanFrac(s: Span, asOf: number): number {
 export type Status = 'done' | 'run' | 'todo' | 'late' | 'none';
 
 export function statusOf(s: Span, act: number | null | undefined, now: number): Status {
-  if (act == null) return 'none';
+  /* 2026-11-23 (засвар): хэмжигдээгүй (null) гүйцэтгэл хугацаа шалгахаас ӨМНӨ «none» буцаадаг тул төлөвлөсөн дуусах
+     огноо нь өнгөрсөн, огт хэмжигдээгүй ажил хэзээ ч «хоцорсон» болдоггүй байв. Хэмжигдээгүй = 0% — хугацаа өнгөрсөн бол
+     хоцорсон; хугацаа нь болоогүй бол урьдын адил «none» (хэмжигдээгүй). */
+  if (act == null) return s.end < now ? 'late' : 'none';
   if (act >= 1) return 'done';
   /* Хугацаа нь ДУУССАН атлаа дуусаагүй — хоцрогдол */
   if (s.end < now) return 'late';

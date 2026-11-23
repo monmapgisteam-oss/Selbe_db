@@ -350,7 +350,9 @@ async function loadExecReportRaw(): Promise<ExecReport> {
       rows: finRows,
       ranges: finRanges.ranges,
       givenUnlisted: finRanges.givenUnlisted,
-      planUnlisted: Math.max(0, csum - finRows.reduce((s, r) => s + r.plan, 0)),
+      /* 2026-11-23 (засвар): «Нийт» мөртэй (`planTotal`) ижил суурь — мөрүүд + энэ үлдэгдэл = Нийт. Урьд нь ажлын мөрийн
+         нийлбэрээс (`csum`) хасдаг байсан тул зураг · ТЭЗҮ-ийн гэрээний дүн (≈11.8 тэрбум) хаана ч гардаггүй байв. */
+      planUnlisted: Math.max(0, (k.contract ?? csum) - finRows.reduce((s, r) => s + r.plan, 0)),
       /* Гэрээтэй багцын мөр өөр мөрийг нуухгүй: «Багц 8.2» (зураг төслийн гэрээ) ба гэрээгүй «Багц-8» нэг түлхүүртэй */
       noneUnlisted: execNoneUnlisted(cf, new Set(finRows.filter((r) => !r.contracted).map((r) => r.key))),
     },

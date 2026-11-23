@@ -318,6 +318,25 @@ assert.equal(p.updates.find((u) => u.objectid === 16), undefined);
   assert.deepEqual(n.matched.get('Багц 2'), [11, 12, 13]);
 }
 
+/* 2026-11-23: зургийн мөр барилгын гэрээтэй ИЖИЛ кодтой — тусдаа бүлэг; барилгын гэрээний дугаар, дүн зургийн мөрт бичигдэхгүй */
+{
+  const hoM = [
+    { objectid: 1, murun_id: 'ХО-0007', geree_kod: 'Багц-3.1', bagts: 'Багц-3.1', ajliin_turul: 'Барилга угсралт', geree_dugaar: 'Г-31' },
+    { objectid: 2, murun_id: 'AUTO|БАГЦ31|2026-09-04', geree_kod: 'Багц-3.1', bagts: 'Багц-3.1', ajliin_turul: null },
+    { objectid: 3, murun_id: 'ХО-0077', geree_kod: 'Багц-3.1', bagts: 'Багц-3.1', ajliin_turul: 'ТЭЗҮ,Судалгаа', tosol_ner: 'Загвар зураг: Багц 3-1' },
+  ];
+  const cfM = [
+    cf({ objectid: 50, bagts: 'Багц-3.1', geree_dugaar: 'Г-31', ho_dun_zahiramj: 1000, geree_dun: 900, guitsetgegch: 'Барилгачин' }),
+    cf({ objectid: 51, bagts: 'Багц-3.1', uy_shat: 'Ажлын зураг төсөл', ajil_uilchilgee: 'Загвар зураг: Багц 3-1', geree_dun: 7 }),
+  ];
+  const pm = planHoSync(hoM, cfM);
+  assert.deepEqual(pm.matched.get('Багц-3.1'), [50], 'барилгын гэрээ зөвхөн өөрийн мөртэй');
+  const u3 = pm.updates.find((u) => u.objectid === 3) ?? {};
+  assert.ok(u3.geree_dugaar !== 'Г-31' && u3.guitsetgegch !== 'Барилгачин' && u3.gereet_tosov_niit !== 900, 'зургийн мөрт барилгын гэрээний мэдээлэл бичигдэхгүй');
+  assert.ok((pm.updates.find((u) => u.objectid === 2) ?? {}).geree_dugaar === 'Г-31', 'төрөлгүй (автомат гүйцэтгэлийн) мөр барилгын гэрээтэй хамт');
+  assert.equal(pm.adds.length, 0, 'зураг өөрийн гэрээтэйгээ таарсан — давхар гэрээ үүсэхгүй');
+}
+
 const w = hoFromCf([cfRows[3], cfRows[4]]);
 assert.equal(w.tosov_niit, 30);
 assert.equal(w.guitsetgegch, 'УСУГ', 'бичвэр — эхний утгатай мөрөөс');

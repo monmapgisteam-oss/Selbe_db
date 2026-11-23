@@ -5104,7 +5104,6 @@ const en: Record<string, string> = {
   "Өөр цонхонд нэмэлт ажил буулгаж байна — дуусахыг хүлээгээд дахин оролдоно уу.": "Additional work is being applied in another window — wait for it to finish and try again.",
   "Энэ багцын түлхүүр бүртгэлд алга — хуудсанд буулгах боломжгүй. Админд хандана уу.": "This package key is not registered — it cannot be applied to the sheet. Contact an admin.",
   "Саяхан батлагдсан — батлагчийн цонх яг одоо хуудсанд бичиж байж магадгүй. Давхар бичилтээс сэргийлж «Дахин буулгах» {0} минутын дараа нээгдэнэ (хуудас өөрөө шинэчлэгдэнэ).": "Recently approved — the approver’s window may be writing it to the sheet right now. To prevent duplicate writes, “Re-apply” unlocks in {0} min (the page refreshes itself).",
-  "Дахин буулгах эрхгүй — нэмэлт ажлын батлагч эсвэл админ буулгана.": "No permission to re-apply — an additional-work approver or an admin must apply it.",
   "Сүүлийн буулгалт унав: {0}": "Last apply attempt failed: {0}",
   "Блок ({0}):": "Blocks ({0}):",
   "Огноо эх хуудсанд бичигдсэн боловч сарын обьём бичигдсэнгүй — «Батлах»-ыг дахин дарж дуусгана уу (буцаах боломжгүй, бичигдсэн огноо үлдэнэ).": "The dates were written to the source sheet but the monthly volumes were not — press “Approve” again to finish (returning is not possible; the written dates remain).",
@@ -5190,7 +5189,6 @@ const en: Record<string, string> = {
   " · {0} тайлангүй (0%)": " · {0} unreported (0%)",
   "Эцэг бүлэг олдсонгүй — нэмэлт ажлыг одоо байгаа бүлэгт харьяалуулж дахин илгээнэ үү.": "Parent group not found — attach the additional work to an existing group and resubmit.",
   "Зөвхөн «Батлагдсан · буулгаагүй» илгээлтийг буцаана. Хуудсаа шинэчилнэ үү.": "Only “Approved · not applied” submissions can be sent back. Refresh the page.",
-  "Энэ үйлдэлд эрхгүй — нэмэлт ажлын батлагч эсвэл админ буцаана.": "You lack permission — an additional-work approver or an admin returns it.",
   "Санхүүгийн бүртгэл — мөр нэмэх": "Financial register — add rows",
   "Зөвхөн илгээсэн инженер өөрийн илгээлтээ татаж авна.": "Only the submitting engineer can withdraw their submission.",
   "Энэ илгээлт аль хэдийн шийдвэрлэгдсэн тул татаж авах боломжгүй. Хуудсаа шинэчилнэ үү.": "This submission has already been decided and cannot be withdrawn. Refresh the page.",
@@ -7569,7 +7567,6 @@ const en: Record<string, string> = {
   "Заасан багцын мөрөнд нэмсэн аккаунт ХАБЭА хуудсанд зөвхөн тэр багцын мэдээллийг харж, зөвхөн тэр багцын тайланг татна. Хүснэгтэд байхгүй аккаунт бүх багцыг харна.": "An account added to a package row sees only that package on the HSE page and downloads only that package's reports. Accounts not in the table see all packages.",
   "ХАБЭА — багцаар харах": "HSE — view by package",
   "Багцын мөрөнд аккаунт нэмбэл тэр аккаунт ХАБЭА хуудсанд ЗӨВХӨН тэр багцын мэдээллийг харж, зөвхөн тэр багцын тайланг (PDF, Excel) татна — нэмэлт эрх хэрэггүй. Нэг аккаунтыг хэд хэдэн багцад нэмж болно.": "Add an account to a package row and it sees ONLY that package on the HSE page and downloads only that package's reports (PDF, Excel) — no extra permission needed. One account can be added to several packages.",
-  "⚠️ Хүснэгтэд байхгүй аккаунт бүх багцыг харна: сүүлийн багцаас хасвал хязгаар арилна. Админ (super) үргэлж бүх багцыг харна.": "⚠️ Accounts not in the table see all packages: removing the last package lifts the limit. Admins (super) always see all packages.",
   "Зөвхөн энэ багцыг харах аккаунт": "Accounts limited to this package",
   "{0} — аккаунт нэмэх": "{0} — add account",
   "Багцаар харах": "View by package",
@@ -8131,6 +8128,14 @@ const en: Record<string, string> = {
   "хугацаа хэтэрсэн": "overdue",
   "Илгээсэн гүйцэтгэл хэн дээр хэд хоног хүлээгдэж буй, шатны хугацаа хэтэрсэн эсэх": "Who each submitted progress report is waiting with, for how many days, and whether the stage time limit has passed",
   "Гүйцэтгэгч, хянагч, удирдлага": "Contractors, reviewers, management",
+  "Админы эрхийн мөрийг зөвхөн үндсэн админ ({0}) засна.": "Only the root admin ({0}) can edit an admin's rights row.",
+  "Энэ үйлдэлд эрхгүй — нэмэлт ажлын батлагч буцаана.": "You lack permission — an additional-work approver returns it.",
+  "Илгээлтийг урьдчилан харж байна. Анхаар: батлагч ({0}) эх (батлагдсан) хуваарьт хэсэгчлэн бичсэн — батлалт гүйцэх хүртэл эх хуваарь дутуу байж болзошгүй.": "Previewing the submission. Warning: the approver ({0}) has partially written to the source (approved) schedule — until the approval completes, the source schedule may be incomplete.",
+  "Батлагдахыг хүлээж байна: {0} илгээсэн. Анхаар: батлагч ({1}) эх (батлагдсан) хуваарьт хэсэгчлэн бичсэн — батлалт гүйцэх хүртэл эх хуваарь дутуу байж болзошгүй.": "Awaiting approval: submitted by {0}. Warning: the approver ({1}) has partially written to the source (approved) schedule — until the approval completes, the source schedule may be incomplete.",
+  "{0} мөрийн хуваарь батлагдахыг хүлээж байна ({1} илгээв). Батлагч ({2}) эх хуваарьт хэсэгчлэн бичсэн — батлалт гүйцэх хүртэл эх хуваарь дутуу байж болзошгүй.": "A schedule of {0} rows is awaiting approval (sent by {1}). The approver ({2}) has partially written to the source schedule — until the approval completes, the source schedule may be incomplete.",
+  "Багц тодорхойгүй тул хуваарийн обьёмд бичих боломжгүй — хуудсаа шинэчилнэ үү.": "The package is unknown, so the schedule volume cannot be written — refresh the page.",
+  "Дахин буулгах эрхгүй — нэмэлт ажлын батлагч буулгана.": "No permission to re-apply — an additional-work approver applies it.",
+  "⚠️ Хүснэгтэд байхгүй аккаунт бүх багцыг харна: сүүлийн багцаас хасвал хязгаар арилна. Админ (super) ч мөн адил — хүснэгтэд нэмбэл зөвхөн тэр багцаа харна.": "⚠️ Accounts not in the table see all packages: removing an account from its last package lifts the limit. Admin (super) is treated the same — once added to the table, they see only those packages."
 };
 
 export default en;

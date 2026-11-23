@@ -2361,6 +2361,7 @@ export function Huvaari({
        */
       if (obEdits) {
         obEdits.dups = obDups;
+        obEdits.pkgKey = pkg.key; // 2026-11-23: устгалтын багцыг ил заана — `applyPlanEdits` тэр багцын эрхийг шалгана
         let r2: [number, number, number];
         if (approvalMode) {
           if (!(await renewClaim('obyem'))) return false;
@@ -4171,9 +4172,15 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
   const stateLine: { tone: 'ok' | 'warn' | 'bad' | 'info'; text: string } | null = review
     ? { tone: 'warn', text: tr('Хянаж байна: {0} илгээсэн {1} өөрчлөлт. Судалтай саарал зурвас = одоо батлагдсан огноо, өнгөт зурвас = санал болгож буй огноо. Мөр бүрийг ✓/✕ хийнэ.', pending?.author ?? '—', num(reviewOids.length)) }
     : previewing
-      ? { tone: 'info', text: tr('Илгээлтийг урьдчилан харж байна — эх (батлагдсан) хуваарь өөрчлөгдөөгүй.') }
+      /* 2026-11-23 (засвар): батлагчийн бичилт дундаа тасарсан (хагас бичилтийн тэмдэгтэй) илгээлтэд ч «батлагдсан хуваарь
+         өөрчлөгдөөгүй / хөдлөхгүй» гэж худал хэлдэг байв — тэр үед эх хуваарь аль хэдийн хэсэгчлэн бичигдсэн. */
+      ? (pendingPartial != null
+        ? { tone: 'bad', text: tr('Илгээлтийг урьдчилан харж байна. Анхаар: батлагч ({0}) эх (батлагдсан) хуваарьт хэсэгчлэн бичсэн — батлалт гүйцэх хүртэл эх хуваарь дутуу байж болзошгүй.', pendingPartial || '—') }
+        : { tone: 'info', text: tr('Илгээлтийг урьдчилан харж байна — эх (батлагдсан) хуваарь өөрчлөгдөөгүй.') })
       : pending
-        ? { tone: 'info', text: tr('Батлагдахыг хүлээж байна: {0} илгээсэн. Шийдвэр гартал батлагдсан хуваарь хөдлөхгүй.', pending.author) }
+        ? (pendingPartial != null
+          ? { tone: 'bad', text: tr('Батлагдахыг хүлээж байна: {0} илгээсэн. Анхаар: батлагч ({1}) эх (батлагдсан) хуваарьт хэсэгчлэн бичсэн — батлалт гүйцэх хүртэл эх хуваарь дутуу байж болзошгүй.', pending.author, pendingPartial || '—') }
+          : { tone: 'info', text: tr('Батлагдахыг хүлээж байна: {0} илгээсэн. Шийдвэр гартал батлагдсан хуваарь хөдлөхгүй.', pending.author) })
         : backOn
           ? { tone: 'bad', text: tr('Буцаагдсан: улаан ✕ мөрүүдийг засаад «Батлуулах»-аар дахин илгээнэ. Ногоон ✓ мөр зөвшөөрөгдсөн.') }
           : savedView
@@ -4954,8 +4961,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       )}
       {!review && pending && (
         <p className={h.note} role="status">
-          {tr('{0} мөрийн хуваарь батлагдахыг хүлээж байна ({1} илгээв). Шийдвэр гартал эх хуваарь хөдлөхгүй.',
-            num(pending.rowCount), pending.author)}
+          {/* 2026-11-23 (засвар): хагас бичигдсэн илгээлтэд «эх хуваарь хөдлөхгүй» гэж худал хэлэхгүй */}
+          {pendingPartial != null
+            ? tr('{0} мөрийн хуваарь батлагдахыг хүлээж байна ({1} илгээв). Батлагч ({2}) эх хуваарьт хэсэгчлэн бичсэн — батлалт гүйцэх хүртэл эх хуваарь дутуу байж болзошгүй.',
+              num(pending.rowCount), pending.author, pendingPartial || '—')
+            : tr('{0} мөрийн хуваарь батлагдахыг хүлээж байна ({1} илгээв). Шийдвэр гартал эх хуваарь хөдлөхгүй.',
+              num(pending.rowCount), pending.author)}
           {(() => {
             const parts: string[] = [];
             if (pending.authorSent != null) {
@@ -5417,8 +5428,12 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
                             const dl = spanDays(sp) - spanDays(oldSp);
                             const txt = [mv ? `${mv > 0 ? '+' : ''}${mv}${tr('х')}` : '', dl ? `${tr('урт')} ${dl > 0 ? '+' : ''}${dl}${tr('х')}` : ''].filter(Boolean).join(' · ');
                             if (!txt) return null;
+                            /* 2026-11-23 (засвар): өнгийг «эхлэл хойшилсон ЭСВЭЛ урт нэмэгдсэн»-ээр тогтоодог байв — эхлэл −5х,
+                               урт +3х (2 хоногоор ЭРТ дуусна) улаан гардаг. Одоо ДУУСАХ огнооны шилжилтээр: хойшилсон = улаан,
+                               урагшилсан = ногоон, дуусах огноо хэвээр = өнгөгүй. */
+                            const ed = Math.round((sp.end - oldSp.end) / DAY);
                             return (
-                              <span className={`${h.plShift} ${mv > 0 || dl > 0 ? h.plShiftLate : h.plShiftEarly}`}
+                              <span className={`${h.plShift} ${ed > 0 ? h.plShiftLate : ed < 0 ? h.plShiftEarly : ''}`}
                                 style={{ left: xOf(Math.max(sp.end, oldSp.end)) + px + 4 }}
                                 title={`${tr('Батлагдсан')}: ${msToDay(oldSp.start)} → ${msToDay(oldSp.end)} · ${tr('Шинэ')}: ${msToDay(sp.start)} → ${msToDay(sp.end)}`}>
                                 {txt}

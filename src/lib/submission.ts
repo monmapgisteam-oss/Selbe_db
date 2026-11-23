@@ -816,7 +816,7 @@ async function readRow(a: RowAttrs | undefined, rowsOf?: ReadonlyMap<number, Att
   const h = a.payload ? parseHead(String(a.payload)) : null;
   if (!h) return { ok: false, error: tr('Илгээлт №{0}-ийн агуулга задарсангүй', a.objectid) };
   if (h.pending != null) {
-    if (Date.now() - h.pending < PENDING_TTL) return { ok: false, error: tr('Илгээлт №{0} яг одоо бичигдэж байна — хэдэн секундын дараа дахин ачаална уу', a.objectid) };
+    if (serverNow() - h.pending < PENDING_TTL) return { ok: false, error: tr('Илгээлт №{0} яг одоо бичигдэж байна — хэдэн секундын дараа дахин ачаална уу', a.objectid) };
     return { ok: true, sub: null };
   }
   let payload = h.p;
@@ -1268,7 +1268,7 @@ async function saveSubmissionInner(
       return !!p && p.fillMs === payload.fillMs;
     });
     const pendOf = (x: (typeof feats0)[number]): number | null => parseHead(String(x.attributes.payload ?? ''))?.pending ?? null;
-    if (feats0.some((x) => { const pa = pendOf(x); return pa != null && Date.now() - pa < PENDING_TTL; })) {
+    if (feats0.some((x) => { const pa = pendOf(x); return pa != null && serverNow() - pa < PENDING_TTL; })) {
       return { ok: false, error: tr('Энэ өдрийн илгээлтийг өөр хэрэглэгч яг одоо бичиж байна — хэдэн секундын дараа хуудсыг дахин ачаалж илгээнэ үү. Юу ч илгээсэнгүй.') };
     }
     const stalePend = feats0.filter((x) => pendOf(x) != null).map((x) => x.attributes.objectid as number);
@@ -1334,7 +1334,7 @@ async function saveSubmissionInner(
       if (tgt == null) {
         const v2 = headRaw(bodyW, null);
         createdFull = v2.length <= SUBMISSION_MAX;
-        const first = createdFull ? v2 : JSON.stringify({ ...(JSON.parse(headRaw(bodyW, [], true)) as Record<string, unknown>), pending: Date.now() });
+        const first = createdFull ? v2 : JSON.stringify({ ...(JSON.parse(headRaw(bodyW, [], true)) as Record<string, unknown>), pending: serverNow() });
         createdRaw = first;
         let r0: Awaited<ReturnType<typeof fl.applyEdits>>;
         try {

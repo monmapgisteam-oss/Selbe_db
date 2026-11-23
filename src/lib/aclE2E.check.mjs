@@ -14,6 +14,7 @@
  *   §6  хэрэглэгчийн карт — үүрэг/харагдац · «Төрлөөр тохируулах» · устгах · сэргээх
  *   §7b зэрэг бичилт (алдагдалгүй) · бичилт унах
  *   §8  remote round-trip — §1–§7-ийн дараа бүр `initRemote`-оор дахин уншиж давтан шалгана
+ *   §11b 2026-11-23: админ биш хүний тарьсан мөр админы хадгалалтаар «хүчинтэй» болохгүй · super мөр МӨР БҮРЭЭР шалгагдана
  *   §11 2026-11-20: эрхийн хүснэгтэд зөвхөн админы бичсэн мөр хүчинтэй · хуучин «систем түр хаах» мөр хэрэгсэгдэхгүй
  * UI давхарга (✕ аль op-ыг ямар багц/үүргээр дууддаг вэ) — `src/modules/aclE2E.ui.check.mjs`.
  */
@@ -744,6 +745,121 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   fake.rows = fake.rows.filter((r) => r !== tRow);
   await roundTrip();
   console.log('✅ §11 зөвхөн админы бичсэн эрхийн мөр хүчинтэй (нэмэлт эрх · урсгал · төрөл · устгалын тэмдэг) · хуучин хаалтын мөр хэрэгсэхгүй');
+}
+
+/* ══════════ §11b. ТАРЬСАН МӨР АДМИНЫ ХАДГАЛАЛТААР «ХҮЧИНТЭЙ» БОЛОХГҮЙ (2026-11-23, засвар) ══════════
+ * Урьд нь бичихийн өмнөх шинэ уншилт (`userRead` · `capRead` · `scopedRead` · `flowRead`) `last_edited_user`-ийг шалгадаггүй
+ * байсан: админ биш хүн REST-ээр тарьсан мөр (`fetchAll` хэрэгсдэггүй) админы дараагийн хадгалалтын нэгтгэлд орж, админы
+ * нэрээр бичигдээд хүчинтэй болдог байв. Мөн super мөрийн итгэмжлэл НЭРЭЭР шалгагддаг байсан — админы нэрээр нэмсэн хоёр
+ * дахь мөр түүний харагдацыг дардаг байв. Хуурамч хүснэгт энд сервер шиг бичилт бүрд `last_edited_user` тавина. */
+{
+  const tag = '§11b';
+  const plain = mkUser();
+  const vUser = mkUser();
+  const vGhost = 'e2e_ghost_11b';
+  const vCap = mkUser();
+  const vCapOk = mkUser();
+  const vCapAdm2 = mkUser();
+  const vSc = mkUser();
+  const vFlow = mkUser();
+  const vLock = mkUser();
+  const adm2 = mkUser();
+  const stage = STAGE_ORDER[0];
+  const [p1, p2] = PKG_GROUPS;
+  const cleanup = [vGhost, `__cap__:${vCap}`, `__cap__:${vCapOk}`, `__cap__:${vCapAdm2}`, `__huvaari__:${vSc}`, `__flow__:${vFlow}`, adm2, vLock];
+  const baseOids = new Set(fake.rows.map((r) => r.objectid));
+  fake.seed([
+    /* итгэмжлэгдсэн (үндсэн админы томилсон) хоёр дахь админ — харагдац нь хязгаартай */
+    { username: adm2, role: 'super', views: JSON.stringify(['gdash']), last_edited_user: SUPER },
+    /* админ биш хүн тэр админы НЭРЭЭР хоёр дахь мөр нэмэв (их OID — урьд нь сүүлийнх нь ялдаг байв) */
+    { username: adm2, role: 'super', views: JSON.stringify('all'), docs: 1, last_edited_user: plain },
+    /* тарьсан мөрүүд — бүгд админ биш хүнийх */
+    { username: vUser, role: 'super', views: JSON.stringify('all'), docs: 1, last_edited_user: plain },
+    { username: vGhost, role: 'super', views: JSON.stringify('all'), docs: 1, last_edited_user: plain },
+    { username: vLock, role: 'super', views: JSON.stringify([]), last_edited_user: plain },
+    { username: `__cap__:${vCap}`, views: JSON.stringify(['finEdit', 'ipcApprove']), last_edited_user: plain },
+    { username: `__huvaari__:${vSc}`, views: JSON.stringify({ grants: [{ role: 'approver', bagts: ['*'] }] }), last_edited_user: plain },
+    { username: `__flow__:${vFlow}`, views: JSON.stringify({ stage, bagts: ['*'] }), last_edited_user: plain },
+    /* хүчинтэй мөрүүд — үндсэн админ ба хоёр дахь админы бичсэн */
+    { username: `__cap__:${vCapOk}`, views: JSON.stringify(['finEdit']), last_edited_user: SUPER },
+    { username: `__cap__:${vCapAdm2}`, views: JSON.stringify(['finEdit']), last_edited_user: adm2 },
+  ]);
+  /* `adm2`, `vUser`, `vLock`-д анхны (итгэмжлэгдсэн, `taniltsah`) мөр ч бий — давхар мөр тул шууд хасна: энд зөвхөн дээрх мөрүүд */
+  fake.rows = fake.rows.filter((r) => !(baseOids.has(r.objectid) && r.username === adm2));
+  await roundTrip();
+
+  /* (1) super мөр МӨР БҮРЭЭР: админы нэрээр тарьсан хоёр дахь мөр хаягдана, админы өөрийн мөр хэвээр */
+  eq(P.roleOf(adm2), 'super', `${tag}: итгэмжлэгдсэн админ хэвээр`);
+  eq(P.resolveBaseAccess(adm2)?.views, ['gdash'], `${tag}: админы нэрээр тарьсан мөр түүний харагдацыг дарах ёсгүй`);
+  ok(P.remoteMalformed().some((m) => m.key === adm2 && m.reason === 'untrusted'), `${tag}: тарьсан давхар super мөр итгэмжлэгдээгүй жагсаалтад`);
+  /* тарьсан super мөр: хүчинтэй мөртэй хүнд — тэр мөр нь хэвээр (түгжигдэхгүй); мөргүй хүнд — эрхгүй */
+  ok(P.roleOf(vUser) !== 'super' && P.roleOf(vLock) !== 'super' && P.roleOf(vGhost) !== 'super', `${tag}: тарьсан super мөр админ болгох ёсгүй`);
+  eq(P.resolveBaseAccess(vLock)?.views, ['gdash'], `${tag}: тарьсан super мөр хүчинтэй мөртэй хүнийг түгжих ёсгүй`);
+  ok(!P.hasAccess(vGhost) || P.resolveAccess(vGhost)?.views.length === 0, `${tag}: зөвхөн тарьсан мөртэй аккаунт эрхгүй`);
+  ok(!CAPS.capsOf(vCap).includes('finEdit'), `${tag}: тарьсан нэмэлт эрх хэрэгсэгдэхгүй`);
+  ok(CAPS.capsOf(vCapAdm2).includes('finEdit'), `${tag}: хоёр дахь админы бичсэн нэмэлт эрх хүчинтэй`);
+
+  /* (2) админ хадгална — сервер мөр бүрд админы нэрийг тавина */
+  fake.editor = SUPER;
+  const editorOf = (key) => fake.find(key).map((r) => r.last_edited_user);
+
+  /* хэрэглэгчийн мөр: үүргийг ӨӨРЧЛӨЛГҮЙ хадгалав — тарьсан `super` · «бүх харагдац» нэгтгэлд орох ёсгүй */
+  ok(await P.setUser(vUser, { views: ['gdash'], docs: false }, 'taniltsah'), `${tag}: админ хэрэглэгчийн мөрийг хадгална`);
+  await settle();
+  {
+    const rows = fake.find(vUser);
+    eq(rows.length, 1, `${tag}: хэрэглэгчийн мөр ганц (тарьсан давхардал арилсан)`);
+    eq(rows[0].role, 'taniltsah', `${tag}: тарьсан super үүрэг админы нэрээр бичигдэх ёсгүй`);
+    eq(JSON.parse(rows[0].views), ['gdash'], `${tag}: тарьсан «бүх харагдац» нэгтгэгдэх ёсгүй`);
+    eq(rows[0].docs, 0, `${tag}: тарьсан баримтын эрх нэгтгэгдэх ёсгүй`);
+    eq(rows[0].last_edited_user, SUPER, `${tag}: мөрийг админ бичсэн`);
+  }
+  /* зөвхөн тарьсан мөртэй аккаунт: админ харагдац нэмэв — үүрэг нь тарьсан мөрөөс ирэх ёсгүй */
+  ok(await P.setUser(vGhost, { views: ['gdash'], docs: false }, null), `${tag}: админ мөргүй аккаунтыг хадгална`);
+  await settle();
+  {
+    const rows = fake.find(vGhost);
+    eq(rows.length, 1, `${tag}: ганц мөр`);
+    ok(rows[0].role !== 'super', `${tag}: зөвхөн тарьсан мөртэй аккаунт админы хадгалалтаар super болох ёсгүй`);
+    ok(JSON.parse(rows[0].views) !== 'all', `${tag}: тарьсан «бүх харагдац» үлдэх ёсгүй`);
+  }
+
+  /* нэмэлт эрх: админ өөр нэг эрх олгов — тарьсан хоёр эрх нэгтгэлд орох ёсгүй */
+  ok(await CAPS.toggleCap(vCap, 'docsUpload', true), `${tag}: админ эрх олгоно`);
+  await settle();
+  eq(fake.json('__cap__:', vCap), ['docsUpload'], `${tag}: тарьсан нэмэлт эрх админы нэрээр бичигдэх ёсгүй`);
+  eq(editorOf(`__cap__:${vCap}`), [SUPER], `${tag}: эрхийн мөрийг админ бичсэн`);
+  /* хүчинтэй мөр: өөр админы зэрэг нэмсэн эрх (кэшид байхгүй) урьдын адил нэгтгэгдэнэ */
+  fake.find(`__cap__:${vCapOk}`)[0].views = JSON.stringify(['finEdit', 'gazar']);
+  fake.find(`__cap__:${vCapAdm2}`)[0].views = JSON.stringify(['finEdit', 'gazar']);
+  ok(await CAPS.toggleCap(vCapOk, 'docsUpload', true) && await CAPS.toggleCap(vCapAdm2, 'docsUpload', true), `${tag}: админ эрх олгоно (хүчинтэй мөр)`);
+  await settle();
+  eq(sorted(fake.json('__cap__:', vCapOk)), ['docsUpload', 'finEdit', 'gazar'], `${tag}: үндсэн админы бичсэн мөр нэгтгэгдэнэ`);
+  eq(sorted(fake.json('__cap__:', vCapAdm2)), ['docsUpload', 'finEdit', 'gazar'], `${tag}: хоёр дахь (гинжээр итгэмжлэгдсэн) админы бичсэн мөр нэгтгэгдэнэ`);
+
+  /* багцын хуваарилалт: админ зохиогчоор нэг багц олгов — тарьсан «батлагч · бүх багц» үлдэх ёсгүй */
+  ok((await run(OPS.scopedCellOp('huvaari', vSc, 'author', p1, true))).ok, `${tag}: админ хуваарийн багц олгоно`);
+  eq(fake.json('__huvaari__:', vSc)?.grants, [{ role: 'author', bagts: [p1] }], `${tag}: тарьсан хуваарилалт админы нэрээр бичигдэх ёсгүй`);
+  eq(editorOf(`__huvaari__:${vSc}`), [SUPER], `${tag}: хуваарилалтын мөрийг админ бичсэн`);
+  ok(!CAPS.capsOf(vSc).includes('planApprove'), `${tag}: тарьсан батлагчийн эрх үүсэх ёсгүй`);
+
+  /* урсгал: админ ижил шатанд нэг багц томилов — тарьсан «бүх багц» үлдэх ёсгүй */
+  ok((await run(OPS.flowCellOp(vFlow, stage, p2, true))).ok, `${tag}: админ урсгалд томилно`);
+  eq(fake.json('__flow__:', vFlow), { stage, bagts: [p2] }, `${tag}: тарьсан урсгалын «бүх багц» админы нэрээр бичигдэх ёсгүй`);
+  eq(editorOf(`__flow__:${vFlow}`), [SUPER], `${tag}: урсгалын мөрийг админ бичсэн`);
+
+  await roundTrip();
+  ok(P.roleOf(vUser) !== 'super' && P.roleOf(vGhost) !== 'super', `${tag} remote: тарьсан super хүчинтэй болоогүй`);
+  eq(sorted(CAPS.capsOf(vCap).filter((c) => PLAIN_CAPS.includes(c))), ['docsUpload'], `${tag} remote: зөвхөн админы олгосон эрх`);
+  eq(sorted(FL.bagtsFor(vFlow, stage) ?? ['*']), [p2], `${tag} remote: урсгалд зөвхөн админы томилсон багц`);
+  eq(sorted(HV.huvaariScope(vSc, 'approver')), [], `${tag} remote: батлагчийн хүрээ хоосон`);
+
+  /* цэвэрлэнэ — дараагийн хэсгүүдэд нөлөөлөхгүй (`vUser`-ийн мөр админы бичсэн ганц мөр болсон — хэвээр үлдэнэ) */
+  fake.editor = null;
+  fake.rows = fake.rows.filter((r) => !cleanup.includes(r.username) || (baseOids.has(r.objectid) && r.username === vLock));
+  for (const r of fake.rows) delete r.last_edited_user;
+  await roundTrip();
+  console.log('✅ §11b тарьсан мөр админы хадгалалтаар хүчинтэй болохгүй (үүрэг/харагдац · нэмэлт эрх · хуваарилалт · урсгал) · super мөр мөр бүрээр · хүчинтэй мөр хэвээр нэгтгэгдэнэ');
 }
 
 /* ══════════ §9b. ХҮСНЭГТИЙН SUPER-ИЙН МӨР — энгийн мөр (2026-10-21, аудит) ══════════

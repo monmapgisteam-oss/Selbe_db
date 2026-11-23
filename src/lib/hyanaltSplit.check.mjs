@@ -42,8 +42,8 @@ assert.deepEqual(p2.rows.map((r) => [r[HC.idx], r[HC.token], r[HC.prev]]), [[3, 
 assert.equal(p2.rows[0][HC.user], null, 'хэрэглэгчийн нэргүй үйл явдал — хоосон');
 /* өөрчлөлтгүй — мөр нэмэхгүй, заагч хэвээр */
 assert.deepEqual(histPlan(JSON.stringify([e1]), JSON.stringify([e1]), 'tx', 7, mk), { rows: [], token: 'tx' });
-/* жагсаалт тайрагдсан / өөрчлөгдсөн — шинэ гинж */
-const p3 = histPlan(JSON.stringify([e1, e2]), JSON.stringify([e2, e3]), 't2', 7, mk);
+/* огт давхцалгүй жагсаалт — шинэ гинж (урдаасаа тайрагдсан тохиолдлыг доор 2л-д) */
+const p3 = histPlan(JSON.stringify([e1, e2]), JSON.stringify([e3, { ...e3, at: 4000 }]), 't2', 7, mk);
 assert.equal(p3.rows.length, 2);
 assert.equal(p3.rows[0][HC.prev], null, 'шинэ гинж өмнөхөөс тасархай');
 /* хоосон түүх — мөргүй, заагчгүй */
@@ -82,7 +82,7 @@ const original = (extra = {}) => ({
   ...Object.fromEntries(Object.values(SF).flatMap((f) => [[f.who, ''], [f.decision, ''], [f.reason, ''], [f.sent, null], [f.returned, null]])),
   [F.okCells]: legacyCells, [F.history]: legacyHist, [F.histToken]: null, [F.okToken]: null, [F.status]: STATUS.engineerReview, ...extra,
 });
-const db = { parent: [], hist: [], cells: [], seq: 100, failAdd: null, calc: 0, stale: false };
+const db = { parent: [], hist: [], cells: [], seq: 100, failAdd: null, calc: 0, stale: false, lost: false };
 const json = (v) => new Response(JSON.stringify(v), { headers: { 'Content-Type': 'application/json' } });
 const inList = (where, field) => {
   const m = new RegExp(`^${field} IN \\((.*)\\)$`).exec(where);
@@ -97,6 +97,10 @@ const child = (name, url, body) => {
   }
   if (url.endsWith('/applyEdits')) {
     if (db.failAdd === name) return json({ addResults: [{ success: false, error: { description: 'унав' } }] });
+    if (body.get('updates')) {
+      for (const u of JSON.parse(body.get('updates'))) Object.assign(rows.find((r) => r.objectid === u.attributes.objectid) ?? {}, u.attributes);
+      return json({ updateResults: [] });
+    }
     const adds = JSON.parse(body.get('adds')).map((x) => ({ ...x.attributes, objectid: (db.seq += 1) }));
     rows.push(...adds);
     return json({ addResults: adds.map((r) => ({ success: true, objectId: r.objectid })) });
@@ -123,6 +127,7 @@ globalThis.fetch = async (input, init) => {
   }
   if (url === `${HYANALT.url}/calculate`) {
     db.calc += 1;
+    if (db.lost) { calculateRows(db.parent, body, () => {}); throw new TypeError('хариу алдагдсан (тест)'); } // сервер бичсэн, хариу ирээгүй
     if (db.stale) db.parent[0][F.status] = STATUS.managerReview; // өөр хүн түрүүлж шийдсэн
     return json(calculateRows(db.parent, body, () => {}));
   }
@@ -134,7 +139,7 @@ globalThis.fetch = async (input, init) => {
   throw new Error(`хүлээгээгүй хүсэлт ${url}`);
 };
 const load = async () => toRow((await queryAll()).find((a) => a.objectid === 1));
-const reset = (extra) => { db.parent = [original(extra)]; db.hist = []; db.cells = []; db.failAdd = null; db.calc = 0; db.stale = false; };
+const reset = (extra) => { db.parent = [original(extra)]; db.hist = []; db.cells = []; db.failAdd = null; db.calc = 0; db.stale = false; db.lost = false; };
 
 /* 2а. хуучин (заагчгүй) мөр: уншихад хуучин нүднээс; баганын уртын хязгаар хамаарахгүй */
 reset();
@@ -246,5 +251,44 @@ row = await load();
 assert.equal(row[F.history], JSON.stringify([...merged, ev9]), 'гурван үйл явдал бүгд мөр болсон');
 assert.equal(row[F.okCells], encodeOkCells(['8|nw.0|5/8']));
 assert.deepEqual(db.cells.map((r) => r[CC.sid]), ['nw.0'], 'хуучин багц устсан');
+
+/* 2к. ХАРИУ АЛДАГДСАН бичилт (сервер бичсэн, хариу ирээгүй): нэмсэн мөрийг УСТГАХГҮЙ — эцэг мөр тэднийг зааж байгаа */
+reset({ [F.history]: null, [F.okCells]: null });
+row = await load();
+db.lost = true;
+const evL = { stage: 'engineer', who: 'A', at: 20, act: 'approve', u: 'a' };
+await assert.rejects(() => updateDecision(row, { objectid: 1, [F.status]: STATUS.managerReview,
+  [F.history]: JSON.stringify([evL]), [F.okCells]: encodeOkCells(['3|lo.0|5/3']) }), TypeError);
+db.lost = false;
+assert.equal(db.parent[0][F.status], STATUS.managerReview, 'сервер дээр бичигдсэн');
+row = await load();
+assert.equal(row[F.history], JSON.stringify([evL]), 'хариу алдагдсан шийдвэрийн түүх хэвээр уншигдана');
+assert.equal(row[F.okCells], encodeOkCells(['3|lo.0|5/3']), 'зөвшөөрсөн нүд ч хэвээр');
+
+/* 2л. Жагсаалт урдаасаа тайрагдсан (60-ын хязгаар) ч гинж дахин бичигдэхгүй — зөвхөн шинэ үйл явдал нэмэгдэнэ */
+const A = { stage: 'engineer', who: 'A', at: 1, act: 'approve' }, B = { stage: 'manager', who: 'B', at: 2, act: 'approve' };
+const C = { stage: 'planner', who: 'C', at: 3, act: 'approve' }, D = { stage: 'director', who: 'D', at: 4, act: 'approve' };
+const cutPlan = histPlan(JSON.stringify([A, B, C]), JSON.stringify([B, C, D]), 'tok3', 7, () => 'tok4');
+assert.deepEqual(cutPlan.rows.map((r) => [r[HC.idx], r[HC.prev], r[HC.stage]]), [[4, 'tok3', 'director']], 'ганц мөр, гинжид залгагдана');
+assert.equal(histPlan(JSON.stringify([A, B]), JSON.stringify([C, D]), 'tok2', 7, mk).rows[0][HC.prev], null, 'давхцалгүй — шинэ гинж');
+assert.deepEqual(histPlan('', JSON.stringify([A]), 'tokX', 7, () => 'n1').rows.map((r) => r[HC.prev]), ['tokX'], 'гинж байгаа ч санах ойд хоосон — залгана');
+
+/* 2м. Заагчтай мөрийн хуучин нүдэнд задлагдахгүй утга (`[]`) үлдсэн ч шийдвэр гацахгүй */
+reset({ [F.history]: '[]', [F.okCells]: null, [F.histToken]: 'h1', [F.okToken]: null });
+db.hist = [{ objectid: 1, [HC.parent]: 1, [HC.idx]: 1, [HC.stage]: 'engineer', [HC.act]: 'return', [HC.who]: 'A', [HC.user]: 'a', [HC.at]: 5, [HC.reason]: 'r', [HC.token]: 'h1', [HC.prev]: null }];
+row = await load();
+await updateDecision(row, { objectid: 1, [F.status]: STATUS.managerReview,
+  [F.history]: JSON.stringify([...JSON.parse(row[F.history]), { stage: 'engineer', who: 'A', at: 30, act: 'approve', u: 'a' }]) });
+assert.equal(db.parent[0][F.status], STATUS.managerReview);
+assert.equal(db.parent[0][F.history], null);
+
+/* 2н. Шинэ мөр: туслах мөр нэмэгдэхгүй бол эцэг мөр ОГТ нэмэгдэхгүй (түүхгүй мөр үүсэхгүй) */
+reset();
+db.failAdd = 'hist';
+const nParent = db.parent.length;
+await assert.rejects(() => addRows([{ [F.id]: 'G-000003', [F.status]: STATUS.engineerReview,
+  [F.history]: JSON.stringify([{ stage: 'engineer', who: 'A', at: 7, act: 'recheck-ok', u: 'a' }]) }]), /хадгалагдсангүй/);
+assert.equal(db.parent.length, nParent, 'эцэг мөр нэмэгдээгүй');
+db.failAdd = null;
 
 console.log('hyanaltSplit.check: ✅');

@@ -59,6 +59,11 @@ export const fake = {
    */
   searchDown: false,
   failReads: false,
+  /**
+   * Бичилт бүрд `last_edited_user`-д тавих нэр (2026-11-23) — жинхэнэ сервер үүнийг өөрөө тавьдаг. `null` (анхдагч) бол талбарыг
+   * хөндөхгүй (урьдын зан төлөв: талбар ирээгүй мөр = итгэмжлэгдсэн).
+   */
+  editor: null,
   seed(rows) {
     for (const r of rows) this.rows.push({ objectid: this.oid++, role: null, docs: 0, ...r });
   },
@@ -80,10 +85,12 @@ function match(where) {
   if (where === '1=1') return () => true;
   const o = /^objectid = (\d+)$/.exec(where);
   if (o) return (r) => r.objectid === Number(o[1]);
-  const m = /^LOWER\(username\) = '((?:[^']|'')*)'$/.exec(where);
+  /* 2026-11-23: `… OR role = 'super'` — бичихийн өмнөх уншигч итгэмжлэлийн гинжийг бодох super мөрүүдийг хамт татна */
+  const m = /^LOWER\(username\) = '((?:[^']|'')*)'( OR role = 'super')?$/.exec(where);
   if (!m) throw new Error(`хуурамч FeatureLayer: танигдахгүй where «${where}»`);
   const key = m[1].replace(/''/g, "'");
-  return (r) => r.username.toLowerCase() === key;
+  const sup = !!m[2];
+  return (r) => r.username.toLowerCase() === key || (sup && r.role === 'super');
 }
 
 class FakeFeatureLayer {
@@ -119,6 +126,7 @@ class FakeFeatureLayer {
       for (const f of e.addFeatures ?? []) {
         if (err) { out.addFeatureResults.push({ objectId: -1, error: err }); continue; }
         const row = { role: null, docs: 0, ...f.attributes, objectid: fake.oid++ };
+        if (typeof fake.editor === 'string') row.last_edited_user = fake.editor;
         fake.rows.push(row);
         out.addFeatureResults.push({ objectId: row.objectid, error: null });
       }
@@ -127,6 +135,7 @@ class FakeFeatureLayer {
         const row = fake.rows.find((r) => r.objectid === id);
         if (err || !row) { out.updateFeatureResults.push({ objectId: id, error: err ?? { code: 404 } }); continue; }
         Object.assign(row, f.attributes);
+        if (typeof fake.editor === 'string') row.last_edited_user = fake.editor;
         out.updateFeatureResults.push({ objectId: id, error: null });
       }
       for (const d of e.deleteFeatures ?? []) {

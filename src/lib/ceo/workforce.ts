@@ -208,6 +208,8 @@ const newer = (a: DayPick, b: DayPick): boolean => (
 function mergeDayRows(main: Row, others: readonly Row[]): Row {
   if (!others.length) return main;
   const out: Row = { ...main };
+  /* Нэгтгэлд компанийн тоо нь орсон маягтууд — толгойн нийлбэрт зөвхөн эдгээр (доор) */
+  const used = new Set<Row>([main]);
   for (const c of COMPANIES) {
     const fl = laborCompanyFields(c.sfx);
     const keys = [fl.mongol, fl.gadaad, fl.niitAjiltan, fl.niitTehnik];
@@ -215,11 +217,13 @@ function mergeDayRows(main: Row, others: readonly Row[]): Row {
     const has = (r: Row) => keys.some((k) => !blank(r[k]) && Number(r[k]) !== 0);
     if (has(out)) continue;
     const src = others.find(has);
-    if (src) for (const k of [...keys, fl.bagts]) out[k] = src[k];
+    if (src) { used.add(src); for (const k of [...keys, fl.bagts]) out[k] = src[k]; }
   }
-  /* 2026-11-20 (засвар): маягтын НИЙТ талбар (ажилтан, хүн цаг, техник) — компани тус бүр өөр маягт илгээдэг тул нийлбэр */
+  /* 2026-11-20 (засвар): маягтын НИЙТ талбар (ажилтан, хүн цаг, техник) — компани тус бүр өөр маягт илгээдэг тул нийлбэр.
+     2026-11-23 (засвар): зөвхөн компанийн тоо нь нэгтгэлд ОРСОН маягтуудыг нэмнэ. Нэг компани залруулж дахин илгээсэн маягт
+     компанийн тоонд ордоггүй (сүүлийнх нь үлдэнэ) тул нийт дүнд ч орохгүй — урьд нь ажилтан 389, хүн цаг 6,224 (хоёр дахин) гардаг байв. */
   for (const k of [F.niitAjiltan, F.hunTsag, F.niitTehnik]) {
-    const vals = [main, ...others].map((r) => (blank(r[k]) ? null : Number(r[k]))).filter((v): v is number => v != null && Number.isFinite(v));
+    const vals = [main, ...others.filter((r) => used.has(r))].map((r) => (blank(r[k]) ? null : Number(r[k]))).filter((v): v is number => v != null && Number.isFinite(v));
     if (vals.length) out[k] = vals.reduce((a, v) => a + v, 0);
   }
   return out;

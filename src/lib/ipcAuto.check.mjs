@@ -198,6 +198,9 @@ const P = HO_IPC.payFields;
   assert.equal(contractFor([...tie].reverse(), 'БАГЦ6').code, 'Багц-6А');
   assert.ok(t.warn && t.warn.includes('Багц-6А') && t.warn.includes('Багц-6Б'), `анхааруулга: ${t.warn}`);
   assert.deepEqual(pickContract([], 'X'), { pick: null, warn: null });
+  /* 2026-11-23: гүйцэтгэлийн автомат мөр зургийн (ТЭЗҮ) гэрээнд ХЭЗЭЭ Ч холбогдохгүй — багцад зургийн гэрээ л байсан ч */
+  assert.deepEqual(pickContract([{ code: 'Багц 5.3 · Ажлын зураг төсөл · oid:9', workType: 'ТЭЗҮ,Судалгаа', hasWork: false }], 'Багц 5.3'), { pick: null, warn: null });
+  assert.equal(pickContract([{ code: 'З', workType: 'ТЭЗҮ,Судалгаа', hasWork: false }, { code: 'Б', workType: 'Барилга угсралт', hasWork: false }], 'X').pick.code, 'Б');
 }
 
 /* ══ 7. planAuto — алгасах тохиолдлууд ══ */

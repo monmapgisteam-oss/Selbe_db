@@ -79,6 +79,7 @@ export const CONSTRUCTION_WORK = 'Барилга угсралт';
 /** Гэрээ сонгох нэр дэвшигч — `geree_kod`, `ajliin_turul`, «Гүйцэтгэл» төлбөртэй эсэх */
 export type ContractCand = { code: string; workType: string; hasWork: boolean };
 
+const isDesignWork = (s: string): boolean => /тэзү|судалгаа/i.test(s);
 const isBuildWork = (s: string): boolean =>
   s.replace(/\s+/g, ' ').trim().toLowerCase().includes(CONSTRUCTION_WORK.toLowerCase());
 
@@ -89,6 +90,9 @@ export function pickContract<T extends ContractCand>(
   cands: readonly T[],
   pkgKey: string,
 ): { pick: T | null; warn: string | null } {
+  /* 2026-11-23 (засвар): гүйцэтгэл бол БАРИЛГЫН ажил — ТЭЗҮ · зургийн гэрээ нэр дэвшихгүй. Урьд нь багцад барилгын гэрээ
+     хараахан байхгүй, зургийн гэрээ л байвал гүйцэтгэлийн автомат мөр зургийн гэрээн дор ордог байв. */
+  cands = cands.filter((c) => !isDesignWork(c.workType));
   if (!cands.length) return { pick: null, warn: null };
   if (cands.length === 1) return { pick: cands[0], warn: null };
   let left = [...cands];

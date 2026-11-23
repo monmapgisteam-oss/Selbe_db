@@ -11,7 +11,8 @@ import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
 import { scopeHas } from '@/lib/scopedAcl';
 import { arcgisPost } from '@/lib/authToken';
-import { currentUser, requireCap } from './who';
+import { currentUser, requireCap, writeGuardsOn } from './who';
+import { requireSelf } from './writeGuard';
 import type { NewRow } from './submission';
 import { invalidate } from './dataBus';
 import { cached } from '@/lib/live';
@@ -98,6 +99,9 @@ function sameAsLogin(name: string): { ok: false; error: string } | null {
   if (meNow.toLowerCase() !== name.trim().toLowerCase()) return { ok: false, error: tr('Нэр нэвтэрсэн хэрэглэгчтэй зөрж байна — хуудсаа шинэчилнэ үү.') };
   return null;
 }
+
+/** Бичилтийн хамгаалалт идэвхтэй юу — `writeGuard`-ийн нөхцөлтэй ижил (хөтөч · нэвтрэлттэй · шалгуурын горим биш) */
+const guardsOn = (): boolean => writeGuardsOn() && typeof window !== 'undefined' && !!AUTH.appId;
 
 
 /**
@@ -309,8 +313,13 @@ export async function loadHead(oid: number): Promise<AjilSubmission | null> {
 export async function markApplied(oid: number): Promise<{ ok: boolean; error?: string }> {
   const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status}`);
+  const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status},${F.pkgGroup}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  /* 2026-11-23 (засвар): эрхийн шалгалтгүй экспортлогдсон бичигч байв — хэн ч шууд дуудаж «Буулгасан» гэж тэмдэглэж чаддаг.
+     Зөвхөн тэр багцын нэмэлт ажлын батлагч (`ajilApply.materializeInner`-ийн адил хүрээ). */
+  if (guardsOn() && !scopeHas(ajilScope(currentUser(), 'approver'), String(cur[0][F.pkgGroup] ?? ''))) {
+    return { ok: false, error: tr('Энэ багцын нэмэлт ажлыг батлах эрхгүй.') };
+  }
   if (s(cur[0][F.status]) !== AJIL_STATUS.approved) {
     return s(cur[0][F.status]) === AJIL_STATUS.applied
       ? { ok: true }
@@ -337,8 +346,12 @@ export async function markApplied(oid: number): Promise<{ ok: boolean; error?: s
 export async function markRestored(oid: number): Promise<{ ok: boolean; error?: string }> {
   const url = await tableUrl();
   if (!url) return { ok: false, error: tr('Батлах хүснэгт олдсонгүй — админд хандана уу.') };
-  const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status}`);
+  const cur = await query(`${F.oid} = ${Number(oid)}`, `${F.oid},${F.status},${F.author}`);
   if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
+  /* 2026-11-23 (засвар): эрхийн шалгалтгүй байв — зөвхөн илгээсэн хүн өөрөө (мөрүүдээ ноорогтоо буцааж авсан зохиогч) тэмдэглэнэ */
+  if (guardsOn() && (s(cur[0][F.author])?.trim().toLowerCase() ?? '') !== (currentUser() ?? '').toLowerCase()) {
+    return { ok: false, error: tr('Зөвхөн илгээсэн хүн өөрөө илгээлтээ засна.') };
+  }
   const st = s(cur[0][F.status]);
   if (st === AJIL_STATUS.restored) return { ok: true };
   if (st !== AJIL_STATUS.returned) {
@@ -583,11 +596,24 @@ async function writeReason(url: string, oid: number, reason: string | null): Pro
  * ТҮГЖЭЭ АВАХ — `ajilApply.materializeAdds` (`want: approved`) ба `decideAjil` (`want: pending`).
  */
 export async function claimAjil(args: { oid: number; me: string; want: AjilStatus }): Promise<string | null> {
+  /* 2026-11-23 (засвар): эрхийн шалгалтгүй байв — бусдын нэрээр, эсвэл огт хамааралгүй хүн түгжээ тавьж батлах/татах урсгалыг
+     хааж чаддаг. Одоо: зөвхөн өөрийн нэрээр (`requireSelf`), бөгөөд илгээсэн хүн өөрөө эсвэл тэр багцын батлагч. */
+  try { requireSelf(args.me); } catch (e) { return String((e as Error).message || e); }
   const url = await tableUrl();
   if (!url) return tr('Батлах хүснэгт олдсонгүй — админд хандана уу.');
   try {
     const err = await casAjilClaim({
-      read: async () => (await query(`${F.oid} = ${Number(args.oid)}`, CLAIM_FIELDS))[0] ?? null,
+      read: async () => {
+        const row = (await query(`${F.oid} = ${Number(args.oid)}`, `${CLAIM_FIELDS},${F.author},${F.pkgGroup}`))[0] ?? null;
+        if (row && guardsOn()) {
+          const meNow = (currentUser() ?? '').toLowerCase();
+          const mine = (s(row[F.author])?.trim().toLowerCase() ?? '') === meNow;
+          if (!mine && !scopeHas(ajilScope(meNow, 'approver'), String(row[F.pkgGroup] ?? ''))) {
+            throw new Error(tr('Энэ багцын нэмэлт ажлыг батлах эрхгүй.'));
+          }
+        }
+        return row;
+      },
       write: (mark) => writeReason(url, args.oid, mark),
       takeover: async (who) => typeof window !== 'undefined'
         && askConfirm(tr('Энэ илгээлтийг таны ({0}) өөр цонх түгжсэн байна. Тэр цонхыг хаасан бол түгжээг энд авах уу?', who), { ok: tr('Түгжээг авах') }),
@@ -620,6 +646,8 @@ export async function ajilClaimOther(oid: number, me: string): Promise<string | 
  * Алдааг залгина: ямар ч байсан `AJIL_CLAIM_TTL`-ээр тайлагдана.
  */
 export async function releaseAjilClaim(args: { oid: number; me: string }): Promise<void> {
+  /* 2026-11-23 (засвар): бусдын нэрээр түгжээ чөлөөлөхгүй (`huvaariBatlah.releasePlanClaim`-ийн адил) */
+  try { requireSelf(args.me); } catch { return; }
   const u = args.me.trim().toLowerCase();
   try {
     const url = await tableUrl();
@@ -646,13 +674,26 @@ export async function submitAjil(args: {
   if (!args.payload.adds.length) {
     return { ok: false, error: tr('Нэмсэн мөр алга.') };
   }
+  /* 2026-11-23 (засвар): хүрээг дуудагчийн өгсөн `pkgGroup`-ээр шалгаад `pkgKey`-тэй нь тулгадаггүй байв — өөрийн багцын
+     бүлгийг өгч ӨӨР багцын түлхүүрээр илгээх боломжтой. `huvaariBatlah.submitPlan`-ийн адил `PKGS`-ээр тулгана. */
+  let pkgGroup: string;
+  try {
+    const { PKGS } = await import('@/modules/sheet/bagts.pkg');
+    const pk = PKGS.find((p) => p.key === args.pkgKey);
+    if (!pk || pk.group !== args.pkgGroup || args.payload.pkgKey !== args.pkgKey) {
+      return { ok: false, error: tr('Багцын түлхүүр ба бүлэг зөрж байна — хуудсаа шинэчилнэ үү.') };
+    }
+    pkgGroup = pk.group;
+  } catch (e) {
+    return { ok: false, error: String((e as Error).message || e) };
+  }
   if (AUTH.appId) {
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const own = sameAsLogin(args.author);
     if (own) return own;
     const sc = ajilScope(meNow ?? args.author, 'editor');
-    if (!scopeHas(sc, args.pkgGroup))
+    if (!scopeHas(sc, pkgGroup))
       return { ok: false, error: tr('Энэ багцад нэмэлт ажил илгээх эрхгүй.') };
   }
   const url = await tableUrl();
@@ -663,7 +704,7 @@ export async function submitAjil(args: {
   }
   const attrs: Attrs = {
     [F.pkgKey]: args.pkgKey,
-    [F.pkgGroup]: canonPkg(args.pkgGroup),
+    [F.pkgGroup]: canonPkg(pkgGroup),
     [F.status]: AJIL_STATUS.pending,
     [F.author]: args.author.toLowerCase(),
     [F.authorSent]: serverNow(),
@@ -947,7 +988,7 @@ export function returnStuckDeny(status: string | null, reason: string): string |
 }
 
 /**
- * БАТЛАГДСАН Ч БУУЛГАХ БОЛОМЖГҮЙ ИЛГЭЭЛТИЙГ БУЦААХ — батлагч эсвэл админ (2026-10-04).
+ * БАТЛАГДСАН Ч БУУЛГАХ БОЛОМЖГҮЙ ИЛГЭЭЛТИЙГ БУЦААХ — нэмэлт ажлын батлагч (2026-10-04).
  */
 export async function returnStuckAjil(args: { oid: number; me: string; reason?: string }): Promise<{ ok: boolean; error?: string }> {
   const reason = ajilReasonSrc((args.reason ?? NO_PARENT_REASON_SRC).trim()).slice(0, REASON_MAX);
@@ -957,7 +998,8 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
     const own = sameAsLogin(args.me);
     if (own) return own;
     if (!hasCap(meNow, 'ajilApprove')) {
-      return { ok: false, error: tr('Энэ үйлдэлд эрхгүй — нэмэлт ажлын батлагч эсвэл админ буцаана.') };
+      /* 2026-11-23 (засвар): «эсвэл админ» гэдэг байв — админы чөлөөлөлт хасагдсан (админ ажлын эрхгүй) тул бичвэрээс авав */
+      return { ok: false, error: tr('Энэ үйлдэлд эрхгүй — нэмэлт ажлын батлагч буцаана.') };
     }
   }
   const me = args.me.trim().toLowerCase();
@@ -1040,8 +1082,12 @@ export async function updateAjil(args: {
     return { ok: false, error: tr('Илгээлт өөр багцынх байна — хуудсаа шинэчилнэ үү.') };
   }
   if (AUTH.appId) {
+    /* 2026-11-23 (засвар): хүрээг мөрд хадгалагдсан бүлгээр шалгадаг байв — `submitAjil` урьд нь бүлгийг түлхүүртэй нь
+       тулгадаггүй байсан тул хуучин мөрд зөрүүтэй бүлэг үлдсэн байж болно. Багцын түлхүүрээс (`PKGS`) бүлгийг авна. */
+    const { PKGS } = await import('@/modules/sheet/bagts.pkg');
+    const grp = PKGS.find((p) => p.key === s(cur[0][F.pkgKey]))?.group ?? String(cur[0][F.pkgGroup] ?? '');
     const sc = ajilScope(currentUser() ?? me, 'editor');
-    if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
+    if (!scopeHas(sc, grp))
       return { ok: false, error: tr('Энэ багцад нэмэлт ажил илгээх эрхгүй.') };
   }
   const gone = (st: string | null, by: string | null) => (by

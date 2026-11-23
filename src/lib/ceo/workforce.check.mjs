@@ -198,6 +198,14 @@ const ROWS = [
   assert.equal(groupDays([b, a])[0].workers, 2);
   assert.equal(groupDays([a, b])[0].workers, 2);
   assert.equal(groupDays([a, b])[0].oid, 11);
+  /* 2026-11-23: толгойн нийт дүн — нэг компани залруулж ДАХИН илгээсэн маягт давхар нэмэгдэхгүй; өөр компанийн маягт нэмэгдэнэ */
+  {
+    const m1 = row(day, { MK: { w: 389, t: 3 } }, { workers: 389, manHours: 3112 }, false, { oid: 301, edit: 1 });
+    const m2 = row(day, { MK: { w: 389, t: 3 } }, { workers: 389, manHours: 3112 }, false, { oid: 302, edit: 2 });
+    assert.equal(groupDays([m1, m2])[0].header.workers, 389, 'ижил компанийн хоёр маягт — нэг л удаа');
+    const other = row(day, { HBZIT: { w: 247, t: 1 } }, { workers: 247, manHours: 1976 }, false, { oid: 303, edit: 3 });
+    assert.equal(groupDays([m1, m2, other])[0].header.workers, 636, 'өөр компанийн маягт нэмэгдэнэ (389 + 247)');
+  }
   // Ognoo их нь EditDate/objectid-оос ДАВАМГАЙЛНА
   const older = row(ub(2026, 9, 3, 9), { MK: { w: 5 } }, {}, false, { oid: 99, edit: Date.UTC(2026, 8, 10) });
   const newest = row(ub(2026, 9, 3, 21), { MK: { w: 6 } }, {}, false, { oid: 1, edit: Date.UTC(2026, 8, 3) });

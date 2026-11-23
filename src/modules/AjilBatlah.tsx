@@ -547,7 +547,7 @@ export function AjilBatlah() {
                           num(Math.max(1, Math.ceil(((readyAt ?? st.at) - st.at) / 60_000))))
                         : canReapply
                           ? undefined
-                          : tr('Дахин буулгах эрхгүй — нэмэлт ажлын батлагч эсвэл админ буулгана.')}
+                          : tr('Дахин буулгах эрхгүй — нэмэлт ажлын батлагч буулгана.')}
                   />
                 ))}
               </div>

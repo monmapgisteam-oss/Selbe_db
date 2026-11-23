@@ -33,7 +33,7 @@ import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
 import { loadCodedMaps, codedName, type CodedMaps } from '@/lib/codedDomain';
 import {
   HABEA, HABEA_LAYER_IDS, HABEA_UZLEG_LAYER_ID, LAYER_BY_ID, CATALOG_LAYER_IDS, zoneWhere,
-  laborCompanyFields, roleForUser,
+  laborCompanyFields,
 } from '@/lib/services';
 import { rasterTypeOf } from '@/lib/uzlegReport';
 import { usePlanTotals } from '@/lib/totals';
@@ -802,12 +802,13 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
   const [entry, setEntry] = useState<null | 'reg' | 'waste'>(null);
   /* «Хог хаягдал» (2026-10-08) — долоо хоногийн бүх төрөл, хуудасны «Багц» шүүлтийг дагана */
   const waste = useAsync(() => loadHabeaWaste(new Date(now)), [weekKey, tick], { keepOn: [tick] });
-  const isSuperUser = roleForUser(user?.username) === 'super';
+  /* 2026-11-23 (засвар): энд админд (super) зориулсан тусгай зөвшөөрөл байсан — «админ ажил хийхгүй» шийдвэртэй зөрчилдөж,
+     `habeaData` эрхгүй админд ямар ч нөлөөгүй үхмэл салаа байв. Хасагдсан: зөвхөн `habeaData` эрх ба үйлчилгээний эрхээр. */
   const wasteCan = useAsync<{ create: boolean | null; admin: boolean }>(async () => {
     if (!canEnter) return { create: null, admin: false };
     const create = await loadWasteCanCreate();
-    return { create, admin: create === false && !isSuperUser ? await loadIsOrgAdmin() : false };
-  }, [canEnter, isSuperUser, tick], { keepOn: [tick] });
+    return { create, admin: create === false ? await loadIsOrgAdmin() : false };
+  }, [canEnter, tick], { keepOn: [tick] });
   /** Явагдаж буй сар («YYYY-MM», орон нутгийн) — сарын цуваанд «*» */
   const curYm = ubDayKey(now).slice(0, 7);
 
@@ -1936,7 +1937,7 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
                 : tr('{0}-р долоо хоног', wasteWeekText))}
               {canEnter && (wasteCan.state !== 'ready' || wasteCan.data.create !== false
                 ? <> <AddButton onClick={() => setEntry('waste')} /></>
-                : isSuperUser || wasteCan.data.admin
+                : wasteCan.data.admin
                   ? <> <AddButton onClick={() => setEntry('waste')} note={tr('Үйлчилгээнд бичлэг нэмэх эрх хаалттай — зөвхөн үйлчилгээний эзэмшигч/админы эрхээр бичигдэнэ.')} /></>
                   : <> <AddButton disabled note={tr('Нэмэх боломжгүй: «Хог хаягдал» үйлчилгээнд засварлах эрх хаалттай — админд мэдэгдэнэ үү.')} /></>)}
             </>

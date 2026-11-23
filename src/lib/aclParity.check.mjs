@@ -586,8 +586,8 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
   const { ERH_PANES, PANE_CAPS, paneOfCap } = await import('@/modules/capText.ts');
   const { WORKFLOW_VIEWS, CAP_HOST_VIEW } = await import('@/lib/caps.ts');
   assert.deepEqual([...ERH_PANES], ['huvaari', 'ajil', 'obyem', 'chanar', 'butets', 'zovshoorol', 'fin', 'ipc', 'gazar', 'hamaaral', 'habea', 'zurag', 'uyShat', 'sys'],
-    'capText.ERH_PANES: хажуугийн цэсний 14 хуудас (2026-11-04: + IPC, үе шатны мэдээлэл; 2026-10-26: + ТЭЗҮ · зураг төсөл; 2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл; 2026-10-19: + Систем түр хаах), энэ дарааллаар');
-  assert.deepEqual(PANE_CAPS.sys, ['docsUpload', 'docsGroups', 'aiAgent'], 'Систем хуудас: баримт оруулах · баримтын бүлэг · AI туслах (2026-11-20: «Систем түр хаах» хасагдсан)');
+    'capText.ERH_PANES: хажуугийн цэсний 14 хуудас (2026-11-04: + IPC, үе шатны мэдээлэл; 2026-10-26: + ТЭЗҮ · зураг төсөл; 2026-10-04: + Багцын хамаарал; 2026-10-08: + ХАБЭА-ийн бүртгэл; сүүлийнх нь «Баримт, AI туслах»), энэ дарааллаар');
+  assert.deepEqual(PANE_CAPS.sys, ['docsUpload', 'docsGroups', 'aiAgent'], '«Баримт, AI туслах» хуудас: баримт оруулах · баримтын бүлэг · AI туслах');
   assert.ok(!('sysClose' in CAP_HOST_VIEW), 'sysClose: хасагдсан');
   const capsSrc = readCode('src/lib/caps.ts');
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))

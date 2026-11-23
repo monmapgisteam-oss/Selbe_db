@@ -106,11 +106,13 @@ export function hunHuchRows(day: WorkforceDay | null, companies: readonly { sfx:
 /* ══════════════ 2. Санхүү ══════════════ */
 
 /** Төслийн нийт төсөв = үндэс мөрийн E; олгосон = HO бүх төлбөр (урьдчилгаа + гүйцэтгэл); хувь = олгосон ÷ E */
-export function sanhuuRows(plan: ProjectPlan): PubRow[] {
+export function sanhuuRows(plan: ProjectPlan, paidIpc?: number | null): PubRow[] {
   const root = plan.tree.root;
   const E = plan.result.values.get(root)?.E ?? null;
-  /* 2026-11-04: «Төсөл төлөвлөгөө биелэлт»-ийн `olgoson_dun` нийлбэр — бүх хуудастай нэг тоо */
-  const paid = moneySums(plan.tree).get(root)?.paid ?? null;
+  /* 2026-11-23 (засвар): олгосон дүн — «Төлбөрийн акт (IPC)»-ийн бүх олголтын нийлбэр (портал, тайлантай НЭГ эх). Урьд нь
+     «Төсөл төлөвлөгөө биелэлт»-ийн хуулсан `olgoson_dun`-аас авдаг байсан тул гэрээнд тохироогүй төлбөр нийтийн вэбд дутдаг
+     байв. Өгөөгүй бол (шалгуур) хуучин эх. */
+  const paid = paidIpc !== undefined ? paidIpc : (moneySums(plan.tree).get(root)?.paid ?? null);
   /* 2026-11-09: мөнгө бүхэл төгрөгөөр (2,495,841,880,529.33 → 2,495,841,880,529) — нийтийн хүснэгтэд бутархай ₮ бичихгүй */
   const tg = (v: number | null | undefined): number | null => (v == null || !Number.isFinite(v) ? null : Math.round(v));
   return [{

@@ -133,10 +133,13 @@ const HABEA_PREFIX = '__habea__:';
  */
 const TYPE_PREFIX = '__type__:';
 /**
- * СИСТЕМИЙН мөрийн угтвар — `__sys__:docgroups` (баримтын сангийн бүлэг). 2026-11-20: «Систем түр хаах» (`__sys__:maintenance`)
- * бүрмөсөн хасагдсан — хүснэгтэд үлдсэн тийм мөрийг уншихгүй (`fetchAll` алгасна).
+ * СИСТЕМИЙН мөрийн угтвар — одоо ганц хэрэглээ: `__sys__:docgroups` (баримтын сангийн бүлэг).
+ * 2026-11-23 (засвар): энд байхгүй болсон боломжийг тайлбарласан хуучин үг байв. Хүснэгтэд үлдсэн өөр `__sys__:` мөр
+ * (ж: хуучин `__sys__:maintenance`) ямар ч үйлчлэлгүй — `fetchAll` бүх `__sys__:` мөрийг алгасна.
  */
 const SYS_PREFIX = '__sys__:';
+/** `username`-ийн БҮХ угтвар — зайтай түлхүүр таних (`isSpacedKey`) ба хэрэглэгчийн мөр таних (`isUserKey`) нэг жагсаалтаас */
+const KEY_PREFIXES = [SYS_PREFIX, TYPE_PREFIX, AJIL_PREFIX, BUTETS_PREFIX, HABEA_PREFIX, CHANAR_PREFIX, OBYEM_PREFIX, HUVAARI_PREFIX, QAQC_PREFIX, CAP_PREFIX, FLOW_PREFIX];
 
 /**
  * ЗАЙТАЙ ТҮЛХҮҮР ( 2026-10-19, `MalformedRow.space`) — нэрийн захад эсвэл угтварын ДАРАА зай.
@@ -145,8 +148,7 @@ const SYS_PREFIX = '__sys__:';
 export function isSpacedKey(raw: string): boolean {
   const lu = raw.trim().toLowerCase();
   if (raw.toLowerCase() !== lu) return true;
-  const pre = [SYS_PREFIX, TYPE_PREFIX, AJIL_PREFIX, BUTETS_PREFIX, HABEA_PREFIX, CHANAR_PREFIX, OBYEM_PREFIX, HUVAARI_PREFIX, QAQC_PREFIX, CAP_PREFIX, FLOW_PREFIX]
-    .find((p) => lu.startsWith(p));
+  const pre = KEY_PREFIXES.find((p) => lu.startsWith(p));
   return pre != null && lu.slice(pre.length) !== lu.slice(pre.length).trim();
 }
 
@@ -251,6 +253,52 @@ export function trustedSupers(rows: readonly { user: string; editor?: string | n
   return out;
 }
 
+/** Хэрэглэгчийн ЭРХИЙН мөрийн түлхүүр үү (угтваргүй · зайгүй · аюулгүй нэр) — `fetchAll`-ийн «Эрхийн мөр» салаанд хүрдэг мөр */
+function isUserKey(raw: string): boolean {
+  const lu = raw.trim().toLowerCase();
+  return !!lu && !isSpacedKey(raw) && !KEY_PREFIXES.some((p) => lu.startsWith(p)) && !UNSAFE_KEY.has(lu);
+}
+
+/**
+ * МӨРИЙН ИТГЭМЖЛЭЛИЙН ДҮРЭМ — НЭГ ЭХ (2026-11-23, засвар). Урьд нь энэ тооцоо зөвхөн `fetchAll` дотор байсан тул бичихийн өмнөх
+ * шинэ уншигчид (`userRead` · `capRead` · `scopedRead` · `flowRead`) мөрийг ШАЛГАЛТГҮЙ буцааж, админы хадгалалт админ биш хүний
+ * тарьсан мөрийг нэгтгээд өөрийн нэрээр «хүчинтэй» болгодог байв. Одоо `fetchAll` ба уншигчид энэ нэг функцийг дуудна.
+ *
+ * ЗӨВХӨН АДМИНЫ БИЧСЭН МӨР ХҮЧИНТЭЙ (2026-11-20, хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана»). Энэ хүснэгтэд админ
+ * биш хүн ч бичдэг (баримтын сангийн бүлэг — `docsGroups` эрхтэй хүн) тул хүснэгт өөрөө засагдахаар нээлттэй. Урьд нь
+ * (2026-11-19) зөвхөн ЭЗЭН НЬ ӨӨРӨӨ бичсэн мөр хэрэгсэгдэхгүй байсан — нэг энгийн хэрэглэгч НӨГӨӨДӨД нь эрх бичиж чаддаг байв.
+ * Дүрэм: хэрэглэгчийн · нэмэлт эрхийн · урсгалын · багцын хуваарилалтын · эрхийн төрлийн мөр (устгалын тэмдэг ч) нь
+ * `last_edited_user` = итгэмжлэгдсэн super (гинж: анхны админ · кодын админ → тэдний итгэмжилсэн super) үед л хүчинтэй.
+ * `last_edited_user`-ийг сервер тавьдаг тул хуурамчлагдахгүй. Талбар ирээгүй / хоосон бол шалгах боломжгүй — итгэнэ (урьдын дүрэм).
+ * Анхаар: дараа нь админ эрхээ хасуулсан хүний бичсэн мөр мөн хүчингүй болно — одоогийн админ дахин хадгалтал (`malformed` 'untrusted').
+ *
+ * @param rows хүснэгтийн мөрүүд — дор хаяж БҮХ `role = 'super'` мөр орсон байх ёстой (гинжийг тэднээс бодно)
+ */
+function trustRules(rows: readonly RawAttrs[]): {
+  /** Мөрийг итгэмжлэгдсэн админ бичсэн үү (бичсэн хүн тодорхойгүй бол — итгэнэ) — super БИШ мөр ба устгалын тэмдэгт */
+  adminWritten: (a: RawAttrs) => boolean;
+  /** Идэвхтэй `super` мөр: ЯГ ЭНЭ мөрийг итгэмжлэгдсэн хүн бичсэн үү (талбар огт ирээгүй бол — итгэнэ) */
+  superRowOk: (a: RawAttrs) => boolean;
+  /** Мөрийн төрлөөс хамаарч дээрх хоёрын тохирохыг нь */
+  rowOk: (a: RawAttrs) => boolean;
+} {
+  const lc = (s: string) => s.trim().toLowerCase();
+  const roots = [BOOTSTRAP_SUPER, ...SUPER_OWNERS];
+  const activeSuper = (r: RawAttrs) => r.role === 'super' && r.views !== 'removed';
+  const sup = rows.filter((r) => activeSuper(r) && r.username);
+  const ed = (r: RawAttrs) => ({ user: String(r.username), ...(r.last_edited_user !== undefined ? { editor: r.last_edited_user } : {}) });
+  const editors = trustedSupers(sup.filter((r) => !String(r.username).trim().startsWith('__')).map(ed), roots);
+  const chain = trustedSupers(sup.filter((r) => isUserKey(String(r.username))).map(ed), roots);
+  for (const r of roots) { editors.add(lc(r)); chain.add(lc(r)); }
+  const adminWritten = (a: RawAttrs): boolean => {
+    const e = typeof a.last_edited_user === 'string' ? lc(a.last_edited_user) : '';
+    return e === '' || editors.has(e);
+  };
+  const superRowOk = (a: RawAttrs): boolean =>
+    a.last_edited_user === undefined || (a.last_edited_user != null && chain.has(lc(String(a.last_edited_user))));
+  return { adminWritten, superRowOk, rowOk: (a) => (activeSuper(a) ? superRowOk(a) : adminWritten(a)) };
+}
+
 /**
  * БҮХ мөрийг хуудаслаж татна.
  */
@@ -294,7 +342,8 @@ export async function fetchAll(): Promise<{
     const habeaBy = new Map<string, HabeaRow>();
     const typesBy = new Map<string, TypeRow>();
     const malformed: MalformedRow[] = [];
-    const superRows: { user: string; raw: string; editor?: string | null; oid?: number }[] = [];
+    /** Итгэмжлэгдээгүй super мөр — тэр хүнд ӨӨР хүчинтэй мөр байхгүй бол л эрхгүй (хоосон) мөр болгоно */
+    const neutral = new Map<string, RemoteRow>();
     /** Одоо уншиж буй мөрийн OBJECTID — цэвэрлэгээний товчинд (2026-10-19) */
     let curOid: number | undefined;
     const bad = (key: string, reason: MalformedRow['reason']) => {
@@ -313,24 +362,11 @@ export async function fetchAll(): Promise<{
     const SCOPED: [string, Map<string, AjilRow | ButetsRow | HabeaRow | ChanarRow | ObyemRow | HuvaariRow>][] = [
       [AJIL_PREFIX, ajilBy], [BUTETS_PREFIX, butetsBy], [HABEA_PREFIX, habeaBy], [CHANAR_PREFIX, chanarBy], [OBYEM_PREFIX, obyemBy], [HUVAARI_PREFIX, huvaariBy],
     ];
-    /*
-     * ЗӨВХӨН АДМИНЫ БИЧСЭН МӨР ХҮЧИНТЭЙ (2026-11-20, хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана»). Энэ хүснэгтэд админ
-     * биш хүн ч бичдэг (баримтын сангийн бүлэг — `docsGroups` эрхтэй хүн) тул хүснэгт өөрөө засагдахаар нээлттэй. Урьд нь
-     * (2026-11-19) зөвхөн ЭЗЭН НЬ ӨӨРӨӨ бичсэн мөр хэрэгсэгдэхгүй байсан — нэг энгийн хэрэглэгч НӨГӨӨДӨД нь эрх бичиж чаддаг байв.
-     * Дүрэм: хэрэглэгчийн · нэмэлт эрхийн · урсгалын · багцын хуваарилалтын · эрхийн төрлийн мөр (устгалын тэмдэг ч) нь
-     * `last_edited_user` = итгэмжлэгдсэн super (гинж: анхны админ · кодын админ → тэдний итгэмжилсэн super) үед л хүчинтэй.
-     * `last_edited_user`-ийг сервер тавьдаг тул хуурамчлагдахгүй. Талбар ирээгүй / хоосон бол шалгах боломжгүй — итгэнэ (урьдын дүрэм).
-     * Анхаар: дараа нь админ эрхээ хасуулсан хүний бичсэн мөр мөн хүчингүй болно — одоогийн админ дахин хадгалтал (`malformed` 'untrusted').
-     */
-    const trustedEditors = trustedSupers(
-      rows.filter((r) => r.role === 'super' && r.views !== 'removed' && r.username && !String(r.username).trim().startsWith('__'))
-        .map((r) => ({ user: String(r.username), ...(r.last_edited_user !== undefined ? { editor: r.last_edited_user } : {}) })),
-      [BOOTSTRAP_SUPER, ...SUPER_OWNERS],
-    );
-    for (const r of [BOOTSTRAP_SUPER, ...SUPER_OWNERS]) trustedEditors.add(r.trim().toLowerCase());
-    let editor = '';
+    /* Итгэмжлэлийн дүрэм — `trustRules` (нэг эх; бичихийн өмнөх уншигчид ч мөн түүнийг дуудна) */
+    const trust = trustRules(rows);
+    let cur: RawAttrs = {};
     /** Энэ мөрийг итгэмжлэгдсэн админ бичсэн үү (бичсэн хүн тодорхойгүй бол — итгэнэ) */
-    const adminWritten = (): boolean => editor === '' || trustedEditors.has(editor);
+    const adminWritten = (): boolean => trust.adminWritten(cur);
 
     rowLoop: for (const a of rows) {
       if (!a.username) continue;
@@ -339,9 +375,9 @@ export async function fetchAll(): Promise<{
       if (!lu) continue;
       curOid = typeof a.objectid === 'number' ? a.objectid : undefined;
       if (isSpacedKey(raw)) { bad(raw, 'space'); continue; }
-      editor = typeof a.last_edited_user === 'string' ? a.last_edited_user.trim().toLowerCase() : '';
+      cur = a;
 
-      /* ── Системийн мөр (`__sys__:docgroups` — `docGroupsRead` тусад нь уншина; хуучин `maintenance` мөр — хэрэгсэхгүй) ── */
+      /* ── Системийн мөр (`__sys__:docgroups` — `docGroupsRead` тусад нь уншина; өөр `__sys__:` мөр үйлчлэлгүй — алгасна) ── */
       if (strip(lu, SYS_PREFIX) != null) continue;
 
       /* ── Эрхийн төрлийн загварын мөр (2026-09-25) ── */
@@ -420,27 +456,32 @@ export async function fetchAll(): Promise<{
       }
       if (UNSAFE_KEY.has(lu)) { bad(raw, 'user'); continue; }
       /* Админ биш хүний бичсэн мөр — хэрэгсэхгүй. Устгалын тэмдэг (`removed`) ч мөн: эс бөгөөс энгийн хэрэглэгч админыг
-         устгаж чадна. Идэвхтэй super мөр доорх гинжээр тусдаа шалгагдана. */
+         устгаж чадна. Идэвхтэй super мөр доор гинжээр тусдаа шалгагдана. */
       if ((a.role !== 'super' || removed) && !adminWritten()) { bad(raw, 'untrusted'); continue; }
-      if (a.role === 'super' && !removed) {
-        superRows.push({ user: lu, raw, ...(a.last_edited_user !== undefined ? { editor: a.last_edited_user } : {}), ...(typeof curOid === 'number' ? { oid: curOid } : {}) });
-      }
-      perms[lu] = {
+      const entry: RemoteRow = {
         username: raw.trim(),
         role: (a.role as Role) || null,
         views,
         docs: a.docs === 1 || (a.docs as unknown) === true,
         ...(removed ? { removed: true } : {}),
       };
+      /*
+       * 2026-11-23 (засвар): super мөрийн итгэмжлэлийг урьд нь НЭРЭЭР шалгадаг байв (`okSupers.has(нэр)`) — итгэмжлэгдсэн админы
+       * нэрээр админ биш хүн нэмсэн ХОЁР ДАХЬ мөр (`role='super'`, `views='all'`) мөн хүчинтэйд тооцогдож, сүүлийн мөр нь
+       * админы хадгалсан харагдацыг дардаг байв. Одоо МӨР БҮРИЙГ өөрийнх нь `last_edited_user`-ээр шалгана: итгэмжлэгдээгүй
+       * мөр хаягдана ('untrusted'), итгэмжлэгдсэн мөр хэвээр. Тэр хүнд өөр хүчинтэй мөр огт байхгүй бол урьдын адил эрхгүй мөр.
+       */
+      if (a.role === 'super' && !removed && !trust.superRowOk(a)) {
+        console.error('[selbe] Итгэмжлэгдээгүй хүн бичсэн super мөрийг хэрэгсэхгүй болгов:', raw);
+        bad(raw, 'untrusted');
+        if (!Object.hasOwn(perms, lu)) neutral.set(lu, { ...entry, role: null, views: [], docs: false });
+        continue;
+      }
+      neutral.delete(lu);
+      perms[lu] = entry;
     }
     lastFetchError = null;
-    const okSupers = trustedSupers(superRows, [BOOTSTRAP_SUPER, ...SUPER_OWNERS]);
-    for (const r of superRows) {
-      if (okSupers.has(r.user)) continue;
-      console.error('[selbe] Итгэмжлэгдээгүй хүн бичсэн super мөрийг хэрэгсэхгүй болгов:', r.raw);
-      perms[r.user] = { ...perms[r.user], role: null, views: [], docs: false };
-      malformed.push({ key: r.raw, reason: 'untrusted', ...(r.oid !== undefined ? { oid: r.oid } : {}) });
-    }
+    for (const [u, e] of neutral) perms[u] = e;
     return {
       perms,
       flow: [...flowBy.values()],
@@ -545,6 +586,32 @@ async function upsertByKey(usernameKey: string, attrs: Record<string, unknown>):
   }
 }
 
+/**
+ * АДМИНЫ БИЧСЭН МӨРҮҮДИЙГ ОДООГИЙН ХЭРЭГЛЭГЧИЙН НЭРЭЭР ДАХИН ХАДГАЛНА (2026-11-23, засвар). Мөр зөвхөн итгэмжлэгдсэн админ сүүлд
+ * бичсэн бол хүчинтэй (`trustedSupers`). Тиймээс админ эрхээ хасуулахад түүний хадгалсан БУСАД хүний мөрүүд хүчингүй болж, тэр
+ * хүмүүс нэвтэрч чадахгүй болох байв. Эрхийг нь хасахын ӨМНӨ үндсэн админ эдгээр мөрийг утгыг нь өөрчлөлгүй дахин хадгална —
+ * сүүлд зассан хүн нь үндсэн админ болно. Буцаах: дахин хадгалсан мөрийн тоо (алдаа гарвал `null`).
+ */
+export async function restampRowsOf(editor: string): Promise<number | null> {
+  try {
+    const url = await tableUrl();
+    if (!url) return null;
+    const fl = await layer(url);
+    const name = editor.trim().toLowerCase().replace(/'/g, "''");
+    const rows = await queryAllRows(fl, `LOWER(last_edited_user) = '${name}'`);
+    const ups = rows.filter((r) => typeof r.objectid === 'number' && r.username != null)
+      .map((r) => ({ attributes: { objectid: r.objectid, username: r.username } }));
+    for (let i = 0; i < ups.length; i += 200) {
+      const r = await fl.applyEdits({ updateFeatures: ups.slice(i, i + 200) } as Parameters<typeof fl.applyEdits>[0]);
+      if (!(r.updateFeatureResults ?? []).every((x) => x.error == null)) return null;
+    }
+    return ups.length;
+  } catch (e) {
+    noteWriteError(e);
+    return null;
+  }
+}
+
 /** Түлхүүрт таарах БҮХ мөрийг устгана (давхардал ч бас) */
 async function removeByKey(usernameKey: string): Promise<boolean> {
   try {
@@ -595,20 +662,38 @@ export async function removeMalformedRow(oid: number, expectKey: string): Promis
 /**
  * НЭГ ТҮЛХҮҮРИЙН `views`-ИЙГ ШИНЭЭР УНШИНА — бичихийн ЯГ ӨМНӨ нэгтгэхэд (2026-10-04).
  */
-async function readViewsByKey(key: string): Promise<string | null | undefined> {
-  const r = await readRowByKey(key);
+async function readViewsByKey(key: string, trustedOnly = false): Promise<string | null | undefined> {
+  const r = await readRowByKey(key, trustedOnly);
   if (r === undefined) return undefined;
   return r ? String(r.views ?? '') : null;
 }
 
-/** Нэг түлхүүрийн их OID-тай МӨРИЙГ бүтнээр — `undefined` = уншиж чадсангүй, `null` = мөр алга */
-async function readRowByKey(key: string): Promise<RawAttrs | null | undefined> {
+/**
+ * Нэг түлхүүрийн их OID-тай МӨРИЙГ бүтнээр — `undefined` = уншиж чадсангүй, `null` = мөр алга.
+ *
+ * `trustedOnly` (2026-11-23, засвар): урьд нь мөрийг `last_edited_user`-ийг ШАЛГАЛГҮЙ буцаадаг байсан — админ биш хүн REST-ээр
+ * тарьсан мөрийг (`fetchAll` хэрэгсдэггүй) админы дараагийн хадгалалт нэгтгээд өөрийн нэрээр бичиж, хүчинтэй болгодог байв
+ * (ж: тарьсан `role:'super'` жинхэнэ админ болно; тарьсан `["finEdit","ipcApprove"]` нэгтгэлд үлдэнэ). Одоо `fetchAll`-тай
+ * ИЖИЛ дүрмээр (`trustRules`) шүүнэ: итгэмжлэгдээгүй мөр = мөр алга. Нэгтгэл хоосноос эхэлж, админы бичилт тарьсан утгыг дарна.
+ * Гинжийг бодоход хэрэгтэй `super` мөрүүдийг НЭГ хүсэлтээр хамт татна — тусдаа хүсэлт унаж «итгэмжлэлийг бодож чадсангүй»
+ * гэсэн завсрын төлөв үүсэхгүй (уншилт унавал урьдын адил `undefined`).
+ * `__sys__:docgroups`-д хэрэглэхгүй — түүнийг админ биш (`docsGroups` эрхтэй) хүн бичдэг.
+ */
+async function readRowByKey(key: string, trustedOnly = false): Promise<RawAttrs | null | undefined> {
   try {
     const url = await tableUrl();
     if (!url) return undefined;
     const fl = await layer(url);
-    const rows = await queryAllRows(fl, `LOWER(username) = '${key.trim().toLowerCase().replace(/'/g, "''")}'`);
-    return rows[rows.length - 1] ?? null;
+    const k = key.trim().toLowerCase();
+    const own = `LOWER(username) = '${k.replace(/'/g, "''")}'`;
+    if (!trustedOnly) {
+      const rows = await queryAllRows(fl, own);
+      return rows[rows.length - 1] ?? null;
+    }
+    const all = await queryAllRows(fl, `${own} OR role = 'super'`);
+    const trust = trustRules(all);
+    const mine = all.filter((r) => String(r.username ?? '').toLowerCase() === k && trust.rowOk(r));
+    return mine[mine.length - 1] ?? null;
   } catch {
     return undefined;
   }
@@ -619,7 +704,7 @@ async function readRowByKey(key: string): Promise<RawAttrs | null | undefined> {
  */
 export async function flowRead(user: string): Promise<{ row: FlowRow | null } | null> {
   const u = user.trim().toLowerCase();
-  const v = await readViewsByKey(FLOW_PREFIX + u);
+  const v = await readViewsByKey(FLOW_PREFIX + u, true);
   if (v === undefined) return null;
   if (v === null) return { row: null };
   try {
@@ -644,7 +729,7 @@ export async function flowRead(user: string): Promise<{ row: FlowRow | null } | 
  * Хэрэглэгчийн ЭРХИЙН мөрийг ШИНЭЭР уншина (`permissions.setUser`-ийн нэгтгэлд, 2026-10-05).
  */
 export async function userRead(username: string): Promise<{ row: RemoteRow | null } | null> {
-  const a = await readRowByKey(username.trim());
+  const a = await readRowByKey(username.trim(), true);
   if (a === undefined) return null;
   if (a === null || !a.username) return { row: null };
   const removed = a.views === 'removed';
@@ -668,7 +753,7 @@ export async function userRead(username: string): Promise<{ row: RemoteRow | nul
 
 /** Хэрэглэгчийн нэмэлт эрхийг ШИНЭЭР уншина — `null` = уншиж чадсангүй, `[]` = мөр алга */
 export async function capRead(user: string): Promise<string[] | null> {
-  const v = await readViewsByKey(CAP_PREFIX + user.trim().toLowerCase());
+  const v = await readViewsByKey(CAP_PREFIX + user.trim().toLowerCase(), true);
   if (v === undefined) return null;
   if (v === null) return [];
   try {
@@ -694,7 +779,7 @@ export type ScopedKind = keyof typeof SCOPED_PREFIX;
 export async function scopedRead(
   kind: ScopedKind, user: string,
 ): Promise<{ row: { roles: string[]; bagts: string[]; grants?: Grant[] } | null } | null> {
-  const v = await readViewsByKey(SCOPED_PREFIX[kind] + user.trim().toLowerCase());
+  const v = await readViewsByKey(SCOPED_PREFIX[kind] + user.trim().toLowerCase(), true);
   if (v === undefined) return null;
   if (v === null) return { row: null };
   try {

@@ -89,16 +89,30 @@ export function histPlan(
 ): { rows: A[]; token: string | null } {
   const next = rawList(newRaw);
   const old = oldToken ? rawList(oldRaw) : [];
-  const append = !!oldToken && next.length >= old.length && old.every((e, i) => sameEntry(e, next[i]));
-  if (append && next.length === old.length) return { rows: [], token: oldToken };
+  /*
+   * Нэмэлт үү: хуучин жагсаалтын СҮҮЛИЙН хэсэг (эхнээс `cut` үйл явдал тайрагдсан байж болно — `appendHistory`-ийн 60-ын
+   * хязгаар) шинэ жагсаалтын эхэнд яг байвал зөвхөн ард нь нэмэгдсэнийг гинжинд залгана. Гинж өөрөө тайрагдахгүй — мөр
+   * болсон түүх бүтнээрээ үлдэнэ. Юу ч давхцахгүй бол (шинээр эхэлсэн) бүтэн жагсаалт шинэ гинж.
+   */
+  let keep = -1;
+  if (oldToken) {
+    for (let cut = 0; cut <= old.length; cut += 1) {
+      const tail = old.length - cut;
+      if (tail === 0 && old.length > 0) break;
+      if (next.length >= tail && old.slice(cut).every((e, i) => sameEntry(e, next[i]))) { keep = tail; break; }
+    }
+  }
+  const append = keep >= 0;
+  if (append && next.length === keep) return { rows: [], token: oldToken };
   let prev: string | null = append ? oldToken : null;
   const rows: A[] = [];
-  for (let i = append ? old.length : 0; i < next.length; i += 1) {
+  const base = append ? old.length - keep : 0; // гинжид байгаа ч жагсаалтаас тайрагдсан үйл явдлын тоо — дарааллын дугаарт
+  for (let i = append ? keep : 0; i < next.length; i += 1) {
     const e = next[i];
     const token = mk();
     const at = Number(e.at);
     rows.push({
-      [HC.parent]: parentOid, [HC.idx]: i + 1, [HC.stage]: txt(e.stage) || null, [HC.act]: txt(e.act) || null,
+      [HC.parent]: parentOid, [HC.idx]: base + i + 1, [HC.stage]: txt(e.stage) || null, [HC.act]: txt(e.act) || null,
       [HC.who]: txt(e.who) || null, [HC.user]: txt(e.u) || null, [HC.at]: Number.isFinite(at) ? at : null,
       [HC.reason]: txt(e.reason) || null, [HC.token]: token, [HC.prev]: prev,
     });
@@ -188,8 +202,9 @@ export async function hydrateSplit(rows: A[], histField: string, cellField: stri
     const byToken = new Map<string, A>();
     for (const r of await pageAll(SPLIT.histUrl, '1=1')) if (txt(r[HC.token])) byToken.set(txt(r[HC.token]), r);
     for (const a of withHist) {
+      if (!txt(a[histField]).trim()) { a[histField] = histJson(txt(a[SPLIT.histToken]), byToken); continue; }
+      /* Хуучин нүд утгатай (задлагдахгүй `[]` · эвдэрхий ч гэсэн) — тэмдэглэнэ: эс бөгөөс «хоосон байх ёстой» хамгаалалт хэзээ ч таарахгүй */
       const late = rawList(a[histField]);
-      if (!late.length) { a[histField] = histJson(txt(a[SPLIT.histToken]), byToken); continue; }
       const list = [...chainList(txt(a[SPLIT.histToken]), byToken), ...late].sort((x, y) => Number(x.at) - Number(y.at));
       a[histField] = JSON.stringify(list);
       a[SPLIT.histToken] = `${txt(a[SPLIT.histToken])}${DIRTY}`;
@@ -243,3 +258,16 @@ export async function dropChildren(url: string, by: { oids?: readonly number[]; 
 }
 
 export const cellTokenWhere = (token: string): string => `${CC.token} = ${quote(token)}`;
+
+/** Нэмэгдсэн туслах мөрүүдэд эцэг (хяналтын) мөрийн дугаарыг тавина — лавлагааны багана тул алдаа шидэхгүй */
+export async function setParent(url: string, oids: readonly number[], parentOid: number): Promise<void> {
+  try {
+    for (let i = 0; i < oids.length; i += 500) {
+      await arcgisPost(`${url}/applyEdits`, {
+        updates: JSON.stringify(oids.slice(i, i + 500).map((objectid) => ({ attributes: { objectid, [HC.parent]: parentOid } }))),
+      });
+    }
+  } catch (e) {
+    console.warn('[selbe] хяналтын туслах мөрт эцэг мөрийн дугаар бичигдсэнгүй (заагчаар уншигдана):', e);
+  }
+}

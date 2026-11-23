@@ -93,3 +93,18 @@ console.log('✅ төлөвлөх түвшин — зөвхөн 3-р давхр�
   assert.equal(sourceUnitPlans([row(0, 2, true), row(1, 3, false)], 1, () => 1).size, 0, 'огноогүй бүлэг орохгүй');
   console.log('✅ сарын хувь автомат · багц хооронд хуулах');
 }
+
+/* 2026-11-23: «өнөөдөр» — Улаанбаатарын өдөр (хөтчийн локал өдөр биш), `ubToday`-тэй нэг тодорхойлолт */
+{
+  const { todayUtc, msToNextUbDay } = await import('./util.ts');
+  const { ubToday } = await import('@/lib/projectPlan.ts');
+  const D = (s) => Date.parse(`${s}T00:00:00Z`);
+  assert.equal(todayUtc(Date.UTC(2026, 9, 6, 17, 0)), D('2026-10-07'), 'УБ 01:00 — UTC-ээр өчигдөр ч УБ-аар шинэ өдөр');
+  assert.equal(todayUtc(Date.UTC(2026, 9, 6, 15, 59)), D('2026-10-06'), 'УБ 23:59');
+  const t = Date.UTC(2026, 9, 6, 15, 59, 30);
+  assert.equal(todayUtc(t), ubToday(t), 'ubToday-тэй ижил');
+  assert.equal(msToNextUbDay(t), 30_000, 'УБ-ын шөнө дунд хүртэл 30 сек');
+  assert.equal(todayUtc(t + msToNextUbDay(t)), D('2026-10-07'), 'таймер дуусахад шинэ өдөр');
+  assert.equal(msToNextUbDay(Date.UTC(2026, 9, 6, 16, 0)), 86_400_000, 'яг шөнө дунд — бүтэн хоног');
+  console.log('✅ «өнөөдөр» — Улаанбаатарын өдөр');
+}

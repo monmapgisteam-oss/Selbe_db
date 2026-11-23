@@ -359,6 +359,8 @@ export function removeAssign(user: string, stage: Stage, revoke = true): { sync:
  * Аккаунтын томилгоог БҮХ шатнаас (локал + remote) арилгана — эрх буцаахгүй.
  */
 export function purgeAssign(user: string): Promise<boolean> {
+  /* 2026-11-23 (засвар): админы шалгуур ОГТ байгаагүй — нэвтэрсэн хэн ч энэ функцийг шууд дуудаж чаддаг байв (`scopedAcl`-ийн ижил үйлдэл шалгадаг) */
+  try { requireSuper(); } catch { return Promise.resolve(false); }
   const u = user.trim().toLowerCase();
   if (!u) return Promise.resolve(true);
   save(load().filter((a) => a.user !== u));
@@ -373,6 +375,8 @@ export function purgeAssign(user: string): Promise<boolean> {
  * БИЧИЛТ УНАСАН ТОМИЛГООГ ДАХИН ИЛГЭЭХ (2026-10-01, «хэрэглэгч: бүгдийг зас»).
  */
 export function retryFlow(user: string, grant = true): { sync: Promise<boolean> } {
+  /* 2026-11-23 (засвар): админы шалгуур ОГТ байгаагүй — нэвтэрсэн хэн ч энэ функцийг шууд дуудаж чаддаг байв (`scopedAcl`-ийн ижил үйлдэл шалгадаг) */
+  requireSuper();
   const u = user.trim().toLowerCase();
   if (!u) return { sync: Promise.resolve(false) };
   const sync = enqueue(u, async () => {
@@ -391,6 +395,8 @@ export function retryFlow(user: string, grant = true): { sync: Promise<boolean> 
 export function setViewOnly(
   user: string, viewOnly: boolean,
 ): { ok: boolean; error?: string; sync?: Promise<boolean> } {
+  /* 2026-11-23 (засвар): админы шалгуур ОГТ байгаагүй — нэвтэрсэн хэн ч энэ функцийг шууд дуудаж чаддаг байв (`scopedAcl`-ийн ижил үйлдэл шалгадаг) */
+  try { requireSuper(); } catch (e) { return { ok: false, error: (e as Error).message }; }
   const u = user.trim().toLowerCase();
   if (!u) return { ok: false, error: tr('Аккаунтын нэрээ бичнэ үү') };
   const list = load();

@@ -20,7 +20,7 @@ import { loadHoRows, groupHo } from '@/lib/ipc';
 import { loadWorkforceDays } from '@/lib/ceo/workforce';
 import { loadLandStatus } from '@/lib/land';
 import { loadSchema, PKGS } from '@/modules/sheet/bagts.pkg';
-import { BUILDING, SELBE_PUBLIC, SOURCE_FS, buildingKey, bagtsKey } from '@/lib/services';
+import { BUILDING, SELBE_PUBLIC, SOURCE_FS, buildingKey, bagtsKey, hoAmount } from '@/lib/services';
 import {
   PUBLIC_KEYS, ehUusverRows, gazarRows, guitsetgelRows, hunHuchRows, isPubGroupName, niigemRows, pubPkgCode, sanhuuRows,
   type PubBuilding, type PubGroup, type PubRow, type PublicTables,
@@ -87,7 +87,8 @@ async function loadInfraGroups(): Promise<{ groups: Map<string, PubGroup[]>; fai
       /* Сүүлийн агшин = хамгийн сүүлийн бөглөсөн огноо; тэр өдрийн мөрүүд хуудасны дарааллаар */
       const lastDay = rows.length ? Number(rows[0][fill]) : null;
       if (lastDay == null) return;
-      const dayOf = (v: unknown) => Math.floor(Number(v) / 86_400_000);
+      /* 2026-11-23 (засвар): Улаанбаатарын (UTC+8) өдрөөр — UTC өдрөөр бол өглөө 08:00-аас өмнө ба хойно бөглөсөн мөр хоёр өдөрт хуваагддаг байв */
+      const dayOf = (v: unknown) => Math.floor((Number(v) + 8 * 3_600_000) / 86_400_000);
       const seen = new Set<string>();
       const list: PubGroup[] = [];
       for (const r of rows) {
@@ -135,7 +136,11 @@ export async function computePublicTables(): Promise<{ tables: Partial<PublicTab
   } else {
     const p = plan.value;
     if (p.failed.length) failed.push(`plan: ${p.failed.join(', ')}`);
-    if (ho.status === 'fulfilled') tables.sanhuu = sanhuuRows(p); else fail('sanhuu', ho.reason);
+    if (ho.status === 'fulfilled') {
+      let paid: number | null = null;
+      for (const r of ho.value) { const v = hoAmount(r); if (v != null) paid = (paid ?? 0) + v; }
+      tables.sanhuu = sanhuuRows(p, paid);
+    } else fail('sanhuu', ho.reason);
     /* 2026-11-11 (аудит): дутуу уншигдсан төлөвлөгөөгөөр нийгмийн дэд бүтцийг 0% гэж бичихгүй (`guitsetgel`-тэй нэг дүрэм) */
     if (!p.failed.length) tables.niigem = niigemRows(p);
     /* Явц — барилга, гүйцэтгэгч, бүлгийн аль нэг унавал хагас өгөгдлөөр бичихгүй, хүснэгт хэвээр үлдэнэ */

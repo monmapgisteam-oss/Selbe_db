@@ -337,4 +337,38 @@ console.log('✅ ХӨНДЛӨНГИЙН ХЯНАЛТ — харна, шийдв�
 }
 console.log('✅ ШИЙДВЭР — домэйн түвшинд шалгагдана, архивлалтаас ӨМНӨ, fail-closed');
 
+/* ══════════ purgeAssign · retryFlow · setViewOnly — ЗӨВХӨН СИСТЕМИЙН АДМИН (2026-11-23, засвар) ══════════
+ * Урьд нь эдгээр гурав админы шалгуургүй байсан (`scopedAcl`-ийн ижил үйлдэл шалгадаг) — нэвтэрсэн хэн ч шууд дуудаж чаддаг байв. */
+{
+  const who = await import('@/lib/who.ts');
+  const { purgeAssign, retryFlow } = await import('@/lib/guitsetgelAcl.ts');
+  const { AUTH } = await import('@/lib/services.ts');
+  assert.ok(AUTH.appId, 'шалгуурт нэвтрэлт асаалттай байх ёстой');
+  const NO = /зөвхөн системийн админ/;
+  const victim = listAssigns()[0]?.user;
+  assert.ok(victim, 'шалгах томилгоо байх ёстой');
+  const before = JSON.stringify(listAssigns());
+  who._setWriteGuards(true);
+  try {
+    for (const me of ['selbe_et', null]) {
+      who.setCurrentUser(me);
+      assert.equal(await purgeAssign(victim), false, `purgeAssign: админ биш (${me}) хүн бусдын томилгоог арилгах ёсгүй`);
+      assert.throws(() => retryFlow(victim), NO, `retryFlow: админ биш (${me}) хүн дахин илгээх ёсгүй`);
+      const v = setViewOnly(victim, !isViewOnly(victim));
+      assert.equal(v.ok, false, `setViewOnly: админ биш (${me}) хүн туг солих ёсгүй`);
+      assert.match(v.error ?? '', NO);
+      assert.equal(JSON.stringify(listAssigns()), before, 'татгалзсан үйлдэл локал томилгоог хөндөх ёсгүй');
+    }
+    /* админд саад болохгүй — шалгуурыг давж, жирийн шалгалтад хүрнэ */
+    who.setCurrentUser(superName);
+    assert.doesNotMatch(setViewOnly('hen_ch_2', true).error ?? '', NO, 'админ: шалгуур саад болохгүй');
+    assert.doesNotThrow(() => retryFlow(''), 'админ: retryFlow шидэхгүй');
+    assert.equal(await purgeAssign(''), true, 'админ: purgeAssign ажиллана');
+  } finally {
+    who._setWriteGuards(false);
+    who.setCurrentUser(null);
+  }
+}
+console.log('✅ purgeAssign · retryFlow · setViewOnly — зөвхөн системийн админ');
+
 console.log('\nacl: ok — fail-closed · шат=томилгоо · нэг аккаунт нэг шат · tombstone · дараалал · харагч');

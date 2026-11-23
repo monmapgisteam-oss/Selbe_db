@@ -101,6 +101,23 @@ assert.throws(() => requirePlanWrite('Багц 1'), /хуваарьт бичих
   caps._syncRemoteCaps([]);
 }
 
+/* 2026-11-23: админы мөрийг ЗӨВХӨН үндсэн админ бичнэ — үндсэн биш админ өөрийн мөрөө хадгалбал итгэмжлэлээ алддаг байв */
+{
+  const { _setTableSupers, tableSuperUsers } = await import('./services.ts');
+  const before = tableSuperUsers();
+  _setTableSupers([...(before ?? []), 'table_admin']);
+  who.setCurrentUser('table_admin');
+  assert.equal(perms.roleOf('table_admin'), 'super', 'хүснэгтээр томилогдсон (үндсэн биш) админ');
+  const ROOT = /үндсэн админ/;
+  assert.throws(() => perms.setUser('table_admin', { views: ['plan'], docs: false }, 'super'), ROOT, 'өөрийн админ мөрөө хадгалахгүй');
+  assert.throws(() => perms.setUser('x_new_admin', { views: ['plan'], docs: false }, 'super'), ROOT, 'шинэ админ томилохгүй');
+  assert.throws(() => perms.setUser('manager_3', { views: ['plan'], docs: false }, 'gazar'), ROOT, 'өөр админыг эрхээс нь хасахгүй');
+  assert.throws(() => perms.removeUser('manager_3'), ROOT);
+  assert.doesNotThrow(() => { void perms.setUser('x_user', { views: ['gdash'], docs: false }, 'gazar'); }, 'энгийн хэрэглэгчийн эрхийг урьдын адил удирдана');
+  _setTableSupers(before);
+  who.setCurrentUser('manager_3');
+}
+
 /* унтраалттай үед (бусад шалгуур) — саадгүй */
 who._setWriteGuards(false);
 who.setCurrentUser('selbe_et');

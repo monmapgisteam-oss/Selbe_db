@@ -494,3 +494,45 @@ console.log('huvaariObyem.check: ok — scheduleByMoney · orderByDeps · remapM
   assert.deepEqual([...patched], [['2026-10', 25], ['2026-11', 60], ['2026-12', null], ['2027-01', 15]]);
   console.log('huvaariObyem.check: ok — багцын сарын хувь (toPkgPct · pctEdits · pctPatched) ✓');
 }
+
+/* ── 2026-11-23: applyPlanEdits — устгалтын багц тодорхойгүй, эсвэл өөр багц бол сүлжээнд бичихээс ӨМНӨ татгалзана ── */
+{
+  const hadWindow = 'window' in globalThis;
+  if (!hadWindow) globalThis.window = globalThis;
+  const mem = new Map();
+  const shim = { localStorage: { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => { mem.set(k, String(v)); }, removeItem: (k) => { mem.delete(k); } }, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => true };
+  const added = Object.keys(shim).filter((k) => !(k in globalThis));
+  for (const k of added) globalThis[k] = shim[k];
+  const H = await import('./huvaariObyem.ts');
+  const who = await import('./who.ts');
+  const { AUTH } = await import('./services.ts');
+  const { _syncRemoteHuvaari } = await import('./huvaariAcl.ts');
+  assert.ok(AUTH.appId, 'шалгуурт нэвтрэлт асаалттай байх ёстой');
+  const realFetch = globalThis.fetch;
+  let posts = 0;
+  globalThis.fetch = async () => { posts += 1; return new Response(JSON.stringify({ deleteResults: [{ success: true }] }), { status: 200, headers: { 'content-type': 'application/json' } }); };
+  _syncRemoteHuvaari([{ user: 'zohiogch_b1', grants: [{ role: 'author', bagts: ['Багц-1'] }] }]);
+  who.setCurrentUser('zohiogch_b1');
+  who._setWriteGuards(true);
+  try {
+    const NO = /бичих эрхгүй|Багц тодорхойгүй/;
+    await assert.rejects(() => H.applyPlanEdits({ adds: [], updates: [], deletes: [7] }), /Багц тодорхойгүй/, 'багцгүй устгалт өнгөрөв');
+    await assert.rejects(() => H.applyPlanEdits({ adds: [], updates: [], deletes: [], dups: [7] }), /Багц тодорхойгүй/, 'багцгүй давхардлын устгалт өнгөрөв');
+    await assert.rejects(() => H.applyPlanEdits({ adds: [], updates: [], deletes: [7], pkgKey: 'b2_9f' }), /бичих эрхгүй/, 'өөр багцын мөр устгав');
+    await assert.rejects(() => H.applyPlanEdits({ adds: [], updates: [], deletes: [7], pkgKey: 'ugui_bagts' }), NO, 'үл мэдэгдэх багц өнгөрөв');
+    await assert.rejects(() => H.applyPlanEdits({ adds: [], updates: [{ attributes: { objectid: 7, obyem: 1 } }], deletes: [] }), /Багц тодорхойгүй/, 'bagts-гүй шинэчлэлт өнгөрөв');
+    await assert.rejects(() => H.applyPlanEdits({ adds: [{ attributes: { bagts: 'b2_9f' } }], updates: [], deletes: [], pkgKey: 'b1_9f' }), /бичих эрхгүй/, 'өөр багцын мөр нэмэв');
+    assert.equal(posts, 0, 'татгалзсан дуудлага сүлжээнд бичив');
+    /* өөрийн багц — урьдын адил бичнэ */
+    assert.deepEqual(await H.applyPlanEdits({ adds: [], updates: [], deletes: [7], pkgKey: 'b1_9f' }), [0, 0, 1]);
+    assert.equal(posts, 1);
+  } finally {
+    who._setWriteGuards(false);
+    who.setCurrentUser(null);
+    _syncRemoteHuvaari([]);
+    globalThis.fetch = realFetch;
+    for (const k of added) delete globalThis[k];
+    if (!hadWindow) delete globalThis.window;
+  }
+  console.log('huvaariObyem.check: ok — applyPlanEdits багцын эрх (устгалт · үл мэдэгдэх багц) ✓');
+}

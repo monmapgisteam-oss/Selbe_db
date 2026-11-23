@@ -52,6 +52,58 @@ CAPS._syncRemoteCaps([]);
 WHO.setCurrentUser(null);
 console.log('✅ updateAjil — эрх → нэр → агуулга → сүлжээ');
 
+/* 2б. 2026-11-23 — `submitAjil` багцын түлхүүр ба бүлгийг тулгана; `markApplied` · `markRestored` · `claimAjil` ·
+   `releaseAjilClaim` эрхийн шалгалттай (урьд нь хэн ч шууд дуудаж чаддаг байв). Сүлжээ рүү БИЧИХ хүсэлт гарахгүй. */
+{
+  const A = await import('@/lib/ajilBatlah.ts');
+  const { PKGS } = await import('@/modules/sheet/bagts.pkg.ts');
+  const { AUTH } = await import('@/lib/services.ts');
+  const pk = PKGS[0];
+  const other = PKGS.find((p) => p.group !== pk.group);
+  assert.ok(pk && other, 'шалгуурт хоёр өөр бүлгийн багц хэрэгтэй');
+  CAPS._syncRemoteCaps([{ user: 'zohiogch_a', caps: ['addRow'] }]);
+  WHO.setCurrentUser('zohiogch_a');
+  const realFetch = globalThis.fetch;
+  let writes = 0;
+  const stored = { [A.F.oid]: 1, [A.F.status]: A.AJIL_STATUS.approved, [A.F.author]: 'zohiogch_a', [A.F.pkgGroup]: pk.group, [A.F.reason]: null, [A.F.approver]: null };
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('applyEdits')) writes += 1;
+    return new Response(JSON.stringify({ features: [{ attributes: stored }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const send = (pkgKey, pkgGroup, payKey = pkgKey) => A.submitAjil({ pkgKey, pkgGroup, author: 'zohiogch_a', payload: { v: 1, pkgKey: payKey, adds: [row] } });
+    let x = await send(pk.key, other.group);
+    assert.equal(x.ok, false); assert.match(x.error, /зөрж байна/, `өөр бүлгээр илгээв: ${x.error}`);
+    x = await send('ugui_bagts', pk.group);
+    assert.equal(x.ok, false); assert.match(x.error, /зөрж байна/, `үл мэдэгдэх түлхүүр: ${x.error}`);
+    x = await send(pk.key, pk.group, other.key);
+    assert.equal(x.ok, false); assert.match(x.error, /зөрж байна/, `агуулгын түлхүүр зөрсөн: ${x.error}`);
+
+    assert.ok(AUTH.appId, 'шалгуурт нэвтрэлт асаалттай байх ёстой');
+    WHO._setWriteGuards(true);
+    /* бусдын нэрээр түгжихгүй / тайлахгүй */
+    const c = await A.claimAjil({ oid: 1, me: 'batlagch_b', want: A.AJIL_STATUS.approved });
+    assert.match(String(c), /өөрийн нэрээр/, `бусдын нэрээр түгжив: ${c}`);
+    await A.releaseAjilClaim({ oid: 1, me: 'batlagch_b' });
+    /* зохиогч биш, батлагч биш хүн түгжихгүй, «Буулгасан» / «Сэргээсэн» гэж тэмдэглэхгүй */
+    WHO.setCurrentUser('hen_negen');
+    const c2 = await A.claimAjil({ oid: 1, me: 'hen_negen', want: A.AJIL_STATUS.approved });
+    assert.match(String(c2), /батлах эрхгүй/, `хамааралгүй хүн түгжив: ${c2}`);
+    const m = await A.markApplied(1);
+    assert.equal(m.ok, false); assert.match(m.error, /батлах эрхгүй/, `батлагч биш хүн «Буулгасан» гэж тэмдэглэв: ${m.error}`);
+    stored[A.F.status] = A.AJIL_STATUS.returned;
+    const m2 = await A.markRestored(1);
+    assert.equal(m2.ok, false); assert.match(m2.error, /илгээсэн хүн өөрөө/, `зохиогч биш хүн «Сэргээсэн» гэж тэмдэглэв: ${m2.error}`);
+    assert.equal(writes, 0, 'эрхгүй дуудлага сүлжээнд бичив');
+  } finally {
+    WHO._setWriteGuards(false);
+    globalThis.fetch = realFetch;
+    CAPS._syncRemoteCaps([]);
+    WHO.setCurrentUser(null);
+  }
+}
+console.log('✅ submitAjil түлхүүр↔бүлэг · markApplied/markRestored/claimAjil/releaseAjilClaim эрхийн шалгалт');
+
 /* 3. Эх код: ИЖИЛ мөрийг шинэчилнэ (шинэ илгээлт биш), төлөв хөндөхгүй, дараа нь дахин уншина */
 {
   const L = fs.readFileSync('src/lib/ajilBatlah.ts', 'utf8');

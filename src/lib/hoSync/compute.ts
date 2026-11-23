@@ -122,6 +122,32 @@ const same = (a: unknown, b: unknown): boolean => {
   return txt(a) === txt(b);
 };
 
+/**
+ * ГЭРЭЭНИЙ БҮЛГИЙН ТҮЛХҮҮР (2026-11-23, засвар). Урьд нь «Төлбөрийн акт (IPC)»-ийн мөрүүд ЗӨВХӨН гэрээний кодоор (`geree_kod`)
+ * бүлэглэгддэг байв: зургийн (ТЭЗҮ · зураг төсөл) мөр барилгын гэрээтэй ижил кодтой болоход нэг гэрээ гэж уншигдаж, барилгын
+ * гэрээний дугаар · дүн · гүйцэтгэгч зургийн мөр дээр бичигдсэн (12 мөр — ХО-0075…0081, ХО-0380…0384). Одоо нэг кодонд зургийн
+ * ба барилгын ажлын төрөл ХОЛИЛДСОН бол зургийн мөрүүд тусдаа бүлэг болно (төрөлгүй мөр — AUTO гүйцэтгэл — барилгынхтай).
+ */
+const DESIGN_MARK = '\u0000зураг';
+export const contractKeyLabel = (key: string): string => key.replace(DESIGN_MARK, ' · зураг');
+export function contractKeyer(hoRows: readonly Row[]): (r: Row) => string {
+  const kinds = new Map<string, Set<boolean>>();
+  for (const r of hoRows) {
+    const code = txt(r[HC.code]);
+    const wt = txt(r[HC.workType]);
+    if (!code || !wt) continue;
+    const s = kinds.get(code) ?? new Set<boolean>();
+    s.add(phasesOf(wt) === PH_DESIGN);
+    kinds.set(code, s);
+  }
+  return (r) => {
+    const code = txt(r[HC.code]);
+    if (!code || (kinds.get(code)?.size ?? 0) < 2) return code;
+    const wt = txt(r[HC.workType]);
+    return wt && phasesOf(wt) === PH_DESIGN ? `${code}${DESIGN_MARK}` : code;
+  };
+}
+
 export type HoSyncPlan = {
   /** HO мөрийн засвар — `objectid` + өөрчлөгдсөн талбар л */
   updates: Row[];
@@ -255,6 +281,7 @@ export type PaidSyncPlan = {
  */
 export function planPaidSync(hoRows: readonly Row[], cfRows: readonly Row[]): PaidSyncPlan {
   const { matched } = planHoSync(hoRows, cfRows);
+  const keyOf = contractKeyer(hoRows);
   const byOid = new Map(cfRows.map((r) => [Number(r[CASHFLOW_NEW.oid]), r] as const));
   const paid = new Map<number, number>();
   const adv = new Map<number, number>();
@@ -262,7 +289,7 @@ export function planPaidSync(hoRows: readonly Row[], cfRows: readonly Row[]): Pa
   for (const r of hoRows) {
     const v = num(r[HO_IPC.payFields.amount]);
     if (v == null) continue;
-    const ids = matched.get(txt(r[HC.code])) ?? [];
+    const ids = matched.get(keyOf(r)) ?? [];
     if (!ids.length) { unassigned.push(txt(r[HO_IPC.payFields.id]) || String(r[HO_IPC.oid])); continue; }
     /* Олон мөрд таарвал мөрийн багцынхад, тэдгээрт гэрээний дүнгийн жингээр хуваана — төлбөр хасагдахгүй */
     const parts = hoPkgParts(r[HC.pkg]);
@@ -354,8 +381,9 @@ function singleRowPicks(byContract: ReadonlyMap<string, Row[]>, cfRows: readonly
 
 export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSyncPlan {
   const byContract = new Map<string, Row[]>();
+  const keyOf = contractKeyer(hoRows);
   for (const r of hoRows) {
-    const code = txt(r[HC.code]);
+    const code = keyOf(r);
     if (!code) continue;
     byContract.set(code, [...(byContract.get(code) ?? []), r]);
   }
@@ -376,7 +404,7 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
     if (single.has(code)) {
       const row = single.get(code);
       if (contractCancelled(rows)) { if (row) cancelledUsed.push(Number(row[CASHFLOW_NEW.oid])); continue; }
-      if (!row) { unmatched.push(code); continue; }
+      if (!row) { unmatched.push(contractKeyLabel(code)); continue; }
       matched.set(code, [Number(row[CASHFLOW_NEW.oid])]);
       /* Баримтын нэр бүртгэлд өөрчлөгдвөл гэрээний нэр дагана — дараагийн удаа нэрээрээ таарна */
       /* Нэг мөртэй (акт үүсгээгүй) гэрээнд л олгосон дүнг бүртгэлээс бичнэ — акттай гэрээний төлбөрийг хөндөхгүй */
@@ -395,7 +423,7 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
     const otherNos = new Set<string>();
     for (const [c2, r2] of byContract) if (c2 !== code) for (const n of nosOf(r2)) otherNos.add(n);
     const cf = ownCfRows(fit, nos, otherNos);
-    if (!cf.length) { unmatched.push(code); continue; }
+    if (!cf.length) { unmatched.push(contractKeyLabel(code)); continue; }
     matched.set(code, cf.map((r) => Number(r[CASHFLOW_NEW.oid])));
     const want = hoFromCf(cf);
     for (const r of rows) {

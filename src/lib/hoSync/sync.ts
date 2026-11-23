@@ -33,7 +33,9 @@ export async function loadCfContractRows(): Promise<Row[]> {
 export async function computeBlockBudgets(): Promise<Row[]> {
   const rows = await queryFeatures(CASHFLOW_NEW.url, {
     where: `${CF.ddKod} IS NOT NULL`,
-    outFields: [CASHFLOW_NEW.oid, CF.ddKod, CF.parentKod, CF.level, CF.phase, CF.pkg, CF.block, CF.detail, CF.budget, CF_MONTH.id],
+    /* 2026-11-23 (засвар): тооцох сонголтын баганууд — эдгээргүйгээр асаалттай «Нийслэл төсөв»-ийн мөр ч «тооцохгүй» гэж уншигддаг байв */
+    outFields: [CASHFLOW_NEW.oid, CF.ddKod, CF.parentKod, CF.level, CF.phase, CF.pkg, CF.block, CF.detail, CF.budget, CF_MONTH.id,
+      CF.inTotal, CF.inPhase, CF.inMoney, CF.inTime],
     orderBy: `${CF.ddKod} ASC, ${CASHFLOW_NEW.oid} ASC`,
   });
   return planBlockBudgets(buildTree(sortPlanRows(rows.map((r) => toStoredRow(r as Record<string, unknown>)).filter((r) => r.dd_kod))));

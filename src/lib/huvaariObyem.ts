@@ -4,7 +4,7 @@
 import { requireCap } from './who';
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
-import { GUITS, canonPkg } from '@/lib/services';
+import { AUTH, GUITS, canonPkg } from '@/lib/services';
 import { DAY, spanFrac, type Span } from './plan';
 import { invalidate } from './dataBus';
 import { isLostWrite } from './lostWrite';
@@ -490,6 +490,11 @@ export type PlanEdits = {
   updates: Record<string, unknown>[];
   deletes: number[];
   dups?: number[];
+  /**
+   * Эдгээр мөрийн БАГЦЫН түлхүүр («b1_9f») — эрхийн шалгалтад (2026-11-23). Устгах мөр (`deletes`/`dups`) зөвхөн
+   * objectid тул багцыг нь аргументаас тодорхойлох боломжгүй — дуудагч энд заавал өгнө (`applyPlanEdits`).
+   */
+  pkgKey?: string;
 };
 
 /**
@@ -651,8 +656,15 @@ export async function countPlanRows(): Promise<number | null> {
 /** Багцын түлхүүр («b1_9f») → багцын нэр → `huvaariAcl.requirePlanWrite` (тойрог импортоос сэргийлж хойшлуулан ачаална) */
 async function requirePlanWriteOf(pkgKey: string | null): Promise<void> {
   if (typeof window === 'undefined') return;
-  const [{ requirePlanWrite }, { PKGS }] = await Promise.all([import('./huvaariAcl'), import('@/modules/sheet/bagts.pkg')]);
-  requirePlanWrite(pkgKey == null ? null : PKGS.find((p) => p.key === pkgKey)?.group ?? null);
+  const [{ requirePlanWrite }, { PKGS }, { writeGuardsOn }] = await Promise.all([import('./huvaariAcl'), import('@/modules/sheet/bagts.pkg'), import('./who')]);
+  const group = pkgKey == null ? null : PKGS.find((p) => p.key === pkgKey)?.group ?? null;
+  /* 2026-11-23 (засвар): багц тодорхойгүй (түлхүүр өгөгдөөгүй / `PKGS`-д алга) үед урьд нь «АЛЬ НЭГ багцын зохиогч эсвэл
+     батлагч» гэж зөөлөрдөг байв — «Багц 1»-ийн зохиогч өөр багцын мөрийг устгах боломжтой. Одоо татгалзана. */
+  if (group == null) {
+    if (!writeGuardsOn() || !AUTH.appId) return;
+    throw new Error(tr('Багц тодорхойгүй тул хуваарийн обьёмд бичих боломжгүй — хуудсаа шинэчилнэ үү.'));
+  }
+  requirePlanWrite(group);
 }
 
 /**
@@ -669,13 +681,18 @@ export async function applyPlanEdits(e: PlanEdits, opts: { checked?: boolean } =
   /* 2026-11-20 (засвар): «Үндсэн хугацаа»-ын сарын хувийн мөр (`bagts` = «CF:<id>») багцын түлхүүр биш — дуудагч
      (`patchPkgPct` · `savePkgPct`) эрхээ өөрөө шалгасан тул энд хуваарийн эрх шаардахгүй */
   if (!opts.checked) {
+    /* 2026-11-23 (засвар): багцыг зөвхөн нэмэх/шинэчлэх мөрийн `bagts`-аас уншдаг байсан — зөвхөн устгалттай багц засвар
+       (эсвэл `bagts`-гүй мөр) «аль нэг багцын эрх»-ээр нэвтэрдэг байв. Одоо: устгалт / `bagts`-гүй мөр байвал дуудагч
+       `e.pkgKey` заавал өгнө; өгөгдсөн ба мөрүүдээс олдсон БҮХ багцад эрх шаардана. */
     const keys = new Set<string>();
+    let unknown = e.deletes.length > 0 || (e.dups?.length ?? 0) > 0;
     for (const x of [...e.adds, ...e.updates]) {
       const b = (x.attributes as Record<string, unknown> | undefined)?.bagts ?? x.bagts;
-      if (typeof b === 'string' && b) keys.add(b);
+      if (typeof b === 'string' && b) keys.add(b); else unknown = true;
     }
-    if (keys.size) for (const k of keys) await requirePlanWriteOf(k);
-    else await requirePlanWriteOf(null);
+    if (e.pkgKey) keys.add(e.pkgKey);
+    else if (unknown) await requirePlanWriteOf(null);
+    for (const k of keys) await requirePlanWriteOf(k);
   }
   const chunk = <T>(a: T[]) => {
     const out: T[][] = [];
@@ -1042,5 +1059,6 @@ export async function saveWeek(meta: WorkMeta, blok: string, week: number, obyem
   const oids = ((j.features ?? []) as { attributes: Record<string, unknown> }[]).map((f) => Number(f.attributes.objectid)).filter(Number.isFinite);
   const e = weekEdits(meta, blok, week, obyem, oids[0] ?? null);
   e.deletes.push(...oids.slice(1));
+  e.pkgKey = meta.bagts; // 2026-11-23: устгалтын багцыг ил зааж өгнө (`applyPlanEdits`-ийн эрхийн шалгалт)
   if (e.adds.length || e.updates.length || e.deletes.length) await applyPlanEdits(e);
 }

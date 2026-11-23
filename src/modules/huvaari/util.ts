@@ -9,6 +9,7 @@ import { msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { parseDeps } from '@/lib/deps';
 import { PLAN_DEPTH, type PlanRow, type Span, type Status } from '@/lib/plan';
 import { balanced, monthsOf, type MonthRes } from '@/lib/huvaariObyem';
+import { ubToday } from '@/lib/projectPlan';
 import type { PlanKind } from './types';
 
 /**
@@ -116,8 +117,14 @@ export const obKey = (des: number, blok: string) => `${des}|${blok}`;
 
 /** Богино огноо — «03-02». Жил нь хүрээний шошгонд бий. */
 export const short = (ms: number) => msToDay(ms).slice(5);
-/** Локал «өнөөдөр» — UTC шөнө дундын ms (хуанлийн түлхүүртэй ижил хэлбэр) */
-export const todayUtc = (): number => { const d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
+/**
+ * «Өнөөдөр» — УЛААНБААТАРЫН хуанлийн өдөр, UTC шөнө дундын ms (хуанлийн түлхүүртэй ижил хэлбэр).
+ * 2026-11-23 (засвар): урьд нь хөтчийн ЛОКАЛ өдөр байсан — «өнөөдөр»-ийн шугам ба хоцролтын төлөв нь долоо хоногийн
+ * обьёмын `ubToday()`-ээс өөр өдөр гарч болдог байв (өөр цагийн бүстэй компьютерт). Одоо бүгд нэг `ubToday`.
+ */
+export const todayUtc = (now: number = Date.now()): number => ubToday(now);
+/** Улаанбаатарын ДАРААГИЙН шөнө дунд хүртэлх хугацаа (ms) — `useToday`-ийн таймерт (УБ = UTC+8, зуны цаггүй) */
+export const msToNextUbDay = (now: number = Date.now()): number => ubToday(now) + 86_400_000 - 8 * 3_600_000 - now;
 
 /** Хоёр муж (эсвэл хоёулаа хоосон) ижил үү — ноорог ба суурийн харьцуулалтад (2026-09-21) */
 export const sameSpan = (a: Span | null | undefined, b: Span | null | undefined): boolean => (

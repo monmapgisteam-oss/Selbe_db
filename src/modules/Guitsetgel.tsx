@@ -5,6 +5,7 @@
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { serverNow } from '@/lib/serverClock';
 import { t as tr } from '@/lib/i18nCore';
 import { dateTime, fixCyr, pct } from '@/lib/format';
 import { fillGainOf, loadFillGain, loadFillNow, type FillGain, type FillGainIn, type FillNow } from '@/lib/fillGain';
@@ -1318,7 +1319,13 @@ export function HyanaltHugatsaa() {
     [user, role, authStatus, aclN],
   );
   const { rows, loading, error, reload } = useHyanaltRows();
-  const [now] = useState(() => Date.now());
+  /* 2026-11-23 (засвар): серверийн цаг (шатны огноо түүгээр бичигддэг), минут тутам шинэчлэгдэнэ. Урьд нь хуудас нээсэн
+     агшны компьютерийн цаг хөлддөг байсан тул нээлттэй үлдсэн цонх өчигдрийн хүлээлтийг харуулж, хэтрэлт гардаггүй байв. */
+  const [now, setNow] = useState(() => serverNow());
+  useEffect(() => {
+    const t = setInterval(() => setNow(serverNow()), 60_000);
+    return () => clearInterval(t);
+  }, []);
   const waits = useMemo(() => {
     const all = groupWorks(rows);
     return (scope ? all.filter((w) => scopeHas(scope, w.bagts)) : all)

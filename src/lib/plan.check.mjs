@@ -48,7 +48,11 @@ assert.equal(live[3].end, d('2026-05-09'), 'дөрөв дэх блок +21 хо�
   const now = d('2026-06-01');
   const past = span('2026-05-01', '2026-05-10');
   const soon = span('2026-07-01', '2026-07-10');
-  assert.equal(statusOf(past, null, now), 'none', 'хэмжилтгүй нь «хоцорсон» БИШ');
+  /* 2026-11-23: хэмжигдээгүй = 0% — хугацаа нь өнгөрсөн бол ХОЦОРСОН; хугацаа болоогүй бол «none» хэвээр */
+  assert.equal(statusOf(past, null, now), 'late', 'хугацаа өнгөрсөн, хэмжигдээгүй ажил хоцорсон байх ёстой');
+  assert.equal(statusOf(past, undefined, now), 'late', 'undefined ч мөн адил');
+  assert.equal(statusOf(soon, null, now), 'none', 'хугацаа болоогүй, хэмжигдээгүй — «none»');
+  assert.equal(statusOf(span('2026-05-25', '2026-06-01'), null, now), 'none', 'өнөөдөр дуусах ажил хараахан хоцроогүй');
   assert.equal(statusOf(past, 0, now), 'late');
   assert.equal(statusOf(past, 1, now), 'done');
   assert.equal(statusOf(past, 0.5, now), 'late', 'хугацаа өнгөрсөн ч дуусаагүй');

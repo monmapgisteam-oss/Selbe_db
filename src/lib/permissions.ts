@@ -27,7 +27,9 @@ import {
 } from './services';
 import { capViewsOf, isWorkflowView, UNSAFE_KEY } from './caps';
 import { NEW_ACCOUNT_ROLE, _typesMark, roleAccess } from './roleTypes';
-import { currentUser, requireSuper, _setWhoRoleReader } from './who';
+import { currentUser, requireSuper, writeGuardsOn, _setWhoRoleReader } from './who';
+import { AUTH } from './services';
+import { t as tr } from './i18nCore';
 import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
 import { _setRoleReader, stageOfUser } from './guitsetgelAcl';
 
@@ -711,8 +713,34 @@ export function listRemoved(): string[] {
  * сэргээгдэнэ — `restoreUser`). 2026-10-23: панелаас нэмсэн ба хүснэгтийн super-т ч tombstone (доорх).
  * · Кодын (тестийн) SUPER — ТАТГАЛЗАНА; өөрийн super-ийг өөрөө устгахгүй.
  */
+/**
+ * АДМИНЫ МӨРИЙГ ЗӨВХӨН ҮНДСЭН АДМИН БИЧНЭ (2026-11-23, засвар). Админы мөр «итгэмжлэгдсэн админ сүүлд бичсэн» бол л хүчинтэй
+ * (`permsRemote.trustedSupers`). Үндсэн биш админ ӨӨРИЙН мөрөө хадгалбал сүүлд зассан хүн нь өөрөө болж итгэмжлэлээ алддаг,
+ * хоёр админ бие биеийн мөрийг засвал хоёулаа алддаг байв — тэдний хадгалсан бусад хүний мөр ч хүчингүй болж, хүмүүс нэвтэрч
+ * чадахгүй болно. Иймээс админ болгох · админы мөр засах · админаас хасахыг зөвхөн үндсэн админ хийнэ; бусад админ энгийн
+ * хэрэглэгчдийн эрхийг урьдын адил удирдана.
+ */
+const isRootAdmin = (u: string | null | undefined): boolean =>
+  (u ?? '').trim().toLowerCase() === BOOTSTRAP_SUPER.trim().toLowerCase() || isCodeSuper(u);
+function requireRootForAdminRow(username: string, nextRole: Role | null): void {
+  if (!writeGuardsOn() || typeof window === 'undefined' || !AUTH.appId) return;
+  if (nextRole !== 'super' && roleOf(username) !== 'super') return;
+  if (isRootAdmin(currentUser())) return;
+  throw new Error(tr('Админы эрхийн мөрийг зөвхөн үндсэн админ ({0}) засна.', BOOTSTRAP_SUPER));
+}
+/** Админ эрхээ алдахын өмнө түүний хадгалсан мөрүүдийг одоогийн (үндсэн) админы нэрээр дахин хадгална — `restampRowsOf` */
+const restampBefore = (username: string): Promise<void> =>
+  (writeGuardsOn() && typeof window !== 'undefined' && AUTH.appId
+    ? import('./permsRemote').then((m) => m.restampRowsOf(username)).then(() => undefined, () => undefined)
+    : Promise.resolve());
+
 export function removeUser(username: string): Promise<boolean> {
   requireSuper();
+  requireRootForAdminRow(username, null);
+  if (roleOf(username) === 'super' && !isCodeSuper(username)) return restampBefore(username).then(() => removeUserNow(username));
+  return removeUserNow(username);
+}
+function removeUserNow(username: string): Promise<boolean> {
   if (isCodeSuper(username)) return Promise.resolve(false);
   const key = username.trim().toLowerCase();
   const role = roleForUser(username);
@@ -753,11 +781,16 @@ export async function restoreUser(username: string): Promise<boolean> {
  */
 export function setUser(
   username: string, access: Access, role: Role | null = null, baseOf?: UserBase,
-  opts: { revive?: boolean } = {},
+  opts: { revive?: boolean; restamped?: boolean } = {},
 ): Promise<boolean> {
   requireSuper();
+  requireRootForAdminRow(username, role);
   const key = username.trim().toLowerCase();
   if (isCodeSuper(username)) return Promise.resolve(true);
+  /* Админаас хасах — түүний хадгалсан мөрүүдийг эхлээд дахин хадгална (эс бөгөөс тэдгээр хүчингүй болно) */
+  if (role !== 'super' && roleOf(username) === 'super' && !opts.restamped) {
+    return restampBefore(username).then(() => setUser(username, access, role, baseOf, { ...opts, restamped: true }));
+  }
   const boot = role === 'super' ? bootstrapOnlySuper() : null;
   if (boot && boot !== key) {
     /* 2026-11-20: анхны админ өөрийн мөрөнд «бүх харагдац» бичихээ больсон — одоогийн (суурь) харагдац нь хэвээр */
@@ -855,6 +888,7 @@ export function mergeUserDelta(base: UserBase | null, next: UserBase, fresh: Use
  */
 export function clearOverride(username: string, opts: { revive?: boolean } = {}): Promise<boolean> {
   requireSuper();
+  requireRootForAdminRow(username, null);
   const key = username.trim().toLowerCase();
   const revive = opts.revive === true;
   return serialWrite(key, async () => {

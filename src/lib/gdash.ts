@@ -1108,7 +1108,8 @@ export const loadHseNow = cached<HseNow | null>(async () => {
       }),
     ],
     orderBy: `${f.ognoo} DESC, ${EDIT_DATE_FIELD} DESC, ${OID_FIELD} DESC`,
-    limit: 10,
+    /* 2026-11-23 (засвар): 10 байсан — нэг өдөр 10-аас олон компани тусдаа маягт илгээвэл үлдсэн нь нэгтгэлд ордоггүй байв */
+    limit: 200,
   });
   const r = latestLaborRow(rows);
   if (!r) return null;

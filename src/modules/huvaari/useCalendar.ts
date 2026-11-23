@@ -2,20 +2,19 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { DAY, type PlanRow } from '@/lib/plan';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
 import { PL_OVER, PL_ROW, ZOOM, type Zoom } from './types';
-import { todayUtc } from './util';
+import { msToNextUbDay, todayUtc } from './util';
 
 const SANE_LO = Date.UTC(2000, 0, 1);
 const SANE_HI = Date.UTC(2100, 0, 1);
 
 /**
- * «ӨНӨӨДӨР» (UTC шөнө дундаар түлхүүрлэсэн ЛОКАЛ өдөр) — шөнө дунд бүрд шинэчлэгдэнэ.
+ * «ӨНӨӨДӨР» (UTC шөнө дундаар түлхүүрлэсэн УЛААНБААТАРЫН өдөр) — УБ-ын шөнө дунд бүрд шинэчлэгдэнэ.
+ * 2026-11-23 (засвар): хөтчийн локал өдөр байсныг `ubToday` (UTC+8) болгов — нэг дэлгэцэд «өнөөдөр» ганц тодорхойлолттой.
  */
 export function useToday(): number {
-  const [now, setNow] = useState(todayUtc);
+  const [now, setNow] = useState(() => todayUtc());
   useEffect(() => {
-    const d = new Date();
-    const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
-    const t = window.setTimeout(() => setNow(todayUtc()), Math.max(1000, next - d.getTime() + 1000));
+    const t = window.setTimeout(() => setNow(todayUtc()), Math.max(1000, msToNextUbDay() + 1000));
     return () => window.clearTimeout(t);
   }, [now]);
   return now;
