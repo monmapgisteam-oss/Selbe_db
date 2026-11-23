@@ -117,18 +117,20 @@ const deferred = () => {
   globalThis.window = win;
   const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
   let n = 0;
-  await Promise.all([import('@/lib/caps'), import('@/lib/chanarAcl')]);
+  /* 2026-11-23: `subscribeNavBadges` гурван модулийг (эрх · чанар · ХАБЭА) ачаалсны ДАРАА л дохионд бүртгүүлдэг. ХАБЭА-гийнх энд
+     урьдчилан ачаалагдаагүй байсан тул удаан машинд (CI) 100 мс-д амжихгүй, дохио алдагдаж шалгуур унадаг байв. */
+  await Promise.all([import('@/lib/caps'), import('@/lib/chanarAcl'), import('@/lib/habeaAcl')]);
   const off = subscribeNavBadges(() => { n += 1; }, 5);
-  await wait(100);
+  await wait(300);
   const capEvent = 'selbe-caps-change';
   const aclEvent = 'selbe-chanar-acl-change';
   win.dispatchEvent(new Event(capEvent));
   win.dispatchEvent(new Event(capEvent));
   win.dispatchEvent(new Event(aclEvent));
-  await wait(30);
+  await wait(150);
   assert.equal(n, 1, 'гурван дохио → нэг дахин тооцоо');
   win.dispatchEvent(new Event(aclEvent));
-  await wait(30);
+  await wait(150);
   assert.equal(n, 2, 'чанарын хуваарилалтын дохио → дахин тооцоо');
   off();
   win.dispatchEvent(new Event(capEvent));
