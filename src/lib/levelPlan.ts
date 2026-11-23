@@ -506,12 +506,19 @@ export type LinkEnd = { pkg: string; blok: string | null; phase: string | null; 
  * Ажлын нэг холбоос — Хуваарийн уялдаа (`hamaaral`, блок бүрээр) эсвэл багц хоорондын (`bagts_hamaaral`).
  * `id` — ажлын холбоосын ялгах тэмдэг (блокоор давтагдсаныг нэг тоолно).
  */
-export type WorkLink = { id: string; a: LinkEnd; b: LinkEnd; ss: boolean; viol: boolean };
+export type WorkLink = {
+  id: string; a: LinkEnd; b: LinkEnd; ss: boolean; viol: boolean;
+  /**
+   * ЧИГЛЭЛГҮЙ (2026-11-23): «Багцын хамаарал»-ын холбоо — урьдчилагч/хамаарагч гэж ялгахгүй, «холбоотой» л (дараалал нь
+   * Хуваарийн уялдаанаас). Сумгүй зурж, зөрчил тооцохгүй.
+   */
+  und?: boolean;
+};
 /**
  * Түвшний мөр хоорондын холбоос. `from`/`to` — мөрийн `lk`-ийн нэр дэвшигчид, нарийнаас бүдүүн рүү: харагдацад ЭХНИЙ
  * харагдаж буй мөр сонгогдоно (хураасан блокийн дэд бүлгийн холбоос блок дээр гарна). `ids`/`ss`/`viol` — ажлын холбоос.
  */
-export type RowLink = { from: string[]; to: string[]; ids: Set<string>; ss: Set<string>; viol: Set<string> };
+export type RowLink = { from: string[]; to: string[]; ids: Set<string>; ss: Set<string>; viol: Set<string>; und: Set<string> };
 
 /** Дэд үе шат / бүлгийн түлхүүр — `mergePhases`-ийн (№ + нэр) тааруулалттай ижил */
 export const phaseKey = (no: unknown, name: unknown): string => `${String(no ?? '').trim()}|${String(name ?? '').trim()}`;
@@ -578,8 +585,8 @@ export function sheetLinks(rows: readonly SheetRow[], pkg: string, bld: readonly
 export type CrossSheet = { p: string; pkg: string; rows: readonly SheetRow[]; bld: readonly string[]; bham: string | null };
 
 /**
- * Багц хоорондын ажлын холбоос (`bagts_hamaaral`, цэвэр) — блокгүй, FS. Зөрчил: хамаарагчийн хамгийн эрт эхлэх <
- * урьдчилагчийн хамгийн хожуу дуусах + 1 өдөр (блокуудаар).
+ * Багц хоорондын ажлын холбоос (`bagts_hamaaral`, цэвэр) — блокгүй, ЧИГЛЭЛГҮЙ (2026-11-23: «Багцын хамаарал»-д зөвхөн
+ * «холбоотой» гэж бүртгэнэ, урьд/хойд нь Хуваариас) — зөрчил тооцохгүй (`und`).
  */
 export function crossLinks(sheets: readonly CrossSheet[]): WorkLink[] {
   const g = buildGraph(sheets.map((sh) => ({
@@ -621,8 +628,8 @@ export function crossLinks(sheets: readonly CrossSheet[]): WorkLink[] {
     for (const ed of edges) {
       const a = ed.to ? endOf(ed.to) : null;
       if (!a) continue;
-      const viol = a.e != null && b.s != null && b.s < a.e + DAY;
-      out.push({ id: `x:${dep}>${ed.to}`, a, b, ss: false, viol });
+      /* Хос нэг id (чиглэлгүй) — хоёр хүн хоёр талд зэрэг хадгалсан ч нэг холбоо гэж тоолно */
+      out.push({ id: `x:${[dep, ed.to].sort().join('~')}`, a, b, ss: false, viol: false, und: true });
     }
   }
   return out;
@@ -679,12 +686,14 @@ export function levelLinks(links: readonly WorkLink[], lvl: number, pkgs: readon
     const from = cand(w.a);
     const to = cand(w.b);
     if (!from.length || !to.length) continue;
-    const k = `${from.join(',')}>${to.join(',')}`;
+    /* Чиглэлгүй (Багцын хамаарал) ба Хуваарийн уялдааг тусад нь — нийлбэл сумтай болж, тоо холилдоно */
+    const k = `${w.und ? 'u' : 'd'}|${from.join(',')}>${to.join(',')}`;
     let x = m.get(k);
-    if (!x) { x = { from, to, ids: new Set(), ss: new Set(), viol: new Set() }; m.set(k, x); }
+    if (!x) { x = { from, to, ids: new Set(), ss: new Set(), viol: new Set(), und: new Set() }; m.set(k, x); }
     x.ids.add(w.id);
     if (w.ss) x.ss.add(w.id);
     if (w.viol) x.viol.add(w.id);
+    if (w.und) x.und.add(w.id);
   }
   return [...m.values()];
 }

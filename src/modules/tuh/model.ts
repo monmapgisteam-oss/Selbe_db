@@ -169,6 +169,17 @@ export function depRows(m: Pick<TuhModel, 'rows' | 'deps'>, key: string, dir: 'u
 }
 
 /**
+ * Холбоотой багцууд — ЧИГЛЭЛГҮЙ (2026-11-23: «Багцын хамаарал» зөвхөн «холбоотой» гэж бүртгэнэ, дараалал «Хуваарь»-аас):
+ * урд ба ард талынхыг нэгтгэж, давхардалгүй.
+ */
+export function linkedRows(m: Pick<TuhModel, 'rows' | 'deps'>, key: string): TuhRow[] | null {
+  const up = depRows(m, key, 'up');
+  const down = depRows(m, key, 'down');
+  if (up == null || down == null) return null;
+  return [...new Set([...up, ...down])];
+}
+
+/**
  * Улсын комиссын огнооны ДЭЛГЭЦИЙН текст.
  */
 export function commissionText(m: Pick<TuhModel, 'loading'>, r: Pick<TuhRow, 'commission' | 'commissionPartial' | 'handover'>): string {

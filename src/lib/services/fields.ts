@@ -69,6 +69,10 @@ export const BUILDING = {
     floors: "davhar",
     households: "ail_too",
     type: "torol",
+    /** Дулаан авах — ТӨЛӨВЛӨСӨН огноо (2026-11-23 нэмэв; «Дулаан авах огноо» цэсэнд засна) */
+    heatPlan: "dulaan_avah_ognoo",
+    /** Дулаан авсан — БОДИТ огноо */
+    heatDone: "dulaan_avsan_ognoo",
   },
 } as const;
 

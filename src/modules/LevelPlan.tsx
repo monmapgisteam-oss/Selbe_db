@@ -456,21 +456,33 @@ function LinkLayer({ wRef, sig, links }: { wRef: RefObject<HTMLDivElement | null
   }, [wRef, sig]);
   const paths = useMemo(() => {
     if (!geo) return [];
-    const m = new Map<string, { a: LinkGeo; b: LinkGeo; ids: Set<string>; ss: Set<string>; viol: Set<string> }>();
+    const m = new Map<string, { a: LinkGeo; b: LinkGeo; ids: Set<string>; ss: Set<string>; viol: Set<string>; und: Set<string> }>();
     for (const l of links) {
-      const f = l.from.find((k) => geo.rows.has(k));
-      const t = l.to.find((k) => geo.rows.has(k));
+      let f = l.from.find((k) => geo.rows.has(k));
+      let t = l.to.find((k) => geo.rows.has(k));
       if (!f || !t || f === t) continue;
-      const k = `${f}>${t}`;
+      /* Чиглэлгүй (Багцын хамаарал) — хос нэг зураас: дээд мөрөөс доод руу */
+      const und = l.und.size === l.ids.size;
+      if (und && geo.rows.get(f)!.y > geo.rows.get(t)!.y) [f, t] = [t, f];
+      const k = `${und ? 'u' : 'd'}:${f}>${t}`;
       const x = m.get(k);
-      if (!x) { m.set(k, { a: geo.rows.get(f)!, b: geo.rows.get(t)!, ids: new Set(l.ids), ss: new Set(l.ss), viol: new Set(l.viol) }); continue; }
+      if (!x) { m.set(k, { a: geo.rows.get(f)!, b: geo.rows.get(t)!, ids: new Set(l.ids), ss: new Set(l.ss), viol: new Set(l.viol), und: new Set(l.und) }); continue; }
       l.ids.forEach((id) => x.ids.add(id));
       l.ss.forEach((id) => x.ss.add(id));
       l.viol.forEach((id) => x.viol.add(id));
+      l.und.forEach((id) => x.und.add(id));
     }
-    return [...m].map(([key, { a, b, ids, ss, viol }]) => {
+    return [...m].map(([key, { a, b, ids, ss, viol, und }]) => {
       const tx = b.x0;
       let d: string;
+      if (und.size === ids.size) {
+        /* Чиглэлгүй — хоёр мөрийн зүүн захыг зүүн талаар холбоно (сумгүй) */
+        const lx = Math.min(a.x0, b.x0) - 10;
+        return {
+          key, d: `M ${a.x0} ${a.y} H ${lx} V ${b.y} H ${b.x0}`, bad: false, und: true,
+          tip: [`${a.name} ↔ ${b.name}`, tr('{0} багц хоорондын холбоо', ids.size)].join(' · '),
+        };
+      }
       if (ss.size < ids.size) {
         const sx = a.x1;
         d = tx >= sx + 10
@@ -485,7 +497,7 @@ function LinkLayer({ wRef, sig, links }: { wRef: RefObject<HTMLDivElement | null
         tr('{0} ажлын холбоос', ids.size) + (ss.size ? ` (SS ${ss.size})` : ''),
         viol.size ? tr('{0} нь зөрчилтэй — хамаарагч ажил урьдчилагчаасаа эрт эхэлсэн', viol.size) : null,
       ].filter(Boolean).join(' · ');
-      return { key, d, bad: viol.size > 0, tip };
+      return { key, d, bad: viol.size > 0, und: false, tip };
     });
   }, [geo, links]);
   if (!geo || !paths.length) return null;
@@ -500,7 +512,7 @@ function LinkLayer({ wRef, sig, links }: { wRef: RefObject<HTMLDivElement | null
       </defs>
       {paths.map((p) => (
         <g key={p.key}>
-          <path d={p.d} className={p.bad ? s.lkBad : s.lkLine} markerEnd={`url(#lvLkArr${p.bad ? 1 : 0})`} />
+          <path d={p.d} className={p.und ? s.lkUnd : p.bad ? s.lkBad : s.lkLine} markerEnd={p.und ? undefined : `url(#lvLkArr${p.bad ? 1 : 0})`} />
           <path d={p.d} className={s.lkHit}><title>{p.tip}</title></path>
         </g>
       ))}

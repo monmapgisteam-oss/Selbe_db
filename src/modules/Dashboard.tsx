@@ -1352,7 +1352,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
 
       {/* НИЙГМИЙН БАЙГУУЛАМЖ — дээд зурваст нийт тоо (11 ш) л байсан; ямар
           төрлийн, ямар хүчин чадалтай нь задраагүй байв. */}
-      <Panel title={tr('Нийгмийн байгууламж')} note={tr('төрлөөр · хүчин чадал')}>
+      <Panel key="zBottom-13" title={tr('Нийгмийн байгууламж')} note={tr('төрлөөр · хүчин чадал')}>
         <Data q={d.social} loading={tr('Татаж байна…')}>
           {(sc) => (sc.rows.length ? (
             <Bars
@@ -1370,7 +1370,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
 
       {/* ТӨСӨВ АЖЛЫН ТӨРЛӨӨР — дээд зурваст төслийн НИЙТ төсөв гэсэн НЭГ тоо
           л байсан; тэр мөнгө ЮУНД зарцуулагдахыг задлаагүй байв. */}
-      <Panel title={tr('Төсөв ажлын төрлөөр')} note={tr('₮')}>
+      <Panel key="zBottom-12" title={tr('Төсөв ажлын төрлөөр')} note={tr('₮')}>
         <Data q={d.budget} loading={tr('Татаж байна…')}>
           {(bg) => (bg.byType.length ? (
             <Bars
@@ -1403,7 +1403,7 @@ function ScopeDetail({ bagts, d, flt, onFlt }: {
       {/* ГҮЙЦЭТГЭГЧИЙН ХАРЬЯАЛАЛ — `origin` (Гадаад / Үндэсний) нь зөвхөн 04
           хэсгийн шошгонд орж байсан; цар хүрээнд «хэн барьж байна» гэдэг нь
           бие даасан асуулт. */}
-      <Panel title={tr('Гүйцэтгэгчийн харьяалал')} note={tr('багцын тоо')}>
+      <Panel key="zBottom-11" title={tr('Гүйцэтгэгчийн харьяалал')} note={tr('багцын тоо')}>
         <Data q={bagts} loading={tr('Татаж байна…')}>
           {(rows) => {
             const m = new Map<string, number>();
@@ -2169,7 +2169,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
         />
       </Panel>
 
-      <Panel title={tr('Барилга угсралтын явц')} note={tr('сараар · бүх блокийн сүүлийн утгаар (тайлангүй блок 0%)')}>
+      <Panel key="zBottom-17" title={tr('Барилга угсралтын явц')} note={tr('сараар · бүх блокийн сүүлийн утгаар (тайлангүй блок 0%)')}>
         <Data q={hist} loading={tr('Бүртгэлийн түүхийг уншиж байна…')}>
           {(h) => (
             <Trend
@@ -2286,7 +2286,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
 
       {/* БЛОКИЙН ТАРХАЛТ — «дундаж 27.6%» гэсэн нэг тоо нь 113 блок дунджаараа
           явж байгаа мэт сэтгэгдэл төрүүлдэг; бодит тархалт өөр. */}
-      <Panel title={tr('Блокийн гүйцэтгэл — түвшнээр')} note={tr('блокийн тоо (тайлангүй блок 0%)')}>
+      <Panel key="zBottom-18" title={tr('Блокийн гүйцэтгэл — түвшнээр')} note={tr('блокийн тоо (тайлангүй блок 0%)')}>
         <Data q={prog} loading={tr('Татаж байна…')}>
           {(pm) => {
             const counts = levelCounts(pm, rows);
@@ -2307,7 +2307,7 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
 
       {/* ТАЙЛАГНАЛТЫН БҮРЭН БАЙДАЛ — багц бүрд хэдэн блок тайлангүй үлдсэн.
           `missing` нь дээд зурваст НИЙЛБЭР болж л гардаг байв. */}
-      <Panel title={tr('Тайлангүй блок — багцаар')} note={tr('бүртгэгдээгүй')}>
+      <Panel key="zBottom-19" title={tr('Тайлангүй блок — багцаар')} note={tr('бүртгэгдээгүй')}>
         {(() => {
           const list = rows
             .map((r) => ({ key: r.key, label: tr(r.label), n: r.missing ?? 0 }))
@@ -2393,7 +2393,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
         </Data>
       </Panel>
 
-      <Panel title={tr('Чөлөөлөлтийн хувь')}>
+      <Panel key="zBottom-14" title={tr('Чөлөөлөлтийн хувь')}>
         <Data q={land} loading={tr('Татаж байна…')}>
           {(ls) => <RingCard value={ls.pct} label={tr('чөлөөлсөн')} color="var(--good)" />}
         </Data>
@@ -2541,7 +2541,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
 
       {/* ҮЛДСЭН ТАЛБАРЫН ХЭМЖЭЭ — «171 талбар» гэсэн тоо нь ажлын эзэлхүүнийг
           хэлдэггүй: 171 жижиг хашаа vs 171 том талбай тэс өөр ачаалал. */}
-      <Panel title={tr('Үлдсэн талбарын хэмжээ')} note={tr('м² · талбарын тоо')}>
+      <Panel key="zBottom-15" title={tr('Үлдсэн талбарын хэмжээ')} note={tr('м² · талбарын тоо')}>
         <Data q={parcels} loading={tr('Татаж байна…')}>
           {(rows) => {
             const BUCKETS = [
@@ -2620,7 +2620,7 @@ function LandDetail({ parcels, land, flt, onFlt }: {
           хэлнэ. Гэвч «Нийт 96.52 га» гэсэн тэмдэглэл дэх зөрүү яг эндээс
           гарна: 1,000 м²-ээс дээш талбарууд тоогоор цөөн ч талбайгаар
           хамаагүй их эзэлнэ. Тоо ба талбайг ЗЭРЭГЦҮҮЛЖ харуулна. */}
-      <Panel title={tr('Талбайн хэмжээ — бүлгээр')} note={tr('га · бүх талбар')}>
+      <Panel key="zBottom-16" title={tr('Талбайн хэмжээ — бүлгээр')} note={tr('га · бүх талбар')}>
         <Data q={parcels} loading={tr('Татаж байна…')}>
           {(rows) => {
             const BUCKETS = [
@@ -2974,7 +2974,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
       {/* 2026-08-21 (хэрэглэгчийн хүсэлт): 4 нүдэн Stats байсныг ТӨРЛӨӨР нь
           ТУСДАА ХОЁР донат-карт болгов — зүсмэг бүр = байгууламж, гол нь нийт
           чадал. Нэгж зөрдөг (МВт vs м³/хон) тул нэг диаграмд нийлэхгүй. */}
-      <Panel title={tr('Дулааны эх үүсвэрийн чадал')}>
+      <Panel key="zBottom-20" title={tr('Дулааны эх үүсвэрийн чадал')}>
         <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')} minH={220}>
           {(rows) => {
             const F = SOURCE_FS.fields;
@@ -3014,7 +3014,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
           }}
         </Data>
       </Panel>
-      <Panel title={tr('Ус хангамжийн эх үүсвэрийн чадал')}>
+      <Panel key="zBottom-21" title={tr('Ус хангамжийн эх үүсвэрийн чадал')}>
         <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')} minH={220}>
           {(rows) => {
             const F = SOURCE_FS.fields;
@@ -3078,7 +3078,7 @@ function NetworkDetail({ bagts, sources, netTotals, zone, flt, onFlt }: {
           байгууламж. Тэднийг нэг жагсаалтад холивол «Багц 5.3 хамгийн том»
           гэсэн дүгнэлт гарах ч тэр нь зөвхөн хорооллын шугамуудын дунд үнэн.
           Хоёрхон бүлэг тул донат (≤3 дүрэм), нэг өнгөний сүүдрээр. */}
-      <Panel title={tr('Хороолол vs магистраль')} note={tr('шугамын урт, км')}>
+      <Panel key="zBottom-22" title={tr('Хороолол vs магистраль')} note={tr('шугамын урт, км')}>
         <Data q={netQ} loading={tr('Татаж байна…')}>
           {() => {
             const isLocal = (k: string) => /^БАГЦ5[1-4]$/.test(k);
@@ -3435,7 +3435,7 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
           нэг жагсаалтад холивол «Багц 6.4 хамгийн олон объекттой» гэсэн
           дүгнэлт гарах ч тэр нь өөр төрлийн ажлуудыг жишсэн хэрэг.
           Хоёрхон бүлэг тул донат (≤3 дүрэм), нэг өнгөний сүүдрээр. */}
-      <Panel title={tr('Кабелийн шугам vs ХТП/РП')} note={tr('объектын тоо')}>
+      <Panel key="zBottom-23" title={tr('Кабелийн шугам vs ХТП/РП')} note={tr('объектын тоо')}>
         <Data q={powQ} loading={tr('Татаж байна…')}>
           {() => {
             const isLine = (k: string) => /^БАГЦ6[1-4]$/.test(k);
@@ -3505,7 +3505,7 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
           хүснэгтэд өөр хэрэглэгчид ч бий: олон нийтийн бүс, сургууль,
           цэцэрлэг, одоо байгаа хэрэглэгч. Тэднийг харуулахгүй бол 14.19 МВт
           нь сүлжээний БҮХ ачаалал мэт уншигдана. */}
-      <Panel title={tr('Чадлын хуваарилалт — хэрэглэгчийн бүлгээр')} note={tr('МВт · хуваарилсан дүнгээс')}>
+      <Panel key="zBottom-25" title={tr('Чадлын хуваарилалт — хэрэглэгчийн бүлгээр')} note={tr('МВт · хуваарилсан дүнгээс')}>
         <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')}>
           {(rows) => {
             const F = SOURCE_FS.fields;
@@ -3543,7 +3543,7 @@ function PowerDetail({ sources, prog, powTotals, flt, onFlt }: {
 
       {/* ДЭД СТАНЦЫН АЧААЛАЛ — станц бүрийн ЗАРЛАСАН чадал ба түүн рүү
           бүртгэгдсэн хэрэглэгчийн нийлбэрийг ЗЭРЭГЦҮҮЛНЭ. */}
-      <Panel title={tr('Дэд станцын ачаалал')} note={tr('зарласан чадал / бүртгэгдсэн хэрэглэгч, МВт')}>
+      <Panel key="zBottom-24" title={tr('Дэд станцын ачаалал')} note={tr('зарласан чадал / бүртгэгдсэн хэрэглэгч, МВт')}>
         <Data q={sources} loading={tr('Эх үүсвэрийг татаж байна…')}>
           {(rows) => {
             const F = SOURCE_FS.fields;
@@ -3740,7 +3740,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
           «Дулаан 91.8 МВт». Гэвч тэр 91.8-ын 52% нь ХАРААХАН БАРИГДААГҮЙ
           станцынх. Төлвөөр нь салгаж харуулахгүй бол өнөөдрийн хүчин чадал
           ирээдүйн чадалтай нэг мөрөнд уншигдана. */}
-      <Panel title={tr('Чадлын бэлэн байдал — төрлөөр')} note={tr('ашиглалтад байгаа хувь')}>
+      <Panel key="zBottom-26" title={tr('Чадлын бэлэн байдал — төрлөөр')} note={tr('ашиглалтад байгаа хувь')}>
         {(() => {
           const list = types
             .filter((ty) => !ty.includes('Ус'))
@@ -3832,7 +3832,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
           гүйлгэх шаардлагатай. Энэ нь тэр гурвыг НЭГ мөрөнд нийлүүлж, багц
           дулаанд нэг байр эзэлж атал цахилгаанд өөр байранд байвал шууд
           харагдана — тэр зөрүү нь ихэвчлэн бүртгэлийн алдааны шинж. */}
-      <Panel title={tr('Багцын эзлэх хувь — дулаан · цахилгаан · ус')} note={tr('хуваарилсан дүнгээс')}>
+      <Panel key="zBottom-27" title={tr('Багцын эзлэх хувь — дулаан · цахилгаан · ус')} note={tr('хуваарилсан дүнгээс')}>
         {(() => {
           const shareOf = (typePrefix: string, field: string) => {
             const facs = rows.filter((r) => srcStr(r[F.type]).startsWith(typePrefix));
@@ -3869,7 +3869,7 @@ function SourceDetail({ sources, d, flt, onFlt }: { sources: Async<Row[]>; d: Da
         })()}
       </Panel>
 
-      <Panel title={tr('Хангамжийн хүрэлцээ — нэгжид ногдох')}>
+      <Panel key="zBottom-31" title={tr('Хангамжийн хүрэлцээ — нэгжид ногдох')}>
         {(() => {
           const h = d.headline.state === 'ready' ? d.headline.data : null;
           const ailT = d.bagts.state === 'ready' ? ailTotal(d.bagts.data) : null;
@@ -4201,7 +4201,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
 
       {/* `capacity` нь өнөөдөр дээрх картын `display`-д ТЕКСТ л байдаг. 3 сургууль
           ба 3,780 суудал бол ӨӨР хоёр түүх — тусад нь зурна. */}
-      <Panel title={tr('Хүчин чадал — суудал, орны тоо')}>
+      <Panel key="zBottom-29" title={tr('Хүчин чадал — суудал, орны тоо')}>
         {soc == null ? <Pending failed={d.social.state === 'error'} label={tr('Татаж байна…')} /> : (() => {
           const withCap = soc.rows.filter((r) => r.capacity != null && r.capacity > 0);
           if (!withCap.length) return <Empty label={tr('Хүчин чадлын талбар бөглөгдөөгүй.')} />;
@@ -4353,7 +4353,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           хангалттай эсэхийг хэлдэггүй. Хүн амд харьцуулсан үед л норматив
           яриа болно: 43,287 хүнд ногдох сургуулийн суудал, цэцэрлэгийн ор.
           Ногоон байгууламжийн «13.6 м²/хүн»-тэй ИЖИЛ логик. */}
-      <Panel title={tr('1,000 хүнд ногдох хүчин чадал')} note={tr('шинэ орон сууцны хүн амаар')}>
+      <Panel key="zBottom-30" title={tr('1,000 хүнд ногдох хүчин чадал')} note={tr('шинэ орон сууцны хүн амаар')}>
         {(() => {
           if (soc == null || h == null) {
             return <Pending failed={d.social.state === 'error' || d.headline.state === 'error'} label={tr('Татаж байна…')} />;
@@ -4392,7 +4392,7 @@ export function BenefitDetail({ bagts, d, flt, onFlt }: { bagts: Async<BagtsRow[
           «төслийн хэдэн хувь вэ» гэсэн асуултад шууд хариулдаггүй. Нийгмийн
           дэд бүтцийн харагдац дээр яг тэр харьцаа хэрэгтэй: иргэдэд хамгийн
           ойр байгууламжууд төсвийн ямар хэсгийг эзэлж байна вэ. */}
-      <Panel title={tr('Төсөвт эзлэх нийгмийн дэд бүтэц')} note={tr('НИЙТ ба нийгмийн дэд бүтцийн төсөвт өртөгөөс')}>
+      <Panel key="zBottom-28" title={tr('Төсөвт эзлэх нийгмийн дэд бүтэц')} note={tr('НИЙТ ба нийгмийн дэд бүтцийн төсөвт өртөгөөс')}>
         <Data q={d.budget} loading={tr('Татаж байна…')}>
           {(bg2) => {
             /* Ажлын төрлөөс — давхаргагүй 20.6–20.9 багц ч орно («Ажлын төрлөөр» самбартай НЭГ дүн) */

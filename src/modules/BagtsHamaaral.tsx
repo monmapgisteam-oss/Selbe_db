@@ -2,6 +2,22 @@
 
 /**
  * «БАГЦЫН ХАМААРАЛ» — БАГЦ ХООРОНДЫН АЖЛЫН ХАМААРАЛ (2026-10-22, дахин бүтээв).
+ *
+ * 2026-11-23 (хэрэглэгч: «SS FS гэж хамааруулдгийг бүрэн хасаж зөвхөн бүлгээр хамаарал хийдэг болго», «bar нь хугацаа
+ * биш ажлын нэрүүд байж болохоор багцууд арагш цуварна, харин хооронд нь холбоно») — уялдааны төрөл · хоног ХАСАГДСАН.
+ * Багц бүр нэг БАГАНА (зүүнээс баруун тийш цуварна), багана дотор 3-р давхрын бүлгүүд нэрээрээ хайрцаг болж, холбоо нь
+ * хайрцаг хоорондын сумаар харагдана:
+ *
+ *   ┌ Багц-1 · 9 давхар ┐        ┌ Багц-5.1 ─────────┐
+ *   │ Б1 · Суурь        │───────▶│ Б1 · Шугам        │
+ *   │ Б1 · Рам          │        │ Б2 · Худаг        │
+ *   └───────────────────┘        └───────────────────┘
+ *
+ * «Засах» → хайрцаг сонгоод түүнтэй холбох (эсвэл холбоог арилгах) хайрцгуудыг дараалан дарна → «Хадгалах» (бүгд нэг дор).
+ *
+ * 2026-11-23 (3): «зөвхөн хамааруулна, урд хойдох ажлын хуваариас хамаарна, хуваарь ард нь байхад хамаарлаар урд нь гэж
+ * буруу болох магадлалтай, зөвхөн хамаарал» — ЧИГЛЭЛГҮЙ: урьдчилагч/хамаарах гэж ялгахгүй, «холбоотой» л. Дараалал нь
+ * «Хуваарь»-аас. Бичлэгт холбоо нэг талын мөрд (бичих боломжтой хуудас) хадгалагдах ч утга нь хоёр талдаа ижил.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { t as tr } from '@/lib/i18nCore';
@@ -11,16 +27,17 @@ import { hasCap, subscribeCaps } from '@/lib/caps';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
 import { bagtsKey } from '@/lib/services';
 import {
-  LAG_MAX, depLabel, dependentsOf, legacyCovered, legacyPkgKey, linkSectionsOf, nodeMatches, pkgPairs, refKind, refLag, refOf,
-  type Edge, type NodeId, type RefChange, type WNode, type WorkGraph, type WorkRef,
+  legacyCovered, legacyPkgKey, linkError, linkableIds, pkgPairs, refOf,
+  type Edge, type NodeId, type WNode, type WorkGraph, type WorkRef,
 } from '@/lib/workDeps';
 import { dropWorkCache, loadWorkData, saveWorkLinks, sheetsOfPkgKey } from '@/lib/workDepsRemote';
 import { loadLegacyDeps, removeLegacyDeps, type Dep } from '@/lib/bagtsHamaaral';
 import { useAuth } from '@/components/AuthGate';
 import { friendlyError, userError, Loading } from '@/components/ui';
-import { askConfirm, toastUndo } from '@/lib/confirm';
+import { askConfirm } from '@/lib/confirm';
 import { setNavDirty } from '@/lib/navGuard';
 import s from './bagtsHamaaral.module.css';
+
 
 /**
  * Хуучин холбооны түлхүүрийн дэлгэцийн нэр — бөглөх хуудасны багцын бүлэг (`PKGS.group`), орчуулсан.
@@ -34,13 +51,23 @@ const legacyLabel = (k: string): string => {
 const pkgLabel = (p: string): string => PKGS.find((x) => x.key === p)?.label ?? p;
 const nodeLabel = (n: Pick<WNode, 'path' | 'work'> & { group?: boolean }): string =>
   `${n.path.map((x) => x.trim() || tr('(нэргүй бүлэг)')).join(' → ')} «${n.work.trim() || (n.group ? tr('(нэргүй бүлэг)') : tr('(нэргүй ажил)'))}»`;
-/** Урьдчилагчийн хуудас — тулгагдаагүй бол холбоосын `p` */
-const edgePkg = (g: WorkGraph, e: Edge): string => (e.to ? g.nodes.get(e.to)?.p ?? e.ref.p : e.ref.p);
+/** Зурвасын мөрийн богино нэр — № · нэр */
+const shortLabel = (n: WNode): string => `${n.no.trim() ? `${n.no.trim()} · ` : ''}${n.work.trim() || tr('(нэргүй бүлэг)')}`;
 const whyText = (e: Edge): string => (e.why === 'unloaded'
   ? tr('хуудас уншигдаагүй')
   : e.why === 'ambiguous'
     ? tr('ижил нэртэй мөр нэмэгдсэн/хасагдсан — аль нь болохыг тодорхойлж чадсангүй')
     : tr('ажил олдсонгүй (устсан эсвэл нэр нь өөрчлөгдсөн)'));
+
+/**
+ * Харагдах холбоо (чиглэлгүй) — хадгалсан (`saved`), хадгалахаар нэмсэн (`add`), устгахаар тэмдэглэсэн (`del`).
+ * `host` — холбоосыг хадгалдаг мөр (бичлэг нэг талд), `ref` — тэр мөрийн бичлэг дэх холбоос.
+ */
+type Line = { key: string; pair: string; a: NodeId; b: NodeId; host: NodeId; ref: WorkRef; kind: 'saved' | 'add' | 'del' };
+/** Өнчин холбоос — нөгөө тал нь олдохгүй (зөвхөн устгаж болно) */
+type Orphan = { key: string; host: NodeId; e: Edge; del: boolean };
+const pairOf = (a: NodeId, b: NodeId): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
+const refKeyOf = (r: WorkRef): string => `${r.p}|${r.k}|${r.o ?? 0}`;
 
 export function BagtsHamaaral() {
   const dataQ = useAsync(loadWorkData, []);
@@ -51,39 +78,67 @@ export function BagtsHamaaral() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио (`Zovshoorol`-той ижил)
   const canEdit = useMemo(() => hasCap(user?.username, 'hamaaral'), [user, capN]);
 
-  /** А — хамаарах ажлын хуудас; Б — урьдчилагчийн хуудас (засварт) */
-  const [pA, setPA] = useState<string>(PKGS[0]?.key ?? '');
-  const [pB, setPB] = useState<string>('');
+  /**
+   * 2026-11-23 (хэрэглэгч: «хамаарал гэсэн ганцхан хэсэг байхад болно, бүх багц шууд харагдана, засах дарж холбоно, засна;
+   * бусад үед бүх багц холбоосоор харагдаж байна — маш энгийн») — БҮХ хуудас багана болж шууд харагдана; таб · багц
+   * сонгогч · хайлт · хүснэгт · эрсдэл хасагдсан.
+   */
+  const shown = useMemo(() => PKGS.map((x) => x.key), []);
   const [sel, setSel] = useState<NodeId | null>(null);
-  const [qA, setQA] = useState('');
-  /** Тоймоос шүүлт — А-гийн зөвхөн энэ хуудаснаас хамаардаг ажлууд */
-  const [flt, setFlt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
-  const editorRef = useRef<HTMLDivElement | null>(null);
-  const pickDirtyRef = useRef(0);
-  const onPickDirty = useCallback((n: number) => {
-    pickDirtyRef.current = n;
-    setNavDirty('hamaaral-pick', n > 0, tr('Хадгалаагүй урьдчилагчийн сонголт'));
-  }, []);
-  useEffect(() => () => setNavDirty('hamaaral-pick', false), []);
-  const guard = useCallback(async (): Promise<boolean> => {
-    const n = pickDirtyRef.current;
-    return n === 0 || askConfirm(tr('Хадгалаагүй {0} сонголт хаягдана. Үргэлжлүүлэх үү?', num(n)), { danger: true, ok: tr('Хаях') });
-  }, []);
+  /** ЗАСАХ ГОРИМ (2026-11-23: «засах болон хадгалах товчтой болго») — өөрчлөлт «Хадгалах» дарах хүртэл зөвхөн энд */
+  const [editing, setEditing] = useState(false);
+  const [adds, setAdds] = useState<Line[]>([]);
+  /** Устгахаар тэмдэглэсэн холбоос — түлхүүр → хадгалдаг мөр */
+  const [dels, setDels] = useState<Map<string, NodeId>>(() => new Map());
+  /** «↶ Буцаах» — өөрчлөлт бүрийн өмнөх төлөв (сүүлийнхээс нь буцаана) */
+  const [hist, setHist] = useState<{ adds: Line[]; dels: Map<string, NodeId> }[]>([]);
+  const ganttRef = useRef<HTMLElement | null>(null);
+  /** Үр дүнгийн мэдэгдэл — гарахад харагдах хэсэгт гүйлгэнэ */
+  const noteRef = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => { if (err || msg) noteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [err, msg]);
 
   const data = dataQ.state === 'ready' ? dataQ.data : null;
   const g = data?.graph ?? null;
   const sheetOf = useMemo(() => new Map((data?.sheets ?? []).map((x) => [x.pkg.key, x] as const)), [data]);
-  const pairs = useMemo(() => (g ? pkgPairs(g).sort((a, b) => b.n - a.n || pkgLabel(a.to).localeCompare(pkgLabel(b.to), 'mn')) : []), [g]);
-  const total = useMemo(() => (g ? [...g.pre.values()].reduce((a, e) => a + e.length, 0) : 0), [g]);
+  const pairs = useMemo(() => (g ? pkgPairs(g) : []), [g]);
+  const total = useMemo(() => (g ? [...g.pre.values()].reduce((a, e) => a + e.filter((x) => x.to).length, 0) : 0), [g]);
   const failed = useMemo(() => (data?.sheets ?? []).filter((x) => x.error), [data]);
   const missing = useMemo(() => (data?.sheets ?? []).filter((x) => !x.error && !x.field), [data]);
-  const blocked = failed.length > 0;
-  const canWriteA = canEdit && !blocked && !!sheetOf.get(pA)?.field;
+  /** Хуудсанд бичих боломж (талбартай · бүх хуудас уншигдсан · эрхтэй) */
+  const canWriteSheet = useCallback((p: string) => canEdit && !!sheetOf.get(p)?.field, [canEdit, sheetOf]);
   const selNode = g && sel ? g.nodes.get(sel) ?? null : null;
-  const orphans = useMemo(() => (g ? [...g.pre].flatMap(([id, es]) => es.filter((e) => !e.to).map((e) => ({ id, e }))) : []), [g]);
+
+  /* ── Хадгалсан холбоо + засварын өөрчлөлт ── */
+  const saved = useMemo<Line[]>(() => (g ? [...g.pre].flatMap(([host, es]) => es.flatMap((e) => (e.to
+    ? [{ key: `${host}#${refKeyOf(e.ref)}`, pair: pairOf(host, e.to), a: host, b: e.to, host, ref: e.ref, kind: 'saved' as const }]
+    : []))) : []), [g]);
+  const orphans = useMemo<Orphan[]>(() => (g ? [...g.pre].flatMap(([host, es]) => es.filter((e) => !e.to)
+    .map((e) => ({ key: `${host}#${refKeyOf(e.ref)}`, host, e, del: dels.has(`${host}#${refKeyOf(e.ref)}`) }))) : []), [g, dels]);
+  const lines = useMemo<Line[]>(() => [
+    ...saved.map((l) => (dels.has(l.key) ? { ...l, kind: 'del' as const } : l)),
+    ...adds,
+  ], [saved, adds, dels]);
+  const dirty = adds.length + dels.size;
+  /*
+   * Граф шинэчлэгдэхэд (хадгалсны дараа · «Дахин ачаалах» · бусдын засвар) — аль хэдийн хадгалагдсан нэмэлт, алга болсон
+   * холбоосын устгалтыг хүлээгдэж буйгаас хасна; буцаах түүх хуучирсан тул цэвэрлэнэ (хуурамч «−N» · давхар «нэмэх» гарахгүй).
+   */
+  const [seenG, setSeenG] = useState(g);
+  if (g !== seenG) {
+    setSeenG(g);
+    const alive = new Set(g ? [...g.pre].flatMap(([host, es]) => es.map((e) => `${host}#${refKeyOf(e.ref)}`)) : []);
+    const savedPairs = new Set(saved.map((l) => l.pair));
+    if ([...dels.keys()].some((k) => !alive.has(k))) setDels(new Map([...dels].filter(([k]) => alive.has(k))));
+    if (adds.some((l) => savedPairs.has(l.pair))) setAdds(adds.filter((l) => !savedPairs.has(l.pair)));
+    if (hist.length) setHist([]);
+  }
+  useEffect(() => {
+    setNavDirty('hamaaral-edit', dirty > 0, tr('Хадгалаагүй холбоо'));
+  }, [dirty]);
+  useEffect(() => () => setNavDirty('hamaaral-edit', false), []);
 
   /* ── Хуучин багц ↔ багц холбоос (шилжүүлэлт) ── */
   const legacy = useMemo<Dep[]>(() => (legacyQ.state === 'ready' ? legacyQ.data.deps : []), [legacyQ]);
@@ -91,7 +146,7 @@ export function BagtsHamaaral() {
   const tried = useRef(new Set<string>());
   useEffect(() => {
     if (!canEdit || !g || legacyQ.state !== 'ready') return;
-    const cov = legacy.filter((d) => legacyCovered(pairs, d, sheetsOfPkgKey) && !tried.current.has(`${d.from}>${d.to}`));
+    const cov = legacy.filter((d) => (legacyCovered(pairs, d, sheetsOfPkgKey) || legacyCovered(pairs, { ...d, from: d.to, to: d.from }, sheetsOfPkgKey)) && !tried.current.has(`${d.from}>${d.to}`));
     if (!cov.length) return;
     for (const d of cov) tried.current.add(`${d.from}>${d.to}`);
     void removeLegacyDeps(cov).then((r) => {
@@ -115,64 +170,150 @@ export function BagtsHamaaral() {
     }
   }, [retryLegacy]);
 
-  const migrate = useCallback(async (d: Dep) => {
+  /** Хуучин холбоог шилжүүлэх — багануудын хэсэг рүү гүйлгэнэ (бүх багц харагдаж байгаа) */
+  const migrate = useCallback((d: Dep) => {
     const pre = sheetsOfPkgKey(legacyPkgKey(d.from));
     const post = sheetsOfPkgKey(legacyPkgKey(d.to));
     if (!pre.length || !post.length) return;
-    if (!(await guard())) return;
-    setPA(post[0]);
-    setPB(pre[0]);
+    /* Хуучин холбооны эхний багцын багана руу гүйлгэнэ — тэндээс «Засах»-аар бүлгүүдийг холбоно (холбоо чиглэлгүй тул аль
+       талынх ч хамаагүй, `legacyCovered` хоёр чиглэлийг шалгана) */
     setSel(null);
-    setFlt(null);
-    setQA('');
-    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [guard]);
-
-  /* ── Хадгалах ── */
-  const busyRef = useRef(false);
-  const save = useCallback(async (dep: WNode, change: RefChange, undo = false): Promise<boolean> => {
-    if (!g || busyRef.current) {
-      if (undo) setErr(tr('Буцааж чадсангүй — дахин нэмнэ үү'));
-      return false;
-    }
-    busyRef.current = true;
-    setBusy(true);
-    setErr('');
-    setMsg('');
-    try {
-      const r = await saveWorkLinks(refOf(dep), change);
-      if (!r.ok) { setErr(userError(r.error)); return false; }
-      setMsg(r.wrote ? tr('Хадгалагдлаа') : tr('Өөрчлөлт алга — сервер аль хэдийн энэ төлөвт байна'));
-      return true;
-    } catch (e) {
-      setErr(userError(e));
-      return false;
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  }, [g]);
+    setTimeout(() => {
+      ganttRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelector(`section[data-p="${CSS.escape(pre[0])}"]`)?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+    }, 80);
+  }, []);
 
   const reload = useCallback(() => { dropWorkCache(); dataQ.retry?.(); }, [dataQ]);
 
-  const detailRef = useRef<HTMLElement | null>(null);
-  const pickWork = useCallback(async (id: NodeId) => {
-    if (id !== sel && !(await guard())) return;
-    setSel(id);
-    if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 900px)').matches) {
-      requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  /**
+   * Засах горимд `a` ↔ `b`-г СЭЛГЭНЭ: шинэ нэмэлт бол буцаана, хадгалсан бол устгахаар тэмдэглэнэ/буцаана, эс бөгөөс нэмнэ.
+   * Нэмэхэд аль нэг талын бичих боломжтой мөрд хадгална (эхлээд `a`).
+   */
+  const toggle = useCallback((a: WNode, b: WNode) => {
+    setErr('');
+    setMsg('');
+    const pk = pairOf(a.id, b.id);
+    const snap = { adds, dels };
+    if (adds.some((l) => l.pair === pk)) { setHist((h) => [...h, snap]); setAdds(adds.filter((l) => l.pair !== pk)); return; }
+    const had = saved.filter((l) => l.pair === pk);
+    if (had.length) {
+      const allDel = had.every((l) => dels.has(l.key));
+      const nx = new Map(dels);
+      for (const l of had) { if (allDel) nx.delete(l.key); else nx.set(l.key, l.host); }
+      setHist((h) => [...h, snap]);
+      setDels(nx);
+      return;
     }
-  }, [sel, guard]);
+    const [host, other] = canWriteSheet(a.p) ? [a, b] : canWriteSheet(b.p) ? [b, a] : [null, null];
+    if (!host || !other) { setErr(tr('«{0}» ба «{1}» хуудсанд холбоо хадгалах боломжгүй (талбаргүй эсвэл эрхгүй).', pkgLabel(a.p), pkgLabel(b.p))); return; }
+    if (g) {
+      const why = linkError(g, host.id, other.id);
+      if (why) { setErr(why); return; }
+    }
+    const ref = refOf(other);
+    setHist((h) => [...h, snap]);
+    setAdds([...adds, { key: `+${host.id}#${refKeyOf(ref)}`, pair: pk, a: a.id, b: b.id, host: host.id, ref, kind: 'add' }]);
+  }, [g, adds, saved, dels, canWriteSheet]);
 
-  const openNode = useCallback(async (id: NodeId) => {
+  /** Зураас дарахад (засах горимд) — тэр хоёр бүлгийн холбоог сэлгэнэ (салгах / буцаах) */
+  const toggleLine = useCallback((a: NodeId, b: NodeId) => {
+    const na = g?.nodes.get(a);
+    const nb = g?.nodes.get(b);
+    if (na && nb) toggle(na, nb);
+  }, [g, toggle]);
+
+  /** «↶ Буцаах» — сүүлийн өөрчлөлтийг цуцална */
+  const undo = useCallback(() => {
+    const last = hist[hist.length - 1];
+    if (!last) return;
+    setAdds(last.adds);
+    setDels(last.dels);
+    setHist(hist.slice(0, -1));
+  }, [hist]);
+
+  /** Өнчин холбоосыг устгахаар тэмдэглэх/буцаах */
+  const toggleOrphan = useCallback((o: Orphan) => {
+    const nx = new Map(dels);
+    if (nx.has(o.key)) nx.delete(o.key); else nx.set(o.key, o.host);
+    setHist((h) => [...h, { adds, dels }]);
+    setDels(nx);
+  }, [adds, dels]);
+
+  /** Хайрцаг дарахад — сонгоно; засах горимд сонгосон бүлэгтэй холбоог сэлгэнэ (сонголт хэвээр — дараалан холбоно) */
+  const onPick = useCallback((id: NodeId) => {
+    if (!g) return;
+    const n = g.nodes.get(id);
+    if (!n) return;
+    if (editing && selNode && id !== selNode.id) { toggle(selNode, n); return; }
+    setSel((cur) => (cur === id ? null : id));
+  }, [g, editing, selNode, toggle]);
+
+  /** Жагсаалтаас (холбоотой · өнчин) бүлэг рүү очих — багц нь харагдахгүй бол нэмнэ */
+  const focusNode = useCallback((id: NodeId) => {
     const n = g?.nodes.get(id);
     if (!n) return;
-    if (id !== sel && !(await guard())) return;
-    setPA(n.p);
     setSel(id);
-    setFlt(null);
-    setQA('');
-  }, [g, sel, guard]);
+    setTimeout(() => document.getElementById(`ham-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+  }, [g]);
+
+  /* Esc — сонголтоо болиулна (засах горимд өөр бүлгийг үндэс болгож сонгохын тулд) */
+  useEffect(() => {
+    if (!sel) return undefined;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSel(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sel]);
+
+  const startEdit = useCallback(() => { setErr(''); setMsg(''); setEditing(true); }, []);
+  const cancelEdit = useCallback(async () => {
+    if (dirty && !(await askConfirm(tr('Хадгалаагүй {0} өөрчлөлт хаягдана. Үргэлжлүүлэх үү?', num(dirty)), { danger: true, ok: tr('Хаях') }))) return;
+    setAdds([]);
+    setDels(new Map());
+    setHist([]);
+    setEditing(false);
+  }, [dirty]);
+
+  /**
+   * ХАДГАЛАХ — өөрчлөлтийг хадгалдаг мөрөөр нь бүлэглэж мөр бүрд нэг удаа бичнэ (`saveWorkLinks` — сүүлийн өгөгдлийг
+   * дахин уншиж, бусдын зэрэгцээ засварыг дарахгүй). Амжилттай мөрийн өөрчлөлт цэвэрлэгдэж, унасных нь үлдэнэ.
+   */
+  const saveAll = useCallback(async () => {
+    if (!g || busy || !dirty) return;
+    const byHost = new Map<NodeId, { add: WorkRef[]; remove: WorkRef[] }>();
+    const at = (h: NodeId) => { let c = byHost.get(h); if (!c) { c = { add: [], remove: [] }; byHost.set(h, c); } return c; };
+    for (const l of adds) at(l.host).add.push(l.ref);
+    for (const l of saved) if (dels.has(l.key)) at(l.host).remove.push(l.ref);
+    for (const o of orphans) if (o.del) at(o.host).remove.push(o.e.ref);
+    setBusy(true);
+    setErr('');
+    setMsg('');
+    const bad = new Set<NodeId>();
+    const errs: string[] = [];
+    let wrote = 0;
+    try {
+      for (const [h, change] of byHost) {
+        const n = g.nodes.get(h);
+        if (!n) continue;
+        try {
+          const r = await saveWorkLinks(refOf(n), change);
+          if (!r.ok) { bad.add(h); errs.push(`${pkgLabel(n.p)} · ${shortLabel(n)}: ${userError(r.error)}`); } else wrote += 1;
+        } catch (e) {
+          bad.add(h);
+          errs.push(`${pkgLabel(n.p)} · ${shortLabel(n)}: ${userError(e)}`);
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+    setAdds((cur) => cur.filter((l) => bad.has(l.host)));
+    /* Хэсэгчлэн хадгалагдсан ч түүх хуучирна — буцаахад хадгалагдсан өөрчлөлт сэргэхгүй */
+    setHist([]);
+    setDels((cur) => new Map([...cur].filter(([, h]) => bad.has(h))));
+    if (errs.length) setErr(tr('Хадгалагдаагүй ({0}): {1}', num(errs.length), errs.join(' · ')));
+    else { setMsg(tr('Хадгалагдлаа ({0} бүлэг)', num(wrote))); setEditing(false); setHist([]); }
+    if (wrote) reload();
+  }, [g, busy, dirty, adds, saved, dels, orphans, reload]);
 
   if (dataQ.state === 'loading') return <div className={s.wrap}><Loading /></div>;
   if (dataQ.state === 'error') {
@@ -187,14 +328,14 @@ export function BagtsHamaaral() {
   }
   if (!g) return null;
 
+  const nAdd = adds.length;
+  const nDel = dels.size;
+
   return (
     <div className={s.wrap}>
       <section className={s.hero}>
         <p className={s.eyebrow}>{tr('ТУХ · багцын хяналт')}</p>
         <h1>{tr('Багцын хамаарал')} <small className={s.total}>{tr('{0} холбоо', num(total))}</small></h1>
-        <p className={s.heroSub}>
-          {tr('Багцуудын 3-р давхрын бүлгүүдийг FS (урд нь дуусаад) эсвэл SS (зэрэг эхэлнэ) уялдаагаар холбоно. Зөвхөн мэдээлэл — хуваарийн огноонд нөлөөлөхгүй.')}
-        </p>
       </section>
 
       {/* ── Талбар дутуу хуудсууд — зөвхөн харах ── */}
@@ -207,7 +348,7 @@ export function BagtsHamaaral() {
       )}
       {failed.length > 0 && (
         <p className={s.failNote} role="alert">
-          {tr('Уншигдаагүй хуудас ({0}) — дугуй хамаарлыг бүрэн шалгах боломжгүй тул хадгалахыг түр хаалаа: {1}', num(failed.length), failed.map((x) => x.pkg.label).join(', '))}
+          {tr('Уншигдаагүй хуудас ({0}) — тэдгээрийн бүлгүүд харагдахгүй, холбох боломжгүй: {1}', num(failed.length), failed.map((x) => x.pkg.label).join(', '))}
           {' '}<button type="button" className={s.retryBtn} onClick={reload}>{tr('Дахин оролдох')}</button>
         </p>
       )}
@@ -217,27 +358,21 @@ export function BagtsHamaaral() {
             g.bad.slice(0, 5).map((b) => { const n = g.nodes.get(b.id); return n ? `${pkgLabel(n.p)} · ${nodeLabel(n)}` : b.id; }).join('; '))}
         </p>
       )}
-      {err && (
-        <p className={s.failNote} role="alert">
-          {err}{' '}<button type="button" className={s.retryBtn} disabled={busy} onClick={() => { setErr(''); reload(); }}>{tr('Дахин ачаалах')}</button>
-        </p>
-      )}
-      {msg && !err && <p className={s.okNote} role="status">{msg}</p>}
 
       {orphans.length > 0 && (
         <section className={s.card}>
-          <h2 className={s.cardTitle}>{tr('Өнчин холбоо ({0}) — урьдчилагч ажил нь олдохгүй байна', num(orphans.length))}</h2>
-          <p className={s.note}>{tr('Ажлыг нээж холбоог устгах эсвэл зөв ажлаар солино уу.')}</p>
+          <h2 className={s.cardTitle}>{tr('Өнчин холбоо ({0}) — холбосон бүлэг нь олдохгүй байна', num(orphans.length))}</h2>
+          <p className={s.note}>{tr('Бүлгийг нээж холбоог устгах эсвэл зөв бүлгээр солино уу.')}</p>
           <ul className={s.plainList}>
-            {orphans.slice(0, 50).map(({ id, e }) => {
-              const d = g.nodes.get(id);
+            {orphans.slice(0, 50).map((o) => {
+              const d = g.nodes.get(o.host);
               return (
-                <li key={`${id}|${e.ref.p}|${e.ref.k}|${e.ref.o ?? 0}`} className={s.legacyRow}>
-                  <button type="button" className={s.linkBtn} onClick={() => void openNode(id)}>
-                    {d ? `${pkgLabel(d.p)} · ${nodeLabel(d)}` : id}
+                <li key={o.key} className={s.legacyRow}>
+                  <button type="button" className={s.linkBtn} onClick={() => focusNode(o.host)}>
+                    {d ? `${pkgLabel(d.p)} · ${nodeLabel(d)}` : o.host}
                   </button>
-                  <span>← {pkgLabel(e.ref.p)} · {e.ref.k}</span>
-                  <small className={s.mute}>{whyText(e)}</small>
+                  <span>↔ {pkgLabel(o.e.ref.p)} · {o.e.ref.k}</span>
+                  <small className={s.mute}>{whyText(o.e)}</small>
                 </li>
               );
             })}
@@ -247,16 +382,10 @@ export function BagtsHamaaral() {
       )}
 
       {/* ── Хуучин багц ↔ багц холбоос ── */}
-      {legacyQ.state === 'error' && (
-        <p className={s.failNote} role="alert">
-          {tr('Хуучин багц хоорондын холбоо уншигдсангүй')}: {friendlyError(legacyQ.error)}
-          {' '}<button type="button" className={s.retryBtn} onClick={() => legacyQ.retry?.()}>{tr('Дахин оролдох')}</button>
-        </p>
-      )}
       {legacy.length > 0 && (
         <section className={s.card}>
-          <h2 className={s.cardTitle}>{tr('Хуучин багц хоорондын холбоо — ажлыг нь сонгож шилжүүлнэ үү')}</h2>
-          <p className={s.note}>{tr('Ажлын холбоо хадгалагдмагц тухайн хуучин холбоо автоматаар устна.')}</p>
+          <h2 className={s.cardTitle}>{tr('Хуучин багц хоорондын холбоо — бүлгээр нь холбож шилжүүлнэ үү')}</h2>
+          <p className={s.note}>{tr('Бүлгийн холбоо хадгалагдмагц тухайн хуучин холбоо автоматаар устна.')}</p>
           <ul className={s.plainList}>
             {legacy.map((d) => {
               const ok = sheetsOfPkgKey(legacyPkgKey(d.from)).length > 0 && sheetsOfPkgKey(legacyPkgKey(d.to)).length > 0;
@@ -265,7 +394,7 @@ export function BagtsHamaaral() {
                   <span><b>{legacyLabel(d.from)}</b> → <b>{legacyLabel(d.to)}</b></span>
                   {!ok && <small className={s.mute}>{tr('бөглөх хуудасгүй багц — шилжүүлэх боломжгүй')}</small>}
                   {canEdit && ok && (
-                    <button type="button" className={s.ghostBtn} onClick={() => void migrate(d)}>{tr('Шилжүүлэх')}</button>
+                    <button type="button" className={s.ghostBtn} onClick={() => migrate(d)}>{tr('Шилжүүлэх')}</button>
                   )}
                   {canEdit && !ok && (
                     <button type="button" className={s.ghostBtn} disabled={busy} onClick={() => { void removeLegacy(d); }}>{tr('Устгах')}</button>
@@ -277,333 +406,287 @@ export function BagtsHamaaral() {
         </section>
       )}
 
-      {/* ── Багцын түвшний тойм ── */}
-      <section className={s.card}>
-        <h2 className={s.cardTitle}>{tr('Багц хоорондын тойм')}</h2>
-        {pairs.length === 0 ? (
-          <p className={s.note}>{tr('Ажлын холбоо хараахан бүртгэгдээгүй.')}</p>
-        ) : (
-          <div className={s.chips}>
-            {pairs.map((x) => {
-              const on = flt === x.from && pA === x.to;
-              return (
-                <button key={`${x.from}>${x.to}`} type="button" className={s.pairChip} aria-pressed={on}
-                  title={tr('«{0}»-ийн ажлууд «{1}»-ийн ажлаас хамаарна', pkgLabel(x.to), pkgLabel(x.from))}
-                  onClick={async () => {
-                    if (on) { setFlt(null); return; }
-                    if (!(await guard())) return;
-                    setPA(x.to); setPB(x.from); setFlt(x.from); setSel(null); setQA('');
-                  }}>
-                  {pkgLabel(x.from)} → {pkgLabel(x.to)}: <b>{tr('{0} холбоо', num(x.n))}</b>
+      {/* ── Багцууд багана болж цуварна · бүлгүүд хооронд нь зураасаар ── */}
+      <section ref={ganttRef} className={s.card}>
+        <div className={s.ganttTools}>
+          <div className={s.toolHead}>
+            <span />
+            {/* Засах · Хадгалах · Болих */}
+            <div className={s.addRow}>
+              {!editing ? (
+                <button type="button" className={s.primaryBtn} disabled={!canEdit} onClick={startEdit}
+                  title={!canEdit ? tr('Багцын хамаарал засах эрхгүй') : undefined}>
+                  {tr('Засах')}
                 </button>
-              );
-            })}
+              ) : (
+                <>
+                  <button type="button" className={s.primaryBtn} disabled={busy || !dirty} onClick={() => { void saveAll(); }}>
+                    {busy ? tr('Хадгалж байна…') : tr('Хадгалах (+{0} / −{1})', num(nAdd), num(nDel))}
+                  </button>
+                  <button type="button" className={s.ghostBtn} disabled={busy || !hist.length} onClick={undo}
+                    title={tr('Сүүлийн өөрчлөлтийг цуцлах')}>{tr('↶ Буцаах')}</button>
+                  <button type="button" className={s.ghostBtn} disabled={busy} onClick={() => { void cancelEdit(); }}>{tr('Болих')}</button>
+                </>
+              )}
+            </div>
           </div>
+        </div>
+
+        {/* Үр дүн — хайрцгуудын ДЭРГЭД (хуудасны дээд хэсэгт гарвал харагдахгүй байв) */}
+        {err && (
+          <p ref={noteRef} className={s.failNote} role="alert">
+            {err}{' '}<button type="button" className={s.retryBtn} disabled={busy} onClick={() => { setErr(''); reload(); }}>{tr('Дахин ачаалах')}</button>
+          </p>
         )}
+        {msg && !err && <p ref={noteRef} className={s.okNote} role="status">{msg}</p>}
+        {editing && (
+          <p className={s.modeNote} role="status">
+            {selNode
+              ? tr('«{0}»-тэй холбох (эсвэл холбоог арилгах) бүлгүүдийг дараалан дарна уу. Дуусаад «Хадгалах».', shortLabel(selNode))
+              : tr('Засах горим: эхлээд бүлэг сонгоод, түүнтэй холбох бүлгүүдийг дарна уу.')}
+            {' '}{tr('Буруу холбоог салгахдаа зураас дээр нь эсвэл баруун талын «Салгах» дарна.')}
+            {selNode && <>{' '}<button type="button" className={s.linkBtn} onClick={() => setSel(null)}>{tr('Сонголтоо болих (Esc)')}</button></>}
+          </p>
+        )}
+
+        <div className={s.ganttWrap}>
+          <Lanes g={g} shown={shown} sel={sel} editing={editing} busy={busy} lines={lines} onPick={onPick} onLine={toggleLine} />
+          {selNode && (
+            <SelPanel g={g} n={selNode} editing={editing} busy={busy} lines={lines} orphans={orphans.filter((o) => o.host === selNode.id)}
+              onToggle={(other) => toggle(selNode, other)} onToggleOrphan={toggleOrphan}
+              onFocus={focusNode} onClose={() => setSel(null)} />
+          )}
+        </div>
       </section>
-
-      {/* ── Засвар: А → ажил → Б ── */}
-      <div ref={editorRef} className={s.grid}>
-        <section className={s.card}>
-          <h2 className={s.cardTitle}>{tr('Хамаарах бүлэг (А)')}</h2>
-          <div className={s.filters}>
-            <select className={s.select} value={pA} aria-label={tr('Багц (А)')}
-              onChange={(e) => {
-                const v = e.target.value;
-                void guard().then((ok) => { if (ok) { setPA(v); setSel(null); setFlt(null); } });
-              }}>
-              {PKGS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-            </select>
-            <input className={s.search} type="search" value={qA} onChange={(e) => setQA(e.target.value)}
-              placeholder={tr('Ажил хайх…')} aria-label={tr('Ажил хайх')} />
-          </div>
-          {flt && (
-            <p className={s.note}>
-              {tr('Зөвхөн «{0}»-ийн ажлаас хамаардаг ажлууд', pkgLabel(flt))}
-              {' '}<button type="button" className={s.linkBtn} onClick={() => setFlt(null)}>{tr('Шүүлтүүр арилгах')}</button>
-            </p>
-          )}
-          {!sheetOf.get(pA)?.field && sheetOf.get(pA) && !sheetOf.get(pA)!.error && (
-            <p className={s.note}>{tr('Энэ хуудсанд «{0}» талбар алга — зөвхөн харах.', 'bagts_hamaaral')}</p>
-          )}
-          {sheetOf.get(pA)?.error && <p className={s.note}>{tr('Хуудас уншигдсангүй')}: {sheetOf.get(pA)!.error}</p>}
-          <WorkPicker g={g} p={pA} q={qA} sel={sel} onSel={(id) => void pickWork(id)} flt={flt} />
-        </section>
-
-        <section ref={detailRef} className={s.card}>
-          {!selNode ? (
-            <p className={s.note}>{tr('Зүүн талаас ажил сонгоно уу.')}</p>
-          ) : (
-            <WorkDetail key={selNode.id} g={g} n={selNode} canWrite={canWriteA} busy={busy} pB={pB}
-              setPB={(p) => { void guard().then((ok) => { if (ok) setPB(p); }); }}
-              onSave={save} onOpen={(id) => void openNode(id)} onDirty={onPickDirty} />
-          )}
-        </section>
-      </div>
     </div>
   );
 }
 
-/* ══════════════ А — ажил сонгох (хэсгээр) ══════════════ */
+/* ══════════════ Багцууд баруун тийш багана болж цуварна · бүлгүүд хооронд нь зураасаар ══════════════ */
 
-function WorkPicker({ g, p, q, sel, onSel, flt }: {
-  g: WorkGraph; p: string; q: string; sel: NodeId | null; onSel: (id: NodeId) => void;
-  /** Тоймын шүүлт — зөвхөн энэ хуудаснаас хамаардаг ажлууд */
-  flt: string | null;
+type Item = { kind: 'sec'; id: string; label: string } | { kind: 'node'; n: WNode };
+
+function Lanes({ g, shown, sel, editing, busy, lines, onPick, onLine }: {
+  g: WorkGraph; shown: string[]; sel: NodeId | null; editing: boolean; busy: boolean; lines: Line[];
+  onPick: (id: NodeId) => void;
+  /** Засах горимд зураас дарахад — тэр хосын холбоог сэлгэнэ */
+  onLine: (a: NodeId, b: NodeId) => void;
 }) {
-  const secs = useMemo(() => linkSectionsOf(g, p).map((sec) => ({
-    ...sec,
-    items: sec.items.filter((id) => {
+  /* Багц бүр нэг багана: хэсгийн гарчиг (Б1 · Б2 …) ба холбож болох бүлгүүд, хуудасны дарааллаар */
+  const cols = useMemo(() => shown.map((p) => {
+    const ok = linkableIds(g, p);
+    const items: Item[] = [];
+    let last: NodeId | null | undefined;
+    for (const id of g.bySheet.get(p) ?? []) {
+      if (!ok.has(id)) continue;
       const n = g.nodes.get(id)!;
-      if (!nodeMatches(n, q)) return false;
-      if (!flt) return true;
-      return (g.pre.get(id) ?? []).some((e) => edgePkg(g, e) === flt);
-    }),
-  })).filter((sec) => sec.items.length), [g, p, q, flt]);
-  const narrow = !!q.trim() || !!flt;
-  if (!secs.length) return <p className={s.note}>{narrow ? tr('Хайлт эсвэл шүүлтэд тохирох ажил алга — хайлтаа өөрчилнө үү.') : tr('Ажил олдсонгүй')}</p>;
-  return (
-    <div className={s.listBox}>
-      {secs.map((sec) => {
-        const head = sec.id ? g.nodes.get(sec.id) : null;
-        const open = narrow || (!!sel && sec.items.includes(sel));
-        return (
-          <details key={sec.id ?? '-'} className={s.sec} open={open || undefined}>
-            <summary className={s.secHead}>
-              {head ? nodeLabel(head) : tr('Бүлэггүй ажлууд')} <small className={s.mute}>({num(sec.items.length)})</small>
-            </summary>
-            <ul className={s.plainList}>
-              {sec.items.map((id) => {
-                const n = g.nodes.get(id)!;
-                const up = g.pre.get(id)?.length ?? 0;
-                const down = g.post.get(id)?.length ?? 0;
-                return (
-                  <li key={id}>
-                    <button type="button" className={s.workBtn} aria-pressed={sel === id} onClick={() => onSel(id)}>
-                      <span>{nodeLabel(n)}</span>
-                      {(up > 0 || down > 0) && (
-                        <small className={s.counts} title={tr('Урьдчилагч · хамааралтай ажил')}>↑{num(up)} ↓{num(down)}</small>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </details>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ══════════════ Сонгосон ажил — урьдчилагчид · хамааралтай · засвар ══════════════ */
-
-function WorkDetail({ g, n, canWrite, busy, pB, setPB, onSave, onOpen, onDirty }: {
-  g: WorkGraph; n: WNode; canWrite: boolean; busy: boolean;
-  pB: string; setPB: (p: string) => void;
-  onSave: (dep: WNode, c: RefChange, undo?: boolean) => Promise<boolean>;
-  onOpen: (id: NodeId) => void;
-  onDirty: (n: number) => void;
-}) {
-  const edges = useMemo(() => g.pre.get(n.id) ?? [], [g, n.id]);
-  const byPkg = useMemo(() => {
-    const m = new Map<string, Edge[]>();
-    for (const e of edges) {
-      const k = edgePkg(g, e);
-      const l = m.get(k);
-      if (l) l.push(e); else m.set(k, [e]);
+      if (n.parent !== last) {
+        last = n.parent;
+        const par = n.parent ? g.nodes.get(n.parent) : null;
+        if (par && !ok.has(par.id)) items.push({ kind: 'sec', id: `${p}|${par.id}`, label: nodeLabel(par) });
+      }
+      items.push({ kind: 'node', n });
     }
-    return [...m.entries()];
-  }, [g, edges]);
-  const deps = g.post.get(n.id) ?? [];
-  const otherPkgs = PKGS.filter((p) => p.key !== n.p);
-  const b = otherPkgs.some((p) => p.key === pB) ? pB : '';
+    return { p, items };
+  }), [g, shown]);
 
-  return (
-    <>
-      <p className={s.eyebrow}>{pkgLabel(n.p)}</p>
-      <h2 className={s.cardTitle}>{nodeLabel(n)}</h2>
-
-      <h3 className={s.subTitle}>{tr('Хамаардаг ажлууд (урьдчилагч)')} <small className={s.mute}>({num(edges.length)})</small></h3>
-      {byPkg.length === 0 && <p className={s.note}>—</p>}
-      {byPkg.map(([p, list]) => (
-        <div key={p} className={s.pkgGroup}>
-          <b className={s.pkgName}>{pkgLabel(p)}</b>
-          <span className={s.chips}>
-            {list.map((e) => {
-              const t = e.to ? g.nodes.get(e.to) : null;
-              const label = t ? nodeLabel(t) : e.ref.k;
-              return (
-                <span key={`${e.ref.p}|${e.ref.k}|${e.ref.o ?? 0}`} className={t ? s.chip : s.chipBad} title={t ? undefined : whyText(e)}>
-                  <b className={s.mute}>{depLabel(e.ref)}</b>
-                  {t ? (
-                    <button type="button" className={s.chipLink} onClick={() => onOpen(t.id)}>{label}</button>
-                  ) : (
-                    <span className={s.chipLink}>{label} <small>({whyText(e)})</small></span>
-                  )}
-                  {canWrite && (
-                    <button type="button" className={s.chipX} disabled={busy} title={tr('Холбоо устгах')} aria-label={tr('Холбоо устгах')}
-                      onClick={async () => {
-                        if (!(await onSave(n, { add: [], remove: [e.ref] }))) return;
-                        void toastUndo(tr('«{0}» холбоо устгагдлаа.', label), () => { void onSave(n, { add: [e.ref], remove: [] }, true); });
-                      }}>✕</button>
-                  )}
-                </span>
-              );
-            })}
-          </span>
-        </div>
-      ))}
-
-      <h3 className={s.subTitle}>{tr('Энэ ажлаас хамаардаг ажлууд')} <small className={s.mute}>({num(deps.length)})</small></h3>
-      {deps.length === 0 ? <p className={s.note}>—</p> : (
-        <span className={s.chips}>
-          {deps.map((id) => {
-            const d = g.nodes.get(id);
-            if (!d) return null;
-            return (
-              <span key={id} className={s.chip}>
-                <button type="button" className={s.chipLink} onClick={() => onOpen(id)}><b>{pkgLabel(d.p)}</b> {nodeLabel(d)}</button>
-              </span>
-            );
-          })}
-        </span>
-      )}
-
-      {canWrite && (
-        <div className={s.editBox}>
-          <h3 className={s.subTitle}>{tr('Урьдчилагч нэмэх / засах')}</h3>
-          <select className={s.select} value={b} onChange={(e) => setPB(e.target.value)} aria-label={tr('Урьдчилагчийн багц (Б)')}>
-            <option value="">{tr('Багц сонгох (Б)…')}</option>
-            {otherPkgs.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-          </select>
-          {b && <PrereqPicker key={`${n.id}|${b}`} g={g} n={n} p={b} busy={busy} onSave={onSave} onDirty={onDirty} />}
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ══════════════ Б — урьдчилагч сонгох (checkbox) ══════════════ */
-
-function PrereqPicker({ g, n, p, busy, onSave, onDirty }: {
-  g: WorkGraph; n: WNode; p: string; busy: boolean;
-  onSave: (dep: WNode, c: RefChange, undo?: boolean) => Promise<boolean>;
-  onDirty: (n: number) => void;
-}) {
-  const [q, setQ] = useState('');
-  /* Б-гийн одоо холбогдсон ажлууд (тулгагдсан) — тэдгээрийн хадгалсан холбоос (`ref`) хасахад */
-  const cur = useMemo(() => {
-    const m = new Map<NodeId, Edge>();
-    for (const e of g.pre.get(n.id) ?? []) if (e.to && g.nodes.get(e.to)?.p === p) m.set(e.to, e);
+  const linked = useMemo(() => {
+    if (!sel) return new Set<NodeId>();
+    return new Set(lines.filter((l) => l.kind !== 'del' && (l.a === sel || l.b === sel)).map((l) => (l.a === sel ? l.b : l.a)));
+  }, [lines, sel]);
+  /** Бүлэг бүрийн холбооны тоо (хос нэг удаа, устгахаар тэмдэглэснийг оруулахгүй) — карт дээрх «↔N» */
+  const counts = useMemo(() => {
+    const seen = new Set<string>();
+    const m = new Map<NodeId, number>();
+    for (const l of lines) {
+      if (l.kind === 'del' || seen.has(l.pair)) continue;
+      seen.add(l.pair);
+      m.set(l.a, (m.get(l.a) ?? 0) + 1);
+      m.set(l.b, (m.get(l.b) ?? 0) + 1);
+    }
     return m;
-  }, [g, n.id, p]);
-  /**
-   * Хүлээгдэж буй сонголт — ЭНЭ графын агшинд (`base`): бүлэг → уялдааны төрөл · хоног. Хадгалсны дараа шинэ граф ирэхэд
-   * (`base !== g`) хаягдаж, серверийн төлөв харагдана; түүнээс өмнө хэрэглэгчийн сонголт хэвээр (анивчихгүй).
+  }, [lines]);
+  /*
+   * Зураас — холбосон бүх холбоо БАЙНГА харагдана (2026-11-23: «өөр ажил хийхэд холбоос харагдахаа больж байна, холбосон бол
+   * энэ маягаар харагдах ёстой»); сонгосон бүлгийнх тод. Карт дайрахгүй замаар (зай · дээд зурвас).
    */
-  type Opt = { t: 'FS' | 'SS'; l: number };
-  const curOpts = useMemo(() => new Map([...cur].map(([id, e]) => [id, { t: refKind(e.ref), l: refLag(e.ref) } as Opt])), [cur]);
-  const [pick, setPick] = useState<{ base: WorkGraph; map: Map<NodeId, Opt> } | null>(null);
-  const chosen = pick && pick.base === g ? pick.map : curOpts;
-  const toggle = (ids: NodeId[], on: boolean) => {
-    const next = new Map(chosen);
-    for (const id of ids) { if (on) { if (!next.has(id)) next.set(id, curOpts.get(id) ?? { t: 'FS', l: 0 }); } else next.delete(id); }
-    setPick({ base: g, map: next });
-  };
-  const setOpt = (id: NodeId, o: Partial<Opt>) => {
-    const next = new Map(chosen);
-    const was = next.get(id);
-    if (!was) return;
-    next.set(id, { ...was, ...o });
-    setPick({ base: g, map: next });
-  };
-  const refFor = (id: NodeId, o: Opt): WorkRef => ({ ...refOf(g.nodes.get(id)!), ...(o.t === 'SS' ? { t: 'SS' as const } : {}), ...(o.l ? { l: o.l } : {}) });
-  const loop = useMemo(() => dependentsOf(g, n.id), [g, n.id]);
-  const errOf = useCallback((id: NodeId) => (cur.has(id) || !loop.has(id) ? null
-    : tr('Дугуй хамаарал үүснэ — тэр ажил энэ ажлаас (дамжуулан) хамаардаг')), [cur, loop]);
-  const secs = useMemo(() => linkSectionsOf(g, p).map((sec) => ({
-    ...sec, items: sec.items.filter((id) => nodeMatches(g.nodes.get(id)!, q)),
-  })).filter((sec) => sec.items.length), [g, p, q]);
-  /* Шинэ эсвэл төрөл/хоног нь өөрчлөгдсөн холбоос — нэмнэ (ижил бүлгийнхийг сольж бичнэ, `applyRefChange`) */
-  const add = [...chosen].filter(([id, o]) => {
-    const c = curOpts.get(id);
-    return !c || c.t !== o.t || c.l !== o.l;
-  }).map(([id]) => id);
-  const rm = [...cur.keys()].filter((id) => !chosen.has(id));
-  const dirty = add.length + rm.length > 0;
-  const narrow = !!q.trim();
-  const dirtyN = add.length + rm.length;
-  useEffect(() => { onDirty(dirtyN); }, [dirtyN, onDirty]);
-  useEffect(() => () => onDirty(0), [onDirty]);
+  const drawn = lines;
+  /**
+   * Багана АЛГАСАХ зураасны тоо — тэдгээр нь картуудын дээрх ТУСГАЙ ЗУРВАСААР (band) хөндлөн дамжина; зурвасны өндөр
+   * нь тэдний тоогоор (2026-11-23: «зураас нэрийн картыг дарсан хэвээр»).
+   */
+  const skipN = useMemo(() => {
+    const colOf = new Map(shown.map((p, i) => [p, i] as const));
+    return drawn.filter((l) => {
+      const a = g.nodes.get(l.a);
+      const b = g.nodes.get(l.b);
+      return !!a && !!b && Math.abs((colOf.get(a.p) ?? 0) - (colOf.get(b.p) ?? 0)) > 1;
+    }).length;
+  }, [g, shown, drawn]);
+
+  /*
+   * Холбооны зураас (сумгүй — чиглэлгүй) — хайрцгуудын БОДИТ байрлалаас (DOM): баруун багана руу бол баруун ирмэг → зүүн
+   * ирмэг, зүүн тийш бол эсрэгээр, нэг баганад бол баруун талаар тойрно. Нэмэх — ногоон тасархай, устгах — улаан тасархай.
+   */
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [paths, setPaths] = useState<{ key: string; d: string; cls: string; a: NodeId; b: NodeId; kind: Line['kind'] }[]>([]);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const inner = innerRef.current;
+    if (!inner) return undefined;
+    const colOf = new Map(shown.map((p, i) => [p, i] as const));
+    const draw = () => {
+      const base = inner.getBoundingClientRect();
+      const pos = new Map<string, DOMRect>();
+      for (const el of inner.querySelectorAll<HTMLElement>('[data-id]')) pos.set(el.dataset.id!, el.getBoundingClientRect());
+      /* Зурвасны дээд ирмэг — баганын толгойн доорх хоосон зай (`data-band`) */
+      const bandEl = inner.querySelector<HTMLElement>('[data-band]');
+      const bandTop = bandEl ? bandEl.getBoundingClientRect().top - base.top : 0;
+      let k = 0;
+      const out: { key: string; d: string; cls: string; a: NodeId; b: NodeId; kind: Line['kind'] }[] = [];
+      for (const l of drawn) {
+        const ra = pos.get(l.a);
+        const rb = pos.get(l.b);
+        const na = g.nodes.get(l.a);
+        const nb = g.nodes.get(l.b);
+        if (!ra || !rb || !na || !nb) continue;
+        /* Зүүн талынхаас баруун тийш зурна */
+        const [p1, n1, p2, n2] = (colOf.get(na.p) ?? 0) <= (colOf.get(nb.p) ?? 0) ? [ra, na, rb, nb] : [rb, nb, ra, na];
+        const y1 = p1.top + p1.height / 2 - base.top;
+        const y2 = p2.top + p2.height / 2 - base.top;
+        let d: string;
+        const c1 = colOf.get(n1.p) ?? 0;
+        const c2 = colOf.get(n2.p) ?? 0;
+        if (c2 - c1 > 1) {
+          /*
+           * Багана алгасна — картуудын дундуур БИШ: эх баганын баруун зайгаар дээш зурвас руу, зурвасаар хөндлөн, зорилтот
+           * баганын зүүн зайгаар доош. Зураас бүр өөр эгнээ (зай · зурвас дотор) — давхцахгүй.
+           */
+          const off = 12 + (k % 8) * 6;
+          const x1 = p1.right - base.left;
+          const x2 = p2.left - base.left;
+          const gx1 = x1 + off;
+          const gx2 = x2 - off;
+          /* Зурвасны эгнээ — 30-аас олон бол давтагдана (зурвас хэт өндөр болохгүй) */
+          const yb = bandTop + 6 + (k % 30) * 5;
+          k += 1;
+          d = `M ${x1} ${y1} H ${gx1} V ${yb} H ${gx2} V ${y2} H ${x2}`;
+        } else if (c1 < c2) {
+          const x1 = p1.right - base.left;
+          const x2 = p2.left - base.left;
+          const c = Math.max(24, (x2 - x1) / 2);
+          d = `M ${x1} ${y1} C ${x1 + c} ${y1}, ${x2 - c} ${y2}, ${x2} ${y2}`;
+        } else {
+          const x1 = p1.right - base.left;
+          const x2 = p2.right - base.left;
+          const bulge = 28 + Math.min(40, Math.abs(y2 - y1) * 0.08);
+          d = `M ${x1} ${y1} C ${x1 + bulge} ${y1}, ${x2 + bulge} ${y2}, ${x2} ${y2}`;
+        }
+        const on = sel === l.a || sel === l.b;
+        out.push({ key: l.key, d, a: l.a, b: l.b, kind: l.kind, cls: l.kind === 'add' ? s.lAdd : l.kind === 'del' ? s.lDel : on ? s.lArrowOn : s.lArrow });
+      }
+      setPaths(out);
+      setSize({ w: inner.scrollWidth, h: inner.scrollHeight });
+    };
+    let raf = requestAnimationFrame(draw);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
+    ro?.observe(inner);
+    return () => { cancelAnimationFrame(raf); ro?.disconnect(); };
+  }, [g, shown, cols, sel, drawn]);
+
+  if (!shown.length) return <p className={s.note}>{tr('Багц нэмж бүлгүүдийг харна уу.')}</p>;
 
   return (
-    <div className={s.pickBox}>
-      <input className={s.search} type="search" value={q} onChange={(e) => setQ(e.target.value)}
-        placeholder={tr('Ажил хайх…')} aria-label={tr('Урьдчилагч ажил хайх')} />
-      <div className={s.listBox}>
-        {secs.length === 0 && <p className={s.note}>{tr('Ажил олдсонгүй')}</p>}
-        {secs.map((sec) => {
-          const head = sec.id ? g.nodes.get(sec.id) : null;
-          const free = sec.items.filter((id) => !errOf(id));
-          const all = free.length > 0 && free.every((id) => chosen.has(id));
-          const any = sec.items.some((id) => chosen.has(id));
-          return (
-            <details key={sec.id ?? '-'} className={s.sec} open={narrow || any || undefined}>
-              <summary className={s.secHead}>
-                {head ? nodeLabel(head) : tr('Бүлэггүй ажлууд')} <small className={s.mute}>({num(sec.items.length)})</small>
-              </summary>
-              <label className={s.checkRow}>
-                <input type="checkbox" checked={all} disabled={busy || !free.length} onChange={(e) => toggle(free, e.target.checked)} />
-                <span className={s.mute}>{tr('Энэ хэсгийн бүгдийг сонгох')}</span>
-              </label>
-              {sec.items.map((id) => {
-                const w = g.nodes.get(id)!;
-                const e = errOf(id);
-                const o = chosen.get(id);
-                return (
-                  <div key={id} className={s.checkRow}>
-                    <label className={s.checkLabel} title={e ?? undefined}>
-                      <input type="checkbox" checked={!!o} disabled={busy || (!!e && !o)}
-                        onChange={(ev) => toggle([id], ev.target.checked)} />
-                      <span className={e && !o ? s.mute : undefined}>{nodeLabel(w)}</span>
-                    </label>
-                    {o && (
-                      <span className={s.depOpts}>
-                        <select className={s.select} value={o.t} disabled={busy} aria-label={tr('Уялдааны төрөл')}
-                          title={tr('FS — урд ажил дуусмагц · SS — урд ажилтай зэрэг эхэлнэ')}
-                          onChange={(ev) => setOpt(id, { t: ev.target.value as 'FS' | 'SS' })}>
-                          <option value="FS">{tr('дуусаад (FS)')}</option>
-                          <option value="SS">{tr('зэрэг (SS)')}</option>
-                        </select>
-                        <input className={s.lagIn} type="number" step={1} min={-LAG_MAX} max={LAG_MAX} value={o.l} disabled={busy}
-                          aria-label={tr('Хоцрогдол (хоног)')} title={tr('Хоцрогдол (хоног)')}
-                          onChange={(ev) => {
-                            const v = Math.trunc(Number(ev.target.value));
-                            setOpt(id, { l: Number.isFinite(v) ? Math.max(-LAG_MAX, Math.min(LAG_MAX, v)) : 0 });
-                          }} />
-                        <span className={s.mute}>{tr('хоног')}</span>
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </details>
-          );
-        })}
-      </div>
-      <div className={s.addRow}>
-        <button type="button" className={s.primaryBtn} disabled={!dirty || busy}
-          onClick={() => {
-            void onSave(n, {
-              add: add.map((id) => refFor(id, chosen.get(id)!)),
-              remove: rm.map((id) => cur.get(id)!.ref),
-            });
-          }}>
-          {busy ? tr('Хадгалж байна…') : tr('Хадгалах (+{0} / −{1})', num(add.length), num(rm.length))}
-        </button>
-        {dirty && <button type="button" className={s.ghostBtn} disabled={busy} onClick={() => setPick(null)}>{tr('Болих')}</button>}
+    <div className={s.lanes} data-mode={editing ? 'edit' : undefined}>
+      <div className={s.lanesIn} ref={innerRef} style={{ ['--band' as string]: `${skipN ? 10 + Math.min(skipN, 30) * 5 : 0}px` }}>
+        <svg className={s.lArrows} width={size.w} height={size.h} aria-hidden>
+          {paths.map((a) => <path key={a.key} d={a.d} className={a.cls} />)}
+          {/* Засах горимд дарах талбай (өргөн, үл үзэгдэх) — зураас дээр дарж салгана/буцаана */}
+          {editing && !busy && paths.map((a) => (
+            <path key={`hit:${a.key}`} d={a.d} className={s.lHit} onClick={() => onLine(a.a, a.b)}>
+              <title>{a.kind === 'del' ? tr('Буцаах') : tr('Салгах')}</title>
+            </path>
+          ))}
+        </svg>
+        {cols.map((c) => (
+          <section key={c.p} className={s.lane} aria-label={pkgLabel(c.p)} data-p={c.p}>
+            <h3 className={s.laneHead}>{pkgLabel(c.p)}</h3>
+            <span className={s.laneBand} data-band aria-hidden />
+            {!c.items.length && <p className={s.note}>{tr('Бүлэг олдсонгүй')}</p>}
+            {c.items.map((it) => (it.kind === 'sec' ? (
+              <p key={it.id} className={s.laneSec} title={it.label}>{it.label}</p>
+            ) : (
+              <button key={it.n.id} id={`ham-${it.n.id}`} data-id={it.n.id} type="button" disabled={busy}
+                className={`${s.nodeBox} ${sel === it.n.id ? s.nodeSel : ''} ${linked.has(it.n.id) ? s.nodeLinked : ''} ${sel && sel !== it.n.id && !linked.has(it.n.id) ? s.nodeDim : ''}`}
+                aria-pressed={sel === it.n.id} title={`${pkgLabel(it.n.p)} · ${nodeLabel(it.n)}`}
+                onClick={() => onPick(it.n.id)}>
+                <span className={s.nodeName}>{shortLabel(it.n)}</span>
+                {(counts.get(it.n.id) ?? 0) > 0 && <b className={s.nodeCount}>↔{num(counts.get(it.n.id)!)}</b>}
+              </button>
+            )))}
+          </section>
+        ))}
       </div>
     </div>
   );
 }
+
+/* ══════════════ Сонгосон бүлэг — холбоотой бүлгүүд ══════════════ */
+
+function SelPanel({ g, n, editing, busy, lines, orphans, onToggle, onToggleOrphan, onFocus, onClose }: {
+  g: WorkGraph; n: WNode; editing: boolean; busy: boolean; lines: Line[]; orphans: Orphan[];
+  onToggle: (other: WNode) => void;
+  onToggleOrphan: (o: Orphan) => void;
+  onFocus: (id: NodeId) => void;
+  onClose: () => void;
+}) {
+  /* Нэг хос нэг мөр (хоёр талд хадгалагдсан ч) */
+  const mine = new Map<NodeId, Line['kind']>();
+  for (const l of lines) {
+    if (l.a !== n.id && l.b !== n.id) continue;
+    const o = l.a === n.id ? l.b : l.a;
+    const cur = mine.get(o);
+    if (!cur || cur === 'del') mine.set(o, l.kind);
+  }
+  const list = [...mine].map(([id, kind]) => ({ other: g.nodes.get(id), kind })).filter((x): x is { other: WNode; kind: Line['kind'] } => !!x.other);
+
+  return (
+    <aside className={s.selPanel} aria-label={tr('Сонгосон бүлэг')}>
+      <header className={s.selHead}>
+        <div>
+          <p className={s.eyebrow}>{pkgLabel(n.p)}</p>
+          <h3 className={s.selTitle}>{nodeLabel(n)}</h3>
+        </div>
+        <button type="button" className={s.chipX} aria-label={tr('Хаах')} onClick={onClose}>✕</button>
+      </header>
+
+      <h4 className={s.subTitle}>{tr('Холбоотой бүлгүүд')} <small className={s.mute}>({num(list.filter((x) => x.kind !== 'del').length)})</small></h4>
+      {list.length === 0 && orphans.length === 0 ? <p className={s.note}>{editing ? tr('Холбох бүлгийг багана дээрээс дарна уу.') : '—'}</p> : (
+        <ul className={s.linkList}>
+          {list.map(({ other, kind }) => (
+            <li key={other.id} className={kind === 'add' ? s.isAdd : kind === 'del' ? s.isDel : undefined}>
+              <button type="button" className={s.chipLink} onClick={() => onFocus(other.id)}><b>{pkgLabel(other.p)}</b> {shortLabel(other)}</button>
+              {kind !== 'saved' && <small className={s.mute}>{kind === 'add' ? tr('нэмэх') : tr('устгах')}</small>}
+              {editing && (
+                <button type="button" className={kind === 'saved' ? s.cutBtn : s.backBtn} disabled={busy} onClick={() => onToggle(other)}>
+                  {kind === 'saved' ? tr('Салгах') : tr('Буцаах')}
+                </button>
+              )}
+            </li>
+          ))}
+          {orphans.map((o) => (
+            <li key={o.key} className={o.del ? s.isDel : s.bad}>
+              <span>{pkgLabel(o.e.ref.p)} · {o.e.ref.k} <small>({whyText(o.e)})</small></span>
+              {editing && (
+                <button type="button" className={o.del ? s.backBtn : s.cutBtn} disabled={busy} onClick={() => onToggleOrphan(o)}>
+                  {o.del ? tr('Буцаах') : tr('Салгах')}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
+  );
+}
+

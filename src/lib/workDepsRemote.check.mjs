@@ -83,5 +83,23 @@ const reads = () => fake.log.filter((x) => /\/(query|applyEdits)$/.test(x.url)).
   console.log('✅ saveWorkLinks — `bagts_hamaaral` талбаргүй хуудас, бичилтгүй');
 }
 
+/* ── 2026-11-23: dev токеноор бичих НАРИЙН зөвшөөрөл — зөвхөн хуудасны `bagts_hamaaral` шинэчлэл ── */
+{
+  const { devWriteAllowed } = await import('@/lib/authToken.ts');
+  const u = `${PKGS[0].url}/applyEdits`;
+  const upd = (attrs) => ({ updates: JSON.stringify([{ attributes: attrs }]), rollbackOnFailure: 'true' });
+  assert.equal(W.devHamaaralWrite(u, upd({ objectid: 5, bagts_hamaaral: '[]' })), true, 'хамаарлын талбар — зөвшөөрнө');
+  assert.equal(devWriteAllowed(u, upd({ objectid: 5, bagts_hamaaral: null })), true, 'бүртгэгдсэн (модуль ачаалахад)');
+  assert.equal(W.devHamaaralWrite(u, upd({ objectid: 5, bagts_hamaaral: '[]', Ажил: 'x' })), false, 'өөр талбар — хаалттай');
+  assert.equal(W.devHamaaralWrite(u, upd({ objectid: 5 })), false, 'хамаарлын талбаргүй — хаалттай');
+  assert.equal(W.devHamaaralWrite(u, { adds: '[]' }), false, 'нэмэх — хаалттай');
+  assert.equal(W.devHamaaralWrite(u, { ...upd({ objectid: 5, bagts_hamaaral: '[]' }), deletes: '1' }), false, 'устгах — хаалттай');
+  assert.equal(W.devHamaaralWrite('https://x/FeatureServer/9/applyEdits', upd({ objectid: 5, bagts_hamaaral: '[]' })), false, 'өөр хүснэгт — хаалттай');
+  assert.equal(W.devHamaaralWrite(`${PKGS[0].url}/deleteFeatures`, { where: '1=1' }), false, 'deleteFeatures — хаалттай');
+  assert.equal(devWriteAllowed(`${u}?deletes=1,2`, upd({ objectid: 5, bagts_hamaaral: '[]' })), false, 'URL-ийн параметр — хаалттай');
+  assert.equal(W.devHamaaralWrite(u, { updates: JSON.stringify([{ attributes: { objectid: 5, bagts_hamaaral: '[]' }, geometry: { x: 1, y: 1 } }]) }), false, 'geometry — хаалттай');
+  console.log('✅ dev токеноор бичих — зөвхөн `bagts_hamaaral` шинэчлэл');
+}
+
 assertNoUnexpected(assert);
 console.log('✅ workDepsRemote: зан үйлийн шалгуур давлаа');

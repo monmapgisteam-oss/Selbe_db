@@ -67,7 +67,7 @@ const src = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
   const tuh = src('modules/Tuh.tsx');
   assert.match(tuh, /const retryFailed = useCallback/);
   assert.match(tuh, /onRetry=\{retryFailed\}/);
-  assert.match(src('modules/tuh/Overview.tsx'), /onClick=\{onRetry\}/);
+  assert.match(src('modules/tuh/Board.tsx'), /onClick=\{onRetry\}/);
 
   const ua = src('components/UserAdmin.tsx');
   assert.ok(!ua.includes('20 минутын хот'), 'UserAdmin: хуучин брэнд');

@@ -36,6 +36,7 @@ export type CapKey =
   | 'songonEdit'
   | 'zovshoorolTtbEdit'
   | 'ashiglaltEdit'
+  | 'dulaanEdit'
   | 'cfSwitch'
   | 'aiAgent';
 
@@ -121,6 +122,8 @@ export const CAPS: { key: CapKey; icon: string }[] = [
   { key: 'songonEdit', icon: 'pen' },
   { key: 'zovshoorolTtbEdit', icon: 'pen' },
   { key: 'ashiglaltEdit', icon: 'pen' },
+  /** ДУЛААН АВАХ ОГНОО (2026-11-23) — блок бүрийн дулаан авах (төлөвлөсөн) ба авсан (бодит) огноо; батлагчгүй. */
+  { key: 'dulaanEdit', icon: 'pen' },
   /**
    * САРЫН МӨНГӨ ГАРААР → ХУВААРЬ (2026-10-26) — гэрээний гараар оруулсан сарын мөрийг УСТГАЖ Хуваарийн обьём × нэгж
    * өртгөөр тооцох (`monthlyMoney.switchToHuvaari`). Буцаахгүй — «Төлөвлөлтийн ахлах инженер»-т олгоно.
@@ -181,6 +184,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   songonEdit: ['songon'],
   zovshoorolTtbEdit: ['zovshoorolTtb'],
   ashiglaltEdit: ['ashiglalt'],
+  dulaanEdit: ['dulaan'],
   cfSwitch: ['finance'],
   aiAgent: [],
 };

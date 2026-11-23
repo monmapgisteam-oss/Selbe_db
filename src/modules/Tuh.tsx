@@ -26,8 +26,9 @@ import { loadTuhDocs } from './tuh/tuhDocs';
 import type { LiveMap } from '@/lib/tuhData';
 
 const loadLiveProgressLazy = (): Promise<LiveMap> => import('@/lib/projectPlanInputs').then((m) => m.loadLiveProgress());
-import { Overview } from './tuh/Overview';
-import { PkgDetail } from './tuh/PkgDetail';
+import { PkgList, Portfolio, anchorId } from './tuh/Board';
+import { loadTuhExtra, type TuhExtra } from './tuh/extra';
+import b from './tuh/board.module.css';
 import { TuhMap, type MapSel } from './tuh/TuhMap';
 import s from './tuh.module.css';
 
@@ -53,16 +54,47 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   const depQ = useAsync(loadPkgDeps, []);
   const liveQ = useAsync(loadLiveProgressLazy, []);
   const docsQ = useAsync(loadTuhDocs, []);
+  /* 2026-11-23: газар · зөвшөөрөл · ХАБЭА · нэмэлт ажил · блок/дулаан — багцаар */
+  const extraQ = useAsync(() => loadTuhExtra(), []);
+  /**
+   * Гүйлгэхэд шүүлтийн мөрийн доор байгаа багц — жагсаалтын тодруулга (URL-д бичихгүй, газрын зургийг хөдөлгөхгүй).
+   * `undefined` = гүйлгэлт хараахан тооцогдоогүй (тэр үед дарсан `sel` тодорно).
+   */
+  const [active, setActive] = useState<string | null | undefined>(undefined);
 
   const [sel, setSel] = useState<string | null>(() => readParam('tuh'));
+  /** Сонголт бүрийн тоолуур — ИЖИЛ багцыг дахин дарахад ч тэр рүү буцаж гүйлгэнэ */
+  const [jump, setJump] = useState(0);
   useEffect(() => { writeParams({ tuh: sel }, { push: true }); }, [sel]);
   useEffect(() => {
-    const onPop = () => setSel(readParam('tuh'));
+    const onPop = () => { setSel(readParam('tuh')); setJump((n) => n + 1); };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-  /* Багц солиход агуулга дээрээсээ эхэлнэ */
-  useEffect(() => { contentRef.current?.scrollTo({ top: 0 }); }, [sel]);
+  const ready = finQ.state === 'ready';
+  /*
+   * Багц сонгоход (жагсаалт · анхааруулга · хамаарал · газрын зураг · URL) тэр багц руу ГҮЙЛГЭЖ очно.
+   * Самбар хараахан зурагдаагүй (өгөгдөл ачаалж буй, шүүлт цэвэрлэгдэж буй) бол гарч иртэл хүлээнэ (≤6 сек);
+   * олдсоны дараа 600мс-д дахин — Lazy график зурагдаж өндөр өөрчлөгдсөн байрлалыг засна.
+   */
+  useEffect(() => {
+    if (!ready) return undefined;
+    if (!sel) { contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); return undefined; }
+    let t: ReturnType<typeof setTimeout> | undefined;
+    let tries = 0;
+    let hits = 0;
+    const go = () => {
+      const el = document.getElementById(anchorId(sel));
+      if (el) {
+        el.scrollIntoView({ block: 'start' });
+        if (++hits < 2) t = setTimeout(go, 600);
+        return;
+      }
+      if (++tries < 40) t = setTimeout(go, 150);
+    };
+    t = setTimeout(go, 30);
+    return () => clearTimeout(t);
+  }, [sel, jump, ready]);
 
   const packs = useMemo<Pack[]>(() => buildPacks(bq.state === 'ready' ? bq.data.rows : null), [bq]);
 
@@ -136,16 +168,26 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (budgetQ.state === 'error') budgetQ.retry?.();
     if (depQ.state === 'error') depQ.retry?.();
     if (docsQ.state === 'error') docsQ.retry?.();
-    /* 2026-11-23 (аудит): «Гэрээний амьд гүйцэтгэл» унасан гэж харуулдаг ч дахин оролдлогод ордоггүй байв */
+    /* Анхааруулгын мөрөнд нэрлэгддэг бүх эх — амьд гүйцэтгэл ба нэмэлт сэдвүүд (газар · зөвшөөрөл · ХАБЭА · …) */
     if (liveQ.state === 'error') liveQ.retry?.();
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ, docsQ, liveQ]);
+    if (extraQ.state === 'error' || (extraQ.state === 'ready' && extraQ.data.failed.length)) extraQ.retry?.();
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ, docsQ, liveQ, extraQ]);
 
-  const row = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
-  const open = useCallback((k: string) => setSel(k), []);
-  const back = useCallback(() => setSel(null), []);
+  /* Нэмэлт сэдвийн ачаалагч бүхэлдээ унавал «…» мөнхөд үлдэхгүй — бүх хэсэг «—», анхааруулгын мөрөнд нэрлэнэ */
+  const extra = useMemo<TuhExtra | null>(() => (
+    extraQ.state === 'ready' ? extraQ.data
+      : extraQ.state === 'error' ? { land: null, permits: null, safety: null, ajilPending: null, blocks: null, failed: [tr('Газар · зөвшөөрөл · ХАБЭА · нэмэлт ажил · блок')] }
+        : null
+  ), [extraQ]);
 
-  const selPkg = row ? row.p.pkgKey : null;
-  const selHousing = row?.p.group === 'housing';
+  /* Жагсаалтын тодруулга — гүйлгэлтээр тооцсон багц; тооцоогүй бол дарсан */
+  const listSel = active === undefined ? sel : active;
+  const open = useCallback((k: string | null) => { setSel(k); setActive(k); setJump((n) => n + 1); }, []);
+
+  /* Газрын зураг зөвхөн дарсан (sel) багцад томруулна — гүйлгэх (active) үед хөдлөхгүй */
+  const picked = model && sel ? model.rows.find((r) => r.p.key === sel) ?? null : null;
+  const selPkg = picked ? picked.p.pkgKey : null;
+  const selHousing = picked?.p.group === 'housing';
   const mapSel = useMemo<MapSel>(
     () => (selPkg == null ? null : { pkgKey: selPkg, housing: selHousing }),
     [selPkg, selHousing],
@@ -155,8 +197,8 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (!pkgKey || !model) return;
     const hit = model.rows.find((r) => r.p.pkgKey === pkgKey && r.p.group === 'housing')
       ?? model.rows.find((r) => r.p.pkgKey === pkgKey);
-    if (hit) setSel(hit.p.key);
-  }, [model]);
+    if (hit) open(hit.p.key);
+  }, [model, open]);
 
   return (
     <div ref={hostRef} className={`${s.tuh} ${side.hostClass}`} style={side.style}>
@@ -170,10 +212,24 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
             {' '}
             <button type="button" className={s.retryBtn} onClick={retryFailed}>{tr('Дахин оролдох')}</button>
           </p>
-        ) : !model ? null : row ? (
-          <PkgDetail key={row.p.key} r={row} m={model} onBack={back} onOpen={open} onOpenDeps={onOpenDeps} />
-        ) : (
-          <Overview m={model} contractTotal={budgetQ.state === 'ready' ? budgetQ.data.contract : null} onOpen={open} onRetry={retryFailed} onOpenDeps={onOpenDeps} />
+        ) : !model ? null : (
+          /* 2026-11-23: ТУХ шинээр — багц бүрээр хянах (жагсаалт + нийт хяналт / багцын самбар) */
+          <div className={b.shell}>
+            <div className={b.layout}>
+              <PkgList m={model} sel={listSel} onOpen={open} />
+              <Portfolio
+                m={model}
+                extra={extra}
+                contractTotal={budgetQ.state === 'ready' ? budgetQ.data.contract : null}
+                sel={sel}
+                jump={jump}
+                onOpen={open}
+                onActive={setActive}
+                onRetry={retryFailed}
+                onOpenDeps={onOpenDeps}
+              />
+            </div>
+          </div>
         )}
       </div>
       <div className={s.side}>
