@@ -198,7 +198,7 @@ const weekNum = (k: string): number | null => {
 };
 
 /** ISO-8601 долоо хоног (жил, дугаар) — хуанлийн өдрөөс; Даваа гарагаас, 1-р долоо хоног нь Пүрэв агуулсан */
-const isoWeekOf = (y: number, m0: number, d: number): { year: number; no: number } => {
+export const isoWeekOf = (y: number, m0: number, d: number): { year: number; no: number } => {
   const t = new Date(Date.UTC(y, m0, d));
   const day = t.getUTCDay() || 7;
   t.setUTCDate(t.getUTCDate() + 4 - day);
@@ -1226,7 +1226,7 @@ export function UzlegLeft({
           ? (
             <Donut
               items={sev.map(({ display: _d, ...x }) => x)}
-              stack size="md" center={num(total)} centerLabel={tr('заалт')}
+              stack fitLegend soft size="md" center={num(total)} centerLabel={tr('заалт')}
               selected={sel.sev} onSelect={(k) => onPick('sev', k)}
             />
           )
@@ -1355,7 +1355,7 @@ export function UzlegFin({ st, sel, onPick, curYm = '', week = true }: {
           ? (
             <div className={`${h.dayScroll} ${h.dayScrollFill}`} ref={scroll}>
               <div style={{ minWidth: `${Math.max(100, (series.length / SERIES_VISIBLE) * 100)}%` }}>
-                <Series
+                <Series tidyLabels
                   items={series} height={110} unit={tr('үзлэг')} line showValues grow
                   selected={step === 'day' ? sel.day : sel.month}
                   onSelect={(k) => onPick(step === 'day' ? 'day' : 'month', k)}
@@ -1384,7 +1384,7 @@ export function UzlegFin({ st, sel, onPick, curYm = '', week = true }: {
           ? (
             <div className={`${h.dayScroll} ${h.dayScrollFill}`} ref={wkScroll}>
               <div style={{ minWidth: `${Math.max(100, (wk.items.length / SERIES_VISIBLE) * 100)}%` }}>
-                <Series
+                <Series tidyLabels
                   items={wk.items} height={110} line showValues grow
                   color={wk.score ? 'var(--good)' : undefined}
                   selected={sel.week} onSelect={(k) => onPick('week', k)}

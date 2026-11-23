@@ -779,18 +779,29 @@ export function Stack({
   total,
   /** Доор нь тайлбар (нэр + тоо) харуулах эсэх. Чипээр давхардуулахгүйн тулд унтраана. */
   legend = true,
+  soft = false,
 }: {
   items: { key: string; label: string; value: number; color?: string; display?: string }[];
   total?: number;
   legend?: boolean;
+  /**
+   * ЗӨӨЛӨН ХЭСЭГ (2026-11-20, одоогоор ХАБЭА «Компаниар — Монгол, гадаад»): хүрээ бүтэн өнгө, дүүргэлт 50% тунгалаг —
+   * `Donut soft`-той ижил хэв маяг.
+   */
+  soft?: boolean;
 }) {
   const sum = fin(total ?? items.reduce((a, b) => a + fin(b.value), 0)) || 1;
   const has = items.some((it) => fin(it.value) > 0);
   const fillOf = (i: number) => {
     const c = items[i].color ?? 'var(--data)';
+    if (soft) return `color-mix(in oklab, ${c} ${softPct(items[i].color ? 1 : rampOp(i))}, transparent)`;
     const op = items[i].color ? explicitOp : rampOp(i);
     return `color-mix(in oklab, ${c} ${Math.round(op * 100)}%, transparent)`;
   };
+  /** `soft` — хэсгийн хүрээ (inset, өргөнийг өөрчлөхгүй тул хувь хэмжээ ЯГ хэвээр) */
+  const edgeOf = (i: number): CSSProperties => (soft
+    ? { boxShadow: `inset 0 0 0 1.5px ${items[i].color ?? 'var(--data)'}`, borderRadius: 2 }
+    : {});
   const valText = (it: { value: number; display?: string }) => it.display ?? autoNum(it.value);
   const shares = roundPctsTo100(items.map((it) => fin(it.value)), total == null ? undefined : fin(total));
   const share = (idx: number) => {
@@ -808,7 +819,7 @@ export function Stack({
           <span
             key={it.key}
             className={s.stackSeg}
-            style={{ width: `${(fin(it.value) / sum) * 100}%`, background: fillOf(idx) }}
+            style={{ width: `${(fin(it.value) / sum) * 100}%`, background: fillOf(idx), ...edgeOf(idx) }}
             title={titleOf(idx)}
           />
         ) : null))}
@@ -827,7 +838,7 @@ export function Stack({
             <span
               key={it.key}
               className={`${s.compSeg} num`}
-              style={{ width: `${f * 100}%`, background: fillOf(idx) }}
+              style={{ width: `${f * 100}%`, background: fillOf(idx), ...edgeOf(idx) }}
               title={titleOf(idx)}
             >
               {f > 0.12 ? share(idx) : ''}
@@ -867,6 +878,44 @@ function donutSector(cx: number, cy: number, ro: number, ri: number, f0: number,
 }
 
 /**
+ * БӨӨРӨНХИЙ БУЛАНТАЙ ЗҮСМЭГ (2026-11-20, `Donut soft` — ХАБЭА) — дөрвөн булан `rcIn` радиустай (d3 `cornerRadius`-ийн
+ * зарчим): булангийн тойргийн төв гадна талд `ro − rc`, дотор талд `ri + rc` радиус дээр, ирмэгээс `asin(rc/·)` өнцөгт.
+ * Зүсмэг нарийн бол дотор нумд багтахаар радиусыг багасгана (`rc ≤ ri·s/(1−s)`, s = sin(өнцөг/2)); бараг 0 бол хурц.
+ */
+function roundedSector(cx: number, cy: number, ro: number, ri: number, f0: number, f1: number, rcIn: number): string {
+  const TAU = Math.PI * 2;
+  const a0 = f0 * TAU;
+  const a1 = f1 * TAU;
+  const span = a1 - a0;
+  const P = (rad: number, a: number) =>
+    `${Math.round((cx + rad * Math.sin(a)) * 100) / 100},${Math.round((cy - rad * Math.cos(a)) * 100) / 100}`;
+  const sHalf = Math.sin(Math.min(span, Math.PI) / 2);
+  const fit = sHalf < 1 ? ((ri * sHalf) / (1 - sHalf)) * 0.98 : rcIn;
+  const rc = Math.max(0, Math.min(rcIn, (ro - ri) / 2, fit));
+  if (rc < 0.5) return donutSector(cx, cy, ro, ri, f0, f1);
+  const dO = Math.asin(rc / (ro - rc));
+  const dI = Math.asin(rc / (ri + rc));
+  const lO = (ro - rc) * Math.cos(dO);
+  const lI = (ri + rc) * Math.cos(dI);
+  const bigO = span - 2 * dO > Math.PI ? 1 : 0;
+  const bigI = span - 2 * dI > Math.PI ? 1 : 0;
+  return `M${P(lO, a0)} A${rc},${rc} 0 0 1 ${P(ro, a0 + dO)} A${ro},${ro} 0 ${bigO} 1 ${P(ro, a1 - dO)}`
+    + ` A${rc},${rc} 0 0 1 ${P(lO, a1)} L${P(lI, a1)} A${rc},${rc} 0 0 1 ${P(ri, a1 - dI)}`
+    + ` A${ri},${ri} 0 ${bigI} 0 ${P(ri, a0 + dI)} A${rc},${rc} 0 0 1 ${P(lI, a0)} Z`;
+}
+
+/**
+ * `Donut soft` / `Stack soft` — дүүргэлтийн тунгалаг (хүрээ нь бүтэн өнгөөр) ба өнгийг тодруулах шүүлтүүр.
+ * Хуудас өөрөө `--chart-soft-fill` (0–1) тавьж дарж болно (2026-11-21: ХАБЭА 0.3 = 70% тунгалаг); эс бөгөөс 0.5.
+ */
+const SOFT_FILL = 0.5;
+/** CSS илэрхийлэл — дүүргэлтийн тунгалаг × `k` (0–1 тоо) */
+const softFill = (k = 1): string => `calc(var(--chart-soft-fill, ${SOFT_FILL}) * ${k})`;
+/** `color-mix`-ийн хувь — дүүргэлтийн тунгалаг × `k` */
+const softPct = (k = 1): string => `calc(var(--chart-soft-fill, ${SOFT_FILL}) * ${Math.round(k * 1000) / 10}%)`;
+const SOFT_VIVID = 'saturate(1.35) brightness(1.08)';
+
+/**
  * Хувь эзлэх байдлыг харуулах дугуй диаграм.
  */
 export function Donut({
@@ -880,6 +929,10 @@ export function Donut({
   nowrap = false,
   stack = false,
   leaders = false,
+  fitLegend = false,
+  soft = false,
+  calm = false,
+  selectHint,
 }: {
   items: { key: string; label: string; value: number; color?: string; display?: ReactNode }[];
   size?: number | DonutSize;
@@ -899,13 +952,30 @@ export function Donut({
   /** Тайлбарыг доор жагсаахын оронд зүсмэг бүрээс ЗУРААС татаж гадна бичнэ */
   leaders?: boolean;
   /**
+   * `stack`-тай хамт: нарийн КОНТЕЙНЕРТ (≤440px) тайлбар нэг багана — нэр тасрахгүй (2026-11-20, одоогоор ХАБЭА)
+   */
+  fitLegend?: boolean;
+  /**
+   * ЗӨӨЛӨН ЗҮСМЭГ (2026-11-20, одоогоор ХАБЭА): бөөрөнхий булантай, хооронд нь зайтай зүсмэг; хүрээ бүтэн тод өнгө,
+   * дүүргэлт 50% тунгалаг; доорх саарал бөгжгүй. Тайлбарын тэмдэг ижил хэв маягаар.
+   */
+  soft?: boolean;
+  /** `soft`-той хамт: өнгийг ТОДРУУЛАХГҮЙ (saturate шүүлтүүргүй) — бүдэгдүү палитрт (2026-11-20, ХАБЭА хог хаягдал) */
+  calm?: boolean;
+  /**
+   * `onSelect`-тэй зүсмэгийн hover тайлбар — анхдагч «Дарж газрын зурагт шүүнэ». Газрын зураг шүүдэггүй сонголтод
+   * (2026-11-23, ХАБЭА хог хаягдал) өөрөөр хэлнэ.
+   */
+  selectHint?: string;
+  /**
    * Захын шугамын зузааны үржүүлэгч — 2026-10-09-нөөс ҮЙЛЧЛЭХГҮЙ; хуучин дуудагчид
    * эвдрэхгүйн тулд төрөлд үлдэв.
    */
   edge?: number;
 }) {
   const size = typeof sizeIn === 'number' ? sizeIn : DONUT_SIZES[sizeIn][0];
-  const { c: half, R: ro, r: ri } = donutGeom(size, widthIn);
+  /* `soft` — жишээ загвар шиг зузаан бөгж (≈0.34R, анхдагч 0.28R) */
+  const { c: half, R: ro, r: ri } = donutGeom(size, widthIn ?? (soft ? (size / 2 - 4) * 0.34 : undefined));
   const items = rawItems.map((it, i) => ({
     ...it,
     color: it.color ?? 'var(--data)',
@@ -951,7 +1021,7 @@ export function Donut({
   };
   /** Уугуул `title` — «нэр · утга · хувь» + шүүх заавар (2026-10-23: custom tooltip-ийн оронд) */
   const titleOf = (i: number) =>
-    tipTitle(tr(slices[i].label), tipValue(i), onSelect ? tr('Дарж газрын зурагт шүүнэ') : undefined);
+    tipTitle(tr(slices[i].label), tipValue(i), onSelect ? (selectHint ?? tr('Дарж газрын зурагт шүүнэ')) : undefined);
 
   /**
    * Дэлгэц уншигчид зориулсан товч тойм — эхний 3 зүсмэг.
@@ -973,6 +1043,55 @@ export function Donut({
   const arcs = (cx: number, cy: number) => {
     const mid = (ro + ri) / 2;
     const one = fullOne ? slices.findIndex((sl) => sl.frac > 0) : -1;
+    if (soft) {
+      /* Хүрээ бүтэн өнгө, дүүргэлт 50%; өнгөгүй (ramp) зүсмэгт ramp-ийн харьцааг хадгална. Сонгоогүй нь бүдэг. */
+      const look = (sl: (typeof slices)[number]) => {
+        const k = Math.min(1, sl.op / explicitOp);
+        const on = isOn(sl.key);
+        return {
+          fill: sl.color,
+          fillOpacity: on ? softFill(k) : 0.08,
+          stroke: sl.color,
+          strokeOpacity: on ? k : 0.3,
+          strokeWidth: 1.5,
+          strokeLinejoin: 'round' as const,
+          ...(onSelect ? { cursor: 'pointer' } : null),
+        };
+      };
+      const thick = ro - ri;
+      const rc = Math.min(6, thick * 0.22);
+      const gapF = Math.max(3, size * 0.025) / (Math.PI * 2 * mid);
+      return (
+        <g style={calm ? undefined : { filter: SOFT_VIVID }}>
+          {one >= 0 ? (
+            <path
+              d={`M${cx},${cy - ro} A${ro},${ro} 0 1 1 ${cx},${cy + ro} A${ro},${ro} 0 1 1 ${cx},${cy - ro} Z`
+                + ` M${cx},${cy - ri} A${ri},${ri} 0 1 0 ${cx},${cy + ri} A${ri},${ri} 0 1 0 ${cx},${cy - ri} Z`}
+              fillRule="evenodd"
+              style={look(slices[one])}
+              onClick={onSelect ? () => onSelect(slices[one].key) : undefined}
+            >
+              <title>{titleOf(one)}</title>
+            </path>
+          ) : slices.map((sl, i) => {
+            if (!(sl.frac > 0)) return null;
+            const room = sl.frac - gapF;
+            const f0 = room > 0.002 ? sl.offset + gapF / 2 : sl.offset + sl.frac / 2 - 0.001;
+            const f1 = room > 0.002 ? sl.offset + sl.frac - gapF / 2 : sl.offset + sl.frac / 2 + 0.001;
+            return (
+              <path
+                key={sl.key}
+                d={roundedSector(cx, cy, ro, ri, f0, f1, rc)}
+                style={look(sl)}
+                onClick={onSelect ? () => onSelect(sl.key) : undefined}
+              >
+                <title>{titleOf(i)}</title>
+              </path>
+            );
+          })}
+        </g>
+      );
+    }
     return (
       <>
         <circle className={s.donutTrack} cx={cx} cy={cy} r={mid} strokeWidth={ro - ri} />
@@ -1153,7 +1272,7 @@ export function Donut({
   }
 
   return (
-    <div className={`${s.donutWrap} ${nowrap ? s.donutRow : ''} ${stack ? s.donutStack : ''}`} {...chartAttr}>
+    <div className={`${s.donutWrap} ${nowrap ? s.donutRow : ''} ${stack ? s.donutStack : ''} ${stack && fitLegend ? s.donutFit : ''}`} {...chartAttr}>
       <svg
         className={s.donutRing}
         width={size}
@@ -1172,7 +1291,18 @@ export function Donut({
           const d = dispText(sl);
           const body = (
             <>
-              <span className={s.legendSwatch} style={{ background: sl.color, opacity: sl.op }} />
+              <span
+                className={s.legendSwatch}
+                style={soft
+                  ? {
+                    background: `color-mix(in srgb, ${sl.color} ${softPct()}, transparent)`,
+                    boxShadow: `inset 0 0 0 1.5px ${sl.color}`,
+                    filter: calm ? undefined : SOFT_VIVID,
+                    width: 9, height: 9, borderRadius: 3,
+                    opacity: Math.min(1, sl.op / explicitOp),
+                  }
+                  : { background: sl.color, opacity: sl.op }}
+              />
               <span className={s.donutName} data-ui="donut-name">{tr(sl.label)}</span>
               <b className={`${s.donutVal} num`}>{sl.display ?? autoNum(sl.value)}</b>
               <span className={`${s.donutPct} num`}>{d.includes('%') ? '' : legendPct(i)}</span>
@@ -1286,6 +1416,7 @@ export function Series({
   outline = false,
   line = false,
   lines,
+  tidyLabels = false,
 }: {
   items: { key: string; label: string; value: number | null; display?: string; color?: string }[];
   color?: string;
@@ -1321,6 +1452,11 @@ export function Series({
    */
   lines?: SeriesLineDef[] | null;
   showMax?: boolean;
+  /**
+   * ТООНЫ ДАВХЦАЛГҮЙ БАЙРШИЛ (2026-11-20, одоогоор ЗӨВХӨН ХАБЭА — бусад хуудас хуучнаараа): олон муруйд доод
+   * муруйн тоог цэгийн ДООР бичнэ (ойрхон хоёр муруйн тоо давхцахгүй).
+   */
+  tidyLabels?: boolean;
 }) {
   const multi = line && !!lines && lines.length > 0;
   const height = heightIn ?? (line ? 96 : 130);
@@ -1379,6 +1515,17 @@ export function Series({
     const defs: SeriesLineDef[] = multi
       ? lines!
       : [{ key: '_', label: '', color: color ?? 'var(--data)', values: items.map((it) => it.value) }];
+    /*
+     * ОЛОН ШУГАМЫН ТООНЫ БАЙРШИЛ (2026-11-20, ХАБЭА «Ажилтан — өдрөөр»: 714/353 давхцаж байв) — цэг бүрийн тоо дээрээ
+     * бичигддэг тул ойрхон хоёр шугамын доодынх нь тоо дээд шугам дээр бууна. Тэр цэгт ӨӨР шугам илүү өндөр бол
+     * тоог ДООР нь бичнэ; цэг доод захад ойр (тэнхлэгийн шошготой мөргөлдөх) бол дээрээ үлдэнэ. Ганц шугамд хамаарахгүй.
+     * ЗӨВХӨН `tidyLabels` үед (одоогоор ХАБЭА) — бусад хуудас хуучнаараа.
+     */
+    const topAt = tidyLabels && multi
+      ? items.map((_, i) => Math.max(-Infinity, ...defs.map((d) => (isNum(d.values[i]) ? d.values[i] as number : -Infinity))))
+      : null;
+    /* 0.9 — масштаб нь бүх цувааны (жишээ нь 305 өдрийн) дээд утгаар тул харагдах муруй доод хэсэгт шахагддаг (353 → 87%) */
+    const valBelow = (v: number, i: number): boolean => !!topAt && v < topAt[i] && py(v) / H < 0.9;
     const keep = labelKeep(n, ticksW);
     /*
      * X ШОШГО — Environment: БҮГД, 10px tabular ink-3 (идэвхтэй нь ink); олон (n > 8), урт (≥ 4
@@ -1490,7 +1637,7 @@ export function Series({
                     <span
                       key={items[i].key}
                       className={`${s.seriesLineVal} ${active === i ? s.seriesLineValOn : ''} num`}
-                      style={{ left: `${px(i)}%`, top: `${(py(v) / H) * 100}%`, transform: `translate(${edge}, calc(-100% - 6px))` }}
+                      style={{ left: `${px(i)}%`, top: `${(py(v) / H) * 100}%`, transform: valBelow(v, i) ? `translate(${edge}, 6px)` : `translate(${edge}, calc(-100% - 6px))` }}
                     >
                       {multi ? autoNum(v) : items[i].display ?? autoNum(v)}
                     </span>
@@ -1591,7 +1738,7 @@ export function Series({
                 const inner = has ? (
                   <>
                     <span
-                      className={`${s.seriesBar} ${outline ? s.seriesBarOutline : ''}`}
+                      className={`${s.seriesBar} ${outline ? s.seriesBarOutline : ''} seriesColFill`}
                       style={{ height: h > 0 ? `${h}%` : '2px', opacity: activeCol ? CHART.colOpacity : CHART.colDim }}
                     />
                     {showV && (

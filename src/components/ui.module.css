@@ -675,6 +675,14 @@
 @media (max-width: 380px) {
   .donutStack .donutLegend { grid-template-columns: minmax(0, 1fr); }
 }
+/* `Donut fitLegend` (2026-11-20, одоогоор ЗӨВХӨН ХАБЭА): баганын тоог ДЭЛГЭЦИЙН биш КОНТЕЙНЕРИЙН өргөнөөр — нарийн
+   картад 2 багана нэрийг «Од…», «Буу…» болгож уншигдахгүй болгож байв; ≤440px бол нэг багана, нэр бүтнээрээ */
+.donutStack.donutFit { container-type: inline-size; }
+@container (max-width: 440px) {
+  .donutStack.donutFit .donutLegend { grid-template-columns: minmax(0, 1fr); }
+  .donutStack.donutFit .donutLegend > li:nth-last-child(2) > .donutItem,
+  .donutStack.donutFit .donutLegend > .donutItem:nth-last-child(2) { border-bottom-color: var(--line); }
+}
 
 /* ── Босоо цуваа (series) — Environment `BarChart` (баганын горим) ── */
 .series { display: flex; flex-direction: column; }

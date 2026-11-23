@@ -113,7 +113,9 @@ assert.ok(!habea.includes('onSaved={() => regs.retry'), 'бүртгэл хадг
   const act = readFileSync(new URL('./HabeaAction.tsx', import.meta.url), 'utf8');
   assert.ok(act.includes('useAsync(() => loadActions(), [tick], { keepOn: [tick] })'), 'HseActionPanel tick-ээр дахин татна');
   for (const part of ['left', 'right', 'fin']) {
-    assert.ok(habea.includes(`<HseActionPanel part="${part}" pkgs={pkgs} cos={cos} days={sel.day} months={sel.month} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid} scope={habScope} />`), `Habea tick ба сар дамжуулна (${part})`);
+    /* 2026-11-21: «right» — гүйцэтгэгчийн мэдэгдлээс нээсэн мөр (`openOid`) дэлгэрэнгүй жагсаалтад */
+    const open = part === 'right' ? ' openOid={openActOid}' : '';
+    assert.ok(habea.includes(`<HseActionPanel part="${part}" pkgs={pkgs} cos={cos} days={sel.day} months={sel.month} onPkg={togglePkg} sel={actSel} onSel={toggleAct} now={now} tick={tick} pickOid={pickActOid}${open} scope={habScope} />`), `Habea tick ба сар дамжуулна (${part})`);
   }
   assert.ok(act.includes("tr('Үл нийцэл — төлөвөөр')") && !act.includes("tr('Үл нийцэл — төрлөөр')"), 'донат нь төлөв харуулдаг — нэр нь «төлөвөөр»');
 }
@@ -149,9 +151,10 @@ assert.ok(!habea.includes('onSaved={() => regs.retry'), 'бүртгэл хадг
   assert.ok(habea.includes("qRaw.state !== 'ready' && lastHabea"), 'сүүлийн амжилттай өгөгдөл үлдэнэ');
   assert.ok(habea.includes("tr('Шинэчилж чадсангүй — сүүлд татсан мэдээлэл харагдаж байна: {0}'"), 'тайлбар ил');
 
-  /* KPI — шүүлтээс үл хамааран нэг эх (гүйцэтгэгчийн багана); тооны хажууд нэгж бичихгүй (хэрэглэгч 2026-11-06) */
+  /* KPI — шүүлтээс үл хамааран нэг эх (гүйцэтгэгчийн багана). Нэгж: хүн хүч, техникт «хүн-өдөр», «нэгж-өдөр» БИЧИХГҮЙ
+     (хэрэглэгч 2026-11-06, дахин 2026-11-20); LTI-д «цаг», осолд «тохиолдол» л (2026-11-20) */
   assert.ok(!habea.includes('labor.cum') && !habea.includes('laborFiltered'), 'толгойн нийлбэр рүү салаалахгүй');
-  assert.ok(!habea.includes("tr('хүн-өдөр')") && !habea.includes("tr('нэгж-өдөр')"), 'KPI-д нэгж алга');
+  assert.ok(!habea.includes("tr('хүн-өдөр')") && !habea.includes("tr('нэгж-өдөр')"), 'хүн хүч, техникийн KPI-д нэгж алга');
 
   /* Товчлолгүй */
   assert.ok(!habea.includes("tr('Огноогүй ХЧТА") && !habea.includes("tr('{0} ХЧТА"), 'ХЧТА товчлол UI-д алга');

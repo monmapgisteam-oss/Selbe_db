@@ -18,7 +18,7 @@ import { AUTH, HABEA } from '@/lib/services';
 import { currentUser, requireCap } from '@/lib/who';
 import { invalidate } from '@/lib/dataBus';
 import { isLostWrite } from '@/lib/lostWrite';
-import { prevWeek } from '@/modules/habeaUzleg';
+import { prevWeek, isoWeekOf } from '@/modules/habeaUzleg';
 import { ENT_PORTAL, entSession } from '@/lib/entDocs';
 import { HABEA_TTL_MS, HABEA_POLL_MS } from '@/lib/habeaTiming';
 
@@ -170,7 +170,77 @@ export const MULTI_YEAR_GAP = 8;
 export const isMultiYear = (weeks: readonly number[], weekNo: number): boolean =>
   weeks.some((n) => n - weekNo >= MULTI_YEAR_GAP);
 
-export type WasteData = { rows: WasteRow[]; weeks: number[]; weekNo: number; multiYear: boolean };
+/** Нэг долоо хоногийн мөр — `wk` нь ISO дугаар (хүснэгт он талбаргүй) */
+export type WasteWeekRow = WasteRow & { wk: number };
+/**
+ * `rows` — өмнөх бүтэн долоо хоног (анхдагч харагдац); `byWeek` — БҮХ долоо хоног (2026-11-21: хуудасны Огноо/сар/өдрийн
+ * шүүлтийг дагахад `wasteRowsFor`-оор нийлүүлнэ).
+ */
+export type WasteData = { rows: WasteRow[]; byWeek: WasteWeekRow[]; weeks: number[]; weekNo: number; multiYear: boolean };
+
+/** Сонгосон долоо хоногуудын мөрийг хаягдлын төрлөөр нэгтгэнэ (багц бүрийн рейсийн нийлбэр) */
+export function wasteRowsFor(byWeek: readonly WasteWeekRow[], weeks: Iterable<number>): WasteRow[] {
+  const set = new Set(weeks);
+  const by = new Map<string, Record<string, number>>();
+  for (const r of byWeek) {
+    if (!set.has(r.wk)) continue;
+    const cur = by.get(r.metric) ?? {};
+    for (const [name, v] of Object.entries(r.byPkg)) cur[name] = (cur[name] ?? 0) + v;
+    by.set(r.metric, cur);
+  }
+  return [...by.entries()].map(([metric, byPkg]) => ({ metric, byPkg }));
+}
+
+/**
+ * ХУУДАСНЫ ОГНООНЫ ШҮҮЛТ → хог хаягдлын ISO долоо хоногууд (2026-11-21, хэрэглэгч: «динамикаар шүүгдэх»).
+ * Хүснэгт ДОЛОО ХОНОГООР тул:
+ *   · өдөр (`days`, «YYYY-MM-DD») — тэр өдөр орсон долоо хоног бүтнээрээ; `months` бас сонгосон бол тэр сард багтах өдрүүд л;
+ *   · зөвхөн сар (`months`, «YYYY-MM») — Пүрэв гараг нь тэр сард орсон долоо хоногууд (ISO-ийн дүрэм — хоёр сард давхар тоологдохгүй).
+ * Шүүлтгүй бол `null` (анхдагч: өмнөх бүтэн долоо хоног).
+ */
+function selectedIsoWeeks(days: readonly string[], months: readonly string[]): { year: number; no: number }[] {
+  const out: { year: number; no: number }[] = [];
+  const ymd = (k: string) => k.split('-').map(Number);
+  if (days.length) {
+    for (const k of days) {
+      if (months.length && !months.includes(k.slice(0, 7))) continue;
+      const [y, m, d] = ymd(k);
+      if (y && m && d) out.push(isoWeekOf(y, m - 1, d));
+    }
+  } else {
+    for (const ym of months) {
+      const [y, m] = ymd(ym);
+      if (!y || !m) continue;
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      for (let d = 1; d <= last; d += 1) {
+        if (new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 4) out.push(isoWeekOf(y, m - 1, d));
+      }
+    }
+  }
+  return out;
+}
+export function wasteWeeksFor(days: readonly string[], months: readonly string[]): number[] | null {
+  if (!days.length && !months.length) return null;
+  return [...new Set(selectedIsoWeeks(days, months).map((w) => w.no))].sort((a, b) => a - b);
+}
+/**
+ * Сонголтын ISO ОНууд (2026-11-23 хяналт) — хүснэгт он талбаргүй тул өөр онд хүрсэн сонголтод «он ялгагдаагүй»
+ * сануулга гаргахад (жиш. 2025-10, эсвэл 2027-01-01 = 2026-W53).
+ */
+export const isoYearsFor = (days: readonly string[], months: readonly string[]): number[] =>
+  [...new Set(selectedIsoWeeks(days, months).map((w) => w.year))].sort((a, b) => a - b);
+
+/** Долоо хоногуудын товч бичлэг — [40,41,42,44] → «40–42, 44» */
+export const weekRunLabel = (weeks: readonly number[]): string => {
+  const parts: string[] = [];
+  for (let i = 0; i < weeks.length; i += 1) {
+    let j = i;
+    while (j + 1 < weeks.length && weeks[j + 1] === weeks[j] + 1) j += 1;
+    parts.push(j > i ? `${weeks[i]}–${weeks[j]}` : String(weeks[i]));
+    i = j;
+  }
+  return parts.join(', ');
+};
 
 type WasteRaw = { wk: number | null; metric: string; cols: Record<string, number | null> };
 
@@ -190,21 +260,24 @@ export async function loadHabeaWaste(now = new Date()): Promise<WasteData> {
   const W = HABEA.waste;
   const weekNo = prevWeek(now).no;
   const list = await cachedWaste();
-  const by = new Map<string, Record<string, number>>();
+  /* (долоо хоног × төрөл) бүрт НЭГ мөр — багцын баганууд нийлбэрээр */
+  const by = new Map<string, WasteWeekRow>();
   const weeks = new Set<number>();
   for (const r of list) {
-    if (isWeekNo(r.wk)) weeks.add(r.wk);
-    if (r.wk !== weekNo) continue;
-    const cur = by.get(r.metric) ?? {};
+    if (!isWeekNo(r.wk)) continue;
+    weeks.add(r.wk);
+    const id = `${r.wk}\u0000${r.metric}`;
+    const cur = by.get(id) ?? { wk: r.wk, metric: r.metric, byPkg: {} };
     for (const [col, name] of W.pkgCols) {
       const v = r.cols[col];
-      if (v != null) cur[name] = (cur[name] ?? 0) + v;
+      if (v != null) cur.byPkg[name] = (cur.byPkg[name] ?? 0) + v;
     }
-    by.set(r.metric, cur);
+    by.set(id, cur);
   }
   const wk = [...weeks].sort((x, y) => x - y);
+  const byWeek = [...by.values()];
   return {
-    rows: [...by.entries()].map(([metric, byPkg]) => ({ metric, byPkg })), weeks: wk, weekNo,
+    rows: wasteRowsFor(byWeek, [weekNo]), byWeek, weeks: wk, weekNo,
     multiYear: isMultiYear(wk, weekNo),
   };
 }

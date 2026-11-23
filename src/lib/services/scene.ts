@@ -379,15 +379,19 @@ export const HABEA = {
       ['bagts1', 'Багц-1'], ['bagts2', 'Багц-2'], ['bagst3_1', 'Багц-3.1'], ['bagst3_2', 'Багц-3.2'],
       ['bagst3_3', 'Багц-3.3'], ['bagst4_1', 'Багц-4.1'], ['bagst4_2', 'Багц-4.2'],
     ] as [string, string][],
-    /** Донатын төрлүүд — ЯГ `Metric` домэйны кодоор, дэлгэцийн нэр ба өнгө */
+    /**
+     * Донатын төрлүүд — ЯГ `Metric` домэйны кодоор, дэлгэцийн нэр ба өнгө.
+     * 2026-11-20 (хэрэглэгч: «нүдэнд тээргүй өнгө»): тод өнгөний оронд БҮДЭГДҮҮ (muted) палитр — hue-гаараа ялгарна,
+     * ханалт бага. Аюултай хог бүдэг улаан хэвээр (утга). Нөөц өнгө — `Habea.WASTE_EXTRA`.
+     */
     kinds: [
-      { metric: 'Бетон (рейс)', get label() { return tr('Бетон'); }, color: '#e8a33d' },
-      { metric: 'Ахуйн хог (рейс)', get label() { return tr('Ахуйн хог'); }, color: '#4a90e2' },
-      { metric: 'Модны хог (рейс)', get label() { return tr('Модны хаягдал'); }, color: '#2fa36b' },
-      { metric: 'Арматур (рейс)', get label() { return tr('Арматур'); }, color: '#8a94a6' },
-      { metric: 'Аюултай хог (рейс)', get label() { return tr('Аюултай хог'); }, color: '#d9534f' },
-      { metric: 'Барилгын хог хаягдал', get label() { return tr('Барилгын хог'); }, color: '#b07d3c' },
-      { metric: 'Бохир соруулах', get label() { return tr('Бохир соруулах'); }, color: '#7c6fb0' },
+      { metric: 'Бетон (рейс)', get label() { return tr('Бетон'); }, color: '#a99b8a' },
+      { metric: 'Ахуйн хог (рейс)', get label() { return tr('Ахуйн хог'); }, color: '#86b3c9' },
+      { metric: 'Модны хог (рейс)', get label() { return tr('Модны хаягдал'); }, color: '#95b087' },
+      { metric: 'Арматур (рейс)', get label() { return tr('Арматур'); }, color: '#9aa3ad' },
+      { metric: 'Аюултай хог (рейс)', get label() { return tr('Аюултай хог'); }, color: '#c98a82' },
+      { metric: 'Барилгын хог хаягдал', get label() { return tr('Барилгын хог'); }, color: '#c2a374' },
+      { metric: 'Бохир соруулах', get label() { return tr('Бохир соруулах'); }, color: '#8e97c9' },
     ],
   },
   /**
@@ -397,6 +401,7 @@ export const HABEA = {
   action: {
     url: `${ENT_HOSTED}/HSE_Action/FeatureServer/2`,
     survey: 'Захиалагчийн ажлын байрны үзлэг 2026',
+    /* Төлөвийн эх талбарууд ба дүрэм — `fields.ts`-ийн `ACTION_FIELDS` · `actionStatus` (2026-11-20) */
   },
   uzleg: {
     v11: {

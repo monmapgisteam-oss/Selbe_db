@@ -6,11 +6,12 @@
  *
  * `HSE_Action` (Enterprise `Hosted/HSE_Action/FeatureServer/2`) — үзлэгийн үл нийцэл бүр нэг ажил (Workforce-ийн
  * `esritask_*` талбартай): асуумж (`survey`) · багц (`site`) · хэсэг (`section`) · зэрэг (`severity_code`) ·
- * төлөв (`esritask_status`) · дуусах хугацаа (`esritask_duedate`). Амьд метадата 2026-10-26: 1041 мөр
- * (V1.1 866 · захиалагчийн 175).
+ * дуусах хугацаа (`esritask_duedate`). Амьд метадата 2026-10-26: 1041 мөр (V1.1 866 · захиалагчийн 175).
+ * Төлөв (2026-11-20): «Гүйцэтгэгчийн үйл явц» (`contractor_status`) ба «Захиалагчийн шийдвэр» (`review_decision`) —
+ * `actionStatus` (`services/fields.ts`); Workforce-ийн `esritask_status` хоцордог тул хэрэглэхгүй.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures, arcgisPost, type Row } from '@/lib/query';
 import { register } from '@/lib/dataBus';
@@ -18,17 +19,22 @@ import { getAuth } from '@/lib/draftRemote';
 import { devToken } from '@/lib/authToken';
 import { cached } from '@/lib/live';
 import { useAsync } from '@/lib/useAsync';
-import { HABEA } from '@/lib/services';
+import { HABEA, ACTION_FIELDS, actionStatus } from '@/lib/services';
 import { Section, Bars, Donut, Series, Loading, Empty, friendlyError } from '@/components/ui';
 import { ubDayKey } from '@/lib/ceo/workforce';
 import { cleanLabel, rasterTypeOf } from '@/lib/uzlegReport';
 import h from './habea.module.css';
 import { num, pct, date } from '@/lib/format';
 import { habeaPkgKey, habeaPkgLabel, inSel, AttPhoto } from './habeaUzleg';
+/* ХАБЭА-ны шатлал — чарт ба гүйцэтгэгчийн мэдэгдэл (`habeaNotify`) нэг дүрмээр (2026-11-21) */
+import { ACTION_DONE, ESCALATION, stageOf } from '@/lib/habeaStage';
 
 const A = HABEA.action;
 
-/** `esritask_status` домэйн (амьд метадата) → нэр ба өнгө. Дараалал нь ажлын урсгалын дараалал. */
+/**
+ * Төлөвийн код → нэр ба өнгө. Дараалал нь ажлын урсгалын дараалал. 1·2·4 — «Гүйцэтгэгчийн үйл явц», 5·3 —
+ * «Захиалагчийн шийдвэр» (домэйн нь `esritask_status`-тэй ижил; 0 «Хуваарилаагүй» зөвхөн хуучин өгөгдөлд).
+ */
 const STATUS: { code: number; label: () => string; color: string }[] = [
   { code: 0, label: () => tr('Хуваарилаагүй'), color: '#94a3b8' },
   { code: 1, label: () => tr('Хуваарилсан'), color: '#f59e0b' },
@@ -37,12 +43,17 @@ const STATUS: { code: number; label: () => string; color: string }[] = [
   { code: 5, label: () => tr('Засвар шаардлагатай'), color: '#dc2626' },
   { code: 3, label: () => tr('Дууссан'), color: '#16a34a' },
 ];
-const DONE = 3;
+const DONE = ACTION_DONE;
 const WINDOW_DAYS = 30;
 /** Ноцтой үл нийцлийн өнгө (жагсаалтын цэг) */
 const MAJOR = '#dc2626';
 /** «Багцаар» · «Асуумжаар» баганын өнгө — донатын «Хуваарилсан»-тай ижил */
 const BAR_HUE = '#f59e0b';
+/**
+ * «Үл нийцэл — төлөвөөр» донатын дүүргэлт — 0.2 = 80% ТУНГАЛАГ (2026-11-21, хэрэглэгч; бусад ХАБЭА чарт 0.3).
+ * `display: contents` — бүрхүүл зохиомжид оролцохгүй, зөвхөн `--chart-soft-fill`-ийг удамшуулна.
+ */
+const STATUS_FILL = { display: 'contents', '--chart-soft-fill': 0.2 } as CSSProperties;
 
 export type ActionRow = {
   oid: number;
@@ -81,14 +92,13 @@ export const coSfxOf =(name: string): string => CO_RE.find(([re]) => re.test(nam
 
 const toRow = (r: Row): ActionRow => {
   const site = String(r.site ?? '').trim();
-  const st = r.esritask_status;
   const due = r.esritask_duedate;
   return {
     oid: Number(r.objectid) || 0,
     site,
     pkgK: site ? habeaPkgKey(site) : '',
     section: String(r.section ?? '').trim(),
-    status: st == null || st === '' ? null : Number(st),
+    status: actionStatus(r),
     due: typeof due === 'number' && due > 0 ? due : null,
     major: r.severity_code === 'major',
     d: typeof r.insp_datetime === 'number' && r.insp_datetime > 0 ? r.insp_datetime : null,
@@ -119,7 +129,7 @@ export const loadActions = cached(async (): Promise<ActionRow[]> => {
   if (!auth && !devToken()) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   const rows = await queryFeatures(A.url, {
     where: '1=1',
-    outFields: ['objectid', 'site', 'section', 'severity_code', 'esritask_status', 'esritask_duedate', 'insp_datetime', 'survey', 'question', 'q_code',
+    outFields: ['objectid', 'site', 'section', 'severity_code', ACTION_FIELDS.contractor, ACTION_FIELDS.decision, 'esritask_duedate', 'insp_datetime', 'survey', 'question', 'q_code',
       'severity', 'company', 'inspector', 'site_area', 'comment', 'үл_нийцэл_арилгасан_тайлбар', 'photo_count', 'src_globalid'],
     orderBy: 'objectid',
   });
@@ -232,19 +242,6 @@ export function actionWhere(rows: readonly ActionRow[] | null, sc: ActScope, sel
   return ids.length ? `objectid IN (${ids.join(',')})` : '1=0';
 }
 
-/**
- * ХАБЭА-ны шатлал (2026-11-03, хэрэглэгчийн дүрэм) — арилгаагүй үл нийцэл `insp_datetime`-аас хойш:
- * 1-р долоо хоног системд үүснэ · 2-рт талбайн зааварчилгаа · 3-рт сануулах хуудас · 4-рээс хариуцлага тооцно.
- */
-const ESCALATION = [
-  { key: 'w1', label: () => tr('1-р долоо хоног — системд үүссэн'), hint: () => tr('0–6 хоног'), color: '#3b82f6' },
-  { key: 'w2', label: () => tr('2-р долоо хоног — талбайн зааварчилгаа'), hint: () => tr('7–13 хоног'), color: '#f59e0b' },
-  { key: 'w3', label: () => tr('3-р долоо хоног — сануулах хуудас'), hint: () => tr('14–20 хоног'), color: '#f97316' },
-  { key: 'w4', label: () => tr('4-р долоо хоног — хариуцлага тооцох'), hint: () => tr('21+ хоног'), color: '#dc2626' },
-];
-/** Үзлэгийн огнооноос өнгөрсөн бүтэн хоногоор шатны индекс (0–3) */
-const stageOf = (d: number, now: number) => Math.min(3, Math.max(0, Math.floor((now - d) / 86_400_000 / 7)));
-
 /** Түлхүүрээр бүлэглэж нийт · ноцтой · нээлттэйг тоолно (их нь эхэнд) */
 function tally(rows: ActionRow[], keyOf: (r: ActionRow) => string) {
   const m = new Map<string, { total: number; major: number; open: number }>();
@@ -305,10 +302,15 @@ function ActionList({ rows, openOid = null }: { rows: ActionRow[]; openOid?: num
   const [open, setOpen] = useState<number | null>(openOid);
   /** Эрэмбэ — шинэ нь эхэнд (анхдагч) / хуучин нь эхэнд */
   const [oldFirst, setOldFirst] = useState(false);
+  /* Мэдэгдлээс нээсэн мөр (2026-11-21) ЭХЭНД — 6-гаас хойш нуугдахгүй */
   const sorted = useMemo(
-    () => [...rows].sort((a, b) => (oldFirst ? (a.d ?? 0) - (b.d ?? 0) : (b.d ?? 0) - (a.d ?? 0))),
-    [rows, oldFirst],
+    () => [...rows].sort((a, b) => Number(b.oid === openOid) - Number(a.oid === openOid)
+      || (oldFirst ? (a.d ?? 0) - (b.d ?? 0) : (b.d ?? 0) - (a.d ?? 0))),
+    [rows, oldFirst, openOid],
   );
+  /** Нээсэн мөр рүү гүйлгэнэ — баруун баганын доод хэсэгт байж болно */
+  const openRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (openOid) openRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [openOid]);
   const sortBtn = (
     <button type="button" className={h.linkBtn} onClick={() => setOldFirst((v) => !v)}
       title={oldFirst ? tr('Шинэ нь эхэндээ болгох') : tr('Хуучин нь эхэндээ болгох')}>
@@ -335,7 +337,7 @@ function ActionList({ rows, openOid = null }: { rows: ActionRow[]; openOid?: num
         const on = open === x.oid;
         const stS = STATUS.find((s) => s.code === x.status);
         return (
-          <div key={x.oid} className={h.incident}>
+          <div key={x.oid} className={h.incident} ref={x.oid === openOid ? openRef : undefined}>
             <button type="button" className={h.incHead} aria-expanded={on} onClick={() => setOpen(on ? null : x.oid)}>
               <i className={h.incDot} style={{ background: x.major ? MAJOR : '#f59e0b' }} />
               <span className={h.incType}>{x.question || x.qCode || '—'}</span>
@@ -371,7 +373,7 @@ function ActionList({ rows, openOid = null }: { rows: ActionRow[]; openOid?: num
  *   fin   → өдрөөр (цуваа)
  * Ачаалагч нэг (`loadActions` кэштэй) тул гурван хэсэг нэг л хүсэлт.
  */
-export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = NONE, onPkg, sel, onSel, now, tick, pickOid = 0, scope = null }: {
+export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = NONE, onPkg, sel, onSel, now, tick, pickOid = 0, openOid = 0, scope = null }: {
   part: 'left' | 'right' | 'fin';
   /** Хуудасны «Багц» шүүлт (`habeaPkgKey`) — хоосон = бүгд */
   pkgs: string[];
@@ -391,6 +393,8 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = N
   tick: number;
   /** Газрын зурагт дарсан цэгийн `objectid` (0 = сонголтгүй) — бүх чарт тэр цэгийн (эх үзлэгийн) бүх үл нийцлээр (`pickedRows`) */
   pickOid?: number;
+  /** Гүйцэтгэгчийн мэдэгдлээс дарсан үл нийцэл (2026-11-21) — дэлгэрэнгүй жагсаалтад ЭНЭ мөр нээлттэй, эхэнд (0 = үгүй) */
+  openOid?: number;
   /** ХАБЭА харах хүрээ (`habeaScope`) — `null` = бүх багц. «Багцаар» чарт өөрийн сонголтоор шүүгддэггүй тул мөрийг эндээс хязгаарлана */
   scope?: readonly string[] | null;
 }) {
@@ -472,7 +476,8 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = N
             ? <Bars items={view.surveyBars} color={BAR_HUE} selected={sel.survey} onSelect={(k) => onSel('survey', k)} />
             : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
-        <ActionList key={pickOid} rows={view.rows} openOid={pickOid && view.rows.length === 1 ? pickOid : null} />
+        <ActionList key={`${pickOid}:${openOid}`} rows={view.rows}
+          openOid={openOid && view.rows.some((r) => r.oid === openOid) ? openOid : pickOid && view.rows.length === 1 ? pickOid : null} />
       </>
     );
   }
@@ -484,7 +489,7 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = N
             ? (
               <div className={`${h.dayScroll} ${h.dayScrollFill}`}>
                 <div>
-                  <Series items={view.daySeries} color={BAR_HUE} height={110} unit={tr('ажил')} line showValues grow
+                  <Series tidyLabels items={view.daySeries} color={BAR_HUE} height={110} unit={tr('ажил')} line showValues grow
                     selected={sel.day} onSelect={(k) => onSel('day', k)} />
                 </div>
               </div>
@@ -508,8 +513,11 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = N
       >
         {view.total > 0
           ? (
-            <Donut items={view.status} size="md" center={num(view.total)} centerLabel={tr('үл нийцэл')}
-              selected={sel.status} onSelect={(k) => onSel('status', k)} />
+            /* 2026-11-21 (хэрэглэгч): ЗӨВХӨН энэ донат 80% тунгалаг (дүүргэлт 20%); бусад ХАБЭА чарт 70% (`.shell`) */
+            <div style={STATUS_FILL}>
+              <Donut items={view.status} soft size="md" center={num(view.total)} centerLabel={tr('үл нийцэл')}
+                selected={sel.status} onSelect={(k) => onSel('status', k)} />
+            </div>
           )
           : <Empty label={tr('Бүртгэл алга')} />}
       </Section>

@@ -42,7 +42,8 @@ export type LayerDef = {
   width?: number;
   fill?: number;
   /** `pin` — дусал хэлбэрийн тэмдэглэгээ, үзүүр нь цэг дээрээ (2026-11-03, HSE_Action) */
-  marker?: "circle" | "square" | "diamond" | "pin";
+  /** `glow` — гэрэлтэх цэг (цагаан гол + туяа, 2026-11-20 — цамхагт кран) */
+  marker?: "circle" | "square" | "diamond" | "pin" | "glow";
   size?: number;
   /**
  * Полигоны ХҮРЭЭНИЙ өнгө — өгөөгүй бол `hue` (дүүргэлттэй ижил).
@@ -75,6 +76,11 @@ export type LayerDef = {
    */
   paint?: {
     field: string;
+    /**
+     * Arcade илэрхийлэл (2026-11-20) — өгвөл renderer `field`-ийн оронд үүгээр ангилна (хоёр талбараас тооцох төлөв г.м).
+     * ТЕКСТ буцаах ёстой — `values`-ийн түлхүүрүүдтэй мөрөөр тулгагдана.
+     */
+    expr?: string;
     values: Record<string, string>;
     /**
      * ТҮҮХИЙ УТГЫН ХҮНИЙ НЭР (2026-09-15) — тоон кодтой талбарт ЗААВАЛ.

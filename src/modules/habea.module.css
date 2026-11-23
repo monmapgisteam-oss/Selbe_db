@@ -11,6 +11,8 @@
 
 .shell {
   --accent: var(--data);
+  /* Чартын дүүргэлт 30% = 70% ТУНГАЛАГ (2026-11-21, хэрэглэгч) — `Donut/Stack soft` ба доорх «ЧАРТЫН ДҮҮРГЭЛТ» дүрэм */
+  --chart-soft-fill: 0.3;
   height: 100%;
   position: relative;
   display: grid;
@@ -73,6 +75,34 @@
     'kpi'
     'map'
     'fin';
+}
+
+/*
+ * «Осол, зөрчил» фокус (2026-11-21, хэрэглэгч): доод зурвас («Осол, зөрчлийн зураг» · «Осол, зөрчил — компаниар») ЗӨВХӨН
+ * газрын зургийн доор — зүүн (чартууд) ба баруун (дэлгэрэнгүй жагсаалт) багана доош бүтэн үргэлжилнэ. Нарийн дэлгэцийн
+ * босоо цуваа (≤1180px) хэвээр байхаар өргөн дэлгэцэд л.
+ */
+@media (min-width: 1181px) {
+  .shell[data-inc='1'][data-list='1'][data-r='1'] {
+    grid-template-areas:
+      'list kpi r'
+      'list map r'
+      'list fin r';
+    /* Доод мөр АГУУЛГЫНХАА өндрөөр (2026-11-21, хэрэглэгч: «мэдээлэл бүтэн харагдах») — чирж тогтоосон `--row-fin`
+       бага байхад зургийн тайлбар, сүүлийн компаниуд тасарч байв; энэ фокуст үйлчлэхгүй, мөрийн бариулыг нууна. */
+    grid-template-rows: auto minmax(0, 1fr) minmax(240px, auto);
+  }
+  .shell[data-inc='1'][data-list='1'][data-r='1'] > .gripRow { display: none; }
+  /* Мөрийн өндрийг ЗУРАГТАЙ карт тогтооно; «компаниар» компани олон бол картынхаа дотор гүйлгэнэ (газрын зургийг шахахгүй) */
+  .shell[data-inc='1'][data-list='1'][data-r='1'] .fin > section:nth-of-type(2) { contain: size; overflow-y: auto; }
+  /* Зургийн тайлбар 1–2 мөр — зураг солиход мөрийн өндөр үсрэхгүй */
+  .shell[data-inc='1'][data-list='1'][data-r='1'] .slideCapText { min-height: 2lh; }
+  /* Зураг · компаниар — ТЭНЦҮҮ хоёр хуваана (2026-11-21, хэрэглэгч). Бусад фокустай хуваалцдаг `--fin-1` (чирсэн өргөн)
+     энд үйлчлэхгүй тул картын хоорондын бариулыг нууна — чирэхэд юу ч өөрчлөгдөхгүй байх ёсгүй. */
+  .shell[data-inc='1'][data-list='1'][data-r='1'] .fin {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .shell[data-inc='1'][data-list='1'][data-r='1'] .fin > .gripCol { display: none; }
 }
 
 .shell[data-list='0'] .list { display: none; }
@@ -147,7 +177,7 @@
      тайрч байв (2026-08-21 аудит) — auto-fit нь зай хүрэхгүй бол дараагийн
      мөрөнд буулгаж бүх KPI-г бүтэн үзүүлнэ */
   grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -159,9 +189,10 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
-  padding: 6px 12px;
+  /* 2026-11-20 (хэрэглэгч: «дээш нь шахаад жоохон жижиг»): нягт дотор зай */
+  padding: 5px 10px 6px;
   overflow: hidden;
   text-align: left;
   background: var(--surface);
@@ -177,37 +208,51 @@
   gap: 8px;
   min-width: 0;
 }
+/* 2026-11-20 (хэрэглэгч: «тоог гол болго»): шошго ЖИЖИГ, энгийн үсгээр (том үсэг биш), яг 2 мөрийн ТОГТМОЛ өндөр —
+   тоо шошгоны шууд доор тул нэгж · зурвас · тайлбараас үл хамааран зургаан тоо нэг шугамд. Бүтэн нэр title-д. */
 .ktLabel {
   min-width: 0;
-  min-height: 2.6em;
+  height: 2.5em;
   font-size: 11px;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.25;
   color: var(--ink-2);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 /* Товчлол шошго (LTI) — бусдаас том */
 .ktLabelBig { font-size: 14px; letter-spacing: 0.06em; }
+/* Нарийн нүдэнд (≈1600px дэлгэц) шошго 3 мөр — 2 мөрөнд «Осолгүй ажилласан цаг…» тасарч байв. Зургаан нүд ижил
+   өргөнтэй (1fr) тул бүгд нэг зэрэг шилжиж тоонууд нэг шугамдаа үлдэнэ. */
+.kt { container-type: inline-size; }
+@container (max-width: 150px) {
+  .ktLabel { height: 3.75em; -webkit-line-clamp: 3; line-clamp: 3; font-size: 10.5px; }
+}
 .ktFoot {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
   text-align: center;
   gap: 3px;
   min-width: 0;
 }
+/* 2026-11-20: нэгж ҮРГЭЛЖ тооны ДООР — хажууд байхад нүдний өргөнөөс хамаарч заримд нь хажууд, заримд нь доор
+   ороож жигд бус харагдаж байв */
 .ktVal {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: 0 5px;
+  gap: 1px;
   min-width: 0;
 }
 .ktVal b {
-  font-size: clamp(15px, 1.15vw, 18px);
+  font-size: clamp(17px, 1.25vw, 21px);
   font-weight: 600;
   line-height: 1.05;
   letter-spacing: -0.02em;
@@ -217,15 +262,17 @@
 }
 .ktVal i {
   font-style: normal;
-  font-size: 11px;
+  font-size: 10.5px;
+  line-height: 1.2;
   color: var(--ink-3);
   white-space: nowrap;
 }
 /* Харьцааны зурвас — нүдний өнгөөр, ард нь зам (утга 0 ч ЗАМ харагдана) */
+/* 2026-11-20: 2px → 4px — нимгэн зурвас бараг харагдахгүй байв */
 .ktBar {
   width: 100%;
-  height: 2px;
-  border-radius: 1px;
+  height: 4px;
+  border-radius: 2px;
   overflow: hidden;
   background: var(--chart-track);
 }
@@ -236,7 +283,7 @@
   background: var(--t);
 }
 .ktSub {
-  font-size: 11px;
+  font-size: 10.5px;
   line-height: 1.3;
   max-width: 100%;
   overflow: hidden;
@@ -268,9 +315,10 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  /* 2026-11-20 (хэрэглэгч: «жижигрүүлээд текст бүрэн харагдмаар»): нягт */
+  gap: 6px;
   min-width: 0;
-  padding: 10px 10px 11px;
+  padding: 8px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -306,7 +354,17 @@
   gap: 6px;
   align-items: stretch;
 }
-.infoBar > * { flex: 1 1 0; min-width: 0; }
+/* 2026-11-20: хоёр товч зэрэгцээд багтахгүй бол (≈240px багана) ХОЁР МӨРӨНД ороож бүтэн өргөнөөр — «Мэд…» болж тасарч байв */
+.infoBar { flex-wrap: wrap; container-type: inline-size; }
+.infoBar > * { flex: 1 1 108px; min-width: 0; }
+/* «Тайлан татах» (`UzlegExport.trigger`) — «Мэдээлэл»-тэй ижил нягт хэмжээ, зөвхөн энэ мөрөнд */
+.infoBar > button {
+  height: 30px;
+  padding: 0 8px;
+  gap: 5px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
 /*
  * Огноо · Багц · Компани — «Мэдээлэл · Тайлан татах»-ын доор (2026-11-03). Капсулын оронд ТАЛБАРЫН МӨР:
  * бүтэн өргөн, шошго зүүн талд тогтмол өргөнтэй, утга ба ▾ баруун ирмэгт — гурван мөрийн утга нэг баганад
@@ -316,40 +374,60 @@
 .fltPills {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
+/* 2026-11-20: 34 → 28px, шошго энгийн үсгээр (ТОМ үсэг + зай нь 64px-д «КОМПАНИ» багтахгүй байв), урт утга (олон багц)
+   «…» болж тасрахын оронд 2 мөрөнд ороож бүтэн харагдана — тэр үед мөр өөрөө өндөрсөнө */
 .fltPills > div {
   display: flex;
   width: 100%;
-  height: 34px;
-  padding: 0 4px 0 12px;
+  height: auto;
+  min-height: 28px;
+  padding: 2px 3px 2px 10px;
   border-width: 1px;
   border-radius: var(--r);
 }
-.fltPills > div > span:first-child { flex: 0 0 64px; }
+.fltPills > div > span:first-child {
+  flex: 0 0 56px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
 .fltPills > div > button {
   flex: 1 1 auto;
   justify-content: space-between;
   max-width: none;
-  height: 100%;
-  padding: 0 8px;
-  font-size: 12px;
+  height: auto;
+  min-height: 22px;
+  padding: 2px 6px;
+  font-size: 11.5px;
   border-radius: var(--r-sm);
+}
+.fltPills > div > button > span:first-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 .fltPills .coNote { padding-left: 2px; }
 .infoWrap { position: relative; }
 .infoBtn {
   font: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   width: 100%;
-  height: 40px;
-  padding: 0 14px;
+  /* 2026-11-20: 40 → 30px, хажуугийн зай 14 → 8px — нарийн баганад «Мэдээлэл», «Тайлан татах» тасарч байв */
+  height: 30px;
+  padding: 0 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   color: var(--moss);
   background: color-mix(in oklab, var(--moss) 12%, transparent);
   border: 1px solid color-mix(in oklab, var(--moss) 45%, transparent);
@@ -375,6 +453,10 @@
   top: calc(100% + 6px);
   left: 0;
   width: max(100%, 280px);
+  /* 2026-11-21: нарийн баруун баганад 280px цэс баруун ирмэгээс хальж тасарч байв — мөрийн (`.infoBar`) өргөнтэй тэнцүү;
+     урт нэр хоёр мөрөнд орно. `.infoWrap` мөрийн зүүн ирмэгээс эхэлдэг тул `left: 0` + `100cqw` яг багтана. */
+  width: 100cqw;
+  box-sizing: border-box;
   max-height: 64vh;
   overflow-y: auto;
   padding: 6px;
@@ -428,6 +510,8 @@
 .infoReset:disabled { color: var(--ink-3); background: transparent; border-color: var(--line); cursor: default; opacity: 0.7; }
 .infoItem {
   font: inherit;
+  /* 2026-11-21: нарийн цэсэнд нэр хоёр мөр болоход `max-height`-тэй flex баганад агшиж мөрүүд давхцаж байв */
+  flex: none;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -504,8 +588,31 @@
   align-items: baseline;
   gap: 8px;
 }
-.regHead { padding-bottom: 4px; font-size: 11px; line-height: 1.3; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.regHead { padding-bottom: 2px; font-size: 10px; line-height: 1.3; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
 .regHead span:not(:first-child) { text-align: right; }
+/* «Бусад үзүүлэлт» — тоон жагсаалт (2026-11-20): шошго · долоо хоногийн тоо, мөр бүр hairline-аар */
+.regList { margin: 0; padding: 0; list-style: none; }
+.regList li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  align-items: baseline;
+  gap: 8px;
+  /* 2026-11-20 (хэрэглэгч: «жоохон жижиг»): 7 → 4px, 12.5 → 11.5px */
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.regList li:last-child { border-bottom: 0; }
+.regList li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.regList li b {
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.regList li b.regMuted { font-weight: 500; color: var(--ink-3); }
 
 /* «Компаниар — монгол, гадаад»-ын тайлбар (2026-10-07) */
 .mixLegend { display: flex; gap: 14px; font-size: 11px; color: var(--ink-2); }
@@ -517,9 +624,11 @@
   gap: 7px;
   min-width: 0;
 }
+/* 2026-11-20: хувийн багана ТОГТМОЛ (34px, «100%» багтана) — мөр бүр тусдаа grid тул `auto` байхад «95%», «4%»-ийн
+   өргөний зөрүүгээр зурвас мөр бүрд өөр цэгээс эхэлж (ялангуяа нарийн баганад) жигд бус харагдаж байв */
 .mixRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(56px, 1.1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(56px, 1.1fr) 34px;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -550,6 +659,7 @@
   font-variant-numeric: tabular-nums;
   color: var(--c2);
   white-space: nowrap;
+  text-align: right;
 }
 
 
@@ -1278,3 +1388,360 @@
 }
 .map.map:has(:global(.mapOpacity)) *:has(> :global(.mapCatalog)) { bottom: auto; height: calc(55% - 18px); }
 .map.map:has(:global(.mapCatalog)) :global(.mapOpacity) { top: calc(55% + 6px); max-height: calc(45% - 18px); }
+
+/*
+ * ЧАРТЫН ДҮҮРГЭЛТ — 70% ТУНГАЛАГ (2026-11-21, хэрэглэгч: «ХАБЭА хуудасны бүх чартын transparency 70%»). Зөвхөн энэ хуудас:
+ * донат ба хэсэгчилсэн зурвас (`soft`) нь `--chart-soft-fill`-ийг шууд уншина; баганан жагсаалт, цувааны багана, онооны
+ * зурвас эндээс — хүрээ бүтэн өнгөөр, дүүргэлт 30%. Шугамын доорх талбай аль хэдийн тунгалаг (≤22%) тул хэвээр.
+ */
+.shell :global(.barsList) :global(.chartFill) {
+  background: color-mix(in oklab, var(--tone, var(--data)) calc(var(--chart-soft-fill) * 100%), transparent);
+  box-shadow: inset 0 0 0 1px var(--tone, var(--data));
+}
+.shell :global(.seriesColFill) {
+  background: color-mix(in oklab, var(--tone, var(--data)) calc(var(--chart-soft-fill) * 100%), transparent);
+  box-shadow: inset 0 0 0 1.5px var(--tone, var(--data));
+}
+.shell .scoreBar {
+  background: color-mix(in oklab, var(--c) calc(var(--chart-soft-fill) * 100%), transparent);
+  box-shadow: inset 0 0 0 1px var(--c);
+}
+
+/* ══ ГҮЙЦЭТГЭГЧИЙН ҮЛ НИЙЦЛИЙН МЭДЭГДЭЛ (2026-11-21, `HabeaNotify.tsx`) ══
+   Хонх — «Мэдээлэл · Тайлан татах»-ын хажууд; самбар нь `.infoBar`-ын өргөнтэй (`.infoBar` relative, `.ntWrap` static,
+   самбар `left/right: 0`) — нарийн баганаас хальдаггүй. `container-type` нь Chrome-д absolute-ийн суурь БОЛДОГГҮЙ тул
+   relative заавал. Цонх нь `document.body`-д (portal).
+   Загвар (хэрэглэгч: «илүү харагдахаар, ойлгомжтой»): дээр гурван том тоо · 4 шатны өнгөт карт (`--st` — чартын
+   өнгө) · сонгосон шатны «юу болох вэ» · үл нийцлийн карт (шатны зураас, чипүүд, ›). */
+.linkBtn:disabled { color: var(--ink-3); text-decoration: none; cursor: default; }
+.infoBar { position: relative; }
+.infoBar > .ntWrap { flex: none; }
+.ntWrap { position: static; }
+.ntBell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.ntBell:hover,
+.ntBell[aria-expanded='true'] { color: var(--ink); background: var(--surface-2); }
+.ntBell:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+/* Шинэ мэдэгдэлтэй — хонх улаан, гурван удаа долгилж анхаарал татна */
+.ntBellOn {
+  color: var(--bad);
+  border-color: color-mix(in oklab, var(--bad) 60%, transparent);
+  background: color-mix(in oklab, var(--bad) 10%, transparent);
+  animation: ntPulse 1.8s ease-out 3;
+}
+@keyframes ntPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--bad) 55%, transparent); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.ntBadge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: var(--bad);
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  box-sizing: content-box;
+}
+.ntMenu {
+  position: absolute;
+  z-index: 31;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 72vh;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid color-mix(in oklab, var(--bad) 35%, var(--line));
+  border-top: 3px solid var(--bad);
+  border-radius: var(--r);
+  box-shadow: 0 16px 36px -12px rgb(0 0 0 / 0.6);
+}
+.ntMenuHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px 6px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.ntMenuHead .linkBtn { flex: none; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.ntMenuFoot { display: flex; justify-content: flex-end; padding-top: 8px; border-top: 1px solid var(--line); }
+
+/* Гурван том тоо — нээлттэй · шинэ · хариуцлагын шат */
+.ntStats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.ntStat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.ntStat b { font-size: 20px; font-weight: 700; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ntStatNew { border-color: color-mix(in oklab, var(--bad) 40%, var(--line)); }
+.ntStatNew b,
+.ntStatBad b { color: var(--bad); }
+.ntStatBad {
+  background: color-mix(in oklab, var(--bad) 12%, var(--surface-2));
+  border-color: color-mix(in oklab, var(--bad) 50%, transparent);
+}
+
+/* Шатлал — өнгөт карт; нарийн самбарт 2×2, цонхонд 4 зэрэгцээ */
+.ntBoard { display: flex; flex-direction: column; gap: 10px; }
+.ntStages { display: grid; grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); gap: 6px; }
+.ntStage {
+  font: inherit;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px 9px 13px;
+  text-align: left;
+  color: var(--ink-2);
+  background: color-mix(in oklab, var(--st) 7%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--st) 30%, var(--line));
+  border-radius: var(--r);
+  overflow: hidden;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.ntStage::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--st); }
+.ntStage:hover { background: color-mix(in oklab, var(--st) 14%, var(--surface)); }
+.ntStage:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.ntStageOn,
+.ntStageOn:hover {
+  color: var(--ink);
+  background: color-mix(in oklab, var(--st) 20%, var(--surface));
+  border-color: var(--st);
+  box-shadow: inset 0 0 0 1px var(--st);
+}
+.ntStageNone { opacity: 0.55; }
+.ntStageTop { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; }
+.ntStageWeek { font-size: 10.5px; font-weight: 700; color: var(--st); white-space: nowrap; }
+.ntStageNew {
+  padding: 0 6px;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 16px;
+  color: #fff;
+  background: var(--bad);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.ntStageCount { font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ntStageAct { font-size: 11px; line-height: 1.25; color: var(--ink-2); }
+.ntStageAct::first-letter { text-transform: uppercase; }
+
+/* Сонгосон шатанд юу болох вэ */
+.ntAdvice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+  background: color-mix(in oklab, var(--st) 10%, transparent);
+  border-left: 3px solid var(--st);
+  border-radius: 0 var(--r) var(--r) 0;
+}
+.ntAdvice b { font-size: 12.5px; color: var(--ink); }
+
+/* Нарийн хонхны самбар — шатны карт 2×2, тоо нягт (гүйлгэгчтэй ч хоёр багана багтана) */
+.ntMenu .ntStages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ntMenu .ntStage { padding: 6px 8px 7px 11px; }
+.ntMenu .ntStageTop { flex-wrap: wrap; row-gap: 2px; }
+.ntMenu .ntStageCount { font-size: 18px; }
+.ntMenu .ntStat { padding: 6px 8px; font-size: 10px; }
+.ntMenu .ntStat b { font-size: 17px; }
+
+/* Үл нийцлийн карт */
+.ntCards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ntMenu .ntCards { max-height: 300px; overflow-y: auto; }
+.ntCard {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px 9px 12px;
+  text-align: left;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--st);
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.ntCard:hover {
+  color: var(--ink);
+  background: color-mix(in oklab, var(--st) 9%, var(--surface-2));
+  border-color: color-mix(in oklab, var(--st) 55%, var(--line));
+  border-left-color: var(--st);
+}
+.ntCard:focus-visible { outline: 2px solid var(--data); outline-offset: 1px; }
+.ntCardNew { background: color-mix(in oklab, var(--bad) 7%, var(--surface-2)); }
+.ntCardNew .ntCardQ { font-weight: 650; color: var(--ink); }
+.ntCardBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.ntCardQ { font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
+.ntCardMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.ntChip {
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 17px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.ntChipNew { color: #fff; background: var(--bad); border-color: var(--bad); text-transform: uppercase; letter-spacing: 0.04em; }
+.ntChipBad { color: var(--bad); background: color-mix(in oklab, var(--bad) 10%, transparent); border-color: color-mix(in oklab, var(--bad) 55%, transparent); }
+.ntCardSub { font-size: 10.5px; color: var(--ink-3); }
+.ntCardGo { flex: none; color: var(--ink-3); transition: transform 0.15s, color 0.15s; }
+.ntCard:hover .ntCardGo { color: var(--ink); transform: translateX(2px); }
+.ntEmpty { margin: 0; padding: 10px 8px; font-size: 12px; color: var(--ink-3); }
+
+/* Товчнууд */
+.ntPrimary {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--data);
+  border: 1px solid var(--data);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.ntPrimary:hover:enabled { filter: brightness(1.1); }
+.ntPrimary:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.ntPrimary:disabled { opacity: 0.5; cursor: default; }
+.ntMenu .ntPrimary { height: 28px; padding: 0 10px; font-size: 11.5px; }
+.ntClose {
+  font: inherit;
+  height: 32px;
+  padding: 0 16px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.ntClose:hover { border-color: var(--data); }
+.ntClose:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+
+/* Нэвтрэх үеийн цонх */
+.ntBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(2px);
+}
+.ntDialog {
+  --accent: var(--data);
+  width: min(680px, 100%);
+  max-height: min(86vh, 780px);
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--bad);
+  border-radius: var(--r-lg);
+  box-shadow: 0 28px 70px -20px rgb(0 0 0 / 0.65);
+  outline: none;
+}
+.ntDialogHead { display: flex; align-items: flex-start; gap: 12px; padding: 16px 14px 12px 18px; }
+.ntDialogIcon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--bad);
+  background: color-mix(in oklab, var(--bad) 16%, transparent);
+  border-radius: 50%;
+}
+.ntDialogTitle { flex: 1; min-width: 0; }
+.ntDialogTitle h2 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.25; color: var(--ink); }
+.ntDialogTitle p { margin: 4px 0 0; font-size: 12px; line-height: 1.4; color: var(--ink-3); }
+.ntX {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  cursor: pointer;
+}
+.ntX:hover { color: var(--ink); background: var(--surface-2); }
+.ntX:focus-visible { outline: 2px solid var(--data); outline-offset: 2px; }
+.ntDialog > .ntStats { padding: 0 18px 14px; }
+.ntDialog .ntStat b { font-size: 24px; }
+.ntDialogBody { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px; border-top: 1px solid var(--line); }
+.ntDialogFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 18px;
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+}
+.ntFootBtns { display: flex; gap: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .ntBellOn { animation: none; }
+  .ntStage, .ntCard, .ntCardGo { transition: none; }
+}
