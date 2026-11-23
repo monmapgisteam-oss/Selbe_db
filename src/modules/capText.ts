@@ -31,7 +31,7 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   hamaaral: ['hamaaral'],
   habea: ['habeaData', 'habeaOwn'],
   zurag: ['zuragEdit'],
-  uyShat: ['zahiramjEdit', 'songonEdit', 'zovshoorolTtbEdit', 'ashiglaltEdit'],
+  uyShat: ['zahiramjEdit', 'songonEdit', 'zovshoorolTtbEdit', 'ashiglaltEdit', 'dulaanEdit'],
   sys: ['docsUpload', 'docsGroups', 'aiAgent'],
 };
 
@@ -110,6 +110,7 @@ export const capLabel = (k: CapKey): string => {
   if (k === 'songonEdit') return tr('Сонгон шалгаруулалт оруулах');
   if (k === 'zovshoorolTtbEdit') return tr('Зөвшөөрөл (төлөвлөгөө) оруулах');
   if (k === 'ashiglaltEdit') return tr('Ашиглалтад оруулах огноо оруулах');
+  if (k === 'dulaanEdit') return tr('Дулаан авах огноо оруулах');
   if (k === 'docsUpload') return tr('Баримт бичгийн сан — PDF оруулах');
   if (k === 'docsGroups') return tr('Баримт бичгийн сан — бүлэг үүсгэх');
   return k;
@@ -219,6 +220,9 @@ export const capNote = (k: CapKey): string => {
   }
   if (k === 'ashiglaltEdit') {
     return tr('«Ашиглалтад оруулах» хуудсанд багц бүрийн ашиглалтад оруулах огноог оруулах. Батлагч байхгүй.');
+  }
+  if (k === 'dulaanEdit') {
+    return tr('«Дулаан авах огноо» хуудсанд блок бүрийн дулаан авах (төлөвлөсөн) ба авсан (бодит) огноог оруулах. Батлагч байхгүй.');
   }
   if (k === 'aiAgent') {
     return tr('AI туслахын товч зөвхөн энэ эрхтэй аккаунтад харагдана. Туслах нь тухайн хэрэглэгчийн харах эрхтэй мэдээллээс л хариулна.');

@@ -64,6 +64,23 @@ export function devTokenFor(o: { nodeEnv: string | undefined; appId: string; hos
 const WRITE_ENDPOINT = /\/(applyEdits|addFeatures|updateFeatures|deleteFeatures|calculate|append|truncate|createService|addToDefinition|updateDefinition|deleteFromDefinition|addItem|updateItem|deleteItem|share|unshare|delete)\/?$/i;
 export const isWriteEndpoint = (url: string): boolean => WRITE_ENDPOINT.test(url.split('?')[0]);
 export const DEV_WRITE_BLOCKED = (): string => tr('Нэвтрэлт унтраалттай dev горимд бичилт хаалттай — production өгөгдөл хөндөгдөхгүй.');
+
+/**
+ * DEV ТОКЕНООР БИЧИХ НАРИЙН ЗӨВШӨӨРӨЛ (2026-11-23, хэрэглэгч: «Багцын хамаарал»-д dev токеноор бичих — зөвхөн localhost,
+ * зөвхөн тэр цэс). Модуль өөрийн бичилтийн ЯГ хэлбэрийг шалгах дүрэм бүртгэнэ (`workDepsRemote` — бөглөх хуудасны
+ * `bagts_hamaaral` талбарын шинэчлэл л). Бусад бүх бичилт dev токеноор хаалттай хэвээр.
+ */
+type DevWriteRule = (url: string, params: Record<string, string>) => boolean;
+const devWriteRules: DevWriteRule[] = [];
+export function allowDevWrite(rule: DevWriteRule): void {
+  if (!devWriteRules.includes(rule)) devWriteRules.push(rule);
+}
+export function devWriteAllowed(url: string, params: Record<string, string>): boolean {
+  /* Хаягт query string байвал ХОРИГЛОНО — ArcGIS нь URL-ийн параметрийг (`deletes` · `adds` г.м.) биетэй нийлүүлдэг тул
+     дүрэм зөвхөн биеийг шалгавал тойрч гарах боломжтой байв (2026-11-23 аудит) */
+  if (url.includes('?')) return false;
+  return devWriteRules.some((r) => { try { return r(url, params); } catch { return false; } });
+}
 export function devToken(): string | null {
   return devTokenFor({
     nodeEnv: process.env.NODE_ENV,

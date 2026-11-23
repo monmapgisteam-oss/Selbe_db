@@ -9,10 +9,33 @@ import { register } from './dataBus';
 import { SESSION_TTL_MS } from './live';
 import { bagtsKey } from './services';
 import { isLostWrite } from './lostWrite';
+import { allowDevWrite } from './authToken';
 import {
-  applyRefChange, buildGraph, checkNext, locateRow, parseRefs, pkgDeps, pkgPairs, rebaseChange, refsJson, sameRefs,
+  WORK_DEPS_FIELD, applyRefChange, buildGraph, checkNext, locateRow, parseRefs, pkgDeps, pkgPairs, rebaseChange, refsJson, sameRefs,
   type PkgDep, type RefChange, type SheetIn, type WorkGraph, type WorkRef, type WorkRow,
 } from './workDeps';
+
+/**
+ * DEV ТОКЕНООР БИЧИХ ДҮРЭМ (2026-11-23, хэрэглэгч: «Багцын хамаарал»-д dev токеноор бичих) — ЗӨВХӨН бөглөх хуудасны
+ * (`PKGS`) `applyEdits`-ийн ШИНЭЧЛЭЛ, мөр бүрд зөвхөн OBJECTID ба `bagts_hamaaral` талбар. Нэмэх/устгах · өөр талбар ·
+ * өөр хүснэгт — хаалттай хэвээр. Dev токен нь зөвхөн локал dev серверт байдаг (`authToken.devTokenFor`).
+ */
+const SHEET_URLS = new Set(PKGS.map((p) => p.url.replace(/\/+$/, '')));
+export function devHamaaralWrite(url: string, params: Record<string, string>): boolean {
+  const m = /^(.*)\/applyEdits\/?$/i.exec(url);
+  if (!m || !SHEET_URLS.has(m[1])) return false;
+  if (Object.keys(params).some((k) => k !== 'updates' && k !== 'rollbackOnFailure')) return false;
+  const ups: unknown = JSON.parse(params.updates ?? '[]');
+  return Array.isArray(ups) && ups.length > 0 && ups.every((u) => {
+    /* Мөр бүр ЗӨВХӨН `attributes`-тэй (geometry г.м. өөр түлхүүргүй) */
+    if (!u || typeof u !== 'object' || Object.keys(u).some((k) => k !== 'attributes')) return false;
+    const a = (u as { attributes?: unknown }).attributes;
+    return !!a && typeof a === 'object'
+      && Object.keys(a).every((k) => /^objectid$/i.test(k) || k.toLowerCase() === WORK_DEPS_FIELD)
+      && Object.keys(a).some((k) => k.toLowerCase() === WORK_DEPS_FIELD);
+  });
+}
+allowDevWrite(devHamaaralWrite);
 
 /** Нэг хуудасны уншилт — `rows: null` бол уншигдаагүй (`error`) */
 export type SheetLoad = { pkg: Pkg; field: string | null; rows: WorkRow[] | null; error: string | null };
@@ -151,9 +174,11 @@ export async function saveWorkLinks(dep: WorkRef, change: RefChange): Promise<Sa
   const fld = sc.f.bham;
   if (!fld) return { ok: false, error: tr('«{0}» хуудсанд «{1}» талбар алга — админ нэмэх хүртэл хадгалах боломжгүй', pkg.label, 'bagts_hamaaral') };
   const others = await Promise.all(PKGS.filter((x) => x.key !== pkg.key).map((x) => loadSheet(x, true)));
-  const down = others.filter((x) => !x.rows).map((x) => x.pkg.label);
-  if (change.add.length && down.length)
-    return { ok: false, error: tr('Уншигдаагүй хуудас ({0}) — дугуй хамаарлыг шалгах боломжгүй тул хадгалсангүй: {1}', String(down.length), down.join(', ')) };
+  /* Холбоо чиглэлгүй (дугуй гэж байхгүй) — зөвхөн НЭМЭХ бүлгийн хуудас уншигдсан байх ёстой (давхар холбоо шалгахад) */
+  const need = new Set(change.add.map((r) => r.p));
+  const down = others.filter((x) => !x.rows && need.has(x.pkg.key)).map((x) => x.pkg.label);
+  if (down.length)
+    return { ok: false, error: tr('Холбох бүлгийн хуудас уншигдсангүй ({0}) — давхар холбоо шалгах боломжгүй тул хадгалсангүй: {1}', String(down.length), down.join(', ')) };
   let why = tr('Хуудас зэрэг шинэчлэгдэж байна — дахин оролдоно уу');
   for (let i = 0; i < 3; i += 1) {
     const busy0 = await busyWhy(pkg);

@@ -120,8 +120,10 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   const g = buildGraph(sheets({ 2: refsJson([{ p: 'b31_9f', k: '1 ¦ Ус' }]) }, { 2: refsJson([{ p: 'b31_9f', k: '2 ¦ Цахилгаан' }]) }));
   assert.ok(reachesPre(g, a1, b2), 'a1 → b1 → b2');
   assert.ok(linkError(g, a1, a1), 'өөртөө');
-  assert.ok(linkError(g, a1, nodeId('b1_9f', '2 ¦ Суурь')), 'нэг хуудас');
-  assert.match(linkError(g, b2, a1), /Дугуй|дугуй/, 'b2 ← a1 нь дугуй (a1 → b1 → b2)');
+  assert.equal(linkError(g, a1, nodeId('b1_9f', '2 ¦ Суурь')), null, 'нэг багцын бүлгүүд холбогдоно (2026-11-23)');
+  /* 2026-11-23: чиглэлгүй — дамжсан «дугуй» хориггүй; зөвхөн нөгөө талд хадгалсан ижил холбоог давхар бичихгүй */
+  assert.equal(linkError(g, b2, a1), null, 'a1 → b1 → b2 дамжсан нь хориггүй');
+  assert.match(linkError(g, nodeId('b31_9f', '1 ¦ Ус'), a1), /аль хэдийн/, 'b1 ↔ a1 аль хэдийн (a1-ийн мөрд)');
   assert.equal(linkError(g, nodeId('b71', '1 ¦ Зам'), a1), null);
   /* `dependentsOf` ≡ `linkError`-ийн дугуй (сонгогч нэг давалтаар) */
   assert.deepEqual([...dependentsOf(g, b2)].sort(), [a1, nodeId('b31_9f', '1 ¦ Ус')].sort());
@@ -130,14 +132,14 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   const cur = [{ p: 'b31_9f', k: '9 ¦ Алга' }];
   assert.equal(checkNext(g, a1, cur, [...cur, refOf(g.nodes.get(nodeId('b71', '1 ¦ Зам')))]), null);
   assert.equal(checkNext(g, a1, cur, []), null, 'өнчнийг хасах — зөвшөөрнө');
-  assert.ok(checkNext(g, b2, [], [refOf(g.nodes.get(a1))]), 'дугуй нэмэлт — шалтгаан');
+  assert.ok(checkNext(g, nodeId('b31_9f', '1 ¦ Ус'), [], [refOf(g.nodes.get(a1))]), 'урвуу давхар холбоо — шалтгаан');
   assert.ok(checkNext(g, a1, [], [{ p: 'b31_9f', k: '9 ¦ Алга' }]), 'олдохгүй ажлыг нэмэхгүй');
   const rows3 = [...A(0, { 2: refsJson([{ p: 'b31_9f', k: '1 ¦ Ус' }]) }), R(7, '1', 'Шороо', 1, false, 7)];
   const g3 = buildGraph([{ p: 'b1_9f', rows: rows3, field: true }, { p: 'b31_9f', rows: B(500), field: true }]);
   const us = nodeId('b31_9f', '1 ¦ Ус');
   const stale = [{ p: 'b1_9f', k: '1 ¦ Шороо', n: 2 }];
   assert.equal(resolveRef(g3, stale[0]).why, 'ambiguous');
-  assert.match(checkNext(g3, us, stale, [refOf(g3.nodes.get(nodeId('b1_9f', '1 ¦ Шороо')))]) ?? '', /Дугуй|дугуй/, 'ижил refId — дугуй БАРИГДАНА');
+  assert.match(checkNext(g3, us, stale, [refOf(g3.nodes.get(nodeId('b1_9f', '1 ¦ Шороо')))]) ?? '', /аль хэдийн/, 'ижил refId — урвуу давхар холбоо БАРИГДАНА');
   assert.equal(checkNext(g3, us, stale, stale), null, 'яг ижил хуучин холбоос — шалгахгүй (хасах/хадгалах боломжтой)');
   console.log('✅ өөртөө · нэг хуудас · дугуй · шалгалт');
 }
@@ -237,21 +239,19 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   console.log('✅ бүдүүвч · архивын жаазад дамжина');
 }
 
-/* ══════════ 2026-11-13: уялдааны төрөл · хоног, зөвхөн 3-р давхрын бүлэг ══════════ */
+/* ══════════ 2026-11-23: уялдааны төрөл (FS/SS) · хоног ХАСАГДСАН — зөвхөн бүлгээр; зөвхөн 3-р давхрын бүлэг ══════════ */
 {
   const W = await import('./workDeps.ts');
   const refs = W.parseRefs('[{"p":"b1_9f","k":"3 ¦ Рам","t":"SS","l":5},{"p":"b51","k":"Б1 ¦ ДХТ","t":"FS","l":0}]');
-  assert.deepEqual(refs, [{ p: 'b1_9f', k: '3 ¦ Рам', t: 'SS', l: 5 }, { p: 'b51', k: 'Б1 ¦ ДХТ' }], 'FS · 0 хоног шахагдана');
+  assert.deepEqual(refs, [{ p: 'b1_9f', k: '3 ¦ Рам' }, { p: 'b51', k: 'Б1 ¦ ДХТ' }], 'хуучин төрөл · хоног уншихдаа хаягдана');
+  assert.equal(W.refsJson(refs), '[{"p":"b1_9f","k":"3 ¦ Рам"},{"p":"b51","k":"Б1 ¦ ДХТ"}]', 'бичихэд төрөл · хоног алга');
   assert.deepEqual(W.parseRefs(W.refsJson(refs)), refs, 'буцаан уншина');
-  assert.throws(() => W.parseRefs('[{"p":"b1","k":"x","t":"XX"}]'), 'буруу төрөл');
-  assert.throws(() => W.parseRefs('[{"p":"b1","k":"x","l":1.5}]'), 'бутархай хоног');
-  assert.equal(W.depLabel({}), 'FS');
-  assert.equal(W.depLabel({ t: 'SS', l: 3 }), 'SS+3');
-  assert.equal(W.depLabel({ l: -2 }), 'FS-2');
-  /* төрөл сольход ижил бүлгийн холбоос солигдоно, давхардахгүй */
-  const next = W.applyRefChange([{ p: 'b51', k: 'Б1 ¦ ДХТ' }], { add: [{ p: 'b51', k: 'Б1 ¦ ДХТ', t: 'SS', l: 2 }], remove: [] });
-  assert.deepEqual(next, [{ p: 'b51', k: 'Б1 ¦ ДХТ', t: 'SS', l: 2 }]);
-  assert.equal(W.sameRefs([{ p: 'b51', k: 'x' }], [{ p: 'b51', k: 'x', t: 'SS' }]), false, 'төрөл өөрчлөгдвөл өөр');
+  assert.throws(() => W.parseRefs('[{"p":"b1","k":"x","t":"XX"}]'), 'эвдэрсэн хуучин бичлэг');
+  assert.throws(() => W.parseRefs('[{"p":"b1","k":"x","l":1.5}]'), 'эвдэрсэн хуучин бичлэг');
+  assert.equal('depLabel' in W, false, 'FS/SS шошго алга');
+  /* ижил бүлгийг дахин нэмэхэд давхардахгүй */
+  const next = W.applyRefChange([{ p: 'b51', k: 'Б1 ¦ ДХТ' }], { add: [{ p: 'b51', k: 'Б1 ¦ ДХТ' }], remove: [] });
+  assert.deepEqual(next, [{ p: 'b51', k: 'Б1 ¦ ДХТ' }]);
 
   /* Холбож болох мөр: А. Бэлтгэлийн ажил · 3-р давхрын бүлэг; бусад нь үгүй */
   const rows = [
@@ -268,3 +268,4 @@ const sheets = (aVals = {}, bVals = {}, cVals = {}, baseA = 100, baseB = 500, ba
   assert.deepEqual(secs.map((s) => s.items.map((id) => g.nodes.get(id).oid)), [[1], [2], [5, 7]], 'эцгээр хэсэглэнэ');
   console.log('✅ уялдааны төрөл · хоног · 3-р давхрын бүлэг');
 }
+

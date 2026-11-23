@@ -2,7 +2,7 @@
  * ХҮРЭЭ — 2026-10-23: Environment (`workspace.css` §dock/header, `shell/{sidebar,header}.tsx`,
  * `layers/portal-dashboard.tsx`-ийн байрлал):
  *   · зүүн  = DOCK (`--nav` 104px, fixed) — харагдацын жагсаалт (`ViewRail`, `tree.module.css`)
- *   · дээд  = толгой (`--head` 80px, sticky, blur 16) — брэнд · зам заагч · хэрэгслүүд · хэрэглэгч
+ *   · дээд  = толгой (`--head` 56px, sticky, blur 16) — брэнд · зам заагч · хэрэгслүүд · хэрэглэгч
  *   · агуулга (12px зай):
  *       бүтэн дэлгэцийн харагдац (`viewRegistry`) — `.suit` дотор өөрийн бүтцээрээ;
  *       газрын зурагтай харагдац — `.work`: KPI зурвас + `ResizableColumns` (каталог · зураг · самбар).
@@ -553,3 +553,12 @@
 .workPlan [role='separator']:not(:hover):not(:focus-visible)::before,
 .workPlan [role='separator']:not(:hover):not(:focus-visible)::after { background: transparent; }
 .workPlan .map :global(.mapDims) { top: 12px; }
+
+/* ТОЛГОЙ НАМ (2026-11-23, хэрэглэгч: «өндрийг багасга»): 80 → 56px. Лого, товч, зам заагчийг түүнд тааруулж жижигрүүлэв */
+/* Зөвхөн 641px-ээс өргөнд — жижиг дэлгэцийн лого (≤640: 126px · ≤420: 90px) дарагдахгүй (2026-11-23 засвар) */
+@media (min-width: 641px) { .logo { width: 178px; height: 34px; } .identity { min-height: 44px; } }
+.iconBtn { width: 32px; height: 32px; }
+.iconBtn svg { width: 16px; height: 16px; }
+.crumb { margin-top: 1px; }
+/* Лого нарийссан (230 → 178px) тул нэрийн зүүн зайг мөн адил хэмжээгээр (52px) багасгав */
+@media (min-width: 1181px) { .identity { padding-left: 190px; min-height: 44px; } }

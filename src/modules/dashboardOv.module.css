@@ -1684,3 +1684,63 @@
   .railTop { align-self: stretch; }
   .railTitle { white-space: normal !important; display: -webkit-box !important; overflow: hidden !important; }
 }
+
+/*
+ * ══ ХЭСГИЙН 9 ТОВЧ — ТАБ ХЭЛБЭР (2026-11-23, хэрэглэгч: «товч гэж танихад хүндрэлтэй») ══
+ * Капсул + хоосон бөгж нь мэдээллийн шошго шиг харагддаг байв. Одоо НЭГ зурвас доторх табууд: хүрээгүй, хулгана очиход
+ * дэвсгэр тодорно, идэвхтэй таб тод дэвсгэртэй + доод зураастай. Бөгж (сонголтын тэмдэг шиг) хасагдав.
+ */
+.rail {
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.railItem,
+.railItem:hover {
+  position: relative;
+  border: 0;
+  border-radius: calc(var(--r-lg) - 3px);
+  background: transparent;
+  padding: 8px 12px;
+}
+.railItem::before { display: none; }
+.railItem:hover { background: color-mix(in oklab, var(--ink) 8%, transparent); }
+.railItem:active { background: color-mix(in oklab, var(--ink) 13%, transparent); }
+/* Табуудын хоорондох нарийн зааг — идэвхтэй/hover табын хажууд нуугдана */
+.railItem + .railItem::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 22%;
+  bottom: 22%;
+  width: 1px;
+  background: var(--line-strong);
+}
+.railItem:hover::after, .railOn::after, .railItem:hover + .railItem::after, .railOn + .railItem::after { background: transparent; }
+.railOn,
+.railOn:hover {
+  background: var(--surface);
+  box-shadow: inset 0 -2px 0 var(--accent), 0 1px 2px color-mix(in oklab, #000 18%, transparent);
+}
+.railOn .railTitle,
+.railOn:hover .railTitle,
+.railOn .railVal { color: var(--ink); }
+.railTitle { color: var(--ink-2); }
+.railVal { color: var(--ink-3); font-weight: 500; }
+.railItem:hover .railTitle, .railItem:hover .railVal { color: var(--ink); }
+/* Хоёр мөрөнд хугарах горимд (≤1700px) мөр хоорондын зааг хэрэггүй */
+@media (max-width: 1700px) { .railItem + .railItem::after { display: none; } }
+@media (max-width: 520px) { .railItem, .railItem:hover { border-radius: calc(var(--r-lg) - 3px); } }
+
+/*
+ * ДООД МӨР — БҮХ ХЭСЭГТ (2026-11-23): хажуугийн багана дүүрч гүйлгэгддэг хэсгүүдээс 2–3 картыг доод мөрөнд зэрэгцүүлэв
+ * (`key="zBottom-…"`). Доод мөр байгаа үед л тор 4 мөртэй; карт нь 300px-ээс өндөр бол дотроо гүйнэ — зураг шахагдахгүй.
+ */
+@media (min-width: 1181px) {
+  .shell[data-detail='1']:has(> .zBottom) { grid-template-rows: auto auto minmax(320px, 1fr) auto; }
+  .shell[data-detail='1'] > .zBottom { grid-column: 1 / -1; grid-row: 4; }
+  .zBottom > * { max-height: 300px; overflow: hidden; }
+  .zBottom .panelBody { overflow-y: auto; min-height: 0; }
+}

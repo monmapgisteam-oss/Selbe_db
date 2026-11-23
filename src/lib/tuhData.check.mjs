@@ -670,7 +670,8 @@ ok('reportAge — хоног; огноо алга бол null', () => {
 ok('heatWinterYear — 5/15-аас өмнө өмнөх оны өвөл (хатуу 2026 биш)', () => {
   assert.equal(heatWinterYear('2026-10-01'), 2026);
   assert.equal(heatWinterYear('2027-02-10'), 2026);
-  assert.equal(heatWinterYear('2027-05-15'), 2027);
+  assert.equal(heatWinterYear('2027-05-15'), 2026);
+  assert.equal(heatWinterYear('2027-05-16'), 2027);
   assert.equal(heatWinterYear('x'), null);
 });
 
@@ -679,7 +680,7 @@ console.log('\n22. Харагдацын холболт (эх кодоор)');
   const { readFileSync } = await import('node:fs');
   const view = readFileSync(new URL('../modules/Tuh.tsx', import.meta.url), 'utf8');
   const sched = readFileSync(new URL('../modules/tuh/tuhSchedule.ts', import.meta.url), 'utf8');
-  const ov = readFileSync(new URL('../modules/tuh/Overview.tsx', import.meta.url), 'utf8');
+  const ov = readFileSync(new URL('../modules/tuh/Board.tsx', import.meta.url), 'utf8');
   ok('⚠️ багц нээх/хаах нь түүхэнд PUSH; popstate → `sel` сэргээнэ', () => {
     assert.ok(/writeParams\(\{ tuh: sel \}, \{ push: true \}\)/.test(view));
     assert.ok(/addEventListener\('popstate'/.test(view) && /setSel\(readParam\('tuh'\)\)/.test(view));

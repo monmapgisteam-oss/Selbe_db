@@ -501,7 +501,10 @@ const stored = fx.rows.map((r, i) => ({
   assert.equal(x[0].a.pkg, 'БАГЦ1');
   assert.equal(x[0].b.pkg, 'БАГЦ2');
   assert.equal(x[0].a.blok, null, 'блокгүй');
-  assert.equal(x[0].viol, true, 'Дулаан 05.01 < Хана 05.31 + 1');
+  /* 2026-11-23: чиглэлгүй — зөрчил тооцохгүй (Дулаан 05.01 < Хана 05.31 ч) */
+  assert.equal(x[0].viol, false, 'чиглэлгүй холбоо — зөрчилгүй');
+  assert.equal(x[0].und, true, 'чиглэлгүй');
+  assert.equal(levelLinks(x, 2, [pk])[0].und.size, 1, 'мөрийн холбоост чиглэлгүй гэж дамжина');
   assert.deepEqual(levelLinks(x, 2, [pk])[0].to, ['p:БАГЦ2'], 'L2: багцын мөр хооронд');
 }
 

@@ -12,21 +12,14 @@ export const WORK_DEPS_FIELD = 'bagts_hamaaral';
 export const WORK_DEPS_MAX = 8000;
 
 /**
- * Холбоос: `p` хуудас · `k` мөрийн түлхүүр · `o`/`n` давтамж · `d` ажлын код; `t` — уялдааны төрөл (2026-11-13: `'SS'` =
- * зэрэг эхэлнэ, байхгүй = FS — урд нь дуусаад), `l` — хоцрогдол хоногоор (байхгүй = 0).
+ * Холбоос: `p` хуудас · `k` мөрийн түлхүүр · `o`/`n` давтамж · `d` ажлын код.
+ * 2026-11-23 (хэрэглэгч: «SS FS гэж хамааруулдгийг бүрэн хасаж зөвхөн бүлгээр хамаарал хийдэг болго») — уялдааны төрөл
+ * (`t`) ба хоцрогдол (`l`) ХАСАГДСАН: холбоо нь зөвхөн «энэ бүлэг тэр бүлгээс хамаарна». Хуучин бичлэгийн `t`/`l`-ийг
+ * уншихдаа хүлээн авч ХАЯНА — дараагийн хадгалалтаар талбараас арилна.
  */
-export type WorkRef = { p: string; k: string; o?: number; n?: number; d?: number; t?: 'SS'; l?: number };
-
-/** Уялдааны төрөл · хоног (холбоосоос) */
-export const refKind = (r: Pick<WorkRef, 't'>): 'FS' | 'SS' => (r.t === 'SS' ? 'SS' : 'FS');
-export const refLag = (r: Pick<WorkRef, 'l'>): number => r.l ?? 0;
-/** «FS» · «SS+3» · «FS-2» */
-export const depLabel = (r: Pick<WorkRef, 't' | 'l'>): string => {
-  const l = refLag(r);
-  return `${refKind(r)}${l ? (l > 0 ? `+${l}` : String(l)) : ''}`;
-};
-/** Хоцрогдлын хязгаар (хоног) */
-export const LAG_MAX = 3650;
+export type WorkRef = { p: string; k: string; o?: number; n?: number; d?: number };
+/** Хуучин бичлэгийн хоцрогдлын хязгаар (зөвхөн эвдэрсэн эсэхийг шалгахад) */
+const LAG_MAX = 3650;
 export type RefChange = { add: readonly WorkRef[]; remove: readonly WorkRef[] };
 
 /** Хуудасны мөр (`bagtsSheet.SheetRow`-ийн хэрэгтэй хэсэг + талбарын түүхий утга `val`) */
@@ -53,8 +46,6 @@ const compact = (r: WorkRef): WorkRef => {
   if (r.o) o.o = r.o;
   if (r.n != null && r.n > 1) o.n = r.n;
   if (r.d != null) o.d = r.d;
-  if (r.t === 'SS') o.t = 'SS';
-  if (r.l) o.l = r.l;
   return o;
 };
 
@@ -86,7 +77,6 @@ export function parseRefs(raw: unknown): WorkRef[] {
     if (!ok) throw new Error(tr('Ажлын хамаарлын бичлэг эвдэрсэн байна (буруу холбоос)'));
     const r = compact({
       p: e.p as string, k: e.k as string, o: e.o as number | undefined, n: e.n as number | undefined, d: e.d as number | undefined,
-      t: e.t === 'SS' ? 'SS' : undefined, l: e.l as number | undefined,
     });
     const id = refId(r);
     if (seen.has(id)) continue;
@@ -300,10 +290,11 @@ export function dependentsOf(g: Pick<WorkGraph, 'post'>, dep: NodeId): Set<NodeI
 /** `dep` ажилд `pre`-г урьдчилагч болгож болох уу — болохгүй бол шалтгаан */
 export function linkError(g: Pick<WorkGraph, 'pre' | 'nodes'>, dep: NodeId, pre: NodeId): string | null {
   if (dep === pre) return tr('Ажлыг өөртэй нь холбох боломжгүй');
-  const a = g.nodes.get(dep);
-  const b = g.nodes.get(pre);
-  if (a && b && a.p === b.p) return tr('Нэг хуудасны ажлуудын уялдааг «Хуваарь»-аас бүртгэнэ');
-  if (reachesPre(g, pre, dep)) return tr('Дугуй хамаарал үүснэ — тэр ажил энэ ажлаас (дамжуулан) хамаардаг');
+  /*
+   * 2026-11-23: нэг багцын бүлгүүдийг ч холбоно; холбоо ЧИГЛЭЛГҮЙ (дараалал нь «Хуваарь»-аас) тул «дугуй» гэж байхгүй —
+   * зөвхөн нөгөө талд нь аль хэдийн хадгалсан ижил холбоог давхар бичихгүй.
+   */
+  if ((g.pre.get(pre) ?? []).some((e) => e.to === dep)) return tr('Энэ холбоо аль хэдийн байна');
   return null;
 }
 
@@ -327,7 +318,7 @@ export function rebaseChange(g: Pick<WorkGraph, 'nodes' | 'index' | 'failed'>, c
   const add = c.add.map((r) => {
     const t = target(r);
     const n = t ? g.nodes.get(t) : undefined;
-    return n ? compact({ ...refOf(n), t: r.t, l: r.l }) : r;
+    return n ? refOf(n) : r;
   });
   const addIds = new Set(add.map(refId));
   const hit = new Set([...add, ...c.remove].map(target).filter((x): x is NodeId => !!x));

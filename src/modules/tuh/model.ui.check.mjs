@@ -196,21 +196,22 @@ console.log('\n8. Зурагдах (SSR)');
 {
   const React = (await import('react')).default;
   const { renderToStaticMarkup } = await import('react-dom/server');
-  const { Overview } = await import('./Overview.tsx');
-  const { PkgDetail } = await import('./PkgDetail.tsx');
-  ok('Тойм: айлын тоо «—» (давхарга ирээгүй), шидэхгүй', () => {
-    const html = renderToStaticMarkup(React.createElement(Overview, { m, contractTotal: null, onOpen: noop }));
-    assert.ok(html.includes('—<small>айл</small>'), 'айл «—»');
-    assert.ok(!html.includes('0<small>айл</small>'));
+  /* 2026-11-23: ТУХ шинэ самбар — нийт хяналт (`Portfolio`) · багцын самбар (`PkgBoard`) */
+  const { Portfolio: Overview, PkgBoard: PkgDetail } = await import('./Board.tsx');
+  ok('Тойм шидэхгүй; самбар: айлын тоо «—» (давхарга ирээгүй)', () => {
+    renderToStaticMarkup(React.createElement(Overview, { m, onOpen: noop }));
+    const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
+    assert.ok(hd.includes('<dt>Айл</dt><dd>—</dd>'), 'айл «—»');
+    assert.ok(!hd.includes('<dt>Айл</dt><dd>0</dd>'));
   });
   ok('Дэлгэрэнгүй: хүн хүч «—» (тайлангүй), шидэхгүй', () => {
     const html = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
-    assert.ok(html.includes('—<small>хүн</small>'), 'хүн «—»');
+    assert.ok(html.includes('<dt>Ажилтан</dt><dd>—</dd>'), 'хүн «—»');
   });
   ok('0 багц — шидэхгүй', () => {
     const empty = buildModel(input({ fin: { ...fin, contracts: [], contractsHo: [], pays: [] } }));
     assert.equal(empty.rows.length, 0);
-    renderToStaticMarkup(React.createElement(Overview, { m: empty, contractTotal: null, onOpen: noop }));
+    renderToStaticMarkup(React.createElement(Overview, { m: empty, onOpen: noop }));
   });
 
   /* ═══════════════ 2026-10-01 (хэрэглэгч: бүгдийг зас) ═══════════════ */
@@ -222,7 +223,9 @@ console.log('\n8. Зурагдах (SSR)');
   });
 
   console.log('\n10. Сүүлд тайлагнасан — карт бүрд, 14+ хоног тодорно');
-  const html = renderToStaticMarkup(React.createElement(Overview, { m, contractTotal: null, onOpen: noop }));
+  /* Нийт хяналт + БАГЦ1-ийн самбар — нэг мөрөнд шалгана */
+  const html = renderToStaticMarkup(React.createElement(Overview, { m, onOpen: noop }))
+    + renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
   ok('БАГЦ1 — 2026-08-05, хоцорсон тайлан data-stale', () => {
     assert.equal(h1.lastReport, '2026-08-05');
     assert.ok(h1.reportAge >= 14);
@@ -248,19 +251,15 @@ console.log('\n8. Зурагдах (SSR)');
   console.log('\n13. Ачаалж байхад «…», дууссан бол «—»');
   ok('барилга, гэрээний төлөвлөгөө, комисс ачаалж байна → «…»', () => {
     const ml = buildModel(input({ cfPlan: null, loading: new Set(['packs', 'cfPlan', 'commission', 'budget']) }));
-    const hl = renderToStaticMarkup(React.createElement(Overview, { m: ml, contractTotal: null, onOpen: noop }));
-    assert.ok(hl.includes('…<small>айл</small>'), 'айл «…»');
-    assert.ok(!hl.includes('—<small>айл</small>'));
-    const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: ml.rows.find((x) => x.p.key === 'БАГЦ1'), m: ml, onBack: noop, onOpen: noop }));
-    assert.ok(hd.includes('Гэрээний төлөвлөгөө …'), 'дэлгэрэнгүй — гэрээний төлөвлөгөө «…»');
+    renderToStaticMarkup(React.createElement(Overview, { m: ml, onOpen: noop }));
+    const hl = renderToStaticMarkup(React.createElement(PkgDetail, { r: ml.rows.find((x) => x.p.key === 'БАГЦ1'), m: ml, onBack: noop, onOpen: noop }));
+    assert.ok(hl.includes('<dt>Айл</dt><dd>…</dd>'), 'айл «…»');
+    assert.ok(!hl.includes('<dt>Айл</dt><dd>—</dd>'));
   });
 
   console.log('\n14. Хоосон хэсэг хураагдсан, төлвийн тоо товч');
-  ok('ТУХ-ын арга хэмжээ <details>; төлвийн товчнууд', () => {
-    assert.ok(/<details[^>]*>\s*<summary><h2>ТУХ-ын төсөл дамнасан арга хэмжээ<\/h2>/.test(html));
+  ok('төлвийн шүүлтийн товчнууд', () => {
     assert.ok(html.includes('aria-pressed="false"'));
-    const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
-    assert.ok(/<details[^>]*>\s*<summary><h2>Зураг<\/h2>/.test(hd));
   });
 
   console.log('\n15. Хуваарь < 95% хамарсан — гүйцэтгэгчийн хуваариар ДҮГНЭХГҮЙ');
@@ -272,7 +271,10 @@ console.log('\n8. Зурагдах (SSR)');
     assert.equal(m.hero.planCoverage, 70);
     assert.ok(html.includes('хуваарь 70.0% хамарсан'), 'hero — гүйцэтгэгчийн төлөвлөгөөний хажууд хамралт');
     const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
-    assert.ok(hd.includes('хуваарь 70.0% хамарсан — хуваарь дутуу — дүгнэхгүй'), 'дэлгэрэнгүй — дүгнэхгүй гэж ил');
+    /* 2026-11-23: «… — хуваарь дутуу — дүгнэхгүй» давхар, бас гэрээний төлөвлөгөөгөөр дүгнэсэн үед худал байв */
+    const basis = h1.planContract != null ? 'гэрээний төлөвлөгөөгөөр дүгнэв' : 'дүгнэхгүй';
+    assert.ok(hd.includes(`хуваарь 70.0% хамарсан · ${basis}`), `дэлгэрэнгүй — «${basis}» гэж ил`);
+    assert.ok(!hd.includes('хуваарь дутуу — дүгнэхгүй'), 'давхар тайлбаргүй');
   });
   ok('хамралт 100% — SPI (гүйцэтгэгч) бодогдоно, hero-д тэмдэглэлгүй', () => {
     const full = [{ label: '2026-07', pct: 10, vol: null }, { label: '2026-08', pct: 41, vol: null }, { label: '2026-12', pct: 100, vol: null }];
@@ -281,7 +283,7 @@ console.log('\n8. Зурагдах (SSR)');
     assert.equal(r.planCoverage, 100);
     assert.ok(r.ev.spiContractor != null, 'бүрэн хуваарьт SPI');
     assert.equal(mf.hero.planCoverage, 100);
-    const hf = renderToStaticMarkup(React.createElement(Overview, { m: mf, contractTotal: null, onOpen: noop }));
+    const hf = renderToStaticMarkup(React.createElement(Overview, { m: mf, onOpen: noop }));
     assert.ok(!hf.includes('хамарсан'), 'бүрэн хуваарьт хамралтын тэмдэглэл нэмэхгүй');
   });
 }
@@ -290,8 +292,8 @@ console.log('\n17. Гэрээгүй мөр — EV/PV бодохгүй; нэгд�
 {
   const React = (await import('react')).default;
   const { renderToStaticMarkup } = await import('react-dom/server');
-  const { Overview } = await import('./Overview.tsx');
-  const { PkgDetail } = await import('./PkgDetail.tsx');
+  /* 2026-11-23: ТУХ шинэ самбар — нийт хяналт (`Portfolio`) · багцын самбар (`PkgBoard`) */
+  const { Portfolio: Overview, PkgBoard: PkgDetail } = await import('./Board.tsx');
   const { commissionText, usesHandover } = await import('./model.ts');
   const extra = CR({ oid: 70, pkg: 'БАГЦ-14', t2: INFRA, t3: 'Инженерийн бэлтгэл ажил', cost: 900, note: 'Урьдчилсан дүн', prog: 100 });
   const mx = buildModel(input({ fin: { ...fin, contracts: [...fin.contracts, extra] } }));
@@ -300,10 +302,10 @@ console.log('\n17. Гэрээгүй мөр — EV/PV бодохгүй; нэгд�
     assert.equal(un.p.contracted, false);
     assert.equal(un.ev.ev, null);
     const hd = renderToStaticMarkup(React.createElement(PkgDetail, { r: un, m: mx, onBack: noop, onOpen: noop }));
-    assert.ok(hd.includes('<dt>Төсөвт дүн</dt>') && !hd.includes('<dt>Гэрээний нийт дүн</dt>'));
+    assert.ok(hd.includes('<dt>Урьдчилсан төсөвт өртөг</dt>') && hd.includes('<dt>Гэрээний дүн</dt><dd>Гэрээгүй</dd>'));
   });
   ok('KPI тайлбар — гэрээлсэн / нийт', () => {
-    const hv = renderToStaticMarkup(React.createElement(Overview, { m: mx, contractTotal: 1, onOpen: noop }));
+    const hv = renderToStaticMarkup(React.createElement(Overview, { m: mx, onOpen: noop }));
     const n = mx.rows.filter((x) => x.p.contracted).length;
     assert.ok(hv.includes(`${n} / ${mx.rows.length} багц гэрээлсэн`));
   });
@@ -333,9 +335,9 @@ console.log('\n17. Гэрээгүй мөр — EV/PV бодохгүй; нэгд�
     assert.equal(r.delay, null, 'төлөвлөсөн огноо хоцролт биш');
     assert.ok(usesHandover(mh, r));
     assert.notEqual(commissionText(mh, r), '—');
-    const hv = renderToStaticMarkup(React.createElement(Overview, { m: mh, contractTotal: 1, onOpen: noop }));
+    const hv = renderToStaticMarkup(React.createElement(PkgDetail, { r, m: mh, onBack: noop, onOpen: noop }));
     assert.ok(hv.includes('Төсөл төлөвлөгөө биелэлт — төлөвлөсөн огноо'));
-    assert.ok(hv.includes('<span>Төлөвлөсөн ашиглалтад оруулах огноо</span>'), 'карт дээр ч төлөвлөсөн огноо гэж нэрлэнэ');
+    assert.ok(hv.includes('<dt>Төлөвлөсөн ашиглалтад оруулах огноо</dt>'), 'самбар дээр төлөвлөсөн огноо гэж нэрлэнэ');
   });
   ok('хуваарийн огноотой — тэр огноо давамгай, хоцролт бодогдоно', () => {
     const at = Date.UTC(2027, 5, 1);

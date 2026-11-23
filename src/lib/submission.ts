@@ -12,6 +12,7 @@ import { negInc, parseInc, sumInc } from '@/modules/sheet/bagtsSheet';
 import { isLostWrite } from './lostWrite';
 import { alignBlocks, unionBld } from '@/modules/sheet/sheetFrame';
 import { serverNow } from './serverClock';
+import { devToken } from './authToken';
 
 /**
  * ЕРӨНХИЙ МЕНЕЖЕРИЙН НЭМСЭН, хараахан батлагдаагүй мөр.
@@ -991,9 +992,11 @@ const OUT_FIELDS = ['objectid', 'dkey', 'at', 'payload'];
 /**
  * Уншихад бэлэн хүснэгтийн URL — `SubRead`-ийн ёсоор.
  */
-async function readUrl(): Promise<{ ok: true; url: string | null } | { ok: false; error: string }> {
+async function readUrl(devRead = false): Promise<{ ok: true; url: string | null } | { ok: false; error: string }> {
   const auth = await getAuth();
-  if (!auth) return { ok: false, error: tr('Нэвтрээгүй тул илгээлтийг уншиж чадсангүй') };
+  /* Нэвтрэлт унтраалттай локал dev — dev токеноор УНШИХ нь ЗӨВХӨН архивлалтын төлөвийн шалгалтад (`archivingBusy`,
+     «Багцын хамаарал»-ын хадгалалт). Бусад уншигчид (бүртгэлийн дахин оролдлого г.м.) хуучнаараа — бичих гэж оролдохгүй. */
+  if (!auth && !(devRead && devToken())) return { ok: false, error: tr('Нэвтрээгүй тул илгээлтийг уншиж чадсангүй') };
   return { ok: true, url: await tableUrl() };
 }
 
@@ -1610,7 +1613,7 @@ export async function archivingBusy(
   pkgKey: string,
   exceptOid?: number,
 ): Promise<{ who: string; at: number } | null> {
-  const u = await readUrl();
+  const u = await readUrl(true);
   if (!u.ok) throw new Error(u.error);
   if (!u.url) return null;
   const fl = await layer(u.url);

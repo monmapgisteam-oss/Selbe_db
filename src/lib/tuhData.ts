@@ -4,7 +4,7 @@
 import { t as tr } from '@/lib/i18nCore';
 import { dayKey } from '@/lib/format';
 import {
-  CASHFLOW_NEW, CF_MONTH, HO_IPC, PKG_FAMILY_BY_BAGTS, bagtsKey, blockKey, hoAmount, pkgKeyOf,
+  CASHFLOW_NEW, CF_MONTH, HO_IPC, PKG_FAMILY_BY_BAGTS, bagtsKey, blockKey, contractAmountOf, hoAmount, pkgKeyOf,
 } from '@/lib/services';
 import type { LiveProgress } from '@/lib/projectPlanInputs';
 import { finXlChartCat, FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
@@ -136,6 +136,8 @@ export type TuhPkg = {
   rows: Row[];
   /** Σ ХО дүн (гэрээ), ₮ — бүгд хоосон бол `null` */
   cost: number | null;
+  /** Σ ГЭРЭЭНИЙ ДҮН (`geree_dun`, «Гэрээлсэн дүн» тэмдэгтэй мөрийн) — урьдчилсан төсөвт өртгөөс (`cost`) ТУСДАА; гэрээгүй бол `null` (2026-11-23) */
+  contractAmount: number | null;
   /** «Гэрээлсэн дүн» тэмдэглэгээтэй мөр бий */
   contracted: boolean;
   contractor: string;
@@ -176,12 +178,14 @@ export function buildTuhPkgs(contracts: readonly Row[], contractedNote: string):
     const oid = numOf(r[CASHFLOW_NEW.oid]) ?? 0;
     const key = group === 'design' ? `d:${oid}` : pkgKey ? `${group === 'housing' ? '' : group + ':'}${pkgKey}` : `cf:${oid}`;
     const cost = numOf(r[F.budget]);
+    const camt = numOf(contractAmountOf(r));
     const cur = byKey.get(key);
     const order = s(r[F.orderNo]) ? { no: s(r[F.orderNo]), date: dateOf(r[F.orderDate]) } : null;
     const cfId = numOf(r.cashflow_id);
     if (cur) {
       cur.rows.push(r);
       if (cost != null) cur.cost = (cur.cost ?? 0) + cost;
+      if (camt != null) cur.contractAmount = (cur.contractAmount ?? 0) + camt;
       cur.contracted ||= s(r[F.amountNote]) === contractedNote;
       cur.contractor = uniq([...cur.contractor.split(' · '), s(r[F.contractor])]).join(' · ');
       cur.client = uniq([...cur.client.split(' · '), s(r[F.client])]).join(' · ');
@@ -202,6 +206,7 @@ export function buildTuhPkgs(contracts: readonly Row[], contractedNote: string):
       group,
       rows: [r],
       cost,
+      contractAmount: camt,
       contracted: s(r[F.amountNote]) === contractedNote,
       contractor: s(r[F.contractor]),
       client: s(r[F.client]),
@@ -896,7 +901,8 @@ export function reportAge(last: string | null, today: string): number | null {
 export function heatWinterYear(today: string): number | null {
   const y = Number(today.slice(0, 4));
   if (!Number.isFinite(y) || y < 2000) return null;
-  return today.slice(5, 10) < '05-15' ? y - 1 : y;
+  /* Улирал `y`-ийн 5/16 – дараа оны 5/15 (`DulaanOgnoo.seasonOf`) — 5/15 өмнөх өвөлд хамаарна */
+  return today.slice(5, 10) <= '05-15' ? y - 1 : y;
 }
 
 /** Гэрээт хугацааны өнгөрсөн хувь (0–100) — муж алга бол `null` */

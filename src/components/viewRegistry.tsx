@@ -34,6 +34,7 @@ const LOAD = {
   songon: () => import('@/modules/UyShatOruulah').then((m) => m.Songon),
   zovshoorolTtb: () => import('@/modules/UyShatOruulah').then((m) => m.ZovshoorolTtb),
   ashiglalt: () => import('@/modules/UyShatOruulah').then((m) => m.Ashiglalt),
+  dulaan: () => import('@/modules/DulaanOgnoo').then((m) => m.DulaanOgnoo),
   tuvshin6: () => import('@/modules/LevelPlan').then((m) => m.LevelPlan),
   huvaari: () => import('@/modules/Huvaari').then((m) => m.Huvaari),
   huvaariBatlah: () => import('@/modules/HuvaariBatlah').then((m) => m.HuvaariBatlah),
@@ -80,6 +81,7 @@ const Zahiramj = dynamic(() => LOAD.zahiramj(), { ssr: false, loading: ViewLoadi
 const Songon = dynamic(() => LOAD.songon(), { ssr: false, loading: ViewLoading });
 const ZovshoorolTtb = dynamic(() => LOAD.zovshoorolTtb(), { ssr: false, loading: ViewLoading });
 const Ashiglalt = dynamic(() => LOAD.ashiglalt(), { ssr: false, loading: ViewLoading });
+const DulaanOgnoo = dynamic(() => LOAD.dulaan(), { ssr: false, loading: ViewLoading });
 const LevelPlan = dynamic(() => LOAD.tuvshin6(), { ssr: false, loading: ViewLoading });
 const Huvaari = dynamic(() => LOAD.huvaari(), { ssr: false, loading: ViewLoading });
 const HuvaariBatlah = dynamic(() => LOAD.huvaariBatlah(), { ssr: false, loading: ViewLoading });
@@ -155,6 +157,7 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   songon: () => <Songon />,
   zovshoorolTtb: () => <ZovshoorolTtb />,
   ashiglalt: () => <Ashiglalt />,
+  dulaan: () => <DulaanOgnoo />,
   tuvshin6: () => <LevelPlan />,
   gazar: ({ dim, setDim }) => <Gazar dim={dim} setDim={setDim} />,
   finance: () => <Finance />,

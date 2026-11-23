@@ -28,6 +28,7 @@ export type ViewKey =
   | "songon"
   | "zovshoorolTtb"
   | "ashiglalt"
+  | "dulaan"
   | "tuvshin6"
   | "finance"
   | "habea"
@@ -311,6 +312,17 @@ export const VIEWS: {
     initial: [],
     standalone: true,
   },
+  /** ДУЛААН АВАХ ОГНОО (2026-11-23) — блокийн давхаргын `dulaan_avah_ognoo` · `dulaan_avsan_ognoo`; ТУХ-ийн «… оны өвөл дулаан авах» эндээс */
+  {
+    key: "dulaan",
+    get title() { return tr('Дулаан авах огноо'); },
+    get desc() { return tr('Блок бүрийн дулаан авах (төлөвлөсөн) ба авсан (бодит) огноо оруулах.'); },
+    icon: "calendar",
+    hue: "#0f766e",
+    layers: [],
+    initial: [],
+    standalone: true,
+  },
   /**
    * 6 ТҮВШНИЙ ХУВААРЬ (2026-10-26) — docs/Level planning_261021-ийн L1–L6; `projectPlan` + Хуваарь + бөглөх хуудас.
    */
@@ -491,7 +503,7 @@ export const HOME_SECTIONS: {
   { id: "mgmt", get title() { return tr('Удирдлага'); }, all: true, views: [] },
   { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan", "sysdoc"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged", "tuvshin6"] },
-  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "hyanaltHugatsaa", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
+  { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "hyanaltHugatsaa", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "dulaan", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance"] },
 ];
 
@@ -500,7 +512,7 @@ export const HOME_SECTIONS: {
  */
 export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
-  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "hyanaltHugatsaa", "huvaari", "tuvshin6", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt"] },
+  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "hyanaltHugatsaa", "huvaari", "tuvshin6", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "dulaan"] },
   { id: "approve", get title() { return tr('Батлах'); }, views: ["huvaariBatlah", "ajilBatlah", "ma"] },
   {
     id: "monitor",

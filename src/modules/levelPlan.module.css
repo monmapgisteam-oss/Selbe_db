@@ -557,3 +557,6 @@
   .gt, .ht { font-size: 9px; }
   .wrap, .wrap * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* 2026-11-23: «Багцын хамаарал»-ын чиглэлгүй холбоо — сумгүй, тасархай */
+.lkUnd { fill: none; stroke: var(--data); stroke-width: 1.4; stroke-dasharray: 5 3; opacity: 0.85; }
