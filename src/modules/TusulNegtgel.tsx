@@ -18,7 +18,6 @@ import {
   applyNegEdits, negDiffers, negEditable, negForm, negServiceCanUpdate, negTotals, parseNegInput, publishNegEdits, type NegEditKey,
 } from '@/lib/negtgelEdit';
 import { useAuth } from '@/components/AuthGate';
-import { roleForUser } from '@/lib/services';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { saveInTotal } from '@/lib/planEdit';
 import n from './negtgel.module.css';
@@ -236,7 +235,7 @@ function NegBody({ d: live, onDirty, reloadFailed, onReload }: {
   reloadFailed: boolean;
 }) {
   const { role, user, status } = useAuth();
-  const canEdit = live.source !== 'plan' && (status === 'off' ? role === 'super' : roleForUser(user?.username) === 'super');
+  const canEdit = live.source !== 'plan' && (status === 'off' ? role === 'super' : hasCap(user?.username, 'finEdit'));
   /* «Төслийн нийтэд тооцох» — «Төсөл төлөвлөгөө биелэлт»-д (182) бичих эрх (`finEdit`) */
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);

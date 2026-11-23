@@ -186,13 +186,9 @@ const CASES = [
     expect: ['Багц-1'] },
   { name: 'DedButetsAcl', load: () => import('@/modules/DedButetsAcl'), pick: (m) => m.DedButetsAcl, props: {}, map: false,
     expect: ['Засварлагч'] },
-  { name: 'SystemClosed', load: () => import('@/components/AuthGate'), pick: (m) => m.SystemClosed, map: false,
-    props: { info: { on: true, note: 'Шилжүүлэлтийн тайлбар', until: '10-20 09:00', by: 'bat', at: Date.UTC(2026, 9, 19, 6) }, username: 'tester', onRecheck: async () => {}, onSignOut: noopFn },
-    expect: ['Систем түр хаагдсан', 'Системийг нийслэлийн дата төв рүү шилжүүлж байгаа тул түр хаагдсан. Түр хүлээнэ үү.', 'Шилжүүлэлтийн тайлбар', 'Дахин нээгдэх: 10-20 09:00', 'Дахин шалгах', 'Гарах', 'role="alertdialog"'] },
-  { name: 'SystemCloseDialog', load: () => import('@/components/SystemCloseDialog'), pick: (m) => m.SystemCloseDialog, map: false,
-    props: { open: true, onClose: noopFn }, expect: ['Систем түр хаах', 'Систем нээлттэй', 'Системийг хаах'] },
-  { name: 'PlainCapAcl:sysClose', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'sysClose' }, map: false,
-    expect: ['Систем түр хаах', 'шууд хадгалагдана'] },
+  /* 2026-11-20: «Систем түр хаах» (SystemClosed · SystemCloseDialog · sysClose эрх) бүрмөсөн хасагдсан */
+  { name: 'PlainCapAcl:docsGroups', load: () => import('@/modules/PlainCapAcl'), pick: (m) => m.PlainCapAcl, props: { cap: 'docsGroups' }, map: false,
+    expect: ['Баримт бичгийн сан — бүлэг үүсгэх', 'шууд хадгалагдана'] },
 ];
 
 if (listOnly) { CASES.forEach((c) => console.log(`${c.skip ? '⏭' : '·'} ${c.name}${c.skip ? ' — ' + c.skip : ''}`)); process.exitCode = 0; }

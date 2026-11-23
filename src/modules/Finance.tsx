@@ -1485,8 +1485,9 @@ export function ProjectPlanTable({
     /* 2026-11-19 (хэрэглэгч): 3 · 4 — мөнгөний нийлбэр ба хугацааны нийт. Дээд мөр унтарсан бол доод мөр нь дагана */
     let monAnc = false, timeAnc = false;
     for (let x = n.parent; x && x.row; x = x.parent) { if (noMoney(x)) monAnc = true; if (noTime(x)) timeAnc = true; }
-    const monOwn = !n.outside && noMoney(n);
-    const timeOwn = !n.outside && noTime(n);
+    /* 2026-11-20 (засвар): мөнгө, хугацааны товч гүйцэтгэлийн унтраалгаас бие даасан («Нийслэл төсөв» мөрд ч) */
+    const monOwn = noMoney(n);
+    const timeOwn = noTime(n);
     const sw = (kind: 'tot' | 'ph' | 'mon' | 'time', own: boolean, inh: boolean) => {
       const on = !own && !inh;
       const name = kind === 'tot' ? tr('Төслийн нийтэд тооцох') : kind === 'ph' ? tr('Барилга угсралтын гүйцэтгэлд тооцох')
@@ -1516,7 +1517,7 @@ export function ProjectPlanTable({
     return (
       <td className={f.ppSt}>
         <span className={f.ppSwPair}>
-          {sw('tot', totOwn, totInh)}{sw('ph', phOwn, phInh)}{sw('mon', monOwn, outAnc || monAnc)}{sw('time', timeOwn, outAnc || timeAnc)}
+          {sw('tot', totOwn, totInh)}{sw('ph', phOwn, phInh)}{sw('mon', monOwn, monAnc)}{sw('time', timeOwn, timeAnc)}
         </span>
       </td>
     );

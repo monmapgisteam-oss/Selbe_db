@@ -798,8 +798,12 @@ export function buildFrame(
          өдөр (өдрийн ажил > 0), дуусах = хуримтлал мөрийн «Обьём»-д хүрсэн өдөр. Гараар оруулсан огноо хэвээр (дарахгүй). */
       const dayW = dayObyem(c[i].obyem[b], base?.[b]);
       const cumW = c[i].obyem[b];
-      const autoStart = r.aStart[b] ?? (!r.group && dayW != null && dayW > 0 ? writeMs : null);
-      const autoEnd = r.aEnd[b] ?? (!r.group && cumW != null && r.vol != null && r.vol > 0 && cumW >= r.vol * (1 - 1e-9) ? writeMs : null);
+      /* 2026-11-20 (засвар): өмнөх өдрүүдийн хуримтлал (`base`) — эхлэх нь ӨМНӨ НЬ ажил огт байгаагүй үед, дуусах нь ӨМНӨ НЬ
+         бүрэн биш байсан үед л. Урьд нь аль эрт дууссан мөрд дараагийн бөглөлтийн өдөр тавигддаг байв */
+      const before = base?.[b] ?? 0;
+      const full = r.vol != null && r.vol > 0 ? r.vol * (1 - 1e-9) : null;
+      const autoStart = r.aStart[b] ?? (!r.group && dayW != null && dayW > 0 && !(before > 0) ? writeMs : null);
+      const autoEnd = r.aEnd[b] ?? (!r.group && full != null && cumW != null && cumW >= full && before < full ? writeMs : null);
       if (sc.aStart[b]) a[sc.aStart[b]!] = autoStart;
       if (sc.aEnd[b]) a[sc.aEnd[b]!] = autoEnd;
     }

@@ -722,3 +722,19 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
   assert.equal(c.at('1').E, 400, 'бүлэг өөрийн нийлбэрийг харуулна');
   console.log('projectPlan.check: мөнгө ба хугацааны унтраалга OK');
 }
+
+/* 2026-11-20: «Нийслэл төсөв» (optIn, гүйцэтгэлийн хоёр унтраалга унтарсан) мөрд ч мөнгө, хугацааны товч бие даан ажиллана */
+{
+  const Dt = (s) => Date.parse(`${s}T00:00:00Z`);
+  const mk = (extra) => buildTree([
+    { objectid: 1, dd_kod: '6', ajil_uilchilgee: 'Барилга угсралт' },
+    { objectid: 2, dd_kod: '6.1', etseg_kod: '6', ajil_uilchilgee: 'А', ho_dun_geree: 100, guits_ehleh: Dt('2026-01-01'), guits_duusah: Dt('2026-12-31') },
+    { objectid: 3, dd_kod: '6.2', etseg_kod: '6', ajil_uilchilgee: 'НИЙГМИЙН ДЭД БҮТЭЦ (Нийслэл төсөв)', ho_dun_geree: 50, guits_ehleh: Dt('2026-01-01'), guits_duusah: Dt('2029-08-01'), ...extra },
+  ]);
+  const t0 = mk({}); const r0 = computePlan(t0);
+  assert.equal(r0.values.get(t0.root).E, 100, 'анхдагч — нийслэлийн мөнгө нийтэд орохгүй');
+  const t1 = mk({ mongo_tootsoh: 1, hugatsaa_tootsoh: 1 }); const r1 = computePlan(t1);
+  assert.equal(r1.values.get(t1.root).E, 150, 'мөнгөний товч асаавал орно — гүйцэтгэлийн унтраалга унтарсан ч');
+  assert.equal(r1.values.get(t1.root).M, Dt('2029-08-01'), 'хугацааны товч асаавал орно');
+  console.log('projectPlan.check: нийслэлийн мөрийн мөнгө/хугацааны товч OK');
+}

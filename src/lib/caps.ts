@@ -5,7 +5,7 @@
  */
 
 import { requireSuper } from './who';
-import { AUTH, roleForUser, type ViewKey } from './services';
+import { AUTH, type ViewKey } from './services';
 import type { CapRow } from './permsRemote';
 import { _newerThanSnapshot, _touchSeq } from './scopedAcl';
 
@@ -29,7 +29,6 @@ export type CapKey =
   | 'hamaaral'
   | 'habeaData'
   | 'habeaOwn'
-  | 'sysClose'
   | 'docsUpload'
   | 'docsGroups'
   | 'zuragEdit'
@@ -133,11 +132,6 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'aiAgent', icon: 'bolt' },
   /**
-   * СИСТЕМ ТҮР ХААХ (2026-10-19, нийслэлийн дата төв рүү шилжүүлэх) — порталыг бусад бүх хэрэглэгчид
-   * «Систем түр хаагдсан» цонхоор хааж, дахин нээх (`permissions.setSystemClosed`, `__sys__:maintenance` мөр).
-   */
-  { key: 'sysClose', icon: 'bolt' },
-  /**
    * БАРИМТ БИЧГИЙН САН (2026-10-23, хэрэглэгч: «баримт бичгийн сан болгож бүлэглэн PDF оруулах») — бүлэг нэмэх,
    * нэр солих, устгах; PDF оруулах, устгах (`lib/docLib.ts`). Харах нь нэвтэрсэн БҮХ хэрэглэгчид — энэ эрх зөвхөн засвар.
    */
@@ -180,7 +174,6 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   hamaaral: ['bagtsHamaaral'],
   habeaData: ['habea'],
   habeaOwn: ['habea'],
-  sysClose: [],
   docsUpload: [],
   docsGroups: [],
   zuragEdit: ['zuragTosol'],
@@ -413,10 +406,12 @@ function applyDone(s: Store, done: Record<string, CapKey[]>): void {
 
 /**
  * Нэг хэрэглэгчийн олгогдсон эрхүүд.
+ * 2026-11-20 (хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана»): админ (super) БҮХ эрхийг автоматаар авахаа больсон —
+ * бусдын адил өөрт нь хадгалсан эрх л. Эрх удирдлага (`who.requireSuper`) нь эрх БИШ, үүргээс. Баримтын сангийн бүлэг
+ * (`docsGroups`) нь агуулгын ажил тул бусад эрхийн адил олгогдоно.
  */
 export function capsOf(username?: string | null): CapKey[] {
   if (!username) return [];
-  if (roleForUser(username) === 'super') return Object.keys(CAP_HOST_VIEW) as CapKey[];
   if (!remoteSynced) return [];
   return cache[username.toLowerCase()] ?? [];
 }

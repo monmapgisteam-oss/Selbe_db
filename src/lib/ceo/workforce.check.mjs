@@ -383,7 +383,7 @@ const ROWS = [
   const src = readFileSync(new URL('../../modules/Habea.tsx', import.meta.url), 'utf8');
   const direct = src.split('all ? all.labor').length - 1;
   assert.equal(direct, 1, 'all.labor-ийг зөвхөн latestRowPerDay-ээр дамжуулна');
-  assert.ok(src.includes('latestRowPerDay(all ? all.labor : [], ubDayKey)'));
+  assert.ok(src.includes('mergedRowPerDay(all ? all.labor : [], ubDayKey)'), '2026-11-20: нэг өдрийн маягтыг нийлүүлдэг туслах');
 }
 
 /* ══════════ 11. «Тайлан өгсөн» дүрэм ба хуучирсан тайлан (2026-10-01) ══════════ */
@@ -421,4 +421,16 @@ console.log('workforce.check: OK');
   const g = groupDays([a, b])[0];
   assert.equal(g.workers, 389 + 247, 'groupDays — хоёр компани нийлнэ');
   assert.equal(laborHeadOf(merged).workers, g.workers, 'latestLaborRow нь groupDays-тэй ижил тоо');
+}
+
+/* 2026-11-20: ХАБЭА хуудасны өдрийн мөр — нийлүүлсэн; маягтын нийт (хүн цаг) ч нийлнэ */
+{
+  const { mergedRowPerDay } = await import('./workforce.ts');
+  const day = ub(2026, 11, 19, 10);
+  const a = row(day, { MK: { w: 389, t: 3 } }, { workers: 389, manHours: 3112 }, false, { oid: 401 });
+  const b = row(day, { HBZIT: { w: 247, t: 2 } }, { workers: 247, manHours: 1976 }, false, { oid: 402 });
+  const rows = mergedRowPerDay([a, b]);
+  assert.equal(rows.length, 1, 'нэг өдөр — нэг мөр');
+  assert.equal(groupDays(rows)[0].workers, 389 + 247, 'хоёр компани нийлсэн');
+  assert.equal(rows[0].hun_tsag, 3112 + 1976, 'хүн цаг нийлсэн');
 }

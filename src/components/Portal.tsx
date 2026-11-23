@@ -1,5 +1,6 @@
 'use client';
 
+import { useZuragPlanSync } from '@/lib/zuragPlanSync';
 import {
   Component, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore,
   type CSSProperties, type ErrorInfo, type ReactNode,
@@ -63,7 +64,6 @@ import { navDirtyLabels } from '@/lib/navGuard';
 import { num } from '@/lib/format';
 import { ReportButton } from '@/components/ReportButton';
 import { askConfirm } from '@/lib/confirm';
-import { SystemCloseDialog, SystemClosedStrip, useCanCloseSystem, useSystemClosed } from '@/components/SystemCloseDialog';
 /** «Тайлан» товч ГАРАХГҮЙ харагдацууд (2026-10-19, хэрэглэгч) — Санхүүжилт, Үйл ажиллагааны схем, Чанар (QAQC), БАТЛАХ бүлэг, ТУХ, Багцын хамаарал, Зөвшөөрөл */
 const NO_REPORT = new Set<string>(['finance', 'schem', 'qaqc', 'huvaariBatlah', 'ajilBatlah', 'chanar', 'ma', 'tuh', 'bagtsHamaaral', 'zovshoorol']);
 const ViewPanel = dynamic(() => import('@/modules/ViewPanel').then((m) => m.ViewPanel), { ssr: false });
@@ -445,6 +445,8 @@ function PortalContent(
   /* ТТБ (182) `guitsetgel_huvi` ← системийн тооцоо — бичилт бүрийн дараа ба нээгдэхэд (2026-11-05, `lib/projectPlanSync`).
      Нэвтрэлт унтраалттай (`AUTH_OFF`) горимд юу ч бичихгүй. */
   usePlanSync(auth.status === 'signed-in');
+  /* «Зургийн бүртгэл» → ТТБ — нээгдэхэд нэг удаа (2026-11-20, `lib/zuragPlanSync`) */
+  useZuragPlanSync(auth.status === 'signed-in');
   const { clear: clearFilter, active: filterActive } = useFilter();
   const filterActiveRef = useRef(filterActive != null);
   useEffect(() => { filterActiveRef.current = filterActive != null; }, [filterActive]);
@@ -453,9 +455,6 @@ function PortalContent(
   const [docsOpen, setDocsOpen] = useState(false);
   /** Хэрэглэгчийн эрх удирдлагын modal (зөвхөн super admin) */
   const [adminOpen, setAdminOpen] = useState(false);
-  const [sysOpen, setSysOpen] = useState(false);
-  const canSys = useCanCloseSystem(auth.user?.username, auth.status === 'signed-in');
-  const sysNow = useSystemClosed();
   /**
    * AI туслахын цонх нээлттэй эсэх.
    */
@@ -880,9 +879,6 @@ function PortalContent(
               docsActive={docsOpen}
               onAdmin={isSuper ? () => setAdminOpen(true) : undefined}
               adminActive={adminOpen}
-              onSysClose={canSys ? () => setSysOpen(true) : undefined}
-              sysCloseActive={sysOpen}
-              sysClosedNow={!!sysNow}
               userName={auth.user?.fullName || auth.user?.username}
               onSignOut={auth.status === 'signed-in' ? signOut : undefined}
               badges={badges}
@@ -1205,14 +1201,6 @@ function PortalContent(
         </OverlayBoundary>
       )}
 
-      {canSys && (
-        <OverlayBoundary label={tr('Систем түр хаах цонх нээгдсэнгүй')} onReset={() => setSysOpen(false)}>
-          <SystemCloseDialog open={sysOpen} onClose={() => setSysOpen(false)} />
-        </OverlayBoundary>
-      )}
-      {sysNow && canSys && !auth.sysClosed && !sysOpen && (
-        <SystemClosedStrip onOpen={() => setSysOpen(true)} />
-      )}
 
       {/* Порталын тусламж ба анхны оролтын зөвлөмж (2026-09-30) */}
       <OverlayBoundary label={tr('Тусламж нээгдсэнгүй')} onReset={closeHelp}>

@@ -4,6 +4,7 @@
  * хэрэглэгчийн токеноор; амжилттай бол `invalidate('HO_IPC')` (HO-г уншдаг кэшүүд шинэчлэгдэнэ; дараагийн давталт
  * зөрүүгүй тул дахин бичихгүй — гогцоогүй). 403 бол энэ сешнд дахин оролдохгүй.
  */
+import { withTabLock } from '@/lib/tabLock';
 import { useEffect } from 'react';
 import { subscribeData, invalidate, writeEpoch } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
@@ -88,7 +89,7 @@ export function runHoSyncAfter(): Promise<HoSyncResult> {
 
 export function runHoSync(): Promise<HoSyncResult> {
   if (inflight) { again = true; return inflight; }
-  inflight = (async (): Promise<HoSyncResult> => {
+  inflight = withTabLock('hoSync', async (): Promise<HoSyncResult> => {
     const res: HoSyncResult = { at: Date.now(), blocks: 0, paid: 0, unassigned: [], updated: 0, added: 0, unmatched: [], error: null };
     if (disabled && Date.now() < disabledUntil) { res.error = `disabled: ${disabled}`; return res; }
     disabled = null;
@@ -103,6 +104,13 @@ export function runHoSync(): Promise<HoSyncResult> {
       }
       const p = await computeHoSync();
       res.unmatched = p.unmatched;
+      /* 2026-11-20 (аудит): өөр компьютер энэ хооронд ижил гэрээг нэмсэн байж болно — нэмэхийн ӨМНӨ дахин уншиж, одоо ч
+         алга гэрээг л нэмнэ (давхар гэрээ, ижил «ХО» дугаар үүсэхээс сэргийлнэ) */
+      if (p.adds.length) {
+        const again = await computeHoSync();
+        const still = new Set(again.adds.map((a) => String(a[HO_IPC.contractFields.code] ?? '')));
+        p.adds = again.adds.filter((a) => still.has(String(a[HO_IPC.contractFields.code] ?? '')));
+      }
       if (p.updates.length || p.adds.length) {
         await applyAll(HO_IPC.url, HO_IPC.oid, { updates: p.updates, adds: p.adds });
         res.updated = p.updates.length;
@@ -129,7 +137,7 @@ export function runHoSync(): Promise<HoSyncResult> {
     last = res;
     watchers.forEach((cb) => cb());
     return res;
-  })().finally(() => {
+  }).finally(() => {
     inflight = null;
     if (again) { again = false; scheduleHoSync(); }
   });

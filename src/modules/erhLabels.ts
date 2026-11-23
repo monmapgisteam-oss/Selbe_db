@@ -74,7 +74,6 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'hamaaral') return tr('Багцын хамаарал');
   if (k === 'habeaData') return tr('ХАБЭА-ийн бүртгэл');
   if (k === 'habeaOwn') return tr('ХАБЭА — багцаар харах');
-  if (k === 'sysClose') return tr('Систем хаах');
   if (k === 'docsUpload') return tr('Баримт оруулах');
   if (k === 'docsGroups') return tr('Баримтын бүлэг');
   if (k === 'zuragEdit') return tr('ТЭЗҮ, зураг төсөл, газар чөлөөлөлтийн огноо');
@@ -88,12 +87,7 @@ export const capLabelShort = (k: CapKey): string => {
 };
 
 /** Цоорхойн мессеж — `erhOverview.pkgIssues` тайлбарын дагуу */
-export const issueText = (i: PkgIssue): string => {
-  const base = issueBase(i);
-  return i.superOnly
-    ? `${base} ${tr('(Одоогоор зөвхөн админ (super) шийдвэрлэх боломжтой — энгийн хариуцагч томилоогүй.)')}`
-    : base;
-};
+export const issueText = (i: PkgIssue): string => issueBase(i);
 
 const issueBase = (i: PkgIssue): string => {
   if (i.key === 'huvaariNoApprover') {

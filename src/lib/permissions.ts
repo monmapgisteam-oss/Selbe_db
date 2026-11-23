@@ -25,17 +25,22 @@ import {
   type Role,
   type ViewKey,
 } from './services';
-import { capViewsOf, capsRemoteReady, capsStored, hasCap, isWorkflowView, UNSAFE_KEY } from './caps';
+import { capViewsOf, isWorkflowView, UNSAFE_KEY } from './caps';
 import { NEW_ACCOUNT_ROLE, _typesMark, roleAccess } from './roleTypes';
-import { currentUser, requireCap, requireSuper, _setWhoRoleReader } from './who';
+import { currentUser, requireSuper, _setWhoRoleReader } from './who';
 import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
 import { _setRoleReader, stageOfUser } from './guitsetgelAcl';
-import type { SysState } from './permsRemote';
 
 /** Нэг хэрэглэгчийн эрх — харагдацууд ('all' = бүгд) ба ТЭЗҮ-БОНУ баримт */
 export type Access = { views: ViewKey[] | 'all'; docs: boolean };
 
 const GRANT_ALL = false;
+
+/**
+ * ЭРХ УДИРДЛАГЫН ХАРАГДАЦ (2026-11-20) — админ (super) хадгалсан харагдацаас үл хамааран авна. Админ самбар нь харагдац биш
+ * (толгойн товч) тул порталд орох ганц хуудас хэрэгтэй: «Системийн баримт» — хэн юу засах эрхтэйг тайлбарласан лавлах.
+ */
+export const ADMIN_VIEWS: readonly ViewKey[] = ['sysdoc'];
 
 /** Панелд харуулах нэг мөр — суурь эсвэл override хэрэглэгч */
 export type UserPerm = {
@@ -525,9 +530,6 @@ async function initRemoteInner(trusted: boolean): Promise<boolean> {
     console.error('[selbe] хуваарь харах хүрээний модуль ачаалагдсангүй:', e);
   }
 
-  // 12) «Систем түр хаах» төлөв (`__sys__:maintenance`, 2026-10-19)
-  _syncRemoteSys(remote.sys ?? null);
-
   notify();
   return true;
 }
@@ -540,93 +542,6 @@ export const remoteReady = (): boolean => remoteLoaded;
  */
 let malformedRows: import('./permsRemote').MalformedRow[] = [];
 export const remoteMalformed = (): readonly import('./permsRemote').MalformedRow[] => malformedRows;
-
-/* ═══════════════ СИСТЕМ ТҮР ХААХ (maintenance) — 2026-10-19 ═══════════════
- * Нийслэлийн дата төв рүү шилжих үед порталыг түр хаана. Төлөв нь эрхийн хүснэгтийн `__sys__:maintenance`
- * мөрөнд (байгууллагад хуваалцсан, статик сайт сервергүй) — `initRemote` бүрд (нэвтрэх · 5 мин · таб идэвхжих ·
- * хаалттай хэрэглэгчид 30 с) уншигдана.
- */
-let sysState: SysState | null = null;
-
-const sysSig = (x: SysState | null): string => (x ? JSON.stringify([x.on, x.note ?? '', x.until ?? '', x.by, x.at]) : '');
-
-/** Remote-оос уншсан төлөвийг тусгана — `initRemoteInner` ба шалгуур (`*.check.mjs`) */
-export function _syncRemoteSys(next: SysState | null): void {
-  if (sysSig(next) === sysSig(sysState)) return;
-  sysState = next;
-}
-
-/** Систем ХААЛТТАЙ бол төлөв (хэн · хэзээ · тайлбар · дахин нээгдэх), эс бөгөөс `null` */
-export const systemClosed = (): SysState | null => (sysState?.on ? sysState : null);
-
-/**
- * Хаалттай үед нэвтэрч чадах уу — кодын super ЭСВЭЛ `sysClose` эрхтэй.
- */
-export function canBypassClosed(username?: string | null): boolean {
-  if (!username) return false;
-  if (isHardSuper(username) || hasCap(username, 'sysClose')) return true;
-  return !capsRemoteReady() && capsStored(username).includes('sysClose');
-}
-
-/** ЭНЭ хэрэглэгчид систем хаалттай бол төлөв (`AuthGate` блоклоно), эс бөгөөс `null` */
-export const closedFor = (username?: string | null): SysState | null =>
-  (systemClosed() && !canBypassClosed(username) ? systemClosed() : null);
-
-/**
- * СИСТЕМИЙГ ХААХ / НЭЭХ — `sysClose` эрхтэй эсвэл кодын super (`who.requireCap` — super бүх эрхтэй).
- */
-export class SysStaleError extends Error {
-  constructor(readonly fresh: SysState | null) {
-    super('sys-stale');
-    this.name = 'SysStaleError';
-  }
-}
-
-/** Хаалттай төлөвийн гарын үсэг — `on: false` мөр = нээлттэй (`null`)-тэй ижил */
-const closedSig = (x: SysState | null | undefined): string => sysSig(x?.on ? x : null);
-
-/**
- * «Систем түр хаах» төлөвийг ОДОО дахин уншина (2026-10-19 — удирдлагын цонх нээгдэхэд).
- * @returns шинэ төлөв (`systemClosed`-ийн хэлбэр), уншиж чадаагүй бол `undefined` (сүүлийн мэдэгдэж буй хэвээр)
- */
-export async function refreshSystemClosed(): Promise<SysState | null | undefined> {
-  const { sysRead } = await import('./permsRemote');
-  const r = await sysRead();
-  if (!r) return undefined;
-  _syncRemoteSys(r.state);
-  notify();
-  return systemClosed();
-}
-
-export async function setSystemClosed(
-  on: boolean, note = '', until = '', opts?: { expect?: SysState | null; update?: boolean },
-): Promise<boolean> {
-  requireCap('sysClose');
-  const n = note.trim().slice(0, 500);
-  const u = until.trim().slice(0, 100);
-  const st: SysState = {
-    on,
-    ...(on && n ? { note: n } : {}),
-    ...(on && u ? { until: u } : {}),
-    by: currentUser() ?? '',
-    at: Date.now(),
-  };
-  const { sysRead, sysUpsert } = await import('./permsRemote');
-  if (opts && 'expect' in opts) {
-    const fresh = await sysRead();
-    if (!fresh) return false;
-    if (closedSig(fresh.state) !== closedSig(opts.expect) || (opts.update && !fresh.state?.on)) {
-      _syncRemoteSys(fresh.state);
-      notify();
-      throw new SysStaleError(systemClosed());
-    }
-  }
-  if (!(await sysUpsert(st))) return false;
-  const back = await sysRead();
-  _syncRemoteSys(back ? back.state : st);
-  notify();
-  return (systemClosed() != null) === on;
-}
 
 export function _markRemoteLoaded(v = true): void {
   remoteLoaded = v;
@@ -684,15 +599,13 @@ export function workflowViewsOf(username?: string | null): ViewKey[] {
 export function resolveAccess(username?: string | null): Access | null {
   const base = resolveBaseAccess(username);
   if (!base || !username) return base;
-  if (isHardSuper(username)) {
-    if (base.views === 'all') return base;
-    const extra = capViewsOf(username).filter((v) => !(base.views as ViewKey[]).includes(v));
-    return extra.length ? { ...base, views: [...(base.views as ViewKey[]), ...extra] } : base;
-  }
+  /* 2026-11-20: админ (super) бүх харагдацыг автоматаар авахаа больсон — бусдын адил хадгалсан харагдац + эрх, томилгооны
+     харагдац; нэмээд эрх удирдлагын харагдац (`ADMIN_VIEWS`), ингэснээр харагдацгүй админ ч порталд орж самбараа нээнэ */
   const stored: ViewKey[] = base.views === 'all' ? VIEWS.map((v) => v.key) : base.views;
   const set = new Set<ViewKey>(stored.filter((v) => !isWorkflowView(v)));
   for (const v of capViewsOf(username)) set.add(v);
   for (const v of workflowViewsOf(username)) set.add(v);
+  if (isHardSuper(username)) for (const v of ADMIN_VIEWS) set.add(v);
   const views = [...set].sort((a, b) => (VIEW_ORDER.get(a) ?? 999) - (VIEW_ORDER.get(b) ?? 999));
   return { ...base, views };
 }
@@ -705,7 +618,9 @@ export function resolveBaseAccess(username?: string | null): Access | null {
   const ov = loadStore()[username.trim().toLowerCase()];
   // Устгагдсан аккаунт — GRANT_ALL ч эрх өгөхгүй. Хатуу super халдашгүй.
   if (ov?.removed) return isHardSuper(username) ? baseline(username) : null;
-  if (isHardSuper(username)) return baseline(username);
+  /* 2026-11-20: хүснэгтийн super-ийн хадгалсан мөр бусдынхтай адил уншигдана (урьд нь үргэлж суурь «бүгд»). Кодын super-т
+     мөр бичигддэггүй (`setUser` no-op) тул үлдсэн хуучин мөр үл тооцогдоно — загвараас (`baseline`) */
+  if (isCodeSuper(username)) return baseline(username);
   // ТҮР: бүх нэвтэрсэн аккаунт бүх эрхтэй
   if (GRANT_ALL) return { views: 'all', docs: true };
   if (ov && remoteLoaded) return { views: ov.views, docs: ov.docs };
@@ -755,7 +670,8 @@ export function listUsers(): UserPerm[] {
     }
     if (isCodeSuper(uname)) continue;
     if (roleForUser(uname) === 'super') {
-      rows.set(uname.toLowerCase(), { username: uname, role: 'super', views: 'all', docs: true, overridden: false });
+      /* 2026-11-20: админы ХАДГАЛСАН харагдац (урьд нь үргэлж «бүгд») — самбараас бусдынх шиг засагдана */
+      rows.set(uname.toLowerCase(), { username: uname, role: 'super', views: ov.views, docs: ov.docs, overridden: false });
       continue;
     }
     const existing = rows.get(uname.toLowerCase());
@@ -769,7 +685,8 @@ export function listUsers(): UserPerm[] {
   }
   const boot = BOOTSTRAP_SUPER.toLowerCase();
   if (!rows.has(boot) && roleForUser(boot) === 'super') {
-    rows.set(boot, { username: boot, role: 'super', views: 'all', docs: true, overridden: false });
+    const a = roleAccess('super');
+    rows.set(boot, { username: boot, role: 'super', views: a.views, docs: a.docs, overridden: false });
   }
   return [...rows.values()].sort((a, b) => a.username.localeCompare(b.username));
 }
@@ -836,7 +753,9 @@ export function setUser(
   if (isCodeSuper(username)) return Promise.resolve(true);
   const boot = role === 'super' ? bootstrapOnlySuper() : null;
   if (boot && boot !== key) {
-    return setUser(boot, { views: 'all', docs: true }, 'super')
+    /* 2026-11-20: анхны админ өөрийн мөрөнд «бүх харагдац» бичихээ больсон — одоогийн (суурь) харагдац нь хэвээр */
+    const own = resolveBaseAccess(boot) ?? roleAccess('super');
+    return setUser(boot, { views: own.views, docs: own.docs }, 'super')
       .then((own) => (own ? setUser(username, access, role, baseOf, opts) : false));
   }
   const entry: Entry = { views: sanitizeViews(access.views), docs: access.docs, role };

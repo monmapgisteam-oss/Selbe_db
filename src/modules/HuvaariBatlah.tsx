@@ -30,7 +30,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { scopeHas } from '@/lib/scopedAcl';
 import { useAuth } from '@/components/AuthGate';
 import { hasPlanRole, huvaariScope, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
-import { roleForUser, sameBagts, type ViewKey } from '@/lib/services';
+import { sameBagts, type ViewKey } from '@/lib/services';
 import { dayKey, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import { msToDay } from '@/modules/sheet/bagtsSheet';
@@ -106,7 +106,6 @@ export function HuvaariBatlah({
   const [review, setReview] = useState<{ pkgKey: string; oid: number; kind: PlanPayload['kind'] } | null>(null);
 
   const me = (user?.username ?? '').trim().toLowerCase();
-  const isSuper = roleForUser(user?.username) === 'super';
 
   /* ══════════════════════ ТАТАХ ══════════════════════ */
   useEffect(() => {
@@ -139,7 +138,7 @@ export function HuvaariBatlah({
       }
     })();
     return () => { alive = false; };
-  }, [tick, status, isSuper, user?.username]);
+  }, [tick, status, user?.username]);
 
   /* ══════════════════════ ХАМРАХ ХҮРЭЭ ══════════════════════ */
   /**
@@ -155,14 +154,15 @@ export function HuvaariBatlah({
    *     `[]`       → ХООСОН + «админаас багц гуй»
    */
   const scope = useMemo(
-    () => (status === 'off' || isSuper ? null : huvaariScope(user?.username, 'approver')),
+    /* 2026-11-20: админ (super) бусдын адил хуваарилалтаар — бүх дараалал автоматаар биш */
+    () => (status === 'off' ? null : huvaariScope(user?.username, 'approver')),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user?.username, status, isSuper, aclN],
+    [user?.username, status, aclN],
   );
   /** Нэг ч багц хуваарилагдаагүй — дараалал хоосон байгаагийн ШАЛТГААН */
   const noScope = Array.isArray(scope) && scope.length === 0;
   /** Батлагчийн үүрэг ОГТ байхгүй — өөр шалтгаан, өөр мессеж */
-  const noRole = status !== 'off' && !isSuper && !hasPlanRole(user?.username, 'approver');
+  const noRole = status !== 'off' && !hasPlanRole(user?.username, 'approver');
 
   const all = useMemo(() => (st.k === 'ready' ? st.rows : []), [st]);
   const mine = useMemo(
@@ -452,7 +452,8 @@ export function HuvaariBatlah({
             {tr('Шинэчлэх')}
           </button>
         )}
-        {st.k === 'ready' && isSuper && (
+        {/* Шилжүүлэлтийн хэрэгсэл — 2026-11-20: админд биш, БҮХ багцын хуваарийн батлагчид (эсвэл дев) */}
+        {st.k === 'ready' && scope === null && (
           <>
             <button className={s.clear} disabled={busy || migBusy} onClick={() => { void migrateAll(); }}
               title={tr('191-ийн хуучин JSON ноорог ба илгээлтийг эх хуудасны бүтцээр мөр рүү шилжүүлнэ (JSON хэвээр)')}>

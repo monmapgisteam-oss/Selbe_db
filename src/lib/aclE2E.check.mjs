@@ -14,7 +14,7 @@
  *   §6  хэрэглэгчийн карт — үүрэг/харагдац · «Төрлөөр тохируулах» · устгах · сэргээх
  *   §7b зэрэг бичилт (алдагдалгүй) · бичилт унах
  *   §8  remote round-trip — §1–§7-ийн дараа бүр `initRemote`-оор дахин уншиж давтан шалгана
- *   §11 систем түр хаах (`__sys__:maintenance`, 2026-10-19) — хаах/нээх · хэн нэвтрэх · fail-open · эрхгүй бичилт
+ *   §11 2026-11-20: эрхийн хүснэгтэд зөвхөн админы бичсэн мөр хүчинтэй · хуучин «систем түр хаах» мөр хэрэгсэгдэхгүй
  * UI давхарга (✕ аль op-ыг ямар багц/үүргээр дууддаг вэ) — `src/modules/aclE2E.ui.check.mjs`.
  */
 import assert from 'node:assert/strict';
@@ -427,8 +427,9 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   ok(OPS.capDirectOp(SUPER, 'planApprove', true) === null, `${tag}: super-т олгох — no-op`);
   const sd = OPS.capDirectOp(SUPER, 'planApprove', false);
   ok(sd && 'error' in sd && /super/i.test(sd.error), `${tag}: super-ээс хасах — татгалзал`);
-  ok(Object.keys(CAPS.CAP_HOST_VIEW).every((c) => CAPS.capsOf(SUPER).includes(c)), `${tag}: super бүх эрхтэй`);
-  ok(CAPS.hasCap(SUPER, 'planApprove') && CAPS.hasCap(SUPER, 'finRow'), `${tag}: super hasCap`);
+  /* 2026-11-20 (хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана»): super ажлын эрхийг автоматаар АВАХГҮЙ */
+  ok(CAPS.capsOf(SUPER).length === 0, `${tag}: хадгалсан эрхгүй super эрхгүй (${CAPS.capsOf(SUPER)})`);
+  if (SV.AUTH.appId) ok(!CAPS.hasCap(SUPER, 'planApprove') && !CAPS.hasCap(SUPER, 'finEdit'), `${tag}: super hasCap ажлын эрхийг давахгүй`);
   ok((fake.json('__cap__:', SUPER.toLowerCase()) ?? []).length === 0, `${tag}: super-т __cap__ мөр бичигдээгүй`);
   let r;
   /* өнчин гаргалгаатай эрх (хуваарилалтгүй) — ХАСАХ нь зөвшөөрөгдөнө */
@@ -479,9 +480,11 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await both((w) => {
     eq(SV.roleForUser(u), 'super', `${tag} ${w}: хүснэгтийн role:super мөр → super`);
     eq(P.roleOf(u), 'super', `${tag} ${w}: roleOf super`);
-    eq(P.resolveAccess(u).views, 'all', `${tag} ${w}: бүх харагдац`);
-    ok(P.listUsers().some((x) => x.username.toLowerCase() === u && x.role === 'super' && x.views === 'all' && !x.overridden), `${tag} ${w}: самбарт super мөр`);
-    ok(CAPS.capsOf(u).includes('plan') && CAPS.capsOf(u).includes('sysClose'), `${tag} ${w}: super бүх эрхтэй`);
+    /* 2026-11-20: super олгоход одоогийн харагдац хэвээр + эрх удирдлагын хуудас; «бүгд» биш, ажлын эрх нэмэгдэхгүй */
+    const v = P.resolveAccess(u).views;
+    ok(Array.isArray(v) && v.includes('sysdoc') && RT.roleAccess('gazar').views.every((x) => v.includes(x)), `${tag} ${w}: хуучин харагдац + эрх удирдлагын хуудас (${v})`);
+    ok(P.listUsers().some((x) => x.username.toLowerCase() === u && x.role === 'super' && Array.isArray(x.views) && !x.overridden), `${tag} ${w}: самбарт super мөр`);
+    ok(!CAPS.capsOf(u).includes('finEdit'), `${tag} ${w}: super ажлын эрхийг автоматаар авахгүй`);
   });
   res = await RTA.applyType(SUPER, 'injener');
   ok(!res.ok, `${tag}: кодын (тестийн) super-ийг доошлуулахгүй`);
@@ -645,7 +648,8 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     eq(fake.find(`__flow__:${S2}`), [], `${tag} ${w}: super урсгалын мөр алга`);
     eq(sorted(CAPS.capsStored(S2)), sorted(directCaps), `${tag} ${w}: super-ийн хадгалагдсан __cap__ хэвээр`);
     eq(sorted(fake.json('__cap__:', S2)), sorted(directCaps), `${tag} ${w}: ArcGIS __cap__ хэвээр`);
-    ok(Object.keys(CAPS.CAP_HOST_VIEW).every((c) => CAPS.capsOf(S2).includes(c)), `${tag} ${w}: super бүх эрхтэй`);
+    /* 2026-11-20: super — ЗӨВХӨН хадгалсан эрх (бүх эрх автоматаар биш) */
+    eq(sorted(CAPS.capsOf(S2)), sorted(directCaps), `${tag} ${w}: super — зөвхөн хадгалсан эрх`);
   });
   console.log('✅ §9 цэвэрлэх мөр: устгагдсан аккаунтын ✕ — мөр бүхэлдээ, эрх үүсэхгүй · super-ийн хуучин мөр — ✕ бүтнэ, шууд олгосон эрх хэвээр');
 }
@@ -700,104 +704,46 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   console.log('✅ §10 эвдэрсэн мөр тоймд · угтвар том/жижиг үсэг · нэрийн trim (унших/бичих) · fail-closed');
 }
 
-/* ══════════ §11. СИСТЕМ ТҮР ХААХ (2026-10-19) ══════════
- * `sysClose` эзэмшигч хаана → энгийн хэрэглэгчид хаалттай, эзэмшигч ба кодын super-т үгүй · `__sys__:` мөр хий хэрэглэгч
- * болохгүй · уншилт унахад СҮҮЛИЙН төлөв (fail-open) · нээх · эрхгүй хүний бичилт татгалзана (ArcGIS-т юу ч явахгүй). */
+/* ══════════ §11. ЗӨВХӨН АДМИНЫ БИЧСЭН МӨР (2026-11-20, хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана») ══════════
+ * Эрх · нэмэлт эрх · урсгал · багцын хуваарилалт · эрхийн төрөл · устгалын тэмдэг — `last_edited_user` нь итгэмжлэгдсэн
+ * админ биш бол хэрэгсэхгүй (`malformed` 'untrusted'); админы бичсэн нь хүчинтэй; бичсэн хүн тодорхойгүй — итгэнэ.
+ * Хуучин «Систем түр хаах» (`__sys__:maintenance`) мөр юуг ч хаахгүй, эвдэрсэн гэж ч тоологдохгүй. */
 {
   const tag = '§11';
-  const WHO = await import('@/lib/who.ts');
-  const { AUTH } = await import('@/lib/services.ts');
-  const holder = mkUser();
   const plain = mkUser();
-  const KEY = '__sys__:maintenance';
-  let r = await run(OPS.capDirectOp(holder, 'sysClose', true));
-  ok(r.ok && r.confirms.length === 0, `${tag}: sysClose олгох («${r.err}»)`);
+  const byPlain = mkUser();
+  const byAdmin = mkUser();
+  const tomb = mkUser();
+  const flowU = mkUser();
+  const noEditor = mkUser();
+  fake.seed([
+    { username: `__cap__:${byPlain}`, views: JSON.stringify(['finEdit']), last_edited_user: plain },
+    { username: `__cap__:${byAdmin}`, views: JSON.stringify(['finEdit']), last_edited_user: SUPER },
+    { username: `__cap__:${noEditor}`, views: JSON.stringify(['finEdit']) },
+    { username: `__flow__:${flowU}`, views: JSON.stringify({ stage: 'chief', bagts: ['*'] }), last_edited_user: plain },
+    { username: '__type__:gazar', views: JSON.stringify({ on: ['view:gdash', 'view:finance'], home: 'gdash' }), last_edited_user: plain },
+    { username: '__sys__:maintenance', views: JSON.stringify({ on: true, note: 'хуучин', by: 'old', at: 1 }), last_edited_user: plain },
+  ]);
+  /* энгийн хэрэглэгч өөр хүнийг «устгах» гэж оролдов — шинэ (их OID-тай) устгалын тэмдгийн мөр нэмэв */
+  fake.seed([{ username: tomb, role: 'taniltsah', views: 'removed', last_edited_user: plain }]);
+  const tRow = fake.rows[fake.rows.length - 1];
   await roundTrip();
-  ok(P.canBypassClosed(holder) && !P.canBypassClosed(plain), `${tag}: эзэмшигч ба энгийн ялгагдана`);
-
-  /* эрхгүй хүн бичих → татгалзана (нэвтрэлт асаалттай орчинд — `hasCap` нь appId хоосон үед бүгдэд үнэн) */
-  if (AUTH.appId) {
-    WHO.setCurrentUser(plain);
-    const before = fake.edits;
-    await assert.rejects(P.setSystemClosed(true, 'x'), /эрх/, `${tag}: эрхгүй хүний хаалт татгалзах ёстой`);
-    checks += 1;
-    eq(fake.edits, before, `${tag}: эрхгүй үед ArcGIS бичилт явах ёсгүй`);
-    eq(fake.find(KEY), [], `${tag}: эрхгүй үед мөр үүсэх ёсгүй`);
-  }
-
-  /* эзэмшигч хаана */
-  WHO.setCurrentUser(holder);
-  ok(await P.setSystemClosed(true, 'Шилжүүлэлт', '10-20 09:00'), `${tag}: эзэмшигч хаах`);
-  eq(JSON.parse(fake.find(KEY)[0].views).on, true, `${tag}: ArcGIS мөр on:true`);
-  await both((w) => {
-    eq(P.closedFor(plain)?.note, 'Шилжүүлэлт', `${tag} ${w}: энгийн хэрэглэгчид хаалттай (тайлбартай)`);
-    eq(P.closedFor(plain)?.until, '10-20 09:00', `${tag} ${w}: дахин нээгдэх хугацаа`);
-    eq(P.systemClosed()?.by, holder, `${tag} ${w}: хэн хаасан`);
-    eq(P.closedFor(holder), null, `${tag} ${w}: эзэмшигчид хаалтгүй`);
-    eq(P.closedFor(SUPER), null, `${tag} ${w}: кодын super-т хаалтгүй`);
-    ok(!P.listUsers().some((u) => u.username.toLowerCase().startsWith('__sys__')), `${tag} ${w}: __sys__ мөр хий хэрэглэгч болов`);
-    ok(!P.remoteMalformed().some((m) => m.key.startsWith('__sys__')), `${tag} ${w}: __sys__ мөр эвдэрсэн гэж тоологдов`);
-  });
-
-  /* уншилт унавал — сүүлийн мэдэгдэж буй төлөв (fail-open: хаалттай байсныг дураар нээхгүй ч, түгжихгүй) */
-  fake.failReads = true;
-  ok(!(await P.initRemote(false, true)), `${tag}: уншилт унах ёстой`);
-  fake.failReads = false;
-  eq(P.closedFor(plain)?.on, true, `${tag}: уншилт унахад хаалттай төлөв хэвээр`);
-
-  /* нээх */
-  ok(await P.setSystemClosed(false), `${tag}: эзэмшигч нээх`);
-  await both((w) => {
-    eq(P.systemClosed(), null, `${tag} ${w}: нээлттэй`);
-    eq(P.closedFor(plain), null, `${tag} ${w}: энгийн хэрэглэгч орно`);
-  });
-  eq(fake.find(KEY).length, 1, `${tag}: нэг л мөр (upsert)`);
-  fake.failReads = true;
-  await P.initRemote(false, true);
-  fake.failReads = false;
-  eq(P.systemClosed(), null, `${tag}: нээлттэй үед уншилт унасан ч нээлттэй хэвээр`);
-
-  /* кодын super ч хааж/нээж чадна */
-  WHO.setCurrentUser(SUPER);
-  ok(await P.setSystemClosed(true) && P.closedFor(plain) != null, `${tag}: super хаах`);
-  ok(await P.setSystemClosed(false) && P.systemClosed() == null, `${tag}: super нээх`);
-
-  ok(await P.setSystemClosed(true, 'a', '', { expect: null }), `${tag}: expect таарсан хаалт`);
-  const shown = P.systemClosed();
-  ok(shown?.note === 'a', `${tag}: харагдсан төлөв`);
-  /* өөр эзэмшигч завсарт НЭЭВ (энэ таб мэдээгүй) */
-  fake.find(KEY)[0].views = JSON.stringify({ on: false, by: 'other', at: 7 });
-  let ed = fake.edits;
-  await assert.rejects(
-    P.setSystemClosed(true, 'b', '', { expect: shown, update: true }),
-    (e) => e instanceof P.SysStaleError && e.fresh === null,
-    `${tag}: «Тайлбар шинэчлэх» нээлттэй системийг ДАХИН хаав (on→on сохор бичилт)`,
-  );
-  checks += 1;
-  eq(fake.edits, ed, `${tag}: зөрсөн үед ArcGIS бичилт явах ёсгүй`);
-  eq(JSON.parse(fake.find(KEY)[0].views).on, false, `${tag}: нээлттэй хэвээр`);
-  eq(P.systemClosed(), null, `${tag}: шинэ (нээлттэй) төлөв локалд тусгагдсан`);
-  /* «Нээх» ч мөн — харагдсан хаалттай, бодит нь нээлттэй */
-  await assert.rejects(P.setSystemClosed(false, '', '', { expect: shown }), P.SysStaleError, `${tag}: хуучирсан «Нээх»`);
-  checks += 1;
-  /* update нь шинэ төлөв нээлттэй бол expect таарсан ч татгалзана */
-  await assert.rejects(P.setSystemClosed(true, 'c', '', { expect: null, update: true }), P.SysStaleError, `${tag}: нээлттэй үед update`);
-  checks += 1;
-  /* цонх нээгдэхэд дахин уншина — өөр хүний хаалт харагдана */
-  fake.find(KEY)[0].views = JSON.stringify({ on: true, note: 'бусад', by: 'other', at: 9 });
-  eq((await P.refreshSystemClosed())?.by, 'other', `${tag}: refreshSystemClosed шинэ төлөв`);
-  eq(P.systemClosed()?.note, 'бусад', `${tag}: store шинэчлэгдсэн`);
-  /* уншилт унавал БИЧИХГҮЙ (батлах боломжгүй) */
-  fake.failReads = true;
-  ed = fake.edits;
-  ok(!(await P.setSystemClosed(false, '', '', { expect: P.systemClosed() })), `${tag}: уншилт унасан үед бичилт`);
-  eq(await P.refreshSystemClosed(), undefined, `${tag}: уншилт унавал undefined`);
-  fake.failReads = false;
-  eq(fake.edits, ed, `${tag}: уншилт унасан үед ArcGIS бичилт явах ёсгүй`);
-  ok(await P.setSystemClosed(false, '', '', { expect: P.systemClosed() }) && P.systemClosed() == null, `${tag}: таарсан нээлт`);
-
-  WHO.setCurrentUser(null);
-  console.log('✅ §11 систем түр хаах: эзэмшигч хаах/нээх · энгийнд хаалттай, эзэмшигч/super-т үгүй · fail-open · эрхгүй бичилт татгалзав · хуучирсан төлөв дээр бичихгүй');
+  ok(!CAPS.capsOf(byPlain).includes('finEdit'), `${tag}: админ биш хүний бичсэн нэмэлт эрх хэрэгсэгдэх ёстой`);
+  ok(CAPS.capsOf(byAdmin).includes('finEdit'), `${tag}: админы бичсэн нэмэлт эрх хүчинтэй`);
+  ok(CAPS.capsOf(noEditor).includes('finEdit'), `${tag}: бичсэн хүн тодорхойгүй — итгэнэ (урьдын дүрэм)`);
+  eq(FL.stageOfUser(flowU), null, `${tag}: админ биш хүний бичсэн урсгалын томилгоо хэрэгсэгдэх ёстой`);
+  ok(!RT.roleAccess('gazar').views.includes('finance'), `${tag}: админ биш хүний бичсэн эрхийн төрөл хэрэгсэгдэх ёстой`);
+  ok(P.hasAccess(tomb) && !P.listRemoved().includes(tomb), `${tag}: админ биш хүний бичсэн устгалын тэмдэг аккаунтыг устгах ёсгүй`);
+  const bad = P.remoteMalformed().filter((m) => m.reason === 'untrusted').map((m) => m.key);
+  for (const k of [`__cap__:${byPlain}`, `__flow__:${flowU}`, '__type__:gazar', tomb]) ok(bad.includes(k), `${tag}: «${k}» итгэмжлэгдээгүй жагсаалтад`);
+  ok(!P.remoteMalformed().some((m) => m.key.startsWith('__sys__')), `${tag}: хуучин __sys__:maintenance мөр эвдэрсэн гэж тоологдов`);
+  ok(!P.listUsers().some((u) => u.username.toLowerCase().startsWith('__sys__')), `${tag}: __sys__ мөр хий хэрэглэгч болов`);
+  ok(!('closedFor' in P) && !('setSystemClosed' in P), `${tag}: «Систем түр хаах» хасагдсан`);
+  /* цэвэрлэнэ — дараагийн хэсгүүдэд нөлөөлөхгүй */
+  fake.rows = fake.rows.filter((r) => ![`__cap__:${byPlain}`, `__cap__:${byAdmin}`, `__cap__:${noEditor}`, `__flow__:${flowU}`, '__type__:gazar', '__sys__:maintenance'].includes(r.username));
+  fake.rows = fake.rows.filter((r) => r !== tRow);
+  await roundTrip();
+  console.log('✅ §11 зөвхөн админы бичсэн эрхийн мөр хүчинтэй (нэмэлт эрх · урсгал · төрөл · устгалын тэмдэг) · хуучин хаалтын мөр хэрэгсэхгүй');
 }
 
 /* ══════════ §9b. ХҮСНЭГТИЙН SUPER-ИЙН МӨР — энгийн мөр (2026-10-21, аудит) ══════════
@@ -835,7 +781,8 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
     eq(FL.stageOfUser(T), 'manager', `${tag} ${w}: шат`);
     eq(SV.roleForUser(T), 'super', `${tag} ${w}: super хэвээр (grantFlowAccess мөрийг хөндөхгүй)`);
     ok((fake.json('__cap__:', T) ?? []).includes('plan'), `${tag} ${w}: __cap__ мөр синклэгдсэн`);
-    eq(HV.huvaariScope(T, 'author'), null, `${tag} ${w}: super байхад хүрээ хязгааргүй`);
+    /* 2026-11-20: super ч бусдын адил — хүрээ нь хуваарилалтаас (хязгааргүй биш) */
+    eq(sorted(HV.huvaariScope(T, 'author') ?? []), sorted([p1, p2]), `${tag} ${w}: super-ийн хүрээ хуваарилалтаар`);
   });
   /* ✕ нэг багц — мөр бүхэлдээ арилахгүй (цэвэрлэх мөр биш), асуухгүй */
   r = await run(OPS.scopedCellOp('huvaari', T, 'author', p1, false));
@@ -853,7 +800,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await both((w) => {
     eq(FL.stageOfUser(T), null, `${tag} ${w}: урсгалгүй`);
     eq(SV.roleForUser(T), 'super', `${tag} ${w}: super хэвээр (revokeFlowAccess мөрийг арчихгүй)`);
-    ok(Object.keys(CAPS.CAP_HOST_VIEW).every((c) => CAPS.capsOf(T).includes(c)), `${tag} ${w}: super байхад бүх эрх`);
+    ok(CAPS.capsOf(T).includes('plan') && !CAPS.capsOf(T).includes('finEdit'), `${tag} ${w}: super — зөвхөн хуваарилалтаас гарсан эрх (${CAPS.capsOf(T)})`);
   });
   /* доошлуулах — үлдсэн хуваарилалт хэвээр, эрх нь хуваарилалтаас */
   res = await RTA.applyType(T, 'gazar'); await settle();
@@ -879,7 +826,7 @@ console.log(`✅ §1 үүрэгтэй 5 систем × ${s1} үүрэг: «бү
   await roundTrip();
   eq(SV.tableSuperUsers(), [], `${tag}: super мөргүй хүснэгт`);
   eq(SV.roleForUser(boot), 'super', `${tag}: анхны админ super`);
-  ok(P.listUsers().some((x) => x.username === boot && x.role === 'super' && x.views === 'all' && !x.overridden), `${tag}: анхны админ самбарт (синтетик мөр)`);
+  ok(P.listUsers().some((x) => x.username === boot && x.role === 'super' && Array.isArray(x.views) && x.views.includes('sysdoc') && !x.overridden), `${tag}: анхны админ самбарт (синтетик мөр)`);
   const B = mkUser();
   WHO12.setCurrentUser(boot);
   let res = await RTA.applyType(B, 'super'); await settle();

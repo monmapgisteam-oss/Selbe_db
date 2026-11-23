@@ -17,7 +17,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { scopeHas } from '@/lib/scopedAcl';
 import { useAuth } from '@/components/AuthGate';
 import { ajilScope, hasAjilRole, subscribeAjilAcl } from '@/lib/ajilAcl';
-import { roleForUser, sameBagts } from '@/lib/services';
+import { sameBagts } from '@/lib/services';
 import { date, dayKey, fixCyr, num } from '@/lib/format';
 import { PKGS, type Pkg } from '@/modules/sheet/bagts.pkg';
 import {
@@ -99,7 +99,6 @@ export function AjilBatlah() {
   const [grp, setGrp] = useState(ALL);
 
   const me = (user?.username ?? '').trim().toLowerCase();
-  const isSuper = roleForUser(user?.username) === 'super';
 
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
@@ -167,7 +166,7 @@ export function AjilBatlah() {
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick, status, isSuper, user?.username]);
+  }, [tick, status, user?.username]);
 
   /* ══════════════════════ ХАМРАХ ХҮРЭЭ ══════════════════════ */
   /**
@@ -179,15 +178,16 @@ export function AjilBatlah() {
    *     `[]`       → ХООСОН + «админаас багц гуй»
    */
   const scope = useMemo(
-    () => (status === 'off' || isSuper ? null : ajilScope(user?.username, 'approver')),
+    /* 2026-11-20: админ (super) бусдын адил хуваарилалтаар — бүх дараалал автоматаар биш */
+    () => (status === 'off' ? null : ajilScope(user?.username, 'approver')),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user?.username, status, isSuper, aclN],
+    [user?.username, status, aclN],
   );
   /** Нэг ч багц хуваарилагдаагүй — дараалал хоосон байгаагийн ШАЛТГААН */
   const noScope = Array.isArray(scope) && scope.length === 0;
   /** Батлагчийн үүрэг ОГТ байхгүй — өөр шалтгаан, өөр мессеж */
-  const noRole = status !== 'off' && !isSuper && !hasAjilRole(user?.username, 'approver');
-  const panelSuper = status !== 'off' && !isSuper && roleOf(user?.username) === 'super';
+  const noRole = status !== 'off' && !hasAjilRole(user?.username, 'approver');
+  const panelSuper = status !== 'off' && roleOf(user?.username) === 'super';
 
   const all = useMemo(() => (st.k === 'ready' ? st.rows : []), [st]);
   const mine = useMemo(
@@ -207,9 +207,9 @@ export function AjilBatlah() {
    * «Дахин буулгах» эрх — батлагч ЭСВЭЛ админ (`mayReapply`; lib-д ч ижил шалгуур).
    */
   const canReapply = useMemo(
-    () => mayReapply({ authOff: status === 'off', isSuper, hasApprove: hasCap(user?.username, 'ajilApprove') }),
+    () => mayReapply({ authOff: status === 'off', hasApprove: hasCap(user?.username, 'ajilApprove') }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [status, isSuper, user?.username, aclN],
+    [status, user?.username, aclN],
   );
   const nextReady = useMemo(
     () => stuck.reduce((t, x) => (x.kind === 'fresh' && x.readyAt != null && x.readyAt < t ? x.readyAt : t), Infinity),

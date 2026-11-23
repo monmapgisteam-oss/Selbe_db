@@ -96,8 +96,9 @@ const [g1, g2] = PKG_GROUPS;
   agree(u, `${tag} хассаны дараа`);
 
   /* super — хөндөгдөхгүй, карт «нээлттэй» */
-  eq(P.resolveAccess(SUPER).views, 'all', `${tag}: super бүх харагдац`);
-  ok(rowsOf(SUPER).every((r) => r.open), `${tag}: super-ийн карт бүгд нээлттэй`);
+  /* 2026-11-20: super ч бусдын адил — урсгалтай харагдац томилгооноос; карт ↔ resolveAccess таарна */
+  ok(!P.resolveAccess(SUPER).views.includes('guitsetgel'), `${tag}: томилгоогүй super-т «Гүйцэтгэл» хаалттай`);
+  agree(SUPER, `${tag} super`);
   console.log('✅ §1 урсгалтай харагдац хуваарилалтаар · карт ↔ resolveAccess таарна · super хөндөгдөхгүй');
 }
 

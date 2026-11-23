@@ -26,7 +26,8 @@
  */
 import { t as tr } from '@/lib/i18nCore';
 import { queryFeatures } from '@/lib/query';
-import { TUSUL_NEGTGEL, bagtsKey, buildingKey, roleForUser } from '@/lib/services';
+import { TUSUL_NEGTGEL, bagtsKey, buildingKey } from '@/lib/services';
+import { hasCap } from '@/lib/caps';
 import { negtgelDepth } from '@/lib/negtgel';
 import { NEG_TREE, negTreeHash } from '@/lib/negtgelTree';
 import { currentUser } from '@/lib/who';
@@ -773,10 +774,11 @@ export type NegSyncState =
   | { kind: 'error'; at: number; reason: string };
 
 /**
- * БИЧИХ ЭРХ — ЗӨВХӨН кодын хатуу super (`roleForUser`). Хэрэглэгч тодорхойгүй бол БИЧИХГҮЙ (fail-closed).
+ * БИЧИХ ЭРХ — «Санхүүгийн бүртгэл засах» (`finEdit`) эрхтэй хүн (2026-11-20: урьд нь зөвхөн админ — админ ажлын эрхгүй
+ * болсон). Хэрэглэгч тодорхойгүй бол БИЧИХГҮЙ (fail-closed).
  */
 export const canSyncNegtgel = (user: string | null = currentUser()): boolean =>
-  roleForUser(user) === 'super';
+  !!user && hasCap(user, 'finEdit');
 
 const SYNC_GAP = 10 * 60_000;
 let lastSync = 0;

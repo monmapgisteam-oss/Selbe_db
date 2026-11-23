@@ -656,8 +656,10 @@ export type PlanWritePhase = 'all' | 'dups' | 'adds' | 'updates' | 'deletes';
  * баталгаатай бичигдсэн мөр; `total` — нийт илгээх мөр; `phase` — тасарсан шат.
  */
 export type PlanWriteErr = Error & { written?: number; total?: number; phase?: PlanWritePhase };
-export async function applyPlanEdits(e: PlanEdits): Promise<[number, number, number]> {
-  {
+export async function applyPlanEdits(e: PlanEdits, opts: { checked?: boolean } = {}): Promise<[number, number, number]> {
+  /* 2026-11-20 (засвар): «Үндсэн хугацаа»-ын сарын хувийн мөр (`bagts` = «CF:<id>») багцын түлхүүр биш — дуудагч
+     (`patchPkgPct` · `savePkgPct`) эрхээ өөрөө шалгасан тул энд хуваарийн эрх шаардахгүй */
+  if (!opts.checked) {
     const keys = new Set<string>();
     for (const x of [...e.adds, ...e.updates]) {
       const b = (x.attributes as Record<string, unknown> | undefined)?.bagts ?? x.bagts;
@@ -868,7 +870,7 @@ export async function patchPkgPct(pkg: string, name: string, patch: ReadonlyMap<
   const next = pctPatched(cur, patch);
   const e = pctEdits(pkg, name, cur, oids, next);
   e.dups = dups;
-  if (e.adds.length || e.updates.length || e.deletes.length || dups.length) await applyPlanEdits(e);
+  if (e.adds.length || e.updates.length || e.deletes.length || dups.length) await applyPlanEdits(e, { checked: true });
   const out = new Map<string, number>();
   for (const [k, v] of next) if (v != null) out.set(k, v);
   return out;
@@ -881,7 +883,7 @@ export async function savePkgPct(pkg: string, name: string, next: ReadonlyMap<st
   const e = pctEdits(pkg, name, pct.get(pkg) ?? new Map(), oids, next);
   e.dups = dups;
   if (!e.adds.length && !e.updates.length && !e.deletes.length && !dups.length) return [0, 0, 0];
-  return applyPlanEdits(e);
+  return applyPlanEdits(e, { checked: true });
 }
 
 /**

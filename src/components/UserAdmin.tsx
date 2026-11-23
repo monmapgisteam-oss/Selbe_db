@@ -67,7 +67,6 @@ import {
 import { UserCard } from './UserCard';
 import { capLabelShort } from '@/modules/erhLabels';
 import { ErhTypes } from '@/modules/ErhTypes';
-import { sysByText, useSystemClosed } from './SystemCloseDialog';
 import { NEW_ACCOUNT_ROLE, TYPE_ORDER, roleAccess, typeLabel } from '@/lib/roleTypes';
 import { setTypeDraftUsers, subscribeTypeLock } from '@/lib/roleTypeApply';
 import s from './userAdmin.module.css';
@@ -85,6 +84,10 @@ const keepWorkflow = (cur: ViewKey[] | 'all', next: ViewKey[]): ViewKey[] => {
   const held = (cur === 'all' ? ALL_KEYS : cur).filter((k) => WORKFLOW_VIEWS.includes(k) && !next.includes(k));
   return [...next, ...held];
 };
+
+/** Админ (super) олгох үеийн харагдац — одоогийнх + загварынх (2026-11-20; `roleTypeApply.applyType`-тэй ижил дүрэм) */
+const superViews = (cur: ViewKey[] | 'all', tpl: ViewKey[] | 'all'): ViewKey[] | 'all' =>
+  (cur === 'all' || tpl === 'all' ? 'all' : [...new Set<ViewKey>([...cur, ...tpl])]);
 
 /**
  * Үүргийн preset товчнууд — «Эрхийн төрөл»-ийн 10 төрөл (2026-09-25).
@@ -171,7 +174,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
   /** Нэвтэрсэн админы нэр — ӨӨРИЙН аккаунтад устгах товч гарахгүй (өөрийгөө түгжихээс сэргийлнэ) */
   const { user: me } = useAuth();
   const myName = me?.username?.toLowerCase() ?? null;
-  const sysNow = useSystemClosed();
   /**
    * АЛЬ БҮЛЭГ нээлттэй байна.
    */
@@ -464,15 +466,21 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       && !(await askConfirm(superDemoteMsg(u.username, typeLabel(role)), { danger: true, ok: tr('Админ эрх хасах') }))) return;
     const a = roleAccess(role);
     const d = draftOf(u);
-    const drop = a.views !== 'all' && dropsGuits(u, d.views, keepWorkflow(d.views, a.views));
+    /* 2026-11-20: Админ (super) олгоход одоогийн харагдац ХЭВЭЭР, загварынх нэмэгдэнэ (`superViews`) — super нь ажлын харагдац
+       өгөхгүй, хасахгүй (эрх удирдлага л) */
+    const next: ViewKey[] | 'all' = role === 'super'
+      ? superViews(d.views, a.views)
+      : a.views === 'all' ? 'all' : keepWorkflow(d.views, a.views);
+    const drop = next !== 'all' && dropsGuits(u, d.views, next);
     if (drop && !confirmed && !(await confirmDropGuits())) return;
     putDraft(u, {
-      ...d, views: a.views === 'all' ? 'all' : keepWorkflow(d.views, a.views), docs: a.docs, role, touchedRole: true,
+      ...d, views: next, docs: role === 'super' ? d.docs || a.docs : a.docs, role, touchedRole: true,
       ...(drop ? { touchedGuits: true } : null),
     });
   };
   const flipView = async (u: UserPerm, k: ViewKey) => {
-    if (roleForUser(u.username) === 'super') return;
+    /* 2026-11-20: хүснэгтийн админы (super) харагдац бусдынх шиг засагдана — зөвхөн кодын админ түгжээтэй */
+    if (isCodeSuper(u.username)) return;
     if (WORKFLOW_VIEWS.includes(k)) return;
     const d = draftOf(u);
     if (!hasView(d.views, k) && capViewsOf(u.username).includes(k)) return;
@@ -482,7 +490,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     putDraft(u, { ...d, ...touched, views: next });
   };
   const setAllViews = async (u: UserPerm, on: boolean) => {
-    if (roleForUser(u.username) === 'super') return;
+    if (isCodeSuper(u.username)) return;
     const d = draftOf(u);
     const next: ViewKey[] = keepWorkflow(d.views, on ? [...TOGGLE_KEYS] : []);
     const drop = dropsGuits(u, d.views, next);
@@ -708,9 +716,8 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
        унтраалга үүнийг ч тусгана (`UserRights`) */
     const capViews = capViewsOf(u.username);
     const wf = workflowViewsOf(u.username);
-    const hard = roleForUser(u.username) === 'super';
-    const isSup = d.role === 'super' || hard;
-    const opened = (k: ViewKey): boolean => hard || (WORKFLOW_VIEWS.includes(k) && !isSup
+    /* 2026-11-20: админ (super) бусдын адил — урсгалтай харагдац томилгооноос, бусад нь хадгалсан + эрхийн харагдац */
+    const opened = (k: ViewKey): boolean => (WORKFLOW_VIEWS.includes(k)
       ? wf.includes(k)
       : hasView(d.views, k) || capViews.includes(k));
     return {
@@ -745,7 +752,7 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       onFlipRemove: () => flipRemove(u),
       onGoFlow: () => goPane('guits'),
       superUser: roleForUser(u.username) === 'super' && (key === myName || isCodeSuper(u.username)),
-      viewsLocked: roleForUser(u.username) === 'super',
+      viewsLocked: isCodeSuper(u.username),
       onOpenCard: () => setCard({ user: key }),
     };
   };
@@ -821,11 +828,6 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
       </aside>
 
       <div className={`${s.main} ${WIDE_PANES.has(pane) ? s.mainWide : ''}`}>
-        {sysNow && (
-          <div className={s.addErr} role="alert">
-            {tr('🔴 Систем хаалттай — {0}. Зөвхөн «Систем түр хаах» эрхтэй аккаунт ба админ (super) нэвтэрнэ; нээх бол цэсний «Систем» бүлгийн «Систем түр хаах».', sysByText(sysNow) || '—')}
-          </div>
-        )}
         {pane === 'ovw' ? (
           <>
             <header className={s.head}>

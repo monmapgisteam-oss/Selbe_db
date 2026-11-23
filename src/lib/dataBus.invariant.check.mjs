@@ -228,6 +228,12 @@ const BICHEED_DUUDAGCH_HUCHINGUI = new Map([
     '2026-11-11: Нэгтгэлийн хүснэгтийг (187) «Төсөл төлөвлөгөө биелэлт»-ээр толилно — кэшийг ДУУДАГЧ '
     + '(`projectPlanSync.mirrorToNegtgel` → `invalidateQuiet(\'TUSUL_NEGTGEL\')`) хүчингүй болгоно: энгийн invalidate() нь '
     + 'төлөвлөгөөний синкийг өөрөө дахин өдөөж гогцоо үүсгэнэ.'],
+  ['src/lib/auditLog.ts',
+    '2026-11-20: өөрчлөлтийн түүх (`Guitsetgel_talbe/235`) — систем ЗӨВХӨН нэмдэг, дэлгэц уншдаггүй (кэш/DataKey алга). '
+    + 'invalidate() дуудвал бичилт бүрийн дараа бүх синк дахин өдөөгдөнө.'],
+  ['src/lib/hyanaltSplit.ts',
+    '2026-11-23: хяналтын түүх · зөвшөөрсөн нүдний туслах мөр (`Guitsetgel_talbe/236` · `237`) — зөвхөн `hyanalt.ts`-ийн '
+    + '`updateDecision` / `addRows` дуудна; тэд бичилтийн төгсгөлд HYANALT түлхүүрээр кэшээ хүчингүй болгодог (нэг DataKey).'],
 ]);
 
 const WRITER_TOKEN = /(?:^|[^\w$])(?:applyAll|applyUpdates|applyAdds|addRows|updateDecision)\s*\(/m;

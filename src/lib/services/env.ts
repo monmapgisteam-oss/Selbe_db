@@ -32,6 +32,8 @@ export const HAB_KRAN = svc('HAB_kran');
 export const IRGED = svc('Irgeded_ogoh_ur_ogooj');
 /** Эрхийн хүснэгт (Selbe_Permissions) */
 export const SYS_PERMS = svc('SYS_Selbe_Permissions');
+/** Өөрчлөлтийн түүх (2026-11-20, `lib/auditLog`) — `Guitsetgel_talbe/235` «audit» хүснэгт (2026-11-23: тусдаа `SYS_Selbe_Audit`-ийг хэрэглэгч устгаж энд үүсгэв); байхгүй бол бүртгэл алгасна */
+export const SYS_AUDIT = `${GUITS}/235`;
 /** IoT жишээ өгөгдөл */
 export const IOT_EX = svc('IoT_example');
 /** Инженерийн дэд бүтэц — `Bagts_ajluud` үйлчилгээнд (давхарга бүрийн дугаар `pkg.ts`-ийн INFRA_TABLE-д) */

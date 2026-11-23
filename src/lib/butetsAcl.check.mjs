@@ -79,9 +79,10 @@ _syncRemoteButets([{ user: 'buh', roles: ['editor'], bagts: [ALL_BAGTS] }]);
 assert.equal(butetsScope('buh'), null, '* = хязгааргүй');
 assert.equal(canEditButetsLayer('buh', L0), true);
 assert.equal(canEditButetsLayer('buh', L1), true);
-assert.equal(butetsScope(superName), null, 'super хязгааргүй');
-assert.equal(canEditButetsLayer(superName, L1), true);
-console.log('✅ * ба super — хязгааргүй');
+/* 2026-11-20: super хуваарилалтгүй бол засахгүй — бусдын адил */
+assert.deepEqual(butetsScope(superName), [], 'super хуваарилалтгүй — хязгааргүй биш');
+assert.equal(canEditButetsLayer(superName, L1), !(await import('@/lib/services.ts')).AUTH.appId, 'super хуваарилалтгүй бол засахгүй');
+console.log('✅ * — хязгааргүй · super — хуваарилалтаар');
 
 /* ── Буруу үүрэг алгасагдана ── */
 _syncRemoteButets([{ user: 'buruu', grants: [{ role: 'approver', bagts: [P0.key] }] }]);

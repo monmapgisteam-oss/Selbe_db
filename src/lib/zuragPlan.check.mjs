@@ -162,7 +162,7 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
     'хуучин огноо хоосолдоно');
   assert.deepEqual(e.updates.find((u) => u.objectid === 3), { objectid: 3, ajil_uilchilgee: 'n1', bagts: null, guitsetgel_huvi: 80, zurag_oid: 1 }, '2026-11-19: бүртгэлийн мөрийн ID бичигдэнэ');
   const a = e.adds.find((x) => x.dd_kod === '2.2.1.1');
-  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null, olgoson_dun: null, guits_ehleh: null, guits_duusah: null, geree_ehleh: null, geree_duusah: null, zurag_oid: 2, bagts_kod: null },
+  assert.deepEqual(a, { dd_kod: '2.2.1.1', ajil_uilchilgee: 'n2', bagts: null, heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100, ho_dun_geree: null, geree_dun: null, ho_dungiin_tailbar: null, olgoson_dun: null, guits_ehleh: null, guits_duusah: null, zurag_oid: 2, bagts_kod: null },
     'бүртгэлд байхгүй утга хоосон');
   assert.ok(!e.deletes.includes(1) && !e.deletes.includes(11) && !e.deletes.includes(20), 'үе шатын мөр, бусад үе шат хөндөгдөхгүй');
   /* Бичигдсэний дараах байдал: дахин тулгахад засвар алга; төлөв өөрчлөгдвөл ганц мөр засна; баримт хасагдвал мөр устана */
@@ -237,5 +237,23 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   assert.deepEqual(e.deletes, [], 'гэрээтэй мөр устахгүй');
   const u = e.updates.find((x) => x.objectid === idB);
   assert.deepEqual([u.ajil_uilchilgee, u.dd_kod], ['B шинэ нэр', '2.1.3'], 'нэр, байрлал өөрчлөгдсөн ч мөр баримтаа дагана');
+}
+/* 2026-11-20: 182-т байхгүй `geree_ehleh` · `geree_duusah` бүртгэлийн бичилтэд орохгүй */
+{
+  const { REGISTRY_PLAN_KEYS } = await import('./zuragPlan.ts');
+  assert.ok(!REGISTRY_PLAN_KEYS.includes('geree_ehleh') && !REGISTRY_PLAN_KEYS.includes('geree_duusah'));
+}
+/* 2026-11-20: үнэгүй зурагт «Төлбөрийн акт»-аар гэрээ байгуулсан — бүртгэл хадгалахад гэрээний дүн, тэмдэглэгээ арилахгүй */
+{
+  const base = [{ objectid: 1, dd_kod: '2', ajil_uilchilgee: 'Ажлын зураг төсөл', uy_shat: 'Ажлын зураг төсөл' }, { objectid: 20, dd_kod: '3', ajil_uilchilgee: 'Барилга угсралт', uy_shat: 'Барилга угсралт', ho_dun_geree: 1 }];
+  const zd = (oid, ner) => toZRow({ objectid: oid, buleg: '003. АЖЛЫН ЗУРАГ', ded_buleg: '', ner, tolov: 'Батлагдсан' });
+  let oid = 700;
+  const e0 = registryPlanEdits(base, [zd(71, 'P'), zd(72, 'Q')]);
+  let st = [...base, ...e0.adds.map((x) => ({ ...x, objectid: oid++, etseg_kod: x.dd_kod.includes('.') ? x.dd_kod.replace(/.d+$/, '') : null }))];
+  const id = st.find((r) => r.zurag_oid === 72).objectid;
+  st = st.map((r) => (r.objectid === id ? { ...r, geree_dugaar: 'З/5', geree_dun: 40, ho_dungiin_tailbar: 'Гэрээлсэн дүн', olgoson_dun: 10 } : r));
+  const e = registryPlanEdits(st, [zd(71, 'P'), zd(72, 'Q')]);
+  const u = e.updates.find((x) => x.objectid === id);
+  assert.ok(!u || (!('geree_dun' in u) && !('ho_dungiin_tailbar' in u) && !('olgoson_dun' in u)), 'гэрээ, төлбөр хэвээр');
 }
 console.log('zuragPlan.check: бүгд ✅');

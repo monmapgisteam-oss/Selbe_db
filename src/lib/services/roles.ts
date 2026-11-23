@@ -1,12 +1,11 @@
 import type { Stage } from '../hyanalt';
-import { DEFAULT_VIEW } from './views';
 import type { ViewKey } from './views';
 
 /* ══════════════════════ Нэвтрэлтийн эрх — үүрэг ══════════════════════ */
 
 /**
  * ХЭРЭГЛЭГЧИЙН ҮҮРЭГ.
- *   · `super`     — бүх харагдацыг үзнэ («Удирдлага» горим).
+ *   · `super`     — системийн админ: ЗӨВХӨН эрх удирдана (2026-11-20); ажлын харагдац, эрхийг бусдын адил тохиргооноос авна.
  *   · `beginner`  — төлөвлөлт, багц, хяналт, газар, ТЭЗҮ-БОНУ, тайлан, гүйцэтгэл.
  *   · `tolovlolt` — зөвхөн ерөнхий төлөвлөгөө ба багцын мэдээлэл.
  */
@@ -58,7 +57,8 @@ export const ROLE_ACCESS: Record<
   Role,
   { views: ViewKey[] | "all"; docs: boolean; home: ViewKey }
 > = {
-  super: { views: "all", docs: true, home: DEFAULT_VIEW },
+  /* 2026-11-20: «бүгд» биш — эрх удирдлагын лавлах хуудас л (`permissions.ADMIN_VIEWS`) */
+  super: { views: ["sysdoc"], docs: false, home: "sysdoc" },
   beginner: {
     views: ["schem", "plan", "pkgProg", "habea", "gazar", "tailan", "sysdoc"],
     docs: true,

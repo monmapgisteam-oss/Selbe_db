@@ -133,44 +133,10 @@ const HABEA_PREFIX = '__habea__:';
  */
 const TYPE_PREFIX = '__type__:';
 /**
- * СИСТЕМИЙН ТӨЛӨВИЙН угтвар (2026-10-19) — `__sys__:maintenance` («Систем түр хаах»).
+ * СИСТЕМИЙН мөрийн угтвар — `__sys__:docgroups` (баримтын сангийн бүлэг). 2026-11-20: «Систем түр хаах» (`__sys__:maintenance`)
+ * бүрмөсөн хасагдсан — хүснэгтэд үлдсэн тийм мөрийг уншихгүй (`fetchAll` алгасна).
  */
 const SYS_PREFIX = '__sys__:';
-/** Засварын (хаалтын) мөрийн түлхүүр — `SYS_PREFIX`-ийн ард */
-const SYS_MAINT = 'maintenance';
-
-/**
- * СИСТЕМ ТҮР ХААХ ТӨЛӨВ (2026-10-19) — `__sys__:maintenance` мөрийн `views` JSON.
- *   · `on`    — ЗӨВХӨН яг `true` бол хаалттай (эргэлзээтэй утга хаахгүй — fail-open, доорх)
- *   · `note`  — хаагчийн нэмэлт тайлбар (сонголттой)
- *   · `until` — «Дахин нээгдэх: …» чөлөөт текст (сонголттой; цагийг шалгахгүй, зөвхөн харуулна)
- *   · `by` · `at` — хэн, хэзээ (мс)
- */
-export type SysState = { on: boolean; note?: string; until?: string; by: string; at: number };
-
-/**
- * `__sys__:maintenance` мөрийн `views`-ийг задлана — ЦЭВЭР (`permissions.check` шалгана).
- */
-export function parseSysState(raw: string | null | undefined): SysState | null {
-  if (!raw) return null;
-  try {
-    const d = JSON.parse(raw) as Record<string, unknown> | null;
-    if (!d || typeof d !== 'object' || Array.isArray(d) || typeof d.on !== 'boolean') return null;
-    const str = (v: unknown, max: number): string | undefined =>
-      (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
-    const note = str(d.note, 500);
-    const until = str(d.until, 100);
-    return {
-      on: d.on === true,
-      ...(note ? { note } : {}),
-      ...(until ? { until } : {}),
-      by: typeof d.by === 'string' ? d.by : '',
-      at: typeof d.at === 'number' && Number.isFinite(d.at) ? d.at : 0,
-    };
-  } catch {
-    return null;
-  }
-}
 
 /**
  * ЗАЙТАЙ ТҮЛХҮҮР ( 2026-10-19, `MalformedRow.space`) — нэрийн захад эсвэл угтварын ДАРАА зай.
@@ -310,7 +276,6 @@ export async function fetchAll(): Promise<{
   huvaari: HuvaariRow[]; obyem: ObyemRow[]; chanar: ChanarRow[]; ajil: AjilRow[];
   butets: ButetsRow[]; habea: HabeaRow[]; types: TypeRow[];
   malformed: MalformedRow[];
-  sys: SysState | null;
 } | null> {
   try {
     const url = await tableUrl();
@@ -330,7 +295,6 @@ export async function fetchAll(): Promise<{
     const typesBy = new Map<string, TypeRow>();
     const malformed: MalformedRow[] = [];
     const superRows: { user: string; raw: string; editor?: string | null; oid?: number }[] = [];
-    let sys: SysState | null = null;
     /** Одоо уншиж буй мөрийн OBJECTID — цэвэрлэгээний товчинд (2026-10-19) */
     let curOid: number | undefined;
     const bad = (key: string, reason: MalformedRow['reason']) => {
@@ -350,12 +314,13 @@ export async function fetchAll(): Promise<{
       [AJIL_PREFIX, ajilBy], [BUTETS_PREFIX, butetsBy], [HABEA_PREFIX, habeaBy], [CHANAR_PREFIX, chanarBy], [OBYEM_PREFIX, obyemBy], [HUVAARI_PREFIX, huvaariBy],
     ];
     /*
-     * ӨӨРТӨӨ ЭРХ БИЧСЭН МӨР ХҮЧИНГҮЙ (2026-11-19, аудит). Энэ хүснэгтэд админ биш хүн ч бичдэг («Систем түр хаах»,
-     * баримтын бүлэг) тул хүснэгт өөрөө засагдахаар нээлттэй; урьд нь зөвхөн super мөр шалгагддаг байсан — хэн ч өөрийн
-     * нэр дээр эрхийн / нэмэлт эрхийн / томилгооны мөр бичээд дараагийн уншилтаар тэр эрхээ авч чаддаг байв.
-     * Дүрэм: мөрийг ЭЗЭН НЬ ӨӨРӨӨ сүүлд бичсэн (`last_edited_user` = мөрийн хэрэглэгч) бөгөөд тэр хүн итгэмжлэгдсэн super
-     * биш бол мөрийг хэрэгсэхгүй. `last_edited_user`-ийг сервер тавьдаг тул хуурамчлагдахгүй. Бусдын бичсэн мөр хэвээр —
-     * админаас хасагдсан хүний өмнө нь бусдад олгосон эрх унахгүй. Талбар ирээгүй / хоосон бол шалгах боломжгүй — итгэнэ.
+     * ЗӨВХӨН АДМИНЫ БИЧСЭН МӨР ХҮЧИНТЭЙ (2026-11-20, хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана»). Энэ хүснэгтэд админ
+     * биш хүн ч бичдэг (баримтын сангийн бүлэг — `docsGroups` эрхтэй хүн) тул хүснэгт өөрөө засагдахаар нээлттэй. Урьд нь
+     * (2026-11-19) зөвхөн ЭЗЭН НЬ ӨӨРӨӨ бичсэн мөр хэрэгсэгдэхгүй байсан — нэг энгийн хэрэглэгч НӨГӨӨДӨД нь эрх бичиж чаддаг байв.
+     * Дүрэм: хэрэглэгчийн · нэмэлт эрхийн · урсгалын · багцын хуваарилалтын · эрхийн төрлийн мөр (устгалын тэмдэг ч) нь
+     * `last_edited_user` = итгэмжлэгдсэн super (гинж: анхны админ · кодын админ → тэдний итгэмжилсэн super) үед л хүчинтэй.
+     * `last_edited_user`-ийг сервер тавьдаг тул хуурамчлагдахгүй. Талбар ирээгүй / хоосон бол шалгах боломжгүй — итгэнэ (урьдын дүрэм).
+     * Анхаар: дараа нь админ эрхээ хасуулсан хүний бичсэн мөр мөн хүчингүй болно — одоогийн админ дахин хадгалтал (`malformed` 'untrusted').
      */
     const trustedEditors = trustedSupers(
       rows.filter((r) => r.role === 'super' && r.views !== 'removed' && r.username && !String(r.username).trim().startsWith('__'))
@@ -364,9 +329,8 @@ export async function fetchAll(): Promise<{
     );
     for (const r of [BOOTSTRAP_SUPER, ...SUPER_OWNERS]) trustedEditors.add(r.trim().toLowerCase());
     let editor = '';
-    /** Энэ мөрийг эзэн нь өөрөө бичсэн үү (итгэмжлэгдсэн super-ээс бусад) */
-    const selfWritten = (owner: string): boolean => editor !== '' && editor === owner && !trustedEditors.has(editor);
-    let sysEditor = '';
+    /** Энэ мөрийг итгэмжлэгдсэн админ бичсэн үү (бичсэн хүн тодорхойгүй бол — итгэнэ) */
+    const adminWritten = (): boolean => editor === '' || trustedEditors.has(editor);
 
     rowLoop: for (const a of rows) {
       if (!a.username) continue;
@@ -377,19 +341,13 @@ export async function fetchAll(): Promise<{
       if (isSpacedKey(raw)) { bad(raw, 'space'); continue; }
       editor = typeof a.last_edited_user === 'string' ? a.last_edited_user.trim().toLowerCase() : '';
 
-      /* ── Системийн төлөвийн мөр ( 2026-10-19, «Систем түр хаах») ── */
-      const sysKey = strip(lu, SYS_PREFIX);
-      if (sysKey != null) {
-        if (sysKey === SYS_MAINT) {
-          const st = parseSysState(a.views);
-          if (st) { sys = st; sysEditor = editor; } else { sys = null; bad(raw, 'json'); }
-        }
-        continue;
-      }
+      /* ── Системийн мөр (`__sys__:docgroups` — `docGroupsRead` тусад нь уншина; хуучин `maintenance` мөр — хэрэгсэхгүй) ── */
+      if (strip(lu, SYS_PREFIX) != null) continue;
 
       /* ── Эрхийн төрлийн загварын мөр (2026-09-25) ── */
       const role = strip(lu, TYPE_PREFIX);
       if (role != null) {
+        if (!adminWritten()) { bad(raw, 'untrusted'); continue; }
         try {
           const d = JSON.parse(a.views || '{}') as unknown;
           if (!d || typeof d !== 'object') bad(raw, 'json');
@@ -403,7 +361,7 @@ export async function fetchAll(): Promise<{
         const user = strip(lu, prefix);
         if (user == null) continue;
         if (!user || UNSAFE_KEY.has(user)) { bad(raw, 'user'); continue rowLoop; }
-        if (selfWritten(user)) { bad(raw, 'untrusted'); continue rowLoop; }
+        if (!adminWritten()) { bad(raw, 'untrusted'); continue rowLoop; }
         try {
           const d = JSON.parse(a.views || '{}') as ViewsJson;
           if (!d || typeof d !== 'object') { bad(raw, 'json'); continue rowLoop; }
@@ -418,7 +376,7 @@ export async function fetchAll(): Promise<{
       const cUser = strip(lu, CAP_PREFIX);
       if (cUser != null) {
         if (!cUser || UNSAFE_KEY.has(cUser)) { bad(raw, 'user'); continue; }
-        if (selfWritten(cUser)) { bad(raw, 'untrusted'); continue; }
+        if (!adminWritten()) { bad(raw, 'untrusted'); continue; }
         try {
           const d = JSON.parse(a.views || '[]') as unknown;
           if (Array.isArray(d)) capsBy.set(cUser, { user: cUser, caps: d as string[] });
@@ -431,7 +389,7 @@ export async function fetchAll(): Promise<{
       const fUser = strip(lu, FLOW_PREFIX);
       if (fUser != null) {
         if (!fUser || UNSAFE_KEY.has(fUser)) { bad(raw, 'user'); continue; }
-        if (selfWritten(fUser)) { bad(raw, 'untrusted'); continue; }
+        if (!adminWritten()) { bad(raw, 'untrusted'); continue; }
         try {
           const d = JSON.parse(a.views || '{}') as {
             stage?: string; bagts?: string[]; viewOnly?: boolean; autoRole?: boolean;
@@ -461,8 +419,9 @@ export async function fetchAll(): Promise<{
         } catch { views = []; bad(raw, 'json'); }
       }
       if (UNSAFE_KEY.has(lu)) { bad(raw, 'user'); continue; }
-      /* Өөрийн эрхийн мөрийг өөрөө бичсэн — хэрэгсэхгүй (super мөр доорх гинжээр тусдаа шалгагдана) */
-      if (selfWritten(lu) && a.role !== 'super') { bad(raw, 'untrusted'); continue; }
+      /* Админ биш хүний бичсэн мөр — хэрэгсэхгүй. Устгалын тэмдэг (`removed`) ч мөн: эс бөгөөс энгийн хэрэглэгч админыг
+         устгаж чадна. Идэвхтэй super мөр доорх гинжээр тусдаа шалгагдана. */
+      if ((a.role !== 'super' || removed) && !adminWritten()) { bad(raw, 'untrusted'); continue; }
       if (a.role === 'super' && !removed) {
         superRows.push({ user: lu, raw, ...(a.last_edited_user !== undefined ? { editor: a.last_edited_user } : {}), ...(typeof curOid === 'number' ? { oid: curOid } : {}) });
       }
@@ -475,12 +434,6 @@ export async function fetchAll(): Promise<{
       };
     }
     lastFetchError = null;
-    /* «Систем түр хаах» төлөвийг super эсвэл `sysClose` эрхтэй хүн л бичнэ — бусдын бичсэн төлөв хүчингүй (бүх хүнийг
-       түгжихээс сэргийлнэ). Хэн бичсэн нь мэдэгдэхгүй (талбар хоосон) бол хуучнаараа итгэнэ. */
-    if (sys && sysEditor && !trustedEditors.has(sysEditor) && !(capsBy.get(sysEditor)?.caps ?? []).includes('sysClose')) {
-      console.error('[selbe] Эрхгүй хүн бичсэн «систем түр хаах» төлөвийг хэрэгсэхгүй болгов:', sysEditor);
-      sys = null;
-    }
     const okSupers = trustedSupers(superRows, [BOOTSTRAP_SUPER, ...SUPER_OWNERS]);
     for (const r of superRows) {
       if (okSupers.has(r.user)) continue;
@@ -500,7 +453,6 @@ export async function fetchAll(): Promise<{
       habea: [...habeaBy.values()],
       types: [...typesBy.values()],
       malformed,
-      sys,
     };
   } catch (e) {
     lastFetchError = e instanceof Error ? e.message : String(e);
@@ -819,24 +771,6 @@ export function flowRemove(user: string): Promise<boolean> {
 export function typeUpsert(role: string, tpl: unknown): Promise<boolean> {
   const key = TYPE_PREFIX + role.trim().toLowerCase();
   return upsertByKey(key, { username: key, role: null, views: JSON.stringify(tpl), docs: 0 });
-}
-
-/**
- * «СИСТЕМ ТҮР ХААХ» ТӨЛӨВИЙГ БИЧНЭ (2026-10-19) — `__sys__:maintenance` нэг мөр (`typeUpsert`-ийн загвар).
- */
-export function sysUpsert(state: SysState): Promise<boolean> {
-  const key = SYS_PREFIX + SYS_MAINT;
-  return upsertByKey(key, { username: key, role: null, views: JSON.stringify(state), docs: 0 });
-}
-
-/**
- * «Систем түр хаах» төлөвийг ШИНЭЭР уншина — бичсний дараа батлахад (`capRead`-ийн загвар).
- * @returns `null` = уншиж чадсангүй; `{ state: null }` = мөр алга / эвдэрсэн (нээлттэй).
- */
-export async function sysRead(): Promise<{ state: SysState | null } | null> {
-  const v = await readViewsByKey(SYS_PREFIX + SYS_MAINT);
-  if (v === undefined) return null;
-  return { state: v === null ? null : parseSysState(v) };
 }
 
 /**

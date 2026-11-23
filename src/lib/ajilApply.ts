@@ -4,7 +4,7 @@
  * НЭМЭЛТ АЖЛЫН БАТЛАГДСАН МӨРИЙГ ҮНДСЭН ХҮСНЭГТЭД БУУЛГАХ (2026-09-24).
  */
 
-import { AUTH, roleForUser } from './services';
+import { AUTH } from './services';
 import { ajilScope } from './ajilAcl';
 import { hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
@@ -213,10 +213,10 @@ export function classifyStuck<T extends StuckLike>(
 }
 
 /**
- * «ДАХИН БУУЛГАХ» ЭРХ — батлагч (`ajilApprove`) ЭСВЭЛ хатуу super.
+ * «ДАХИН БУУЛГАХ» ЭРХ — батлагч (`ajilApprove`). 2026-11-20: админ (super) чөлөөлөлт хасагдсан.
  */
-export function mayReapply(o: { authOff: boolean; isSuper: boolean; hasApprove: boolean }): boolean {
-  return o.authOff || o.isSuper || o.hasApprove;
+export function mayReapply(o: { authOff: boolean; hasApprove: boolean }): boolean {
+  return o.authOff || o.hasApprove;
 }
 
 /* ══════════════════ СҮЛЖЭЭТЭЙ ХЭСЭГ ══════════════════ */
@@ -258,12 +258,12 @@ export async function materializeAdds(args: { pkgKey?: string; ajilOid: number; 
 }
 
 /**
- * Эрхийн шалгуур — `ajilApprove` ЭСВЭЛ хатуу super (2026-10-01, `mayReapply`).
+ * Эрхийн шалгуур — `ajilApprove` (2026-10-01, `mayReapply`; 2026-11-20-нөөс super чөлөөлөлтгүй).
  */
 function requireApplyCap(): void {
   if (typeof window === 'undefined') return;
   const me = currentUser();
-  if (mayReapply({ authOff: !AUTH.appId, isSuper: roleForUser(me) === 'super', hasApprove: hasCap(me, 'ajilApprove') })) return;
+  if (mayReapply({ authOff: !AUTH.appId, hasApprove: hasCap(me, 'ajilApprove') })) return;
   requireCap('ajilApprove');
 }
 

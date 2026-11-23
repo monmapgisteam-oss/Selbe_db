@@ -232,8 +232,9 @@ const srow = (o) => ({
     ]);
     const ds = makeDateSpans([sheet]);
     const L = new Map(linkPlanDates(t, ds).map((r) => [r.objectid, r]));
-    assert.deepEqual([L.get(3).guits_ehleh, L.get(3).guits_duusah], [D('2026-05-30'), D('2026-12-30')], 'мөр 18 — хүснэгтийн огноо');
-    assert.deepEqual([L.get(4).guits_ehleh, L.get(4).guits_duusah], [null, null], 'бусад диапазон мөр — урьдын дүрэм');
+    /* 2026-11-20: блокгүй гэрээний мөр «Үндсэн хугацаа»-аа хадгална (энд хоосон); Хуваарийн мужийг `computePlan` (pkgSpan) нэгтгэнэ */
+    assert.deepEqual([L.get(3).guits_ehleh ?? null, L.get(3).guits_duusah ?? null], [null, null], 'мөр 18 — хадгалсан огноо хэвээр');
+    assert.equal(L.get(4).guits_ehleh, D('2026-01-01'), 'бусад диапазон мөр — хадгалсан «Үндсэн хугацаа» хэвээр (2026-11-20)');
     const n18 = t.nodes.find((n) => n.row.objectid === 3);
     const n99 = t.nodes.find((n) => n.row.objectid === 4);
     const infra = new Map([[bagtsKey(G), { pct: 50, blocks: 1, total: 1 }]]);

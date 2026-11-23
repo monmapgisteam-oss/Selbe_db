@@ -72,18 +72,23 @@ const { AJIL_STATUS } = B;
 
 /* ── 2. Эрх ── */
 {
-  const t = (authOff, isSuper, hasApprove) => A.mayReapply({ authOff, isSuper, hasApprove });
-  assert.equal(t(false, false, false), false, 'эрхгүй — үгүй');
-  assert.equal(t(false, false, true), true, 'батлагч — тийм');
-  assert.equal(t(false, true, false), true, 'админ (ajilApprove-гүй ч) — тийм');
-  assert.equal(t(true, false, false), true, 'нэвтрэлт унтраалттай — тийм');
+  const t = (authOff, hasApprove) => A.mayReapply({ authOff, hasApprove });
+  assert.equal(t(false, false), false, 'эрхгүй — үгүй');
+  assert.equal(t(false, true), true, 'батлагч — тийм');
+  /* 2026-11-20: админ (super) `ajilApprove`-гүй бол — үгүй (тусдаа чөлөөлөлтгүй) */
+  assert.equal(A.mayReapply({ authOff: false, isSuper: true, hasApprove: false }), false, 'админ ajilApprove-гүй — үгүй');
+  assert.equal(t(true, false), true, 'нэвтрэлт унтраалттай — тийм');
   console.log('✅ эрх (mayReapply)');
 }
 
 /* ── 3. Идемпотент — сүлжээг `_io`-оор солино ── */
 const SUPER = Object.entries(SV.ROLE_BY_USER).find(([, r]) => r === 'super')?.[0];
 assert.ok(SUPER, 'super хэрэглэгч тохиргоонд алга');
-WHO.setCurrentUser(SUPER);
+/* 2026-11-20: админ ажлын эрхгүй — БҮХ багцын нэмэлт ажлын батлагч (энгийн хуваарилалт) буулгана */
+const APPROVER = 'batlagch_all';
+const AJ = await import('@/lib/ajilAcl.ts');
+AJ._syncRemoteAjil([{ user: APPROVER, grants: [{ role: 'approver', bagts: ['*'] }] }]);
+WHO.setCurrentUser(APPROVER);
 
 const ROW = { oid: -1, parentNo: '1', parentWork: 'СУУРЬ', parentIdx: 0, no: '3', work: 'Хучих', vol: null, unit: null };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -415,22 +420,25 @@ if (globalThis.navigator?.locks?.request) {
   const CAPS = await import('@/lib/caps.ts');
   try {
     if (SV.AUTH.appId) {
-      CAPS._syncRemoteCaps([{ user: 'batlagch_x', caps: ['ajilApprove'] }]);
+      CAPS._syncRemoteCaps([{ user: 'batlagch_x', caps: ['ajilApprove'] }, { user: APPROVER, caps: ['ajilApprove'] }]);
       put(20, AJIL_STATUS.approved); reset();
       WHO.setCurrentUser('ehngiin_y');
       await assert.rejects(go(20), /эрхгүй/, 'эрхгүй хэрэглэгч буулгав');
       assert.equal(c.write, 0);
-      /* Админ — `ajilApprove`-гүй ч буулгана */
+      /* 2026-11-20: админ (super) `ajilApprove`-гүй бол буулгахгүй — батлагч л */
       WHO.setCurrentUser(SUPER);
+      await assert.rejects(go(20), /эрхгүй/, 'эрхгүй админ буулгав');
+      assert.equal(c.write, 0, 'эрхгүй админ бичив');
+      WHO.setCurrentUser(APPROVER);
       r = await go(20);
-      assert.deepEqual(r, { ok: true, added: 1 }, `админ буулгаж чадсангүй: ${r.error}`);
+      assert.deepEqual(r, { ok: true, added: 1 }, `батлагч буулгаж чадсангүй: ${r.error}`);
       /* Батлагч — эрхтэй ч ХҮРЭЭНДЭЭ багц алга бол бичихгүй (хүрээ тусдаа) */
       put(21, AJIL_STATUS.approved); reset();
       WHO.setCurrentUser('batlagch_x');
       r = await go(21);
       assert.equal(r.ok, false); assert.match(r.error, /батлах эрхгүй/, `хүрээ: ${r.error}`);
       assert.equal(c.write, 0, 'хүрээнээс гадуур бичив');
-      console.log('✅ эрх: эрхгүй → шиднэ · админ → буулгана · хүрээ тусдаа');
+      console.log('✅ эрх: эрхгүй (админ ч) → шиднэ · батлагч → буулгана · хүрээ тусдаа');
     } else console.log('⏭ AUTH.appId хоосон — хөтчийн эрхийн шалгалт алгасав (бүх эрх нээлттэй горим)');
   } finally {
     CAPS._syncRemoteCaps([]);

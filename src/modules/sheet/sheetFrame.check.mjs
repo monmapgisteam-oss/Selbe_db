@@ -380,6 +380,9 @@ console.log('✅ хоёрдмол шошго — давтамжгүй бол unm
     for (const [a] of idle) assert.equal(a.as0 ?? null, null, 'ажилгүй мөрд эхлэх огноо тавигдахгүй');
     const done = fr4.map((a, i) => [a, ov.rows[i]]).filter(([, r]) => !r.group && r.vol > 0 && r.obyem[0] != null && r.obyem[0] >= r.vol && r.aEnd[0] == null);
     for (const [a] of done) assert.equal(a.ae0, fillMs, 'дуусах = обьём бүрэн болсон өдөр');
+    /* 2026-11-20: өмнө нь ажил байсан мөрд эхлэх, өмнө нь бүрэн байсан мөрд дуусах тавигдахгүй */
+    const fr5 = buildFrame(ov.rows.map((r) => ({ ...r, obyemPrior: r.obyem.slice(), frameDay: new Date(fillMs).toISOString().slice(0, 10) })), sc, nBld, asOf, hasObyem, fillMs);
+    for (const [x, r] of fr5.map((x, i) => [x, ov.rows[i]])) if (!r.group && r.aStart[0] == null && r.obyem[0] > 0) assert.equal(x.as0 ?? null, null, 'өмнөх өдрүүдэд ажилтай — эхлэх тавигдахгүй');
   }
   assert.equal(fr[i4].o0, null, '"" → null (0 биш)');
   assert.equal(fr[i4].osum, null, 'бүх блок хоосон → obyemSum null');

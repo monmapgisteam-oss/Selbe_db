@@ -59,7 +59,8 @@ export const rightsProps = (p: UserRowProps): UserRightsProps => ({
   hasView: p.hasView,
   onFlipView: p.onFlipView,
   onAllViews: p.onAllViews,
-  superUser: p.superUser || !!p.viewsLocked,
+  /* 2026-11-20: өөрийн админ мөрийн харагдац ч засагдана (өөртөө ажлын харагдац олгоно) — зөвхөн кодын админ түгжээтэй */
+  superUser: !!p.viewsLocked,
 });
 
 /** Толгойн шошгууд — шинэ · устгагдана · тоо · шат · ноорог · синк (мөр ба карт) */
@@ -136,7 +137,7 @@ export function UserHeadActions({ p }: { p: UserRowProps }) {
         title={p.superUser
           ? tr('Өөрийн super эрх — өөр super админ өөрчилнө')
           : d.role === 'super'
-            ? tr('Бүх харагдац ба админ портал нээгдэнэ — super эрх нь эрхийн тохиргооноос (өөр super админ олгоно/хасна).')
+            ? tr('Админ самбар (эрх удирдлага) нээгдэнэ — ажлын харагдац, эрхийг бусдын адил тохируулна. Super эрхийг өөр super админ олгоно/хасна.')
             : tr('Үүрэг')}
       >
         {!d.role && <option value="">{tr('Үүрэг сонгох…')}</option>}

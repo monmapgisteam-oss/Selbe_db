@@ -166,7 +166,11 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
     const id = ids[i];
     if (id == null) return { ...r, virtual: true };
     const st = storedBy.get(id);
-    return st?.geree_dugaar != null && r.guitsetgel_huvi !== undefined ? { ...r, objectid: id, olgoson_dun: st.olgoson_dun ?? null } : { ...r, objectid: id };
+    /* 2026-11-20 (засвар): «Төлбөрийн акт»-аар гэрээ байгуулсан (дугаартай) мөрийн гэрээний дүн ба «Гэрээлсэн дүн» тэмдэглэгээ
+       ч хэвээр — урьд нь үнэгүй зурагт бүртгэлийн хадгалалт тэдгээрийг хоосолж, гэрээ төлбөрөөсөө тасардаг байв */
+    return st?.geree_dugaar != null && r.guitsetgel_huvi !== undefined
+      ? { ...r, objectid: id, olgoson_dun: st.olgoson_dun ?? null, geree_dun: st.geree_dun ?? r.geree_dun ?? null, ho_dungiin_tailbar: st.ho_dungiin_tailbar ?? r.ho_dungiin_tailbar ?? null }
+      : { ...r, objectid: id };
   });
   return { out: [...rows.filter((r) => !drop.has(r)).map((r) => swap.get(r) ?? r), ...gen], gen, old: [...drop] };
 }
@@ -209,7 +213,9 @@ function matchStored(add: readonly PlanStoredRow[], stored: readonly PlanStoredR
 }
 
 /** Хүснэгтэд бичигддэг талбарууд — бүртгэлээс гардаг нь л; бусад нь хоосон */
-export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar', 'olgoson_dun', 'guits_ehleh', 'guits_duusah', 'geree_ehleh', 'geree_duusah', 'zurag_oid', 'bagts_kod'] as const;
+export const REGISTRY_PLAN_KEYS = ['ajil_uilchilgee', 'bagts', 'heseg_ezleh_huvi', 'guitsetgel_huvi', 'ho_dun_geree', 'geree_dun', 'ho_dungiin_tailbar', 'olgoson_dun', 'guits_ehleh', 'guits_duusah', 'zurag_oid', 'bagts_kod'] as const;
+/* 2026-11-20 (засвар): `geree_ehleh` · `geree_duusah` нь 182-т БАГАНА БИШ (`toStoredRow` guits_*-ээс хуулдаг) — жагсаалтад
+   орж байсан тул бичилт хүснэгтэд байхгүй талбартай болж, бүртгэлийн синк бүтэлгүйтэх эрсдэлтэй байв */
 type RKey = (typeof REGISTRY_PLAN_KEYS)[number];
 export type RegistryPlanEdits = {
   adds: ({ dd_kod: string } & Record<RKey, string | number | null>)[];

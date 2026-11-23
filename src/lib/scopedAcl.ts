@@ -13,7 +13,7 @@
  * шалтгааныг нь арилгана: нэг газар засвал гурвуулаа засагдана.
  */
 
-import { bagtsKey, isCodeSuper, roleForUser } from './services';
+import { bagtsKey, isCodeSuper } from './services';
 import { requireSuper } from './who';
 import type { CapKey } from './caps';
 
@@ -564,13 +564,12 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    * Тухайн хэрэглэгчийн багцууд — ҮҮРЭГТЭЙ системд ТУХАЙН ҮҮРГЭЭР.
    *
    * Буцаах утга:
-   *   · `null`  — ХЯЗГААРГҮЙ (хатуу `super`, эсвэл `ALL_BAGTS`)
+   *   · `null`  — ХЯЗГААРГҮЙ (`ALL_BAGTS`). 2026-11-20: админ (super) энд үл хамаарна — бусдын адил хуваарилалтаар.
    *   · `[]`    — хуваарилагдаагүй (тэр үүргээр)
    *   · `[...]` — заасан багцууд
    */
   const scope = (user: string | null | undefined, role?: R): string[] | null => {
     if (!user) return [];
-    if (roleForUser(user) === 'super') return null;
     const a = effective().find((x) => x.user === user.trim().toLowerCase());
     if (!a) return [];
 
@@ -593,7 +592,6 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
   /** Тухайн хэрэглэгчид энэ үүрэг байгаа эсэх (багцаас үл хамааран) */
   const hasRole = (user: string | null | undefined, role: R): boolean => {
     if (!user) return false;
-    if (roleForUser(user) === 'super') return true;
     const a = effective().find((x) => x.user === user.trim().toLowerCase());
     return a?.grants.some((g) => g.role === role) ?? false;
   };

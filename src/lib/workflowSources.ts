@@ -29,7 +29,7 @@ export type WfSource = {
 export type WfRow = {
   view: ViewKey;
   sources: WfSource[];
-  /** `resolveAccess`-ийн дүрмээр нээлттэй эсэх (super-т үргэлж) */
+  /** `resolveAccess`-ийн дүрмээр нээлттэй эсэх (2026-11-20: super-т ч хуваарилалтаар) */
   open: boolean;
 };
 
@@ -76,7 +76,7 @@ export function workflowRows(u: UserErh): WfRow[] {
     const sources = by.get(view) ?? [];
     const viaPlan = view === 'huvaari' && sources.some((s) => s.sys === 'huvaari'
       && (s.bagts === null || s.bagts.some((b) => !u.unknownBagts.includes(b))));
-    return { view, sources, open: u.superUser || viaPlan || sources.some((s) => s.granted) };
+    return { view, sources, open: viaPlan || sources.some((s) => s.granted) };
   });
 }
 

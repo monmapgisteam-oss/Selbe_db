@@ -96,7 +96,7 @@ const agree = (u, tag) => eq(hvRow(u).open, views(u).includes('huvaari'), `${tag
 {
   const want = {
     guitsetgegch: 'own', injener: 'own', menejer: 'own', tolovloltiin: 'all', eronhii: 'all', heltsiin: 'none',
-    gazriin: 'all', zahiral: 'all', taniltsah: 'all', chanar: 'none', gazar: 'none', super: 'all',
+    gazriin: 'all', zahiral: 'all', taniltsah: 'all', chanar: 'none', gazar: 'none', super: 'none',
   };
   for (const r of RT.TYPE_ORDER) eq(RT.typeHuvaariScope(r), want[r], `§1 ${r}: «Хуваарь харах» = ${want[r]}`);
   /* тэмдэггүй хадгалсан мөр — хүснэгтэд ДАХИН бичигдээгүй */
@@ -115,7 +115,7 @@ const agree = (u, tag) => eq(hvRow(u).open, views(u).includes('huvaari'), `${tag
   const tag = '§2';
   eq(HVV.huvaariViewScope(U.tan), null, `${tag} мэдээлэл танилцах → бүх багц`);
   eq(HVV.huvaariViewScope(U.zah), null, `${tag} ерөнхий захирал → төрлийнхөө утга (бүх багц)`);
-  eq(HVV.huvaariViewScope(SUPER), null, `${tag} хатуу super → бүх багц`);
+  eq(HVV.huvaariViewScope(SUPER), [], `${tag} хатуу super (2026-11-20) → төрөл ба хуваарилалтаар — энд хоосон`);
   ok(views(U.tan).includes('huvaari'), `${tag} бүх багц → «Хуваарь» цэс`);
   eq(HVV.huvaariViewScope(U.gui), [], `${tag} гүйцэтгэгч (өөрийн багц), хуваарилалтгүй → хоосон`);
   ok(!views(U.gui).includes('huvaari'), `${tag} хоосон хүрээ → «Хуваарь» цэсгүй`);

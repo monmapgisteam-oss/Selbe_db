@@ -32,7 +32,7 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   habea: ['habeaData', 'habeaOwn'],
   zurag: ['zuragEdit'],
   uyShat: ['zahiramjEdit', 'songonEdit', 'zovshoorolTtbEdit', 'ashiglaltEdit'],
-  sys: ['sysClose', 'docsUpload', 'docsGroups', 'aiAgent'],
+  sys: ['docsUpload', 'docsGroups', 'aiAgent'],
 };
 
 /** Хажуугийн цэсний засах эрхийн хуудсууд — «Гүйцэтгэлийн урсгалын эрх»-ийн ДАРААХ 10 */
@@ -75,7 +75,8 @@ export const paneLabel = (p: ErhPane): string => {
   if (p === 'habea') return tr('ХАБЭА-ийн бүртгэл оруулах');
   if (p === 'zurag') return tr('ТЭЗҮ, зураг төсөл засах');
   if (p === 'uyShat') return tr('Үе шатны мэдээлэл оруулах');
-  if (p === 'sys') return tr('Систем түр хаах');
+  /* 2026-11-20: «Систем түр хаах» хасагдсан — энэ хуудсанд баримт ба AI туслахын эрх үлдсэн */
+  if (p === 'sys') return tr('Баримт, AI туслах');
   return p;
 };
 
@@ -109,7 +110,6 @@ export const capLabel = (k: CapKey): string => {
   if (k === 'songonEdit') return tr('Сонгон шалгаруулалт оруулах');
   if (k === 'zovshoorolTtbEdit') return tr('Зөвшөөрөл (төлөвлөгөө) оруулах');
   if (k === 'ashiglaltEdit') return tr('Ашиглалтад оруулах огноо оруулах');
-  if (k === 'sysClose') return tr('Систем түр хаах');
   if (k === 'docsUpload') return tr('Баримт бичгийн сан — PDF оруулах');
   if (k === 'docsGroups') return tr('Баримт бичгийн сан — бүлэг үүсгэх');
   return k;
@@ -137,7 +137,6 @@ const paneSummary = (p: ErhPane): string => {
   if (p === 'zurag') return tr('ТЭЗҮ ба ажлын зураг төслийн навч мөрийн огноо, явцыг засах эрх — аккаунтаар олгоно.');
   if (p === 'uyShat') return tr('«Төсөл төлөвлөгөө биелэлт»-ийн захирамж, сонгон шалгаруулалт, зөвшөөрөл, ашиглалтын мэдээллийг тус тусын хуудсанд оруулах 4 эрх — аккаунтаар, тус тусад нь олгоно.');
   if (p === 'habea') return tr('ХАБЭА хуудасны «Бусад үзүүлэлт» ба «Хог хаягдал»-д бүртгэл нэмэх, үзлэгийн тайлан татах эрх, мөн зөвхөн өөрийн багц харах хязгаар — аккаунтаар олгоно.');
-  if (p === 'sys') return tr('Порталыг бусад хэрэглэгчдэд түр хааж («Систем түр хаагдсан» цонх), дахин нээх эрх — аккаунтаар олгоно.');
   return '';
 };
 
@@ -232,9 +231,6 @@ export const capNote = (k: CapKey): string => {
   }
   if (k === 'docsGroups') {
     return tr('Цэсний «Баримт бичгийн сан» цонхонд бүлэг нэмэх, нэр солих, хоосон бүлгийг устгах. PDF оруулах нь тусдаа «Баримт оруулах» эрх.');
-  }
-  if (k === 'sysClose') {
-    return tr('Цэсний «Систем» бүлгийн «Систем түр хаах» товчоор порталыг бусад бүх хэрэглэгчид хааж («Систем түр хаагдсан» цонх, нэмэлт тайлбар ба дахин нээгдэх хугацаатай), дахин нээнэ. Хаалттай үед зөвхөн энэ эрхтэй аккаунт ба админ (super) нэвтэрнэ. Дотор байсан хэрэглэгчийн хадгалаагүй ажил устахгүй — дээр нь хаалтын цонх гарна.');
   }
   return '';
 };

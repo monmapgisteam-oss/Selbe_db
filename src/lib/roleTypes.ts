@@ -154,7 +154,9 @@ const DEFAULT_TPL: Record<string, TypeTpl> = {
     on: V('gazar', 'gdash', 'plan', 'hesegET', 'irged', 'habea', 'iot', 'dedButets', 'zovshoorol', 'schem'),
     home: 'gazar',
   },
-  super: { on: [...ALL_VIEWS, 'docs', 'admin', HV_ALL], home: 'gdash' },
+  /* 2026-11-20 (хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана»): анхдагч загвар зөвхөн эрх удирдлага — ажлын харагдацыг
+     бусдын адил загвар эсвэл хүн бүрийн тохиргооноос олгоно */
+  super: { on: [...V('sysdoc'), 'admin'], home: 'sysdoc' },
 };
 
 export const _defaultTpl = (role: Role): TypeTpl | undefined => {
@@ -229,7 +231,7 @@ export const seenWith = (t: TypeTpl, keys: readonly ViewKey[] = []): ViewKey[] =
  */
 export function unseenViews(role: Role): ViewKey[] {
   loadCache();
-  if (role === 'super') return [];
+  /* 2026-11-20: super-ийн загвар бусдын адил харагдацыг тодорхойлдог болсон тул шинэ хуудасны тэмдэг түүнд ч үйлчилнэ */
   const t = remote[role];
   if (!t) return [];
   const seen = new Set<string>(t.seen ?? LEGACY_SEEN());
@@ -378,7 +380,7 @@ export async function saveTpl(role: Role, tpl: TypeTpl): Promise<boolean> {
 export function roleAccess(role: Role): { views: ViewKey[] | 'all'; docs: boolean; home: ViewKey } {
   if (!isTypeRole(role)) return ROLE_ACCESS[role];
   const t = tplOf(role);
-  if (role === 'super') return { views: 'all', docs: true, home: t.home };
+  /* 2026-11-20: super ч загвараа дагана (урьд нь үргэлж «бүгд») */
   const views = t.on.filter((x) => x.startsWith('view:')).map((x) => x.slice(5) as ViewKey);
   return { views, docs: t.on.includes('docs'), home: t.home };
 }

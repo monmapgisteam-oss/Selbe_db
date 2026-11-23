@@ -8,6 +8,7 @@
  *   · Эх унасан хүснэгтийг ХӨНДӨХГҮЙ (мөр устгахгүй) — хагас өгөгдлөөр нийтийн тоог хуурахгүй.
  *   · `applyAll` dataBus-ийг хөндөхгүй тул өөрийн бичилт дахин синк дуудахгүй (гогцоогүй).
  */
+import { withTabLock } from '@/lib/tabLock';
 import { useEffect } from 'react';
 import { subscribeData, dropCaches } from '@/lib/dataBus';
 import { queryFeatures } from '@/lib/query';
@@ -240,7 +241,7 @@ const isForbidden = (e: unknown): boolean => /\b(403|499|498)\b|эрхгүй|per
 /** Нэг удаагийн синк — зэрэг дуудвал нэг л ажиллагаа; явж байхад дахин хүсвэл дараа нь дахин ажиллана */
 export function runPublicSync(): Promise<PublicSyncResult> {
   if (inflight) { again = true; return inflight; }
-  inflight = (async (): Promise<PublicSyncResult> => {
+  inflight = withTabLock('publicSync', async (): Promise<PublicSyncResult> => {
     const now = Date.now();
     const res: PublicSyncResult = { at: now, tables: {}, failed: [] };
     if (disabled) { res.failed.push(`disabled: ${disabled}`); return res; }
@@ -266,7 +267,7 @@ export function runPublicSync(): Promise<PublicSyncResult> {
     last = res;
     if (res.failed.length) console.warn('[selbe_public] синк:', res.failed.join(' · '));
     return res;
-  })().finally(() => {
+  }).finally(() => {
     inflight = null;
     if (again) { again = false; schedulePublicSync(); }
   });

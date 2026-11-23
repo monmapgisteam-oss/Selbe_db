@@ -18,7 +18,7 @@ import { ROLE_CAPS } from './aclRoleCaps';
 import { t as tr } from './i18nCore';
 import { listUsers } from './permissions';
 import { portalMissing } from './portalPresence';
-import { AUTH, bagtsKey, roleForUser } from './services';
+import { AUTH, bagtsKey } from './services';
 import { hasCap } from './caps';
 import { currentUser, writeGuardsOn } from './who';
 
@@ -82,7 +82,7 @@ const acl = makeAcl<PlanRole>({
   read: (user) => scopedRead('huvaari', user),
   msg: {
     get noUser() { return tr('Аккаунтын нэрээ бичнэ үү'); },
-    get superUser() { return tr('Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй'); },
+    get superUser() { return tr('Кодонд бүртгэлтэй админы (super) эрх самбараас тохируулагдахгүй.'); },
     get noRole() { return tr('Дор хаяж нэг үүрэг сонгоно уу'); },
     get noBagts() { return tr('Багц сонгоно уу'); },
   },
@@ -169,7 +169,7 @@ const liveAccount = (u: string): boolean => {
 /**
  * БАГЦЫН БАТЛАГЧИД (2026-10-09) — хуваарилалтаар «Батлагч» үүрэгтэй, тэр багц (эсвэл бүх багц) заасан
  * аккаунтууд, эрэмбэлсэн. Зөвхөн МЭДЭЭЛЭЛ («хүлээгдэж буй илгээлтийг хэн батлах вэ») — эрхийн шалгалт
- * биш (`huvaariScope`/`decidePlan`); super (хуваарилалтаас үл хамаарна) жагсаалтад орохгүй (`planAdminCanApprove`).
+ * биш (`huvaariScope`/`decidePlan`). 2026-11-20: админ (super) ч зөвхөн хуваарилалтаар батлана.
  */
 export const planApproversOf = (group: string): string[] =>
   listHuvaariAssigns()
@@ -177,15 +177,3 @@ export const planApproversOf = (group: string): string[] =>
     .map((a) => a.user)
     .filter(liveAccount)
     .sort();
-
-/**
- * Энгийн батлагч алга үед АДМИН (super — хүрээ хязгааргүй, `huvaariScope` → `null`) батлах боломжтой юу (2026-10-23).
- * Илгээсэн зохиогч (`author`) өөрийгөө батлахгүй тул тоологдохгүй; устгагдсан/порталд алга super ч тоологдохгүй.
- */
-export const planAdminCanApprove = (author: string): boolean => {
-  const a = author.trim().toLowerCase();
-  return listUsers().some((x) => {
-    const k = x.username.trim().toLowerCase();
-    return k !== a && roleForUser(k) === 'super' && !portalMissing(k);
-  });
-};

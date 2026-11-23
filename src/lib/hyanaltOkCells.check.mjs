@@ -100,9 +100,8 @@ console.log('✅ зөвшөөрсөн нүд — мөрийн түлхүүрээ
   const tg = G.slice(G.indexOf('const toggleOk = useCallback('));
   assert.ok(/^const toggleOk = useCallback\(\(row: number, block: string\): string \| undefined => \{\s*const k = `\$\{row\}:\$\{block\}`;\s*if \(negSet\.has\(k\)\)\s*return tr\(/.test(tg),
     'toggleOk: сөрөг нүдийг ногоон болгохгүй, шалтгааныг буцаана');
-  assert.ok(G.includes('setOkKeys(new Set((changes ?? []).filter((c) => !c.neg).map((c) => `${c.row}:${c.block}`)))'), '«бүгдийг ногоон» сөрөг нүдийг алгасна');
-  assert.ok(G.includes('const okable = (data?.changes ?? []).filter((c) => !c.neg).length;') && G.includes('onOkAll && okCount < okable &&'),
-    '«бүгдийг ногоон» товч сөрөг нүдийг тоолохгүй');
+  /* 2026-11-20: админы «бүгдийг ногоон болгох» (onOkAll) товч хасагдсан — нүд бүрийг шатны хянагч өөрөө зөвшөөрнө */
+  assert.ok(!G.includes('onOkAll') && !G.includes('okAllBtn'), '«бүгдийг ногоон» админы товч буцаж ирэв');
   assert.ok(G.includes('if (untouched && seedRes.fresh && !seedNeg) return undefined;'), 'recheckOkArg: сөрөг нүдтэй дээд жагсаалтыг хэвээр дамжуулахгүй');
   assert.ok(G.includes('okCells: changes != null ? toOkRefs(okKeys, okRows) : [],'), 'буцаалт шүүсэн okKeys-ийг бичнэ');
   /* гүйцэтгэгч: хянагчийн жагсаалтад байсан ч сөрөг нүд `backOk`-д орохгүй → `okLockAt`/`FillRows.okLock` түгжихгүй */

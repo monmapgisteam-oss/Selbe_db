@@ -431,31 +431,14 @@ console.log('✅ устгагдсан аккаунтын хуучин мөр г�
   const legacy = { ...empty(), users: ['u4'], obyem: [{ user: 'u4', grants: [{ role: 'author', bagts: [G0] }], bagts: ['Хуучин багц'] }] };
   assert.deepEqual(userErh(legacy, 'u4').unknownBagts, ['Хуучин багц'], 'хуучин `bagts` танигдаагүй багцад орсонгүй');
 
-  /* (в) амьд хатуу super — гацаа АНХААРУУЛГА хэвээр (өнгө ч), «зөвхөн админ» гэж тэмдэглэнэ */
+  /* (в) 2026-11-20: админ (super) ажлын шийдвэр гаргахгүй — гацаа анхааруулга хэвээр, «зөвхөн админ» тэмдэг байхгүй */
   const noAppr = { ...empty(), huvaari: [{ user: 'a', grants: [{ role: 'author', bagts: [G0] }] }] };
-  const plain = pkgErh(noAppr, G0).issues.find((i) => i.key === 'huvaariNoApprover');
-  assert.ok(plain && !plain.superOnly, 'super-гүй үед superOnly тэмдэг');
   const withSup = pkgErh({ ...noAppr, supers: ['boss'] }, G0).issues.find((i) => i.key === 'huvaariNoApprover');
   assert.ok(withSup, 'super байхад анхааруулга АЛГА болов — энгийн хариуцагч томилоогүй хэвээр');
   assert.equal(withSup.tone, 'bad', 'өнгө хэвээр');
-  assert.equal(withSup.superOnly, true, 'super шийдвэрлэх боломжтойг тэмдэглээгүй');
-  const goneSup = pkgErh({ ...noAppr, supers: ['boss'], gone: ['BOSS'] }, G0).issues.find((i) => i.key === 'huvaariNoApprover');
-  assert.ok(!goneSup.superOnly, 'устгагдсан super тоологдов');
-  const self = { ...empty(), supers: ['boss'], huvaari: [{ user: 'a', grants: [{ role: 'author', bagts: [G0] }, { role: 'approver', bagts: [G0] }] }] };
-  const selfI = pkgErh(self, G0).issues.find((i) => i.key === 'huvaariSelfApprove');
-  assert.ok(selfI && !selfI.superOnly, '*SelfApprove-д superOnly залгагдав');
-  /* зөвхөн super томилогдсон багана — цоорхой хэвээр (энгийн хүн алга) */
-  const supAppr = { ...empty(), supers: ['boss'], obyem: [{ user: 'e', grants: [{ role: 'editor', bagts: [G0] }] }] };
-  assert.equal(pkgErh(supAppr, G0).issues.find((i) => i.key === 'obyemNoApprover')?.superOnly, true);
-  /* chanarNoReviewer: дутуу үүрэгт зохиогч өөрөө томилогдсон (энгийн хүн БАЙГАА) — superOnly биш */
-  const chPart = {
-    ...empty(), supers: ['boss'],
-    chanar: [{ user: 'c', grants: ['author', 'tuh', 'chanar', 'habea', 'tug', 'cheng'].map((role) => ({ role, bagts: [G0] })) }],
-  };
-  const chI = pkgErh(chPart, G0).issues.find((i) => i.key === 'chanarNoReviewer');
-  assert.ok(chI && !chI.superOnly, 'хэсэгчлэн томилогдсон chanarNoReviewer-т superOnly');
+  assert.ok(!('superOnly' in withSup), '«зөвхөн админ шийдвэрлэнэ» тэмдэг буцаж ирэв');
 }
-console.log('✅ бүх шат хоосон · танигдаагүй багц · зөвхөн super (анхааруулга хэвээр)');
+console.log('✅ бүх шат хоосон · танигдаагүй багц · super байсан ч анхааруулга хэвээр');
 
 /* ── 2026-10-22 (аудит): ТӨРӨЛ ↔ УРСГАЛЫН ШАТ — урсгалын төрөл шат олгодоггүй (`typeStageGaps`) ── */
 {

@@ -32,7 +32,7 @@ const acl = makeAcl<ButetsRole>({
   read: (user) => scopedRead('butets', user),
   msg: {
     get noUser() { return tr('Аккаунтын нэрээ бичнэ үү'); },
-    get superUser() { return tr('Админ (super) хуваарилалтаас үл хамаарна — бүх багц нээлттэй'); },
+    get superUser() { return tr('Кодонд бүртгэлтэй админы (super) эрх самбараас тохируулагдахгүй.'); },
     get noRole() { return tr('Дор хаяж нэг үүрэг сонгоно уу'); },
     get noBagts() { return tr('Багц сонгоно уу'); },
   },

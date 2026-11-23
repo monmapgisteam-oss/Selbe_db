@@ -6,16 +6,14 @@ import {
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH } from '@/lib/services/env';
 import { BOOTSTRAP_SUPER, isCodeSuper, roleForUser, type Role } from '@/lib/services/roles';
-import { initRemote, hasAccess, roleOf, remoteReady, closedFor, subscribe as subscribePerms } from '@/lib/permissions';
-import { subscribeCaps } from '@/lib/caps';
-import { remoteFetchError, type SysState } from '@/lib/permsRemote';
-import { dateTime } from '@/lib/format';
+import { initRemote, hasAccess, roleOf, remoteReady } from '@/lib/permissions';
+import { remoteFetchError } from '@/lib/permsRemote';
 import { setCurrentUser } from '@/lib/who';
 import { ENT_SERVER, installEntInterceptor } from '@/lib/entInterceptor';
 import { clearMetaCache } from '@/lib/metaCache';
 import {
-  cancelSignOut, dismissSessionDead, ensureFreshToken, lastRefreshFail, noteSignOut, primeServerCredential, registerIdentity,
-  reopenSessionDead, retrySession, sessionDead, subscribeSessionDead, registerDevToken,
+  cancelSignOut, dismissSessionDead, ensureFreshToken, noteSignOut, primeServerCredential, registerIdentity,
+  retrySession, sessionDead, subscribeSessionDead, registerDevToken,
 } from '@/lib/authToken';
 import { hasUnsavedWork } from '@/components/LocaleToggle';
 import { armSignOutCleanup } from '@/lib/signOutCleanup';
@@ -69,7 +67,6 @@ type AuthCtx = {
    */
   accessLost: boolean;
   sessionExpired: boolean;
-  sysClosed: SysState | null;
   /** Эрхийн хүснэгтийг ОДОО дахин уншина (15 с / 5 мин хүлээлгүй) — «Дахин оролдох» товч */
   recheckPerms: () => Promise<void>;
   signIn: () => Promise<void>;
@@ -87,7 +84,6 @@ const Ctx = createContext<AuthCtx>({
   permsRead: true,
   accessLost: false,
   sessionExpired: false,
-  sysClosed: null,
   recheckPerms: async () => {},
   signIn: async () => {},
   signOut: async () => {},
@@ -167,13 +163,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permsRead, setPermsRead] = useState(true);
   /** Ажиллаж байхад эрх хасагдсан (`AuthCtx.accessLost`-ийн тайлбар) */
   const [accessLost, setAccessLost] = useState(false);
-  const [sysClosed, setSysClosed] = useState<SysState | null>(null);
-  /** Poll-ын давтамжид (`period`) — эффектийн deps-д ороогүй тул ref (зөвхөн callback дотор бичнэ) */
-  const sysClosedRef = useRef(false);
-  const applySysClosed = useCallback((next: SysState | null) => {
-    sysClosedRef.current = !!next;
-    setSysClosed((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
-  }, []);
   const oauthReadyRef = useRef<Promise<void> | null>(null);
   /** Нэвтрэх үеийн байгууллагын шалгалтын дүн — revocation дахин ашиглана */
   const orgOkRef = useRef(true);
@@ -251,9 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.info('[selbe] нэвтэрсэн:', info.username, '· orgId:', info.orgId, '· үүрэг:', r ?? '—', '· admitted:', admitted);
 
         attemptClear();
-        const lock = admitted ? closedFor(info.username) : null;
-        applySysClosed(lock);
-        setCurrentUser(admitted && !lock ? info.username : null);
+        setCurrentUser(admitted ? info.username : null);
         setUser(info);
         setRole(r);
         setStatus(admitted ? 'signed-in' : 'denied');
@@ -274,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
 
     return () => { alive = false; };
-  }, [applySysClosed]);
+  }, []);
 
   /*
    * ЭРХИЙН ХҮЧИНГҮЙЖИЛТ — нэвтэрсэн ХЭВЭЭР байхад эрх нь хасагдсаныг барина.
@@ -293,9 +280,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setPermsRead(rok || !!roleForUser(user.username));
         const ok = hasAccess(user.username);
         if (!ok && !rok) return;
-        const lock = ok ? closedFor(user.username) : null;
-        applySysClosed(lock);
-        setCurrentUser(ok && !lock ? user.username : null);
+        setCurrentUser(ok ? user.username : null);
         // Эрх ХАСАГДВАЛ шууд хаана; БУЦААЖ СЭРГЭЭГДВЭЛ F5 шаардалгүй нээнэ
         if (!ok && status === 'signed-in') setAccessLost(true);
         if (ok) setAccessLost(false);
@@ -310,7 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch { /* сүлжээний тасалдал — эрхийг хэвээр үлдээнэ */ }
     };
     checkRef.current = check;
-    const period = () => (status === 'denied' || !remoteReady() ? 15_000 : sysClosedRef.current ? 30_000 : 5 * 60_000);
+    const period = () => (status === 'denied' || !remoteReady() ? 15_000 : 5 * 60_000);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
       timer = setTimeout(() => {
@@ -326,21 +311,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [status, user?.username, applySysClosed]);
-
-  useEffect(() => {
-    if (status !== 'signed-in' || !user?.username) return undefined;
-    const name = user.username;
-    const sync = () => {
-      if (!hasAccess(name)) return;
-      const lock = closedFor(name);
-      applySysClosed(lock);
-      setCurrentUser(lock ? null : name);
-    };
-    const a = subscribePerms(sync);
-    const b = subscribeCaps(sync);
-    return () => { a(); b(); };
-  }, [status, user?.username, applySysClosed]);
+  }, [status, user?.username]);
 
   const recheckPerms = useCallback(async () => { await checkRef.current?.(); }, []);
 
@@ -394,10 +365,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
-  const authorized = (status === 'signed-in' && !sysClosed) || status === 'off';
+  const authorized = status === 'signed-in' || status === 'off';
   const value = useMemo<AuthCtx>(() => ({
-    status, authorized, user, role, error, permsRead, accessLost, sessionExpired, sysClosed, recheckPerms, signIn, signOut, clearError,
-  }), [status, authorized, user, role, error, permsRead, accessLost, sessionExpired, sysClosed, recheckPerms, signIn, signOut, clearError]);
+    status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError,
+  }), [status, authorized, user, role, error, permsRead, accessLost, sessionExpired, recheckPerms, signIn, signOut, clearError]);
 
   return (
     <Ctx.Provider value={value}>
@@ -411,11 +382,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  * үед л хөвөгч цонхоор гарна. Бусад үед `null` — нүүр хуудас чөлөөтэй харагдана.
  */
 export function AuthNotice() {
-  const { status, user, error, permsRead, accessLost, sessionExpired, sysClosed, signIn, signOut, clearError, recheckPerms } = useAuth();
+  const { status, user, error, permsRead, accessLost, sessionExpired, signIn, signOut, clearError, recheckPerms } = useAuth();
   if (sessionExpired && status === 'signed-in') return <SessionExpired username={user?.username} onSignOut={signOut} />;
-  if (sysClosed && status === 'signed-in') {
-    return <SystemClosed info={sysClosed} username={user?.username} onRecheck={recheckPerms} onSignOut={signOut} />;
-  }
   if (status !== 'denied' && !(status === 'signed-out' && error)) return null;
 
   if (status === 'denied' && accessLost) return <AccessLost username={user?.username} onSignOut={signOut} />;
@@ -601,52 +569,6 @@ function SessionExpired({ username, onSignOut }: { username?: string; onSignOut:
         </button>
         <button type="button" className={s.btnGhost} onClick={dismissSessionDead} disabled={busy}>
           {tr('Түр хаах — хадгалаагүй ажлаа хуулж авах')}
-        </button>
-        <button type="button" className={s.btnGhost} onClick={onSignOut} disabled={busy}>
-          {tr('Гарах')}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * СИСТЕМ ТҮР ХААГДСАН — бүтэн дэлгэцийн хаалтын цонх (2026-10-19, `permissions.setSystemClosed`).
- */
-export function SystemClosed({ info, username, onRecheck, onSignOut }: {
-  info: SysState; username?: string; onRecheck: () => Promise<void>; onSignOut: () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(ref, true);
-  const [busy, setBusy] = useState(false);
-  const recheck = async () => {
-    if (lastRefreshFail() === 'dead' && !(await retrySession())) { reopenSessionDead(); return; }
-    await onRecheck();
-    if (lastRefreshFail() === 'dead') reopenSessionDead();
-  };
-  return (
-    <div ref={ref} className={`${s.screen} ${s.screenOver} ${s.screenAuth}`} role="alertdialog" aria-modal="true" aria-labelledby="selbe-sys-closed">
-      <div className={s.card}>
-        <img src="/logo.svg" alt="" className={s.logo} />
-        <div className={s.title} id="selbe-sys-closed">{tr('Систем түр хаагдсан')}</div>
-        <p className={`${s.sub} ${s.subTight}`}>
-          {tr('Системийг нийслэлийн дата төв рүү шилжүүлж байгаа тул түр хаагдсан. Түр хүлээнэ үү.')}
-        </p>
-        {info.note && <p className={`${s.sub} ${s.subTight} ${s.sysNote}`}>{info.note}</p>}
-        {info.until && <p className={`${s.sub} ${s.subTight}`}>{tr('Дахин нээгдэх: {0}', info.until)}</p>}
-        {info.at > 0 && <p className={s.userSub}>{tr('Хаасан: {0}', dateTime(info.at))}</p>}
-        <p className={s.error}>{tr('Хэрэглэгч:')} {username || '—'}</p>
-        <button
-          type="button"
-          className={s.btn}
-          disabled={busy}
-          style={{ marginTop: 16 }}
-          onClick={() => {
-            setBusy(true);
-            void recheck().finally(() => setBusy(false));
-          }}
-        >
-          {busy ? tr('Шалгаж байна…') : tr('Дахин шалгах')}
         </button>
         <button type="button" className={s.btnGhost} onClick={onSignOut} disabled={busy}>
           {tr('Гарах')}

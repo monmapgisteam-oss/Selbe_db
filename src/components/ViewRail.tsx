@@ -29,9 +29,6 @@ export function ViewRail({
   docsActive = false,
   onAdmin,
   adminActive = false,
-  onSysClose,
-  sysCloseActive = false,
-  sysClosedNow = false,
   userName,
   onSignOut,
   badges,
@@ -58,11 +55,6 @@ export function ViewRail({
   onAdmin?: () => void;
   /** Эрхийн modal нээлттэй эсэх (идэвхтэй тэмдэг) */
   adminActive?: boolean;
-  onSysClose?: () => void;
-  /** Цонх нээлттэй эсэх (идэвхтэй тэмдэг) */
-  sysCloseActive?: boolean;
-  /** Систем одоо хаалттай — мөрийн тайлбарт «одоо хаалттай» */
-  sysClosedNow?: boolean;
   /** ХУРААГДСАН босоо горим — зөвхөн дүрс үлдэнэ (нэр tooltip-д) */
   collapsed?: boolean;
   /**
@@ -299,7 +291,7 @@ export function ViewRail({
         {docsButton && section('docs', tr('Баримт'), docsButton)}
 
         {/* СИСТЕМ — цэсний ХАМГИЙН ДООД бүлэг (жагсаалтын төгсгөл). */}
-        {(systemViews.length > 0 || onAdmin || onSysClose || onSignOut) && section('system', tr('Систем'), (
+        {(systemViews.length > 0 || onAdmin || onSignOut) && section('system', tr('Систем'), (
           <>
             {systemViews.map((v) => viewButton(v, s.railAction))}
             {onAdmin && (
@@ -316,24 +308,6 @@ export function ViewRail({
               <span className={s.icon}><Icon name="users" /></span>
               <span className={s.text}>
                 <span className={s.title}>{tr('Хэрэглэгчийн эрх тохируулах')}</span>
-              </span>
-            </button>
-            )}
-            {onSysClose && (
-            <button
-              type="button"
-              aria-pressed={sysCloseActive}
-              aria-label={sysClosedNow ? `${tr('Систем түр хаах')} · ${tr('одоо хаалттай')}` : tr('Систем түр хаах')}
-              title={collapsed ? undefined : tr('Систем түр хаах')}
-              className={`${s.item} ${s.railAction} ${sysCloseActive ? s.itemOn : ''}`}
-              {...tipProps(tr('Систем түр хаах'), sysClosedNow ? tr('одоо хаалттай') : undefined)}
-              onClick={guardClick(onSysClose)}
-            >
-              <span className={s.no} aria-hidden />
-              <span className={s.icon}><Icon name="bolt" /></span>
-              <span className={s.text}>
-                <span className={s.title}>{tr('Систем түр хаах')}</span>
-                {sysClosedNow && <span className={s.desc}>{tr('одоо хаалттай')}</span>}
               </span>
             </button>
             )}

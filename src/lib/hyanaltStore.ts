@@ -130,7 +130,7 @@ import {
 import { appendHistory, type HistEntry } from './hyanaltHistory';
 import { encodeOkCells } from './hyanaltOkCells';
 import type { ArchivingMark, StagedSubmission, SubmissionPayload } from './submission';
-import { AUTH, bagtsKey, canonPkg, canonPkgText, roleForUser, sameBagts } from './services';
+import { AUTH, bagtsKey, canonPkg, canonPkgText, sameBagts } from './services';
 import { roleOf } from './permissions';
 import { currentUser } from './who';
 import { arcgisPost } from './query';
@@ -204,7 +204,8 @@ function authz(
     if (AUTH.appId && passed && passed !== u) {
       return tr('Дамжуулсан хэрэглэгч нэвтэрсэн хэрэглэгчтэй таарахгүй — шийдвэр бүртгэгдэхгүй.');
     }
-    by = bypass && (!AUTH.appId || roleForUser(u) === 'super');
+    /* 2026-11-20: админ (super) шатыг тойрохоо больсон — шийдвэрийг тэр шатанд томилогдсон хүн л гаргана */
+    by = bypass && !AUTH.appId;
   }
   if (by) return null;
   if (!u) return tr('Нэвтрээгүй байна — шийдвэр бүртгэгдэхгүй.');
@@ -277,7 +278,7 @@ async function submittersFor(
   _stage: ReviewStage, row: Row, me: string | undefined, _bypass: boolean,
 ): Promise<{ ok: true; list?: string[] } | { ok: false; error: string }> {
   if (typeof window === 'undefined' || !AUTH.appId || !meOf(me)) return { ok: true };
-  if (_bypass && roleForUser(meOf(me)) === 'super') return { ok: true };
+  /* 2026-11-20: админы (super) «өөрийн илгээлт» чөлөөлөлт хасагдсан */
   const so = Number(row[F.sheetOid]);
   if (!Number.isInteger(so) || so <= 0) return { ok: true };
   return submittersOfRow(so, row[F.bagts]);
@@ -345,6 +346,8 @@ export function toRow(a: Attrs): Row {
     [F.chiefSent]: toIso(a[F.chiefSent]),
     [F.okCells]: str(a[F.okCells]),
     [F.history]: str(a[F.history]),
+    [F.histToken]: str(a[F.histToken]),
+    [F.okToken]: str(a[F.okToken]),
     [F.status]: str(a[F.status]) as Status,
   };
 }
@@ -538,7 +541,7 @@ async function movedSince(oid: number, prev: Row, stage: ReviewStage): Promise<s
     ? tr('Энэ ажлыг {0} таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.', name)
     : tr('Энэ ажлыг өөр хэрэглэгч таныг шийдвэрлэж байх хооронд аль хэдийн шийдвэрлэсэн — таны шийдвэр хадгалагдсангүй, жагсаалт шинэчлэгдлээ.'));
   if (!now) return tr('Бүртгэл олдсонгүй');
-  const keys = [F.status, F.okCells, F.history, f.who, f.decision, f.reason, f.returned, f.sent];
+  const keys = [F.status, F.okCells, F.history, F.histToken, F.okToken, f.who, f.decision, f.reason, f.returned, f.sent];
   const val = (r: Row, k: string) => String((r as Record<string, unknown>)[k] ?? '');
   if (keys.some((k) => val(now as Row, k) !== val(prev, k))) return busy(actor(now));
   const so = Number(prev[F.sheetOid]);
@@ -630,7 +633,7 @@ export async function countReviewPending(username: string | null | undefined): P
     if (isViewOnly(me)) return 0;
     const role = roleOf(me);
     if (role === 'zahiral') return 0;
-    const sc = role === 'super' ? null : bagtsFor(me, stage);
+    const sc = bagtsFor(me, stage);
     if (Array.isArray(sc) && sc.length === 0) return 0;
     let rows: Row[];
     if (loaded) rows = ROWS;
@@ -653,7 +656,7 @@ export async function selfBlocks(
   const out = new Map<string, string>();
   const me = (username ?? '').trim().toLowerCase();
   if (!me || stage === 'company') return out;
-  if (roleForUser(me) === 'super') return out;
+  /* 2026-11-20: өөрийгөө батлах дүрэм админд (super) ч үйлчилнэ */
   const st = stage as ReviewStage;
   const pv = prevReview(st);
   const rest: Work[] = [];

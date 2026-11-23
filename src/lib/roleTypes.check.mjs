@@ -83,7 +83,8 @@ console.log('✅ cleanTpl — cap:* · chanar:* · flow:* · scope хаягда�
   assert.equal(a.docs, true);
   assert.equal(a.home, 'plan');
   assert.deepEqual(Object.keys(a).sort(), ['docs', 'home', 'views']);
-  assert.equal(roleAccess('super').views, 'all', 'super үргэлж бүх харагдац');
+  /* 2026-11-20: super загвараа дагана — анхдагч нь эрх удирдлагын лавлах л (ажлын харагдац бусдын адил) */
+  assert.deepEqual(roleAccess('super').views, ['sysdoc'], 'super-ийн анхдагч загвар — зөвхөн эрх удирдлагын хуудас');
   for (const r of TYPE_ORDER) {
     const t = tplOf(r);
     assert.ok(t.on.every((id) => /^view:|^docs$|^admin$|^huvaari:(all|own)$/.test(id)), `${r}: анхдагч загварт харахаас өөр id байна`);
@@ -98,7 +99,7 @@ console.log('✅ roleAccess — зөвхөн views · docs · home; анхдаг
   for (const banned of ['aclOps', 'toggleCap', 'setAssign', 'setQaqcAssign', 'setGrants', 'removeAssign', 'SCOPED_SETTING', 'PLAIN_SETTING', 'SUPER_CAP', 'PkgSel']) {
     assert.ok(!src.includes(banned), `roleTypeApply: «${banned}» буцаж ирэв — загвар засах эрх/хуваарилалт бичих ёсгүй`);
   }
-  assert.ok(src.includes('setUser(u, { views, docs: acc.docs }, role)'), 'roleTypeApply: харагдацын бичилт setUser-ээр байх ёстой');
+  assert.ok(src.includes('setUser(u, { views, docs }, role)'), 'roleTypeApply: харагдацын бичилт setUser-ээр байх ёстой');
   assert.ok(!src.includes('cur.filter((v) => WORKFLOW_VIEWS.includes(v))'), 'roleTypeApply: урсгалтай харагдацыг хадгалж үлдээх замыг буцааж нэмэв');
   assert.ok(src.includes('acc.views.filter((v) => !WORKFLOW_VIEWS.includes(v))'), 'roleTypeApply: урсгалтай харагдацыг хадгалахгүй байх ёстой');
   const ui = fs.readFileSync('src/modules/ErhTypes.tsx', 'utf8');

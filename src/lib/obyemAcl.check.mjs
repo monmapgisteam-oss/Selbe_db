@@ -75,8 +75,9 @@ assert.equal(obyemScope('buh', 'editor'), null, '«бүх багц» = хязг�
 assert.deepEqual(obyemScope('buh', 'approver'), [], 'бүх багц ч ЗӨВХӨН тэр үүрэгт');
 assert.equal(obyemScope('BUH', 'editor'), null, 'том/жижиг үсэг ялгахгүй');
 
-assert.equal(obyemScope(superName, 'editor'), null, 'super = хязгааргүй');
-assert.equal(obyemScope(superName, 'approver'), null, 'super = хоёр үүрэгт ч');
+/* 2026-11-20: super хуваарилалтгүй бол хүрээгүй — бусдын адил (админ зөвхөн эрх удирдана) */
+assert.deepEqual(obyemScope(superName, 'editor'), [], 'super = хуваарилалтаар (хязгааргүй биш)');
+assert.deepEqual(obyemScope(superName, 'approver'), [], 'super = хоёр үүрэгт ч хуваарилалтаар');
 assert.equal(
   setObyemAssign(superName, ['editor'], ['Багц 2']).ok, false,
   'super-ийг хуваарилахгүй',

@@ -102,7 +102,6 @@ export function ErhTypes({ remote, onDirty }: {
   };
   /** Нүүр цонхны сонголтын тэмдэг — тэр төрөлд загвараар нээгдэхгүй бол */
   const homeNote = (r: Role, k: ViewKey): string => {
-    if (r === 'super') return '';
     if (k === 'huvaari' && hvScopeOf(cur(r).on) !== 'none') return '';
     if (isWorkflowView(k)) return ` · ${tr('хуваарилалтаар')}`;
     return cur(r).on.includes(`view:${k}`) ? '' : ` · ${tr('хаалттай')}`;

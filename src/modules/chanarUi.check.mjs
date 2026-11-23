@@ -4,7 +4,7 @@
  *
  * Хамгаалж буй зүйл (2026-09-28):
  *   1. Хайлт — дугаар/нэр, том жижиг ялгахгүй, хоосон → бүгд.
- *   2. Ноорог зөвхөн зохиогчид (эсвэл super) — `visibleInPkg`.
+ *   2. Ноорог зөвхөн зохиогчид (2026-11-20: super-т ч биш) — `visibleInPkg`.
  *   3. Таб дээрх тоо — СҮҮЛИЙН хувилбарыг л тоолно (rev0 + rev1 = 1).
  *   4. Баримтын шийдвэрийн код — REP давамгайлна; шийдвэргүй → null; R > AN > A.
  *   5. MA/NCR хураангуй.
@@ -43,10 +43,9 @@ const mk = (o) => ({
     mk({ oid: 2, status: MS_STATUS.review, author: 'a' }),
     mk({ oid: 3, status: MS_STATUS.draft, author: 'b', bagts: 'Багц 1' }),
   ];
-  assert.deepEqual(visibleInPkg(docs, 'Багц 3.2', 'A', false).map((d) => d.oid), [1, 2], 'зохиогч (том үсэг ч) өөрийн ноорогоо харна');
-  assert.deepEqual(visibleInPkg(docs, 'Багц 3.2', 'c', false).map((d) => d.oid), [2], 'бусад ноорог харахгүй');
-  assert.deepEqual(visibleInPkg(docs, 'Багц 3.2', 'c', true).map((d) => d.oid), [1, 2], 'super бүгдийг');
-  assert.deepEqual(visibleInPkg(docs, 'Багц 3.2', '', false).map((d) => d.oid), [2], 'нэвтрээгүй → ноорог үгүй');
+  assert.deepEqual(visibleInPkg(docs, 'Багц 3.2', 'A').map((d) => d.oid), [1, 2], 'зохиогч (том үсэг ч) өөрийн ноорогоо харна');
+  assert.deepEqual(visibleInPkg(docs, 'Багц 3.2', 'c').map((d) => d.oid), [2], 'бусад (админ ч) ноорог харахгүй');
+  assert.deepEqual(visibleInPkg(docs, 'Багц 3.2', '').map((d) => d.oid), [2], 'нэвтрээгүй → ноорог үгүй');
 }
 
 /* 3. Таб дээрх тоо — сүүлийн хувилбар */

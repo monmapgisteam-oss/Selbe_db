@@ -588,10 +588,11 @@ function flowCellOpRaw(user: string, stage: Stage, pkg: string, add: boolean): A
 export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
   const u = norm(user);
   if (!u) return null;
-  if (isCodeSuper(u)) return on ? null : { error: tr('Админ (super) бүх эрхтэй — эрх нь тохируулагдахгүй.') };
+  if (isCodeSuper(u)) return on ? null : { error: tr('Кодонд бүртгэлтэй админы (super) эрх самбараас тохируулагдахгүй.') };
   const tableSuper = roleForUser(u) === 'super';
   if ((tableSuper ? capsStored(u) : capsOf(u)).includes(cap) === on) return null;
-  if (on && isDerivedCap(cap) && !tableSuper) {
+  /* 2026-11-20: админд (super) ч хуваарилалтаас гардаг эрхийг шууд олгохгүй — бусдын адил багцаар */
+  if (on && isDerivedCap(cap)) {
     return { error: tr('Энэ эрх багцын хуваарилалтаас гардаг — багц онооно уу, шууд олгохгүй.') };
   }
   const confirm = on ? [] : [

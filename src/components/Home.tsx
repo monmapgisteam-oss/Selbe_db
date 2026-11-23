@@ -48,8 +48,7 @@ export function Home({
   groups,
   onEnterView,
   docsAllowed = true,
-  isSuper = false,
-  boardAllowed,
+  boardAllowed = false,
   homeView,
   permsDown = false,
   onRetryPerms,
@@ -63,13 +62,8 @@ export function Home({
    */
   docsAllowed?: boolean;
   /**
-   * «Сэлбэ ухаалаг хот» самбар ЗӨВХӨН супер хэрэглэгчид (2026-08-21,
-   * хэрэглэгчийн хүсэлт) — нүүр нь дэд самбар болж, энгийн хэрэглэгчид зөвхөн
-   * платформын хэсгүүдийн навигаци үлдэнэ.
-   */
-  isSuper?: boolean;
-  /**
-   * Удирдлагын самбар харагдах эсэх.
+   * Удирдлагын самбар харагдах эсэх (`homeBoard.boardAllowedFor`). 2026-11-20: админ (super) автоматаар харахаа больсон —
+   * бусдын адил харагдацын эрхээр.
    */
   boardAllowed?: boolean;
   /**
@@ -221,7 +215,7 @@ export function Home({
 
       {/* ── Дашбоард — супер БА «бүх харагдац» эрхтэй удирдлага (2026-08-21,
              хамрах хүрээ 2026-09-15-нд өргөжсөн — `boardAllowed`) ── */}
-      {(boardAllowed ?? isSuper) && (
+      {boardAllowed && (
       <main className={s.board}>
         <header className={s.boardHead}>
           <div className={s.intro}>
@@ -274,7 +268,7 @@ export function Home({
       {/*
         * ── ХЯЗГААРЛАГДМАЛ ХЭРЭГЛЭГЧИЙН НҮҮР (2026-09-30) ──
         */}
-      {status === 'signed-in' && !(boardAllowed ?? isSuper) && groups.length === 0 && (
+      {status === 'signed-in' && !boardAllowed && groups.length === 0 && (
         <main className={s.board}>
           <div className={s.boardGate} role="status">
             <p>{permsDown
@@ -289,7 +283,7 @@ export function Home({
         </main>
       )}
 
-      {!(boardAllowed ?? isSuper) && groups.length > 0 && (
+      {!boardAllowed && groups.length > 0 && (
         <main className={s.board}>
           <header className={s.boardHead}>
             <div className={s.intro}>

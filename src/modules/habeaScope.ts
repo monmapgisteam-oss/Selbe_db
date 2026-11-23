@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { AUTH, roleForUser } from '@/lib/services';
+import { AUTH } from '@/lib/services';
 import { habeaAclReady, habeaRowBroken, hasHabeaViewer, habeaViewerScope, subscribeHabeaAcl } from '@/lib/habeaAcl';
 import { habeaPkgKey } from './habeaUzleg';
 
@@ -19,7 +19,6 @@ import { habeaPkgKey } from './habeaUzleg';
  */
 export function habeaViewScope(user: string | null | undefined): string[] | null {
   if (!user || !AUTH.appId) return null;
-  if (roleForUser(user) === 'super') return null;
   if (!habeaAclReady() || habeaRowBroken(user)) return [];
   if (!hasHabeaViewer(user)) return null;
   const own = habeaViewerScope(user);

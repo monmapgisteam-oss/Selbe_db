@@ -592,7 +592,9 @@ export function linkPlanDates(tree: PlanTree, spans: DateSpans | null): PlanStor
         if (sp !== null) {
           const v = sp ?? EMPTY_SPAN;
           x.geree_ehleh = v.geree[0]; x.geree_duusah = v.geree[1];
-          x.guits_ehleh = v.guits[0]; x.guits_duusah = v.guits[1];
+          /* 2026-11-20 (засвар): блокгүй ГЭРЭЭНИЙ мөрийн гүйцэтгэгчийн огноо = «Үндсэн хугацаа» (хадгалсан) — дарахгүй;
+             `computePlan` нь Хуваарийн ажлуудын мужтай MIN/MAX нэгтгэнэ. Урьд нь хуудасгүй үед хоосолдог байв */
+          if (r.cashflow_id == null || n.blok) { x.guits_ehleh = v.guits[0]; x.guits_duusah = v.guits[1]; }
         }
       }
     }

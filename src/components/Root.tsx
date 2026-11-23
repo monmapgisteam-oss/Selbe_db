@@ -88,7 +88,7 @@ const scopeFromUrl = (): NavScope => {
 };
 
 export default function Root() {
-  const { authorized, signIn, signOut, status, user, accessLost, sysClosed, recheckPerms } = useAuth();
+  const { authorized, signIn, signOut, status, user, accessLost, recheckPerms } = useAuth();
   const [scope, setScope] = useState<NavScope>(scopeFromUrl);
 
   /** Эрхийн store өөрчлөгдвөл (super admin засвар) дахин тооцоолно */
@@ -120,7 +120,8 @@ export default function Root() {
    *    `status === 'off'` (dev, нэвтрэлт унтраалттай) үед дээрх `access` нь
    *    аль хэдийн `{ views: 'all' }` болдог тул энэ өөрчлөлт dev-д нөлөөгүй.
    */
-  const allowed: ViewKey[] | 'all' = hardSuper ? 'all' : (access?.views ?? []);
+  /* 2026-11-20: админ (super) ч бусдын адил өөрийн эрхийн харагдацаар (`resolveAccess` — хадгалсан + эрх удирдлагын) */
+  const allowed: ViewKey[] | 'all' = access?.views ?? [];
 
   /** Дурын хүрээг зөвшөөрсөн харагдацуудаар хайчилна */
   const clamp = (sc: NavScope): NavScope => {
@@ -267,7 +268,7 @@ export default function Root() {
   if (!scope && lastPortal) setLastPortal(null);
   const noViewsNow = Array.isArray(allowed) && !allowed.length;
   const viewsLost = !!scope && authorized && noAccess && noViewsNow && !(status === 'signed-in' && !remoteReady());
-  const frozen = scope && ((accessLost && status === 'denied') || viewsLost || (sysClosed && status === 'signed-in')) ? lastPortal : null;
+  const frozen = scope && ((accessLost && status === 'denied') || viewsLost) ? lastPortal : null;
 
   /* Үүргийн нүүр харагдац — хязгаарлагдмал хэрэглэгчийн нүүрт тодруулна (`openEntry`-тэй ижил эх) */
   const roleHome = (() => {
@@ -390,8 +391,7 @@ export default function Root() {
           /* Порталын хажуугийн цэстэй ЯГ ижил эх сурвалж (мөр 291) — нэг
              хэрэглэгчийн эрх хоёр газарт өөрөөр тайлбарлагдахаас сэргийлнэ. */
           docsAllowed={!!access}
-          isSuper={isSuper}
-          boardAllowed={boardAllowedFor(allowed, isSuper, roleOf(user?.username))}
+          boardAllowed={boardAllowedFor(allowed, status === 'off', roleOf(user?.username))}
           homeView={roleHome}
           permsDown={permsDown}
           onRetryPerms={() => { void recheckPerms(); }}

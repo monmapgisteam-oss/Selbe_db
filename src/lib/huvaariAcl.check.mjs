@@ -78,8 +78,9 @@ assert.equal(huvaariScope('buh', 'author'), null, '«бүх багц» = хяз�
 assert.deepEqual(huvaariScope('buh', 'approver'), [], 'бүх багц ч ЗӨВХӨН тэр үүрэгт');
 assert.equal(huvaariScope('BUH', 'author'), null, 'том/жижиг үсэг ялгахгүй');
 
-assert.equal(huvaariScope(superName, 'author'), null, 'super = хязгааргүй');
-assert.equal(huvaariScope(superName, 'approver'), null, 'super = хоёр үүрэгт ч');
+/* 2026-11-20: super хуваарилалтгүй бол хүрээгүй — бусдын адил (админ зөвхөн эрх удирдана) */
+assert.deepEqual(huvaariScope(superName, 'author'), [], 'super = хуваарилалтаар (хязгааргүй биш)');
+assert.deepEqual(huvaariScope(superName, 'approver'), [], 'super = хоёр үүрэгт ч хуваарилалтаар');
 assert.equal(setHuvaariAssign(superName, ['author'], ['Багц 2']).ok, false, 'super-ийг хуваарилахгүй');
 console.log('✅ бүх багц · super');
 

@@ -61,18 +61,20 @@ P._markRemoteLoaded();
 
 /* ── 1б. Хатуу super ЖИГД — хуучин override мөр ҮЛ ТООЦОГДОНО (2026-10-12) ── */
 {
-  assert.equal(P.resolveBaseAccess(legacySuper).views, 'all', 'хатуу super — override views үл тооцно');
-  assert.equal(P.resolveBaseAccess(legacySuper).docs, true, 'хатуу super — override docs үл тооцно');
-  assert.equal(P.resolveAccess(legacySuper).views, 'all', 'хатуу super — resolveAccess all');
+  /* 2026-11-20: кодын super «бүгд» биш — super-ийн загвар (эрх удирдлагын хуудас); хуучин override мөр үл тооцогдоно */
+  const supTpl = (await import('./roleTypes.ts')).roleAccess('super');
+  assert.deepEqual(P.resolveBaseAccess(legacySuper).views, supTpl.views, 'хатуу super — override views үл тооцно (загвар)');
+  assert.equal(P.resolveBaseAccess(legacySuper).docs, supTpl.docs, 'хатуу super — override docs үл тооцно');
+  { const v = P.resolveAccess(legacySuper).views; assert.ok(v.includes('sysdoc') && !v.includes('gdash'), 'хатуу super — эрх удирдлагын хуудас л, хуучин мөрийн «gdash» биш'); }
   assert.equal(P.roleOf(legacySuper), 'super', 'хатуу super — override role (injener) үл тооцно');
   const r = P.listUsers().find((u) => u.username.toLowerCase() === legacySuper.toLowerCase());
   assert.ok(r, 'super жагсаалтад байх ёстой');
-  assert.equal(r.views, 'all', 'самбарын мөр — бүх харагдац');
+  assert.deepEqual(r.views, supTpl.views, 'самбарын мөр — super-ийн загварын харагдац');
   assert.equal(r.role, 'super', 'самбарын мөр — үүрэг super');
   assert.equal(r.overridden, false, 'самбарын мөр — override гэж тэмдэглэхгүй');
   /* setUser хатуу super-т override бичихгүй (no-op, true) */
   assert.equal(await P.setUser(legacySuper, { views: ['gdash'], docs: false }, 'injener'), true, 'super-т setUser no-op');
-  assert.equal(P.resolveBaseAccess(legacySuper).views, 'all', 'setUser-ийн дараа ч бүх харагдац');
+  assert.deepEqual(P.resolveBaseAccess(legacySuper).views, supTpl.views, 'setUser-ийн дараа ч загвар хэвээр');
   assert.ok(!P.dirtyKeys().includes(legacySuper.toLowerCase()), 'super-т dirty тэмдэг үүсэхгүй');
 }
 const acc = P.resolveAccess('selbe_redesign');
@@ -209,8 +211,8 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   FL._syncRemoteAssigns([]);
   CAPS._syncRemoteCaps([]);
   assert.deepEqual(P.resolveAccess('wf_user').views, ['gdash'], 'хуваарилалт хасагдахад урсгалтай хуудас хаагдана');
-  /* (е) хатуу super ХӨНДӨГДӨХГҮЙ */
-  assert.equal(P.resolveAccess(superName).views, 'all', 'хатуу super — бүх харагдац');
+  /* (е) 2026-11-20: хатуу super ч «бүгд» биш — загвар + эрх удирдлагын хуудас (ажлын харагдац бусдын адил олгогдоно) */
+  { const v = P.resolveAccess(superName).views; assert.ok(Array.isArray(v) && v.includes('sysdoc') && !v.includes('finance'), `хатуу super — бүх харагдац биш (${v})`); }
   await P.setUser('wf_sup', { views: ['gdash', 'guitsetgel'], docs: true }, 'super');
   assert.deepEqual(P.resolveAccess('wf_sup').views, ['gdash'], 'хуучин панелийн super — хадгалсан урсгалтай харагдац хүчингүй');
   await P.setUser('wf_sup', { views: 'all', docs: true }, 'super');
@@ -233,51 +235,17 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   if (sup) assert.equal(roleForUser(`  ${sup.toUpperCase()} `), 'super', 'roleForUser: trim + жижиг үсэг');
 }
 
-/* ── 10. «СИСТЕМ ТҮР ХААХ» (2026-10-19) — `__sys__:maintenance` задлалт · зайтай түлхүүр · хэн нэвтрэх ── */
+/* ── 10. «СИСТЕМ ТҮР ХААХ» — 2026-11-20 (хэрэглэгчийн шийдвэр) бүрмөсөн хасагдсан: код, эрх, хүснэгтийн мөрийн уншилт ── */
 {
-  const { parseSysState, isSpacedKey } = await import('./permsRemote.ts');
-  /* задлалт: ЗӨВХӨН ил `on: true` хаана; эвдэрсэн → null (нээлттэй, fail-open) */
-  const st = parseSysState(JSON.stringify({ on: true, note: '  шилжүүлэлт  ', until: '10-20 09:00', by: 'bat', at: 5 }));
-  assert.deepEqual(st, { on: true, note: 'шилжүүлэлт', until: '10-20 09:00', by: 'bat', at: 5 }, 'хаалттай мөр задлагдсангүй');
-  assert.deepEqual(parseSysState(JSON.stringify({ on: false, by: 'bat', at: 1 })), { on: false, by: 'bat', at: 1 });
-  for (const bad of [null, '', '{эвдэрсэн', '[]', '"on"', JSON.stringify({ on: 'true' }), JSON.stringify({ on: 1 }), JSON.stringify({ note: 'x' })]) {
-    assert.equal(parseSysState(bad), null, `эвдэрсэн мөр хаах ёсгүй: ${bad}`);
+  const R = await import('./permsRemote.ts');
+  assert.equal(R.isSpacedKey('__sys__: docgroups'), true, 'системийн мөрийн зайтай түлхүүр');
+  assert.equal(R.isSpacedKey('__SYS__:docgroups'), false);
+  for (const k of ['parseSysState', 'sysRead', 'sysUpsert']) assert.equal(k in R, false, `permsRemote.${k} хасагдсан байх ёстой`);
+  for (const k of ['canBypassClosed', 'closedFor', 'systemClosed', 'setSystemClosed', 'refreshSystemClosed', '_syncRemoteSys']) {
+    assert.equal(k in P, false, `permissions.${k} хасагдсан байх ёстой`);
   }
-  assert.equal(parseSysState(JSON.stringify({ on: true, note: 'x'.repeat(900) })).note.length, 500, 'тайлбар 500 тэмдэгтээр таслагдана');
-  assert.equal(isSpacedKey('__sys__: maintenance'), true);
-  assert.equal(isSpacedKey('__SYS__:maintenance'), false);
-
-  /* хэн нэвтрэх: кодын super · sysClose эрхтэй — тийм; энгийн — үгүй */
   const CAPS = await import('./caps.ts');
-  CAPS._syncRemoteCaps([{ user: 'sys_holder', caps: ['sysClose'] }, { user: 'sys_plain', caps: ['zovshoorol'] }]);
-  assert.equal(P.canBypassClosed(superName), true, 'кодын super хаалттай үед нэвтэрнэ');
-  assert.equal(P.canBypassClosed('sys_holder'), true, 'sysClose эрхтэй нэвтэрнэ');
-  assert.equal(P.canBypassClosed('SYS_HOLDER'), true, 'том үсэг ялгахгүй');
-  assert.equal(P.canBypassClosed('sys_plain'), false, 'бусад эрх хаалтыг давахгүй');
-  assert.equal(P.canBypassClosed(null), false);
-  /* төлөв: нээлттэй → хэнд ч null; хаалттай → энгийнд л */
-  P._syncRemoteSys(null);
-  assert.equal(P.systemClosed(), null);
-  assert.equal(P.closedFor('sys_plain'), null, 'нээлттэй үед хаалтгүй');
-  P._syncRemoteSys(st);
-  assert.equal(P.systemClosed()?.on, true);
-  assert.equal(P.closedFor('sys_plain'), P.systemClosed(), 'энгийн хэрэглэгчид хаалттай');
-  assert.equal(P.closedFor('sys_holder'), null, 'эрх эзэмшигчид хаалтгүй');
-  assert.equal(P.closedFor(superName), null, 'super-т хаалтгүй');
-  const same = P.systemClosed();
-  P._syncRemoteSys({ ...st });
-  assert.equal(P.systemClosed(), same, 'агуулга ижил бол ИЖИЛ объект (useSyncExternalStore-ийн агшин)');
-  P._syncRemoteSys({ ...st, on: false });
-  assert.equal(P.systemClosed(), null, '`on: false` — нээлттэй');
-  P._syncRemoteSys(st);
-  CAPS._markCapsSynced(false);
-  assert.equal(CAPS.hasCap('sys_holder', 'sysClose'), false, 'fail-closed hasCap хэвээр (бичих зам)');
-  assert.equal(P.closedFor('sys_holder'), null, 'caps унасан үед эзэмшигч өөрийн хаалтад түгжигдэв');
-  assert.equal(P.closedFor('sys_plain'), P.systemClosed(), 'caps унасан үед энгийн хэрэглэгч нэвтэрлээ');
-  assert.equal(P.closedFor(superName), null);
-  CAPS._markCapsSynced(true);
-  P._syncRemoteSys(null);
-  CAPS._syncRemoteCaps([]);
+  assert.ok(!CAPS.CAPS.some((c) => c.key === 'sysClose') && !('sysClose' in CAPS.CAP_HOST_VIEW), '«Систем түр хаах» эрх хасагдсан');
 }
 
 /* ── 12. SUPER = ЭРХИЙН ХҮСНЭГТ (2026-10-21, хэрэглэгчийн шийдвэр: «тохиргооноос давсан хатуу эрх байж болохгүй») ── */
@@ -307,9 +275,9 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   assert.equal(R.roleForUser(R.BOOTSTRAP_SUPER), null, 'super мөр байхад анхны админ ҮЙЛЧЛЭХГҮЙ');
   assert.equal(P.roleOf('tbl_sup'), 'super');
   assert.equal(P.hasAccess('tbl_sup'), true, 'хүснэгтийн super нэвтэрнэ');
-  assert.equal(P.resolveAccess('tbl_sup').views, 'all');
+  /* 2026-11-20: админ хадгалсан харагдацаа л авна (энд «бүгд» хадгалсан — урсгалтай харагдац томилгооноос) */
+  { const v = P.resolveAccess('tbl_sup').views; assert.ok(Array.isArray(v) && v.includes('gdash') && v.includes('sysdoc') && !v.includes('guitsetgel'), 'super: хадгалсан харагдац'); }
   assert.equal(P.resolveBaseAccess('tbl_sup').docs, true);
-  assert.equal(P.canBypassClosed('tbl_sup'), true, 'систем хаалттай үед хүснэгтийн super нэвтэрнэ');
   const row = P.listUsers().find((u) => u.username.toLowerCase() === 'tbl_sup');
   assert.ok(row && row.role === 'super' && row.views === 'all' && row.docs === true && row.overridden === false, 'самбарт super мөр (Сэргээхгүй)');
   assert.ok(!P.listRemoved().includes('tbl_sup'));
@@ -339,7 +307,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
 
   R._setTableSupers([]);
   const boot = R.BOOTSTRAP_SUPER;
-  assert.ok(P.listUsers().some((u) => u.username === boot && u.role === 'super' && u.views === 'all' && u.overridden === false),
+  assert.ok(P.listUsers().some((u) => u.username === boot && u.role === 'super' && Array.isArray(u.views) && u.views.includes('sysdoc') && u.overridden === false),
     'идэвхтэй анхны админ самбарт синтетик super мөрөөр');
   WHO.setCurrentUser(boot);
   assert.equal(await P.setUser('tbl_sup2', { views: 'all', docs: true }, 'super'), false, 'өөрийн мөр ArcGIS-т бичигдээгүй → нөгөөд олгохгүй');
@@ -350,7 +318,7 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   assert.equal(R.roleForUser('tbl_sup2'), null, 'нөгөөд super олгогдоогүй (fail-closed)');
   assert.ok(P.dirtyKeys().includes(boot), 'өөрийн мөр dirty — retry бичнэ');
   const bootRow = P.listUsers().find((u) => u.username.toLowerCase() === boot);
-  assert.ok(bootRow && bootRow.role === 'super' && bootRow.views === 'all' && bootRow.overridden === false, 'самбарт өөрийн super мөр');
+  assert.ok(bootRow && bootRow.role === 'super' && Array.isArray(bootRow.views) && bootRow.views.includes('sysdoc') && bootRow.overridden === false, 'самбарт өөрийн super мөр');
   /* ДАХИН оролдлого — хүснэгтэд super мөр алга хэвээр тул ДАХИАД өөрийн мөрийг эхэлж бичнэ (унавал нөгөөд олгохгүй) */
   assert.equal(await P.setUser('tbl_sup2', { views: 'all', docs: true }, 'super'), false, 'дахин оролдлого ч өөрийн мөргүйгээр олгохгүй');
   assert.equal(R.roleForUser('tbl_sup2'), null);

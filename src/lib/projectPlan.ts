@@ -388,16 +388,16 @@ export type MoneySums = { paid: number | null; advance: number | null; contract:
  * (нийслэлийн төсвөөс санхүүждэг) ТООЦОХГҮЙ, бусад нь тооцно.
  */
 export function noMoney(n: PlanNode): boolean {
-  if (n.outside) return true;
+  /* 2026-11-20 (засвар): хадгалсан утга ЭХЭНД — «Нийслэл төсөв» (гүйцэтгэлийн унтраалга нь унтарсан) мөрд ч мөнгөний товч ажиллана */
   const v = n.row?.mongo_tootsoh;
   if (v === 0) return true;
   if (v === 1) return false;
-  if (n.optIn) return true;
+  if (n.outside || n.optIn) return true;
   return n.depth === 1 && n.phase === 'gazar';
 }
 
 /** ХУГАЦААНЫ НИЙТЭД ТООЦОХГҮЙ (2026-11-19) — мөр өөрийн огноог харуулна, эцгийн эхлэх/дуусахад орохгүй. Хоосон = тооцно */
-export const noTime = (n: PlanNode): boolean => n.outside || n.row?.hugatsaa_tootsoh === 0;
+export const noTime = (n: PlanNode): boolean => (n.row?.hugatsaa_tootsoh === 1 ? false : n.outside || n.row?.hugatsaa_tootsoh === 0);
 
 export function moneySums(tree: PlanTree): Map<PlanNode, MoneySums> {
   const out = new Map<PlanNode, MoneySums>();

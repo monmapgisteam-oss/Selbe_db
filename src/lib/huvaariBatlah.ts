@@ -6,7 +6,7 @@
 
 import { requireSelf, requireWriter } from './writeGuard';
 import { GUITS } from '@/lib/services/env';
-import { AUTH, canonPkg, roleForUser } from './services';
+import { AUTH, canonPkg } from './services';
 import { huvaariAclReady, huvaariScope } from './huvaariAcl';
 import { t as tr } from '@/lib/i18nCore';
 import { scopeHas } from '@/lib/scopedAcl';
@@ -1584,7 +1584,7 @@ export async function returnStuckPlan(args: { oid: number; approver: string; rea
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const who = meNow ?? me;
-    const sc = roleForUser(who) === 'super' ? null : huvaariScope(who, 'approver');
+    const sc = huvaariScope(who, 'approver');
     if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын хуваарийг батлах эрхгүй.') };
   }

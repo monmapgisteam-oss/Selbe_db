@@ -461,11 +461,14 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   assert.equal(TUSUL_NEGTGEL.readOnly, true, 'Negtgel_guitsetgel_1013 — Excel-ийн баганууд readOnly (хэрэглэгчийн шийдвэр)');
   assert.equal(TUSUL_NEGTGEL.sysWrite, true, 'sys_* талбаруудад бичнэ');
   assert.equal((await A.syncNegtgel({}, io(null))).kind, 'off', 'хэрэглэгчгүй → бичихгүй');
-  assert.equal((await A.syncNegtgel({}, io('selbe_et'))).kind, 'off', 'super биш → бичихгүй');
+  assert.equal((await A.syncNegtgel({}, io('selbe_et'))).kind, 'off', '«Санхүү засах» эрхгүй → бичихгүй');
+  /* 2026-11-20: админ (super) эрхгүй бол бичихгүй — бичигчид «Санхүү засах» (finEdit) олгоно */
+  assert.equal((await A.syncNegtgel({}, io('manager_3'))).kind, 'off', 'эрхгүй админ → бичихгүй');
+  (await import('./caps.ts'))._syncRemoteCaps([{ user: 'saruul_monmap', caps: ['finEdit'] }]);
   assert.equal((await A.syncNegtgel()).kind, 'off', 'анхдагч (нэвтрээгүй Node) → бичихгүй');
   assert.equal(writes, 0);
   const st = await A.syncNegtgel({}, io('saruul_monmap'));
-  assert.equal(st.kind, 'guard', 'super (тестийн бичигч) — хамгаалалтын төлөв ил');
+  assert.equal(st.kind, 'guard', '«Санхүү засах» эрхтэй (тестийн бичигч) — хамгаалалтын төлөв ил');
   assert.equal(st.n, 3);
   assert.equal(writes, 3, 'зөвхөн хамгаалалтад ороогүй мөрүүд бичигдэнэ (sys_*)');
   assert.equal(negDrops, 1, '2026-10-21: баталгаатай бичилт (n > 0) → TUSUL_NEGTGEL хүчингүй');

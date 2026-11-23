@@ -4,6 +4,7 @@
  * ХҮСНЭГТ РҮҮ БИЧИХ — дурын ArcGIS FeatureServer давхарга/хүснэгтэд.
  */
 
+import { logAudit, tableName } from './auditLog';
 import { t as tr } from '@/lib/i18nCore';
 import { arcgisPost } from '@/lib/query';
 import { requireCap } from './who';
@@ -49,7 +50,8 @@ const clean = (a: Record<string, unknown>, drop?: RegExp): Record<string, unknow
  * серверт ИЛГЭЭХГҮЙ.
  */
 const CF_URL = /\/Guitsetgel_talbe\/FeatureServer\/182\/?$/i;
-const CF_VIRTUAL = /^(etseg_kod|tuvshin|uy_shat|(bagts|ajil)_tuvshin[123])$/;
+/* 2026-11-20: `geree_ehleh` · `geree_duusah` — санах ойн талбар (182-т багана алга), бичилтэд хэзээ ч орохгүй */
+const CF_VIRTUAL = /^(etseg_kod|tuvshin|uy_shat|(bagts|ajil)_tuvshin[123]|geree_ehleh|geree_duusah)$/;
 
 /**
  * НЭМЭХ · ЗАСАХ · УСТГАХ гурвыг НЭГ `applyEdits` хүсэлтээр — АТОМААР.
@@ -100,5 +102,15 @@ export async function applyAll(
   const oids = check((j.addResults ?? []) as ApplyResult[], tr('Мөр нэмэх'), adds.length);
   const nUpd = check((j.updateResults ?? []) as ApplyResult[], tr('Утга засах'), updates.length).length;
   const nDel = check((j.deleteResults ?? []) as ApplyResult[], tr('Мөр устгах'), deletes.length).length;
+  /* 2026-11-20: өөрчлөлтийн түүх — хэн, хэзээ, аль хүснэгтийн аль мөрийг юу болгосон (`lib/auditLog`, бичилтийг хүлээлгэхгүй) */
+  {
+    const table = tableName(url);
+    const attrsOf = (f: Record<string, unknown>) => (f.attributes ?? {}) as Record<string, unknown>;
+    logAudit([
+      ...adds.map((f, i) => ({ table, oid: oids[i] ?? null, op: 'add' as const, values: attrsOf(f) })),
+      ...updates.map((f) => ({ table, oid: Number(attrsOf(f)[oidField]), op: 'update' as const, values: attrsOf(f) })),
+      ...deletes.map((oid) => ({ table, oid, op: 'delete' as const, values: null })),
+    ]);
+  }
   return { n: oids.length + nUpd + nDel, oids };
 }

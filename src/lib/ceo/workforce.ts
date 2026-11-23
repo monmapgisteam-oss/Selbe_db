@@ -217,6 +217,29 @@ function mergeDayRows(main: Row, others: readonly Row[]): Row {
     const src = others.find(has);
     if (src) for (const k of [...keys, fl.bagts]) out[k] = src[k];
   }
+  /* 2026-11-20 (засвар): маягтын НИЙТ талбар (ажилтан, хүн цаг, техник) — компани тус бүр өөр маягт илгээдэг тул нийлбэр */
+  for (const k of [F.niitAjiltan, F.hunTsag, F.niitTehnik]) {
+    const vals = [main, ...others].map((r) => (blank(r[k]) ? null : Number(r[k]))).filter((v): v is number => v != null && Number.isFinite(v));
+    if (vals.length) out[k] = vals.reduce((a, v) => a + v, 0);
+  }
+  return out;
+}
+
+/** ӨДӨР БҮРЭЭС НЭГ (НИЙЛҮҮЛСЭН) МӨР — `groupDays`-тэй ижил дүрэм; ХАБЭА хуудасны өдрийн цуваанд (2026-11-20) */
+export function mergedRowPerDay(rows: readonly Row[], keyOf: (ms: number) => string = ubDayKey): Row[] {
+  const by = new Map<string, Row[]>();
+  for (const r of rows) {
+    const at = numOrNull(r[F.ognoo]);
+    if (at == null || at <= 0) continue;
+    const k = keyOf(at);
+    (by.get(k) ?? by.set(k, []).get(k)!).push(r);
+  }
+  const out: Row[] = [];
+  for (const list of by.values()) {
+    const picks = list.map((r): DayPick => ({ r, at: numOrNull(r[F.ognoo])!, edited: numOrNull(r[EDIT_DATE_FIELD]) ?? 0, oid: numOrNull(r[OID_FIELD]) ?? 0, n: 1 }))
+      .sort((p, q) => (newer(p, q) ? -1 : 1));
+    out.push(mergeDayRows(picks[0].r, picks.slice(1).map((p) => p.r)));
+  }
   return out;
 }
 

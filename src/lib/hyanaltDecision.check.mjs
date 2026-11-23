@@ -47,7 +47,7 @@ globalThis.fetch = async (input, init) => {
   if (url === target || url === `${target}/`) {
     if (mode === 'metadata-error') return json({ error: { code: 403, message: 'metadata denied' } });
     if (mode === 'metadata-malformed') return json({ supportsCalculate: true });
-    return json({ supportsCalculate: mode !== 'unsupported', fields: ['objectid', ...Object.values(F)].map((name) => ({
+    return json({ supportsCalculate: mode !== 'unsupported', fields: ['objectid', ...Object.values(F).filter((n) => n !== F.histToken && n !== F.okToken)].map((name) => ({
       name: wireName(name), type: 'esriFieldTypeString', length: 10000,
     })) });
   }

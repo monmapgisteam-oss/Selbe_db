@@ -11,7 +11,10 @@ import { WORKFLOW_VIEWS } from './caps';
 /** Шинэ хуудас — хадгалсан жагсаалтад байхгүй ч удирдлагын самбар хаагдахгүй (2026-11-04) */
 const BOARD_OPTIONAL: readonly ViewKey[] = ['zahiramj', 'songon', 'zovshoorolTtb', 'ashiglalt'];
 
-export function boardAllowedFor(allowed: 'all' | readonly ViewKey[], isSuper: boolean, role: Role | null = null): boolean {
-  if (isSuper || allowed === 'all' || role === 'zahiral') return true;
+/**
+ * @param authOff нэвтрэлт унтраалттай (локал dev). 2026-11-20: админ (super) энд үл хамаарна — бусдын адил харагдацаар.
+ */
+export function boardAllowedFor(allowed: 'all' | readonly ViewKey[], authOff: boolean, role: Role | null = null): boolean {
+  if (authOff || allowed === 'all' || role === 'zahiral') return true;
   return VIEWS.every((v) => WORKFLOW_VIEWS.includes(v.key) || BOARD_OPTIONAL.includes(v.key) || allowed.includes(v.key));
 }

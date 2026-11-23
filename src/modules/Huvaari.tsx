@@ -9,7 +9,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { scopeHas } from '@/lib/scopedAcl';
 import { Section, Empty, Loading, Data, friendlyError, userError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
-import { hasPlanRole, huvaariAclReady, huvaariScope, planAdminCanApprove, planApproversOf, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
+import { hasPlanRole, huvaariAclReady, huvaariScope, planApproversOf, subscribeHuvaariAcl } from '@/lib/huvaariAcl';
 import { ensureKomissRow, findKomissRow } from '@/lib/ulsiinKomiss';
 import { roleForUser } from '@/lib/services';
 import { dayKey, fixCyr, num } from '@/lib/format';
@@ -301,7 +301,7 @@ export function Huvaari({
   const canAddRow = useMemo(() => {
     if (review) return false;
     if (!hasCap(user?.username, 'addRow')) return false;
-    if (status === 'off' || roleForUser(user?.username) === 'super') return true;
+    if (status === 'off') return true;
     const sc0 = ajilScope(user?.username, 'editor');
     return scopeHas(sc0, pkg.group);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4577,7 +4577,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
               onClick={() => setChgOpen((v) => !v)}>
               {tr('Өөрчлөлт {0}', num(reviewOids.length))}
             </button>
-            {(status === 'off' || roleForUser(user?.username) === 'super') && (
+            {status === 'off' && (
               <button type="button" className={h.discard}
                 disabled={busy || approving != null || !reviewLive || !reviewOids.length}
                 title={tr('Өөрчлөгдсөн бүх мөрийг ногоон/улаан болгоно')}
@@ -4906,7 +4906,6 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             const auth0 = pending.author.trim().toLowerCase();
             const appr = planApproversOf(pkg.group).filter((u) => u.trim().toLowerCase() !== auth0);
             if (appr.length) parts.push(tr('батлагч: {0}', appr.slice(0, 5).join(', ') + (appr.length > 5 ? ` (+${num(appr.length - 5)})` : '')));
-            else if (huvaariAclReady() && planAdminCanApprove(pending.author)) parts.push(tr('админ батлах боломжтой'));
             else if (huvaariAclReady()) parts.push(tr('батлагч томилоогүй — админ «Хуваарийн эрх» хэсгээс нэмнэ'));
             return parts.length ? ` ${parts.join(' · ')}.` : '';
           })()}

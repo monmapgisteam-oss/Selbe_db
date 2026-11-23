@@ -525,7 +525,6 @@ function Submitted({
   onRemapped,
   onUnmoved,
   onNegative,
-  onOkAll,
   reloadKey = 0,
 }: {
   bagts: string;
@@ -549,11 +548,6 @@ function Submitted({
   onRemapped?: (v: boolean | undefined) => void;
   onUnmoved?: (n: number | undefined) => void;
   onNegative?: (n: number | undefined, cells?: string[]) => void;
-  /**
-   * «БҮГДИЙГ ЗӨВШӨӨРӨХ» — ЗӨВХӨН системийн админд. Эцэг (`Item`) шийднэ;
-   * өгөгдөөгүй бол товч ОГТ зурагдахгүй.
-   */
-  onOkAll?: () => void;
 }) {
   /** «Дахин оролдох» тоолуур — уншилтын effect-ийг дахин асаана. */
   const [tryN, setTryN] = useState(0);
@@ -571,7 +565,6 @@ function Submitted({
   /** Өөрчлөгдсөн нүд: `${мөр}:${блок}` — бөглөх хуудсанд улаанаар тэмдэглэнэ. */
   /** Хэдийг нь зөвшөөрсөн — толгойд харуулна. */
   const okCount = (data?.changes ?? []).filter((c) => ok?.has(`${c.row}:${c.block}`)).length;
-  const okable = (data?.changes ?? []).filter((c) => !c.neg).length;
   const changedKeys = useMemo(
     () => new Set((data?.changes ?? []).map((c) => `${c.row}:${c.block}`)),
     [data],
@@ -629,19 +622,6 @@ function Submitted({
                 <span className={okCount === data.changes.length ? s.okAll : s.okSome}>
                   {tr('зөвшөөрсөн {0}/{1}', String(okCount), String(data.changes.length))}
                 </span>
-              </>
-            )}
-            {onOkAll && okCount < okable && (
-              <>
-                {' · '}
-                <button
-                  type="button"
-                  className={s.okAllBtn}
-                  onClick={onOkAll}
-                  title={tr('Зөвхөн системийн админд. Өөрчлөгдсөн {0} нүдийг бүгдийг нь ногоон болгож тэмдэглэнэ — шийдвэрийг доод талын товч гаргана.', String(okable - okCount))}
-                >
-                  {tr('✓ бүгдийг ногоон болгох ({0})', String(okable - okCount))}
-                </button>
               </>
             )}
             {data.compared && (
@@ -814,7 +794,7 @@ function okRowsOf(changes: Change[] | null): ({ oid: number; sid: string } | und
 
 const BULK_STAGES: readonly Stage[] = ['planner', 'director', 'head', 'chief'];
 
-function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedWhy, onDone }: {
+function Item({ work, stage, who, me, bypass, onFix, readOnly, blockedWhy, onDone }: {
   work: Work; stage: Stage; who: string;
   blockedWhy?: string;
   onDone?: (msg: string) => void;
@@ -824,14 +804,9 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
    */
   me?: string;
   /**
-   * Домэйн шалгуурыг ТОЙРУУЛАХ — нэвтрэлт унтраалттай (дев) эсвэл админ
-   * шатаа ил сонгосон үед. Эс бөгөөс тэр хоёр орчинд хяналт ажиллахгүй.
+   * Домэйн шалгуурыг ТОЙРУУЛАХ — ЗӨВХӨН нэвтрэлт унтраалттай (дев). 2026-11-20: админ (super) тойрохоо больсон.
    */
   bypass?: boolean;
-  /**
-   * Системийн админ уу (`resolveFlowStage.canPick`).
-   */
-  isSuper?: boolean;
   readOnly?: boolean;
 }) {
   const dk = `${(me ?? '').trim().toLowerCase()}|${work.key}`;
@@ -1231,9 +1206,6 @@ function Item({ work, stage, who, me, bypass, onFix, readOnly, isSuper, blockedW
             onUnmoved={setUnmoved}
             onNegative={(n, cells) => { setNegative(n); setNegCells(cells ?? []); }}
             reloadKey={subReload}
-            onOkAll={isSuper && mine && reviewing
-              ? () => setOkKeys(new Set((changes ?? []).filter((c) => !c.neg).map((c) => `${c.row}:${c.block}`)))
-              : undefined}
           />
           <History cycles={work.cycles} stage={stage} />
         </div>
@@ -1372,9 +1344,9 @@ export function Guitsetgel() {
     setTabPicked(true);
     setTab('fill');
   }
-  /** «Нэгтгэл гүйцэтгэл» таб — зөвхөн super (доорх табын тайлбарыг үз) */
-  const isSuperRole = authStatus === 'off' ? role === 'super' : roleForUser(user?.username) === 'super';
-  if (!isSuperRole && tab === 'negtgel') setTab('sent');
+  /** «Нэгтгэл гүйцэтгэл» таб — 2026-11-20: админ (super) биш, «Санхүүгийн бүртгэл засах» (`finEdit`) эрхтэй хүнд */
+  const negtgelRole = authStatus === 'off' ? role === 'super' : hasCap(user?.username, 'finEdit');
+  if (!negtgelRole && tab === 'negtgel') setTab('sent');
   const [q, setQ] = useState('');
   const [bagts, setBagts] = useState(ALL);
   const [company, setCompany] = useState(ALL);
@@ -1383,7 +1355,7 @@ export function Guitsetgel() {
   const { rows, loading, error, reload } = useHyanaltRows();
   const loadFailed = !!error && rows.length === 0;
   const applyWarns = useApplyWarns();
-  const sweepBypass = authStatus === 'off' || flow.canPick;
+  const sweepBypass = authStatus === 'off';
   const [sweepFailed, setSweepFailed] = useState(0);
   const [sweepTick, setSweepTick] = useState(0);
   /** «Дахин оролдох» дарагдсан — дараагийн НЭГ дуудлагын үр дүн шар мөрийг шинэчилнэ (тэг ч) */
@@ -1530,7 +1502,7 @@ export function Guitsetgel() {
               reason: '',
               who,
               me: user?.username,
-              bypass: authStatus === 'off' || flow.canPick,
+              bypass: authStatus === 'off',
               okCells: toOkRefs(d.changes.map((c) => `${c.row}:${c.block}`), okRowsOf(d.changes)),
               subAt: d.subAt,
             });
@@ -1599,7 +1571,7 @@ export function Guitsetgel() {
         <span className={s.groupCount}>{g.items.length}</span>
       </div>
       {g.items.map((w) => (
-        <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} />
+        <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off'} onFix={goFix} readOnly={!canReview} />
       ))}
     </Fragment>
   ));
@@ -1647,7 +1619,7 @@ export function Guitsetgel() {
         {/*
           * НЭГТГЭЛ ГҮЙЦЭТГЭЛ — төслийн ажлын задаргааны (WBS) мод.
           */}
-        {isSuperRole && (
+        {negtgelRole && (
           <button
             type="button"
             className={showFill
@@ -1661,7 +1633,7 @@ export function Guitsetgel() {
         )}
       </div>
 
-      {tab === 'negtgel' && isSuperRole ? (
+      {tab === 'negtgel' && negtgelRole ? (
         <div className={s.fill}>
           <TusulNegtgel />
         </div>
@@ -1817,14 +1789,14 @@ export function Guitsetgel() {
                 </div>
               ) : (
                 <>
-                  {mineOk.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} onDone={setDoneMsg} />)}
+                  {mineOk.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off'} onFix={goFix} readOnly={!canReview} onDone={setDoneMsg} />)}
                   {mineBlocked.length > 0 && (
                     <>
                       <div className={s.groupHead}>
                         <span>{tr('Та зөвшөөрөх боломжгүй — энэ шатны өөр хянагч шийднэ')}</span>
                         <span className={s.groupCount}>{mineBlocked.length}</span>
                       </div>
-                      {mineBlocked.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off' || flow.canPick} onFix={goFix} readOnly={!canReview} isSuper={flow.canPick} onDone={setDoneMsg} blockedWhy={blocked.get(w.key)} />)}
+                      {mineBlocked.map((w) => <Item key={w.key} work={w} stage={stage} who={who} me={user?.username} bypass={authStatus === 'off'} onFix={goFix} readOnly={!canReview} onDone={setDoneMsg} blockedWhy={blocked.get(w.key)} />)}
                     </>
                   )}
                 </>

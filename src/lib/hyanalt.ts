@@ -7,6 +7,7 @@ import { arcgisPost, ArcGISError } from '@/lib/query';
 import { t as tr } from '@/lib/i18nCore';
 import { GUITS } from '@/lib/services';
 import { collidesBelow, idNum, renumberPlan, type IdRow } from './idUnique';
+import { addChildren, cellPlan, cellTokenWhere, dropChildren, histPlan, hydrateSplit, splitToken, SPLIT } from './hyanaltSplit';
 
 export const HYANALT = {
   url: `${GUITS}/183`,
@@ -90,6 +91,13 @@ export const F = {
    * (`hyanaltHistory.ts`).
    */
   history: 'shiidveriin_tuuh',
+
+  /**
+   * ЗААГЧ БАГАНУУД (2026-11-23, «нэг нүдэнд нэг утга» — `hyanaltSplit.ts`): түүхийн сүүлийн мөрийн түлхүүр ба хүчинтэй
+   * зөвшөөрсөн нүдний багцын түлхүүр. Утгатай бол түүх / нүд тусдаа хүснэгтэд (236 · 237) байгаа; хоосон бол хуучин нүдэнд.
+   */
+  histToken: SPLIT.histToken,
+  okToken: SPLIT.okToken,
 
   status: 'төлөв',
 } as const;
@@ -236,6 +244,8 @@ export type Row = {
   [F.chiefSent]: string | null;
   [F.okCells]: string;
   [F.history]: string;
+  [F.histToken]: string;
+  [F.okToken]: string;
   [F.status]: Status;
 };
 
@@ -314,8 +324,13 @@ export async function hasOkCellsField(): Promise<boolean | null> {
 export async function fieldMaxLen(name: string): Promise<number | null> {
   const have = await serviceFieldNames();
   if (!have || !lensCache) return null;
+  /* Зөвшөөрсөн нүд тусдаа хүснэгтэд (нүд бүр нэг мөр) бичигддэг бол баганын уртын хязгаар хамаарахгүй */
+  if (name === F.okCells && splitOn(have)) return null;
   return lensCache.get(name) ?? null;
 }
+
+/** Заагч баганууд үйлчилгээнд байна уу — байвал түүх ба зөвшөөрсөн нүд тусдаа хүснэгтэд бичигдэнэ (`hyanaltSplit.ts`) */
+const splitOn = (fields: ReadonlySet<string>): boolean => fields.has(F.histToken) && fields.has(F.okToken);
 
 export async function hasHistoryField(): Promise<boolean | null> {
   const have = await serviceFieldNames();
@@ -385,6 +400,14 @@ export async function queryAll(): Promise<Attrs[]> {
     out.push(...got.map((f) => f.attributes));
     if (!j.exceededTransferLimit || got.length === 0) break;
     offset += got.length;
+  }
+  /* Заагчтай мөрийн түүх · зөвшөөрсөн нүдийг тусдаа хүснэгтээс сэргээнэ. Нүд зөвхөн дуусаагүй илгээлтэд хэрэгтэй. */
+  if (out.some((a) => a[F.histToken] || a[F.okToken])) {
+    try {
+      await hydrateSplit(out, F.history, F.okCells, (a) => a[F.status] !== STATUS.transferred);
+    } catch (e) {
+      throw new HyanaltError(tr('Хяналтын түүх, зөвшөөрсөн нүдийг уншиж чадсангүй — дахин оролдоно уу'), e);
+    }
   }
   if (!dupSweepDone && typeof window !== 'undefined') {
     dupSweepDone = true;
@@ -461,7 +484,48 @@ export async function queryStatusSig(): Promise<string> {
   return parts.join(',');
 }
 
-const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
+/**
+ * ШИНЭ мөрийн түүх / зөвшөөрсөн нүдийг тусдаа хүснэгтийн мөр болгоно: мөрт заагч л үлдэнэ. Хүүхэд мөрүүд эцэг мөр нэмэгдсэний
+ * ДАРАА (дугаар нь мэдэгдсэн үед) бичигдэнэ — `after`.
+ */
+async function splitAdds(rows: Attrs[]): Promise<{ rows: Attrs[]; after: (oids: number[]) => Promise<void> }> {
+  const fields = await serviceFieldNames();
+  if (!fields || !splitOn(fields) || !rows.some((r) => F.history in r || F.okCells in r)) return { rows, after: async () => {} };
+  const kids: { i: number; url: string; rows: Attrs[] }[] = [];
+  const out = rows.map((r, i) => {
+    const a = { ...r };
+    if (F.history in a) {
+      const p = histPlan('', a[F.history], null, null);
+      delete a[F.history];
+      a[F.histToken] = p.token;
+      if (p.rows.length) kids.push({ i, url: SPLIT.histUrl, rows: p.rows });
+    }
+    if (F.okCells in a) {
+      const p = cellPlan(a[F.okCells], null);
+      if (p) {
+        delete a[F.okCells];
+        a[F.okToken] = p.token;
+        if (p.rows.length) kids.push({ i, url: SPLIT.cellUrl, rows: p.rows });
+      }
+    }
+    return a;
+  });
+  return {
+    rows: out,
+    after: async (oids) => {
+      for (const k of kids) {
+        const list = k.rows.map((x) => ({ ...x, hyanalt_oid: oids[k.i] || null }));
+        try { await addChildren(k.url, list); } catch (e) {
+          try { await addChildren(k.url, list); } catch { console.warn('[selbe] шинэ хяналтын мөрийн түүх / зөвшөөрсөн нүд бичигдсэнгүй:', e); }
+        }
+      }
+    },
+  };
+}
+
+const edit = async (key: 'adds' | 'updates', rows0: Attrs[]) => {
+  const sp = key === 'adds' ? await splitAdds(rows0) : { rows: rows0, after: async () => {} };
+  const rows = sp.rows;
   const wrapped = rows.map((attributes) => ({ attributes }));
   let tried = false;
   try {
@@ -482,6 +546,7 @@ const edit = async (key: 'adds' | 'updates', rows: Attrs[]) => {
         tr('{0} мөр хадгалагдсангүй: {1}', Math.abs(rows.length - results.length), tr('серверээс үр дүн дутуу ирлээ')),
       );
     }
+    await sp.after(results.map((r) => Number((r as { objectId?: unknown }).objectId) || 0));
     return results;
   } finally {
     if (tried) invalidate('HYANALT');
@@ -505,7 +570,8 @@ export class HyanaltConflict extends HyanaltError {
  * /calculate is supported by the Enterprise review layer (Update capability).
  * Never fall back to an unconditional applyEdits when it is unavailable.
  */
-export async function updateDecision(expected: Row, patch: Attrs): Promise<void> {
+export async function updateDecision(expected: Row, patch0: Attrs): Promise<void> {
+  let patch = patch0;
   const oid = expected.__oid;
   if (!Number.isSafeInteger(oid) || oid <= 0 || patch[HYANALT.oid] !== oid) {
     throw new HyanaltError(tr('Бүртгэл олдсонгүй'));
@@ -516,13 +582,70 @@ export async function updateDecision(expected: Row, patch: Attrs): Promise<void>
     throw new HyanaltError(tr('Зэрэг өөрчлөлтийг хамгаалах бичилт дэмжигдээгүй — админд мэдэгдэнэ үү.'));
   }
   const quote = (value: string) => `N'${value.replace(/'/g, "''")}'`;
-  const guarded = [F.status, F.history, F.okCells, F.bagts,
+  /*
+   * 2026-11-23 («нэг нүдэнд нэг утга»): түүх ба зөвшөөрсөн нүд тусдаа хүснэгтэд. Шинэ мөрүүдийг ЭХЛЭЭД шинэ түлхүүрээр нэмнэ
+   * (заагч заагаагүй тул харагдахгүй), дараа нь доорх НЭГ нөхцөлт бичилтээр төлөв · шийдвэр · заагчийг хамт солино. Бичилт
+   * унавал (өөр хүн түрүүлсэн) нэмсэн мөрүүдийг цэвэрлэнэ. Заагч нь мөн хамгаалагдсан талбар — зэрэг бичилт урьдын адил татгалзана.
+   */
+  const split = splitOn(fields);
+  const exp = expected as unknown as Attrs;
+  /* Тэмдэгтэй заагч — хуучин кодтой цонх хуучин нүдэнд бичсэн мөр (`hyanaltSplit.splitToken`): бүтэн түүхийг дахин бичнэ */
+  const hTok = splitToken(split ? exp[F.histToken] : '');
+  const cTok = splitToken(split ? exp[F.okToken] : '');
+  const oldHist = hTok.token;
+  const oldCells = cTok.token;
+  const undo: (() => Promise<void>)[] = [];
+  let dropOldCells: string | null = null;
+  if (split && (F.history in patch || F.okCells in patch)) {
+    patch = { ...patch };
+    try {
+      if (F.history in patch) {
+        const p = histPlan(exp[F.history], patch[F.history], hTok.dirty ? null : (oldHist || null), oid);
+        if (p.rows.length) {
+          const ids: number[] = [];
+          undo.push(() => dropChildren(SPLIT.histUrl, { oids: ids }));
+          await addChildren(SPLIT.histUrl, p.rows, ids);
+        }
+        delete patch[F.history];
+        patch[F.histToken] = p.token;
+        if (hTok.dirty || (!oldHist && String(exp[F.history] ?? '') !== '')) patch[F.history] = null;
+      }
+      if (F.okCells in patch) {
+        const p = cellPlan(patch[F.okCells], oid);
+        if (p) {
+          if (p.rows.length && p.token) {
+            const tok = p.token;
+            undo.push(() => dropChildren(SPLIT.cellUrl, { where: cellTokenWhere(tok) }));
+            await addChildren(SPLIT.cellUrl, p.rows);
+          }
+          delete patch[F.okCells];
+          patch[F.okToken] = p.token;
+          if (cTok.dirty || (!oldCells && String(exp[F.okCells] ?? '') !== '')) patch[F.okCells] = null;
+          if (oldCells && oldCells !== p.token) dropOldCells = oldCells;
+        }
+      }
+    } catch (e) {
+      for (const u of undo) await u();
+      throw new HyanaltError(tr('Хяналтын түүх, зөвшөөрсөн нүдийг хадгалж чадсангүй — шийдвэр хадгалагдсангүй, дахин оролдоно уу'), e);
+    }
+  }
+  /* Заагчтай мөрийн хуучин нүд хоосон (утга нь тусдаа хүснэгтээс сэргээгдсэн) — хамгаалалтад хоосноор тулгана */
+  const guardValue = (field: string): string | null => {
+    if (field === F.histToken) return oldHist;
+    if (field === F.okToken) return oldCells;
+    /* Тэмдэгтэй түүх: санах ойн утга нь гинж + хуучин нүдний нийлбэр тул хуучин нүдтэй тулгах боломжгүй — заагч, төлөв хамгаална */
+    if (field === F.history && oldHist) return hTok.dirty ? null : '';
+    if (field === F.okCells && oldCells && !cTok.dirty) return '';
+    return String(exp[field] ?? '');
+  };
+  const guarded = [F.status, F.history, F.okCells, ...(split ? [F.histToken, F.okToken] : []), F.bagts,
     ...REVIEW_STAGES.flatMap((stage) => [SF[stage].who, SF[stage].decision, SF[stage].reason])];
   if (!fields.has(F.status)) throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
   const clauses = [`${HYANALT.oid} = ${oid}`];
   for (const field of guarded) {
     if (!fields.has(field)) continue;
-    const value = String((expected as unknown as Attrs)[field] ?? '');
+    const value = guardValue(field);
+    if (value === null) continue;
     clauses.push(value === '' ? `(${field} IS NULL OR ${field} = '')` : `${field} = ${quote(value)}`);
   }
   for (const field of [F.sheetOid, F.ergelt]) {
@@ -538,6 +661,7 @@ export async function updateDecision(expected: Row, patch: Attrs): Promise<void>
     || (value !== null && typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))))) {
     throw new HyanaltError(tr('Талбарын жагсаалт ирсэнгүй'));
   }
+  let saved = false;
   try {
     const result = await post('/calculate', {
       where: clauses.join(' AND '),
@@ -551,7 +675,11 @@ export async function updateDecision(expected: Row, patch: Attrs): Promise<void>
       throw new HyanaltError(tr('серверээс үр дүн дутуу ирлээ'));
     }
     if (result.updatedFeatureCount === 0) throw new HyanaltConflict();
+    saved = true;
   } finally {
+    /* Бичилт хүлээн авагдаагүй бол нэмсэн мөрүүд заагчгүй үлдэнэ — цэвэрлэнэ. Авагдсан бол солигдсон хуучин нүдний багцыг. */
+    if (!saved) for (const u of undo) await u();
+    else if (dropOldCells) await dropChildren(SPLIT.cellUrl, { where: cellTokenWhere(dropOldCells) });
     invalidate('HYANALT');
   }
 }

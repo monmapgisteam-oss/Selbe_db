@@ -70,7 +70,9 @@ export async function financeSummary(scope: AgentScope): Promise<FinanceSummary>
   /* 2026-11-19 (аудит): дашбоард, тайлантай НЭГ тоо — ТТБ-ийн Төслийн нийт мөр */
   const { loadProjectMoney } = await import('@/lib/projectPlanInputs');
   const m = await loadProjectMoney().catch(() => null);
-  return m ? { ...out, contracted: m.contract ?? out.contracted, paid: m.paid ?? out.paid, paidPct: m.paidPct ?? out.paidPct } : out;
+  /* 2026-11-20 (засвар): зөвхөн гэрээлсэн дүнг ТТБ-ээс; олголт бүхэлдээ IPC-ээс — хувь = гэрээлсэн багцын олголт ÷ гэрээлсэн дүн */
+  if (!m?.contract) return out;
+  return { ...out, contracted: m.contract, paidPct: out.paidContracted == null ? out.paidPct : Math.round((out.paidContracted / m.contract) * 1000) / 10 };
 }
 
 /* ══════════════ pkg_plan ══════════════ */

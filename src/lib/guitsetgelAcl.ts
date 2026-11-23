@@ -265,7 +265,7 @@ export function setAssign(
   const u = user.trim().toLowerCase();
   if (!u) return { ok: false, error: tr('Аккаунтын нэрээ бичнэ үү') };
   if (isCodeSuper(u)) {
-    return { ok: false, error: tr('Админ (super) томилгооноос үл хамаарна — бүх шат, бүх багц нээлттэй') };
+    return { ok: false, error: tr('Кодонд бүртгэлтэй админы (super) эрх самбараас тохируулагдахгүй.') };
   }
   if (!bagts.length) return { ok: false, error: tr('Багц сонгоно уу') };
   if (roleReader?.(u) === 'zahiral') return { ok: false, error: ZAHIRAL_NO_FLOW() };
@@ -579,10 +579,8 @@ export type FlowStage = {
  * ХЭРЭГЛЭГЧИЙН УРСГАЛЫН ШАТ — ГАНЦ ЭХ СУРВАЛЖ (2026-08-29).
  *
  * Дүрэм:
- *   1. `super` (2026-10-21-ээс эрхийн хүснэгтийн `role:'super'` мөр · кодын тестийн super) эсвэл нэвтрэлт
- *      унтраалттай дев орчин → сонгогчоор дурын шат, БҮХ багц (админы аврах эрх). 2026-10-23: анхдагч шат =
- *      super-ийн өөрийн томилгоо (`stageOfUser`), үгүй бол инженер; өөрийгөө батлах дүрэм super-т ч үйлчилнэ
- *      (`hyanaltStore.authz`).
+ *   1. Нэвтрэлт унтраалттай дев орчин → сонгогчоор дурын шат, БҮХ багц. 2026-11-20: админ (super) энд үл хамаарна
+ *      (хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана») — бусдын адил өөрийн томилгоогоор (2 · 3).
  *   2. Томилогдсон → тэр шат, тэр багцууд. Үүрэг нь юу ч байсан (beginner,
  *      tolovlolt, урсгалын үүрэг) — томилгоо ДАВАМГАЙЛНА.
  *   3. Томилогдоогүй → зөвхөн харна (fail-closed): урсгалын үүрэгтэй бол
@@ -594,7 +592,7 @@ export function resolveFlowStage(
   picked?: Stage | null,
   authOff = false,
 ): FlowStage {
-  if (authOff || roleForUser(user) === 'super') {
+  if (authOff) {
     return { stage: picked ?? stageOfUser(user) ?? 'engineer', canReview: true, canPick: true, scope: null };
   }
   if (role === 'zahiral') {

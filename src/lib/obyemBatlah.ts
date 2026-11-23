@@ -5,7 +5,7 @@
  */
 
 import { GUITS } from '@/lib/services/env';
-import { AUTH, canonPkg, roleForUser } from './services';
+import { AUTH, canonPkg } from './services';
 import { obyemAclReady, obyemScope } from './obyemAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
@@ -766,7 +766,7 @@ export async function returnStuckObyem(args: { oid: number; approver: string; re
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const who = meNow ?? me;
-    const sc = roleForUser(who) === 'super' ? null : obyemScope(who, 'approver');
+    const sc = obyemScope(who, 'approver');
     if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? '')))
       return { ok: false, error: tr('Энэ багцын обьёмыг батлах эрхгүй.') };
   }

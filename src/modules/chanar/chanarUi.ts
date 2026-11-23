@@ -35,11 +35,11 @@ export function matchesSearch(doc: Pick<MsDoc, 'docNo' | 'title'>, q: string): b
 }
 
 /**
- * Багцын жагсаалт — ноорог ЗӨВХӨН зохиогчид (эсвэл super); бусад бүх төлөв.
+ * Багцын жагсаалт — ноорог ЗӨВХӨН зохиогчид (2026-11-20: админд (super) ч биш); бусад бүх төлөв.
  */
-export function visibleInPkg(docs: readonly MsDoc[], pkg: string, me: string, isSuper: boolean): MsDoc[] {
+export function visibleInPkg(docs: readonly MsDoc[], pkg: string, me: string): MsDoc[] {
   const u = me.trim().toLowerCase();
-  return docs.filter((d) => d.bagts === pkg && (d.status !== MS_STATUS.draft || isSuper || (!!u && d.author === u)));
+  return docs.filter((d) => d.bagts === pkg && (d.status !== MS_STATUS.draft || (!!u && d.author === u)));
 }
 
 /** Төрөл бүрийн СҮҮЛИЙН хувилбарын тоо — таб дээрх тоо */

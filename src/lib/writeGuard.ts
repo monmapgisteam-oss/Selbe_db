@@ -18,16 +18,16 @@ const off = (): boolean => !writeGuardsOn() || typeof window === 'undefined' || 
 
 /**
  * Гүйцэтгэлийн хуудас (`bagtsSheet.applyAdds` · `applyUpdates` · `applyDeletes`), нэгтгэл (`negtgelWrite.registerApproved`),
- * төлбөрийн актын автомат мөр (`ipcAutoWrite.syncIpcFromFill`) — системийн админ, гүйцэтгэлийн урсгалын аль нэг шатанд
- * томилогдсон хүн, эсвэл бичих аль нэг нэмэлт эрхтэй хүн. Юу ч үгүй (зөвхөн харах) бол шиднэ.
+ * төлбөрийн актын автомат мөр (`ipcAutoWrite.syncIpcFromFill`) — гүйцэтгэлийн урсгалын аль нэг шатанд томилогдсон хүн, эсвэл
+ * бичих аль нэг нэмэлт эрхтэй хүн (2026-11-20: системийн админ ч бусдын адил — эрх удирдлага нь ажлын бичих эрх биш). Юу ч үгүй (зөвхөн харах) бол шиднэ.
  */
 export async function requireWriter(): Promise<void> {
   if (off()) return;
   const u = currentUser();
   if (u) {
     if (capsOf(u).some((c) => !NOT_WRITE.has(c))) return;
-    const [{ roleOf }, { stageOfUser }] = await Promise.all([import('./permissions'), import('./guitsetgelAcl')]);
-    if (roleOf(u) === 'super' || stageOfUser(u) != null) return;
+    const { stageOfUser } = await import('./guitsetgelAcl');
+    if (stageOfUser(u) != null) return;
   }
   throw new Error(tr('Энэ хүснэгтэд бичих эрхгүй — танд зөвхөн харах эрх байна.'));
 }

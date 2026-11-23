@@ -34,7 +34,7 @@ import {
 } from '@/lib/services';
 import { rasterTypeOf } from '@/lib/uzlegReport';
 import { usePlanTotals } from '@/lib/totals';
-import { latestRowPerDay, companyReported, ubDayKey } from '@/lib/ceo/workforce';
+import { mergedRowPerDay, companyReported, ubDayKey } from '@/lib/ceo/workforce';
 import { isBlankIncident } from '@/lib/ceo/safety';
 import { hoursByDay, rateByMonth, rateByPkg, markCurMonth, CUR_MONTH_MARK, ltiFreeHours, ltiFreeHoursFor, incCompanySfx, laborPkgOfCo, laborPkgRaw } from './habeaRate';
 import { mixByDay, mixByMonth, mixLines } from './habeaMix';
@@ -1015,7 +1015,8 @@ export function Habea({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
     () => (all ? all.crane.map(normCrane).filter((x) => !habScope || habScope.includes(x.bagtsK)) : []),
     [all, habScope],
   );
-  const laborRows = useMemo(() => latestRowPerDay(all ? all.labor : [], ubDayKey), [all]);
+  /* 2026-11-20 (засвар): нэг өдрийн өөр компанийн маягтыг нийлүүлнэ — дашбоард, тайлантай ИЖИЛ тоо */
+  const laborRows = useMemo(() => mergedRowPerDay(all ? all.labor : [], ubDayKey), [all]);
   /**
    * ОГНООНЫ МУЖ (2026-10-08, хэрэглэгч: «огноогоор шүүх шүүлтүүр нэмье»).
    */

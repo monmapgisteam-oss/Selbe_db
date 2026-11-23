@@ -19,7 +19,7 @@ import { ajilScope } from './ajilAcl';
 import { obyemScope } from './obyemAcl';
 import { butetsScope } from './butetsAcl';
 import { bagtsScope } from './guitsetgelAcl';
-import { bagtsKey, roleForUser } from './services';
+import { bagtsKey } from './services';
 import { scopeHas } from './scopedAcl';
 
 /** `null` = бүх багц; `[]` = юу ч биш; бусад — `PKG_GROUPS`-ийн дэд олонлог */
@@ -56,7 +56,7 @@ export function ownPkgScope(user: string): Scope {
  */
 export function huvaariViewScope(user: string | null | undefined): Scope {
   if (!user) return [];
-  if (roleForUser(user) === 'super') return null;
+  /* 2026-11-20: админ (super) бүх багцыг автоматаар харахаа больсон — төрөл ба хуваарилалтаар */
   const t: HvScope = typeHuvaariScope(roleOf(user));
   if (t === 'all') return null;
   const explicit = union([huvaariScope(user, 'author'), huvaariScope(user, 'approver')]);

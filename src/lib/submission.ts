@@ -1105,13 +1105,12 @@ const ZAHIRAL_DENY = () => tr('Ерөнхий захирал гүйцэтгэл�
 
 export async function companyDeny(group: string, allowChief = false): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }, { scopeHas }] = await Promise.all([
+  const [{ AUTH }, { currentUser }, { bagtsFor, isViewOnly }, { scopeHas }] = await Promise.all([
     import('./services'), import('./who'), import('./guitsetgelAcl'), import('./scopedAcl'),
   ]);
   if (!AUTH.appId) return null;
   const me = currentUser();
   if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
-  if (roleForUser(me) === 'super') return null;
   if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
   if (await isZahiralUser(me)) return ZAHIRAL_DENY();
   const cb = bagtsFor(me, 'company');
@@ -1129,13 +1128,12 @@ export async function companyDeny(group: string, allowChief = false): Promise<st
  */
 export async function chiefDeny(group: string): Promise<string | null> {
   if (typeof window === 'undefined') return null;
-  const [{ AUTH, roleForUser }, { currentUser }, { bagtsFor, isViewOnly }, { scopeHas }] = await Promise.all([
+  const [{ AUTH }, { currentUser }, { bagtsFor, isViewOnly }, { scopeHas }] = await Promise.all([
     import('./services'), import('./who'), import('./guitsetgelAcl'), import('./scopedAcl'),
   ]);
   if (!AUTH.appId) return null;
   const me = currentUser();
   if (!me) return tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.');
-  if (roleForUser(me) === 'super') return null;
   if (isViewOnly(me)) return tr('Танд зөвхөн ХАРАХ эрх олгогдсон — гүйцэтгэл илгээх боломжгүй.');
   if (await isZahiralUser(me)) return ZAHIRAL_DENY();
   const ch = bagtsFor(me, 'chief');

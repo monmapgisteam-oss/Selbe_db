@@ -54,14 +54,22 @@ await assert.rejects(() => savePkgPct('b1_9f', 'Багц 1', new Map([['2026-11'
   (await import('./huvaariAcl.ts'))._syncRemoteHuvaari([{ user: 'selbe_et', roles: ['author'], bagts: ['Багц 1'] }]);
   assert.equal(canEditMainSpan('selbe_et', 'Багц-1'), true, 'Багц 1-ийн зохиогч — «Багц-1» гэрээ');
   assert.equal(canEditMainSpan('selbe_et', 'БАГЦ-16.1'), false, 'өөр багц');
-  assert.equal(canEditMainSpan('manager_3', 'БАГЦ-16.1'), true, 'санхүүгийн эрхтэй (админ)');
+  /* 2026-11-20 (хэрэглэгчийн шийдвэр «админ зөвхөн эрх удирдана»): хадгалсан эрхгүй админ ажлын эрхгүй */
+  assert.equal(caps.hasCap('manager_3', 'finEdit'), false, 'эрхгүй админ «Санхүү засах»-ыг давах ёсгүй');
+  assert.equal(canEditMainSpan('manager_3', 'БАГЦ-16.1'), false, 'эрхгүй админ — үндсэн хугацаа засахгүй');
+  caps._syncRemoteCaps([{ user: 'manager_3', caps: ['finEdit'] }]);
+  assert.equal(caps.hasCap('manager_3', 'finEdit'), true, 'өөртөө олгосон эрх — бусдын адил');
+  assert.equal(canEditMainSpan('manager_3', 'БАГЦ-16.1'), true, 'санхүүгийн эрхтэй (админ — олгосон эрхээр)');
+  caps._syncRemoteCaps([]);
 }
 
-/* системийн админ — хамгаалалт саад болохгүй */
+/* системийн админ — эрх удирдлагад хамгаалалт саад болохгүй; ажлын бичилтэд — бусдын адил хуваарилалтаар */
 who.setCurrentUser('manager_3');
 assert.equal(perms.roleOf('manager_3'), 'super');
 assert.doesNotThrow(() => who.requireSuper());
-assert.doesNotThrow(() => requirePlanWrite('Багц 1'));
+assert.doesNotThrow(() => { void perms.setUser('x_user', { views: ['gdash'], docs: false }, 'gazar'); }, 'админ бусдын эрхийг тохируулна');
+await assert.doesNotReject(() => setCaps('x_other', ['finEdit']), 'админ бусдад нэмэлт эрх олгоно');
+assert.throws(() => requirePlanWrite('Багц 1'), /хуваарьт бичих эрхгүй/, 'хуваарилалтгүй админ хуваарьт бичихгүй');
 
 /* доод түвшний бичилт: зөвхөн харах хүн — хориотой; админ — зөвшөөрнө; түгжээг бусдын нэрээр чөлөөлөхгүй */
 {
@@ -86,7 +94,11 @@ assert.doesNotThrow(() => requirePlanWrite('Багц 1'));
   assert.equal((await markPlanPartial({ oid: 1, approver: 'manager_3' })).ok, false, 'бусдын нэрээр түгжихгүй');
   assert.equal(await clearPlanPartial(1, 'manager_3'), false, 'бусдын нэрээр чөлөөлөхгүй');
   who.setCurrentUser('manager_3');
-  await assert.doesNotReject(() => requireWriter());
+  caps._syncRemoteCaps([]);
+  await assert.rejects(() => requireWriter(), VIEW, '2026-11-20: эрхгүй админ ажлын хүснэгтэд бичихгүй');
+  caps._syncRemoteCaps([{ user: 'manager_3', caps: ['finEdit'] }]);
+  await assert.doesNotReject(() => requireWriter(), 'бичих эрх олгосон админ');
+  caps._syncRemoteCaps([]);
 }
 
 /* унтраалттай үед (бусад шалгуур) — саадгүй */

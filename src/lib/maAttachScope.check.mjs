@@ -65,11 +65,11 @@ await ok('нэвтрээгүй → татгалзана', async () => {
   WHO.setCurrentUser(null);
   assert.equal(typeof await maAttachScopeDeny(pA.key, true), 'string');
 });
-await ok('хатуу super — бүх багц (хуваарилалт үйлчлэхгүй)', async () => {
+await ok('хатуу super — 2026-11-20: бусдын адил хуваарилалтаар (хуваарилалтгүй бол татгалзана)', async () => {
   const sup = Object.entries(ROLE_BY_USER).find(([, r]) => r === 'super')[0];
   WHO.setCurrentUser(sup);
-  assert.equal(await maAttachScopeDeny(pA.key, true), null);
-  assert.equal(await maAttachScopeDeny(pB.key, true), null);
+  assert.equal(typeof await maAttachScopeDeny(pA.key, true), 'string');
+  assert.equal(typeof await maAttachScopeDeny(pB.key, true), 'string');
 });
 if (AUTH.appId) {
   await ok('хуваарилалттай ч ЭРХ алга → татгалзана (эрх ба хүрээ хоёулаа)', async () => {

@@ -75,15 +75,17 @@ ok('`u`-гүй лог (R5): доод шатуудын дэлгэцийн нэр�
 });
 {
   const S = (await import('node:fs')).readFileSync('src/lib/hyanaltStore.ts', 'utf8');
-  ok('authz: super bypass → бүрэн чөлөөтэй, дараалан батална (2026-10-26)', () => {
-    assert.ok(S.includes('  if (by) return null;'), 'super bypass салаа бүрэн чөлөөтэй биш');
+  ok('authz: bypass ЗӨВХӨН нэвтрэлт унтраалттай дев — админ (super) тойрохгүй (2026-11-20)', () => {
+    assert.ok(S.includes('    by = bypass && !AUTH.appId;'), 'bypass нэвтрэлт асаалттай үед ч үйлчилж байна');
+    assert.ok(!S.slice(S.indexOf('function authz('), S.indexOf('const SAME_ROUND_MSG')).includes("=== 'super'"), 'authz-д super тойрох зам буцаж ирэв');
+    assert.ok(S.includes('  if (by) return null;'), 'дев bypass салаа бүрэн чөлөөтэй биш');
     assert.ok(!S.includes('if (by) return AUTH.appId && u ? selfApprovalDeny('), 'super-т өөрийгөө батлах дүрэм буцаж орсон');
     assert.ok(S.includes('return selfApprovalDeny(stage, u, hist, same, submitters);'), 'энгийн хэрэглэгчийн дүрэм алга');
   });
-  ok('submittersFor: super (bypass) илгээгчийг уншихгүй (2026-10-26)', () => {
+  ok('submittersFor: 2026-11-20 — админы (super) илгээгч чөлөөлөлт хасагдсан', () => {
     const fn = S.slice(S.indexOf('async function submittersFor('), S.indexOf('async function submittersOfRow('));
     assert.ok(!fn.includes("stage !== 'engineer'"), fn);
-    assert.ok(fn.includes("if (_bypass && roleForUser(meOf(me)) === 'super') return { ok: true };"), 'super-ийн илгээгч чөлөөлөлт алга');
+    assert.ok(!fn.includes("=== 'super'"), 'super-ийн илгээгч чөлөөлөлт буцаж ирэв');
     assert.ok(!fn.includes('if (_bypass) return { ok: true };'), 'нүцгэн `_bypass` чөлөөлөлт — энгийн хэрэглэгч илгээгчийн шалгалтгүй үлдэнэ');
     assert.ok(fn.includes("if (typeof window === 'undefined' || !AUTH.appId || !meOf(me)) return { ok: true };"), fn);
   });
@@ -92,10 +94,10 @@ ok('`u`-гүй лог (R5): доод шатуудын дэлгэцийн нэр�
     assert.ok(az.includes("if (roleOf(u) === 'zahiral') return tr("), 'authz-д захиралын хориг алга');
     assert.ok(az.indexOf("roleOf(u) === 'zahiral'") < az.indexOf('stageOfUser(u) !== stage'), 'хориг томилгооны шалгалтаас ӨМНӨ байх ёстой');
   });
-  ok('countReviewPending: захирал 0 · шаттай super-т хүрээ хязгааргүй (2026-10-23)', () => {
+  ok('countReviewPending: захирал 0 · 2026-11-20: super-т ч томилсон багц л', () => {
     const fn = S.slice(S.indexOf('export async function countReviewPending('), S.indexOf('const blocked = await selfBlocks(ws, me, stage);'));
     assert.ok(/if \(role === 'zahiral'\) return 0;/.test(fn), 'захиралыг батлагчаар тоолж байна');
-    assert.ok(fn.includes("const sc = role === 'super' ? null : bagtsFor(me, stage);"), 'super-ийн тэмдэг зөвхөн томилсон багцыг тоолж байна (жагсаалтаас зөрнө)');
+    assert.ok(fn.includes('const sc = bagtsFor(me, stage);') && !fn.includes("=== 'super'"), 'super-т хязгааргүй хүрээ буцаж ирэв');
   });
   const SUB = (await import('node:fs')).readFileSync('src/lib/submission.ts', 'utf8').replace(/\r\n/g, '\n');
   ok('companyDeny · chiefDeny: «Ерөнхий захирал» илгээхгүй (томилгоотой байсан ч) — 2026-10-23', () => {
@@ -106,9 +108,9 @@ ok('`u`-гүй лог (R5): доод шатуудын дэлгэцийн нэр�
       assert.ok(z > 0 && z < fn.indexOf('bagtsFor(me,'), `${name}: захиралын хориг томилгооны шалгалтаас ӨМНӨ алга`);
     }
   });
-  ok('selfBlocks: super-т өөрийгөө батлах тэмдэггүй (2026-10-26)', () => {
+  ok('selfBlocks: 2026-11-20 — өөрийгөө батлах дүрэм super-т ч үйлчилнэ', () => {
     const fn = S.slice(S.indexOf('export async function selfBlocks('), S.indexOf('export async function selfBlocks(') + 700);
-    assert.ok(fn.includes("if (roleForUser(me) === 'super') return out;"), 'super-т тэмдэг гарсаар');
+    assert.ok(!fn.includes("=== 'super'"), 'super-ийн чөлөөлөлт буцаж ирэв');
   });
   ok('цэвэр дүрэм хэнийг ч ялгадаггүй (super-ийг `authz`-ийн bypass салаа дуудалгүй чөлөөлнө — 2026-10-26)', () => {
     const h = H(ev('engineer', 'approve', 'admin1', 1));

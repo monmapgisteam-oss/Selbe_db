@@ -5,7 +5,7 @@
  */
 
 import { GUITS } from '@/lib/services/env';
-import { AUTH, canonPkg, roleForUser } from './services';
+import { AUTH, canonPkg } from './services';
 import { ajilAclReady, ajilScope } from './ajilAcl';
 import { capsRemoteReady, hasCap } from './caps';
 import { t as tr } from '@/lib/i18nCore';
@@ -956,7 +956,7 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
     if (!meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };
     const own = sameAsLogin(args.me);
     if (own) return own;
-    if (roleForUser(meNow) !== 'super' && !hasCap(meNow, 'ajilApprove')) {
+    if (!hasCap(meNow, 'ajilApprove')) {
       return { ok: false, error: tr('Энэ үйлдэлд эрхгүй — нэмэлт ажлын батлагч эсвэл админ буцаана.') };
     }
   }
@@ -968,7 +968,7 @@ export async function returnStuckAjil(args: { oid: number; me: string; reason?: 
     if (!cur.length) return { ok: false, error: tr('Илгээлт олдсонгүй — устгагдсан байж магадгүй.') };
     if (AUTH.appId) {
       const meNow = currentUser() ?? me;
-      const sc = roleForUser(meNow) === 'super' ? null : ajilScope(meNow, 'approver');
+      const sc = ajilScope(meNow, 'approver');
       if (!scopeHas(sc, String(cur[0][F.pkgGroup] ?? ''))) {
         return { ok: false, error: tr('Энэ багцын нэмэлт ажлыг батлах эрхгүй.') };
       }

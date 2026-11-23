@@ -19,6 +19,7 @@ import {
 } from '@/modules/Finance';
 import { coverageNote } from '@/lib/planProgress';
 import { useAsync, type Async } from '@/lib/useAsync';
+import { loadProjectContractTotal } from '@/lib/projectPlanInputs';
 import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
 import { housingSeries, pkgCostWeight, cfWeightRow, contractedScope, gapPts } from '@/lib/gdash';
 import { FIN_PKG_ALIAS, rangePaysOf, type RangePay } from '@/lib/pkgAlias';
@@ -301,10 +302,15 @@ export function PkgFin({ dim, setDim }: {
     () => (finAliased && finRaw.state === 'ready' ? { ...finRaw, data: finAliased } : finRaw),
     [finRaw, finAliased],
   );
-  const projShare = useMemo<PaidShare | null>(
-    () => (finRawData ? paidShareOf(finRawData.contracts, finRawData.pays) : null),
-    [finRawData],
-  );
+  /* 2026-11-20 (засвар): төслийн нийт ГЭРЭЭЛСЭН ДҮН — «Төсөл төлөвлөгөө биелэлт»-ийн нийт мөрөөс (тайлан, дашбоардтай ИЖИЛ;
+     ТЭЗҮ · зургийн гэрээ орно). Олголт хэвээр IPC-ээс; хувь = гэрээлсэн багцын олголт ÷ энэ дүн */
+  const projContractQ = useAsync(() => loadProjectContractTotal().catch(() => null), []);
+  const projContract = projContractQ.state === 'ready' ? projContractQ.data : null;
+  const projShare = useMemo<PaidShare | null>(() => {
+    if (!finRawData) return null;
+    const sh = paidShareOf(finRawData.contracts, finRawData.pays);
+    return projContract != null && projContract > 0 ? { ...sh, contract: projContract, pct: paidPctOf(sh.paidContracted, projContract) } : sh;
+  }, [finRawData, projContract]);
   const { zoomToWhere, setHighlight } = useMap();
 
   /** Сонгосон багц — Bagts-тай ижил `?pkg=` параметрээр хуваалцагдана */

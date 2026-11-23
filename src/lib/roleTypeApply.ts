@@ -8,8 +8,8 @@
  */
 
 import { t as tr } from './i18nCore';
-import { isCodeSuper, roleForUser, type Role } from './services';
-import { listUsers, remoteReady, setUser } from './permissions';
+import { isCodeSuper, roleForUser, type Role, type ViewKey } from './services';
+import { listUsers, remoteReady, resolveBaseAccess, setUser } from './permissions';
 import { currentUser } from './who';
 import { roleAccess, typesReady } from './roleTypes';
 import { WORKFLOW_VIEWS } from './caps';
@@ -98,8 +98,19 @@ export async function applyType(user: string, role: Role): Promise<ApplyResult> 
   emit(LOCK_EVENT);
   try {
     const acc = roleAccess(role);
-    const views = acc.views === 'all' ? 'all' : acc.views.filter((v) => !WORKFLOW_VIEWS.includes(v));
-    const ok = await setUser(u, { views, docs: acc.docs }, role);
+    let views: ViewKey[] | 'all' = acc.views === 'all' ? 'all' : acc.views.filter((v) => !WORKFLOW_VIEWS.includes(v));
+    let docs = acc.docs;
+    /* 2026-11-20: Админ (super) нь эрх удирдлага л — одоогийн харагдацыг хасахгүй, загварынхыг НЭМНЭ */
+    if (role === 'super') {
+      const cur = resolveBaseAccess(u);
+      if (cur) {
+        views = cur.views === 'all' || views === 'all'
+          ? 'all'
+          : [...new Set<ViewKey>([...cur.views.filter((v) => !WORKFLOW_VIEWS.includes(v)), ...views])];
+        docs = cur.docs || docs;
+      }
+    }
+    const ok = await setUser(u, { views, docs }, role);
     return ok ? { ok: true, errors: [] } : { ok: false, errors: [tr('Харагдац: ArcGIS-т хадгалагдсангүй')] };
   } finally {
     userLocks.delete(u);

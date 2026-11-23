@@ -39,7 +39,7 @@ globalThis.fetch = async (input, init) => {
   if (!url.startsWith(HYANALT.url)) { st.unexpected.push(url); throw new TypeError('сүлжээ хаалттай (тест)'); }
   const path = url.slice(HYANALT.url.length);
   if (path === '' || path === '/') {
-    return json({ supportsCalculate: true, fields: Object.values(F).map((name) => ({ name })) });
+    return json({ supportsCalculate: true, fields: Object.values(F).filter((n) => n !== F.histToken && n !== F.okToken).map((name) => ({ name })) });
   }
   if (path === '/query') {
     st.queries += 1;

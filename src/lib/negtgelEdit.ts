@@ -21,6 +21,8 @@ import { arcgisPost } from '@/lib/query';
 import { TUSUL_NEGTGEL } from '@/lib/services';
 import { applyAll } from '@/lib/tableWrite';
 import { currentUser } from '@/lib/who';
+import { hasCap } from '@/lib/caps';
+import { capLabel } from '@/modules/capText';
 import { invalidate, register } from '@/lib/dataBus';
 import { isLostWrite } from '@/lib/lostWrite';
 import { loadNegRaw, negRootOf, treeOf, type NegRaw, type NegRootRow } from '@/lib/negtgelAuto';
@@ -461,12 +463,12 @@ export function negServiceCanUpdate(): Promise<boolean | null> {
 /* ═══════════════ НИЙТЛЭХ ═══════════════ */
 
 /**
- * Нийтлэх эрх — Нэгтгэлийн таб харагддаг хүн (КОДЫН хатуу super, `roleForUser`).
+ * Нийтлэх эрх — Нэгтгэлийн таб харагддаг хүн: «Санхүүгийн бүртгэл засах» (`finEdit`). 2026-11-20: урьд нь зөвхөн админ
+ * (super) — админ ажлын эрхгүй болсон тул бусдын адил эрхийн тохиргооноос.
  */
 export async function canEditNegtgel(user: string | null = currentUser()): Promise<boolean> {
   if (!user) return false;
-  const { roleForUser } = await import('@/lib/services');
-  return roleForUser(user) === 'super';
+  return hasCap(user, 'finEdit');
 }
 
 const MAX_BODY = 4_000_000;
@@ -482,7 +484,7 @@ export type NegPublishResult = {
  * НИЙТЛЭХ — засвартай загварыг хүснэгт рүү НЭГ `applyEdits`-ээр (атомаар, `MAX_BODY`) бичнэ.
  */
 export async function publishNegEdits(base: readonly NegRaw[], model: readonly NegRaw[]): Promise<NegPublishResult> {
-  if (!(await canEditNegtgel())) throw new Error(tr('Нэгтгэл гүйцэтгэлийг засах эрх зөвхөн super үүрэгтэй хэрэглэгчид'));
+  if (!(await canEditNegtgel())) throw new Error(tr('Энэ үйлдэлд эрхгүй — админаас «{0}» эрх авна уу.', capLabel('finEdit')));
   const updates = negEditDiff(base, model);
   if (!updates.length) return { n: 0, warn: null };
 

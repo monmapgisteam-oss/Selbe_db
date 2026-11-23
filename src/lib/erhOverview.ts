@@ -216,7 +216,6 @@ export type PkgIssue = {
    * Матрицын аль баганыг улаан/шар болгох вэ (`MATRIX_COLS[].id`, 2026-09-25).
    */
   cols?: string[];
-  superOnly?: boolean;
 };
 
 /** Тухайн багцад тэр мөр хамаарах уу (`ALL_BAGTS` бүгдэд) */
@@ -262,20 +261,12 @@ export function pkgErh(src: ErhSource, bagts: string): PkgErh {
     ? Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.filter((x) => !gone.has(norm(x)))])) as T
     : m);
 
-  const supers = new Set((src.supers ?? []).map(norm).filter((x) => !gone.has(x)));
   const L = { flow: live(flow), huvaari: live(huvaari), obyem: live(obyem), chanar: live(chanar), ajil: live(ajil) };
+  /* 2026-11-20: «зөвхөн админ шийдвэрлэх боломжтой» тэмдэг хасагдсан — админ ажлын шийдвэр гаргахгүй (хуваарилалтаар л) */
   const issues = pkgIssues(bagts, L.flow, L.huvaari, L.obyem, L.chanar, L.ajil);
-  const colUsers = (id: string): string[] => {
-    const [sys, role] = id.split(':');
-    const m = (L as Record<string, Record<string, string[]>>)[sys];
-    return (m?.[role] ?? []) as string[];
-  };
-  const noPlain = (i: PkgIssue): boolean =>
-    !i.key.endsWith('SelfApprove') && i.key !== 'chanarOneManRoles' && !!i.cols?.length
-    && i.cols.every((c) => colUsers(c).every((u) => supers.has(norm(u))));
   return {
     bagts, flow, flowViewers, huvaari, obyem, chanar, ajil,
-    issues: supers.size ? issues.map((i) => (noPlain(i) ? { ...i, superOnly: true } : i)) : issues,
+    issues,
   };
 }
 
