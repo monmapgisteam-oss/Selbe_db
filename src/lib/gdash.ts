@@ -323,6 +323,12 @@ export function effectivePeriod(p: Period, years: number[]): Period {
 /** Сонголтод байгаа эсэх — хоосон олонлог нь БҮГДИЙГ хүлээн авна */
 const hit = (sel: number[], v: number) => sel.length === 0 || sel.includes(v);
 
+/** 2026-11-24 (аудит): огнооны Улаанбаатарын он, сар (0–11) — хөтчийн бүсээс үл хамаарна (`format.monthKey`-тэй ижил) */
+const ubYm = (ms: number): [number, number] => {
+  const d = new Date(ms + 8 * 3_600_000);
+  return [d.getUTCFullYear(), d.getUTCMonth()];
+};
+
 /**
  * Ажил сонгосон хугацаанд ХАМААРАХ эсэх.
  */
@@ -332,12 +338,8 @@ export function inPeriod(r: CfRow, p: Period): boolean {
   const b = r.end ?? r.start;
   if (a == null || b == null) return false;
 
-  const s = new Date(a);
-  const e = new Date(b);
-  let y = s.getFullYear();
-  let m = s.getMonth();
-  const ey = e.getFullYear();
-  const em = e.getMonth();
+  let [y, m] = ubYm(a);
+  const [ey, em] = ubYm(b);
 
   for (let i = 0; i < 480 && (y < ey || (y === ey && m <= em)); i += 1) {
     if (hit(p.years, y) && hit(p.quarters, Math.floor(m / 3) + 1) && hit(p.months, m + 1)) {
@@ -354,8 +356,8 @@ export function yearsOf(rows: CfRow[]): number[] {
   const set = new Set<number>();
   for (const r of rows) {
     if (r.start == null) continue;
-    const a = new Date(r.start).getFullYear();
-    const b = new Date(r.end ?? r.start).getFullYear();
+    const a = ubYm(r.start)[0];
+    const b = ubYm(r.end ?? r.start)[0];
     for (let y = a; y <= b && y - a < 40; y += 1) set.add(y);
   }
   return [...set].sort((a, b) => a - b);
@@ -515,12 +517,8 @@ export function sCurve(rows: CfRow[], grain: Grain = 'year', period: Period = NO
   const per = new Map<string, number>();
   for (const r of rows) {
     if (r.share <= 0 || r.start == null) continue;
-    const s = new Date(r.start);
-    const e = new Date(r.end ?? r.start);
-    let y = s.getFullYear();
-    let m = s.getMonth();
-    const ey = e.getFullYear();
-    const em = e.getMonth();
+    let [y, m] = ubYm(r.start);
+    const [ey, em] = ubYm(r.end ?? r.start);
 
     const n = Math.min(480, Math.max(1, (ey - y) * 12 + (em - m) + 1));
     const step = r.share / n;

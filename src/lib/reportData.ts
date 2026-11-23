@@ -106,6 +106,11 @@ export type ReportExtra = {
     orderTotal: number;
     /** Гэрээлсэн дүн — зөвхөн `note === CONTRACTED` мөр, `inTotal` хүрээ (2026-09-21) */
     contractAmount: number;
+    /**
+     * 2026-11-24 (аудит): `orderTotal`-тай ИЖИЛ хүрээний гэрээлсэн дүн (Cashflow-ийн ажлын мөр, `inTotal` ∧ CONTRACTED) — ТЭЗҮ/зургийн
+     * гэрээ (захирамжгүй) ОРОХГҮЙ. «Захирамжийн хэдэн % гэрээлсэн» = энэ ÷ `orderTotal`.
+     */
+    orderContract?: number;
     paidContracted: number;
     /** `paid − paidContracted` — гэрээлсэн багцад холбогдоогүй (диапазон мөр, гэрээгүй багц) төлбөр, ₮ */
     paidOther: number;
@@ -493,7 +498,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
    * «Бодитоор олгосон» — HO төлбөрийн бүртгэлийн `dun` нийлбэр.
    */
   /* 2026-11-23 (аудит №3): ТТБ-ийн нийт гэрээлсэн дүнгээр хуваах тул ТЭЗҮ/судалгааны олголт тоологчид орно */
-  const share = withProjectContract(paidShareOf(master, ho), officialContract);
+  const share0 = paidShareOf(master, ho);
+  const share = withProjectContract(share0, officialContract);
   const { paid, paidContracted } = share;
 
   /*
@@ -547,6 +553,8 @@ async function loadFinanceRaw(): Promise<ReportExtra['finance']> {
      * `paidRate` (`buildFindings`) хоёулаа тэр суурин дээр худал байв.
      */
     contractAmount: officialContract ?? share.contract,
+    /* 2026-11-24 (аудит): захирамжтай ИЖИЛ хүрээний (Cashflow-ийн ажлын мөр) гэрээлсэн дүн — `contractRate`-ийн тоологч */
+    orderContract: share0.contract,
     /**
      * ГАЗАР ЧӨЛӨӨЛӨЛТ, БУУЛГАЛТ ЦЭВЭРЛЭГЭЭ (6-р хэсэг) — НИЙТ дүнгээс
      * ГАДУУР тул тусад нь. Тайлангийн 4-р хэсэг үүнийг уншина: мөнгө
@@ -805,8 +813,10 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
       .reduce((a, s) => a + s.n, 0);
   const topReason = x.land.byReason[0] ?? null;
 
-  const contractRate = x.finance.orderTotal
-    ? (x.finance.contractAmount / x.finance.orderTotal) * 100 : null;
+  /* 2026-11-24 (аудит): хоёр тал ИЖИЛ хүрээ (Cashflow-ийн ажлын мөр) — урьд нь ТТБ-ийн нийт гэрээ (ТЭЗҮ/зураг 11.8 тэрбум орсон) ÷ захирамж */
+  const oc = x.finance.orderContract;
+  const contractRate = x.finance.orderTotal && oc != null
+    ? (oc / x.finance.orderTotal) * 100 : null;
   const paidRate = x.finance.paid == null ? null : x.finance.paidPct ?? paidPctOf(x.finance.paidContracted, x.finance.contractAmount);
 
   const peakMonth = null;
@@ -845,7 +855,7 @@ export function buildFindings(x: ReportExtra, bagtsRows?: readonly BagtsLike[]):
   }
 
   if (contractRate != null && paidRate != null) {
-    f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээлсэн дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} ₮ байна.', pct(contractRate, 1), pct(paidRate, 1), money2(Math.max(0, x.finance.contractAmount - x.finance.paidContracted))));
+    f.push(tr('Захирамжаар батлагдсан дүнгийн {0} нь гэрээгээр баталгаажсан бөгөөд гэрээлсэн дүнгийн {1} нь бодитоор олгогдсон байна. Олгогдоогүй үлдэгдэл {2} ₮ байна.', pct(contractRate, 2), pct(paidRate, 2), money2(Math.max(0, x.finance.contractAmount - x.finance.paidContracted))));
     if (x.finance.paidOther > 0) {
       f.push(tr('Нийт олгосон {0} ₮-ийн {1} ₮ нь гэрээлсэн багцад холбогдоогүй (олон багц хамарсан эсвэл гэрээ баталгаажаагүй багцын) төлбөр тул дээрх хувь, үлдэгдэлд ороогүй.', money2(x.finance.paid), money2(x.finance.paidOther)));
     }

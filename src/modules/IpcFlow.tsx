@@ -29,9 +29,9 @@ import {
   docRows, docTitle, overContract, parseMoney, perfRows, signIpc, type ContractWhy, type IpcDocRow, type NewContract, type PerfRow, type Row,
 } from '@/lib/ipcFlow';
 import {
-  DEDUCTIONS, approveDoc, contextOf, cumulative, defaultDeductions, deleteDoc, docCodeOf, docWhy, editDoc, explainDeductions,
-  fillBalance, newAdvanceDoc, newWorkDoc, nextDay, nextDocNo, payableOf, pctOf, pkgOf, prevEndOf, recOfDoc, recordsOf, sameNo,
-  signDoc, unpaidFills, unpaidPkgs, type DocWhy, type IpcRec,
+  DEDUCTIONS, approveDoc, contextOf, cumulative, defaultDeductions, deleteDoc, docCodeOf, docWhy, dupPayDeletes, editDoc, explainDeductions,
+  fillBalance, newAdvanceDoc, newWorkDoc, nextDay, nextDocNo, payableOf, pctOf, pkgOf, prevEndOf, recOfDoc, recordsOf, rollbackRelease, sameNo,
+  signDoc, stillFree, unpaidFills, unpaidPkgs, type DocWhy, type IpcRec,
 } from '@/lib/ipcDocTable';
 import s from './ipcTable.module.css';
 
@@ -423,6 +423,8 @@ export function IpcFlowPanel({
     invalidate('IPC_DOC');
     const mine = made.oids[0];
     try {
+      /* 2026-11-24 (засвар): түгжихийн өмнө бөглөлт чөлөөтэй хэвээр эсэхийг дахин уншиж шалгана */
+      if (!stillFree(await freshPays(code, pays), f2.rows)) throw new Error(tr('Бөглөлтийг өөр хэрэглэгч энэ хооронд IPC-д оруулсан.'));
       await applyAll(HO_IPC.url, HO_IPC.oid, { updates: lock }, CREATE_CAP);
     } catch (e) {
       try {
@@ -443,11 +445,11 @@ export function IpcFlowPanel({
     const dup = sameNo(recordsOf(after[0], after[1]), no, mine);
     if (!dup.length) return;
     if (dup.every((x) => x.src === 'doc' && x.oid < mine)) {
-      /* Ижил багцын баримт бол түгжилт нь түүнийх хэвээр; өөр багцынх бол өөрийн бөглөлтийг чөлөөлнө */
-      const keep = dup.some((x) => pkgOf(x.pkg) === pkgOf(pkg));
-      await applyAll(HO_IPC.url, HO_IPC.oid, {
-        updates: keep ? [] : f2.rows.map((r) => ({ [HO_IPC.oid]: r.oid, [HO_IPC.payFields.ipcNo]: null, [S.field]: S.work })),
-      }, CREATE_CAP);
+      /* 2026-11-24 (засвар): ижил багцын үлдэх баримтын үед ороогүй миний бөглөлтийг чөлөөлнө (урьд нь түгжигдсэн үлдэж
+         хэзээ ч олгогдохгүй байв); өөр багцынх бол миний бүх бөглөлт. Сая уншсан мөрөөр, «IPC үүссэн» хэвээрийг л */
+      const keepers = dup.filter((x) => pkgOf(x.pkg) === pkgOf(pkg));
+      const release = rollbackRelease(after[0], f2.rows, keepers, no);
+      if (release.length) await applyAll(HO_IPC.url, HO_IPC.oid, { updates: release }, CREATE_CAP);
       await applyAll(IPC_DOC.url, IPC_DOC.oid, { deletes: [mine] }, CREATE_CAP);
       invalidate('HO_IPC', 'IPC_DOC');
       setErr(tr('IPC-{0} дугаарыг өөр хэрэглэгч зэрэг авсан тул таны баримтыг буцаалаа. Дахин үүсгэнэ үү.', no));
@@ -485,6 +487,16 @@ export function IpcFlowPanel({
     /* 185 ЭХЭЛНЭ (нэг атомт бичилт: төлбөрийн мөр + бөглөлтүүд «Олгосон»); 238-ийн төлөв унавал дахин дарахад төлбөр давхардахгүй */
     await applyAll(HO_IPC.url, HO_IPC.oid, { adds: e.pay ? [e.pay] : [], updates: e.auto }, APPROVE_CAP);
     invalidate('HO_IPC');
+    /* 2026-11-24 (засвар): хоёр хүн зэрэг баталбал төлбөрийн мөр хоёр болно — дахин уншиж хожуу (их objectid) мөрийг устгана */
+    if (e.pay && rec2.no != null) {
+      try {
+        const del = dupPayDeletes(await freshPays(code, pays), String(e.pay[HO_IPC.contractFields.code] ?? ''), rec2.no);
+        if (del.length) await applyAll(HO_IPC.url, HO_IPC.oid, { deletes: del }, APPROVE_CAP);
+      } catch (x) {
+        setErr(tr('IPC-{0}-ийн төлбөр давхар бичигдсэн эсэхийг шалгаж чадсангүй ({1}). «Төлбөрийн акт (IPC)»-д нэг төлбөрийн мөр байгааг шалгана уу.', rec2.no, userError(x)));
+      }
+      invalidate('HO_IPC');
+    }
     try {
       await applyAll(IPC_DOC.url, IPC_DOC.oid, { updates: [e.doc] }, APPROVE_CAP);
     } catch (x) {

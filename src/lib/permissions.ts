@@ -30,7 +30,7 @@ import { NEW_ACCOUNT_ROLE, _typesMark, roleAccess } from './roleTypes';
 import { currentUser, requireSuper, writeGuardsOn, _setWhoRoleReader } from './who';
 import { AUTH } from './services';
 import { t as tr } from './i18nCore';
-import { _beginRemoteFetch, _newerThanSnapshot, _touchSeq } from './scopedAcl';
+import { _beginRemoteFetch, _newerThanSnapshot, _setAdminRoleReader, _touchSeq, isRootAdminName } from './scopedAcl';
 import { _setRoleReader, stageOfUser } from './guitsetgelAcl';
 
 /** Нэг хэрэглэгчийн эрх — харагдацууд ('all' = бүгд) ба ТЭЗҮ-БОНУ баримт */
@@ -62,6 +62,8 @@ const EVENT = 'selbe-perms-change';
 
 type Entry = {
   views: ViewKey[] | 'all'; docs: boolean; role: Role | null; removed?: boolean;
+  /** 2026-11-24: итгэмжлэгдээгүй super мөрийн орлох мөр (`permsRemote.RemoteRow.untrusted`) — самбарт л, нэвтрэлтгүй */
+  untrusted?: boolean;
 };
 type Store = Record<string, Entry>;
 
@@ -419,7 +421,9 @@ async function initRemoteInner(trusted: boolean): Promise<boolean> {
   // 2) Remote snapshot + дөнгөж бичигдсэн + үлдсэн (энэ runtime-ийн) dirty давхарга
   const s: Store = {};
   for (const [k, r] of Object.entries(remote.perms)) {
-    s[k] = sanitizeEntry({ views: r.views, docs: r.docs, role: r.role, ...(r.removed ? { removed: true } : {}) });
+    s[k] = sanitizeEntry({
+      views: r.views, docs: r.docs, role: r.role, ...(r.removed ? { removed: true } : {}), ...(r.untrusted ? { untrusted: true } : {}),
+    });
   }
   applyDone(s, done);
   const conf: Store = { ...s };
@@ -568,7 +572,8 @@ export function hasAccess(username?: string | null): boolean {
   const store = loadStore();
   const uKey = username.trim().toLowerCase();
   const ov = Object.hasOwn(store, uKey) ? store[uKey] : undefined;
-  if (ov?.removed) return false;
+  /* 2026-11-24 (засвар): итгэмжлэгдээгүй super мөрийн орлох мөр нэвтрэлт өгөхгүй — бүртгэлгүй гишүүн баримтын сан авдаг байв */
+  if (ov?.removed || ov?.untrusted) return false;
   if (roleForUser(username)) return true;
   return remoteLoaded && !!ov;
 }
@@ -632,7 +637,7 @@ export function resolveBaseAccess(username?: string | null): Access | null {
   if (!username) return null;
   const ov = loadStore()[username.trim().toLowerCase()];
   // Устгагдсан аккаунт — GRANT_ALL ч эрх өгөхгүй. Хатуу super халдашгүй.
-  if (ov?.removed) return isHardSuper(username) ? baseline(username) : null;
+  if (ov?.removed || ov?.untrusted) return isHardSuper(username) ? baseline(username) : null;
   /* 2026-11-20: хүснэгтийн super-ийн хадгалсан мөр бусдынхтай адил уншигдана (урьд нь үргэлж суурь «бүгд»). Кодын super-т
      мөр бичигддэггүй (`setUser` no-op) тул үлдсэн хуучин мөр үл тооцогдоно — загвараас (`baseline`) */
   if (isCodeSuper(username)) return baseline(username);
@@ -659,6 +664,7 @@ export function roleOf(username?: string | null): Role | null {
 }
 _setRoleReader(roleOf);
 _setWhoRoleReader(roleOf);
+_setAdminRoleReader(roleOf);
 
 /** Панелийн жагсаалт — хатуу тохиргооны бүх хэрэглэгч + override-той шинэ хэрэглэгч */
 export function listUsers(): UserPerm[] {
@@ -727,19 +733,25 @@ export function listRemoved(): string[] {
  * хэрэглэгчдийн эрхийг урьдын адил удирдана.
  * 2026-11-23: зөвхөн уншихад экспортлов — «Шинэ эрх» самбар админы мөрийг үндсэн бус админд зөвхөн харуулна.
  */
-export const isRootAdmin = (u: string | null | undefined): boolean =>
-  (u ?? '').trim().toLowerCase() === BOOTSTRAP_SUPER.trim().toLowerCase() || isCodeSuper(u);
+export const isRootAdmin = isRootAdminName;
 function requireRootForAdminRow(username: string, nextRole: Role | null): void {
   if (!writeGuardsOn() || typeof window === 'undefined' || !AUTH.appId) return;
   if (nextRole !== 'super' && roleOf(username) !== 'super') return;
   if (isRootAdmin(currentUser())) return;
   throw new Error(tr('Админы эрхийн мөрийг зөвхөн үндсэн админ ({0}) засна.', BOOTSTRAP_SUPER));
 }
-/** Админ эрхээ алдахын өмнө түүний хадгалсан мөрүүдийг одоогийн (үндсэн) админы нэрээр дахин хадгална — `restampRowsOf` */
-const restampBefore = (username: string): Promise<void> =>
-  (writeGuardsOn() && typeof window !== 'undefined' && AUTH.appId
-    ? import('./permsRemote').then((m) => m.restampRowsOf(username)).then(() => undefined, () => undefined)
-    : Promise.resolve());
+/**
+ * Админ эрхээ алдахын өмнө түүний хадгалсан мөрүүдийг одоогийн (үндсэн) админы нэрээр дахин хадгална — `restampRowsOf`.
+ * 2026-11-24 (засвар): алдааг залгидаг байв — дахин хадгалалт унасан ч хасалт үргэлжилж, тэр админы бичсэн хүмүүс эрхээ чимээгүй
+ * алддаг байв. Одоо унавал (`null` эсвэл алдаа) шиднэ — хасалт/устгал юу ч бичихгүй зогсоно.
+ */
+const restampBefore = (username: string): Promise<void> => {
+  if (!(writeGuardsOn() && typeof window !== 'undefined' && AUTH.appId)) return Promise.resolve();
+  const fail = (): never => {
+    throw new Error(tr('«{0}»-ийн хадгалсан эрхийн мөрүүдийг дахин баталгаажуулж чадсангүй — админ эрхийг нь хасаагүй, юу ч бичигдээгүй. Дахин оролдоно уу.', username));
+  };
+  return import('./permsRemote').then((m) => m.restampRowsOf(username)).then((n) => { if (n == null) fail(); }, fail);
+};
 
 export function removeUser(username: string): Promise<boolean> {
   requireSuper();
@@ -946,7 +958,7 @@ function narrowOnly(cur: Store, loc: Store): Store {
     const views: Entry['views'] = l.views === 'all'
       ? c.views
       : c.views === 'all' ? l.views : c.views.filter((v) => (l.views as ViewKey[]).includes(v));
-    out[k] = { views, docs: c.docs && l.docs, role: c.role };
+    out[k] = { views, docs: c.docs && l.docs, role: c.role, ...(c.untrusted ? { untrusted: true } : {}) };
   }
   return out;
 }

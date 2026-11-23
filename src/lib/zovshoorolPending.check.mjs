@@ -95,6 +95,17 @@ console.log('✅ бүртгэгдсэн цаг: CreationDate → EditDate → nu
   const stale = /\.stale\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
   assert.ok(stale, '.stale класс алга');
   assert.doesNotMatch(stale, /animation/, 'удаж буй хүлээлт анивчих ёсгүй');
+  /* 2026-11-24: «Зөвшөөрлийн явц» ЗӨВХӨН ХАРАХ — бүртгэл readOnly; засах нь «Зөвшөөрөл оруулах» хуудсанд */
+  const page = /export function Zovshoorol\(\)[\s\S]*?\n\}/.exec(src)?.[0] ?? '';
+  assert.match(page, /<ZovPlan canEdit=\{false\} \/>/, 'явцын хуудас: ZovPlan засахгүй');
+  assert.match(page, /<ZovRegister readOnly \/>/, 'явцын хуудас: бүртгэл readOnly');
+  assert.match(src, /const canEdit = useMemo\(\s*\(\) => !readOnly && hasCap\(/, 'readOnly бол эрхтэй ч canEdit=false');
+  for (const btn of [/canEdit && \(\s*<button[^>]*onClick=\{\(\) => setEdit\(blank\('', 1\)\)\}/, /<ZovPdf z=\{z\} canEdit=\{canEdit\} \/>/, /\{canEdit && \(\s*<div className=\{s\.actions\}>/]) {
+    assert.match(src, btn, `нэмэх/засах/PDF нь canEdit-ээр хаагдана: ${btn}`);
+  }
+  const reg = fs.readFileSync('src/components/viewRegistry.tsx', 'utf8');
+  assert.match(reg, /zovshoorolTtb: \(\) => <><ZovshoorolTtb \/><ZovRegister \/><\/>/, '«Зөвшөөрөл оруулах»: засах боломжтой бүртгэл');
+  assert.match(reg, /import\('@\/modules\/Zovshoorol'\)\.then\(\(m\) => m\.ZovRegister\)/);
 }
 console.log('✅ харагдац: хоосон төлөв · шүүлт · тэмдэглэгээ');
 

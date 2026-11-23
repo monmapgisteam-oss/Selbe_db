@@ -298,7 +298,8 @@ assert.equal(scorePermit({ counts: { ok: 0, wait: 0, no: 0, unknown: 0 } }).scor
   /* scorecardLoad нь ЭНЭ функцээр (эх кодын тулгалт) */
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('./scorecardLoad.ts', import.meta.url), 'utf8');
-  assert.ok(src.includes('lagUnknown ? perfNoCurve()'), 'scorecardLoad перф салаа perfNoCurve-ийг дуудахгүй байна');
+  /* 2026-11-24: салаа `perfScoreOf`-д (ТТБ-ийн орлуулгын дараа) — `scorecardLoad.ui.check` */
+  assert.ok(src.includes('if (i.noCurve) return perfNoCurve();') && src.includes('noCurve: lagUnknown'), 'scorecardLoad перф салаа perfNoCurve-ийг дуудахгүй байна');
   assert.ok(/\(b\) => b\.failed\.length === 0\);/.test(src), 'loadScoreBase хэсэгчилсэн үр дүнг кэшлэхгүй (keep)');
 }
 

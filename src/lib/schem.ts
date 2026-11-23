@@ -682,7 +682,8 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
   /* ── Барилга угсралт ── */
   /* 2026-11-23: «Төсөл төлөвлөгөө биелэлт»-ийн барилга угсралтын мөр — алга бол хуучин эх */
   const bPlan = phaseOf(src.plan, 'barilga', pkg);
-  const bPct = bPlan?.S ?? (bagtsRow ? fin(bagtsRow.progress) : lost ? null : fin(src.overall?.pct));
+  /* 2026-11-24 (аудит): орон сууцны явцаар (`overall.pct`) орлуулахгүй — өөр хэмжигдэхүүн */
+  const bPct = bPlan?.S ?? (bagtsRow ? fin(bagtsRow.progress) : null);
   const weightSum = housingWeight(src);
   const barilga: SchemState = {
     health: bPlan ? paceHealth(bPlan) : grade(bPct, TH.barilgaPct.good, TH.barilgaPct.warn),

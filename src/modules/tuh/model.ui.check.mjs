@@ -188,8 +188,22 @@ ok('30 + 31 × 5/31 = 35 (урьд нь энэ сарын бүтэн 100)', () =
 
 console.log('\n7. Төслийн гүйцэтгэгчийн төлөвлөгөө — «Гүйцэтгэл»-ийн хэмжилтийн өдрөөр');
 ok('planPctAt(months, 2026-08-05) = 10 + 31 × 5/31 = 15 (өнөөдрөөр биш)', () => {
-  assert.equal(m.hero.actual, 20);
+  /* 2026-11-24: орон сууцны блокийн явц тусдаа талбарт (`hero.housing`) */
+  assert.equal(m.hero.housing, 20);
   near(m.hero.planContractor, 15);
+});
+
+console.log('\n7б. 2026-11-24 (аудит): «Төслийн бодит гүйцэтгэл» = Төслийн нийт мөрийн S, төлөвлөгөө нь P');
+ok('project өгвөл hero.actual/plan = S/P; өгөөгүй бол «—» (орон сууцны тоо биш)', () => {
+  const mp = buildModel(input({ project: { S: 37.256, P: 41.5 } }));
+  assert.equal(mp.hero.actual, 37.256);
+  assert.equal(mp.hero.plan, 41.5);
+  assert.equal(mp.hero.housing, 20, 'орон сууц хэвээр');
+  assert.equal(m.hero.actual, null, 'мөр уншигдаагүй — орон сууцаар орлуулахгүй');
+});
+ok('model.todayIso — Улаанбаатарын өдөр (format.dayKey)', () => {
+  const SRC = readFileSync(new URL('./model.ts', import.meta.url), 'utf8');
+  assert.match(SRC, /const todayIso = \(\) => dayKey\(Date\.now\(\)\);/);
 });
 
 console.log('\n8. Зурагдах (SSR)');
@@ -207,6 +221,15 @@ console.log('\n8. Зурагдах (SSR)');
   ok('Дэлгэрэнгүй: хүн хүч «—» (тайлангүй), шидэхгүй', () => {
     const html = renderToStaticMarkup(React.createElement(PkgDetail, { r: h1, m, onBack: noop, onOpen: noop }));
     assert.ok(html.includes('<dt>Ажилтан</dt><dd>—</dd>'), 'хүн «—»');
+  });
+  ok('2026-11-24: hero — Төслийн нийт S/P 2 орон; орон сууцны блокийн явц тусдаа нэртэй, хасагдсан багц нэрлэгдэнэ', () => {
+    const mp = buildModel(input({ project: { S: 37.256, P: 41.5 } }));
+    mp.hero.planExcluded = ['Багц-3.3'];
+    const hp = renderToStaticMarkup(React.createElement(Overview, { m: mp, onOpen: noop }));
+    assert.ok(hp.includes('37.26%'), 'S 2 орон');
+    assert.ok(hp.includes('төлөвлөгөө 41.50%'), 'P нь S-ийн доор');
+    assert.ok(hp.includes('Орон сууцны блокийн явц') && hp.includes('20.00%'), 'орон сууц тусдаа нэртэй');
+    assert.ok(hp.includes('хасагдсан: Багц-3.3'), 'planExcluded харагдана');
   });
   ok('0 багц — шидэхгүй', () => {
     const empty = buildModel(input({ fin: { ...fin, contracts: [], contractsHo: [], pays: [] } }));

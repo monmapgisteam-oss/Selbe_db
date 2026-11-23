@@ -291,4 +291,21 @@ console.log('✅ архивлалтын хаалт · isLostWrite = isLostRespon
 }
 console.log('✅ 2026-10-12 дарааллын аудит: serverNow · claimAt · existing · эзэнтэй clear · withdraw CAS');
 
+/* ══════════════ 2026-11-24: submitObyem — pkgKey ↔ pkgGroup-ийг PKGS-ээр тулгана ══════════════ */
+{
+  const { submitObyem } = await import('@/lib/obyemBatlah.ts');
+  fetched = 0;
+  const r = await submitObyem({
+    pkgKey: 'b1_9f', pkgGroup: 'Багц-2', author: 'bat', payload: { v: 1, pkgKey: 'b1_9f', cells: [[1, 5]] },
+  });
+  assert.equal(r.ok, false, 'өөр бүлгийн нэрээр илгээгдэв');
+  assert.match(r.error, /зөрж байна/);
+  const r2 = await submitObyem({
+    pkgKey: 'no_such', pkgGroup: 'Багц-1', author: 'bat', payload: { v: 1, pkgKey: 'no_such', cells: [[1, 5]] },
+  });
+  assert.equal(r2.ok, false, 'үл мэдэгдэх багц');
+  assert.equal(fetched, 0, 'тулгалт сүлжээнээс ӨМНӨ');
+  console.log('✅ submitObyem — багцын түлхүүр/бүлгийн тулгалт');
+}
+
 console.log('\nobyemBatlah.check: ok');

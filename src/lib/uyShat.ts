@@ -405,9 +405,11 @@ export function tenderLate(n: PlanNode, pct: number | null, today: number = ubTo
  *   songon        — дуусах огноо өнгөрсөн, явц < 100, гэрээгүй
  *   zovshoorolTtb — зөвшөөрлийн навч: дуусах огноо өнгөрсөн, явц < 100
  *   ashiglalt     — ашиглалтын огноо барилга дуусахаас өмнө; эсвэл өнгөрсөн ч барилга дуусаагүй
+ * `v` — мөрийн `computePlan`-ийн утга (S явц %, M гүйцэтгэгчийн дуусах огноо).
  */
-export function rowWarn(page: PageDef, n: PlanNode, pct: number | null, today: number = ubToday()): string | null {
+export function rowWarn(page: PageDef, n: PlanNode, v: { S?: number | null; M?: number | null } | null | undefined, today: number = ubToday()): string | null {
   if (!n.row) return null;
+  const pct = v?.S ?? null;
   if (page.key === 'songon') return tenderLate(n, pct, today) ? tr('Хугацаа хэтэрсэн, гэрээ байгуулагдаагүй') : null;
   if (page.key === 'zovshoorolTtb') {
     const end = saneDate(n.row.guits_duusah);
@@ -415,7 +417,9 @@ export function rowWarn(page: PageDef, n: PlanNode, pct: number | null, today: n
   }
   if (page.key === 'ashiglalt') {
     const h = saneDate(n.row.ashiglalt_ognoo);
-    const end = saneDate(n.row.guits_duusah);
+    /* 2026-11-24 (засвар): барилга дуусах = ТТБ-ийн бодсон M (Cashflow-ийн дуусах ба блокуудын Хуваарийн дуусахын хожуу нь) —
+       мөрийн хадгалсан `guits_duusah` биш */
+    const end = saneDate(v?.M ?? null);
     if (h == null) return null;
     if (h < today && (pct ?? 0) < 100) return tr('Ашиглалтын огноо өнгөрсөн, барилга дуусаагүй');
     if (end != null && h < end) return tr('Ашиглалтын огноо барилга дуусахаас өмнө');

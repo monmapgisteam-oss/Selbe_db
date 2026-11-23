@@ -20,7 +20,7 @@ import { loadHoRows, groupHo } from '@/lib/ipc';
 import { loadWorkforceDays } from '@/lib/ceo/workforce';
 import { loadLandStatus } from '@/lib/land';
 import { loadSchema, PKGS } from '@/modules/sheet/bagts.pkg';
-import { BUILDING, SELBE_PUBLIC, SOURCE_FS, buildingKey, bagtsKey, hoAmount } from '@/lib/services';
+import { BUILDING, SELBE_PUBLIC, SOURCE_FS, buildingKey, bagtsKey } from '@/lib/services';
 import {
   PUBLIC_KEYS, ehUusverRows, gazarRows, guitsetgelRows, hunHuchRows, isPubGroupName, niigemRows, pubPkgCode, sanhuuRows,
   type PubBuilding, type PubGroup, type PubRow, type PublicTables,
@@ -115,10 +115,12 @@ async function loadInfraGroups(): Promise<{ groups: Map<string, PubGroup[]>; fai
 export async function computePublicTables(): Promise<{ tables: Partial<PublicTables>; failed: string[] }> {
   const failed: string[] = [];
   const tables: Partial<PublicTables> = {};
-  const [plan, ho, days, land, bld, src, grp] = await Promise.allSettled([
+  const [plan, ho, days, land, bld, src, grp, fin] = await Promise.allSettled([
     loadProjectPlan(), loadHoRows(), loadWorkforceDays(), loadLandStatus(), loadBuildings(),
     queryFeatures(SOURCE_FS.url, { outFields: [SOURCE_FS.fields.type, SOURCE_FS.fields.name, SOURCE_FS.fields.share, SOURCE_FS.fields.total] }),
     loadInfraGroups(),
+    /* 2026-11-24 (аудит): олгосон дүн ба хувь — порталын «Санхүүжилт»-ийн ЯГ тэр тоо (`paidShare.withProjectContract`) */
+    import('@/lib/reportData').then((m) => m.loadFinance()),
   ]);
   const fail = (name: string, e: unknown) => failed.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
 
@@ -136,11 +138,8 @@ export async function computePublicTables(): Promise<{ tables: Partial<PublicTab
   } else {
     const p = plan.value;
     if (p.failed.length) failed.push(`plan: ${p.failed.join(', ')}`);
-    if (ho.status === 'fulfilled') {
-      let paid: number | null = null;
-      for (const r of ho.value) { const v = hoAmount(r); if (v != null) paid = (paid ?? 0) + v; }
-      tables.sanhuu = sanhuuRows(p, paid);
-    } else fail('sanhuu', ho.reason);
+    if (fin.status === 'fulfilled') tables.sanhuu = sanhuuRows(p, { paid: fin.value.paid, paidPct: fin.value.paidPct });
+    else fail('sanhuu', fin.reason);
     /* 2026-11-11 (аудит): дутуу уншигдсан төлөвлөгөөгөөр нийгмийн дэд бүтцийг 0% гэж бичихгүй (`guitsetgel`-тэй нэг дүрэм) */
     if (!p.failed.length) tables.niigem = niigemRows(p);
     /* Явц — барилга, гүйцэтгэгч, бүлгийн аль нэг унавал хагас өгөгдлөөр бичихгүй, хүснэгт хэвээр үлдэнэ */

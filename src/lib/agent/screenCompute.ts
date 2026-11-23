@@ -56,7 +56,7 @@ export function financeSummaryOf(
     note:
       tr('Бүх тоо порталын дэлгэцийн ЯГ тэр функцээр бодогдсон (дашбоардын «Нийт төсөв», «Гэрээлсэн дүн», «Олгосон санхүүжилт»). ') +
       tr('`paidPct` = гэрээлсэн багцын олголт (`paidContracted`) ÷ гэрээлсэн дүн (`contracted`) × 100; `paidOther` нь хувьд ОРООГҮЙ олголт — ялгаж хэл. ') +
-      tr('Мөнгөн дүнг бүтнээр, мянгатын таслалтай бич; хувийг нэг аравтаар.'),
+      tr('Мөнгөн дүнг бүтнээр, мянгатын таслалтай бич; хувийг 2 орон бутархайгаар (12.34%).'),
   };
 }
 
@@ -81,7 +81,7 @@ export async function financeSummary(scope: AgentScope): Promise<FinanceSummary>
     ...out, contracted: m.contract,
     paidContracted: known ? sh.paidContracted : out.paidContracted,
     paidOther: known ? sh.paidOther : out.paidOther,
-    paidPct: sh.pct == null ? out.paidPct : Math.round(sh.pct * 10) / 10,
+    paidPct: sh.pct == null ? out.paidPct : Math.round(sh.pct * 100) / 100,
   };
 }
 

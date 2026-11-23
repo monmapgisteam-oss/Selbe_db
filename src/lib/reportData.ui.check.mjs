@@ -92,6 +92,19 @@ console.log('✅ §3 төлөвлөгөө — хамрах хүрээний дү
 }
 console.log('✅ тайлангийн бичвэр — тооцоотой нийцнэ');
 
+/* 2026-11-24 (аудит): «захирамжийн хэдэн % гэрээлсэн» — хоёр тал ИЖИЛ хүрээ (Cashflow-ийн ажлын мөр); ТТБ-ийн нийт гэрээ (ТЭЗҮ/зураг орсон) биш */
+{
+  const x = extra();
+  x.finance.orderContract = 2030121559894;
+  const d = buildFindings(x);
+  assert.ok(Math.abs(d.contractRate - (2030121559894 / 2306498408722) * 100) < 1e-9, `contractRate ${d.contractRate}`);
+  assert.notEqual(d.contractRate, (x.finance.contractAmount / x.finance.orderTotal) * 100, 'ТТБ-ийн нийт гэрээ ÷ захирамж (өөр хүрээ)');
+  assert.equal(buildFindings(extra()).contractRate, null, 'ижил хүрээний гэрээлсэн дүн алга — хувь бодохгүй');
+  const data = readFileSync(new URL('./reportData.ts', import.meta.url), 'utf8');
+  assert.match(data, /orderContract: share0\.contract,/, 'ачаалагч ажлын мөрийн гэрээлсэн дүнг өгнө');
+}
+console.log('✅ гэрээлсэн хувь — захирамжтай ижил хүрээ');
+
 /* Эх код — дэлгэц ба өгөгдөл */
 {
   const data = readFileSync(new URL('./reportData.ts', import.meta.url), 'utf8');

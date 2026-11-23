@@ -30,7 +30,7 @@ const raw = (oid, status, area, extra = {}) => ({
   [F.owner]: `Эзэмшигч ${oid}`,
   [F.address]: 'Хандгайтын гудамж',
   [F.landuse]: ' ',
-  [F.note]: null,
+  [F.note]: 'утас 99112233',
   ...extra,
 });
 
@@ -129,18 +129,23 @@ assert.equal(tReason.rows[0][2].kind, 'ha');
 assert.equal(tReason.rows.at(-1)[2].v, null, 'төлөвгүй бүлгийн га нүд «—»');
 
 assert.equal(tParcels.rows.length, 9, 'үлдсэн мөр БҮР нэртэй');
-assert.equal(tParcels.cols.length, 7);
-assert.deepEqual(tParcels.cols.slice(0, 1).concat(tParcels.cols[4]), ['Кадастрын дугаар', 'Талбай (м²)'], 'толинд байгаа баганын нэр');
+// 2026-11-24: хувийн мэдээлэл (эзэмшигч, хаяг, тайлбар) хүснэгтэд ГАРАХГҮЙ — самбарыг гэрээлэгч ч хардаг
+assert.deepEqual(tParcels.cols, ['Кадастрын дугаар', 'Шалтгаан', 'Талбай (м²)', 'Зориулалт'], 'хувийн баганагүй');
+{
+  const cells = ok.tables.flatMap((t) => t.rows.flat().map((c) => String(c.v)));
+  assert.ok(!cells.some((v) => /Эзэмшигч|Хандгайтын|99112233/.test(v)), 'эзэмшигч, хаяг, тайлбар нүдэнд алга');
+  assert.ok(parcels.every((p) => !('owner' in p) && !('address' in p) && !('note' in p)), 'parseParcels хувийн талбар хадгалахгүй');
+}
 assert.equal(tOverlap.title, SOURCE.overlaps(), 'давхцлын хүснэгт ба эх сурвалжийн нэр ижил');
 assert.deepEqual(
   tParcels.rows.map((r) => r[0].v),
   ['1461802', '1461801', '1461803', '1461804', '1461805', '1461807', '1461808', '1461806', '1461809'],
   'шалтгааны эрэмбэ (том бүлэг эхэнд), дотроо талбай буурах, null сүүлд',
 );
-assert.equal(tParcels.rows[0][1].v, 'Эзэмшигч 2');
-assert.equal(tParcels.rows[0][4].v, 10290);
-assert.equal(tParcels.rows.at(-1)[4].v, null, 'талбайгүй мөрийн м² «—», 0 биш');
-assert.equal(tParcels.rows.at(-1)[5].v, null);
+assert.equal(tParcels.rows[0][1].v, 'зөвшилцөх');
+assert.equal(tParcels.rows[0][2].v, 10290);
+assert.equal(tParcels.rows.at(-1)[2].v, null, 'талбайгүй мөрийн м² «—», 0 биш');
+assert.equal(tParcels.rows.at(-1)[3].v, null);
 
 assert.deepEqual(tOverlap.rows.map((r) => [r[0].v, r[1].v]), [['Багц 6.5 · ХТП/РП', 3], ['Багц 1 · 9 давхар', 1]],
   'давхцал буурах эрэмбээр');
@@ -190,7 +195,7 @@ const big = computeLand({ clearance: null, parcels: many, overlaps: null, failed
 const tp = big.tables[1];
 assert.equal(tp.rows.length, ROW_CAP + 1);
 assert.ok(String(tp.rows.at(-1)[0].v).includes('50'), 'сүүлийн мөр тасалсан тоог заана');
-assert.equal(tp.rows.at(-1).length, 7, 'тасалсан мөр багана тоотой таарна');
+assert.equal(tp.rows.at(-1).length, 4,'тасалсан мөр багана тоотой таарна');
 
 {
   const rowsEd = [{ last_edited_date: Date.UTC(2026, 8, 1) }, { last_edited_date: Date.UTC(2026, 8, 20) }, { last_edited_date: null }];

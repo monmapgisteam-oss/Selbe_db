@@ -84,6 +84,47 @@ console.log('frameRepair.check: OK');
 {
   const st = readFileSync(new URL('./hyanaltStore.ts', import.meta.url), 'utf8');
   assert.ok(st.includes('rebaseBackdated(frame, loaded.rows, prevRows, sc)'),'бөглөсөн өдрийн жааз өмнөх жаазтай тулгагдана');
+  assert.ok(st.includes('rebaseBackdatedDates(frame, loaded.rows, prevRows, sc, fillMs)'), 'бодит огноо ч өмнөх жаазаар');
+}
+/* 2026-11-24: хойш огноотой (бөглөсөн өдрөөр) жааз — бодит эхэлсэн/дууссан огноо өмнөх жаазаар; хожуу жаазанд дамжина */
+{
+  const { rebaseBackdatedDates, laterDates } = await import('./frameRepair.ts');
+  const Dm = (s) => Date.parse(`${s}T00:00:00Z`);
+  const sc = { aStart: ['s1'], aEnd: ['e1'], obyem: ['o1'], f: { des: 'des' } };
+  /* L (11-20): мөр 1 нь 11-15-нд эхэлсэн (D-ээс хойш), мөр 2 нь 11-18-нд дууссан. P (11-05): хоёуланд ажил 0 / 60 */
+  const loaded = [
+    { des: 1, group: false, vol: 100, aStart: [Dm('2026-11-15')], aEnd: [null] },
+    { des: 2, group: false, vol: 100, aStart: [Dm('2026-11-01')], aEnd: [Dm('2026-11-18')] },
+    { des: 3, group: true, vol: null, aStart: [null], aEnd: [null] },
+  ];
+  const prev = [
+    { des: 1, obyem: [0], aStart: [null], aEnd: [null] },
+    { des: 2, obyem: [60], aStart: [Dm('2026-11-01')], aEnd: [null] },
+  ];
+  /* D = 11-10: мөр 1 +10 (анхны ажил), мөр 2 +40 (бүрэн) */
+  const fill = Dm('2026-11-10') + 5 * 3600_000;
+  const frame = [
+    { des: 1, o1: 10, s1: Dm('2026-11-15'), e1: null },
+    { des: 2, o1: 40, s1: Dm('2026-11-01'), e1: Dm('2026-11-18') },
+    { des: 3, o1: null, s1: 123, e1: null },
+  ];
+  const n = rebaseBackdatedDates(frame, loaded, prev, sc, fill);
+  assert.equal(frame[0].s1, Dm('2026-11-10'), 'эхэлсэн = анх ажил > 0 болсон өдөр (L-ийн 11-15 биш)');
+  assert.equal(frame[0].e1, null);
+  assert.equal(frame[1].s1, Dm('2026-11-01'), 'P-ийн эхэлсэн огноо хэвээр');
+  assert.equal(frame[1].e1, Dm('2026-11-10'), 'дууссан = хуримтлал ≥ обьём болсон өдөр (L-ийн 11-18 биш)');
+  assert.equal(frame[2].s1, 123, 'бүлгийн мөр хөндөгдөхгүй');
+  assert.equal(n, 2);
+  /* Хожуу жааз: хадгалсан 11-15/11-18 → D-ийн огноо руу; эрт хадгалсан огноо хэвээр */
+  const t = { start: Dm('2026-11-10'), end: Dm('2026-11-10') };
+  assert.deepEqual(laterDates({ start: Dm('2026-11-15'), end: Dm('2026-11-18') }, 100, 100, Dm('2026-11-20'), t),
+    { start: Dm('2026-11-10'), end: Dm('2026-11-10') });
+  const t2 = { start: null, end: null };
+  assert.deepEqual(laterDates({ start: null, end: null }, 50, 100, Dm('2026-11-20'), t2), { start: Dm('2026-11-20'), end: null }, 'анх > 0 болсон өдөр');
+  assert.deepEqual(laterDates({ start: Dm('2026-11-21'), end: null }, 100, 100, Dm('2026-11-25'), t2), { start: Dm('2026-11-20'), end: Dm('2026-11-25') }, 'дамжуулсан эхлэл · анх бүрэн болсон өдөр');
+  const rep2 = readFileSync(new URL('./frameRepair.ts', import.meta.url), 'utf8');
+  assert.match(rep2, /export async function refreshStoredProgress[\s\S]*laterDates\(/, 'засварын зам огноог ч засна');
+  console.log('✅ хойш огноотой жааз — бодит огноо');
 }
 /* 2026-11-23 (аудит): бөглөсөн өдрөөр бичих нь ЗӨВХӨН обьёмын замаар өөрчилсөн илгээлтэд — %-аар нэмсэн ахиц (act өөрчлөгдсөн,
    obyem хэвээр) хожуу жаазанд хүрэхгүй тул батлах өдрийн дүрмээр бичигдэнэ */

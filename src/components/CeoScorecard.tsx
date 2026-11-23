@@ -246,10 +246,12 @@ export function CeoScorecard({ onView }: { onView: (key: ViewKey) => void }) {
     ...(baseQ.data?.failed ?? []),
     ...(landQ.state === 'ready' && landQ.data.failed ? [tr('Газрын давхцал (хэсэгчлэн)')] : []),
   ];
-  const works = useMemo(() => (allWorks ? allWorks.filter((w) => !w.isLandWork) : null), [allWorks]);
+  /* 2026-11-24 (аудит): нийт/бүлгийн хавтан, «N багц ажил», хүснэгт — НЭГ олонлог (газар чөлөөлөлтийн мөр орно; урьд нь хавтанд
+     орж, тоо ба хүснэгтэд ордоггүй байв) */
+  const works = allWorks;
 
   const groups = useMemo(() => (works ? groupByType(works) : []), [works]);
-  const project = useMemo(() => (allWorks ? projectDims(allWorks) : null), [allWorks]);
+  const project = useMemo(() => (works ? projectDims(works) : null), [works]);
 
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggleGroup = (type: string) => setOpen((c) => {

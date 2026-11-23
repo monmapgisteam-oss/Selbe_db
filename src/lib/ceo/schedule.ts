@@ -250,6 +250,18 @@ export function collectCurves(pkgs: readonly PkgLag[], lagOfFn: LagOfFn, nowYm: 
 /** `C` — хуваарийн хамралт (0–100, хугацаатай навчны төсвийн хувь); өгөөгүй бол бүрэн гэж үзнэ (хуучин дуудагч, тест) */
 export type TtbPkgPlan = ReadonlyMap<string, { P: number | null; S: number | null; C?: number | null }>;
 
+/**
+ * 2026-11-24 (аудит): Finance-ийн хоцрогдол алга багцын ТТБ-ийн орлуулга — CEO хуваарийн карт (`computeSchedule`) ба багц ажлын оноо
+ * (`scorecardLoad`) НЭГ дүгнэлт. `P > 0` үед л; бодит алга = 0%; `judged` = хамралт хангалттай (C өгөөгүй бол бүрэн).
+ */
+export function ttbLagOf(t: { P: number | null; S: number | null; C?: number | null } | undefined):
+  { planned: number; actual: number; gap: number; coverage: number | null; judged: boolean } | null {
+  if (t?.P == null || !(t.P > 0)) return null;
+  const actual = t.S ?? 0;
+  const coverage = t.C === undefined ? null : t.C;
+  return { planned: t.P, actual, gap: t.P - actual, coverage, judged: t.C === undefined || coverageOk(coverage) };
+}
+
 /* ══════════════ Цэвэр тооцоо ══════════════ */
 
 /**
@@ -280,17 +292,13 @@ export function computeSchedule(
     const p = p0.label ? p0 : { ...p0, label: p0.key };
     if (!p.lag) {
       /* Хоцрогдол бодогдоогүй — ТТБ-ийн багцын төлөвлөгөөтэй бол түүгээр (бодит алга = 0%); төлөвлөгөөгүй бол л «хэмжилтгүй» */
-      const t = ttb.get(p.key);
-      if (t?.P != null && t.P > 0) {
-        const actual = t.S ?? 0;
-        const gap = t.P - actual;
+      const t = ttbLagOf(ttb.get(p.key));
+      if (t) {
         /* 2026-11-23 (давтан аудит): хоцрогдлын замтай ИЖИЛ хамралтын дүрэм; сар — ТТБ-ийн утга хэмжилтийн сартай биш тул хоосон
            (картын «байдлын огноо»-д орохгүй — урьд нь үргэлж «одоо» гардаг байв) */
-        const cov = t.C === undefined ? null : t.C;
-        const judged = t.C === undefined || coverageOk(cov);
-        (judged ? measured : partial).push({
-          key: p.key, label: p.label, month: '', planned: t.P, actual, gap,
-          slipMonths: null, tone: judged ? lagLevelFn(gap) : null, coverage: cov,
+        (t.judged ? measured : partial).push({
+          key: p.key, label: p.label, month: '', planned: t.planned, actual: t.actual, gap: t.gap,
+          slipMonths: null, tone: t.judged ? lagLevelFn(t.gap) : null, coverage: t.coverage,
         });
       } else noData.push(p);
       continue;
@@ -405,7 +413,7 @@ export function computeSchedule(
 /* ══════════════ Ачаалагч ══════════════ */
 
 /** ТТБ-ийн барилга угсралтын багц бүрийн ДЭЭД мөрийн P/S (`pkgKeyOf(pkg)` түлхүүр; олон мөртэй бол төсөв хамгийн их нь) */
-async function loadTtbPkgPlan(): Promise<TtbPkgPlan> {
+export async function loadTtbPkgPlan(): Promise<TtbPkgPlan> {
   const { loadProjectPlan } = await import('@/lib/projectPlanInputs');
   const pl = await loadProjectPlan();
   const out = new Map<string, { P: number | null; S: number | null; C: number | null; E: number }>();

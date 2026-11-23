@@ -21,7 +21,7 @@ import { TUH_GROUPS, TUH_STATUS, groupLabel, statusMeta, elapsedPct, TUH_STALE_D
 import { lz, linkedRows, commissionText, jointNote, usesHandover, type TuhModel, type TuhRow } from './model';
 import { coverageNote, coverageOk } from '@/lib/planProgress';
 import { ProgChart } from '@/modules/PkgProg';
-import { ComboChart, lagLevelOf } from '@/modules/Finance';
+import { ComboChart, lagLevelOf, planScopeNote } from '@/modules/Finance';
 import { useAsync } from '@/lib/useAsync';
 import { loadHeatBlocks } from '@/modules/DulaanOgnoo';
 import type { TuhExtra } from './extra';
@@ -397,12 +397,15 @@ export function Portfolio({ m, extra = null, contractTotal = null, sel = null, j
       )}
 
       <div className={b.kpis}>
-        <Kpi label={tr('Төслийн бодит гүйцэтгэл')} value={m.hero.actual == null ? '—' : pct(m.hero.actual, 1)}
-          note={tr('төлөвлөгөө {0}', planText(m))} />
+        {/* 2026-11-24 (аудит): Төслийн нийт мөрийн S ба түүний P (удирдлагын тайлантай нэг); орон сууц тусдаа нэртэй */}
+        <Kpi label={tr('Төслийн бодит гүйцэтгэл')} value={lz(m, 'project')(m.hero.actual == null ? '—' : pct(m.hero.actual, 2))}
+          note={tr('төлөвлөгөө {0}', lz(m, 'project')(m.hero.plan == null ? '—' : pct(m.hero.plan, 2)))} />
+        <Kpi label={tr('Орон сууцны блокийн явц')} value={m.hero.housing == null ? '—' : pct(m.hero.housing, 2)}
+          note={[tr('төлөвлөгөө {0}', planText(m)), planScopeNote(m.hero.planExcluded)].filter(Boolean).join(' · ')} />
         <Kpi label={tr('Багц')} value={num(m.rows.length)} note={tr('{0} / {1} багц гэрээлсэн', num(contracted.length), num(m.rows.length))} />
         <Kpi label={tr('Гэрээний нийт дүн')} value={lz(m, 'budget')(mnt(contractTotal))} />
         <Kpi label={tr('Олгосон санхүүжилт')} value={mnt(m.paid.total)} note={[
-          m.paid.pct == null ? null : tr('гэрээний {0}', pct(m.paid.pct, 1)),
+          m.paid.pct == null ? null : tr('гэрээний {0}', pct(m.paid.pct, 2)),
           m.paid.other ? tr('гэрээлсэн багцаас гадуур олгосон {0} (хувьд ороогүй)', mnt(m.paid.other)) : null,
         ].filter(Boolean).join(' · ') || undefined} />
         <Kpi label={tr('Хоцорсон багц')} value={num(late)} tone={late ? b.warn : undefined} />
@@ -476,7 +479,7 @@ export function Portfolio({ m, extra = null, contractTotal = null, sel = null, j
 const planText = (m: TuhModel) => {
   const p = m.hero.planContractor ?? m.hero.planContract;
   const cov = m.hero.planContractor != null ? coverageNote(m.hero.planCoverage) : '';
-  return (p == null ? '—' : pct(p, 1)) + (cov ? ` · ${cov}` : '');
+  return (p == null ? '—' : pct(p, 2)) + (cov ? ` · ${cov}` : '');
 };
 
 /* ══════════════════════ Нэг багц (дэлгээтэй) ══════════════════════ */
@@ -530,9 +533,9 @@ export function PkgBoard({ r, m, extra = null, themes = new Set(), onOpen, onOpe
       </header>
 
       <div className={b.kpis}>
-        <Kpi label={tr('Бодит гүйцэтгэл')} value={lz(m, 'plan', 'hist', 'live')(r.progress == null ? '—' : pct(r.progress, 1))}
+        <Kpi label={tr('Бодит гүйцэтгэл')} value={lz(m, 'plan', 'hist', 'live')(r.progress == null ? '—' : pct(r.progress, 2))}
           note={r.week == null ? undefined : tr('7 хоногт {0}', gapText(r.week))} />
-        <Kpi label={tr('Төлөвлөгөө')} value={lz(m, 'plan', 'cfPlan')(plan == null ? '—' : pct(plan, 1))}
+        <Kpi label={tr('Төлөвлөгөө')} value={lz(m, 'plan', 'cfPlan')(plan == null ? '—' : pct(plan, 2))}
           note={r.statusBasis === 'contractor' ? tr('гүйцэтгэгчийн хуваарь')
             : r.planContractor != null && !coverageOk(r.planCoverage)
               /* Хуваарь дутуу — гэрээний төлөвлөгөө байвал түүгээр дүгнэнэ, үгүй бол дүгнэхгүй */
@@ -540,7 +543,7 @@ export function PkgBoard({ r, m, extra = null, themes = new Set(), onOpen, onOpe
               : r.planContract != null ? tr('гэрээний төлөвлөгөө') : undefined} />
         <Kpi label={tr('Зөрүү')} value={gapText(gap)} tone={gapTone(gap)} />
         <Kpi label={tr('Олгосон санхүүжилт')} value={ipc?.paid == null ? '—' : mnt(ipc.paid)}
-          note={ipc?.paidPct == null ? undefined : tr('гэрээний {0}', pct(ipc.paidPct, 1))} />
+          note={ipc?.paidPct == null ? undefined : tr('гэрээний {0}', pct(ipc.paidPct, 2))} />
         <Kpi label={tr('Хугацаа')} value={elapsed == null ? '—' : pct(elapsed, 0)}
           note={left == null ? undefined : left >= 0 ? tr('{0} хоног үлдсэн', num(left)) : tr('{0} хоног хэтэрсэн', num(-left))}
           tone={left != null && left < 0 ? b.bad : undefined} />
@@ -555,7 +558,7 @@ export function PkgBoard({ r, m, extra = null, themes = new Set(), onOpen, onOpe
           <Card title={tr('Гүйцэтгэлийн явц')} note={tr('төлөвлөгөө ба бодит гүйцэтгэл, сараар')} wide>
             {r.prog
               ? <Lazy minH={260}>{() => <ProgChart months={r.prog!} title="" loading={m.loading.has('plan')} planFailed={r.planFailed} />}</Lazy>
-              : <p className={b.empty}>{r.progress == null ? tr('Гүйцэтгэл хэмжигдээгүй.') : tr('Бодит гүйцэтгэл {0} — хуваарийн муруй алга.', pct(r.progress, 1))}</p>}
+              : <p className={b.empty}>{r.progress == null ? tr('Гүйцэтгэл хэмжигдээгүй.') : tr('Бодит гүйцэтгэл {0} — хуваарийн муруй алга.', pct(r.progress, 2))}</p>}
           </Card>
         )}
 
@@ -580,7 +583,7 @@ export function PkgBoard({ r, m, extra = null, themes = new Set(), onOpen, onOpe
             <Facts items={[
               [tr('Урьдчилсан төсөвт өртөг'), mnt(p.cost)],
               [tr('Гэрээний дүн'), p.contractAmount != null ? mnt(p.contractAmount) : tr('Гэрээгүй')],
-              [tr('Олгосон'), ipc?.paid == null ? '—' : `${mnt(ipc.paid)}${ipc.paidPct == null ? '' : ` · ${pct(ipc.paidPct, 1)}`}`],
+              [tr('Олгосон'), ipc?.paid == null ? '—' : `${mnt(ipc.paid)}${ipc.paidPct == null ? '' : ` · ${pct(ipc.paidPct, 2)}`}`],
               [tr('Олгосон IPC'), ipc ? num(ipc.ipcNos.length) : '—'],
               [tr('Сүүлд олгосон'), ipc?.lastPaidDate ?? '—'],
               [tr('Хянагдаж буй'), ipc?.review ? tr('{0} акт · {1}', num(ipc.review.count), mnt(ipc.review.une)) : '—'],

@@ -122,6 +122,15 @@ assert.ok(det.includes('nullFragmentFits(nRows, nNull, nExpect, await baseBlankC
 assert.ok(/sc.f.ratio, sc.f.gun,/.test(det) && det.includes('depth: gunDepth ? gunDepth[ri]'),
   'hyanaltDetail: гүнийг эхлээд gun баганаас уншина');
 console.log('✅ hyanaltDetail — огноогүй хэлтэрхий (нэмэлт мөртэй) · gun гүн');
+/* 2026-11-24: өсөлтийн блокийн олонлог — батлахын өмнөх (staged) ба архивын зам хоёулаа `sc.bld` (обьёмгүй блок ч орно) */
+{
+  const d0 = det.replace(/\r\n/g, '\n');
+  assert.match(d0, /gain = \{ group: pkg\.group, labels: sc\.bld, dB: dOf\(isConstructionNo\)/, 'staged: sc.bld');
+  assert.match(d0, /const labels = sc\.bld;\n\s+const none = labels\.map\(\(\) => null\);\n\s+gain = \{ group: p\.group, labels,/, 'архив: sc.bld');
+  assert.match(d0, /const d = sc\.bld\.map\(\(_, b\) => \{\n\s+const n = sc\.act\[b\];/, 'архив: блок бүрийн гүйцэтгэл (обьёмтой нь л биш)');
+  assert.ok(!/const labels = sc\.bld\.filter\(\(_, i\) => sc\.obyem\[i\]\);\n\s+const none/.test(d0), 'обьёмтой блокоор шүүхгүй');
+  console.log('✅ hyanaltDetail — өсөлт батлахын өмнө/дараа ижил блокоор');
+}
 
 /* Approved archive identity (2026-10-21): run the actual reader against fake
    ArcGIS SDK/fetch, including two real sheets whose OBJECTIDs overlap.

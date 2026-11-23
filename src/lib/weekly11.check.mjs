@@ -39,6 +39,18 @@ const near = (a, b, tol, msg) => assert.ok(a != null && Math.abs(a - b) <= tol, 
   near(s.pkg, 5, 1e-12, 'блокгүй хуудас — ганц блок');
   near(s.project, 0.2, 1e-12);
   assert.equal(fillGainOf('Багц 2', ['5/1'], [0.1], [null], false, null, null, null).pkg, null, 'хуваарь алга → багц тооцохгүй');
+  /* 2026-11-24: өөрчлөлтгүй бөглөлт — «тооцоолж чадсангүй» (null → «—») биш, 0 (→ «+0.00%») */
+  const z = fillGainOf('Багц 2', ['5/1', '5/2'], [null, null], [null, null], false, universe, weights, { nodes, gOf: (n) => G.get(n) ?? null });
+  assert.equal(z.pkg, 0, 'өөрчлөлтгүй → багц 0');
+  assert.equal(z.project, 0, 'өөрчлөлтгүй → төсөл 0 (null биш)');
+  assert.equal(fillGainOf('Багц 6.1', ['Ажил'], [null], [null], true, null, null, null).pkg, 0, 'блокгүй, өөрчлөлтгүй → 0');
+  assert.equal(fillGainOf('Багц 2', ['5/1'], [0], [null], false, universe, weights, { nodes: [], gOf: () => 1 }).project, null, 'ТТБ-д мөр алга → тооцоолоогүй (—)');
+  assert.equal(fillGainOf('Багц 2', ['5/1'], [0], [null], false, universe, weights, null).project, null, 'ТТБ уншигдаагүй → тооцоолоогүй (—)');
+  {
+    const { readFileSync } = await import('node:fs');
+    const gs = readFileSync(new URL('../modules/Guitsetgel.tsx', import.meta.url), 'utf8');
+    assert.ok(gs.includes('const signed = (v: number, d: number): string => (v < 0 ? `−${pct(-v, d)}` : `+${pct(v > 0 ? v : 0, d)}`);'), 'Guitsetgel: 0 → «+0.00%»');
+  }
   console.log('✅ 1. батлах үеийн өсөлт');
 }
 

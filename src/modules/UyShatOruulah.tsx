@@ -166,7 +166,7 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
   useEffect(() => () => setNavDirty(page, false), [page]);
 
   const all = useMemo(() => rowsOf(P, tree), [P, tree]);
-  const isBad = (n: PlanNode) => !!rowWarn(P, n, res.values.get(n)?.S ?? null) || dateGaps(P, n).length > 0;
+  const isBad = (n: PlanNode) => !!rowWarn(P, n, res.values.get(n)) || dateGaps(P, n).length > 0;
   const badN = P.issues ? all.filter(isBad).length : 0;
   const visible = useMemo(() => {
     const needle = find.trim().toLowerCase();
@@ -350,7 +350,7 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
   };
   const warnText = (n: PlanNode): string | null => {
     const g = dateGaps(P, n);
-    return g.length ? tr('Огноо дутуу: {0}', g.map((k) => FIELD_LABEL[k]()).join(', ')) : rowWarn(P, n, res.values.get(n)?.S ?? null);
+    return g.length ? tr('Огноо дутуу: {0}', g.map((k) => FIELD_LABEL[k]()).join(', ')) : rowWarn(P, n, res.values.get(n));
   };
 
   /** Excel — одоо харагдаж буй мөрүүд */
@@ -360,12 +360,15 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
       ...(showPct ? [tr('Явц, %')] : []), tr('Анхааруулга')];
     const body: XlsxCell[][] = visible.map((n) => {
       const r = n.row!;
-      const S = res.values.get(n)?.S ?? null;
-      const pv = S == null ? null : Math.round(S * 10) / 10;
+      const v = res.values.get(n);
+      const S = v?.S ?? null;
+      /* 2026-11-24: хувь 2 оронтой (төслийн дүрэм) */
+      const pv = S == null ? null : Math.round(S * 100) / 100;
       const kd = komissOf(r);
       return [dcode.get(n) ?? '', String(r.bagts ?? ''), nameOf(n),
         ...cols.map((f): XlsxCell => (f.kind === 'date' ? dayOf(r[f.key] as number | null) || '' : f.kind === 'pct' ? pv : (r[f.key] as string | number | null) ?? '')),
-        ...(P.buildInfo ? [dayOf(r.guits_duusah as number | null) || '', pv, kd == null ? '' : dayOf(kd)] : []),
+        /* 2026-11-24 (засвар): барилга дуусах = ТТБ-ийн бодсон M (Cashflow ба блокуудын Хуваарийн дуусахын хожуу нь) */
+        ...(P.buildInfo ? [dayOf(v?.M ?? null) || '', pv, kd == null ? '' : dayOf(kd)] : []),
         ...(showPct ? [pv] : []), warnText(n) ?? ''];
     });
     downloadXlsx(`${P.key}-${dayOf(at)}.xlsx`, buildXlsx([{ name: TITLE[page](), rows: [head, ...body], frozen: { rows: 1, cols: 3 }, cols: [8, 12, 48] }]));
@@ -437,7 +440,7 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
               const depth = P.phase ? n.depth : 1;
               return (
                 <Fragment key={k}>
-                  <tr className={`${depth === 1 && P.phase ? s.phaseRow : n.children.length && P.phase ? s.grpRow : s.leafRow} ${isNew ? s.newRow : ''} ${(P.decree && decreeGaps(r).length) || dateGaps(P, n).length ? s.gapRow : ''} ${rowWarn(P, n, v.S) ? s.lateRow : ''}`}
+                  <tr className={`${depth === 1 && P.phase ? s.phaseRow : n.children.length && P.phase ? s.grpRow : s.leafRow} ${isNew ? s.newRow : ''} ${(P.decree && decreeGaps(r).length) || dateGaps(P, n).length ? s.gapRow : ''} ${rowWarn(P, n, v) ? s.lateRow : ''}`}
                     title={P.decree && decreeGaps(r).length ? tr('Дутуу: {0}', decreeGaps(r).map((k) => FIELD_LABEL[k]()).join(', ')) : warnText(n) ?? undefined}>
                     <td className={s.code} style={{ paddingLeft: 6 + (depth - 1) * 14 }}>
                       {P.phase && n.children.length > 0 && !find.trim() ? (
@@ -463,16 +466,17 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
                       const ed = fields.includes(f) || (pend.edits[k] as Record<string, string> | undefined)?.[f.key] != null;
                       const raw = r[f.key];
                       const shown = f.kind === 'date' ? (dayOf(raw as number | null) || '—')
-                        : f.kind === 'pct' ? pct(v.S, 1) : f.kind === 'num' ? (raw == null ? '—' : Number(raw).toLocaleString('en-US'))
+                        : f.kind === 'pct' ? pct(v.S, 2) : f.kind === 'num' ? (raw == null ? '—' : Number(raw).toLocaleString('en-US'))
                         : (raw == null || raw === '' ? '—' : String(raw));
                       return <td key={f.key} className={f.kind === 'pct' ? s.r : undefined} title={ed ? undefined : fieldLockWhy(n, f) ?? undefined}>{ed ? input(n, f) : shown}</td>;
                     })}
-                    {P.buildInfo && <><td>{dayOf(r.guits_duusah as number | null) || '—'}</td><td className={s.r}>{pct(v.S, 1)}</td><td>{komissText(r)}</td></>}
+                    {/* 2026-11-24 (засвар): барилга дуусах = ТТБ-ийн бодсон M, хадгалсан `guits_duusah` биш */}
+                    {P.buildInfo && <><td>{dayOf(v.M) || '—'}</td><td className={s.r}>{pct(v.S, 2)}</td><td>{komissText(r)}</td></>}
                     {P.contractInfo && (() => {
                       const c = contractOf(n);
                       return <><td>{c?.date != null ? dayOf(c.date) : '—'}</td><td>{c?.no || '—'}</td><td className={s.nm} title={c?.contractor || undefined}>{c?.contractor || '—'}</td></>;
                     })()}
-                    {showPct && <td className={s.r}>{pct(v.S, 1)}</td>}
+                    {showPct && <td className={s.r}>{pct(v.S, 2)}</td>}
                     {canEdit && P.addRows && (
                       <td className={s.act}>
                         {canAdd && (

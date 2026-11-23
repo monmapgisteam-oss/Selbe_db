@@ -172,7 +172,8 @@ assert.equal(contractWhy({ ...one, items: one.items.map((i) => ({ ...i, advance:
   const src = readFileSync('src/modules/IpcFlow.tsx', 'utf8');
   assert.ok(src.includes('cfMatches(r, parts, phases)'), 'гэрээ цуцлахад ижил багцын өөр үе шатны гэрээ хөндөгдөхгүй');
   assert.ok(!src.includes('toISOString'), 'IPC-ийн огноо локал өдрөөр');
-  assert.equal((src.match(/await freshPays\(code, pays\)/g) ?? []).length, 4, 'хуучин баримтын скан, батлах, устгах, гэрээ цуцлах (2026-11-18) — дахин уншина');
+  /* 2026-11-24: + шинэ IPC түгжихийн өмнөх (`stillFree`) ба батласны дараах давхар төлбөрийн (`dupPayDeletes`) уншилт */
+  assert.equal((src.match(/await freshPays\(code, pays\)/g) ?? []).length, 6, 'хуучин баримтын скан, батлах, устгах, гэрээ цуцлах (2026-11-18) — дахин уншина');
   /* 2026-11-23: шинэ IPC (238) — үүсгэхийн өмнө, дараа, скан · батлах · устгахад (`freshRec`) 185 ба 238-ийг хамт дахин уншина */
   assert.equal(src.split('Promise.all([freshPays(code, pays), freshDocs(code)])').length - 1, 3, 'шинэ IPC 185 + 238-ийг дахин уншина');
   assert.ok(src.includes('contractCancelFresh(await freshPays(code, pays), rows, await freshDocs(code))'), 'гэрээ цуцлах шинээр уншсан мөрөөр (185 ба 238) шийднэ');

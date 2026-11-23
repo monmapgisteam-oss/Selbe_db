@@ -1,7 +1,7 @@
 /**
  * ХУВААРИЙН САРЫН ОБЬЁМ — төлөвлөсөн тоо хэмжээг САР ТУТМААР.
  */
-import { requireCap } from './who';
+import { currentUser, requireCap } from './who';
 import { agsFetch } from '@/modules/sheet/ags';
 import { t as tr } from '@/lib/i18nCore';
 import { AUTH, GUITS, canonPkg } from '@/lib/services';
@@ -939,6 +939,12 @@ export const cfIdOfPctKey = (key: string): number | null => {
  * өдрийн төлөвлөгөөт хувийг ХӨНДӨХГҮЙ: долоо хоног солигдоход хувь буурахгүй, өнгөрсөн оруулга үлдэгдэл нөлөөгүй. */
 
 export const TURUL_WEEK = 'doloo_hon';
+/**
+ * БАТЛУУЛАХААР ХҮЛЭЭГДЭЖ БУЙ долоо хоногийн обьём (2026-11-24) — сарын обьёмын адил батлагч баталтал төлөвлөгөөт хувьд
+ * (182) нөлөөлөхгүй: `loadPkgWeek` анхдагчаар зөвхөн `TURUL_WEEK`-ийг уншина. Батлахад `approveWeek` → `TURUL_WEEK`.
+ */
+export const TURUL_WEEK_PEND = 'doloo_sanal';
+export type WeekTurul = typeof TURUL_WEEK | typeof TURUL_WEEK_PEND;
 
 /** Долоо хоногийн эхлэл — Даваа гараг, UTC шөнө дунд */
 export const weekStart = (ms: number): number => {
@@ -950,8 +956,8 @@ export const weekStart = (ms: number): number => {
 export const nextWeekStart = (today: number): number => weekStart(today) + 7 * DAY;
 const ymd = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
-export const weekDkeyOf = (bagts: string, des: number, blok: string, week: number): string =>
-  `${bagts}|${TURUL_WEEK}|${des}|${blok}|${ymd(week)}`;
+export const weekDkeyOf = (bagts: string, des: number, blok: string, week: number, turul: WeekTurul = TURUL_WEEK): string =>
+  `${bagts}|${turul}|${des}|${blok}|${ymd(week)}`;
 
 /** Нэг долоо хоногийн оруулга */
 export type WeekPlan = { week: number; obyem: number; oid: number | null };
@@ -996,12 +1002,15 @@ export function weekPct(
   return Math.min(1, Math.max(base(asOf) ?? 0, v));
 }
 
-/** Багцын долоо хоногийн бүх оруулга */
-export async function loadPkgWeek(bagts: string): Promise<PkgWeek> {
+/**
+ * Багцын долоо хоногийн бүх оруулга. `turul` — анхдагч нь БАТЛАГДСАН (`TURUL_WEEK`, төлөвлөгөөт хувьд нөлөөлдөг цорын
+ * ганц); 2026-11-24: `TURUL_WEEK_PEND` — батлуулахаар хүлээгдэж буй (зөвхөн дэлгэцэд).
+ */
+export async function loadPkgWeek(bagts: string, turul: WeekTurul = TURUL_WEEK): Promise<PkgWeek> {
   const feats: { attributes: Record<string, unknown> }[] = [];
   for (let off = 0; ; ) {
     const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
-      where: `bagts = '${bagts.replace(/'/g, "''")}' AND turul = '${TURUL_WEEK}'`,
+      where: `bagts = '${bagts.replace(/'/g, "''")}' AND turul = '${turul}'`,
       outFields: 'objectid,des_dugaar,blok,sar,obyem',
       orderByFields: 'objectid ASC',
       resultOffset: String(off),
@@ -1028,12 +1037,14 @@ export async function countWeekRows(): Promise<number | null> {
 }
 
 /** Нэг ажил × блок × долоо хоногийн оруулгыг хадгална (`obyem` null = устгана) — цэвэр ачаа (`weekEdits`) ба бичилт */
-export function weekEdits(meta: WorkMeta, blok: string, week: number, obyem: number | null, oid: number | null): PlanEdits {
+export function weekEdits(
+  meta: WorkMeta, blok: string, week: number, obyem: number | null, oid: number | null, turul: WeekTurul = TURUL_WEEK,
+): PlanEdits {
   const out: PlanEdits = { adds: [], updates: [], deletes: [] };
   if (obyem == null) { if (oid != null) out.deletes.push(oid); return out; }
   const attributes = {
-    dkey: weekDkeyOf(meta.bagts, meta.des, blok, week),
-    turul: TURUL_WEEK,
+    dkey: weekDkeyOf(meta.bagts, meta.des, blok, week, turul),
+    turul,
     bagts: meta.bagts,
     bagts_ner: canonPkg(meta.bagtsNer),
     des_dugaar: meta.des,
@@ -1059,13 +1070,68 @@ export async function saveWeek(meta: WorkMeta, blok: string, week: number, obyem
   await requirePlanWriteOf(meta.bagts);
   if (obyem != null && (!Number.isFinite(obyem) || obyem < 0)) throw new Error(tr('Обьём 0 буюу түүнээс их тоо байх ёстой.'));
   if (obyem != null && meta.niit != null && meta.niit > 0 && obyem > meta.niit) throw new Error(tr('Обьём ажлын нийт обьёмоос ({0}) их байж болохгүй.', meta.niit));
-  const dkey = weekDkeyOf(meta.bagts, meta.des, blok, week);
-  const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
-    where: `dkey = '${dkey.replace(/'/g, "''")}' AND turul = '${TURUL_WEEK}'`, outFields: 'objectid', orderByFields: 'objectid ASC', returnGeometry: 'false',
-  });
-  const oids = ((j.features ?? []) as { attributes: Record<string, unknown> }[]).map((f) => Number(f.attributes.objectid)).filter(Number.isFinite);
-  const e = weekEdits(meta, blok, week, obyem, oids[0] ?? null);
-  e.deletes.push(...oids.slice(1));
+  /* 2026-11-24: шууд 182-ын төлөвлөгөөт хувьд нөлөөлдөг байв (сарын обьём батлалт шаарддаг атал) — одоо ХҮЛЭЭГДЭЖ БУЙ
+     мөрөнд бичнэ; батлагч `approveWeek`-ээр баталтал хувьд орохгүй */
+  const pend = await weekRows(meta, blok, week, TURUL_WEEK_PEND);
+  const e = weekEdits(meta, blok, week, obyem, pend[0]?.oid ?? null, TURUL_WEEK_PEND);
+  e.deletes.push(...pend.slice(1).map((x) => x.oid));
   e.pkgKey = meta.bagts; // 2026-11-23: устгалтын багцыг ил зааж өгнө (`applyPlanEdits`-ийн эрхийн шалгалт)
   if (e.adds.length || e.updates.length || e.deletes.length) await applyPlanEdits(e);
+}
+
+/** Тэр түлхүүрийн (ажил × блок × долоо хоног × төрөл) мөрүүд — objectid өсөхөөр */
+async function weekRows(meta: WorkMeta, blok: string, week: number, turul: WeekTurul): Promise<{ oid: number; obyem: number | null; by: string }[]> {
+  const dkey = weekDkeyOf(meta.bagts, meta.des, blok, week, turul);
+  const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
+    where: `dkey = '${dkey.replace(/'/g, "''")}' AND turul = '${turul}'`, outFields: '*', orderByFields: 'objectid ASC', returnGeometry: 'false',
+  });
+  /* 2026-11-24: оруулсан хүн — editor tracking (`created_user`, эс бөгөөс `last_edited_user`); хүснэгтэд алга бол хоосон */
+  const byOf = (a: Record<string, unknown>): string => String(a.created_user ?? a.last_edited_user ?? '').trim().toLowerCase();
+  return ((j.features ?? []) as { attributes: Record<string, unknown> }[])
+    .map((f) => ({ oid: Number(f.attributes.objectid), obyem: f.attributes.obyem == null ? null : Number(f.attributes.obyem), by: byOf(f.attributes) }))
+    .filter((x) => Number.isFinite(x.oid));
+}
+
+/**
+ * БАТЛАХ ачаа (цэвэр, 2026-11-24): хүлээгдэж буй утга `expect`-тэй тэнцүү байх ёстой (батлагчийн харсан утга) —
+ * батлагдсан мөрийг шинэчилж/нэмж, хүлээгдэж буй бүх мөрийг устгана. Тэнцэхгүй бол null.
+ */
+export function weekApproveEdits(
+  meta: WorkMeta, blok: string, week: number,
+  pend: readonly { oid: number; obyem: number | null }[], appr: readonly { oid: number }[], expect: number,
+): PlanEdits | null {
+  const v = pend[0]?.obyem;
+  if (v == null || !Number.isFinite(v) || v !== expect) return null;
+  const e = weekEdits(meta, blok, week, v, appr[0]?.oid ?? null, TURUL_WEEK);
+  e.deletes.push(...appr.slice(1).map((x) => x.oid), ...pend.map((x) => x.oid));
+  e.pkgKey = meta.bagts;
+  return e;
+}
+
+/** Батлах эрх — тэр багцын ХУВААРИЙН БАТЛАГЧ (сарын обьёмын адил); нэвтрэлт унтраалттай / Node орчинд шалгахгүй */
+async function requirePlanApproveOf(pkgKey: string): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const [{ huvaariScope }, { PKGS }, { writeGuardsOn, currentUser }, { scopeHas }] = await Promise.all([
+    import('./huvaariAcl'), import('@/modules/sheet/bagts.pkg'), import('./who'), import('./scopedAcl'),
+  ]);
+  if (!writeGuardsOn() || !AUTH.appId) return;
+  const group = PKGS.find((p) => p.key === pkgKey)?.group ?? null;
+  if (group == null || !scopeHas(huvaariScope(currentUser(), 'approver'), group)) {
+    throw new Error(tr('Ирэх 7 хоногийн обьёмыг батлах эрхгүй — энэ багцын хуваарийн батлагч батална.'));
+  }
+}
+
+/**
+ * Хүлээгдэж буй долоо хоногийн обьёмыг БАТЛАНА (2026-11-24) — зөвхөн тэр багцын батлагч. `expect` — батлагчийн харсан
+ * утга; хооронд нь өөрчлөгдсөн бол шиднэ (зэрэгцээ өөрчлөлт).
+ */
+export async function approveWeek(meta: WorkMeta, blok: string, week: number, expect: number): Promise<void> {
+  await requirePlanApproveOf(meta.bagts);
+  const [pend, appr] = await Promise.all([weekRows(meta, blok, week, TURUL_WEEK_PEND), weekRows(meta, blok, week, TURUL_WEEK)]);
+  /* 2026-11-24: өөрийн оруулсан обьёмыг өөрөө батлахгүй (сарын хуваарьтай ижил дүрэм) */
+  const me = currentUser()?.trim().toLowerCase() ?? '';
+  if (me && pend.some((r) => r.by === me)) throw new Error(tr('Өөрийн оруулсан обьёмыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.'));
+  const e = weekApproveEdits(meta, blok, week, pend, appr, expect);
+  if (!e) throw new Error(tr('Хүлээгдэж буй обьём өөрчлөгдсөн эсвэл алга — хуудсаа шинэчилнэ үү.'));
+  await applyPlanEdits(e);
 }

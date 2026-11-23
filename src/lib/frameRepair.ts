@@ -5,7 +5,7 @@
  * дараах огноотой жаазнууд аль хэдийн байгаа тул тэдгээрийн мөрд хадгалсан ХУРИМТЛАГДСАН гүйцэтгэлийн хувь (блок бүрийн
  * `…_гүйцэтгэл`, мөрийн `гүйцэтгэл`, «одоо байгаа») шинэ ажлыг агуулаагүй үлдэнэ — газрын зураг, явцын тооцоо хамгийн сүүлийн
  * огнооны хадгалсан хувийг уншдаг (`blockProgress.winnerCells`). Энд `fromDay`-ээс ХОЙШХИ жааз бүрт дахин бодож, зөрсөн
- * хувийг бичнэ. Обьём, огноо, төлөвлөгөөт хувийг хөндөхгүй.
+ * хувийг бичнэ. Обьём, төлөвлөгөөт хувийг хөндөхгүй; 2026-11-24: БОДИТ эхэлсэн/дууссан огноог мөн засна (`laterDates`).
  *
  * ХҮРЭЭ (2026-11-11, амьд туршилт): ЗӨВХӨН `fromDay`-ийн жаазанд обьём бичигдсэн мөр (ажлын кодоор) ба тэдгээрийн ӨВӨГ
  * бүлгүүд. Жаазыг бүхэлд нь дахин бодож бичвэл огт хамаагүй нүднүүд (хуучин жаазны бутархайн зөрүү, обьёмгүйгээр хувиар
@@ -13,7 +13,7 @@
  */
 import { agsFetch } from '@/modules/sheet/ags';
 import type { Pkg, Schema } from '@/modules/sheet/bagts.pkg';
-import { applyUpdates, computeAll, loadRows, msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
+import { applyUpdates, computeAll, dayToMs, loadRows, msToDay, type SheetRow } from '@/modules/sheet/bagtsSheet';
 import { invalidate } from '@/lib/dataBus';
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -90,6 +90,78 @@ export function rebaseBackdated(
   return n;
 }
 
+/** Навч мөрийн бүрэн обьёмын босго (`buildFrame`-тэй ижил) */
+const fullOf = (vol: number | null | undefined): number | null => (vol != null && vol > 0 ? vol * (1 - 1e-9) : null);
+
+/**
+ * БӨГЛӨСӨН ӨДРИЙН ЖААЗНЫ БОДИТ ЭХЭЛСЭН/ДУУССАН ОГНОО (2026-11-24). Жааз хамгийн сүүлийн жаазны (L) мөрөөр угсрагддаг тул
+ * `buildFrame`-ийн «өмнөх хуримтлал» нь L-ийнх (D-ээс хойших ажилтай) — эхэлсэн огноо алга болж, L-ийн хожуу огноо D-ийн
+ * жаазанд ордог байв. Энд өмнөх жаазаар (P) дахин бодно: эхлэх = P-ийн огноо › L-ийн огноо (≤ D бол) › D (P-д хуримтлал
+ * 0, D-д ажил > 0); дуусах = P-ийн огноо › L-ийн огноо (≤ D бол) › D (D-д хуримтлал ≥ обьём, P-д дутуу). Бүлгийн мөр хөндөхгүй.
+ * @returns өөрчилсөн нүдний тоо
+ */
+export function rebaseBackdatedDates(
+  frame: Record<string, unknown>[],
+  loaded: readonly Pick<SheetRow, 'des' | 'group' | 'vol' | 'aStart' | 'aEnd'>[],
+  prev: readonly Pick<SheetRow, 'des' | 'obyem' | 'aStart' | 'aEnd'>[],
+  sc: Pick<Schema, 'aStart' | 'aEnd' | 'obyem' | 'f'>,
+  fillMs: number,
+): number {
+  const desF = sc.f.des;
+  const D = dayToMs(msToDay(fillMs));
+  if (!desF || D == null || frame.length !== loaded.length) return 0;
+  const prevOf = new Map<number, Pick<SheetRow, 'obyem' | 'aStart' | 'aEnd'>>();
+  for (const r of prev) if (r.des != null && !prevOf.has(r.des)) prevOf.set(r.des, r);
+  const upTo = (v: number | null | undefined): number | null => (v != null && v <= D ? v : null);
+  let n = 0;
+  frame.forEach((a, i) => {
+    const r = loaded[i];
+    if (r.group || r.des == null || num(a[desF]) !== r.des) return;
+    const p = prevOf.get(r.des);
+    const full = fullOf(r.vol);
+    const nB = Math.max(sc.aStart.length, sc.aEnd.length);
+    for (let b = 0; b < nB; b += 1) {
+      const of = sc.obyem[b];
+      const day = of ? num(a[of]) ?? 0 : 0;
+      const pCum = p?.obyem[b] ?? 0;
+      const cum = pCum + day;
+      const fs = sc.aStart[b];
+      if (fs) {
+        const want = p?.aStart[b] ?? upTo(r.aStart[b]) ?? (day > 0 && !(pCum > 0) ? D : null);
+        if (num(a[fs]) !== want) { a[fs] = want; n += 1; }
+      }
+      const fe = sc.aEnd[b];
+      if (fe) {
+        const want = p?.aEnd[b] ?? upTo(r.aEnd[b]) ?? (full != null && cum >= full && pCum < full ? D : null);
+        if (num(a[fe]) !== want) { a[fe] = want; n += 1; }
+      }
+    }
+  });
+  return n;
+}
+
+/**
+ * ХОЖУУ ЖААЗНЫ БОДИТ ОГНОО (цэвэр, 2026-11-24) — `track` нь өмнөх өдрүүдийн хамгийн эрт эхэлсэн/дууссан огноо (энэ
+ * дуудлагаар шинэчлэгдэнэ). Эхлэх = анх хуримтлал > 0 болсон өдөр, дуусах = анх ≥ обьём болсон өдөр; хадгалсан огноо
+ * түүнээс эрт бол хэвээр.
+ */
+export function laterDates(
+  stored: { start: number | null; end: number | null },
+  cum: number | null,
+  vol: number | null,
+  dayMs: number,
+  track: { start: number | null; end: number | null },
+): { start: number | null; end: number | null } {
+  const full = fullOf(vol);
+  const tS = track.start ?? (cum != null && cum > 0 ? dayMs : null);
+  const tE = track.end ?? (full != null && cum != null && cum >= full ? dayMs : null);
+  const start = tS != null && (stored.start == null || tS < stored.start) ? tS : stored.start;
+  const end = tE != null && (stored.end == null || tE < stored.end) ? tE : stored.end;
+  track.start = start;
+  track.end = end;
+  return { start, end };
+}
+
 /**
  * ИЛГЭЭЛТ ЗӨВХӨН ОБЬЁМЫН ЗАМААР ӨӨРЧИЛСӨН ҮҮ (2026-11-23, аудит) — бөглөсөн өдрөөр (хожуу жаазны өмнө) бичих нөхцөл.
  * Хожуу жаазнуудын хадгалсан хувийг `refreshStoredProgress` зөвхөн обьёмоос (`obyemDay`) дахин боддог тул обьёмгүй мөрд
@@ -159,6 +231,15 @@ export async function refreshStoredProgress(pkg: Pkg, sc: Schema, fromDay: strin
   const base = await loadRows(pkg, sc, fromDay, undefined, { strict: true });
   const codes = touchedCodes(base.rows);
   if (!codes.size) return 0;
+  /* 2026-11-24: бодит огноо — бөглөсөн өдрийн (D) жаазны огнооноос эхлэн өдөр бүрд дамжуулна (`laterDates`) */
+  const track = new Map<string, { start: number | null; end: number | null }>();
+  for (const r of base.rows) {
+    if (r.group || r.des == null) continue;
+    for (const b of codes.get(r.des) ?? []) {
+      const k = `${String(r.des)}|${String(b)}`;
+      if (!track.has(k)) track.set(k, { start: r.aStart[b] ?? null, end: r.aEnd[b] ?? null });
+    }
+  }
   let n = 0;
   for (const day of days) {
     const { rows, asOf } = await loadRows(pkg, sc, day, undefined, { strict: true });
@@ -176,6 +257,20 @@ export async function refreshStoredProgress(pkg: Pkg, sc: Schema, fromDay: strin
         const want = c[i].actAgg[b] ?? null;
         if (want != null && off(num(r.raw?.[f]), want)) u[f] = want;
       });
+      const dayMs = dayToMs(day);
+      if (!r.group && r.des != null && dayMs != null) {
+        for (const b of blocks) {
+          const fs = sc.aStart[b];
+          const fe = sc.aEnd[b];
+          if (!fs && !fe) continue;
+          const k = `${String(r.des)}|${String(b)}`;
+          const t = track.get(k) ?? { start: null, end: null };
+          track.set(k, t);
+          const want = laterDates({ start: r.aStart[b] ?? null, end: r.aEnd[b] ?? null }, r.obyem[b] ?? null, r.vol, dayMs, t);
+          if (fs && want.start !== (r.aStart[b] ?? null)) u[fs] = want.start;
+          if (fe && want.end !== (r.aEnd[b] ?? null)) u[fe] = want.end;
+        }
+      }
       if (sc.f.act && c[i].J != null && off(num(r.raw?.[sc.f.act]), c[i].J)) u[sc.f.act] = c[i].J;
       if (sc.f.wE && c[i].E != null && off(num(r.raw?.[sc.f.wE]), c[i].E)) u[sc.f.wE] = c[i].E;
       if (Object.keys(u).length) updates.push({ [sc.f.oid]: r.oid, ...u });

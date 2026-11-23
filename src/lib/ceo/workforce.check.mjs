@@ -206,6 +206,20 @@ const ROWS = [
     const other = row(day, { HBZIT: { w: 247, t: 1 } }, { workers: 247, manHours: 1976 }, false, { oid: 303, edit: 3 });
     assert.equal(groupDays([m1, m2, other])[0].header.workers, 636, 'өөр компанийн маягт нэмэгдэнэ (389 + 247)');
   }
+  /* 2026-11-24: хуучин маягтын толгойгоос шинэ маягтаар СОЛИГДСОН компанийн хэсэг хасагдана */
+  {
+    const x = row(day, { HBZIT: { w: 100, t: 4 }, MK: { w: 50, t: 2 } }, { workers: 150, manHours: 1200, technik: 6 }, false, { oid: 401, edit: 1 });
+    const y = row(day, { HBZIT: { w: 110, t: 5 } }, { workers: 110, manHours: 880, technik: 5 }, false, { oid: 402, edit: 2 });
+    for (const order of [[x, y], [y, x]]) {
+      const [d] = groupDays(order);
+      assert.equal(d.header.workers, 160, 'ажилтан 110 + 50 (260 биш)');
+      assert.equal(d.header.manHours, 1280, 'хүн цаг 880 + 1,200 × 50/150 (2,080 биш)');
+      assert.equal(d.header.technik, 7, 'техник 5 + 2');
+      assert.equal(d.workers, 160, 'компанийн нийлбэртэй таарна');
+      assert.equal(d.comp.HBZIT.workers, 110, 'ХБЗИТ — шинэ маягт');
+      assert.equal(d.comp.MK.workers, 50, 'МК — хуучин маягтаас');
+    }
+  }
   // Ognoo их нь EditDate/objectid-оос ДАВАМГАЙЛНА
   const older = row(ub(2026, 9, 3, 9), { MK: { w: 5 } }, {}, false, { oid: 99, edit: Date.UTC(2026, 8, 10) });
   const newest = row(ub(2026, 9, 3, 21), { MK: { w: 6 } }, {}, false, { oid: 1, edit: Date.UTC(2026, 8, 3) });

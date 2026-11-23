@@ -9,7 +9,7 @@
  *   4. Бүртгэлд баримтгүй үе шат хөндөгдөхгүй.
  */
 import assert from 'node:assert/strict';
-import { buildTree, computePlan, moneySums } from './projectPlan.ts';
+import { buildTree, computePlan, moneySums, planBudgetTotal } from './projectPlan.ts';
 import { toZRow } from './zuragBurtgel.ts';
 import { withRegistryRows, registryPlanEdits, isTezuBuleg } from './zuragPlan.ts';
 import { isRegisterRow } from './hoSync/compute.ts';
@@ -268,11 +268,98 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   const zd = (oid, ner) => toZRow({ objectid: oid, buleg: '003. АЖЛЫН ЗУРАГ', ded_buleg: '', ner, tolov: 'Батлагдсан' });
   let oid = 700;
   const e0 = registryPlanEdits(base, [zd(71, 'P'), zd(72, 'Q')]);
-  let st = [...base, ...e0.adds.map((x) => ({ ...x, objectid: oid++, etseg_kod: x.dd_kod.includes('.') ? x.dd_kod.replace(/.d+$/, '') : null }))];
+  /* 2026-11-24: `/.d+$/` → `/\.\d+$/` (эцэг код зөв — урьд нь мөр өөрөө өөрийнхөө эцэг болж үндэст унадаг байв) */
+  let st = [...base, ...e0.adds.map((x) => ({ ...x, objectid: oid++, etseg_kod: x.dd_kod.includes('.') ? x.dd_kod.replace(/\.\d+$/, '') : null }))];
+  assert.deepEqual(buildTree(st).issues, [], 'мод зөв угсрагдана');
   const id = st.find((r) => r.zurag_oid === 72).objectid;
   st = st.map((r) => (r.objectid === id ? { ...r, geree_dugaar: 'З/5', geree_dun: 40, ho_dungiin_tailbar: 'Гэрээлсэн дүн', olgoson_dun: 10 } : r));
   const e = registryPlanEdits(st, [zd(71, 'P'), zd(72, 'Q')]);
   const u = e.updates.find((x) => x.objectid === id);
   assert.ok(!u || (!('geree_dun' in u) && !('ho_dungiin_tailbar' in u) && !('olgoson_dun' in u)), 'гэрээ, төлбөр хэвээр');
+
+  /* ── 2026-11-24 №3А: үнэгүй үе шат — гэрээтэй баримт өөрийн олгосон дүнтэй; үе шатын мөрд ДАВХАР орохгүй (20 ↔ 10) ── */
+  {
+    const t = buildTree(withRegistryRows(st, [zd(71, 'P'), zd(72, 'Q')]));
+    const m = moneySums(t);
+    assert.equal(m.get(t.root).paid, 10, 'төслийн нийт олгосон 10 (20 биш)');
+    const ts = buildTree(st);
+    assert.equal(m.get(t.root).paid, moneySums(ts).get(ts.root).paid, 'хадгалсан мөрийн нийлбэртэй ижил');
+    assert.equal(t.byCode.get('2').row.olgoson_dun, null, 'үе шатын мөрд шилжүүлэх үлдэгдэлгүй');
+  }
+
+  /* ── 2026-11-24 №2: хасагдсан Q-ийн мөр (гэрээ «З/5») шинэ R-д шилжихгүй — Q-ийн мөр үлдээсэн, R шинэ мөр ── */
+  {
+    const e2 = registryPlanEdits(st, [zd(71, 'P'), zd(73, 'R')]);
+    assert.deepEqual(e2.held, [id], 'Q-ийн гэрээтэй мөр үлдээсэн жагсаалтад');
+    assert.ok(!e2.updates.some((x) => x.objectid === id && 'ajil_uilchilgee' in x), 'Q-ийн мөрийн нэр R болохгүй');
+    assert.deepEqual(e2.adds.map((a) => [a.ajil_uilchilgee, a.zurag_oid]), [['R', 73]], 'R — шинэ мөр');
+    const out = withRegistryRows(st, [zd(71, 'P'), zd(73, 'R')]);
+    const r = out.find((x) => x.ajil_uilchilgee === 'R');
+    assert.equal(r.objectid, null, 'R хүснэгтийн мөр авахгүй');
+    assert.equal(r.geree_dugaar, undefined, 'R-д «З/5» гэрээ алга');
+    const q = out.find((x) => x.objectid === id);
+    assert.deepEqual([q.geree_dugaar, q.olgoson_dun], ['З/5', 10], 'Q-ийн мөр гэрээ, төлбөртэйгээ модонд үлдэнэ');
+    const t = buildTree(out);
+    assert.deepEqual(t.issues, [], 'Д/Д давхардахгүй, мод эвдрэхгүй');
+    assert.equal(moneySums(t).get(t.root).paid, 10, 'олгосон дүн алга болохгүй, давхардахгүй');
+  }
+}
+
+/* ── 2026-11-24 №1: үлдээсэн гэрээтэй мөрийн Д/Д бүртгэлийн мөртэй давхцвал ЧӨЛӨӨТ дугаар (урьд нь `/^d+$/` → үргэлж «.1», ашиглагдаж буй код) ── */
+{
+  const base = [{ objectid: 1, dd_kod: '2', ajil_uilchilgee: 'Ажлын зураг төсөл', uy_shat: 'Ажлын зураг төсөл' }];
+  const zd = (oid, ner) => toZRow({ objectid: oid, buleg: '003. АЖЛЫН ЗУРАГ', ded_buleg: '', ner, tolov: 'Батлагдсан' });
+  const st = [
+    ...base,
+    { objectid: 801, dd_kod: '2.1', etseg_kod: '2', ajil_uilchilgee: '1. АЖЛЫН ЗУРАГ' },
+    { objectid: 802, dd_kod: '2.1.1', etseg_kod: '2.1', ajil_uilchilgee: 'A', zurag_oid: 81 },
+    { objectid: 803, dd_kod: '2.1.2', etseg_kod: '2.1', ajil_uilchilgee: 'B', zurag_oid: 82, geree_dugaar: 'З/1', geree_dun: 30, ho_dungiin_tailbar: 'Гэрээлсэн дүн' },
+  ];
+  /* B бүртгэлээс хасагдсан; C, D нэмэгдсэн → 2.1.1 A · 2.1.2 C · 2.1.3 D — B-ийн 2.1.2 давхцана */
+  const e = registryPlanEdits(st, [zd(81, 'A'), zd(83, 'C'), zd(84, 'D')]);
+  assert.deepEqual(e.held, [803]);
+  assert.deepEqual(e.updates.find((u) => u.objectid === 803), { objectid: 803, dd_kod: '2.1.4' }, 'чөлөөт дугаар 2.1.4 (2.1.1 биш)');
+  const codes = [...st.filter((r) => !e.deletes.includes(r.objectid)).map((r) => e.updates.find((u) => u.objectid === r.objectid)?.dd_kod ?? r.dd_kod), ...e.adds.map((a) => a.dd_kod)];
+  assert.equal(new Set(codes).size, codes.length, `182-т Д/Д давхардахгүй: ${codes.join(', ')}`);
+  const out = withRegistryRows(st, [zd(81, 'A'), zd(83, 'C'), zd(84, 'D')]);
+  assert.equal(out.find((r) => r.objectid === 803).dd_kod, '2.1.4', 'хуудасны мод ч ижил дугаартай');
+  assert.deepEqual(buildTree(out).issues, []);
+}
+
+/* ── 2026-11-24 №3Б: үнэтэй үе шат — бүртгэлээс хасагдсан гэрээтэй үнэтэй зураг модонд үлдэнэ (төсөв 1030, 1010 биш);
+   хувь нь бүртгэлээс тул үе шатын гүйцэтгэлд тооцохгүй ── */
+{
+  const base = [
+    { objectid: 1, dd_kod: '2', ajil_uilchilgee: 'Ажлын зураг төсөл', uy_shat: 'Ажлын зураг төсөл' },
+    { objectid: 20, dd_kod: '3', ajil_uilchilgee: 'Барилга угсралт', uy_shat: 'Барилга угсралт', ho_dun_geree: 1000 },
+  ];
+  const zp = (oid, ner, une, tolov = 'huleej_avsan') => toZRow({ objectid: oid, buleg: '003. АЖЛЫН ЗУРАГ', ded_buleg: '', ner, tolov, ajliin_une: une });
+  let oid = 900;
+  const e0 = registryPlanEdits(base, [zp(91, 'P', 10), zp(92, 'Q', 20, 'ehleegui')]);
+  let st = [...base, ...e0.adds.map((x) => ({ ...x, objectid: oid++, etseg_kod: x.dd_kod.replace(/\.\d+$/, '') }))];
+  const idQ = st.find((r) => r.zurag_oid === 92).objectid;
+  st = st.map((r) => (r.objectid === idQ ? { ...r, geree_dugaar: 'З/9', olgoson_dun: 20 } : r));
+  const raw = buildTree(st);
+  assert.equal(planBudgetTotal(raw), 1030, 'хадгалсан мөрөөр 1030');
+  const t = buildTree(withRegistryRows(st, [zp(91, 'P', 10)]));
+  assert.equal(planBudgetTotal(t), 1030, 'хуудасны мод ч 1030 (Q хаягдахгүй)');
+  assert.equal(computePlan(t).get('2').E, 30, 'үе шатын төсөв хоосрохгүй');
+  assert.equal(moneySums(t).get(t.root).paid, 30, 'олгосон P 10 + Q 20');
+  assert.equal(moneySums(t).get(t.root).contract, 30, 'гэрээ P 10 + Q 20');
+  assert.equal(computePlan(t).get('2').S, 100, 'үлдээсэн Q (0%) үе шатын хувьд орохгүй — бүртгэлийн P 100%');
+}
+
+/* ── 2026-11-24 №8: зэрэг нэмэлтийн давхардал — бага objectid үлдэнэ, гэрээтэй мөр устахгүй ── */
+{
+  const { registryDupDeletes } = await import('./zuragPlan.ts');
+  const r = (objectid, dd_kod, ajil_uilchilgee, zurag_oid, o = {}) => ({ objectid, dd_kod, ajil_uilchilgee, zurag_oid, ...o });
+  const now = [
+    r(100, '2.1', '1. АЖЛЫН ЗУРАГ', null), r(101, '2.1.1', 'A', 81), r(102, '2.1.2', 'B', 82),
+    r(110, '2.1', '1. АЖЛЫН ЗУРАГ', null), r(111, '2.1.1', 'A', 81), r(112, '2.1.2', 'B', 82, { geree_dugaar: 'З/2' }),
+    r(113, '2.1.3', 'C', 83),
+  ];
+  assert.deepEqual(registryDupDeletes(now, [110, 111, 112, 113]), [110, 111], 'өөрийн давхар нэмэлт устана; гэрээтэй 112, давхаргүй 113 үлдэнэ');
+  assert.deepEqual(registryDupDeletes(now, [100, 101, 102]), [], 'бага objectid-тай тал юу ч устгахгүй');
+  assert.deepEqual(registryDupDeletes(now, []), []);
 }
 console.log('zuragPlan.check: бүгд ✅');

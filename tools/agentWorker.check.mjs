@@ -361,6 +361,13 @@ try {
       ['cap шаардлагатай · cap-ыг энгийн гишүүн бичсэн', [user(ROOT, '[]'), cap('mallory')], 403, true],
       ['cap шаардлагатай · cap-ыг админ бичсэн', [user(ROOT, '[]'), cap(ROOT)], 200, true],
       ['cap шаардлагатай · энгийн гишүүний бичсэн super мөр cap-ыг алгасахгүй', [user(ROOT, '[]'), sup('bat', 'mallory')], 403, true],
+      /* 2026-11-24: гинжгүй — үндсэн бус админ шинэ админ үүсгэхгүй, үндсэн админыг хасахгүй */
+      ['үндсэн бус админы бичсэн super мөр (шинэ админ)', [sup('admin2', ROOT), sup('bat', 'admin2')], 403],
+      ['үндсэн бус админы бичсэн super мөр · cap шаардлагатай', [user(ROOT, '[]'), sup('admin2', ROOT), sup('bat', 'admin2')], 403, true],
+      ['үндсэн бус админ үндсэн админыг устгав (тэмдэг)', [sup('admin2', ROOT), feat(ROOT, 'super', 'removed', 'admin2')], 200, false, ROOT],
+      ['үндсэн админы мөрийг устгасан (бусад админ бий)', [sup('admin2', ROOT)], 200, false, ROOT],
+      ['үндсэн админ өөрийгөө устгасан', [sup('admin2', ROOT), feat(ROOT, 'super', 'removed', ROOT)], 403, false, ROOT],
+      ['хоосон хүснэгт · үндсэн админ мөргүй', [], 403, false, ROOT],
     ];
     const PORTAL = 'https://gis.selbecity.mn/geoportal';
     const PERMS_URL = 'https://gis.selbecity.mn/map/rest/services/Hosted/SYS_Selbe_Permissions/FeatureServer/230';
@@ -377,12 +384,12 @@ try {
       { filename: 'agent-proxy/server.mjs (trust)' },
     );
     let n = 0;
-    for (const [label, features, want, capReq] of cases) {
+    for (const [label, features, want, capReq, who = 'bat'] of cases) {
       n += 1;
       const perms = async () => ({ features });
       /* worker */
       reset();
-      globalThis.fetch = route({ self: selfOf('bat'), perms });
+      globalThis.fetch = route({ self: selfOf(who), perms });
       const env = { ...baseEnv(), ...(capReq ? { AGENT_CAP_REQUIRED: '1' } : {}) };
       const wr = await post(env, { Origin: ORIGIN, 'x-arcgis-token': `tok-trust-w-${n}` });
       assert.equal(wr.status, want, `worker: ${label} → ${want} биш (${wr.status})`);
@@ -390,7 +397,7 @@ try {
       /* server (AGENT_CAP_REQUIRED нь модулийн тогтмол — хэсгийг дахин үнэлэхэд уншигдана) */
       reset();
       if (capReq) process.env.AGENT_CAP_REQUIRED = '1'; else delete process.env.AGENT_CAP_REQUIRED;
-      const S = factory(route({ self: selfOf('bat'), perms }), createHash, PORTAL, PERMS_URL, ORG, 500);
+      const S = factory(route({ self: selfOf(who), perms }), createHash, PORTAL, PERMS_URL, ORG, 500);
       const sr = await S.checkArcGIS(`tok-trust-s-${n}`);
       assert.equal(sr.ok ? 200 : sr.status, want, `server: ${label} → ${want} биш (${sr.ok ? 200 : sr.status})`);
     }

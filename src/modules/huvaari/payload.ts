@@ -403,17 +403,20 @@ export const unknownMsg = (n0: number) => tr('Илгээлтийн {0} мөр о
  * memo-гоос механикаар салгав — цэвэр функц). Дүрм дуудагч дээр хэвээр.
  */
 export function backMarkMapOf({
-backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes,
+backOn, backMarks, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes, cur,
 }: {
 backOn: boolean; backMarks: { oid: number; ok: Set<number>; pay: PlanPayload } | null;
 rows: SheetRow[]; plan: PlanRow[]; byCode: Map<number, number>; reviewSet: ReadonlySet<number>; n: number;
 obDraft: Map<string, Map<string, number>>; obPlan: PkgPlan;
 obResDraft: Map<string, Map<string, MonthRes>>; obRes: PkgRes;
+/** 2026-11-24: шинэ илгээлт — өгвөл мөрийн БҮХ утга өмнөхтэй яг ижил байж л 'ok' (үргэлжлүүлэх) */
+cur?: PlanPayload;
 }): Map<number, 'ok' | 'bad'> {
   const out = new Map<number, 'ok' | 'bad'>();
   if (!backOn || !backMarks) return out;
   const rm = remapPayload(backMarks.pay, rows);
   const p = rm.pay;
+  const cp = cur ? remapPayload(cur, rows).pay : null;
   const okSet = new Set([...backMarks.ok].map((o) => rm.map.get(o) ?? o));
   const desOfOld = new Map<number, number>(Object.entries(backMarks.pay.keys ?? {}).map(([k, d]) => [Number(k), d]));
   const curDes = new Map(rows.map((r) => [r.oid, r.des]));
@@ -494,7 +497,52 @@ obResDraft: Map<string, Map<string, MonthRes>>; obRes: PkgRes;
     if (i == null) continue;
     if (!samePay(plan[i], i)) continue;
     const des = plan[i].des;
-    out.set(o, okSet.has(o) || (des != null && okDes.has(des)) ? 'ok' : 'bad');
+    const ok = okSet.has(o) || (des != null && okDes.has(des));
+    /* 2026-11-24: шинэ илгээлтэд батлагчийн хараагүй утга (шинэ/өөр түлхүүр) байвал ногоон болгохгүй */
+    if (ok && cp && !samePayRowOf(p, cp, o, des, n)) continue;
+    out.set(o, ok ? 'ok' : 'bad');
   }
   return out;
+}
+/**
+ * МӨРИЙН АГУУЛГА ХОЁР ИЛГЭЭЛТЭД ЯГ ИЖИЛ ҮҮ (2026-11-24) — өмнөх зөвшөөрлийг үргэлжлүүлэх нөхцөл.
+ * Мөрийн бүх түлхүүр (блок бүрийн муж, уялдаа, бодит огноо, нөөц, сарын обьём/нөөц) хоёр талд
+ * ижил байх ёстой; нэг талд л байгаа түлхүүр = батлагчийн хараагүй өөрчлөлт → ижил биш.
+ */
+export function samePayRowOf(prev: PlanPayload, cur: PlanPayload, oid: number, des: number | null, n: number): boolean {
+  const k = String(oid);
+  const both = (a: object, b: object) => (k in a) === (k in b);
+  if (!both(prev.spans, cur.spans) || !both(prev.deps, cur.deps) || !both(prev.actual, cur.actual) || !both(prev.res, cur.res)) return false;
+  const len = (a: readonly unknown[] | undefined, b: readonly unknown[] | undefined) => Math.max(n, a?.length ?? 0, b?.length ?? 0);
+  const sa = prev.spans[k];
+  const sb = cur.spans[k];
+  if (sa || sb) {
+    for (let b = 0; b < len(sa, sb); b++) if (!sameSpan(nSpan(sa?.[b]), nSpan(sb?.[b]))) return false;
+  }
+  if (k in cur.deps && formatDeps(parseDeps(prev.deps[k] ?? '')) !== formatDeps(parseDeps(cur.deps[k] ?? ''))) return false;
+  const aa = prev.actual[k];
+  const ab = cur.actual[k];
+  if (aa || ab) {
+    for (let b = 0; b < len(aa?.start, ab?.start); b++) if (nDay(aa?.start[b]) !== nDay(ab?.start[b])) return false;
+    for (let b = 0; b < len(aa?.end, ab?.end); b++) if (nDay(aa?.end[b]) !== nDay(ab?.end[b])) return false;
+  }
+  const ra = prev.res[k];
+  const rb = cur.res[k];
+  if ((ra?.hun ?? null) !== (rb?.hun ?? null) || (ra?.mashin ?? null) !== (rb?.mashin ?? null)) return false;
+  if (des == null) return true;
+  const pre = `${String(des)}|`;
+  const mine = (rec: Record<string, unknown> | undefined) => Object.keys(rec ?? {}).filter((x) => x.startsWith(pre)).sort();
+  const ka = mine(prev.obyem);
+  if (ka.join('\n') !== mine(cur.obyem).join('\n')) return false;
+  for (const key of ka) {
+    if (!sameMonths(new Map(Object.entries(prev.obyem[key])), new Map(Object.entries(cur.obyem[key])))) return false;
+  }
+  const resMap = (o: Record<string, { hun: number | null; mashin: number | null }> | undefined) =>
+    new Map(Object.entries(o ?? {}).map(([s0, v]) => [s0, { hun: v.hun, mashin: v.mashin }]));
+  const qa = mine(prev.obres);
+  if (qa.join('\n') !== mine(cur.obres).join('\n')) return false;
+  for (const key of qa) {
+    if (!sameRes(resMap(prev.obres?.[key]), resMap(cur.obres?.[key]))) return false;
+  }
+  return true;
 }

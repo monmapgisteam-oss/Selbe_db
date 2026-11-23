@@ -28,6 +28,8 @@ export type RemoteRow = {
    * унаад fail-closed `views: []` болгодог тул хуучин клиент дээр ч эрсдэлгүй.
    */
   removed?: boolean;
+  /** 2026-11-24: итгэмжлэгдээгүй super мөрийн оронд үлдээсэн эрхгүй мөр — самбарт л харагдана, нэвтрэлт өгөхгүй */
+  untrusted?: boolean;
 };
 
 /**
@@ -268,7 +270,9 @@ function isUserKey(raw: string): boolean {
  * биш хүн ч бичдэг (баримтын сангийн бүлэг — `docsGroups` эрхтэй хүн) тул хүснэгт өөрөө засагдахаар нээлттэй. Урьд нь
  * (2026-11-19) зөвхөн ЭЗЭН НЬ ӨӨРӨӨ бичсэн мөр хэрэгсэгдэхгүй байсан — нэг энгийн хэрэглэгч НӨГӨӨДӨД нь эрх бичиж чаддаг байв.
  * Дүрэм: хэрэглэгчийн · нэмэлт эрхийн · урсгалын · багцын хуваарилалтын · эрхийн төрлийн мөр (устгалын тэмдэг ч) нь
- * `last_edited_user` = итгэмжлэгдсэн super (гинж: анхны админ · кодын админ → тэдний итгэмжилсэн super) үед л хүчинтэй.
+ * `last_edited_user` = итгэмжлэгдсэн super (анхны админ · кодын админ · үндсэн админы томилсон super) үед л хүчинтэй.
+ * 2026-11-24: super мөр ба админы аккаунтын мөрийг зөвхөн үндсэн админ бичнэ (гинжгүй). Хязгаар: админы ганц мөрийг
+ * REST-ээр шууд `role` өөрчилбөл «админ байсан» гэдгийг мөрөөс таних боломжгүй — үндсэн админы мөр л үргэлж хамгаалагдана.
  * `last_edited_user`-ийг сервер тавьдаг тул хуурамчлагдахгүй. Талбар ирээгүй / хоосон бол шалгах боломжгүй — итгэнэ (урьдын дүрэм).
  * Анхаар: дараа нь админ эрхээ хасуулсан хүний бичсэн мөр мөн хүчингүй болно — одоогийн админ дахин хадгалтал (`malformed` 'untrusted').
  *
@@ -277,26 +281,38 @@ function isUserKey(raw: string): boolean {
 function trustRules(rows: readonly RawAttrs[]): {
   /** Мөрийг итгэмжлэгдсэн админ бичсэн үү (бичсэн хүн тодорхойгүй бол — итгэнэ) — super БИШ мөр ба устгалын тэмдэгт */
   adminWritten: (a: RawAttrs) => boolean;
-  /** Идэвхтэй `super` мөр: ЯГ ЭНЭ мөрийг итгэмжлэгдсэн хүн бичсэн үү (талбар огт ирээгүй бол — итгэнэ) */
+  /** Идэвхтэй `super` мөр: ЯГ ЭНЭ мөрийг үндсэн админ бичсэн үү (талбар огт ирээгүй бол — итгэнэ) */
   superRowOk: (a: RawAttrs) => boolean;
   /** Мөрийн төрлөөс хамаарч дээрх хоёрын тохирохыг нь */
   rowOk: (a: RawAttrs) => boolean;
+  /** Итгэмжлэгдсэн админууд (үндсэн · кодын админ + үндсэн админы бичсэн super мөрийн эзэд), жижиг үсгээр */
+  admins: ReadonlySet<string>;
 } {
   const lc = (s: string) => s.trim().toLowerCase();
-  const roots = [BOOTSTRAP_SUPER, ...SUPER_OWNERS];
+  const roots = new Set([BOOTSTRAP_SUPER, ...SUPER_OWNERS].map(lc));
   const activeSuper = (r: RawAttrs) => r.role === 'super' && r.views !== 'removed';
-  const sup = rows.filter((r) => activeSuper(r) && r.username);
-  const ed = (r: RawAttrs) => ({ user: String(r.username), ...(r.last_edited_user !== undefined ? { editor: r.last_edited_user } : {}) });
-  const editors = trustedSupers(sup.filter((r) => !String(r.username).trim().startsWith('__')).map(ed), roots);
-  const chain = trustedSupers(sup.filter((r) => isUserKey(String(r.username))).map(ed), roots);
-  for (const r of roots) { editors.add(lc(r)); chain.add(lc(r)); }
-  const adminWritten = (a: RawAttrs): boolean => {
-    const e = typeof a.last_edited_user === 'string' ? lc(a.last_edited_user) : '';
-    return e === '' || editors.has(e);
+  /* 2026-11-24 (засвар): гинж хасагдав — үндсэн бус админ REST-ээр шинэ админ үүсгэж, үндсэн админыг хасаж чаддаг байв.
+     super мөр ба АДМИНЫ аккаунтын бүх мөр (эрх · `__cap__:` · `__flow__:` · багцын хуваарилалт) зөвхөн үндсэн админ бичсэн бол хүчинтэй. */
+  const rootWritten = (a: RawAttrs): boolean =>
+    a.last_edited_user === undefined || (a.last_edited_user != null && roots.has(lc(String(a.last_edited_user))));
+  const admins = new Set<string>(roots);
+  for (const r of rows) {
+    if (activeSuper(r) && r.username && isUserKey(String(r.username)) && rootWritten(r)) admins.add(lc(String(r.username)));
+  }
+  /** Мөр хэний тухай вэ — угтваргүй нэр; `__type__:` · `__sys__:` хэрэглэгчийнх биш (`null`) */
+  const targetOf = (a: RawAttrs): string | null => {
+    const lu = lc(String(a.username ?? ''));
+    if (lu.startsWith(TYPE_PREFIX) || lu.startsWith(SYS_PREFIX)) return null;
+    const pre = KEY_PREFIXES.find((p) => lu.startsWith(p));
+    return pre ? lu.slice(pre.length).trim() : lu;
   };
-  const superRowOk = (a: RawAttrs): boolean =>
-    a.last_edited_user === undefined || (a.last_edited_user != null && chain.has(lc(String(a.last_edited_user))));
-  return { adminWritten, superRowOk, rowOk: (a) => (activeSuper(a) ? superRowOk(a) : adminWritten(a)) };
+  const adminWritten = (a: RawAttrs): boolean => {
+    const t = targetOf(a);
+    if (t && admins.has(t)) return rootWritten(a);
+    const e = typeof a.last_edited_user === 'string' ? lc(a.last_edited_user) : '';
+    return e === '' || admins.has(e);
+  };
+  return { adminWritten, superRowOk: rootWritten, rowOk: (a) => (activeSuper(a) ? rootWritten(a) : adminWritten(a)), admins };
 }
 
 /**
@@ -456,7 +472,7 @@ export async function fetchAll(): Promise<{
       }
       if (UNSAFE_KEY.has(lu)) { bad(raw, 'user'); continue; }
       /* Админ биш хүний бичсэн мөр — хэрэгсэхгүй. Устгалын тэмдэг (`removed`) ч мөн: эс бөгөөс энгийн хэрэглэгч админыг
-         устгаж чадна. Идэвхтэй super мөр доор гинжээр тусдаа шалгагдана. */
+         устгаж чадна. Идэвхтэй super мөр доор тусдаа шалгагдана (зөвхөн үндсэн админы бичсэн). */
       if ((a.role !== 'super' || removed) && !adminWritten()) { bad(raw, 'untrusted'); continue; }
       const entry: RemoteRow = {
         username: raw.trim(),
@@ -477,7 +493,8 @@ export async function fetchAll(): Promise<{
         /* 2026-11-23 (аудит): ӨӨРӨӨ бичсэн super мөр (бүртгэлгүй аккаунт өөрийгөө нэмсэн) — мөр огт үүсгэхгүй, эс бөгөөс
            эрхгүй ч порталд нэвтэрдэг байв. Өөр хүн хөндсөн мөрд л (жинхэнэ админ байж болно) эрхгүй мөр үлдээнэ. */
         const selfWritten = String(a.last_edited_user ?? '').trim().toLowerCase() === lu;
-        if (!selfWritten && !Object.hasOwn(perms, lu)) neutral.set(lu, { ...entry, role: null, views: [], docs: false });
+        /* 2026-11-24 (засвар): энэ мөр зөвхөн самбарт харагдаж засагдахад — `untrusted` тул нэвтрэлт · баримтын сан ӨГӨХГҮЙ */
+        if (!selfWritten && !Object.hasOwn(perms, lu)) neutral.set(lu, { ...entry, role: null, views: [], docs: false, untrusted: true });
         continue;
       }
       neutral.delete(lu);
@@ -485,6 +502,12 @@ export async function fetchAll(): Promise<{
     }
     lastFetchError = null;
     for (const [u, e] of neutral) perms[u] = e;
+    /* 2026-11-24 (засвар): үндсэн админы мөрийг өөр хүн устгасан/дарсан бол (бусад админ байсаар) — үндсэн админ хэвээр super */
+    const boot = BOOTSTRAP_SUPER.trim().toLowerCase();
+    if ((!Object.hasOwn(perms, boot) || perms[boot].untrusted)
+      && Object.values(perms).some((e) => e.role === 'super' && !e.removed && !e.untrusted)) {
+      perms[boot] = { username: BOOTSTRAP_SUPER, role: 'super', views: [], docs: false };
+    }
     return {
       perms,
       flow: [...flowBy.values()],

@@ -482,7 +482,10 @@ const cyc = (ergelt, oid, over) => ({
   const fin = nodeDetail(src, 'sankhuu', 'Багц 1');
   assert.equal(fin.metrics.find((m) => m.label === 'Төсөвт өртөг').value, null, 'төслийн төсөв багцын дор');
   /* Багц сонгоогүй — төслийн тоо хэвээр */
-  assert.equal(nodeDetail(src, 'barilga', null).metrics[0].value, 55);
+  /* 2026-11-24: орон сууцны явц өөрийн нэрээр — «Гүйцэтгэл»-ийг орлохгүй */
+  const bm = nodeDetail(src, 'barilga', null).metrics;
+  assert.equal(bm.find((m) => m.label === 'Орон сууцны блокийн явц').value, 55);
+  assert.equal(bm.find((m) => m.label === 'Гүйцэтгэл').value, null, 'орон сууцны явц «Гүйцэтгэл» болж орсон');
   assert.equal(nodeDetail(src, 'sankhuu', null).metrics[0].value, 1000);
 }
 

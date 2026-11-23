@@ -102,7 +102,8 @@ ok('санхүү — бүтэн дүн (2026-09-01 дүрэм), сарын ол�
   assert.ok(sep.sections[1].text[2].startsWith('2026-09 сард 250,000,000,000.00 ₮ олгосон; хуримтлагдсан олголт 500,000,000,000.00 ₮.'), sep.sections[1].text[2]);
   /* огноогүй төлбөр — тэнхлэгийн төгсгөлийн хуримтлал нийт олголтоос бага бол өгүүлбэрт нэрлэнэ */
   const und = buildReport('mayor', inputsFixture({ x: { ...i.x, fin: { ...i.x.fin, given: 560.87e9 } } }));
-  assert.ok(und.sections[1].text[2].endsWith('хуримтлагдсан олголт 530,870,000,000.00 ₮; огноогүй төлбөр 30,000,000,000.00 ₮ графикт ороогүй (нийт олголт 560,870,000,000.00 ₮).'), und.sections[1].text[2]);
+  /* 2026-11-24: зөрүү нь зөвхөн огноогүй IPC төлбөр (цуваа ТЭЗҮ · олон багцын огноотой төлбөрийг агуулна — `pkgProgress.ui.check`) */
+  assert.ok(und.sections[1].text[2].endsWith('хуримтлагдсан олголт 530,870,000,000.00 ₮; огноо бөглөгдөөгүй IPC төлбөр 30,000,000,000.00 ₮ графикт ороогүй (нийт олголт 560,870,000,000.00 ₮).'), und.sections[1].text[2]);
   const ipc = mayor.sections[2];
   assert.equal(ipc.chart.kind, 'bars', 'нэг нийлбэрийн хувь утгагүй — тусдаа багана');
   assert.deepEqual(ipc.chart.items.map((x) => x.label), ['IPC-д ороогүй гүйцэтгэл', 'IPC үүссэн', 'Гарын үсэг зурсан', 'Олгосон']);
@@ -383,6 +384,12 @@ ok('2026-11-18: уншигдаагүй эх — төслийн нийт явц �
 });
 ok('progressOf — null/NaN → 0, тоо хэвээр', () => {
   assert.equal(progressOf(null), 0); assert.equal(progressOf(undefined), 0); assert.equal(progressOf(NaN), 0); assert.equal(progressOf(12.5), 12.5);
+});
+
+ok('2026-11-24: хүн цаг — маягтын хадгалсан утга («ажилтан × 8 цаг, тооцоолсон» биш)', () => {
+  const t = mayor.sections.find((s) => s.key === 'workforce').text[0];
+  assert.ok(t.includes('10,488 хүн цаг (маягтаар).'), t);
+  assert.ok(!/8 цаг|тооцоолсон/.test(t), t);
 });
 
 console.log(`\n✅ audienceReport: ${n} шалгуур давлаа`);

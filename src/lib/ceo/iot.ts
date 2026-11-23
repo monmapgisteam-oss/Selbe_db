@@ -8,7 +8,7 @@
  */
 
 import { cached } from '@/lib/live';
-import { loadSensors, outOfRange, SENSOR_STALE_H, type MetricSeries, type SensorLive } from '@/lib/sensors';
+import { loadSensors, outOfRange, SENSOR_STALE_H, UB_OFFSET_MS, type MetricSeries, type SensorLive } from '@/lib/sensors';
 import { num } from '@/lib/format';
 import { t as tr } from '@/lib/i18nCore';
 import { cell, table, kpiComplete, type Cell, type KpiIssue, type KpiResult, type Level } from './kpi';
@@ -285,12 +285,15 @@ const signed = (v: number, m: { dp: number; unit: string }): string => (
   `${v < 0 ? '−' : '+'}${num(Math.abs(v), m.dp)}${m.unit}`
 );
 
-/** Цаг хүртэл нарийвчилсан агшин — IoT-д огноо дангаараа хангалтгүй (заалт цаг тутам) */
-function stamp(ms: number | null): string | null {
+/**
+ * Цаг хүртэл нарийвчилсан агшин — IoT-д огноо дангаараа хангалтгүй (заалт цаг тутам).
+ * 2026-11-24: Улаанбаатарын цагаар (UTC+8) — хөтчийн цагийн бүсээс хамаарахгүй (Iot.tsx-тэй ижил).
+ */
+export function stamp(ms: number | null): string | null {
   if (ms == null) return null;
-  const d = new Date(ms);
+  const d = new Date(ms + UB_OFFSET_MS);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
 
 const round1 = (v: number | null): number | null => (v == null ? null : Math.round(v * 10) / 10);

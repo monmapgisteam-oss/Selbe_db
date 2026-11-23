@@ -13,9 +13,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  approveDoc, contextOf, cumulative, defaultAdvance, defaultDeductions, deleteDoc, deductionsOf, docCodeOf, docWhy, editDoc,
+  approveDoc, contextOf, cumulative, defaultAdvance, defaultDeductions, deleteDoc, deductionsOf, docCodeOf, docWhy, dupPayDeletes, editDoc,
   explainDeductions, fillBalance, isPayRow, newAdvanceDoc, newWorkDoc, nextDay, nextDocNo, payableOf, prevEndOf, recOfDoc,
-  recordsOf, sameNo, signDoc, t7Of, unpaidFills, unpaidPkgs,
+  recordsOf, rollbackRelease, sameNo, signDoc, stillFree, t7Of, unpaidFills, unpaidPkgs,
 } from './ipcDocTable.ts';
 import { planPaidSync } from './hoSync/compute.ts';
 import { groupHo, sumPaid } from './ipc.ts';
@@ -299,6 +299,83 @@ assert.equal(contractCancelWhy([head].map((x) => ({ ...x, dun: null })), []), nu
     'Гүйцэтгэгчид төлөх дүн', 'Санхүүжилтийн эрх нээсэн нийт дүн', 'БӨГЛӨЛТИЙН НИЙТ', 'Суутгалын тайлбар: т']) assert.ok(flat.includes(t), `PDF: ${t}`);
   assert.equal(def.pageOrientation, 'landscape');
   assert.equal(def.info.title, 'IPC_Багц-2_IPC-02_2026-10-11');
+}
+
+/* ── 15. 2026-11-24: олгох ёстой = бөглөлт − IPC-ийн НИЙТ ДҮН (бөглөлтийн нийлбэр биш) ── */
+{
+  const fills = [auto({ oid: 61, day: '2026-10-01', une: 60, no: 5, st: 'Олгосон' }), auto({ oid: 62, day: '2026-10-02', une: 40, no: 5, st: 'Олгосон' })];
+  const pay = { objectid: 63, murun_id: 'PAY|Багц-2|5', geree_kod: 'Багц-2', bagts: 'Багц 2', tulult_turul: 'Гүйцэтгэл', ipc_dugaar: 5, dun: 80, ipc_tuluv: 'Олгосон', guilgee_ognoo: '2026-11-01' };
+  const doc = (total, st = 'Олгосон') => ({ objectid: 70, turul: 'Гүйцэтгэл', ipc_dugaar: 5, geree_kod: 'Багц-2', bagts: 'Багц 2', niit_dun: total, duusah_ognoo: '2026-10-02', tuluv: st });
+  const p = [...fills, { ...pay }];
+  const b = fillBalance(p, recordsOf(p, [doc(80)]));
+  assert.deepEqual(b, { fills: 100, inIpc: 80, paid: 80, due: 20 }, 'бөглөлт 60+40, IPC 80 батлагдсан → олгох ёстой 20');
+  const over = [...fills, { ...pay, dun: 120 }];
+  assert.equal(fillBalance(over, recordsOf(over, [doc(120)])).due, -20, 'IPC бөглөлтөөс их бол илүү нь дараагийнхыг бууруулна');
+  const later = [...over, auto({ oid: 64, day: '2026-11-05', une: 50 })];
+  assert.equal(fillBalance(later, recordsOf(later, [doc(120)])).due, 30, '−20 + шинэ бөглөлт 50 = 30');
+  const pend = fills.map((r) => ({ ...r, ipc_tuluv: 'IPC үүссэн' }));
+  const bp = fillBalance(pend, recordsOf(pend, [doc(80, 'IPC үүссэн')]));
+  assert.equal(bp.due, 20, 'батлагдаагүй IPC ч IPC-д орсон');
+  assert.equal(bp.paid, 0, 'олгосон = бодит төлбөр, бөглөлтийн нийлбэр биш');
+  /* Хуучин баримт — нийт дүн (`guits_une`) хасагдана, бөглөлт давхар хасагдахгүй; олгосон = `dun` */
+  const old = { objectid: 65, murun_id: 'IPC|Багц-2|5', geree_kod: 'Багц-2', bagts: 'Багц 2', tulult_turul: 'Гүйцэтгэл', ipc_dugaar: 5, guits_une: 90, dun: 90, ipc_tuluv: 'Олгосон' };
+  const lp = [...fills, old];
+  assert.deepEqual(fillBalance(lp, recordsOf(lp, [])), { fills: 100, inIpc: 90, paid: 90, due: 10 });
+  /* Баримтгүй түгжигдсэн бөглөлт — өмнөх дүрмээр өөрийн дүнгээр (§8-ийн IPC-01) */
+  assert.deepEqual(fillBalance(fills, recordsOf(fills, [])), { fills: 100, inIpc: 100, paid: 100, due: 0 });
+  assert.equal(fillBalance(p, recordsOf(p, [doc(80, 'Цуцлагдсан')])).inIpc, 100, 'цуцлагдсан баримт тоологдохгүй');
+}
+
+/* ── 16. 2026-11-24: зэрэг баталгаажуулалт — давхар PAY мөрөөс хожуу (их objectid) нь устна ── */
+{
+  const pay = (oid, o = {}) => ({ objectid: oid, murun_id: 'PAY|Багц-2|2', geree_kod: 'Багц-2', bagts: 'Багц 2', ipc_dugaar: 2, dun: 338, ...o });
+  assert.deepEqual(dupPayDeletes([pay(53), pay(50), ...pays], 'Багц-2', 2), [53], 'нэг үлдэнэ (бага objectid)');
+  assert.deepEqual(dupPayDeletes([pay(50)], 'Багц-2', 2), [], 'ганц мөр хөндөгдөхгүй');
+  assert.deepEqual(dupPayDeletes([pay(50), pay(51, { bagts: 'Багц-2' }), pay(52, { ipc_dugaar: 3 }), pay(54, { geree_kod: 'Х' })], 'Багц-2', 2), [51], '«Багц 2» ба «Багц-2» нэг багц; өөр дугаар/гэрээ хөндөгдөхгүй');
+  assert.deepEqual(dupPayDeletes([pay(50), pay(51, { bagts: 'Багц 3' })], 'Багц-2', 2), [], 'өөр багцын төлбөр давхар биш');
+  assert.deepEqual(dupPayDeletes([pay(50), { ...pay(51), murun_id: 'IPC|Багц-2|2' }], 'Багц-2', 2), [], 'зөвхөн PAY мөр');
+  const ui = readFileSync('src/modules/IpcFlow.tsx', 'utf8');
+  const ap = ui.slice(ui.indexOf('const approveNew = '), ui.indexOf('const removeNew = '));
+  assert.ok(ap.indexOf('{ adds: e.pay ? [e.pay] : []') < ap.indexOf('dupPayDeletes(await freshPays(code, pays)'), 'нэмсний ДАРАА дахин уншина');
+  assert.ok(ap.includes('{ deletes: del }, APPROVE_CAP'), 'давхар мөрийг устгана');
+}
+
+/* ── 17. 2026-11-24: зэрэг үүсгэлтийн буцаалт — үлдэх баримтын үед ороогүй миний бөглөлт чөлөөлөгдөнө ── */
+{
+  const mine = f.rows;
+  const keeper = recOfDoc({ ...doc238, objectid: 10, duusah_ognoo: '2026-10-04' });
+  assert.deepEqual(rollbackRelease(locked, mine, [keeper], 2), [{ objectid: 5, ipc_dugaar: null, ipc_tuluv: 'Гүйцэтгэл' }], '10-11 нь үлдэх баримтын үед (≤ 10-04) ороогүй');
+  assert.deepEqual(rollbackRelease(locked, mine, [recOfDoc({ ...doc238, objectid: 10 })], 2), [], 'ижил үе — юу ч чөлөөлөхгүй');
+  assert.deepEqual(rollbackRelease(locked, mine, [{ ...keeper, to: '' }], 2), [], 'үлдэх баримт төгсгөлгүй — хөндөхгүй');
+  assert.deepEqual(rollbackRelease(locked, mine, [], 2).map((r) => r.objectid), [3, 4, 5], 'өөр багцынх — миний бүх бөглөлт');
+  const paid5 = locked.map((r) => (r.objectid === 5 ? { ...r, ipc_tuluv: 'Олгосон' } : r));
+  assert.deepEqual(rollbackRelease(paid5, mine, [keeper], 2), [], 'олгосон бөглөлт чөлөөлөгдөхгүй');
+  assert.deepEqual(rollbackRelease(locked, mine.filter((r) => r.oid !== 5), [keeper], 2), [], 'миний түгжээгүй бөглөлт хөндөгдөхгүй');
+  /* Түгжихийн өмнөх шалгалт */
+  assert.equal(stillFree(pays, f.rows), true);
+  assert.equal(stillFree(locked, f.rows), false, 'өөр хэрэглэгч түгжсэн бол түгжихгүй');
+  const ui = readFileSync('src/modules/IpcFlow.tsx', 'utf8');
+  const cr = ui.slice(ui.indexOf('const create = '), ui.indexOf('const save = '));
+  assert.ok(cr.indexOf('stillFree(await freshPays(code, pays), f2.rows)') < cr.indexOf('{ updates: lock }'), 'түгжихийн өмнө дахин шалгана');
+  assert.ok(cr.includes('rollbackRelease(after[0], f2.rows, keepers, no)') && !cr.includes('keep ? []'), 'буцаалтад үлдэх баримтын үеэр чөлөөлнө');
+}
+
+/* ── 18. 2026-11-24: дугааргүй өмнөх төлбөр огноогоор — хуримтлал · Хүснэгт 7-гийн «өмнөх»-д орно ── */
+{
+  const p = [{ objectid: 1, murun_id: 'ХО-9', geree_kod: 'Г', tulult_turul: 'Гүйцэтгэл', dun: 1000, guilgee_ognoo: '2025-06-01', ipc_dugaar: null }];
+  const d = [{ objectid: 5, turul: 'Гүйцэтгэл', ipc_dugaar: 1, geree_kod: 'Г', niit_dun: 80, ehleh_ognoo: '2026-09-01', duusah_ognoo: '2026-10-01', tuluv: 'IPC үүссэн' }];
+  const r = recordsOf(p, d);
+  assert.deepEqual(r.map((x) => [x.src, x.no]), [['pay', null], ['doc', 1]], '2025 оны төлбөр IPC-1-ийн өмнө');
+  const c = cumulative(r, 5000);
+  assert.equal(c[1].finPrev, 1000, 'IPC-1-ийн өмнөх = 1000');
+  assert.equal(c[1].finLeft, 3920, 'үлдэгдэл = 5000 − 1000 − 80');
+  const t7 = t7Of(r, 1, 5000);
+  assert.equal(t7[0].prev, 1000);
+  assert.equal(t7[0].remain, 3920);
+  const late = [...p, { ...p[0], objectid: 2, guilgee_ognoo: '2026-12-01', dun: 7 }, { ...p[0], objectid: 3, guilgee_ognoo: null, dun: 5 }];
+  assert.deepEqual(recordsOf(late, d).map((x) => x.oid), [3, 1, 5, 2], 'огноогүй эхэнд, хожуу төлбөр IPC-ийн дараа');
+  const two = [...d, { ...d[0], objectid: 6, ipc_dugaar: 2, duusah_ognoo: '2027-01-01', guilgee_ognoo: '2027-01-05' }];
+  assert.deepEqual(recordsOf(late, two).map((x) => x.oid), [3, 1, 5, 2, 6], 'IPC-1 ба IPC-2-ийн хооронд');
 }
 
 console.log('ipcDocTable: ok');

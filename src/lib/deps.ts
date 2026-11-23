@@ -449,6 +449,8 @@ export function propagate(
         if (want == null || eff.start === want) continue;
         const delta = want - eff.start;
         for (const k of sub) {
+          /* 2026-11-24: гараар тавьсан (pin) хүүхдийг хөдөлгөхгүй — бүлэг дээр л биш, хүүхэд бүрд шалгана */
+          if (k !== i && pinned.get(k)?.has(b)) continue;
           const sp = spansOf(k)[b];
           if (!sp) continue;
           const next = spansOf(k).slice();

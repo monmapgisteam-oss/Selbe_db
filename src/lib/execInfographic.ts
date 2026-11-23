@@ -338,7 +338,8 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
     const h1 = P.metric(cx, cy, hw, tr('Ажиллаж буй хүн'), num(g.hse.workers));
     const h2 = P.metric(cx + hw + 18, cy, hw, tr('Техник хэрэгсэл'), num(g.hse.equipment));
     cy = Math.max(h1, h2) + 12;
-    cy = P.pair(cx, cy, cw, tr('Хүн цаг (тооцоолсон)'), num(g.hse.manHours));
+    /* 2026-11-24 (аудит): утга нь маягтын хадгалсан `hun_tsag` — тооцоолсон биш */
+    cy = P.pair(cx, cy, cw, tr('Хүн цаг (маягтаар)'), num(g.hse.manHours));
     cy = P.label(cx, cy + 12, cw, tr('Тоо нь өдөр тутмын хуримтлал биш, сүүлийн бүртгэлийн агшны байдал.'));
     if (deltas) {
       cy = P.label(cx, cy + 8, cw, tr('Хугацааны өөрчлөлт'));

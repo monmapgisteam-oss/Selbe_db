@@ -4,7 +4,7 @@
  *
  * Гурван эх сурвалж, тус бүр ТУСДАА унаж болно (`failedSources`):
  *   (а) `loadClearance` — нийт/чөлөөлсөн/үлдсэн/хувь (`PARCEL_LEFT` бүлэглэл)
- *   (б) `PARCEL_LEFT`-ийн үлдсэн мөрүүд НЭРТЭЙ (кадастр · эзэмшигч · хаяг …)
+ *   (б) `PARCEL_LEFT`-ийн үлдсэн мөрүүд (кадастр · шалтгаан · талбай · зориулалт; хувийн мэдээлэлгүй, 2026-11-24)
  *   (в) `loadOverlaps` — багц ажлын геометртэй давхцсан талбарууд (хүнд,
  *       модулийн түвшинд кэштэй; унавал давхцлын хүснэгт ГАРАХГҮЙ, тоо
  *       ЗОХИОХГҮЙ)
@@ -23,18 +23,18 @@ import { cell, table, worstOf, kpiComplete, type KpiIssue, type KpiResult } from
 
 /* ══════════════════ Төрөл ══════════════════ */
 
-/** Чөлөөлөгдөөгүй нэг талбар — хүснэгтэд ГАРАХ бүх талбар */
+/**
+ * Чөлөөлөгдөөгүй нэг талбар — хүснэгтэд ГАРАХ бүх талбар.
+ * 2026-11-24: эзэмшигч, хаяг, тайлбар (иргэний хувийн мэдээлэл) хасав — CEO самбарыг гэрээлэгч ч хардаг.
+ */
 export type LandParcel = {
   oid: number;
   parcelNo: string | null;
-  owner: string | null;
-  address: string | null;
   /** Төлөв=шалтгаан; хоосон бол `NO_STATUS` */
   reason: string;
   /** м² — `land.parcelAreaOf`: `area` > 0, эс бөгөөс `areaAlt` > 0, эс бөгөөс полигоны талбай; бүгд алга бол `null` */
   areaM2: number | null;
   landuse: string | null;
-  note: string | null;
 };
 
 export type LandReason = {
@@ -94,12 +94,9 @@ export function parseParcels(rows: readonly Row[]): LandParcel[] {
   return rows.filter((r) => !isClearedStatus(r[F.status])).map((r) => ({
     oid: Number(r[PARCEL_LEFT.oid]),
     parcelNo: strOrNull(r[F.parcelNo]),
-    owner: strOrNull(r[F.owner]),
-    address: strOrNull(r[F.address]),
     reason: strOrNull(r[F.status]) ?? NO_STATUS(),
     areaM2: parcelAreaOf(r),
     landuse: landuseText(r[F.landuseFull], r[F.landuse], known),
-    note: strOrNull(r[F.note]),
   }));
 }
 
@@ -195,10 +192,11 @@ export function computeLand(input: LandInput): KpiResult {
     ));
     tables.push(table(
       tr('Чөлөөлөгдөөгүй талбар'),
-      [tr('Кадастрын дугаар'), tr('Эзэмшигч'), tr('Хаяг'), tr('Шалтгаан'), tr('Талбай (м²)'), tr('Зориулалт'), tr('Тайлбар')],
+      // 2026-11-24: хувийн мэдээллийн багана (эзэмшигч, хаяг, тайлбар) гаргахгүй
+      [tr('Кадастрын дугаар'), tr('Шалтгаан'), tr('Талбай (м²)'), tr('Зориулалт')],
       sorted.map((p) => [
-        cell(p.parcelNo), cell(p.owner), cell(p.address), cell(p.reason),
-        cell(p.areaM2, 'count'), cell(p.landuse == null ? null : tr(p.landuse)), cell(p.note),
+        cell(p.parcelNo), cell(p.reason),
+        cell(p.areaM2, 'count'), cell(p.landuse == null ? null : tr(p.landuse)),
       ]),
     ));
   }
@@ -273,8 +271,9 @@ async function fetchParcels(): Promise<{ parcels: LandParcel[]; asOf: number | n
   const rows = await queryFeatures(PARCEL_LEFT.url, {
     where: parcelLeftWhere(),
     outFields: [
-      PARCEL_LEFT.oid, F.parcelNo, F.owner, F.address, F.status,
-      F.area, F.areaAlt, F.note, F.landuse, F.landuseFull, PARCEL_SHAPE_AREA,
+      // 2026-11-24: хувийн талбар (эзэмшигч, хаяг, тайлбар) татахгүй
+      PARCEL_LEFT.oid, F.parcelNo, F.status,
+      F.area, F.areaAlt, F.landuse, F.landuseFull, PARCEL_SHAPE_AREA,
       ...(edf ? [edf.ed, ...(edf.stat ? [edf.stat] : [])] : []),
     ],
     orderBy: `${PARCEL_LEFT.oid} ASC`,

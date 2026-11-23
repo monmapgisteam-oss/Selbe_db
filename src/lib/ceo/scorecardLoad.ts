@@ -12,14 +12,42 @@ import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { CANCELLED_NOTE_RE } from './uncontracted';
-import { collectPkgLags, FIN_XL_BUILD_CODE, isBuildRow } from './schedule';
+import { collectPkgLags, FIN_XL_BUILD_CODE, isBuildRow, loadTtbPkgPlan, ttbLagOf, type Lag, type TtbPkgPlan } from './schedule';
 import { FIN_XL_LAND_CODE, FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadWorkforceKpi, type WorkforceKpi } from './workforce';
 import { loadPermitRows, summarize as summarizeZov } from '@/lib/zovshoorol';
 import {
-  DIMS, overlapOfKeys, scorePerf, perfNoCurve, perfNotStarted, scoreFin, scoreLand, scorePermit, scoreHse, totalOf,
+  DIMS, overlapOfKeys, scorePerf, perfNoCurve, perfNotStarted, perfPartial, scoreFin, scoreLand, scorePermit, scoreHse, totalOf,
   type Dim, type DimScore, type WorkScore, type Inspection,
 } from './scorecard';
+
+/**
+ * ГҮЙЦЭТГЭЛИЙН ОНОО — нэг барилгын мөрөөр (2026-11-24, аудит). 05-ын хоцрогдол (`lag`) алга бол ТТБ-ийн багцын P/S (`ttbLagOf`) —
+ * CEO хуваарийн карт (`computeSchedule`) ИЖИЛ дүгнэлт; тэр нь ч алга бол хуучин шалтгаан (муруй уншигдаагүй · хуваарь эхлээгүй).
+ */
+export function perfScoreOf(i: {
+  lag: Lag | null;
+  ttb: Parameters<typeof ttbLagOf>[0];
+  cancelled: boolean;
+  noCurve: boolean;
+  notStarted: boolean;
+  start: number | null;
+  end: number | null;
+  progress: number | null;
+  now: number;
+}): DimScore {
+  if (i.cancelled) return { score: null, facts: [] };
+  const t = i.lag ? null : ttbLagOf(i.ttb);
+  if (t) {
+    /* хамралт дутуу — карт «дүгнээгүй», оноо ч тавигдахгүй; C өгөөгүй (= бүрэн) бол 100 */
+    return t.judged
+      ? scorePerf({ lag: { planned: t.planned, actual: t.actual, coverage: t.coverage ?? 100 }, start: i.start, end: i.end, progress: i.progress, now: i.now })
+      : perfPartial(t);
+  }
+  if (i.noCurve) return perfNoCurve();
+  if (i.notStarted) return perfNotStarted();
+  return scorePerf({ lag: i.lag, start: i.start, end: i.end, progress: i.progress, now: i.now });
+}
 
 /* ══════════════ Суурь ══════════════ */
 
@@ -44,7 +72,7 @@ export type ScoreBase = {
 export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
   const F = await import('@/modules/Finance');
   const { loadUzlegRows } = await import('@/modules/habeaUzleg');
-  const [cf, contracts, fin, bld, uzV11, uzCo, zovRows, workforce] = await Promise.all([
+  const [cf, contracts, fin, bld, uzV11, uzCo, zovRows, workforce, ttb] = await Promise.all([
     loadGdashCf(),
     loadContractSum().catch(() => null),
     F.loadFinData().catch(() => null),
@@ -54,6 +82,8 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
     /* 2026-11-23 (аудит): зөвшөөрөл НЭГ эх — ТТБ-ийн мөр + бүртгэл давамгайлна (`mergePermits`), бусад карттай ижил */
     loadPermitRows().catch(() => null),
     (loadWorkforceKpi() as Promise<WorkforceKpi>).catch(() => null),
+    /* 2026-11-24 (аудит): CEO хуваарийн карттай ИЖИЛ ТТБ-ийн орлуулга (`loadScheduleKpi`) */
+    loadTtbPkgPlan().catch((): TtbPkgPlan => new Map()),
   ]);
   const failed: string[] = [];
   if (!contracts) failed.push(tr('Гэрээний дүн'));
@@ -133,9 +163,10 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
       cancelled,
       isLandWork,
       pkgRep: isRep,
-      perf: cancelled ? { score: null, facts: [] } : lagUnknown ? perfNoCurve()
-        : schedNotStarted ? perfNotStarted()
-          : scorePerf({ lag, start: r.start, end: r.end, progress: r.progress, now }),
+      perf: perfScoreOf({
+        lag, ttb: key && r.sec === FIN_XL_BUILD_CODE ? ttb.get(key) : undefined, cancelled,
+        noCurve: lagUnknown, notStarted: schedNotStarted, start: r.start, end: r.end, progress: r.progress, now,
+      }),
       fin: cancelled || isLandWork ? { score: null, facts: [] } : scoreFin({
         contracted,
         start: r.start,
@@ -154,7 +185,7 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
 
   if (curveFailed && fin) failed.push(tr('Хуваарийн муруй'));
   return { works, footprints: packs.map((p) => p.key), failed };
-}, 5 * 60_000, ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM'], (b) => b.failed.length === 0);
+}, 5 * 60_000, ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM', 'ZURAG_BURTGEL', 'PARCEL_LEFT'], (b) => b.failed.length === 0);
 
 /* ══════════════ Хүнд бүлгүүд ══════════════ */
 

@@ -261,3 +261,20 @@ console.log('uyShat.check: OK');
   assert.ok(ui.includes('${F.ddKod} LIKE ${sqlStr(`${c}.%`)}'), 'эцгээр dd_kod LIKE');
   console.log('✅ 7. ах дүүгийн уншилт dd_kod LIKE + шууд хүүхэд');
 }
+
+/* ── 8. Ашиглалт: «Барилга дуусах» = ТТБ-ийн бодсон M (Cashflow-ийн дуусах ба блокийн Хуваарийн дуусахын хожуу нь), 2026-11-24 ── */
+{
+  const { rowWarn } = await import('./uyShat.ts');
+  const today = d('2026-06-01');
+  /* Cashflow-ийн дуусах 2027-01-01, блокийн Хуваарийн дуусах 2027-09-01; ашиглалт 2027-05-01 — барилга дуусахаас ӨМНӨ */
+  const rows8 = base.map((r) => (r.objectid === 54 ? { ...r, guits_ehleh: d('2025-05-01'), guits_duusah: d('2027-01-01'), ashiglalt_ognoo: d('2027-05-01') }
+    : r.objectid === 55 ? { ...r, guits_ehleh: d('2025-06-01'), guits_duusah: d('2027-09-01') } : r));
+  const t8 = buildTree(rows8);
+  const v8 = computePlan(t8, {}, today);
+  const pk = t8.byCode.get('5.2.1.1');
+  assert.equal(v8.values.get(pk).M, d('2027-09-01'), 'M — хоёрын хожуу нь');
+  assert.equal(rowWarn(PAGES.ashiglalt, pk, v8.values.get(pk), today), 'Ашиглалтын огноо барилга дуусахаас өмнө',
+    'хадгалсан guits_duusah (2027-01-01) биш, M (2027-09-01)-ээр анхааруулна');
+  assert.equal(rowWarn(PAGES.ashiglalt, pk, { S: 10, M: d('2027-01-01') }, today), null, 'M нь ашиглалтаас өмнө бол хэвийн');
+  console.log('✅ 8. ашиглалт — барилга дуусах = ТТБ-ийн M');
+}

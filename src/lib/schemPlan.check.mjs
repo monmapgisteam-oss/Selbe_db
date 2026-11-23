@@ -61,6 +61,23 @@ assert.equal(phaseOf(live, 'songon', 'БАГЦ 1').S, 90, 'багцаар');
 assert.equal(phaseOf(live, 'tezu', 'Багц 1'), null, 'багцад үе шат алга бол null');
 assert.equal(phaseOf(null, 'tezu', null), null, 'эх алга бол null');
 
+/* 2026-11-24: олон багцын мөр («БАГЦ 1- 4» → БАГЦ14, «Багц 1,2» → БАГЦ12) жинхэнэ Багц-14 · Багц-12-той давхцахгүй */
+{
+  const rng = node('4.1', 'songon', 2, 'БАГЦ 1- 4');
+  const lst = node('4.2', 'songon', 2, 'Багц 1,2');
+  const b14 = node('4.3', 'songon', 2, 'Багц-14');
+  const b12 = node('4.4', 'songon', 2, 'Багц-12');
+  const s2 = node('4', 'songon', 1, null, [rng, lst, b14, b12]);
+  const r2 = node('', 'other', 0, null, [s2]);
+  const V2 = new Map([[r2, { P: 0, S: 0, E: 0 }], [s2, { P: 0, S: 0, E: 0 }], [rng, { P: 0, S: 11, E: null }], [lst, { P: 0, S: 22, E: null }], [b14, { P: 0, S: 33, E: null }], [b12, { P: 0, S: 44, E: null }]]);
+  const lv = planLiveOf({ tree: { root: r2, nodes: [s2, rng, lst, b14, b12] }, result: { values: V2 } });
+  assert.equal(lv.byPkg[bagtsKey('Багц-14')].songon.S, 33, 'Багц-14 — өөрийн мөр (БАГЦ 1- 4-ийнх биш)');
+  assert.equal(lv.byPkg[bagtsKey('Багц-12')].songon.S, 44, 'Багц-12 — өөрийн мөр (Багц 1,2-ынх биш)');
+  assert.deepEqual(Object.keys(lv.byPkg).sort(), [bagtsKey('Багц-12'), bagtsKey('Багц-14')].sort(), 'олон багцын мөр багц биш');
+  assert.equal(phaseOf(lv, 'songon', 'Багц 14').S, 33, 'phaseOf ижил түлхүүрээр');
+  assert.equal(phaseOf(lv, 'songon', 'БАГЦ 1- 4'), null, 'олон багцаар хайхад null');
+}
+
 /* Хоцролт */
 assert.equal(paceHealth(null), 'none');
 assert.equal(paceHealth({ P: 50, S: null, E: null }), 'none', 'хэмжилтгүй нь none — улаан БИШ');

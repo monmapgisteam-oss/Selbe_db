@@ -307,8 +307,11 @@ const full = buildSchem({
   ...EMPTY,
   overall: { pct: 100, weightSum: 100, rows: 10 },
   progress: { blocks: 10, overall: 100, date: '2026-08-30', stalled: 0 },
+  plan: { phases: { barilga: { P: 100, S: 100, E: null } }, byPkg: {}, total: { P: 100, S: 100, E: null } },
 });
-assert.equal(full.barilga.metrics[0].value, 100, 'гүйцэтгэл 0–100 масштабтай байх ёстой');
+assert.equal(full.barilga.metrics.find((m) => m.label === 'Гүйцэтгэл').value, 100, 'гүйцэтгэл 0–100 масштабтай байх ёстой');
+/* 2026-11-24: «Төсөл төлөвлөгөө биелэлт» алга бол орон сууцны явцаар (`overall.pct`) орлуулахгүй */
+assert.equal(buildSchem({ ...EMPTY, overall: { pct: 100, weightSum: 100, rows: 10 } }).barilga.metrics.find((m) => m.label === 'Гүйцэтгэл').value, null);
 assert.equal(full.barilga.health, 'good');
 assert.equal(full.barilga.note, undefined, 'бүрэн хамралтад тэмдэглэл гарах ёсгүй');
 
@@ -453,7 +456,8 @@ for (const [id, st] of Object.entries(buildSchem(EMPTY))) {
   for (const x of st.sankhuu.metrics) assert.equal(x.value, null, `санхүү «${x.label}»: төслийн тоо багцын дор`);
   assert.equal(st.barilga.health, 'none');
   /* Багц сонгоогүй үед төслийн тоо хэвээр */
-  assert.equal(buildSchem(src).barilga.metrics[0].value, 55);
+  /* 2026-11-24: «Төсөл төлөвлөгөө биелэлт» алга — орон сууцны явцаар (55) орлуулахгүй, «—» */
+  assert.equal(buildSchem(src).barilga.metrics[0].value, null);
   assert.equal(buildSchem(src).sankhuu.metrics[0].value, 1000);
 }
 

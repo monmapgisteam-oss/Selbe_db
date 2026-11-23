@@ -197,7 +197,7 @@ function GainLine({ g, pending }: {
     <div className={s.gainBox} role="status">
       <span className={s.gainHead}>{pending ? tr('Зөвшөөрвөл нэмэгдэх гүйцэтгэл') : tr('Энэ гүйцэтгэлээр нэмэгдсэн')}</span>
       {row(tr('Багц'), now?.pkg, v.pkg, 2)}
-      {row(tr('Төсөл'), now?.project, v.project, 3)}
+      {row(tr('Төсөл'), now?.project, v.project, 2)}
       <span className={s.gainBlocks}>
         {v.blocks.length
           ? v.blocks.map((b) => tr('блок {0} {1}', b.block, signed(b.pct, 2))).join(' · ')
@@ -206,8 +206,8 @@ function GainLine({ g, pending }: {
     </div>
   );
 }
-/** Нэгж хувийг тэмдэгтэй: «+2.35%», «−0.10%» */
-const signed = (v: number, d: number): string => (v > 0 ? `+${pct(v, d)}` : v < 0 ? `−${pct(-v, d)}` : pct(0, d));
+/** Нэгж хувийг тэмдэгтэй: «+2.35%», «−0.10%»; 2026-11-24: өөрчлөлтгүй — «+0.00%» (тооцоолоогүй нь «—», `GainBox`) */
+const signed = (v: number, d: number): string => (v < 0 ? `−${pct(-v, d)}` : `+${pct(v > 0 ? v : 0, d)}`);
 
 /** Гүйцэтгэгч ч бүх шат, хянагчийн нэр, төлөвийг харна (2026-11-20, хэрэглэгч) */
 const seesManager = (_stage: Stage): boolean => true;

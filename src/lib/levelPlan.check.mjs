@@ -13,7 +13,7 @@
  *   5. ДЭД БҮЛЭГ. Б1-ийн хүүхдүүд + Б2…Б5 (15 бүлэг), жин «Б.»-д эзлэх 0–100; 9F/12F-ийн давхардсан шошгод
  *      ЭХНИЙ хуудас; алдаатай огноо (эхлэх > дуусах) хос нь null.
  *   6. ТӨЛӨВ. 100% → done; дуусах өнгөрсөн → late; төлөвлөгөөнөөс 10+ пункт → behind; огноогүй → none;
- *      milestone огноогүй → missing (улаан). Гүйцэтгэл МЭДЭГДЭХГҮЙ + дуусах өнгөрсөн → none (late БИШ, null ≠ 0).
+ *      milestone огноогүй → missing (улаан). Гүйцэтгэл МЭДЭГДЭХГҮЙ + дуусах өнгөрсөн → late (2026-11-24: null = 0%).
  *   7. ЗУРВАСЫН ОГНОО төлөвлөгөөт хувьтай нэг суурьтай: өвгөөс зөвхөн ӨӨРИЙН ХАДГАЛСАН ижил баганын хос
  *      (`projectPlan.spanOf`); өөр баганын огноо (`alt`) «late» болохгүй.
  *   8. L2 багц бүр «Захирамж»-аар эхэлнэ; L3-ийн дэд шатгүй зураг төсөл «Зураг төсөл» нэртэй.
@@ -99,8 +99,11 @@ const near = (a, b, tol, msg) => {
   assert.equal(barStatus(D('2025-01-01'), D('2027-01-01'), 30, 30 + BEHIND_PP - 1, T), 'run');
   assert.equal(barStatus(D('2027-01-01'), D('2027-06-01'), 0, 0, T), 'todo');
   assert.equal(barStatus(null, null, 40, null, T), 'none', 'огноогүй');
-  assert.equal(barStatus(D('2025-01-01'), D('2027-01-01'), null, 40, T), 'none', 'гүйцэтгэл мэдэгдэхгүй (0 БИШ)');
-  assert.equal(barStatus(D('2025-01-01'), D('2026-10-01'), null, 100, T), 'none', 'дуусах өнгөрсөн + гүйцэтгэл мэдэгдэхгүй → none (late БИШ)');
+  /* 2026-11-24: мэдэгдэхгүй = 0% (`plan.ts` statusOf-той ижил) */
+  assert.equal(barStatus(D('2025-01-01'), D('2027-01-01'), null, 40, T), 'behind', 'гүйцэтгэл мэдэгдэхгүй = 0% → 40 − 0 > 10 хоцорсон');
+  assert.equal(barStatus(D('2025-01-01'), D('2027-01-01'), null, 5, T), 'none', 'мэдэгдэхгүй, хоцроогүй → саарал');
+  assert.equal(barStatus(D('2025-01-01'), D('2026-10-01'), null, 100, T), 'late', 'дуусах өнгөрсөн + гүйцэтгэл мэдэгдэхгүй → late');
+  assert.equal(barStatus(D('2025-01-01'), D('2026-10-01'), null, 100, T, false), 'behind', 'lateOk=false → 100 − 0 хоцорсон');
   assert.equal(barStatus(D('2027-01-01'), D('2027-06-01'), null, null, T), 'todo', 'ирээдүйн, мэдэгдэхгүй → эхлээгүй');
   assert.equal(barStatus(D('2025-01-01'), D('2026-10-01'), 80, 100, T, false), 'behind', 'lateOk=false → late БИШ (хоцрогдол хэвээр)');
   assert.equal(barStatus(D('2025-01-01'), D('2026-10-01'), 80, null, T, false), 'run');
@@ -108,7 +111,7 @@ const near = (a, b, tol, msg) => {
   assert.equal(milestoneStatus(D('2026-10-01'), false, T), 'late');
   assert.equal(milestoneStatus(D('2026-12-01'), false, T), 'upcoming');
   assert.equal(milestoneStatus(null, true, T), 'done');
-  assert.equal(milestoneStatus(D('2026-10-01'), null, T), 'none', 'өнгөрсөн + гүйцэтгэл мэдэгдэхгүй → none (late БИШ)');
+  assert.equal(milestoneStatus(D('2026-10-01'), null, T), 'late', '2026-11-24: өнгөрсөн + гүйцэтгэл мэдэгдэхгүй (0%) → late');
   assert.equal(milestoneStatus(null, null, T), 'missing', 'огноо алга → гүйцэтгэлээс үл хамааран улаан');
   assert.equal(milestoneStatus(D('2026-12-01'), null, T), 'upcoming');
 
@@ -198,6 +201,10 @@ const near = (a, b, tol, msg) => {
   near(mn[0].actual, (35 + 17.5) / 2, 1e-9, 'нэг блок жингүй → энгийн дундаж');
   const mpl = mergePhases([{ gs: [{ ...d.phases[0], planned: 60 }], w: 1 }, { gs: [{ ...d.phases[0], planned: 20 }], w: 3 }]);
   near(mpl[0].planned, 30, 1e-9, 'төлөвлөгөөт хувь ч жигнэнэ');
+  /* 2026-11-24: хэмжигдээгүй (null) блок = 0% — дунджаас хасагдахгүй (60% биш 30%) */
+  const g0 = { no: 'Б1', name: 'Суурь', weight: 10, start: null, end: null, planned: null };
+  const mz = mergePhases([{ gs: [{ ...g0, actual: 60 }], w: 50 }, { gs: [{ ...g0, actual: null }], w: 50 }]);
+  near(mz[0].actual, 30, 1e-9, 'null = 0% жигнэсэн дунджид');
 }
 
 /* ══════════ 6. Фикстурын мод — багц, түвшний мөрүүд ══════════ */
@@ -282,7 +289,9 @@ const stored = fx.rows.map((r, i) => ({
   const planNo = assemblePlan(stored, { actual: { blocks: new Map(), universe: new Map(), infra: new Map() }, sched: null, land: new Map() }, TODAY);
   const pkN = packagesOf(planNo.tree);
   const allBars = [...buildL1(planNo, TODAY), ...buildL2(planNo, pkN, null, TODAY), ...buildL3(planNo, pkN, null, TODAY)].filter((r) => r.t === 'bar');
-  assert.ok(!allBars.some((r) => r.status === 'late' && r.actual == null), 'гүйцэтгэл мэдэгдэхгүй → late БИШ');
+  /* 2026-11-24: мэдэгдэхгүй = 0% — эхэлсэн, хугацаа өнгөрсөн, өөрийн огноотой зурвас «late» */
+  const pastNull = allBars.filter((r) => r.actual == null && !r.alt && r.start != null && r.end != null && r.start <= TODAY && r.end < TODAY);
+  assert.ok(pastNull.every((r) => r.status === 'late'), 'гүйцэтгэл мэдэгдэхгүй + хугацаа өнгөрсөн → late');
   assert.ok(!allBars.some((r) => r.status === 'late' && r.alt), 'өөр баганын огноо → late БИШ');
   const l2n = buildL2(planNo, pkN.slice(0, 1), null, TODAY);
   /* Өвөг мөрийн ӨӨРИЙН хадгалсан хос → inh, N-тэй ижил суурь (projectPlan.spanOf) */

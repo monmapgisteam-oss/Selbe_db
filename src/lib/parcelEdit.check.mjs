@@ -24,6 +24,7 @@ import {
   STATUS_LIST, PARCEL_OID, rowToParcel, diffParcel, validateParcel,
   parcelWhere, parcelNoWhere,
   validateParcelChanged, editFieldsOf, parcelNoLikeWhere, saveParcel,
+  ParcelConflict, parcelChangedFields,
 } from './parcelEdit.ts';
 import { PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES } from './services.ts';
 
@@ -210,5 +211,61 @@ assert.equal(await saveParcel(p, patchOf({})), 0);
   assert.doesNotMatch(body, /return n;/, 'баганын тоо буцаах ёсгүй');
 }
 console.log('✅ saveParcel: 0 (өөрчлөлтгүй) | 1 (нэгж талбар)');
+
+/* ══════════════ 12. saveParcel — зэрэг засвар (2026-11-24) ══════════════ */
+/* Цонх нээснээс хойш өөр хүн өөрчилсөн бол бичихгүй; өөрчлөгдөөгүй бол бичнэ */
+{
+  const json = (o) => new Response(JSON.stringify(o), { status: 200, headers: { 'content-type': 'application/json' } });
+  let server = { ...row };
+  let wrote = null;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    const q = Object.fromEntries(new URLSearchParams(String(init?.body ?? '')));
+    if (u.endsWith('/query')) {
+      const attrs = {};
+      for (const f of String(q.outFields || '*').split(',')) if (f in server) attrs[f] = server[f];
+      return json({ features: [{ attributes: attrs }] });
+    }
+    if (u.endsWith('/applyEdits')) {
+      wrote = JSON.parse(q.updates ?? '[]');
+      return json({ updateResults: wrote.map(() => ({ objectId: 4, success: true })) });
+    }
+    return json({ error: { code: 400, message: 'mock' } });
+  };
+  try {
+    /* өөр хүн «Хаяг»-ийг зассан → ParcelConflict, бичилт явахгүй */
+    server = { ...row, [F.address]: 'Өөр хүний бичсэн хаяг' };
+    await assert.rejects(() => saveParcel(p, patchOf({ note: 'миний тайлбар' })),
+      (e) => e instanceof ParcelConflict && /өөр хэрэглэгч/.test(e.message) && e.message.includes('Хаяг'));
+    assert.equal(wrote, null, 'зөрчилтэй үед applyEdits ЯВАХГҮЙ');
+    /* мөр алга → ParcelConflict */
+    globalThis.fetch = async (url) => (String(url).endsWith('/query') ? json({ features: [] }) : json({}));
+    await assert.rejects(() => saveParcel(p, patchOf({ note: 'x' })), ParcelConflict);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  /* өөрчлөгдөөгүй → бичнэ */
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    const q = Object.fromEntries(new URLSearchParams(String(init?.body ?? '')));
+    if (u.endsWith('/query')) {
+      const attrs = {};
+      for (const f of String(q.outFields || '*').split(',')) if (f in row) attrs[f] = row[f];
+      return json({ features: [{ attributes: attrs }] });
+    }
+    wrote = JSON.parse(q.updates ?? '[]');
+    return json({ updateResults: wrote.map(() => ({ objectId: 4, success: true })) });
+  };
+  try {
+    assert.equal(await saveParcel(p, patchOf({ note: 'миний тайлбар' })), 1);
+    assert.deepEqual(wrote, [{ attributes: { [PARCEL_OID]: 4, [F.note]: 'миний тайлбар' } }], 'зөвхөн өөрчлөгдсөн талбар');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.deepEqual(parcelChangedFields(p, rowToParcel({ ...row, [F.status]: 'Татгалзсан' })), ['status']);
+  assert.deepEqual(parcelChangedFields(p, p), []);
+}
+console.log('✅ saveParcel: өөр хүний засвартай бол бичихгүй (ParcelConflict)');
 
 console.log('parcelEdit.check: ok — жагсаалт ✓ задаргаа ✓ diff ✓ бохир утга ✓ шалгуур ✓ SQL ✓ засварын хүн ✓ хайлт ✓');

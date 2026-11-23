@@ -14,7 +14,7 @@ import { typeHuvaariScope } from './roleTypes';
 import { ownPkgScope } from './huvaariView';
 import { allPkgErh, type ErhSource, type PkgIssue, type ScopedRow } from './erhOverview';
 import { capUsers, capsOf, capsRemoteReady, capsStored, toggleCap, type CapKey } from './caps';
-import { ALL_BAGTS, scopeHas, type Grant } from './scopedAcl';
+import { ALL_BAGTS, requireRootForAdmin, scopeHas, type Grant } from './scopedAcl';
 import { ROLE_CAPS, capSystem, isDerivedCap, type ScopedSys } from './aclRoleCaps';
 import { PKG_GROUPS } from '@/modules/sheet/bagts.pkg';
 import { BUTETS_PACKS } from './butetsPacks';
@@ -589,6 +589,8 @@ export function capDirectOp(user: string, cap: CapKey, on: boolean): AclOp {
   const u = norm(user);
   if (!u) return null;
   if (isCodeSuper(u)) return on ? null : { error: tr('Кодонд бүртгэлтэй админы (super) эрх самбараас тохируулагдахгүй.') };
+  /* 2026-11-24 (засвар): админы (super) эрхийг зөвхөн үндсэн админ — урьд нь зөвхөн `toggleCap`-ийн requireSuper байв */
+  try { requireRootForAdmin(u); } catch (e) { return { error: (e as Error).message }; }
   const tableSuper = roleForUser(u) === 'super';
   if ((tableSuper ? capsStored(u) : capsOf(u)).includes(cap) === on) return null;
   /* 2026-11-20: админд (super) ч хуваарилалтаас гардаг эрхийг шууд олгохгүй — бусдын адил багцаар */

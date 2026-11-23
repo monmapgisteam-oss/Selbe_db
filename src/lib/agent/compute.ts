@@ -92,7 +92,7 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
   }
   const pkgOf = (key: string) => { const c = key.indexOf('|'); return c < 0 ? key : key.slice(0, c); };
   const label = (pk: string) => nameOf.get(pk) ?? pk;
-  const r1 = (x: number) => Math.round(x * 10) / 10;
+  const r2 = (x: number) => Math.round(x * 100) / 100;
 
   const keys = universeKeys(prog, uni);
   const blocks: BlockRow[] = keys.map((key) => {
@@ -103,7 +103,7 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
       blok: key.slice(key.indexOf('|') + 1),
       ail: f?.ail ?? 0,
       company: f?.company ?? '',
-      actual: p ? r1(p.overall) : 0,
+      actual: p ? r2(p.overall) : 0,
       date: p?.date ?? '',
     };
   });
@@ -112,16 +112,16 @@ export async function buildingProgress(scope: AgentScope): Promise<BuildingProgr
   return {
     blocks: blocks.length,
     ail: blocks.reduce((s, b) => s + b.ail, 0),
-    overall: mean.pct == null ? null : r1(mean.pct),
-    housing: housing == null ? null : r1(housing),
-    project: project == null ? null : r1(project),
+    overall: mean.pct == null ? null : r2(mean.pct),
+    housing: housing == null ? null : r2(housing),
+    project: project == null ? null : r2(project),
     byBagts: [...pkgProgressOf(prog, uni).entries()]
       .map(([pk, m]) => ({
         bagts: label(pk),
         blocks: m.total,
         reported: m.blocks,
         ail: blocks.filter((b) => bagtsKey(b.bagts) === pk).reduce((s, b) => s + b.ail, 0),
-        actual: r1(m.pct),
+        actual: r2(m.pct),
       }))
       .sort((a, b) => a.actual - b.actual),
     slowest: blocks
@@ -147,12 +147,12 @@ export async function landStatus(scope: AgentScope): Promise<{
   if (!resolveSource('land:left', scope)) throw new Error(tr('`land:left` давхаргад хандах эрх алга.'));
   const { loadLandStatus } = await import('@/lib/land');
   const s = await loadLandStatus();
-  const r1 = (x: number) => Math.round(x * 10) / 10;
+  const r2 = (x: number) => Math.round(x * 100) / 100;
   return {
     total: s.total,
     cleared: s.cleared,
     remaining: s.remaining,
-    pct: s.pct == null ? null : r1(s.pct),
+    pct: s.pct == null ? null : r2(s.pct),
     areaM2: Math.round(s.areaM2),
     byStatus: s.byStatus.map((b) => ({ label: b.label, n: b.n, areaM2: Math.round(b.areaM2) })),
     note: tr('`pct` = чөлөөлсөн нэгж талбар ÷ бүх нэгж талбар (ТООГООР, талбайгаар БИШ) — порталын «Газар чөлөөлөлт», Тайлантай нэг тоо. `areaM2` нь нэгж талбар бүрийн талбай (давхардалгүй) — `SUM(area_m2)`-аар бүү бод.'),

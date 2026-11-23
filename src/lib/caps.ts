@@ -7,7 +7,7 @@
 import { requireSuper } from './who';
 import { AUTH, type ViewKey } from './services';
 import type { CapRow } from './permsRemote';
-import { _newerThanSnapshot, _touchSeq } from './scopedAcl';
+import { _newerThanSnapshot, _touchSeq, requireRootForAdmin } from './scopedAcl';
 
 /** Одоогоор нэг эрх — жагсаалт өсөхөд UI автоматаар дагана. */
 export type CapKey =
@@ -160,7 +160,8 @@ export const CAPS: { key: CapKey; icon: string }[] = [
  */
 export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   addRow: ['huvaari'],
-  zovshoorol: ['zovshoorol'],
+  /* 2026-11-24: бүртгэлийг засах нь «Зөвшөөрөл оруулах»-д; «Зөвшөөрлийн явц» зөвхөн харах */
+  zovshoorol: ['zovshoorolTtb', 'zovshoorol'],
   finEdit: ['finance'],
   finRow: ['finance'],
   ipcCreate: ['ipc'],
@@ -471,6 +472,7 @@ export const canAutoSync = (username: string | null | undefined): boolean =>
  */
 export async function setCaps(username: string, caps: CapKey[], opts?: { absolute?: boolean }): Promise<boolean> {
   requireSuper();
+  requireRootForAdmin(username);
   const u = username.trim().toLowerCase();
   if (!u) return false;
   const absolute = opts?.absolute === true && caps.length === 0;
@@ -527,6 +529,7 @@ export function mergeCapDelta(base: readonly string[], next: readonly string[], 
 /** Нэг эрхийг асаах/унтраах товчлол. */
 export function toggleCap(username: string, cap: CapKey, on: boolean): Promise<boolean> {
   requireSuper();
+  requireRootForAdmin(username);
   if (!remoteSynced) return Promise.resolve(false);
   const cur = capsStored(username);
   return setCaps(username, on ? [...new Set([...cur, cap])] : cur.filter((c) => c !== cap));

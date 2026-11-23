@@ -522,8 +522,10 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
         {
           const obs = sc.obyem.filter(Boolean) as string[];
           const acts = sc.obyem.map((o, i) => (o ? sc.act[i] : null)).filter(Boolean) as string[];
+          /* 2026-11-24: өсөлтөд БҮХ блок (батлахын өмнөх замтай ижил — `sc.bld`); зөвхөн обьёмтой блокоор бодвол өөр гарч байв */
+          const actsAll = sc.act.filter(Boolean);
           const cols = [sc.f.oid, sc.f.no, sc.f.work, sc.f.wC, sc.f.wD, sc.f.wE, sc.f.vol, sum,
-            sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, sc.f.gun, sc.f.des, ...obs, ...acts]
+            sc.f.unit, sc.f.money, sc.f.plan, sc.f.act, sc.f.ratio, sc.f.gun, sc.f.des, ...obs, ...acts, ...actsAll]
             .filter(Boolean) as string[];
           const feats: { attributes: Record<string, unknown> }[] = [];
           for (let off = 0; ; ) {
@@ -574,7 +576,7 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
               for (let off = 0; ; ) {
                 const pv = (await post(p.url, {
                   where: `${fill} = ${ts(prevAt)}`,
-                  outFields: [sc.f.no, sc.f.work, ...obs, ...acts].join(','),
+                  outFields: [...new Set([sc.f.no, sc.f.work, ...obs, ...acts, ...actsAll])].join(','),
                   returnGeometry: 'false',
                   orderByFields: 'objectid ASC',
                   resultOffset: String(off),
@@ -635,7 +637,9 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
             });
             const noS = String(a[sc.f.no] ?? '').trim();
             if (isConstructionNo(noS) || isPrepNo(noS)) {
-              const d = acts.map((n) => {
+              const d = sc.bld.map((_, b) => {
+                const n = sc.act[b];
+                if (!n) return null;
                 const v1 = num(a[n]);
                 const v0 = prev ? num(prev[n]) : null;
                 return v1 == null && v0 == null ? null : (v1 ?? 0) - (v0 ?? 0);
@@ -686,7 +690,8 @@ async function loadArchived(bagts: string, sheetOid: number, pkgKey: string | nu
 
       let gain: FillGainIn | null = null;
       if ((dB || dA) && !prevFailed) {
-        const labels = sc.bld.filter((_, i) => sc.obyem[i]);
+        /* 2026-11-24: батлахын өмнөх замтай (`sc.bld`) ижил блокийн олонлог */
+        const labels = sc.bld;
         const none = labels.map(() => null);
         gain = { group: p.group, labels, dB: dB ?? none, dA: dA ?? none, synthetic: sc.synthetic };
       }

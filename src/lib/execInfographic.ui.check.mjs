@@ -51,6 +51,8 @@ assert.ok(ops.some((o) => o.k === 'text' && o.s === money(-1234567890)), 'refund
 assert.ok(ops.some((o) => o.k === 'text' && o.s === '—'), 'missing measurements remain missing');
 const text = (list) => list.filter((o) => o.k === 'text').map((o) => o.s).join(' ').replace(/\s+/g, ' ');
 assert.ok(text(ops).includes(findings[0]));
+/* 2026-11-24 (аудит): хүн цаг — маягтын хадгалсан утга, «тооцоолсон» биш */
+assert.ok(text(ops).includes('Хүн цаг (маягтаар)') && !text(ops).includes('Хүн цаг (тооцоолсон)'), 'хүн цагийн шошго');
 const summary = Array.from({ length: 35 }, (_, i) => `${i + 1}. ${findings[i % findings.length]}`).join('\n');
 const long = buildInfographic(report, '2026.10.28', [], summary, deltas);
 bounds(long);

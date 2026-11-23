@@ -13,9 +13,29 @@
  * шалтгааныг нь арилгана: нэг газар засвал гурвуулаа засагдана.
  */
 
-import { bagtsKey, isCodeSuper } from './services';
-import { requireSuper } from './who';
+import { AUTH, BOOTSTRAP_SUPER, bagtsKey, isCodeSuper } from './services';
+import { currentUser, requireSuper, writeGuardsOn } from './who';
+import { t as tr } from './i18nCore';
 import type { CapKey } from './caps';
+
+/* ══════════ Үндсэн админы шалгуур (2026-11-24) ══════════ */
+
+/** Үндсэн админ уу — `BOOTSTRAP_SUPER` эсвэл кодын (тестийн) админ */
+export const isRootAdminName = (u: string | null | undefined): boolean =>
+  (u ?? '').trim().toLowerCase() === BOOTSTRAP_SUPER.trim().toLowerCase() || isCodeSuper(u);
+/** Үүргийн уншигч — `permissions.ts` ачаалагдахдаа бүртгэнэ (тойрог импортгүй) */
+let adminRoleOf: ((u: string) => string | null) | null = null;
+export function _setAdminRoleReader(fn: (u: string) => string | null): void { adminRoleOf = fn; }
+/**
+ * 2026-11-24 (засвар): АДМИНЫ (super) нэмэлт эрх · урсгал · багцын хуваарилалтыг зөвхөн үндсэн админ бичнэ — урьд нь зөвхөн
+ * `requireSuper` байсан тул үндсэн бус админ функцийг шууд дуудаж өөр админы мөрийг бичдэг байв (`permissions.requireRootForAdminRow`-тэй ижил).
+ */
+export function requireRootForAdmin(username: string): void {
+  if (!writeGuardsOn() || typeof window === 'undefined' || !AUTH.appId) return;
+  if (adminRoleOf?.(username.trim().toLowerCase()) !== 'super') return;
+  if (isRootAdminName(currentUser())) return;
+  throw new Error(tr('Админы эрхийн мөрийг зөвхөн үндсэн админ ({0}) засна.', BOOTSTRAP_SUPER));
+}
 
 /** «Бүх багц» — тодорхой багц сонгоогүй гэсэн утга */
 export const ALL_BAGTS = '*';
@@ -455,7 +475,7 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    */
   const setGrants = (user: string, grants: Grant<R>[], grant = true): AclWrite => {
     /* 2026-11-19 (аудит): томилгоог зөвхөн системийн админ бичнэ — урьд нь зөвхөн самбарын товч нуугдсан байв */
-    try { requireSuper(); } catch (e) { return { ok: false, error: (e as Error).message }; }
+    try { requireSuper(); requireRootForAdmin(user); } catch (e) { return { ok: false, error: (e as Error).message }; }
     const u = user.trim().toLowerCase();
     if (!u) return { ok: false, error: spec.msg.noUser };
     if (isCodeSuper(u)) return { ok: false, error: spec.msg.superUser };
@@ -507,7 +527,7 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    */
   const removeAssign = (user: string, revoke = true): AclWrite => {
     /* 2026-11-20 (аудит): хасах/цэвэрлэх/дахин илгээхийг ч зөвхөн системийн админ — урьд нь нэвтэрсэн хэн ч бусдын томилгоог устгаж чаддаг байв */
-    try { requireSuper(); } catch (e) { return { ok: false, error: (e as Error).message }; }
+    try { requireSuper(); requireRootForAdmin(user); } catch (e) { return { ok: false, error: (e as Error).message }; }
     const u = user.trim().toLowerCase();
     if (!u) return { ok: false, error: spec.msg.noUser };
     const base = load().find((a) => a.user === u)?.grants ?? [];
@@ -526,7 +546,7 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    * Аккаунт УСТГАХАД хуваарилалтыг бүрмөсөн арилгах.
    */
   const purge = (user: string): Promise<boolean> => {
-    try { requireSuper(); } catch { return Promise.resolve(false); }
+    try { requireSuper(); requireRootForAdmin(user); } catch { return Promise.resolve(false); }
     const u = user.trim().toLowerCase();
     if (!u) return Promise.resolve(true);
     save(load().filter((a) => a.user !== u));
@@ -541,7 +561,7 @@ export function makeAcl<R extends string>(spec: AclSpec<R>): Acl<R> {
    * «ДАХИН ИЛГЭЭХ» · «ДАХИН ОЛГОХ» (2026-10-01, «хэрэглэгч: бүгдийг зас»).
    */
   const retry = (user: string, grant = true): AclWrite => {
-    try { requireSuper(); } catch (e) { return { ok: false, error: (e as Error).message }; }
+    try { requireSuper(); requireRootForAdmin(user); } catch (e) { return { ok: false, error: (e as Error).message }; }
     const u = user.trim().toLowerCase();
     if (!u) return { ok: false, error: spec.msg.noUser };
     const run = enqueue(u, async () => {

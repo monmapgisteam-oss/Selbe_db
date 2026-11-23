@@ -545,3 +545,32 @@ console.log('huvaariObyem.check: ok — scheduleByMoney · orderByDeps · remapM
   assert.ok(!/const \{ pct, oids, dups \} = await loadPkgPct\(\)/.test(L), 'бүх багцын давхар жагсаалт ашиглагдахгүй');
   console.log('huvaariObyem.check: давхар мөр багцаар ✓');
 }
+
+/* ══════════════ 2026-11-24: долоо хоногийн обьём батлалтаар — хүлээгдэж буй нь хувьд нөлөөлөхгүй ══════════════ */
+{
+  const H = await import('./huvaariObyem.ts');
+  const meta = { bagts: 'b1_9f', bagtsNer: 'Багц 1', des: 7, ajilNo: '3', ajilNer: 'w', negj: '', niit: 100 };
+  const wk = Date.parse('2026-11-30T00:00:00Z');
+  /* хадгалалт → хүлээгдэж буй төрөл */
+  const ed = H.weekEdits(meta, '5/1', wk, 30, null, H.TURUL_WEEK_PEND);
+  assert.equal(ed.adds[0].attributes.turul, H.TURUL_WEEK_PEND);
+  assert.ok(ed.adds[0].attributes.dkey.includes(`|${H.TURUL_WEEK_PEND}|`), 'dkey нь батлагдсанаас тусдаа');
+  assert.notEqual(H.weekDkeyOf('b1_9f', 7, '5/1', wk, H.TURUL_WEEK_PEND), H.weekDkeyOf('b1_9f', 7, '5/1', wk));
+  /* saveWeek нь батлагдсан төрөлд бичихгүй (эх кодын тулгалт — сүлжээгүй) */
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./huvaariObyem.ts', import.meta.url), 'utf8');
+  const sw = src.slice(src.indexOf('export async function saveWeek'), src.indexOf('async function weekRows'));
+  assert.ok(/TURUL_WEEK_PEND\)/.test(sw) && !/TURUL_WEEK\)/.test(sw), 'saveWeek зөвхөн хүлээгдэж буй мөрөнд');
+  assert.ok(/turul: WeekTurul = TURUL_WEEK\): Promise<PkgWeek>/.test(src), 'loadPkgWeek анхдагч — батлагдсан л (182-ын хувь)');
+  /* батлах — харсан утгатай тэнцүү бол батлагдсан мөрийг шинэчилж, хүлээгдэж буйг устгана */
+  const ap = H.weekApproveEdits(meta, '5/1', wk, [{ oid: 11, obyem: 30 }, { oid: 12, obyem: 30 }], [{ oid: 5 }], 30);
+  assert.equal(ap.updates[0].attributes.objectid, 5);
+  assert.equal(ap.updates[0].attributes.turul, H.TURUL_WEEK);
+  assert.equal(ap.updates[0].attributes.obyem, 30);
+  assert.deepEqual(ap.deletes.sort((a, b) => a - b), [11, 12]);
+  const ap2 = H.weekApproveEdits(meta, '5/1', wk, [{ oid: 11, obyem: 30 }], [], 30);
+  assert.equal(ap2.adds[0].attributes.turul, H.TURUL_WEEK, 'батлагдсан мөргүй бол нэмнэ');
+  assert.equal(H.weekApproveEdits(meta, '5/1', wk, [{ oid: 11, obyem: 40 }], [], 30), null, 'хооронд нь өөрчлөгдсөн → батлахгүй');
+  assert.equal(H.weekApproveEdits(meta, '5/1', wk, [], [{ oid: 5 }], 30), null, 'хүлээгдэж буй алга → батлахгүй');
+  console.log('huvaariObyem.check: долоо хоногийн обьём батлалтаар ✓');
+}

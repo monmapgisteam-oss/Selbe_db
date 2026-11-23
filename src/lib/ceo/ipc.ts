@@ -56,12 +56,11 @@ export function epochOf(v: unknown): number | null {
 }
 
 /**
- * «Өнөөдөр» — `now`-ийн ЛОКАЛ өдөр, `YYYY-MM-DD`.
+ * «Өнөөдөр» — `now`-ийн Улаанбаатарын өдөр, `YYYY-MM-DD`.
  */
 export function todayOf(now: number): string {
-  const d = new Date(now);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  /* 2026-11-24 (аудит): хөтчийн биш, Улаанбаатарын хуанлийн өдөр */
+  return dayKey(now);
 }
 
 /* ══════════════ Цэвэр тооцоо ══════════════ */

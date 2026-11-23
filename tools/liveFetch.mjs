@@ -7,6 +7,7 @@
  *                                (`writeAttempts()` тоолно). `stubAppTables: true` (шалгуур) бол аппын төлөвийн
  *                                хүснэгтүүдийн (230 · 183 · 191 · 192 · 193) өгөгдлийн хүсэлтийг «Token Required»-оор стаблана.
  *   · `installTokenInjection()`— Enterprise-ийн хаягт токен залгана (URLSearchParams · string body · GET→POST).
+ *   · `syncToken()`           — гар хэрэгслийн (draft-gc) токен (`ARCGIS_SYNC_USER/PASS` → generateToken, эсвэл админ токен).
  *
  * Дараалал: `installWriteGuard` → `installTokenInjection` (сүүлд суусан нь эхэлж ажиллана — токен залгасны ДАРАА хаалт).
  * Токены УТГЫГ хэзээ ч логлохгүй.
@@ -68,10 +69,44 @@ export function installWriteGuard({ stubAppTables = true } = {}) {
 }
 
 /**
+ * ГАР ХЭРЭГСЛИЙН ТОКЕН (2026-11-24, draft-gc) — `ARCGIS_SYNC_USER` + `ARCGIS_SYNC_PASS` бол порталын generateToken (`client: 'referer'`);
+ * ийм токен нь ЗӨВХӨН ижил `Referer` толгойтой хүсэлтэд хүчинтэй (өөрөөр 498) тул `referer`-ийг буцааж,
+ * `installTokenInjection` хүсэлт бүрд тавина. IP-д уясан (`requestip`) токеныг сонгоогүй: прокси/ачаалал тэнцүүлэгчийн
+ * ард сервер өөр IP хардаг. Хэрэглэгч алга бол `ARCGIS_ADMIN_TOKEN`. Утгыг хэзээ ч логлохгүй.
+ */
+export async function syncToken() {
+  const u = process.env.ARCGIS_SYNC_USER;
+  const p = process.env.ARCGIS_SYNC_PASS;
+  const portal = (process.env.NEXT_PUBLIC_ENT_PORTAL_URL || process.env.NEXT_PUBLIC_PORTAL_URL || '').replace(/\/+$/, '');
+  if (u && p && portal) {
+    const r = await fetch(`${portal}/sharing/rest/generateToken`, {
+      method: 'POST',
+      body: new URLSearchParams({ f: 'json', username: u, password: p, client: 'referer', referer: portal, expiration: '60' }),
+    });
+    const j = await r.json();
+    if (!j.token) throw new Error(`generateToken: ${j.error?.message ?? 'токен ирсэнгүй'}`);
+    return { tok: j.token, tok2: '', tok2Svc: [], referer: portal };
+  }
+  const t = loadAdminTokens();
+  if (!t.tok) throw new Error('Токен алга: ARCGIS_SYNC_USER/ARCGIS_SYNC_PASS эсвэл ARCGIS_ADMIN_TOKEN тохируулна уу');
+  return t;
+}
+
+/** `Referer` толгойг тавина (байвал хөндөхгүй) — Request объектын толгойг ч хадгална */
+export function withReferer(input, init, referer) {
+  if (!referer) return init;
+  const own = typeof input === 'object' && input !== null && !(input instanceof URL) ? input.headers : undefined;
+  const h = new Headers(init?.headers ?? own);
+  if (!h.has('Referer')) h.set('Referer', referer);
+  return { ...init, headers: h };
+}
+
+/**
  * Токен залгалт — `roots`-оор эхэлсэн хаягт л. `tok2Svc`-д нэрлэсэн үйлчилгээнд `tok2`, бусдад `tok`.
  * Request объект · FormData г.м. бусад хэлбэрт залгахгүй — хэвээр явуулна. `tok` хоосон бол юу ч суулгахгүй.
+ * `referer` өгвөл (referer токен) тэр хаягийн хүсэлт бүрд `Referer` толгой тавина — 2026-11-24.
  */
-export function installTokenInjection({ tok, tok2 = '', tok2Svc = [] }, roots = entRoots()) {
+export function installTokenInjection({ tok, tok2 = '', tok2Svc = [], referer = '' }, roots = entRoots()) {
   if (!tok || !roots.length) return;
   const tokFor = (url) => (tok2 && tok2Svc.some((n) => url.includes(`/services/${n}/`)) ? tok2 : tok);
   const orig = globalThis.fetch;
@@ -100,6 +135,7 @@ export function installTokenInjection({ tok, tok2 = '', tok2Svc = [] }, roots = 
         headers.set('Content-Type', 'application/x-www-form-urlencoded');
         init = { ...init, method: 'POST', headers, body: p.toString() };
       }
+      init = withReferer(input, init, referer);
     }
     return orig(input, init);
   };

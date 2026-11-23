@@ -19,6 +19,7 @@ assert.equal(emptyWipe([{ a: 1 }], []), true, 'хоосон үр дүн хүсн
 assert.equal(emptyWipe([], []), false);
 assert.equal(emptyWipe([{ a: 1 }], [{ a: 2 }]), false);
 import { assemblePlan } from '@/lib/projectPlanInputs';
+import { paidShareOf, withProjectContract } from '@/lib/paidShare';
 
 let n = 0;
 const check = (name, fn) => { fn(); n += 1; void name; };
@@ -159,6 +160,20 @@ check('sanhuu — E, эх үүсвэр, олгосон, хувь', () => {
   /* 2026-11-23 (аудит): олгосон ÷ ГЭРЭЭНИЙ дүн — порталын «Олгосон хувь»-тай нэг томьёо */
   assert.equal(s.olgoson_huvi, 50);
   assert.ok(!('geree_dun' in s), 'гэрээний дүн өгөхгүй');
+});
+check('2026-11-24 (аудит): olgoson_huvi = порталын хувь (гэрээлсэн багц + ТЭЗҮ олголт ÷ гэрээ), бүх олголт ÷ гэрээ биш', () => {
+  const cf = [{ bagts: 'Багц-1', bagts2: 'Багц-1', geree_dun: 800, ho_dungiin_tailbar: 'Гэрээлсэн дүн' }];
+  const ho = [
+    { bagts: 'Багц-1', dun: 300 },
+    { bagts: '', ajliin_turul: 'ТЭЗҮ,Судалгаа', dun: 50 },
+    { bagts: 'Багц-3', dun: 70 }, // гэрээлээгүй багц — хувьд орохгүй
+  ];
+  const sh = withProjectContract(paidShareOf(cf, ho), 1000);
+  const [s] = sanhuuRows(planPaid, { paid: sh.paid, paidPct: sh.pct });
+  assert.equal(s.olgoson_sanhuujilt_dun, 420, 'дүн — бүх олголт');
+  assert.equal(s.olgoson_huvi, 35, '(300 + 50) ÷ 1000 — урьд нь 420 ÷ 1000 = 42');
+  const [t] = sanhuuRows(planPaid, { paid: 1, paidPct: 100 / 3 });
+  assert.equal(t.olgoson_huvi, 33.33, '2 орон бутархай');
 });
 check('2026-11-09: sanhuu — мөнгө бүхэл төгрөг (амьд E 2,495,841,880,529.33 бичигддэг байв)', () => {
   const frac = rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, ho_dun_geree: 1000.33, zahiramj_unet_tsaas: 600.6, olgoson_dun: 400.4 } : r));

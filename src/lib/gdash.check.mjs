@@ -626,4 +626,16 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   assert.equal(inPeriod({ start: null, end: null }, effectivePeriod({ years: [...yrs], quarters: [], months: [] }, yrs)), true, 'огноогүй ажил «Бүгд»-д орно');
 }
 
+/* 2026-11-24 (аудит): он/сар — Улаанбаатарын хуанлиар (хөтчийн бүсээс үл хамаарна). UTC 2025-12-31 17:00 = УБ 2026-01-01 01:00 */
+{
+  const prevTz = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+  const r = row({ share: 10, start: Date.UTC(2025, 11, 31, 17), end: Date.UTC(2025, 11, 31, 17) });
+  assert.deepEqual(yearsOf([r]), [2026], 'yearsOf — УБ-ын он');
+  assert.equal(inPeriod(r, P({ years: [2026], months: [1] })), true, 'inPeriod — УБ-ын сар');
+  assert.equal(inPeriod(r, P({ years: [2025] })), false);
+  assert.deepEqual(sCurve([r], 'month').map((p) => p.key), ['2026-01'], 'sCurve — УБ-ын сар');
+  if (prevTz === undefined) delete process.env.TZ; else process.env.TZ = prevTz;
+}
+
 console.log('gdash.check.mjs — БҮГД ТЭНЦЛЭЭ');

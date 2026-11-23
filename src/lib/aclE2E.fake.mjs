@@ -85,6 +85,12 @@ function match(where) {
   if (where === '1=1') return () => true;
   const o = /^objectid = (\d+)$/.exec(where);
   if (o) return (r) => r.objectid === Number(o[1]);
+  /* 2026-11-24: `permsRemote.restampRowsOf` — тухайн хүний сүүлд зассан мөрүүд */
+  const ed = /^LOWER\(last_edited_user\) = '((?:[^']|'')*)'$/.exec(where);
+  if (ed) {
+    const who = ed[1].replace(/''/g, "'");
+    return (r) => typeof r.last_edited_user === 'string' && r.last_edited_user.toLowerCase() === who;
+  }
   /* 2026-11-23: `… OR role = 'super'` — бичихийн өмнөх уншигч итгэмжлэлийн гинжийг бодох super мөрүүдийг хамт татна */
   const m = /^LOWER\(username\) = '((?:[^']|'')*)'( OR role = 'super')?$/.exec(where);
   if (!m) throw new Error(`хуурамч FeatureLayer: танигдахгүй where «${where}»`);

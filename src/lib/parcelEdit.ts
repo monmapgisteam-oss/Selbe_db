@@ -289,8 +289,34 @@ export function diffParcel(before: Parcel, patch: ParcelPatch): Record<string, u
   return out;
 }
 
+/** Өөр хэрэглэгч энэ хооронд зассан — дахин оролдох утгагүй (2026-11-24) */
+export class ParcelConflict extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ParcelConflict';
+  }
+}
+
+/** Засагдах талбарын шошго — маягтынхтай ижил (GazarEdit) */
+const CHANGED_LABEL: Record<keyof ParcelPatch, () => string> = {
+  owner: () => tr('Овог, нэр'),
+  status: () => tr('Төлөв'),
+  progress: () => tr('Явцын мэдээ'),
+  address: () => tr('Хаяг'),
+  note: () => tr('Тайлбар (дэлгэрэнгүй)'),
+};
+
+/** Цонх нээх үеийнхээс (`before`) өөрчлөгдсөн засагдах талбарууд — ТҮҮХИЙ утгаар харьцуулна (2026-11-24) */
+export function parcelChangedFields(before: Parcel, now: Parcel): (keyof ParcelPatch)[] {
+  /* `Tuluv` ба `явцын_мэдээ` нэг талбар байж болно — тэгвэл нэг л удаа */
+  const keys = (['owner', 'status', 'progress', 'address', 'note'] as const)
+    .filter((k) => k !== 'progress' || F.progress !== F.status);
+  return keys.filter((k) => before[k] !== now[k]);
+}
+
 /**
  * Засварыг үйлчилгээнд бичнэ.
+ * 2026-11-24: бичихийн өмнө мөрийг дахин уншина — өөр хүн өөрчилсөн бол `ParcelConflict`.
  *
  * @returns хадгалагдсан НЭГЖ ТАЛБАРЫН тоо: 0 = өөрчлөлт байгаагүй, 1 = энэ талбар.
  */
@@ -301,6 +327,20 @@ export async function saveParcel(
   const d = diffParcel(before, patch);
   if (Object.keys(d).length === 0) return 0;
   requireCap('gazar');
+
+  /* 2026-11-24: зэрэг засварын хамгаалалт — цонх нээснээс хойш өөр хүн өөрчилсөн бол бичихгүй */
+  const rows = await queryFeatures(PARCEL_LEFT.url, {
+    where: parcelWhere(before.oid),
+    outFields: [...new Set([PARCEL_OID, F.owner, F.status, F.progress, F.address, F.note])],
+    limit: 1,
+  });
+  const now = rows.length ? rowToParcel(rows[0]) : null;
+  if (!now) throw new ParcelConflict(tr('Энэ нэгж талбар үйлчилгээнээс олдсонгүй (устгагдсан байж магадгүй) — хадгалсангүй.'));
+  const changed = parcelChangedFields(before, now);
+  if (changed.length) {
+    throw new ParcelConflict(tr('Энэ нэгж талбарыг өөр хэрэглэгч энэ хооронд өөрчилсөн байна ({0}) — хадгалсангүй. Цонхыг хааж дахин нээгээд шинэ утга дээр засна уу.',
+      changed.map((k) => CHANGED_LABEL[k]()).join(', ')));
+  }
 
   await applyAll(PARCEL_LEFT.url, PARCEL_OID, {
     updates: [{ [PARCEL_OID]: before.oid, ...d }],

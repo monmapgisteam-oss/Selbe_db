@@ -264,14 +264,20 @@ export function recordsOf(pays: readonly Row[], docs: readonly Row[]): IpcRec[] 
   const hist = pays
     .filter((r) => !isAuto(r) && !isDocRow(r) && num(r[P.amount]) != null && !(isPayRow(r) && nos.has(num(r[P.ipcNo]) ?? -1)))
     .map((r) => recOf185(r, 'pay'));
-  const ord = (x: IpcRec): number => x.no ?? (x.advance ? -1 : Number.POSITIVE_INFINITY);
   const srcOrd: Record<IpcSrc, number> = { pay: 0, legacy: 1, doc: 2 };
-  return [...hist, ...legacy, ...own].sort((a, b) => {
-    const oa = ord(a);
-    const ob = ord(b);
-    if (oa !== ob) return oa < ob ? -1 : 1;
-    return a.day.localeCompare(b.day) || srcOrd[a.src] - srcOrd[b.src] || a.oid - b.oid;
-  });
+  const byDay = (a: IpcRec, b: IpcRec): number => a.day.localeCompare(b.day) || srcOrd[a.src] - srcOrd[b.src] || a.oid - b.oid;
+  const all = [...hist, ...legacy, ...own];
+  const numbered = all.filter((x) => x.no != null).sort((a, b) => (a.no as number) - (b.no as number) || byDay(a, b));
+  /* 2026-11-24 (засвар): дугааргүй төлбөр төгсгөлд (+∞) биш — огноогоор, огноо нь хожуу анхны дугаартай IPC-ийн ӨМНӨ
+     (огноогүй бол эхэнд); урьд нь өмнөх · хуримтлагдсан · үлдэгдэлд ордоггүй байв */
+  const loose = all.filter((x) => x.no == null).sort(byDay);
+  const out: IpcRec[] = [];
+  let k = 0;
+  for (const x of numbered) {
+    while (k < loose.length && (!loose[k].day || (!!x.day && loose[k].day < x.day))) out.push(loose[k++]);
+    out.push(x);
+  }
+  return [...out, ...loose.slice(k)];
 }
 
 /** Дараагийн IPC дугаар — 185-ын бүх мөр (хуучин баримт, төлбөр, AUTO) ба 238-ийн мөрүүдийн хамгийн их дугаар + 1 */
@@ -546,6 +552,41 @@ export function deleteDoc(rec: IpcRec, pays: readonly Row[]): { unlock: Row[]; r
 export const sameNo = (recs: readonly IpcRec[], no: number, mineOid: number): IpcRec[] =>
   recs.filter((x) => x.no === no && x.src !== 'pay' && !(x.src === 'doc' && x.oid === mineOid));
 
+/**
+ * ДАВХАР ТӨЛБӨРИЙН МӨР (2026-11-24) — хоёр хүн нэг IPC-г зэрэг баталбал 185-д `PAY|код|дугаар` хоёр нэмэгдэнэ. Нэмсний дараа
+ * сая уншсан мөрөөс ижил код · дугаар · багцын хамгийн бага objectid-оос бусдыг устгана (`dupAddsToDelete`-тэй нэг дүрэм).
+ */
+export function dupPayDeletes(pays: readonly Row[], code: string, no: number): number[] {
+  const by = new Map<string, number[]>();
+  for (const r of pays) {
+    if (!isPayRow(r) || txt(r[C.code]) !== code || num(r[P.ipcNo]) !== no) continue;
+    const oid = num(r[HO_IPC.oid]);
+    if (oid == null) continue;
+    const k = pkgOf(r[C.pkg]);
+    by.set(k, [...(by.get(k) ?? []), oid]);
+  }
+  return [...by.values()].flatMap((oids) => oids.sort((a, b) => a - b).slice(1));
+}
+
+/** Түгжих бөглөлт бүр сая уншсан 185-д чөлөөтэй хэвээр уу (AUTO, «Гүйцэтгэл», дугааргүй) — 2026-11-24 */
+export function stillFree(pays: readonly Row[], rows: readonly PerfRow[]): boolean {
+  const free = new Set(perfRows(pays).filter((r) => r.status === S.work && r.ipcNo == null).map((r) => r.oid));
+  return rows.every((r) => free.has(r.oid));
+}
+
+/**
+ * ЗЭРЭГ ҮҮССЭН ДУГААРЫН БУЦААЛТ (2026-11-24) — хожуу баримт өөрийгөө устгахад миний түгжсэн бөглөлтөөс үлдсэн баримтын
+ * үед (төгсгөл ≥ өдөр) ОРООГҮЙГ л чөлөөлнө; үлдсэн баримт төгсгөлгүй бол хөндөхгүй. Зөвхөн сая уншсан 185-д энэ дугаар,
+ * «IPC үүссэн» хэвээр мөр. `keepers` — ижил багцын үлдэх баримтууд (хоосон = бүгдийг чөлөөлнө).
+ */
+export function rollbackRelease(after: readonly Row[], mine: readonly PerfRow[], keepers: readonly IpcRec[], no: number): Row[] {
+  const my = new Set(mine.map((r) => r.oid));
+  const covered = (day: string): boolean => keepers.some((x) => !x.to || (!!day && day <= x.to));
+  return perfRows(after)
+    .filter((r) => my.has(r.oid) && r.ipcNo === no && r.status === S.created && !covered(r.day))
+    .map((r) => ({ [HO_IPC.oid]: r.oid, [P.ipcNo]: null, [S.field]: S.work }));
+}
+
 /** Гэрээ цуцлах боломжгүй — 238-д тэр гэрээний баримт байна */
 export const docsBlockCancel = (docs: readonly Row[]): boolean => docs.length > 0;
 
@@ -553,18 +594,26 @@ export const docsBlockCancel = (docs: readonly Row[]): boolean => docs.length > 
 
 /**
  * БӨГЛӨЛТ ↔ ОЛГОСОН — бөглөлтийн гүйцэтгэл (цуцлагдаагүй AUTO мөрийн `guits_une`), IPC-д орсон, бөглөлтөөс үүссэн IPC-ээр
- * олгосон дүн (238 ба хуучин баримт; баримтгүй өмнөх төлбөр бөглөлтөөс өмнөх тул орохгүй). Олгох ёстой = гүйцэтгэл − олгосон.
+ * олгосон дүн (238 ба хуучин баримт; баримтгүй өмнөх төлбөр бөглөлтөөс өмнөх тул орохгүй). Олгох ёстой = гүйцэтгэл − IPC-д орсон.
  */
 export function fillBalance(pays: readonly Row[], recs: readonly IpcRec[]): { fills: number; inIpc: number; paid: number; due: number } {
-  void recs;
+  /* 2026-11-24 (засвар): IPC-д орсон = бөглөлтөөс үүссэн гүйцэтгэлийн IPC-ийн НИЙТ ДҮН (238 ба хуучин баримт, цуцлагдаагүй),
+     бөглөлтийн нийлбэр биш — IPC бөглөлтөөс бага бол зөрүү олгох ёстойд үлдэнэ, их бол дараагийнхыг бууруулна.
+     Олгосон = баталсан IPC-ийн бодит төлбөр. Баримт нь олдохгүй түгжигдсэн бөглөлт өөрийн дүнгээр (өмнөх дүрэм). */
+  const docs = recs.filter((x) => (x.src === 'doc' || x.src === 'legacy') && !x.advance && x.no != null && x.status !== S.cancelled);
+  const hasDoc = (r: PerfRow): boolean => docs.some((x) => x.no === r.ipcNo && (!x.pkg || pkgOf(x.pkg) === pkgOf(r.pkg)));
   let fills = 0; let inIpc = 0; let paid = 0;
   for (const r of perfRows(pays)) {
     if (r.status === S.cancelled) continue;
     fills += r.une ?? 0;
-    if (r.ipcNo != null && r.status !== S.work) inIpc += r.une ?? 0;
+    if (r.ipcNo == null || r.status === S.work || hasDoc(r)) continue;
+    inIpc += r.une ?? 0;
     if (r.status === S.paid) paid += r.une ?? 0;
   }
-  /* 2026-11-23 (засвар): олгох ёстой = IPC-д ОРООГҮЙ бөглөлтийн хуримтлал. Урьд нь «гүйцэтгэл − 238-ийн олгосон» гэж бодож
-     хуучин IPC-д орсон бөглөлтийг тоолоогүй тул Багц-2-т 148.1 тэрбум (бүх бөглөлт) гардаг байв — зөв нь 55.0 тэрбум. */
+  for (const x of docs) {
+    inIpc += x.total ?? 0;
+    if (x.status === S.paid) paid += (x.src === 'legacy' ? num(x.row[P.amount]) : null) ?? x.total ?? 0;
+  }
+  /* 2026-11-23: хуучин IPC-д орсон бөглөлт ч хасагдана (Багц-2: 148.1 биш 55.0 тэрбум) */
   return { fills: r2(fills), inIpc: r2(inIpc), paid: r2(paid), due: r2(fills - inIpc) };
 }

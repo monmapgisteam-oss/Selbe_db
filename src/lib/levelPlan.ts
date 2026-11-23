@@ -82,7 +82,8 @@ export function cleanSpan(s: number | null | undefined, e: number | null | undef
  *   late   — дуусах огноо өнгөрсөн атлаа дуусаагүй (улаан — «удирдлагын шийдвэр шаардлагатай»)
  *   behind — төлөвлөгөөт хувиас `BEHIND_PP`-ээс ИХ хоцорсон (улаан)
  *   run    — явж буй · todo — эхлээгүй
- *   none   — огноо алга эсвэл гүйцэтгэл мэдэгдэхгүй (саарал зураас — «мэдээлэл байхгүй», 0 БИШ)
+ *   none   — огноо алга эсвэл гүйцэтгэл мэдэгдэхгүй, хугацаа болоогүй (саарал; 2026-11-24: мэдэгдэхгүй = 0% — хугацаа
+ *            өнгөрсөн бол late, хоцорсон бол behind)
  */
 export type BarStatus = 'done' | 'late' | 'behind' | 'run' | 'todo' | 'none';
 
@@ -95,7 +96,13 @@ export function barStatus(
 ): BarStatus {
   if (actual != null && actual >= 100 - 1e-9) return 'done';
   if (start == null || end == null) return 'none';
-  if (actual == null) return start > today ? 'todo' : 'none';
+  /* 2026-11-24: хэмжигдээгүй (null) = 0% — эхэлсэн, хугацаа өнгөрсөн бол хоцорсон; төлөвлөгөөт хувиас хоцорсон бол
+     behind (`plan.ts` statusOf-той ижил); бусад үед саарал хэвээр */
+  if (actual == null) {
+    if (start > today) return 'todo';
+    if (lateOk && today > end) return 'late';
+    return planned != null && planned > BEHIND_PP ? 'behind' : 'none';
+  }
   if (lateOk && today > end) return 'late';
   if (planned != null && planned - actual > BEHIND_PP) return 'behind';
   return start > today ? 'todo' : 'run';
@@ -114,7 +121,7 @@ export function forecastEnd(start: number | null, actual: number | null, today: 
 
 /**
  * Milestone-ийн төлөв: дууссан ✓ · хугацаа өнгөрсөн (улаан) · удахгүй · огноо АЛГА (улаан — PDF «дутуу») ·
- * гүйцэтгэл мэдэгдэхгүй (`none`, саарал — огноо өнгөрсөн ч «late» гэж ДҮГНЭХГҮЙ).
+ * 2026-11-24: гүйцэтгэл мэдэгдэхгүй = 0% — огноо өнгөрсөн бол «late» (`none` — зөвхөн дуудагч өгөгдөлгүй үед).
  */
 export type MsStatus = 'done' | 'late' | 'upcoming' | 'missing' | 'none';
 
@@ -125,7 +132,8 @@ export function milestoneStatus(at: number | null, done: boolean | null, today: 
   if (done === true) return 'done';
   if (at == null) return 'missing';
   if (today <= at) return 'upcoming';
-  return done == null ? 'none' : 'late';
+  /* 2026-11-24: гүйцэтгэл мэдэгдэхгүй (null = 0%) — огноо өнгөрсөн бол хоцорсон */
+  return 'late';
 }
 
 /** Дууссан эсэх — гүйцэтгэл мэдэгдэхгүй бол null (`milestoneStatus`) */
@@ -480,7 +488,8 @@ export function mergePhases(list: readonly (readonly SubGroup[] | WeightedPhases
     const wa = w * (g.weight != null && g.weight > 0 ? g.weight : 1);
     const x = acc.get(k) ?? { g, wt: [], a: [], p: [], s: null, e: null };
     if (g.weight != null) x.wt.push({ v: g.weight, w });
-    if (g.actual != null) x.a.push({ v: g.actual, w: wa });
+    /* 2026-11-24: хэмжигдээгүй (null) = 0% — дунджаас хасвал 60% гэж гарна (зөв нь 30%); «нийт» мөртэй ижил */
+    x.a.push({ v: g.actual ?? 0, w: wa });
     if (g.planned != null) x.p.push({ v: g.planned, w: wa });
     if (g.start != null && (x.s == null || g.start < x.s)) x.s = g.start;
     if (g.end != null && (x.e == null || g.end > x.e)) x.e = g.end;
@@ -955,7 +964,8 @@ export function buildL3(
           const bv = res.values.get(b);
           const w = bv?.F ?? null;
           /* хуудсанд мөр нь бий, гүйцэтгэл нь бөглөгдөөгүй блок — блокийн S (0) шиг 0%-аар */
-          if (gs) return [{ gs: bv?.S == null ? gs : gs.map((g) => (g.actual == null ? { ...g, actual: 0 } : g)), w }];
+          /* 2026-11-24: S мэдэгдэхгүй блок ч 0%-аар (null = 0%) — урьд нь null үлдэж дунджаас хасагддаг байв */
+          if (gs) return [{ gs: gs.map((g) => (g.actual == null ? { ...g, actual: 0 } : g)), w }];
           if (!tpl) return [];
           return [{ gs: tpl.map((g) => ({ no: g.no, name: g.name, weight: g.weight, start: null, end: null, actual: 0, planned: null })), w }];
         })

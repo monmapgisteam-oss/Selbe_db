@@ -263,11 +263,12 @@ function finFlow(i: ReportInputs, no: string, group: number, withContract: boole
   ];
   if (lastIdx >= 0 && s) {
     const cum = s.paidCum[lastIdx];
-    /* Огноогүй төлбөр — тэнхлэгийн ТӨГСГӨЛИЙН хуримтлал ба нийт олголтын зөрүү (графикийн шугамд орохгүй) */
+    /* Огноогүй төлбөр — тэнхлэгийн ТӨГСГӨЛИЙН хуримтлал ба нийт олголтын зөрүү (графикийн шугамд орохгүй). 2026-11-24 (аудит):
+       цуваа БҮХ огноотой IPC төлбөрийг (ТЭЗҮ · олон багцын ч) агуулна — зөрүү = зөвхөн огноогүй төлбөр */
     const end = s.paidCum[s.paidCum.length - 1];
     const undated = x.fin.given != null && end != null ? x.fin.given - end : 0;
     text.push(Math.abs(undated) >= 1e6
-      ? tr('{0} сард {1} олгосон; хуримтлагдсан олголт {2}; огноогүй төлбөр {3} графикт ороогүй (нийт олголт {4}).', months[lastIdx], money(s.paidMonthly[lastIdx]), money(cum), money(undated), money(x.fin.given))
+      ? tr('{0} сард {1} олгосон; хуримтлагдсан олголт {2}; огноо бөглөгдөөгүй IPC төлбөр {3} графикт ороогүй (нийт олголт {4}).', months[lastIdx], money(s.paidMonthly[lastIdx]), money(cum), money(undated), money(x.fin.given))
       : tr('{0} сард {1} олгосон; хуримтлагдсан олголт {2}.', months[lastIdx], money(s.paidMonthly[lastIdx]), money(cum)));
   } else text.push(tr('Сарын олголтын цуваа уншигдаагүй тул график мэдээлэлгүй.'));
   return { key: 'finFlow', no, group, title: tr('Санхүүжилт — сарын олголт ба хуримтлал'), chart, text };
@@ -513,7 +514,7 @@ function workforce(i: ReportInputs, no: string, group: number): Section {
   };
   const h = x.gdash.hse;
   const text = [
-    h ? tr('ХАБЭА-ийн сүүлийн бүртгэл {0}: {1} ажилтан, {2} техник хэрэгсэл, {3} хүн цаг (ажилтан × 8 цаг, тооцоолсон).', h.date, num(h.workers), num(h.equipment), num(h.manHours)) : tr('ХАБЭА-ийн бүртгэл олдсонгүй тул ажиллах хүчний тоо мэдээлэлгүй.'),
+    h ? tr('ХАБЭА-ийн сүүлийн бүртгэл {0}: {1} ажилтан, {2} техник хэрэгсэл, {3} хүн цаг (маягтаар).', h.date, num(h.workers), num(h.equipment), num(h.manHours)) : tr('ХАБЭА-ийн бүртгэл олдсонгүй тул ажиллах хүчний тоо мэдээлэлгүй.'),
     nDelta(tr('Ажиллаж буй хүн'), tr('хүнээр'), d, d?.workers) ?? (i.hseDays ? tr('Өдрийн бүртгэл {0} өдөр.', num(i.hseDays.length)) : tr('Өдрийн бүртгэлийн цуваа уншигдаагүй тул график мэдээлэлгүй.')),
   ];
   const t2 = nDelta(tr('Техник хэрэгсэл'), tr('нэгжээр'), d, d?.technik);

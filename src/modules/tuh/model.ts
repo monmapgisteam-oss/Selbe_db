@@ -32,7 +32,7 @@ export type DocCount = { total: number; approved: number; review: number; return
  * ТУХ-ын эх сурвалжууд — `Tuh.tsx`-ийн ачаалагч бүр. Санхүү (`loadFinData`) энд ОРОХГҮЙ:
  * түүнгүйгээр загвар огт бүрдэхгүй.
  */
-export type TuhSrc = 'plan' | 'cfPlan' | 'hist' | 'commission' | 'workforce' | 'docs' | 'packs' | 'budget' | 'deps' | 'live';
+export type TuhSrc = 'plan' | 'cfPlan' | 'hist' | 'commission' | 'workforce' | 'docs' | 'packs' | 'budget' | 'deps' | 'live' | 'project';
 
 /**
  * «—» → «…» — тухайн эх сурвалж ХАРААХАН АЧААЛАГДАЖ БАЙГАА бол.
@@ -119,7 +119,12 @@ export type TuhModel = {
   /** Хамгийн сүүлд тайлагнасан биет гүйцэтгэлийн огноо */
   lastReport: string | null;
   hero: {
+    /** 2026-11-24 (аудит): ТӨСЛИЙН бодит гүйцэтгэл = «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн S (удирдлагын тайлантай нэг) */
     actual: number | null;
+    /** Тэр мөрийн төлөвлөгөө P */
+    plan: number | null;
+    /** Орон сууцны блокийн явц (`physNow`) — доорх төлөвлөгөө, хамралт, хасагдсан багц ҮҮНИЙХ */
+    housing: number | null;
     planContract: number | null;
     planContractor: number | null;
     planExcluded: string[];
@@ -222,10 +227,8 @@ const countDocs = (docs: TuhDoc[]): DocCount | null => {
   return c;
 };
 
-const todayIso = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+/* 2026-11-24 (аудит): Улаанбаатарын хуанлийн өдөр — хөтчийн бүсээс үл хамаарна */
+const todayIso = () => dayKey(Date.now());
 
 export function buildModel(input: {
   fin: FinData;
@@ -253,6 +256,8 @@ export function buildModel(input: {
   live?: LiveMap | null;
   /** Төслийн нийт ГЭРЭЭЛСЭН дүн (`loadProjectContractTotal`) — өгвөл «олгосон хувь»-ийн хуваарь нь тэр (портал даяар нэг тоо, 2026-11-23) */
   projContract?: number | null;
+  /** «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр (S/P) — `null`/өгөөгүй = уншигдаагүй (`Tuh.loadProjectRoot`) */
+  project?: { S: number | null; P: number | null } | null;
 }): TuhModel {
   const { fin, plan, cfPlan, packs, hist, commission, workforce, docs } = input;
   const today = todayIso();
@@ -414,7 +419,9 @@ export function buildModel(input: {
     nowYm,
     lastReport,
     hero: {
-      actual: physNow(fin, nowYm),
+      actual: input.project?.S ?? null,
+      plan: input.project?.P ?? null,
+      housing: physNow(fin, nowYm),
       planContract: housingPct(housing
         .filter((r) => physKeys.has(r.p.pkgKey))
         .map((r) => ({ pct: r.planContract, cost: costW.get(r.p.pkgKey) ?? 0, blocks: r.blocks ?? 0 }))),

@@ -1309,10 +1309,12 @@ async function archiveSubmission(
      — эс бөгөөс хожуу өдрүүдийн ажил тэр өдрийн хувьд шингэнэ. Өмнөх жааз уншигдахгүй бол хуучин зан + анхааруулга. */
   if (backDated) {
     try {
-      const { frameDayBefore, rebaseBackdated } = await import('./frameRepair');
+      const { frameDayBefore, rebaseBackdated, rebaseBackdatedDates } = await import('./frameRepair');
       const prevDay = await frameDayBefore(pkg, sc, msToDay(fillMs));
       const prevRows = prevDay ? (await loadRows(pkg, sc, prevDay, undefined, { strict: true })).rows : [];
       rebaseBackdated(frame, loaded.rows, prevRows, sc);
+      /* 2026-11-24: бодит эхэлсэн/дууссан огноо — өмнөх жаазаар (L-ийн хожуу ажил/огноо орохгүй) */
+      rebaseBackdatedDates(frame, loaded.rows, prevRows, sc, fillMs);
     } catch (e) {
       const w = tr('Бөглөсөн өдрийн жаазны хадгалах хувийг өмнөх жаазтай тулгаж чадсангүй ({0}) — админд мэдэгдэнэ үү.', String((e as Error)?.message ?? e));
       cleanupWarn = cleanupWarn ? `${cleanupWarn} · ${w}` : w;
@@ -1666,7 +1668,6 @@ export async function apply(a: {
       // ЭЦСИЙН БАТАЛГАА — долоон шат бүгд өнгөрлөө (2026-10-23)
       attrs[F.status] = STATUS.transferred;
       registerNow = true;
-      SEEN_DONE.add(a.oid);
     }
   }
 
@@ -1800,6 +1801,8 @@ export async function apply(a: {
         return { ok: false, error: `${ARCHIVED_NO_RETURN()} (${String((e as Error)?.message ?? e)})` };
       }
     }
+    /* 2026-11-24: «харсан» тэмдгийг шийдвэр бичигдсэний (эсвэл аль хэдийн шилжсэн) ДАРАА л — бичилт унавал бусдын батлалтыг анзаарна */
+    if (registerNow) SEEN_DONE.add(a.oid);
     /** Хагас амжилтын анхааруулгууд — нэгтгэл · IPC · `Zovshoorson_nud` */
     const warns: string[] = [];
     if (archWarn) warns.push(archWarn);
@@ -1856,8 +1859,9 @@ export async function apply(a: {
         ipcOk = !ipcErr;
       }
       try {
-        const { syncPlanProgress, planSyncWarn } = await import('./projectPlanSync');
-        const ps = await syncPlanProgress();
+        /* 2026-11-24: явж буй автомат синкийн ард гинжилнэ (`force`) — шууд дуудвал түүний батлалтаас өмнөх уншилт 182-ыг дарна */
+        const { runPlanSync, planSyncWarn } = await import('./projectPlanSync');
+        const ps = await runPlanSync({ fresh: true, force: true });
         /* 2026-11-05 (аудит №1): алгассан/хэсэгчилсэн бичилт ч хэрэглэгчид харагдана — урьд нь зөвхөн console */
         const pw = planSyncWarn(ps);
         if (pw) {
@@ -1916,6 +1920,8 @@ export async function retryPendingRegistrations(
   if (sweeping) return out;
   sweeping = true;
   let fixed = 0;
+  /* 2026-11-24: нөхсөн (архивт суусан) бүртгэлийн тоо — 182-ын гүйцэтгэлийг дараа нь синклэнэ */
+  let repaired = 0;
   try {
     const { listRegPending, markRegistered } = await import('./submission');
     const pend = (await listRegPending()).filter((p) => !SWEPT.has(p.oid));
@@ -1949,7 +1955,6 @@ export async function retryPendingRegistrations(
             const at = Number.isFinite(sub.payload.approvedAt) ? Number(sub.payload.approvedAt) : serverNow();
             const logged = lastApproverName(live[F.history], final);
             const name = logged || (who ?? me ?? '').trim();
-            SEEN_DONE.add(cur.__oid);
             const fix: Attrs = {
               [HYANALT.oid]: cur.__oid,
               [sf.who]: name,
@@ -1964,12 +1969,15 @@ export async function retryPendingRegistrations(
               }, meOf(me))),
             };
             await updateDecision(live, fix);
+            /* 2026-11-24: бичилт амжилттай болсны ДАРАА л «харсан» — унавал бусдын батлалтыг анзаарна */
+            SEEN_DONE.add(cur.__oid);
             fixed += 1;
             cur = { ...live, ...fix } as Row;
           }
         }
         const ar = await archiveSubmission(cur);
         if (!ar.ok || !ar.pkgKey || !(ar.archiveOid > 0)) { out.failed += 1; continue; }
+        repaired += 1;
         const { registerApproved } = await import('./negtgelWrite');
         const r = await registerApproved(cur[F.bagts], ar.archiveOid, ar.pkgKey);
         let ipcOk = false;
@@ -1995,6 +2003,16 @@ export async function retryPendingRegistrations(
       }
     }
     if (fixed > 0) await refreshQuiet();
+    /* 2026-11-24: нөхсөн бүртгэлийн гүйцэтгэл 182-т — батлалтын замтай ижил (явж буй синкийн ард гинжилнэ) */
+    if (repaired > 0) {
+      try {
+        const { runPlanSync, planSyncWarn } = await import('./projectPlanSync');
+        const pw = planSyncWarn(await runPlanSync({ fresh: true, force: true }));
+        if (pw) console.warn('[selbe] нөхөлтийн дараах төсөл төлөвлөгөөний гүйцэтгэл:', pw);
+      } catch (e) {
+        console.warn('[selbe] нөхөлтийн дараах төсөл төлөвлөгөөний гүйцэтгэл бичих алдаа:', e);
+      }
+    }
     return out;
   } catch (e) {
     console.warn('[selbe] хүлээгдэж буй бүртгэлийн жагсаалт:', e);

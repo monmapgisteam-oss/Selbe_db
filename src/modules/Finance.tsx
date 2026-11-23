@@ -666,9 +666,20 @@ export function aggregateMonths(
   const lagS = sc?.excluded.length
     ? housingSeries(d.phys, d.physCnt, d.physAt, cost, labels, d.physN, sc.keys)
     : null;
+  /* 2026-11-24 (аудит): төслийн сарын олголт = БҮХ огноотой IPC төлбөр (ТЭЗҮ · олон багцын · багцгүй ч) — Σ = `hoTotals.paid` −
+     огноогүй. Тэнхлэгийн өмнөх/дараах огноо захын сард. Багцын `d.given` (барилгын олголт) хөндөгдөхгүй. */
+  const givenBy = new Map<string, number>();
+  const first = labels[0], last = labels[labels.length - 1];
+  for (const r of d.pays ?? []) {
+    const amt = hoAmount(r);
+    if (amt == null || amt === 0 || !first) continue;
+    const raw = ym(hoPayDate(r));
+    if (!raw) continue;
+    const mon = raw < first ? first : raw > last ? last : raw;
+    givenBy.set(mon, (givenBy.get(mon) ?? 0) + amt);
+  }
   return series.map((s, i) => {
-    let given = 0;
-    d.given.forEach((byMon) => { given += byMon.get(s.label) ?? 0; });
+    const given = givenBy.get(s.label) ?? 0;
     const out: { label: string; given: number; phys: number | null; physAt: string | null; physLag?: number | null; physLagAt?: string | null } =
       { label: s.label, given, phys: s.phys, physAt: s.physAt };
     if (lagS) { out.physLag = lagS[i].phys; out.physLagAt = lagS[i].physAt; }

@@ -442,7 +442,9 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
   const bPlan = phaseOf(src.plan, 'barilga', pkg);
   p.metrics.push(
     ...(bPlan ? [{ label: tr('Төлөвлөгөөт'), value: bPlan.P, kind: 'pct' as const }] : []),
-    { label: tr('Гүйцэтгэл'), value: bPlan?.S ?? (row ? fin(row.progress) : lost ? null : fin(src.overall?.pct)), kind: 'pct' },
+    /* 2026-11-24 (аудит): `overall.pct` нь ЗӨВХӨН орон сууцны блокийн явц — «Гүйцэтгэл» гэж орлуулахгүй, өөрийн нэрээр доор */
+    { label: tr('Гүйцэтгэл'), value: bPlan?.S ?? (row ? fin(row.progress) : null), kind: 'pct', why: bPlan || row ? undefined : tr('«Төсөл төлөвлөгөө биелэлт» татагдсангүй') },
+    ...(!pkg ? [{ label: tr('Орон сууцны блокийн явц'), value: fin(src.overall?.pct), kind: 'pct' as const }] : []),
     ...(bPlan?.E != null ? [{ label: tr('Төсөвт өртөг'), value: bPlan.E, kind: 'mnt' as const }] : []),
     { label: tr('Блок'), value: row ? row.blocks : sum((b) => b.blocks), kind: 'count' },
     { label: tr('Тайлангүй блок'), value: row ? row.missing : sum((b) => b.missing), kind: 'count' },
@@ -689,7 +691,9 @@ function tailanPart(src: SchemSources): Part {
   p.metrics.push(
     { label: tr('Сүүлийн тайлангийн нас'), value: ageD, kind: 'day' },
     { label: tr('Бүртгэгдсэн блок'), value: fin(src.overall?.rows), kind: 'count' },
-    { label: tr('Нийт гүйцэтгэл'), value: fin(src.overall?.pct), kind: 'pct' },
+    /* 2026-11-24 (аудит): урьд нь орон сууцны блокийн явцыг «Нийт гүйцэтгэл» гэж харуулдаг байв (30.47% ↔ төслийн нийт 35.99%) */
+    { label: tr('Төслийн нийт гүйцэтгэл'), value: src.plan?.total.S ?? null, kind: 'pct', why: src.plan ? undefined : tr('«Төсөл төлөвлөгөө биелэлт» татагдсангүй') },
+    { label: tr('Орон сууцны блокийн явц'), value: fin(src.overall?.pct), kind: 'pct' },
   );
   if (src.progress?.date) {
     p.tables.push({
@@ -787,10 +791,6 @@ export function cardStat(
   const sum = (of: (b: BagtsLite) => number) => (
     pkg && !row ? null : rows ? rows.reduce((s, b) => s + of(b), 0) : null
   );
-  /**
-   * Багц сонгосон үеийн ТӨСЛИЙН нөөц утга — зөвхөн багц СОНГООГҮЙ үед.
-   */
-  const proj = (v: number | null): number | null => (pkg ? null : v);
   const rc = src.review ? reviewCounts(pickPkg(src.review, pkg, (r) => r[HF.bagts])) : null;
   const c = src.clearance;
   const fi = src.finance;
@@ -851,7 +851,7 @@ export function cardStat(
     case 'bar': {
       const bp = phaseOf(src.plan, 'barilga', pkg);
       if (bp) return phaseStat('barilga');
-      const v = row ? fin(row.progress) : proj(fin(src.overall?.pct));
+      const v = row ? fin(row.progress) : null;
       return statOf(tr('Гүйцэтгэл'), v, 'pct', grade(v, TH.barilgaPct.good, TH.barilgaPct.warn));
     }
     case 'barOk': {

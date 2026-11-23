@@ -159,7 +159,8 @@ export type ExecReport = {
 /* ═══════════════ Ачаалагч ═══════════════ */
 
 export const loadExecReport = cached(loadExecReportRaw, 5 * 60_000,
-  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL']);
+  // 2026-11-24 (аудит): loadProjectPlan зургийн бүртгэлийг уншдаг — ZURAG_BURTGEL
+  ['CASHFLOW_NEW', 'HO_IPC', 'BAGTS_SHEET', 'BUILDING', 'PARCEL_LEFT', 'HABEA', 'ZOVSHOOROL', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL', 'ZURAG_BURTGEL']);
 
 async function loadExecReportRaw(): Promise<ExecReport> {
   const [cf, contracts, land, fillProg, bld, fin, plan, zovRows, hse, finance, wbs, safety] = await Promise.all([

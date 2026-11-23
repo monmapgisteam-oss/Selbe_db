@@ -5,7 +5,7 @@
 import { loadFinData, aggregateMonths, pkgMonthsMap, projectPlanOf } from '@/modules/Finance';
 import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadWorkforceKpi, type WorkforceKpi } from '@/lib/ceo/workforce';
-import { loadZov, TOLOV } from '@/lib/zovshoorol';
+import { loadPermitRows, TOLOV } from '@/lib/zovshoorol';
 import { HO_IPC, hoAmount, hoPayDate, pkgKeyOf } from '@/lib/services';
 import { finPkgKey } from '@/lib/pkgAlias';
 import { dayKey, monthKey } from '@/lib/format';
@@ -27,10 +27,11 @@ export async function loadExecDeltas(x: ExecReport, period: ExecPeriod): Promise
     loadFinData(),
     loadPlanCurveCached().catch(() => null),
     (loadWorkforceKpi() as Promise<WorkforceKpi>).catch(() => null),
-    loadZov().catch(() => null),
+    /* 2026-11-24 (аудит): ТТБ-ийн мөр + бүртгэл — удирдлагын тайлангийн зөвшөөрлийн хэсэгтэй НЭГ эх */
+    loadPermitRows().catch(() => null),
     loadBlockHistory(), loadBlockUniverse(), loadInfraHistory(), loadInfraUniverse(),
   ]);
-  const byKey = pkgMonthsMap(fin);
+  const byKey = pkgMonthsMap(fin);
   const HC = HO_IPC.contractFields;
   const months = aggregateMonths(fin, pc);
   const packs = x.prog.packs.map((p) => ({ key: p.key, label: p.name, kind: p.kind, months: byKey.get(p.key) ?? [] }));

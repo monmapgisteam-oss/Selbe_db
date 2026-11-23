@@ -38,7 +38,7 @@ import {
 } from '@/lib/deps';
 import {
   loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf,
-  obyemResFields, loadPkgWeek, saveWeek, nextWeekStart, type MonthRes, type PkgPlan, type PkgRes, type PkgWeek,
+  obyemResFields, loadPkgWeek, saveWeek, approveWeek, TURUL_WEEK_PEND, nextWeekStart, type MonthRes, type PkgPlan, type PkgRes, type PkgWeek,
 } from '@/lib/huvaariObyem';
 import { ubToday } from '@/lib/projectPlan';
 import {
@@ -604,6 +604,8 @@ export function Huvaari({
   const [obState, setObState] = useState<'loading' | 'ok' | 'fail'>('loading');
   /** Ирэх 7 хоногийн обьём (2026-11-11) — ажлын цонхонд шууд хадгалагдана */
   const [wkPlan, setWkPlan] = useState<PkgWeek>(new Map());
+  /** 2026-11-24: батлуулахаар хүлээгдэж буй долоо хоногийн обьём — төлөвлөгөөт хувьд нөлөөлөхгүй, батлагч батална */
+  const [wkPend, setWkPend] = useState<PkgWeek>(new Map());
   const obLoadedRef = useRef(false);
   const retryOb = () => {
     const key = pkg.key;
@@ -818,7 +820,9 @@ export function Huvaari({
       .then((r) => { if (alive) { setObPlan(r.plan); setObRes(r.res); setObOids(r.oids); setObDups(r.dups); setObState('ok'); obLoadedRef.current = true; } })
       .catch(() => { if (alive) setObState('fail'); /* задаргаагүйгээр үргэлжилнэ */ });
     setWkPlan(new Map());
+    setWkPend(new Map());
     loadPkgWeek(pkg.key).then((w) => { if (alive) setWkPlan(w); }).catch(() => { /* долоо хоногийн обьёмгүйгээр үргэлжилнэ */ });
+    loadPkgWeek(pkg.key, TURUL_WEEK_PEND).then((w) => { if (alive) setWkPend(w); }).catch(() => { /* хүлээгдэж буйгүйгээр */ });
     setKomissNote('');
     hdRemapRef.current = null;
     loadSchema(pkg, { synthetic: true })
@@ -3550,8 +3554,9 @@ export function Huvaari({
    * (911 мөрийн 9 нь л асуудалтай байхад бүгдийг дахин шалгадаг байв). Тулгалт `backMarkMapOf`-ийнх.
    */
   const carryRef = useRef<number | null>(null);
-  const carryCalc = useLatest((prev: { oid: number; ok: Set<number>; pay: PlanPayload }) => backMarkMapOf({
-    backOn: true, backMarks: prev, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes,
+  /* 2026-11-24: `cur` — шинэ илгээлт; мөрийн бүх утга өмнөхтэй яг ижил байж л үргэлжилнэ */
+  const carryCalc = useLatest((prev: { oid: number; ok: Set<number>; pay: PlanPayload }, cur: PlanPayload) => backMarkMapOf({
+    backOn: true, backMarks: prev, rows, plan, byCode, reviewSet, n, obDraft, obPlan, obResDraft, obRes, cur,
   }));
   useEffect(() => {
     if (!review || !reviewLive || carryRef.current === review.oid || okNRef.current > 0) return;
@@ -3561,8 +3566,9 @@ export function Huvaari({
       const prev = await loadPrevReturned(review.pkgKey, kind, oid).catch(() => null);
       if (!prev?.okRows?.length) return;
       const pay = await loadPayload(prev.oid).catch(() => null);
-      if (!pay || pay.kind !== kind || carryRef.current !== oid) return;
-      const ok = [...carryCalc.current({ oid: prev.oid, ok: new Set(prev.okRows), pay })].filter(([, v]) => v === 'ok').map(([o]) => o);
+      const cur = await loadPayload(oid).catch(() => null);
+      if (!pay || !cur || pay.kind !== kind || cur.kind !== kind || carryRef.current !== oid) return;
+      const ok = [...carryCalc.current({ oid: prev.oid, ok: new Set(prev.okRows), pay }, cur)].filter(([, v]) => v === 'ok').map(([o]) => o);
       if (!ok.length) return;
       setOkRows((s0) => (s0.size ? s0 : new Set(ok)));
       setNote(tr('Өмнөх илгээлтэд зөвшөөрсөн, өөрчлөгдөөгүй {0} мөр автоматаар ногоон боллоо — үлдсэнийг шалгана уу.', num(ok.length)));
@@ -4048,6 +4054,40 @@ export function Huvaari({
     () => new Set(modalRow && sc && kind === 'plan' ? unbalancedBlocks(modalRow, sc.bld, obDraft, obPlan) : []),
     [modalRow, sc, kind, obDraft, obPlan],
   );
+  /**
+   * ИРЭХ 7 ХОНОГИЙН ОБЬЁМЫГ БАТЛАХ (2026-11-24): хүлээгдэж буй утгатай ажлын цонхыг батлагч нээхэд асууна — батлагдтал
+   * төлөвлөгөөт хувьд (182) нөлөөлөхгүй (сарын обьёмын адил). Нэг (ажил, блок, утга)-ыг нэг л удаа асууна.
+   */
+  const wkAskRef = useRef('');
+  const reloadWeekRef = useLatest(async () => {
+    const [w, p] = await Promise.all([loadPkgWeek(pkg.key), loadPkgWeek(pkg.key, TURUL_WEEK_PEND)]);
+    setWkPlan(w); setWkPend(p);
+  });
+  useEffect(() => {
+    if (!modalRow || !sc || kind !== 'plan' || !canApprove || savedView || modalRow.group || modalRow.des == null) return;
+    const des = modalRow.des;
+    const blok = sc.bld[blk] ?? '';
+    const start = nextWeekStart(ubToday());
+    const pend = (wkPend.get(des)?.get(blok) ?? []).find((x) => x.week === start);
+    if (!pend) return;
+    const was = (wkPlan.get(des)?.get(blok) ?? []).find((x) => x.week === start)?.obyem ?? null;
+    const askKey = `${String(modalRow.oid)}|${blok}|${String(start)}|${String(pend.obyem)}`;
+    if (wkAskRef.current === askKey) return;
+    wkAskRef.current = askKey;
+    const meta = { bagts: pkg.key, bagtsNer: pkg.name, des, ajilNo: modalRow.no, ajilNer: modalRow.work, negj: '', niit: modalRow.vol };
+    void (async () => {
+      const yes = await askConfirm(tr('Ирэх 7 хоногийн обьём {0} батлуулахаар хүлээгдэж байна (одоо батлагдсан: {1}). Батлах уу?',
+        num(pend.obyem, 2), was == null ? '—' : num(was, 2)), { ok: tr('Батлах') });
+      if (!yes) return;
+      try {
+        await approveWeek(meta, blok, start, pend.obyem);
+        await reloadWeekRef.current();
+        setNote(tr('Ирэх 7 хоногийн обьём батлагдлаа — төлөвлөгөөт хувьд тусгагдана.'));
+      } catch (e) {
+        setNote(userError(e));
+      }
+    })();
+  }, [modalRow, sc, kind, canApprove, savedView, blk, wkPend, wkPlan, pkg.key, pkg.name, reloadWeekRef]);
   /**
    * БҮЛГИЙН ЦОНХНЫ МӨНГӨ — шууд ажилтай (жижиг) бүлэгт шууд ажлуудын, том бүлэгт (зөвхөн дэд бүлэгтэй) доторх бүх ажлын
    * мөнгөн дүнгийн нийлбэр. Сарын мөнгө (`curve`) — тэдгээр ажлын идэвхтэй блок дахь сарын обьём × нэгж үнэ (мөнгө ÷ обьём):
@@ -5792,11 +5832,16 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
             const blok = sc.bld[blk] ?? '';
             const start = nextWeekStart(ubToday());
             const ent = (wkPlan.get(des)?.get(blok) ?? []).find((x) => x.week === start) ?? null;
+            /* 2026-11-24: хүлээгдэж буй утга түрүүлж харагдана; хадгалалт батлуулахаар (шууд хувьд нөлөөлөхгүй) */
+            const pend = (wkPend.get(des)?.get(blok) ?? []).find((x) => x.week === start) ?? null;
             return {
-              start, value: ent?.obyem ?? null, vol: modalRow.vol, canEdit: canEdit && !locked && !busy,
+              start, value: pend?.obyem ?? ent?.obyem ?? null, vol: modalRow.vol, canEdit: canEdit && !locked && !busy,
               save: async (v: number | null) => {
-                await saveWeek({ bagts: pkg.key, bagtsNer: pkg.name, des, ajilNo: modalRow.no, ajilNer: modalRow.work, negj: '', niit: modalRow.vol }, blok, start, v);
-                setWkPlan(await loadPkgWeek(pkg.key));
+                /* батлагдсан утгыг арилгах хүсэлт = 0 (долоо хоногийн нэмэгдэлгүй) — мөн батлалтаар */
+                await saveWeek({ bagts: pkg.key, bagtsNer: pkg.name, des, ajilNo: modalRow.no, ajilNer: modalRow.work, negj: '', niit: modalRow.vol }, blok, start, v == null && ent ? 0 : v);
+                const [w, p] = await Promise.all([loadPkgWeek(pkg.key), loadPkgWeek(pkg.key, TURUL_WEEK_PEND)]);
+                setWkPlan(w); setWkPend(p);
+                setNote(tr('Ирэх 7 хоногийн обьём батлуулахаар хадгалагдлаа — батлагч баталтал төлөвлөгөөт хувьд нөлөөлөхгүй.'));
               },
             };
           })() : null}

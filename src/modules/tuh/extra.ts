@@ -34,9 +34,9 @@ export async function loadTuhExtra(now = Date.now()): Promise<TuhExtra> {
   const failed: string[] = [];
   const [overlaps, zov, safety, pending, prog, heat] = await Promise.all([
     settle(tr('Газар чөлөөлөлт'), async () => (await import('@/lib/pkgSaad')).loadPkgOverlaps(), failed),
-    /* `loadZov` алдаагаа өөрөө барьж `null` буцаадаг — `null`-ыг ч унасанд тооцно */
+    /* 2026-11-24 (аудит): ТТБ-ийн мөр + бүртгэл (`loadPermitRows`) — удирдлагын тайлан, CEO самбартай НЭГ эх. `null` = унасан */
     settle(tr('Зөвшөөрөл'), async () => {
-      const z = await (await import('@/lib/zovshoorol')).loadZov();
+      const z = await (await import('@/lib/zovshoorol')).loadPermitRows();
       if (z == null) throw new Error('zov');
       return z;
     }, failed),

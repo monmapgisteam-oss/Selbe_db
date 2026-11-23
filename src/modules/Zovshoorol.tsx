@@ -155,12 +155,16 @@ export function Zovshoorol() {
     <>
       {/* 2026-11-23 (хэрэглэгч): «Зөвшөөрлийн явц» нь ЗӨВХӨН ХАРАХ — мөрийг «Зөвшөөрөл оруулах»-аас л засна (нэг мөрийг хоёр газраас засахгүй) */}
       <div className={s.wrap}><ZovPlan canEdit={false} /></div>
-      <ZovRegister />
+      {/* 2026-11-24: баримтын бүртгэл ч ЗӨВХӨН ХАРАХ — нэмэх, засах, PDF «Зөвшөөрөл оруулах» хуудсанд (viewRegistry) */}
+      <ZovRegister readOnly />
     </>
   );
 }
 
-function ZovRegister() {
+/**
+ * ЗӨВШӨӨРЛИЙН БАРИМТЫН БҮРТГЭЛ — `readOnly` бол эрхтэй хэрэглэгчид ч нэмэх, засах, PDF товч гарахгүй (2026-11-24).
+ */
+export function ZovRegister({ readOnly = false }: { readOnly?: boolean }) {
   const [rows, setRows] = useState<Zov[] | null>(null);
   const [busy, setBusy] = useState(true);
   /** Сүүлийн ачаалалт унасан шалтгаан (`loadZovResult`) — амжилттай бол `null` */
@@ -184,9 +188,9 @@ function ZovRegister() {
    * ЗАСАХ ЭРХ — «Хэрэглэгчдийн эрх удирдах» хэсгээс тусад нь олгоно.
    */
   const canEdit = useMemo(
-    () => hasCap(user?.username, 'zovshoorol'),
+    () => !readOnly && hasCap(user?.username, 'zovshoorol'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, capN],
+    [user, capN, readOnly],
   );
 
   useEffect(() => {

@@ -26,7 +26,7 @@
  *
  * Цэвэр — `zuragPlan.check.mjs`.
  */
-import { buildTree, moneySums, type PlanNode, type PlanStoredRow } from './projectPlan';
+import { buildTree, moneySums, noMoney, type PlanNode, type PlanStoredRow } from './projectPlan';
 import { bulegLabel, groupZ, subLabel, tolovAvg, tolovPct, type ZRow } from './zuragBurtgel';
 import { pkgCodeOf } from './hoSync/compute';
 
@@ -84,9 +84,18 @@ export function withRegistryRows(rows: readonly PlanStoredRow[], z: readonly ZRo
   return build(rows, z).out;
 }
 
-/** Модонд орох мөрүүд (`out`), бүртгэлээс үүсгэсэн мөрүүд (`gen`), тэдгээрийн үе шатын хадгалсан доод мөрүүд (`old`) */
-function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanStoredRow[]; gen: PlanStoredRow[]; old: PlanStoredRow[] } {
-  const same = { out: [...rows], gen: [], old: [] };
+/** Бүртгэлээс гардаггүй утгатай мөр (Cashflow-ийн гэрээ, захирамж) — бүртгэлийн мөр биш */
+const foreign = (r: PlanStoredRow) => r.cashflow_id != null || r.ho_dun_zahiramj != null || r.zahiramj_dugaar != null;
+/** Гэрээ, төлбөрийн мэдээлэлтэй мөр — хэзээ ч устгахгүй (баримт бүртгэлээс хасагдсан ч) */
+const isProtected = (r: PlanStoredRow) => foreign(r) || String(r.geree_dugaar ?? '').trim() !== ''
+  || String(r.guitsetgegch ?? '').trim() !== '' || (Number(r.urdchilgaa_dun) || 0) > 0;
+
+/**
+ * Модонд орох мөрүүд (`out`), бүртгэлээс үүсгэсэн мөрүүд (`gen`), тэдгээрийн үе шатын хадгалсан доод мөрүүд (`old`),
+ * гэрээ/төлбөртэй тул ҮЛДЭЭСЭН мөрүүд (`held`, Д/Д давхцвал шинэ дугаартай).
+ */
+function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanStoredRow[]; gen: PlanStoredRow[]; old: PlanStoredRow[]; held: PlanStoredRow[] } {
+  const same = { out: [...rows], gen: [], old: [], held: [] };
   if (!z.length) return same;
   const tezu = z.filter((r) => isTezuBuleg(r.buleg));
   const zurag = z.filter((r) => !isTezuBuleg(r.buleg));
@@ -95,7 +104,13 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
   const drop = new Set<PlanStoredRow>();
   const swap = new Map<PlanStoredRow, PlanStoredRow>();
   const add: PlanStoredRow[] = [];
-  const dropAll = (x: PlanNode) => { for (const c of x.children) { if (c.row) drop.add(c.row); dropAll(c); } };
+  /* 2026-11-24: хасагдсан мөр бүрийн үе шат ба зангилаа — үлдээсэн мөрийн байр, мөнгө */
+  const phaseOf = new Map<PlanStoredRow, PlanNode>();
+  const nodeOf = new Map<PlanStoredRow, PlanNode>();
+  const dropAll = (x: PlanNode, ph: PlanNode) => {
+    for (const c of x.children) { if (c.row) { drop.add(c.row); phaseOf.set(c.row, ph); nodeOf.set(c.row, c); } dropAll(c, ph); }
+  };
+  const phases: { n: PlanNode; priced: boolean }[] = [];
   for (const n of tree.root.children) {
     const docs = n.phase === 'tezu' ? tezu : n.phase === 'zurag' ? zurag : [];
     if (!docs.length || !n.row) continue;
@@ -104,22 +119,8 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
        өөрийн үнээр, үнэгүй нь төсөвгүй (жин 0) — бусдынх хөндөгдөхгүй. Нэг ч үнэгүй үед л хуучин горим. */
     const priceOf = (d: ZRow): number | null => (d.ajliinUne != null && d.ajliinUne > 0 ? d.ajliinUne : null);
     const priced = docs.some((d) => priceOf(d) != null);
-    const [gs, ge] = spanOf(n, 'guits');
-    const ms = money.get(n);
-    swap.set(n.row, {
-      ...n.row,
-      /* 2026-11-19 (хэрэглэгч: «олгосон дүнд давхар орно»): үнэтэй баримттай үе шатанд олгосон дүн баримтын мөрүүдээс
-         нийлнэ (доор) — үе шатын мөрд өөрийн дүн тавьбал хоёр тоологдоно */
-      olgoson_dun: priced ? null : ms?.paid ?? null,
-      urdchilgaa_dun: ms?.advance ?? null,
-      /* Гэрээний дүн: бүртгэлд «Ажлын үнэ»-тэй баримт байвал баримтуудаас (доор), эс бөгөөс хуучин мөрүүдийн нийлбэр */
-      ...(!priced && ms?.contract != null ? { geree_dun: ms.contract, ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : {}),
-      ho_dun_geree: priced ? null : budgetOf(n),
-      /* 2026-11-19 (хэрэглэгч: «бүрэн data source»): гүйцэтгэгчийн огноо — үе шатын хуучин хадгалсан огноо БИШ, баримтуудын
-         5 шатны огнооноос (доод мөрүүд → computePlan MIN/MAX). Баримтад огноо огт алга бол хоосон */
-      guits_ehleh: null, guits_duusah: null, geree_ehleh: gs, geree_duusah: ge,
-    });
-    dropAll(n);
+    phases.push({ n, priced });
+    dropAll(n, n);
     const groups = groupZ(docs);
     /* ТЭЗҮ — ганц бүлэг («001»): бүлгийн давхаргыг алгасаж дэд бүлгүүд шууд үе шатын доор */
     const flat = n.phase === 'tezu' && groups.length === 1 && groups[0].subs.some((s) => s.ded);
@@ -162,17 +163,91 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
      бүртгэлийн «Ажлын үнэ»-ээр дарагдахгүй (`hoSync.isRegisterRow`-ийн нөгөө тал — хоосон/зайтай дугаар = дугааргүй) */
   const storedBy = new Map<number, PlanStoredRow>();
   for (const r of drop) if (typeof r.objectid === 'number') storedBy.set(r.objectid, r);
+  /* 2026-11-24 (аудит): үе шатын мөрд шилжүүлэх мөнгөнөөс хасна — модонд өөрийн мөрөөрөө үлдсэн олгосон дүн · урьдчилгаа */
+  const keptPaid = new Map<PlanNode, number>(), keptAdv = new Map<PlanNode, number>();
+  const counts = (r: PlanStoredRow): boolean => {
+    const ph = phaseOf.get(r);
+    for (let x = nodeOf.get(r) ?? null; x && x !== ph; x = x.parent) if (noMoney(x)) return false;
+    return true;
+  };
+  const keep = (r: PlanStoredRow, paid: unknown, adv: unknown) => {
+    const ph = phaseOf.get(r);
+    if (!ph || !counts(r)) return;
+    keptPaid.set(ph, (keptPaid.get(ph) ?? 0) + (fin(paid) ?? 0));
+    keptAdv.set(ph, (keptAdv.get(ph) ?? 0) + (fin(adv) ?? 0));
+  };
   const gen = add.map((r, i): PlanStoredRow => {
     const id = ids[i];
-    if (id == null) return { ...r, virtual: true };
-    const st = storedBy.get(id);
+    const st = id == null ? undefined : storedBy.get(id);
+    /* 2026-11-24: гадны (Cashflow гэрээ, захирамжтай) мөр бүртгэлийн мөр болохгүй — тэр нь үлдээсэн мөр, баримт нь шинэ мөр */
+    if (id == null || !st || foreign(st)) return { ...r, objectid: null, virtual: true };
     /* 2026-11-20 (засвар): «Төлбөрийн акт»-аар гэрээ байгуулсан (дугаартай) мөрийн гэрээний дүн ба «Гэрээлсэн дүн» тэмдэглэгээ
        ч хэвээр — урьд нь үнэгүй зурагт бүртгэлийн хадгалалт тэдгээрийг хоосолж, гэрээ төлбөрөөсөө тасардаг байв */
-    return st && String(st.geree_dugaar ?? '').trim() !== '' && r.guitsetgel_huvi !== undefined
-      ? { ...r, objectid: id, olgoson_dun: st.olgoson_dun ?? null, geree_dun: st.geree_dun ?? r.geree_dun ?? null, ho_dungiin_tailbar: st.ho_dungiin_tailbar ?? r.ho_dungiin_tailbar ?? null }
-      : { ...r, objectid: id };
+    if (String(st.geree_dugaar ?? '').trim() !== '' && r.guitsetgel_huvi !== undefined) {
+      keep(st, st.olgoson_dun, null);
+      return { ...r, objectid: id, olgoson_dun: st.olgoson_dun ?? null, geree_dun: st.geree_dun ?? r.geree_dun ?? null, ho_dungiin_tailbar: st.ho_dungiin_tailbar ?? r.ho_dungiin_tailbar ?? null };
+    }
+    return { ...r, objectid: id };
   });
-  return { out: [...rows.filter((r) => !drop.has(r)).map((r) => swap.get(r) ?? r), ...gen], gen, old: [...drop] };
+  /* 2026-11-24 (аудит): гэрээ/төлбөртэй, бүртгэлд эзэнгүй мөр модонд ҮЛДЭНЭ (хүснэгтэд ч үлддэг) — урьд нь хуудаснаас хасагдаж
+     төсөв · олгосон дүн нь алга болдог байв (1030 ↔ 1010). Хувь нь бүртгэлээс тул гүйцэтгэлд тооцохгүй, мөнгөнд тооцно */
+  const claimed = new Set(gen.map((g) => g.objectid).filter((x): x is number => typeof x === 'number'));
+  const used = new Set<string>(gen.map((g) => String(g.dd_kod)));
+  const ren = new Map<string, string>();
+  const held: PlanStoredRow[] = [];
+  for (const r of drop) {
+    if (typeof r.objectid !== 'number' || claimed.has(r.objectid) || !isProtected(r)) continue;
+    const ph = phaseOf.get(r)!;
+    const code = String(r.dd_kod ?? '');
+    const cut = code.lastIndexOf('.');
+    const was = cut > 0 ? code.slice(0, cut) : ph.code;
+    let parent = ren.get(was) ?? was;
+    /* Эцэг нь модонд алга бол үе шатын шууд доор */
+    if (parent !== ph.code && !used.has(parent)) parent = ph.code;
+    const cand = parent === was ? code : `${parent}.${code.slice(cut + 1)}`;
+    /* Д/Д бүртгэлийн мөртэй давхцвал тэр бүлгийн төгсгөлд шинэ дугаар — мод эвдрэхгүй */
+    const nc = cut > 0 && !used.has(cand) ? cand : nextIn(used, parent);
+    used.add(nc);
+    if (nc !== code) ren.set(code, nc);
+    keep(r, r.olgoson_dun, r.urdchilgaa_dun);
+    held.push({ ...r, dd_kod: nc, etseg_kod: parent, registry: true, uy_shat_tootsoh: 0, niit_tootsoh: 0 });
+  }
+  const rest = (v: number | null | undefined, k: number | undefined): number | null => {
+    if (v == null) return null;
+    const x = v - (k ?? 0);
+    return Math.abs(x) < 0.005 ? null : x;
+  };
+  for (const { n, priced } of phases) {
+    const row = n.row!;
+    const [gs, ge] = spanOf(n, 'guits');
+    const ms = money.get(n);
+    swap.set(row, {
+      ...row,
+      /* 2026-11-19 (хэрэглэгч: «олгосон дүнд давхар орно»): үнэтэй баримттай үе шатанд олгосон дүн баримтын мөрүүдээс
+         нийлнэ (доор) — үе шатын мөрд өөрийн дүн тавьбал хоёр тоологдоно. 2026-11-24: үнэгүй үед ч өөрийн мөрдөө үлдсэн
+         дүн (гэрээтэй баримт, үлдээсэн мөр) үе шатад давхар орохгүй (20 ↔ 10) */
+      olgoson_dun: priced ? null : rest(ms?.paid, keptPaid.get(n)),
+      urdchilgaa_dun: rest(ms?.advance, keptAdv.get(n)),
+      /* Гэрээний дүн: бүртгэлд «Ажлын үнэ»-тэй баримт байвал баримтуудаас (доор), эс бөгөөс хуучин мөрүүдийн нийлбэр */
+      ...(!priced && ms?.contract != null ? { geree_dun: ms.contract, ho_dungiin_tailbar: 'Гэрээлсэн дүн' } : {}),
+      ho_dun_geree: priced ? null : budgetOf(n),
+      /* 2026-11-19 (хэрэглэгч: «бүрэн data source»): гүйцэтгэгчийн огноо — үе шатын хуучин хадгалсан огноо БИШ, баримтуудын
+         5 шатны огнооноос (доод мөрүүд → computePlan MIN/MAX). Баримтад огноо огт алга бол хоосон */
+      guits_ehleh: null, guits_duusah: null, geree_ehleh: gs, geree_duusah: ge,
+    });
+  }
+  return { out: [...rows.filter((r) => !drop.has(r)).map((r) => swap.get(r) ?? r), ...gen, ...held], gen, old: [...drop], held };
+}
+
+/** `parent`-ийн доорх дараагийн чөлөөт дугаар. 2026-11-24 (засвар): `/^d+$/` цифр биш «d» хайдаг байсан тул үргэлж «.1» өгч Д/Д давхардаж байв */
+function nextIn(used: ReadonlySet<string>, parent: string): string {
+  let mx = 0;
+  for (const c of used) {
+    if (!c.startsWith(`${parent}.`)) continue;
+    const r = c.slice(parent.length + 1);
+    if (/^\d+$/.test(r)) mx = Math.max(mx, Number(r));
+  }
+  return `${parent}.${mx + 1}`;
 }
 
 const docKey = (r: PlanStoredRow): string => `${String(r.ajil_uilchilgee ?? '').replace(/\s+/g, ' ').trim().toLowerCase()}|${String(r.bagts ?? '').trim().toLowerCase()}`;
@@ -201,14 +276,18 @@ function matchStored(add: readonly PlanStoredRow[], stored: readonly PlanStoredR
   const byZ = new Map<number, PlanStoredRow>();
   for (const r of real) if (typeof r.zurag_oid === 'number' && !byZ.has(r.zurag_oid)) byZ.set(r.zurag_oid, r);
   add.forEach((g, i) => { if (typeof g.zurag_oid === 'number') claim(i, byZ.get(g.zurag_oid)); });
-  add.forEach((g, i) => { const r = byDd.get(g.dd_kod ?? ''); if (r && docKey(r) === docKey(g)) claim(i, r); });
+  /* 2026-11-24 (засвар): ӨӨР баримтын ID-тай (`zurag_oid`) мөрийг нэр/Д/Д-ээр шинэ баримтад шилжүүлэхгүй — урьд нь хасагдсан
+     баримтын мөр (гэрээ «З/5», олгосон дүнтэйгээ) тэр Д/Д-д орсон шинэ баримтынх болдог байв */
+  const mine = (g: PlanStoredRow, r: PlanStoredRow | undefined): PlanStoredRow | undefined =>
+    r && (typeof r.zurag_oid !== 'number' || r.zurag_oid === g.zurag_oid) ? r : undefined;
+  add.forEach((g, i) => { const r = mine(g, byDd.get(g.dd_kod ?? '')); if (r && docKey(r) === docKey(g)) claim(i, r); });
   const byDoc = new Map<string, PlanStoredRow[]>();
   for (const r of real) { const k = docKey(r); byDoc.set(k, [...(byDoc.get(k) ?? []), r]); }
   add.forEach((g, i) => {
     if (out[i] != null || g.guitsetgel_huvi === undefined) return;
-    claim(i, (byDoc.get(docKey(g)) ?? []).find((r) => !used.has(r.objectid as number)));
+    claim(i, (byDoc.get(docKey(g)) ?? []).find((r) => !used.has(r.objectid as number) && mine(g, r)));
   });
-  add.forEach((g, i) => claim(i, byDd.get(g.dd_kod ?? '')));
+  add.forEach((g, i) => claim(i, mine(g, byDd.get(g.dd_kod ?? ''))));
   return out;
 }
 
@@ -238,16 +317,13 @@ const eq = (a: unknown, b: unknown): boolean => {
  * биш тул засахгүй — устгаад цэвэр мөр нэмнэ. Бүртгэл хоосон / уншигдаагүй бол засваргүй (юу ч устгахгүй).
  */
 export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZRow[]): RegistryPlanEdits {
-  const { gen, old } = build(rows, z);
+  const { gen, old, held } = build(rows, z);
   const out: RegistryPlanEdits = { adds: [], updates: [], deletes: [], held: [] };
   /* 2026-11-18: гэрээний дугаар · гүйцэтгэгч · олгосон дүн · урьдчилгаа нь «гадны» шинж БИШ — зургийн гэрээ байгуулах,
      төлбөр олгоход систем өөрөө баримтын мөрд бичдэг. Урьд нь ийм мөрийг дараагийн бүртгэлийн хадгалалт устгаад хоосон
      мөр нэмдэг байсан тул гэрээний дугаар арилж, төлбөр гэрээнээсээ тасардаг байв. */
   /* 2026-11-19: гүйцэтгэгчийн огноо бүртгэлээс бичигддэг болсон тул «гадны» шинж биш */
-  const foreign = (r: PlanStoredRow) => r.cashflow_id != null || r.ho_dun_zahiramj != null || r.zahiramj_dugaar != null;
-  /** Гэрээ, төлбөрийн мэдээлэлтэй мөр — хэзээ ч устгахгүй (баримт бүртгэлээс хасагдсан ч) */
-  const isProtected = (r: PlanStoredRow) => foreign(r) || String(r.geree_dugaar ?? '').trim() !== ''
-    || String(r.guitsetgegch ?? '').trim() !== '' || (Number(r.urdchilgaa_dun) || 0) > 0;
+  /* 2026-11-24: үлдээх мөр, түүний шинэ Д/Д — `build`-д (хуудасны модтой НЭГ шийдвэр) */
   const byOid = new Map<number, PlanStoredRow>();
   for (const r of old) if (typeof r.objectid === 'number') byOid.set(r.objectid, r);
   const kept = new Set<number>();
@@ -263,7 +339,7 @@ export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZR
     const want = Object.fromEntries(REGISTRY_PLAN_KEYS.map((k) => [k, (g[k] as string | number | null | undefined) ?? null])) as Record<RKey, string | number | null>;
     if (g.guitsetgel_huvi === undefined) want.guitsetgel_huvi = groupPct(String(g.dd_kod));
     const s = typeof g.objectid === 'number' ? byOid.get(g.objectid) : undefined;
-    if (!s || foreign(s)) { out.adds.push({ dd_kod: g.dd_kod as string, ...want }); continue; }
+    if (!s) { out.adds.push({ dd_kod: g.dd_kod as string, ...want }); continue; }
     kept.add(g.objectid as number);
     const diff = REGISTRY_PLAN_KEYS.filter((k) => !eq(s[k], want[k]));
     const moved = s.dd_kod !== g.dd_kod;
@@ -271,30 +347,40 @@ export function registryPlanEdits(rows: readonly PlanStoredRow[], z: readonly ZR
       out.updates.push({ objectid: g.objectid as number, ...(moved ? { dd_kod: g.dd_kod as string } : {}), ...Object.fromEntries(diff.map((k) => [k, want[k]])) });
     }
   }
-  for (const [o, r] of byOid) {
+  const heldBy = new Map(held.map((h) => [h.objectid as number, h]));
+  for (const o of byOid.keys()) {
     if (kept.has(o)) continue;
-    if (isProtected(r)) out.held.push(o);
+    if (heldBy.has(o)) out.held.push(o);
     else out.deletes.push(o);
   }
-  /* Үлдээсэн мөрийн Д/Д бүртгэлийн мөртэй давхцвал тэр бүлгийн төгсгөлд шинэ дугаар өгнө — мод эвдрэхгүй */
-  const used = new Set<string>(gen.map((g) => String(g.dd_kod)));
-  const nextIn = (parent: string): string => {
-    let mx = 0;
-    for (const c of used) {
-      if (!c.startsWith(`${parent}.`)) continue;
-      const rest = c.slice(parent.length + 1);
-      if (/^d+$/.test(rest)) mx = Math.max(mx, Number(rest));
-    }
-    return `${parent}.${mx + 1}`;
-  };
+  /* Үлдээсэн мөрийн Д/Д бүртгэлийн мөртэй давхцсан бол `build`-ийн өгсөн шинэ дугаар */
   for (const o of out.held) {
-    const r = byOid.get(o) as PlanStoredRow;
-    const code = String(r.dd_kod ?? '');
-    if (code && !used.has(code)) { used.add(code); continue; }
-    const parent = code.includes('.') ? code.slice(0, code.lastIndexOf('.')) : code;
-    const nc = nextIn(parent);
-    used.add(nc);
-    out.updates.push({ objectid: o, dd_kod: nc });
+    const code = heldBy.get(o)!.dd_kod as string;
+    if (byOid.get(o)!.dd_kod !== code) out.updates.push({ objectid: o, dd_kod: code });
+  }
+  return out;
+}
+
+/**
+ * ЗЭРЭГ НЭМЭЛТИЙН ДАВХАРДАЛ (2026-11-24, аудит): таб хоорондын түгжээ (`withTabLock`) нэг хөтчид л — хоёр засварлагч эсвэл
+ * CI-ийн синк ижил бүртгэлийн мөрийг зэрэг нэмж болно. Нэмсний дараа дахин уншсан мөрүүдээс ЭНЭ удаа нэмсэн (`mine`) мөр
+ * бүрийг шалгана: ижил Д/Д · бүртгэлийн ID · нэртэй, objectid нь бага ӨӨР мөр байвал өөрийнхөө мөрийг устгана (хамгийн бага
+ * objectid үлдэнэ, `hoSync.dupAddsToDelete`-тэй нэг дүрэм). Гэрээ/IPC/төлбөртэй (`isProtected`) мөрийг хэзээ ч устгахгүй.
+ */
+export function registryDupDeletes(rows: readonly PlanStoredRow[], mine: readonly number[]): number[] {
+  const my = new Set(mine);
+  const keyOf = (r: PlanStoredRow) => `${String(r.dd_kod ?? '').trim()}|${typeof r.zurag_oid === 'number' ? r.zurag_oid : ''}|${String(r.ajil_uilchilgee ?? '').replace(/\s+/g, ' ').trim().toLowerCase()}`;
+  const low = new Map<string, number>();
+  for (const r of rows) {
+    if (typeof r.objectid !== 'number' || my.has(r.objectid) || !String(r.dd_kod ?? '').trim()) continue;
+    const k = keyOf(r);
+    low.set(k, Math.min(low.get(k) ?? Infinity, r.objectid));
+  }
+  const out: number[] = [];
+  for (const r of rows) {
+    if (typeof r.objectid !== 'number' || !my.has(r.objectid) || isProtected(r)) continue;
+    const o = low.get(keyOf(r));
+    if (o != null && o < r.objectid) out.push(r.objectid);
   }
   return out;
 }

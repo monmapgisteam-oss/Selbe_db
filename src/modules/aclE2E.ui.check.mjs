@@ -845,7 +845,10 @@ const chipsIn = (m, row, col) => findAll(m.tree, (n) => n.type === 'expanded' &&
   eq(P.roleOf(u), 'menejer', `${tag}: албан үүрэг бичигдэв`);
   eq(FL.stageOfUser(u), 'manager', `${tag}: шат солигдов`);
   eq(FL.bagtsFor(u, 'manager'), [g], `${tag}: багц хэвээр`);
-  const res = inPanel((n) => n.type === 'p' && /^(ok|err|warn)$/.test(n.props?.className ?? '')).map(text);
+  /* 2026-11-24: удаан машинд (CI) үр дүнгийн мөрүүд бичилт дууссаны дараагийн тикт зурагдана — тэднийг хүлээнэ */
+  const resOf = () => inPanel((n) => n.type === 'p' && /^(ok|err|warn)$/.test(n.props?.className ?? '')).map(text);
+  await settle(() => { e.render(); return resOf().length < 2; });
+  const res = resOf();
   ok(res.some((t) => t.startsWith('✓ Аккаунтын мөр')) && res.some((t) => t.startsWith('✓ Гүйцэтгэлийн урсгал')), `${tag}: алхам бүрийн үр дүн (${res.join(' | ')})`);
   eq(dirtyUser, null, `${tag}: хадгалсны дараа ноорог алга`);
   console.log('✅ §N «Шинэ эрх»: цэсний эхэнд · хуучин хуудсууд хэвээр · самбар · ноорог «Хадгалах» хүртэл бичигдэхгүй · жагсаалт · аккаунт → урсгал');

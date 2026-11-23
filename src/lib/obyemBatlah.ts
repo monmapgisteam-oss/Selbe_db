@@ -313,6 +313,16 @@ export async function submitObyem(args: {
   if (!args.payload.cells.length) {
     return { ok: false, error: tr('Өөрчлөгдсөн нүд алга.') };
   }
+  /* 2026-11-24: дуудагчийн pkgGroup-д итгэхгүй — pkgKey тэр бүлэгт хамаарах эсэхийг PKGS-ээр тулгана (submitPlan-тай ижил) */
+  try {
+    const { PKGS } = await import('@/modules/sheet/bagts.pkg');
+    const pk = PKGS.find((p) => p.key === args.pkgKey);
+    if (!pk || pk.group !== args.pkgGroup) {
+      return { ok: false, error: tr('Багцын түлхүүр ба бүлэг зөрж байна — хуудсаа шинэчилнэ үү.') };
+    }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
   if (AUTH.appId) {
     const meNow = currentUser();
     if (typeof window !== 'undefined' && !meNow) return { ok: false, error: tr('Нэвтэрсэн хэрэглэгч тодорхойгүй — дахин нэвтэрнэ үү.') };

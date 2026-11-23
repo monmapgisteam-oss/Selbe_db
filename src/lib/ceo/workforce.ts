@@ -210,20 +210,53 @@ function mergeDayRows(main: Row, others: readonly Row[]): Row {
   const out: Row = { ...main };
   /* Нэгтгэлд компанийн тоо нь орсон маягтууд — толгойн нийлбэрт зөвхөн эдгээр (доор) */
   const used = new Set<Row>([main]);
+  /* 2026-11-24: маягт бүрээс АВСАН компаниуд — үлдсэн (шинэ маягтаар солигдсон) компанийг толгойн дүнгээс хасна */
+  const taken = new Map<Row, Set<string>>();
+  const hasCo = (r: Row, sfx: string) => {
+    const fl = laborCompanyFields(sfx);
+    return [fl.mongol, fl.gadaad, fl.niitAjiltan, fl.niitTehnik].some((k) => !blank(r[k]) && Number(r[k]) !== 0);
+  };
   for (const c of COMPANIES) {
     const fl = laborCompanyFields(c.sfx);
     const keys = [fl.mongol, fl.gadaad, fl.niitAjiltan, fl.niitTehnik];
     /* 0 нь «бөглөөгүй» маягтад ч бичигддэг — өөр мөр тэр компанийг 0-ээс их утгаар бөглөсөн бол түүнийг авна */
-    const has = (r: Row) => keys.some((k) => !blank(r[k]) && Number(r[k]) !== 0);
+    const has = (r: Row) => hasCo(r, c.sfx);
     if (has(out)) continue;
     const src = others.find(has);
-    if (src) { used.add(src); for (const k of [...keys, fl.bagts]) out[k] = src[k]; }
+    if (src) {
+      used.add(src);
+      (taken.get(src) ?? taken.set(src, new Set()).get(src)!).add(c.sfx);
+      for (const k of [...keys, fl.bagts]) out[k] = src[k];
+    }
   }
   /* 2026-11-20 (засвар): маягтын НИЙТ талбар (ажилтан, хүн цаг, техник) — компани тус бүр өөр маягт илгээдэг тул нийлбэр.
      2026-11-23 (засвар): зөвхөн компанийн тоо нь нэгтгэлд ОРСОН маягтуудыг нэмнэ. Нэг компани залруулж дахин илгээсэн маягт
-     компанийн тоонд ордоггүй (сүүлийнх нь үлдэнэ) тул нийт дүнд ч орохгүй — урьд нь ажилтан 389, хүн цаг 6,224 (хоёр дахин) гардаг байв. */
+     компанийн тоонд ордоггүй (сүүлийнх нь үлдэнэ) тул нийт дүнд ч орохгүй — урьд нь ажилтан 389, хүн цаг 6,224 (хоёр дахин) гардаг байв.
+     2026-11-24 (засвар): хуучин маягтын толгойгоос шинэ маягтаар СОЛИГДСОН компанийн хэсгийг хасна. Жишээ: X = ХБЗИТ 100 + МК 50
+     (150 / 1,200 цаг), Y = ХБЗИТ 110 (110 / 880 цаг) → 160 / 1,280 (урьд 260 / 2,080). Ажилтан, техник — солигдсон компанийн тоог
+     хасна; хүн цаг компаниар хадгалагддаггүй тул үлдсэн компанийн ажилтны хувиар. */
+  const part = (r: Row): { w: number; t: number; h: number } => {
+    if (r === main) return { w: 1, t: 1, h: 1 };
+    const keep = taken.get(r) ?? new Set<string>();
+    let keptW = 0; let lostW = 0; let lostT = 0; let keptN = 0; let lostN = 0;
+    for (const c of COMPANIES) {
+      if (!hasCo(r, c.sfx)) continue;
+      const d = companyDay(r, c.sfx, null);
+      if (keep.has(c.sfx)) { keptW += d.workers; keptN += 1; } else { lostW += d.workers; lostT += d.technik; lostN += 1; }
+    }
+    const shareH = keptW + lostW > 0 ? keptW / (keptW + lostW) : (keptN + lostN > 0 ? keptN / (keptN + lostN) : 1);
+    return { w: lostW, t: lostT, h: shareH };
+  };
+  const adj = (r: Row, k: string, v: number): number => {
+    if (r === main) return v;
+    const p = part(r);
+    if (k === F.hunTsag) return v * p.h;
+    return Math.max(0, v - (k === F.niitAjiltan ? p.w : p.t));
+  };
   for (const k of [F.niitAjiltan, F.hunTsag, F.niitTehnik]) {
-    const vals = [main, ...others.filter((r) => used.has(r))].map((r) => (blank(r[k]) ? null : Number(r[k]))).filter((v): v is number => v != null && Number.isFinite(v));
+    const vals = [main, ...others.filter((r) => used.has(r))]
+      .map((r) => (blank(r[k]) || !Number.isFinite(Number(r[k])) ? null : adj(r, k, Number(r[k]))))
+      .filter((v): v is number => v != null);
     if (vals.length) out[k] = vals.reduce((a, v) => a + v, 0);
   }
   return out;

@@ -103,33 +103,42 @@ const sqlStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
 /**
  * ИТГЭМЖЛЭЛИЙН ГИНЖ (2026-11-23, аудит №29) — порталын `permsRemote.trustRules`-тэй ИЖИЛ дүрэм (`worker.mjs`-д ижил хуулбар).
- * Гинж = `roots` (TRUSTED_ADMINS) + тэдний (гинжийнхний) бичсэн идэвхтэй super мөрийн эзэд. Мөр хүчинтэй нь:
- *   · super мөр — `last_edited_user` гинжинд (талбар огт ирээгүй бол итгэнэ; null бол үгүй);
- *   · бусад (хэрэглэгч, `__cap__:`) — `last_edited_user` гинжинд, эсвэл хоосон/ирээгүй (шалгах боломжгүй — итгэнэ).
+ * Админ = `roots` (TRUSTED_ADMINS) + `roots`-ийн бичсэн идэвхтэй super мөрийн эзэд. Мөр хүчинтэй нь:
+ *   · super мөр ба админы мөр — `last_edited_user` нь `roots`-д (талбар огт ирээгүй бол итгэнэ; null бол үгүй);
+ *   · бусад (хэрэглэгч, `__cap__:`) — `last_edited_user` нь админ, эсвэл хоосон/ирээгүй (шалгах боломжгүй — итгэнэ).
  * Урьд нь зөвхөн ӨӨРӨӨ бичсэн мөр хасагддаг байсан тул нэг энгийн гишүүн НӨГӨӨДӨДөө эрх бичиж чаддаг байв.
  */
+/* 2026-11-24 (засвар): гинж хасагдав — super мөр ба АДМИНЫ аккаунтын мөр (`__cap__:` г.м.) зөвхөн `roots`-ийн бичсэн бол хүчинтэй
+   (талбар ирээгүй бол итгэнэ). Бусад мөр — `roots` эсвэл тэдний томилсон админ. `trusted.admins` — итгэмжлэгдсэн админууд. */
 function trustChain(features, roots) {
   const lc = (s) => String(s ?? "").trim().toLowerCase();
   const attrs = (f) => f?.attributes ?? {};
   const editorOf = (f) => (Object.hasOwn(attrs(f), "last_edited_user") ? attrs(f).last_edited_user : undefined);
   const activeSuper = (f) => attrs(f).role === "super" && String(attrs(f).views ?? "") !== "removed";
-  const chain = new Set(roots.map(lc));
-  const supers = features.filter((f) => activeSuper(f) && lc(attrs(f).username) && !lc(attrs(f).username).startsWith("__"));
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const f of supers) {
-      const u = lc(attrs(f).username);
-      if (chain.has(u)) continue;
-      const e = editorOf(f);
-      if (e === undefined || (e != null && chain.has(lc(e)))) { chain.add(u); grew = true; }
-    }
+  const rootSet = new Set(roots.map(lc));
+  const rootWritten = (f) => { const e = editorOf(f); return e === undefined || (e != null && rootSet.has(lc(e))); };
+  const admins = new Set(rootSet);
+  for (const f of features) {
+    const u = lc(attrs(f).username);
+    if (activeSuper(f) && u && !u.startsWith("__") && rootWritten(f)) admins.add(u);
   }
-  return (f) => {
-    const e = editorOf(f);
-    if (activeSuper(f)) return e === undefined || (e != null && chain.has(lc(e)));
-    const le = typeof e === "string" ? lc(e) : "";
-    return le === "" || chain.has(le);
+  /** Мөр хэний тухай — угтваргүй нэр (`__type__:` · `__sys__:` хэрэглэгчийнх биш) */
+  const targetOf = (f) => {
+    const u = lc(attrs(f).username);
+    if (/^__(type|sys)__:/.test(u)) return "";
+    const m = /^__[a-z]+__:(.*)$/.exec(u);
+    return m ? m[1].trim() : u;
   };
+  const trusted = (f) => {
+    if (activeSuper(f)) return rootWritten(f);
+    const t = targetOf(f);
+    if (t && admins.has(t)) return rootWritten(f);
+    const e = editorOf(f);
+    const le = typeof e === "string" ? lc(e) : "";
+    return le === "" || admins.has(le);
+  };
+  trusted.admins = admins;
+  return trusted;
 }
 const AGENT_CAP_REQUIRED = process.env.AGENT_CAP_REQUIRED === "1";
 async function hasPortalRow(token, username) {
@@ -160,9 +169,11 @@ async function hasPortalRow(token, username) {
   const trusted = trustChain(data.features, roots);
   const own = data.features.filter((f) => f?.attributes && String(f.attributes.username ?? "").trim().toLowerCase() === lo && !selfWritten(f) && trusted(f));
   const live = own.some((f) => String(f.attributes.views ?? "") !== "removed");
-  if (!live) return { ok: false, reason: "Порталд бүртгэлгүй аккаунт — админаас эрх авна уу", status: 403 };
+  /* 2026-11-24: үндсэн админы мөрийг өөр хүн устгасан/дарсан (бусад админ байсаар) — порталын адил үндсэн админ хэвээр */
+  const rootKept = !own.length && roots.includes(lo) && [...trusted.admins].some((u) => !roots.includes(u));
+  if (!live && !rootKept) return { ok: false, reason: "Порталд бүртгэлгүй аккаунт — админаас эрх авна уу", status: 403 };
   /* 2026-11-11: туслах зөвхөн «AI туслах ашиглах» (`aiAgent`) эрхтэй аккаунтад — `AGENT_CAP_REQUIRED=1` үед. Системийн админ үргэлж */
-  if (AGENT_CAP_REQUIRED && !own.some((f) => f.attributes.role === "super")) {
+  if (AGENT_CAP_REQUIRED && !rootKept && !own.some((f) => f.attributes.role === "super")) {
     const cap = data.features.find((f) => String(f?.attributes?.username ?? "").toLowerCase() === capKey && !selfWritten(f) && trusted(f));
     let caps = [];
     try { caps = JSON.parse(cap?.attributes?.views || "[]"); } catch { caps = []; }

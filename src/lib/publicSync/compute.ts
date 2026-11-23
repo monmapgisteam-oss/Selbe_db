@@ -107,20 +107,23 @@ export function hunHuchRows(day: WorkforceDay | null, companies: readonly { sfx:
 
 /** Төслийн нийт төсөв = үндэс мөрийн E; олгосон = HO бүх төлбөр (урьдчилгаа + гүйцэтгэл); хувь = олгосон ÷ ГЭРЭЭНИЙ дүн
  *  (2026-11-23, аудит: порталын «Олгосон хувь»-тай нэг томьёо — урьд нь ÷ төсөв тул 27.1% ↔ портал 33.0%) */
-export function sanhuuRows(plan: ProjectPlan, paidIpc?: number | null): PubRow[] {
+export function sanhuuRows(plan: ProjectPlan, ipc?: { paid: number | null; paidPct: number | null }): PubRow[] {
   const root = plan.tree.root;
   const E = plan.result.values.get(root)?.E ?? null;
   /* 2026-11-23 (засвар): олгосон дүн — «Төлбөрийн акт (IPC)»-ийн бүх олголтын нийлбэр (портал, тайлантай НЭГ эх). Урьд нь
      «Төсөл төлөвлөгөө биелэлт»-ийн хуулсан `olgoson_dun`-аас авдаг байсан тул гэрээнд тохироогүй төлбөр нийтийн вэбд дутдаг
      байв. Өгөөгүй бол (шалгуур) хуучин эх. */
-  const paid = paidIpc !== undefined ? paidIpc : (moneySums(plan.tree).get(root)?.paid ?? null);
-  /* 2026-11-09: мөнгө бүхэл төгрөгөөр (2,495,841,880,529.33 → 2,495,841,880,529) — нийтийн хүснэгтэд бутархай ₮ бичихгүй */
   const contract = moneySums(plan.tree).get(root)?.contract ?? null;
+  const paid = ipc ? ipc.paid : (moneySums(plan.tree).get(root)?.paid ?? null);
+  /* 2026-11-24 (аудит): хувь — порталын «Олгосон хувь» ЯГ (`reportData.loadFinance().paidPct` = (гэрээлсэн багцын + ТЭЗҮ/зургийн
+     олголт) ÷ гэрээлсэн дүн); бүх олголт ÷ гэрээ биш. 2 орон бутархай. */
+  const pct = ipc ? ipc.paidPct : contract && paid != null ? (paid / contract) * 100 : null;
+  /* 2026-11-09: мөнгө бүхэл төгрөгөөр (2,495,841,880,529.33 → 2,495,841,880,529) — нийтийн хүснэгтэд бутархай ₮ бичихгүй */
   const tg = (v: number | null | undefined): number | null => (v == null || !Number.isFinite(v) ? null : Math.round(v));
   return [{
     niit_tosov_dun: tg(E),
     olgoson_sanhuujilt_dun: tg(paid),
-    olgoson_huvi: contract && paid != null ? Math.round((paid / contract) * 1000) / 10 : null,
+    olgoson_huvi: pct == null || !Number.isFinite(pct) ? null : Math.round(pct * 100) / 100,
   }];
 }
 

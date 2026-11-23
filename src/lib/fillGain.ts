@@ -51,7 +51,8 @@ export function fillGainOf(
 
   /* Багц */
   let pkg: number | null = null;
-  if (synthetic) pkg = deltaB[0] != null ? deltaB[0]! * 100 : null;
+  /* 2026-11-24: өөрчлөлтгүй (null) = 0 — «тооцоолж чадсангүй» (null) биш; хайрцагт +0.00% */
+  if (synthetic) pkg = (deltaB[0] ?? 0) * 100;
   else if (universe) {
     const keys = new Set(universe.get(pk) ?? []);
     labels.forEach((b) => keys.add(buildingKey(group, b)));
@@ -71,11 +72,13 @@ export function fillGainOf(
   if (plan) {
     const leaves = plan.nodes.filter((n) => !n.children.length && n.phase === 'barilga' && bagtsKey(n.pkg) === pk);
     let s = 0, any = false;
+    /* 2026-11-24: жинтэй мөр олдвол тооцогдсон (any) — өсөлт нь null бол 0 (өөрчлөлтгүй = +0, «—» биш) */
     const add = (n: Node | undefined, d: number | null) => {
-      if (!n || d == null) return;
+      if (!n) return;
       const g = plan.gOf(n);
       if (g == null) return;
-      s += g * d; any = true;
+      any = true;
+      if (d != null) s += g * d;
     };
     if (synthetic) {
       for (const n of leaves) if (n.sub === 'barilga' && !n.blok) add(n, deltaB[0] ?? null);

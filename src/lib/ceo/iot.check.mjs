@@ -19,9 +19,18 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  computeIot, buildIotKpi, iotLevel, IOT_STALE_H, IOT_ETA_NEAR_H, IOT_HIGHER_IS_GOOD,
+  computeIot, buildIotKpi, iotLevel, IOT_STALE_H, IOT_ETA_NEAR_H, IOT_HIGHER_IS_GOOD, stamp,
 } from './iot.ts';
 import { RANGES, thin, parseTs, HIGHER_IS_GOOD, SENSORS, UB_OFFSET_MS, sensorsComplete } from '@/lib/sensors';
+
+/* 2026-11-24: заалтын цаг Улаанбаатарын цагаар — хөтчийн цагийн бүс (энд Нью-Йорк) нөлөөлөхгүй */
+{
+  const tz = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+  assert.equal(stamp(Date.UTC(2026, 10, 23, 18, 5)), '2026-11-24 02:05', 'UTC 18:05 = УБ маргааш 02:05');
+  assert.equal(stamp(null), null);
+  if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz;
+}
 
 const H = 3_600_000;
 const NOW = Date.UTC(2026, 8, 6, 9, 0, 0);

@@ -81,6 +81,8 @@ const ZuragTosol = dynamic(() => LOAD.zuragTosol(), { ssr: false, loading: ViewL
 const Zahiramj = dynamic(() => LOAD.zahiramj(), { ssr: false, loading: ViewLoading });
 const Songon = dynamic(() => LOAD.songon(), { ssr: false, loading: ViewLoading });
 const ZovshoorolTtb = dynamic(() => LOAD.zovshoorolTtb(), { ssr: false, loading: ViewLoading });
+/* 2026-11-24: зөвшөөрлийн баримтын бүртгэл (нэмэх, засах, PDF) — «Зөвшөөрлийн явц» зөвхөн харах тул энд засна */
+const ZovRegister = dynamic(() => import('@/modules/Zovshoorol').then((m) => m.ZovRegister), { ssr: false, loading: ViewLoading });
 const Ashiglalt = dynamic(() => LOAD.ashiglalt(), { ssr: false, loading: ViewLoading });
 const DulaanOgnoo = dynamic(() => LOAD.dulaan(), { ssr: false, loading: ViewLoading });
 const LevelPlan = dynamic(() => LOAD.tuvshin6(), { ssr: false, loading: ViewLoading });
@@ -159,7 +161,7 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
   zuragTosol: () => <ZuragTosol />,
   zahiramj: () => <Zahiramj />,
   songon: () => <Songon />,
-  zovshoorolTtb: () => <ZovshoorolTtb />,
+  zovshoorolTtb: () => <><ZovshoorolTtb /><ZovRegister /></>,
   ashiglalt: () => <Ashiglalt />,
   dulaan: () => <DulaanOgnoo />,
   tuvshin6: () => <LevelPlan />,

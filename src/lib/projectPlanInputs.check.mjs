@@ -382,4 +382,74 @@ const srow = (o) => ({
   assert.equal(r.geree_duusah, 200, 'гэрээний дуусах = guits_duusah');
 }
 
+/* ══════════ 7. 2026-11-24 — НЭГ ТОО: мөнгөний ачаалагчид ба ТТБ хуудас нэг модноос; зөвшөөрөл · зураг багцын түлхүүр ══════════ */
+{
+  const { planTreeRows, projectMoneyOf, designMoneyOf, zovPctMap } = await import('./projectPlanInputs.ts');
+  const { moneySums } = await import('./projectPlan.ts');
+  const { toZRow } = await import('./zuragBurtgel.ts');
+  const today = D('2026-07-02');
+  const none = { actual: { blocks: new Map(), universe: new Map(), infra: new Map() }, sched: null };
+  /* №3: үнэгүй үе шат — гэрээтэй баримтын мөр өөрийн олгосон дүнтэй (10); бүртгэлээс хасагдсан үнэтэй гэрээтэй баримт (20) */
+  {
+    const zd = (oid, ner, une) => toZRow({ objectid: oid, buleg: '003. АЖЛЫН ЗУРАГ', ded_buleg: '', ner, tolov: 'huleej_avsan', ajliin_une: une });
+    const st = [
+      { objectid: 1, dd_kod: '2', ajil_uilchilgee: 'Ажлын зураг төсөл', uy_shat: 'Ажлын зураг төсөл' },
+      { objectid: 2, dd_kod: '2.1', etseg_kod: '2', ajil_uilchilgee: '1. АЖЛЫН ЗУРАГ' },
+      { objectid: 3, dd_kod: '2.1.1', etseg_kod: '2.1', ajil_uilchilgee: 'P', zurag_oid: 91, ho_dun_geree: 10, geree_dun: 10, ho_dungiin_tailbar: 'Гэрээлсэн дүн', olgoson_dun: 10 },
+      { objectid: 4, dd_kod: '2.1.2', etseg_kod: '2.1', ajil_uilchilgee: 'Q', zurag_oid: 92, ho_dun_geree: 20, geree_dun: 20, ho_dungiin_tailbar: 'Гэрээлсэн дүн', olgoson_dun: 20, geree_dugaar: 'З/9' },
+      { objectid: 20, dd_kod: '3', ajil_uilchilgee: 'Барилга угсралт', uy_shat: 'Барилга угсралт', ho_dun_geree: 1000 },
+    ];
+    const z = [zd(91, 'P', 10)];
+    const rows = planTreeRows(st, z, null);
+    const page = assemblePlan(rows, none, today);
+    const money = projectMoneyOf(buildTree(rows));
+    assert.equal(page.result.values.get(page.tree.root).E, 1030, 'ТТБ хуудас: төсөв 1030 (хасагдсан гэрээтэй Q хаягдахгүй)');
+    assert.equal(money.budget, 1030, 'loadProjectBudgetTotal · loadProjectMoney — хуудастай ижил');
+    assert.equal(money.paid, moneySums(page.tree).get(page.tree.root).paid, 'олгосон — хуудастай ижил');
+    assert.equal(money.paid, 30, 'олгосон 10 + 20, давхардалгүй');
+    const dm = designMoneyOf(buildTree(rows));
+    assert.equal(dm.budget, page.result.values.get(page.tree.byCode.get('2')).E, 'loadDesignMoney — хуудасны үе шатын төсөвтэй ижил');
+    assert.deepEqual(planTreeRows(st, null, null), st, 'бүртгэл уншигдаагүй бол хадгалсан мөрөөр (хуудас ч мөн)');
+  }
+  /* №6: зөвшөөрлийн хувь — бүртгэл (Багц-1: 1/2 = 50%) ТТБ-ийн тооцоонд орж, үе шат · liveProgressOf нэг тоо */
+  {
+    const R = (objectid, dd_kod, etseg_kod, uy_shat, o = {}) => ({ objectid, dd_kod, etseg_kod, uy_shat, ajil_uilchilgee: `w${objectid}`, ...o });
+    const r6 = [
+      R(1, '4', null, 'Зөвшөөрөл'),
+      R(2, '4.1', '4', 'Зөвшөөрөл', { bagts: 'Багц-1', guitsetgel_huvi: 100, heseg_ezleh_huvi: 0.5 }),
+      R(3, '4.1.1', '4.1', 'Зөвшөөрөл', { guitsetgel_huvi: 100 }),
+      R(4, '4.2', '4', 'Зөвшөөрөл', { bagts: 'Багц-2', guitsetgel_huvi: 40, heseg_ezleh_huvi: 0.5 }),
+      R(5, '5', null, 'Барилга угсралт'),
+      R(6, '5.2', '5', 'Барилга угсралт', { ajil_uilchilgee: 'Барилга угсралт ажил' }),
+      R(7, '5.2.1', '5.2', 'Барилга угсралт', { bagts: 'Багц-1', cashflow_id: 81 }),
+      R(8, '5.2.2', '5.2', 'Барилга угсралт', { bagts: 'Багц-2', cashflow_id: 82 }),
+    ];
+    const zov = zovPctMap([{ bagts: 'Багц 1', tolov: 'Зөвшөөрсөн' }, { bagts: 'Багц-1', tolov: 'Хүлээгдэж буй' }]);
+    const p6 = assemblePlan(r6, { ...none, zov }, today);
+    const S = (c) => p6.result.values.get(p6.tree.byCode.get(c)).S;
+    assert.equal(S('4.1'), 50, 'Багц-1-ийн «Зөвшөөрөл» мөр — бүртгэлээс 50% (182-ын 100% биш)');
+    assert.equal(S('4'), 45, 'үе шат түүгээр нийлнэ: 0.5 × 50 + 0.5 × 40');
+    assert.equal(S('4.2'), 40, 'бүртгэлд мөргүй Багц-2 — 182-оор');
+    const lv = liveProgressOf(p6);
+    assert.equal(lv.get(81).stages.zuwshuurul, S('4.1'), 'дашбоард · ТУХ = ТТБ-ийн мөр (50)');
+    assert.equal(lv.get(82).stages.zuwshuurul, 40);
+  }
+  /* №4: зураг төслийн багцын хувь — «БАГЦ 1- 4» нь Багц-14-ийн хувийг авахгүй */
+  {
+    const R = (objectid, dd_kod, etseg_kod, uy_shat, o = {}) => ({ objectid, dd_kod, etseg_kod, uy_shat, ajil_uilchilgee: `w${objectid}`, ...o });
+    const r4 = [
+      R(1, '5', null, 'Барилга угсралт'),
+      R(2, '5.2', '5', 'Барилга угсралт', { ajil_uilchilgee: 'Барилга угсралт ажил' }),
+      R(3, '5.2.1', '5.2', 'Барилга угсралт', { bagts: 'БАГЦ 1- 4', cashflow_id: 91 }),
+      R(4, '5.2.2', '5.2', 'Барилга угсралт', { bagts: 'Багц-14', cashflow_id: 92 }),
+    ];
+    const p4 = assemblePlan(r4, none, today);
+    p4.zuragPkg = new Map([[bagtsKey('Багц-14'), 70]]);
+    const lv = liveProgressOf(p4);
+    assert.equal(lv.get(92).stages.ajliin_zurag_tusul, 70, 'Багц-14 — бүртгэлээс');
+    assert.equal(lv.get(91).stages.ajliin_zurag_tusul, null, '«БАГЦ 1- 4» — Багц-14-ийн 70 биш');
+  }
+  console.log('✅ 7. нэг тоо — мөнгөний ачаалагч = ТТБ хуудас · зөвшөөрөл бүртгэлээс тооцоонд · зургийн багцын түлхүүр');
+}
+
 console.log('projectPlanInputs.check: бүгд ✅');

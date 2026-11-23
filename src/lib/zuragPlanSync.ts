@@ -14,7 +14,7 @@ import { invalidate } from './dataBus';
 import { CASHFLOW_NEW } from './services';
 import { fetchPlanRows } from './projectPlanInputs';
 import { loadZuragBurtgel } from './zuragBurtgel';
-import { registryPlanEdits } from './zuragPlan';
+import { registryDupDeletes, registryPlanEdits } from './zuragPlan';
 
 /** Хүснэгтийг бүртгэлтэй тааруулна; `n` — бичигдсэн мөр (0 = таарч байсан), `held` — гэрээ/төлбөртэй тул устгаагүй мөр */
 export function syncZuragPlan(): Promise<{ n: number; held: number }> {
@@ -41,11 +41,22 @@ async function syncZuragPlanNow(): Promise<{ n: number; held: number }> {
   const n = e.adds.length + e.updates.length + e.deletes.length;
   const held = e.held.length;
   if (!n) return { n: 0, held };
-  await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, {
+  const made = await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, {
     adds: e.adds,
     updates: e.updates.map(({ objectid, ...a }) => ({ [CASHFLOW_NEW.oid]: objectid, ...a })),
     deletes: e.deletes,
   }, { cap: 'zuragEdit' });
+  let dup = 0;
+  /* 2026-11-24 (аудит): таб түгжээ өөр компьютер / CI-ийн синкт үйлчлэхгүй — нэмсний ДАРАА дахин уншиж, зэрэг нэмэгдсэн ижил мөр
+     (бага objectid) байвал өөрийнхөө мөрийг устгана. Уншилт унавал дараагийн синкээр */
+  if (e.adds.length && made.oids.length) {
+    try {
+      const del = registryDupDeletes(await fetchPlanRows(), made.oids);
+      if (del.length) { await applyAll(CASHFLOW_NEW.url, CASHFLOW_NEW.oid, { deletes: del }, { cap: 'zuragEdit' }); dup = del.length; }
+    } catch (err) {
+      console.warn('[selbe] зургийн бүртгэлийн синк: давхардлын шалгалт унав', err);
+    }
+  }
   invalidate('CASHFLOW_NEW');
-  return { n, held };
+  return { n: n - dup, held };
 }
