@@ -17,6 +17,8 @@ export type ConfirmOpts = {
   danger?: boolean;
   /** Цонхны гарчиг (сонголттой) */
   title?: string;
+  /** 2026-11-24: зөвхөн мэдэгдэл — «Болих» товчгүй, ганц батлах товч */
+  alert?: boolean;
 };
 
 export type ConfirmReq = { id: number; message: string; opts: ConfirmOpts };

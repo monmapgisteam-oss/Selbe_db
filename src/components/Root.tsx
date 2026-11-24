@@ -9,6 +9,7 @@ import { Home } from './Home';
 import { Landing } from './Landing';
 import { AccessLost, AuthNotice, useAuth } from './AuthGate';
 import { ConfirmHost } from './ConfirmHost';
+import { askConfirm } from '@/lib/confirm';
 import { boardAllowedFor } from '@/lib/homeBoard';
 import { remoteReady, resolveAccess, roleOf, subscribe } from '@/lib/permissions';
 import { roleAccess } from '@/lib/roleTypes';
@@ -89,6 +90,22 @@ const scopeFromUrl = (): NavScope => {
 
 export default function Root() {
   const { authorized, signIn, signOut, status, user, accessLost, recheckPerms } = useAuth();
+  /**
+   * КЭШИЙН САНАМЖ (2026-11-24, хэрэглэгч) — нэвтэрмэгц нэг удаа (браузерын сешнд): систем байнга шинэчлэгддэг тул хуучин
+   * кэшээс болж шинэ өөрчлөлт харагдахгүй бол Ctrl + Shift + R. «OK» дарж хаана.
+   */
+  useEffect(() => {
+    if (status !== 'signed-in' || !authorized) return;
+    const KEY = 'selbe:cacheNotice';
+    try {
+      if (sessionStorage.getItem(KEY) === '1') return;
+      sessionStorage.setItem(KEY, '1');
+    } catch { /* хадгалалт хаалттай — цонхыг харуулсаар */ }
+    void askConfirm(
+      tr('Системд байнга шинэчлэлт орж байгаа тул таны браузерт хуучин хувилбар (кэш) хадгалагдаж, шинэ өөрчлөлт харагдахгүй байж магадгүй. Тийм үед Ctrl + Shift + R товчийг дарж хуудсыг бүрэн шинэчилнэ үү (Mac: Cmd + Shift + R).'),
+      { title: tr('Санамж'), ok: tr('OK'), alert: true },
+    );
+  }, [status, authorized]);
   const [scope, setScope] = useState<NavScope>(scopeFromUrl);
 
   /** Эрхийн store өөрчлөгдвөл (super admin засвар) дахин тооцоолно */

@@ -8398,7 +8398,10 @@ const en: Record<string, string> = {
   "Бөглөлтийг өөр хэрэглэгч энэ хооронд IPC-д оруулсан.": "Another user has meanwhile included these fills in an IPC.",
   "IPC-{0}-ийн төлбөр давхар бичигдсэн эсэхийг шалгаж чадсангүй ({1}). «Төлбөрийн акт (IPC)»-д нэг төлбөрийн мөр байгааг шалгана уу.": "Could not check whether the payment for IPC-{0} was recorded twice ({1}). Please check that «Төлбөрийн акт (IPC)» has only one payment row.",
   "ТТБ-ийн 4 унтраалга": "Plan table: 4 switches",
-  "«Төсөл төлөвлөгөө биелэлт»-ийн мөр бүрийн 4 унтраалгыг өөрчлөх: Төслийн нийтэд · Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд тооцох. Санхүүгийн бүртгэл засах эрхтэй хүн ч өөрчилж чадна.": "Change the 4 switches on each row of «Project plan and performance»: count in project total · in parent progress · in money total · in time total. Users with the finance register edit right can also change them."
+  "«Төсөл төлөвлөгөө биелэлт»-ийн мөр бүрийн 4 унтраалгыг өөрчлөх: Төслийн нийтэд · Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд тооцох. Санхүүгийн бүртгэл засах эрхтэй хүн ч өөрчилж чадна.": "Change the 4 switches on each row of «Project plan and performance»: count in project total · in parent progress · in money total · in time total. Users with the finance register edit right can also change them.",
+  "Системд байнга шинэчлэлт орж байгаа тул таны браузерт хуучин хувилбар (кэш) хадгалагдаж, шинэ өөрчлөлт харагдахгүй байж магадгүй. Тийм үед Ctrl + Shift + R товчийг дарж хуудсыг бүрэн шинэчилнэ үү (Mac: Cmd + Shift + R).": "The system is updated frequently, so your browser may keep an old version (cache) and new changes may not appear. If so, press Ctrl + Shift + R to fully reload the page (Mac: Cmd + Shift + R).",
+  "Санамж": "Notice",
+  "OK": "OK"
 };
 
 export default en;

@@ -62,4 +62,12 @@ ok('ТТБ-ийн 4 унтраалга — тусдаа эрх (ttbSwitch), ху
   assert.match(src('./caps.ts'), /ttbSwitch: \['finance'\]/, 'ttbSwitch «Төсөл төлөвлөгөө биелэлт»-ийг нээнэ');
 });
 
+ok('нэвтрэхэд кэшийн санамж — сешнд нэг удаа, ганц «OK» товч', () => {
+  const root = src('../components/Root.tsx');
+  assert.match(root, /sessionStorage\.getItem\(KEY\) === '1'/, 'сешнд нэг удаа');
+  assert.match(root, /Ctrl \+ Shift \+ R/, 'Ctrl + Shift + R заавар');
+  assert.match(root, /alert: true/, 'ганц товчтой мэдэгдэл');
+  assert.match(src('../components/ConfirmHost.tsx'), /\{!req\.opts\.alert && \(/, '«Болих» товч мэдэгдэлд нуугдана');
+});
+
 console.log(`\n✅ auditParity: ${n} шалгуур давлаа`);

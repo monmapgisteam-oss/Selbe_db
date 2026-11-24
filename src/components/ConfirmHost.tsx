@@ -82,9 +82,11 @@ function ConfirmDialog({ req }: { req: ConfirmReq }) {
         {title && <h2 className={s.title} id={titleId}>{title}</h2>}
         <p className={s.msg} id={msgId}>{req.message}</p>
         <div className={s.actions}>
-          <button ref={cancelRef} type="button" className={s.btn} onClick={() => settleConfirm(req.id, false)}>
-            {req.opts.cancel || tr('Болих')}
-          </button>
+          {!req.opts.alert && (
+            <button ref={cancelRef} type="button" className={s.btn} onClick={() => settleConfirm(req.id, false)}>
+              {req.opts.cancel || tr('Болих')}
+            </button>
+          )}
           <button
             ref={okRef}
             type="button"
