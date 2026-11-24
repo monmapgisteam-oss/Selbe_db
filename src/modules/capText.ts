@@ -25,7 +25,7 @@ export const PANE_CAPS: Record<ErhPane, readonly CapKey[]> = {
   chanar: ['chanarAuthor', 'chanarReview'],
   butets: ['butets'],
   zovshoorol: ['zovshoorol'],
-  fin: ['finEdit', 'finRow', 'cfSwitch'],
+  fin: ['finEdit', 'finRow', 'cfSwitch', 'ttbSwitch'],
   ipc: ['ipcCreate', 'ipcApprove'],
   gazar: ['gazar'],
   hamaaral: ['hamaaral'],
@@ -105,6 +105,7 @@ export const capLabel = (k: CapKey): string => {
   if (k === 'habeaOwn') return tr('ХАБЭА — багцаар харах');
   if (k === 'zuragEdit') return tr('ТЭЗҮ, зураг төсөл, газар чөлөөлөлтийн огноо засах');
   if (k === 'cfSwitch') return tr('Сарын мөнгө — Гараар → Хуваарь шилжүүлэх');
+  if (k === 'ttbSwitch') return tr('ТТБ-ийн 4 унтраалга');
   if (k === 'aiAgent') return tr('AI туслах ашиглах');
   if (k === 'zahiramjEdit') return tr('Захирамж оруулах');
   if (k === 'songonEdit') return tr('Сонгон шалгаруулалт оруулах');
@@ -226,6 +227,9 @@ export const capNote = (k: CapKey): string => {
   }
   if (k === 'aiAgent') {
     return tr('AI туслахын товч зөвхөн энэ эрхтэй аккаунтад харагдана. Туслах нь тухайн хэрэглэгчийн харах эрхтэй мэдээллээс л хариулна.');
+  }
+  if (k === 'ttbSwitch') {
+    return tr('«Төсөл төлөвлөгөө биелэлт»-ийн мөр бүрийн 4 унтраалгыг өөрчлөх: Төслийн нийтэд · Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд тооцох. Санхүүгийн бүртгэл засах эрхтэй хүн ч өөрчилж чадна.');
   }
   if (k === 'cfSwitch') {
     return tr('Гэрээний гараар оруулсан сарын мөрийг УСТГАЖ, сарын мөнгийг Хуваарийн сарын обьём × нэгж өртгөөр тооцоолно. Буцаах боломжгүй.');

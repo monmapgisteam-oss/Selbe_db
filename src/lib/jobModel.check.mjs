@@ -66,7 +66,7 @@ ok('JOB_DEFS бүрэлдэхүүн', () => {
     ['butets', null, ['butets.editor'], [], 'packages'],
     ['zurag', null, [], ['zuragEdit'], 'none'],
     ['gazar', null, [], ['gazar'], 'none'],
-    ['sanhuu', null, [], ['finEdit', 'cfSwitch', 'ipcCreate', 'ipcApprove'], 'none'],
+    ['sanhuu', null, [], ['finEdit', 'cfSwitch', 'ttbSwitch', 'ipcCreate', 'ipcApprove'], 'none'],
     ['chanar', null, [], [], 'none'],
     ['taniltsah', null, [], [], 'none'],
     ['super', null, [], [], 'none'],

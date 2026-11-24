@@ -222,12 +222,16 @@ const write = async (edit: Parameters<typeof applyAll>[2], cap: CapKey = 'finEdi
   return r;
 };
 
+/** 2026-11-24: 4 унтраалга — тусдаа «ТТБ-ийн 4 унтраалга» эрх (`ttbSwitch`), эсвэл хуучнаараа `finEdit` */
+export const switchCap = (): CapKey => (hasCap(currentUser(), 'ttbSwitch') ? 'ttbSwitch' : 'finEdit');
+export const canSwitch = (user: string | null | undefined): boolean => hasCap(user, 'ttbSwitch') || hasCap(user, 'finEdit');
+
 /**
  * «Төслийн нийтэд тооцох» (2026-11-16, хэрэглэгч) — 1 Тооцно · 0 Тооцохгүй. Зөвхөн Төслийн нийт гүйцэтгэлийн хувьд
  * нөлөөлнө (`computePlan`); бусад бодолт хэвээр.
  */
 export function saveInTotal(oid: number, v: 0 | 1) {
-  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inTotal]: v }] });
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inTotal]: v }] }, switchCap());
 }
 
 /**
@@ -235,17 +239,17 @@ export function saveInTotal(oid: number, v: 0 | 1) {
  * (бүлэг, үе шат) нийлбэр ба жингээс хасагдана; Төслийн нийт мөрд ХЭВЭЭР орно (бие даасан унтраалга); өөрийн бодолт хэвээр.
  */
 export function saveInPhase(oid: number, v: 0 | 1) {
-  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inPhase]: v }] });
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inPhase]: v }] }, switchCap());
 }
 
 /** «Мөнгөний нийлбэрт тооцох» (2026-11-19, хэрэглэгч) — 1 Тооцно · 0 Тооцохгүй */
 export function saveInMoney(oid: number, v: 0 | 1) {
-  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inMoney]: v }] });
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inMoney]: v }] }, switchCap());
 }
 
 /** «Хугацааны нийтэд тооцох» (2026-11-19, хэрэглэгч) — 1 Тооцно · 0 Тооцохгүй */
 export function saveInTime(oid: number, v: 0 | 1) {
-  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inTime]: v }] });
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.inTime]: v }] }, switchCap());
 }
 
 /**

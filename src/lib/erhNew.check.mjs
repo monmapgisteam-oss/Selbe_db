@@ -183,7 +183,7 @@ ok('Ноорог — албан үүрэг · багц · эрх нэмэх/ха
   assert.deepEqual(N.touchedPkgs(normRights({ acl: { huvaari: [{ role: 'author', bagts: ['*'] }] } })), [ALL]);
   const t = N.setJob(e, 'sanhuu');
   assert.deepEqual(t.bagts, []);
-  assert.deepEqual(compile(t).caps, ['finEdit', 'ipcCreate', 'ipcApprove', 'cfSwitch'].filter((c) => compile(t).caps.includes(c)));
+  assert.deepEqual(compile(t).caps, ['finEdit', 'ipcCreate', 'ipcApprove', 'cfSwitch', 'ttbSwitch'].filter((c) => compile(t).caps.includes(c)));
   assert.equal(compile(t).flow, null);
 });
 

@@ -8396,7 +8396,9 @@ const en: Record<string, string> = {
   "Ирэх 7 хоногийн обьём батлагдлаа — төлөвлөгөөт хувьд тусгагдана.": "Next week's volume approved — it will be reflected in the planned percentage.",
   "Ирэх 7 хоногийн обьём батлуулахаар хадгалагдлаа — батлагч баталтал төлөвлөгөөт хувьд нөлөөлөхгүй.": "Next week's volume saved for approval — it will not affect the planned percentage until the approver approves it.",
   "Бөглөлтийг өөр хэрэглэгч энэ хооронд IPC-д оруулсан.": "Another user has meanwhile included these fills in an IPC.",
-  "IPC-{0}-ийн төлбөр давхар бичигдсэн эсэхийг шалгаж чадсангүй ({1}). «Төлбөрийн акт (IPC)»-д нэг төлбөрийн мөр байгааг шалгана уу.": "Could not check whether the payment for IPC-{0} was recorded twice ({1}). Please check that «Төлбөрийн акт (IPC)» has only one payment row."
+  "IPC-{0}-ийн төлбөр давхар бичигдсэн эсэхийг шалгаж чадсангүй ({1}). «Төлбөрийн акт (IPC)»-д нэг төлбөрийн мөр байгааг шалгана уу.": "Could not check whether the payment for IPC-{0} was recorded twice ({1}). Please check that «Төлбөрийн акт (IPC)» has only one payment row.",
+  "ТТБ-ийн 4 унтраалга": "Plan table: 4 switches",
+  "«Төсөл төлөвлөгөө биелэлт»-ийн мөр бүрийн 4 унтраалгыг өөрчлөх: Төслийн нийтэд · Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд тооцох. Санхүүгийн бүртгэл засах эрхтэй хүн ч өөрчилж чадна.": "Change the 4 switches on each row of «Project plan and performance»: count in project total · in parent progress · in money total · in time total. Users with the finance register edit right can also change them."
 };
 
 export default en;

@@ -38,6 +38,7 @@ export type CapKey =
   | 'ashiglaltEdit'
   | 'dulaanEdit'
   | 'cfSwitch'
+  | 'ttbSwitch'
   | 'aiAgent';
 
 /**
@@ -130,6 +131,11 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'cfSwitch', icon: 'calendar' },
   /**
+   * ТТБ-ИЙН 4 УНТРААЛГА (2026-11-24, хэрэглэгч: «тусдаа бай ёстой») — «Төсөл төлөвлөгөө биелэлт»-ийн мөр бүрийн «Төслийн нийтэд ·
+   * Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд тооцох». Урьд нь зөвхөн `finEdit`-д багтдаг байв (хэвээр зөвшөөрнө).
+   */
+  { key: 'ttbSwitch', icon: 'sections' },
+  /**
    * AI ТУСЛАХ АШИГЛАХ (2026-11-11, хэрэглэгч: «туслах дээр тусдаа аккаунт тохируулдаг болго») — туслахын товч зөвхөн энэ
    * эрхтэй аккаунтад харагдана; реле `AGENT_CAP_REQUIRED=1` үед мөн энэ эрхийг шалгана. Админ хэрэглэгч бүрт олгоно.
    */
@@ -187,6 +193,7 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   ashiglaltEdit: ['ashiglalt'],
   dulaanEdit: ['dulaan'],
   cfSwitch: ['finance'],
+  ttbSwitch: ['finance'],
   aiAgent: [],
 };
 

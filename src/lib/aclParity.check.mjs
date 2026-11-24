@@ -572,7 +572,7 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m)));
-  assert.equal(PLAIN_CAPS.length, 18, `энгийн эрх ЯГ 18 байх ёстой (2026-11-23: + dulaanEdit; 2026-11-20: − sysClose; 2026-11-11: + aiAgent; 2026-11-04: + ipcCreate, ipcApprove, үе шатны 4 эрх; habeaOwn гаргалгаатай болсон), олдсон: ${PLAIN_CAPS.length}`);
+  assert.equal(PLAIN_CAPS.length, 19, `энгийн эрх ЯГ 19 байх ёстой (2026-11-24: + ttbSwitch; 2026-11-23: + dulaanEdit; 2026-11-20: − sysClose; 2026-11-11: + aiAgent; 2026-11-04: + ipcCreate, ipcApprove, үе шатны 4 эрх; habeaOwn гаргалгаатай болсон), олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
@@ -597,7 +597,7 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
   assert.deepEqual(PANE_CAPS.huvaari, ['plan', 'planApprove'], 'Хуваарийн эрх: зохиогч + батлагч нэг хуудсанд');
   assert.deepEqual(PANE_CAPS.ipc, ['ipcCreate', 'ipcApprove'], 'IPC: үүсгэх + батлах нэг хуудсанд');
   assert.deepEqual(PANE_CAPS.uyShat, ['zahiramjEdit', 'songonEdit', 'zovshoorolTtbEdit', 'ashiglaltEdit', 'dulaanEdit'], 'Үе шат: 4 эрх + дулаан авах огноо (2026-11-23) нэг хуудсанд');
-  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'cfSwitch'], 'Санхүү: утга + мөр + сарын мөнгө шилжүүлэх нэг хуудсанд');
+  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'cfSwitch', 'ttbSwitch'], 'Санхүү: утга + мөр + сарын мөнгө шилжүүлэх + ТТБ-ийн 4 унтраалга нэг хуудсанд');
   for (const c of all) assert.ok(PANE_CAPS[paneOfCap(c)].includes(c), `paneOfCap(${c}) буруу`);
   for (const [lf, fn] of [['src/modules/capText.ts', 'capLabel'], ['src/modules/erhLabels.ts', 'capLabelShort']]) {
     const lsrc = readCode(lf);

@@ -57,6 +57,7 @@ import { isAddedWork, moneySums, noMoney, noTime, type MoneySums, type PlanNode,
 import {
   MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
   importCutoff, pkgOptions, savePlanValue, saveInTotal, saveInPhase, saveInMoney, saveInTime, savePhaseWeight, type FillFilter, type PlanEditKey, type PlanFilter,
+  canSwitch,
 } from '@/lib/planEdit';
 import { AddRowsPanel, EDIT_LABEL, PlanEditCell } from '@/modules/PlanEntry';
 import f from './finance.module.css';
@@ -1368,6 +1369,8 @@ const ppStatusText = (s: BlockStatus): string =>
  */
 function ProjectPlanView(props: {
   canEdit: boolean;
+  /** 4 унтраалга (`ttbSwitch` эсвэл `finEdit`) */
+  canSwitch: boolean;
   onSaved: () => void;
 }) {
   const q = useAsync<PlanWithLive>(loadProjectPlanLazy, []);
@@ -1386,12 +1389,14 @@ function ProjectPlanView(props: {
 }
 
 export function ProjectPlanTable({
-  plan, canEdit = false,
+  plan, canEdit = false, canSwitch = canEdit,
 }: {
   /** `live` өгөөгүй бол «Үе шатны хувь» хадгалсан утгаа харуулна */
   plan: ProjectPlan & { live?: PlanWithLive['live'] };
   /** Гараар оруулах утга засах, мөр нэмэх/устгах (`finEdit`) */
   canEdit?: boolean;
+  /** 2026-11-24: 4 унтраалга — «ТТБ-ийн 4 унтраалга» эрх (`ttbSwitch`) эсвэл `finEdit` */
+  canSwitch?: boolean;
   onSaved: () => void;
 }) {
   const { tree, result } = plan;
@@ -1544,7 +1549,7 @@ export function ProjectPlanTable({
           aria-checked={on}
           aria-label={name}
           className={`${f.ppSw} ${on ? f.ppSwOn : ''}`}
-          disabled={!canEdit || inh || stBusy != null}
+          disabled={!canSwitch || inh || stBusy != null}
           title={`${name}: ${inh ? tr('дээд мөр унтарсан тул хасагдсан') : on ? tr('Тооцно') : tr('Тооцохгүй')}`}
           onClick={() => {
             const next = own ? 1 : 0;
@@ -1919,6 +1924,7 @@ function FinTablesView({ d, onSaved, only }: { d: FinTables; onSaved: () => void
   useEffect(() => subscribeCaps(() => setTick((n) => n + 1)), []);
   void tick;
   const canEdit = hasCap(user?.username, 'finEdit');
+  const canSw = canSwitch(user?.username);
 
 
   /**
@@ -1974,6 +1980,7 @@ function FinTablesView({ d, onSaved, only }: { d: FinTables; onSaved: () => void
       <ProjectPlanView
         key="proj"
         canEdit={canEdit}
+        canSwitch={canSw}
         onSaved={onSaved}
       />
       ) : (

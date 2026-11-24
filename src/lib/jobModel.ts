@@ -333,7 +333,7 @@ export const JOB_DEFS: readonly JobDef[] = [
   job('butets', { scope: 'packages', pkgRoles: [{ sys: 'butets', role: 'editor' }] }),
   job('zurag', { caps: ['zuragEdit'] }),
   job('gazar', { caps: ['gazar'] }),
-  job('sanhuu', { caps: ['finEdit', 'cfSwitch', 'ipcCreate', 'ipcApprove'] }),
+  job('sanhuu', { caps: ['finEdit', 'cfSwitch', 'ttbSwitch', 'ipcCreate', 'ipcApprove'] }),
   job('chanar'),
   job('taniltsah'),
   job('super', { admin: true }),

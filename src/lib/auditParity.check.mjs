@@ -48,4 +48,18 @@ ok('AI туслах — хувь 2 орон бутархай', () => {
   assert.doesNotMatch(sc, /нэг аравтаар/, 'заавар нэг аравт хэвээр');
 });
 
+ok('ТТБ-ийн 4 унтраалга — тусдаа эрх (ttbSwitch), хуучнаараа finEdit-д ч', () => {
+  const pe = src('./planEdit.ts');
+  for (const fn of ['saveInTotal', 'saveInPhase', 'saveInMoney', 'saveInTime']) {
+    const i = pe.indexOf(`export function ${fn}(`);
+    const body = pe.slice(i, pe.indexOf('\n}\n', i));
+    assert.match(body, /switchCap\(\)/, `${fn}: switchCap биш`);
+  }
+  assert.match(pe, /hasCap\(user, 'ttbSwitch'\) \|\| hasCap\(user, 'finEdit'\)/, 'finEdit-тэй хүн унтраалгаа алдахгүй');
+  const fin = src('../modules/Finance.tsx');
+  assert.match(fin, /disabled=\{!canSwitch \|\| inh/, 'унтраалга canSwitch-ээр');
+  assert.match(fin, /canSwitch=\{canSw\}/, 'ProjectPlanView-д canSwitch дамжина');
+  assert.match(src('./caps.ts'), /ttbSwitch: \['finance'\]/, 'ttbSwitch «Төсөл төлөвлөгөө биелэлт»-ийг нээнэ');
+});
+
 console.log(`\n✅ auditParity: ${n} шалгуур давлаа`);
