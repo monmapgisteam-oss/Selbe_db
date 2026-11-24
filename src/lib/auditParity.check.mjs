@@ -62,9 +62,11 @@ ok('ТТБ-ийн 4 унтраалга — тусдаа эрх (ttbSwitch), ху
   assert.match(src('./caps.ts'), /ttbSwitch: \['finance'\]/, 'ttbSwitch «Төсөл төлөвлөгөө биелэлт»-ийг нээнэ');
 });
 
-ok('нэвтрэхэд кэшийн санамж — сешнд нэг удаа, ганц «OK» товч', () => {
+ok('нэвтрэхэд кэшийн санамж — ачаалал (нэвтрэх · refresh) бүрт нэг удаа, ганц «OK» товч', () => {
   const root = src('../components/Root.tsx');
-  assert.match(root, /sessionStorage\.getItem\(KEY\) === '1'/, 'сешнд нэг удаа');
+  assert.match(root, /if \(!authorized \|\| cacheNoticeShown\) return;/, 'ачаалалд нэг удаа (цэс солиход дахин гарахгүй)');
+  assert.match(root, /^let cacheNoticeShown = false;$/m, 'модулийн туг — refresh-д шинэчлэгдэнэ');
+  assert.doesNotMatch(root, /selbe:cacheNotice/, 'sessionStorage биш — refresh-д дахин гарна');
   assert.match(root, /Ctrl \+ Shift \+ R/, 'Ctrl + Shift + R заавар');
   assert.match(root, /alert: true/, 'ганц товчтой мэдэгдэл');
   assert.match(src('../components/ConfirmHost.tsx'), /\{!req\.opts\.alert && \(/, '«Болих» товч мэдэгдэлд нуугдана');
