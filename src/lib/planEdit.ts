@@ -258,7 +258,8 @@ export function saveInTime(oid: number, v: 0 | 1) {
  */
 export function savePhaseWeight(oid: number, pct: number | null) {
   if (pct != null && !(pct >= 0 && pct <= 100)) throw new Error(tr('Жин 0–100 хооронд байх ёстой'));
-  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.wSection]: pct == null ? null : pct / 100 }] });
+  /* 2026-11-24: жин засах — «ТТБ-ийн 4 унтраалга» эрх (эсвэл санхүү засах) */
+  return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.wSection]: pct == null ? null : pct / 100 }] }, switchCap());
 }
 
 /**

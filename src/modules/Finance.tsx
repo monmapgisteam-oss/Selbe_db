@@ -1753,7 +1753,7 @@ export function ProjectPlanTable({
                     <PhaseWeightCell
                       shown={v?.FT !== undefined ? v.FT : v?.F ?? null}
                       stored={typeof r.heseg_ezleh_huvi === 'number' ? r.heseg_ezleh_huvi : null}
-                      canEdit={canEdit}
+                      canEdit={canSwitch}
                       onError={setErr}
                       onSave={async (w) => {
                         setErr(null);

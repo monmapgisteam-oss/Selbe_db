@@ -879,6 +879,12 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number): PlanRes
     return k;
   };
   const W = (n: PlanNode): number | null => { const e = E.get(n); return e == null ? null : e * keepOf(n); };
+  /* 2026-11-24 (хэрэглэгч: «гараар тавиагүй мөрийн жин — гэрээний дүн, алга бол төсөв»): ах дүүгийн жингийн суурь мөнгө */
+  const msum = moneySums(tree);
+  const basis = (n: PlanNode): number | null => {
+    const k = msum.get(n)?.contract;
+    return k != null && k > 0 ? k * keepOf(n) : W(n);
+  };
 
   /* ── F (0–1): хадгалсан › G/G_эцэг (үе шат) › E/E_эцэг › хосын F ── */
   const F = new Map<PlanNode, number | null>();
@@ -901,19 +907,19 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number): PlanRes
       if (sib.some((c) => fixedOf(c) != null)) {
         const own = fixedOf(n);
         let fixed = 0, free = 0;
-        for (const c of sib) { const w = fixedOf(c); if (w != null) fixed += w; else free += W(c) ?? 0; }
+        for (const c of sib) { const w = fixedOf(c); if (w != null) fixed += w; else free += basis(c) ?? 0; }
         /* Үе шатнаас доош: бүх ах дүү тогтмол жинтэй бол нийлбэрт нь хувааж 100% болгоно (хасагдсан ах дүү байвал үлдсэн нь нөхнө) */
         if (own != null && p !== root && fixed > 0 && sib.every((c) => fixedOf(c) != null)) return own / fixed;
         if (own != null) return own;
         const rest = Math.max(0, 1 - fixed);
-        if (free > 0) return rest * ((W(n) ?? 0) / free);
+        if (free > 0) return rest * ((basis(n) ?? 0) / free);
         const nFree = sib.filter((c) => fixedOf(c) == null).length;
         return nFree ? rest / nFree : 0;
       }
     }
     let tot = 0;
-    for (const c of sib) tot += W(c) ?? 0;
-    return tot > 0 ? (W(n) ?? 0) / tot : null;
+    for (const c of sib) tot += basis(c) ?? 0;
+    return tot > 0 ? (basis(n) ?? 0) / tot : null;
   };
   /**
    * 2026-11-03 (хэрэглэгч): бүлэгт өөрийн төсөв байхгүй бол — мөр бүрийн Барилга угсралтын ижил багц/блокийн мөрийн (ихэр)

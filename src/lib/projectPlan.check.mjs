@@ -762,3 +762,22 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
   assert.equal(r1.values.get(t1.root).M, Dt('2029-08-01'), 'хугацааны товч асаавал орно');
   console.log('projectPlan.check: нийслэлийн мөрийн мөнгө/хугацааны товч OK');
 }
+
+/* 2026-11-24 (хэрэглэгч): «Хэсэгт эзлэх» — гараар тавьсан мөр тогтмол, тавиагүй ах дүү үлдэгдлийг ГЭРЭЭНИЙ ДҮНГЭЭР
+   (гэрээгүй бол урьдчилсан төсөвт өртгөөр) хуваана */
+{
+  const C = 'Гэрээлсэн дүн';
+  const rows = [
+    { objectid: 1, dd_kod: '1', ajil_uilchilgee: 'Үе шат' },
+    { objectid: 2, dd_kod: '1.1', etseg_kod: '1', ajil_uilchilgee: 'А', ho_dun_geree: 100, geree_dun: 50, ho_dungiin_tailbar: C, guitsetgel_huvi: 100 },
+    { objectid: 3, dd_kod: '1.2', etseg_kod: '1', ajil_uilchilgee: 'Б', ho_dun_geree: 100, guitsetgel_huvi: 0 },
+  ];
+  const r = computePlan(buildTree(rows));
+  assert.ok(Math.abs(r.get('1.1').F - 100 * 50 / 150) < 1e-9, `гэрээтэй мөр гэрээгээр: ${r.get('1.1').F}`);
+  assert.ok(Math.abs(r.get('1.2').F - 100 * 100 / 150) < 1e-9, `гэрээгүй мөр төсвөөр: ${r.get('1.2').F}`);
+  assert.equal(r.values.get(r.tree.root).E, 200, 'төсөв (E) хөндөгдөхгүй');
+  /* Гараар 10% — үлдсэн 90% нь нөгөөд */
+  const m = computePlan(buildTree(rows.map((x) => (x.dd_kod === '1.2' ? { ...x, heseg_ezleh_huvi: 0.1 } : x))));
+  assert.ok(Math.abs(m.get('1.2').F - 10) < 1e-9 && Math.abs(m.get('1.1').F - 90) < 1e-9, `гараар тавьсан + үлдэгдэл: ${m.get('1.2').F}/${m.get('1.1').F}`);
+  console.log('projectPlan.check: гэрээний дүнгээр жин · гараар тавьсан жин OK');
+}
