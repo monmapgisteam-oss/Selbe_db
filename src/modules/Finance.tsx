@@ -48,12 +48,11 @@ import {
 } from '@/lib/caps';
 import { useAuth } from '@/components/AuthGate';
 import { IpcTable } from '@/modules/IpcTable';
-import { SyncStatus } from '@/modules/SyncStatus';
 import {
   SRC_HUVAARI, type MonthlyMoney,
 } from '@/lib/monthlyMoney';
 import type { LiveProgress, ProjectPlan } from '@/lib/projectPlanInputs';
-import { isAddedWork, moneySums, noMoney, noTime, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus } from '@/lib/projectPlan';
+import { inPackage, isAddedWork, moneySums, noMoney, noTime, packageProgress, packagesAverage, pkgSwitchOwn, planPkgKey, type MoneySums, type PlanNode, type PlanStoredRow, type PlanValues, type BlockStatus } from '@/lib/projectPlan';
 import {
   MANUAL_PHASES, NO_FILTER, PLAN_EDIT, PLAN_EDIT_KEYS, addWhy, deletePlanRow, deleteWhy, filterActive, filterPlan,
   importCutoff, pkgOptions, savePlanValue, saveInTotal, saveInPhase, saveInMoney, saveInTime, savePhaseWeight, type FillFilter, type PlanEditKey, type PlanFilter,
@@ -1180,60 +1179,6 @@ const rawCol = (k: PpRawKey, label: string, kind: PpKind): PpCol => ({ k, label,
  * ҮЕ ШАТНЫ ЖИНГИЙН НҮД (2026-11-17, хэрэглэгч) — үе шатын мөрийн «Хэсэгт эзлэх»-ийг гараар тогтмол болгоно. Хоосон
  * үлдээвэл үлдэгдлийг (100% − тогтмолуудын нийлбэр) төсвөөрөө авна. Харагдах утга — бодогдсон жин.
  */
-/**
- * «ТООЦООНД ОРООГҮЙ» ХУРААНГУЙ (2026-11-19, хэрэглэгч: «ТТБ-ийн бодолтыг тохируулдаг, юу хасагдсан нь харагддаг»).
- * Өөрийн унтраалга нь унтарсан мөр (дээд мөрөөс удамшсан нь биш) — аль нийтээс хасагдсан, мөнгө бол хэдэн ₮.
- */
-function ExcludedSummary({ tree, result }: { tree: ProjectPlan['tree']; result: ProjectPlan['result'] }) {
-  const rows: { code: string; name: string; what: string[]; money: number | null }[] = [];
-  for (const n of tree.nodes) {
-    const r = n.row;
-    if (!r || r.objectid == null) continue;
-    let anc = false;
-    for (let x = n.parent; x && x.row; x = x.parent) if (x.outside || noMoney(x) || noTime(x) || x.row.niit_tootsoh === 0 || x.row.uy_shat_tootsoh === 0) { anc = true; break; }
-    if (anc) continue;
-    const what: string[] = [];
-    if (n.outside) what.push(tr('бүх нийлбэр'));
-    else {
-      if (r.niit_tootsoh === 0) what.push(tr('төслийн нийт гүйцэтгэл'));
-      if (r.uy_shat_tootsoh === 0) what.push(tr('үе шатны гүйцэтгэл'));
-      if (noMoney(n)) what.push(tr('мөнгөний нийлбэр'));
-      if (noTime(n)) what.push(tr('хугацааны нийт'));
-    }
-    if (!what.length) continue;
-    rows.push({ code: n.code, name: String(r.ajil_uilchilgee ?? ''), what, money: noMoney(n) ? result.values.get(n)?.E ?? null : null });
-  }
-  /* 2026-11-23 (аудит): «Үе шатны гүйцэтгэлд тооцохгүй» мөртэй үе шат — мөрд харагдах хувь (тэр мөрийг хассан) ба Төслийн нийтэд
-     орсон хувь (тэр мөртэй) хоёр өөр; ил бичихгүй бол үе шатуудаас Төслийн нийт дахин бодогдохгүй (37.3 ↔ 36.0) */
-  const gaps = tree.root.children.flatMap((n) => {
-    const shown = result.values.get(n)?.S ?? null;
-    const used = result.total?.values.get(n)?.S ?? null;
-    return shown != null && used != null && Math.abs(shown - used) > 0.005 ? [{ code: n.code, name: String(n.row?.ajil_uilchilgee ?? ''), shown, used }] : [];
-  });
-  if (!rows.length) return null;
-  const money = rows.reduce((a, x) => a + (x.money ?? 0), 0);
-  return (
-    <details className={f.ppWarn}>
-      <summary>
-        {tr('Тооцоонд ороогүй: {0} мөр', num(rows.length))}
-        {money > 0 && <> · {tr('төсвөөс хассан {0}', mnt(money))}</>}
-      </summary>
-      <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-        {rows.map((x) => (
-          <li key={x.code}>
-            <b className="num">{x.code}</b> {x.name} — {x.what.join(', ')}{x.money != null && x.money !== 0 ? ` (${mnt(x.money)})` : ''}
-          </li>
-        ))}
-        {gaps.map((g) => (
-          <li key={`gap:${g.code}`}>
-            <b className="num">{g.code}</b> {g.name} — {tr('мөрд {0} харагдана, Төслийн нийтэд {1}-аар орсон', pct(g.shown, 2), pct(g.used, 2))}
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
-
 function PhaseWeightCell({ shown, stored, canEdit, onSave, onError }: {
   shown: number | null;
   /** Хадгалсан тогтмол жин (0–1) эсвэл null */
@@ -1474,7 +1419,7 @@ export function ProjectPlanTable({
     n.blok ? f.ppBlk : '',
     n.outside ? f.ppOut : '',
     /* «Тооцохгүй» мөр (өөрөө эсвэл дээд мөр нь унтарсан) — бүдгэрнэ */
-    result.values.get(n)?.noTotal || result.values.get(n)?.noPhase ? f.ppDim : '',
+    result.values.get(n)?.noTotal || !inPackage(n) ? f.ppDim : '',
   ].filter(Boolean).join(' ');
 
   /** Олгосон дүн · урьдчилгаа · гэрээний дүн — мөр бүрт нийлбэрээр */
@@ -1526,9 +1471,9 @@ export function ProjectPlanTable({
     /* 2026-11-17 (хэрэглэгч): «Нийслэл төсөв» мөрд ч унтраалга — анхдагчаар хоёулаа унтраалттай (`optIn`); доод мөрүүд нь дагана */
     let outAnc = false;
     for (let x = n.parent; x && x.row; x = x.parent) if (x.outside) { outAnc = true; break; }
-    /* унтраалга: 1 — төслийн нийтэд · 2 — барилга угсралтын (эцэг мөрүүдийн) гүйцэтгэлд. Дээд мөрийн ИЖИЛ унтраалга унтарсан бол дагана */
-    const phOwn = n.optIn ? n.row?.uy_shat_tootsoh !== 1 : n.row?.uy_shat_tootsoh === 0;
-    const phInh = outAnc || (!phOwn && !!v?.noPhase);
+    /* унтраалга: 1 — төслийн нийт гүйцэтгэлд · 2 — багцын гүйцэтгэлд (2026-11-24, `packageProgress`). Дээд мөрийн ИЖИЛ унтраалга унтарсан бол дагана */
+    const phOwn = !pkgSwitchOwn(n);
+    const phInh = outAnc || (!phOwn && !inPackage(n));
     const totOwn = n.optIn ? n.row?.niit_tootsoh !== 1 : n.row?.niit_tootsoh === 0;
     /* 2026-11-17 (хэрэглэгч): хоёр унтраалга бие даасан — нэгийг унтраахад нөгөө нь дагахгүй */
     const totInh = outAnc || (!totOwn && !!v?.noTotal);
@@ -1540,8 +1485,8 @@ export function ProjectPlanTable({
     const timeOwn = noTime(n);
     const sw = (kind: 'tot' | 'ph' | 'mon' | 'time', own: boolean, inh: boolean) => {
       const on = !own && !inh;
-      const name = kind === 'tot' ? tr('Төслийн нийтэд тооцох') : kind === 'ph' ? tr('Дээд мөрийн гүйцэтгэлд тооцох')
-        : kind === 'mon' ? tr('Мөнгөний нийлбэрт тооцох') : tr('Хугацааны нийтэд тооцох');
+      const name = kind === 'tot' ? tr('Төслийн гүйцэтгэлд тооцох') : kind === 'ph' ? tr('Багцын гүйцэтгэлд тооцох')
+        : kind === 'mon' ? tr('Төслийн нийт мөнгөнд тооцох') : tr('Төслийн нийт хугацаанд тооцох');
       return (
         <button
           type="button"
@@ -1568,7 +1513,7 @@ export function ProjectPlanTable({
       <td className={f.ppSt}>
         <span className={f.ppSwPair}>
           {/* 2026-11-23: үе шатны мөр шууд Төслийн нийтэд ордог (тэр нь энэ унтраалгыг тооцдоггүй) — товч нь юу ч өөрчлөхгүй тул нуув */}
-          {sw('tot', totOwn, totInh)}{n.depth === 1 ? <span className={f.ppSwGap} aria-hidden /> : sw('ph', phOwn, phInh)}{sw('mon', monOwn, monAnc)}{sw('time', timeOwn, timeAnc)}
+          {sw('tot', totOwn, totInh)}{/* 2026-11-24 (хэрэглэгч): бүх мөр 4 унтраалгатай — үе шатын мөр ч */ sw('ph', phOwn, phInh)}{sw('mon', monOwn, monAnc)}{sw('time', timeOwn, timeAnc)}
         </span>
       </td>
     );
@@ -1652,11 +1597,15 @@ export function ProjectPlanTable({
   );
 
   const rootV = result.values.get(tree.root);
+  /* 2026-11-24 (хэрэглэгч): 1-р унтраалга → Төслийн нийт гүйцэтгэл, 2-р унтраалга → бүх багцын гүйцэтгэлийн дундаж */
+  const pkgAvg = packagesAverage(packageProgress(result, planPkgKey));
   return (
     <>
       <header className={f.regHd}>
         <h2>{tr('Төсөл төлөвлөгөө биелэлт')}</h2>
         <span>{tr('{0}-ний байдлаар · {1} мөр', date(result.today), num(tree.nodes.length))}</span>
+        <span title={tr('1-р унтраалга асаалттай мөрүүдээр')}>{tr('Төслийн нийт гүйцэтгэл')}: <b className="num">{pct(rootV?.S ?? null, 2)}</b></span>
+        <span title={tr('2-р унтраалга асаалттай мөрүүдээр — багц бүрийн гүйцэтгэлийн жигнэсэн дундаж')}>{tr('Бүх багцын гүйцэтгэл')}: <b className="num">{pct(pkgAvg.S, 2)}</b></span>
         {paidPend && (
           <span role="status" title={tr('Олгосон дүнг «Төлбөрийн акт (IPC)»-ээс синкийн эрхтэй хэрэглэгч порталыг нээхэд шинэчилнэ.')}>
             {tr('Олгосон дүн синк хүлээгдэж буй: {0} мөр · {1} ₮', num(paidPend.rows), num(paidPend.delta))}
@@ -1745,8 +1694,6 @@ export function ProjectPlanTable({
         {err && <p role="alert" className={f.editErr}>{err}</p>}
         {msg && <p role="status" className={f.editOk}>{msg}</p>}
       </div>
-      <ExcludedSummary tree={tree} result={result} />
-      <SyncStatus />
       {plan.failed.length > 0 && (
         <p role="status" className={f.ppWarn}>
           {tr('Зарим эх уншигдсангүй ({0}) — холбогдох мөрүүд «—».', planFailedLabels(plan.failed).join(', '))}
@@ -1773,7 +1720,7 @@ export function ProjectPlanTable({
         <table className={`${f.tbl} ${f.ppTbl}`}>
           <thead>
             <tr>
-              <th className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд')}><span className={f.ppSwPair}><span>{tr('Нийт')}</span><span>{tr('Дээд мөр')}</span><span>{tr('Мөнгө')}</span><span>{tr('Хугацаа')}</span></span></th>
+              <th className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн гүйцэтгэлд · Багцын гүйцэтгэлд · Төслийн нийт мөнгөнд · Төслийн нийт хугацаанд')}><span className={f.ppSwPair}><span>{tr('Төслийн')}<br />{tr('гүйцэтгэл')}</span><span>{tr('Багцын')}<br />{tr('гүйцэтгэл')}</span><span>{tr('Төслийн')}<br />{tr('мөнгө')}</span><span>{tr('Төслийн')}<br />{tr('хугацаа')}</span></span></th>
               <th className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
               <th className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
               <th className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>
@@ -1861,7 +1808,7 @@ export function ProjectPlanTable({
         <table className={`${f.tbl} ${f.ppTbl}`}>
           <thead>
             <tr>
-              <th rowSpan={2} className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн нийт гүйцэтгэлд · Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд')}><span className={f.ppSwPair}><span>{tr('Нийт')}</span><span>{tr('Дээд мөр')}</span><span>{tr('Мөнгө')}</span><span>{tr('Хугацаа')}</span></span></th>
+              <th rowSpan={2} className={f.ppSt} title={tr('Тооцох эсэх (зүүнээс): Төслийн гүйцэтгэлд · Багцын гүйцэтгэлд · Төслийн нийт мөнгөнд · Төслийн нийт хугацаанд')}><span className={f.ppSwPair}><span>{tr('Төслийн')}<br />{tr('гүйцэтгэл')}</span><span>{tr('Багцын')}<br />{tr('гүйцэтгэл')}</span><span>{tr('Төслийн')}<br />{tr('мөнгө')}</span><span>{tr('Төслийн')}<br />{tr('хугацаа')}</span></span></th>
               <th rowSpan={2} className={`${f.ppFz0} ${f.ppNo}`}>{tr('Д/Д')}</th>
               <th rowSpan={2} className={`${f.ppFz1} ${f.ppPkg}`}>{tr('Багц')}</th>
               <th rowSpan={2} className={`${f.ppFz2} ${f.ppName}`}>{tr('Ажлын нэр')}</th>

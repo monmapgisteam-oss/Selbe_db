@@ -246,7 +246,20 @@ export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
   );
 }
 
-const loadReportPair = (): Promise<[BagtsRow[], ReportExtra]> => Promise.all([loadBagtsRows(), loadReportExtra()]);
+/* 2026-11-24 (хэрэглэгч): багц бүрийн хувь — «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгаар (`planPkgProgress`), систем даяар нэг;
+   төлөвлөгөө уншигдаагүй бол «—» (биет хувиар орлуулахгүй) */
+const loadReportPair = (): Promise<[BagtsRow[], ReportExtra]> => Promise.all([
+  loadBagtsRows(),
+  loadReportExtra(),
+  import('@/lib/projectPlanInputs').then((m) => m.loadPlanPkgProgress()).catch(() => null),
+  import('@/lib/projectPlan'),
+]).then(([rows, extra, pp, P]) => [
+  rows.map((r) => {
+    const k = P.planPkgKey(r.label) || P.planPkgKey(r.key);
+    return { ...r, progress: pp ? (k ? pp.get(k)?.S ?? 0 : null) : null };
+  }),
+  extra,
+]);
 
 function TailanFull() {
   /** Огноо — ЗӨВХӨН клиент дээр (сервертэй зөрж hydration эвдэхээс сэргийлнэ). */

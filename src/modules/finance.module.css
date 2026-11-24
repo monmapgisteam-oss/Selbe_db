@@ -1371,16 +1371,15 @@ div.bName:hover { background: var(--surface-2); }
 
 /* Царцсан баганууд */
 /* Төлөв — «Төслийн нийтэд тооцох» сонголт (хамгийн зүүн багана, царцаахгүй) */
-.ppTbl .ppSt { width: 128px; min-width: 128px; max-width: 128px; padding-left: 4px; padding-right: 4px; }
+/* 2026-11-24 (хэрэглэгч: гарчиг эвдэрсэн) — 4 унтраалга × 50px, гарчиг нэг мөрөнд бүтнээр */
+.ppTbl .ppSt { width: 216px; min-width: 216px; max-width: 216px; padding-left: 4px; padding-right: 4px; }
 /* Хоёр унтраалга зэрэгцээ: 1 — төслийн нийт · 2 — үе шат */
-.ppSwPair { display: grid; grid-template-columns: repeat(4, 1fr); column-gap: 2px; justify-items: center; align-items: center; }
-.ppSwPair > span { text-align: center; font-size: 10px; line-height: 1.15; white-space: normal; }
+.ppSwPair { display: grid; grid-template-columns: repeat(4, 50px); column-gap: 2px; justify-content: center; justify-items: center; align-items: center; }
+.ppSwPair > span { text-align: center; font-size: 10px; line-height: 1.15; white-space: nowrap; text-transform: none; letter-spacing: 0; }
 /* Унтраалга — асаалттай = төслийн нийтэд тооцно */
 .ppSw { position: relative; display: block; width: 26px; height: 14px; padding: 0; border: 0; border-radius: 999px; background: color-mix(in oklab, var(--ink-3) 45%, transparent); cursor: pointer; transition: background 0.15s ease; }
 .ppSw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); transition: transform 0.15s ease; }
 .ppSwOn { background: var(--ok, #22c55e); }
-/* Үе шатны мөрөнд «Дээд мөр» унтраалгын оронд — эгнээ хадгална */
-.ppSwGap { display: block; width: 26px; height: 14px; }
 .ppSwOn::after { transform: translateX(12px); }
 .ppSw:disabled { cursor: default; opacity: 0.55; }
 .ppSw:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }

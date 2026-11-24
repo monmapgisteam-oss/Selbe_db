@@ -20,7 +20,7 @@ import type { Pack } from '@/modules/Bagts';
 import { upstreamOf, downstreamOf, type PkgDep } from '@/lib/workDeps';
 import { sheetsOf } from './tuhSchedule';
 import {
-  buildTuhPkgs, progressOf, statusOf, contractorGapCounts, type LiveMap, weekDelta, cfPlanPctAt, cfItemsOf,
+  buildTuhPkgs, progressOf, statusOf, contractorGapCounts, type LiveMap, type PkgProgMap, tuhPkgKey, weekDelta, cfPlanPctAt, cfItemsOf,
   ipcOf, earned, calDaysBetween, bagtsKey, keyOwners, assignHo, measDayOf,
   lastReportOf, reportAge,
   type TuhPkg, type TuhStatus, type TuhIpc, type CommissionPartial,
@@ -32,7 +32,7 @@ export type DocCount = { total: number; approved: number; review: number; return
  * ТУХ-ын эх сурвалжууд — `Tuh.tsx`-ийн ачаалагч бүр. Санхүү (`loadFinData`) энд ОРОХГҮЙ:
  * түүнгүйгээр загвар огт бүрдэхгүй.
  */
-export type TuhSrc = 'plan' | 'cfPlan' | 'hist' | 'commission' | 'workforce' | 'docs' | 'packs' | 'budget' | 'deps' | 'live' | 'project';
+export type TuhSrc = 'plan' | 'cfPlan' | 'hist' | 'commission' | 'workforce' | 'docs' | 'packs' | 'budget' | 'deps' | 'live' | 'project' | 'pkg';
 
 /**
  * «—» → «…» — тухайн эх сурвалж ХАРААХАН АЧААЛАГДАЖ БАЙГАА бол.
@@ -44,8 +44,22 @@ export type TuhRow = {
   p: TuhPkg;
   /** Багцын түлхүүрийн өгөгдлийн (HO, сарын цэг, MA/MIR, ХАБЭА, хуваарь) ЭЗЭН мөр — `tuhData.keyOwners` */
   own: boolean;
-  /** Биет гүйцэтгэл 0–100 */
+  /**
+   * Гүйцэтгэл 0–100. 2026-11-24: багцын мөрд (`byPackage`) — БАГЦЫН ГҮЙЦЭТГЭЛ («Төсөл төлөвлөгөө биелэлт», 2-р унтраалга,
+   * систем даяар нэг эх); бусад мөрд `phys`-тэй ижил.
+   */
   progress: number | null;
+  /** 2026-11-24: `progress` нь багцын гүйцэтгэлийн эхээс (`tuhData.tuhPkgKey` бий, эх өгөгдсөн) */
+  byPackage: boolean;
+  /**
+   * 2026-11-24: ХУУЧИН эх — орон сууц = бөглөх хуудасны биет, бусад = гэрээний мөрийн S. Гүйцэтгэгчийн хуваарь/гэрээний
+   * төлөвлөгөөний зөрүү, EV, 7 хоногийн ахицаар дуусах таамаг ҮҮГЭЭР (тэдгээр нь биет хэмжилттэй жишдэг).
+   */
+  phys: number | null;
+  /** 2026-11-24: багцын төлөвлөгөө — багцын гүйцэтгэлийн эхийн P (багцын мөрд л) */
+  planPackage: number | null;
+  /** 2026-11-24: багцын гүйцэтгэл − багцын төлөвлөгөө (pp) */
+  gapPackage: number | null;
   /** Гүйцэтгэгчийн төлөвлөгөө (хуваарь) 0–100 — хэмжилтийн өдрөөр (`lagOf`), эс бөгөөс өнөөдрөөр */
   planContractor: number | null;
   /** Гүйцэтгэл − гүйцэтгэгчийн төлөвлөгөө (pp) */
@@ -60,9 +74,10 @@ export type TuhRow = {
   status: TuhStatus;
   /**
    * «Хоцорсон» төлвийг аль зөрүүгээр тогтоосон — `contractor` = гүйцэтгэгчийн хуваарь
-   * (`lag.gap`), `contract` = гэрээний төлөвлөгөө (`gapContract`), `null` = зөрүүгүй.
+   * (`lag.gap`), `contract` = гэрээний төлөвлөгөө (`gapContract`), `package` = багцын төлөвлөгөө (`gapPackage`, 2026-11-24),
+   * `null` = зөрүүгүй.
    */
-  statusBasis: 'contractor' | 'contract' | null;
+  statusBasis: 'contractor' | 'contract' | 'package' | null;
   /** Өнгөрсөн 7 хоногийн ахиц (pp) */
   week: number | null;
   ipc: TuhIpc | null;
@@ -258,6 +273,11 @@ export function buildModel(input: {
   projContract?: number | null;
   /** «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр (S/P) — `null`/өгөөгүй = уншигдаагүй (`Tuh.loadProjectRoot`) */
   project?: { S: number | null; P: number | null } | null;
+  /**
+   * 2026-11-24: БАГЦЫН ГҮЙЦЭТГЭЛ (`projectPlanInputs.loadPlanPkgProgress`) — `null` = ачаалж буй/унасан (багцын мөр «…»/«—»),
+   * өгөөгүй (`undefined`) = хуучин эх (тест нийцэл).
+   */
+  pkgProg?: PkgProgMap | null;
 }): TuhModel {
   const { fin, plan, cfPlan, packs, hist, commission, workforce, docs } = input;
   const today = todayIso();
@@ -293,8 +313,14 @@ export function buildModel(input: {
     return sheetsOf(pkgKey).reduce((a, sh) => a + (failedSheets.get(sh.key) ?? 0), 0);
   };
 
+  const pkgProg = input.pkgProg;
   const rows: TuhRow[] = pkgs.map((p) => {
-    const progress = progressOf(p, actual, live);
+    const phys = progressOf(p, actual, live);
+    /* 2026-11-24 (хэрэглэгч): багцын мөрийн гүйцэтгэл/төлөвлөгөө — «Төсөл төлөвлөгөө биелэлт»-ийн багцын гүйцэтгэл (S/P) */
+    const byPackage = pkgProg !== undefined && !!tuhPkgKey(p);
+    const progress = byPackage ? progressOf(p, actual, live, pkgProg) : phys;
+    const planPackage = byPackage ? pkgProg?.get(tuhPkgKey(p))?.P ?? null : null;
+    const gapPackage = progress != null && planPackage != null ? progress - planPackage : null;
     const housing = p.group === 'housing';
     /** Энэ мөр түлхүүрийнхээ өгөгдлийн ЭЗЭН мөн эсэх (`keyOwners`) */
     const own = !!p.pkgKey && owner.get(p.pkgKey) === p.key;
@@ -304,7 +330,7 @@ export function buildModel(input: {
     const planContractor = lag?.planned
       ?? (series?.length ? planPctAt(series, measDayOf(months, nowYm, today)) : null);
     const gapContractor = lag ? lag.actual - lag.planned
-      : progress != null && planContractor != null ? progress - planContractor : null;
+      : phys != null && planContractor != null ? phys - planContractor : null;
     const planCov = series?.length ? planCoverage(series) : null;
     const covOk = coverageOk(planCov);
     const useLag = lag != null && !!series?.length && contractorGapCounts({
@@ -315,7 +341,9 @@ export function buildModel(input: {
     });
     const items = cfItemsOf(p);
     const planContract = cfPlan ? cfPlanPctAt(cfPlan, items, measDayOf(months, nowYm, today)) : null;
-    const gapContract = progress != null && planContract != null ? progress - planContract : null;
+    const gapContract = phys != null && planContract != null ? phys - planContract : null;
+    /* 2026-11-24: багцын мөрийн төлөв — багцын гүйцэтгэл ба төлөвлөгөөний зөрүүгээр (нэг эх) */
+    const basis = gapPackage != null ? 'package' as const : useLag ? 'contractor' as const : gapContract != null ? 'contract' as const : null;
 
     const pack = housing && packs ? packs.find((x) => x.kind === 'build' && x.key === p.pkgKey) : undefined;
     const week = housing && hist ? weekDelta(hist, p.pkgKey, today, fin.physN?.get(p.pkgKey)) : null;
@@ -356,6 +384,10 @@ export function buildModel(input: {
       p,
       own,
       progress,
+      byPackage,
+      phys,
+      planPackage,
+      gapPackage,
       planContractor,
       gapContractor,
       planCoverage: planCov,
@@ -364,10 +396,10 @@ export function buildModel(input: {
       status: statusOf({
         contracted: p.contracted,
         progress,
-        gap: useLag ? lag.gap : gapContract != null ? -gapContract : null,
+        gap: gapPackage != null ? -gapPackage : useLag ? lag.gap : gapContract != null ? -gapContract : null,
         nullAs: p.group === 'design' ? 'unknown' : 'todo',
       }),
-      statusBasis: useLag ? 'contractor' as const : gapContract != null ? 'contract' as const : null,
+      statusBasis: basis,
       week,
       ipc,
       commission: comm,
@@ -383,7 +415,7 @@ export function buildModel(input: {
       mir,
       docs: mine,
       /* Гэрээгүй мөрийн дүн нь урьдчилсан төсөв — түүгээр EV/PV/SPI бодохгүй */
-      ev: earned(p.contracted ? p.cost : null, progress, planContract, covOk ? planContractor : null),
+      ev: earned(p.contracted ? p.cost : null, phys, planContract, covOk ? planContractor : null),
       prog,
       months: allMonths,
       lag,

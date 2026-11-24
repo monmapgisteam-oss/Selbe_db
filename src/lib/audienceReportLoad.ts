@@ -11,8 +11,6 @@ import type { PlanNode } from '@/lib/projectPlan';
 import { loadHoRows, hoTotals, type Row } from '@/lib/ipc';
 import { perfRows, docRows } from '@/lib/ipcFlow';
 import { HO_IPC } from '@/lib/services';
-import { loadFinData, pkgMonthsMap, lagOf, type MonthPt } from '@/modules/Finance';
-import { loadPlanCurveCached } from '@/lib/planProgress';
 import { loadPkgOverlaps } from '@/lib/pkgSaad';
 import { loadWorkforceKpi, type WorkforceKpi } from '@/lib/ceo/workforce';
 import { niigemRows } from '@/lib/publicSync/compute';
@@ -64,12 +62,19 @@ export function ipcStatusTotals(rows: readonly Row[], paid: number | null): NonN
   return { work, created, signed, paid: paid ?? paidDocs };
 }
 
-/** Багц бүрийн хоцрогдол — `Finance.lagOf` (хуваарийн муруй ачаалагдсан байх ёстой) */
-export function lagInputs(packs: ExecReport['prog']['packs'], byKey: ReadonlyMap<string, MonthPt[]>): ReportInputs['lag'] {
+/**
+ * Багц бүрийн хоцрогдол — 2026-11-24 (хэрэглэгч: 2-р унтраалга): «Багцын гүйцэтгэл»-ийн төлөвлөгөөт (P) − гүйцэтгэл (S)
+ * (`ExecReport.prog.packs` — `loadPlanPkgProgress`, багцын баганатай НЭГ эх). Урьд нь бөглөх хуудасны хуваарийн муруй
+ * (`Finance.lagOf`) байв. P нь «Төсөл төлөвлөгөө биелэлт»-ийн бүх мөрөөр бодогддог тул хамралт бүрэн (100);
+ * төлөвлөгөө 0 (эхлэх ёсгүй) багц дүгнэгдэхгүй (`lagOf`-ийн `planned <= 0` дүрэм). Хэмжилтгүй гүйцэтгэл = 0%.
+ */
+export function lagInputs(packs: ExecReport['prog']['packs']): ReportInputs['lag'] {
   const out: ReportInputs['lag'] = [];
   for (const p of packs) {
-    const l = lagOf(byKey.get(p.key) ?? []);
-    if (l) out.push({ key: p.key, label: p.name, planned: l.planned, actual: l.actual, gap: l.gap, coverage: l.coverage });
+    const planned = p.planned;
+    if (planned == null || !(planned > 0)) continue;
+    const actual = p.progress ?? 0;
+    out.push({ key: p.key, label: p.name, planned, actual, gap: planned - actual, coverage: 100 });
   }
   return out;
 }
@@ -89,11 +94,10 @@ export function cashOutlookOf(rows: readonly CfPlanRow[], nowYm: string, n = 6):
 
 export async function loadAudienceInputs(period: ExecPeriod, user: string, now: number = Date.now()): Promise<ReportInputs> {
   const x = await loadExecReport();
-  const [d, plan, ho, finPair, saad, wf, cf] = await Promise.allSettled([
+  const [d, plan, ho, saad, wf, cf] = await Promise.allSettled([
     loadExecDeltas(x, period),
     loadProjectPlan(),
     loadHoRows(),
-    Promise.all([loadPlanCurveCached(), loadFinData()]),
     loadPkgOverlaps(),
     loadWorkforceKpi() as Promise<WorkforceKpi>,
     loadCfPlan(),
@@ -110,7 +114,8 @@ export async function loadAudienceInputs(period: ExecPeriod, user: string, now: 
   const pl0 = ok(plan, 'plan');
   const pl = pl0 && pl0.failed.length ? (failed.push('plan'), null) : pl0;
   const hoRows = ok(ho, 'ipc');
-  const fp = ok(finPair, 'lag');
+  /* 2026-11-24: багцын хоцрогдол «Багцын гүйцэтгэл»-ээс — уншигдаагүй (`pkgAvg` алга) бол «lag» уншигдаагүйд тооцно */
+  if (!x.prog.pkgAvg) failed.push('lag');
   const ov = ok(saad, 'saad');
   const w = ok(wf, 'hse');
   const cfRows = ok(cf, 'cashflow');
@@ -120,7 +125,7 @@ export async function loadAudienceInputs(period: ExecPeriod, user: string, now: 
     d: deltas,
     ...ph,
     ipc: hoRows ? { ...ipcStatusTotals(hoRows, x.fin.given), advance: hoTotals(hoRows).advance, perfPaid: hoTotals(hoRows).work } : null,
-    lag: fp ? lagInputs(x.prog.packs, pkgMonthsMap(fp[1])) : [],
+    lag: x.prog.pkgAvg ? lagInputs(x.prog.packs) : [],
     saad: ov ? ov.filter((o) => !o.failed).map((o) => ({ key: o.key, name: o.name, n: o.oids.length })) : null,
     hseDays: w ? [...w.detail.days].sort((a, b) => a.key.localeCompare(b.key)).map((r) => ({ key: r.key, workers: r.workers, technik: r.technik })) : null,
     niigem: pl && !pl.empty ? niigemRows(pl).map((r) => ({ name: txt(r.ner), pct: fin(r.guitsetgel_huvi), bagts: txt(r.bagts_kod), start: fin(r.ehleh_ognoo) })) : null,

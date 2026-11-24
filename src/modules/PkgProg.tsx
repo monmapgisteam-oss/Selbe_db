@@ -21,20 +21,21 @@ import {
   pickedBuilding, uniqueBlocks, type PickedBuilding,
 } from '@/modules/BuildingPanel';
 import {
-  loadFinData, contractMonths, pkgMonthsMap, physLatest, lagOf, lagLevelOf, lagJudged, projectPlanOf,
-  projectPlanScope, projectLagNow, infraPhysNow, type FinData,
+  loadFinData, pkgMonthsMap, lagLevel, projectPlanOf,
+  projectPlanScope, type FinData,
 } from '@/modules/Finance';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { loadProjectPlan } from '@/lib/projectPlanInputs';
+import { loadProjectPlan, planPkgProgress } from '@/lib/projectPlanInputs';
+import { packagesAverage, type PlanPkgProgress } from '@/lib/projectPlan';
 import { levelCounts, type BlockProgressMap } from '@/lib/blockProgress';
 import {
-  HUE, catOf, aggregateMonths, physNow, progMonthsOf, SR_ONLY, type PackCat,
+  HUE, catOf, aggregateMonths, progMonthsOf, SR_ONLY, type PackCat,
 } from '@/modules/pkgShared';
 export { aggregateMonths, physNow } from '@/modules/pkgShared';
 import { gapPts, gapPtsWord } from '@/lib/gdash';
 import {
-  loadPlanCurveCached, planPctAt, measureDayOf, planCoverage, coverageOk, coverageNote,
-  type PlanPoint, type PlanCurve,
+  loadPlanCurveCached, planCoverage, coverageNote,
+  type PlanCurve,
 } from '@/lib/planProgress';
 
 /**
@@ -54,7 +55,7 @@ import {
   BUILDING, PROGRESS_LEVELS, LAYER_BY_ID, bagtsKey,
   zoneWhere, parcelOidsWhere } from '@/lib/services';
 import { PKGS } from '@/modules/sheet/bagts.pkg';
-import { cat, shade, num, pct, monthKey, dayKey } from '@/lib/format';
+import { cat, shade, num, pct } from '@/lib/format';
 import { fitLabels, textW, useChartWidth } from '@/lib/chartFit';
 import { CHART, lineSegments, monotonePath } from '@/lib/chartStyle';
 import { readParam, writeParams } from '@/lib/urlState';
@@ -103,7 +104,6 @@ const meanOf = (vals: (number | null)[]) => {
  * Багцын жагсаалт, газрын зураг, өгөгдөл ачаалалт нь ХОЁУЛАНД ижил тул
  * хуваалцагдана — салгасан нь ЗӨВХӨН дээд индикатор ба баруун баганын карт.
  */
-const todayDayKey = (): string => dayKey(Date.now());
 
 export function PkgProg({ dim, setDim }: {
   dim: Dim;
@@ -278,12 +278,19 @@ export function PkgProg({ dim, setDim }: {
   /* 2026-11-19 (аудит): «Нийгмийн барилга» · «Өндөржилт»-ийн хувь — «Төсөл төлөвлөгөө биелэлт»-ийн «Барилга угсралт ажил»
      доорх хэсгийн мөрөөс. Урьд нь эдгээр багц блокгүй тул график ҮРГЭЛЖ 0.0% үзүүлдэг байв. */
   const projQ = useAsync(() => loadProjectPlan(), []);
-  const sectPct = (rx: RegExp): number | null | undefined => {
-    if (projQ.state === 'loading') return undefined;
-    if (projQ.state !== 'ready') return null;
-    const n = projQ.data.tree.nodes.find((x) => x.phase === 'barilga' && x.sub === 'barilga' && rx.test(String(x.row?.ajil_uilchilgee ?? '')));
-    return n ? projQ.data.result.values.get(n)?.S ?? 0 : 0;
-  };
+  /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): БАГЦЫН ГҮЙЦЭТГЭЛ — «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалга асаалттай БҮХ
+     мөрөөс (ТЭЗҮ, зураг төсөл, газар, зөвшөөрөл, сонгон, барилга угсралт …) багц бүрт НЭГ тоо (`planPkgProgress`). Жагсаалт,
+     толгойн KPI, «Төслийн төрөл» бүгд ҮҮНЭЭС; блокийн өнгө, блокийн жагсаалт, графикийн муруй биет (бөглөх хуудас) хэвээр.
+     `null` = ачаалж байна/уншигдсангүй. */
+  const pkgPlan = useMemo<Map<string, PlanPkgProgress> | null>(
+    () => (projQ.state === 'ready' ? planPkgProgress(projQ.data) : null),
+    [projQ],
+  );
+  /** Сонгосон багцын KPI — `progress` нь «Багцын гүйцэтгэл» (S) */
+  const kpiActive = useMemo<Pack | null>(
+    () => (active ? { ...active, progress: pkgPlan?.get(active.key)?.S ?? null } : null),
+    [active, pkgPlan],
+  );
 
   /**
    * Графикийн мөрүүд: тэнхлэг ба ТӨЛӨВЛӨГӨӨ нь ХУВААРИАС, БОДИТ гүйцэтгэл нь
@@ -325,14 +332,13 @@ export function PkgProg({ dim, setDim }: {
    */
   const alertKeys = useMemo(() => {
     const s = new Set<string>();
-    if (!finMap) return s;
+    if (!pkgPlan) return s;
+    /* 2026-11-24: хоцрогдол = «Багцын гүйцэтгэл»-ийн төлөвлөгөөт (P) − гүйцэтгэл (S), ижил эхээс */
     packs.forEach((p) => {
-      const months = finMap.get(p.key);
-      if (!months) return;
-      if (lagLevelOf(lagOf(months))) s.add(p.key);
+      if (lagLevel(pkgGapOf(pkgPlan.get(p.key)))) s.add(p.key);
     });
     return s;
-  }, [packs, finMap]);
+  }, [packs, pkgPlan]);
   const alerted = useMemo(() => packs.filter((p) => alertKeys.has(p.key)), [packs, alertKeys]);
   const lagUnknown = useMemo(() => {
     if (planQ.state !== 'ready' || !planQ.data.failed.length) return [] as Pack[];
@@ -491,12 +497,12 @@ export function PkgProg({ dim, setDim }: {
       title={c.name()}
       /* Дэд бүтэц/нийгмийн барилгад биет хувь байхгүй тул
          «гүйцэтгэлийн хувь» гэж амлахгүй — зурагт байгаа зүйлээ л. */
-      note={c.key === BUILD_CAT ? tr('блокийн гүйцэтгэл') : tr('зурагт харагдах давхарга')}
+      note={tr('багцын гүйцэтгэл')}
       packs={packs.filter((p) => catOf(p) === c.key && !alertKeys.has(p.key))}
       sel={sel}
       onSel={pick}
-      finMap={finMap}
-      finFailed={finQ.state === 'error'}
+      plan={pkgPlan}
+      planFailed={projQ.state === 'error'}
     />
   );
 
@@ -513,10 +519,10 @@ export function PkgProg({ dim, setDim }: {
           (2026-08-21, хэрэглэгчийн жагсаалтаар); багц сонгоход тухайн
           багцын KPI хэвээр ── */}
       <div className={ts.kpi}>
-        {errQ ? null : loading ? <Loading /> : active ? (
-          <PackKpi active={active} packs={packs} />
+        {errQ ? null : loading || projQ.state === 'loading' ? <Loading /> : kpiActive ? (
+          <PackKpi active={kpiActive} packs={packs} />
         ) : (
-          <TsKpi packs={packs} finQ={finQ} planQ={planQ} />
+          <TsKpi packs={packs} plan={pkgPlan} projQ={projQ} planQ={planQ} />
         )}
       </div>
 
@@ -545,10 +551,16 @@ export function PkgProg({ dim, setDim }: {
                   packs={alerted}
                   sel={sel}
                   onSel={pick}
-                  finMap={finMap}
-                  finFailed={finQ.state === 'error'}
+                  plan={pkgPlan}
+                  planFailed={projQ.state === 'error'}
                 />
               </div>
+            )}
+            {projQ.state === 'error' && (
+              <Section title={tr('⚠ Хоцрогдолтой багц')}>
+                <Note>{tr('«Төсөл төлөвлөгөө биелэлт» уншигдсангүй — багцын гүйцэтгэл, хоцрогдол тооцоологдоогүй.')}</Note>
+                <Data q={projQ}>{() => null}</Data>
+              </Section>
             )}
             {lagUnknown.length > 0 && (
               <Section title={tr('⚠ Хоцрогдол тодорхойгүй багц')}>
@@ -653,10 +665,7 @@ export function PkgProg({ dim, setDim }: {
           <>
             <CatChart
               packs={packs}
-              housing={finQ.state === 'ready' ? physNow(finQ.data, monthKey()) ?? 0 : finQ.state === 'error' ? null : undefined}
-              infra={finQ.state === 'ready' ? infraPhysNow(finQ.data)?.pct ?? 0 : finQ.state === 'error' ? null : undefined}
-              soc={sectPct(/нийгмийн дэд бүтэц/i)}
-              site={sectPct(/өндөржилт/i)}
+              plan={projQ.state === 'ready' ? pkgPlan : projQ.state === 'error' ? null : undefined}
             />
             {allPack && q.state === 'ready' && <LevelsCard pm={q.data.prog} keys={q.data.keys} ovByCat={ovByCat} />}
             {/* 2026-11-18 (хэрэглэгч): материал нь батлагдаагүй атлаа гүйцэтгэл бөглөгдсөн ажил — багцаар */}
@@ -743,75 +752,43 @@ export function PkgProg({ dim, setDim }: {
 
 /**
  * БАГЦЫН ЖАГСААЛТ (Tsogts хувилбар) — МӨНГӨН ДҮН БИШ, ГҮЙЦЭТГЭЛИЙН ХУВИЙГ
- * харуулж, төлөвлөгөөнөөс хоцорсон багцад ALERT (улаан/шар) өгнө:
- *   · build багц — биет гүйцэтгэлийн % (блокийн дундаж)
- *   · infra багц — санхүүгийн гүйцэтгэл % (олгосон/гэрээний дүн, CASHFLOW_NEW+IPC)
- * Хоцрогдол = Finance-ийн lagOf дүрэм (CF өссөн төлөвлөгөө vs биет %).
+ * харуулж, төлөвлөгөөнөөс хоцорсон багцад ALERT (улаан/шар) өгнө.
+ * 2026-11-24: бүх багцад «Багцын гүйцэтгэл» (`planPkgProgress` S); хоцрогдол = тэр эхийн P − S
+ * (`Finance.lagLevel` босго: ≥10 улаан, 5–10 шар).
  */
 /**
  * ДЭЭД ИНДИКАТОРУУД (2026-08-21, хэрэглэгчийн жагсаалтаар) — багц сонгоогүй
  * үеийн төслийн нэгдсэн 6 үзүүлэлт.
  */
 function TsKpi(
-  { packs, finQ, planQ }:
-  { packs: Pack[]; finQ: Async<FinData>; planQ: Async<PlanCurve> },
+  { packs, plan, projQ, planQ }:
+  {
+    packs: Pack[];
+    /** «Багцын гүйцэтгэл» (`planPkgProgress`) — `null` = ачаалж байна/уншигдсангүй */
+    plan: ReadonlyMap<string, PlanPkgProgress> | null;
+    projQ: Async<unknown>;
+    planQ: Async<PlanCurve>;
+  },
 ) {
-  const fin = finQ.state === 'ready' ? finQ.data : null;
-  const plan = useMemo<PlanPoint[] | null>(() => (planQ.state === 'ready'
-    ? (fin ? projectPlanOf(fin, planQ.data) : planQ.data.months)
-    : null), [planQ, fin]);
-  /** Уншигдаагүй бөглөх хуудсууд — төслийн муруй ХООСОН (`PlanCurve.failed`) */
+  /** Уншигдаагүй бөглөх хуудсууд — барилга угсралтын мөрийн S дутуу (`PlanCurve.failed`) */
   const planFailed = planQ.state === 'ready' ? planQ.data.failed.length : 0;
-  /** Хэмжилт БОЛОМЖГҮЙ (алдаа) — «…» биш «—». */
-  const failed = finQ.state === 'error' || planQ.state === 'error';
+  /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): БҮХ БАГЦЫН ГҮЙЦЭТГЭЛ — багц бүрийн «Багцын гүйцэтгэл»-ийн жигнэсэн дундаж
+     (`packagesAverage`); төлөвлөсөн нь ижил эхийн P. Урьд нь орон сууцны биет % ба хуваарийн муруй байв. */
   const t = useMemo(() => {
-    if (!fin) return null;
-    const nowYm = monthKey();
-    let planned: number | null = null;
-    const actual = physNow(fin, nowYm);
-    /*
-     * ТӨЛӨВЛӨГӨӨ — ХУВААРИАС, доорх графиктай ЯГ НЭГ эх сурвалж.
-     */
-    let lastM: { label: string; physAt?: string | null } | null = null;
-    for (const m of aggregateMonths(fin)) if (m.label <= nowYm && m.phys != null) lastM = m;
-    const at = lastM ? measureDayOf(lastM.label, lastM.physAt, todayDayKey()) : `${nowYm}-31`;
-    if (plan?.length) planned = planPctAt(plan, at);
-    let gap = planned != null && actual != null ? planned - actual : null;
-    let excluded: string[] = [];
-    let actualShown = actual;
-    let coverage: number | null = null;
-    if (planQ.state === 'ready') {
-      const ln = projectLagNow(fin, planQ.data, nowYm, todayDayKey());
-      planned = ln.planned;
-      gap = ln.gap;
-      excluded = ln.excluded;
-      if (ln.excluded.length) actualShown = ln.actual;
-      coverage = ln.coverage;
-    }
-    return { planned, actual: actualShown, gap, excluded, coverage };
-  }, [fin, plan, planQ]);
-  /** Хэмжигдээгүй утгын дэлгэц: ачаалж байхад л «…», бусад үед (алдаа, эсвэл
-      бэлэн ч утга null — мэдээлэлгүй) «—». */
-  const loading = finQ.state === 'loading' || planQ.state === 'loading';
-  const none = loading && !failed ? '…' : '—';
-  const covNote = coverageNote(t?.coverage);
+    if (!plan) return null;
+    const a = packagesAverage(plan);
+    return { actual: a.S ?? 0, planned: a.P ?? 0, gap: (a.P ?? 0) - (a.S ?? 0) };
+  }, [plan]);
+  /** Хэмжигдээгүй утгын дэлгэц: ачаалж байхад л «…», алдааны үед «—». */
+  const none = projQ.state === 'loading' ? '…' : '—';
   const items = [
       /* 2026-11-17: гарчиг БОГИНО, ойлгомжтой; нөхцөл/тайлбар нь тооны доорх жижиг мөрөнд (`n`) — урьд нь гарчигт «·»-ээр залгагдаж уншигдахгүй байв */
       { v: num(packs.length), l: tr('Нийт багц ажил'), h: tr('Багцын бүртгэлд буй бүх багц ажил — гэрээ, санхүүжилт бүртгэгдээгүй багц ч орно'), n: '' },
-      {
-        v: t?.actual == null ? none : pct(t.actual, 1),
-        l: tr('Бодит гүйцэтгэл'),
-        n: t?.excluded.length ? tr('зөвхөн хуваарьтай багцаар') : '',
-      },
-      { v: t?.planned == null ? none : pct(t.planned, 1), l: tr('Төлөвлөсөн гүйцэтгэл'), n: covNote ?? '' },
-      {
-        v: t?.gap == null ? none : gapPts(t.gap),
-        l: tr('Зөрүү (бодит − төлөвлөсөн)'),
-        n: t?.gap != null && !coverageOk(t.coverage) ? tr('хуваарь дутуу тул дүгнэхгүй') : '',
-      },
+      { v: t == null ? none : pct(t.actual, 2), l: tr('Багцын гүйцэтгэл'), n: tr('бүх багцын дундаж') },
+      { v: t == null ? none : pct(t.planned, 2), l: tr('Төлөвлөсөн гүйцэтгэл'), n: '' },
+      { v: t == null ? none : gapPts(t.gap), l: tr('Зөрүү (бодит − төлөвлөсөн)'), n: '' },
   ];
-  const errQ: Async<unknown> | null =
-    finQ.state === 'error' ? finQ : planQ.state === 'error' ? planQ : null;
+  const errQ: Async<unknown> | null = projQ.state === 'error' ? projQ : null;
   return (
     <>
       {!errQ && planFailed > 0 && (
@@ -836,17 +813,21 @@ function TsKpi(
   );
 }
 
+/** «Багцын гүйцэтгэл»-ийн хоцрогдол, нэгж хувь — төлөвлөгөөт (P) − гүйцэтгэл (S); хэмжилтгүй = 0 (2026-11-24) */
+export const pkgGapOf = (v: PlanPkgProgress | null | undefined): number => (v?.P ?? 0) - (v?.S ?? 0);
+
 function TsPackList({
-  title, note, packs, sel, onSel, finMap, finFailed = false,
+  title, note, packs, sel, onSel, plan, planFailed = false,
 }: {
   title: string;
   note: string;
   packs: Pack[];
   sel: string | null;
   onSel: (k: string | null) => void;
-  finMap: Map<string, ReturnType<typeof contractMonths>> | null;
-  /** Санхүү уншигдаагүй — «…» биш «—» */
-  finFailed?: boolean;
+  /** «Багцын гүйцэтгэл» (`planPkgProgress`) — `null` = ачаалж байна/уншигдсангүй */
+  plan: ReadonlyMap<string, PlanPkgProgress> | null;
+  /** «Төсөл төлөвлөгөө биелэлт» уншигдаагүй — «…» биш «—» */
+  planFailed?: boolean;
 }) {
   if (!packs.length) return null;
   /**
@@ -857,18 +838,19 @@ function TsPackList({
    */
   const rows = packs
     .map((p) => {
-      const months = finMap?.get(p.key) ?? null;
-      /* ХОЦРОГДОЛ — БИЕТ явц төлөвлөсөн явцаас хэдэн ХУВЬ хоцорсон */
-      const lag = months ? lagOf(months) : null;
-      const lvl = lagLevelOf(lag);
-      let execPct: number | null = null;
-      execPct = physLatest(months);
-      return { p, lag, lvl, execPct };
+      /* 2026-11-24: хувь ба хоцрогдол — «Багцын гүйцэтгэл» (S) ба түүний төлөвлөгөөт (P), НЭГ эх. Багц 2-р унтраалгатай
+         мөргүй бол 0% (хэмжилтгүй = 0%) */
+      const v = plan?.get(p.key);
+      const execPct = plan ? v?.S ?? 0 : null;
+      const planned = plan ? v?.P ?? 0 : null;
+      const gap = plan ? pkgGapOf(v) : null;
+      const lvl = gap == null ? null : lagLevel(gap);
+      return { p, gap, lvl, execPct, planned };
     })
     .sort((a, b) => {
       const rank = (l: 'red' | 'yellow' | null) => (l === 'red' ? 0 : l === 'yellow' ? 1 : 2);
       /* Ижил зэрэглэлд ХОЦРОГДЛЫН ХУВЬ-аар — их нь эхэнд */
-      return rank(a.lvl) - rank(b.lvl) || (b.lag?.gap ?? 0) - (a.lag?.gap ?? 0);
+      return rank(a.lvl) - rank(b.lvl) || (b.gap ?? 0) - (a.gap ?? 0);
     });
   return (
     <Section
@@ -877,7 +859,7 @@ function TsPackList({
       collapsible
     >
       <List>
-        {rows.map(({ p, lag, lvl, execPct }) => {
+        {rows.map(({ p, gap, lvl, execPct, planned }) => {
           /* Сонгогдсон эсэх — мөрийг тодруулахад. Сонголтын үр дүн нь доод
              бүтэн график ба баруун картуудад гарна. */
           const open = p.key === sel;
@@ -886,9 +868,8 @@ function TsPackList({
             <ListItem
               title={tr(p.name)}
               sub={p.kind === 'build'
-                  ? tr('{0} блок · {1} айл{2}', num(blockCount(p)), num(p.households), lag && (lvl || !lagJudged(lag))
-                    ? tr(' · төл. {0}% / бодит {1}%', num(lag.planned, 2), num(lag.actual, 2))
-                      + (lagJudged(lag) || !coverageNote(lag.coverage) ? '' : ` · ${coverageNote(lag.coverage)}`)
+                  ? tr('{0} блок · {1} айл{2}', num(blockCount(p)), num(p.households), lvl && planned != null && execPct != null
+                    ? tr(' · төл. {0}% / бодит {1}%', num(planned, 2), num(execPct, 2))
                     : '')
                   /* Дэд бүтэц: гүйцэтгэлийн харагдацад мөнгө дурдахгүй —
                      зөвхөн зурагт хэдэн давхаргатай нь. */
@@ -900,16 +881,17 @@ function TsPackList({
                 }}>
                   {/* 2026-11-23 (аудит): санхүү ачаалж байхад «…» — 0.0% гэж харуулахгүй; ачаалсны дараа хэмжигдээгүй нь 0% (2026-11-09 дүрэм) */}
                   {/* 2026-11-23 (давтан аудит): санхүү УНАСАН бол «—» (дээрх алдааны мэдэгдэл); «…» зөвхөн ачаалж байхад */}
-                  {finMap ? pct(execPct ?? 0, 1) : finFailed ? '—' : '…'}
-                  {lvl && lag && (
+                  {/* 2026-11-24: «Багцын гүйцэтгэл» — «Төсөл төлөвлөгөө биелэлт»-ээс уншиж байхад «…», унасан бол «—» */}
+                  {execPct != null ? pct(execPct, 2) : planFailed ? '—' : '…'}
+                  {lvl && gap != null && planned != null && execPct != null && (
                     <b
                       className={`${ts.gapBadge} ${lvl === 'red' ? ts.gapRed : ts.gapYellow}`}
-                      title={tr('{0}: төлөвлөсөн {1}% · бодит {2}%', lag.month, num(lag.planned, 2), num(lag.actual, 2))}
+                      title={tr('Багцын гүйцэтгэл: төлөвлөсөн {0}% · бодит {1}%', num(planned, 2), num(execPct, 2))}
                     >
                       <span className={lvl === 'red' ? ts.alertBlink : undefined}>⚠</span>
-                      <span className="num">{gapPts(lag.gap)}</span>
+                      <span className="num">{gapPts(gap)}</span>
                       <small className="num">
-                        {num(lag.planned, 2)}/{num(lag.actual, 2)}
+                        {num(planned, 2)}/{num(execPct, 2)}
                       </small>
                     </b>
                   )}
@@ -936,36 +918,31 @@ function TsPackList({
  */
 /**
  * «ТӨСЛИЙН ТӨРӨЛ» — 4 ангиллын гүйцэтгэлийн харьцуулсан багана (2026-08-21,
- * хуучин «Төсөл нийт» картын оронд, хэрэглэгчийн хүсэлтээр). Барилга угсралт
- * нь орон сууцны биет % (`physNow`, 2026-09-30), бусад ангилал нь санхүүгийн гүйцэтгэл % (олгосон ÷
- * төлөвлөгөө — зүүн жагсаалттай ИЖИЛ дүрэм тул тоо зөрөхгүй). Ангилал бүрд
- * багцын тоо шошгонд хамт гарна.
+ * хуучин «Төсөл нийт» картын оронд, хэрэглэгчийн хүсэлтээр). 2026-11-24-нөөс ангилал бүр нь
+ * тэр ангиллын багцуудын «Багцын гүйцэтгэл»-ийн жигнэсэн дундаж — зүүн жагсаалттай НЭГ эх тул тоо
+ * зөрөхгүй. Ангилал бүрд багцын тоо шошгонд хамт гарна.
  */
 /**
  * БАГЦ БҮРИЙН САНХҮҮЖИЛТ — төлөвлөгөө, олгосон, олгосон хувь.
  */
-function CatChart({ packs, housing, infra, soc, site }: {
+function CatChart({ packs, plan }: {
   packs: Pack[];
   /**
-   * Орон сууцны (барилга угсралт) биет хувь — `physNow` (ХО дүнгээр жигнэсэн,
-   * `gdash.housingPct`). `undefined` = ачаалж байна («…»), `null` = татагдсангүй (хэмжигдээгүй = 0%).
+   * 2026-11-24 (хэрэглэгч: 2-р унтраалга): ангилал бүр = тэр ангиллын багцуудын «Багцын гүйцэтгэл»-ийн жигнэсэн дундаж
+   * (`packagesAverage`). Урьд нь орон сууцны биет %, дэд бүтцийн биет %, хэсгийн мөрийн S гэсэн өөр өөр эх байв.
+   * `undefined` = ачаалж байна («…»), `null` = татагдсангүй.
    */
-  housing: number | null | undefined;
-  infra?: number | null;
-  /** «Төсөл төлөвлөгөө биелэлт»-ийн хэсгийн мөрийн гүйцэтгэл — `undefined` = ачаалж байна, `null` = татагдсангүй */
-  soc?: number | null;
-  site?: number | null;
+  plan: ReadonlyMap<string, PlanPkgProgress> | null | undefined;
 }) {
   const rows = PACK_CATS.map((c) => {
     const list = packs.filter((p) => catOf(p) === c.key);
-    if (c.key === 'build') {
-      return { c, n: list.length, mean: housing ?? null, wait: housing === undefined };
+    let mean: number | null = null;
+    if (plan) {
+      const sub = new Map<string, PlanPkgProgress>();
+      for (const p of list) { const v = plan.get(p.key); if (v) sub.set(p.key, v); }
+      mean = packagesAverage(sub).S ?? 0;
     }
-    if (c.key === 'infra') {
-      return { c, n: list.length, mean: infra ?? null, wait: infra === undefined };
-    }
-    const v = c.key === 'soc' ? soc : site;
-    return { c, n: list.length, mean: v ?? null, wait: v === undefined };
+    return { c, n: list.length, mean, wait: plan === undefined };
   });
   return (
     <Section
@@ -980,7 +957,7 @@ function CatChart({ packs, housing, infra, soc, site }: {
           label: `${r.c.name()} · ${num(r.n)}`,
           value: r.mean,
           color: cat(i),
-          display: r.wait ? '…' : r.mean == null ? tr('татагдсангүй') : pct(r.mean, 1),
+          display: r.wait ? '…' : r.mean == null ? tr('татагдсангүй') : pct(r.mean, 2),
         }))}
       />
     </Section>

@@ -23,9 +23,11 @@ import { friendlyError, Loading } from '@/components/ui';
 import { loadCommissionDates } from './tuh/tuhSchedule';
 import { buildModel, type TuhSrc } from './tuh/model';
 import { loadTuhDocs } from './tuh/tuhDocs';
-import type { LiveMap } from '@/lib/tuhData';
+import type { LiveMap, PkgProgMap } from '@/lib/tuhData';
 
 const loadLiveProgressLazy = (): Promise<LiveMap> => import('@/lib/projectPlanInputs').then((m) => m.loadLiveProgress());
+/** 2026-11-24: БАГЦЫН ГҮЙЦЭТГЭЛ — «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгатай мөрүүдээс (систем даяар нэг эх) */
+const loadPlanPkgLazy = (): Promise<PkgProgMap> => import('@/lib/projectPlanInputs').then((m) => m.loadPlanPkgProgress());
 /**
  * 2026-11-24 (аудит): «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн S/P — удирдлагын тайлантай ИЖИЛ дүрэм: бодит эх унасан
  * бол S «—», хэмжигдээгүй бол 0%.
@@ -64,6 +66,7 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
   const budgetQ = useAsync(loadBudget, []);
   const depQ = useAsync(loadPkgDeps, []);
   const liveQ = useAsync(loadLiveProgressLazy, []);
+  const pkgQ = useAsync(loadPlanPkgLazy, []);
   const docsQ = useAsync(loadTuhDocs, []);
   const projQ = useAsync(loadProjectRoot, []);
   /* 2026-11-23: газар · зөвшөөрөл · ХАБЭА · нэмэлт ажил · блок/дулаан — багцаар */
@@ -126,7 +129,9 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (liveQ.state === 'error') failed.push(tr('Гэрээний амьд гүйцэтгэл'));
     if (docsQ.state === 'error') failed.push(tr('MA · MIR (Survey123)'));
     if (projQ.state === 'error') failed.push(tr('Төсөл төлөвлөгөө биелэлт'));
+    if (pkgQ.state === 'error') failed.push(tr('Багцын гүйцэтгэл'));
     const loading = new Set<TuhSrc>();
+    if (pkgQ.state === 'loading') loading.add('pkg');
     if (docsQ.state === 'loading') loading.add('docs');
     if (projQ.state === 'loading') loading.add('project');
     if (planQ.state === 'loading') loading.add('plan');
@@ -164,8 +169,10 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
       /* 2026-11-23 (аудит №8): олгосон хувийг ТТБ-ийн гэрээлсэн нийт (2,046.5) дүнгээр — ажлын мөрийн нийлбэрээр биш */
       projContract: budgetQ.state === 'ready' ? budgetQ.data.contract : null,
       project: projQ.state === 'ready' ? projQ.data : null,
+      /* 2026-11-24: багцын мөрийн гүйцэтгэл/төлөвлөгөө — ачаалж буй/унасан бол null («…»/«—»), хуучин эх рүү буцахгүй */
+      pkgProg: pkgQ.state === 'ready' ? pkgQ.data : null,
     });
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ, liveQ, docsQ, projQ]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, packs, budgetQ, depQ, liveQ, docsQ, projQ, pkgQ]);
 
   /*
    * «ДАХИН ОРОЛДОХ» — УНАСАН эх сурвалжуудыг л дахин татна (2026-10-01, «хэрэглэгч:
@@ -184,10 +191,11 @@ export function Tuh({ dim, setDim, onOpenDeps }: {
     if (depQ.state === 'error') depQ.retry?.();
     if (docsQ.state === 'error') docsQ.retry?.();
     if (projQ.state === 'error') projQ.retry?.();
+    if (pkgQ.state === 'error') pkgQ.retry?.();
     /* Анхааруулгын мөрөнд нэрлэгддэг бүх эх — амьд гүйцэтгэл ба нэмэлт сэдвүүд (газар · зөвшөөрөл · ХАБЭА · …) */
     if (liveQ.state === 'error') liveQ.retry?.();
     if (extraQ.state === 'error' || (extraQ.state === 'ready' && extraQ.data.failed.length)) extraQ.retry?.();
-  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ, docsQ, liveQ, extraQ, projQ]);
+  }, [finQ, planQ, cfPlanQ, histQ, comQ, wfQ, bq, budgetQ, depQ, docsQ, liveQ, extraQ, projQ, pkgQ]);
 
   /* Нэмэлт сэдвийн ачаалагч бүхэлдээ унавал «…» мөнхөд үлдэхгүй — бүх хэсэг «—», анхааруулгын мөрөнд нэрлэнэ */
   const extra = useMemo<TuhExtra | null>(() => (

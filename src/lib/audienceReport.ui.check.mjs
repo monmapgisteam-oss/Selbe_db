@@ -254,7 +254,8 @@ ok('хавсралт — багц бүрийн гэрээ · олголт · х�
   assert.deepEqual(a.rows[2], ['Багц 3', '250,000,000,000.00', '0.00', '0.00%', '0.00%'], 'null явц 0%');
   assert.deepEqual(a.rows[3], ['Багц 4 (гэрээгүй)', '—', '0.00', '—', '3.20%']);
   assert.ok(a.rows.some((r) => r[0] === 'Багц-1-4 (хэд хэдэн багц хамарсан олголт)' && r[2] === '876,465,164.00'));
-  assert.deepEqual(a.rows.at(-1), ['Нийт', '2,100,000,000,000.00', '530,870,000,000.00', '25.00%', '24.60%']);
+  /* 2026-11-24: «Явц» = «Багцын гүйцэтгэл» — «Нийт» нь бүх багцын дундаж (`prog.pkgAvg.all`); эх алга бол «—» (орон сууцны биет биш) */
+  assert.deepEqual(a.rows.at(-1), ['Нийт', '2,100,000,000,000.00', '530,870,000,000.00', '25.00%', '—']);
   assert.deepEqual(board.appendix.rows, a.rows);
   assert.equal(board.appendix.no, '8');
   for (const s of [...mayor.sections, ...board.sections, ...council.sections]) assert.ok(!('table' in s), 'хүснэгт хэсэгт орсон');

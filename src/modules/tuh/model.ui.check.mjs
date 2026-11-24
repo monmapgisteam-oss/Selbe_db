@@ -371,6 +371,56 @@ console.log('\n17. Гэрээгүй мөр — EV/PV бодохгүй; нэгд�
   });
 }
 
+console.log('\n18. 2026-11-24: БАГЦЫН ГҮЙЦЭТГЭЛ — багцын мөр нэг эхээс («Төсөл төлөвлөгөө биелэлт», 2-р унтраалга)');
+{
+  const React = (await import('react')).default;
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const { PkgBoard: PkgDetail, PkgList } = await import('./Board.tsx');
+  const PK = new Map([['БАГЦ1', { S: 31.5, P: 40, rows: 12, w: 8 }], ['БАГЦ71', { S: 55, P: 50, rows: 4, w: 2 }]]);
+  const mk = buildModel(input({ pkgProg: PK }));
+  const h = mk.rows.find((r) => r.p.key === 'БАГЦ1');
+  const b = mk.rows.find((r) => r.p.pkgKey === 'БАГЦ71' && r.p.group !== 'design');
+  const d = mk.rows.find((r) => r.p.key === 'd:1');
+  ok('орон сууцны багц — S/P багцын эхээс, төлөв S − P-ээр (хоцорсон); биет ба гэрээний төлөвлөгөө тусдаа хэвээр', () => {
+    assert.equal(h.byPackage, true);
+    assert.equal(h.progress, 31.5, 'бөглөх хуудасны биет 20 БИШ');
+    assert.equal(h.phys, 20);
+    assert.equal(h.planPackage, 40);
+    near(h.gapPackage, -8.5);
+    assert.equal(h.statusBasis, 'package');
+    assert.equal(h.status, 'late');
+    near(h.planContract, 35);
+  });
+  ok('дэд бүтцийн багц — S/P багцын эхээс; зураг төслийн мөр — гэрээний мөрийн S (багцынх биш)', () => {
+    assert.equal(b.progress, 55);
+    assert.equal(b.status, 'run');
+    assert.equal(d.byPackage, false);
+    assert.equal(d.progress, null);
+  });
+  ok('самбар: «Багцын гүйцэтгэл» S 2 орон, төлөвлөгөө P, зөрүү S − P; жагсаалтад S', () => {
+    const html = renderToStaticMarkup(React.createElement(PkgDetail, { r: h, m: mk, onBack: noop, onOpen: noop }));
+    assert.match(html, /<span[^>]*>Багцын гүйцэтгэл<\/span><b[^>]*>31\.50%<\/b>/);
+    assert.match(html, /<span[^>]*>Төлөвлөгөө<\/span><b[^>]*>40\.00%<\/b>/);
+    assert.ok(html.includes('багцын төлөвлөгөө'));
+    assert.ok(html.includes('−8.5'), 'зөрүү');
+    assert.ok(html.includes('биет гүйцэтгэл 7 хоногт +5.0'), '7 хоногийн ахиц биет гэж нэрлэгдэнэ');
+    const list = renderToStaticMarkup(React.createElement(PkgList, { m: mk, sel: null, onOpen: noop }));
+    assert.ok(list.includes('31.50%'));
+  });
+  ok('эх ачаалж буй — багцын мөр «…» (биет рүү буцахгүй)', () => {
+    const ml = buildModel(input({ pkgProg: null, loading: new Set(['pkg']) }));
+    const r = ml.rows.find((x) => x.p.key === 'БАГЦ1');
+    assert.equal(r.progress, null);
+    assert.equal(r.byPackage, true);
+    const html = renderToStaticMarkup(React.createElement(PkgDetail, { r, m: ml, onBack: noop, onOpen: noop }));
+    assert.match(html, /<span[^>]*>Багцын гүйцэтгэл<\/span><b[^>]*>…<\/b>/);
+  });
+  ok('эх өгөөгүй (хуучин дуудагч) — биет хэвээр', () => {
+    assert.equal(h1.byPackage, false);
+    assert.equal(h1.progress, 20);
+  });
+}
+
 ok('газрын зураг — өөр багц руу шилжихэд сонгосон блокийн тодруулга цэвэрлэгдэнэ (эх код)', () => {
   const SRC = readFileSync(new URL('./TuhMap.tsx', import.meta.url), 'utf8');
   assert.match(SRC, /if \(selPkg === pickedPkg\.current\) return;\s+pickedPkg\.current = null;\s+setHighlight\(null\);/);

@@ -283,9 +283,10 @@ export function buildInfographic(x: ExecReport, dateStr: string, findings: strin
         ...packs.map((k) => ({ label: k.name, values: pick(S.packs.find((sp) => sp.key === k.key)?.values ?? []), trend: packTrendOf(deltas, k.key) })),
       ], bandOf(measured.map(({ m }) => m), per));
     } else {
-      cy = P.label(cx, cy, cw, tr('Багц тус бүрийн биет гүйцэтгэл'));
+      /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): багц бүрийн хувь — «Багцын гүйцэтгэл» (`ExecReport.prog.packs.progress`) */
+      cy = P.label(cx, cy, cw, tr('Багцын гүйцэтгэл'));
       for (const k of packs) {
-        cy = P.pair(cx, cy, cw, k.name, `${pct(k.progress ?? 0, 1)}${packTrendOf(deltas, k.key) ? `  ${packTrendOf(deltas, k.key)!.text}` : ''}`);
+        cy = P.pair(cx, cy, cw, k.name, `${pct(k.progress ?? 0, 2)}${packTrendOf(deltas, k.key) ? `  ${packTrendOf(deltas, k.key)!.text}` : ''}`);
         P.bar(cx, cy - 4, cw, (k.progress ?? 0) / 100); cy += 12;
       }
       if (!packs.length) cy = P.label(cx, cy, cw, tr('мэдээлэлгүй'));

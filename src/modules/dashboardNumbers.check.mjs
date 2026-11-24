@@ -30,11 +30,15 @@ assert.match(panel, /f\.givenTotal\.forEach\(\(v, k\) => \{ if \(scKeys\.has\(fi
 assert.match(panel, /if \(!scKeys\.has\(finPkgKey\(k\)\)\) return;/, 'сарын дүн finPkgKey-ээр шүүгдээгүй');
 assert.ok(!/cum \+= m\.given/.test(panel), 'сарын дүн БҮХ багцын олголтоос (m.given) авагдав');
 
-/* 2 — «Багц» зурвас ХО жингүйгээр тоо гаргахгүй */
+/* 2 — «Багц» зурвас: 2026-11-24 — орон сууцны багцуудын БАГЦЫН ГҮЙЦЭТГЭЛИЙН дундаж (`planPkgAvg` → `packagesAverage`,
+       багц бүрийн жингээр), эх ачаалж байхад «…» */
 const rail = src.slice(src.indexOf("case 'bagts': {"), src.indexOf("case 'land': {"));
-assert.match(rail, /const avg = b && f\s*\?\s*buildProgressOf\(b, pkgCostWeight\(f\.contracts\.map\(cfWeightRow\)\)\)\.pct/,
-  '«Багц» зурвас ХО жингүй (блокийн нөөц) тоо гаргаж болзошгүй');
-assert.match(rail, /f == null \? dots\(d\.fin\)/, 'санхүү ачаалж байхад «…» гарахгүй байна');
+assert.match(rail, /const avg = b \? pkgPct\(\(k\) => b\.some\(\(x\) => x\.key === k\)\) : null;/,
+  '«Багц» зурвас багцын гүйцэтгэлийн дунджаар биш');
+assert.match(rail, /pp == null \? dots\(d\.planPkg\)/, 'багцын гүйцэтгэл ачаалж байхад «…» гарахгүй байна');
+assert.match(src, /const pkgPct = \(match: \(k: string\) => boolean\): number \| null => \(pp \? planPkgAvg\(pp, match\) : null\);/,
+  'зурвасын багцын дундаж planPkgAvg-аар биш');
+assert.match(src, /packagesAverage\(new Map\(\[\.\.\.m\]\.filter\(\(\[k\]\) => pred\(k\)\)\)\)\.S/, 'planPkgAvg нь packagesAverage-аар биш');
 
 /* 3 — ТӨСЛИЙН ТӨЛӨВЛӨГӨӨ бодиттой НЭГ (ХО) жинтэй: `Finance.projectPlanOf` бүх «төлөвлөсөн −
        бодит» замд (2026-09-30). Тооцоо нь `gdash.check` · `pkgProgress.ui.check`-д. */
@@ -44,12 +48,16 @@ assert.match(fin, /const series = key \? pc\.byBagts\.get\(key\) : \(planProject
 assert.match(fin, /planProjectCache = planCurveCache \? projectPlanOf\(\{ contracts, phys, physN \}, planCurveCache\) : null;/,
   'planProjectCache loadFinDataRaw-д бөглөгдөхгүй байна');
 const prog = readFileSync(new URL('./PkgProg.tsx', import.meta.url), 'utf8');
-assert.match(prog, /fin \? projectPlanOf\(fin, planQ\.data\) : planQ\.data\.months/, 'PkgProg.TsKpi-ийн төлөвлөгөө блокоор жигнэсэн хэвээр');
+/* 2026-11-24 (хэрэглэгч: 2-р унтраалга): «Багцын явц»-ын толгой (TsKpi) = бүх багцын «Багцын гүйцэтгэл»-ийн дундаж
+   (`packagesAverage`), жагсаалт/«Төслийн төрөл» = `planPkgProgress` — орон сууцны биет % (physNow) руу буцахгүй */
+assert.match(prog, /const a = packagesAverage\(plan\);/, 'PkgProg.TsKpi бүх багцын дундаж (packagesAverage) биш');
+assert.match(prog, /\(\) => \(projQ\.state === 'ready' \? planPkgProgress\(projQ\.data\) : null\)/, 'PkgProg-ийн багцын хувь planPkgProgress-оос биш');
+assert.match(prog, /mean = packagesAverage\(sub\)\.S \?\? 0;/, 'PkgProg.CatChart ангиллын дундаж packagesAverage-аас биш');
+assert.ok(!/physLatest\(|physNow\(fin|infraPhysNow\(/.test(prog), 'PkgProg багцын/ангиллын хувьд биет % (physLatest/physNow/infraPhysNow) руу буцав');
 assert.match(prog, /finQ\.state === 'ready' \? projectPlanOf\(finQ\.data, pc\) : pc\.months/, 'PkgProg-ийн төслийн графикийн төлөвлөгөө блокоор жигнэсэн хэвээр');
 const exec = readFileSync(new URL('../lib/execReport.ts', import.meta.url), 'utf8');
 assert.match(exec, /const lagNow = projectLagNow\(fin, plan, nowYm, dayKey\(Date\.now\(\)\)\);/, 'удирдлагын тайлангийн төлөвлөгөө/зөрүү projectLagNow-оор биш');
 assert.match(fin, /const plan = pc\?\.months\.length \? projectPlanOf\(fin, pc\) : \[\];/, 'projectLagNow projectPlanOf-оор биш');
-assert.match(prog, /const ln = projectLagNow\(fin, planQ\.data, nowYm, todayDayKey\(\)\);/, 'PkgProg.TsKpi-ийн зөрүү projectLagNow-оор биш');
 assert.ok(!/gapLabel\(planned, actual\)/.test(src), 'Дашбоардын «Гүйцэтгэлийн зөрүү» planned − physNow (өөр олонлог) руу буцав');
 const pkgFin = readFileSync(new URL('./PkgFin.tsx', import.meta.url), 'utf8');
 assert.match(pkgFin, /const gap = lag \? lag\.gap : null;/, 'PkgFin-ийн зөрүү planned − (бүх багцын) actual руу буцав');
@@ -69,9 +77,26 @@ assert.match(fin, /const rootE = result\.values\.get\(tree\.root\)\?\.E;/, 'ТТ
 assert.match(fin, /ppCalcVal\(c\.k, n \? moneyOf\.get\(n\) : undefined, rootE\)/, 'ТТБ: олгосон хувь мөрийн өөрийн E-д хуваагдаж байна');
 
 /* 6 — (2026-11-06) самбарын тулгалт */
-assert.match(src, /physNowOf\(f, keys, nowYm\)\?\.pct/, '«Шугам сүлжээ» · «Цахилгаан» зурвас ХО дүнгээр жигнэсэн `physNowOf`-оор биш');
+/* 2026-11-24: «Шугам сүлжээ» · «Цахилгаан» зурвас — тэр багцуудын БАГЦЫН ГҮЙЦЭТГЭЛИЙН дундаж (урьд нь бөглөх хуудасны биет) */
+assert.match(src, /actual: pkgPct\(isNetworkPack\)/, '«Шугам сүлжээ» зурвас багцын гүйцэтгэлээр биш');
+assert.match(src, /actual: pkgPct\(isPowerPack\)/, '«Цахилгаан» зурвас багцын гүйцэтгэлээр биш');
+assert.ok(!/physNowOf\(/.test(src), 'багцын зурвас бөглөх хуудасны биет (physNowOf) руу буцав');
 assert.match(src, /HOUSING_PKGS\.includes\(x\.key\) && \(x\.actual != null \|\| x\.planned != null\)/, 'орон сууцны хэсгийн «Төлөвлөгөө vs бодит» бүх багцыг харуулав');
-assert.match(src, /label: tr\(pkgGroupLabel\(x\.key\)\)/, '«Багцаар — биет гүйцэтгэл» түүхий түлхүүрээр');
+/* 2026-11-24: багц бүрийн зурвас/жагсаалт — БАГЦЫН ГҮЙЦЭТГЭЛ (`planPkg` · `withPlanPkg`), нэг эх */
+{
+  const panel = (title) => {
+    const i = src.indexOf(`title={tr('${title}')}`);
+    assert.ok(i > 0, `«${title}» самбар олдсонгүй`);
+    return src.slice(i, src.indexOf('</Panel>', i));
+  };
+  assert.match(panel('Багцаар — Багцын гүйцэтгэл'), /<Data q=\{planPkg\}[\s\S]*planPkgRows\(pp, pkgLabelOf\)/, '«Багцаар» багцын гүйцэтгэлээр биш');
+  assert.match(panel('Төлөвлөгөөний хоцрогдол — багцаар'), /<Data q=\{planPkg\}[\s\S]*planPkgRows\(pp, pkgLabelOf\)/, 'хоцрогдол P − S-ээр биш');
+  assert.match(panel('Багц ажлаар'), /<Data q=\{d\.bagtsPkg\}/, '«Багц ажлаар» багцын гүйцэтгэлээр биш');
+  assert.match(panel('Багц бүрийн явц'), /<Data q=\{withPlanPkg\(q, planPkg\)\}/, '«Багц бүрийн явц» багцын гүйцэтгэлээр биш');
+  assert.match(panel('Төлөвлөгөө vs бодит — багцаар'), /<Data q=\{planPkg\}[\s\S]*planPkgRows\(pp,/, '«Төлөвлөгөө vs бодит — багцаар» багцын S/P-ээр биш');
+  assert.match(src, /progress: pp\.data\.get\(r\.key\)\?\.S \?\? null/, 'withPlanPkg — багцын S');
+  assert.match(src, /if \(pp\.state === 'loading'\) return \{ state: 'loading'/, 'withPlanPkg — ачаалж байхад хуучин биет тоо харуулна');
+}
 assert.match(src, /bg2\.byType\.find\(\(t\) => t\.key === 'НИЙГМИЙН ДЭД БҮТЭЦ'\)/, 'нийгмийн төсөв давхаргын жагсаалтаас (20.6–20.9 дутна)');
 assert.ok(!src.includes('Гэрээ байгуулах эрх'), 'гэрээлсэн дүн «эрх» гэж нэрлэгдэв');
 assert.ok(!src.includes('(захирамжаар)'), 'эх үүсвэр нь Төслийн нийт дүн — захирамжийн дүн биш');

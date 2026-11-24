@@ -7,7 +7,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { money2, num, pct } from '@/lib/format';
 import { queryFeatures } from '@/lib/query';
 import { cached, loadClearance } from '@/lib/live';
-import { loadDesignMoney, loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
+import { loadDesignMoney, loadPlanPkgProgress, loadProjectBudgetTotal, loadProjectContractTotal } from '@/lib/projectPlanInputs';
 import { layerTotals } from '@/lib/totals';
 import {
   BUILDING, CASHFLOW_NEW, HABEA, HO_IPC, LAYER_GROUPS, GROUP_LAYERS, LAYER_BY_ID,
@@ -57,8 +57,9 @@ export type ReportExtra = {
       rows: number;
       /** Төслийн төсөвт эзлэх хувь, 0–100 */
       weight: number;
-      /** Бодит гүйцэтгэл, 0–100 */
+      /** 2026-11-24: «Багцын гүйцэтгэл» (S), 0–100 — `planPkgOf` */
       actual: number;
+      /** 2026-11-24: «Багцын гүйцэтгэл»-ийн төлөвлөгөөт (P); алга бол хуваарийнх (`withPlans`) */
       planned: number | null;
     }[];
   };
@@ -237,12 +238,13 @@ export function byTypeGapNote(f: Pick<ReportExtra['finance'], 'budget' | 'byType
   return parts.length ? tr('Хүснэгтийн нийлбэр төслийн нийт төсвөөс ялгаатай: {0}.', parts.join('; ')) : null;
 }
 
-export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'BUILDING']);
+/* 2026-11-24: «Багцын гүйцэтгэл» (`loadProjectPlan`) зургийн бүртгэлийг уншдаг — ZURAG_BURTGEL */
+export const loadOverall = cached(loadOverallRaw, 5 * 60_000, ['BAGTS_SHEET', 'CASHFLOW_NEW', 'BUILDING', 'ZURAG_BURTGEL']);
 
 async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   const F = CASHFLOW_NEW.fields;
   const { loadPkgProgress } = await import('@/lib/blockProgress');
-  const [byPkg, labels, cf, projBudget] = await Promise.all([
+  const [byPkg, labels, cf, projBudget, pkgPlan] = await Promise.all([
     loadPkgProgress(),
     loadPkgLabels(),
     /* Зөвхөн 3 талбар — `loadFinance` нь «*»-оор бүтнээр татдаг ч энэ нь
@@ -253,6 +255,8 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
     }),
     /* 2026-11-23 (аудит №7): ТТБ-ийн НИЙТ төсөв (E) — ажлын мөрийн нийлбэр ТЭЗҮ/зураг төслийн мөнгийг орхидог байв */
     loadProjectBudgetTotal().catch(() => null),
+    /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): багц бүрийн хувь — «Багцын гүйцэтгэл»; уншигдаагүй бол тайлан гаргахгүй */
+    loadPlanPkgProgress(),
   ]);
 
   /** багцын түлхүүр → урьдчилсан төсөвт өртөг, ₮ */
@@ -271,22 +275,24 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
     rows: m.total,
     money: budget.get(pkg) ?? 0,
     // `cell.overall` нь аль хэдийн 0–100 — хөрвүүлэлт ХЭРЭГГҮЙ
-    actual: m.pct,
-    planned: null as number | null,
+    phys: m.pct,
   }));
 
   const useMoney = budgetAll > 0 && raw.some((s) => s.money > 0);
   const denom = useMoney ? budgetAll : raw.reduce((a, s) => a + s.rows, 0);
 
   const stages = raw
-    .map(({ money, ...s }) => ({
+    .map(({ money, phys: _phys, ...s }) => ({
       ...s,
       weight: denom ? ((useMoney ? money : s.rows) / denom) * 100 : 0,
+      /* 2026-11-24: багцын мөрийн «Гүйцэтгэл» ба «Төлөвлөгөө» — «Багцын гүйцэтгэл»-ийн S/P (хэмжилтгүй = 0%) */
+      ...planPkgOf(pkgPlan, s.key),
     }))
     .sort((x, y) => y.weight - x.weight || x.label.localeCompare(y.label, 'mn', { numeric: true }));
 
   const weightSum = stages.reduce((a, s) => a + s.weight, 0);
-  const housing = housingPct(raw.map((s) => ({ pct: s.actual, cost: s.money, blocks: s.rows })));
+  /* «Барилгын явц» (`pct`) — орон сууцны блокийн БИЕТ явц хэвээр (тайланд өөрийн нэрээр) */
+  const housing = housingPct(raw.map((s) => ({ pct: s.phys, cost: s.money, blocks: s.rows })));
 
   return {
     pct: housing,
@@ -296,17 +302,29 @@ async function loadOverallRaw(): Promise<ReportExtra['overall']> {
   };
 }
 
+/**
+ * БАГЦЫН ГҮЙЦЭТГЭЛ (2026-11-24, хэрэглэгч: 2-р унтраалга) — багцын мөрийн `actual` (S) ба `planned` (P), «Төсөл төлөвлөгөө
+ * биелэлт»-ийн 2-р унтраалгатай БҮХ мөрөөс (`loadPlanPkgProgress`). Багц 2-р унтраалгатай мөргүй бол 0% (хэмжилтгүй = 0%). Цэвэр.
+ */
+export function planPkgOf(pp: ReadonlyMap<string, { S: number | null; P: number | null }>, key: string): { actual: number; planned: number } {
+  const v = pp.get(key);
+  return { actual: v?.S ?? 0, planned: v?.P ?? 0 };
+}
+
 /** Хуваарийн төлөвлөгөө — хамрах хүрээ хангалттай багц (`byKey`) ба төслийн нийт (`total`, `lag`) */
 export type OverallPlans = { byKey: ReadonlyMap<string, number>; total: number | null; lag: number | null };
 
-/** Төлөвлөгөөг §3-ын багцын мөр ба нийт мөрөнд суулгана (цэвэр) */
+/**
+ * Төлөвлөгөөг §3-ын нийт мөрөнд суулгана (цэвэр). 2026-11-24: багцын мөрийн төлөвлөгөө нь «Багцын гүйцэтгэл»-ийн P
+ * (`loadOverallRaw`) — тэр нь байвал хуваарийн утгаар ДАРАХГҮЙ (гүйцэтгэлтэй нэг эх); алга (`null`) үед л хуваарийнх.
+ */
 export function withPlans(overall: ReportExtra['overall'], plans: OverallPlans | null): ReportExtra['overall'] {
   if (!plans) return overall;
   return {
     ...overall,
     plannedTotal: plans.total,
     lag: plans.lag,
-    stages: overall.stages.map((s) => ({ ...s, planned: (s.key ? plans.byKey.get(s.key) : undefined) ?? null })),
+    stages: overall.stages.map((s) => ({ ...s, planned: s.planned ?? (s.key ? plans.byKey.get(s.key) : undefined) ?? null })),
   };
 }
 
@@ -388,14 +406,16 @@ async function loadSocial(): Promise<ReportExtra['social']> {
 
 /* ═══════════════ Барилга угсралтын гүйцэтгэл ═══════════════ */
 
-export const loadProgress = cached(loadProgressRaw, 5 * 60_000, ['BAGTS_SHEET', 'BUILDING']);
+/* 2026-11-24: багцын хувь «Багцын гүйцэтгэл»-ээс (`loadProjectPlan`) — CASHFLOW_NEW · ZURAG_BURTGEL-ээр ч шинэчлэгдэнэ */
+export const loadProgress = cached(loadProgressRaw, 5 * 60_000, ['BAGTS_SHEET', 'BUILDING', 'CASHFLOW_NEW', 'ZURAG_BURTGEL']);
 
 async function loadProgressRaw(): Promise<ReportExtra['progress']> {
   const { loadBlockProgress, loadBlockUniverse, pkgProgressOf, universeKeys, latestMean } = await import('@/lib/blockProgress');
-  const [map, uni, labelOf] = await Promise.all([
+  const [map, uni, labelOf, pkgPlan] = await Promise.all([
     loadBlockProgress(),
     loadBlockUniverse(),
     loadPkgLabels(),
+    loadPlanPkgProgress(),
   ]);
 
   const label = (k: string) => labelOf.get(k) ?? (k || '—');
@@ -444,8 +464,10 @@ async function loadProgressRaw(): Promise<ReportExtra['progress']> {
       .filter((p) => p.xs.length > 0)
       .sort((a, b) => a.no.localeCompare(b.no, 'mn'))
       .map((p) => ({ no: p.no, name: sentenceCase(p.name), pct: mean(p.xs) })),
+    /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): багц бүрийн хувь — «Багцын гүйцэтгэл» (S); багцын олонлог, блокийн тоо нь бөглөх
+       хуудаснаас (`pkgProgressOf`). Нийт (`overall`), үе шат, блокийн жагсаалт биет хэвээр. */
     byBagts: [...byPkg.entries()]
-      .map(([k, m]) => ({ bagts: label(k), blocks: m.total, pct: m.pct }))
+      .map(([k, m]) => ({ bagts: label(k), blocks: m.total, pct: planPkgOf(pkgPlan, k).actual }))
       .sort((a, b) => b.pct - a.pct),
     slowest: rows
       .slice()
@@ -691,7 +713,7 @@ async function loadHabeaSummaryRaw(): Promise<ReportExtra['habea']> {
  * чухал тул `allSettled` — амжилтгүй хэсэг нь хоосон утгаараа гарна.
  */
 export const loadReportExtra = cached(loadReportExtraRaw, 5 * 60_000,
-  ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL', 'BUILDING', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL']);
+  ['BAGTS_SHEET', 'CASHFLOW_NEW', 'HO_IPC', 'PARCEL_LEFT', 'HABEA', 'BAGTS_NEGTGEL', 'BUILDING', 'HUVAARI_OBYEM', 'TUSUL_NEGTGEL', 'ZURAG_BURTGEL']);
 
 async function loadReportExtraRaw(): Promise<ReportExtra> {
   const [o, p, f, i, h, l, s, w, pl] = await Promise.allSettled([

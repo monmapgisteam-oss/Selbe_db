@@ -14,7 +14,7 @@ import {
 } from '@/lib/schem';
 import { bagtsKey } from '@/lib/services';
 import { GROUP_ROOT, type FineId } from '@/lib/schemFine';
-import { paceHealth, phaseOf, type PhaseVal, type PlanPhase } from '@/lib/schemPlan';
+import { paceHealth, phaseOf, pkgProgOf, type PhaseVal, type PlanPhase } from '@/lib/schemPlan';
 
 /* ══════════════════ Төрөл ══════════════════ */
 
@@ -439,11 +439,15 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
     lost ? null : src.bagts ? rows.reduce((s, b) => s + of(b), 0) : null
   );
 
-  const bPlan = phaseOf(src.plan, 'barilga', pkg);
+  /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): багц сонгосон бол «Багцын гүйцэтгэл» (бүх үе шатын 2-р унтраалгатай мөр, `pkgProgOf`) */
+  const pkgP = pkgProgOf(src.plan, pkg);
+  const bPhase = phaseOf(src.plan, 'barilga', pkg);
+  /* Төсөвт өртөг (E) нь барилга угсралтын мөрийнх хэвээр */
+  const bPlan = pkgP ? { ...pkgP, E: bPhase?.E ?? null } : bPhase;
   p.metrics.push(
     ...(bPlan ? [{ label: tr('Төлөвлөгөөт'), value: bPlan.P, kind: 'pct' as const }] : []),
     /* 2026-11-24 (аудит): `overall.pct` нь ЗӨВХӨН орон сууцны блокийн явц — «Гүйцэтгэл» гэж орлуулахгүй, өөрийн нэрээр доор */
-    { label: tr('Гүйцэтгэл'), value: bPlan?.S ?? (row ? fin(row.progress) : null), kind: 'pct', why: bPlan || row ? undefined : tr('«Төсөл төлөвлөгөө биелэлт» татагдсангүй') },
+    { label: pkgP ? tr('Багцын гүйцэтгэл') : tr('Гүйцэтгэл'), value: bPlan?.S ?? (row ? fin(row.progress) : null), kind: 'pct', why: bPlan || row ? undefined : tr('«Төсөл төлөвлөгөө биелэлт» татагдсангүй') },
     ...(!pkg ? [{ label: tr('Орон сууцны блокийн явц'), value: fin(src.overall?.pct), kind: 'pct' as const }] : []),
     ...(bPlan?.E != null ? [{ label: tr('Төсөвт өртөг'), value: bPlan.E, kind: 'mnt' as const }] : []),
     { label: tr('Блок'), value: row ? row.blocks : sum((b) => b.blocks), kind: 'count' },
@@ -464,7 +468,7 @@ function barilgaPart(src: SchemSources, pkg: string | null): Part {
   if (src.bagts) {
     p.tables.push({
       title: tr('Багцаар'),
-      cols: [tr('Багц'), tr('Гүйцэтгэл'), tr('Блок'), tr('Тайлангүй'), tr('Айл'), tr('Гүйцэтгэгч')],
+      cols: [tr('Багц'), tr('Багцын гүйцэтгэл'), tr('Блок'), tr('Тайлангүй'), tr('Айл'), tr('Гүйцэтгэгч')],
       rows: rows.map((b) => [
         cell(b.label),
         cell(fin(b.progress), 'pct'),
@@ -664,7 +668,7 @@ function sankhuuPart(src: SchemSources, pkg: string | null): Part {
   if (src.bagts && fi) {
     p.tables.push({
       title: tr('Багцаар'),
-      cols: [tr('Багц'), tr('Төсөвт өртөг'), tr('Гүйцэтгэл')],
+      cols: [tr('Багц'), tr('Төсөвт өртөг'), tr('Багцын гүйцэтгэл')],
       rows: rows.map((b) => [
         cell(b.label),
         cell(fin(fi.byBagts[b.key]), 'mnt'),
@@ -849,6 +853,9 @@ export function cardStat(
       return statOf(tr('Батлуулахаар хүлээгдэж буй'), v, 'count', fewer(v));
     }
     case 'bar': {
+      /* 2026-11-24: багц сонгосон бол «Багцын гүйцэтгэл» (`pkgProgOf`) */
+      const pp = pkgProgOf(src.plan, pkg);
+      if (pp) return { ...statOf(tr('Багцын гүйцэтгэл'), pp.S, 'pct', paceHealth(pp)), ...(pp.P != null ? { why: tr('Төлөвлөгөөт {0}%', pp.P.toFixed(2)) } : {}) };
       const bp = phaseOf(src.plan, 'barilga', pkg);
       if (bp) return phaseStat('barilga');
       const v = row ? fin(row.progress) : null;

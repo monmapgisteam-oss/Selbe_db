@@ -3,13 +3,14 @@
  *
  * ДӨРВӨН эх сурвалжийн ДЭЛГЭЦ ДЭЭРХ тоог ЯГ ТЭР ХЭВЭЭР нь нэгтгэнэ:
  *   · 01. Ерөнхий дашбоард  — `GeneralDash.KpiStrip` (`gdash.kpisOf`)
- *   · 05. Багцын гүйцэтгэл  — `PkgProg.TsKpi` (биет vs төлөвлөгөө) + багцууд
+ *   · 05. Багцын гүйцэтгэл  — орон сууцны биет vs хуваарь + багц бүрийн «Багцын гүйцэтгэл» (2026-11-24: `loadPlanPkgProgress`)
  *   · 04. Багцын санхүү     — `PkgFin.pkgFinRows` (гэрээ vs олгосон)
  *   · Зөвшөөрөл             — `zovshoorol.summarize`
  */
 
 import { cached, loadFillPkgProgress } from '@/lib/live';
-import { loadDesignMoney, loadProjectBudgetTotal, loadProjectContractTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
+import { loadDesignMoney, loadPlanPkgProgress, loadProjectBudgetTotal, loadProjectContractTotal, loadProjectPlan } from '@/lib/projectPlanInputs';
+import { packagesAverage, type PlanPkgProgress } from '@/lib/projectPlan';
 import { t as tr } from '@/lib/i18nCore';
 import { money2, num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
@@ -91,7 +92,17 @@ export type ExecReport = {
     planExcluded: string[];
     planCoverage: number | null;
     planFailed: number;
-    packs: { key: string; name: string; kind: 'build' | 'infra'; blocks: number; households: number; householdsMissing: number; progress: number | null }[];
+    /**
+     * 2026-11-24 (хэрэглэгч: 2-р унтраалга): `progress` = «Багцын гүйцэтгэл» (S) — «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгатай
+     * БҮХ мөрөөс (`loadPlanPkgProgress`); `planned` = ижил эхийн P. Эх уншигдаагүй эсвэл багц 2-р унтраалгатай мөргүй бол `null`.
+     */
+    packs: { key: string; name: string; kind: 'build' | 'infra'; blocks: number; households: number; householdsMissing: number; progress: number | null; planned?: number | null }[];
+    /**
+     * 2026-11-24: «Багцын гүйцэтгэл»-ийн жигнэсэн дундаж (`packagesAverage`) — `build` орон сууцны (барилга угсралтын) багцууд,
+     * `infra` дэд бүтцийн багцууд, `all` бүх багц. Багцын хүснэгтийн «Нийт» мөр. `actual` (орон сууцны биет) өөр хэмжигдэхүүн.
+     * Эх уншигдаагүй бол `null`.
+     */
+    pkgAvg?: Record<'build' | 'infra' | 'all', { S: number | null; P: number | null }> | null;
     /** Блокийн гүйцэтгэлийн түвшний тархалт */
     levels: { label: string; range: string; n: number; color: string }[];
   };
@@ -181,9 +192,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     loadSafetyRows().catch(() => null),
   ]);
   const wbsPct = wbs?.pct ?? null;
+  /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): багц бүрийн хувь — «Багцын гүйцэтгэл» (`loadProjectPlan`-ийн кэштэй) */
+  const pkgPlan = await loadPlanPkgProgress().catch(() => null);
 
-  /* ── 05. Багцын гүйцэтгэл — `PkgProg.TsKpi`-тай ИЖИЛ ── */
-  const packs = buildPacks(bld.rows, bld.pkgPct);
+  /* ── 05. Багцын гүйцэтгэл — багцын хувь `PkgProg`-ийн жагсаалттай ИЖИЛ эх; орон сууцны биет (`actual`) тусдаа ── */
+  const packs = buildPacks(bld.rows, execPkgPct(pkgPlan));
   const nowYm = monthKey();
   const actual = physNow(fin, nowYm);
   let lastM: { label: string; physAt?: string | null } | null = null;
@@ -362,8 +375,14 @@ async function loadExecReportRaw(): Promise<ExecReport> {
           households: p.households,
           householdsMissing: lv ? householdsMissingOf(lv, ub.map((b) => b.key), polyMissing) : polyMissing,
           progress: p.progress,
+          planned: pkgPlan?.get(p.key)?.P ?? null,
         };
       }),
+      pkgAvg: pkgPlan ? {
+        build: execPkgAvg(pkgPlan, packs.filter((p) => p.kind === 'build').map((p) => p.key)),
+        infra: execPkgAvg(pkgPlan, packs.filter((p) => p.kind === 'infra').map((p) => p.key)),
+        all: packagesAverage(pkgPlan),
+      } : null,
       levels: PROGRESS_LEVELS.map((l, i) => ({
         label: l.label, range: l.range, color: l.color,
         n: lvCounts[i],
@@ -389,6 +408,23 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     incidents: safety ? safety.map((r) => ({ ognoo: r.ognoo, bagts: r.bagts, turul: r.turul })) : null,
     fetchedAt: Date.now(),
   };
+}
+
+/**
+ * «Багцын гүйцэтгэл» → `buildPacks`-ийн `pkgPct` (S) — 2026-11-24 (цэвэр, тест). Эх уншигдаагүй бол хоосон: багцын хувь `null`
+ * (хуучин биет тоо руу чимээгүй буцахгүй).
+ */
+export function execPkgPct(pp: ReadonlyMap<string, PlanPkgProgress> | null): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const [k, v] of pp ?? []) if (v.S != null) m.set(k, v.S);
+  return m;
+}
+
+/** Өгсөн багцуудын «Багцын гүйцэтгэл»-ийн дундаж (`packagesAverage`, давхардалгүй) — 2026-11-24 (цэвэр, тест) */
+export function execPkgAvg(pp: ReadonlyMap<string, PlanPkgProgress>, keys: Iterable<string>): { S: number | null; P: number | null } {
+  const sub = new Map<string, PlanPkgProgress>();
+  for (const k of keys) { const v = pp.get(k); if (v) sub.set(k, v); }
+  return packagesAverage(sub);
 }
 
 /**
@@ -758,7 +794,9 @@ export function execFacts(x: ExecReport): string {
   if (x.prog.planExcluded.length) {
     L.push(`Төлөвлөгөө ба зөрүү ЗӨВХӨН хуваарьтай багцаар (зөрүүний бодит тал ${x.prog.actualLag == null ? '—' : pct(x.prog.actualLag, 1)}); хуваарьгүй тул хасагдсан: ${x.prog.planExcluded.join(', ')}`);
   }
-  for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${pct(p.progress ?? 0, 1)}${p.kind === 'build' ? ` (${p.blocks} блок, ${householdsLabel(p)} өрх)` : ''}`);
+  /* 2026-11-24: багц бүр — «Багцын гүйцэтгэл» (бүх үе шатын 2-р унтраалгатай мөр), төлөвлөгөө нь ижил эхийн P */
+  L.push(`Багцын гүйцэтгэл (бүх үе шат, «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгатай мөрөөр)${x.prog.pkgAvg ? `; бүх багцын дундаж ${pct(x.prog.pkgAvg.all.S ?? 0, 2)}, орон сууцны багцуудын дундаж ${pct(x.prog.pkgAvg.build.S ?? 0, 2)}` : '; уншигдсангүй'}:`);
+  for (const p of x.prog.packs) L.push(`- ${cl(p.name)}: ${pct(p.progress ?? 0, 2)}${p.planned != null ? ` (төлөвлөгөө ${pct(p.planned, 2)})` : ''}${p.kind === 'build' ? ` (${p.blocks} блок, ${householdsLabel(p)} өрх)` : ''}`);
   L.push(`Блокийн түвшин: ${x.prog.levels.map((l) => `${l.label} ${l.range}: ${l.n}`).join('; ')}`);
   L.push(`## 04. Багцын санхүү`);
   L.push(`Гэрээлсэн нийт (01-тэй ижил): ${num(x.fin.planTotal)} ₮; олгосон: ${x.fin.given == null ? 'мэдээлэлгүй' : `${num(x.fin.given)} ₮`} (гэрээлсэн багцад ${num(x.fin.givenContracted)} ₮ — ${x.fin.share == null ? '—' : pct(x.fin.share, 1)}${x.fin.givenOther > 0 ? `; гэрээлсэн багцаас гадуурх ${num(x.fin.givenOther)} ₮ хувьд ороогүй` : ''}); үлдэгдэл: ${x.fin.remain == null ? 'мэдээлэлгүй' : `${num(x.fin.remain)} ₮`}`);

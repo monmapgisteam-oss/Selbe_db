@@ -23,17 +23,18 @@ import {
   ZONE_LAYER, ZONE_FIELD, ZONE_NONE, BUILT_LAYER, BUILDING,
   LAYER_BY_ID, PARCEL_CLEARED, PARCEL_LEFT, PARCEL_STATUS_HUES, SOURCE_FS, TASK_SHEET,
   PLAN_LAYER_IDS, MONITOR_LAYER_IDS, INITIAL_MAP_LAYERS,
-  PKG_BY_FAMILY, PKG_BY_BAGTS, PROGRESS_LEVELS, bagtsKey, pkgKeyOf, cfMonthAxis, type PkgFamily,
+  PKG_BY_FAMILY, PKG_BY_BAGTS, PROGRESS_LEVELS, bagtsKey, pkgKeyOf, cfMonthAxis, CASHFLOW_NEW, type PkgFamily,
 } from '@/lib/services';
+import { packagesAverage, type PlanPkgProgress } from '@/lib/projectPlan';
 /* (2026-08-21) analysis/config·data·costs·score импортууд `@/lib/execData` руу
    нүүсэн — үлдсэн дуудагч нь тэнд байгаа useSuitability байсан. */
 import {
-  loadFinData, lagOf, lagJudged, lagSeriesOf, pkgMonthsMap, physLatest, physNowOf, projectPlanScope, planScopeNote,
+  loadFinData, lagOf, lagJudged, lagSeriesOf, pkgMonthsMap, physLatest, projectPlanScope, planScopeNote,
   type FinData, type MonthPt,
 } from '@/modules/Finance';
 import { coverageNote } from '@/lib/planProgress';
 import { aggregateMonths, physNow } from '@/modules/PkgProg';
-import { MAP_PKG_ALIAS, finPkgKey } from '@/lib/pkgAlias';
+import { finPkgKey } from '@/lib/pkgAlias';
 import {
   loadBlockProgress, loadBlockHistory, progressSeries, latestMean, levelCounts as levelCountsOf,
   type BlockProgressMap, type BlockHistory,
@@ -170,8 +171,8 @@ const PL = PARCEL_LEFT.fields;
 
 export { useBagtsTable, useSuitability } from '@/lib/execData';
 export type { BagtsRow, SuitSummary } from '@/lib/execData';
-import { useBagtsTable, buildProgressOf, ailTotal, ailLabel, type BagtsRow } from '@/lib/execData';
-import { pkgCostWeight, cfWeightRow, contractedScope, gapPtsWord, HOUSING_PKGS, pts as ptsFmt } from '@/lib/gdash';
+import { useBagtsTable, ailTotal, ailLabel, type BagtsRow } from '@/lib/execData';
+import { contractedScope, gapPtsWord, HOUSING_PKGS, pts as ptsFmt } from '@/lib/gdash';
 
 /* ── Төслийн жигнэсэн гүйцэтгэл — тооцоо @/lib/live-д (Тайлан/Нүүр мөн уншина) ── */
 
@@ -213,6 +214,10 @@ function useSources(): Async<Row[]> {
 /** Бүх хэсэгт хэрэгтэй өгөгдлийн багц */
 type DashData = {
   bagts: Async<BagtsRow[]>;
+  /** 2026-11-24: БАГЦЫН ГҮЙЦЭТГЭЛ (`loadPlanPkgProgress`) — багц бүрийн S/P */
+  planPkg: Async<PlanPkgMap>;
+  /** 2026-11-24: `bagts`, `progress` нь багцын гүйцэтгэл (`withPlanPkg`) — багц бүрийн зурвасанд */
+  bagtsPkg: Async<BagtsRow[]>;
   /**
    * САНХҮҮ + БИЕТ ГҮЙЦЭТГЭЛ — `CASHFLOW_NEW` (гэрээ) · `HO_IPC` (олгосон
    * төлбөр) ·
@@ -353,6 +358,43 @@ const withBagtsWhere = (r: BagtsRow, done: (where: string) => void): void => {
 
 const failedOf = (...qs: AsyncLike[]): AsyncLike | null => qs.find((q) => q.state === 'error') ?? null;
 
+/* ══════════════════ БАГЦЫН ГҮЙЦЭТГЭЛ (2026-11-24) ══════════════════ */
+
+/**
+ * 2026-11-24 (хэрэглэгч): БАГЦЫН ГҮЙЦЭТГЭЛ — «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгатай бүх мөр (ТЭЗҮ, зураг төсөл, газар,
+ * зөвшөөрөл, сонгон, барилга угсралт …), систем даяар НЭГ эх (`projectPlanInputs.loadPlanPkgProgress`). Түлхүүр «БАГЦ<дугаар>»
+ * (`bagtsKey`-тэй ижил), S/P 0–100. Багцын мөр/зурвас бүр ҮҮНИЙГ; блокийн биет (газрын зураг, түвшин) хэвээр.
+ */
+type PlanPkgMap = ReadonlyMap<string, PlanPkgProgress>;
+const loadPlanPkgLazy = (): Promise<PlanPkgMap> => import('@/lib/projectPlanInputs').then((m) => m.loadPlanPkgProgress());
+/** Багцуудын дундаж багцын гүйцэтгэл — `pred`-д таарах багцаар, багц бүрийн жингээр (`packagesAverage`); багц алга бол null */
+const planPkgAvg = (m: PlanPkgMap, pred: (k: string) => boolean): number | null =>
+  packagesAverage(new Map([...m].filter(([k]) => pred(k)))).S;
+/**
+ * Багцын мөрүүдийн `progress` → БАГЦЫН ГҮЙЦЭТГЭЛ (S). Эх ачаалж буй/унасан бол тэр төлвийг дамжуулна (хуучин биет тоо руу буцахгүй).
+ */
+function withPlanPkg(q: Async<BagtsRow[]>, pp: Async<PlanPkgMap>): Async<BagtsRow[]> {
+  if (q.state !== 'ready') return q;
+  if (pp.state === 'loading') return { state: 'loading', data: null, error: null, retry: q.retry };
+  if (pp.state === 'error') return { state: 'error', data: null, error: pp.error, retry: pp.retry };
+  return { ...q, data: q.data.map((r) => ({ ...r, progress: pp.data.get(r.key)?.S ?? null })) };
+}
+/** Багцын түлхүүр → гэрээний мөрийн түүхий бичиглэл («БАГЦ-5.1») — шошгонд */
+function planPkgLabels(f: FinData | null): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const r of f?.contracts ?? []) {
+    const raw = String(r[CASHFLOW_NEW.fields.pkg] ?? '').trim();
+    const k = pkgKeyOf(raw);
+    if (raw && k && !out.has(k)) out.set(k, raw);
+  }
+  return out;
+}
+/** Багц бүрийн багцын гүйцэтгэл (S) ба төлөвлөгөө (P) — шошготой мөрүүд */
+function planPkgRows(m: PlanPkgMap, labelOf: (k: string) => string): { key: string; label: string; actual: number | null; planned: number | null }[] {
+  return [...m].map(([key, v]) => ({ key, label: labelOf(key), actual: v.S, planned: v.P }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'mn', { numeric: true }));
+}
+
 /**
  * ДУТУУ НИЙЛБЭР ГАРГАХГҮЙ — `usePlanTotals`-ын хэсэгчилсэн Map (зарим давхарга унасан).
  */
@@ -425,10 +467,12 @@ export function Dashboard({ dim, setDim, zone, setZone }: {
   const socTotals = usePlanTotals(zone, open[0] === 'benefit', SOC_PACK_IDS);
   const volOpen = open[0] === 'schedule' || open[0] === 'bagts';
   const pkgVol = useAsync<Map<string, PkgObyem | null> | null>(() => (volOpen ? loadPkgObyem() : Promise.resolve(null)), [volOpen]);
+  const planPkg = useAsync(loadPlanPkgLazy, []);
+  const bagtsPkg = useMemo(() => withPlanPkg(bagts, planPkg), [bagts, planPkg]);
   const d: DashData = useMemo(() => ({
-    bagts, fin, pkgProg, pkgVol, parcels, land, headline, budget, social, sources, prog, hist,
+    bagts, planPkg, bagtsPkg, fin, pkgProg, pkgVol, parcels, land, headline, budget, social, sources, prog, hist,
     netTotals, powTotals, socTotals, zone,
-  }), [bagts, fin, pkgProg, pkgVol, parcels, land, headline, budget, social, sources, prog, hist,
+  }), [bagts, planPkg, bagtsPkg, fin, pkgProg, pkgVol, parcels, land, headline, budget, social, sources, prog, hist,
     netTotals, powTotals, socTotals, zone]);
   const { setHighlight } = useMap();
 
@@ -669,8 +713,8 @@ function Detail({ k, d, flt, onFlt }: {
 } & FltProps) {
   switch (k) {
     case 'scope': return ScopeDetail({ bagts: d.bagts, d, flt, onFlt });
-    case 'schedule': return ScheduleDetail({ fin: d.fin, prog: d.prog, bagts: d.bagts, pkgProg: d.pkgProg, pkgVol: d.pkgVol });
-    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, pkgVol: d.pkgVol, fin: d.fin, flt, onFlt });
+    case 'schedule': return ScheduleDetail({ fin: d.fin, prog: d.prog, bagts: d.bagts, pkgProg: d.pkgProg, pkgVol: d.pkgVol, planPkg: d.planPkg });
+    case 'bagts': return BagtsDetail({ q: d.bagts, prog: d.prog, hist: d.hist, pkgProg: d.pkgProg, pkgVol: d.pkgVol, planPkg: d.planPkg, flt, onFlt });
     case 'land': return LandDetail({ parcels: d.parcels, land: d.land, flt, onFlt });
     case 'network': return NetworkDetail({ bagts: d.bagts, sources: d.sources, netTotals: d.netTotals, zone: d.zone, flt, onFlt });
     case 'power': return PowerDetail({ sources: d.sources, prog: d.prog, powTotals: d.powTotals, flt, onFlt });
@@ -684,13 +728,6 @@ function Detail({ k, d, flt, onFlt }: {
 
 /** ГАДНА ШУГАМ СҮЛЖЭЭНИЙ багцууд — дулаан/ус/татуурга (Багц 5.x, 7, 10–15) */
 const isNetworkPack = (bagts: string) => /^БАГЦ(5[1-4]|7|1[0-5])$/.test(bagtsKey(bagts));
-/**
- * Бөглөх хуудасны (`phys`) түлхүүрийг ГАЗРЫН ЗУРГИЙН багц руу хөрвүүлж шалгана.
- */
-const viaMap = (pred: (k: string) => boolean) => (k: string) => {
-  const key = bagtsKey(k);
-  return pred(key) || pred(MAP_PKG_ALIAS[key]?.key ?? '');
-};
 /**
  * 05-ын багц бүрийн ХЭМЖЭЭГ татах давхаргууд — `isNetworkPack`-тай ЯГ ижил
  * олонлог. Тусад нь бичвэл шинэ багц нэмэгдэхэд хоёр газар засах болно.
@@ -763,14 +800,11 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
   const f = d.fin.state === 'ready' ? d.fin.data : null;
   const nowYm = monthKey();
   /**
-   * Багцын биет гүйцэтгэл — «одоо» хүртэлх сүүлийн бөглөгдсөн сарын утга,
-   * багцын ХО дүнгээр жигнэсэн (`Finance.physNowOf` — `physNow`-той НЭГ томьёо; тайлагнаагүй багц 0%).
+   * 2026-11-24: БАГЦУУДЫН ГҮЙЦЭТГЭЛ — багцын гүйцэтгэлийн дундаж (`planPkgAvg`, багц бүрийн жингээр); урьд нь бөглөх хуудасны
+   * биет (`physNowOf`) байв.
    */
-  const pkgPct = (match: (k: string) => boolean): number | null => {
-    if (!f) return null;
-    const keys = new Set([...f.phys.keys(), ...(f.physN?.keys() ?? [])].filter(match));
-    return physNowOf(f, keys, nowYm)?.pct ?? null;
-  };
+  const pp = d.planPkg.state === 'ready' ? d.planPkg.data : null;
+  const pkgPct = (match: (k: string) => boolean): number | null => (pp ? planPkgAvg(pp, match) : null);
   const overall = f ? physNow(f, nowYm) : null;
   const blocks = b ? b.reduce((a, x) => a + x.blocks, 0) : null;
   const ail = b ? ailLabel(b) : null;
@@ -792,11 +826,10 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
       };
     case 'bagts': {
       const bl = b ? b.reduce((a, x) => a + x.blocks, 0) : 0;
-      const avg = b && f
-        ? buildProgressOf(b, pkgCostWeight(f.contracts.map(cfWeightRow))).pct
-        : null;
+      /* 2026-11-24: орон сууцны багцуудын БАГЦЫН ГҮЙЦЭТГЭЛИЙН дундаж (багц бүрийн жингээр) */
+      const avg = b ? pkgPct((k) => b.some((x) => x.key === k)) : null;
       return {
-        value: b == null ? dots(d.bagts) : f == null ? dots(d.fin) : avg == null ? '—' : pct(avg, 1),
+        value: b == null ? dots(d.bagts) : pp == null ? dots(d.planPkg) : avg == null ? '—' : pct(avg, 1),
         note: ail == null || !b ? dots(d.bagts) : tr('{0} багц · {1} блок · {2} өрх', num(b.length), num(bl), ail),
         pct: avg ?? undefined, tone: o.active,
       };
@@ -810,19 +843,19 @@ function railStatOf(k: SecKey, d: DashData, dots: Dots): {
       };
     }
     case 'network': {
-      const nw = { actual: pkgPct(viaMap(isNetworkPack)) };
+      const nw = { actual: pkgPct(isNetworkPack) };
       const n = infraPackList(isNetworkPack).length;
       return {
-        value: f == null ? dots(d.fin) : nw.actual == null ? '—' : pct(nw.actual, 1),
+        value: pp == null ? dots(d.planPkg) : nw.actual == null ? '—' : pct(nw.actual, 1),
         note: tr('{0} багц зурагт · гадна дулаан, ус', num(n)),
         pct: nw.actual ?? undefined, tone: o.active,
       };
     }
     case 'power': {
-      const pw = { actual: pkgPct(viaMap(isPowerPack)) };
+      const pw = { actual: pkgPct(isPowerPack) };
       const n = infraPackList(isPowerPack).length;
       return {
-        value: f == null ? dots(d.fin) : pw.actual == null ? '—' : pct(pw.actual, 1),
+        value: pp == null ? dots(d.planPkg) : pw.actual == null ? '—' : pct(pw.actual, 1),
         note: tr('{0} багц зурагт · гадна цахилгаан', num(n)),
         pct: pw.actual ?? undefined, tone: o.active,
       };
@@ -1157,8 +1190,9 @@ function EnvRight({ d }: { d: DashData }) {
         </Data>
       </Panel>
 
-      <Panel title={tr('Багц ажлаар')} note={tr('биет гүйцэтгэл %')} grow>
-        <Data q={d.bagts} loading={tr('Татаж байна…')}>
+      {/* 2026-11-24: багц бүрийн БАГЦЫН ГҮЙЦЭТГЭЛ (Төсөл төлөвлөгөө биелэлт) — урьд нь бөглөх хуудасны биет */}
+      <Panel title={tr('Багц ажлаар')} note={tr('Багцын гүйцэтгэл %')} grow>
+        <Data q={d.bagtsPkg} loading={tr('Татаж байна…')}>
           {(rows) => (
             <Bars
               inline
@@ -1513,14 +1547,19 @@ function bagtsGate(q: Async<BagtsRow[]>): ReactNode | null {
   return null;
 }
 
-function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
+function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol, planPkg }: {
   fin: Async<FinData>;
   prog: Async<BlockProgressMap>;
   bagts: Async<BagtsRow[]>;
   pkgProg: Async<PkgProgressRow[]>;
   pkgVol: Async<Map<string, PkgObyem | null> | null>;
+  /** 2026-11-24: БАГЦЫН ГҮЙЦЭТГЭЛ — «Багцаар», «Төлөвлөгөөний хоцрогдол — багцаар» */
+  planPkg: Async<PlanPkgMap>;
 }) {
   const f = fin.state === 'ready' ? fin.data : null;
+  const pkgLabels = planPkgLabels(f);
+  const pkgLabelOf = (k: string): string => (bagts.state === 'ready' ? bagts.data.find((r) => r.key === k)?.label : undefined)
+    ?? pkgLabels.get(k) ?? pkgGroupLabel(k);
   const vq = volAsync(pkgVol, pkgProg);
   const months = f ? aggregateMonths(f) : null;
   const lagSeries = months ? lagSeriesOf(months) : [];
@@ -1595,21 +1634,20 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
         </Data>
       </Panel>
 
-      {/* БАГЦААР — биет гүйцэтгэлийн хамгийн сүүлийн утга */}
-      <Panel title={tr('Багцаар — биет гүйцэтгэл')} note={srcNote(tr('сүүлийн бүртгэл'), SRC_SHEET)}>
-        <Data q={fin} loading={tr('Татаж байна…')}>
-          {(d) => {
-            /* Багц бүрийн СҮҮЛИЙН бөглөгдсөн сарын биет % (-тэй ижил дүрэм) */
-            const rows = pkgPhys(d, () => true).rows;
+      {/* БАГЦААР — 2026-11-24: БАГЦЫН ГҮЙЦЭТГЭЛ (Төсөл төлөвлөгөө биелэлт, 2-р унтраалга); урьд нь бөглөх хуудасны биет */}
+      <Panel title={tr('Багцаар — Багцын гүйцэтгэл')} note={tr('Төсөл төлөвлөгөө биелэлт')}>
+        <Data q={planPkg} loading={tr('Татаж байна…')}>
+          {(pp) => {
+            const rows = planPkgRows(pp, pkgLabelOf).sort((a, b) => (b.actual ?? 0) - (a.actual ?? 0));
             return rows.length ? (
               <Bars
                 inline
                 max={100}
                 items={heatBars(rows, (x) => ({
                   key: x.key,
-                  label: tr(pkgGroupLabel(x.key)),
-                  value: x.pct,
-                  display: pct(x.pct, 1),
+                  label: tr(x.label),
+                  value: x.actual ?? 0,
+                  display: pct(x.actual ?? 0, 1),
                 }))}
               />
             ) : <Empty label={tr('Багцын бүртгэл алга')} />;
@@ -1674,11 +1712,11 @@ function ScheduleDetail({ fin, prog, bagts, pkgProg, pkgVol }: {
 
       {/* ХОЦРОГДОЛ — багц бүрийн (төлөвлөгөө − бодит). «Хэн хоцорч байна»
           гэсэн асуултын шууд хариу; эерэг тоо нь хоцрогдол. */}
-      <Panel title={tr('Төлөвлөгөөний хоцрогдол — багцаар')} note={srcNote(tr('төл. − бодит, %'), SRC_SHEET)}>
-        <Data q={fin} loading={tr('Татаж байна…')}>
-          {(fd) => {
-            const b = bagts.state === 'ready' ? bagts.data : null;
-            const rows = pkgLagRows(fd, (k) => b?.find((r) => r.key === k)?.label ?? pkgGroupLabel(k))
+      {/* 2026-11-24: багцын төлөвлөгөө (P) − багцын гүйцэтгэл (S) — нэг эх (Төсөл төлөвлөгөө биелэлт) */}
+      <Panel title={tr('Төлөвлөгөөний хоцрогдол — багцаар')} note={tr('багцын төлөвлөгөө − Багцын гүйцэтгэл, %')}>
+        <Data q={planPkg} loading={tr('Татаж байна…')}>
+          {(pp) => {
+            const rows = planPkgRows(pp, pkgLabelOf)
               .filter((x) => x.actual != null && x.planned != null)
               .map((x) => ({
                 key: x.key, label: x.label,
@@ -1982,48 +2020,6 @@ function pkgLagRows(f: FinData, labelOf: (k: string) => string): PkgLagRow[] {
   return out.sort((a, b) => a.label.localeCompare(b.label, 'mn'));
 }
 
-function pkgPhys(f: FinData | null, match: (k: string) => boolean): {
-  /** Блокоор жигнэсэн дундаж % (тайлагнаагүй бол `null`) */
-  actual: number | null;
-  /** ЖИГНЭСЭН дунджид орсон багцын тоо (жинтэй тайлагнасан + тайлагнаагүй 0%) — 2026-10-09 */
-  packs: number;
-  /** Багц бүрийн сүүлийн % — жагсаалтад */
-  rows: { key: string; pct: number }[];
-} {
-  if (!f) return { actual: null, packs: 0, rows: [] };
-  const nowYm = monthKey();
-  const rows: { key: string; pct: number }[] = [];
-  let w = 0; let n = 0;
-  /** Жинтэй ТАЙЛАГНАСАН багцын тоо ба дунджид орсон бүх багцын тоо (2026-10-09) */
-  let wPacks = 0; let packs = 0;
-  f.phys.forEach((byMon, k) => {
-    if (!match(k)) return;
-    let last: number | null = null;
-    let lastMon = '';
-    [...byMon.entries()].sort(([x], [y]) => x.localeCompare(y)).forEach(([m, v]) => {
-      if (m <= nowYm) { last = v; lastMon = m; }
-    });
-    if (last == null) return;
-    rows.push({ key: k, pct: last });
-    const cntMap = f.physCnt.get(k);
-    const cnt = cntMap?.get(lastMon) ?? cntMap?.get(nowYm);
-    if (cnt == null) return;
-    w += last * cnt; n += cnt;
-    wPacks += 1; packs += 1;
-  });
-  f.physN?.forEach((cnt, k) => {
-    if (!match(k) || f.phys.get(k)?.size) return;
-    rows.push({ key: k, pct: 0 });
-    n += cnt;
-    packs += 1;
-  });
-  return {
-    actual: wPacks > 0 && n > 0 ? w / n : null,
-    packs: wPacks > 0 ? packs : 0,
-    rows: rows.sort((a, b) => b.pct - a.pct),
-  };
-}
-
 /**
  * ЗӨРҮҮНИЙ ШОШГО — (төлөвлөсөн − бодит), нэгж хувь.
  */
@@ -2052,10 +2048,10 @@ const FAMILY_LABEL: Record<PkgFamily, string> = {
 const familyPacks = (f: PkgFamily): string[] =>
   [...new Set((PKG_BY_FAMILY[f] ?? []).map((id) => bagtsKey(LAYER_BY_ID[id]?.note)))].filter(Boolean);
 
-function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
+function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, planPkg, flt, onFlt }: {
   q: Async<BagtsRow[]>;
-  /** 2026-10-04: «Төлөвлөгөө vs бодит — багцаар» — PkgProg/ТУХ-тай нэг эх (`pkgLagRows`) */
-  fin: Async<FinData>;
+  /** 2026-11-24: БАГЦЫН ГҮЙЦЭТГЭЛ — «Багц бүрийн явц», «Төлөвлөгөө vs бодит — багцаар» */
+  planPkg: Async<PlanPkgMap>;
   prog: Async<BlockProgressMap>;
   hist: Async<BlockHistory>;
   pkgProg: Async<PkgProgressRow[]>;
@@ -2107,20 +2103,25 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
         <RingCard value={avg} label={tr('Орон сууцны блокийн явц')} color={cat(0)} />
       </Panel>
 
-      <Panel title={tr('Багц бүрийн явц')} note={SRC_SHEET()}>
-        <Bars
-          inline
-          max={100}
-          selected={sel}
-          onSelect={pick}
-          items={rows.map((r) => ({
-            key: r.key,
-            label: r.label,
-            value: r.progress ?? null,
-            display: pct(r.progress ?? 0, 1),
-            color: r.progress == null ? NO_DATA : heat(r.progress, 100),
-          }))}
-        />
+      {/* 2026-11-24: багц бүрийн БАГЦЫН ГҮЙЦЭТГЭЛ (Төсөл төлөвлөгөө биелэлт) — урьд нь бөглөх хуудасны биет */}
+      <Panel title={tr('Багц бүрийн явц')} note={tr('Багцын гүйцэтгэл')}>
+        <Data q={withPlanPkg(q, planPkg)} loading={tr('Татаж байна…')}>
+          {(pr) => (
+            <Bars
+              inline
+              max={100}
+              selected={sel}
+              onSelect={pick}
+              items={pr.map((r) => ({
+                key: r.key,
+                label: r.label,
+                value: r.progress ?? null,
+                display: pct(r.progress ?? 0, 1),
+                color: r.progress == null ? NO_DATA : heat(r.progress, 100),
+              }))}
+            />
+          )}
+        </Data>
       </Panel>
 
       {/* ДЭД ҮЕ ШАТ Б1–Б5 — `BlockProgress.phases` нь `blockProgress.ts`-д
@@ -2225,11 +2226,12 @@ function BagtsDetail({ q, prog, hist, pkgProg, pkgVol, fin, flt, onFlt }: {
       {/* ТӨЛӨВЛӨГӨӨ vs БОДИТ — багцаар. 2026-10-04: хуваарийн муруй (`lagOf`) + бөглөх
           хуудасны биет % (`physLatest`) — «нэгтгэл бол төлөвлөгөөний ЦОРЫН ГАНЦ эх» гэсэн
           хуучин тэмдэглэл ХҮЧИНГҮЙ (хуваарийн муруй 2026-09-04-нөөс бий). */}
-      <Panel title={tr('Төлөвлөгөө vs бодит — багцаар')} note={srcNote(tr('биет · хуваарийн төлөвлөгөө'), SRC_SHEET)}>
-        <Data q={fin} loading={tr('Татаж байна…')}>
-          {(fd) => {
-            /* Орон сууцны хэсэг — зөвхөн орон сууцны багц (хуудастай бүх багц биш) */
-            const withPlan = pkgLagRows(fd, (k) => rows.find((r) => r.key === k)?.label ?? k)
+      {/* 2026-11-24: багцын гүйцэтгэл (S) / багцын төлөвлөгөө (P) — Төсөл төлөвлөгөө биелэлт (урьд нь биет · хуваарь) */}
+      <Panel title={tr('Төлөвлөгөө vs бодит — багцаар')} note={tr('Багцын гүйцэтгэл · багцын төлөвлөгөө')}>
+        <Data q={planPkg} loading={tr('Татаж байна…')}>
+          {(pp) => {
+            /* Орон сууцны хэсэг — зөвхөн орон сууцны багц */
+            const withPlan = planPkgRows(pp, (k) => rows.find((r) => r.key === k)?.label ?? k)
               .filter((x) => HOUSING_PKGS.includes(x.key) && (x.actual != null || x.planned != null));
             if (!withPlan.length) return <Empty label={tr('Бүртгэл хоосон байна.')} />;
             return (

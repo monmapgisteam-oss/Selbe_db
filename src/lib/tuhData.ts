@@ -7,6 +7,7 @@ import {
   CASHFLOW_NEW, CF_MONTH, HO_IPC, PKG_FAMILY_BY_BAGTS, bagtsKey, blockKey, contractAmountOf, hoAmount, pkgKeyOf,
 } from '@/lib/services';
 import type { LiveProgress } from '@/lib/projectPlanInputs';
+import type { PlanPkgProgress } from '@/lib/projectPlan';
 import { finXlChartCat, FIN_XL_TOTAL_CODE_FIELD } from '@/lib/finExcelLayout';
 import { cfStartKeyOf, type CfPlanRow } from '@/lib/gdash';
 import { moneyBaseOf } from '@/lib/monthlyMoney';
@@ -226,9 +227,33 @@ export function buildTuhPkgs(contracts: readonly Row[], contractedNote: string):
 export type LiveMap = ReadonlyMap<number, LiveProgress>;
 
 /**
- * Багцын биет гүйцэтгэл (0–100).
+ * 2026-11-24: БАГЦЫН ГҮЙЦЭТГЭЛ («Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгатай мөрүүд, `projectPlanInputs.loadPlanPkgProgress`)
+ * — түлхүүр «БАГЦ<дугаар>» (`planPkgKey`), S/P 0–100, хэмжилтгүй null.
  */
-export function progressOf(p: TuhPkg, fill: ReadonlyMap<string, number> | null, live: LiveMap | null = null): number | null {
+export type PkgProgMap = ReadonlyMap<string, PlanPkgProgress>;
+
+/**
+ * ТУХ-ын мөрийн БАГЦЫН түлхүүр (2026-11-24) — `planPkgKey`-тэй ижил дүрэм («БАГЦ<дугаар>» л). Зураг төслийн мөр (гэрээ тус бүр)
+ * ба диапазон/багцгүй мөрд '' — тэдгээр нь гэрээний мөрийн өөрийн S-ээр хэвээр.
+ */
+export const tuhPkgKey = (p: Pick<TuhPkg, 'group' | 'pkgKey'>): string =>
+  (p.group !== 'design' && /^БАГЦ\d/.test(p.pkgKey) ? p.pkgKey : '');
+
+/**
+ * Багцын гүйцэтгэл (0–100).
+ * @param pkg 2026-11-24: БАГЦЫН ГҮЙЦЭТГЭЛИЙН эх — өгвөл багцын мөрд (`tuhPkgKey`) ЗӨВХӨН түүний S (уншигдаагүй `null` бол null,
+ *   «…»/«—»); өгөөгүй (`undefined`) бол хуучин эх (орон сууц = бөглөх хуудас, бусад = гэрээний мөрийн S).
+ */
+export function progressOf(
+  p: TuhPkg,
+  fill: ReadonlyMap<string, number> | null,
+  live: LiveMap | null = null,
+  pkg?: PkgProgMap | null,
+): number | null {
+  if (pkg !== undefined) {
+    const k = tuhPkgKey(p);
+    if (k) return pkg?.get(k)?.S ?? null;
+  }
   if (p.group === 'housing') return fill?.get(p.pkgKey) ?? null;
   if (p.group !== 'design' && p.pkgKey) {
     const f = fill?.get(p.pkgKey);

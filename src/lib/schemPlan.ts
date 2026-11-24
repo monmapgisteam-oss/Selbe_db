@@ -5,7 +5,7 @@
  * Тиймээс схемийн тоо «Төсөл төлөвлөгөө биелэлт» хуудасны үе шатны мөрийн тоотой яг ижил байна.
  */
 
-import type { PhaseKind, PlanNode } from '@/lib/projectPlan';
+import { packageProgress, planPkgKey, type PhaseKind, type PlanNode } from '@/lib/projectPlan';
 import type { ProjectPlan } from '@/lib/projectPlanInputs';
 import { pkgKeyOf } from '@/lib/services';
 
@@ -25,6 +25,11 @@ export type PlanLive = {
   byPkg: Record<string, Partial<Record<PlanPhase, PhaseVal>>>;
   /** Төслийн нийт мөр (үндэс) */
   total: PhaseVal;
+  /**
+   * 2026-11-24 (хэрэглэгч: 2-р унтраалга): БАГЦЫН ГҮЙЦЭТГЭЛ — `planPkgKey` → тухайн багцын 2-р унтраалгатай БҮХ мөрийн
+   * (бүх үе шат) жигнэсэн S/P (`packageProgress`, `projectPlanInputs.planPkgProgress`-тэй НЭГ дүрэм). `E` = null.
+   */
+  pkgProg?: Record<string, PhaseVal>;
 };
 
 /** `pkgKeyOf`-ийн багц: «БАГЦ2», «БАГЦ171», «БАГЦ6162» */
@@ -68,7 +73,34 @@ export function planLiveOf(plan: ProjectPlan): PlanLive {
     const cur = (byPkg[pk] ??= {}).zurag;
     byPkg[pk].zurag = { P: cur?.P ?? null, S: val(s), E: cur?.E ?? null };
   }
-  return { phases, byPkg, total: of(plan.tree.root) };
+  const pkgProg: Record<string, PhaseVal> = {};
+  /* Модыг `plan.tree`-ээс (бусад хэсэгтэй ижил; жинхэнэ өгөгдөлд `result.tree` нь яг энэ мод) */
+  for (const [k, v] of packageProgress({ ...plan.result, tree: plan.tree }, planPkgKey)) pkgProg[k] = { P: val(v.P), S: val(v.S), E: null };
+  return { phases, byPkg, total: of(plan.tree.root), pkgProg };
+}
+
+/**
+ * БАГЦЫН ЖАГСААЛТЫН ХУВЬ → «Багцын гүйцэтгэл» (2026-11-24, цэвэр): схемийн багцын мөр бүрийн `progress`-ийг (урьд нь бөглөх
+ * хуудасны биет) `pkgProg`-ийн S-ээр солино; багц 2-р унтраалгатай мөргүй бол 0%. Эх алга бол `null` — хуучин биет тоо руу
+ * чимээгүй буцахгүй (эх унасныг схем «төсөл төлөвлөгөө биелэлт татагдсангүй» гэж хэлнэ).
+ */
+export function withPkgProg<T extends { key: string; progress: number | null }>(rows: T[] | null, live: PlanLive | null | undefined): T[] | null {
+  if (!rows) return rows;
+  return rows.map((b) => {
+    const k = planPkgKey(b.key);
+    return { ...b, progress: live?.pkgProg ? (k ? live.pkgProg[k]?.S ?? 0 : null) : null };
+  });
+}
+
+/**
+ * СОНГОСОН БАГЦЫН «Багцын гүйцэтгэл» (2026-11-24) — багц сонгоогүй, эх алга бол `null`; багц 2-р унтраалгатай мөргүй бол 0%
+ * (хэмжилтгүй = 0%).
+ */
+export function pkgProgOf(live: PlanLive | null | undefined, pkg: string | null): PhaseVal | null {
+  if (!live?.pkgProg || !pkg) return null;
+  const k = planPkgKey(pkg);
+  if (!k) return null;
+  return live.pkgProg[k] ?? { P: 0, S: 0, E: null };
 }
 
 /**

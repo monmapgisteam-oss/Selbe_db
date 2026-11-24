@@ -18,6 +18,7 @@ import {
   planBudgetTotal,
   moneySums,
   type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree,
+  packageProgress, planPkgKey, type PlanPkgProgress,
 } from './projectPlan';
 import {
   CASHFLOW_NEW, CF_MONTH,
@@ -902,6 +903,8 @@ export async function loadProjectPlan(today: number = ubToday()): Promise<Projec
 
 /** Нэг гэрээний (cashflow_id) амьд гүйцэтгэл — 0–100, хэмжилтгүй null (0 БИШ) */
 export type LiveProgress = {
+  /** 2026-11-24: тухайн мөрийн БАГЦЫН гүйцэтгэл (2-р унтраалгаар, `packageProgress`) — багцгүй/диапазон мөрд null */
+  pkg?: number | null;
   /** Мөрийн өөрийн S: барилга угсралт = гүйцэтгэл бөглөх (блок/багц), газар = газар чөлөөлөлт, бусад = порталд засагдсан утга (дэд мөртэй бол Σ F·X) */
   S: number | null;
   /** Үе шат бүрийн хувь — түлхүүр `CASHFLOW_NEW.stages`-ийн талбарын нэр; тухайн багцын тэр үе шатны ДЭЭД мөрийн S, `build` = өөрийн S */
@@ -925,7 +928,13 @@ export function zovPctMap(rows: readonly { bagts: string; tolov: string }[]): Ma
   return new Map([...acc].map(([k, a]) => [k, (a.ok / a.n) * 100]));
 }
 
+export { planPkgKey };
+/** БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ (2026-11-24, хэрэглэгч: 2-р унтраалга) — «Төсөл төлөвлөгөө биелэлт»-ээс, систем даяар НЭГ эх */
+export const planPkgProgress = (plan: ProjectPlan): Map<string, PlanPkgProgress> => packageProgress(plan.result, planPkgKey);
+export const loadPlanPkgProgress = (): Promise<Map<string, PlanPkgProgress>> => loadProjectPlan().then(planPkgProgress);
+
 export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
+  const pkgP = planPkgProgress(plan);
   const ST = CASHFLOW_NEW.stages;
   const PHASE_FIELD: [string, string][] = [
     ['tezu', ST.tezu], ['zurag', ST.design], ['gazar', ST.land], ['zovshoorol', ST.permit], ['songon', ST.tender],
@@ -960,7 +969,8 @@ export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
       /* 2026-11-24: зөвшөөрлийн бүртгэлийн хувь тооцоонд орсон (`zovOverride`) — ТТБ-ийн мөрийн S-ээс, тусдаа дарахгүй */
       stages[f] = zp !== undefined ? zp : t ? sOf(t) : null;
     }
-    out.set(id, { S, stages });
+    const pkK = planPkgKey(n.pkg);
+    out.set(id, { S, stages, pkg: pkK ? pkgP.get(pkK)?.S ?? null : null });
   }
   return out;
 }

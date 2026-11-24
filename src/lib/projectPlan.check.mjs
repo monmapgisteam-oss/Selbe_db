@@ -613,34 +613,33 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
   /* 1 = Тооцно / хоосон — өөрчлөлтгүй */
   const one = computePlan(buildTree(rows.map((r) => ({ ...r, niit_tootsoh: 1 }))), {}, d('2026-07-02'));
   near(one.values.get(one.tree.root).S, 42.5, 1e-9, '1 = Тооцно');
-  /* 2026-11-17 (хэрэглэгч: «барилга угсралт унтраахад төслийн нийт дагаж унтарч байна — алдаатай»): хоёр унтраалга БИЕ ДААСАН.
-     «Барилга угсралтад тооцохгүй» (uy_shat_tootsoh = 0) мөр зөвхөн эцэг мөрийн хувиас хасагдана; Төслийн нийт ХЭВЭЭР. */
+  /* 2026-11-24 (хэрэглэгч: «2 асаалттай бүгд багцын гүйцэтгэлд бодогдоно»): 2-р унтраалга (uy_shat_tootsoh) модны
+     нийлбэрт (бүлэг · үе шат · Төслийн нийт) НӨЛӨӨЛӨХГҮЙ — зөвхөн багцын гүйцэтгэлийг (packageProgress) тодорхойлно. */
   {
-    const ph = computePlan(buildTree(rows.map((r) => (r.dd_kod === '1.2' ? { ...r, uy_shat_tootsoh: 0 } : r))), {}, d('2026-07-02'));
-    near(ph.get('1').S, 100, 1e-9, 'эцэг мөр: 1.2 хасагдаж зөвхөн 1.1 (100%)');
-    near(ph.values.get(ph.tree.root).S, 42.5, 1e-9, 'Төслийн нийт ХЭВЭЭР — 1.2 нийтэд орсоор');
-    assert.equal(ph.get('1.2').noPhase, true);
-    assert.equal(ph.get('1.2').noTotal, undefined, 'нөгөө унтраалга дагахгүй');
-    assert.equal(ph.values.get(ph.tree.root).GT, undefined, 'нийтээс юу ч хасагдаагүй');
-    near(ph.get('1').G, 25, 1e-9, 'төсөлд эзлэх хэвээр');
-    const both = computePlan(buildTree(rows.map((r) => (r.dd_kod === '1.2' ? { ...r, uy_shat_tootsoh: 0, niit_tootsoh: 0 } : r))), {}, d('2026-07-02'));
-    near(both.get('1').S, 100, 1e-9, 'хоёулаа унтарсан: эцэг мөрөөс хасагдана');
-    near(both.values.get(both.tree.root).S, 42.5 / 0.875, 1e-9, 'хоёулаа унтарсан: нийтээс ч хасагдана');
-    assert.equal(both.get('1.2').noTotal, true);
-    const tot = computePlan(buildTree(flag), {}, d('2026-07-02'));
-    assert.equal(tot.get('1.2').noPhase, undefined, '«Төслийн нийтэд» унтраахад «Барилга угсралтад» дагахгүй');
-    const ms = monthEnds(d('2026-01-01'), d('2026-03-01'));
-    const mPh = monthlySeries(ph, ms), mBase = monthlySeries(base, ms);
-    assert.deepEqual(mPh.get(ph.tree.root), mBase.get(base.tree.root), 'сарын цуваа: Төслийн нийт хэвээр');
-    /* 2026-11-23 (давтан аудит): эцэг мөрийн сарын цуваа үе шатын F-ээр — 1.2 унтарсан үед 1.1 (дууссан) 100% жинтэй;
-       урьд нь Төслийн нийтийн F (50/50) орж, N = 100 атал сарын утга 50 гардаг байв */
-    const dated = (r) => (r.dd_kod === '1.1' || r.dd_kod === '1.2' ? { ...r, geree_ehleh: d('2026-01-01'), geree_duusah: d('2026-02-01') } : r);
-    const phD = computePlan(buildTree(rows.map(dated).map((r) => (r.dd_kod === '1.2' ? { ...r, uy_shat_tootsoh: 0 } : r))), {}, d('2026-07-02'));
-    near(phD.get('1').N, 100, 1e-9, 'эцэг мөрийн N — 1.1 дууссан');
-    const mD = monthlySeries(phD, ms).get(phD.tree.byCode.get('1'));
-    near(mD[mD.length - 1], phD.get('1').N, 1e-9, 'сарын цувааны сүүлийн утга = N (жин үе шатын дамжуулалтаас)');
-    near(phD.get('1.1').F, 100, 1e-9, 'F — үе шатын дамжуулалт (1.2 хасагдсан)');
-    near(phD.get('1.1').FT, 50, 1e-9, 'FT — Төслийн нийтийн дамжуулалт (дэлгэцэд)');
+    const { packageProgress, packagesAverage, inPackage } = await import('./projectPlan.ts');
+    const withPkg = (r) => ({ ...r, bagts: String(r.dd_kod).startsWith('1') ? 'Багц-1' : 'Багц-2' });
+    const key = (p) => String(p ?? '').replace(/[^0-9]/g, '') ? 'БАГЦ' + String(p).replace(/[^0-9]/g, '') : '';
+    const ph = computePlan(buildTree(rows.map(withPkg).map((r) => (r.dd_kod === '1.2' ? { ...r, uy_shat_tootsoh: 0 } : r))), {}, d('2026-07-02'));
+    near(ph.get('1').S, 50, 1e-9, 'эцэг мөр ХЭВЭЭР — 2-р унтраалга модны нийлбэрт нөлөөлөхгүй');
+    near(ph.values.get(ph.tree.root).S, 42.5, 1e-9, 'Төслийн нийт ХЭВЭЭР');
+    assert.equal(inPackage(ph.tree.byCode.get('1.2')), false);
+    assert.equal(inPackage(ph.tree.byCode.get('1.1')), true);
+    const pp = packageProgress(ph, key);
+    near(pp.get('БАГЦ1').S, 100, 1e-9, 'Багц-1: 1.2 хасагдаж зөвхөн 1.1 (100%)');
+    const on = computePlan(buildTree(rows.map(withPkg)), {}, d('2026-07-02'));
+    const ppOn = packageProgress(on, key);
+    near(ppOn.get('БАГЦ1').S, 50, 1e-9, 'Багц-1: бүгд асаалттай — 1.1 ба 1.2 тэнцүү жинтэй');
+    near(ppOn.get('БАГЦ2').S, 40, 1e-9, 'Багц-2');
+    near(packagesAverage(ppOn).S, 42.5, 1e-9, 'бүх багцын дундаж = жингээр (бүгд асаалттай үед төслийн нийттэй тэнцүү)');
+    /* Дээд мөр унтарвал үр удам нь дагана */
+    const grp = computePlan(buildTree(rows.map(withPkg).map((r) => (r.dd_kod === '1' ? { ...r, uy_shat_tootsoh: 0 } : r))), {}, d('2026-07-02'));
+    assert.equal(packageProgress(grp, key).has('БАГЦ1'), false, 'Багц-1-ийн бүх мөр хасагдсан');
+    /* Мөнгө, хугацаа, төслийн нийт унтраалга дагахгүй */
+    const tot = computePlan(buildTree(flag.map(withPkg)), {}, d('2026-07-02'));
+    assert.equal(inPackage(tot.tree.byCode.get('1.2')), true, '«Төслийн нийтэд» унтраахад багцаас хасагдахгүй');
+    const { planPkgKey } = await import('./projectPlan.ts');
+    assert.equal(planPkgKey('Багц-2'), 'БАГЦ2');
+    for (const x of ['Бүх багц', 'Байхгүй', 'Тухайлсан', 'БАГЦ 1- 4', '', null]) assert.equal(planPkgKey(x), '', String(x) + ' — багц биш');
   }
   /* Төлөвлөгөөт хувь (N…R) ба сарын цуваа ч хасагдана — 1.2 дууссан (100%), 2.1 эхлээгүй (0%) */
   const dt = (r) => (r.dd_kod === '1.2' ? { ...r, geree_ehleh: d('2026-01-01'), geree_duusah: d('2026-02-01') }
@@ -711,11 +710,13 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
   near(p1.get('1').S, 30, 1e-9, 'эцэг: 0.75·40 + 0.25·0');
   assert.equal(p1.get('1.2').noTotal, true, 'нөгөө унтраалга унтраалттай');
   near(p1.values.get(t1.root).S, 40, 1e-9, 'Төслийн нийтээс хасагдсан хэвээр');
-  /* «Төслийн нийтэд» асаавал нийтэд орно; эцгийн хувьд орохгүй */
+  /* «Төслийн нийтэд» асаавал нийтэд (ба модны нийлбэрт) орно; 2-р унтраалга унтраалттай тул багцын гүйцэтгэлд орохгүй (2026-11-24) */
   const t2 = mk({ niit_tootsoh: 1 });
   const p2 = computePlan(t2, {});
-  near(p2.get('1').S, 40, 1e-9, 'эцгийн хувь хэвээр');
-  assert.equal(p2.get('1.2').noPhase, true);
+  near(p2.get('1').S, 30, 1e-9, 'эцэг: 0.75·40 + 0.25·0');
+  const { inPackage: inPk } = await import('./projectPlan.ts');
+  assert.equal(inPk(t2.byCode.get('1.2')), false, 'багцын гүйцэтгэлд орохгүй');
+  assert.equal(inPk(t1.byCode.get('1.2')), true, '2-р унтраалга асаалттай — багцад орно');
   near(p2.values.get(t2.root).S, 30, 1e-9, 'Төслийн нийтэд орсон');
   console.log('projectPlan.check: «Нийслэл төсөв» мөрийн унтраалга OK');
 }

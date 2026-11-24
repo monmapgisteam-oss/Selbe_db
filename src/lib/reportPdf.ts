@@ -11,6 +11,13 @@ import { buildFindings, byTypeGapNote, BAGTS_GAP_PTS, type ReportExtra } from '@
 import { ailTotal } from '@/lib/execData';
 import { money2, num, pct, dateTime } from '@/lib/format';
 
+/** Жигнэсэн дундаж — утгагүй мөр (null) 0%-иар (порталын дүрэм), жингийн нийлбэр 0 бол null (2026-11-24) */
+const wAvg = (xs: readonly (readonly [number | null | undefined, number | null | undefined])[]): number | null => {
+  let w = 0, s = 0;
+  for (const [a, v] of xs) { const k = a ?? 0; if (!(k > 0)) continue; w += k; s += k * (v ?? 0); }
+  return w > 0 ? s / w : null;
+};
+
 /** ₮ — БҮТЭН дүн, мянгатын таслалтай (2026-09-01, товчлолыг бүрэн хассан), 2 аравтын оронтой (2026-11-23) */
 const bn = (v: number | null) => money2(v);
 const bnOrDash = (v: number) => (v > 0 ? bn(v) : '—');
@@ -168,13 +175,15 @@ export function buildReportDoc(
         tr('Багц бүр төслийн төсөвт эзлэх өөрийн жинтэй тул нийт гүйцэтгэл нь энгийн дундаж биш, жин харгалзан тооцсон дүн болно.{0}', d.heavyStage ? tr(' Одоогийн байдлаар төслийн төсвийн {0}-ийг «{1}» багц эзэлж байгаа тул нийт гүйцэтгэл голчлон түүнээс хамаарч байна.', pct(d.heavyStage.weight, 1), tr(d.heavyStage.label)) : '')),
       cap('3', tr('Багцын эзлэх жин ба бодит гүйцэтгэл')),
       { table: { headerRows: 1, widths: ['*', 44, 66, 66, 66], body: [
-        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Эзлэх жин'), true), th(tr('Гүйцэтгэл'), true), th(tr('Төлөвлөгөө'), true)],
+        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Эзлэх жин'), true), th(tr('Багцын гүйцэтгэл'), true), th(tr('Төлөвлөгөө'), true)],
         ...overall.stages.map((s): TableCell[] => [
           td(tr(s.label)), td(num(s.rows), true), td(pct(s.weight, 2), true),
           td(pct(s.actual, 2), true), td(s.planned == null ? '—' : pct(s.planned, 1), true),
         ]),
+        /* 2026-11-24: «Нийт» = мөрүүдийн (багцын гүйцэтгэл) жингээр жигнэсэн дундаж — хүснэгтийн баганатай нэг эх */
         [td(tr('Нийт'), false, TOTAL), td(num(overall.rows), true, TOTAL), td(pct(overall.weightSum, 2), true, TOTAL),
-          td(pct(overall.pct, 2), true, TOTAL), td(overall.plannedTotal == null ? '—' : pct(overall.plannedTotal, 1), true, TOTAL)],
+          td(pct(wAvg(overall.stages.map((x) => [x.weight, x.actual])), 2), true, TOTAL),
+          td(overall.stages.some((x) => x.planned != null) ? pct(wAvg(overall.stages.filter((x) => x.planned != null).map((x) => [x.weight, x.planned])), 2) : '—', true, TOTAL)],
       ] }, layout: tableLayout },
       note(tr('Эзлэх жингийн нийлбэр {0} — жин нь багц бүрийн төслийн нийт төсөвт эзлэх хувь бөгөөд орон сууцны бус багцууд энэ хүснэгтэд ороогүй тул нийлбэр 100%-иас бага; нийт гүйцэтгэлийг жингийн нийлбэрт харьцуулан тооцов. Төлөвлөгөөт хувь нь хуваарь ажлын 95%-иас доошийг хамарсан багцад дүгнэгдэхгүй тул «—» тэмдгээр илэрхийлэв.', pct(overall.weightSum, 2))),
 
@@ -216,13 +225,14 @@ export function buildReportDoc(
         + (d.startedPhases.length || d.notStartedPhases.length
           ? `${d.startedPhases.length ? tr(' Одоогоор «{0}» үе шат эхэлсэн', d.startedPhases.map((x) => tr(x)).join('», «')) : ''}${d.notStartedPhases.length ? tr(' бөгөөд үлдсэн {0} үе шат хараахан эхлээгүй байна', num(d.notStartedPhases.length)) : ''}.`
           : '')),
-      cap('6.1', tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')),
+      cap('6.1', tr('Багц тус бүрийн гүйцэтгэл')),
       { table: { headerRows: 1, widths: ['*', 60, 80], body: [
-        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Гүйцэтгэл'), true)],
+        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Багцын гүйцэтгэл'), true)],
         ...progress.byBagts.map((b): TableCell[] => [
           td(tr(b.bagts)), td(num(b.blocks), true), td(pct(b.pct, 2), true),
         ]),
-        [td(tr('Нийт'), false, TOTAL), td(num(progress.blocks), true, TOTAL), td(pct(progress.overall, 2), true, TOTAL)],
+        /* 2026-11-24: «Нийт» = багцын гүйцэтгэлийн блокоор жигнэсэн дундаж (хүснэгтийн баганатай нэг эх) */
+        [td(tr('Нийт'), false, TOTAL), td(num(progress.blocks), true, TOTAL), td(pct(wAvg(progress.byBagts.map((b) => [b.blocks, b.pct])), 2), true, TOTAL)],
       ] }, layout: tableLayout },
 
       cap('6.2', tr('Ажлын үе шат тус бүрийн дундаж гүйцэтгэл')),

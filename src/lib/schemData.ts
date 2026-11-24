@@ -11,7 +11,7 @@ import { loadZov } from '@/lib/zovshoorol';
 import { loadBagtsRows } from '@/lib/execData';
 import { t as tr } from '@/lib/i18nCore';
 import { SOURCE_NAME, type Approvals, type MaLite, type SchemSources } from '@/lib/schem';
-import { planLiveOf, type PlanLive } from '@/lib/schemPlan';
+import { planLiveOf, withPkgProg, type PlanLive } from '@/lib/schemPlan';
 
 /** «Төсөл төлөвлөгөө биелэлт»-ийн үе шатны явц — хуудастай ИЖИЛ тооцоо (`loadProjectPlan`) */
 async function loadPlanLive(): Promise<PlanLive | null> {
@@ -102,7 +102,8 @@ const schemSourcesFull = cached<SchemSources>(async () => {
     habea: take(NAME.habea, hb),
     zov: take(NAME.zov, z),
     review: take(NAME.review, r),
-    bagts: take(NAME.bagts, b),
+    /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): багц бүрийн хувь — «Багцын гүйцэтгэл» (`withPkgProg`), биет биш */
+    bagts: withPkgProg(take(NAME.bagts, b), pl.status === 'fulfilled' ? pl.value : null),
     plan: take(NAME.plan, pl),
     ma: take(NAME.ma, ma),
     approvals: take(NAME.approvals, ap),

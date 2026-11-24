@@ -403,7 +403,10 @@ function infraPacks(i: ReportInputs, no: string, group: number): Section {
   const items: BarItem[] = byDesc(packs, (p) => progressOf(p.progress)).map((p, k) => ({ label: p.name, value: progressOf(p.progress), hot: k === 0, text: pct(progressOf(p.progress), 1) }));
   /* 2026-11-09: энгийн дундаж (48 багц · 1.8%) биш — удирдлагын тайлангийн 1.2 «Инженерийн дэд бүтэц»-ийн хөрөнгө
      оруулалтаар жигнэсэн явц (`typePhysNow` → `gdash.byType`, 6.8%); хэмжигдээгүй = 0% */
-  const weighted = progressOf(i.x.gdash.byType.find((t) => /^инженерийн дэд бүтэц$/i.test(t.label.trim()))?.perf);
+  /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): дэд бүтцийн багцуудын «Багцын гүйцэтгэл»-ийн дундаж (`pkgAvg.infra`, багц бүрийн
+     төсөлд эзлэх жингээр) — доорх багц бүрийн баганатай НЭГ эх; эх алга бол хуучин төрлийн явц */
+  const weighted = progressOf(i.x.prog.pkgAvg ? i.x.prog.pkgAvg.infra.S ?? 0
+    : i.x.gdash.byType.find((t) => /^инженерийн дэд бүтэц$/i.test(t.label.trim()))?.perf);
   const started = packs.filter((p) => progressOf(p.progress) > 0).length;
   const text = [
     tr('Инженерийн дэд бүтцийн явц {0} (хөрөнгө оруулалтаар жигнэсэн); {1} багцаас {2} нь эхэлсэн.', pct(weighted, 1), num(packs.length), num(started)),
@@ -654,7 +657,9 @@ function appendixOf(x: ExecReport, no: string): Appendix {
   if (x.fin.planUnlisted > 0 || x.fin.givenUnlisted > 0) {
     rows.push([tr('Багцын мөрд ороогүй гэрээ, олголт'), x.fin.planUnlisted > 0 ? money2(x.fin.planUnlisted) : '—', money2(x.fin.givenUnlisted), '—', '—']);
   }
-  rows.push([tr('Нийт'), money2(x.fin.planTotal), money2(x.fin.given), x.fin.share == null ? '—' : pct(x.fin.share, 1), pct(progressOf(x.prog.actual), 1)]);
+  /* 2026-11-24: «Явц» багана — «Багцын гүйцэтгэл»; «Нийт» нь бүх багцын жигнэсэн дундаж (`pkgAvg.all`), эх алга бол «—» */
+  rows.push([tr('Нийт'), money2(x.fin.planTotal), money2(x.fin.given), x.fin.share == null ? '—' : pct(x.fin.share, 1),
+    x.prog.pkgAvg ? pct(progressOf(x.prog.pkgAvg.all.S), 2) : '—']);
   return {
     no, title: tr('Хавсралт — багц бүрийн гэрээ, олголт, явц'),
     head: [tr('Багц'), tr('Гэрээлсэн (₮)'), tr('Олгосон (₮)'), tr('Олголт'), tr('Явц')],

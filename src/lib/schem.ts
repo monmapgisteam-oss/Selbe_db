@@ -10,7 +10,7 @@ import {
 } from '@/lib/hyanalt';
 import { groupWorks } from '@/lib/hyanaltGroup';
 import { TOLOV, type Zov } from '@/lib/zovshoorol';
-import { paceHealth, phaseOf, type PhaseVal, type PlanLive } from '@/lib/schemPlan';
+import { paceHealth, phaseOf, pkgProgOf, type PhaseVal, type PlanLive } from '@/lib/schemPlan';
 
 /* ══════════════════ Төрөл ══════════════════ */
 
@@ -681,7 +681,10 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
 
   /* ── Барилга угсралт ── */
   /* 2026-11-23: «Төсөл төлөвлөгөө биелэлт»-ийн барилга угсралтын мөр — алга бол хуучин эх */
-  const bPlan = phaseOf(src.plan, 'barilga', pkg);
+  /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): багц сонгосон бол «Багцын гүйцэтгэл» (тэр багцын 2-р унтраалгатай бүх мөр, бүх үе
+     шат — `pkgProgOf`); сонгоогүй бол «Барилга угсралт» үе шатны мөр */
+  const pkgP = pkgProgOf(src.plan, pkg);
+  const bPlan = pkgP ?? phaseOf(src.plan, 'barilga', pkg);
   /* 2026-11-24 (аудит): орон сууцны явцаар (`overall.pct`) орлуулахгүй — өөр хэмжигдэхүүн */
   const bPct = bPlan?.S ?? (bagtsRow ? fin(bagtsRow.progress) : null);
   const weightSum = housingWeight(src);
@@ -689,7 +692,7 @@ export function buildSchem(src: SchemSources, pkg: string | null = null): SchemL
     health: bPlan ? paceHealth(bPlan) : grade(bPct, TH.barilgaPct.good, TH.barilgaPct.warn),
     metrics: [
       ...(bPlan ? [{ label: tr('Төлөвлөгөөт'), value: bPlan.P, kind: 'pct' as const }] : []),
-      { label: tr('Гүйцэтгэл'), value: bPct, kind: 'pct', why: lostWhy },
+      { label: pkgP ? tr('Багцын гүйцэтгэл') : tr('Гүйцэтгэл'), value: bPct, kind: 'pct', why: lostWhy },
       {
         label: tr('Тайлагнасан блок'),
         value: bagtsRow ? bagtsRow.blocks - bagtsRow.missing : lost ? null

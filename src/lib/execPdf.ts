@@ -442,19 +442,23 @@ export async function buildExecDoc(
           : { label: tr('Зөрүү'), value: '—', sub: coverageNote(p.planCoverage) || undefined },
       ]),
       ...(p.planExcluded.length ? [note(planScopeNote(p.planExcluded) ?? '')] : []),
-      cap(deltas ? `${tr('Багц тус бүрийн биет гүйцэтгэл')} · ${tr('өөрчлөлт {0} → {1}', deltas.period.from, deltas.period.to)}` : tr('Багц тус бүрийн биет гүйцэтгэл')),
+      /* 2026-11-24 (хэрэглэгч: 2-р унтраалга): багц бүрийн хувь — «Багцын гүйцэтгэл» (бүх үе шатын 2-р унтраалгатай мөр),
+         төлөвлөгөө нь ижил эхийн P; «Нийт» = багцуудын жигнэсэн дундаж. Орон сууцны биет (`p.actual`) нь дээрх KPI-д хэвээр. */
+      cap(deltas ? `${tr('Багцын гүйцэтгэл')} · ${tr('өөрчлөлт {0} → {1}', deltas.period.from, deltas.period.to)}` : tr('Багцын гүйцэтгэл')),
       barChart(buildPk.map((k) => {
         const t = packTrendOf(deltas, k.key, false);
-        return { label: k.name, value: k.progress ?? 0, text: `${pct(k.progress ?? 0, 1)}${t ? ` · ${t.text}` : ''}` };
+        return { label: k.name, value: k.progress ?? 0, text: `${pct(k.progress ?? 0, 2)}${t ? ` · ${t.text}` : ''}` };
       }), { nameW: 110, valW: deltas ? 120 : 70, max: 100 }),
-      { table: { headerRows: 1, widths: ['*', 60, 70, 80], body: [
-        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Гүйцэтгэл'), true)],
+      { table: { headerRows: 1, widths: ['*', 50, 60, 70, 70], body: [
+        [th(tr('Багц')), th(tr('Блок'), true), th(tr('Өрх'), true), th(tr('Багцын гүйцэтгэл'), true), th(tr('Төлөвлөгөө'), true)],
         ...buildPk.map((k): TableCell[] => [
           td(k.name), td(num(k.blocks), true), td(householdsLabel(k), true),
-          td(pct(k.progress ?? 0, 1), true, (k.progress ?? 0) < 5 ? RED : undefined),
+          td(pct(k.progress ?? 0, 2), true, (k.progress ?? 0) < 5 ? RED : undefined),
+          td(k.planned == null ? '—' : pct(k.planned, 2), true),
         ]),
         [tdBold(tr('Нийт')), tdBold(num(p.blocks), true), tdBold(householdsLabel(p), true),
-          tdBold(p.actual == null ? '—' : pct(p.actual, 1), true)],
+          tdBold(p.pkgAvg ? pct(p.pkgAvg.build.S ?? 0, 2) : '—', true),
+          tdBold(p.pkgAvg ? pct(p.pkgAvg.build.P ?? 0, 2) : '—', true)],
       ] }, layout: tableLayout },
       cap(tr('Блокийн гүйцэтгэлийн түвшингийн тархалт ({0} блок)', num(p.blocks))),
       { table: { headerRows: 1, widths: ['*', 90, 60], body: [

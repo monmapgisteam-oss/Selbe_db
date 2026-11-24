@@ -25,7 +25,7 @@ const {
   groupOf, statusOf, contractorGapCounts, buildTuhPkgs, progressOf, cfPlanPctAt, weekDelta, earned,
   rowSpan, commissionOf, milestonesOf, resourcesOf, daysBetween, calDaysBetween, elapsedPct,
   ipcOf, keyOwners, assignHo, splitJointHo, isDesignHo, mergeCommission, measDayOf, firstFilled,
-  searchNorm, matchesSearch, lateFirst, rowProgress, pendingAutoOf,
+  searchNorm, matchesSearch, lateFirst, rowProgress, pendingAutoOf, tuhPkgKey,
   pickCommission, keyedCache, lastReportOf, reportAge, heatWinterYear, TUH_STATUS,
 } = await import('./tuhData.ts');
 
@@ -294,6 +294,11 @@ console.log('\n9. Бусад харагдацтай нэг эх');
   const view = readFileSync(new URL('../modules/Tuh.tsx', import.meta.url), 'utf8');
   ok('model: сарын цэг pkgMonthsMap-аас', () => assert.ok(/const monthsBy = pkgMonthsMap\(fin\)/.test(model)));
   ok('model: орон сууцны хувь physLatest-ээс', () => assert.ok(/physLatest\(m\)/.test(model) && /progressOf\(p, actual, live\)/.test(model)));
+  ok('2026-11-24: ТУХ багцын мөр — loadPlanPkgProgress (Төсөл төлөвлөгөө биелэлт) нэг эх, ачаалж буй/унасан бол null', () => {
+    assert.match(view, /m\.loadPlanPkgProgress\(\)/);
+    assert.match(view, /pkgProg: pkgQ\.state === 'ready' \? pkgQ\.data : null,/);
+    assert.match(model, /const progress = byPackage \? progressOf\(p, actual, live, pkgProg\) : phys;/);
+  });
   ok('ТУХ loadFillPkgProgress-ийг ачаалахгүй (блокийн жингүй дундаж — өөр хэмжигдэхүүн)',
     () => {
       /* тайлбарт нэр нь үлдэж болно — зөвхөн импорт/дуудлагыг шалгана */
@@ -490,6 +495,22 @@ ok('зураг төслийн багц — live алга → null → «Мэдэ
   assert.equal(progressOf(pk3[0], null), null, 'хадгалсан 39.27 БИШ');
   assert.equal(statusOf({ contracted: true, progress: progressOf(pk3[0], null), gap: null, nullAs: 'unknown' }), 'unknown');
   assert.equal(progressOf(pk3[0], null, new Map([[5, { S: 40, stages: {} }]])), 40);
+});
+ok('2026-11-24: багцын мөр — БАГЦЫН ГҮЙЦЭТГЭЛ (Төсөл төлөвлөгөө биелэлт, 2-р унтраалга) л; зураг төсөл/диапазон хуучин эхээр', () => {
+  const PK = new Map([['БАГЦ1', { S: 31.5, P: 40, rows: 12, w: 8 }], ['БАГЦ61', { S: 12, P: 10, rows: 3, w: 1 }]]);
+  const LV = new Map([[5, { S: 40, stages: {} }], [6, { S: 90, stages: {} }]]);
+  const [h] = buildTuhPkgs([CR({ oid: 1, cf: 6, pkg: 'БАГЦ-1', t2: 'ОРОН СУУЦНЫ ХОРООЛОЛ - Барилга угсралт', cost: 10 })], 'Гэрээлсэн дүн');
+  assert.equal(tuhPkgKey(h), 'БАГЦ1');
+  assert.equal(progressOf(h, new Map([['БАГЦ1', 26.85]]), LV, PK), 31.5, 'бөглөх хуудасны биет 26.85 БИШ');
+  assert.equal(progressOf(h, new Map([['БАГЦ1', 26.85]]), LV), 26.85, 'эх өгөөгүй (undefined) — хуучин эх');
+  assert.equal(progressOf(h, new Map([['БАГЦ1', 26.85]]), LV, null), null, 'эх ачаалж буй/унасан — биет рүү буцахгүй');
+  assert.equal(progressOf(h, null, LV, new Map()), null, 'эхэд багц алга — null');
+  const [d] = buildTuhPkgs([CR({ oid: 5, cf: 5, pkg: 'БАГЦ-1', code: '1', name: 'Ажлын зураг', note: 'Гэрээлсэн дүн' })], 'Гэрээлсэн дүн');
+  assert.equal(tuhPkgKey(d), '', 'зураг төслийн мөр — гэрээ тус бүр');
+  assert.equal(progressOf(d, null, LV, PK), 40, 'зураг төсөл — гэрээний мөрийн S');
+  const [r] = buildTuhPkgs([CR({ oid: 7, cf: 6, pkg: 'БАГЦ 1- 4', t2: 'ИНЖЕНЕРИЙН ДЭД БҮТЭЦ - Барилга угсралт', cost: 5 })], 'Гэрээлсэн дүн');
+  assert.equal(tuhPkgKey(r), '', 'диапазон — багц биш');
+  assert.equal(progressOf(r, null, LV, PK), 90, 'диапазон — гэрээний мөрийн S');
 });
 
 console.log('\n17. HO «ТЭЗҮ,Судалгаа» → зураг төслийн мөр');

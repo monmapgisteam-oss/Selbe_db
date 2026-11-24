@@ -39,8 +39,10 @@ const toneCls = (st: TuhStatus) => {
  * Зөрүү ба төлөвлөгөө — төлвийг тогтоосон суурьтай НЭГ (`statusBasis`): хуваарь хангалттай хамарсан бол гүйцэтгэгчийн,
  * эс бөгөөс гэрээний төлөвлөгөө. Дутуу хуваарийн зөрүүгөөр дүгнэхгүй.
  */
-const gapOf = (r: TuhRow) => (r.statusBasis === 'contractor' ? r.gapContractor : r.gapContract);
-const planOf = (r: TuhRow) => (r.statusBasis === 'contractor' ? r.planContractor : r.planContract ?? r.planContractor);
+/* 2026-11-24: багцын мөр — багцын гүйцэтгэлийн эхийн төлөвлөгөө (P) ба зөрүү (S − P) */
+const gapOf = (r: TuhRow) => (r.statusBasis === 'package' ? r.gapPackage : r.statusBasis === 'contractor' ? r.gapContractor : r.gapContract);
+const planOf = (r: TuhRow) => (r.statusBasis === 'package' || r.byPackage ? r.planPackage
+  : r.statusBasis === 'contractor' ? r.planContractor : r.planContract ?? r.planContractor);
 export const anchorId = (key: string) => `tuh-${key.replace(/[^\p{L}\p{N}_-]+/gu, '_')}`;
 
 /**
@@ -220,7 +222,8 @@ function alertsOf(m: TuhModel): Alert[] {
     if (r.status === 'late') out.push({ key: k, code, text: tr('хоцорсон {0}', gapText(gapOf(r))), tone: b.warn });
     /* Гэрээгүй / хэмжигдээгүй багцыг «хэтэрсэн» гэхгүй — гүйцэтгэл мэдэгдэхгүй */
     if (r.p.contracted && r.progress != null && !finished && left != null && left < 0) out.push({ key: k, code, text: tr('гэрээт хугацаа хэтэрсэн'), tone: b.bad });
-    const fc = forecastEnd(r, m.now);
+    /* 2026-11-24: таамаг биет хэмжилтээр (`phys`) — 7 хоногийн ахиц нь биет */
+    const fc = forecastEnd({ progress: r.phys, week: r.week }, m.now);
     if (fc != null && r.p.end != null && fc > r.p.end + 30 * DAY && left != null && left >= 0) out.push({ key: k, code, text: tr('одоогийн хурдаар {0}-нд дуусна', date(fc)), tone: b.warn });
     if (!finished && r.reportAge != null && r.reportAge > TUH_STALE_DAYS) out.push({ key: k, code, text: tr('{0} хоног тайлангүй', num(r.reportAge)), tone: b.mute });
     const paid = workPaidPct(r.ipc);
@@ -503,7 +506,7 @@ export function PkgBoard({ r, m, extra = null, themes = new Set(), onOpen, onOpe
   const plan = planOf(r);
   const elapsed = elapsedPct(p.start, p.end, m.now);
   const left = daysLeft(p.end, m.today);
-  const fc = forecastEnd(r, m.now);
+  const fc = forecastEnd({ progress: r.phys, week: r.week }, m.now);
   const ipc = r.ipc;
   const docs = (d: TuhRow['ma']) => (d == null ? '—' : tr('{0} · батлагдсан {1} · хянагдаж буй {2} · буцаагдсан {3}', num(d.total), num(d.approved), num(d.review), num(d.returned)));
   /*
@@ -533,10 +536,12 @@ export function PkgBoard({ r, m, extra = null, themes = new Set(), onOpen, onOpe
       </header>
 
       <div className={b.kpis}>
-        <Kpi label={tr('Бодит гүйцэтгэл')} value={lz(m, 'plan', 'hist', 'live')(r.progress == null ? '—' : pct(r.progress, 2))}
-          note={r.week == null ? undefined : tr('7 хоногт {0}', gapText(r.week))} />
-        <Kpi label={tr('Төлөвлөгөө')} value={lz(m, 'plan', 'cfPlan')(plan == null ? '—' : pct(plan, 2))}
-          note={r.statusBasis === 'contractor' ? tr('гүйцэтгэгчийн хуваарь')
+        {/* 2026-11-24: багцын мөр — «Багцын гүйцэтгэл» (Төсөл төлөвлөгөө биелэлт, 2-р унтраалга); 7 хоногийн ахиц нь биет хэмжилтийнх */}
+        <Kpi label={r.byPackage ? tr('Багцын гүйцэтгэл') : tr('Бодит гүйцэтгэл')}
+          value={lz(m, ...(r.byPackage ? ['pkg'] as const : ['plan', 'hist', 'live'] as const))(r.progress == null ? '—' : pct(r.progress, 2))}
+          note={r.week == null ? undefined : r.byPackage ? tr('биет гүйцэтгэл 7 хоногт {0}', gapText(r.week)) : tr('7 хоногт {0}', gapText(r.week))} />
+        <Kpi label={tr('Төлөвлөгөө')} value={lz(m, ...(r.byPackage ? ['pkg'] as const : ['plan', 'cfPlan'] as const))(plan == null ? '—' : pct(plan, 2))}
+          note={r.byPackage ? tr('багцын төлөвлөгөө') : r.statusBasis === 'contractor' ? tr('гүйцэтгэгчийн хуваарь')
             : r.planContractor != null && !coverageOk(r.planCoverage)
               /* Хуваарь дутуу — гэрээний төлөвлөгөө байвал түүгээр дүгнэнэ, үгүй бол дүгнэхгүй */
               ? `${coverageNote(r.planCoverage) || tr('хуваарь дутуу')} · ${r.planContract != null ? tr('гэрээний төлөвлөгөөгөөр дүгнэв') : tr('дүгнэхгүй')}`
@@ -558,7 +563,9 @@ export function PkgBoard({ r, m, extra = null, themes = new Set(), onOpen, onOpe
           <Card title={tr('Гүйцэтгэлийн явц')} note={tr('төлөвлөгөө ба бодит гүйцэтгэл, сараар')} wide>
             {r.prog
               ? <Lazy minH={260}>{() => <ProgChart months={r.prog!} title="" loading={m.loading.has('plan')} planFailed={r.planFailed} />}</Lazy>
-              : <p className={b.empty}>{r.progress == null ? tr('Гүйцэтгэл хэмжигдээгүй.') : tr('Бодит гүйцэтгэл {0} — хуваарийн муруй алга.', pct(r.progress, 2))}</p>}
+              : <p className={b.empty}>{r.progress == null ? tr('Гүйцэтгэл хэмжигдээгүй.')
+                : r.byPackage ? tr('Багцын гүйцэтгэл {0} — хуваарийн муруй алга.', pct(r.progress, 2))
+                  : tr('Бодит гүйцэтгэл {0} — хуваарийн муруй алга.', pct(r.progress, 2))}</p>}
           </Card>
         )}
 
@@ -573,7 +580,9 @@ export function PkgBoard({ r, m, extra = null, themes = new Set(), onOpen, onOpe
             ]} />
             {usesHandover(m, r) && <p className={b.hint}>{tr('Хуваарьт огноо алга — Төсөл төлөвлөгөө биелэлт — төлөвлөсөн огноо')}</p>}
             <Bar v={elapsed} plan={r.progress} />
-            <p className={b.hint}>{tr('Өнгөрсөн хугацаа {0} · бодит гүйцэтгэл {1}', elapsed == null ? '—' : pct(elapsed, 0), r.progress == null ? '—' : pct(r.progress, 0))}</p>
+            <p className={b.hint}>{r.byPackage
+              ? tr('Өнгөрсөн хугацаа {0} · багцын гүйцэтгэл {1}', elapsed == null ? '—' : pct(elapsed, 0), r.progress == null ? '—' : pct(r.progress, 0))
+              : tr('Өнгөрсөн хугацаа {0} · бодит гүйцэтгэл {1}', elapsed == null ? '—' : pct(elapsed, 0), r.progress == null ? '—' : pct(r.progress, 0))}</p>
             {fc != null && <p className={b.hint}>{tr('Таамаг: сүүлийн 7 хоногийн ахицаар ({0}) үлдсэн ажил дуусах огноо', gapText(r.week))}</p>}
           </Card>
         )}

@@ -236,8 +236,9 @@ export function PackKpi({
     ]
     : [
       {
-        v: progress == null ? (progressLoading ? '…' : '—') : pct(progress, 1),
-        l: active ? tr('гүйцэтгэл') : tr('бодит гүйцэтгэлийн хувь'),
+        v: progress == null ? (progressLoading ? '…' : '—') : pct(progress, 2),
+        /* 2026-11-24: багц сонгосон үед «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгаар бодсон багцын гүйцэтгэл */
+        l: active ? tr('Багцын гүйцэтгэл') : tr('бодит гүйцэтгэлийн хувь'),
         c: levelColor(progress),
       },
       { v: num(blocks), l: tr('блок'), c: HUE },

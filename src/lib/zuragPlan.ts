@@ -210,7 +210,7 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
     used.add(nc);
     if (nc !== code) ren.set(code, nc);
     keep(r, r.olgoson_dun, r.urdchilgaa_dun);
-    held.push({ ...r, dd_kod: nc, etseg_kod: parent, registry: true, uy_shat_tootsoh: 0, niit_tootsoh: 0 });
+    held.push({ ...r, dd_kod: nc, etseg_kod: parent, registry: true, noProgress: true });
   }
   const rest = (v: number | null | undefined, k: number | undefined): number | null => {
     if (v == null) return null;

@@ -15,6 +15,7 @@
  */
 import { spanFrac } from './plan';
 import { t as tr } from '@/lib/i18nCore';
+import { pkgKeyOf } from '@/lib/services';
 
 /* ══════════════════ Төрлүүд ══════════════════ */
 
@@ -81,6 +82,8 @@ export type PlanStoredRow = {
   virtual?: true;
   /** Зургийн бүртгэлээс үүсгэсэн мөр (`zuragPlan`) — утгууд нь бүртгэлээс, ТТБ-д гараар засагдахгүй */
   registry?: true;
+  /** 2026-11-24: гүйцэтгэлийн хувь, жинд ОРОХГҮЙ мөр (санхүү хэвээр) — бүртгэлээс хасагдсан гэрээтэй зургийн «үлдээсэн» мөр (`zuragPlan`) */
+  noProgress?: true;
   /** «Газар чөлөөлөлт» үе шатын мөр — мөнгөн дүн нэгж талбаруудын нөхөх олговрын нийлбэрээс (`projectPlanInputs.withLandComp`) */
   landComp?: true;
   /** Олгосон дүн · урьдчилгаа (₮) — IPC-ээс систем бичнэ */
@@ -107,6 +110,60 @@ export type PlanStoredRow = {
  * 2026-11-04: дашбоард · тайлан · удирдлагын тайлан ажлын мөрийн нийлбэрийг (блокийн бутархай ₮-тэй) тус тусдаа
  * бодож 1 ₮ зөрдөг байв — бүгд ЭНЭ тоог харуулна. Мөр алга (E null) бол null.
  */
+/**
+ * 2-Р УНТРААЛГА «Багцын гүйцэтгэл» (2026-11-24, хэрэглэгч) — мөрийн ӨӨРИЙН утга. «Нийслэл төсөв» (`optIn`) мөрд анхдагчаар
+ * унтраалттай (1 бол асаалттай), бусад мөрд анхдагчаар асаалттай (0 бол унтраалттай).
+ */
+export const pkgSwitchOwn = (n: PlanNode): boolean => (n.optIn ? n.row?.uy_shat_tootsoh === 1 : n.row?.uy_shat_tootsoh !== 0);
+/** Мөр багцын гүйцэтгэлд орох эсэх — өөрийн ба БҮХ дээд мөрийн 2-р унтраалга асаалттай */
+export function inPackage(n: PlanNode): boolean {
+  for (let x: PlanNode | null = n; x && x.row; x = x.parent) if (!pkgSwitchOwn(x)) return false;
+  return true;
+}
+
+/** `w` — багцын навчнуудын Төслийн нийт дэх жингийн нийлбэр (0–100) — бүх багцын дундажид */
+/** Багцын түлхүүр — зөвхөн «БАГЦ<дугаар>» (диапазон «БАГЦ 1- 4», «Бүх багц», «Байхгүй» … орохгүй) */
+export const planPkgKey = (pkg: string | null | undefined): string => {
+  const k = pkgKeyOf(pkg ?? '');
+  return /^БАГЦ\d/.test(k) ? k : '';
+};
+
+export type PlanPkgProgress = { S: number | null; P: number | null; rows: number; w: number };
+/**
+ * БАГЦЫН ГҮЙЦЭТГЭЛ (2026-11-24, хэрэглэгч: «2 асаалттай бүгд багцын гүйцэтгэлд бодогдоно») — тухайн багцын 2-р унтраалга
+ * асаалттай БҮХ навч мөр (ТЭЗҮ, зураг төсөл, зөвшөөрөл, сонгон, барилга …) Төслийн нийт дэх жингээр (G) жигнэсэн дундаж.
+ * Навчаар бодох тул дээд мөрийн нийлбэрээс тусдаа: дотор нь унтраасан мөр л хасагдана. Хэмжилтгүй S/P = 0 (порталын дүрэм).
+ * Нийлбэрт орохгүй (`outside`, `skip`) ба жингүй мөр орохгүй.
+ * @param keyOf багцын түлхүүр — хоосон (диапазон «БАГЦ 1- 4», багцгүй мөр) бол орохгүй
+ */
+export function packageProgress(res: PlanResult, keyOf: (pkg: string | null) => string): Map<string, PlanPkgProgress> {
+  const acc = new Map<string, { w: number; s: number; p: number; n: number }>();
+  for (const n of res.tree.nodes) {
+    if (n.children.length || !n.row) continue;
+    const k = keyOf(n.pkg);
+    if (!k || !inPackage(n)) continue;
+    let out = false;
+    for (let x: PlanNode | null = n; x && x.row; x = x.parent) if (x.outside) { out = true; break; }
+    const v = res.values.get(n);
+    if (out || !v || v.skip) continue;
+    const w = v.G;
+    if (w == null || !(w > 0)) continue;
+    const a = acc.get(k) ?? { w: 0, s: 0, p: 0, n: 0 };
+    a.w += w; a.s += w * (v.S ?? 0); a.p += w * (v.P ?? 0); a.n += 1;
+    acc.set(k, a);
+  }
+  const out = new Map<string, PlanPkgProgress>();
+  for (const [k, a] of acc) out.set(k, { S: a.w > 0 ? a.s / a.w : null, P: a.w > 0 ? a.p / a.w : null, rows: a.n, w: a.w });
+  return out;
+}
+
+/** БҮХ БАГЦЫН ГҮЙЦЭТГЭЛИЙН ДУНДАЖ — багц бүрийн жингээр (`w`) жигнэсэн; багц алга бол null */
+export function packagesAverage(pp: ReadonlyMap<string, PlanPkgProgress>): { S: number | null; P: number | null } {
+  let w = 0, s = 0, p = 0;
+  for (const v of pp.values()) { w += v.w; s += v.w * (v.S ?? 0); p += v.w * (v.P ?? 0); }
+  return w > 0 ? { S: s / w, P: p / w } : { S: null, P: null };
+}
+
 export function planBudgetTotal(tree: PlanTree): number | null {
   const E = computePlan(tree, {}).values.get(tree.root)?.E;
   return E == null ? null : Math.round(E);
@@ -195,11 +252,6 @@ export type PlanValues = {
    * ДЭЛГЭЦЭНД (`FT ?? F`) л; нийлбэр, сарын цуваа `F`-ээр.
    */
   FT?: number | null;
-  /**
-   * 2026-11-17 (хэрэглэгч): «Үе шатны гүйцэтгэлд тооцохгүй» мөр (`uy_shat_tootsoh` = 0) ба түүний үр удам — өөрийн хувь
-   * бодогдсоор, эцэг мөрүүдийн (үе шат, Төслийн нийт) нийлбэр ба жинд орохгүй; жин нь үлдсэн ах дүүд хуваагдана.
-   */
-  noPhase?: true;
   /** Төслийн нийт S-д эзлэх үр дүнтэй жин (0–100) — хасагдсан мөр 0, бусад нь G-ийг дахин хуваасан */
   GT?: number | null;
 };
@@ -732,33 +784,13 @@ function rollup(n: PlanNode, val: (c: PlanNode) => number | null, F: Map<PlanNod
  * `ubToday()` — дуудагч цагтай `Date.now()` өгвөл УБ-ын 00:00–08:00-д өчигдөр болно).
  */
 export function computePlan(tree: PlanTree, inputs: PlanInputs = {}, today: number = ubToday()): PlanResult {
-  const b = computeCore(tree, inputs, today, true);
-  if (!tree.nodes.some((n) => n.row?.uy_shat_tootsoh === 0 && !n.outside)) return b;
-  /* 2026-11-17 (хэрэглэгч: «барилга угсралт унтраахад төслийн нийт дагаж унтарч байна — алдаатай»): хоёр унтраалга
-     БИЕ ДААСАН. «Барилга угсралтад тооцохгүй» мөр зөвхөн эцэг мөрүүдийн (бүлэг, үе шат) хувиас хасагдана; Төслийн нийт
-     мөр тэр унтраалгыг үл харгалзан бүтэн модоор бодогдоно (`a`) — түүнээс зөвхөн «Төслийн нийтэд тооцохгүй» мөр хасагдана. */
-  const a = computeCore(tree, inputs, today, false);
-  const values = new Map<PlanNode, PlanValues>();
-  values.set(tree.root, a.values.get(tree.root)!);
-  for (const n of tree.nodes) {
-    const { GT: _gt, noTotal: _nt, ...rest } = b.values.get(n)!;
-    void _gt; void _nt;
-    const va = a.values.get(n)!;
-    /* 2026-11-23 (аудит): «Хэсэгт эзлэх»-ийн ДЭЛГЭЦИЙН утга Төслийн нийтийн дамжуулалтаас (`FT`) — эс бөгөөс F × G_эцэг ≠ G
-       (6.2.1: 76.44% × 74.10 ≠ 57.88). 2026-11-23 (давтан аудит): `F` нь үе шатын дамжуулалтынх хэвээр — сарын цуваа
-       (`monthlySeries`), 6 түвшний блокийн жин үүгээр нийлдэг; Төслийн нийтийнхээр бол «барилга угсралтад тооцохгүй» мөр жин авч,
-       ах дүүсийн жин дахин хуваагдахгүй (N=100 атал сарын нийлбэр 50) байв. */
-    values.set(n, { ...rest, FT: va.F, G: va.G, ...(va.GT !== undefined ? { GT: va.GT } : {}), ...(va.noTotal ? { noTotal: true as const } : {}) });
-  }
-  return {
-    tree, today, values, get: (code) => { const n = tree.byCode.get(code); return n ? values.get(n) : undefined; },
-    ...(a.noTotal ? { noTotal: a.noTotal } : {}),
-    total: a,
-  };
+  /* 2026-11-24 (хэрэглэгч): 2-р унтраалга («Багцын гүйцэтгэл», `uy_shat_tootsoh`) модны (бүлэг · үе шат · Төслийн нийт)
+     нийлбэрт НӨЛӨӨЛӨХГҮЙ — зөвхөн багцын гүйцэтгэлийг тодорхойлно (`packageProgress`). Урьдын хоёр дамжуулалт хэрэггүй болов. */
+  return computeCore(tree, inputs, today);
 }
 
-/** `computePlan`-ийн цөм. `usePhase` = false бол «Барилга угсралтад тооцохгүй» (`uy_shat_tootsoh`) унтраалгыг үл харгалзана. */
-function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase: boolean): PlanResult {
+/** `computePlan`-ийн цөм */
+function computeCore(tree: PlanTree, inputs: PlanInputs, today: number): PlanResult {
   const { root, nodes } = tree;
   const post = [...nodes].reverse(); // хүүхэд эцгээсээ өмнө
   const ov = new Map<PlanNode, Partial<Record<Metric, number | null>>>();
@@ -781,17 +813,10 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
     const mark = (n: PlanNode) => { skip.add(n); n.children.forEach(mark); };
     for (const n of nodes) if (n.phase === 'barilga' && n.sub === 'beltgel' && !n.outside && !skip.has(n) && !has(n)) mark(n);
   }
-  /* ── ҮЕ ШАТНЫ ГҮЙЦЭТГЭЛД ТООЦОХГҮЙ (2026-11-17, хэрэглэгч) — `uy_shat_tootsoh` = 0 мөр: `skip`-тэй ижил замаар эцгийн
-     нийлбэр, жингээс хасагдана (жингийн төсөв `keepOf` үлдсэн ах дүүд), ГЭХДЭЭ өөрийн S ба үр удмын бодолт хэвээр —
-     зөвхөн тэр мөр өөрөө `skip`-д орно, үр удам нь биш (`soft`: S-ийг хоослохгүй, `values.skip` тавихгүй). ── */
-  const soft = new Set<PlanNode>();
-  const noPhase = new Set<PlanNode>();
-  for (const n of nodes) {
-    if (!usePhase || n.row?.uy_shat_tootsoh !== 0 || n.outside || skip.has(n)) continue;
-    soft.add(n);
-    skip.add(n);
-    const markNP = (x: PlanNode) => { noPhase.add(x); x.children.forEach(markNP); };
-    markNP(n);
+  /* 2026-11-24: `noProgress` мөр (үр удамтайгаа) хувь, жингээс хасагдана — төсөв (E), мөнгө хэвээр */
+  {
+    const markNp = (n: PlanNode) => { skip.add(n); n.children.forEach(markNp); };
+    for (const n of nodes) if (n.row?.noProgress && !skip.has(n)) markNp(n);
   }
   const counted = (c: PlanNode) => !c.outside && !skip.has(c);
 
@@ -1014,7 +1039,7 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
     const rec = {} as Record<Metric, number | null>;
     for (const m of METRICS) {
       if (o && m in o) { rec[m] = frac(o[m] ?? null); continue; }
-      if (m === 'S' && skip.has(n) && !soft.has(n)) { rec[m] = null; continue; }
+      if (m === 'S' && skip.has(n)) { rec[m] = null; continue; }
       if (n.children.length) rec[m] = rollup(n, (c) => X.get(c)![m], F);
       else rec[m] = n.row ? leafValue(n, m, today, inputs) : null;
     }
@@ -1084,8 +1109,7 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number, usePhase
       N, P, Q: hund(x.Q), R, S,
       T: ratio(S, N), V: ratio(S, P), W: ratio(S, R),
       status: n.blok ? blockStatus(S) : null,
-      ...(skip.has(n) && !soft.has(n) ? { skip: true as const } : {}),
-      ...(noPhase.has(n) ? { noPhase: true as const } : {}),
+      ...(skip.has(n) ? { skip: true as const } : {}),
       ...(lost > 0 ? {
         GT: noTotal.has(n) ? 0 : hund(G.get(n) == null || kT == null ? null : G.get(n)! * kT),
         ...(noTotal.has(n) ? { noTotal: true as const } : {}),
