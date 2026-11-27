@@ -15,7 +15,7 @@ import { t as tr } from '@/lib/i18nCore';
 import { money2, num, pct, mnt, monthKey, sentenceCase, dayKey } from '@/lib/format';
 import {
   loadGdashCf, loadContractSum, loadHseNow, kpisOf, chartTypeCost, isContracted,
-  planScopeNote, HOUSING_PKGS, type CfRow,
+  planScopeNote, HOUSING_PKGS, wbsGroupPct, DESIGN_WBS, type CfRow,
 } from '@/lib/gdash';
 import { FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadLandStatus } from '@/lib/land';
@@ -187,7 +187,11 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     loadHseNow().catch(() => null),
     loadFinance(),
     loadNegtgelFull()
-      .then((f) => ({ pct: negtgelActualFailed(f.failed) ? null : f.root?.act ?? negtgelProjectPct(f.rows, f.calc), plan: f.root?.planG ?? negtgelProjectPlan(f.rows, f.calc) }))
+      .then((f) => ({
+        pct: negtgelActualFailed(f.failed) ? null : f.root?.act ?? negtgelProjectPct(f.rows, f.calc), plan: f.root?.planG ?? negtgelProjectPlan(f.rows, f.calc),
+        /* 2026-11-27 (аудит): «ТЭЗҮ, зураг төсөл»-ийн гүйцэтгэл — дашбоардын «Төслийн гүйцэтгэл» чарттай НЭГ функц (`wbsGroupPct`) */
+        design: wbsGroupPct(f.rows, f.calc, DESIGN_WBS).pct,
+      }))
       .catch(() => null),
     loadSafetyRows().catch(() => null),
   ]);
@@ -237,20 +241,13 @@ async function loadExecReportRaw(): Promise<ExecReport> {
     }))
     .sort((a, b) => b.cost - a.cost);
   /* 2026-11-23 (аудит №2): ТЭЗҮ · ажлын зураг төслийн гэрээ (11.8 тэрбум) ажлын мөрд байхгүй тул тусдаа мөр — нийт нь
-     ТТБ-ийн гэрээлсэн нийт (2,046.5)-тэй таарна. Гүйцэтгэл = ТТБ-ийн ТЭЗҮ/зураг үе шатын S (төсвөөр жигнэсэн). */
+     ТТБ-ийн гэрээлсэн нийт (2,046.5)-тэй таарна. 2026-11-27 (аудит): гүйцэтгэл = дашбоардын «Төслийн гүйцэтгэл» чартын
+     «ТЭЗҮ, зураг төсөл» (`wbsGroupPct`, «Нэгтгэл гүйцэтгэл»-ийн 1 · 2) — урьд нь ТТБ-ийн үе шатын S-ийг төсвөөр (E) жигнэдэг байв. */
   {
-    const [design, pl] = await Promise.all([loadDesignMoney().catch(() => null), loadProjectPlan().catch(() => null)]);
+    const design = await loadDesignMoney().catch(() => null);
     if (design && (design.budget > 0 || design.contract > 0)) {
-      let ew = 0, es = 0;
-      if (pl && !pl.empty) {
-        for (const ph of pl.tree.root.children) {
-          if (ph.outside || (ph.phase !== 'tezu' && ph.phase !== 'zurag')) continue;
-          const v = pl.result.values.get(ph);
-          if (v?.E != null && v.E > 0 && v.S != null) { ew += v.E; es += v.E * v.S; }
-        }
-      }
       byType.push({
-        label: 'ТЭЗҮ, зураг төсөл', cost: design.budget, contract: design.contract, perf: ew > 0 ? es / ew : null,
+        label: 'ТЭЗҮ, зураг төсөл', cost: design.budget, contract: design.contract, perf: wbs?.design ?? null,
         n: design.n, contracted: design.contracted,
       });
       byType.sort((a, b) => b.cost - a.cost);

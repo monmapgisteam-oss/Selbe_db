@@ -55,10 +55,19 @@ frame('2026-01-20', [[1, 1], [null, null]]);
   assert.equal((await priorObyem(pkg, sc, '2026-01-01')).size, 0, 'өмнөх жаазгүй');
   const q0 = fake.count('rest', 'query');
   await priorObyem(pkg, sc, '2026-01-20');
-  assert.equal(fake.count('rest', 'query'), q0, 'кэш — дахин татахгүй');
+  assert.equal(fake.count('rest', 'query'), q0 + 1, 'кэш — зөвхөн хямд гарын үсгийн шалгалт, жаазыг дахин татахгүй');
   dropPriorCache(pkg.key);
   await priorObyem(pkg, sc, '2026-01-20');
-  assert.equal(fake.count('rest', 'query'), q0 + 1, 'кэш хаягдсаны дараа дахин татна');
+  assert.equal(fake.count('rest', 'query'), q0 + 3, 'кэш хаягдсаны дараа дахин татна (гарын үсэг + жааз)');
+  /* 2026-11-27 (аудит): өөр бичигч ӨМНӨХ өдрийн жааз нэмбэл (хойш огноотой батлалт) кэш хаягдахгүй ч гарын үсэг зөрж дахин татна */
+  const added = frame('2026-01-15', [[4, null], [null, null]]);
+  const pr2 = await priorObyem(pkg, sc, '2026-01-20');
+  assert.deepEqual(pr2.get(k('1', 'Шороо')), [11, 3], '01-15-ны шинэ жааз хуримтлалд орлоо (7 + 4)');
+  const q1 = fake.count('rest', 'query');
+  await priorObyem(pkg, sc, '2026-01-20');
+  assert.equal(fake.count('rest', 'query'), q1 + 1, 'өөрчлөлтгүй бол дахин кэшээс');
+  T.rows = T.rows.filter((r) => !added.includes(r));
+  dropPriorCache(pkg.key);
   assert.deepEqual(frameRowKeys([{ attributes: { no: '1', work: 'x' } }, { attributes: { no: '1', work: 'x' } }], sc), ['1 ¦ x #0', '1 ¦ x #1'], 'давхар мөр ялгарна');
   /* Ажлын кодтой хуудас — ижил № ба нэртэй мөрийг өмнө нь нэмсэн ч код тогтвортой тул түлхүүр гулсахгүй */
   const scD = { ...sc, f: { ...sc.f, des: 'des_dugaar' } };

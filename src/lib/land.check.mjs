@@ -124,6 +124,10 @@ assert.equal(empty.pct, null, '0 хуваарьт хувь null — 0% БИШ');
     assert.equal(cg.c, 80_000_000 + 5_000_000 + 12_000_000, 'хуваагдсан талбарын дүн нэг удаа; түр бичсэн дүн нийлбэрт орно');
     assert.equal(cg.cn, 2, 'олговор олгосон талбар: 1461704712 ба 500 — «ТААРААГҮЙ», 0 ₮, хоосон ороогүй');
     assert.equal(cg.n, 6, 'мөрийн тоо өөрчлөгдөхгүй');
+    /* 2026-11-27: зөвхөн «ТААРААГҮЙ» мөрөнд дүнтэй үед нийлбэр null БИШ; нэг ч дүнгүй үед л null */
+    const parkedOnly = buildLandStatus(parcelGroupRows([C('200', 5_000_000, 'ТААРААГҮЙ 1461700001'), C('300', null)]), []);
+    assert.deepEqual([parkedOnly.comp, parkedOnly.compParcels], [5_000_000, 0], '«ТААРААГҮЙ» дүн нийлбэрт харагдана');
+    assert.equal(buildLandStatus(parcelGroupRows([C('300', null), C('400', 0)]), []).comp, null, 'дүн огт алга → null');
   }
   const ls3 = buildLandStatus(parcelGroupRows(rows), []);
   assert.equal(ls3.total, 6, 'мөрийн тоо өөрчлөгдөхгүй');

@@ -27,7 +27,7 @@ import h from './habea.module.css';
 import { num, pct, date } from '@/lib/format';
 import { habeaPkgKey, habeaPkgLabel, inSel, AttPhoto } from './habeaUzleg';
 /* ХАБЭА-ны шатлал — чарт ба гүйцэтгэгчийн мэдэгдэл (`habeaNotify`) нэг дүрмээр (2026-11-21) */
-import { ACTION_DONE, ESCALATION, stageOf } from '@/lib/habeaStage';
+import { ACTION_DONE, ACTION_REVIEW, ACTION_WINDOW_DAYS, ESCALATION, contractorOwes, stageOf, ubWindowStart } from '@/lib/habeaStage';
 
 const A = HABEA.action;
 
@@ -44,7 +44,8 @@ const STATUS: { code: number; label: () => string; color: string }[] = [
   { code: 3, label: () => tr('Дууссан'), color: '#16a34a' },
 ];
 const DONE = ACTION_DONE;
-const WINDOW_DAYS = 30;
+/** «Сүүлийн сар» — Улаанбаатарын 30 хуанлийн өдөр, тайлангийн цонхтой ижил (2026-11-27) */
+const WINDOW_DAYS = ACTION_WINDOW_DAYS;
 /** Ноцтой үл нийцлийн өнгө (жагсаалтын цэг) */
 const MAJOR = '#dc2626';
 /** «Багцаар» · «Асуумжаар» баганын өнгө — донатын «Хуваарилсан»-тай ижил */
@@ -156,9 +157,12 @@ export const toggleActSel = (s: ActSel, dim: ActDim, key: string): ActSel => ({
 const statusKey = (r: ActionRow) => (r.status == null ? '' : String(r.status));
 const surveyKey = (r: ActionRow) => shortSurvey(r.survey) || tr('Асуумж заагаагүй');
 const dayKey = (r: ActionRow) => (r.d == null ? '' : ubDayKey(r.d));
-/** Шатлал — зөвхөн НЭЭЛТТЭЙ мөрт (дууссан нь аль ч шатанд орохгүй); `now`-оос хамаарна */
+/**
+ * Шатлал — зөвхөн гүйцэтгэгчийн хариуцлагатай НЭЭЛТТЭЙ мөрт (дууссан, «Шалгуулах», төлөвгүй нь аль ч шатанд орохгүй —
+ * `contractorOwes`, 2026-11-27); `now`-оос хамаарна
+ */
 const stageKey = (r: ActionRow, now: number) =>
-  (r.d == null || r.d > now || r.status === DONE ? '' : ESCALATION[stageOf(r.d, now)].key);
+  (r.d == null || r.d > now || !contractorOwes(r.status) ? '' : ESCALATION[stageOf(r.d, now)].key);
 const KEY_OF: Record<ActDim, (r: ActionRow, now: number) => string> = {
   status: statusKey, survey: surveyKey, day: dayKey, stage: stageKey,
 };
@@ -214,7 +218,7 @@ const inWindow = (rows: readonly ActionRow[], now: number, sel?: ActSel, sc?: Ac
   if (sc?.days.length || sc?.months?.length) {
     return rows.filter((r) => r.d != null && r.d <= now && inDates(r.d, sc));
   }
-  const from = sel?.stage.length ? -Infinity : now - WINDOW_DAYS * 86_400_000;
+  const from = sel?.stage.length ? -Infinity : ubWindowStart(now, WINDOW_DAYS);
   return rows.filter((r) => r.d != null && r.d >= from && r.d <= now);
 };
 
@@ -441,10 +445,14 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = N
     const daySeries = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]))
       .map(([key, value]) => ({ key, label: key.slice(5).replace('-', '.'), value, display: num(value) }));
     /* Шатлал — НЭЭЛТТЭЙ үл нийцэл үзлэгийн огнооноос хэд дэх долоо хоногтоо (30 хоногийн цонхоор БИШ — 4-р шат
-       нь хуучин үлдэгдлийг ч хамарна; өдрийн сонголтыг үл тооно, өөрийн сонголтоор шүүгдэхгүй) */
+       нь хуучин үлдэгдлийг ч хамарна; өдрийн сонголтыг үл тооно, өөрийн сонголтоор шүүгдэхгүй).
+       2026-11-27: «Шалгуулах» (захиалагчийн хяналт хүлээж буй) ба төлөвгүй мөр шатанд орохгүй — тусдаа тоо */
     const noDay = { ...sel, day: [] };
-    const open = data.filter((r) => r.d != null && r.d <= now && r.status !== DONE
+    const pend = data.filter((r) => r.d != null && r.d <= now && r.status !== DONE
       && inDates(r.d, sc) && passes(r, sc, noDay, now, 'stage'));
+    const open = pend.filter((r) => contractorOwes(r.status));
+    const reviewN = pend.filter((r) => r.status === ACTION_REVIEW).length;
+    const unknownN = pend.filter((r) => r.status == null).length;
     const stageN = ESCALATION.map(() => 0);
     for (const r of open) stageN[stageOf(r.d ?? now, now)] += 1;
     const stageBars = ESCALATION.map((s, i) => ({
@@ -452,7 +460,7 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = N
       display: open.length ? `${num(stageN[i])} · ${pct((stageN[i] / open.length) * 100, 0)}` : num(stageN[i]),
       hint: s.hint(),
     }));
-    return { rows, total: rows.length, major, known: knownN, done: doneN, status, pkgBars, surveyBars, daySeries, stageBars, openN: open.length };
+    return { rows, total: rows.length, major, known: knownN, done: doneN, status, pkgBars, surveyBars, daySeries, stageBars, openN: open.length, reviewN, unknownN };
   }, [st, pkgs, cos, days, months, sel, now, pickOid, scope]);
 
   if (st.state === 'loading') return <Section title={tr('Үл нийцлийн арилгалт')}><Loading /></Section>;
@@ -496,7 +504,10 @@ export function HseActionPanel({ part, pkgs, cos = NONE, days = NONE, months = N
             )
             : <Empty label={tr('Бүртгэл алга')} />}
         </Section>
-        <Section title={tr('Нээлттэй үл нийцэл — шатлалаар')} note={tr('үзлэгийн огнооноос · нээлттэй {0}', num(view.openN))}>
+        <Section title={tr('Нээлттэй үл нийцэл — шатлалаар')}
+          note={[tr('үзлэгийн огнооноос · нээлттэй {0}', num(view.openN)),
+            view.reviewN ? tr('шалгуулахаар хүлээгдэж буй {0}', num(view.reviewN)) : '',
+            view.unknownN ? tr('төлөв тодорхойгүй {0}', num(view.unknownN)) : ''].filter(Boolean).join(' · ')}>
           {view.openN
             ? <Bars items={view.stageBars} selected={sel.stage} onSelect={(k) => onSel('stage', k)} />
             : <Empty label={tr('Нээлттэй үл нийцэл алга')} />}

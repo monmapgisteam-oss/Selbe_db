@@ -75,6 +75,57 @@ console.log('✅ latestPerRespNo — сүүлийн хувилбар ялна ·
 }
 console.log('✅ resubmitLinks — R → дахин ирүүлсэн MA');
 
+/* 3в. 2026-11-27: дахин ирүүлэлт = ижил ажлыг хамарсан дараагийн MA; хэсэгчлэн хамарсан R хамраагүй ажлаараа хаалттай */
+{
+  const { effectiveMas } = await import('@/lib/ma.ts');
+  const rej = rowOf(attrs({ objectid: 20, resp_no: 'Y1', material_name: 'Арматур', works_all: 'b1_9f:1 b1_9f:2', verdict: 'R' }));
+  const other = rowOf(attrs({ objectid: 21, resp_no: 'Y2', material_name: 'Арматур', works_all: 'b1_9f:7', verdict: 'A' }));
+  const part = rowOf(attrs({ objectid: 22, resp_no: 'Y3', material_name: 'Арматур', works_all: 'b1_9f:1', verdict: 'A' }));
+  const L = resubmitLinks([rej, other, part]);
+  assert.equal(L.get(20)?.next?.oid, 22, 'өөр ажлын MA (21) дахин ирүүлэлт биш — ижил ажилтай 22');
+  assert.equal(L.has(21), false);
+  /* зөвхөн өөр ажилтай MA ирсэн → R бүтнээрээ хүчинтэй */
+  assert.equal(maGateOf('b1_9f:1', [rej, other]).gate, 'blocked', 'өөр ажлын MA буцаалтыг арилгахгүй');
+  assert.equal(maGateOf('b1_9f:7', [rej, other]).gate, 'ok');
+  /* хэсэгчлэн: 1-ийг дахин ирүүлж батлуулсан, 2 хаалттай хэвээр */
+  const eff = effectiveMas([rej, other, part]);
+  assert.deepEqual(eff.find((r) => r.oid === 20)?.works, ['b1_9f:2'], 'R зөвхөн хамраагүй ажлаараа');
+  assert.deepEqual(rej.works, ['b1_9f:1', 'b1_9f:2'], 'эх мөр өөрчлөгдөхгүй');
+  assert.equal(maGateOf('b1_9f:1', [rej, other, part]).gate, 'ok');
+  assert.equal(maGateOf('b1_9f:2', [rej, other, part]).gate, 'blocked', 'буцаасан ажил хаалттай үлдэнэ');
+  /* бүрэн хамарсан → R хасагдана */
+  const full = rowOf(attrs({ objectid: 23, resp_no: 'Y4', material_name: 'Арматур', works_all: 'b1_9f:2', verdict: 'A' }));
+  assert.equal(effectiveMas([rej, part, full]).some((r) => r.oid === 20), false);
+}
+console.log('✅ resubmitLinks/effectiveMas — ажлаар тулгана · хэсэгчлэн хамарсан R хаалттай');
+
+/* 3г. 2026-11-27: нэг MA хоёр ТУСДАА буцаалтын ажлыг хамарвал хоёулаа `prevs`-д — аль ч карт жагсаалтаас алга болохгүй */
+{
+  const { resubOrder } = await import('@/lib/ma.ts');
+  const a = rowOf(attrs({ objectid: 10, resp_no: 'Z1', material_name: 'Цемент', works_all: 'b1_9f:1', verdict: 'R' }));
+  const b = rowOf(attrs({ objectid: 11, resp_no: 'Z2', material_name: 'Цемент', works_all: 'b1_9f:2', verdict: 'R' }));
+  const c = rowOf(attrs({ objectid: 12, resp_no: 'Z3', material_name: 'Цемент', works_all: 'b1_9f:1 b1_9f:2', verdict: 'A' }));
+  const lone = rowOf(attrs({ objectid: 9, resp_no: 'Z0', material_name: 'Элс', verdict: 'A' }));
+  const rows = latestPerRespNo([a, b, c, lone]);
+  const L = resubmitLinks(rows);
+  assert.equal(L.get(10)?.next?.oid, 12);
+  assert.equal(L.get(11)?.next?.oid, 12);
+  assert.deepEqual(L.get(12)?.prevs?.map((r) => r.oid), [11, 10], 'хоёр буцаалт хоёулаа хадгалагдана');
+  assert.equal(L.get(12)?.prev?.oid, 11);
+  assert.deepEqual(resubOrder(rows, L).map((r) => r.oid), [12, 11, 10, 9], 'MA-1 (oid 10) алга болохгүй');
+  /* гинж: R → R → A */
+  const c1 = rowOf(attrs({ objectid: 30, resp_no: 'W1', material_name: 'Шил', verdict: 'R' }));
+  const c2 = rowOf(attrs({ objectid: 31, resp_no: 'W2', material_name: 'Шил', verdict: 'R' }));
+  const c3 = rowOf(attrs({ objectid: 32, resp_no: 'W3', material_name: 'Шил', verdict: 'A' }));
+  const chain = latestPerRespNo([c1, c2, c3]);
+  assert.deepEqual(resubOrder(chain, resubmitLinks(chain)).map((r) => r.oid), [32, 31, 30]);
+  /* мөр бүр яг нэг удаа */
+  const all = latestPerRespNo([a, b, c, lone, c1, c2, c3]);
+  const o2 = resubOrder(all, resubmitLinks(all)).map((r) => r.oid);
+  assert.deepEqual([...o2].sort((x, y) => x - y), all.map((r) => r.oid).sort((x, y) => x - y));
+}
+console.log('✅ resubOrder — нэг MA олон буцаалтыг сольсон ч бүх карт гарна');
+
 /* 4. хавсралтын мета — keywords ↔ объект; `;` `=` утгаас хасагдана; хугацаа */
 {
   const k = formatKeywords({ type: 'conf', no: 'TC-26;1078896', std: 'MNS 0138:2010 = ok', valid: '2027-04-27', title: 'Керамик тоосго' });
@@ -189,7 +240,7 @@ console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · б
   const fields = ['objectid', 'kind', 'ma_no', 'status', 'reason', 'uploaded_by', 'decided_by', 'decided_at'];
   const state = {};
   const reset = (row = original()) => Object.assign(state, {
-    rows: [row], requests: [], writes: 0, fallback: 0, barrier: null,
+    rows: [row], requests: [], writes: 0, fallback: 0, barrier: null, deleted: [],
     metadata: { supportsCalculate: true, fields: fields.map((name) => ({ name })) },
     response: undefined, failure: null, beforeCalculate: null,
   });
@@ -226,13 +277,15 @@ console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · б
   const client = (user) => {
     const dependencies = {
       '@/lib/i18nCore': { t: tr },
-      '@/lib/entDocs': { ENT_PORTAL: 'https://fm.test/portal', entSession: () => ({ token: user, user }), entStamp: async () => {}, entExactUser: async () => user },
+      '@/lib/entDocs': { ENT_PORTAL: 'https://fm.test/portal', entSession: () => ({ token: user, user }), entStamp: async () => {}, entExactUser: async () => user,
+        entUploadPdf: async () => ({ item: { id: 'ITEM1', owner: 'item_owner' } }),
+        entDeletePdf: async (id, owner) => { state.deleted.push([id, owner]); } },
       '@/lib/services/env': { ENT_HOSTED: '' },
       '@/lib/ma': { ...ma, loadMa: async () => [rowOf(attrs({ resp_no: 'M1' }))] },
       '@/lib/mir': { ...mir, loadMir: async () => [{ oid: 1, maNo: 'M1', verdict: 'A' }] },
       '@/lib/chanarAcl': {}, '@/lib/who': { currentUser: () => user, requireCap: () => {} },
       '@/lib/services': { AUTH: { appId: '' } }, '@/modules/sheet/bagts.pkg': { PKGS },
-      '@/modules/chanar/chanarUi': {},
+      '@/modules/chanar/chanarUi': { fromDateInput: () => null },
     };
     const exports = {};
     vm.runInNewContext(compiled, {
@@ -316,5 +369,14 @@ console.log('✅ FIC · М-акт — мөр · бүлэглэх · шат · б
   await assert.rejects(b.decideFm(stale, 'R', 'Late return'), /аль хэдийн шийдвэрлэгдсэн/);
   assert.equal(state.writes, 1);
   assert.equal(state.fallback, 0);
-  console.log('✅ FIC · М-акт — atomic WHERE · two race orders · guarded metadata · fail-closed · lost response');
+  /* 2026-11-27: addFm — мөр нэмэгдээгүй бол оруулсан PDF item буцаан устгагдана; мөр үнэндээ нэмэгдсэн бол устгахгүй */
+  reset();
+  const pdf = { name: 'fic.pdf', type: 'application/pdf' };
+  await assert.rejects(a.addFm({ kind: 'FIC', maNo: 'M1', docNo: 'D1', docDate: '', file: pdf }), /PDF буцаан устгагдсан/);
+  assert.deepEqual(state.deleted, [['ITEM1', 'item_owner']], 'мөргүй үлдсэн PDF item устгагдсан');
+  reset();
+  state.rows.push({ ...original(), objectid: 7, pdf_item: 'ITEM1' });
+  await a.addFm({ kind: 'FIC', maNo: 'M1', docNo: 'D1', docDate: '', file: pdf });
+  assert.deepEqual(state.deleted, [], 'хариу алдагдсан ч мөр бий — PDF устгахгүй');
+  console.log('✅ FIC · М-акт — atomic WHERE · two race orders · guarded metadata · fail-closed · lost response · addFm цэвэрлэгээ');
 }

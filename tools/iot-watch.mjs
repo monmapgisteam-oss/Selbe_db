@@ -6,6 +6,7 @@
  */
 
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { loadSensors, outOfRange, UB_OFFSET_MS } from '../src/lib/sensors.ts';
 
 /**
@@ -28,11 +29,14 @@ const STATE_FILE = process.env.IOT_STATE_FILE || 'iot-watch-state.json';
 /** Хэдэн цагийн дараа «хуучирсан» гэж үзэх вэ (порталын дүрэмтэй ИЖИЛ) */
 const STALE_H = Number(process.env.IOT_STALE_HOURS ?? 24);
 
-if (!TOKEN) {
+/** Шууд ажиллуулсан уу (`node tools/iot-watch.mjs`) — шалгалт (`iot-watch.check.mjs`) импортлоход сүлжээ, гаралтгүй (2026-11-27) */
+const IS_MAIN = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (IS_MAIN && !TOKEN) {
   console.error('✗ TELEGRAM_BOT_TOKEN алга. `.env.local`-д тавина уу.');
   process.exit(1);
 }
-if (!TO.length) {
+if (IS_MAIN && !TO.length) {
   console.error('✗ IOT_ALERT_CHATS (эсвэл TELEGRAM_ALLOWED) хоосон байна.');
   process.exit(1);
 }
@@ -93,12 +97,27 @@ const WORD = {
 
 const fmt = (m) => (m.latest == null ? '—' : m.latest.toFixed(m.dp));
 
+/**
+ * Гэмтлийн мөр — ТАТГАЛЗСАН заалтыг (`MetricSeries.faultValue`) харуулна (2026-11-27, аудит №43). `summarize` гэмтэлтэй сүүлийн
+ * заалтыг `latest = null` болгодог тул урьд нь «—%r.h.» гэж гардаг байв. Утга мэдэгдэхгүй бол «—<нэгж>» хэсгийг ОРХИНО.
+ * `faultRaw` = хөрвүүлэхээс өмнөх түүхий заалт (жиш. хогийн савны зай) — нэгж нь `unit` биш тул нэгжгүй, «түүхий заалт» гэж.
+ */
+export function faultRow(m) {
+  const v = m.faultValue;
+  const shown = v == null || !Number.isFinite(v)
+    ? ''
+    : m.faultRaw
+      ? `: <b>түүхий заалт ${Number(v.toFixed(2))}</b>`
+      : `: <b>${Number(v.toFixed(Math.max(2, m.dp ?? 0)))}${esc(m.unit)}</b>`;
+  return `  • ${esc(m.label)}${shown} — боломжгүй утга, мэдрэгчийн гэмтэл`;
+}
+
 /** Босго давсан / гэмтэлтэй / хуурай үзүүлэлтүүдийн мөр — ЯМАР утга, ЯМАР босго вэ */
-function detail(sn) {
+export function detail(sn) {
   const rows = [];
   for (const m of sn.series) {
     if (isFault(m)) {
-      rows.push(`  • ${esc(m.label)}: <b>${fmt(m)}${esc(m.unit)}</b> — боломжгүй утга, мэдрэгчийн гэмтэл`);
+      rows.push(faultRow(m));
     } else if (isHit(sn, m)) {
       rows.push(`  • ${esc(m.label)}: <b>${fmt(m)}${esc(m.unit)}</b>`
         + ` (босго ${m.alert.value}${esc(m.unit)}) — ${esc(m.alert.note)}`);
@@ -117,48 +136,87 @@ function detail(sn) {
   return rows;
 }
 
-async function check() {
-  const prev = loadState();
+/**
+ * МЭДЭГДЭЭГҮЙ ШИЛЖИЛТИЙГ ХАДГАЛАХГҮЙ төлөв (2026-11-27, аудит №18) — илгээлт БҮГД унасан үед өөрчлөгдсөн түлхүүрүүдэд
+ * ӨМНӨХ төлөвийг үлдээнэ (өмнө нь байгаагүй бол түлхүүрийг орхино) → дараагийн шалгалт ижил шилжилтийг дахин илгээнэ.
+ */
+export function unsentState(prev, now, changed) {
+  const out = { ...now };
+  for (const k of changed) {
+    if (prev[k] === undefined) delete out[k];
+    else out[k] = prev[k];
+  }
+  return out;
+}
+
+/**
+ * Нэг шалгалт. Буцаах: `'quiet'` (өөрчлөлтгүй) · `'sent'` (ядаж нэг хүлээн авагчид хүрсэн) · `'failed'` (хэнд ч хүрээгүй).
+ * `deps` — шалгалтад (`iot-watch.check.mjs`) сүлжээ, файлгүй ажиллуулахад.
+ */
+export async function check(deps = {}) {
+  const load = deps.load ?? (() => loadSensors('24h'));
+  const send = deps.send ?? ((chat, text) => tg('sendMessage', { chat_id: chat, text, parse_mode: 'HTML' }));
+  const readState = deps.loadState ?? loadState;
+  const writeState = deps.saveState ?? saveState;
+  const to = deps.to ?? TO;
+
+  const prev = readState();
   const now = {};
   const lines = [];
+  const changed = [];
 
-  const all = await loadSensors('24h');
+  const all = await load();
   for (const sn of all) {
     const st = stateOf(sn);
     now[sn.key] = st;
     if (prev[sn.key] === st) continue;              // өөрчлөлтгүй — чимээгүй
     if (prev[sn.key] === undefined && st === 'ok') continue; // анхны ажиллалт
+    changed.push(sn.key);
     lines.push(`${ICON[st]} <b>${esc(sn.label)}</b> — ${WORD[st]}`);
     if (st === 'down' && sn.error) lines.push(`  • ${esc(sn.error)}`);
     if (st === 'alert' || st === 'fault' || st === 'dry') lines.push(...detail(sn));
   }
 
-  saveState(now);
-
   if (!lines.length) {
+    writeState(now);
     console.log(`[iot] өөрчлөлтгүй · ${all.map((x) => `${x.key}=${now[x.key]}`).join(' ')}`);
-    return;
+    return 'quiet';
   }
 
   const text = `<b>Сэлбэ · IoT мэдрэгч</b>\n${ubNow()}\n\n${lines.join('\n')}`;
-  for (const chat of TO) {
+  let sent = 0;
+  for (const chat of to) {
     try {
-      await tg('sendMessage', { chat_id: chat, text, parse_mode: 'HTML' });
+      await send(chat, text);
+      sent += 1;
     } catch (e) {
       console.error(`[iot] ${chat} руу илгээгдсэнгүй: ${e.message}`);
     }
   }
-  console.log(`[iot] ${lines.length} мөр · ${TO.length} хүлээн авагч`);
+  /* Төлөвийг илгээлтийн ДАРАА бичнэ: урьд нь өмнө нь бичдэг байсан тул Telegram түр унасан үеийн шилжилт
+     («БОСГО ДАВСАН» г.м.) дараагийн шалгалтад «өөрчлөлтгүй» болж, мэдэгдэл хэзээ ч явдаггүй байв */
+  if (!sent) {
+    writeState(unsentState(prev, now, changed));
+    console.error(`[iot] ${lines.length} мөр ХЭНД Ч хүрсэнгүй (${to.length} хүлээн авагч) — дараагийн шалгалтад дахин илгээнэ`);
+    return 'failed';
+  }
+  writeState(now);
+  console.log(`[iot] ${lines.length} мөр · ${sent}/${to.length} хүлээн авагч`);
+  return 'sent';
 }
 
-const loopArg = process.argv.indexOf('--loop');
-const everyMin = loopArg > 0 ? Number(process.argv[loopArg + 1]) || 15 : 0;
+if (IS_MAIN) {
+  const loopArg = process.argv.indexOf('--loop');
+  const everyMin = loopArg > 0 ? Number(process.argv[loopArg + 1]) || 15 : 0;
 
-await check().catch((e) => { console.error(`[iot] шалгалт унав: ${e.message}`); });
+  const res = await check().catch((e) => { console.error(`[iot] шалгалт унав: ${e.message}`); return 'failed'; });
+  /* Нэг удаагийн горим (cron/systemd): илгээлт унасан бол 0 биш кодоор гарна — таймерын бүртгэлд алдаа болж харагдана */
+  if (!everyMin && res === 'failed') process.exitCode = 1;
 
-if (everyMin > 0) {
-  console.log(`[iot] ${everyMin} минут тутам давтана (Ctrl+C зогсооно)`);
-  setInterval(() => {
-    check().catch((e) => console.error(`[iot] шалгалт унав: ${e.message}`));
-  }, everyMin * 60_000);
+  if (everyMin > 0) {
+    console.log(`[iot] ${everyMin} минут тутам давтана (Ctrl+C зогсооно)`);
+    setInterval(() => {
+      check().catch((e) => console.error(`[iot] шалгалт унав: ${e.message}`));
+    }, everyMin * 60_000);
+  }
 }

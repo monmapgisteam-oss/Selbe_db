@@ -20,7 +20,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   buildTree, computePlan, isAddedWork, monthlySeries, monthEnds, linearPlanned, blockStatus, phaseKind, ubToday, orderPlanRows,
-  planBudgetTotal, tenderSigned,
+  planBudgetTotal, tenderSigned, packageProgress, planPkgKey,
 } from './projectPlan.ts';
 
 const fx = JSON.parse(readFileSync(new URL('./projectPlan.fixture.json', import.meta.url), 'utf8'));
@@ -780,4 +780,161 @@ console.log('projectPlan.check: хасагдсан бэлтгэлийн төсө
   const m = computePlan(buildTree(rows.map((x) => (x.dd_kod === '1.2' ? { ...x, heseg_ezleh_huvi: 0.1 } : x))));
   assert.ok(Math.abs(m.get('1.2').F - 10) < 1e-9 && Math.abs(m.get('1.1').F - 90) < 1e-9, `гараар тавьсан + үлдэгдэл: ${m.get('1.2').F}/${m.get('1.1').F}`);
   console.log('projectPlan.check: гэрээний дүнгээр жин · гараар тавьсан жин OK');
+}
+
+/* 2026-11-27: ах дүүгийн «Хэсэгт эзлэх» нийлбэр ҮРГЭЛЖ 100% · 3-р унтраалга жинд нөлөөлөхгүй · багцын гүйцэтгэл дарсан мөрийг
+   навч гэж үзнэ · газрын багцын мөр хувьгүй, багцын гүйцэтгэлийн жинд орохгүй */
+{
+  const sumF = (r, codes) => codes.reduce((a, c) => a + r.get(c).F, 0);
+  const kids = (ws) => [
+    { objectid: 1, dd_kod: '1', ajil_uilchilgee: 'Үе шат', heseg_ezleh_huvi: 1 },
+    ...ws.map((w, i) => ({ objectid: 2 + i, dd_kod: `1.${i + 1}`, etseg_kod: '1', ajil_uilchilgee: `А${i}`, ho_dun_geree: 100, heseg_ezleh_huvi: w, guitsetgel_huvi: 100 })),
+  ];
+  /* 60% + 60% + чөлөөт — тогтмолуудыг 50/50 болгож, чөлөөт 0 */
+  const a = computePlan(buildTree(kids([0.6, 0.6, null])));
+  near(a.get('1.1').F, 50, 1e-9, '60/120'); near(a.get('1.2').F, 50, 1e-9, '60/120');
+  near(a.get('1.3').F, 0, 1e-9, 'тогтмолууд 100%-аас хэтэрсэн — чөлөөт 0');
+  near(sumF(a, ['1.1', '1.2', '1.3']), 100, 1e-9, 'нийлбэр 100%');
+  /* бүгд гараар 30/30 — 50/50 (урьдын адил) */
+  const b = computePlan(buildTree(kids([0.3, 0.3])));
+  near(b.get('1.1').F, 50, 1e-9, 'бүгд тогтмол — нийлбэрт хуваана');
+  /* 30% + чөлөөт хоёр — 30 / 35 / 35 */
+  const c = computePlan(buildTree(kids([0.3, null, null])));
+  near(c.get('1.1').F, 30, 1e-9); near(c.get('1.2').F, 35, 1e-9); near(sumF(c, ['1.1', '1.2', '1.3']), 100, 1e-9);
+  /* ҮНДЭС (үе шат): бүгд гараар 50 + 49 = 99 → 100% болж жигдэрнэ (урьд нь Төслийн нийт 99%-д тогтдог байв) */
+  const root = [
+    { objectid: 1, dd_kod: '1', ajil_uilchilgee: 'ТЭЗҮ', uy_shat: 'ТЭЗҮ', heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100 },
+    { objectid: 2, dd_kod: '2', ajil_uilchilgee: 'Сонгон', uy_shat: 'Сонгон шалгаруулалт', heseg_ezleh_huvi: 0.49, guitsetgel_huvi: 100 },
+  ];
+  const d0 = computePlan(buildTree(root));
+  near(d0.get('1').F + d0.get('2').F, 100, 1e-9, 'үндсэн түвшинд ч 100%');
+  near(d0.values.get(d0.tree.root).S, 100, 1e-9, 'бүгд 100% бол Төслийн нийт 100%');
+  /* ҮНДЭС: 70 + 70 → 50/50 */
+  const d1 = computePlan(buildTree(root.map((r) => ({ ...r, heseg_ezleh_huvi: 0.7 }))));
+  near(d1.get('1').F, 50, 1e-9, 'үндэст тогтмолууд хэтэрсэн — жигдэлнэ');
+
+  /* 3-р унтраалга (мөнгө) жингийн суурьд нөлөөлөхгүй — дэд мөрийн гэрээний дүн унтраалгаас үл хамааран */
+  const C = 'Гэрээлсэн дүн';
+  const money = (sw) => [
+    { objectid: 1, dd_kod: '1', ajil_uilchilgee: 'Үе шат' },
+    { objectid: 2, dd_kod: '1.1', etseg_kod: '1', ajil_uilchilgee: 'А', guitsetgel_huvi: 100 },
+    { objectid: 3, dd_kod: '1.1.1', etseg_kod: '1.1', ajil_uilchilgee: 'А1', ho_dun_geree: 10, geree_dun: 300, ho_dungiin_tailbar: C, mongo_tootsoh: sw, guitsetgel_huvi: 100 },
+    { objectid: 4, dd_kod: '1.2', etseg_kod: '1', ajil_uilchilgee: 'Б', ho_dun_geree: 10, geree_dun: 100, ho_dungiin_tailbar: C, guitsetgel_huvi: 0 },
+  ];
+  const on = computePlan(buildTree(money(1))), off = computePlan(buildTree(money(0)));
+  near(on.get('1.1').F, 75, 1e-9, 'гэрээгээр 300 / 400');
+  near(off.get('1.1').F, on.get('1.1').F, 1e-9, '3-р унтраалга унтраасан ч жин хэвээр');
+  near(off.get('1').S, on.get('1').S, 1e-9, 'гүйцэтгэл хэвээр');
+
+  /* Багцын гүйцэтгэл — дарсан (override) багцын мөр навч болно, доорх хадгалсан утга орохгүй */
+  const pk = [
+    { objectid: 1, dd_kod: '3', ajil_uilchilgee: 'Зөвшөөрөл', uy_shat: 'Зөвшөөрөл' },
+    { objectid: 2, dd_kod: '3.1', etseg_kod: '3', ajil_uilchilgee: 'Багц', bagts: 'Багц-1' },
+    { objectid: 3, dd_kod: '3.1.1', etseg_kod: '3.1', ajil_uilchilgee: 'А', bagts: 'Багц-1', ho_dun_geree: 100, guitsetgel_huvi: 100 },
+    { objectid: 4, dd_kod: '3.1.2', etseg_kod: '3.1', ajil_uilchilgee: 'Б', bagts: 'Багц-1', ho_dun_geree: 100, guitsetgel_huvi: 100 },
+  ];
+  const tp = buildTree(pk);
+  const plain = packageProgress(computePlan(tp), planPkgKey).get('БАГЦ1');
+  near(plain.S, 100, 1e-9, 'дарахгүй — навчаар');
+  const ovr = computePlan(tp, { override: (n) => (n.code === '3.1' ? { S: 25 } : undefined) });
+  near(ovr.get('3.1').S, 25, 1e-9);
+  const pp = packageProgress(ovr, planPkgKey).get('БАГЦ1');
+  near(pp.S, 25, 1e-9, 'дарсан багцын мөрийн утга (бүртгэлийн хувь)');
+  assert.equal(pp.rows, 1, 'дарсан мөр ганц навч');
+  /* Багцгүй дарсан мөр (үе шат) — доош нь навчаар хэвээр */
+  const ovPh = computePlan(tp, { override: (n) => (n.code === '3' ? { S: 10 } : undefined) });
+  near(packageProgress(ovPh, planPkgKey).get('БАГЦ1').S, 100, 1e-9, 'үе шатын дарсан утга багцад нөлөөлөхгүй');
+
+  /* Газар чөлөөлөлт (2026-11-27, хэрэглэгч): багцаар хувь ӨГӨХГҮЙ — багцын мөр хувьгүй, багцын гүйцэтгэлийн жингийн сууринд
+     орохгүй (үлдсэн үе шатууд 100% болж жигдэрнэ) */
+  const land = [
+    { objectid: 1, dd_kod: '2', ajil_uilchilgee: 'Газар чөлөөлөлт', uy_shat: 'Газар чөлөөлөлт' },
+    { objectid: 2, dd_kod: '2.1', etseg_kod: '2', ajil_uilchilgee: 'Багц-1', bagts: 'Багц-1', ho_dun_geree: 100 },
+    { objectid: 3, dd_kod: '5', ajil_uilchilgee: 'Сонгон', uy_shat: 'Сонгон шалгаруулалт' },
+    { objectid: 4, dd_kod: '5.1', etseg_kod: '5', ajil_uilchilgee: 'Багц-1', bagts: 'Багц-1', ho_dun_geree: 100, guitsetgel_huvi: 100 },
+  ];
+  const tl = buildTree(land);
+  const l0 = computePlan(tl);
+  assert.equal(l0.get('2.1').S, null, 'багцын газрын мөр хувьгүй');
+  const pl0 = packageProgress(l0, planPkgKey).get('БАГЦ1');
+  near(pl0.S, 100, 1e-9, 'газрын мөр жинд орохгүй — урьд нь 0%-иар бүтэн жинтэй орж 50% гардаг байв');
+  assert.equal(pl0.rows, 1, 'зөвхөн Сонгон шалгаруулалтын мөр');
+  const l1 = computePlan(tl, { override: (n) => (n.code === '2' ? { S: 90 } : undefined) });
+  assert.equal(l1.get('2.1').S, null, 'үе шатын мөр 90% (төслийн нийт) байсан ч багцын мөр хувьгүй хэвээр');
+  near(packageProgress(l1, planPkgKey).get('БАГЦ1').S, 100, 1e-9, 'төслийн нийт газрын хувь багцын гүйцэтгэлд нөлөөлөхгүй');
+  /* Хоёр багц — газар нь хэрхэн ч байсан хоёулаа ижил хувьгүй (91% бүгдэд биш) */
+  const land2 = [...land, { objectid: 5, dd_kod: '2.2', etseg_kod: '2', ajil_uilchilgee: 'Багц-2', bagts: 'Багц-2', ho_dun_geree: 100 },
+    { objectid: 6, dd_kod: '5.2', etseg_kod: '5', ajil_uilchilgee: 'Багц-2', bagts: 'Багц-2', ho_dun_geree: 100, guitsetgel_huvi: 40 }];
+  const l2 = computePlan(buildTree(land2), { override: (n) => (n.code === '2' ? { S: 91 } : undefined) });
+  assert.equal(l2.get('2.2').S, null);
+  near(packageProgress(l2, planPkgKey).get('БАГЦ2').S, 40, 1e-9, 'Багц-2 — зөвхөн сонгон шалгаруулалтаар');
+  console.log('projectPlan.check: жингийн нийлбэр 100% · 3-р унтраалга жинд · дарсан багцын мөр · газрын багцын мөр OK');
+}
+
+/* 2026-11-27 (аудит, 2-р шат): бүлгийн жингийн суурь · ихрийн төсвөөр үлдэгдэл · шинэ зөвшөөрлийн жин · нэгж мөрийн доорх 2-р унтраалга */
+{
+  const T = Date.UTC(2026, 10, 27);
+  const C = 'Гэрээлсэн дүн';
+  /* №6: бүлгийн суурь = доод мөр бүрийн суурийн нийлбэр (гэрээ, алга бол төсөв) — 180 : 200 (80 : 200 БИШ) */
+  const g = computePlan(buildTree([
+    { objectid: 1, dd_kod: '7', ajil_uilchilgee: 'Үе шат' },
+    { objectid: 2, dd_kod: '7.1', etseg_kod: '7', ajil_uilchilgee: 'Бүлэг-1' },
+    { objectid: 3, dd_kod: '7.1.1', etseg_kod: '7.1', ajil_uilchilgee: 'Багц-1', ho_dun_geree: 100, geree_dun: 80, ho_dungiin_tailbar: C },
+    { objectid: 4, dd_kod: '7.1.2', etseg_kod: '7.1', ajil_uilchilgee: 'Багц-2', ho_dun_geree: 100 },
+    { objectid: 5, dd_kod: '7.2', etseg_kod: '7', ajil_uilchilgee: 'Бүлэг-2' },
+    { objectid: 6, dd_kod: '7.2.1', etseg_kod: '7.2', ajil_uilchilgee: 'Багц-3', ho_dun_geree: 200 },
+  ]), {}, T);
+  near(g.get('7.1').F, (180 / 380) * 100, 1e-9, 'Бүлэг-1 = 180 / 380');
+  near(g.get('7.2').F, (200 / 380) * 100, 1e-9, 'Бүлэг-2 = 200 / 380');
+  near(g.get('7.1.1').F, (80 / 180) * 100, 1e-9, 'бүлэг дотор 80 : 100 (хэвээр)');
+
+  /* №7: ихрийн төсвөөр жигнэгддэг бүлэгт нэг мөрд гар жин — бусад нь ихрийн харьцаагаа хадгална (10 / 80 / 10, 45 / 45 БИШ) */
+  const tw = (w) => [
+    { objectid: 10, dd_kod: '4', uy_shat: 'Сонгон шалгаруулалт', ajil_uilchilgee: 'Сонгон шалгаруулалт' },
+    { objectid: 11, dd_kod: '4.1', etseg_kod: '4', ajil_uilchilgee: 'Орон сууц' },
+    { objectid: 12, dd_kod: '4.1.1', etseg_kod: '4.1', bagts: 'Багц-1', ajil_uilchilgee: 'Орон сууц', heseg_ezleh_huvi: w, guitsetgel_huvi: 0 },
+    { objectid: 13, dd_kod: '4.1.2', etseg_kod: '4.1', bagts: 'Багц-2', ajil_uilchilgee: 'Орон сууц', guitsetgel_huvi: 0 },
+    { objectid: 14, dd_kod: '4.1.3', etseg_kod: '4.1', bagts: 'Багц-3', ajil_uilchilgee: 'Орон сууц', guitsetgel_huvi: 0 },
+    { objectid: 20, dd_kod: '5', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт' },
+    { objectid: 21, dd_kod: '5.2', etseg_kod: '5', ajil_uilchilgee: 'Барилга угсралт ажил' },
+    { objectid: 22, dd_kod: '5.2.1', etseg_kod: '5.2', ajil_uilchilgee: 'Орон сууц' },
+    { objectid: 23, dd_kod: '5.2.1.1', etseg_kod: '5.2.1', bagts: 'Багц-1', ajil_uilchilgee: 'Орон сууц', ho_dun_geree: 100 },
+    { objectid: 24, dd_kod: '5.2.1.2', etseg_kod: '5.2.1', bagts: 'Багц-2', ajil_uilchilgee: 'Орон сууц', ho_dun_geree: 800 },
+    { objectid: 25, dd_kod: '5.2.1.3', etseg_kod: '5.2.1', bagts: 'Багц-3', ajil_uilchilgee: 'Орон сууц', ho_dun_geree: 100 },
+  ];
+  const t0 = computePlan(buildTree(tw(null)), {}, T);
+  near(t0.get('4.1.2').F, 80, 1e-9, 'гар жингүй — ихрийн төсвөөр 80%');
+  const t1 = computePlan(buildTree(tw(0.1)), {}, T);
+  near(t1.get('4.1.1').F, 10, 1e-9, 'гараар 10%');
+  near(t1.get('4.1.2').F, 80, 1e-9, 'үлдэгдэл 90% × 800 / 900');
+  near(t1.get('4.1.3').F, 10, 1e-9, 'үлдэгдэл 90% × 100 / 900');
+
+  /* №8: тогтмол жин 100% хүрсэн бүлэгт шинэ (жингүй, мөнгөгүй) зөвшөөрөл — бүгд 1/3, багцын мөр 66.7% (В 0% жин БИШ) */
+  const zv = computePlan(buildTree([
+    { objectid: 30, dd_kod: '3', ajil_uilchilgee: 'Зөвшөөрөл', uy_shat: 'Зөвшөөрөл' },
+    { objectid: 31, dd_kod: '3.1', etseg_kod: '3', bagts: 'Багц-1', ajil_uilchilgee: 'Багц-1' },
+    { objectid: 32, dd_kod: '3.1.1', etseg_kod: '3.1', bagts: 'Багц-1', ajil_uilchilgee: 'А', heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100 },
+    { objectid: 33, dd_kod: '3.1.2', etseg_kod: '3.1', bagts: 'Багц-1', ajil_uilchilgee: 'Б', heseg_ezleh_huvi: 0.5, guitsetgel_huvi: 100 },
+    { objectid: 34, dd_kod: '3.1.3', etseg_kod: '3.1', bagts: 'Багц-1', ajil_uilchilgee: 'В', guitsetgel_huvi: 0 },
+  ]), {}, T);
+  for (const c of ['3.1.1', '3.1.2', '3.1.3']) near(zv.get(c).F, 100 / 3, 1e-9, `${c} = 1/3`);
+  near(zv.get('3.1').S, 200 / 3, 1e-9, 'багцын зөвшөөрлийн мөр 66.7%');
+
+  /* №25: дарсан (override) багцын мөрийн ДООРХ мөрийг 2-р унтраалгаар унтраавал жин нь багцын гүйцэтгэлээс хасагдана */
+  const pk = (sw) => [
+    { objectid: 40, dd_kod: '3', ajil_uilchilgee: 'Зөвшөөрөл', uy_shat: 'Зөвшөөрөл' },
+    { objectid: 41, dd_kod: '3.1', etseg_kod: '3', ajil_uilchilgee: 'Багц', bagts: 'Багц-1' },
+    { objectid: 42, dd_kod: '3.1.1', etseg_kod: '3.1', ajil_uilchilgee: 'А', bagts: 'Багц-1', ho_dun_geree: 100, guitsetgel_huvi: 100 },
+    { objectid: 43, dd_kod: '3.1.2', etseg_kod: '3.1', ajil_uilchilgee: 'Б', bagts: 'Багц-1', ho_dun_geree: 100, guitsetgel_huvi: 100, uy_shat_tootsoh: sw },
+    { objectid: 44, dd_kod: '5', ajil_uilchilgee: 'Сонгон', uy_shat: 'Сонгон шалгаруулалт' },
+    { objectid: 45, dd_kod: '5.1', etseg_kod: '5', ajil_uilchilgee: 'Багц-1', bagts: 'Багц-1', ho_dun_geree: 200, guitsetgel_huvi: 100 },
+  ];
+  const ovr = { override: (n) => (n.code === '3.1' ? { S: 40 } : undefined) };
+  const on = packageProgress(computePlan(buildTree(pk(1)), ovr, T), planPkgKey).get('БАГЦ1');
+  const off = packageProgress(computePlan(buildTree(pk(0)), ovr, T), planPkgKey).get('БАГЦ1');
+  near(on.w, 100, 1e-9, 'асаалттай — зөвшөөрөл 50 + сонгон 50');
+  near(on.S, (50 * 40 + 50 * 100) / 100, 1e-9);
+  near(off.w, 75, 1e-9, 'Б унтарсан — зөвшөөрлийн жин 50 → 25');
+  near(off.S, (25 * 40 + 50 * 100) / 75, 1e-9, 'нэгжийн хувь (40) хэвээр, жин нь багассан');
+  console.log('projectPlan.check: бүлгийн суурь · ихрийн үлдэгдэл · шинэ зөвшөөрлийн жин · нэгжийн доорх унтраалга OK');
 }

@@ -73,12 +73,13 @@ type Domains = Record<string, Map<string, string>>;
  * shift 2 · week 11 утга). Хөрвүүлэлтгүй бол чарт кодоор шошгологдоно —
  * хоёр үйлчилгээ одоо хоосон тул анхны мөр ирэхэд л илрэх байсан.
  */
-type UzMeta = { dom: Domains; missing: readonly string[]; failed: boolean };
+/** `names` — давхаргын талбарын нэрс (хоосон = схем мэдэгдэхгүй), 2026-11-27 */
+type UzMeta = { dom: Domains; missing: readonly string[]; failed: boolean; names: ReadonlySet<string> };
 const UZ_OPTIONAL: ReadonlySet<string> = new Set<string>([
   U.siteOther, U.companyOther, U.block, U.scEarned, U.scAppl, U.week, U.shift,
 ]);
 const FAILED_DOMAINS: Domains = Object.freeze({}) as Domains;
-const FAILED_META: UzMeta = Object.freeze({ dom: FAILED_DOMAINS, missing: [], failed: true });
+const FAILED_META: UzMeta = Object.freeze({ dom: FAILED_DOMAINS, missing: [], failed: true, names: new Set<string>() });
 const metaCache = new Map<string, Promise<UzMeta>>();
 
 function loadDomains(url: string, kind: UzlegKind): Promise<UzMeta> {
@@ -108,7 +109,7 @@ function loadDomains(url: string, kind: UzlegKind): Promise<UzMeta> {
         /* Талбаргүй хариу (`fields` хоосон) — схемийг мэдэхгүй, «дутуу» гэж дүгнэхгүй */
         const req = [...new Set(Object.values(fieldsOf(kind)))].filter((n) => n && !UZ_OPTIONAL.has(n));
         const missing = names.size ? req.filter((n) => !names.has(n)) : [];
-        return { dom: out, missing, failed: false };
+        return { dom: out, missing, failed: false, names };
       })
       .catch(() => {
         metaCache.delete(url);
@@ -457,20 +458,38 @@ export function loadWeekScores(now: Date = new Date()): Promise<WeekScores> {
   return f();
 }
 
+/**
+ * ИТГЭМЖТЭЙ ТООТОЙ МӨРИЙН SQL нөхцөл (2026-11-27) — `cntOverTotal`-ийн урвуу: нийт (`cnt_findings`) хоосон, эсвэл
+ * зэргийн тоонуудын нийлбэр нийтээс ИХГҮЙ. Давхаргад нийтийн талбар алга бол '' (шүүлтгүй — `cntOverTotal` ч шалгахгүй).
+ */
+export function trustedCntSql(meta: { names: UzMeta['names'] }, kind: UzlegKind): string {
+  const TOTAL = 'cnt_findings';
+  if (!meta.names.has(TOTAL)) return '';
+  const F = fieldsOf(kind);
+  const parts = [F.major, F.minor, F.obs, F.conf, F.na].filter((f) => f && meta.names.has(f)).map((f) => `COALESCE(${f}, 0)`);
+  return `(${TOTAL} IS NULL OR ${parts.length ? parts.join(' + ') : '0'} <= ${TOTAL})`;
+}
+
 async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promise<WeekScores> {
   const auth = await getAuth();
   if (!auth && !devToken()) throw new Error(tr('Үзлэгийн маягтыг зөвхөн нэвтэрсэн хэрэглэгч харна — порталд нэвтэрнэ үү.'));
   const where = `(${U.ognoo} >= ${sqlTs(w.start)} AND ${U.ognoo} < ${sqlTs(w.end)})`;
   const groupBy = `${U.site},${U.company}`;
-  const metas = await Promise.all(SCORE_URLS.map((url) => loadDomains(url, url === HABEA.uzleg.v11.url ? 'v11' : 'zahialagch')));
+  const kindOf = (url: string): UzlegKind => (url === HABEA.uzleg.v11.url ? 'v11' : 'zahialagch');
+  const metas = await Promise.all(SCORE_URLS.map((url) => loadDomains(url, kindOf(url))));
   if (metas.some((m) => m.failed)) throw new Error(tr('Маягтын кодын тайлбар уншигдсангүй — дахин оролдоно уу.'));
-  const parts = await Promise.all(SCORE_URLS.map((url, ui) => Promise.all([
+  const parts = await Promise.all(SCORE_URLS.map((url, ui) => {
+    /* 2026-11-27: зэргийн тоо нь маягтын нийтээс их (залгагдсан) мөр — чарттай ижил (`cntOverTotal`) — үл нийцлийн
+       нийлбэрт орохгүй; үзлэгийн тоо (n) хэвээр. Нийтийн талбаргүй маягтад нэмэлт асуулгагүй. */
+    const trust = trustedCntSql(metas[ui], kindOf(url));
+    return Promise.all([
     queryGroup(
       url,
       groupBy,
-      [count('objectid', 'n'), sum(U.major, 'mj'), sum(U.minor, 'mn')],
+      trust ? [count('objectid', 'n')] : [count('objectid', 'n'), sum(U.major, 'mj'), sum(U.minor, 'mn')],
       where,
     ),
+    trust ? queryGroup(url, groupBy, [sum(U.major, 'mj'), sum(U.minor, 'mn')], `(${where}) AND ${trust}`) : Promise.resolve([]),
     queryGroup(
       url,
       groupBy,
@@ -478,10 +497,11 @@ async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promi
       `(${where}) AND ${U.scEarned} IS NOT NULL AND ${U.scAppl} > 0`,
     ),
     metas[ui],
-  ] as const)));
+    ] as const);
+  }));
   type Acc = { site: string; coCode: string; n: number; nc: number; e: number; a: number; ns: number };
   const rows: ScoreRow[] = [];
-  for (const [grpAll, scoreAll, { dom }] of parts) {
+  for (const [grpAll, grpNc, scoreAll, { dom }] of parts) {
     const keyOf = (r: Record<string, unknown>) =>
       `${r[U.site] == null ? '' : String(r[U.site])}|${r[U.company] == null ? '' : String(r[U.company])}`;
     const acc = new Map<string, Acc>();
@@ -501,6 +521,10 @@ async function fetchWeekScores(w: { start: Date; end: Date; no: number }): Promi
     for (const r of grpAll) {
       const c = cell(r);
       c.n += Number(r.n ?? 0);
+      c.nc += Number(r.mj ?? 0) + Number(r.mn ?? 0);
+    }
+    for (const r of grpNc as readonly Record<string, unknown>[]) {
+      const c = cell(r);
       c.nc += Number(r.mj ?? 0) + Number(r.mn ?? 0);
     }
     for (const r of scoreAll) {

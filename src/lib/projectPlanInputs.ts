@@ -8,7 +8,8 @@
  *   prepActual(pkg, blok)         — Бэлтгэл ажлын (5.1.3.1.x) блокийн «А. Бэлтгэл ажил» гүйцэтгэл (`loadPrepProgress`, 2026-11-05)
  *   pkgActual(pkg)                — блокгүй багцын (5.x · 6.x · 7.1 · 10) «Б.» гүйцэтгэл (`loadInfraProgress`)
  *   blockPlanned(pkg, blok, asOf) — Хуваарийн төлөвлөгөөт % дурын өдрөөр (`bagtsSheet.planCurve`, блок тус бүрээр)
- *   landTotal                     — газар чөлөөлөлт % — зөвхөн төслийн нийтээр (`loadLandStatus`); багцаар бодохгүй (2026-11-11)
+ *   landTotal                     — газар чөлөөлөлт % — зөвхөн төслийн нийтээр (`loadLandStatus`); багцаар бодохгүй (2026-11-11);
+ *                                   багц/блокийн мөр хувьгүй, багцын гүйцэтгэлийн жинд орохгүй (`packageProgress`, 2026-11-27)
  *
  * ба `loadProjectPlan` — CASHFLOW_NEW-ийн Excel мөрүүдийг (dd_kod IS NOT NULL) уншиж мод угсраад,
  * оролтуудыг цуглуулж `computePlan` + `monthlySeries`-ийг бодно.
@@ -16,7 +17,7 @@
 import {
   buildTree, computePlan, monthlySeries, monthEnds, orderPlanRows, saneDate, ubToday,
   planBudgetTotal,
-  moneySums,
+  moneySums, noMoney,
   type PlanInputs, type PlanNode, type PlanResult, type PlanStoredRow, type PlanTree,
   packageProgress, planPkgKey, type PlanPkgProgress,
 } from './projectPlan';
@@ -33,6 +34,7 @@ import { loadRows, planAt, planCurve, type SheetRow } from '@/modules/sheet/bagt
 import { planFields } from './planProgress';
 import { countPlanRows, countWeekRows, loadPkgPlan, loadPkgWeek, planPctFromMonths, weekPct, type PkgPlan, type PkgWeek } from './huvaariObyem';
 import { queryFeatures } from './query';
+import { t as tr } from './i18nCore';
 import { loadLandStatus } from './land';
 import { cached, SESSION_TTL_MS } from './live';
 import { gereeOverride, loadZuragBurtgel, type ZRow } from './zuragBurtgel';
@@ -191,8 +193,9 @@ async function loadTreeRows(): Promise<PlanStoredRow[]> {
 /**
  * ТӨСЛИЙН НИЙТ ГЭРЭЭЛСЭН ДҮН (₮) — ТТБ-ийн Төслийн нийт мөрийн «Гэрээний дүн» (`moneySums`, «Гэрээлсэн дүн» тэмдэгтэй мөрүүд,
  * үүрлэсэн мөр давхардахгүй). 2026-11-19 (аудит): дашбоард ба тайлан зөвхөн `cashflow_id`-тай ажлын мөрөөс нийлүүлдэг байсан тул
- * ТЭЗҮ · зураг төслийн 369 гэрээний мөр (11.8 тэрбум ₮) хаягддаг байв (2,034.8 ↔ ТТБ 2,046.5). Газрын нөхөх олговор ЭНД
- * ОРОХГҮЙ — дашбоардын «олгосон» нь IPC-ийн төлбөр тул хувь нь ижил хүрээнд үлдэнэ. Мөр алга бол null.
+ * ТЭЗҮ · зураг төслийн 369 гэрээний мөр (11.8 тэрбум ₮) хаягддаг байв (2,034.8 ↔ ТТБ 2,046.5). Газрын нөхөх олговор
+ * «Газар чөлөөлөлт» үе шатны 3-р унтраалга асаалттай үед ЭНД ОРНО (ТТБ-тэй адил) — «олгосон хувь»-ийг төлбөрийн актаас
+ * боддог хэрэглэгч тоологчдоо `loadProjectLandComp`-ийг нэмнэ (`paidShare.withProjectContract`, 2026-11-27). Мөр алга бол null.
  */
 export async function loadProjectContractTotal(): Promise<number | null> {
   return (await loadProjectMoney())?.contract ?? null;
@@ -236,7 +239,19 @@ export function designMoneyOf(tree: PlanTree): DesignMoney {
   return { budget, contract, n, contracted };
 }
 
-export type ProjectMoney = { budget: number | null; contract: number | null; paid: number | null; advance: number | null; paidPct: number | null };
+export type ProjectMoney = {
+  budget: number | null; contract: number | null; paid: number | null; advance: number | null; paidPct: number | null;
+  /**
+   * 2026-11-27 (аудит): `contract` ба `paid`-д ОРСОН газар чөлөөлөлтийн нөхөх олговор, ₮ (`withLandComp`) — «Газар чөлөөлөлт»
+   * үе шатны 3-р унтраалга асаалттай үед л > 0, эс бөгөөс 0. «Олгосон хувь»-ийг төлбөрийн актаас боддог хэрэглэгч
+   * (`paidShare.withProjectContract`-ийн 3-р аргумент) тоологчдоо нэмнэ — хуваарьтай нэг хүрээ.
+   */
+  landComp: number;
+};
+/** `ProjectMoney.landComp` — «олгосон хувь»-ийн тоологчид нэмэх нөхөх олговор (`withProjectContract`-ийн 3-р аргумент); мөр алга бол 0 */
+export async function loadProjectLandComp(): Promise<number> {
+  return (await loadProjectMoney())?.landComp ?? 0;
+}
 export async function loadProjectMoney(): Promise<ProjectMoney | null> {
   const rows = await loadTreeRows();
   return rows.length ? projectMoneyOf(buildTree(rows)) : null;
@@ -247,8 +262,17 @@ export function projectMoneyOf(tree: PlanTree): ProjectMoney {
   const m = moneySums(tree).get(tree.root);
   const budget = planBudgetTotal(tree);
   const contract = m?.contract ?? null, paid = m?.paid ?? null;
+  /* Нөхөх олговрын мөр (`landComp`) Төслийн нийтэд орсон эсэх — өөрөө ба дээд мөрүүд нь мөнгөний нийлбэрт тооцогдсон бол */
+  let landComp = 0;
+  for (const n of tree.nodes) {
+    if (!n.row?.landComp) continue;
+    let inTotal = true;
+    for (let x: PlanNode | null = n; x && x.row; x = x.parent) if (noMoney(x)) { inTotal = false; break; }
+    const c = n.row.geree_dun;
+    if (inTotal && typeof c === 'number' && Number.isFinite(c)) landComp += c;
+  }
   return {
-    budget, contract, paid, advance: m?.advance ?? null,
+    budget, contract, paid, advance: m?.advance ?? null, landComp,
     paidPct: contract != null && contract > 0 && paid != null ? Math.round((paid / contract) * 10000) / 100 : null,
   };
 }
@@ -751,6 +775,8 @@ export function makeInputs(src: {
     pkgPlanned: pkgPlannedOf(src.sched),
     pkgSpan: pkgSpanOf(src.sched),
     /* 2026-11-24 (засвар): `pkgKeyOf` — олон багцын мөр («БАГЦ 1- 4» → БАГЦ14) өөр багцын хувийг авахгүй */
+    /* 2026-11-27 (хэрэглэгч): газар чөлөөлөлтийг багцаар ӨГӨХГҮЙ — багц/блокийн мөр хувьгүй (null) хэвээр; багцын гүйцэтгэлд
+       «Газар чөлөөлөлт»-ийн мөр жингийн сууринд орохгүй (`projectPlan.packageProgress`) */
     ...(src.zurag?.size ? { zuragActual: (pkg: string | null) => { const k = pkgKeyOf(pkg ?? ''); return k ? src.zurag!.get(k) : undefined; } } : {}),
     /* 2026-11-04 (хэрэглэгч): «Газар чөлөөлөлт» үе шатын мөр = бүх нэгж талбарын тоогоор (`loadLandStatus`, «Газар чөлөөлөлт»
        хуудас · тайлан · нийтийн вэбтэй НЭГ тоо) — багцын мөрүүдийн жигнэлт биш. 2026-11-11: багц/блокийн мөр хувьгүй (`projectPlan.leafValue`). */
@@ -931,7 +957,16 @@ export function zovPctMap(rows: readonly { bagts: string; tolov: string }[]): Ma
 export { planPkgKey };
 /** БАГЦ БҮРИЙН ГҮЙЦЭТГЭЛ (2026-11-24, хэрэглэгч: 2-р унтраалга) — «Төсөл төлөвлөгөө биелэлт»-ээс, систем даяар НЭГ эх */
 export const planPkgProgress = (plan: ProjectPlan): Map<string, PlanPkgProgress> => packageProgress(plan.result, planPkgKey);
-export const loadPlanPkgProgress = (): Promise<Map<string, PlanPkgProgress>> => loadProjectPlan().then(planPkgProgress);
+/**
+ * 2026-11-27 (аудит): эх унасан үед (`plan.failed` хоосон биш) уншигдаагүй мөр 0%-иар тооцогдож хэмжилт мэт буцдаг байв
+ * (блокийн гүйцэтгэл унахад «Багц 1 — 3.00%», хуваарь унахад P = 0). Одоо ТАТГАЛЗАНА (throw) — хэрэглэгч бүр «уншигдаагүй»
+ * гэж үзнэ. Цэвэр (тестлэгдэнэ).
+ */
+export function planPkgProgressOrThrow(plan: Pick<ProjectPlan, 'failed' | 'result'>): Map<string, PlanPkgProgress> {
+  if (plan.failed.length) throw new Error(`${tr('{0} уншигдсангүй', tr('Багцын гүйцэтгэл'))} (${plan.failed.join(', ')})`);
+  return packageProgress(plan.result, planPkgKey);
+}
+export const loadPlanPkgProgress = (): Promise<Map<string, PlanPkgProgress>> => loadProjectPlan().then(planPkgProgressOrThrow);
 
 export function liveProgressOf(plan: ProjectPlan): Map<number, LiveProgress> {
   const pkgP = planPkgProgress(plan);

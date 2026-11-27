@@ -185,8 +185,11 @@ export function latestPerRespNo(rows: readonly MaRow[]): MaRow[] {
  * харагддаг байв. Нэг багц + нэг материалын нэр (том/жижиг үсэг · зай ялгахгүй) доторх R мөрийн ДАРААГИЙН
  * (их objectid) мөрийг түүний дахин ирүүлэлт гэж холбоно.
  */
-export type ResubLink = { prev?: MaRow; next?: MaRow };
-export function resubmitLinks(rows: readonly MaRow[]): Map<number, ResubLink> {
+/** 2026-11-27: `prevs` — энэ MA-гаар солигдсон БҮХ буцаалт (нэг MA хэд хэдэн тусдаа буцаалтын ажлыг хамарч болно), objectid
+ * буурахаар; `prev` = хамгийн сүүлийнх нь (`prevs[0]`) */
+export type ResubLink = { prev?: MaRow; prevs?: MaRow[]; next?: MaRow };
+/** Нэг багц + нэг материалын нэрээр бүлэглэнэ — бүлэг бүр objectid өсөхөөр */
+function resubGroups(rows: readonly MaRow[]): MaRow[][] {
   const groups = new Map<string, MaRow[]>();
   for (const r of rows) {
     const mat = r.material.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -195,26 +198,73 @@ export function resubmitLinks(rows: readonly MaRow[]): Map<number, ResubLink> {
     const g = groups.get(k);
     if (g) g.push(r); else groups.set(k, [r]);
   }
+  const out = [...groups.values()];
+  for (const g of out) g.sort((a, b) => a.oid - b.oid);
+  return out;
+}
+/** 2026-11-27: дараагийн MA нь буцаасан MA-гийн ажлын ядаж нэгийг хамарсан бол л дахин ирүүлэлт (ажилгүй R — хуучнаараа) */
+const sharesWork = (rej: MaRow, nxt: MaRow): boolean => !rej.works.length || rej.works.some((w) => nxt.works.includes(w));
+export function resubmitLinks(rows: readonly MaRow[]): Map<number, ResubLink> {
   const out = new Map<number, ResubLink>();
-  for (const g of groups.values()) {
-    g.sort((a, b) => a.oid - b.oid);
+  for (const g of resubGroups(rows)) {
     for (let i = 0; i + 1 < g.length; i++) {
       if (g[i].verdict !== 'R') continue;
-      out.set(g[i].oid, { ...out.get(g[i].oid), next: g[i + 1] });
-      out.set(g[i + 1].oid, { ...out.get(g[i + 1].oid), prev: g[i] });
+      const nx = g.slice(i + 1).find((x) => sharesWork(g[i], x));
+      if (!nx) continue;
+      out.set(g[i].oid, { ...out.get(g[i].oid), next: nx });
+      /* g нь objectid өсөхөөр — шинэ буцаалт урд орно; `prev`-ийг дарж бичихгүй, бүгдийг `prevs`-д хадгална */
+      const prevs = [g[i], ...(out.get(nx.oid)?.prevs ?? [])];
+      out.set(nx.oid, { ...out.get(nx.oid), prev: prevs[0], prevs });
     }
   }
   return out;
 }
 
 /**
+ * КАРТЫН ДАРААЛАЛ (2026-11-27) — дахин ирүүлсэн MA-гийн ДООР түүгээр солигдсон буцаалтууд (`prevs` бүгд, гинжээр нь).
+ * Мөр бүр ЯГ нэг удаа гарна: нэг MA хоёр тусдаа буцаалтыг хамарсан ч аль нь ч жагсаалтаас алга болохгүй.
+ */
+export function resubOrder(rows: readonly MaRow[], links: ReadonlyMap<number, ResubLink>): MaRow[] {
+  const out: MaRow[] = [];
+  const seen = new Set<number>();
+  const emit = (r: MaRow): void => {
+    if (seen.has(r.oid)) return;
+    seen.add(r.oid);
+    out.push(r);
+    for (const p of links.get(r.oid)?.prevs ?? []) emit(p);
+  };
+  for (const r of rows) if (!links.get(r.oid)?.next) emit(r); // буцаалт нь шинэ хувилбарынхаа доор орно
+  for (const r of rows) emit(r); // хамгаалалт: шинэ хувилбар нь `rows`-д байхгүй мөр ч алдагдахгүй
+  return out;
+}
+
+/**
  * ХҮЧИНТЭЙ MA мөрүүд (2026-11-18) — дугаар бүрийн сүүлийн илгээлт (`latestPerRespNo`), үүнээс ШИНЭ дугаараар дахин ирүүлж
- * солигдсон буцаалтыг (`resubmitLinks`: R мөрийн дараагийн илгээлт байгаа) хассан.
+ * солигдсон буцаалтыг хассан. 2026-11-27: буцаалт (R) зөвхөн дараагийн MA-ууд (ижил багц + материал) хамарсан ажлынхаа
+ * хувьд солигдоно — бүх ажлыг нь хамарсан бол хасагдана; хэсэгчлэн бол ХАМРААГҮЙ ажлуудаараа хүчинтэй хэвээр (`works`
+ * нь зөвхөн тэдгээр ажил) — буцаасан ажил хаалттай үлдэнэ.
  */
 export function effectiveMas(rows: readonly MaRow[]): MaRow[] {
   const latest = latestPerRespNo(rows);
-  const links = resubmitLinks(latest);
-  return latest.filter((r) => !(r.verdict === 'R' && links.get(r.oid)?.next));
+  const repl = new Map<number, MaRow | null>();
+  for (const g of resubGroups(latest)) {
+    g.forEach((r, i) => {
+      if (r.verdict !== 'R') return;
+      const later = g.slice(i + 1);
+      if (!later.length) return;
+      if (!r.works.length) { repl.set(r.oid, null); return; }
+      const left = r.works.filter((w) => !later.some((x) => x.works.includes(w)));
+      if (!left.length) repl.set(r.oid, null);
+      else if (left.length < r.works.length) repl.set(r.oid, { ...r, works: left });
+    });
+  }
+  const out: MaRow[] = [];
+  for (const r of latest) {
+    if (!repl.has(r.oid)) { out.push(r); continue; }
+    const v = repl.get(r.oid);
+    if (v) out.push(v);
+  }
+  return out;
 }
 
 /* ═══════════════ БАРИМТ — геопорталын тусдаа item (`chanarDocs`, 2026-10-29) ═══════════════ */

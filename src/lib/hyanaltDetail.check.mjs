@@ -111,6 +111,11 @@ console.log('✅ hyanaltDetail · useFlow — батлалттай ижил with
       'hyanaltDetail: хянагч архивт бичигдэх огноог харна');
     /* 2026-11-16 (хэрэглэгч: «устга»): «Шинэчлэгдсэн огноо өөрчлөгдөнө» анхааруулга хянагчид харагдахгүй */
     assert.ok(!G.includes('data.asOfChanged &&'), 'Guitsetgel: огнооны анхааруулга хасагдсан');
+    /* 2026-11-27 (аудит №6): сарын задаргааны хувь — 2000–2100-гийн гаднах огноо → бүтэн сараар (planProgress/monthlyOf-тэй нэг) */
+    const fillNew = readFileSync(new URL('../modules/sheet/FillNew.tsx', import.meta.url), 'utf8');
+    assert.ok(det.includes('planPctFromMonths(m, asOf, saneDate(s) != null && saneDate(e) != null ? { start: s, end: e } : null)'), 'hyanaltDetail: saneDate');
+    assert.ok(store.includes('planPctFromMonths(m, frameAsOf, saneDate(s) != null && saneDate(e) != null ? { start: s, end: e } : null)'), 'hyanaltStore: saneDate');
+    assert.ok(fillNew.includes('planPctFromMonths(m, asOf, saneDate(start) != null && saneDate(end) != null ? { start, end } : null)'), 'FillNew: saneDate');
     console.log('✅ аудит 2026-10-22 — дахин илгээх шалгалттай · ЯГ бичих утга · огноо ухрахгүй (эх код)');
   }
 }

@@ -148,7 +148,8 @@ export const loadBudget = cached<Budget>(async () => {
       tr('Багц тодорхойлоогүй'),
     ).filter((t) => t.value > 0),
   };
-}, SESSION_TTL_MS, ['CASHFLOW_NEW']);
+  /* 2026-11-27: нийт төсөв/гэрээ нь модноос («Зургийн бүртгэл» + газрын нөхөх олговор) — ZURAG_BURTGEL · PARCEL_LEFT */
+}, SESSION_TTL_MS, ['CASHFLOW_NEW', 'ZURAG_BURTGEL', 'PARCEL_LEFT']);
 
 export type Headline = {
   /** Төслийн талбай, га — хилийн `Hec_area` */
@@ -208,7 +209,8 @@ export const loadHeadline = cached<Headline>(async () => {
     usableM2: built ? sumBy(built, (r) => Number(r.u ?? 0)) : NaN,
     partial: !b || !built || !budget,
   };
-}, SESSION_TTL_MS, ['CASHFLOW_NEW'], (h) => !h.partial);
+  /* 2026-11-27: `loadBudget`-ийн дүнг агуулна — түүнтэй ижил түлхүүрээр хаягдана */
+}, SESSION_TTL_MS, ['CASHFLOW_NEW', 'ZURAG_BURTGEL', 'PARCEL_LEFT'], (h) => !h.partial);
 
 /* ══════════════ Төслийн жигнэсэн явц ══════════════ */
 

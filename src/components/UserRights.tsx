@@ -80,7 +80,8 @@ export function UserRights(props: UserRightsProps) {
               <span className={s.topicName}>
                 <span className={s.topicIcon}><Icon name={v.icon} size={14} /></span>
                 {v.title}
-                {auto && <span className={s.saveHint}>{tr('Гүйцэтгэл-ээс автоматаар')}</span>}
+                {/* 2026-11-27: «Төлбөрийн акт (IPC)» нь нээлттэй «Санхүүжилт»-ээс автоматаар (`permissions.autoViewsFor`) */}
+                {auto && <span className={s.saveHint}>{v.key === 'ipc' ? tr('Санхүүжилт-ээс автоматаар') : tr('Гүйцэтгэл-ээс автоматаар')}</span>}
               </span>
               <button
                 type="button"
@@ -91,7 +92,12 @@ export function UserRights(props: UserRightsProps) {
                 title={superUser
                   ? tr('Кодонд бүртгэлтэй админ — энд засагдахгүй')
                   : auto
-                    ? tr('«Гүйцэтгэл»-ээс автоматаар нээлттэй')
+                    ? (v.key === 'ipc'
+                      /* 2026-11-27: «Санхүүжилт» засах эрхээс нээгдсэн бол IPC тэр эрхтэйгээ л хаагдана */
+                      ? (!hasView(d.views, 'finance') && capViews.includes('finance')
+                        ? tr('«Санхүүжилт»-ээс автоматаар нээлттэй — «Санхүүжилт» нь засах эрхээс ({0}); тухайн эрхийн хуудсаас эрхийг хасахад хаагдана', impliedBy('finance'))
+                        : tr('«Санхүүжилт»-ээс автоматаар нээлттэй — хаахын тулд «Санхүүжилт»-ийг унтраана'))
+                      : tr('«Гүйцэтгэл»-ээс автоматаар нээлттэй'))
                     : implied
                       ? tr('Засах эрхээс үүссэн ({0}) — тухайн эрхийн хуудсаас хаана', impliedBy(v.key))
                       : undefined}

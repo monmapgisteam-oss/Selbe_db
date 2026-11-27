@@ -252,7 +252,7 @@ function Body({ page, rows, at, pend, setPend, pubFrom, setPubFrom }: {
       return;
     }
     if (!e.updates.length && !e.adds.length && !e.deletes.length) { setPend(EMPTY_PENDING); return; }
-    if (e.deletes.length && !(await askConfirm(tr('{0} мөр УСТГАГДАНА (буцаах боломжгүй); үлдсэн мөрүүдийн жин тэнцүү хуваагдана. Хадгалах уу?', e.deletes.length), { ok: tr('Хадгалах'), danger: true }))) return;
+    if (e.deletes.length && !(await askConfirm(tr('{0} мөр УСТГАГДАНА (буцаах боломжгүй); үлдсэн мөрүүдийн жин хэвээр, нийлбэр нь 100% болж хуваагдана. Хадгалах уу?', e.deletes.length), { ok: tr('Хадгалах'), danger: true }))) return;
     setBusy(true);
     try {
       const oids = [...new Set([...e.updates.map((u) => Number(u[NAMES.oid])), ...e.deletes])];

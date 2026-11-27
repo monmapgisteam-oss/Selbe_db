@@ -138,16 +138,43 @@ export type PlanPkgProgress = { S: number | null; P: number | null; rows: number
  */
 export function packageProgress(res: PlanResult, keyOf: (pkg: string | null) => string): Map<string, PlanPkgProgress> {
   const acc = new Map<string, { w: number; s: number; p: number; n: number }>();
+  /* 2026-11-27: S нь дарагдсан БАГЦТАЙ мөр (`zovOverride` — багцын «Зөвшөөрөл» мөр = бүртгэлийн хувь) навч болно; доорх мөрүүд
+     нь (хадгалсан утга) орохгүй. Урьд нь навчаар уншиж дарсан утгыг тойрдог байв. Багцгүй дарсан мөр (үе шат) — доош нь навчаар */
+  const ovS = res.overS;
+  const unit = (x: PlanNode): boolean => !!ovS?.has(x) && !!keyOf(x.pkg);
+  /* 2026-11-27: нэгж мөрийн (дарагдсан S) ДООРХ навчнуудаас 2-р унтраалга унтарсан нь жингээс хасагдана — урьд нь доод мөрийг
+     унтраахад хүснэгтэд бүдгэрдэг атлаа нэгжийн жин бүтнээрээ ордог байв. Хувь (S/P) нь нэгжийнх хэвээр */
+  const offBelow = (u: PlanNode): number => {
+    let s = 0;
+    const walk = (x: PlanNode, off: boolean) => {
+      for (const c of x.children) {
+        if (c.outside) continue;
+        const o = off || !pkgSwitchOwn(c);
+        if (c.children.length) { walk(c, o); continue; }
+        const cv = res.values.get(c);
+        if (o && cv && !cv.skip && cv.G != null && cv.G > 0) s += cv.G;
+      }
+    };
+    walk(u, false);
+    return s;
+  };
   for (const n of res.tree.nodes) {
-    if (n.children.length || !n.row) continue;
+    if (!n.row || (n.children.length && !unit(n))) continue;
+    /* 2026-11-27 (хэрэглэгч): газар чөлөөлөлтийг багцаар бодохгүй (нэгж талбар олон багцад давхардана, хувь зөвхөн төслийн
+       нийтээр) — «Газар чөлөөлөлт»-ийн мөр багцын гүйцэтгэлийн жингийн сууринд ОРОХГҮЙ, үлдсэн үе шатууд жингээрээ 100% болно.
+       Урьд нь хувьгүй мөр 0%-иар бүтэн жинтэй орж багцын гүйцэтгэлийг бууруулдаг байв */
+    if (n.phase === 'gazar') continue;
+    let under = false;
+    for (let x = n.parent; x && x.row; x = x.parent) if (unit(x)) { under = true; break; }
+    if (under) continue;
     const k = keyOf(n.pkg);
     if (!k || !inPackage(n)) continue;
     let out = false;
     for (let x: PlanNode | null = n; x && x.row; x = x.parent) if (x.outside) { out = true; break; }
     const v = res.values.get(n);
     if (out || !v || v.skip) continue;
-    const w = v.G;
-    if (w == null || !(w > 0)) continue;
+    const w = v.G == null ? null : n.children.length ? v.G - offBelow(n) : v.G;
+    if (w == null || !(w > 1e-9)) continue;
     const a = acc.get(k) ?? { w: 0, s: 0, p: 0, n: 0 };
     a.w += w; a.s += w * (v.S ?? 0); a.p += w * (v.P ?? 0); a.n += 1;
     acc.set(k, a);
@@ -456,7 +483,11 @@ export function noMoney(n: PlanNode): boolean {
 /** ХУГАЦААНЫ НИЙТЭД ТООЦОХГҮЙ (2026-11-19) — мөр өөрийн огноог харуулна, эцгийн эхлэх/дуусахад орохгүй. Хоосон = тооцно */
 export const noTime = (n: PlanNode): boolean => (n.row?.hugatsaa_tootsoh === 1 ? false : n.outside || n.row?.hugatsaa_tootsoh === 0);
 
-export function moneySums(tree: PlanTree): Map<PlanNode, MoneySums> {
+/**
+ * @param ignoreSwitch 2026-11-27: `true` = 3-р унтраалгыг («Мөнгөний нийлбэрт тооцох») үл харгалзана — зөвхөн тооцоонд
+ *   ороогүй (`outside`) мөр хасагдана (E-тэй ижил). Жингийн суурьд (`computeCore.basis`): 3-р унтраалга зөвхөн мөнгөн нийлбэрт.
+ */
+export function moneySums(tree: PlanTree, ignoreSwitch = false): Map<PlanNode, MoneySums> {
   const out = new Map<PlanNode, MoneySums>();
   const add = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : a + b);
   const go = (n: PlanNode): MoneySums => {
@@ -468,7 +499,7 @@ export function moneySums(tree: PlanTree): Map<PlanNode, MoneySums> {
     };
     for (const c of n.children) {
       const k = go(c);
-      if (noMoney(c)) continue;
+      if (ignoreSwitch ? c.outside : noMoney(c)) continue;
       s = { paid: add(s.paid, k.paid), advance: add(s.advance, k.advance), contract: isContractNote(r) ? s.contract : add(s.contract, k.contract) };
     }
     out.set(n, s);
@@ -697,6 +728,8 @@ export type PlanResult = {
    * мод). Мөрүүдийн утга үүнээс БИШ; `monthlySeries` Төслийн нийт мөрийн цувааг эндээс авна.
    */
   total?: PlanResult;
+  /** 2026-11-27: S нь дарагдсан (`PlanInputs.override`) мөрүүд — багцын гүйцэтгэл тэднийг навч гэж үзнэ (`packageProgress`) */
+  overS?: ReadonlySet<PlanNode>;
 };
 
 /** Навчны огноо — өөрийнх, эс бөгөөс хамгийн ойрын өвөг мөрийн (хоёулаа байгаа) */
@@ -749,7 +782,9 @@ function leafValue(n: PlanNode, m: Metric, today: number, inputs: PlanInputs): n
         if (v !== undefined) return frac(v);
       } else if (n.phase === 'gazar' && n.depth > 1) {
         /* 2026-11-11 (хэрэглэгч): газар чөлөөлөлтийг багц/блокоор хувиар бодохгүй — нэгж талбар олон багцад давхардана.
-           Хувь зөвхөн үе шатын мөрөнд (төслийн нийт, `override`) */
+           Хувь зөвхөн үе шатын мөрөнд (төслийн нийт, `override`).
+           2026-11-27 (хэрэглэгч): багц/блокийн мөр ХУВЬГҮЙ хэвээр (төслийн нийт хувийг багц бүрд тавихгүй) — оронд нь
+           «Газар чөлөөлөлт»-ийн мөр багцын гүйцэтгэлийн жингийн сууриас хасагдана (`packageProgress`) */
         return null;
       } else if (n.phase === 'zurag' && inputs.zuragActual && !r.registry) {
         /* 2026-11-19 (аудит): бүртгэлээс үүсгэсэн БАРИМТЫН мөр өөрийн төлөвийн хувьтай (`guitsetgel_huvi`) — багцын дундажаар дарахгүй */
@@ -880,10 +915,24 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number): PlanRes
   };
   const W = (n: PlanNode): number | null => { const e = E.get(n); return e == null ? null : e * keepOf(n); };
   /* 2026-11-24 (хэрэглэгч: «гараар тавиагүй мөрийн жин — гэрээний дүн, алга бол төсөв»): ах дүүгийн жингийн суурь мөнгө */
-  const msum = moneySums(tree);
+  /* 2026-11-27: 3-р унтраалга (мөнгө) жинд нөлөөлөхгүй — гэрээний дүн унтраалгаас үл хамааран */
+  const msum = moneySums(tree, true);
+  /* 2026-11-27 (засвар): БҮЛГИЙН суурь = доод мөр бүрийн суурийн (гэрээ, алга бол төсөв) нийлбэр. Урьд нь доод мөрийн НЭГ нь л
+     гэрээтэй бол бүлгийн суурь зөвхөн тэр гэрээний дүн болж, гэрээгүй доод мөрүүдийн төсөв хаягддаг байв (80 : 200 — зөв нь
+     180 : 200). Өөрийн «Гэрээлсэн дүн»-тэй мөр — өөрийн дүнгээр; доор нь гэрээ огт алга бол төсвөөр (W) */
+  const basisMemo = new Map<PlanNode, number | null>();
   const basis = (n: PlanNode): number | null => {
+    if (basisMemo.has(n)) return basisMemo.get(n)!;
     const k = msum.get(n)?.contract;
-    return k != null && k > 0 ? k * keepOf(n) : W(n);
+    let b: number | null;
+    if (!(k != null && k > 0)) b = W(n);
+    else if (isContractNote(n.row)) b = k * keepOf(n);
+    else {
+      b = 0;
+      for (const c of n.children) if (!c.outside) b += basis(c) ?? 0;
+    }
+    basisMemo.set(n, b);
+    return b;
   };
 
   /* ── F (0–1): хадгалсан › G/G_эцэг (үе шат) › E/E_эцэг › хосын F ── */
@@ -906,20 +955,37 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number): PlanRes
       const fixedOf = (c: PlanNode): number | null => (c.row?.registry && p !== root ? null : wt(c.row?.heseg_ezleh_huvi));
       if (sib.some((c) => fixedOf(c) != null)) {
         const own = fixedOf(n);
-        let fixed = 0, free = 0;
-        for (const c of sib) { const w = fixedOf(c); if (w != null) fixed += w; else free += basis(c) ?? 0; }
-        /* Үе шатнаас доош: бүх ах дүү тогтмол жинтэй бол нийлбэрт нь хувааж 100% болгоно (хасагдсан ах дүү байвал үлдсэн нь нөхнө) */
-        if (own != null && p !== root && fixed > 0 && sib.every((c) => fixedOf(c) != null)) return own / fixed;
-        if (own != null) return own;
+        let fixed = 0, free = 0, nFree = 0;
+        for (const c of sib) { const w = fixedOf(c); if (w != null) fixed += w; else { free += basis(c) ?? 0; nFree += 1; } }
+        /* 2026-11-27: ах дүүгийн нийлбэр ҮРГЭЛЖ 100% (бүх түвшинд, үе шат ч) — бүгд тогтмол бол нийлбэрт нь хувааж 100% болгоно
+           (хасагдсан ах дүү байвал үлдсэн нь нөхнө); тогтмолуудын нийлбэр 100%-аас хэтэрвэл тогтмолуудыг хувь тэнцүүгээр
+           бууруулж, тогтмолгүй ах дүү 0 */
+        const scale = fixed > 0 && (nFree === 0 || fixed > 1 + 1e-9);
+        /* 2026-11-27 (засвар): мөнгөгүй үлдэгдэл — ихрийн төсвөөр (`twinBudget`; Сонгон шалгаруулалт, Зөвшөөрөл … өөрийн
+           төсөвгүй бүлэг). Урьд нь нэг мөрд гараар жин тавимагц бусад нь ихрийн төсвийн харьцаагаа алдаж тэнцүү хуваагддаг байв */
+        let twinFree = 0;
+        if (!(free > 0) && p !== root) for (const c of sib) if (fixedOf(c) == null) twinFree += twinBudget(c);
+        /* 2026-11-27 (засвар): тогтмол жингүүд аль хэдийн 100% хүрсэн бүлэгт ЖИНГҮЙ, мөнгөгүй НЭМСЭН АЖИЛ (шинэ зөвшөөрөл)
+           нэмэгдвэл тэр нь 1/k авч, тогтмолууд харьцаагаа хадгалан үлдсэнд нь шахагдана (0.5 · 0.5 + шинэ → 1/3 бүгд). Урьд нь
+           шинэ мөр 0% жинтэй болж гүйцэтгэл нь багцын мөрд огт ордоггүй байв (хуудсанд жин оруулах талбаргүй) */
+        if (nFree > 0 && !(free > 0) && !(twinFree > 0) && fixed >= 1 - 1e-9
+          && sib.every((c) => fixedOf(c) != null || isAddedWork(c))) {
+          return own != null ? (own / fixed) * (1 - nFree / sib.length) : 1 / sib.length;
+        }
+        if (own != null) return scale ? own / fixed : own;
         const rest = Math.max(0, 1 - fixed);
         if (free > 0) return rest * ((basis(n) ?? 0) / free);
-        const nFree = sib.filter((c) => fixedOf(c) == null).length;
+        if (twinFree > 0) return rest * (twinBudget(n) / twinFree);
         return nFree ? rest / nFree : 0;
       }
     }
     let tot = 0;
     for (const c of sib) tot += basis(c) ?? 0;
-    return tot > 0 ? (basis(n) ?? 0) / tot : null;
+    if (tot > 0) return (basis(n) ?? 0) / tot;
+    /* 2026-11-27: жингүй, мөнгөгүй НЭМСЭН АЖЛЫН бүлэг (ихэргүй — `linkTwins` алгасдаг) — тэнцүү хуваана. Урьд нь «Зөвшөөрөл (ТТБ)»
+       хуудас 1/k-г хүснэгтэд бичдэг байсан (гараар тавьсан жинг дардаг тул больсон, `uyShat.buildEdits`) */
+    if (sib.length && sib.every((c) => isAddedWork(c) && wt(c.row?.heseg_ezleh_huvi) == null)) return 1 / sib.length;
+    return null;
   };
   /**
    * 2026-11-03 (хэрэглэгч): бүлэгт өөрийн төсөв байхгүй бол — мөр бүрийн Барилга угсралтын ижил багц/блокийн мөрийн (ихэр)
@@ -1122,9 +1188,12 @@ function computeCore(tree: PlanTree, inputs: PlanInputs, today: number): PlanRes
       } : {}),
     });
   }
+  const overS = new Set<PlanNode>();
+  for (const [n, o] of ov) if ('S' in o) overS.add(n);
   return {
     tree, today, values, get: (code) => { const n = tree.byCode.get(code); return n ? values.get(n) : undefined; },
     ...(tops.length ? { noTotal: { tops, W: Wt } } : {}),
+    ...(overS.size ? { overS } : {}),
   };
 }
 

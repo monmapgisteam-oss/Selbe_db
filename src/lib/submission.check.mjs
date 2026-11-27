@@ -517,7 +517,9 @@ const nextOf = (over = {}) => {
   const iMark = HY2.indexOf('await markArchiving(staged.oid, staged.at, {');
   const iAdds = HY2.indexOf('await applyAdds(pkg, frame, written)');
   assert.ok(iMark > 0 && iAdds > iMark, 'тэмдэг applyAdds-ийн ӨМНӨ бичигдэх ёстой (R2)');
-  assert.ok(HY2.includes('archiveSubmission(cur, a.subAt)'), 'apply subAt-ийг archiveSubmission руу дамжуулна (R3)');
+  assert.ok(HY2.includes('archiveSubmission(cur, a.subAt, a.stage)'), 'apply subAt-ийг archiveSubmission руу дамжуулна (R3)');
+  /* 2026-11-27: `fillMs`-ийн дээд хязгаар серверийн цагаар */
+  assert.ok(SB2.includes('x <= serverNow() + FILL_SLACK'), 'isFillMs — serverNow');
   assert.ok(HY2.includes('unclosedSet(subOid, { at: staged.at })'), 'хаагдаагүй нэмэлтийн тэмдэг (R1)');
 }
 

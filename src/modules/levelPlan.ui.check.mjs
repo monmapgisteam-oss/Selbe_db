@@ -115,4 +115,50 @@ const render = (d, initial) => renderToStaticMarkup(h(LocaleProvider, null, h(Le
   assert.match(src, /hasCap\(user\?\.username, 'hamaaral'\)/, 'товч `hamaaral` эрхээр');
 }
 
+/* ── 4. 2026-11-27: хадгалсан хуучин багц ↔ багц холбоо — эрхгүй хүнд ч (харах горимд) зөвхөн жагсаалт ── */
+{
+  const { LegacyList } = await import('./LevelLinkEdit.tsx');
+  const html = renderToStaticMarkup(h(LocaleProvider, null, h(LegacyList, { deps: [{ from: 'A1', to: 'B2' }] })));
+  assert.ok(html.includes('Хуучин багц хоорондын холбоо') && html.includes('<b>A1</b>') && html.includes('<b>B2</b>'), `хуучин холбоо харагдана (${html})`);
+  assert.ok(!html.includes('<button'), 'харах горимд товчгүй (устгах · шилжүүлэх алга)');
+  const lsrc = readFileSync(new URL('./LevelLinkEdit.tsx', import.meta.url), 'utf8');
+  assert.match(lsrc, /const legacyQ = useAsync\(loadLegacyDeps, \[\]\);/, 'хуучин холбоог засах горимоос үл хамааран уншина');
+  assert.match(lsrc, /if \(!on\) return \{ rowEdit: undefined, staged: NONE, ui: legacyErr \?\? \(legacy\.length \? <LegacyList deps=\{legacy\} \/> : null\), exit \};/,
+    'харах горимд хуучин холбооны жагсаалт (уншилт унасан бол анхааруулга)');
+  assert.match(lsrc, /if \(!on \|\| !g \|\| !legacy\.length\) return;/, 'автомат устгал зөвхөн засах горимд');
+}
+
+/* ── 5. 2026-11-27 (засвар): хуучин холбооны уншилт унавал «холбоогүй» биш — ил анхааруулга + «Дахин оролдох» ── */
+{
+  const { LegacyError } = await import('./LevelLinkEdit.tsx');
+  const html = renderToStaticMarkup(h(LocaleProvider, null, h(LegacyError, { error: new Error('Багцын хамаарлын бичлэг эвдэрсэн байна'), retry: () => {} })));
+  assert.ok(html.includes('role="alert"') && html.includes('Хуучин багц хоорондын холбоо уншигдсангүй'), `анхааруулга (${html})`);
+  assert.ok(html.includes('Багцын хамаарлын бичлэг эвдэрсэн байна'), 'шалтгаан ил');
+  assert.ok(html.includes('Дахин оролдох'), 'дахин оролдох товч');
+  const raw = renderToStaticMarkup(h(LocaleProvider, null, h(LegacyError, { error: new Error('Failed to fetch') })));
+  assert.ok(!raw.includes('Failed to fetch') && !raw.includes('<button'), `техникийн англи алдаа ил гарахгүй · retry-гүй бол товчгүй (${raw})`);
+  const lsrc = readFileSync(new URL('./LevelLinkEdit.tsx', import.meta.url), 'utf8');
+  assert.match(lsrc, /const legacyErr = legacyQ\.state === 'error' \? <LegacyError error=\{legacyQ\.error\} retry=\{retryLegacy\} \/> : null;/, 'уналтын төлөв уншигдана');
+  assert.match(lsrc, /\{legacyErr\}\s+\{legacy\.length > 0 && \(/, 'засах горимын самбарт ч анхааруулга');
+}
+
+/* ── 6. 2026-11-27 (засвар): зураас дарахад шинэ холбоо нэмэгдэхгүй · «өнөөдөр» = Улаанбаатарын өдөр ── */
+{
+  const lsrc = readFileSync(new URL('./LevelLinkEdit.tsx', import.meta.url), 'utf8');
+  const onLine = lsrc.slice(lsrc.indexOf('const onLine = useCallback'), lsrc.indexOf('const rowCls = useCallback'));
+  assert.match(onLine, /linePick\(ids, lines, \(id\) => g\.nodes\.has\(id\)\)/, 'зураас — зөвхөн одоогийн холбоо (`linePick`)');
+  assert.match(onLine, /if \(gone\) \{[\s\S]*?reload\(\);\s+return;/, 'хуучирсан зураас — мэдэгдээд дахин ачаална, сэлгэхгүй');
+  const psrc = readFileSync(new URL('./LevelPlan.tsx', import.meta.url), 'utf8');
+  assert.ok(!psrc.includes('dayOfLocal'), 'хөтчийн цагийн бүсийн өдөр хэрэглэхгүй');
+  assert.match(psrc, /const today = ubToday\(d\.at\);/, 'өнөөдрийн шугам · багана — Улаанбаатарын өдөр');
+  assert.match(psrc, /dropSheetDetail\(\); retrySheet\?\.\(\);/, 'холбоос дахин ачаалахад зураасны кэш хаягдана');
+  assert.match(psrc, /dropSheetDetail\(\); dropWorkCache\(\); retrySheet\?\.\(\);\s+setLinkOn\(true\);/, '«Холбоос засах» асаахад зураас ба граф хамт шинээр уншина');
+  /* Улаанбаатарын 2026-11-28 02:00 (UTC 11-27 18:00) — хөтчийн бүсээс үл хамааран 11-28-ны багана */
+  const at = Date.parse('2026-11-27T18:00:00Z');
+  const plan = assemblePlan(stored, { actual: { blocks: new Map(), universe: new Map(), infra: new Map() }, sched: { has: () => false, at: () => null, prime: () => {}, keys: () => [] }, land: new Map() }, at, []);
+  const l6 = render({ plan, marks: new Map(), at, failed: [] }, 6);
+  assert.ok(l6.includes('>11.28<') && !l6.includes('>11.27<'), 'L6 эхний багана — Улаанбаатарын өдөр (11.28)');
+  assert.ok(render({ plan, marks: new Map(), at, failed: [] }, 1).includes('Өнөөдөр 2026.11.28'), 'L1 өнөөдрийн шугам — Улаанбаатарын өдөр');
+}
+
 console.log('levelPlan.ui.check ✓');

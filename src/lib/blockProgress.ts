@@ -348,6 +348,28 @@ export function latestMean(
   return { pct: list.length ? sum / wsum : null, blocks: n, total: list.length };
 }
 
+/**
+ * БЛОКУУДЫН ТӨСВӨӨР ЖИГНЭСЭН ДУНДАЖ (2026-11-27, аудит №23) — `pkgProgressOf`/`latestMean`-ийн НЭГ дүрэм (`weightOf`)
+ * дуудагчийн өөрийн утгууд дээр: бөглөх хуудасны «Багцын гүйцэтгэл» (илгээх цонх · хэрэгслийн мөр) ба нэгтгэлийн (190) муруй.
+ * `vals` — `buildingKey` → утга (`null`/NaN = тайлагнаагүй = 0, хуваарьт орно). Түлхүүргүй бол `null`. Нэгж нь оролтынх.
+ */
+export function weightedBlockMean(
+  vals: ReadonlyMap<string, number | null>,
+  weights: ReadonlyMap<string, number> | null = blockWeights,
+): number | null {
+  const keys = [...vals.keys()];
+  if (!keys.length) return null;
+  const wOf = weightOf(keys, weights);
+  let sum = 0, wsum = 0;
+  for (const k of keys) {
+    const w = wOf(k);
+    wsum += w;
+    const v = vals.get(k);
+    if (v != null && Number.isFinite(v)) sum += w * v;
+  }
+  return wsum > 0 ? sum / wsum : null;
+}
+
 /** Багцын гүйцэтгэл — `pkgProgressOf`-ийн мөр */
 export type PkgProgress = {
   /** 0–100 — Σ хэмжигдсэн блок ÷ `total` (тайлагнаагүй блок 0%) */

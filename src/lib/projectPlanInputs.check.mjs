@@ -317,7 +317,22 @@ const srow = (o) => ({
     const vt = pt.result.values.get(pt.tree.nodes[iPh]);
     assert.equal(vt.S, 91.4, 'үе шатын мөр = landTotal');
     assert.equal(pw.S, null, 'landTotal-гүй бол хувьгүй (багцын мөрүүд null)');
-    assert.equal(pt.result.values.get(pt.tree.nodes[find((n) => n.phase === 'gazar' && n.pkg === 'Багц-1' && n.blok === '5/1' && !n.children.length)]).S, null, 'блокийн мөр хувьгүй');
+    /* 2026-11-27 (хэрэглэгч): газар чөлөөлөлтийг багцаар ӨГӨХГҮЙ — landTotal байсан ч багц/блокийн газрын мөр хувьгүй */
+    assert.equal(pt.result.values.get(pt.tree.nodes[find((n) => n.phase === 'gazar' && n.pkg === 'Багц-1' && n.blok === '5/1' && !n.children.length)]).S, null, 'блокийн мөр — хувьгүй (төслийн нийт хувь БИШ)');
+    assert.equal(vt.S, 91.4, 'үе шатын мөр хэвээр landTotal');
+    /* Багцын гүйцэтгэл газар чөлөөлөлтийн хувиас (landTotal) хамаарахгүй — газрын мөр жингийн сууринд ордоггүй */
+    {
+      const { planPkgProgress, planPkgProgressOrThrow } = await import('./projectPlanInputs.ts');
+      const p0 = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, landTotal: null }, today);
+      const a = planPkgProgress(pt), b = planPkgProgress(p0);
+      assert.ok(a.size > 0, 'багцын гүйцэтгэлтэй');
+      for (const [k, v] of a) assert.equal(v.S, b.get(k)?.S, `${k}: landTotal 91.4 ба null — багцын гүйцэтгэл ижил`);
+      /* 2026-11-27 (аудит): эх уншигдаагүй (`failed` хоосон биш) бол татгалзана — 0%-иар хэмжилт мэт буцаахгүй */
+      assert.throws(() => planPkgProgressOrThrow(p), /x/, 'failed = [x] — татгалзана');
+      assert.throws(() => planPkgProgressOrThrow({ ...pt, failed: ['blockProgress'] }), /blockProgress/);
+      assert.throws(() => planPkgProgressOrThrow({ ...pt, failed: ['landTotal'] }), /landTotal/, 'аль ч эх унасан бол уншигдаагүй');
+      assert.equal(planPkgProgressOrThrow(pt).size, a.size, 'failed хоосон — утгатай');
+    }
     const pn = assemblePlan(rows, { actual: { blocks, universe, infra }, sched, landTotal: null }, today);
     assert.equal(pn.result.values.get(pn.tree.nodes[iPh]).S, null, 'landTotal null = хувьгүй');
   }
@@ -410,6 +425,22 @@ const srow = (o) => ({
     const dm = designMoneyOf(buildTree(rows));
     assert.equal(dm.budget, page.result.values.get(page.tree.byCode.get('2')).E, 'loadDesignMoney — хуудасны үе шатын төсөвтэй ижил');
     assert.deepEqual(planTreeRows(st, null, null), st, 'бүртгэл уншигдаагүй бол хадгалсан мөрөөр (хуудас ч мөн)');
+    assert.equal(money.landComp, 0, 'газрын үе шатгүй — нөхөх олговор 0');
+  }
+  /* 2026-11-27 (аудит №50): `landComp` — Төслийн нийтийн гэрээ/олгосонд ОРСОН нөхөх олговор (3-р унтраалга асаалттай үед л) */
+  {
+    const lr = (sw) => [
+      { objectid: 1, dd_kod: '1', ajil_uilchilgee: 'Газар чөлөөлөлт', uy_shat: 'Газар чөлөөлөлт', mongo_tootsoh: sw },
+      { objectid: 2, dd_kod: '3', ajil_uilchilgee: 'Барилга угсралт', uy_shat: 'Барилга угсралт', ho_dun_geree: 2000, geree_dun: 2000, ho_dungiin_tailbar: 'Гэрээлсэн дүн', olgoson_dun: 670 },
+    ];
+    const on = projectMoneyOf(buildTree(planTreeRows(lr(1), null, 100)));
+    assert.equal(on.landComp, 100, '3-р унтраалга асаалттай — олговор нийтэд орсон');
+    assert.equal(on.contract, 2100);
+    assert.equal(on.paid, 770);
+    const off = projectMoneyOf(buildTree(planTreeRows(lr(0), null, 100)));
+    assert.equal(off.landComp, 0, 'унтраалттай — нийтэд ороогүй, 0');
+    assert.equal(off.contract, 2000);
+    assert.equal(projectMoneyOf(buildTree(planTreeRows(lr(1), null, null))).landComp, 0, 'олговор уншигдаагүй — 0');
   }
   /* №6: зөвшөөрлийн хувь — бүртгэл (Багц-1: 1/2 = 50%) ТТБ-ийн тооцоонд орж, үе шат · liveProgressOf нэг тоо */
   {

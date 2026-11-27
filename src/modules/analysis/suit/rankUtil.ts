@@ -47,7 +47,9 @@ export function zoneCsv(rows: Row[], mode: Mode, ind: Indicator, indicators: rea
     const r = rows[k];
     const actual = r.rawActual ?? r.raw;
     return [
-      ranks[k], r.id, zoneTypeLabel(r.type), round(vals[k], 1), round(r.urban, 1),
+      /* 2026-11-27 (аудит №44): «Оноо» нь «Байр»-тай ИЖИЛ нарийвчлалаар (бүхэл — дэлгэцийн оноо). Урьд нь 1 орон бутархайгаар
+         хэвлэж, 80.4 ба 79.6 хоёул «1»-р байртай гардаг байв. Нарийн утга нь «Хот төлөвлөлтийн оноо», үзүүлэлтийн оноонд */
+      ranks[k], r.id, zoneTypeLabel(r.type), round(vals[k], 0), round(r.urban, 1),
       r.coverage == null ? null : round(r.coverage * 100, 0),
       round(r.residentPop, 0), round(r.households, 0), round(r.areaHa, 2),
       ...indicators.flatMap((i) => [round(actual[i.id], Math.max(0, i.decimals)), round(r.parts[i.id]?.score, 1)]),

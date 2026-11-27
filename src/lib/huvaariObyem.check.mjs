@@ -572,5 +572,143 @@ console.log('huvaariObyem.check: ok — scheduleByMoney · orderByDeps · remapM
   assert.equal(ap2.adds[0].attributes.turul, H.TURUL_WEEK, 'батлагдсан мөргүй бол нэмнэ');
   assert.equal(H.weekApproveEdits(meta, '5/1', wk, [{ oid: 11, obyem: 40 }], [], 30), null, 'хооронд нь өөрчлөгдсөн → батлахгүй');
   assert.equal(H.weekApproveEdits(meta, '5/1', wk, [], [{ oid: 5 }], 30), null, 'хүлээгдэж буй алга → батлахгүй');
+  /* 2026-11-27: өөрөө батлах шалгалт — СҮҮЛИЙН засварлагчаар (saveWeek мөрийг шинэчилдэг) */
+  assert.equal(H.weekAuthorOf({ created_user: 'Author', last_edited_user: 'Approver ' }), 'approver', 'утгыг сольсон хүн = сүүлийн засварлагч');
+  assert.equal(H.weekAuthorOf({ created_user: 'Author' }), 'author', 'засварлагчгүй бол үүсгэгч');
+  assert.equal(H.weekAuthorOf({}), '', 'editor tracking алга');
+  assert.equal(H.weekSelfApproved([{ by: H.weekAuthorOf({ created_user: 'a1', last_edited_user: 'boss' }) }], 'Boss'), true,
+    'батлагч бусдын мөрийн утгыг сольсон бол өөрөө батлахгүй');
+  assert.equal(H.weekSelfApproved([{ by: 'a1' }], 'boss'), false, 'өөр хүний утга — батална');
+  assert.equal(H.weekSelfApproved([{ by: '' }], ''), false, 'нэвтрэлтгүй — шалгахгүй');
   console.log('huvaariObyem.check: долоо хоногийн обьём батлалтаар ✓');
+}
+
+/* ══════════════ 2026-11-27: гинжээр шилжсэн ажлын сарын обьём — шилжинэ, нийлбэр хадгалагдана ══════════════ */
+{
+  const { shiftMonths } = await import('./huvaariObyem.ts');
+  const D = (s) => Date.parse(`${s}T00:00:00Z`);
+  const was = { start: D('2026-03-01'), end: D('2026-04-30') };
+  const m = new Map([['2026-03', 400], ['2026-04', 600]]);
+  /* 2 сараар хойш (урт хэвээр) — keepMonths 3,4-р сарыг хаяж нийлбэр 0 болдог байв */
+  const to = { start: was.start + 61 * 86400000, end: was.end + 61 * 86400000 };
+  const s = shiftMonths(to, was, m);
+  assert.equal(sumMonths(s), 1000, 'нийлбэр хадгалагдана');
+  assert.ok(!s.has('2026-03'), 'хуучин сар үлдэхгүй');
+  assert.ok(Math.abs((s.get('2026-05') ?? 0) - 400) < 10 && Math.abs((s.get('2026-06') ?? 0) - 600) < 10, 'хэлбэр дагаж шилжинэ');
+  /* урт өөрчлөгдсөн — урьдын адил keepMonths */
+  const k = shiftMonths({ start: was.start, end: D('2026-03-31') }, was, m);
+  assert.deepEqual([...k], [['2026-03', 400]], 'урт өөрчлөгдвөл keepMonths');
+  assert.deepEqual([...shiftMonths(to, null, m)], [...keepMonths(to, m)], 'хуучин муж алга — keepMonths');
+  console.log('huvaariObyem.check: гинжээр шилжсэн сарын обьём ✓');
+}
+
+/* ══════════════ 2026-11-27 (засвар №4): шилжүүлэлтийн зангуу — түлхээд буцаахад задаргаа яг сэргэнэ, хуримтлагдахгүй ══════════════ */
+{
+  const { shiftMonths, shiftAnchored } = await import('./huvaariObyem.ts');
+  const DAY = 86400000;
+  const eq = (a, b) => a.size === b.size && [...a].every(([k, v]) => b.get(k) === v);
+  const move = (m, f, t) => shiftMonths(t, f, m);
+  const home = span('2026-03-01', '2026-04-30');
+  const m0 = new Map([['2026-03', 400], ['2026-04', 600]]);
+  const by = (s, n) => ({ start: s.start + n * DAY, end: s.end + n * DAY });
+  /* +1 өдөр → буцаах: урьд нь 406.86 / 593.14 болдог байв */
+  let a = shiftAnchored(by(home, 1), home, m0, null, eq, move, { span: home, months: m0 });
+  assert.equal(sumMonths(a.val), 1000);
+  let b = shiftAnchored(home, by(home, 1), a.val, a.anchor, eq, move, { span: home, months: m0 });
+  assert.deepEqual([...b.val], [...m0], 'буцаахад хадгалагдсан 400 / 600 яг сэргэнэ');
+  /* 5 удаа +1 / −1 — тархалт хуримтлагдахгүй */
+  let cur = m0, anc = null;
+  for (let k = 0; k < 5; k += 1) {
+    const p = shiftAnchored(by(home, 1), home, cur, anc, eq, move, { span: home, months: m0 });
+    const q = shiftAnchored(home, by(home, 1), p.val, p.anchor, eq, move, { span: home, months: m0 });
+    cur = q.val; anc = q.anchor;
+  }
+  assert.deepEqual([...cur], [...m0], '5 давталтын дараа ч 400 / 600');
+  /* +1 дээр дахин +1 — зангуунаас шууд (+2), өмнөх ноорогоос биш */
+  const c = shiftAnchored(by(home, 2), by(home, 1), a.val, a.anchor, eq, move, { span: home, months: m0 });
+  assert.deepEqual([...c.val], [...shiftMonths(by(home, 2), home, m0)], 'дараалсан шилжүүлэлт зангуунаас');
+  /* зангуугүй ч хадгалагдсан муж руу буцвал хадгалагдсан утга */
+  const d0 = shiftAnchored(home, by(home, 1), a.val, null, eq, move, { span: home, months: m0 });
+  assert.deepEqual([...d0.val], [...m0], 'суурь муж руу буцвал srv');
+  /* хооронд нь гараар зассан бол зангуу хүчингүй — шинэ утгаас бодно */
+  const hand = new Map([['2026-03', 100], ['2026-04', 900]]);
+  const e0 = shiftAnchored(by(home, 2), by(home, 1), hand, a.anchor, eq, move);
+  assert.deepEqual([...e0.val], [...shiftMonths(by(home, 2), by(home, 1), hand)], 'гар засвар → шинэ зангуу');
+  /* 2026-11-27: +1 → гараар засах → суурь муж руу буцаах (home өгсөн) — гар засвар шилжиж үлдэнэ, srv (m0) биш */
+  const hand1 = new Map([['2026-03', 100], ['2026-04', 880], ['2026-05', 20]]);
+  const f0 = shiftAnchored(home, by(home, 1), hand1, a.anchor, eq, move, { span: home, months: m0 });
+  assert.deepEqual([...f0.val], [...shiftMonths(home, by(home, 1), hand1)], 'гар засвар суурь муж руу буцахад хаягдахгүй');
+  assert.notDeepEqual([...f0.val], [...m0], 'гар засвар → m0 биш');
+  /* гар засварын дараах зангуу дахин +1 / −1 хийхэд ч гар засвар (шилжсэн) хэвээр */
+  const f1 = shiftAnchored(by(home, 1), home, f0.val, f0.anchor, eq, move, { span: home, months: m0 });
+  const f2 = shiftAnchored(home, by(home, 1), f1.val, f1.anchor, eq, move, { span: home, months: m0 });
+  assert.deepEqual([...f2.val], [...f0.val], 'гар засвараас эхэлсэн зангуу — буцахад гар засвар яг сэргэнэ');
+  console.log('huvaariObyem.check: шилжүүлэлтийн зангуу ✓');
+}
+
+/* ══════════════ 2026-11-27 (засвар №5): гинжээр шилжсэн ажлын НӨӨЦ обьёмтойгоо хамт шилжинэ ══════════════ */
+{
+  const { shiftRes } = await import('./huvaariObyem.ts');
+  const DAY = 86400000;
+  const was = span('2026-03-01', '2026-04-30');
+  const r = new Map([['2026-03', { hun: 10, mashin: null }], ['2026-04', { hun: 20, mashin: 2 }]]);
+  /* +61 өдөр (5–6-р сар): урьд нь keepRes хоосон болгодог байв (хүн хүч 30 → хоосон) */
+  const s = shiftRes({ start: was.start + 61 * DAY, end: was.end + 61 * DAY }, was, r);
+  assert.deepEqual([...s], [['2026-05', { hun: 10, mashin: null }], ['2026-06', { hun: 20, mashin: 2 }]], 'сараар шилжинэ');
+  assert.equal(sumRes(s).hun, 30, 'хүн хүчний нийлбэр хадгалагдана');
+  /* мужаас гарсан сар ойрын захын сарт нэмэгдэнэ */
+  const w2 = span('2026-03-20', '2026-04-10');
+  const t2 = { start: w2.start + 16 * DAY, end: w2.end + 16 * DAY }; // 04-05..04-26 — зөвхөн 4-р сар
+  assert.deepEqual([...shiftRes(t2, w2, r)], [['2026-04', { hun: 30, mashin: 2 }]], 'захын сард нэгтгэнэ');
+  /* урт өөрчлөгдсөн / хуучин муж алга — урьдын адил keepRes */
+  const shorter = span('2026-03-01', '2026-03-31');
+  assert.deepEqual([...shiftRes(shorter, was, r)], [...keepRes(shorter, r)], 'урт өөрчлөгдвөл keepRes');
+  assert.deepEqual([...shiftRes(was, null, r)], [...keepRes(was, r)], 'хуучин муж алга — keepRes');
+  /* Huvaari.tsx — нөөцийн блок ч обьёмын адил shifted нөхцөлөөр shiftRes-ийг дууддаг (эх кодын тулгалт) */
+  const { readFileSync } = await import('node:fs');
+  const hv = readFileSync(new URL('../modules/Huvaari.tsx', import.meta.url), 'utf8');
+  assert.ok(/obResShiftRef\.current\.get\(key\), sameRes,\s*\(m, f, t\) => shiftRes\(t, f, m\)/.test(hv), 'нөөц shiftRes-ээр шилжинэ');
+  assert.ok(/obShiftRef\.current\.get\(key\), sameMonths,\s*\(m, f, t\) => shiftMonths\(t, f, m\)/.test(hv), 'обьём зангуугаар');
+  console.log('huvaariObyem.check: гинжээр шилжсэн сарын нөөц ✓');
+}
+
+/* ══════════════ 2026-11-27 (засвар №22, №23): долоо хоногийн хүлээгдэж буй мөрийн ангилал ба цэвэрлэгээ ══════════════ */
+{
+  const H = await import('./huvaariObyem.ts');
+  const W = (s) => Date.parse(`${s}T00:00:00Z`);
+  const today = W('2026-11-25'); // Лхагва: энэ 11-23, ирэх 11-30
+  const all = [
+    { week: W('2026-11-16'), obyem: 5, by: 'a' },
+    { week: W('2026-11-23'), obyem: 10, by: 'me' },
+    { week: W('2026-11-30'), obyem: 20, by: 'a' },
+    { week: W('2026-11-30'), obyem: 21 },
+    { week: W('2026-12-07'), obyem: 30, by: 'a' },
+  ];
+  const sp = H.weekPendSplit(all, today, ' Me ');
+  assert.deepEqual(sp.old.map((x) => x.obyem), [5], 'өнгөрсөн долоо хоног → цэвэрлэх');
+  assert.deepEqual(sp.self.map((x) => x.obyem), [10], 'өөрийн оруулга → асуухгүй');
+  assert.deepEqual(sp.live.map((x) => x.obyem), [20, 21], 'бусдын / мэдэгдэхгүй → асууна');
+  assert.deepEqual(H.weekPendSplit(all, today, '').self, [], 'нэвтрэлтгүй — өөрийнх гэж үзэхгүй');
+  /* оруулсан хүн хүлээгдэж буй ачаалалд хадгалагдана */
+  const { readFileSync } = await import('node:fs');
+  const pw = H.toPkgWeek([{ attributes: { objectid: 1, des_dugaar: 7, blok: '5/1', sar: '2026-11-30', obyem: 30, created_user: 'X', last_edited_user: 'Y' } }]);
+  assert.equal(pw.get(7).get('5/1')[0].by, 'y', 'toPkgWeek — сүүлийн засварлагч');
+  const src = readFileSync(new URL('./huvaariObyem.ts', import.meta.url), 'utf8');
+  assert.ok(/outFields: turul === TURUL_WEEK_PEND \? '\*'/.test(src), 'хүлээгдэж буй мөрийг editor tracking-тэй уншина');
+  /* хугацаа нь өнгөрсөн мөрийн устгалт — зөвхөн энэ долоо хоногоос өмнөх, багцын түлхүүртэй (эрхийн шалгалт) */
+  const ex = H.weekExpiredEdits('b1_9f', [{ week: W('2026-11-16'), oids: [1, 2] }, { week: W('2026-11-23'), oids: [3] }, { week: W('2026-11-30'), oids: [4] }], today);
+  assert.deepEqual(ex.deletes, [1, 2], 'энэ / ирэх долоо хоногийнх устгагдахгүй');
+  assert.equal(ex.pkgKey, 'b1_9f');
+  assert.deepEqual([ex.adds.length, ex.updates.length], [0, 0]);
+  assert.equal(H.weekExpiredEdits('b1_9f', [{ week: W('2026-11-23'), oids: [3] }], today), null, 'устгах мөргүй → null');
+  /* clearWeekPend — батлагчийн хамгаалалт эхэлж, дараа нь шинээр уншиж устгана (эх кодын тулгалт) */
+  const cw = src.slice(src.indexOf('export async function clearWeekPend'));
+  assert.ok(cw.indexOf('requirePlanApproveOf(meta.bagts)') > 0 && cw.indexOf('requirePlanApproveOf') < cw.indexOf('weekRows('), 'эрх → уншилт → устгалт');
+  /* Huvaari.tsx — өөрийн оруулгыг асуухгүй, өнгөрсөн мөрийг «Цэвэрлэх» асуулгаар л устгана */
+  const hv = readFileSync(new URL('../modules/Huvaari.tsx', import.meta.url), 'utf8');
+  const eff = hv.slice(hv.indexOf('const { live, self, old } = weekPendSplit('), hv.indexOf('БҮЛГИЙН ЦОНХНЫ МӨНГӨ'));
+  assert.ok(eff.length > 0 && /canApprove/.test(hv.slice(hv.indexOf('const { live, self, old }') - 900, hv.indexOf('const { live, self, old }'))), 'зөвхөн батлагчид');
+  assert.ok(/for \(const pend of live\)/.test(eff) && !/for \(const pend of (?:self|old)\)/.test(eff), 'зөвхөн live асуугдана');
+  assert.ok(eff.indexOf("ok: tr('Цэвэрлэх')") > 0 && eff.indexOf("ok: tr('Цэвэрлэх')") < eff.indexOf('clearWeekPend('), 'цэвэрлэх өмнө асууна');
+  console.log('huvaariObyem.check: долоо хоногийн хүлээгдэж буй мөр — өөрийн / хугацаа өнгөрсөн ✓');
 }

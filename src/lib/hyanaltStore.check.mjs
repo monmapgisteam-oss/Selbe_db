@@ -31,4 +31,22 @@ const rSeen = retry.indexOf('SEEN_DONE.add(cur.__oid)');
 assert.ok(rWrite > 0 && rSeen > rWrite, 'нөхөлт: SEEN_DONE бичилтийн дараа');
 assert.equal((retry.match(/SEEN_DONE\.add\(/g) ?? []).length, 1);
 
+/* 4 · 2026-11-27 (аудит №17): эцсийн батлалт — архивт бичихийн ЯГ өмнө хяналтын мөрийн төлөвийг дахин уншина; буцаагдсан бол бичихгүй */
+{
+  const ar = src.slice(src.indexOf('async function archiveSubmission('), src.indexOf('async function closeAfterArchive('));
+  const iChk = ar.indexOf('if (stage) {');
+  const iAdds = ar.indexOf('await applyAdds(pkg, frame, written)');
+  const iMark = ar.indexOf('await markArchiving(staged.oid, staged.at, {');
+  assert.ok(iChk > 0 && iAdds > iChk && iChk > iMark, 'төлөвийн шалгалт тэмдгийн ДАРАА, applyAdds-ийн ӨМНӨ');
+  const chk = ar.slice(iChk, iAdds);
+  assert.match(chk, /live = await liveRow\(cur\.__oid\)/, 'мөрийг шинээр уншина');
+  assert.match(chk, /st !== REVIEW_STATUS\[stage\] && st !== STATUS\.transferred/, 'хүлээгдэх шатных биш (шилжүүлсэн бус) бол');
+  assert.match(chk, /stale: true,[\s\S]{0,300}\+ \(await clearMark\(\)\)/, 'юу ч бичихгүй, тэмдгийг арилгана');
+  assert.match(apply, /archiveSubmission\(cur, a\.subAt, a\.stage\)/, 'apply шатаа дамжуулна');
+  assert.match(apply, /if \(ar\.stale\) \{ emit\(\); return \{ ok: false, error: ar\.error \}; \}/, 'батлагчид алдаа буцаана');
+  assert.match(retry, /archiveSubmission\(cur\)/, 'нөхөлтийн зам (алдагдсан хариу) хэвээр — шат дамжуулахгүй');
+  /* алдагдсан хариуны «аль хэдийн архивлагдсан» замууд шалгалтаас ӨМНӨ — хэвээр */
+  assert.ok(ar.indexOf('again.sub.done || again.sub.payload.archiveOid != null') < iChk, 'давталтын (аль хэдийн архивлагдсан) зам хөндөгдөөгүй');
+}
+
 console.log('hyanaltStore.check: OK');

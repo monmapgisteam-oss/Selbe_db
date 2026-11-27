@@ -183,7 +183,7 @@ ok('Ноорог — албан үүрэг · багц · эрх нэмэх/ха
   assert.deepEqual(N.touchedPkgs(normRights({ acl: { huvaari: [{ role: 'author', bagts: ['*'] }] } })), [ALL]);
   const t = N.setJob(e, 'sanhuu');
   assert.deepEqual(t.bagts, []);
-  assert.deepEqual(compile(t).caps, ['finEdit', 'ipcCreate', 'ipcApprove', 'cfSwitch', 'ttbSwitch'].filter((c) => compile(t).caps.includes(c)));
+  assert.deepEqual(compile(t).caps, ['finEdit', 'ipcCreate', 'ipcApprove', 'ttbSwitch'].filter((c) => compile(t).caps.includes(c)));
   assert.equal(compile(t).flow, null);
 });
 
@@ -196,6 +196,38 @@ ok('viewChoices — урсгалтай хүнд «Хяналтын хугаца�
   assert.ok(!N.ADDABLE_CAPS.includes('finRow'));
   assert.equal(N.ADDABLE_CAPS.length, PLAIN_CAPS.length - 1);
   assert.equal(N.roleChoices().length, 2 + 2 + 2 + 6 + 1 + 1);
+});
+
+/* 2026-11-27: автомат харагдац ажиллах үеийнхтэй нэг дүрмээр (`permissions.autoViewsFor`) */
+ok('автомат харагдац — обьёмын үүрэг → «Хяналтын хугацаа»; шууд «Санхүүжилт» → «Төлбөрийн акт (IPC)»', () => {
+  /* урсгалын шатгүй, захирал биш, зөвхөн «Инженерийн обьём»-ын засагч / батлагч — «Гүйцэтгэл» нээгдэх тул автомат */
+  for (const role of ['editor', 'approver']) {
+    const ob = normRights({ role: 'taniltsah', views: ['gdash'], acl: { obyem: [{ role, bagts: [B1] }] } });
+    assert.equal(ob.flow, null);
+    assert.ok(N.autoHugatsaa(ob), `обьём ${role} → автомат`);
+    assert.ok(!N.viewChoices(ob).includes('hyanaltHugatsaa'), 'нэмж болох жагсаалтад гарахгүй');
+  }
+  /* «Гүйцэтгэл» нээдэггүй үүрэг (хуваарийн зохиогч) — автомат биш */
+  const hv = normRights({ role: 'taniltsah', views: ['gdash'], acl: { huvaari: [{ role: 'author', bagts: [B1] }] } });
+  assert.ok(!N.autoHugatsaa(hv));
+  assert.ok(N.viewChoices(hv).includes('hyanaltHugatsaa'));
+  /* шууд «Санхүүжилт» → IPC автомат, сонголтод алга */
+  const fin = normRights({ role: 'taniltsah', views: ['gdash', 'finance'] });
+  assert.ok(N.autoIpc(fin));
+  assert.deepEqual(N.autoViewsOfRights(fin), ['ipc']);
+  assert.ok(!N.viewChoices(fin).includes('ipc'), 'автомат IPC нэмж болох жагсаалтад гарахгүй');
+  /* «Санхүүжилт» засах эрхийн гэр харагдацаар (finEdit) — ажиллах үеийнх шиг IPC мөн автомат, сонголтод алга */
+  const cap = normRights({ role: 'taniltsah', views: ['gdash'], caps: ['finEdit'] });
+  assert.ok(N.autoIpc(cap));
+  assert.ok(!N.viewChoices(cap).includes('ipc'));
+  /* «Санхүүжилт»-гүй хүн — IPC автомат биш, нэмж болно */
+  const none = normRights({ role: 'taniltsah', views: ['gdash'] });
+  assert.ok(!N.autoIpc(none));
+  assert.ok(N.viewChoices(none).includes('ipc'));
+  /* IPC аль хэдийн шууд байгаа бол автомат гэж тэмдэглэхгүй */
+  assert.ok(!N.autoIpc(normRights({ role: 'taniltsah', views: ['gdash', 'finance', 'ipc'] })));
+  /* «Санхүүжилт»-гүй хүн */
+  assert.ok(!N.autoIpc(row('eng1').rights) || row('eng1').rights.views.includes('finance'));
 });
 
 /* ══════════ 5. Бичих төлөвлөгөө ══════════ */

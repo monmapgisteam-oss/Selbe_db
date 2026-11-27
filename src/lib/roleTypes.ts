@@ -117,7 +117,20 @@ export function settingGroups(): SettingGroup[] {
 }
 
 const VIEW_KEYS = new Set<string>(VIEWS.map((v) => v.key));
-const KNOWN = new Set<string>([...TPL_VIEWS.map((v) => `view:${v.key}`), 'docs', 'admin', HV_ALL, HV_OWN]);
+
+/**
+ * ХОЦРОГСДЫН ЗУРАГЛАЛ — устгагдсан харагдацын түлхүүрийг залгамжлагч руу (хадгалсан мөр · загвар · `?v=` холбоос).
+ * `permissions.ts` (`LEGACY_VIEW`) мөн үүнийг хэрэглэнэ — `permissions` энэ файлыг импортлодог тул эх нь энд.
+ * 2026-11-27: + `bagtsHamaaral` → «6 түвшний хуваарь» — зөвхөн ХАРАГДАЦ; засах эрх (`hamaaral`) автоматаар олгогдохгүй.
+ */
+export const LEGACY_VIEW_KEYS: Readonly<Record<string, ViewKey>> = {
+  sheet: 'guitsetgel',
+  tsogts: 'pkgProg',
+  bagtsHamaaral: 'tuvshin6',
+};
+const legacyTplId = (x: string): string =>
+  x.startsWith('view:') && Object.hasOwn(LEGACY_VIEW_KEYS, x.slice(5)) ? `view:${LEGACY_VIEW_KEYS[x.slice(5)]}` : x;
+const KNOWN =new Set<string>([...TPL_VIEWS.map((v) => `view:${v.key}`), 'docs', 'admin', HV_ALL, HV_OWN]);
 
 /* ══════════════════════ Загвар ══════════════════════ */
 
@@ -195,7 +208,7 @@ export function cleanTpl(role: Role, raw: unknown): TypeTpl | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as { on?: unknown; home?: unknown; seen?: unknown };
   if (!Array.isArray(r.on)) return null;
-  const on0 = [...new Set(r.on.filter((x): x is string => typeof x === 'string' && KNOWN.has(x)))]
+  const on0 = [...new Set(r.on.filter((x): x is string => typeof x === 'string').map(legacyTplId).filter((x) => KNOWN.has(x)))]
     .filter((x) => x !== 'admin' || role === 'super');
   const on = withHvScope(on0, hvScopeOf(on0));
   const home = typeof r.home === 'string' && VIEW_KEYS.has(r.home) ? (r.home as ViewKey) : (DEFAULT_TPL[role]?.home ?? 'gdash');

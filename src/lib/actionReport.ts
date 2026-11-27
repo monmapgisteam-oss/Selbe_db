@@ -19,7 +19,7 @@ import {
   cleanLabel, fmtDate, fmtDateTime, guidKey, loadUzAttachments, attUrl, postFormOrSource, uzPhotoRef, type UzPhotoRef, type UzImg,
 } from '@/lib/uzlegReport';
 import { buildXlsx, type XlsxCell, type XlsxPic, type XlsxSheet } from '@/lib/xlsx';
-import { ESCALATION, stageOf } from '@/lib/habeaStage';
+import { ACTION_REVIEW, ESCALATION, contractorOwes, stageOf, ubDaysSince } from '@/lib/habeaStage';
 
 /**
  * Төлөвийн код — нэр ба өнгө (ажлын урсгалын дараалал). 2026-11-20: төлөв нь «Гүйцэтгэгчийн үйл явц» ба
@@ -207,33 +207,48 @@ export const STAGE_LABEL = [
   '4-р долоо хоног — хариуцлага тооцох',
 ] as const;
 export const STAGE_COLOR = ESCALATION.map((s) => s.color);
-const DAY = 86_400_000;
-/** Үзлэгийн огнооноос өнгөрсөн бүтэн хоног */
-export const daysOpen = (x: Pick<ActionItem, 'd'>, now: number): number => Math.floor((now - x.d) / DAY);
+/** «Шалгуулах» мөрийн «Шатлал» нүд — гүйцэтгэгчийн эсрэг ахихгүй (2026-11-27) */
+export const REVIEW_LABEL = 'Шалгуулахаар хүлээгдэж буй — захиалагчийн хяналт';
+/** Үзлэгийн огнооноос өнгөрсөн хоног — Улаанбаатарын хуанлийн өдрөөр (2026-11-27, `habeaStage`) */
+export const daysOpen = (x: Pick<ActionItem, 'd'>, now: number): number => ubDaysSince(x.d, now);
 
 /**
- * Мөрийн шат (0–3) — чартын `stageKey`-тэй НЭГ дүрэм: дууссан, үзлэгийн огноогүй эсвэл ирээдүйн огноотой бол `null`.
+ * Мөрийн шат (0–3) — чартын `stageKey`-тэй НЭГ дүрэм: дууссан, «Шалгуулах», төлөвгүй (`contractorOwes`), үзлэгийн
+ * огноогүй эсвэл ирээдүйн огноотой бол `null`.
  */
 export function stageOfItem(x: Pick<ActionItem, 'status' | 'd'>, now: number): number | null {
-  return x.status === DONE || !(x.d > 0) || x.d > now ? null : stageOf(x.d, now);
+  return !contractorOwes(x.status) || !(x.d > 0) || x.d > now ? null : stageOf(x.d, now);
 }
 
 export type ActionSummary = {
-  /** `stages` — шат бүрийн нээлттэй мөр (`stageOfItem`); `staged` — нийлбэр (чартын «нээлттэй N») */
-  total: number; done: number; open: number; unknown: number; major: number; minor: number; stages: number[]; staged: number;
+  /**
+   * `open` — төлөв мэдэгдэх, дуусаагүй (`review` «Шалгуулах»-ыг оруулаад); `unknown` — төлөвгүй (шатлалд орохгүй);
+   * `stages` — шат бүрийн гүйцэтгэгчийн хариуцлагатай мөр (`stageOfItem`); `staged` — нийлбэр (чартын «нээлттэй N»);
+   * `stagedReview` / `stagedUnknown` — шатлалын чартын дэд гарчгийн тоо: зөвхөн үзлэгийн огноотой, ирээдүйн биш мөр
+   * (хуудасны `reviewN` / `unknownN`-тэй НЭГ суурь, 2026-11-27)
+   */
+  total: number; done: number; open: number; review: number; unknown: number; major: number; minor: number; stages: number[]; staged: number;
+  stagedReview: number; stagedUnknown: number;
 };
 export function summarize(items: readonly ActionItem[], now: number): ActionSummary {
-  let done = 0; let open = 0; let unknown = 0; let major = 0; let minor = 0;
+  let done = 0; let open = 0; let review = 0; let unknown = 0; let major = 0; let minor = 0;
+  let stagedReview = 0; let stagedUnknown = 0;
   const stages = STAGE_LABEL.map(() => 0);
   for (const x of items) {
+    if (x.d > 0 && x.d <= now) {
+      if (x.status == null) stagedUnknown += 1; else if (x.status === ACTION_REVIEW) stagedReview += 1;
+    }
     if (x.status == null) unknown += 1;
     else if (x.status === DONE) done += 1;
-    else open += 1;
+    else { open += 1; if (x.status === ACTION_REVIEW) review += 1; }
     const st = stageOfItem(x, now);
     if (st != null) stages[st] += 1;
     if (x.sevCode === 'major') major += 1; else if (x.sevCode === 'minor') minor += 1;
   }
-  return { total: items.length, done, open, unknown, major, minor, stages, staged: stages.reduce((a, b) => a + b, 0) };
+  return {
+    total: items.length, done, open, review, unknown, major, minor, stages, staged: stages.reduce((a, b) => a + b, 0),
+    stagedReview, stagedUnknown,
+  };
 }
 /** «Нээлттэй үл нийцэл — шатлалаар» — 4 шат бүгд (0 ч гэсэн), дарааллаараа */
 export function byStage(s: Pick<ActionSummary, 'stages'>): Bucket[] {
@@ -271,6 +286,12 @@ export type ActionReportMeta = {
   /** Сонгосон багцууд — хоосон = бүгд */
   pkgs: string[];
   now: number;
+  /**
+   * Шатлалын чарт ба «Хариуцлага тооцох шатанд» нүдний суурь (2026-11-27): багц/эрхээр шүүсэн, ХУГАЦААГААР ТАСЛААГҮЙ мөрүүд —
+   * хуудасны «Нээлттэй үл нийцэл — шатлалаар» чарттай нэг суурь (хуучин үлдэгдэл 4-р шатанд харагдана). Өгөөгүй бол
+   * тайлангийн мөрүүдээр (`items`).
+   */
+  stageItems?: readonly ActionItem[];
 };
 
 /**
@@ -335,7 +356,8 @@ function itemBlock(x: ActionItem, i: number, now: number): Obj {
     kv('Шалгагч', x.inspector),
   ].filter(Boolean) as Obj[];
   const right = [
-    kv('Шатлал', stage != null ? `${STAGE_LABEL[stage]} (үзлэгээс ${daysOpen(x, now)} хоног)` : '', stage != null ? STAGE_COLOR[stage] : undefined),
+    kv('Шатлал', stage != null ? `${STAGE_LABEL[stage]} (үзлэгээс ${daysOpen(x, now)} хоног)` : x.status === ACTION_REVIEW ? REVIEW_LABEL : '',
+      stage != null ? STAGE_COLOR[stage] : undefined),
     kv('Хариуцагч', x.assignee),
     kv('Дуусах хугацаа', x.due != null ? fmtDate(x.due) : ''),
     kv('Асуумж', x.survey),
@@ -368,6 +390,9 @@ function itemBlock(x: ActionItem, i: number, now: number): Obj {
 
 export function buildActionPdf(items: readonly ActionItem[], meta: ActionReportMeta, logo: string | null): TDocumentDefinitions {
   const s = summarize(items, meta.now);
+  /* Шатлал — хугацааны шүүлтээс ХАМААРАХГҮЙ (сүүлийн 7 хоногийн мөр бүгд 1-р шатанд байдаг тул 2–4-р шат үргэлж 0 гардаг байв) */
+  const g = meta.stageItems ? summarize(meta.stageItems, meta.now) : s;
+  const allTime = meta.stageItems ? 'бүх хугацаагаар · ' : '';
   const tile = (label: string, value: string, color = INK): Obj => ({
     stack: [
       { text: value, fontSize: 16, bold: true, color, alignment: 'center' },
@@ -387,16 +412,20 @@ export function buildActionPdf(items: readonly ActionItem[], meta: ActionReportM
       table: {
         widths: ['*', '*', '*'],
         body: [
-          [tile('Нийт үл нийцэл', String(s.total)), tile('Дууссан', `${s.done} (${pctTxt(s.done, s.total)})`, '#16a34a'),
+          /* 2026-11-27: дууссан % = дууссан ÷ төлөв мэдэгдэх мөр (хуудасны донаттай ижил); «Нээлттэй» = төлөв мэдэгдэх, дуусаагүй */
+          [tile('Нийт үл нийцэл', String(s.total)), tile('Дууссан', `${s.done} (${pctTxt(s.done, s.total - s.unknown)})`, '#16a34a'),
             tile('Нээлттэй', String(s.open), '#f59e0b')],
           [tile('Ноцтой үл нийцэл', String(s.major), '#d62839'), tile('Бага зэргийн үл нийцэл', String(s.minor), '#ff7f0e'),
-            tile('Хариуцлага тооцох шатанд (21+ хоног)', String(s.stages[3]), s.stages[3] ? STAGE_COLOR[3] : INK)],
+            tile(`Хариуцлага тооцох шатанд (${allTime}21+ хоног)`, String(g.stages[3]), g.stages[3] ? STAGE_COLOR[3] : INK)],
         ],
       },
       layout: { hLineWidth: () => 3, vLineWidth: () => 3, hLineColor: () => '#ffffff', vLineColor: () => '#ffffff' },
     },
-    /* Хуудасны «Нээлттэй үл нийцэл — шатлалаар» чарттай ижил (2026-11-27) */
-    barChart(`Нээлттэй үл нийцэл — шатлалаар (үзлэгийн огнооноос · нээлттэй ${s.staged})`, byStage(s), s.staged),
+    /* Хуудасны «Нээлттэй үл нийцэл — шатлалаар» чарттай ижил суурь (2026-11-27): `meta.stageItems` (хугацаагаар таслаагүй),
+       дэд гарчгийн тоо зөвхөн үзлэгийн огноотой мөрөөр (`stagedReview` / `stagedUnknown`) */
+    barChart(`Нээлттэй үл нийцэл — шатлалаар (${[`${allTime}үзлэгийн огнооноос · нээлттэй ${g.staged}`,
+      g.stagedReview ? `шалгуулахаар хүлээгдэж буй ${g.stagedReview}` : '', g.stagedUnknown ? `төлөв тодорхойгүй ${g.stagedUnknown}` : ''].filter(Boolean).join(' · ')})`,
+    byStage(g), g.staged),
     /* 2. ТӨРЛӨӨР — чарт */
     { text: 'Төрлөөр', bold: true, fontSize: 12, color: INK, margin: [0, 14, 0, 0] },
     barChart('Төлөвөөр', byStatus(items), s.total),
@@ -463,7 +492,7 @@ export function buildActionXlsx(
       statusOf(x.status)?.label ?? null, x.assignee, x.due != null ? fmtDate(x.due) : null,
       stage != null
         ? { v: `${STAGE_LABEL[stage]} (${daysOpen(x, meta.now)} хоног)`, s: { color: STAGE_COLOR[stage].slice(1).toUpperCase(), bold: stage === 3, wrap: true, valign: 'top' } }
-        : null,
+        : x.status === ACTION_REVIEW ? { v: REVIEW_LABEL, s: { wrap: true, valign: 'top' } } : null,
       { v: x.comment || null, s: { wrap: true, valign: 'top' } },
       { v: x.fixNote || null, s: { wrap: true, valign: 'top' } },
       x.decision != null ? (DECISION[x.decision] ?? String(x.decision)) : null,

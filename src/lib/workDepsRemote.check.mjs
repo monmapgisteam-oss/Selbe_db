@@ -101,5 +101,42 @@ const reads = () => fake.log.filter((x) => /\/(query|applyEdits)$/.test(x.url)).
   console.log('✅ dev токеноор бичих — зөвхөн `bagts_hamaaral` шинэчлэл');
 }
 
+/* ── 2026-11-27 (засвар): зэрэг хадгалах — бичихийн өмнө ба дараа мөрийг дахин уншиж, дарагдсан холбоог «хадгалагдлаа» гэхгүй ── */
+{
+  const X = JSON.stringify([{ p: 'a', k: 'x' }]);
+  const XY = JSON.stringify([{ p: 'a', k: 'x' }, { p: 'a', k: 'y' }]);
+  const XZ = JSON.stringify([{ p: 'a', k: 'x' }, { p: 'a', k: 'z' }]);
+  /* Өмнө: уншсан [X] хэвээр → бичнэ; завсарт өөр хүн [X,Z] болгосон → бичихгүй (дахин уншина) */
+  assert.equal(W.staleBeforeWrite(X, X), false, 'өөрчлөгдөөгүй — бичнэ');
+  assert.equal(W.staleBeforeWrite(X, ` ${X} `), false, 'хоосон зай — ижил');
+  assert.equal(W.staleBeforeWrite(null, null), false, 'хоосон хэвээр');
+  assert.equal(W.staleBeforeWrite(null, ''), false, 'null ба хоосон мөр — ижил');
+  assert.equal(W.staleBeforeWrite(X, XZ), true, 'завсарт өөр хүн бичсэн — дарахгүй');
+  assert.equal(W.staleBeforeWrite(X, null), true, 'завсарт өөр хүн арилгасан');
+  assert.equal(W.staleBeforeWrite(X, undefined), true, 'мөр алга (архив шинэ жааз)');
+  /* Дараа: бид [X,Y] бичсэн, дахин уншихад [X,Z] → бидний Y дарагдсан → давтана (амжилт БИШ) */
+  assert.equal(W.afterWrite(XY, XY, false), 'ok', 'бидний утга хэвээр');
+  assert.equal(W.afterWrite(XZ, XY, false), 'retry', 'зэрэг бичигч дарсан — «Хадгалагдлаа» гэхгүй, дахин хэрэглэнэ');
+  assert.equal(W.afterWrite(null, null, false), 'ok', 'сүүлийн холбоог хассан (null бичсэн)');
+  assert.equal(W.afterWrite(undefined, XY, false), 'retry', 'мөр алга — дахин уншина');
+  assert.equal(W.afterWrite(W.UNREAD, XY, false), 'ok', 'бичигдсэн, баталгааны уншилт унасан — бичилтээ амжилтгүй гэхгүй');
+  /* Хариу алдагдсан бичилт — хуучин дүрэм хэвээр */
+  assert.equal(W.afterWrite(XY, XY, true), 'ok', 'хариу алдагдсан ч утга бичигдсэн');
+  assert.equal(W.afterWrite(X, XY, true), 'retry', 'хариу алдагдаж бичигдээгүй');
+  assert.equal(W.afterWrite(undefined, XY, true), 'unknown', 'хариу алдагдсан, мөр уншигдсангүй');
+  assert.equal(W.afterWrite(W.UNREAD, XY, true), 'unknown', 'хариу алдагдсан, уншилт унасан');
+  /* `saveWorkLinks` — дараалал: өмнөх уншилт → бичилт → дараах уншилт → шийдвэр */
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./workDepsRemote.ts', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('export async function saveWorkLinks'));
+  const iPre = body.indexOf('staleBeforeWrite(row.val, pre)');
+  const iWrite = body.indexOf('await applyUpdates(');
+  const iPost = body.indexOf('afterWrite(post, json, lost)');
+  assert.ok(iPre > 0 && iWrite > iPre && iPost > iWrite, 'бичихийн өмнө ба дараа дахин уншина');
+  assert.match(body.slice(iPre, iWrite), /continue;/, 'өмнөх уншилт зөрвөл бичихгүй давтана');
+  assert.match(body.slice(iPost), /verdict === 'retry'[\s\S]*?continue;/, 'дарагдсан бол давтана');
+  console.log('✅ saveWorkLinks — зэрэг бичилт: өмнө/дараа дахин уншиж шалгана');
+}
+
 assertNoUnexpected(assert);
 console.log('✅ workDepsRemote: зан үйлийн шалгуур давлаа');

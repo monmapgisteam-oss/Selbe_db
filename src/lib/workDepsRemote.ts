@@ -143,6 +143,25 @@ async function readVal(pkg: Pkg, sc: Schema, field: string, oid: number): Promis
 
 const norm = (v: unknown): string => (v == null ? '' : String(v).trim());
 
+/**
+ * БИЧИЛТИЙН ӨМНӨХ ШАЛГАЛТ (2026-11-27, засвар) — `seen` нь хуудсыг уншихад байсан утга, `now` нь бичихийн ЯГ өмнө
+ * дахин уншсан утга (`undefined` = мөр алга). Зөрвөл завсарт өөр хүн бичсэн → бичихгүй, дахин уншиж давтана.
+ */
+export const staleBeforeWrite = (seen: unknown, now: unknown): boolean => now === undefined || norm(seen) !== norm(now);
+
+/**
+ * БИЧИЛТИЙН ДАРААХ ШИЙДВЭР (2026-11-27, засвар; цэвэр) — `now`: бичсэний дараа дахин уншсан утга (`undefined` = мөр алга,
+ * `UNREAD` = уншиж чадсангүй); `json`: бидний бичсэн; `lost`: серверийн хариу алдагдсан.
+ *   `ok` — бидний утга хэвээр · `retry` — өөр утга (зэрэг бичигч дарсан эсвэл бичигдээгүй) → дахин уншиж хэрэглэнэ ·
+ *   `unknown` — хариу алдагдаад баталж чадсангүй.
+ */
+export const UNREAD: unique symbol = Symbol('unread');
+export function afterWrite(now: unknown, json: string | null, lost: boolean): 'ok' | 'retry' | 'unknown' {
+  if (now === UNREAD) return lost ? 'unknown' : 'ok';
+  if (now === undefined) return lost ? 'unknown' : 'retry';
+  return norm(now) === norm(json) ? 'ok' : 'retry';
+}
+
 export type SaveRes = { ok: true; refs: WorkRef[]; wrote: boolean } | { ok: false; error: string };
 
 /** Архивлалт · нэмэлт ажлын буулгалт явж байна уу — бол шалтгаан (толгой; уншиж чадахгүй бол ч шалтгаан) */
@@ -180,6 +199,7 @@ export async function saveWorkLinks(dep: WorkRef, change: RefChange): Promise<Sa
   if (down.length)
     return { ok: false, error: tr('Холбох бүлгийн хуудас уншигдсангүй ({0}) — давхар холбоо шалгах боломжгүй тул хадгалсангүй: {1}', String(down.length), down.join(', ')) };
   let why = tr('Хуудас зэрэг шинэчлэгдэж байна — дахин оролдоно уу');
+  let wrote = false;
   for (let i = 0; i < 3; i += 1) {
     const busy0 = await busyWhy(pkg);
     if (busy0) return { ok: false, error: busy0 };
@@ -206,21 +226,35 @@ export async function saveWorkLinks(dep: WorkRef, change: RefChange): Promise<Sa
     const depId = (g.bySheet.get(pkg.key) ?? []).find((id) => g.nodes.get(id)?.oid === row.oid);
     if (!depId) return { ok: false, error: tr('Ажил хуудасны сүүлийн хувилбарт олдсонгүй (хуудас шинэчлэгдсэн) — дахин ачаална уу') };
     const next = applyRefChange(cur, rebaseChange(g, cur, change));
-    if (sameRefs(cur, next)) return { ok: true, refs: cur, wrote: false };
+    /* Өмнөх давталтад бичээд өөр хүнд дарагдсан бол дараагийн уншилтад бидний өөрчлөлт аль хэдийн орсон байж болно */
+    if (sameRefs(cur, next)) return { ok: true, refs: cur, wrote };
     const err = checkNext(g, depId, cur, next);
     if (err) return { ok: false, error: err };
     const json = refsJson(next);
     const busy1 = await busyWhy(pkg);
     if (busy1) return { ok: false, error: busy1 };
+    /* 2026-11-27 (засвар): талбарыг БҮХЛЭЭР дарж бичдэг тул бичихийн ЯГ өмнө мөрийг дахин уншина — уншилтаас хойш
+       (граф · архивын шалгалтын хооронд) өөр хүн холбоо хадгалсан бол түүнийг дарахгүй, шинэ утга дээр дахин хэрэглэнэ. */
+    let pre: unknown;
+    try { pre = await readVal(pkg, sc, fld, row.oid); } catch (e) { return { ok: false, error: String((e as Error)?.message ?? e) }; }
+    if (staleBeforeWrite(row.val, pre)) { why = tr('Өөр хүн зэрэг засаж байна — дахин оролдоно уу'); continue; }
+    let lost = false;
     try {
       await applyUpdates(pkg, [{ [sc.f.oid]: row.oid, [fld]: json }]);
     } catch (e) {
       if (!isLostWrite(e)) return { ok: false, error: String((e as Error)?.message ?? e) };
-      let v: unknown;
-      try { v = await readVal(pkg, sc, fld, row.oid); } catch { v = undefined; }
-      if (v === undefined) return { ok: false, error: tr('Хадгалагдсан эсэх тодорхойгүй (хариу алдагдсан) — хуудсыг дахин ачаалж шалгана уу') };
-      if (norm(v) !== norm(json)) { why = tr('Серверийн хариу алдагдаж, хадгалагдсангүй — дахин оролдоно уу'); continue; }
+      lost = true;
     }
+    /* Бичсэний ДАРАА дахин уншина — яг зэрэг бичсэн хүн биднийхийг дарсан бол «Хадгалагдлаа» гэж худал хэлэхгүй, давтана */
+    let post: unknown;
+    try { post = await readVal(pkg, sc, fld, row.oid); } catch { post = UNREAD; }
+    const verdict = afterWrite(post, json, lost);
+    if (verdict === 'unknown') return { ok: false, error: tr('Хадгалагдсан эсэх тодорхойгүй (хариу алдагдсан) — хуудсыг дахин ачаалж шалгана уу') };
+    if (verdict === 'retry') {
+      why = lost ? tr('Серверийн хариу алдагдаж, хадгалагдсангүй — дахин оролдоно уу') : tr('Өөр хүн зэрэг засаж байна — дахин оролдоно уу');
+      continue;
+    }
+    wrote = true;
     let hi1 = hi0;
     try { hi1 = await maxOid(pkg, sc); } catch { /* бичигдсэн — жааз солигдсон эсэхийг шалгаж чадсангүй */ }
     if (hi1 === hi0) return { ok: true, refs: next, wrote: true };

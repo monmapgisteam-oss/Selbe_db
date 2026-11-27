@@ -77,10 +77,15 @@ await ok('хүлээн авагчийн тайлан: хавсралтын «Н�
 const { planPkgOf, withPlans } = await import('./reportData.ts');
 await ok('дэлгэрэнгүй тайлан: §3 багцын мөр = S/P; хуваарийн утга P-г дарахгүй', () => {
   assert.deepEqual(planPkgOf(pp, 'БАГЦ1'), { actual: 40, planned: 47.5 });
-  assert.deepEqual(planPkgOf(pp, 'БАГЦ9'), { actual: 0, planned: 0 }, 'мөргүй багц 0%');
+  /* 2026-11-27: төлөвлөгөө алга = null («—»); гүйцэтгэл хэмжилтгүй = 0% */
+  assert.deepEqual(planPkgOf(pp, 'БАГЦ9'), { actual: 0, planned: null }, 'мөргүй багц: гүйцэтгэл 0%, төлөвлөгөө «—»');
+  /* 2026-11-27 (аудит): мөргүй багцын төлөвлөгөөг Finance-ийн хуваарийн муруйгаар НӨХӨХГҮЙ — нэг мөрөнд нэг эх, тайлбартай нийцнэ */
+  const f = withPlans({ pct: 0, weightSum: 0, rows: 0, stages: [{ key: 'БАГЦ9', label: 'Багц 9', rows: 1, weight: 1, ...planPkgOf(pp, 'БАГЦ9') }] }, { total: null, lag: null });
+  assert.equal(f.stages[0].planned, null, 'мөргүй багц «—» хэвээр');
   const o = { pct: 25, weightSum: 50, rows: 3, stages: [{ key: 'БАГЦ1', label: 'Багц 1', rows: 2, weight: 40, actual: 40, planned: 47.5 }, { key: 'БАГЦ2', label: 'Багц 2', rows: 1, weight: 10, actual: 10, planned: null }] };
-  const w = withPlans(o, { byKey: new Map([['БАГЦ1', 63.8], ['БАГЦ2', 12]]), total: 30, lag: null });
-  assert.deepEqual(w.stages.map((s) => s.planned), [47.5, 12]);
+  const w = withPlans(o, { total: 30, lag: null });
+  assert.deepEqual(w.stages.map((s) => s.planned), [47.5, null]);
+  assert.equal(w.plannedTotal, 30, 'төслийн нийт хуваарийн төлөвлөгөө хэвээр');
 });
 
 console.log(`pkgPlanReports.ui.check: ${n} шалгалт — БҮГД ТЭНЦЛЭЭ`);

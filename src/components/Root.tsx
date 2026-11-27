@@ -14,7 +14,7 @@ import { askConfirm } from '@/lib/confirm';
 /** Кэшийн санамж энэ хуудасны ачаалалд гарсан эсэх (refresh-д шинэчлэгдэнэ) */
 let cacheNoticeShown = false;
 import { boardAllowedFor } from '@/lib/homeBoard';
-import { remoteReady, resolveAccess, roleOf, subscribe } from '@/lib/permissions';
+import { canonicalViewKey, remoteReady, resolveAccess, roleOf, subscribe } from '@/lib/permissions';
 import { roleAccess } from '@/lib/roleTypes';
 import {
   ALL_MODE_HIDE,
@@ -86,7 +86,8 @@ const scopeFromUrl = (): NavScope => {
   const p = new URLSearchParams(window.location.search);
   if (p.get('all') === '1') return 'all';
   if (p.get('g')) return 'all';
-  const v = p.get('v');
+  const raw = p.get('v');
+  const v = raw ? canonicalViewKey(raw) : raw;
   if (v && Object.hasOwn(VIEW_BY_KEY, v)) return 'all';
   return null;
 };

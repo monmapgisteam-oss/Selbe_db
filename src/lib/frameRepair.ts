@@ -90,6 +90,68 @@ export function rebaseBackdated(
   return n;
 }
 
+/** Мөрд тэр өдрийн обьём (тэгээс ялгаатай) бичигдсэн үү */
+const hasDayWork = (r: Pick<SheetRow, 'obyemDay'>): boolean => (r.obyemDay ?? []).some((v) => v != null && v !== 0);
+
+/**
+ * БӨГЛӨСӨН ӨДӨР (D) АЛЬ ХЭДИЙН ЖААЗТАЙ ҮЕД ТУЛГАЖ БОЛОХ УУ (2026-11-27, аудит №22) — D-ийн жаазны (E) өдрийн обьёмтой мөр бүр
+ * ажлын кодтой, ачаалсан (L) мөрүүдэд яг нэг удаа олддог байх ёстой; эс бөгөөс E-ийн тэр өдрийн ажил шинэ жаазнаас гээгдэнэ
+ * (`loadRows` өдөрт СҮҮЛИЙН жаазыг л тоолдог) → дуудагч батлах өдрийн дүрмээр бичнэ. Цэвэр.
+ */
+export function canCarrySameDay(
+  loaded: readonly Pick<SheetRow, 'des'>[],
+  same: readonly Pick<SheetRow, 'des' | 'obyemDay'>[],
+): boolean {
+  const cnt = new Map<number, number>();
+  for (const r of loaded) if (r.des != null) cnt.set(r.des, (cnt.get(r.des) ?? 0) + 1);
+  const seen = new Set<number>();
+  for (const r of same) {
+    if (!hasDayWork(r)) continue;
+    if (r.des == null || cnt.get(r.des) !== 1 || seen.has(r.des)) return false;
+    seen.add(r.des);
+  }
+  return true;
+}
+
+/**
+ * D-ИЙН ЖААЗНЫ (E) ӨДРИЙН ОБЬЁМЫГ ШИНЭ ЖААЗАНД НЭМНЭ (2026-11-27, аудит №22). Хожуу жаазтай үед D-ийн жааз L-ийн мөрөөр
+ * угсрагдаж зөвхөн НЭМЭЛТИЙГ өдрийн обьёмд агуулдаг; E байвал D-ийн сүүлийн жааз нь өдрийн БҮХ ажлыг (E + нэмэлт) авч явах
+ * ёстой (`buildFrame`-ийн ижил өдрийн `obyemPrior` дүрэмтэй ижил санаа). Мөрийг ажлын кодоор тулгана; обьёмын нийлбэрийг
+ * (`obyemSum`) дахин бодно. Тулгаж чадахгүй бол (`canCarrySameDay` = false) юу ч өөрчлөхгүй, `false`. `frame[i]` ↔ `loaded[i]`.
+ */
+export function carrySameDay(
+  frame: Record<string, unknown>[],
+  loaded: readonly Pick<SheetRow, 'des'>[],
+  same: readonly Pick<SheetRow, 'des' | 'obyemDay'>[],
+  sc: Pick<Schema, 'obyem' | 'f'>,
+): boolean {
+  const desF = sc.f.des;
+  if (!desF || frame.length !== loaded.length || !canCarrySameDay(loaded, same)) return false;
+  const idx = new Map<number, number>();
+  loaded.forEach((r, i) => { if (r.des != null) idx.set(r.des, i); });
+  for (const r of same) {
+    if (!hasDayWork(r) || r.des == null) continue;
+    const i = idx.get(r.des)!;
+    if (num(frame[i][desF]) !== r.des) return false;
+  }
+  const sumF = sc.f.obyemSum && !sc.obyem.includes(sc.f.obyemSum) ? sc.f.obyemSum : null;
+  for (const r of same) {
+    if (!hasDayWork(r) || r.des == null) continue;
+    const a = frame[idx.get(r.des)!];
+    sc.obyem.forEach((col, b) => {
+      const v = r.obyemDay?.[b];
+      if (!col || v == null || v === 0) return;
+      a[col] = Math.round(((num(a[col]) ?? 0) + v) * 1e6) / 1e6;
+    });
+    if (sumF) {
+      let s: number | null = null;
+      for (const col of sc.obyem) { const v = col ? num(a[col]) : null; if (v != null) s = (s ?? 0) + v; }
+      a[sumF] = s;
+    }
+  }
+  return true;
+}
+
 /** Навч мөрийн бүрэн обьёмын босго (`buildFrame`-тэй ижил) */
 const fullOf = (vol: number | null | undefined): number | null => (vol != null && vol > 0 ? vol * (1 - 1e-9) : null);
 

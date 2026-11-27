@@ -792,7 +792,8 @@ export function Gazar({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) {
         remaining: remaining.n,
         resolved: cleared.n + cleaned.n,
         compN: lStatus.reduce((s, r) => s + Number(r.cn ?? 0), 0),
-        comp: lStatus.some((r) => Number(r.cn ?? 0) > 0) ? lStatus.reduce((s, r) => s + Number(r.c ?? 0), 0) : null,
+        /* 2026-11-27: null нь ЗӨВХӨН нэг ч талбарт дүн алга үед — «ТААРААГҮЙ» дүн ч нийлбэрт орно (`buildLandStatus`-тэй ижил) */
+        comp: lStatus.some((r) => Number(r.cn ?? 0) > 0 || Number(r.c ?? 0) > 0) ? lStatus.reduce((s, r) => s + Number(r.c ?? 0), 0) : null,
       },
       statusAreaBy,
       reasons,

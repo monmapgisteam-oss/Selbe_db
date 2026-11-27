@@ -343,4 +343,26 @@ assert.deepEqual(r8p.tables[2].rows.map((row) => [row[0].v, row[4].v]), [['Ба�
   assert.equal(r9.asOf, null, 'ТТБ-ийн нөөц байдлын огноо гаргахгүй');
 }
 
+/* 2026-11-27 (аудит): «Багцын гүйцэтгэл»-д мөртэй багц — Finance-ийн хоцрогдол байсан ч P − S (хүлээн авагчийн тайлантай НЭГ) */
+{
+  const ttb = new Map([['Б1', { P: 30, S: 28 }], ['Б2', { P: 0, S: 0 }]]);
+  const r10 = computeSchedule([
+    mk('Б1', 'Багц 1', { month: '2026-05', planned: 40, actual: 10, gap: 30 }),
+    mk('Б2', 'Багц 2', { month: '2026-05', planned: 40, actual: 10, gap: 30 }),
+    mk('Б3', 'Багц 3', { month: '2026-05', planned: 40, actual: 10, gap: 30 }),
+  ], curves, lagLevel, now, [], false, ttb);
+  const meas = new Map(r10.tables[0].rows.map((row) => [row[0].v, row[4].v]));
+  assert.equal(meas.get('Багц 1'), -2, 'P − S = 30 − 28 (Finance-ийн 30 нэгж хувь биш)');
+  assert.ok(!meas.has('Багц 2'), 'P = 0 — дүгнэхгүй (тайлангийн `lagInputs`-тэй ижил)');
+  assert.equal(meas.get('Багц 3'), -30, '«Багцын гүйцэтгэл»-д мөргүй — Finance-ийн хоцрогдол');
+  assert.equal(r10.value, '1', 'зөвхөн Багц 3 хоцорсон');
+  /* №36/46: P = 0 багцын шалтгаан — бодит («бичилт алга» биш) */
+  assert.deepEqual(r10.tables[1].rows.map((row) => [row[0].v, row[1].v]), [['Багц 2', '«Багцын гүйцэтгэл»-д төлөвлөгөөт хувь 0 — дүгнэхгүй']]);
+  /* №46: эх уншигдаагүй (`null`) — бүх багц «уншигдсангүй», Finance-ийн хоцрогдлоор дүгнэхгүй */
+  const r11 = computeSchedule([mk('Б1', 'Багц 1', { month: '2026-05', planned: 40, actual: 10, gap: 30 })], curves, lagLevel, now, ['x'], false, null);
+  assert.equal(r11.value, '—');
+  assert.equal(r11.tables[0].rows.length, 0);
+  assert.equal(r11.tables[1].rows[0][1].v, '«Багцын гүйцэтгэл» уншигдсангүй');
+}
+
 console.log('schedule.check: OK');

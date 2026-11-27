@@ -104,6 +104,59 @@ ok('2026-11-09: олон багцын мөр («Багц-1-2») гишүүд н�
   assert.equal(a.paidOther, 160, '«Багц-1-2» 70 + «Багц-1-4» 40 + гэрээгүй «Багц-3» 50');
 });
 
+/* 2026-11-27: олон багцын жагсаалт («БАГЦ-10, 11, 13, 15») — `planPaidSync`-тэй ижил хуваалтаар тоологчид орно */
+{
+  const { planPaidSync } = await import('./hoSync/compute.ts');
+  const B = (o) => ({ ...CF(o), uy_shat: 'Барилга угсралт', geree_dugaar: 'Г-10' });
+  const cfL = [
+    B({ oid: 21, pkg: 'БАГЦ-10', note: CONTRACTED, contract: 100 }),
+    B({ oid: 22, pkg: 'БАГЦ-11', note: CONTRACTED, contract: 300 }),
+    B({ oid: 23, pkg: 'БАГЦ-13', note: CONTRACTED, contract: 0 }),
+    B({ oid: 24, pkg: 'БАГЦ-15', note: CONTRACTED, contract: 0 }),
+  ];
+  const hoL = [{ ...HO({ oid: 21, code: 'БАГЦ-10,11,13,15', pkg: 'БАГЦ-10, 11, 13, 15', dun: 80 }), ajliin_turul: 'ГИШСүлжээ', geree_dugaar: 'Г-10' }];
+  const a = paidShareOf(cfL, hoL);
+  ok('бүх багц гэрээлсэн — бүтэн дүн тоологчид', () => {
+    assert.equal(a.paidContracted, 80);
+    assert.equal(a.paidOther, 0);
+  });
+  ok('ТТБ-ийн олгосон дүнгийн нийлбэртэй тэнцэнэ', () => {
+    const ps = planPaidSync(hoL, cfL);
+    assert.equal(ps.updates.reduce((t, u) => t + (u.olgoson_dun ?? 0), 0), a.paidContracted);
+  });
+  ok('нэг багц хуваарьт ороогүй (5-р хэсэг) — гэрээний дүнгийн жингээр хэсэг нь л', () => {
+    const b = paidShareOf(cfL.map((r) => (r.objectid === 22 ? { ...r, bagts_tuvshin1: '5' } : r)), hoL);
+    assert.equal(b.paidContracted, 20, '80 × 100 / 400');
+    assert.equal(b.paidOther, 60);
+  });
+  ok('таарах багцгүй жагсаалт — өмнөх дүрмээр гадуурх', () => {
+    const c = paidShareOf(cfL, [HO({ oid: 1, code: 'X', pkg: 'БАГЦ-31, 32', dun: 9 })]);
+    assert.equal(c.paidContracted, 0);
+    assert.equal(c.paidOther, 9);
+  });
+}
+
+/* 2026-11-27 (аудит №50): `withProjectContract`-ийн 3-р аргумент — хуваарьт (Төслийн нийт гэрээ) орсон нөхөх олговор тоологч
+   ба нийт олгосонд нэмэгдэнэ: ТТБ (670 + 100) / 2100 = 36.7% (урьд нь 670 / 2100 = 31.9%) */
+{
+  const { withProjectContract } = await import('./paidShare.ts');
+  const base = { contract: 2000, paid: 670, paidContracted: 670, paidDesign: 0, paidOther: 0, paidKnown: 1, pct: 33.5 };
+  const w = withProjectContract(base, 2100, 100);
+  ok('олговор тоологч ба олгосонд', () => {
+    assert.equal(w.paidContracted, 770);
+    assert.equal(w.paid, 770);
+    assert.equal(w.paidOther, 0);
+    assert.ok(Math.abs(w.pct - (770 / 2100) * 100) < 1e-9, `${w.pct}`);
+  });
+  ok('олговоргүй (0 / хоосон / NaN) — урьдын адил', () => {
+    for (const c of [undefined, null, 0, NaN, -5]) {
+      const x = withProjectContract(base, 2100, c);
+      assert.equal(x.paidContracted, 670);
+      assert.equal(x.paid, 670);
+    }
+  });
+}
+
 console.log('\n2. Ижил оролт → бүх дуудагч ЯГ нэг утга');
 const ref = { contract: s.contract, paidContracted: s.paidContracted };
 ok('Тайлан (buildFindings.paidRate) / удирдлагын тайлан (fin.share) — paidPctOf(finance)', () => {

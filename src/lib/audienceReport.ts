@@ -409,7 +409,11 @@ function infraPacks(i: ReportInputs, no: string, group: number): Section {
     : i.x.gdash.byType.find((t) => /^инженерийн дэд бүтэц$/i.test(t.label.trim()))?.perf);
   const started = packs.filter((p) => progressOf(p.progress) > 0).length;
   const text = [
-    tr('Инженерийн дэд бүтцийн явц {0} (хөрөнгө оруулалтаар жигнэсэн); {1} багцаас {2} нь эхэлсэн.', pct(weighted, 1), num(packs.length), num(started)),
+    /* 2026-11-27 (аудит): шошго жигнэлттэй таарна — «Багцын гүйцэтгэл»-ийн дундаж нь багц бүрийн төсөлд эзлэх жингээр (`w`),
+       хуучин төрлийн явц (нөөц) нь хөрөнгө оруулалтаар */
+    i.x.prog.pkgAvg
+      ? tr('Инженерийн дэд бүтцийн явц {0} (багц бүрийн төсөлд эзлэх жингээр жигнэсэн); {1} багцаас {2} нь эхэлсэн.', pct(weighted, 1), num(packs.length), num(started))
+      : tr('Инженерийн дэд бүтцийн явц {0} (хөрөнгө оруулалтаар жигнэсэн); {1} багцаас {2} нь эхэлсэн.', pct(weighted, 1), num(packs.length), num(started)),
     items[0] ? tr('Хамгийн өндөр явцтай {0} ({1}), хамгийн бага {2} ({3}).', items[0].label, pct(items[0].value, 1), items[items.length - 1].label, pct(items[items.length - 1].value, 1))
       : tr('Дэд бүтцийн багцын бүртгэл алга тул график мэдээлэлгүй.'),
   ];

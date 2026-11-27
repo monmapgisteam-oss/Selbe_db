@@ -13,6 +13,7 @@ import type { HoContract } from '@/lib/ipc';
 import { LINK_FIELDS } from '@/lib/ipcLink';
 import { isAuto } from '@/lib/ipcAuto';
 import { statusOf } from '@/lib/ipcFlow';
+import { payWithheld, pkgOf } from '@/lib/ipcDocTable';
 import { dayKey } from '@/lib/format';
 
 type Row = Record<string, unknown>;
@@ -69,22 +70,37 @@ export type PayRow = {
 };
 
 /**
- * Гэрээний төлбөрүүдийг ХАРАГДАХ дараалалд эрэмбэлж мөр болгоно.
+ * Гэрээний төлбөрүүдийг ХАРАГДАХ дараалалд эрэмбэлж мөр болгоно. `docs` — тэр гэрээний IPC баримтын хүснэгтийн (238) мөрүүд:
+ * өгвөл «Зөрүү»-д баримтын эргэн төлөлт · төсвөөс давсныг тооцно (`payWithheld`).
  */
-export function payRows(pays: readonly Row[]): PayRow[] {
+export function payRows(pays: readonly Row[], docs: readonly Row[] = []): PayRow[] {
   const adv: Row[] = [];
   const work: Row[] = [];
-  /* Олгосон IPC-ийн гүйцэтгэл (AUTO, `ipc_dugaar`-тай, «Олгосон») → тэр дугаарын төлбөрийн мөрд нэгдэнэ */
-  const perfByNo = new Map<number, Row[]>();
+  /* Олгосон IPC-ийн гүйцэтгэл (AUTO, `ipc_dugaar`-тай, «Олгосон») → тэр дугаарын төлбөрийн мөрд нэгдэнэ.
+     2026-11-27 (засвар): дугаар БА багцаар — нэг гэрээний IPC-5 Багц-10 ба IPC-5 Багц-11-ийн бөглөлт хоёр картад хоёуланд нь
+     бүтнээрээ нэмэгддэг байв. Тэр дугаарт өөрийн багцын төлбөрийн мөр байвал зөвхөн түүнд; байхгүй бол (багцгүй эсвэл олон
+     багцтай өмнөх төлбөр) тэр дугаарын бүх төлбөрийн мөрд — өмнөх дүрэм */
+  const payByNo = new Map<number, Row[]>();
+  const paidNos = new Set<number>();
   for (const r of pays) {
     const no = num(r[P.ipcNo]);
-    if (isAuto(r) && no != null && statusOf(r) === HO_IPC.status.paid) perfByNo.set(no, [...(perfByNo.get(no) ?? []), r]);
+    if (no == null) continue;
+    if (!isAuto(r)) {
+      if (r[P.kind] !== HO_IPC.kinds.advance) payByNo.set(no, [...(payByNo.get(no) ?? []), r]);
+    } else if (statusOf(r) === HO_IPC.status.paid) paidNos.add(no);
   }
-  const hasPay = (no: number): boolean =>
-    pays.some((r) => !isAuto(r) && r[P.kind] !== HO_IPC.kinds.advance && num(r[P.ipcNo]) === no && hoAmount(r) != null);
+  const perfOf = new Map<Row, Row[]>();
   for (const r of pays) {
     const no = num(r[P.ipcNo]);
-    if (isAuto(r) && no != null && perfByNo.has(no) && hasPay(no)) continue;
+    if (!isAuto(r) || no == null || statusOf(r) !== HO_IPC.status.paid) continue;
+    const all = payByNo.get(no) ?? [];
+    const own = all.filter((p) => pkgOf(p[C.pkg]) === pkgOf(r[C.pkg]));
+    for (const p of own.length ? own : all) perfOf.set(p, [...(perfOf.get(p) ?? []), r]);
+  }
+  const hasPay = (no: number): boolean => (payByNo.get(no) ?? []).some((r) => hoAmount(r) != null);
+  for (const r of pays) {
+    const no = num(r[P.ipcNo]);
+    if (isAuto(r) && no != null && paidNos.has(no) && hasPay(no)) continue;
     /* 2026-11-04: IPC-д ороогүй, 0 ₮ «Гүйцэтгэл» AUTO мөр (тэр өдөр жаазгүй үлдэгдэл) карт болохгүй */
     if (isAuto(r) && no == null && num(r[LINK_FIELDS.une]) === 0 && statusOf(r) === HO_IPC.status.work) continue;
     (r[P.kind] === HO_IPC.kinds.advance ? adv : work).push(r);
@@ -112,10 +128,13 @@ export function payRows(pays: readonly Row[]): PayRow[] {
 
   const push = (r: Row, advance: boolean, cum: number | null): void => {
     const no = num(r[P.ipcNo]);
-    const perf = !advance && !isAuto(r) && no != null ? perfByNo.get(no) ?? [] : [];
+    const perf = !advance ? perfOf.get(r) ?? [] : [];
     const sum = (f: string): number | null =>
       perf.reduce<number | null>((a, x) => { const v = num(x[f]); return v == null ? a : (a ?? 0) + v; }, null);
     const amount = hoAmount(r);
+    /* 2026-11-27 (засвар): шинэ баталгаажуулалтын `dun` цэвэр (нийт − эргэн төлөлт − төсвөөс давсан) — суутгасныг буцааж нэмж
+       бөглөлтийн нийлбэртэй харьцуулна; эс бөгөөс эргэн төлөлттэй IPC бүр дутуу олгосон мэт улаан зөрүүтэй гардаг байв */
+    const held = perf.length ? payWithheld(r, docs) : 0;
     const obyem = perf.length ? sum(LINK_FIELDS.obyem) : num(r[LINK_FIELDS.obyem]);
     const une = perf.length ? sum(LINK_FIELDS.une) : num(r[LINK_FIELDS.une]);
     out.push({
@@ -130,7 +149,7 @@ export function payRows(pays: readonly Row[]): PayRow[] {
       obyem,
       une,
       /* Бүхэл ₮-ээр: 1 ₮-өөс бага бөөрөнхийллийн үлдэгдэл улаан «0 ₮» эсвэл «-1 ₮» болж харагддаг байв */
-      zoruu: perf.length ? (amount == null || une == null ? null : Math.round(amount - une) + 0) : amount == null ? null : num(r[LINK_FIELDS.zoruu]),
+      zoruu: perf.length ? (amount == null || une == null ? null : Math.round(amount + held - une) + 0) : amount == null ? null : num(r[LINK_FIELDS.zoruu]),
       year: num(r[P.year]),
       kind: String(r[P.kind] ?? ''),
       orderNo: String(r[C.order1No] ?? ''),
@@ -305,10 +324,10 @@ function mergeHead(pays: readonly Row[]): Row {
   return out;
 }
 
-export function contractBlocks(cs: readonly HoContract[]): ContractBlock[] {
+export function contractBlocks(cs: readonly HoContract[], docsOf?: (code: string) => readonly Row[] | null | undefined): ContractBlock[] {
   return cs.map((c) => {
     /* 2026-11-04: олгоогүй IPC баримт нь «IPC ҮҮСГЭХ» самбарт харагдана, төлбөрийн карт биш */
-    const rows = payRows(c.pays.filter((r) => !(String(r[P.id] ?? '').startsWith('IPC|') && num(r[P.amount]) == null)));
+    const rows = payRows(c.pays.filter((r) => !(String(r[P.id] ?? '').startsWith('IPC|') && num(r[P.amount]) == null)), docsOf?.(c.code) ?? []);
     /*
      *    Урьд нь `c.pays[0]` гэсэн НЭГ «толгой мөр» сонгодог байв. `groupHo`
      *    тэр загвараа 2026-09-11-нд яг ЭНЭ шалтгаанаар орхисон: нэг мөрөнд

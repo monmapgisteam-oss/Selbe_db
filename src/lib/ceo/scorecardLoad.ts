@@ -12,12 +12,12 @@ import { loadBuildings } from '@/modules/BuildingPanel';
 import { buildPacks } from '@/modules/Bagts';
 import { pkgFinRows } from '@/modules/PkgFin';
 import { CANCELLED_NOTE_RE } from './uncontracted';
-import { collectPkgLags, FIN_XL_BUILD_CODE, isBuildRow, loadTtbPkgPlan, ttbLagOf, type Lag, type TtbPkgPlan } from './schedule';
+import { collectPkgLags, FIN_XL_BUILD_CODE, isBuildRow, loadTtbPkgPlan, SRC_TTB, ttbLagOf, type Lag, type TtbPkgPlan } from './schedule';
 import { FIN_XL_LAND_CODE, FIN_XL_ROW_HIDE } from '@/lib/finExcelLayout';
 import { loadWorkforceKpi, type WorkforceKpi } from './workforce';
 import { loadPermitRows, summarize as summarizeZov } from '@/lib/zovshoorol';
 import {
-  DIMS, overlapOfKeys, scorePerf, perfNoCurve, perfNotStarted, perfPartial, scoreFin, scoreLand, scorePermit, scoreHse, totalOf,
+  DIMS, overlapOfKeys, scorePerf, perfNoCurve, perfNotStarted, perfPartial, perfPlanZero, perfTtbUnread, scoreFin, scoreLand, scorePermit, scoreHse, totalOf,
   type Dim, type DimScore, type WorkScore, type Inspection,
 } from './scorecard';
 
@@ -28,6 +28,8 @@ import {
 export function perfScoreOf(i: {
   lag: Lag | null;
   ttb: Parameters<typeof ttbLagOf>[0];
+  /** 2026-11-27 (аудит №46): «Багцын гүйцэтгэл» уншигдаагүй — барилгын мөрийн оноо тавихгүй (Finance руу чимээгүй шилжихгүй) */
+  ttbUnread?: boolean;
   cancelled: boolean;
   noCurve: boolean;
   notStarted: boolean;
@@ -37,16 +39,42 @@ export function perfScoreOf(i: {
   now: number;
 }): DimScore {
   if (i.cancelled) return { score: null, facts: [] };
-  const t = i.lag ? null : ttbLagOf(i.ttb);
+  if (i.ttbUnread) return perfTtbUnread();
+  /* 2026-11-27 (аудит): «Багцын гүйцэтгэл»-д мөртэй багц — ҮРГЭЛЖ түүний P − S (`computeSchedule`-тэй ижил);
+     Finance-ийн хоцрогдол зөвхөн тэр эхэд мөргүй багцад */
+  const hasTtb = i.ttb !== undefined;
+  const lag = hasTtb ? null : i.lag;
+  const t = hasTtb ? ttbLagOf(i.ttb) : null;
   if (t) {
     /* хамралт дутуу — карт «дүгнээгүй», оноо ч тавигдахгүй; C өгөөгүй (= бүрэн) бол 100 */
     return t.judged
       ? scorePerf({ lag: { planned: t.planned, actual: t.actual, coverage: t.coverage ?? 100 }, start: i.start, end: i.end, progress: i.progress, now: i.now })
       : perfPartial(t);
   }
+  /* 2026-11-27 (аудит №36): мөртэй боловч P = 0 — карт «хэмжилтгүй» тул оноо ч тавихгүй (Cashflow-ийн огнооны шугам руу унахгүй) */
+  if (hasTtb) return perfPlanZero(i.ttb?.S ?? null);
   if (i.noCurve) return perfNoCurve();
   if (i.notStarted) return perfNotStarted();
-  return scorePerf({ lag: i.lag, start: i.start, end: i.end, progress: i.progress, now: i.now });
+  return scorePerf({ lag, start: i.start, end: i.end, progress: i.progress, now: i.now });
+}
+
+/**
+ * САНХҮҮГИЙН ОНООНЫ «бодит» — олголттой харьцуулах хувь ба түүний эх (2026-11-27, аудит №36/№46).
+ * Барилгын мөрөнд «Багцын гүйцэтгэл»-ийн S (хэмжилтгүй = 0%); тэр эх уншигдаагүй бол олголтыг ХАРЬЦУУЛАХГҮЙ
+ * (Finance-ийн биет хувь руу чимээгүй шилжихгүй — гүйцэтгэлийн оноотой ижил). Мөргүй багцад Finance-ийн хоцрогдлын биет хувь.
+ */
+export function finActualOf(i: {
+  isBuild: boolean;
+  /** «Багцын гүйцэтгэл» уншигдсан эсэх */
+  ttbRead: boolean;
+  ttbRow: { S?: number | null } | undefined;
+  lag: Lag | null;
+  progress: number | null;
+}): { actual: number | null; actualPkg: boolean; comparable: boolean } {
+  if (i.isBuild && !i.ttbRead) return { actual: null, actualPkg: false, comparable: false };
+  if (i.ttbRow) return { actual: i.ttbRow.S ?? 0, actualPkg: true, comparable: true };
+  if (i.lag) return { actual: i.lag.actual, actualPkg: false, comparable: true };
+  return { actual: i.progress, actualPkg: false, comparable: false };
 }
 
 /* ══════════════ Суурь ══════════════ */
@@ -83,9 +111,11 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
     loadPermitRows().catch(() => null),
     (loadWorkforceKpi() as Promise<WorkforceKpi>).catch(() => null),
     /* 2026-11-24 (аудит): CEO хуваарийн карттай ИЖИЛ ТТБ-ийн орлуулга (`loadScheduleKpi`) */
-    loadTtbPkgPlan().catch((): TtbPkgPlan => new Map()),
+    /* 2026-11-27 (аудит №46): унасан бол хоосон Map БИШ — `null` («уншигдсангүй»), `failed`-д нэрлэнэ */
+    loadTtbPkgPlan().catch((e: unknown): TtbPkgPlan | null => { console.error('[selbe] багц ажлын оноо · Багцын гүйцэтгэл:', e); return null; }),
   ]);
   const failed: string[] = [];
+  if (!ttb) failed.push(SRC_TTB());
   if (!contracts) failed.push(tr('Гэрээний дүн'));
   if (!fin) failed.push(tr('Санхүүжилтийн гүйцэтгэл (HO_IPC)'));
   if (!bld) failed.push(tr('Барилгын бүртгэл'));
@@ -149,7 +179,11 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
     const lag = key && r.sec === FIN_XL_BUILD_CODE ? lags.get(key) ?? null : null;
     const lagUnknown = !!key && r.sec === FIN_XL_BUILD_CODE && !lag && (!fin || noCurve.has(key));
     const schedNotStarted = !!key && r.sec === FIN_XL_BUILD_CODE && !lag && !lagUnknown && notStarted.has(key);
-    const actual = lag ? lag.actual : r.progress;
+    /* 2026-11-27 (аудит №36): барилгын мөрийн «Багцын гүйцэтгэл» — гүйцэтгэлийн ба санхүүгийн оноо НЭГ «бодит» (S; хэмжилтгүй = 0%) */
+    const isBuild = !!key && r.sec === FIN_XL_BUILD_CODE;
+    const ttbRow = isBuild && ttb ? ttb.get(key) : undefined;
+    /* №46: «Багцын гүйцэтгэл» уншигдаагүй бол олголтыг Finance-ийн биет хувьтай ч харьцуулахгүй */
+    const finAct = finActualOf({ isBuild, ttbRead: !!ttb, ttbRow, lag, progress: r.progress });
     const contract = contracts?.get(r.oid) ?? null;
     const isRep = !!key && pkgRep.get(key)?.oid === r.oid;
     return {
@@ -164,7 +198,7 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
       isLandWork,
       pkgRep: isRep,
       perf: perfScoreOf({
-        lag, ttb: key && r.sec === FIN_XL_BUILD_CODE ? ttb.get(key) : undefined, cancelled,
+        lag, ttb: ttbRow, ttbUnread: isBuild && !ttb, cancelled,
         noCurve: lagUnknown, notStarted: schedNotStarted, start: r.start, end: r.end, progress: r.progress, now,
       }),
       fin: cancelled || isLandWork ? { score: null, facts: [] } : scoreFin({
@@ -173,8 +207,10 @@ export const loadScoreBase = cached(async (): Promise<ScoreBase> => {
         now,
         cost: r.budgetOrder ?? 0,
         contract: contracted && contract && contract > 0 ? contract : null,
-        paidPct: key && lag ? paid.get(finPkgKey(key)) ?? null : null,
-        actual,
+        /* 2026-11-27 (аудит №36): «бодит» нь «Багцын гүйцэтгэл»-ээс бол олголтыг ч мөн харьцуулна (Finance-ийн хоцрогдлоос үл хамааран) */
+        paidPct: key && finAct.comparable ? paid.get(finPkgKey(key)) ?? null : null,
+        actual: finAct.actual,
+        actualPkg: finAct.actualPkg,
       }),
       permit: cancelled || isLandWork || !isRep || !zovRows ? { score: null, facts: [] } : scorePermit({ counts: zovByKey.get(key) ?? null }),
       hse: cancelled || isLandWork || !isRep || uzFailed ?{ score: null, facts: [] } : scoreHse({

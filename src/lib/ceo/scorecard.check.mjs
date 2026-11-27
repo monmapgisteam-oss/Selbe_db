@@ -76,6 +76,16 @@ assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract:
 }
 assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract: 100, paidPct: 35, actual: 10 }).score, 100, 'урьдчилгаа 25пп түрүүлсэн — хэвийн');
 assert.equal(scoreFin({ contracted: true, start: null, now, cost: 100, contract: 100, paidPct: 10, actual: 50 }).score, (100 + 100 + 40) / 3, 'олголт 40пп хоцорсон');
+/* 2026-11-27 (аудит №36): «бодит» нь «Багцын гүйцэтгэл»-ийн S бол нэр/асуудал нь түүнийг нэрлэнэ («Биет гүйцэтгэл» биш) */
+{
+  const pk = scoreFin({ contracted: true, start: null, now, cost: 100, contract: 100, paidPct: 10, actual: 50, actualPkg: true });
+  assert.ok(pk.facts.some((f) => f.label === 'Багцын гүйцэтгэл («Төсөл төлөвлөгөө биелэлт»)' && f.value === '50.00%'), JSON.stringify(pk.facts));
+  assert.ok(!pk.facts.some((f) => f.label === 'Биет гүйцэтгэл'));
+  assert.ok(pk.issues.some((x) => x.text.includes('«Багцын гүйцэтгэл»-ээс 40.00') && !x.text.includes('биет')), JSON.stringify(pk.issues));
+  const ph = scoreFin({ contracted: true, start: null, now, cost: 100, contract: 100, paidPct: 10, actual: 50 });
+  assert.ok(ph.facts.some((f) => f.label === 'Биет гүйцэтгэл'), 'Finance-ийн биет хувь — хуучин нэр');
+  assert.ok(ph.issues.some((x) => x.text.startsWith('Олголт биет гүйцэтгэлээс 40.00')));
+}
 
 /* ── 3. Газар чөлөөлөлт ── */
 assert.equal(scoreLand({ isLandWork: false, landPct: 70, hasFootprint: false, overlap: 0, overlapFailed: false }).score, null, 'газрын зураглалгүй → null');

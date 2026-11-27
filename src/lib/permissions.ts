@@ -26,7 +26,7 @@ import {
   type ViewKey,
 } from './services';
 import { capViewsOf, isWorkflowView, UNSAFE_KEY } from './caps';
-import { NEW_ACCOUNT_ROLE, _typesMark, roleAccess } from './roleTypes';
+import { LEGACY_VIEW_KEYS, NEW_ACCOUNT_ROLE, _typesMark, roleAccess } from './roleTypes';
 import { currentUser, requireSuper, writeGuardsOn, _setWhoRoleReader } from './who';
 import { AUTH } from './services';
 import { t as tr } from './i18nCore';
@@ -121,17 +121,23 @@ const VALID_VIEWS = new Set<string>(VIEWS.map((v) => v.key));
 /**
  * ХОЦРОГСДЫН ЗУРАГЛАЛ — устгагдсан харагдацын түлхүүрийг залгамжлагч руу.
  */
-const LEGACY_VIEW: Record<string, ViewKey> = {
-  sheet: 'guitsetgel',
-  tsogts: 'pkgProg',
-};
+/* sheet → guitsetgel · tsogts → pkgProg · 2026-11-27: bagtsHamaaral → tuvshin6 («Багцын хамаарал» хуудас хасагдсан — холбоо
+   «6 түвшний хуваарь» дээр). Зөвхөн ХАРАГДАЦ шилжинэ; засах эрх (`hamaaral`) автоматаар олгогдохгүй. Эх нь `roleTypes`
+   (загварын шүүлт ч мөн хэрэглэнэ). */
+const LEGACY_VIEW: Readonly<Record<string, ViewKey>> = LEGACY_VIEW_KEYS;
+
+/**
+ * Хуучин харагдацын түлхүүрийг (хадгалсан мөр · загвар · `?v=` холбоос) залгамжлагч руу; танигдахгүй бол хэвээр.
+ */
+export const canonicalViewKey = (k: string): string =>
+  Object.hasOwn(LEGACY_VIEW, k) ? LEGACY_VIEW[k] : k;
 
 const sanitizeViews = (v: ViewKey[] | 'all'): ViewKey[] | 'all' => {
   if (v === 'all') return 'all';
   if (!Array.isArray(v)) return [];
   const out: ViewKey[] = [];
   for (const k of v) {
-    const m = LEGACY_VIEW[k as string] ?? k;
+    const m = canonicalViewKey(k as string) as ViewKey;
     if (VALID_VIEWS.has(m) && !out.includes(m)) out.push(m);
   }
   return out;
@@ -607,13 +613,30 @@ export function workflowViewsOf(username?: string | null): ViewKey[] {
 export function resolveAccess(username?: string | null): Access | null {
   const a = resolveAccessRaw(username);
   if (!a || a.views === 'all') return a;
-  const add: ViewKey[] = [];
-  /* «Гүйцэтгэл» хардаг хэн ч «Хяналтын хугацаа»-г харна — тусад нь эрх олгох шаардлагагүй */
-  if (a.views.includes('guitsetgel') && !a.views.includes('hyanaltHugatsaa')) add.push('hyanaltHugatsaa');
-  /* 2026-11-23: «Санхүүжилт» хоёр цэс болсон — урьд түүнийг хардаг хүн «Төлбөрийн акт (IPC)»-г ч харна */
-  if (a.views.includes('finance') && !a.views.includes('ipc')) add.push('ipc');
+  const add = autoViewsFor(a.views);
   if (!add.length) return a;
   return { ...a, views: [...a.views, ...add].sort((x, y) => (VIEW_ORDER.get(x) ?? 0) - (VIEW_ORDER.get(y) ?? 0)) };
+}
+
+/**
+ * АВТОМАТААР НЭЭГДДЭГ ХАРАГДАЦ — аль харагдац алинаас (эх → автомат). НЭГ газар: ажиллах үе (`resolveAccess`) ба эрхийн хоёр
+ * самбар («Хэрэглэгчдийн эрх удирдах» · «Шинэ эрх») бүгд `autoViewsFor`-оор бодно (2026-11-27 — урьд самбарууд зөвхөн
+ * «Хяналтын хугацаа»-г тооцож, «Төлбөрийн акт (IPC)»-г «хаалттай» гэж харуулдаг байв).
+ */
+export const AUTO_VIEW_SOURCE: Partial<Record<ViewKey, ViewKey>> = { hyanaltHugatsaa: 'guitsetgel', ipc: 'finance' };
+
+/**
+ * `open` — автомат нэмэлтээс ӨМНӨ нээлттэй харагдацууд (шууд · засах эрхийн гэр харагдац `CAP_HOST_VIEW` · урсгалын шат).
+ * Буцаах нь — нэмэгдэх (одоо нээлттэй бишээс) харагдацууд.
+ *   · «Гүйцэтгэл» хардаг хэн ч «Хяналтын хугацаа»-г харна — тусад нь эрх олгох шаардлагагүй
+ *   · 2026-11-23: «Санхүүжилт» хоёр цэс болсон — урьд түүнийг хардаг хүн «Төлбөрийн акт (IPC)»-г ч харна. «Санхүүжилт» нь
+ *     засах эрхээр (finEdit · finRow · ttbSwitch) нээгдсэн ч мөн адил (2026-11-27: ажиллах үеийн дүрэм хэвээр)
+ */
+export function autoViewsFor(open: readonly ViewKey[]): ViewKey[] {
+  const add: ViewKey[] = [];
+  if (open.includes('guitsetgel') && !open.includes('hyanaltHugatsaa')) add.push('hyanaltHugatsaa');
+  if (open.includes('finance') && !open.includes('ipc')) add.push('ipc');
+  return add;
 }
 
 function resolveAccessRaw(username?: string | null): Access | null {

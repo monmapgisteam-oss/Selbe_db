@@ -710,7 +710,7 @@ const ARCHIVED_NO_RETURN = () => tr('Архивт аль хэдийн бичиг
 /** Архивлалтын үр дүн — амжилттай бол нэгтгэлд бүртгэх АРХИВЫН OBJECTID. */
 type Archived =
   | { ok: true; archiveOid: number; day?: string; pkgKey?: string; warn?: string; reopen?: { fillMs: number; sheetOid: number; sheet: string }; empty?: true }
-  | { ok: false; error: string; contentChanged?: true };
+  | { ok: false; error: string; contentChanged?: true; stale?: true };
 
 /**
  * ХААГДААГҮЙ НЭМЭЛТИЙН ТЭМДЭГ (2026-10-09, R1) — `илгээлтийн oid → { at }` (localStorage).
@@ -867,8 +867,10 @@ const MARK_UNRESOLVED = (why: string) =>
  * `refreshStoredProgress` ганц удаа, бичилтийн яг ард дуудагддаг байсан: тэр хооронд таб хаагдвал хожуу жаазнуудын хадгалсан
  * хувь тэр ажилгүй үлдэж, дахин батлах зам («аль хэдийн архивлагдсан») түүнийг хэзээ ч нөхдөггүй байв. Энд тэр замуудаас
  * дуудна: тэр өдрөөс хойш жааз байхгүй бол юу ч хийхгүй, зөрүүгүй бол бичихгүй (давтахад аюулгүй). Унавал зөвхөн лог.
+ * 2026-11-27 (аудит №3): `aOid` — тэр жаазны эхний мөр; нэгтгэлийн «өмнөх» агшинг тэр жаазгүйгээр бодно, гэхдээ хадгалсан мөр
+ * тэр агшинтай ЯГ таарвал л (`onlyIfStored` — жааз хараахан нэмэгдээгүй), тиймээс давтахад давхар нэмэхгүй.
  */
-async function healLaterFrames(pkgKey: string, day: string | undefined): Promise<void> {
+async function healLaterFrames(pkgKey: string, day: string | undefined, aOid: number): Promise<void> {
   if (!day) return;
   try {
     const [{ PKGS, fillSchema }, { refreshStoredProgress }] = await Promise.all([import('@/modules/sheet/bagts.pkg'), import('./frameRepair')]);
@@ -876,7 +878,7 @@ async function healLaterFrames(pkgKey: string, day: string | undefined): Promise
     if (!pkg) return;
     /* 2026-11-23 (аудит №10 · хяналт): нэгтгэлд (190) зөвхөн энэ засварын нөлөө — засварын өмнөх агшин, дараа нь зөрүү */
     const { snapshotNegtgelFrom, resyncNegtgelFrom } = await import('./negtgelWrite');
-    const snap = await snapshotNegtgelFrom(pkg.group, day);
+    const snap = await snapshotNegtgelFrom(pkg.group, day, aOid > 0 ? { pkgKey: pkg.key, firstOid: aOid, onlyIfStored: true } : null);
     await refreshStoredProgress(pkg, await fillSchema(pkg), day);
     const rs = await resyncNegtgelFrom(snap);
     if (!rs.ok) console.warn('[selbe] хожуу өдрүүдийн нэгтгэл дахин бодогдсонгүй:', rs.error);
@@ -1023,6 +1025,11 @@ async function archiveSubmission(
    * агуулга архивлагддаг байв — энд ч тулгана (`contentChanged`).
    */
   subAt?: number,
+  /**
+   * 2026-11-27 (аудит №17): шийдвэр гаргаж буй ЭЦСИЙН шат — өгвөл архивт бичихийн яг өмнө хяналтын мөрийн төлөв
+   * `REVIEW_STATUS[stage]` хэвээр эсэхийг шалгана (буцаагдсан бол бичихгүй). Нөхөлтийн зам (`retryPendingRegistrations`) өгөхгүй.
+   */
+  stage?: ReviewStage,
 ): Promise<Archived> {
   const subOid = cur[F.sheetOid];
   if (!(Number.isInteger(subOid) && subOid > 0))
@@ -1045,7 +1052,7 @@ async function archiveSubmission(
     }
     const aOid = staged.payload.archiveOid ?? 0;
     const day = await archivedDayOf(staged.payload.pkgKey, aOid, staged.payload.fillMs);
-    if (aOid > 0) await healLaterFrames(staged.payload.pkgKey, day);
+    if (aOid > 0) await healLaterFrames(staged.payload.pkgKey, day, aOid);
     unclosedSet(subOid, null);
     return { ok: true, archiveOid: aOid, day, pkgKey: staged.payload.pkgKey, ...(aOid === 0 && staged.payload.residual === true ? { empty: true as const } : {}) };
   }
@@ -1101,7 +1108,7 @@ async function archiveSubmission(
       error: tr('Илгээлт «{0}» багцынх — хяналтын бүртгэл «{1}». Архивт юу ч бичсэнгүй.', pkg.group, cur[F.bagts]),
     };
 
-  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc, laterAsOf, alignBlocks }, { sameFrame, fillMsFor }, { agsFetch }] = await Promise.all([
+  const [{ loadRows, applyAdds, applyDeletes, msToDay, dayToMs, dayFilter, addsLost }, { overlaySubmission, buildFrame, assertFrameLength, staleSubmissionKeys, withFrameOcc, needsFrameOcc, laterAsOf, alignBlocks }, { sameFrame, fillMsFor }, { agsFetch }] = await Promise.all([
     import('@/modules/sheet/bagtsSheet'),
     import('@/modules/sheet/sheetFrame'),
     import('./ajilApply'),
@@ -1132,6 +1139,9 @@ async function archiveSubmission(
         return { ok: false, error: MARK_UNRESOLVED(tr('архивт ижил урттай жааз байгаа боловч утга нь бөөрөнхийллөөр зөрж байна — админаар шалгуулна уу')) };
       if (!carried && hitOid != null && hitOid > 0) {
         const day = msToDay(am.fillMs);
+        /* 2026-11-27 (аудит №1): бөглөсөн өдрөөр бичсэний дараах хожуу жаазны засвар (`refreshStoredProgress` · нэгтгэл) тэмдэг
+           арилахаас ӨМНӨ таслагдсан байж болно — энэ замд ч нөхнө (давтахад аюулгүй; хожуу жаазгүй бол юу ч хийхгүй) */
+        await healLaterFrames(pkg.key, day, hitOid);
         archivedSet(seenKey, { oid: hitOid, day });
         const fin = await closeAfterArchive(subOid, staged, pl, hitOid, pkg.name, { row: cur.__oid, day });
         if (fin.hold) return { ok: false, error: fin.hold };
@@ -1271,23 +1281,57 @@ async function archiveSubmission(
    *   · хожуу жаазтай — ЗӨВХӨН нэмэлт обьёмын илгээлт (огнооны засвар · шинэ мөргүй) БА тэр өдөр жааз байхгүй үед; бичсэний дараа
    *     хожуу жаазнуудын хадгалсан хувийг шинэчилнэ (`frameRepair.refreshStoredProgress`). Бусад тохиолдолд хуучин дүрэм
    *     (батлах өдөр): хуваарийн огноо, шинэ мөр «одоогийн» (хамгийн сүүлийн огнооны) жаазанд орох ёстой.
+   *
+   * 2026-11-27 (аудит №22) — ХОЖУУ ЖААЗТАЙ ҮЕИЙН ДҮРЭМ: бөглөсөн өдрөөр (D) бичнэ, ЗӨВХӨН дараах үед л батлах өдрөөр:
+   *   · бүтэн (inc биш) илгээлт — абсолют утга хожуу ажлыг дарна;
+   *   · хуваарийн огнооны засвар эсвэл шинэ мөртэй — хожуу жаазнууд түүнийг авахгүй;
+   *   · хувиар нэмсэн (обьёмгүй) нүдтэй — хожуу жаазны хувийг зөвхөн обьёмоос дахин боддог (`volumeOnlyChange`); хувийн
+   *     нэмэлтийг хожуу жаазанд давтахад аюулгүйгээр (`healLaterFrames`) нэмэх эх алга;
+   *   · «Шинэчлэгдсэн огноо»-г хамгийн сүүлийн жаазныхаас ХОЖУУ болгосон — тэр огноо хожуу жаазанд хүрэхгүй;
+   *   · хуудсанд огноо/ажлын кодын талбаргүй, эсвэл D-ийн өмнөх жааз / D-ийн одоо байгаа жааз уншигдсангүй, эсвэл D-ийн жаазны
+   *     өдрийн обьёмыг ажлын кодоор тулгаж чадсангүй.
+   * Урьд нь «D-д жааз аль хэдийн байвал» болон «огноо яг тэнцүү биш бол» ч батлах өдөр рүү шилждэг байв — одоо D-ийн жааз
+   * байвал түүний өдрийн обьёмыг шинэ жаазанд нэмж (`carrySameDay`), хадгалах хувийг ТҮҮН дээр суурилуулна.
    */
   let backDated = false;
+  /** Бөглөсөн өдрийн жаазны суурь: P — D-ээс өмнөх сүүлийн жааз, E — D-д аль хэдийн байгаа жааз (байвал) */
+  let bdPrev: Awaited<ReturnType<typeof loadRows>> | null = null;
+  let bdSame: Awaited<ReturnType<typeof loadRows>> | null = null;
   if (lastDay && lastDay >= msToDay(fillMs)) {
     let keep = lastDay === msToDay(fillMs);
-    /* 2026-11-23 (аудит): «Шинэчлэгдсэн огноо» өөрчлөгдөөгүй БА өөрчлөлт бүр обьёмын замаар (хувиар нэмсэн нүдгүй) үед л —
-       эс бөгөөс тэр ахиц/огноо хожуу жаазанд хүрдэггүй тул батлах өдрийн дүрмээр бичнэ (`frameRepair.volumeOnlyChange`) */
-    const sameAsOf = ov.asOf == null || ov.asOf === loaded.asOf;
-    const volOnly = sameAsOf && (await import('./frameRepair')).volumeOnlyChange(loaded.rows, ov.rows);
-    if (!keep && volOnly && incPl && !ov.dateKeys.length && ov.rows.length === loaded.rows.length && sc.f.fillDate) {
-      try {
-        const j = await agsFetch(`${pkg.url}/query`, { where: dayFilter(sc.f.fillDate, msToDay(fillMs)), returnCountOnly: String(true) });
-        keep = Number(j?.count) === 0;
+    if (!keep) {
+      const fillDay = msToDay(fillMs);
+      const fr = await import('./frameRepair');
+      const asOfOk = ov.asOf == null || (loaded.asOf != null && ov.asOf <= loaded.asOf);
+      const can = incPl && asOfOk && !ov.dateKeys.length && ov.rows.length === loaded.rows.length
+        && !!sc.f.fillDate && !!sc.f.des && fr.volumeOnlyChange(loaded.rows, ov.rows);
+      if (can) {
+        try {
+          const prevDay = await fr.frameDayBefore(pkg, sc, fillDay);
+          bdPrev = prevDay ? await loadRows(pkg, sc, prevDay, undefined, { strict: true }) : null;
+          const j = await agsFetch(`${pkg.url}/query`, { where: dayFilter(sc.f.fillDate!, fillDay), returnCountOnly: String(true) });
+          const n = Number(j?.count);
+          if (!Number.isFinite(n)) throw new Error(tr('мөрийн тоо уншигдсангүй'));
+          bdSame = n > 0 ? await loadRows(pkg, sc, fillDay, undefined, { strict: true }) : null;
+          keep = !bdSame || fr.canCarrySameDay(loaded.rows, bdSame.rows);
+        } catch (e) {
+          keep = false;
+          const w = tr('Бөглөсөн өдрийн ({0}) суурь жааз уншигдсангүй ({1}) — батлах өдрөөр бичив.', fillDay, String((e as Error)?.message ?? e));
+          cleanupWarn = cleanupWarn ? `${cleanupWarn} · ${w}` : w;
+        }
         backDated = keep;
-      } catch { keep = false; }
+      }
     }
-    if (!keep) fillMs = fillMsFor(serverNow(), loaded.snapshot);
+    if (!keep) { fillMs = fillMsFor(serverNow(), loaded.snapshot); bdPrev = null; bdSame = null; }
   }
+  /*
+   * 2026-11-27 (аудит №4): бөглөсөн өдрийн жаазны «Шинэчлэгдсэн огноо» ба төлөвлөгөөт хувь — ТЭР ӨДРИЙН байдлаар: D-д цагтаа
+   * батлагдсан бол авах байсан утга = илгээлтийн огноо ба D-ийн суурь жаазны (E, эс бөгөөс P) огнооны хожуу нь (`laterAsOf`).
+   * Суурь жааз огт алга бол хамгийн сүүлийн жаазных, D-ээс хожуу бол D. Урьд нь хожуу жаазных (L) бичигддэг байв.
+   */
+  const frameAsOf = !backDated ? asOf
+    : (bdSame ?? bdPrev) ? laterAsOf(ov.asOf, (bdSame ?? bdPrev)!.asOf)
+      : ov.asOf ?? (loaded.asOf == null ? null : Math.min(loaded.asOf, dayToMs(msToDay(fillMs)) ?? loaded.asOf));
 
   /* ── САРЫН ЗАДАРГАА — дэлгэцтэй ИЖИЛ томъёо ────────────────────────
    */
@@ -1298,27 +1342,28 @@ async function archiveSubmission(
   } catch {
     obPlan = null;
   }
-  const frame = buildFrame(ov.rows, sc, nBld, asOf, hasObyem, fillMs, {}, {},
+  const { saneDate } = await import('@/lib/projectPlan');
+  const frame = buildFrame(ov.rows, sc, nBld, frameAsOf, hasObyem, fillMs, {}, {},
     (row, b) => {
-      if (!obPlan || row.des == null || asOf == null) return null;
+      if (!obPlan || row.des == null || frameAsOf == null) return null;
       const blok = sc.bld[b];
       const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-      return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
+      /* 2026-11-27 (аудит №6): 2000–2100-гийн гаднах огноо → бүтэн сараар (`planProgress`/`projectPlanInputs.monthlyOf`-тэй нэг дүрэм) */
+      const s = row.start[b] ?? null;
+      const e = row.end[b] ?? null;
+      return m ? planPctFromMonths(m, frameAsOf, saneDate(s) != null && saneDate(e) != null ? { start: s, end: e } : null) : null;
     });
   /* Бөглөсөн өдрөөр (хожуу жаазны өмнө) бичих жааз: хадгалах хувь нь ӨМНӨХ жаазны утга + нэмэлт (`frameRepair.rebaseBackdated`)
-     — эс бөгөөс хожуу өдрүүдийн ажил тэр өдрийн хувьд шингэнэ. Өмнөх жааз уншигдахгүй бол хуучин зан + анхааруулга. */
+     — эс бөгөөс хожуу өдрүүдийн ажил тэр өдрийн хувьд шингэнэ. 2026-11-27: суурь жаазыг шийдвэрийн үед (дээр) уншсан —
+     уншигдаагүй бол батлах өдрөөр бичигдсэн; D-д жааз байвал түүний өдрийн обьём шинэ жаазанд нэмэгдэж, хувь түүн дээр суурилна. */
   if (backDated) {
-    try {
-      const { frameDayBefore, rebaseBackdated, rebaseBackdatedDates } = await import('./frameRepair');
-      const prevDay = await frameDayBefore(pkg, sc, msToDay(fillMs));
-      const prevRows = prevDay ? (await loadRows(pkg, sc, prevDay, undefined, { strict: true })).rows : [];
-      rebaseBackdated(frame, loaded.rows, prevRows, sc);
-      /* 2026-11-24: бодит эхэлсэн/дууссан огноо — өмнөх жаазаар (L-ийн хожуу ажил/огноо орохгүй) */
-      rebaseBackdatedDates(frame, loaded.rows, prevRows, sc, fillMs);
-    } catch (e) {
-      const w = tr('Бөглөсөн өдрийн жаазны хадгалах хувийг өмнөх жаазтай тулгаж чадсангүй ({0}) — админд мэдэгдэнэ үү.', String((e as Error)?.message ?? e));
-      cleanupWarn = cleanupWarn ? `${cleanupWarn} · ${w}` : w;
-    }
+    const { rebaseBackdated, rebaseBackdatedDates, carrySameDay } = await import('./frameRepair');
+    const prevRows = bdPrev?.rows ?? [];
+    if (bdSame && !carrySameDay(frame, loaded.rows, bdSame.rows, sc))
+      return { ok: false, error: tr('Бөглөсөн өдрийн ({0}) жаазны өдрийн обьёмыг шинэ жаазанд тулгаж чадсангүй — архивт юу ч бичсэнгүй, дахин оролдоно уу.', msToDay(fillMs)) };
+    rebaseBackdated(frame, loaded.rows, bdSame?.rows ?? prevRows, sc);
+    /* 2026-11-24: бодит эхэлсэн/дууссан огноо — өмнөх жаазаар (L-ийн хожуу ажил/огноо орохгүй); өдрийн обьём нь E + нэмэлт */
+    rebaseBackdatedDates(frame, loaded.rows, prevRows, sc, fillMs);
   }
   const added = ov.rows.length - loaded.rows.length;
   if (added < 0)
@@ -1343,7 +1388,7 @@ async function archiveSubmission(
     if (again.sub.done || again.sub.payload.archiveOid != null) {
       const aOid2 = again.sub.payload.archiveOid ?? 0;
       const day2 = await archivedDayOf(pkg.key, aOid2, again.sub.payload.fillMs);
-      if (aOid2 > 0) await healLaterFrames(pkg.key, day2);
+      if (aOid2 > 0) await healLaterFrames(pkg.key, day2, aOid2);
       return { ok: true, archiveOid: aOid2, day: day2, pkgKey: pkg.key };
     }
     if (again.sub.at !== staged.at)
@@ -1400,6 +1445,27 @@ async function archiveSubmission(
       stop = tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e));
     }
     if (stop) return { ok: false, error: stop + (await clearMark()) };
+  }
+  /*
+   * 2026-11-27 (аудит №17): ХЯНАЛТЫН МӨРИЙН ТӨЛӨВ — архивт бичихийн ЯГ өмнө дахин уншина. Урьд нь зөвхөн илгээлтийг шалгадаг
+   * тул энэ хооронд өөр хянагч буцаасан ч архив бичигдэж, `apply` буцаалтыг «Шилжүүлсэн»-ээр дарж шалтгааныг арилгадаг байв.
+   * Төлөв хүлээгдэх шатных биш (буцаасан г.м.) бол юу ч бичихгүй; «Шилжүүлсэн» бол өмнөх (алдагдсан хариу) зам хэвээр.
+   */
+  if (stage) {
+    let live: Row | undefined;
+    try { live = await liveRow(cur.__oid); } catch (e) {
+      return { ok: false, error: tr('Бичихийн өмнөх шалгалт унав: {0}', String((e as Error)?.message ?? e)) + (await clearMark()) };
+    }
+    const st = live ? String(live[F.status] ?? '') : '';
+    if (st !== REVIEW_STATUS[stage] && st !== STATUS.transferred) {
+      const nm = String((live as Record<string, unknown> | undefined)?.[SF[stage].who] ?? '').trim();
+      return {
+        ok: false,
+        stale: true,
+        error: tr('Таныг батлах хооронд {0} энэ ажлыг буцаасан — архивт юу ч бичсэнгүй, ажил «Шилжүүлсэн» болсонгүй. Жагсаалт шинэчлэгдлээ.', nm || tr('өөр хянагч'))
+          + (await clearMark()),
+      };
+    }
   }
   let firstOid: number | null = null;
   const written: number[] = [];
@@ -1499,8 +1565,9 @@ async function archiveSubmission(
   if (backDated) {
     try {
       const [{ refreshStoredProgress }, { snapshotNegtgelFrom, resyncNegtgelFrom }] = await Promise.all([import('./frameRepair'), import('./negtgelWrite')]);
-      /* 2026-11-23 (аудит №10 · хяналт): хожуу өдрүүдийн нэгтгэлд (190) ЗӨВХӨН энэ засварын нөлөөг нэмнэ — засварын өмнөх агшин */
-      const snap = await snapshotNegtgelFrom(pkg.group, msToDay(fillMs));
+      /* 2026-11-23 (аудит №10 · хяналт): хожуу өдрүүдийн нэгтгэлд (190) ЗӨВХӨН энэ засварын нөлөөг нэмнэ — засварын өмнөх агшин.
+         2026-11-27 (аудит №3): «өмнөх» агшин ЭНЭ жаазгүйгээр (`firstOid`) — эс бөгөөс D ба дараагийн жаазны хоорондох мөр засагдахгүй */
+      const snap = await snapshotNegtgelFrom(pkg.group, msToDay(fillMs), firstOid != null && firstOid > 0 ? { pkgKey: pkg.key, firstOid } : null);
       await refreshStoredProgress(pkg, sc, msToDay(fillMs));
       const rs = await resyncNegtgelFrom(snap);
       if (!rs.ok) {
@@ -1738,9 +1805,10 @@ export async function apply(a: {
     let nothingArchived = false;
     let regSkipWarn = '';
     if (registerNow) {
-      const ar = await archiveSubmission(cur, a.subAt);
+      const ar = await archiveSubmission(cur, a.subAt, a.stage);
       if (!ar.ok) {
         if (ar.contentChanged) { emit(); return { ok: false, error: ar.error, contentChanged: true }; }
+        if (ar.stale) { emit(); return { ok: false, error: ar.error }; }
         return { ok: false, error: ar.error };
       }
       archiveOid = ar.archiveOid;

@@ -10,8 +10,8 @@
  *   · нийгэм — модны «Барилга угсралт ажил» салааны «Нийгмийн дэд бүтэц» хэсгийн хүүхдүүд; эх үүсвэр — `SOURCE_FS`.
  * Хэрэглэгчийн дүрэм: хэмжилтгүй явц = 0 (null биш); архивгүй — мөр дарж бичигдэнэ; `tolov` талбар байхгүй.
  */
-import type { ProjectPlan } from '@/lib/projectPlanInputs';
-import { moneySums, type PlanNode, type PlanValues } from '@/lib/projectPlan';
+import { planPkgProgress, type ProjectPlan } from '@/lib/projectPlanInputs';
+import { moneySums, packagesAverage, planPkgKey, type PlanNode, type PlanPkgProgress, type PlanValues } from '@/lib/projectPlan';
 import type { WorkforceDay } from '@/lib/ceo/workforce';
 import type { LandStatus } from '@/lib/land';
 import { HABEA, SOURCE_FS, buildingKey, isPkgRange, pkgKeyOf } from '@/lib/services';
@@ -110,9 +110,11 @@ export function hunHuchRows(day: WorkforceDay | null, companies: readonly { sfx:
 export function sanhuuRows(plan: ProjectPlan, ipc?: { paid: number | null; paidPct: number | null }): PubRow[] {
   const root = plan.tree.root;
   const E = plan.result.values.get(root)?.E ?? null;
-  /* 2026-11-23 (засвар): олгосон дүн — «Төлбөрийн акт (IPC)»-ийн бүх олголтын нийлбэр (портал, тайлантай НЭГ эх). Урьд нь
-     «Төсөл төлөвлөгөө биелэлт»-ийн хуулсан `olgoson_dun`-аас авдаг байсан тул гэрээнд тохироогүй төлбөр нийтийн вэбд дутдаг
-     байв. Өгөөгүй бол (шалгуур) хуучин эх. */
+  /* 2026-11-23 (засвар): олгосон дүн — «Төлбөрийн акт (IPC)»-ийн БҮХ олголтын нийлбэр (портал, тайлангийн «Бодитоор олгосон
+     санхүүжилт» `finance.paid`-тэй НЭГ эх). Өгөөгүй бол (шалгуур) хуучин эх.
+     2026-11-27 (хэрэглэгч, аудит №16): дүн ДАХИН бүх олголт (`ipc.paid`) — гэрээлсэн багцын тоологч руу шилжүүлбэл гэрээнд тохироогүй
+     (олон багц хамарсан, гэрээ баталгаажаагүй багцын) төлбөр нийтийн дүнгээс хасагддаг байв. Хувь нь `paidPct` хэвээр.
+     IPC-ийн олголт мэдэгдэхгүй (`paid` null) бол дүн ч null (0 биш). */
   const contract = moneySums(plan.tree).get(root)?.contract ?? null;
   const paid = ipc ? ipc.paid : (moneySums(plan.tree).get(root)?.paid ?? null);
   /* 2026-11-24 (аудит): хувь — порталын «Олгосон хувь» ЯГ (`reportData.loadFinance().paidPct` = (гэрээлсэн багцын + ТЭЗҮ/зургийн
@@ -182,6 +184,19 @@ export function guitsetgelRows(plan: ProjectPlan, inp: GuitsetgelInputs): PubRow
   });
 
   const rootV = result.values.get(tree.root);
+  /* 2026-11-27 (аудит): багцын мөрийн хувь — порталын «Багцын гүйцэтгэл» (`planPkgProgress` S, 2-р унтраалгатай бүх үе шат);
+     урьд нь зөвхөн барилга угсралтын багцын мөрийн S. Багц тэр эхэд мөргүй (жишээ: дэд багцуудаас бүрдэх «Багц-16») бол мөрийн S. Блок хэвээр. */
+  const pp = planPkgProgress(plan);
+  /* 2026-11-27 (хэрэглэгч, аудит №48): НЭГ шатлалд НЭГ суурь — тэр эхэд мөргүй эцэг багц (дэд багцуудаас бүрдэх «Багц-16») нь
+     дэд багцуудынхаа «Багцын гүйцэтгэл»-ийн жигнэсэн дундаж (`packagesAverage`); урьд нь мөрийн барилгын S тул дэд багцаасаа өөр
+     суурьтай байв. Дэд багц ч алга бол мөрийн S. */
+  const pkgS = (bagts: string, v: PlanValues | undefined, subs: readonly string[] = []): number | null | undefined => {
+    const k = planPkgKey(bagts);
+    const e = k ? pp.get(k) : undefined;
+    if (e) return e.S;
+    const sub = new Map(subs.map((s) => [s, pp.get(planPkgKey(s))] as const).filter((x): x is [string, PlanPkgProgress] => !!x[1]));
+    return sub.size ? packagesAverage(sub).S : v?.S;
+  };
   let ailTotal: number | null = null;
   const pkgRows: PubRow[] = [];
 
@@ -208,9 +223,12 @@ export function guitsetgelRows(plan: ProjectPlan, inp: GuitsetgelInputs): PubRow
       }));
     }
     if (ail != null) ailTotal = (ailTotal ?? 0) + ail;
+    /* 2026-11-27 (хэрэглэгч, аудит №48): багцын хувь = порталын «Багцын гүйцэтгэл» (бүх үе шат) тул эцэг нь «Төслийн нийт»
+       (`PUB_TOTAL`, мөн бүх үе шатын S) — урьд нь «Барилга угсралт» (`PUB_BUILD`, зөвхөн барилгын S) доор тул хүүхэд эцгээсээ
+       өндөр гардаг байв. Талбар, `tuvshin` өөрчлөгдөөгүй (зөвхөн `etseg_kod`-ийн утга) — нийтийн хүснэгтийн бүтэц хэвээр. */
     pkgRows.push(row({
-      kod: code, etseg: PUB_BUILD, tuvshin: 'bagts', ner: txt(n.row?.ajil_uilchilgee) || bagts,
-      guits: inp.contractors.get(key) ?? null, pct: v?.S, dates: contractDates(v), ail,
+      kod: code, etseg: PUB_TOTAL, tuvshin: 'bagts', ner: txt(n.row?.ajil_uilchilgee) || bagts,
+      guits: inp.contractors.get(key) ?? null, pct: pkgS(bagts, v, n.children.filter(isSubPkgNode).map(bagtsOf)), dates: contractDates(v), ail,
     }));
     pkgRows.push(...blockRows);
     /* Дэд багц (Багц-16 → 16.1 … 17.7) — өөрийн гэрээ, гүйцэтгэгч, явцтай; эцгийн код доор */
@@ -222,7 +240,7 @@ export function guitsetgelRows(plan: ProjectPlan, inp: GuitsetgelInputs): PubRow
       const sv = result.values.get(s);
       pkgRows.push(row({
         kod: sc, etseg: code, tuvshin: 'bagts', ner: txt(s.row?.ajil_uilchilgee) || sb,
-        guits: inp.contractors.get(pkgKeyOf(sb)) ?? null, pct: sv?.S, dates: contractDates(sv),
+        guits: inp.contractors.get(pkgKeyOf(sb)) ?? null, pct: pkgS(sb, sv), dates: contractDates(sv),
       }));
     }
     if (!blocks.length) {

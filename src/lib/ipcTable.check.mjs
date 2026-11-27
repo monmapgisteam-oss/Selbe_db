@@ -159,6 +159,25 @@ const contract = (o = {}) => ({
   assert.deepEqual(zero.map((x) => x.oid), [1, 10, 9, 11], '⚠️ 0 ₮ холбогдоогүй AUTO мөр (7, 8) карт болохгүй; null ба IPC-д орсон мөр үлдэнэ');
 }
 
+/* ══ 1d. 2026-11-27: нэг гэрээний ижил дугаартай өөр багцын IPC — бөглөлт зөвхөн өөрийн багцын картад ══ */
+{
+  const S = HO_IPC.status;
+  const fill = (oid, pkg, une, obyem) => pay(oid, work, null, {
+    [P.id]: `AUTO|${pkg}|2026-10-01`, [P.payDate]: '2026-10-01', [P.ipcNo]: 5, [C.pkg]: pkg, [LINK_FIELDS.une]: une, [LINK_FIELDS.obyem]: obyem, [S.field]: S.paid,
+  });
+  const r = payRows([
+    pay(1, work, 100, { [P.id]: 'PAY|Г|5', [P.ipcNo]: 5, [P.payDate]: '2026-10-02', [C.pkg]: 'Багц-10', [S.field]: S.paid }),
+    pay(2, work, 50, { [P.id]: 'PAY|Г|5', [P.ipcNo]: 5, [P.payDate]: '2026-10-02', [C.pkg]: 'Багц 11', [S.field]: S.paid }),
+    fill(3, 'Багц 10', 100, 10),
+    fill(4, 'Багц-11', 50, 5),
+  ]);
+  assert.deepEqual(r.map((x) => x.oid), [1, 2], 'олгосон бөглөлт тусдаа карт болохгүй');
+  assert.deepEqual(r.map((x) => [x.une, x.obyem, x.zoruu]), [[100, 10, 0], [50, 5, 0]], '⚠️ 150 / 150 биш — багц бүр өөрийн бөглөлттэй');
+  /* Багцгүй (эсвэл тэр багцын мөргүй) төлбөр — тэр дугаарын бүх бөглөлт (өмнөх дүрэм) */
+  const one = payRows([pay(1, work, 150, { [P.ipcNo]: 5, [S.field]: S.paid }), fill(3, 'Багц 10', 100, 10), fill(4, 'Багц-11', 50, 5)]);
+  assert.deepEqual(one.map((x) => [x.oid, x.une, x.zoruu]), [[1, 150, 0]]);
+}
+
 /* ══ 1b. ЗАХИРАМЖ ба ОН — мөрөнд гарна ══ */
 {
   const r = payRows([pay(1, work, 20, {

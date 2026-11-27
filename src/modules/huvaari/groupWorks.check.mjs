@@ -91,6 +91,22 @@ console.log('✅ төлөвлөх түвшин — зөвхөн 3-р давхр�
   const tgt = [row(0, 0, true, { work: 'Б. барилга угсралт' }), row(1, 1, true, { work: 'Б1  Барилгын ажил' }), row(2, 2, true, { work: 'Суурийн ажил' })];
   assert.equal(unitKey(tgt, 2), key, 'том/жижиг үсэг, зай ялгахгүй тааруулна');
   assert.equal(sourceUnitPlans([row(0, 2, true), row(1, 3, false)], 1, () => 1).size, 0, 'огноогүй бүлэг орохгүй');
+  /* 2026-11-27: «бүх блок» — ижил нэртэй блок бүрд эх блокийн мужийг тусад нь (нэгтгэхгүй) */
+  const { copyUnitItems } = await import('./copyPkg.ts');
+  const tgt2 = [...tgt, row(3, 3, false), row(4, 3, false)];
+  const { items, miss } = copyUnitItems(tgt2, ['5/1', '5/2'], [0, 1], src, ['5/1', '5/2'], money, 0);
+  assert.equal(miss, 0);
+  assert.equal(items.length, 2, 'блок бүрд нэг зүйл');
+  const b0 = items.find((x) => x.blks[0] === 0);
+  const b1 = items.find((x) => x.blks[0] === 1);
+  assert.deepEqual([b0.sp.start, b0.sp.end], [D('2026-04-01'), D('2026-05-31')], '5/1 — өөрийн муж');
+  assert.deepEqual([b1.sp.start, b1.sp.end], [D('2026-05-01'), D('2026-05-31')], '5/2 — өөрийн муж (нэгтгэсэн 04-01 биш)');
+  assert.deepEqual([...b1.pct], [['2026-05', 100]], '5/2 — зөвхөн 5-р сар');
+  /* блокийн дараалал өөр ч нэрээр таарна; эх хуудсанд алга блок — нэгдсэн мужаар */
+  const r2 = copyUnitItems(tgt2, ['5/2', 'X'], [0, 1], src, ['5/1', '5/2'], money, 0).items;
+  assert.deepEqual([r2.find((x) => x.blks[0] === 0).sp.start], [D('2026-05-01')], 'нэрээр таарна');
+  assert.deepEqual(r2.find((x) => x.blks[0] === 1).sp, { start: D('2026-04-01'), end: D('2026-05-31') }, 'таараагүй блок — нэгдсэн');
+  assert.equal(copyUnitItems([row(0, 2, true, { work: 'өөр' })], ['5/1'], [0], src, ['5/1', '5/2'], money).miss, 1, 'ижил нэргүй бүлэг — таарсангүй');
   console.log('✅ сарын хувь автомат · багц хооронд хуулах');
 }
 

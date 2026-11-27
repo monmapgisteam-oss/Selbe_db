@@ -19,7 +19,7 @@ import {
 } from '@/modules/Finance';
 import { coverageNote } from '@/lib/planProgress';
 import { useAsync, type Async } from '@/lib/useAsync';
-import { loadProjectContractTotal } from '@/lib/projectPlanInputs';
+import { loadProjectContractTotal, loadProjectLandComp } from '@/lib/projectPlanInputs';
 import { HUE, catOf, aggregateMonths, type PackCat } from '@/modules/pkgShared';
 import { housingSeries, pkgCostWeight, cfWeightRow, contractedScope, gapPts } from '@/lib/gdash';
 import { FIN_PKG_ALIAS, rangePaysOf, type RangePay } from '@/lib/pkgAlias';
@@ -307,12 +307,15 @@ export function PkgFin({ dim, setDim }: {
      ТЭЗҮ · зургийн гэрээ орно). Олголт хэвээр IPC-ээс; хувь = гэрээлсэн багцын олголт ÷ энэ дүн */
   const projContractQ = useAsync(() => loadProjectContractTotal().catch(() => null), []);
   const projContract = projContractQ.state === 'ready' ? projContractQ.data : null;
+  /* 2026-11-27 (аудит): гэрээлсэн нийтэд орсон газрын нөхөх олговор — «олгосон хувь»-ийн тоологчид */
+  const landCompQ = useAsync(() => loadProjectLandComp().catch(() => 0), []);
+  const landComp = landCompQ.state === 'ready' ? landCompQ.data : 0;
   const projShare = useMemo<PaidShare | null>(() => {
     if (!finRawData) return null;
     const sh = paidShareOf(finRawData.contracts, finRawData.pays);
     /* 2026-11-23 (аудит №3): ТЭЗҮ/судалгааны олголт тоологчид — хуваарь ТТБ-ийн нийт (ТЭЗҮ/зураг төсөл орсон) */
-    return withProjectContract(sh, projContract);
-  }, [finRawData, projContract]);
+    return withProjectContract(sh, projContract, landComp);
+  }, [finRawData, projContract, landComp]);
   const { zoomToWhere, setHighlight } = useMap();
 
   /** Сонгосон багц — Bagts-тай ижил `?pkg=` параметрээр хуваалцагдана */

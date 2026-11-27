@@ -140,7 +140,7 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
 
   await syncServerClock();
   const fillMs = fillMsFor(serverNow(), loaded.snapshot);
-  const { loadPkgPlan, planPctFromMonths } = await import('@/lib/huvaariObyem');
+  const [{ loadPkgPlan, planPctFromMonths }, { saneDate }] = await Promise.all([import('@/lib/huvaariObyem'), import('@/lib/projectPlan')]);
   let obPlan: Awaited<ReturnType<typeof loadPkgPlan>>['plan'] | null = null;
   try { obPlan = (await loadPkgPlan(pkg.key)).plan; } catch { obPlan = null; }
   const asOf = loaded.asOf;
@@ -148,7 +148,10 @@ async function ensureInner(pkgKey: string): Promise<EnsureResult> {
     if (!obPlan || row.des == null || asOf == null) return null;
     const blok = sc.bld[b];
     const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-    return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
+    /* 2026-11-27 (аудит №21): 2000–2100-гийн гаднах огноо → бүтэн сараар (`hyanaltStore.archiveSubmission`-той нэг дүрэм) */
+    const s = row.start[b] ?? null;
+    const e = row.end[b] ?? null;
+    return m ? planPctFromMonths(m, asOf, saneDate(s) != null && saneDate(e) != null ? { start: s, end: e } : null) : null;
   });
 
   /* Уралдаа — materializeAdds A.8/A.8а */

@@ -112,8 +112,14 @@ fake.editor = SUPER;
   assert.equal(await P.setUser(ADM2, { views: ['gdash'], docs: false }, 'taniltsah'), true, '§3: хэвийн үед хасалт явна');
   await settle();
   assert.equal(fake.find(`__cap__:${PLAIN}`)[0].last_edited_user, SUPER, '§3: админы бичсэн мөр үндсэн админы нэрээр дахин хадгалагдсан');
+  /* 2026-11-27: итгэмжлэгдээгүй мөрийг (super мөр · админы тухай мөр) дахин хадгалахгүй — үндсэн админы нэрээр хүчинтэй болох ёсгүй */
+  for (const k of [NEWADM, `__cap__:${ADM3}`, `__flow__:${ADM3}`, `__huvaari__:${ADM3}`]) {
+    assert.ok(fake.find(k).every((r) => r.last_edited_user === ADM2), `§3: «${k}» дахин хадгалагдах ёсгүй`);
+  }
   await reload();
   assert.ok(CAPS.capsOf(PLAIN).includes('finEdit'), '§3: хасагдсан админы бичсэн хүний эрх хэвээр');
+  assert.notEqual(P.roleOf(NEWADM), 'super', '§3: дахин хадгалалт итгэмжлэгдээгүй super мөрийг хүчинтэй болгох ёсгүй');
+  assert.ok(!CAPS.capsOf(ADM3).includes('finEdit'), '§3: дахин хадгалалт админы тухай итгэмжлэгдээгүй мөрийг хүчинтэй болгох ёсгүй');
 }
 console.log('✅ §3 дахин хадгалалт унавал (алдаа · null) админаас хасах/устгах зогсоно, юу ч бичигдэхгүй');
 

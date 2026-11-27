@@ -10,8 +10,8 @@
  *      гарч, шүүлт ажиллахгүй байгааг хэн ч анзаарахгүй.
  *   3. ГҮЙЦЭТГЭЛИЙН ХУВЬ ЭНГИЙН ДУНДАЖ болох. Өртгөөр жигнэхгүй бол жижиг
  *      дууссан ажил төслийн явцыг хоёр дахин үнэлнэ.
- *   4. ХЭМЖИГДЭЭГҮЙ АЖИЛ 0% гэж тооцогдох. Багц нь нэгтгэлд байхгүй ажил
- *      «хийгдээгүй» БИШ, «мэдэгдэхгүй» — жигнэсэн дунджид огт орохгүй.
+ *   4. ХЭМЖИГДЭЭГҮЙ АЖИЛ ХУВААРИАС ХАСАГДАХ (2026-11-27, порталын дүрэм: хэмжилтгүй = 0%). A 100₮ 50% + B 900₮
+ *      хэмжилтгүй → 5% (50% биш); нэг ч мөр хэмжилтгүй ангилал/бүлэг — null.
  *   5. S-МУРУЙ БУУРАХ. Хуримтлал тул муруй ХЭЗЭЭ Ч буурахгүй бөгөөд эцсийн
  *      цэг нь хамрагдсан ажлуудын хувийн нийлбэр байх ёстой.
  *   6. ЭХ ҮҮСВЭРИЙН чарт дүн ТЭГ талбарыг тоолох.
@@ -26,6 +26,7 @@ import {
   cashflowCurve, housingMoney, fillMonths,
   housingPct, housingSeries, pkgCostWeight, pkgCostTotal, cfWeightRow, CF, contractedScope, housingPlanSeries,
   isContracted, planScope, pts, gapPts, gapPtsWord, planScopeNote, effectivePeriod, periodActive,
+  weighted, lvl3Pct, wbsGroupPct, DESIGN_WBS,
 } from './gdash.ts';
 
 assert.equal(isContracted({ [CF.note]: '  Гэрээлсэн   дүн ' }), true, 'зай нэгтгэнэ');
@@ -253,23 +254,23 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   const eng = c1.find((x) => x.key === 'ИНЖЕНЕР');
   assert.equal(eng.count, 2);
   assert.equal(eng.countSub, 1);
-  /* Хэмжигдээгүй мөр (`progress == null`) хуваарь, хүртвэрт ч ОРОХГҮЙ */
+  /* 2026-11-27 (аудит, порталын дүрэм): хэмжигдээгүй мөр (`progress == null`) 0%-иар ХУВААРЬТ орно */
   const perfRows = [
     buildRow({ oid: 1, type: 'A', cost: 900, progress: 10, note: CONTRACTED }),
     buildRow({ oid: 2, type: 'A', cost: 100, progress: 100, note: CONTRACTED }),
     buildRow({ oid: 3, type: 'A', cost: 1000, progress: null, note: CONTRACTED }),
   ];
   const cp = chartTypeCost(perfRows);
-  assert.equal(Math.round(cp[0].fin * 100) / 100, 19, '(900×10+100×100)/1000');
+  assert.equal(Math.round(cp[0].fin * 100) / 100, 9.5, '(900×10+100×100+1000×0)/2000');
   /* 2026-11-23 (аудит №9, хэрэглэгчийн дүрэм): гэрээлсэн, биет хэмжилтгүй ангилал — 0% (fin руу унахгүй) */
   assert.equal(cp[0].perf, 0, 'гэрээлсэн, биет хэмжилтгүй бол perf 0 (fin руу унахгүй)');
   assert.equal(chartTypeCost([buildRow({ oid: 9, type: 'B', cost: 50, progress: null })])[0].perf, null, 'гэрээгүй, хэмжилтгүй — null');
-  /* Холимог ангилал: биеттэй мөр л `perf`-д орно, биетгүй мөр хуваарьт ч орохгүй */
+  /* Холимог ангилал: биетгүй мөр 0%-иар хуваарьт (2026-11-27), санхүүгийн хувь нь perf-д холилдохгүй */
   const mix = chartTypeCost([
     buildRow({ oid: 1, type: 'A', cost: 100, progress: 10, pkg2: 'Багц -1' }),
     buildRow({ oid: 2, type: 'A', cost: 900, progress: 90, pkg2: 'Багц -9' }),
   ], new Map([['БАГЦ1', 40]]));
-  assert.equal(mix[0].perf, 40, 'биетгүй мөрийн санхүүгийн 90% perf-д холилдов');
+  assert.equal(mix[0].perf, 4, '(100×40 + 900×0)/1000 — биетгүй мөрийн санхүүгийн 90% perf-д холилдов');
   assert.equal(mix[0].fin, 82, 'fin = (100×10+900×90)/1000');
   /* Объёмын эх сурвалж БАЙВАЛ `perf` түүн рүү шилжинэ, `fin` ХЭВЭЭР */
   const volRows = [buildRow({ oid: 1, type: 'A', cost: 100, progress: 10, pkg2: 'Багц -1' })];
@@ -636,6 +637,33 @@ assert.deepEqual(sCurve([row({ share: 0 })]), []);
   assert.equal(inPeriod(r, P({ years: [2025] })), false);
   assert.deepEqual(sCurve([r], 'month').map((p) => p.key), ['2026-01'], 'sCurve — УБ-ын сар');
   if (prevTz === undefined) delete process.env.TZ; else process.env.TZ = prevTz;
+}
+
+/* ── 2026-11-27 (аудит): хэмжилтгүй = 0% — `weighted` · `lvl3Pct` · `wbsGroupPct` (дашбоард ба удирдлагын тайлан НЭГ) ── */
+{
+  const w = weighted([buildRow({ oid: 1, type: 'A', cost: 100, progress: 50 }), buildRow({ oid: 2, type: 'A', cost: 900, progress: null })], (r) => r.progress);
+  assert.equal(w.get('A'), 5, 'A 100₮ 50% + B 900₮ хэмжилтгүй → 5%');
+  assert.equal(weighted([buildRow({ oid: 3, type: 'B', cost: 100, progress: null })], (r) => r.progress).has('B'), false, 'бүгд хэмжилтгүй — ангилал орохгүй');
+  const l3 = [
+    { lvl3: 'Цахилгаан', cost: 100, progress: 50 },
+    { lvl3: 'Цахилгаан', cost: 900, progress: null },
+    { lvl3: 'Бусад', cost: 500, progress: null },
+  ];
+  assert.equal(lvl3Pct(l3, 'Цахилгаан'), 5, 'lvl3Pct — 5%');
+  assert.equal(lvl3Pct(l3, 'Бусад'), null, 'бүгд хэмжилтгүй — null');
+  const rows = [{ oid: 1, code: '1' }, { oid: 2, code: ' 2 ' }, { oid: 3, code: '1' }];
+  const calc = new Map([[1, { actPct: 100, inProject: 1 }], [2, { actPct: null, inProject: 9 }], [3, { actPct: 0, inProject: 50 }]]);
+  assert.deepEqual(wbsGroupPct(rows, calc, DESIGN_WBS), { pct: 10, base: 10 }, '1: 100% × 1 + 2: хэмжилтгүй × 9 → 10% (эхний ижил код л)');
+  assert.deepEqual(wbsGroupPct(rows, new Map([[1, { actPct: 40, inProject: null }], [2, { actPct: 60, inProject: null }]]), DESIGN_WBS), { pct: 50, base: 0 }, 'жингүй — энгийн дундаж');
+  assert.equal(wbsGroupPct(rows, new Map([[2, { actPct: null, inProject: 9 }]]), DESIGN_WBS).pct, null, 'хэмжилт алга — null');
+  /* Дашбоард ба удирдлагын тайлан НЭГ функц */
+  const { readFileSync } = await import('node:fs');
+  const gd = readFileSync(new URL('../modules/GeneralDash.tsx', import.meta.url), 'utf8');
+  const ex = readFileSync(new URL('./execReport.ts', import.meta.url), 'utf8');
+  assert.match(gd, /wbsGroupPct\(wbs\.data\.rows, wbs\.data\.calc, spec\.wbs \?\? \[\]\)/);
+  assert.match(gd, /wbs: \[\.\.\.DESIGN_WBS\]/);
+  assert.match(ex, /design: wbsGroupPct\(f\.rows, f\.calc, DESIGN_WBS\)\.pct/);
+  assert.ok(!/phase !== 'tezu'/.test(ex), 'удирдлагын тайлан өөр жингээр (ТТБ-ийн E) бодохгүй');
 }
 
 console.log('gdash.check.mjs — БҮГД ТЭНЦЛЭЭ');

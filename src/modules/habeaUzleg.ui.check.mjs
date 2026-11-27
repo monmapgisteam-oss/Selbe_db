@@ -71,6 +71,12 @@ assert.equal(weekLabel('52', true), weekLabel('52'), 'жилгүй түлхүү�
   assert.ok(fetchSrc.includes('${U.scAppl} > 0'), 'онооны дүрэм: appl > 0 (byWeek-тэй ижил)');
   assert.ok(!fetchSrc.includes('isWeekNo('), 'хадгалсан долоо хоногийн дугаараар тааруулахгүй');
   assert.ok(habea.includes('[weekKey, tick]'), 'Habea: долоо хоног/таб харагдахад дахин татна');
+  /* 2026-11-27: долоо хоногийн үл нийцлийн SUM — чартын `cntOverTotal`-ээр хасагддаг мөрийг мөн хасна */
+  assert.ok(/const trust = trustedCntSql\(metas\[ui\]/.test(fetchSrc) && fetchSrc.includes('`(${where}) AND ${trust}`'), 'SUM-д итгэмжтэй мөрийн нөхцөл');
+  const { trustedCntSql } = await import('./habeaUzleg.tsx');
+  assert.equal(trustedCntSql({ names: new Set(['cnt_major', 'cnt_minor']) }, 'v11'), '', 'нийтийн талбаргүй — нөхцөлгүй');
+  const sql = trustedCntSql({ names: new Set(['cnt_findings', 'cnt_high', 'cnt_medium', 'cnt_low', 'cnt_fixed', 'cnt_obs']) }, 'hazard');
+  assert.match(sql, /^\(cnt_findings IS NULL OR COALESCE\(cnt_high, 0\) \+ COALESCE\(cnt_medium, 0\) \+ .+ <= cnt_findings\)$/, sql);
 }
 
 /* ══════════ 4b. Зэрэг талбар бүрээр · огноогүй долоо хоног (2026-10-09) ══════════ */

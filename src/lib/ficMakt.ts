@@ -1,5 +1,5 @@
 import { t as tr } from '@/lib/i18nCore';
-import { ENT_PORTAL, entExactUser, entSession, entStamp, entUploadPdf } from '@/lib/entDocs';
+import { ENT_PORTAL, entDeletePdf, entExactUser, entSession, entStamp, entUploadPdf } from '@/lib/entDocs';
 export const FM_TAG = 'selbe-fm';
 import { ENT_HOSTED } from '@/lib/services/env';
 import { chainOf, latestPerRespNo, loadMa, type MaRow, type Verdict } from '@/lib/ma';
@@ -271,6 +271,17 @@ export async function addFm(a: { kind: FmKind; maNo: string; docNo: string; docD
     const r = j.addResults?.[0];
     if (!r?.success) throw new Error(r?.error?.description || tr('Мөр нэмэгдсэнгүй.'));
   } catch (e) {
+    /* 2026-11-27: мөр нэмэгдээгүй бол оруулсан PDF item-ийг буцаан устгана (best effort) — дахин оролдоход давхардахгүй.
+       Хариу алдагдсан ч мөр үнэндээ нэмэгдсэн байж болох тул эхлээд энэ item-тэй мөр байгаа эсэхийг шалгана; шалгаж
+       чадаагүй бол устгахгүй (мөрийн PDF-ийг эвдэхгүй). */
+    let removed = false;
+    try {
+      const saved = await queryFm(url, `${F.pdfItem} = '${item.id.replace(/'/g, "''")}'`);
+      if (saved.length) return { warn };
+      await entDeletePdf(item.id, item.owner || s.user);
+      removed = true;
+    } catch { /* устгаж чадсангүй — доорх мэдэгдэл файлын дугаартай */ }
+    if (removed) throw new Error(tr('Бүртгэл нэмэгдсэнгүй: {0}. Оруулсан PDF буцаан устгагдсан — дахин оруулна уу.', (e as Error).message));
     throw new Error(tr('PDF хадгалагдсан боловч бүртгэл нэмэгдсэнгүй: {1}. Дахин оруулбал давхардана — админд мэдэгдэнэ үү (файлын дугаар: {0}).', item.id, (e as Error).message));
   }
   return { warn };

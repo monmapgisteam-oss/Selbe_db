@@ -11,6 +11,8 @@ const child = spawn(process.execPath, ['--env-file-if-exists=.env.local', 'serve
     ...process.env,
     PORT: '8787',
     ARCGIS_ORG_ID: '',
+    /* 2026-11-27: ARCGIS_ORG_ID-гүй үед /chat fail-closed (503) — локал нэвтрэлтгүй реле ажиллахад (server.mjs `DEV_NO_AUTH`) */
+    RELAY_DEV_NO_AUTH: '1',
     TRUSTED_PROXY: '',
     ALLOW_ORIGIN: 'http://localhost:8123,http://127.0.0.1:8123,http://localhost:8199,http://127.0.0.1:8199',
   },

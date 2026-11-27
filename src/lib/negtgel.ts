@@ -488,7 +488,8 @@ export function negDisplay(use: ReadonlyArray<NegRaw & { auto?: boolean; how?: s
       inProject,
       planPct: pc(r.planG),
       actPct,
-      share: inProject != null && actPct != null ? (inProject * actPct) / 100 : null,
+      /* 2026-11-27: «Төслийн нийтэд тооцохгүй» мөр (үр удамтайгаа) Төслийн нийтэд 0 оруулна — G×S биш */
+      share: r.noTotal ? 0 : inProject != null && actPct != null ? (inProject * actPct) / 100 : null,
       perf: pc(r.perfG),
       planGch: pc(r.planGch),
       planGuits: pc(r.planGu),

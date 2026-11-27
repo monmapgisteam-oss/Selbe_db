@@ -15,9 +15,11 @@ import { Data, userError } from '@/components/ui';
 import { useAuth } from '@/components/AuthGate';
 import { hasCap, subscribeCaps } from '@/lib/caps';
 import { useLinkEdit, type RowEdit } from './LevelLinkEdit';
+import { ubToday } from '@/lib/projectPlan';
+import { dropWorkCache } from '@/lib/workDepsRemote';
 import { buildXlsx, downloadXlsx } from '@/lib/xlsx';
 import {
-  BAR_TEXT, DAY, MS_TEXT, activeRange, buildL1, buildL2, buildL3, buildL4, buildLook, dayCols, dayOfLocal, failLabel, fmtDay,
+  BAR_TEXT, DAY, MS_TEXT, activeRange, buildL1, buildL2, buildL3, buildL4, buildLook, dayCols, dropSheetDetail, failLabel, fmtDay,
   fmtMD, fmtMonth, ganttAxis, gParents, hBlockParents, heatLevel, levelLinks, levelWorkbook, loadLevelData, loadSheetDetail, monthIdx,
   notDone, packagesOf, visibleGantt, visibleHeat, weekCols, xMonths,
   type Axis, type BarStatus, type BlockDetail, type Col, type GFilter, type GRow, type HRow, type HSection, type LevelData,
@@ -179,7 +181,8 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '', canLink = false
   const pkgs = useMemo(() => packagesOf(d.plan.tree), [d.plan.tree]);
   /* 2026-11-23 (аудит): хуучирсан ?bagts= (жагсаалтад байхгүй багц) — хоосон хүснэгт биш «Бүх багц» */
   const pkOk = pk && pkgs.some((p) => p.key === pk) ? pk : '';
-  const today = dayOfLocal(d.at);
+  /* 2026-11-27 (засвар): Улаанбаатарын өдөр — төлөвлөгөөний тооцоо (`loadLevelData`)-той ижил, хөтчийн цагийн бүс биш */
+  const today = ubToday(d.at);
   useEffect(() => { writeUrl(lvl, pkOk); }, [lvl, pkOk]);
   /* Ажлын холбоос (2026-11-13) — 6 түвшин бүрт; бөглөх хуудсаас (L1/L2-т ч ачаална, ачаалагдтал сумгүй) */
   const sq = useAsync(loadSheetDetail, []);
@@ -187,7 +190,7 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '', canLink = false
   /* 2026-11-24: засах горим — хадгалаагүй нэмэлт холбоо ч зурагдана (`staged`, горимгүй бол хоосон) */
   const [linkOn, setLinkOn] = useState(false);
   const retrySheet = sq.retry;
-  const le = useLinkEdit(canLink && linkOn, pkgs, useCallback(() => setLinkOn(false), []), useCallback(() => retrySheet?.(), [retrySheet]));
+  const le = useLinkEdit(canLink && linkOn, pkgs, useCallback(() => setLinkOn(false), []), useCallback(() => { dropSheetDetail(); retrySheet?.(); }, [retrySheet]));
   const work2 = useMemo(() => (work && le.staged.length ? [...work, ...le.staged] : work), [work, le.staged]);
   const links = useMemo(() => (work2 ? levelLinks(work2, lvl, pkgs) : []), [work2, lvl, pkgs]);
   const ed: RowEdit | undefined = le.rowEdit;
@@ -310,7 +313,13 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '', canLink = false
             className={`${s.btn} ${linkOn ? s.btnOn : ''}`}
             aria-pressed={linkOn}
             title={tr('Багцын хамаарлыг энэ хуваарь дээр холбох, салгах')}
-            onClick={() => { if (linkOn) void le.exit(); else setLinkOn(true); }}
+            onClick={() => {
+              if (linkOn) { void le.exit(); return; }
+              /* 2026-11-27 (засвар): асаахад зураас (`loadSheetDetail`) ба засах граф (`loadWorkData`)-ыг ХАМТ шинээр уншина —
+                 хуудас нээснээс хойш өөр хүн салгасан холбооны хуучин зураас графтай зөрөхгүй */
+              dropSheetDetail(); dropWorkCache(); retrySheet?.();
+              setLinkOn(true);
+            }}
           >
             {tr('Холбоос засах')}
           </button>

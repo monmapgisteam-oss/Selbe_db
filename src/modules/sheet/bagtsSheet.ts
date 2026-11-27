@@ -290,21 +290,56 @@ export function frameRowKeys(feats: readonly Feature[], sc: Schema): string[] {
  * `day`-ээс ӨМНӨХ өдрүүдийн жааз бүрийн `*_obyem` (тэр өдрийн ажил) мөрийн түлхүүрээр нийлбэрлэгдэнэ. Нэг өдөрт хоёр жааз
  * бол `lastFrame`-ийн дүрмээр сүүлийн бүтэн нь л тоологдоно (`loadRows`-той ижил). Обьёмын багана эсвэл огнооны талбаргүй
  * хуудсанд хоосон. Кэш: 5 минут, энэ модулийн бичилт бүрт хаягдана.
+ * 2026-11-27 (аудит): өөр таб/хэрэглэгч `day`-ээс ӨМНӨХ өдрийн жааз бичвэл (хойш огноотой батлалт) энэ табын бичилт биш тул
+ * кэш хаягддаггүй, 5 минут хуучин хуримтлал өгдөг байв. Одоо дахин ашиглахын өмнө тэр мужийн хямд гарын үсгийг (`priorSig`:
+ * мөрийн тоо · max OBJECTID · max EditDate) тулгана — зөрвөл (эсвэл шалгалт унавал) дахин татна.
  */
-const priorCache = new Map<string, { at: number; p: Promise<Map<string, (number | null)[]>> }>();
+type PriorTotals = Map<string, (number | null)[]>;
+const priorCache = new Map<string, { at: number; p: Promise<PriorTotals>; sig: Promise<string | null> }>();
 const PRIOR_TTL = 5 * 60_000;
 export function dropPriorCache(pkgKey?: string): void {
   if (pkgKey == null) { priorCache.clear(); return; }
   for (const k of [...priorCache.keys()]) if (k.startsWith(`${pkgKey}|`)) priorCache.delete(k);
 }
-export function priorObyem(pkg: Pkg, sc: Schema, day: string): Promise<Map<string, (number | null)[]>> {
+/** `day`-ээс өмнөх жаазуудын гарын үсэг — тоо · max OBJECTID · max EditDate (талбартай бол); нэг статистик хүсэлт */
+async function priorSig(pkg: Pkg, sc: Schema, day: string): Promise<string> {
+  const fld = sc.f.fillDate!;
+  const stats = [
+    { statisticType: 'count', onStatisticField: sc.f.oid, outStatisticFieldName: 'n' },
+    { statisticType: 'max', onStatisticField: sc.f.oid, outStatisticFieldName: 'mx' },
+    ...(sc.f.edited ? [{ statisticType: 'max', onStatisticField: sc.f.edited, outStatisticFieldName: 'ed' }] : []),
+  ];
+  const j = await agsFetch(`${pkg.url}/query`, {
+    where: `${fld} < timestamp '${day} 00:00:00'`,
+    outStatistics: JSON.stringify(stats),
+    returnGeometry: "false",
+  });
+  const a = (j?.features?.[0]?.attributes ?? {}) as Record<string, unknown>;
+  const pick = (k: string) => a[k] ?? a[k.toUpperCase()] ?? null;
+  return `${String(pick('n'))}|${String(pick('mx'))}|${String(pick('ed'))}`;
+}
+export function priorObyem(pkg: Pkg, sc: Schema, day: string): Promise<PriorTotals> {
   const fld = sc.f.fillDate;
   const cols = sc.obyem.filter((x): x is string => !!x);
   if (!fld || !cols.length) return Promise.resolve(new Map());
   const ck = `${pkg.key}|${day}`;
   const hit = priorCache.get(ck);
-  if (hit && Date.now() - hit.at < PRIOR_TTL) return hit.p;
+  if (hit && Date.now() - hit.at < PRIOR_TTL) {
+    return (async () => {
+      const [was, now] = await Promise.all([hit.sig, priorSig(pkg, sc, day).catch(() => null)]);
+      if (was != null && now != null && was === now) return hit.p;
+      if (priorCache.get(ck) === hit) priorCache.delete(ck);
+      const cur = priorCache.get(ck);
+      return cur ? cur.p : fetchPrior(pkg, sc, day, ck, fld, cols);
+    })();
+  }
+  return fetchPrior(pkg, sc, day, ck, fld, cols);
+}
+function fetchPrior(pkg: Pkg, sc: Schema, day: string, ck: string, fld: string, cols: string[]): Promise<PriorTotals> {
+  /* Гарын үсгийг татахаас ӨМНӨ — завсарт бичигдвэл дараагийн шалгалт зөрж дахин татна (аюулгүй тал руу) */
+  const sig = priorSig(pkg, sc, day).catch(() => null);
   const p = (async () => {
+    await sig;
     const feats = await fetchFrame(pkg, sc, `${fld} < timestamp '${day} 00:00:00'`, [sc.f.oid, sc.f.no, sc.f.work, fld, ...(sc.f.des ? [sc.f.des] : []), ...cols]);
     const byDay = new Map<string, Feature[]>();
     for (const f of feats) {
@@ -331,7 +366,7 @@ export function priorObyem(pkg: Pkg, sc: Schema, day: string): Promise<Map<strin
     }
     return out;
   })();
-  priorCache.set(ck, { at: Date.now(), p });
+  priorCache.set(ck, { at: Date.now(), p, sig });
   p.catch(() => { if (priorCache.get(ck)?.p === p) priorCache.delete(ck); });
   return p;
 }
@@ -700,7 +735,8 @@ export async function loadRows(
    * Татах талбаруудын жагсаалт — өгвөл `outFields`-ийг хязгаарлана.
    */
   fields?: string[],
-  opts?: { strict?: boolean; persist?: boolean },
+  /** `beforeOid` (2026-11-27, нэгтгэлийн аудит №3) — `atDay`-тэй хамт: тэр өдрийн OBJECTID < энэ мөрүүд л (ижил өдрийн өмнөх жааз) */
+  opts?: { strict?: boolean; persist?: boolean; beforeOid?: number },
 ): Promise<{
   rows: SheetRow[];
   asOf: number | null;
@@ -734,7 +770,7 @@ export async function loadRows(
     : await (async () => {
       const w =
         atDay && sc.f.fillDate
-          ? dayFilter(sc.f.fillDate, atDay)
+          ? `${dayFilter(sc.f.fillDate, atDay)}${opts?.beforeOid != null && Number.isInteger(opts.beforeOid) ? ` AND ${sc.f.oid} < ${opts.beforeOid}` : ''}`
           : await latestWhere(pkg, sc, tree.length);
       return { where: w, feats: await fetchFrame(pkg, sc, w, fields) };
     })();

@@ -247,16 +247,18 @@ export function Tailan({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void }) 
 }
 
 /* 2026-11-24 (хэрэглэгч): багц бүрийн хувь — «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгаар (`planPkgProgress`), систем даяар нэг;
-   төлөвлөгөө уншигдаагүй бол «—» (биет хувиар орлуулахгүй) */
+   2026-11-27: төлөвлөгөө уншигдаагүй (эх сурвалж унасан — `loadPlanPkgProgress` reject) бол хос БҮХЛЭЭРЭЭ унана («уншигдсангүй»,
+   тайлан гаргахгүй — `loadReportExtra`-ийн дүрэмтэй ижил). Урьд нь `.catch(() => null)` → мөрийн `progress: null` → хүснэгтэд
+   `progress ?? 0` = «0.00%» гэж хэмжилт мэт хэвлэгдэж болох байв (уншигдаагүй ≠ 0). */
 const loadReportPair = (): Promise<[BagtsRow[], ReportExtra]> => Promise.all([
   loadBagtsRows(),
   loadReportExtra(),
-  import('@/lib/projectPlanInputs').then((m) => m.loadPlanPkgProgress()).catch(() => null),
+  import('@/lib/projectPlanInputs').then((m) => m.loadPlanPkgProgress()),
   import('@/lib/projectPlan'),
 ]).then(([rows, extra, pp, P]) => [
   rows.map((r) => {
     const k = P.planPkgKey(r.label) || P.planPkgKey(r.key);
-    return { ...r, progress: pp ? (k ? pp.get(k)?.S ?? 0 : null) : null };
+    return { ...r, progress: k ? pp.get(k)?.S ?? 0 : null };
   }),
   extra,
 ]);
@@ -416,8 +418,9 @@ function TailanFull() {
         />
 
         {waiting ? <ReportWaiting steps={steps} secs={secs} /> : (
-        <Data q={bagts} loading={tr('Багцын өгөгдөл нэгтгэж байна…')}>
-          {(rows) => (
+        /* 2026-11-27: багцын мөрүүд PDF/мэйлтэй НЭГ эхээс (`loadReportPair` — «Багцын гүйцэтгэл»); `useBagtsTable`-ийн биет хувь биш */
+        <Data q={pair} loading={tr('Багцын өгөгдөл нэгтгэж байна…')}>
+          {([rows]) => (
             <Data q={ex} loading={tr('Гүйцэтгэл, санхүү, газар, дэд бүтэц, ХАБЭА-гийн өгөгдөл нэгтгэж байна…')}>
               {(x) => {
                 const blocks = rows.reduce((a, b) => a + b.blocks, 0);
@@ -430,7 +433,8 @@ function TailanFull() {
                 const budgetOf = (k: string) => x.finance.byBagts[k] ?? 0;
                 const budget = rows.reduce((a, b) => a + budgetOf(b.key), 0);
                 const sorted = [...rows].sort((a, b) => budgetOf(b.key) - budgetOf(a.key));
-                const bagtsAvg = x.overall.pct;
+                /* 2026-11-27: «Нийт» мөр — ЖАГССАН (орон сууцны) багцуудын «Багцын гүйцэтгэл»-ийн дундаж (`pkgAvgOf`), PDF-тэй НЭГ */
+                const bagtsAvg = x.overall.pkgAvg?.S ?? null;
                 const d = buildFindings(x, rows);
                 const bagtsGapWide = d.bestBagts != null && d.worstBagts != null
                   && d.bestBagts.pct - d.worstBagts.pct > BAGTS_GAP_PTS;
@@ -456,13 +460,13 @@ function TailanFull() {
                       </p>
                       {x.finance.paid == null ? (
                         <p>
-                          {tr('Санхүүгийн хувьд захирамжаар {0} ₮ батлагдсанаас {1} ₮{2} нь гэрээгээр баталгаажсан; олгосон санхүүжилтийн мэдээлэл уншигдсангүй.', bn(x.finance.orderTotal), bn(x.finance.contractAmount), d.contractRate != null ? ` (${pct(d.contractRate, 1)})` : '')}
+                          {tr('Санхүүгийн хувьд захирамжаар {0} ₮ батлагдсанаас {1} ₮{2} нь гэрээгээр баталгаажсан; олгосон санхүүжилтийн мэдээлэл уншигдсангүй.', bn(x.finance.orderTotal), bn(x.finance.orderContract ?? x.finance.contractAmount), d.contractRate != null ? ` (${pct(d.contractRate, 2)})` : '')}
                         </p>
                       ) : (
                       <p>
                         {tr('Санхүүгийн хувьд захирамжаар')} <strong>{bn(x.finance.orderTotal)} {tr('₮')}</strong>
-                        {' '}{tr('батлагдсанаас')} <strong>{bn(x.finance.contractAmount)} {tr('₮')}</strong>
-                        {d.contractRate != null && <> ({pct(d.contractRate, 1)})</>} {tr('нь гэрээгээр баталгаажиж,')}
+                        {' '}{tr('батлагдсанаас')} <strong>{bn(x.finance.orderContract ?? x.finance.contractAmount)} {tr('₮')}</strong>
+                        {d.contractRate != null && <> ({pct(d.contractRate, 2)})</>} {tr('нь гэрээгээр баталгаажиж,')}
                         {' '}<strong>{mnt(x.finance.paid)}</strong>
                         {d.paidRate != null && <> ({tr('гэрээлсэн багцад {0} ₮ — гэрээлсэн дүнгийн {1}', bn(x.finance.paidContracted), pct(d.paidRate, 1))})</>} {tr('нь бодитоор олгогдсон байна.')}
                       </p>
@@ -619,7 +623,7 @@ function TailanFull() {
                             <th>{tr('Багц')}</th>
                             <th className={r.num}>{tr('Блок')}</th>
                             <th className={r.num}>{tr('Эзлэх жин')}</th>
-                            <th className={r.num}>{tr('Гүйцэтгэл')}</th>
+                            <th className={r.num}>{tr('Багцын гүйцэтгэл')}</th>
                             <th className={r.num}>{tr('Төлөвлөгөө')}</th>
                           </tr>
                         </thead>
@@ -637,13 +641,13 @@ function TailanFull() {
                             <td>{tr('Нийт')}</td>
                             <td className={r.num}>{num(x.overall.rows)}</td>
                             <td className={r.num}>{pct(x.overall.weightSum, 2)}</td>
-                            <td className={r.num}>{pct(x.overall.pct, 2)}</td>
-                            <td className={r.num}>{x.overall.plannedTotal == null ? '—' : pct(x.overall.plannedTotal, 1)}</td>
+                            <td className={r.num}>{pct(bagtsAvg, 2)}</td>
+                            <td className={r.num}>{pct(x.overall.pkgAvg?.P ?? null, 2)}</td>
                           </tr>
                         </tbody>
                       </ResizableTable>
                       <p className={r.note}>
-                        {tr('Эзлэх жингийн нийлбэр {0} — жин нь багц бүрийн төслийн нийт төсөвт эзлэх хувь бөгөөд орон сууцны бус багцууд энэ хүснэгтэд ороогүй тул нийлбэр 100%-иас бага; нийт гүйцэтгэлийг жингийн нийлбэрт харьцуулан тооцов. Төлөвлөгөөт хувь нь хуваарь ажлын 95%-иас доошийг хамарсан багцад дүгнэгдэхгүй тул «—» тэмдгээр илэрхийлэв.', pct(x.overall.weightSum, 2))}
+                        {tr('Эзлэх жингийн нийлбэр {0} — жин нь багц бүрийн төслийн нийт төсөвт эзлэх хувь бөгөөд орон сууцны бус багцууд энэ хүснэгтэд ороогүй тул нийлбэр 100%-иас бага. «Нийт» мөрийн гүйцэтгэл ба төлөвлөгөө нь энэ хүснэгтийн багцуудын «Багцын гүйцэтгэл»-ийн дундаж бөгөөд «Төсөл төлөвлөгөө биелэлт» хүснэгт дэх багц бүрийн жингээр жигнэсэн (эзлэх жингийн баганаар биш). Төлөвлөгөөт хувь тодорхойгүй багцыг «—» тэмдгээр илэрхийлэв.', pct(x.overall.weightSum, 2))}
                       </p>
                     </section>
 
@@ -752,17 +756,17 @@ function TailanFull() {
                         )}
                         {(d.startedPhases.length > 0 || d.notStartedPhases.length > 0) && '.'}
                       </p>
-                      <Fig no="6.1">{tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}</Fig>
+                      <Fig no="6.1">{tr('Багц тус бүрийн гүйцэтгэл')}</Fig>
                       <RankBars
-                        title={tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}
+                        title={tr('Багц тус бүрийн гүйцэтгэл')}
                         max={100} fmt={(v) => pct(v, 1)}
                         items={[...x.progress.byBagts]
                           .sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1))
                           .map((b) => ({ label: tr(b.bagts), value: b.pct, text: pct(b.pct, 2) }))}
                       />
-                      <Cap no="6.1">{tr('Багц тус бүрийн барилга угсралтын гүйцэтгэл')}</Cap>
+                      <Cap no="6.1">{tr('Багц тус бүрийн гүйцэтгэл')}</Cap>
                       <ResizableTable storeKey="tailan.guits-bagts" className={r.table}>
-                        <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Блок')}</th><th className={r.num}>{tr('Гүйцэтгэл')}</th></tr></thead>
+                        <thead><tr><th>{tr('Багц')}</th><th className={r.num}>{tr('Блок')}</th><th className={r.num}>{tr('Багцын гүйцэтгэл')}</th></tr></thead>
                         <tbody>
                           {x.progress.byBagts.map((b) => (
                             <tr key={b.bagts}>
@@ -774,7 +778,7 @@ function TailanFull() {
                           <tr className={r.total}>
                             <td>{tr('Нийт')}</td>
                             <td className={r.num}>{num(x.progress.blocks)}</td>
-                            <td className={r.num}>{pct(x.progress.overall, 2)}</td>
+                            <td className={r.num}>{pct(bagtsAvg, 2)}</td>
                           </tr>
                         </tbody>
                       </ResizableTable>

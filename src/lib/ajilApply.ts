@@ -14,7 +14,7 @@ import { AJIL_STATUS, ajilClaimOther, claimAjil, loadHead, loadPayloadStamped, m
 import { obyemBusyFor } from './obyemBatlah';
 import { claimHolderOf as planClaimHolderOf, loadPending as loadPlanPending, partialBy as planPartialBy, type PlanSubmission } from './huvaariBatlah';
 import type { NewRow } from './submission';
-import { ubToday } from './projectPlan';
+import { saneDate, ubToday } from './projectPlan';
 import { serverNow, syncServerClock } from './serverClock';
 import { isLostWrite } from './lostWrite';
 
@@ -512,7 +512,10 @@ async function writeFrameLive(pkgKey: string, adds: readonly NewRow[]): Promise<
       if (!obPlan || row.des == null || asOf == null) return null;
       const blok = sc.bld[b];
       const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-      return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
+      /* 2026-11-27 (аудит №21): 2000–2100-гийн гаднах огноо → бүтэн сараар (`hyanaltStore.archiveSubmission`-той нэг дүрэм) */
+      const s = row.start[b] ?? null;
+      const e = row.end[b] ?? null;
+      return m ? planPctFromMonths(m, asOf, saneDate(s) != null && saneDate(e) != null ? { start: s, end: e } : null) : null;
     });
   } catch (e) {
     return { ok: false, error: String((e as Error)?.message ?? e) };

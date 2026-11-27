@@ -102,19 +102,31 @@ const near = (a, b, tol, msg) => assert.ok(a != null && Math.abs(a - b) <= tol, 
   const base = () => 0.2;
   const e = [{ week: D('2026-11-16'), obyem: 30, oid: 1 }];
   const T = D('2026-11-11'); // Лхагва: энэ долоо хоног 11-09, ирэх нь 11-16
-  near(weekPct(e, 100, T + 7 * DAY, base, T), 0.5, 1e-12, 'ирэх 7 хоног = өнөөдрийн суурь + обьём ÷ нийт (бүтнээр, гарагаас үл хамаарна)');
-  near(weekPct(e, 100, D('2026-11-09') + 7 * DAY, base, D('2026-11-09')), 0.5, 1e-12, 'Даваа гарагт ч бүтнээр');
-  assert.equal(weekPct(e, 100, T, base, T), undefined, 'өнөөдрийн төлөвлөгөөт хувийг хөндөхгүй');
+  /* 2026-11-27: (өнөөдөр, asOf] мужийн энэ долоо хоногт орох өдрүүд — энэ долоо хоногийн оруулгаар, ирэх долоо хоногт орох
+     өдрүүд — ирэх долоо хоногийн оруулгаар (долоо хоног бүрт өдөрт оруулга ÷ 7). Лхагваас: энэ долоо хоногт 5, ирэхэд 2 өдөр. */
+  const e2 = [{ week: D('2026-11-09'), obyem: 14, oid: 2 }, ...e];
+  near(weekPct(e2, 100, T + 7 * DAY, base, T), 0.2 + (14 * 5 / 7 + 30 * 2 / 7) / 100, 1e-12, 'Лхагва: 5/7 энэ + 2/7 ирэх');
+  near(weekPct(e, 100, T + 7 * DAY, base, T), 0.2 + (30 * 2 / 7) / 100, 1e-12, 'энэ долоо хоногийнх алга — ирэхийн 2/7 л');
+  /* Даваа гараг 2026-11-30: 11-30 = 50, 12-07 = 70, обьём 700, суурь 40% → 7 хоног бүгд энэ долоо хоногт: 40 + 50/700 ≈ 47.1% */
+  const mon = D('2026-11-30');
+  const em = [{ week: D('2026-11-30'), obyem: 50, oid: 3 }, { week: D('2026-12-07'), obyem: 70, oid: 4 }];
+  near(weekPct(em, 700, mon + 7 * DAY, () => 0.4, mon), 0.4 + 50 / 700, 1e-12, 'Даваа — энэ долоо хоногийн утгаар (50% биш)');
+  /* Баасан 2026-11-27-нд 11-30-нд оруулсан утга: 3 өдөр энэ (11-23), 4 өдөр ирэх (11-30) */
+  const fri = D('2026-11-27');
+  near(weekPct([{ week: D('2026-11-23'), obyem: 21, oid: 5 }, { week: D('2026-11-30'), obyem: 70, oid: 6 }], 700, fri + 7 * DAY, () => 0.4, fri),
+    0.4 + (21 * 3 / 7 + 70 * 4 / 7) / 700, 1e-12, 'Баасан — 3/7 энэ + 4/7 ирэх');
+  assert.equal(weekPct(e2, 100, T, base, T), undefined, 'өнөөдрийн төлөвлөгөөт хувийг хөндөхгүй');
   /* 2026-11-18: 7 хоногийн доторх өдрүүдэд шугаман — маргааш бүтэн обьём үсэрч нэмэгдэхгүй */
-  near(weekPct(e, 100, T + 1 * DAY, base, T), 0.2 + 0.3 / 7, 1e-12, 'маргааш = суурь + обьёмын 1/7');
-  near(weekPct(e, 100, T + 3.5 * DAY, base, T), 0.35, 1e-12, 'дунд нь = суурь + обьёмын тал');
-  assert.ok(weekPct(e, 100, T + 2 * DAY, base, T) < weekPct(e, 100, T + 5 * DAY, base, T), 'өдөр ахих тусам өснө');
-  assert.equal(weekPct(e, 100, T - 7 * DAY, base, T), undefined, 'өнгөрсөн өдрийг хөндөхгүй');
-  assert.equal(weekPct(e, 100, T + 30 * DAY, base, T), undefined, '7 хоногоос цааш — суурь');
+  near(weekPct(e2, 100, T + 1 * DAY, base, T), 0.2 + 0.14 / 7, 1e-12, 'маргааш = суурь + энэ долоо хоногийн обьёмын 1/7');
+  near(weekPct(e2, 100, T + 6 * DAY, base, T), 0.2 + (14 * 5 / 7 + 30 / 7) / 100, 1e-12, 'ирэх долоо хоногийн 1 өдөр');
+  assert.ok(weekPct(e2, 100, T + 2 * DAY, base, T) < weekPct(e2, 100, T + 6 * DAY, base, T), 'өдөр ахих тусам өснө');
+  assert.equal(weekPct(e2, 100, T - 7 * DAY, base, T), undefined, 'өнгөрсөн өдрийг хөндөхгүй');
+  assert.equal(weekPct(e2, 100, T + 30 * DAY, base, T), undefined, '7 хоногоос цааш — суурь');
   assert.equal(weekPct(e, 100, D('2026-11-25') + 7 * DAY, base, D('2026-11-25')), undefined, 'өнгөрсөн долоо хоногийн оруулга үлдэгдэл нөлөөгүй');
-  near(weekPct([{ week: D('2026-11-09'), obyem: 10, oid: 2 }], 100, T + 7 * DAY, base, T), 0.3, 1e-12, 'ирэх долоо хоногийнх алга бол энэ долоо хоногийн оруулга');
-  assert.equal(weekPct(e, null, T + 7 * DAY, base, T), undefined, 'нийт обьёмгүй — суурь');
-  near(weekPct([{ week: D('2026-11-16'), obyem: 500, oid: 1 }], 100, T + 7 * DAY, base, T), 1, 1e-12, '100%-аар таслана');
+  near(weekPct([{ week: D('2026-11-09'), obyem: 14, oid: 2 }], 100, T + 7 * DAY, base, T), 0.3, 1e-12, 'ирэх долоо хоногийнх алга — энэ долоо хоногийн 5/7');
+  near(weekPct(e, 100, T + 2 * DAY, () => 0.25, T), 0.25, 1e-12, 'оруулгагүй хэсэгт суурь (base(asOf))-аас доош орохгүй');
+  assert.equal(weekPct(e2, null, T + 7 * DAY, base, T), undefined, 'нийт обьёмгүй — суурь');
+  near(weekPct([{ week: D('2026-11-16'), obyem: 5000, oid: 1 }], 100, T + 7 * DAY, base, T), 1, 1e-12, '100%-аар таслана');
   const ed = weekEdits({ bagts: 'b1_9f', bagtsNer: 'Багц 1', des: 7, ajilNo: '3', ajilNer: 'w', negj: '', niit: 100 }, '5/1', D('2026-11-16'), 30, null);
   assert.equal(ed.adds[0].attributes.turul, TURUL_WEEK);
   assert.equal(ed.adds[0].attributes.dkey, 'b1_9f|doloo_hon|7|5/1|2026-11-16');
@@ -137,7 +149,12 @@ const near = (a, b, tol, msg) => assert.ok(a != null && Math.abs(a - b) <= tol, 
   };
   const { ubToday } = await import('./projectPlan.ts');
   const now = ubToday();
-  const pwNow = toPkgWeek([{ attributes: { objectid: 5, des_dugaar: 7, blok: '5/1', sar: new Date(nextWeekStart(now)).toISOString().slice(0, 10), obyem: 30 } }]);
+  /* 2026-11-27: энэ ба ирэх долоо хоногт ижил 30 — гарагаас үл хамааран 7 хоногт бүтэн 30 */
+  const wk = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const pwNow = toPkgWeek([
+    { attributes: { objectid: 5, des_dugaar: 7, blok: '5/1', sar: wk(nextWeekStart(now)), obyem: 30 } },
+    { attributes: { objectid: 6, des_dugaar: 7, blok: '5/1', sar: wk(weekStart(now)), obyem: 30 } },
+  ]);
   const sh2 = { ...sheet, rows: sheet.rows.map((r) => ({ ...r, start: [now - 300 * DAY], end: [now + 300 * DAY] })) };
   const S0 = makeSchedules([sh2]), S1 = makeSchedules([{ ...sh2, weekly: pwNow }]);
   near(S1.at('Багц 1', '5/1', now + 7 * DAY), S0.at('Багц 1', '5/1', now) + 30, 1e-6, 'Q = P(өнөөдөр) + 30 ÷ 100');
@@ -158,6 +175,18 @@ const near = (a, b, tol, msg) => assert.ok(a != null && Math.abs(a - b) <= tol, 
   assert.equal(row2.actPw, null, 'архив алга → хоосон');
   assert.equal(row2.gainWk, null);
   console.log('✅ 5. өмнөх 7 хоног');
+}
+
+/* 2026-11-27 (засвар №45): оруулгын цонхны тайлбар ба толгой тайлбар нь `weekPct`-ийн өдөр тутмын дүрмийг хэлнэ
+   («бүтнээр нэмнэ» гэх хуучин амлалт үлдэхгүй) */
+{
+  const { readFileSync } = await import('node:fs');
+  const pm = readFileSync(new URL('../modules/huvaari/PlanModal.tsx', import.meta.url), 'utf8');
+  assert.ok(!pm.includes('сарын төлөвлөгөөн дээр энэ обьёмыг нэмж бодогдоно'), 'хуучин «бүтнээр нэмнэ» тайлбар алга');
+  assert.ok(pm.includes('тухайн долоо хоногийн обьёмын 1/7'), 'өдөр бүрд 1/7');
+  const ho = readFileSync(new URL('./huvaariObyem.ts', import.meta.url), 'utf8');
+  assert.ok(!ho.includes('оруулсан обьём ÷ нийт обьём (бүтнээр)'), 'толгой тайлбар шинэчлэгдсэн');
+  console.log('✅ 6. оруулгын тайлбар — өдөр тутмын дүрэм');
 }
 
 console.log('weekly11.check: бүгд ✅');

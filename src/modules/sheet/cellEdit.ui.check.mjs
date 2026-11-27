@@ -189,9 +189,13 @@ const ok = (c, m) => { assert.ok(c, m); n += 1; };
   const pub = fill.slice(fill.indexOf('const publish = useCallback'), fill.indexOf('// Ctrl+S'));
   ok((pub.match(/setOvBase\(/g) ?? []).length >= 2, '6: илгээсний дараа давхарлалтын суурь шинэчлэгдэнэ');
   ok(rowsSrc.includes('const theirs = new Set(otherBld.map((x) => buildingKey(pkg.group, x)));')
-    && rowsSrc.includes('if (onlyMine.has(key)) continue;') && !rowsSrc.includes('if (mine.has(blok)) continue;'),
+    && rowsSrc.includes('[...keys].filter((key) => !onlyMine.has(key))') && !rowsSrc.includes('if (mine.has(blok)) continue;'),
     '6b: нөгөө хувилбарын блок — өөрийн бүдүүвчээс (ижил шошго хасагдахгүй)');
-  ok(rowsSrc.includes('return pkgProgressOf(bp, uni ?? new Map()).get(bagtsKey(pkg.group))?.pct ?? null;'), '6b: «Багцын гүйцэтгэл» = pkgProgressOf');
+  ok(rowsSrc.includes('return pkgProgressOf(bp, uni ?? new Map(), weights).get(bagtsKey(pkg.group))?.pct ?? null;'), '6b: «Багцын гүйцэтгэл» = pkgProgressOf');
+  /* 2026-11-27 (аудит №23): хуудас · нөгөө хувилбар · илгээх цонх — бүгд блокийн ТӨСВӨӨР (энгийн дундаж биш) */
+  ok(rowsSrc.includes('const m = latestMean(bp, list, weights);'), '6c: нөгөө хувилбар — latestMean (төсвөөр)');
+  ok(rowsSrc.includes('(weightedBlockMean(m, weights) ?? 0) * 100') && !rowsSrc.includes('return (s / nBld) * 100;'), '6c: хуудасны хувь — weightedBlockMean');
+  ok(fill.includes('const pp = pkgWide ?? pkgPct;'), '6c: илгээх цонх — бүх хувилбарын төсвийн жингээр');
   const tb = readFileSync(new URL('./fill/toolbar.tsx', import.meta.url), 'utf8');
   ok(tb.includes('const pkgAll = pkgAllLive !== undefined ? pkgAllLive : otherPending ? null : pkgPct.saved;')
     && !tb.includes('v.pct * v.total'), '6b: PkgPctBadge блокийн тоогоор жигнэхгүй');

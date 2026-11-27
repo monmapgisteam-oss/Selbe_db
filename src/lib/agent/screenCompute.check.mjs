@@ -7,7 +7,8 @@
  * дэлгэцээс зөрдөг байв. `finance_summary` · `pkg_plan` нь дэлгэцийн функцүүдийг (`paidShareOf`,
  * `Budget`, `lagOf`/`physLatest`/`lagLevel`/`planPctAt`) ДАХИН бичилгүй хослуулах ёстой:
  *  1. `financeSummaryOf` — `paidShareOf`-ийн ЯГ тэр тоо, төсөв нь `Budget.total`; дүнгүй HO → `null` (0 БИШ).
- *  2. `pkgPlanOf` — `lagOf` байвал түүний planned/gap, үгүй бол fallback; хэмжилт ч хуваарь ч алга → мөргүй.
+ *  2. `pkgPlanOf` — actual/planned/gap/level нь «Багцын явц»-ийн «Багцын гүйцэтгэл» (S, P, P − S, lagLevel; 2026-11-27);
+ *     биет/муруй (`physActual`, `schedPlanned`, `schedGap`) — `lagOf` байвал түүнийх, үгүй бол fallback.
  *  3. Эх сурвалжийн хатуу шүүлт: `ds:cashflow2` = `CF_WORK_WHERE` (сарын мөр орохгүй), IoT OID = `objectid`;
  *     `andWhere` нь загварын `OR`-ыг хаалтад хийнэ.
  *  4. Opus 5.5: төлөвлөгөө `thinking` блокоос (зөвхөн ```plan хашилттай), огтолсон түүхийн бодолт хасагдана.
@@ -76,7 +77,7 @@ console.log('\n1. finance_summary = дэлгэцийн туслахууд');
   });
 }
 
-console.log('\n2. pkg_plan = дэлгэцийн функцүүд (lagOf / physLatest / lagLevel)');
+console.log('\n2. pkg_plan = «Багцын явц» (planPkgProgress S/P, pkgGapOf, lagLevel) + биет/муруй тусдаа');
 {
   const months = new Map([
     ['Багц 1', [{ label: '2026-09', phys: 20, physAt: '2026-09-20' }]],
@@ -88,6 +89,7 @@ console.log('\n2. pkg_plan = дэлгэцийн функцүүд (lagOf / physLa
   const lags = { 'Багц 1': { month: '2026-09', planned: 35, actual: 20, gap: 15 }, 'Багц 2': { month: '2026-09', planned: 48, actual: 50, gap: -2 } };
   const keyOf = (ms) => [...months.entries()].find(([, v]) => v === ms)?.[0];
   const deps = {
+    plan: null,
     lagOf: (ms) => lags[keyOf(ms)] ?? null,
     physLatest: (ms) => ms.at(-1).phys,
     lagLevel: (gap) => (gap >= 10 ? 'red' : gap >= 5 ? 'yellow' : null),
@@ -96,34 +98,77 @@ console.log('\n2. pkg_plan = дэлгэцийн функцүүд (lagOf / physLa
   };
   const rows = pkgPlanOf(months, deps);
   const by = Object.fromEntries(rows.map((r) => [r.bagts, r]));
-  ok('lagOf байвал planned/gap/month нь ЯГ түүнийх, level = lagLevel(gap)', () => {
+  ok('ТУСДАА хэмжүүр: lagOf байвал schedPlanned/schedGap/month нь ЯГ түүнийх, physActual = physLatest', () => {
     assert.deepEqual(
-      { p: by['Багц 1'].planned, g: by['Багц 1'].gap, m: by['Багц 1'].month, l: by['Багц 1'].level, a: by['Багц 1'].actual },
-      { p: 35, g: 15, m: '2026-09', l: 'red', a: 20 },
+      { p: by['Багц 1'].schedPlanned, g: by['Багц 1'].schedGap, m: by['Багц 1'].month, a: by['Багц 1'].physActual },
+      { p: 35, g: 15, m: '2026-09', a: 20 },
     );
-    assert.equal(by['Багц 2'].level, null, 'түрүүлсэн (gap < 0) → анхааруулгагүй');
+    assert.equal(by['Багц 2'].schedGap, -2);
   });
-  ok('муруйн кэшгүй (lagOf null) → ТУХ-ийн fallback planAt; gap = planned − actual', () => {
-    assert.equal(by['Багц 4'].planned, 16);
-    assert.equal(by['Багц 4'].gap, 6);
-    assert.equal(by['Багц 4'].level, 'yellow');
+  ok('муруйн кэшгүй (lagOf null) → ТУХ-ийн fallback planAt; schedGap = schedPlanned − physActual', () => {
+    assert.equal(by['Багц 4'].schedPlanned, 16);
+    assert.equal(by['Багц 4'].schedGap, 6);
   });
-  ok('орон сууц БИШ багцад planAt fallback хэрэглэхгүй (ТУХ-тэй ижил) — planned/gap null', () => {
-    assert.equal(by['Багц 5'].planned, null);
-    assert.equal(by['Багц 5'].gap, null);
-    assert.equal(by['Багц 5'].actual, 10);
+  ok('орон сууц БИШ багцад planAt fallback хэрэглэхгүй (ТУХ-тэй ижил) — schedPlanned/schedGap null', () => {
+    assert.equal(by['Багц 5'].schedPlanned, null);
+    assert.equal(by['Багц 5'].schedGap, null);
+    assert.equal(by['Багц 5'].physActual, 10);
   });
-  ok('хамралт < 95% → gap/level null, coverage буцаана; ≥ 95% → хэвийн', () => {
+  ok('хамралт < 95% → schedGap null, coverage буцаана; ≥ 95% → хэвийн', () => {
     const ms = new Map([['Б', [{ label: '2026-09', phys: 20, physAt: '2026-09-10' }]], ['В', [{ label: '2026-09', phys: 20, physAt: '2026-09-10' }]]]);
     const lg = { 'Б': { month: '2026-09', planned: 8.6, actual: 20, gap: -11.4, coverage: 8.6 }, 'В': { month: '2026-09', planned: 40, actual: 20, gap: 20, coverage: 100 } };
     const k2 = (m) => [...ms.entries()].find(([, v]) => v === m)?.[0];
     const r2 = Object.fromEntries(pkgPlanOf(ms, { ...deps, lagOf: (m) => lg[k2(m)] ?? null, isHousing: () => true }).map((r) => [r.bagts, r]));
-    assert.deepEqual([r2['Б'].gap, r2['Б'].level, r2['Б'].coverage, r2['Б'].planned], [null, null, 8.6, 8.6], 'дүгнэхгүй, тоо хэвээр');
-    assert.deepEqual([r2['В'].gap, r2['В'].level, r2['В'].coverage], [20, 'red', 100]);
+    assert.deepEqual([r2['Б'].schedGap, r2['Б'].coverage, r2['Б'].schedPlanned], [null, 8.6, 8.6], 'дүгнэхгүй, тоо хэвээр');
+    assert.deepEqual([r2['В'].schedGap, r2['В'].coverage], [20, 100]);
   });
-  ok('хэмжилтгүй ба хуваарьгүй багц мөр БОЛОХГҮЙ (null ≠ 0); хамгийн хоцорсон эхэнд', () => {
+  ok('«Төсөл төлөвлөгөө биелэлт» уншигдаагүй (plan null) → actual/planned/gap/level null (0% БИШ); биет/муруйгүй багц мөргүй', () => {
+    for (const r of rows) assert.deepEqual([r.actual, r.planned, r.gap, r.level], [null, null, null, null], r.bagts);
     assert.equal(by['Багц 3'], undefined);
-    assert.deepEqual(rows.map((r) => r.bagts), ['Багц 1', 'Багц 4', 'Багц 2', 'Багц 5']);
+    assert.deepEqual(rows.map((r) => r.bagts), ['Багц 1', 'Багц 4', 'Багц 2', 'Багц 5'], 'муруйн хоцрогдлоор');
+  });
+
+  /* 2026-11-27 (аудит №20): «Багцын явц» (PkgProg) жагсаалттай ЯГ тэр тоо — S, P, gap = P − S (`pkgGapOf`), level = lagLevel(gap).
+     Урьд нь actual = биет %, planned = муруй, gap/level муруйнаас тул «Багц 1: бодит 20%, төл. 35%, хоцрогдол 15 (улаан)» гэж
+     хариулдаг байсан атал дэлгэц «62% / 66% · зөрүү 4 · анхааруулгагүй» харуулдаг байв */
+  const plan = new Map([
+    ['Багц 1', { S: 62, P: 66 }],
+    ['Багц 2', { S: 40, P: 52.5 }],
+    ['Багц 4', { S: null, P: 7 }],
+    ['Багц 6', { S: 10, P: 10 }],
+  ]);
+  const pr = pkgPlanOf(months, { ...deps, plan });
+  const pb = Object.fromEntries(pr.map((r) => [r.bagts, r]));
+  /* PkgProg.tsx-ийн `pkgGapOf` ба Finance-ийн `lagLevel`-ийн ЯГ тэр томьёо (импортлох боломжгүй — @arcgis/core DOM шаардана) */
+  const pkgGapOf = (v) => (v?.P ?? 0) - (v?.S ?? 0);
+  ok('actual = S, planned = P, gap = pkgGapOf, level = lagLevel(gap) — багц бүрт', () => {
+    for (const r of pr) {
+      const v = plan.get(r.bagts);
+      assert.equal(r.actual, v?.S ?? 0, r.bagts);
+      assert.equal(r.planned, v?.P ?? 0, r.bagts);
+      assert.equal(r.gap, pkgGapOf(v), r.bagts);
+      assert.equal(r.level, deps.lagLevel(pkgGapOf(v)), r.bagts);
+    }
+    assert.deepEqual([pb['Багц 1'].actual, pb['Багц 1'].planned, pb['Багц 1'].gap, pb['Багц 1'].level], [62, 66, 4, null], 'муруйн улаан (15) биш');
+    assert.deepEqual([pb['Багц 2'].gap, pb['Багц 2'].level], [12.5, 'red']);
+    assert.deepEqual([pb['Багц 4'].actual, pb['Багц 4'].gap, pb['Багц 4'].level], [0, 7, 'yellow'], 'хэмжилтгүй S = 0%');
+  });
+  ok('биет/муруйн тоо ТУСДАА талбарт хэвээр', () => {
+    assert.deepEqual([pb['Багц 1'].physActual, pb['Багц 1'].schedPlanned, pb['Багц 1'].schedGap], [20, 35, 15]);
+  });
+  ok('уншигдсан үед багц БҮР мөр (PkgProg шиг): мөргүй багц 0%, зөвхөн «Багцын гүйцэтгэл»-тэй багц ч орно', () => {
+    assert.deepEqual([pb['Багц 3'].actual, pb['Багц 3'].planned, pb['Багц 3'].gap], [0, 0, 0]);
+    assert.deepEqual([pb['Багц 6'].actual, pb['Багц 6'].physActual, pb['Багц 6'].schedPlanned], [10, null, null]);
+    assert.equal(pr.length, 6);
+    assert.deepEqual(pr.slice(0, 3).map((r) => r.bagts), ['Багц 2', 'Багц 4', 'Багц 1'], 'хамгийн их хоцорсон эхэнд');
+  });
+  ok('PkgProg-ийн томьёо өөрчлөгдвөл энэ шалгалт ч шинэчлэгдэнэ', () => {
+    const src = readFileSync(new URL('../../modules/PkgProg.tsx', import.meta.url), 'utf8');
+    assert.match(src, /export const pkgGapOf = \(v: PlanPkgProgress \| null \| undefined\): number => \(v\?\.P \?\? 0\) - \(v\?\.S \?\? 0\);/);
+    assert.match(src, /const execPct = plan \? v\?\.S \?\? 0 : null;/);
+    const sc = readFileSync(new URL('./screenCompute.ts', import.meta.url), 'utf8');
+    assert.ok(sc.includes('loadPlanPkgProgress()'), 'pkg_plan нь «Багцын гүйцэтгэл»-ийг ачаална');
+    assert.match(sc, /loadPlan\.catch\([\s\S]{0,160}return null;/, 'эх унасан (throw) → уншигдаагүй (null)');
   });
 }
 
@@ -135,6 +180,24 @@ ok('IoT датасетууд OID = objectid', () => {
   const iot = Object.values(DATASET_BY_ID).filter((d) => d.id.startsWith('ds:iot_'));
   assert.ok(iot.length > 0);
   for (const d of iot) assert.equal(d.oid, 'objectid', d.id);
+});
+ok('2026-11-27 (аудит №41): ds:pkg_progress-ийн хоцролтын тэмдэг pkg_plan-тай ижил — төлөвлөгөө − бодит, эерэг = хоцорсон', () => {
+  const w = DATASET_BY_ID['ds:pkg_progress']?.warn ?? '';
+  assert.ok(w.includes('`tolovlogoot_huvi − bagts_guitsetgel_huvi_1`'), w);
+  assert.match(w, /эерэг бол төлөвлөгөөнөөс ХОЦОРСОН/);
+  assert.doesNotMatch(w, /`bagts_guitsetgel_huvi_1 − tolovlogoot_huvi`/);
+});
+const { WASTE_DISTANCE_FIELD, WASTE_BIN_DEPTH_MM } = await import('./datasets.ts');
+const { SENSORS } = await import('@/lib/sensors.ts');
+ok('2026-11-27: хогийн савны зайн талбар — AI-д мм (дүүрэлтийн % биш); савны гүн sensors.ts-ийн derive-тэй ижил', () => {
+  const m = SENSORS.flatMap((s) => s.metrics).find((x) => x.field === WASTE_DISTANCE_FIELD);
+  assert.ok(m?.derive, 'зайн талбар sensors.ts-д derive-тэй');
+  assert.equal(m.derive(WASTE_BIN_DEPTH_MM), 0, 'гүнтэй тэнцүү зай = 0%');
+  assert.equal(m.derive(WASTE_BIN_DEPTH_MM / 2), 50);
+  const desc = Object.values(DATASET_BY_ID).find((d) => d.fields?.[WASTE_DISTANCE_FIELD])?.fields[WASTE_DISTANCE_FIELD] ?? '';
+  assert.match(desc, /мм/);
+  assert.match(desc, /% БИШ/);
+  assert.doesNotMatch(desc, /^Хогийн савны дүүрэлт \(%\)/);
 });
 ok('andWhere: суурь шүүлт ∧ (загварын where) — OR нь шүүлтийг тойрохгүй', () => {
   assert.equal(andWhere(undefined, " a = 1 "), 'a = 1');

@@ -10,7 +10,6 @@ import {
 import { queryFeatures } from '@/lib/query';
 import { cached, SESSION_TTL_MS } from '@/lib/live';
 import { register } from '@/lib/dataBus';
-import type { CapKey } from '@/lib/caps';
 import { CONTRACTED, cfStartKeyOf, type CfPlanRow } from '@/lib/gdash';
 import { PKGS, loadSchema, type Pkg, type Schema } from '@/modules/sheet/bagts.pkg';
 import { loadRows } from '@/modules/sheet/bagtsSheet';
@@ -22,11 +21,6 @@ import { cfIdOfPctKey, countPlanRows, loadPkgPct, loadPkgPlan, monthStart, type 
 export type MonthSource = 'garaar' | 'huvaari';
 export const SRC_MANUAL: MonthSource = 'garaar';
 export const SRC_HUVAARI: MonthSource = 'huvaari';
-
-/**
- * ШИЛЖҮҮЛЭХ ЭРХ — «Гараар → Хуваарь» (шинэ cap, «Эрх» хэсгээс «Төлөвлөлтийн ахлах инженер»-т).
- */
-export const CF_SWITCH_CAP: CapKey = 'cfSwitch';
 
 /** Мөнгөний мөрийн (гэрээ) тооцоонд хэрэгтэй хэсэг */
 export type MoneyRow = {

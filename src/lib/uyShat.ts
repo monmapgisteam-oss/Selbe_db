@@ -18,7 +18,7 @@ import { t as tr } from './i18nCore';
 import { packagesOf } from './levelPlan';
 import { isAddedWork, saneDate, tenderLockWhy, ubToday, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 import {
-  canAddWorkIn, dayOf, parseDay, parsePct, rowKey, sortByKod, splitWeights, workAdd, workNameWhy,
+  canAddWorkIn, dayOf, parseDay, parsePct, rowKey, sortByKod, workAdd, workNameWhy,
   type Names, type Pending,
 } from './zuragTosol';
 
@@ -233,13 +233,10 @@ const withoutDeleted = (base: readonly PlanStoredRow[], p: Pending): PlanStoredR
   return del.size ? base.filter((r) => r.objectid == null || !del.has(r.objectid)) : [...base];
 };
 
-/** Урьдчилсан мөрүүд — засвар + шинэ мөр (жин тэнцүү), устгал хасагдсан, dd_kod-оор эрэмбэлсэн */
+/** Урьдчилсан мөрүүд — засвар + шинэ мөр (жингүй), устгал хасагдсан, dd_kod-оор эрэмбэлсэн */
 export function effectiveRows(page: PageDef, base: readonly PlanStoredRow[], p: Pending): PlanStoredRow[] {
-  const sw = page.decree ? { saved: new Map<number, number>(), adds: new Map<string, number>() } : splitWeights(base, p);
-  const row = (r: PlanStoredRow): PlanStoredRow => {
-    const w = r.objectid != null ? sw.saved.get(r.objectid) : sw.adds.get(rowKey(r));
-    return merged(page, w == null ? r : { ...r, heseg_ezleh_huvi: w }, p.edits[rowKey(r)] as Record<string, string> | undefined);
-  };
+  /* 2026-11-27: жинг 1/k-аар дахин хуваахгүй (`buildEdits`-тэй ижил) — хадгалсан жин хэвээр, шинэ мөр жингүй */
+  const row = (r: PlanStoredRow): PlanStoredRow => merged(page, r, p.edits[rowKey(r)] as Record<string, string> | undefined);
   return sortByKod([...withoutDeleted(base, p).map(row), ...p.adds.map(row)]);
 }
 
@@ -305,19 +302,11 @@ export function buildEdits(page: PageDef, base: readonly PlanStoredRow[], p: Pen
     updates.push({ [names.oid]: r.objectid, ...ch });
   }
 
-  /* Жин тэнцүү хуваах — нэмсэн/устгасан эцгийн хадгалсан мөрүүд 1/k (хэрэглэгч жин бичдэггүй) */
-  const sw = page.decree ? { saved: new Map<number, number>(), adds: new Map<string, number>() } : splitWeights(base, { ...p, deletes });
-  for (const [oid, w] of sw.saved) {
-    const r = base.find((x) => x.objectid === oid)!;
-    if (typeof r.heseg_ezleh_huvi === 'number' && Math.abs(r.heseg_ezleh_huvi - w) < 1e-9) continue;
-    const u = updates.find((x) => x[names.oid] === oid);
-    if (u) u.heseg_ezleh_huvi = w; else updates.push({ [names.oid]: oid, heseg_ezleh_huvi: w });
-  }
-
+  /* 2026-11-27: мөр нэмэх/устгахад ах дүүгийн жинг 1/k болгож ДАРЖ БИЧИХГҮЙ — урьд нь гараар тавьсан жин арилдаг байв. Үлдсэн
+     мөр хадгалсан жингээ барина, шинэ мөр жингүй (null) — үлдэгдлийг дүрмээр хуваана, ах дүүгийн нийлбэр 100% (`projectPlan.budgetShare`) */
   for (const a of p.adds) {
     const key = rowKey(a);
-    const w = sw.adds.get(key);
-    const r = w == null ? a : { ...a, heseg_ezleh_huvi: w };
+    const r: PlanStoredRow = a;
     const ch = changes(r, (p.edits[key] as Record<string, string> | undefined) ?? {});
     if (!ch) continue;
     const m: Record<string, unknown> = { ...r, ...ch };
@@ -368,17 +357,10 @@ const sameW = (a: unknown, b: unknown): boolean => {
 export const isDirectChild = (code: string, parent: string): boolean =>
   code.startsWith(`${parent}.`) && !code.slice(parent.length + 1).includes('.') && code.length > parent.length + 1;
 
-export function splitDrift(base: readonly PlanStoredRow[], fresh: readonly PlanStoredRow[], p: Pending): string[] {
-  const del = new Set(p.deletes ?? []);
-  const a = splitWeights(base, { ...p, deletes: [...del] });
-  const b = splitWeights(fresh, { ...p, deletes: [...del] });
-  const out: string[] = [];
-  const codeOf = (oid: number): string =>
-    (base.find((r) => r.objectid === oid) ?? fresh.find((r) => r.objectid === oid))?.dd_kod ?? String(oid);
-  for (const oid of new Set([...a.saved.keys(), ...b.saved.keys()])) {
-    if (!sameW(a.saved.get(oid), b.saved.get(oid))) out.push(codeOf(oid));
-  }
-  return out;
+/* 2026-11-27: `buildEdits` ах дүүгийн жинг дахин хуваахаа больсон тул жин хуваалтын зөрөл үүсэхгүй — үргэлж хоосон
+   (дуудагч `UyShatOruulah`-ийн гэрээ хэвээр). Мөрийн зэрэг засвар — `conflicts`. */
+export function splitDrift(_base: readonly PlanStoredRow[], _fresh: readonly PlanStoredRow[], _p: Pending): string[] {
+  return [];
 }
 
 /** Сонгон шалгаруулалтын мөрийн гэрээ — өөрөө эсвэл дээд мөрийн ихэр (ТТБ-ийн гэрээний мөр) */

@@ -176,6 +176,12 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
     keptPaid.set(ph, (keptPaid.get(ph) ?? 0) + (fin(paid) ?? 0));
     keptAdv.set(ph, (keptAdv.get(ph) ?? 0) + (fin(adv) ?? 0));
   };
+  /* 2026-11-27: 4 унтраалга хүснэгтийн мөрөөс (бүртгэлээс гардаггүй, `REGISTRY_PLAN_KEYS`-д ороогүй) — урьд нь зөвхөн
+     objectid хуулдаг тул эдгээр мөрд унтраалга сольсон ч бодолтод нөлөөлдөггүй байв. Жин (`heseg_ezleh_huvi`) — бүртгэлийн
+     өөрийн дүрмээр (баримтын тоо), хадгалсан утга нь бүртгэлийн хадгалалтаас тул хуулахгүй */
+  const SWITCHES = ['niit_tootsoh', 'uy_shat_tootsoh', 'mongo_tootsoh', 'hugatsaa_tootsoh'] as const;
+  const switchesOf = (st: PlanStoredRow): Partial<PlanStoredRow> =>
+    Object.fromEntries(SWITCHES.filter((k) => typeof st[k] === 'number').map((k) => [k, st[k]]));
   const gen = add.map((r, i): PlanStoredRow => {
     const id = ids[i];
     const st = id == null ? undefined : storedBy.get(id);
@@ -185,9 +191,11 @@ function build(rows: readonly PlanStoredRow[], z: readonly ZRow[]): { out: PlanS
        ч хэвээр — урьд нь үнэгүй зурагт бүртгэлийн хадгалалт тэдгээрийг хоосолж, гэрээ төлбөрөөсөө тасардаг байв */
     if (String(st.geree_dugaar ?? '').trim() !== '' && r.guitsetgel_huvi !== undefined) {
       keep(st, st.olgoson_dun, null);
-      return { ...r, objectid: id, olgoson_dun: st.olgoson_dun ?? null, geree_dun: st.geree_dun ?? r.geree_dun ?? null, ho_dungiin_tailbar: st.ho_dungiin_tailbar ?? r.ho_dungiin_tailbar ?? null };
+      return { ...r, objectid: id, ...switchesOf(st), olgoson_dun: st.olgoson_dun ?? null, geree_dun: st.geree_dun ?? r.geree_dun ?? null, ho_dungiin_tailbar: st.ho_dungiin_tailbar ?? r.ho_dungiin_tailbar ?? null };
     }
-    return { ...r, objectid: id };
+    /* 2026-11-27 (аудит): бүлгийн мөр зөвхөн Д/Д-ээр (нэр өөр) оногдсон бол унтраалга хуулахгүй — өөр бүлгийнх */
+    const sameGroup = r.guitsetgel_huvi !== undefined || groupName(r.ajil_uilchilgee) === groupName(st.ajil_uilchilgee);
+    return { ...r, objectid: id, ...(sameGroup ? switchesOf(st) : {}) };
   });
   /* 2026-11-24 (аудит): гэрээ/төлбөртэй, бүртгэлд эзэнгүй мөр модонд ҮЛДЭНЭ (хүснэгтэд ч үлддэг) — урьд нь хуудаснаас хасагдаж
      төсөв · олгосон дүн нь алга болдог байв (1030 ↔ 1010). Хувь нь бүртгэлээс тул гүйцэтгэлд тооцохгүй, мөнгөнд тооцно */
@@ -287,7 +295,44 @@ function matchStored(add: readonly PlanStoredRow[], stored: readonly PlanStoredR
     if (out[i] != null || g.guitsetgel_huvi === undefined) return;
     claim(i, (byDoc.get(docKey(g)) ?? []).find((r) => !used.has(r.objectid as number) && mine(g, r)));
   });
+  /* 2026-11-27 (аудит): БҮЛЭГ / ДЭД БҮЛГИЙН мөр — нэр нь байрлалын дугаартай («2. Дэд бүтэц»), урд нь бүлэг нэмэх/хасахад
+     Д/Д ба дугаар шилжиж, зөвхөн Д/Д-ээр өөр бүлгийн мөр (4 унтраалгатайгаа) оногддог байв. Дугааргүй нэрийн замаар (үе шат /
+     эцэг бүлэг / бүлэг) тулгана; баримтын ID-тай (`zurag_oid`) хадгалсан мөр бүлэг биш */
+  const addPath = pathKeys(add), realPath = pathKeys(real);
+  const byPath = new Map<string, PlanStoredRow[]>();
+  for (const r of real) {
+    if (typeof r.zurag_oid === 'number') continue;
+    const k = realPath.get(r)!;
+    byPath.set(k, [...(byPath.get(k) ?? []), r]);
+  }
+  add.forEach((g, i) => {
+    if (out[i] != null || g.guitsetgel_huvi !== undefined) return;
+    claim(i, (byPath.get(addPath.get(g)!) ?? []).find((r) => !used.has(r.objectid as number)));
+  });
   add.forEach((g, i) => claim(i, mine(g, byDd.get(g.dd_kod ?? ''))));
+  return out;
+}
+
+/** Бүлгийн нэрийн байрлалын дугаар («2. », `bulegLabel` · `subLabel`) хассан, жижиг үсгээр */
+export const groupName = (s: unknown): string => String(s ?? '').replace(/^\s*\d+\.\s+/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** Мөр бүрийн дугааргүй нэрийн зам — `эцгүүдийн нэр / өөрийн нэр`, багтаамжаас гадуурх эцэг (үе шат) нь Д/Д-ээрээ */
+function pathKeys(rows: readonly PlanStoredRow[]): Map<PlanStoredRow, string> {
+  const byDd = new Map<string, PlanStoredRow>();
+  for (const r of rows) if (r.dd_kod && !byDd.has(r.dd_kod)) byDd.set(r.dd_kod, r);
+  const out = new Map<PlanStoredRow, string>();
+  for (const r of rows) {
+    const parts = [groupName(r.ajil_uilchilgee)];
+    const seen = new Set<string>([String(r.dd_kod ?? '')]);
+    let up = String(r.etseg_kod ?? '');
+    for (let p = byDd.get(up); p && !seen.has(up); p = byDd.get(up)) {
+      seen.add(up);
+      parts.unshift(groupName(p.ajil_uilchilgee));
+      up = String(p.etseg_kod ?? '');
+    }
+    parts.unshift(up);
+    out.set(r, parts.join('/'));
+  }
   return out;
 }
 

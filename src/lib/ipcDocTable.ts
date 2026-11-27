@@ -6,7 +6,7 @@
  *   · Нийт дүн − суутгалууд = Гүйцэтгэгчид төлөх дүн (`payableOf`). Суутгалын санал нь `IPC_RATES`-ээс (`defaultDeductions`),
  *     хэрэглэгч бүх тоог засна.
  *   · Өмнөх · хуримтлагдсан · үлдэгдэл ХАДГАЛАГДАХГҮЙ — ижил гэрээний өмнөх IPC-үүд ба гэрээний дүнгээс (`cumulative`, `t7Of`).
- *   · Баталгаажуулахад 185-д НЭГ төлбөрийн мөр (`PAY|код|дугаар`, `dun` = нийт дүн) бичигдэнэ — бүх нийлбэр (`hoAmount`,
+ *   · Баталгаажуулахад 185-д НЭГ төлбөрийн мөр (`PAY|код|дугаар`, `dun` = санхүүжилтийн эрх нээсэн дүн, `paidAmountOf`) бичигдэнэ — бүх нийлбэр (`hoAmount`,
  *     `planPaidSync`) хуучин дүрмээрээ 185-аас тоолно. AUTO мөрийн `dun` хоосон хэвээр тул давхар тоологдохгүй.
  *   · Хуучин баримт (`IPC|…`, 185) хэвээр — зөвхөн жагсаалт ба хуримтлалд уншигдана.
  */
@@ -259,10 +259,12 @@ function recOf185(r: Row, src: 'legacy' | 'pay'): IpcRec {
  */
 export function recordsOf(pays: readonly Row[], docs: readonly Row[]): IpcRec[] {
   const own = docs.map(recOfDoc);
-  const nos = new Set(own.map((d) => d.no).filter((n): n is number => n != null));
+  /* 2026-11-27 (засвар): дугаар БА багцаар нууна (`approveDoc` · `deleteDoc`-ийн `samePkg`-тэй нэг дүрэм) — IPC-5 Багц-11-ийн
+     баримт IPC-5 Багц-10-ийн баримтгүй төлбөрийг жагсаалт ба хуримтлалаас алга болгодог байв */
+  const hasOwn = (r: Row): boolean => { const n = num(r[P.ipcNo]); return n != null && own.some((d) => d.no === n && samePkg(d, r)); };
   const legacy = pays.filter(isDocRow).map((r) => recOf185(r, 'legacy'));
   const hist = pays
-    .filter((r) => !isAuto(r) && !isDocRow(r) && num(r[P.amount]) != null && !(isPayRow(r) && nos.has(num(r[P.ipcNo]) ?? -1)))
+    .filter((r) => !isAuto(r) && !isDocRow(r) && num(r[P.amount]) != null && !(isPayRow(r) && hasOwn(r)))
     .map((r) => recOf185(r, 'pay'));
   const srcOrd: Record<IpcSrc, number> = { pay: 0, legacy: 1, doc: 2 };
   const byDay = (a: IpcRec, b: IpcRec): number => a.day.localeCompare(b.day) || srcOrd[a.src] - srcOrd[b.src] || a.oid - b.oid;
@@ -323,6 +325,23 @@ const perfOf = (x: IpcRec): number => (x.advance ? 0 : v0(x.total));
 const finOf = (x: IpcRec): number => v0(x.total) - v0(x.recovery) - v0(x.overBudget);
 const payOf = (x: IpcRec): number => v0(x.payable ?? x.total);
 
+/**
+ * 185-Д БИЧИГДЭХ ОЛГОСОН ДҮН (2026-11-27, засвар) — «Санхүүжилтийн эрх нээсэн» дүн = нийт − эргэн төлөлт − төсвөөс давсан
+ * (урьдчилгааны IPC-д өөрийн нийт дүн). Урьд нь нийт дүн бичигддэг тул урьдчилгааны эргэн төлөлт ба төсвөөс давсан
+ * гүйцэтгэл хоёр тоологдож байв (урьдчилгаа 1,000 + IPC 10,000 / эргэн төлөлт 1,000 → Σdun 11,000 ↔ санхүүжилт 10,000).
+ * Нийт дүн хоосон бол `null`.
+ */
+export const paidAmountOf = (x: IpcRec): number | null =>
+  (x.total == null ? null : r2(x.advance ? x.total : finOf(x)));
+
+/**
+ * БАТЛАГДААГҮЙ IPC-ИЙН САНХҮҮЖИЛТ (2026-11-27, засвар) — «гэрээний дүнгээс хэтэрнэ» анхааруулгад: үүссэн боловч олгоогүй
+ * баримтуудын (238 ба хуучин) 185-д бичигдэх дүн (`paidAmountOf`), нийт дүн биш. Олгосон дүн (Σdun) урьдчилгааг агуулдаг тул
+ * нийт дүнгээр нэмбэл эргэн төлөгдөөгүй урьдчилгаа хоёр тоологдож худал анхааруулга гардаг байв.
+ */
+export const pendingFin = (recs: readonly IpcRec[]): number =>
+  r2(recs.filter((x) => x.src !== 'pay' && x.status !== S.paid).reduce((a, x) => a + (paidAmountOf(x) ?? 0), 0));
+
 /** IPC бүрийн өмнөх · хуримтлагдсан · үлдэгдэл (`recordsOf`-ийн дараалалтай зэрэгцээ) */
 export function cumulative(recs: readonly IpcRec[], contract: number | null): Cum[] {
   let perf = 0; let fin = 0; let pay = 0; let adv = 0;
@@ -331,7 +350,9 @@ export function cumulative(recs: readonly IpcRec[], contract: number | null): Cu
     perf = r2(perf + perfOf(x));
     fin = r2(fin + finOf(x));
     pay = r2(pay + payOf(x));
-    adv = r2(adv + v0(x.advanceFin) - v0(x.recovery));
+    /* 2026-11-27 (засвар): урьдчилгааны үлдэгдэлд зөвхөн ОЛГОСОН урьдчилгаа — батлаагүй урьдчилгааны IPC эргэн төлөлтийн
+       саналыг өсгөхгүй; цуцлагдсан IPC-ийн эргэн төлөлт хасагдахгүй */
+    if (x.status !== S.cancelled) adv = r2(adv + (x.status === S.paid ? v0(x.advanceFin) : 0) - v0(x.recovery));
     return { ...before, perfCum: perf, finCum: fin, payCum: pay, finLeft: contract == null ? null : r2(contract - fin), advLeft: adv };
   });
 }
@@ -421,9 +442,18 @@ export const EDITABLE: readonly string[] = [
   ...Object.values(IPC_DOC.signers),
 ];
 
+/** Мөнгөн талбарууд — хадгалахад 2 оронтой бутархай (2026-11-27) */
+export const MONEY_FIELDS: readonly string[] = [F.total, F.advance, F.annual, ...DEDUCTIONS];
+/** Мөнгөн утгыг 2 оронд бөөрөнхийлнө; тоо биш (NaN, null, бичвэр) хэвээр */
+export const money2 = (v: unknown): unknown => (typeof v === 'number' && Number.isFinite(v) ? r2(v) : v);
+
 const pickEditable = (values: Row): Row => {
   const o: Row = {};
-  for (const f of EDITABLE) if (f in values) o[f] = values[f] === '' ? null : values[f];
+  for (const f of EDITABLE) {
+    if (!(f in values)) continue;
+    const v = values[f] === '' ? null : values[f];
+    o[f] = MONEY_FIELDS.includes(f) ? money2(v) : v;
+  }
   return o;
 };
 
@@ -471,6 +501,9 @@ export function editDoc(rec: IpcRec, values: Row): Row | 'status' {
   if (rec.src !== 'doc' || rec.status !== S.created) return 'status';
   const v = pickEditable(values);
   if (!rec.advance) delete v[F.end];
+  /* 2026-11-27 (засвар): урьдчилгааны IPC-д нийт дүн = урьдчилгаа санхүүжилт (`defaultAdvance`) — маягтад нэг л нүд байдаг тул
+     нийт дүнг засахад хуучин `urdchilgaa_sanhuujilt` үлдэж, эргэн төлөлтийн санал ба «Хүснэгт 7» хуучин дүнгээр бодогддог байв */
+  if (rec.advance && F.total in v) v[F.advance] = v[F.total];
   const next = withPcts({ ...rec.row, ...v });
   const out: Row = { [IPC_DOC.oid]: rec.oid };
   for (const f of [...Object.keys(v), F.recoveryPct, F.retentionPct, F.payable]) out[f] = next[f];
@@ -501,7 +534,7 @@ export type ApproveEdit = { pay: Row | null; auto: Row[]; doc: Row };
 export type ApproveWhy = 'status' | 'no-doc' | 'no-fills';
 
 /**
- * БАТАЛГААЖУУЛАХ — 185-д НЭГ төлбөрийн мөр (`dun` = нийт дүн, «Олгосон»), орсон бөглөлтүүд «Олгосон», 238-ийн мөр «Олгосон» +
+ * БАТАЛГААЖУУЛАХ — 185-д НЭГ төлбөрийн мөр (`dun` = санхүүжилтийн эрх нээсэн дүн `paidAmountOf`, «Олгосон»), орсон бөглөлтүүд «Олгосон», 238-ийн мөр «Олгосон» +
  * гүйлгээний огноо. Төлбөрийн мөр аль хэдийн байвал (өмнөх оролдлого 185-д бичээд 238-д унасан) дахин нэмэхгүй.
  * `pays` — тэр гэрээний 185-ын мөрүүд (сервероос сая уншсан).
  */
@@ -510,10 +543,11 @@ export function approveDoc(rec: IpcRec, pays: readonly Row[], day: string): Appr
   if (!rec.docItem) return 'no-doc';
   const no = rec.no;
   const code = txt(rec.row[F.code]);
-  const mine = (r: Row) => txt(r[C.code]) === code && num(r[P.ipcNo]) === no;
+  /* 2026-11-27 (засвар): багц ч таарна — нэг гэрээний IPC-5 Багц-10 ба IPC-5 Багц-11 тусдаа (`dupPayDeletes`-тэй нэг дүрэм) */
+  const mine = (r: Row) => txt(r[C.code]) === code && num(r[P.ipcNo]) === no && samePkg(rec, r);
   const has = pays.some((r) => isPayRow(r) && mine(r));
   /* Зөвхөн энэ баримтын багцын бөглөлт — зэрэг үүссэн ижил дугаартай өөр багцын баримтынхыг хөндөхгүй */
-  const auto = pays.filter((r) => isAuto(r) && mine(r) && samePkg(rec, r) && statusOf(r) === S.created)
+  const auto = pays.filter((r) => isAuto(r) && mine(r) && statusOf(r) === S.created)
     .map((r) => ({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [S.field]: S.paid }));
   if (!rec.advance && !has && !auto.length) return 'no-fills';
   const year = Number(day.slice(0, 4));
@@ -525,7 +559,8 @@ export function approveDoc(rec: IpcRec, pays: readonly Row[], day: string): Appr
     [C.pkg]: rec.pkg || txt(head[C.pkg]) || null,
     [P.kind]: rec.advance ? HO_IPC.kinds.advance : HO_IPC.kinds.work,
     [P.ipcNo]: no,
-    [P.amount]: rec.total,
+    /* 2026-11-27 (засвар): санхүүжилтийн эрх нээсэн дүн (нийт − эргэн төлөлт − төсвөөс давсан), нийт дүн биш */
+    [P.amount]: paidAmountOf(rec),
     [S.field]: S.paid,
     [P.payDate]: day,
     [P.year]: Number.isFinite(year) ? year : null,
@@ -539,13 +574,41 @@ export function approveDoc(rec: IpcRec, pays: readonly Row[], day: string): Appr
 export function deleteDoc(rec: IpcRec, pays: readonly Row[]): { unlock: Row[]; restore: Row[] } | 'paid' {
   if (rec.src !== 'doc' || rec.status === S.paid) return 'paid';
   const code = txt(rec.row[F.code]);
-  const mine = (r: Row) => txt(r[C.code]) === code && rec.no != null && num(r[P.ipcNo]) === rec.no;
+  /* 2026-11-27 (засвар): багц ч таарна — өөр багцын ижил дугаартай төлбөр энэ баримтын устгалыг хаахгүй */
+  const mine = (r: Row) => txt(r[C.code]) === code && rec.no != null && num(r[P.ipcNo]) === rec.no && samePkg(rec, r);
   if (pays.some((r) => isPayRow(r) && mine(r))) return 'paid';
-  const rows = pays.filter((r) => isAuto(r) && mine(r) && samePkg(rec, r) && statusOf(r) !== S.paid);
+  const rows = pays.filter((r) => isAuto(r) && mine(r) && statusOf(r) !== S.paid);
   return {
     unlock: rows.map((r) => ({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [P.ipcNo]: null, [S.field]: S.work })),
     restore: rows.map((r) => ({ [HO_IPC.oid]: num(r[HO_IPC.oid]), [P.ipcNo]: num(r[P.ipcNo]), [S.field]: txt(r[S.field]) || null })),
   };
+}
+
+/**
+ * УСТГАЛ ↔ БАТАЛГААЖУУЛАЛТ ЗЭРЭГ (2026-11-27, засвар) — бөглөлтийг чөлөөлсний ДАРАА сая уншсан 185-д (`after`) энэ баримтын
+ * төлбөрийн мөр (`PAY|…`) гарсан бол өөр хэрэглэгч энэ хооронд баталсан: 238-ийн баримтыг устгахгүй, бөглөлтийг дугаартай нь
+ * «Олгосон» болгож буцаана (эс бөгөөс олгосон дүн үлдээд бөглөлт дахин чөлөөтэй болж давхар төлөгдөнө). `null` = зэрэг
+ * баталгаажаагүй; хоосон массив = баталсан ч буцаах бөглөлтгүй (урьдчилгаа). `restore` — `deleteDoc`-ийн буцаах засвар.
+ */
+export function deleteRaced(rec: IpcRec, after: readonly Row[], restore: readonly Row[]): Row[] | null {
+  if (deleteDoc(rec, after) !== 'paid') return null;
+  return restore.map((r) => ({ ...r, [S.field]: S.paid }));
+}
+
+/**
+ * ТӨЛБӨРИЙН МӨРӨӨС СУУТГАСАН ДҮН (2026-11-27, засвар) — `PAY|…` мөрийн `dun` нь санхүүжилтийн эрх нээсэн дүн (`paidAmountOf`)
+ * тул бөглөлтийн нийлбэртэй харьцуулахад тэр баримтын эргэн төлөлт + төсвөөс давсныг буцааж нэмнэ. Өмнөх дүрмээр бичигдсэн
+ * мөр (`dun` = нийт дүн) болон баримт нь олдохгүй мөрд 0. `docs` — тэр гэрээний 238-ийн мөрүүд.
+ */
+export function payWithheld(pay: Row, docs: readonly Row[]): number {
+  const no = num(pay[P.ipcNo]);
+  const dun = num(pay[P.amount]);
+  if (!isPayRow(pay) || no == null || dun == null) return 0;
+  const code = txt(pay[C.code]);
+  const d = docs.map(recOfDoc).find((x) => !x.advance && x.no === no && txt(x.row[F.code]) === code && samePkg(x, pay));
+  if (!d || d.total == null) return 0;
+  const held = r2(v0(d.recovery) + v0(d.overBudget));
+  return Math.abs(dun - r2(d.total - held)) < 0.005 ? held : 0;
 }
 
 /** Ижил дугаартай бусад баримт (238 ба хуучин) — зэрэг үүсгэлтийг илрүүлнэ */
@@ -610,9 +673,15 @@ export function fillBalance(pays: readonly Row[], recs: readonly IpcRec[]): { fi
     inIpc += r.une ?? 0;
     if (r.status === S.paid) paid += r.une ?? 0;
   }
+  /* 2026-11-27 (засвар): 238-ийн баримтын олгосон = 185-ын төлбөрийн мөрийн `dun` (санхүүжилтийн эрх нээсэн дүн), мөр олдохгүй
+     бол `paidAmountOf` — нийт дүн биш (эргэн төлөлт · төсвөөс давсан хоёр тоологдохгүй) */
+  const payDun = (x: IpcRec): number | null => {
+    const r = pays.find((p) => isPayRow(p) && num(p[P.ipcNo]) === x.no && txt(p[C.code]) === txt(x.row[F.code]) && (!x.pkg || pkgOf(p[C.pkg]) === pkgOf(x.pkg)));
+    return r ? num(r[P.amount]) : null;
+  };
   for (const x of docs) {
     inIpc += x.total ?? 0;
-    if (x.status === S.paid) paid += (x.src === 'legacy' ? num(x.row[P.amount]) : null) ?? x.total ?? 0;
+    if (x.status === S.paid) paid += (x.src === 'legacy' ? num(x.row[P.amount]) ?? x.total : payDun(x) ?? paidAmountOf(x)) ?? 0;
   }
   /* 2026-11-23: хуучин IPC-д орсон бөглөлт ч хасагдана (Багц-2: 148.1 биш 55.0 тэрбум) */
   return { fills: r2(fills), inIpc: r2(inIpc), paid: r2(paid), due: r2(fills - inIpc) };

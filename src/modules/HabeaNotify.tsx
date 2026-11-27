@@ -19,7 +19,7 @@ import { Bell, ChevronRight, MapPinned, X } from 'lucide-react';
 import { t as tr } from '@/lib/i18nCore';
 import { useAsync } from '@/lib/useAsync';
 import { num, date } from '@/lib/format';
-import { ESCALATION } from '@/lib/habeaStage';
+import { ESCALATION, ubDaysSince } from '@/lib/habeaStage';
 import {
   notifyItems, isNewItem, markSeenItems, pruneSeen, readSeen, writeSeen,
   type NotifyItem, type NotifySeen,
@@ -30,8 +30,6 @@ import h from './habea.module.css';
 
 export type ActNotice = NotifyItem<ActionRow>;
 export type NoticeGroup = { stage: number; items: ActNotice[]; newN: number };
-
-const DAY_MS = 86_400_000;
 
 /** Шат бүрт «юу болох вэ» — шатлалын дүрэм (2026-11-03) гүйцэтгэгчийн хэлээр */
 const STAGE_ADVICE: (() => string)[] = [
@@ -95,7 +93,8 @@ const defaultStage = (groups: readonly NoticeGroup[]): number =>
 /** Нэг үл нийцлийн карт — шатны өнгөт зураас · асуулт · чипүүд · › */
 function NoticeCard({ it, isNew, now, onOpen }: { it: ActNotice; isNew: boolean; now: number; onOpen: (it: ActNotice) => void }) {
   const r = it.row;
-  const days = r.d != null ? Math.max(0, Math.floor((now - r.d) / DAY_MS)) : null;
+  /* 2026-11-27: шатлал (`stageOf`) ба тайлантай НЭГ тоолол — Улаанбаатарын хуанлийн өдрөөр (24 цагаар биш) */
+  const days = r.d != null ? Math.max(0, ubDaysSince(r.d, now)) : null;
   return (
     <li>
       <button type="button" className={`${h.ntCard} ${isNew ? h.ntCardNew : ''}`} onClick={() => onOpen(it)}

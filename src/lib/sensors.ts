@@ -291,6 +291,13 @@ export type MetricSeries = Metric & {
    */
   fault: boolean;
   faultNote?: string | null;
+  /**
+   * ТАТГАЛЗСАН (гэмтэлтэй) сүүлийн заалт — `latest` нь `null` болдог тул мэдэгдэлд (`tools/iot-watch.mjs`) ЯМАР утга
+   * ирснийг харуулахад (2026-11-27). `fault` биш, эсвэл утга мэдэгдэхгүй бол `null`. Картад харуулахгүй.
+   */
+  faultValue: number | null;
+  /** `faultValue` нь `derive`-ээс ӨМНӨХ түүхий заалт (нэгж нь `unit` БИШ — жиш. хогийн савны зай, мм) */
+  faultRaw: boolean;
 };
 
 export type SensorLive = SensorDef & {
@@ -456,8 +463,11 @@ function eta(latest: number | null, perHour: number, alert?: { value: number }, 
 
 /**
  * Цуваанаас ХОНОГИЙН хэрэглээ — хуримтлагдсан тоолуурын зөрүү.
+ * 2026-11-27 (аудит №42): ДУУСААГҮЙ өнөөдрийн хоног (УБ-ын цагаар, `now`) цэг БОЛОХГҮЙ — урьд нь 00:10-ын эхний заалт
+ * «хоногийн хэрэглээ 0.40 м³» болж картын сүүлийн заалт, доод утга, дунджийг хазайлгадаг байв.
  */
-function dailyDiffPoints(points: Reading[]): Reading[] {
+export function dailyDiffPoints(points: Reading[], now: number = Date.now()): Reading[] {
+  const today = ubDay(now);
   const lastByDay = new Map<number, Reading>();
   for (const r of points) {
     const key = ubDay(r.t);
@@ -467,6 +477,7 @@ function dailyDiffPoints(points: Reading[]): Reading[] {
   const days = [...lastByDay.values()].sort((a, b) => a.t - b.t);
   const out: Reading[] = [];
   for (let i = 1; i < days.length; i++) {
+    if (ubDay(days[i].t) >= today) continue; // хоног дуусаагүй — бүтэн хоногийн хэрэглээ биш
     if (ubDay(days[i].t) !== ubDay(days[i - 1].t) + 1) continue; // цоорхой хоног
     const v = days[i].v - days[i - 1].v;
     if (v >= 0) out.push({ t: days[i].t, v }); // цэг хоногийн сүүлийн мөчид буух нь зөв
@@ -474,11 +485,33 @@ function dailyDiffPoints(points: Reading[]): Reading[] {
   return out;
 }
 
+/** УБ-ын хоногийн ТӨГСГӨЛ (дараагийн хоногийн 00:00, мс) — хоногийн цэг энэ мөч хүртэл «шинэ» */
+const ubDayEnd = (t: number): number => (ubDay(t) + 1) * 86_400_000 - UB_OFFSET_MS;
+
+/**
+ * Хуримтлагдсан тоолуурын ХОНОГИЙН хэрэглээний цуваа (`Metric.dailyDiff`).
+ * 2026-11-27: дуусаагүй хоногийг алгасдаг тул сүүлийн цэг нь ӨЧИГДРИЙН сүүлийн заалт (~18:00) —
+ *  - шинэлэг байдал (`latestAt`/`ageHours`) ЭХ тоолуурынхаас (`src`) — үгүй бол орой бүр 18:00–24:00-д
+ *    24 цагаас хуучин болж CEO-ийн IoT хавтан «хуучирсан» (warn) болдог байв;
+ *  - хугацааны мужид (`from`) хоногийн ТӨГСГӨЛӨӨР орно — «24 цаг» мужид орой өчигдрийн цэг алга болдоггүй.
+ */
+export function dailySeries(
+  m: Metric & { dailyDiff: NonNullable<Metric['dailyDiff']> },
+  pts: Reading[], from: number, src: MetricSeries, now: number = Date.now(),
+): MetricSeries {
+  const dpAll = dailyDiffPoints(pts, now);
+  const dp = dpAll.filter((x) => ubDayEnd(x.t) > from);
+  const s = summarize(liveCopy(m.dailyDiff, { field: m.field }), dp, dp.length, dpAll);
+  return dpAll.length ? liveCopy(s, { latestAt: src.latestAt, ageHours: src.ageHours }) : s;
+}
+
 /** Цувааны нэгдсэн үзүүлэлт — суурь ба уламжлал хоёулаа үүгээр бүтнэ (шалгалтад экспортлов) */
 export function summarize(
   m: Metric, pts: Reading[], total: number | null, all: Reading[] = pts, badAt: number | null = null,
   higherIsGood = false,
   badLow = false,
+  /** `badAt` мөрийн татгалзсан заалт (`raw` = `derive`-ээс өмнөх түүхий утга) — мэдэгдэлд, 2026-11-27 */
+  badValue: { v: number; raw: boolean } | null = null,
 ): MetricSeries {
   const clean = m.valid ? pts.filter((x) => !outOfRange(m, x.v)) : pts;
   const vals = clean.map((x) => x.v);
@@ -507,6 +540,8 @@ export function summarize(
     trend: f ? { perHour: f.perHour, etaHours: eta(latest, f.perHour, m.alert, lastAt != null ? (Date.now() - lastAt) / 3_600_000 : null) } : null,
     fault: badLast || bad,
     faultNote: badLast && badLow ? (m.rawValid?.lowNote ?? null) : null,
+    faultValue: badLast ? (badValue?.v ?? null) : bad ? (last?.v ?? null) : null,
+    faultRaw: badLast && !!badValue?.raw,
   });
 }
 
@@ -545,6 +580,7 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
       /** Түүхий мужаас гадуурх ХАМГИЙН СҮҮЛИЙН заалтын цаг (`Metric.rawValid`, 2026-10-09) */
       let badAt: number | null = null;
       let badLow = false;
+      let badValue: { v: number; raw: boolean } | null = null;
       for (const r of rows) {
         const t = parseTs(r.received_datetime);
         if (t == null) continue;
@@ -553,11 +589,11 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
         const raw = Number(v);
         if (!Number.isFinite(raw)) continue;
         if (siblingFault(r, m)) {
-          if (badAt == null || t > badAt) { badAt = t; badLow = false; }
+          if (badAt == null || t > badAt) { badAt = t; badLow = false; badValue = { v: m.derive ? m.derive(raw) : raw, raw: false }; }
           continue;
         }
         if (m.rawValid && (raw < m.rawValid.min || raw > m.rawValid.max)) {
-          if (badAt == null || t > badAt) { badAt = t; badLow = raw < m.rawValid.min; }
+          if (badAt == null || t > badAt) { badAt = t; badLow = raw < m.rawValid.min; badValue = { v: raw, raw: !!m.derive }; }
           continue;
         }
         pts.push({ t, v: m.derive ? m.derive(raw) : raw });
@@ -565,18 +601,9 @@ async function loadOne(def: SensorDef, range: RangeKey): Promise<SensorLive> {
       pts.sort((x, y) => x.t - y.t); // ӨСӨХ — Trend зүүнээс баруун тийш уншина
       const inRange = pts.filter((x) => x.t >= from);
 
-      const out = [summarize(m, inRange, total, pts, badAt, HIGHER_IS_GOOD.has(`${def.key}:${m.key}`), badLow)];
+      const out = [summarize(m, inRange, total, pts, badAt, HIGHER_IS_GOOD.has(`${def.key}:${m.key}`), badLow, badValue)];
       // Хуримтлагдсан тоолуур → ХОНОГИЙН хэрэглээний тусдаа цуваа
-      if (m.dailyDiff) {
-        const dpAll = dailyDiffPoints(pts);
-        const dp = dpAll.filter((x) => x.t >= from);
-        out.push(summarize(
-          liveCopy(m.dailyDiff, { field: m.field }),
-          dp,
-          dp.length,
-          dpAll,
-        ));
-      }
+      if (m.dailyDiff) out.push(dailySeries(liveCopy(m, { dailyDiff: m.dailyDiff }), pts, from, out[0]));
       return out;
     }),
   ).catch((e: unknown) => (e instanceof Error ? e.message : String(e)));

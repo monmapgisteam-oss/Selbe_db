@@ -37,7 +37,6 @@ export type CapKey =
   | 'zovshoorolTtbEdit'
   | 'ashiglaltEdit'
   | 'dulaanEdit'
-  | 'cfSwitch'
   | 'ttbSwitch'
   | 'aiAgent';
 
@@ -47,7 +46,7 @@ export type CapKey =
 export const CAPS: { key: CapKey; icon: string }[] = [
   { key: 'addRow', icon: 'plus' },
   /**
-   * ЗӨВШӨӨРӨЛ — «Зөвшөөрөл» харагдац дээр зөвшөөрөл нэмэх, засах, устгах.
+   * ЗӨВШӨӨРӨЛ — «Зөвшөөрөл оруулах» хуудсанд зөвшөөрлийн бүртгэл нэмэх, засах, устгах («Зөвшөөрлийн явц» зөвхөн харна).
    */
   { key: 'zovshoorol', icon: 'file' },
   /**
@@ -97,7 +96,7 @@ export const CAPS: { key: CapKey; icon: string }[] = [
    */
   { key: 'butets', icon: 'network' },
   /**
-   * БАГЦЫН ХАМААРАЛ (2026-10-04) — «Багцын хамаарал» харагдац дээр багц хоорондын
+   * БАГЦЫН ХАМААРАЛ (2026-10-04; 2026-11-24-өөс «6 түвшний хуваарь»-ын «Холбоос засах») — багц хоорондын
    * холбоо нэмэх, устгах. ЗӨВХӨН холбоо — батлагчгүй. Эрхгүй хүн харагдацыг ХАРНА, засахгүй.
    */
   { key: 'hamaaral', icon: 'network' },
@@ -125,11 +124,8 @@ export const CAPS: { key: CapKey; icon: string }[] = [
   { key: 'ashiglaltEdit', icon: 'pen' },
   /** ДУЛААН АВАХ ОГНОО (2026-11-23) — блок бүрийн дулаан авах (төлөвлөсөн) ба авсан (бодит) огноо; батлагчгүй. */
   { key: 'dulaanEdit', icon: 'pen' },
-  /**
-   * САРЫН МӨНГӨ ГАРААР → ХУВААРЬ (2026-10-26) — гэрээний гараар оруулсан сарын мөрийг УСТГАЖ Хуваарийн обьём × нэгж
-   * өртгөөр тооцох (`monthlyMoney.switchToHuvaari`). Буцаахгүй — «Төлөвлөлтийн ахлах инженер»-т олгоно.
-   */
-  { key: 'cfSwitch', icon: 'calendar' },
+  /* 2026-11-27: «Сарын мөнгө Гараар → Хуваарь» (`cfSwitch`) эрх хасагдсан — шилжүүлэх үйлдэл (`switchToHuvaari`) өмнө хасагдсан.
+     Хадгалсан `__cap__:` мөрөнд үлдсэн `cfSwitch`-ийг `sane` чимээгүй хаяна. */
   /**
    * ТТБ-ИЙН 4 УНТРААЛГА (2026-11-24, хэрэглэгч: «тусдаа бай ёстой») — «Төсөл төлөвлөгөө биелэлт»-ийн мөр бүрийн «Төслийн нийтэд ·
    * Дээд мөрийн гүйцэтгэлд · Мөнгөний нийлбэрт · Хугацааны нийтэд тооцох». Урьд нь зөвхөн `finEdit`-д багтдаг байв (хэвээр зөвшөөрнө).
@@ -193,7 +189,6 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   zovshoorolTtbEdit: ['zovshoorolTtb'],
   ashiglaltEdit: ['ashiglalt'],
   dulaanEdit: ['dulaan'],
-  cfSwitch: ['finance'],
   ttbSwitch: ['finance'],
   aiAgent: [],
 };

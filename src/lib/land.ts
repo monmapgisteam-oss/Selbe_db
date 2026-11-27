@@ -250,7 +250,10 @@ export function buildLandStatus(statusRows: Row[], altRows: Row[]): LandStatus {
     else byStatus.push({ label, n: 0, areaM2: add });
   }
   const compParcels = statusRows.reduce((s, r) => s + Number(r.cn ?? 0), 0);
-  const comp = compParcels ? statusRows.reduce((s, r) => s + Number(r.c ?? 0), 0) : null;
+  /* 2026-11-27: нийлбэр нь «ТААРААГҮЙ» мөрийн дүнг ч агуулдаг тул null нь ЗӨВХӨН нэг ч талбарт дүн алга үед
+     (урьд нь `compParcels` 0 — зөвхөн «ТААРААГҮЙ» дүнтэй — үед нийлбэр нуугддаг байв) */
+  const compSum = statusRows.reduce((s, r) => s + Number(r.c ?? 0), 0);
+  const comp = compSum > 0 || compParcels ? compSum : null;
   const of = (v: string) => byStatus.find((x) => x.label === v)?.n ?? 0;
   const total = byStatus.reduce((s, x) => s + x.n, 0);
   const areaM2 = byStatus.reduce((s, x) => s + x.areaM2, 0);

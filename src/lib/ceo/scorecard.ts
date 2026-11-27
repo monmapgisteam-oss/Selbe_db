@@ -61,7 +61,9 @@ export const dimDefs = (): Record<Dim, {
 export type Fact = { label: string; value: string };
 
 /** Сэрэмжлүүлгийн төрөл — `DimScore.caveat`, `scoreAlerts` нэгтгэнэ (2026-10-28) */
-export type CaveatKind = 'partial' | 'notStarted' | 'noCurve' | 'notDue' | 'noDates' | 'noProgress' | 'noContractAmount';
+export type CaveatKind = 'partial' | 'notStarted' | 'noCurve' | 'notDue' | 'noDates' | 'noProgress' | 'noContractAmount'
+  /* 2026-11-27 (аудит №36/46): «Багцын гүйцэтгэл»-д P = 0 · тэр эх уншигдаагүй */
+  | 'planZero' | 'ttbUnread';
 
 export type DimScore = {
   /** 0–100; хэмжигдэх өгөгдөлгүй бол null */
@@ -203,6 +205,29 @@ export function perfNoCurve(): DimScore {
 }
 
 /**
+ * «БАГЦЫН ГҮЙЦЭТГЭЛ»-Д ТӨЛӨВЛӨГӨӨТ ХУВЬ 0 (2026-11-27, аудит №36) — CEO хуваарийн карттай ижил «дүгнэхгүй»; Cashflow-ийн огнооны
+ * шугаман төлөвлөгөөгөөр орлуулахгүй.
+ */
+export function perfPlanZero(actual: number | null): DimScore {
+  return {
+    score: null,
+    caveat: { kind: 'planZero', text: tr('«Багцын гүйцэтгэл»-д төлөвлөгөөт хувь 0 — оноо тавигдахгүй') },
+    facts: [fact(tr('Төлөвлөсөн гүйцэтгэл'), pct(0, 1)), fact(tr('Бодит гүйцэтгэл'), pct(actual ?? 0, 1))],
+    issues: [{ tone: 'info', text: tr('«Багцын гүйцэтгэл»-д төлөвлөгөөт хувь 0 (хуваарийн огноо алга) — гүйцэтгэлийн оноо тавигдахгүй. Багцын хуваарийг бөглөнө үү.') }],
+  };
+}
+
+/** «БАГЦЫН ГҮЙЦЭТГЭЛ» УНШИГДААГҮЙ (2026-11-27, аудит №46) — Finance-ийн хоцрогдол руу чимээгүй шилжихгүй */
+export function perfTtbUnread(): DimScore {
+  return {
+    score: null,
+    caveat: { kind: 'ttbUnread', text: tr('«Багцын гүйцэтгэл» уншигдсангүй — оноо тавигдахгүй') },
+    facts: [fact(tr('Багцын гүйцэтгэл'), tr('уншигдсангүй'))],
+    issues: [{ tone: 'info', text: tr('«Багцын гүйцэтгэл» уншигдсангүй — гүйцэтгэлийн оноог өөр эхээр орлуулж бодсонгүй. Дахин ачаална уу.') }],
+  };
+}
+
+/**
  * ХУВААРЬ ДУТУУ барилгын мөрийн гүйцэтгэлийн оноо (2026-10-22, аудит).
  */
 export function perfPartial(lag: { planned: number; actual: number; coverage?: number | null }): DimScore {
@@ -247,6 +272,11 @@ export type FinInput = {
   paidPct: number | null;
   /** Биет гүйцэтгэл, 0–100 — олголттой харьцуулахад */
   actual: number | null;
+  /**
+   * 2026-11-27 (аудит №36): `actual` нь «Багцын гүйцэтгэл» («Төсөл төлөвлөгөө биелэлт»)-ийн S (бүх үе шат, жинлэсэн) —
+   * нэр/асуудлын бичвэр «Багцын гүйцэтгэл» гэнэ; false/алга = Finance-ийн биет хувь («Биет гүйцэтгэл»).
+   */
+  actualPkg?: boolean;
 };
 
 export function scoreFin(i: FinInput): DimScore {
@@ -279,15 +309,20 @@ export function scoreFin(i: FinInput): DimScore {
     parts.push(sc);
     const t = toneOf(sc);
     if (t) {
+      const a = [num(Math.abs(diff), 2), pct(i.paidPct, 1), pct(i.actual, 1)] as const;
       issues.push({
         tone: t,
-        text: diff < 0
-          ? tr('Олголт биет гүйцэтгэлээс {0} нэгж хувиар хоцорсон (олгосон {1}, биет {2})', num(-diff, 2), pct(i.paidPct, 1), pct(i.actual, 1))
-          : tr('Олголт биет гүйцэтгэлээс {0} нэгж хувиар түрүүлсэн (олгосон {1}, биет {2})', num(diff, 2), pct(i.paidPct, 1), pct(i.actual, 1)),
+        text: i.actualPkg
+          ? diff < 0
+            ? tr('Олголт «Багцын гүйцэтгэл»-ээс {0} нэгж хувиар хоцорсон (олгосон {1}, багцын гүйцэтгэл {2})', ...a)
+            : tr('Олголт «Багцын гүйцэтгэл»-ээс {0} нэгж хувиар түрүүлсэн (олгосон {1}, багцын гүйцэтгэл {2})', ...a)
+          : diff < 0
+            ? tr('Олголт биет гүйцэтгэлээс {0} нэгж хувиар хоцорсон (олгосон {1}, биет {2})', ...a)
+            : tr('Олголт биет гүйцэтгэлээс {0} нэгж хувиар түрүүлсэн (олгосон {1}, биет {2})', ...a),
       });
     }
     facts.push(fact(tr('Олгосон санхүүжилт (гэрээний)'), pct(i.paidPct, 1)));
-    facts.push(fact(tr('Биет гүйцэтгэл'), pct(i.actual, 1)));
+    facts.push(fact(i.actualPkg ? tr('Багцын гүйцэтгэл («Төсөл төлөвлөгөө биелэлт»)') : tr('Биет гүйцэтгэл'), pct(i.actual, 1)));
   }
   const caveat: NonNullable<DimScore['caveat']> | null = contracted && !(i.contract != null && i.contract > 0)
     ? { kind: 'noContractAmount', text: tr('«Гэрээлсэн дүн» гэсэн ч гэрээний дүн хоосон — төсөвтэй харьцуулах боломжгүй') }
@@ -674,6 +709,8 @@ export function scoreAlerts(works: readonly WorkScore[]): ScoreAlert[] {
       }
       const ns = by('notStarted'); if (ns.length) reasons.push(tr('{0} багц хуваарь эхлээгүй', num(ns.length)));
       const nc = by('noCurve'); if (nc.length) reasons.push(tr('{0} ажлын хуваарийн муруй уншигдаагүй', num(nc.length)));
+      const pz = by('planZero'); if (pz.length) reasons.push(tr('{0} багцын «Багцын гүйцэтгэл»-д төлөвлөгөөт хувь 0', num(pz.length)));
+      const tu = by('ttbUnread'); if (tu.length) reasons.push(tr('{0} ажлын «Багцын гүйцэтгэл» уншигдаагүй', num(tu.length)));
       const nd = by('noDates'); if (nd.length) reasons.push(tr('{0} ажил огноогүй', num(nd.length)));
       const np = by('noProgress'); if (np.length) reasons.push(tr('{0} ажлын явц хэмжигдээгүй', num(np.length)));
       out.push({

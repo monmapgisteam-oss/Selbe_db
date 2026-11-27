@@ -52,4 +52,13 @@ assert.equal(rows.length, 4, 'эх массив хөндөгдөөгүй');
 assert.ok(findKomissRow(out), 'нэмсний дараа олдоно (idempotent хаалга)');
 console.log('✅ appendRootLeaf');
 
+/* 4. 2026-11-27 (аудит №21): жаазны төлөвлөгөөт хувь — 2000–2100-гийн гаднах огноо → бүтэн сараар (`hyanaltStore`-той нэг дүрэм) */
+{
+  const { readFileSync } = await import('node:fs');
+  const U = readFileSync(new URL('./ulsiinKomiss.ts', import.meta.url), 'utf8');
+  assert.ok(U.includes('planPctFromMonths(m, asOf, saneDate(s) != null && saneDate(e) != null ? { start: s, end: e } : null)'), 'ulsiinKomiss: saneDate шүүлт алга');
+  assert.ok(!U.includes('planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null })'), 'ulsiinKomiss: шүүлтгүй дуудлага үлдсэн');
+}
+console.log('✅ төлөвлөгөөт хувь — saneDate');
+
 console.log('\nulsiinKomiss.check: ok');

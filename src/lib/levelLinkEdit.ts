@@ -31,7 +31,7 @@ export const orphanLines = (g: WorkGraph, dels: ReadonlyMap<string, NodeId>): Or
   .filter((e) => !e.to).map((e) => ({ key: `${host}#${refKeyOf(e.ref)}`, host, e, del: dels.has(`${host}#${refKeyOf(e.ref)}`) })));
 
 /**
- * ХАДГАЛАХ БҮЛЭГЛЭЛТ — `BagtsHamaaral.saveAll`-тай ижил: хадгалдаг мөр тутамд нэмэх/хасах (нэг `saveWorkLinks`).
+ * ХАДГАЛАХ БҮЛЭГЛЭЛТ — `LevelLinkEdit.tsx`-ийн `saveAll` хэрэглэнэ: хадгалдаг мөр тутамд нэмэх/хасах (нэг `saveWorkLinks`).
  */
 export function groupChanges(
   adds: readonly Line[], saved: readonly Line[], dels: ReadonlyMap<string, NodeId>, orphans: readonly Orphan[],
@@ -132,6 +132,28 @@ export function linePairs(ids: Iterable<string>): [NodeId, NodeId][] {
     if (m) out.push([m[1], m[2]]);
   }
   return out;
+}
+
+/**
+ * ЗУРААС ДАРАХАД СЭЛГЭЖ БОЛОХ ХОСУУД (2026-11-27, засвар). Зураас нь хуудас нээхэд уншсан өгөгдлөөс, засах граф нь горим
+ * асаахад уншсанаас — завсарт өөр хүн холбоог салгасан бол зураас үлдсэн ч графт холбоо байхгүй. Тийм хосыг
+ * ХЭЗЭЭ Ч сэлгэхгүй (эс бөгөөс «салгах» дарахад ШИНЭ холбоо нэмэгдэнэ): `ps` — одоогийн зураасанд (`lines`: хадгалсан ·
+ * нэмэхээр · устгахаар) байгаа хос; `gone` — хоёр ажил нь графт байгаа ч холбоо нь алга болсон хосын тоо.
+ */
+export function linePick(
+  ids: Iterable<string>, lines: readonly Pick<Line, 'pair'>[], has: (id: NodeId) => boolean,
+): { ps: [NodeId, NodeId][]; gone: number } {
+  const live = new Set(lines.map((l) => l.pair));
+  const seen = new Set<string>();
+  const ps: [NodeId, NodeId][] = [];
+  let gone = 0;
+  for (const [a, b] of linePairs(ids)) {
+    const k = pairOf(a, b);
+    if (seen.has(k) || !has(a) || !has(b)) continue;
+    seen.add(k);
+    if (live.has(k)) ps.push([a, b]); else gone += 1;
+  }
+  return { ps, gone };
 }
 
 /** Нэмэхээр тэмдэглэсэн холбоог зурах ажлын холбоос (`crossLinks`-ийн хэлбэр) — төгсгөл нь алга бол алгасна */

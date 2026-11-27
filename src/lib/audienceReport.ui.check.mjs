@@ -150,6 +150,9 @@ ok('дэд бүтэц · нийгмийн дэд бүтэц · газар · с�
   const infraT = [...i.x.gdash.byType, { label: 'Инженерийн дэд бүтэц', cost: 446873239895, contract: 177136000919, perf: 6.763485591485408, n: 26, contracted: 18 }];
   const infraS = buildReport('mayor', inputsFixture({ x: { ...i.x, gdash: { ...i.x.gdash, byType: infraT } } })).sections.find((x) => x.key === 'infra');
   assert.ok(infraS.text[0].startsWith('Инженерийн дэд бүтцийн явц 6.76%'), infraS.text[0]);
+  /* 2026-11-27 (аудит): «Багцын гүйцэтгэл»-ийн дундаж — шошго нь жигнэлттэй таарна (хөрөнгө оруулалт биш, төсөлд эзлэх жин) */
+  const pkgS = buildReport('mayor', inputsFixture({ x: { ...i.x, prog: { ...i.x.prog, pkgAvg: { build: { S: 30, P: 40 }, infra: { S: 26.75, P: 30 }, all: { S: 28, P: 35 } } } } })).sections.find((x) => x.key === 'infra');
+  assert.ok(pkgS.text[0].startsWith('Инженерийн дэд бүтцийн явц 26.75% (багц бүрийн төсөлд эзлэх жингээр жигнэсэн)'), pkgS.text[0]);
   const soc = mayor.sections[8];
   assert.ok(soc.text[0].includes('3 объектоос 1 нь эхэлсэн, 0 нь дууссан'), soc.text[0]);
   assert.equal(soc.text[1], 'Хамгийн өндөр явцтай объект «Сургууль 960 хүүхэд» 15.00%.');

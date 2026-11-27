@@ -89,6 +89,20 @@ assert.throws(() => requirePlanWrite('Багц 1'), /хуваарьт бичих
   await assert.rejects(() => registerApproved('Багц 1', 1), VIEW, 'нэгтгэлийн бичилт');
   await assert.rejects(() => syncIpcFromFill('Багц 1', '2026-11-19'), VIEW, 'төлбөрийн актын автомат мөр');
   await assert.rejects(() => repriceFreeRows('Багц-1'), /эрхгүй/, 'төлбөрийн актын автомат үнэ — «IPC үүсгэх» эрх');
+  /* 2026-11-27: урсгалын шатанд «Зөвхөн харна» (viewOnly) гэж томилогдсон хүн — бичих эрх биш; жинхэнэ томилгоо — бичнэ */
+  {
+    const FL = await import('./guitsetgelAcl.ts');
+    FL._syncRemoteAssigns([{ user: 'selbe_et', stage: 'engineer', bagts: ['*'], viewOnly: true }]);
+    assert.equal(FL.stageOfUser('selbe_et'), 'engineer');
+    assert.equal(FL.isViewOnly('selbe_et'), true);
+    await assert.rejects(() => requireWriter(), VIEW, '«Зөвхөн харна» томилгоо бичихгүй');
+    await assert.rejects(() => applyUpdates(pkg, [{ objectid: 1 }]), VIEW, '«Зөвхөн харна» — гүйцэтгэлийн хуудас');
+    await assert.rejects(() => registerApproved('Багц 1', 1), VIEW, '«Зөвхөн харна» — нэгтгэл');
+    FL._syncRemoteAssigns([{ user: 'selbe_et', stage: 'engineer', bagts: ['*'], viewOnly: false }]);
+    await assert.doesNotReject(() => requireWriter(), 'шатанд томилогдсон (харах биш) хүн бичнэ');
+    FL._syncRemoteAssigns([]);
+    assert.equal(FL.stageOfUser('selbe_et'), null);
+  }
   assert.throws(() => requireSelf('manager_3'), /өөрийн нэрээр/);
   assert.doesNotThrow(() => requireSelf('Selbe_ET'));
   assert.equal((await markPlanPartial({ oid: 1, approver: 'manager_3' })).ok, false, 'бусдын нэрээр түгжихгүй');

@@ -64,18 +64,24 @@ export function useGroupPlan({
    * дүнг сонгосон блокууд бүгдэд ижил тавина. Огноо нь сарын мөнгөөс тул уялдааны гинж (`propagate`) хэрэглэхгүй (дараалал
    * нь уялдаагаар аль хэдийн). Нэг `applyChanges` тул нэг Ctrl+Z-ээр буцна. Обьёмгүй ажилд зөвхөн огноо.
    */
-  const planGroups = useCallback((items: readonly { oid: number; sp: Span; pct: Map<string, number> }[], blks: number[]): number => {
+  const planGroups = useCallback((items: readonly { oid: number; sp: Span; pct: Map<string, number>; blks?: readonly number[] }[], blks: number[]): number => {
     if (busy || locked || !canEdit || kind !== 'plan' || !sc) return 0;
-    const bs = blks.filter((b) => b >= 0 && b < n);
+    const ok = (b: number) => b >= 0 && b < n;
+    const bs0 = blks.filter(ok);
+    const used = new Set<number>();
     const ov = new Map<number, (Span | null)[]>();
     const jobs: { des: number; blok: string; months: Map<string, number>; sp: Span }[] = [];
-    /* 2026-11-16: олон бүлгийг НЭГ алхмаар (багц хооронд хуулах) — нэг Ctrl+Z */
+    /* 2026-11-16: олон бүлгийг НЭГ алхмаар (багц хооронд хуулах) — нэг Ctrl+Z. 2026-11-27: зүйл бүр өөрийн блокуудтай
+       (`blks`, багц хооронд блок бүрийн төлөвлөлтийг тусад нь) байж болно — нэг ажилд хэд хэдэн зүйл бол нийлүүлнэ. */
     for (const it of items) {
+      const bs = it.blks ? it.blks.filter(ok) : bs0;
+      if (!bs.length) continue;
       const sched = groupSchedule(it.oid, it.sp, it.pct);
       if (!sched) continue;
+      for (const b of bs) used.add(b);
       sched.forEach(({ k, span: wsp, months }) => {
         const r = plan[k];
-        const next = r.spans.slice();
+        const next = ov.get(k) ?? r.spans.slice();
         while (next.length < n) next.push(null);
         for (const b of bs) next[b] = { start: wsp.start, end: wsp.end };
         ov.set(k, next);
@@ -119,7 +125,7 @@ export function useGroupPlan({
         return next;
       });
     }
-    setNote(tr('Бүлгийн {0} ажилд {1} блокт огноо ба сарын обьём тавигдлаа.', num(ov.size), num(bs.length)));
+    setNote(tr('Бүлгийн {0} ажилд {1} блокт огноо ба сарын обьём тавигдлаа.', num(ov.size), num(used.size)));
     return ov.size;
   }, [busy, locked, canEdit, kind, sc, plan, n, obState, obPlan, obFullRef, groupSchedule, applyChanges, setErr, setNote, setObDraft]);
   const planGroup = useCallback((oid: number, sp: Span, pct: Map<string, number>, blks: number[]) => {

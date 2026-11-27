@@ -13,11 +13,13 @@
 import { requireWriter } from './writeGuard';
 import { t as tr } from './i18nCore';
 import { agsFetch } from '@/modules/sheet/ags';
-import { BAGTS_NEGTGEL, bagtsKey, canonPkg, constructionWhere } from './services';
+import { BAGTS_NEGTGEL, bagtsKey, buildingKey, canonPkg, constructionWhere } from './services';
 import { invalidate } from './dataBus';
 import { PKGS, loadSchema, fillSchema } from '@/modules/sheet/bagts.pkg';
 import { loadRows, msToDay } from '@/modules/sheet/bagtsSheet';
-import { uniqueBlockCounts, constructionObyem, sumObyemParts, obyemFields, type ObyemPair } from './blockProgress';
+import {
+  uniqueBlockCounts, constructionObyem, sumObyemParts, obyemFields, weightedBlockMean, loadBlockWeights, cachedBlockWeights, type ObyemPair,
+} from './blockProgress';
 
 const F = BAGTS_NEGTGEL.fields;
 
@@ -118,17 +120,55 @@ async function frameHead(h: Hit, sheetOid: number): Promise<boolean> {
 /**
  * «Б.» мөрийн нэгдсэн утгууд — хуудасны өөрийн хэмжээсээр (гүйцэтгэл 0–1).
  */
-export type BRow = { act: number | null; plan: number | null; at: number | null };
+export type BRow = {
+  act: number | null; plan: number | null; at: number | null;
+  /** 2026-11-27 (аудит №23): «Б.» мөрийн БЛОК бүрийн гүйцэтгэл/төлөвлөгөө (0–1, `sc.bld`-ийн индексээр; талбаргүй = `null`) */
+  acts?: (number | null)[]; plans?: (number | null)[];
+  /** 2026-11-27 (аудит №2, №3): «Б.» мөрийн OBJECTID — тэр жаазыг агшнаас хасахад (`summaryAtDate`-ийн `skip`) */
+  oid?: number | null;
+};
+
+/** Хуудасны нэг хэсэг — `blendBudget`-ийн оролт: блокийн шошго, `act` талбартай эсэх, блок бүрийн утга, жаазны огноо */
+export type BudgetPart = { bld: readonly string[]; has: readonly boolean[]; v: readonly (number | null)[] | null; at: number | null };
+
+/**
+ * ХУУДСУУДЫН «Б.» МӨРИЙН БЛОКУУДЫГ ТӨСВӨӨР ЖИГНЭНЭ (0–1, цэвэр, 2026-11-27 аудит №23) — `blockProgress.pkgProgressOf`-ийн
+ * дүрэм (`weightedBlockMean`): түлхүүр = `buildingKey(group, блок)` (`act` талбартай блок л — `sheetBlockKeys`), давхардсан
+ * блок (4-2: 6/x) — утгатай хуудсуудаас хамгийн сүүлийн огнооных (`winnerOf`), тайлагнаагүй = 0, жин = блокийн төсөв.
+ * Урьд нь хуудсын «Б.» (блокуудын энгийн дундаж)-ийг блокийн тоогоор жигнэдэг байв (`blendSheets`). Түлхүүргүй бол `null`.
+ */
+export function blendBudget(
+  group: string,
+  xs: readonly BudgetPart[],
+  weights: ReadonlyMap<string, number> | null,
+): number | null {
+  const win = new Map<string, { v: number | null; at: number }>();
+  for (const x of xs) {
+    x.bld.forEach((b, i) => {
+      if (!x.has[i] || !b) return;
+      const k = buildingKey(group, b);
+      const raw = x.v?.[i];
+      const v = raw != null && Number.isFinite(raw) ? raw : null;
+      const at = x.at ?? -Infinity;
+      const p = win.get(k);
+      if (!p || (p.v == null && v != null) || (v != null && at > p.at) || (p.v == null && v == null && at > p.at)) win.set(k, { v, at });
+    });
+  }
+  if (!win.size) return null;
+  return weightedBlockMean(new Map([...win].map(([k, w]) => [k, w.v])), weights);
+}
 
 /**
  * Нэг хуудасны обьём — `at` агшны (өдрийн сүүлийн бүтэн жааз, `loadRows`-ийн `dayFilter` · `lastFrame` — хянагчийн
  * харагдацтай нэг зам) навч мөрүүдээс (`constructionObyem`). `at == null` (тэр хүртэл нийтлэгдээгүй хуудас) бол
  * одоогийн (суурь) жааз — төлөвлөгөөт обьём нь багцын дүнд орно, бодит нь `null`.
+ * `beforeOid` (2026-11-27, аудит №3) — тэр өдрийн OBJECTID < энэ мөрүүдээс (ижил өдрийн хасагдсан жаазаас ӨМНӨХ жааз).
  */
-export async function sheetObyem(p: Pkg, at: number | null): Promise<ObyemPair | null> {
+export async function sheetObyem(p: Pkg, at: number | null, beforeOid?: number | null): Promise<ObyemPair | null> {
   try {
     const fsc = await fillSchema(p);
-    const { rows } = await loadRows(p, fsc, at == null ? undefined : msToDay(at), obyemFields(fsc));
+    const { rows } = await loadRows(p, fsc, at == null ? undefined : msToDay(at), obyemFields(fsc),
+      at != null && beforeOid != null ? { beforeOid } : undefined);
     return constructionObyem(rows, fsc.obyem);
   } catch (e) {
     console.warn(`[selbe] нэгтгэлийн обьём: ${p.label} — бөглөх хуудас уншигдсангүй, обьём бичихгүй`, e);
@@ -140,7 +180,7 @@ export async function sheetObyem(p: Pkg, at: number | null): Promise<ObyemPair |
  * Нэг хуудасны «Б.» мөр — `dateWhere`-д таарах ХАМГИЙН СҮҮЛИЙН жаазнаас.
  */
 export async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string): Promise<BRow | null> {
-  const cols = [sc.f.no, sc.f.act, sc.f.plan, fill]
+  const cols = [sc.f.oid, sc.f.no, sc.f.act, sc.f.plan, fill, ...sc.act, ...sc.plan]
     .filter(Boolean) as string[];
   const q = (await post(`${p.url}/query`, {
     where: `${dateWhere} AND ${constructionWhere(sc.f.no)}`,
@@ -155,7 +195,39 @@ export async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string
     act: num(a[sc.f.act]),
     plan: num(a[sc.f.plan]),
     at: num(a[fill]),
+    acts: sc.bld.map((_, i) => (sc.act[i] ? num(a[sc.act[i]]) : null)),
+    plans: sc.bld.map((_, i) => (sc.plan[i] ? num(a[sc.plan[i]]) : null)),
+    oid: num(a[sc.f.oid]),
   };
+}
+
+/** Багцын хуудсуудын «Б.»-г нэг дүнд — блоктой багцад төсвөөр (`blendBudget`), блокгүйд урьдын блокийн тоогоор (`blendSheets`) */
+function blendParts(
+  parts: readonly { r: BRow; sc: Schema; p: Pkg }[],
+  pick: 'act' | 'plan',
+  weights: ReadonlyMap<string, number> | null,
+): number | null {
+  if (!parts.length) return null;
+  const v = (r: BRow) => (pick === 'act' ? r.act : r.plan);
+  if (parts.every((x) => x.sc.synthetic || !x.sc.bld.length))
+    return parts.length === 1 ? v(parts[0].r) : blendSheets(parts.map((x) => ({ bld: x.sc.bld, v: v(x.r) })));
+  const group = parts[0].p.group;
+  const keysOf = (x: { sc: Schema }) => x.sc.bld.filter((b, i) => !!b && !!x.sc.act[i]).map((b) => buildingKey(group, b));
+  /* урьдын дүрэм: «Б.»-ийн дүн нь мэдэгдэхгүй (null) хуудас өөрийн (бусад хуудсанд утгагүй) блоктой бол нийт дүн мэдэгдэхгүй
+     (0 БИШ); блок нь бүгд өөр хуудсанд утгатай бол (4-2-ийн 12F) нөлөөлөхгүй */
+  const okKeys = new Set(parts.filter((x) => v(x.r) != null).flatMap(keysOf));
+  if (parts.some((x) => v(x.r) == null && keysOf(x).some((k) => !okKeys.has(k)))) return null;
+  return blendBudget(group, parts.map((x) => ({
+    bld: x.sc.bld,
+    has: x.sc.bld.map((_, i) => !!x.sc.act[i]),
+    v: v(x.r) == null ? null : (pick === 'act' ? x.r.acts : x.r.plans) ?? null,
+    at: x.r.at,
+  })), weights);
+}
+
+/** Блокийн төсвийн жин — уншигдахгүй бол `null` (тэнцүү жин) */
+async function budgetWeights(): Promise<ReadonlyMap<string, number> | null> {
+  try { return await loadBlockWeights(); } catch { return cachedBlockWeights(); }
 }
 
 /**
@@ -170,7 +242,11 @@ export async function bRowOf(p: Pkg, sc: Schema, fill: string, dateWhere: string
  * Багцын дүнд орсон НЭГ хуудас. `real: false` = хэзээ ч нийтлэгдээгүй / «Б.» мөр нь
  * хэмжигдээгүй хуудас — блокууд нь 0% гэж орсон (`summaryOf` 2026-10-09).
  */
-type Part = { n: number; r: BRow; p: Pkg; sc: Schema; real: boolean };
+type Part = {
+  n: number; r: BRow; p: Pkg; sc: Schema; real: boolean;
+  /** 2026-11-27 (аудит №3): обьёмыг тэр өдрийн OBJECTID < энэ мөрүүдээс (`summaryAtDate`-ийн `skip` — ижил өдрийн өмнөх жааз) */
+  volBefore?: number;
+};
 
 async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
   const group = PKGS.filter((x) => bagtsKey(x.group) === bagtsKey(bagts));
@@ -220,7 +296,7 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
 
   /*
    * ДҮРЭМ: бусад хуудас бүрийн ТЭР ӨДӨР БУЮУ ӨМНӨХ хамгийн сүүлийн жаазны
-   *    «Б.» мөрийг авч БЛОКИЙН ТООГООР жигнэнэ. Энэ нь «ХУВИЙГ ДАХИН
+   *    «Б.» мөрийг авч (2026-11-27-ноос блок бүрийн нүдийг блокийн ТӨСВӨӨР — `blendParts`) жигнэнэ. Энэ нь «ХУВИЙГ ДАХИН
    *    БОДОХГҮЙ» (толгой) дүрмийг зөрчихгүй: «Б.» мөрийн гүйцэтгэл нь
    *    өөрөө блокуудын ДУНДАЖ (`computeAll`-ийн J, хоосон = 0) тул блокоор
    *    жигнэсэн дундаж нь хоёр хуудасны БҮХ блокийн дундажтай ЯГ тэнцүү —
@@ -238,55 +314,84 @@ async function summaryOf(bagts: string, sheetOid: number, pkgKey?: string) {
       else if (sc.act.some(Boolean)) {
         parts.push({
           n: sc.bld.length,
-          r: { act: 0, plan: r?.plan ?? null, at: r?.at ?? null },
+          r: { act: 0, plan: r?.plan ?? null, at: r?.at ?? null, plans: r?.plans },
           p, sc, real: false,
         });
       }
     }
   }
   const f = await finishParts(parts);
-  return { at, ...f, progress: own.act == null ? null : f.progress, parts };
+  /* `src` — энэ жаазны «Б.» мөр (`registerApproved`-ийн ±20 хамгаалалт өмнөх агшныг энэ жаазгүйгээр дахин бодоход) */
+  const src: SkipBRow | null = own.oid != null ? { pkgKey: one.p.key, oid: own.oid, firstOid: sheetOid, at } : null;
+  return { at, ...f, progress: own.act == null ? null : f.progress, parts, src };
 }
 
 /**
- * Хуудсуудын хэсгээс багцын нэгдсэн дүн (`summaryOf` ба `summaryAtDate`-ийн НЭГ дүрэм): блокийн тоогоор жигнэнэ,
+ * Хуудсуудын хэсгээс багцын нэгдсэн дүн (`summaryOf` ба `summaryAtDate`-ийн НЭГ дүрэм): 2026-11-27 (аудит №23) блокийн
+ * ТӨСВӨӨР жигнэнэ (`blendParts` → `blendBudget`, самбарын `pkgProgressOf`-тэй нэг дүрэм; урьд нь блокийн тоогоор),
  * обьём нь хуудас бүрийн тэр жаазнаас (`x.r.at` — эх хуудасны хувьд архивын агшин өөрөө).
+ * `withVolume: false` (2026-11-27, аудит №2) — зөвхөн хувь (±20-ийн хамгаалалт): обьёмын бүтэн жааз татахгүй, обьём `null`.
  */
-async function finishParts(parts: Part[]) {
+async function finishParts(parts: Part[], withVolume = true) {
   const pkgOrder = new Map(PKGS.map((x, i) => [x.key, i]));
   parts.sort((a, b) => (pkgOrder.get(a.p.key) ?? 0) - (pkgOrder.get(b.p.key) ?? 0));
   uniqueBlockCounts(parts.map((x) => x.sc.bld)).forEach((w, i) => { parts[i].n = w; });
-  const mean = (pick: (r: BRow) => number | null): number | null =>
-    parts.length === 1 ? pick(parts[0].r) : blendSheets(parts.map((x) => ({ bld: x.sc.bld, v: pick(x.r) })));
+  const weights = await budgetWeights();
+  const mean = (pick: 'act' | 'plan'): number | null => blendParts(parts, pick, weights);
   const volParts = parts.some((x) => x.n > 0) ? parts.filter((x) => x.n > 0) : parts.slice(0, 1);
-  const vols = await Promise.all(volParts.map((x) => sheetObyem(x.p, x.r.at)));
+  const vols = withVolume ? await Promise.all(volParts.map((x) => sheetObyem(x.p, x.r.at, x.volBefore))) : [null];
   const vol: ObyemPair = vols.some((v) => v == null)
     ? { volume: null, volumePlan: null }
     : sumObyemParts(volParts.map((x, i) => ({ n: x.n, ...(vols[i] as ObyemPair) })));
   return {
-    progress: toPct(mean((r) => r.act)),
-    planned: toPct(mean((r) => r.plan)),
+    progress: toPct(mean('act')),
+    planned: toPct(mean('plan')),
     volume: vol.volume,
     volumePlan: vol.volumePlan,
   };
 }
 
 /**
+ * Агшнаас хасах НЭГ жаазны «Б.» мөр — хуудасны түлхүүр ба мөрийн OBJECTID (2026-11-27, аудит №2, №3).
+ * `firstOid` — жаазны ЭХНИЙ мөрийн OBJECTID, `at` — жаазны огноо (бөглөсөн өдөр): ижил өдөр өмнөх жааз байвал обьёмыг
+ * түүнээс (`skipVolBefore`). Өгөөгүй бол обьём урьдын адил тэр өдрийн сүүлийн жаазнаас.
+ */
+export type SkipBRow = { pkgKey: string; oid: number; firstOid?: number; at?: number };
+
+/**
+ * Хасагдсан жааз ба үлдсэн «Б.» мөр (`r`) ИЖИЛ ӨДӨР, `r` нь түүнээс ӨМНӨ бичигдсэн бол обьёмыг тэр өдрийн OBJECTID < жаазны
+ * эхний мөр хүртэлх мөрүүдээс авах хил (цэвэр, 2026-11-27 аудит №3); эс бөгөөс `undefined` (энгийн `sheetObyem`).
+ * Урьд нь `sheetObyem(p, r.at)` тэр өдрийн СҮҮЛИЙН жаазыг — хасах ёстой шинэ жаазыг — уншдаг тул «өмнөх» обьёмд шинэ жааз орж,
+ * обьёмын өөрчлөлт D ба дараагийн жаазны хоорондох мөрөнд хэзээ ч хүрдэггүй байв.
+ */
+export function skipVolBefore(skip: SkipBRow | null | undefined, pkgKey: string, r: { at: number | null; oid?: number | null }): number | undefined {
+  if (!skip || skip.pkgKey !== pkgKey || skip.at == null || r.at == null) return undefined;
+  const lim = skip.firstOid != null && Number.isInteger(skip.firstOid) && skip.firstOid > 0 ? skip.firstOid : skip.oid;
+  if (!Number.isInteger(lim) || r.oid == null || r.oid >= lim) return undefined;
+  return dayRange(r.at)[0] === dayRange(skip.at)[0] ? lim : undefined;
+}
+
+/**
  * НЭГ ӨДРИЙН багцын дүн — хуудас БҮРИЙН тэр агшин хүртэлх хамгийн сүүлийн жаазаар (`summaryOf`-ийн «бусад хуудас»-ны
  * дүрэм бүх хуудсанд). Хэмжилттэй хуудас огт байхгүй бол `null`.
+ * `skip` (2026-11-27) — тэр хуудасны энэ «Б.» мөрийг (нэг жааз) тооцохгүй: тэр жааз бичигдэхээс ӨМНӨХ агшин (хуудасны
+ * өмнөх жааз — ижил өдрийн өмнөх жааз эсвэл өмнөх өдрийнх; обьём ч мөн тэр жаазнаас — `skipVolBefore`).
+ * `progressOnly` — обьём бодохгүй (`finishParts`-ийн `withVolume: false`).
  */
-async function summaryAtDate(bagts: string, at: number) {
+async function summaryAtDate(bagts: string, at: number, skip?: SkipBRow | null, progressOnly = false) {
   const group = PKGS.filter((x) => bagtsKey(x.group) === bagtsKey(bagts));
   const parts: Part[] = [];
   for (const p of group) {
     const sc = await loadSchema(p);
     if (!sc.f.fillDate) continue;
-    const r = await bRowOf(p, sc, sc.f.fillDate, `${sc.f.fillDate} <= ${ts(at)}`);
-    if (r && r.act != null) parts.push({ n: sc.bld.length, r, p, sc, real: true });
-    else if (sc.act.some(Boolean)) parts.push({ n: sc.bld.length, r: { act: 0, plan: r?.plan ?? null, at: r?.at ?? null }, p, sc, real: false });
+    const not = skip && skip.pkgKey === p.key && Number.isInteger(skip.oid) ? ` AND ${sc.f.oid} <> ${skip.oid}` : '';
+    const r = await bRowOf(p, sc, sc.f.fillDate, `${sc.f.fillDate} <= ${ts(at)}${not}`);
+    const volBefore = r ? skipVolBefore(skip, p.key, r) : undefined;
+    if (r && r.act != null) parts.push({ n: sc.bld.length, r, p, sc, real: true, volBefore });
+    else if (sc.act.some(Boolean)) parts.push({ n: sc.bld.length, r: { act: 0, plan: r?.plan ?? null, at: r?.at ?? null, plans: r?.plans }, p, sc, real: false, volBefore });
   }
   if (!parts.some((x) => x.real)) return null;
-  return finishParts(parts);
+  return finishParts(parts, !progressOnly);
 }
 
 
@@ -374,19 +479,66 @@ async function negtgelRowsFrom(bagts: string, fromMs: number, extra?: string): P
 export type NegtgelSnap = { bagts: string; rows: { oid: number; at: number; stored: Record<string, unknown>; before: NegtgelSum | null }[] };
 
 /**
+ * Бөглөсөн өдрөөр (D) бичсэн жааз — `snapshotNegtgelFrom`-ийн «өмнөх» агшнаас хасна (2026-11-27, аудит №3).
+ *   · `firstOid` — жаазны ЭХНИЙ мөрийн OBJECTID (`applyAdds`-ийн `firstOid` / илгээлтийн `archiveOid`);
+ *   · `onlyIfStored` — давтагдах замд (`healLaterFrames`): хадгалсан мөр тэр жаазгүй агшинтай ЯГ таарвал л (тэр жааз хараахан
+ *     нэмэгдээгүй) хасна — эс бөгөөс одоогийн агшин (давтахад давхар нэмэхгүй).
+ */
+export type FrameSkip = { pkgKey: string; firstOid: number; onlyIfStored?: boolean };
+
+/**
+ * Хадгалсан мөрийн «өмнөх» агшинд тэр жаазгүй дүнг (`skipped`) авах уу (цэвэр, 2026-11-27 аудит №3): `onlyIfStored` үгүй бол
+ * үргэлж; байвал хадгалсан утга түүнтэй зөрөөгүй (`negtgelDiffers` = false) үед л — тэгвэл жаазны нөлөө хараахан ороогүй.
+ */
+export function takeSkipped(
+  stored: Readonly<Record<string, unknown>>,
+  skipped: NegtgelSum | null,
+  onlyIfStored: boolean,
+): boolean {
+  if (!skipped) return false;
+  return !onlyIfStored || !negtgelDiffers(stored, skipped);
+}
+
+/** Жаазны «Б.» мөрийн OBJECTID — D өдрийн, `firstOid`-оос хойшх хамгийн эхнийх (олдохгүй бол `null`) */
+async function frameBRowOid(skip: FrameSkip, from: number): Promise<number | null> {
+  const p = PKGS.find((x) => x.key === skip.pkgKey);
+  if (!p || !Number.isInteger(skip.firstOid) || skip.firstOid <= 0) return null;
+  const sc = await loadSchema(p);
+  if (!sc.f.fillDate) return null;
+  const q = (await post(`${p.url}/query`, {
+    where: `${dayWhere(sc.f.fillDate, from)} AND ${sc.f.oid} >= ${skip.firstOid} AND ${constructionWhere(sc.f.no)}`,
+    outFields: sc.f.oid,
+    returnGeometry: 'false',
+    orderByFields: `${sc.f.oid} ASC`,
+    resultRecordCount: '1',
+  })) as { features?: { attributes: Record<string, unknown> }[] };
+  const v = num(q.features?.[0]?.attributes?.[sc.f.oid]);
+  return v != null && Number.isInteger(v) ? v : null;
+}
+
+/**
  * ХОЖУУ ӨДРҮҮДИЙН НЭГТГЭЛ — ӨМНӨХ АГШИН (2026-11-23, хяналт). `refreshStoredProgress`-ийн ӨМНӨ дуудна: `day`-ээс хойшх
  * мөр бүрийн хадгалсан утга ба тэр агшны `summaryAtDate`. Уншиж чадахгүй бол `null` (дараагийн алхам юу ч бичихгүй).
+ *
+ * 2026-11-27 (аудит №3) — `skip` (бөглөсөн өдрийн жааз): D-ээс ХОЙШХ (D-ийн мөрийг `registerApproved` бүтэн утгаар бичдэг)
+ * мөр бүрийн «өмнөх» агшинг ТЭР ЖААЗГҮЙГЭЭР бодно. Урьд нь шинэ жааз аль хэдийн бичигдсэн тул D ба энэ хуудасны дараагийн
+ * жаазны ХООРОНДХ мөр (нөгөө хуудасны батлалтаар үүссэн) өмнө/дараа хоёуланд нь шинэ жаазыг уншиж, зөрүү 0 гарч хэзээ ч
+ * засагдахгүй байв.
  */
-export async function snapshotNegtgelFrom(bagts: string, day: string): Promise<NegtgelSnap | null> {
+export async function snapshotNegtgelFrom(bagts: string, day: string, skip?: FrameSkip | null): Promise<NegtgelSnap | null> {
   const from = Date.parse(`${day}T00:00:00Z`);
   if (!Number.isFinite(from)) return null;
   try {
     const rows: NegtgelSnap['rows'] = [];
-    for (const a of await negtgelRowsFrom(bagts, dayRange(from)[0])) {
+    let bOid: number | null | undefined;
+    for (const a of await negtgelRowsFrom(bagts, dayRange(from)[skip ? 1 : 0])) {
       const oid = num(a[BAGTS_NEGTGEL.oid]);
       const at = num(a[F.date]);
       if (oid == null || at == null) continue;
-      rows.push({ oid, at, stored: a, before: await summaryAtDate(bagts, at) });
+      if (skip && bOid === undefined) bOid = await frameBRowOid(skip, from);
+      const sk = skip && bOid != null ? await summaryAtDate(bagts, at, { pkgKey: skip.pkgKey, oid: bOid, firstOid: skip.firstOid, at: from }) : null;
+      const before = takeSkipped(a, sk, !!skip?.onlyIfStored) ? sk : await summaryAtDate(bagts, at);
+      rows.push({ oid, at, stored: a, before });
     }
     return { bagts, rows };
   } catch {
@@ -464,8 +616,17 @@ async function comparablePct(parts: Part[], lastAt: number | null): Promise<numb
   }
   if (kept.length === parts.length) return 'same';
   if (!kept.length) return null;
-  const v = blendSheets(kept.map((x) => ({ bld: x.sc.bld, v: x.r.act })));
+  /* 2026-11-27 (аудит №23): `finishParts`-тэй нэг (төсвийн) жин */
+  const v = blendParts(kept, 'act', await budgetWeights());
   return v == null ? null : v * 100;
+}
+
+/**
+ * ±20-ийн хамгаалалтын ӨМНӨХ утга (цэвэр, 2026-11-27 аудит №2): өмнөх мөрийн агшныг одоогийн дүрмээр дахин бодсон утга
+ * (`recomputed`) байвал түүнийг, бодогдоогүй бол хадгалсан утгыг (`stored`) — хоёр талыг нэг томьёогоор жишихийн тулд.
+ */
+export function guardBaseline(stored: number | null, recomputed: number | null): number | null {
+  return recomputed != null && Number.isFinite(recomputed) ? recomputed : stored;
 }
 
 export type NegtgelResult = { ok: true; skipped?: 'blockless' } | { ok: false; error: string };
@@ -541,13 +702,29 @@ export async function registerApproved(
       resultRecordCount: '1',
     })) as { features?: { attributes: Record<string, unknown> }[] };
     const prevA = prev.features?.[0]?.attributes;
-    const last = num(prevA?.[F.progress]);
+    let last = num(prevA?.[F.progress]);
 
     if (s.progress == null)
       return {
         ok: false,
         error: tr('Бөглөх хуудасны «Б.» мөрийн гүйцэтгэл хэмжигдээгүй тул нэгтгэлд бичсэнгүй — хуудсаа шалгаад дахин баталгаажуулна уу.'),
       };
+    /*
+     * 2026-11-27 (аудит №2): ИЖИЛ ДҮРМЭЭР ЖИШНЭ — хадгалсан өмнөх мөр хуучин (блокийн энгийн дундаж) томьёогоор бичигдсэн байж
+     * болох тул өмнөх мөрийн огнооны агшныг ҮРГЭЛЖ ОДООГИЙН (блокийн төсвийн) дүрмээр, энэ жаазгүйгээр (`s.src` — ижил өдрийн
+     * өмнөх мөр энэ жаазаас өмнө бодогдсон) дахин бодож түүнтэй жишнэ (`guardBaseline`; бодогдохгүй бол хадгалсан утга).
+     * Урьд нь хадгалсан утгатай жишсэн хамгаалалт өдөөгдсөн үед л дахин боддог байсан тул хуучин утга шинэ дүрмийнхээс БАГА
+     * үед (төсөв 8/1/1, гүйцэтгэл 95/40/40: хадгалсан 58.33, дахин бодсон 84.00) ижил дүрмээр 20-иос их уналт (→ 60.00)
+     * шалгагдалгүй бичигддэг байв. Зөвхөн хувь бодно (`progressOnly`) — обьёмын жааз татахгүй.
+     */
+    if (last != null) {
+      const lastAt = num(prevA?.[F.date]);
+      let re: number | null = null;
+      if (lastAt != null) {
+        try { re = (await summaryAtDate(bagts, lastAt, s.src, true))?.progress ?? null; } catch { re = null; }
+      }
+      last = guardBaseline(last, re);
+    }
     if (last != null && s.progress < last - 20) {
       const cmp = await comparablePct(s.parts, num(prevA?.[F.date]));
       if (cmp != null && typeof cmp === 'object')

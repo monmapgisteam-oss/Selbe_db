@@ -16,6 +16,7 @@ import type { Row } from '@/lib/query';
 import { CASHFLOW_NEW, HO_IPC, hoAmount, pkgKeyOf } from '@/lib/services';
 import { finXlInTotal } from '@/lib/finExcelLayout';
 import { finPkgKey } from '@/lib/pkgAlias';
+import { hoPkgParts } from '@/lib/hoSync/compute';
 
 /**
  * ГЭРЭЭЛСЭН ХУВЬ · ОЛГОСОН ХУВЬ (ТӨСӨЛД) — төслийн нийт дүнд (2026-11-04, хэрэглэгч).
@@ -84,6 +85,23 @@ export function paidShareOf(
     const k = pkgKeyOf(raw);
     return k ? keys.has(finPkgKey(k)) : ranges.has(rangeKey(raw));
   };
+  /*
+   * 2026-11-27 (засвар): ОЛОН БАГЦЫН ЖАГСААЛТ («БАГЦ-10, 11, 13, 15») — `planPaidSync`-ийн дүрмээр: багц бүрийн «Гэрээлсэн дүн»
+   * мөрүүдэд гэрээний дүнгийн жингээр хуваагдана; тоологчид хуваарьт (`contracted`) орсон мөрүүдийн хэсэг. Урьд нь `pkgKeyOf`
+   * хоосон, мужийн бичвэр таарахгүй тул огт тоологддоггүй байв (ТТБ-д 4 багцад хуваагдаж ордог). Таарах мөр алга бол `null`.
+   */
+  const contractedSet = new Set(contracted);
+  const noted = cfRows.filter((r) => str(r[F.amountNote]) === PAID_SHARE_CONTRACTED);
+  const listShare = (raw: unknown): number | null => {
+    const parts = hoPkgParts(raw);
+    if (parts.length < 2) return null;
+    const rows = noted.filter((r) => parts.includes(hoPkgParts(r[F.pkg])[0] ?? ''));
+    if (!rows.length) return null;
+    const w = rows.map((r) => Math.max(nn(r[F.contractAmount]), 0));
+    const tw = w.reduce((a, x) => a + x, 0);
+    const inW = rows.reduce((a, r, i) => a + (contractedSet.has(r) ? (tw > 0 ? w[i] : 1) : 0), 0);
+    return inW / (tw > 0 ? tw : rows.length);
+  };
   let paid = 0;
   let paidContracted = 0;
   let paidKnown = 0;
@@ -93,7 +111,11 @@ export function paidShareOf(
     if (n == null) continue;
     paidKnown += 1;
     paid += n;
-    if (inContracted(r[HO_IPC.contractFields.pkg])) paidContracted += n;
+    const ls = listShare(r[HO_IPC.contractFields.pkg]);
+    if (ls != null) {
+      paidContracted += n * ls;
+      if (ls < 1 && isDesignPay(r)) paidDesign += n * (1 - ls);
+    } else if (inContracted(r[HO_IPC.contractFields.pkg])) paidContracted += n;
     else if (isDesignPay(r)) paidDesign += n;
   }
   /* 2026-11-05: хөвөгч тооны үлдэгдэл (0.00006 ₮) «гадуур олголт» мэт гардаг байв — хагас төгрөгөөс бага бол 0 */
@@ -118,13 +140,20 @@ export function isDesignPay(r: Readonly<Record<string, unknown>>): boolean {
  * ТТБ-ИЙН НИЙТ ГЭРЭЭЛСЭН ДҮНГЭЭР (2,046.5 — ТЭЗҮ/зураг төсөл орсон) хуваах хувилбар (2026-11-23, аудит №3).
  * Хуваарь ТЭЗҮ/зураг төслийн гэрээг агуулдаг тул тэдгээрийн олголтыг (`paidDesign`) тоологчид нэмнэ — эс бөгөөс
  * 33.08% (зөв нь 33.3%) гэж бага гардаг байв. `projContract` алга бол хуучин (ажлын мөрийн) хувилбараар.
+ * @param landComp 2026-11-27 (аудит): `projContract`-д ОРСОН газар чөлөөлөлтийн нөхөх олговор, ₮ (`projectMoneyOf.landComp` —
+ *   «Газар чөлөөлөлт» үе шатны 3-р унтраалга «Мөнгөний нийлбэрт тооцох» асаалттай үед л > 0). Хуваарьт орсон тул тоологч
+ *   (`paidContracted`) ба нийт олгосонд (`paid`) нэмэгдэнэ — «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөрийн «Олгосон хувь
+ *   (гэрээнд)»-тэй нэг хүрээ (олговор = гэрээ = олгосон). Урьд нь хуваарьт л орж хувь бага гардаг байв (31.9% ↔ 36.7%).
  */
-export function withProjectContract(share: PaidShare, projContract: number | null | undefined): PaidShare {
+export function withProjectContract(share: PaidShare, projContract: number | null | undefined, landComp?: number | null): PaidShare {
   if (projContract == null || !(projContract > 0)) return share;
-  const paidContracted = share.paidContracted + share.paidDesign;
-  const other = share.paid - paidContracted;
+  const comp = landComp != null && Number.isFinite(landComp) && landComp > 0 ? landComp : 0;
+  const paidContracted = share.paidContracted + share.paidDesign + comp;
+  const paid = share.paid + comp;
+  const other = paid - paidContracted;
   return {
     ...share,
+    paid,
     contract: projContract,
     paidContracted,
     paidOther: Math.abs(other) < 0.5 ? 0 : other,

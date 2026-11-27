@@ -23,6 +23,7 @@ import { buildGraph } from './workDeps';
 import { planFields } from './planProgress';
 import { queryFeatures } from './query';
 import { cached, SESSION_TTL_MS } from './live';
+import { register } from './dataBus';
 import { t as tr } from './i18nCore';
 import type { XlsxCell, XlsxSheet } from './xlsx';
 
@@ -30,7 +31,10 @@ import type { XlsxCell, XlsxSheet } from './xlsx';
 
 export const DAY = 86_400_000;
 
-/** Орон нутгийн хуанлийн өдөр → тэр өдрийн UTC шөнө дунд (ms) — файлын толгой */
+/**
+ * Орон нутгийн (ХӨТЧИЙН) хуанлийн өдөр → тэр өдрийн UTC шөнө дунд (ms). 2026-11-27 (засвар): «өнөөдөр»-т ХЭРЭГЛЭХГҮЙ —
+ * 6 түвшний хуваарийн өнөөдөр нь `ubToday` (Улаанбаатарын өдөр, бусад бүх дэлгэцтэй ижил).
+ */
 export function dayOfLocal(ms: number): number {
   const d = new Date(ms);
   return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
@@ -332,7 +336,7 @@ export type Col = { from: number; days: number };
 
 const utcDay = (ms: number): number => Math.floor(ms / DAY) * DAY;
 
-/** Өнөөдрийг агуулсан 7 хоногийн Даваа гарагаас `n` долоо хоног (Да–Ня). `today` — UTC шөнө дунд (`dayOfLocal`) */
+/** Өнөөдрийг агуулсан 7 хоногийн Даваа гарагаас `n` долоо хоног (Да–Ня). `today` — UTC шөнө дунд (`ubToday`, Улаанбаатарын өдөр) */
 export function weekCols(today: number, n = 12): Col[] {
   const t = utcDay(today);
   const dow = (new Date(t).getUTCDay() + 6) % 7; // Даваа = 0
@@ -340,7 +344,7 @@ export function weekCols(today: number, n = 12): Col[] {
   return Array.from({ length: n }, (_, i) => ({ from: mon + i * 7 * DAY, days: 7 }));
 }
 
-/** Өнөөдрөөс `n` өдөр. `today` — UTC шөнө дунд (`dayOfLocal`) */
+/** Өнөөдрөөс `n` өдөр. `today` — UTC шөнө дунд (`ubToday`, Улаанбаатарын өдөр) */
 export function dayCols(today: number, n = 14): Col[] {
   const t = utcDay(today);
   return Array.from({ length: n }, (_, i) => ({ from: t + i * DAY, days: 1 }));
@@ -1162,7 +1166,9 @@ export type LevelData = {
 /** Харагдацын үндсэн өгөгдөл — төслийн төлөвлөгөө + milestone огноо */
 export async function loadLevelData(): Promise<LevelData> {
   const at = Date.now();
-  const plan = await loadProjectPlan(dayOfLocal(at));
+  /* 2026-11-27 (засвар): «өнөөдөр» = Улаанбаатарын өдөр (`ubToday`) — бусад бүх дэлгэц ба энэ хуудасны `fetchSheetDetail`-тэй
+     ижил; хөтчийн цагийн бүс БИШ (өөр бүсэд төлөвлөсөн % · төлөв нэг өдрөөр зөрдөг байв) */
+  const plan = await loadProjectPlan(ubToday(at));
   if (plan.empty) return { plan, marks: null, at, failed: plan.failed };
   let marks: Marks | null = null;
   const failed = [...plan.failed];
@@ -1237,7 +1243,26 @@ async function fetchSheetDetail(): Promise<SheetDetail> {
   ];
   return { blocks: sheetDetails(ok), failed: failed.map((k) => `sheet:${k}`), links };
 }
-export const loadSheetDetail = cached(fetchSheetDetail, SESSION_TTL_MS, ['BAGTS_SHEET'], (v) => !v.failed.length);
+/* Кэш (5 мин, `live.cached`-ийн дүрэм: унасан · дутуу уншилт хадгалагдахгүй) + гараар хаях `dropSheetDetail` */
+let sheetDetailP: Promise<SheetDetail> | null = null;
+let sheetDetailAt = 0;
+register(() => { sheetDetailP = null; }, ['BAGTS_SHEET']);
+export function loadSheetDetail(): Promise<SheetDetail> {
+  if (!sheetDetailP || Date.now() - sheetDetailAt > SESSION_TTL_MS) {
+    sheetDetailAt = Date.now();
+    const mine = fetchSheetDetail();
+    sheetDetailP = mine;
+    void mine.then((v) => { if (v.failed.length && sheetDetailP === mine) sheetDetailP = null; }, () => { if (sheetDetailP === mine) sheetDetailP = null; });
+  }
+  return sheetDetailP;
+}
+/**
+ * 2026-11-27 (засвар): зурагдсан холбоос хуучирсан нь илэрвэл («Холбоос засах»-ын граф шинэ, зураас хуучин) санах ойн
+ * кэшийг хаяна — дараагийн `loadSheetDetail` хуудсуудыг дахин уншина.
+ */
+export function dropSheetDetail(): void {
+  sheetDetailP = null;
+}
 
 /* ══════════════════ Бүлгээр хураах · шүүх (2026-10-29) ══════════════════ */
 
@@ -1422,7 +1447,7 @@ function heatSheet(name: string, secs: readonly HSection[], labels: readonly str
 export function levelWorkbook(
   d: LevelData, pkgs: readonly PkgInfo[], detail: ReadonlyMap<string, BlockDetail> | null,
 ): XlsxSheet[] {
-  const today = dayOfLocal(d.at);
+  const today = ubToday(d.at);
   const l4 = buildL4(d.plan, pkgs, detail);
   const rng = activeRange(l4.flatMap((x) => x.rows.filter((r) => r.kind !== 'cum').map((r) => r.cells)));
   const [lo, hi] = rng ?? [0, -1];

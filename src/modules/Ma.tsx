@@ -17,7 +17,7 @@ import { fixCyr } from '@/lib/format';
 import { readParam } from '@/lib/urlState';
 import {
   ATT_TYPES, MA_URL, addMaAtt, attTypeLabel, chainOf, deleteMaAtt, ipcReady, isExpired, latestPerRespNo, listMaAtts, loadMa, type StageKey,
-  maAttBlob, resubmitLinks, stageLabel, stageStateLabel, verdictLabel, type AttMeta, type AttType, type MaAtt, type MaRow, type Verdict,
+  maAttBlob, resubmitLinks, resubOrder, stageLabel, stageStateLabel, verdictLabel, type AttMeta, type AttType, type MaAtt, type MaRow, type Verdict,
   type ResubLink,
 } from '@/lib/ma';
 import { addFm, decideFm, fmByMa, fmVerdictFor, loadFm, FM_REASON_MAX, type FmKind, type FmRow } from '@/lib/ficMakt';
@@ -108,15 +108,8 @@ export function Ma() {
     if (q.state === 'ready') for (const r of q.data) if (r.respNo) m.set(r.respNo, (m.get(r.respNo) ?? 0) + 1);
     return m;
   }, [q]);
-  const ordered = useMemo(() => {
-    const out: MaRow[] = [];
-    for (const r of rows) {
-      if (links.get(r.oid)?.next) continue; // шинэ хувилбарынхаа доор орно
-      out.push(r);
-      for (let p = links.get(r.oid)?.prev; p; p = links.get(p.oid)?.prev) out.push(p);
-    }
-    return out;
-  }, [rows, links]);
+  /* 2026-11-27: нэг MA хэд хэдэн буцаалтыг сольсон ч бүх карт гарна (`resubOrder`) */
+  const ordered = useMemo(() => resubOrder(rows, links), [rows, links]);
 
   const [tab, setTab] = useState<'chain' | 'noots' | 'ajil'>('chain');
   useFocusMa(q.state === 'ready' && tab === 'chain');
@@ -348,7 +341,8 @@ function MaCard({ r, mirs, fm, canAttach, canAuthor, canReview, me, onFmChanged,
         <p className={s.resubNote}>{tr('Буцаасан — засаж дахин ирүүлсэн: MA {0} (дээрх карт).', link.next.respNo || tr('(дугааргүй)'))}</p>
       )}
       {link?.prev && (
-        <p className={s.resubNote}>{tr('Дахин ирүүлсэн — өмнөх MA {0}-г буцаасан (доорх карт).', link.prev.respNo || tr('(дугааргүй)'))}</p>
+        <p className={s.resubNote}>{tr('Дахин ирүүлсэн — өмнөх MA {0}-г буцаасан (доорх карт).',
+          (link.prevs ?? [link.prev]).map((p) => p.respNo || tr('(дугааргүй)')).join(', '))}</p>
       )}
       {dupN > 1 && (
         <p className={s.failNote} role="status">

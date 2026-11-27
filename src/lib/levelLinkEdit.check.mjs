@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 const { buildGraph, nodeId, refOf } = await import('./workDeps.ts');
 const { crossLinks, levelLinks, phaseKey } = await import('./levelPlan.ts');
 const {
-  editIndex, rowWorks, linePairs, stagedLinks, groupChanges, savedLines, orphanLines, xIdOf, pairOf,
+  editIndex, rowWorks, linePairs, linePick, stagedLinks, groupChanges, savedLines, orphanLines, xIdOf, pairOf,
 } = await import('./levelLinkEdit.ts');
 
 let n = 0;
@@ -102,6 +102,20 @@ eq([...by.keys()].sort(), [BELTGEL, SHAL, SUURI, DULAAN].sort(), 'хадгалд
 eq(by.get(DULAAN), { add: [], remove: [saved[0].ref] }, 'салгах — хадгалдаг мөрөөс хасна');
 eq(by.get(SHAL).add, [refOf(g.nodes.get(DULAAN))], 'нэмэх — хадгалдаг мөрд нөгөө талын холбоос');
 eq(groupChanges([], saved, new Map(), []).size, 0, 'өөрчлөлтгүй — бичихгүй');
+
+/* ── 2026-11-27 (засвар): зураас дарахад зөвхөн ОДООГИЙН холбоо сэлгэгдэнэ — графт алга болсон холбооны хуучирсан зураас
+      шинэ холбоо НЭМЭХГҮЙ (өөр хүн салгасан A~B-г «салгах» гэж дарахад дахин үүсдэг байв) ── */
+{
+  const has = (id) => g.nodes.has(id);
+  const drawn = xIdOf(DULAAN, HANA);
+  eq(linePick([drawn], saved, has), { ps: [[DULAAN, HANA].sort()], gone: 0 }, 'хадгалсан холбооны зураас — сэлгэнэ');
+  eq(linePick([drawn], [], has), { ps: [], gone: 1 }, 'графт холбоо алга (өөр хүн салгасан) — сэлгэхгүй, нэмэхгүй');
+  eq(linePick([xIdOf(BELTGEL, DULAAN)], [...saved, adds[0]], has).ps.length, 1, 'нэмэхээр тэмдэглэсэн зураас — буцааж болно');
+  eq(linePick([drawn], saved.map((l) => ({ ...l, kind: 'del' })), has).gone, 0, 'устгахаар тэмдэглэсэн — буцааж болно');
+  eq(linePick([drawn, xIdOf(SHAL, DULAAN), drawn], saved, has), { ps: [[DULAAN, HANA].sort()], gone: 1 }, 'нэгтгэсэн зураас — хуучирсныг тоолно, давхардалгүй');
+  eq(linePick([drawn], saved, (id) => id !== HANA), { ps: [], gone: 0 }, 'ажил нь графт алга (хуудас уншигдаагүй) — чимээгүй алгасна');
+  eq(linePick(['БАГЦ1:5:0'], saved, has), { ps: [], gone: 0 }, 'Хуваарийн уялдааны зураас — хамаагүй');
+}
 
 /* Өнчин — устгахаар тэмдэглэсэн нь хасах жагсаалтад */
 const g2 = buildGraph([{ p: 'b', field: true, rows: [{ oid: 1, no: '1', work: 'Дулаан', depth: 0, group: false, des: 1, val: JSON.stringify([{ p: 'a', k: 'алга' }]) }] }]);

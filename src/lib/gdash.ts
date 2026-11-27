@@ -413,24 +413,67 @@ const groupSum = (
 
 /**
  * ӨРТГӨӨР ЖИГНЭСЭН ДУНДАЖ, ангиллаар.
+ * 2026-11-27 (аудит): хэмжилтгүй мөр 0%-иар ХУВААРЬТ орно (порталын дүрэм) — урьд нь хасагдаж, A 100₮ 50% + B 900₮
+ * хэмжилтгүй → 50% гардаг байв (зөв нь 5%). Нэг ч мөр хэмжилтгүй ангилал орохгүй (дуудагчийн нөөц дүрэм хэвээр).
  */
-function weighted(
-  rows: CfRow[],
+export function weighted(
+  rows: readonly CfRow[],
   pick: (r: CfRow) => number | null,
 ): Map<string, number> {
-  const w = new Map<string, { top: number; base: number }>();
+  const w = new Map<string, { top: number; base: number; measured: boolean }>();
   for (const r of rows) {
     if (!r.type || r.cost <= 0) continue;
     const p = pick(r);
-    if (p == null) continue;
-    const a = w.get(r.type) ?? { top: 0, base: 0 };
-    a.top += (r.cost * p) / 100;
+    const a = w.get(r.type) ?? { top: 0, base: 0, measured: false };
+    if (p != null) { a.top += (r.cost * p) / 100; a.measured = true; }
     a.base += r.cost;
     w.set(r.type, a);
   }
   return new Map(
-    [...w].filter(([, a]) => a.base > 0).map(([k, a]) => [k, (a.top / a.base) * 100]),
+    [...w].filter(([, a]) => a.base > 0 && a.measured).map(([k, a]) => [k, (a.top / a.base) * 100]),
   );
+}
+
+/**
+ * ГЭРЭЭНИЙ 3-Р ТҮВШНИЙ БҮЛГИЙН ГҮЙЦЭТГЭЛ — өртгөөр жигнэсэн (дашбоардын «Төслийн гүйцэтгэл» чарт). 2026-11-27 (аудит):
+ * хэмжилтгүй мөр 0%-иар хуваарьт орно; нэг ч мөр хэмжилтгүй бол null. Цэвэр.
+ */
+export function lvl3Pct(rows: readonly Pick<CfRow, 'lvl3' | 'cost' | 'progress'>[], name: string): number | null {
+  let base = 0, top = 0, measured = false;
+  for (const r of rows) {
+    if (r.lvl3 !== name || r.cost <= 0) continue;
+    base += r.cost;
+    if (r.progress != null) { top += (r.cost * r.progress) / 100; measured = true; }
+  }
+  return base > 0 && measured ? (top / base) * 100 : null;
+}
+
+/** «ТЭЗҮ, зураг төсөл» — «Нэгтгэл гүйцэтгэл»-ийн 1 · 2-р кодууд (дашбоардын чарт ба удирдлагын тайлан НЭГ) */
+export const DESIGN_WBS: readonly string[] = ['1', '2'];
+
+/**
+ * «НЭГТГЭЛ ГҮЙЦЭТГЭЛ»-ИЙН КОДЫН БҮЛГИЙН ГҮЙЦЭТГЭЛ (2026-11-27, аудит: дашбоард ба удирдлагын тайлан «ТЭЗҮ, зураг төсөл»-ийг
+ * өөр жингээр боддог байв) — `inProject`-оор жигнэсэн `actPct`; хэмжилтгүй мөр 0%-иар хуваарьт. Жингүй (мөнгөгүй) бол
+ * хэмжилттэй мөрүүдийн энгийн дундаж. Эхний ижил кодтой мөр л. Дашбоардын чарт ба `execReport` ЭНЭ функцийг дуудна. Цэвэр.
+ */
+export function wbsGroupPct(
+  rows: readonly { oid: number; code: string }[],
+  calc: ReadonlyMap<number, { actPct: number | null; inProject: number | null }>,
+  codes: readonly string[],
+): { pct: number | null; base: number } {
+  const byCode = new Map<string, { oid: number; code: string }>();
+  for (const r of rows) if (!byCode.has(r.code.trim())) byCode.set(r.code.trim(), r);
+  let base = 0, top = 0, plain = 0, n = 0;
+  for (const c of codes) {
+    const r = byCode.get(c);
+    const k = r ? calc.get(r.oid) : null;
+    if (!k) continue;
+    if (k.actPct != null) { plain += k.actPct; n += 1; }
+    if (k.inProject == null) continue;
+    base += k.inProject;
+    top += k.inProject * (k.actPct ?? 0);
+  }
+  return { pct: base > 0 && n ? top / base : n ? plain / n : null, base };
 }
 /**
  * 1-р чарт — ТӨРӨЛ × Урьдчилсан төсөвт өртөг, дотор нь ГЭРЭЭЛСЭН хэсэг.

@@ -163,7 +163,8 @@ const byCode = (c) => tree.byCode.get(c);
   assert.equal(e.adds.length, 2);
   assert.deepEqual(e.adds[0], {
     dd_kod: '3.2.1.1', etseg_kod: '3.2.1', tuvshin: 3, uy_shat: 'Зөвшөөрөл', bagts: 'Багц-1', blok: null,
-    ajil_uilchilgee: 'Барилгын ажил эхлүүлэх зөвшөөрөл', heseg_ezleh_huvi: 0.5, guits_ehleh: null, guits_duusah: null, guitsetgel_huvi: 100, cashflow_id: null,
+    /* 2026-11-27: шинэ мөр жингүй (null) — жинг бодолт тэнцүү хуваана (`computePlan`), хүснэгтэд 1/k бичихгүй */
+    ajil_uilchilgee: 'Барилгын ажил эхлүүлэх зөвшөөрөл', heseg_ezleh_huvi: null, guits_ehleh: null, guits_duusah: null, guitsetgel_huvi: 100, cashflow_id: null,
   });
   assert.deepEqual(e.updates, [], 'хадгалсан мөр өөрчлөгдөөгүй');
 
@@ -177,7 +178,38 @@ const byCode = (c) => tree.byCode.get(c);
   assert.ok(!canDeleteRow(Z, ts.byCode.get('3.2.2')), 'багцын мөр устгахгүй');
   const del = buildEdits(Z, saved, { ...EMPTY_PENDING, deletes: [60] }, N);
   assert.deepEqual(del.deletes, [60]);
-  assert.deepEqual(del.updates, [{ objectid: 61, heseg_ezleh_huvi: 1 }], 'үлдсэн мөр 100% жин');
+  /* 2026-11-27: үлдсэн мөрийн хадгалсан жинг дарж бичихгүй — бодолт бүгд тогтмол ах дүүг 100% болгоно */
+  assert.deepEqual(del.updates, [], 'үлдсэн мөрийн жин хүснэгтэд хөндөгдөхгүй');
+  {
+    const left = buildTree(saved.filter((r) => r.objectid !== 60));
+    assert.equal(computePlan(left, {}, d('2026-11-04')).get('3.2.2.2').F, 100, 'үлдсэн ганц мөр бодолтоор 100%');
+  }
+  /* Гараар тавьсан жин (0.7 / 0.3) мөр нэмэхэд хүснэгтэд хэвээр, шинэ мөр жингүй (null). Бодолтод (2026-11-27, аудит) шинэ
+     зөвшөөрөл 1/3 авч, тогтмолууд харьцаагаа хадгалан үлдсэнд шахагдана — 0% жинтэй болж багцын мөрд огт орохгүй байх БИШ */
+  {
+    const man = [...base,
+      row(60, '3.2.2.1', '3.2.2', { bagts: 'Багц-2', name: 'А', tuvshin: 3, heseg_ezleh_huvi: 0.7, guitsetgel_huvi: 100 }),
+      row(61, '3.2.2.2', '3.2.2', { bagts: 'Багц-2', name: 'Б', tuvshin: 3, heseg_ezleh_huvi: 0.3, guitsetgel_huvi: 0 }),
+    ];
+    const tm = buildTree(man);
+    const a = rowAdd(Z, tm.byCode.get('3.2.2'), tm, 'Шинэ');
+    const e2 = buildEdits(Z, man, { ...EMPTY_PENDING, adds: [a] }, N);
+    assert.deepEqual(e2.updates, [], 'ах дүүгийн гараар тавьсан жин дарагдахгүй');
+    assert.equal(e2.adds[0].heseg_ezleh_huvi, null, 'шинэ мөр жингүй');
+    {
+      const near = (a, b, tol, msg) => assert.ok(a != null && Math.abs(a - b) <= tol, `${msg}: ${a} ≠ ${b}`);
+      const after = computePlan(buildTree([...man, { ...e2.adds[0], objectid: 62 }]), {}, d('2026-11-04'));
+      const nc = e2.adds[0].dd_kod;
+      near(after.get(nc).F, 100 / 3, 1e-9, 'шинэ зөвшөөрөл 1/3 (0% биш)');
+      near(after.get('3.2.2.1').F, 70 * (2 / 3), 1e-9, 'А 0.7 · 2/3');
+      near(after.get('3.2.2.2').F, 30 * (2 / 3), 1e-9, 'Б 0.3 · 2/3');
+      near(after.get('3.2.2').S, 70 * (2 / 3), 1e-9, 'багцын мөр — шинэ (0%) зөвшөөрөл тоологдоно');
+    }
+    const eff = effectiveRows(Z, man, { ...EMPTY_PENDING, adds: [a] });
+    assert.deepEqual(eff.filter((r) => r.objectid === 60 || r.objectid === 61).map((r) => r.heseg_ezleh_huvi), [0.7, 0.3], 'урьдчилсан харагдацад ч хэвээр');
+    const e3 = buildEdits(Z, man, { ...EMPTY_PENDING, deletes: [61] }, N);
+    assert.deepEqual(e3.updates, [], 'устгахад үлдсэн мөрийн жин хөндөгдөхгүй');
+  }
   assert.equal(pendingCount({ ...EMPTY_PENDING, deletes: [60] }), 1);
   console.log('✅ 3. зөвшөөрлийн мөр нэмэх/устгах — жин тэнцүү, эцгийн явц хүүхдүүдээс');
 }
@@ -235,11 +267,12 @@ console.log('uyShat.check: OK');
   const p = { ...EMPTY_PENDING, deletes: [60] };
   const sib = (extra = []) => [saved.find((r) => r.objectid === 60), saved.find((r) => r.objectid === 61), ...extra];
   assert.deepEqual(splitDrift(saved, sib(), p), [], 'ах дүү хэвээр — зөрөлгүй');
-  assert.deepEqual(splitDrift(saved, sib([kid(62, '3.2.2.3', 0.33)]), p).sort(), ['3.2.2.2', '3.2.2.3'], 'энэ хооронд өөр хүн ажил нэмсэн — k өөр');
+  /* 2026-11-27: жинг 1/k-аар дахин хуваахаа больсон — ах дүү өөрчлөгдсөн ч жингийн зөрөл үүсэхгүй */
+  assert.deepEqual(splitDrift(saved, sib([kid(62, '3.2.2.3', 0.33)]), p), [], 'энэ хооронд өөр хүн ажил нэмсэн — жин бичихгүй тул зөрөлгүй');
   const a = rowAdd(PAGES.zovshoorolTtb, buildTree(saved).byCode.get('3.2.2'), buildTree(saved), 'Шинэ');
   const pa = { ...EMPTY_PENDING, adds: [a] };
   assert.deepEqual(splitDrift(saved, sib(), pa), [], 'нэмэлт · ах дүү хэвээр');
-  assert.ok(splitDrift(saved, sib([kid(62, '3.2.2.9', 0.33)]), pa).length > 0, 'нэмэлт · өөр хүн ах дүү нэмсэн');
+  assert.deepEqual(splitDrift(saved, sib([kid(62, '3.2.2.9', 0.33)]), pa), [], 'нэмэлт · өөр хүн ах дүү нэмсэн — зөрөлгүй');
   /* Жин бичих мөрийн жинг өөр хүн зассан — зэрэг засвар */
   const P = PAGES.zovshoorolTtb;
   const u = [{ objectid: 61, heseg_ezleh_huvi: 1 }];

@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadSchema, pkgFloors, type Pkg, type Schema } from "../bagts.pkg";
 import { computeAll, parentIndexes, type SheetRow } from "../bagtsSheet";
 import { loadAddedKeys as loadAjilAddedKeys, addedKeyOf, type AddedKey } from '@/lib/ajilBatlah';
-import { loadBlockProgress, loadBlockUniverse, pkgProgressOf } from "@/lib/blockProgress";
+import {
+  cachedBlockWeights, latestMean, loadBlockProgress, loadBlockUniverse, loadBlockWeights, pkgProgressOf, universeKeys,
+  weightOf, weightedBlockMean,
+} from "@/lib/blockProgress";
 import { useAsync } from "@/lib/useAsync";
 import { fixCyr } from "@/lib/format";
 import { bagtsKey, buildingKey, isConstructionNo } from "@/lib/services";
@@ -419,6 +422,9 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
   const bp = bpQ.state === 'ready' ? bpQ.data : null;
   const uniQ = useAsync(loadBlockUniverse, []);
   const uni = uniQ.state === 'ready' ? uniQ.data : null;
+  /* 2026-11-27 (аудит №23): блокийн төсвийн жин — уншигдаагүй/унасан бол сүүлд уншсан, тэр ч алга бол тэнцүү жин */
+  const wQ = useAsync(loadBlockWeights, []);
+  const weights = wQ.state === 'ready' ? wQ.data : cachedBlockWeights();
 
   const otherPkg = useMemo(() => pkgFloors(pkg.group).find((x) => x.key !== pkg.key) ?? null, [pkg.group, pkg.key]);
   const otherScQ = useAsync(
@@ -438,48 +444,80 @@ export function usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPc
     const keys = new Set<string>(theirs);
     for (const k of uni?.get(g) ?? []) if (k.startsWith(`${g}|`)) keys.add(k);
     for (const key of bp.keys()) if (key.startsWith(`${g}|`)) keys.add(key);
-    let sum = 0;
-    let n = 0;
-    let all = 0;
-    for (const key of keys) {
-      if (onlyMine.has(key)) continue;
-      all += 1;
-      const cell = bp.get(key);
-      if (cell == null || !Number.isFinite(cell.overall)) continue;
-      sum += cell.overall; n += 1;
-    }
-    if (!all) return null;
-    return { pct: sum / all, blocks: n, total: all, floors: others[0].floors, label: `${others[0].floors}F` };
-  }, [bp, uni, pkg.group, pkg.key, sc, otherBld]);
+    /* 2026-11-27 (аудит №23): блокийн төсвөөр жигнэнэ (`latestMean` — `pkgProgressOf`-тэй нэг дүрэм); урьд нь энгийн дундаж */
+    const list = [...keys].filter((key) => !onlyMine.has(key));
+    if (!list.length) return null;
+    const m = latestMean(bp, list, weights);
+    return { pct: m.pct ?? 0, blocks: m.blocks, total: m.total, floors: others[0].floors, label: `${others[0].floors}F` };
+  }, [bp, uni, pkg.group, pkg.key, sc, otherBld, weights]);
 
   const pkgAll = useMemo((): number | null | undefined => {
     if (!otherPkg) return undefined;
     if (!bp || uniQ.state === 'loading') return null;
-    return pkgProgressOf(bp, uni ?? new Map()).get(bagtsKey(pkg.group))?.pct ?? null;
-  }, [otherPkg, bp, uni, uniQ.state, pkg.group]);
+    return pkgProgressOf(bp, uni ?? new Map(), weights).get(bagtsKey(pkg.group))?.pct ?? null;
+  }, [otherPkg, bp, uni, uniQ.state, pkg.group, weights]);
 
-  const pkgPct = useMemo(() => {
+  /** Энэ хуудасны блок бүрийн `buildingKey` (`act` талбартай блок л — `sheetBlockKeys`-ийн хуваарьтай ижил) */
+  const myKeys = useMemo(
+    () => Array.from({ length: nBld }, (_, b) => (sc?.act[b] && sc.bld[b] ? buildingKey(pkg.group, sc.bld[b]) : null)),
+    [nBld, sc, pkg.group],
+  );
+
+  /**
+   * 2026-11-27 (аудит №23): хуудасны «Б.» мөрийн блокуудын ТӨСВӨӨР жигнэсэн дундаж (`weightedBlockMean` — `pkgProgressOf`,
+   * самбар, нэгтгэлийн 190-ийн муруйтай нэг дүрэм; хэмжигдээгүй блок 0%). Урьд нь блокуудын энгийн дундаж байв.
+   * `byKey` — түлхүүр бүрийн 0–1 утга (давхардсан шошгыг дундажлана).
+   */
+  const sheetVals = useCallback((c: ReturnType<typeof computeAll>, bi: number): Map<string, number | null> => {
+    const acc = new Map<string, { s: number; n: number }>();
+    myKeys.forEach((k, b) => {
+      if (!k) return;
+      const a = acc.get(k) ?? { s: 0, n: 0 };
+      const v = c[bi]?.act[b];
+      if (v != null && Number.isFinite(v)) { a.s += v; a.n += 1; }
+      acc.set(k, a);
+    });
+    return new Map([...acc].map(([k, a]) => [k, a.n ? a.s / a.n : null]));
+  }, [myKeys]);
+
+  const pkgVals = useMemo(() => {
     if (!nBld || !rowsAll.length) return null;
     const bi = rowsAll.findIndex((r) => isConstructionNo(r.no));
     if (bi < 0) return null;
-    const avg = (c: ReturnType<typeof computeAll>) => {
-      let s = 0;
-      for (let b = 0; b < nBld; b += 1) {
-        const v = c[bi]?.act[b];
-        if (v != null) s += v;
-      }
-      return (s / nBld) * 100;
-    };
-    /** Хэмжигдсэн блокийн тоо — шошгонд «12 блок» гэж бичнэ */
-    let blocks = 0;
-    for (let b = 0; b < nBld; b += 1) if (calc[bi]?.act[b] != null) blocks += 1;
-    const draft = avg(calc);
+    const draft = sheetVals(calc, bi);
     const base = ovBase && ovBase.size ? rowsAll.map((r) => ovBase.get(r.oid) ?? r) : null;
     const saved = dirtyCount > 0 || base
-      ? avg(computeAll(base ?? rowsAll, nBld, asOf, {}, {}, hasObyem, planPct, "abs", !!sc?.synthetic))
+      ? sheetVals(computeAll(base ?? rowsAll, nBld, asOf, {}, {}, hasObyem, planPct, "abs", !!sc?.synthetic), bi)
       : draft;
-    return { saved, draft, blocks, total: nBld };
-  }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount, ovBase, sc]);
+    return { saved, draft };
+  }, [calc, rowsAll, nBld, asOf, hasObyem, planPct, dirtyCount, ovBase, sc, sheetVals]);
+
+  const pkgPct = useMemo(() => {
+    if (!pkgVals) return null;
+    const pct = (m: Map<string, number | null>) => (weightedBlockMean(m, weights) ?? 0) * 100;
+    /** Хэмжигдсэн блокийн тоо — шошгонд «12 блок» гэж бичнэ */
+    let blocks = 0;
+    for (const v of pkgVals.draft.values()) if (v != null) blocks += 1;
+    return { saved: pct(pkgVals.saved), draft: pct(pkgVals.draft), blocks, total: pkgVals.draft.size };
+  }, [pkgVals, weights]);
+
+  /**
+   * БҮХ ХУВИЛБАРЫН БАГЦЫН гүйцэтгэл — илгээх цонхны «Багцын гүйцэтгэл: X% → Y%» (2026-11-27, аудит №23). X = `pkgAll`
+   * (хэрэгслийн мөрийн тоо), Y = X + энэ хуудасны блокуудын өөрчлөлт × тэдгээрийн төсвийн жин ÷ багцын нийт жин
+   * (`fillGain.fillGainOf`-ийн багцын өсөлттэй нэг томьёо). Ганц хувилбартай багцад `null` → хуудасны `pkgPct`.
+   */
+  const pkgWide = useMemo((): { saved: number; draft: number } | null => {
+    if (!otherPkg || pkgAll == null || !pkgVals || !uni || !bp) return null;
+    const all = new Set(universeKeys(bp, uni, [bagtsKey(pkg.group)]));
+    for (const k of pkgVals.draft.keys()) all.add(k);
+    const wOf = weightOf([...all], weights);
+    let wsum = 0;
+    for (const k of all) wsum += wOf(k);
+    if (!(wsum > 0)) return null;
+    let d = 0;
+    for (const [k, v] of pkgVals.draft) d += wOf(k) * ((v ?? 0) - (pkgVals.saved.get(k) ?? 0));
+    return { saved: pkgAll, draft: pkgAll + (d / wsum) * 100 };
+  }, [otherPkg, pkgAll, pkgVals, uni, bp, pkg.group, weights]);
   const otherPending = !bp && pkgFloors(pkg.group).some((x) => x.key !== pkg.key);
-  return { otherPct, pkgPct, otherPending, pkgAll };
+  return { otherPct, pkgPct, otherPending, pkgAll, pkgWide };
 }

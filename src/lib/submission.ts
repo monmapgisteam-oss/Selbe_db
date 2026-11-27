@@ -468,8 +468,9 @@ export const submittersOf = (p: Pick<SubmissionPayload, 'user' | 'users'>): stri
  */
 const FILL_MIN = Date.UTC(2020, 0, 1);
 const FILL_SLACK = 2 * 86_400_000;
+/* 2026-11-27 (аудит): серверийн цаг (`serverNow`, `fill/util.nowFillMs`-тэй нэг) — төхөөрөмжийн цаг хоцорсон бол зөв илгээлт хаягддаг байв */
 const isFillMs = (x: unknown): x is number =>
-  isFin(x) && Number.isInteger(x) && x >= FILL_MIN && x <= Date.now() + FILL_SLACK;
+  isFin(x) && Number.isInteger(x) && x >= FILL_MIN && x <= serverNow() + FILL_SLACK;
 
 /**
  * Түүхий JSON → шалгагдсан `SubmissionPayload`; эвдэрсэн бол `null`.

@@ -99,7 +99,7 @@ async function save(draft, isNew = false) {
   const { steps, res } = await save(draft);
   ok(res.every((r) => r.ok), '§3 бүх алхам');
   ok(steps.some((s) => s.kind === 'caps'), '§3 эрхийн алхам');
-  ok(['finEdit', 'ipcApprove', 'cfSwitch', 'ipcCreate'].every((c) => CAPS.capsOf(u).includes(c)), `§3 санхүүгийн эрх (${CAPS.capsOf(u)})`);
+  ok(['finEdit', 'ipcApprove', 'ttbSwitch', 'ipcCreate'].every((c) => CAPS.capsOf(u).includes(c)), `§3 санхүүгийн эрх (${CAPS.capsOf(u)})`);
   ok(CAPS.capsOf(u).includes('zovshoorol'), '§3 «нэмсэн» эрх хэвээр (decompile)');
   /* IPC үүсгэхийг хасъя — «хассан» ялгаа */
   draft = N.personRow(u, live(u)).person;

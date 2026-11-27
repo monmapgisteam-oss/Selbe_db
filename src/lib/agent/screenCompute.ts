@@ -75,7 +75,7 @@ export async function financeSummary(scope: AgentScope): Promise<FinanceSummary>
   if (!m?.contract) return out;
   /* 2026-11-23 (аудит №3): ТТБ-ийн нийт ТЭЗҮ/зураг төслийн гэрээг агуулдаг тул тэдгээрийн олголт тоологчид орно (`withProjectContract`) */
   const { paidShareOf, withProjectContract } = await import('@/lib/paidShare');
-  const sh = withProjectContract(paidShareOf(fin.contracts, fin.pays), m.contract);
+  const sh = withProjectContract(paidShareOf(fin.contracts, fin.pays), m.contract, m.landComp);
   const known = sh.paidKnown > 0;
   return {
     ...out, contracted: m.contract,
@@ -103,57 +103,95 @@ export type PkgPlanDeps<M extends MonthLike = MonthLike> = {
    * (`MAP_PKG_ALIAS`, жиш. БАГЦ7 = БАГЦ71) — давхар мөр гаргахгүй. Өгөөгүй бол түлхүүрээрээ (хуучин зан).
    */
   labelOf?: (key: string) => string | null;
+  /**
+   * 2026-11-27 (аудит №20): «Багцын гүйцэтгэл» — «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгатай мөрөөс (`loadPlanPkgProgress`),
+   * «Багцын явц» (PkgProg) жагсаалтын ЯГ тэр эх. `null` = эх уншигдсангүй → `actual`/`planned`/`gap`/`level` нь `null`.
+   */
+  plan: ReadonlyMap<string, { S: number | null; P: number | null }> | null;
 };
 
 export type PkgPlanRow = {
   bagts: string;
-  /** Бодит биет гүйцэтгэл, % (0–100) — `physLatest`; хэмжилтгүй бол `null` (0 БИШ) */
+  /**
+   * «Багцын гүйцэтгэл», % (0–100) — PkgProg-ийн S (`planPkgProgress`); багц мөргүй/хэмжилтгүй бол 0 (порталын дүрэм).
+   * `null` = «Төсөл төлөвлөгөө биелэлт» уншигдсангүй.
+   */
   actual: number | null;
-  /** Хэмжилтийн өдрийн төлөвлөгөөт гүйцэтгэл, % — `lagOf().planned` (эсвэл ТУХ-ийн fallback) */
+  /** Төлөвлөсөн гүйцэтгэл, % — PkgProg-ийн P (ижил эх); `null` = уншигдсангүй */
   planned: number | null;
-  /** Хоцрогдол, нэгж = төлөвлөгөө − бодит (`lagOf().gap`); эерэг = хоцорсон */
+  /** Хоцрогдол, нэгж = `planned` − `actual` (PkgProg `pkgGapOf`); эерэг = хоцорсон; `null` = уншигдсангүй */
   gap: number | null;
-  /** Хэмжилтийн сар «YYYY-MM» */
-  month: string | null;
-  /** PkgProg-ийн alert-ийн түвшин (`lagLevel`) — хуваарь < 95% хамарсан бол `null` (дүгнэхгүй) */
+  /** PkgProg-ийн alert-ийн түвшин — `lagLevel(gap)` (≥10 улаан, 5–10 шар) */
   level: 'red' | 'yellow' | null;
+  /** ТУСДАА хэмжүүр: бөглөх хуудасны сүүлийн БИЕТ гүйцэтгэл, % — `physLatest`; хэмжилтгүй бол `null` */
+  physActual: number | null;
+  /** ТУСДАА хэмжүүр: хэмжилтийн өдрийн ХУВААРИЙН МУРУЙН төлөвлөгөө, % — `lagOf().planned` (эсвэл ТУХ-ийн fallback) */
+  schedPlanned: number | null;
+  /** ТУСДАА хэмжүүр: муруйн хоцрогдол = `schedPlanned` − `physActual` (`lagOf().gap`); хуваарь < 95% хамарсан бол `null` */
+  schedGap: number | null;
+  /** Биет хэмжилтийн сар «YYYY-MM» */
+  month: string | null;
+  /** Хуваарийн муруйн хамралт, % */
   coverage: number | null;
 };
 
-/** ЦЭВЭР цөм — багц бүрийн сарын цэгүүдээс (`pkgMonthsMap`) дэлгэцийн функцээр */
+/**
+ * ЦЭВЭР цөм — багц бүрийн «Багцын гүйцэтгэл» (`deps.plan`, PkgProg-тэй ижил) ба сарын цэгүүдээс (`pkgMonthsMap`)
+ * биет/муруйн тусдаа хэмжүүр. Мөрүүд = сарын цэгтэй багц ∪ «Багцын гүйцэтгэл»-тэй багц.
+ */
 export function pkgPlanOf<M extends MonthLike>(
   monthsBy: ReadonlyMap<string, M[]>,
   deps: PkgPlanDeps<M>,
 ): PkgPlanRow[] {
   const out: PkgPlanRow[] = [];
-  monthsBy.forEach((months, key) => {
+  const plan = deps.plan;
+  const keys = new Set<string>([...monthsBy.keys(), ...(plan ? plan.keys() : [])]);
+  keys.forEach((key) => {
     const label = deps.labelOf ? deps.labelOf(key) : key;
     if (label == null) return;
-    const lag = deps.lagOf(months);
-    const actual = deps.physLatest(months);
+    const months = monthsBy.get(key);
+    const lag = months ? deps.lagOf(months) : null;
+    const physActual = months ? deps.physLatest(months) : null;
     const housing = deps.isHousing?.(key) ?? false;
-    const planned = lag?.planned ?? (housing ? deps.planAt?.(key, months) ?? null : null);
-    const progress = housing ? actual : null;
+    const schedPlanned = lag?.planned ?? (months && housing ? deps.planAt?.(key, months) ?? null : null);
+    const progress = housing ? physActual : null;
     const coverage = lag?.coverage ?? null;
     /* хамралт ӨГӨГДӨӨГҮЙ (`undefined` — хуучин/тестийн deps) бол өмнөх зан; ӨГӨГДСӨН ба < 95 бол л дүгнэхгүй */
     const judged = !lag || lag.coverage === undefined || coverageOk(coverage);
-    const gap = !judged ? null : lag ? lag.gap : planned != null && progress != null ? planned - progress : null;
-    if (actual == null && planned == null) return; // хуваарьгүй · хэмжилтгүй — «мэдээлэлгүй», мөр БИШ
+    const schedGap = !judged ? null : lag ? lag.gap : schedPlanned != null && progress != null ? schedPlanned - progress : null;
+    /* «Багцын гүйцэтгэл» уншигдсан бол багц БҮР мөр (PkgProg шиг, мөргүй = 0%); уншигдаагүй бол зөвхөн биет/муруйн тоотой нь */
+    if (!plan && physActual == null && schedPlanned == null) return;
+    const v = plan?.get(key);
+    const actual = plan ? v?.S ?? 0 : null;
+    const planned = plan ? v?.P ?? 0 : null;
+    const gap = actual != null && planned != null ? planned - actual : null; // = PkgProg `pkgGapOf`
     out.push({
       bagts: label,
       actual,
       planned,
       gap,
-      month: lag?.month ?? null,
       level: gap == null ? null : deps.lagLevel(gap),
+      physActual,
+      schedPlanned,
+      schedGap,
+      month: lag?.month ?? null,
       coverage,
     });
   });
-  /* Хамгийн их хоцорсон эхэнд; тодорхойгүй хоцрогдол төгсгөлд */
-  return out.sort((a, b) => (b.gap ?? -Infinity) - (a.gap ?? -Infinity) || a.bagts.localeCompare(b.bagts));
+  /* Хамгийн их хоцорсон эхэнд (PkgProg-ийн дараалал); тодорхойгүй хоцрогдол төгсгөлд */
+  return out.sort((a, b) => (b.gap ?? -Infinity) - (a.gap ?? -Infinity)
+    || (b.schedGap ?? -Infinity) - (a.schedGap ?? -Infinity)
+    || a.bagts.localeCompare(b.bagts));
 }
 
-export type PkgPlan = { rows: PkgPlanRow[]; unknown: number; note: string };
+export type PkgPlan = {
+  rows: PkgPlanRow[];
+  /** `gap: null` мөрийн тоо — «Төсөл төлөвлөгөө биелэлт» уншигдаагүй үед бүх мөр */
+  unknown: number;
+  /** «Багцын гүйцэтгэл»-ийн эх («Төсөл төлөвлөгөө биелэлт») уншигдсангүй — `actual`/`planned`/`gap` бүгд `null` */
+  planUnread: boolean;
+  note: string;
+};
 
 /** Агентын хэрэгсэл — PkgProg/ТУХ-ийн ачаалагчаар */
 export async function pkgPlan(scope: AgentScope): Promise<PkgPlan> {
@@ -167,8 +205,19 @@ export async function pkgPlan(scope: AgentScope): Promise<PkgPlan> {
     import('@/lib/format'),
     import('@/lib/services'),
   ]);
-  const [fin, pc] = await Promise.all([F.loadFinData(), PP.loadPlanCurveCached().catch(() => null)]);
+  /* 2026-11-27 (аудит №20): «Багцын явц»-ийн жагсаалттай НЭГ эх — «Багцын гүйцэтгэл» (`loadPlanPkgProgress`). Эх унасан үед
+     (`plan.failed`) татгалзана → «уншигдсангүй» (`null`), 0% мэт буцаахгүй */
+  const loadPlan = import('@/lib/projectPlanInputs').then((m) => m.loadPlanPkgProgress());
+  const [fin, pc, plan] = await Promise.all([
+    F.loadFinData(),
+    PP.loadPlanCurveCached().catch(() => null),
+    loadPlan.catch((e: unknown) => {
+      console.warn('[agent] pkg_plan: «Төсөл төлөвлөгөө биелэлт» уншигдсангүй', e);
+      return null;
+    }),
+  ]);
   const monthsBy = F.pkgMonthsMap(fin);
+  const keys = new Set<string>([...monthsBy.keys(), ...(plan ? plan.keys() : [])]);
   /* Гэрээний мөрийн багцын нэр (canonPkg) — alias-аар хуулсан түлхүүр энд байхгүй тул алгасагдана */
   const C = SV.CASHFLOW_NEW.fields;
   const nameOf = new Map<string, string>();
@@ -181,6 +230,7 @@ export async function pkgPlan(scope: AgentScope): Promise<PkgPlan> {
   const today = FMT.dayKey(Date.now());
   const nowYm = today.slice(0, 7);
   const rows = pkgPlanOf(monthsBy, {
+    plan,
     lagOf: F.lagOf,
     physLatest: F.physLatest,
     lagLevel: F.lagLevel,
@@ -191,8 +241,9 @@ export async function pkgPlan(scope: AgentScope): Promise<PkgPlan> {
       const asTarget = Object.values(MAP_PKG_ALIAS).find((a) => a.key === key);
       if (asTarget) return asTarget.label;
       const asSrc = MAP_PKG_ALIAS[key];
-      if (asSrc && monthsBy.has(asSrc.key)) return null;
-      return nameOf.get(key) ?? null;
+      if (asSrc && keys.has(asSrc.key)) return null;
+      /* сарын цэггүй, зөвхөн «Багцын гүйцэтгэл»-тэй багц (гэрээний мөргүй) — түлхүүрээрээ (жагсаалтаас ГОЛОХГҮЙ) */
+      return nameOf.get(key) ?? (monthsBy.has(key) ? null : key);
     },
     planAt: (key, months) => {
       const series = pc?.byBagts.get(key);
@@ -202,8 +253,12 @@ export async function pkgPlan(scope: AgentScope): Promise<PkgPlan> {
   return {
     rows,
     unknown: rows.filter((r) => r.gap == null).length,
+    planUnread: plan == null,
     note:
-      tr('«Багцын явц» (PkgProg) ба ТУХ-ийн ЯГ тэр функцээр: `actual` = сүүлийн биет гүйцэтгэл, `planned` = ХЭМЖИЛТИЙН өдрийн хуваарийн төлөвлөгөө, `gap` = төлөвлөгөө − бодит (нэгжээр; эерэг = хоцорсон), `level` = дэлгэцийн анхааруулгын түвшин. ') +
-      tr('`gap: null` нь хоцрогдол ТОДОРХОЙГҮЙ (хуваарь/хэмжилт алга) — «хоцроогүй» гэж БҮҮ хэл.'),
+      tr('«Багцын явц» (PkgProg) жагсаалтын ЯГ тэр тоо: `actual` = «Багцын гүйцэтгэл» (S, «Төсөл төлөвлөгөө биелэлт»-ийн 2-р унтраалгатай бүх мөр — ТЭЗҮ, зураг, газар, зөвшөөрөл, сонгон, барилга угсралт), `planned` = ижил эхийн төлөвлөсөн гүйцэтгэл (P), `gap` = `planned` − `actual` (нэгжээр; эерэг = хоцорсон), `level` = дэлгэцийн анхааруулгын түвшин. Хэмжилтгүй багц 0%. ') +
+      tr('`physActual` (бөглөх хуудасны биет гүйцэтгэл), `schedPlanned` (хуваарийн муруйн төлөвлөгөө), `schedGap` нь ТУСДАА хэмжүүр — «Багцын явц»-ийн тоо гэж БҮҮ хэл. ') +
+      (plan == null
+        ? tr('«Төсөл төлөвлөгөө биелэлт» уншигдсангүй — `actual`/`planned`/`gap` ТОДОРХОЙГҮЙ («0%» эсвэл «хоцроогүй» гэж БҮҮ хэл).')
+        : tr('`gap: null` нь хоцрогдол ТОДОРХОЙГҮЙ — «хоцроогүй» гэж БҮҮ хэл.')),
   };
 }

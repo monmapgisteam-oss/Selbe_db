@@ -8,7 +8,7 @@ import { hasCap, type CapKey } from './caps';
 import { currentUser } from './who';
 import { invalidate } from './dataBus';
 import { CASHFLOW_NEW, canonPkg, pkgKeyOf } from './services';
-import { isAddedWork, isSplitParent, tenderLockWhy, ubToday, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
+import { STORED_WEIGHT, isAddedWork, isSplitParent, tenderLockWhy, ubToday, type PhaseKind, type PlanNode, type PlanStoredRow, type PlanTree } from './projectPlan';
 
 const F = CASHFLOW_NEW.fields;
 const DAY = 86_400_000;
@@ -158,8 +158,9 @@ export function newRowAttrs(tree: PlanTree, parent: PlanNode, items: readonly Ne
     [F.phase]: r.uy_shat ?? null,
     [F.pkg]: canonPkg(r.bagts ?? parent.pkg ?? null),
     [F.detail]: x.name.trim(),
-    /* Хадгалсан жин 0–1 (`projectPlan.STORED_WEIGHT`) */
-    [F.wSection]: group ? (x.weight ?? 0) / 100 : 0,
+    /* Хадгалсан жин 0–1 (`projectPlan.STORED_WEIGHT`). 2026-11-27: жин оруулаагүй (байгаа мөрүүдийн дунд) мөр — null (тогтмол
+       0 биш; ах дүүгийн үлдэгдлийг дүрмээр хуваана). Урьд нь 0 бичдэг тул гараар тавьсан 0% жин болдог байв */
+    [F.wSection]: group && x.weight != null ? x.weight / 100 : null,
     [F.progressPct]: x.pct,
   }));
 }
@@ -253,11 +254,40 @@ export function saveInTime(oid: number, v: 0 | 1) {
 }
 
 /**
- * ҮЕ ШАТНЫ ТОГТМОЛ ЖИН (2026-11-17, хэрэглэгч) — үе шатын мөрийн «Хэсэгт эзлэх»-ийг хувиар (0–100) хадгална; `null` =
- * тогтмол жингүй (үлдэгдлийг төсвөөрөө хуваана). Тооцоо — `projectPlan.budgetShare`.
+ * ТОГТМОЛ ЖИНГИЙН НИЙЛБЭР (2026-11-27, цэвэр) — `pct` (0–100) тавихад ах дүүгийн гараар тавьсан жингийн нийлбэр 100%-аас
+ * хэтрэх бол шалтгаан, эс бөгөөс null. Ах дүү — `projectPlan.budgetShare`-ийн тогтмол жингийн дүрмээр (тооцоонд орох, үе шатнаас
+ * доош бүртгэлийн мөр биш). Нийлбэр аль хэдийн 100%-аас их бол бууруулахыг зөвшөөрнө (зөвхөн өсгөхийг хориглоно).
+ * @param skipped 2026-11-27 (аудит): тооцооноос хасагдсан мөр (`computePlan`-ийн `skip` — бөглөх хуудасгүй бэлтгэл ажил,
+ *   `noProgress`) — `budgetShare`-ийн `counted`-тэй ижил, хадгалсан жин нь нийлбэрт орохгүй. Урьд нь тоологдож зөв жинг
+ *   татгалздаг байв (60% хасагдсан + 40% → 80% тавихад «140%»). Дуудагч `PlanResult.values.get(c)?.skip`-ийг өгнө.
  */
-export function savePhaseWeight(oid: number, pct: number | null) {
+export function phaseWeightWhy(n: PlanNode, pct: number | null, skipped?: (c: PlanNode) => boolean): string | null {
+  const p = n.parent;
+  if (pct == null || !p || skipped?.(n)) return null;
+  const top = p.parent == null;
+  const w = (c: PlanNode): number | null => {
+    if (c.outside || skipped?.(c) || (c.row?.registry && !top)) return null;
+    const v = c.row?.heseg_ezleh_huvi;
+    return typeof v === 'number' && Number.isFinite(v) ? v / STORED_WEIGHT : null;
+  };
+  let others = 0;
+  for (const c of p.children) if (c !== n) others += w(c) ?? 0;
+  const next = others + pct / 100;
+  const was = others + (w(n) ?? 0);
+  if (next <= 1 + 1e-9 || next <= was + 1e-9) return null;
+  const r2 = (x: number) => (Math.round(x * 1e4) / 100).toFixed(2);
+  return tr('Ах дүү мөрүүдийн гараар тавьсан жингийн нийлбэр 100%-аас хэтэрнэ ({0}%) — энэ мөрд хамгийн ихдээ {1}% тавина.', r2(next), r2(Math.max(0, 1 - others)));
+}
+
+/**
+ * ҮЕ ШАТНЫ ТОГТМОЛ ЖИН (2026-11-17, хэрэглэгч) — үе шатын мөрийн «Хэсэгт эзлэх»-ийг хувиар (0–100) хадгална; `null` =
+ * тогтмол жингүй (үлдэгдлийг төсвөөрөө хуваана). Тооцоо — `projectPlan.budgetShare`. `n` өгвөл ах дүүгийн тогтмол жингийн
+ * нийлбэр 100%-аас хэтрэхийг хориглоно (`phaseWeightWhy`, 2026-11-27); `skipped` — тооцооноос хасагдсан ах дүү.
+ */
+export function savePhaseWeight(oid: number, pct: number | null, n?: PlanNode, skipped?: (c: PlanNode) => boolean) {
   if (pct != null && !(pct >= 0 && pct <= 100)) throw new Error(tr('Жин 0–100 хооронд байх ёстой'));
+  const why = n ? phaseWeightWhy(n, pct, skipped) : null;
+  if (why) throw new Error(why);
   /* 2026-11-24: жин засах — «ТТБ-ийн 4 унтраалга» эрх (эсвэл санхүү засах) */
   return write({ updates: [{ [CASHFLOW_NEW.oid]: oid, [F.wSection]: pct == null ? null : pct / 100 }] }, switchCap());
 }

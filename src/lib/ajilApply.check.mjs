@@ -118,4 +118,24 @@ console.log('✅ хариу алдагдсан — огноогүй багцад
 }
 console.log('✅ эцэггүй нэмэлт мөр таньна (missingParents)');
 
+/* ── 2026-11-27 (аудит №21): «ажил нэмэх» батлалтын жаазны төлөвлөгөөт хувь — 2000–2100-гийн гаднах огноо → бүтэн сараар
+   (гүйцэтгэлийн батлалт `hyanaltStore` · бөглөх хуудас `FillNew`-тэй нэг дүрэм). ── */
+{
+  const { readFileSync } = await import('node:fs');
+  const L = readFileSync(new URL('./ajilApply.ts', import.meta.url), 'utf8');
+  const want = 'planPctFromMonths(m, asOf, saneDate(s) != null && saneDate(e) != null ? { start: s, end: e } : null)';
+  assert.ok(L.includes(want), 'ajilApply: saneDate шүүлт алга');
+  assert.ok(!L.includes('planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null })'), 'ajilApply: шүүлтгүй дуудлага үлдсэн');
+  const { planPctFromMonths } = await import('./huvaariObyem.ts');
+  const { saneDate } = await import('./projectPlan.ts');
+  const m = new Map([['2026-10', 10], ['2026-11', 10]]);
+  const asOf = Date.UTC(2026, 10, 15);
+  const s = Date.UTC(2026, 9, 1);
+  const e = Date.UTC(1899, 11, 30); // Excel-ийн 0 сериал
+  assert.equal(planPctFromMonths(m, asOf, { start: s, end: e }), null, 'шүүлтгүй — эхлэх > дуусах тул null (урьдын алдаа)');
+  const got = planPctFromMonths(m, asOf, saneDate(s) != null && saneDate(e) != null ? { start: s, end: e } : null);
+  assert.ok(got != null && Math.abs(got - 0.75) < 1e-9, `эвдэрсэн дуусах огноо → бүтэн сараар 0.75 (гарсан ${got})`);
+}
+console.log('✅ төлөвлөгөөт хувь — эвдэрсэн огноо бүтэн сараар (saneDate)');
+
 console.log('ajilApply.check: OK');

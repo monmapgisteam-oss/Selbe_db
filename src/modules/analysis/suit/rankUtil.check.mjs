@@ -38,6 +38,17 @@ assert.deepEqual(competitionRanks([null, NaN]), [null, null]);
   assert.ok(csv[1].startsWith('1,A-1,'), csv[1]);
   assert.ok(csv[2].startsWith('1,C-3,'), csv[2]);
   assert.ok(csv[3].startsWith(',B-2,'), `өгөгдөлгүй бүс байргүй: ${csv[3]}`);
+  /* 2026-11-27 (аудит №44): «Оноо» багана «Байр»-тай ижил нарийвчлалаар (бүхэл) — ижил байртай мөрүүд ижил оноотой;
+     нарийн утга (72.4 / 72.3) нь «Хот төлөвлөлтийн оноо» баганад хэвээр */
+  const cell = (line, i) => line.split(',')[i];
+  assert.equal(cell(csv[1], 3), '72', csv[1]);
+  assert.equal(cell(csv[2], 3), '72', csv[2]);
+  assert.equal(cell(csv[1], 4), '72.4', csv[1]);
+  assert.equal(cell(csv[2], 4), '72.3', csv[2]);
+  {
+    const two = zoneCsv([row('E-5', 80.4, 1, 1), row('F-6', 79.6, 1, 1), row('G-7', 79.4, 1, 1)], 'urban', ind, [ind]).split('\r\n');
+    assert.deepEqual(two.slice(1).map((l) => [cell(l, 0), cell(l, 3)]), [['1', '80'], ['1', '80'], ['3', '79']], 'байр ба оноо тохирно');
+  }
   /* ТҮҮХИЙ утга `rawActual`-аас (410), `raw` (400) биш */
   assert.ok(csv[1].includes(',410,'), csv[1]);
   /* null үзүүлэлт — хоосон нүд (0 БИШ) */

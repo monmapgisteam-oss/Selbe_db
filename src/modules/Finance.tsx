@@ -1759,7 +1759,7 @@ export function ProjectPlanTable({
                         setErr(null);
                         setMsg(null);
                         try {
-                          await savePhaseWeight(r.objectid as number, w);
+                          await savePhaseWeight(r.objectid as number, w, n, (c) => !!result.values.get(c)?.skip);
                           setMsg(tr('Хадгаллаа: {0} · {1}', n.code, tr('Хэсэгт эзлэх')));
                           return true;
                         } catch (e) {

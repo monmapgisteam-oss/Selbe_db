@@ -372,3 +372,42 @@ console.log('hoSync.compute: ok');
   assert.deepEqual(dupAddsToDelete(rows, [50, 51]), [], 'хоёулаа минийх — устгахгүй');
   console.log('✅ HO синк: зэрэг нэмсэн давхар толгой мөрөөс нэг л үлдэнэ');
 }
+
+/* 2026-11-27: «Зургийн бүртгэл»-ийн «Ажлын үнэ» арилсан / баримт устсан — бүртгэлээс бичсэн олгосон дүн хоосорно */
+{
+  const d = (o) => ({ objectid: 0, ho_dungiin_tailbar: 'Гэрээлсэн дүн', uy_shat: 'Ажлын зураг төсөл', bagts: 'Багц 2', ...o });
+  const other = d({ objectid: 42, ajil_uilchilgee: 'Өөр', geree_dun: 50 });
+  /* «Өөр» баримт өөрийн гэрээтэй (нэрээр эзэмшинэ) — ганц үлдсэн мөрийг устсан баримтын гэрээ авахгүй */
+  const hoO = { objectid: 2, murun_id: 'ХО-0601', geree_kod: 'Багц 2 · Ажлын зураг төсөл · oid:42', bagts: 'Багц 2', ajliin_turul: 'ТЭЗҮ,Судалгаа', tosol_ner: 'Өөр', ttb_oid: 42, gereet_tosov_niit: 50, bagts_kod: '2', dun: 50, ipc_tuluv: 'Олгосон' };
+  const sync = (h, c) => planHoSync([...h, hoO], c);
+  const hoR = { objectid: 1, murun_id: 'ХО-0600', geree_kod: 'Багц 2 · Ажлын зураг төсөл · oid:41', bagts: 'Багц 2', ajliin_turul: 'ТЭЗҮ,Судалгаа', tosol_ner: 'Архитектур', ttb_oid: 41, dun: 100, ipc_tuluv: 'Олгосон', guilgee_ognoo: '2026-05-01' };
+  const live = sync([hoR], [d({ objectid: 41, ajil_uilchilgee: 'Архитектур', geree_dun: 100 }), other]);
+  assert.ok(!live.updates.some((u) => 'dun' in u), 'үнэтэй үед хэвээр');
+  /* баримт устсан (эсвэл үнэгүй тул 182-оос уншигдаагүй) */
+  const gone = sync([hoR], [other]);
+  assert.deepEqual(gone.updates, [{ objectid: 1, dun: null, ipc_tuluv: null }], 'олгосон дүн ба «Олгосон» хоосорно, огноо хэвээр');
+  /* үнэгүй бүртгэлийн мөр уншигдсан (тэмдэглэгээгүй) */
+  assert.deepEqual(sync([hoR], [d({ objectid: 41, ajil_uilchilgee: 'Архитектур', ho_dungiin_tailbar: null, geree_dun: null }), other]).updates,
+    [{ objectid: 1, dun: null, ipc_tuluv: null }]);
+  /* тэмдэглэгээ үлдсэн ч үнэгүй — таарсан мөрөөс ч хоосорно */
+  const unpriced = sync([hoR], [d({ objectid: 41, ajil_uilchilgee: 'Архитектур', geree_dun: null }), other]);
+  assert.deepEqual(unpriced.updates.filter((u) => 'dun' in u).map((u) => [u.objectid, u.dun, u.ipc_tuluv]), [[1, null, null]]);
+  /* бусад төлбөрийг хөндөхгүй */
+  assert.deepEqual(sync([{ ...hoR, ipc_dugaar: 1 }], [other]).updates, [], 'акт үүсгэсэн гэрээ');
+  assert.deepEqual(sync([{ ...hoR, ttb_oid: null, geree_kod: 'Багц 2 · Ажлын зураг төсөл' }], [other]).updates, [], 'бүртгэлийн холбоосгүй хуучин гэрээ');
+  assert.deepEqual(sync([hoR], [d({ objectid: 41, ajil_uilchilgee: 'Архитектур', geree_dun: 100, geree_dugaar: 'З/1' }), other]).updates.filter((u) => 'dun' in u), [], 'гэрээний дугаартай болсон мөр — актаар явна');
+  assert.deepEqual(sync([hoR], []).updates, [], '182 уншигдаагүй (хоосон) бол хөндөхгүй');
+  assert.deepEqual(sync([{ ...hoR, dun: null, ipc_tuluv: null }], [other]).updates, [], 'аль хэдийн хоосон — засваргүй');
+  console.log('✅ HO синк: бүртгэлийн үнэ арилсан/баримт устсан — олгосон дүн хоосорно');
+}
+
+/* 2026-11-27: 185 → 182 олгосон дүн 2 оронтой бутархайн нарийвчлалаар (0.5 ₮-өөс бага зөрүүг алгасахгүй) */
+{
+  const cfP = [cf({ objectid: 70, bagts: 'Багц-7', geree_dugaar: 'Г-7', geree_dun: 1000, olgoson_dun: 100 })];
+  const hoP = [{ objectid: 1, murun_id: 'ХО-0700', geree_kod: 'Багц-7', bagts: 'Багц-7', ajliin_turul: 'Барилга угсралт', geree_dugaar: 'Г-7', dun: 100.3 }];
+  assert.deepEqual(planPaidSync(hoP, cfP).updates, [{ objectid: 70, olgoson_dun: 100.3 }], '0.30 ₮-ийн зөрүү бичигдэнэ');
+  assert.deepEqual(planPaidSync([{ ...hoP[0], dun: 100.004 }], cfP).updates, [], '0.005-аас бага зөрүү — засваргүй');
+  const three = [0.1, 0.2, 99.7].map((dun, i) => ({ ...hoP[0], objectid: i + 1, dun }));
+  assert.deepEqual(planPaidSync(three, cfP).updates, [], 'хөвөгч нийлбэр (0.1 + 0.2 + 99.7) 100 гэж бичигдэнэ');
+  console.log('✅ HO синк: олгосон дүн 2 оронтой');
+}

@@ -58,6 +58,7 @@ import {
   type ViewKey,
 } from '@/lib/services';
 import { readParam, writeParams, foreignViewParams } from '@/lib/urlState';
+import { canonicalViewKey } from '@/lib/permissions';
 import { planNavBusy } from '@/lib/huvaariBatlah';
 import { finNavDirty } from '@/lib/finEdit';
 import { navDirtyLabels } from '@/lib/navGuard';
@@ -291,7 +292,9 @@ function Booting({ navScope }: { navScope: 'all' | ViewKey[] }) {
  * URL-аас эхлэх төлөвийг уншина (хуваалцсан холбоос, F5).
  */
 const initialView = (): ViewKey => {
-  const v = readParam('v');
+  /* 2026-11-27: хуучин холбоос (`?v=bagtsHamaaral` г.м.) залгамжлагч харагдац руу */
+  const raw = readParam('v');
+  const v = raw ? canonicalViewKey(raw) : raw;
   return v && Object.hasOwn(VIEW_BY_KEY, v) ? (v as ViewKey) : DEFAULT_VIEW;
 };
 
@@ -300,7 +303,8 @@ const initialView = (): ViewKey => {
  * unmount хийнэ (popstate-ийн «порталаас гарах» салаа).
  */
 const inPortalUrl = (): boolean => {
-  const v = readParam('v');
+  const raw = readParam('v');
+  const v = raw ? canonicalViewKey(raw) : raw;
   return readParam('all') === '1' || !!readParam('g') || (!!v && Object.hasOwn(VIEW_BY_KEY, v));
 };
 

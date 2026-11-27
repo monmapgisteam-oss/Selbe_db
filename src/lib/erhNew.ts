@@ -20,7 +20,8 @@ import { STAGE_ORDER, type Stage } from './hyanalt';
 import { STAGE_LABEL } from './hyanaltGroup';
 import { PLAIN_CAPS, ROLE_CAPS, SCOPED_SYSTEMS } from './aclRoleCaps';
 import { VIEWS, bagtsKey, type Role, type ViewKey } from './services';
-import { WORKFLOW_VIEWS, type CapKey } from './caps';
+import { CAP_HOST_VIEW, WORKFLOW_VIEWS, type CapKey } from './caps';
+import { autoViewsFor } from './permissions';
 import { typeLabel } from './roleTypes';
 import { t as tr } from './i18nCore';
 import {
@@ -339,11 +340,40 @@ export const roleChoices = (): { sys: Sys; role: string; label: string }[] =>
 
 /** «Хяналтын хугацаа» нь «Гүйцэтгэл»-ийг хардаг хүнд автоматаар нээгдэнэ (`permissions.resolveAccess`) */
 export const AUTO_VIEW: ViewKey = 'hyanaltHugatsaa';
-export const autoHugatsaa = (r: Pick<Rights, 'flow' | 'role'>): boolean => !!r.flow || r.role === 'zahiral';
+/** «Төлбөрийн акт (IPC)» нь «Санхүүжилт» нээлттэй (шууд эсвэл засах эрхээр) хүнд автоматаар нээгдэнэ (`permissions.resolveAccess`) */
+export const AUTO_VIEW_FIN: ViewKey = 'ipc';
 
-/** Нэмж болох харагдацууд — урсгалын бус, одоо байхгүй; «Гүйцэтгэл»-тэй хүнд «Хяналтын хугацаа» ОРОХГҮЙ (автоматаар) */
-export const viewChoices = (r: Rights): ViewKey[] =>
-  VIEWS.map((v) => v.key).filter((k) => !WORKFLOW_VIEWS.includes(k) && !r.views.includes(k) && !(k === AUTO_VIEW && autoHugatsaa(r)));
+type AutoIn = Pick<Rights, 'flow' | 'role' | 'views' | 'caps' | 'acl'>;
+
+/**
+ * Автомат нэмэлтээс ӨМНӨ ажиллах үед нээлттэй харагдацууд (`permissions.resolveAccess`-ийн адил): шууд харагдац · эрхийн гэр
+ * харагдац (`CAP_HOST_VIEW` — энгийн эрх ба багцын үүргээс гарах эрх) · урсгалын шат / «Ерөнхий захирал» → «Гүйцэтгэл».
+ * 2026-11-27: урьд зөвхөн шат / захирлыг тооцдог байсан — «Инженерийн обьём»-ын засагч · батлагч ч «Гүйцэтгэл»-ийг нээнэ.
+ */
+function openViewsOf(r: AutoIn): ViewKey[] {
+  const out = new Set<ViewKey>(r.views);
+  const caps: CapKey[] = [...r.caps];
+  for (const sys of SCOPED_SYSTEMS) {
+    const map = ROLE_CAPS[sys] as Readonly<Record<string, CapKey>>;
+    for (const g of r.acl[sys] ?? []) if (map[g.role]) caps.push(map[g.role]);
+  }
+  for (const c of caps) for (const v of CAP_HOST_VIEW[c] ?? []) out.add(v);
+  if (r.flow || r.role === 'zahiral') out.add('guitsetgel');
+  return [...out];
+}
+
+/** Ажиллах үед автоматаар нэмэгдэх харагдацууд — дүрэм НЭГ газар (`permissions.autoViewsFor`) */
+export const autoViewsOfRights = (r: AutoIn): ViewKey[] => autoViewsFor(openViewsOf(r));
+
+export const autoHugatsaa = (r: AutoIn): boolean => openViewsOf(r).includes('guitsetgel');
+/** «Төлбөрийн акт (IPC)» автоматаар нээлттэй юу — «Санхүүжилт» нээлттэй, IPC нь өөрөөр нээгдээгүй */
+export const autoIpc = (r: AutoIn): boolean => autoViewsOfRights(r).includes(AUTO_VIEW_FIN);
+
+/** Нэмж болох харагдацууд — урсгалын бус, одоо байхгүй; автоматаар нээгддэг нь («Хяналтын хугацаа» · «Төлбөрийн акт (IPC)») ОРОХГҮЙ */
+export const viewChoices = (r: Rights): ViewKey[] => {
+  const auto = autoViewsOfRights(r);
+  return VIEWS.map((v) => v.key).filter((k) => !WORKFLOW_VIEWS.includes(k) && !r.views.includes(k) && !auto.includes(k));
+};
 
 export const viewTitle = (k: ViewKey): string => VIEWS.find((v) => v.key === k)?.title ?? k;
 

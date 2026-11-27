@@ -228,7 +228,7 @@ async function loadStaged(
   const sids = rowSids(ov.rows);
   /* ── САРЫН ЗАДАРГАА — бөглөх/архивлахтай ИЖИЛ томъёо ────────────────
    */
-  const { loadPkgPlan, planPctFromMonths } = await import('@/lib/huvaariObyem');
+  const [{ loadPkgPlan, planPctFromMonths }, { saneDate }] = await Promise.all([import('@/lib/huvaariObyem'), import('@/lib/projectPlan')]);
   let obPlan: Awaited<ReturnType<typeof loadPkgPlan>>['plan'] | null = null;
   try {
     obPlan = (await loadPkgPlan(pkg.key)).plan;
@@ -239,7 +239,10 @@ async function loadStaged(
     if (!obPlan || row.des == null || asOf == null) return null;
     const blok = sc.bld[b];
     const m = blok ? obPlan.get(row.des)?.get(blok) : undefined;
-    return m ? planPctFromMonths(m, asOf, { start: row.start[b] ?? null, end: row.end[b] ?? null }) : null;
+    /* 2026-11-27 (аудит №6): 2000–2100-гийн гаднах огноо → бүтэн сараар (`planProgress`/`projectPlanInputs.monthlyOf`-тэй нэг дүрэм) */
+    const s = row.start[b] ?? null;
+    const e = row.end[b] ?? null;
+    return m ? planPctFromMonths(m, asOf, saneDate(s) != null && saneDate(e) != null ? { start: s, end: e } : null) : null;
   }, "abs", sc.synthetic);
   /* ── ӨСӨЛТ (2026-11-11): илгээлтээс ӨМНӨХ хуудсыг ижил томьёогоор бодож «Б.» · «А.» мөрийн хувийг жишнэ ── */
   let gain: FillGainIn | null = null;

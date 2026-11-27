@@ -9,7 +9,7 @@
  *
  * Цэвэр функцууд нь Node шалгуурт (`habeaNotify.check.mjs`); `countHabeaNotify` нь цэсний тэмдэгт (`navBadges`).
  */
-import { ACTION_DONE, stageOf } from '@/lib/habeaStage';
+import { contractorOwes, stageOf } from '@/lib/habeaStage';
 
 /** Мэдэгдэлд хэрэгтэй хамгийн бага мөр (`HabeaAction.ActionRow`-ийн хэсэг) */
 export type NotifyRow = { oid: number; pkgK: string; status: number | null; d: number | null };
@@ -18,14 +18,15 @@ export type NotifyItem<R extends NotifyRow = NotifyRow> = { row: R; stage: numbe
 export type NotifySeen = Record<string, number>;
 
 /**
- * Хүрээний НЭЭЛТТЭЙ үл нийцлүүд шаттайгаа — дууссан (`ACTION_DONE`), огноогүй, ирээдүйн огноотой мөр орохгүй
- * (чартын `stageKey`-ийн дүрэм). Эрэмбэ: өндөр шат эхэнд, шат дотроо ХУУЧИН нь эхэнд (хамгийн яаралтай).
+ * Хүрээний НЭЭЛТТЭЙ үл нийцлүүд шаттайгаа — дууссан, огноогүй, ирээдүйн огноотой мөр орохгүй (чартын `stageKey`-ийн
+ * дүрэм). 2026-11-27: «Шалгуулах» (захиалагчийн хяналт хүлээж буй) ба төлөвгүй мөр гүйцэтгэгчид мэдэгдэхгүй
+ * (`contractorOwes`). Эрэмбэ: өндөр шат эхэнд, шат дотроо ХУУЧИН нь эхэнд (хамгийн яаралтай).
  */
 export function notifyItems<R extends NotifyRow>(rows: readonly R[], scope: readonly string[] | null, now: number): NotifyItem<R>[] {
   if (!scope?.length) return [];
   const out: NotifyItem<R>[] = [];
   for (const r of rows) {
-    if (!scope.includes(r.pkgK) || r.status === ACTION_DONE || r.d == null || r.d > now || !(r.oid > 0)) continue;
+    if (!scope.includes(r.pkgK) || !contractorOwes(r.status) || r.d == null || r.d > now || !(r.oid > 0)) continue;
     out.push({ row: r, stage: stageOf(r.d, now) });
   }
   return out.sort((a, b) => b.stage - a.stage || (a.row.d ?? 0) - (b.row.d ?? 0));

@@ -378,4 +378,44 @@ assert.notEqual(P.roleOf('test_dirty_user'), 'tolovlolt', 'offline устгал 
   P._markRemoteLoaded(false);
 }
 
+/* ── 13. 2026-11-27: хуучин «Багцын хамаарал» → «6 түвшний хуваарь» (засах эрхгүй) · IPC зөвхөн шууд «Санхүүжилт»-ээр ·
+      `cfSwitch` хасагдсан (хадгалсан мөрөөс чимээгүй хаягдана) ── */
+{
+  const CAPS = await import('./caps.ts');
+  const { cleanTpl } = await import('./roleTypes.ts');
+  P._markRemoteLoaded();
+  assert.equal(P.canonicalViewKey('bagtsHamaaral'), 'tuvshin6', '?v=bagtsHamaaral → tuvshin6');
+  assert.equal(P.canonicalViewKey('gdash'), 'gdash');
+  await P.setUser('legacy_hm', { views: ['gdash', 'bagtsHamaaral'], docs: false }, 'taniltsah');
+  const hv = P.resolveAccess('legacy_hm').views;
+  assert.ok(hv.includes('tuvshin6') && !hv.includes('bagtsHamaaral'), `хадгалсан bagtsHamaaral → tuvshin6 (${hv})`);
+  assert.ok(!CAPS.capsOf('legacy_hm').includes('hamaaral'), 'засах эрх (hamaaral) автоматаар олгогдохгүй');
+  assert.ok(cleanTpl('taniltsah', { on: ['view:bagtsHamaaral', 'view:gdash'] }).on.includes('view:tuvshin6'), 'загварын view:bagtsHamaaral → view:tuvshin6');
+  /* IPC: «Санхүүжилт» нээлттэй бол (шууд ЭСВЭЛ засах эрхийн гэр харагдацаар) IPC нэмэгдэнэ — 2026-11-23-ны ажиллах үеийн дүрэм хэвээр */
+  await P.setUser('fin_cap', { views: ['gdash'], docs: false }, 'taniltsah');
+  await P.setUser('fin_dir', { views: ['gdash', 'finance'], docs: false }, 'taniltsah');
+  for (const c of ['ttbSwitch', 'finEdit', 'finRow']) {
+    CAPS._syncRemoteCaps([{ user: 'fin_cap', caps: [c] }], true);
+    const fv = P.resolveAccess('fin_cap').views;
+    assert.ok(fv.includes('finance') && fv.includes('ipc'), `${c} эрхээр «Санхүүжилт» нээгдсэн → IPC ч нээгдэнэ (${fv})`);
+  }
+  CAPS._syncRemoteCaps([], true);
+  assert.ok(!P.resolveAccess('fin_cap').views.includes('ipc'), '«Санхүүжилт»-гүй хүнд IPC үгүй');
+  assert.ok(P.resolveAccess('fin_dir').views.includes('ipc'), 'шууд «Санхүүжилт» харагдацтай хүн IPC-г харна');
+  /* 2026-11-27: автомат харагдацын дүрэм нэг газар (`autoViewsFor`) — эрхийн самбарууд ч үүгээр бодно */
+  assert.deepEqual(P.autoViewsFor(['gdash', 'finance']), ['ipc'], '«Санхүүжилт» → IPC');
+  assert.deepEqual(P.autoViewsFor(['gdash']), [], '«Санхүүжилт»-гүй → IPC үгүй');
+  assert.deepEqual(P.autoViewsFor(['finance', 'ipc']), [], 'IPC аль хэдийн нээлттэй');
+  assert.deepEqual(P.autoViewsFor(['guitsetgel', 'finance']), ['hyanaltHugatsaa', 'ipc']);
+  assert.deepEqual(P.autoViewsFor(['guitsetgel', 'hyanaltHugatsaa']), []);
+  assert.deepEqual(P.AUTO_VIEW_SOURCE, { hyanaltHugatsaa: 'guitsetgel', ipc: 'finance' });
+  /* cfSwitch — хадгалсан мөрөөс чимээгүй хаягдана */
+  CAPS._syncRemoteCaps([{ user: 'cf_old', caps: ['cfSwitch', 'finEdit'] }], true);
+  assert.deepEqual(CAPS.capsOf('cf_old'), ['finEdit'], 'хадгалсан cfSwitch хаягдана');
+  assert.ok(!CAPS.CAPS.some((c) => c.key === 'cfSwitch') && !('cfSwitch' in CAPS.CAP_HOST_VIEW), 'cfSwitch эрх хасагдсан');
+  CAPS._syncRemoteCaps([], true);
+  for (const u of ['legacy_hm', 'fin_cap', 'fin_dir']) await P.clearOverride(u);
+  P._markRemoteLoaded(false);
+}
+
 console.log('permissions.check: ok — sanitize · admission · super халдашгүй · dirty-set · roleOf · cap→view · танигдахгүй үүрэг · урсгалтай харагдац хуваарилалтаар · систем түр хаах · super = хүснэгт · устгал = tombstone · «Буцаах»');

@@ -116,8 +116,9 @@ const same = (a: unknown, b: unknown): boolean => {
   if (b == null || b === '') return false;
   if (typeof a === 'number' || typeof b === 'number') {
     const x = Number(a), y = Number(b);
-    /* 2026-11-04: мөнгө ₮-ийн нарийвчлалаар (өмнөх харьцангуй хүлцэл 4.9 тэрбумд 4,921 ₮-ийн зөрүүг алгасдаг байв) */
-    return Number.isFinite(x) && Number.isFinite(y) && Math.abs(x - y) < 0.5;
+    /* 2026-11-04: мөнгө ₮-ийн нарийвчлалаар (өмнөх харьцангуй хүлцэл 4.9 тэрбумд 4,921 ₮-ийн зөрүүг алгасдаг байв).
+       2026-11-27 (засвар): мөнгө 2 оронтой бутархайтай — 0.5 ₮-ийн хүлцэл 0.30 ₮-ийн зөрүүг алгасдаг байв; 2 оронд бөөрөнхийлж харьцуулна */
+    return Number.isFinite(x) && Number.isFinite(y) && Math.round(x * 100) === Math.round(y * 100);
   }
   return txt(a) === txt(b);
 };
@@ -211,6 +212,29 @@ const paidFromRegister = (row: Row, ho?: Row): Row => {
   const at = ho && dayOnly(ho[HO_IPC.payFields.payDate]) ? null : dayOnly(row[CF.contractDate]) ?? dayOnly(row[CF.orderDate]);
   return { [HO_IPC.payFields.amount]: v, [HO_IPC.status.field]: HO_IPC.status.paid, ...(at != null ? { [HO_IPC.payFields.payDate]: at } : {}) };
 };
+
+/**
+ * БҮРТГЭЛЭЭС ИРСЭН ТӨЛБӨРИЙГ ЦЭВЭРЛЭХ (2026-11-27, засвар): «Зургийн бүртгэл»-ийн баримтын «Ажлын үнэ» арилсан эсвэл баримт
+ * устсан бол тэр зургийн гэрээний толгой мөрийн олгосон дүн (`dun`) ба «Олгосон» төлөв хоосорно — урьд нь мөр таарахгүй
+ * (эсвэл үнэгүй) болоход юу ч бичигддэггүй тул олгосон дүн үлддэг байв. Зөвхөн бүртгэлийн төлбөр: нэг мөртэй, акт үүсгээгүй
+ * (`noAct`) гэрээ — бусад төлбөрийг хөндөхгүй. Огноо (гараар бичсэн байж болно) хэвээр.
+ */
+const clearRegisterPaid = (ho: Row): Row => (
+  num(ho[HO_IPC.payFields.amount]) != null || txt(ho[HO_IPC.status.field]) === HO_IPC.status.paid
+    ? { [HO_IPC.payFields.amount]: null, [HO_IPC.status.field]: null }
+    : {}
+);
+
+/**
+ * Бүртгэлийн мөр олдоогүй зургийн гэрээ БҮРТГЭЛЭЭС үүссэн үү — хадгалсан «Төсөл төлөвлөгөө биелэлт»-ийн мөр (`ttb_oid`, эсвэл кодын
+ * `oid:N`) бүртгэлд алга (устсан / үнэгүй тул уншигдаагүй) эсвэл үнэгүй бүртгэлийн мөр. Холбоосгүй хуучин гэрээ — хөндөхгүй.
+ */
+function registerGone(ho: Row, cfRows: readonly Row[]): boolean {
+  const ref = num(ho[HC.planOid]) ?? num(/oid:(\d+)$/.exec(txt(ho[HC.code]))?.[1]);
+  if (ref == null) return false;
+  const row = cfRows.find((r) => Number(r[CASHFLOW_NEW.oid]) === ref);
+  return !row || (isRegisterRow(row) && !((num(row[CF.contractAmount]) ?? 0) > 0));
+}
 
 /**
  * HO-Д БАЙХГҮЙ ГЭРЭЭ (2026-11-04, хэрэглэгч): «Гэрээлсэн дүн» тэмдэгтэй, дүнтэй, ямар ч HO гэрээнд тохироогүй Cashflow мөр →
@@ -330,8 +354,10 @@ export function planPaidSync(hoRows: readonly Row[], cfRows: readonly Row[]): Pa
     if (isRegisterRow(r)) continue;
     const oid = Number(r[CASHFLOW_NEW.oid]);
     const u: Row = {};
-    const p = paid.get(oid) ?? null;
-    const a = adv.get(oid) ?? null;
+    /* 2026-11-27: хуваалтын хөвөгч үлдэгдэлгүй — 2 оронтой бутархайгаар бичнэ */
+    const r2 = (v: number | undefined): number | null => (v == null ? null : Math.round(v * 100) / 100);
+    const p = r2(paid.get(oid));
+    const a = r2(adv.get(oid));
     if (!same(r[CF.paid], p)) u[CF.paid] = p;
     if (!same(r[CF.advance], a)) u[CF.advance] = a;
     if (Object.keys(u).length) updates.push({ [CASHFLOW_NEW.oid]: oid, ...u });
@@ -423,11 +449,24 @@ export function planHoSync(hoRows: readonly Row[], cfRows: readonly Row[]): HoSy
     if (single.has(code)) {
       const row = single.get(code);
       if (contractCancelled(rows)) { if (row) cancelledUsed.push(Number(row[CASHFLOW_NEW.oid])); continue; }
-      if (!row) { unmatched.push(contractKeyLabel(code)); continue; }
+      const regOwned = rows.length === 1 && noAct(rows[0]);
+      if (!row) {
+        unmatched.push(contractKeyLabel(code));
+        /* 2026-11-27 (засвар): баримт устсан / «Ажлын үнэ» арилсан — бүртгэлээс бичсэн олгосон дүнг хоосолно. 182 огт уншигдаагүй
+           (хоосон) бол хөндөхгүй */
+        if (regOwned && cfRows.length && registerGone(rows[0], cfRows)) {
+          const clr = clearRegisterPaid(rows[0]);
+          if (Object.keys(clr).length) updates.push({ [HO_IPC.oid]: rows[0][HO_IPC.oid], ...clr });
+        }
+        continue;
+      }
       matched.set(code, [Number(row[CASHFLOW_NEW.oid])]);
       /* Баримтын нэр бүртгэлд өөрчлөгдвөл гэрээний нэр дагана — дараагийн удаа нэрээрээ таарна */
-      /* Нэг мөртэй (акт үүсгээгүй) гэрээнд л олгосон дүнг бүртгэлээс бичнэ — акттай гэрээний төлбөрийг хөндөхгүй */
-      const want = { ...hoFromCf([row]), [HC.project]: txt(row[CF.detail]) || null, ...(rows.length === 1 && noAct(rows[0]) ? paidFromRegister(row, rows[0]) : {}) };
+      /* Нэг мөртэй (акт үүсгээгүй) гэрээнд л олгосон дүнг бүртгэлээс бичнэ — акттай гэрээний төлбөрийг хөндөхгүй.
+         2026-11-27: бүртгэлийн мөр үнэгүй болсон бол олгосон дүн хоосорно */
+      const reg = regOwned ? paidFromRegister(row, rows[0]) : {};
+      const paidWant = regOwned && !Object.keys(reg).length && isRegisterRow(row) ? clearRegisterPaid(rows[0]) : reg;
+      const want = { ...hoFromCf([row]), [HC.project]: txt(row[CF.detail]) || null, ...paidWant };
       for (const r of rows) {
         const upd: Row = {};
         for (const [f, v] of Object.entries(want)) if (!same(r[f], v)) upd[f] = v;

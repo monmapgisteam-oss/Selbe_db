@@ -130,7 +130,48 @@ assert.deepEqual(adds[0], {
   ajil_uilchilgee: 'Загвар', heseg_ezleh_huvi: 0.4, guitsetgel_huvi: 10,
 }, 'жин 0–1 бутархайгаар, нэр тайрагдсан');
 assert.equal(adds[1].dd_kod, '1.1.2');
-assert.equal(newRowAttrs(tree, node(4), [g(70)])[0].heseg_ezleh_huvi, 0, 'байгаа мөрүүдийн дунд — жин 0');
+/* 2026-11-27: жин оруулаагүй (байгаа мөрүүдийн дунд) мөр — null (гараар тавьсан 0% биш; үлдэгдлийг дүрмээр) */
+assert.equal(newRowAttrs(tree, node(4), [g(70)])[0].heseg_ezleh_huvi, null, 'байгаа мөрүүдийн дунд — жингүй (null)');
+assert.equal(newRowAttrs(tree, node(4), [g(0)])[0].heseg_ezleh_huvi, null, 'PlanEntry-ийн 0 ч null');
+assert.equal(newRowAttrs(tree, node(4), [g(null)])[0].heseg_ezleh_huvi, null, 'жин оруулаагүй — null');
+
+/* 2026-11-27: тогтмол жингийн нийлбэр 100%-аас хэтрэхгүй (`phaseWeightWhy`) */
+{
+  const { phaseWeightWhy } = await import('./planEdit.ts');
+  const wr = [
+    { objectid: 1, dd_kod: '1', uy_shat: 'ТЭЗҮ', ajil_uilchilgee: 'ТЭЗҮ', heseg_ezleh_huvi: 0.6 },
+    { objectid: 2, dd_kod: '2', uy_shat: 'Зөвшөөрөл', ajil_uilchilgee: 'Зөвшөөрөл', heseg_ezleh_huvi: null },
+    { objectid: 3, dd_kod: '3', uy_shat: 'Сонгон шалгаруулалт', ajil_uilchilgee: 'Сонгон', heseg_ezleh_huvi: 0.3 },
+  ];
+  const at = (rs, oid) => buildTree(rs).nodes.find((n) => n.row.objectid === oid);
+  assert.equal(phaseWeightWhy(at(wr, 2), null), null, 'хоосон — томьёо');
+  assert.equal(phaseWeightWhy(at(wr, 2), 10), null, '60 + 30 + 10 = 100% — болно');
+  assert.match(phaseWeightWhy(at(wr, 2), 11) ?? '', /101\.00%.*10\.00%/, '101% — татгалзана, хамгийн ихдээ 10%');
+  assert.equal(phaseWeightWhy(at(wr, 3), 40), null, '60 + 40 = 100% — болно');
+  assert.match(phaseWeightWhy(at(wr, 3), 41) ?? '', /40\.00%/, 'хамгийн ихдээ 40%');
+  /* аль хэдийн хэтэрсэн нийлбэрийг (60 + 70) бууруулах — болно, өсгөх — үгүй */
+  const over = wr.map((r) => (r.objectid === 3 ? { ...r, heseg_ezleh_huvi: 0.7 } : r));
+  assert.equal(phaseWeightWhy(at(over, 3), 50), null, '130% → 110% бууруулах — зөвшөөрнө');
+  assert.match(phaseWeightWhy(at(over, 3), 80) ?? '', /100%/, '130% → 140% — татгалзана');
+  /* 2026-11-27 (аудит): тооцооноос хасагдсан ах дүүгийн (`skip` — хуудасгүй бэлтгэл, `noProgress`) хадгалсан жин нийлбэрт орохгүй */
+  {
+    const { computePlan } = await import('./projectPlan.ts');
+    const sk = [
+      { objectid: 1, dd_kod: '5', ajil_uilchilgee: 'Үе шат' },
+      { objectid: 2, dd_kod: '5.1', etseg_kod: '5', ajil_uilchilgee: 'Бүлэг' },
+      { objectid: 3, dd_kod: '5.1.1', etseg_kod: '5.1', ajil_uilchilgee: 'А', heseg_ezleh_huvi: 0.6, noProgress: true },
+      { objectid: 4, dd_kod: '5.1.2', etseg_kod: '5.1', ajil_uilchilgee: 'Б', heseg_ezleh_huvi: 0.4 },
+    ];
+    const tk = buildTree(sk);
+    const res = computePlan(tk);
+    const skipped = (c) => !!res.values.get(c)?.skip;
+    const b = tk.nodes.find((n) => n.row.objectid === 4);
+    assert.ok(skipped(tk.nodes.find((n) => n.row.objectid === 3)), 'А тооцооноос хасагдсан');
+    assert.equal(phaseWeightWhy(b, 80, skipped), null, 'хасагдсан 60%-ийг тоолохгүй — 80% зөвшөөрнө');
+    assert.match(phaseWeightWhy(b, 80) ?? '', /140\.00%/, 'predicate-гүй бол хуучин дүрэм (бүгдийг тоолно)');
+    assert.equal(phaseWeightWhy(tk.nodes.find((n) => n.row.objectid === 3), 90, skipped), null, 'хасагдсан мөр өөрөө — шалгахгүй');
+  }
+}
 
 /* шинэ мөрүүд модонд зөв эцэгтэйгээ орно */
 const t2 = buildTree([...rows, ...adds.map((a, i) => ({ ...a, objectid: 100 + i }))]);

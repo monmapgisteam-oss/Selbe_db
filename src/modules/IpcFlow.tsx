@@ -30,7 +30,7 @@ import {
 } from '@/lib/ipcFlow';
 import {
   DEDUCTIONS, approveDoc, contextOf, cumulative, defaultDeductions, deleteDoc, docCodeOf, docWhy, dupPayDeletes, editDoc, explainDeductions,
-  fillBalance, newAdvanceDoc, newWorkDoc, nextDay, nextDocNo, payableOf, pctOf, pkgOf, prevEndOf, recOfDoc, recordsOf, rollbackRelease, sameNo,
+  deleteRaced, fillBalance, money2, newAdvanceDoc, newWorkDoc, nextDay, nextDocNo, paidAmountOf, payableOf, pctOf, pendingFin, pkgOf, prevEndOf, recOfDoc, recordsOf, rollbackRelease, sameNo,
   signDoc, stillFree, unpaidFills, unpaidPkgs, type DocWhy, type IpcRec,
 } from '@/lib/ipcDocTable';
 import s from './ipcTable.module.css';
@@ -105,7 +105,8 @@ const whyText = (w: DocWhy): string => {
 const MONEY_IN: readonly string[] = [F.total, F.advance, F.annual, ...DEDUCTIONS];
 const toRow = (v: Record<string, string>): Row => {
   const o: Row = {};
-  for (const [k, x] of Object.entries(v)) o[k] = MONEY_IN.includes(k) ? parseMoney(x) : x.trim();
+  /* 2026-11-27: мөнгө 2 оронтой бутархайгаар (хадгалахад `pickEditable` ч бөөрөнхийлнө) */
+  for (const [k, x] of Object.entries(v)) o[k] = MONEY_IN.includes(k) ? money2(parseMoney(x)) : x.trim();
   return o;
 };
 const asText = (v: unknown): string => (v == null ? '' : String(v));
@@ -392,7 +393,10 @@ export function IpcFlowPanel({
   const create = (draft: Row, ctx: { pkg: string; end: string; fills: ReturnType<typeof unpaidFills>; no: number }) => run(async () => {
     const f = ctx.fills;
     const total = num(draft[F.total]) ?? 0;
-    const pending = recs.filter((x) => x.src !== 'pay' && x.status !== S.paid).reduce((a, x) => a + (x.total ?? 0), 0);
+    /* 2026-11-27 (засвар): нэг хэмжээсээр — олгосон (Σdun) дээр батлагдаагүй ба энэ IPC-ийн САНХҮҮЖИЛТИЙН ЭРХ НЭЭСЭН дүн
+       (нийт − эргэн төлөлт − төсвөөс давсан); нийт дүнгээр нэмбэл эргэн төлөгдөөгүй урьдчилгаа хоёр тоологдоно */
+    const pending = pendingFin(recs);
+    const fin = paidAmountOf(recOfDoc(draft)) ?? total;
     const lines = [
       tr('IPC-{0} үүсгэх үү?', ctx.no),
       `• ${tr('Багц: {0}', f.rows[0]?.pkg ?? '')}`,
@@ -404,7 +408,7 @@ export function IpcFlowPanel({
       ...(Math.abs(total - f.total) >= 0.5 ? [`⚠ ${tr('Нийт дүн бөглөлтийн нийлбэрээс ({0}) өөр байна.', money(f.total))}`] : []),
       ...(f.rows.some((r) => r.une == null) ? [`⚠ ${tr('Сонгосон гүйцэтгэлд дүнгүй мөр байна. Нэгж үнийг бөглөхгүй бол тэр ажил IPC дүнд орохгүй.')}`] : []),
       ...(f.rows.some((r) => (r.une ?? 0) < 0) ? [`⚠ ${tr('Сонгосон гүйцэтгэлд дүн буурсан мөр байна.')}`] : []),
-      ...(overContract(paid, total, contract, pending) ? [`⚠ ${tr('Энэ IPC-тэй хамт олгосон ба батлагдаагүй IPC-ийн дүн гэрээний дүнгээс хэтэрнэ.')}`] : []),
+      ...(overContract(paid, fin, contract, pending) ? [`⚠ ${tr('Энэ IPC-тэй хамт олгосон ба батлагдаагүй IPC-ийн дүн гэрээний дүнгээс хэтэрнэ.')}`] : []),
     ];
     if (!(await askConfirm(lines.join('\n'), { ok: tr('IPC үүсгэх') }))) return;
     const [fp, fd] = await Promise.all([freshPays(code, pays), freshDocs(code)]);
@@ -478,8 +482,9 @@ export function IpcFlowPanel({
 
   const approveNew = (rec: IpcRec) => run(async () => {
     if (rec.status !== S.signed || !rec.docItem) { setErr(tr('Гарын үсэгтэй сканыг эхлээд оруулна уу.')); return; }
-    const q = tr('IPC-{0}-г баталгаажуулах уу? Нийт дүн {1} олгосон дүнд нэмэгдэнэ (гүйцэтгэгчид төлөх {2}). Баталсны дараа устгах, буцаах боломжгүй.',
-      rec.no ?? '', money(rec.total), money(rec.payable));
+    /* 2026-11-27: олгосон дүнд нийт дүн биш — санхүүжилтийн эрх нээсэн дүн (`paidAmountOf`, 185-д бичигдэх `dun`) */
+    const q = tr('IPC-{0}-г баталгаажуулах уу? Санхүүжилтийн эрх нээсэн дүн {1} олгосон дүнд нэмэгдэнэ (гүйцэтгэгчид төлөх {2}). Баталсны дараа устгах, буцаах боломжгүй.',
+      rec.no ?? '', money(paidAmountOf(rec)), money(rec.payable));
     if (!(await askConfirm(q, { ok: tr('Баталгаажуулах') }))) return;
     const { fp, rec2 } = await freshRec(rec);
     const e = rec2 ? approveDoc(rec2, fp, today()) : 'status';
@@ -513,12 +518,21 @@ export function IpcFlowPanel({
     /* Бөглөлтийг эхлээд чөлөөлнө; 238-ийн устгал унавал буцааж түгжинэ (төлбөргүй баримтад түгжигдсэн бөглөлт үлдэхгүй) */
     await applyAll(HO_IPC.url, HO_IPC.oid, { updates: e.unlock }, canCreate ? CREATE_CAP : APPROVE_CAP);
     invalidate('HO_IPC');
+    /* 2026-11-27 (засвар): чөлөөлсний ДАРАА 185-ыг дахин уншина — энэ хооронд өөр хэрэглэгч баталсан (төлбөрийн мөр гарсан) бол
+       баримтыг устгахгүй, бөглөлтийг «Олгосон» болгож буцаана (эс бөгөөс олгосон дүн үлдэж бөглөлт дахин IPC-д орно) */
+    let raced: Row[] | null = null;
     try {
-      await applyAll(IPC_DOC.url, IPC_DOC.oid, { deletes: [rec2.oid] }, canCreate ? CREATE_CAP : APPROVE_CAP);
+      raced = deleteRaced(rec2, await freshPays(code, pays), e.restore);
+      if (!raced) await applyAll(IPC_DOC.url, IPC_DOC.oid, { deletes: [rec2.oid] }, canCreate ? CREATE_CAP : APPROVE_CAP);
     } catch (x) {
       await applyAll(HO_IPC.url, HO_IPC.oid, { updates: e.restore }, canCreate ? CREATE_CAP : APPROVE_CAP).catch(() => {});
       invalidate('HO_IPC', 'IPC_DOC');
       throw x;
+    }
+    if (raced) {
+      if (raced.length) await applyAll(HO_IPC.url, HO_IPC.oid, { updates: raced }, canCreate ? CREATE_CAP : APPROVE_CAP);
+      changed();
+      return;
     }
     invalidate('IPC_DOC');
     if (rec2.docItem) {

@@ -44,7 +44,7 @@ import {
   type XDim,
   grainOf, kpisOf, inPeriod, yearsOf, periodActive, activeSubPkgTypes, effectivePeriod,
   type Grain,
-  NO_PERIOD, isContracted,
+  NO_PERIOD, isContracted, lvl3Pct, wbsGroupPct, DESIGN_WBS,
   type CfRow, type Period, type SubBar, type SubPkg, type TimePoint,
 } from '@/lib/gdash';
 import { SplitGrip, useSideResize } from '@/components/SplitGrip';
@@ -950,7 +950,7 @@ const DESIGN_KEY = '__design__';
  * «ТӨСЛИЙН ГҮЙЦЭТГЭЛ» ЧАРТЫН МӨРҮҮД — ЯГ ЭДГЭЭР зургаан үзүүлэлт.
  */
 const WBS_CHART: { label: string; wbs?: string[]; lvl3?: string; housing?: true }[] = [
-  { get label() { return tr('ТЭЗҮ, зураг төсөл'); }, wbs: ['1', '2'] },
+  { get label() { return tr('ТЭЗҮ, зураг төсөл'); }, wbs: [...DESIGN_WBS] },
   { get label() { return tr('Сонгон шалгаруулалт'); }, wbs: ['5'] },
   { get label() { return tr('Газар чөлөөлөлт'); }, wbs: ['3'] },
   { get label() { return tr('Гадна инженерийн шугам сүлжээ'); }, wbs: ['6.2.3'] },
@@ -998,43 +998,18 @@ function FinCharts({
   const wbs = useAsync(loadNegtgelFull, []);
   const wbsBars = useMemo(() => {
     if (wbs.state !== 'ready') return [];
-    const byCode = new Map<string, (typeof wbs.data.rows)[number]>();
-    for (const r of wbs.data.rows) if (!byCode.has(r.code.trim())) byCode.set(r.code.trim(), r);
-    /** Гэрээний 3-р түвшний бүлгийн өртгөөр жигнэсэн гүйцэтгэл */
-    const lvl3Pct = (name: string): number | null => {
-      let base = 0;
-      let top = 0;
-      for (const r of rows) {
-        if (r.lvl3 !== name || r.cost <= 0 || r.progress == null) continue;
-        base += r.cost;
-        top += (r.cost * r.progress) / 100;
-      }
-      return base > 0 ? (top / base) * 100 : null;
-    };
     return WBS_CHART
       .map((spec) => {
         if (spec.housing) {
           return { spec, base: null as number | null, pctVal: housingNow };
         }
         if (spec.lvl3) {
-          return { spec, base: null as number | null, pctVal: lvl3Pct(spec.lvl3) };
+          /* Гэрээний 3-р түвшний бүлгийн өртгөөр жигнэсэн гүйцэтгэл — хэмжилтгүй мөр 0% (`gdash.lvl3Pct`, 2026-11-27) */
+          return { spec, base: null as number | null, pctVal: lvl3Pct(rows, spec.lvl3) };
         }
-        let base = 0;
-        let top = 0;
-        /* Жингүй (мөнгөгүй) үе шат: жин 0 ч гүйцэтгэлийн хувь нь БИЙ — тэнцүү жингээр дундажлана */
-        let plain = 0;
-        let n = 0;
-        for (const c2 of spec.wbs ?? []) {
-          const r = byCode.get(c2);
-          const k = r ? wbs.data.calc.get(r.oid) : null;
-          if (!k || k.actPct == null) continue;
-          plain += k.actPct;
-          n += 1;
-          if (k.inProject == null) continue;
-          base += k.inProject;
-          top += k.inProject * k.actPct;
-        }
-        return { spec, base, pctVal: base > 0 ? top / base : n ? plain / n : null };
+        /* 2026-11-27: кодын бүлэг — удирдлагын тайлантай НЭГ функц (`gdash.wbsGroupPct`); жингүй үе шат — энгийн дундаж */
+        const g = wbsGroupPct(wbs.data.rows, wbs.data.calc, spec.wbs ?? []);
+        return { spec, base: g.base, pctVal: g.pct };
       })
       .filter((x) => x.pctVal != null)
       .map((x) => ({

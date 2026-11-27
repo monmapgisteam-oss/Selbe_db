@@ -592,7 +592,6 @@ function finEntries(): CatEntry[] {
         { cap: 'songonEdit', text: tr('Сонгон шалгаруулалт оруулах') },
         { cap: 'zovshoorolTtbEdit', text: tr('Зөвшөөрөл (төлөвлөгөө) оруулах') },
         { cap: 'ashiglaltEdit', text: tr('Ашиглалтад оруулах огноо оруулах') },
-        { cap: 'cfSwitch', text: tr('Сарын мөнгө — Гараар → Хуваарь шилжүүлэх') },
         { cap: 'ttbSwitch', text: tr('ТТБ-ийн 4 унтраалга') },
       ],
       note: () => tr('Устгасан мөрийг порталаас буцаах арга байхгүй (хувилбарын түүх асаагүй).'),

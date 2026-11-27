@@ -21,6 +21,7 @@ import { devToken } from '@/lib/authToken';
 import { buildActionPdf, buildActionXlsx, loadActionItems, loadActionPhotos, reportPkgs, type ActionItem } from '@/lib/actionReport';
 import { loadPhotoImages } from '@/lib/uzlegReport';
 import { XLSX_MIME } from '@/lib/xlsx';
+import { ACTION_WINDOW_DAYS, ubWindowStart } from '@/lib/habeaStage';
 import { habeaPkgKey } from './habeaUzleg';
 import x from './uzlegExport.module.css';
 
@@ -77,16 +78,20 @@ export function ActionExportDialog({ scope = null, onClose, onBack }: {
   const pickPreset = (p: Preset) => {
     setPreset(p); setDone(''); setErr('');
     if (p === 'w') { setFrom(dayStr(now - 6 * 86_400_000)); setTo(today); }
-    if (p === 'm') { setFrom(dayStr(now - 29 * 86_400_000)); setTo(today); }
+    /* «Сүүлийн сар» — хуудасны цонхтой НЭГ дүрэм: Улаанбаатарын 30 хуанлийн өдөр (2026-11-27) */
+    if (p === 'm') { setFrom(dayStr(ubWindowStart(now, ACTION_WINDOW_DAYS))); setTo(today); }
   };
 
+  /* Эрхийн хүрээгээр шүүсэн, хугацаагаар ТАСЛААГҮЙ — PDF-ийн шатлалын чартын суурь (2026-11-27) */
+  const mine = useMemo(
+    () => (!items ? [] as ActionItem[] : scope ? items.filter((r) => scope.includes(habeaPkgKey(r.site))) : items),
+    [items, scope],
+  );
   const inRange = useMemo(() => {
-    if (!items) return [] as ActionItem[];
-    const mine = scope ? items.filter((r) => scope.includes(habeaPkgKey(r.site))) : items;
     if (preset === 'all') return mine;
     const a = dayStart(from); const b = dayEnd(to);
     return mine.filter((r) => r.d > 0 && r.d >= a && r.d <= b);
-  }, [items, preset, from, to, scope]);
+  }, [mine, preset, from, to]);
   const pkgCounts = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of inRange) { const k = r.site || '—'; m.set(k, (m.get(k) ?? 0) + 1); }
@@ -111,7 +116,9 @@ export function ActionExportDialog({ scope = null, onClose, onBack }: {
         setBusy(tr('PDF үүсгэж байна…'));
         let logo: string | null = null;
         try { const res = await fetch('/logo.svg'); if (res.ok) logo = await res.text(); } catch { logo = null; }
-        const b64 = await renderPdfBase64(buildActionPdf(chosen, meta, logo));
+        /* Шатлал — сонгосон багцаар, гэхдээ БҮХ хугацаагаар (хуудасны чарттай нэг суурь) */
+        const stageItems = preset === 'all' ? undefined : pkgs.length ? mine.filter((r) => pkgs.includes(r.site || '—')) : mine;
+        const b64 = await renderPdfBase64(buildActionPdf(chosen, { ...meta, stageItems }, logo));
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
         download(`${base}.pdf`, new Blob([bytes], { type: 'application/pdf' }));
         setDone(tr('Татагдлаа: {0}', `${base}.pdf`));

@@ -306,10 +306,6 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
   const canCreate = hasCap(user?.username, 'ipcCreate');
   const canApprove = hasCap(user?.username, 'ipcApprove');
 
-  const blocks = useMemo(() => contractBlocks(contracts), [contracts]);
-  const sorted = useMemo(() => sortBlocks(blocks, sort), [blocks, sort]);
-  const showObyem = useMemo(() => anyObyem(blocks), [blocks]);
-  const t = useMemo(() => ipcTotals(blocks), [blocks]);
   const finQ = useAsync(() => loadFinance(), []);
   /* 2026-11-23: IPC баримтын хүснэгт (`Guitsetgel_talbe/238`) — гэрээний кодоор */
   const docsQ = useAsync(loadIpcDocs, []);
@@ -322,6 +318,11 @@ export function IpcTable({ contracts, cfRows = [] }: { contracts: HoContract[]; 
     }
     return m;
   }, [docsQ.state, docsQ.data]);
+  /* 2026-11-27 (засвар): картын «Зөрүү»-д IPC баримтын эргэн төлөлт · төсвөөс давсныг тооцохоор 238-ийн мөрүүдийг дамжуулна */
+  const blocks = useMemo(() => contractBlocks(contracts, (code) => docsBy.get(code)), [contracts, docsBy]);
+  const sorted = useMemo(() => sortBlocks(blocks, sort), [blocks, sort]);
+  const showObyem = useMemo(() => anyObyem(blocks), [blocks]);
+  const t = useMemo(() => ipcTotals(blocks), [blocks]);
   const docsOf = (code: string): readonly Record<string, unknown>[] | null => (docsQ.state === 'ready' ? docsBy.get(code) ?? [] : null);
   const head = useMemo(() => ipcHeadShare(t, finQ.state === 'ready'
     ? {

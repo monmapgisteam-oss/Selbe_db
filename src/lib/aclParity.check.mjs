@@ -152,9 +152,12 @@ console.log('✅ caps.ts — dirty-set · trackWrite · trusted overlay');
     'UserAdmin: retrySync нь caps dirty-г ч дахин илгээх ёстой');
   assert.ok(ua.includes('permsTablePublic() && ('),
     'UserAdmin: хүснэгт нийтэд нээлттэй үеийн анхааруулга алга');
-  const pm = readCode('src/lib/permissions.ts');
-  assert.ok(pm.includes("tsogts: 'pkgProg'"),
+  /* 2026-11-27: зураглалын эх `roleTypes.LEGACY_VIEW_KEYS` (permissions · загварын шүүлт хоёулаа хэрэглэнэ) */
+  const { LEGACY_VIEW_KEYS } = await import('@/lib/roleTypes.ts');
+  assert.equal(LEGACY_VIEW_KEYS.tsogts, 'pkgProg',
     'permissions: LEGACY_VIEW-д tsogts→pkgProg зураглал алга — «Багцын хяналт» чимээгүй хасагдана');
+  assert.equal(LEGACY_VIEW_KEYS.bagtsHamaaral, 'tuvshin6', 'LEGACY_VIEW: bagtsHamaaral→tuvshin6 зураглал алга');
+  assert.ok(readCode('src/lib/permissions.ts').includes('LEGACY_VIEW_KEYS'), 'permissions: LEGACY_VIEW нь roleTypes-ийн зураглалыг хэрэглэх ёстой');
 }
 console.log('✅ UserAdmin — caps dirty тэмдэг+retry · public баннер · LEGACY tsogts');
 
@@ -572,7 +575,7 @@ console.log('✅ хоёр дахь шалгалт — guitsetgel r.g · syncCaps
   const all = [...capsSrc.slice(capsSrc.indexOf('export type CapKey'), capsSrc.indexOf('export const CAPS'))
     .matchAll(/'(\w+)'/g)].map((m) => m[1]);
   const derived = new Set(Object.values(ROLE_CAPS).flatMap((m) => Object.values(m)));
-  assert.equal(PLAIN_CAPS.length, 19, `энгийн эрх ЯГ 19 байх ёстой (2026-11-24: + ttbSwitch; 2026-11-23: + dulaanEdit; 2026-11-20: − sysClose; 2026-11-11: + aiAgent; 2026-11-04: + ipcCreate, ipcApprove, үе шатны 4 эрх; habeaOwn гаргалгаатай болсон), олдсон: ${PLAIN_CAPS.length}`);
+  assert.equal(PLAIN_CAPS.length, 18, `энгийн эрх ЯГ 18 байх ёстой (2026-11-27: − cfSwitch; 2026-11-24: + ttbSwitch; 2026-11-23: + dulaanEdit; 2026-11-20: − sysClose; 2026-11-11: + aiAgent; 2026-11-04: + ipcCreate, ipcApprove, үе шатны 4 эрх; habeaOwn гаргалгаатай болсон), олдсон: ${PLAIN_CAPS.length}`);
   for (const c of PLAIN_CAPS) assert.ok(!derived.has(c), `${c}: энгийн ба гаргалгаатай хоёуланд`);
   assert.deepEqual([...new Set([...derived, ...PLAIN_CAPS])].sort(), [...all].sort(),
     'гаргалгаатай ∪ энгийн ≠ CapKey — шинэ эрх аль нэгэнд бүртгэгдээгүй');
@@ -597,7 +600,8 @@ console.log('✅ aclRoleCaps — ROLE_CAPS нэг эх · гаргалгаата
   assert.deepEqual(PANE_CAPS.huvaari, ['plan', 'planApprove'], 'Хуваарийн эрх: зохиогч + батлагч нэг хуудсанд');
   assert.deepEqual(PANE_CAPS.ipc, ['ipcCreate', 'ipcApprove'], 'IPC: үүсгэх + батлах нэг хуудсанд');
   assert.deepEqual(PANE_CAPS.uyShat, ['zahiramjEdit', 'songonEdit', 'zovshoorolTtbEdit', 'ashiglaltEdit', 'dulaanEdit'], 'Үе шат: 4 эрх + дулаан авах огноо (2026-11-23) нэг хуудсанд');
-  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'cfSwitch', 'ttbSwitch'], 'Санхүү: утга + мөр + сарын мөнгө шилжүүлэх + ТТБ-ийн 4 унтраалга нэг хуудсанд');
+  assert.deepEqual(PANE_CAPS.fin, ['finEdit', 'finRow', 'ttbSwitch'], 'Санхүү: утга + мөр + ТТБ-ийн 4 унтраалга нэг хуудсанд (2026-11-27: cfSwitch хасагдсан)');
+  assert.ok(!('cfSwitch' in CAP_HOST_VIEW), 'cfSwitch: хасагдсан');
   for (const c of all) assert.ok(PANE_CAPS[paneOfCap(c)].includes(c), `paneOfCap(${c}) буруу`);
   for (const [lf, fn] of [['src/modules/capText.ts', 'capLabel'], ['src/modules/erhLabels.ts', 'capLabelShort']]) {
     const lsrc = readCode(lf);

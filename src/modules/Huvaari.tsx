@@ -37,8 +37,9 @@ import {
   type Dep,
 } from '@/lib/deps';
 import {
-  loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf,
-  obyemResFields, loadPkgWeek, saveWeek, approveWeek, TURUL_WEEK_PEND, nextWeekStart, type MonthRes, type PkgPlan, type PkgRes, type PkgWeek,
+  loadPkgPlan, applyPlanEdits, keepMonths, keepRes, monthsOf, shiftMonths, shiftRes, shiftAnchored,
+  obyemResFields, loadPkgWeek, saveWeek, approveWeek, clearWeekPend, weekPendSplit, TURUL_WEEK_PEND, nextWeekStart, weekStart,
+  type MonthRes, type PkgPlan, type PkgRes, type PkgWeek, type ShiftAnchor,
 } from '@/lib/huvaariObyem';
 import { ubToday } from '@/lib/projectPlan';
 import {
@@ -91,7 +92,7 @@ import { useGroupPlan } from './huvaari/useGroupPlan';
 import { sameShapeGroups } from '@/lib/planAnalysis';
 import { LinkModal, linksReplaced } from './huvaari/LinkModal';
 import { CopyFromPkg } from './huvaari/CopyFromPkg';
-import { sourceUnitPlans, unitKey } from './huvaari/copyPkg';
+import { copyUnitItems } from './huvaari/copyPkg';
 import { Segmented } from '@/components/Switch';
 
 export type { HuvaariReview } from './huvaari/types';
@@ -546,6 +547,9 @@ export function Huvaari({
   const redoSnap = undoStk.r.length ? undoStk.r[undoStk.r.length - 1] : null;
   const obFullRef = useRef(new Map<string, Map<string, number>>());
   const obResFullRef = useRef(new Map<string, Map<string, MonthRes>>());
+  /** Шилжүүлэлтийн зангуу (2026-11-27, `shiftAnchored`) — ажил|блок → анхны шилжүүлэлтийн өмнөх муж ба сарын обьём / нөөц */
+  const obShiftRef = useRef(new Map<string, ShiftAnchor<number>>());
+  const obResShiftRef = useRef(new Map<string, ShiftAnchor<MonthRes>>());
   /** `applyChanges` агшин авахгүй (буцаалт өөрөө · чирэлтийн цуцлалт) — синхрон туг */
   const undoSkipRef = useRef(false);
   /** Чирэлтийн ЭХНИЙ `commit`-д л агшин авна — хоног бүрийн алхамд биш */
@@ -1480,11 +1484,25 @@ export function Huvaari({
           const orig = !inDrag ? fullMonths(obFullRef.current.get(key), cur)
             : drag!.oid === r.oid ? drag!.origMonths ?? null
             : drag!.obSnap?.get(key) ?? srv ?? null;
-          const val = sp
-            ? (inDrag && back && orig ? new Map(orig) : keepMonths(sp, orig ?? cur))
-            : new Map<string, number>();
+          /* 2026-11-27: ГИНЖЭЭР (эсвэл бүлгийн шилжүүлэлтээр) урт хэвээр шилжсэн ажил — задаргааг мөн тэр хэмжээгээр
+             шилжүүлнэ (`shiftMonths` → `remapMonths`), нийлбэр тэнцвэртэй үлдэнэ. Чирж/засаж буй ҮНДСЭН мөр урьдын адил. */
+          const from = inDrag ? (pre ?? null) : (was ?? null);
+          const shifted = !!sp && r.oid !== (drag?.oid ?? primary)
+            && !!from && sp.end - sp.start === from.end - from.start && sp.start !== from.start;
+          /* 2026-11-27 (засвар): `remapMonths` алдагдалтай тул шилжүүлэлт бүрийг ӨМНӨХ НООРОГООС биш ЗАНГУУНААС
+             (`shiftAnchored`: анхны шилжүүлэлтийн өмнөх муж ба задаргаа) бодно — түлхээд буцаахад (цонхоор өмнөх ажлыг
+             засах, «Бүлэг шилжүүлэх» +N / −N) задаргаа яг сэргэж, хадгалагдсан муж руу буцвал хадгалагдсан утга (`srv`)
+             сэргээд ноорогоос хасагдана. Урьд нь 400 / 600 → 406.86 / 593.14 болж, давтах тусам тардаг байв. */
+          let val: Map<string, number>;
+          if (!sp) val = new Map<string, number>();
+          else if (shifted) {
+            const hit = shiftAnchored(sp, from!, inDrag ? (orig ?? cur) : cur, obShiftRef.current.get(key), sameMonths,
+              (m, f, t) => shiftMonths(t, f, m), { span: base[i]?.spans[b], months: srv });
+            obShiftRef.current.set(key, hit.anchor);
+            val = hit.val;
+          } else val = inDrag && back && orig ? new Map(orig) : keepMonths(sp, orig ?? cur);
           const pre0 = orig ?? cur;
-          if (!sp) obFullRef.current.delete(key);
+          if (!sp || shifted) obFullRef.current.delete(key);
           else if (val.size < pre0.size) obFullRef.current.set(key, new Map([...(obFullRef.current.get(key) ?? []), ...pre0]));
           if (sameMonths(val, srv)) { next.delete(key); obFullRef.current.delete(key); }
           else next.set(key, val);
@@ -1516,11 +1534,22 @@ export function Huvaari({
           const orig = !inDrag ? fullMonths(obResFullRef.current.get(key), cur)
             : drag!.oid === r.oid ? drag!.origRes ?? null
             : drag!.obResSnap?.get(key) ?? srv ?? null;
-          const val = sp
-            ? (inDrag && back && orig ? new Map(orig) : keepRes(sp, orig ?? cur))
-            : new Map<string, MonthRes>();
+          /* 2026-11-27 (засвар): гинжээр / бүлгээр урт хэвээр шилжсэн ажлын НӨӨЦ обьёмтойгоо хамт шилжинэ (`shiftRes`,
+             обьёмын ижил `shifted` нөхцөл ба зангуу). Урьд нь обьём шилжээд нөөц `keepRes`-ээр хуучин сардаа үлдэж, мужаас
+             гарсан нь чимээгүй хаягддаг байв (хүн хүч 30 → хоосон). */
+          const from = inDrag ? (pre ?? null) : (was ?? null);
+          const shifted = !!sp && r.oid !== (drag?.oid ?? primary)
+            && !!from && sp.end - sp.start === from.end - from.start && sp.start !== from.start;
+          let val: Map<string, MonthRes>;
+          if (!sp) val = new Map<string, MonthRes>();
+          else if (shifted) {
+            const hit = shiftAnchored(sp, from!, inDrag ? (orig ?? cur) : cur, obResShiftRef.current.get(key), sameRes,
+              (m, f, t) => shiftRes(t, f, m), { span: base[i]?.spans[b], months: srv });
+            obResShiftRef.current.set(key, hit.anchor);
+            val = hit.val;
+          } else val = inDrag && back && orig ? new Map(orig) : keepRes(sp, orig ?? cur);
           const pre0 = orig ?? cur;
-          if (!sp) obResFullRef.current.delete(key);
+          if (!sp || shifted) obResFullRef.current.delete(key);
           else if (val.size < pre0.size) obResFullRef.current.set(key, new Map([...(obResFullRef.current.get(key) ?? []), ...pre0]));
           if (sameRes(val, srv)) { next.delete(key); obResFullRef.current.delete(key); }
           else next.set(key, val);
@@ -1532,8 +1561,8 @@ export function Huvaari({
   }, [plan, base, n, sc, obPlan, obRes, drag, blk, kind, snapUndo, setDraft, setObDraft, setObResDraft, unbalRef, filtOn, setChainN, setChainSeq, setChainList, setSticky, setChainUnbal0]);
 
   useEffect(() => { if (!drag) undoDragSeenRef.current = false; }, [drag]);
-  useEffect(() => { if (!obDraft.size) obFullRef.current.clear(); }, [obDraft]);
-  useEffect(() => { if (!obResDraft.size) obResFullRef.current.clear(); }, [obResDraft]);
+  useEffect(() => { if (!obDraft.size) { obFullRef.current.clear(); obShiftRef.current.clear(); } }, [obDraft]);
+  useEffect(() => { if (!obResDraft.size) { obResFullRef.current.clear(); obResShiftRef.current.clear(); } }, [obResDraft]);
   useEffect(() => {
     if (!chainN) return undefined;
     const t = window.setTimeout(() => setChainN(0), 6000);
@@ -2165,7 +2194,8 @@ export function Huvaari({
   const [copyOpen, setCopyOpen] = useState(false);
   const copyFromPkg = useCallback(async (srcKey: string, shiftDays: number, allBlocks: boolean): Promise<string | null> => {
     const src = PKGS.find((p) => p.key === srcKey);
-    if (!src || !sc) return tr('Багц олдсонгүй.');
+    /* 2026-11-27: зөвхөн хэрэглэгчийн харах эрхтэй багцаас (`groupOpts` — цэсний хүрээ) */
+    if (!src || !sc || !groupOpts.includes(src.group)) return tr('Багц олдсонгүй.');
     try {
       const sc2 = await loadSchema(src, { synthetic: true });
       const { rows: r2 } = await loadRows(src, sc2);
@@ -2175,26 +2205,23 @@ export function Huvaari({
         const m = r?.money ?? (r?.vol != null && r?.unit != null ? r.vol * r.unit : null);
         return m != null && Number.isFinite(m) ? m : null;
       };
-      const plans = sourceUnitPlans(p2, sc2.bld.length, money2, shiftDays);
-      const items: { oid: number; sp: Span; pct: Map<string, number> }[] = [];
-      let miss = 0;
-      plan.forEach((r, i) => {
-        if (!isPlanUnit(r)) return;
-        const u = plans.get(unitKey(plan, i));
-        if (u) items.push({ oid: r.oid, sp: u.span, pct: u.pct }); else miss += 1;
-      });
+      /* 2026-11-27: ижил нэртэй блок бүрд эх блокийн төлөвлөлтийг тусад нь (`copyUnitItems`) — урьд нь бүх блокийн мужийг
+         нэгтгэж блок бүрд ижил тавьдаг байв */
+      const bs = allBlocks ? sc.bld.map((_, b) => b) : [blk];
+      const { items, miss } = copyUnitItems(plan, sc.bld, bs, p2, sc2.bld, money2, shiftDays);
       if (!items.length) return tr('«{0}» багцад энэ хуудастай ижил нэртэй, огноотой бүлэг олдсонгүй.', src.label);
       forgetDrag();
-      const k = planGroups(items, allBlocks ? sc.bld.map((_, b) => b) : [blk]);
+      const k = planGroups(items, bs);
       if (!k) return tr('Хуулах ажил олдсонгүй.');
+      const nG = new Set(items.map((x) => x.oid)).size;
       setNote(miss
-        ? tr('«{0}»-аас {1} бүлэг хуулагдлаа ({2} ажил) · {3} бүлэг таарсангүй.', src.label, num(items.length), num(k), num(miss))
-        : tr('«{0}»-аас {1} бүлэг хуулагдлаа ({2} ажил).', src.label, num(items.length), num(k)));
+        ? tr('«{0}»-аас {1} бүлэг хуулагдлаа ({2} ажил) · {3} бүлэг таарсангүй.', src.label, num(nG), num(k), num(miss))
+        : tr('«{0}»-аас {1} бүлэг хуулагдлаа ({2} ажил).', src.label, num(nG), num(k)));
       return null;
     } catch (e) {
       return userError(e);
     }
-  }, [sc, plan, blk, planGroups, forgetDrag, setNote]);
+  }, [sc, plan, blk, planGroups, forgetDrag, setNote, groupOpts]);
   const onCancel = () => {
     const had = !!drag && undoDragSeenRef.current && !busy && !locked;
     undoSkipRef.current = true;
@@ -4058,36 +4085,80 @@ export function Huvaari({
    * ИРЭХ 7 ХОНОГИЙН ОБЬЁМЫГ БАТЛАХ (2026-11-24): хүлээгдэж буй утгатай ажлын цонхыг батлагч нээхэд асууна — батлагдтал
    * төлөвлөгөөт хувьд (182) нөлөөлөхгүй (сарын обьёмын адил). Нэг (ажил, блок, утга)-ыг нэг л удаа асууна.
    */
-  const wkAskRef = useRef('');
+  /** Аль хэдийн асуусан (ажил|блок|долоо хоног:утга) — нэг утгыг нэг л удаа (батласны дараах дахин ачааллаар дахин асуухгүй) */
+  const wkAskRef = useRef(new Set<string>());
   const reloadWeekRef = useLatest(async () => {
     const [w, p] = await Promise.all([loadPkgWeek(pkg.key), loadPkgWeek(pkg.key, TURUL_WEEK_PEND)]);
     setWkPlan(w); setWkPend(p);
   });
+  /* 2026-11-27: (1) ЗӨВХӨН ирэх долоо хоногийнхыг асуудаг байсан тул Баасан гарагт ирэх долоо хоногт оруулсан утга Даваа
+     гарагаас «энэ долоо хоног» болоод хэзээ ч асуугдахгүй, батлагдахгүй байв — одоо ЭНЭ ба ИРЭХ долоо хоногийн хүлээгдэж
+     буй утга бүгд (энэ долоо хоногийнх эхэлж) асуугдана. Түүнээс өмнөх долоо хоногийнх ХУГАЦАА НЬ ӨНГӨРСӨН — төлөвлөгөөт
+     хувьд (`weekPct`) нөлөөлөх боломжгүй тул батлахгүй, зурвасаар тэмдэглэнэ. (2) `savedView`-ээр хаадаг байсан тул
+     ихэвчлэн батлагдсан хуваарийг харж буй батлагч асуулгыг ОГТ хардаггүй байв — хаалтыг авав. */
   useEffect(() => {
-    if (!modalRow || !sc || kind !== 'plan' || !canApprove || savedView || modalRow.group || modalRow.des == null) return;
+    if (!modalRow || !sc || kind !== 'plan' || !canApprove || modalRow.group || modalRow.des == null) return;
     const des = modalRow.des;
     const blok = sc.bld[blk] ?? '';
-    const start = nextWeekStart(ubToday());
-    const pend = (wkPend.get(des)?.get(blok) ?? []).find((x) => x.week === start);
-    if (!pend) return;
-    const was = (wkPlan.get(des)?.get(blok) ?? []).find((x) => x.week === start)?.obyem ?? null;
-    const askKey = `${String(modalRow.oid)}|${blok}|${String(start)}|${String(pend.obyem)}`;
-    if (wkAskRef.current === askKey) return;
-    wkAskRef.current = askKey;
+    const today = ubToday();
+    const curW = weekStart(today);
+    const kOf = (x: { week: number; obyem: number }) => `${pkg.key}|${String(modalRow.oid)}|${blok}|${String(x.week)}:${String(x.obyem)}`;
+    const asked = wkAskRef.current;
+    /* 2026-11-27 (засвар): (3) өөрийн оруулсан утгыг өөрөөс нь «Батлах уу?» гэж асууж, `approveWeek` үргэлж татгалздаг
+       байв — `self` асуухгүй, зөвхөн тэмдэглэнэ. (4) хугацаа нь өнгөрсөн мөрийг устгах зам байгаагүй тул санамж сесс бүрд
+       гарч жагсаалт уртасдаг байв — батлагчид «Цэвэрлэх» асуулга (`clearWeekPend`, батлагчийн хамгаалалттай). */
+    const { live, self, old } = weekPendSplit((wkPend.get(des)?.get(blok) ?? []).filter((x) => !asked.has(kOf(x))),
+      today, user?.username ?? '');
+    if (!live.length && !self.length && !old.length) return;
+    for (const x of [...live, ...self, ...old]) asked.add(kOf(x));
     const meta = { bagts: pkg.key, bagtsNer: pkg.name, des, ajilNo: modalRow.no, ajilNer: modalRow.work, negj: '', niit: modalRow.vol };
     void (async () => {
-      const yes = await askConfirm(tr('Ирэх 7 хоногийн обьём {0} батлуулахаар хүлээгдэж байна (одоо батлагдсан: {1}). Батлах уу?',
-        num(pend.obyem, 2), was == null ? '—' : num(was, 2)), { ok: tr('Батлах') });
-      if (!yes) return;
-      try {
-        await approveWeek(meta, blok, start, pend.obyem);
-        await reloadWeekRef.current();
-        setNote(tr('Ирэх 7 хоногийн обьём батлагдлаа — төлөвлөгөөт хувьд тусгагдана.'));
-      } catch (e) {
-        setNote(userError(e));
+      const notes: string[] = [];
+      if (self.length) {
+        notes.push(tr('Долоо хоногийн обьёмыг ({0}) та өөрөө оруулсан — өөр батлагч шийдвэрлэнэ.',
+          self.map((x) => `${msToDay(x.week)}: ${num(x.obyem, 2)}`).join(', ')));
       }
+      let msg = '';
+      let changed = false;
+      for (const pend of live) {
+        const was = (wkPlan.get(des)?.get(blok) ?? []).find((x) => x.week === pend.week)?.obyem ?? null;
+        const isCur = pend.week === curW;
+        const q = isCur
+          ? tr('Энэ долоо хоногийн ({0}) обьём {1} батлуулахаар хүлээгдэж байна (одоо батлагдсан: {2}). Батлах уу?',
+            msToDay(pend.week), num(pend.obyem, 2), was == null ? '—' : num(was, 2))
+          : tr('Ирэх 7 хоногийн обьём {0} батлуулахаар хүлээгдэж байна (одоо батлагдсан: {1}). Батлах уу?',
+            num(pend.obyem, 2), was == null ? '—' : num(was, 2));
+        if (!(await askConfirm(q, { ok: tr('Батлах') }))) continue;
+        try {
+          await approveWeek(meta, blok, pend.week, pend.obyem);
+          changed = true;
+          msg = isCur
+            ? tr('Энэ долоо хоногийн обьём батлагдлаа — төлөвлөгөөт хувьд тусгагдана.')
+            : tr('Ирэх 7 хоногийн обьём батлагдлаа — төлөвлөгөөт хувьд тусгагдана.');
+        } catch (e) {
+          msg = userError(e);
+        }
+      }
+      if (msg) notes.push(msg);
+      if (old.length) {
+        const days = [...new Set(old.map((x) => msToDay(x.week)))].join(', ');
+        const yes = await askConfirm(tr('Хугацаа нь өнгөрсөн долоо хоногийн ({0}) батлагдаагүй обьём байна — төлөвлөгөөт хувьд нөлөөлөхгүй. Цэвэрлэх үү?', days),
+          { danger: true, ok: tr('Цэвэрлэх') });
+        if (yes) {
+          try {
+            const k = await clearWeekPend(meta, blok, old.map((x) => x.week), today);
+            if (k) changed = true;
+            notes.push(tr('Хугацаа нь өнгөрсөн {0} мөр цэвэрлэгдлээ.', num(k)));
+          } catch (e) {
+            notes.push(userError(e));
+          }
+        }
+      }
+      /* Нэг удаа дахин ачаална — гогцооны дунд ачаалбал эффект дахин ажиллаж үлдсэнийг давхар асуудаг */
+      if (changed) await reloadWeekRef.current().catch(() => { /* дараагийн ачаалалтаар */ });
+      if (notes.length) setNote(notes.join(' · '));
     })();
-  }, [modalRow, sc, kind, canApprove, savedView, blk, wkPend, wkPlan, pkg.key, pkg.name, reloadWeekRef]);
+  }, [modalRow, sc, kind, canApprove, blk, wkPend, wkPlan, pkg.key, pkg.name, reloadWeekRef, user]);
   /**
    * БҮЛГИЙН ЦОНХНЫ МӨНГӨ — шууд ажилтай (жижиг) бүлэгт шууд ажлуудын, том бүлэгт (зөвхөн дэд бүлэгтэй) доторх бүх ажлын
    * мөнгөн дүнгийн нийлбэр. Сарын мөнгө (`curve`) — тэдгээр ажлын идэвхтэй блок дахь сарын обьём × нэгж үнэ (мөнгө ÷ обьём):
@@ -5773,7 +5844,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
       )}
 
       {copyOpen && sc && (
-        <CopyFromPkg pkgs={PKGS.filter((p) => p.key !== pkg.key)} blocks={sc.bld} blk={blk}
+        <CopyFromPkg pkgs={PKGS.filter((p) => p.key !== pkg.key && groupOpts.includes(p.group))} blocks={sc.bld} blk={blk}
           onClose={() => setCopyOpen(false)} onCopy={copyFromPkg} />
       )}
       {linkAsk && linkRows && (
@@ -5827,7 +5898,7 @@ ${who} · ${msToDay(sp.start)} → ${msToDay(sp.end)} (${tr('{0} хоног', sp
           badBlks={modalBad}
           geree={kind === 'plan' ? refSpanOf(modalRow.oid, blk) : null}
           res={obResOf(modalRow.des, sc.bld[blk] ?? "")}
-          week={kind === 'plan' && !modalRow.group && modalRow.des != null && modalRow.vol != null && modalRow.vol > 0 && !savedView ? (() => {
+          week={kind === 'plan' && !modalRow.group && modalRow.des != null && modalRow.vol != null && modalRow.vol > 0 && (!savedView || canApprove) ? (() => {
             const des = modalRow.des;
             const blok = sc.bld[blk] ?? '';
             const start = nextWeekStart(ubToday());

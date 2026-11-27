@@ -16,7 +16,7 @@ import { legacyCovered, legacyPkgKey, linkError, nodeMatches, pkgPairs, refOf, t
 import { dropWorkCache, loadWorkData, pkgKeyOfSheet, saveWorkLinks, sheetsOfPkgKey } from '@/lib/workDepsRemote';
 import { loadLegacyDeps, removeLegacyDeps, type Dep } from '@/lib/bagtsHamaaral';
 import {
-  editIndex, groupChanges, linePairs, orphanLines, pairOf, refKeyOf, rowWorks, savedLines, stagedLinks, xIdOf,
+  editIndex, groupChanges, linePairs, linePick, orphanLines, pairOf, refKeyOf, rowWorks, savedLines, stagedLinks, xIdOf,
   type Line,
 } from '@/lib/levelLinkEdit';
 import type { PkgInfo, WorkLink } from '@/lib/levelPlan';
@@ -65,7 +65,9 @@ export function useLinkEdit(on: boolean, pkgs: readonly PkgInfo[], onExit: () =>
   rowEdit: RowEdit | undefined; staged: WorkLink[]; ui: ReactNode; exit: () => Promise<void>;
 } {
   const dataQ = useAsync(() => (on ? loadWorkData() : Promise.resolve(null)), [on]);
-  const legacyQ = useAsync(() => (on ? loadLegacyDeps() : Promise.resolve(null)), [on]);
+  /* 2026-11-27 (засвар): хуучин багц ↔ багц холбоосыг БҮХ хэрэглэгчид (засах горимгүй ч) уншина — хасагдсан «Багцын хамаарал»
+     хуудас бүх хүнд харуулдаг байв. Харах горимд зөвхөн жагсаалт; автомат устгал · «Устгах» зөвхөн засах горимд. */
+  const legacyQ = useAsync(loadLegacyDeps, []);
   const data = on && dataQ.state === 'ready' ? dataQ.data : null;
   const g = data?.graph ?? null;
   const [sel, setSel] = useState<NodeId | null>(null);
@@ -110,7 +112,7 @@ export function useLinkEdit(on: boolean, pkgs: readonly PkgInfo[], onExit: () =>
   useEffect(() => () => setNavDirty('hamaaral-edit', false), []);
 
   /* ── Хуучин багц ↔ багц холбоос: бүлгээр шилжсэн бол автоматаар устгана ── */
-  const legacy = useMemo<Dep[]>(() => (on && legacyQ.state === 'ready' && legacyQ.data ? legacyQ.data.deps : []), [on, legacyQ]);
+  const legacy = useMemo<Dep[]>(() => (legacyQ.state === 'ready' && legacyQ.data ? legacyQ.data.deps : []), [legacyQ]);
   const pairs = useMemo(() => (g ? pkgPairs(g) : []), [g]);
   const retryLegacy = legacyQ.retry;
   const tried = useRef(new Set<string>());
@@ -273,17 +275,19 @@ export function useLinkEdit(on: boolean, pkgs: readonly PkgInfo[], onExit: () =>
   }, [busy, g, worksOf, selNode, selLk, pick, unpick, toggle]);
   const onLine = useCallback((ids: readonly string[], x: number, y: number) => {
     if (busy || !g) return;
-    const seen = new Set<string>();
-    const ps = linePairs(ids).filter(([a, b]) => {
-      const k = pairOf(a, b);
-      if (seen.has(k) || !g.nodes.has(a) || !g.nodes.has(b)) return false;
-      seen.add(k);
-      return true;
-    });
+    /* 2026-11-27 (засвар): зураас дарахад ЗӨВХӨН одоогийн холбоог сэлгэнэ — графт алга болсон (өөр хүн салгасан) холбооны
+       хуучирсан зураас шинэ холбоо НЭМЭХГҮЙ; оронд нь мэдэгдээд зураас · графыг дахин ачаална. */
+    const { ps, gone } = linePick(ids, lines, (id) => g.nodes.has(id));
+    if (gone) {
+      setMsg('');
+      setErr(tr('Энэ зураасны холбоо хуудсан дээр өөрчлөгдсөн байна (өөр хүн зассан) — юу ч нэмээгүй, холбоосыг дахин ачааллаа.'));
+      reload();
+      return;
+    }
     if (!ps.length) return;
     if (ps.length === 1) toggleIds(ps[0][0], ps[0][1]);
     else setPop({ kind: 'line', x, y, pairs: ps });
-  }, [busy, g, toggleIds]);
+  }, [busy, g, lines, reload, toggleIds]);
   const rowCls = useCallback((lk: string | undefined): string | undefined => {
     if (!lk) return undefined;
     const ws = worksOf(lk);
@@ -304,7 +308,11 @@ export function useLinkEdit(on: boolean, pkgs: readonly PkgInfo[], onExit: () =>
   const rowEdit = useMemo<RowEdit | undefined>(() => (on && g ? { onRow, rowCls, onLine, lineCls } : undefined), [on, g, onRow, rowCls, onLine, lineCls]);
   const staged = useMemo(() => (on && ix && adds.length ? stagedLinks(adds, ix.ends) : NONE), [on, ix, adds]);
 
-  if (!on) return { rowEdit: undefined, staged: NONE, ui: null, exit };
+  /* 2026-11-27 (засвар): хуучин холбооны уншилт УНАВАЛ «холбоогүй» гэж худал харуулахгүй — анхааруулга + «Дахин оролдох»
+     (харах ба засах горим хоёуланд; `loadLegacyDeps` нэвтрээгүй · хүснэгт алга · эвдэрсэн бичлэгт зориуд шиддэг). */
+  const legacyErr = legacyQ.state === 'error' ? <LegacyError error={legacyQ.error} retry={retryLegacy} /> : null;
+
+  if (!on) return { rowEdit: undefined, staged: NONE, ui: legacyErr ?? (legacy.length ? <LegacyList deps={legacy} /> : null), exit };
 
   const kindOf = (a: NodeId, b: NodeId): Line['kind'] | null => {
     const k = pairOf(a, b);
@@ -376,6 +384,7 @@ export function useLinkEdit(on: boolean, pkgs: readonly PkgInfo[], onExit: () =>
           {orphans.length > 30 && <span>… +{num(orphans.length - 30)}</span>}
         </div>
       )}
+      {legacyErr}
       {legacy.length > 0 && (
         <div className={s.warn} role="note">
           <strong>{tr('Хуучин багц хоорондын холбоо — бүлгээр нь холбож шилжүүлнэ үү')}</strong>{' '}
@@ -412,6 +421,34 @@ export function useLinkEdit(on: boolean, pkgs: readonly PkgInfo[], onExit: () =>
     </div>
   );
   return { rowEdit, staged, ui, exit };
+}
+
+/* ══════════════ Хуучин багц ↔ багц холбоо — харах горим (2026-11-27) ══════════════ */
+
+/** Хадгалсан хуучин холбоог бүх хэрэглэгчид — зөвхөн жагсаалт (товчгүй); 6 түвшний мөр · зураасанд хүрэхгүй */
+export function LegacyList({ deps }: { deps: readonly Dep[] }) {
+  return (
+    <div className={s.info} role="note">
+      <strong>{tr('Хуучин багц хоорондын холбоо')}</strong>
+      <ul className={s.lkList}>
+        {deps.map((d) => (
+          <li key={`${d.from}>${d.to}`}>
+            <span><b>{legacyLabel(d.from)}</b> → <b>{legacyLabel(d.to)}</b></span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Хуучин холбооны уншилт унасан (2026-11-27, засвар) — хоосон жагсаалт БИШ, ил анхааруулга + дахин оролдох */
+export function LegacyError({ error, retry }: { error: unknown; retry?: () => void }) {
+  return (
+    <div className={s.warn} role="alert">
+      {tr('Хуучин багц хоорондын холбоо уншигдсангүй')}: {userError(error)}{' '}
+      {retry && <button type="button" className={s.btn} onClick={retry}>{tr('Дахин оролдох')}</button>}
+    </div>
+  );
 }
 
 /* ══════════════ Сонгосон ажил — холбоотой ажлууд ══════════════ */

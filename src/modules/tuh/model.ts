@@ -271,6 +271,8 @@ export function buildModel(input: {
   live?: LiveMap | null;
   /** Төслийн нийт ГЭРЭЭЛСЭН дүн (`loadProjectContractTotal`) — өгвөл «олгосон хувь»-ийн хуваарь нь тэр (портал даяар нэг тоо, 2026-11-23) */
   projContract?: number | null;
+  /** 2026-11-27: `projContract`-д орсон газрын нөхөх олговор (`loadProjectLandComp`) — «олгосон хувь»-ийн тоологчид */
+  landComp?: number | null;
   /** «Төсөл төлөвлөгөө биелэлт»-ийн Төслийн нийт мөр (S/P) — `null`/өгөөгүй = уншигдаагүй (`Tuh.loadProjectRoot`) */
   project?: { S: number | null; P: number | null } | null;
   /**
@@ -433,7 +435,7 @@ export function buildModel(input: {
   const share0 = paidShareOf(fin.contracts, fin.pays);
   const pc = input.projContract;
   /* 2026-11-23 (аудит №3): ТТБ-ийн нийт гэрээлсэн дүнгээр хуваахад ТЭЗҮ/судалгааны олголт тоологчид орно */
-  const share = withProjectContract(share0, pc);
+  const share = withProjectContract(share0, pc, input.landComp);
   /* 2026-11-09: зөвхөн олгосон (`dun` бичигдсэн) IPC — `ipcOf`-той нэг дүрэм, батлаагүй баримт тоологдохгүй */
   const ipcCount = fin.contractsHo.reduce((a, c) => a + ipcNumbers(c.pays.filter((r) => hoAmount(r) != null)).length, 0);
 

@@ -18,7 +18,7 @@ import { diffRows, emptyWipe } from './sync.ts';
 assert.equal(emptyWipe([{ a: 1 }], []), true, 'хоосон үр дүн хүснэгтийг хоослохгүй');
 assert.equal(emptyWipe([], []), false);
 assert.equal(emptyWipe([{ a: 1 }], [{ a: 2 }]), false);
-import { assemblePlan } from '@/lib/projectPlanInputs';
+import { assemblePlan, planPkgProgress } from '@/lib/projectPlanInputs';
 import { paidShareOf, withProjectContract } from '@/lib/paidShare';
 
 let n = 0;
@@ -74,7 +74,9 @@ check('guitsetgel — мөрүүд, түвшин, эцэг', () => {
   assert.equal(byKod.get(PUB_BUILD).tuvshin, 'shat');
   assert.equal(byKod.get(PUB_BUILD).etseg_kod, PUB_TOTAL);
   assert.equal(byKod.get('1').tuvshin, 'bagts');
-  assert.equal(byKod.get('1').etseg_kod, PUB_BUILD);
+  /* 2026-11-27 (хэрэглэгч, аудит №48): багц «Төслийн нийт»-ийн доор (бүх үе шатын S — нэг суурь), «Барилга угсралт»-ын доор биш */
+  assert.equal(byKod.get('1').etseg_kod, PUB_TOTAL);
+  assert.ok(!g.some((r) => r.etseg_kod === PUB_BUILD), '«Барилга угсралт» мөрөнд хүүхэд үлдэхгүй');
   assert.equal(byKod.get('1-5/1').tuvshin, 'blok');
   assert.equal(byKod.get('1-5/1').etseg_kod, '1');
   assert.equal(byKod.get('5.1-G2').tuvshin, 'buleg');
@@ -131,7 +133,7 @@ check('guitsetgel — диапазон мөр багц биш («1.4», «6.1,6.
 });
 check('guitsetgel — дэд багц 16.1/17.1 нь «16»-ийн доор, багц түвшин, өөрийн гүйцэтгэгч/явц/огноо', () => {
   assert.equal(byKod2.get('16').tuvshin, 'bagts');
-  assert.equal(byKod2.get('16').etseg_kod, PUB_BUILD);
+  assert.equal(byKod2.get('16').etseg_kod, PUB_TOTAL);
   const s = byKod2.get('16.1');
   assert.ok(s, '16.1 мөр нийтлэгдэх ёстой');
   assert.equal(s.etseg_kod, '16');
@@ -144,6 +146,39 @@ check('guitsetgel — дэд багц 16.1/17.1 нь «16»-ийн доор, б�
   const i16 = g2.findIndex((r) => r.kod === '16');
   assert.ok(g2.findIndex((r) => r.kod === '16.1') === i16 + 1 && g2.findIndex((r) => r.kod === '17.1') === i16 + 2, 'эцгийн шууд дараа');
   assert.equal(g2.filter((r) => r.tuvshin === 'bagts').length, 7, '1 · 5.1 · 16 · 16.1 · 17.1 · 19.1 · 20.6');
+});
+/* 2026-11-27 (аудит): багцын хувь = порталын «Багцын гүйцэтгэл» (`planPkgProgress` S) — зөвхөн барилга угсралтын мөрийн S биш */
+check('guitsetgel — багцын хувь = planPkgProgress S (Багц-1: зураг төсөл 100% × 10 + барилга 0% × 90 = 10)', () => {
+  const rows3 = [
+    { dd_kod: '2', etseg_kod: null, uy_shat: 'Зураг төсөл', ajil_uilchilgee: 'Зураг төсөл', tusul_ezleh_huvi: 0.1 },
+    { dd_kod: '2.1', etseg_kod: '2', uy_shat: 'Зураг төсөл', bagts: 'Багц-1', ajil_uilchilgee: 'Багц 1 зураг', heseg_ezleh_huvi: 1, guitsetgel_huvi: 100 },
+    { dd_kod: '5', etseg_kod: null, uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт', tusul_ezleh_huvi: 0.9 },
+    { dd_kod: '5.2', etseg_kod: '5', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Барилга угсралт ажил', heseg_ezleh_huvi: 1 },
+    { dd_kod: '5.2.1', etseg_kod: '5.2', uy_shat: 'Барилга угсралт', ajil_uilchilgee: 'Орон сууцны хороолол барилга угсралт', heseg_ezleh_huvi: 1 },
+    { dd_kod: '5.2.1.1', etseg_kod: '5.2.1', uy_shat: 'Барилга угсралт', bagts: 'Багц-1', ajil_uilchilgee: 'Орон сууц', heseg_ezleh_huvi: 1 },
+  ];
+  const p3 = assemblePlan(rows3, { actual: { blocks: null, universe: null, infra: null }, sched: null }, D(2026, 11, 3));
+  const g3 = new Map(guitsetgelRows(p3, { buildings: new Map(), contractors: new Map(), groups: new Map() }).map((r) => [r.kod, r]));
+  assert.equal(planPkgProgress(p3).get('БАГЦ1').S, 10);
+  assert.equal(g3.get('1').guitsetgel_huvi, 10, 'порталын «Багцын гүйцэтгэл» — барилга угсралтын мөрийн S (0) биш');
+  const r2 = (v) => Math.round(v * 100) / 100;
+  assert.equal(byKod2.get('16.1').guitsetgel_huvi, r2(planPkgProgress(plan2).get('БАГЦ161').S), 'дэд багц ч мөн');
+  /* №48: эцэг багц (Багц-1) ба түүний эцэг «Төслийн нийт» — хоёул бүх үе шатын S (нэг суурь); «Барилга угсралт» 0% нь өөр салаа */
+  const g3l = guitsetgelRows(p3, { buildings: new Map(), contractors: new Map(), groups: new Map() });
+  assert.equal(g3.get('1').etseg_kod, PUB_TOTAL);
+  assert.equal(g3.get(PUB_TOTAL).guitsetgel_huvi, r2(p3.result.values.get(p3.tree.root).S), 'төслийн нийт = үндэс S');
+  assert.equal(g3.get(PUB_BUILD).guitsetgel_huvi, 0, 'барилга угсралт 0% — багцын эцэг биш');
+  assert.ok(!g3l.some((r) => r.etseg_kod === PUB_BUILD));
+});
+check('guitsetgel — «Багцын гүйцэтгэл»-д мөргүй эцэг багц (Багц-16) = дэд багцуудын жигнэсэн дундаж (нэг суурь)', () => {
+  const pp2 = planPkgProgress(plan2);
+  const r2 = (v) => Math.round(v * 100) / 100;
+  assert.ok(!pp2.has('БАГЦ16'), 'тест: Багц-16 өөрөө мөргүй');
+  const subs = ['БАГЦ161', 'БАГЦ171'].map((k) => pp2.get(k)).filter(Boolean);
+  const w = subs.reduce((a, v) => a + v.w, 0);
+  const want = r2(subs.reduce((a, v) => a + v.w * (v.S ?? 0), 0) / w);
+  assert.equal(byKod2.get('16').guitsetgel_huvi, want, 'packagesAverage(16.1, 17.1)');
+  assert.ok(byKod2.get('16').guitsetgel_huvi <= Math.max(...['16.1', '17.1'].map((k) => byKod2.get(k).guitsetgel_huvi)), 'эцэг хүүхдээсээ өндөр биш');
 });
 
 /* ══════════ §3 ══════════ */
@@ -170,10 +205,15 @@ check('2026-11-24 (аудит): olgoson_huvi = порталын хувь (гэр
   ];
   const sh = withProjectContract(paidShareOf(cf, ho), 1000);
   const [s] = sanhuuRows(planPaid, { paid: sh.paid, paidPct: sh.pct });
+  /* 2026-11-27 (хэрэглэгч, аудит №16): дүн — БҮХ олголт (порталын «Бодитоор олгосон санхүүжилт» `finance.paid`-тэй ижил);
+     гэрээлсэн багцын тоологч (350) биш — гэрээнд тохироогүй 70 нийтийн дүнгээс хасагдахгүй */
   assert.equal(s.olgoson_sanhuujilt_dun, 420, 'дүн — бүх олголт');
+  assert.equal(sh.paid, 420, 'бүх олголт = порталын дүн');
   assert.equal(s.olgoson_huvi, 35, '(300 + 50) ÷ 1000 — урьд нь 420 ÷ 1000 = 42');
   const [t] = sanhuuRows(planPaid, { paid: 1, paidPct: 100 / 3 });
   assert.equal(t.olgoson_huvi, 33.33, '2 орон бутархай');
+  const [u] = sanhuuRows(planPaid, { paid: null, paidPct: null });
+  assert.equal(u.olgoson_sanhuujilt_dun, null, 'IPC-ийн олголт мэдэгдэхгүй — дүн null (0 биш)');
 });
 check('2026-11-09: sanhuu — мөнгө бүхэл төгрөг (амьд E 2,495,841,880,529.33 бичигддэг байв)', () => {
   const frac = rows.map((r) => (r.dd_kod === '5.2.1.1' ? { ...r, ho_dun_geree: 1000.33, zahiramj_unet_tsaas: 600.6, olgoson_dun: 400.4 } : r));

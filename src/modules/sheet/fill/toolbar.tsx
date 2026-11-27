@@ -473,7 +473,7 @@ export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false, pkgAl
           key={v.key}
           className={`${st.pctStat} ${v.mine ? st.pctStatMine : st.pctStatOther}`}
           title={v.mine
-            ? tr('Энэ ХУУДСЫН ({0}) батлагдсан гүйцэтгэл — блокуудынх нь дундаж.', pkg.label)
+            ? tr('Энэ ХУУДСЫН ({0}) батлагдсан гүйцэтгэл — блокуудынх нь төсвөөр жигнэсэн дундаж.', pkg.label)
             : tr('Энэ багцын НӨГӨӨ хувилбарын ({0}) батлагдсан гүйцэтгэл. Хувилбар сонгогчоор шилжиж бөглөнө.', `${v.floors}F`)}
         >
           <span className={st.pctStatLab}>{tr('{0} гүйцэтгэл', `${v.floors}F`)}</span>
@@ -482,7 +482,7 @@ export function PkgPctBadge({ pkgPct, pkg, otherPct, otherPending = false, pkgAl
       ))}
       <span
         className={`${st.pctStat} ${st.pctStatMain}`}
-        title={tr('Багцын батлагдсан гүйцэтгэл — бүх хувилбарын бүх блокийн дундаж («Багцын явц» дэлгэцтэй ижил).')}
+        title={tr('Багцын батлагдсан гүйцэтгэл — бүх хувилбарын бүх блокийн төсвөөр жигнэсэн дундаж («Багцын явц» дэлгэцтэй ижил).')}
       >
         <span className={st.pctStatLab}>{tr('Багцын гүйцэтгэл')}</span>
         <b className={st.pctStatVal}>{pct(pkgAll, 2)}</b>

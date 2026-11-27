@@ -46,12 +46,14 @@ export const evenPct = (keys: readonly string[]): Map<string, number> => round10
 /**
  * Эх хуудасны 3-р давхрын бүлгүүдийн төлөвлөлт, `shiftDays` хоногоор шилжүүлсэн. Огноогүй бүлэг орохгүй.
  * Сарын жин = ажлын мөнгө (`moneyOf`; бүх ажил мөнгөгүй бол 1) × тэр сард орсон өдрийн хувь.
+ * `only` (2026-11-27) — зөвхөн тэр блокийн мужаар (блок бүрийн төлөвлөлтийг тусад нь хуулахад); алга бол бүх блокийн нэгдэл.
  */
 export function sourceUnitPlans(
   plan: readonly PlanRow[],
   nBlocks: number,
   moneyOf: (k: number) => number | null,
   shiftDays = 0,
+  only?: number,
 ): Map<string, UnitPlan> {
   const out = new Map<string, UnitPlan>();
   const dt = shiftDays * DAY;
@@ -65,6 +67,7 @@ export function sourceUnitPlans(
     for (const k of works) {
       const m = anyMoney ? Math.max(0, moneyOf(k) ?? 0) : 1;
       for (let b = 0; b < nBlocks; b++) {
+        if (only != null && b !== only) continue;
         const s0 = plan[k].spans[b];
         if (!sane(s0)) continue;
         const s = { start: s0.start + dt, end: s0.end + dt };
@@ -88,4 +91,52 @@ export function sourceUnitPlans(
     out.set(unitKey(plan, at), { span, pct });
   });
   return out;
+}
+
+/** «Бүлгээр төлөвлөх»-өд өгөх нэг бүлгийн төлөвлөлт — `blks` нь тавих блокууд */
+export type CopyItem = { oid: number; sp: Span; pct: Map<string, number>; blks: number[] };
+
+const blkNorm = (s: string): string => fixCyr(String(s ?? '')).trim().toUpperCase();
+
+/**
+ * БАГЦ ХООРОНД ХУУЛАХ ЗҮЙЛС (2026-11-27): урьд нь бүх блокийн мужийг НЭГТГЭЖ (нэг муж, нэг сарын хувь) сонгосон блок
+ * бүрд ижил тавьдаг байсан тул блок бүрийн өөр огноо ба сарын задаргаа алдагддаг байв. Одоо зорилтот блок бүрд эх
+ * хуудасны ИЖИЛ НЭРТЭЙ блокийн төлөвлөлтийг тусад нь (`sourceUnitPlans(…, only)`) хуулна; эх хуудсанд тийм нэртэй блок
+ * алга бол урьдын адил нэгдсэн мужаар. Эх бүлэг тэр блокт огноогүй бол тэр блокийг хөндөхгүй. `miss` — эх хуудсанд
+ * ижил нэртэй, огноотой бүлэг огт олдоогүй зорилтот бүлгийн тоо.
+ */
+export function copyUnitItems(
+  plan: readonly PlanRow[],
+  blocks: readonly string[],
+  blks: readonly number[],
+  src: readonly PlanRow[],
+  srcBlocks: readonly string[],
+  moneyOf: (k: number) => number | null,
+  shiftDays = 0,
+): { items: CopyItem[]; miss: number } {
+  const merged = sourceUnitPlans(src, srcBlocks.length, moneyOf, shiftDays);
+  const per = new Map<number, Map<string, UnitPlan>>();
+  const perOf = (b2: number): Map<string, UnitPlan> => {
+    let m = per.get(b2);
+    if (!m) { m = sourceUnitPlans(src, srcBlocks.length, moneyOf, shiftDays, b2); per.set(b2, m); }
+    return m;
+  };
+  const srcAt = (b: number): number => srcBlocks.findIndex((x) => blkNorm(x) === blkNorm(blocks[b] ?? ''));
+  const items: CopyItem[] = [];
+  let miss = 0;
+  plan.forEach((r, i) => {
+    if (!isPlanUnit(r)) return;
+    const key = unitKey(plan, i);
+    if (!merged.has(key)) { miss += 1; return; }
+    const rest: number[] = [];
+    for (const b of blks) {
+      const b2 = srcAt(b);
+      if (b2 < 0) { rest.push(b); continue; }
+      const u = perOf(b2).get(key);
+      if (u) items.push({ oid: r.oid, sp: u.span, pct: u.pct, blks: [b] });
+    }
+    const u = merged.get(key)!;
+    if (rest.length) items.push({ oid: r.oid, sp: u.span, pct: u.pct, blks: rest });
+  });
+  return { items, miss };
 }

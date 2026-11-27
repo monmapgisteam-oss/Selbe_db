@@ -11,13 +11,22 @@ import { readFileSync } from 'node:fs';
 const src = readFileSync(new URL('./hyanaltStore.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const i = src.indexOf('let backDated = false;');
 assert.ok(i > 0, 'backDated дүрэм алга');
-const blk = src.slice(i, i + 1500);
-assert.match(blk, /if \(!keep && volOnly && incPl/, 'бөглөсөн өдөр — зөвхөн обьёмын замаар өөрчилсөн үед (2026-11-23)');
+const blk = src.slice(i, i + 2500);
 assert.match(blk, /let keep = lastDay === msToDay\(fillMs\);/, 'ижил өдөр — бөглөсөн өдрөөр');
-assert.match(blk, /incPl && !ov\.dateKeys\.length && ov\.rows\.length === loaded\.rows\.length/, 'зөвхөн нэмэлт обьём, огнооны засвар · шинэ мөргүй');
-assert.match(blk, /dayFilter\(sc\.f\.fillDate, msToDay\(fillMs\)\), returnCountOnly: String\(true\)/, 'тэр өдөр жааз байхгүйг шалгана');
-assert.match(blk, /if \(!keep\) fillMs = fillMsFor\(serverNow\(\), loaded\.snapshot\);/, 'бусад тохиолдолд хуучин дүрэм');
+/* 2026-11-27 (аудит №22): зөвхөн жинхэнэ боломжгүй үед л батлах өдөр — D-д жааз байх, огноо ≤ хожуу жаазных нь саад биш */
+assert.match(blk, /const asOfOk = ov\.asOf == null \|\| \(loaded\.asOf != null && ov\.asOf <= loaded\.asOf\);/, '«Шинэчлэгдсэн огноо» хожуу жаазныхаас хожуу биш бол');
+assert.match(blk, /incPl && asOfOk && !ov\.dateKeys\.length && ov\.rows\.length === loaded\.rows\.length[\s\S]{0,120}!!sc\.f\.des && fr\.volumeOnlyChange\(loaded\.rows, ov\.rows\)/,
+  'нэмэлт обьём · огнооны засвар ба шинэ мөргүй · хувиар нэмсэн нүдгүй · ажлын кодтой');
+assert.match(blk, /bdSame = n > 0 \? await loadRows\(pkg, sc, fillDay, undefined, \{ strict: true \}\) : null;/, 'D-ийн одоо байгаа жаазыг уншина');
+assert.match(blk, /keep = !bdSame \|\| fr\.canCarrySameDay\(loaded\.rows, bdSame\.rows\);/, 'D-д жааз байвал тулгаж чадвал бөглөсөн өдрөөр');
+assert.match(blk, /if \(!keep\) \{ fillMs = fillMsFor\(serverNow\(\), loaded\.snapshot\);/, 'бусад тохиолдолд хуучин дүрэм');
+assert.doesNotMatch(blk, /keep = Number\(j\?\.count\) === 0/, 'D-д жааз байх нь дангаараа батлах өдөр рүү шилжүүлэхгүй');
 assert.match(src, /if \(backDated\) \{[\s\S]{0,600}refreshStoredProgress\(pkg, sc, msToDay\(fillMs\)\)/, 'хожуу жаазны хадгалсан хувийг шинэчилнэ');
+/* 2026-11-27 (аудит №4): бөглөсөн өдрийн жааз — «Шинэчлэгдсэн огноо», төлөвлөгөөт хувь тэр өдрийн байдлаар */
+assert.match(src, /const frameAsOf = !backDated \? asOf\s+: \(bdSame \?\? bdPrev\) \? laterAsOf\(ov\.asOf, \(bdSame \?\? bdPrev\)!\.asOf\)/, 'frameAsOf — D-ийн суурь жаазны огноогоор');
+assert.match(src, /buildFrame\(ov\.rows, sc, nBld, frameAsOf,/, 'buildFrame-д frameAsOf');
+assert.match(src, /planPctFromMonths\(m, frameAsOf,/, 'төлөвлөгөөт хувь frameAsOf-оор');
+assert.match(src, /rebaseBackdated\(frame, loaded\.rows, bdSame\?\.rows \?\? prevRows, sc\);/, 'D-д жааз байвал хувь түүн дээр');
 const rep = readFileSync(new URL('./frameRepair.ts', import.meta.url), 'utf8');
 assert.ok(!/sc\.obyem\b[^\n]*u\[/.test(rep) && !rep.includes('sc.f.plan'), 'обьём, төлөвлөгөөт хувийг хөндөхгүй');
 /* ХҮРЭЭ (2026-11-11, амьд туршилт): зөвхөн тэр өдөр обьём бичигдсэн мөр × блок ба тэдгээрийн өвөг бүлэг — жаазыг бүхэлд нь биш */
@@ -83,8 +92,40 @@ console.log('frameRepair.check: OK');
 }
 {
   const st = readFileSync(new URL('./hyanaltStore.ts', import.meta.url), 'utf8');
-  assert.ok(st.includes('rebaseBackdated(frame, loaded.rows, prevRows, sc)'),'бөглөсөн өдрийн жааз өмнөх жаазтай тулгагдана');
+  assert.ok(st.includes('rebaseBackdated(frame, loaded.rows, bdSame?.rows ?? prevRows, sc)'),'бөглөсөн өдрийн жааз өмнөх (эсвэл D-ийн) жаазтай тулгагдана');
   assert.ok(st.includes('rebaseBackdatedDates(frame, loaded.rows, prevRows, sc, fillMs)'), 'бодит огноо ч өмнөх жаазаар');
+  /* 2026-11-27: суурь уншигдаагүй бол хуучин зан (L-ийн хувиар D-д бичих) биш — батлах өдөр */
+  assert.ok(!st.includes('Бөглөсөн өдрийн жаазны хадгалах хувийг өмнөх жаазтай тулгаж чадсангүй'), 'суурьгүй хойш огноотой жааз бичихгүй');
+  assert.ok(st.indexOf('bdPrev = prevDay ? await loadRows(') < st.indexOf('const frame = buildFrame('), 'суурийг шийдвэрийн үед (жааз угсрахаас өмнө) уншина');
+}
+/* 2026-11-27 (аудит №22): D-д жааз (E) аль хэдийн байвал — E-ийн өдрийн обьём шинэ жаазанд нэмэгдэнэ, тулгаж чадахгүй бол батлах өдөр */
+{
+  const { canCarrySameDay, carrySameDay } = await import('./frameRepair.ts');
+  const sc = { obyem: ['o1', 'o2'], f: { des: 'des', obyemSum: 'osum' } };
+  const loaded = [{ des: 1 }, { des: 2 }, { des: 3 }];
+  const same = [
+    { des: 1, obyemDay: [null, null] },
+    { des: 2, obyemDay: [5, 2] },
+    { des: 3, obyemDay: [0, null] },
+  ];
+  assert.equal(canCarrySameDay(loaded, same), true, 'өдрийн обьёмтой мөр бүр кодоор олдоно');
+  assert.equal(canCarrySameDay(loaded, [...same, { des: 7, obyemDay: [1, null] }]), false, 'L-д байхгүй кодтой ажил → тулгахгүй');
+  assert.equal(canCarrySameDay(loaded, [{ des: null, obyemDay: [1, null] }]), false, 'кодгүй ажилтай мөр → тулгахгүй');
+  assert.equal(canCarrySameDay([{ des: 2 }, { des: 2 }], [{ des: 2, obyemDay: [1, null] }]), false, 'давхардсан код → тулгахгүй');
+  assert.equal(canCarrySameDay(loaded, [{ des: 9, obyemDay: [0, null] }]), true, 'обьёмгүй мөр саад биш');
+  /* Угсарсан D-ийн жааз = зөвхөн нэмэлт: мөр 2 блок1 +3 */
+  const frame = [
+    { des: 1, o1: 0, o2: 0, osum: 0 },
+    { des: 2, o1: 3, o2: 0, osum: 3 },
+    { des: 3, o1: 0, o2: 0, osum: 0 },
+  ];
+  assert.equal(carrySameDay(frame, loaded, same, sc), true);
+  assert.deepEqual(frame[1], { des: 2, o1: 8, o2: 2, osum: 10 }, 'E-ийн өдрийн ажил + нэмэлт · нийлбэр дахин бодогдоно');
+  assert.deepEqual(frame[0], { des: 1, o1: 0, o2: 0, osum: 0 }, 'E-д ажилгүй мөр хөндөгдөхгүй');
+  const f2 = [{ des: 1, o1: 0 }, { des: 2, o1: 3 }, { des: 3, o1: 0 }];
+  assert.equal(carrySameDay(f2, loaded, [{ des: 7, obyemDay: [1, null] }], sc), false, 'тулгаж чадахгүй → false');
+  assert.equal(f2[1].o1, 3, 'тулгаж чадахгүй бол юу ч өөрчлөхгүй');
+  console.log('✅ бөглөсөн өдөр жаазтай — E-ийн өдрийн обьём шинэ жаазанд');
 }
 /* 2026-11-24: хойш огноотой (бөглөсөн өдрөөр) жааз — бодит эхэлсэн/дууссан огноо өмнөх жаазаар; хожуу жаазанд дамжина */
 {
@@ -142,15 +183,21 @@ console.log('frameRepair.check: OK');
 {
   const st = readFileSync(new URL('./hyanaltStore.ts', import.meta.url), 'utf8');
   assert.match(st, /async function healLaterFrames\([^)]*\)[\s\S]{0,900}await refreshStoredProgress\(/, 'healLaterFrames → refreshStoredProgress');
-  assert.equal((st.match(/await healLaterFrames\(/g) ?? []).length, 2, 'хоёр давталтын замд хоёуланд');
+  /* 2026-11-27 (аудит №1): «done» хоёр зам + тэмдэгтэй, жааз нь олдсон («аль хэдийн архивт бичигдсэн») зам — гурвуулаа */
+  assert.equal((st.match(/await healLaterFrames\(/g) ?? []).length, 3, 'гурван давталтын замд');
+  assert.match(st, /if \(!carried && hitOid != null && hitOid > 0\) \{[\s\S]{0,500}await healLaterFrames\(pkg\.key, day, hitOid\);[\s\S]{0,200}closeAfterArchive\(/,
+    'тэмдэгтэй замд хаахаас ӨМНӨ нөхнө');
 }
 
 /* 2026-11-23 (аудит №10, №14): хожуу өдрүүдийн нэгтгэл (190) дахин бодогдоно · бичсний дараа нэг удаа дахин бодно */
 {
   const st = readFileSync(new URL('./hyanaltStore.ts', import.meta.url), 'utf8');
   /* хяналт: засварын ӨМНӨ агшин → refreshStoredProgress → зөвхөн энэ засварын нөлөө */
-  assert.match(st, /snapshotNegtgelFrom\(pkg\.group, msToDay\(fillMs\)\);\s+await refreshStoredProgress\(pkg, sc, msToDay\(fillMs\)\);\s+const rs = await resyncNegtgelFrom\(snap\)/, 'хойш огноогоор батлахад');
-  assert.match(st, /async function healLaterFrames[\s\S]{0,900}snapshotNegtgelFrom\(pkg\.group, day\);\s+await refreshStoredProgress\([\s\S]{0,80}resyncNegtgelFrom\(snap\)/, 'healLaterFrames-д');
+  /* 2026-11-27 (аудит №3): «өмнөх» агшин ЭНЭ жаазгүйгээр — хойш огноогоор батлахад үргэлж, давталтын замд хадгалсан мөр таарвал л */
+  assert.match(st, /snapshotNegtgelFrom\(pkg\.group, msToDay\(fillMs\), firstOid != null && firstOid > 0 \? \{ pkgKey: pkg\.key, firstOid \} : null\);\s+await refreshStoredProgress\(pkg, sc, msToDay\(fillMs\)\);\s+const rs = await resyncNegtgelFrom\(snap\)/, 'хойш огноогоор батлахад');
+  assert.match(st, /async function healLaterFrames[\s\S]{0,1200}snapshotNegtgelFrom\(pkg\.group, day, aOid > 0 \? \{ pkgKey: pkg\.key, firstOid: aOid, onlyIfStored: true \} : null\);\s+await refreshStoredProgress\([\s\S]{0,80}resyncNegtgelFrom\(snap\)/, 'healLaterFrames-д');
+  assert.ok(st.indexOf('const snap = await snapshotNegtgelFrom(pkg.group, msToDay(fillMs)') > st.indexOf('await applyAdds(pkg, frame, written)'),
+    'агшин бичилтийн дараа — жаазыг `skip`-ээр хасна (бичихийн өмнөх эгзэгтэй хэсгийг уртасгахгүй)');
   const nwSrc = readFileSync(new URL('./negtgelWrite.ts', import.meta.url), 'utf8');
   assert.match(nwSrc, /const where = `\$\{F\.bagts\} IN \(/, 'багцыг серверийн where-д');
   assert.match(nwSrc, /resultOffset: String\(offset\)/, 'хуудаслан уншина');

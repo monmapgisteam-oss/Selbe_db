@@ -18,7 +18,7 @@ import {
   ALL, JOB_DEFS, canDo, compile, findDef, validate, type Diff, type Person, type Rights, type Sys,
 } from '@/lib/jobModel';
 import {
-  ADDABLE_CAPS, AUTO_VIEW, addRight, autoHugatsaa, baseItems, blockers, confirmList, diffText, dropBase, dropDiff,
+  ADDABLE_CAPS, AUTO_VIEW, AUTO_VIEW_FIN, addRight, autoHugatsaa, autoIpc, baseItems, blockers, confirmList, diffText, dropBase, dropDiff,
   jobGroups, jobLabel, newStuck, pkgFamilies, pkgOptions, roleChoices, setBagts, setJob, shown, stepLabel, suggestion,
   viewChoices, viewTitle, wantOf, writePlan, type PersonRow, type Step,
 } from '@/lib/erhNew';
@@ -190,6 +190,9 @@ function AddRight({ rights, onAdd, disabled }: { rights: Rights; onAdd: (d: Diff
       )}
       {kind === 'view' && autoHugatsaa(rights) && (
         <p className={s.note}>{tr('«{0}» — «Гүйцэтгэл»-ээс автоматаар нээлттэй.', viewTitle(AUTO_VIEW))}</p>
+      )}
+      {kind === 'view' && autoIpc(rights) && (
+        <p className={s.note}>{tr('«{0}» — «Санхүүжилт»-ээс автоматаар нээлттэй.', viewTitle(AUTO_VIEW_FIN))}</p>
       )}
       {needsPkgs && (kind === 'stage' || picked) && (
         <PkgPicker options={pkgOptions(space)} value={bagts} onChange={setBagtsSel} label={tr('Багцууд')} />
@@ -436,6 +439,7 @@ export function ErhNewPerson(p: PersonPanelProps) {
               <ul className={s.list}>
                 {can.map((c) => <li key={c}>{c}</li>)}
                 {autoHugatsaa(compile(draft)) && <li className={s.muted}>{tr('«{0}» — «Гүйцэтгэл»-ээс автоматаар', viewTitle(AUTO_VIEW))}</li>}
+                {autoIpc(compile(draft)) && <li className={s.muted}>{tr('«{0}» — «Санхүүжилт»-ээс автоматаар', viewTitle(AUTO_VIEW_FIN))}</li>}
               </ul>
             ) : <p className={s.note}>{tr('Юу ч хийхгүй — порталд нэвтэрнэ, харагдацгүй.')}</p>}
           </div>

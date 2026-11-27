@@ -21,6 +21,7 @@ import {
   initRemote,
   remoteReady,
   workflowViewsOf,
+  autoViewsFor,
   type UserBase,
   type UserPerm,
 } from '@/lib/permissions';
@@ -753,11 +754,12 @@ export function UserAdmin({ open, onClose }: { open: boolean; onClose: () => voi
     const capViews = capViewsOf(u.username);
     const wf = workflowViewsOf(u.username);
     /* 2026-11-23: «Гүйцэтгэл»-ийг хардаг хүнд «Хяналтын хугацаа» автоматаар (`permissions.resolveAccess`) — унтраалга түгжээтэй */
-    const autoViews: ViewKey[] = wf.includes('guitsetgel') ? ['hyanaltHugatsaa'] : [];
+    /* 2026-11-27: автомат харагдац ажиллах үеийнхтэй НЭГ дүрмээр (`permissions.autoViewsFor`) — «Санхүүжилт» нээлттэй (шууд эсвэл
+       засах эрхээр) хүнд «Төлбөрийн акт (IPC)» ч автоматаар; урьд самбар үүнийг «хаалттай» гэж харуулдаг байв */
+    const openBase = ALL_KEYS.filter((k) => (WORKFLOW_VIEWS.includes(k) ? wf.includes(k) : hasView(d.views, k) || capViews.includes(k)));
+    const autoViews: ViewKey[] = autoViewsFor(openBase);
     /* 2026-11-20: админ (super) бусдын адил — урсгалтай харагдац томилгооноос, бусад нь хадгалсан + эрхийн харагдац */
-    const opened = (k: ViewKey): boolean => (WORKFLOW_VIEWS.includes(k)
-      ? wf.includes(k)
-      : hasView(d.views, k) || capViews.includes(k) || autoViews.includes(k));
+    const opened = (k: ViewKey): boolean => openBase.includes(k) || autoViews.includes(k);
     return {
       u,
       rowKey: key,

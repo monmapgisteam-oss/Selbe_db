@@ -680,3 +680,107 @@ console.log('negtgelAuto: ok — Excel мод · нөөц мод · багцын
   assert.equal((DB.match(/<Data q=\{vq\}/g) ?? []).length, 2, 'обьёмын 2 самбар volAsync-аас (амьд хуудас, нөөц /190)');
   console.log('negtgel 2026-10-23: ok — обьём навч мөрүүдээс · null ≠ 0 · давхардсан хуудас орохгүй');
 }
+
+/* 2026-11-27: «Төслийн нийтэд тооцохгүй» мөрийн «нийт төсөлд оруулж буй хувь» (share) = 0 — G × S биш */
+{
+  const { negDisplay } = await import('./negtgel.ts');
+  const base = { code: '1', name: 'А', depth: 1, w: 0.5, p: 0.4, budget: null, outside: false, inTotal: null, act: 0.5, planG: null, planGch: null, planGu: null, planNw: null, planPw: null, perfG: null, perfGch: null, perfGu: null, perfWk: null };
+  const { calc } = negDisplay([{ ...base, oid: 1 }, { ...base, oid: 2, inTotal: 0, noTotal: true }]);
+  assert.ok(Math.abs(calc.get(1).share - 20) < 1e-9, 'тооцох мөр — 40 × 50%');
+  assert.equal(calc.get(2).share, 0, 'тооцохгүй мөр — 0');
+  console.log('negtgel 2026-11-27: ok — тооцохгүй мөрийн share 0');
+}
+
+/* 2026-11-27 (аудит №23): нэгтгэлийн (190) багцын гүйцэтгэл — блокийн ТӨСВӨӨР (самбарын `pkgProgressOf`-тэй нэг дүрэм) */
+{
+  const { blendBudget } = await import('./negtgelWrite.ts');
+  const { weightedBlockMean } = await import('./blockProgress.ts');
+  const { readFileSync } = await import('node:fs');
+  const { buildingKey } = await import('./services.ts');
+  const g = 'Багц 4-2';
+  const K = (b) => buildingKey(g, b);
+  const xs = [
+    { bld: ['6/1', '6/2', '6/x'], has: [true, true, true], v: [0.5, 0.2, 0.4], at: 10 },
+    { bld: ['6/x', '6/3', '6/9'], has: [true, true, false], v: [0.6, null, 0.9], at: 20 },
+  ];
+  const W = new Map([[K('6/1'), 100], [K('6/2'), 300], [K('6/x'), 100]]);
+  /* 6/x — хожуу (утгатай) хуудасных 0.6; 6/3 тайлагнаагүй = 0, жин = мэдэгдэж буйн дундаж; 6/9 act талбаргүй — орохгүй */
+  const fill = 500 / 3;
+  const want = (100 * 0.5 + 300 * 0.2 + 100 * 0.6) / (500 + fill);
+  assert.ok(Math.abs(blendBudget(g, xs, W) - want) < 1e-12, 'төсвөөр жигнэнэ');
+  assert.ok(Math.abs(blendBudget(g, xs, null) - (0.5 + 0.2 + 0.6) / 4) < 1e-12, 'жингүй — тэнцүү (блокийн тоо)');
+  assert.equal(blendBudget(g, [{ bld: ['6/1'], has: [false], v: [1], at: 1 }], W), null, 'түлхүүргүй → null');
+  assert.ok(Math.abs(blendBudget(g, [xs[0], { ...xs[1], v: null }], W) - (100 * 0.5 + 300 * 0.2 + 100 * 0.4) / (500 + fill)) < 1e-12,
+    'утгагүй хуудас давхардсан блокийг дарахгүй');
+  assert.equal(weightedBlockMean(new Map([[K('6/1'), 0.5], [K('6/2'), null]]), W), 0.5 * 100 / 400, 'weightedBlockMean — тайлагнаагүй 0');
+  const NW = readFileSync(new URL('./negtgelWrite.ts', import.meta.url), 'utf8');
+  assert.match(NW, /const mean = \(pick: 'act' \| 'plan'\): number \| null => blendParts\(parts, pick, weights\);/, 'finishParts → төсвийн жин');
+  assert.match(NW, /const v = blendParts\(kept, 'act', await budgetWeights\(\)\);/, 'comparablePct ч мөн');
+  console.log('negtgel 2026-11-27: ok — багцын гүйцэтгэл блокийн төсвөөр');
+}
+
+/* 2026-11-27 (аудит №2): ±20-ийн хамгаалалт — өмнөх мөрийг ОДООГИЙН (төсвийн) дүрмээр, энэ жаазгүйгээр дахин бодож жишнэ */
+{
+  const { guardBaseline } = await import('./negtgelWrite.ts');
+  const { readFileSync } = await import('node:fs');
+  /* жишээ: төсөв 1/1/8, гүйцэтгэл 90/90/10 — хуучин (энгийн дундаж) 63.33, шинэ (төсвөөр) 26.00 */
+  const oldLast = (90 + 90 + 10) / 3;
+  const newLast = (1 * 90 + 1 * 90 + 8 * 10) / 10;
+  const cur = 26;
+  assert.ok(cur < oldLast - 20, 'урьд: хуучин дүрмийн утгатай жишээд «хэт зөрүүтэй» гэж татгалздаг байв');
+  const base = guardBaseline(oldLast, newLast);
+  assert.equal(base, newLast, 'дахин бодсон утга байвал түүгээр');
+  assert.ok(!(cur < base - 20), 'ижил дүрмээр — хамгаалалт өдөөгдөхгүй');
+  assert.equal(guardBaseline(oldLast, null), oldLast, 'дахин бодогдоогүй бол хадгалсан утга');
+  assert.equal(guardBaseline(null, null), null);
+  assert.equal(guardBaseline(50, Number.NaN), 50, 'тоо биш → хадгалсан');
+  /* эсрэг тал (хяналт): төсөв 8/1/1, гүйцэтгэл 95/40/40 — хадгалсан (энгийн дундаж) 58.33 < дахин бодсон 84.00; одоо 60.00 */
+  const oldLo = (95 + 40 + 40) / 3;
+  const newHi = (8 * 95 + 1 * 40 + 1 * 40) / 10;
+  assert.ok(Math.abs(newHi - 84) < 1e-9 && !(60 < oldLo - 20), 'урьд: хадгалсан утгатай жишихэд өдөөгдөхгүй тул дахин боддоггүй байв');
+  assert.ok(60 < guardBaseline(oldLo, newHi) - 20, 'ижил дүрмээр 84 → 60 уналт «хэт зөрүүтэй»');
+  const NW = readFileSync(new URL('./negtgelWrite.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const reg = NW.slice(NW.indexOf('export async function registerApproved('));
+  const iRe = reg.indexOf('re = (await summaryAtDate(bagts, lastAt, s.src, true))?.progress ?? null;');
+  const iBase = reg.indexOf('last = guardBaseline(last, re);');
+  const iGuard = reg.indexOf('const cmp = await comparablePct(s.parts, num(prevA?.[F.date]));');
+  assert.ok(iRe > 0 && iBase > iRe && iGuard > iBase, 'хамгаалалт: дахин бодолт → guardBaseline → comparablePct');
+  const pre = reg.slice(0, iRe);
+  assert.ok(pre.lastIndexOf('if (last != null) {') > pre.lastIndexOf('if (last != null && s.progress < last - 20)'), 'дахин бодолт нөхцөлгүй (last != null) — хадгалсан утгатай урьдчилсан жишилтгүй');
+  assert.match(NW, /const src: SkipBRow \| null = own\.oid != null \? \{ pkgKey: one\.p\.key, oid: own\.oid, firstOid: sheetOid, at \} : null;/, 'summaryOf энэ жаазны «Б.» мөрийг буцаана');
+  assert.match(NW, /const not = skip && skip\.pkgKey === p\.key && Number\.isInteger\(skip\.oid\) \? ` AND \$\{sc\.f\.oid\} <> \$\{skip\.oid\}` : '';/, 'summaryAtDate — тэр «Б.» мөрийг хасна');
+  console.log('negtgel 2026-11-27: ok — ±20 хамгаалалт ижил дүрмээр');
+}
+
+/* 2026-11-27 (аудит №3): хойш огноотой жааз — нэгтгэлийн «өмнөх» агшин тэр жаазгүйгээр; давталтын замд хадгалсан мөр таарвал л */
+{
+  const { takeSkipped } = await import('./negtgelWrite.ts');
+  const { BAGTS_NEGTGEL } = await import('./services.ts');
+  const F = BAGTS_NEGTGEL.fields;
+  const stored = { [F.progress]: 40, [F.planned]: 50, [F.volume]: 100, [F.volumePlan]: 200 };
+  const sk = { progress: 40, planned: 50, volume: 100, volumePlan: 200 };
+  assert.equal(takeSkipped(stored, sk, false), true, 'анхны (бичилтийн дараах) зам — үргэлж');
+  assert.equal(takeSkipped(stored, null, false), false, 'жаазгүй агшин бодогдоогүй → одоогийн агшин');
+  assert.equal(takeSkipped(stored, sk, true), true, 'давталт: хадгалсан = жаазгүй агшин → жааз хараахан ороогүй');
+  assert.equal(takeSkipped({ ...stored, [F.progress]: 43 }, sk, true), false, 'давталт: аль хэдийн нэмэгдсэн → давхар нэмэхгүй');
+  assert.equal(takeSkipped({ ...stored, [F.volume]: 104 }, sk, true), false, 'обьём ч аль хэдийн нэмэгдсэн → давхар нэмэхгүй');
+  const { readFileSync } = await import('node:fs');
+  const NW = readFileSync(new URL('./negtgelWrite.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const snap = NW.slice(NW.indexOf('export async function snapshotNegtgelFrom('), NW.indexOf('export async function resyncNegtgelFrom('));
+  assert.match(snap, /negtgelRowsFrom\(bagts, dayRange\(from\)\[skip \? 1 : 0\]\)/, 'skip-тэй бол D-ийн мөрийг (registerApproved бүтэн утгаар бичдэг) алгасна');
+  assert.match(snap, /summaryAtDate\(bagts, at, \{ pkgKey: skip\.pkgKey, oid: bOid, firstOid: skip\.firstOid, at: from \}\)/, 'тэр жаазны «Б.» мөргүй агшин');
+  /* хяналт: D өдөр өмнөх жааз (E) байвал обьём ч E-ээс — шинэ жааз (эхний мөр 5000, «Б.» 5003) */
+  const { skipVolBefore } = await import('./negtgelWrite.ts');
+  const D = Date.parse('2026-11-20T00:00:00Z');
+  const skipD = { pkgKey: 'b1_9f', oid: 5003, firstOid: 5000, at: D };
+  assert.equal(skipVolBefore(skipD, 'b1_9f', { at: D, oid: 4003 }), 5000, 'ижил өдрийн E → OBJECTID < 5000 мөрүүдээс');
+  assert.equal(skipVolBefore(skipD, 'b1_9f', { at: Date.parse('2026-11-18T00:00:00Z'), oid: 3003 }), undefined, 'өмнөх өдрийн жааз → энгийн sheetObyem');
+  assert.equal(skipVolBefore(skipD, 'b1_12f', { at: D, oid: 4003 }), undefined, 'өөр хуудас');
+  assert.equal(skipVolBefore(skipD, 'b1_9f', { at: D, oid: 6003 }), undefined, 'шинэ жаазаас хойшх жааз → тэр өдрийн сүүлийн');
+  assert.equal(skipVolBefore({ pkgKey: 'b1_9f', oid: 5003 }, 'b1_9f', { at: D, oid: 4003 }), undefined, 'огноо мэдэгдэхгүй → урьдын адил');
+  assert.equal(skipVolBefore({ pkgKey: 'b1_9f', oid: 5003, at: D }, 'b1_9f', { at: D, oid: 4003 }), 5003, 'эхний мөр мэдэгдэхгүй → «Б.» мөрийн OBJECTID');
+  assert.match(NW, /sheetObyem\(x\.p, x\.r\.at, x\.volBefore\)/, 'finishParts обьёмыг хилтэй уншина');
+  const BS = readFileSync(new URL('../modules/sheet/bagtsSheet.ts', import.meta.url), 'utf8');
+  assert.ok(BS.includes('AND ${sc.f.oid} < ${opts.beforeOid}'), 'loadRows — beforeOid шүүлт');
+  console.log('negtgel 2026-11-27: ok — хойш огноотой жааз нэгтгэлийн өмнөх агшинд орохгүй');
+}

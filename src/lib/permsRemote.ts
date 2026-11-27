@@ -623,8 +623,14 @@ export async function restampRowsOf(editor: string): Promise<number | null> {
     const url = await tableUrl();
     if (!url) return null;
     const fl = await layer(url);
-    const name = editor.trim().toLowerCase().replace(/'/g, "''");
-    const rows = await queryAllRows(fl, `LOWER(last_edited_user) = '${name}'`);
+    const name = editor.trim().toLowerCase();
+    /* 2026-11-27 (засвар): `fetchAll`-ийн итгэмжлэлийн дүрмээр (`trustRules`) хүчингүй мөрийг (super мөр · админы тухай мөр ·
+       үндсэн бус админы өөртөө бичсэн эрх) дахин хадгалахгүй — эс бөгөөс үндсэн админы нэрээр бичигдэж хүчинтэй болдог байв.
+       Гинжийг бодохын тулд бүх мөрийг татна (super мөрүүд хэрэгтэй). */
+    const all = await queryAllRows(fl, '1=1');
+    const trust = trustRules(all);
+    const rows = all.filter((r) => typeof r.last_edited_user === 'string' && r.last_edited_user.trim().toLowerCase() === name
+      && trust.rowOk(r));
     const ups = rows.filter((r) => typeof r.objectid === 'number' && r.username != null)
       .map((r) => ({ attributes: { objectid: r.objectid, username: r.username } }));
     for (let i = 0; i < ups.length; i += 200) {

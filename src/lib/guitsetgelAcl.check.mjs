@@ -318,7 +318,7 @@ console.log('✅ ХӨНДЛӨНГИЙН ХЯНАЛТ — харна, шийдв�
   }
 
   const ia = S.indexOf('const deny = authz(a.stage');
-  const iar = S.indexOf('archiveSubmission(cur, a.subAt)');
+  const iar = S.indexOf('archiveSubmission(cur, a.subAt, a.stage)');
   assert.ok(ia > 0, 'apply-д authz дуудагдаагүй');
   assert.ok(iar > ia,
     'hyanaltStore: authz нь archiveSubmission-оос ХОЙШ — архивын бичилт таслагдахгүй');

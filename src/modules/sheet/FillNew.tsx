@@ -7,6 +7,7 @@ import { loadNoots, nootsSummary, inPkgStock } from '@/lib/materialNoots';
 import { serverNow, syncServerClock } from '@/lib/serverClock';
 import { dayTagOf, needsRegistration, submitForReview } from '@/lib/hyanaltSubmit';
 import { loadPkgPlan, planPctFromMonths, type PkgPlan } from '@/lib/huvaariObyem';
+import { saneDate } from '@/lib/projectPlan';
 import {
   computeAll,
   dayToMs,
@@ -925,7 +926,8 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const pe = pendDate[`${row.oid}:${b}:e`];
       const start = ps != null ? dayToMs(ps) : (row.start[b] ?? null);
       const end = pe != null ? dayToMs(pe) : (row.end[b] ?? null);
-      return m ? planPctFromMonths(m, asOf, { start, end }) : null;
+      /* 2026-11-27 (аудит №6): 2000–2100-гийн гаднах огноо → бүтэн сараар (`planProgress`/`projectPlanInputs.monthlyOf`-тэй нэг дүрэм) */
+      return m ? planPctFromMonths(m, asOf, saneDate(start) != null && saneDate(end) != null ? { start, end } : null) : null;
     },
     [obPlan, sc, asOf, pendDate],
   );
@@ -1015,7 +1017,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
     Object.keys(pendDate).length +
     (asOf !== asOfOrig ? 1 : 0);
 
-  const { otherPct, pkgPct, otherPending, pkgAll } = usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount, ovBase });
+  const { otherPct, pkgPct, otherPending, pkgAll, pkgWide } = usePkgPct({ pkg, sc, nBld, rowsAll, calc, asOf, hasObyem, planPct, dirtyCount, ovBase });
   const {
     pvPend, pvSub, pvPreview, pvBusy, pvErr, pvNote,
     pvCells, sendObyem, decideObyemHere, withdrawObyemHere, pvReturned,
@@ -1480,8 +1482,10 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       const keys = [...Object.keys(pending), ...Object.keys(pendDate)];
       const nRows = new Set(keys.map((k) => k.split(':')[0])).size;
       const nBlk = new Set(keys.map((k) => k.split(':')[1]).filter((x) => x != null && x !== '')).size;
-      const pctLine = pkgPct && Number.isFinite(pkgPct.saved) && Number.isFinite(pkgPct.draft)
-        ? tr('Багцын гүйцэтгэл: {0}% → {1}%', pkgPct.saved.toFixed(2), pkgPct.draft.toFixed(2))
+      /* 2026-11-27 (аудит №23): блокийн төсвөөр жигнэсэн (хэрэгслийн мөр · самбартай нэг дүрэм); хоёр хувилбартай багцад бүх хувилбараар */
+      const pp = pkgWide ?? pkgPct;
+      const pctLine = pp && Number.isFinite(pp.saved) && Number.isFinite(pp.draft)
+        ? tr('Багцын гүйцэтгэл: {0}% → {1}%', pp.saved.toFixed(2), pp.draft.toFixed(2))
         : '';
       yes = await askConfirm(
         tr('{0} өөрчлөлтийг хянагчид илгээх үү?', dirtyCount) + '\n\n'
@@ -1922,7 +1926,7 @@ export default function FillNew({ view }: { view?: SheetView } = {}) {
       pubEpochRef.current += 1;
       setBusy(false);
     }
-  }, [pkg, pkgPct, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, sendReady, canPerf, noEdit, rows, done, reviewStage, hideStage, maBadRows, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
+  }, [pkg, pkgPct, pkgWide, sc, nBld, asOf, asOfOrig, pending, pendDate, dirtyCount, busy, sendReady, canPerf, noEdit, rows, done, reviewStage, hideStage, maBadRows, staged, snapMs, user, reloadHy, flow, returnedStaged, todayFillMs, canSubmitNow, waitingOn, resumedOid, setResumedOid, setTodayFillMs, keepDraftRef, mineRef, mineAtRef, byAtRef, delRef, undoAllMarks, setByMap, setByAtMap,
     /* 2026-10-04 аудит */
     stamp, rcptRef, btRef, datesBRef, asOfBRef, clearMyTgt, tgtMismatch, draftTgt, warn, pushReceipts,
     /* 2026-10-09 */

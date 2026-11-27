@@ -82,7 +82,6 @@ export const capLabelShort = (k: CapKey): string => {
   if (k === 'zovshoorolTtbEdit') return tr('Зөвшөөрөл (төлөвлөгөө)');
   if (k === 'ashiglaltEdit') return tr('Ашиглалтад оруулах');
   if (k === 'dulaanEdit') return tr('Дулаан авах огноо');
-  if (k === 'cfSwitch') return tr('Сарын мөнгө → Хуваарь');
   if (k === 'ttbSwitch') return tr('ТТБ-ийн 4 унтраалга');
   if (k === 'aiAgent') return tr('AI туслах');
   return k;

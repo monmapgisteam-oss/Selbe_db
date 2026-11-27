@@ -308,6 +308,86 @@ export function remapMonths(months: ReadonlyMap<string, number>, from: Span, to:
   return splitByPct(total, out);
 }
 
+/**
+ * ГИНЖЭЭР ШИЛЖСЭН мужийн сарын обьём (2026-11-27): муж нь урт хэвээр ЗӨВХӨН шилжсэн бол (уялдааны гинж бүлэг/ажлыг
+ * түлхсэн, бүлгийг шилжүүлсэн) задаргааг мөн тэр хэмжээгээр шилжүүлнэ (`remapMonths`, нийлбэр хадгалагдана) — урьд нь
+ * `keepMonths` шинэ мужаас гарсан сарыг хаяж нийлбэр чимээгүй задардаг байв. Урт өөрчлөгдсөн / хуучин муж алга /
+ * задаргаа хоосон бол урьдын адил `keepMonths`.
+ */
+export function shiftMonths(to: Span, from: Span | null | undefined, months: ReadonlyMap<string, number>): Map<string, number> {
+  if (from && to.end - to.start === from.end - from.start && to.start !== from.start && sumMonths(months) > 0) {
+    return remapMonths(months, from, to);
+  }
+  return keepMonths(to, months);
+}
+
+/**
+ * ГИНЖЭЭР ШИЛЖСЭН мужийн сарын НӨӨЦ (2026-11-27): обьём шилждэг болсон атал нөөц `keepRes`-ээр хуучин сардаа үлдэж,
+ * мужаас гарсан нь чимээгүй хаягддаг байв (3–4-р сарын 10 · 20 хүн 5–6-р сар руу түлхэгдэхэд хоосон болно). Одоо урт
+ * хэвээр шилжсэн бол сар бүрийн нөөц ЭХЛЭХ САРЫН ЗӨРҮҮГЭЭР (бүхэл сараар) шилжинэ; шинэ мужаас гарсан сар хамгийн ойрын
+ * захын сарт НЭМЭГДЭНЭ — нийлбэр (мөрийн `hun_huch` / `mashin_mehanizm`) ба бүхэл тоо хадгалагдана. Урт өөрчлөгдсөн /
+ * хуучин муж алга бол урьдын адил `keepRes`.
+ */
+export function shiftRes(to: Span, from: Span | null | undefined, prev: ReadonlyMap<string, MonthRes>): Map<string, MonthRes> {
+  if (!from || to.end - to.start !== from.end - from.start || to.start === from.start) return keepRes(to, prev);
+  const idx = (k: string): number => Number(k.slice(0, 4)) * 12 + Number(k.slice(5, 7)) - 1;
+  const keys = monthsOf(to);
+  if (!keys.length) return new Map();
+  const off = idx(monthKey(to.start)) - idx(monthKey(from.start));
+  const lo = idx(keys[0]);
+  const add = (a: number | null, b: number | null): number | null => (a == null ? b : b == null ? a : a + b);
+  const out = new Map<string, MonthRes>();
+  for (const k of [...prev.keys()].sort()) {
+    const v = prev.get(k)!;
+    if (v.hun == null && v.mashin == null) continue;
+    const at = keys[Math.min(keys.length - 1, Math.max(0, idx(k) + off - lo))];
+    const was = out.get(at);
+    out.set(at, { hun: add(was?.hun ?? null, v.hun), mashin: add(was?.mashin ?? null, v.mashin) });
+  }
+  return out;
+}
+
+/**
+ * ШИЛЖҮҮЛЭЛТИЙН ЗАНГУУ (2026-11-27): `remapMonths` өдрөөр жигд тараадаг тул алдагдалтай — ажлыг +1 өдөр түлхээд буцаахад
+ * 400 / 600 нь 406.86 / 593.14 болж, давтах тусам улам тардаг байв (огноо хадгалагдсантай тэнцүү атал сарын обьём өөр
+ * ноорог хадгалагдана). Иймд ЭХНИЙ шилжүүлэлтийн өмнөх муж ба задаргааг (`span` · `months`) зангуу болгон хадгалж, дараагийн
+ * шилжүүлэлт бүрийг ЗАНГУУНААС шууд бодно: зангууны муж руу буцвал задаргаа яг сэргэнэ, хуримтлагдах алдаа үгүй.
+ * Зангуу хүчинтэй байх нөхцөл — оролт нь зангууны сүүлийн гаралт (`at` · `last`) эсвэл сүүлийн оролттой (`inAt` · `inVal`:
+ * чирэлтийн алхам бүр, React-ийн давхар дуудлага) таарах; хооронд нь гараар зассан / буцаасан (Ctrl+Z) бол шинэ зангуу.
+ */
+export type ShiftAnchor<T> = {
+  span: Span; months: ReadonlyMap<string, T>;
+  inAt: Span; inVal: ReadonlyMap<string, T>;
+  at: Span; last: ReadonlyMap<string, T>;
+};
+/**
+ * @param home хадгалагдсан (суурь) муж ба задаргаа — зангуу нь өөр мужаас эхэлсэн (эсвэл алга) үед суурь муж руу буцвал
+ *   хадгалагдсан утга яг сэргэнэ
+ * @param move `(задаргаа, хуучин муж, шинэ муж)` → шинэ задаргаа (`shiftMonths` / `shiftRes`)
+ */
+export function shiftAnchored<T>(
+  to: Span, was: Span, cur: ReadonlyMap<string, T>, anchor: ShiftAnchor<T> | null | undefined,
+  eq: (a: ReadonlyMap<string, T>, b: ReadonlyMap<string, T>) => boolean,
+  move: (months: ReadonlyMap<string, T>, from: Span, to: Span) => Map<string, T>,
+  home?: { span: Span | null | undefined; months: ReadonlyMap<string, T> | null | undefined },
+): { val: Map<string, T>; anchor: ShiftAnchor<T> } {
+  const sameSp = (a: Span, b: Span): boolean => a.start === b.start && a.end === b.end;
+  const len = (s: Span): number => s.end - s.start;
+  const ok = !!anchor && len(anchor.span) === len(to)
+    && ((sameSp(anchor.at, was) && eq(anchor.last, cur)) || (sameSp(anchor.inAt, was) && eq(anchor.inVal, cur)));
+  const span = ok ? anchor!.span : was;
+  const months = ok ? anchor!.months : cur;
+  /* 2026-11-27 (засвар): суурь утгыг зөвхөн задаргаа нь суурийн ГАР ЗАСВАРГҮЙ шилжүүлэлт байвал сэргээнэ — хооронд нь
+     гараар зассан (Мар 100 / Апр 880 / May 20) бол суурь муж руу буцахад ч гар засвар шилжиж үлдэнэ, хаягдахгүй. */
+  const hs = home?.span, hm = home?.months;
+  const fromHome = (m: ReadonlyMap<string, T>, s: Span): boolean =>
+    !!hs && !!hm && (sameSp(s, hs) ? eq(m, hm) : len(s) === len(hs) && eq(m, move(hm, hs, s)));
+  const val = sameSp(span, to) ? new Map(months)
+    : hs && hm && sameSp(hs, to) && (fromHome(cur, was) || (ok && fromHome(months, span))) ? new Map(hm)
+    : move(months, span, to);
+  return { val, anchor: { span, months: ok ? months : new Map(months), inAt: was, inVal: new Map(cur), at: to, last: val } };
+}
+
 /* ══════════════════ Төлөвлөгөөт хувь (S-муруй) ══════════════════ */
 
 /**
@@ -935,8 +1015,10 @@ export const cfIdOfPctKey = (key: string): number | null => {
  * Хэрэглэгч: «Төлөвлөгөөт хувь next week-ийг сарын төлөвлөгөөнөөс тулгуурлан, хэд хэмжээний ажил хийгдэхийг оруулдаг байх».
  * Ажил × блок бүрд «ирэх 7 хоногт хийх обьём» — 186-д `turul = 'doloo_hon'`, `sar` = долоо хоногийн Даваа гараг.
  * Тооцоо (`weekPct`, 2026-11-11 аудитын дараа): зөвхөн ӨНӨӨДРӨӨС ХОЙШХИ 7 ХОНОГИЙН асуултад (ТТБ-ийн «Ирэх долоо хоног»)
- * нөлөөлнө — өнөөдрийн суурь төлөвлөгөө (сарын обьём › огноо) + оруулсан обьём ÷ нийт обьём (бүтнээр). Өнөөдөр ба өнгөрсөн
- * өдрийн төлөвлөгөөт хувийг ХӨНДӨХГҮЙ: долоо хоног солигдоход хувь буурахгүй, өнгөрсөн оруулга үлдэгдэл нөлөөгүй. */
+ * нөлөөлнө — өнөөдрийн суурь төлөвлөгөө (сарын обьём › огноо) + (өнөөдөр, өнөөдөр + 7 хоног] мужийн ӨДӨР БҮР өөрийн
+ * календарийн долоо хоногийн батлагдсан оруулгын 1/7 ÷ нийт обьём (2026-11-27-ноос; урьд нь ирэх долоо хоногийнхыг бүтнээр
+ * нэмдэг байв). Иймд ирэх долоо хоногийн оруулга тэр долоо хоногийн Даваа гарагаас эхлэн өдөр өдрөөр тооцогдоно. Өнөөдөр ба
+ * өнгөрсөн өдрийн төлөвлөгөөт хувийг ХӨНДӨХГҮЙ: долоо хоног солигдоход хувь буурахгүй, өнгөрсөн оруулга үлдэгдэл нөлөөгүй. */
 
 export const TURUL_WEEK = 'doloo_hon';
 /**
@@ -959,8 +1041,8 @@ const ymd = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 export const weekDkeyOf = (bagts: string, des: number, blok: string, week: number, turul: WeekTurul = TURUL_WEEK): string =>
   `${bagts}|${turul}|${des}|${blok}|${ymd(week)}`;
 
-/** Нэг долоо хоногийн оруулга */
-export type WeekPlan = { week: number; obyem: number; oid: number | null };
+/** Нэг долоо хоногийн оруулга; `by` — утгыг оруулсан хүн (`weekAuthorOf`; зөвхөн хүлээгдэж буй мөрийн ачаалалд, мэдэгдэхгүй бол алга) */
+export type WeekPlan = { week: number; obyem: number; oid: number | null; by?: string };
 /** Багц → ажлын код → блок → оруулгууд (долоо хоногоор өсөх) */
 export type PkgWeek = Map<number, Map<string, WeekPlan[]>>;
 
@@ -975,7 +1057,8 @@ export function toPkgWeek(feats: readonly { attributes: Record<string, unknown> 
     if (!Number.isInteger(des) || !blok || !Number.isFinite(v) || !Number.isFinite(w)) continue;
     const byB = out.get(des) ?? out.set(des, new Map()).get(des)!;
     const list = byB.get(blok) ?? byB.set(blok, []).get(blok)!;
-    list.push({ week: w, obyem: v, oid: a.objectid == null ? null : Number(a.objectid) });
+    const by = weekAuthorOf(a);
+    list.push({ week: w, obyem: v, oid: a.objectid == null ? null : Number(a.objectid), ...(by ? { by } : {}) });
   }
   for (const byB of out.values()) for (const list of byB.values()) list.sort((x, y) => x.week - y.week);
   return out;
@@ -983,8 +1066,11 @@ export function toPkgWeek(feats: readonly { attributes: Record<string, unknown> 
 
 /**
  * Ирэх 7 хоногийн оруулгатай ажлын төлөвлөгөөт хувь (0–1). `asOf` нь (өнөөдөр, өнөөдөр + 7 хоног] мужид биш, эсвэл
- * оруулга алга бол `undefined` — дуудагч суурь төлөвлөгөөгөө хэрэглэнэ. Оруулга: ирэх долоо хоногийнх, байхгүй бол энэ
- * долоо хоногийнх (өнгөрсөн долоо хоногт «ирэх» гэж оруулсан).
+ * энэ ба ирэх долоо хоногийн аль алинд оруулга алга бол `undefined` — дуудагч суурь төлөвлөгөөгөө хэрэглэнэ.
+ * 2026-11-27: (өнөөдөр, asOf] мужийн ЭНЭ долоо хоногт орох өдрүүд энэ долоо хоногийн оруулгаар, ИРЭХ долоо хоногт орох
+ * өдрүүд ирэх долоо хоногийн оруулгаар бодогдоно (долоо хоног бүрийн дотор шугаман, өдөрт оруулга ÷ 7). Урьд нь ирэх долоо
+ * хоногийнхыг бүтнээр авдаг байсан тул Даваа гарагт (муж бүхэлдээ энэ долоо хоногт) буруу долоо хоногийн утга орж байв.
+ * Тухайн хэсгийн оруулга алга бол тэр өдрүүд нэмэгдэлгүй (суурь `base(asOf)`-аас доош орохгүй).
  * @param base суурь төлөвлөгөө (сарын обьём › огноо) 0–1, `null` = мэдэгдэхгүй (0 гэж үзнэ)
  */
 export function weekPct(
@@ -993,12 +1079,15 @@ export function weekPct(
   if (!entries?.length || !(vol != null && vol > 0)) return undefined;
   if (!(asOf > today && asOf <= today + 7 * DAY)) return undefined;
   const pick = (w: number) => { let hit: WeekPlan | undefined; for (const e of entries) if (e.week === w) hit = e; return hit; };
-  const hit = pick(nextWeekStart(today)) ?? pick(weekStart(today));
-  if (!hit) return undefined;
+  const ns = nextWeekStart(today);
+  const cur = pick(weekStart(today));
+  const nxt = pick(ns);
+  if (!cur && !nxt) return undefined;
   /* 2026-11-18: 7 хоногийн ДОТОРХ өдрүүдэд шугаман — урьд нь маргаашаас эхлэн бүтэн обьём нэмэгдэж, төлөвлөгөөт муруй
-     нэг өдөрт огцом үсэрдэг байв. 7 дахь өдөр (ТТБ-ийн «Ирэх долоо хоног») бүтнээр — хэвээр. */
-  const frac = Math.min(1, (asOf - today) / (7 * DAY));
-  const v = (base(today) ?? 0) + (Math.max(0, hit.obyem) / vol) * frac;
+     нэг өдөрт огцом үсэрдэг байв. */
+  const rate = (e: WeekPlan | undefined): number => (e ? Math.max(0, e.obyem) / vol / (7 * DAY) : 0);
+  const add = rate(cur) * Math.max(0, Math.min(asOf, ns) - today) + rate(nxt) * Math.max(0, asOf - ns);
+  const v = (base(today) ?? 0) + add;
   return Math.min(1, Math.max(base(asOf) ?? 0, v));
 }
 
@@ -1011,7 +1100,9 @@ export async function loadPkgWeek(bagts: string, turul: WeekTurul = TURUL_WEEK):
   for (let off = 0; ; ) {
     const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
       where: `bagts = '${bagts.replace(/'/g, "''")}' AND turul = '${turul}'`,
-      outFields: 'objectid,des_dugaar,blok,sar,obyem',
+      /* 2026-11-27: хүлээгдэж буй мөрийн ОРУУЛСАН ХҮН хэрэгтэй (өөрийн оруулгыг өөрөөс нь «Батлах уу?» гэж асуудаг байв).
+         Editor tracking талбар хүснэгтэд байхгүй байж болох тул нэрлэж асуухгүй — `weekRows`-ийн адил `*` */
+      outFields: turul === TURUL_WEEK_PEND ? '*' : 'objectid,des_dugaar,blok,sar,obyem',
       orderByFields: 'objectid ASC',
       resultOffset: String(off),
       resultRecordCount: '2000',
@@ -1079,14 +1170,45 @@ export async function saveWeek(meta: WorkMeta, blok: string, week: number, obyem
   if (e.adds.length || e.updates.length || e.deletes.length) await applyPlanEdits(e);
 }
 
+/** Долоо хоногийн мөрийн ОДООГИЙН утгыг оруулсан хүн — сүүлийн засварлагч, эс бөгөөс үүсгэгч (жижиг үсгээр; алга бол '') */
+export const weekAuthorOf = (a: Record<string, unknown>): string => {
+  const s = (v: unknown): string => (v == null ? '' : String(v).trim().toLowerCase());
+  return s(a.last_edited_user) || s(a.created_user);
+};
+/** Хүлээгдэж буй мөрүүдийн аль нэгийг `me` хамгийн сүүлд засаж/оруулсан уу — тийм бол өөрөө батлахгүй */
+export const weekSelfApproved = (pend: readonly { by: string }[], me: string): boolean => {
+  const m = me.trim().toLowerCase();
+  return !!m && pend.some((r) => r.by === m);
+};
+/**
+ * Хүлээгдэж буй долоо хоногийн оруулгыг батлагчийн цонхонд ангилна (цэвэр, 2026-11-27):
+ *   `live` — энэ / ирэх долоо хоногийнх, БУСДЫН оруулсан → «Батлах уу?»;
+ *   `self` — энэ / ирэх долоо хоногийнх, `me` өөрөө оруулсан → асуухгүй (`approveWeek` татгалздаг), өөр батлагч шийдвэрлэнэ;
+ *   `old` — энэ долоо хоногоос өмнөх (хугацаа нь өнгөрсөн) → «Цэвэрлэх» (`clearWeekPend`).
+ * Оруулсан хүн мэдэгдэхгүй (`by` алга) бол `live` — эцсийн шалгалтыг `approveWeek` хийнэ.
+ */
+export function weekPendSplit<T extends { week: number; by?: string }>(
+  all: readonly T[], today: number, me: string,
+): { live: T[]; self: T[]; old: T[] } {
+  const cur = weekStart(today), nxt = nextWeekStart(today);
+  const out = { live: [] as T[], self: [] as T[], old: [] as T[] };
+  for (const x of all) {
+    if (x.week < cur) out.old.push(x);
+    else if (x.week === cur || x.week === nxt) (x.by && weekSelfApproved([{ by: x.by }], me) ? out.self : out.live).push(x);
+  }
+  return out;
+}
+
 /** Тэр түлхүүрийн (ажил × блок × долоо хоног × төрөл) мөрүүд — objectid өсөхөөр */
 async function weekRows(meta: WorkMeta, blok: string, week: number, turul: WeekTurul): Promise<{ oid: number; obyem: number | null; by: string }[]> {
   const dkey = weekDkeyOf(meta.bagts, meta.des, blok, week, turul);
   const j = await agsFetch(`${HUVAARI_OBYEM}/query`, {
     where: `dkey = '${dkey.replace(/'/g, "''")}' AND turul = '${turul}'`, outFields: '*', orderByFields: 'objectid ASC', returnGeometry: 'false',
   });
-  /* 2026-11-24: оруулсан хүн — editor tracking (`created_user`, эс бөгөөс `last_edited_user`); хүснэгтэд алга бол хоосон */
-  const byOf = (a: Record<string, unknown>): string => String(a.created_user ?? a.last_edited_user ?? '').trim().toLowerCase();
+  /* 2026-11-24: оруулсан хүн — editor tracking; 2026-11-27: `saveWeek` хүлээгдэж буй мөрийг ШИНЭЧИЛДЭГ тул одоогийн утгыг
+     оруулсан СҮҮЛИЙН засварлагч (`last_edited_user`, эс бөгөөс `created_user`) — урьд нь үүсгэгчийг харж, утгыг сольсон
+     батлагч өөрийнхөө утгыг баталж чаддаг байв; хүснэгтэд алга бол хоосон */
+  const byOf = (a: Record<string, unknown>): string => weekAuthorOf(a);
   return ((j.features ?? []) as { attributes: Record<string, unknown> }[])
     .map((f) => ({ oid: Number(f.attributes.objectid), obyem: f.attributes.obyem == null ? null : Number(f.attributes.obyem), by: byOf(f.attributes) }))
     .filter((x) => Number.isFinite(x.oid));
@@ -1129,9 +1251,43 @@ export async function approveWeek(meta: WorkMeta, blok: string, week: number, ex
   await requirePlanApproveOf(meta.bagts);
   const [pend, appr] = await Promise.all([weekRows(meta, blok, week, TURUL_WEEK_PEND), weekRows(meta, blok, week, TURUL_WEEK)]);
   /* 2026-11-24: өөрийн оруулсан обьёмыг өөрөө батлахгүй (сарын хуваарьтай ижил дүрэм) */
-  const me = currentUser()?.trim().toLowerCase() ?? '';
-  if (me && pend.some((r) => r.by === me)) throw new Error(tr('Өөрийн оруулсан обьёмыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.'));
+  if (weekSelfApproved(pend, currentUser() ?? '')) throw new Error(tr('Өөрийн оруулсан обьёмыг өөрөө батлах боломжгүй — өөр батлагч шийдвэрлэнэ.'));
   const e = weekApproveEdits(meta, blok, week, pend, appr, expect);
   if (!e) throw new Error(tr('Хүлээгдэж буй обьём өөрчлөгдсөн эсвэл алга — хуудсаа шинэчилнэ үү.'));
   await applyPlanEdits(e);
+}
+
+/**
+ * ХУГАЦАА НЬ ӨНГӨРСӨН хүлээгдэж буй мөрийг устгах ачаа (цэвэр, 2026-11-27): долоо хоног нь `today`-н долоо хоногоос ӨМНӨХ
+ * бол л — энэ ба ирэх долоо хоногийнх батлагдах боломжтой тул хэзээ ч устгагдахгүй. Устгах мөр алга бол null.
+ */
+export function weekExpiredEdits(
+  bagts: string, rows: readonly { week: number; oids: readonly number[] }[], today: number,
+): PlanEdits | null {
+  const cur = weekStart(today);
+  const e: PlanEdits = { adds: [], updates: [], deletes: [] };
+  for (const r of rows) if (r.week < cur) e.deletes.push(...r.oids.filter((o) => Number.isFinite(o)));
+  if (!e.deletes.length) return null;
+  e.pkgKey = bagts;
+  return e;
+}
+
+/**
+ * Хугацаа нь өнгөрсөн долоо хоногийн БАТЛАГДААГҮЙ обьёмыг ЦЭВЭРЛЭНЭ (2026-11-27) — зөвхөн тэр багцын батлагч, `approveWeek`-
+ * ийн ижил хамгаалалттай замаар (`requirePlanApproveOf` → `applyPlanEdits` + `pkgKey`). Урьд нь ийм мөрийг устгах зам огт
+ * байгаагүй тул батлагч бүрд ажлын цонх нээх бүрд санамж гарч, жагсаалт долоо хоног бүр уртасдаг байв. Мөрийг бичихийн
+ * өмнө ШИНЭЭР уншина (дэлгэцийн хуучин төлөвөөр биш). Буцаах нь устгасан мөрийн тоо.
+ */
+export async function clearWeekPend(meta: WorkMeta, blok: string, weeks: readonly number[], today: number): Promise<number> {
+  await requirePlanApproveOf(meta.bagts);
+  const cur = weekStart(today);
+  const rows: { week: number; oids: number[] }[] = [];
+  for (const week of new Set(weeks)) {
+    if (!(week < cur)) continue;
+    rows.push({ week, oids: (await weekRows(meta, blok, week, TURUL_WEEK_PEND)).map((x) => x.oid) });
+  }
+  const e = weekExpiredEdits(meta.bagts, rows, today);
+  if (!e) return 0;
+  const [, , dl] = await applyPlanEdits(e);
+  return dl;
 }

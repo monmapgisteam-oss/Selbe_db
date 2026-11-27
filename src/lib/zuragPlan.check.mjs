@@ -362,4 +362,51 @@ assert.equal(rt.get('2.1').E, 100, 'зураг төсөлд бүртгэлийн
   assert.deepEqual(registryDupDeletes(now, [100, 101, 102]), [], 'бага objectid-тай тал юу ч устгахгүй');
   assert.deepEqual(registryDupDeletes(now, []), []);
 }
+/* 2026-11-27: бүртгэлийн мөр хүснэгтийн мөрийнхөө 4 унтраалгыг авна (урьд нь зөвхөн objectid) — унтраалга бодолтод нөлөөлнө */
+{
+  const st = { objectid: 50, dd_kod: '2.9', etseg_kod: '2', ajil_uilchilgee: 'n4', zurag_oid: 4, niit_tootsoh: 0, uy_shat_tootsoh: 0, mongo_tootsoh: 0, hugatsaa_tootsoh: 0, heseg_ezleh_huvi: 0.9 };
+  const o2 = withRegistryRows([...rows, st], docs);
+  const g = o2.find((r) => r.objectid === 50);
+  assert.ok(g && g.registry, 'хадгалсан мөр бүртгэлийн мөрт оногдсон');
+  assert.deepEqual([g.niit_tootsoh, g.uy_shat_tootsoh, g.mongo_tootsoh, g.hugatsaa_tootsoh], [0, 0, 0, 0], '4 унтраалга хүснэгтийн мөрөөс');
+  assert.notEqual(g.heseg_ezleh_huvi, 0.9, 'жин — бүртгэлийн дүрмээр (хадгалсан жин хуулахгүй)');
+  const r2 = computePlan(buildTree(o2), {}, D('2026-07-02'));
+  const n2 = r2.tree.nodes.find((n) => n.row?.objectid === 50);
+  assert.equal(r2.values.get(n2).noTotal, true, '1-р унтраалга унтарсан — Төслийн нийтэд тооцохгүй');
+  /* Унтраалгагүй хадгалсан мөр — түлхүүр нэмэгдэхгүй (урьдын адил) */
+  const o3 = withRegistryRows([...rows, { ...st, niit_tootsoh: null, uy_shat_tootsoh: null, mongo_tootsoh: null, hugatsaa_tootsoh: null }], docs);
+  assert.ok(!('niit_tootsoh' in o3.find((r) => r.objectid === 50)), 'хоосон унтраалга — түлхүүргүй');
+  /* Хүснэгтэд бичих засварт унтраалга орохгүй (бүртгэлээс гардаггүй) */
+  const ed = registryPlanEdits([...rows, st], docs);
+  assert.ok(ed.updates.every((u) => !('niit_tootsoh' in u) && !('uy_shat_tootsoh' in u)), 'бүртгэлийн синк унтраалгыг дарахгүй');
+}
+/* 2026-11-27 (аудит): БҮЛГИЙН мөрийн унтраалга урд нь бүлэг нэмэхэд (Д/Д ба «N.» дугаар шилжинэ) өөрийн бүлэгтэйгээ үлдэнэ */
+{
+  /* Синк хийгдсэн хүснэгт: бүртгэлийн мөрүүд хадгалагдсан (objectid 60…), «2. АЖЛЫН ЗУРАГ» ба «1. БАГЦ 1»-д унтраалга */
+  const synced = withRegistryRows(rows, docs).map((r, i) => {
+    if (!r.registry) return r;
+    const { registry: _r, virtual: _v, ...rest } = r;
+    const sw = r.ajil_uilchilgee === '2. АЖЛЫН ЗУРАГ' ? { niit_tootsoh: 0 } : r.ajil_uilchilgee === '1. БАГЦ 1' ? { uy_shat_tootsoh: 0 } : {};
+    return { ...rest, objectid: 60 + i, ...sw };
+  });
+  const oidOf = (name) => synced.find((r) => r.ajil_uilchilgee === name).objectid;
+  /* Бүртгэлд «ЗАГВАР ЗУРАГ» ба «АЖЛЫН ЗУРАГ»-ийн хооронд шинэ бүлэг */
+  const docs2 = [docs[0], z(9, '004. ШИНЭ БҮЛЭГ', '', 'ehleegui'), ...docs.slice(1)];
+  const o = withRegistryRows(synced, docs2).filter((r) => r.registry);
+  const at = (name) => o.find((r) => r.ajil_uilchilgee === name);
+  assert.equal(at('3. АЖЛЫН ЗУРАГ').dd_kod, '2.3', 'бүлэг 2.2 → 2.3 шилжсэн');
+  assert.equal(at('3. АЖЛЫН ЗУРАГ').objectid, oidOf('2. АЖЛЫН ЗУРАГ'), 'хадгалсан мөр өөрийн бүлгээ дагана (Д/Д биш)');
+  assert.equal(at('3. АЖЛЫН ЗУРАГ').niit_tootsoh, 0, 'унтраалга өөрийн бүлэгтэй');
+  assert.notEqual(at('2. ШИНЭ БҮЛЭГ').objectid, oidOf('2. АЖЛЫН ЗУРАГ'), 'шинэ бүлэг өөр бүлгийн мөрийг авахгүй');
+  assert.ok(!('niit_tootsoh' in at('2. ШИНЭ БҮЛЭГ')), 'шинэ бүлэгт унтраалга шилжихгүй');
+  assert.equal(at('1. БАГЦ 1').dd_kod, '2.3.1');
+  assert.equal(at('1. БАГЦ 1').objectid, oidOf('1. БАГЦ 1'), 'дэд бүлэг ч эцгийнхээ нэрээр тулгагдана');
+  assert.equal(at('1. БАГЦ 1').uy_shat_tootsoh, 0);
+  /* Зөвхөн Д/Д-ээр тулгагдсан (нэр өөр) бүлгийн мөр — objectid авсан ч унтраалга авахгүй */
+  const renamed = synced.map((r) => (r.ajil_uilchilgee === '2. АЖЛЫН ЗУРАГ' ? { ...r, ajil_uilchilgee: '2. ХУУЧИН НЭР' } : r));
+  const o2 = withRegistryRows(renamed, docs).filter((r) => r.registry);
+  const g2 = o2.find((r) => r.ajil_uilchilgee === '2. АЖЛЫН ЗУРАГ');
+  assert.equal(g2.objectid, oidOf('2. АЖЛЫН ЗУРАГ'), 'Д/Д-ээр objectid (урьдын адил)');
+  assert.ok(!('niit_tootsoh' in g2), 'нэр өөр — унтраалга хуулахгүй');
+}
 console.log('zuragPlan.check: бүгд ✅');

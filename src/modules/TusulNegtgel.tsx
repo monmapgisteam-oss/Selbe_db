@@ -19,7 +19,7 @@ import {
 } from '@/lib/negtgelEdit';
 import { useAuth } from '@/components/AuthGate';
 import { hasCap, subscribeCaps } from '@/lib/caps';
-import { saveInTotal } from '@/lib/planEdit';
+import { canSwitch, saveInTotal } from '@/lib/planEdit';
 import n from './negtgel.module.css';
 /* Баруун товшилтын цэс ба сонголтын тэмдэг — Санхүүжилтийн хүснэгттэй НЭГ загвар */
 import f from './negtgelFin.module.css';
@@ -239,8 +239,9 @@ function NegBody({ d: live, onDirty, reloadFailed, onReload }: {
   /* «Төслийн нийтэд тооцох» — «Төсөл төлөвлөгөө биелэлт»-д (182) бичих эрх (`finEdit`) */
   const [capN, setCapN] = useState(0);
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  /* 2026-11-27: бичигч (`saveInTotal` → `switchCap`)-тэй НЭГ эрх — «ТТБ-ийн 4 унтраалга» эсвэл «Санхүү засах» */
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио
-  const canTotal = useMemo(() => live.source === 'plan' && hasCap(user?.username, 'finEdit'), [live.source, user, capN]);
+  const canTotal = useMemo(() => live.source === 'plan' && canSwitch(user?.username), [live.source, user, capN]);
   const [edit, setEdit] = useState(false);
   const [edits, setEdits] = useState<Map<number, Partial<Record<NegEditKey, number | null>>>>(() => new Map());
   const [saving, setSaving] = useState(false);
