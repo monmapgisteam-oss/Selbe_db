@@ -7641,7 +7641,6 @@ const en: Record<string, string> = {
   "Дэд бүтцийн төлөвлөгөөт цар хүрээ": "Planned infrastructure scope",
   "8. Дэд бүтцийн төлөвлөгөөт цар хүрээ": "8. Planned infrastructure scope",
   "Ерөнхий төлөвлөгөөний {0} давхаргад {1} объект бүртгэгдсэн бөгөөд шугам сүлжээний нийт урт {2} м байна. Эдгээр нь төлөвлөгөөний хэмжээ бөгөөд гүйцэтгэлийг илэрхийлэхгүй; бүлгүүдийн талбай хоорондоо давхцдаг тул нийт талбайг гаргаагүй.": "{1} objects are recorded in {0} master plan layers, with a total network length of {2} m. These are planned quantities and do not show progress; group areas overlap, so no total area is given.",
-  "{0} ажил · {1} дууссан · {2} нээлттэй · {3} хугацаа хэтэрсэн · {6} дуусах хугацаагүй · ноцтой {4} · бага зэргийн {5}": "{0} items · {1} done · {2} open · {3} overdue · {6} no due date · major {4} · minor {5}",
   "олгосон ₮": "disbursed ₮",
   "1 өрхөд ногдох цахилгаан (бүх хэрэглэгчийн чадал)": "Electricity per household (capacity for all consumers)",
   "Төрлүүдийн нийлбэр нийт төсвөөс {0}-өөр их: нийт төсөвт ордоггүй мөрүүд (нийгмийн дэд бүтэц) энд орсон.": "The sum of types is {0} above the total budget: rows outside the total budget (social infrastructure) are included here.",

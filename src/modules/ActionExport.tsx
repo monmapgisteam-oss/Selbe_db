@@ -6,7 +6,7 @@
  *
  *   1. Хугацаа — сүүлийн 7 хоног · сүүлийн 30 хоног (сар) · огноо сонгох · бүгд
  *   2. Багц    — олон сонголт (хоосон = бүх багц), хугацаандаа тоотой
- *   Формат    — PDF (нийт → төрлөөр чарт → дэлгэрэнгүй жагсаалт) эсвэл Excel (Тойм · Action)
+ *   Формат    — PDF (нийт · шатлал → төрлөөр чарт → дэлгэрэнгүй жагсаалт) эсвэл Excel («Action» хуудас, зурагтай)
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -18,7 +18,7 @@ import { friendlyError } from '@/components/ui';
 import { renderPdfBase64, download } from '@/lib/emailReport';
 import { getAuth } from '@/lib/draftRemote';
 import { devToken } from '@/lib/authToken';
-import { buildActionPdf, buildActionXlsx, loadActionItems, loadActionPhotos, reportPkgs, summarize, type ActionItem } from '@/lib/actionReport';
+import { buildActionPdf, buildActionXlsx, loadActionItems, loadActionPhotos, reportPkgs, type ActionItem } from '@/lib/actionReport';
 import { loadPhotoImages } from '@/lib/uzlegReport';
 import { XLSX_MIME } from '@/lib/xlsx';
 import { habeaPkgKey } from './habeaUzleg';
@@ -98,7 +98,6 @@ export function ActionExportDialog({ scope = null, onClose, onBack }: {
     () => (pkgs.length ? inRange.filter((r) => pkgs.includes(r.site || '—')) : inRange),
     [inRange, pkgs],
   );
-  const sum = useMemo(() => summarize(chosen, now), [chosen, now]);
   const period = preset === 'all' ? tr('Бүх хугацаа') : `${from} – ${to}`;
 
   const run = async () => {
@@ -213,15 +212,7 @@ export function ActionExportDialog({ scope = null, onClose, onBack }: {
                   )
                   : <p className={x.empty}>{tr('Энэ хугацаанд action алга')}</p>}
               </section>
-
-              {/* ── Тойм ── */}
-              <section className={x.step}>
-                <h3 className={x.stepHead}><i>3</i>{tr('Тойм')}</h3>
-                <p className={x.note}>
-                  {tr('{0} ажил · {1} дууссан · {2} нээлттэй · {3} хугацаа хэтэрсэн · {6} дуусах хугацаагүй · ноцтой {4} · бага зэргийн {5}',
-                    num(sum.total), num(sum.done), num(sum.open), num(sum.overdue), num(sum.major), num(sum.minor), num(sum.noDue))}
-                </p>
-              </section>
+              {/* «3. Тойм» — 2026-11-27 хэрэглэгчийн хүсэлтээр хасав (нийт тоо нь PDF-ийн «Нийт» хэсэгт) */}
             </>
           )}
         </div>

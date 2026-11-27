@@ -104,4 +104,10 @@ assert.ok(batch.includes('{missing > 0 && ('), 'уншигдаагүй объе�
 assert.ok(batch.includes('<ul className={d.diffList}>'), 'хуучин → шинэ');
 assert.ok(batch.includes("tr('{0}/{1} мөр бичигдсэн, {2} мөрөнд алдаа: {3}. Дахин «Хадгалах» дарвал бүгдэд дахин бичнэ.'"));
 
+/* 2026-11-27 (хэрэглэгч): «Мэдээллийн төлөв» шүүлтүүр бүх хэрэглэгчид — засах эрх (`butets`) шаардахгүй */
+assert.ok(/\{!noScope && \(\s*<StatusBar/.test(src), 'шүүлтүүр харах хүрээтэй бүх хэрэглэгчид');
+assert.ok(!/canEdit && \(\s*<StatusBar/.test(src), 'засах эрхээр нуухгүй');
+assert.ok(src.includes('useStatusClasses(stIds, stFill, stEdit, stStat, stBy, !noScope, stPerf)'), 'сонголтын утгыг эрхгүйд ч ачаална');
+assert.ok(!/requireCap|requireLayer/.test(read('./DedButetsStatus.tsx')), 'шүүлтүүр зөвхөн уншина — бичих замгүй');
+
 console.log('dedButetsUi.check: OK');

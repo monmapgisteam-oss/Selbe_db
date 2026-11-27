@@ -5,7 +5,8 @@
  * чартаар, тэгээд бүх action-ыг дэлгэрэнгүй жагсаалтаар. Багц болон огноо (сүүлийн 7 хоног, сүүлийн сар, огноо
  * сонгох)-оор шүүж татна.»
  *
- *   PDF   — 1) Нийт: ажлын тоо · дууссан % · нээлттэй · хугацаа хэтэрсэн · ноцтой / бага зэргийн
+ *   PDF   — 1) Нийт: ажлын тоо · дууссан % · нээлттэй · ноцтой / бага зэргийн · хариуцлага тооцох шатанд +
+ *              «Нээлттэй үл нийцэл — шатлалаар» (үзлэгийн огнооноос 1–4 долоо хоног — хуудасны чарттай ижил, 2026-11-27)
  *           2) Төрлөөр (хэвтээ баганан чарт): төлөв · зэрэг · багц · хэсэг · асуумж
  *           3) Дэлгэрэнгүй — ажил бүр нэг блок (огноо · багц · компани · асуулт · зэрэг · төлөв · хариуцагч ·
  *              дуусах хугацаа · тайлбар · хянагчийн шийдвэр)
@@ -18,6 +19,7 @@ import {
   cleanLabel, fmtDate, fmtDateTime, guidKey, loadUzAttachments, attUrl, postFormOrSource, uzPhotoRef, type UzPhotoRef, type UzImg,
 } from '@/lib/uzlegReport';
 import { buildXlsx, type XlsxCell, type XlsxPic, type XlsxSheet } from '@/lib/xlsx';
+import { ESCALATION, stageOf } from '@/lib/habeaStage';
 
 /**
  * Төлөвийн код — нэр ба өнгө (ажлын урсгалын дараалал). 2026-11-20: төлөв нь «Гүйцэтгэгчийн үйл явц» ба
@@ -192,23 +194,50 @@ export async function loadActionPhotos(items: readonly ActionItem[], signal?: Ab
 
 /* ═════════════════ Нэгтгэл ═════════════════ */
 
+/*
+ * ШАТЛАЛ (2026-11-27, хэрэглэгч: тайлан «Нээлттэй үл нийцэл — шатлалаар» чарттай ИЖИЛ зарчмаар — дуусах хугацаа,
+ * «хугацаа хэтэрсэн / хугацаагүй» гэсэн ойлголтгүй). Дуусаагүй мөр үзлэгийн огнооноос (`insp_datetime`) хойш:
+ * 1-р долоо хоног системд үүснэ · 2-рт талбайн зааварчилгаа · 3-рт сануулах хуудас · 4-рээс хариуцлага тооцно.
+ * PDF ба Excel нь Монгол хэлээр (`tr` биш) — нэрс `ESCALATION`-тэй ижил (шалгуур `actionReport.ui.check`).
+ */
+export const STAGE_LABEL = [
+  '1-р долоо хоног — системд үүссэн',
+  '2-р долоо хоног — талбайн зааварчилгаа',
+  '3-р долоо хоног — сануулах хуудас',
+  '4-р долоо хоног — хариуцлага тооцох',
+] as const;
+export const STAGE_COLOR = ESCALATION.map((s) => s.color);
+const DAY = 86_400_000;
+/** Үзлэгийн огнооноос өнгөрсөн бүтэн хоног */
+export const daysOpen = (x: Pick<ActionItem, 'd'>, now: number): number => Math.floor((now - x.d) / DAY);
+
+/**
+ * Мөрийн шат (0–3) — чартын `stageKey`-тэй НЭГ дүрэм: дууссан, үзлэгийн огноогүй эсвэл ирээдүйн огноотой бол `null`.
+ */
+export function stageOfItem(x: Pick<ActionItem, 'status' | 'd'>, now: number): number | null {
+  return x.status === DONE || !(x.d > 0) || x.d > now ? null : stageOf(x.d, now);
+}
+
 export type ActionSummary = {
-  /** `noDue` — нээлттэй боловч дуусах хугацаагүй (хугацаа хэтэрсэн эсэх нь дүгнэгдэхгүй) */
-  total: number; done: number; open: number; overdue: number; noDue: number; unknown: number; major: number; minor: number;
+  /** `stages` — шат бүрийн нээлттэй мөр (`stageOfItem`); `staged` — нийлбэр (чартын «нээлттэй N») */
+  total: number; done: number; open: number; unknown: number; major: number; minor: number; stages: number[]; staged: number;
 };
 export function summarize(items: readonly ActionItem[], now: number): ActionSummary {
-  let done = 0; let open = 0; let overdue = 0; let noDue = 0; let unknown = 0; let major = 0; let minor = 0;
+  let done = 0; let open = 0; let unknown = 0; let major = 0; let minor = 0;
+  const stages = STAGE_LABEL.map(() => 0);
   for (const x of items) {
     if (x.status == null) unknown += 1;
     else if (x.status === DONE) done += 1;
-    else {
-      open += 1;
-      if (x.due == null) noDue += 1;
-      else if (x.due < now) overdue += 1;
-    }
+    else open += 1;
+    const st = stageOfItem(x, now);
+    if (st != null) stages[st] += 1;
     if (x.sevCode === 'major') major += 1; else if (x.sevCode === 'minor') minor += 1;
   }
-  return { total: items.length, done, open, overdue, noDue, unknown, major, minor };
+  return { total: items.length, done, open, unknown, major, minor, stages, staged: stages.reduce((a, b) => a + b, 0) };
+}
+/** «Нээлттэй үл нийцэл — шатлалаар» — 4 шат бүгд (0 ч гэсэн), дарааллаараа */
+export function byStage(s: Pick<ActionSummary, 'stages'>): Bucket[] {
+  return STAGE_LABEL.map((label, i) => ({ label, value: s.stages[i] ?? 0, color: STAGE_COLOR[i] }));
 }
 
 export type Bucket = { label: string; value: number; color?: string };
@@ -294,9 +323,10 @@ const badge = (text: string, bg: string, fg = '#ffffff'): Obj => ({
 
 function itemBlock(x: ActionItem, i: number, now: number): Obj {
   const st = statusOf(x.status);
-  const overdue = x.status != null && x.status !== DONE && x.due != null && x.due < now;
+  const stage = stageOfItem(x, now);
   const sevBg = x.sevCode === 'major' ? '#d62839' : x.sevCode === 'minor' ? '#ff7f0e' : '#9aa3b2';
-  const kv = (k: string, v: string): Obj | null => (v ? { text: [{ text: `${k}: `, color: MUTED }, v], fontSize: 8.5, margin: [0, 1, 0, 1] } : null);
+  const kv = (k: string, v: string, color?: string): Obj | null =>
+    (v ? { text: [{ text: `${k}: `, color: MUTED }, color ? { text: v, color, bold: true } : v], fontSize: 8.5, margin: [0, 1, 0, 1] } : null);
   const left = [
     kv('Багц', x.site),
     kv('Компани', x.company),
@@ -305,8 +335,9 @@ function itemBlock(x: ActionItem, i: number, now: number): Obj {
     kv('Шалгагч', x.inspector),
   ].filter(Boolean) as Obj[];
   const right = [
+    kv('Шатлал', stage != null ? `${STAGE_LABEL[stage]} (үзлэгээс ${daysOpen(x, now)} хоног)` : '', stage != null ? STAGE_COLOR[stage] : undefined),
     kv('Хариуцагч', x.assignee),
-    kv('Дуусах хугацаа', x.due != null ? `${fmtDate(x.due)}${overdue ? '  (хугацаа хэтэрсэн)' : ''}` : ''),
+    kv('Дуусах хугацаа', x.due != null ? fmtDate(x.due) : ''),
     kv('Асуумж', x.survey),
     kv('Зураг', x.photos != null ? String(x.photos) : ''),
     kv('Хянагчийн шийдвэр', x.decision != null ? (DECISION[x.decision] ?? String(x.decision)) : ''),
@@ -358,13 +389,14 @@ export function buildActionPdf(items: readonly ActionItem[], meta: ActionReportM
         body: [
           [tile('Нийт үл нийцэл', String(s.total)), tile('Дууссан', `${s.done} (${pctTxt(s.done, s.total)})`, '#16a34a'),
             tile('Нээлттэй', String(s.open), '#f59e0b')],
-          [tile('Хугацаа хэтэрсэн', String(s.overdue), s.overdue ? '#d62839' : INK),
-            tile('Дуусах хугацаагүй', String(s.noDue), s.noDue ? '#f59e0b' : INK), tile('Ноцтой үл нийцэл', String(s.major), '#d62839')],
-          [tile('Бага зэргийн үл нийцэл', String(s.minor), '#ff7f0e'), { text: '' }, { text: '' }],
+          [tile('Ноцтой үл нийцэл', String(s.major), '#d62839'), tile('Бага зэргийн үл нийцэл', String(s.minor), '#ff7f0e'),
+            tile('Хариуцлага тооцох шатанд (21+ хоног)', String(s.stages[3]), s.stages[3] ? STAGE_COLOR[3] : INK)],
         ],
       },
       layout: { hLineWidth: () => 3, vLineWidth: () => 3, hLineColor: () => '#ffffff', vLineColor: () => '#ffffff' },
     },
+    /* Хуудасны «Нээлттэй үл нийцэл — шатлалаар» чарттай ижил (2026-11-27) */
+    barChart(`Нээлттэй үл нийцэл — шатлалаар (үзлэгийн огнооноос · нээлттэй ${s.staged})`, byStage(s), s.staged),
     /* 2. ТӨРЛӨӨР — чарт */
     { text: 'Төрлөөр', bold: true, fontSize: 12, color: INK, margin: [0, 14, 0, 0] },
     barChart('Төлөвөөр', byStatus(items), s.total),
@@ -408,7 +440,7 @@ export function buildActionXlsx(
 ): Uint8Array {
   const H = { bold: true, fill: 'E8EDF5', border: true } as const;
   const COLS = ['№', 'Огноо', 'Асуумж', 'Багц', 'Компани', 'Шалгагч', 'Талбай', 'Хэсэг', 'Асуулт', 'Зэрэг', 'Төлөв',
-    'Хариуцагч', 'Дуусах хугацаа', 'Хугацаа хэтэрсэн', 'Тайлбар, авах арга хэмжээ', 'Үл нийцэл арилгасан тайлбар',
+    'Хариуцагч', 'Дуусах хугацаа', 'Шатлал (үзлэгийн огнооноос)', 'Тайлбар, авах арга хэмжээ', 'Үл нийцэл арилгасан тайлбар',
     'Хянагчийн шийдвэр', 'Хянагчийн тайлбар', 'Хянасан', 'Зураг'];
   /* Ажил бүрийн шигтгэх зураг (татагдсан нь л) */
   const pics: XlsxPic[] = [];
@@ -420,7 +452,7 @@ export function buildActionXlsx(
   const list: XlsxCell[][] = [[...COLS, ...Array.from({ length: maxPh }, (_, k) => `Зураг ${k + 1}`)]
     .map((c) => ({ v: c, s: { ...H, wrap: true, valign: 'center' } }))];
   items.forEach((x, i) => {
-    const over = x.status != null && x.status !== DONE && x.due != null && x.due < meta.now;
+    const stage = stageOfItem(x, meta.now);
     const row = list.length;
     got[i].forEach((m, k) => pics.push({ row, col: COLS.length + k, bytes: m.bytes, png: m.png, w: m.w, h: m.h, hPt: PHOTO_ROW_PT - 6 }));
     if (got[i].length) heights[row] = PHOTO_ROW_PT;
@@ -429,7 +461,9 @@ export function buildActionXlsx(
       { v: x.question, s: { wrap: true, valign: 'top' } },
       { v: x.severity || null, s: x.sevCode === 'major' ? { color: 'D62839', bold: true } : undefined },
       statusOf(x.status)?.label ?? null, x.assignee, x.due != null ? fmtDate(x.due) : null,
-      over ? { v: 'Тийм', s: { color: 'D62839', bold: true } } : null,
+      stage != null
+        ? { v: `${STAGE_LABEL[stage]} (${daysOpen(x, meta.now)} хоног)`, s: { color: STAGE_COLOR[stage].slice(1).toUpperCase(), bold: stage === 3, wrap: true, valign: 'top' } }
+        : null,
       { v: x.comment || null, s: { wrap: true, valign: 'top' } },
       { v: x.fixNote || null, s: { wrap: true, valign: 'top' } },
       x.decision != null ? (DECISION[x.decision] ?? String(x.decision)) : null,
@@ -440,7 +474,7 @@ export function buildActionXlsx(
   const detail: XlsxSheet = {
     name: 'Action',
     rows: list,
-    cols: [5, 17, 26, 11, 28, 26, 18, 20, 60, 20, 18, 18, 13, 10, 40, 34, 16, 34, 18, 7, ...Array.from({ length: maxPh }, () => PHOTO_COL_W)],
+    cols: [5, 17, 26, 11, 28, 26, 18, 20, 60, 20, 18, 18, 13, 26, 40, 34, 16, 34, 18, 7, ...Array.from({ length: maxPh }, () => PHOTO_COL_W)],
     frozen: { rows: 1, cols: 0 },
     heights,
     pics,

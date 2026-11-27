@@ -628,7 +628,8 @@
    өргөний зөрүүгээр зурвас мөр бүрд өөр цэгээс эхэлж (ялангуяа нарийн баганад) жигд бус харагдаж байв */
 .mixRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(56px, 1.1fr) 34px;
+  /* Хувь 2 оронтой (`num(x.share, 2)`, 2026-11-23) — «100.00%» ≈ 44px; 34px-д «42.86%» хүртэл хальж байв (2026-11-27) */
+  grid-template-columns: minmax(0, 1fr) minmax(56px, 1.1fr) 46px;
   align-items: center;
   gap: 8px;
   min-width: 0;

@@ -561,7 +561,9 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
     setStStat(v); recolor({ fill: stFill, edit: stEdit, stat: v }, 'stat', v);
   }, [stFill, stEdit, recolor]);
   const stIds = useMemo(() => mapVisible.filter((id) => id in PACK_OF_LAYER), [mapVisible]);
-  const st = useStatusClasses(stIds, stFill, stEdit, stStat, stBy, canEdit, stPerf);
+  /* 2026-11-27 (хэрэглэгч): шүүлтүүр бүх хэрэглэгчид — засах эрх (`butets`) шаардахгүй; зөвхөн уншина (метадата,
+     ялгаатай утга), бичих замд хүрэхгүй. Харах хүрээ хоосон (`noScope`) бол ачаалахгүй. */
+  const st = useStatusClasses(stIds, stFill, stEdit, stStat, stBy, !noScope, stPerf);
   const mapStyle = useMemo(() => (st.style ? { ...dotStyle, ...st.style } : dotStyle), [dotStyle, st.style]);
 
 
@@ -1630,7 +1632,8 @@ export function DedButets({ dim, setDim }: { dim: Dim; setDim: (d: Dim) => void 
                   {tr('Танд багц хуваарилагдаагүй — админд хандана уу')}
                 </Note>
               )}
-              {canEdit && (
+              {/* «Мэдээллийн төлөв» — бүх хэрэглэгчид (2026-11-27; урьд нь зөвхөн «Дэд бүтцийн засвар» эрхтэйд) */}
+              {!noScope && (
                 <StatusBar
                   inline
                   fill={stFill} edit={stEdit} stat={stStat} colorBy={stBy}
