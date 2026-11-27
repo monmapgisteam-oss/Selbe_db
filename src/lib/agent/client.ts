@@ -33,7 +33,21 @@ export const AGENT_APIS: readonly string[] = (process.env.NEXT_PUBLIC_AGENT_API 
   .split(',')
   .map((u) => u.trim().replace(/\/+$/, ''))
   .filter(Boolean)
-  .filter((u) => relayUrlOk(u));
+  .filter((u) => relayUrlOk(u) && relayHostTrusted(u));
+
+/**
+ * ИТГЭМЖЛЭГДСЭН РЕЛЕЙН ХОСТ (2026-11-27, аудит): хэрэглэгчийн ArcGIS токен (`x-arcgis-token`) ЗӨВХӨН манай релей рүү явна —
+ * GitHub Variable-д буруу/гадны хост бичигдсэн ч токен тэнд очихгүй (тэр хост жагсаалтаас хасагдана).
+ * Шинэ хост нэмбэл энд нэмнэ: `*.selbecity.mn` · Tailscale Funnel (`*.tailae6be6.ts.net`) · Cloudflare Worker · локал dev.
+ */
+export function relayHostTrusted(u: string): boolean {
+  let h: string;
+  try { h = new URL(u).hostname.toLowerCase(); } catch { return false; }
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]'
+    || h === 'selbecity.mn' || h.endsWith('.selbecity.mn')
+    || h.endsWith('.tailae6be6.ts.net')
+    || h === 'selbe-agent.monmapgisteam.workers.dev';
+}
 /** Дэлгэц/логт харуулах — бүх хаяг */
 export const AGENT_API = AGENT_APIS.join(', ');
 

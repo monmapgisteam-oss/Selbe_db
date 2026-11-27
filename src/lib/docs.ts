@@ -19,24 +19,8 @@ export type DocItem = {
 };
 
 export const DOCS: DocItem[] = [
-  {
-    key: "tezu",
-    get title() { return tr('ТЭЗҮ (Rev-01)'); },
-    get sub() { return tr('Техник эдийн засгийн үндэслэл'); },
-    file: "tezu-rev-01.pdf",
-  },
-  {
-    key: "deia18",
-    get title() { return tr('ДБОНҮ 2018'); },
-    get sub() { return tr('Байгаль орчны нарийвчилсан үнэлгээ (MN)'); },
-    file: "deia-2018-mn.pdf",
-  },
-  {
-    key: "deia13",
-    title: "DEIA 2013",
-    sub: "Selbe subcenter final report (EN)",
-    file: "selbe-subcenter-deia-2013.pdf",
-  },
+  /* 2026-11-27 (аудит): ТЭЗҮ (Rev-01), ДБОНҮ 2018, DEIA 2013 PDF-үүд `public/docs/`-д байж GitHub Pages-ээр нэвтрэлтгүй нээгддэг
+     байсан тул хасав — баримтын сангийн «ТЭЗҮ-БОНУ» бүлэгт геопорталын item болгон оруулна (токеноор, байгууллагад). */
   {
     key: 'barilgajilt',
     get title() { return tr('Барилгажилтын төсөл'); },
