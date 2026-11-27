@@ -532,8 +532,11 @@ export type RowLink = { from: string[]; to: string[]; ids: Set<string>; ss: Set<
 /** Дэд үе шат / бүлгийн түлхүүр — `mergePhases`-ийн (№ + нэр) тааруулалттай ижил */
 export const phaseKey = (no: unknown, name: unknown): string => `${String(no ?? '').trim()}|${String(name ?? '').trim()}`;
 
-/** Мөр бүрийн дэд үе шат ба дэд бүлэг — `blockDetail`-ийн phases/groups-ийн задаргаатай ижил */
-function phaseGroupOf(rows: readonly SheetRow[]): { phase: (string | null)[]; group: (string | null)[] } {
+/**
+ * Мөр бүрийн дэд үе шат ба дэд бүлэг — `blockDetail`-ийн phases/groups-ийн задаргаатай ижил.
+ * 2026-11-24: экспортлов — 6 түвшинд холбоос засахад мөр → ажил тааруулна (`levelLinkEdit`); дүрэм өөрчлөгдөөгүй.
+ */
+export function phaseGroupOf(rows: readonly Pick<SheetRow, 'no' | 'work' | 'depth'>[]): { phase: (string | null)[]; group: (string | null)[] } {
   const phase: (string | null)[] = rows.map(() => null);
   const group: (string | null)[] = rows.map(() => null);
   const bi = rows.findIndex((r) => isConstructionNo(r.no));

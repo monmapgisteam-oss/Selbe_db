@@ -22,7 +22,6 @@ export type ViewKey =
   | "ajilBatlah"
   | "tailan"
   | "tuh"
-  | "bagtsHamaaral"
   | "zuragTosol"
   | "zahiramj"
   | "songon"
@@ -241,19 +240,7 @@ export const VIEWS: {
     initial: ["mon:building"],
     standalone: true,
   },
-  /**
-   * БАГЦЫН ХАМААРАЛ (2026-10-04) — багц хоорондын хамаарал. Багц доторх ажлын уялдаанд (`deps.ts`) хамаагүй.
-   */
-  {
-    key: "bagtsHamaaral",
-    get title() { return tr('Багцын хамаарал'); },
-    get desc() { return tr('Багц хоорондын ажлын хамаарал — нэг багцын ажил өөр багцуудын аль ажлаас хамаардгийг'); },
-    icon: "link",
-    hue: "#0f766e",
-    layers: [],
-    initial: [],
-    standalone: true,
-  },
+  /* 2026-11-24: «Багцын хамаарал» харагдац ХАСАГДСАН — холбоосыг «6 түвшний хуваарь» (`tuvshin6`) дээр шууд засна */
   /**
    * ТЭЗҮ · АЖЛЫН ЗУРАГ ТӨСӨЛ (2026-10-26) — cashflow-ийн ТЭЗҮ / Ажлын зураг төсөл үе шатын навч мөрийн огноо, явц.
    * Засах нь `zuragEdit` эрхээр; эрхгүй хүн харна.
@@ -499,7 +486,7 @@ export const HOME_SECTIONS: {
   views: ViewKey[];
 }[] = [
   { id: "mgmt", get title() { return tr('Удирдлага'); }, all: true, views: [] },
-  { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "bagtsHamaaral", "tailan"] },
+  { id: "review", get title() { return tr('Тойм'); }, views: ["gdash", "schem", "dashboard", "tuh", "tailan"] },
   { id: "plan", get title() { return tr('Төлөвлөлт'); }, views: ["plan", "hesegET", "analysis", "irged", "tuvshin6"] },
   { id: "build", get title() { return tr('Хэрэгжилт'); }, views: ["pkgProg", "gazar", "habea", "iot", "ersdel", "dedButets", "guitsetgel", "hyanaltHugatsaa", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "dulaan", "zovshoorol", "huvaari", "huvaariBatlah", "ajilBatlah", "ma"] },
   { id: "money", get title() { return tr('Санхүү'); }, views: ["pkgFin", "finance", "ipc"] },
@@ -510,7 +497,7 @@ export const HOME_SECTIONS: {
  */
 export type NavGroupId = "work" | "approve" | "monitor" | "smart" | "report" | "system";
 export const NAV_GROUPS: { id: NavGroupId; title: string; views: ViewKey[] }[] = [
-  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "hyanaltHugatsaa", "huvaari", "tuvshin6", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "dulaan", "ma", "bagtsHamaaral", "huvaariBatlah", "ajilBatlah"] },
+  { id: "work", get title() { return tr('Миний ажил'); }, views: ["guitsetgel", "hyanaltHugatsaa", "huvaari", "tuvshin6", "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "dulaan", "ma", "huvaariBatlah", "ajilBatlah"] },
   /* 2026-11-23 (хэрэглэгч): «Батлах» бүлгийн цэсүүд «Миний ажил»-д шилжсэн — хоосон бүлэг зурагдахгүй */
   { id: "approve", get title() { return tr('Батлах'); }, views: [] },
   {

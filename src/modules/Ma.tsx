@@ -54,7 +54,7 @@ export function Ma() {
   useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
   const [chN, setChN] = useState(0);
   useEffect(() => subscribeChanarAcl(() => setChN((x) => x + 1)), []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио (`BagtsHamaaral`-тай ижил)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио (`LevelPlan`-тай ижил)
   const canAttach = useMemo(() => hasCap(user?.username, 'chanarAuthor') || hasCap(user?.username, 'chanarReview'), [user, capN]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио
   const canAuthor = useMemo(() => hasCap(user?.username, 'chanarAuthor'), [user, capN]);

@@ -84,7 +84,7 @@ export const ROLE_ACCESS: Record<
   gazar: { views: ["gazar"], docs: false, home: "gazar" },
   zahiral: {
     views: ["gdash", "dashboard", "plan", "hesegET", "pkgFin", "pkgProg", "gazar", "analysis", "irged", "tailan", "tuh",
-      "bagtsHamaaral", "finance", "habea", "iot", "ersdel", "dedButets", "zovshoorol", "schem", "guitsetgel",
+      "finance", "habea", "iot", "ersdel", "dedButets", "zovshoorol", "schem", "guitsetgel",
       "zuragTosol", "zahiramj", "songon", "zovshoorolTtb", "ashiglalt", "tuvshin6"],
     docs: true,
     home: "gdash",

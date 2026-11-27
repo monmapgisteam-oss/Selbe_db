@@ -64,8 +64,8 @@ import { navDirtyLabels } from '@/lib/navGuard';
 import { num } from '@/lib/format';
 import { ReportButton } from '@/components/ReportButton';
 import { askConfirm } from '@/lib/confirm';
-/** «Тайлан» товч ГАРАХГҮЙ харагдацууд (2026-10-19, хэрэглэгч) — Санхүүжилт, Үйл ажиллагааны схем, Чанар (QAQC), БАТЛАХ бүлэг, ТУХ, Багцын хамаарал, Зөвшөөрөл */
-const NO_REPORT = new Set<string>(['finance', 'ipc', 'schem', 'qaqc', 'huvaariBatlah', 'ajilBatlah', 'chanar', 'ma', 'tuh', 'bagtsHamaaral', 'hyanaltHugatsaa', 'zovshoorol']);
+/** «Тайлан» товч ГАРАХГҮЙ харагдацууд (2026-10-19, хэрэглэгч) — Санхүүжилт, Үйл ажиллагааны схем, Чанар (QAQC), БАТЛАХ бүлэг, ТУХ, Зөвшөөрөл (2026-11-24: «Багцын хамаарал» хасагдсан) */
+const NO_REPORT = new Set<string>(['finance', 'ipc', 'schem', 'qaqc', 'huvaariBatlah', 'ajilBatlah', 'chanar', 'ma', 'tuh', 'hyanaltHugatsaa', 'zovshoorol']);
 const ViewPanel = dynamic(() => import('@/modules/ViewPanel').then((m) => m.ViewPanel), { ssr: false });
 const AdminOpenCtx = createContext(false);
 function AdminLoading() {

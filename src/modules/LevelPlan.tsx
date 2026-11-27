@@ -7,11 +7,14 @@
  *   хоцорсон `--bad`, дууссан `--good`, мэдээлэлгүй — зураас); L4 сарын · L5 7 хоногийн · L6 өдрийн heatmap.
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { t as tr } from '@/lib/i18nCore';
 import { pct } from '@/lib/format';
 import { useAsync } from '@/lib/useAsync';
 import { Data, userError } from '@/components/ui';
+import { useAuth } from '@/components/AuthGate';
+import { hasCap, subscribeCaps } from '@/lib/caps';
+import { useLinkEdit, type RowEdit } from './LevelLinkEdit';
 import { buildXlsx, downloadXlsx } from '@/lib/xlsx';
 import {
   BAR_TEXT, DAY, MS_TEXT, activeRange, buildL1, buildL2, buildL3, buildL4, buildLook, dayCols, dayOfLocal, failLabel, fmtDay,
@@ -138,6 +141,12 @@ const GF_OPTS: { v: GFilter; label: () => string }[] = [
 
 export function LevelPlan() {
   const q = useAsync(loadLevelData, []);
+  /* 2026-11-24: «Холбоос засах» — зөвхөн `hamaaral` эрхтэй хүнд (бусдад хуудас хэвээр, зөвхөн харах) */
+  const { user } = useAuth();
+  const [capN, setCapN] = useState(0);
+  useEffect(() => subscribeCaps(() => setCapN((x) => x + 1)), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `capN` нь эрх өөрчлөгдсөн дохио (`Ma`-тай ижил)
+  const canLink = useMemo(() => hasCap(user?.username, 'hamaaral'), [user, capN]);
   return (
     <div className={s.wrap}>
       <header className={s.head}>
@@ -147,14 +156,17 @@ export function LevelPlan() {
         </p>
       </header>
       <Data q={q} loading={tr('Ачаалж байна…')} minH={320}>
-        {(d) => { const u = readUrl(); return <LevelPlanBody d={d} initial={u.lvl ?? 1} initialPkg={u.pkg} />; }}
+        {(d) => { const u = readUrl(); return <LevelPlanBody d={d} initial={u.lvl ?? 1} initialPkg={u.pkg} canLink={canLink} />; }}
       </Data>
     </div>
   );
 }
 
-/** Ачаалагдсан өгөгдлийн харагдац — `initial` нь эхлэх түвшин (шалгуурт) */
-export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelData; initial?: Level; initialPkg?: string }) {
+/**
+ * Ачаалагдсан өгөгдлийн харагдац — `initial` нь эхлэх түвшин (шалгуурт). `canLink` — «Холбоос засах» товч (2026-11-24,
+ * `hamaaral` эрх); `false` бол хуудас яг өмнөх шигээ.
+ */
+export function LevelPlanBody({ d, initial = 1, initialPkg = '', canLink = false }: { d: LevelData; initial?: Level; initialPkg?: string; canLink?: boolean }) {
   const [lvl, setLvl] = useState<Level>(initial);
   const [pk, setPk] = useState(initialPkg);
   const [groups, setGroups] = useState(true);
@@ -172,7 +184,13 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelDat
   /* Ажлын холбоос (2026-11-13) — 6 түвшин бүрт; бөглөх хуудсаас (L1/L2-т ч ачаална, ачаалагдтал сумгүй) */
   const sq = useAsync(loadSheetDetail, []);
   const work = sq.state === 'ready' ? sq.data.links : null;
-  const links = useMemo(() => (work ? levelLinks(work, lvl, pkgs) : []), [work, lvl, pkgs]);
+  /* 2026-11-24: засах горим — хадгалаагүй нэмэлт холбоо ч зурагдана (`staged`, горимгүй бол хоосон) */
+  const [linkOn, setLinkOn] = useState(false);
+  const retrySheet = sq.retry;
+  const le = useLinkEdit(canLink && linkOn, pkgs, useCallback(() => setLinkOn(false), []), useCallback(() => retrySheet?.(), [retrySheet]));
+  const work2 = useMemo(() => (work && le.staged.length ? [...work, ...le.staged] : work), [work, le.staged]);
+  const links = useMemo(() => (work2 ? levelLinks(work2, lvl, pkgs) : []), [work2, lvl, pkgs]);
+  const ed: RowEdit | undefined = le.rowEdit;
 
   if (d.plan.empty) {
     return (
@@ -286,6 +304,17 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelDat
           </div>
         )}
         <span className={s.grow} />
+        {canLink && (
+          <button
+            type="button"
+            className={`${s.btn} ${linkOn ? s.btnOn : ''}`}
+            aria-pressed={linkOn}
+            title={tr('Багцын хамаарлыг энэ хуваарь дээр холбох, салгах')}
+            onClick={() => { if (linkOn) void le.exit(); else setLinkOn(true); }}
+          >
+            {tr('Холбоос засах')}
+          </button>
+        )}
         <button type="button" className={s.btn} disabled={xlsBusy} onClick={() => void exportXlsx()}>
           {xlsBusy ? tr('Бэлдэж байна…') : tr('Excel татах')}
         </button>
@@ -294,26 +323,27 @@ export function LevelPlanBody({ d, initial = 1, initialPkg = '' }: { d: LevelDat
         </button>
       </div>
       {xlsErr && <div className={s.warn} role="alert">{xlsErr}</div>}
+      {le.ui}
       <p className={s.lvlSub}>{LEVEL_SUB[lvl]()}</p>
 
-      {lvl === 1 && <Gantt rows={buildL1(d.plan, today)} links={links} today={today} vo={vo} mw={SCALE_MW[scale]} />}
-      {lvl === 2 && <Gantt rows={buildL2(d.plan, shown, d.marks, today)} links={links} today={today} vo={vo} mw={SCALE_MW[scale]} />}
+      {lvl === 1 && <Gantt rows={buildL1(d.plan, today)} links={links} today={today} vo={vo} mw={SCALE_MW[scale]} ed={ed} />}
+      {lvl === 2 && <Gantt rows={buildL2(d.plan, shown, d.marks, today)} links={links} today={today} vo={vo} mw={SCALE_MW[scale]} ed={ed} />}
       {lvl === 3 && (
         <WithSheet>
-          {(det) => <Gantt rows={buildL3(d.plan, shown, det, today)} links={links} today={today} vo={vo} mw={SCALE_MW[scale]} />}
+          {(det) => <Gantt rows={buildL3(d.plan, shown, det, today)} links={links} today={today} vo={vo} mw={SCALE_MW[scale]} ed={ed} />}
         </WithSheet>
       )}
       {lvl === 4 && (
         <WithSheet>
-          {(det) => <MonthHeat d={d} pkgs={shown} det={det} links={links} today={today} vo={vo} />}
+          {(det) => <MonthHeat d={d} pkgs={shown} det={det} links={links} today={today} vo={vo} ed={ed} />}
         </WithSheet>
       )}
       {look && groups && (
         <WithSheet>
-          {(det) => <LookHeat d={d} pkgs={shown} det={det} links={links} groups daily={lvl === 6} today={today} vo={vo} />}
+          {(det) => <LookHeat d={d} pkgs={shown} det={det} links={links} groups daily={lvl === 6} today={today} vo={vo} ed={ed} />}
         </WithSheet>
       )}
-      {look && !groups && <LookHeat d={d} pkgs={shown} det={null} links={links} groups={false} daily={lvl === 6} today={today} vo={vo} />}
+      {look && !groups && <LookHeat d={d} pkgs={shown} det={null} links={links} groups={false} daily={lvl === 6} today={today} vo={vo} ed={ed} />}
 
       <Legend lvl={lvl} />
     </div>
@@ -358,8 +388,20 @@ const BAR_CLS: Record<BarStatus, string> = {
 const MS_CLS: Record<MsStatus, string> = {
   done: s.msDone, late: s.msLate, upcoming: s.msUp, missing: s.msMissing, none: s.msNone,
 };
-function Gantt({ rows, links = [], today, vo, mw: MW = SCALE_MW.month }: {
+/**
+ * Засах горимд мөр дарах (2026-11-24) — хүснэгтийн бүрхүүлээс: `tr[data-lk]` мөрийн түлхүүр; сум · товч дээр дарвал алгасна.
+ */
+function pickRow(e: MouseEvent<HTMLDivElement>, ed: RowEdit): void {
+  const t = e.target as Element;
+  if (t.closest('button, a, input, select, svg')) return;
+  const row = t.closest<HTMLTableRowElement>('tr[data-lk]');
+  if (row?.dataset.lk) ed.onRow(row.dataset.lk, e.clientX, e.clientY);
+}
+
+function Gantt({ rows, links = [], today, vo, mw: MW = SCALE_MW.month, ed }: {
   rows: GRow[]; links?: readonly RowLink[]; today: number; vo: ViewOpts; mw?: number;
+  /** Холбоос засах горим — `undefined` бол зөвхөн харах */
+  ed?: RowEdit;
 }) {
   /* Тэнхлэг БҮТЭН мөрөөр — шүүх/хураахад огнооны хүрээ үсрэхгүй */
   const ax = useMemo(() => ganttAxis(rows, today), [rows, today]);
@@ -387,7 +429,7 @@ function Gantt({ rows, links = [], today, vo, mw: MW = SCALE_MW.month }: {
     <div className={s.card}>
       <div className={s.scroll}>
         {/* 2026-11-05 (UI аудит): өргөн = баганын нийлбэр — fixed layout баганыг дахин хуваарилж sticky нэр «ЭХЛЭХ»-ийг дардаг байв */}
-        <div ref={wRef} className={s.lkWrap} style={{ width: TL_X + W }}>
+        <div ref={wRef} className={ed ? `${s.lkWrap} ${s.lkEdit}` : s.lkWrap} style={{ width: TL_X + W }} onClick={ed ? (e) => pickRow(e, ed) : undefined}>
         <table className={s.gt} style={{ width: TL_X + W }}>
           <colgroup>
             <col style={{ width: 72 }} />
@@ -414,11 +456,12 @@ function Gantt({ rows, links = [], today, vo, mw: MW = SCALE_MW.month }: {
               <GanttRow
                 key={r.id} r={r} ax={ax} nowX={nowX} W={W} MW={MW}
                 fold={!filtering && parents.has(r.id) ? { open: !folded(r.id), onToggle: () => vo.onToggle(r.id) } : null}
+                mk={ed && r.t === 'bar' ? ed.rowCls(r.lk) : undefined}
               />
             ))}
           </tbody>
         </table>
-        {links.length > 0 && <LinkLayer wRef={wRef} sig={`${vis.map((r) => r.id).join(',')}|${MW}`} links={links} />}
+        {links.length > 0 && <LinkLayer wRef={wRef} sig={`${vis.map((r) => r.id).join(',')}|${MW}`} links={links} ed={ed} />}
         </div>
       </div>
     </div>
@@ -436,7 +479,7 @@ const TL_X = 674;
  * утгатай нүд). Холбоосын төгсгөл бүрд ЭХНИЙ харагдаж буй мөр (`RowLink.from/to`); нэг мөр рүү буусан нь зурагдахгүй.
  */
 type LinkGeo = { y: number; x0: number; x1: number; name: string };
-function LinkLayer({ wRef, sig, links }: { wRef: RefObject<HTMLDivElement | null>; sig: string; links: readonly RowLink[] }) {
+function LinkLayer({ wRef, sig, links, ed }: { wRef: RefObject<HTMLDivElement | null>; sig: string; links: readonly RowLink[]; ed?: RowEdit }) {
   const [geo, setGeo] = useState<{ rows: Map<string, LinkGeo>; w: number; h: number } | null>(null);
   useLayoutEffect(() => {
     const el = wRef.current;
@@ -481,6 +524,7 @@ function LinkLayer({ wRef, sig, links }: { wRef: RefObject<HTMLDivElement | null
         return {
           key, d: `M ${a.x0} ${a.y} H ${lx} V ${b.y} H ${b.x0}`, bad: false, und: true,
           tip: [`${a.name} ↔ ${b.name}`, tr('{0} багц хоорондын холбоо', ids.size)].join(' · '),
+          ids: [...ids],
         };
       }
       if (ss.size < ids.size) {
@@ -497,7 +541,7 @@ function LinkLayer({ wRef, sig, links }: { wRef: RefObject<HTMLDivElement | null
         tr('{0} ажлын холбоос', ids.size) + (ss.size ? ` (SS ${ss.size})` : ''),
         viol.size ? tr('{0} нь зөрчилтэй — хамаарагч ажил урьдчилагчаасаа эрт эхэлсэн', viol.size) : null,
       ].filter(Boolean).join(' · ');
-      return { key, d, bad: viol.size > 0, und: false, tip };
+      return { key, d, bad: viol.size > 0, und: false, tip, ids: [...ids] };
     });
   }, [geo, links]);
   if (!geo || !paths.length) return null;
@@ -510,12 +554,23 @@ function LinkLayer({ wRef, sig, links }: { wRef: RefObject<HTMLDivElement | null
           </marker>
         ))}
       </defs>
-      {paths.map((p) => (
-        <g key={p.key}>
-          <path d={p.d} className={p.und ? s.lkUnd : p.bad ? s.lkBad : s.lkLine} markerEnd={p.und ? undefined : `url(#lvLkArr${p.bad ? 1 : 0})`} />
-          <path d={p.d} className={s.lkHit}><title>{p.tip}</title></path>
-        </g>
-      ))}
+      {paths.map((p) => {
+        /* 2026-11-24: засах горимд чиглэлгүй зураас дарж салгана; нэмэх/устгах/сонгосонтой холбоотой — нэмэлт класс */
+        const edit = ed && p.und ? ed : undefined;
+        const mk = edit?.lineCls(p.ids);
+        return (
+          <g key={p.key}>
+            <path d={p.d} className={p.und ? (mk ? `${s.lkUnd} ${mk}` : s.lkUnd) : p.bad ? s.lkBad : s.lkLine} markerEnd={p.und ? undefined : `url(#lvLkArr${p.bad ? 1 : 0})`} />
+            <path
+              d={p.d}
+              className={edit ? `${s.lkHit} ${s.lkHitEdit}` : s.lkHit}
+              onClick={edit ? (e) => { e.stopPropagation(); edit.onLine(p.ids, e.clientX, e.clientY); } : undefined}
+            >
+              <title>{edit ? `${p.tip} · ${tr('дарж салгана')}` : p.tip}</title>
+            </path>
+          </g>
+        );
+      })}
     </svg>
   );
 }
@@ -558,8 +613,10 @@ function Caret({ fold }: { fold: { open: boolean; onToggle: () => void } | null 
   );
 }
 
-function GanttRow({ r, ax, nowX, W, MW, fold }: {
+function GanttRow({ r, ax, nowX, W, MW, fold, mk }: {
   r: GRow; ax: Axis; nowX: number; W: number; MW: number; fold: { open: boolean; onToggle: () => void } | null;
+  /** Засах горимын мөрийн класс (2026-11-24) — `undefined` бол өөрчлөлтгүй */
+  mk?: string;
 }) {
   const ind = { paddingLeft: 8 + r.depth * 14 };
   const tl = (body: ReactNode) => (
@@ -629,7 +686,7 @@ function GanttRow({ r, ax, nowX, W, MW, fold }: {
   const fcLate = r.fc != null && r.end != null && r.fc > r.end;
   const fx = r.fc != null ? xMonths(ax, r.fc) * MW : null;
   return (
-    <tr className={`${s.row} ${r.strong ? s.strongRow : ''}`} data-lk={r.lk} data-nm={r.lk ? r.name : undefined}>
+    <tr className={mk ? `${s.row} ${r.strong ? s.strongRow : ''} ${mk}` : `${s.row} ${r.strong ? s.strongRow : ''}`} data-lk={r.lk} data-nm={r.lk ? r.name : undefined}>
       <td className={s.cId}>{r.id}</td>
       <td className={s.cName} style={ind} title={r.name}>
         <Caret fold={fold} />{r.name}{r.w != null && <span className={s.w}> ({pct(r.w, 1)})</span>}
@@ -663,8 +720,9 @@ function GanttRow({ r, ax, nowX, W, MW, fold }: {
 
 type HeatCol = { key: string; label: string; now: boolean };
 
-function MonthHeat({ d, pkgs, det, links, today, vo }: {
+function MonthHeat({ d, pkgs, det, links, today, vo, ed }: {
   d: LevelData; pkgs: PkgInfo[]; det: ReadonlyMap<string, BlockDetail> | null; links: readonly RowLink[]; today: number; vo: ViewOpts;
+  ed?: RowEdit;
 }) {
   const secs = useMemo(() => buildL4(d.plan, pkgs, det), [d.plan, pkgs, det]);
   const months = d.plan.months;
@@ -677,14 +735,14 @@ function MonthHeat({ d, pkgs, det, links, today, vo }: {
   const tm = monthIdx(today);
   const cols: HeatCol[] = months.slice(lo, hi + 1).map((m) => ({ key: String(m), label: fmtMonth(m), now: monthIdx(m) === tm }));
   const cut = secs.map((x) => ({ ...x, rows: x.rows.map((r) => ({ ...r, cells: r.cells.slice(lo, hi + 1) })) }));
-  return <Heat secs={cut} cols={cols} dec={1} sum={false} vo={vo} links={links} />;
+  return <Heat secs={cut} cols={cols} dec={1} sum={false} vo={vo} links={links} ed={ed} />;
 }
 
 function LookHeat({
-  d, pkgs, det, links, groups, daily, today, vo,
+  d, pkgs, det, links, groups, daily, today, vo, ed,
 }: {
   d: LevelData; pkgs: PkgInfo[]; det: ReadonlyMap<string, BlockDetail> | null; links: readonly RowLink[]; groups: boolean; daily: boolean;
-  today: number; vo: ViewOpts;
+  today: number; vo: ViewOpts; ed?: RowEdit;
 }) {
   const colsDef: Col[] = useMemo(() => (daily ? dayCols(today, 14) : weekCols(today, 12)), [daily, today]);
   const secs = useMemo(() => buildLook(d.plan, pkgs, det, colsDef, groups), [d.plan, pkgs, det, colsDef, groups]);
@@ -694,13 +752,13 @@ function LookHeat({
     label: c.days === 1 ? fmtMD(c.from) : `${fmtMD(c.from)}–${fmtMD(c.from + (c.days - 1) * DAY)}`,
     now: i === 0,
   }));
-  return <Heat secs={secs} cols={cols} dec={daily ? 3 : 2} sum vo={vo} links={links} />;
+  return <Heat secs={secs} cols={cols} dec={daily ? 3 : 2} sum vo={vo} links={links} ed={ed} />;
 }
 
 const KIND_CLS: Record<HRow['kind'], string> = { total: s.hTotal, cum: s.hCum, block: s.hBlock, group: s.hGroup };
 
-function Heat({ secs, cols, dec, sum, vo, links }: {
-  secs: HSection[]; cols: HeatCol[]; dec: number; sum: boolean; vo: ViewOpts; links: readonly RowLink[];
+function Heat({ secs, cols, dec, sum, vo, links, ed }: {
+  secs: HSection[]; cols: HeatCol[]; dec: number; sum: boolean; vo: ViewOpts; links: readonly RowLink[]; ed?: RowEdit;
 }) {
   const wRef = useRef<HTMLDivElement>(null);
   const filtering = !!vo.q.trim();
@@ -723,7 +781,7 @@ function Heat({ secs, cols, dec, sum, vo, links }: {
     <LevelButtons deep={deep} vo={vo} off={filtering} />
     <div className={s.card}>
       <div className={s.scroll}>
-        <div ref={wRef} className={s.lkWrap}>
+        <div ref={wRef} className={ed ? `${s.lkWrap} ${s.lkEdit}` : s.lkWrap} onClick={ed ? (e) => pickRow(e, ed) : undefined}>
         <table className={s.ht}>
           <thead>
             <tr>
@@ -741,7 +799,7 @@ function Heat({ secs, cols, dec, sum, vo, links }: {
               <HeatSection
                 key={sec.pkg.key} sec={sec} cols={cols} dec={dec} sum={sum}
                 parents={filtering ? null : hBlockParents(secs.find((x) => x.pkg.key === sec.pkg.key) ?? sec)}
-                vo={vo}
+                vo={vo} ed={ed}
               />
             ))}
           </tbody>
@@ -751,6 +809,7 @@ function Heat({ secs, cols, dec, sum, vo, links }: {
             wRef={wRef}
             sig={`${vis.flatMap((x) => x.rows.map((r) => r.id)).join(',')}|${cols.map((c) => c.key).join(',')}`}
             links={links}
+            ed={ed}
           />
         )}
         </div>
@@ -760,10 +819,10 @@ function Heat({ secs, cols, dec, sum, vo, links }: {
   );
 }
 
-function HeatSection({ sec, cols, dec, sum, parents, vo }: {
+function HeatSection({ sec, cols, dec, sum, parents, vo, ed }: {
   sec: HSection; cols: HeatCol[]; dec: number; sum: boolean;
   /** Дэд бүлэгтэй блокууд (хураах сум) — шүүлт идэвхтэй үед `null` (сумгүй) */
-  parents: ReadonlySet<string> | null; vo: ViewOpts;
+  parents: ReadonlySet<string> | null; vo: ViewOpts; ed?: RowEdit;
 }) {
   const span = 5 + (sum ? 1 : 0) + cols.length;
   const pid = `p:${sec.pkg.key}`;
@@ -781,19 +840,22 @@ function HeatSection({ sec, cols, dec, sum, parents, vo }: {
         <HeatRowView
           key={r.id} r={r} cols={cols} dec={dec} sum={sum}
           fold={parents?.has(r.id) ? { open: !isFolded(vo.fold, `b:${r.id}`, 1), onToggle: () => vo.onToggle(`b:${r.id}`) } : null}
+          mk={ed ? ed.rowCls(r.lk) : undefined}
         />
       ))}
     </>
   );
 }
 
-function HeatRowView({ r, cols, dec, sum, fold }: {
+function HeatRowView({ r, cols, dec, sum, fold, mk }: {
   r: HRow; cols: HeatCol[]; dec: number; sum: boolean; fold: { open: boolean; onToggle: () => void } | null;
+  /** Засах горимын мөрийн класс (2026-11-24) */
+  mk?: string;
 }) {
   const cum = r.kind === 'cum';
   const max = cum ? 0 : Math.max(0, ...r.cells.map((v) => (v == null ? 0 : v)));
   return (
-    <tr className={`${s.hRow} ${KIND_CLS[r.kind]}`} data-lk={r.lk} data-nm={r.lk ? r.name : undefined}>
+    <tr className={mk ? `${s.hRow} ${KIND_CLS[r.kind]} ${mk}` : `${s.hRow} ${KIND_CLS[r.kind]}`} data-lk={r.lk} data-nm={r.lk ? r.name : undefined}>
       <td className={s.hName} title={r.name}><Caret fold={fold} />{r.name}</td>
       <td className={s.r}>{r.w == null ? '' : pct(r.w, 1)}</td>
       <td className={s.num}>{r.start == null ? '' : fmtDay(r.start)}</td>

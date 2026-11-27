@@ -694,7 +694,7 @@ export function PkgBoard({ r, m, extra = null, themes = new Set(), onOpen, onOpe
         )}
 
         {show('deps') && (
-          <Card title={tr('Хамаарал')} note={onOpenDeps ? <button type="button" className={b.link} onClick={onOpenDeps}>{tr('Багцын хамаарал →')}</button> : undefined}>
+          <Card title={tr('Хамаарал')} note={onOpenDeps ? <button type="button" className={b.link} onClick={onOpenDeps}>{tr('6 түвшний хуваарь →')}</button> : undefined}>
             <DepList label={tr('Холбоотой багцууд')} rows={linkedRows(m, p.key)} onOpen={onOpen} />
           </Card>
         )}

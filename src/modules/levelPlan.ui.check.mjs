@@ -89,6 +89,30 @@ const render = (d, initial) => renderToStaticMarkup(h(LocaleProvider, null, h(Le
 
   const l6 = render(d, 6);
   assert.ok(l6.includes('>10.21<') && l6.includes('>11.03<'), '14 өдөр');
+
+  /* 2026-11-24: «Холбоос засах» — `hamaaral` эрхгүй хүнд хуудас ЯГ өмнөх шигээ; эрхтэй хүнд зөвхөн нэг товч нэмэгдэнө */
+  const rc = (lvl, canLink) => renderToStaticMarkup(h(LocaleProvider, null, h(LevelPlanBody, { d, initial: lvl, canLink })));
+  const btn = /<button type="button" class="[^"]*" aria-pressed="false" title="Багцын хамаарлыг энэ хуваарь дээр холбох, салгах">Холбоос засах<\/button>/;
+  for (const lvl of [1, 2, 3, 4, 5, 6]) {
+    const base = render(d, lvl);
+    assert.ok(!base.includes('Холбоос засах'), `L${lvl}: эрхгүй — засах товчгүй`);
+    assert.equal(rc(lvl, false), base, `L${lvl}: canLink=false — анхдагчтай ижил`);
+    const withCap = rc(lvl, true);
+    assert.match(withCap, btn, `L${lvl}: эрхтэй — «Холбоос засах» товч`);
+    assert.equal(withCap.replace(btn, ''), base, `L${lvl}: товчноос бусад нь өөрчлөгдөөгүй (мөр · зурвас · тооцоо)`);
+  }
+  assert.ok(!l2.includes('data-edit') && !l2.includes('lkEdit') && !l2.includes('lkPick'), 'засах горимын класс зөвхөн горимд');
+}
+
+/* ── 3. Эрх ба цэс (2026-11-24): «Багцын хамаарал» хуудас хасагдаж, засвар 6 түвшинд ── */
+{
+  const { VIEWS, NAV_GROUPS } = await import('@/lib/services.ts');
+  const { CAP_HOST_VIEW } = await import('@/lib/caps.ts');
+  assert.ok(!VIEWS.some((v) => v.key === 'bagtsHamaaral'), '«Багцын хамаарал» харагдац хасагдсан');
+  assert.ok(!NAV_GROUPS.some((g) => g.views.includes('bagtsHamaaral')), 'цэснээс хасагдсан');
+  assert.deepEqual(CAP_HOST_VIEW.hamaaral, ['tuvshin6'], '`hamaaral` эрх → «6 түвшний хуваарь»');
+  const src = readFileSync(new URL('./LevelPlan.tsx', import.meta.url), 'utf8');
+  assert.match(src, /hasCap\(user\?\.username, 'hamaaral'\)/, 'товч `hamaaral` эрхээр');
 }
 
 console.log('levelPlan.ui.check ✓');

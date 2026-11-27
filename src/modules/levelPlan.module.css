@@ -560,3 +560,68 @@
 
 /* 2026-11-23: «Багцын хамаарал»-ын чиглэлгүй холбоо — сумгүй, тасархай */
 .lkUnd { fill: none; stroke: var(--data); stroke-width: 1.4; stroke-dasharray: 5 3; opacity: 0.85; }
+
+/* 2026-11-24: «Холбоос засах» горим — мөр дарж холбоно, зураас дарж салгана (горимгүй үед хэрэглэгдэхгүй) */
+.btnOn { color: var(--ink); background: color-mix(in oklab, var(--data) 16%, var(--surface)); border-color: var(--data); }
+.lkEdit .lkPick td.cName,
+.lkEdit .lkPick td.hName { cursor: pointer; }
+.lkEdit .lkPick:hover td.cName,
+.lkEdit .lkPick:hover td.hName { background: color-mix(in oklab, var(--data) 10%, var(--surface)); }
+.lkEdit .lkSel td.cName,
+.lkEdit .lkSel td.hName { background: color-mix(in oklab, var(--data) 24%, var(--surface)); color: var(--ink); font-weight: 600; cursor: pointer; }
+.lkEdit .lkLinked td.cName,
+.lkEdit .lkLinked td.hName { background: color-mix(in oklab, var(--good) 18%, var(--surface)); cursor: pointer; }
+.lkEdit .lkHitEdit { cursor: pointer; stroke-width: 10; }
+.lkAdd { stroke: var(--good); stroke-width: 2; opacity: 1; }
+.lkDel { stroke: var(--bad); stroke-width: 1.6; opacity: 0.9; }
+.lkOn { stroke-width: 2.4; opacity: 1; }
+.lkPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--data);
+  border-radius: var(--r);
+  background: color-mix(in oklab, var(--data) 5%, var(--surface));
+  font-size: 12px;
+  flex: none;
+}
+.lkPanelHead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lkHelp { margin: 0; color: var(--ink-2); line-height: 1.45; }
+.lkSelBox {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.lkList { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.lkList li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lkList li small { color: var(--ink-3); }
+.lkIsAdd { color: var(--good-ink); }
+.lkIsDel { color: var(--bad-ink); text-decoration: line-through; }
+.lkPop {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: 0 8px 28px color-mix(in oklab, #000 22%, transparent);
+  font-size: 12px;
+}
+.lkPop .lkList { max-height: 220px; }
+.lkPop button.lkPick {
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lkPop button.lkPick:hover:not(:disabled) { background: var(--surface-2); }
+.lkBackdrop { position: fixed; inset: 0; z-index: 49; border: 0; padding: 0; background: transparent; cursor: default; }

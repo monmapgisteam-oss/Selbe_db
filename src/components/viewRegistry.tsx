@@ -30,7 +30,6 @@ const LOAD = {
   zovshoorol: () => import('@/modules/Zovshoorol').then((m) => m.Zovshoorol),
   tailan: () => import('@/modules/Tailan').then((m) => m.Tailan),
   tuh: () => import('@/modules/Tuh').then((m) => m.Tuh),
-  bagtsHamaaral: () => import('@/modules/BagtsHamaaral').then((m) => m.BagtsHamaaral),
   zuragTosol: () => import('@/modules/ZuragTosol').then((m) => m.ZuragTosol),
   zahiramj: () => import('@/modules/UyShatOruulah').then((m) => m.Zahiramj),
   songon: () => import('@/modules/UyShatOruulah').then((m) => m.Songon),
@@ -76,7 +75,6 @@ const HyanaltHugatsaa = dynamic(() => LOAD.hyanaltHugatsaa(), { ssr: false, load
 const Zovshoorol = dynamic(() => LOAD.zovshoorol(), { ssr: false, loading: ViewLoading });
 const Tailan = dynamic(() => LOAD.tailan(), { ssr: false, loading: ViewLoading });
 const Tuh = dynamic(() => LOAD.tuh(), { ssr: false, loading: ViewLoading });
-const BagtsHamaaral = dynamic(() => LOAD.bagtsHamaaral(), { ssr: false, loading: ViewLoading });
 const ZuragTosol = dynamic(() => LOAD.zuragTosol(), { ssr: false, loading: ViewLoading });
 const Zahiramj = dynamic(() => LOAD.zahiramj(), { ssr: false, loading: ViewLoading });
 const Songon = dynamic(() => LOAD.songon(), { ssr: false, loading: ViewLoading });
@@ -154,10 +152,9 @@ export const VIEW_REGISTRY: Record<Exclude<ViewKey, MapOnlyViewKey>, RenderView>
     <Tuh
       dim={dim}
       setDim={setDim}
-      onOpenDeps={navScope === 'all' || navScope.includes('bagtsHamaaral') ? () => { setView('bagtsHamaaral'); } : undefined}
+      onOpenDeps={navScope === 'all' || navScope.includes('tuvshin6') ? () => { setView('tuvshin6'); } : undefined}
     />
   ),
-  bagtsHamaaral: () => <BagtsHamaaral />,
   zuragTosol: () => <ZuragTosol />,
   zahiramj: () => <Zahiramj />,
   songon: () => <Songon />,

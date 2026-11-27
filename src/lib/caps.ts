@@ -181,7 +181,8 @@ export const CAP_HOST_VIEW: Record<CapKey, ViewKey[]> = {
   butets: ['dedButets'],
   chanarAuthor: ['ma'],
   chanarReview: ['ma'],
-  hamaaral: ['bagtsHamaaral'],
+  /* 2026-11-24: багцын хамаарлыг «6 түвшний хуваарь» дээр засна («Багцын хамаарал» харагдац хасагдсан) */
+  hamaaral: ['tuvshin6'],
   habeaData: ['habea'],
   habeaOwn: ['habea'],
   docsUpload: [],

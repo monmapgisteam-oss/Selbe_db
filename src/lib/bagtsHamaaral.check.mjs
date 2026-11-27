@@ -3,7 +3,7 @@
  *   node --experimental-transform-types --import./tools/ts-alias.mjs src/lib/bagtsHamaaral.check.mjs
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { parseDeps, depsJson, sameDep, HAMAARAL_KEY } from '@/lib/bagtsHamaaral.ts';
 
 const D = (from, to) => ({ from, to });
@@ -24,8 +24,13 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$
 const tuh = strip(readFileSync('src/modules/Tuh.tsx', 'utf8'));
 assert.doesNotMatch(tuh, /bagtsHamaaral/, 'ТУХ хуучин багц ↔ багц бүртгэлээс уншихгүй');
 assert.match(tuh, /useAsync\(loadPkgDeps/, 'ТУХ ажлын графаас (`loadPkgDeps`)');
-const view = strip(readFileSync('src/modules/BagtsHamaaral.tsx', 'utf8'));
-assert.match(view, /canEdit[\s\S]{0,120}hasCap\([\s\S]{0,40}'hamaaral'/, 'засвар `hamaaral` эрхээр');
-assert.doesNotMatch(view, /if\s*\(\s*!canEdit\s*\)\s*return\s*(null|<)/, 'эрхгүй хүнд хуудсыг хаахгүй («харах ≠ засах»)');
+/* 2026-11-24: «Багцын хамаарал» харагдац хасагдсан — засвар «6 түвшний хуваарь» дээр (`LevelPlan` · `LevelLinkEdit`) */
+const page = strip(readFileSync('src/modules/LevelPlan.tsx', 'utf8'));
+const view = strip(readFileSync('src/modules/LevelLinkEdit.tsx', 'utf8'));
+assert.match(page, /canLink[\s\S]{0,120}hasCap\([\s\S]{0,40}'hamaaral'/, 'засвар `hamaaral` эрхээр');
+assert.doesNotMatch(page, /if\s*\(\s*!canLink\s*\)\s*return\s*(null|<)/, 'эрхгүй хүнд хуудсыг хаахгүй («харах ≠ засах»)');
 assert.match(view, /removeLegacyDeps/, 'шилжсэн хуучин хос устгагдана');
+assert.match(view, /saveWorkLinks\(refOf\(n\), change\)/, 'хадгалалт `saveWorkLinks`-оор (хадгалдаг мөр тутамд)');
+assert.match(view, /setNavDirty\('hamaaral-edit'/, 'хадгалаагүй өөрчлөлттэй гарахад анхааруулна');
+assert.ok(!existsSync('src/modules/BagtsHamaaral.tsx'), 'тусдаа «Багцын хамаарал» хуудас хасагдсан');
 console.log('✅ уншигчид — ТУХ ажлын графаас, харагдац эрхээр засна');

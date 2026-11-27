@@ -28,9 +28,9 @@ ok(!boardAllowedFor([], false), 'харагдацгүй → самбаргүй')
 ok(!boardAllowedFor(['guitsetgel', 'plan'], false), 'гүйцэтгэгч → самбаргүй');
 /* амьд `munkhbaatar`-ын (Газрын дарга) хадгалсан жагсаалт — урсгалтай бус бүгд */
 ok(boardAllowedFor(['gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'analysis', 'irged', 'tailan', 'tuh',
-  'bagtsHamaaral', 'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem', 'zuragTosol', 'tuvshin6'], false), 'амьд «Газрын дарга» → самбартай');
+  'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem', 'zuragTosol', 'tuvshin6'], false), 'амьд «Газрын дарга» → самбартай');
 ok(!boardAllowedFor(['gdash', 'dashboard', 'plan', 'hesegET', 'pkgFin', 'pkgProg', 'gazar', 'analysis', 'irged', 'tailan', 'tuh',
-  'bagtsHamaaral', 'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem'], false), 'шинэ 2 харагдацгүй хуучин жагсаалт → самбаргүй (эрх олгоно)');
+  'finance', 'habea', 'iot', 'ersdel', 'dedButets', 'zovshoorol', 'schem'], false), 'шинэ 2 харагдацгүй хуучин жагсаалт → самбаргүй (эрх олгоно)');
 ok(!boardAllowedFor(roleAccess('gazriin').views === 'all' ? [] : roleAccess('gazriin').views, false), 'синкгүй нөөц загвар → самбаргүй');
 console.log('✅ самбар: super · урсгалтай бус бүх харагдац (удирдлага) → нээлттэй; дутуу → хаалттай');
 
